@@ -15,6 +15,7 @@ This is durable operating knowledge, not a per-session transcript.
 - Real ledger: `R:\peach-data\database\ledger.db`; WAL mode; normal browsing legitimately changes play/activity fields.
 - Tests must create temporary SQLite databases and temporary media files.
 - Before real migration: SQLite backup, asset/tag counts, `PRAGMA integrity_check`, migration version check, then service smoke test.
+- Formal migrations `0000` and `0001` were applied to the real ledger on 2026-08-14. The verified pre-migration recovery point is `R:\peach-data\archive\ledger.pre-migrate-20260814-152821.db`; do not delete it until later migrations have their own verified recovery point.
 - Media and runtime data remain under `R:\media` and `R:\peach-data`; they are not repository assets.
 
 ## Operations
