@@ -153,8 +153,11 @@ Runtime PIDs are observations, not configuration; always re-check them.
 
 ## Next work
 
-0. The 115 sheet pass is running against the 3,914 rows the probe fix unblocked; it is expected to
-   download on the order of 1 TB, which the user approved on 2026-08-15 as unmetered-but-slow. When it
+0. The 115 sheet pass is running against the 3,914 rows the probe fix unblocked, approved on
+   2026-08-15 as unmetered-but-slow. The first 300 rows measured 49 GB and 0.28 h, i.e. **163 MB and
+   3.3 s per contact sheet** with a 3.3% failure rate; since the job runs largest-file-first that is an
+   upper bound, so the remaining 3,624 rows should stay under ~590 GB rather than the 1 TB first
+   extrapolated from a single large sample. When it
    finishes, run `creator_boards.py` (snapshot mode is free) for the newly sheetable creators, then the
    review-first `creator_tags.py --export-review` queue. Note the ceiling of that route: of the 2,547
    untagged 115 videos only 577 have a creator, 1,051 carry a code that is 384 FC2 plus ~330 `WX`-style
