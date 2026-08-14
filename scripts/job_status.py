@@ -80,8 +80,10 @@ def collect(db_path: Path, generated: Path, state_path: Path | None = None) -> l
                       "AND (snapshot_path IS NULL OR snapshot_path='') "
                       "AND (duration IS NULL OR duration<=0)", loc)
         lines.append(f"  - `{loc}`：{ready} / {blocked} / {ready + blocked}")
-    lines.append("  PikPak 计费，且单帧 seek 实测 25~40 秒，与 115 的 0.4~1.4 秒不是一个量级；"
-                 "全量抽帧按此速率是 14 天量级，按创作者采样是 2 小时量级。")
+    # 2026-08-15 实测重新标定：瓶颈是流量不是时间，旧的"25~40 秒/帧、全量 14 天"不成立。
+    lines.append("  PikPak 计费且走代理（`*.mypikpak.net`）；2026-08-15 实测 9 帧接触表 163 MB / 13.7 秒，"
+                 "即约 18 MB、1.5 秒一帧。瓶颈是流量不是时间：全量抽帧约 773 GB，"
+                 "按创作者采样 88 板约 14 GB / 20 分钟。115 走直连，同样动作约 285 MB 一张接触表。")
 
     untagged = one("SELECT count(*) FROM asset WHERE medium='video' "
                    "AND id NOT IN (SELECT asset_id FROM asset_tag)")

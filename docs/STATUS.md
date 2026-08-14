@@ -69,6 +69,26 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - Creator tagging is now review-first: `scripts/creator_tags.py --export-review` produced `R:\peach-data\generated\creator-tags-review.csv` with 86 boards, 30 prior decisions and 56 pending rows. A parallel worker may write only `candidate`/`skip`; applying accepts only coordinator-reviewed `approved` rows, requires a SQLite backup, and dual-writes compatibility plus canonical tag relations.
 - A Claude Code 2.1.232 batch initially stopped after 24 seconds, but the later completed run read 30 boards and classified 27 creators without refusal. The persisted 27,295 `vision_creator` rows reconcile exactly with that run's declared creator-level tag sets. An older per-title pass remained chat-only and wrote neither CSV nor ledger rows; only persisted review artifacts plus database postconditions are authoritative.
 - Migration `0005_backfill_legacy_tags.sql` is applied to the real ledger. It repaired all 27,295 late `vision_creator` compatibility rows missing from `asset_entity`, temporarily suspended the per-row FTS trigger and rebuilt affected search rows once. The real apply took about 7 seconds; 81,873 assets and 88,672 compatibility tag rows were preserved, canonical relations reached 159,172, missing legacy relations are zero, integrity is `ok` and foreign-key violations are zero. Backup: `R:\peach-data\database\ledger.pre-migrate-20260814-225437.db`.
+- The 115 backlog was not blocked by missing work; it was unreachable. `probe.py` selected only
+  `duration IS NULL`, while a soft ffprobe failure had been persisted as `duration=0`, which also fails
+  the sheets `duration>2` gate. 3,937 of the 4,034 blocked 115 rows sat in that gap, which is why
+  "probe backlog is empty" and "4,034 blocked" were both true. Unknown durations now persist as `-1`
+  and `--redo zero|failed|all` re-queues recorded failures. The real 115 pass processed 3,737 rows in
+  54.2 minutes with 38 failures (1%); the `zero` bucket is now empty and sheetable 115 rows went
+  19 → 3,914. It cost about 98 GB of 115 download, roughly 25 MB per file probed.
+- Measured transfer cost, 2026-08-15, through the mihomo connection counter: 115 is routed DIRECT via
+  `cdnfhnfile.115cdn.net` and PikPak through the proxy via `*.mypikpak.net`. A nine-frame contact sheet
+  costs about 285 MB on 115 (1,074 MB source) and 163 MB / 13.7 s on PikPak (385 MB source). The earlier
+  "25~40 s per PikPak frame" record does not reproduce; the real constraint is bytes, not seconds.
+  `-probesize/-analyzeduration` limiting does **not** reduce it — the bytes are CloudDrive block
+  prefetches in fixed ~12.9 MiB units spread across several CDN nodes, below FFmpeg's control.
+- `traffic_watch.py` counted only non-DIRECT bytes, so a metered source routed DIRECT would never trip
+  the ceiling. `--count-direct` now puts direct bytes in the same budget and the per-connection delta
+  split is a pure `accumulate()` with tests. PikPak was then measured as proxied, so the resident
+  proxy-only 200 GB watcher does cover it; the 98 GB of 115 traffic remains invisible to every ceiling.
+- `disposal-candidates.csv` was regenerated at 22:53 and no longer lists the 3.2 GB `BNST033.mp4`
+  feature for disposal — it now carries verdict `保留` with the reason recorded, beside three `存疑`
+  rows from the same directory. The HANDOFF entry describes the historical incident, not a live defect.
 - The visible terminal mistaken for a slow batch was the permanent `RM-TrafficWatch` heartbeat. Its scheduled action was changed from `python.exe` to `pythonw.exe` at 22:36, the task restarted successfully, and the new hidden process continued writing `trafficwatch-20260814-223642.log` every 30 seconds. It stops only matching Peach task trees and no longer terminates machine-wide FFmpeg/ffprobe processes.
 
 - `scripts/scrape_codes.py` — code scraping via r18 → avsox → javbus cascade, resumable from
@@ -133,6 +153,18 @@ Runtime PIDs are observations, not configuration; always re-check them.
 
 ## Next work
 
+0. The 115 sheet pass is running against the 3,914 rows the probe fix unblocked; it is expected to
+   download on the order of 1 TB, which the user approved on 2026-08-15 as unmetered-but-slow. When it
+   finishes, run `creator_boards.py` (snapshot mode is free) for the newly sheetable creators, then the
+   review-first `creator_tags.py --export-review` queue. Note the ceiling of that route: of the 2,547
+   untagged 115 videos only 577 have a creator, 1,051 carry a code that is 384 FC2 plus ~330 `WX`-style
+   amateur codes — exactly the sources measured to return zero catalogue hits — and 1,031 have neither.
+   Creator boards and code scraping cannot reach roughly 1,500 of them; do not present either as a plan
+   for the whole 115 tail.
+   PikPak remains deliberately untouched: the user deferred it on 2026-08-15 rather than declining it.
+   The prepared step is creator sampling only — 88 boards, ~792 frames, ~14 GB, ~20 minutes, under a
+   dedicated `--limit 100` sentinel, and with no PikPak probe pass beforehand. Full PikPak sheeting
+   (~773 GB) and a full PikPak probe (~207 GB) are both out of budget and should not be started.
 1. Extend source/provenance sampling to weight the opening and final frames in addition to the existing
    representative board cells. Detect visible handles/domains/watermarks there, and add a reviewed
    `incomplete/cut` candidate when end cards say `full version available` or equivalent. Seed the first
@@ -155,15 +187,15 @@ The current UI/API candidate passed JavaScript parse, 81 isolated tests, desktop
 <!-- job-status:start -->
 
 <!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->
-<!-- generated 2026-08-14T18:38Z -->
+<!-- generated 2026-08-14T19:21Z -->
 
 - 最近自动交接：`claude` / `Stop` / `completed`，2026-08-14T18:38:37+00:00。
 - 资产 81873 条，其中视频 24980 条。
 - 待抽帧（可抽 / 缺时长待 probe / 合计）：
   - `local`：4 / 1 / 5
-  - `115`：1368 / 2695 / 4063
+  - `115`：3874 / 139 / 4013
   - `pikpak`：4751 / 5445 / 10196
-  PikPak 计费，且单帧 seek 实测 25~40 秒，与 115 的 0.4~1.4 秒不是一个量级；全量抽帧按此速率是 14 天量级，按创作者采样是 2 小时量级。
+  PikPak 计费且走代理（`*.mypikpak.net`）；2026-08-15 实测 9 帧接触表 163 MB / 13.7 秒，即约 18 MB、1.5 秒一帧。瓶颈是流量不是时间：全量抽帧约 773 GB，按创作者采样 88 板约 14 GB / 20 分钟。115 走直连，同样动作约 285 MB 一张接触表。
 - 无内容标签视频 7538 条（占视频 30%）。
 - `asset_tag` 来源分布：`vision_creator` 27295、`pixiv_tag` 19753、`name` 19107、`stash` 15450、`r18` 2538、`performer` 1887、`follow` 1376、`r18:performer` 1216、`javbus:performer` 50。
 - 番号 1434 个，其中 1158 个有厂牌（81%）。

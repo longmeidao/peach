@@ -176,6 +176,43 @@ Report backlog counts as **actionable / blocked / total**, never as a single num
 duration and can be sheeted, 5,445 carry none and need a probe pass first. `job_status.py` always prints
 all three.
 
+## A failure written as a plausible value is a permanent stall
+
+`probe.py` persisted "ffprobe returned no duration" as `duration=0`. That is not a null and not a
+failure marker, so the row vanished from probe's own `duration IS NULL` queue *and* failed the sheets
+`duration>2` gate. 3,937 of the 4,034 blocked 115 rows lived in that gap for as long as the two
+contradictory-looking status lines did. Nothing logged an error; the backlog simply never moved.
+
+- A failed measurement must be stored as something no downstream query can mistake for a result.
+  `-1` is such a value here; `0`, `""` and `0.0` are not.
+- Any job that writes a fact layer needs an explicit way to re-run over recorded failures
+  (`--redo zero|failed|all`), because the reason for failure is usually external and temporary — in
+  this case the CloudDrive mount was not visible to the process token that ran the original pass.
+- When two status numbers look contradictory, suspect a state that neither query covers before
+  assuming one of them is wrong.
+
+## Transfer cost is the real batch constraint, and it is measured per source
+
+Verified 2026-08-15 against the mihomo connection counter, five files plus a 115 control:
+
+| Source | Route | ffprobe one file | Nine-frame contact sheet |
+| --- | --- | ---: | ---: |
+| 115 | DIRECT `cdnfhnfile.115cdn.net` | ~25 MB | ~285 MB (1,074 MB source) |
+| PikPak | proxied `*.mypikpak.net` | 12–52 MB | 163 MB / 13.7 s (385 MB source) |
+
+- The older "25~40 s per PikPak frame, full extraction is 14 days" record does not reproduce. Measured
+  cost is ~18 MB and ~1.5 s per frame; the binding constraint is bytes, not wall clock. Full PikPak
+  sheeting is ~773 GB, a full PikPak probe pass ~207 GB, and creator sampling of 88 boards ~14 GB.
+- `-probesize`/`-analyzeduration` do not reduce any of it. The traffic arrives as CloudDrive block
+  prefetches in fixed ~12.9 MiB units fanned across several CDN nodes, which is below FFmpeg's control.
+  Do not re-derive this by re-measuring; change the block behavior in CloudDrive or accept the cost.
+- Creator boards (`--from-video`) fall back to a 60-second seek when duration is unknown, so creator
+  sampling does **not** require a probe pass first. That ordering saves the entire ~207 GB probe cost.
+- The resident 200 GB sentinel counts proxy bytes only, which does cover PikPak. It does not see 115 at
+  all: the 98 GB spent probing 115 on 2026-08-15 was invisible to every ceiling. Use `--count-direct`
+  when the budget must cover a direct-routed source, and remember that mode cannot tell sources apart —
+  never run a 115 batch under a direct-counting PikPak ceiling, or 115 will trip it.
+
 ## Reuse before restore
 
 - Read `docs/REUSE.md` before introducing a library, protocol implementation or restored legacy script.
