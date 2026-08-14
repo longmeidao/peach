@@ -4,7 +4,7 @@ Last verified: 2026-08-14
 
 ## Runtime
 
-- Production Peach: FastAPI `0.2.0` from `R:\peach-app` on `0.0.0.0:80`, listener PID observed as 3688; health mode is `fastapi`.
+- Production Peach: FastAPI `0.2.0` from `R:\peach-app` on `0.0.0.0:80`, listener PID observed as 49792 after the UI deployment; health mode is `fastapi`.
 - `peach.local` is again the single official LAN entry. The publisher restores the verified pre-migration behavior: Python zeroconf listens on all eligible interfaces and publishes `peach.local -> 192.168.50.162`. Production health reports `mdns_backend=zeroconf-all-interfaces`; same-host DNS-SD discovery and `getaddrinfo('peach.local')` both resolved the correct address after restart. A second LAN device remains the final external check; no firewall or router rule was changed.
 - Stash: `127.0.0.1:9999`, PID observed as 35332.
 - Traffic monitor: running through `RM-TrafficWatch` from `R:\peach-app\.venv`; all probe/sheets tasks use the same project environment.
@@ -144,7 +144,7 @@ Runtime PIDs are observations, not configuration; always re-check them.
 
 Claude project hooks now refresh the managed batch block on Stop, StopFailure and SessionEnd. Codex has no equivalent task-end project hook; its coordinator must keep the same STATUS/HANDOFF write contract manually. Hook verification used a synthetic event and a temporary document/state file; no prompt, response or token was persisted.
 
-The latest UI candidate passed JavaScript parse, 64 isolated tests, desktop browser behavior and 390×844 layout. Production had not yet been restarted at the time this paragraph was written; deployment status must be updated only after the port-80 process is replaced and smoked.
+The latest UI candidate passed JavaScript parse, 64 isolated tests, desktop browser behavior and 390×844 layout. Production was restarted from the host context that sees `A:`/`B:`. Port 80 then passed health, the 600-entry performer index, `peach.local -> 192.168.50.162`, and a 1 KiB `206 Partial Content` Range read for CloudDrive asset 4289. Candidate port 8900 was stopped.
 
 ## 批处理进度（自动生成）
 
