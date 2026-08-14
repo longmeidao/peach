@@ -1,15 +1,15 @@
 # Status
 
-Last verified: 2026-08-14
+Last verified: 2026-08-15
 
 ## Runtime
 
-- Production Peach: FastAPI `0.2.0` from `R:\peach-app` on `0.0.0.0:80`, listener PID observed as 49792 after the UI deployment; health mode is `fastapi`.
+- Production Peach: FastAPI `0.2.0` from `R:\peach-app` on `0.0.0.0:80`, listener PID observed as 6852 after the preference UI deployment (venv launcher PID 44576); health mode is `fastapi`.
 - `peach.local` is again the single official LAN entry. The publisher restores the verified pre-migration behavior: Python zeroconf listens on all eligible interfaces and publishes `peach.local -> 192.168.50.162`. Production health reports `mdns_backend=zeroconf-all-interfaces`; same-host DNS-SD discovery and `getaddrinfo('peach.local')` both resolved the correct address after restart. A second LAN device remains the final external check; no firewall or router rule was changed.
 - Stash: `127.0.0.1:9999`, PID observed as 35332.
 - Traffic monitor: running through `RM-TrafficWatch` from `R:\peach-app\.venv`; all probe/sheets tasks use the same project environment.
 - Runtime Python: 3.14.7. The removed system Python 3.12 invalidated the old venv, which was rebuilt and reverified before production start.
-- Real ledger migrations: `0000`–`0004` applied; zero pending. FTS migration backup: `R:\peach-data\database\ledger.pre-migrate-20260814-213920.db`. The 20:17 backups remain `R:\peach-data\database\ledger.pre-migrate-20260814-201719.db` and `R:\peach-data\archive\ledger.pre-studio-canonicalize-20260814-201719.db`.
+- Real ledger migrations: `0000`–`0006` applied; zero pending. Preference migration backup: `R:\peach-data\database\ledger.pre-migrate-20260815-000500.db`. It preserved 81,873 assets, passed `integrity_check`, and has zero foreign-key violations.
 - Current pre-0002 recovery point: `R:\peach-data\archive\ledger.pre-migrate-20260814-162004.db`.
 
 Runtime PIDs are observations, not configuration; always re-check them.
@@ -37,9 +37,9 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - Creator/studio top lists and related-item creator/tag/studio matching now read canonical entity relations. Real-ledger timings were 0.055 s for 28 top entries and 0.055 s for 24 related items.
 - Creator/studio filters, canonical-name search, creator index, facets and attribution stats now also read entity relations. Real-ledger timings were 0.040 s for a 1,545-item creator filter, 0.043 s for the first 60 creators, 0.132 s for facets and 0.394 s for stats.
 - Snapshot availability checks use the same strict legacy-prefix resolver as `/thumb`, so the front end requests migrated previews instead of displaying false “无预览” cards.
-- 64 isolated tests pass under Python 3.14, including atomic/redacted automatic-handoff coverage. Earlier dependency and JavaScript parse validation remains valid for the unchanged web/runtime surface.
+- 66 isolated tests pass under Python 3.14, including profile preference API/migration coverage and atomic/redacted automatic-handoff coverage. The current inline JavaScript also passes syntax validation.
 - Real migration preserved 81,873 assets and 59,697 tag links; both live database and backup passed `integrity_check` and `foreign_key_check` before later metadata writes.
-- Desktop 1280×720 and mobile 390×844 browser checks passed on the same application candidate before the schema-only migration; visual checks were not rerun after migration because no browser instance was connected.
+- The shared responsive base previously passed desktop 1280×720 and mobile 390×844. The current preference slice was reverified at desktop 1280×720; its 390×844 visual rerun remains explicitly outstanding because the connected browser did not expose viewport emulation.
 - Restarted production port 80 passed health, home, public OpenCode Go model discovery (26 models at verification time), canonical filtered-list/item reads, thumbnail `200` and 1 KiB `206 Partial Content` Range smoke checks.
 - After deleting the legacy server, restarted production also passed real `stats`, `tops` and `facets` aggregate contract checks.
 - Optional SSL is supported with an explicit certificate/key pair. Production remains HTTP until a trusted local certificate is supplied.
@@ -47,13 +47,14 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - Long-card hover now enlarges the card and exposes ±10-second preview seeking; short cards expose a profile-backed “稍后看” action. Item details show linked performers/studio/creator/series, and top performer/studio entries navigate to entity pages instead of mutating filters.
 - The interaction pass now delays long-card enlargement and ±10-second controls until five seconds of continuous hover; quick pointer movement only previews. Creator names on cards and details navigate directly to entity pages. “换一批” is a filled action, not a pressed sort filter, and bottom “再来 60 个” pagination is replaced by an intersection-driven continuation sentinel.
 - The desktop rail now prioritizes “全部艺人” and “全部标签” instead of duplicating “没看过/看过”; the drawer exposes the same destinations. The performer wall returned 600 entries and the tag cloud 173 in candidate verification. The statistics surface uses the shared card/grid language and no longer exposes a bottom load/refresh control.
+- Item details now expose an independent Like signal plus a private “为什么喜欢” text field. Migration `0006` stores both by profile in `asset_preference`; it does not overload `asset.feedback`, `watch_queue`, rating, or orgasm count. The original note is truth and AI may only propose separately reviewed taste facets later.
 - Official 115 (120 px PNG) and PikPak (SVG) marks are cached with source sidecars and rendered centered in source filters/badges. The complete studio-logo audit found 27/114 canonical studios with a cached logo and 87 missing. Missing studios now show initials rather than a misleading representative-work crop; online logo completion remains queued.
 - Migration `0003` added entity summaries, typed links/search terms and `watch_queue`. Thirteen reviewed studio duplicate groups were merged with 15 aliases; Prestige has 248 video assets after Japanese/Prestige Premium normalization, while distinct `PREMIUM` remains separate.
 - FC2's 16×16 favicon was replaced by the official 102×43 asset and the user-provided Prestige logo was cached locally, both with provenance sidecars. Performer-image routing prefers a provenance-backed entity cache; Stash's default SVG silhouette is rejected rather than mislabeled as an HD portrait.
 - `scripts/import_stash_entities.py` reconciled the Stash public performer contract into Peach without making Stash authoritative: 383 exact stable refs, 52 aliases/search terms and two explicitly declared X links were imported. Of 42 non-placeholder Stash images, 14 passed the 512 px short-side gate and were cached with provenance; 28 smaller images were rejected. Top entries including 一个ren、高桥千凛 and 小桃 now use 720 px-class cached portraits.
-- Static/unit/API production checks passed after restart: home/entity routes, FC2/Prestige logos, canonical aliases and a local-media 1 KiB `206 Partial Content` response. No browser instance was connected, so desktop and 390×844 visual verification remain pending.
+- Current production desktop verification passed home loading, 60 cards, item expansion, Like/reason controls and zero horizontal overflow. No real preference or playback data was written during this production browser check.
 - The 20:36 Peach restart was launched only after verifying the port-80 command line in the host session. The replacement process can see CloudDrive: asset 4289 again passed `video/mp4` 1 KiB `206 Partial Content` and poster `200`; local asset 1 passed the same Range contract. A sandbox drive check is not authoritative.
-- The mDNS regression fix remains deployed. The current listener PID 3688 passed health, Windows hostname resolution and CloudDrive asset 4289 with a 1 KiB `206 Partial Content` response.
+- The mDNS regression fix remains deployed. Listener PID 6852 passed health, Windows hostname resolution and CloudDrive asset 4289 with a 1 KiB `206 Partial Content` response after the preference deployment.
 - The original Peach process could not see CloudDrive `A:`/`B:` even though CloudDrive was running. After confirming zero copy tasks and no I/O, CloudDrive and Peach were restarted in the same execution context. Asset 4289 (`669.mp4`) then passed `video/mp4`, 1 KiB `206 Range`, thumbnail and generated-poster API checks. Drive-letter visibility differs by Windows token, so the HTTP stream check is the authoritative service test.
 
 ## Batch jobs
@@ -122,7 +123,7 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - `scripts/find_ads.py` was converted from a one-off hard-coded script into an import-safe, configurable, read-only candidate scanner with isolated tests. Its 82-row generated review result remains unchanged; it still deletes nothing.
 - The reuse register and ADR-0010 record required mature dependencies, Peach-owned domain logic and old-to-current script successors. Production port 80 and the scheduled traffic watcher were both restarted onto the consolidated code.
 - Final API smoke checks passed `/healthz`, FTS search, local asset 1 Range and CloudDrive asset 4289 Range. No real playback/feedback rows were written by verification.
-- Desktop and 390×844 visual checks were attempted but remain unverified: the in-app browser blocks private LAN addresses and the local Firefox automation context could not start. This is a test-environment limitation, not a claimed visual pass.
+- Desktop 1280×720 is currently verified. The current slice's 390×844 visual rerun remains unverified due to unavailable viewport emulation; this is reported as a gap, not a pass.
 
 ## Next work
 
@@ -131,20 +132,17 @@ Runtime PIDs are observations, not configuration; always re-check them.
    `incomplete/cut` candidate when end cards say `full version available` or equivalent. Seed the first
    regression fixture from `115/04_Stepsistercaughtmejerkingoff,deepthroat,throatpie.mp4`, whose final
    seconds point to `fansly.com/smuzillipussy`; do not persist the attribution without frame evidence.
-2. Add a simple Like action that increases preference weight, plus a private free-text “为什么喜欢” field.
-   Store the user's original text as truth; AI may propose normalized taste facets with provenance and
-   confidence for review, but must not replace or silently reinterpret the note.
-3. Finish visual identity quality: implement the deferred portrait scoring hierarchy (reviewed/public HD
+2. Finish visual identity quality: implement the deferred portrait scoring hierarchy (reviewed/public HD
    portrait → high-quality public portrait → face-aware crop from the most-watched work → sharp keyframe),
    and source the 87 missing studio logos from official/public sources with provenance and quality gates.
-4. Add a Media Engine stream-plan endpoint and integrate hls.js or Shaka Player before enabling Stash HLS/DASH fallback in the browser.
-5. Configure/evaluate Stash CommunityScrapers and metadata providers before writing another source adapter.
-6. Add explicit feed configuration and reviewed import; only then use APScheduler. Add reviewed inference requests afterward, with AI output remaining candidates.
-7. Move remaining legacy status/suggest/ledger application logic behind repository/application ports, then delete obsolete CLI surfaces.
+3. Add a Media Engine stream-plan endpoint and integrate hls.js or Shaka Player before enabling Stash HLS/DASH fallback in the browser.
+4. Configure/evaluate Stash CommunityScrapers and metadata providers before writing another source adapter.
+5. Add explicit feed configuration and reviewed import; only then use APScheduler. Add reviewed inference requests afterward, with AI output remaining candidates.
+6. Move remaining legacy status/suggest/ledger application logic behind repository/application ports, then delete obsolete CLI surfaces.
 
 Claude project hooks now refresh the managed batch block on Stop, StopFailure and SessionEnd. Codex has no equivalent task-end project hook; its coordinator must keep the same STATUS/HANDOFF write contract manually. Hook verification used a synthetic event and a temporary document/state file; no prompt, response or token was persisted.
 
-The latest UI candidate passed JavaScript parse, 64 isolated tests, desktop browser behavior and 390×844 layout. Production was restarted from the host context that sees `A:`/`B:`. Port 80 then passed health, the 600-entry performer index, `peach.local -> 192.168.50.162`, and a 1 KiB `206 Partial Content` Range read for CloudDrive asset 4289. Candidate port 8900 was stopped.
+The preference UI candidate passed JavaScript parse, 66 isolated tests, API persistence and desktop 1280×720 browser behavior. The browser surface did not expose 390×844 viewport emulation for this pass, so the new preference block was not visually reverified at that width; its existing single-column breakpoint remains unchanged. Production was restarted from the host context that sees `A:`/`B:`. Port 80 then passed health, `peach.local -> 192.168.50.162`, the new item preference contract, and a 1 KiB `206 Partial Content` Range read for CloudDrive asset 4289. Candidate port 8900 was stopped.
 
 ## 批处理进度（自动生成）
 
