@@ -41,7 +41,7 @@ This is durable operating knowledge, not a per-session transcript.
 - Item/detail/filter/search/facets/index/stats/top lists/related ranking use canonical relations. Flattened creator/studio fields remain only as response compatibility projections; do not use them for identity or matching.
 - Keep FastAPI and the front end logically separate but deploy as a monolith.
 - External sources and AI are supported only through explicit adapters and declared data boundaries.
-- `FeedAdapter` is the first online-follow connector. It performs explicit bounded RSS/Atom discovery only; do not make it poll on application startup or write ledger rows directly.
+- `FeedAdapter` is the first online-follow connector. It performs explicit bounded RSS/Atom discovery; `FeedSnapshotStore` separates immutable evidence under `sources/follow` from conditional-request cursors under `state/follow`. Do not make it poll on application startup or write ledger rows directly.
 - AI provider layers are not equivalent: inference APIs and local coding/agent runtimes remain separate.
 
 ## Recovery

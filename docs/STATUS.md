@@ -23,7 +23,7 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - Migration `0002` added canonical entity/alias/external-ref/asset-relation tables and backfilled existing performer/tag/studio/creator/series projections. After the post-migration external-metadata reconciliation, the real ledger has 8,603 entities and 131,877 relations. The Stash and external-metadata importers dual-write canonical relations while retaining flattened UI projections.
 - Passive `/api/providers` health discovery now exposes separate inference/agent capabilities without model calls, credential reads or secret values.
 - The OpenCode Go adapter now supports explicit public model discovery through `/api/providers/opencode-go/models`, with a five-minute in-memory cache and normalized secret-free output. It does not invoke inference or read CLI credentials.
-- The first online-follow connector is a generic explicit RSS/Atom `FeedAdapter`: conditional requests, bounded response reads, normalized entries and no ledger writes. It has only isolated feed tests so far; no real feed was contacted.
+- The first online-follow connector is a generic explicit RSS/Atom `FeedAdapter`: conditional requests, bounded response reads, normalized entries and no ledger writes. `FeedSnapshotStore` persists immutable XML/normalized evidence under `sources/follow` and request cursors under `state/follow`. It has only isolated feed tests so far; no real feed was contacted.
 - Snapshot rows still contain 10,714 pre-split `R:\Resources\Intake\snapshots` paths. Runtime now performs a strict legacy-prefix rebase to `R:\peach-data\generated\snapshots`; it does not mutate the real ledger.
 - `R:\peach-data` now separates `database/generated/sources/state/secrets/logs/archive/inbox/tools`; the old empty root Inbox and old Resources/Tools compatibility surface are removed.
 - `web_contract.py` now uses an application-owned database/cache/write-lock context rather than module globals; separate app instances cannot leak databases or caches into each other.
@@ -31,7 +31,7 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - Creator/studio top lists and related-item creator/tag/studio matching now read canonical entity relations. Real-ledger timings were 0.055 s for 28 top entries and 0.055 s for 24 related items.
 - Creator/studio filters, canonical-name search, creator index, facets and attribution stats now also read entity relations. Real-ledger timings were 0.040 s for a 1,545-item creator filter, 0.043 s for the first 60 creators, 0.132 s for facets and 0.394 s for stats.
 - Snapshot availability checks use the same strict legacy-prefix resolver as `/thumb`, so the front end requests migrated previews instead of displaying false “无预览” cards.
-- 42 isolated tests and tracked-script static compilation passed under Python 3.14.
+- 43 isolated tests and tracked-script static compilation passed under Python 3.14.
 - Real migration preserved 81,873 assets and 59,697 tag links; both live database and backup passed `integrity_check` and `foreign_key_check` before later metadata writes.
 - Desktop 1280×720 and mobile 390×844 browser checks passed on the same application candidate before the schema-only migration; visual checks were not rerun after migration because no browser instance was connected.
 - Restarted production port 80 passed health, home, public OpenCode Go model discovery (26 models at verification time), canonical filtered-list/item reads, thumbnail `200` and 1 KiB `206 Partial Content` Range smoke checks.
@@ -60,6 +60,6 @@ Runtime PIDs are observations, not configuration; always re-check them.
 
 ## Next work
 
-1. Add configured feed persistence under `peach-data/sources`, conditional-request state and a reviewed candidate import without automatic ledger writes.
+1. Add explicit feed configuration plus a reviewed candidate import without automatic ledger writes; only then consider a scheduler.
 2. Add reviewed inference requests behind the OpenCode Go adapter; AI output must remain a candidate and cannot write ledger truth directly.
 3. Replace remaining flattened creator/studio display projections only when the front end can consume canonical DTO fields without breaking compatibility.

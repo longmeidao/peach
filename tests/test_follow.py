@@ -1,6 +1,9 @@
 import unittest
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
 
-from peach.follow import FeedAdapter, FollowSourceError, HttpResponse
+from peach.follow import FeedAdapter, FeedSnapshotStore, FollowSourceError, HttpResponse
 
 
 class FeedAdapterTests(unittest.TestCase):
@@ -62,6 +65,34 @@ class FeedAdapterTests(unittest.TestCase):
         invalid = FeedAdapter(transport=lambda *_: HttpResponse(200, {}, b"<html/>"))
         with self.assertRaisesRegex(FollowSourceError, "unsupported"):
             invalid.fetch("https://example.test/feed")
+
+    def test_snapshot_store_separates_immutable_evidence_and_request_state(self):
+        rss = b"<rss><channel><item><guid>one</guid><title>One</title></item></channel></rss>"
+        fresh = FeedAdapter(transport=lambda *_: HttpResponse(
+            200, {"ETag": '"v1"'}, rss,
+        )).fetch("https://example.test/feed")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            store = FeedSnapshotStore(root / "sources", root / "state")
+            first = store.persist(
+                fresh, checked_at=datetime(2026, 8, 14, 8, 0, tzinfo=timezone.utc),
+            )
+            self.assertEqual(first.etag, '"v1"')
+            self.assertTrue((root / "sources" / first.snapshot).is_file())
+            source_dir = (root / "sources" / first.snapshot).parent
+            self.assertEqual(len(list(source_dir.glob("*.xml"))), 1)
+            self.assertEqual(len(list(source_dir.glob("*.json"))), 1)
+
+            cached = FeedAdapter(transport=lambda *_: HttpResponse(
+                304, {}, b"",
+            )).fetch("https://example.test/feed")
+            second = store.persist(
+                cached, checked_at=datetime(2026, 8, 14, 9, 0, tzinfo=timezone.utc),
+            )
+            self.assertEqual(second.etag, '"v1"')
+            self.assertEqual(second.snapshot, first.snapshot)
+            self.assertEqual(len(list(source_dir.glob("*.xml"))), 1)
+            self.assertEqual(store.load("https://example.test/feed"), second)
 
 
 if __name__ == "__main__":

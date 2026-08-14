@@ -7,12 +7,15 @@ from __future__ import annotations
 
 import hashlib
 import html
+import json
 import re
 import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Callable, Mapping, Protocol
 
 
@@ -48,6 +51,7 @@ class FollowResult:
     etag: str | None = None
     last_modified: str | None = None
     not_modified: bool = False
+    raw_body: bytes | None = field(default=None, repr=False, compare=False)
 
 
 class FollowSource(Protocol):
@@ -157,7 +161,7 @@ class FeedAdapter:
             entries = self._parse_atom(root)
         else:
             raise FollowSourceError("unsupported feed format")
-        return FollowResult(entries=tuple(entries), **common)
+        return FollowResult(entries=tuple(entries), raw_body=response.body, **common)
 
     @staticmethod
     def _parse_rss(root: ET.Element) -> list[FollowEntry]:
@@ -201,3 +205,101 @@ class FeedAdapter:
                 summary=_plain_text(_child_text(item, "summary", "content")),
             ))
         return entries
+
+
+@dataclass(frozen=True)
+class FollowState:
+    source_url: str
+    etag: str | None = None
+    last_modified: str | None = None
+    checked_at: str | None = None
+    snapshot: str | None = None
+
+
+class FeedSnapshotStore:
+    """Immutable feed evidence plus small replaceable conditional-request state."""
+
+    def __init__(self, sources_root: Path, state_root: Path):
+        self.sources_root = Path(sources_root) / "follow"
+        self.state_root = Path(state_root) / "follow"
+
+    @staticmethod
+    def _source_key(source_url: str) -> str:
+        return hashlib.sha256(source_url.encode("utf-8")).hexdigest()[:20]
+
+    def load(self, source_url: str) -> FollowState:
+        source_url = _validate_url(source_url)
+        path = self.state_root / f"{self._source_key(source_url)}.json"
+        if not path.is_file():
+            return FollowState(source_url)
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise FollowSourceError("follow state is unreadable") from exc
+        if not isinstance(payload, dict) or payload.get("source_url") != source_url:
+            raise FollowSourceError("follow state does not match source URL")
+        return FollowState(
+            source_url=source_url,
+            etag=payload.get("etag"),
+            last_modified=payload.get("last_modified"),
+            checked_at=payload.get("checked_at"),
+            snapshot=payload.get("snapshot"),
+        )
+
+    def persist(self, result: FollowResult, *, checked_at: datetime | None = None) -> FollowState:
+        source_url = _validate_url(result.source_url)
+        checked_at = checked_at or datetime.now(timezone.utc)
+        if checked_at.tzinfo is None:
+            raise FollowSourceError("follow check timestamp must be timezone-aware")
+        checked_text = checked_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        previous = self.load(source_url)
+        snapshot = previous.snapshot
+        if not result.not_modified:
+            if result.raw_body is None:
+                raise FollowSourceError("feed result has no raw evidence")
+            digest = hashlib.sha256(result.raw_body).hexdigest()
+            stamp = checked_at.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+            directory = self.sources_root / self._source_key(source_url)
+            directory.mkdir(parents=True, exist_ok=True)
+            raw_path = directory / f"{stamp}-{digest[:12]}.xml"
+            metadata_path = raw_path.with_suffix(".json")
+            self._write_immutable(raw_path, result.raw_body)
+            metadata = {
+                "source_url": source_url,
+                "checked_at": checked_text,
+                "sha256": digest,
+                "entries": [asdict(entry) for entry in result.entries],
+            }
+            self._write_immutable(
+                metadata_path,
+                (json.dumps(metadata, ensure_ascii=False, indent=2) + "\n").encode("utf-8"),
+            )
+            snapshot = str(raw_path.relative_to(self.sources_root.parent))
+        state = FollowState(
+            source_url=source_url,
+            etag=result.etag or previous.etag,
+            last_modified=result.last_modified or previous.last_modified,
+            checked_at=checked_text,
+            snapshot=snapshot,
+        )
+        self.state_root.mkdir(parents=True, exist_ok=True)
+        state_path = self.state_root / f"{self._source_key(source_url)}.json"
+        self._write_state(state_path, asdict(state))
+        return state
+
+    @staticmethod
+    def _write_immutable(path: Path, payload: bytes) -> None:
+        try:
+            with path.open("xb") as handle:
+                handle.write(payload)
+        except FileExistsError:
+            if path.read_bytes() != payload:
+                raise FollowSourceError("immutable follow snapshot collision")
+
+    @staticmethod
+    def _write_state(path: Path, payload: dict) -> None:
+        temporary = path.with_suffix(path.suffix + ".tmp")
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
+        )
+        temporary.replace(path)
