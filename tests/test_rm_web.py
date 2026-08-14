@@ -86,12 +86,19 @@ class WebDataTests(unittest.TestCase):
         con.executemany(
             "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(?,?,?,?)",
             [(10, "tag", "足交", "足交"),
-             (11, "performer", "Canonical Alice", "canonical alice")],
+             (11, "performer", "Canonical Alice", "canonical alice"),
+             (12, "creator", "Canonical Creator", "canonical creator"),
+             (13, "studio", "Canonical Studio", "canonical studio")],
         )
         con.executemany(
             "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
             "VALUES(?,?,?,?,?)",
-            [(1, 10, "tag", "test", 1.0), (1, 11, "performer", "test", 1.0)],
+            [(1, 10, "tag", "test", 1.0),
+             (1, 11, "performer", "test", 1.0),
+             (1, 12, "creator", "test", 1.0),
+             (2, 12, "creator", "test", 1.0),
+             (1, 13, "studio", "test", 1.0),
+             (2, 13, "studio", "test", 1.0)],
         )
         con.commit()
         con.close()
@@ -152,6 +159,16 @@ class WebDataTests(unittest.TestCase):
         other = rm_web.WebContract(Path(self.tmp.name) / "other.db")
         self.assertEqual(self.contract.cached("same", lambda: "first"), "first")
         self.assertEqual(other.cached("same", lambda: "second"), "second")
+
+    def test_top_lists_and_related_items_use_canonical_entities(self):
+        tops = rm_web.q_tops(self.contract, 10)
+        self.assertEqual(tops["performers"][0]["k"], "Canonical Creator")
+        self.assertEqual(tops["performers"][0]["n"], 2)
+        self.assertEqual(tops["studios"][0]["k"], "Canonical Studio")
+
+        related = rm_web.q_related(self.contract, 1, 10)
+        self.assertEqual(related["items"][0]["id"], 2)
+        self.assertEqual(related["items"][0]["why"], "同创作者")
 
 if __name__ == "__main__":
     unittest.main()

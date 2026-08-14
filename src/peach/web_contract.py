@@ -283,10 +283,16 @@ def q_related(contract: WebContract, aid, limit=24):
     """接着看 —— 把口味接近的串成播放列表。
     优先级：同创作者 > 共享标签最多 > 同厂牌。全部排除已标记不合口味的。"""
     c = contract.db()
-    r = c.execute("SELECT creator,studio,code,ctx_orient FROM asset WHERE id=?", (aid,)).fetchone()
+    r = c.execute("SELECT id FROM asset WHERE id=?", (aid,)).fetchone()
     if not r:
         c.close(); return {"items": []}
-    tags = [x[0] for x in c.execute("SELECT tag FROM asset_tag WHERE asset_id=?", (aid,))]
+    entity_ids = {}
+    for kind in ("creator", "tag", "studio"):
+        entity_ids[kind] = [x[0] for x in c.execute(
+            "SELECT DISTINCT ae.entity_id FROM asset_entity ae "
+            "JOIN entity e ON e.id=ae.entity_id "
+            "WHERE ae.asset_id=? AND e.kind=?", (aid, kind),
+        )]
     picked, seen = [], {aid}
 
     def take(sql, par, why):
@@ -298,21 +304,31 @@ def q_related(contract: WebContract, aid, limit=24):
 
     COLS = ("id,location,name,creator,studio,code,size,duration,width,height,"
             "ctx_orient,snapshot_path,play_count,leave_ratio,feedback,disposal,o_count")
-    base = (f"SELECT {COLS} FROM asset WHERE medium='video' AND id<>? "
-            "AND (feedback IS NULL OR feedback<>'dislike') AND (disposal IS NULL)")
-    if r["creator"]:
-        take(base + " AND creator=? ORDER BY (play_count IS NULL OR play_count=0) DESC, random() LIMIT ?",
-             (aid, r["creator"], limit), "同创作者")
+    base = (f"SELECT {COLS} FROM asset a WHERE a.medium='video' AND a.id<>? "
+            "AND (a.feedback IS NULL OR a.feedback<>'dislike') AND a.disposal IS NULL")
+    creators = entity_ids["creator"]
+    if creators:
+        qm = ",".join("?" * len(creators))
+        take(base + f" AND EXISTS (SELECT 1 FROM asset_entity ae WHERE ae.asset_id=a.id "
+             f"AND ae.entity_id IN ({qm})) "
+             "ORDER BY (a.play_count IS NULL OR a.play_count=0) DESC, random() LIMIT ?",
+             tuple([aid] + creators + [limit]), "同创作者")
+    tags = entity_ids["tag"]
     if tags and len(picked) < limit:
         qm = ",".join("?" * len(tags))
         take(f"SELECT {COLS} FROM asset a WHERE a.medium='video' AND a.id<>? "
              f"AND (a.feedback IS NULL OR a.feedback<>'dislike') AND a.disposal IS NULL "
-             f"AND (SELECT count(*) FROM asset_tag t WHERE t.asset_id=a.id AND t.tag IN ({qm})) >= "
+             f"AND (SELECT count(DISTINCT ae.entity_id) FROM asset_entity ae "
+             f"WHERE ae.asset_id=a.id AND ae.entity_id IN ({qm})) >= "
              f"{max(1, min(2, len(tags)))} "
              "ORDER BY (a.play_count IS NULL OR a.play_count=0) DESC, random() LIMIT ?",
              tuple([aid] + tags + [limit]), "标签接近")
-    if r["studio"] and len(picked) < limit:
-        take(base + " AND studio=? ORDER BY random() LIMIT ?", (aid, r["studio"], limit), "同厂牌")
+    studios = entity_ids["studio"]
+    if studios and len(picked) < limit:
+        qm = ",".join("?" * len(studios))
+        take(base + f" AND EXISTS (SELECT 1 FROM asset_entity ae WHERE ae.asset_id=a.id "
+             f"AND ae.entity_id IN ({qm})) ORDER BY random() LIMIT ?",
+             tuple([aid] + studios + [limit]), "同厂牌")
     c.close()
     for d in picked:
         d["cost"] = COST.get(d["location"], "metered")
@@ -326,22 +342,30 @@ def q_tops(contract: WebContract, n=28):
     头像不额外造图 —— 取该创作者一张有接触印相的代表作，
     前端用 background-position:50% 50% 裁中心格做圆头像。"""
     c = contract.db()
-    def rep(field, val):
-        r = c.execute(f"SELECT id FROM asset WHERE medium='video' AND {field}=? "
-                      "AND snapshot_path IS NOT NULL "
-                      "ORDER BY (play_count IS NULL), size DESC LIMIT 1", (val,)).fetchone()
+    def rep(entity_id):
+        r = c.execute(
+            "SELECT a.id FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
+            "WHERE ae.entity_id=? AND a.medium='video' AND a.snapshot_path IS NOT NULL "
+            "ORDER BY (a.play_count IS NULL), a.size DESC LIMIT 1", (entity_id,),
+        ).fetchone()
         return r[0] if r else None
     out = {}
     out["performers"] = []
-    for k, cnt in c.execute(
-            "SELECT creator, count(*) n FROM asset WHERE medium='video' "
-            "AND creator IS NOT NULL AND creator<>'' GROUP BY creator ORDER BY n DESC LIMIT ?", (n,)):
-        out["performers"].append({"k": k, "n": cnt, "rep": rep("creator", k)})
+    for entity_id, k, cnt in c.execute(
+            "SELECT e.id,e.canonical_name,count(DISTINCT ae.asset_id) n "
+            "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "JOIN asset a ON a.id=ae.asset_id "
+            "WHERE a.medium='video' AND e.kind='creator' "
+            "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT ?", (n,)):
+        out["performers"].append({"k": k, "n": cnt, "rep": rep(entity_id)})
     out["studios"] = []
-    for k, cnt in c.execute(
-            "SELECT studio, count(*) n FROM asset WHERE medium='video' "
-            "AND studio IS NOT NULL AND studio<>'' GROUP BY studio ORDER BY n DESC LIMIT ?", (n,)):
-        out["studios"].append({"k": k, "n": cnt, "rep": rep("studio", k)})
+    for entity_id, k, cnt in c.execute(
+            "SELECT e.id,e.canonical_name,count(DISTINCT ae.asset_id) n "
+            "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "JOIN asset a ON a.id=ae.asset_id "
+            "WHERE a.medium='video' AND e.kind='studio' "
+            "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT ?", (n,)):
+        out["studios"].append({"k": k, "n": cnt, "rep": rep(entity_id)})
     c.close()
     return out
 
