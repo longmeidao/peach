@@ -35,6 +35,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.db = self.root / "ledger.db"
         self.media_root = self.root / "media"
         self.snapshot_root = self.root / "snapshots"
+        self.legacy_snapshot_root = self.root / "legacy-snapshots"
         self.poster_root = self.root / "posters"
         self.avatar_root = self.root / "avatars"
         self.logo_root = self.root / "logos"
@@ -43,8 +44,10 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             path.mkdir()
         self.media_file = self.media_root / "one.mp4"
         self.media_file.write_bytes(b"0123456789")
-        self.snapshot_file = self.snapshot_root / "one.jpg"
+        self.snapshot_file = self.snapshot_root / "cloud" / "local" / "one.jpg"
+        self.snapshot_file.parent.mkdir(parents=True)
         self.snapshot_file.write_bytes(b"snapshot")
+        self.legacy_snapshot_file = self.legacy_snapshot_root / "cloud" / "local" / "one.jpg"
         (self.poster_root / "1_4.jpg").write_bytes(b"poster")
         (self.avatar_root / "1.jpg").write_bytes(b"avatar")
         (self.logo_root / "Studio_A.img").write_bytes(b"logo")
@@ -58,7 +61,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
                                   width,height,snapshot_path,first_seen)
                VALUES(1,'local',?,'one.mp4','video',100,
                       'Alice','Studio A',100,1920,1080,?,'2026-08-14')""",
-            (str(self.media_file), str(self.snapshot_file)),
+            (str(self.media_file), str(self.legacy_snapshot_file)),
         )
         con.execute("INSERT INTO asset_tag(asset_id,tag,source) VALUES(1,'Tag A','test')")
         con.commit()
@@ -66,6 +69,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         app = create_app(PeachSettings(
             db_path=self.db, token="secret", page_path=self.page,
             allowed_media_roots=(self.media_root,), snapshot_root=self.snapshot_root,
+            legacy_snapshot_roots=(self.legacy_snapshot_root,),
             poster_root=self.poster_root, avatar_root=self.avatar_root, logo_root=self.logo_root,
             ffmpeg_root=self.root / "ffmpeg",
         ))
@@ -97,6 +101,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["total"], 1)
+        self.assertTrue(data["items"][0]["has_thumb"])
         self.assertNotIn("path", data["items"][0])
         self.assertEqual(response.headers["cache-control"], "no-store")
 

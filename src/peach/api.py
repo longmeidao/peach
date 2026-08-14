@@ -35,8 +35,9 @@ def _authorized(request: Request, token: str, args: dict[str, str]) -> bool:
 
 def create_app(settings: PeachSettings | None = None) -> FastAPI:
     settings = settings or PeachSettings()
-    web_contract.DB = str(settings.db_path)
-    web_contract.cache_bust()
+    contract = web_contract.WebContract(
+        settings.db_path, settings.snapshot_root, settings.legacy_snapshot_roots,
+    )
     repository = LedgerRepository(settings.db_path)
     resolver = FFmpegResolver(settings.ffmpeg_root)
     media_service = FilesystemMediaService(
@@ -75,7 +76,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         openapi_url="/openapi.json" if settings.docs_enabled else None,
     )
     app.state.settings = settings
-    app.state.web_contract = web_contract
+    app.state.web_contract = contract
     app.state.repository = repository
     app.state.media_service = media_service
     app.state.preview_service = preview_service
@@ -206,7 +207,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         if not _authorized(request, settings.token, args):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         try:
-            return web_contract.dispatch_api_get(f"/api/{route}", args)
+            return web_contract.dispatch_api_get(contract, f"/api/{route}", args)
         except KeyError:
             return JSONResponse({"error": "not found"}, status_code=404)
         except (TypeError, ValueError) as exc:
@@ -220,7 +221,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         if not _authorized(request, settings.token, args):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         try:
-            return web_contract.dispatch_api_post(f"/api/{route}", body)
+            return web_contract.dispatch_api_post(contract, f"/api/{route}", body)
         except KeyError:
             return JSONResponse({"error": "not found"}, status_code=404)
         except (TypeError, ValueError) as exc:
