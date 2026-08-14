@@ -4,7 +4,7 @@ Last verified: 2026-08-15
 
 ## Runtime
 
-- Production Peach: FastAPI `0.2.0` from `R:\peach-app` on `0.0.0.0:80`, listener PID observed as 6852 after the preference UI deployment (venv launcher PID 44576); health mode is `fastapi`.
+- Production Peach: FastAPI `0.2.0` from `R:\peach-app` on `0.0.0.0:80`, listener PID observed as 12980 after the card-interaction deployment (venv launcher PID 33456); health mode is `fastapi`.
 - `peach.local` is again the single official LAN entry. The publisher restores the verified pre-migration behavior: Python zeroconf listens on all eligible interfaces and publishes `peach.local -> 192.168.50.162`. Production health reports `mdns_backend=zeroconf-all-interfaces`; same-host DNS-SD discovery and `getaddrinfo('peach.local')` both resolved the correct address after restart. A second LAN device remains the final external check; no firewall or router rule was changed.
 - Stash: `127.0.0.1:9999`, PID observed as 35332.
 - Traffic monitor: running through `RM-TrafficWatch` from `R:\peach-app\.venv`; all probe/sheets tasks use the same project environment.
@@ -56,8 +56,9 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - FC2's 16×16 favicon was replaced by the official 102×43 asset and the user-provided Prestige logo was cached locally, both with provenance sidecars. Performer-image routing prefers a provenance-backed entity cache; Stash's default SVG silhouette is rejected rather than mislabeled as an HD portrait.
 - `scripts/import_stash_entities.py` reconciled the Stash public performer contract into Peach without making Stash authoritative: 383 exact stable refs, 52 aliases/search terms and two explicitly declared X links were imported. Of 42 non-placeholder Stash images, 14 passed the 512 px short-side gate and were cached with provenance; 28 smaller images were rejected. Top entries including 一个ren、高桥千凛 and 小桃 now use 720 px-class cached portraits.
 - Current production desktop verification passed home loading, 60 cards, item expansion, Like/reason controls and zero horizontal overflow. No real preference or playback data was written during this production browser check.
+- The card-interaction deployment passed an isolated desktop candidate check for the detail controls, performer portrait navigation, aligned back action and drawer-close guard. Restarted production then loaded 78 visible cards, 12 performer-linked portraits, and the S1/kawaii marks without opening a video or writing feedback. The connected browser still has no supported 390×844 viewport control, so this slice's mobile visual rerun remains explicitly outstanding.
 - The 20:36 Peach restart was launched only after verifying the port-80 command line in the host session. The replacement process can see CloudDrive: asset 4289 again passed `video/mp4` 1 KiB `206 Partial Content` and poster `200`; local asset 1 passed the same Range contract. A sandbox drive check is not authoritative.
-- The mDNS regression fix remains deployed. Listener PID 6852 passed health, Windows hostname resolution and CloudDrive asset 4289 with a 1 KiB `206 Partial Content` response after the preference deployment.
+- The mDNS regression fix remains deployed. Listener PID 12980 passed health, Windows hostname resolution and CloudDrive asset 4289 with a 1 KiB `206 Partial Content` response after the card-interaction deployment; both `A:` and `B:` were visible in the restart context.
 - The original Peach process could not see CloudDrive `A:`/`B:` even though CloudDrive was running. After confirming zero copy tasks and no I/O, CloudDrive and Peach were restarted in the same execution context. Asset 4289 (`669.mp4`) then passed `video/mp4`, 1 KiB `206 Range`, thumbnail and generated-poster API checks. Drive-letter visibility differs by Windows token, so the HTTP stream check is the authoritative service test.
 
 ## Batch jobs
