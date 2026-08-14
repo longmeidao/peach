@@ -37,7 +37,7 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - Creator/studio top lists and related-item creator/tag/studio matching now read canonical entity relations. Real-ledger timings were 0.055 s for 28 top entries and 0.055 s for 24 related items.
 - Creator/studio filters, canonical-name search, creator index, facets and attribution stats now also read entity relations. Real-ledger timings were 0.040 s for a 1,545-item creator filter, 0.043 s for the first 60 creators, 0.132 s for facets and 0.394 s for stats.
 - Snapshot availability checks use the same strict legacy-prefix resolver as `/thumb`, so the front end requests migrated previews instead of displaying false “无预览” cards.
-- 81 isolated tests pass under Python 3.14, including profile preference, batch operations, client routes, duration range, structural creator cleanup, cached browser transcodes, dynamic-handler safety and mDNS tunnel-route fallback. The current inline JavaScript also passes syntax validation.
+- 84 isolated tests pass under Python 3.14, including profile preference, batch operations, client routes, duration range, structural creator cleanup, cached browser transcodes, dynamic-handler safety, agent-worktree isolation and mDNS tunnel-route fallback. The current inline JavaScript also passes syntax validation.
 - Real migration preserved 81,873 assets and 59,697 tag links; both live database and backup passed `integrity_check` and `foreign_key_check` before later metadata writes.
 - The current slice passed isolated desktop 1280×720 and mobile 390×844 browser checks with zero horizontal overflow, all Lucide references resolved, no visible legacy length tags, and the mobile rail hidden.
 - Restarted production port 80 passed health, home, public OpenCode Go model discovery (26 models at verification time), canonical filtered-list/item reads, thumbnail `200` and 1 KiB `206 Partial Content` Range smoke checks.
@@ -180,7 +180,7 @@ Runtime PIDs are observations, not configuration; always re-check them.
 
 Claude project hooks now refresh the managed batch block on Stop, StopFailure and SessionEnd. Codex has no equivalent task-end project hook; its coordinator must keep the same STATUS/HANDOFF write contract manually. Hook verification used a synthetic event and a temporary document/state file; no prompt, response or token was persisted.
 
-The current UI/API candidate passed JavaScript parse, 81 isolated tests, desktop 1280×720 and mobile 390×844. Production HTTP, HTTPS and mDNS were restarted onto this code. HTTPS chain verification passed with the corrected local CA; browsing tests remained on the isolated candidate and did not write real playback, preference or feedback data.
+The current UI/API candidate passed JavaScript parse, 84 isolated tests, desktop 1280×720 and mobile 390×844. Production HTTP, HTTPS and mDNS were restarted onto this code. HTTPS chain verification passed with the corrected local CA; browsing tests remained on the isolated candidate and did not write real playback, preference or feedback data.
 
 ## 批处理进度（自动生成）
 
