@@ -56,6 +56,14 @@ CREATE TABLE asset_entity(
   metadata_json TEXT DEFAULT '{}', first_seen_at TEXT, last_seen_at TEXT,
   UNIQUE(asset_id,entity_id,role,source)
 );
+CREATE TABLE entity_alias(entity_id INTEGER,alias TEXT,normalized_alias TEXT,source TEXT,confidence REAL);
+CREATE TABLE entity_external_ref(entity_id INTEGER,provider TEXT,external_kind TEXT,external_id TEXT,
+  metadata_json TEXT DEFAULT '{}',last_synced_at TEXT);
+CREATE TABLE entity_link(id INTEGER PRIMARY KEY,entity_id INTEGER,link_kind TEXT,label TEXT,url TEXT,
+  hostname TEXT,is_sensitive INTEGER DEFAULT 0,metadata_json TEXT DEFAULT '{}',created_at TEXT,updated_at TEXT);
+CREATE TABLE entity_search_term(entity_id INTEGER,term TEXT,purpose TEXT,source TEXT,created_at TEXT);
+CREATE TABLE watch_queue(profile_id TEXT,asset_id INTEGER,added_at TEXT,source TEXT,
+  PRIMARY KEY(profile_id,asset_id));
 """
 
 
@@ -162,8 +170,8 @@ class WebDataTests(unittest.TestCase):
 
     def test_top_lists_and_related_items_use_canonical_entities(self):
         tops = rm_web.q_tops(self.contract, 10)
-        self.assertEqual(tops["performers"][0]["k"], "Canonical Creator")
-        self.assertEqual(tops["performers"][0]["n"], 2)
+        self.assertEqual(tops["performers"][0]["k"], "Canonical Alice")
+        self.assertEqual(tops["performers"][0]["n"], 1)
         self.assertEqual(tops["studios"][0]["k"], "Canonical Studio")
 
         related = rm_web.q_related(self.contract, 1, 10)
@@ -195,6 +203,38 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(stats["attribution"]["studio"], 2)
         facets = rm_web.q_facets(self.contract)
         self.assertEqual(facets["creators"][0]["k"], "Canonical Creator")
+
+    def test_performer_entity_page_and_watch_queue(self):
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO entity_alias VALUES(11,'Alice','alice','test',1.0)"
+        )
+        con.execute(
+            "INSERT INTO entity_link(entity_id,link_kind,label,url,hostname,is_sensitive) "
+            "VALUES(11,'official','Official','https://example.com/alice','example.com',0),"
+            "(11,'source_reference','Private source','https://source.invalid/a','source.invalid',1)"
+        )
+        con.execute(
+            "INSERT INTO entity_search_term(entity_id,term,purpose,source) "
+            "VALUES(11,'Alice code','source_lookup','user')"
+        )
+        con.commit(); con.close()
+        page = rm_web.q_entity(self.contract, {"kind": "performer", "name": "Alice"})
+        self.assertEqual(page["canonical_name"], "Canonical Alice")
+        self.assertEqual(page["asset_count"], 1)
+        self.assertTrue(page["links"][0]["clickable"])
+        self.assertFalse(page["links"][1]["clickable"])
+        self.assertIsNone(page["links"][1]["url"])
+        self.assertEqual(rm_web.q_items(
+            self.contract, {"performer": "Canonical Alice", "limit": "10"},
+        )["total"], 1)
+        self.assertTrue(rm_web.w_watch_later(
+            self.contract, {"id": 1},
+        )["watch_later"])
+        self.assertTrue(rm_web.q_item(self.contract, 1)["watch_later"])
+        self.assertFalse(rm_web.w_watch_later(
+            self.contract, {"id": 1},
+        )["watch_later"])
 
 if __name__ == "__main__":
     unittest.main()

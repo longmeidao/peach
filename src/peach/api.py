@@ -197,6 +197,19 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         response.headers["Cache-Control"] = "public, max-age=86400"
         return response
 
+    @app.api_route("/entity-image", methods=["GET", "HEAD"])
+    def entity_image(request: Request, kind: str, id: int):
+        args = _first_query_values(request)
+        if not _authorized(request, settings.token, args):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        try:
+            path, content_type = preview_service.entity_image(kind, id)
+        except PreviewUnavailable:
+            return JSONResponse({"error": "unavailable"}, status_code=404)
+        response = FileResponse(path, media_type=content_type)
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        return response
+
     @app.get("/api/providers")
     def provider_health(request: Request):
         args = _first_query_values(request)

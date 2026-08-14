@@ -113,6 +113,20 @@ class PreviewService:
                 return path, content_type
         raise PreviewUnavailable("logo unavailable")
 
+    def entity_image(self, kind: str, entity_id: int) -> tuple[Path, str]:
+        """返回已缓存的高清实体图；抓取与版权溯源由离线导入任务负责。"""
+        if kind not in {"performer", "studio", "creator", "series"}:
+            raise PreviewUnavailable("invalid entity kind")
+        path = self.avatar_root / f"{kind}-{int(entity_id)}.img"
+        if not path.is_file():
+            raise PreviewUnavailable("entity image unavailable")
+        content_type = "image/jpeg"
+        sidecar = Path(str(path) + ".ct")
+        if sidecar.is_file():
+            detected = sidecar.read_text(encoding="utf-8").strip().split(";")[0]
+            content_type = detected or content_type
+        return path, content_type
+
     def _snapshot(self, asset_id: int) -> Path:
         asset = self.repository.media_asset(asset_id)
         if asset is None or not asset.snapshot_path:

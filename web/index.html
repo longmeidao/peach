@@ -177,6 +177,21 @@ button,input{font:inherit;color:inherit}
 .icell .nm{font-size:12.5px;text-align:center;line-height:1.3;word-break:break-all}
 .icell .n{font-size:10.5px;color:var(--muted)}
 .tagwall{display:flex;flex-wrap:wrap;gap:7px}
+.entityhero{display:grid;grid-template-columns:180px minmax(0,1fr);gap:24px;padding:20px;
+  border:1px solid var(--line);border-radius:8px;background:var(--surface);margin-bottom:22px}
+.entityportrait{width:180px;aspect-ratio:1;border-radius:8px;overflow:hidden;background:var(--sunk);
+  display:grid;place-items:center;font-size:48px;color:var(--muted)}
+.entityportrait img{width:100%;height:100%;object-fit:cover;display:block}
+.entityhero h2{font-size:27px;margin:0 0 5px}.entityhero .alias{color:var(--muted);margin-bottom:14px}
+.entitysummary{line-height:1.75;max-width:820px}.entitylinks{display:flex;flex-wrap:wrap;gap:7px;margin-top:15px}
+.entitylinks a,.entitylinks span{border:1px solid var(--line);border-radius:99px;padding:6px 12px;
+  font-size:12px;text-decoration:none;color:var(--ink)}
+.entitylinks a:hover{border-color:var(--tungsten);color:var(--tungsten)}
+.entitylinks .private{color:var(--muted);border-style:dashed}
+.entityterms{margin-top:13px;color:var(--muted);font-size:11px}.entityterms code{color:var(--ink-2);margin-right:8px}
+.entitysection h3{font-size:13px;letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
+.entitylink{border:0;background:none;padding:0;color:var(--tungsten);cursor:pointer;text-decoration:none}
+.entitylink:hover{text-decoration:underline}
 
 /* ── 主区：满屏，大图 ── */
 main{padding:14px 16px 90px}
@@ -188,7 +203,8 @@ main{padding:14px 16px 90px}
 .count .sorts button[aria-pressed="true"]{background:var(--tungsten-soft);
   border-color:var(--tungsten);color:var(--tungsten)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
-.card{cursor:pointer;display:flex;flex-direction:column;gap:8px;min-width:0}
+.card{cursor:pointer;display:flex;flex-direction:column;gap:8px;min-width:0;
+  position:relative;transition:transform .18s ease,filter .18s ease;transform-origin:center}
 .pic{position:relative;aspect-ratio:16/9;background:#000;border-radius:4px;
   overflow:hidden;display:flex;align-items:center;justify-content:center}
 /* 预览图：单格，contain 放进固定 16:9 框 —— 不拉伸、不裁切、不改框体大小 */
@@ -199,6 +215,19 @@ main{padding:14px 16px 90px}
   opacity:0;transition:opacity .2s}
 .hv.on{opacity:1}
 .card:hover .pic{box-shadow:0 0 0 2px var(--tungsten)}
+@media (hover:hover) and (pointer:fine){
+  .card:hover{transform:translateY(-3px) scale(1.025);z-index:8;filter:brightness(1.04)}
+}
+.hovertools{position:absolute;inset:0;z-index:4;display:flex;align-items:center;
+  justify-content:center;gap:12px;opacity:0;transition:opacity .16s;pointer-events:none}
+.card:hover .hovertools{opacity:1}
+.hovertools button{pointer-events:auto;width:46px;height:46px;border-radius:50%;border:1px solid #FFFFFF55;
+  background:#111B;color:#fff;backdrop-filter:blur(8px);display:grid;place-items:center;
+  cursor:pointer;font:650 11px/1 "Cascadia Mono",monospace;box-shadow:0 6px 22px #0008}
+.hovertools button:hover{background:var(--tungsten);color:#17110a;border-color:var(--tungsten)}
+.hovertools .laterbtn{position:absolute;right:10px;bottom:10px;width:auto;height:38px;border-radius:20px;
+  padding:0 14px;font-family:inherit;font-size:12px;display:flex;gap:6px}
+.hovertools .laterbtn[aria-pressed="true"]{background:var(--tungsten);color:#17110a}
 .nopic{font-size:9px;letter-spacing:.15em;color:var(--muted);text-transform:uppercase}
 .badge{position:absolute;top:6px;left:6px;display:flex;gap:4px;z-index:2;align-items:center}
 /* 来源徽标：图标 + 名字。绿=免费（本地/115），橙=计费（PikPak） */
@@ -243,6 +272,7 @@ main{padding:14px 16px 90px}
 .flags i{width:6px;height:6px;border-radius:1px;display:block}
 .flags i.dislike{background:var(--drop)}.flags i.seen{background:var(--muted)}
 .flags i.dispose{background:var(--meter)}
+.flags i.later{background:var(--tungsten)}
 /* 标签分级配色（参考 rule34） */
 .ctags{display:flex;flex-wrap:wrap;gap:3px}
 .tg{padding:1px 7px;border-radius:10px;font-size:10.5px;border:1px solid;line-height:1.55;
@@ -303,6 +333,7 @@ main{padding:14px 16px 90px}
 .obtn{width:100%;padding:9px;border:1px solid var(--line);background:transparent;
   border-radius:4px;cursor:pointer;margin-bottom:11px}
 .obtn:hover{border-color:var(--tungsten)}
+.obtn[aria-pressed="true"]{border-color:var(--tungsten);background:var(--tungsten-soft);color:var(--tungsten)}
 .hint{color:var(--muted);line-height:1.6}
 .next{border-top:1px solid var(--line-soft);padding:13px 15px 15px}
 .next h3{margin:0 0 10px;font-size:12px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
@@ -441,6 +472,8 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   #searchBtn{display:inline-flex}
   /* 移动端不需要密度切换和筛选抽屉按钮挤在一起 */
   #density{display:none}
+  .entityhero{grid-template-columns:92px minmax(0,1fr);gap:14px;padding:13px}
+  .entityportrait{width:92px}.entityhero h2{font-size:20px}
 }
 #searchBtn{display:none}
 </style>
@@ -580,18 +613,22 @@ function cardHtml(it,cls){
     : `<span class="nopic">无预览</span>`;
   const tr=it.leave_ratio!=null?`<div class="scrub"><i style="width:${Math.round(it.leave_ratio*100)}%"></i></div>`:'';
   const fl=[it.feedback==='dislike'&&'dislike',it.feedback==='seen'&&'seen',
-            it.disposal==='pending'&&'dispose'].filter(Boolean).map(c=>`<i class="${c}"></i>`).join('');
+            it.disposal==='pending'&&'dispose',it.watch_later&&'later']
+            .filter(Boolean).map(c=>`<i class="${c}"></i>`).join('');
   const who=it.creator||it.code||it.studio||'未归属';
-  const perf=(it.performers||[]).map(x=>`<span class="tg artist" data-tag="演员:${esc(x)}">${esc(x)}</span>`).join('');
+  const perf=(it.performers||[]).map(x=>`<button class="tg artist entitylink" data-entity-kind="performer" data-entity-name="${esc(x)}">${esc(x)}</button>`).join('');
   const tgs=(it.tags||[]).slice(0,3).map(x=>`<span class="tg general" data-tag="${esc(x)}">${esc(x)}</span>`).join('');
   const avId=REP[it.creator]||REP[it.studio];
   const av=avId?`<img src="/avatar?id=${avId}" alt="" loading="lazy"
       onerror="this.parentNode.innerHTML='<span class=&quot;ini&quot;>${esc((who||'?').slice(0,1))}</span>'">`
                :`<span class="ini">${esc((who||'?').slice(0,1))}</span>`;
-  return `<article class="${cls||'card'}" data-id="${it.id}">
+  const tools=cls==='scard'
+    ? `<div class="hovertools"><button class="laterbtn" data-later aria-pressed="${!!it.watch_later}" title="稍后看">${it.watch_later?'✓ 已加入':'＋ 稍后看'}</button></div>`
+    : `<div class="hovertools"><button data-seek="-10" title="后退 10 秒">−10</button><button data-seek="10" title="前进 10 秒">+10</button></div>`;
+  return `<article class="card ${cls||''}" data-id="${it.id}">
     <div class="pic">${thumb}
       <div class="badge mono">${srcBadge(it.location,it.cost)}</div>
-      <span class="dur mono">${fmtDur(it.duration)}</span>${tr}</div>
+      <span class="dur mono">${fmtDur(it.duration)}</span>${tr}${tools}</div>
     <div class="meta"><div class="mav">${av}</div><div class="mtext"><div class="t">${esc(it.name)}</div>
       <div class="s mono"><span class="who">${esc(who)}</span>
         ${it.why?`<span class="why">${esc(it.why)}</span>`:''}
@@ -605,6 +642,16 @@ function wireCards(root,onClick){
     if(el.dataset.wired)return; el.dataset.wired='1';
     const it=CACHE[el.dataset.id];
     el.onclick=e=>{
+      const seek=e.target.closest('[data-seek]');
+      if(seek){e.stopPropagation();const v=el.querySelector('video.hv');
+        if(v&&Number.isFinite(v.duration)){if(v._hop){clearInterval(v._hop);v._hop=null}
+          v.currentTime=Math.max(0,Math.min(v.duration,v.currentTime+(+seek.dataset.seek)))}return}
+      const later=e.target.closest('[data-later]');
+      if(later){e.stopPropagation();api('/api/watch-later',{method:'POST',body:JSON.stringify({id:it.id})})
+        .then(r=>{it.watch_later=r.watch_later;later.setAttribute('aria-pressed',r.watch_later);
+          later.textContent=r.watch_later?'✓ 已加入':'＋ 稍后看'});return}
+      const ent=e.target.closest('[data-entity-kind]');
+      if(ent){e.stopPropagation();openEntity(ent.dataset.entityKind,ent.dataset.entityName);return}
       const tg=e.target.closest('.tg');
       if(tg){e.stopPropagation();state.tag=tg.dataset.tag;buildBars();load(true);
         window.scrollTo({top:0,behavior:'smooth'});return}
@@ -624,17 +671,17 @@ async function buildBars(){
   // 顶部三层：女优圆头像 / 厂牌 / 内容标签
   tops.performers.forEach(x=>{if(x.rep)REP[x.k]=x.rep});
   tops.studios.forEach(x=>{if(x.rep)REP[x.k]=x.rep});
-  const avHtml=x=>`<button class="av" data-creator="${esc(x.k)}" aria-pressed="${state.creator===x.k}">
-    <span class="ring">${x.rep
-      ? `<img src="/avatar?id=${x.rep}" alt="" loading="lazy"
-           onerror="this.parentNode.innerHTML='<span class=&quot;ini&quot;>${esc(x.k.slice(0,1))}</span>'">`
+  const avHtml=x=>`<button class="av" data-entity-kind="performer" data-entity-name="${esc(x.k)}">
+    <span class="ring">${x.id
+      ? `<img src="/entity-image?kind=performer&id=${x.id}" alt="" loading="lazy"
+           onerror="${x.rep?`this.onerror=null;this.src='/avatar?id=${x.rep}'`:`this.parentNode.innerHTML='<span class=&quot;ini&quot;>${esc(x.k.slice(0,1))}</span>'`}">`
       : `<span class="ini">${esc(x.k.slice(0,1))}</span>`}</span>
     <span class="nm">${esc(x.k)}</span></button>`;
   // 正规厂牌用官网 logo（已缓存本地），拿不到的回退接触印相裁切，再不行用首字母
   const bpHtml=x=>{
     const fallback=x.rep?`<img src=&quot;/avatar?id=${x.rep}&quot; style=&quot;width:100%;height:100%;object-fit:cover&quot;>`
                         :`${esc(x.k.slice(0,2))}`;
-    return `<button class="brandpill" data-studio="${esc(x.k)}" aria-pressed="${state.studio===x.k}">
+    return `<button class="brandpill" data-entity-kind="studio" data-entity-name="${esc(x.k)}">
       <span class="mk"><img src="/logo?studio=${encodeURIComponent(x.k)}" alt=""
         onerror="this.parentNode.innerHTML='${fallback}'"
         onload="if(this.naturalWidth<32)this.parentNode.innerHTML='${fallback}'"
@@ -643,13 +690,11 @@ async function buildBars(){
   $('#tiers').innerHTML=
     `<div class="tier">${tops.performers.map(avHtml).join('')}</div>`+
     `<div class="tier">${tops.studios.map(bpHtml).join('')}</div>`;
-  $('#tiers').querySelectorAll('[data-creator]').forEach(b=>b.onclick=()=>{
-    state.creator=state.creator===b.dataset.creator?'':b.dataset.creator;buildBars();load(true)});
-  $('#tiers').querySelectorAll('[data-studio]').forEach(b=>b.onclick=()=>{
-    state.studio=state.studio===b.dataset.studio?'':b.dataset.studio;buildBars();load(true)});
+  $('#tiers').querySelectorAll('[data-entity-kind]').forEach(b=>b.onclick=()=>
+    openEntity(b.dataset.entityKind,b.dataset.entityName));
 
   const views=[{k:'',label:'全部'},{k:'fresh',label:'没看过'},{k:'played',label:'看过'},
-               {k:'flagged',label:'已标记'},{k:'ads',label:'疑似广告'}];
+               {k:'later',label:'稍后看'},{k:'flagged',label:'已标记'},{k:'ads',label:'疑似广告'}];
   $('#tagbar').innerHTML=
     views.map(v=>`<button class="pill" data-state="${v.k}" aria-pressed="${state.state===v.k}">${v.label}</button>`).join('')
     +`<span class="sep"></span>`
@@ -838,9 +883,38 @@ async function openIndex(kind,q){
   $('#iClose').onclick=()=>{$('#index').hidden=true;load(true)};
   let it2; $('#iq').oninput=e=>{clearTimeout(it2);it2=setTimeout(()=>openIndex(kind,e.target.value.trim()),300)};
   $('#index').querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
-    if(kind==='creators'){state.creator=b.dataset.k;state.tag=''}
+    if(kind==='creators'){openEntity('creator',b.dataset.k);return}
     else{toggleTag(b.dataset.k);return}
     $('#index').hidden=true;buildBars();load(true)});
+}
+
+async function openEntity(kind,name){
+  const d=await api(`/api/entity?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`);
+  if(d.error)return;
+  const p=new URLSearchParams();p.set(kind,name);p.set('limit','120');p.set('sort','new');
+  const items=await api('/api/items?'+p);cache(items.items);
+  $('#index').hidden=false;$('#grid').innerHTML='';$('#count').textContent='';
+  $('#more').hidden=true;$('#shortsSec').hidden=true;$('#stage').hidden=true;
+  const labels={performer:'女优',studio:'厂牌',creator:'创作者',series:'系列'};
+  const image=d.id?`<img src="/entity-image?kind=${kind}&id=${d.id}" alt="${esc(d.canonical_name)}"
+      onerror="${d.representative_asset_id?`this.onerror=null;this.src='/avatar?id=${d.representative_asset_id}'`:`this.remove()`}">`:'';
+  const links=(d.links||[]).map(x=>x.clickable&&/^https?:\/\//i.test(x.url||'')
+    ? `<a href="${esc(x.url)}" target="_blank" rel="noreferrer">${esc(x.label)} ↗</a>`
+    : `<span class="private" title="私人馆藏来源记录，不直接打开下载页">来源 · ${esc(x.label||x.hostname||'已记录')}</span>`).join('');
+  const terms=(d.search_terms||[]).map(x=>`<code>${esc(x.term)}</code>`).join('');
+  $('#index').innerHTML=`<div class="ihead"><button class="ib" id="iClose">← 返回</button>
+      <span class="mono" style="color:var(--muted)">${labels[kind]||kind}资料页</span></div>
+    <div class="entityhero"><div class="entityportrait">${image}<span>${esc(name.slice(0,1))}</span></div>
+      <div><h2 class="disp">${esc(d.canonical_name)}</h2>
+        <div class="alias mono">${(d.aliases||[]).length?'别名 · '+d.aliases.map(esc).join(' / '):'暂无别名'} · ${d.asset_count.toLocaleString()} 个视频</div>
+        <div class="entitysummary">${esc(d.summary||'简介尚未补齐；页面结构和来源边界已经就绪。')}</div>
+        ${links?`<div class="entitylinks">${links}</div>`:''}
+        ${terms?`<div class="entityterms">馆藏检索词 · ${terms}</div>`:''}</div></div>
+    <div class="entitysection"><h3>${labels[kind]||kind}的馆藏作品 · ${items.total.toLocaleString()}</h3>
+      <div class="grid">${items.items.map(it=>cardHtml(it)).join('')}</div></div>`;
+  $('#iClose').onclick=()=>{$('#index').hidden=true;load(true)};
+  wireCards($('#index'));
+  window.scrollTo({top:0,behavior:'smooth'});
 }
 
 const openDrawer=v=>{$('#drawer').classList.toggle('open',v);$('#scrim').classList.toggle('on',v);
@@ -966,6 +1040,12 @@ async function openItem(id){
   current=it; CACHE[it.id]=it;
   const gated=it.cost==='metered';
   const who=it.creator||it.code||it.studio||'未归属';
+  const entityPills=[
+    ...(it.performers||[]).map(x=>['performer','女优',x]),
+    ...((it.entities&&it.entities.studio)||[]).map(x=>['studio','厂牌',x]),
+    ...((it.entities&&it.entities.creator)||[]).map(x=>['creator','创作者',x]),
+    ...((it.entities&&it.entities.series)||[]).map(x=>['series','系列',x]),
+  ].map(([k,l,n])=>`<button class="entitylink" data-entity-kind="${k}" data-entity-name="${esc(n)}">${l} · ${esc(n)}</button>`).join('');
   $('#stage').hidden=false; delete $('#stage').dataset.c;
   $('#stage').innerHTML=`<div class="sgrid">
     <div class="vwrap"><button class="closestage" id="closeStage">收起 <kbd>Esc</kbd></button>
@@ -981,6 +1061,7 @@ async function openItem(id){
         <span style="color:var(--tungsten);align-self:center">${esc(who)}</span>
         <span style="align-self:center">${it.width||'?'}×${it.height||'?'}</span>
         <span style="align-self:center">${fmtSize(it.size||0)}</span></div>
+      ${entityPills?`<div class="stags" style="gap:9px">${entityPills}</div>`:''}
       ${(it.tags||[]).length?`<div class="stags">${it.tags.slice(0,18).map(t=>
         `<span class="tg ${t.cat}" data-tag="${esc(t.k)}">${esc(t.k)}</span>`).join('')}</div>`:''}
       <div class="trace"><div class="lab mono"><span>离开位置 / 全片</span><span id="ratioTxt">—</span></div>
@@ -998,6 +1079,7 @@ async function openItem(id){
         <button class="dispose" data-kind="dispose" aria-pressed="${it.disposal==='pending'}">
           <span class="k">标记待删</span><span class="d">不删文件</span></button></div>
       <button class="obtn" data-kind="o">记一次高潮 <b class="mono" id="oCount">${it.o_count||0}</b></button>
+      <button class="obtn" id="stageLater" aria-pressed="${!!it.watch_later}">${it.watch_later?'✓ 已加入稍后看':'＋ 稍后看'}</button>
       <div class="hint mono">前三个只打标记，随时可撤。删除永远走「先出 CSV 再执行」，不在这个页面里。</div>
     </div></div>
     <div class="next"><h3>接着看 · 口味接近</h3><div class="nrow" id="nrow">载入中…</div></div>`;
@@ -1014,6 +1096,12 @@ async function openItem(id){
     $('#oCount').textContent=r.o_count||0});
   $('#stage').querySelectorAll('.stags .tg').forEach(s=>s.onclick=()=>{
     state.tag=s.dataset.tag;buildBars();load(true);window.scrollTo({top:0,behavior:'smooth'})});
+  $('#stage').querySelectorAll('[data-entity-kind]').forEach(b=>b.onclick=()=>
+    openEntity(b.dataset.entityKind,b.dataset.entityName));
+  $('#stageLater').onclick=async()=>{const r=await api('/api/watch-later',{method:'POST',
+    body:JSON.stringify({id:it.id})});it.watch_later=r.watch_later;
+    $('#stageLater').setAttribute('aria-pressed',r.watch_later);
+    $('#stageLater').textContent=r.watch_later?'✓ 已加入稍后看':'＋ 稍后看'};
   const vv=$('#vid');
   vv.addEventListener('play',()=>{if(!$('#stage').dataset.c){$('#stage').dataset.c='1';
     api('/api/play',{method:'POST',body:JSON.stringify({id:it.id})})}});
@@ -1093,13 +1181,13 @@ async function tokShow(dir){
   const full=await api('/api/item?id='+it.id);
   const v=$('#tokVid');v.src='/stream?id='+it.id;v.play().catch(()=>{});
   $('#tokTitle').textContent=it.name;
-  const who=it.creator||it.code||'未归属';
+  const who=(full.performers&&full.performers[0])||full.creator||it.code||'未归属';
   $('#tokWho').textContent=who;
-  $('#tokWho').onclick=e=>{e.preventDefault();     // 点创作者直接跳到他的列表
+  $('#tokWho').onclick=e=>{e.preventDefault();
     $('#tokClose').click();
-    if(it.creator){state.creator=it.creator;state.tag='';state.studio=''}
-    else if(it.code){state.q=it.code}
-    buildEdge();buildBars();load(true);window.scrollTo({top:0,behavior:'smooth'})};
+    if(full.performers&&full.performers[0])openEntity('performer',full.performers[0]);
+    else if(full.creator)openEntity('creator',full.creator);
+    else if(it.code){state.q=it.code;buildEdge();buildBars();load(true)}};
   $('#tokMeta').textContent=`· ${fmtDur(it.duration)} · ${it.ctx_orient||''} · ${tokIdx+1}/${tokList.length}`;
   // 进度条
   const bar=$('#tokBar'), prog=$('#tokProg');

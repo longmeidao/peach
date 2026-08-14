@@ -4,12 +4,12 @@ Last verified: 2026-08-14
 
 ## Runtime
 
-- Production Peach: FastAPI `0.2.0` from `R:\peach-app` on `0.0.0.0:80`, server PID observed as 52476; health mode is `fastapi`.
-- mDNS root cause was the Python zeroconf responder failing to answer while several Windows applications shared UDP 5353, even though health incorrectly reported registration. Windows now uses the native DNS-SD API; LAN-client verification is pending the production restart below. No firewall or router rule was changed.
+- Production Peach: FastAPI `0.2.0` from `R:\peach-app` on `0.0.0.0:80`, server PID observed as 49196; health mode is `fastapi`.
+- Windows mDNS now uses the native DNS-SD API and restarted health reports `mdns_backend=windows-dns-sd`, address `192.168.50.162`. A second LAN device still needs to confirm `http://peach.local/`; no firewall or router rule was changed.
 - Stash: `127.0.0.1:9999`, PID observed as 35332.
 - Traffic monitor: running through `RM-TrafficWatch` from `R:\peach-app\.venv`; all probe/sheets tasks use the same project environment.
 - Runtime Python: 3.14.7. The removed system Python 3.12 invalidated the old venv, which was rebuilt and reverified before production start.
-- Real ledger migrations: `0000`, `0001` and `0002` applied; zero pending.
+- Real ledger migrations: `0000`–`0003` applied; zero pending. The 20:17 backups are `R:\peach-data\database\ledger.pre-migrate-20260814-201719.db` and `R:\peach-data\archive\ledger.pre-studio-canonicalize-20260814-201719.db`.
 - Current pre-0002 recovery point: `R:\peach-data\archive\ledger.pre-migrate-20260814-162004.db`.
 
 Runtime PIDs are observations, not configuration; always re-check them.
@@ -31,13 +31,18 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - Creator/studio top lists and related-item creator/tag/studio matching now read canonical entity relations. Real-ledger timings were 0.055 s for 28 top entries and 0.055 s for 24 related items.
 - Creator/studio filters, canonical-name search, creator index, facets and attribution stats now also read entity relations. Real-ledger timings were 0.040 s for a 1,545-item creator filter, 0.043 s for the first 60 creators, 0.132 s for facets and 0.394 s for stats.
 - Snapshot availability checks use the same strict legacy-prefix resolver as `/thumb`, so the front end requests migrated previews instead of displaying false “无预览” cards.
-- 45 isolated tests and tracked-script static compilation passed under Python 3.14.
+- 46 isolated tests, Python static compilation and JavaScript parse validation passed under Python 3.14/Node.
 - Real migration preserved 81,873 assets and 59,697 tag links; both live database and backup passed `integrity_check` and `foreign_key_check` before later metadata writes.
 - Desktop 1280×720 and mobile 390×844 browser checks passed on the same application candidate before the schema-only migration; visual checks were not rerun after migration because no browser instance was connected.
 - Restarted production port 80 passed health, home, public OpenCode Go model discovery (26 models at verification time), canonical filtered-list/item reads, thumbnail `200` and 1 KiB `206 Partial Content` Range smoke checks.
 - After deleting the legacy server, restarted production also passed real `stats`, `tops` and `facets` aggregate contract checks.
 - Optional SSL is supported with an explicit certificate/key pair. Production remains HTTP until a trusted local certificate is supplied.
 - Immersive-mode actions now use optically centered 60 px controls with visible `不喜欢` / `看过` / `高潮` labels; the orgasm count is a corner badge and the watched state changes to `已看`.
+- Long-card hover now enlarges the card and exposes ±10-second preview seeking; short cards expose a profile-backed “稍后看” action. Item details show linked performers/studio/creator/series, and top performer/studio entries navigate to entity pages instead of mutating filters.
+- Migration `0003` added entity summaries, typed links/search terms and `watch_queue`. Thirteen reviewed studio duplicate groups were merged with 15 aliases; Prestige has 248 video assets after Japanese/Prestige Premium normalization, while distinct `PREMIUM` remains separate.
+- FC2's 16×16 favicon was replaced by the official 102×43 asset and the user-provided Prestige logo was cached locally, both with provenance sidecars. Performer-image routing prefers a provenance-backed entity cache; the tested Stash performer endpoint returned its default SVG silhouette and was rejected as an HD source.
+- Static/unit/API production checks passed after restart: home/entity routes, FC2/Prestige logos, canonical aliases and a local-media 1 KiB `206 Partial Content` response. No browser instance was connected, so desktop and 390×844 visual verification remain pending.
+- CloudDrive `A:`/`B:` mounts are currently absent from the console session and asset 4289 returns unavailable. CloudDrive is doing roughly 5.7–6.2 MB/s I/O, so it was deliberately not restarted; local `R:` media playback is verified and cloud playback remains a runtime blocker until active CloudDrive work finishes.
 - The original Peach process could not see CloudDrive `A:`/`B:` even though CloudDrive was running. After confirming zero copy tasks and no I/O, CloudDrive and Peach were restarted in the same execution context. Asset 4289 (`669.mp4`) then passed `video/mp4`, 1 KiB `206 Range`, thumbnail and generated-poster API checks. Drive-letter visibility differs by Windows token, so the HTTP stream check is the authoritative service test.
 
 ## Batch jobs
@@ -57,7 +62,22 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - Probe backlog is empty. Free sheet backlog (115/local) is empty: the 20 residual rows were rechecked
   three times and 17 are dead ledger rows, not pending work. PikPak sheets still hold 4,740 items and
   are metered, so they need a traffic budget decision before running.
-- 12,204 videos still have no content tag.
+- `scripts/creator_boards.py` + `scripts/creator_tags.py` — creator-level visual tagging. Boards tile one
+  cell from each of nine different videos into a 3x3 sheet, so one image read characterizes a whole
+  creator instead of a single title. 30 boards were read; 27 creators produced tags, covering 4,518
+  videos and 27,295 `asset_tag` rows written as `source='vision_creator'`, `confidence=0.6` — deliberately
+  distinct from per-title `vision` (0.9) and scraped `r18` (0.9), because the evidence describes a
+  creator's recurring style rather than a confirmed property of each title. Untagged videos went
+  12,056 → 7,538. Tags are constrained to the existing 76-term vocabulary; the script refuses to run if a
+  tag is not already in it.
+- Three creators were read but deliberately left untagged, with reasons recorded in `creator_tags.SKIPPED`:
+  `BNST033` is 34 H-game advertisements, `G3104` is someone's personal camera roll, `tuki_1154` had too
+  few usable frames. `R:\peach-data\generated\disposal-candidates.csv` lists the 106 affected files
+  (3.7 GB + 1.2 GB) for a human disposal decision; nothing was deleted.
+- Two vocabulary gaps surfaced: 3D/CG animated content (`oscarkim123`, `Bewyx 2509`) has no medium tag,
+  and video-frame advertising has no marker. Neither was forced into an existing term.
+- Remaining untagged videos are mostly creators whose PikPak sheets have not been generated, so visual
+  tagging past this point is blocked on the metered PikPak sheet backlog.
 
 ## Next work
 

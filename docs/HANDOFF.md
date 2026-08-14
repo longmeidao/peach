@@ -15,7 +15,7 @@ This is durable operating knowledge, not a per-session transcript.
 - Real ledger: `R:\peach-data\database\ledger.db`; WAL mode; normal browsing legitimately changes play/activity fields.
 - Tests must create temporary SQLite databases and temporary media files.
 - Before real migration: SQLite backup, asset/tag counts, `PRAGMA integrity_check`, migration version check, then service smoke test.
-- Formal migrations `0000`–`0002` were applied to the real ledger on 2026-08-14. The verified pre-0002 recovery point is `R:\peach-data\archive\ledger.pre-migrate-20260814-162004.db`; do not delete it until a later migration has its own verified recovery point.
+- Formal migrations `0000`–`0003` were applied to the real ledger on 2026-08-14. `0003` adds the local default profile, profile-scoped watch queue, typed entity links and entity search terms. The migration and studio-canonicalization backups from the 20:17 maintenance window supersede the older recovery point; retain both until a later verified migration.
 - Media and runtime data remain under `R:\media` and `R:\peach-data`; they are not repository assets.
 
 ## Operations
@@ -39,6 +39,9 @@ This is durable operating knowledge, not a per-session transcript.
 - All Stash calls use `StashClient`. Imports persist the stable Scene ID and provenance in `media_binding`; do not regress to `stash_scene_id` as the only external reference.
 - Canonical performer/studio/tag/creator truth belongs in `entity`, `entity_external_ref` and `asset_entity`. Flattened `asset_tag` rows are a temporary compatibility projection, not the target model.
 - Item/detail/filter/search/facets/index/stats/top lists/related ranking use canonical relations. Flattened creator/studio fields remain only as response compatibility projections; do not use them for identity or matching.
+- Performer/studio/creator/series names navigate to entity pages; only content tags are direct homepage filters. `entity_link.source_reference` is private provenance and must not become a clickable download link. “稍后看” writes `watch_queue`, never feedback.
+- Entity portraits resolve `generated/avatars/<kind>-<entity_id>.img` first and carry content-type/provenance sidecars. Do not accept Stash's default SVG silhouette or search-result thumbnails as portraits; representative asset crops are fallback only.
+- Reviewed studio merging runs through `scripts/canonicalize_studios.py` (dry-run by default, backup required for apply). `PREMIUM` is a distinct studio; only Prestige Premium and Japanese Prestige spellings alias to `Prestige`.
 - Keep FastAPI and the front end logically separate but deploy as a monolith.
 - External sources and AI are supported only through explicit adapters and declared data boundaries.
 - `FeedAdapter` is the first online-follow connector. It performs explicit bounded RSS/Atom discovery; `FeedSnapshotStore` separates immutable evidence under `sources/follow` from conditional-request cursors under `state/follow`. Do not make it poll on application startup or write ledger rows directly.

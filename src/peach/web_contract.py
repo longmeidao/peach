@@ -6,12 +6,14 @@ feedback functions; schema changes belong to the migration runner.
 from __future__ import annotations
 
 import os
+import json
 import re
 import sqlite3
 import threading
 import time
 from pathlib import Path
 from typing import Sequence
+from urllib.parse import urlsplit
 
 from .media import remap_managed_path
 
@@ -78,11 +80,21 @@ def q_items(contract: WebContract, args):
             "EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
             "WHERE ae.asset_id=a.id AND e.kind='creator' AND e.canonical_name=?)"
         ); par.append(args["creator"])
+    if args.get("performer"):
+        where.append(
+            "EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "WHERE ae.asset_id=a.id AND e.kind='performer' AND e.canonical_name=?)"
+        ); par.append(args["performer"])
     if args.get("studio"):
         where.append(
             "EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
             "WHERE ae.asset_id=a.id AND e.kind='studio' AND e.canonical_name=?)"
         ); par.append(args["studio"])
+    if args.get("series"):
+        where.append(
+            "EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "WHERE ae.asset_id=a.id AND e.kind='series' AND e.canonical_name=?)"
+        ); par.append(args["series"])
     if args.get("tag"):
         # 逗号分隔 = 组合筛选，全部满足（Beeg 的 /PinkLoving+Anal）
         for tg in [x for x in args["tag"].split(",") if x]:
@@ -110,6 +122,11 @@ def q_items(contract: WebContract, args):
         where.append("a.play_count > 0")
     elif args.get("state") == "flagged":
         where.append("a.feedback IS NOT NULL OR a.disposal IS NOT NULL")
+    elif args.get("state") == "later":
+        where.append(
+            "EXISTS(SELECT 1 FROM watch_queue w WHERE w.asset_id=a.id "
+            "AND w.profile_id='local-default')"
+        )
     if args.get("thumb") == "1":
         where.append("a.snapshot_path IS NOT NULL")
 
@@ -137,7 +154,10 @@ def q_items(contract: WebContract, args):
     off = int(args.get("offset", 0))
     sql = ("SELECT a.id,a.location,a.path,a.name,a.creator,a.studio,a.code,a.size,"
            "a.duration,a.width,a.height,a.ctx_length,a.ctx_orient,a.snapshot_path,"
-           "a.play_count,a.leave_ratio,a.feedback,a.disposal,a.rating,a.o_count,""a.play_seconds,a.max_reached,a.seek_count "
+           "a.play_count,a.leave_ratio,a.feedback,a.disposal,a.rating,a.o_count,"
+           "a.play_seconds,a.max_reached,a.seek_count,"
+           "EXISTS(SELECT 1 FROM watch_queue w WHERE w.asset_id=a.id "
+           "AND w.profile_id='local-default') AS watch_later "
            "FROM asset a WHERE " + " AND ".join(where) + f" ORDER BY {order} LIMIT ? OFFSET ?")
     c = contract.db()
     rows = [dict(r) for r in c.execute(sql, par + [lim, off])]
@@ -188,7 +208,8 @@ def con_entities(contract: WebContract, ids, qm):
         return connection.execute(
             f"SELECT DISTINCT ae.asset_id,e.kind,e.canonical_name "
             f"FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-            f"WHERE ae.asset_id IN ({qm}) AND e.kind IN ('tag','performer') "
+            f"WHERE ae.asset_id IN ({qm}) "
+            f"AND e.kind IN ('tag','performer','creator','studio','series') "
             f"ORDER BY ae.asset_id,e.kind,e.canonical_name", ids,
         ).fetchall()
     finally:
@@ -204,7 +225,9 @@ def q_item(contract: WebContract, aid):
     r = c.execute(
         "SELECT id,location,path,name,creator,studio,code,size,duration,width,height,"
         "ctx_length,ctx_orient,snapshot_path,play_count,leave_ratio,feedback,disposal,"
-        "rating,o_count,play_seconds,max_reached,seek_count FROM asset WHERE id=?", (aid,)).fetchone()
+        "rating,o_count,play_seconds,max_reached,seek_count,"
+        "EXISTS(SELECT 1 FROM watch_queue w WHERE w.asset_id=asset.id "
+        "AND w.profile_id='local-default') AS watch_later FROM asset WHERE id=?", (aid,)).fetchone()
     if not r:
         c.close(); return {"error": "not found"}
     d = dict(r)
@@ -214,7 +237,8 @@ def q_item(contract: WebContract, aid):
     canonical = list(c.execute(
         "SELECT DISTINCT e.kind,e.canonical_name FROM asset_entity ae "
         "JOIN entity e ON e.id=ae.entity_id WHERE ae.asset_id=? "
-        "AND e.kind IN ('tag','performer') ORDER BY e.kind,e.canonical_name", (aid,),
+        "AND e.kind IN ('tag','performer','creator','studio','series') "
+        "ORDER BY e.kind,e.canonical_name", (aid,),
     ))
     canonical_tags = [name for kind, name in canonical if kind == "tag"]
     canonical_performers = [name for kind, name in canonical if kind == "performer"]
@@ -223,6 +247,14 @@ def q_item(contract: WebContract, aid):
     d["performers"] = canonical_performers or [
         tag[3:] for tag in legacy if tag.startswith("演员:")
     ]
+    d["entities"] = {
+        kind: [name for item_kind, name in canonical if item_kind == kind]
+        for kind in ("creator", "performer", "studio", "series")
+    }
+    if d["entities"]["creator"]:
+        d["creator"] = d["entities"]["creator"][0]
+    if d["entities"]["studio"]:
+        d["studio"] = d["entities"]["studio"][0]
     c.close()
     d["cost"] = COST.get(d["location"], "metered")
     d["has_thumb"] = contract.has_snapshot(d["snapshot_path"])
@@ -350,8 +382,7 @@ def q_related(contract: WebContract, aid, limit=24):
 def q_tops(contract: WebContract, n=28):
     """顶部三层用的数据：女优圆头像 / 厂牌 / 内容标签。
 
-    头像不额外造图 —— 取该创作者一张有接触印相的代表作，
-    前端用 background-position:50% 50% 裁中心格做圆头像。"""
+    缓存的人物肖像由前端优先使用；缺失时才回退到代表作接触印相裁切。"""
     c = contract.db()
     def rep(entity_id):
         r = c.execute(
@@ -366,9 +397,9 @@ def q_tops(contract: WebContract, n=28):
             "SELECT e.id,e.canonical_name,count(DISTINCT ae.asset_id) n "
             "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
             "JOIN asset a ON a.id=ae.asset_id "
-            "WHERE a.medium='video' AND e.kind='creator' "
+            "WHERE a.medium='video' AND e.kind='performer' "
             "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT ?", (n,)):
-        out["performers"].append({"k": k, "n": cnt, "rep": rep(entity_id)})
+        out["performers"].append({"id": entity_id, "k": k, "n": cnt, "rep": rep(entity_id)})
     out["studios"] = []
     for entity_id, k, cnt in c.execute(
             "SELECT e.id,e.canonical_name,count(DISTINCT ae.asset_id) n "
@@ -376,9 +407,80 @@ def q_tops(contract: WebContract, n=28):
             "JOIN asset a ON a.id=ae.asset_id "
             "WHERE a.medium='video' AND e.kind='studio' "
             "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT ?", (n,)):
-        out["studios"].append({"k": k, "n": cnt, "rep": rep(entity_id)})
+        out["studios"].append({"id": entity_id, "k": k, "n": cnt, "rep": rep(entity_id)})
     c.close()
     return out
+
+
+def q_entity(contract: WebContract, args):
+    """女优、厂牌、创作者等实体的资料页。
+
+    `source_reference` 是私人馆藏来源证据：API 只返回站点名和备注，不把敏感下载
+    地址变成可点击链接。官方、社交和资料库链接可直接访问。
+    """
+    kind = args.get("kind", "")
+    name = args.get("name", "")
+    if kind not in {"performer", "studio", "creator", "series"} or not name:
+        return {"error": "invalid entity"}
+    c = contract.db()
+    row = c.execute(
+        "SELECT DISTINCT e.* FROM entity e LEFT JOIN entity_alias a ON a.entity_id=e.id "
+        "WHERE e.kind=? AND (e.canonical_name=? OR a.alias=?) LIMIT 1",
+        (kind, name, name),
+    ).fetchone()
+    if not row:
+        c.close()
+        return {"error": "not found"}
+    d = dict(row)
+    try:
+        metadata = json.loads(d.pop("metadata_json") or "{}")
+    except (TypeError, ValueError):
+        metadata = {}
+    d["summary"] = metadata.get("summary") or ""
+    d["metadata"] = {k: v for k, v in metadata.items() if k != "summary"}
+    d["aliases"] = [r[0] for r in c.execute(
+        "SELECT alias FROM entity_alias WHERE entity_id=? ORDER BY confidence DESC,alias",
+        (d["id"],),
+    )]
+    links = []
+    for link in c.execute(
+        "SELECT link_kind,label,url,hostname,is_sensitive,metadata_json "
+        "FROM entity_link WHERE entity_id=? ORDER BY link_kind,label", (d["id"],),
+    ):
+        item = dict(link)
+        host = item["hostname"] or urlsplit(item["url"]).hostname or ""
+        sensitive = bool(item.pop("is_sensitive")) or item["link_kind"] == "source_reference"
+        item["hostname"] = host
+        item["clickable"] = not sensitive
+        if sensitive:
+            item["url"] = None
+        try:
+            item["metadata"] = json.loads(item.pop("metadata_json") or "{}")
+        except (TypeError, ValueError):
+            item["metadata"] = {}
+        links.append(item)
+    d["links"] = links
+    d["search_terms"] = [dict(r) for r in c.execute(
+        "SELECT term,purpose,source FROM entity_search_term WHERE entity_id=? "
+        "ORDER BY purpose,term", (d["id"],),
+    )]
+    d["external_refs"] = [dict(r) for r in c.execute(
+        "SELECT provider,external_kind,external_id,last_synced_at "
+        "FROM entity_external_ref WHERE entity_id=? ORDER BY provider,external_kind",
+        (d["id"],),
+    )]
+    count, rep = c.execute(
+        "SELECT count(DISTINCT ae.asset_id),"
+        "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
+        " WHERE ae2.entity_id=? AND a2.medium='video' AND a2.snapshot_path IS NOT NULL "
+        " ORDER BY a2.size DESC LIMIT 1) "
+        "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
+        "WHERE ae.entity_id=? AND a.medium='video'", (d["id"], d["id"]),
+    ).fetchone()
+    d["asset_count"] = count
+    d["representative_asset_id"] = rep
+    c.close()
+    return d
 
 def q_index(contract: WebContract, kind, q="", limit=600):
     """全部创作者 / 全部标签的索引页数据。"""
@@ -573,12 +675,42 @@ def w_feedback(contract: WebContract, body):
     return {"ok": True, **r}
 
 
+def w_watch_later(contract: WebContract, body):
+    """把“稍后看”保存为 profile 队列，不混进喜欢/看过反馈。"""
+    contract.cache_bust()
+    aid = int(body["id"])
+    with contract.write_lock:
+        c = contract.db(write=True)
+        exists = c.execute(
+            "SELECT 1 FROM watch_queue WHERE profile_id='local-default' AND asset_id=?",
+            (aid,),
+        ).fetchone()
+        if exists:
+            c.execute(
+                "DELETE FROM watch_queue WHERE profile_id='local-default' AND asset_id=?",
+                (aid,),
+            )
+            queued = False
+        else:
+            c.execute(
+                "INSERT INTO watch_queue(profile_id,asset_id,added_at,source) "
+                "VALUES('local-default',?,strftime('%Y-%m-%dT%H:%M:%fZ','now'),'web')",
+                (aid,),
+            )
+            queued = True
+        c.commit()
+        c.close()
+    return {"ok": True, "watch_later": queued}
+
+
 def dispatch_api_get(contract: WebContract, path, args):
     """Dispatch the stable JSON read contract used by the current web client."""
     if path == "/api/items":
         return q_items(contract, args)
     if path == "/api/item":
         return q_item(contract, int(args["id"]))
+    if path == "/api/entity":
+        return q_entity(contract, args)
     if path == "/api/index":
         return q_index(contract, args.get("kind", "tags"), args.get("q", ""))
     if path == "/api/stats":
@@ -602,4 +734,6 @@ def dispatch_api_post(contract: WebContract, path, body):
         return w_play(contract, body)
     if path == "/api/feedback":
         return w_feedback(contract, body)
+    if path == "/api/watch-later":
+        return w_watch_later(contract, body)
     raise KeyError(path)
