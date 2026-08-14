@@ -23,6 +23,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--interval", type=float, default=0.15)
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--min-free", type=float, default=40.0)
+    parser.add_argument("--timeout", type=float, default=20.0)
+    parser.add_argument(
+        "--redo",
+        choices=("none", "zero", "failed", "all"),
+        default="none",
+        help="额外重探已记录但无效的时长：zero=0（软失败）、failed=-1（硬失败）、all=两者",
+    )
     parser.add_argument("--allow-metered", action="store_true")
     parser.add_argument("--db", type=Path, default=DATABASE_PATH)
     parser.add_argument("--log-dir", type=Path, default=LOG_DIR)
@@ -40,12 +47,26 @@ def context_fields(width: int, height: int, duration: float) -> tuple[str | None
             else "1080P" if longest >= 1300 else "720P" if longest >= 900
             else "低画质"
         )
-    if duration:
+    if duration and duration > 0:
         length = "速食" if duration < 300 else "短" if duration < 900 else "中" if duration < 2400 else "长"
     return length, orientation, quality
 
 
-def probe_file(ffprobe: str, path: str) -> tuple:
+def duration_selection(redo: str) -> str:
+    """未探测和"探测过但没拿到时长"是两种状态；后者必须显式要求才重跑。
+
+    软失败历史上被写成 duration=0，既不在 `duration IS NULL` 的待办里，也过不了
+    抽帧的 duration>2 门槛，于是永远卡住。硬失败写成 -1。
+    """
+    return {
+        "none": "duration IS NULL",
+        "zero": "(duration IS NULL OR duration=0)",
+        "failed": "(duration IS NULL OR duration<0)",
+        "all": "(duration IS NULL OR duration<=0)",
+    }[redo]
+
+
+def probe_file(ffprobe: str, path: str, timeout: float = 20.0) -> tuple:
     result = subprocess.run(
         [
             ffprobe, "-v", "error", "-rw_timeout", "8000000",
@@ -54,10 +75,13 @@ def probe_file(ffprobe: str, path: str) -> tuple:
             "-of", "json", path,
         ],
         capture_output=True,
-        timeout=20,
+        timeout=timeout,
     )
     payload = json.loads(result.stdout or b"{}")
     duration = float((payload.get("format") or {}).get("duration") or 0)
+    if duration <= 0:
+        # 拿不到时长就是失败，不能写 0 —— 0 会被后续步骤当成"已探测"而永久跳过。
+        duration = -1.0
     stream = (payload.get("streams") or [{}])[0]
     fps = 0.0
     try:
@@ -78,6 +102,8 @@ def probe_file(ffprobe: str, path: str) -> tuple:
 def run(args: argparse.Namespace) -> int:
     if args.workers < 1 or args.interval < 0 or args.limit < 0:
         raise SystemExit("workers 必须大于 0；interval/limit 不能为负数")
+    if args.timeout <= 0:
+        raise SystemExit("timeout 必须大于 0")
     choice = FFmpegResolver(FFMPEG_DIR).ffprobe()
     if choice is None:
         raise RuntimeError("ffprobe unavailable")
@@ -98,10 +124,13 @@ def run(args: argparse.Namespace) -> int:
 
         if args.allow_metered:
             log("已显式允许计费来源")
+        if args.redo != "none":
+            log(f"重探已失败记录：--redo {args.redo}")
         connection = sqlite3.connect(args.db)
         sql = (
-            "SELECT id,path FROM asset WHERE medium='video' AND duration IS NULL "
-            "AND location != 'online'" + source_sql + " ORDER BY size ASC"
+            "SELECT id,path FROM asset WHERE medium='video' AND "
+            + duration_selection(args.redo)
+            + " AND location != 'online'" + source_sql + " ORDER BY size ASC"
         )
         parameters: tuple[object, ...] = source_parameters
         if args.limit:
@@ -128,7 +157,12 @@ def run(args: argparse.Namespace) -> int:
                 except queue.Empty:
                     return
                 try:
-                    duration, width, height, codec, fps, audio = probe_file(str(choice.path), path)
+                    duration, width, height, codec, fps, audio = probe_file(
+                        str(choice.path), path, args.timeout
+                    )
+                    if duration <= 0:
+                        with lock:
+                            counters["failed"] += 1
                     length, orientation, quality = context_fields(width, height, duration)
                     results.put((duration, width, height, codec, fps, audio, length, orientation, quality, asset_id))
                 except Exception:
