@@ -18,6 +18,7 @@ r"""
 import os, sys, csv, json, sqlite3, time
 
 from peach.stash import StashClient, StashError
+from peach.entities import upsert_asset_entity
 
 DB = os.path.expandvars(r"R:\peach-data\database\ledger.db")
 VIDEO = {".mp4", ".m4v", ".mkv", ".avi", ".wmv", ".mov", ".ts", ".flv", ".rmvb", ".mpg", ".m2ts"}
@@ -143,42 +144,6 @@ def ctx_from(size, w=None, h=None, dur=None):
     return length, orient, quality
 
 
-def upsert_entity(c, *, kind, name, now, source, asset_id, role,
-                  external_id=None, metadata=None):
-    canonical = str(name or "").strip()
-    if not canonical:
-        return None
-    normalized = canonical.casefold()
-    payload = json.dumps(metadata or {}, ensure_ascii=False)
-    c.execute("""INSERT INTO entity(kind,canonical_name,normalized_name,metadata_json,created_at,updated_at)
-                 VALUES(?,?,?,?,?,?)
-                 ON CONFLICT(kind,normalized_name) DO UPDATE SET
-                   canonical_name=excluded.canonical_name,
-                   metadata_json=excluded.metadata_json,
-                   updated_at=excluded.updated_at""",
-              (kind, canonical, normalized, payload, now, now))
-    entity_id = c.execute(
-        "SELECT id FROM entity WHERE kind=? AND normalized_name=?", (kind, normalized)
-    ).fetchone()[0]
-    c.execute("""INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence,
-                                           metadata_json,first_seen_at,last_seen_at)
-                 VALUES(?,?,?,?,1.0,?,?,?)
-                 ON CONFLICT(asset_id,entity_id,role,source) DO UPDATE SET
-                   metadata_json=excluded.metadata_json,
-                   last_seen_at=excluded.last_seen_at""",
-              (asset_id, entity_id, role, source, payload, now, now))
-    if external_id is not None:
-        c.execute("""INSERT INTO entity_external_ref(
-                       entity_id,provider,external_kind,external_id,metadata_json,last_synced_at)
-                     VALUES(?,'stash',?,?,?,?)
-                     ON CONFLICT(provider,external_kind,external_id) DO UPDATE SET
-                       entity_id=excluded.entity_id,
-                       metadata_json=excluded.metadata_json,
-                       last_synced_at=excluded.last_synced_at""",
-                  (entity_id, kind, str(external_id), payload, now))
-    return entity_id
-
-
 def cmd_init():
     c = conn(); c.executescript(SCHEMA); c.commit(); c.close()
     print(f"✓ 建库完成 {DB}")
@@ -274,27 +239,33 @@ def cmd_stash(client=None):
                        last_synced_at=excluded.last_synced_at""",
                   (aid, str(s["id"]), json.dumps(provenance, ensure_ascii=False), now))
         studio = s.get("studio") or {}
-        upsert_entity(c, kind="studio", name=studio.get("name"), now=now,
-                      source="stash:studio", asset_id=aid, role="studio",
-                      external_id=studio.get("id"), metadata=studio)
+        upsert_asset_entity(
+            c, kind="studio", name=studio.get("name"), now=now,
+            source="stash:studio", asset_id=aid, role="studio",
+            external_provider="stash", external_id=studio.get("id"), metadata=studio,
+        )
         for t in s.get("tags") or []:
             c.execute("""INSERT INTO asset_tag(asset_id,tag,confidence,source)
                          VALUES(?,?,1.0,'stash:tag')
                          ON CONFLICT(asset_id,tag) DO UPDATE SET
                            confidence=excluded.confidence,source=excluded.source""",
                       (aid, t["name"])); nt += 1
-            upsert_entity(c, kind="tag", name=t.get("name"), now=now,
-                          source="stash:tag", asset_id=aid, role="tag",
-                          external_id=t.get("id"), metadata=t)
+            upsert_asset_entity(
+                c, kind="tag", name=t.get("name"), now=now,
+                source="stash:tag", asset_id=aid, role="tag",
+                external_provider="stash", external_id=t.get("id"), metadata=t,
+            )
         for p in s.get("performers") or []:
             c.execute("""INSERT INTO asset_tag(asset_id,tag,confidence,source)
                          VALUES(?,?,1.0,'stash:performer')
                          ON CONFLICT(asset_id,tag) DO UPDATE SET
                            confidence=excluded.confidence,source=excluded.source""",
                       (aid, "演员:" + p["name"]))
-            upsert_entity(c, kind="performer", name=p.get("name"), now=now,
-                          source="stash:performer", asset_id=aid, role="performer",
-                          external_id=p.get("id"), metadata=p)
+            upsert_asset_entity(
+                c, kind="performer", name=p.get("name"), now=now,
+                source="stash:performer", asset_id=aid, role="performer",
+                external_provider="stash", external_id=p.get("id"), metadata=p,
+            )
     c.commit()
     print(f"✓ Stash: {len(scenes):,} 个场景，{nt:,} 条标签关联")
     c.close()

@@ -15,8 +15,7 @@ This is durable operating knowledge, not a per-session transcript.
 - Real ledger: `R:\peach-data\database\ledger.db`; WAL mode; normal browsing legitimately changes play/activity fields.
 - Tests must create temporary SQLite databases and temporary media files.
 - Before real migration: SQLite backup, asset/tag counts, `PRAGMA integrity_check`, migration version check, then service smoke test.
-- Formal migrations `0000` and `0001` were applied to the real ledger on 2026-08-14. The verified pre-migration recovery point is `R:\peach-data\archive\ledger.pre-migrate-20260814-152821.db`; do not delete it until later migrations have their own verified recovery point.
-- `0002_canonical_entities` exists and passes isolated tests but is still pending on the real ledger. Before applying it, create a new SQLite backup and repeat counts/integrity/version checks; never silently auto-apply it during Web startup.
+- Formal migrations `0000`–`0002` were applied to the real ledger on 2026-08-14. The verified pre-0002 recovery point is `R:\peach-data\archive\ledger.pre-migrate-20260814-162004.db`; do not delete it until a later migration has its own verified recovery point.
 - Media and runtime data remain under `R:\media` and `R:\peach-data`; they are not repository assets.
 
 ## Operations
@@ -27,6 +26,7 @@ This is durable operating knowledge, not a per-session transcript.
 - FastAPI is the only Web server. `web_contract.py` contains the stable JSON surface; do not recreate a parallel `http.server` or dynamic legacy loader.
 - FFmpeg/ffprobe resolve from explicit environment overrides, then `R:\peach-data\tools\ffmpeg\bin`, then `PATH`. No active code may fall back to the Stash private directory.
 - Long-running inventory helpers are under `scripts/`; their scheduled tasks use `R:\peach-app\.venv\Scripts\python.exe`. They use absolute data paths and may be interrupted/restarted where their own locking contract allows it.
+- Importing operational scripts must have no filesystem/network/database side effects. `scrape_codes.py` sends only catalog codes to declared metadata sources, writes a resumable review CSV, and dual-writes provenance only with `--apply`. `clean_names.py` previews first and creates a SQLite backup before every apply run.
 - Check ports 80, 8900 and 9999 before starting or switching services.
 - 115/PikPak playback depends on CloudDrive mounts `B:`/`A:`. Drive-letter visibility differs by Windows execution token; CloudDrive and Peach must see the same mount namespace. A running process or a drive check from another token proves nothing—test one known `/stream` through Peach. Restart CloudDrive only after proving no copy task and no active I/O.
 - Ledger snapshot paths written before the project/data split are rebased by an exact configured legacy prefix. Do not add basename searches or arbitrary path fallbacks.

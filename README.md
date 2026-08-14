@@ -53,3 +53,7 @@ cd R:\peach-app
 证书必须包含实际访问名（例如 `peach.local`）并被客户端信任；启用 TLS 时 mDNS 自动发布 HTTPS。
 
 当前运行态与下一任务只看 [`docs/STATUS.md`](docs/STATUS.md)；跨 Codex/Claude 的固定接手方式只看 [`docs/HANDOFF.md`](docs/HANDOFF.md)。
+
+## 批处理安全边界
+
+`scripts/scrape_codes.py` 默认只把番号发送到已声明的元数据源并写复核 CSV；只有 `--apply` 才写 ledger。`scripts/clean_names.py` 默认只生成改名计划；`--apply` 会先备份 SQLite，并在数据库更新失败时把文件名回滚。两者导入模块时均无副作用，测试不得使用真实路径。
