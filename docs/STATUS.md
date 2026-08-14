@@ -4,7 +4,7 @@ Last verified: 2026-08-14
 
 ## Runtime
 
-- Production Peach: FastAPI `0.2.0` from `R:\peach-app` on `0.0.0.0:80`, PID observed as 54728; health mode is `fastapi`.
+- Production Peach: FastAPI `0.2.0` from `R:\peach-app` on `0.0.0.0:80`, PID observed as 46796; health mode is `fastapi`.
 - mDNS publisher: `peach.local` is published on `192.168.50.162` as HTTP, but an actual LAN client could not resolve it. Use `http://192.168.50.162/` until the client/router multicast path is fixed; no firewall/router change was made.
 - Stash: `127.0.0.1:9999`, PID observed as 35332.
 - Traffic monitor: running through `RM-TrafficWatch` from `R:\peach-app\.venv`; all probe/sheets tasks use the same project environment.
@@ -30,7 +30,7 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - Restarted production port 80 passed health, home, 24,980-item all-source list, 2,552-item local list and one-byte `206 Partial Content` Range smoke checks.
 - After deleting the legacy server, restarted production also passed real `stats`, `tops` and `facets` aggregate contract checks.
 - Optional SSL is supported with an explicit certificate/key pair. Production remains HTTP until a trusted local certificate is supplied.
-- CloudDrive had remained running while its `A:`/`B:` mounts disappeared. After confirming zero copy tasks and no I/O, CloudDrive was restarted and both mounts returned. Asset 4289 (`669.mp4`) then passed `video/mp4`, 1 KiB `206 Range`, thumbnail and generated-poster API checks.
+- The original Peach process could not see CloudDrive `A:`/`B:` even though CloudDrive was running. After confirming zero copy tasks and no I/O, CloudDrive and Peach were restarted in the same execution context. Asset 4289 (`669.mp4`) then passed `video/mp4`, 1 KiB `206 Range`, thumbnail and generated-poster API checks. Drive-letter visibility differs by Windows token, so the HTTP stream check is the authoritative service test.
 
 ## Next work
 

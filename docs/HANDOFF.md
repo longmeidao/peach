@@ -28,7 +28,7 @@ This is durable operating knowledge, not a per-session transcript.
 - FFmpeg/ffprobe resolve from explicit environment overrides, then `R:\peach-data\tools\ffmpeg\bin`, then `PATH`. No active code may fall back to the Stash private directory.
 - Long-running inventory helpers are under `scripts/`; their scheduled tasks use `R:\peach-app\.venv\Scripts\python.exe`. They use absolute data paths and may be interrupted/restarted where their own locking contract allows it.
 - Check ports 80, 8900 and 9999 before starting or switching services.
-- 115/PikPak playback depends on CloudDrive mounts `B:`/`A:`. A running CloudDrive process does not prove the mounts exist; check the drive roots and one known media path. Restart CloudDrive only after proving no copy task and no active I/O.
+- 115/PikPak playback depends on CloudDrive mounts `B:`/`A:`. Drive-letter visibility differs by Windows execution token; CloudDrive and Peach must see the same mount namespace. A running process or a drive check from another token proves nothing—test one known `/stream` through Peach. Restart CloudDrive only after proving no copy task and no active I/O.
 - Ledger snapshot paths written before the project/data split are rebased by an exact configured legacy prefix. Do not add basename searches or arbitrary path fallbacks.
 - Report verification separately: static/unit/API, desktop browser, 390×844 browser, and whether production was actually restarted.
 
