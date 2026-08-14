@@ -4,8 +4,8 @@ Last verified: 2026-08-14
 
 ## Runtime
 
-- Production Peach: FastAPI `0.2.0` from `R:\peach-app` on `0.0.0.0:80`, server PID observed as 27900; health mode is `fastapi`.
-- Windows mDNS now correctly publishes `Peach` as the DNS-SD service and `LMD-DST.local` as its actual SRV host on interface 9/address `192.168.50.162`. The earlier `peach.local` claim was invalid because `DnsServiceRegister` does not create arbitrary host aliases. A second LAN device still needs to confirm `http://LMD-DST.local/`; no firewall or router rule was changed.
+- Production Peach: FastAPI `0.2.0` from `R:\peach-app` on `0.0.0.0:80`, server PID observed as 58124; health mode is `fastapi`.
+- `peach.local` is again the single official LAN entry. The publisher restores the verified pre-migration behavior: Python zeroconf listens on all eligible interfaces and publishes `peach.local -> 192.168.50.162`. Production health reports `mdns_backend=zeroconf-all-interfaces`; same-host DNS-SD discovery and `getaddrinfo('peach.local')` both resolved the correct address after restart. A second LAN device remains the final external check; no firewall or router rule was changed.
 - Stash: `127.0.0.1:9999`, PID observed as 35332.
 - Traffic monitor: running through `RM-TrafficWatch` from `R:\peach-app\.venv`; all probe/sheets tasks use the same project environment.
 - Runtime Python: 3.14.7. The removed system Python 3.12 invalidated the old venv, which was rebuilt and reverified before production start.
@@ -31,7 +31,7 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - Creator/studio top lists and related-item creator/tag/studio matching now read canonical entity relations. Real-ledger timings were 0.055 s for 28 top entries and 0.055 s for 24 related items.
 - Creator/studio filters, canonical-name search, creator index, facets and attribution stats now also read entity relations. Real-ledger timings were 0.040 s for a 1,545-item creator filter, 0.043 s for the first 60 creators, 0.132 s for facets and 0.394 s for stats.
 - Snapshot availability checks use the same strict legacy-prefix resolver as `/thumb`, so the front end requests migrated previews instead of displaying false “无预览” cards.
-- 46 isolated tests, Python static compilation and JavaScript parse validation passed under Python 3.14/Node.
+- 47 isolated tests, Python static compilation and JavaScript parse validation passed under Python 3.14/Node.
 - Real migration preserved 81,873 assets and 59,697 tag links; both live database and backup passed `integrity_check` and `foreign_key_check` before later metadata writes.
 - Desktop 1280×720 and mobile 390×844 browser checks passed on the same application candidate before the schema-only migration; visual checks were not rerun after migration because no browser instance was connected.
 - Restarted production port 80 passed health, home, public OpenCode Go model discovery (26 models at verification time), canonical filtered-list/item reads, thumbnail `200` and 1 KiB `206 Partial Content` Range smoke checks.
@@ -44,6 +44,7 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - `scripts/import_stash_entities.py` reconciled the Stash public performer contract into Peach without making Stash authoritative: 383 exact stable refs, 52 aliases/search terms and two explicitly declared X links were imported. Of 42 non-placeholder Stash images, 14 passed the 512 px short-side gate and were cached with provenance; 28 smaller images were rejected. Top entries including 一个ren、高桥千凛 and 小桃 now use 720 px-class cached portraits.
 - Static/unit/API production checks passed after restart: home/entity routes, FC2/Prestige logos, canonical aliases and a local-media 1 KiB `206 Partial Content` response. No browser instance was connected, so desktop and 390×844 visual verification remain pending.
 - The 20:36 Peach restart was launched only after verifying the port-80 command line in the host session. The replacement process can see CloudDrive: asset 4289 again passed `video/mp4` 1 KiB `206 Partial Content` and poster `200`; local asset 1 passed the same Range contract. A sandbox drive check is not authoritative.
+- The mDNS regression fix was deployed after verifying the old port-80 command line. The replacement PID 58124 passed health, local DNS-SD discovery, Windows hostname resolution and CloudDrive asset 4289 with a 1 KiB `206 Partial Content` response. The active creator-board sampler and its FFmpeg children were not touched.
 - The original Peach process could not see CloudDrive `A:`/`B:` even though CloudDrive was running. After confirming zero copy tasks and no I/O, CloudDrive and Peach were restarted in the same execution context. Asset 4289 (`669.mp4`) then passed `video/mp4`, 1 KiB `206 Range`, thumbnail and generated-poster API checks. Drive-letter visibility differs by Windows token, so the HTTP stream check is the authoritative service test.
 
 ## Batch jobs

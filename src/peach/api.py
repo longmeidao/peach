@@ -104,6 +104,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
                 "mdns": mdns.status if mdns is not None else "disabled",
                 "mdns_backend": mdns.backend if mdns is not None else None,
                 "mdns_service": mdns.name if mdns is not None else None,
+                "mdns_service_host": mdns.hostname if mdns is not None else None,
                 "mdns_address": mdns.address if mdns is not None else None,
                 "scheme": "https" if settings.tls_enabled else "http"}
 

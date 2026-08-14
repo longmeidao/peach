@@ -1,19 +1,13 @@
 from __future__ import annotations
 
-import ctypes
-import os
 import socket
-import struct
-import threading
 from collections.abc import Callable
-from ctypes import wintypes
 
 from zeroconf import ServiceInfo, Zeroconf
 
 
 HTTP_SERVICE_TYPE = "_http._tcp.local."
 HTTPS_SERVICE_TYPE = "_https._tcp.local."
-DNS_REQUEST_PENDING = 9506
 
 
 def _normalized_name(name: str) -> str:
@@ -24,7 +18,7 @@ def _normalized_name(name: str) -> str:
 
 
 def lan_ipv4() -> str:
-    """Ask the local routing table for the preferred LAN IPv4 without sending data."""
+    """Ask the routing table for the preferred LAN IPv4 without sending data."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         sock.connect(("192.0.2.1", 80))
@@ -33,21 +27,16 @@ def lan_ipv4() -> str:
         sock.close()
 
 
-def lan_interface_index() -> int:
-    """Return the interface Windows would use for the same LAN route as ``lan_ipv4``."""
-    iphlpapi = ctypes.WinDLL("iphlpapi", use_last_error=True)
-    iphlpapi.GetBestInterface.argtypes = [wintypes.ULONG, ctypes.POINTER(wintypes.ULONG)]
-    iphlpapi.GetBestInterface.restype = wintypes.DWORD
-    destination = struct.unpack("<I", socket.inet_aton("192.0.2.1"))[0]
-    index = wintypes.ULONG()
-    result = int(iphlpapi.GetBestInterface(destination, ctypes.byref(index)))
-    if result != 0:
-        raise OSError(result, "GetBestInterface failed")
-    return int(index.value)
-
-
 class MdnsPublisher:
-    backend = "zeroconf"
+    """Publish Peach exactly like the verified pre-migration web server.
+
+    ``Zeroconf()`` deliberately listens on all eligible interfaces. Restricting it to
+    one IPv4 interface during the FastAPI migration made publication unreliable on
+    this Windows host, while Windows ``DnsServiceRegister`` advertised discovery but
+    could not create the branded ``peach.local`` host record.
+    """
+
+    backend = "zeroconf-all-interfaces"
 
     def __init__(
         self,
@@ -82,9 +71,9 @@ class MdnsPublisher:
             properties={"path": "/", "scheme": "https" if self.secure else "http"},
             server=f"{self.hostname}.",
         )
-        zeroconf = Zeroconf(interfaces=[address])
+        zeroconf = Zeroconf()
         try:
-            zeroconf.register_service(info, allow_name_change=False)
+            zeroconf.register_service(info, allow_name_change=True)
         except Exception:
             zeroconf.close()
             raise
@@ -107,153 +96,5 @@ class MdnsPublisher:
             self.status = "stopped"
 
 
-_REGISTER_COMPLETE = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)(
-    None, wintypes.DWORD, ctypes.c_void_p, ctypes.c_void_p,
-)
-
-
-class _DnsServiceRegisterRequest(ctypes.Structure):
-    _fields_ = [
-        ("Version", wintypes.ULONG),
-        ("InterfaceIndex", wintypes.ULONG),
-        ("pServiceInstance", ctypes.c_void_p),
-        ("pRegisterCompletionCallback", _REGISTER_COMPLETE),
-        ("pQueryContext", ctypes.c_void_p),
-        ("hCredentials", wintypes.HANDLE),
-        ("unicastEnabled", wintypes.BOOL),
-    ]
-
-
-def _load_dnsapi():
-    dnsapi = ctypes.WinDLL("dnsapi", use_last_error=True)
-    dnsapi.DnsServiceConstructInstance.argtypes = [
-        wintypes.LPCWSTR, wintypes.LPCWSTR, ctypes.POINTER(wintypes.ULONG),
-        ctypes.c_void_p, wintypes.WORD, wintypes.WORD, wintypes.WORD,
-        wintypes.DWORD, ctypes.POINTER(wintypes.LPCWSTR),
-        ctypes.POINTER(wintypes.LPCWSTR),
-    ]
-    dnsapi.DnsServiceConstructInstance.restype = ctypes.c_void_p
-    dnsapi.DnsServiceRegister.argtypes = [
-        ctypes.POINTER(_DnsServiceRegisterRequest), ctypes.c_void_p,
-    ]
-    dnsapi.DnsServiceRegister.restype = wintypes.DWORD
-    dnsapi.DnsServiceDeRegister.argtypes = [
-        ctypes.POINTER(_DnsServiceRegisterRequest), ctypes.c_void_p,
-    ]
-    dnsapi.DnsServiceDeRegister.restype = wintypes.DWORD
-    dnsapi.DnsServiceFreeInstance.argtypes = [ctypes.c_void_p]
-    dnsapi.DnsServiceFreeInstance.restype = None
-    return dnsapi
-
-
-class WindowsMdnsPublisher:
-    """Advertise through Windows DNS-SD instead of competing for UDP 5353.
-
-    Windows DNS-SD registers a service instance; it does not create an arbitrary host
-    alias. The SRV target therefore uses the actual Windows host name, while ``name``
-    remains the user-facing service instance (``Peach``).
-    """
-
-    backend = "windows-dns-sd"
-
-    def __init__(
-        self,
-        name: str,
-        port: int,
-        secure: bool = False,
-        address_resolver: Callable[[], str] = lan_ipv4,
-        dnsapi_factory: Callable[[], object] = _load_dnsapi,
-        interface_resolver: Callable[[], int] = lan_interface_index,
-        host_resolver: Callable[[], str] = socket.gethostname,
-    ) -> None:
-        self.name = _normalized_name(name)
-        self.port = port
-        self.secure = secure
-        self._address_resolver = address_resolver
-        self._dnsapi_factory = dnsapi_factory
-        self._interface_resolver = interface_resolver
-        self._host_resolver = host_resolver
-        self.host_name = self._host_resolver().strip().removesuffix(".")
-        self._dnsapi = None
-        self._instance: int | None = None
-        self._request: _DnsServiceRegisterRequest | None = None
-        self._callback = None
-        self._event = threading.Event()
-        self._callback_status: int | None = None
-        self.address: str | None = None
-        self.status = "pending"
-
-    @property
-    def hostname(self) -> str:
-        return f"{self.host_name}.local"
-
-    def start(self) -> None:
-        if self._request is not None:
-            return
-        address = self._address_resolver()
-        dnsapi = self._dnsapi_factory()
-        interface_index = self._interface_resolver()
-        service = "_https._tcp.local" if self.secure else "_http._tcp.local"
-        instance_name = f"{self.name}.{service}"
-        ip4 = wintypes.ULONG.from_buffer_copy(socket.inet_aton(address))
-        keys = (wintypes.LPCWSTR * 2)("path", "scheme")
-        values = (wintypes.LPCWSTR * 2)("/", "https" if self.secure else "http")
-        instance = dnsapi.DnsServiceConstructInstance(
-            instance_name, self.host_name, ctypes.byref(ip4), None, self.port,
-            0, 0, 2, keys, values,
-        )
-        if not instance:
-            raise OSError(ctypes.get_last_error(), "DnsServiceConstructInstance failed")
-
-        self._event.clear()
-        self._callback_status = None
-
-        @_REGISTER_COMPLETE
-        def completed(status, _context, callback_instance):
-            self._callback_status = int(status)
-            if callback_instance:
-                dnsapi.DnsServiceFreeInstance(callback_instance)
-            self._event.set()
-
-        request = _DnsServiceRegisterRequest(
-            1, interface_index, instance, completed, None, None, False,
-        )
-        result = int(dnsapi.DnsServiceRegister(ctypes.byref(request), None))
-        if result != DNS_REQUEST_PENDING:
-            dnsapi.DnsServiceFreeInstance(instance)
-            raise OSError(result, "DnsServiceRegister failed")
-        if not self._event.wait(5) or self._callback_status != 0:
-            dnsapi.DnsServiceDeRegister(ctypes.byref(request), None)
-            dnsapi.DnsServiceFreeInstance(instance)
-            raise OSError(self._callback_status or result, "mDNS registration did not complete")
-        self._dnsapi = dnsapi
-        self._instance = instance
-        self._request = request
-        self._callback = completed
-        self.address = address
-        self.status = self.hostname
-
-    def stop(self) -> None:
-        if self._request is None or self._dnsapi is None:
-            return
-        self._event.clear()
-        try:
-            result = int(self._dnsapi.DnsServiceDeRegister(
-                ctypes.byref(self._request), None,
-            ))
-            if result == DNS_REQUEST_PENDING:
-                self._event.wait(5)
-        finally:
-            if self._instance:
-                self._dnsapi.DnsServiceFreeInstance(self._instance)
-            self._dnsapi = None
-            self._instance = None
-            self._request = None
-            self._callback = None
-            self.address = None
-            self.status = "stopped"
-
-
-def create_mdns_publisher(name: str, port: int, secure: bool = False):
-    publisher_type = WindowsMdnsPublisher if os.name == "nt" else MdnsPublisher
-    return publisher_type(name, port, secure=secure)
+def create_mdns_publisher(name: str, port: int, secure: bool = False) -> MdnsPublisher:
+    return MdnsPublisher(name, port, secure=secure)

@@ -1,14 +1,11 @@
 import unittest
 from unittest.mock import patch
 
-from peach.mdns import (
-    DNS_REQUEST_PENDING, MdnsPublisher, WindowsMdnsPublisher,
-    create_mdns_publisher,
-)
+from peach.mdns import MdnsPublisher, create_mdns_publisher
 
 
 class MdnsPublisherTests(unittest.TestCase):
-    def test_registers_and_unregisters_peach_local(self):
+    def test_registers_and_unregisters_peach_local_on_all_interfaces(self):
         with patch("peach.mdns.Zeroconf") as zeroconf_type:
             publisher = MdnsPublisher(
                 "Peach.local", 80, address_resolver=lambda: "192.0.2.10"
@@ -18,8 +15,12 @@ class MdnsPublisherTests(unittest.TestCase):
             self.assertEqual(info.server, "peach.local.")
             self.assertEqual(info.port, 80)
             self.assertEqual(publisher.status, "peach.local")
+            self.assertEqual(publisher.backend, "zeroconf-all-interfaces")
             publisher.stop()
-        zeroconf_type.assert_called_once_with(interfaces=["192.0.2.10"])
+        zeroconf_type.assert_called_once_with()
+        zeroconf_type.return_value.register_service.assert_called_once_with(
+            info, allow_name_change=True,
+        )
         zeroconf_type.return_value.unregister_service.assert_called_once_with(info)
         zeroconf_type.return_value.close.assert_called_once()
 
@@ -38,44 +39,8 @@ class MdnsPublisherTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             MdnsPublisher("bad name", 80)
 
-    def test_windows_native_registration_lifecycle(self):
-        class Function:
-            def __init__(self, action=None, result=None):
-                self.action = action
-                self.result = result
-
-            def __call__(self, *args):
-                return self.action(*args) if self.action else self.result
-
-        class DnsApi:
-            def __init__(self):
-                self.DnsServiceConstructInstance = Function(result=123)
-                self.DnsServiceFreeInstance = Function()
-                self.DnsServiceRegister = Function(self._complete)
-                self.DnsServiceDeRegister = Function(self._complete)
-
-            @staticmethod
-            def _complete(request_pointer, _cancel):
-                request_pointer._obj.pRegisterCompletionCallback(0, None, None)
-                return DNS_REQUEST_PENDING
-
-        dnsapi = DnsApi()
-        publisher = WindowsMdnsPublisher(
-            "peach", 80, address_resolver=lambda: "192.0.2.10",
-            dnsapi_factory=lambda: dnsapi,
-            interface_resolver=lambda: 9, host_resolver=lambda: "LMD-DST",
-        )
-        publisher.start()
-        self.assertEqual(publisher.status, "LMD-DST.local")
-        self.assertEqual(publisher.backend, "windows-dns-sd")
-        self.assertEqual(publisher._request.InterfaceIndex, 9)
-        self.assertEqual(publisher.hostname, "LMD-DST.local")
-        publisher.stop()
-        self.assertEqual(publisher.status, "stopped")
-
-    @patch("peach.mdns.os.name", "nt")
-    def test_factory_uses_windows_native_backend(self):
-        self.assertIsInstance(create_mdns_publisher("peach", 80), WindowsMdnsPublisher)
+    def test_factory_uses_verified_zeroconf_backend(self):
+        self.assertIsInstance(create_mdns_publisher("peach", 80), MdnsPublisher)
 
 
 if __name__ == "__main__":
