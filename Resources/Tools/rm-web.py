@@ -37,12 +37,30 @@ FFPROBE = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Stash", "ffmpeg-btbn
 FFMPEG = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Stash", "ffmpeg-btbn",
                       "ffmpeg-master-latest-win64-gpl-shared", "bin", "ffmpeg.exe")
 
-A = sys.argv[1:]
-def _o(n, d, c=str): return c(A[A.index(n) + 1]) if n in A else d
-PORT = _o("--port", 80, int)
-TOKEN = _o("--token", "")   # 空 = 不校验，局域网直接访问
-MDNS_NAME = _o("--name", "peach")   # → peach.local
-HOST = _o("--host", "0.0.0.0")
+# 导入模块时绝不能解析进程级 sys.argv：Uvicorn 等宿主也使用 --host/--port。
+# 旧服务仍从 main() 显式读取同样的参数，现有启动命令保持兼容。
+PORT = 80
+TOKEN = ""   # 空 = 不校验，默认单用户本地自托管
+MDNS_NAME = "peach"   # → peach.local
+HOST = "0.0.0.0"
+
+def configure_cli(argv=None):
+    global PORT, TOKEN, MDNS_NAME, HOST
+    args = list(sys.argv[1:] if argv is None else argv)
+
+    def option(name, default, cast=str):
+        if name not in args:
+            return default
+        pos = args.index(name)
+        if pos + 1 >= len(args):
+            raise SystemExit(f"{name} 缺少参数")
+        return cast(args[pos + 1])
+
+    PORT = option("--port", 80, int)
+    TOKEN = option("--token", "")
+    MDNS_NAME = option("--name", "peach")
+    HOST = option("--host", "0.0.0.0")
+    return PORT, TOKEN, MDNS_NAME, HOST
 
 # 允许直接串流的根目录 —— 除此之外一律拒绝，防目录穿越
 ALLOW_ROOTS = [r"R:\\", r"B:\\", r"A:\\"]
@@ -76,7 +94,7 @@ def db():
     return c
 
 def ensure_columns():
-    """反馈列 —— 幂等，已存在就跳过。"""
+    """仅供旧库兼容/测试；生产启动不再自动调用。"""
     c = db()
     have = {r[1] for r in c.execute("PRAGMA table_info(asset)")}
     for col, decl in (("feedback", "TEXT"),        # dislike / seen  （见方案 §5.4）
@@ -89,6 +107,20 @@ def ensure_columns():
         if col not in have:
             c.execute(f"ALTER TABLE asset ADD COLUMN {col} {decl}")
     c.commit(); c.close()
+
+
+def check_schema():
+    required = {"studio", "feedback", "disposal", "leave_ratio", "play_seconds",
+                "feedback_at", "seek_count", "max_reached"}
+    c = db()
+    try:
+        have = {r[1] for r in c.execute("PRAGMA table_info(asset)")}
+    finally:
+        c.close()
+    missing = sorted(required - have)
+    if missing:
+        raise SystemExit("ledger schema 缺列：" + ", ".join(missing)
+                         + "；请先运行 rm-migrate.py status/upgrade")
 
 def allowed(p):
     ap = os.path.abspath(p)
@@ -508,6 +540,38 @@ def w_feedback(body):
         c.close()
     return {"ok": True, **r}
 
+
+def dispatch_api_get(path, args):
+    """旧 HTTP 服务与 FastAPI 兼容入口共用的 JSON 路由表。"""
+    if path == "/api/items":
+        return q_items(args)
+    if path == "/api/item":
+        return q_item(int(args["id"]))
+    if path == "/api/index":
+        return q_index(args.get("kind", "tags"), args.get("q", ""))
+    if path == "/api/stats":
+        return cached("stats", q_stats)
+    if path == "/api/tops":
+        n = min(int(args.get("n", "28")), 60)
+        return cached(f"tops{n}", lambda: q_tops(n))
+    if path == "/api/ads":
+        return q_ads(min(int(args.get("limit", "200")), 400))
+    if path == "/api/related":
+        return q_related(int(args["id"]), min(int(args.get("limit", "24")), 60))
+    if path == "/api/facets":
+        return cached("facets", q_facets)
+    raise KeyError(path)
+
+
+def dispatch_api_post(path, body):
+    if path == "/api/activity":
+        return w_activity(body)
+    if path == "/api/play":
+        return w_play(body)
+    if path == "/api/feedback":
+        return w_feedback(body)
+    raise KeyError(path)
+
 # ────────────────────────────── HTTP ──────────────────────────────
 
 class H(BaseHTTPRequestHandler):
@@ -575,24 +639,11 @@ class H(BaseHTTPRequestHandler):
         if not self._auth(qs):
             return self._json({"error": "unauthorized"}, 401)
 
-        if p == "/api/items":
-            return self._json(q_items({k: v[0] for k, v in qs.items()}))
-        if p == "/api/item":
-            return self._json(q_item(int(qs["id"][0])))
-        if p == "/api/index":
-            return self._json(q_index(qs.get("kind", ["tags"])[0], qs.get("q", [""])[0]))
-        if p == "/api/stats":
-            return self._json(cached("stats", q_stats))
-        if p == "/api/tops":
-            n = min(int(qs.get("n", ["28"])[0]), 60)
-            return self._json(cached(f"tops{n}", lambda: q_tops(n)))
-        if p == "/api/ads":
-            return self._json(q_ads(min(int(qs.get("limit", ["200"])[0]), 400)))
-        if p == "/api/related":
-            return self._json(q_related(int(qs["id"][0]),
-                                        min(int(qs.get("limit", ["24"])[0]), 60)))
-        if p == "/api/facets":
-            return self._json(cached("facets", q_facets))
+        if p.startswith("/api/"):
+            try:
+                return self._json(dispatch_api_get(p, {k: v[0] for k, v in qs.items()}))
+            except KeyError:
+                pass
         if p == "/favicon.svg":
             return self._send(200, FAVICON.encode(), "image/svg+xml")
         if p == "/poster":
@@ -618,12 +669,11 @@ class H(BaseHTTPRequestHandler):
         except Exception:
             return self._json({"error": "bad json"}, 400)
         try:
-            if u.path == "/api/activity":  return self._json(w_activity(body))
-            if u.path == "/api/play":      return self._json(w_play(body))
-            if u.path == "/api/feedback":  return self._json(w_feedback(body))
+            return self._json(dispatch_api_post(u.path, body))
+        except KeyError:
+            return self._json({"error": "not found"}, 404)
         except Exception as e:
             return self._json({"error": f"{type(e).__name__}: {e}"}, 500)
-        return self._json({"error": "not found"}, 404)
 
     def _avatar(self, aid):
         """头像：从接触印相里裁**最亮的那一格**。
@@ -817,8 +867,10 @@ def lan_ip():
     finally:
         s.close()
 
-if __name__ == "__main__":
-    ensure_columns()
+def main(argv=None):
+    global PORT
+    configure_cli(argv)
+    check_schema()
     srv = None
     for port in ([PORT] + ([8899] if PORT != 8899 else [])):
         try:
@@ -851,3 +903,7 @@ if __name__ == "__main__":
                 _zc.unregister_all_services(); _zc.close()
             except Exception:
                 pass
+
+
+if __name__ == "__main__":
+    main()

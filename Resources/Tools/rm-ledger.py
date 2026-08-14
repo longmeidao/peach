@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
+r"""
 资源账本 —— 统一索引本地 / 115 / PikPak / 在线四处资源。
 
   python rm-ledger.py init                     建库
@@ -13,7 +13,7 @@
   python rm-ledger.py dup [--min-mb 20]        按 hash / 名+大小 找重复
 
 设计要点见 R:\Resources\Tools\总体方案-涌现模式.md §四。
-全程本地，不外传。扫描只读元数据，不读文件内容。
+默认本地自托管。扫描只读元数据；在线关注同步是正式能力，按来源单独控频和授权。
 """
 import os, sys, csv, json, sqlite3, time, urllib.request, urllib.error
 
@@ -38,12 +38,14 @@ CREATE TABLE IF NOT EXISTS asset(
   name TEXT, medium TEXT,          -- video/image/audio/archive/game/illustration/account
   size INTEGER, mtime TEXT,
   hash_kind TEXT, hash TEXT,
-  creator TEXT, series TEXT, code TEXT,
+  creator TEXT, studio TEXT, series TEXT, code TEXT,
   duration REAL, width INTEGER, height INTEGER, vcodec TEXT, fps REAL, has_audio INTEGER,
   ctx_length TEXT, ctx_orient TEXT, ctx_quality TEXT, ctx_pace TEXT, ctx_people TEXT,
   play_count INTEGER DEFAULT 0, last_played TEXT, rating INTEGER, o_count INTEGER, watch_ratio REAL,
   source_id INTEGER, stash_scene_id INTEGER, snapshot_path TEXT,
   first_seen TEXT, last_seen TEXT,
+  feedback TEXT, disposal TEXT, leave_ratio REAL, play_seconds REAL,
+  feedback_at REAL, seek_count INTEGER, max_reached REAL,
   UNIQUE(location, path));
 
 CREATE TABLE IF NOT EXISTS asset_tag(
@@ -90,7 +92,7 @@ def ctx_from(size, w=None, h=None, dur=None):
 
 
 def cmd_init():
-    c = conn(); c.executescript(SCHEMA); c.commit()
+    c = conn(); c.executescript(SCHEMA); c.commit(); c.close()
     print(f"✓ 建库完成 {DB}")
 
 
@@ -145,7 +147,9 @@ def cmd_stash():
         id title rating100 o_counter play_count
         files{path size duration width height video_codec frame_rate audio_codec}
         studio{name} performers{name} tags{name}}}}""")
-    if not d: return
+    if not d:
+        c.close()
+        return
     scenes = d["findScenes"]["scenes"]
     now = time.strftime("%Y-%m-%d %H:%M:%S")
     nt = 0
@@ -154,15 +158,15 @@ def cmd_stash():
         f = s["files"][0]
         dur = float(f.get("duration") or 0); w = int(f.get("width") or 0); h = int(f.get("height") or 0)
         L, O, Q = ctx_from(f.get("size"), w, h, dur)
-        cur = c.execute("""INSERT INTO asset(location,path,name,medium,size,duration,width,height,vcodec,fps,
-                             has_audio,ctx_length,ctx_orient,ctx_quality,creator,
+        c.execute("""INSERT INTO asset(location,path,name,medium,size,duration,width,height,vcodec,fps,
+                             has_audio,ctx_length,ctx_orient,ctx_quality,studio,
                              play_count,rating,o_count,stash_scene_id,first_seen,last_seen)
                            VALUES('local',?,?,'video',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                            ON CONFLICT(location,path) DO UPDATE SET
                              duration=excluded.duration,width=excluded.width,height=excluded.height,
                              vcodec=excluded.vcodec,fps=excluded.fps,has_audio=excluded.has_audio,
                              ctx_length=excluded.ctx_length,ctx_orient=excluded.ctx_orient,
-                             ctx_quality=excluded.ctx_quality,creator=excluded.creator,
+                             ctx_quality=excluded.ctx_quality,studio=excluded.studio,
                              play_count=excluded.play_count,rating=excluded.rating,o_count=excluded.o_count,
                              stash_scene_id=excluded.stash_scene_id,last_seen=excluded.last_seen""",
                         (f["path"], os.path.basename(f["path"]), f.get("size"), dur, w, h,

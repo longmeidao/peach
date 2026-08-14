@@ -1,6 +1,35 @@
-# 资源管理流水线
+# Peach（蜜桃）资源与消费系统
 
-从下载那一刻起接管资源，到进 Stash 可检索为止。全部本地运行，不外传任何数据。
+从下载、跨来源索引到消费反馈与追更的个人自托管系统。默认本地运行；在线数据源和 AI 是
+显式配置的正式能力，不再以“绝不联网”为总边界。
+
+## 当前架构（2026-08-14）
+
+- `ledger.db`：资产、行为和知识的真相源。
+- Peach Web：当前生产仍由 `rm-web.py` 提供；新 `rm-web-fastapi.py` 已具备 JSON API 兼容入口。
+- Media Engine：`peach/media.py` 定义 backend 边界；Stash 先是 adapter，之后逐项 native 化。
+- 数据库迁移：`rm-migrate.py status` 默认只读，`upgrade` 显式执行且先 SQLite backup。
+- AI：`peach/providers.py` 分 Inference/Agent；第一阶段不发送真实模型请求、不保存 OAuth token。
+- 部署：继续模块化单体；不引入微服务、PostgreSQL、React 重写或完整多账号系统。
+
+项目早期允许破坏性重构未发布代码与接口，以优先速度、性能和职责清晰；真实媒体、
+`ledger.db` 和行为数据不在“可随意破坏”范围内。
+
+关键决策见 [`docs/adr`](docs/adr)，Stash 证据见
+[`Stash专项审计-2026-08-14.md`](Stash专项审计-2026-08-14.md)。
+
+## 第一阶段开发入口
+
+```powershell
+cd R:\Resources\Tools
+& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" -m venv .venv
+& .\.venv\Scripts\python.exe -m pip install -r .\requirements-peach.txt
+& .\.venv\Scripts\python.exe -m unittest discover -s .\tests -p 'test_*.py' -v
+& .\.venv\Scripts\python.exe .\rm-migrate.py status
+
+# 实验性 FastAPI JSON API；默认 127.0.0.1:8900，不替换 80 端口旧服务
+& .\.venv\Scripts\python.exe .\rm-web-fastapi.py --port 8900
+```
 
 ## 目录约定
 
