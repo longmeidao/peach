@@ -4,8 +4,8 @@ Last verified: 2026-08-14
 
 ## Runtime
 
-- Production Peach: FastAPI `0.2.0` from `R:\peach-app` on `0.0.0.0:80`, server PID observed as 49196; health mode is `fastapi`.
-- Windows mDNS now uses the native DNS-SD API and restarted health reports `mdns_backend=windows-dns-sd`, address `192.168.50.162`. A second LAN device still needs to confirm `http://peach.local/`; no firewall or router rule was changed.
+- Production Peach: FastAPI `0.2.0` from `R:\peach-app` on `0.0.0.0:80`, server PID observed as 27900; health mode is `fastapi`.
+- Windows mDNS now correctly publishes `Peach` as the DNS-SD service and `LMD-DST.local` as its actual SRV host on interface 9/address `192.168.50.162`. The earlier `peach.local` claim was invalid because `DnsServiceRegister` does not create arbitrary host aliases. A second LAN device still needs to confirm `http://LMD-DST.local/`; no firewall or router rule was changed.
 - Stash: `127.0.0.1:9999`, PID observed as 35332.
 - Traffic monitor: running through `RM-TrafficWatch` from `R:\peach-app\.venv`; all probe/sheets tasks use the same project environment.
 - Runtime Python: 3.14.7. The removed system Python 3.12 invalidated the old venv, which was rebuilt and reverified before production start.

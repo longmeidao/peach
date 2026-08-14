@@ -3,6 +3,7 @@ from __future__ import annotations
 import ctypes
 import os
 import socket
+import struct
 import threading
 from collections.abc import Callable
 from ctypes import wintypes
@@ -30,6 +31,19 @@ def lan_ipv4() -> str:
         return str(sock.getsockname()[0])
     finally:
         sock.close()
+
+
+def lan_interface_index() -> int:
+    """Return the interface Windows would use for the same LAN route as ``lan_ipv4``."""
+    iphlpapi = ctypes.WinDLL("iphlpapi", use_last_error=True)
+    iphlpapi.GetBestInterface.argtypes = [wintypes.ULONG, ctypes.POINTER(wintypes.ULONG)]
+    iphlpapi.GetBestInterface.restype = wintypes.DWORD
+    destination = struct.unpack("<I", socket.inet_aton("192.0.2.1"))[0]
+    index = wintypes.ULONG()
+    result = int(iphlpapi.GetBestInterface(destination, ctypes.byref(index)))
+    if result != 0:
+        raise OSError(result, "GetBestInterface failed")
+    return int(index.value)
 
 
 class MdnsPublisher:
@@ -133,7 +147,12 @@ def _load_dnsapi():
 
 
 class WindowsMdnsPublisher:
-    """Advertise through Windows DNS-SD instead of competing for UDP 5353."""
+    """Advertise through Windows DNS-SD instead of competing for UDP 5353.
+
+    Windows DNS-SD registers a service instance; it does not create an arbitrary host
+    alias. The SRV target therefore uses the actual Windows host name, while ``name``
+    remains the user-facing service instance (``Peach``).
+    """
 
     backend = "windows-dns-sd"
 
@@ -144,12 +163,17 @@ class WindowsMdnsPublisher:
         secure: bool = False,
         address_resolver: Callable[[], str] = lan_ipv4,
         dnsapi_factory: Callable[[], object] = _load_dnsapi,
+        interface_resolver: Callable[[], int] = lan_interface_index,
+        host_resolver: Callable[[], str] = socket.gethostname,
     ) -> None:
         self.name = _normalized_name(name)
         self.port = port
         self.secure = secure
         self._address_resolver = address_resolver
         self._dnsapi_factory = dnsapi_factory
+        self._interface_resolver = interface_resolver
+        self._host_resolver = host_resolver
+        self.host_name = self._host_resolver().strip().removesuffix(".")
         self._dnsapi = None
         self._instance: int | None = None
         self._request: _DnsServiceRegisterRequest | None = None
@@ -161,20 +185,21 @@ class WindowsMdnsPublisher:
 
     @property
     def hostname(self) -> str:
-        return f"{self.name}.local"
+        return f"{self.host_name}.local"
 
     def start(self) -> None:
         if self._request is not None:
             return
         address = self._address_resolver()
         dnsapi = self._dnsapi_factory()
+        interface_index = self._interface_resolver()
         service = "_https._tcp.local" if self.secure else "_http._tcp.local"
         instance_name = f"{self.name}.{service}"
         ip4 = wintypes.ULONG.from_buffer_copy(socket.inet_aton(address))
         keys = (wintypes.LPCWSTR * 2)("path", "scheme")
         values = (wintypes.LPCWSTR * 2)("/", "https" if self.secure else "http")
         instance = dnsapi.DnsServiceConstructInstance(
-            instance_name, self.hostname, ctypes.byref(ip4), None, self.port,
+            instance_name, self.host_name, ctypes.byref(ip4), None, self.port,
             0, 0, 2, keys, values,
         )
         if not instance:
@@ -191,7 +216,7 @@ class WindowsMdnsPublisher:
             self._event.set()
 
         request = _DnsServiceRegisterRequest(
-            1, 0, instance, completed, None, None, False,
+            1, interface_index, instance, completed, None, None, False,
         )
         result = int(dnsapi.DnsServiceRegister(ctypes.byref(request), None))
         if result != DNS_REQUEST_PENDING:

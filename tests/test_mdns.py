@@ -63,10 +63,13 @@ class MdnsPublisherTests(unittest.TestCase):
         publisher = WindowsMdnsPublisher(
             "peach", 80, address_resolver=lambda: "192.0.2.10",
             dnsapi_factory=lambda: dnsapi,
+            interface_resolver=lambda: 9, host_resolver=lambda: "LMD-DST",
         )
         publisher.start()
-        self.assertEqual(publisher.status, "peach.local")
+        self.assertEqual(publisher.status, "LMD-DST.local")
         self.assertEqual(publisher.backend, "windows-dns-sd")
+        self.assertEqual(publisher._request.InterfaceIndex, 9)
+        self.assertEqual(publisher.hostname, "LMD-DST.local")
         publisher.stop()
         self.assertEqual(publisher.status, "stopped")
 

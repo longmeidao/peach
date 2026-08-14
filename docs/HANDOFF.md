@@ -21,7 +21,7 @@ This is durable operating knowledge, not a per-session transcript.
 ## Operations
 
 - Main command: `peach serve|migrate` after editable installation.
-- `peach serve` 默认发布 `peach.local`；使用 `--no-mdns` 可关闭。Windows 走系统 DNS-SD (`DnsServiceRegister`)，其他平台走 zeroconf；mDNS 注册在 FastAPI lifespan 中执行，不能在事件循环内同步阻塞。health 的 `mdns_backend` 必须与运行态一致，不能只凭 `mdns` 字符串判断可用。
+- `peach serve` 默认发布 DNS-SD；使用 `--no-mdns` 可关闭。Windows 走系统 `DnsServiceRegister`，`Peach` 是服务实例，health 的 `mdns` 是实际可访问主机（当前 `LMD-DST.local`），不是品牌别名；其他平台走 zeroconf。注册在 FastAPI lifespan 中执行，不能在事件循环内同步阻塞。不要再把 Windows 的服务注册成功写成 `peach.local` A 记录成功。
 - TLS 仅在同时提供 `--ssl-certfile` 和 `--ssl-keyfile` 时启用；`.local` 使用本地 CA，不使用 Let's Encrypt，证书和私钥留在 `R:\peach-data\secrets`。
 - FastAPI is the only Web server. `web_contract.py` contains the stable JSON surface; do not recreate a parallel `http.server` or dynamic legacy loader.
 - FFmpeg/ffprobe resolve from explicit environment overrides, then `R:\peach-data\tools\ffmpeg\bin`, then `PATH`. No active code may fall back to the Stash private directory.
