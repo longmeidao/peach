@@ -31,6 +31,8 @@ class PeachSettings:
     tls_enabled: bool = False
     allowed_media_roots: tuple[Path, ...] = (Path(r"R:\media"), Path("B:/"), Path("A:/"))
     snapshot_root: Path = GENERATED_DIR / "snapshots"
+    # 2026-08 仓库/数据拆分前写入 ledger 的旧路径；运行时只做受控前缀重映射。
+    legacy_snapshot_roots: tuple[Path, ...] = (Path(r"R:\Resources\Intake\snapshots"),)
     poster_root: Path = GENERATED_DIR / "posters"
     avatar_root: Path = GENERATED_DIR / "avatars"
     logo_root: Path = GENERATED_DIR / "logos"

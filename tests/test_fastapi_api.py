@@ -100,6 +100,16 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("path", data["items"][0])
         self.assertEqual(response.headers["cache-control"], "no-store")
 
+    async def test_provider_health_is_authenticated_and_secret_free(self):
+        denied = await self.client.get("/api/providers")
+        self.assertEqual(denied.status_code, 401)
+        response = await self.client.get("/api/providers?t=secret")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(len(payload["providers"]), 3)
+        self.assertNotIn("secret_ref", response.text)
+
     async def test_post_writes_only_test_database(self):
         response = await self.client.post(
             "/api/activity", headers={"X-Token": "secret"},

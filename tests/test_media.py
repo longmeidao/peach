@@ -4,7 +4,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from peach.ffmpeg import FFmpegResolver
-from peach.media import FilesystemBackend, MediaEngine, StashAdapter, normalized_path
+from peach.media import (
+    FilesystemBackend, MediaEngine, StashAdapter, normalized_path, remap_managed_path,
+)
 from peach.stash import StashClient
 
 
@@ -69,6 +71,18 @@ class MediaEngineTests(unittest.TestCase):
         with patch.object(Path, "resolve", side_effect=OSError("offline")):
             path = normalized_path(Path("B:/"))
         self.assertTrue(path.is_absolute())
+
+    def test_legacy_snapshot_path_is_rebased_by_prefix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            current = root / "generated" / "snapshots"
+            legacy = root / "old" / "snapshots"
+            raw = legacy / "cloud" / "local" / "aa" / "one.jpg"
+            expected = current / "cloud" / "local" / "aa" / "one.jpg"
+            self.assertEqual(remap_managed_path(raw, current, (legacy,)), expected)
+
+            unrelated = root / "untrusted" / "one.jpg"
+            self.assertEqual(remap_managed_path(unrelated, current, (legacy,)), unrelated.resolve())
 
 
 if __name__ == "__main__":

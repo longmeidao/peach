@@ -66,6 +66,48 @@ CREATE TABLE IF NOT EXISTS media_binding(
   PRIMARY KEY(asset_id, backend),
   UNIQUE(backend, external_id));
 
+CREATE TABLE IF NOT EXISTS entity(
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL,
+  canonical_name TEXT NOT NULL,
+  normalized_name TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(kind, normalized_name));
+
+CREATE TABLE IF NOT EXISTS entity_alias(
+  entity_id INTEGER NOT NULL REFERENCES entity(id),
+  alias TEXT NOT NULL,
+  normalized_alias TEXT NOT NULL,
+  source TEXT NOT NULL,
+  confidence REAL NOT NULL DEFAULT 1.0,
+  PRIMARY KEY(entity_id, normalized_alias, source));
+
+CREATE TABLE IF NOT EXISTS entity_external_ref(
+  entity_id INTEGER NOT NULL REFERENCES entity(id),
+  provider TEXT NOT NULL,
+  external_kind TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  last_synced_at TEXT,
+  PRIMARY KEY(provider, external_kind, external_id),
+  UNIQUE(entity_id, provider, external_kind));
+
+CREATE TABLE IF NOT EXISTS asset_entity(
+  asset_id INTEGER NOT NULL REFERENCES asset(id),
+  entity_id INTEGER NOT NULL REFERENCES entity(id),
+  role TEXT NOT NULL,
+  source TEXT NOT NULL,
+  confidence REAL NOT NULL DEFAULT 1.0,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  first_seen_at TEXT,
+  last_seen_at TEXT,
+  PRIMARY KEY(asset_id, entity_id, role, source));
+
+CREATE INDEX IF NOT EXISTS idx_entity_alias_normalized ON entity_alias(normalized_alias);
+CREATE INDEX IF NOT EXISTS idx_asset_entity_entity_role ON asset_entity(entity_id, role);
+
 CREATE INDEX IF NOT EXISTS ix_asset_hash ON asset(hash_kind, hash);
 CREATE INDEX IF NOT EXISTS ix_asset_size ON asset(size);
 CREATE INDEX IF NOT EXISTS ix_asset_loc  ON asset(location);
@@ -99,6 +141,42 @@ def ctx_from(size, w=None, h=None, dur=None):
     if dur:
         length = "速食" if dur < 300 else "短" if dur < 900 else "中" if dur < 2400 else "长"
     return length, orient, quality
+
+
+def upsert_entity(c, *, kind, name, now, source, asset_id, role,
+                  external_id=None, metadata=None):
+    canonical = str(name or "").strip()
+    if not canonical:
+        return None
+    normalized = canonical.casefold()
+    payload = json.dumps(metadata or {}, ensure_ascii=False)
+    c.execute("""INSERT INTO entity(kind,canonical_name,normalized_name,metadata_json,created_at,updated_at)
+                 VALUES(?,?,?,?,?,?)
+                 ON CONFLICT(kind,normalized_name) DO UPDATE SET
+                   canonical_name=excluded.canonical_name,
+                   metadata_json=excluded.metadata_json,
+                   updated_at=excluded.updated_at""",
+              (kind, canonical, normalized, payload, now, now))
+    entity_id = c.execute(
+        "SELECT id FROM entity WHERE kind=? AND normalized_name=?", (kind, normalized)
+    ).fetchone()[0]
+    c.execute("""INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence,
+                                           metadata_json,first_seen_at,last_seen_at)
+                 VALUES(?,?,?,?,1.0,?,?,?)
+                 ON CONFLICT(asset_id,entity_id,role,source) DO UPDATE SET
+                   metadata_json=excluded.metadata_json,
+                   last_seen_at=excluded.last_seen_at""",
+              (asset_id, entity_id, role, source, payload, now, now))
+    if external_id is not None:
+        c.execute("""INSERT INTO entity_external_ref(
+                       entity_id,provider,external_kind,external_id,metadata_json,last_synced_at)
+                     VALUES(?,'stash',?,?,?,?)
+                     ON CONFLICT(provider,external_kind,external_id) DO UPDATE SET
+                       entity_id=excluded.entity_id,
+                       metadata_json=excluded.metadata_json,
+                       last_synced_at=excluded.last_synced_at""",
+                  (entity_id, kind, str(external_id), payload, now))
+    return entity_id
 
 
 def cmd_init():
@@ -148,7 +226,7 @@ def cmd_stash(client=None):
         d = client.graphql("""{findScenes(filter:{per_page:-1}){scenes{
             id title rating100 o_counter play_count
             files{path size duration width height video_codec frame_rate audio_codec}
-            studio{name} performers{name} tags{name}}}}""")
+            studio{id name} performers{id name} tags{id name}}}}""")
     except StashError as exc:
         print("Stash 错误:", exc)
         c.close()
@@ -195,18 +273,28 @@ def cmd_stash(client=None):
                        metadata_json=excluded.metadata_json,
                        last_synced_at=excluded.last_synced_at""",
                   (aid, str(s["id"]), json.dumps(provenance, ensure_ascii=False), now))
+        studio = s.get("studio") or {}
+        upsert_entity(c, kind="studio", name=studio.get("name"), now=now,
+                      source="stash:studio", asset_id=aid, role="studio",
+                      external_id=studio.get("id"), metadata=studio)
         for t in s.get("tags") or []:
             c.execute("""INSERT INTO asset_tag(asset_id,tag,confidence,source)
                          VALUES(?,?,1.0,'stash:tag')
                          ON CONFLICT(asset_id,tag) DO UPDATE SET
                            confidence=excluded.confidence,source=excluded.source""",
                       (aid, t["name"])); nt += 1
+            upsert_entity(c, kind="tag", name=t.get("name"), now=now,
+                          source="stash:tag", asset_id=aid, role="tag",
+                          external_id=t.get("id"), metadata=t)
         for p in s.get("performers") or []:
             c.execute("""INSERT INTO asset_tag(asset_id,tag,confidence,source)
                          VALUES(?,?,1.0,'stash:performer')
                          ON CONFLICT(asset_id,tag) DO UPDATE SET
                            confidence=excluded.confidence,source=excluded.source""",
                       (aid, "演员:" + p["name"]))
+            upsert_entity(c, kind="performer", name=p.get("name"), now=now,
+                          source="stash:performer", asset_id=aid, role="performer",
+                          external_id=p.get("id"), metadata=p)
     c.commit()
     print(f"✓ Stash: {len(scenes):,} 个场景，{nt:,} 条标签关联")
     c.close()

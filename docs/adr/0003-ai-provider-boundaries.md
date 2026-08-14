@@ -14,6 +14,7 @@ Codex/Claude Code 是带线程、工具和权限的 agent runtime；OpenCode Go 
 - Codex 通过正式 SDK/app-server 的本地 stdio adapter 接入，由 Codex 自管 ChatGPT 登录；不得抽取登录 token 作为通用 OpenAI API 凭据。
 - Claude 正式发布默认使用 API key/云 provider。调用用户本机已登录 `claude` 的订阅 adapter 只标为 personal-local experimental；Peach 不实现 Claude.ai 登录、不读取或保存 OAuth 凭据。
 - 第一阶段只提交接口、配置与无副作用 health 边界，不发送真实模型请求。
+- 第一阶段 registry 与受认证的 `/api/providers` health 已实现；它只检查本机命令可用性并返回公开 capability，不联网、不读取凭据、不返回可执行文件路径。
 - AI 只能生成候选、解释与补全；写入 ledger 真相字段必须经过 provenance/confidence/review。
 
 ## 凭据

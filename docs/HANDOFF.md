@@ -16,6 +16,7 @@ This is durable operating knowledge, not a per-session transcript.
 - Tests must create temporary SQLite databases and temporary media files.
 - Before real migration: SQLite backup, asset/tag counts, `PRAGMA integrity_check`, migration version check, then service smoke test.
 - Formal migrations `0000` and `0001` were applied to the real ledger on 2026-08-14. The verified pre-migration recovery point is `R:\peach-data\archive\ledger.pre-migrate-20260814-152821.db`; do not delete it until later migrations have their own verified recovery point.
+- `0002_canonical_entities` exists and passes isolated tests but is still pending on the real ledger. Before applying it, create a new SQLite backup and repeat counts/integrity/version checks; never silently auto-apply it during Web startup.
 - Media and runtime data remain under `R:\media` and `R:\peach-data`; they are not repository assets.
 
 ## Operations
@@ -27,6 +28,8 @@ This is durable operating knowledge, not a per-session transcript.
 - FFmpeg/ffprobe resolve from explicit environment overrides, then `R:\peach-data\tools\ffmpeg\bin`, then `PATH`. No active code may fall back to the Stash private directory.
 - Long-running inventory helpers are under `scripts/`; their scheduled tasks use `R:\peach-app\.venv\Scripts\python.exe`. They use absolute data paths and may be interrupted/restarted where their own locking contract allows it.
 - Check ports 80, 8900 and 9999 before starting or switching services.
+- 115/PikPak playback depends on CloudDrive mounts `B:`/`A:`. A running CloudDrive process does not prove the mounts exist; check the drive roots and one known media path. Restart CloudDrive only after proving no copy task and no active I/O.
+- Ledger snapshot paths written before the project/data split are rebased by an exact configured legacy prefix. Do not add basename searches or arbitrary path fallbacks.
 - Report verification separately: static/unit/API, desktop browser, 390×844 browser, and whether production was actually restarted.
 
 ## Architectural truth
@@ -34,6 +37,7 @@ This is durable operating knowledge, not a per-session transcript.
 - Ledger owns truth and behavior.
 - Stash is a replaceable adapter; do not add new direct GraphQL helpers or private Stash FFmpeg paths.
 - All Stash calls use `StashClient`. Imports persist the stable Scene ID and provenance in `media_binding`; do not regress to `stash_scene_id` as the only external reference.
+- Canonical performer/studio/tag/creator truth belongs in `entity`, `entity_external_ref` and `asset_entity`. Flattened `asset_tag` rows are a temporary compatibility projection, not the target model.
 - Keep FastAPI and the front end logically separate but deploy as a monolith.
 - External sources and AI are supported only through explicit adapters and declared data boundaries.
 - AI provider layers are not equivalent: inference APIs and local coding/agent runtimes remain separate.

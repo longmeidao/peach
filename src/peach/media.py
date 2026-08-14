@@ -19,6 +19,23 @@ def normalized_path(path: Path | str) -> Path:
         return Path(os.path.abspath(os.fspath(candidate)))
 
 
+def remap_managed_path(path: Path | str, current_root: Path,
+                       legacy_roots: Sequence[Path] = ()) -> Path:
+    """将数据迁移前的受控根路径映射到当前根，不接受任意 basename 搜索。"""
+    candidate = normalized_path(path)
+    current = normalized_path(current_root)
+    if candidate == current or current in candidate.parents:
+        return candidate
+    for legacy_root in legacy_roots:
+        legacy = normalized_path(legacy_root)
+        try:
+            relative = candidate.relative_to(legacy)
+        except ValueError:
+            continue
+        return current / relative
+    return candidate
+
+
 @dataclass(frozen=True)
 class MediaCapabilities:
     probe: bool = False
@@ -47,10 +64,13 @@ class MediaUnavailable(RuntimeError):
 
 class FilesystemMediaService:
     def __init__(self, repository: LedgerRepository, allowed_roots: Sequence[Path],
-                 snapshot_root: Path):
+                 snapshot_root: Path, legacy_snapshot_roots: Sequence[Path] = ()):
         self.repository = repository
         self.allowed_roots = tuple(normalized_path(root) for root in allowed_roots)
         self.snapshot_root = normalized_path(snapshot_root)
+        self.legacy_snapshot_roots = tuple(
+            normalized_path(root) for root in legacy_snapshot_roots
+        )
 
     def file_for(self, asset_id: int, thumbnail: bool = False) -> Path:
         asset = self.repository.media_asset(asset_id)
@@ -59,7 +79,8 @@ class FilesystemMediaService:
         raw = asset.snapshot_path if thumbnail else asset.path
         if not raw:
             raise MediaUnavailable(asset_id)
-        path = normalized_path(raw)
+        path = (remap_managed_path(raw, self.snapshot_root, self.legacy_snapshot_roots)
+                if thumbnail else normalized_path(raw))
         roots = (self.snapshot_root,) if thumbnail else self.allowed_roots
         if not any(path == root or root in path.parents for root in roots):
             raise MediaUnavailable(asset_id)

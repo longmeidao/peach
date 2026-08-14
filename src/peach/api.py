@@ -13,6 +13,7 @@ from .ffmpeg import FFmpegResolver
 from .media import FilesystemMediaService, MediaNotFound, MediaUnavailable
 from .mdns import MdnsPublisher
 from .previews import PreviewService, PreviewUnavailable
+from .providers import default_registry
 from .repository import LedgerRepository
 
 
@@ -40,14 +41,16 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
     resolver = FFmpegResolver(settings.ffmpeg_root)
     media_service = FilesystemMediaService(
         repository, settings.allowed_media_roots, settings.snapshot_root,
+        settings.legacy_snapshot_roots,
     )
     preview_service = PreviewService(
         repository, resolver, settings.snapshot_root, settings.poster_root,
-        settings.avatar_root, settings.logo_root,
+        settings.avatar_root, settings.logo_root, settings.legacy_snapshot_roots,
     )
     mdns = MdnsPublisher(
         settings.mdns_name, settings.mdns_port, secure=settings.tls_enabled
     ) if settings.mdns_enabled else None
+    providers = default_registry()
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -77,6 +80,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
     app.state.media_service = media_service
     app.state.preview_service = preview_service
     app.state.mdns = mdns
+    app.state.providers = providers
 
     @app.middleware("http")
     async def no_store(request: Request, call_next):
@@ -188,6 +192,13 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         response = FileResponse(path, media_type=content_type)
         response.headers["Cache-Control"] = "public, max-age=86400"
         return response
+
+    @app.get("/api/providers")
+    def provider_health(request: Request):
+        args = _first_query_values(request)
+        if not _authorized(request, settings.token, args):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        return providers.health()
 
     @app.get("/api/{route:path}")
     def api_get(route: str, request: Request):

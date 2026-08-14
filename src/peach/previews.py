@@ -7,6 +7,7 @@ import threading
 from pathlib import Path
 
 from .ffmpeg import FFmpegResolver
+from .media import remap_managed_path
 from .repository import LedgerRepository
 
 
@@ -19,13 +20,15 @@ _GENERATE_LOCK = threading.Lock()
 
 class PreviewService:
     def __init__(self, repository: LedgerRepository, resolver: FFmpegResolver,
-                 snapshot_root: Path, poster_root: Path, avatar_root: Path, logo_root: Path):
+                 snapshot_root: Path, poster_root: Path, avatar_root: Path, logo_root: Path,
+                 legacy_snapshot_roots: tuple[Path, ...] = ()):
         self.repository = repository
         self.resolver = resolver
         self.snapshot_root = snapshot_root.resolve()
         self.poster_root = poster_root.resolve()
         self.avatar_root = avatar_root.resolve()
         self.logo_root = logo_root.resolve()
+        self.legacy_snapshot_roots = tuple(path.resolve() for path in legacy_snapshot_roots)
 
     def poster(self, asset_id: int, cell: int = 4) -> Path:
         cell = max(0, min(8, cell))
@@ -114,7 +117,9 @@ class PreviewService:
         asset = self.repository.media_asset(asset_id)
         if asset is None or not asset.snapshot_path:
             raise PreviewUnavailable("snapshot unavailable")
-        path = Path(asset.snapshot_path).resolve()
+        path = remap_managed_path(
+            asset.snapshot_path, self.snapshot_root, self.legacy_snapshot_roots,
+        )
         if not (path == self.snapshot_root or self.snapshot_root in path.parents) or not path.is_file():
             raise PreviewUnavailable("snapshot unavailable")
         return path

@@ -1,4 +1,5 @@
 import sqlite3
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -22,7 +23,7 @@ class MigrationTests(unittest.TestCase):
         sqlite3.connect(self.db).close()
         backup = self.root / "before.db"
         done = upgrade(self.db, MIGRATIONS, backup)
-        self.assertEqual([m.version for m in done], ["0000", "0001"])
+        self.assertEqual([m.version for m in done], ["0000", "0001", "0002"])
         self.assertTrue(backup.exists())
         con = sqlite3.connect(self.db)
         tables = {row[0] for row in con.execute(
@@ -33,8 +34,9 @@ class MigrationTests(unittest.TestCase):
         )]
         con.close()
         self.assertTrue({"asset", "profile", "media_binding", "activity_event",
-                         "provider_profile", "schema_migration"} <= tables)
-        self.assertEqual(versions, ["0000", "0001"])
+                         "provider_profile", "entity", "entity_alias",
+                         "entity_external_ref", "asset_entity", "schema_migration"} <= tables)
+        self.assertEqual(versions, ["0000", "0001", "0002"])
         self.assertEqual(upgrade(self.db, MIGRATIONS), [])
         self.assertEqual(plan(self.db, MIGRATIONS)[1], [])
 
@@ -72,6 +74,38 @@ class MigrationTests(unittest.TestCase):
         con.close()
         with self.assertRaises(RuntimeError):
             plan(self.db, MIGRATIONS)
+
+    def test_entity_migration_backfills_flattened_relations(self):
+        base_migrations = self.root / "base-migrations"
+        base_migrations.mkdir()
+        for name in ("0000_legacy_schema.sql", "0001_core_boundaries.sql"):
+            shutil.copyfile(MIGRATIONS / name, base_migrations / name)
+        sqlite3.connect(self.db).close()
+        upgrade(self.db, base_migrations)
+        con = sqlite3.connect(self.db)
+        con.executescript("""
+          INSERT INTO asset(id,location,path,name,medium,creator,studio,series)
+          VALUES(1,'local','one.mp4','one.mp4','video','Owner A','Studio A','Series A');
+          INSERT INTO asset_tag(asset_id,tag,confidence,source)
+          VALUES(1,'演员:Performer A',1.0,'stash:performer'),
+                (1,'Tag A',0.9,'stash:tag');
+        """)
+        con.close()
+        upgrade(self.db, MIGRATIONS)
+        con = sqlite3.connect(self.db)
+        entities = set(con.execute("SELECT kind,canonical_name FROM entity"))
+        relations = set(con.execute(
+            "SELECT e.kind,ae.role,ae.source FROM asset_entity ae "
+            "JOIN entity e ON e.id=ae.entity_id WHERE ae.asset_id=1"
+        ))
+        con.close()
+        self.assertTrue({('performer','Performer A'),('tag','Tag A'),
+                         ('studio','Studio A'),('creator','Owner A'),
+                         ('series','Series A')} <= entities)
+        self.assertTrue({('performer','performer','stash:performer'),
+                         ('tag','tag','stash:tag'),('studio','studio','legacy:asset'),
+                         ('creator','creator','legacy:asset'),
+                         ('series','series','legacy:asset')} <= relations)
 
 
 if __name__ == "__main__":

@@ -30,9 +30,13 @@ class LedgerSchemaTests(unittest.TestCase):
             rm_ledger.cmd_init()
         con = sqlite3.connect(self.db)
         columns = {row[1] for row in con.execute("PRAGMA table_info(asset)")}
+        tables = {row[0] for row in con.execute(
+            "SELECT name FROM sqlite_schema WHERE type='table'"
+        )}
         con.close()
         self.assertTrue({"studio", "feedback", "disposal", "leave_ratio", "play_seconds",
                          "feedback_at", "seek_count", "max_reached"} <= columns)
+        self.assertTrue({"entity", "entity_alias", "entity_external_ref", "asset_entity"} <= tables)
 
     def test_stash_import_writes_studio_without_overwriting_creator(self):
         with redirect_stdout(io.StringIO()):
@@ -49,9 +53,9 @@ class LedgerSchemaTests(unittest.TestCase):
             "files": [{"path": r"R:\media\one.mp4", "size": 10, "duration": 30,
                        "width": 1920, "height": 1080, "video_codec": "h264",
                        "frame_rate": 30, "audio_codec": "aac"}],
-            "studio": {"name": "Studio A"},
-            "performers": [{"name": "Performer A"}],
-            "tags": [{"name": "Tag A"}],
+            "studio": {"id": "7", "name": "Studio A"},
+            "performers": [{"id": "8", "name": "Performer A"}],
+            "tags": [{"id": "9", "name": "Tag A"}],
         }]}}
         client = SimpleNamespace(graphql=lambda *_args, **_kwargs: response)
         with redirect_stdout(io.StringIO()):
@@ -69,12 +73,30 @@ class LedgerSchemaTests(unittest.TestCase):
             "SELECT backend,external_id,metadata_json FROM media_binding WHERE asset_id=(SELECT id FROM asset WHERE path=?)",
             (r"R:\media\one.mp4",),
         ).fetchone()
+        entities = set(con.execute(
+            "SELECT kind,canonical_name FROM entity ORDER BY kind,canonical_name"
+        ))
+        external_refs = set(con.execute(
+            "SELECT e.kind,r.external_id FROM entity_external_ref r "
+            "JOIN entity e ON e.id=r.entity_id"
+        ))
+        relations = set(con.execute(
+            "SELECT e.kind,ae.role,ae.source FROM asset_entity ae "
+            "JOIN entity e ON e.id=ae.entity_id"
+        ))
         con.close()
         self.assertEqual(row, ("Channel Owner", "Studio A", 42))
         self.assertEqual(tags, {("Tag A", "stash:tag"),
                                 ("演员:Performer A", "stash:performer")})
         self.assertEqual(binding[:2], ("stash", "42"))
         self.assertIn('"transport": "stash-graphql"', binding[2])
+        self.assertEqual(entities, {("studio", "Studio A"), ("tag", "Tag A"),
+                                    ("performer", "Performer A")})
+        self.assertEqual(external_refs, {("studio", "7"), ("performer", "8"),
+                                         ("tag", "9")})
+        self.assertEqual(relations, {("studio", "studio", "stash:studio"),
+                                     ("performer", "performer", "stash:performer"),
+                                     ("tag", "tag", "stash:tag")})
 
 
 if __name__ == "__main__":
