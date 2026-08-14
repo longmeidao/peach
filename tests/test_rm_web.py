@@ -46,6 +46,16 @@ CREATE TABLE asset_tag(
   source TEXT,
   UNIQUE(asset_id, tag)
 );
+CREATE TABLE entity(
+  id INTEGER PRIMARY KEY, kind TEXT, canonical_name TEXT, normalized_name TEXT,
+  metadata_json TEXT DEFAULT '{}', created_at TEXT, updated_at TEXT,
+  UNIQUE(kind,normalized_name)
+);
+CREATE TABLE asset_entity(
+  asset_id INTEGER, entity_id INTEGER, role TEXT, source TEXT, confidence REAL,
+  metadata_json TEXT DEFAULT '{}', first_seen_at TEXT, last_seen_at TEXT,
+  UNIQUE(asset_id,entity_id,role,source)
+);
 """
 
 
@@ -73,6 +83,16 @@ class WebDataTests(unittest.TestCase):
             "INSERT INTO asset_tag(asset_id,tag,source) VALUES(?,?,?)",
             [(1, "足交", "name"), (1, "演员:Alice", "performer"), (2, "竖屏", "probe")],
         )
+        con.executemany(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(?,?,?,?)",
+            [(10, "tag", "足交", "足交"),
+             (11, "performer", "Canonical Alice", "canonical alice")],
+        )
+        con.executemany(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+            "VALUES(?,?,?,?,?)",
+            [(1, 10, "tag", "test", 1.0), (1, 11, "performer", "test", 1.0)],
+        )
         con.commit()
         con.close()
         self.contract = rm_web.WebContract(Path(self.db_path))
@@ -99,7 +119,7 @@ class WebDataTests(unittest.TestCase):
         )
         self.assertEqual(result["total"], 1)
         self.assertEqual(result["items"][0]["id"], 1)
-        self.assertEqual(result["items"][0]["performers"], ["Alice"])
+        self.assertEqual(result["items"][0]["performers"], ["Canonical Alice"])
         self.assertNotIn("path", result["items"][0])
         self.assertNotIn("snapshot_path", result["items"][0])
 

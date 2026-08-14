@@ -80,8 +80,12 @@ def q_items(contract: WebContract, args):
     if args.get("tag"):
         # 逗号分隔 = 组合筛选，全部满足（Beeg 的 /PinkLoving+Anal）
         for tg in [x for x in args["tag"].split(",") if x]:
-            where.append("EXISTS(SELECT 1 FROM asset_tag t WHERE t.asset_id=a.id AND t.tag=?)")
-            par.append(tg)
+            where.append(
+                "(EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+                "WHERE ae.asset_id=a.id AND e.kind='tag' AND e.canonical_name=?) OR "
+                "EXISTS(SELECT 1 FROM asset_tag t WHERE t.asset_id=a.id AND t.tag=?))"
+            )
+            par.extend((tg, tg))
     if args.get("len"):
         where.append("a.ctx_length = ?"); par.append(args["len"])
     if args.get("orient"):
@@ -132,13 +136,25 @@ def q_items(contract: WebContract, args):
     if rows:
         ids = [r["id"] for r in rows]
         qm = ",".join("?" * len(ids))
-        tmap = {}
+        tmap: dict[int, list[str]] = {}
         for aid, tag in con_tags(contract, ids, qm):
             tmap.setdefault(aid, []).append(tag)
+        emap: dict[int, dict[str, list[str]]] = {}
+        for aid, kind, name in con_entities(contract, ids, qm):
+            emap.setdefault(aid, {}).setdefault(kind, []).append(name)
         for r in rows:
             ts = tmap.get(r["id"], [])
-            r["tags"] = [t for t in ts if tag_cat(t) in ("general", "character", "copyright")][:4]
-            r["performers"] = [t[3:] for t in ts if t.startswith("演员:")][:3]
+            canonical = emap.get(r["id"], {})
+            canonical_tags = canonical.get("tag", [])
+            canonical_performers = canonical.get("performer", [])
+            visible_tags = canonical_tags or [t for t in ts if not t.startswith("演员:")]
+            r["tags"] = [
+                tag for tag in visible_tags
+                if tag_cat(tag) in ("general", "character", "copyright")
+            ][:4]
+            r["performers"] = (canonical_performers or [
+                tag[3:] for tag in ts if tag.startswith("演员:")
+            ])[:3]
     for r in rows:
         r["cost"] = COST.get(r["location"], "metered")
         r["has_thumb"] = contract.has_snapshot(r["snapshot_path"])
@@ -154,6 +170,19 @@ def con_tags(contract: WebContract, ids, qm):
     finally:
         c.close()
 
+
+def con_entities(contract: WebContract, ids, qm):
+    connection = contract.db()
+    try:
+        return connection.execute(
+            f"SELECT DISTINCT ae.asset_id,e.kind,e.canonical_name "
+            f"FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            f"WHERE ae.asset_id IN ({qm}) AND e.kind IN ('tag','performer') "
+            f"ORDER BY ae.asset_id,e.kind,e.canonical_name", ids,
+        ).fetchall()
+    finally:
+        connection.close()
+
 def q_item(contract: WebContract, aid):
     """按 id 直取。
     ⚠️ 第一版没有这个接口，前端用「带筛选条件再查一遍然后 find」的绕法，
@@ -168,9 +197,21 @@ def q_item(contract: WebContract, aid):
     if not r:
         c.close(); return {"error": "not found"}
     d = dict(r)
-    _ts = [x[0] for x in c.execute("SELECT tag FROM asset_tag WHERE asset_id=? ORDER BY tag", (aid,))]
-    d["tags"] = [{"k": t, "cat": tag_cat(t)} for t in _ts]
-    d["performers"] = [t[3:] for t in _ts if t.startswith("演员:")]
+    legacy = [x[0] for x in c.execute(
+        "SELECT tag FROM asset_tag WHERE asset_id=? ORDER BY tag", (aid,),
+    )]
+    canonical = list(c.execute(
+        "SELECT DISTINCT e.kind,e.canonical_name FROM asset_entity ae "
+        "JOIN entity e ON e.id=ae.entity_id WHERE ae.asset_id=? "
+        "AND e.kind IN ('tag','performer') ORDER BY e.kind,e.canonical_name", (aid,),
+    ))
+    canonical_tags = [name for kind, name in canonical if kind == "tag"]
+    canonical_performers = [name for kind, name in canonical if kind == "performer"]
+    tags = canonical_tags or [tag for tag in legacy if not tag.startswith("演员:")]
+    d["tags"] = [{"k": tag, "cat": tag_cat(tag)} for tag in tags]
+    d["performers"] = canonical_performers or [
+        tag[3:] for tag in legacy if tag.startswith("演员:")
+    ]
     c.close()
     d["cost"] = COST.get(d["location"], "metered")
     d["has_thumb"] = contract.has_snapshot(d["snapshot_path"])
@@ -320,13 +361,13 @@ def q_index(contract: WebContract, kind, q="", limit=600):
                           (r["k"],)).fetchone()
             r["rep"] = g[0] if g else None
     else:
-        sql = ("SELECT t.tag k, count(*) n FROM asset_tag t JOIN asset a ON a.id=t.asset_id "
-               "WHERE a.medium='video' ")
+        sql = ("SELECT e.canonical_name k, count(DISTINCT ae.asset_id) n "
+               "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+               "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='tag' ")
         par = []
-        if q: sql += "AND t.tag LIKE ? "; par.append(f"%{q}%")
-        sql += "GROUP BY t.tag ORDER BY n DESC LIMIT ?"; par.append(limit)
-        rows = [dict(r, cat=tag_cat(r["tag"] if "tag" in r.keys() else r["k"])) 
-                for r in c.execute(sql, par)]
+        if q: sql += "AND e.canonical_name LIKE ? "; par.append(f"%{q}%")
+        sql += "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT ?"; par.append(limit)
+        rows = [dict(r, cat=tag_cat(r["k"])) for r in c.execute(sql, par)]
     c.close()
     return {"kind": kind, "items": rows}
 
@@ -400,13 +441,18 @@ def q_facets(contract: WebContract):
             "短片-2分内", "中片-10分内", "长片-30分内", "超长片", "横屏", "竖屏",
             "真人", "混合集", "身份待确认", "R-18")
     rows = [dict(r) for r in c.execute(
-        "SELECT t.tag AS k, count(*) AS n FROM asset_tag t JOIN asset a ON a.id=t.asset_id "
-        "WHERE a.medium='video' GROUP BY t.tag ORDER BY n DESC LIMIT 400")]
+        "SELECT e.canonical_name AS k, count(DISTINCT ae.asset_id) AS n "
+        "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+        "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='tag' "
+        "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 400")]
     out["tags"] = [dict(r, cat=tag_cat(r["k"])) for r in rows
-                   if not r["k"].startswith("演员:") and r["k"] not in TECH][:44]
+                   if r["k"] not in TECH][:44]
     out["tech"] = [r for r in rows if r["k"] in TECH][:14]
-    out["tagperformers"] = [{"k": r["k"][3:], "n": r["n"]}
-                            for r in rows if r["k"].startswith("演员:")][:20]
+    out["tagperformers"] = [dict(r) for r in c.execute(
+        "SELECT e.canonical_name AS k,count(DISTINCT ae.asset_id) AS n "
+        "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+        "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='performer' "
+        "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 20")]
     st = c.execute(
         "SELECT count(*) total, COALESCE(sum(size),0) bytes, "
         "SUM(CASE WHEN play_count>0 THEN 1 ELSE 0 END) played, "

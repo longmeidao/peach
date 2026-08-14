@@ -24,6 +24,14 @@ CREATE TABLE asset(
   UNIQUE(location,path));
 CREATE TABLE asset_tag(asset_id INTEGER,tag TEXT,confidence REAL DEFAULT 1.0,source TEXT,
                        UNIQUE(asset_id,tag));
+CREATE TABLE entity(
+  id INTEGER PRIMARY KEY,kind TEXT,canonical_name TEXT,normalized_name TEXT,
+  metadata_json TEXT DEFAULT '{}',created_at TEXT,updated_at TEXT,
+  UNIQUE(kind,normalized_name));
+CREATE TABLE asset_entity(
+  asset_id INTEGER,entity_id INTEGER,role TEXT,source TEXT,confidence REAL,
+  metadata_json TEXT DEFAULT '{}',first_seen_at TEXT,last_seen_at TEXT,
+  UNIQUE(asset_id,entity_id,role,source));
 """
 
 
@@ -64,6 +72,14 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             (str(self.media_file), str(self.legacy_snapshot_file)),
         )
         con.execute("INSERT INTO asset_tag(asset_id,tag,source) VALUES(1,'Tag A','test')")
+        con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
+            "VALUES(1,'tag','Tag A','tag a')"
+        )
+        con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+            "VALUES(1,1,'tag','test',1.0)"
+        )
         con.commit()
         con.close()
         app = create_app(PeachSettings(

@@ -25,6 +25,7 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - Snapshot rows still contain 10,714 pre-split `R:\Resources\Intake\snapshots` paths. Runtime now performs a strict legacy-prefix rebase to `R:\peach-data\generated\snapshots`; it does not mutate the real ledger.
 - `R:\peach-data` now separates `database/generated/sources/state/secrets/logs/archive/inbox/tools`; the old empty root Inbox and old Resources/Tools compatibility surface are removed.
 - `web_contract.py` now uses an application-owned database/cache/write-lock context rather than module globals; separate app instances cannot leak databases or caches into each other.
+- Item, detail, tag index and facet reads now prefer canonical `asset_entity` performer/tag relations, with flattened `asset_tag` retained only as a staged compatibility fallback. Real-ledger timings were 0.143 s for a filtered item query, 0.118 s for facets and 0.025 s for the first 30 canonical tags.
 - Snapshot availability checks use the same strict legacy-prefix resolver as `/thumb`, so the front end requests migrated previews instead of displaying false “无预览” cards.
 - 34 isolated tests and tracked-script static compilation passed under Python 3.14.
 - Real migration preserved 81,873 assets and 59,697 tag links; both live database and backup passed `integrity_check` and `foreign_key_check` before later metadata writes.
@@ -55,6 +56,6 @@ Runtime PIDs are observations, not configuration; always re-check them.
 
 ## Next work
 
-1. Switch performer/studio/tag reads from flattened compatibility fields to canonical `asset_entity` queries.
-2. Add the first tracked online-follow source adapter; keep metadata scraping as a reviewable batch pipeline.
-3. Implement an OpenCode Go inference health/model adapter without enabling automatic ledger writes.
+1. Add the first tracked online-follow source adapter; keep metadata scraping as a reviewable batch pipeline.
+2. Implement an OpenCode Go inference health/model adapter without enabling automatic ledger writes.
+3. Move creator/studio top lists and related-item ranking from compatibility text fields to canonical relations.
