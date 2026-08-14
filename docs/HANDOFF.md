@@ -20,6 +20,7 @@ This is durable operating knowledge, not a per-session transcript.
 - Worker results return to the coordinating agent for vocabulary/provenance checks, deduplication, isolated tests and approval. The user does not relay reports between agents.
 - `scripts/scrape_codes.py` and `scripts/creator_tags.py` are the standard review boundaries. Creator-board work exports `generated/creator-tags-review.csv`; workers may change `pending` to `candidate` or `skip`, while `approved` and the required backup remain coordinator actions.
 - Claude Code 2.1.232 refused explicit sexual-act classification from board images. Do not assign that visual-content category to Claude again unless its supported-use boundary is reverified; use human review or a separately approved vision provider. Claude remains suitable for code, public metadata adapters, deduplication and non-visual CSV validation.
+- An older Claude Desktop conversation did perform board inspection, but conversation text is not proof of persistence: its reported `ruth_lee` mapping differs from the current ledger. Read the transcript only as candidate evidence and reconcile it into the review CSV; database counts and canonical relations are the completion gate.
 
 ## Reuse before restore
 
@@ -33,7 +34,7 @@ This is durable operating knowledge, not a per-session transcript.
 - Real ledger: `R:\peach-data\database\ledger.db`; WAL mode; normal browsing legitimately changes play/activity fields.
 - Tests must create temporary SQLite databases and temporary media files.
 - Before real migration: SQLite backup, asset/tag counts, `PRAGMA integrity_check`, migration version check, then service smoke test.
-- Formal migrations `0000`–`0004` were applied to the real ledger on 2026-08-14. `0003` adds the local default profile, profile-scoped watch queue, typed entity links and entity search terms. `0004` adds synchronized SQLite FTS5 trigram search over asset names/codes, canonical entities, aliases and private search terms. Its backup is `R:\peach-data\database\ledger.pre-migrate-20260814-213920.db`; retain it with the 20:17 recovery points until a later verified migration.
+- Formal migrations `0000`–`0005` were applied to the real ledger on 2026-08-14. `0003` adds the local default profile, profile-scoped watch queue, typed entity links and entity search terms. `0004` adds synchronized SQLite FTS5 trigram search over asset names/codes, canonical entities, aliases and private search terms. `0005` backfills compatibility tags written after `0002` into canonical relations and rebuilds affected FTS rows in one batch. Its backup is `R:\peach-data\database\ledger.pre-migrate-20260814-225437.db`; retain it with the earlier recovery points until a later verified migration.
 - Media and runtime data remain under `R:\media` and `R:\peach-data`; they are not repository assets.
 
 ## Operations

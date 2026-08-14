@@ -23,7 +23,8 @@ class MigrationTests(unittest.TestCase):
         sqlite3.connect(self.db).close()
         backup = self.root / "before.db"
         done = upgrade(self.db, MIGRATIONS, backup)
-        self.assertEqual([m.version for m in done], ["0000", "0001", "0002", "0003", "0004"])
+        self.assertEqual([m.version for m in done],
+                         ["0000", "0001", "0002", "0003", "0004", "0005"])
         self.assertTrue(backup.exists())
         con = sqlite3.connect(self.db)
         tables = {row[0] for row in con.execute(
@@ -38,7 +39,7 @@ class MigrationTests(unittest.TestCase):
                          "entity_external_ref", "asset_entity", "entity_link",
                          "entity_search_term", "watch_queue", "asset_search",
                          "schema_migration"} <= tables)
-        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004"])
+        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005"])
         self.assertEqual(upgrade(self.db, MIGRATIONS), [])
         self.assertEqual(plan(self.db, MIGRATIONS)[1], [])
 
@@ -108,6 +109,43 @@ class MigrationTests(unittest.TestCase):
                          ('tag','tag','stash:tag'),('studio','studio','legacy:asset'),
                          ('creator','creator','legacy:asset'),
                          ('series','series','legacy:asset')} <= relations)
+
+    def test_late_legacy_tags_are_backfilled_by_0005(self):
+        base_migrations = self.root / "base-migrations"
+        base_migrations.mkdir()
+        for name in (
+            "0000_legacy_schema.sql", "0001_core_boundaries.sql",
+            "0002_canonical_entities.sql", "0003_entity_pages_and_watch_queue.sql",
+            "0004_asset_search_fts.sql",
+        ):
+            shutil.copyfile(MIGRATIONS / name, base_migrations / name)
+        sqlite3.connect(self.db).close()
+        upgrade(self.db, base_migrations)
+        con = sqlite3.connect(self.db)
+        con.executescript("""
+          INSERT INTO asset(id,location,path,name,medium)
+          VALUES(1,'local','late.mp4','late.mp4','video');
+          INSERT INTO asset_tag(asset_id,tag,confidence,source)
+          VALUES(1,'足交',0.6,'vision_creator'),
+                (1,'演员:Late Performer',1.0,'stash:performer');
+        """)
+        con.close()
+        upgrade(self.db, MIGRATIONS)
+        con = sqlite3.connect(self.db)
+        relations = set(con.execute(
+            "SELECT e.kind,e.canonical_name,ae.role,ae.source,ae.confidence "
+            "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "WHERE ae.asset_id=1"
+        ))
+        search_entities = con.execute(
+            "SELECT entities FROM asset_search WHERE asset_id=1"
+        ).fetchone()[0]
+        con.close()
+        self.assertIn(('tag', '足交', 'tag', 'vision_creator', 0.6), relations)
+        self.assertIn(('performer', 'Late Performer', 'performer',
+                       'stash:performer', 1.0), relations)
+        self.assertIn('足交', search_entities)
+        self.assertIn('Late Performer', search_entities)
 
     def test_fts_tracks_asset_entity_alias_and_search_term_changes(self):
         sqlite3.connect(self.db).close()

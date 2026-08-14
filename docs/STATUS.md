@@ -52,6 +52,8 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - The creator-board sampler completed before its implementation was changed; it left 86 boards and 598 cached frames. No `creator_boards.py` process was active at the final observation. The command now uses the shared source-access policy, disk guard, PID lock and Peach-managed FFmpeg resolver while preserving its prior arguments and output layout.
 - Creator tagging is now review-first: `scripts/creator_tags.py --export-review` produced `R:\peach-data\generated\creator-tags-review.csv` with 86 boards, 30 prior decisions and 56 pending rows. A parallel worker may write only `candidate`/`skip`; applying accepts only coordinator-reviewed `approved` rows, requires a SQLite backup, and dual-writes compatibility plus canonical tag relations.
 - A Claude Code 2.1.232 batch was asked to inspect those 56 boards but refused explicit sexual-act visual classification after 24 seconds; it made no CSV changes. The queue remains 27 applied, 3 skipped and 56 pending. Claude should be used for non-visual scraping/code/data reconciliation, not this visual category.
+- The earlier Claude Desktop session did visually inspect boards and reported intermediate creator mappings (including `ruth_lee` and `luckydog22`), but its transcript and current ledger disagree: the reported `ruth_lee` foot/hand tags are absent from the persisted `vision_creator` rows. Treat chat text as evidence input, never as an applied result; only the review CSV plus database postcondition is authoritative.
+- Migration `0005_backfill_legacy_tags.sql` is applied to the real ledger. It repaired all 27,295 late `vision_creator` compatibility rows missing from `asset_entity`, temporarily suspended the per-row FTS trigger and rebuilt affected search rows once. The real apply took about 7 seconds; 81,873 assets and 88,672 compatibility tag rows were preserved, canonical relations reached 159,172, missing legacy relations are zero, integrity is `ok` and foreign-key violations are zero. Backup: `R:\peach-data\database\ledger.pre-migrate-20260814-225437.db`.
 - The visible terminal mistaken for a slow batch was the permanent `RM-TrafficWatch` heartbeat. Its scheduled action was changed from `python.exe` to `pythonw.exe` at 22:36, the task restarted successfully, and the new hidden process continued writing `trafficwatch-20260814-223642.log` every 30 seconds. It stops only matching Peach task trees and no longer terminates machine-wide FFmpeg/ffprobe processes.
 
 - `scripts/scrape_codes.py` — code scraping via r18 → avsox → javbus cascade, resumable from
@@ -115,7 +117,8 @@ Runtime PIDs are observations, not configuration; always re-check them.
 
 ## Next work
 
-1. Add a Media Engine stream-plan endpoint and integrate hls.js or Shaka Player before enabling Stash HLS/DASH fallback in the browser.
-2. Configure/evaluate Stash CommunityScrapers and metadata providers before writing another source adapter.
-3. Add explicit feed configuration and reviewed import; only then use APScheduler. Add reviewed inference requests afterward, with AI output remaining candidates.
-4. Move remaining legacy status/suggest/ledger application logic behind repository/application ports, then delete obsolete CLI surfaces.
+1. Reconcile Claude Desktop transcript candidates through `creator-tags-review.csv` rather than direct writes.
+2. Add a Media Engine stream-plan endpoint and integrate hls.js or Shaka Player before enabling Stash HLS/DASH fallback in the browser.
+3. Configure/evaluate Stash CommunityScrapers and metadata providers before writing another source adapter.
+4. Add explicit feed configuration and reviewed import; only then use APScheduler. Add reviewed inference requests afterward, with AI output remaining candidates.
+5. Move remaining legacy status/suggest/ledger application logic behind repository/application ports, then delete obsolete CLI surfaces.
