@@ -4,9 +4,9 @@ from typing import Any
 from fastapi import Body, FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 
+from . import web_contract
 from .config import PeachSettings
 from .ffmpeg import FFmpegResolver
-from .legacy_web import load_legacy
 from .media import FilesystemMediaService, MediaNotFound, MediaUnavailable
 from .previews import PreviewService, PreviewUnavailable
 from .repository import LedgerRepository
@@ -30,7 +30,8 @@ def _authorized(request: Request, token: str, args: dict[str, str]) -> bool:
 
 def create_app(settings: PeachSettings | None = None) -> FastAPI:
     settings = settings or PeachSettings()
-    legacy = load_legacy(settings.legacy_module_path, settings.db_path, settings.token)
+    web_contract.DB = str(settings.db_path)
+    web_contract.cache_bust()
     repository = LedgerRepository(settings.db_path)
     resolver = FFmpegResolver(settings.ffmpeg_root)
     media_service = FilesystemMediaService(
@@ -48,7 +49,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         openapi_url="/openapi.json" if settings.docs_enabled else None,
     )
     app.state.settings = settings
-    app.state.legacy = legacy
+    app.state.web_contract = web_contract
     app.state.repository = repository
     app.state.media_service = media_service
     app.state.preview_service = preview_service
@@ -88,7 +89,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
 
     @app.api_route("/favicon.svg", methods=["GET", "HEAD"])
     def favicon():
-        response = Response(legacy.FAVICON, media_type="image/svg+xml")
+        response = Response(web_contract.FAVICON, media_type="image/svg+xml")
         response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -167,7 +168,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         if not _authorized(request, settings.token, args):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         try:
-            return legacy.dispatch_api_get(f"/api/{route}", args)
+            return web_contract.dispatch_api_get(f"/api/{route}", args)
         except KeyError:
             return JSONResponse({"error": "not found"}, status_code=404)
         except (TypeError, ValueError) as exc:
@@ -181,7 +182,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         if not _authorized(request, settings.token, args):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         try:
-            return legacy.dispatch_api_post(f"/api/{route}", body)
+            return web_contract.dispatch_api_post(f"/api/{route}", body)
         except KeyError:
             return JSONResponse({"error": "not found"}, status_code=404)
         except (TypeError, ValueError) as exc:

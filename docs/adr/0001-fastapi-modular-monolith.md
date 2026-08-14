@@ -10,8 +10,9 @@ Peach 已有可运行的旧 Web 服务，数据查询和写入函数大体独立
 ## 决策
 
 - 后端渐进迁移到 FastAPI；前端与后端在代码职责上拆分，但继续单进程、单体部署。
-- 第一阶段先提供 `/healthz` 与现有 `/api/*` JSON 兼容入口；第二阶段已补齐首页、标准媒体响应、
-  缩略图和 preview/logo 路由。旧实现仅以 `src/peach/compat_web.py` 形式保留到生产切换完成。
+- 第一阶段先提供 `/healthz` 与现有 `/api/*` JSON 入口；第二阶段已补齐首页、标准媒体响应、
+  缩略图和 preview/logo 路由。生产切换完成后，查询/写入 contract 已抽到
+  `src/peach/web_contract.py`，旧 `BaseHTTPRequestHandler` 服务与动态加载器均已删除。
 - 不引入微服务、PostgreSQL、React 重写或完整账号系统。
 - Uvicorn 只允许单 worker，直到进程内缓存、写锁和后台任务状态移出全局变量。
 - schema 升级必须由显式迁移器完成；应用导入和健康检查不得自动改真实数据库。
@@ -24,5 +25,5 @@ Peach 已有可运行的旧 Web 服务，数据查询和写入函数大体独立
 
 ## 后果
 
-迁移期会同时存在 legacy JSON adapter 与 FastAPI 入口，但每一步都可独立验证和回退。JSON、
-媒体 Range、页面和双视口已通过；生产切换前仍需真实迁移备份、端口切换与 mDNS/回退演练。
+FastAPI 现在是唯一 Web 入口；JSON contract、媒体 Range、页面和双视口保持兼容。进程内缓存与
+写锁仍要求单 worker，后续可继续把 contract 拆为显式 repository/application 对象。

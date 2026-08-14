@@ -1,14 +1,9 @@
-import importlib.util
 import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
 
-
-MODULE_PATH = Path(__file__).resolve().parents[1] / "src" / "peach" / "compat_web.py"
-SPEC = importlib.util.spec_from_file_location("rm_web", MODULE_PATH)
-rm_web = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(rm_web)
+from peach import web_contract as rm_web
 
 
 BASE_SCHEMA = """
@@ -35,6 +30,13 @@ CREATE TABLE asset(
   o_count INTEGER,
   snapshot_path TEXT,
   first_seen TEXT,
+  feedback TEXT,
+  disposal TEXT,
+  leave_ratio REAL,
+  play_seconds REAL,
+  feedback_at REAL,
+  seek_count INTEGER,
+  max_reached REAL,
   UNIQUE(location, path)
 );
 CREATE TABLE asset_tag(
@@ -75,7 +77,7 @@ class WebDataTests(unittest.TestCase):
         con.close()
         self.old_db = rm_web.DB
         rm_web.DB = self.db_path
-        rm_web.ensure_columns()
+        rm_web.cache_bust()
 
     def tearDown(self):
         rm_web.DB = self.old_db
@@ -87,14 +89,6 @@ class WebDataTests(unittest.TestCase):
         row = con.execute("SELECT * FROM asset WHERE id=?", (aid,)).fetchone()
         con.close()
         return row
-
-    def test_ensure_columns_is_idempotent(self):
-        rm_web.ensure_columns()
-        con = sqlite3.connect(self.db_path)
-        columns = {row[1] for row in con.execute("PRAGMA table_info(asset)")}
-        con.close()
-        self.assertTrue({"feedback", "disposal", "leave_ratio", "play_seconds",
-                         "feedback_at", "seek_count", "max_reached"} <= columns)
 
     def test_default_database_connection_is_readonly(self):
         con = rm_web.db()
@@ -126,33 +120,6 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(self.row()["feedback"], "dislike")
         self.assertIsNone(rm_web.w_feedback({"id": 1, "kind": "dislike"})["feedback"])
         self.assertEqual(self.row()["disposal"], "pending")
-
-
-class AuthTests(unittest.TestCase):
-    def setUp(self):
-        self.old_token = rm_web.TOKEN
-        rm_web.TOKEN = "secret"
-        self.handler = rm_web.H.__new__(rm_web.H)
-
-    def tearDown(self):
-        rm_web.TOKEN = self.old_token
-
-    def check(self, cookie="", header=None, query=None):
-        self.handler.headers = {"Cookie": cookie}
-        if header is not None:
-            self.handler.headers["X-Token"] = header
-        return self.handler._auth(query or {})
-
-    def test_cookie_name_and_value_must_match_exactly(self):
-        self.assertTrue(self.check(cookie="tok=secret"))
-        self.assertFalse(self.check(cookie="notok=secret"))
-        self.assertFalse(self.check(cookie="tok=secretextra"))
-
-    def test_query_and_header_tokens(self):
-        self.assertTrue(self.check(query={"t": ["secret"]}))
-        self.assertTrue(self.check(header="secret"))
-        self.assertFalse(self.check(header="wrong"))
-
 
 if __name__ == "__main__":
     unittest.main()

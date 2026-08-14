@@ -85,6 +85,14 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
     async def test_auth_and_items_contract(self):
         denied = await self.client.get("/api/items")
         self.assertEqual(denied.status_code, 401)
+        wrong_cookie = await self.client.get(
+            "/api/items", headers={"Cookie": "notok=secret"}
+        )
+        self.assertEqual(wrong_cookie.status_code, 401)
+        cookie = await self.client.get(
+            "/api/items?loc=local&limit=10", headers={"Cookie": "tok=secret"}
+        )
+        self.assertEqual(cookie.status_code, 200)
         response = await self.client.get("/api/items?t=secret&loc=local&limit=10")
         self.assertEqual(response.status_code, 200)
         data = response.json()

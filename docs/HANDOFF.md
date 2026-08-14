@@ -21,6 +21,7 @@ This is durable operating knowledge, not a per-session transcript.
 ## Operations
 
 - Main command: `peach serve|migrate` after editable installation.
+- FastAPI is the only Web server. `web_contract.py` contains the stable JSON surface; do not recreate a parallel `http.server` or dynamic legacy loader.
 - FFmpeg/ffprobe resolve from explicit environment overrides, then `R:\peach-data\tools\ffmpeg\bin`, then `PATH`. No active code may fall back to the Stash private directory.
 - Long-running inventory helpers are under `scripts/`; their scheduled tasks use `R:\peach-app\.venv\Scripts\python.exe`. They use absolute data paths and may be interrupted/restarted where their own locking contract allows it.
 - Check ports 80, 8900 and 9999 before starting or switching services.

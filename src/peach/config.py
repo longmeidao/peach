@@ -24,7 +24,6 @@ class PeachSettings:
     db_path: Path = DATABASE_PATH
     page_path: Path = PROJECT_ROOT / "web" / "index.html"
     token: str = ""
-    legacy_module_path: Path = Path(__file__).with_name("compat_web.py")
     docs_enabled: bool = False
     allowed_media_roots: tuple[Path, ...] = (Path(r"R:\media"), Path("B:/"), Path("A:/"))
     snapshot_root: Path = GENERATED_DIR / "snapshots"
