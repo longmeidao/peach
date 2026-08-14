@@ -12,6 +12,7 @@ Peach 是逻辑前后端分离、部署仍为一个进程的 FastAPI 模块化�
 4. **Web**：当前是无构建步骤的单页，保持移动端优先；不做 React 重写。
 5. **AI providers**：`InferenceProvider` 与 `AgentProvider` 分离。AI 只产出带 provenance/confidence 的候选。
 6. **Profiles**：默认单用户，数据模型预留 user/profile，不引入完整账号体系。
+7. **Follow sources**：RSS/Atom 等成熟协议先归一化为只读候选；原始证据、review 和 ledger 写入分层。
 
 ## Data flow
 
