@@ -111,10 +111,10 @@ button,input{font:inherit;color:inherit}
   font-size:14px;white-space:nowrap}
 .brandpill:hover{border-color:var(--tungsten)}
 .brandpill[aria-pressed="true"]{border-color:var(--tungsten);background:var(--tungsten-soft)}
-.brandpill .mk{width:32px;height:32px;border-radius:50%;background:var(--sunk);flex:none;
+.brandpill .mk{width:32px;height:32px;border-radius:50%;background:#fff;flex:none;
   display:flex;align-items:center;justify-content:center;font-size:12px;
   font-family:Bahnschrift,sans-serif;color:var(--tungsten);overflow:hidden;position:relative}
-.brandpill .mk img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.brandpill .mk img{position:absolute;inset:3px;width:calc(100% - 6px);height:calc(100% - 6px);object-fit:contain;display:block}
 
 /* ── 标签条：唯一常驻的筛选层 ── */
 .tagbar{position:sticky;top:var(--topH);z-index:61;padding:9px 16px;
@@ -142,17 +142,21 @@ button,input{font:inherit;color:inherit}
 .combo .cb b:hover{opacity:1}
 .combo .clr{background:none;border:0;color:var(--muted);cursor:pointer;font-size:12px;text-decoration:underline}
 /* 统计页 */
-.stats{padding:6px 0 30px;max-width:1180px}
-.stats h2{margin:0 0 4px;font-size:22px}
-.stats .sub{color:var(--muted);margin-bottom:20px}
-.scards{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:12px;margin-bottom:22px}
-.scard2{background:var(--surface);border:1px solid var(--line-soft);border-radius:8px;padding:15px 16px}
+.stats{padding:8px 0 42px;max-width:1440px;margin:0 auto}
+.statshead{display:flex;align-items:end;justify-content:space-between;gap:20px;padding:10px 2px 18px;
+  border-bottom:1px solid var(--line-soft);margin-bottom:18px}
+.stats h2{margin:0 0 4px;font-size:26px}
+.stats .sub{color:var(--muted);margin:0}
+.scards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:18px}
+.scard2{background:color-mix(in srgb,var(--surface) 82%,transparent);border:1px solid var(--line-soft);
+  border-radius:14px;padding:18px;box-shadow:0 14px 36px -30px #000}
 .scard2 h3{margin:0 0 11px;font-size:11px;letter-spacing:.14em;color:var(--muted);
   text-transform:uppercase;font-weight:600}
 .kv{display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;
   border-bottom:1px solid var(--line-soft);font-size:13px}
 .kv:last-child{border-bottom:0}
-.kv b{font-variant-numeric:tabular-nums;font-weight:600}
+.kv>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:10px}
+.kv b{font-variant-numeric:tabular-nums;font-weight:600;min-width:0;max-width:62%;text-align:right;overflow-wrap:anywhere}
 .kv .u{color:var(--muted);font-size:11px;margin-left:5px}
 .prog{height:6px;background:var(--sunk);border-radius:99px;overflow:hidden;margin-top:9px}
 .prog i{display:block;height:100%;background:var(--tungsten);border-radius:99px}
@@ -202,6 +206,9 @@ main{padding:14px 16px 90px}
 .count .sorts button:hover{border-color:var(--tungsten);color:var(--ink)}
 .count .sorts button[aria-pressed="true"]{background:var(--tungsten-soft);
   border-color:var(--tungsten);color:var(--tungsten)}
+.count .sorts .batchaction{background:var(--tungsten);border-color:var(--tungsten);color:#fff;
+  font-weight:650;padding-inline:14px}
+.count .sorts .batchaction:hover{background:color-mix(in srgb,var(--tungsten) 82%,#000);color:#fff}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
 .card{cursor:pointer;display:flex;flex-direction:column;gap:8px;min-width:0;
   position:relative;transition:transform .18s ease,filter .18s ease;transform-origin:center}
@@ -214,16 +221,19 @@ main{padding:14px 16px 90px}
 .hv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;
   opacity:0;transition:opacity .2s}
 .hv.on{opacity:1}
-.card:hover .pic{box-shadow:0 0 0 2px var(--tungsten)}
+.card:hover .pic{box-shadow:0 0 0 1px color-mix(in srgb,var(--tungsten) 65%,transparent)}
 @media (hover:hover) and (pointer:fine){
-  .card:hover{transform:translateY(-3px) scale(1.025);z-index:8;filter:brightness(1.04)}
+  .card.longhover{transform:translateY(-7px) scale(1.065);z-index:8;filter:brightness(1.04)}
 }
 .hovertools{position:absolute;inset:0;z-index:4;display:flex;align-items:center;
   justify-content:center;gap:12px;opacity:0;transition:opacity .16s;pointer-events:none}
-.card:hover .hovertools{opacity:1}
-.hovertools button{pointer-events:auto;width:46px;height:46px;border-radius:50%;border:1px solid #FFFFFF55;
-  background:#111B;color:#fff;backdrop-filter:blur(8px);display:grid;place-items:center;
-  cursor:pointer;font:650 11px/1 "Cascadia Mono",monospace;box-shadow:0 6px 22px #0008}
+.card.longhover .hovertools,.card.scard:hover .hovertools{opacity:1}
+.hovertools button{pointer-events:auto;width:54px;height:54px;border-radius:50%;border:1px solid #FFFFFF66;
+  background:#181818B8;color:#fff;backdrop-filter:blur(10px);display:flex;align-items:center;
+  justify-content:center;gap:2px;cursor:pointer;font:650 10px/1 "Cascadia Mono",monospace;
+  box-shadow:0 8px 26px #000A}
+.hovertools button svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.9;
+  stroke-linecap:round;stroke-linejoin:round}
 .hovertools button:hover{background:var(--tungsten);color:#17110a;border-color:var(--tungsten)}
 .hovertools .laterbtn{position:absolute;right:10px;bottom:10px;width:auto;height:38px;border-radius:20px;
   padding:0 14px;font-family:inherit;font-size:12px;display:flex;gap:6px}
@@ -450,9 +460,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   border:0;border-radius:5px;padding:9px 16px;cursor:pointer}
 .tokhint{position:absolute;top:17px;left:16px;color:rgba(243,236,226,.6);font-size:11px}
 
-.more{display:block;margin:24px auto 0;padding:10px 32px;background:transparent;
-  border:1px solid var(--line);border-radius:9999px;cursor:pointer}
-.more:hover{border-color:var(--tungsten)}
+.loadmore{min-height:42px;margin:18px auto 0;text-align:center;color:var(--muted);padding:12px}
 .empty{color:var(--muted);padding:44px 0;text-align:center}
 
 @media (max-width:1080px){.sgrid{grid-template-columns:minmax(0,1fr)}
@@ -474,6 +482,8 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   #density{display:none}
   .entityhero{grid-template-columns:92px minmax(0,1fr);gap:14px;padding:13px}
   .entityportrait{width:92px}.entityhero h2{font-size:20px}
+  .statshead{align-items:center}.stats h2{font-size:23px}.scards{grid-template-columns:minmax(0,1fr)}
+  .scard2{padding:16px}.kv .u{display:block;margin-left:0;margin-top:2px}
 }
 #searchBtn{display:none}
 </style>
@@ -509,7 +519,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
       <button id="tokBtn">进入沉浸模式</button></h2>
     <div class="srow" id="srow"></div>
   </section>
-  <button class="more mono" id="more" hidden>再来 60 个</button>
+  <div class="loadmore mono" id="loadSentinel" hidden>继续载入中…</div>
 </main>
 
 <div class="scrim" id="scrim"></div>
@@ -551,7 +561,7 @@ const srcBadge=(loc,cost,cls)=>
   +(SRCICON[loc]||'')+`${LOC[loc]||loc}${cost==='metered'?' · 计费':''}</span>`;
 
 // sort 默认 daily：同一天进来顺序固定，隔天自动换一批（不是每次刷新都变）
-let state={loc:'local,115',creator:'',studio:'',tag:'',len:'',orient:'',state:'',sort:'seed',seed:String((Date.now()^(Math.random()*1e9|0))%99991),q:'',thumb:'1'};
+let state={loc:'local,115',creator:'',studio:'',tag:'',len:'',orient:'',state:'',sort:'daily',seed:String((Date.now()^(Math.random()*1e9|0))%99991),q:'',thumb:'1'};
 const REP={};   // 创作者/厂牌 → 代表作 id，用来做圆头像（裁接触印相中心格，不另造图）
 let offset=0,total=0,facets=null,current=null;
 const CACHE={};
@@ -572,17 +582,21 @@ applyDensity();
 const POS=[[0,0],[50,0],[100,0],[0,50],[50,50],[100,50],[0,100],[50,100],[100,100]];
 function wireHover(el,it){
   const pic=el.querySelector('.pic'); if(!pic)return;
+  let longTimer=null;
+  const armLong=()=>{longTimer=setTimeout(()=>el.classList.add('longhover'),5000)};
+  const clearLong=()=>{clearTimeout(longTimer);el.classList.remove('longhover')};
   if(it.cost==='metered'){          // 计费源：只换预览图逐格扫视，零流量
     const im=pic.querySelector('.poster'); if(!im)return;
     let t=null,i=4;
-    el.addEventListener('mouseenter',()=>{t=setInterval(()=>{
+    el.addEventListener('mouseenter',()=>{armLong();t=setInterval(()=>{
       i=(i+1)%9; im.src=`/poster?id=${it.id}&c=${i}`},430)});
-    el.addEventListener('mouseleave',()=>{clearInterval(t);im.src=`/poster?id=${it.id}&c=4`});
+    el.addEventListener('mouseleave',()=>{clearLong();clearInterval(t);im.src=`/poster?id=${it.id}&c=4`});
     return;
   }
   let timer=null,v=null;
   el.addEventListener('mouseenter',()=>{
     if(window.__scrolling)return;          // 滚动中不起播，否则每张卡都发请求 → 卡死
+    armLong();
     timer=setTimeout(()=>{
       if(window.__scrolling)return;
       v=document.createElement('video');
@@ -600,6 +614,7 @@ function wireHover(el,it){
     },340);                         // 340ms 防抖，鼠标划过不触发
   });
   el.addEventListener('mouseleave',()=>{
+    clearLong();
     clearTimeout(timer);
     if(v){if(v._hop)clearInterval(v._hop);v.pause();v.removeAttribute('src');v.load();v.remove();v=null}
   });
@@ -616,21 +631,24 @@ function cardHtml(it,cls){
             it.disposal==='pending'&&'dispose',it.watch_later&&'later']
             .filter(Boolean).map(c=>`<i class="${c}"></i>`).join('');
   const who=it.creator||it.code||it.studio||'未归属';
+  const whoKind=it.creator?'creator':(it.studio?'studio':'');
   const perf=(it.performers||[]).map(x=>`<button class="tg artist entitylink" data-entity-kind="performer" data-entity-name="${esc(x)}">${esc(x)}</button>`).join('');
   const tgs=(it.tags||[]).slice(0,3).map(x=>`<span class="tg general" data-tag="${esc(x)}">${esc(x)}</span>`).join('');
   const avId=REP[it.creator]||REP[it.studio];
-  const av=avId?`<img src="/avatar?id=${avId}" alt="" loading="lazy"
-      onerror="this.parentNode.innerHTML='<span class=&quot;ini&quot;>${esc((who||'?').slice(0,1))}</span>'">`
-               :`<span class="ini">${esc((who||'?').slice(0,1))}</span>`;
-  const tools=cls==='scard'
+  const av=`<span class="ini">${esc((who||'?').slice(0,1))}</span>`+
+    (avId?`<img src="/avatar?id=${avId}" alt="" loading="lazy" onerror="this.remove()">`:'');
+  const legacyTools=cls==='scard'
     ? `<div class="hovertools"><button class="laterbtn" data-later aria-pressed="${!!it.watch_later}" title="稍后看">${it.watch_later?'✓ 已加入':'＋ 稍后看'}</button></div>`
     : `<div class="hovertools"><button data-seek="-10" title="后退 10 秒">−10</button><button data-seek="10" title="前进 10 秒">+10</button></div>`;
+  const tools=cls==='scard'
+    ? legacyTools
+    : `<div class="hovertools"><button data-seek="-10" title="后退 10 秒" aria-label="后退 10 秒"><svg viewBox="0 0 24 24"><path d="M8 7H4V3"/><path d="M4.5 7.5A8 8 0 1 1 4 16"/></svg><span>10</span></button><button data-seek="10" title="前进 10 秒" aria-label="前进 10 秒"><span>10</span><svg viewBox="0 0 24 24"><path d="M16 7h4V3"/><path d="M19.5 7.5A8 8 0 1 0 20 16"/></svg></button></div>`;
   return `<article class="card ${cls||''}" data-id="${it.id}">
     <div class="pic">${thumb}
       <div class="badge mono">${srcBadge(it.location,it.cost)}</div>
       <span class="dur mono">${fmtDur(it.duration)}</span>${tr}${tools}</div>
     <div class="meta"><div class="mav">${av}</div><div class="mtext"><div class="t">${esc(it.name)}</div>
-      <div class="s mono"><span class="who">${esc(who)}</span>
+      <div class="s mono">${whoKind?`<button class="who entitylink" data-entity-kind="${whoKind}" data-entity-name="${esc(who)}">${esc(who)}</button>`:`<span class="who">${esc(who)}</span>`}
         ${it.why?`<span class="why">${esc(it.why)}</span>`:''}
         <span>${fmtSize(it.size||0)}</span>
         ${it.play_count?`<span>看过 ${it.play_count}</span>`:''}
@@ -672,15 +690,14 @@ async function buildBars(){
   tops.performers.forEach(x=>{if(x.rep)REP[x.k]=x.rep});
   tops.studios.forEach(x=>{if(x.rep)REP[x.k]=x.rep});
   const avHtml=x=>`<button class="av" data-entity-kind="performer" data-entity-name="${esc(x.k)}">
-    <span class="ring">${x.id
+    <span class="ring"><span class="ini">${esc(x.k.slice(0,1))}</span>${x.id
       ? `<img src="/entity-image?kind=performer&id=${x.id}" alt="" loading="lazy"
-           onerror="${x.rep?`this.onerror=null;this.src='/avatar?id=${x.rep}'`:`this.parentNode.innerHTML='<span class=&quot;ini&quot;>${esc(x.k.slice(0,1))}</span>'`}">`
-      : `<span class="ini">${esc(x.k.slice(0,1))}</span>`}</span>
+           onerror="this.onerror=null;${x.rep?`this.src='/avatar?id=${x.rep}'`:`this.remove()`}">`
+      : ''}</span>
     <span class="nm">${esc(x.k)}</span></button>`;
-  // 正规厂牌用官网 logo（已缓存本地），拿不到的回退接触印相裁切，再不行用首字母
+  // 正规厂牌用官网 logo；缺失时只显示首字母，绝不把作品截图冒充厂牌图标。
   const bpHtml=x=>{
-    const fallback=x.rep?`<img src=&quot;/avatar?id=${x.rep}&quot; style=&quot;width:100%;height:100%;object-fit:cover&quot;>`
-                        :`${esc(x.k.slice(0,2))}`;
+    const fallback=`${esc(x.k.slice(0,2))}`;
     return `<button class="brandpill" data-entity-kind="studio" data-entity-name="${esc(x.k)}">
       <span class="mk"><img src="/logo?studio=${encodeURIComponent(x.k)}" alt=""
         onerror="this.parentNode.innerHTML='${fallback}'"
@@ -728,8 +745,8 @@ async function buildBars(){
     +sec('创作者',chips(facets.creators,'creator',false,26),'<button data-more="creator">更多</button>','artist')
     +sec('内容标签',chips(facets.tags,'tag',false,30),'<button data-more="tag">更多</button>','general')
     +sec('规格',chips(facets.tech,'tag',false,12),'','meta')
-    +`<div class="sec"><h3>全部</h3><div class="chips">
-        <button class="chip" data-page="creators">全部创作者 →</button>
+    +`<div class="sec"><h3>目录</h3><div class="chips navpages">
+        <button class="chip navpage" data-page="performers">全部艺人 →</button>
         <button class="chip" data-page="tags">全部标签 →</button></div></div>`;
   const dc=$('#drawerClose'); if(dc)dc.onclick=()=>openDrawer(false);
   $('#drawer').querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{
@@ -739,6 +756,7 @@ async function buildBars(){
     openDrawer(false);
     if(k==='immerse'){openTok();return}
     if(k==='stats'){openStats();return}
+    if(k==='performers'||k==='tags'){openIndex(k);return}
     if(k==='shorts'){state.orient='竖屏';state.state=''}
     else{state.orient='';state.state=k}
     buildEdge();buildBars();load(true)});
@@ -760,15 +778,16 @@ async function buildBars(){
     bind();});
 }
 /* 排序放在计数行 —— 顶栏放不下也不该放，这是列表的属性 */
-const SORTS=[['daily','每日轮换'],['seed','换一批'],['rand','随机'],['rating','评分'],
+const SORTS=[['daily','每日轮换'],['rand','随机'],['rating','评分'],
              ['o','高潮计数'],['plays','观看次数'],['long','时长'],['big','体积'],
              ['new','最近入库'],['played','最近看的']];
 function renderCount(){
   const n=$('#grid').children.length;
   $('#count').innerHTML=
     `<span class="mono">${total.toLocaleString()} 个符合 · 显示 ${n}</span>`
-    +`<span class="sorts">`+SORTS.map(([k,l])=>
+    +`<span class="sorts"><button class="batchaction" id="batchAction" title="重新抽取一批推荐">↻ 换一批</button>`+SORTS.map(([k,l])=>
       `<button data-sort="${k}" aria-pressed="${state.sort===k}">${l}</button>`).join('')+`</span>`;
+  $('#batchAction').onclick=()=>{state.sort='seed';state.seed=String(Date.now()%99991);load(true)};
   $('#count').querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{
     state.sort=b.dataset.sort;
     if(state.sort==='seed')state.seed=String(Date.now()%99991);
@@ -803,7 +822,7 @@ function renderCombo(){
 async function openStats(){
   const d=await api('/api/stats');
   $('#stats').hidden=false; $('#index').hidden=true; $('#grid').innerHTML='';
-  $('#count').textContent=''; $('#more').hidden=true; $('#shortsSec').hidden=true;
+  $('#count').textContent=''; $('#loadSentinel').hidden=true; $('#shortsSec').hidden=true;
   $('#stage').hidden=true; $('#tiers').style.display='none'; $('#tagbar').style.display='none';
   const a=d.attribution, cs=d.consumption;
   const pct=(x,y)=>y?Math.round(x/y*100):0;
@@ -813,8 +832,9 @@ async function openStats(){
   const card=(t,body)=>`<div class="scard2"><h3>${t}</h3>${body}</div>`;
   const kv=(k,v,u)=>`<div class="kv"><span>${k}</span><b>${v}${u?`<span class="u">${u}</span>`:''}</b></div>`;
   $('#stats').innerHTML=`
-    <h2 class="disp">统计与管理</h2>
-    <div class="sub mono">ledger.db · 本地 + 115 + PikPak</div>
+    <div class="statshead"><div><h2 class="disp">统计与管理</h2>
+      <div class="sub mono">馆藏、归属、加工与真实观看行为</div></div>
+      <button class="ib" id="statsBack" title="返回浏览" aria-label="返回浏览"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button></div>
     <div class="scards">
       ${card('库存', d.by_loc.map(l=>kv(LOC[l.k]||l.k, l.videos.toLocaleString(), gb(l.bytes))).join('')
         + kv('合计', d.by_loc.reduce((s,l)=>s+l.videos,0).toLocaleString(),
@@ -852,8 +872,7 @@ async function openStats(){
       const mx=(r.max_reached||0)*100;
       return kv(esc((r.creator?r.creator+' · ':'')+r.name).slice(0,90),
         `真实看 ${real.toFixed(0)}% / 到达 ${mx.toFixed(0)}%`,
-        real<mx-25?'快进扫过':(r.o_count?`⌀ ${r.o_count}`:''));}).join('')}</div>`:''}
-    <button class="more mono" id="statsBack" style="margin-top:22px">← 返回浏览</button>`;
+        real<mx-25?'快进扫过':(r.o_count?`⌀ ${r.o_count}`:''));}).join('')}</div>`:''}`;
   $('#statsBack').onclick=()=>closeStats();
   $('#stats').querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
     closeStats(); toggleTag(b.dataset.k)});
@@ -862,16 +881,19 @@ async function openStats(){
 function closeStats(){$('#stats').hidden=true;
   $('#tiers').style.display='';$('#tagbar').style.display='';load(true)}
 
-/* ── 全部创作者 / 全部标签 索引页 ── */
+/* ── 全部艺人 / 创作者 / 标签索引页 ── */
 async function openIndex(kind,q){
   const d=await api('/api/index?kind='+kind+(q?'&q='+encodeURIComponent(q):''));
   $('#index').hidden=false; $('#grid').innerHTML=''; $('#count').textContent='';
-  $('#more').hidden=true; $('#shortsSec').hidden=true; $('#stage').hidden=true;
-  const title=kind==='creators'?'全部创作者':'全部标签';
-  const body = kind==='creators'
-    ? `<div class="igrid">`+d.items.map(x=>`<button class="icell" data-k="${esc(x.k)}">
-        <span class="ring">${x.rep?`<img src="/avatar?id=${x.rep}" alt="" loading="lazy">`
-          :`<span class="ini">${esc(x.k.slice(0,1))}</span>`}</span>
+  $('#loadSentinel').hidden=true; $('#shortsSec').hidden=true; $('#stage').hidden=true;
+  const people=kind==='creators'||kind==='performers';
+  const entityKind=kind==='performers'?'performer':'creator';
+  const title=kind==='performers'?'全部艺人':(kind==='creators'?'全部创作者':'全部标签');
+  const body = people
+    ? `<div class="igrid">`+d.items.map(x=>`<button class="icell" data-k="${esc(x.k)}" data-kind="${entityKind}">
+        <span class="ring">${kind==='performers'
+          ? `<img src="/entity-image?kind=performer&id=${x.entity_id}" alt="" loading="lazy" onerror="${x.rep?`this.onerror=null;this.src='/avatar?id=${x.rep}'`:`this.remove()`}">`
+          : (x.rep?`<img src="/avatar?id=${x.rep}" alt="" loading="lazy">`:`<span class="ini">${esc(x.k.slice(0,1))}</span>`)}</span>
         <span class="nm">${esc(x.k)}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')+`</div>`
     : `<div class="tagwall">`+d.items.map(x=>`<button class="tg ${x.cat||'general'}" data-k="${esc(x.k)}"
         style="padding:5px 12px;font-size:13px">${esc(x.k)}
@@ -883,7 +905,7 @@ async function openIndex(kind,q){
   $('#iClose').onclick=()=>{$('#index').hidden=true;load(true)};
   let it2; $('#iq').oninput=e=>{clearTimeout(it2);it2=setTimeout(()=>openIndex(kind,e.target.value.trim()),300)};
   $('#index').querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
-    if(kind==='creators'){openEntity('creator',b.dataset.k);return}
+    if(people){openEntity(b.dataset.kind,b.dataset.k);return}
     else{toggleTag(b.dataset.k);return}
     $('#index').hidden=true;buildBars();load(true)});
 }
@@ -894,7 +916,7 @@ async function openEntity(kind,name){
   const p=new URLSearchParams();p.set(kind,name);p.set('limit','120');p.set('sort','new');
   const items=await api('/api/items?'+p);cache(items.items);
   $('#index').hidden=false;$('#grid').innerHTML='';$('#count').textContent='';
-  $('#more').hidden=true;$('#shortsSec').hidden=true;$('#stage').hidden=true;
+  $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;$('#stage').hidden=true;
   const labels={performer:'女优',studio:'厂牌',creator:'创作者',series:'系列'};
   const image=d.id?`<img src="/entity-image?kind=${kind}&id=${d.id}" alt="${esc(d.canonical_name)}"
       onerror="${d.representative_asset_id?`this.onerror=null;this.src='/avatar?id=${d.representative_asset_id}'`:`this.remove()`}">`:'';
@@ -923,8 +945,8 @@ $('#filterBtn').onclick=()=>openDrawer(!$('#drawer').classList.contains('open'))
 /* 常驻窄图标条：点即切视图，鼠标停留 180ms 展开完整抽屉 */
 const EDGE_ICONS=[
   ['','首页','<path d="M3 10.5 12 3l9 7.5V21H3z"/>'],
-  ['fresh','没看过','<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/>'],
-  ['played','看过','<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
+  ['performers','全部艺人','<circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/>'],
+  ['tags','全部标签','<path d="M20 13l-7 7-9-9V4h7z"/><circle cx="8.5" cy="8.5" r="1.2"/>'],
   ['flagged','已标记','<path d="M12 3.5 14.6 9l6 .9-4.3 4.2 1 6-5.3-2.8L6.7 20l1-6L3.4 9.9 9.4 9z"/>'],
   ['shorts','短片','<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 9l4 3-4 3z"/>'],
   ['ads','疑似广告','<path d="M3 6h18M3 12h18M3 18h12"/><circle cx="19" cy="18" r="2.4"/>'],
@@ -932,7 +954,7 @@ const EDGE_ICONS=[
   ['stats','统计与管理','<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'],
 ];
 function navOn(k){
-  if(k==='immerse'||k==='stats')return false;      // 这两个是动作不是筛选态
+  if(['immerse','stats','performers','tags'].includes(k))return false;
   if(k==='shorts')return state.orient==='竖屏';
   return state.state===k && state.orient!=='竖屏';
 }
@@ -954,6 +976,7 @@ function buildEdge(){
     openDrawer(false);                     // 点了就收起抽屉，别挡着
     if(k==='immerse'){openTok();return}
     if(k==='stats'){openStats();return}
+    if(k==='performers'||k==='tags'){openIndex(k);return}
     if(k==='shorts'){state.orient='竖屏';state.state=''}else{state.orient='';state.state=k}
     buildEdge();buildBars();load(true)});
 }
@@ -1007,7 +1030,7 @@ async function load(reset){
     const d=await api('/api/ads?limit=200'); cache(d.items);
     $('#grid').innerHTML=d.items.map(it=>cardHtml(it)).join('');
     $('#count').innerHTML=`疑似广告 ${d.total} 个 · 看图确认后点「标记待删」，攒够走 CSV 流程再删`;
-    $('#more').hidden=true; $('#shortsSec').hidden=true; wireCards($('#grid')); return;
+    $('#loadSentinel').hidden=true; $('#shortsSec').hidden=true; wireCards($('#grid')); return;
   }
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
   p.set('limit',60); p.set('offset',offset);
@@ -1015,11 +1038,15 @@ async function load(reset){
   const html=d.items.map(it=>cardHtml(it)).join('');
   if(reset)$('#grid').innerHTML=html; else $('#grid').insertAdjacentHTML('beforeend',html);
   renderCount();
-  $('#more').hidden=$('#grid').children.length>=total;
+  $('#loadSentinel').hidden=$('#grid').children.length>=total;
   wireCards($('#grid'));
   if(reset)loadShorts();
 }
-$('#more').onclick=()=>{offset+=60;load(false)};
+const loadObserver=new IntersectionObserver(entries=>{
+  if(entries.some(x=>x.isIntersecting)&&!$('#loadSentinel').hidden&&$('#stats').hidden&&$('#index').hidden){
+    offset+=60;load(false)}
+},{rootMargin:'320px'});
+loadObserver.observe($('#loadSentinel'));
 let qt;$('#q').oninput=e=>{clearTimeout(qt);qt=setTimeout(()=>{state.q=e.target.value.trim();load(true)},320)};
 
 async function loadShorts(){
@@ -1058,7 +1085,7 @@ async function openItem(id){
     <div class="side">
       <div class="stitle">${esc(it.name)}</div>
       <div class="smeta mono">${srcBadge(it.location,it.cost,'srcbig')}
-        <span style="color:var(--tungsten);align-self:center">${esc(who)}</span>
+        ${it.creator?`<button class="entitylink" data-entity-kind="creator" data-entity-name="${esc(it.creator)}">${esc(it.creator)}</button>`:`<span style="color:var(--tungsten);align-self:center">${esc(who)}</span>`}
         <span style="align-self:center">${it.width||'?'}×${it.height||'?'}</span>
         <span style="align-self:center">${fmtSize(it.size||0)}</span></div>
       ${entityPills?`<div class="stags" style="gap:9px">${entityPills}</div>`:''}
@@ -1225,7 +1252,7 @@ $('#searchBtn').onclick=()=>{const s=$('.search');s.classList.toggle('open');
   if(s.classList.contains('open'))$('#q').focus()};
 $('#q').addEventListener('blur',()=>{if(!$('#q').value)$('.search').classList.remove('open')});
 $('#brandHome').onclick=e=>{e.preventDefault();
-  state={loc:state.loc,creator:'',studio:'',tag:'',len:'',orient:'',state:'',sort:'seed',seed:String((Date.now()^(Math.random()*1e9|0))%99991),q:'',thumb:'1'};
+  state={loc:state.loc,creator:'',studio:'',tag:'',len:'',orient:'',state:'',sort:'daily',seed:String((Date.now()^(Math.random()*1e9|0))%99991),q:'',thumb:'1'};
   $('#q').value='';$('#stage').hidden=true;buildBars();load(true);window.scrollTo({top:0,behavior:'smooth'})};
 $('#tokClose').onclick=()=>{$('#tok').hidden=true;const v=$('#tokVid');v.pause();v.removeAttribute('src');
   v.load();document.body.style.overflow=''};

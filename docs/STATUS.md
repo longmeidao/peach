@@ -45,6 +45,9 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - Optional SSL is supported with an explicit certificate/key pair. Production remains HTTP until a trusted local certificate is supplied.
 - Immersive-mode actions now use optically centered 60 px controls with visible `不喜欢` / `看过` / `高潮` labels; the orgasm count is a corner badge and the watched state changes to `已看`.
 - Long-card hover now enlarges the card and exposes ±10-second preview seeking; short cards expose a profile-backed “稍后看” action. Item details show linked performers/studio/creator/series, and top performer/studio entries navigate to entity pages instead of mutating filters.
+- The interaction pass now delays long-card enlargement and ±10-second controls until five seconds of continuous hover; quick pointer movement only previews. Creator names on cards and details navigate directly to entity pages. “换一批” is a filled action, not a pressed sort filter, and bottom “再来 60 个” pagination is replaced by an intersection-driven continuation sentinel.
+- The desktop rail now prioritizes “全部艺人” and “全部标签” instead of duplicating “没看过/看过”; the drawer exposes the same destinations. The performer wall returned 600 entries and the tag cloud 173 in candidate verification. The statistics surface uses the shared card/grid language and no longer exposes a bottom load/refresh control.
+- Official 115 (120 px PNG) and PikPak (SVG) marks are cached with source sidecars and rendered centered in source filters/badges. The complete studio-logo audit found 27/114 canonical studios with a cached logo and 87 missing. Missing studios now show initials rather than a misleading representative-work crop; online logo completion remains queued.
 - Migration `0003` added entity summaries, typed links/search terms and `watch_queue`. Thirteen reviewed studio duplicate groups were merged with 15 aliases; Prestige has 248 video assets after Japanese/Prestige Premium normalization, while distinct `PREMIUM` remains separate.
 - FC2's 16×16 favicon was replaced by the official 102×43 asset and the user-provided Prestige logo was cached locally, both with provenance sidecars. Performer-image routing prefers a provenance-backed entity cache; Stash's default SVG silhouette is rejected rather than mislabeled as an HD portrait.
 - `scripts/import_stash_entities.py` reconciled the Stash public performer contract into Peach without making Stash authoritative: 383 exact stable refs, 52 aliases/search terms and two explicitly declared X links were imported. Of 42 non-placeholder Stash images, 14 passed the 512 px short-side gate and were cached with provenance; 28 smaller images were rejected. Top entries including 一个ren、高桥千凛 and 小桃 now use 720 px-class cached portraits.
@@ -131,10 +134,9 @@ Runtime PIDs are observations, not configuration; always re-check them.
 2. Add a simple Like action that increases preference weight, plus a private free-text “为什么喜欢” field.
    Store the user's original text as truth; AI may propose normalized taste facets with provenance and
    confidence for review, but must not replace or silently reinterpret the note.
-3. Fix blue creator/performer links so they navigate directly to the entity page without opening the
-   video. Change long-card enlargement to trigger only after continuous hover longer than five seconds;
-   retain ±10-second seeking but restyle its overlay controls after the Beeg reference. Short hover keeps
-   the existing Later action.
+3. Finish visual identity quality: implement the deferred portrait scoring hierarchy (reviewed/public HD
+   portrait → high-quality public portrait → face-aware crop from the most-watched work → sharp keyframe),
+   and source the 87 missing studio logos from official/public sources with provenance and quality gates.
 4. Add a Media Engine stream-plan endpoint and integrate hls.js or Shaka Player before enabling Stash HLS/DASH fallback in the browser.
 5. Configure/evaluate Stash CommunityScrapers and metadata providers before writing another source adapter.
 6. Add explicit feed configuration and reviewed import; only then use APScheduler. Add reviewed inference requests afterward, with AI output remaining candidates.
@@ -142,13 +144,16 @@ Runtime PIDs are observations, not configuration; always re-check them.
 
 Claude project hooks now refresh the managed batch block on Stop, StopFailure and SessionEnd. Codex has no equivalent task-end project hook; its coordinator must keep the same STATUS/HANDOFF write contract manually. Hook verification used a synthetic event and a temporary document/state file; no prompt, response or token was persisted.
 
+The latest UI candidate passed JavaScript parse, 64 isolated tests, desktop browser behavior and 390×844 layout. Production had not yet been restarted at the time this paragraph was written; deployment status must be updated only after the port-80 process is replaced and smoked.
+
 ## 批处理进度（自动生成）
 
 <!-- job-status:start -->
 
 <!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->
-<!-- generated 2026-08-14T15:19Z -->
+<!-- generated 2026-08-14T15:37Z -->
 
+- 最近自动交接：`claude` / `Stop` / `completed`，2026-08-14T15:37:53+00:00。
 - 资产 81873 条，其中视频 24980 条。
 - 待抽帧（可抽 / 缺时长待 probe / 合计）：
   - `local`：4 / 1 / 5

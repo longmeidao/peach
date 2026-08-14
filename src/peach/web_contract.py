@@ -503,14 +503,15 @@ def q_entity(contract: WebContract, args):
     return d
 
 def q_index(contract: WebContract, kind, q="", limit=600):
-    """全部创作者 / 全部标签的索引页数据。"""
+    """全部艺人 / 创作者 / 标签的索引页数据。"""
     c = contract.db()
-    if kind == "creators":
+    if kind in {"creators", "performers"}:
+        entity_kind = "creator" if kind == "creators" else "performer"
         sql = ("SELECT e.id entity_id,e.canonical_name k,count(DISTINCT ae.asset_id) n "
                "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
                "JOIN asset a ON a.id=ae.asset_id "
-               "WHERE a.medium='video' AND e.kind='creator' ")
-        par = []
+               "WHERE a.medium='video' AND e.kind=? ")
+        par = [entity_kind]
         if q: sql += "AND e.canonical_name LIKE ? "; par.append(f"%{q}%")
         sql += "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT ?"; par.append(limit)
         rows = [dict(r) for r in c.execute(sql, par)]
@@ -518,7 +519,9 @@ def q_index(contract: WebContract, kind, q="", limit=600):
             g = c.execute(
                 "SELECT a.id FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
                 "WHERE ae.entity_id=? AND a.medium='video' AND a.snapshot_path IS NOT NULL "
-                "ORDER BY a.size DESC LIMIT 1", (r.pop("entity_id"),),
+                "ORDER BY COALESCE(a.play_count,0) DESC,COALESCE(a.play_seconds,0) DESC,"
+                "COALESCE(a.width,0)*COALESCE(a.height,0) DESC,a.size DESC LIMIT 1",
+                (r["entity_id"],),
             ).fetchone()
             r["rep"] = g[0] if g else None
     else:
