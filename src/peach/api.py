@@ -64,7 +64,8 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         settings.avatar_root, settings.logo_root, settings.legacy_snapshot_roots,
     )
     mdns = create_mdns_publisher(
-        settings.mdns_name, settings.mdns_port, secure=settings.tls_enabled
+        settings.mdns_name, settings.mdns_port, secure=settings.tls_enabled,
+        address=settings.mdns_address,
     ) if settings.mdns_enabled else None
     providers = default_registry()
     opencode_go = OpenCodeGoClient(transport=http_transport)
@@ -215,6 +216,16 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         response = FileResponse(path, media_type=content_type)
         response.headers["Cache-Control"] = "public, max-age=86400"
         return response
+
+    @app.api_route("/item/{item_id}", methods=["GET", "HEAD"])
+    @app.api_route("/entity/{kind}/{name:path}", methods=["GET", "HEAD"])
+    @app.api_route("/performers", methods=["GET", "HEAD"])
+    @app.api_route("/tags", methods=["GET", "HEAD"])
+    @app.api_route("/stats", methods=["GET", "HEAD"])
+    @app.api_route("/immerse", methods=["GET", "HEAD"])
+    def client_route(request: Request, item_id: int | None = None,
+                     kind: str | None = None, name: str | None = None):
+        return index(request)
 
     @app.api_route("/entity-image", methods=["GET", "HEAD"])
     def entity_image(request: Request, kind: str, id: int):

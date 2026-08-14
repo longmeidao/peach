@@ -143,6 +143,27 @@ class WebDataTests(unittest.TestCase):
         self.assertNotIn("path", result["items"][0])
         self.assertNotIn("snapshot_path", result["items"][0])
 
+    def test_items_support_duration_range(self):
+        result = rm_web.q_items(
+            self.contract, {"dur_min": "90", "dur_max": "110", "limit": "10"},
+        )
+        self.assertEqual([item["id"] for item in result["items"]], [1])
+
+    def test_legacy_length_tags_are_hidden_in_favor_of_numeric_minutes(self):
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(14,'tag','短片-2分内','短片-2分内')"
+        )
+        con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+            "VALUES(1,14,'tag','test',1.0)"
+        )
+        con.commit(); con.close()
+        self.assertNotIn("短片-2分内", [tag["k"] for tag in rm_web.q_item(self.contract, 1)["tags"]])
+        facets = rm_web.q_facets(self.contract)
+        visible = {row["k"] for row in facets["tags"] + facets["tech"]}
+        self.assertNotIn("短片-2分内", visible)
+
     def test_activity_accumulates_real_play_time_and_max_position(self):
         first = rm_web.w_activity(self.contract, {
             "id": 1, "position": 50, "duration": 100, "delta": 12, "seeks": 2,
@@ -177,6 +198,9 @@ class WebDataTests(unittest.TestCase):
         item = rm_web.q_item(self.contract, 1)
         self.assertTrue(item["liked"])
         self.assertEqual(item["like_reason"], "喜欢自然的节奏和镜头")
+        self.assertEqual(item["entity_refs"]["performer"], [
+            {"id": 11, "name": "Canonical Alice"},
+        ])
         self.assertIsNone(self.row()["feedback"])
 
         cleared = rm_web.w_preference(self.contract, {
@@ -189,6 +213,16 @@ class WebDataTests(unittest.TestCase):
         other = rm_web.WebContract(Path(self.tmp.name) / "other.db")
         self.assertEqual(self.contract.cached("same", lambda: "first"), "first")
         self.assertEqual(other.cached("same", lambda: "second"), "second")
+
+    def test_batch_markers_are_bounded_and_preserve_like_reason(self):
+        rm_web.w_preference(self.contract, {"id": 1, "liked": False, "reason": "保留原文"})
+        result = rm_web.w_batch(self.contract, {"ids": [1, 2, 2], "operation": "like"})
+        self.assertEqual(result["changed"], 2)
+        self.assertEqual(rm_web.q_item(self.contract, 1)["like_reason"], "保留原文")
+        rm_web.w_batch(self.contract, {"ids": [1, 2], "operation": "dispose"})
+        self.assertEqual(self.row(1)["disposal"], "pending")
+        with self.assertRaises(ValueError):
+            rm_web.w_batch(self.contract, {"ids": list(range(201)), "operation": "seen"})
 
     def test_top_lists_and_related_items_use_canonical_entities(self):
         tops = rm_web.q_tops(self.contract, 10)

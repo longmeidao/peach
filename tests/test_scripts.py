@@ -86,6 +86,32 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertFalse(self.traffic_watch.is_direct({"chains": ["Proxy", "Relay"]}))
         self.assertEqual(self.creator_boards.safe_name("A/B:C"), "A_B_C")
 
+    def test_probe_never_records_an_unknown_duration_as_zero(self):
+        """0 会同时躲过 probe 的 `duration IS NULL` 和抽帧的 `duration>2`，永久卡住。"""
+        module = self.probe
+
+        class _Empty:
+            stdout = b'{"format":{},"streams":[{"width":0,"height":0}]}'
+
+        original = module.subprocess.run
+        module.subprocess.run = lambda *args, **kwargs: _Empty()
+        try:
+            duration, width, height, codec, fps, audio = module.probe_file("ffprobe", "x.mp4")
+        finally:
+            module.subprocess.run = original
+        self.assertEqual(duration, -1.0)
+        self.assertEqual((width, height, codec), (0, 0, None))
+        self.assertEqual(module.context_fields(width, height, duration), (None, None, None))
+
+    def test_probe_redo_separates_unprobed_from_failed(self):
+        selection = self.probe.duration_selection
+        self.assertEqual(selection("none"), "duration IS NULL")
+        self.assertEqual(selection("zero"), "(duration IS NULL OR duration=0)")
+        self.assertEqual(selection("failed"), "(duration IS NULL OR duration<0)")
+        self.assertEqual(selection("all"), "(duration IS NULL OR duration<=0)")
+        self.assertEqual(self.probe.build_parser().parse_args([]).redo, "none")
+        self.assertEqual(self.probe.build_parser().parse_args(["--redo", "zero"]).redo, "zero")
+
     def test_code_normalization(self):
         normalise = self.scrape_codes.normalise
         self.assertEqual(normalise("fc2ppv-1234567"), "FC2-PPV-1234567")

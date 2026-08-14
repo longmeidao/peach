@@ -108,7 +108,7 @@ def q_items(contract: WebContract, args):
             "WHERE ae.asset_id=a.id AND e.kind='series' AND e.canonical_name=?)"
         ); par.append(args["series"])
     if args.get("tag"):
-        # 逗号分隔 = 组合筛选，全部满足（Beeg 的 /PinkLoving+Anal）
+        # 逗号分隔 = 组合筛选，全部满足。
         for tg in [x for x in args["tag"].split(",") if x]:
             where.append(
                 "(EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
@@ -118,6 +118,10 @@ def q_items(contract: WebContract, args):
             par.extend((tg, tg))
     if args.get("len"):
         where.append("a.ctx_length = ?"); par.append(args["len"])
+    if args.get("dur_min"):
+        where.append("a.duration >= ?"); par.append(max(0, float(args["dur_min"])))
+    if args.get("dur_max"):
+        where.append("a.duration <= ?"); par.append(max(0, float(args["dur_max"])))
     if args.get("orient"):
         where.append("a.ctx_orient = ?"); par.append(args["orient"])
     if args.get("q"):
@@ -281,20 +285,25 @@ def q_item(contract: WebContract, aid):
         "SELECT tag FROM asset_tag WHERE asset_id=? ORDER BY tag", (aid,),
     )]
     canonical = list(c.execute(
-        "SELECT DISTINCT e.kind,e.canonical_name FROM asset_entity ae "
+        "SELECT DISTINCT e.id,e.kind,e.canonical_name FROM asset_entity ae "
         "JOIN entity e ON e.id=ae.entity_id WHERE ae.asset_id=? "
         "AND e.kind IN ('tag','performer','creator','studio','series') "
         "ORDER BY e.kind,e.canonical_name", (aid,),
     ))
-    canonical_tags = [name for kind, name in canonical if kind == "tag"]
-    canonical_performers = [name for kind, name in canonical if kind == "performer"]
+    canonical_tags = [name for _, kind, name in canonical if kind == "tag"]
+    canonical_performers = [name for _, kind, name in canonical if kind == "performer"]
     tags = canonical_tags or [tag for tag in legacy if not tag.startswith("演员:")]
-    d["tags"] = [{"k": tag, "cat": tag_cat(tag)} for tag in tags]
+    d["tags"] = [{"k": tag, "cat": tag_cat(tag)} for tag in tags if tag not in LENGTH_TAGS]
     d["performers"] = canonical_performers or [
         tag[3:] for tag in legacy if tag.startswith("演员:")
     ]
     d["entities"] = {
-        kind: [name for item_kind, name in canonical if item_kind == kind]
+        kind: [name for _, item_kind, name in canonical if item_kind == kind]
+        for kind in ("creator", "performer", "studio", "series")
+    }
+    d["entity_refs"] = {
+        kind: [{"id": entity_id, "name": name}
+               for entity_id, item_kind, name in canonical if item_kind == kind]
         for kind in ("creator", "performer", "studio", "series")
     }
     if d["entities"]["creator"]:
@@ -307,9 +316,10 @@ def q_item(contract: WebContract, aid):
     d.pop("snapshot_path", None); d.pop("path", None)
     return d
 
-# ── 标签分级（配色用，参考 rule34 的分类着色）──
+# ── 标签语义分级 ──
+LENGTH_TAGS = {"短片-2分内", "中片-10分内", "长片-30分内", "超长片"}
 TECH_TAGS = {"1080P", "720P", "4K", "2K", "2160P", "480P", "低画质", "高帧率",
-             "短片-2分内", "中片-10分内", "长片-30分内", "超长片", "横屏", "竖屏",
+             "横屏", "竖屏",
              "真人", "混合集", "身份待确认", "R-18", "有码", "无码"}
 COPYRIGHT_HINT = re.compile(
     r"(ブルーアーカイブ|崩壊|崩坏|原神|勝利の女神|NIKKE|アークナイツ|明日方舟|"
@@ -317,8 +327,9 @@ COPYRIGHT_HINT = re.compile(
     r"サイバーパンク|Honkai|Genshin|Blue Archive|VTuber|hololive|にじさんじ)", re.I)
 
 def tag_cat(t):
-    """rule34 式分级：meta 规格 / artist 创作者 / character 角色 / copyright 作品 / general 内容"""
+    """meta 规格 / artist 创作者 / character 角色 / copyright 作品 / general 内容。"""
     if t.startswith("演员:"):  return "artist"
+    if t in LENGTH_TAGS:       return "meta"
     if t in TECH_TAGS:         return "meta"
     if COPYRIGHT_HINT.search(t): return "copyright"
     if re.search(r"(ちゃん|さん|酱|娘)$", t) and len(t) <= 8: return "character"
@@ -637,7 +648,7 @@ def q_facets(contract: WebContract):
     # 标签要分层 —— 原来一锅端，结果「演员:一个ren」和「1080P」「足交」混在一起。
     # 三类分开：技术规格（画质/时长/画幅，筛选价值低）、内容维度（真正有用的）、演员（另立一栏）。
     TECH = ("1080P", "720P", "4K", "2160P", "480P", "低画质", "高帧率",
-            "短片-2分内", "中片-10分内", "长片-30分内", "超长片", "横屏", "竖屏",
+            "横屏", "竖屏",
             "真人", "混合集", "身份待确认", "R-18")
     rows = [dict(r) for r in c.execute(
         "SELECT e.canonical_name AS k, count(DISTINCT ae.asset_id) AS n "
@@ -645,7 +656,7 @@ def q_facets(contract: WebContract):
         "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='tag' "
         "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 400")]
     out["tags"] = [dict(r, cat=tag_cat(r["k"])) for r in rows
-                   if r["k"] not in TECH][:44]
+                   if r["k"] not in TECH and r["k"] not in LENGTH_TAGS][:44]
     out["tech"] = [r for r in rows if r["k"] in TECH][:14]
     out["tagperformers"] = [dict(r) for r in c.execute(
         "SELECT e.canonical_name AS k,count(DISTINCT ae.asset_id) AS n "
@@ -794,6 +805,54 @@ def w_preference(contract: WebContract, body):
             "like_reason": row["reason"] if row else ""}
 
 
+def w_batch(contract: WebContract, body):
+    """Apply one explicit, reversible marker to a bounded selected set."""
+    raw_ids = body.get("ids")
+    if not isinstance(raw_ids, list):
+        raise TypeError("ids must be a list")
+    ids = list(dict.fromkeys(int(item) for item in raw_ids))
+    if not ids or len(ids) > 200:
+        raise ValueError("batch requires 1 to 200 assets")
+    operation = body.get("operation")
+    if operation not in {"like", "seen", "later", "dispose"}:
+        raise ValueError("unsupported batch operation")
+    marks = ",".join("?" * len(ids))
+    contract.cache_bust()
+    with contract.write_lock:
+        connection = contract.db(write=True)
+        found = connection.execute(
+            f"SELECT id FROM asset WHERE id IN ({marks})", ids,
+        ).fetchall()
+        valid_ids = [row["id"] for row in found]
+        if not valid_ids:
+            connection.close()
+            raise ValueError("assets not found")
+        now = time.time()
+        if operation in {"seen", "dispose"}:
+            column, value = ("feedback", "seen") if operation == "seen" else ("disposal", "pending")
+            placeholders = ",".join("?" * len(valid_ids))
+            connection.execute(
+                f"UPDATE asset SET {column}=?,feedback_at=? WHERE id IN ({placeholders})",
+                [value, now, *valid_ids],
+            )
+        elif operation == "later":
+            connection.executemany(
+                "INSERT OR IGNORE INTO watch_queue(profile_id,asset_id,added_at,source) "
+                "VALUES('local-default',?,strftime('%Y-%m-%dT%H:%M:%fZ','now'),'web-batch')",
+                [(asset_id,) for asset_id in valid_ids],
+            )
+        else:
+            connection.executemany(
+                "INSERT INTO asset_preference(profile_id,asset_id,liked,reason,source,updated_at) "
+                "VALUES('local-default',?,1,'','web-batch',strftime('%Y-%m-%dT%H:%M:%fZ','now')) "
+                "ON CONFLICT(profile_id,asset_id) DO UPDATE SET liked=1,source='web-batch',"
+                "updated_at=excluded.updated_at",
+                [(asset_id,) for asset_id in valid_ids],
+            )
+        connection.commit(); connection.close()
+    return {"ok": True, "operation": operation, "changed": len(valid_ids)}
+
+
 def dispatch_api_get(contract: WebContract, path, args):
     """Dispatch the stable JSON read contract used by the current web client."""
     if path == "/api/items":
@@ -829,4 +888,6 @@ def dispatch_api_post(contract: WebContract, path, body):
         return w_watch_later(contract, body)
     if path == "/api/preference":
         return w_preference(contract, body)
+    if path == "/api/batch":
+        return w_batch(contract, body)
     raise KeyError(path)

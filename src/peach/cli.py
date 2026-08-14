@@ -28,6 +28,7 @@ def _serve(args: argparse.Namespace) -> int:
         mdns_enabled=not args.no_mdns,
         mdns_name=args.mdns_name,
         mdns_port=args.port,
+        mdns_address=args.mdns_address,
         tls_enabled=tls_enabled,
     )
     uvicorn.run(
@@ -68,6 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--docs", action="store_true")
     serve.add_argument("--no-mdns", action="store_true")
     serve.add_argument("--mdns-name", default="peach")
+    serve.add_argument("--mdns-address", help="explicit LAN IPv4 to publish")
     serve.add_argument("--ssl-certfile", type=Path)
     serve.add_argument("--ssl-keyfile", type=Path)
     serve.set_defaults(handler=_serve)

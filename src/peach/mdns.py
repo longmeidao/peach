@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import socket
+import ipaddress
 from collections.abc import Callable
 
 from zeroconf import ServiceInfo, Zeroconf
@@ -22,9 +23,36 @@ def lan_ipv4() -> str:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         sock.connect(("192.0.2.1", 80))
-        return str(sock.getsockname()[0])
+        routed = str(sock.getsockname()[0])
     finally:
         sock.close()
+    benchmark = ipaddress.ip_network("198.18.0.0/15")
+    if ipaddress.ip_address(routed) not in benchmark:
+        return routed
+    # Full-tunnel proxies may own the default route. Fall back to host interfaces,
+    # rejecting the benchmarking range used by Mihomo and obvious host-only endpoints.
+    candidates = []
+    for value in socket.gethostbyname_ex(socket.gethostname())[2]:
+        address = ipaddress.ip_address(value)
+        if not isinstance(address, ipaddress.IPv4Address) or address in benchmark:
+            continue
+        if address.is_loopback or address.is_link_local or address.is_unspecified:
+            continue
+        prefix_score = 3 if value.startswith("192.168.") else (2 if value.startswith("10.") else 1)
+        endpoint_score = 0 if int(value.rsplit(".", 1)[1]) in {1, 2} else 1
+        candidates.append((prefix_score, endpoint_score, value))
+    if not candidates:
+        raise RuntimeError("no publishable LAN IPv4 address; pass --mdns-address")
+    return max(candidates)[2]
+
+
+def _explicit_resolver(address: str) -> Callable[[], str]:
+    parsed = ipaddress.ip_address(address)
+    if not isinstance(parsed, ipaddress.IPv4Address):
+        raise ValueError("mDNS address must be IPv4")
+    if parsed.is_loopback or parsed.is_multicast or parsed.is_unspecified:
+        raise ValueError("mDNS address must be a publishable interface IPv4")
+    return lambda: str(parsed)
 
 
 class MdnsPublisher:
@@ -96,5 +124,8 @@ class MdnsPublisher:
             self.status = "stopped"
 
 
-def create_mdns_publisher(name: str, port: int, secure: bool = False) -> MdnsPublisher:
-    return MdnsPublisher(name, port, secure=secure)
+def create_mdns_publisher(
+    name: str, port: int, secure: bool = False, address: str | None = None,
+) -> MdnsPublisher:
+    resolver = _explicit_resolver(address) if address else lan_ipv4
+    return MdnsPublisher(name, port, secure=secure, address_resolver=resolver)

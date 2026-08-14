@@ -24,7 +24,7 @@ class MigrationTests(unittest.TestCase):
         backup = self.root / "before.db"
         done = upgrade(self.db, MIGRATIONS, backup)
         self.assertEqual([m.version for m in done],
-                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006"])
+                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007"])
         self.assertTrue(backup.exists())
         con = sqlite3.connect(self.db)
         tables = {row[0] for row in con.execute(
@@ -39,7 +39,7 @@ class MigrationTests(unittest.TestCase):
                          "entity_external_ref", "asset_entity", "entity_link",
                          "entity_search_term", "watch_queue", "asset_preference", "asset_search",
                          "schema_migration"} <= tables)
-        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006"])
+        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007"])
         self.assertEqual(upgrade(self.db, MIGRATIONS), [])
         self.assertEqual(plan(self.db, MIGRATIONS)[1], [])
 
@@ -146,6 +146,37 @@ class MigrationTests(unittest.TestCase):
                        'stash:performer', 1.0), relations)
         self.assertIn('足交', search_entities)
         self.assertIn('Late Performer', search_entities)
+
+    def test_structural_creator_cleanup_keeps_real_creator(self):
+        base_migrations = self.root / "base-migrations"
+        base_migrations.mkdir()
+        for path in sorted(MIGRATIONS.glob("*.sql")):
+            if not path.name.startswith("0007_"):
+                shutil.copyfile(path, base_migrations / path.name)
+        sqlite3.connect(self.db).close()
+        upgrade(self.db, base_migrations)
+        connection = sqlite3.connect(self.db)
+        connection.executescript("""
+          INSERT INTO asset(id,location,path,name,medium,creator)
+          VALUES(1,'115','B:/xxr/门槛/one.mp4','one.mp4','video','门槛');
+          INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)
+          VALUES(101,'creator','门槛','门槛','now','now'),
+                (102,'creator','Actual Creator','actual creator','now','now');
+          INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)
+          VALUES(1,101,'creator','legacy:asset',0.8),
+                (1,102,'creator','reviewed',1.0);
+        """)
+        connection.close()
+        upgrade(self.db, MIGRATIONS)
+        connection = sqlite3.connect(self.db)
+        self.assertEqual(connection.execute(
+            "SELECT creator FROM asset WHERE id=1"
+        ).fetchone()[0], "Actual Creator")
+        self.assertEqual(connection.execute(
+            "SELECT e.canonical_name FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "WHERE ae.asset_id=1 AND e.kind='creator'"
+        ).fetchall(), [("Actual Creator",)])
+        connection.close()
 
     def test_fts_tracks_asset_entity_alias_and_search_term_changes(self):
         sqlite3.connect(self.db).close()

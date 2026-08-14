@@ -28,6 +28,7 @@ class PeachSettings:
     mdns_enabled: bool = False
     mdns_name: str = "peach"
     mdns_port: int = 80
+    mdns_address: str | None = None
     tls_enabled: bool = False
     allowed_media_roots: tuple[Path, ...] = (Path(r"R:\media"), Path("B:/"), Path("A:/"))
     snapshot_root: Path = GENERATED_DIR / "snapshots"

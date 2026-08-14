@@ -1,7 +1,7 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from peach.mdns import MdnsPublisher, create_mdns_publisher
+from peach.mdns import MdnsPublisher, create_mdns_publisher, lan_ipv4
 
 
 class MdnsPublisherTests(unittest.TestCase):
@@ -41,6 +41,27 @@ class MdnsPublisherTests(unittest.TestCase):
 
     def test_factory_uses_verified_zeroconf_backend(self):
         self.assertIsInstance(create_mdns_publisher("peach", 80), MdnsPublisher)
+
+    def test_explicit_address_avoids_tunnel_route(self):
+        with patch("peach.mdns.Zeroconf") as zeroconf_type:
+            publisher = create_mdns_publisher(
+                "peach", 80, address="192.168.50.162",
+            )
+            publisher.start()
+            self.assertEqual(publisher.address, "192.168.50.162")
+            publisher.stop()
+        zeroconf_type.assert_called_once_with()
+
+    def test_tunnel_route_falls_back_to_real_host_interface(self):
+        fake_socket = MagicMock()
+        fake_socket.getsockname.return_value = ("198.18.0.1", 50000)
+        with patch("peach.mdns.socket.socket", return_value=fake_socket), patch(
+            "peach.mdns.socket.gethostname", return_value="host",
+        ), patch(
+            "peach.mdns.socket.gethostbyname_ex",
+            return_value=("host", [], ["172.31.112.1", "192.168.56.1", "192.168.50.162"]),
+        ):
+            self.assertEqual(lan_ipv4(), "192.168.50.162")
 
 
 if __name__ == "__main__":

@@ -33,6 +33,7 @@ These are product behavior and remain custom:
 | LAN discovery | Python zeroconf | service lifecycle and real-client acceptance |
 | Agent usage/quota | official provider quota APIs; T3 Code/CodexBar for local history | task routing, redaction and stale-snapshot labeling |
 | Video source/end-card evidence | existing FFmpeg frame extraction plus a reviewed OCR/vision adapter | opening/ending sample policy, provenance and incomplete-version candidates |
+| Referenced product behavior | current live interaction plus versioned public DOM/CSS/JS, or exact screenshot measurements when source is unavailable | evidence register, accessibility, Peach-specific deviations and regression checks |
 
 Do not introduce a dependency until its first consumer and isolated tests land in the same change.
 
@@ -58,3 +59,4 @@ Completed in the consolidation slice: shared Media/Job/HTTP boundaries, feedpars
 2. Configure and evaluate Stash metadata providers before writing another source adapter.
 3. Move remaining legacy status/suggest/ledger application logic behind repository/application ports, then delete obsolete CLI surfaces.
 4. Do not build a token/cost log scanner inside Peach or bind to T3 Code's private RPC; use its UI/CodexBar and official live quota surfaces.
+5. “模仿/参考/对齐” is not authorization to approximate from memory. Obtain and record reproducible evidence before implementation; otherwise mark the item `未取得` and keep it out of production.

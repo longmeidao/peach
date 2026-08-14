@@ -48,11 +48,30 @@ cd R:\peach-app
 
 ```powershell
 & .\.venv\Scripts\peach.exe serve --host 0.0.0.0 --port 443 `
+  --mdns-address 192.168.50.162 `
   --ssl-certfile R:\peach-data\secrets\tls\peach.crt `
   --ssl-keyfile R:\peach-data\secrets\tls\peach.key
 ```
 
 证书必须包含实际访问名（例如 `peach.local`）并被客户端信任；启用 TLS 时 mDNS 自动发布 HTTPS。
+
+本机局域网不使用 Let's Encrypt。项目提供可重复执行的本地 CA + 服务器证书生成脚本；默认只写
+`R:\peach-data\secrets\tls`，`-TrustCurrentUser` 只把 CA 加入当前 Windows 用户的信任库：
+
+```powershell
+& .\scripts\setup_local_tls.ps1 -Address 192.168.50.162 -TrustCurrentUser
+```
+
+每台访问设备都必须单独信任 `peach-local-ca.crt`，只需安装一次，证书续签仍可沿用同一 CA：
+
+- macOS：把 CA 拖入“钥匙串访问”的“登录”或“系统”钥匙串，双击后在“信任”中将 SSL
+  设为始终信任。Apple 官方步骤：<https://support.apple.com/guide/keychain-access/kyca11871/mac>。
+- iPhone/iPad：先安装 CA 描述文件，再进入“设置 → 通用 → 关于本机 → 证书信任设置”，
+  为该根证书开启完全信任。Apple 官方步骤：<https://support.apple.com/en-us/102390>。
+- 只传 `peach-local-ca.crt`。绝不传 `peach-local-ca.key`、`peach.key` 或整个 `tls` 目录。
+
+如果不愿在设备上安装本地 CA，继续使用 `http://peach.local`。浏览器无法在不信任 CA 的
+前提下把自签 HTTPS 变成无警告连接；Let's Encrypt 也不会签发 `.local`。
 
 当前运行态与下一任务只看 [`docs/STATUS.md`](docs/STATUS.md)；跨 Codex/Claude 的固定接手方式只看 [`docs/HANDOFF.md`](docs/HANDOFF.md)。
 准备新增、恢复或替换实现前，必须查 [`docs/REUSE.md`](docs/REUSE.md)，避免按旧文件名重复造轮子。

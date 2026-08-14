@@ -190,6 +190,14 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("tok=secret", cookie)
         self.assertIn("HttpOnly", cookie)
 
+    async def test_client_routes_serve_the_single_page_surface(self):
+        await self.client.get("/?t=secret")
+        for path in ("/item/1", "/entity/performer/Alice", "/performers",
+                     "/tags", "/stats", "/immerse"):
+            response = await self.client.get(path)
+            self.assertEqual(response.status_code, 200, path)
+            self.assertIn("Peach test", response.text)
+
     async def test_standard_range_and_head_contract(self):
         headers = {"X-Token": "secret"}
         full = await self.client.get("/stream?id=1", headers=headers)

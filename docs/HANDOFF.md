@@ -101,6 +101,59 @@ Codex does not currently expose an equivalent project task-completion hook. Its 
 requires the coordinating agent to update STATUS/HANDOFF in the same change; do not invent a brittle log
 watcher to simulate lifecycle events.
 
+## Referenced-product evidence register
+
+“模仿/参考/对齐” requires current reproducible evidence before implementation. Record the source,
+retrieval date/hash, exact behavior reused and intentional Peach deviation here. If evidence is not
+available, write `未取得`; an approximation must not be described as a faithful reproduction.
+
+- **Beeg card controls, verified 2026-08-15:** the current root loads
+  `https://beeg.com/dist/main.9442c3b8.css` (SHA-256
+  `E585B07CA0C312C28903DB939144B26A3C4BFBC9499F5997BDDE168A197CDB34`) and
+  `https://beeg.com/dist/main.9442c3b8.js` (SHA-256
+  `A7321F6E84D97417B588B6E98EEC86A15B30DC4C36B03537481CC55A4CF933E7`).
+  The verified counter is 36 px at top/right 12 px, uses `rgba(0,0,0,.24)`,
+  `saturate(180%) blur(12px)`, a 2 px white r=17 ring with circumference 106.814150222,
+  and scales to 1.2 on desktop hover. The save control uses the same translucent treatment at
+  bottom/right 12 px. Beeg starts the counter when preview playback is active and uses the preview
+  duration. Peach now also waits for a usable preview before showing/arming the ring, but intentionally
+  uses the user's five-second threshold before enlargement; metered still-image previews arm it when
+  frame cycling begins. The enlarged Peach overlay keeps centered -10/+10/detail controls because that
+  is the requested Peach interaction, not a claimed Beeg copy.
+- **TikTok one-column transition, verified 2026-08-15:** the current page loads
+  `https://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/89993.30b4c2a9.js`
+  (SHA-256 `C4D4867C5C6C89DCE560D429A4686427C911267DCBB2787AEB31B7BD333E9088`).
+  Its current programmatic one-column scroll uses 200 ms, cubic-bezier(.2,.2,.4,.9), target
+  `offsetTop`, and temporarily disables/restores `scrollSnapType`. Peach reuses the measured duration
+  and easing for its two-video 100%-height track, while keeping its own preload and wheel/touch queue.
+- **Apple transport controls, verified against the Apple HIG “Playing video” page on 2026-08-15:**
+  the evidence supports familiar, minimal transport controls and system-player semantics, but does not
+  provide reusable web SVG source for `gobackward.10`/`goforward.10`. Peach therefore uses its pinned
+  local icon subset plus explicit “后退/前进 10 秒” accessible labels; it does not claim an exact iOS
+  glyph copy.
+- **Rule34 styling:** earlier code comments claimed Rule34-style tag colors without recorded DOM/CSS
+  evidence. Those claims were removed. Peach's tag colors are its own semantic categories.
+- **CodexBar/T3 usage:** this is a reuse decision, not a copied Peach UI. CodexBar's public CLI/provider
+  documentation confirms local Claude/Codex cost aggregation; T3 Code's public README and the user's
+  current Usage screen establish the existing history surface. Peach has no token-log scanner or copied
+  dashboard implementation. Live remaining windows must still come from official provider surfaces.
+- **Vercel design guidance, fetched 2026-08-15:** `https://vercel.com/design.md` (SHA-256
+  `07ED2923294AA326F65F9D9D4094B6E97BF7DE10C39ACD8BE935F2045C5A688F`) is used as a review
+  checklist, not a component source. Applied rules: establish hierarchy with type and spacing before
+  surfaces, keep one continuous canvas, avoid arbitrary icon tiles/nested cards/tiny muted copy, and use
+  motion only for state or continuity. Peach keeps functional source badges, filter tags and video-overlay
+  translucency because they encode state or preserve legibility over moving imagery.
+- **kill-ai-slop, reviewed at commit `96d1ca568a1db7e1ef9a381644c744440f816ee4` on
+  2026-08-15:** the Apache-2.0 project was used as a subtractive audit checklist. The current pass removes
+  the decorative page gradient, frosted navigation/drawer, excessive pill radii and an unnecessary nested
+  preference panel. It does not install the agent skill or copy its scanner into Peach.
+- **Lucide Icons:** action and navigation glyphs use a pinned local subset of `lucide-static` 1.31.0
+  (ISC, npm integrity
+  `sha512-XFX9NO+gcLsOkXISmeQZYGJa2siGWZc/lgT/BK1b83h9RdOiz3cj1eQP5nWhELiB1KhW5ryk0nmMopOgm/CuSA==`).
+  The paths are embedded in `web/index.html`; attribution is in `web/vendor/lucide-LICENSE.txt`.
+  Brand/source marks and the timed preview ring remain separate because they are identities or data
+  visualizations, not general-purpose interface icons.
+
 ## Agent capacity and usage routing
 
 - Use official quota windows for dispatch decisions, not API-equivalent dollar estimates. Codex exposes
@@ -135,14 +188,14 @@ all three.
 - Real ledger: `R:\peach-data\database\ledger.db`; WAL mode; normal browsing legitimately changes play/activity fields.
 - Tests must create temporary SQLite databases and temporary media files.
 - Before real migration: SQLite backup, asset/tag counts, `PRAGMA integrity_check`, migration version check, then service smoke test.
-- Formal migrations `0000`–`0006` are applied to the real ledger. `0003` adds the local default profile, profile-scoped watch queue, typed entity links and entity search terms. `0004` adds synchronized SQLite FTS5 trigram search. `0005` backfills late compatibility tags into canonical relations. `0006` adds profile-scoped `asset_preference` without changing asset rows. Its backup is `R:\peach-data\database\ledger.pre-migrate-20260815-000500.db`; retain it with the earlier recovery points until a later verified migration.
+- Formal migrations `0000`–`0007` are applied to the real ledger. `0003` adds the local default profile, profile-scoped watch queue, typed entity links and entity search terms. `0004` adds synchronized SQLite FTS5 trigram search. `0005` backfills late compatibility tags into canonical relations. `0006` adds profile-scoped `asset_preference`. `0007` removes reviewed structural folder names (`门槛`, `视频`, `宣传文件`) from creator identity without deleting assets. Retain the pre-migration backups until a later verified migration.
 - Media and runtime data remain under `R:\media` and `R:\peach-data`; they are not repository assets.
 
 ## Operations
 
 - Main command: `peach serve|migrate` after editable installation.
-- `peach serve` 默认用 Python zeroconf 发布唯一入口 `peach.local`；使用 `--no-mdns` 可关闭。必须保留迁移前已验证的 `Zeroconf()` 全合格网卡语义，不要缩窄为单一 IPv4，也不要改用只能发布服务/SRV 的 Windows `DnsServiceRegister`。注册在 FastAPI lifespan 中执行，不能在事件循环内同步阻塞。mDNS 修改的验收门槛是：单元测试、运行态 health、DNS-SD 查询、主机名解析，以及一台真实 LAN 客户端；监听端口枚举或注册回调不能单独证明可用。
-- TLS 仅在同时提供 `--ssl-certfile` 和 `--ssl-keyfile` 时启用；`.local` 使用本地 CA，不使用 Let's Encrypt，证书和私钥留在 `R:\peach-data\secrets`。
+- `peach serve` 默认用 Python zeroconf 发布唯一入口 `peach.local`；使用 `--no-mdns` 可关闭。必须保留迁移前已验证的 `Zeroconf()` 全合格网卡监听语义，不要改用只能发布服务/SRV 的 Windows `DnsServiceRegister`。隧道软件可能让自动路由选择落到 `198.18.0.0/15`；生产启动因此显式传 `--mdns-address 192.168.50.162`，只固定发布的 A 地址，不缩窄 Zeroconf 监听接口。注册在 FastAPI lifespan 中执行，不能在事件循环内同步阻塞。mDNS 修改的验收门槛是：单元测试、运行态 health、DNS-SD 查询、主机名解析，以及一台真实 LAN 客户端；监听端口枚举或注册回调不能单独证明可用。
+- TLS 仅在同时提供 `--ssl-certfile` 和 `--ssl-keyfile` 时启用；`.local` 使用本地 CA，不使用 Let's Encrypt，证书和私钥留在 `R:\peach-data\secrets`。本地 CA 必须带 critical `CA:TRUE` 和 `keyCertSign,cRLSign`；生成脚本签发后必须用 OpenSSL 验证链。macOS/iOS 只安装并信任 `peach-local-ca.crt`，不得分发 CA key 或服务器 key。
 - FastAPI is the only Web server. `web_contract.py` contains the stable JSON surface; do not recreate a parallel `http.server` or dynamic legacy loader.
 - FFmpeg/ffprobe resolve from explicit environment overrides, then `R:\peach-data\tools\ffmpeg\bin`, then `PATH`. No active code may fall back to the Stash private directory.
 - Long-running inventory helpers are under `scripts/`; their scheduled tasks use `R:\peach-app\.venv\Scripts\python.exe`. They use absolute data paths and may be interrupted/restarted where their own locking contract allows it.
@@ -166,6 +219,9 @@ all three.
 - Long-card enlargement and seek controls require five continuous hover seconds. Short cards keep immediate “稍后看”. A creator/studio/performer text link consumes the click and opens the entity page; it must never bubble into video expansion.
 - Card identity is performer-first: use `performer_entities` for the portrait and performer-page link before falling back to creator/studio representative art. Keep this payload consistent across normal, related and review queues. Back buttons use the shared `backbtn`; closing the drawer for navigation must suppress immediate rail-hover reopening.
 - Like and the private reason remain one profile preference. A non-empty reason implies Like, but the saved prose is not itself a ranking feature until a provenance-backed taste-facet pipeline exists; UI copy must not claim otherwise.
+- Detail identity uses one compact row per entity, with a small performer portrait or studio logo immediately before its label; it is not a standalone bordered card. Legacy length labels (`短片-2分内` / `中片-10分内` / `长片-30分内` / `超长片`) stay in compatibility data but are not UI tags or facets; duration filtering is numeric minutes only.
+- Detail feedback is a compact icon toolbar backed by the pinned Lucide set. Like/dislike/seen/Later/deletion candidate use accessible labels, hover explanations, semantic hover/active color and restrained motion. Later is not a separate full-width action. Orgasm count remains a separate icon row. “待删” always means candidate-only; actual deletion is a later reviewed CSV apply step.
+- The desktop filter drawer may open only after the pointer enters the visible 72 px rail. Do not restore a hidden content-area hot zone.
 - Source and studio marks use cached official assets with provenance. Missing studio logos show initials, never an arbitrary work/avatar. Current canonical studio coverage is 28/114 after the official kawaii asset was added (S1 was already cached); continue through the review queue instead of inventing logos.
 - Entity portraits resolve `generated/avatars/<kind>-<entity_id>.img` first and carry content-type/provenance sidecars. Do not accept Stash's default SVG silhouette or search-result thumbnails as portraits; representative asset crops are fallback only.
 - `scripts/import_stash_entities.py` is the transitional performer identity importer. It uses `StashClient`, exact canonical-name matches, stable external refs, dry-run by default and a required backup on apply. Only localhost Stash image URLs are accepted; placeholders and images below a 512 px short side are rejected. Only aliases explicitly marked `X:`/`Twitter:` become social links; plain `@handle` remains a search term because its network is ambiguous.
