@@ -15,8 +15,14 @@
 """
 import os, sys, time, json, sqlite3, subprocess, threading, queue
 
+from peach.config import FFMPEG_DIR
+from peach.ffmpeg import FFmpegResolver
+
 DB = r"R:\peach-data\database\ledger.db"
-FFPROBE = r"C:\Users\longm\AppData\Local\Stash\ffmpeg-btbn\ffmpeg-master-latest-win64-gpl-shared\bin\ffprobe.exe"
+_FFPROBE_CHOICE = FFmpegResolver(FFMPEG_DIR).ffprobe()
+if _FFPROBE_CHOICE is None:
+    raise RuntimeError("ffprobe is unavailable; install it under Peach data tools or PATH")
+FFPROBE = str(_FFPROBE_CHOICE.path)
 LOG = r"R:\peach-data\logs\probe-{}.log".format(time.strftime("%Y%m%d-%H%M%S"))
 
 a = sys.argv[1:]

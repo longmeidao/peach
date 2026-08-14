@@ -67,7 +67,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             db_path=self.db, token="secret", page_path=self.page,
             allowed_media_roots=(self.media_root,), snapshot_root=self.snapshot_root,
             poster_root=self.poster_root, avatar_root=self.avatar_root, logo_root=self.logo_root,
-            allow_legacy_stash_ffmpeg=False,
+            ffmpeg_root=self.root / "ffmpeg",
         ))
         self.client = httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://test"

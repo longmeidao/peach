@@ -26,6 +26,9 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from http.cookies import SimpleCookie
 from pathlib import Path
 
+from peach.config import FFMPEG_DIR
+from peach.ffmpeg import FFmpegResolver
+
 DB = r"R:\peach-data\database\ledger.db"
 HERE = os.path.dirname(os.path.abspath(__file__))
 PAGE = os.path.join(os.path.dirname(os.path.dirname(HERE)), "web", "index.html")
@@ -33,10 +36,11 @@ SNAP_ROOT = r"R:\peach-data\generated\snapshots"
 LOGO_ROOT = r"R:\peach-data\generated\logos"
 AVA_ROOT = r"R:\peach-data\generated\avatars"
 POSTER_ROOT = r"R:\peach-data\generated\posters"
-FFPROBE = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Stash", "ffmpeg-btbn",
-                       "ffmpeg-master-latest-win64-gpl-shared", "bin", "ffprobe.exe")
-FFMPEG = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Stash", "ffmpeg-btbn",
-                      "ffmpeg-master-latest-win64-gpl-shared", "bin", "ffmpeg.exe")
+_FFMPEG_RESOLVER = FFmpegResolver(FFMPEG_DIR)
+_FFMPEG_CHOICE = _FFMPEG_RESOLVER.ffmpeg()
+_FFPROBE_CHOICE = _FFMPEG_RESOLVER.ffprobe()
+FFMPEG = str(_FFMPEG_CHOICE.path) if _FFMPEG_CHOICE else ""
+FFPROBE = str(_FFPROBE_CHOICE.path) if _FFPROBE_CHOICE else ""
 
 # 导入模块时绝不能解析进程级 sys.argv：Uvicorn 等宿主也使用 --host/--port。
 # 旧服务仍从 main() 显式读取同样的参数，现有启动命令保持兼容。

@@ -11,7 +11,7 @@ Peach 最终可以完全去 Stash，但现在不能直接卸载。Web 主链已�
 - GraphQL 实际暴露 screenshot/preview/stream/webp/vtt/sprite，以及 Direct、MP4、WebM、HLS、DASH、original/480p/240p stream。
 - Stash generated 实际只有 80 sprite + 80 VTT（约 17.5 MB），transcodes/screenshots 为空。
 - Peach 自有 snapshots 11,457 个（约 1.8 GB）、posters 855、avatars 50，覆盖范围并不等价。
-- 代码中 19 个非文档文件直连 Stash GraphQL，11 个文件硬编码 Stash 私有 `ffmpeg-btbn` 路径。
+- 初次审计的旧树中有 19 个非文档文件直连 Stash GraphQL、11 个文件硬编码 Stash 私有 `ffmpeg-btbn` 路径；项目整理后这些数字只作为迁移基线，不代表当前活跃树。
 
 ## 逐项判断
 
@@ -43,17 +43,17 @@ Peach 最终可以完全去 Stash，但现在不能直接卸载。Web 主链已�
 ## 2026-08-14 第二阶段进展
 
 - 新增集中 `StashClient`，FastAPI/Media Engine 新代码不再各自实现 GraphQL transport。
-- 新增独立 `FFmpegResolver`：环境变量/Peach 托管目录/PATH 优先，Stash 私有目录只作可关闭 fallback。
+- `FFmpegResolver` 现在只接受环境变量、`R:\peach-data\tools\ffmpeg` 和 PATH；Stash 私有目录 fallback 已删除。
 - FastAPI 已用 Starlette `FileResponse` 替换候选入口的手写 Range，并验证普通、指定区间、suffix、
   越界 416、HEAD、ETag、Last-Modified。
-- 旧 19 个脚本直连和 11 个硬编码依赖尚未归零；不能因此宣称已经去 Stash。
+- 活跃代码中的 Stash 私有 FFmpeg 路径已归零；剩余 GraphQL transport 是集中 adapter 与 `scripts/ledger.py` 的一个待迁移 helper，仍不能宣称已经去 Stash。
 
 ## 验收门槛
 
-关闭 Stash 前必须完成：2,551 Scene 全关联；842 Performer、126 Tag、140 Studio 与全部关系、别名、hash 有 external ID/provenance；24,980 视频探测覆盖不回退；10,714 个账本 snapshot 仍可访问；常用和异常 Range、seek、两路并发及不兼容编码转码通过；关键别名/Studio/组合标签/云资产搜索一致；19/11 个依赖计数归零；关闭和回退均演练。
+关闭 Stash 前必须完成：2,551 Scene 全关联；842 Performer、126 Tag、140 Studio 与全部关系、别名、hash 有 external ID/provenance；24,980 视频探测覆盖不回退；10,714 个账本 snapshot 仍可访问；常用和异常 Range、seek、两路并发及不兼容编码转码通过；关键别名/Studio/组合标签/云资产搜索一致；GraphQL 直连与私有二进制依赖归零；关闭和回退均演练。
 
 ## 许可证
 
-Stash v0.31.1 是 AGPL-3.0。Peach 只通过公开协议调用独立 Stash 进程，不复制其 Go 实现。当前 Stash 目录中的 FFmpeg 是启用 GPLv3/x264/x265 的构建：本机调用与安装包分发是不同问题；后续必须改为独立 resolver，并在捆绑时处理许可证、源码和通知义务。
+Stash v0.31.1 是 AGPL-3.0。Peach 只通过公开协议调用独立 Stash 进程，不复制其 Go 实现。当前 Peach-managed FFmpeg 是从本机既有构建复制的 GPLv3/x264/x265 shared bundle，完整 `LICENSE.txt` 已保留且仅供此个人实例运行；它不进入 Git，也不能在未处理源码、许可证和通知义务前作为 Peach 安装包分发。
 
 官方依据：[Stash 架构](https://github.com/stashapp/stash/blob/develop/docs/ARCHITECTURE.md)、[Scene schema](https://github.com/stashapp/stash/blob/v0.31.1/graphql/schema/types/scene.graphql)、[AGPL-3.0](https://raw.githubusercontent.com/stashapp/stash/v0.31.1/LICENSE)、[FFmpeg 法律说明](https://www.ffmpeg.org/legal.html)。

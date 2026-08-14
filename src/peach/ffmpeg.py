@@ -13,11 +13,10 @@ class BinaryChoice:
 
 
 class FFmpegResolver:
-    """统一二进制定位；Stash 私有目录只是显式、可关闭的迁移 fallback。"""
+    """Resolve explicit, Peach-managed, or PATH binaries without backend coupling."""
 
-    def __init__(self, tools_dir: Path, allow_legacy_stash: bool = True):
-        self.tools_dir = tools_dir
-        self.allow_legacy_stash = allow_legacy_stash
+    def __init__(self, managed_root: Path):
+        self.managed_root = managed_root
 
     def ffmpeg(self) -> BinaryChoice | None:
         return self._resolve("ffmpeg", "PEACH_FFMPEG")
@@ -33,7 +32,7 @@ class FFmpegResolver:
             if path.is_file():
                 return BinaryChoice(path.resolve(), "environment")
 
-        managed = self.tools_dir / "bin" / f"{executable}{suffix}"
+        managed = self.managed_root / "bin" / f"{executable}{suffix}"
         if managed.is_file():
             return BinaryChoice(managed.resolve(), "peach-managed")
 
@@ -41,10 +40,4 @@ class FFmpegResolver:
         if found:
             return BinaryChoice(Path(found).resolve(), "path")
 
-        if self.allow_legacy_stash:
-            local = Path(os.environ.get("LOCALAPPDATA", ""))
-            root = local / "Stash" / "ffmpeg-btbn"
-            matches = sorted(root.glob(f"*/bin/{executable}.exe"), reverse=True)
-            if matches:
-                return BinaryChoice(matches[0].resolve(), "legacy-stash")
         return None

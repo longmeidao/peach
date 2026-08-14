@@ -14,6 +14,8 @@ SECRETS_DIR = DATA_ROOT / "secrets"
 LOG_DIR = DATA_ROOT / "logs"
 ARCHIVE_DIR = DATA_ROOT / "archive"
 INBOX_DIR = DATA_ROOT / "inbox"
+TOOLS_DIR = DATA_ROOT / "tools"
+FFMPEG_DIR = TOOLS_DIR / "ffmpeg"
 MIGRATIONS_DIR = PROJECT_ROOT / "migrations"
 
 
@@ -29,4 +31,4 @@ class PeachSettings:
     poster_root: Path = GENERATED_DIR / "posters"
     avatar_root: Path = GENERATED_DIR / "avatars"
     logo_root: Path = GENERATED_DIR / "logos"
-    allow_legacy_stash_ffmpeg: bool = True
+    ffmpeg_root: Path = FFMPEG_DIR

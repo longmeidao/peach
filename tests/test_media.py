@@ -49,10 +49,21 @@ class MediaEngineTests(unittest.TestCase):
             root = Path(tmp)
             binary = root / "ffmpeg.exe"
             binary.write_bytes(b"test")
-            resolver = FFmpegResolver(root, allow_legacy_stash=False)
+            resolver = FFmpegResolver(root)
             with patch.dict("os.environ", {"PEACH_FFMPEG": str(binary)}, clear=False):
                 choice = resolver.ffmpeg()
         self.assertEqual(choice.source, "environment")
+
+    def test_ffmpeg_resolver_uses_managed_bundle(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            binary = root / "bin" / "ffmpeg.exe"
+            binary.parent.mkdir()
+            binary.write_bytes(b"test")
+            with patch.dict("os.environ", {"PEACH_FFMPEG": ""}, clear=False), \
+                    patch("peach.ffmpeg.shutil.which", return_value=None):
+                choice = FFmpegResolver(root).ffmpeg()
+        self.assertEqual(choice.source, "peach-managed")
 
     def test_offline_windows_root_does_not_block_startup(self):
         with patch.object(Path, "resolve", side_effect=OSError("offline")):

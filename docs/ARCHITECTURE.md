@@ -43,3 +43,4 @@ AI/external metadata -> reviewed candidates -> ledger
 - `logs/`: current operational logs
 - `archive/`: historical migration evidence and backups
 - `inbox/`: transient imports awaiting processing
+- `tools/`: machine-local managed runtimes such as FFmpeg; binaries and licenses stay outside Git

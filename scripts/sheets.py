@@ -16,9 +16,16 @@
 """
 import os, sys, time, hashlib, sqlite3, subprocess, threading, queue, tempfile, shutil
 
+from peach.config import FFMPEG_DIR
+from peach.ffmpeg import FFmpegResolver
+
 DB = r"R:\peach-data\database\ledger.db"
-BIN = r"C:\Users\longm\AppData\Local\Stash\ffmpeg-btbn\ffmpeg-master-latest-win64-gpl-shared\bin"
-FFMPEG, FFPROBE = os.path.join(BIN, "ffmpeg.exe"), os.path.join(BIN, "ffprobe.exe")
+_FFMPEG_RESOLVER = FFmpegResolver(FFMPEG_DIR)
+_FFMPEG_CHOICE = _FFMPEG_RESOLVER.ffmpeg()
+_FFPROBE_CHOICE = _FFMPEG_RESOLVER.ffprobe()
+if _FFMPEG_CHOICE is None or _FFPROBE_CHOICE is None:
+    raise RuntimeError("ffmpeg/ffprobe are unavailable; install them under Peach data tools or PATH")
+FFMPEG, FFPROBE = str(_FFMPEG_CHOICE.path), str(_FFPROBE_CHOICE.path)
 OUTROOT = r"R:\peach-data\generated\snapshots\cloud"
 LOG = r"R:\peach-data\logs\sheets-{}.log".format(time.strftime("%Y%m%d-%H%M%S"))
 

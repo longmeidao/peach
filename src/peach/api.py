@@ -4,7 +4,7 @@ from typing import Any
 from fastapi import Body, FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 
-from .config import PROJECT_ROOT, PeachSettings
+from .config import PeachSettings
 from .ffmpeg import FFmpegResolver
 from .legacy_web import load_legacy
 from .media import FilesystemMediaService, MediaNotFound, MediaUnavailable
@@ -32,7 +32,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
     settings = settings or PeachSettings()
     legacy = load_legacy(settings.legacy_module_path, settings.db_path, settings.token)
     repository = LedgerRepository(settings.db_path)
-    resolver = FFmpegResolver(PROJECT_ROOT, settings.allow_legacy_stash_ffmpeg)
+    resolver = FFmpegResolver(settings.ffmpeg_root)
     media_service = FilesystemMediaService(
         repository, settings.allowed_media_roots, settings.snapshot_root,
     )
