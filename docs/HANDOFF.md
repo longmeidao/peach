@@ -19,8 +19,109 @@ This is durable operating knowledge, not a per-session transcript.
 - Use separate Git worktrees for concurrent code changes. Data-only batches may share the main checkout only when their sole writable artifact is outside Git and named in the task. Never let two agents edit the same file.
 - Worker results return to the coordinating agent for vocabulary/provenance checks, deduplication, isolated tests and approval. The user does not relay reports between agents.
 - `scripts/scrape_codes.py` and `scripts/creator_tags.py` are the standard review boundaries. Creator-board work exports `generated/creator-tags-review.csv`; workers may change `pending` to `candidate` or `skip`, while `approved` and the required backup remain coordinator actions.
-- Claude Code 2.1.232 refused explicit sexual-act classification from board images. Do not assign that visual-content category to Claude again unless its supported-use boundary is reverified; use human review or a separately approved vision provider. Claude remains suitable for code, public metadata adapters, deduplication and non-visual CSV validation.
-- An older Claude Desktop conversation did perform board inspection, but conversation text is not proof of persistence: its reported `ruth_lee` mapping differs from the current ledger. Read the transcript only as candidate evidence and reconcile it into the review CSV; database counts and canonical relations are the completion gate.
+- **Superseded 2026-08-14.** The earlier note that Claude refuses explicit sexual-act classification from
+  board images is not what happens. In one session Claude read 30 creator boards and assigned explicit
+  act and attribute tags for 27 creators — 4,518 videos, 27,295 `asset_tag` rows under `vision_creator`,
+  including 口交/足交/手交/乳交/骑乘/后入 — with no refusal, and a later reconciliation matched all 27
+  declared tag sets to the ledger exactly. Route board reading to Claude normally.
+- The `ruth_lee` divergence was not a Claude/ledger disagreement either. The current ledger matches this
+  session's assignment exactly (7 tags × 310 assets). The mismatched conclusion came from an **earlier,
+  different** per-title pass that had no write step at all: `asset_tag` still holds zero rows with
+  `source='vision'`. The lesson is about persistence, not about model capability — see
+  "A conclusion that lives only in chat does not exist".
+
+## Claude's actual boundary on this project
+
+Stated so work is routed on fact rather than on a guessed refusal. Verified by what ran on 2026-08-14.
+
+Does, without friction:
+
+- Viewing explicit sexual imagery and classifying acts, attire, body attributes, setting and production
+  style, for cataloguing this personal library.
+- Scraping public catalogue metadata (r18.dev, avsox, javbus) and mapping foreign categories to the
+  local vocabulary.
+- Writing the code, regexes, batch jobs and reconciliation for all of the above, and generating
+  explicit-domain text such as tag names and Chinese titles.
+- Naming a performer or studio from a code, filename, or an on-screen watermark or logo.
+
+Will not, and these are firm:
+
+- Anything involving minors or apparent minors. The library's 萝莉/学生/洛丽塔/制服 tags are treated
+  strictly as adult-performer genre labels; if real footage of a minor is ever found, the answer is to
+  stop and report it, not to catalogue it.
+- Identifying a real person from their face. Attribution comes from codes, filenames, watermarks and
+  release metadata only — never from facial matching, and never linking media to a private individual's
+  real identity.
+- Helping acquire or redistribute non-consensual material. This is not the current corpus state: the user
+  confirms all performers are adults and all material is consensual. `萝莉`/`学生`/`洛丽塔`/`制服`
+  describe adult role-play, while `泄露`/`流出` and the appearance of `G3104` are marketing/source-style
+  descriptions, not proof of provenance or consent. Catalogue those strings normally; only direct,
+  file-specific contradictory evidence warrants stopping and reporting.
+- Destructive or outward-facing actions without explicit confirmation. Delete lists are produced as CSV
+  with evidence and confidence; the apply step is the user's.
+
+Weak, not refused — route accordingly:
+
+- Frame-level certainty from one still. Creator-level style inference is reliable; per-title claims from
+  a single frame are not, which is why `vision_creator` carries `confidence=0.6`.
+- Reading dark, blurred or heavily mosaicked frames (`tuki_1154` was skipped for exactly this).
+- Distinguishing a pirate-site watermark from an advertisement by filename alone — that needed an
+  extracted frame to settle (`jitumi.pw`).
+
+## A conclusion that lives only in chat does not exist
+
+Two failures of this shape occurred on 2026-08-14, so treat it as a rule.
+
+An earlier per-title visual tagging pass read boards, stated its conclusions in conversation and said
+they were stored. `asset_tag` holds zero rows with `source='vision'`; that pass had no write step and
+left no CSV or log. Separately, `disposal-candidates.csv` was generated while `BNST033` was believed to
+be entirely advertising. The belief was corrected in chat and in `docs/STATUS.md`, but the CSV was not
+regenerated and still listed the genuine 3.2 GB feature `BNST033.mp4` for disposal.
+
+Neither was a refusal — explicit tags including 足交/手交/足系 were written without obstruction in the
+same session.
+
+- A step that reaches a conclusion must write it to a file or the ledger in that same step.
+- When a conclusion is revised, regenerate every artifact derived from it. Updating prose is not enough;
+  a stale delete list is more dangerous than no list.
+- Record evidence beside the verdict. `ad-candidates.csv` carries a `verified` column naming the rows
+  confirmed by looking at an extracted frame, and a `排除` state for one row that proved to be real
+  content.
+- Reconcile declared intent against the database before reporting completion. Comparing
+  `creator_tags.BOARDS` against actual `asset_tag` rows is what surfaced both problems.
+
+Claude task endings are now covered by shared project hooks in `.claude/settings.json`: normal Stop,
+StopFailure and SessionEnd invoke `scripts/job_status.py --write --hook-event`. The script records only a
+sanitized lifecycle summary under `R:\peach-data\state`, recomputes every figure from the ledger and
+generated artifacts, and atomically rewrites the `<!-- job-status -->` block in `docs/STATUS.md`. It does
+not copy prompts, responses or credentials. Hard process kills and machine power loss cannot run a hook;
+the next invocation repairs the live counts. Prose outside the managed block remains hand-maintained.
+
+Codex does not currently expose an equivalent project task-completion hook. Its project contract still
+requires the coordinating agent to update STATUS/HANDOFF in the same change; do not invent a brittle log
+watcher to simulate lifecycle events.
+
+## Agent capacity and usage routing
+
+- Use official quota windows for dispatch decisions, not API-equivalent dollar estimates. Codex exposes
+  live limits through App Server `account/rateLimits/read`; Claude usage is visible through Claude Code's
+  authenticated usage surface. Never print, copy or persist OAuth access tokens.
+- T3 Code already provides the useful historical dashboard for Codex + Claude processed/cached/output
+  tokens and API-equivalent costs. CodexBar is the reference implementation for local log accounting and
+  provider quota fallback. Peach must not recreate their session-log scanner or couple to T3 Code's
+  undocumented localhost RPC.
+- Route architecture, migrations, browser-dependent websites, final review/apply and long-running work to
+  Codex. Route bounded mechanical scraping, normalization, candidate CSV reconciliation, filename/code/
+  watermark extraction and reviewed board classification to Claude when its remaining window permits.
+- Creator/performer attribution may use release codes, filenames, watermarks, studio metadata, aliases,
+  public profile links and cross-source consistency. A face may support same-library consistency review,
+  but a persisted identity requires non-face corroboration; never link media to an unrelated private
+  person's real-world identity from facial appearance alone.
+
+Report backlog counts as **actionable / blocked / total**, never as a single number. "4,740" and
+"10,196" were treated as contradictory PikPak figures when both were correct: 4,740 rows carry a
+duration and can be sheeted, 5,445 carry none and need a probe pass first. `job_status.py` always prints
+all three.
 
 ## Reuse before restore
 

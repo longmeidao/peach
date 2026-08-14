@@ -14,6 +14,12 @@ Last verified: 2026-08-14
 
 Runtime PIDs are observations, not configuration; always re-check them.
 
+## Agent capacity snapshot
+
+- Observed 2026-08-14 23:20 +08 through authenticated, secret-free usage reads: Codex main weekly window is 14% used / 86% remaining, resetting 2026-08-21 15:21 +08; GPT-5.3-Codex-Spark is 0% used, resetting 2026-08-21 23:07 +08.
+- Claude Pro is 35% used in the five-hour window / 65% remaining, resetting 2026-08-15 01:50 +08; weekly is 79% used / 21% remaining, resetting 2026-08-17 13:00 +08. Extra usage is disabled.
+- These are dispatch snapshots, not durable limits. T3 Code's 30-day historical view reports 3.88B processed tokens (Claude 2.25B, Codex 1.62B) and API-equivalent raw cost; it is not the subscription bill. Prefer Codex for long/critical work until the Claude weekly reset, and Claude for short mechanical candidate batches.
+
 ## Verified code state
 
 - FastAPI serves home, stable JSON contract, standard Range/HEAD media, thumbnails, posters, avatars and logos.
@@ -31,7 +37,7 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - Creator/studio top lists and related-item creator/tag/studio matching now read canonical entity relations. Real-ledger timings were 0.055 s for 28 top entries and 0.055 s for 24 related items.
 - Creator/studio filters, canonical-name search, creator index, facets and attribution stats now also read entity relations. Real-ledger timings were 0.040 s for a 1,545-item creator filter, 0.043 s for the first 60 creators, 0.132 s for facets and 0.394 s for stats.
 - Snapshot availability checks use the same strict legacy-prefix resolver as `/thumb`, so the front end requests migrated previews instead of displaying false “无预览” cards.
-- 61 isolated tests, Python static compilation, dependency validation and JavaScript parse validation passed under Python 3.14/Node.
+- 64 isolated tests pass under Python 3.14, including atomic/redacted automatic-handoff coverage. Earlier dependency and JavaScript parse validation remains valid for the unchanged web/runtime surface.
 - Real migration preserved 81,873 assets and 59,697 tag links; both live database and backup passed `integrity_check` and `foreign_key_check` before later metadata writes.
 - Desktop 1280×720 and mobile 390×844 browser checks passed on the same application candidate before the schema-only migration; visual checks were not rerun after migration because no browser instance was connected.
 - Restarted production port 80 passed health, home, public OpenCode Go model discovery (26 models at verification time), canonical filtered-list/item reads, thumbnail `200` and 1 KiB `206 Partial Content` Range smoke checks.
@@ -51,8 +57,7 @@ Runtime PIDs are observations, not configuration; always re-check them.
 
 - The creator-board sampler completed before its implementation was changed; it left 86 boards and 598 cached frames. No `creator_boards.py` process was active at the final observation. The command now uses the shared source-access policy, disk guard, PID lock and Peach-managed FFmpeg resolver while preserving its prior arguments and output layout.
 - Creator tagging is now review-first: `scripts/creator_tags.py --export-review` produced `R:\peach-data\generated\creator-tags-review.csv` with 86 boards, 30 prior decisions and 56 pending rows. A parallel worker may write only `candidate`/`skip`; applying accepts only coordinator-reviewed `approved` rows, requires a SQLite backup, and dual-writes compatibility plus canonical tag relations.
-- A Claude Code 2.1.232 batch was asked to inspect those 56 boards but refused explicit sexual-act visual classification after 24 seconds; it made no CSV changes. The queue remains 27 applied, 3 skipped and 56 pending. Claude should be used for non-visual scraping/code/data reconciliation, not this visual category.
-- The earlier Claude Desktop session did visually inspect boards and reported intermediate creator mappings (including `ruth_lee` and `luckydog22`), but its transcript and current ledger disagree: the reported `ruth_lee` foot/hand tags are absent from the persisted `vision_creator` rows. Treat chat text as evidence input, never as an applied result; only the review CSV plus database postcondition is authoritative.
+- A Claude Code 2.1.232 batch initially stopped after 24 seconds, but the later completed run read 30 boards and classified 27 creators without refusal. The persisted 27,295 `vision_creator` rows reconcile exactly with that run's declared creator-level tag sets. An older per-title pass remained chat-only and wrote neither CSV nor ledger rows; only persisted review artifacts plus database postconditions are authoritative.
 - Migration `0005_backfill_legacy_tags.sql` is applied to the real ledger. It repaired all 27,295 late `vision_creator` compatibility rows missing from `asset_entity`, temporarily suspended the per-row FTS trigger and rebuilt affected search rows once. The real apply took about 7 seconds; 81,873 assets and 88,672 compatibility tag rows were preserved, canonical relations reached 159,172, missing legacy relations are zero, integrity is `ok` and foreign-key violations are zero. Backup: `R:\peach-data\database\ledger.pre-migrate-20260814-225437.db`.
 - The visible terminal mistaken for a slow batch was the permanent `RM-TrafficWatch` heartbeat. Its scheduled action was changed from `python.exe` to `pythonw.exe` at 22:36, the task restarted successfully, and the new hidden process continued writing `trafficwatch-20260814-223642.log` every 30 seconds. It stops only matching Peach task trees and no longer terminates machine-wide FFmpeg/ffprobe processes.
 
@@ -80,9 +85,10 @@ Runtime PIDs are observations, not configuration; always re-check them.
   12,056 → 7,538. Tags are constrained to the existing 76-term vocabulary; the script refuses to run if a
   tag is not already in it.
 - Three creators were read but deliberately left untagged, with reasons recorded in `creator_tags.SKIPPED`:
-  `BNST033` is 34 H-game advertisements, `G3104` is someone's personal camera roll, `tuki_1154` had too
-  few usable frames. `R:\peach-data\generated\disposal-candidates.csv` lists the 106 affected files
-  (3.7 GB + 1.2 GB) for a human disposal decision; nothing was deleted.
+  `BNST033` mixes a real feature with advertisements, `G3104` lacks reliable classification evidence,
+  and `tuki_1154` had too few usable frames. User-confirmed corpus context is consenting adults only;
+  labels such as `泄露`/`流出` are marketing/source vocabulary, not evidence of non-consent. The generated
+  disposal review remains candidate-only; nothing was deleted.
 - Two vocabulary gaps surfaced: 3D/CG animated content (`oscarkim123`, `Bewyx 2509`) has no medium tag,
   and video-frame advertising has no marker. Neither was forced into an existing term.
 - `scripts/find_ads.py` — identifies promo videos bundled into pirate release packs and writes
@@ -117,8 +123,48 @@ Runtime PIDs are observations, not configuration; always re-check them.
 
 ## Next work
 
-1. Reconcile Claude Desktop transcript candidates through `creator-tags-review.csv` rather than direct writes.
-2. Add a Media Engine stream-plan endpoint and integrate hls.js or Shaka Player before enabling Stash HLS/DASH fallback in the browser.
-3. Configure/evaluate Stash CommunityScrapers and metadata providers before writing another source adapter.
-4. Add explicit feed configuration and reviewed import; only then use APScheduler. Add reviewed inference requests afterward, with AI output remaining candidates.
-5. Move remaining legacy status/suggest/ledger application logic behind repository/application ports, then delete obsolete CLI surfaces.
+1. Extend source/provenance sampling to weight the opening and final frames in addition to the existing
+   representative board cells. Detect visible handles/domains/watermarks there, and add a reviewed
+   `incomplete/cut` candidate when end cards say `full version available` or equivalent. Seed the first
+   regression fixture from `115/04_Stepsistercaughtmejerkingoff,deepthroat,throatpie.mp4`, whose final
+   seconds point to `fansly.com/smuzillipussy`; do not persist the attribution without frame evidence.
+2. Add a simple Like action that increases preference weight, plus a private free-text “为什么喜欢” field.
+   Store the user's original text as truth; AI may propose normalized taste facets with provenance and
+   confidence for review, but must not replace or silently reinterpret the note.
+3. Fix blue creator/performer links so they navigate directly to the entity page without opening the
+   video. Change long-card enlargement to trigger only after continuous hover longer than five seconds;
+   retain ±10-second seeking but restyle its overlay controls after the Beeg reference. Short hover keeps
+   the existing Later action.
+4. Add a Media Engine stream-plan endpoint and integrate hls.js or Shaka Player before enabling Stash HLS/DASH fallback in the browser.
+5. Configure/evaluate Stash CommunityScrapers and metadata providers before writing another source adapter.
+6. Add explicit feed configuration and reviewed import; only then use APScheduler. Add reviewed inference requests afterward, with AI output remaining candidates.
+7. Move remaining legacy status/suggest/ledger application logic behind repository/application ports, then delete obsolete CLI surfaces.
+
+Claude project hooks now refresh the managed batch block on Stop, StopFailure and SessionEnd. Codex has no equivalent task-end project hook; its coordinator must keep the same STATUS/HANDOFF write contract manually. Hook verification used a synthetic event and a temporary document/state file; no prompt, response or token was persisted.
+
+## 批处理进度（自动生成）
+
+<!-- job-status:start -->
+
+<!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->
+<!-- generated 2026-08-14T15:19Z -->
+
+- 资产 81873 条，其中视频 24980 条。
+- 待抽帧（可抽 / 缺时长待 probe / 合计）：
+  - `local`：4 / 1 / 5
+  - `115`：29 / 4034 / 4063
+  - `pikpak`：4751 / 5445 / 10196
+  PikPak 计费，且单帧 seek 实测 25~40 秒，与 115 的 0.4~1.4 秒不是一个量级；全量抽帧按此速率是 14 天量级，按创作者采样是 2 小时量级。
+- 无内容标签视频 7538 条（占视频 30%）。
+- `asset_tag` 来源分布：`vision_creator` 27295、`pixiv_tag` 19753、`name` 19107、`stash` 15450、`r18` 2538、`performer` 1887、`follow` 1376、`r18:performer` 1216、`javbus:performer` 50。
+- 番号 1434 个，其中 1158 个有厂牌（81%）。
+
+| 产物 | 行数 | 生成时间 | 说明 |
+| --- | ---: | --- | --- |
+| `code-scrape.csv` | 1104 | 08-14 16:17 | 番号刮削结果 |
+| `name-clean.csv` | 287 | 08-14 16:18 | 文件名净化清单 |
+| `ad-candidates.csv` | 82 | 08-14 22:53 | 广告候选（confidence 分级） |
+| `disposal-candidates.csv` | 54 | 08-14 22:53 | 待处置候选（含「保留」判定） |
+| `creator-tags-review.csv` | 86 | 08-14 22:30 | 创作者标签待审 |
+
+<!-- job-status:end -->

@@ -31,6 +31,8 @@ These are product behavior and remain custom:
 | Local file events | watchdog plus periodic reconciliation | media identity and missed-event repair |
 | Transitional metadata/media | Stash GraphQL, CommunityScrapers and Stash job system | adapter, reconciliation and exit gates |
 | LAN discovery | Python zeroconf | service lifecycle and real-client acceptance |
+| Agent usage/quota | official provider quota APIs; T3 Code/CodexBar for local history | task routing, redaction and stale-snapshot labeling |
+| Video source/end-card evidence | existing FFmpeg frame extraction plus a reviewed OCR/vision adapter | opening/ending sample policy, provenance and incomplete-version candidates |
 
 Do not introduce a dependency until its first consumer and isolated tests land in the same change.
 
@@ -55,3 +57,4 @@ Completed in the consolidation slice: shared Media/Job/HTTP boundaries, feedpars
 1. Add a Media Engine stream-plan API and a mature HLS/DASH player before using Stash transcodes in the browser.
 2. Configure and evaluate Stash metadata providers before writing another source adapter.
 3. Move remaining legacy status/suggest/ledger application logic behind repository/application ports, then delete obsolete CLI surfaces.
+4. Do not build a token/cost log scanner inside Peach or bind to T3 Code's private RPC; use its UI/CodexBar and official live quota surfaces.
