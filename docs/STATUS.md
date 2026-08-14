@@ -22,6 +22,7 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - Stash transport is centralized in `StashClient`; ledger imports now write stable `media_binding` external IDs and explicit tag/performer provenance. The new importer was verified only against an isolated database and was not run on the real ledger.
 - Migration `0002` added canonical entity/alias/external-ref/asset-relation tables and backfilled existing performer/tag/studio/creator/series projections. After the post-migration external-metadata reconciliation, the real ledger has 8,603 entities and 131,877 relations. The Stash and external-metadata importers dual-write canonical relations while retaining flattened UI projections.
 - Passive `/api/providers` health discovery now exposes separate inference/agent capabilities without model calls, credential reads or secret values.
+- The OpenCode Go adapter now supports explicit public model discovery through `/api/providers/opencode-go/models`, with a five-minute in-memory cache and normalized secret-free output. It does not invoke inference or read CLI credentials.
 - Snapshot rows still contain 10,714 pre-split `R:\Resources\Intake\snapshots` paths. Runtime now performs a strict legacy-prefix rebase to `R:\peach-data\generated\snapshots`; it does not mutate the real ledger.
 - `R:\peach-data` now separates `database/generated/sources/state/secrets/logs/archive/inbox/tools`; the old empty root Inbox and old Resources/Tools compatibility surface are removed.
 - `web_contract.py` now uses an application-owned database/cache/write-lock context rather than module globals; separate app instances cannot leak databases or caches into each other.
@@ -57,5 +58,5 @@ Runtime PIDs are observations, not configuration; always re-check them.
 ## Next work
 
 1. Add the first tracked online-follow source adapter; keep metadata scraping as a reviewable batch pipeline.
-2. Implement an OpenCode Go inference health/model adapter without enabling automatic ledger writes.
-3. Move creator/studio top lists and related-item ranking from compatibility text fields to canonical relations.
+2. Move creator/studio top lists and related-item ranking from compatibility text fields to canonical relations.
+3. Add reviewed inference requests behind the OpenCode Go adapter; AI output must remain a candidate and cannot write ledger truth directly.

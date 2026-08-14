@@ -13,7 +13,7 @@ from .ffmpeg import FFmpegResolver
 from .media import FilesystemMediaService, MediaNotFound, MediaUnavailable
 from .mdns import MdnsPublisher
 from .previews import PreviewService, PreviewUnavailable
-from .providers import default_registry
+from .providers import OpenCodeGoClient, ProviderUnavailable, default_registry
 from .repository import LedgerRepository
 
 
@@ -52,6 +52,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         settings.mdns_name, settings.mdns_port, secure=settings.tls_enabled
     ) if settings.mdns_enabled else None
     providers = default_registry()
+    opencode_go = OpenCodeGoClient()
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -82,6 +83,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
     app.state.preview_service = preview_service
     app.state.mdns = mdns
     app.state.providers = providers
+    app.state.opencode_go = opencode_go
 
     @app.middleware("http")
     async def no_store(request: Request, call_next):
@@ -200,6 +202,17 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         if not _authorized(request, settings.token, args):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         return providers.health()
+
+    @app.get("/api/providers/opencode-go/models")
+    def opencode_go_models(request: Request):
+        args = _first_query_values(request)
+        if not _authorized(request, settings.token, args):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        try:
+            models = opencode_go.list_models()
+        except ProviderUnavailable:
+            return JSONResponse({"error": "provider unavailable"}, status_code=502)
+        return {"ok": True, "provider": "opencode-go", "models": models}
 
     @app.get("/api/{route:path}")
     def api_get(route: str, request: Request):

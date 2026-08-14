@@ -2,9 +2,76 @@
 from __future__ import annotations
 
 import shutil
+import json
+import threading
+import time
+import urllib.error
+import urllib.request
 from dataclasses import asdict, dataclass
 from enum import Enum
 from typing import Callable, Protocol
+
+
+OPENCODE_GO_BASE_URL = "https://opencode.ai/zen/go/v1"
+
+
+class ProviderUnavailable(RuntimeError):
+    pass
+
+
+def _read_http(request: urllib.request.Request, timeout: float) -> bytes:
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return response.read()
+
+
+class OpenCodeGoClient:
+    """OpenCode Go public model discovery; completion protocols remain separate."""
+
+    def __init__(self, api_key: str | None = None, *, base_url: str = OPENCODE_GO_BASE_URL,
+                 timeout: float = 10.0,
+                 transport: Callable[[urllib.request.Request, float], bytes] = _read_http,
+                 cache_ttl: float = 300.0):
+        self._api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self.transport = transport
+        self.cache_ttl = cache_ttl
+        self._cache: tuple[float, list[dict]] | None = None
+        self._lock = threading.Lock()
+
+    @property
+    def configured(self) -> bool:
+        return bool(self._api_key)
+
+    def list_models(self) -> list[dict]:
+        now = time.monotonic()
+        with self._lock:
+            if self._cache and now - self._cache[0] < self.cache_ttl:
+                return [dict(item) for item in self._cache[1]]
+        headers = {"Accept": "application/json", "User-Agent": "Peach/0.2"}
+        if self._api_key:
+            headers["Authorization"] = "Bearer " + self._api_key
+        request = urllib.request.Request(self.base_url + "/models", headers=headers)
+        try:
+            raw = self.transport(request, self.timeout)
+            payload = json.loads(raw.decode("utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError, urllib.error.URLError) as exc:
+            raise ProviderUnavailable("OpenCode Go model discovery failed") from exc
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(data, list):
+            raise ProviderUnavailable("OpenCode Go returned an invalid model list")
+        models = []
+        for item in data:
+            if not isinstance(item, dict) or not item.get("id"):
+                continue
+            models.append({
+                "id": str(item["id"]),
+                "object": str(item.get("object") or "model"),
+                "owned_by": str(item.get("owned_by") or "opencode"),
+            })
+        with self._lock:
+            self._cache = (now, models)
+        return [dict(item) for item in models]
 
 
 class ProviderKind(str, Enum):

@@ -3,6 +3,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 HAS_DEPS = all(importlib.util.find_spec(name) for name in ("fastapi", "httpx"))
@@ -130,6 +131,19 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(len(payload["providers"]), 3)
         self.assertNotIn("secret_ref", response.text)
+
+    async def test_opencode_models_endpoint_is_explicit_and_normalized(self):
+        denied = await self.client.get("/api/providers/opencode-go/models")
+        self.assertEqual(denied.status_code, 401)
+        with patch("peach.api.OpenCodeGoClient.list_models", return_value=[{
+            "id": "kimi-k3", "object": "model", "owned_by": "opencode",
+        }]) as discover:
+            response = await self.client.get(
+                "/api/providers/opencode-go/models?t=secret",
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["models"][0]["id"], "kimi-k3")
+        discover.assert_called_once_with()
 
     async def test_post_writes_only_test_database(self):
         response = await self.client.post(

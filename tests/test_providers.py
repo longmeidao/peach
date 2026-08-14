@@ -1,8 +1,9 @@
 import unittest
+import json
 
 from peach.providers import (
-    ProviderCapabilities, ProviderKind, ProviderRegistry, ProviderStatus,
-    default_registry,
+    OpenCodeGoClient, ProviderCapabilities, ProviderKind, ProviderRegistry,
+    ProviderStatus, ProviderUnavailable, default_registry,
 )
 
 
@@ -37,6 +38,38 @@ class ProviderRegistryTests(unittest.TestCase):
         registry.register(status)
         with self.assertRaisesRegex(ValueError, "duplicate provider id"):
             registry.register(status)
+
+    def test_opencode_model_discovery_is_normalized_and_cached(self):
+        calls = []
+
+        def transport(request, timeout):
+            calls.append((request.full_url, request.get_header("Authorization"), timeout))
+            return json.dumps({"object": "list", "data": [
+                {"id": "kimi-k3", "object": "model", "owned_by": "opencode", "extra": "drop"},
+                {"missing": "id"},
+            ]}).encode()
+
+        client = OpenCodeGoClient(
+            "test-secret", transport=transport, cache_ttl=300, timeout=3,
+        )
+        first = client.list_models()
+        second = client.list_models()
+
+        self.assertTrue(client.configured)
+        self.assertEqual(first, [{
+            "id": "kimi-k3", "object": "model", "owned_by": "opencode",
+        }])
+        self.assertEqual(second, first)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0], (
+            "https://opencode.ai/zen/go/v1/models", "Bearer test-secret", 3,
+        ))
+        self.assertNotIn("test-secret", repr(first))
+
+    def test_opencode_invalid_payload_is_provider_error(self):
+        client = OpenCodeGoClient(transport=lambda *_: b'{"unexpected":true}')
+        with self.assertRaises(ProviderUnavailable):
+            client.list_models()
 
 
 if __name__ == "__main__":
