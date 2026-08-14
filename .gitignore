@@ -1,20 +1,23 @@
-/.claude/
-/$RECYCLE.BIN/
-/System Volume Information/
-/Inbox/
-/Media/
-
-# 真实数据、凭据、缓存和加工产物绝不进入版本库。
-/Resources/Intake/*
-!/Resources/Intake/_SHARED_STATE/
-!/Resources/Intake/_SHARED_STATE/**
-/Resources/Migration_Logs/
-/Resources/Sources/
-
-# 本地运行/测试产物。
-**/__pycache__/
-**/*.py[cod]
-**/.pytest_cache/
-**/.venv/
-**/*.bak
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+.env
+.env.*
+!.env.example
 *.log
+*.bak
+
+# Peach 的代码仓库不保存真实数据库、媒体、凭据、缓存或生成物。
+*.db
+*.db-wal
+*.db-shm
+*.sqlite*
+data/
+runtime/
+bin/

@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "peach-app"
+version = "0.2.0"
+description = "Local-first media library, behavior ledger, and discovery application"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi==0.116.1",
+  "httpx==0.28.1",
+  "pydantic==2.11.7",
+  "starlette==0.47.2",
+  "uvicorn==0.35.0",
+]
+
+[project.scripts]
+peach = "peach.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
