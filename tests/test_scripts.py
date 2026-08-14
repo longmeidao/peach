@@ -32,6 +32,7 @@ class OperationalScriptTests(unittest.TestCase):
         cls.sheets = load_script("sheets")
         cls.traffic_watch = load_script("traffic_watch")
         cls.creator_boards = load_script("creator_boards")
+        cls.creator_tags = load_script("creator_tags")
 
     def test_import_has_no_filesystem_or_log_side_effect(self):
         self.assertIsNone(self.clean_names._logf)
@@ -172,6 +173,56 @@ class OperationalScriptTests(unittest.TestCase):
                 ("tag", "足系", "tag", "r18"),
                 ("tag", "肛交", "tag", "r18"),
             } <= relations)
+
+    def test_creator_tag_review_queue_requires_approval_and_backup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "ledger.db"
+            sqlite3.connect(db).close()
+            upgrade(db, MIGRATIONS)
+            connection = sqlite3.connect(db)
+            connection.execute(
+                "INSERT INTO asset(id,location,path,name,medium,creator) "
+                "VALUES(1,'local','one.mp4','one.mp4','video','Alice')"
+            )
+            connection.execute(
+                "INSERT INTO asset(id,location,path,name,medium,creator) "
+                "VALUES(2,'local','vocab.mp4','vocab.mp4','video','Vocabulary')"
+            )
+            connection.execute(
+                "INSERT INTO asset_tag(asset_id,tag,confidence,source) "
+                "VALUES(2,'素人',0.9,'vision')"
+            )
+            connection.commit()
+            connection.close()
+            boards = root / "boards"
+            boards.mkdir()
+            (boards / "01_Alice_1.jpg").write_bytes(b"review-only fixture")
+            review = root / "review.csv"
+
+            total, pending = self.creator_tags.export_review(db, boards, review)
+            self.assertEqual((total, pending), (1, 1))
+            with review.open(encoding="utf-8-sig", newline="") as handle:
+                rows = list(csv.DictReader(handle))
+            rows[0].update({"status": "approved", "tags": "素人", "reason": "reviewed"})
+            with review.open("w", encoding="utf-8-sig", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=self.creator_tags.REVIEW_FIELDS)
+                writer.writeheader()
+                writer.writerows(rows)
+
+            backup = root / "backup.db"
+            assets, tag_rows = self.creator_tags.apply_review(db, review, backup)
+            self.assertEqual((assets, tag_rows), (1, 1))
+            self.assertTrue(backup.is_file())
+            connection = sqlite3.connect(db)
+            self.assertEqual(connection.execute(
+                "SELECT source,confidence FROM asset_tag WHERE asset_id=1 AND tag='素人'"
+            ).fetchone(), ("vision_creator", 0.6))
+            self.assertEqual(connection.execute(
+                "SELECT ae.source FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+                "WHERE ae.asset_id=1 AND e.kind='tag' AND e.canonical_name='素人'"
+            ).fetchone()[0], "vision_creator")
+            connection.close()
 
 
 if __name__ == "__main__":

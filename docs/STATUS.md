@@ -31,7 +31,7 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - Creator/studio top lists and related-item creator/tag/studio matching now read canonical entity relations. Real-ledger timings were 0.055 s for 28 top entries and 0.055 s for 24 related items.
 - Creator/studio filters, canonical-name search, creator index, facets and attribution stats now also read entity relations. Real-ledger timings were 0.040 s for a 1,545-item creator filter, 0.043 s for the first 60 creators, 0.132 s for facets and 0.394 s for stats.
 - Snapshot availability checks use the same strict legacy-prefix resolver as `/thumb`, so the front end requests migrated previews instead of displaying false “无预览” cards.
-- 60 isolated tests, Python static compilation, dependency validation and JavaScript parse validation passed under Python 3.14/Node.
+- 61 isolated tests, Python static compilation, dependency validation and JavaScript parse validation passed under Python 3.14/Node.
 - Real migration preserved 81,873 assets and 59,697 tag links; both live database and backup passed `integrity_check` and `foreign_key_check` before later metadata writes.
 - Desktop 1280×720 and mobile 390×844 browser checks passed on the same application candidate before the schema-only migration; visual checks were not rerun after migration because no browser instance was connected.
 - Restarted production port 80 passed health, home, public OpenCode Go model discovery (26 models at verification time), canonical filtered-list/item reads, thumbnail `200` and 1 KiB `206 Partial Content` Range smoke checks.
@@ -50,7 +50,9 @@ Runtime PIDs are observations, not configuration; always re-check them.
 ## Batch jobs
 
 - The creator-board sampler completed before its implementation was changed; it left 86 boards and 598 cached frames. No `creator_boards.py` process was active at the final observation. The command now uses the shared source-access policy, disk guard, PID lock and Peach-managed FFmpeg resolver while preserving its prior arguments and output layout.
-- `RM-TrafficWatch` is running from the project venv with the refactored watcher. It stops only matching Peach task trees and no longer terminates machine-wide FFmpeg/ffprobe processes.
+- Creator tagging is now review-first: `scripts/creator_tags.py --export-review` produced `R:\peach-data\generated\creator-tags-review.csv` with 86 boards, 30 prior decisions and 56 pending rows. A parallel worker may write only `candidate`/`skip`; applying accepts only coordinator-reviewed `approved` rows, requires a SQLite backup, and dual-writes compatibility plus canonical tag relations.
+- A Claude Code 2.1.232 batch was asked to inspect those 56 boards but refused explicit sexual-act visual classification after 24 seconds; it made no CSV changes. The queue remains 27 applied, 3 skipped and 56 pending. Claude should be used for non-visual scraping/code/data reconciliation, not this visual category.
+- The visible terminal mistaken for a slow batch was the permanent `RM-TrafficWatch` heartbeat. Its scheduled action was changed from `python.exe` to `pythonw.exe` at 22:36, the task restarted successfully, and the new hidden process continued writing `trafficwatch-20260814-223642.log` every 30 seconds. It stops only matching Peach task trees and no longer terminates machine-wide FFmpeg/ffprobe processes.
 
 - `scripts/scrape_codes.py` — code scraping via r18 → avsox → javbus cascade, resumable from
   `R:\peach-data\generated\code-scrape.csv`. All 1,104 non-FC2 codes were processed; 715 rows carry

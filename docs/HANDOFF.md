@@ -12,6 +12,15 @@ This is durable operating knowledge, not a per-session transcript.
 - The user is not the message bus. Do not ask the user to copy technical conclusions to another agent; update the shared documents in the same change.
 - If the worktree is dirty, inspect and preserve every existing diff. One agent owns a file while actively changing it; work on non-overlapping files or wait for that write to finish, then integrate the diff instead of recreating it.
 
+## Parallel agent execution
+
+- Codex is the coordinator for architecture, code ownership, review, migrations, real-ledger writes, service restarts and final verification. Claude is a parallel worker for bounded mechanical batches such as board reading, metadata candidate scraping and CSV reconciliation; handoff is not the goal.
+- Parallel workers receive explicit input/output paths, network and cost policy, write boundary and acceptance criteria. They write `candidate` review artifacts only; they do not mark their own output `approved`, run `--apply`, alter migrations/ADR, or restart services.
+- Use separate Git worktrees for concurrent code changes. Data-only batches may share the main checkout only when their sole writable artifact is outside Git and named in the task. Never let two agents edit the same file.
+- Worker results return to the coordinating agent for vocabulary/provenance checks, deduplication, isolated tests and approval. The user does not relay reports between agents.
+- `scripts/scrape_codes.py` and `scripts/creator_tags.py` are the standard review boundaries. Creator-board work exports `generated/creator-tags-review.csv`; workers may change `pending` to `candidate` or `skip`, while `approved` and the required backup remain coordinator actions.
+- Claude Code 2.1.232 refused explicit sexual-act classification from board images. Do not assign that visual-content category to Claude again unless its supported-use boundary is reverified; use human review or a separately approved vision provider. Claude remains suitable for code, public metadata adapters, deduplication and non-visual CSV validation.
+
 ## Reuse before restore
 
 - Read `docs/REUSE.md` before introducing a library, protocol implementation or restored legacy script.

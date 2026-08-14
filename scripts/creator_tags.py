@@ -12,17 +12,28 @@ r"""
 标签一律取自 ledger 现有词表，不新造词。
 
 用法:
-    python scripts/creator_tags.py [--apply]
+    python scripts/creator_tags.py --export-review
+    # Claude/人工先写 candidate；审核后才把行改为 approved。
+    python scripts/creator_tags.py --apply-review --backup <backup.db>
 """
 from __future__ import annotations
 
-import os
+import argparse
+import csv
+import re
 import sqlite3
-import sys
+from pathlib import Path
 
-DB = r"R:\peach-data\database\ledger.db"
+from peach.config import DATABASE_PATH, GENERATED_DIR
+from peach.entities import upsert_asset_entity
+from peach.migrations import sqlite_backup
+
+DB = DATABASE_PATH
+BOARD_DIR = GENERATED_DIR / "boards"
+REVIEW_CSV = GENERATED_DIR / "creator-tags-review.csv"
 SOURCE = "vision_creator"
 CONFIDENCE = 0.6
+REVIEW_FIELDS = ["board", "creator", "video_count", "status", "tags", "reason"]
 
 # 创作者 -> 标签。读风格板得出，只记反复出现的稳定特征。
 BOARDS: dict[str, list[str]] = {
@@ -63,42 +74,139 @@ SKIPPED = {
     "tuki_1154":  "可用样张仅 5 张且过暗过糊，无法确证任何标签",
 }
 
-APPLY = "--apply" in sys.argv[1:]
+def _readonly(path: Path) -> sqlite3.Connection:
+    return sqlite3.connect("file:" + path.resolve().as_posix() + "?mode=ro", uri=True)
 
 
-def main() -> int:
-    conn = sqlite3.connect(DB, timeout=60)
-    conn.execute("PRAGMA busy_timeout=60000")
+def _safe_name(value: str) -> str:
+    return re.sub(r"[^\w\u4e00-\u9fff-]", "_", value)[:40]
 
-    known = {r[0] for r in conn.execute(
-        "SELECT DISTINCT tag FROM asset_tag WHERE source IN ('name','r18','vision')")}
-    unknown = {t for tags in BOARDS.values() for t in tags} - known
-    if unknown:
-        print("以下标签不在现有词表，先确认再写:", sorted(unknown))
-        return 1
 
-    total_assets = total_rows = 0
-    for creator, tags in BOARDS.items():
-        ids = [r[0] for r in conn.execute(
-            "SELECT id FROM asset WHERE medium='video' AND creator=? "
-            "AND id NOT IN (SELECT asset_id FROM asset_tag)", (creator,))]
-        if not ids:
-            print(f"  {creator[:24]:<24} 无待打标视频，跳过")
+def _board_identity(path: Path) -> tuple[str, int] | None:
+    match = re.match(r"^(?:v)?\d+_(.+)_(\d+)$", path.stem)
+    return (match.group(1), int(match.group(2))) if match else None
+
+
+def export_review(db_path: Path, board_dir: Path, output: Path) -> tuple[int, int]:
+    connection = _readonly(db_path)
+    creators = [row[0] for row in connection.execute(
+        "SELECT DISTINCT creator FROM asset WHERE medium='video' "
+        "AND creator IS NOT NULL AND creator<>''"
+    )]
+    connection.close()
+    by_safe_name: dict[str, str] = {}
+    for creator in creators:
+        key = _safe_name(creator)
+        if key in by_safe_name and by_safe_name[key] != creator:
+            raise RuntimeError(f"board filename collision: {creator} / {by_safe_name[key]}")
+        by_safe_name[key] = creator
+
+    previous: dict[str, dict] = {}
+    if output.is_file():
+        with output.open(encoding="utf-8-sig", newline="") as handle:
+            previous = {row["board"]: row for row in csv.DictReader(handle)}
+
+    rows: list[dict] = []
+    pending = 0
+    for board in sorted(board_dir.glob("*.jpg")):
+        identity = _board_identity(board)
+        if identity is None:
             continue
-        print(f"  {creator[:24]:<24} {len(ids):>4} 条 x {len(tags)} 标签  {' '.join(tags)}")
-        total_assets += len(ids)
-        total_rows += len(ids) * len(tags)
-        if APPLY:
-            conn.executemany(
-                "INSERT OR IGNORE INTO asset_tag(asset_id,tag,confidence,source) VALUES(?,?,?,?)",
-                [(aid, tag, CONFIDENCE, SOURCE) for aid in ids for tag in tags])
+        safe_creator, count = identity
+        creator = by_safe_name.get(safe_creator)
+        if not creator:
+            raise RuntimeError(f"creator not found for board: {board.name}")
+        old = previous.get(board.name)
+        if old:
+            row = {field: old.get(field, "") for field in REVIEW_FIELDS}
+            row.update({"board": board.name, "creator": creator, "video_count": count})
+        elif creator in BOARDS:
+            row = {"board": board.name, "creator": creator, "video_count": count,
+                   "status": "applied", "tags": "|".join(BOARDS[creator]), "reason": ""}
+        elif creator in SKIPPED:
+            row = {"board": board.name, "creator": creator, "video_count": count,
+                   "status": "skip", "tags": "", "reason": SKIPPED[creator]}
+        else:
+            row = {"board": board.name, "creator": creator, "video_count": count,
+                   "status": "pending", "tags": "", "reason": ""}
+        pending += row["status"] == "pending"
+        rows.append(row)
 
-    if APPLY:
-        conn.commit()
-        print(f"\n已写入：{total_assets} 条视频，约 {total_rows} 条标签")
-    else:
-        print(f"\n预演：将覆盖 {total_assets} 条视频，约 {total_rows} 条标签。加 --apply 落库。")
-    conn.close()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output.with_suffix(output.suffix + ".tmp")
+    with temporary.open("w", encoding="utf-8-sig", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=REVIEW_FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
+    temporary.replace(output)
+    return len(rows), pending
+
+
+def apply_review(db_path: Path, review_path: Path, backup: Path) -> tuple[int, int]:
+    with review_path.open(encoding="utf-8-sig", newline="") as handle:
+        approved = [row for row in csv.DictReader(handle) if row.get("status") == "approved"]
+    sqlite_backup(db_path, backup)
+    connection = sqlite3.connect(db_path, timeout=60)
+    connection.execute("PRAGMA busy_timeout=60000")
+    known = {row[0] for row in connection.execute(
+        "SELECT DISTINCT tag FROM asset_tag WHERE source IN ('name','r18','vision')"
+    )}
+    total_assets = total_rows = 0
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        for row in approved:
+            tags = list(dict.fromkeys(tag.strip() for tag in row["tags"].split("|") if tag.strip()))
+            unknown = set(tags) - known
+            if unknown:
+                raise ValueError(f"{row['creator']} has unknown tags: {sorted(unknown)}")
+            ids = [result[0] for result in connection.execute(
+                "SELECT id FROM asset WHERE medium='video' AND creator=? "
+                "AND id NOT IN (SELECT asset_id FROM asset_tag)", (row["creator"],)
+            )]
+            connection.executemany(
+                "INSERT OR IGNORE INTO asset_tag(asset_id,tag,confidence,source) VALUES(?,?,?,?)",
+                [(asset_id, tag, CONFIDENCE, SOURCE) for asset_id in ids for tag in tags],
+            )
+            for asset_id in ids:
+                for tag in tags:
+                    upsert_asset_entity(
+                        connection, kind="tag", name=tag, asset_id=asset_id, role="tag",
+                        source=SOURCE, confidence=CONFIDENCE,
+                        metadata={"evidence_board": row["board"]},
+                    )
+            total_assets += len(ids)
+            total_rows += len(ids) * len(tags)
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+    return total_assets, total_rows
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="review-first creator board tagging")
+    parser.add_argument("--db", type=Path, default=DB)
+    parser.add_argument("--board-dir", type=Path, default=BOARD_DIR)
+    parser.add_argument("--review", type=Path, default=REVIEW_CSV)
+    action = parser.add_mutually_exclusive_group(required=True)
+    action.add_argument("--export-review", action="store_true")
+    action.add_argument("--apply-review", action="store_true")
+    parser.add_argument("--backup", type=Path)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    if args.export_review:
+        total, pending = export_review(args.db, args.board_dir, args.review)
+        print(f"review queue: {total} boards, {pending} pending -> {args.review}")
+        return 0
+    if not args.backup:
+        raise SystemExit("--apply-review requires --backup")
+    assets, rows = apply_review(args.db, args.review, args.backup)
+    print(f"applied: {assets} assets, {rows} tag rows; backup={args.backup}")
     return 0
 
 
