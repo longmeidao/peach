@@ -76,6 +76,14 @@ cd R:\peach-app
 前提下把自签 HTTPS 变成无警告连接；Let's Encrypt 也不会签发 `.local`。
 
 当前运行态与下一任务只看 [`docs/STATUS.md`](docs/STATUS.md)；跨 Codex/Claude 的固定接手方式只看 [`docs/HANDOFF.md`](docs/HANDOFF.md)。
+
+并行代码任务不共享编辑目录。由协调者在主目录创建独立 worktree：
+
+```powershell
+& .\.venv\Scripts\python.exe scripts\agent_worktree.py create --agent claude --task metadata-batch
+```
+
+工作者在返回目录提交后运行 `ready`；协调者审核并运行 `integrate`。脚本会拒绝脏工作树、无提交分支和双方都修改过同一文件的自动合并。禁止 `git add .` / `git add -A`，只暂存任务明确拥有的文件。
 准备新增、恢复或替换实现前，必须查 [`docs/REUSE.md`](docs/REUSE.md)，避免按旧文件名重复造轮子。
 
 ## 批处理安全边界
