@@ -390,13 +390,23 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .tok video.slide-dn{transform:translateY(8%);opacity:0}
 .tokui{position:absolute;inset:auto 0 0 0;padding:18px 20px 26px;color:#F3ECE2;
   background:linear-gradient(transparent,rgba(0,0,0,.84));pointer-events:none}
-.tokbtns{position:absolute;right:15px;bottom:106px;display:flex;flex-direction:column;gap:11px}
-.tokbtns button{width:52px;height:52px;border-radius:50%;border:1px solid rgba(255,255,255,.26);
-  background:rgba(0,0,0,.45);color:#F3ECE2;cursor:pointer;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px}
-.tokbtns svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;
+.tokbtns{position:absolute;right:max(14px,env(safe-area-inset-right));bottom:106px;
+  display:flex;flex-direction:column;align-items:center;gap:12px}
+.tokbtns button{position:relative;width:60px;height:60px;padding:7px 4px 6px;border-radius:50%;
+  border:1px solid rgba(255,255,255,.28);background:rgba(12,12,14,.58);color:#F3ECE2;
+  box-shadow:0 8px 28px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.06);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  transition:transform .14s,border-color .14s,background .14s}
+.tokbtns button:hover{transform:scale(1.05);border-color:rgba(255,255,255,.5)}
+.tokbtns button:active{transform:scale(.96)}
+.tokbtns button:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px}
+.tokbtns svg{display:block;width:23px;height:23px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;
   stroke-linecap:round;stroke-linejoin:round}
-.tokbtns b{font-size:10px;font-family:"Cascadia Mono",monospace}
+.toklabel{font-size:9px;font-weight:650;line-height:1;letter-spacing:.04em;white-space:nowrap}
+.tokcount{position:absolute;top:3px;right:3px;min-width:16px;height:16px;padding:0 4px;
+  border-radius:999px;background:var(--tungsten);color:#17110A;border:2px solid #111;
+  display:grid;place-items:center;font:700 9px/1 "Cascadia Mono",monospace}
 /* 进度条 */
 .tokbar{position:absolute;left:0;right:0;bottom:0;height:4px;background:rgba(255,255,255,.16);
   cursor:pointer;z-index:3}
@@ -477,9 +487,9 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   <div class="tokhint mono">滚轮 / ↑↓ 切换 · Esc 退出 · 横竖屏混流</div>
   <button class="tokclose" id="tokClose">退出</button>
   <div class="tokbtns">
-    <button id="tokDislike" title="不合口味"><svg viewBox="0 0 24 24"><path d="M17 14V3H7l-3 8v3h5l-1 5 5-5z" transform="rotate(180 12 12)"/></svg></button>
-    <button id="tokSeen" title="看过了"><svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
-    <button id="tokO" title="记一次高潮"><svg viewBox="0 0 24 24"><path d="M12 21s-7-4.6-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.4-7 10-7 10z"/></svg><b id="tokOn">0</b></button>
+    <button id="tokDislike" title="标为不喜欢" aria-label="标为不喜欢"><svg viewBox="0 0 24 24"><path d="M17 14V3H7l-3 8v3h5l-1 5 5-5z" transform="rotate(180 12 12)"/></svg><span class="toklabel">不喜欢</span></button>
+    <button id="tokSeen" title="标为看过" aria-label="标为看过"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="m8.5 12 2.3 2.3 4.9-5"/></svg><span class="toklabel">看过</span></button>
+    <button id="tokO" title="记一次高潮" aria-label="记一次高潮"><svg viewBox="0 0 24 24"><path d="M12 21s-7-4.6-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.4-7 10-7 10z"/></svg><span class="toklabel">高潮</span><b class="tokcount" id="tokOn">0</b></button>
   </div>
   <div class="tokbar" id="tokBar"><i id="tokProg"></i></div>
   <div class="tokui"><div id="tokTitle" style="font-size:14px;margin-bottom:5px"></div>
@@ -1101,6 +1111,7 @@ async function tokShow(dir){
     const d=v.duration||0; if(d)v.currentTime=d*((e.clientX-r.left)/r.width)};
   $('#tokDislike').setAttribute('aria-pressed',full.feedback==='dislike');
   $('#tokSeen').setAttribute('aria-pressed',full.feedback==='seen');
+  $('#tokSeen .toklabel').textContent=full.feedback==='seen'?'已看':'看过';
   $('#tokOn').textContent=full.o_count||0;
   api('/api/play',{method:'POST',body:JSON.stringify({id:it.id})});
   wireTelemetry(it,v,{});
@@ -1141,6 +1152,7 @@ $('#tok').addEventListener('touchend',e=>{const dy=ty-e.changedTouches[0].client
     const r=await api('/api/feedback',{method:'POST',body:JSON.stringify({id:it.id,kind})});
     $('#tokDislike').setAttribute('aria-pressed',r.feedback==='dislike');
     $('#tokSeen').setAttribute('aria-pressed',r.feedback==='seen');
+    $('#tokSeen .toklabel').textContent=r.feedback==='seen'?'已看':'看过';
     $('#tokOn').textContent=r.o_count||0;
     if(kind==='dislike'&&r.feedback==='dislike')setTimeout(()=>tokNext(1),260)}});
 

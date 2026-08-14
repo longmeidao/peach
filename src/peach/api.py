@@ -11,7 +11,7 @@ from . import web_contract
 from .config import PeachSettings
 from .ffmpeg import FFmpegResolver
 from .media import FilesystemMediaService, MediaNotFound, MediaUnavailable
-from .mdns import MdnsPublisher
+from .mdns import create_mdns_publisher
 from .previews import PreviewService, PreviewUnavailable
 from .providers import OpenCodeGoClient, ProviderUnavailable, default_registry
 from .repository import LedgerRepository
@@ -48,7 +48,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         repository, resolver, settings.snapshot_root, settings.poster_root,
         settings.avatar_root, settings.logo_root, settings.legacy_snapshot_roots,
     )
-    mdns = MdnsPublisher(
+    mdns = create_mdns_publisher(
         settings.mdns_name, settings.mdns_port, secure=settings.tls_enabled
     ) if settings.mdns_enabled else None
     providers = default_registry()
@@ -102,6 +102,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
                 "db": "available" if settings.db_path.is_file() else "missing",
                 "ffmpeg": ffmpeg.source if ffmpeg else "unavailable",
                 "mdns": mdns.status if mdns is not None else "disabled",
+                "mdns_backend": mdns.backend if mdns is not None else None,
                 "mdns_address": mdns.address if mdns is not None else None,
                 "scheme": "https" if settings.tls_enabled else "http"}
 
