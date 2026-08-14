@@ -191,8 +191,11 @@ def q_items(contract: WebContract, args):
         for aid, tag in con_tags(contract, ids, qm):
             tmap.setdefault(aid, []).append(tag)
         emap: dict[int, dict[str, list[str]]] = {}
-        for aid, kind, name in con_entities(contract, ids, qm):
+        performer_refs: dict[int, list[dict[str, object]]] = {}
+        for aid, entity_id, kind, name in con_entities(contract, ids, qm):
             emap.setdefault(aid, {}).setdefault(kind, []).append(name)
+            if kind == "performer":
+                performer_refs.setdefault(aid, []).append({"id": entity_id, "name": name})
         for r in rows:
             ts = tmap.get(r["id"], [])
             canonical = emap.get(r["id"], {})
@@ -206,6 +209,7 @@ def q_items(contract: WebContract, args):
             r["performers"] = (canonical_performers or [
                 tag[3:] for tag in ts if tag.startswith("演员:")
             ])[:3]
+            r["performer_entities"] = performer_refs.get(r["id"], [])[:3]
     for r in rows:
         r["cost"] = COST.get(r["location"], "metered")
         r["has_thumb"] = contract.has_snapshot(r["snapshot_path"])
@@ -226,7 +230,7 @@ def con_entities(contract: WebContract, ids, qm):
     connection = contract.db()
     try:
         return connection.execute(
-            f"SELECT DISTINCT ae.asset_id,e.kind,e.canonical_name "
+            f"SELECT DISTINCT ae.asset_id,e.id,e.kind,e.canonical_name "
             f"FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
             f"WHERE ae.asset_id IN ({qm}) "
             f"AND e.kind IN ('tag','performer','creator','studio','series') "
@@ -234,6 +238,24 @@ def con_entities(contract: WebContract, ids, qm):
         ).fetchall()
     finally:
         connection.close()
+
+
+def attach_card_performers(contract: WebContract, rows):
+    """给各类视频卡片补同一份表演者资料，避免首页/相关/复核卡片各说各话。"""
+    if not rows:
+        return
+    ids = [row["id"] for row in rows]
+    qm = ",".join("?" * len(ids))
+    names: dict[int, list[str]] = {}
+    refs: dict[int, list[dict[str, object]]] = {}
+    for asset_id, entity_id, kind, name in con_entities(contract, ids, qm):
+        if kind != "performer":
+            continue
+        names.setdefault(asset_id, []).append(name)
+        refs.setdefault(asset_id, []).append({"id": entity_id, "name": name})
+    for row in rows:
+        row["performers"] = names.get(row["id"], [])[:3]
+        row["performer_entities"] = refs.get(row["id"], [])[:3]
 
 def q_item(contract: WebContract, aid):
     """按 id 直取。
@@ -344,7 +366,9 @@ def q_ads(contract: WebContract, limit=200):
             out.append(d)
     c.close()
     out.sort(key=lambda x: (-x["score"], -(x["size"] or 0)))
-    return {"total": len(out), "items": out[:limit]}
+    items = out[:limit]
+    attach_card_performers(contract, items)
+    return {"total": len(out), "items": items}
 
 def q_related(contract: WebContract, aid, limit=24):
     """接着看 —— 把口味接近的串成播放列表。
@@ -397,6 +421,7 @@ def q_related(contract: WebContract, aid, limit=24):
              f"AND ae.entity_id IN ({qm})) ORDER BY random() LIMIT ?",
              tuple([aid] + studios + [limit]), "同厂牌")
     c.close()
+    attach_card_performers(contract, picked)
     for d in picked:
         d["cost"] = COST.get(d["location"], "metered")
         d["has_thumb"] = contract.has_snapshot(d["snapshot_path"])

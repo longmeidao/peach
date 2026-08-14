@@ -137,6 +137,9 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(result["total"], 1)
         self.assertEqual(result["items"][0]["id"], 1)
         self.assertEqual(result["items"][0]["performers"], ["Canonical Alice"])
+        self.assertEqual(result["items"][0]["performer_entities"], [
+            {"id": 11, "name": "Canonical Alice"},
+        ])
         self.assertNotIn("path", result["items"][0])
         self.assertNotIn("snapshot_path", result["items"][0])
 
@@ -196,6 +199,12 @@ class WebDataTests(unittest.TestCase):
         related = rm_web.q_related(self.contract, 1, 10)
         self.assertEqual(related["items"][0]["id"], 2)
         self.assertEqual(related["items"][0]["why"], "同创作者")
+        self.assertEqual(related["items"][0]["performer_entities"], [])
+
+        reverse_related = rm_web.q_related(self.contract, 2, 10)
+        self.assertEqual(reverse_related["items"][0]["performer_entities"], [
+            {"id": 11, "name": "Canonical Alice"},
+        ])
 
     def test_creator_filters_indexes_and_stats_use_canonical_entities(self):
         by_creator = rm_web.q_items(self.contract, {

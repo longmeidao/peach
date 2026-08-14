@@ -41,7 +41,7 @@ body{background:var(--ground);color:var(--ink);
 .disp{font-family:Bahnschrift,"Segoe UI Variable Display","Microsoft YaHei UI",sans-serif;
   font-weight:600;letter-spacing:.02em}
 .mono{font-family:"Cascadia Mono",Consolas,ui-monospace,monospace;
-  font-variant-numeric:tabular-nums;font-size:11px}
+  font-variant-numeric:tabular-nums;font-size:12px}
 button,input,textarea{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -102,7 +102,7 @@ button,input,textarea{font:inherit;color:inherit}
 .av .ring img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .av .ring .ini{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   font-size:22px;color:var(--muted);font-family:Bahnschrift,sans-serif}
-.av .nm{display:block;font-size:11px;color:var(--ink-2);overflow:hidden;
+.av .nm{display:block;font-size:12px;color:var(--ink-2);overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap;max-width:76px}
 .av[aria-pressed="true"] .nm{color:var(--tungsten)}
 /* 二层：厂牌大药丸 */
@@ -111,10 +111,11 @@ button,input,textarea{font:inherit;color:inherit}
   font-size:14px;white-space:nowrap}
 .brandpill:hover{border-color:var(--tungsten)}
 .brandpill[aria-pressed="true"]{border-color:var(--tungsten);background:var(--tungsten-soft)}
-.brandpill .mk{width:32px;height:32px;border-radius:50%;background:#fff;flex:none;
+.brandpill .mk{width:32px;height:32px;border-radius:50%;background:#CFCFCF;flex:none;
   display:flex;align-items:center;justify-content:center;font-size:12px;
   font-family:Bahnschrift,sans-serif;color:var(--tungsten);overflow:hidden;position:relative}
-.brandpill .mk img{position:absolute;inset:3px;width:calc(100% - 6px);height:calc(100% - 6px);object-fit:contain;display:block}
+.brandpill .mk img{position:absolute;inset:3px;width:calc(100% - 6px);height:calc(100% - 6px);
+  object-fit:contain;display:block;filter:saturate(.72) brightness(.84);opacity:.9}
 
 /* ── 标签条：唯一常驻的筛选层 ── */
 .tagbar{position:sticky;top:var(--topH);z-index:61;padding:9px 16px;
@@ -124,10 +125,11 @@ button,input,textarea{font:inherit;color:inherit}
   backdrop-filter:saturate(1.8) blur(20px);-webkit-backdrop-filter:saturate(1.8) blur(20px);
   display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;align-items:center}
 .tagbar::-webkit-scrollbar{display:none}
-.pill{flex:none;padding:6px 14px;border:1px solid var(--line);border-radius:9999px;
-  background:var(--surface);cursor:pointer;font-size:12.5px;white-space:nowrap}
-.pill:hover{border-color:var(--tungsten)}
-.pill[aria-pressed="true"]{background:var(--ink);color:var(--ground);border-color:var(--ink)}
+.pill{flex:none;padding:7px 15px;border:1px solid color-mix(in srgb,var(--line) 82%,transparent);
+  border-radius:9999px;background:color-mix(in srgb,var(--surface) 78%,var(--ground));
+  color:var(--ink-2);cursor:pointer;font-size:13px;white-space:nowrap}
+.pill:hover{border-color:var(--ink-2);color:var(--ink)}
+.pill[aria-pressed="true"]{background:var(--ink-2);color:var(--ground);border-color:var(--ink-2)}
 .pill.act{border-color:var(--tungsten);color:var(--tungsten)}
 .sep{flex:none;width:1px;height:19px;background:var(--line);margin:0 3px}
 /* 向下滚时把标签条收起来，别和顶栏一起压住内容；向上滚立刻带回来 */
@@ -143,7 +145,7 @@ button,input,textarea{font:inherit;color:inherit}
 .combo .clr{background:none;border:0;color:var(--muted);cursor:pointer;font-size:12px;text-decoration:underline}
 /* 统计页 */
 .stats{padding:8px 0 42px;max-width:1440px;margin:0 auto}
-.statshead{display:flex;align-items:end;justify-content:space-between;gap:20px;padding:10px 2px 18px;
+.statshead{display:flex;align-items:center;justify-content:flex-start;gap:14px;padding:10px 2px 18px;
   border-bottom:1px solid var(--line-soft);margin-bottom:18px}
 .stats h2{margin:0 0 4px;font-size:26px}
 .stats .sub{color:var(--muted);margin:0}
@@ -166,6 +168,13 @@ button,input,textarea{font:inherit;color:inherit}
 .index{padding:4px 0 20px}
 .index .ihead{display:flex;align-items:center;gap:12px;margin-bottom:14px}
 .index .ihead h2{margin:0;font-size:20px}
+.index .ihead .isearch{margin-left:auto}
+.backbtn{width:auto;min-width:92px;height:40px;padding:0 14px;border:1px solid var(--line);
+  border-radius:999px;background:var(--surface);display:inline-flex;align-items:center;
+  justify-content:center;gap:8px;cursor:pointer;color:var(--ink-2);white-space:nowrap;line-height:1}
+.backbtn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.9;
+  stroke-linecap:round;stroke-linejoin:round;flex:none}
+.backbtn:hover{border-color:var(--ink-2);color:var(--ink);background:var(--hover)}
 .index .isearch{flex:1;max-width:320px;background:var(--sunk);border:1px solid var(--line);
   border-radius:18px;padding:6px 14px}
 .index .isearch input{background:none;border:0;outline:none;width:100%}
@@ -179,7 +188,7 @@ button,input,textarea{font:inherit;color:inherit}
 .icell .ring .ini{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   font-size:24px;color:var(--muted);font-family:Bahnschrift,sans-serif}
 .icell .nm{font-size:12.5px;text-align:center;line-height:1.3;word-break:break-all}
-.icell .n{font-size:10.5px;color:var(--muted)}
+.icell .n{font-size:11.5px;color:var(--muted)}
 .tagwall{display:flex;flex-wrap:wrap;gap:7px}
 .entityhero{display:grid;grid-template-columns:180px minmax(0,1fr);gap:24px;padding:20px;
   border:1px solid var(--line);border-radius:8px;background:var(--surface);margin-bottom:22px}
@@ -192,7 +201,7 @@ button,input,textarea{font:inherit;color:inherit}
   font-size:12px;text-decoration:none;color:var(--ink)}
 .entitylinks a:hover{border-color:var(--tungsten);color:var(--tungsten)}
 .entitylinks .private{color:var(--muted);border-style:dashed}
-.entityterms{margin-top:13px;color:var(--muted);font-size:11px}.entityterms code{color:var(--ink-2);margin-right:8px}
+.entityterms{margin-top:13px;color:var(--muted);font-size:12px}.entityterms code{color:var(--ink-2);margin-right:8px}
 .entitysection h3{font-size:13px;letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
 .entitylink{border:0;background:none;padding:0;color:var(--tungsten);cursor:pointer;text-decoration:none}
 .entitylink:hover{text-decoration:underline}
@@ -225,25 +234,28 @@ main{padding:14px 16px 90px}
 @media (hover:hover) and (pointer:fine){
   .card.longhover{transform:translateY(-7px) scale(1.065);z-index:8;filter:brightness(1.04)}
 }
-.hovertools{position:absolute;inset:0;z-index:4;display:flex;align-items:center;
-  justify-content:center;gap:12px;opacity:0;transition:opacity .16s;pointer-events:none}
+.hovertools{position:absolute;z-index:4;display:flex;align-items:center;gap:8px;
+  opacity:0;transition:opacity .16s;pointer-events:none}
 .card.longhover .hovertools,.card.scard:hover .hovertools{opacity:1}
-.hovertools button{pointer-events:auto;width:54px;height:54px;border-radius:50%;border:1px solid #FFFFFF66;
-  background:#181818B8;color:#fff;backdrop-filter:blur(10px);display:flex;align-items:center;
-  justify-content:center;gap:2px;cursor:pointer;font:650 10px/1 "Cascadia Mono",monospace;
-  box-shadow:0 8px 26px #000A}
-.hovertools button svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.9;
+.hovertools.seektools{top:10px;right:10px}
+.hovertools button{pointer-events:auto;width:48px;height:48px;border-radius:50%;border:1px solid #FFFFFF3D;
+  background:#252525C7;color:#fff;backdrop-filter:blur(12px);display:flex;align-items:center;
+  justify-content:center;cursor:pointer;box-shadow:0 8px 24px #0008;position:relative}
+.hovertools button svg{width:25px;height:25px;stroke:currentColor;fill:none;stroke-width:1.8;
   stroke-linecap:round;stroke-linejoin:round}
-.hovertools button:hover{background:var(--tungsten);color:#17110a;border-color:var(--tungsten)}
+.hovertools button b{position:absolute;inset:0;display:grid;place-items:center;
+  font:700 9px/1 "Cascadia Mono",monospace;padding-top:1px}
+.hovertools button:hover{background:#FFFFFFE8;color:#151515;border-color:#fff}
+.hovertools.later-tools{inset:0}
 .hovertools .laterbtn{position:absolute;right:10px;bottom:10px;width:auto;height:38px;border-radius:20px;
-  padding:0 14px;font-family:inherit;font-size:12px;display:flex;gap:6px}
+  padding:0 14px;font-family:inherit;font-size:13px;display:flex;gap:6px}
 .hovertools .laterbtn[aria-pressed="true"]{background:var(--tungsten);color:#17110a}
-.nopic{font-size:9px;letter-spacing:.15em;color:var(--muted);text-transform:uppercase}
+.nopic{font-size:11px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
 .badge{position:absolute;top:6px;left:6px;display:flex;gap:4px;z-index:2;align-items:center}
 /* 来源徽标：图标 + 名字。绿=免费（本地/115），橙=计费（PikPak） */
 .src{display:inline-flex;align-items:center;gap:4px;padding:2px 7px 2px 3px;border-radius:99px;
   background:color-mix(in srgb,#000 62%,transparent);backdrop-filter:blur(4px);
-  font-size:10px;line-height:1.6;border:1px solid transparent}
+  font-size:12px;line-height:1.6;border:1px solid transparent}
 .src img,.src svg{width:14px;height:14px;border-radius:3px;object-fit:contain;display:block;flex:none}
 .src.free{color:#CFE8CF;border-color:color-mix(in srgb,var(--keep) 55%,transparent)}
 .src.metered{color:#FFD9AE;border-color:var(--meter);background:color-mix(in srgb,var(--meter) 26%,#000)}
@@ -268,8 +280,9 @@ main{padding:14px 16px 90px}
   background:color-mix(in srgb,#000 45%,transparent)}
 .scrub i{display:block;height:100%;background:var(--loupe)}
 .meta{display:flex;gap:10px;min-width:0}
-.mav{width:34px;height:34px;border-radius:50%;flex:none;overflow:hidden;background:var(--sunk);
-  position:relative;margin-top:2px}
+.mav{width:38px;height:38px;border-radius:50%;flex:none;overflow:hidden;background:var(--sunk);
+  position:relative;margin-top:2px;border:0;padding:0;cursor:pointer;color:inherit}
+.mav:hover{box-shadow:0 0 0 2px var(--tungsten)}
 .mav img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .mav .ini{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   font-size:13px;color:var(--muted);font-family:Bahnschrift,sans-serif}
@@ -284,15 +297,13 @@ main{padding:14px 16px 90px}
 .flags i.dispose{background:var(--meter)}
 .flags i.later{background:var(--tungsten)}
 /* 标签分级配色（参考 rule34） */
-.ctags{display:flex;flex-wrap:wrap;gap:3px}
-.tg{padding:1px 7px;border-radius:10px;font-size:10.5px;border:1px solid;line-height:1.55;
-  white-space:nowrap;cursor:pointer}
-.tg.general{color:#6C9BD6;border-color:#6C9BD655}
-.tg.artist{color:#D2703F;border-color:#D2703F55}
-.tg.character{color:#6FAE63;border-color:#6FAE6355}
-.tg.copyright{color:#A784D0;border-color:#A784D055}
-.tg.meta{color:var(--muted);border-color:var(--line-soft)}
-.tg:hover{filter:brightness(1.3)}
+.ctags{display:flex;flex-wrap:wrap;gap:5px}
+.tg{padding:3px 9px;border-radius:999px;font-size:12px;border:1px solid var(--line);
+  line-height:1.45;white-space:nowrap;cursor:pointer;color:var(--ink-2);
+  background:color-mix(in srgb,var(--surface) 82%,var(--ground))}
+.tg.general,.tg.artist,.tg.character,.tg.copyright,.tg.meta{color:var(--ink-2);border-color:var(--line)}
+.tg.artist{font-weight:600}
+.tg:hover{border-color:var(--ink-2);color:var(--ink);background:var(--hover)}
 
 /* 短片带 */
 .shorts{margin:30px 0 8px;border-top:1px solid var(--line-soft);padding-top:16px}
@@ -330,39 +341,35 @@ main{padding:14px 16px 90px}
 .trace .bar u{position:absolute;inset:0 auto 0 0;background:color-mix(in srgb,var(--loupe) 26%,transparent);text-decoration:none}
 .trace .bar b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--tungsten)}
 .ticks{display:flex;justify-content:space-between;margin-top:4px;color:var(--muted)}
-.fb{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px}
-.fb button{padding:10px 3px;border:1px solid var(--line);background:transparent;border-radius:4px;
-  cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px}
+.fb{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:9px}
+.fb button{min-height:76px;padding:10px 5px;border:1px solid var(--line);background:transparent;border-radius:12px;
+  cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+.fb button svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round}
 .fb button:hover{border-color:var(--ink-2)}
-.fb button .k{font-size:12.5px}
-.fb button .d{font-size:8.5px;letter-spacing:.08em;color:var(--muted)}
+.fb button .k{font-size:13.5px;font-weight:600}
+.fb button .d{font-size:11px;color:var(--muted)}
 .fb button[aria-pressed="true"]{background:var(--tungsten-soft)}
 .fb .dislike[aria-pressed="true"]{border-color:var(--drop);color:var(--drop)}
 .fb .seen[aria-pressed="true"]{border-color:var(--muted)}
 .fb .dispose[aria-pressed="true"]{border-color:var(--meter);color:var(--meter)}
-.preference{border:1px solid var(--line);border-radius:6px;padding:10px;margin:1px 0 8px;
+.fb .like[aria-pressed="true"]{border-color:var(--tungsten);color:var(--tungsten);background:var(--tungsten-soft)}
+.preference{border:1px solid var(--line);border-radius:12px;padding:11px;margin:1px 0 8px;
   background:color-mix(in srgb,var(--surface) 78%,transparent)}
-.preference-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
-.likebtn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:8px 13px;
-  border:1px solid var(--line);border-radius:999px;background:transparent;cursor:pointer;font-weight:650}
-.likebtn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.9;
-  stroke-linecap:round;stroke-linejoin:round}
-.likebtn[aria-pressed="true"]{color:#fff;background:var(--tungsten);border-color:var(--tungsten)}
-.preference .weight{font-size:10px;color:var(--muted)}
 .preference textarea{display:block;width:100%;min-height:62px;resize:vertical;padding:8px 9px;
   color:var(--ink);background:var(--ground);border:1px solid var(--line);border-radius:5px;
-  line-height:1.45}
+  line-height:1.5;font-size:14px}
 .preference textarea:focus{border-color:var(--tungsten);outline:0}
 .preference-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:7px}
-.preference-foot span{color:var(--muted);font-size:10px}
-.savepreference{border:0;border-radius:5px;padding:6px 12px;background:var(--ink);color:var(--ground);
-  cursor:pointer;font-size:11px}
+.preference-foot span{color:var(--muted);font-size:12px}
+.savepreference{border:0;border-radius:999px;min-height:38px;padding:7px 15px;background:var(--ink);color:var(--ground);
+  cursor:pointer;font-size:13px}
 .savepreference:disabled{opacity:.55;cursor:default}
-.obtn{width:100%;padding:9px;border:1px solid var(--line);background:transparent;
-  border-radius:4px;cursor:pointer;margin-bottom:11px}
+.obtn{width:100%;min-height:48px;padding:10px;border:1px solid var(--line);background:transparent;
+  border-radius:12px;cursor:pointer;margin-bottom:9px;font-size:14px}
 .obtn:hover{border-color:var(--tungsten)}
 .obtn[aria-pressed="true"]{border-color:var(--tungsten);background:var(--tungsten-soft);color:var(--tungsten)}
-.hint{color:var(--muted);line-height:1.6}
+.hint{color:var(--muted);line-height:1.65;font-size:12px}
 .next{border-top:1px solid var(--line-soft);padding:13px 15px 15px}
 .next h3{margin:0 0 10px;font-size:12px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
 .nrow{display:flex;gap:11px;overflow-x:auto;padding-bottom:6px}
@@ -502,6 +509,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   .entityportrait{width:92px}.entityhero h2{font-size:20px}
   .statshead{align-items:center}.stats h2{font-size:23px}.scards{grid-template-columns:minmax(0,1fr)}
   .scard2{padding:16px}.kv .u{display:block;margin-left:0;margin-top:2px}
+  .fb{grid-template-columns:repeat(2,1fr)}
 }
 #searchBtn{display:none}
 </style>
@@ -648,24 +656,34 @@ function cardHtml(it,cls){
   const fl=[it.feedback==='dislike'&&'dislike',it.feedback==='seen'&&'seen',
             it.disposal==='pending'&&'dispose',it.watch_later&&'later']
             .filter(Boolean).map(c=>`<i class="${c}"></i>`).join('');
-  const who=it.creator||it.code||it.studio||'未归属';
+  const performer=(it.performers||[])[0]||'';
+  const performerRef=(it.performer_entities||[])[0];
+  const who=it.creator||performer||it.code||it.studio||'未归属';
   const whoKind=it.creator?'creator':(it.studio?'studio':'');
   const perf=(it.performers||[]).map(x=>`<button class="tg artist entitylink" data-entity-kind="performer" data-entity-name="${esc(x)}">${esc(x)}</button>`).join('');
   const tgs=(it.tags||[]).slice(0,3).map(x=>`<span class="tg general" data-tag="${esc(x)}">${esc(x)}</span>`).join('');
-  const avId=REP[it.creator]||REP[it.studio];
-  const av=`<span class="ini">${esc((who||'?').slice(0,1))}</span>`+
-    (avId?`<img src="/avatar?id=${avId}" alt="" loading="lazy" onerror="this.remove()">`:'');
-  const legacyTools=cls==='scard'
-    ? `<div class="hovertools"><button class="laterbtn" data-later aria-pressed="${!!it.watch_later}" title="稍后看">${it.watch_later?'✓ 已加入':'＋ 稍后看'}</button></div>`
-    : `<div class="hovertools"><button data-seek="-10" title="后退 10 秒">−10</button><button data-seek="10" title="前进 10 秒">+10</button></div>`;
+  const avatarName=performer||it.creator||it.studio||who;
+  const avatarKind=performer?'performer':(it.creator?'creator':(it.studio?'studio':''));
+  const avId=REP[avatarName]||REP[it.creator]||REP[it.studio];
+  const avSrc=performerRef
+    ? `/entity-image?kind=performer&id=${performerRef.id}`
+    : (avId?`/avatar?id=${avId}`:'');
+  const av=`<span class="ini">${esc((avatarName||'?').slice(0,1))}</span>`+
+    (avSrc?`<img src="${avSrc}" alt="" loading="lazy" onerror="${avId&&performerRef?`this.onerror=null;this.src='/avatar?id=${avId}'`:`this.remove()`}">`:'');
+  const avatar=avatarKind
+    ? `<button class="mav entitylink" data-entity-kind="${avatarKind}" data-entity-name="${esc(avatarName)}" title="打开${performer?'女优':'资料'}页">${av}</button>`
+    : `<span class="mav">${av}</span>`;
   const tools=cls==='scard'
-    ? legacyTools
-    : `<div class="hovertools"><button data-seek="-10" title="后退 10 秒" aria-label="后退 10 秒"><svg viewBox="0 0 24 24"><path d="M8 7H4V3"/><path d="M4.5 7.5A8 8 0 1 1 4 16"/></svg><span>10</span></button><button data-seek="10" title="前进 10 秒" aria-label="前进 10 秒"><span>10</span><svg viewBox="0 0 24 24"><path d="M16 7h4V3"/><path d="M19.5 7.5A8 8 0 1 0 20 16"/></svg></button></div>`;
+    ? `<div class="hovertools later-tools"><button class="laterbtn" data-later aria-pressed="${!!it.watch_later}" title="稍后看">${it.watch_later?'✓ 已加入':'＋ 稍后看'}</button></div>`
+    : `<div class="hovertools seektools">
+        <button data-seek="-10" title="后退 10 秒" aria-label="后退 10 秒"><svg viewBox="0 0 24 24"><path d="M8 7H4V3"/><path d="M4.5 7.5A8 8 0 1 1 4 16"/></svg><b>10</b></button>
+        <button data-seek="10" title="前进 10 秒" aria-label="前进 10 秒"><svg viewBox="0 0 24 24"><path d="M16 7h4V3"/><path d="M19.5 7.5A8 8 0 1 0 20 16"/></svg><b>10</b></button>
+        <button data-open title="打开详情" aria-label="打开详情"><svg viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg></button></div>`;
   return `<article class="card ${cls||''}" data-id="${it.id}">
     <div class="pic">${thumb}
       <div class="badge mono">${srcBadge(it.location,it.cost)}</div>
       <span class="dur mono">${fmtDur(it.duration)}</span>${tr}${tools}</div>
-    <div class="meta"><div class="mav">${av}</div><div class="mtext"><div class="t">${esc(it.name)}</div>
+    <div class="meta">${avatar}<div class="mtext"><div class="t">${esc(it.name)}</div>
       <div class="s mono">${whoKind?`<button class="who entitylink" data-entity-kind="${whoKind}" data-entity-name="${esc(who)}">${esc(who)}</button>`:`<span class="who">${esc(who)}</span>`}
         ${it.why?`<span class="why">${esc(it.why)}</span>`:''}
         <span>${fmtSize(it.size||0)}</span>
@@ -686,6 +704,7 @@ function wireCards(root,onClick){
       if(later){e.stopPropagation();api('/api/watch-later',{method:'POST',body:JSON.stringify({id:it.id})})
         .then(r=>{it.watch_later=r.watch_later;later.setAttribute('aria-pressed',r.watch_later);
           later.textContent=r.watch_later?'✓ 已加入':'＋ 稍后看'});return}
+      if(e.target.closest('[data-open]')){e.stopPropagation();openItem(it.id);return}
       const ent=e.target.closest('[data-entity-kind]');
       if(ent){e.stopPropagation();openEntity(ent.dataset.entityKind,ent.dataset.entityName);return}
       const tg=e.target.closest('.tg');
@@ -720,7 +739,7 @@ async function buildBars(){
       <span class="mk"><img src="/logo?studio=${encodeURIComponent(x.k)}" alt=""
         onerror="this.parentNode.innerHTML='${fallback}'"
         onload="if(this.naturalWidth<32)this.parentNode.innerHTML='${fallback}'"
-        style="width:100%;height:100%;object-fit:contain;background:#fff"></span>${esc(x.k)}</button>`;
+        style="width:100%;height:100%;object-fit:contain"></span>${esc(x.k)}</button>`;
   };
   $('#tiers').innerHTML=
     `<div class="tier">${tops.performers.map(avHtml).join('')}</div>`+
@@ -768,10 +787,10 @@ async function buildBars(){
         <button class="chip" data-page="tags">全部标签 →</button></div></div>`;
   const dc=$('#drawerClose'); if(dc)dc.onclick=()=>openDrawer(false);
   $('#drawer').querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{
-    openIndex(b.dataset.page); openDrawer(false)});
+    openIndex(b.dataset.page); closeDrawerAfterNav()});
   $('#drawer').querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>{
     const k=b.dataset.nav;
-    openDrawer(false);
+    closeDrawerAfterNav();
     if(k==='immerse'){openTok();return}
     if(k==='stats'){openStats();return}
     if(k==='performers'||k==='tags'){openIndex(k);return}
@@ -850,9 +869,10 @@ async function openStats(){
   const card=(t,body)=>`<div class="scard2"><h3>${t}</h3>${body}</div>`;
   const kv=(k,v,u)=>`<div class="kv"><span>${k}</span><b>${v}${u?`<span class="u">${u}</span>`:''}</b></div>`;
   $('#stats').innerHTML=`
-    <div class="statshead"><div><h2 class="disp">统计与管理</h2>
+    <div class="statshead"><button class="backbtn" id="statsBack" title="返回浏览"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg><span>返回</span></button>
+      <div><h2 class="disp">统计与管理</h2>
       <div class="sub mono">馆藏、归属、加工与真实观看行为</div></div>
-      <button class="ib" id="statsBack" title="返回浏览" aria-label="返回浏览"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button></div>
+    </div>
     <div class="scards">
       ${card('库存', d.by_loc.map(l=>kv(LOC[l.k]||l.k, l.videos.toLocaleString(), gb(l.bytes))).join('')
         + kv('合计', d.by_loc.reduce((s,l)=>s+l.videos,0).toLocaleString(),
@@ -916,10 +936,11 @@ async function openIndex(kind,q){
     : `<div class="tagwall">`+d.items.map(x=>`<button class="tg ${x.cat||'general'}" data-k="${esc(x.k)}"
         style="padding:5px 12px;font-size:13px">${esc(x.k)}
         <span style="opacity:.6;font-size:11px">${x.n.toLocaleString()}</span></button>`).join('')+`</div>`;
-  $('#index').innerHTML=`<div class="ihead"><h2 class="disp">${title}</h2>
+  $('#index').innerHTML=`<div class="ihead"><button class="backbtn" id="iClose"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg><span>返回</span></button>
+      <h2 class="disp">${title}</h2>
       <span class="mono" style="color:var(--muted)">${d.items.length} 项</span>
       <div class="isearch"><input id="iq" placeholder="过滤…" value="${esc(q||'')}"></div>
-      <button class="ib" id="iClose">✕ 返回</button></div>${body}`;
+    </div>${body}`;
   $('#iClose').onclick=()=>{$('#index').hidden=true;load(true)};
   let it2; $('#iq').oninput=e=>{clearTimeout(it2);it2=setTimeout(()=>openIndex(kind,e.target.value.trim()),300)};
   $('#index').querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
@@ -942,7 +963,7 @@ async function openEntity(kind,name){
     ? `<a href="${esc(x.url)}" target="_blank" rel="noreferrer">${esc(x.label)} ↗</a>`
     : `<span class="private" title="私人馆藏来源记录，不直接打开下载页">来源 · ${esc(x.label||x.hostname||'已记录')}</span>`).join('');
   const terms=(d.search_terms||[]).map(x=>`<code>${esc(x.term)}</code>`).join('');
-  $('#index').innerHTML=`<div class="ihead"><button class="ib" id="iClose">← 返回</button>
+  $('#index').innerHTML=`<div class="ihead"><button class="backbtn" id="iClose"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg><span>返回</span></button>
       <span class="mono" style="color:var(--muted)">${labels[kind]||kind}资料页</span></div>
     <div class="entityhero"><div class="entityportrait">${image}<span>${esc(name.slice(0,1))}</span></div>
       <div><h2 class="disp">${esc(d.canonical_name)}</h2>
@@ -957,8 +978,10 @@ async function openEntity(kind,name){
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
+let drawerSuppressUntil=0;
 const openDrawer=v=>{$('#drawer').classList.toggle('open',v);$('#scrim').classList.toggle('on',v);
   document.body.classList.toggle('drawer-open',!!v)};
+const closeDrawerAfterNav=()=>{drawerSuppressUntil=Date.now()+650;openDrawer(false)};
 $('#filterBtn').onclick=()=>openDrawer(!$('#drawer').classList.contains('open'));
 /* 常驻窄图标条：点即切视图，鼠标停留 180ms 展开完整抽屉 */
 const EDGE_ICONS=[
@@ -991,7 +1014,7 @@ function buildEdge(){
   $('#edge').querySelectorAll('[data-nav]').forEach(b=>b.onclick=e=>{
     e.stopPropagation();
     const k=b.dataset.nav;
-    openDrawer(false);                     // 点了就收起抽屉，别挡着
+    closeDrawerAfterNav();                 // 点了就收起抽屉，且短暂禁止悬停把它立刻弹回
     if(k==='immerse'){openTok();return}
     if(k==='stats'){openStats();return}
     if(k==='performers'||k==='tags'){openIndex(k);return}
@@ -999,7 +1022,8 @@ function buildEdge(){
     buildEdge();buildBars();load(true)});
 }
 let edgeT=null;
-$('#edge').addEventListener('mouseenter',()=>{edgeT=setTimeout(()=>openDrawer(true),180)});
+$('#edge').addEventListener('mouseenter',()=>{if(Date.now()<drawerSuppressUntil)return;
+  edgeT=setTimeout(()=>openDrawer(true),180)});
 /* 主区左侧 110px 内也算感应区。
    ⚠️ 上一版每次 mousemove 都查 DOM，滚动时明显卡顿 —— 加节流并缓存节点。 */
 /* 滚动期间挂起悬停预览：内容在鼠标下滑过会连续触发 mouseenter，
@@ -1031,7 +1055,7 @@ const drawerEl=$('#drawer'); let mmLast=0;
 document.addEventListener('mousemove',e=>{
   const now=e.timeStamp||Date.now();
   if(now-mmLast<120)return; mmLast=now;
-  if(drawerEl.classList.contains('open'))return;
+  if(drawerEl.classList.contains('open')||Date.now()<drawerSuppressUntil)return;
   if(e.clientX<110&&e.clientY>60){if(!edgeT)edgeT=setTimeout(()=>{openDrawer(true);edgeT=null},240)}
   else if(edgeT){clearTimeout(edgeT);edgeT=null}
 },{passive:true});
@@ -1118,17 +1142,18 @@ async function openItem(id){
       </div>
       <div class="fb">
         <button class="dislike" data-kind="dislike" aria-pressed="${it.feedback==='dislike'}">
+          <svg viewBox="0 0 24 24"><path d="M7 14v7H3v-7h4Zm0 1h10.2a2 2 0 0 0 1.9-1.4l1.7-5.5A2 2 0 0 0 18.9 5H14l.7-3.3M7 14l5.6 7.2a2.2 2.2 0 0 0 2.1-2.7L14 15"/></svg>
           <span class="k">不合口味</span><span class="d">降维度权重</span></button>
         <button class="seen" data-kind="seen" aria-pressed="${it.feedback==='seen'}">
+          <svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg>
           <span class="k">看过了</span><span class="d">只降近期</span></button>
         <button class="dispose" data-kind="dispose" aria-pressed="${it.disposal==='pending'}">
-          <span class="k">标记待删</span><span class="d">不删文件</span></button></div>
+          <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"/></svg>
+          <span class="k">标记待删</span><span class="d">不删文件</span></button>
+        <button class="like" id="likeBtn" aria-pressed="${!!it.liked}">
+          <svg viewBox="0 0 24 24"><path d="M7 10v10H3V10h4Zm0 9h10.2a2 2 0 0 0 1.9-1.4l1.7-5.5A2 2 0 0 0 18.9 9H14l.7-3.3A2.2 2.2 0 0 0 12.6 3L7 10Z"/></svg>
+          <span class="k">${it.liked?'已喜欢':'喜欢'}</span><span class="d">记录口味偏好</span></button></div>
       <div class="preference">
-        <div class="preference-head">
-          <button class="likebtn" id="likeBtn" aria-pressed="${!!it.liked}">
-            <svg viewBox="0 0 24 24"><path d="M7 10v10H3V10h4Zm0 9h10.2a2 2 0 0 0 1.9-1.4l1.7-5.5A2 2 0 0 0 18.9 9H14l.7-3.3A2.2 2.2 0 0 0 12.6 3L7 10Z"/></svg>
-            <span>${it.liked?'已喜欢':'喜欢'}</span></button>
-          <span class="weight">独立增加推荐权重</span></div>
         <textarea id="likeReason" maxlength="2000" placeholder="为什么喜欢？例如节奏、人物、镜头、氛围……">${esc(it.like_reason||'')}</textarea>
         <div class="preference-foot"><span id="preferenceState">原文仅保存在本机</span>
           <button class="savepreference" id="savePreference">保存原因</button></div>
@@ -1160,10 +1185,11 @@ async function openItem(id){
   const savePreference=async()=>{
     const btn=$('#savePreference'),like=$('#likeBtn'),stateText=$('#preferenceState');
     btn.disabled=true;stateText.textContent='保存中…';
-    try{const r=await api('/api/preference',{method:'POST',body:JSON.stringify({
-      id:it.id,liked:like.getAttribute('aria-pressed')==='true',reason:$('#likeReason').value})});
+    const reason=$('#likeReason').value;
+    const liked=like.getAttribute('aria-pressed')==='true'||reason.trim().length>0;
+    try{const r=await api('/api/preference',{method:'POST',body:JSON.stringify({id:it.id,liked,reason})});
       it.liked=r.liked;it.like_reason=r.like_reason;
-      like.setAttribute('aria-pressed',r.liked);like.querySelector('span').textContent=r.liked?'已喜欢':'喜欢';
+      like.setAttribute('aria-pressed',r.liked);like.querySelector('.k').textContent=r.liked?'已喜欢':'喜欢';
       stateText.textContent='已保存 · AI 不会直接改写原文';
     }catch(e){stateText.textContent='保存失败 · 请重试'}finally{btn.disabled=false}
   };
