@@ -24,6 +24,7 @@ ledger 有全部 24,980 个（本地 + 115 + PikPak）。
 import os, re, sys, json, time, html, hmac, sqlite3, mimetypes, threading, subprocess, urllib.parse
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from http.cookies import SimpleCookie
+from pathlib import Path
 
 DB = r"R:\Resources\Intake\ledger.db"
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -88,14 +89,15 @@ def cache_bust():
     with _CACHE_LOCK:
         _CACHE.clear()
 
-def db():
-    c = sqlite3.connect(DB, timeout=30, check_same_thread=False)
+def db(write=False):
+    target = DB if write else Path(DB).resolve().as_uri() + "?mode=ro"
+    c = sqlite3.connect(target, timeout=30, check_same_thread=False, uri=not write)
     c.row_factory = sqlite3.Row
     return c
 
 def ensure_columns():
     """仅供旧库兼容/测试；生产启动不再自动调用。"""
-    c = db()
+    c = db(write=True)
     have = {r[1] for r in c.execute("PRAGMA table_info(asset)")}
     for col, decl in (("feedback", "TEXT"),        # dislike / seen  （见方案 §5.4）
                       ("disposal", "TEXT"),        # pending 待删
@@ -491,7 +493,7 @@ def w_activity(body):
     dur = float(body.get("duration", 0)); add = float(body.get("delta", 0))
     ended = bool(body.get("ended")); seeks = int(body.get("seeks", 0))
     with _lock:
-        c = db()
+        c = db(write=True)
         row = c.execute("SELECT play_seconds,max_reached,seek_count FROM asset WHERE id=?",
                         (aid,)).fetchone()
         secs = (row["play_seconds"] or 0) + max(add, 0)
@@ -510,7 +512,7 @@ def w_play(body):
     cache_bust()
     aid = int(body["id"])
     with _lock:
-        c = db()
+        c = db(write=True)
         c.execute("UPDATE asset SET play_count=COALESCE(play_count,0)+1, last_played=? "
                   "WHERE id=?", (time.time(), aid))
         c.commit(); c.close()
@@ -521,7 +523,7 @@ def w_feedback(body):
     """四级反馈，前三级只打标记（见方案 §5.4）。第四级删除不在本服务里。"""
     aid = int(body["id"]); kind = body.get("kind")
     with _lock:
-        c = db()
+        c = db(write=True)
         if kind in ("dislike", "seen"):
             cur = c.execute("SELECT feedback FROM asset WHERE id=?", (aid,)).fetchone()["feedback"]
             c.execute("UPDATE asset SET feedback=?, feedback_at=? WHERE id=?",

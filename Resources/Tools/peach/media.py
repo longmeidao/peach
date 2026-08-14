@@ -1,14 +1,22 @@
-"""渐进式 Media Engine 契约。
-
-阶段一只建立独立边界；现有生产串流仍由 rm-web.py 提供，避免半迁移。
-"""
+"""可替换 Media Engine 契约。"""
 from __future__ import annotations
 
-import json
-import urllib.request
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Protocol, Sequence
+
+from .repository import LedgerRepository
+from .stash import StashClient
+
+
+def normalized_path(path: Path | str) -> Path:
+    """Windows 离线/云盘可能让 realpath 失败；启动时仍需保留安全的绝对路径边界。"""
+    candidate = Path(path)
+    try:
+        return candidate.resolve()
+    except OSError:
+        return Path(os.path.abspath(os.fspath(candidate)))
 
 
 @dataclass(frozen=True)
@@ -29,6 +37,37 @@ class StreamCandidate:
     label: str | None = None
 
 
+class MediaNotFound(RuntimeError):
+    pass
+
+
+class MediaUnavailable(RuntimeError):
+    pass
+
+
+class FilesystemMediaService:
+    def __init__(self, repository: LedgerRepository, allowed_roots: Sequence[Path],
+                 snapshot_root: Path):
+        self.repository = repository
+        self.allowed_roots = tuple(normalized_path(root) for root in allowed_roots)
+        self.snapshot_root = normalized_path(snapshot_root)
+
+    def file_for(self, asset_id: int, thumbnail: bool = False) -> Path:
+        asset = self.repository.media_asset(asset_id)
+        if asset is None:
+            raise MediaNotFound(asset_id)
+        raw = asset.snapshot_path if thumbnail else asset.path
+        if not raw:
+            raise MediaUnavailable(asset_id)
+        path = normalized_path(raw)
+        roots = (self.snapshot_root,) if thumbnail else self.allowed_roots
+        if not any(path == root or root in path.parents for root in roots):
+            raise MediaUnavailable(asset_id)
+        if not path.is_file():
+            raise MediaUnavailable(asset_id)
+        return path
+
+
 class MediaBackend(Protocol):
     name: str
 
@@ -40,7 +79,7 @@ class FilesystemBackend:
     name = "filesystem"
 
     def __init__(self, allowed_roots: Sequence[Path]):
-        self.allowed_roots = tuple(root.resolve() for root in allowed_roots)
+        self.allowed_roots = tuple(normalized_path(root) for root in allowed_roots)
 
     def capabilities(self) -> MediaCapabilities:
         return MediaCapabilities(probe=True, preview=True, direct_stream=True)
@@ -49,7 +88,7 @@ class FilesystemBackend:
         raw = asset.get("path")
         if not raw:
             return ()
-        path = Path(str(raw)).resolve()
+        path = normalized_path(str(raw))
         if not any(path == root or root in path.parents for root in self.allowed_roots):
             return ()
         return (StreamCandidate(self.name, "file", str(path)),)
@@ -60,9 +99,8 @@ class StashAdapter:
 
     name = "stash"
 
-    def __init__(self, graphql_url: str = "http://127.0.0.1:9999/graphql", timeout: float = 10.0):
-        self.graphql_url = graphql_url
-        self.timeout = timeout
+    def __init__(self, client: StashClient | None = None):
+        self.client = client or StashClient()
 
     def capabilities(self) -> MediaCapabilities:
         return MediaCapabilities(probe=True, preview=True, direct_stream=True,
@@ -72,7 +110,7 @@ class StashAdapter:
         scene_id = asset.get("stash_scene_id")
         if not scene_id:
             return ()
-        payload = self._graphql(
+        payload = self.client.graphql(
             "query($id:ID!){sceneStreams(id:$id){url mime_type label}}",
             {"id": str(scene_id)},
         )
@@ -82,19 +120,6 @@ class StashAdapter:
                             item.get("mime_type"), item.get("label"))
             for item in streams if item.get("url")
         )
-
-    def _graphql(self, query: str, variables: Mapping[str, object]) -> dict:
-        body = json.dumps({"query": query, "variables": variables}).encode("utf-8")
-        request = urllib.request.Request(
-            self.graphql_url, data=body,
-            headers={"Content-Type": "application/json"}, method="POST",
-        )
-        with urllib.request.urlopen(request, timeout=self.timeout) as response:
-            result = json.load(response)
-        if result.get("errors"):
-            raise RuntimeError(result["errors"])
-        return result.get("data") or {}
-
 
 class MediaEngine:
     def __init__(self, backends: Sequence[MediaBackend]):

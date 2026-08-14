@@ -96,6 +96,12 @@ class WebDataTests(unittest.TestCase):
         self.assertTrue({"feedback", "disposal", "leave_ratio", "play_seconds",
                          "feedback_at", "seek_count", "max_reached"} <= columns)
 
+    def test_default_database_connection_is_readonly(self):
+        con = rm_web.db()
+        with self.assertRaises(sqlite3.OperationalError):
+            con.execute("UPDATE asset SET name='must-not-write' WHERE id=1")
+        con.close()
+
     def test_items_are_filtered_and_do_not_expose_paths(self):
         result = rm_web.q_items({"loc": "local", "sort": "new", "limit": "10"})
         self.assertEqual(result["total"], 1)

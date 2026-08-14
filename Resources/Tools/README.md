@@ -6,8 +6,11 @@
 ## 当前架构（2026-08-14）
 
 - `ledger.db`：资产、行为和知识的真相源。
-- Peach Web：当前生产仍由 `rm-web.py` 提供；新 `rm-web-fastapi.py` 已具备 JSON API 兼容入口。
+- Peach Web：当前生产仍由 `rm-web.py` 提供；`rm-web-fastapi.py` 已能完整承载首页、JSON API、
+  标准 Range/HEAD 媒体流、缩略图、poster/avatar/logo，待维护窗口切换。
 - Media Engine：`peach/media.py` 定义 backend 边界；Stash 先是 adapter，之后逐项 native 化。
+- 媒体运行时：`peach/ffmpeg.py` 按环境变量、Peach 托管目录、PATH、临时 Stash fallback
+  的顺序定位二进制；新代码不再散落硬编码路径。
 - 数据库迁移：`rm-migrate.py status` 默认只读，`upgrade` 显式执行且先 SQLite backup。
 - AI：`peach/providers.py` 分 Inference/Agent；第一阶段不发送真实模型请求、不保存 OAuth token。
 - 部署：继续模块化单体；不引入微服务、PostgreSQL、React 重写或完整多账号系统。
@@ -27,9 +30,12 @@ cd R:\Resources\Tools
 & .\.venv\Scripts\python.exe -m unittest discover -s .\tests -p 'test_*.py' -v
 & .\.venv\Scripts\python.exe .\rm-migrate.py status
 
-# 实验性 FastAPI JSON API；默认 127.0.0.1:8900，不替换 80 端口旧服务
+# FastAPI 完整候选入口；默认 127.0.0.1:8900，不替换 80 端口旧服务
 & .\.venv\Scripts\python.exe .\rm-web-fastapi.py --port 8900
 ```
+
+切换生产前至少验证：23 项隔离测试、真实库副本 migration、桌面、390×844、普通/开放尾端/
+suffix/越界 Range、HEAD、poster/avatar 和回退启动。当前 80 端口尚未切换。
 
 ## 目录约定
 
