@@ -153,11 +153,15 @@ Runtime PIDs are observations, not configuration; always re-check them.
 
 ## Next work
 
-0. The 115 sheet pass is running against the 3,914 rows the probe fix unblocked, approved on
-   2026-08-15 as unmetered-but-slow. The first 300 rows measured 49 GB and 0.28 h, i.e. **163 MB and
-   3.3 s per contact sheet** with a 3.3% failure rate; since the job runs largest-file-first that is an
-   upper bound, so the remaining 3,624 rows should stay under ~590 GB rather than the 1 TB first
-   extrapolated from a single large sample. When it
+0. **Resume the 115 sheet pass**: `python scripts/sheets.py --location 115 --workers 4`. It was stopped
+   at the user's request on 2026-08-15 03:58 for a machine shutdown, not by a failure. 680 of the 3,914
+   rows the probe fix unblocked are done; 3,234 remain and the job resumes by itself because it selects
+   on `snapshot_path IS NULL`. Sheets already written but not yet registered (the ledger commits every
+   50 rows) are re-detected as `已存在` and cost no download. The stale PID lock left by the kill was
+   removed after confirming the process was gone.
+   Measured rate: **163 MB and 3.3 s per contact sheet**, 3.3% failures, largest files first — so that
+   is an upper bound and the remainder should stay under ~530 GB, not the 1 TB first extrapolated from
+   a single large sample. When it
    finishes, run `creator_boards.py` (snapshot mode is free) for the newly sheetable creators, then the
    review-first `creator_tags.py --export-review` queue. Note the ceiling of that route: of the 2,547
    untagged 115 videos only 577 have a creator, 1,051 carry a code that is 384 FC2 plus ~330 `WX`-style
@@ -190,13 +194,13 @@ The current UI/API candidate passed JavaScript parse, 84 isolated tests, desktop
 <!-- job-status:start -->
 
 <!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->
-<!-- generated 2026-08-14T19:23Z -->
+<!-- generated 2026-08-14T20:00Z -->
 
-- 最近自动交接：`claude` / `Stop` / `completed`，2026-08-14T19:23:30+00:00。
+- 最近自动交接：`claude` / `Stop` / `completed`，2026-08-14T19:36:16+00:00。
 - 资产 81873 条，其中视频 24980 条。
 - 待抽帧（可抽 / 缺时长待 probe / 合计）：
   - `local`：4 / 1 / 5
-  - `115`：3824 / 139 / 3963
+  - `115`：3234 / 139 / 3373
   - `pikpak`：4751 / 5445 / 10196
   PikPak 计费且走代理（`*.mypikpak.net`）；2026-08-15 实测 9 帧接触表 163 MB / 13.7 秒，即约 18 MB、1.5 秒一帧。瓶颈是流量不是时间：全量抽帧约 773 GB，按创作者采样 88 板约 14 GB / 20 分钟。115 走直连，同样动作约 285 MB 一张接触表。
 - 无内容标签视频 7538 条（占视频 30%）。
