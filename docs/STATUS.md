@@ -4,7 +4,7 @@ Last verified: 2026-08-14
 
 ## Runtime
 
-- Production Peach: FastAPI `0.2.0` from `R:\peach-app` on `0.0.0.0:80`, server PID observed as 58124; health mode is `fastapi`.
+- Production Peach: FastAPI `0.2.0` from `R:\peach-app` on `0.0.0.0:80`, listener PID observed as 52600; health mode is `fastapi`.
 - `peach.local` is again the single official LAN entry. The publisher restores the verified pre-migration behavior: Python zeroconf listens on all eligible interfaces and publishes `peach.local -> 192.168.50.162`. Production health reports `mdns_backend=zeroconf-all-interfaces`; same-host DNS-SD discovery and `getaddrinfo('peach.local')` both resolved the correct address after restart. A second LAN device remains the final external check; no firewall or router rule was changed.
 - Stash: `127.0.0.1:9999`, PID observed as 35332.
 - Traffic monitor: running through `RM-TrafficWatch` from `R:\peach-app\.venv`; all probe/sheets tasks use the same project environment.
@@ -44,12 +44,12 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - `scripts/import_stash_entities.py` reconciled the Stash public performer contract into Peach without making Stash authoritative: 383 exact stable refs, 52 aliases/search terms and two explicitly declared X links were imported. Of 42 non-placeholder Stash images, 14 passed the 512 px short-side gate and were cached with provenance; 28 smaller images were rejected. Top entries including 一个ren、高桥千凛 and 小桃 now use 720 px-class cached portraits.
 - Static/unit/API production checks passed after restart: home/entity routes, FC2/Prestige logos, canonical aliases and a local-media 1 KiB `206 Partial Content` response. No browser instance was connected, so desktop and 390×844 visual verification remain pending.
 - The 20:36 Peach restart was launched only after verifying the port-80 command line in the host session. The replacement process can see CloudDrive: asset 4289 again passed `video/mp4` 1 KiB `206 Partial Content` and poster `200`; local asset 1 passed the same Range contract. A sandbox drive check is not authoritative.
-- The mDNS regression fix was deployed after verifying the old port-80 command line. The replacement PID 58124 passed health, local DNS-SD discovery, Windows hostname resolution and CloudDrive asset 4289 with a 1 KiB `206 Partial Content` response. The active creator-board sampler and its FFmpeg children were not touched.
+- The mDNS regression fix was deployed after verifying the old port-80 command line. The replacement listener PID 52600 passed health, local DNS-SD discovery, Windows hostname resolution and CloudDrive asset 4289 with a 1 KiB `206 Partial Content` response. The active creator-board sampler and its FFmpeg children were not touched.
 - The original Peach process could not see CloudDrive `A:`/`B:` even though CloudDrive was running. After confirming zero copy tasks and no I/O, CloudDrive and Peach were restarted in the same execution context. Asset 4289 (`669.mp4`) then passed `video/mp4`, 1 KiB `206 Range`, thumbnail and generated-poster API checks. Drive-letter visibility differs by Windows token, so the HTTP stream check is the authoritative service test.
 
 ## Batch jobs
 
-- Active at the last observation: `scripts/creator_boards.py --from-video --allow-metered --top 3 --workers 16` (parent PID 51548/worker PID 22320) is intentionally sampling A: videos into `generated/boards/_frames`. The measured CloudDrive I/O belongs to this job; do not restart CloudDrive or terminate its FFmpeg children. The bounded run samples at most nine frames per creator and has explicit metered authorization.
+- Active at the last observation: `scripts/creator_boards.py --from-video --allow-metered --top 60 --per 12 --workers 16` (nohup PID 46948, Python PIDs 51472/8508) is intentionally sampling A: videos into `generated/boards/_frames`. At 20:52 it had 299 frame files and 33 completed boards. The measured CloudDrive I/O belongs to this job; do not restart CloudDrive or terminate its FFmpeg children. The bounded run samples at most 12 frames per creator and has explicit metered authorization.
 
 - `scripts/scrape_codes.py` — code scraping via r18 → avsox → javbus cascade, resumable from
   `R:\peach-data\generated\code-scrape.csv`. All 1,104 non-FC2 codes were processed; 715 rows carry
