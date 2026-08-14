@@ -35,6 +35,8 @@ CREATE TABLE asset_entity(
   UNIQUE(asset_id,entity_id,role,source));
 CREATE TABLE watch_queue(profile_id TEXT,asset_id INTEGER,added_at TEXT,source TEXT,
   PRIMARY KEY(profile_id,asset_id));
+CREATE TABLE asset_preference(profile_id TEXT,asset_id INTEGER,liked INTEGER,reason TEXT,
+  source TEXT,updated_at TEXT,PRIMARY KEY(profile_id,asset_id));
 CREATE TABLE media_binding(
   asset_id INTEGER,backend TEXT,external_id TEXT,metadata_json TEXT,last_synced_at TEXT,
   PRIMARY KEY(asset_id,backend),UNIQUE(backend,external_id));
@@ -126,6 +128,23 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(data["items"][0]["has_thumb"])
         self.assertNotIn("path", data["items"][0])
         self.assertEqual(response.headers["cache-control"], "no-store")
+
+    async def test_preference_is_an_independent_authenticated_write(self):
+        denied = await self.client.post(
+            "/api/preference", json={"id": 1, "liked": True, "reason": "镜头自然"},
+        )
+        self.assertEqual(denied.status_code, 401)
+        saved = await self.client.post(
+            "/api/preference?t=secret",
+            json={"id": 1, "liked": True, "reason": "镜头自然"},
+        )
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(saved.json(), {
+            "ok": True, "liked": True, "like_reason": "镜头自然",
+        })
+        detail = await self.client.get("/api/item?t=secret&id=1")
+        self.assertTrue(detail.json()["liked"])
+        self.assertEqual(detail.json()["like_reason"], "镜头自然")
 
     async def test_provider_health_is_authenticated_and_secret_free(self):
         denied = await self.client.get("/api/providers")

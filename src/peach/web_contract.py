@@ -246,6 +246,10 @@ def q_item(contract: WebContract, aid):
         "SELECT id,location,path,name,creator,studio,code,size,duration,width,height,"
         "ctx_length,ctx_orient,snapshot_path,play_count,leave_ratio,feedback,disposal,"
         "rating,o_count,play_seconds,max_reached,seek_count,"
+        "COALESCE((SELECT p.liked FROM asset_preference p WHERE p.asset_id=asset.id "
+        "AND p.profile_id='local-default'),0) AS liked,"
+        "COALESCE((SELECT p.reason FROM asset_preference p WHERE p.asset_id=asset.id "
+        "AND p.profile_id='local-default'),'') AS like_reason,"
         "EXISTS(SELECT 1 FROM watch_queue w WHERE w.asset_id=asset.id "
         "AND w.profile_id='local-default') AS watch_later FROM asset WHERE id=?", (aid,)).fetchone()
     if not r:
@@ -726,6 +730,45 @@ def w_watch_later(contract: WebContract, body):
     return {"ok": True, "watch_later": queued}
 
 
+def w_preference(contract: WebContract, body):
+    """保存 profile 级正向偏好；与看过、不喜欢和稍后看保持独立。"""
+    contract.cache_bust()
+    aid = int(body["id"])
+    liked = 1 if bool(body.get("liked")) else 0
+    reason = body.get("reason", "")
+    if not isinstance(reason, str):
+        raise TypeError("reason must be a string")
+    if len(reason) > 2000:
+        raise ValueError("reason is limited to 2000 characters")
+    with contract.write_lock:
+        c = contract.db(write=True)
+        if not c.execute("SELECT 1 FROM asset WHERE id=?", (aid,)).fetchone():
+            c.close()
+            raise ValueError("asset not found")
+        if not liked and not reason:
+            c.execute(
+                "DELETE FROM asset_preference WHERE profile_id='local-default' AND asset_id=?",
+                (aid,),
+            )
+        else:
+            c.execute(
+                "INSERT INTO asset_preference(profile_id,asset_id,liked,reason,source,updated_at) "
+                "VALUES('local-default',?,?,?,'web',strftime('%Y-%m-%dT%H:%M:%fZ','now')) "
+                "ON CONFLICT(profile_id,asset_id) DO UPDATE SET "
+                "liked=excluded.liked,reason=excluded.reason,source=excluded.source,"
+                "updated_at=excluded.updated_at",
+                (aid, liked, reason),
+            )
+        c.commit()
+        row = c.execute(
+            "SELECT liked,reason FROM asset_preference "
+            "WHERE profile_id='local-default' AND asset_id=?", (aid,),
+        ).fetchone()
+        c.close()
+    return {"ok": True, "liked": bool(row["liked"]) if row else False,
+            "like_reason": row["reason"] if row else ""}
+
+
 def dispatch_api_get(contract: WebContract, path, args):
     """Dispatch the stable JSON read contract used by the current web client."""
     if path == "/api/items":
@@ -759,4 +802,6 @@ def dispatch_api_post(contract: WebContract, path, body):
         return w_feedback(contract, body)
     if path == "/api/watch-later":
         return w_watch_later(contract, body)
+    if path == "/api/preference":
+        return w_preference(contract, body)
     raise KeyError(path)

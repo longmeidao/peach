@@ -42,7 +42,7 @@ body{background:var(--ground);color:var(--ink);
   font-weight:600;letter-spacing:.02em}
 .mono{font-family:"Cascadia Mono",Consolas,ui-monospace,monospace;
   font-variant-numeric:tabular-nums;font-size:11px}
-button,input{font:inherit;color:inherit}
+button,input,textarea{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 /* 滚动条：全站统一，不用浏览器默认。细、无箭头、无轨道底色，悬停才提亮。 */
@@ -340,6 +340,24 @@ main{padding:14px 16px 90px}
 .fb .dislike[aria-pressed="true"]{border-color:var(--drop);color:var(--drop)}
 .fb .seen[aria-pressed="true"]{border-color:var(--muted)}
 .fb .dispose[aria-pressed="true"]{border-color:var(--meter);color:var(--meter)}
+.preference{border:1px solid var(--line);border-radius:6px;padding:10px;margin:1px 0 8px;
+  background:color-mix(in srgb,var(--surface) 78%,transparent)}
+.preference-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.likebtn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:8px 13px;
+  border:1px solid var(--line);border-radius:999px;background:transparent;cursor:pointer;font-weight:650}
+.likebtn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.9;
+  stroke-linecap:round;stroke-linejoin:round}
+.likebtn[aria-pressed="true"]{color:#fff;background:var(--tungsten);border-color:var(--tungsten)}
+.preference .weight{font-size:10px;color:var(--muted)}
+.preference textarea{display:block;width:100%;min-height:62px;resize:vertical;padding:8px 9px;
+  color:var(--ink);background:var(--ground);border:1px solid var(--line);border-radius:5px;
+  line-height:1.45}
+.preference textarea:focus{border-color:var(--tungsten);outline:0}
+.preference-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:7px}
+.preference-foot span{color:var(--muted);font-size:10px}
+.savepreference{border:0;border-radius:5px;padding:6px 12px;background:var(--ink);color:var(--ground);
+  cursor:pointer;font-size:11px}
+.savepreference:disabled{opacity:.55;cursor:default}
 .obtn{width:100%;padding:9px;border:1px solid var(--line);background:transparent;
   border-radius:4px;cursor:pointer;margin-bottom:11px}
 .obtn:hover{border-color:var(--tungsten)}
@@ -1105,6 +1123,16 @@ async function openItem(id){
           <span class="k">看过了</span><span class="d">只降近期</span></button>
         <button class="dispose" data-kind="dispose" aria-pressed="${it.disposal==='pending'}">
           <span class="k">标记待删</span><span class="d">不删文件</span></button></div>
+      <div class="preference">
+        <div class="preference-head">
+          <button class="likebtn" id="likeBtn" aria-pressed="${!!it.liked}">
+            <svg viewBox="0 0 24 24"><path d="M7 10v10H3V10h4Zm0 9h10.2a2 2 0 0 0 1.9-1.4l1.7-5.5A2 2 0 0 0 18.9 9H14l.7-3.3A2.2 2.2 0 0 0 12.6 3L7 10Z"/></svg>
+            <span>${it.liked?'已喜欢':'喜欢'}</span></button>
+          <span class="weight">独立增加推荐权重</span></div>
+        <textarea id="likeReason" maxlength="2000" placeholder="为什么喜欢？例如节奏、人物、镜头、氛围……">${esc(it.like_reason||'')}</textarea>
+        <div class="preference-foot"><span id="preferenceState">原文仅保存在本机</span>
+          <button class="savepreference" id="savePreference">保存原因</button></div>
+      </div>
       <button class="obtn" data-kind="o">记一次高潮 <b class="mono" id="oCount">${it.o_count||0}</b></button>
       <button class="obtn" id="stageLater" aria-pressed="${!!it.watch_later}">${it.watch_later?'✓ 已加入稍后看':'＋ 稍后看'}</button>
       <div class="hint mono">前三个只打标记，随时可撤。删除永远走「先出 CSV 再执行」，不在这个页面里。</div>
@@ -1129,6 +1157,19 @@ async function openItem(id){
     body:JSON.stringify({id:it.id})});it.watch_later=r.watch_later;
     $('#stageLater').setAttribute('aria-pressed',r.watch_later);
     $('#stageLater').textContent=r.watch_later?'✓ 已加入稍后看':'＋ 稍后看'};
+  const savePreference=async()=>{
+    const btn=$('#savePreference'),like=$('#likeBtn'),stateText=$('#preferenceState');
+    btn.disabled=true;stateText.textContent='保存中…';
+    try{const r=await api('/api/preference',{method:'POST',body:JSON.stringify({
+      id:it.id,liked:like.getAttribute('aria-pressed')==='true',reason:$('#likeReason').value})});
+      it.liked=r.liked;it.like_reason=r.like_reason;
+      like.setAttribute('aria-pressed',r.liked);like.querySelector('span').textContent=r.liked?'已喜欢':'喜欢';
+      stateText.textContent='已保存 · AI 不会直接改写原文';
+    }catch(e){stateText.textContent='保存失败 · 请重试'}finally{btn.disabled=false}
+  };
+  $('#likeBtn').onclick=async()=>{const b=$('#likeBtn');
+    b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')!=='true');await savePreference()};
+  $('#savePreference').onclick=savePreference;
   const vv=$('#vid');
   vv.addEventListener('play',()=>{if(!$('#stage').dataset.c){$('#stage').dataset.c='1';
     api('/api/play',{method:'POST',body:JSON.stringify({id:it.id})})}});

@@ -64,6 +64,8 @@ CREATE TABLE entity_link(id INTEGER PRIMARY KEY,entity_id INTEGER,link_kind TEXT
 CREATE TABLE entity_search_term(entity_id INTEGER,term TEXT,purpose TEXT,source TEXT,created_at TEXT);
 CREATE TABLE watch_queue(profile_id TEXT,asset_id INTEGER,added_at TEXT,source TEXT,
   PRIMARY KEY(profile_id,asset_id));
+CREATE TABLE asset_preference(profile_id TEXT,asset_id INTEGER,liked INTEGER,reason TEXT,
+  source TEXT,updated_at TEXT,PRIMARY KEY(profile_id,asset_id));
 """
 
 
@@ -162,6 +164,23 @@ class WebDataTests(unittest.TestCase):
             self.contract, {"id": 1, "kind": "dislike"},
         )["feedback"])
         self.assertEqual(self.row()["disposal"], "pending")
+
+    def test_like_and_reason_are_independent_profile_preferences(self):
+        saved = rm_web.w_preference(self.contract, {
+            "id": 1, "liked": True, "reason": "喜欢自然的节奏和镜头",
+        })
+        self.assertTrue(saved["liked"])
+        self.assertEqual(saved["like_reason"], "喜欢自然的节奏和镜头")
+        item = rm_web.q_item(self.contract, 1)
+        self.assertTrue(item["liked"])
+        self.assertEqual(item["like_reason"], "喜欢自然的节奏和镜头")
+        self.assertIsNone(self.row()["feedback"])
+
+        cleared = rm_web.w_preference(self.contract, {
+            "id": 1, "liked": False, "reason": "",
+        })
+        self.assertFalse(cleared["liked"])
+        self.assertEqual(cleared["like_reason"], "")
 
     def test_application_contract_instances_do_not_share_cache(self):
         other = rm_web.WebContract(Path(self.tmp.name) / "other.db")
