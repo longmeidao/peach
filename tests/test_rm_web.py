@@ -170,5 +170,31 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(related["items"][0]["id"], 2)
         self.assertEqual(related["items"][0]["why"], "同创作者")
 
+    def test_creator_filters_indexes_and_stats_use_canonical_entities(self):
+        by_creator = rm_web.q_items(self.contract, {
+            "creator": "Canonical Creator", "limit": "10",
+        })
+        by_studio = rm_web.q_items(self.contract, {
+            "studio": "Canonical Studio", "limit": "10",
+        })
+        search = rm_web.q_items(self.contract, {
+            "q": "Canonical Creator", "limit": "10",
+        })
+        self.assertEqual(by_creator["total"], 2)
+        self.assertEqual(by_studio["total"], 2)
+        self.assertEqual(search["total"], 2)
+        self.assertEqual(rm_web.q_items(
+            self.contract, {"creator": "Alice", "limit": "10"},
+        )["total"], 0)
+
+        creators = rm_web.q_index(self.contract, "creators", limit=10)
+        self.assertEqual(creators["items"][0]["k"], "Canonical Creator")
+        self.assertEqual(creators["items"][0]["n"], 2)
+        stats = rm_web.q_stats(self.contract)
+        self.assertEqual(stats["attribution"]["creator"], 2)
+        self.assertEqual(stats["attribution"]["studio"], 2)
+        facets = rm_web.q_facets(self.contract)
+        self.assertEqual(facets["creators"][0]["k"], "Canonical Creator")
+
 if __name__ == "__main__":
     unittest.main()

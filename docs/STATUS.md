@@ -4,7 +4,7 @@ Last verified: 2026-08-14
 
 ## Runtime
 
-- Production Peach: FastAPI `0.2.0` from `R:\peach-app` on `0.0.0.0:80`, server PID observed as 7580; health mode is `fastapi`.
+- Production Peach: FastAPI `0.2.0` from `R:\peach-app` on `0.0.0.0:80`, server PID observed as 58832; health mode is `fastapi`.
 - mDNS publisher: `peach.local` is published on `192.168.50.162` as HTTP, but an actual LAN client could not resolve it. Use `http://192.168.50.162/` until the client/router multicast path is fixed; no firewall/router change was made.
 - Stash: `127.0.0.1:9999`, PID observed as 35332.
 - Traffic monitor: running through `RM-TrafficWatch` from `R:\peach-app\.venv`; all probe/sheets tasks use the same project environment.
@@ -28,8 +28,9 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - `web_contract.py` now uses an application-owned database/cache/write-lock context rather than module globals; separate app instances cannot leak databases or caches into each other.
 - Item, detail, tag index and facet reads now prefer canonical `asset_entity` performer/tag relations, with flattened `asset_tag` retained only as a staged compatibility fallback. Real-ledger timings were 0.143 s for a filtered item query, 0.118 s for facets and 0.025 s for the first 30 canonical tags.
 - Creator/studio top lists and related-item creator/tag/studio matching now read canonical entity relations. Real-ledger timings were 0.055 s for 28 top entries and 0.055 s for 24 related items.
+- Creator/studio filters, canonical-name search, creator index, facets and attribution stats now also read entity relations. Real-ledger timings were 0.040 s for a 1,545-item creator filter, 0.043 s for the first 60 creators, 0.132 s for facets and 0.394 s for stats.
 - Snapshot availability checks use the same strict legacy-prefix resolver as `/thumb`, so the front end requests migrated previews instead of displaying false “无预览” cards.
-- 38 isolated tests and tracked-script static compilation passed under Python 3.14.
+- 39 isolated tests and tracked-script static compilation passed under Python 3.14.
 - Real migration preserved 81,873 assets and 59,697 tag links; both live database and backup passed `integrity_check` and `foreign_key_check` before later metadata writes.
 - Desktop 1280×720 and mobile 390×844 browser checks passed on the same application candidate before the schema-only migration; visual checks were not rerun after migration because no browser instance was connected.
 - Restarted production port 80 passed health, home, public OpenCode Go model discovery (26 models at verification time), canonical filtered-list/item reads, thumbnail `200` and 1 KiB `206 Partial Content` Range smoke checks.
@@ -60,4 +61,4 @@ Runtime PIDs are observations, not configuration; always re-check them.
 
 1. Add the first tracked online-follow source adapter; keep metadata scraping as a reviewable batch pipeline.
 2. Add reviewed inference requests behind the OpenCode Go adapter; AI output must remain a candidate and cannot write ledger truth directly.
-3. Move the remaining creator index/stats/filter compatibility reads to canonical relations.
+3. Replace remaining flattened creator/studio display projections only when the front end can consume canonical DTO fields without breaking compatibility.

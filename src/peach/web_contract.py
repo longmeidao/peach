@@ -74,9 +74,15 @@ def q_items(contract: WebContract, args):
         locs = [x for x in args["loc"].split(",") if x]
         where.append("a.location IN (%s)" % ",".join("?" * len(locs))); par += locs
     if args.get("creator"):
-        where.append("a.creator = ?"); par.append(args["creator"])
+        where.append(
+            "EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "WHERE ae.asset_id=a.id AND e.kind='creator' AND e.canonical_name=?)"
+        ); par.append(args["creator"])
     if args.get("studio"):
-        where.append("a.studio = ?"); par.append(args["studio"])
+        where.append(
+            "EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "WHERE ae.asset_id=a.id AND e.kind='studio' AND e.canonical_name=?)"
+        ); par.append(args["studio"])
     if args.get("tag"):
         # 逗号分隔 = 组合筛选，全部满足（Beeg 的 /PinkLoving+Anal）
         for tg in [x for x in args["tag"].split(",") if x]:
@@ -91,7 +97,12 @@ def q_items(contract: WebContract, args):
     if args.get("orient"):
         where.append("a.ctx_orient = ?"); par.append(args["orient"])
     if args.get("q"):
-        where.append("(a.name LIKE ? OR a.creator LIKE ? OR a.code LIKE ?)")
+        where.append(
+            "(a.name LIKE ? OR a.code LIKE ? OR EXISTS("
+            "SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "WHERE ae.asset_id=a.id AND e.kind IN ('creator','performer','studio') "
+            "AND e.canonical_name LIKE ?))"
+        )
         s = f"%{args['q']}%"; par += [s, s, s]
     if args.get("state") == "fresh":
         where.append("(a.play_count IS NULL OR a.play_count=0) AND a.feedback IS NULL")
@@ -373,16 +384,20 @@ def q_index(contract: WebContract, kind, q="", limit=600):
     """全部创作者 / 全部标签的索引页数据。"""
     c = contract.db()
     if kind == "creators":
-        sql = ("SELECT creator k, count(*) n FROM asset WHERE medium='video' "
-               "AND creator IS NOT NULL AND creator<>'' ")
+        sql = ("SELECT e.id entity_id,e.canonical_name k,count(DISTINCT ae.asset_id) n "
+               "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+               "JOIN asset a ON a.id=ae.asset_id "
+               "WHERE a.medium='video' AND e.kind='creator' ")
         par = []
-        if q: sql += "AND creator LIKE ? "; par.append(f"%{q}%")
-        sql += "GROUP BY creator ORDER BY n DESC LIMIT ?"; par.append(limit)
+        if q: sql += "AND e.canonical_name LIKE ? "; par.append(f"%{q}%")
+        sql += "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT ?"; par.append(limit)
         rows = [dict(r) for r in c.execute(sql, par)]
         for r in rows:
-            g = c.execute("SELECT id FROM asset WHERE medium='video' AND creator=? "
-                          "AND snapshot_path IS NOT NULL ORDER BY size DESC LIMIT 1",
-                          (r["k"],)).fetchone()
+            g = c.execute(
+                "SELECT a.id FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
+                "WHERE ae.entity_id=? AND a.medium='video' AND a.snapshot_path IS NOT NULL "
+                "ORDER BY a.size DESC LIMIT 1", (r.pop("entity_id"),),
+            ).fetchone()
             r["rep"] = g[0] if g else None
     else:
         sql = ("SELECT e.canonical_name k, count(DISTINCT ae.asset_id) n "
@@ -412,9 +427,13 @@ def q_stats(contract: WebContract):
         return r[0] if r else 0
     out["attribution"] = {
         "videos": v,
-        "creator": one("SELECT count(*) FROM asset WHERE medium='video' AND creator IS NOT NULL AND creator<>''"),
+        "creator": one("SELECT count(DISTINCT ae.asset_id) FROM asset_entity ae "
+                       "JOIN entity e ON e.id=ae.entity_id JOIN asset a ON a.id=ae.asset_id "
+                       "WHERE a.medium='video' AND e.kind='creator'"),
         "code": one("SELECT count(*) FROM asset WHERE medium='video' AND code IS NOT NULL AND code<>''"),
-        "studio": one("SELECT count(*) FROM asset WHERE medium='video' AND studio IS NOT NULL AND studio<>''"),
+        "studio": one("SELECT count(DISTINCT ae.asset_id) FROM asset_entity ae "
+                      "JOIN entity e ON e.id=ae.entity_id JOIN asset a ON a.id=ae.asset_id "
+                      "WHERE a.medium='video' AND e.kind='studio'"),
         "thumb": one("SELECT count(*) FROM asset WHERE medium='video' AND snapshot_path IS NOT NULL"),
         "duration": one("SELECT count(*) FROM asset WHERE medium='video' AND duration IS NOT NULL"),
     }
@@ -457,8 +476,10 @@ def q_facets(contract: WebContract):
         "SUM(CASE WHEN play_count>0 THEN 1 ELSE 0 END) AS played "
         "FROM asset WHERE medium='video' GROUP BY location ORDER BY n DESC")]
     out["creators"] = [dict(r) for r in c.execute(
-        "SELECT creator AS k, count(*) AS n FROM asset WHERE medium='video' "
-        "AND creator IS NOT NULL AND creator<>'' GROUP BY creator ORDER BY n DESC LIMIT 60")]
+        "SELECT e.canonical_name AS k,count(DISTINCT ae.asset_id) AS n "
+        "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+        "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='creator' "
+        "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 60")]
     # 标签要分层 —— 原来一锅端，结果「演员:一个ren」和「1080P」「足交」混在一起。
     # 三类分开：技术规格（画质/时长/画幅，筛选价值低）、内容维度（真正有用的）、演员（另立一栏）。
     TECH = ("1080P", "720P", "4K", "2160P", "480P", "低画质", "高帧率",
@@ -481,8 +502,9 @@ def q_facets(contract: WebContract):
         "SELECT count(*) total, COALESCE(sum(size),0) bytes, "
         "SUM(CASE WHEN play_count>0 THEN 1 ELSE 0 END) played, "
         "SUM(CASE WHEN feedback IS NOT NULL OR disposal IS NOT NULL THEN 1 ELSE 0 END) flagged, "
-        "SUM(CASE WHEN creator IS NOT NULL AND creator<>'' THEN 1 ELSE 0 END) attributed "
-        "FROM asset WHERE medium='video'").fetchone()
+        "SUM(EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+        "WHERE ae.asset_id=a.id AND e.kind='creator')) attributed "
+        "FROM asset a WHERE a.medium='video'").fetchone()
     out["stats"] = dict(st)
     c.close()
     return out

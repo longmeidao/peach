@@ -38,7 +38,7 @@ This is durable operating knowledge, not a per-session transcript.
 - Stash is a replaceable adapter; do not add new direct GraphQL helpers or private Stash FFmpeg paths.
 - All Stash calls use `StashClient`. Imports persist the stable Scene ID and provenance in `media_binding`; do not regress to `stash_scene_id` as the only external reference.
 - Canonical performer/studio/tag/creator truth belongs in `entity`, `entity_external_ref` and `asset_entity`. Flattened `asset_tag` rows are a temporary compatibility projection, not the target model.
-- Item/detail/facets/tag index/top lists/related ranking already use canonical relations. Remaining creator index/stats/filter compatibility reads are tracked in `docs/STATUS.md`; do not reintroduce compatibility reads into migrated paths.
+- Item/detail/filter/search/facets/index/stats/top lists/related ranking use canonical relations. Flattened creator/studio fields remain only as response compatibility projections; do not use them for identity or matching.
 - Keep FastAPI and the front end logically separate but deploy as a monolith.
 - External sources and AI are supported only through explicit adapters and declared data boundaries.
 - AI provider layers are not equivalent: inference APIs and local coding/agent runtimes remain separate.
