@@ -42,4 +42,14 @@ cd R:\peach-app
 
 `serve` 默认只监听 `127.0.0.1:8900`。公网、反代、HTTPS 和认证属于后续部署阶段，不在开发命令中隐式开启。
 
+需要本机 TLS 时同时提供证书和私钥；二者应放在 `R:\peach-data\secrets`，不要提交 Git：
+
+```powershell
+& .\.venv\Scripts\peach.exe serve --host 0.0.0.0 --port 443 `
+  --ssl-certfile R:\peach-data\secrets\tls\peach.crt `
+  --ssl-keyfile R:\peach-data\secrets\tls\peach.key
+```
+
+证书必须包含实际访问名（例如 `peach.local`）并被客户端信任；启用 TLS 时 mDNS 自动发布 HTTPS。
+
 当前运行态与下一任务只看 [`docs/STATUS.md`](docs/STATUS.md)；跨 Codex/Claude 的固定接手方式只看 [`docs/HANDOFF.md`](docs/HANDOFF.md)。

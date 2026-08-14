@@ -25,6 +25,10 @@ class PeachSettings:
     page_path: Path = PROJECT_ROOT / "web" / "index.html"
     token: str = ""
     docs_enabled: bool = False
+    mdns_enabled: bool = False
+    mdns_name: str = "peach"
+    mdns_port: int = 80
+    tls_enabled: bool = False
     allowed_media_roots: tuple[Path, ...] = (Path(r"R:\media"), Path("B:/"), Path("A:/"))
     snapshot_root: Path = GENERATED_DIR / "snapshots"
     poster_root: Path = GENERATED_DIR / "posters"

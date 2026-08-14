@@ -1,4 +1,7 @@
 import hmac
+import asyncio
+import logging
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import Body, FastAPI, Request
@@ -8,6 +11,7 @@ from . import web_contract
 from .config import PeachSettings
 from .ffmpeg import FFmpegResolver
 from .media import FilesystemMediaService, MediaNotFound, MediaUnavailable
+from .mdns import MdnsPublisher
 from .previews import PreviewService, PreviewUnavailable
 from .repository import LedgerRepository
 
@@ -41,9 +45,28 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         repository, resolver, settings.snapshot_root, settings.poster_root,
         settings.avatar_root, settings.logo_root,
     )
+    mdns = MdnsPublisher(
+        settings.mdns_name, settings.mdns_port, secure=settings.tls_enabled
+    ) if settings.mdns_enabled else None
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        if mdns is not None:
+            try:
+                await asyncio.to_thread(mdns.start)
+            except Exception:
+                mdns.status = "unavailable"
+                logging.getLogger(__name__).exception("mDNS publication failed")
+        try:
+            yield
+        finally:
+            if mdns is not None:
+                await asyncio.to_thread(mdns.stop)
+
     app = FastAPI(
         title="Peach API",
         version="0.2.0",
+        lifespan=lifespan,
         docs_url="/docs" if settings.docs_enabled else None,
         redoc_url=None,
         openapi_url="/openapi.json" if settings.docs_enabled else None,
@@ -53,6 +76,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
     app.state.repository = repository
     app.state.media_service = media_service
     app.state.preview_service = preview_service
+    app.state.mdns = mdns
 
     @app.middleware("http")
     async def no_store(request: Request, call_next):
@@ -69,7 +93,10 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         ffmpeg = resolver.ffmpeg()
         return {"ok": True, "service": "peach-api", "mode": "fastapi",
                 "db": "available" if settings.db_path.is_file() else "missing",
-                "ffmpeg": ffmpeg.source if ffmpeg else "unavailable"}
+                "ffmpeg": ffmpeg.source if ffmpeg else "unavailable",
+                "mdns": mdns.status if mdns is not None else "disabled",
+                "mdns_address": mdns.address if mdns is not None else None,
+                "scheme": "https" if settings.tls_enabled else "http"}
 
     @app.api_route("/", methods=["GET", "HEAD"])
     def index(request: Request):

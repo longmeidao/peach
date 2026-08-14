@@ -15,12 +15,26 @@ DEFAULT_DB = DATABASE_PATH
 def _serve(args: argparse.Namespace) -> int:
     import uvicorn
 
+    if bool(args.ssl_certfile) != bool(args.ssl_keyfile):
+        raise SystemExit("--ssl-certfile and --ssl-keyfile must be provided together")
+    for path in (args.ssl_certfile, args.ssl_keyfile):
+        if path is not None and not path.is_file():
+            raise SystemExit(f"TLS file not found: {path}")
+    tls_enabled = args.ssl_certfile is not None
     settings = PeachSettings(
         db_path=args.db,
         token=args.token,
         docs_enabled=args.docs,
+        mdns_enabled=not args.no_mdns,
+        mdns_name=args.mdns_name,
+        mdns_port=args.port,
+        tls_enabled=tls_enabled,
     )
-    uvicorn.run(create_app(settings), host=args.host, port=args.port, workers=1)
+    uvicorn.run(
+        create_app(settings), host=args.host, port=args.port, workers=1,
+        ssl_certfile=str(args.ssl_certfile) if args.ssl_certfile else None,
+        ssl_keyfile=str(args.ssl_keyfile) if args.ssl_keyfile else None,
+    )
     return 0
 
 
@@ -52,6 +66,10 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--db", type=Path, default=DEFAULT_DB)
     serve.add_argument("--token", default="")
     serve.add_argument("--docs", action="store_true")
+    serve.add_argument("--no-mdns", action="store_true")
+    serve.add_argument("--mdns-name", default="peach")
+    serve.add_argument("--ssl-certfile", type=Path)
+    serve.add_argument("--ssl-keyfile", type=Path)
     serve.set_defaults(handler=_serve)
 
     migrate = commands.add_parser("migrate", help="inspect or apply SQLite migrations")
