@@ -27,8 +27,8 @@ import os, re, sys, json, time, subprocess
 
 PIPE = r"\\.\pipe\verge-mihomo"
 SECRET = "set-your-secret"
-LOG = r"R:\Resources\Migration_Logs\trafficwatch-{}.log".format(time.strftime("%Y%m%d-%H%M%S"))
-ALERT = r"R:\Resources\Migration_Logs\流量警报.txt"
+LOG = r"R:\peach-data\logs\trafficwatch-{}.log".format(time.strftime("%Y%m%d-%H%M%S"))
+ALERT = r"R:\peach-data\logs\流量警报.txt"
 
 A = sys.argv[1:]
 def _o(n, d, c=str): return c(A[A.index(n) + 1]) if n in A else d

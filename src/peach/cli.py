@@ -5,11 +5,11 @@ from datetime import datetime
 from pathlib import Path
 
 from .api import create_app
-from .config import DATA_ROOT, MIGRATIONS_DIR, PeachSettings
+from .config import DATABASE_PATH, MIGRATIONS_DIR, PeachSettings
 from .migrations import plan, upgrade
 
 
-DEFAULT_DB = DATA_ROOT / "Intake" / "ledger.db"
+DEFAULT_DB = DATABASE_PATH
 
 
 def _serve(args: argparse.Namespace) -> int:

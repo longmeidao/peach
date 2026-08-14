@@ -19,16 +19,16 @@
 import os, sys, json, sqlite3, time
 from collections import defaultdict
 
-DB = r"R:\Resources\Intake\ledger.db"
+DB = r"R:\peach-data\database\ledger.db"
 COOKIE = os.path.expandvars(r"%USERPROFILE%\.115-cookies.txt")
-LOG = r"R:\Resources\Migration_Logs\sha1-{}.log".format(time.strftime("%Y%m%d-%H%M%S"))
+LOG = r"R:\peach-data\logs\sha1-{}.log".format(time.strftime("%Y%m%d-%H%M%S"))
 
 try:
     from p115client import P115Client
     from p115client.tool.iterdir import iter_files
 except ImportError:
     print("缺少依赖，先执行：")
-    print(r'   "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" -m pip install -U p115client')
+    print(r'   .\.venv\Scripts\python.exe -m pip install -U p115client')
     sys.exit(1)
 
 logf = open(LOG, "w", encoding="utf-8", buffering=1)

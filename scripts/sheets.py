@@ -16,11 +16,11 @@
 """
 import os, sys, time, hashlib, sqlite3, subprocess, threading, queue, tempfile, shutil
 
-DB = r"R:\Resources\Intake\ledger.db"
+DB = r"R:\peach-data\database\ledger.db"
 BIN = r"C:\Users\longm\AppData\Local\Stash\ffmpeg-btbn\ffmpeg-master-latest-win64-gpl-shared\bin"
 FFMPEG, FFPROBE = os.path.join(BIN, "ffmpeg.exe"), os.path.join(BIN, "ffprobe.exe")
-OUTROOT = r"R:\Resources\Intake\snapshots\cloud"
-LOG = r"R:\Resources\Migration_Logs\sheets-{}.log".format(time.strftime("%Y%m%d-%H%M%S"))
+OUTROOT = r"R:\peach-data\generated\snapshots\cloud"
+LOG = r"R:\peach-data\logs\sheets-{}.log".format(time.strftime("%Y%m%d-%H%M%S"))
 
 a = sys.argv[1:]
 def opt(n, d, cast=str): return cast(a[a.index(n) + 1]) if n in a else d

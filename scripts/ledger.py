@@ -6,7 +6,7 @@ r"""
   python rm-ledger.py init                     建库
   python rm-ledger.py scan 115 B:\             扫一个挂载点（只读元数据）
   python rm-ledger.py scan pikpak A:\
-  python rm-ledger.py scan local R:\Media\创作者
+  python scripts/ledger.py scan local R:\media\创作者
   python rm-ledger.py stash                    从 Stash 拉场景/标签/Studio/Performer
   python rm-ledger.py follow                   导入 X / Pixiv 关注列表（在线资产）
   python rm-ledger.py stats                    统计
@@ -17,7 +17,7 @@ r"""
 """
 import os, sys, csv, json, sqlite3, time, urllib.request, urllib.error
 
-DB = os.path.expandvars(r"R:\Resources\Intake\ledger.db")
+DB = os.path.expandvars(r"R:\peach-data\database\ledger.db")
 STASH = "http://127.0.0.1:9999/graphql"
 
 VIDEO = {".mp4", ".m4v", ".mkv", ".avi", ".wmv", ".mov", ".ts", ".flv", ".rmvb", ".mpg", ".m2ts"}

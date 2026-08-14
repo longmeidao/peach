@@ -3,7 +3,7 @@
 """一屏看完项目状态。无副作用，随时可跑。"""
 import os, sqlite3, glob, time, subprocess
 
-DB = r"R:\Resources\Intake\ledger.db"
+DB = r"R:\peach-data\database\ledger.db"
 c = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
 q1 = lambda s: c.execute(s).fetchone()[0]
 qa = lambda s: c.execute(s).fetchall()
@@ -58,7 +58,7 @@ except Exception:
 
 for pat, nm in (("probe-*.log", "ffprobe"), ("sheets-*.log", "接触表"),
                 ("sha1-*.log", "SHA1"), ("cloud-delete-*.log", "删除")):
-    fs = sorted(glob.glob(rf"R:\Resources\Migration_Logs\{pat}"), key=os.path.getmtime)
+    fs = sorted(glob.glob(rf"R:\peach-data\logs\{pat}"), key=os.path.getmtime)
     if not fs:
         continue
     f = fs[-1]

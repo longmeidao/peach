@@ -12,8 +12,8 @@ Before changing the project, read these files in order:
 
 Working rules:
 
-- `R:\peach-app` is code and documentation. `R:\Resources`, `R:\Media`, `A:\` and `B:\` are runtime data or mounted media and must never be copied into Git.
-- `R:\Resources\Intake\ledger.db` is the truth store. Tests use temporary databases only. A real migration requires a SQLite backup and before/after count checks.
+- `R:\peach-app` is code and documentation. `R:\peach-data`, `R:\media`, `A:\` and `B:\` are runtime data or mounted media and must never be copied into Git.
+- `R:\peach-data\database\ledger.db` is the truth store. Tests use temporary databases only. A real migration requires a SQLite backup and before/after count checks.
 - The project is an early personal project: aggressively remove obsolete code and compatibility layers when the replacement is tested. Do not preserve dead interfaces merely for history; Git is the archive.
 - Preserve real media, ledger rows, behavior history, credentials, network/firewall state, and unrelated long-running jobs.
 - Inspect `git status` and the active listeners/processes before work. Never claim candidate code is production until the service has actually been switched and checked.

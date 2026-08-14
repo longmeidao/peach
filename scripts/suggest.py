@@ -19,7 +19,7 @@ import os, sys, json, random, sqlite3
 from collections import Counter, defaultdict
 from pathlib import Path
 
-DB = r"R:\Resources\Intake\ledger.db"
+DB = r"R:\peach-data\database\ledger.db"
 MOODS = str(Path(__file__).with_name("moods.json"))
 N_OUT = 6
 

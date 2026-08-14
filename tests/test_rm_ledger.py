@@ -40,13 +40,13 @@ class LedgerSchemaTests(unittest.TestCase):
         con = sqlite3.connect(self.db)
         con.execute(
             "INSERT INTO asset(location,path,name,medium,creator) VALUES('local',?,?,?,?)",
-            (r"R:\Media\one.mp4", "one.mp4", "video", "Channel Owner"),
+            (r"R:\media\one.mp4", "one.mp4", "video", "Channel Owner"),
         )
         con.commit()
         con.close()
         response = {"findScenes": {"scenes": [{
             "id": "42", "title": "one", "rating100": 80, "o_counter": 2, "play_count": 3,
-            "files": [{"path": r"R:\Media\one.mp4", "size": 10, "duration": 30,
+            "files": [{"path": r"R:\media\one.mp4", "size": 10, "duration": 30,
                        "width": 1920, "height": 1080, "video_codec": "h264",
                        "frame_rate": 30, "audio_codec": "aac"}],
             "studio": {"name": "Studio A"},
@@ -59,11 +59,11 @@ class LedgerSchemaTests(unittest.TestCase):
         con = sqlite3.connect(self.db)
         row = con.execute(
             "SELECT creator,studio,stash_scene_id FROM asset WHERE path=?",
-            (r"R:\Media\one.mp4",),
+            (r"R:\media\one.mp4",),
         ).fetchone()
         tags = {x[0] for x in con.execute(
             "SELECT tag FROM asset_tag WHERE asset_id=(SELECT id FROM asset WHERE path=?)",
-            (r"R:\Media\one.mp4",),
+            (r"R:\media\one.mp4",),
         )}
         con.close()
         self.assertEqual(row, ("Channel Owner", "Studio A", 42))

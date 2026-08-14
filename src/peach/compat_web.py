@@ -26,13 +26,13 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from http.cookies import SimpleCookie
 from pathlib import Path
 
-DB = r"R:\Resources\Intake\ledger.db"
+DB = r"R:\peach-data\database\ledger.db"
 HERE = os.path.dirname(os.path.abspath(__file__))
 PAGE = os.path.join(os.path.dirname(os.path.dirname(HERE)), "web", "index.html")
-SNAP_ROOT = r"R:\Resources\Intake\snapshots"
-LOGO_ROOT = r"R:\Resources\Intake\logos"
-AVA_ROOT = r"R:\Resources\Intake\avatars"
-POSTER_ROOT = r"R:\Resources\Intake\posters"
+SNAP_ROOT = r"R:\peach-data\generated\snapshots"
+LOGO_ROOT = r"R:\peach-data\generated\logos"
+AVA_ROOT = r"R:\peach-data\generated\avatars"
+POSTER_ROOT = r"R:\peach-data\generated\posters"
 FFPROBE = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Stash", "ffmpeg-btbn",
                        "ffmpeg-master-latest-win64-gpl-shared", "bin", "ffprobe.exe")
 FFMPEG = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Stash", "ffmpeg-btbn",

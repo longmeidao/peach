@@ -30,3 +30,16 @@ AI/external metadata -> reviewed candidates -> ledger
 - 将 Stash 私有目录或 GPL 构建作为 Peach 的稳定打包依赖
 
 关键取舍见 `docs/adr/`；Stash 的代码级证据见 `docs/STASH.md`。
+
+## Runtime data layout
+
+`R:\peach-data` is intentionally separate from the repository:
+
+- `database/`: SQLite truth store
+- `generated/`: snapshots, posters, avatars and logos
+- `sources/`: immutable/raw browser, follow, inventory and export inputs
+- `state/`: curated local state and locks
+- `secrets/`: local-only secret material
+- `logs/`: current operational logs
+- `archive/`: historical migration evidence and backups
+- `inbox/`: transient imports awaiting processing

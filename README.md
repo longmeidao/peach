@@ -5,13 +5,15 @@ Peach（蜜桃）是一个单用户、本地优先的个人媒体系统：统一
 ## 边界
 
 - 项目代码：`R:\peach-app`
-- 真实数据：`R:\Resources`
-- 本地媒体：`R:\Media`
+- 真实数据：`R:\peach-data`
+- 本地媒体：`R:\media`
 - 网盘挂载：`A:\`、`B:\`
-- 真相数据库：`R:\Resources\Intake\ledger.db`
+- 真相数据库：`R:\peach-data\database\ledger.db`
 - Stash：过渡期可替换 adapter，不是真相源
 
 项目仓库不保存媒体、数据库、凭据、快照、封面或运行日志。
+
+`R:\peach-data` 使用固定分层：`database` 保存真相库，`generated` 保存可再生成的视觉资产，`sources` 保存原始分析输入，`state` 保存人工维护状态，`secrets` 保存本机凭据材料，`logs` 保存运行记录，`archive` 保存历史备份，`inbox` 是临时下载落地区。
 
 ## 结构
 
@@ -31,7 +33,7 @@ peach-app/
 
 ```powershell
 cd R:\peach-app
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" -m venv .venv
+& py -3.14 -m venv .venv
 & .\.venv\Scripts\python.exe -m pip install -e .
 & .\.venv\Scripts\python.exe -m unittest discover -s tests -p 'test_*.py' -v
 & .\.venv\Scripts\peach.exe migrate status

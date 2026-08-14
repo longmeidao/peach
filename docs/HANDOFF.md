@@ -12,15 +12,15 @@ This is durable operating knowledge, not a per-session transcript.
 
 ## Data safety
 
-- Real ledger: `R:\Resources\Intake\ledger.db`; WAL mode; normal browsing legitimately changes play/activity fields.
+- Real ledger: `R:\peach-data\database\ledger.db`; WAL mode; normal browsing legitimately changes play/activity fields.
 - Tests must create temporary SQLite databases and temporary media files.
 - Before real migration: SQLite backup, asset/tag counts, `PRAGMA integrity_check`, migration version check, then service smoke test.
-- Media and generated resources remain under `R:\Media` and `R:\Resources`; they are not repository assets.
+- Media and runtime data remain under `R:\media` and `R:\peach-data`; they are not repository assets.
 
 ## Operations
 
 - Main command: `peach serve|migrate` after editable installation.
-- Long-running inventory helpers are under `scripts/`; their scheduled tasks already use `R:\peach-app` for the next start. They use absolute data paths and may be interrupted/restarted where their own locking contract allows it.
+- Long-running inventory helpers are under `scripts/`; their scheduled tasks use `R:\peach-app\.venv\Scripts\python.exe`. They use absolute data paths and may be interrupted/restarted where their own locking contract allows it.
 - Check ports 80, 8900 and 9999 before starting or switching services.
 - Report verification separately: static/unit/API, desktop browser, 390×844 browser, and whether production was actually restarted.
 
@@ -34,4 +34,4 @@ This is durable operating knowledge, not a per-session transcript.
 
 ## Recovery
 
-Deprecated scripts and old dated documents were removed from the active tree during the `peach-app` restructure. They remain recoverable from Git history before the restructure commit. Local `_SHARED_STATE` data remains in `R:\Resources\Intake\_SHARED_STATE`; it was deliberately removed only from version control.
+Deprecated scripts and old dated documents were removed from the active tree during the `peach-app` restructure. They remain recoverable from Git history before the restructure commit. Former `_SHARED_STATE` content lives under `R:\peach-data\state`; it is deliberately outside version control. The pre-restructure root repository metadata is retained temporarily under `R:\peach-data\archive\peach-root-repo-backup-20260814` as a recovery copy.

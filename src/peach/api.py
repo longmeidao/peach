@@ -42,7 +42,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
     )
     app = FastAPI(
         title="Peach API",
-        version="0.1.0",
+        version="0.2.0",
         docs_url="/docs" if settings.docs_enabled else None,
         redoc_url=None,
         openapi_url="/openapi.json" if settings.docs_enabled else None,
@@ -66,7 +66,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
     def healthz() -> dict[str, Any]:
         # 不探测/迁移数据库；健康检查必须无副作用。
         ffmpeg = resolver.ffmpeg()
-        return {"ok": True, "service": "peach-api", "mode": "candidate",
+        return {"ok": True, "service": "peach-api", "mode": "fastapi",
                 "db": "available" if settings.db_path.is_file() else "missing",
                 "ffmpeg": ffmpeg.source if ffmpeg else "unavailable"}
 

@@ -80,7 +80,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
     async def test_health_is_side_effect_free(self):
         response = await self.client.get("/healthz")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["mode"], "candidate")
+        self.assertEqual(response.json()["mode"], "fastapi")
 
     async def test_auth_and_items_contract(self):
         denied = await self.client.get("/api/items")

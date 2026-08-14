@@ -11,7 +11,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from peach.migrations import sqlite_backup, upgrade
 
 
-SOURCE = Path(r"R:\Resources\Intake\ledger.db")
+SOURCE = Path(r"R:\peach-data\database\ledger.db")
 MIGRATIONS = PROJECT_ROOT / "migrations"
 
 

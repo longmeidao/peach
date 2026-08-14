@@ -15,9 +15,9 @@
 """
 import os, sys, time, json, sqlite3, subprocess, threading, queue
 
-DB = r"R:\Resources\Intake\ledger.db"
+DB = r"R:\peach-data\database\ledger.db"
 FFPROBE = r"C:\Users\longm\AppData\Local\Stash\ffmpeg-btbn\ffmpeg-master-latest-win64-gpl-shared\bin\ffprobe.exe"
-LOG = r"R:\Resources\Migration_Logs\probe-{}.log".format(time.strftime("%Y%m%d-%H%M%S"))
+LOG = r"R:\peach-data\logs\probe-{}.log".format(time.strftime("%Y%m%d-%H%M%S"))
 
 a = sys.argv[1:]
 def opt(name, default, cast=str):
@@ -29,7 +29,7 @@ LIMIT = opt("--limit", 0, int)
 
 # ---------- 单实例保护 ----------
 # 多个实例同时跑会互抢 SQLite 写锁，全部卡死（实测踩过：三个实例并存时 ffprobe 数归零）
-LOCKFILE = r"R:\Resources\Intake\.probe.lock"
+LOCKFILE = r"R:\peach-data\state\.probe.lock"
 try:
     _lock = open(LOCKFILE, "x")
     _lock.write(str(os.getpid()))

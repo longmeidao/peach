@@ -5,7 +5,7 @@ import sqlite3
 from pathlib import Path
 
 
-DB = Path(r"R:\Resources\Intake\ledger.db")
+DB = Path(r"R:\peach-data\database\ledger.db")
 
 
 def main():
