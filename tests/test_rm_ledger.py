@@ -3,9 +3,9 @@ import io
 import sqlite3
 import tempfile
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
 from contextlib import redirect_stdout
-from unittest.mock import patch
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "ledger.py"
@@ -53,21 +53,28 @@ class LedgerSchemaTests(unittest.TestCase):
             "performers": [{"name": "Performer A"}],
             "tags": [{"name": "Tag A"}],
         }]}}
-        with patch.object(rm_ledger, "gq", return_value=response):
-            with redirect_stdout(io.StringIO()):
-                rm_ledger.cmd_stash()
+        client = SimpleNamespace(graphql=lambda *_args, **_kwargs: response)
+        with redirect_stdout(io.StringIO()):
+            rm_ledger.cmd_stash(client)
         con = sqlite3.connect(self.db)
         row = con.execute(
             "SELECT creator,studio,stash_scene_id FROM asset WHERE path=?",
             (r"R:\media\one.mp4",),
         ).fetchone()
-        tags = {x[0] for x in con.execute(
-            "SELECT tag FROM asset_tag WHERE asset_id=(SELECT id FROM asset WHERE path=?)",
+        tags = {x for x in con.execute(
+            "SELECT tag,source FROM asset_tag WHERE asset_id=(SELECT id FROM asset WHERE path=?)",
             (r"R:\media\one.mp4",),
         )}
+        binding = con.execute(
+            "SELECT backend,external_id,metadata_json FROM media_binding WHERE asset_id=(SELECT id FROM asset WHERE path=?)",
+            (r"R:\media\one.mp4",),
+        ).fetchone()
         con.close()
         self.assertEqual(row, ("Channel Owner", "Studio A", 42))
-        self.assertEqual(tags, {"Tag A", "演员:Performer A"})
+        self.assertEqual(tags, {("Tag A", "stash:tag"),
+                                ("演员:Performer A", "stash:performer")})
+        self.assertEqual(binding[:2], ("stash", "42"))
+        self.assertIn('"transport": "stash-graphql"', binding[2])
 
 
 if __name__ == "__main__":

@@ -33,6 +33,7 @@ This is durable operating knowledge, not a per-session transcript.
 
 - Ledger owns truth and behavior.
 - Stash is a replaceable adapter; do not add new direct GraphQL helpers or private Stash FFmpeg paths.
+- All Stash calls use `StashClient`. Imports persist the stable Scene ID and provenance in `media_binding`; do not regress to `stash_scene_id` as the only external reference.
 - Keep FastAPI and the front end logically separate but deploy as a monolith.
 - External sources and AI are supported only through explicit adapters and declared data boundaries.
 - AI provider layers are not equivalent: inference APIs and local coding/agent runtimes remain separate.

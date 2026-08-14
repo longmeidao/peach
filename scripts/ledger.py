@@ -15,11 +15,11 @@ r"""
 设计边界见项目根目录 docs/ARCHITECTURE.md 与 docs/adr/。
 默认本地自托管。扫描只读元数据；在线关注同步是正式能力，按来源单独控频和授权。
 """
-import os, sys, csv, json, sqlite3, time, urllib.request, urllib.error
+import os, sys, csv, json, sqlite3, time
+
+from peach.stash import StashClient, StashError
 
 DB = os.path.expandvars(r"R:\peach-data\database\ledger.db")
-STASH = "http://127.0.0.1:9999/graphql"
-
 VIDEO = {".mp4", ".m4v", ".mkv", ".avi", ".wmv", ".mov", ".ts", ".flv", ".rmvb", ".mpg", ".m2ts"}
 IMAGE = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
 AUDIO = {".mp3", ".flac", ".wav", ".m4a", ".ogg", ".opus"}
@@ -55,6 +55,16 @@ CREATE TABLE IF NOT EXISTS asset_tag(
 CREATE TABLE IF NOT EXISTS quest(
   id INTEGER PRIMARY KEY, keyword TEXT, origin TEXT,
   created_at TEXT, resolved_at TEXT, outcome TEXT);
+
+CREATE TABLE IF NOT EXISTS media_binding(
+  asset_id INTEGER NOT NULL REFERENCES asset(id),
+  backend TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  priority INTEGER NOT NULL DEFAULT 100,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  last_synced_at TEXT,
+  PRIMARY KEY(asset_id, backend),
+  UNIQUE(backend, external_id));
 
 CREATE INDEX IF NOT EXISTS ix_asset_hash ON asset(hash_kind, hash);
 CREATE INDEX IF NOT EXISTS ix_asset_size ON asset(size);
@@ -131,22 +141,18 @@ def cmd_scan(location, root):
     c.close()
 
 
-def gq(q, v=None):
-    b = {"query": q}
-    if v: b["variables"] = v
-    try:
-        return json.loads(urllib.request.urlopen(urllib.request.Request(
-            STASH, data=json.dumps(b).encode(), headers={"Content-Type": "application/json"}), timeout=120).read())["data"]
-    except urllib.error.HTTPError as e:
-        print("Stash 错误:", e.read().decode("utf-8", "ignore")[:200]); return None
-
-
-def cmd_stash():
+def cmd_stash(client=None):
     c = conn(); c.executescript(SCHEMA)
-    d = gq("""{findScenes(filter:{per_page:-1}){scenes{
-        id title rating100 o_counter play_count
-        files{path size duration width height video_codec frame_rate audio_codec}
-        studio{name} performers{name} tags{name}}}}""")
+    client = client or StashClient(timeout=120)
+    try:
+        d = client.graphql("""{findScenes(filter:{per_page:-1}){scenes{
+            id title rating100 o_counter play_count
+            files{path size duration width height video_codec frame_rate audio_codec}
+            studio{name} performers{name} tags{name}}}}""")
+    except StashError as exc:
+        print("Stash 错误:", exc)
+        c.close()
+        return
     if not d:
         c.close()
         return
@@ -176,11 +182,30 @@ def cmd_stash():
                          s.get("play_count") or 0, s.get("rating100"), s.get("o_counter") or 0,
                          int(s["id"]), now, now))
         aid = c.execute("SELECT id FROM asset WHERE location='local' AND path=?", (f["path"],)).fetchone()[0]
+        provenance = {
+            "transport": "stash-graphql",
+            "studio": (s.get("studio") or {}).get("name"),
+            "performers": [p["name"] for p in s.get("performers") or []],
+            "tags": [t["name"] for t in s.get("tags") or []],
+        }
+        c.execute("""INSERT INTO media_binding(asset_id,backend,external_id,metadata_json,last_synced_at)
+                     VALUES(?,'stash',?,?,?)
+                     ON CONFLICT(asset_id,backend) DO UPDATE SET
+                       external_id=excluded.external_id,
+                       metadata_json=excluded.metadata_json,
+                       last_synced_at=excluded.last_synced_at""",
+                  (aid, str(s["id"]), json.dumps(provenance, ensure_ascii=False), now))
         for t in s.get("tags") or []:
-            c.execute("INSERT OR IGNORE INTO asset_tag(asset_id,tag,confidence,source) VALUES(?,?,1.0,'stash')",
+            c.execute("""INSERT INTO asset_tag(asset_id,tag,confidence,source)
+                         VALUES(?,?,1.0,'stash:tag')
+                         ON CONFLICT(asset_id,tag) DO UPDATE SET
+                           confidence=excluded.confidence,source=excluded.source""",
                       (aid, t["name"])); nt += 1
         for p in s.get("performers") or []:
-            c.execute("INSERT OR IGNORE INTO asset_tag(asset_id,tag,confidence,source) VALUES(?,?,1.0,'performer')",
+            c.execute("""INSERT INTO asset_tag(asset_id,tag,confidence,source)
+                         VALUES(?,?,1.0,'stash:performer')
+                         ON CONFLICT(asset_id,tag) DO UPDATE SET
+                           confidence=excluded.confidence,source=excluded.source""",
                       (aid, "演员:" + p["name"]))
     c.commit()
     print(f"✓ Stash: {len(scenes):,} 个场景，{nt:,} 条标签关联")

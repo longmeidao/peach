@@ -19,6 +19,7 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - FastAPI serves home, stable JSON contract, standard Range/HEAD media, thumbnails, posters, avatars and logos.
 - The old `BaseHTTPRequestHandler`, dynamic legacy loader and automatic schema repair path are deleted. Default contract reads are read-only; activity/play/feedback writes are explicit.
 - FFmpeg/ffprobe are Peach-managed under `R:\peach-data\tools\ffmpeg`; resolver order is environment, managed bundle, then PATH. Active code has no Stash private binary fallback.
+- Stash transport is centralized in `StashClient`; ledger imports now write stable `media_binding` external IDs and explicit tag/performer provenance. The new importer was verified only against an isolated database and was not run on the real ledger.
 - `R:\peach-data` now separates `database/generated/sources/state/secrets/logs/archive/inbox/tools`; the old empty root Inbox and old Resources/Tools compatibility surface are removed.
 - 24 isolated tests passed under Python 3.14, including HTTP/HTTPS mDNS publication and TLS argument boundaries.
 - Real migration preserved 81,873 assets and 59,697 tag links; both live database and backup passed `integrity_check` and `foreign_key_check`.
@@ -29,6 +30,6 @@ Runtime PIDs are observations, not configuration; always re-check them.
 
 ## Next work
 
-1. Route the remaining `scripts/ledger.py` Stash import through the centralized adapter and formalize entity provenance.
+1. Replace flattened `演员:` tags with canonical performer/entity relations while keeping a compatibility projection for the current UI.
 2. Split `web_contract.py` globals into explicit repository/application objects before enabling multiple workers.
 3. Implement the first real online-source and AI provider adapters behind the existing boundaries.
