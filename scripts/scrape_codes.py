@@ -29,11 +29,12 @@ import random
 import re
 import sqlite3
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
+
+from bs4 import BeautifulSoup
 
 from peach.entities import upsert_asset_entity
+from peach.http import HttpRequest, HttpTransport, HttpxTransport
 
 DEFAULT_DB = r"R:\peach-data\database\ledger.db"
 DEFAULT_OUT = r"R:\peach-data\generated\code-scrape.csv"
@@ -59,18 +60,30 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 
 
-def _get(url: str, headers: dict | None = None, timeout: int = 25) -> str:
+class SourceHttpError(RuntimeError):
+    def __init__(self, status: int):
+        super().__init__(f"source returned HTTP {status}")
+        self.status = status
+
+
+def _get(
+    url: str,
+    headers: dict | None = None,
+    timeout: int = 25,
+    transport: HttpTransport | None = None,
+) -> str:
     hdrs = {"User-Agent": UA, "Accept-Language": "zh-TW,zh;q=0.9,ja;q=0.8"}
     hdrs.update(headers or {})
-    with urllib.request.urlopen(urllib.request.Request(url, headers=hdrs), timeout=timeout) as resp:
-        return resp.read().decode("utf-8", "ignore")
-
-
-_TAG_RE = re.compile(r"<[^>]+>")
-
-
-def _text(fragment: str) -> str:
-    return re.sub(r"\s+", " ", _TAG_RE.sub("", fragment)).strip()
+    owns_transport = transport is None
+    http = transport or HttpxTransport()
+    try:
+        response = http(HttpRequest("GET", url, hdrs), timeout, 8 * 1024 * 1024)
+        if response.status < 200 or response.status >= 300:
+            raise SourceHttpError(response.status)
+        return response.body.decode("utf-8", "ignore")
+    finally:
+        if owns_transport and isinstance(http, HttpxTransport):
+            http.close()
 
 
 def _name_of(value) -> str:
@@ -83,10 +96,10 @@ BLANK = {"performers": "", "studio": "", "label": "", "series": "",
          "title": "", "categories": "", "source": ""}
 
 
-def from_r18(code: str) -> dict | None:
+def from_r18(code: str, transport: HttpTransport | None = None) -> dict | None:
     payload = json.loads(_get(
         "https://r18.dev/videos/vod/movies/detail/-/dvd_id="
-        f"{urllib.parse.quote(code)}/json"))
+        f"{urllib.parse.quote(code)}/json", transport=transport))
     actors = [a.get("name", "").strip() for a in (payload.get("actresses") or []) if a.get("name")]
     if not actors and not payload.get("maker"):
         return None
@@ -101,46 +114,74 @@ def from_r18(code: str) -> dict | None:
     }
 
 
-def from_avsox(code: str) -> dict | None:
-    search = _get("https://avsox.click/cn/search/" + urllib.parse.quote(code))
-    hit = re.search(r'href="(https?://[^"]*/cn/movie/[^"]+)"', search)
-    if not hit:
-        return None
-    page = _get(hit.group(1))
-    actors = [_text(x) for x in re.findall(
-        r'class="avatar-box"[^>]*>.{0,400}?<span>([^<]{1,30})</span>', page, re.S)]
-    maker = re.search(r"制作商.{0,300}?<a[^>]*>([^<]{1,60})</a>", page, re.S)
-    title = re.search(r"<h3>(.*?)</h3>", page, re.S)
+def _linked_value(soup: BeautifulSoup, labels: tuple[str, ...]) -> str:
+    label = soup.find(string=lambda value: bool(value) and any(name in value for name in labels))
+    if label is None:
+        return ""
+    for parent in label.parents:
+        link = parent.find("a", href=True)
+        if link is not None:
+            return link.get_text(" ", strip=True)
+        if parent.name in {"body", "html"}:
+            break
+    return ""
+
+
+def avsox_movie_url(html: str, base_url: str = "https://avsox.click") -> str:
+    soup = BeautifulSoup(html, "html.parser")
+    link = soup.select_one('a[href*="/cn/movie/"]')
+    return urllib.parse.urljoin(base_url, link.get("href", "")) if link else ""
+
+
+def parse_avsox(html: str) -> dict | None:
+    soup = BeautifulSoup(html, "html.parser")
+    actors = [node.get_text(" ", strip=True) for node in soup.select(".avatar-box span")]
+    maker = _linked_value(soup, ("制作商", "製作商"))
+    title = soup.find("h3")
     if not (actors or maker):
         return None
     out = dict(BLANK)
     out.update({
         "performers": "|".join(dict.fromkeys(a for a in actors if a)),
-        "studio": maker.group(1).strip() if maker else "",
-        "title": _text(title.group(1))[:200] if title else "",
+        "studio": maker,
+        "title": title.get_text(" ", strip=True)[:200] if title else "",
         "source": "avsox",
     })
     return out
 
 
-def from_javbus(code: str) -> dict | None:
-    page = _get("https://www.javbus.com/" + urllib.parse.quote(code),
-                headers={"Cookie": "existmag=all"})
-    actors = [_text(b) for b in re.findall(r'class="star-name"[^>]*>(.*?)</span>', page, re.S)]
+def from_avsox(code: str, transport: HttpTransport | None = None) -> dict | None:
+    search = _get(
+        "https://avsox.click/cn/search/" + urllib.parse.quote(code), transport=transport,
+    )
+    url = avsox_movie_url(search)
+    return parse_avsox(_get(url, transport=transport)) if url else None
+
+
+def parse_javbus(html: str) -> dict | None:
+    soup = BeautifulSoup(html, "html.parser")
+    actors = [node.get_text(" ", strip=True) for node in soup.select(".star-name")]
     if not actors:
-        actors = [x.strip() for x in re.findall(
-            r'href="[^"]*/star/[^"]*"[^>]*>([^<]{1,30})</a>', page)]
+        actors = [node.get_text(" ", strip=True) for node in soup.select('a[href*="/star/"]')]
     out = dict(BLANK)
     out["performers"] = "|".join(dict.fromkeys(a for a in actors if a))
-    for key, field in (("製作商", "studio"), ("發行商", "label"), ("系列", "series")):
-        hit = re.search(key + r'.{0,200}?href="[^"]*"[^>]*>([^<]{1,60})</a>', page, re.S)
-        if hit:
-            out[field] = hit.group(1).strip()
-    title = re.search(r"<h3>(.*?)</h3>", page, re.S)
+    out["studio"] = _linked_value(soup, ("製作商", "制作商"))
+    out["label"] = _linked_value(soup, ("發行商", "发行商"))
+    out["series"] = _linked_value(soup, ("系列",))
+    title = soup.find("h3")
     if title:
-        out["title"] = _text(title.group(1))[:200]
+        out["title"] = title.get_text(" ", strip=True)[:200]
     out["source"] = "javbus"
     return out if (out["performers"] or out["studio"]) else None
+
+
+def from_javbus(code: str, transport: HttpTransport | None = None) -> dict | None:
+    page = _get(
+        "https://www.javbus.com/" + urllib.parse.quote(code),
+        headers={"Cookie": "existmag=all"},
+        transport=transport,
+    )
+    return parse_javbus(page)
 
 
 def normalise(code: str) -> str:
@@ -238,41 +279,45 @@ def main(argv: list[str] | None = None) -> int:
     by_source: dict[str, int] = {}
     started = time.time()
 
-    for index, (code, size_gb, videos) in enumerate(todo, 1):
-        query = normalise(code)
-        record = dict(BLANK)
-        record.update({"code": code, "query": query, "status": "",
-                       "size_gb": round(size_gb, 2), "videos": videos})
-        for source_name, fetch in chain(query):
-            if time.time() < cooldown.get(source_name, 0):
-                continue
-            try:
-                found = fetch(query)
-            except urllib.error.HTTPError as exc:
-                if exc.code in (403, 429, 503):
-                    cooldown[source_name] = time.time() + 300
-                    log(f"  {source_name} 限流 {exc.code}，冷却 5 分钟")
-                continue
-            except Exception:
-                continue
-            if found:
-                record.update(found)
-                record["status"] = "ok" if found["performers"] else "no_actress"
-                by_source[source_name] = by_source.get(source_name, 0) + 1
-                break
-            time.sleep(0.4)
-        if record["performers"]:
-            hit += 1
-        else:
-            miss += 1
-            record["status"] = record["status"] or "not_found"
-        writer.writerow(record)
-        handle.flush()
-        if index % 25 == 0:
-            elapsed = time.time() - started
-            log(f"{index}/{len(todo)}  命中 {hit}  未果 {miss}  "
-                f"剩余 {(len(todo) - index) * elapsed / index / 60:.0f} 分钟  源:{by_source}")
-        time.sleep(args.delay + random.uniform(0, 0.5))
+    http = HttpxTransport()
+    try:
+        for index, (code, size_gb, videos) in enumerate(todo, 1):
+            query = normalise(code)
+            record = dict(BLANK)
+            record.update({"code": code, "query": query, "status": "",
+                           "size_gb": round(size_gb, 2), "videos": videos})
+            for source_name, fetch in chain(query):
+                if time.time() < cooldown.get(source_name, 0):
+                    continue
+                try:
+                    found = fetch(query, http)
+                except SourceHttpError as exc:
+                    if exc.status in (403, 429, 503):
+                        cooldown[source_name] = time.time() + 300
+                        log(f"  {source_name} 限流 {exc.status}，冷却 5 分钟")
+                    continue
+                except Exception:
+                    continue
+                if found:
+                    record.update(found)
+                    record["status"] = "ok" if found["performers"] else "no_actress"
+                    by_source[source_name] = by_source.get(source_name, 0) + 1
+                    break
+                time.sleep(0.4)
+            if record["performers"]:
+                hit += 1
+            else:
+                miss += 1
+                record["status"] = record["status"] or "not_found"
+            writer.writerow(record)
+            handle.flush()
+            if index % 25 == 0:
+                elapsed = time.time() - started
+                log(f"{index}/{len(todo)}  命中 {hit}  未果 {miss}  "
+                    f"剩余 {(len(todo) - index) * elapsed / index / 60:.0f} 分钟  源:{by_source}")
+            time.sleep(args.delay + random.uniform(0, 0.5))
+    finally:
+        http.close()
 
     handle.close()
     total = hit + miss

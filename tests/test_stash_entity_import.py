@@ -1,8 +1,11 @@
 import importlib.util
+import io
 import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+
+from PIL import Image
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -61,11 +64,13 @@ class StashEntityImportTests(unittest.TestCase):
         self.assertIn("Performer summary", metadata)
 
     def test_reads_png_and_jpeg_dimensions(self):
-        png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8 + (600).to_bytes(4, "big") + (800).to_bytes(4, "big")
-        jpeg = (b"\xff\xd8\xff\xc0\x00\x11\x08" + (700).to_bytes(2, "big")
-                + (500).to_bytes(2, "big") + b"\x03" + b"\x00" * 20)
-        self.assertEqual(MODULE.image_size(png), (600, 800))
-        self.assertEqual(MODULE.image_size(jpeg), (500, 700))
+        png_buffer = io.BytesIO()
+        jpeg_buffer = io.BytesIO()
+        Image.new("RGB", (600, 800)).save(png_buffer, format="PNG")
+        Image.new("RGB", (500, 700)).save(jpeg_buffer, format="JPEG")
+        self.assertEqual(MODULE.image_size(png_buffer.getvalue()), (600, 800))
+        self.assertEqual(MODULE.image_size(jpeg_buffer.getvalue()), (500, 700))
+        self.assertIsNone(MODULE.image_size(b"\x89PNG\r\n\x1a\n" + b"broken"))
 
 
 if __name__ == "__main__":

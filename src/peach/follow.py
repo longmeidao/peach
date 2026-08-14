@@ -6,17 +6,19 @@ persist raw evidence and submit normalized entries through a review boundary.
 from __future__ import annotations
 
 import hashlib
-import html
 import json
 import re
-import urllib.error
 import urllib.parse
-import urllib.request
-import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Mapping, Protocol
+from typing import Protocol
+
+import httpx
+import feedparser
+from bs4 import BeautifulSoup
+
+from .http import HttpRequest, HttpResponse, HttpTransport, HttpxTransport
 
 
 DEFAULT_MAX_BYTES = 5 * 1024 * 1024
@@ -24,13 +26,6 @@ DEFAULT_MAX_BYTES = 5 * 1024 * 1024
 
 class FollowSourceError(RuntimeError):
     pass
-
-
-@dataclass(frozen=True)
-class HttpResponse:
-    status: int
-    headers: Mapping[str, str]
-    body: bytes
 
 
 @dataclass(frozen=True)
@@ -59,42 +54,10 @@ class FollowSource(Protocol):
               last_modified: str | None = None) -> FollowResult: ...
 
 
-def _read_http(request: urllib.request.Request, timeout: float, max_bytes: int) -> HttpResponse:
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            return HttpResponse(
-                status=response.status,
-                headers=dict(response.headers.items()),
-                body=response.read(max_bytes + 1),
-            )
-    except urllib.error.HTTPError as exc:
-        if exc.code == 304:
-            return HttpResponse(304, dict(exc.headers.items()), b"")
-        raise
-
-
-def _local_name(tag: str) -> str:
-    return tag.rsplit("}", 1)[-1].lower()
-
-
-def _children(element: ET.Element, name: str) -> list[ET.Element]:
-    return [child for child in element if _local_name(child.tag) == name]
-
-
-def _child_text(element: ET.Element, *names: str) -> str | None:
-    wanted = set(names)
-    for child in element:
-        if _local_name(child.tag) in wanted:
-            value = "".join(child.itertext()).strip()
-            if value:
-                return value
-    return None
-
-
 def _plain_text(value: str | None) -> str | None:
     if not value:
         return None
-    cleaned = html.unescape(re.sub(r"<[^>]+>", " ", value))
+    cleaned = BeautifulSoup(value, "html.parser").get_text(" ")
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned or None
 
@@ -117,10 +80,10 @@ class FeedAdapter:
     """RSS 2.0 and Atom discovery using mature public feed protocols."""
 
     def __init__(self, *, timeout: float = 15.0, max_bytes: int = DEFAULT_MAX_BYTES,
-                 transport: Callable[[urllib.request.Request, float, int], HttpResponse] = _read_http):
+                 transport: HttpTransport | None = None):
         self.timeout = timeout
         self.max_bytes = max_bytes
-        self.transport = transport
+        self.transport = transport or HttpxTransport()
 
     def fetch(self, url: str, *, etag: str | None = None,
               last_modified: str | None = None) -> FollowResult:
@@ -133,10 +96,10 @@ class FeedAdapter:
             headers["If-None-Match"] = etag
         if last_modified:
             headers["If-Modified-Since"] = last_modified
-        request = urllib.request.Request(source_url, headers=headers)
+        request = HttpRequest("GET", source_url, headers)
         try:
             response = self.transport(request, self.timeout, self.max_bytes)
-        except (OSError, urllib.error.URLError) as exc:
+        except (OSError, httpx.HTTPError) as exc:
             raise FollowSourceError("follow source request failed") from exc
         response_headers = {key.lower(): value for key, value in response.headers.items()}
         common = {
@@ -150,61 +113,45 @@ class FeedAdapter:
             raise FollowSourceError(f"follow source returned HTTP {response.status}")
         if len(response.body) > self.max_bytes:
             raise FollowSourceError("follow source exceeded response size limit")
-        try:
-            root = ET.fromstring(response.body)
-        except ET.ParseError as exc:
-            raise FollowSourceError("follow source returned invalid XML") from exc
-        root_name = _local_name(root.tag)
-        if root_name == "rss":
-            entries = self._parse_rss(root)
-        elif root_name == "feed":
-            entries = self._parse_atom(root)
-        else:
+        parsed = feedparser.parse(response.body)
+        if not parsed.version or not (
+            parsed.version.startswith("rss")
+            or parsed.version.startswith("atom")
+            or parsed.version.startswith("cdf")
+        ):
             raise FollowSourceError("unsupported feed format")
+        if parsed.bozo and not parsed.entries:
+            raise FollowSourceError("follow source returned an invalid feed")
+        entries = [self._normalize_entry(entry) for entry in parsed.entries]
         return FollowResult(entries=tuple(entries), raw_body=response.body, **common)
 
     @staticmethod
-    def _parse_rss(root: ET.Element) -> list[FollowEntry]:
-        channel = next((node for node in root if _local_name(node.tag) == "channel"), None)
-        if channel is None:
-            raise FollowSourceError("RSS feed has no channel")
-        entries = []
-        for item in _children(channel, "item"):
-            title = _child_text(item, "title") or "(untitled)"
-            url = _child_text(item, "link")
-            published = _child_text(item, "pubdate", "date")
-            author = _child_text(item, "author", "creator")
-            summary = _plain_text(_child_text(item, "description", "summary"))
-            guid = _child_text(item, "guid")
-            enclosure = next((node for node in item if _local_name(node.tag) == "enclosure"), None)
-            media_url = enclosure.get("url") if enclosure is not None else None
-            entries.append(FollowEntry(
-                external_id=guid or url or _stable_id(title, published, media_url),
-                title=title, url=url, media_url=media_url, published=published,
-                author=author, summary=summary,
-            ))
-        return entries
-
-    @staticmethod
-    def _parse_atom(root: ET.Element) -> list[FollowEntry]:
-        entries = []
-        for item in _children(root, "entry"):
-            title = _child_text(item, "title") or "(untitled)"
-            links = _children(item, "link")
-            alternate = next((node for node in links if node.get("rel", "alternate") == "alternate"), None)
-            enclosure = next((node for node in links if node.get("rel") == "enclosure"), None)
-            author_node = next((node for node in item if _local_name(node.tag) == "author"), None)
-            author = _child_text(author_node, "name") if author_node is not None else None
-            url = alternate.get("href") if alternate is not None else None
-            media_url = enclosure.get("href") if enclosure is not None else None
-            published = _child_text(item, "published", "updated")
-            external_id = _child_text(item, "id") or url or _stable_id(title, published, media_url)
-            entries.append(FollowEntry(
-                external_id=external_id, title=title, url=url, media_url=media_url,
-                published=published, author=author,
-                summary=_plain_text(_child_text(item, "summary", "content")),
-            ))
-        return entries
+    def _normalize_entry(entry) -> FollowEntry:
+        title = _plain_text(entry.get("title")) or "(untitled)"
+        url = entry.get("link") or None
+        published = entry.get("published") or entry.get("updated") or None
+        author = _plain_text(entry.get("author"))
+        summary_value = entry.get("summary") or entry.get("description")
+        if not summary_value and entry.get("content"):
+            summary_value = entry.content[0].get("value")
+        media_url = None
+        for enclosure in entry.get("enclosures") or ():
+            media_url = enclosure.get("href") or enclosure.get("url")
+            if media_url:
+                break
+        external_id = (
+            entry.get("id") or entry.get("guid") or url
+            or _stable_id(title, published, media_url)
+        )
+        return FollowEntry(
+            external_id=str(external_id),
+            title=title,
+            url=str(url) if url else None,
+            media_url=str(media_url) if media_url else None,
+            published=str(published) if published else None,
+            author=author,
+            summary=_plain_text(summary_value),
+        )
 
 
 @dataclass(frozen=True)

@@ -23,7 +23,7 @@ class MigrationTests(unittest.TestCase):
         sqlite3.connect(self.db).close()
         backup = self.root / "before.db"
         done = upgrade(self.db, MIGRATIONS, backup)
-        self.assertEqual([m.version for m in done], ["0000", "0001", "0002", "0003"])
+        self.assertEqual([m.version for m in done], ["0000", "0001", "0002", "0003", "0004"])
         self.assertTrue(backup.exists())
         con = sqlite3.connect(self.db)
         tables = {row[0] for row in con.execute(
@@ -36,8 +36,9 @@ class MigrationTests(unittest.TestCase):
         self.assertTrue({"asset", "profile", "media_binding", "activity_event",
                          "provider_profile", "entity", "entity_alias",
                          "entity_external_ref", "asset_entity", "entity_link",
-                         "entity_search_term", "watch_queue", "schema_migration"} <= tables)
-        self.assertEqual(versions, ["0000", "0001", "0002", "0003"])
+                         "entity_search_term", "watch_queue", "asset_search",
+                         "schema_migration"} <= tables)
+        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004"])
         self.assertEqual(upgrade(self.db, MIGRATIONS), [])
         self.assertEqual(plan(self.db, MIGRATIONS)[1], [])
 
@@ -107,6 +108,35 @@ class MigrationTests(unittest.TestCase):
                          ('tag','tag','stash:tag'),('studio','studio','legacy:asset'),
                          ('creator','creator','legacy:asset'),
                          ('series','series','legacy:asset')} <= relations)
+
+    def test_fts_tracks_asset_entity_alias_and_search_term_changes(self):
+        sqlite3.connect(self.db).close()
+        upgrade(self.db, MIGRATIONS)
+        connection = sqlite3.connect(self.db)
+        connection.executescript("""
+          INSERT INTO asset(id,location,path,name,medium,code)
+          VALUES(1,'local','one.mp4','Prestige sample.mp4','video','ABW-001');
+          INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)
+          VALUES(1,'performer','高桥千凛','高桥千凛','now','now');
+          INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)
+          VALUES(1,1,'performer','test',1.0);
+          INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,confidence)
+          VALUES(1,'Takachi Chisato','takachi chisato','test',1.0);
+          INSERT INTO entity_search_term(entity_id,term,purpose,source,created_at)
+          VALUES(1,'private release keyword','source_lookup','test','now');
+        """)
+        for query in ('"Prestige"', '"高桥千"', '"Takachi"', '"release keyword"'):
+            self.assertEqual(connection.execute(
+                "SELECT asset_id FROM asset_search WHERE asset_search MATCH ?", (query,)
+            ).fetchall(), [(1,)])
+        connection.execute("UPDATE asset SET name='Renamed title.mp4' WHERE id=1")
+        self.assertEqual(connection.execute(
+            "SELECT asset_id FROM asset_search WHERE asset_search MATCH ?", ('"Renamed"',)
+        ).fetchall(), [(1,)])
+        self.assertEqual(connection.execute(
+            "SELECT asset_id FROM asset_search WHERE asset_search MATCH ?", ('"Prestige"',)
+        ).fetchall(), [])
+        connection.close()
 
 
 if __name__ == "__main__":

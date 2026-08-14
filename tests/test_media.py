@@ -7,6 +7,7 @@ from peach.ffmpeg import FFmpegResolver
 from peach.media import (
     FilesystemBackend, MediaEngine, StashAdapter, normalized_path, remap_managed_path,
 )
+from peach.repository import MediaAsset
 from peach.stash import StashClient
 
 
@@ -16,10 +17,14 @@ class MediaEngineTests(unittest.TestCase):
             root = Path(tmp)
             inside = root / "media" / "one.mp4"
             outside = root.parent / "outside.mp4"
-            backend = FilesystemBackend([root])
-            result = backend.stream_candidates({"path": str(inside)})
+            inside.parent.mkdir()
+            inside.write_bytes(b"test")
+            backend = FilesystemBackend([root], root / "snapshots")
+            result = backend.stream_candidates(MediaAsset(1, str(inside), None))
             self.assertEqual(result[0].backend, "filesystem")
-            self.assertEqual(backend.stream_candidates({"path": str(outside)}), ())
+            self.assertEqual(
+                backend.stream_candidates(MediaAsset(2, str(outside), None)), ()
+            )
 
     def test_stash_adapter_uses_public_stream_contract(self):
         client = StashClient()
@@ -31,20 +36,41 @@ class MediaEngineTests(unittest.TestCase):
              "label": "HLS"},
         ]}
         with patch.object(client, "graphql", return_value=payload) as graphql:
-            result = adapter.stream_candidates({"stash_scene_id": 42})
+            result = adapter.stream_candidates(
+                MediaAsset(1, None, None, (("stash", "42"),))
+            )
         self.assertEqual([x.label for x in result], ["Direct", "HLS"])
         self.assertEqual(graphql.call_args.args[1], {"id": "42"})
 
     def test_engine_composes_backends_without_hidden_fallback(self):
         with tempfile.TemporaryDirectory() as tmp:
-            filesystem = FilesystemBackend([Path(tmp)])
+            root = Path(tmp)
+            media = root / "one.mp4"
+            media.write_bytes(b"test")
+            filesystem = FilesystemBackend([root], root / "snapshots")
             client = StashClient()
             stash = StashAdapter(client)
+            repository = unittest.mock.Mock()
+            repository.media_asset.return_value = MediaAsset(
+                1, str(media), None, (("stash", "42"),)
+            )
             with patch.object(client, "graphql", return_value={"sceneStreams": []}):
-                engine = MediaEngine([filesystem, stash])
-                result = engine.stream_candidates({"path": str(Path(tmp) / "one.mp4"),
-                                                   "stash_scene_id": 42})
+                engine = MediaEngine(repository, filesystem, (stash,))
+                result = engine.stream_candidates(1)
         self.assertEqual([x.backend for x in result], ["filesystem"])
+
+    def test_engine_raises_for_unknown_asset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repository = unittest.mock.Mock()
+            repository.media_asset.return_value = None
+            engine = MediaEngine(
+                repository,
+                FilesystemBackend([root], root / "snapshots"),
+            )
+            with self.assertRaises(Exception) as raised:
+                engine.file_for(404)
+        self.assertEqual(type(raised.exception).__name__, "MediaNotFound")
 
     def test_ffmpeg_resolver_prefers_explicit_environment(self):
         with tempfile.TemporaryDirectory() as tmp:

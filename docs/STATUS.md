@@ -4,12 +4,12 @@ Last verified: 2026-08-14
 
 ## Runtime
 
-- Production Peach: FastAPI `0.2.0` from `R:\peach-app` on `0.0.0.0:80`, listener PID observed as 52600; health mode is `fastapi`.
+- Production Peach: FastAPI `0.2.0` from `R:\peach-app` on `0.0.0.0:80`, listener PID observed as 3688; health mode is `fastapi`.
 - `peach.local` is again the single official LAN entry. The publisher restores the verified pre-migration behavior: Python zeroconf listens on all eligible interfaces and publishes `peach.local -> 192.168.50.162`. Production health reports `mdns_backend=zeroconf-all-interfaces`; same-host DNS-SD discovery and `getaddrinfo('peach.local')` both resolved the correct address after restart. A second LAN device remains the final external check; no firewall or router rule was changed.
 - Stash: `127.0.0.1:9999`, PID observed as 35332.
 - Traffic monitor: running through `RM-TrafficWatch` from `R:\peach-app\.venv`; all probe/sheets tasks use the same project environment.
 - Runtime Python: 3.14.7. The removed system Python 3.12 invalidated the old venv, which was rebuilt and reverified before production start.
-- Real ledger migrations: `0000`–`0003` applied; zero pending. The 20:17 backups are `R:\peach-data\database\ledger.pre-migrate-20260814-201719.db` and `R:\peach-data\archive\ledger.pre-studio-canonicalize-20260814-201719.db`.
+- Real ledger migrations: `0000`–`0004` applied; zero pending. FTS migration backup: `R:\peach-data\database\ledger.pre-migrate-20260814-213920.db`. The 20:17 backups remain `R:\peach-data\database\ledger.pre-migrate-20260814-201719.db` and `R:\peach-data\archive\ledger.pre-studio-canonicalize-20260814-201719.db`.
 - Current pre-0002 recovery point: `R:\peach-data\archive\ledger.pre-migrate-20260814-162004.db`.
 
 Runtime PIDs are observations, not configuration; always re-check them.
@@ -31,7 +31,7 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - Creator/studio top lists and related-item creator/tag/studio matching now read canonical entity relations. Real-ledger timings were 0.055 s for 28 top entries and 0.055 s for 24 related items.
 - Creator/studio filters, canonical-name search, creator index, facets and attribution stats now also read entity relations. Real-ledger timings were 0.040 s for a 1,545-item creator filter, 0.043 s for the first 60 creators, 0.132 s for facets and 0.394 s for stats.
 - Snapshot availability checks use the same strict legacy-prefix resolver as `/thumb`, so the front end requests migrated previews instead of displaying false “无预览” cards.
-- 47 isolated tests, Python static compilation and JavaScript parse validation passed under Python 3.14/Node.
+- 60 isolated tests, Python static compilation, dependency validation and JavaScript parse validation passed under Python 3.14/Node.
 - Real migration preserved 81,873 assets and 59,697 tag links; both live database and backup passed `integrity_check` and `foreign_key_check` before later metadata writes.
 - Desktop 1280×720 and mobile 390×844 browser checks passed on the same application candidate before the schema-only migration; visual checks were not rerun after migration because no browser instance was connected.
 - Restarted production port 80 passed health, home, public OpenCode Go model discovery (26 models at verification time), canonical filtered-list/item reads, thumbnail `200` and 1 KiB `206 Partial Content` Range smoke checks.
@@ -44,12 +44,13 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - `scripts/import_stash_entities.py` reconciled the Stash public performer contract into Peach without making Stash authoritative: 383 exact stable refs, 52 aliases/search terms and two explicitly declared X links were imported. Of 42 non-placeholder Stash images, 14 passed the 512 px short-side gate and were cached with provenance; 28 smaller images were rejected. Top entries including 一个ren、高桥千凛 and 小桃 now use 720 px-class cached portraits.
 - Static/unit/API production checks passed after restart: home/entity routes, FC2/Prestige logos, canonical aliases and a local-media 1 KiB `206 Partial Content` response. No browser instance was connected, so desktop and 390×844 visual verification remain pending.
 - The 20:36 Peach restart was launched only after verifying the port-80 command line in the host session. The replacement process can see CloudDrive: asset 4289 again passed `video/mp4` 1 KiB `206 Partial Content` and poster `200`; local asset 1 passed the same Range contract. A sandbox drive check is not authoritative.
-- The mDNS regression fix was deployed after verifying the old port-80 command line. The replacement listener PID 52600 passed health, local DNS-SD discovery, Windows hostname resolution and CloudDrive asset 4289 with a 1 KiB `206 Partial Content` response. The active creator-board sampler and its FFmpeg children were not touched.
+- The mDNS regression fix remains deployed. The current listener PID 3688 passed health, Windows hostname resolution and CloudDrive asset 4289 with a 1 KiB `206 Partial Content` response.
 - The original Peach process could not see CloudDrive `A:`/`B:` even though CloudDrive was running. After confirming zero copy tasks and no I/O, CloudDrive and Peach were restarted in the same execution context. Asset 4289 (`669.mp4`) then passed `video/mp4`, 1 KiB `206 Range`, thumbnail and generated-poster API checks. Drive-letter visibility differs by Windows token, so the HTTP stream check is the authoritative service test.
 
 ## Batch jobs
 
-- Active at the last observation: `scripts/creator_boards.py --from-video --allow-metered --top 60 --per 12 --workers 16` (nohup PID 46948, Python PIDs 51472/8508) is intentionally sampling A: videos into `generated/boards/_frames`. At 20:52 it had 299 frame files and 33 completed boards. The measured CloudDrive I/O belongs to this job; do not restart CloudDrive or terminate its FFmpeg children. The bounded run samples at most 12 frames per creator and has explicit metered authorization.
+- The creator-board sampler completed before its implementation was changed; it left 86 boards and 598 cached frames. No `creator_boards.py` process was active at the final observation. The command now uses the shared source-access policy, disk guard, PID lock and Peach-managed FFmpeg resolver while preserving its prior arguments and output layout.
+- `RM-TrafficWatch` is running from the project venv with the refactored watcher. It stops only matching Peach task trees and no longer terminates machine-wide FFmpeg/ffprobe processes.
 
 - `scripts/scrape_codes.py` — code scraping via r18 → avsox → javbus cascade, resumable from
   `R:\peach-data\generated\code-scrape.csv`. All 1,104 non-FC2 codes were processed; 715 rows carry
@@ -80,11 +81,39 @@ Runtime PIDs are observations, not configuration; always re-check them.
   (3.7 GB + 1.2 GB) for a human disposal decision; nothing was deleted.
 - Two vocabulary gaps surfaced: 3D/CG animated content (`oscarkim123`, `Bewyx 2509`) has no medium tag,
   and video-frame advertising has no marker. Neither was forced into an existing term.
+- `scripts/find_ads.py` — identifies promo videos bundled into pirate release packs and writes
+  `R:\peach-data\generated\ad-candidates.csv`. Nothing is deleted. 82 candidates, 1.5 GB: 77 marked
+  `确认` and 5 `存疑`. Nine sampled directories were visually confirmed as ads (QR code plus promo
+  domain in every frame). The strongest signal is structural, not lexical: a group of files in one
+  directory sharing an identical byte size and identical duration. Three false-positive classes were
+  found and excluded by construction, each verified against a real file:
+  `1024` as a substring ate `FC2-PPV-1381024` (970 MB feature); `成人游戏`/`加微信` appear in genuine
+  titles (a 9.98 GB feature); and a bare domain with no ad copy is usually a pirate-site watermark on
+  real content (`jitumi.pw(1).avi` sampled to an ordinary clothed scene), so those rows are `存疑` for
+  human review rather than `确认`.
+- Ad-detection recall is bounded: 9,480 of 24,980 videos (38%) have no usable duration, so the
+  identical-size-and-duration test cannot run on them, and ads composited into a real video's frames are
+  not detectable by metadata at all. `BNST033` is not entirely advertising as previously recorded — its
+  directory holds a genuine 3.2 GB feature beside roughly 50 promo clips.
 - Remaining untagged videos are mostly creators whose PikPak sheets have not been generated, so visual
   tagging past this point is blocked on the metered PikPak sheet backlog.
 
+## Deployed consolidation
+
+- FastAPI now constructs one `MediaEngine`; filesystem access and the Stash public-protocol adapter are backends of that engine. Stash stream identity reads stable `media_binding` rows instead of using `asset.stash_scene_id` as the sole contract.
+- Shared Job policy now owns parameterized source filtering, fail-closed disk-space checks and PID locks for probe, sheets and creator-board work. The traffic watcher targets only matching Python task trees and their descendants; it no longer kills every machine-wide ffmpeg/ffprobe process.
+- Probe, sheets, creator boards and traffic watch are import-safe `main()` commands with existing scheduled arguments preserved; importing them for tests no longer opens the real database, log or lock file.
+- Stash, OpenCode Go and Feed now share one HTTPX transport in the FastAPI process, including connection pooling, explicit timeouts and bounded response reads. Their protocol DTOs and privacy rules remain separate.
+- Feed parsing uses feedparser 6.0.12, raster validation uses Pillow 12.3.0, and source HTML uses Beautiful Soup 4.15.0. `scripts/scrape_codes.py` and `scripts/import_stash_entities.py` also use the shared HTTPX boundary; source-specific selection, provenance and review policy remain Peach-owned.
+- Migration `0004` is applied to the real ledger and maintains an FTS5 trigram row for every asset. Assets/entities/relations were unchanged at 81,873 / 8,590 / 131,877; FTS contains 81,873 rows, integrity is `ok`, foreign-key violations are zero, and an FC2 count took 0.0005 s. Production is running this query path; `q=FC2` returned 834 matching assets in the final API smoke test.
+- `scripts/find_ads.py` was converted from a one-off hard-coded script into an import-safe, configurable, read-only candidate scanner with isolated tests. Its 82-row generated review result remains unchanged; it still deletes nothing.
+- The reuse register and ADR-0010 record required mature dependencies, Peach-owned domain logic and old-to-current script successors. Production port 80 and the scheduled traffic watcher were both restarted onto the consolidated code.
+- Final API smoke checks passed `/healthz`, FTS search, local asset 1 Range and CloudDrive asset 4289 Range. No real playback/feedback rows were written by verification.
+- Desktop and 390×844 visual checks were attempted but remain unverified: the in-app browser blocks private LAN addresses and the local Firefox automation context could not start. This is a test-environment limitation, not a claimed visual pass.
+
 ## Next work
 
-1. Add explicit feed configuration plus a reviewed candidate import without automatic ledger writes; only then consider a scheduler.
-2. Add reviewed inference requests behind the OpenCode Go adapter; AI output must remain a candidate and cannot write ledger truth directly.
-3. Replace remaining flattened creator/studio display projections only when the front end can consume canonical DTO fields without breaking compatibility.
+1. Add a Media Engine stream-plan endpoint and integrate hls.js or Shaka Player before enabling Stash HLS/DASH fallback in the browser.
+2. Configure/evaluate Stash CommunityScrapers and metadata providers before writing another source adapter.
+3. Add explicit feed configuration and reviewed import; only then use APScheduler. Add reviewed inference requests afterward, with AI output remaining candidates.
+4. Move remaining legacy status/suggest/ledger application logic behind repository/application ports, then delete obsolete CLI surfaces.

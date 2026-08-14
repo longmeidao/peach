@@ -3,7 +3,8 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from peach.follow import FeedAdapter, FeedSnapshotStore, FollowSourceError, HttpResponse
+from peach.follow import FeedAdapter, FeedSnapshotStore, FollowSourceError
+from peach.http import HttpResponse
 
 
 class FeedAdapterTests(unittest.TestCase):
@@ -31,8 +32,8 @@ class FeedAdapterTests(unittest.TestCase):
         self.assertEqual(result.entries[0].external_id, "post-1")
         self.assertEqual(result.entries[0].summary, "Hello world")
         self.assertEqual(result.entries[0].media_url, "https://cdn.example.test/1.mp4")
-        self.assertEqual(calls[0][0].get_header("If-none-match"), '"v0"')
-        self.assertEqual(calls[0][0].get_header("If-modified-since"),
+        self.assertEqual(calls[0][0].headers.get("If-None-Match"), '"v0"')
+        self.assertEqual(calls[0][0].headers.get("If-Modified-Since"),
                          "Wed, 13 Aug 2026 08:00:00 GMT")
 
     def test_atom_discovery_and_not_modified(self):
@@ -53,6 +54,20 @@ class FeedAdapterTests(unittest.TestCase):
         )).fetch("https://example.test/atom")
         self.assertTrue(cached.not_modified)
         self.assertEqual(cached.entries, ())
+
+    def test_rss_one_namespace_is_supported_by_mature_parser(self):
+        rdf = b"""<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'
+          xmlns='http://purl.org/rss/1.0/' xmlns:dc='http://purl.org/dc/elements/1.1/'>
+          <channel rdf:about='https://example.test/'><title>Example</title>
+            <link>https://example.test/</link><description>Feed</description></channel>
+          <item rdf:about='https://example.test/one'><title>One</title>
+            <link>https://example.test/one</link><dc:creator>Alice</dc:creator></item>
+        </rdf:RDF>"""
+        result = FeedAdapter(transport=lambda *_: HttpResponse(200, {}, rdf)).fetch(
+            "https://example.test/rss1"
+        )
+        self.assertEqual(result.entries[0].title, "One")
+        self.assertEqual(result.entries[0].author, "Alice")
 
     def test_rejects_unsafe_urls_oversized_and_invalid_feeds(self):
         adapter = FeedAdapter(transport=lambda *_: HttpResponse(200, {}, b"x" * 5), max_bytes=4)

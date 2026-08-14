@@ -35,6 +35,7 @@ class WebContract:
         self.write_lock = threading.Lock()
         self.cache: dict[str, tuple[float, object]] = {}
         self.cache_lock = threading.Lock()
+        self._fts_available: bool | None = None
 
     def cached(self, key, fn):
         now = time.time()
@@ -67,6 +68,17 @@ class WebContract:
             raw_path, self.snapshot_root, self.legacy_snapshot_roots,
         ) if self.snapshot_root is not None else Path(raw_path))
         return path.is_file()
+
+    def has_fts(self) -> bool:
+        if self._fts_available is None:
+            connection = self.db()
+            try:
+                self._fts_available = connection.execute(
+                    "SELECT 1 FROM sqlite_schema WHERE type='table' AND name='asset_search'"
+                ).fetchone() is not None
+            finally:
+                connection.close()
+        return self._fts_available
 
 # ────────────────────────────── 查询 ──────────────────────────────
 
@@ -109,13 +121,21 @@ def q_items(contract: WebContract, args):
     if args.get("orient"):
         where.append("a.ctx_orient = ?"); par.append(args["orient"])
     if args.get("q"):
-        where.append(
-            "(a.name LIKE ? OR a.code LIKE ? OR EXISTS("
-            "SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-            "WHERE ae.asset_id=a.id AND e.kind IN ('creator','performer','studio') "
-            "AND e.canonical_name LIKE ?))"
-        )
-        s = f"%{args['q']}%"; par += [s, s, s]
+        query = args["q"].strip()
+        if len(query) >= 3 and contract.has_fts():
+            where.append(
+                "a.id IN (SELECT asset_id FROM asset_search WHERE asset_search MATCH ?)"
+            )
+            par.append('"' + query.replace('"', '""') + '"')
+        else:
+            where.append(
+                "(a.name LIKE ? OR a.code LIKE ? OR EXISTS("
+                "SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+                "WHERE ae.asset_id=a.id AND e.kind IN ('creator','performer','studio') "
+                "AND e.canonical_name LIKE ?))"
+            )
+            pattern = f"%{query}%"
+            par += [pattern, pattern, pattern]
     if args.get("state") == "fresh":
         where.append("(a.play_count IS NULL OR a.play_count=0) AND a.feedback IS NULL")
     elif args.get("state") == "played":

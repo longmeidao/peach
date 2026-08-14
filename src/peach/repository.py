@@ -10,7 +10,10 @@ class MediaAsset:
     id: int
     path: str | None
     snapshot_path: str | None
-    stash_scene_id: int | None
+    bindings: tuple[tuple[str, str], ...] = ()
+
+    def external_id(self, backend: str) -> str | None:
+        return next((value for name, value in self.bindings if name == backend), None)
 
 
 class LedgerRepository:
@@ -22,11 +25,21 @@ class LedgerRepository:
         connection.row_factory = sqlite3.Row
         try:
             row = connection.execute(
-                "SELECT id,path,snapshot_path,stash_scene_id FROM asset WHERE id=?",
+                "SELECT id,path,snapshot_path FROM asset WHERE id=?",
                 (asset_id,),
             ).fetchone()
+            bindings = connection.execute(
+                "SELECT backend,external_id FROM media_binding WHERE asset_id=? "
+                "ORDER BY backend,external_id",
+                (asset_id,),
+            ).fetchall() if row is not None else ()
         finally:
             connection.close()
         if row is None:
             return None
-        return MediaAsset(row["id"], row["path"], row["snapshot_path"], row["stash_scene_id"])
+        return MediaAsset(
+            row["id"],
+            row["path"],
+            row["snapshot_path"],
+            tuple((item["backend"], item["external_id"]) for item in bindings),
+        )

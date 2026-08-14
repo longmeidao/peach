@@ -10,11 +10,19 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Res
 from . import web_contract
 from .config import PeachSettings
 from .ffmpeg import FFmpegResolver
-from .media import FilesystemMediaService, MediaNotFound, MediaUnavailable
+from .http import HttpxTransport
+from .media import (
+    FilesystemBackend,
+    MediaEngine,
+    MediaNotFound,
+    MediaUnavailable,
+    StashAdapter,
+)
 from .mdns import create_mdns_publisher
 from .previews import PreviewService, PreviewUnavailable
 from .providers import OpenCodeGoClient, ProviderUnavailable, default_registry
 from .repository import LedgerRepository
+from .stash import StashClient
 
 
 def _first_query_values(request: Request) -> dict[str, str]:
@@ -40,9 +48,16 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
     )
     repository = LedgerRepository(settings.db_path)
     resolver = FFmpegResolver(settings.ffmpeg_root)
-    media_service = FilesystemMediaService(
-        repository, settings.allowed_media_roots, settings.snapshot_root,
+    http_transport = HttpxTransport()
+    filesystem = FilesystemBackend(
+        settings.allowed_media_roots,
+        settings.snapshot_root,
         settings.legacy_snapshot_roots,
+    )
+    media_engine = MediaEngine(
+        repository,
+        filesystem,
+        (StashAdapter(StashClient(transport=http_transport)),),
     )
     preview_service = PreviewService(
         repository, resolver, settings.snapshot_root, settings.poster_root,
@@ -52,7 +67,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         settings.mdns_name, settings.mdns_port, secure=settings.tls_enabled
     ) if settings.mdns_enabled else None
     providers = default_registry()
-    opencode_go = OpenCodeGoClient()
+    opencode_go = OpenCodeGoClient(transport=http_transport)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -67,6 +82,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         finally:
             if mdns is not None:
                 await asyncio.to_thread(mdns.stop)
+            http_transport.close()
 
     app = FastAPI(
         title="Peach API",
@@ -79,11 +95,12 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.web_contract = contract
     app.state.repository = repository
-    app.state.media_service = media_service
+    app.state.media_engine = media_engine
     app.state.preview_service = preview_service
     app.state.mdns = mdns
     app.state.providers = providers
     app.state.opencode_go = opencode_go
+    app.state.http_transport = http_transport
 
     @app.middleware("http")
     async def no_store(request: Request, call_next):
@@ -136,7 +153,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         if not _authorized(request, settings.token, args):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         try:
-            path = media_service.file_for(id, thumbnail=False)
+            path = media_engine.file_for(id, thumbnail=False)
         except MediaNotFound:
             return JSONResponse({"error": "no such id"}, status_code=404)
         except MediaUnavailable:
@@ -151,7 +168,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         if not _authorized(request, settings.token, args):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         try:
-            path = media_service.file_for(id, thumbnail=True)
+            path = media_engine.file_for(id, thumbnail=True)
         except MediaNotFound:
             return JSONResponse({"error": "no such id"}, status_code=404)
         except MediaUnavailable:

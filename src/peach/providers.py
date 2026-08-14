@@ -5,11 +5,13 @@ import shutil
 import json
 import threading
 import time
-import urllib.error
-import urllib.request
 from dataclasses import asdict, dataclass
 from enum import Enum
 from typing import Callable, Protocol
+
+import httpx
+
+from .http import HttpRequest, HttpTransport, HttpxTransport
 
 
 OPENCODE_GO_BASE_URL = "https://opencode.ai/zen/go/v1"
@@ -19,22 +21,17 @@ class ProviderUnavailable(RuntimeError):
     pass
 
 
-def _read_http(request: urllib.request.Request, timeout: float) -> bytes:
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return response.read()
-
-
 class OpenCodeGoClient:
     """OpenCode Go public model discovery; completion protocols remain separate."""
 
     def __init__(self, api_key: str | None = None, *, base_url: str = OPENCODE_GO_BASE_URL,
                  timeout: float = 10.0,
-                 transport: Callable[[urllib.request.Request, float], bytes] = _read_http,
+                 transport: HttpTransport | None = None,
                  cache_ttl: float = 300.0):
         self._api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
-        self.transport = transport
+        self.transport = transport or HttpxTransport()
         self.cache_ttl = cache_ttl
         self._cache: tuple[float, list[dict]] | None = None
         self._lock = threading.Lock()
@@ -51,11 +48,15 @@ class OpenCodeGoClient:
         headers = {"Accept": "application/json", "User-Agent": "Peach/0.2"}
         if self._api_key:
             headers["Authorization"] = "Bearer " + self._api_key
-        request = urllib.request.Request(self.base_url + "/models", headers=headers)
+        request = HttpRequest("GET", self.base_url + "/models", headers)
         try:
-            raw = self.transport(request, self.timeout)
-            payload = json.loads(raw.decode("utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError, urllib.error.URLError) as exc:
+            response = self.transport(request, self.timeout, 1024 * 1024)
+            if response.status != 200:
+                raise ProviderUnavailable(
+                    f"OpenCode Go returned HTTP {response.status}"
+                )
+            payload = json.loads(response.body.decode("utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError, httpx.HTTPError) as exc:
             raise ProviderUnavailable("OpenCode Go model discovery failed") from exc
         data = payload.get("data") if isinstance(payload, dict) else None
         if not isinstance(data, list):

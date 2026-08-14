@@ -7,8 +7,9 @@ Before changing the project, read these files in order:
 1. `README.md`
 2. `docs/STATUS.md`
 3. `docs/ARCHITECTURE.md`
-4. `docs/HANDOFF.md`
-5. Relevant ADRs under `docs/adr/`
+4. `docs/REUSE.md`
+5. `docs/HANDOFF.md`
+6. Relevant ADRs under `docs/adr/`
 
 Working rules:
 
@@ -20,4 +21,6 @@ Working rules:
 - Keep the architecture a FastAPI modular monolith with a separate web surface. Do not introduce microservices, PostgreSQL, a React rewrite, or a full multi-account system without a new ADR.
 - Ledger remains the core truth. Stash is a replaceable Media Engine adapter. AI results are candidates with provenance/confidence, not direct truth-field mutations.
 - Do not create dated handoff documents. Update `docs/STATUS.md` for current runtime/next work and `docs/HANDOFF.md` for durable operating knowledge as part of the same change.
+- Before adding or restoring an implementation, check `docs/REUSE.md`, the current tree and Git history. A missing legacy filename does not prove the capability is missing. Update the reuse register when the decision changes.
+- Never require the user to relay implementation details between agents. Put current facts in `docs/STATUS.md`, durable rules in `docs/HANDOFF.md`/`docs/REUSE.md`, and architecture decisions in an ADR.
 - Run the verification commands in `README.md` before committing relevant changes.

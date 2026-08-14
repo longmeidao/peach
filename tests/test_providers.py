@@ -42,12 +42,13 @@ class ProviderRegistryTests(unittest.TestCase):
     def test_opencode_model_discovery_is_normalized_and_cached(self):
         calls = []
 
-        def transport(request, timeout):
-            calls.append((request.full_url, request.get_header("Authorization"), timeout))
-            return json.dumps({"object": "list", "data": [
+        def transport(request, timeout, max_bytes):
+            calls.append((request.url, request.headers.get("Authorization"), timeout, max_bytes))
+            from peach.http import HttpResponse
+            return HttpResponse(200, {}, json.dumps({"object": "list", "data": [
                 {"id": "kimi-k3", "object": "model", "owned_by": "opencode", "extra": "drop"},
                 {"missing": "id"},
-            ]}).encode()
+            ]}).encode())
 
         client = OpenCodeGoClient(
             "test-secret", transport=transport, cache_ttl=300, timeout=3,
@@ -62,12 +63,15 @@ class ProviderRegistryTests(unittest.TestCase):
         self.assertEqual(second, first)
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0], (
-            "https://opencode.ai/zen/go/v1/models", "Bearer test-secret", 3,
+            "https://opencode.ai/zen/go/v1/models", "Bearer test-secret", 3, 1024 * 1024,
         ))
         self.assertNotIn("test-secret", repr(first))
 
     def test_opencode_invalid_payload_is_provider_error(self):
-        client = OpenCodeGoClient(transport=lambda *_: b'{"unexpected":true}')
+        from peach.http import HttpResponse
+        client = OpenCodeGoClient(
+            transport=lambda *_: HttpResponse(200, {}, b'{"unexpected":true}')
+        )
         with self.assertRaises(ProviderUnavailable):
             client.list_models()
 

@@ -7,16 +7,19 @@ Dry-run is the default and applying requires a SQLite backup.
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import re
 import sqlite3
-import struct
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
+import httpx
+from PIL import Image, UnidentifiedImageError
+
 from peach.config import DATABASE_PATH, GENERATED_DIR
+from peach.http import HttpRequest, HttpTransport, HttpxTransport
 from peach.migrations import sqlite_backup
 from peach.stash import StashClient
 
@@ -134,67 +137,71 @@ def apply(connection: sqlite3.Connection, rows: list[dict]) -> dict:
     return counts
 
 
+def inspect_image(data: bytes) -> tuple[tuple[int, int], str] | None:
+    """由 Pillow 验证完整 raster，并从解码格式确定 MIME；SVG/损坏数据拒绝。"""
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            size = image.size
+            image_format = (image.format or "").upper()
+            image.verify()
+    except (OSError, UnidentifiedImageError, Image.DecompressionBombError):
+        return None
+    content_type = {"JPEG": "image/jpeg", "PNG": "image/png"}.get(image_format)
+    return (size, content_type) if content_type else None
+
+
 def image_size(data: bytes) -> tuple[int, int] | None:
-    if data.startswith(b"\x89PNG\r\n\x1a\n") and len(data) >= 24:
-        return struct.unpack(">II", data[16:24])
-    if data.startswith(b"\xff\xd8"):
-        offset = 2
-        while offset + 9 < len(data):
-            if data[offset] != 0xFF:
-                offset += 1
-                continue
-            marker = data[offset + 1]
-            offset += 2
-            if marker in {0xD8, 0xD9}:
-                continue
-            if offset + 2 > len(data):
-                break
-            length = int.from_bytes(data[offset:offset + 2], "big")
-            if marker in {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7,
-                          0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF} and offset + 7 <= len(data):
-                return (int.from_bytes(data[offset + 5:offset + 7], "big"),
-                        int.from_bytes(data[offset + 3:offset + 5], "big"))
-            offset += max(length, 2)
-    return None
+    inspected = inspect_image(data)
+    return inspected[0] if inspected else None
 
 
-def cache_images(rows: list[dict], destination: Path, minimum_short_side: int = 512) -> dict:
+def cache_images(
+    rows: list[dict],
+    destination: Path,
+    minimum_short_side: int = 512,
+    transport: HttpTransport | None = None,
+) -> dict:
     destination.mkdir(parents=True, exist_ok=True)
     result = {"cached": 0, "too_small": 0, "placeholder_or_invalid": 0, "failed": 0}
-    for row in rows:
-        if not row["has_real_image"]:
-            continue
-        url = row["image_url"]
-        parsed = urlsplit(url)
-        if parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
-            result["failed"] += 1
-            continue
-        try:
-            with urllib.request.urlopen(url, timeout=20) as response:
-                content_type = response.headers.get_content_type()
-                data = response.read(10 * 1024 * 1024 + 1)
-            size = image_size(data)
-            if content_type not in {"image/jpeg", "image/png"} or not size or len(data) > 10 * 1024 * 1024:
-                result["placeholder_or_invalid"] += 1
+    owns_transport = transport is None
+    http = transport or HttpxTransport()
+    try:
+        for row in rows:
+            if not row["has_real_image"]:
                 continue
-            if min(size) < minimum_short_side:
-                result["too_small"] += 1
+            url = row["image_url"]
+            parsed = urlsplit(url)
+            if parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
+                result["failed"] += 1
                 continue
-            target = destination / f"performer-{row['entity_id']}.img"
-            temporary = target.with_suffix(".tmp")
-            temporary.write_bytes(data)
-            temporary.replace(target)
-            Path(str(target) + ".ct").write_text(content_type + "\n", encoding="utf-8", newline="\n")
-            Path(str(target) + ".provenance.json").write_text(json.dumps({
-                "source": "Stash public performer adapter",
-                "stash_performer_id": row["stash_id"],
-                "cached_at": datetime.now(timezone.utc).isoformat(),
-                "width": size[0], "height": size[1],
-                "upstream_url": "local-stash-performer-endpoint",
-            }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
-            result["cached"] += 1
-        except (OSError, ValueError):
-            result["failed"] += 1
+            try:
+                response = http(HttpRequest("GET", url, {"Accept": "image/*"}), 20, 10 * 1024 * 1024)
+                inspected = inspect_image(response.body)
+                if response.status != 200 or not inspected or len(response.body) > 10 * 1024 * 1024:
+                    result["placeholder_or_invalid"] += 1
+                    continue
+                size, content_type = inspected
+                if min(size) < minimum_short_side:
+                    result["too_small"] += 1
+                    continue
+                target = destination / f"performer-{row['entity_id']}.img"
+                temporary = target.with_suffix(".tmp")
+                temporary.write_bytes(response.body)
+                temporary.replace(target)
+                Path(str(target) + ".ct").write_text(content_type + "\n", encoding="utf-8", newline="\n")
+                Path(str(target) + ".provenance.json").write_text(json.dumps({
+                    "source": "Stash public performer adapter",
+                    "stash_performer_id": row["stash_id"],
+                    "cached_at": datetime.now(timezone.utc).isoformat(),
+                    "width": size[0], "height": size[1],
+                    "upstream_url": "local-stash-performer-endpoint",
+                }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
+                result["cached"] += 1
+            except (httpx.HTTPError, OSError, ValueError):
+                result["failed"] += 1
+    finally:
+        if owns_transport and isinstance(http, HttpxTransport):
+            http.close()
     return result
 
 

@@ -35,6 +35,9 @@ CREATE TABLE asset_entity(
   UNIQUE(asset_id,entity_id,role,source));
 CREATE TABLE watch_queue(profile_id TEXT,asset_id INTEGER,added_at TEXT,source TEXT,
   PRIMARY KEY(profile_id,asset_id));
+CREATE TABLE media_binding(
+  asset_id INTEGER,backend TEXT,external_id TEXT,metadata_json TEXT,last_synced_at TEXT,
+  PRIMARY KEY(asset_id,backend),UNIQUE(backend,external_id));
 """
 
 
