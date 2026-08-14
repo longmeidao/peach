@@ -86,6 +86,24 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertFalse(self.traffic_watch.is_direct({"chains": ["Proxy", "Relay"]}))
         self.assertEqual(self.creator_boards.safe_name("A/B:C"), "A_B_C")
 
+    def test_traffic_ceiling_can_cover_direct_sources(self):
+        """115 实测走 DIRECT。计费来源若也直连，只算代理等于没有闸门。"""
+        accumulate = self.traffic_watch.accumulate
+        previous = {"a": (100, True, "cdn.example"), "b": (100, False, "proxy.example")}
+        current = {"a": (700, True, "cdn.example"), "b": (400, False, "proxy.example")}
+
+        counted, uncounted, hosts = accumulate(previous, current, False)
+        self.assertEqual((counted, uncounted), (300, 600))
+        self.assertEqual(hosts, {"proxy.example": 300})
+
+        counted, uncounted, hosts = accumulate(previous, current, True)
+        self.assertEqual((counted, uncounted), (900, 0))
+        self.assertEqual(hosts, {"cdn.example": 600, "proxy.example": 300})
+
+        # 连接被回收后重新编号会让计数倒退；倒退不能反向抵扣已用预算。
+        self.assertEqual(accumulate({"a": (900, True, "h")}, {"a": (5, True, "h")}, True)[0], 0)
+        self.assertFalse(self.traffic_watch.build_parser().parse_args([]).count_direct)
+
     def test_probe_never_records_an_unknown_duration_as_zero(self):
         """0 会同时躲过 probe 的 `duration IS NULL` 和抽帧的 `duration>2`，永久卡住。"""
         module = self.probe

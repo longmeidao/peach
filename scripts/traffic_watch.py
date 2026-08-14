@@ -25,6 +25,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Peach 代理流量停机哨兵")
     parser.add_argument("--limit", type=float, default=50.0)
     parser.add_argument("--warn", type=float)
+    parser.add_argument(
+        "--count-direct",
+        action="store_true",
+        help="把直连下载也计入停机预算；计费来源直连时不加这个开关等于没有闸门",
+    )
     parser.add_argument("--interval", type=int, default=2)
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--pipe", default=DEFAULT_PIPE)
@@ -93,6 +98,27 @@ def is_direct(connection: dict) -> bool:
     return len(chains) == 1 and chains[0] == "DIRECT"
 
 
+def accumulate(
+    previous: dict, current: dict, count_direct: bool
+) -> tuple[float, float, dict[str, float]]:
+    """把两次快照的差算成 (计入预算, 未计入, 各 host 计入)。
+
+    连接会被回收，看不到的连接不能倒扣，所以只累加非负增量——这是下界不是精确值。
+    计费来源如果走直连，`count_direct=False` 会让闸门永远不触发；口径要跟着来源走。
+    """
+    counted = uncounted = 0.0
+    hosts: dict[str, float] = {}
+    for connection_id, (downloaded, direct, host) in current.items():
+        old = previous.get(connection_id, (0, direct, host))[0]
+        delta = max(downloaded - old, 0)
+        if direct and not count_direct:
+            uncounted += delta
+        else:
+            counted += delta
+            hosts[host] = hosts.get(host, 0) + delta
+    return counted, uncounted, hosts
+
+
 def snapshot(pipe: str, secret: str) -> tuple[int, dict]:
     payload = clash(pipe, secret)
     per_connection = {}
@@ -152,11 +178,14 @@ def run(args: argparse.Namespace, log) -> int:
         print("连不上 Clash 管道:", exc)
         return 1
 
-    proxy_bytes = 0.0
-    direct_bytes = 0.0
-    proxy_hosts: dict[str, float] = {}
+    counted_bytes = 0.0
+    uncounted_bytes = 0.0
+    counted_hosts: dict[str, float] = {}
     log(f"哨兵启动。mihomo 累计（含直连）{total_start/1024**3:,.1f} GB，活跃连接 {len(previous)}")
-    log("计量口径：只累计非 DIRECT 连接下载增量；这是轮询下界")
+    if args.count_direct:
+        log("计量口径：代理 + 直连下载增量都计入；这是轮询下界")
+    else:
+        log("计量口径：只累计非 DIRECT 连接下载增量；这是轮询下界")
     log(f"阈值 {args.limit:.0f} GB，预警 {warn_gb:.0f} GB，每 {args.interval}s 检查")
 
     if args.once:
@@ -176,25 +205,25 @@ def run(args: argparse.Namespace, log) -> int:
         except Exception as exc:
             log(f"读取失败（{exc}），跳过本轮")
             continue
-        for connection_id, (downloaded, direct, host) in current.items():
-            old = previous.get(connection_id, (0, direct, host))[0]
-            delta = max(downloaded - old, 0)
-            if direct:
-                direct_bytes += delta
-            else:
-                proxy_bytes += delta
-                proxy_hosts[host] = proxy_hosts.get(host, 0) + delta
+        counted_delta, uncounted_delta, host_delta = accumulate(
+            previous, current, args.count_direct
+        )
+        counted_bytes += counted_delta
+        uncounted_bytes += uncounted_delta
+        for host, value in host_delta.items():
+            counted_hosts[host] = counted_hosts.get(host, 0) + value
         previous = current
-        used_gb = proxy_bytes / 1024**3
+        used_gb = counted_bytes / 1024**3
         if used_gb >= args.limit:
             log(f"增量 {used_gb:.1f} GB 超过阈值 {args.limit:.0f} GB——停止所属任务")
             stopped = stop_owned_jobs(log)
-            top = sorted(proxy_hosts.items(), key=lambda item: -item[1])[:5]
+            top = sorted(counted_hosts.items(), key=lambda item: -item[1])[:5]
+            scope = "代理+直连" if args.count_direct else "代理"
             lines = [
                 f"流量警报 {time.strftime('%Y-%m-%d %H:%M:%S')}",
-                f"代理下载增量 {used_gb:.1f} GB（阈值 {args.limit:.0f} GB）",
-                f"同期直连 {direct_bytes/1024**3:.1f} GB（不计入）",
-                "", "代理目标 Top:",
+                f"{scope}下载增量 {used_gb:.1f} GB（阈值 {args.limit:.0f} GB）",
+                f"同期未计入 {uncounted_bytes/1024**3:.1f} GB",
+                "", "计入目标 Top:",
                 *[f"  {value/1024**3:>8.3f} GB  {host}" for host, value in top],
                 "", "已停止的 Peach 任务:",
                 *([f"  {item}" for item in stopped] or ["  （无匹配任务）"]),
@@ -207,7 +236,9 @@ def run(args: argparse.Namespace, log) -> int:
         if used_gb >= warn_gb and not warned:
             warned = True
             log(f"增量已达 {used_gb:.1f} GB，接近停机线")
-        log(f"代理 {used_gb:>7.2f}/{args.limit:.0f} GB（直连 {direct_bytes/1024**3:>7.2f} GB 不计）连接 {len(current)}")
+        scope = "代理+直连" if args.count_direct else "代理"
+        log(f"{scope} {used_gb:>7.2f}/{args.limit:.0f} GB"
+            f"（未计入 {uncounted_bytes/1024**3:>7.2f} GB）连接 {len(current)}")
 
 
 def main(argv: list[str] | None = None) -> int:
