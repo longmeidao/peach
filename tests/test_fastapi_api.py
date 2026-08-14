@@ -55,6 +55,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.poster_root = self.root / "posters"
         self.avatar_root = self.root / "avatars"
         self.logo_root = self.root / "logos"
+        self.transcode_root = self.root / "transcodes"
         for path in (self.media_root, self.snapshot_root, self.poster_root,
                      self.avatar_root, self.logo_root):
             path.mkdir()
@@ -90,15 +91,15 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         )
         con.commit()
         con.close()
-        app = create_app(PeachSettings(
+        self.app = create_app(PeachSettings(
             db_path=self.db, token="secret", page_path=self.page,
             allowed_media_roots=(self.media_root,), snapshot_root=self.snapshot_root,
             legacy_snapshot_roots=(self.legacy_snapshot_root,),
             poster_root=self.poster_root, avatar_root=self.avatar_root, logo_root=self.logo_root,
-            ffmpeg_root=self.root / "ffmpeg",
+            ffmpeg_root=self.root / "ffmpeg", transcode_root=self.transcode_root,
         ))
         self.client = httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app), base_url="http://test"
+            transport=httpx.ASGITransport(app=self.app), base_url="http://test"
         )
 
     async def asyncTearDown(self):
@@ -229,6 +230,33 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(head.status_code, 200)
         self.assertEqual(head.content, b"")
         self.assertEqual(head.headers["content-length"], "10")
+
+    async def test_transcoded_stream_has_browser_mime_and_marker(self):
+        avi = self.media_root / "two.avi"
+        avi.write_bytes(b"avi-source")
+        cached = self.transcode_root / "two.mp4"
+        cached.parent.mkdir(parents=True)
+        cached.write_bytes(b"mp4-cache")
+        con = sqlite3.connect(self.db)
+        con.execute(
+            "INSERT INTO asset(id,location,path,name,medium,size,first_seen) "
+            "VALUES(2,'local',?,'two.avi','video',10,'2026-08-15')",
+            (str(avi),),
+        )
+        con.commit()
+        con.close()
+
+        with patch.object(
+            self.app.state.transcode_service, "browser_path",
+            return_value=(cached, True),
+        ):
+            response = await self.client.get(
+                "/stream?id=2", headers={"X-Token": "secret", "Range": "bytes=0-2"},
+            )
+        self.assertEqual(response.status_code, 206)
+        self.assertEqual(response.content, b"mp4")
+        self.assertEqual(response.headers["content-type"], "video/mp4")
+        self.assertEqual(response.headers["x-peach-transcoded"], "1")
 
     async def test_cached_visual_assets_and_thumbnail(self):
         headers = {"X-Token": "secret"}

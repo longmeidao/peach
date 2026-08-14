@@ -204,6 +204,8 @@ all three.
 - Importing operational scripts must have no filesystem/network/database side effects. `scrape_codes.py` sends only catalog codes to declared metadata sources, writes a resumable review CSV, and dual-writes provenance only with `--apply`. `clean_names.py` previews first and creates a SQLite backup before every apply run.
 - Check ports 80, 8900 and 9999 before starting or switching services.
 - 115/PikPak playback depends on CloudDrive mounts `B:`/`A:`. Drive-letter visibility differs by Windows execution token; CloudDrive and Peach must see the same mount namespace. A running process or a drive check from another token proves nothing—test one known `/stream` through Peach. Restart CloudDrive only after proving no copy task and no active I/O.
+- Browser-incompatible local/cloud containers are adapted by `TranscodeService`, not by Stash and not by front-end MIME guessing. Native MP4/WebM/Ogg stays direct; AVI and other unsupported suffixes are cached under `generated/transcodes` as H.264/AAC MP4 using a source size/mtime key, then served by the same Range endpoint. Never overwrite source media. A sandbox drive check is not authoritative because CloudDrive letters can be token-scoped.
+- Never interpolate database metadata into inline JavaScript event attributes. Bind events after DOM insertion and keep metadata in text/data nodes; apostrophes in real studio names already caused a Firefox syntax failure.
 - Ledger snapshot paths written before the project/data split are rebased by an exact configured legacy prefix. Do not add basename searches or arbitrary path fallbacks.
 - Report verification separately: static/unit/API, desktop browser, 390×844 browser, and whether production was actually restarted.
 

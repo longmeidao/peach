@@ -23,6 +23,7 @@ from .previews import PreviewService, PreviewUnavailable
 from .providers import OpenCodeGoClient, ProviderUnavailable, default_registry
 from .repository import LedgerRepository
 from .stash import StashClient
+from .transcodes import TranscodeService, TranscodeUnavailable
 
 
 def _first_query_values(request: Request) -> dict[str, str]:
@@ -63,6 +64,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         repository, resolver, settings.snapshot_root, settings.poster_root,
         settings.avatar_root, settings.logo_root, settings.legacy_snapshot_roots,
     )
+    transcode_service = TranscodeService(resolver, settings.transcode_root)
     mdns = create_mdns_publisher(
         settings.mdns_name, settings.mdns_port, secure=settings.tls_enabled,
         address=settings.mdns_address,
@@ -98,6 +100,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
     app.state.repository = repository
     app.state.media_engine = media_engine
     app.state.preview_service = preview_service
+    app.state.transcode_service = transcode_service
     app.state.mdns = mdns
     app.state.providers = providers
     app.state.opencode_go = opencode_go
@@ -159,7 +162,14 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
             return JSONResponse({"error": "no such id"}, status_code=404)
         except MediaUnavailable:
             return JSONResponse({"error": "unavailable"}, status_code=404)
-        response = FileResponse(path)
+        try:
+            path, transcoded = transcode_service.browser_path(id, path)
+        except TranscodeUnavailable:
+            logging.getLogger(__name__).exception("browser transcode failed for asset %s", id)
+            return JSONResponse({"error": "transcode unavailable"}, status_code=503)
+        response = FileResponse(path, media_type="video/mp4" if transcoded else None)
+        if transcoded:
+            response.headers["X-Peach-Transcoded"] = "1"
         response.headers["Cache-Control"] = "no-store"
         return response
 

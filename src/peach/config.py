@@ -16,6 +16,7 @@ ARCHIVE_DIR = DATA_ROOT / "archive"
 INBOX_DIR = DATA_ROOT / "inbox"
 TOOLS_DIR = DATA_ROOT / "tools"
 FFMPEG_DIR = TOOLS_DIR / "ffmpeg"
+TRANSCODE_DIR = GENERATED_DIR / "transcodes"
 MIGRATIONS_DIR = PROJECT_ROOT / "migrations"
 
 
@@ -38,3 +39,4 @@ class PeachSettings:
     avatar_root: Path = GENERATED_DIR / "avatars"
     logo_root: Path = GENERATED_DIR / "logos"
     ffmpeg_root: Path = FFMPEG_DIR
+    transcode_root: Path = TRANSCODE_DIR

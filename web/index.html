@@ -630,7 +630,7 @@ const $=s=>document.querySelector(s);
 const icon=(name,cls='')=>`<svg${cls?` class="${cls}"`:''} viewBox="0 0 24 24" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const api=(p,o)=>fetch(p,Object.assign({headers:{'Content-Type':'application/json'}},o||{})).then(r=>r.json());
 const route=(path,replace=false)=>history[replace?'replaceState':'pushState']({},'',path);
-const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmtDur=s=>{if(!s)return'—';s=Math.round(s);const h=s/3600|0,m=(s%3600)/60|0,x=s%60;
   return h?`${h}:${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')}`:`${m}:${String(x).padStart(2,'0')}`};
 const fmtSize=b=>b>=1099511627776?(b/1099511627776).toFixed(2)+' TB':b>=1073741824?(b/1073741824).toFixed(1)+' GB':(b/1048576|0)+' MB';
@@ -820,9 +820,7 @@ async function buildBars(){
   const bpHtml=x=>{
     const fallback=`${esc(x.k.slice(0,2))}`;
     return `<button class="brandpill" data-entity-kind="studio" data-entity-name="${esc(x.k)}">
-      <span class="mk"><img src="/logo?studio=${encodeURIComponent(x.k)}" alt=""
-        onerror="this.parentNode.innerHTML='${fallback}'"
-        onload="if(this.naturalWidth<32)this.parentNode.innerHTML='${fallback}'"
+      <span class="mk" data-fallback="${fallback}"><img src="/logo?studio=${encodeURIComponent(x.k)}" alt=""
         style="width:100%;height:100%;object-fit:contain"></span>${esc(x.k)}</button>`;
   };
   $('#tiers').innerHTML=
@@ -830,6 +828,11 @@ async function buildBars(){
     `<div class="tier">${tops.studios.map(bpHtml).join('')}</div>`;
   $('#tiers').querySelectorAll('[data-entity-kind]').forEach(b=>b.onclick=()=>
     openEntity(b.dataset.entityKind,b.dataset.entityName));
+  $('#tiers').querySelectorAll('.mk img').forEach(img=>{
+    const fallback=()=>{const box=img.parentNode;if(box)box.textContent=box.dataset.fallback||''};
+    img.addEventListener('error',fallback,{once:true});
+    img.addEventListener('load',()=>{if(img.naturalWidth<32)fallback()},{once:true});
+  });
 
   const views=[{k:'',label:'全部'},{k:'fresh',label:'没看过'},{k:'played',label:'看过'},
                {k:'later',label:'稍后看'},{k:'flagged',label:'已标记'},{k:'ads',label:'疑似广告'}];

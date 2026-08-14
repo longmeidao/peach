@@ -4,7 +4,7 @@ Last verified: 2026-08-15
 
 ## Runtime
 
-- Production Peach: FastAPI `0.2.0` from `R:\peach-app` on HTTP `0.0.0.0:80` (PID 46372) and HTTPS `192.168.50.162:443` (PID 60632); health mode is `fastapi`.
+- Production Peach: FastAPI `0.2.0` from `R:\peach-app` on HTTP `0.0.0.0:80` (listener PID 28676) and HTTPS `192.168.50.162:443` (listener PID 8268); health mode is `fastapi`.
 - `peach.local` is again the single official LAN entry. The publisher restores the verified pre-migration behavior: Python zeroconf listens on all eligible interfaces and publishes `peach.local -> 192.168.50.162`. Production health reports `mdns_backend=zeroconf-all-interfaces`; same-host DNS-SD discovery and `getaddrinfo('peach.local')` both resolved the correct address after restart. A second LAN device remains the final external check; no firewall or router rule was changed.
 - Stash: `127.0.0.1:9999`, PID observed as 35332.
 - Traffic monitor: running through `RM-TrafficWatch` from `R:\peach-app\.venv`; all probe/sheets tasks use the same project environment.
@@ -37,12 +37,14 @@ Runtime PIDs are observations, not configuration; always re-check them.
 - Creator/studio top lists and related-item creator/tag/studio matching now read canonical entity relations. Real-ledger timings were 0.055 s for 28 top entries and 0.055 s for 24 related items.
 - Creator/studio filters, canonical-name search, creator index, facets and attribution stats now also read entity relations. Real-ledger timings were 0.040 s for a 1,545-item creator filter, 0.043 s for the first 60 creators, 0.132 s for facets and 0.394 s for stats.
 - Snapshot availability checks use the same strict legacy-prefix resolver as `/thumb`, so the front end requests migrated previews instead of displaying false “无预览” cards.
-- 75 isolated tests pass under Python 3.14, including profile preference, batch operations, client routes, duration range, structural creator cleanup and mDNS tunnel-route fallback. The current inline JavaScript also passes syntax validation.
+- 81 isolated tests pass under Python 3.14, including profile preference, batch operations, client routes, duration range, structural creator cleanup, cached browser transcodes, dynamic-handler safety and mDNS tunnel-route fallback. The current inline JavaScript also passes syntax validation.
 - Real migration preserved 81,873 assets and 59,697 tag links; both live database and backup passed `integrity_check` and `foreign_key_check` before later metadata writes.
 - The current slice passed isolated desktop 1280×720 and mobile 390×844 browser checks with zero horizontal overflow, all Lucide references resolved, no visible legacy length tags, and the mobile rail hidden.
 - Restarted production port 80 passed health, home, public OpenCode Go model discovery (26 models at verification time), canonical filtered-list/item reads, thumbnail `200` and 1 KiB `206 Partial Content` Range smoke checks.
 - After deleting the legacy server, restarted production also passed real `stats`, `tops` and `facets` aggregate contract checks.
 - HTTPS is running on `192.168.50.162:443` with a local CA for `peach.local` and the LAN IP. The first generated CA lacked `keyUsage`; the script now emits critical CA constraints/key-sign usage and verifies the chain before install. Python/OpenSSL verification with the corrected CA passed. macOS/iOS clients must install only `peach-local-ca.crt` and explicitly trust it.
+- `/stream` now keeps browser-native MP4/WebM/Ogg files on the standard direct Range path and sends unsupported containers through Peach's own immutable MP4 cache. The source is never modified; cache keys include asset id, source size and mtime. Real AVI assets 5272 and 5313 were converted in 5.2 seconds total and verified as H.264/yuv420p plus AAC before deployment.
+- Studio logo fallbacks no longer compile metadata inside inline JavaScript handlers. Names containing apostrophes such as `Deep's` use DOM event listeners, eliminating the Firefox unescaped-string failure without weakening escaping.
 - Immersive-mode actions use the shared local Lucide set; visible labels are replaced by accessible names and hover titles where the surrounding context is sufficient.
 - Long-card hover now enlarges the card and exposes ±10-second preview seeking; short cards expose a profile-backed “稍后看” action. Item details show linked performers/studio/creator/series, and top performer/studio entries navigate to entity pages instead of mutating filters.
 - The interaction pass now delays long-card enlargement and ±10-second controls until five seconds of continuous hover; quick pointer movement only previews. Creator names on cards and details navigate directly to entity pages. “换一批” is a filled action, not a pressed sort filter, and bottom “再来 60 个” pagination is replaced by an intersection-driven continuation sentinel.
@@ -146,20 +148,20 @@ Runtime PIDs are observations, not configuration; always re-check them.
 
 Claude project hooks now refresh the managed batch block on Stop, StopFailure and SessionEnd. Codex has no equivalent task-end project hook; its coordinator must keep the same STATUS/HANDOFF write contract manually. Hook verification used a synthetic event and a temporary document/state file; no prompt, response or token was persisted.
 
-The current UI/API candidate passed JavaScript parse, 75 isolated tests, desktop 1280×720 and mobile 390×844. Production HTTP, HTTPS and mDNS were restarted onto this code. HTTPS chain verification passed with the corrected local CA; browsing tests remained on the isolated candidate and did not write real playback, preference or feedback data.
+The current UI/API candidate passed JavaScript parse, 81 isolated tests, desktop 1280×720 and mobile 390×844. Production HTTP, HTTPS and mDNS were restarted onto this code. HTTPS chain verification passed with the corrected local CA; browsing tests remained on the isolated candidate and did not write real playback, preference or feedback data.
 
 ## 批处理进度（自动生成）
 
 <!-- job-status:start -->
 
 <!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->
-<!-- generated 2026-08-14T17:57Z -->
+<!-- generated 2026-08-14T18:38Z -->
 
-- 最近自动交接：`claude` / `SessionEnd` / `other`，2026-08-14T17:57:39+00:00。
+- 最近自动交接：`claude` / `Stop` / `completed`，2026-08-14T18:38:37+00:00。
 - 资产 81873 条，其中视频 24980 条。
 - 待抽帧（可抽 / 缺时长待 probe / 合计）：
   - `local`：4 / 1 / 5
-  - `115`：29 / 4034 / 4063
+  - `115`：1368 / 2695 / 4063
   - `pikpak`：4751 / 5445 / 10196
   PikPak 计费，且单帧 seek 实测 25~40 秒，与 115 的 0.4~1.4 秒不是一个量级；全量抽帧按此速率是 14 天量级，按创作者采样是 2 小时量级。
 - 无内容标签视频 7538 条（占视频 30%）。
