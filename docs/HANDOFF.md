@@ -1,293 +1,134 @@
-# Handoff
+# Peach 交接与长期工作约定
 
-This is durable operating knowledge, not a per-session transcript.
+本文件只保存跨任务长期有效的事实和工作规则，不记录逐次聊天流水。
 
-## Zero-friction agent handoff
+## 无摩擦接手
 
-- Codex automatically discovers `AGENTS.md` in the project hierarchy.
-- Claude Code automatically reads `CLAUDE.md`; this repository's `CLAUDE.md` imports `AGENTS.md`.
-- Both agents therefore receive the same contract and the same mandatory reading order.
-- Do not ask the outgoing agent to write a dated handoff. A task that changes reality must update `docs/STATUS.md`; a durable lesson changes this file or an ADR.
-- Start every new task with `R:\peach-app` as the working directory and say only: “接手 Peach，按项目入口文件继续 STATUS 中的下一任务。”
-- The user is not the message bus. Do not ask the user to copy technical conclusions to another agent; update the shared documents in the same change.
-- If the worktree is dirty, inspect and preserve every existing diff. One agent owns a file while actively changing it; work on non-overlapping files or wait for that write to finish, then integrate the diff instead of recreating it.
+- Codex 自动读取项目层级中的 `AGENTS.md`；Claude Code 通过 `CLAUDE.md` 导入同一文件。
+- 两个智能体使用同一入口、同一必读顺序，不再生成按日期命名的临时交接文档。
+- 新任务直接以 `R:\peach-app` 为工作目录，并说：“接手 Peach，按项目入口文件继续 STATUS 中的下一任务。”
+- 改变运行事实的任务同时更新 `docs/STATUS.md`；长期规则更新本文件、`docs/REUSE.md` 或 ADR。
+- 用户不是消息中转站。结论、进度、待办和证据必须写入共享文档或机器可读产物。
+- 面向用户阅读的文档叙述统一使用中文；代码标识、命令、协议和专有名词保留英文。
 
-## Parallel agent execution
+## 并行智能体与 Git 工作树
 
-- Codex is the coordinator for architecture, code ownership, review, migrations, real-ledger writes, service restarts and final verification. Claude is a parallel worker for bounded mechanical batches such as board reading, metadata candidate scraping and CSV reconciliation; handoff is not the goal.
-- Parallel workers receive explicit input/output paths, network and cost policy, write boundary and acceptance criteria. They write `candidate` review artifacts only; they do not mark their own output `approved`, run `--apply`, alter migrations/ADR, or restart services.
-- Use separate Git worktrees for concurrent code changes. Data-only batches may share the main checkout only when their sole writable artifact is outside Git and named in the task. Never let two agents edit the same file.
-- The worktree is the edit buffer: run `python scripts/agent_worktree.py create --agent <agent> --task <slug>` from the integration checkout, do all edits/tests/commits in the returned path, then run `ready` there. The coordinating agent runs `integrate` only after review. “Last finisher automatically wins” is forbidden because completion order says nothing about dependency or correctness; Git three-way merge plus coordinator review is the arbitration layer.
-- `bba0b77` is the concrete failure case. Codex did not use `git add .`, but still misclassified Claude's newly written `tests/test_scripts.py` as owned and staged it while leaving the required `scripts/probe.py` implementation unstaged. HEAD therefore contained a test for code that did not exist until Claude repaired it. Explicit filenames are necessary but insufficient: isolated worktrees, staged-path ownership review and implementation/test atomicity are mandatory.
-- Never use `git add .`, `git add -A`, directory staging or globs. Before every worker commit, read `git diff --cached --name-status`; if any path was not assigned to that worker, unstage it. Workers do not merge, migrate the real ledger or restart production.
-- Worker results return to the coordinating agent for vocabulary/provenance checks, deduplication, isolated tests and approval. The user does not relay reports between agents.
-- `scripts/scrape_codes.py` and `scripts/creator_tags.py` are the standard review boundaries. Creator-board work exports `generated/creator-tags-review.csv`; workers may change `pending` to `candidate` or `skip`, while `approved` and the required backup remain coordinator actions.
-- **Superseded 2026-08-14.** The earlier note that Claude refuses explicit sexual-act classification from
-  board images is not what happens. In one session Claude read 30 creator boards and assigned explicit
-  act and attribute tags for 27 creators — 4,518 videos, 27,295 `asset_tag` rows under `vision_creator`,
-  including 口交/足交/手交/乳交/骑乘/后入 — with no refusal, and a later reconciliation matched all 27
-  declared tag sets to the ledger exactly. Route board reading to Claude normally.
-- The `ruth_lee` divergence was not a Claude/ledger disagreement either. The current ledger matches this
-  session's assignment exactly (7 tags × 310 assets). The mismatched conclusion came from an **earlier,
-  different** per-title pass that had no write step at all: `asset_tag` still holds zero rows with
-  `source='vision'`. The lesson is about persistence, not about model capability — see
-  "A conclusion that lives only in chat does not exist".
+- Codex 负责架构、文件归属、审核、迁移、真实 ledger 写入、服务重启和最终验收；Claude 适合并行执行抽帧板阅读、候选元数据刮削、CSV 对账等边界明确的机械批次。
+- 并行任务必须给出输入/输出路径、网络和费用策略、写入边界、验收条件。工作者只产出 `candidate`，不得自行标为 `approved`、执行 `--apply`、改迁移/ADR 或重启服务。
+- 并行代码改动使用 `scripts/agent_worktree.py create` 创建独立 worktree。工作者提交并运行 `ready`；协调者审核后运行 `integrate`。完成顺序不能决定覆盖顺序。
+- 禁止 `git add .`、`git add -A`、目录或 glob 暂存。只暂存任务明确拥有的文件，并检查 `git diff --cached --name-status`。测试和对应实现必须原子提交。
+- `bba0b77` 是已发生的反例：测试被误判为本任务文件而进入提交，对应 `probe.py` 未暂存，导致 HEAD 出现“测试指向不存在实现”。独立 worktree、暂存路径复核和实现/测试原子性因此是强制规则。
+- 在 worktree 运行测试时，项目 venv 的 editable install 可能仍指向主目录。必须设置 `PYTHONPATH=<当前工作树>\src`，先输出 `peach.__file__` 核对来源，再运行测试。
 
-## Claude's actual boundary on this project
+## Claude 在本项目中的实际能力边界
 
-Stated so work is routed on fact rather than on a guessed refusal. Verified by what ran on 2026-08-14.
+2026-08-14 的真实执行证明 Claude 可以正常完成：
 
-Does, without friction:
+- 查看成人内容并分类行为、着装、身体属性、场景和制作风格；
+- 从公开番号库刮削元数据并映射本地词表；
+- 编写上述领域的代码、正则、批处理、对账和中文文本；
+- 根据番号、文件名、画面水印、Logo 或发行元数据识别女优和厂牌。
 
-- Viewing explicit sexual imagery and classifying acts, attire, body attributes, setting and production
-  style, for cataloguing this personal library.
-- Scraping public catalogue metadata (r18.dev, avsox, javbus) and mapping foreign categories to the
-  local vocabulary.
-- Writing the code, regexes, batch jobs and reconciliation for all of the above, and generating
-  explicit-domain text such as tag names and Chinese titles.
-- Naming a performer or studio from a code, filename, or an on-screen watermark or logo.
+此前“Claude 会拒绝露骨行为分类”的记录已废止。一次实际任务读取 30 张创作者板，为 27 位创作者、4,518 个视频写入 27,295 条 `vision_creator` 标签，含口交、足交、手交、乳交、骑乘和后入，最终 27/27 与 ledger 对账一致。
 
-Will not, and these are firm:
+仍需遵守的边界：
 
-- Anything involving minors or apparent minors. The library's 萝莉/学生/洛丽塔/制服 tags are treated
-  strictly as adult-performer genre labels; if real footage of a minor is ever found, the answer is to
-  stop and report it, not to catalogue it.
-- Identifying a real person from their face. Attribution comes from codes, filenames, watermarks and
-  release metadata only — never from facial matching, and never linking media to a private individual's
-  real identity.
-- Helping acquire or redistribute non-consensual material. This is not the current corpus state: the user
-  confirms all performers are adults and all material is consensual. `萝莉`/`学生`/`洛丽塔`/`制服`
-  describe adult role-play, while `泄露`/`流出` and the appearance of `G3104` are marketing/source-style
-  descriptions, not proof of provenance or consent. Catalogue those strings normally; only direct,
-  file-specific contradictory evidence warrants stopping and reporting.
-- Destructive or outward-facing actions without explicit confirmation. Delete lists are produced as CSV
-  with evidence and confidence; the apply step is the user's.
+- 不处理真实未成年人；本库经用户确认只有成年人。`萝莉`、`学生`、`洛丽塔`、`制服` 是成年角色扮演/题材标签，不能仅凭这些字符串停止编目。
+- 不从人脸识别私人真实身份。持久归属必须有番号、文件名、水印、厂牌、公开链接等非人脸证据。
+- 本库经用户确认均为自愿成人内容。`泄露`、`流出`、`G3104` 等是营销或来源风格词，不是非自愿证据；只有文件级直接反证才停止并报告。
+- 删除和其他不可逆/对外动作先生成带证据和置信度的复核产物，执行步骤单独授权。
+- 单帧逐条判断、过暗/模糊画面、仅靠文件名区分片源水印与广告都属于弱项，应降低置信度或补抽帧，不应伪装成确定事实。
 
-Weak, not refused — route accordingly:
+## 只存在于聊天中的结论等于不存在
 
-- Frame-level certainty from one still. Creator-level style inference is reliable; per-title claims from
-  a single frame are not, which is why `vision_creator` carries `confidence=0.6`.
-- Reading dark, blurred or heavily mosaicked frames (`tuki_1154` was skipped for exactly this).
-- Distinguishing a pirate-site watermark from an advertisement by filename alone — that needed an
-  extracted frame to settle (`jitumi.pw`).
+- 得出结论的同一步必须写入 ledger、CSV 或其他持久产物。
+- 结论被修正时，所有派生产物必须重建；只改说明文字不够。过期删除清单比没有清单更危险。
+- verdict 旁必须保存证据和来源；完成前把声明意图与数据库实际行对账。
+- 历史视觉逐条任务曾在聊天里说“已保存”，但 `asset_tag` 中 `source='vision'` 为 0；根因是根本没有写入步骤，不是模型拒绝。
+- `disposal-candidates.csv` 曾在 `BNST033` 判断修正后未重建，仍把真实 3.2 GB 正片列为待删；这是必须同步所有派生产物的直接证据。
 
-## A conclusion that lives only in chat does not exist
+Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hook，调用 `scripts/job_status.py --write --hook-event`。脚本只记录脱敏生命周期摘要，重新从 ledger/产物计算数字，并原子更新 `docs/STATUS.md` 的 `<!-- job-status -->` 受管区块；不复制 prompt、response 或凭据。强制杀进程/断电无法运行 hook，下次调用会修复计数。Codex 暂无等价项目结束 hook，仍由协调者在同一改动里更新文档；不要用脆弱日志监听器模拟。
 
-Two failures of this shape occurred on 2026-08-14, so treat it as a rule.
+## 参考产品证据登记
 
-An earlier per-title visual tagging pass read boards, stated its conclusions in conversation and said
-they were stored. `asset_tag` holds zero rows with `source='vision'`; that pass had no write step and
-left no CSV or log. Separately, `disposal-candidates.csv` was generated while `BNST033` was believed to
-be entirely advertising. The belief was corrected in chat and in `docs/STATUS.md`, but the CSV was not
-regenerated and still listed the genuine 3.2 GB feature `BNST033.mp4` for disposal.
+凡用户要求“模仿/参考/对齐”，必须先取得当前可复现证据：实时行为加 DOM/CSS/JS；源码不可得时才使用精确截图测量。记录 URL、日期、版本/hash、复用行为和 Peach 的主动差异。证据不可得就写 `未取得`，不得把猜测描述成忠实复刻。
 
-Neither was a refusal — explicit tags including 足交/手交/足系 were written without obstruction in the
-same session.
+- **Beeg 卡片控件（2026-08-15）**：当前根页面加载 `https://beeg.com/dist/main.9442c3b8.css`（SHA-256 `E585B07CA0C312C28903DB939144B26A3C4BFBC9499F5997BDDE168A197CDB34`）和 `main.9442c3b8.js`（SHA-256 `A7321F6E84D97417B588B6E98EEC86A15B30DC4C36B03537481CC55A4CF933E7`）。计时圈为 36 px、上/右 12 px、`rgba(0,0,0,.24)`、`saturate(180%) blur(12px)`、2 px 白色圆环；桌面 hover 放大 1.2。稍后看控件使用同类透明处理，位于右下 12 px。Peach 等到预览可用后才启用计时圈，按用户要求连续悬停 5 秒才放大；放大层保留 Peach 自己的居中 -10/+10/详情控件。
+- **Beeg 表面层（2026-08-15，同一 CSS/hash）**：暗色背景 `rgb(2,4,8)`，表面 `rgb(34,34,34)`；frost utility 使用 `rgba(38,40,44,.72)` + `saturate(1.8) blur(20px)`，以及 `rgba(30,30,30,.72)` + `blur(20px)`。Peach 使用这些实测值制作克制的侧栏/抽屉垂直插值和半透明粘性栏；插值是 Peach 主动适配，不声称 Beeg 使用完全相同的渐变。
+- **TikTok 单列滚动（2026-08-15）**：当前 bundle `async/89993.30b4c2a9.js`（SHA-256 `C4D4867C5C6C89DCE560D429A4686427C911267DCBB2787AEB31B7BD333E9088`）使用 200 ms、`cubic-bezier(.2,.2,.4,.9)`、目标 `offsetTop`，滚动时临时禁用并恢复 `scrollSnapType`。Peach 复用时长和 easing，保留自己的两视频预载与 wheel/touch 队列。
+- **Apple 播放控件（2026-08-15）**：Apple HIG “Playing video” 只支持熟悉、克制的传输控制语义，没有提供可复用的 `gobackward.10`/`goforward.10` Web SVG。Peach 使用固定版本的 Lucide 子集和明确的“后退/前进 10 秒”无障碍标签，不声称精确复制 iOS glyph。
+- **Vercel 设计规范（2026-08-15）**：`https://vercel.com/design.md`（SHA-256 `07ED2923294AA326F65F9D9D4094B6E97BF7DE10C39ACD8BE935F2045C5A688F`）只作为评审清单：先用字体和间距建立层级、保持连续画布、避免任意图标瓷砖/嵌套卡片/微小灰字，动画只表达状态或连续性。
+- **kill-ai-slop**：在 commit `96d1ca568a1db7e1ef9a381644c744440f816ee4` 上作为减法审计清单使用，不安装 skill、不复制 scanner。
+- **Lucide**：通用操作和导航图标使用固定本地 `lucide-static` 1.31.0 子集（ISC）；许可见 `web/vendor/lucide-LICENSE.txt`。品牌/来源 Logo 和计时圈不属于通用图标。
+- **Rule34 样式**：旧代码注释没有 DOM/CSS 证据，已删除“Rule34-style”声明。当前标签颜色是 Peach 自有语义。
+- **T3 Code/CodexBar 用量**：这是复用决策，不是 Peach UI 复制。T3 Code 已提供 Codex + Claude 历史 token/成本界面；实时剩余额度使用官方 Provider 入口，Peach 不再造日志扫描器。
 
-- A step that reaches a conclusion must write it to a file or the ledger in that same step.
-- When a conclusion is revised, regenerate every artifact derived from it. Updating prose is not enough;
-  a stale delete list is more dangerous than no list.
-- Record evidence beside the verdict. `ad-candidates.csv` carries a `verified` column naming the rows
-  confirmed by looking at an extracted frame, and a `排除` state for one row that proved to be real
-  content.
-- Reconcile declared intent against the database before reporting completion. Comparing
-  `creator_tags.BOARDS` against actual `asset_tag` rows is what surfaced both problems.
+## 智能体用量与任务路由
 
-Claude task endings are now covered by shared project hooks in `.claude/settings.json`: normal Stop,
-StopFailure and SessionEnd invoke `scripts/job_status.py --write --hook-event`. The script records only a
-sanitized lifecycle summary under `R:\peach-data\state`, recomputes every figure from the ledger and
-generated artifacts, and atomically rewrites the `<!-- job-status -->` block in `docs/STATUS.md`. It does
-not copy prompts, responses or credentials. Hard process kills and machine power loss cannot run a hook;
-the next invocation repairs the live counts. Prose outside the managed block remains hand-maintained.
+- 调度看官方配额窗口，不看 API 等价美元估算。Codex 使用 App Server `account/rateLimits/read`；Claude 使用 Claude Code 已登录用量界面。不得打印、复制或保存 OAuth token。
+- Codex 负责架构、迁移、浏览器依赖网站、最终 review/apply 和长期任务；Claude 负责边界明确的刮削、归一化、候选 CSV 对账、文件名/番号/水印提取和经复核的风格板分类。
+- 女优/创作者归属可使用发行番号、文件名、水印、厂牌、别名、公开链接和跨来源一致性。人脸最多用于同库一致性辅助，持久身份仍需非人脸证据。
+- 待办数量统一报告“可执行 / 被阻塞 / 合计”。例如 PikPak 的 4,740 与 10,196 不是矛盾：前者有时长可抽帧，另有 5,445 条缺时长需先 probe。
 
-Codex does not currently expose an equivalent project task-completion hook. Its project contract still
-requires the coordinating agent to update STATUS/HANDOFF in the same change; do not invent a brittle log
-watcher to simulate lifecycle events.
+## 批处理失败值与流量边界
 
-## Referenced-product evidence register
+- 测量失败不能写成下游可误认的正常值。`probe.py` 曾把“ffprobe 无时长”写成 `duration=0`，导致数据同时退出 `duration IS NULL` probe 队列又进不了 `duration>2` 抽帧队列。现在失败写 `-1`，并提供 `--redo zero|failed|all`。
+- 两组状态数字看似矛盾时，先查是否有两边查询都遗漏的状态，不要直接认定其中一组错误。
+- 2026-08-15 经 mihomo 实测：115 单文件 ffprobe 约 25 MB，九帧接触表约 285 MB；PikPak 单文件 probe 12–52 MB，九帧约 163 MB/13.7 秒。PikPak 抽帧的主要约束是字节而非耗时。
+- `-probesize`/`-analyzeduration` 无法减少 CloudDrive 固定块预取。创作者板在未知时长时可回退到 60 秒 seek，因此无需先花约 207 GB 做全量 PikPak probe。
+- 200 GB 守卫默认只统计代理流量，能覆盖 PikPak，不能看到直连 115；需要覆盖直连来源时显式使用 `--count-direct`，且不要在同一直接计量窗口混跑不同来源。
 
-“模仿/参考/对齐” requires current reproducible evidence before implementation. Record the source,
-retrieval date/hash, exact behavior reused and intentional Peach deviation here. If evidence is not
-available, write `未取得`; an approximation must not be described as a faithful reproduction.
+## 数据安全
 
-- **Beeg card controls, verified 2026-08-15:** the current root loads
-  `https://beeg.com/dist/main.9442c3b8.css` (SHA-256
-  `E585B07CA0C312C28903DB939144B26A3C4BFBC9499F5997BDDE168A197CDB34`) and
-  `https://beeg.com/dist/main.9442c3b8.js` (SHA-256
-  `A7321F6E84D97417B588B6E98EEC86A15B30DC4C36B03537481CC55A4CF933E7`).
-  The verified counter is 36 px at top/right 12 px, uses `rgba(0,0,0,.24)`,
-  `saturate(180%) blur(12px)`, a 2 px white r=17 ring with circumference 106.814150222,
-  and scales to 1.2 on desktop hover. The save control uses the same translucent treatment at
-  bottom/right 12 px. Beeg starts the counter when preview playback is active and uses the preview
-  duration. Peach now also waits for a usable preview before showing/arming the ring, but intentionally
-  uses the user's five-second threshold before enlargement; metered still-image previews arm it when
-  frame cycling begins. The enlarged Peach overlay keeps centered -10/+10/detail controls because that
-  is the requested Peach interaction, not a claimed Beeg copy.
-- **TikTok one-column transition, verified 2026-08-15:** the current page loads
-  `https://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/89993.30b4c2a9.js`
-  (SHA-256 `C4D4867C5C6C89DCE560D429A4686427C911267DCBB2787AEB31B7BD333E9088`).
-  Its current programmatic one-column scroll uses 200 ms, cubic-bezier(.2,.2,.4,.9), target
-  `offsetTop`, and temporarily disables/restores `scrollSnapType`. Peach reuses the measured duration
-  and easing for its two-video 100%-height track, while keeping its own preload and wheel/touch queue.
-- **Apple transport controls, verified against the Apple HIG “Playing video” page on 2026-08-15:**
-  the evidence supports familiar, minimal transport controls and system-player semantics, but does not
-  provide reusable web SVG source for `gobackward.10`/`goforward.10`. Peach therefore uses its pinned
-  local icon subset plus explicit “后退/前进 10 秒” accessible labels; it does not claim an exact iOS
-  glyph copy.
-- **Rule34 styling:** earlier code comments claimed Rule34-style tag colors without recorded DOM/CSS
-  evidence. Those claims were removed. Peach's tag colors are its own semantic categories.
-- **CodexBar/T3 usage:** this is a reuse decision, not a copied Peach UI. CodexBar's public CLI/provider
-  documentation confirms local Claude/Codex cost aggregation; T3 Code's public README and the user's
-  current Usage screen establish the existing history surface. Peach has no token-log scanner or copied
-  dashboard implementation. Live remaining windows must still come from official provider surfaces.
-- **Vercel design guidance, fetched 2026-08-15:** `https://vercel.com/design.md` (SHA-256
-  `07ED2923294AA326F65F9D9D4094B6E97BF7DE10C39ACD8BE935F2045C5A688F`) is used as a review
-  checklist, not a component source. Applied rules: establish hierarchy with type and spacing before
-  surfaces, keep one continuous canvas, avoid arbitrary icon tiles/nested cards/tiny muted copy, and use
-  motion only for state or continuity. Peach keeps functional source badges, filter tags and video-overlay
-  translucency because they encode state or preserve legibility over moving imagery.
-- **kill-ai-slop, reviewed at commit `96d1ca568a1db7e1ef9a381644c744440f816ee4` on
-  2026-08-15:** the Apache-2.0 project was used as a subtractive audit checklist. The current pass removes
-  the decorative page gradient, frosted navigation/drawer, excessive pill radii and an unnecessary nested
-  preference panel. It does not install the agent skill or copy its scanner into Peach.
-- **Lucide Icons:** action and navigation glyphs use a pinned local subset of `lucide-static` 1.31.0
-  (ISC, npm integrity
-  `sha512-XFX9NO+gcLsOkXISmeQZYGJa2siGWZc/lgT/BK1b83h9RdOiz3cj1eQP5nWhELiB1KhW5ryk0nmMopOgm/CuSA==`).
-  The paths are embedded in `web/index.html`; attribution is in `web/vendor/lucide-LICENSE.txt`.
-  Brand/source marks and the timed preview ring remain separate because they are identities or data
-  visualizations, not general-purpose interface icons.
+- 真实 ledger：`R:\peach-data\database\ledger.db`，WAL 模式。正常浏览会合法写入播放/行为字段。
+- 测试必须使用临时 SQLite 和临时媒体；不得写真实 ledger。
+- 真实迁移前依次执行 SQLite 备份、asset/tag 计数、`PRAGMA integrity_check`、迁移版本检查、服务 smoke test。
+- 正式迁移 `0000`–`0007` 已应用。`0003` 增加默认 profile、稍后看、实体链接和搜索词；`0004` 增加 FTS5 trigram；`0005` 回填晚到兼容标签；`0006` 增加 `asset_preference`；`0007` 从创作者身份中移除结构文件夹名 `门槛`、`视频`、`宣传文件`，不删除作品。
+- 媒体和运行数据只在 `R:\media`、`R:\peach-data`，不进入仓库。
 
-## Agent capacity and usage routing
+## 运行与部署
 
-- Use official quota windows for dispatch decisions, not API-equivalent dollar estimates. Codex exposes
-  live limits through App Server `account/rateLimits/read`; Claude usage is visible through Claude Code's
-  authenticated usage surface. Never print, copy or persist OAuth access tokens.
-- T3 Code already provides the useful historical dashboard for Codex + Claude processed/cached/output
-  tokens and API-equivalent costs. CodexBar is the reference implementation for local log accounting and
-  provider quota fallback. Peach must not recreate their session-log scanner or couple to T3 Code's
-  undocumented localhost RPC.
-- Route architecture, migrations, browser-dependent websites, final review/apply and long-running work to
-  Codex. Route bounded mechanical scraping, normalization, candidate CSV reconciliation, filename/code/
-  watermark extraction and reviewed board classification to Claude when its remaining window permits.
-- Creator/performer attribution may use release codes, filenames, watermarks, studio metadata, aliases,
-  public profile links and cross-source consistency. A face may support same-library consistency review,
-  but a persisted identity requires non-face corroboration; never link media to an unrelated private
-  person's real-world identity from facial appearance alone.
+- 日常入口是当前用户 Startup 中的 `Peach.lnk`，使用项目 venv 的 `pythonw.exe -m peach.tray`。不再并存系统服务、计划任务或注册表 Run。
+- 托盘单击打开 HTTPS；菜单提供状态、重启、日志、更新检查和退出。托盘只终止自己创建的 Peach 服务进程。
+- 创建 Win32 窗口前必须启用 Per-Monitor V2 DPI。正常动作不弹模态 MessageBox；更新检查在后台线程执行，用 pystray 原生非模态通知反馈。
+- `src/peach/__init__.py::__version__` 是版本唯一来源；采用 pre-1.0 SemVer。Git commit 是构建标识，`vX.Y.Z` 是本地发布点。更新检查只 fetch/比较，并行 worktree 模式下不自动覆盖安装。
+- `scripts/manage_tray_startup.ps1` 是唯一自启动管理入口。托盘管理 HTTP `0.0.0.0:80` 和 HTTPS `192.168.50.162:443`，服务日志写入 `R:\peach-data\logs\tray-*.log`。
+- `peach serve` 用 Python zeroconf 发布唯一入口 `peach.local`；生产显式使用 `--mdns-address 192.168.50.162` 固定 A 地址，但保留 `Zeroconf()` 全合格网卡监听。mDNS 验收必须包含单元测试、运行态 health、DNS-SD、主机名解析和真实 LAN 客户端。
+- `.local` 使用本地 CA，不使用 Let's Encrypt。证书/私钥保存在 `R:\peach-data\secrets`。macOS/iOS 只安装并信任 `peach-local-ca.crt`，不得分发 CA key 或服务器 key。
+- FastAPI 是唯一 Web server。不得恢复平行 `http.server` 或动态 legacy loader。
+- FFmpeg/ffprobe 依次从显式环境变量、`R:\peach-data\tools\ffmpeg\bin`、`PATH` 解析；不得回退到 Stash 私有目录。
+- 长任务只停止自己拥有且命令行匹配的 Python/FFmpeg 进程树，禁止全机终止 FFmpeg。
+- 导入运维脚本不得触发文件、网络或数据库副作用。`scrape_codes.py` 默认写可续跑复核 CSV；`clean_names.py` 先预览，`--apply` 前备份 SQLite。
+- 切换服务前检查 80、443、8900、9999 端口和实际进程归属。
+- 115/PikPak 播放依赖 CloudDrive 的 `B:`/`A:`；盘符对 Windows token 可见性不同，最终以 Peach 对已知作品的 `/stream` 实测为准。
+- 浏览器不支持的 AVI 等容器由 `TranscodeService` 缓存为 H.264/AAC MP4，再通过同一 Range 端点提供；永不改写原媒体。
+- 数据库元数据不得插值到 inline JavaScript 事件属性。真实厂牌名中的撇号曾直接造成 Firefox 语法错误。
+- 验证分开报告：静态/单元/API、桌面浏览器、390×844 手机、生产服务是否已重启。
 
-Report backlog counts as **actionable / blocked / total**, never as a single number. "4,740" and
-"10,196" were treated as contradictory PikPak figures when both were correct: 4,740 rows carry a
-duration and can be sheeted, 5,445 carry none and need a probe pass first. `job_status.py` always prints
-all three.
+## 当前架构真相
 
-## A failure written as a plausible value is a permanent stall
+- Ledger 拥有真相和行为；Stash 是可替换适配器，不新增直接 GraphQL helper 或 Stash 私有 FFmpeg 路径。
+- Stash 调用统一经过 `StashClient`；外部 Scene ID 和来源进入 `media_binding`。
+- 规范女优/厂牌/标签/创作者进入 `entity`、`entity_external_ref`、`asset_entity`；扁平 `asset_tag` 和 creator/studio 字段只是兼容投影。
+- 详情、筛选、搜索、facets、索引、统计、榜单和相关推荐使用规范关系。
+- 女优、厂牌、创作者、系列名称进入资料页；只有内容标签直接筛选首页。`source_reference` 是私有来源，不开放为下载链接。
+- “稍后看”写 `watch_queue`；“喜欢/为什么喜欢”写 profile 级 `asset_preference`。AI 只能把口味说明转成带来源/置信度/复核状态的候选，不能改写用户原文。
+- Web 公共路由使用 `/performers/{name}`、`/studios/{name}`、`/creators/{name}`、`/series/{name}`；删除 `/entity/{kind}/{name}`。收起详情或导航离开时必须 pause、清空 `src`、调用 `load()` 并移除 video，不能只隐藏 DOM。
+- “换一批”、统计、沉浸、全部女优、全部标签是动作/目的地，不显示为持续筛选状态。`看过`/`没看过` 只保留为紧凑状态 chip。
+- 长卡连续 hover 5 秒才放大并显示 seek；短卡立即提供“稍后看”。实体文字链接必须消费点击，不能冒泡为展开视频。
+- 卡片身份女优优先：先使用 `performer_entities` 头像和链接，再回退到创作者/厂牌代表图。
+- 喜欢与原因属于同一 profile 偏好；非空原因隐含喜欢，但原文不能直接冒充推荐特征。
+- 详情实体采用一行一个身份，小头像/Logo 紧邻名称，不使用独立大边框卡片。旧短/中/长片标签不再显示，时长筛选只使用分钟区间。
+- 反馈使用 Lucide 紧凑图标工具栏。“待删”只表示候选，真正删除必须经过复核 CSV 的独立 apply。
+- 桌面筛选抽屉只在指针进入可见 72 px 侧栏后打开，不恢复内容区隐藏热区。
+- 厂牌 Logo 使用带来源的官方缓存；缺失时显示首字母，不得用任意作品图冒充。当前规范厂牌覆盖 28/114，继续走复核队列。
+- 实体头像优先 `generated/avatars/<kind>-<entity_id>.img`；Stash 默认剪影和搜索结果缩略图不能作为头像。
+- 厂牌归一化使用 `scripts/canonicalize_studios.py`，默认 dry-run，apply 前备份。`PREMIUM` 是独立厂牌；只把 Prestige Premium 和日文 Prestige 写法归并到 `Prestige`。
+- FastAPI 与前端逻辑分离、单体部署；在线来源和 AI 只通过显式适配器进入。
+- `FeedAdapter` 是首个追更连接器，显式、有界发现 RSS/Atom；不在应用启动时轮询，不直接写 ledger。
+- AI 推理 API 与本地 coding/agent runtime 是不同层，不能伪装成一个等价接口。
+- 3 字符以上搜索使用 FTS5 trigram；更短文本回退 LIKE。FTS 写入由迁移 trigger 维护，不在 Web 启动时修补。
 
-`probe.py` persisted "ffprobe returned no duration" as `duration=0`. That is not a null and not a
-failure marker, so the row vanished from probe's own `duration IS NULL` queue *and* failed the sheets
-`duration>2` gate. 3,937 of the 4,034 blocked 115 rows lived in that gap for as long as the two
-contradictory-looking status lines did. Nothing logged an error; the backlog simply never moved.
+## 恢复入口
 
-- A failed measurement must be stored as something no downstream query can mistake for a result.
-  `-1` is such a value here; `0`, `""` and `0.0` are not.
-- Any job that writes a fact layer needs an explicit way to re-run over recorded failures
-  (`--redo zero|failed|all`), because the reason for failure is usually external and temporary — in
-  this case the CloudDrive mount was not visible to the process token that ran the original pass.
-- When two status numbers look contradictory, suspect a state that neither query covers before
-  assuming one of them is wrong.
-
-## Transfer cost is the real batch constraint, and it is measured per source
-
-Verified 2026-08-15 against the mihomo connection counter, five files plus a 115 control:
-
-| Source | Route | ffprobe one file | Nine-frame contact sheet |
-| --- | --- | ---: | ---: |
-| 115 | DIRECT `cdnfhnfile.115cdn.net` | ~25 MB | ~285 MB (1,074 MB source) |
-| PikPak | proxied `*.mypikpak.net` | 12–52 MB | 163 MB / 13.7 s (385 MB source) |
-
-- The older "25~40 s per PikPak frame, full extraction is 14 days" record does not reproduce. Measured
-  cost is ~18 MB and ~1.5 s per frame; the binding constraint is bytes, not wall clock. Full PikPak
-  sheeting is ~773 GB, a full PikPak probe pass ~207 GB, and creator sampling of 88 boards ~14 GB.
-- `-probesize`/`-analyzeduration` do not reduce any of it. The traffic arrives as CloudDrive block
-  prefetches in fixed ~12.9 MiB units fanned across several CDN nodes, which is below FFmpeg's control.
-  Do not re-derive this by re-measuring; change the block behavior in CloudDrive or accept the cost.
-- Creator boards (`--from-video`) fall back to a 60-second seek when duration is unknown, so creator
-  sampling does **not** require a probe pass first. That ordering saves the entire ~207 GB probe cost.
-- The resident 200 GB sentinel counts proxy bytes only, which does cover PikPak. It does not see 115 at
-  all: the 98 GB spent probing 115 on 2026-08-15 was invisible to every ceiling. Use `--count-direct`
-  when the budget must cover a direct-routed source, and remember that mode cannot tell sources apart —
-  never run a 115 batch under a direct-counting PikPak ceiling, or 115 will trip it.
-
-## Reuse before restore
-
-- Read `docs/REUSE.md` before introducing a library, protocol implementation or restored legacy script.
-- Search the current tree by capability and output contract, not only by the old filename. `scripts/scrape_codes.py` is the maintained successor to the removed `rm-javlookup.py`; restoring the old scraper is forbidden.
-- The restructure was not a clean-room rewrite: probe, sheets, status, suggest, traffic watch, SHA1 sync, ledger and the web surface were migrated from legacy implementations. Treat them as inherited code until their behavior has been deliberately replaced and tested.
-- Git history is recovery evidence, not an implementation catalog. Restore code only after proving no current successor or mature dependency covers the capability.
-
-## Data safety
-
-- Real ledger: `R:\peach-data\database\ledger.db`; WAL mode; normal browsing legitimately changes play/activity fields.
-- Tests must create temporary SQLite databases and temporary media files.
-- Before real migration: SQLite backup, asset/tag counts, `PRAGMA integrity_check`, migration version check, then service smoke test.
-- Formal migrations `0000`–`0007` are applied to the real ledger. `0003` adds the local default profile, profile-scoped watch queue, typed entity links and entity search terms. `0004` adds synchronized SQLite FTS5 trigram search. `0005` backfills late compatibility tags into canonical relations. `0006` adds profile-scoped `asset_preference`. `0007` removes reviewed structural folder names (`门槛`, `视频`, `宣传文件`) from creator identity without deleting assets. Retain the pre-migration backups until a later verified migration.
-- Media and runtime data remain under `R:\media` and `R:\peach-data`; they are not repository assets.
-
-## Operations
-
-- Main command: `peach serve|migrate` after editable installation. Windows 日常入口是当前用户
-  Startup 中的 `Peach.lnk`，它用项目 venv 的 `pythonw.exe -m peach.tray` 启动交互式托盘；
-  不要同时新增系统服务、计划任务或注册表 Run 项。托盘单击打开 HTTPS，右键提供状态、
-  重启、日志、检查更新和退出。它用进程期文件锁拒绝重复实例，并只终止自己创建的服务进程。
-- 托盘必须在创建 Win32 窗口前启用 Per-Monitor V2 DPI；不要用清单缺失的 DPI-unaware
-  `pythonw` 进程让 Windows 位图缩放原生菜单。正常托盘动作不得弹模态 MessageBox。版本与
-  更新子菜单读取缓存快照，显式检查在后台线程执行，通过 pystray 原生非模态通知反馈。
-- `src/peach/__init__.py::__version__` 是版本唯一来源，`pyproject.toml` 用 setuptools
-  dynamic attr 生成包版本，FastAPI 和托盘都读取同一值。当前采用 pre-1.0 SemVer：修复升
-  patch，兼容功能升 minor，破坏性数据/接口变化升 minor 并配 ADR/迁移。Git 提交是构建标识，
-  `vX.Y.Z` 是本地发布点。检查更新只 fetch/比较；自动安装在并行工作树模型下保持禁用。
-- `scripts/manage_tray_startup.ps1` 是唯一自启动安装/状态/卸载入口。托盘同时管理 HTTP
-  `0.0.0.0:80`（负责 mDNS）和 HTTPS `192.168.50.162:443`；LAN 地址可用
-  `PEACH_LAN_ADDRESS` 覆盖。服务输出追加到 `R:\peach-data\logs\tray-*.log`。仓库当前没有
-  Git remote，因此“检查更新”只报告本地提交和无更新源，不伪造自动升级能力。
-- `peach serve` 默认用 Python zeroconf 发布唯一入口 `peach.local`；使用 `--no-mdns` 可关闭。必须保留迁移前已验证的 `Zeroconf()` 全合格网卡监听语义，不要改用只能发布服务/SRV 的 Windows `DnsServiceRegister`。隧道软件可能让自动路由选择落到 `198.18.0.0/15`；生产启动因此显式传 `--mdns-address 192.168.50.162`，只固定发布的 A 地址，不缩窄 Zeroconf 监听接口。注册在 FastAPI lifespan 中执行，不能在事件循环内同步阻塞。mDNS 修改的验收门槛是：单元测试、运行态 health、DNS-SD 查询、主机名解析，以及一台真实 LAN 客户端；监听端口枚举或注册回调不能单独证明可用。
-- TLS 仅在同时提供 `--ssl-certfile` 和 `--ssl-keyfile` 时启用；`.local` 使用本地 CA，不使用 Let's Encrypt，证书和私钥留在 `R:\peach-data\secrets`。本地 CA 必须带 critical `CA:TRUE` 和 `keyCertSign,cRLSign`；生成脚本签发后必须用 OpenSSL 验证链。macOS/iOS 只安装并信任 `peach-local-ca.crt`，不得分发 CA key 或服务器 key。
-- FastAPI is the only Web server. `web_contract.py` contains the stable JSON surface; do not recreate a parallel `http.server` or dynamic legacy loader.
-- FFmpeg/ffprobe resolve from explicit environment overrides, then `R:\peach-data\tools\ffmpeg\bin`, then `PATH`. No active code may fall back to the Stash private directory.
-- Long-running inventory helpers are under `scripts/`; their scheduled tasks use `R:\peach-app\.venv\Scripts\python.exe`. They use absolute data paths and may be interrupted/restarted where their own locking contract allows it.
-- Probe, sheets, creator boards and traffic watch parse arguments only inside `main()`. They share `src/peach/jobs.py` for fail-closed disk checks, parameterized source policy and PID locks. Traffic watch stops only matching Peach Python process trees; never restore machine-wide ffmpeg termination.
-- Stash, OpenCode Go, Feed, code scraping and performer-image imports use the shared HTTPX transport. Feed XML is parsed by feedparser, raster images by Pillow and source HTML by Beautiful Soup. New adapters must reuse these boundaries instead of adding urllib helpers, manual image headers or HTML regex parsing.
-- Importing operational scripts must have no filesystem/network/database side effects. `scrape_codes.py` sends only catalog codes to declared metadata sources, writes a resumable review CSV, and dual-writes provenance only with `--apply`. `clean_names.py` previews first and creates a SQLite backup before every apply run.
-- Check ports 80, 8900 and 9999 before starting or switching services.
-- 115/PikPak playback depends on CloudDrive mounts `B:`/`A:`. Drive-letter visibility differs by Windows execution token; CloudDrive and Peach must see the same mount namespace. A running process or a drive check from another token proves nothing—test one known `/stream` through Peach. Restart CloudDrive only after proving no copy task and no active I/O.
-- Browser-incompatible local/cloud containers are adapted by `TranscodeService`, not by Stash and not by front-end MIME guessing. Native MP4/WebM/Ogg stays direct; AVI and other unsupported suffixes are cached under `generated/transcodes` as H.264/AAC MP4 using a source size/mtime key, then served by the same Range endpoint. Never overwrite source media. A sandbox drive check is not authoritative because CloudDrive letters can be token-scoped.
-- Never interpolate database metadata into inline JavaScript event attributes. Bind events after DOM insertion and keep metadata in text/data nodes; apostrophes in real studio names already caused a Firefox syntax failure.
-- Ledger snapshot paths written before the project/data split are rebased by an exact configured legacy prefix. Do not add basename searches or arbitrary path fallbacks.
-- Report verification separately: static/unit/API, desktop browser, 390×844 browser, and whether production was actually restarted.
-
-## Architectural truth
-
-- Ledger owns truth and behavior.
-- Stash is a replaceable adapter; do not add new direct GraphQL helpers or private Stash FFmpeg paths.
-- All Stash calls use `StashClient`. Imports persist the stable Scene ID and provenance in `media_binding`; do not regress to `stash_scene_id` as the only external reference.
-- Canonical performer/studio/tag/creator truth belongs in `entity`, `entity_external_ref` and `asset_entity`. Flattened `asset_tag` rows are a temporary compatibility projection, not the target model.
-- Item/detail/filter/search/facets/index/stats/top lists/related ranking use canonical relations. Flattened creator/studio fields remain only as response compatibility projections; do not use them for identity or matching.
-- Performer/studio/creator/series names navigate to entity pages; only content tags are direct homepage filters. `entity_link.source_reference` is private provenance and must not become a clickable download link. “稍后看” writes `watch_queue`, never feedback. “喜欢/为什么喜欢” writes profile-scoped `asset_preference`; the note is user truth, while any future AI-derived taste facets must be stored separately with provenance/confidence/review.
-- Navigation versus filtering is visually explicit: “换一批”, statistics, immerse, all-performers and all-tags are actions/destinations and never render as persistent filter state. The desktop rail reserves its large icons for destinations/actions; `看过`/`没看过` remain compact content-state chips. Main-list pagination is automatic, not a bottom “再来 60 个” button.
-- Long-card enlargement and seek controls require five continuous hover seconds. Short cards keep immediate “稍后看”. A creator/studio/performer text link consumes the click and opens the entity page; it must never bubble into video expansion.
-- Card identity is performer-first: use `performer_entities` for the portrait and performer-page link before falling back to creator/studio representative art. Keep this payload consistent across normal, related and review queues. Back buttons use the shared `backbtn`; closing the drawer for navigation must suppress immediate rail-hover reopening.
-- Like and the private reason remain one profile preference. A non-empty reason implies Like, but the saved prose is not itself a ranking feature until a provenance-backed taste-facet pipeline exists; UI copy must not claim otherwise.
-- Detail identity uses one compact row per entity, with a small performer portrait or studio logo immediately before its label; it is not a standalone bordered card. Legacy length labels (`短片-2分内` / `中片-10分内` / `长片-30分内` / `超长片`) stay in compatibility data but are not UI tags or facets; duration filtering is numeric minutes only.
-- Detail feedback is a compact icon toolbar backed by the pinned Lucide set. Like/dislike/seen/Later/deletion candidate use accessible labels, hover explanations, semantic hover/active color and restrained motion. Later is not a separate full-width action. Orgasm count remains a separate icon row. “待删” always means candidate-only; actual deletion is a later reviewed CSV apply step.
-- The desktop filter drawer may open only after the pointer enters the visible 72 px rail. Do not restore a hidden content-area hot zone.
-- Source and studio marks use cached official assets with provenance. Missing studio logos show initials, never an arbitrary work/avatar. Current canonical studio coverage is 28/114 after the official kawaii asset was added (S1 was already cached); continue through the review queue instead of inventing logos.
-- Entity portraits resolve `generated/avatars/<kind>-<entity_id>.img` first and carry content-type/provenance sidecars. Do not accept Stash's default SVG silhouette or search-result thumbnails as portraits; representative asset crops are fallback only.
-- `scripts/import_stash_entities.py` is the transitional performer identity importer. It uses `StashClient`, exact canonical-name matches, stable external refs, dry-run by default and a required backup on apply. Only localhost Stash image URLs are accepted; placeholders and images below a 512 px short side are rejected. Only aliases explicitly marked `X:`/`Twitter:` become social links; plain `@handle` remains a search term because its network is ambiguous.
-- Reviewed studio merging runs through `scripts/canonicalize_studios.py` (dry-run by default, backup required for apply). `PREMIUM` is a distinct studio; only Prestige Premium and Japanese Prestige spellings alias to `Prestige`.
-- Keep FastAPI and the front end logically separate but deploy as a monolith.
-- External sources and AI are supported only through explicit adapters and declared data boundaries.
-- `FeedAdapter` is the first online-follow connector. It performs explicit bounded RSS/Atom discovery; `FeedSnapshotStore` separates immutable evidence under `sources/follow` from conditional-request cursors under `state/follow`. Do not make it poll on application startup or write ledger rows directly.
-- AI provider layers are not equivalent: inference APIs and local coding/agent runtimes remain separate.
-- Search terms of three or more characters use FTS5 trigram; shorter text falls back to LIKE because trigram cannot index shorter terms. FTS writes are maintained by migration triggers, not by Web startup repair.
-
-## Recovery
-
-Deprecated scripts and old dated documents were removed from the active tree during the `peach-app` restructure. They remain recoverable from Git history before the restructure commit. Former `_SHARED_STATE` content lives under `R:\peach-data\state`; it is deliberately outside version control. The pre-restructure root repository metadata is retained temporarily under `R:\peach-data\archive\peach-root-repo-backup-20260814` as a recovery copy.
+项目重构时已从活动目录删除 deprecated 脚本和按日期文档，Git 历史仍可恢复。旧 `_SHARED_STATE` 已迁到 `R:\peach-data\state`。重构前根仓库元数据暂存于 `R:\peach-data\archive\peach-root-repo-backup-20260814`，仅作恢复证据。

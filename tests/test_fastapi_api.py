@@ -194,11 +194,15 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_client_routes_serve_the_single_page_surface(self):
         await self.client.get("/?t=secret")
-        for path in ("/item/1", "/entity/performer/Alice", "/performers",
-                     "/tags", "/stats", "/immerse"):
+        for path in ("/item/1", "/performers/Alice", "/studios/Prestige",
+                     "/creators/luckydog11", "/series/Example", "/performers",
+                     "/creators", "/tags", "/stats", "/immerse"):
             response = await self.client.get(path)
             self.assertEqual(response.status_code, 200, path)
             self.assertIn("Peach test", response.text)
+
+        removed = await self.client.get("/entity/performer/Alice")
+        self.assertEqual(removed.status_code, 404)
 
     async def test_standard_range_and_head_contract(self):
         headers = {"X-Token": "secret"}
