@@ -60,9 +60,11 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.avatar_root = self.root / "avatars"
         self.logo_root = self.root / "logos"
         self.transcode_root = self.root / "transcodes"
+        self.vendor_root = self.root / "vendor"
         for path in (self.media_root, self.snapshot_root, self.poster_root,
-                     self.avatar_root, self.logo_root):
+                     self.avatar_root, self.logo_root, self.vendor_root):
             path.mkdir()
+        (self.vendor_root / "player.js").write_text("window.vendorReady=true;", encoding="utf-8")
         self.media_file = self.media_root / "one.mp4"
         self.media_file.write_bytes(b"0123456789")
         self.snapshot_file = self.snapshot_root / "cloud" / "local" / "one.jpg"
@@ -96,7 +98,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         con.commit()
         con.close()
         self.app = create_app(PeachSettings(
-            db_path=self.db, token="secret", page_path=self.page,
+            db_path=self.db, token="secret", page_path=self.page, vendor_path=self.vendor_root,
             allowed_media_roots=(self.media_root,), snapshot_root=self.snapshot_root,
             legacy_snapshot_roots=(self.legacy_snapshot_root,),
             poster_root=self.poster_root, avatar_root=self.avatar_root, logo_root=self.logo_root,
@@ -226,6 +228,13 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         removed = await self.client.get("/entity/performer/Alice")
         self.assertEqual(removed.status_code, 404)
 
+    async def test_pinned_frontend_vendor_assets_are_self_hosted(self):
+        response = await self.client.get("/vendor/player.js")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.text, "window.vendorReady=true;")
+        self.assertEqual(response.headers["cache-control"], "public, max-age=31536000, immutable")
+        self.assertEqual((await self.client.get("/vendor/missing.js")).status_code, 404)
+
     async def test_standard_range_and_head_contract(self):
         headers = {"X-Token": "secret"}
         full = await self.client.get("/stream?id=1", headers=headers)
@@ -272,6 +281,20 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             "/stream?id=1&session=detail-1", headers={"X-Token": "secret"}
         )
         self.assertEqual(stale.status_code, 410)
+
+    async def test_remote_session_preserves_open_ended_range(self):
+        con = sqlite3.connect(self.db)
+        con.execute("UPDATE asset SET location='115' WHERE id=1")
+        con.commit()
+        con.close()
+        response = await self.client.get(
+            "/stream?id=1&session=remote-standard",
+            headers={"X-Token": "secret", "Range": "bytes=0-"},
+        )
+        self.assertEqual(response.status_code, 206)
+        self.assertEqual(response.content, b"0123456789")
+        self.assertEqual(response.headers["content-range"], "bytes 0-9/10")
+        self.assertEqual(response.headers["content-length"], "10")
 
     async def test_transcoded_stream_has_browser_mime_and_marker(self):
         avi = self.media_root / "two.avi"

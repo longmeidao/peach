@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import Body, FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 from . import __version__, web_contract
 from .config import PeachSettings
@@ -23,7 +24,7 @@ from .previews import PreviewService, PreviewUnavailable
 from .providers import OpenCodeGoClient, ProviderUnavailable, default_registry
 from .repository import LedgerRepository
 from .stash import StashClient
-from .streaming import CappedRangeFileResponse, CancellableFileResponse, StreamSessionRegistry
+from .streaming import CancellableFileResponse, StreamSessionRegistry
 from .transcodes import TranscodeService, TranscodeUnavailable
 
 
@@ -109,10 +110,19 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
     stream_sessions = StreamSessionRegistry()
     app.state.stream_sessions = stream_sessions
 
+    # 第三方前端依赖固定版本并随 Peach 自托管；局域网断网时仍可播放。
+    app.mount(
+        "/vendor",
+        StaticFiles(directory=settings.vendor_path, check_dir=False),
+        name="vendor",
+    )
+
     @app.middleware("http")
     async def no_store(request: Request, call_next):
         response = await call_next(request)
-        if "cache-control" not in response.headers:
+        if request.url.path.startswith("/vendor/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        elif "cache-control" not in response.headers:
             response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
@@ -173,7 +183,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
             return JSONResponse({"error": "transcode unavailable"}, status_code=503)
         media_type = "video/mp4" if transcoded else None
         response = (
-            (CappedRangeFileResponse if asset.location not in (None, "local") else CancellableFileResponse)(
+            CancellableFileResponse(
                 path, session=session, registry=stream_sessions, media_type=media_type,
             )
             if session else FileResponse(path, media_type=media_type)

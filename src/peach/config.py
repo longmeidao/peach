@@ -24,6 +24,7 @@ MIGRATIONS_DIR = PROJECT_ROOT / "migrations"
 class PeachSettings:
     db_path: Path = DATABASE_PATH
     page_path: Path = PROJECT_ROOT / "web" / "index.html"
+    vendor_path: Path = PROJECT_ROOT / "web" / "vendor"
     token: str = ""
     docs_enabled: bool = False
     mdns_enabled: bool = False

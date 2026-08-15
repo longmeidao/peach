@@ -177,7 +177,8 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 0.5.5 起，标签筛选行与排序/换批行都常驻顶栏下方，不再按滚动方向隐藏；两行在原始位置保持透明，只在真正吸顶后加半透明黑色磨砂底与分隔线，分别占位，不能盖住卡片内容。
 - 首页、女优、厂牌等普通卡片统一由 `wireCards` 调用 `openItem`。只有沉浸/短片等显式传入 `onClick` 的场景允许覆盖。隐藏的 hover 工具必须 `pointer-events:none`，只在实际显示时恢复命中，避免截走海报详情点击。
 - 详情媒体用随机 `session` 标识同一次播放；收起详情、路由切换或替换详情时，前端必须清空 video 后调用 `/api/stream-cancel`，服务端取消该 session 下全部 Range 请求并拒绝迟到请求。只移除 DOM 不能保证 CloudDrive 停止读盘。
-- 115/PikPak 继续采用视频网站式按需 Range，不增加“点击后才拉流”的额外门槛。远端 session 的单次 Range 响应上限为 32 MiB，避免浏览器的开放区间请求让 CloudDrive 一路读到文件尾；移动端 390 px 下，结果数与排序拆成两行，排序横向滚动，禁止按钮逐字换行。
+- 115/PikPak 继续采用视频网站式按需加载，不增加“点击后才拉流”的额外门槛。不得擅自缩短浏览器请求的 Range：旧 32 MiB 人工截断让 Firefox 把部分 MP4 误判为不断增长的媒体时长。当前以标准 Range + session 取消保持协议正确；要由服务端控制分片大小，必须进入正式 HLS/DASH 流方案，不能伪造 `Content-Range` 请求语义。
+- 详情播放器固定复用本地 Video.js 8.23.9（Apache-2.0），不依赖 CDN。控制栏总时长优先采用 ledger 探测值；item 29297 的 `moov/mvhd` 位于文件头，真实总时长为 28,639.916 秒，说明旧“越播越长”不是媒体缺少头部元数据。统计面板在直接 MP4 下显示 Range、缓冲、画面和丢帧；未来 HLS/DASH 继续读取内置 VHS 的请求、带宽和字节统计。
 - Peach 测试唯一入口是 `python -m unittest discover -s tests -v`；仓库不依赖 `pytest`。健康检查端点是 `/healthz`，不是 `/health`。
 - Windows 千兆线路理论上限约 125 MB/s。115 实测单文件由 CloudDrive 启动 2 条约 2 MB/s 的 CDN 连接；`max_download_speed_kbyps=0` 表示未设本地限速。卡顿排查先看 FlowLens 是否存在关闭详情后仍下载的旧连接，再查 Range/缓存，不把单连接速度直接归因于本地带宽。
 

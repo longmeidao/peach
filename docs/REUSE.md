@@ -25,7 +25,7 @@
 | 位图 | Pillow | 头像/Logo 质量和来源策略 |
 | 搜索 | SQLite FTS5 | 索引字段、排序、profile 感知筛选 |
 | 媒体探测/转码 | Peach 管理的 FFmpeg/ffprobe | 任务策略和 Media Engine 编排 |
-| HLS/DASH 播放 | hls.js 或 Shaka Player | 流方案、授权、回退顺序 |
+| HTML5/HLS/DASH 播放 | Video.js 8.23.9 + 内置 VHS（Apache-2.0，本地固定版本） | 流方案、授权、稳定时长、回退顺序和统计面板 |
 | 图标 | 固定版本的本地 Lucide 子集；Health Icons 24 px outline（CC0）用于领域图标 | 标签、状态和交互设计 |
 | 定时轮询 | 持久追更配置落地后使用 APScheduler | 任务定义和安全策略 |
 | 本地文件事件 | watchdog + 定期对账 | 媒体身份和漏报修复 |
@@ -56,7 +56,7 @@
 
 已完成：共享 Media/Job/HTTP 边界、feedparser、Pillow、Beautiful Soup、FTS5、可安全导入的批处理脚本和按任务范围终止进程。
 
-1. 浏览器使用 Stash 转码前，先增加 Media Engine 流方案 API 和成熟 HLS/DASH 播放器。
+1. Video.js 已接管详情播放；下一步增加 Media Engine 的 HLS/DASH 流方案 API，让 CloudDrive 使用短分片而不是依赖虚拟盘固定块预取。
 2. 编写新来源适配器前，先配置并评估 Stash 元数据 Provider。
 3. 将剩余 status/suggest/ledger 应用逻辑移到 repository/application 端口，再删除旧 CLI 表面。
 4. Peach 不做 token/成本日志扫描器，也不绑定 T3 Code 私有 RPC；使用其界面、CodexBar 和官方实时配额入口。
