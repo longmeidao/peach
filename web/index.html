@@ -723,11 +723,13 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   .mixqueue{max-height:420px;border-left:0;border-top:1px solid var(--line-soft)}}
 @media (max-width:760px){
   .readout{display:none} .brand .sub{display:none}
-  :root{--tile:168px;--topH:52px;--sortH:96px}
+  :root{--tile:168px;--topH:52px;--sortH:60px}
   .grid{gap:16px 8px}
-  .count{align-items:stretch;flex-direction:column;gap:7px;padding-block:8px}
-  .count>span:first-child{line-height:28px}
-  .count .sorts{width:100%;margin-left:0;flex:none}
+  .count{align-items:center;flex-direction:row;gap:10px;padding-block:8px;
+    overflow-x:auto;overflow-y:hidden;scrollbar-width:none;overscroll-behavior-inline:contain}
+  .count::-webkit-scrollbar{display:none}
+  .count>span:first-child{line-height:36px;white-space:nowrap}
+  .count .sorts{width:max-content;margin-left:0;flex:0 0 auto;overflow:visible}
   .count .sorts button{flex:0 0 auto;min-height:36px;white-space:nowrap}
   /* 顶栏在窄屏会被搜索框撑破 —— 搜索收成一个按钮，点了才展开 */
   .top{gap:4px;padding:0 8px;overflow:hidden}

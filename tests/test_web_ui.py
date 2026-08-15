@@ -163,9 +163,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("el.classList.toggle('is-stuck',stuck)", self.page)
         self.assertNotIn(".tagbar.tuck", self.page)
         self.assertNotIn("function onScrollFrame", self.page)
-        self.assertIn(":root{--tile:168px;--topH:52px;--sortH:96px}", self.page)
-        self.assertIn(".count{align-items:stretch;flex-direction:column", self.page)
-        self.assertIn(".count .sorts button{flex:0 0 auto", self.page)
+        self.assertIn(":root{--tile:168px;--topH:52px;--sortH:60px}", self.page)
+
+    def test_mobile_count_and_sort_controls_share_one_scrollable_row(self):
+        self.assertIn(".count{align-items:center;flex-direction:row", self.page)
+        self.assertIn("overflow-x:auto;overflow-y:hidden;scrollbar-width:none", self.page)
+        self.assertIn(".count>span:first-child{line-height:36px;white-space:nowrap}", self.page)
+        self.assertIn(".count .sorts{width:max-content;margin-left:0;flex:0 0 auto;overflow:visible}", self.page)
+        self.assertIn(".count .sorts button{flex:0 0 auto;min-height:36px;white-space:nowrap}", self.page)
 
     def test_entity_collection_posters_and_titles_open_item_details(self):
         self.assertIn('class="cardopenhit" data-open', self.page)
