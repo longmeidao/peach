@@ -65,10 +65,19 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_beeg_evidence_driven_surfaces_are_translucent_and_rail_is_continuous(self):
         self.assertIn(".brandpill{", self.page)
-        self.assertIn("background:var(--frost-panel);border:1px solid transparent", self.page)
+        self.assertIn("background:var(--overlay-5);border:1px solid var(--border-10)", self.page)
+        self.assertIn("border:1px solid var(--border-15);\n  border-radius:999px;background:transparent", self.page)
+        self.assertIn("--overlay-5:rgba(245,250,255,.05)", self.page)
+        self.assertIn("--border-15:rgba(245,250,255,.15)", self.page)
         self.assertIn("background:var(--ground);\n  border-right:0", self.page)
         self.assertIn("['performers','艺人','user-round']", self.page)
         self.assertIn("['tags','标签','tags']", self.page)
+
+    def test_entity_profile_hides_home_facets_and_renders_context(self):
+        self.assertIn("body.entity-open #tiers,body.entity-open #tagbar{display:none}", self.page)
+        self.assertIn('class="entitytags"', self.page)
+        self.assertIn('class="relatedpeople"', self.page)
+        self.assertIn("data-related-performer", self.page)
 
     def test_tags_page_has_cloud_and_alphabet_modes(self):
         self.assertIn('data-tag-view="cloud"', self.page)

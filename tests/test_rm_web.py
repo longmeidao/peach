@@ -305,10 +305,21 @@ class WebDataTests(unittest.TestCase):
             "INSERT INTO entity_search_term(entity_id,term,purpose,source) "
             "VALUES(11,'Alice code','source_lookup','user')"
         )
+        con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
+            "VALUES(15,'performer','Related Bob','related bob')"
+        )
+        con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+            "VALUES(1,15,'performer','test',1.0)"
+        )
         con.commit(); con.close()
         page = rm_web.q_entity(self.contract, {"kind": "performer", "name": "Alice"})
         self.assertEqual(page["canonical_name"], "Canonical Alice")
         self.assertEqual(page["asset_count"], 1)
+        self.assertEqual(page["tags"], [{"id": 10, "k": "足交", "n": 1}])
+        self.assertEqual(page["related_performers"][0]["k"], "Related Bob")
+        self.assertEqual(page["related_performers"][0]["n"], 1)
         self.assertTrue(page["links"][0]["clickable"])
         self.assertFalse(page["links"][1]["clickable"])
         self.assertIsNone(page["links"][1]["url"])
