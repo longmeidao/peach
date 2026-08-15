@@ -38,7 +38,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("detailPlayer.duration(expected)", self.page)
         self.assertIn("['loadstart','loadedmetadata','durationchange','error']", self.page)
         self.assertIn("const d=it.duration||v.duration||0", self.page)
-        self.assertIn("skipButtons:{backward:10,forward:10}", self.page)
+        self.assertIn("skipButtons:{backward:appSettings.seekSeconds,forward:appSettings.seekSeconds}", self.page)
 
     def test_player_stats_cover_direct_range_and_future_segmented_streams(self):
         self.assertIn('id="playerStatsBtn"', self.page)
@@ -128,7 +128,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('class="entitymore"', self.page)
         self.assertIn("const indexLimit=people?120:180", self.page)
         self.assertIn('class="indexmore"', self.page)
-        self.assertIn("adsBatch.items.slice(offset,offset+60)", self.page)
+        self.assertIn("adsBatch.items.slice(offset,offset+appSettings.batchSize)", self.page)
+        self.assertIn("p.set('limit',appSettings.batchSize)", self.page)
+        self.assertIn("offset+=appSettings.batchSize", self.page)
         self.assertIn("if(!reset)p.set('count','0')", self.page)
         self.assertIn("!listLoading&&!$('#loadSentinel').hidden", self.page)
         self.assertIn("indexRequestSeq", self.page)
@@ -253,12 +255,19 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('id="i-sperm"', self.page)
         self.assertIn("icon('sperm')", self.page)
 
-    def test_settings_own_refresh_hover_and_ambient_preferences(self):
+    def test_settings_own_useful_experience_preferences(self):
         self.assertIn("const DEFAULT_SETTINGS={autoRefresh:true,refreshMinutes:5", self.page)
         self.assertIn('id="settingsPanel"', self.page)
         self.assertIn("scheduleAutoRefresh()", self.page)
         self.assertIn("refreshAll(true)", self.page)
         self.assertIn("appSettings.hoverDelaySeconds", self.page)
+        self.assertIn("appSettings.batchSize", self.page)
+        self.assertIn("appSettings.defaultSort", self.page)
+        self.assertIn("appSettings.seekSeconds", self.page)
+        self.assertIn("appSettings.searchHistoryLimit", self.page)
+        self.assertIn("appSettings.relatedLimit", self.page)
+        self.assertNotIn('id="ambientSetting"', self.page)
+        self.assertIn("color:#f5f7fa;color-scheme:dark", self.page)
 
     def test_search_menu_has_local_history_and_recommendations(self):
         self.assertIn("peach.search.history.v1", self.page)
