@@ -222,7 +222,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         await self.client.get("/?t=secret")
         for path in ("/item/1", "/performers/Alice", "/studios/Prestige",
                      "/creators/luckydog11", "/series/Example", "/performers",
-                     "/creators", "/tags", "/stats", "/immerse"):
+                     "/creators", "/tags", "/stats", "/immerse", "/mix/1/2"):
             response = await self.client.get(path)
             self.assertEqual(response.status_code, 200, path)
             self.assertIn("Peach test", response.text)

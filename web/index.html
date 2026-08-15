@@ -303,6 +303,23 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
 .card{cursor:pointer;display:flex;flex-direction:column;gap:8px;min-width:0;
   position:relative;transition:transform .18s ease,filter .18s ease;transform-origin:center}
+.mixcard{padding-top:7px}
+.mixstack{position:relative;isolation:isolate}
+.mixstack::before,.mixstack::after{content:"";position:absolute;border-radius:4px;
+  border:1px solid var(--border-15);background:color-mix(in srgb,var(--surface) 84%,var(--video-glow,#15202a));z-index:0}
+.mixstack::before{inset:0 12px 8px;transform:translateY(-7px);opacity:.54}
+.mixstack::after{inset:0 6px 4px;transform:translateY(-4px);opacity:.78}
+.mixstack .pic{z-index:1}
+.mixbadge{position:absolute;right:9px;bottom:9px;z-index:6;display:flex;align-items:center;gap:6px;
+  min-height:28px;padding:4px 9px;border-radius:6px;background:rgba(12,8,8,.72);color:#fff;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);font-size:12px;font-weight:700}
+.mixbadge svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
+.mixcard .mixmeta{display:flex;min-width:0;gap:9px;align-items:flex-start}
+.mixglyph{width:40px;height:40px;flex:none;border-radius:50%;display:grid;place-items:center;
+  color:var(--ink);background:var(--overlay-5);border:1px solid var(--border-10)}
+.mixglyph svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
+.mixcopy{min-width:0}.mixcopy b,.mixcopy span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mixcopy b{font-size:14px;line-height:1.45}.mixcopy span{font-size:11px;color:var(--muted);margin-top:2px}
 .selectionMark{display:none;position:absolute;top:10px;right:10px;z-index:8;width:30px;height:30px;border-radius:9px;
   place-items:center;color:rgba(255,255,255,.72);background:rgba(0,0,0,.34);border:1px solid rgba(255,255,255,.28);
   backdrop-filter:saturate(1.8) blur(12px);-webkit-backdrop-filter:saturate(1.8) blur(12px)}
@@ -438,6 +455,26 @@ body[data-density="dense"] .card .meta .t{-webkit-line-clamp:1;white-space:nowra
 body.detail-open .tagbar{position:relative;top:auto;z-index:1}
 body.entity-open #tiers,body.entity-open #tagbar{display:none}
 .sgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(350px,390px)}
+.sgrid.mixgrid{grid-template-columns:minmax(0,1fr) minmax(310px,390px)}
+.sgrid.mixgrid>.side{grid-column:1/-1;max-height:none;border-left:0;border-top:1px solid var(--line-soft)}
+.sgrid.mixgrid .vwrap>.closestage{display:none}
+.mixqueue{min-width:0;max-height:76vh;display:flex;flex-direction:column;border-left:1px solid var(--line-soft);
+  background:color-mix(in srgb,var(--video-glow,#15202a) 10%,var(--surface) 90%)}
+.mixqueuehead{display:grid;grid-template-columns:minmax(0,1fr) 38px;gap:8px;align-items:center;
+  min-height:70px;padding:12px 12px 10px 15px;border-bottom:1px solid var(--line-soft)}
+.mixqueuehead h2{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:17px}
+.mixqueuehead span{display:block;margin-top:3px;color:var(--muted);font-size:11px}
+.mixqueuehead button{width:36px;height:36px;padding:0;border:0;border-radius:50%;background:transparent;
+  color:var(--ink);cursor:pointer;display:grid;place-items:center}.mixqueuehead button:hover{background:var(--hover)}
+.mixqueuehead svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
+.mixlist{min-height:0;overflow-y:auto;padding:6px}
+.mixitem{width:100%;display:grid;grid-template-columns:94px minmax(0,1fr);gap:10px;align-items:center;
+  padding:7px;border:0;border-radius:7px;background:transparent;color:var(--ink);text-align:left;cursor:pointer}
+.mixitem:hover{background:var(--overlay-5)}.mixitem.current{background:color-mix(in srgb,var(--tungsten) 15%,var(--overlay-5))}
+.mixitempic{position:relative;aspect-ratio:16/9;border-radius:4px;overflow:hidden;background:#000}
+.mixitempic img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.mixitempic .dur{right:4px;bottom:3px}
+.mixitemtext{min-width:0}.mixitemtext b,.mixitemtext span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mixitemtext b{font-size:12px;line-height:1.4}.mixitemtext span{font-size:10px;color:var(--muted);margin-top:3px}
 .vwrap{background:#000;position:relative;display:flex;align-items:center;justify-content:center;isolation:isolate}
 .ambientcanvas{position:absolute;z-index:0;inset:-34px;width:calc(100% + 68px);height:calc(100% + 68px);
   filter:blur(46px) saturate(1.45);opacity:.42;transform:scale(1.06);pointer-events:none}
@@ -676,8 +713,9 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   background:var(--surface);color:var(--ink);padding:9px 12px;cursor:pointer}.batchbar button:hover{border-color:var(--tungsten)}
 .batchbar .danger{color:var(--drop)}
 
-@media (max-width:1080px){.sgrid{grid-template-columns:minmax(0,1fr)}
-  .side{border-left:0;border-top:1px solid var(--line-soft);max-height:none}}
+@media (max-width:1080px){.sgrid,.sgrid.mixgrid{grid-template-columns:minmax(0,1fr)}
+  .side,.sgrid.mixgrid>.side{grid-column:auto;border-left:0;border-top:1px solid var(--line-soft);max-height:none}
+  .mixqueue{max-height:420px;border-left:0;border-top:1px solid var(--line-soft)}}
 @media (max-width:760px){
   .readout{display:none} .brand .sub{display:none}
   :root{--tile:168px;--topH:52px;--sortH:96px}
@@ -870,7 +908,7 @@ let state={loc:initialParams.get('loc')||'local,115',creator:initialParams.get('
   seed:initialParams.get('seed')||String((Date.now()^(Math.random()*1e9|0))%99991),q:initialParams.get('q')||'',thumb:'1'};
 $('#q').value=state.q;
 const REP={};   // 创作者/厂牌 → 代表作 id，用来做圆头像（裁接触印相中心格，不另造图）
-let offset=0,total=0,facets=null,current=null,detailReturnPath='/';
+let offset=0,total=0,facets=null,current=null,detailReturnPath='/',activeMix=null;
 const CACHE={};
 const cache=items=>{items.forEach(x=>CACHE[x.id]=x);return items};
 let detailStreamSession='',detailPlayer=null,detailStatsTimer=null;
@@ -898,7 +936,7 @@ function disposeStage(push=false){
     if(video._hop)clearInterval(video._hop);
     video.pause();video.removeAttribute('src');video.load();video.remove()});
   cancelDetailStream();
-  stage.innerHTML='';stage.hidden=true;document.body.classList.remove('detail-open');current=null;
+  stage.innerHTML='';stage.hidden=true;document.body.classList.remove('detail-open');current=null;activeMix=null;
   if(push)route(detailReturnPath||'/');
 }
 function bufferedAhead(video){
@@ -1098,6 +1136,32 @@ function cardHtml(it,cls){
         ${it.play_count?`<span>看过 ${it.play_count}</span>`:''}
         <span class="flags">${fl}</span></div>
       ${tgs?`<div class="ctags">${tgs}</div>`:''}</div></div></article>`;
+}
+function mixLabel(it){
+  return it.creator||(it.performers||[])[0]||it.studio||it.code||(it.tags||[])[0]||'为你推荐';
+}
+function mixCardHtml(it){
+  const thumb=it.has_thumb
+    ? `<img class="poster" src="/poster?id=${it.id}&c=4" alt="" loading="lazy">`
+    : `<span class="nopic">无预览</span>`;
+  const label=mixLabel(it);
+  return `<article class="card mixcard" data-mix-seed="${it.id}">
+    <div class="mixstack"><div class="pic">${thumb}<button class="cardopenhit" data-open-mix aria-label="打开 Mix · ${esc(label)}"></button>
+      <span class="mixbadge">${icon('play')}Mix</span></div></div>
+    <div class="mixmeta"><span class="mixglyph">${icon('play')}</span><div class="mixcopy">
+      <b>Mix · ${esc(label)}</b><span>${esc(it.name)}及相似作品</span></div></div></article>`;
+}
+function batchWithMix(items){
+  const cards=items.map(it=>cardHtml(it));
+  const seed=items.find(it=>it.creator||(it.performers||[]).length||it.studio)||items[0];
+  if(seed&&items.length>=8)cards.splice(7,0,mixCardHtml(seed));
+  return cards.join('');
+}
+function wireMixCards(root){
+  root.querySelectorAll('[data-mix-seed]').forEach(el=>{
+    if(el.dataset.wired)return;el.dataset.wired='1';
+    el.onclick=()=>openMix(+el.dataset.mixSeed);
+  });
 }
 function wireCards(root,onClick,onTag){
   root.querySelectorAll('[data-id]').forEach(el=>{
@@ -1627,12 +1691,13 @@ async function load(reset){
   const d=await api('/api/items?'+p);cache(d.items);
   if(requestSeq!==loadRequestSeq)return;
   if(reset)total=d.total;
-  const html=d.items.map(it=>cardHtml(it)).join('');
+  const html=batchWithMix(d.items);
   if(reset)releaseHoverPreviews($('#grid'));
   if(reset)$('#grid').innerHTML=html; else $('#grid').insertAdjacentHTML('beforeend',html);
   renderCount();
-  $('#loadSentinel').hidden=$('#grid').children.length>=total;
+  $('#loadSentinel').hidden=$('#grid').querySelectorAll('[data-id]').length>=total;
   wireCards($('#grid'));
+  wireMixCards($('#grid'));
   paintSelection();
   if(reset)loadShorts(requestSeq);
   }finally{if(!reset&&requestSeq===loadRequestSeq)listLoading=false}
@@ -1681,11 +1746,32 @@ async function loadShorts(requestSeq=loadRequestSeq){
 }
 
 /* ── 就地展开播放 ── */
-async function openItem(id,push=true){
+function mixQueueHtml(mix,itemId){
+  return `<aside class="mixqueue"><div class="mixqueuehead"><div><h2>${esc(mix.title)}</h2><span>${mix.items.length} 个视频</span></div>
+    <button data-mix-close title="关闭" aria-label="关闭">${icon('x')}</button></div><div class="mixlist">${mix.items.map(x=>{
+      const thumb=x.has_thumb?`<img src="/poster?id=${x.id}&c=4" alt="" loading="lazy">`:'';
+      return `<button class="mixitem ${x.id===itemId?'current':''}" data-mix-item="${x.id}" aria-current="${x.id===itemId?'true':'false'}">
+        <span class="mixitempic">${thumb}<i class="dur mono">${fmtDur(x.duration)}</i></span><span class="mixitemtext"><b>${esc(x.name)}</b><span>${esc(mixLabel(x))}</span></span></button>`;
+    }).join('')}</div></aside>`;
+}
+async function buildMix(seedId){
+  const [seed,related]=await Promise.all([api('/api/item?id='+seedId),api('/api/related?id='+seedId+'&limit=28')]);
+  const items=[seed,...(related.items||[]).filter(x=>x.id!==seed.id)];cache(items);
+  return {seedId,title:`Mix · ${mixLabel(seed)}`,items};
+}
+async function openMix(seedId,itemId=seedId,push=true){
+  const previous=activeMix&&activeMix.seedId===seedId?activeMix:null;
+  if(push&&!previous)detailReturnPath=location.pathname+location.search;
+  const mix=previous||await buildMix(seedId);
+  await openItem(itemId,false,mix);
+  if(push)route(`/mix/${seedId}/${itemId}`);
+}
+async function openItem(id,push=true,mixContext=null){
   releaseHoverPreviews();
   if(push)detailReturnPath=location.pathname+location.search;
   disposeStage(false);
-  if(push)route('/item/'+id);
+  activeMix=mixContext;
+  if(push&&!mixContext)route('/item/'+id);
   const it=await api('/api/item?id='+id); if(it.error)return;
   current=it; CACHE[it.id]=it;
   const gated=it.cost==='metered';
@@ -1711,7 +1797,7 @@ async function openItem(id,push=true){
     return `<div class="identityrow"><button class="identitymark ${k==='studio'?'logo ':''}entitylink" data-entity-kind="${k}" data-entity-name="${esc(n)}" title="打开${l}页">${visual}</button><span class="ilabel">${l}</span><button class="entitylink" data-entity-kind="${k}" data-entity-name="${esc(n)}">${esc(n)}</button></div>`;
   }).join('');
   $('#stage').hidden=false;document.body.classList.add('detail-open');delete $('#stage').dataset.c;
-  $('#stage').innerHTML=`<div class="sgrid">
+  $('#stage').innerHTML=`<div class="sgrid ${mixContext?'mixgrid':''}">
     <div class="vwrap"><canvas class="ambientcanvas" id="ambientCanvas" width="32" height="18" ${appSettings.ambient?'':'hidden'}></canvas><button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>
       <button class="playerstatsbtn" id="playerStatsBtn" aria-label="播放统计" title="播放统计" aria-pressed="false" hidden>${icon('chart')}</button>
       <div class="playerstats" id="playerStats" role="status" hidden></div>
@@ -1720,7 +1806,7 @@ async function openItem(id,push=true){
           <span style="font-size:12px;color:var(--muted)">点此开始拉流 · ${fmtSize(it.size||0)}</span></div>
         <video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="none" hidden></video>`
        :`<video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="metadata"></video>`}
-    </div>
+    </div>${mixContext?mixQueueHtml(mixContext,it.id):''}
     <div class="side">
       <div class="stitle">${esc(it.name)}</div>
       <div class="smeta mono">${srcBadge(it.location,it.cost,'srcbig')}
@@ -1750,9 +1836,11 @@ async function openItem(id,push=true){
       <button class="obtn" data-kind="o">${icon('sperm')}<span>记一次高潮</span><b class="mono" id="oCount">${it.o_count||0}</b></button>
       <div class="hint mono">待删仅作标记，不会删除文件。</div>
     </div></div>
-    <div class="next"><h3>接着看</h3><div class="nrow" id="nrow">载入中…</div></div>`;
+    ${mixContext?'':`<div class="next"><h3>接着看</h3><div class="nrow" id="nrow">载入中…</div></div>`}`;
 
   $('#closeStage').onclick=()=>disposeStage(true);
+  $('#stage').querySelectorAll('[data-mix-close]').forEach(b=>b.onclick=()=>disposeStage(true));
+  $('#stage').querySelectorAll('[data-mix-item]').forEach(b=>b.onclick=()=>openMix(mixContext.seedId,+b.dataset.mixItem,true));
   const g=$('#gate');
   $('#stage').querySelectorAll('[data-kind]').forEach(b=>b.onclick=async()=>{
     const r=await api('/api/feedback',{method:'POST',body:JSON.stringify({id:it.id,kind:b.dataset.kind})});
@@ -1868,7 +1956,7 @@ async function openItem(id,push=true){
   vv.addEventListener('emptied',()=>stopAmbient(),{once:true});
   $('#stage').scrollIntoView({behavior:'auto',block:'start'});
 
-  api('/api/related?id='+it.id+'&limit=20').then(d=>{
+  if(!mixContext)api('/api/related?id='+it.id+'&limit=20').then(d=>{
     const n=$('#nrow'); if(!n)return; cache(d.items);
     n.innerHTML=d.items.length?d.items.map(x=>cardHtml(x,'ncard')).join(''):'<span class="empty">暂无</span>';
     wireCards(n);});
@@ -2075,6 +2163,7 @@ function wireAllDrag(){['#tagbar','#srow','#nrow'].forEach(s=>wireDrag($(s)));
 
 async function restoreRoute(){
   const path=decodeURIComponent(location.pathname),parts=path.split('/').filter(Boolean);
+  if(parts[0]==='mix'&&/^\d+$/.test(parts[1]||'')&&/^\d+$/.test(parts[2]||'')){await openMix(+parts[1],+parts[2],false);return}
   if(parts[0]==='item'&&/^\d+$/.test(parts[1]||'')){await openItem(+parts[1],false);return}
   const entityKind=ROUTE_ENTITIES[parts[0]];
   if(entityKind&&parts.length>=2){await openEntity(entityKind,parts.slice(1).join('/'),false);return}
