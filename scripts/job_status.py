@@ -27,9 +27,14 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
 from peach.config import DATABASE_PATH, GENERATED_DIR
 
-DOC = Path(__file__).resolve().parent.parent / "docs" / "STATUS.md"
+DOC = PROJECT_ROOT / "docs" / "STATUS.md"
 STATE = Path(r"R:\peach-data\state\agent-handoff.json")
 START = "<!-- job-status:start -->"
 END = "<!-- job-status:end -->"

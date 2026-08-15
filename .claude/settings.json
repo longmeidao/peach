@@ -1,7 +1,7 @@
 {
   "hooks": {
-    "Stop": [{"hooks": [{"type": "command", "command": "${CLAUDE_PROJECT_DIR}/.venv/Scripts/python.exe", "args": ["${CLAUDE_PROJECT_DIR}/scripts/job_status.py", "--write", "--hook-event"], "timeout": 30}]}],
-    "StopFailure": [{"hooks": [{"type": "command", "command": "${CLAUDE_PROJECT_DIR}/.venv/Scripts/python.exe", "args": ["${CLAUDE_PROJECT_DIR}/scripts/job_status.py", "--write", "--hook-event"], "timeout": 30}]}],
-    "SessionEnd": [{"hooks": [{"type": "command", "command": "${CLAUDE_PROJECT_DIR}/.venv/Scripts/python.exe", "args": ["${CLAUDE_PROJECT_DIR}/scripts/job_status.py", "--write", "--hook-event"], "timeout": 30}]}]
+    "Stop": [{"hooks": [{"type": "command", "command": "python", "args": ["${CLAUDE_PROJECT_DIR}/scripts/job_status.py", "--write", "--hook-event"], "timeout": 30}]}],
+    "StopFailure": [{"hooks": [{"type": "command", "command": "python", "args": ["${CLAUDE_PROJECT_DIR}/scripts/job_status.py", "--write", "--hook-event"], "timeout": 30}]}],
+    "SessionEnd": [{"hooks": [{"type": "command", "command": "python", "args": ["${CLAUDE_PROJECT_DIR}/scripts/job_status.py", "--write", "--hook-event"], "timeout": 30}]}]
   }
 }

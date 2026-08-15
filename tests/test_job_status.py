@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,6 +17,26 @@ SPEC.loader.exec_module(MODULE)
 
 
 class JobStatusTests(unittest.TestCase):
+    def test_hook_works_without_a_worktree_virtual_environment(self) -> None:
+        settings = json.loads(
+            (SCRIPT.parents[1] / ".claude" / "settings.json").read_text(encoding="utf-8")
+        )
+        commands = [
+            hook["command"]
+            for event in settings["hooks"].values()
+            for matcher in event
+            for hook in matcher["hooks"]
+        ]
+        self.assertEqual(commands, ["python", "python", "python"])
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "--help"],
+            cwd=SCRIPT.parents[1],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_hook_event_is_sanitized_and_atomic(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             state = Path(root) / "state" / "handoff.json"
