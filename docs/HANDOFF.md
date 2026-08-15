@@ -20,6 +20,7 @@
 - 禁止 `git add .`、`git add -A`、目录或 glob 暂存。只暂存任务明确拥有的文件，并检查 `git diff --cached --name-status`。测试和对应实现必须原子提交。
 - `bba0b77` 是已发生的反例：测试被误判为本任务文件而进入提交，对应 `probe.py` 未暂存，导致 HEAD 出现“测试指向不存在实现”。独立 worktree、暂存路径复核和实现/测试原子性因此是强制规则。
 - 在 worktree 运行测试时，项目 venv 的 editable install 可能仍指向主目录。必须设置 `PYTHONPATH=<当前工作树>\src`，先输出 `peach.__file__` 核对来源，再运行测试。
+- **唯一测试入口**：本仓库只使用 Python 标准库 `unittest`，完整命令为 `python -m unittest discover -s tests -p 'test_*.py' -v`；项目依赖不含 pytest，不得再凭通用习惯调用 pytest。健康检查契约固定为 `/healthz`，不是 `/health`。
 
 ## Claude 在本项目中的实际能力边界
 
@@ -173,8 +174,12 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 首页聚合数据在浏览器会话中合并并缓存 30 秒；相邻筛选复用同一进行中的请求。首页、顶部聚合、索引和实体页都有请求序号，迟到的旧响应不得覆盖新状态或再次重建 DOM。
 - 无限滚动同一时间只允许一个追加请求；先判断加载锁再递增 offset，避免快速触发时跳页。图片继续使用原生 `loading=lazy`。只有本地资源可使用真视频 hover；115/PikPak 等远端源必须使用本地接触印相。滚动、换页、隐藏页面或替换卡片 DOM 时，统一停止 hover 并释放 `src`。
 - 2026-08-15 实测：Prestige 显示 248 个总结果时首屏只构建 48 张卡片，点击“载入更多”后为 96；艺人索引 120 条约 311 ms，Prestige 第二页 48 条且跳过总数统计约 94 ms。具体耗时随 ledger 和磁盘状态变化，只把批量边界作为稳定契约。
-- 0.5.4 起，标签筛选行与排序/换批行都常驻顶栏下方，不再按滚动方向隐藏；两行使用半透明黑色磨砂底，分别占位，不能盖住卡片内容。
+- 0.5.5 起，标签筛选行与排序/换批行都常驻顶栏下方，不再按滚动方向隐藏；两行在原始位置保持透明，只在真正吸顶后加半透明黑色磨砂底与分隔线，分别占位，不能盖住卡片内容。
 - 首页、女优、厂牌等普通卡片统一由 `wireCards` 调用 `openItem`。只有沉浸/短片等显式传入 `onClick` 的场景允许覆盖。隐藏的 hover 工具必须 `pointer-events:none`，只在实际显示时恢复命中，避免截走海报详情点击。
+- 详情媒体用随机 `session` 标识同一次播放；收起详情、路由切换或替换详情时，前端必须清空 video 后调用 `/api/stream-cancel`，服务端取消该 session 下全部 Range 请求并拒绝迟到请求。只移除 DOM 不能保证 CloudDrive 停止读盘。
+- 115/PikPak 继续采用视频网站式按需 Range，不增加“点击后才拉流”的额外门槛。远端 session 的单次 Range 响应上限为 32 MiB，避免浏览器的开放区间请求让 CloudDrive 一路读到文件尾；移动端 390 px 下，结果数与排序拆成两行，排序横向滚动，禁止按钮逐字换行。
+- Peach 测试唯一入口是 `python -m unittest discover -s tests -v`；仓库不依赖 `pytest`。健康检查端点是 `/healthz`，不是 `/health`。
+- Windows 千兆线路理论上限约 125 MB/s。115 实测单文件由 CloudDrive 启动 2 条约 2 MB/s 的 CDN 连接；`max_download_speed_kbyps=0` 表示未设本地限速。卡顿排查先看 FlowLens 是否存在关闭详情后仍下载的旧连接，再查 Range/缓存，不把单连接速度直接归因于本地带宽。
 
 ## 恢复入口
 

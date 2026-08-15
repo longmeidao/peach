@@ -24,6 +24,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("function disposeStage", self.page)
         self.assertIn("video.pause();video.removeAttribute('src');video.load();video.remove()", self.page)
         self.assertIn("$('#closeStage').onclick=()=>disposeStage(true)", self.page)
+        self.assertIn("function cancelDetailStream()", self.page)
+        self.assertIn("/api/stream-cancel?session=", self.page)
+        self.assertIn("keepalive:true", self.page)
+        self.assertIn("dataset.peachStreamCancel=JSON.stringify(result)", self.page)
+        self.assertIn('src="${detailStreamUrl(it.id)}"', self.page)
 
     def test_tag_geometry_uses_shared_tokens(self):
         self.assertIn("--tag-radius:999px", self.page)
@@ -110,10 +115,19 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("--filterH:58px", self.page)
         self.assertIn(".tagbar{position:sticky;top:var(--topH)", self.page)
         self.assertIn(".count{position:sticky;top:calc(var(--topH) + var(--filterH))", self.page)
+        self.assertIn("border-bottom:1px solid transparent;background:transparent", self.page)
+        self.assertIn("background:transparent;border-bottom:1px solid transparent", self.page)
+        self.assertIn(".tagbar.is-stuck,.count.is-stuck{background:color-mix(in srgb,#020408 84%,transparent)", self.page)
         self.assertIn("background:color-mix(in srgb,#020408 84%,transparent)", self.page)
         self.assertIn("backdrop-filter:saturate(1.35) blur(16px)", self.page)
+        self.assertIn("function updateStickySurfaces()", self.page)
+        self.assertIn("css.position==='sticky'", self.page)
+        self.assertIn("el.classList.toggle('is-stuck',stuck)", self.page)
         self.assertNotIn(".tagbar.tuck", self.page)
         self.assertNotIn("function onScrollFrame", self.page)
+        self.assertIn(":root{--tile:168px;--topH:52px;--sortH:96px}", self.page)
+        self.assertIn(".count{align-items:stretch;flex-direction:column", self.page)
+        self.assertIn(".count .sorts button{flex:0 0 auto", self.page)
 
     def test_entity_collection_posters_and_titles_open_item_details(self):
         self.assertIn('class="cardopenhit" data-open', self.page)

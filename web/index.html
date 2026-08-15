@@ -132,11 +132,9 @@ button,input,textarea{font:inherit;color:inherit}
 .brandpill .mk img{position:absolute;inset:3px;width:calc(100% - 6px);height:calc(100% - 6px);
   object-fit:contain;display:block;filter:saturate(.72) brightness(.84);opacity:.9}
 
-/* ── 常驻筛选层：上下滚动都保留；磨砂黑底避免盖住卡片文字 ── */
+/* ── 常驻筛选层：原位保持透明，只在真正吸顶后加磨砂黑底 ── */
 .tagbar{position:sticky;top:var(--topH);z-index:61;height:var(--filterH);padding:9px 16px;
-  border-bottom:1px solid var(--line-soft);
-  background:color-mix(in srgb,#020408 84%,transparent);
-  backdrop-filter:saturate(1.35) blur(16px);-webkit-backdrop-filter:saturate(1.35) blur(16px);
+  border-bottom:1px solid transparent;background:transparent;
   display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;align-items:center}
 .tagbar::-webkit-scrollbar{display:none}
 .pill{flex:none;height:40px;padding:0 20px;border:1px solid var(--border-15);
@@ -275,8 +273,11 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 .count{position:sticky;top:calc(var(--topH) + var(--filterH));z-index:60;
   min-height:var(--sortH);color:var(--ink-2);margin:0 -16px 12px;padding:8px 16px;
   display:flex;align-items:center;gap:10px;flex-wrap:nowrap;
-  background:color-mix(in srgb,#020408 84%,transparent);border-bottom:1px solid var(--line-soft);
-  backdrop-filter:saturate(1.35) blur(16px);-webkit-backdrop-filter:saturate(1.35) blur(16px)}
+  background:transparent;border-bottom:1px solid transparent}
+.tagbar,.count{transition:background-color .16s ease,border-color .16s ease}
+.tagbar.is-stuck,.count.is-stuck{background:color-mix(in srgb,#020408 84%,transparent);
+  border-bottom-color:var(--line-soft);backdrop-filter:saturate(1.35) blur(16px);
+  -webkit-backdrop-filter:saturate(1.35) blur(16px)}
 .count:empty{display:none}
 .count>span:first-child{flex:none}
 .count .sorts{display:flex;gap:5px;margin-left:auto;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
@@ -640,8 +641,12 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   .side{border-left:0;border-top:1px solid var(--line-soft);max-height:none}}
 @media (max-width:760px){
   .readout{display:none} .brand .sub{display:none}
-  :root{--tile:168px;--topH:52px;--sortH:51px}
+  :root{--tile:168px;--topH:52px;--sortH:96px}
   .grid{gap:16px 8px}
+  .count{align-items:stretch;flex-direction:column;gap:7px;padding-block:8px}
+  .count>span:first-child{line-height:28px}
+  .count .sorts{width:100%;margin-left:0;flex:none}
+  .count .sorts button{flex:0 0 auto;min-height:36px;white-space:nowrap}
   /* 顶栏在窄屏会被搜索框撑破 —— 搜索收成一个按钮，点了才展开 */
   .top{gap:4px;padding:0 8px;overflow:hidden}
   .brand h1{font-size:17px}
@@ -789,11 +794,29 @@ const REP={};   // 创作者/厂牌 → 代表作 id，用来做圆头像（裁�
 let offset=0,total=0,facets=null,current=null,detailReturnPath='/';
 const CACHE={};
 const cache=items=>{items.forEach(x=>CACHE[x.id]=x);return items};
+let detailStreamSession='';
+function newStreamSession(){
+  return globalThis.crypto?.randomUUID?.()||`${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+function detailStreamUrl(id){
+  if(!detailStreamSession)detailStreamSession=newStreamSession();
+  return `/stream?id=${id}&session=${encodeURIComponent(detailStreamSession)}`;
+}
+function cancelDetailStream(){
+  const session=detailStreamSession;if(!session)return;
+  detailStreamSession='';
+  fetch(`/api/stream-cancel?session=${encodeURIComponent(session)}`,{
+    method:'POST',credentials:'same-origin',keepalive:true
+  }).then(r=>r.json()).then(result=>{
+    document.documentElement.dataset.peachStreamCancel=JSON.stringify(result)
+  }).catch(()=>{});
+}
 function disposeStage(push=false){
   const stage=$('#stage');
   stage.querySelectorAll('video').forEach(video=>{
     if(video._hop)clearInterval(video._hop);
     video.pause();video.removeAttribute('src');video.load();video.remove()});
+  cancelDetailStream();
   stage.innerHTML='';stage.hidden=true;document.body.classList.remove('detail-open');current=null;
   if(push)route(detailReturnPath||'/');
 }
@@ -1406,13 +1429,28 @@ $('#edge').addEventListener('mouseenter',()=>{if(Date.now()<drawerSuppressUntil)
 /* 滚动期间挂起悬停预览：内容在鼠标下滑过会连续触发 mouseenter，
    每次都新建 video 并发起 /stream 请求，直接把页面拖垮。 */
 window.__scrolling=false; let scrollT=null;
+let stickyFrame=0;
+function updateStickySurfaces(){
+  ['#tagbar','#count'].forEach(selector=>{
+    const el=$(selector),css=el&&getComputedStyle(el),top=css?parseFloat(css.top):NaN;
+    const stuck=!!el&&css.position==='sticky'&&el.offsetParent!==null&&window.scrollY>0&&
+      Number.isFinite(top)&&el.getBoundingClientRect().top<=top+1;
+    if(el)el.classList.toggle('is-stuck',stuck);
+  });
+}
+function scheduleStickySurfaces(){
+  if(stickyFrame)return;
+  stickyFrame=requestAnimationFrame(()=>{stickyFrame=0;updateStickySurfaces()});
+}
 window.addEventListener('scroll',()=>{
+  scheduleStickySurfaces();
   window.__scrolling=true;
   // 滚动中挂起悬停预览：内容从鼠标下滑过会连续触发 mouseenter，
   // 每次新建 video 并发 /stream，几十个并发直接把页面拖垮
   releaseHoverPreviews();
   clearTimeout(scrollT); scrollT=setTimeout(()=>{window.__scrolling=false},180);
 },{passive:true});
+window.addEventListener('resize',scheduleStickySurfaces,{passive:true});
 
 /* 只在真正进入 72 px 图标栏时展开；内容区左缘不再设隐形热区。 */
 $('#edge').addEventListener('mouseleave',()=>clearTimeout(edgeT));
@@ -1523,7 +1561,7 @@ async function openItem(id,push=true){
           ${srcBadge(it.location,it.cost,'srcbig')}
           <span style="font-size:12px;color:var(--muted)">点此开始拉流 · ${fmtSize(it.size||0)}</span></div>
         <video id="vid" controls preload="none" hidden></video>`
-       :`<video id="vid" controls autoplay preload="metadata" src="/stream?id=${it.id}"></video>`}
+       :`<video id="vid" controls autoplay preload="metadata" src="${detailStreamUrl(it.id)}"></video>`}
     </div>
     <div class="side">
       <div class="stitle">${esc(it.name)}</div>
@@ -1557,7 +1595,7 @@ async function openItem(id,push=true){
 
   $('#closeStage').onclick=()=>disposeStage(true);
   const g=$('#gate'); if(g)g.onclick=()=>{const v=$('#vid');
-    v.src='/stream?id='+it.id;v.hidden=false;g.remove();v.play()};
+    v.src=detailStreamUrl(it.id);v.hidden=false;g.remove();v.play()};
   $('#stage').querySelectorAll('[data-kind]').forEach(b=>b.onclick=async()=>{
     const r=await api('/api/feedback',{method:'POST',body:JSON.stringify({id:it.id,kind:b.dataset.kind})});
     Object.assign(it,{feedback:r.feedback,disposal:r.disposal,o_count:r.o_count});
@@ -1868,7 +1906,7 @@ async function restoreRoute(){
 }
 window.addEventListener('popstate',restoreRoute);
 buildEdge();
-buildBars().then(async()=>{buildEdge();wireAllDrag();await load(true);await restoreRoute()});
+buildBars().then(async()=>{buildEdge();wireAllDrag();await load(true);await restoreRoute();scheduleStickySurfaces()});
 </script>
 </body>
 </html>
