@@ -112,6 +112,45 @@ Per-Monitor V2 DPI，单击打开 `https://peach.local/`；右键可查看状态
 
 当前运行态与下一任务只看 [`docs/STATUS.md`](docs/STATUS.md)；跨 Codex/Claude 的固定接手方式只看 [`docs/HANDOFF.md`](docs/HANDOFF.md)。
 
+## URL 路由
+
+浏览器页面：
+
+| URL | 用途 |
+|---|---|
+| `/` | 首页 |
+| `/item/{id}` | 作品详情 |
+| `/performers` | 全部女优 |
+| `/performers/{name}` | 女优资料页 |
+| `/creators` | 全部创作者 |
+| `/creators/{name}` | 创作者资料页 |
+| `/studios/{name}` | 厂牌资料页 |
+| `/series/{name}` | 系列资料页 |
+| `/tags` | 全部标签 |
+| `/stats` | 统计 |
+| `/immerse` | 沉浸模式 |
+
+公共状态和媒体：
+
+| URL | 用途 |
+|---|---|
+| `/healthz` | 无副作用健康状态 |
+| `/favicon.svg` | Peach 图标 |
+| `/stream?id={asset_id}` | 原片或兼容转码的 Range 流 |
+| `/thumb?id={asset_id}` | 缩略图 |
+| `/poster?id={asset_id}&c={0..8}` | 海报/接触表格子 |
+| `/avatar?id={asset_id}` | 作品代表头像 |
+| `/logo?studio={name}` | 厂牌 Logo |
+| `/entity-image?kind={kind}&id={entity_id}` | 规范实体头像/Logo |
+
+只读 API：`GET /api/items`、`/api/item`、`/api/entity`、`/api/index`、`/api/stats`、
+`/api/tops`、`/api/ads`、`/api/related`、`/api/facets`、`/api/providers`、
+`/api/providers/opencode-go/models`。
+
+写入 API：`POST /api/activity`、`/api/play`、`/api/feedback`、`/api/watch-later`、
+`/api/preference`、`/api/batch`。除上述明确端点外，`/api/*` 返回 404。公共页面不再使用
+`/entity/{kind}/{name}`；内部 JSON 的 `/api/entity` 只是兼容契约，不暴露数据库路由结构。
+
 并行代码任务不共享编辑目录。由协调者在主目录创建独立 worktree：
 
 ```powershell
