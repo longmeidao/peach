@@ -217,11 +217,17 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('${tgs?`<div class="ctags">${tgs}</div>`', self.page)
 
     def test_compact_card_title_is_one_line_and_identity_kind_matches_name(self):
-        self.assertIn('body[data-density="dense"] .card .meta .t{display:block;max-width:100%;overflow:hidden;', self.page)
+        self.assertIn('body[data-density="dense"] .card .meta .t{display:block;max-width:100%;min-height:1.35em;overflow:hidden;', self.page)
         self.assertIn("performer?{kind:'performer',name:performer}", self.page)
         self.assertIn("it.code?{kind:'',name:it.code}", self.page)
         self.assertIn("it.studio?{kind:'studio',name:it.studio}", self.page)
         self.assertNotIn("const whoKind=it.creator?'creator':(it.studio?'studio':'')", self.page)
+
+    def test_card_hover_hides_source_and_duration_and_missing_size_is_explicit(self):
+        self.assertIn('.card:hover .badge,.card:hover .dur{opacity:0}', self.page)
+        self.assertIn('.meta .t{font-size:14px;line-height:1.35;min-height:2.7em;', self.page)
+        self.assertIn("const sizeText=Number(it.size)>0?fmtSize(Number(it.size)):'大小未知';", self.page)
+        self.assertIn('<span class="size">${sizeText}</span>', self.page)
 
     def test_tags_page_has_cloud_and_alphabet_modes(self):
         self.assertIn('data-tag-view="cloud"', self.page)
