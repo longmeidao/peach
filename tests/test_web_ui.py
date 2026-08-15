@@ -102,6 +102,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('class="relatedpeople"', self.page)
         self.assertIn("data-related-performer", self.page)
 
+    def test_every_home_navigation_restores_the_shared_facets(self):
+        self.assertIn("function showHomeSurfaces()", self.page)
+        self.assertIn("$('#tiers').style.display='';$('#tagbar').style.display=''", self.page)
+        self.assertIn("function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}", self.page)
+        self.assertIn("async function load(reset)", self.page)
+        self.assertIn("showHomeSurfaces();\n  if(reset)offset=0", self.page)
+        self.assertIn("showHomeSurfaces();disposeStage(false)", self.page)
+
     def test_entity_tags_filter_inside_the_current_entity_page(self):
         self.assertIn("if(entityTag)p.set('tag',entityTag)", self.page)
         self.assertIn("async function updateEntityCollection", self.page)
