@@ -1187,8 +1187,11 @@ async function openEntity(kind,name,push=true){
   $('#index').hidden=false;$('#grid').innerHTML='';$('#count').textContent='';
   $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
   const labels={performer:'女优',studio:'厂牌',creator:'创作者',series:'系列'};
-  const image=d.id?`<img src="/entity-image?kind=${kind}&id=${d.id}" alt="${esc(d.canonical_name)}"
-      onerror="${d.representative_asset_id?`this.onerror=null;this.src='/avatar?id=${d.representative_asset_id}'`:`this.remove()`}">`:'';
+  const image=d.id?(kind==='studio'
+    ? `<img src="/logo?studio=${encodeURIComponent(d.canonical_name)}" alt="${esc(d.canonical_name)}"
+        onerror="if(!this.dataset.f){this.dataset.f='1';this.src='/entity-image?kind=studio&id=${d.id}'}else{this.remove()}">`
+    : `<img src="/entity-image?kind=${kind}&id=${d.id}" alt="${esc(d.canonical_name)}"
+        onerror="${d.representative_asset_id?`this.onerror=null;this.src='/avatar?id=${d.representative_asset_id}'`:`this.remove()`}">`):'';
   const links=(d.links||[]).map(x=>x.clickable&&/^https?:\/\//i.test(x.url||'')
     ? `<a href="${esc(x.url)}" target="_blank" rel="noreferrer">${esc(x.label)} ↗</a>`
     : `<span class="private" title="私人馆藏来源记录，不直接打开下载页">来源 · ${esc(x.label||x.hostname||'已记录')}</span>`).join('');

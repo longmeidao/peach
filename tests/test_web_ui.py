@@ -75,6 +75,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_entity_profile_hides_home_facets_and_renders_context(self):
         self.assertIn("body.entity-open #tiers,body.entity-open #tagbar{display:none}", self.page)
+        self.assertIn('src="/logo?studio=${encodeURIComponent(d.canonical_name)}"', self.page)
         self.assertIn('class="entitytags"', self.page)
         self.assertIn('class="relatedpeople"', self.page)
         self.assertIn("data-related-performer", self.page)
