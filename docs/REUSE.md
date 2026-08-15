@@ -31,7 +31,7 @@ These are product behavior and remain custom:
 | Local file events | watchdog plus periodic reconciliation | media identity and missed-event repair |
 | Transitional metadata/media | Stash GraphQL, CommunityScrapers and Stash job system | adapter, reconciliation and exit gates |
 | LAN discovery | Python zeroconf | service lifecycle and real-client acceptance |
-| Windows tray | pystray 0.19.5 (LGPLv3) plus Pillow | Peach service ownership, menu actions and brand mark |
+| Windows tray | pystray 0.19.5 (LGPLv3), Pillow and Win32 Per-Monitor V2 DPI | Peach service ownership, background update check, menu actions and brand mark |
 | Agent usage/quota | official provider quota APIs; T3 Code/CodexBar for local history | task routing, redaction and stale-snapshot labeling |
 | Video source/end-card evidence | existing FFmpeg frame extraction plus a reviewed OCR/vision adapter | opening/ending sample policy, provenance and incomplete-version candidates |
 | Referenced product behavior | current live interaction plus versioned public DOM/CSS/JS, or exact screenshot measurements when source is unavailable | evidence register, accessibility, Peach-specific deviations and regression checks |

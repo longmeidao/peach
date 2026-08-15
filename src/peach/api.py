@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import Body, FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 
-from . import web_contract
+from . import __version__, web_contract
 from .config import PeachSettings
 from .ffmpeg import FFmpegResolver
 from .http import HttpxTransport
@@ -89,7 +89,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="Peach API",
-        version="0.2.0",
+        version=__version__,
         lifespan=lifespan,
         docs_url="/docs" if settings.docs_enabled else None,
         redoc_url=None,
@@ -119,7 +119,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
     def healthz() -> dict[str, Any]:
         # 不探测/迁移数据库；健康检查必须无副作用。
         ffmpeg = resolver.ffmpeg()
-        return {"ok": True, "service": "peach-api", "mode": "fastapi",
+        return {"ok": True, "service": "peach-api", "version": __version__, "mode": "fastapi",
                 "db": "available" if settings.db_path.is_file() else "missing",
                 "ffmpeg": ffmpeg.source if ffmpeg else "unavailable",
                 "mdns": mdns.status if mdns is not None else "disabled",

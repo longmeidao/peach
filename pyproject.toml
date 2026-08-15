@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "peach-app"
-version = "0.2.0"
+dynamic = ["version"]
 description = "Local-first media library, behavior ledger, and discovery application"
 requires-python = ">=3.12"
 dependencies = [
@@ -26,6 +26,9 @@ peach-tray = "peach.tray:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+
+[tool.setuptools.dynamic]
+version = {attr = "peach.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]

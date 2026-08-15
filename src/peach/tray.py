@@ -16,10 +16,37 @@ import pystray
 from PIL import Image, ImageDraw
 
 from .config import LOG_DIR, PROJECT_ROOT, SECRETS_DIR, STATE_DIR
+from .versioning import VersionManager
 
 
 DEFAULT_LAN_ADDRESS = "192.168.50.162"
 OPEN_URL = "https://peach.local/"
+
+
+def enable_hidpi() -> str:
+    """Enable native sharp Win32 menus before pystray creates any windows."""
+    if os.name != "nt":
+        return "not-windows"
+    try:
+        setter = ctypes.windll.user32.SetProcessDpiAwarenessContext
+        setter.argtypes = [ctypes.c_void_p]
+        setter.restype = ctypes.c_bool
+        if setter(ctypes.c_void_p(-4)):  # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+            return "per-monitor-v2"
+    except (AttributeError, OSError):
+        pass
+    try:
+        result = ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+        if result in (0, -2147024891):  # S_OK or E_ACCESSDENIED (already set)
+            return "per-monitor"
+    except (AttributeError, OSError):
+        pass
+    try:
+        if ctypes.windll.user32.SetProcessDPIAware():
+            return "system"
+    except (AttributeError, OSError):
+        pass
+    return "unavailable"
 
 
 @dataclass(frozen=True)
@@ -228,28 +255,21 @@ def show_message(title: str, message: str, *, error: bool = False) -> None:
         print(f"{title}: {message}")
 
 
-def update_status() -> str:
-    try:
-        revision = subprocess.run(
-            ["git", "-C", str(PROJECT_ROOT), "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, timeout=5, check=True,
-        ).stdout.strip()
-        remote = subprocess.run(
-            ["git", "-C", str(PROJECT_ROOT), "remote", "get-url", "origin"],
-            capture_output=True, text=True, timeout=5, check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return "无法读取本地版本信息。"
-    if remote.returncode != 0:
-        return f"当前提交 {revision}。这是本地开发版，尚未配置更新源。"
-    return f"当前提交 {revision}。已配置更新源；自动更新尚未启用，请由项目协调者审核更新。"
-
-
 class PeachTray:
-    def __init__(self, manager: ServiceManager) -> None:
+    def __init__(self, manager: ServiceManager, versions: VersionManager | None = None) -> None:
         self.manager = manager
+        self.versions = versions or VersionManager()
+        self.version = self.versions.inspect()
         self._stop_event = threading.Event()
         self._restart_lock = threading.Lock()
+        self._update_lock = threading.Lock()
+        version_menu = pystray.Menu(
+            pystray.MenuItem(lambda _item: f"Peach {self.version.package_version}", None, enabled=False),
+            pystray.MenuItem(lambda _item: self.version.build_label, None, enabled=False),
+            pystray.MenuItem(lambda _item: self.version.channel_label, None, enabled=False),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("检查更新", self.check_updates),
+        )
         self.icon = pystray.Icon(
             "Peach",
             create_icon(),
@@ -260,7 +280,7 @@ class PeachTray:
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem("重启服务", self.restart),
                 pystray.MenuItem("查看日志", self.open_logs),
-                pystray.MenuItem("检查更新", self.check_updates),
+                pystray.MenuItem("版本与更新", version_menu),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem("退出 Peach", self.exit),
             ),
@@ -281,7 +301,7 @@ class PeachTray:
                     return
                 (icon or self.icon).update_menu()
                 if not ready:
-                    show_message("Peach", "服务未能在 20 秒内恢复，请查看日志。", error=True)
+                    (icon or self.icon).notify("服务未能在 20 秒内恢复，请查看日志。", "Peach")
             finally:
                 self._restart_lock.release()
 
@@ -292,8 +312,22 @@ class PeachTray:
         if os.name == "nt":
             os.startfile(LOG_DIR)
 
-    def check_updates(self, _icon=None, _item=None) -> None:
-        show_message("Peach 更新", update_status())
+    def check_updates(self, icon=None, _item=None) -> None:
+        if not self._update_lock.acquire(blocking=False):
+            return
+        tray_icon = icon or self.icon
+        tray_icon.notify("正在检查更新…", "Peach")
+
+        def work() -> None:
+            try:
+                result = self.versions.check()
+                self.version = result.snapshot
+                tray_icon.update_menu()
+                tray_icon.notify(result.message, "Peach 版本与更新")
+            finally:
+                self._update_lock.release()
+
+        threading.Thread(target=work, name="PeachUpdate", daemon=True).start()
 
     def exit(self, icon=None, _item=None) -> None:
         self._stop_event.set()
@@ -306,18 +340,25 @@ class PeachTray:
                 self.manager.healthy(spec)
             self.icon.update_menu()
 
+    def _setup(self, icon) -> None:
+        icon.visible = True
+        if self._startup_warning:
+            icon.notify(self._startup_warning, "Peach")
+
     def run(self) -> None:
         self.manager.start_missing()
+        self._startup_warning = None
         if not self.manager.wait_until_ready():
-            show_message("Peach", "Peach 只启动了部分服务，请查看托盘状态和日志。", error=True)
+            self._startup_warning = "Peach 只启动了部分服务，请查看托盘状态和日志。"
         threading.Thread(target=self._monitor, name="PeachHealth", daemon=True).start()
         try:
-            self.icon.run()
+            self.icon.run(setup=self._setup)
         finally:
             self._stop_event.set()
 
 
 def main() -> int:
+    enable_hidpi()
     instance = SingleInstance(STATE_DIR / "peach-tray.lock")
     manager = None
     try:

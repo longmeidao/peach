@@ -1,10 +1,15 @@
-import subprocess
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from peach.tray import AlreadyRunning, ServiceManager, ServiceSpec, SingleInstance, create_icon, update_status
+from peach.tray import (
+    AlreadyRunning, PeachTray, ServiceManager, ServiceSpec, SingleInstance,
+    create_icon, enable_hidpi,
+)
+from peach.versioning import UpdateResult, VersionSnapshot
 
 
 class Response:
@@ -47,13 +52,33 @@ class TrayTests(unittest.TestCase):
             manager.stop_owned()
             process.terminate.assert_called_once()
 
-    @patch("peach.tray.subprocess.run")
-    def test_update_status_reports_missing_channel(self, run):
-        run.side_effect = (
-            subprocess.CompletedProcess([], 0, "abc123\n", ""),
-            subprocess.CompletedProcess([], 2, "", "missing"),
-        )
-        self.assertIn("尚未配置更新源", update_status())
+    @patch("peach.tray.ctypes.windll.user32.SetProcessDpiAwarenessContext")
+    def test_hidpi_prefers_per_monitor_v2(self, set_context):
+        set_context.return_value = True
+        self.assertEqual(enable_hidpi(), "per-monitor-v2")
+
+    def test_update_check_is_background_notification_not_modal_dialog(self):
+        snapshot = VersionSnapshot("0.2.1", "master", "abc12345", False, False, None)
+        completed = threading.Event()
+
+        class Versions:
+            def inspect(self):
+                return snapshot
+
+            def check(self):
+                completed.set()
+                return UpdateResult("unconfigured", "未配置更新源", snapshot)
+
+        icon = Mock()
+        tray = PeachTray(ServiceManager(tuple()), Versions())
+        tray.check_updates(icon)
+        self.assertTrue(completed.wait(2))
+        for _ in range(20):
+            if icon.notify.call_count == 2:
+                break
+            time.sleep(0.01)
+        self.assertEqual(icon.notify.call_count, 2)
+        icon.update_menu.assert_called_once()
 
     def test_single_instance_rejects_second_windows_lock(self):
         with tempfile.TemporaryDirectory() as directory:
