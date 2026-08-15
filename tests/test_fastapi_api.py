@@ -39,6 +39,8 @@ CREATE TABLE watch_queue(profile_id TEXT,asset_id INTEGER,added_at TEXT,source T
   PRIMARY KEY(profile_id,asset_id));
 CREATE TABLE asset_preference(profile_id TEXT,asset_id INTEGER,liked INTEGER,reason TEXT,
   source TEXT,updated_at TEXT,PRIMARY KEY(profile_id,asset_id));
+CREATE TABLE asset_quality_goal(profile_id TEXT,asset_id INTEGER,wanted INTEGER,reason TEXT,
+  updated_at TEXT,PRIMARY KEY(profile_id,asset_id));
 CREATE TABLE asset_tag_preference(profile_id TEXT,asset_id INTEGER,normalized_tag TEXT,
   hidden INTEGER,updated_at TEXT,PRIMARY KEY(profile_id,asset_id,normalized_tag));
 CREATE TABLE media_binding(

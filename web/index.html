@@ -93,10 +93,19 @@ button,input,textarea{font:inherit;color:inherit}
 .brand h1{margin:0;font-size:19px;letter-spacing:.08em}
 .brand .sub{font-size:11.5px;letter-spacing:.14em;color:var(--muted)}
 .search{flex:1;max-width:620px;margin:0 auto;display:flex;align-items:center;gap:8px;
-  background:var(--surface);border:1px solid var(--line);border-radius:9999px;padding:8px 16px}
+  background:var(--surface);border:1px solid var(--line);border-radius:9999px;padding:8px 16px;position:relative}
 .search:focus-within{border-color:var(--tungsten)}
 .search input{flex:1;min-width:0;background:none;border:0;outline:none;font-size:15px}
 .search>svg{width:21px;height:21px;flex:none;stroke:var(--muted);fill:none;stroke-width:1.8;stroke-linecap:round}
+.searchmenu{position:absolute;z-index:130;left:0;right:0;top:calc(100% + 8px);padding:8px;
+  border:1px solid var(--border-10);border-radius:14px;background:var(--frost-panel);
+  box-shadow:0 22px 56px -20px #000b;backdrop-filter:saturate(1.5) blur(20px)}
+.searchmenu[hidden]{display:none}.searchgroup+ .searchgroup{border-top:1px solid var(--line-soft);margin-top:7px;padding-top:7px}
+.searchgroup h3{margin:6px 10px;color:var(--muted);font-size:10px;letter-spacing:.14em}
+.searchoption{width:100%;height:38px;border:0;border-radius:8px;background:transparent;color:var(--ink);
+  display:flex;align-items:center;gap:11px;padding:0 10px;text-align:left;cursor:pointer}
+.searchoption:hover,.searchoption.active{background:var(--hover)}.searchoption svg{width:18px;height:18px;stroke:var(--muted);fill:none;flex:none}
+.searchoption span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.searchoption .removehistory{margin-left:auto;border:0;background:none;color:var(--muted);padding:7px;cursor:pointer}
 .readout{display:flex;gap:20px;flex:none;align-items:center}
 .readout div{display:flex;flex-direction:column;line-height:1.3;align-items:flex-start}
 .readout b{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
@@ -421,13 +430,18 @@ body[data-density="dense"] .card .meta .t{-webkit-line-clamp:1;white-space:nowra
 .scard{flex:none;width:214px;cursor:pointer}
 
 /* ── 放大播放（就地展开） ── */
-.stage{margin:0 0 22px;border-radius:5px;background:var(--surface);scroll-margin-top:calc(var(--topH) + 8px);
+.stage{margin:0 0 22px;border-radius:10px;
+  background:radial-gradient(circle at 28% 24%,color-mix(in srgb,var(--video-glow,#15202a) 40%,transparent),transparent 58%),
+    color-mix(in srgb,var(--surface) 76%,transparent);scroll-margin-top:calc(var(--topH) + 8px);
   border:1px solid var(--line);overflow:hidden}
 .stage[hidden]{display:none}
 body.detail-open .tagbar{position:relative;top:auto;z-index:1}
 body.entity-open #tiers,body.entity-open #tagbar{display:none}
 .sgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(350px,390px)}
-.vwrap{background:#000;position:relative;display:flex;align-items:center;justify-content:center}
+.vwrap{background:#000;position:relative;display:flex;align-items:center;justify-content:center;isolation:isolate}
+.ambientcanvas{position:absolute;z-index:0;inset:-34px;width:calc(100% + 68px);height:calc(100% + 68px);
+  filter:blur(46px) saturate(1.45);opacity:.42;transform:scale(1.06);pointer-events:none}
+.vwrap>video,.vwrap>.video-js{position:relative;z-index:1}
 .vwrap video{width:100%;max-height:76vh;display:block}
 .vwrap>.video-js{width:100%;height:auto;max-height:76vh;aspect-ratio:16/9;background:#000}
 .vwrap .video-js .vjs-tech{object-fit:contain}
@@ -438,22 +452,23 @@ body.entity-open #tiers,body.entity-open #tagbar{display:none}
   background:rgba(0,0,0,.46);color:#fff;cursor:pointer;backdrop-filter:blur(10px)}
 .playerstatsbtn[hidden]{display:none}.playerstatsbtn:hover,.playerstatsbtn[aria-pressed="true"]{background:rgba(0,149,246,.72)}
 .playerstatsbtn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:2}
-.playerstats{position:absolute;left:11px;top:58px;z-index:8;min-width:220px;max-width:min(330px,calc(100% - 22px));
+.playerstats{position:absolute;left:11px;top:58px;z-index:8;min-width:320px;max-width:min(520px,calc(100% - 22px));
   padding:10px 12px;border:1px solid rgba(255,255,255,.18);border-radius:8px;
   background:rgba(2,4,8,.78);color:#eef3f8;box-shadow:0 12px 28px #0008;
-  backdrop-filter:saturate(1.25) blur(14px);font:11px/1.55 "Cascadia Mono",monospace;white-space:pre-line}
+  backdrop-filter:saturate(1.25) blur(14px);font:11px/1.5 "Cascadia Mono",monospace}
+.playerstats dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:1px 12px;margin:0}.playerstats dt{text-align:right;font-weight:700}.playerstats dd{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .playerstats[hidden]{display:none}
 .gate{aspect-ratio:16/9;width:100%;background:var(--sunk);border:1px dashed var(--meter);
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer}
-.closestage{position:absolute;top:11px;right:11px;z-index:5;
+.closestage{position:absolute;top:11px;right:11px;z-index:9;width:40px;height:40px;
   background:color-mix(in srgb,#000 68%,transparent);color:#F0E9DE;
-  border:1px solid rgba(255,255,255,.24);border-radius:5px;padding:10px 17px;cursor:pointer;
-  font-size:13px;display:flex;align-items:center;gap:8px}
+  border:1px solid rgba(255,255,255,.24);border-radius:50%;padding:0;cursor:pointer;
+  display:grid;place-items:center}
 .closestage:hover{background:var(--drop);border-color:var(--drop)}
-.closestage kbd{font-family:"Cascadia Mono",monospace;font-size:10px;opacity:.75;
-  border:1px solid rgba(255,255,255,.3);border-radius:3px;padding:0 4px}
+.closestage svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
 .side{padding:18px;border-left:1px solid var(--line-soft);display:flex;gap:0;
-  flex-direction:column;max-height:76vh;overflow-y:auto}
+  flex-direction:column;max-height:76vh;overflow-y:auto;
+  background:color-mix(in srgb,var(--video-glow,#15202a) 12%,var(--surface) 88%);backdrop-filter:blur(18px)}
 .stitle{font-size:17px;line-height:1.4;word-break:break-all;margin-bottom:8px}
 .smeta{display:flex;gap:9px;flex-wrap:wrap;color:var(--muted);margin-bottom:18px}
 .stags{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:0 0 18px}
@@ -506,6 +521,7 @@ body.entity-open #tiers,body.entity-open #tagbar{display:none}
 .fb .seen:hover,.fb .seen[aria-pressed="true"]{color:var(--keep);background:color-mix(in srgb,var(--keep) 12%,transparent)}
 .fb .dispose:hover,.fb .dispose[aria-pressed="true"]{color:var(--meter);background:color-mix(in srgb,var(--meter) 12%,transparent)}
 .fb .later:hover,.fb .later[aria-pressed="true"]{color:var(--loupe);background:color-mix(in srgb,var(--loupe) 12%,transparent)}
+.fb .upgrade:hover,.fb .upgrade[aria-pressed="true"]{color:#B78CFF;background:color-mix(in srgb,#B78CFF 13%,transparent)}
 .preference{border:0;padding:0;margin:0 0 14px;background:transparent}
 .preference textarea{display:block;width:100%;min-height:62px;resize:vertical;padding:8px 9px;
   color:var(--ink);background:var(--ground);border:1px solid var(--line);border-radius:5px;
@@ -522,11 +538,19 @@ body.entity-open #tiers,body.entity-open #tagbar{display:none}
   display:flex;align-items:center;justify-content:center;gap:9px;transition:transform .14s ease,filter .14s ease}
 .obtn svg{width:22px;height:22px;fill:currentColor}.obtn:hover{transform:translateY(-1px);filter:brightness(1.16)}
 .hint{color:var(--muted);line-height:1.65;font-size:12px}
-.next{border-top:1px solid var(--line-soft);padding:13px 15px 15px}
-.next h3{margin:0 0 10px;font-size:12px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
+.next{border-top:1px solid var(--line-soft);padding:11px 15px 12px;background:color-mix(in srgb,var(--video-glow,#15202a) 8%,transparent)}
+.next h3{margin:0 0 8px;font-size:12px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
 .nrow{display:flex;gap:11px;overflow-x:auto;padding-bottom:6px}
 .ncard{flex:none;width:216px;cursor:pointer}
 .ncard .why{color:var(--loupe)}
+
+.settingspanel{position:fixed;z-index:220;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.42);padding:18px}
+.settingspanel[hidden]{display:none}.settingscard{width:min(520px,100%);max-height:min(720px,90vh);overflow:auto;
+  border:1px solid var(--border-15);border-radius:16px;background:var(--frost-panel);box-shadow:0 30px 90px -30px #000;
+  backdrop-filter:saturate(1.7) blur(24px);padding:20px}.settingshead{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.settingshead h2{margin:0;font-size:20px}.settingshead button{border:0;background:transparent;color:var(--muted);width:38px;height:38px;border-radius:50%;cursor:pointer}
+.settingshead svg{width:20px;height:20px;stroke:currentColor;fill:none}.settingrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:14px 0;border-top:1px solid var(--line-soft)}
+.settingrow:first-of-type{border-top:0}.settingrow b{display:block;font-size:14px}.settingrow small{display:block;color:var(--muted);margin-top:3px}.settingrow select{min-width:120px;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:8px 10px}.settingrow input[type=checkbox]{width:20px;height:20px;accent-color:var(--tungsten)}
 
 /* ── 筛选抽屉（默认收起，不占版面） ── */
 /* 常驻 72 px 窄图标条。外部实现证据和有意差异登记在 docs/HANDOFF.md。 */
@@ -610,7 +634,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .tok{position:fixed;inset:0;z-index:200;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden}
 .tok[hidden]{display:none}
 .toktrack{position:absolute;inset:0;overflow:hidden}.toktrack video{position:absolute;inset:0;max-height:100vh;max-width:100vw;
-  width:100%;height:100%;object-fit:contain;background:#000;will-change:transform;
+  width:min(100%,560px);height:100%;left:50%;transform:translateX(-50%);object-fit:contain;background:#000;will-change:transform;
   transition:transform .2s cubic-bezier(.2,.2,.4,.9)}
 .tokui{position:absolute;inset:auto 0 0 0;padding:18px 20px 26px;color:#F3ECE2;
   background:linear-gradient(transparent,rgba(0,0,0,.84));pointer-events:none}
@@ -639,9 +663,9 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .tokui a:hover{text-decoration:underline}
 .tokui{pointer-events:none} .tokui a{pointer-events:auto}
 .tokbtns button[aria-pressed="true"]{background:var(--tungsten);color:#1A1206;border-color:var(--tungsten)}
-.tokclose{position:absolute;top:15px;right:15px;background:rgba(0,0,0,.5);color:#EEE;
-  border:0;border-radius:5px;padding:9px 16px;cursor:pointer}
-.tokhint{position:absolute;top:17px;left:16px;color:rgba(243,236,226,.6);font-size:11px}
+.tokclose{position:absolute;top:15px;right:15px;width:42px;height:42px;background:rgba(0,0,0,.5);color:#EEE;
+  border:0;border-radius:50%;padding:0;display:grid;place-items:center;cursor:pointer}.tokclose svg{width:21px;height:21px;stroke:currentColor;fill:none}
+.tokhint{display:none}
 
 .loadmore{min-height:42px;margin:18px auto 0;text-align:center;color:var(--muted);padding:12px}
 .empty{color:var(--muted);padding:44px 0;text-align:center}
@@ -664,12 +688,14 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   .count .sorts button{flex:0 0 auto;min-height:36px;white-space:nowrap}
   /* 顶栏在窄屏会被搜索框撑破 —— 搜索收成一个按钮，点了才展开 */
   .top{gap:4px;padding:0 8px;overflow:hidden}
+  .top:has(.search.open){overflow:visible}
   .brand h1{font-size:17px}
   .ib{width:36px;height:36px}
   .ib svg{width:19px;height:19px}
   .search{position:absolute;left:8px;right:8px;top:8px;max-width:none;margin:0;
     display:none;z-index:5;background:var(--surface)}
   .search.open{display:flex}
+  .searchmenu{position:fixed;left:8px;right:8px;top:56px;max-height:70vh;overflow:auto}
   #searchBtn{display:inline-flex!important}
   /* 移动端不需要密度切换和筛选抽屉按钮挤在一起 */
   #density{display:none}
@@ -697,6 +723,9 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   <symbol id="i-star" viewBox="0 0 24 24"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></symbol>
   <symbol id="i-list-filter" viewBox="0 0 24 24"><path d="M2 5h20"/><path d="M6 12h12"/><path d="M9 19h6"/></symbol>
   <symbol id="i-chart" viewBox="0 0 24 24"><path d="M5 21v-6"/><path d="M12 21V3"/><path d="M19 21V9"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="m12 3-1.9 4.7a2 2 0 0 1-1.1 1.1L4.3 10.7 9 12.6a2 2 0 0 1 1.1 1.1L12 18.4l1.9-4.7a2 2 0 0 1 1.1-1.1l4.7-1.9L15 8.8a2 2 0 0 1-1.1-1.1z"/><path d="M5 3v4"/><path d="M3 5h4"/><path d="M19 17v4"/><path d="M17 19h4"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
   <symbol id="i-hard-drive" viewBox="0 0 24 24"><path d="M10 16h.01"/><path d="M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><path d="M21.946 12.013H2.054"/><path d="M6 16h.01"/></symbol>
   <symbol id="i-globe" viewBox="0 0 24 24"><path d="M21.54 15H17a2 2 0 0 0-2 2v4.54"/><path d="M7 3.34V5a3 3 0 0 0 3 3a2 2 0 0 1 2 2c0 1.1.9 2 2 2a2 2 0 0 0 2-2c0-1.1.9-2 2-2h3.17"/><path d="M11 21.95V18a2 2 0 0 0-2-2a2 2 0 0 1-2-2v-1a2 2 0 0 0-2-2H2.05"/><circle cx="12" cy="12" r="10"/></symbol>
@@ -722,13 +751,15 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   <button class="ib" id="filterBtn" title="筛选"><svg viewBox="0 0 24 24"><use href="#i-sliders-horizontal"/></svg></button>
   <a class="brand" href="#" id="brandHome"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="pg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF9A76"/><stop offset="1" stop-color="#F2557B"/></linearGradient></defs><path d="M16 29c-6.1 0-10.4-3.9-10.4-9.2 0-4.6 3-8.2 7-8.2 1.5 0 2.6.5 3.4 1.2.8-.7 1.9-1.2 3.4-1.2 4 0 7 3.6 7 8.2C26.4 25.1 22.1 29 16 29z" fill="url(#pg)"/><path d="M16 13.2V28" stroke="#0B0B0D" stroke-width="1.1" opacity=".28" stroke-linecap="round"/><path d="M17.2 11.4c.6-3 3-4.9 6-5.1-.2 3-2.4 5-6 5.1z" fill="#5FB95F"/><path d="M16 11.6c0-2 .5-3.6 1.6-4.8" stroke="#8A5A3B" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg><h1 class="disp">Peach</h1><span class="sub mono">蜜桃</span></a>
   <div class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-search"/></svg>
-    <input id="q" type="search" placeholder="FC2" autocomplete="off"></div>
+    <input id="q" type="search" placeholder="FC2" autocomplete="off">
+    <div class="searchmenu" id="searchMenu" hidden></div></div>
   <button class="ib" id="immerseBtn" title="沉浸模式 · 随机连播"><svg viewBox="0 0 24 24"><use href="#i-play"/></svg></button>
 
   <button class="ib" id="searchBtn" title="搜索"><svg viewBox="0 0 24 24"><use href="#i-search"/></svg></button>
   <button class="ib" id="selectMode" title="多选（Ctrl 单项，Shift 连续）" aria-label="多选模式" aria-pressed="false"><svg viewBox="0 0 24 24"><use href="#i-square-check-big"/></svg></button>
   <button class="ib" id="density" title="密度：大图 / 密集"><svg viewBox="0 0 24 24"><use href="#i-layout-grid"/></svg></button>
   <button class="ib" id="refresh" title="换一批推荐"><svg viewBox="0 0 24 24"><use href="#i-refresh-cw"/></svg></button>
+  <button class="ib" id="settingsBtn" title="设置"><svg viewBox="0 0 24 24"><use href="#i-settings"/></svg></button>
 
 </header>
 
@@ -760,7 +791,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 <div class="tok" id="tok" hidden>
   <div class="toktrack" id="tokTrack"><video id="tokVid" playsinline></video></div>
   <div class="tokhint mono">滚轮 / ↑↓ 切换 · Esc 退出 · 横竖屏混流</div>
-  <button class="tokclose" id="tokClose">退出</button>
+  <button class="tokclose" id="tokClose" title="关闭" aria-label="关闭"><svg viewBox="0 0 24 24"><use href="#i-x"/></svg></button>
   <div class="tokbtns">
     <button id="tokDislike" title="标为不喜欢" aria-label="标为不喜欢"><svg viewBox="0 0 24 24"><use href="#i-thumbs-down"/></svg><span class="toklabel">不喜欢</span></button>
     <button id="tokSeen" title="标为看过" aria-label="标为看过"><svg viewBox="0 0 24 24"><use href="#i-eye"/></svg><span class="toklabel">看过</span></button>
@@ -770,6 +801,16 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   <div class="tokui"><div id="tokTitle" style="font-size:14px;margin-bottom:5px"></div>
     <div class="mono"><a href="#" id="tokWho"></a> <span id="tokMeta"></span></div></div>
 </div>
+
+<section class="settingspanel" id="settingsPanel" hidden aria-modal="true" role="dialog" aria-labelledby="settingsTitle">
+  <div class="settingscard">
+    <div class="settingshead"><h2 id="settingsTitle">设置</h2><button id="settingsClose" aria-label="关闭设置"><svg viewBox="0 0 24 24"><use href="#i-x"/></svg></button></div>
+    <label class="settingrow"><span><b>自动换一批</b><small>仅在首页空闲时刷新，不打断播放、选择或输入。</small></span><input id="autoRefreshSetting" type="checkbox"></label>
+    <label class="settingrow"><span><b>刷新间隔</b><small>默认 5 分钟。</small></span><select id="refreshMinutesSetting"><option value="5">5 分钟</option><option value="10">10 分钟</option><option value="30">30 分钟</option></select></label>
+    <label class="settingrow"><span><b>悬停放大</b><small>转圈完成后进入放大预览。</small></span><select id="hoverDelaySetting"><option value="3">3 秒</option><option value="5">5 秒</option><option value="8">8 秒</option></select></label>
+    <label class="settingrow"><span><b>视频环境光</b><small>从当前画面取色，柔和投射到播放器周围。</small></span><input id="ambientSetting" type="checkbox"></label>
+  </div>
+</section>
 
 <script src="/vendor/videojs/8.23.9/video.min.js"></script>
 <script src="/vendor/videojs/8.23.9/lang/zh-CN.js"></script>
@@ -791,6 +832,25 @@ const fmtClock=s=>{s=Math.max(0,Math.floor(Number(s)||0));const h=s/3600|0,m=(s%
 const fmtSize=b=>b>=1099511627776?(b/1099511627776).toFixed(2)+' TB':b>=1073741824?(b/1073741824).toFixed(1)+' GB':(b/1048576|0)+' MB';
 const LOC={local:'本地','115':'115',pikpak:'PikPak',online:'在线'};
 const DURATION_TAGS=new Set(['短片-2分内','中片-10分内','长片-30分内','超长片-30分上']);
+const SETTINGS_KEY='peach.settings.v1';
+const DEFAULT_SETTINGS={autoRefresh:true,refreshMinutes:5,hoverDelaySeconds:5,ambient:true};
+let appSettings={...DEFAULT_SETTINGS};
+try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
+const saveSettings=()=>localStorage.setItem(SETTINGS_KEY,JSON.stringify(appSettings));
+function syncSettingsPanel(){
+  $('#autoRefreshSetting').checked=!!appSettings.autoRefresh;
+  $('#refreshMinutesSetting').value=String(appSettings.refreshMinutes);
+  $('#hoverDelaySetting').value=String(appSettings.hoverDelaySeconds);
+  $('#ambientSetting').checked=!!appSettings.ambient;
+}
+function openSettings(open=true){$('#settingsPanel').hidden=!open;if(open)syncSettingsPanel()}
+$('#settingsBtn').onclick=()=>openSettings(true);$('#settingsClose').onclick=()=>openSettings(false);
+$('#settingsPanel').onclick=e=>{if(e.target===$('#settingsPanel'))openSettings(false)};
+$('#autoRefreshSetting').onchange=e=>{appSettings.autoRefresh=e.target.checked;saveSettings();scheduleAutoRefresh()};
+$('#refreshMinutesSetting').onchange=e=>{appSettings.refreshMinutes=+e.target.value||5;saveSettings();scheduleAutoRefresh()};
+$('#hoverDelaySetting').onchange=e=>{appSettings.hoverDelaySeconds=+e.target.value||5;saveSettings()};
+$('#ambientSetting').onchange=e=>{appSettings.ambient=e.target.checked;saveSettings();
+  document.querySelectorAll('.ambientcanvas').forEach(x=>x.hidden=!appSettings.ambient)};
 /* 来源图标：品牌使用已缓存的官方资产；通用操作图标统一使用本地 Lucide 子集。 */
 const SRCICON={
   local:icon('hard-drive'),
@@ -868,16 +928,23 @@ function mountDetailPlayer(it,video,autoplay){
     if(!statsPanel||statsPanel.hidden||!detailPlayer||detailPlayer.isDisposed())return;
     const quality=video.getVideoPlaybackQuality?video.getVideoPlaybackQuality():null;
     let vhs=null;try{vhs=detailPlayer.tech({IWillNotUseThisInPlugins:true})?.vhs?.stats||null}catch(_e){}
-    const lines=[
-      `传输  ${vhs?'HLS / DASH':'HTTP Range'}`,
-      `时间  ${fmtClock(video.currentTime)} / ${fmtClock(expected||detailPlayer.duration())}`,
-      `缓冲  ${bufferedAhead(video).toFixed(1)} 秒`,
-      `画面  ${video.videoWidth||it.width||'?'}×${video.videoHeight||it.height||'?'}`,
-      `帧    ${quality?`${quality.totalVideoFrames-quality.droppedVideoFrames}/${quality.totalVideoFrames} · 丢 ${quality.droppedVideoFrames}`:'浏览器未提供'}`,
+    const rect=video.getBoundingClientRect(),current=`${video.videoWidth||it.width||'?'}×${video.videoHeight||it.height||'?'}`;
+    const resources=performance.getEntriesByType('resource').filter(x=>x.name.includes('/stream?id='+it.id));
+    const bytes=resources.reduce((n,x)=>n+(x.transferSize||x.encodedBodySize||0),0);
+    const seconds=resources.reduce((n,x)=>n+(x.duration||0),0)/1000;
+    const speed=vhs?.bandwidth||(seconds>0?bytes*8/seconds:0);
+    const rows=[
+      ['视频 ID / 会话',`${it.id} / ${detailStreamSession.slice(0,8)}`],
+      ['视口 / 帧',`${Math.round(rect.width)}×${Math.round(rect.height)} / ${quality?`${quality.totalVideoFrames-quality.droppedVideoFrames} of ${quality.totalVideoFrames}`:'—'}`],
+      ['当前 / 最佳分辨率',`${current} / ${it.width||'?'}×${it.height||'?'}`],
+      ['编码 / 传输',`${String(it.name||'').split('.').pop()?.toUpperCase()||'—'} / ${vhs?'HLS / DASH':'HTTP Range'}`],
+      ['连接速度',speed?`${(speed/1e6).toFixed(1)} Mbps`:'—'],
+      ['网络活动',`${bytes?fmtSize(bytes):'—'} · ${resources.length} 请求`],
+      ['缓冲健康',`${bufferedAhead(video).toFixed(1)} 秒`],
+      ['播放时间',`${fmtClock(video.currentTime)} / ${fmtClock(expected||detailPlayer.duration())}`],
+      ['日期',new Date().toLocaleString()],
     ];
-    if(vhs){lines.push(`带宽  ${vhs.bandwidth?`${(vhs.bandwidth/1e6).toFixed(1)} Mbps`:'—'}`);
-      lines.push(`请求  ${vhs.mediaRequests||0} · ${vhs.mediaBytesTransferred?fmtSize(vhs.mediaBytesTransferred):'0 MB'}`)}
-    statsPanel.textContent=lines.join('\n');
+    statsPanel.innerHTML='<dl>'+rows.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')+'</dl>';
   };
   detailPlayer.on(['loadstart','loadedmetadata','durationchange','error'],enforceDuration);
   detailPlayer.ready(()=>{enforceDuration();if(statsButton)statsButton.hidden=false;
@@ -944,7 +1011,7 @@ function wireHover(el,it){
   const pic=el.querySelector('.pic'); if(!pic)return;
   el.dataset.hoverMode=it.location==='local'?'video':'frames';
   let longTimer=null;
-  const armLong=()=>{clearTimeout(longTimer);el.classList.add('previewing');longTimer=setTimeout(()=>el.classList.add('longhover'),5000)};
+  const armLong=()=>{clearTimeout(longTimer);el.classList.add('previewing');longTimer=setTimeout(()=>el.classList.add('longhover'),Math.max(1,appSettings.hoverDelaySeconds)*1000)};
   const clearLong=()=>{clearTimeout(longTimer);el.classList.remove('previewing','longhover')};
   if(it.location!=='local'){        // 远端源：只换预览图逐格扫视，零网络流量
     const im=pic.querySelector('.poster'); if(!im)return;
@@ -1578,11 +1645,26 @@ loadObserver.observe($('#loadSentinel'));
 const SEARCH_HINTS=['Prestige','FC2','Sakura Misaki','丝袜','足交','ABW'];
 const searchSuggestion=SEARCH_HINTS[Math.floor(Math.random()*SEARCH_HINTS.length)];
 $('#q').dataset.suggestion=searchSuggestion;$('#q').placeholder=searchSuggestion;
-const runSearch=(useSuggestion=false)=>{let query=$('#q').value.trim();
+const SEARCH_HISTORY_KEY='peach.search.history.v1';
+const readSearchHistory=()=>{try{return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY)||'[]').filter(x=>typeof x==='string').slice(0,10)}catch(_e){return[]}};
+const writeSearchHistory=list=>localStorage.setItem(SEARCH_HISTORY_KEY,JSON.stringify(list.slice(0,10)));
+const rememberSearch=query=>{if(query)writeSearchHistory([query,...readSearchHistory().filter(x=>foldName(x)!==foldName(query))])};
+function renderSearchMenu(){const menu=$('#searchMenu'),history=readSearchHistory();
+  const recommendations=[...SEARCH_HINTS].sort(()=>Math.random()-.5).filter(x=>!history.some(h=>foldName(h)===foldName(x))).slice(0,5);
+  const row=(value,type)=>`<div class="searchoption" data-search-value="${esc(value)}">${icon(type==='history'?'history':'sparkles')}<span>${esc(value)}</span>${type==='history'?`<button class="removehistory" data-remove-history="${esc(value)}" aria-label="删除历史 ${esc(value)}">${icon('x')}</button>`:''}</div>`;
+  menu.innerHTML=(history.length?`<section class="searchgroup"><h3>搜索记录</h3>${history.map(x=>row(x,'history')).join('')}</section>`:'')+
+    `<section class="searchgroup"><h3>推荐</h3>${recommendations.map(x=>row(x,'recommend')).join('')}</section>`;
+  menu.hidden=false;
+  menu.querySelectorAll('[data-search-value]').forEach(x=>x.onclick=e=>{if(e.target.closest('[data-remove-history]'))return;
+    $('#q').value=x.dataset.searchValue;runSearch(false,true);menu.hidden=true});
+  menu.querySelectorAll('[data-remove-history]').forEach(b=>b.onclick=e=>{e.stopPropagation();writeSearchHistory(readSearchHistory().filter(x=>foldName(x)!==foldName(b.dataset.removeHistory)));renderSearchMenu()})}
+const runSearch=(useSuggestion=false,committed=false)=>{let query=$('#q').value.trim();
   if(useSuggestion&&!query){query=$('#q').dataset.suggestion||'';$('#q').value=query}
+  if(committed)rememberSearch(query);
   state.q=query;route(state.q?'/?q='+encodeURIComponent(state.q):'/',true);load(true)};
-let qt;$('#q').oninput=()=>{clearTimeout(qt);qt=setTimeout(runSearch,320)};
-$('#q').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();clearTimeout(qt);runSearch(true);$('#q').blur()}};
+$('#q').oninput=()=>{if(!$('#searchMenu').hidden)renderSearchMenu()};
+$('#q').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();runSearch(true,true);$('#searchMenu').hidden=true;$('#q').blur()}};
+$('#q').addEventListener('focus',renderSearchMenu);
 
 async function loadShorts(requestSeq=loadRequestSeq){
   if(state.orient==='竖屏'||state.state==='ads'){$('#shortsSec').hidden=true;return}
@@ -1630,7 +1712,7 @@ async function openItem(id,push=true){
   }).join('');
   $('#stage').hidden=false;document.body.classList.add('detail-open');delete $('#stage').dataset.c;
   $('#stage').innerHTML=`<div class="sgrid">
-    <div class="vwrap"><button class="closestage" id="closeStage">收起 <kbd>Esc</kbd></button>
+    <div class="vwrap"><canvas class="ambientcanvas" id="ambientCanvas" width="32" height="18" ${appSettings.ambient?'':'hidden'}></canvas><button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>
       <button class="playerstatsbtn" id="playerStatsBtn" aria-label="播放统计" title="播放统计" aria-pressed="false" hidden>${icon('chart')}</button>
       <div class="playerstats" id="playerStats" role="status" hidden></div>
       ${gated?`<div class="gate" id="gate">
@@ -1658,6 +1740,7 @@ async function openItem(id,push=true){
         <button class="dislike" data-kind="dislike" aria-label="不合口味" title="不合口味 · 降低推荐权重" aria-pressed="${it.feedback==='dislike'}">${icon('thumbs-down')}</button>
         <button class="seen" data-kind="seen" aria-label="看过了" title="看过了 · 只降低近期推荐" aria-pressed="${it.feedback==='seen'}">${icon('eye')}</button>
         <button class="later" id="stageLater" aria-label="稍后看" title="稍后看 · 加入或移出队列" aria-pressed="${!!it.watch_later}">${it.watch_later?icon('check'):icon('bookmark-plus')}</button>
+        <button class="upgrade" id="betterVersion" aria-label="寻找更好版本" title="寻找高清、无水印或完整版" aria-pressed="${!!it.better_version}">${icon('sparkles')}</button>
         <button class="dispose" data-kind="dispose" aria-label="加入待删候选" title="加入待删候选 · 不立即删除；统一复核 CSV 后才执行" aria-pressed="${it.disposal==='pending'}">${icon('trash')}</button></div>
       <div class="preference">
         <textarea id="likeReason" maxlength="2000" placeholder="为什么喜欢？">${esc(it.like_reason||'')}</textarea>
@@ -1740,6 +1823,11 @@ async function openItem(id,push=true){
     body:JSON.stringify({id:it.id})});it.watch_later=r.watch_later;
     $('#stageLater').setAttribute('aria-pressed',r.watch_later);
     $('#stageLater').innerHTML=r.watch_later?icon('check'):icon('bookmark-plus')};
+  $('#betterVersion').onclick=async()=>{const b=$('#betterVersion'),wanted=b.getAttribute('aria-pressed')!=='true';
+    const reason=wanted?(prompt('要找哪种更好版本？可留空','高清 / 无水印 / 完整版')||'').trim():'';
+    const r=await api('/api/quality-goal',{method:'POST',body:JSON.stringify({id:it.id,wanted,reason})});
+    it.better_version=r.better_version;it.better_version_reason=r.better_version_reason;
+    b.setAttribute('aria-pressed',String(r.better_version));b.title=r.better_version?(r.better_version_reason||'已标记寻找更好版本'):'寻找高清、无水印或完整版'};
   const savePreference=async()=>{
     const btn=$('#savePreference'),like=$('#likeBtn'),stateText=$('#preferenceState');
     btn.disabled=true;stateText.textContent='保存中…';
@@ -1764,8 +1852,20 @@ async function openItem(id,push=true){
     $('#realBar').style.width=rp.toFixed(1)+'%';
   }
   wireTelemetry(it,vv,{watched:'#watched',mark:'#mark',ratio:'#ratioTxt'});
-  if(g)g.onclick=()=>{vv.hidden=false;g.remove();mountDetailPlayer(it,vv,true)};
-  else mountDetailPlayer(it,vv,true);
+  const startAmbient=()=>{const canvas=$('#ambientCanvas');if(!canvas||!appSettings.ambient)return()=>{};
+    const ctx=canvas.getContext('2d',{alpha:false});let stopped=false,last=0;
+    const paint=now=>{if(stopped)return;if(!document.hidden&&!vv.paused&&now-last>480){last=now;
+      try{ctx.drawImage(vv,0,0,canvas.width,canvas.height);
+        const px=ctx.getImageData(0,0,canvas.width,canvas.height).data;let r=0,g=0,b=0,n=0;
+        for(let i=0;i<px.length;i+=16){r+=px[i];g+=px[i+1];b+=px[i+2];n++}
+        if(n)$('#stage').style.setProperty('--video-glow',`rgb(${Math.round(r/n)} ${Math.round(g/n)} ${Math.round(b/n)})`)
+      }catch(_e){}}
+      if(vv.requestVideoFrameCallback)vv.requestVideoFrameCallback((t)=>paint(t));else requestAnimationFrame(paint)};
+    vv.addEventListener('play',()=>paint(performance.now()),{once:true});return()=>{stopped=true}};
+  let stopAmbient=()=>{};
+  if(g)g.onclick=()=>{vv.hidden=false;g.remove();mountDetailPlayer(it,vv,true);stopAmbient=startAmbient()};
+  else{mountDetailPlayer(it,vv,true);stopAmbient=startAmbient()}
+  vv.addEventListener('emptied',()=>stopAmbient(),{once:true});
   $('#stage').scrollIntoView({behavior:'auto',block:'start'});
 
   api('/api/related?id='+it.id+'&limit=20').then(d=>{
@@ -1831,13 +1931,13 @@ async function tokShow(dir){
   let v=old;
   if(dir&&old&&old.getAttribute('src')){
     v=document.createElement('video');v.id='tokIncoming';v.playsInline=true;v.preload='auto';
-    v.src='/stream?id='+it.id;v.style.transform=`translateY(${dir>0?100:-100}%)`;track.appendChild(v);
+    v.src='/stream?id='+it.id;v.style.transform=`translate(-50%,${dir>0?100:-100}%)`;track.appendChild(v);
     await Promise.race([new Promise(resolve=>v.addEventListener('loadeddata',resolve,{once:true})),
       new Promise(resolve=>setTimeout(resolve,650))]);
     requestAnimationFrame(()=>requestAnimationFrame(()=>{
-      old.style.transform=`translateY(${dir>0?-100:100}%)`;v.style.transform='translateY(0)'}));
+      old.style.transform=`translate(-50%,${dir>0?-100:100}%)`;v.style.transform='translate(-50%,0)'}));
     await new Promise(resolve=>setTimeout(resolve,210));
-    old.pause();old.remove();v.id='tokVid';v.style.transform='';
+    old.pause();old.remove();v.id='tokVid';v.style.transform='translateX(-50%)';
   }else{
     v.src='/stream?id='+it.id;
   }
@@ -1894,13 +1994,13 @@ $('#immerseBtn').onclick=()=>openTok();
 
 $('#searchBtn').onclick=()=>{const s=$('.search');s.classList.toggle('open');
   if(s.classList.contains('open'))$('#q').focus()};
-$('#q').addEventListener('blur',()=>{if(!$('#q').value)$('.search').classList.remove('open')});
+$('#q').addEventListener('blur',()=>setTimeout(()=>{if(!$('#q').value&&!$('#searchMenu').matches(':hover'))$('.search').classList.remove('open');$('#searchMenu').hidden=true},140));
 $('#brandHome').onclick=e=>{e.preventDefault();
   state={loc:state.loc,creator:'',studio:'',tag:'',len:'',dur_min:'',dur_max:'',orient:'',state:'',sort:'daily',seed:String((Date.now()^(Math.random()*1e9|0))%99991),q:'',thumb:'1'};
   route('/');$('#q').value='';disposeStage(false);buildBars();load(true);window.scrollTo({top:0,behavior:'smooth'})};
 $('#tokClose').onclick=()=>{route('/');$('#tok').hidden=true;$('#tokTrack').querySelectorAll('video').forEach(v=>{
   v.pause();v.removeAttribute('src');v.load();if(v.id!=='tokVid')v.remove()});
-  const v=$('#tokVid');if(v){v.style.transform=''}tokSwitching=false;document.body.style.overflow=''};
+  const v=$('#tokVid');if(v){v.style.transform='translateX(-50%)'}tokSwitching=false;document.body.style.overflow=''};
 let wl=0;
 $('#tok').addEventListener('wheel',e=>{const n=Date.now();if(n-wl<260)return;wl=n;tokNext(e.deltaY>0?1:-1)},{passive:true});
 let ty=0;
@@ -1918,6 +2018,8 @@ $('#tok').addEventListener('touchend',e=>{const dy=ty-e.changedTouches[0].client
 
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
+    if(!$('#settingsPanel').hidden){openSettings(false);return}
+    if(!$('#searchMenu').hidden){$('#searchMenu').hidden=true;return}
     if(!$('#tok').hidden){$('#tokClose').click();return}
     if($('#drawer').classList.contains('open')){openDrawer(false);return}
     if(selectMode||selected.size){setSelectMode(false,true);return}
@@ -1930,15 +2032,21 @@ document.addEventListener('keydown',e=>{
 /* ── ⟳ = 换一批推荐（不是重载页面）──
    每次点用一个新种子重排，所以「这一批」内部翻页稳定，批与批之间不同。
    不用 RANDOM()：那样翻页会重复和漏掉条目。
-   自动刷新已去掉 —— 浏览到一半内容自己变了更打扰。 */
-async function refreshAll(){
+   自动刷新只在首页空闲态执行，不打断播放、搜索、选择或其他页面。 */
+async function refreshAll(automatic=false){
+  if(automatic&&(!appSettings.autoRefresh||document.hidden||location.pathname!=='/'||
+      !$('#stage').hidden||!$('#tok').hidden||selectMode||selected.size||document.activeElement===$('#q')))return false;
   if(!$('#stats').hidden){await openStats();return}      // 统计页只刷统计
   if(!$('#index').hidden){return}
   state.sort='seed'; state.seed=String(Date.now()%99991);
-  disposeStage(false);
   await load(true);
-  window.scrollTo({top:0,behavior:'smooth'});
+  if(!automatic)window.scrollTo({top:0,behavior:'smooth'});
+  return true;
 }
+let autoRefreshTimer=null;
+function scheduleAutoRefresh(){clearInterval(autoRefreshTimer);if(!appSettings.autoRefresh)return;
+  autoRefreshTimer=setInterval(()=>refreshAll(true),Math.max(1,appSettings.refreshMinutes)*60*1000)}
+scheduleAutoRefresh();
 $('#refresh').onclick=()=>{const b=$('#refresh');
   b.style.transition='transform .55s cubic-bezier(.3,.9,.3,1)';b.style.transform='rotate(360deg)';
   setTimeout(()=>{b.style.transition='';b.style.transform=''},580);

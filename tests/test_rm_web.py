@@ -66,6 +66,8 @@ CREATE TABLE watch_queue(profile_id TEXT,asset_id INTEGER,added_at TEXT,source T
   PRIMARY KEY(profile_id,asset_id));
 CREATE TABLE asset_preference(profile_id TEXT,asset_id INTEGER,liked INTEGER,reason TEXT,
   source TEXT,updated_at TEXT,PRIMARY KEY(profile_id,asset_id));
+CREATE TABLE asset_quality_goal(profile_id TEXT,asset_id INTEGER,wanted INTEGER,reason TEXT,
+  updated_at TEXT,PRIMARY KEY(profile_id,asset_id));
 CREATE TABLE asset_tag_preference(profile_id TEXT,asset_id INTEGER,normalized_tag TEXT,
   hidden INTEGER,updated_at TEXT,PRIMARY KEY(profile_id,asset_id,normalized_tag));
 """
@@ -290,6 +292,18 @@ class WebDataTests(unittest.TestCase):
         result = rm_web.w_batch(self.contract, {"ids": [1, 2, 2], "operation": "like"})
         self.assertEqual(result["changed"], 2)
         self.assertEqual(rm_web.q_item(self.contract, 1)["like_reason"], "保留原文")
+
+    def test_better_version_goal_is_independent_and_reversible(self):
+        saved = rm_web.w_quality_goal(self.contract, {
+            "id": 1, "wanted": True, "reason": "有水印，寻找高清无水印版",
+        })
+        self.assertTrue(saved["better_version"])
+        item = rm_web.q_item(self.contract, 1)
+        self.assertTrue(item["better_version"])
+        self.assertEqual(item["better_version_reason"], "有水印，寻找高清无水印版")
+        cleared = rm_web.w_quality_goal(self.contract, {"id": 1, "wanted": False})
+        self.assertFalse(cleared["better_version"])
+        self.assertFalse(rm_web.q_item(self.contract, 1)["better_version"])
         rm_web.w_batch(self.contract, {"ids": [1, 2], "operation": "dispose"})
         self.assertEqual(self.row(1)["disposal"], "pending")
         with self.assertRaises(ValueError):

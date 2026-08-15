@@ -196,7 +196,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_search_placeholder_is_an_actionable_recommendation(self):
         self.assertIn("const SEARCH_HINTS=['Prestige','FC2','Sakura Misaki','丝袜','足交','ABW']", self.page)
         self.assertIn("$('#q').dataset.suggestion=searchSuggestion", self.page)
-        self.assertIn("runSearch(true)", self.page)
+        self.assertIn("runSearch(true,true)", self.page)
         self.assertNotIn("试试：", self.page)
         self.assertNotIn("ABW 番号", self.page)
 
@@ -221,6 +221,31 @@ class WebUiSourceTests(unittest.TestCase):
     def test_climax_uses_pinned_healthicons_symbol(self):
         self.assertIn('id="i-sperm"', self.page)
         self.assertIn("icon('sperm')", self.page)
+
+    def test_settings_own_refresh_hover_and_ambient_preferences(self):
+        self.assertIn("const DEFAULT_SETTINGS={autoRefresh:true,refreshMinutes:5", self.page)
+        self.assertIn('id="settingsPanel"', self.page)
+        self.assertIn("scheduleAutoRefresh()", self.page)
+        self.assertIn("refreshAll(true)", self.page)
+        self.assertIn("appSettings.hoverDelaySeconds", self.page)
+
+    def test_search_menu_has_local_history_and_recommendations(self):
+        self.assertIn("peach.search.history.v1", self.page)
+        self.assertIn("搜索记录", self.page)
+        self.assertIn("recommendations.map", self.page)
+        self.assertIn("rememberSearch(query)", self.page)
+        self.assertIn(".top:has(.search.open){overflow:visible}", self.page)
+        self.assertNotIn("setTimeout(runSearch,320)", self.page)
+        self.assertIn("runSearch(true,true)", self.page)
+
+    def test_detail_has_stats_ambient_and_better_version_goal(self):
+        self.assertIn('class="ambientcanvas"', self.page)
+        self.assertIn("requestVideoFrameCallback", self.page)
+        self.assertIn("--video-glow", self.page)
+        self.assertIn("视频 ID / 会话", self.page)
+        self.assertIn("/api/quality-goal", self.page)
+        self.assertIn('id="betterVersion"', self.page)
+        self.assertNotIn('id="closeStage">收起', self.page)
 
 
 if __name__ == "__main__":

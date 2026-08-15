@@ -291,6 +291,10 @@ def q_item(contract: WebContract, aid):
         "AND p.profile_id='local-default'),0) AS liked,"
         "COALESCE((SELECT p.reason FROM asset_preference p WHERE p.asset_id=asset.id "
         "AND p.profile_id='local-default'),'') AS like_reason,"
+        "COALESCE((SELECT g.wanted FROM asset_quality_goal g WHERE g.asset_id=asset.id "
+        "AND g.profile_id='local-default'),0) AS better_version,"
+        "COALESCE((SELECT g.reason FROM asset_quality_goal g WHERE g.asset_id=asset.id "
+        "AND g.profile_id='local-default'),'') AS better_version_reason,"
         "EXISTS(SELECT 1 FROM watch_queue w WHERE w.asset_id=asset.id "
         "AND w.profile_id='local-default') AS watch_later FROM asset WHERE id=?", (aid,)).fetchone()
     if not r:
@@ -871,6 +875,40 @@ def w_preference(contract: WebContract, body):
             "like_reason": row["reason"] if row else ""}
 
 
+def w_quality_goal(contract: WebContract, body):
+    """记录“保留当前版本，同时寻找更好版本”；不修改或删除原资源。"""
+    contract.cache_bust()
+    aid = int(body["id"])
+    wanted = 1 if bool(body.get("wanted")) else 0
+    reason = body.get("reason", "")
+    if not isinstance(reason, str):
+        raise TypeError("reason must be a string")
+    if len(reason) > 500:
+        raise ValueError("reason is limited to 500 characters")
+    with contract.write_lock:
+        c = contract.db(write=True)
+        if not c.execute("SELECT 1 FROM asset WHERE id=?", (aid,)).fetchone():
+            c.close()
+            raise ValueError("asset not found")
+        if not wanted:
+            c.execute(
+                "DELETE FROM asset_quality_goal WHERE profile_id='local-default' AND asset_id=?",
+                (aid,),
+            )
+        else:
+            c.execute(
+                "INSERT INTO asset_quality_goal(profile_id,asset_id,wanted,reason,updated_at) "
+                "VALUES('local-default',?,?,?,strftime('%Y-%m-%dT%H:%M:%fZ','now')) "
+                "ON CONFLICT(profile_id,asset_id) DO UPDATE SET "
+                "wanted=excluded.wanted,reason=excluded.reason,updated_at=excluded.updated_at",
+                (aid, wanted, reason),
+            )
+        c.commit()
+        c.close()
+    return {"ok": True, "better_version": bool(wanted),
+            "better_version_reason": reason if wanted else ""}
+
+
 def w_item_tag(contract: WebContract, body):
     """新增或隐藏单条资源标签；隐藏不销毁刮削/识别来源证据。"""
     contract.cache_bust()
@@ -1008,6 +1046,8 @@ def dispatch_api_post(contract: WebContract, path, body):
         return w_watch_later(contract, body)
     if path == "/api/preference":
         return w_preference(contract, body)
+    if path == "/api/quality-goal":
+        return w_quality_goal(contract, body)
     if path == "/api/item-tag":
         return w_item_tag(contract, body)
     if path == "/api/batch":
