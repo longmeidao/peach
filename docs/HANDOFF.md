@@ -237,6 +237,13 @@ Verified 2026-08-15 against the mihomo connection counter, five files plus a 115
   Startup 中的 `Peach.lnk`，它用项目 venv 的 `pythonw.exe -m peach.tray` 启动交互式托盘；
   不要同时新增系统服务、计划任务或注册表 Run 项。托盘单击打开 HTTPS，右键提供状态、
   重启、日志、检查更新和退出。它用进程期文件锁拒绝重复实例，并只终止自己创建的服务进程。
+- 托盘必须在创建 Win32 窗口前启用 Per-Monitor V2 DPI；不要用清单缺失的 DPI-unaware
+  `pythonw` 进程让 Windows 位图缩放原生菜单。正常托盘动作不得弹模态 MessageBox。版本与
+  更新子菜单读取缓存快照，显式检查在后台线程执行，通过 pystray 原生非模态通知反馈。
+- `src/peach/__init__.py::__version__` 是版本唯一来源，`pyproject.toml` 用 setuptools
+  dynamic attr 生成包版本，FastAPI 和托盘都读取同一值。当前采用 pre-1.0 SemVer：修复升
+  patch，兼容功能升 minor，破坏性数据/接口变化升 minor 并配 ADR/迁移。Git 提交是构建标识，
+  `vX.Y.Z` 是本地发布点。检查更新只 fetch/比较；自动安装在并行工作树模型下保持禁用。
 - `scripts/manage_tray_startup.ps1` 是唯一自启动安装/状态/卸载入口。托盘同时管理 HTTP
   `0.0.0.0:80`（负责 mDNS）和 HTTPS `192.168.50.162:443`；LAN 地址可用
   `PEACH_LAN_ADDRESS` 覆盖。服务输出追加到 `R:\peach-data\logs\tray-*.log`。仓库当前没有
