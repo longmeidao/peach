@@ -86,6 +86,14 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - `-probesize`/`-analyzeduration` 无法减少 CloudDrive 固定块预取。创作者板在未知时长时可回退到 60 秒 seek，因此无需先花约 207 GB 做全量 PikPak probe。
 - 200 GB 守卫默认只统计代理流量，能覆盖 PikPak，不能看到直连 115；需要覆盖直连来源时显式使用 `--count-direct`，且不要在同一直接计量窗口混跑不同来源。
 
+## 流量与代理诊断工具
+
+- Windows 上后续所有代理/流量诊断统一优先使用 FlowLens（Mihomo Traffic Monitor），面板地址 `http://127.0.0.1:9091/`。
+- FlowLens API：`/api/v1/connections`、`/api/v1/summary`、`/api/v1/status`。按应用、网址、节点、规则以及 PikPak 检查实时和累计流量，并查看节点延迟。
+- FlowLens 只观测经过 Mihomo 的连接。`DIRECT` 仍然属于经过 Mihomo，会被观测到；完全绕过 Mihomo 的连接必须标注「未观测」，不能推断为零。
+- Windows 不再把 NetLimiter、Proxifier 或依赖网页常驻的 Zashboard 作为默认方案。
+- macOS 的流量诊断统一使用 Stash Dashboard。
+
 ## 数据安全
 
 - 真实 ledger：`R:\peach-data\database\ledger.db`，WAL 模式。正常浏览会合法写入播放/行为字段。
