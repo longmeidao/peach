@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 from peach.migrations import upgrade
 from peach.classification import is_probable_mainstream_release, is_structural_creator
@@ -111,6 +112,64 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertTrue(self.traffic_watch.is_direct({"chains": ["DIRECT"]}))
         self.assertFalse(self.traffic_watch.is_direct({"chains": ["Proxy", "Relay"]}))
         self.assertEqual(self.creator_boards.safe_name("A/B:C"), "A_B_C")
+
+    def test_sheets_stops_mid_run_when_the_disk_gate_trips(self):
+        """验证接线，不只是 DiskGuard 类本身：起跑通过、运行中触线要真的停并报非零码。"""
+        sheets = self.sheets
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "ledger.db"
+            connection = sqlite3.connect(db)
+            connection.execute(
+                "CREATE TABLE asset(id INTEGER PRIMARY KEY,location TEXT,path TEXT,"
+                "medium TEXT,duration REAL,size INTEGER,snapshot_path TEXT)"
+            )
+            for asset_id in range(1, 61):
+                connection.execute(
+                    "INSERT INTO asset VALUES(?,?,?,?,?,?,NULL)",
+                    (asset_id, "local", str(root / f"{asset_id}.mp4"), "video", 600.0, 1000),
+                )
+            connection.commit()
+            connection.close()
+
+            args = sheets.build_parser().parse_args([
+                "--db", str(db), "--workers", "1", "--min-free", "40",
+                "--disk-check-secs", "0",
+                "--output-root", str(root / "out"), "--log-dir", str(root / "log"),
+            ])
+
+            roomy = type("U", (), {"free": 500 * 1024**3})
+            starved = type("U", (), {"free": 1 * 1024**3})
+            calls = {"n": 0}
+
+            def shrinking_disk(_path):
+                # 起跑线检查看到充裕空间；运行几步之后盘被外部吃光。
+                calls["n"] += 1
+                return roomy if calls["n"] <= 2 else starved
+
+            written = []
+
+            def fake_sheet(_ffmpeg, path, _duration, destination, _frames):
+                written.append(path)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(b"x" * 8192)
+                return True
+
+            choice = type("C", (), {"path": "ffmpeg"})
+            with mock.patch.object(sheets, "make_sheet", fake_sheet), \
+                 mock.patch.object(sheets.FFmpegResolver, "ffmpeg", lambda _self: choice), \
+                 mock.patch("peach.jobs.shutil.disk_usage", shrinking_disk), \
+                 redirect_stdout(io.StringIO()):
+                code = sheets.run(args)
+
+            self.assertEqual(code, 3, "磁盘闸门中止必须体现在退出码上")
+            self.assertLess(len(written), 60, "触线后不能把剩余任务跑完")
+            # 已完成的部分必须已经入库，否则续跑会重复下载。
+            connection = sqlite3.connect(db)
+            registered = connection.execute(
+                "SELECT count(*) FROM asset WHERE snapshot_path IS NOT NULL").fetchone()[0]
+            connection.close()
+            self.assertEqual(registered, len(written))
 
     def test_traffic_ceiling_can_cover_direct_sources(self):
         """115 实测走 DIRECT。计费来源若也直连，只算代理等于没有闸门。"""

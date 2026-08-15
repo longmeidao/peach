@@ -13,7 +13,14 @@ from pathlib import Path
 
 from peach.config import DATABASE_PATH, FFMPEG_DIR, LOG_DIR, STATE_DIR
 from peach.ffmpeg import FFmpegResolver
-from peach.jobs import JobPolicyError, PidFileLock, SourceAccessPolicy, require_free_space
+from peach.jobs import (
+    DiskGuard,
+    DiskSpaceDenied,
+    JobPolicyError,
+    PidFileLock,
+    SourceAccessPolicy,
+    require_free_space,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -23,6 +30,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--interval", type=float, default=0.15)
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--min-free", type=float, default=40.0)
+    parser.add_argument(
+        "--disk-check-secs",
+        type=float,
+        default=20.0,
+        help="运行期复查磁盘余量的间隔；0 表示每条都查",
+    )
     parser.add_argument("--timeout", type=float, default=20.0)
     parser.add_argument(
         "--redo",
@@ -149,9 +162,13 @@ def run(args: argparse.Namespace) -> int:
             pending.put(task)
         counters = {"done": 0, "failed": 0}
         started = time.time()
+        # 探测本身产物很小，但它触发的云盘块缓存会落在系统盘；边跑边看，不只查起跑线。
+        guard = DiskGuard(Path("C:/"), args.min_free, args.disk_check_secs)
+        stop = threading.Event()
+        stop_reason: list[str] = []
 
         def worker() -> None:
-            while True:
+            while not stop.is_set():
                 try:
                     asset_id, path = pending.get_nowait()
                 except queue.Empty:
@@ -177,6 +194,13 @@ def run(args: argparse.Namespace) -> int:
                             rate = counters["done"] / elapsed if elapsed else 0
                             eta = (total - counters["done"]) / rate / 60 if rate else 0
                             log(f"{counters['done']:,}/{total:,} 失败 {counters['failed']} {rate:.1f} 个/秒 剩余 {eta:.0f} 分钟")
+                        try:
+                            guard.check()
+                        except JobPolicyError as exc:
+                            if not stop.is_set():
+                                stop_reason.append(str(exc))
+                                log(f"[stop] {exc}")
+                            stop.set()
                     time.sleep(args.interval)
 
         threads = [threading.Thread(target=worker, daemon=True) for _ in range(args.workers)]
@@ -206,6 +230,10 @@ def run(args: argparse.Namespace) -> int:
         elapsed = time.time() - started
         log(f"完成 {counters['done']:,} 个，失败 {counters['failed']}，耗时 {elapsed/60:.1f} 分钟")
         connection.close()
+        if stop_reason:
+            # 已探测的部分都已入库；中止必须体现在退出码上，不能报成正常完成。
+            log(f"磁盘闸门中止：{stop_reason[0]}")
+            return DiskSpaceDenied.exit_code
     return 0
 
 

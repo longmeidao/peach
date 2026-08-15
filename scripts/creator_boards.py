@@ -10,13 +10,21 @@ import random
 import re
 import sqlite3
 import subprocess
+import threading
 import time
 from pathlib import Path
 
 from peach.config import DATABASE_PATH, FFMPEG_DIR, GENERATED_DIR, STATE_DIR
 from peach.classification import is_probable_mainstream_release, is_structural_creator
 from peach.ffmpeg import FFmpegResolver
-from peach.jobs import JobPolicyError, PidFileLock, SourceAccessPolicy, require_free_space
+from peach.jobs import (
+    DiskGuard,
+    DiskSpaceDenied,
+    JobPolicyError,
+    PidFileLock,
+    SourceAccessPolicy,
+    require_free_space,
+)
 from peach.media import remap_managed_path
 
 
@@ -29,6 +37,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--location")
     parser.add_argument("--allow-metered", action="store_true")
     parser.add_argument("--min-free", type=float, default=40.0)
+    parser.add_argument(
+        "--disk-check-secs",
+        type=float,
+        default=20.0,
+        help="运行期复查磁盘余量的间隔；0 表示每条都查",
+    )
     parser.add_argument("--db", type=Path, default=DATABASE_PATH)
     parser.add_argument("--output-dir", type=Path, default=GENERATED_DIR / "boards")
     parser.add_argument("--snapshot-root", type=Path, default=GENERATED_DIR / "snapshots")
@@ -165,14 +179,37 @@ def build_from_videos(args: argparse.Namespace, ffmpeg: str, ffprobe: str) -> in
         jobs.extend(items[:args.per])
     captured: dict[tuple[str, float], Path] = {}
     started = time.time()
+    # 抽帧触发的云盘块缓存落在系统盘，起跑线检查拦不住；边跑边看，触线让未开始的帧直接跳过。
+    guard = DiskGuard(Path("C:/"), args.min_free, args.disk_check_secs)
+    stop = threading.Event()
+    stopped_reason = ""
+
+    def grab(job: tuple[str, float]) -> Path | None:
+        if stop.is_set():
+            return None
+        return grab_frame(ffmpeg, frame_cache, job)
+
     with futures.ThreadPoolExecutor(args.workers) as pool:
-        outputs = pool.map(lambda job: grab_frame(ffmpeg, frame_cache, job), jobs)
+        outputs = pool.map(grab, jobs)
         for index, (job, output) in enumerate(zip(jobs, outputs), 1):
             if output:
                 captured[job] = output
             if index % 25 == 0:
                 rate = index / max(time.time() - started, 1) * 60
                 print(f"  {index}/{len(jobs)} 帧 成功 {len(captured)} {rate:.1f} 帧/分", flush=True)
+            if not stop.is_set():
+                try:
+                    guard.check()
+                except JobPolicyError as exc:
+                    stopped_reason = str(exc)
+                    print(f"  [stop] {exc}", flush=True)
+                    stop.set()
+
+    if stopped_reason:
+        # 已抽到的帧留在缓存里，续跑时不会重复下载；但板子不出，避免用残缺样本代表创作者。
+        print(f"磁盘闸门中止：{stopped_reason}")
+        print(f"已缓存 {len(captured)} 帧，未出板；恢复磁盘后重跑即可续上。")
+        return DiskSpaceDenied.exit_code
 
     made = 0
     for rank, (creator, items) in enumerate(ranked, 1):
