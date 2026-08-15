@@ -46,6 +46,26 @@ cd R:\peach-app
 
 `serve` 默认只监听 `127.0.0.1:8900`。公网、反代、HTTPS 和认证属于后续部署阶段，不在开发命令中隐式开启。
 
+Windows 日常运行使用登录后托盘，而不是保留命令行窗口或注册系统服务。托盘单击打开
+`https://peach.local/`，右键可查看状态、重启服务、打开日志、检查版本和退出；退出只结束
+托盘自己启动的 Peach 进程：
+
+```powershell
+& .\scripts\manage_tray_startup.ps1 -Action Install
+& .\.venv\Scripts\pythonw.exe -m peach.tray
+```
+
+检查或移除当前用户自启动：
+
+```powershell
+& .\scripts\manage_tray_startup.ps1 -Action Status
+& .\scripts\manage_tray_startup.ps1 -Action Uninstall
+```
+
+托盘默认固定发布 `192.168.50.162`，避免虚拟网卡误选；地址变化时为启动进程设置
+`PEACH_LAN_ADDRESS`。它同时启动 HTTP `:80` 和本地 CA HTTPS `:443`，因此安装前必须先按
+下文生成 TLS 材料。
+
 需要本机 TLS 时同时提供证书和私钥；二者应放在 `R:\peach-data\secrets`，不要提交 Git：
 
 ```powershell

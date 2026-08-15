@@ -233,7 +233,14 @@ Verified 2026-08-15 against the mihomo connection counter, five files plus a 115
 
 ## Operations
 
-- Main command: `peach serve|migrate` after editable installation.
+- Main command: `peach serve|migrate` after editable installation. Windows 日常入口是当前用户
+  Startup 中的 `Peach.lnk`，它用项目 venv 的 `pythonw.exe -m peach.tray` 启动交互式托盘；
+  不要同时新增系统服务、计划任务或注册表 Run 项。托盘单击打开 HTTPS，右键提供状态、
+  重启、日志、检查更新和退出。它用进程期文件锁拒绝重复实例，并只终止自己创建的服务进程。
+- `scripts/manage_tray_startup.ps1` 是唯一自启动安装/状态/卸载入口。托盘同时管理 HTTP
+  `0.0.0.0:80`（负责 mDNS）和 HTTPS `192.168.50.162:443`；LAN 地址可用
+  `PEACH_LAN_ADDRESS` 覆盖。服务输出追加到 `R:\peach-data\logs\tray-*.log`。仓库当前没有
+  Git remote，因此“检查更新”只报告本地提交和无更新源，不伪造自动升级能力。
 - `peach serve` 默认用 Python zeroconf 发布唯一入口 `peach.local`；使用 `--no-mdns` 可关闭。必须保留迁移前已验证的 `Zeroconf()` 全合格网卡监听语义，不要改用只能发布服务/SRV 的 Windows `DnsServiceRegister`。隧道软件可能让自动路由选择落到 `198.18.0.0/15`；生产启动因此显式传 `--mdns-address 192.168.50.162`，只固定发布的 A 地址，不缩窄 Zeroconf 监听接口。注册在 FastAPI lifespan 中执行，不能在事件循环内同步阻塞。mDNS 修改的验收门槛是：单元测试、运行态 health、DNS-SD 查询、主机名解析，以及一台真实 LAN 客户端；监听端口枚举或注册回调不能单独证明可用。
 - TLS 仅在同时提供 `--ssl-certfile` 和 `--ssl-keyfile` 时启用；`.local` 使用本地 CA，不使用 Let's Encrypt，证书和私钥留在 `R:\peach-data\secrets`。本地 CA 必须带 critical `CA:TRUE` 和 `keyCertSign,cRLSign`；生成脚本签发后必须用 OpenSSL 验证链。macOS/iOS 只安装并信任 `peach-local-ca.crt`，不得分发 CA key 或服务器 key。
 - FastAPI is the only Web server. `web_contract.py` contains the stable JSON surface; do not recreate a parallel `http.server` or dynamic legacy loader.
