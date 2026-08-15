@@ -82,12 +82,36 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_entity_tags_filter_inside_the_current_entity_page(self):
         self.assertIn("if(entityTag)p.set('tag',entityTag)", self.page)
-        self.assertIn("openEntity(kind,name,true,next)", self.page)
-        self.assertIn("wireCards($('#index'),undefined,tag=>openEntity(kind,name,true", self.page)
+        self.assertIn("async function updateEntityCollection", self.page)
+        self.assertIn("updateEntityCollection(kind,name,next,true)", self.page)
+        self.assertIn("renderEntityCollection(kind,name,items,entityTag)", self.page)
+        self.assertNotIn("openEntity(kind,name,true,next)", self.page)
         self.assertNotIn(
             "document.body.classList.remove('entity-open');$('#index').hidden=true;state.tag=b.dataset.entityTag",
             self.page,
         )
+
+    def test_large_collections_render_in_bounded_batches(self):
+        self.assertIn("p.set('limit','48')", self.page)
+        self.assertIn("if(offset)p.set('count','0')", self.page)
+        self.assertIn('class="entitymore"', self.page)
+        self.assertIn("const indexLimit=people?120:180", self.page)
+        self.assertIn('class="indexmore"', self.page)
+        self.assertIn("adsBatch.items.slice(offset,offset+60)", self.page)
+        self.assertIn("if(!reset)p.set('count','0')", self.page)
+        self.assertIn("!listLoading&&!$('#loadSentinel').hidden", self.page)
+        self.assertIn("indexRequestSeq", self.page)
+        self.assertIn("barsRequestSeq", self.page)
+        self.assertIn("async function getBarsData()", self.page)
+        self.assertIn("Date.now()-barsDataAt<30000", self.page)
+        self.assertNotIn("p.set('limit','120')", self.page)
+
+    def test_entity_profile_uses_logo_links_without_a_redundant_back_row(self):
+        self.assertIn("const faviconUrl=url=>", self.page)
+        self.assertIn('class="entitylinkicon"', self.page)
+        self.assertIn('class="entitylinklabel"', self.page)
+        self.assertIn("img.dataset.studio&&!img.dataset.fallback", self.page)
+        self.assertNotIn('<span class="mono" style="color:var(--muted)">${labels[kind]||kind}资料页</span>', self.page)
 
     def test_status_tags_are_separated_and_nonessential_states_are_hidden(self):
         self.assertIn(".sep{flex:none;width:1px;height:19px", self.page)
@@ -105,6 +129,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('data-tag-view="cloud"', self.page)
         self.assertIn('data-tag-view="alphabet"', self.page)
         self.assertIn('class="alphabet"', self.page)
+        self.assertIn('data-tag-category=', self.page)
+        self.assertIn("['general','内容']", self.page)
+        self.assertIn("['artist','人物']", self.page)
+        self.assertIn("category=params.get('category')", self.page)
+
+    def test_secondary_back_controls_are_icon_only(self):
+        self.assertIn('id="i-arrow-left"', self.page)
+        self.assertIn("${icon('arrow-left')}</button>", self.page)
+        self.assertNotIn("${icon('chevron-left')}<span>返回</span>", self.page)
 
     def test_climax_uses_pinned_healthicons_symbol(self):
         self.assertIn('id="i-sperm"', self.page)
