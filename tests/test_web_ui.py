@@ -216,6 +216,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("const perf=(it.performers||[])", self.page)
         self.assertIn('${tgs?`<div class="ctags">${tgs}</div>`', self.page)
 
+    def test_compact_card_title_is_one_line_and_identity_kind_matches_name(self):
+        self.assertIn('body[data-density="dense"] .card .meta .t{display:block;max-width:100%;overflow:hidden;', self.page)
+        self.assertIn("performer?{kind:'performer',name:performer}", self.page)
+        self.assertIn("it.code?{kind:'',name:it.code}", self.page)
+        self.assertIn("it.studio?{kind:'studio',name:it.studio}", self.page)
+        self.assertNotIn("const whoKind=it.creator?'creator':(it.studio?'studio':'')", self.page)
+
     def test_tags_page_has_cloud_and_alphabet_modes(self):
         self.assertIn('data-tag-view="cloud"', self.page)
         self.assertIn('data-tag-view="alphabet"', self.page)
