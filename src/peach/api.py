@@ -228,8 +228,12 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         return response
 
     @app.api_route("/item/{item_id}", methods=["GET", "HEAD"])
-    @app.api_route("/entity/{kind}/{name:path}", methods=["GET", "HEAD"])
+    @app.api_route("/performers/{name:path}", methods=["GET", "HEAD"])
+    @app.api_route("/studios/{name:path}", methods=["GET", "HEAD"])
+    @app.api_route("/creators/{name:path}", methods=["GET", "HEAD"])
+    @app.api_route("/series/{name:path}", methods=["GET", "HEAD"])
     @app.api_route("/performers", methods=["GET", "HEAD"])
+    @app.api_route("/creators", methods=["GET", "HEAD"])
     @app.api_route("/tags", methods=["GET", "HEAD"])
     @app.api_route("/stats", methods=["GET", "HEAD"])
     @app.api_route("/immerse", methods=["GET", "HEAD"])

@@ -1,8 +1,11 @@
-# Peach agent contract
+# Peach 智能体工作契约
 
-This file is the single cross-agent entry point for Codex and Claude.
+本文件是 Codex 与 Claude 共用的唯一项目入口。
 
-Before changing the project, read these files in order:
+面向用户阅读的 README、项目总览、状态、交接、复用清单、待办和 ADR 正文统一使用中文。
+代码标识、命令、协议名、库名和无法准确翻译的专有名词保留英文；不要为了智能体处理方便混写英文叙述。
+
+修改项目前，按顺序阅读：
 
 1. `README.md`
 2. `docs/STATUS.md`
@@ -11,7 +14,7 @@ Before changing the project, read these files in order:
 5. `docs/HANDOFF.md`
 6. Relevant ADRs under `docs/adr/`
 
-Working rules:
+工作规则：
 
 - `R:\peach-app` is code and documentation. `R:\peach-data`, `R:\media`, `A:\` and `B:\` are runtime data or mounted media and must never be copied into Git.
 - `R:\peach-data\database\ledger.db` is the truth store. Tests use temporary databases only. A real migration requires a SQLite backup and before/after count checks.

@@ -1,28 +1,29 @@
-# ADR 0008: Entity pages, link provenance and watch queue
+# ADR-0008：实体资料页、链接来源与稍后看队列
 
-- Status: Accepted
-- Date: 2026-08-14
+- 状态：已接受
+- 日期：2026-08-14
 
-## Context
+## 背景
 
-Peach needs durable performer, studio, creator and series pages instead of treating every name click as a transient list filter. Those pages need summaries, aliases, official/social/catalog links, personal source evidence and search terms. “Watch later” is a queue intent, not a like/dislike/watched judgment.
+Peach 需要长期稳定的女优、厂牌、创作者和系列资料页，不能继续把每次名称点击都当成临时列表筛选。资料页需要简介、别名、官方/社交/目录链接、个人来源证据和搜索词。“稍后看”表达队列意图，不是喜欢、不喜欢或看过判断。
 
-## Decision
+## 决策
 
-- Canonical identity remains in `entity`; summaries and low-cardinality descriptive fields remain in `metadata_json`.
-- `entity_link` stores typed links. Official, social and catalog links are clickable. `source_reference` is private provenance: the API exposes its label/hostname but withholds the URL from the web client.
-- `entity_search_term` stores user-maintained discovery or source-lookup vocabulary. Peach does not automatically search or download infringing copies.
-- `watch_queue` is profile-scoped and separate from asset feedback. The first deployment seeds the single local default profile.
-- Entity portraits are cached files with provenance. Network-sourced, verified images take priority; a representative contact-sheet crop is only a fallback. Stash is not accepted as a portrait source when it returns its default silhouette.
-- Clear studio duplicates are merged by a reviewed, dry-run-first script. Old names survive as aliases and flattened `asset.studio` remains a compatibility projection.
+- 规范身份继续保存在 `entity`；简介和低基数描述字段保存在 `metadata_json`。
+- `entity_link` 保存带类型的链接。官方、社交和目录链接可点击；`source_reference` 是私有来源证据：API 只向 Web 暴露标签/主机名，不暴露完整 URL。
+- `entity_search_term` 保存用户维护的发现或来源检索词。Peach 不自动搜索或下载侵权副本。
+- `watch_queue` 按 profile 隔离，和作品反馈分开。首个部署使用单用户本地默认 profile。
+- 实体头像使用带来源记录的本地缓存文件。经验证的联网图片优先；代表作品的接触表裁图只作回退。Stash 默认剪影不能作为头像来源。
+- 明确的重复厂牌由“先预览、后复核”的脚本合并。旧名称保留为别名；扁平 `asset.studio` 继续作为兼容投影。
+- Web 公共 URL 使用领域名词，不暴露内部 `entity` 表：`/performers/{name}`、`/studios/{name}`、`/creators/{name}`、`/series/{name}`。JSON 契约暂时保留 `/api/entity` 作为不绑定实现的兼容端点，直到另行拆分。
 
-## Rejected
+## 否决方案
 
-- Encoding “watch later” as `feedback='seen'` or another overloaded asset flag.
-- Making private acquisition/source URLs directly clickable in the web UI.
-- Automatically merging studios solely because punctuation-normalized names collide.
-- Treating a Stash placeholder image or search-engine thumbnail as a high-resolution performer portrait.
+- 把“稍后看”编码为 `feedback='seen'` 或其他复用过度的作品标记。
+- 在 Web 界面中直接开放私有获取/来源 URL。
+- 仅因去标点后的名称碰撞就自动合并厂牌。
+- 把 Stash 占位图或搜索结果缩略图当成高清女优头像。
 
-## Consequences
+## 影响
 
-Entity pages can accumulate trusted metadata without changing the asset model, and future profiles get independent queues. Link and portrait importers require provenance and review, but Peach avoids turning personal source history into an automatic piracy workflow or low-quality image cache.
+实体资料可以在不改变作品模型的前提下累积可信元数据，未来不同 profile 也能拥有独立队列。链接和头像导入器必须记录来源并经过复核；代价是多一层审核，但避免把私人来源历史变成自动侵权获取流程或低质量图片缓存。

@@ -14,6 +14,21 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn('onload="if(this.naturalWidth', self.page)
         self.assertIn("img.addEventListener('error',fallback", self.page)
 
+    def test_entity_routes_are_semantic_and_not_model_shaped(self):
+        self.assertNotIn("route(`/entity/", self.page)
+        self.assertIn("performer:'performers'", self.page)
+        self.assertIn("studio:'studios'", self.page)
+        self.assertIn("creator:'creators'", self.page)
+
+    def test_detail_close_disposes_playback_source(self):
+        self.assertIn("function disposeStage", self.page)
+        self.assertIn("video.pause();video.removeAttribute('src');video.load();video.remove()", self.page)
+        self.assertIn("$('#closeStage').onclick=()=>disposeStage(true)", self.page)
+
+    def test_tag_geometry_uses_shared_tokens(self):
+        self.assertIn("--tag-radius:999px", self.page)
+        self.assertIn("border-radius:var(--tag-radius)", self.page)
+
 
 if __name__ == "__main__":
     unittest.main()
