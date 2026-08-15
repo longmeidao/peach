@@ -120,10 +120,10 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - Stash 调用统一经过 `StashClient`；外部 Scene ID 和来源进入 `media_binding`。
 - 规范女优/厂牌/标签/创作者进入 `entity`、`entity_external_ref`、`asset_entity`；扁平 `asset_tag` 和 creator/studio 字段只是兼容投影。
 - 详情、筛选、搜索、facets、索引、统计、榜单和相关推荐使用规范关系。
-- 女优、厂牌、创作者、系列名称进入资料页；只有内容标签直接筛选首页。`source_reference` 是私有来源，不开放为下载链接。
+- 女优、厂牌、创作者、系列名称进入资料页；首页内容标签直接筛选首页，实体资料页的标签只筛选当前实体作品，并保留在 `/performers/{name}?tag=...` 等当前资料页 URL。`source_reference` 是私有来源，不开放为下载链接。
 - “稍后看”写 `watch_queue`；“喜欢/为什么喜欢”写 profile 级 `asset_preference`。AI 只能把口味说明转成带来源/置信度/复核状态的候选，不能改写用户原文。
 - Web 公共路由使用 `/performers/{name}`、`/studios/{name}`、`/creators/{name}`、`/series/{name}`；删除 `/entity/{kind}/{name}`。收起详情或导航离开时必须 pause、清空 `src`、调用 `load()` 并移除 video，不能只隐藏 DOM。
-- “换一批”、统计、沉浸、全部女优、全部标签是动作/目的地，不显示为持续筛选状态。`看过`/`没看过` 只保留为紧凑状态 chip。
+- “换一批”、统计、沉浸、全部女优、全部标签是动作/目的地，不显示为持续筛选状态。顶部只保留“没看过、稍后看、已标记”等需要主动进入的紧凑状态；“看过”和“疑似广告”不占首页快捷位。
 - 长卡连续 hover 5 秒才放大并显示 seek；短卡立即提供“稍后看”。实体文字链接必须消费点击，不能冒泡为展开视频。
 - 卡片身份女优优先：先使用 `performer_entities` 头像和链接，再回退到创作者/厂牌代表图。
 - 喜欢与原因属于同一 profile 偏好；非空原因隐含喜欢，但原文不能直接冒充推荐特征。

@@ -80,6 +80,27 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('class="relatedpeople"', self.page)
         self.assertIn("data-related-performer", self.page)
 
+    def test_entity_tags_filter_inside_the_current_entity_page(self):
+        self.assertIn("if(entityTag)p.set('tag',entityTag)", self.page)
+        self.assertIn("openEntity(kind,name,true,next)", self.page)
+        self.assertIn("wireCards($('#index'),undefined,tag=>openEntity(kind,name,true", self.page)
+        self.assertNotIn(
+            "document.body.classList.remove('entity-open');$('#index').hidden=true;state.tag=b.dataset.entityTag",
+            self.page,
+        )
+
+    def test_status_tags_are_separated_and_nonessential_states_are_hidden(self):
+        self.assertIn(".sep{flex:none;width:1px;height:19px", self.page)
+        self.assertIn("{k:'later',label:'稍后看'},{k:'flagged',label:'已标记'}", self.page)
+        self.assertNotIn("{k:'played',label:'看过'}", self.page)
+        self.assertNotIn("{k:'ads',label:'疑似广告'}", self.page)
+
+    def test_search_placeholder_is_an_actionable_recommendation(self):
+        self.assertIn("const SEARCH_HINTS=['Prestige','FC2','Sakura Misaki','丝袜','足交','ABW 番号']", self.page)
+        self.assertIn("$('#q').dataset.suggestion=searchSuggestion", self.page)
+        self.assertIn("runSearch(true)", self.page)
+        self.assertNotIn("试试：", self.page)
+
     def test_tags_page_has_cloud_and_alphabet_modes(self):
         self.assertIn('data-tag-view="cloud"', self.page)
         self.assertIn('data-tag-view="alphabet"', self.page)
