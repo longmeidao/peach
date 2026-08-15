@@ -41,20 +41,19 @@ peach-app/
 cd R:\peach-app
 & py -3.14 -m venv .venv
 & .\.venv\Scripts\python.exe -m pip install -e .
-& .\.venv\Scripts\python.exe -m unittest discover -s tests -p 'test_*.py' -v
+& .\scripts\test.ps1
 & .\.venv\Scripts\peach.exe migrate status
 & .\.venv\Scripts\peach.exe serve --port 8900
 ```
 
-在独立 worktree 中验证时，项目 venv 的 editable install 仍可能指向主目录；必须让
-`PYTHONPATH` 指向当前 worktree 的 `src`，并先输出 `peach.__file__` 核对来源，避免用旧实现
-得到假阳性：
+主目录和独立 worktree 统一只使用同一个测试入口：
 
 ```powershell
-$env:PYTHONPATH = (Join-Path (Get-Location) 'src')
-& R:\peach-app\.venv\Scripts\python.exe -c "import peach; print(peach.__file__)"
-& R:\peach-app\.venv\Scripts\python.exe -m unittest discover -s tests -p 'test_*.py' -v
+& .\scripts\test.ps1
 ```
+
+脚本会从 Git common directory 定位 `R:\peach-app\.venv`，强制加载当前 worktree 的
+`src` 并核对 `peach.__file__`，因此 worktree 不需要也不应复制 `.venv`。仓库不使用 pytest。
 
 `serve` 默认只监听 `127.0.0.1:8900`。公网、反代、HTTPS 和认证属于后续部署阶段，不在开发命令中隐式开启。
 
