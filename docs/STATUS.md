@@ -85,16 +85,16 @@
 4. 通过官方/公开来源补齐 86 个厂牌 Logo，保留来源和质量门槛。Logo 与头像的取源方向相反：头像应取整理好的图库，Logo 是品牌标识，官网与维基才是权威来源。
 5. PikPak 抽帧已可走直连：代理策略组「📦 PikPak 视频」切到 DIRECT 后实测九帧 64.2 秒、30.5 MB（走代理时为 13.7 秒、163 MB），慢约 4.7 倍但流量少约 5 倍且不占代理预算。创作者采样 88 板据此约 2.7 GB。
 6. 修 115 的 34 条抽帧失败：账本路径与磁盘大小写不一致（`abw-118.mp4` 对 `ABW-118.mp4`、`.MP4` 对 `.mp4`），CloudDrive 这层大小写敏感。在 `media.py` 的路径解析里做一次同目录大小写不敏感匹配即可救回。
-5. 增加 Media Engine stream-plan API，再复用 hls.js 或 Shaka Player 接入 HLS/DASH；不得自己造播放器协议层。
-6. 配置并评估 Stash CommunityScrapers/元数据 Provider，确认缺口后才写新来源适配器。
-7. 配置可复核的真实追更源，之后再接 APScheduler；AI 结果继续只作为候选。
+7. 增加 Media Engine stream-plan API，再复用 hls.js 或 Shaka Player 接入 HLS/DASH；不得自己造播放器协议层。
+8. 配置并评估 Stash CommunityScrapers/元数据 Provider，确认缺口后才写新来源适配器。
+9. 配置可复核的真实追更源，之后再接 APScheduler；AI 结果继续只作为候选。
 
 ## 批处理进度（自动生成）
 
 <!-- job-status:start -->
 
 <!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->
-<!-- generated 2026-08-15T10:32Z -->
+<!-- generated 2026-08-15T10:33Z -->
 
 - 最近自动交接：`claude` / `Stop` / `completed`，2026-08-15T10:23:30+00:00。
 - 资产 81847 条，其中视频 24967 条。
@@ -102,7 +102,7 @@
   - `local`：4 / 1 / 5
   - `115`：44 / 139 / 183
   - `pikpak`：4751 / 5445 / 10196
-  PikPak 计费且走代理（`*.mypikpak.net`）；2026-08-15 实测 9 帧接触表 163 MB / 13.7 秒，即约 18 MB、1.5 秒一帧。瓶颈是流量不是时间：全量抽帧约 773 GB，按创作者采样 88 板约 14 GB / 20 分钟。115 走直连，同样动作约 285 MB 一张接触表。
+  PikPak 的策略组已可切 DIRECT：2026-08-15 实测走代理时 9 帧 163 MB / 13.7 秒，走直连时 30.5 MB / 64.2 秒——慢约 4.7 倍但流量少约 5 倍且不占代理预算。全量抽帧仍是 773 GB 量级（代理口径），按创作者采样 88 板直连约 2.7 GB。115 一直走直连，同样动作约 285 MB 一张接触表。
 - 无内容标签视频 7622 条（占视频 31%）。
 - `asset_tag` 来源分布：`vision_creator` 27004、`pixiv_tag` 19753、`name` 19107、`stash` 15450、`r18` 2538、`performer` 1887、`follow` 1376、`r18:performer` 1216、`javbus:performer` 50。
 - 番号 1434 个，其中 1158 个有厂牌（81%）。
