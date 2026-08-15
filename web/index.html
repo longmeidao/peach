@@ -16,7 +16,7 @@
   --tungsten:#0095F6; --tungsten-soft:#DCEEFD;
   --loupe:#127A72; --keep:#2E7D32; --meter:#B26A10; --drop:#C0392B;
   --tile:336px; --topH:56px; --filterH:58px; --sortH:53px; --railW:72px;
-  --tag-radius:999px; --tag-pad-y:4px; --tag-pad-x:10px; --ambient-opacity:0;
+  --tag-radius:999px; --tag-pad-y:4px; --tag-pad-x:10px; --ambient-opacity:0; --hover-delay:5s;
   --frost-panel:rgba(247,248,250,.82); --frost-light:rgba(255,255,255,.76);
   --overlay-5:rgba(20,22,26,.05);--border-10:rgba(20,22,26,.10);--border-15:rgba(20,22,26,.15);
   --sb:#3A3A40; --sb-hover:#55555E;   /* 336 = 168×2，与目标站的模块单位一致 */
@@ -375,7 +375,7 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .previewcounter:hover{transform:scale(1.2)}.previewcounter>svg{position:absolute;inset:0;width:36px;height:36px;transform:rotate(-90deg)}
 .previewcounter circle{fill:none;stroke-width:2}.previewcounter circle:first-child{stroke:rgba(255,255,255,.18)}
 .previewcounter circle:last-child{stroke:#fff;stroke-linecap:round;stroke-dasharray:106.814;stroke-dashoffset:106.814}
-.card.previewing .previewcounter circle:last-child{animation:preview-arc 5s linear forwards}.card.longhover .previewcounter circle:last-child{animation:none}
+.card.previewing .previewcounter circle:last-child{animation:preview-arc var(--hover-delay) linear forwards}.card.longhover .previewcounter circle:last-child{animation:none}
 .previewcounter .ringplay{position:relative;inset:auto;width:14px;height:14px;transform:none;stroke:#fff;fill:none;stroke-width:2;margin-left:1px}
 @keyframes preview-arc{to{stroke-dashoffset:0}}
 .nopic{font-size:11px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
@@ -593,7 +593,8 @@ body.entity-open #tiers,body.entity-open #tagbar{display:none}
   backdrop-filter:saturate(1.7) blur(24px);padding:20px}.settingshead{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
 .settingshead h2{margin:0;font-size:20px}.settingshead button{border:0;background:transparent;color:var(--muted);width:38px;height:38px;border-radius:50%;cursor:pointer}
 .settingshead svg{width:20px;height:20px;stroke:currentColor;fill:none}.settingrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:14px 0;border-top:1px solid var(--line-soft)}
-.settingrow:first-of-type{border-top:0}.settingrow b{display:block;font-size:14px}.settingrow small{display:block;color:var(--muted);margin-top:3px}.settingrow select{min-width:120px;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:8px 10px}.settingrow input[type=checkbox]{width:20px;height:20px;accent-color:var(--tungsten)}
+.settingrow:first-of-type{border-top:0}.settingrow b{display:block;font-size:14px}.settingrow small{display:block;color:var(--muted);margin-top:3px;line-height:1.45}.settingrow select{min-width:148px;border:1px solid var(--line);border-radius:8px;background:#181a1d;color:#f5f7fa;color-scheme:dark;padding:9px 34px 9px 11px;font:inherit;font-size:14px}.settingrow select:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.settingrow select option{background:#181a1d;color:#f5f7fa}.settingrow input[type=checkbox]{width:20px;height:20px;accent-color:var(--tungsten)}
+@media(max-width:600px){.settingscard{padding:17px}.settingrow{grid-template-columns:1fr;gap:9px}.settingrow select{width:100%;min-width:0}.settingrow input[type=checkbox]{justify-self:start}}
 
 /* ── 筛选抽屉（默认收起，不占版面） ── */
 /* 常驻 72 px 窄图标条。外部实现证据和有意差异登记在 docs/HANDOFF.md。 */
@@ -852,9 +853,13 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   <div class="settingscard">
     <div class="settingshead"><h2 id="settingsTitle">设置</h2><button id="settingsClose" aria-label="关闭设置"><svg viewBox="0 0 24 24"><use href="#i-x"/></svg></button></div>
     <label class="settingrow"><span><b>自动换一批</b><small>仅在首页空闲时刷新，不打断播放、选择或输入。</small></span><input id="autoRefreshSetting" type="checkbox"></label>
-    <label class="settingrow"><span><b>刷新间隔</b><small>默认 5 分钟。</small></span><select id="refreshMinutesSetting"><option value="5">5 分钟</option><option value="10">10 分钟</option><option value="30">30 分钟</option></select></label>
+    <label class="settingrow"><span><b>刷新间隔</b><small>自动换一批的等待时间。</small></span><select id="refreshMinutesSetting"><option value="1">1 分钟</option><option value="5">5 分钟</option><option value="10">10 分钟</option><option value="30">30 分钟</option></select></label>
+    <label class="settingrow"><span><b>每批作品</b><small>首页每次加载的作品数量。</small></span><select id="batchSizeSetting"><option value="30">30 个</option><option value="60">60 个</option><option value="90">90 个</option></select></label>
+    <label class="settingrow"><span><b>默认排序</b><small>打开首页时使用的排序。</small></span><select id="defaultSortSetting"><option value="daily">每日轮换</option><option value="rand">随机</option><option value="rating">评分</option><option value="o">高潮计数</option><option value="plays">观看次数</option><option value="long">时长</option><option value="big">体积</option><option value="new">最近入库</option><option value="played">最近看的</option></select></label>
     <label class="settingrow"><span><b>悬停放大</b><small>转圈完成后进入放大预览。</small></span><select id="hoverDelaySetting"><option value="3">3 秒</option><option value="5">5 秒</option><option value="8">8 秒</option></select></label>
-    <label class="settingrow"><span><b>视频环境光</b><small>从当前画面取色，柔和投射到播放器周围。</small></span><input id="ambientSetting" type="checkbox"></label>
+    <label class="settingrow"><span><b>快进 / 快退</b><small>卡片预览和详情播放器共用。</small></span><select id="seekSecondsSetting"><option value="5">5 秒</option><option value="10">10 秒</option><option value="30">30 秒</option></select></label>
+    <label class="settingrow"><span><b>搜索记录</b><small>只保存在当前浏览器。</small></span><select id="searchHistoryLimitSetting"><option value="5">最近 5 条</option><option value="10">最近 10 条</option><option value="20">最近 20 条</option></select></label>
+    <label class="settingrow"><span><b>相关推荐</b><small>详情下方一次显示的相似作品数量。</small></span><select id="relatedLimitSetting"><option value="12">12 个</option><option value="20">20 个</option><option value="30">30 个</option></select></label>
   </div>
 </section>
 
@@ -879,24 +884,40 @@ const fmtSize=b=>b>=1099511627776?(b/1099511627776).toFixed(2)+' TB':b>=10737418
 const LOC={local:'本地','115':'115',pikpak:'PikPak',online:'在线'};
 const DURATION_TAGS=new Set(['短片-2分内','中片-10分内','长片-30分内','超长片-30分上']);
 const SETTINGS_KEY='peach.settings.v1';
-const DEFAULT_SETTINGS={autoRefresh:true,refreshMinutes:5,hoverDelaySeconds:5,ambient:true};
+const DEFAULT_SETTINGS={autoRefresh:true,refreshMinutes:5,batchSize:60,defaultSort:'daily',hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
+const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
+appSettings.refreshMinutes=allowedSetting(+appSettings.refreshMinutes,[1,5,10,30],5);
+appSettings.batchSize=allowedSetting(+appSettings.batchSize,[30,60,90],60);
+appSettings.defaultSort=allowedSetting(appSettings.defaultSort,['daily','rand','rating','o','plays','long','big','new','played'],'daily');
+appSettings.hoverDelaySeconds=allowedSetting(+appSettings.hoverDelaySeconds,[3,5,8],5);
+appSettings.seekSeconds=allowedSetting(+appSettings.seekSeconds,[5,10,30],10);
+appSettings.searchHistoryLimit=allowedSetting(+appSettings.searchHistoryLimit,[5,10,20],10);
+appSettings.relatedLimit=allowedSetting(+appSettings.relatedLimit,[12,20,30],20);
+document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);
 const saveSettings=()=>localStorage.setItem(SETTINGS_KEY,JSON.stringify(appSettings));
 function syncSettingsPanel(){
   $('#autoRefreshSetting').checked=!!appSettings.autoRefresh;
   $('#refreshMinutesSetting').value=String(appSettings.refreshMinutes);
+  $('#batchSizeSetting').value=String(appSettings.batchSize);
+  $('#defaultSortSetting').value=appSettings.defaultSort;
   $('#hoverDelaySetting').value=String(appSettings.hoverDelaySeconds);
-  $('#ambientSetting').checked=!!appSettings.ambient;
+  $('#seekSecondsSetting').value=String(appSettings.seekSeconds);
+  $('#searchHistoryLimitSetting').value=String(appSettings.searchHistoryLimit);
+  $('#relatedLimitSetting').value=String(appSettings.relatedLimit);
 }
 function openSettings(open=true){$('#settingsPanel').hidden=!open;if(open)syncSettingsPanel()}
 $('#settingsBtn').onclick=()=>openSettings(true);$('#settingsClose').onclick=()=>openSettings(false);
 $('#settingsPanel').onclick=e=>{if(e.target===$('#settingsPanel'))openSettings(false)};
 $('#autoRefreshSetting').onchange=e=>{appSettings.autoRefresh=e.target.checked;saveSettings();scheduleAutoRefresh()};
 $('#refreshMinutesSetting').onchange=e=>{appSettings.refreshMinutes=+e.target.value||5;saveSettings();scheduleAutoRefresh()};
-$('#hoverDelaySetting').onchange=e=>{appSettings.hoverDelaySeconds=+e.target.value||5;saveSettings()};
-$('#ambientSetting').onchange=e=>{appSettings.ambient=e.target.checked;saveSettings();
-  document.querySelectorAll('.ambientcanvas').forEach(x=>x.hidden=!appSettings.ambient)};
+$('#batchSizeSetting').onchange=e=>{appSettings.batchSize=+e.target.value||60;saveSettings();if(location.pathname==='/')load(true)};
+$('#defaultSortSetting').onchange=e=>{appSettings.defaultSort=e.target.value;saveSettings();state.sort=appSettings.defaultSort;if(location.pathname==='/')load(true)};
+$('#hoverDelaySetting').onchange=e=>{appSettings.hoverDelaySeconds=+e.target.value||5;document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);saveSettings()};
+$('#seekSecondsSetting').onchange=e=>{appSettings.seekSeconds=+e.target.value||10;saveSettings()};
+$('#searchHistoryLimitSetting').onchange=e=>{appSettings.searchHistoryLimit=+e.target.value||10;saveSettings();writeSearchHistory(readSearchHistory())};
+$('#relatedLimitSetting').onchange=e=>{appSettings.relatedLimit=+e.target.value||20;saveSettings()};
 /* 来源图标：品牌使用已缓存的官方资产；通用操作图标统一使用本地 Lucide 子集。 */
 const SRCICON={
   local:icon('hard-drive'),
@@ -912,7 +933,7 @@ const srcBadge=(loc,cost,cls)=>
 const initialParams=new URLSearchParams(location.search);
 let state={loc:initialParams.get('loc')||'local,115',creator:initialParams.get('creator')||'',studio:initialParams.get('studio')||'',
   tag:initialParams.get('tag')||'',len:initialParams.get('len')||'',dur_min:initialParams.get('dur_min')||'',dur_max:initialParams.get('dur_max')||'',
-  orient:initialParams.get('orient')||'',state:initialParams.get('state')||'',sort:initialParams.get('sort')||'daily',
+  orient:initialParams.get('orient')||'',state:initialParams.get('state')||'',sort:initialParams.get('sort')||appSettings.defaultSort,
   seed:initialParams.get('seed')||String((Date.now()^(Math.random()*1e9|0))%99991),q:initialParams.get('q')||'',thumb:'1'};
 $('#q').value=state.q;
 const REP={};   // 创作者/厂牌 → 代表作 id，用来做圆头像（裁接触印相中心格，不另造图）
@@ -959,7 +980,7 @@ function mountDetailPlayer(it,video,autoplay){
   if(!globalThis.videojs){video.controls=true;video.src=detailStreamUrl(it.id);if(autoplay)video.play().catch(()=>{});return null}
   detailPlayer=globalThis.videojs(video,{
     controls:true,preload:'metadata',language:'zh-CN',responsive:true,
-    controlBar:{skipButtons:{backward:10,forward:10},pictureInPictureToggle:true}
+    controlBar:{skipButtons:{backward:appSettings.seekSeconds,forward:appSettings.seekSeconds},pictureInPictureToggle:true}
   });
   const expected=Number(it.duration)||0;
   let correcting=false;
@@ -1133,8 +1154,8 @@ function cardHtml(it,cls){
     <div class="hovertools later-tools"><button class="laterbtn" data-later aria-pressed="${!!it.watch_later}" title="稍后看" aria-label="稍后看">
       ${it.watch_later?icon('check'):icon('bookmark-plus')}</button></div>
     <div class="hovertools seektools">
-      <button data-seek="-10" title="后退 10 秒" aria-label="后退 10 秒">${icon('rotate-ccw')}<b>10</b></button>
-      <button data-seek="10" title="前进 10 秒" aria-label="前进 10 秒">${icon('rotate-cw')}<b>10</b></button>
+      <button data-seek="-${appSettings.seekSeconds}" title="后退 ${appSettings.seekSeconds} 秒" aria-label="后退 ${appSettings.seekSeconds} 秒">${icon('rotate-ccw')}<b>${appSettings.seekSeconds}</b></button>
+      <button data-seek="${appSettings.seekSeconds}" title="前进 ${appSettings.seekSeconds} 秒" aria-label="前进 ${appSettings.seekSeconds} 秒">${icon('rotate-cw')}<b>${appSettings.seekSeconds}</b></button>
       <button data-open title="打开详情" aria-label="打开详情">${icon('maximize')}</button></div>`;
   return `<article class="card ${cls||''} ${it.disposal==='pending'?'pending-delete':''}" data-id="${it.id}">
     <div class="pic">${thumb}<button class="cardopenhit" data-open aria-label="打开 ${esc(it.name)} 详情"></button>
@@ -1688,7 +1709,7 @@ async function load(reset){
   if(state.state==='ads'){
     if(reset||!adsBatch){const nextAds=await api('/api/ads?limit=200');if(requestSeq!==loadRequestSeq)return;
       adsBatch=nextAds;cache(adsBatch.items)}
-    const batch=adsBatch.items.slice(offset,offset+60);
+    const batch=adsBatch.items.slice(offset,offset+appSettings.batchSize);
     const html=batch.map(it=>cardHtml(it)).join('');
     if(reset)releaseHoverPreviews($('#grid'));
     if(reset)$('#grid').innerHTML=html;else $('#grid').insertAdjacentHTML('beforeend',html);
@@ -1698,7 +1719,7 @@ async function load(reset){
   }
   adsBatch=null;
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
-  p.set('limit',60); p.set('offset',offset);
+  p.set('limit',appSettings.batchSize); p.set('offset',offset);
   if(!reset)p.set('count','0');
   const d=await api('/api/items?'+p);cache(d.items);
   if(requestSeq!==loadRequestSeq)return;
@@ -1716,15 +1737,15 @@ async function load(reset){
 }
 const loadObserver=new IntersectionObserver(entries=>{
   if(entries.some(x=>x.isIntersecting)&&!listLoading&&!$('#loadSentinel').hidden&&$('#stats').hidden&&$('#index').hidden){
-    offset+=60;load(false)}
+    offset+=appSettings.batchSize;load(false)}
 },{rootMargin:'320px'});
 loadObserver.observe($('#loadSentinel'));
 const SEARCH_HINTS=['Prestige','FC2','Sakura Misaki','丝袜','足交','ABW'];
 const searchSuggestion=SEARCH_HINTS[Math.floor(Math.random()*SEARCH_HINTS.length)];
 $('#q').dataset.suggestion=searchSuggestion;$('#q').placeholder=searchSuggestion;
 const SEARCH_HISTORY_KEY='peach.search.history.v1';
-const readSearchHistory=()=>{try{return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY)||'[]').filter(x=>typeof x==='string').slice(0,10)}catch(_e){return[]}};
-const writeSearchHistory=list=>localStorage.setItem(SEARCH_HISTORY_KEY,JSON.stringify(list.slice(0,10)));
+const readSearchHistory=()=>{try{return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY)||'[]').filter(x=>typeof x==='string').slice(0,appSettings.searchHistoryLimit)}catch(_e){return[]}};
+const writeSearchHistory=list=>localStorage.setItem(SEARCH_HISTORY_KEY,JSON.stringify(list.slice(0,appSettings.searchHistoryLimit)));
 const rememberSearch=query=>{if(query)writeSearchHistory([query,...readSearchHistory().filter(x=>foldName(x)!==foldName(query))])};
 function renderSearchMenu(){const menu=$('#searchMenu'),history=readSearchHistory();
   const recommendations=[...SEARCH_HINTS].sort(()=>Math.random()-.5).filter(x=>!history.some(h=>foldName(h)===foldName(x))).slice(0,5);
@@ -1810,7 +1831,7 @@ async function openItem(id,push=true,mixContext=null){
   }).join('');
   $('#stage').hidden=false;document.body.classList.add('detail-open');delete $('#stage').dataset.c;
   $('#stage').innerHTML=`<div class="sgrid ${mixContext?'mixgrid':''}">
-    <div class="vwrap"><canvas class="ambientcanvas" id="ambientCanvas" width="32" height="18" ${appSettings.ambient?'':'hidden'}></canvas><button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>
+    <div class="vwrap"><canvas class="ambientcanvas" id="ambientCanvas" width="32" height="18"></canvas><button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>
       <button class="playerstatsbtn" id="playerStatsBtn" aria-label="播放统计" title="播放统计" aria-pressed="false" hidden>${icon('chart')}</button>
       <div class="playerstats" id="playerStats" role="status" hidden></div>
       ${gated?`<div class="gate" id="gate">
@@ -1952,7 +1973,7 @@ async function openItem(id,push=true,mixContext=null){
     $('#realBar').style.width=rp.toFixed(1)+'%';
   }
   wireTelemetry(it,vv,{watched:'#watched',mark:'#mark',ratio:'#ratioTxt'});
-  const startAmbient=()=>{const canvas=$('#ambientCanvas');if(!canvas||!appSettings.ambient)return()=>{};
+  const startAmbient=()=>{const canvas=$('#ambientCanvas');if(!canvas)return()=>{};
     const ctx=canvas.getContext('2d',{alpha:false});let stopped=false,last=0;
     const paint=now=>{if(stopped)return;if(!document.hidden&&!vv.paused&&now-last>480){last=now;
       try{ctx.drawImage(vv,0,0,canvas.width,canvas.height);
@@ -1968,7 +1989,7 @@ async function openItem(id,push=true,mixContext=null){
   vv.addEventListener('emptied',()=>stopAmbient(),{once:true});
   $('#stage').scrollIntoView({behavior:'auto',block:'start'});
 
-  if(!mixContext)api('/api/related?id='+it.id+'&limit=20').then(d=>{
+  if(!mixContext)api('/api/related?id='+it.id+'&limit='+appSettings.relatedLimit).then(d=>{
     const n=$('#nrow'); if(!n)return; cache(d.items);
     n.innerHTML=d.items.length?d.items.map(x=>cardHtml(x,'ncard')).join(''):'<span class="empty">暂无</span>';
     wireCards(n);});
@@ -2096,7 +2117,7 @@ $('#searchBtn').onclick=()=>{const s=$('.search');s.classList.toggle('open');
   if(s.classList.contains('open'))$('#q').focus()};
 $('#q').addEventListener('blur',()=>setTimeout(()=>{if(!$('#q').value&&!$('#searchMenu').matches(':hover'))$('.search').classList.remove('open');$('#searchMenu').hidden=true},140));
 $('#brandHome').onclick=e=>{e.preventDefault();
-  state={loc:state.loc,creator:'',studio:'',tag:'',len:'',dur_min:'',dur_max:'',orient:'',state:'',sort:'daily',seed:String((Date.now()^(Math.random()*1e9|0))%99991),q:'',thumb:'1'};
+  state={loc:state.loc,creator:'',studio:'',tag:'',len:'',dur_min:'',dur_max:'',orient:'',state:'',sort:appSettings.defaultSort,seed:String((Date.now()^(Math.random()*1e9|0))%99991),q:'',thumb:'1'};
   route('/');$('#q').value='';disposeStage(false);buildBars();load(true);window.scrollTo({top:0,behavior:'smooth'})};
 $('#tokClose').onclick=()=>{route('/');$('#tok').hidden=true;$('#tokTrack').querySelectorAll('video').forEach(v=>{
   v.pause();v.removeAttribute('src');v.load();if(v.id!=='tokVid')v.remove()});
