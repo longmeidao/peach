@@ -83,7 +83,7 @@
 <!-- job-status:start -->
 
 <!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->
-<!-- generated 2026-08-15T05:37Z -->
+<!-- generated 2026-08-15T05:53Z -->
 
 - 最近自动交接：`claude` / `SessionEnd` / `other`，2026-08-15T05:31:55+00:00。
 - 资产 81847 条，其中视频 24967 条。
