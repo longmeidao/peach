@@ -28,7 +28,24 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("/api/stream-cancel?session=", self.page)
         self.assertIn("keepalive:true", self.page)
         self.assertIn("dataset.peachStreamCancel=JSON.stringify(result)", self.page)
-        self.assertIn('src="${detailStreamUrl(it.id)}"', self.page)
+        self.assertIn("detailPlayer.src({src:detailStreamUrl(it.id)", self.page)
+        self.assertIn("detailPlayer.dispose()", self.page)
+
+    def test_detail_uses_pinned_videojs_and_authoritative_duration(self):
+        self.assertIn('/vendor/videojs/8.23.9/video.min.js', self.page)
+        self.assertIn('/vendor/videojs/8.23.9/video-js.min.css', self.page)
+        self.assertIn("function mountDetailPlayer(it,video,autoplay)", self.page)
+        self.assertIn("detailPlayer.duration(expected)", self.page)
+        self.assertIn("['loadstart','loadedmetadata','durationchange','error']", self.page)
+        self.assertIn("const d=it.duration||v.duration||0", self.page)
+        self.assertIn("skipButtons:{backward:10,forward:10}", self.page)
+
+    def test_player_stats_cover_direct_range_and_future_segmented_streams(self):
+        self.assertIn('id="playerStatsBtn"', self.page)
+        self.assertIn("HTTP Range", self.page)
+        self.assertIn("bufferedAhead(video)", self.page)
+        self.assertIn("getVideoPlaybackQuality", self.page)
+        self.assertIn("?.vhs?.stats", self.page)
 
     def test_tag_geometry_uses_shared_tokens(self):
         self.assertIn("--tag-radius:999px", self.page)

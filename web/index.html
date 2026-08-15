@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="icon" href="/favicon.svg?v=3" type="image/svg+xml">
+<link rel="stylesheet" href="/vendor/videojs/8.23.9/video-js.min.css">
 <title>Peach · 蜜桃</title>
 <style>
 /* 色板：灯箱 / 接触印相。底色带棕不是纯黑，中性灰偏暖向主调靠。
@@ -428,6 +429,20 @@ body.entity-open #tiers,body.entity-open #tagbar{display:none}
 .sgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(350px,390px)}
 .vwrap{background:#000;position:relative;display:flex;align-items:center;justify-content:center}
 .vwrap video{width:100%;max-height:76vh;display:block}
+.vwrap>.video-js{width:100%;height:auto;max-height:76vh;aspect-ratio:16/9;background:#000}
+.vwrap .video-js .vjs-tech{object-fit:contain}
+.vwrap .video-js .vjs-control-bar{height:3.4em;background:linear-gradient(transparent,rgba(0,0,0,.82))}
+.vwrap .video-js .vjs-progress-control{min-width:0}.vwrap .video-js .vjs-time-control{font-size:12px}
+.playerstatsbtn{position:absolute;left:11px;top:11px;z-index:8;width:38px;height:38px;padding:0;
+  display:grid;place-items:center;border:1px solid rgba(255,255,255,.22);border-radius:8px;
+  background:rgba(0,0,0,.46);color:#fff;cursor:pointer;backdrop-filter:blur(10px)}
+.playerstatsbtn[hidden]{display:none}.playerstatsbtn:hover,.playerstatsbtn[aria-pressed="true"]{background:rgba(0,149,246,.72)}
+.playerstatsbtn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:2}
+.playerstats{position:absolute;left:11px;top:58px;z-index:8;min-width:220px;max-width:min(330px,calc(100% - 22px));
+  padding:10px 12px;border:1px solid rgba(255,255,255,.18);border-radius:8px;
+  background:rgba(2,4,8,.78);color:#eef3f8;box-shadow:0 12px 28px #0008;
+  backdrop-filter:saturate(1.25) blur(14px);font:11px/1.55 "Cascadia Mono",monospace;white-space:pre-line}
+.playerstats[hidden]{display:none}
 .gate{aspect-ratio:16/9;width:100%;background:var(--sunk);border:1px dashed var(--meter);
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer}
 .closestage{position:absolute;top:11px;right:11px;z-index:5;
@@ -756,6 +771,8 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
     <div class="mono"><a href="#" id="tokWho"></a> <span id="tokMeta"></span></div></div>
 </div>
 
+<script src="/vendor/videojs/8.23.9/video.min.js"></script>
+<script src="/vendor/videojs/8.23.9/lang/zh-CN.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 const icon=(name,cls='')=>`<svg${cls?` class="${cls}"`:''} viewBox="0 0 24 24" aria-hidden="true"><use href="#i-${name}"/></svg>`;
@@ -768,6 +785,8 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const faviconUrl=url=>{try{return new URL('/favicon.ico',url).href}catch{return ''}};
 const foldName=s=>String(s??'').normalize('NFKC').trim().toLocaleLowerCase();
 const fmtDur=s=>{if(!s)return'—';s=Math.round(s);const h=s/3600|0,m=(s%3600)/60|0,x=s%60;
+  return h?`${h}:${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')}`:`${m}:${String(x).padStart(2,'0')}`};
+const fmtClock=s=>{s=Math.max(0,Math.floor(Number(s)||0));const h=s/3600|0,m=(s%3600)/60|0,x=s%60;
   return h?`${h}:${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')}`:`${m}:${String(x).padStart(2,'0')}`};
 const fmtSize=b=>b>=1099511627776?(b/1099511627776).toFixed(2)+' TB':b>=1073741824?(b/1073741824).toFixed(1)+' GB':(b/1048576|0)+' MB';
 const LOC={local:'本地','115':'115',pikpak:'PikPak',online:'在线'};
@@ -794,7 +813,7 @@ const REP={};   // 创作者/厂牌 → 代表作 id，用来做圆头像（裁�
 let offset=0,total=0,facets=null,current=null,detailReturnPath='/';
 const CACHE={};
 const cache=items=>{items.forEach(x=>CACHE[x.id]=x);return items};
-let detailStreamSession='';
+let detailStreamSession='',detailPlayer=null,detailStatsTimer=null;
 function newStreamSession(){
   return globalThis.crypto?.randomUUID?.()||`${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
@@ -813,12 +832,64 @@ function cancelDetailStream(){
 }
 function disposeStage(push=false){
   const stage=$('#stage');
+  if(detailStatsTimer){clearInterval(detailStatsTimer);detailStatsTimer=null}
+  if(detailPlayer){try{detailPlayer.pause();detailPlayer.dispose()}catch(_e){}detailPlayer=null}
   stage.querySelectorAll('video').forEach(video=>{
     if(video._hop)clearInterval(video._hop);
     video.pause();video.removeAttribute('src');video.load();video.remove()});
   cancelDetailStream();
   stage.innerHTML='';stage.hidden=true;document.body.classList.remove('detail-open');current=null;
   if(push)route(detailReturnPath||'/');
+}
+function bufferedAhead(video){
+  const at=video.currentTime||0;
+  for(let i=0;i<video.buffered.length;i++)if(video.buffered.start(i)<=at&&video.buffered.end(i)>=at)
+    return Math.max(0,video.buffered.end(i)-at);
+  return 0;
+}
+function mountDetailPlayer(it,video,autoplay){
+  if(detailPlayer)return detailPlayer;
+  const statsButton=$('#playerStatsBtn'),statsPanel=$('#playerStats');
+  if(!globalThis.videojs){video.controls=true;video.src=detailStreamUrl(it.id);if(autoplay)video.play().catch(()=>{});return null}
+  detailPlayer=globalThis.videojs(video,{
+    controls:true,preload:'metadata',language:'zh-CN',responsive:true,
+    controlBar:{skipButtons:{backward:10,forward:10},pictureInPictureToggle:true}
+  });
+  const expected=Number(it.duration)||0;
+  let correcting=false;
+  const enforceDuration=()=>{
+    if(!expected||correcting||!detailPlayer||detailPlayer.isDisposed())return;
+    const reported=Number(detailPlayer.duration());
+    if(!Number.isFinite(reported)||Math.abs(reported-expected)>Math.max(2,expected*.001)){
+      correcting=true;detailPlayer.duration(expected);queueMicrotask(()=>{correcting=false})
+    }
+  };
+  const updateStats=()=>{
+    if(!statsPanel||statsPanel.hidden||!detailPlayer||detailPlayer.isDisposed())return;
+    const quality=video.getVideoPlaybackQuality?video.getVideoPlaybackQuality():null;
+    let vhs=null;try{vhs=detailPlayer.tech({IWillNotUseThisInPlugins:true})?.vhs?.stats||null}catch(_e){}
+    const lines=[
+      `传输  ${vhs?'HLS / DASH':'HTTP Range'}`,
+      `时间  ${fmtClock(video.currentTime)} / ${fmtClock(expected||detailPlayer.duration())}`,
+      `缓冲  ${bufferedAhead(video).toFixed(1)} 秒`,
+      `画面  ${video.videoWidth||it.width||'?'}×${video.videoHeight||it.height||'?'}`,
+      `帧    ${quality?`${quality.totalVideoFrames-quality.droppedVideoFrames}/${quality.totalVideoFrames} · 丢 ${quality.droppedVideoFrames}`:'浏览器未提供'}`,
+    ];
+    if(vhs){lines.push(`带宽  ${vhs.bandwidth?`${(vhs.bandwidth/1e6).toFixed(1)} Mbps`:'—'}`);
+      lines.push(`请求  ${vhs.mediaRequests||0} · ${vhs.mediaBytesTransferred?fmtSize(vhs.mediaBytesTransferred):'0 MB'}`)}
+    statsPanel.textContent=lines.join('\n');
+  };
+  detailPlayer.on(['loadstart','loadedmetadata','durationchange','error'],enforceDuration);
+  detailPlayer.ready(()=>{enforceDuration();if(statsButton)statsButton.hidden=false;
+    if(autoplay)detailPlayer.play().catch(()=>{})});
+  if(statsButton&&statsPanel)statsButton.onclick=()=>{
+    const open=statsPanel.hidden;statsPanel.hidden=!open;statsButton.setAttribute('aria-pressed',String(open));
+    if(open){updateStats();if(detailStatsTimer)clearInterval(detailStatsTimer);detailStatsTimer=setInterval(updateStats,1000)}
+    else if(detailStatsTimer){clearInterval(detailStatsTimer);detailStatsTimer=null}
+  };
+  detailPlayer.src({src:detailStreamUrl(it.id),type:String(it.name||'').toLowerCase().endsWith('.webm')?'video/webm':'video/mp4'});
+  enforceDuration();setTimeout(enforceDuration,0);setTimeout(enforceDuration,250);
+  return detailPlayer;
 }
 const selected=new Set();
 let selectMode=false,lastSelectedId=null;
@@ -1557,11 +1628,13 @@ async function openItem(id,push=true){
   $('#stage').hidden=false;document.body.classList.add('detail-open');delete $('#stage').dataset.c;
   $('#stage').innerHTML=`<div class="sgrid">
     <div class="vwrap"><button class="closestage" id="closeStage">收起 <kbd>Esc</kbd></button>
+      <button class="playerstatsbtn" id="playerStatsBtn" aria-label="播放统计" title="播放统计" aria-pressed="false" hidden>${icon('chart')}</button>
+      <div class="playerstats" id="playerStats" role="status" hidden></div>
       ${gated?`<div class="gate" id="gate">
           ${srcBadge(it.location,it.cost,'srcbig')}
           <span style="font-size:12px;color:var(--muted)">点此开始拉流 · ${fmtSize(it.size||0)}</span></div>
-        <video id="vid" controls preload="none" hidden></video>`
-       :`<video id="vid" controls autoplay preload="metadata" src="${detailStreamUrl(it.id)}"></video>`}
+        <video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="none" hidden></video>`
+       :`<video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="metadata"></video>`}
     </div>
     <div class="side">
       <div class="stitle">${esc(it.name)}</div>
@@ -1594,8 +1667,7 @@ async function openItem(id,push=true){
     <div class="next"><h3>接着看</h3><div class="nrow" id="nrow">载入中…</div></div>`;
 
   $('#closeStage').onclick=()=>disposeStage(true);
-  const g=$('#gate'); if(g)g.onclick=()=>{const v=$('#vid');
-    v.src=detailStreamUrl(it.id);v.hidden=false;g.remove();v.play()};
+  const g=$('#gate');
   $('#stage').querySelectorAll('[data-kind]').forEach(b=>b.onclick=async()=>{
     const r=await api('/api/feedback',{method:'POST',body:JSON.stringify({id:it.id,kind:b.dataset.kind})});
     Object.assign(it,{feedback:r.feedback,disposal:r.disposal,o_count:r.o_count});
@@ -1689,6 +1761,8 @@ async function openItem(id,push=true){
     $('#realBar').style.width=rp.toFixed(1)+'%';
   }
   wireTelemetry(it,vv,{watched:'#watched',mark:'#mark',ratio:'#ratioTxt'});
+  if(g)g.onclick=()=>{vv.hidden=false;g.remove();mountDetailPlayer(it,vv,true)};
+  else mountDetailPlayer(it,vv,true);
   $('#stage').scrollIntoView({behavior:'auto',block:'start'});
 
   api('/api/related?id='+it.id+'&limit=20').then(d=>{
@@ -1700,12 +1774,12 @@ async function openItem(id,push=true){
 function wireTelemetry(it,v,sel){
   if(!v)return; let last=0,acc=0,timer=null,seeks=0;
   v.addEventListener('seeking',()=>{seeks++});
-  const paint=()=>{const d=v.duration||it.duration||0;if(!d)return;
+  const paint=()=>{const d=it.duration||v.duration||0;if(!d)return;
     const r=Math.min(v.currentTime/d,1);
     const w=sel.watched&&$(sel.watched),m=sel.mark&&$(sel.mark),t=sel.ratio&&$(sel.ratio);
     if(w)w.style.width=(r*100).toFixed(1)+'%'; if(m)m.style.left=(r*100).toFixed(1)+'%';
     if(t)t.textContent=(r*100).toFixed(0)+'%  '+(r<.15?'· 开头就走':r>.85?'· 基本看完':'· 中后段')};
-  const flush=e=>{const d=v.duration||it.duration||0;if(!acc&&!e&&!seeks)return;
+  const flush=e=>{const d=it.duration||v.duration||0;if(!acc&&!e&&!seeks)return;
     api('/api/activity',{method:'POST',body:JSON.stringify(
       {id:it.id,position:v.currentTime,duration:d,delta:acc,ended:!!e,seeks})})
       .then(r=>{ // 回填面板：真实观看率 vs 到达位置

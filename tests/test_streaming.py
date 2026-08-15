@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import unittest
 
-from peach.streaming import CappedRangeFileResponse, StreamSessionRegistry
+from peach.streaming import CancellableFileResponse, StreamSessionRegistry
 
 
 class StreamSessionRegistryTests(unittest.IsolatedAsyncioTestCase):
@@ -36,7 +36,7 @@ class StreamSessionRegistryTests(unittest.IsolatedAsyncioTestCase):
         assert task is not None
         self.assertFalse(registry.register("detail-1", task))
 
-    async def test_remote_range_is_capped_without_losing_total_size(self):
+    async def test_open_ended_range_keeps_standard_http_semantics(self):
         import tempfile
         from pathlib import Path
 
@@ -44,8 +44,8 @@ class StreamSessionRegistryTests(unittest.IsolatedAsyncioTestCase):
             path = Path(tmp) / "remote.mp4"
             path.write_bytes(bytes(range(64)))
             registry = StreamSessionRegistry()
-            response = CappedRangeFileResponse(
-                path, session="detail-2", registry=registry, max_range_bytes=8,
+            response = CancellableFileResponse(
+                path, session="detail-2", registry=registry,
             )
             messages: list[dict] = []
 
@@ -65,6 +65,6 @@ class StreamSessionRegistryTests(unittest.IsolatedAsyncioTestCase):
         headers = {key.decode(): value.decode() for key, value in start["headers"]}
         body = b"".join(message.get("body", b"") for message in messages[1:])
         self.assertEqual(start["status"], 206)
-        self.assertEqual(headers["content-range"], "bytes 0-7/64")
-        self.assertEqual(headers["content-length"], "8")
-        self.assertEqual(body, bytes(range(8)))
+        self.assertEqual(headers["content-range"], "bytes 0-63/64")
+        self.assertEqual(headers["content-length"], "64")
+        self.assertEqual(body, bytes(range(64)))
