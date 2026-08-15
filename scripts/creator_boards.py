@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 
 from peach.config import DATABASE_PATH, FFMPEG_DIR, GENERATED_DIR, STATE_DIR
+from peach.classification import is_probable_mainstream_release, is_structural_creator
 from peach.ffmpeg import FFmpegResolver
 from peach.jobs import JobPolicyError, PidFileLock, SourceAccessPolicy, require_free_space
 from peach.media import remap_managed_path
@@ -141,7 +142,7 @@ def build_from_videos(args: argparse.Namespace, ffmpeg: str, ffprobe: str) -> in
     frame_cache.mkdir(parents=True, exist_ok=True)
     connection = _readonly(args.db)
     rows = connection.execute(
-        "SELECT creator,path,duration FROM asset WHERE medium='video' "
+        "SELECT creator,path,name,duration FROM asset WHERE medium='video' "
         "AND creator IS NOT NULL AND creator<>'' "
         "AND id NOT IN (SELECT asset_id FROM asset_tag)" + source_sql,
         source_parameters,
@@ -149,7 +150,9 @@ def build_from_videos(args: argparse.Namespace, ffmpeg: str, ffprobe: str) -> in
     connection.close()
 
     by_creator: dict[str, list[tuple[str, float]]] = collections.defaultdict(list)
-    for creator, path, duration in rows:
+    for creator, path, name, duration in rows:
+        if is_structural_creator(creator) or is_probable_mainstream_release(name, path):
+            continue
         by_creator[creator].append((path, duration or 60))
     ranked = sorted(by_creator.items(), key=lambda item: -len(item[1]))[:args.top]
     existing = _existing_video_boards(args.output_dir)
@@ -188,19 +191,24 @@ def build_from_videos(args: argparse.Namespace, ffmpeg: str, ffprobe: str) -> in
 def build_from_snapshots(args: argparse.Namespace, ffmpeg: str, ffprobe: str) -> int:
     connection = _readonly(args.db)
     rows = connection.execute(
-        "SELECT creator,snapshot_path FROM asset WHERE medium='video' "
+        "SELECT creator,name,path,snapshot_path FROM asset WHERE medium='video' "
         "AND creator IS NOT NULL AND creator<>'' AND snapshot_path IS NOT NULL "
         "AND id NOT IN (SELECT asset_id FROM asset_tag)"
     ).fetchall()
-    counts = collections.Counter(
-        row[0] for row in connection.execute(
-            "SELECT creator FROM asset WHERE medium='video' AND creator IS NOT NULL "
+    count_rows = connection.execute(
+            "SELECT creator,name,path FROM asset WHERE medium='video' AND creator IS NOT NULL "
             "AND creator<>'' AND id NOT IN (SELECT asset_id FROM asset_tag)"
-        )
+        ).fetchall()
+    counts = collections.Counter(
+        creator for creator, name, path in count_rows
+        if not is_structural_creator(creator)
+        and not is_probable_mainstream_release(name, path)
     )
     connection.close()
     by_creator: dict[str, list[Path]] = collections.defaultdict(list)
-    for creator, snapshot in rows:
+    for creator, name, asset_path, snapshot in rows:
+        if is_structural_creator(creator) or is_probable_mainstream_release(name, asset_path):
+            continue
         path = remap_managed_path(snapshot, args.snapshot_root, (args.legacy_snapshot_root,))
         if path.is_file():
             by_creator[creator].append(path)

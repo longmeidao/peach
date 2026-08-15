@@ -54,7 +54,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 凡用户要求“模仿/参考/对齐”，必须先取得当前可复现证据：实时行为加 DOM/CSS/JS；源码不可得时才使用精确截图测量。记录 URL、日期、版本/hash、复用行为和 Peach 的主动差异。证据不可得就写 `未取得`，不得把猜测描述成忠实复刻。
 
 - **Beeg 卡片控件（2026-08-15）**：当前根页面加载 `https://beeg.com/dist/main.9442c3b8.css`（SHA-256 `E585B07CA0C312C28903DB939144B26A3C4BFBC9499F5997BDDE168A197CDB34`）和 `main.9442c3b8.js`（SHA-256 `A7321F6E84D97417B588B6E98EEC86A15B30DC4C36B03537481CC55A4CF933E7`）。计时圈为 36 px、上/右 12 px、`rgba(0,0,0,.24)`、`saturate(180%) blur(12px)`、2 px 白色圆环；桌面 hover 放大 1.2。稍后看控件使用同类透明处理，位于右下 12 px。Peach 等到预览可用后才启用计时圈，按用户要求连续悬停 5 秒才放大；放大层保留 Peach 自己的居中 -10/+10/详情控件。
-- **Beeg 表面层（2026-08-15，同一 CSS/hash）**：暗色背景 `rgb(2,4,8)`，表面 `rgb(34,34,34)`；frost utility 使用 `rgba(38,40,44,.72)` + `saturate(1.8) blur(20px)`，以及 `rgba(30,30,30,.72)` + `blur(20px)`。Peach 使用这些实测值制作克制的侧栏/抽屉垂直插值和半透明粘性栏；插值是 Peach 主动适配，不声称 Beeg 使用完全相同的渐变。
+- **Beeg 表面层（2026-08-15，同一 CSS/hash）**：暗色背景 `rgb(2,4,8)`，表面 `rgb(34,34,34)`；frost utility 使用 `rgba(38,40,44,.72)` + `saturate(1.8) blur(20px)`，以及 `rgba(30,30,30,.72)` + `blur(20px)`。进一步核对 JS 模块确认，页首蓝绿背景不是 CSS 随机渐变，而是 `/dist/assets/glow.webp`（1000×563，SHA-256 `ACA7A914D82843EE4A655C35651931CDC0D42308EDC0F7CB16D8EC63C7AE3ECA`）以 `49vh` 绝对定位铺放，叠加 `linear-gradient(to bottom, rgba(0,0,0,.6), rgb(2,4,8))`，内容加载后延迟 500 ms、0.8 s 淡入。Peach 不复制许可不明的图像，使用根据实测像素重建的本地 CSS 光晕，保留相同高度和底色过渡。此前文档把仅完成 frost 写成整个表面已对齐，现已纠正。
 - **TikTok 单列滚动（2026-08-15）**：当前 bundle `async/89993.30b4c2a9.js`（SHA-256 `C4D4867C5C6C89DCE560D429A4686427C911267DCBB2787AEB31B7BD333E9088`）使用 200 ms、`cubic-bezier(.2,.2,.4,.9)`、目标 `offsetTop`，滚动时临时禁用并恢复 `scrollSnapType`。Peach 复用时长和 easing，保留自己的两视频预载与 wheel/touch 队列。
 - **Apple 播放控件（2026-08-15）**：Apple HIG “Playing video” 只支持熟悉、克制的传输控制语义，没有提供可复用的 `gobackward.10`/`goforward.10` Web SVG。Peach 使用固定版本的 Lucide 子集和明确的“后退/前进 10 秒”无障碍标签，不声称精确复制 iOS glyph。
 - **Vercel 设计规范（2026-08-15）**：`https://vercel.com/design.md`（SHA-256 `07ED2923294AA326F65F9D9D4094B6E97BF7DE10C39ACD8BE935F2045C5A688F`）只作为评审清单：先用字体和间距建立层级、保持连续画布、避免任意图标瓷砖/嵌套卡片/微小灰字，动画只表达状态或连续性。
@@ -83,7 +83,8 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 真实 ledger：`R:\peach-data\database\ledger.db`，WAL 模式。正常浏览会合法写入播放/行为字段。
 - 测试必须使用临时 SQLite 和临时媒体；不得写真实 ledger。
 - 真实迁移前依次执行 SQLite 备份、asset/tag 计数、`PRAGMA integrity_check`、迁移版本检查、服务 smoke test。
-- 正式迁移 `0000`–`0007` 已应用。`0003` 增加默认 profile、稍后看、实体链接和搜索词；`0004` 增加 FTS5 trigram；`0005` 回填晚到兼容标签；`0006` 增加 `asset_preference`；`0007` 从创作者身份中移除结构文件夹名 `门槛`、`视频`、`宣传文件`，不删除作品。
+- 正式迁移 `0000`–`0009` 已应用。`0003` 增加默认 profile、稍后看、实体链接和搜索词；`0004` 增加 FTS5 trigram；`0005` 回填晚到兼容标签；`0006` 增加 `asset_preference`；`0007` 从创作者身份中移除结构文件夹名 `门槛`、`视频`、`宣传文件`；`0008` 增加 profile 级标签隐藏；`0009` 移除结构集合目录 `asce` 的假创作者关系和低置信 `vision_creator` 传播，不破坏独立来源标签。
+- `0007` 曾在应用后、提交前被改写注释/格式，导致校验和漂移。本次用迁移前备份重放当前 `0007`，对 298 条受影响资产与生产结果逐条对比，差异为 0 后才校正 `schema_migration` 校验和，然后正常应用 `0008`、`0009`。已应用迁移文件从此不得修改，任何后续变更必须新增版本。
 - 媒体和运行数据只在 `R:\media`、`R:\peach-data`，不进入仓库。
 
 ## 运行与部署

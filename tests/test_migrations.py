@@ -24,7 +24,7 @@ class MigrationTests(unittest.TestCase):
         backup = self.root / "before.db"
         done = upgrade(self.db, MIGRATIONS, backup)
         self.assertEqual([m.version for m in done],
-                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008"])
+                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009"])
         self.assertTrue(backup.exists())
         con = sqlite3.connect(self.db)
         tables = {row[0] for row in con.execute(
@@ -40,7 +40,7 @@ class MigrationTests(unittest.TestCase):
                          "entity_search_term", "watch_queue", "asset_preference",
                          "asset_tag_preference", "asset_search",
                          "schema_migration"} <= tables)
-        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008"])
+        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009"])
         self.assertEqual(upgrade(self.db, MIGRATIONS), [])
         self.assertEqual(plan(self.db, MIGRATIONS)[1], [])
 
@@ -152,7 +152,7 @@ class MigrationTests(unittest.TestCase):
         base_migrations = self.root / "base-migrations"
         base_migrations.mkdir()
         for path in sorted(MIGRATIONS.glob("*.sql")):
-            if not path.name.startswith("0007_"):
+            if not path.name.startswith(("0007_", "0009_")):
                 shutil.copyfile(path, base_migrations / path.name)
         sqlite3.connect(self.db).close()
         upgrade(self.db, base_migrations)
@@ -177,6 +177,44 @@ class MigrationTests(unittest.TestCase):
             "SELECT e.canonical_name FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
             "WHERE ae.asset_id=1 AND e.kind='creator'"
         ).fetchall(), [("Actual Creator",)])
+        connection.close()
+
+    def test_asce_cleanup_removes_only_false_creator_board_assertions(self):
+        base_migrations = self.root / "base-migrations"
+        base_migrations.mkdir()
+        for path in sorted(MIGRATIONS.glob("*.sql")):
+            if not path.name.startswith("0009_"):
+                shutil.copyfile(path, base_migrations / path.name)
+        sqlite3.connect(self.db).close()
+        upgrade(self.db, base_migrations)
+        connection = sqlite3.connect(self.db)
+        connection.executescript("""
+          INSERT INTO asset(id,location,path,name,medium,creator)
+          VALUES(1,'115','B:/kkg/asce/one.mp4','one.mp4','video','asce');
+          INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)
+          VALUES(101,'creator','asce','asce','now','now'),
+                (102,'tag','制服','制服','now','now'),
+                (103,'tag','原创','原创','now','now');
+          INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)
+          VALUES(1,101,'creator','legacy:asset',0.8),
+                (1,102,'tag','vision_creator',0.6),
+                (1,103,'tag','name',0.9);
+          INSERT INTO asset_tag(asset_id,tag,confidence,source)
+          VALUES(1,'制服',0.6,'vision_creator'),(1,'原创',0.9,'name');
+        """)
+        connection.close()
+        upgrade(self.db, MIGRATIONS)
+        connection = sqlite3.connect(self.db)
+        self.assertIsNone(connection.execute(
+            "SELECT creator FROM asset WHERE id=1"
+        ).fetchone()[0])
+        self.assertEqual(connection.execute(
+            "SELECT tag,source FROM asset_tag WHERE asset_id=1"
+        ).fetchall(), [("原创", "name")])
+        self.assertEqual(connection.execute(
+            "SELECT e.canonical_name,ae.source FROM asset_entity ae "
+            "JOIN entity e ON e.id=ae.entity_id WHERE ae.asset_id=1"
+        ).fetchall(), [("原创", "name")])
         connection.close()
 
     def test_fts_tracks_asset_entity_alias_and_search_term_changes(self):

@@ -8,6 +8,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 from peach.migrations import upgrade
+from peach.classification import is_probable_mainstream_release, is_structural_creator
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,6 +38,15 @@ class OperationalScriptTests(unittest.TestCase):
     def test_import_has_no_filesystem_or_log_side_effect(self):
         self.assertIsNone(self.clean_names._logf)
         self.assertIsNone(self.scrape_codes._logf)
+
+    def test_structural_creator_and_mainstream_release_guards(self):
+        self.assertTrue(is_structural_creator("asce"))
+        self.assertTrue(is_structural_creator("门槛"))
+        self.assertFalse(is_structural_creator("Alice"))
+        self.assertTrue(is_probable_mainstream_release(
+            "The.Great.Escape.S04E09.1080p.WEB-DL.H264.AAC-AppleTor.mp4"
+        ))
+        self.assertFalse(is_probable_mainstream_release("S04E09-personal-video.mp4"))
 
     def test_ad_candidate_scan_is_isolated_and_review_only(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -232,6 +242,11 @@ class OperationalScriptTests(unittest.TestCase):
             connection.execute(
                 "INSERT INTO asset(id,location,path,name,medium,creator) "
                 "VALUES(2,'local','vocab.mp4','vocab.mp4','video','Vocabulary')"
+            )
+            connection.execute(
+                "INSERT INTO asset(id,location,path,name,medium,creator) "
+                "VALUES(3,'local','The.Show.S01E02.1080p.WEB-DL.mp4',"
+                "'The.Show.S01E02.1080p.WEB-DL.mp4','video','Alice')"
             )
             connection.execute(
                 "INSERT INTO asset_tag(asset_id,tag,confidence,source) "

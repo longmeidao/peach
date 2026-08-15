@@ -25,6 +25,7 @@ import sqlite3
 from pathlib import Path
 
 from peach.config import DATABASE_PATH, GENERATED_DIR
+from peach.classification import is_probable_mainstream_release, is_structural_creator
 from peach.entities import upsert_asset_entity
 from peach.migrations import sqlite_backup
 
@@ -43,15 +44,12 @@ BOARDS: dict[str, list[str]] = {
     "gattouz0":     ["素人", "无码", "口交", "骑乘", "主观视角", "美臀"],
     "SexySaffron":  ["眼镜", "自慰", "网红主播", "无码", "露脸", "丝袜", "手交"],
     "ruth_lee":     ["口交", "主观视角", "美臀", "骑乘", "自慰", "无码", "露脸"],
-    "视频":          ["素人", "自慰", "丝袜", "情趣内衣", "网红主播"],
     "pandor_a":     ["自慰", "无码", "网红主播", "情趣内衣", "素人"],
     "luckydog11":   ["丝袜", "酒店", "后入", "美臀", "素人", "主观视角"],
     "oscarkim123":  ["足交", "足系", "美腿"],
     "Shinaryen":    ["素人", "无码", "主观视角", "骑乘", "美臀", "口交", "苗条"],
     "rina_vlog":    ["口交", "主观视角", "角色扮演", "情趣内衣", "丝袜", "乳交", "手交"],
     "chocoletmilkk": ["酒店", "美臀", "多人", "素人", "骑乘"],
-    # asce 这一组混杂（含整条的游戏广告视频），只取反复确证的三个
-    "asce":         ["制服", "骑乘", "手交"],
     "阿曼达":        ["素人", "酒店", "情趣内衣", "丝袜", "骑乘"],
     "LegsJapan":    ["足系", "足交", "美腿", "丝袜", "高跟", "无码"],
     "MattieDoll - pornhub.com": ["自慰", "无码", "网红主播", "素人", "苗条", "丝袜"],
@@ -60,7 +58,6 @@ BOARDS: dict[str, list[str]] = {
     "OBOKOZU":      ["口交", "主观视角", "眼镜", "美臀", "无码", "素人"],
     "铃木美咲":      ["制服", "学生", "丝袜", "美腿", "自慰"],
     "kj":           ["口交", "车震", "主观视角", "素人"],
-    "门槛":          ["素人", "情趣内衣", "丝袜", "骑乘", "后入"],
     "秀妍baby":      ["网红主播", "露脸", "素人", "丝袜", "自慰"],
     "임상병리학":     ["素人", "自慰", "露脸", "网红主播", "无码"],
     "Bewyx 2509":   ["角色扮演", "主观视角", "骑乘", "口交"],
@@ -117,7 +114,11 @@ def export_review(db_path: Path, board_dir: Path, output: Path) -> tuple[int, in
         if not creator:
             raise RuntimeError(f"creator not found for board: {board.name}")
         old = previous.get(board.name)
-        if old:
+        if is_structural_creator(creator):
+            row = {"board": board.name, "creator": creator, "video_count": count,
+                   "status": "skip", "tags": "",
+                   "reason": "已核验为结构/集合目录，不是创作者身份"}
+        elif old:
             row = {field: old.get(field, "") for field in REVIEW_FIELDS}
             row.update({"board": board.name, "creator": creator, "video_count": count})
         elif creator in BOARDS:
@@ -155,14 +156,18 @@ def apply_review(db_path: Path, review_path: Path, backup: Path) -> tuple[int, i
     connection.execute("BEGIN IMMEDIATE")
     try:
         for row in approved:
+            if is_structural_creator(row["creator"]):
+                raise ValueError(f"{row['creator']} is a structural creator label")
             tags = list(dict.fromkeys(tag.strip() for tag in row["tags"].split("|") if tag.strip()))
             unknown = set(tags) - known
             if unknown:
                 raise ValueError(f"{row['creator']} has unknown tags: {sorted(unknown)}")
-            ids = [result[0] for result in connection.execute(
-                "SELECT id FROM asset WHERE medium='video' AND creator=? "
+            candidates = connection.execute(
+                "SELECT id,name,path FROM asset WHERE medium='video' AND creator=? "
                 "AND id NOT IN (SELECT asset_id FROM asset_tag)", (row["creator"],)
-            )]
+            ).fetchall()
+            ids = [asset_id for asset_id, name, path in candidates
+                   if not is_probable_mainstream_release(name, path)]
             connection.executemany(
                 "INSERT OR IGNORE INTO asset_tag(asset_id,tag,confidence,source) VALUES(?,?,?,?)",
                 [(asset_id, tag, CONFIDENCE, SOURCE) for asset_id in ids for tag in tags],

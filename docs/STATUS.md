@@ -9,7 +9,7 @@
 - mDNS 使用 Python zeroconf 的全合格网卡监听；生产显式固定发布地址，避免隧道网卡误选。没有发布 `lmd-dst.local`。
 - Stash 仍运行于 `127.0.0.1:9999`，只作为过渡期可替换适配器。
 - Python：3.14.7；FFmpeg/ffprobe 由 `R:\peach-data\tools\ffmpeg` 管理，不再依赖 Stash 私有目录。
-- 真实 ledger：`R:\peach-data\database\ledger.db`，迁移 `0000`–`0007` 已应用，零待处理。最近备份：`R:\peach-data\database\ledger.pre-migrate-20260815-013554.db`。
+- 真实 ledger：`R:\peach-data\database\ledger.db`，迁移 `0000`–`0009` 已应用，零待处理。最近可恢复数据库备份：`R:\peach-data\database\ledger.pre-checksum-reconcile-20260815-121210.db`。
 - PID 只是观测值，不是配置；每次停止或重启前必须重新核对命令行、父子关系和端口归属。
 
 ## 已核验代码与部署能力
@@ -44,7 +44,8 @@
 
 ## 数据与批处理
 
-- 真实资产 81,873 条，其中视频 24,980 条。迁移后的完整性检查为 `ok`，外键违规为 0。
+- 真实资产 81,847 条，其中视频 24,967 条。迁移后的完整性检查为 `ok`，外键违规为 0。
+- 已核对并删除 `asce/The.Great.Escape.S04` 正常向剧集：13 个视频、13 个字幕、16 个派生图，同步清理 26 条 ledger 资产。原因是旧导入器把集合目录 `asce` 投影为创作者，再把创作者板上的低置信标签批量传播。`0009` 已移除 `asce` 假创作者及其 `vision_creator` 断言，保留其他独立来源标签。
 - 番号刮削已处理 1,104 个非 FC2 番号，715 条取得数据；所有 330 个 FC2 在三来源样本中零命中，因此默认跳过。
 - 创作者视觉板已处理 30 张，27 位创作者写入 27,295 条 `vision_creator` 标签，覆盖 4,518 个视频；置信度固定为 0.6，区别于逐条证据。
 - `find_ads.py` 只生成候选，不删除。当前 82 条、约 1.5 GB；77 条确认、5 条存疑。`BNST033.mp4` 已从错误待删结论中排除。
@@ -78,25 +79,25 @@
 <!-- job-status:start -->
 
 <!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->
-<!-- generated 2026-08-15T03:18Z -->
+<!-- generated 2026-08-15T04:12Z -->
 
 - 最近自动交接：`claude` / `Stop` / `completed`，2026-08-15T01:56:09+00:00。
-- 资产 81873 条，其中视频 24980 条。
+- 资产 81847 条，其中视频 24967 条。
 - 待抽帧（可抽 / 缺时长待 probe / 合计）：
   - `local`：4 / 1 / 5
-  - `115`：1984 / 139 / 2123
+  - `115`：1334 / 139 / 1473
   - `pikpak`：4751 / 5445 / 10196
   PikPak 计费且走代理（`*.mypikpak.net`）；2026-08-15 实测 9 帧接触表 163 MB / 13.7 秒，即约 18 MB、1.5 秒一帧。瓶颈是流量不是时间：全量抽帧约 773 GB，按创作者采样 88 板约 14 GB / 20 分钟。115 走直连，同样动作约 285 MB 一张接触表。
-- 无内容标签视频 7538 条（占视频 30%）。
-- `asset_tag` 来源分布：`vision_creator` 27295、`pixiv_tag` 19753、`name` 19107、`stash` 15450、`r18` 2538、`performer` 1887、`follow` 1376、`r18:performer` 1216、`javbus:performer` 50。
+- 无内容标签视频 7622 条（占视频 31%）。
+- `asset_tag` 来源分布：`vision_creator` 27004、`pixiv_tag` 19753、`name` 19107、`stash` 15450、`r18` 2538、`performer` 1887、`follow` 1376、`r18:performer` 1216、`javbus:performer` 50。
 - 番号 1434 个，其中 1158 个有厂牌（81%）。
 
 | 产物 | 行数 | 生成时间 | 说明 |
-|---|---:|---|---|
+| --- | ---: | --- | --- |
 | `code-scrape.csv` | 1104 | 08-14 16:17 | 番号刮削结果 |
 | `name-clean.csv` | 287 | 08-14 16:18 | 文件名净化清单 |
 | `ad-candidates.csv` | 82 | 08-14 22:53 | 广告候选（confidence 分级） |
-| `disposal-candidates.csv` | 54 | 08-14 22:53 | 待处置候选（含“保留”判定） |
+| `disposal-candidates.csv` | 54 | 08-14 22:53 | 待处置候选（含「保留」判定） |
 | `creator-tags-review.csv` | 86 | 08-14 22:30 | 创作者标签待审 |
 
 <!-- job-status:end -->
