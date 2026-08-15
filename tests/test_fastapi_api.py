@@ -5,6 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from peach import __version__
+
 
 HAS_DEPS = all(importlib.util.find_spec(name) for name in ("fastapi", "httpx"))
 if HAS_DEPS:
@@ -112,7 +114,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         response = await self.client.get("/healthz")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["mode"], "fastapi")
-        self.assertEqual(response.json()["version"], "0.4.0")
+        self.assertEqual(response.json()["version"], __version__)
 
     async def test_auth_and_items_contract(self):
         denied = await self.client.get("/api/items")

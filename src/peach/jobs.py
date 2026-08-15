@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import shutil
 import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -67,6 +68,42 @@ def require_free_space(path: Path | str, minimum_gb: float) -> float:
     return free_gb
 
 
+class DiskGuard:
+    """运行期磁盘闸门：长任务必须在跑的过程中反复检查，不能只查起跑线。
+
+    2026-08-15 的实际事故：抽帧启动时 C: 还有几百 GB，`require_free_space` 放行，
+    随后 CloudDrive 把下载块缓存到系统盘直到 0 字节可用，而任务全程没有再看一眼。
+    消耗方是第三方软件、落点也不是本任务的产物目录，所以"只盯自己写的文件"同样拦不住。
+    这里按墙钟节流地复查真实可用空间，触线就让调用方停下来。
+    """
+
+    def __init__(self, path: Path | str, minimum_gb: float, interval_secs: float = 20.0):
+        self.path = Path(path)
+        self.minimum_gb = float(minimum_gb)
+        self.interval_secs = float(interval_secs)
+        self._next_check = 0.0
+
+    def free_gb(self) -> float:
+        return shutil.disk_usage(self.path).free / 1024**3
+
+    def check(self, force: bool = False) -> float | None:
+        """到期就复查；返回本次读到的可用 GiB，未到期返回 None。触线抛 DiskSpaceDenied。"""
+        now = time.monotonic()
+        if not force and now < self._next_check:
+            return None
+        self._next_check = now + self.interval_secs
+        try:
+            free_gb = self.free_gb()
+        except OSError as exc:
+            raise DiskSpaceDenied(f"无法读取 {self.path} 的磁盘余量") from exc
+        if free_gb < self.minimum_gb:
+            raise DiskSpaceDenied(
+                f"运行中 {self.path} 仅剩 {free_gb:.1f} GiB（阈值 {self.minimum_gb:.1f} GiB）；"
+                "已停止任务。检查第三方缓存目录，本任务的产物目录未必是消耗方"
+            )
+        return free_gb
+
+
 class PidFileLock:
     """进程级独占锁；只清理确认已经不存在的旧 PID。"""
 
@@ -76,12 +113,20 @@ class PidFileLock:
 
     @staticmethod
     def _running(pid: int) -> bool:
+        if pid <= 0:
+            return False
         try:
             os.kill(pid, 0)
         except ProcessLookupError:
             return False
         except PermissionError:
             return True
+        except OSError as exc:
+            # Windows 对已消失的 PID 抛 WinError 87（参数错误），不是 ProcessLookupError。
+            # 漏掉它会让每一个被强杀留下的陈旧锁把后续所有运行直接崩掉，而不是清理后继续。
+            if getattr(exc, "winerror", None) == 87:
+                return False
+            raise
         return True
 
     def acquire(self) -> None:
