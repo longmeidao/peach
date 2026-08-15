@@ -258,6 +258,21 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(head.content, b"")
         self.assertEqual(head.headers["content-length"], "10")
 
+    async def test_stream_session_cancel_is_authenticated_and_tombstoned(self):
+        denied = await self.client.post("/api/stream-cancel?session=detail-1")
+        self.assertEqual(denied.status_code, 401)
+
+        cancelled = await self.client.post(
+            "/api/stream-cancel?t=secret&session=detail-1"
+        )
+        self.assertEqual(cancelled.status_code, 200)
+        self.assertEqual(cancelled.json(), {"ok": True, "cancelled": 0})
+
+        stale = await self.client.get(
+            "/stream?id=1&session=detail-1", headers={"X-Token": "secret"}
+        )
+        self.assertEqual(stale.status_code, 410)
+
     async def test_transcoded_stream_has_browser_mime_and_marker(self):
         avi = self.media_root / "two.avi"
         avi.write_bytes(b"avi-source")

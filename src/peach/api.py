@@ -23,6 +23,7 @@ from .previews import PreviewService, PreviewUnavailable
 from .providers import OpenCodeGoClient, ProviderUnavailable, default_registry
 from .repository import LedgerRepository
 from .stash import StashClient
+from .streaming import CappedRangeFileResponse, CancellableFileResponse, StreamSessionRegistry
 from .transcodes import TranscodeService, TranscodeUnavailable
 
 
@@ -105,6 +106,8 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
     app.state.providers = providers
     app.state.opencode_go = opencode_go
     app.state.http_transport = http_transport
+    stream_sessions = StreamSessionRegistry()
+    app.state.stream_sessions = stream_sessions
 
     @app.middleware("http")
     async def no_store(request: Request, call_next):
@@ -152,12 +155,13 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         return response
 
     @app.api_route("/stream", methods=["GET", "HEAD"])
-    def stream(request: Request, id: int):
+    def stream(request: Request, id: int, session: str = ""):
         args = _first_query_values(request)
         if not _authorized(request, settings.token, args):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         try:
-            path = media_engine.file_for(id, thumbnail=False)
+            asset = media_engine.asset(id)
+            path = media_engine.filesystem.file_for(asset, thumbnail=False)
         except MediaNotFound:
             return JSONResponse({"error": "no such id"}, status_code=404)
         except MediaUnavailable:
@@ -167,11 +171,27 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         except TranscodeUnavailable:
             logging.getLogger(__name__).exception("browser transcode failed for asset %s", id)
             return JSONResponse({"error": "transcode unavailable"}, status_code=503)
-        response = FileResponse(path, media_type="video/mp4" if transcoded else None)
+        media_type = "video/mp4" if transcoded else None
+        response = (
+            (CappedRangeFileResponse if asset.location not in (None, "local") else CancellableFileResponse)(
+                path, session=session, registry=stream_sessions, media_type=media_type,
+            )
+            if session else FileResponse(path, media_type=media_type)
+        )
         if transcoded:
             response.headers["X-Peach-Transcoded"] = "1"
         response.headers["Cache-Control"] = "no-store"
         return response
+
+    @app.post("/api/stream-cancel")
+    async def stream_cancel(request: Request, session: str):
+        args = _first_query_values(request)
+        if not _authorized(request, settings.token, args):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if not session or len(session) > 128:
+            return JSONResponse({"error": "invalid session"}, status_code=400)
+        cancelled = stream_sessions.cancel(session)
+        return JSONResponse({"ok": True, "cancelled": cancelled})
 
     @app.api_route("/thumb", methods=["GET", "HEAD"])
     def thumbnail(request: Request, id: int):
