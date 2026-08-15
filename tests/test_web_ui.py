@@ -106,6 +106,25 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("Date.now()-barsDataAt<30000", self.page)
         self.assertNotIn("p.set('limit','120')", self.page)
 
+    def test_filter_and_sort_rows_stay_visible_in_both_scroll_directions(self):
+        self.assertIn("--filterH:58px", self.page)
+        self.assertIn(".tagbar{position:sticky;top:var(--topH)", self.page)
+        self.assertIn(".count{position:sticky;top:calc(var(--topH) + var(--filterH))", self.page)
+        self.assertIn("background:color-mix(in srgb,#020408 84%,transparent)", self.page)
+        self.assertIn("backdrop-filter:saturate(1.35) blur(16px)", self.page)
+        self.assertNotIn(".tagbar.tuck", self.page)
+        self.assertNotIn("function onScrollFrame", self.page)
+
+    def test_entity_collection_posters_and_titles_open_item_details(self):
+        self.assertIn('class="cardopenhit" data-open', self.page)
+        self.assertIn('<button class="t cardtitle" data-open>', self.page)
+        self.assertIn("if(e.target.closest('[data-open]')){e.stopPropagation();(onClick||openItem)(+el.dataset.id)", self.page)
+        self.assertIn(".cardopenhit{position:absolute;inset:0;z-index:3", self.page)
+        self.assertIn("el.querySelectorAll('[data-open]').forEach(opener=>", self.page)
+        self.assertIn("opener.dataset.openWired='1'", self.page)
+        self.assertIn(".hovertools button{pointer-events:none", self.page)
+        self.assertIn(".card.longhover .seektools button,.card:hover .later-tools button{pointer-events:auto}", self.page)
+
     def test_entity_profile_uses_logo_links_without_a_redundant_back_row(self):
         self.assertIn("const faviconUrl=url=>", self.page)
         self.assertIn('class="entitylinkicon"', self.page)

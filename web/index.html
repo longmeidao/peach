@@ -14,7 +14,7 @@
   --ink:#14161A; --ink-2:#454B55; --muted:#767C87;
   --tungsten:#0095F6; --tungsten-soft:#DCEEFD;
   --loupe:#127A72; --keep:#2E7D32; --meter:#B26A10; --drop:#C0392B;
-  --tile:336px; --topH:56px; --railW:72px;
+  --tile:336px; --topH:56px; --filterH:58px; --sortH:53px; --railW:72px;
   --tag-radius:999px; --tag-pad-y:4px; --tag-pad-x:10px; --ambient-opacity:0;
   --frost-panel:rgba(247,248,250,.82); --frost-light:rgba(255,255,255,.76);
   --overlay-5:rgba(20,22,26,.05);--border-10:rgba(20,22,26,.10);--border-15:rgba(20,22,26,.15);
@@ -132,11 +132,11 @@ button,input,textarea{font:inherit;color:inherit}
 .brandpill .mk img{position:absolute;inset:3px;width:calc(100% - 6px);height:calc(100% - 6px);
   object-fit:contain;display:block;filter:saturate(.72) brightness(.84);opacity:.9}
 
-/* ── 标签条：唯一常驻的筛选层 ── */
-.tagbar{position:sticky;top:var(--topH);z-index:61;padding:9px 16px;
-  transition:transform .22s ease, opacity .22s ease;
-  border-bottom:0;
-  background:transparent;
+/* ── 常驻筛选层：上下滚动都保留；磨砂黑底避免盖住卡片文字 ── */
+.tagbar{position:sticky;top:var(--topH);z-index:61;height:var(--filterH);padding:9px 16px;
+  border-bottom:1px solid var(--line-soft);
+  background:color-mix(in srgb,#020408 84%,transparent);
+  backdrop-filter:saturate(1.35) blur(16px);-webkit-backdrop-filter:saturate(1.35) blur(16px);
   display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;align-items:center}
 .tagbar::-webkit-scrollbar{display:none}
 .pill{flex:none;height:40px;padding:0 20px;border:1px solid var(--border-15);
@@ -146,8 +146,6 @@ button,input,textarea{font:inherit;color:inherit}
 .pill[aria-pressed="true"]{background:var(--ink-2);color:var(--ground);border-color:var(--ink-2)}
 .pill.act{border-color:var(--tungsten);color:var(--tungsten)}
 .sep{flex:none;width:1px;height:19px;background:var(--line);margin:0 3px}
-/* 向下滚时把标签条收起来，别和顶栏一起压住内容；向上滚立刻带回来 */
-.tagbar.tuck{transform:translateY(-140%);opacity:0;pointer-events:none}
 
 /* 多标签交集筛选条 */
 .combo{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px}
@@ -274,8 +272,15 @@ button,input,textarea{font:inherit;color:inherit}
 
 /* ── 主区：满屏，大图 ── */
 main{position:relative;z-index:1;padding:14px 16px 90px}
-.count{color:var(--ink-2);margin:0 0 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.count .sorts{display:flex;gap:5px;margin-left:auto;flex-wrap:wrap}
+.count{position:sticky;top:calc(var(--topH) + var(--filterH));z-index:60;
+  min-height:var(--sortH);color:var(--ink-2);margin:0 -16px 12px;padding:8px 16px;
+  display:flex;align-items:center;gap:10px;flex-wrap:nowrap;
+  background:color-mix(in srgb,#020408 84%,transparent);border-bottom:1px solid var(--line-soft);
+  backdrop-filter:saturate(1.35) blur(16px);-webkit-backdrop-filter:saturate(1.35) blur(16px)}
+.count:empty{display:none}
+.count>span:first-child{flex:none}
+.count .sorts{display:flex;gap:5px;margin-left:auto;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+.count .sorts::-webkit-scrollbar{display:none}
 .count .sorts button{padding:5px 11px;border:1px solid var(--line);border-radius:7px;
   background:transparent;cursor:pointer;font-size:12px;color:var(--ink-2)}
 .count .sorts button:hover{border-color:var(--tungsten);color:var(--ink)}
@@ -306,6 +311,7 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 /* 预览图：单格，contain 放进固定 16:9 框 —— 不拉伸、不裁切、不改框体大小 */
 .poster{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;
   display:block;background:#000}
+.cardopenhit{position:absolute;inset:0;z-index:3;border:0;background:transparent;padding:0;cursor:pointer}
 /* 悬停即播真视频（仅免费源，计费源永远不自动拉流） */
 .hv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;
   opacity:0;transition:opacity .2s}
@@ -319,7 +325,7 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
   opacity:0;transition:opacity .15s;pointer-events:none}
 .card.longhover .seektools,.card:hover .later-tools{opacity:1}
 .hovertools.seektools{inset:50% auto auto 50%;transform:translate(-50%,-50%)}
-.hovertools button{pointer-events:auto;width:58px;height:58px;border-radius:50%;border:1px solid rgba(255,255,255,.12);
+.hovertools button{pointer-events:none;width:58px;height:58px;border-radius:50%;border:1px solid rgba(255,255,255,.12);
   background:rgba(0,0,0,.24);color:#fff;backdrop-filter:saturate(180%) blur(12px);
   -webkit-backdrop-filter:saturate(180%) blur(12px);display:flex;align-items:center;
   justify-content:center;cursor:pointer;position:relative;transition:transform .15s ease,background .15s ease}
@@ -329,6 +335,7 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
   font:700 9px/1 "Cascadia Mono",monospace;padding-top:1px}
 .hovertools button:hover{transform:scale(1.12);background:rgba(0,0,0,.34)}
 .hovertools.later-tools{right:12px;bottom:12px}
+.card.longhover .seektools button,.card:hover .later-tools button{pointer-events:auto}
 .hovertools .laterbtn{width:36px;height:36px;padding:0;font-family:inherit}
 .hovertools .laterbtn svg{width:21px;height:21px}.hovertools .laterbtn[aria-pressed="true"]{background:var(--tungsten);color:#17110a}
 .previewcounter{position:absolute;right:12px;top:12px;z-index:4;width:36px;height:36px;border:0;padding:0;
@@ -382,6 +389,7 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .mtext{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
 .meta .t{font-size:14px;line-height:1.35;overflow:hidden;display:-webkit-box;
   -webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-all}
+.meta .cardtitle{width:100%;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}
 .meta .s{display:flex;gap:8px;color:var(--muted);align-items:center;flex-wrap:wrap}
 .meta .who{color:var(--tungsten)}
 .flags{display:flex;gap:3px;margin-left:auto}
@@ -414,7 +422,7 @@ body[data-density="dense"] .card .meta .t{-webkit-line-clamp:1;white-space:nowra
 .stage{margin:0 0 22px;border-radius:5px;background:var(--surface);scroll-margin-top:calc(var(--topH) + 8px);
   border:1px solid var(--line);overflow:hidden}
 .stage[hidden]{display:none}
-body.detail-open .tagbar{position:relative;top:auto;z-index:1;transform:none;opacity:1}
+body.detail-open .tagbar{position:relative;top:auto;z-index:1}
 body.entity-open #tiers,body.entity-open #tagbar{display:none}
 .sgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(350px,390px)}
 .vwrap{background:#000;position:relative;display:flex;align-items:center;justify-content:center}
@@ -632,7 +640,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   .side{border-left:0;border-top:1px solid var(--line-soft);max-height:none}}
 @media (max-width:760px){
   .readout{display:none} .brand .sub{display:none}
-  :root{--tile:168px;--topH:52px}
+  :root{--tile:168px;--topH:52px;--sortH:51px}
   .grid{gap:16px 8px}
   /* 顶栏在窄屏会被搜索框撑破 —— 搜索收成一个按钮，点了才展开 */
   .top{gap:4px;padding:0 8px;overflow:hidden}
@@ -905,11 +913,11 @@ function cardHtml(it,cls){
       <button data-seek="10" title="前进 10 秒" aria-label="前进 10 秒">${icon('rotate-cw')}<b>10</b></button>
       <button data-open title="打开详情" aria-label="打开详情">${icon('maximize')}</button></div>`;
   return `<article class="card ${cls||''} ${it.disposal==='pending'?'pending-delete':''}" data-id="${it.id}">
-    <div class="pic">${thumb}
+    <div class="pic">${thumb}<button class="cardopenhit" data-open aria-label="打开 ${esc(it.name)} 详情"></button>
       <div class="badge mono">${srcBadge(it.location,it.cost)}</div>
       <span class="selectionMark">${icon('check')}</span><span class="deleteMark">${icon('trash')}<b>待删</b></span>
       <span class="dur mono">${fmtDur(it.duration)}</span>${tr}${tools}</div>
-    <div class="meta">${avatar}<div class="mtext"><div class="t">${esc(it.name)}</div>
+    <div class="meta">${avatar}<div class="mtext"><button class="t cardtitle" data-open>${esc(it.name)}</button>
       <div class="s mono">${whoKind?`<button class="who entitylink" data-entity-kind="${whoKind}" data-entity-name="${esc(who)}">${esc(who)}</button>`:`<span class="who">${esc(who)}</span>`}
         ${it.why?`<span class="why">${esc(it.why)}</span>`:''}
         <span>${fmtSize(it.size||0)}</span>
@@ -930,7 +938,7 @@ function wireCards(root,onClick,onTag){
       if(later){e.stopPropagation();api('/api/watch-later',{method:'POST',body:JSON.stringify({id:it.id})})
         .then(r=>{it.watch_later=r.watch_later;later.setAttribute('aria-pressed',r.watch_later);
           later.innerHTML=r.watch_later?icon('check'):icon('bookmark-plus')});return}
-      if(e.target.closest('[data-open]')){e.stopPropagation();openItem(it.id);return}
+      if(e.target.closest('[data-open]')){e.stopPropagation();(onClick||openItem)(+el.dataset.id);return}
       const ent=e.target.closest('[data-entity-kind]');
       if(ent){e.stopPropagation();openEntity(ent.dataset.entityKind,ent.dataset.entityName);return}
       const tg=e.target.closest('.tg');
@@ -940,6 +948,10 @@ function wireCards(root,onClick,onTag){
       if(e.shiftKey||e.ctrlKey||e.metaKey||selectMode){e.preventDefault();toggleSelection(it.id,e.shiftKey);return}
       (onClick||openItem)(+el.dataset.id);
     };
+    el.querySelectorAll('[data-open]').forEach(opener=>{
+      opener.dataset.openWired='1';
+      opener.onclick=e=>{e.stopPropagation();(onClick||openItem)(+el.dataset.id)};
+    });
     if(it)wireHover(el,it);
   });
 }
@@ -1376,26 +1388,13 @@ $('#edge').addEventListener('mouseenter',()=>{if(Date.now()<drawerSuppressUntil)
   edgeT=setTimeout(()=>openDrawer(true),180)});
 /* 滚动期间挂起悬停预览：内容在鼠标下滑过会连续触发 mouseenter，
    每次都新建 video 并发起 /stream 请求，直接把页面拖垮。 */
-window.__scrolling=false; let scrollT=null, lastY=0, rafPending=false;
-function onScrollFrame(){
-  rafPending=false;
-  const y=window.scrollY||document.documentElement.scrollTop||0;
-  const bar=$('#tagbar');
-  if(bar){
-    // 顶部 160px 内一定显示；之外按方向：向下滚收起，向上滚放回
-    if(y<160) bar.classList.remove('tuck');
-    else if(y>lastY+4) bar.classList.add('tuck');
-    else if(y<lastY-4) bar.classList.remove('tuck');
-  }
-  lastY=y;
-}
+window.__scrolling=false; let scrollT=null;
 window.addEventListener('scroll',()=>{
   window.__scrolling=true;
   // 滚动中挂起悬停预览：内容从鼠标下滑过会连续触发 mouseenter，
   // 每次新建 video 并发 /stream，几十个并发直接把页面拖垮
   document.querySelectorAll('video.hv').forEach(v=>{
     if(v._hop)clearInterval(v._hop); v.pause(); v.removeAttribute('src'); v.load(); v.remove();});
-  if(!rafPending){rafPending=true;requestAnimationFrame(onScrollFrame)}
   clearTimeout(scrollT); scrollT=setTimeout(()=>{window.__scrolling=false},180);
 },{passive:true});
 
