@@ -1291,8 +1291,12 @@ async function openStats(push=true){
     closeStats(); toggleTag(b.dataset.k)});
   window.scrollTo({top:0,behavior:'smooth'});
 }
-function closeStats(push=true){if(push)route('/');$('#stats').hidden=true;
-  $('#tiers').style.display='';$('#tagbar').style.display='';load(true)}
+function showHomeSurfaces(){
+  document.body.classList.remove('entity-open');
+  $('#stats').hidden=true;$('#index').hidden=true;
+  $('#tiers').style.display='';$('#tagbar').style.display='';
+}
+function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
 
 /* ── 全部艺人 / 创作者 / 标签索引页 ── */
 let tagIndexMode='alphabet',tagIndexCategory='all',indexRequestSeq=0;
@@ -1536,9 +1540,9 @@ async function load(reset){
   if(!reset&&listLoading)return;
   if(!reset)listLoading=true;
   try{
-  document.body.classList.remove('entity-open');
+  showHomeSurfaces();
   if(reset)offset=0;
-  $('#index').hidden=true; $('#stats').hidden=true; renderCombo();
+  renderCombo();
   if(state.state==='ads'){
     if(reset||!adsBatch){const nextAds=await api('/api/ads?limit=200');if(requestSeq!==loadRequestSeq)return;
       adsBatch=nextAds;cache(adsBatch.items)}
@@ -1976,7 +1980,7 @@ async function restoreRoute(){
     await openIndex(path.slice(1),params.get('q')||'',false);return}
   if(path==='/stats'){await openStats(false);return}
   if(path==='/immerse'){await openTok(undefined,false);return}
-  document.body.classList.remove('entity-open');$('#stats').hidden=true;$('#index').hidden=true;disposeStage(false);
+  showHomeSurfaces();disposeStage(false);
 }
 window.addEventListener('popstate',restoreRoute);
 buildEdge();
