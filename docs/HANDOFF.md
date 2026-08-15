@@ -16,6 +16,7 @@
 - Codex 负责架构、文件归属、审核、迁移、真实 ledger 写入、服务重启和最终验收；Claude 适合并行执行抽帧板阅读、候选元数据刮削、CSV 对账等边界明确的机械批次。
 - 并行任务必须给出输入/输出路径、网络和费用策略、写入边界、验收条件。工作者只产出 `candidate`，不得自行标为 `approved`、执行 `--apply`、改迁移/ADR 或重启服务。
 - 并行代码改动使用 `scripts/agent_worktree.py create` 创建独立 worktree。工作者提交并运行 `ready`；协调者审核后运行 `integrate`。完成顺序不能决定覆盖顺序。
+- 工作者在报告 `ready` 前先把分支 rebase 到当前 `master` 并重跑测试；同文件修改在工作者分支解决，协调者只集成已经基于最新主线的原子提交。仓库启用 Git `rerere` 记录重复冲突的已确认解法，但它不能代替人工审核。
 - 禁止 `git add .`、`git add -A`、目录或 glob 暂存。只暂存任务明确拥有的文件，并检查 `git diff --cached --name-status`。测试和对应实现必须原子提交。
 - `bba0b77` 是已发生的反例：测试被误判为本任务文件而进入提交，对应 `probe.py` 未暂存，导致 HEAD 出现“测试指向不存在实现”。独立 worktree、暂存路径复核和实现/测试原子性因此是强制规则。
 - 在 worktree 运行测试时，项目 venv 的 editable install 可能仍指向主目录。必须设置 `PYTHONPATH=<当前工作树>\src`，先输出 `peach.__file__` 核对来源，再运行测试。

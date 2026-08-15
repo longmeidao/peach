@@ -4,12 +4,12 @@
 
 ## 运行态
 
-- 生产入口：Windows 当前用户 Startup 中的 `Peach.lnk`，启动 `R:\peach-app\.venv\Scripts\pythonw.exe -m peach.tray`。当前版本 `0.4.0`。
+- 生产入口：Windows 当前用户 Startup 中的 `Peach.lnk`，启动 `R:\peach-app\.venv\Scripts\pythonw.exe -m peach.tray`。当前版本 `0.5.0`。
 - HTTP：`0.0.0.0:80`；HTTPS：`192.168.50.162:443`。`peach.local` 是唯一正式局域网名称，发布为 `192.168.50.162`。
 - mDNS 使用 Python zeroconf 的全合格网卡监听；生产显式固定发布地址，避免隧道网卡误选。没有发布 `lmd-dst.local`。
 - Stash 仍运行于 `127.0.0.1:9999`，只作为过渡期可替换适配器。
 - Python：3.14.7；FFmpeg/ffprobe 由 `R:\peach-data\tools\ffmpeg` 管理，不再依赖 Stash 私有目录。
-- 真实 ledger：`R:\peach-data\database\ledger.db`，迁移 `0000`–`0009` 已应用，零待处理。最近可恢复数据库备份：`R:\peach-data\database\ledger.pre-checksum-reconcile-20260815-121210.db`。
+- 真实 ledger：`R:\peach-data\database\ledger.db`，迁移 `0000`–`0010` 已应用，零待处理。最近可恢复数据库备份：`R:\peach-data\database\ledger.pre-0010-20260815-132719.db`。
 - PID 只是观测值，不是配置；每次停止或重启前必须重新核对命令行、父子关系和端口归属。
 
 ## 已核验代码与部署能力
@@ -22,7 +22,7 @@
 - `FeedAdapter` 已支持显式、有界 RSS/Atom 发现、条件请求和不可变快照；尚未配置真实订阅，也不会启动时自动写 ledger。
 - AI Provider 已拆为推理与 Agent 两层。`/api/providers` 无副作用且不泄露凭据；OpenCode Go 模型清单只在显式访问时拉取，当前不发推理请求。
 - Windows 托盘已部署：单击打开 Peach，右键提供状态、重启、日志、版本/更新和退出；Per-Monitor V2 DPI 在创建窗口前启用，更新检查在后台线程执行并使用非模态通知。
-- 版本唯一来源为 `src/peach/__init__.py::__version__`。本批增加标签编辑/管理页、显式多选和两个数据迁移，按 pre-1.0 SemVer 升至 `0.4.0`；没有 Git remote 时只报告本地开发版，不伪造更新能力。
+- 版本唯一来源为 `src/peach/__init__.py::__version__`。本批增加目录归属审计、标签添加弹窗、运行期磁盘闸门并应用迁移 `0010`，按 pre-1.0 SemVer 升至 `0.5.0`；没有 Git remote 时只报告本地开发版，不伪造更新能力。
 - 本地 CA HTTPS 已部署。CA 包含 critical `CA:TRUE` 和签名用途并通过 OpenSSL 链验证。macOS/iOS 只安装 `peach-local-ca.crt`；不得传播任何私钥。
 - 项目代码、运行数据、本地媒体已分离为 `R:\peach-app`、`R:\peach-data`、`R:\media`。旧空 Inbox 和 `Resources/Tools` 兼容表面已移除。
 
@@ -43,6 +43,7 @@
 - 详情身份按名称去重，标签可逐项隐藏或手动添加；隐藏只写 profile 覆盖，不破坏原始来源断言。高潮按钮使用 Health Icons 的 CC0 领域图标和独立暖粉强调色。
 - 已完成首轮界面文案审计：删除标题复述、实现状态说明、随机示例占位符和模型自我声明；删除保护、隐私边界、流量成本及陌生状态说明继续保留。
 - 侧栏、抽屉和粘性栏使用 Beeg 当前源码实测的透明层与 blur 数值；页面背景不再是纯黑，侧栏不再是纯灰。本轮没有为了装饰引入动画库，后续动效必须先复用审计并只表达状态/连续性。
+- 详情中的本地来源图标已补齐 `stroke: currentColor` 和 `fill: none`，不再因 SVG 默认黑色而不可见。标签添加使用弹窗完成搜索、最近使用、全部标签、已选状态和键盘操作；侧栏入口简化为“艺人”“标签”，标签和厂牌表面改为透明 frost，并删除多余分隔线。
 
 ## 数据与批处理
 
@@ -54,16 +55,17 @@
 - 115 时长修复后，未知时长不再写 0，而写失败值 `-1`；`--redo zero|failed|all` 可重试。
 - 115/PikPak 抽帧主要成本是 CloudDrive 块预取流量：实测九帧接触表约为 115 285 MB、PikPak 163 MB。PikPak 全量抽帧约 773 GB，暂不启动。
 - `RM-TrafficWatch` 常驻心跳已改用 `pythonw.exe` 隐藏运行。默认 200 GB 守卫统计代理流量；直连来源需显式 `--count-direct`。
+- 目录创作者审计覆盖全部 66,252 条历史关系：58,803 条为仅目录候选、6,621 条缺少路径交叉核验、745 条 TokyoDolls 错挂“捅主任”已解除、83 条“足交仙人”已按文件名/水印证据归到 `suzuq`。逐项和汇总 CSV 位于 `R:\peach-data\review\creator-attribution-*-20260815.csv`；没有删除媒体或标签。
+- `DiskGuard` 已进入主线并接入 `probe.py`、`sheets.py`、`creator_boards.py`：默认每 20 秒复查系统盘实际余量，触线后停止领取新任务、保留已完成结果并返回退出码 3。CloudDrive 当前缓存上限 50 GiB、策略 LRU；本轮核验时没有上述旧代码长任务在运行。
 
 ## 验证基线
 
-- 当前主分支基线：105 项隔离测试通过，inline JavaScript 语法检查通过；版本、托盘、迁移、mDNS、媒体转码、Provider、语义路由、详情播放释放、多选与待删视觉均有测试。
+- 当前主分支基线：114 项隔离测试通过，inline JavaScript 语法检查通过；版本、托盘、迁移、mDNS、媒体转码、Provider、DiskGuard、语义路由、详情播放释放、多选与待删视觉均有测试。
 - 前一生产版本已分别通过 HTTP/HTTPS health、`peach.local` 解析、真实 CloudDrive Range、桌面 1280×720 和手机 390×844 检查。
 - 浏览器验收不得写真实喜欢、反馈或播放数据；需要交互写入时使用隔离 ledger 副本。
 - 并行 worktree 测试必须设置 `PYTHONPATH=<当前工作树>\src` 并核对 `peach.__file__`，否则 editable install 可能误加载主目录旧代码。
-- 本批已重启生产托盘。HTTP/HTTPS `/healthz` 均返回 `0.4.0`；`peach.local` 解析为 `192.168.50.162`，HTTP 运行态使用 `zeroconf-all-interfaces`；正常向剧集搜索结果为 0；10 个迁移零待处理。
-- 生产桌面 1280×720：无横向溢出，选中内描边未裁切，标签圆角一致，侧栏/抽屉透明渐变生效。生产手机 390×844：无横向溢出，侧栏隐藏、内容零左缩进、标签圆角一致。浏览器控制台无 warning/error。
-- 上一批生产桌面 1280×720 与手机 390×844 验收已通过。本批 Codex 内置浏览器对回环地址明确返回 `ERR_BLOCKED_BY_CLIENT`，对局域网地址超时，因此本批桌面和 390×844 视觉验收记为「未取得」，不用 API/源码检查冒充浏览器验收。
+- 本批已重启生产托盘。HTTP `/healthz` 返回 `0.5.0`；`peach.local` 解析为 `192.168.50.162`。实际 `longm` 用户已信任 Peach 本地 CA，HTTPS `/healthz` 无跳过校验通过；HTTP 与 HTTPS 对真实作品 9978 的 1 KiB Range 均返回 `206 video/mp4`；11 个迁移零待处理。
+- 上一批生产桌面 1280×720 与手机 390×844 验收已通过。本批浏览器控制通道连续两次在建立连接时中断，因此新 UI 的桌面和 390×844 视觉验收记为「未取得」，不以 API、HTML 或源码检查冒充浏览器验收。
 - 详情播放释放和 sticky 遮挡在隔离 ledger 浏览器中验收；生产浏览器只做无写入首页/样式检查，未污染真实播放、喜欢或反馈数据。
 
 ## 下一批工作
@@ -81,9 +83,9 @@
 <!-- job-status:start -->
 
 <!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->
-<!-- generated 2026-08-15T05:10Z -->
+<!-- generated 2026-08-15T05:37Z -->
 
-- 最近自动交接：`claude` / `Stop` / `completed`，2026-08-15T05:10:13+00:00。
+- 最近自动交接：`claude` / `SessionEnd` / `other`，2026-08-15T05:31:55+00:00。
 - 资产 81847 条，其中视频 24967 条。
 - 待抽帧（可抽 / 缺时长待 probe / 合计）：
   - `local`：4 / 1 / 5
