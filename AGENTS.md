@@ -37,6 +37,6 @@
 防止重复错误的硬门槛：
 
 - PowerShell 变量必须使用任务专属名称；禁止声明 `$HOME`、`$home`、`$CODEX_HOME` 等系统变量的任何大小写变体。`foreach {}` 的结果先存入任务专属数组，再单独接管道格式化，禁止在闭合花括号后直接写管道。
-- 测试只在当前隔离 worktree 根目录运行，先设置 `PYTHONPATH=<worktree>\src` 并核对 `peach.__file__`；唯一入口是 `python -m unittest discover -s tests -p 'test_*.py' -v`。禁止调用 pytest，健康检查只使用 `/healthz`。
+- 测试只在当前隔离 worktree 根目录运行，唯一入口是 `& .\scripts\test.ps1`。脚本自动定位主项目 venv、强制 `PYTHONPATH=<当前 worktree>\src`、核对 `peach.__file__`，再运行 `unittest`；禁止手工拼接 venv 路径或调用 pytest。健康检查只使用 `/healthz`。
 - HTTPS 结论必须使用项目 CA 做严格校验；Schannel、浏览器或取证入口失败时，立即报告原始错误和未取得的验收面，不能改用 HTTP 成功来声称 HTTPS 已通过。
 - UI 标签、身份、反馈状态和搜索推荐属于语义契约。修改时必须同时增加数据层测试和页面源测试，不能只改显示文本；推荐词上线前必须对真实 `/api/items` 验证至少一个命中，说明性后缀不得混入搜索词。

@@ -41,6 +41,18 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertIsNone(self.clean_names._logf)
         self.assertIsNone(self.scrape_codes._logf)
 
+    def test_test_entrypoint_enforces_worktree_source_and_unittest(self):
+        script = (ROOT / "scripts" / "test.ps1").read_text(encoding="utf-8")
+        self.assertIn("rev-parse --git-common-dir", script)
+        self.assertIn("$env:PYTHONPATH = $SourceRoot", script)
+        self.assertIn("peach.__file__", script)
+        self.assertIn("-m unittest discover", script)
+        self.assertNotIn("pytest", script.lower())
+        for relative in ("AGENTS.md", "README.md", "docs/HANDOFF.md"):
+            instructions = (ROOT / relative).read_text(encoding="utf-8")
+            self.assertIn("scripts\\test.ps1", instructions)
+            self.assertNotIn("python -m unittest discover", instructions)
+
     def test_structural_creator_and_mainstream_release_guards(self):
         self.assertTrue(is_structural_creator("asce"))
         self.assertTrue(is_structural_creator("门槛"))

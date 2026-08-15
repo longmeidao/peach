@@ -27,8 +27,7 @@
 - 工作者在报告 `ready` 前先把分支 rebase 到当前 `master` 并重跑测试；同文件修改在工作者分支解决，协调者只集成已经基于最新主线的原子提交。仓库启用 Git `rerere` 记录重复冲突的已确认解法，但它不能代替人工审核。
 - 禁止 `git add .`、`git add -A`、目录或 glob 暂存。只暂存任务明确拥有的文件，并检查 `git diff --cached --name-status`。测试和对应实现必须原子提交。
 - `bba0b77` 是已发生的反例：测试被误判为本任务文件而进入提交，对应 `probe.py` 未暂存，导致 HEAD 出现“测试指向不存在实现”。独立 worktree、暂存路径复核和实现/测试原子性因此是强制规则。
-- 在 worktree 运行测试时，项目 venv 的 editable install 可能仍指向主目录。必须设置 `PYTHONPATH=<当前工作树>\src`，先输出 `peach.__file__` 核对来源，再运行测试。
-- **唯一测试入口**：本仓库只使用 Python 标准库 `unittest`，完整命令为 `python -m unittest discover -s tests -p 'test_*.py' -v`；项目依赖不含 pytest，不得再凭通用习惯调用 pytest。健康检查契约固定为 `/healthz`，不是 `/health`。
+- **唯一测试入口**：在主目录或 worktree 根目录运行 `& .\scripts\test.ps1`。脚本从 Git common directory 自动定位主项目 venv，强制加载当前 worktree 的 `src`，核对 `peach.__file__` 后运行标准库 `unittest`。worktree 不复制 `.venv`，禁止手工拼接 venv 路径或调用 pytest。健康检查契约固定为 `/healthz`，不是 `/health`。
 
 ## Claude 在本项目中的实际能力边界
 
@@ -67,7 +66,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - **Beeg 表面层（2026-08-15，同一 CSS/hash）**：暗色背景 `rgb(2,4,8)`，表面 `rgb(34,34,34)`。当前压缩 JS 的 Button 组件证明：`plain/outlined` 是透明背景，`filled` 才使用 `rgba(245,250,255,.05)`；边框分别是 15% 和 10% 白色内描边。frost utility 的 `rgba(38,40,44,.72)` / `rgba(30,30,30,.72)` 只用于指定浮层，不能套到全部厂牌和标签。页首蓝绿背景是 `/dist/assets/glow.webp`（1000×563，SHA-256 `ACA7A914D82843EE4A655C35651931CDC0D42308EDC0F7CB16D8EC63C7AE3ECA`）以 `49vh` 铺放并向 `rgb(2,4,8)` 渐隐；Peach 不复制许可不明位图，使用本地 CSS 光晕。此前把“取到 frost token”误写成全部表面已对齐，现已纠正。
 - **Beeg 实体资料页（2026-08-15）**：`view-source:https://beeg.com/DianaRider` 可取得 SPA 启动 HTML及上述当前 CSS/JS；原始 Vue source map 返回 404，明确记为 `未取得`。压缩 JS 中 `TagProfile` 的可复现结构是：无大外框卡片、桌面 160×160 圆头像、资料文字并排，别名/统计/简介/链接分层，关联实体另起一段。Peach 资料页据此隐藏首页三层筛选，在资料下显示馆藏已有标签、关联艺人和作品；不声称取得原始 Vue 文件。
 - **失败报告规则（2026-08-15）**：浏览器工具拒绝 URL 不等于公网不可达；本机 `curl.exe` 的 Schannel 握手失败也不等于代理失效。本次使用同一 `127.0.0.1:7897` 代理的 Git curl 成功取得当前资产。任何取证、浏览器或视觉验证失败都必须立即报告失败步骤、原始错误、影响和替代路径；静态/API 测试不得冒充视觉验收。
-- **重复错误复盘（2026-08-16）**：反复出现的 pytest、错误 `/health`、worktree 测试加载主目录、PowerShell `$HOME` 大小写冲突、`foreach {}` 后直接接管道、Schannel 失败后改用 HTTP 冒充 HTTPS，以及浏览器不可用却继续报视觉通过，根因都是“文字提醒没有变成执行门槛”。对应禁用模式已写入项目 `AGENTS.md`；以后必须由语义测试、真实端点/CA 校验和失败即时报告共同拦截，不能再靠操作者记忆。
+- **重复错误复盘（2026-08-16）**：反复出现的 pytest、错误 `/health`、worktree 错找 `.venv` 或加载主目录源码、PowerShell `$HOME` 大小写冲突、`foreach {}` 后直接接管道、Schannel 失败后改用 HTTP 冒充 HTTPS，以及浏览器不可用却继续报视觉通过，根因都是“文字提醒没有变成执行门槛”。测试入口已收敛为 `scripts/test.ps1`，自动定位主 venv 并拒绝错误源码；其他禁用模式写入项目 `AGENTS.md`，以后必须由可执行检查、真实端点/CA 校验和失败即时报告共同拦截，不能再靠操作者记忆。
 - **TikTok 单列滚动（2026-08-15）**：当前 bundle `async/89993.30b4c2a9.js`（SHA-256 `C4D4867C5C6C89DCE560D429A4686427C911267DCBB2787AEB31B7BD333E9088`）使用 200 ms、`cubic-bezier(.2,.2,.4,.9)`、目标 `offsetTop`，滚动时临时禁用并恢复 `scrollSnapType`。Peach 复用时长和 easing，保留自己的两视频预载与 wheel/touch 队列。
 - **Apple 播放控件（2026-08-15）**：Apple HIG “Playing video” 只支持熟悉、克制的传输控制语义，没有提供可复用的 `gobackward.10`/`goforward.10` Web SVG。Peach 使用固定版本的 Lucide 子集和明确的“后退/前进 10 秒”无障碍标签，不声称精确复制 iOS glyph。
 - **Vercel 设计规范（2026-08-15）**：`https://vercel.com/design.md`（SHA-256 `07ED2923294AA326F65F9D9D4094B6E97BF7DE10C39ACD8BE935F2045C5A688F`）只作为评审清单：先用字体和间距建立层级、保持连续画布、避免任意图标瓷砖/嵌套卡片/微小灰字，动画只表达状态或连续性。
@@ -194,7 +193,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 详情媒体用随机 `session` 标识同一次播放；收起详情、路由切换或替换详情时，前端必须清空 video 后调用 `/api/stream-cancel`，服务端取消该 session 下全部 Range 请求并拒绝迟到请求。只移除 DOM 不能保证 CloudDrive 停止读盘。
 - 115/PikPak 继续采用视频网站式按需加载，不增加“点击后才拉流”的额外门槛。不得擅自缩短浏览器请求的 Range：旧 32 MiB 人工截断让 Firefox 把部分 MP4 误判为不断增长的媒体时长。当前以标准 Range + session 取消保持协议正确；要由服务端控制分片大小，必须进入正式 HLS/DASH 流方案，不能伪造 `Content-Range` 请求语义。
 - 详情播放器固定复用本地 Video.js 8.23.9（Apache-2.0），不依赖 CDN。控制栏总时长优先采用 ledger 探测值；item 29297 的 `moov/mvhd` 位于文件头，真实总时长为 28,639.916 秒，说明旧“越播越长”不是媒体缺少头部元数据。统计面板在直接 MP4 下显示 Range、缓冲、画面和丢帧；未来 HLS/DASH 继续读取内置 VHS 的请求、带宽和字节统计。
-- Peach 测试唯一入口是 `python -m unittest discover -s tests -v`；仓库不依赖 `pytest`。健康检查端点是 `/healthz`，不是 `/health`。
+- Peach 测试唯一入口是 `& .\scripts\test.ps1`；脚本内部运行标准库 `unittest`，仓库不依赖 `pytest`。健康检查端点是 `/healthz`，不是 `/health`。
 - Windows 千兆线路理论上限约 125 MB/s。115 实测单文件由 CloudDrive 启动 2 条约 2 MB/s 的 CDN 连接；`max_download_speed_kbyps=0` 表示未设本地限速。卡顿排查先看 FlowLens 是否存在关闭详情后仍下载的旧连接，再查 Range/缓存，不把单连接速度直接归因于本地带宽。
 
 ## 恢复入口
