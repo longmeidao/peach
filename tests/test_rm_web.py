@@ -93,14 +93,16 @@ class WebDataTests(unittest.TestCase):
         )
         con.executemany(
             "INSERT INTO asset_tag(asset_id,tag,source) VALUES(?,?,?)",
-            [(1, "足交", "name"), (1, "演员:Alice", "performer"), (2, "竖屏", "probe")],
+            [(1, "足交", "name"), (1, "演员:Alice", "performer"),
+             (1, "Canonical Alice", "vision"), (2, "竖屏", "probe")],
         )
         con.executemany(
             "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(?,?,?,?)",
             [(10, "tag", "足交", "足交"),
              (11, "performer", "Canonical Alice", "canonical alice"),
              (12, "creator", "Canonical Creator", "canonical creator"),
-             (13, "studio", "Canonical Studio", "canonical studio")],
+             (13, "studio", "Canonical Studio", "canonical studio"),
+             (90, "tag", "Canonical Alice", "canonical alice")],
         )
         con.executemany(
             "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
@@ -110,7 +112,8 @@ class WebDataTests(unittest.TestCase):
              (1, 12, "creator", "test", 1.0),
              (2, 12, "creator", "test", 1.0),
              (1, 13, "studio", "test", 1.0),
-             (2, 13, "studio", "test", 1.0)],
+             (2, 13, "studio", "test", 1.0),
+             (1, 90, "tag", "test", 1.0)],
         )
         con.commit()
         con.close()
@@ -142,6 +145,11 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(result["items"][0]["performer_entities"], [
             {"id": 11, "name": "Canonical Alice"},
         ])
+        self.assertEqual(result["items"][0]["tags"], ["足交"])
+        self.assertNotIn("Canonical Alice", [tag["k"] for tag in rm_web.q_item(self.contract, 1)["tags"]])
+        self.assertNotIn("Canonical Alice", [tag["k"] for tag in rm_web.q_facets(self.contract)["tags"]])
+        self.assertNotIn("Canonical Alice", [tag["k"] for tag in rm_web.q_index(self.contract, "tags")["items"]])
+        self.assertNotIn("Canonical Alice", [tag["k"] for tag in rm_web.q_stats(self.contract)["top_tags"]])
         self.assertNotIn("path", result["items"][0])
         self.assertNotIn("snapshot_path", result["items"][0])
 
@@ -212,6 +220,25 @@ class WebDataTests(unittest.TestCase):
             self.contract, {"id": 1, "kind": "dislike"},
         )["feedback"])
         self.assertEqual(self.row()["disposal"], "pending")
+
+    def test_flagged_means_positive_marks_not_disposal_or_negative_feedback(self):
+        rm_web.w_feedback(self.contract, {"id": 1, "kind": "dislike"})
+        rm_web.w_feedback(self.contract, {"id": 1, "kind": "dispose"})
+        rm_web.w_preference(self.contract, {"id": 2, "liked": True, "reason": ""})
+        self.assertEqual(
+            [item["id"] for item in rm_web.q_items(self.contract, {"state": "flagged", "limit": "10"})["items"]],
+            [2],
+        )
+        self.assertEqual(rm_web.q_facets(self.contract)["stats"]["flagged"], 1)
+
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET o_count=2 WHERE id=1")
+        con.commit(); con.close()
+        self.assertEqual(
+            {item["id"] for item in rm_web.q_items(self.contract, {"state": "flagged", "limit": "10"})["items"]},
+            {1, 2},
+        )
+        self.assertEqual(rm_web.q_facets(self.contract)["stats"]["flagged"], 2)
 
     def test_like_and_reason_are_independent_profile_preferences(self):
         saved = rm_web.w_preference(self.contract, {
