@@ -378,7 +378,8 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .previewcounter .ringplay{position:relative;inset:auto;width:14px;height:14px;transform:none;stroke:#fff;fill:none;stroke-width:2;margin-left:1px}
 @keyframes preview-arc{to{stroke-dashoffset:0}}
 .nopic{font-size:11px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
-.badge{position:absolute;top:6px;left:6px;display:flex;gap:4px;z-index:2;align-items:center}
+.badge{position:absolute;top:6px;left:6px;display:flex;gap:4px;z-index:2;align-items:center;
+  transition:opacity .15s ease}
 /* 来源徽标：图标 + 名字。绿=免费（本地/115），橙=计费（PikPak） */
 .src{display:inline-flex;align-items:center;gap:4px;padding:2px 7px 2px 3px;border-radius:99px;
   background:color-mix(in srgb,#000 62%,transparent);backdrop-filter:blur(4px);
@@ -403,7 +404,10 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .edge .srcrow button[aria-pressed="true"]{background:var(--tungsten-soft);color:var(--tungsten)}
 .edge .srcrow button.off{opacity:.34}
 .dur{position:absolute;right:6px;bottom:6px;z-index:2;background:color-mix(in srgb,#000 70%,transparent);
-  color:#F2EADF;padding:2px 6px;border-radius:3px}
+  color:#F2EADF;padding:2px 6px;border-radius:3px;transition:opacity .15s ease}
+@media (hover:hover) and (pointer:fine){
+  .card:hover .badge,.card:hover .dur{opacity:0}
+}
 .scrub{position:absolute;left:0;right:0;bottom:0;height:3px;z-index:2;
   background:color-mix(in srgb,#000 45%,transparent)}
 .scrub i{display:block;height:100%;background:var(--loupe)}
@@ -415,7 +419,7 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .mav .ini{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   font-size:13px;color:var(--muted);font-family:Bahnschrift,sans-serif}
 .mtext{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
-.meta .t{font-size:14px;line-height:1.35;overflow:hidden;display:-webkit-box;
+.meta .t{font-size:14px;line-height:1.35;min-height:2.7em;overflow:hidden;display:-webkit-box;
   -webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-all}
 .meta .cardtitle{width:100%;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}
 .meta .s{display:flex;gap:8px;color:var(--muted);align-items:center;flex-wrap:wrap}
@@ -435,7 +439,7 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .tg:hover{border-color:var(--ink-2);color:var(--ink);background:var(--hover)}
 body[data-density="dense"] .card .ctags .tg:nth-child(n+2){display:none}
 body[data-density="dense"] .card .ctags .tg{max-width:132px;overflow:hidden;text-overflow:ellipsis}
-body[data-density="dense"] .card .meta .t{display:block;max-width:100%;overflow:hidden;
+body[data-density="dense"] .card .meta .t{display:block;max-width:100%;min-height:1.35em;overflow:hidden;
   -webkit-line-clamp:unset;white-space:nowrap;text-overflow:ellipsis}
 
 /* 短片带 */
@@ -1108,6 +1112,7 @@ function cardHtml(it,cls){
       :(it.code?{kind:'',name:it.code}
         :(it.studio?{kind:'studio',name:it.studio}:{kind:'',name:'未归属'})));
   const who=identity.name,whoKind=identity.kind;
+  const sizeText=Number(it.size)>0?fmtSize(Number(it.size)):'大小未知';
   const tgs=(it.tags||[]).slice(0,3).map(x=>`<span class="tg general" data-tag="${esc(x)}">${esc(x)}</span>`).join('');
   const avatarName=performer||it.creator||it.studio||who;
   const avatarKind=performer?'performer':(it.creator?'creator':(it.studio?'studio':''));
@@ -1136,7 +1141,7 @@ function cardHtml(it,cls){
     <div class="meta">${avatar}<div class="mtext"><button class="t cardtitle" data-open>${esc(it.name)}</button>
       <div class="s mono">${whoKind?`<button class="who entitylink" data-entity-kind="${whoKind}" data-entity-name="${esc(who)}">${esc(who)}</button>`:`<span class="who">${esc(who)}</span>`}
         ${it.why?`<span class="why">${esc(it.why)}</span>`:''}
-        <span>${fmtSize(it.size||0)}</span>
+        <span class="size">${sizeText}</span>
         ${it.play_count?`<span>看过 ${it.play_count}</span>`:''}
         <span class="flags">${fl}</span></div>
       ${tgs?`<div class="ctags">${tgs}</div>`:''}</div></div></article>`;
