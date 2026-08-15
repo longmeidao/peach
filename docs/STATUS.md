@@ -4,7 +4,7 @@
 
 ## 运行态
 
-- 生产入口：Windows 当前用户 Startup 中的 `Peach.lnk`，启动 `R:\peach-app\.venv\Scripts\pythonw.exe -m peach.tray`。当前版本 `0.5.1`。
+- 生产入口：Windows 当前用户 Startup 中的 `Peach.lnk`，启动 `R:\peach-app\.venv\Scripts\pythonw.exe -m peach.tray`。当前版本 `0.5.2`。
 - HTTP：`0.0.0.0:80`；HTTPS：`192.168.50.162:443`。`peach.local` 是唯一正式局域网名称，发布为 `192.168.50.162`。
 - mDNS 使用 Python zeroconf 的全合格网卡监听；生产显式固定发布地址，避免隧道网卡误选。没有发布 `lmd-dst.local`。
 - Stash 仍运行于 `127.0.0.1:9999`，只作为过渡期可替换适配器。
@@ -22,7 +22,7 @@
 - `FeedAdapter` 已支持显式、有界 RSS/Atom 发现、条件请求和不可变快照；尚未配置真实订阅，也不会启动时自动写 ledger。
 - AI Provider 已拆为推理与 Agent 两层。`/api/providers` 无副作用且不泄露凭据；OpenCode Go 模型清单只在显式访问时拉取，当前不发推理请求。
 - Windows 托盘已部署：单击打开 Peach，右键提供状态、重启、日志、版本/更新和退出；Per-Monitor V2 DPI 在创建窗口前启用，更新检查在后台线程执行并使用非模态通知。
-- 版本唯一来源为 `src/peach/__init__.py::__version__`。本批增加目录归属审计、标签添加弹窗、运行期磁盘闸门并应用迁移 `0010`，按 pre-1.0 SemVer 升至 `0.5.0`；没有 Git remote 时只报告本地开发版，不伪造更新能力。
+- 版本唯一来源为 `src/peach/__init__.py::__version__`。本批在目录归属审计、标签添加弹窗、运行期磁盘闸门和迁移 `0010` 基础上，修正实体页局部标签与搜索推荐交互，按 pre-1.0 SemVer 升至 `0.5.2`；没有 Git remote 时只报告本地开发版，不伪造更新能力。
 - 本地 CA HTTPS 已部署。CA 包含 critical `CA:TRUE` 和签名用途并通过 OpenSSL 链验证。macOS/iOS 只安装 `peach-local-ca.crt`；不得传播任何私钥。
 - 项目代码、运行数据、本地媒体已分离为 `R:\peach-app`、`R:\peach-data`、`R:\media`。旧空 Inbox 和 `Resources/Tools` 兼容表面已移除。
 
@@ -62,12 +62,12 @@
 
 ## 验证基线
 
-- 当前主分支基线：115 项隔离测试通过，inline JavaScript 语法检查通过；版本、托盘、迁移、mDNS、媒体转码、Provider、DiskGuard、语义路由、详情播放释放、多选、实体资料与待删视觉均有测试。
+- 当前主分支基线：118 项隔离测试通过，inline JavaScript 语法检查通过；版本、托盘、迁移、mDNS、媒体转码、Provider、DiskGuard、语义路由、详情播放释放、多选、实体资料与待删视觉均有测试。
 - 前一生产版本已分别通过 HTTP/HTTPS health、`peach.local` 解析、真实 CloudDrive Range、桌面 1280×720 和手机 390×844 检查。
 - 浏览器验收不得写真实喜欢、反馈或播放数据；需要交互写入时使用隔离 ledger 副本。
 - 并行 worktree 测试必须设置 `PYTHONPATH=<当前工作树>\src` 并核对 `peach.__file__`，否则 editable install 可能误加载主目录旧代码。
-- 本批已重启生产托盘。HTTP `/healthz` 返回 `0.5.1`；`peach.local` 解析为 `192.168.50.162`。实际 `longm` 用户已信任 Peach 本地 CA，HTTPS `/healthz` 使用项目 CA 严格校验通过；HTTPS 对真实作品 9978 的 1 KiB Range 返回 `206 video/mp4`；11 个迁移零待处理。
-- 本批已在生产数据只读条件下完成桌面默认视口和手机 390×844 视觉验收：首页创作者头像、女优资料页、MOODYZ 厂牌资料页、标签与关联艺人均通过。内置浏览器不信任本地 CA，故视觉验收使用 HTTP；HTTPS 的证书链、API 和媒体 Range 由独立严格 TLS 客户端验证，二者不互相冒充。
+- 本批已重启生产托盘。HTTP `/healthz` 返回 `0.5.2`；`peach.local` 解析为 `192.168.50.162`。实际 `longm` 用户已信任 Peach 本地 CA，HTTPS `/healthz` 使用项目 CA 严格校验通过；HTTPS 实体接口确认“一个ren”全部 284 条、叠加“榨精”后 6 条；11 个迁移零待处理。
+- 本批已在生产数据只读条件下完成桌面默认视口视觉验收：女优资料页留在 `/performers/一个ren?tag=榨精`，标题与作品数显示为 6，顶部语义分隔和搜索推荐回填均通过。Firefox 已生成真实 390×844 截图，但 CLI 在 SPA 数据返回前截到“载入中”，本批手机渲染完成态明确记为未取得，不冒充通过。内置浏览器不信任本地 CA，故视觉验收使用 HTTP；HTTPS 的证书链和 API 由独立严格 TLS 客户端验证，二者不互相冒充。
 - 详情播放释放和 sticky 遮挡在隔离 ledger 浏览器中验收；生产浏览器只做无写入首页/样式检查，未污染真实播放、喜欢或反馈数据。
 
 ## 下一批工作
