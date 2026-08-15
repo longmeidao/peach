@@ -435,7 +435,8 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .tg:hover{border-color:var(--ink-2);color:var(--ink);background:var(--hover)}
 body[data-density="dense"] .card .ctags .tg:nth-child(n+2){display:none}
 body[data-density="dense"] .card .ctags .tg{max-width:132px;overflow:hidden;text-overflow:ellipsis}
-body[data-density="dense"] .card .meta .t{-webkit-line-clamp:1;white-space:nowrap;text-overflow:ellipsis}
+body[data-density="dense"] .card .meta .t{display:block;max-width:100%;overflow:hidden;
+  -webkit-line-clamp:unset;white-space:nowrap;text-overflow:ellipsis}
 
 /* 短片带 */
 .shorts{margin:30px 0 8px;border-top:1px solid var(--line-soft);padding-top:16px}
@@ -1102,8 +1103,11 @@ function cardHtml(it,cls){
             .filter(Boolean).map(c=>`<i class="${c}"></i>`).join('');
   const performer=(it.performers||[])[0]||'';
   const performerRef=(it.performer_entities||[])[0];
-  const who=it.creator||performer||it.code||it.studio||'未归属';
-  const whoKind=it.creator?'creator':(it.studio?'studio':'');
+  const identity=it.creator?{kind:'creator',name:it.creator}
+    :(performer?{kind:'performer',name:performer}
+      :(it.code?{kind:'',name:it.code}
+        :(it.studio?{kind:'studio',name:it.studio}:{kind:'',name:'未归属'})));
+  const who=identity.name,whoKind=identity.kind;
   const tgs=(it.tags||[]).slice(0,3).map(x=>`<span class="tg general" data-tag="${esc(x)}">${esc(x)}</span>`).join('');
   const avatarName=performer||it.creator||it.studio||who;
   const avatarKind=performer?'performer':(it.creator?'creator':(it.studio?'studio':''));
