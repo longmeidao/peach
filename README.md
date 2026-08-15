@@ -131,6 +131,7 @@ Per-Monitor V2 DPI，单击打开 `https://peach.local/`；右键可查看状态
 | `/tags` | 标签管理，支持字母表与标签云 |
 | `/stats` | 统计 |
 | `/immerse` | 沉浸模式 |
+| `/mix/{seed_id}/{item_id}` | 自动 Mix 播放器与右侧队列 |
 
 公共状态和媒体：
 

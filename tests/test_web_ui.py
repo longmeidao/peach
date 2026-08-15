@@ -137,6 +137,18 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("Date.now()-barsDataAt<30000", self.page)
         self.assertNotIn("p.set('limit','120')", self.page)
 
+    def test_mix_cards_share_the_home_flow_and_open_a_routed_side_queue(self):
+        self.assertIn('class="card mixcard" data-mix-seed=', self.page)
+        self.assertIn("cards.splice(7,0,mixCardHtml(seed))", self.page)
+        self.assertIn(".mixstack::before,.mixstack::after", self.page)
+        self.assertIn('<span class="mixbadge">${icon(\'play\')}Mix</span>', self.page)
+        self.assertIn("async function openMix(seedId,itemId=seedId,push=true)", self.page)
+        self.assertIn("route(`/mix/${seedId}/${itemId}`)", self.page)
+        self.assertIn('class="mixqueue"', self.page)
+        self.assertIn('class="mixitem ${x.id===itemId?\'current\':\'\'}"', self.page)
+        self.assertIn("data-mix-item", self.page)
+        self.assertIn("if(!mixContext)api('/api/related?id='", self.page)
+
     def test_filter_and_sort_rows_stay_visible_in_both_scroll_directions(self):
         self.assertIn("--filterH:58px", self.page)
         self.assertIn(".tagbar{position:sticky;top:var(--topH)", self.page)
