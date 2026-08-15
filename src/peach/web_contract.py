@@ -549,6 +549,43 @@ def q_entity(contract: WebContract, args):
     ).fetchone()
     d["asset_count"] = count
     d["representative_asset_id"] = rep
+    d["tags"] = [dict(r) for r in c.execute(
+        "SELECT tag.id,tag.canonical_name k,count(DISTINCT scope.asset_id) n "
+        "FROM asset_entity scope "
+        "JOIN asset_entity tagged ON tagged.asset_id=scope.asset_id "
+        "JOIN entity tag ON tag.id=tagged.entity_id "
+        "JOIN asset a ON a.id=scope.asset_id "
+        "WHERE scope.entity_id=? AND a.medium='video' AND tag.kind='tag' "
+        "AND tag.canonical_name NOT IN ('短片-2分内','中片-10分内','长片-30分内','超长片') "
+        "AND NOT EXISTS(SELECT 1 FROM asset_tag_preference p "
+        " WHERE p.asset_id=scope.asset_id AND p.profile_id='local-default' "
+        " AND p.hidden=1 AND p.normalized_tag=tag.normalized_name) "
+        "GROUP BY tag.id,tag.canonical_name ORDER BY n DESC,tag.canonical_name LIMIT 36",
+        (d["id"],),
+    )]
+    related = []
+    for performer in c.execute(
+        "SELECT person.id,person.canonical_name k,count(DISTINCT scope.asset_id) n "
+        "FROM asset_entity scope "
+        "JOIN asset_entity co ON co.asset_id=scope.asset_id "
+        "JOIN entity person ON person.id=co.entity_id "
+        "JOIN asset a ON a.id=scope.asset_id "
+        "WHERE scope.entity_id=? AND a.medium='video' AND person.kind='performer' "
+        "AND person.id<>? "
+        "GROUP BY person.id,person.canonical_name ORDER BY n DESC,person.canonical_name LIMIT 18",
+        (d["id"], d["id"]),
+    ):
+        item = dict(performer)
+        representative = c.execute(
+            "SELECT a.id FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
+            "WHERE ae.entity_id=? AND a.medium='video' AND a.snapshot_path IS NOT NULL "
+            "ORDER BY COALESCE(a.play_count,0) DESC,COALESCE(a.play_seconds,0) DESC,"
+            "COALESCE(a.width,0)*COALESCE(a.height,0) DESC,a.size DESC LIMIT 1",
+            (item["id"],),
+        ).fetchone()
+        item["rep"] = representative[0] if representative else None
+        related.append(item)
+    d["related_performers"] = related
     c.close()
     return d
 
