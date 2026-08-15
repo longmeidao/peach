@@ -151,6 +151,14 @@ class WebDataTests(unittest.TestCase):
         )
         self.assertEqual([item["id"] for item in result["items"]], [1])
 
+    def test_items_can_skip_repeated_total_count_on_later_pages(self):
+        result = rm_web.q_items(
+            self.contract, {"limit": "1", "offset": "0", "count": "0"},
+        )
+        self.assertIsNone(result["total"])
+        self.assertEqual(len(result["items"]), 1)
+        self.assertTrue(result["has_more"])
+
     def test_legacy_length_tags_are_hidden_in_favor_of_numeric_minutes(self):
         con = sqlite3.connect(self.db_path)
         con.execute(
@@ -160,11 +168,25 @@ class WebDataTests(unittest.TestCase):
             "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
             "VALUES(1,14,'tag','test',1.0)"
         )
+        con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(15,'tag','测试分页标签','测试分页标签')"
+        )
+        con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+            "VALUES(1,15,'tag','test',1.0)"
+        )
         con.commit(); con.close()
         self.assertNotIn("短片-2分内", [tag["k"] for tag in rm_web.q_item(self.contract, 1)["tags"]])
         facets = rm_web.q_facets(self.contract)
         visible = {row["k"] for row in facets["tags"] + facets["tech"]}
         self.assertNotIn("短片-2分内", visible)
+        index = rm_web.q_index(self.contract, "tags")
+        self.assertNotIn("短片-2分内", {row["k"] for row in index["items"]})
+        self.assertIn("超长片-30分上", rm_web.LENGTH_TAGS)
+        first_page = rm_web.q_index(self.contract, "tags", limit=1)
+        second_page = rm_web.q_index(self.contract, "tags", limit=1, offset=1)
+        self.assertTrue(first_page["has_more"])
+        self.assertNotEqual(first_page["items"][0]["k"], second_page["items"][0]["k"])
 
     def test_activity_accumulates_real_play_time_and_max_position(self):
         first = rm_web.w_activity(self.contract, {
