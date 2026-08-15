@@ -13,6 +13,7 @@ dependencies = [
   "feedparser==6.0.12",
   "httpx==0.28.1",
   "pillow==12.3.0",
+  "pystray==0.19.5",
   "pydantic==2.13.4",
   "starlette==0.47.3",
   "uvicorn==0.35.0",
@@ -21,6 +22,7 @@ dependencies = [
 
 [project.scripts]
 peach = "peach.cli:main"
+peach-tray = "peach.tray:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
