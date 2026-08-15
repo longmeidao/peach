@@ -128,6 +128,9 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - `FeedAdapter` 是首个追更连接器，显式、有界发现 RSS/Atom；不在应用启动时轮询，不直接写 ledger。
 - AI 推理 API 与本地 coding/agent runtime 是不同层，不能伪装成一个等价接口。
 - 3 字符以上搜索使用 FTS5 trigram；更短文本回退 LIKE。FTS 写入由迁移 trigger 维护，不在 Web 启动时修补。
+- 详情身份按规范化名称去重：同一个名字已显示为女优时，不再重复显示“创作者”。标签的 × 写入 profile 级隐藏覆盖，不删除刮削/识别断言；+ 新增标签以 `web-user` 同步写入兼容层与规范实体层。
+- `/tags` 是独立标签管理页，默认字母表模式，也可切换标签云；两种模式都显示数量并进入首页组合筛选。
+- 高潮按钮复用 Health Icons 官方 `outline-24px/contraceptives/sperm.svg`，来源 `resolvetosavelives/healthicons`，CC0。一般操作继续使用本地 Lucide 子集。
 
 ## 恢复入口
 

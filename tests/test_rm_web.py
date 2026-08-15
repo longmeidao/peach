@@ -66,6 +66,8 @@ CREATE TABLE watch_queue(profile_id TEXT,asset_id INTEGER,added_at TEXT,source T
   PRIMARY KEY(profile_id,asset_id));
 CREATE TABLE asset_preference(profile_id TEXT,asset_id INTEGER,liked INTEGER,reason TEXT,
   source TEXT,updated_at TEXT,PRIMARY KEY(profile_id,asset_id));
+CREATE TABLE asset_tag_preference(profile_id TEXT,asset_id INTEGER,normalized_tag TEXT,
+  hidden INTEGER,updated_at TEXT,PRIMARY KEY(profile_id,asset_id,normalized_tag));
 """
 
 
@@ -213,6 +215,26 @@ class WebDataTests(unittest.TestCase):
         other = rm_web.WebContract(Path(self.tmp.name) / "other.db")
         self.assertEqual(self.contract.cached("same", lambda: "first"), "first")
         self.assertEqual(other.cached("same", lambda: "second"), "second")
+
+    def test_item_tag_add_and_remove_preserve_source_evidence(self):
+        added = rm_web.w_item_tag(self.contract, {
+            "id": 1, "operation": "add", "tag": "新标签",
+        })
+        self.assertIn("新标签", added["tags"])
+        removed = rm_web.w_item_tag(self.contract, {
+            "id": 1, "operation": "remove", "tag": "足交",
+        })
+        self.assertNotIn("足交", removed["tags"])
+        con = sqlite3.connect(self.db_path)
+        self.assertEqual(
+            con.execute("SELECT source FROM asset_tag WHERE asset_id=1 AND tag='足交'").fetchone()[0],
+            "name",
+        )
+        self.assertEqual(
+            con.execute("SELECT hidden FROM asset_tag_preference WHERE asset_id=1").fetchone()[0],
+            1,
+        )
+        con.close()
 
     def test_batch_markers_are_bounded_and_preserve_like_reason(self):
         rm_web.w_preference(self.contract, {"id": 1, "liked": False, "reason": "保留原文"})

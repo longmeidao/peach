@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Sequence
 from urllib.parse import urlsplit
 
+from .entities import normalize_entity_name, upsert_asset_entity
 from .media import remap_managed_path
 
 COST = {"local": "free", "115": "free", "pikpak": "metered", "online": "metered"}
@@ -111,11 +112,14 @@ def q_items(contract: WebContract, args):
         # 逗号分隔 = 组合筛选，全部满足。
         for tg in [x for x in args["tag"].split(",") if x]:
             where.append(
-                "(EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+                "((EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
                 "WHERE ae.asset_id=a.id AND e.kind='tag' AND e.canonical_name=?) OR "
-                "EXISTS(SELECT 1 FROM asset_tag t WHERE t.asset_id=a.id AND t.tag=?))"
+                "EXISTS(SELECT 1 FROM asset_tag t WHERE t.asset_id=a.id AND t.tag=?)) AND "
+                "NOT EXISTS(SELECT 1 FROM asset_tag_preference p WHERE p.asset_id=a.id "
+                "AND p.profile_id='local-default' AND p.hidden=1 "
+                "AND p.normalized_tag=lower(trim(?))))"
             )
-            par.extend((tg, tg))
+            par.extend((tg, tg, tg))
     if args.get("len"):
         where.append("a.ctx_length = ?"); par.append(args["len"])
     if args.get("dur_min"):
@@ -282,12 +286,18 @@ def q_item(contract: WebContract, aid):
         c.close(); return {"error": "not found"}
     d = dict(r)
     legacy = [x[0] for x in c.execute(
-        "SELECT tag FROM asset_tag WHERE asset_id=? ORDER BY tag", (aid,),
+        "SELECT t.tag FROM asset_tag t WHERE t.asset_id=? AND NOT EXISTS("
+        "SELECT 1 FROM asset_tag_preference p WHERE p.asset_id=t.asset_id "
+        "AND p.profile_id='local-default' AND p.hidden=1 "
+        "AND p.normalized_tag=lower(trim(t.tag))) ORDER BY t.tag", (aid,),
     )]
     canonical = list(c.execute(
         "SELECT DISTINCT e.id,e.kind,e.canonical_name FROM asset_entity ae "
         "JOIN entity e ON e.id=ae.entity_id WHERE ae.asset_id=? "
         "AND e.kind IN ('tag','performer','creator','studio','series') "
+        "AND (e.kind<>'tag' OR NOT EXISTS(SELECT 1 FROM asset_tag_preference p "
+        "WHERE p.asset_id=ae.asset_id AND p.profile_id='local-default' AND p.hidden=1 "
+        "AND p.normalized_tag=e.normalized_name)) "
         "ORDER BY e.kind,e.canonical_name", (aid,),
     ))
     canonical_tags = [name for _, kind, name in canonical if kind == "tag"]
@@ -567,7 +577,10 @@ def q_index(contract: WebContract, kind, q="", limit=600):
     else:
         sql = ("SELECT e.canonical_name k, count(DISTINCT ae.asset_id) n "
                "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-               "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='tag' ")
+               "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='tag' "
+               "AND NOT EXISTS(SELECT 1 FROM asset_tag_preference p "
+               "WHERE p.asset_id=ae.asset_id AND p.profile_id='local-default' "
+               "AND p.hidden=1 AND p.normalized_tag=e.normalized_name) ")
         par = []
         if q: sql += "AND e.canonical_name LIKE ? "; par.append(f"%{q}%")
         sql += "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT ?"; par.append(limit)
@@ -805,6 +818,49 @@ def w_preference(contract: WebContract, body):
             "like_reason": row["reason"] if row else ""}
 
 
+def w_item_tag(contract: WebContract, body):
+    """新增或隐藏单条资源标签；隐藏不销毁刮削/识别来源证据。"""
+    contract.cache_bust()
+    aid = int(body["id"])
+    operation = str(body.get("operation", "")).strip()
+    tag = str(body.get("tag", "")).strip()
+    if operation not in {"add", "remove"}:
+        raise ValueError("operation must be add or remove")
+    if not tag or len(tag) > 80 or tag.startswith("演员:"):
+        raise ValueError("tag must be 1 to 80 characters and cannot be a performer marker")
+    normalized = normalize_entity_name(tag)
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    with contract.write_lock:
+        c = contract.db(write=True)
+        if not c.execute("SELECT 1 FROM asset WHERE id=?", (aid,)).fetchone():
+            c.close()
+            raise ValueError("asset not found")
+        if operation == "remove":
+            c.execute(
+                "INSERT INTO asset_tag_preference(profile_id,asset_id,normalized_tag,hidden,updated_at) "
+                "VALUES('local-default',?,?,1,?) ON CONFLICT(profile_id,asset_id,normalized_tag) "
+                "DO UPDATE SET hidden=1,updated_at=excluded.updated_at",
+                (aid, normalized, stamp),
+            )
+        else:
+            c.execute(
+                "DELETE FROM asset_tag_preference WHERE profile_id='local-default' "
+                "AND asset_id=? AND normalized_tag=?", (aid, normalized),
+            )
+            c.execute(
+                "INSERT OR IGNORE INTO asset_tag(asset_id,tag,confidence,source) "
+                "VALUES(?,?,1.0,'web-user')", (aid, tag),
+            )
+            upsert_asset_entity(
+                c, kind="tag", name=tag, asset_id=aid, role="tag",
+                source="web-user", confidence=1.0,
+                metadata={"profile_id": "local-default"}, now=stamp,
+            )
+        c.commit(); c.close()
+    return {"ok": True, "operation": operation, "tag": tag,
+            "tags": [item["k"] for item in q_item(contract, aid)["tags"]]}
+
+
 def w_batch(contract: WebContract, body):
     """Apply one explicit, reversible marker to a bounded selected set."""
     raw_ids = body.get("ids")
@@ -888,6 +944,8 @@ def dispatch_api_post(contract: WebContract, path, body):
         return w_watch_later(contract, body)
     if path == "/api/preference":
         return w_preference(contract, body)
+    if path == "/api/item-tag":
+        return w_item_tag(contract, body)
     if path == "/api/batch":
         return w_batch(contract, body)
     raise KeyError(path)

@@ -191,6 +191,16 @@ button,input,textarea{font:inherit;color:inherit}
 .icell .nm{font-size:12.5px;text-align:center;line-height:1.3;word-break:break-all}
 .icell .n{font-size:11.5px;color:var(--muted)}
 .tagwall{display:flex;flex-wrap:wrap;gap:7px}
+.tagmodes{display:flex;gap:4px;padding:3px;border:1px solid var(--line-soft);border-radius:10px;background:var(--surface)}
+.tagmodes button{border:0;border-radius:7px;background:transparent;color:var(--muted);padding:6px 10px;cursor:pointer}
+.tagmodes button[aria-pressed="true"]{background:var(--hover);color:var(--ink)}
+.alphabet{display:grid;gap:22px}.alphagroup{border-top:1px solid var(--line-soft);padding-top:14px}
+.alphagroup:first-child{border-top:0}.alphagroup h3{margin:0 0 10px;font-size:18px;color:var(--ink-2)}
+.alphalist{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:5px 18px}
+.alphatag{display:flex;align-items:center;justify-content:space-between;gap:9px;border:0;background:transparent;
+  color:var(--ink-2);padding:7px 8px;border-radius:6px;text-align:left;cursor:pointer;min-width:0}
+.alphatag:hover{background:var(--hover);color:var(--ink)}.alphatag span:first-child{overflow:hidden;text-overflow:ellipsis}
+.alphatag .n{color:var(--muted);font-size:12px;flex:none}
 .entityhero{display:grid;grid-template-columns:180px minmax(0,1fr);gap:24px;padding:20px;
   border:1px solid var(--line);border-radius:8px;background:var(--surface);margin-bottom:22px}
 .entityportrait{width:180px;aspect-ratio:1;border-radius:8px;overflow:hidden;background:var(--sunk);
@@ -349,25 +359,35 @@ body.detail-open .tagbar{position:relative;top:auto;z-index:1;transform:none;opa
 .closestage:hover{background:var(--drop);border-color:var(--drop)}
 .closestage kbd{font-family:"Cascadia Mono",monospace;font-size:10px;opacity:.75;
   border:1px solid rgba(255,255,255,.3);border-radius:3px;padding:0 4px}
-.side{padding:14px 15px;border-left:1px solid var(--line-soft);display:flex;
+.side{padding:18px;border-left:1px solid var(--line-soft);display:flex;gap:0;
   flex-direction:column;max-height:76vh;overflow-y:auto}
-.stitle{font-size:15px;line-height:1.4;word-break:break-all;margin-bottom:6px}
-.smeta{display:flex;gap:9px;flex-wrap:wrap;color:var(--muted);margin-bottom:11px}
-.stags{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:13px}
-.detailidentity{display:grid;gap:6px;margin:2px 0 13px;padding:0}
+.stitle{font-size:17px;line-height:1.4;word-break:break-all;margin-bottom:8px}
+.smeta{display:flex;gap:9px;flex-wrap:wrap;color:var(--muted);margin-bottom:18px}
+.stags{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:0 0 18px}
+.detailtag{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:var(--tag-radius);
+  background:color-mix(in srgb,var(--surface) 82%,var(--ground));overflow:hidden;min-height:30px}
+.detailtag button{border:0;background:transparent;color:var(--ink-2);cursor:pointer;height:28px}
+.detailtag .tagfilter{padding:3px 5px 3px 11px}.detailtag .tagremove{width:28px;padding:0;display:grid;place-items:center;color:var(--muted)}
+.detailtag .tagremove:hover{color:var(--drop);background:color-mix(in srgb,var(--drop) 12%,transparent)}
+.detailtag svg,.tagplus svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
+.tagplus{width:30px;height:30px;border:1px dashed var(--line);border-radius:50%;display:grid;place-items:center;
+  background:transparent;color:var(--muted);cursor:pointer}.tagplus:hover{border-color:var(--tungsten);color:var(--tungsten)}
+.tagadd{display:flex;flex:1 1 180px;gap:5px}.tagadd[hidden]{display:none}.tagadd input{min-width:0;flex:1;
+  border:1px solid var(--line);border-radius:8px;background:var(--ground);padding:5px 8px}.tagadd button{border:0;border-radius:8px;background:var(--ink);color:var(--ground);padding:5px 10px;cursor:pointer}
+.detailidentity{display:grid;gap:8px;margin:0 0 18px;padding:0}
 .identityrow{display:grid;grid-template-columns:28px 42px minmax(0,1fr);gap:8px;align-items:center;min-height:30px}
 .identitymark{width:26px;height:26px;border-radius:50%;overflow:hidden;background:var(--sunk);color:var(--muted);
   display:grid;place-items:center;position:relative;font-size:11px;border:0;padding:0;cursor:pointer}
 .identitymark.logo{border-radius:6px;background:#fff;color:#555}.identitymark img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .identitymark.logo img{object-fit:contain;padding:2px}.identitymark svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
 .identityrow .ilabel{font-size:12px;color:var(--muted)}.identityrow .entitylink{font-size:14px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.trace{margin-bottom:14px}
+.trace{margin:0 0 18px;padding-top:2px}
 .trace .lab{display:flex;justify-content:space-between;color:var(--muted);margin-bottom:5px}
 .trace .bar{position:relative;height:4px;background:var(--line);border:0;border-radius:2px}
 .trace .bar u{position:absolute;inset:0 auto 0 0;background:color-mix(in srgb,var(--loupe) 26%,transparent);text-decoration:none}
 .trace .bar b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--tungsten);border-radius:1px}
 .ticks{display:flex;justify-content:space-between;margin-top:4px;color:var(--muted)}
-.fb{display:flex;align-items:center;gap:7px;margin:2px 0 10px;padding:5px 0;border:0}
+.fb{display:flex;align-items:center;gap:7px;margin:0 0 12px;padding:0;border:0}
 .fb button{width:42px;height:42px;padding:0;border:1px solid transparent;background:transparent;border-radius:8px;
   cursor:pointer;display:grid;place-items:center;color:var(--muted);transition:transform .14s ease,color .14s ease,background .14s ease}
 .fb button svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -377,7 +397,7 @@ body.detail-open .tagbar{position:relative;top:auto;z-index:1;transform:none;opa
 .fb .seen:hover,.fb .seen[aria-pressed="true"]{color:var(--keep);background:color-mix(in srgb,var(--keep) 12%,transparent)}
 .fb .dispose:hover,.fb .dispose[aria-pressed="true"]{color:var(--meter);background:color-mix(in srgb,var(--meter) 12%,transparent)}
 .fb .later:hover,.fb .later[aria-pressed="true"]{color:var(--loupe);background:color-mix(in srgb,var(--loupe) 12%,transparent)}
-.preference{border:0;padding:8px 0 0;margin:2px 0 8px;background:transparent}
+.preference{border:0;padding:0;margin:0 0 14px;background:transparent}
 .preference textarea{display:block;width:100%;min-height:62px;resize:vertical;padding:8px 9px;
   color:var(--ink);background:var(--ground);border:1px solid var(--line);border-radius:5px;
   line-height:1.5;font-size:14px}
@@ -387,10 +407,11 @@ body.detail-open .tagbar{position:relative;top:auto;z-index:1;transform:none;opa
 .savepreference{border:0;border-radius:8px;min-height:38px;padding:7px 15px;background:var(--ink);color:var(--ground);
   cursor:pointer;font-size:13px}
 .savepreference:disabled{opacity:.55;cursor:default}
-.obtn{width:100%;min-height:44px;padding:9px 12px;border:1px solid var(--line-soft);background:transparent;
-  border-radius:8px;cursor:pointer;margin-bottom:9px;font-size:14px;display:flex;align-items:center;justify-content:center;gap:8px}
-.obtn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2}.obtn:hover{border-color:var(--tungsten);color:var(--tungsten)}
-.obtn[aria-pressed="true"]{border-color:var(--tungsten);background:var(--tungsten-soft);color:var(--tungsten)}
+.obtn{width:100%;min-height:48px;padding:10px 14px;border:1px solid color-mix(in srgb,#FF4D8D 45%,var(--line));
+  background:linear-gradient(135deg,color-mix(in srgb,#FF4D8D 14%,transparent),color-mix(in srgb,#FF8A3D 10%,transparent));
+  color:#FF669D;border-radius:10px;cursor:pointer;margin-bottom:10px;font-size:14px;font-weight:650;
+  display:flex;align-items:center;justify-content:center;gap:9px;transition:transform .14s ease,filter .14s ease}
+.obtn svg{width:22px;height:22px;fill:currentColor}.obtn:hover{transform:translateY(-1px);filter:brightness(1.16)}
 .hint{color:var(--muted);line-height:1.65;font-size:12px}
 .next{border-top:1px solid var(--line-soft);padding:13px 15px 15px}
 .next h3{margin:0 0 10px;font-size:12px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
@@ -550,7 +571,8 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 </style>
 </head>
 <body>
-<!-- Lucide static 1.31.0, ISC. Local pinned subset; no CDN/runtime dependency. -->
+<!-- Lucide static 1.31.0, ISC. Local pinned subset; no CDN/runtime dependency.
+     Climax uses Health Icons sperm outline-24px, CC0/public domain. -->
 <svg aria-hidden="true" width="0" height="0" style="position:absolute;overflow:hidden">
   <symbol id="i-home" viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
   <symbol id="i-sliders-horizontal" viewBox="0 0 24 24"><path d="M10 5H3"/><path d="M12 19H3"/><path d="M14 3v4"/><path d="M16 17v4"/><path d="M21 12h-9"/><path d="M21 19h-5"/><path d="M21 5h-7"/><path d="M8 10v4"/><path d="M8 12H3"/></symbol>
@@ -579,6 +601,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   <symbol id="i-play" viewBox="0 0 24 24"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></symbol>
   <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
   <symbol id="i-bookmark-plus" viewBox="0 0 24 24"><path d="M12 7v6"/><path d="M15 10H9"/><path d="M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5a2 2 0 0 1 2-2z"/></symbol>
+  <symbol id="i-sperm" viewBox="0 0 24 24"><path d="M18.2574 3.04039C16.6079 3.3153 15.3153 4.60785 15.0404 6.25731C14.9261 6.94343 15.1179 7.59015 15.5007 8.08229L15.1947 8.49031C14.8361 8.96852 14.2732 9.24995 13.6754 9.24995H12.8524C10.9372 9.24995 9.58486 11.1262 10.1905 12.9431L10.3037 13.2827C10.5666 14.0715 9.88821 14.8537 9.07014 14.705C7.36157 14.3943 5.83623 15.8176 6.02801 17.5435L6.05171 17.7569C6.12353 18.4033 5.68919 18.9973 5.05144 19.1248L4.35291 19.2645C3.94674 19.3458 3.68333 19.7409 3.76456 20.147C3.8458 20.5532 4.24092 20.8166 4.64709 20.7354L5.34562 20.5957C6.74631 20.3155 7.70028 19.0109 7.54253 17.5912L7.51883 17.3779C7.43795 16.65 8.08124 16.0497 8.80181 16.1808C10.7416 16.5334 12.3502 14.6787 11.7267 12.8083L11.6135 12.4688C11.3317 11.6232 11.9611 10.75 12.8524 10.75H13.6754C14.7453 10.75 15.7528 10.2462 16.3947 9.39031L16.7517 8.9143C17.0623 8.99708 17.3975 9.01704 17.7426 8.95951C19.3921 8.6846 20.6847 7.39205 20.9596 5.7426C21.2244 4.15334 19.8466 2.77552 18.2574 3.04039Z" fill="currentColor"/><path d="M11.0548 3.32416C10.1507 3.47484 9.41308 4.15197 9.17192 5.03625C9.06125 5.44203 9.13468 5.83765 9.32677 6.15771L8.8594 6.85877C8.69647 7.10316 8.42219 7.24995 8.12847 7.24995H7.75C6.64543 7.24995 5.75 8.14538 5.75 9.24995C5.75 9.52609 5.52614 9.74995 5.25 9.74995C4.14543 9.74995 3.25 10.6454 3.25 11.75V12C3.25 12.4142 3.58579 12.75 4 12.75C4.41421 12.75 4.75 12.4142 4.75 12V11.75C4.75 11.4738 4.97386 11.25 5.25 11.25C6.35457 11.25 7.25 10.3545 7.25 9.24995C7.25 8.97381 7.47386 8.74995 7.75 8.74995H8.12847C8.92372 8.74995 9.66635 8.35251 10.1075 7.69082L10.6492 6.87823C10.7526 6.87326 10.8578 6.85692 10.9637 6.82804C11.848 6.58687 12.5251 5.84929 12.6758 4.94518C12.8347 3.9918 12.0081 3.16526 11.0548 3.32416Z" fill="currentColor"/><path d="M18.1471 11.3088C17.2045 11.4659 16.4659 12.2045 16.3088 13.147C16.2724 13.3658 16.2904 13.5775 16.3514 13.7709L15.0321 15.31C14.7928 15.5892 14.4434 15.75 14.0756 15.75C13.1529 15.75 12.2912 16.2111 11.7793 16.9789L11.7373 17.0419C11.4196 17.5185 11.25 18.0785 11.25 18.6513V19C11.25 19.4142 11.5858 19.75 12 19.75C12.4142 19.75 12.75 19.4142 12.75 19V18.6513C12.75 18.3747 12.8319 18.1042 12.9854 17.874L13.0274 17.8109C13.261 17.4605 13.6544 17.25 14.0756 17.25C14.8813 17.25 15.6467 16.8979 16.171 16.2862L17.5255 14.706C17.6318 14.7141 17.7415 14.7097 17.8529 14.6911C18.7955 14.534 19.5341 13.7954 19.6912 12.8529C19.8425 11.9447 19.0552 11.1574 18.1471 11.3088Z" fill="currentColor"/></symbol>
 </svg>
 
 <header class="top">
@@ -642,6 +665,7 @@ const ENTITY_ROUTES={performer:'performers',studio:'studios',creator:'creators',
 const ROUTE_ENTITIES={performers:'performer',studios:'studio',creators:'creator',series:'series'};
 const entityPath=(kind,name)=>`/${ENTITY_ROUTES[kind]||kind}/${encodeURIComponent(name)}`;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const foldName=s=>String(s??'').normalize('NFKC').trim().toLocaleLowerCase();
 const fmtDur=s=>{if(!s)return'—';s=Math.round(s);const h=s/3600|0,m=(s%3600)/60|0,x=s%60;
   return h?`${h}:${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')}`:`${m}:${String(x).padStart(2,'0')}`};
 const fmtSize=b=>b>=1099511627776?(b/1099511627776).toFixed(2)+' TB':b>=1073741824?(b/1073741824).toFixed(1)+' GB':(b/1048576|0)+' MB';
@@ -1038,8 +1062,11 @@ function closeStats(push=true){if(push)route('/');$('#stats').hidden=true;
   $('#tiers').style.display='';$('#tagbar').style.display='';load(true)}
 
 /* ── 全部艺人 / 创作者 / 标签索引页 ── */
+let tagIndexMode='alphabet';
 async function openIndex(kind,q,push=true){
-  if(push)route('/'+kind+(q?'?q='+encodeURIComponent(q):''),!!q);
+  const indexQuery=new URLSearchParams();if(q)indexQuery.set('q',q);
+  if(kind==='tags')indexQuery.set('view',tagIndexMode);
+  if(push)route('/'+kind+(indexQuery.size?'?'+indexQuery:''),!!q);
   disposeStage(false);
   const d=await api('/api/index?kind='+kind+(q?'&q='+encodeURIComponent(q):''));
   $('#index').hidden=false; $('#grid').innerHTML=''; $('#count').textContent='';
@@ -1047,26 +1074,36 @@ async function openIndex(kind,q,push=true){
   const people=kind==='creators'||kind==='performers';
   const entityKind=kind==='performers'?'performer':'creator';
   const title=kind==='performers'?'全部艺人':(kind==='creators'?'全部创作者':'全部标签');
+  const tagGroups=()=>{
+    const groups={};[...d.items].sort((a,b)=>a.k.localeCompare(b.k,'zh-CN',{numeric:true,sensitivity:'base'})).forEach(x=>{
+      const ch=x.k.normalize('NFKC').trim().charAt(0).toUpperCase();
+      const key=/[A-Z]/.test(ch)?ch:(/[0-9]/.test(ch)?'#':(/[\u3400-\u9fff]/.test(ch)?'中文':'其他'));
+      (groups[key]||(groups[key]=[])).push(x)});
+    return Object.entries(groups).sort(([a],[b])=>a.localeCompare(b,'zh-CN')).map(([letter,items])=>
+      `<section class="alphagroup"><h3>${letter}</h3><div class="alphalist">${items.map(x=>
+        `<button class="alphatag" data-k="${esc(x.k)}"><span>${esc(x.k)}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')}</div></section>`).join('')};
   const body = people
     ? `<div class="igrid">`+d.items.map(x=>`<button class="icell" data-k="${esc(x.k)}" data-kind="${entityKind}">
         <span class="ring">${kind==='performers'
           ? `<img src="/entity-image?kind=performer&id=${x.entity_id}" alt="" loading="lazy" onerror="${x.rep?`this.onerror=null;this.src='/avatar?id=${x.rep}'`:`this.remove()`}">`
           : (x.rep?`<img src="/avatar?id=${x.rep}" alt="" loading="lazy">`:`<span class="ini">${esc(x.k.slice(0,1))}</span>`)}</span>
         <span class="nm">${esc(x.k)}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')+`</div>`
-    : `<div class="tagwall">`+d.items.map(x=>`<button class="tg ${x.cat||'general'}" data-k="${esc(x.k)}"
+    : tagIndexMode==='alphabet'?`<div class="alphabet">${tagGroups()}</div>`:`<div class="tagwall">`+d.items.map(x=>`<button class="tg ${x.cat||'general'}" data-k="${esc(x.k)}"
         style="padding:5px 12px;font-size:13px">${esc(x.k)}
         <span style="opacity:.6;font-size:11px">${x.n.toLocaleString()}</span></button>`).join('')+`</div>`;
   $('#index').innerHTML=`<div class="ihead"><button class="backbtn" id="iClose">${icon('chevron-left')}<span>返回</span></button>
       <h2 class="disp">${title}</h2>
       <span class="mono" style="color:var(--muted)">${d.items.length} 项</span>
+      ${kind==='tags'?`<div class="tagmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">字母表</button></div>`:''}
       <div class="isearch"><input id="iq" placeholder="过滤…" value="${esc(q||'')}"></div>
     </div>${body}`;
   $('#iClose').onclick=()=>{route('/');$('#index').hidden=true;load(true)};
   let it2; $('#iq').oninput=e=>{clearTimeout(it2);it2=setTimeout(()=>openIndex(kind,e.target.value.trim(),true),300)};
+  $('#index').querySelectorAll('[data-tag-view]').forEach(b=>b.onclick=()=>{
+    tagIndexMode=b.dataset.tagView;openIndex('tags',$('#iq').value.trim(),true)});
   $('#index').querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
     if(people){openEntity(b.dataset.kind,b.dataset.k);return}
-    else{toggleTag(b.dataset.k);return}
-    $('#index').hidden=true;buildBars();load(true)});
+    $('#index').hidden=true;state.tag=b.dataset.k;route('/?tag='+encodeURIComponent(state.tag));buildBars();load(true)});
 }
 
 async function openEntity(kind,name,push=true){
@@ -1231,12 +1268,15 @@ async function openItem(id,push=true){
   const refs=it.entity_refs||{},performerRef=(refs.performer||[])[0],studioRef=(refs.studio||[])[0];
   const performerName=performerRef?.name||(it.performers||[])[0]||'';
   const studioName=studioRef?.name||it.studio||'';
-  const identityEntries=[
+  const identityRaw=[
     performerName&&['performer','女优',performerName],
     studioName&&['studio','厂牌',studioName],
     ...((it.entities&&it.entities.creator)||[]).slice(0,1).map(x=>['creator','创作者',x]),
     ...((it.entities&&it.entities.series)||[]).slice(0,1).map(x=>['series','系列',x]),
   ].filter(Boolean);
+  const identitySeen=new Set();
+  const identityEntries=identityRaw.filter(([, ,name])=>{
+    const key=foldName(name);if(identitySeen.has(key))return false;identitySeen.add(key);return true});
   const identityRows=identityEntries.map(([k,l,n])=>{
     const visual=k==='performer'
       ? `<span>${esc(n.slice(0,1))}</span>${performerRef?`<img src="/entity-image?kind=performer&id=${performerRef.id}" alt="" onerror="this.remove()">`:''}`
@@ -1260,8 +1300,7 @@ async function openItem(id,push=true){
         <span style="align-self:center">${it.width||'?'}×${it.height||'?'}</span>
         <span style="align-self:center">${fmtSize(it.size||0)}</span></div>
       <div class="detailidentity">${identityRows||`<div class="identityrow"><span></span><span class="ilabel">归属</span><span>${esc(who)}</span></div>`}</div>
-      ${(it.tags||[]).some(t=>!DURATION_TAGS.has(t.k))?`<div class="stags">${it.tags.filter(t=>!DURATION_TAGS.has(t.k)).slice(0,18).map(t=>
-        `<span class="tg ${t.cat}" data-tag="${esc(t.k)}">${esc(t.k)}</span>`).join('')}</div>`:''}
+      <div class="stags" id="detailTags"></div>
       <div class="trace"><div class="lab mono"><span>离开位置 / 全片</span><span id="ratioTxt">—</span></div>
         <div class="bar"><u id="watched"></u><b id="mark" style="left:0"></b></div>
         <div class="ticks mono"><span>开头</span><span>中段</span><span>结尾</span></div>
@@ -1280,7 +1319,7 @@ async function openItem(id,push=true){
         <div class="preference-foot"><span id="preferenceState">原文仅保存在本机</span>
           <button class="savepreference" id="savePreference">保存原因</button></div>
       </div>
-      <button class="obtn" data-kind="o">${icon('heart')}<span>记一次高潮</span><b class="mono" id="oCount">${it.o_count||0}</b></button>
+      <button class="obtn" data-kind="o">${icon('sperm')}<span>记一次高潮</span><b class="mono" id="oCount">${it.o_count||0}</b></button>
       <div class="hint mono">待删只加入候选，不会删除文件；实际删除需复核 CSV 后单独执行。</div>
     </div></div>
     <div class="next"><h3>接着看 · 口味接近</h3><div class="nrow" id="nrow">载入中…</div></div>`;
@@ -1295,8 +1334,23 @@ async function openItem(id,push=true){
     $('#stage').querySelector('.seen').setAttribute('aria-pressed',r.feedback==='seen');
     $('#stage').querySelector('.dispose').setAttribute('aria-pressed',r.disposal==='pending');
     $('#oCount').textContent=r.o_count||0});
-  $('#stage').querySelectorAll('.stags .tg').forEach(s=>s.onclick=()=>{
-    state.tag=s.dataset.tag;disposeStage(false);buildBars();load(true);window.scrollTo({top:0,behavior:'smooth'})});
+  const renderDetailTags=()=>{
+    const wrap=$('#detailTags');if(!wrap)return;
+    const visible=(it.tags||[]).filter(t=>!DURATION_TAGS.has(t.k)).slice(0,40);
+    wrap.innerHTML=visible.map(t=>`<span class="detailtag"><button class="tagfilter" data-tag="${esc(t.k)}">${esc(t.k)}</button><button class="tagremove" data-remove-tag="${esc(t.k)}" title="从此视频隐藏该标签" aria-label="删除标签 ${esc(t.k)}">${icon('x')}</button></span>`).join('')+
+      `<button class="tagplus" id="tagPlus" title="添加标签" aria-label="添加标签">${icon('plus')}</button><form class="tagadd" id="tagAdd" hidden><input maxlength="80" placeholder="输入标签"><button>添加</button></form>`;
+    wrap.querySelectorAll('[data-tag]').forEach(s=>s.onclick=()=>{
+      state.tag=s.dataset.tag;disposeStage(false);route('/?tag='+encodeURIComponent(state.tag));buildBars();load(true);window.scrollTo({top:0,behavior:'smooth'})});
+    wrap.querySelectorAll('[data-remove-tag]').forEach(b=>b.onclick=async()=>{
+      b.disabled=true;const tag=b.dataset.removeTag;
+      const r=await api('/api/item-tag',{method:'POST',body:JSON.stringify({id:it.id,operation:'remove',tag})});
+      if(r.ok){it.tags=(it.tags||[]).filter(x=>foldName(x.k)!==foldName(tag));renderDetailTags()}else b.disabled=false});
+    $('#tagPlus').onclick=()=>{const form=$('#tagAdd');form.hidden=false;$('#tagPlus').hidden=true;form.querySelector('input').focus()};
+    $('#tagAdd').onsubmit=async e=>{e.preventDefault();const input=e.currentTarget.querySelector('input'),tag=input.value.trim();if(!tag)return;
+      const r=await api('/api/item-tag',{method:'POST',body:JSON.stringify({id:it.id,operation:'add',tag})});
+      if(r.ok&&!it.tags.some(x=>foldName(x.k)===foldName(tag)))it.tags.push({k:tag,cat:'general'});renderDetailTags()};
+  };
+  renderDetailTags();
   $('#stage').querySelectorAll('[data-entity-kind]').forEach(b=>b.onclick=()=>
     openEntity(b.dataset.entityKind,b.dataset.entityName));
   $('#stageLater').onclick=async()=>{const r=await api('/api/watch-later',{method:'POST',
@@ -1530,7 +1584,10 @@ async function restoreRoute(){
   if(parts[0]==='item'&&/^\d+$/.test(parts[1]||'')){await openItem(+parts[1],false);return}
   const entityKind=ROUTE_ENTITIES[parts[0]];
   if(entityKind&&parts.length>=2){await openEntity(entityKind,parts.slice(1).join('/'),false);return}
-  if(path==='/performers'||path==='/creators'||path==='/tags'){await openIndex(path.slice(1),new URLSearchParams(location.search).get('q')||'',false);return}
+  if(path==='/performers'||path==='/creators'||path==='/tags'){
+    const params=new URLSearchParams(location.search);
+    if(path==='/tags')tagIndexMode=params.get('view')==='cloud'?'cloud':'alphabet';
+    await openIndex(path.slice(1),params.get('q')||'',false);return}
   if(path==='/stats'){await openStats(false);return}
   if(path==='/immerse'){await openTok(undefined,false);return}
   $('#stats').hidden=true;$('#index').hidden=true;disposeStage(false);

@@ -29,6 +29,21 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("--tag-radius:999px", self.page)
         self.assertIn("border-radius:var(--tag-radius)", self.page)
 
+    def test_detail_deduplicates_identity_and_supports_tag_editing(self):
+        self.assertIn("const identitySeen=new Set()", self.page)
+        self.assertIn("data-remove-tag", self.page)
+        self.assertIn("/api/item-tag", self.page)
+        self.assertIn('class="tagplus"', self.page)
+
+    def test_tags_page_has_cloud_and_alphabet_modes(self):
+        self.assertIn('data-tag-view="cloud"', self.page)
+        self.assertIn('data-tag-view="alphabet"', self.page)
+        self.assertIn('class="alphabet"', self.page)
+
+    def test_climax_uses_pinned_healthicons_symbol(self):
+        self.assertIn('id="i-sperm"', self.page)
+        self.assertIn("icon('sperm')", self.page)
+
 
 if __name__ == "__main__":
     unittest.main()

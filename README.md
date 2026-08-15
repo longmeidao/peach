@@ -126,7 +126,7 @@ Per-Monitor V2 DPI，单击打开 `https://peach.local/`；右键可查看状态
 | `/creators/{name}` | 创作者资料页 |
 | `/studios/{name}` | 厂牌资料页 |
 | `/series/{name}` | 系列资料页 |
-| `/tags` | 全部标签 |
+| `/tags` | 标签管理，支持字母表与标签云 |
 | `/stats` | 统计 |
 | `/immerse` | 沉浸模式 |
 
@@ -148,7 +148,8 @@ Per-Monitor V2 DPI，单击打开 `https://peach.local/`；右键可查看状态
 `/api/providers/opencode-go/models`。
 
 写入 API：`POST /api/activity`、`/api/play`、`/api/feedback`、`/api/watch-later`、
-`/api/preference`、`/api/batch`。除上述明确端点外，`/api/*` 返回 404。公共页面不再使用
+`/api/preference`、`/api/item-tag`、`/api/batch`。标签隐藏只写本地 profile 覆盖，不销毁
+原始来源断言。除上述明确端点外，`/api/*` 返回 404。公共页面不再使用
 `/entity/{kind}/{name}`；内部 JSON 的 `/api/entity` 只是兼容契约，不暴露数据库路由结构。
 
 并行代码任务不共享编辑目录。由协调者在主目录创建独立 worktree：

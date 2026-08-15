@@ -26,7 +26,7 @@
 | 搜索 | SQLite FTS5 | 索引字段、排序、profile 感知筛选 |
 | 媒体探测/转码 | Peach 管理的 FFmpeg/ffprobe | 任务策略和 Media Engine 编排 |
 | HLS/DASH 播放 | hls.js 或 Shaka Player | 流方案、授权、回退顺序 |
-| 图标 | 固定版本的本地 Lucide 子集 | 标签、状态和交互设计 |
+| 图标 | 固定版本的本地 Lucide 子集；Health Icons 24 px outline（CC0）用于领域图标 | 标签、状态和交互设计 |
 | 定时轮询 | 持久追更配置落地后使用 APScheduler | 任务定义和安全策略 |
 | 本地文件事件 | watchdog + 定期对账 | 媒体身份和漏报修复 |
 | 过渡期元数据/媒体 | Stash GraphQL、CommunityScrapers、Stash 任务系统 | 适配、对账、退出门槛 |

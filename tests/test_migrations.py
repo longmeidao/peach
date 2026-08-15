@@ -24,7 +24,7 @@ class MigrationTests(unittest.TestCase):
         backup = self.root / "before.db"
         done = upgrade(self.db, MIGRATIONS, backup)
         self.assertEqual([m.version for m in done],
-                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007"])
+                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008"])
         self.assertTrue(backup.exists())
         con = sqlite3.connect(self.db)
         tables = {row[0] for row in con.execute(
@@ -37,9 +37,10 @@ class MigrationTests(unittest.TestCase):
         self.assertTrue({"asset", "profile", "media_binding", "activity_event",
                          "provider_profile", "entity", "entity_alias",
                          "entity_external_ref", "asset_entity", "entity_link",
-                         "entity_search_term", "watch_queue", "asset_preference", "asset_search",
+                         "entity_search_term", "watch_queue", "asset_preference",
+                         "asset_tag_preference", "asset_search",
                          "schema_migration"} <= tables)
-        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007"])
+        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008"])
         self.assertEqual(upgrade(self.db, MIGRATIONS), [])
         self.assertEqual(plan(self.db, MIGRATIONS)[1], [])
 

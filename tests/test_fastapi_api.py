@@ -37,6 +37,8 @@ CREATE TABLE watch_queue(profile_id TEXT,asset_id INTEGER,added_at TEXT,source T
   PRIMARY KEY(profile_id,asset_id));
 CREATE TABLE asset_preference(profile_id TEXT,asset_id INTEGER,liked INTEGER,reason TEXT,
   source TEXT,updated_at TEXT,PRIMARY KEY(profile_id,asset_id));
+CREATE TABLE asset_tag_preference(profile_id TEXT,asset_id INTEGER,normalized_tag TEXT,
+  hidden INTEGER,updated_at TEXT,PRIMARY KEY(profile_id,asset_id,normalized_tag));
 CREATE TABLE media_binding(
   asset_id INTEGER,backend TEXT,external_id TEXT,metadata_json TEXT,last_synced_at TEXT,
   PRIMARY KEY(asset_id,backend),UNIQUE(backend,external_id));
@@ -157,6 +159,24 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(len(payload["providers"]), 3)
         self.assertNotIn("secret_ref", response.text)
+
+    async def test_item_tags_are_authenticated_and_source_evidence_is_preserved(self):
+        denied = await self.client.post(
+            "/api/item-tag", json={"id": 1, "operation": "remove", "tag": "Tag A"},
+        )
+        self.assertEqual(denied.status_code, 401)
+        removed = await self.client.post(
+            "/api/item-tag?t=secret",
+            json={"id": 1, "operation": "remove", "tag": "Tag A"},
+        )
+        self.assertEqual(removed.status_code, 200)
+        self.assertNotIn("Tag A", removed.json()["tags"])
+        added = await self.client.post(
+            "/api/item-tag?t=secret",
+            json={"id": 1, "operation": "add", "tag": "手动标签"},
+        )
+        self.assertEqual(added.status_code, 200)
+        self.assertIn("手动标签", added.json()["tags"])
 
     async def test_opencode_models_endpoint_is_explicit_and_normalized(self):
         denied = await self.client.get("/api/providers/opencode-go/models")
