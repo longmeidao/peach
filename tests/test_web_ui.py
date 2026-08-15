@@ -125,6 +125,21 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".hovertools button{pointer-events:none", self.page)
         self.assertIn(".card.longhover .seektools button,.card:hover .later-tools button{pointer-events:auto}", self.page)
 
+    def test_remote_hover_previews_do_not_stream_full_media(self):
+        self.assertIn("if(it.location!=='local')", self.page)
+        self.assertIn("el.dataset.hoverMode=it.location==='local'?'video':'frames'", self.page)
+        self.assertIn("function releaseHoverPreviews(root=document,except=null)", self.page)
+        self.assertIn("releaseHoverPreviews(document,el)", self.page)
+        self.assertIn("window.addEventListener('pagehide',()=>releaseHoverPreviews())", self.page)
+        self.assertIn("if(document.hidden)releaseHoverPreviews()", self.page)
+        self.assertIn("if(reset)releaseHoverPreviews($('#grid'))", self.page)
+        self.assertIn("releaseHoverPreviews($('#srow'))", self.page)
+
+    def test_detail_close_returns_to_the_collection_that_opened_it(self):
+        self.assertIn("detailReturnPath='/'", self.page)
+        self.assertIn("if(push)detailReturnPath=location.pathname+location.search", self.page)
+        self.assertIn("if(push)route(detailReturnPath||'/')", self.page)
+
     def test_entity_profile_uses_logo_links_without_a_redundant_back_row(self):
         self.assertIn("const faviconUrl=url=>", self.page)
         self.assertIn('class="entitylinkicon"', self.page)
