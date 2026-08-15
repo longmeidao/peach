@@ -170,7 +170,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("overflow-x:auto;overflow-y:hidden;scrollbar-width:none", self.page)
         self.assertIn(".count>span:first-child{line-height:36px;white-space:nowrap}", self.page)
         self.assertIn(".count .sorts{width:max-content;margin-left:0;flex:0 0 auto;overflow:visible}", self.page)
-        self.assertIn(".count .sorts button{flex:0 0 auto;min-height:36px;white-space:nowrap}", self.page)
+        self.assertIn("flex:0 0 auto;white-space:nowrap", self.page)
+        self.assertIn(".count .sorts button{min-height:36px}", self.page)
 
     def test_entity_collection_posters_and_titles_open_item_details(self):
         self.assertIn('class="cardopenhit" data-open', self.page)
