@@ -130,6 +130,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - AI 推理 API 与本地 coding/agent runtime 是不同层，不能伪装成一个等价接口。
 - 3 字符以上搜索使用 FTS5 trigram；更短文本回退 LIKE。FTS 写入由迁移 trigger 维护，不在 Web 启动时修补。
 - 详情身份按规范化名称去重：同一个名字已显示为女优时，不再重复显示“创作者”。标签的 × 写入 profile 级隐藏覆盖，不删除刮削/识别断言；+ 新增标签以 `web-user` 同步写入兼容层与规范实体层。
+- 卡片多选有显式模式；普通点击打开详情，`Ctrl`/⌘ 切换单项，`Shift` 以上次选中为锚点选中当前可见网格范围。批量操作仍必须二次确认。待删只是候选，但卡片必须灰化并显示状态，不能仅靠不显眼的小点。
 - `/tags` 是独立标签管理页，默认字母表模式，也可切换标签云；两种模式都显示数量并进入首页组合筛选。
 - 高潮按钮复用 Health Icons 官方 `outline-24px/contraceptives/sperm.svg`，来源 `resolvetosavelives/healthicons`，CC0。一般操作继续使用本地 Lucide 子集。
 

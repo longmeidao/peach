@@ -28,6 +28,23 @@ class WebUiSourceTests(unittest.TestCase):
     def test_tag_geometry_uses_shared_tokens(self):
         self.assertIn("--tag-radius:999px", self.page)
         self.assertIn("border-radius:var(--tag-radius)", self.page)
+        self.assertIn("height:40px;padding:0 20px", self.page)
+
+    def test_multiselect_has_explicit_mode_range_and_toggle_controls(self):
+        self.assertIn('id="selectMode"', self.page)
+        self.assertIn("e.shiftKey||e.ctrlKey||e.metaKey||selectMode", self.page)
+        self.assertIn("visibleCardIds()", self.page)
+        self.assertIn("lastSelectedId", self.page)
+        self.assertIn('class="selectionMark"', self.page)
+
+    def test_pending_delete_is_visible_without_deleting_media(self):
+        self.assertIn("it.disposal==='pending'?'pending-delete':''", self.page)
+        self.assertIn(".card.pending-delete .poster", self.page)
+        self.assertIn('<b>待删</b>', self.page)
+
+    def test_surface_has_measured_beeg_glow_geometry(self):
+        self.assertIn("height:49vh", self.page)
+        self.assertIn("animation:ambient-in .8s ease .5s both", self.page)
 
     def test_detail_deduplicates_identity_and_supports_tag_editing(self):
         self.assertIn("const identitySeen=new Set()", self.page)
