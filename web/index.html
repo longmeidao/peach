@@ -145,7 +145,7 @@ button,input,textarea{font:inherit;color:inherit}
 .pill:hover{border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink);background:var(--overlay-5)}
 .pill[aria-pressed="true"]{background:var(--ink-2);color:var(--ground);border-color:var(--ink-2)}
 .pill.act{border-color:var(--tungsten);color:var(--tungsten)}
-.sep{display:none}
+.sep{flex:none;width:1px;height:19px;background:var(--line);margin:0 3px}
 /* 向下滚时把标签条收起来，别和顶栏一起压住内容；向上滚立刻带回来 */
 .tagbar.tuck{transform:translateY(-140%);opacity:0;pointer-events:none}
 
@@ -230,7 +230,7 @@ button,input,textarea{font:inherit;color:inherit}
 .entitymeta{display:grid;gap:22px;margin:0 0 28px}.entitymeta h3,.entitysection h3{font-size:13px;letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
 .entitytags{display:flex;flex-wrap:wrap;gap:7px}.entitytags button{height:34px;padding:0 14px;border-radius:999px;
   border:1px solid var(--border-15);background:transparent;color:var(--ink-2);cursor:pointer}
-.entitytags button:hover{background:var(--overlay-5);color:var(--ink)}.entitytags small{color:var(--muted);margin-left:4px}
+.entitytags button:hover{background:var(--overlay-5);color:var(--ink)}.entitytags button[aria-pressed="true"]{background:var(--ink-2);border-color:var(--ink-2);color:var(--ground)}.entitytags small{color:var(--muted);margin-left:4px}
 .relatedpeople{display:flex;gap:14px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
 .relatedpeople::-webkit-scrollbar{display:none}.relatedperson{flex:0 0 78px;border:0;background:transparent;color:inherit;
   padding:0;cursor:pointer;text-align:center}.relatedperson .ring{display:grid;place-items:center;width:64px;height:64px;
@@ -663,7 +663,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   <button class="ib" id="filterBtn" title="筛选"><svg viewBox="0 0 24 24"><use href="#i-sliders-horizontal"/></svg></button>
   <a class="brand" href="#" id="brandHome"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="pg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF9A76"/><stop offset="1" stop-color="#F2557B"/></linearGradient></defs><path d="M16 29c-6.1 0-10.4-3.9-10.4-9.2 0-4.6 3-8.2 7-8.2 1.5 0 2.6.5 3.4 1.2.8-.7 1.9-1.2 3.4-1.2 4 0 7 3.6 7 8.2C26.4 25.1 22.1 29 16 29z" fill="url(#pg)"/><path d="M16 13.2V28" stroke="#0B0B0D" stroke-width="1.1" opacity=".28" stroke-linecap="round"/><path d="M17.2 11.4c.6-3 3-4.9 6-5.1-.2 3-2.4 5-6 5.1z" fill="#5FB95F"/><path d="M16 11.6c0-2 .5-3.6 1.6-4.8" stroke="#8A5A3B" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg><h1 class="disp">Peach</h1><span class="sub mono">蜜桃</span></a>
   <div class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-search"/></svg>
-    <input id="q" type="search" placeholder="搜索名字、创作者或番号…" autocomplete="off"></div>
+    <input id="q" type="search" placeholder="FC2" autocomplete="off"></div>
   <button class="ib" id="immerseBtn" title="沉浸模式 · 随机连播"><svg viewBox="0 0 24 24"><use href="#i-play"/></svg></button>
 
   <button class="ib" id="searchBtn" title="搜索"><svg viewBox="0 0 24 24"><use href="#i-search"/></svg></button>
@@ -885,7 +885,7 @@ function cardHtml(it,cls){
         <span class="flags">${fl}</span></div>
       ${(perf||tgs)?`<div class="ctags">${perf}${tgs}</div>`:''}</div></div></article>`;
 }
-function wireCards(root,onClick){
+function wireCards(root,onClick,onTag){
   root.querySelectorAll('[data-id]').forEach(el=>{
     if(el.dataset.wired)return; el.dataset.wired='1';
     const it=CACHE[el.dataset.id];
@@ -902,7 +902,8 @@ function wireCards(root,onClick){
       const ent=e.target.closest('[data-entity-kind]');
       if(ent){e.stopPropagation();openEntity(ent.dataset.entityKind,ent.dataset.entityName);return}
       const tg=e.target.closest('.tg');
-      if(tg){e.stopPropagation();state.tag=tg.dataset.tag;buildBars();load(true);
+      if(tg){e.stopPropagation();if(onTag){onTag(tg.dataset.tag);return}
+        state.tag=tg.dataset.tag;buildBars();load(true);
         window.scrollTo({top:0,behavior:'smooth'});return}
       if(e.shiftKey||e.ctrlKey||e.metaKey||selectMode){e.preventDefault();toggleSelection(it.id,e.shiftKey);return}
       (onClick||openItem)(+el.dataset.id);
@@ -945,8 +946,8 @@ async function buildBars(){
     img.addEventListener('load',()=>{if(img.naturalWidth<32)fallback()},{once:true});
   });
 
-  const views=[{k:'',label:'全部'},{k:'fresh',label:'没看过'},{k:'played',label:'看过'},
-               {k:'later',label:'稍后看'},{k:'flagged',label:'已标记'},{k:'ads',label:'疑似广告'}];
+  const views=[{k:'',label:'全部'},{k:'fresh',label:'没看过'},
+               {k:'later',label:'稍后看'},{k:'flagged',label:'已标记'}];
   $('#tagbar').innerHTML=
     views.map(v=>`<button class="pill" data-state="${v.k}" aria-pressed="${state.state===v.k}">${v.label}</button>`).join('')
     +`<span class="sep"></span>`
@@ -1176,12 +1177,16 @@ async function openIndex(kind,q,push=true){
     $('#index').hidden=true;state.tag=b.dataset.k;route('/?tag='+encodeURIComponent(state.tag));buildBars();load(true)});
 }
 
-async function openEntity(kind,name,push=true){
-  if(push)route(entityPath(kind,name));
+async function openEntity(kind,name,push=true,requestedTag){
+  const entityTag=requestedTag===undefined
+    ? (push?'':new URLSearchParams(location.search).get('tag')||'')
+    : requestedTag;
+  if(push)route(entityPath(kind,name)+(entityTag?'?tag='+encodeURIComponent(entityTag):''));
   disposeStage(false);
   const d=await api(`/api/entity?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`);
   if(d.error)return;
   const p=new URLSearchParams();p.set(kind,name);p.set('limit','120');p.set('sort','new');
+  if(entityTag)p.set('tag',entityTag);
   const items=await api('/api/items?'+p);cache(items.items);
   document.body.classList.add('entity-open');
   $('#index').hidden=false;$('#grid').innerHTML='';$('#count').textContent='';
@@ -1196,7 +1201,7 @@ async function openEntity(kind,name,push=true){
     ? `<a href="${esc(x.url)}" target="_blank" rel="noreferrer">${esc(x.label)} ↗</a>`
     : `<span class="private" title="私人馆藏来源记录，不直接打开下载页">来源 · ${esc(x.label||x.hostname||'已记录')}</span>`).join('');
   const terms=(d.search_terms||[]).map(x=>`<code>${esc(x.term)}</code>`).join('');
-  const tags=(d.tags||[]).map(x=>`<button data-entity-tag="${esc(x.k)}">${esc(x.k)}<small>${x.n.toLocaleString()}</small></button>`).join('');
+  const tags=(d.tags||[]).map(x=>`<button data-entity-tag="${esc(x.k)}" aria-pressed="${entityTag===x.k}">${esc(x.k)}<small>${x.n.toLocaleString()}</small></button>`).join('');
   const related=(d.related_performers||[]).map(x=>`<button class="relatedperson" data-related-performer="${esc(x.k)}">
       <span class="ring"><span>${esc(x.k.slice(0,1))}</span><img src="/entity-image?kind=performer&id=${x.id}" alt="" loading="lazy"
         onerror="${x.rep?`this.onerror=null;this.src='/avatar?id=${x.rep}'`:`this.remove()`}"></span>
@@ -1213,15 +1218,15 @@ async function openEntity(kind,name,push=true){
       ${tags?`<section><h3>相关标签</h3><div class="entitytags">${tags}</div></section>`:''}
       ${related?`<section><h3>关联艺人</h3><div class="relatedpeople">${related}</div></section>`:''}
     </div>`:''}
-    <div class="entitysection"><h3>${labels[kind]||kind}的馆藏作品 · ${items.total.toLocaleString()}</h3>
+    <div class="entitysection"><h3>${labels[kind]||kind}的馆藏作品 · ${items.total.toLocaleString()}${entityTag?` · ${esc(entityTag)}`:''}</h3>
       <div class="grid">${items.items.map(it=>cardHtml(it)).join('')}</div></div>`;
   $('#iClose').onclick=()=>{route('/');document.body.classList.remove('entity-open');$('#index').hidden=true;load(true)};
   $('#index').querySelectorAll('[data-entity-tag]').forEach(b=>b.onclick=()=>{
-    document.body.classList.remove('entity-open');$('#index').hidden=true;state.tag=b.dataset.entityTag;
-    route('/?tag='+encodeURIComponent(state.tag));buildBars();load(true)});
+    const next=b.dataset.entityTag===entityTag?'':b.dataset.entityTag;
+    openEntity(kind,name,true,next)});
   $('#index').querySelectorAll('[data-related-performer]').forEach(b=>b.onclick=()=>
     openEntity('performer',b.dataset.relatedPerformer));
-  wireCards($('#index'));
+  wireCards($('#index'),undefined,tag=>openEntity(kind,name,true,tag===entityTag?'':tag));
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
@@ -1328,9 +1333,14 @@ const loadObserver=new IntersectionObserver(entries=>{
     offset+=60;load(false)}
 },{rootMargin:'320px'});
 loadObserver.observe($('#loadSentinel'));
-const runSearch=()=>{state.q=$('#q').value.trim();route(state.q?'/?q='+encodeURIComponent(state.q):'/',true);load(true)};
+const SEARCH_HINTS=['Prestige','FC2','Sakura Misaki','丝袜','足交','ABW 番号'];
+const searchSuggestion=SEARCH_HINTS[Math.floor(Math.random()*SEARCH_HINTS.length)];
+$('#q').dataset.suggestion=searchSuggestion;$('#q').placeholder=searchSuggestion;
+const runSearch=(useSuggestion=false)=>{let query=$('#q').value.trim();
+  if(useSuggestion&&!query){query=$('#q').dataset.suggestion||'';$('#q').value=query}
+  state.q=query;route(state.q?'/?q='+encodeURIComponent(state.q):'/',true);load(true)};
 let qt;$('#q').oninput=()=>{clearTimeout(qt);qt=setTimeout(runSearch,320)};
-$('#q').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();clearTimeout(qt);runSearch();$('#q').blur()}};
+$('#q').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();clearTimeout(qt);runSearch(true);$('#q').blur()}};
 
 async function loadShorts(){
   if(state.orient==='竖屏'||state.state==='ads'){$('#shortsSec').hidden=true;return}
