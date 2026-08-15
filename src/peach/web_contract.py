@@ -149,7 +149,10 @@ def q_items(contract: WebContract, args):
     elif args.get("state") == "played":
         where.append("a.play_count > 0")
     elif args.get("state") == "flagged":
-        where.append("a.feedback IS NOT NULL OR a.disposal IS NOT NULL")
+        where.append(
+            "(COALESCE(a.o_count,0)>0 OR EXISTS(SELECT 1 FROM asset_preference p "
+            "WHERE p.asset_id=a.id AND p.profile_id='local-default' AND p.liked=1))"
+        )
     elif args.get("state") == "later":
         where.append(
             "EXISTS(SELECT 1 FROM watch_queue w WHERE w.asset_id=a.id "
@@ -214,14 +217,17 @@ def q_items(contract: WebContract, args):
             canonical = emap.get(r["id"], {})
             canonical_tags = canonical.get("tag", [])
             canonical_performers = canonical.get("performer", [])
+            performers = (canonical_performers or [
+                tag[3:] for tag in ts if tag.startswith("演员:")
+            ])[:3]
+            performer_names = {normalize_entity_name(name) for name in performers}
             visible_tags = canonical_tags or [t for t in ts if not t.startswith("演员:")]
             r["tags"] = [
                 tag for tag in visible_tags
                 if tag_cat(tag) in ("general", "character", "copyright")
+                and normalize_entity_name(tag) not in performer_names
             ][:4]
-            r["performers"] = (canonical_performers or [
-                tag[3:] for tag in ts if tag.startswith("演员:")
-            ])[:3]
+            r["performers"] = performers
             r["performer_entities"] = performer_refs.get(r["id"], [])[:3]
     for r in rows:
         r["cost"] = COST.get(r["location"], "metered")
@@ -307,11 +313,15 @@ def q_item(contract: WebContract, aid):
     ))
     canonical_tags = [name for _, kind, name in canonical if kind == "tag"]
     canonical_performers = [name for _, kind, name in canonical if kind == "performer"]
-    tags = canonical_tags or [tag for tag in legacy if not tag.startswith("演员:")]
-    d["tags"] = [{"k": tag, "cat": tag_cat(tag)} for tag in tags if tag not in LENGTH_TAGS]
-    d["performers"] = canonical_performers or [
+    performers = canonical_performers or [
         tag[3:] for tag in legacy if tag.startswith("演员:")
     ]
+    performer_names = {normalize_entity_name(name) for name in performers}
+    tags = [tag for tag in (canonical_tags or [
+        tag for tag in legacy if not tag.startswith("演员:")
+    ]) if normalize_entity_name(tag) not in performer_names]
+    d["tags"] = [{"k": tag, "cat": tag_cat(tag)} for tag in tags if tag not in LENGTH_TAGS]
+    d["performers"] = performers
     d["entities"] = {
         kind: [name for _, item_kind, name in canonical if item_kind == kind]
         for kind in ("creator", "performer", "studio", "series")
@@ -554,6 +564,8 @@ def q_entity(contract: WebContract, args):
         "JOIN entity tag ON tag.id=tagged.entity_id "
         "JOIN asset a ON a.id=scope.asset_id "
         "WHERE scope.entity_id=? AND a.medium='video' AND tag.kind='tag' "
+        "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
+        "AND performer.normalized_name=tag.normalized_name) "
         f"AND tag.canonical_name NOT IN ({','.join('?' for _ in LENGTH_TAGS)}) "
         "AND NOT EXISTS(SELECT 1 FROM asset_tag_preference p "
         " WHERE p.asset_id=scope.asset_id AND p.profile_id='local-default' "
@@ -607,6 +619,8 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="")
                "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
                "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='tag' "
                f"AND e.canonical_name NOT IN ({','.join('?' for _ in LENGTH_TAGS)}) "
+               "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
+               "AND performer.normalized_name=e.normalized_name) "
                "AND NOT EXISTS(SELECT 1 FROM asset_tag_preference p "
                "WHERE p.asset_id=ae.asset_id AND p.profile_id='local-default' "
                "AND p.hidden=1 AND p.normalized_tag=e.normalized_name) ")
@@ -656,6 +670,8 @@ def q_stats(contract: WebContract):
     out["top_tags"] = [dict(r, cat=tag_cat(r["k"])) for r in c.execute(
         "SELECT t.tag k, count(*) n FROM asset_tag t JOIN asset a ON a.id=t.asset_id "
         "WHERE a.medium='video' AND t.source IN ('name','r18','vision','vision-creator') "
+        "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
+        "AND performer.normalized_name=lower(trim(t.tag))) "
         "GROUP BY t.tag ORDER BY n DESC LIMIT 30")]
     out["consumption"] = {
         "played": one("SELECT count(*) FROM asset WHERE play_count>0"),
@@ -700,6 +716,8 @@ def q_facets(contract: WebContract):
         "SELECT e.canonical_name AS k, count(DISTINCT ae.asset_id) AS n "
         "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
         "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='tag' "
+        "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
+        "AND performer.normalized_name=e.normalized_name) "
         "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 400")]
     out["tags"] = [dict(r, cat=tag_cat(r["k"])) for r in rows
                    if r["k"] not in TECH and r["k"] not in LENGTH_TAGS][:44]
@@ -712,7 +730,9 @@ def q_facets(contract: WebContract):
     st = c.execute(
         "SELECT count(*) total, COALESCE(sum(size),0) bytes, "
         "SUM(CASE WHEN play_count>0 THEN 1 ELSE 0 END) played, "
-        "SUM(CASE WHEN feedback IS NOT NULL OR disposal IS NOT NULL THEN 1 ELSE 0 END) flagged, "
+        "SUM(CASE WHEN COALESCE(o_count,0)>0 OR EXISTS(SELECT 1 FROM asset_preference p "
+        "WHERE p.asset_id=a.id AND p.profile_id='local-default' AND p.liked=1) "
+        "THEN 1 ELSE 0 END) flagged, "
         "SUM(EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
         "WHERE ae.asset_id=a.id AND e.kind='creator')) attributed "
         "FROM asset a WHERE a.medium='video'").fetchone()

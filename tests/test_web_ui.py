@@ -51,6 +51,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("--tag-radius:999px", self.page)
         self.assertIn("border-radius:var(--tag-radius)", self.page)
         self.assertIn("height:40px;padding:0 20px", self.page)
+        self.assertIn("overflow-x:auto;overflow-y:hidden", self.page)
 
     def test_multiselect_has_explicit_mode_range_and_toggle_controls(self):
         self.assertIn('id="selectMode"', self.page)
@@ -193,10 +194,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("{k:'ads',label:'疑似广告'}", self.page)
 
     def test_search_placeholder_is_an_actionable_recommendation(self):
-        self.assertIn("const SEARCH_HINTS=['Prestige','FC2','Sakura Misaki','丝袜','足交','ABW 番号']", self.page)
+        self.assertIn("const SEARCH_HINTS=['Prestige','FC2','Sakura Misaki','丝袜','足交','ABW']", self.page)
         self.assertIn("$('#q').dataset.suggestion=searchSuggestion", self.page)
         self.assertIn("runSearch(true)", self.page)
         self.assertNotIn("试试：", self.page)
+        self.assertNotIn("ABW 番号", self.page)
+
+    def test_card_identity_is_not_repeated_as_a_content_tag(self):
+        self.assertNotIn("const perf=(it.performers||[])", self.page)
+        self.assertIn('${tgs?`<div class="ctags">${tgs}</div>`', self.page)
 
     def test_tags_page_has_cloud_and_alphabet_modes(self):
         self.assertIn('data-tag-view="cloud"', self.page)

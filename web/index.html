@@ -136,7 +136,7 @@ button,input,textarea{font:inherit;color:inherit}
 /* ── 常驻筛选层：原位保持透明，只在真正吸顶后加磨砂黑底 ── */
 .tagbar{position:sticky;top:var(--topH);z-index:61;height:var(--filterH);padding:9px 16px;
   border-bottom:1px solid transparent;background:transparent;
-  display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;align-items:center}
+  display:flex;gap:7px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;align-items:center}
 .tagbar::-webkit-scrollbar{display:none}
 .pill{flex:none;height:40px;padding:0 20px;border:1px solid var(--border-15);
   border-radius:999px;background:transparent;display:inline-flex;align-items:center;justify-content:center;
@@ -999,7 +999,6 @@ function cardHtml(it,cls){
   const performerRef=(it.performer_entities||[])[0];
   const who=it.creator||performer||it.code||it.studio||'未归属';
   const whoKind=it.creator?'creator':(it.studio?'studio':'');
-  const perf=(it.performers||[]).slice(0,1).map(x=>`<button class="tg artist entitylink" data-entity-kind="performer" data-entity-name="${esc(x)}">${esc(x)}</button>`).join('');
   const tgs=(it.tags||[]).slice(0,3).map(x=>`<span class="tg general" data-tag="${esc(x)}">${esc(x)}</span>`).join('');
   const avatarName=performer||it.creator||it.studio||who;
   const avatarKind=performer?'performer':(it.creator?'creator':(it.studio?'studio':''));
@@ -1031,7 +1030,7 @@ function cardHtml(it,cls){
         <span>${fmtSize(it.size||0)}</span>
         ${it.play_count?`<span>看过 ${it.play_count}</span>`:''}
         <span class="flags">${fl}</span></div>
-      ${(perf||tgs)?`<div class="ctags">${perf}${tgs}</div>`:''}</div></div></article>`;
+      ${tgs?`<div class="ctags">${tgs}</div>`:''}</div></div></article>`;
 }
 function wireCards(root,onClick,onTag){
   root.querySelectorAll('[data-id]').forEach(el=>{
@@ -1576,7 +1575,7 @@ const loadObserver=new IntersectionObserver(entries=>{
     offset+=60;load(false)}
 },{rootMargin:'320px'});
 loadObserver.observe($('#loadSentinel'));
-const SEARCH_HINTS=['Prestige','FC2','Sakura Misaki','丝袜','足交','ABW 番号'];
+const SEARCH_HINTS=['Prestige','FC2','Sakura Misaki','丝袜','足交','ABW'];
 const searchSuggestion=SEARCH_HINTS[Math.floor(Math.random()*SEARCH_HINTS.length)];
 $('#q').dataset.suggestion=searchSuggestion;$('#q').placeholder=searchSuggestion;
 const runSearch=(useSuggestion=false)=>{let query=$('#q').value.trim();
