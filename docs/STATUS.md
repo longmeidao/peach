@@ -194,13 +194,13 @@ The current UI/API candidate passed JavaScript parse, 84 isolated tests, desktop
 <!-- job-status:start -->
 
 <!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->
-<!-- generated 2026-08-14T20:00Z -->
+<!-- generated 2026-08-15T01:56Z -->
 
-- 最近自动交接：`claude` / `Stop` / `completed`，2026-08-14T19:36:16+00:00。
+- 最近自动交接：`claude` / `Stop` / `completed`，2026-08-15T01:56:09+00:00。
 - 资产 81873 条，其中视频 24980 条。
 - 待抽帧（可抽 / 缺时长待 probe / 合计）：
   - `local`：4 / 1 / 5
-  - `115`：3234 / 139 / 3373
+  - `115`：3134 / 139 / 3273
   - `pikpak`：4751 / 5445 / 10196
   PikPak 计费且走代理（`*.mypikpak.net`）；2026-08-15 实测 9 帧接触表 163 MB / 13.7 秒，即约 18 MB、1.5 秒一帧。瓶颈是流量不是时间：全量抽帧约 773 GB，按创作者采样 88 板约 14 GB / 20 分钟。115 走直连，同样动作约 285 MB 一张接触表。
 - 无内容标签视频 7538 条（占视频 30%）。
