@@ -34,6 +34,7 @@ class OperationalScriptTests(unittest.TestCase):
         cls.traffic_watch = load_script("traffic_watch")
         cls.creator_boards = load_script("creator_boards")
         cls.creator_tags = load_script("creator_tags")
+        cls.creator_attributions = load_script("audit_creator_attributions")
 
     def test_import_has_no_filesystem_or_log_side_effect(self):
         self.assertIsNone(self.clean_names._logf)
@@ -47,6 +48,21 @@ class OperationalScriptTests(unittest.TestCase):
             "The.Great.Escape.S04E09.1080p.WEB-DL.H264.AAC-AppleTor.mp4"
         ))
         self.assertFalse(is_probable_mainstream_release("S04E09-personal-video.mp4"))
+
+    def test_creator_attribution_audit_distinguishes_evidence_and_folder_names(self):
+        classify = self.creator_attributions.classify
+        self.assertEqual(classify(
+            r"B:\云下载\足交仙人\feet of Suzyq (1).mp4", "足交仙人"
+        )[3:5], ("replace", "suzuq"))
+        self.assertEqual(classify(
+            r"B:\MVP\捅主任\TokyoDolls\32.mp4", "捅主任"
+        )[3], "remove")
+        self.assertEqual(classify(
+            r"B:\创作者\捅主任\real.mp4", "捅主任"
+        )[3], "review_folder_projection")
+        self.assertEqual(classify(
+            r"B:\MVP\TokyoDolls\32.mp4", "捅主任"
+        )[3], "review_legacy_projection")
 
     def test_ad_candidate_scan_is_isolated_and_review_only(self):
         with tempfile.TemporaryDirectory() as tmp:

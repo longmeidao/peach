@@ -165,6 +165,16 @@ Per-Monitor V2 DPI，单击打开 `https://peach.local/`；右键可查看状态
 
 `scripts/scrape_codes.py` 默认只把番号发送到已声明的元数据源并写复核 CSV；只有 `--apply` 才写 ledger。`scripts/clean_names.py` 默认只生成改名计划；`--apply` 会先备份 SQLite，并在数据库更新失败时把文件名回滚。两者导入模块时均无副作用，测试不得使用真实路径。
 
+历史创作者投影使用逐项只读审计，不再把目录名直接当身份：
+
+```powershell
+& .\.venv\Scripts\python.exe scripts\audit_creator_attributions.py `
+  --output R:\peach-data\review\creator-attribution-items.csv `
+  --summary R:\peach-data\review\creator-attribution-summary.csv
+```
+
+自动纠正必须有水印、番号、发行元数据或用户确认；只有目录同名的记录继续留在复核队列。
+
 `/api/providers` 是无副作用 capability health；`/api/providers/opencode-go/models` 只在显式访问时拉取 OpenCode Go 的公开模型清单，不发送推理请求或读取本机 CLI 凭据。
 
 在线追更从 `FeedAdapter` 的 RSS/Atom 候选发现开始：只有显式调用才联网，支持条件请求和有界读取，当前不会自动写 ledger。

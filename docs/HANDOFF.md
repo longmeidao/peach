@@ -62,12 +62,14 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - **Lucide**：通用操作和导航图标使用固定本地 `lucide-static` 1.31.0 子集（ISC）；许可见 `web/vendor/lucide-LICENSE.txt`。品牌/来源 Logo 和计时圈不属于通用图标。
 - **Rule34 样式**：旧代码注释没有 DOM/CSS 证据，已删除“Rule34-style”声明。当前标签颜色是 Peach 自有语义。
 - **T3 Code/CodexBar 用量**：这是复用决策，不是 Peach UI 复制。T3 Code 已提供 Codex + Claude 历史 token/成本界面；实时剩余额度使用官方 Provider 入口，Peach 不再造日志扫描器。
+- **标签添加弹窗（2026-08-15）**：用户提供 macOS 标签管理弹窗截图，未提供产品名或可访问 URL，源码证据为 `未取得`。Peach 只复用截图可证实的交互层级：搜索、最近使用、全部标签、已选状态和键盘上下/Enter/Escape；不声称像素或源码级复刻。
 
 ## 智能体用量与任务路由
 
 - 调度看官方配额窗口，不看 API 等价美元估算。Codex 使用 App Server `account/rateLimits/read`；Claude 使用 Claude Code 已登录用量界面。不得打印、复制或保存 OAuth token。
 - Codex 负责架构、迁移、浏览器依赖网站、最终 review/apply 和长期任务；Claude 负责边界明确的刮削、归一化、候选 CSV 对账、文件名/番号/水印提取和经复核的风格板分类。
 - 女优/创作者归属可使用发行番号、文件名、水印、厂牌、别名、公开链接和跨来源一致性。人脸最多用于同库一致性辅助，持久身份仍需非人脸证据。
+- 目录名只是一条候选证据。当前扫描器已停止从目录生成创作者；历史 `legacy:asset` 关系使用 `scripts/audit_creator_attributions.py` 逐项审计。即使目录名与真实创作者同名，也不能把整个子树直接传播成创作者真相。
 - 待办数量统一报告“可执行 / 被阻塞 / 合计”。例如 PikPak 的 4,740 与 10,196 不是矛盾：前者有时长可抽帧，另有 5,445 条缺时长需先 probe。
 
 ## 批处理失败值与流量边界
@@ -83,7 +85,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 真实 ledger：`R:\peach-data\database\ledger.db`，WAL 模式。正常浏览会合法写入播放/行为字段。
 - 测试必须使用临时 SQLite 和临时媒体；不得写真实 ledger。
 - 真实迁移前依次执行 SQLite 备份、asset/tag 计数、`PRAGMA integrity_check`、迁移版本检查、服务 smoke test。
-- 正式迁移 `0000`–`0009` 已应用。`0003` 增加默认 profile、稍后看、实体链接和搜索词；`0004` 增加 FTS5 trigram；`0005` 回填晚到兼容标签；`0006` 增加 `asset_preference`；`0007` 从创作者身份中移除结构文件夹名 `门槛`、`视频`、`宣传文件`；`0008` 增加 profile 级标签隐藏；`0009` 移除结构集合目录 `asce` 的假创作者关系和低置信 `vision_creator` 传播，不破坏独立来源标签。
+- 正式迁移 `0000`–`0010` 已应用。`0003` 增加默认 profile、稍后看、实体链接和搜索词；`0004` 增加 FTS5 trigram；`0005` 回填晚到兼容标签；`0006` 增加 `asset_preference`；`0007` 从创作者身份中移除结构文件夹名 `门槛`、`视频`、`宣传文件`；`0008` 增加 profile 级标签隐藏；`0009` 移除结构集合目录 `asce` 的假创作者关系和低置信 `vision_creator` 传播；`0010` 把 83 条“足交仙人”按水印和文件名证据归到 `suzuq`，并从 745 条 TokyoDolls 资产解除错误的“捅主任”关系，均不删除媒体和标签。
 - `0007` 曾在应用后、提交前被改写注释/格式，导致校验和漂移。本次用迁移前备份重放当前 `0007`，对 298 条受影响资产与生产结果逐条对比，差异为 0 后才校正 `schema_migration` 校验和，然后正常应用 `0008`、`0009`。已应用迁移文件从此不得修改，任何后续变更必须新增版本。
 - 媒体和运行数据只在 `R:\media`、`R:\peach-data`，不进入仓库。
 

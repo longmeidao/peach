@@ -52,6 +52,24 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("/api/item-tag", self.page)
         self.assertIn('class="tagplus"', self.page)
 
+    def test_tag_picker_supports_search_recent_selection_and_keyboard(self):
+        self.assertIn('class="tagpicker"', self.page)
+        self.assertIn("peach.recentTags", self.page)
+        self.assertIn("最近使用", self.page)
+        self.assertIn("e.key==='ArrowDown'||e.key==='ArrowUp'", self.page)
+        self.assertIn("e.key==='Escape'", self.page)
+
+    def test_source_icons_are_visible_in_detail_and_list_badges(self):
+        self.assertIn(".srcbig svg{stroke:currentColor;fill:none", self.page)
+        self.assertIn("local:icon('hard-drive')", self.page)
+
+    def test_beeg_evidence_driven_surfaces_are_translucent_and_rail_is_continuous(self):
+        self.assertIn(".brandpill{", self.page)
+        self.assertIn("background:var(--frost-panel);border:1px solid transparent", self.page)
+        self.assertIn("background:var(--ground);\n  border-right:0", self.page)
+        self.assertIn("['performers','艺人','user-round']", self.page)
+        self.assertIn("['tags','标签','tags']", self.page)
+
     def test_tags_page_has_cloud_and_alphabet_modes(self):
         self.assertIn('data-tag-view="cloud"', self.page)
         self.assertIn('data-tag-view="alphabet"', self.page)

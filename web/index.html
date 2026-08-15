@@ -100,7 +100,7 @@ button,input,textarea{font:inherit;color:inherit}
 
 /* ── 顶部三层：女优圆头像 / 厂牌 / 内容标签 ── */
 .tiers{position:relative;z-index:1;padding:10px 0 8px;
-  border-bottom:1px solid var(--line-soft);
+  border-bottom:0;
   background:linear-gradient(180deg,color-mix(in srgb,var(--frost-light) 38%,transparent),transparent)}
 .tier{display:flex;gap:14px;overflow-x:auto;scrollbar-width:none;padding:0 16px 8px;align-items:flex-start}
 .tier::-webkit-scrollbar{display:none}
@@ -119,9 +119,10 @@ button,input,textarea{font:inherit;color:inherit}
 .av[aria-pressed="true"] .nm{color:var(--tungsten)}
 /* 二层：厂牌大药丸 */
 .brandpill{flex:none;display:flex;align-items:center;gap:8px;padding:6px 14px 6px 6px;
-  border-radius:9px;background:var(--surface);border:1px solid var(--line);cursor:pointer;
+  border-radius:12px;background:var(--frost-panel);border:1px solid transparent;cursor:pointer;
+  backdrop-filter:saturate(1.8) blur(20px);-webkit-backdrop-filter:saturate(1.8) blur(20px);
   font-size:14px;white-space:nowrap}
-.brandpill:hover{border-color:var(--tungsten)}
+.brandpill:hover{border-color:color-mix(in srgb,var(--ink) 22%,transparent);background:var(--frost-light)}
 .brandpill[aria-pressed="true"]{border-color:var(--tungsten);background:var(--tungsten-soft)}
 .brandpill .mk{width:32px;height:32px;border-radius:50%;background:#CFCFCF;flex:none;
   display:flex;align-items:center;justify-content:center;font-size:12px;
@@ -132,15 +133,16 @@ button,input,textarea{font:inherit;color:inherit}
 /* ── 标签条：唯一常驻的筛选层 ── */
 .tagbar{position:sticky;top:var(--topH);z-index:61;padding:9px 16px;
   transition:transform .22s ease, opacity .22s ease;
-  border-bottom:1px solid var(--line-soft);
+  border-bottom:0;
   background:color-mix(in srgb,var(--ground) 78%,transparent);
   backdrop-filter:saturate(1.8) blur(20px);-webkit-backdrop-filter:saturate(1.8) blur(20px);
   display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;align-items:center}
 .tagbar::-webkit-scrollbar{display:none}
-.pill{flex:none;height:40px;padding:0 20px;border:1px solid color-mix(in srgb,var(--line) 82%,transparent);
-  border-radius:999px;background:var(--surface);display:inline-flex;align-items:center;justify-content:center;
+.pill{flex:none;height:40px;padding:0 20px;border:1px solid transparent;
+  border-radius:999px;background:var(--frost-panel);display:inline-flex;align-items:center;justify-content:center;
+  backdrop-filter:saturate(1.8) blur(20px);-webkit-backdrop-filter:saturate(1.8) blur(20px);
   color:var(--ink-2);cursor:pointer;font-size:16px;white-space:nowrap}
-.pill:hover{border-color:var(--ink-2);color:var(--ink)}
+.pill:hover{border-color:color-mix(in srgb,var(--ink) 22%,transparent);color:var(--ink);background:var(--frost-light)}
 .pill[aria-pressed="true"]{background:var(--ink-2);color:var(--ground);border-color:var(--ink-2)}
 .pill.act{border-color:var(--tungsten);color:var(--tungsten)}
 .sep{flex:none;width:1px;height:19px;background:var(--line);margin:0 3px}
@@ -312,6 +314,7 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .srcbig{display:inline-flex;align-items:center;gap:6px;padding:4px 11px 4px 5px;border-radius:99px;
   border:1px solid var(--line);font-size:12.5px}
 .srcbig img,.srcbig svg{width:17px;height:17px;border-radius:4px;object-fit:contain;flex:none}
+.srcbig svg{stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .srcbig.metered{border-color:var(--meter);color:var(--meter)}
 .srcbig.free{border-color:color-mix(in srgb,var(--keep) 60%,transparent)}
 /* 侧栏来源筛选 */
@@ -386,7 +389,7 @@ body.detail-open .tagbar{position:relative;top:auto;z-index:1;transform:none;opa
   flex-direction:column;max-height:76vh;overflow-y:auto}
 .stitle{font-size:17px;line-height:1.4;word-break:break-all;margin-bottom:8px}
 .smeta{display:flex;gap:9px;flex-wrap:wrap;color:var(--muted);margin-bottom:18px}
-.stags{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:0 0 18px}
+.stags{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:0 0 18px}
 .detailtag{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:var(--tag-radius);
   background:color-mix(in srgb,var(--surface) 82%,var(--ground));overflow:hidden;min-height:30px}
 .detailtag button{border:0;background:transparent;color:var(--ink-2);cursor:pointer;height:28px}
@@ -395,8 +398,24 @@ body.detail-open .tagbar{position:relative;top:auto;z-index:1;transform:none;opa
 .detailtag svg,.tagplus svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
 .tagplus{width:30px;height:30px;border:1px dashed var(--line);border-radius:50%;display:grid;place-items:center;
   background:transparent;color:var(--muted);cursor:pointer}.tagplus:hover{border-color:var(--tungsten);color:var(--tungsten)}
-.tagadd{display:flex;flex:1 1 180px;gap:5px}.tagadd[hidden]{display:none}.tagadd input{min-width:0;flex:1;
-  border:1px solid var(--line);border-radius:8px;background:var(--ground);padding:5px 8px}.tagadd button{border:0;border-radius:8px;background:var(--ink);color:var(--ground);padding:5px 10px;cursor:pointer}
+.tagpicker{position:absolute;z-index:120;left:12px;right:12px;top:calc(100% + 8px);max-height:min(480px,70vh);
+  overflow:hidden;border:1px solid color-mix(in srgb,var(--ink) 15%,transparent);border-radius:12px;
+  background:var(--frost-panel);box-shadow:0 24px 70px -24px #000;
+  backdrop-filter:saturate(1.8) blur(20px);-webkit-backdrop-filter:saturate(1.8) blur(20px)}
+.tagpicker[hidden]{display:none}.tagpicksearch{height:54px;display:flex;align-items:center;gap:10px;padding:0 14px;
+  border-bottom:1px solid color-mix(in srgb,var(--ink) 10%,transparent)}
+.tagpicksearch svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;color:var(--muted)}
+.tagpicksearch input{min-width:0;flex:1;border:0;background:transparent;outline:0;font-size:15px}
+.tagpickbody{max-height:calc(min(480px,70vh) - 54px);overflow:auto;padding:12px}
+.tagpicksection+ .tagpicksection{border-top:1px solid color-mix(in srgb,var(--ink) 9%,transparent);margin-top:12px;padding-top:12px}
+.tagpicksection h4{margin:0 0 8px;color:var(--muted);font-size:11px;letter-spacing:.12em;font-weight:600}
+.tagpickgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px 12px}
+.tagpickitem{min-width:0;height:34px;border:0;border-radius:7px;background:transparent;color:var(--ink-2);
+  padding:0 9px;display:flex;align-items:center;gap:8px;text-align:left;cursor:pointer}
+.tagpickitem:hover,.tagpickitem.active{background:var(--hover);color:var(--ink)}
+.tagpickitem.selected{color:var(--tungsten)}.tagpickitem .pickname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tagpickitem .pickcount{margin-left:auto;color:var(--muted);font-size:11px}.tagpickitem svg{width:14px;height:14px;flex:none}
+@media (max-width:760px){.tagpicker{position:fixed;left:12px;right:12px;top:auto;bottom:12px}.tagpickgrid{grid-template-columns:1fr}}
 .detailidentity{display:grid;gap:8px;margin:0 0 18px;padding:0}
 .identityrow{display:grid;grid-template-columns:28px 42px minmax(0,1fr);gap:8px;align-items:center;min-height:30px}
 .identitymark{width:26px;height:26px;border-radius:50%;overflow:hidden;background:var(--sunk);color:var(--muted);
@@ -446,9 +465,8 @@ body.detail-open .tagbar{position:relative;top:auto;z-index:1;transform:none;opa
 /* 常驻 72 px 窄图标条。外部实现证据和有意差异登记在 docs/HANDOFF.md。 */
 .edge{position:fixed;top:0;bottom:0;left:0;width:var(--railW);z-index:92;
   padding-top:14px;
-  background:linear-gradient(180deg,var(--frost-light),var(--frost-panel));
-  backdrop-filter:saturate(1.8) blur(20px);-webkit-backdrop-filter:saturate(1.8) blur(20px);
-  border-right:1px solid var(--line-soft);
+  background:var(--ground);
+  border-right:0;
   display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 0}
 .edge button{width:52px;height:52px;border-radius:8px;background:none;border:0;cursor:pointer;
   display:flex;align-items:center;justify-content:center;color:var(--muted);transition:background .12s}
@@ -1182,8 +1200,8 @@ $('#filterBtn').onclick=()=>openDrawer(!$('#drawer').classList.contains('open'))
 /* 常驻窄图标条：点即切视图，鼠标停留 180ms 展开完整抽屉 */
 const EDGE_ICONS=[
   ['','首页','home'],
-  ['performers','全部艺人','user-round'],
-  ['tags','全部标签','tags'],
+  ['performers','艺人','user-round'],
+  ['tags','标签','tags'],
   ['flagged','已标记','star'],
   ['ads','疑似广告','list-filter'],
   ['immerse','沉浸模式','play'],
@@ -1373,17 +1391,56 @@ async function openItem(id,push=true){
     const wrap=$('#detailTags');if(!wrap)return;
     const visible=(it.tags||[]).filter(t=>!DURATION_TAGS.has(t.k)).slice(0,40);
     wrap.innerHTML=visible.map(t=>`<span class="detailtag"><button class="tagfilter" data-tag="${esc(t.k)}">${esc(t.k)}</button><button class="tagremove" data-remove-tag="${esc(t.k)}" title="从此视频隐藏该标签" aria-label="删除标签 ${esc(t.k)}">${icon('x')}</button></span>`).join('')+
-      `<button class="tagplus" id="tagPlus" title="添加标签" aria-label="添加标签">${icon('plus')}</button><form class="tagadd" id="tagAdd" hidden><input maxlength="80" placeholder="输入标签"><button>添加</button></form>`;
+      `<button class="tagplus" id="tagPlus" title="添加标签" aria-label="添加标签" aria-expanded="false">${icon('plus')}</button>
+       <div class="tagpicker" id="tagPicker" role="dialog" aria-label="添加标签" hidden>
+         <label class="tagpicksearch">${icon('search')}<input id="tagPickSearch" maxlength="80" placeholder="搜索或输入新标签" autocomplete="off"></label>
+         <div class="tagpickbody" id="tagPickBody"></div>
+       </div>`;
     wrap.querySelectorAll('[data-tag]').forEach(s=>s.onclick=()=>{
       state.tag=s.dataset.tag;disposeStage(false);route('/?tag='+encodeURIComponent(state.tag));buildBars();load(true);window.scrollTo({top:0,behavior:'smooth'})});
     wrap.querySelectorAll('[data-remove-tag]').forEach(b=>b.onclick=async()=>{
       b.disabled=true;const tag=b.dataset.removeTag;
       const r=await api('/api/item-tag',{method:'POST',body:JSON.stringify({id:it.id,operation:'remove',tag})});
       if(r.ok){it.tags=(it.tags||[]).filter(x=>foldName(x.k)!==foldName(tag));renderDetailTags()}else b.disabled=false});
-    $('#tagPlus').onclick=()=>{const form=$('#tagAdd');form.hidden=false;$('#tagPlus').hidden=true;form.querySelector('input').focus()};
-    $('#tagAdd').onsubmit=async e=>{e.preventDefault();const input=e.currentTarget.querySelector('input'),tag=input.value.trim();if(!tag)return;
+    const addTag=async tag=>{tag=tag.trim();if(!tag)return;
       const r=await api('/api/item-tag',{method:'POST',body:JSON.stringify({id:it.id,operation:'add',tag})});
-      if(r.ok&&!it.tags.some(x=>foldName(x.k)===foldName(tag)))it.tags.push({k:tag,cat:'general'});renderDetailTags()};
+      if(r.ok){
+        if(!it.tags.some(x=>foldName(x.k)===foldName(tag)))it.tags.push({k:tag,cat:'general'});
+        try{const old=JSON.parse(localStorage.getItem('peach.recentTags')||'[]').filter(x=>foldName(x)!==foldName(tag));
+          localStorage.setItem('peach.recentTags',JSON.stringify([tag,...old].slice(0,12)))}catch(_e){}
+        renderDetailTags()
+      }
+    };
+    const plus=$('#tagPlus'),picker=$('#tagPicker'),search=$('#tagPickSearch'),body=$('#tagPickBody');
+    let outsideHandler=null,activeIndex=-1;
+    const closePicker=()=>{picker.hidden=true;plus.setAttribute('aria-expanded','false');
+      if(outsideHandler)document.removeEventListener('pointerdown',outsideHandler,true);outsideHandler=null};
+    const candidates=()=>{const source=(facets&&facets.tags)||[],byName=new Map(source.map(x=>[foldName(x.k),x]));
+      let recent=[];try{recent=JSON.parse(localStorage.getItem('peach.recentTags')||'[]')}catch(_e){}
+      return {all:source,recent:recent.map(name=>byName.get(foldName(name))||{k:name,n:0})}};
+    const pickButton=x=>{const selected=(it.tags||[]).some(t=>foldName(t.k)===foldName(x.k));
+      return `<button class="tagpickitem${selected?' selected':''}" data-pick="${esc(x.k)}" aria-pressed="${selected}">
+        ${selected?icon('check'):icon('tags')}<span class="pickname">${esc(x.k)}</span><span class="pickcount">${(x.n||0).toLocaleString()}</span></button>`};
+    const renderPicker=()=>{const q=foldName(search.value),data=candidates();
+      const filtered=data.all.filter(x=>!q||foldName(x.k).includes(q)).slice(0,120);
+      const recent=q?[]:data.recent.filter((x,i,a)=>a.findIndex(y=>foldName(y.k)===foldName(x.k))===i).slice(0,12);
+      const exact=filtered.some(x=>foldName(x.k)===q);
+      body.innerHTML=(recent.length?`<section class="tagpicksection"><h4>最近使用</h4><div class="tagpickgrid">${recent.map(pickButton).join('')}</div></section>`:'')+
+        `<section class="tagpicksection"><h4>${q?'搜索结果':'全部标签'}</h4><div class="tagpickgrid">${filtered.map(pickButton).join('')}
+        ${q&&!exact?`<button class="tagpickitem" data-pick="${esc(search.value.trim())}">${icon('plus')}<span class="pickname">新建“${esc(search.value.trim())}”</span></button>`:''}</div></section>`;
+      activeIndex=-1;body.querySelectorAll('[data-pick]').forEach(b=>b.onclick=()=>{
+        const selected=b.getAttribute('aria-pressed')==='true',tag=b.dataset.pick;closePicker();if(!selected)addTag(tag)})};
+    search.oninput=renderPicker;
+    search.onkeydown=e=>{const options=[...body.querySelectorAll('[data-pick]')];
+      if(e.key==='Escape'){e.preventDefault();closePicker();plus.focus();return}
+      if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();if(!options.length)return;
+        activeIndex=(activeIndex+(e.key==='ArrowDown'?1:-1)+options.length)%options.length;
+        options.forEach((b,i)=>b.classList.toggle('active',i===activeIndex));options[activeIndex].scrollIntoView({block:'nearest'});return}
+      if(e.key==='Enter'){e.preventDefault();if(activeIndex>=0&&options[activeIndex])options[activeIndex].click();
+        else if(search.value.trim()){closePicker();addTag(search.value.trim())}}};
+    plus.onclick=()=>{picker.hidden=false;plus.setAttribute('aria-expanded','true');renderPicker();search.focus();
+      outsideHandler=e=>{if(!picker.contains(e.target)&&e.target!==plus)closePicker()};
+      setTimeout(()=>document.addEventListener('pointerdown',outsideHandler,true),0)};
   };
   renderDetailTags();
   $('#stage').querySelectorAll('[data-entity-kind]').forEach(b=>b.onclick=()=>
