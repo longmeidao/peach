@@ -24,6 +24,9 @@ dependencies = [
 peach = "peach.cli:main"
 peach-tray = "peach.tray:main"
 
+[project.optional-dependencies]
+build = ["pyinstaller==6.22.1"]
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 

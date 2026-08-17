@@ -27,7 +27,7 @@ Peach 最终可以完全去 Stash，但现在不能直接卸载。Web 主链已�
 ## 已证实缺陷
 
 - 重构前 `rm-ledger.py cmd_stash()` 曾把 `studio.name` 写入 `asset.creator`，且不写 `studio`；已修复并新增隔离回归测试，现保留为 `scripts/ledger.py`。
-- `rm-ledger.py scan` 的“已消失”只统计，不保存明确 missing 状态。
+- `rm-ledger.py scan` 的「已消失」只统计，不保存明确 missing 状态。
 - 旧 `rm-probe.py` 失败写 `duration=-1`，而候选只取 `duration IS NULL`，失败项不会自动重试；现文件为 `scripts/probe.py`。
 - `asset_tag` 的唯一键是 `(asset_id,tag)`，`INSERT OR IGNORE` 无法保存同一断言的多来源 provenance。
 

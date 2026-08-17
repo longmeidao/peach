@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import os
 import queue
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -24,6 +25,7 @@ from peach.jobs import (
     SourceAccessPolicy,
     require_free_space,
 )
+from peach.media import resolve_case_insensitive
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -54,6 +56,37 @@ def output_path(output_root: Path, location: str, path: str) -> Path:
     return directory / f"{digest}.jpg"
 
 
+COLOR_OVERRIDE = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"]
+
+# 只有坏色彩元数据才值得用 bt709 覆盖重试。无条件重试会让网盘超时这类必然失败的文件
+# 每帧都白跑第二次：单帧最坏耗时从 45 秒翻到 90 秒，9 帧就是 13.5 分钟。
+COLOR_METADATA_ERROR = re.compile(
+    r"(reserved|unsupported|invalid)[^\n]{0,60}(color|primaries|trc|space)"
+    r"|(color|primaries|trc|space)[^\n]{0,60}(reserved|unsupported|invalid)",
+    re.IGNORECASE,
+)
+
+
+def _capture_frame(ffmpeg: str, path: str, timestamp: float, destination: Path,
+                   color_override: bool) -> tuple[bool, str]:
+    """抽一帧，返回（是否成功, stderr）。stderr 用于判断值不值得重试。"""
+    command = [ffmpeg, "-y", "-v", "error", "-rw_timeout", "8000000"]
+    if color_override:
+        # 部分网盘视频把色彩原色写成 reserved（非法值），swscale 会拒绝缩放；
+        # 声明为 bt709 只是覆盖坏的元数据，不改动像素。
+        command += COLOR_OVERRIDE
+    command += [
+        "-ss", f"{timestamp:.2f}", "-i", path, "-frames:v", "1",
+        "-vf", "scale=480:-1", "-q:v", "4", str(destination),
+    ]
+    try:
+        completed = subprocess.run(command, capture_output=True, timeout=45)
+    except subprocess.TimeoutExpired:
+        return False, "ffmpeg timeout"
+    ok = destination.is_file() and destination.stat().st_size > 1024
+    return ok, (completed.stderr or b"").decode("utf-8", "replace")
+
+
 def make_sheet(ffmpeg: str, path: str, duration: float, destination: Path, frames: int) -> bool:
     """输入端 seek 抽帧后调用 FFmpeg tile；不线性解码整片。"""
     if not duration or duration < 2:
@@ -64,16 +97,10 @@ def make_sheet(ffmpeg: str, path: str, duration: float, destination: Path, frame
         for index in range(frames):
             timestamp = duration * (0.03 + 0.94 * (index + 0.5) / frames)
             frame = temporary / f"{index:02d}.jpg"
-            subprocess.run(
-                [
-                    ffmpeg, "-y", "-v", "error", "-rw_timeout", "8000000",
-                    "-ss", f"{timestamp:.2f}", "-i", path, "-frames:v", "1",
-                    "-vf", "scale=480:-1", "-q:v", "4", str(frame),
-                ],
-                capture_output=True,
-                timeout=45,
-            )
-            if frame.is_file() and frame.stat().st_size > 1024:
+            ok, stderr = _capture_frame(ffmpeg, path, timestamp, frame, color_override=False)
+            if not ok and COLOR_METADATA_ERROR.search(stderr):
+                ok, _ = _capture_frame(ffmpeg, path, timestamp, frame, color_override=True)
+            if ok:
                 captured.append(frame)
         if len(captured) < 2:
             return False
@@ -162,7 +189,10 @@ def run(args: argparse.Namespace) -> int:
                         results.put((str(destination), asset_id))
                         with lock:
                             counters["existing"] += 1
-                    elif make_sheet(str(ffmpeg.path), path, duration, destination, args.frames):
+                    elif make_sheet(
+                        str(ffmpeg.path), resolve_case_insensitive(path), duration,
+                        destination, args.frames,
+                    ):
                         results.put((str(destination), asset_id))
                     else:
                         with lock:

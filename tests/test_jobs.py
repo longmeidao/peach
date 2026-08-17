@@ -1,3 +1,5 @@
+import os
+import signal
 import tempfile
 import unittest
 from pathlib import Path
@@ -62,19 +64,31 @@ class JobPolicyTests(unittest.TestCase):
                 guard.check(force=True)
 
     def test_stale_lock_from_a_killed_job_does_not_crash_the_next_run(self):
-        """Windows 对已消失的 PID 抛 WinError 87，不是 ProcessLookupError。
+        """被强杀留下的锁必须被清理后继续，而不是把后续所有运行直接崩掉。
 
-        漏掉它会让每个被强杀留下的锁把后续所有运行直接崩掉；2026-08-15 实际发生过。
+        2026-08-15 实际发生过。取一个几乎不可能存在的 PID 走真实的存活探测。
         """
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "job.lock"
-            path.write_text("39316", encoding="ascii")
-            error = OSError("参数错误")
-            error.winerror = 87
-            with patch("peach.jobs.os.kill", side_effect=error):
-                with PidFileLock(path):
-                    self.assertEqual(path.read_text(encoding="ascii").strip(), str(__import__("os").getpid()))
+            path.write_text("4294967294", encoding="ascii")
+            with PidFileLock(path):
+                self.assertEqual(path.read_text(encoding="ascii").strip(), str(os.getpid()))
             self.assertFalse(path.exists())
+
+    @unittest.skipUnless(os.name == "nt", "只在 Windows 上成立")
+    def test_liveness_probe_never_signals_its_own_console(self):
+        """Windows 上 `signal.CTRL_C_EVENT == 0`。
+
+        于是 Unix 探测存活的经典写法 `os.kill(pid, 0)` 实际会调用
+        `GenerateConsoleCtrlEvent(CTRL_C_EVENT, ...)`，把 Ctrl+C 发给整个控制台进程组。
+        锁里写的又是自己的 PID，「检查锁是否还活着」就会当场把自己打断——在真实控制台里
+        跑批处理或测试时表现为毫无征兆的 KeyboardInterrupt，而重定向/无控制台的环境
+        不复现，因为控制台事件无处投递。这条守住「探测存活不得发信号」。
+        """
+        self.assertEqual(int(signal.CTRL_C_EVENT), 0, "前提：CTRL_C_EVENT 就是 0")
+        with patch("peach.jobs.os.kill", side_effect=AssertionError("存活探测不得调用 os.kill")):
+            self.assertTrue(PidFileLock._running(os.getpid()))
+            self.assertFalse(PidFileLock._running(4294967294))
 
     def test_pid_lock_rejects_live_owner_and_cleans_up(self):
         with tempfile.TemporaryDirectory() as tmp:

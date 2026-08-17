@@ -20,6 +20,9 @@ item 29297 上把这种响应表现为总时长随已下载内容增长；文件
   Video.js 内置 VHS 的带宽、请求和传输字节统计。
 - CloudDrive 的约 100 MiB 固定块预取属于来源层成本。播放器皮肤不能消除它；后续由 Media
   Engine 提供真实短分片或直连来源 adapter，不能再次用非标准 Range 截断冒充分片。
+- 2026-08-17 起，已知时长的 115/PikPak 原生 MP4 由 `MediaEngine.stream_plan` 选择 HLS VOD：
+  `/api/stream-plan` 返回 6 秒清单，TS 片段按请求由 FFmpeg seek/remux 生成并在响应后清理；
+  HLS 生成失败时前端回退标准 `/stream`。本实现暂不提供自适应码率或多路清单。
 
 ## 放弃方案
 
@@ -31,6 +34,6 @@ item 29297 上把这种响应表现为总时长随已下载内容增长；文件
 
 ## 后果
 
-直接 MP4 恢复标准客户端兼容性，关闭详情仍能由 session 主动终止服务端请求。开放区间的
-实际读取量继续受浏览器背压与 CloudDrive 固定块影响；把首播等待压到真正视频网站式短分片
-需要后续 Media Engine HLS/DASH 工作，不能宣称本 ADR 已消除该来源层成本。
+直接 MP4 恢复标准客户端兼容性，关闭详情仍能由 session 主动终止服务端请求；HLS 片段也纳入
+同一取消机制。HLS 把大跨度 seek 的读取范围限制在目标片段附近，但每次来源读取仍受
+CloudDrive 固定块预取影响，不能宣称本 ADR 消除了来源层成本。

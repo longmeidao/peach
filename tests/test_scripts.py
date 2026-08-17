@@ -2,6 +2,7 @@ import csv
 import importlib.util
 import io
 import sqlite3
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
@@ -48,10 +49,18 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertIn("peach.__file__", script)
         self.assertIn("-m unittest discover", script)
         self.assertNotIn("pytest", script.lower())
+        # 文档里可以「提到」裸命令来说明它为什么不可信，但绝不能让它单独出现成为一条可照抄的指令。
+        # 判据因此不是黑名单，而是：凡出现该命令的行，必须在同一行指向 test.ps1。
         for relative in ("AGENTS.md", "README.md", "docs/HANDOFF.md"):
             instructions = (ROOT / relative).read_text(encoding="utf-8")
             self.assertIn("scripts\\test.ps1", instructions)
-            self.assertNotIn("python -m unittest discover", instructions)
+            for number, line in enumerate(instructions.splitlines(), 1):
+                if "unittest discover" not in line:
+                    continue
+                self.assertIn(
+                    "test.ps1", line,
+                    f"{relative}:{number} 单独出现了裸命令，读者会照抄；必须同时点明唯一入口",
+                )
 
     def test_structural_creator_and_mainstream_release_guards(self):
         self.assertTrue(is_structural_creator("asce"))
@@ -124,6 +133,85 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertTrue(self.traffic_watch.is_direct({"chains": ["DIRECT"]}))
         self.assertFalse(self.traffic_watch.is_direct({"chains": ["Proxy", "Relay"]}))
         self.assertEqual(self.creator_boards.safe_name("A/B:C"), "A_B_C")
+
+    def test_powershell_scripts_with_chinese_carry_a_utf8_bom(self):
+        """没有 BOM 的 .ps1，Windows PowerShell 5.1 会按 ANSI（简中系统即 GBK）读。
+
+        `scripts/test.ps1` 的中文 throw 消息因此被解成乱码，引号配对错乱，
+        整个脚本在解析期就失败并闪退——报错行还会落在纯 ASCII 的语句上，极难定位。
+        pwsh 7 默认按 UTF-8 读无 BOM 文件，所以这个故障只在 5.1 上出现。
+        """
+        for path in sorted((ROOT / "scripts").glob("*.ps1")):
+            raw = path.read_bytes()
+            if all(byte < 128 for byte in raw):
+                continue
+            self.assertTrue(
+                raw.startswith(b"\xef\xbb\xbf"),
+                f"{path.name} 含非 ASCII 却没有 UTF-8 BOM，PowerShell 5.1 会解析失败",
+            )
+
+    def test_logo_candidates_are_squared_by_padding_not_discarded(self):
+        """界面按方框渲染。接近方的直接用，长条形补背景填方，只有太小的才丢。"""
+        import io
+
+        from PIL import Image
+
+        from peach.images import PAD, REJECT, SQUARE, classify, pad_to_square
+
+        self.assertEqual(classify(512, 512)[0], SQUARE)
+        self.assertEqual(classify(600, 500)[0], SQUARE, "轻微非方图不必补")
+        self.assertEqual(classify(1600, 900)[0], PAD, "16:9 补成方图，而不是丢掉")
+        self.assertEqual(classify(64, 64)[0], REJECT, "短边过小，补白也救不回来")
+
+        wide = Image.new("RGBA", (400, 100), (10, 20, 30, 255))
+        buffer = io.BytesIO()
+        wide.save(buffer, "PNG")
+        squared = Image.open(io.BytesIO(pad_to_square(buffer.getvalue())))
+        self.assertEqual(squared.size, (400, 400))
+        # 补出来的边取原图四角底色，和 Logo 自身背景连成一片，不是凭空刷白。
+        self.assertEqual(squared.getpixel((5, 5)), (10, 20, 30, 255))
+        self.assertEqual(squared.getpixel((200, 200)), (10, 20, 30, 255))
+
+    def test_studio_avatar_candidates_never_guess_a_handle_by_default(self):
+        """猜错 handle 会产出一个「看起来很官方」的错误 Logo，和它要取代的搜索猜测同一种失败。"""
+        module = load_script("fetch_studio_avatar_candidates")
+        self.assertEqual(module.guess_handle("PREMIUM"), "PREMIUM")
+        self.assertEqual(module.guess_handle("S1 NO.1 STYLE"), "S1NO1STYLE")
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "in.csv"
+            source.write_text("studio\nBAZOOKA\n", encoding="utf-8-sig")
+            output = Path(tmp) / "out.csv"
+            with mock.patch.object(sys, "argv", [
+                "fetch_studio_avatar_candidates", "--input", str(source), "--output", str(output),
+            ]):
+                module.main()
+            written = list(csv.DictReader(output.open(encoding="utf-8-sig", newline="")))
+        self.assertEqual(len(written), 1)
+        self.assertEqual(written[0]["confirmation"], "no-handle")
+        self.assertEqual(written[0]["accepted"], "False")
+        self.assertIn("未取得", written[0]["reason"])
+
+    def test_frame_retry_is_reserved_for_bad_color_metadata(self):
+        """坏色彩元数据才重试。无条件重试会让网盘超时的文件每帧白跑两次 45 秒。"""
+        sheets = self.sheets
+        for stderr, expected in (
+            ("[swscale] Unsupported color primaries: reserved", [False, True]),
+            ("color_trc reserved is invalid", [False, True]),
+            ("ffmpeg timeout", [False]),
+            ("Error opening input: Input/output error", [False]),
+        ):
+            calls: list[bool] = []
+
+            def fake_capture(_ffmpeg, _path, _timestamp, _destination, color_override,
+                             _stderr=stderr, _calls=calls):
+                _calls.append(color_override)
+                return False, _stderr
+
+            with tempfile.TemporaryDirectory() as tmp:
+                with mock.patch.object(sheets, "_capture_frame", fake_capture):
+                    sheets.make_sheet("ffmpeg", "R:/media/one.mp4", 100.0,
+                                      Path(tmp) / "sheet.jpg", frames=1)
+            self.assertEqual(calls, expected, stderr)
 
     def test_sheets_stops_mid_run_when_the_disk_gate_trips(self):
         """验证接线，不只是 DiskGuard 类本身：起跑通过、运行中触线要真的停并报非零码。"""
@@ -226,6 +314,42 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(selection("all"), "(duration IS NULL OR duration<=0)")
         self.assertEqual(self.probe.build_parser().parse_args([]).redo, "none")
         self.assertEqual(self.probe.build_parser().parse_args(["--redo", "zero"]).redo, "zero")
+
+    def test_sheet_retries_reserved_color_metadata_frames(self):
+        """prim:reserved 会被 swscale 拒绝；首次失败后用 bt709 声明兜底重试。
+
+        符玄12.mp4 实测：`scale=480:-1` 报 Error -129，覆盖色彩声明后正常。
+        """
+        sheets = self.sheets
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "sheet.jpg"
+            calls = []
+
+            def fake_run(command, **kwargs):
+                calls.append(list(command))
+                if "-filter_complex" in command:
+                    dest.write_bytes(b"x" * 8192)
+                    return type("R", (), {"returncode": 0})()
+                target = Path(command[-1])
+                if "bt709" in command:
+                    target.write_bytes(b"y" * 2048)
+                    return type("R", (), {"returncode": 0, "stderr": b""})()
+                return type("R", (), {
+                    "returncode": 1,
+                    "stderr": b"[swscale] Unsupported color primaries: reserved",
+                })()
+
+            original = sheets.subprocess.run
+            sheets.subprocess.run = fake_run
+            try:
+                ok = sheets.make_sheet("ffmpeg", "reserved.mp4", 600.0, dest, 9)
+            finally:
+                sheets.subprocess.run = original
+            self.assertTrue(ok)
+            self.assertEqual(
+                sum(1 for c in calls if "bt709" in c), 9,
+                "9 帧都应在首次失败后用色彩覆盖重试",
+            )
 
     def test_code_normalization(self):
         normalise = self.scrape_codes.normalise

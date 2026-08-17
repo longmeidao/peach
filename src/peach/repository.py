@@ -12,6 +12,9 @@ class MediaAsset:
     snapshot_path: str | None
     bindings: tuple[tuple[str, str], ...] = ()
     location: str | None = None
+    name: str | None = None
+    duration: float | None = None
+    size: int | None = None
 
     def external_id(self, backend: str) -> str | None:
         return next((value for name, value in self.bindings if name == backend), None)
@@ -26,7 +29,8 @@ class LedgerRepository:
         connection.row_factory = sqlite3.Row
         try:
             row = connection.execute(
-                "SELECT id,path,snapshot_path,location FROM asset WHERE id=?",
+                "SELECT id,path,snapshot_path,location,name,duration,size "
+                "FROM asset WHERE id=?",
                 (asset_id,),
             ).fetchone()
             bindings = connection.execute(
@@ -44,4 +48,7 @@ class LedgerRepository:
             row["snapshot_path"],
             tuple((item["backend"], item["external_id"]) for item in bindings),
             row["location"],
+            row["name"],
+            row["duration"],
+            row["size"],
         )

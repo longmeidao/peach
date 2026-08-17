@@ -41,3 +41,6 @@ class PeachSettings:
     logo_root: Path = GENERATED_DIR / "logos"
     ffmpeg_root: Path = FFMPEG_DIR
     transcode_root: Path = TRANSCODE_DIR
+    stream_root: Path = GENERATED_DIR / "stream-segments"
+    # 复核候选 CSV 的目录。走 settings 而不是模块常量，测试才不会读到真实的 generated 目录。
+    candidate_root: Path = GENERATED_DIR

@@ -9,5 +9,5 @@
 - `font/VideoJS.woff` SHA-256：`46D5222F85688002D5B62A53790A6D7D799282DD836B8346C80178BFF0FBF3CF`
 - `lang/zh-CN.js` SHA-256：`A4D561EAF11270B3D5FD47770845BDA2EF09ED514F21C5631C6095A05C1448D4`
 
-Peach 自托管固定版本，不依赖 CDN。当前直接 MP4 使用标准 HTTP Range；后续 HLS/DASH
-接入可继续复用 Video.js 内置 VHS，并通过 `vhs.stats` 展示分片传输统计。
+Peach 自托管固定版本，不依赖 CDN。当前直接 MP4 使用标准 HTTP Range，115/PikPak 远端原生
+MP4 使用服务端 HLS 短片段；两者都复用 Video.js 内置 VHS，并通过 `vhs.stats` 展示传输统计。

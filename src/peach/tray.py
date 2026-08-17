@@ -13,7 +13,7 @@ from typing import Callable
 
 import httpx
 import pystray
-from PIL import Image, ImageDraw
+from PIL import Image
 
 from .config import LOG_DIR, PROJECT_ROOT, SECRETS_DIR, STATE_DIR
 from .versioning import VersionManager
@@ -138,6 +138,10 @@ class ServiceManager:
 
     def start_missing(self) -> None:
         LOG_DIR.mkdir(parents=True, exist_ok=True)
+        environment = os.environ.copy()
+        if getattr(sys, "frozen", False):
+            # A frozen tray must not pass its one-file bootloader state to Peach.exe.
+            environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
         with self._lock:
             for spec in self.specs:
                 owned = self._owned.get(spec.name)
@@ -157,6 +161,7 @@ class ServiceManager:
                     stderr=stderr,
                     shell=False,
                     creationflags=creationflags,
+                    env=environment,
                 )
 
     def wait_until_ready(self, timeout: float = 20.0) -> bool:
@@ -195,6 +200,14 @@ class ServiceManager:
 
 
 def _peach_executable() -> Path:
+    if getattr(sys, "frozen", False):
+        # 打包出来的托盘不是可移动的独立发行版：它仍然把服务进程的所有权交给项目 venv，
+        # 因为 one-file bootloader 在本 Python 构建上再拉起一个 one-file 进程并不安全。
+        # 逐级向上找 .venv，而不是写死 parents[2]——换个输出目录就不该整套失效。
+        for parent in Path(sys.executable).resolve().parents:
+            managed = parent / ".venv" / "Scripts" / "peach.exe"
+            if managed.is_file():
+                return managed
     sibling = Path(sys.executable).with_name("peach.exe")
     if sibling.is_file():
         return sibling
@@ -234,17 +247,13 @@ def build_service_specs(lan_address: str | None = None) -> tuple[ServiceSpec, ..
 
 
 def create_icon(size: int = 64) -> Image.Image:
-    """Render a tray-sized counterpart of the web favicon with antialiasing."""
-    canvas = size * 4
-    scale = canvas / 64
-    image = Image.new("RGBA", (canvas, canvas), (11, 11, 13, 255))
-    draw = ImageDraw.Draw(image)
-    draw.rounded_rectangle((0, 0, canvas - 1, canvas - 1), radius=14 * scale, fill=(11, 11, 13, 255))
-    draw.ellipse((12 * scale, 23 * scale, 52 * scale, 57 * scale), fill=(246, 104, 118, 255))
-    draw.ellipse((18 * scale, 18 * scale, 34 * scale, 52 * scale), fill=(255, 154, 118, 255))
-    draw.ellipse((33 * scale, 12 * scale, 52 * scale, 25 * scale), fill=(95, 185, 95, 255))
-    draw.line((32 * scale, 15 * scale, 29 * scale, 27 * scale), fill=(138, 90, 59, 255), width=max(1, round(2 * scale)))
-    return image.resize((size, size), Image.Resampling.LANCZOS)
+    """Load the shared square Peach brand asset at tray resolution."""
+    resource = Path(getattr(sys, "_MEIPASS", PROJECT_ROOT)) / "resources" / "peach-logo.png"
+    if not resource.is_file():
+        resource = PROJECT_ROOT / "resources" / "peach-logo.png"
+    if not resource.is_file():
+        raise FileNotFoundError(f"Peach logo is missing: {resource}")
+    return Image.open(resource).convert("RGBA").resize((size, size), Image.Resampling.LANCZOS)
 
 
 def show_message(title: str, message: str, *, error: bool = False) -> None:

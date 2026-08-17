@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<link rel="icon" href="/favicon.svg?v=3" type="image/svg+xml">
+<link rel="icon" href="/peach-logo.png" type="image/png">
 <link rel="stylesheet" href="/vendor/videojs/8.23.9/video-js.min.css">
 <title>Peach · 蜜桃</title>
 <style>
@@ -17,7 +17,7 @@
   --loupe:#127A72; --keep:#2E7D32; --meter:#B26A10; --drop:#C0392B;
   --tile:336px; --topH:56px; --filterH:58px; --sortH:53px; --railW:72px;
   --tag-radius:999px; --tag-pad-y:4px; --tag-pad-x:10px; --ambient-opacity:0; --hover-delay:5s;
-  --frost-panel:rgba(247,248,250,.82); --frost-light:rgba(255,255,255,.76);
+  --frost-panel:rgba(247,248,250,.92); --frost-light:rgba(255,255,255,.86);
   --overlay-5:rgba(20,22,26,.05);--border-10:rgba(20,22,26,.10);--border-15:rgba(20,22,26,.15);
   --sb:#3A3A40; --sb-hover:#55555E;   /* 336 = 168×2，与目标站的模块单位一致 */
 }
@@ -26,7 +26,7 @@
   --line:#3A3A3D; --line-soft:#2C2C30;
   --ink:#FFFFFF; --ink-2:#C9CDD4; --muted:#9AA0A8;
   --tungsten:#0095F6; --tungsten-soft:#0A2B45;
-  --frost-panel:rgba(30,30,30,.72); --frost-light:rgba(38,40,44,.72);
+  --frost-panel:rgba(30,30,30,.9); --frost-light:rgba(38,40,44,.86);
   --overlay-5:rgba(245,250,255,.05);--border-10:rgba(245,250,255,.10);--border-15:rgba(245,250,255,.15);
   --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --ambient-opacity:1;}}
 :root[data-theme="dark"]{
@@ -34,7 +34,7 @@
   --line:#3A3A3D; --line-soft:#2C2C30;
   --ink:#FFFFFF; --ink-2:#C9CDD4; --muted:#9AA0A8;
   --tungsten:#0095F6; --tungsten-soft:#0A2B45;
-  --frost-panel:rgba(30,30,30,.72); --frost-light:rgba(38,40,44,.72);
+  --frost-panel:rgba(30,30,30,.9); --frost-light:rgba(38,40,44,.86);
   --overlay-5:rgba(245,250,255,.05);--border-10:rgba(245,250,255,.10);--border-15:rgba(245,250,255,.15);
   --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --ambient-opacity:1;}
 
@@ -78,7 +78,7 @@ button,input,textarea{font:inherit;color:inherit}
 /* ── 顶栏：无侧栏，图占主导 ── */
 .top{position:sticky;top:0;z-index:70;display:flex;align-items:center;gap:12px;
   height:var(--topH);padding:0 16px;border-bottom:1px solid var(--line-soft);
-  background:color-mix(in srgb,var(--ground) 78%,transparent);
+  background:color-mix(in srgb,var(--ground) 88%,transparent);
   backdrop-filter:saturate(1.8) blur(20px);-webkit-backdrop-filter:saturate(1.8) blur(20px)}
 .ib{background:none;border:0;border-radius:8px;cursor:pointer;width:40px;height:40px;
   flex:none;display:inline-flex;align-items:center;justify-content:center;color:var(--ink-2);
@@ -87,11 +87,10 @@ button,input,textarea{font:inherit;color:inherit}
   stroke-linecap:round;stroke-linejoin:round;display:block}
 .ib:hover{color:var(--ink);background:var(--hover)}
 .ib[aria-pressed="true"]{color:var(--tungsten);background:var(--tungsten-soft)}
-.brand{display:flex;align-items:center;gap:9px;flex:none;text-decoration:none;color:inherit}
-.mark{width:27px;height:27px;flex:none}
-.brand h1{font-family:Bahnschrift,"Segoe UI Variable Display",sans-serif;font-weight:600}
-.brand h1{margin:0;font-size:19px;letter-spacing:.08em}
-.brand .sub{font-size:11.5px;letter-spacing:.14em;color:var(--muted)}
+.brand{display:flex;align-items:center;gap:9px;flex:none;text-decoration:none;color:inherit;height:32px}
+.mark{width:28px;height:28px;flex:none;display:block;object-fit:contain}
+.brand h1{font-family:Bahnschrift,"Segoe UI Variable Display",sans-serif;font-weight:600;margin:0;font-size:19px;line-height:1;letter-spacing:.08em}
+.brand .sub{font-size:11.5px;line-height:1;letter-spacing:.14em;color:var(--muted);padding-top:2px}
 .search{flex:1;max-width:620px;margin:0 auto;display:flex;align-items:center;gap:8px;
   background:var(--surface);border:1px solid var(--line);border-radius:9999px;padding:8px 16px;position:relative}
 .search:focus-within{border-color:var(--tungsten)}
@@ -153,7 +152,7 @@ button,input,textarea{font:inherit;color:inherit}
 .pill:hover{border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink);background:var(--overlay-5)}
 .pill[aria-pressed="true"]{background:var(--ink-2);color:var(--ground);border-color:var(--ink-2)}
 .pill.act{border-color:var(--tungsten);color:var(--tungsten)}
-.sep{flex:none;width:1px;height:19px;background:var(--line);margin:0 3px}
+.sep{flex:none;width:1px;height:19px;background:var(--border-15);margin:0 3px}
 
 /* 多标签交集筛选条 */
 .combo{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px}
@@ -165,6 +164,7 @@ button,input,textarea{font:inherit;color:inherit}
 .combo .clr{background:none;border:0;color:var(--muted);cursor:pointer;font-size:12px;text-decoration:underline}
 /* 统计页 */
 .stats{padding:8px 0 42px;max-width:1440px;margin:0 auto}
+.review{padding:8px 0 42px;max-width:1440px;margin:0 auto}.reviewhead{display:flex;align-items:center;gap:14px;padding:10px 2px 18px;border-bottom:1px solid var(--line-soft);margin-bottom:18px}.reviewhead h2{margin:0;font-size:26px}.reviewtabs{display:flex;gap:7px;overflow-x:auto;margin-bottom:16px}.reviewtabs button,.reviewitem button{border:1px solid var(--border-15);border-radius:999px;background:transparent;color:var(--ink-2);padding:8px 13px;cursor:pointer}.reviewtabs button[aria-pressed="true"],.reviewitem button.approve{background:var(--tungsten-soft);border-color:var(--tungsten);color:var(--ink)}.reviewsection{margin-bottom:20px}.reviewsection h3{margin:0 0 9px;font-size:15px}.reviewlist{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px}.reviewitem{background:var(--surface);border:1px solid var(--line-soft);border-radius:12px;padding:13px;min-width:0}.reviewitem[data-decision="approved"]{border-color:var(--keep)}.reviewitem[data-decision="rejected"],.reviewitem[data-decision="skipped"]{opacity:.55}.reviewitem h4{margin:0 0 6px;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reviewitem p{margin:4px 0;color:var(--muted);font-size:12px;line-height:1.5;overflow-wrap:anywhere}.reviewtags{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0}.reviewtags span{padding:3px 8px;border:1px solid var(--border-15);border-radius:999px;font-size:11px}.reviewactions{display:flex;gap:6px;margin-top:10px}.reviewactions button{border-radius:8px;padding:6px 10px}.reviewactions .reject{color:var(--drop)}.reviewasset-grid{display:flex;gap:6px;overflow-x:auto;padding:7px 0;position:relative;scrollbar-width:thin}.reviewasset{position:relative;flex:0 0 108px;height:82px;border:1px solid var(--border-10);border-radius:7px;overflow:hidden;background:#000;cursor:pointer}.reviewasset img{width:100%;height:100%;object-fit:cover;display:block}.reviewasset input{position:absolute;top:6px;right:6px;width:18px;height:18px;accent-color:var(--tungsten);z-index:2}.reviewasset-grid.marquee-active{cursor:crosshair}.reviewasset-grid.marquee-active .reviewasset{user-select:none}.reviewmarquee{position:fixed;z-index:300;border:1px solid var(--tungsten);background:color-mix(in srgb,var(--tungsten) 16%,transparent);pointer-events:none}
 .statshead{display:flex;align-items:center;justify-content:flex-start;gap:14px;padding:10px 2px 18px;
   border-bottom:1px solid var(--line-soft);margin-bottom:18px}
 .stats h2{margin:0 0 4px;font-size:26px}
@@ -292,7 +292,7 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 .count>span:first-child{flex:none}
 .count .sorts{display:flex;gap:5px;margin-left:auto;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
 .count .sorts::-webkit-scrollbar{display:none}
-.count .sorts button{padding:5px 11px;border:1px solid var(--line);border-radius:7px;
+.count .sorts button{padding:5px 11px;border:1px solid var(--border-15);border-radius:7px;
   background:transparent;cursor:pointer;font-size:12px;color:var(--ink-2);
   flex:0 0 auto;white-space:nowrap}
 .count .sorts button:hover{border-color:var(--tungsten);color:var(--ink)}
@@ -300,8 +300,15 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
   border-color:var(--tungsten);color:var(--tungsten)}
 .count .sorts .batchaction{background:var(--tungsten);border-color:var(--tungsten);color:#fff;
   font-weight:650;padding-inline:14px}
+.count .sorts #batchAction{width:36px;padding:0;display:inline-grid;place-items:center}
+.count .sorts #batchAction svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
 .count .sorts .batchaction:hover{background:color-mix(in srgb,var(--tungsten) 82%,#000);color:#fff}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
+.shorts-inline{grid-column:1/-1;margin:28px 0 8px;padding-top:0}
+.shorts-inline h2{margin:0 0 10px;font-size:16px;display:flex;align-items:center;gap:10px}
+.shorts-inline h2 button{margin-left:auto;font-size:12px;background:none;border:1px solid var(--line);border-radius:16px;padding:5px 14px;cursor:pointer}
+.shorts-inline .srow{display:flex;gap:13px;overflow-x:auto;padding-bottom:7px}
+.shorts-inline .scard .pic{aspect-ratio:var(--card-ratio,9/16)}
 .card{cursor:pointer;display:flex;flex-direction:column;gap:8px;min-width:0;
   position:relative;transition:transform .18s ease,filter .18s ease;transform-origin:center}
 .mixcard{padding-top:7px}
@@ -342,10 +349,12 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
   display:block;background:#000}
 .cardopenhit{position:absolute;inset:0;z-index:3;border:0;background:transparent;padding:0;cursor:pointer}
 /* 悬停即播真视频（仅免费源，计费源永远不自动拉流） */
-.hv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;
+.hv{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;
   opacity:0;transition:opacity .2s}
 .hv.on{opacity:1}
-.card:hover .pic{box-shadow:0 0 0 1px color-mix(in srgb,var(--tungsten) 65%,transparent)}
+.card:hover .pic{border:1px solid var(--tungsten);box-shadow:0 0 0 1px color-mix(in srgb,var(--tungsten) 48%,transparent),0 0 18px color-mix(in srgb,var(--tungsten) 18%,transparent)}
+.select-mode .card{cursor:default}
+.select-mode .cardopenhit,.select-mode .hovertools,.select-mode .previewcounter{pointer-events:none!important}
 .card.selected .pic,.card.selected:hover .pic{box-shadow:inset 0 0 0 2px rgba(245,247,250,.9)}
 @media (hover:hover) and (pointer:fine){
   .card.longhover{transform:translateY(-7px) scale(1.065);z-index:8;filter:brightness(1.04)}
@@ -424,16 +433,16 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
   -webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-all}
 .meta .cardtitle{width:100%;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}
 .meta .s{display:flex;gap:8px;color:var(--muted);align-items:center;flex-wrap:wrap}
-.meta .who{color:var(--tungsten)}
+.meta .who{color:var(--tungsten);min-width:0;max-width:100%;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .flags{display:flex;gap:3px;margin-left:auto}
 .flags i{width:6px;height:6px;border-radius:1px;display:block}
 .flags i.dislike{background:var(--drop)}.flags i.seen{background:var(--muted)}
 .flags i.dispose{background:var(--meter)}
 .flags i.later{background:var(--tungsten)}
 /* 标签语义分级 */
-.ctags{display:flex;flex-wrap:wrap;gap:5px}
+.ctags{display:flex;flex-wrap:nowrap;gap:5px;min-width:0;overflow:hidden}
 .tg{padding:var(--tag-pad-y) var(--tag-pad-x);border-radius:var(--tag-radius);font-size:12.5px;border:1px solid var(--line);
-  line-height:1.45;white-space:nowrap;cursor:pointer;color:var(--ink-2);
+  line-height:1.45;white-space:nowrap;cursor:pointer;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;max-width:32%;
   background:color-mix(in srgb,var(--surface) 82%,var(--ground))}
 .tg.general,.tg.artist,.tg.character,.tg.copyright,.tg.meta{color:var(--ink-2);border-color:var(--line)}
 .tg.artist{font-weight:600}
@@ -446,16 +455,19 @@ body[data-density="dense"] .card .meta .t{display:block;max-width:100%;min-heigh
 /* 短片带 */
 .shorts{margin:30px 0 8px;border-top:1px solid var(--line-soft);padding-top:16px}
 .shorts h2{margin:0 0 11px;font-size:16px;display:flex;align-items:center;gap:10px}
-.shorts h2 button{margin-left:auto;font-size:12px;background:none;border:1px solid var(--line);
-  border-radius:16px;padding:5px 14px;cursor:pointer}
-.shorts h2 button:hover{border-color:var(--tungsten)}
+.shorts h2 button,.shorts-enter{margin-left:auto;min-height:48px;display:inline-flex;align-items:center;gap:7px;
+  font-size:12px;background:var(--overlay-5);border:0;border-radius:24px;padding:0 16px;cursor:pointer;
+  color:var(--ink);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:background .14s,transform .14s}
+.shorts h2 button:hover,.shorts-enter:hover{background:color-mix(in srgb,var(--ink) 16%,transparent);transform:translateY(-1px)}
+.shorts h2 button:active,.shorts-enter:active{transform:scale(.97)}
+.shorts h2 button svg,.shorts-enter svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
 .srow{display:flex;gap:13px;overflow-x:auto;padding-bottom:7px}
-.scard{flex:none;width:214px;cursor:pointer}
+.srow .scard{flex:none;width:214px;cursor:pointer}
 
 /* ── 放大播放（就地展开） ── */
 .stage{margin:0 0 22px;border-radius:10px;
   background:radial-gradient(circle at 28% 24%,color-mix(in srgb,var(--video-glow,#15202a) 40%,transparent),transparent 58%),
-    color-mix(in srgb,var(--surface) 76%,transparent);scroll-margin-top:calc(var(--topH) + 8px);
+    color-mix(in srgb,var(--surface) 88%,transparent);scroll-margin-top:calc(var(--topH) + 8px);
   border:1px solid var(--line);overflow:hidden}
 .stage[hidden]{display:none}
 body.detail-open .tagbar{position:relative;top:auto;z-index:1}
@@ -483,13 +495,18 @@ body.entity-open #tiers,body.entity-open #tagbar{display:none}
 .mixitemtext b{font-size:12px;line-height:1.4}.mixitemtext span{font-size:10px;color:var(--muted);margin-top:3px}
 .vwrap{background:#000;position:relative;display:flex;align-items:center;justify-content:center;isolation:isolate}
 .ambientcanvas{position:absolute;z-index:0;inset:-34px;width:calc(100% + 68px);height:calc(100% + 68px);
-  filter:blur(46px) saturate(1.45);opacity:.42;transform:scale(1.06);pointer-events:none}
+  filter:blur(46px) saturate(1.45);opacity:.42;transform:scale(1.06);pointer-events:none;
+  mask-image:radial-gradient(ellipse at center,#000 28%,rgba(0,0,0,.72) 55%,transparent 86%);-webkit-mask-image:radial-gradient(ellipse at center,#000 28%,rgba(0,0,0,.72) 55%,transparent 86%)}
 .vwrap>video,.vwrap>.video-js{position:relative;z-index:1}
 .vwrap video{width:100%;max-height:76vh;display:block}
 .vwrap>.video-js{width:100%;height:auto;max-height:76vh;aspect-ratio:16/9;background:#000}
 .vwrap .video-js .vjs-tech{object-fit:contain}
 .vwrap .video-js .vjs-control-bar{height:3.4em;background:linear-gradient(transparent,rgba(0,0,0,.82))}
 .vwrap .video-js .vjs-progress-control{min-width:0}.vwrap .video-js .vjs-time-control{font-size:12px}
+.vwrap>.video-js.vjs-fullscreen,.video-js.vjs-fullscreen{width:100%!important;height:100%!important;
+  max-width:none!important;max-height:none!important;aspect-ratio:auto!important}
+.vwrap>.video-js.vjs-fullscreen .vjs-tech,.video-js.vjs-fullscreen .vjs-tech{
+  width:100%;height:100%;object-fit:contain}
 .playerstatsbtn{position:absolute;left:11px;top:11px;z-index:8;width:38px;height:38px;padding:0;
   display:grid;place-items:center;border:1px solid rgba(255,255,255,.22);border-radius:8px;
   background:rgba(0,0,0,.46);color:#fff;cursor:pointer;backdrop-filter:blur(10px)}
@@ -501,6 +518,10 @@ body.entity-open #tiers,body.entity-open #tagbar{display:none}
   backdrop-filter:saturate(1.25) blur(14px);font:11px/1.5 "Cascadia Mono",monospace}
 .playerstats dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:1px 12px;margin:0}.playerstats dt{text-align:right;font-weight:700}.playerstats dd{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .playerstats[hidden]{display:none}
+.playernet{position:absolute;left:58px;top:11px;z-index:8;min-height:38px;padding:0 11px;
+  display:flex;align-items:center;border:1px solid rgba(255,255,255,.18);border-radius:8px;
+  background:rgba(0,0,0,.46);color:#fff;backdrop-filter:blur(10px);font:11px/1 "Cascadia Mono",monospace}
+.playernet[hidden]{display:none}
 .gate{aspect-ratio:16/9;width:100%;background:var(--sunk);border:1px dashed var(--meter);
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer}
 .closestage{position:absolute;top:11px;right:11px;z-index:9;width:40px;height:40px;
@@ -554,11 +575,11 @@ body.entity-open #tiers,body.entity-open #tagbar{display:none}
 .trace .bar u{position:absolute;inset:0 auto 0 0;background:color-mix(in srgb,var(--loupe) 26%,transparent);text-decoration:none}
 .trace .bar b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--tungsten);border-radius:1px}
 .ticks{display:flex;justify-content:space-between;margin-top:4px;color:var(--muted)}
-.fb{display:flex;align-items:center;gap:7px;margin:0 0 12px;padding:0;border:0}
-.fb button{width:42px;height:42px;padding:0;border:1px solid transparent;background:transparent;border-radius:8px;
+.fb{display:flex;align-items:center;gap:0;margin:0 0 12px;padding:0;border:1px solid var(--border-10);border-radius:999px;background:var(--overlay-5);width:max-content;overflow:hidden}
+.fb button{width:44px;height:42px;padding:0;border:0;border-right:1px solid var(--border-10);background:transparent;border-radius:0;
   cursor:pointer;display:grid;place-items:center;color:var(--muted);transition:transform .14s ease,color .14s ease,background .14s ease}
 .fb button svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.fb button:hover{transform:translateY(-2px);background:var(--hover)}
+.fb button:last-child{border-right:0}.fb button:hover{transform:none;background:rgba(255,255,255,.12)}
 .fb .like:hover,.fb .like[aria-pressed="true"]{color:var(--tungsten);background:var(--tungsten-soft)}
 .fb .dislike:hover,.fb .dislike[aria-pressed="true"]{color:var(--drop);background:color-mix(in srgb,var(--drop) 12%,transparent)}
 .fb .seen:hover,.fb .seen[aria-pressed="true"]{color:var(--keep);background:color-mix(in srgb,var(--keep) 12%,transparent)}
@@ -677,9 +698,17 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 /* ── 短片全屏 ── */
 .tok{position:fixed;inset:0;z-index:200;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden}
 .tok[hidden]{display:none}
-.toktrack{position:absolute;inset:0;overflow:hidden}.toktrack video{position:absolute;inset:0;max-height:100vh;max-width:100vw;
-  width:min(100%,560px);height:100%;left:50%;transform:translateX(-50%);object-fit:contain;background:#000;will-change:transform;
+.toktrack{position:absolute;inset:0;overflow:hidden}.toktrack video{position:absolute;inset:0;max-height:none;max-width:none;
+  width:100%;height:100%;left:50%;transform:translateX(-50%);object-fit:cover;background:#000;will-change:transform;
   transition:transform .2s cubic-bezier(.2,.2,.4,.9)}
+.tokloading{position:absolute;z-index:12;left:50%;top:50%;transform:translate(-50%,-50%);
+  display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid rgba(255,255,255,.24);
+  border-radius:24px;background:rgba(0,0,0,.58);color:#fff;backdrop-filter:blur(12px);pointer-events:none;
+  font:12px/1 "Cascadia Mono",monospace;white-space:nowrap}
+.tokloading[hidden]{display:none}
+.tokspinner{width:17px;height:17px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;
+  animation:tok-spin .75s linear infinite}
+@keyframes tok-spin{to{transform:rotate(360deg)}}
 .tokui{position:absolute;inset:auto 0 0 0;padding:18px 20px 26px;color:#F3ECE2;
   background:linear-gradient(transparent,rgba(0,0,0,.84));pointer-events:none}
 .tokbtns{position:absolute;right:max(14px,env(safe-area-inset-right));bottom:106px;
@@ -718,6 +747,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   box-shadow:0 8px 24px #0005}.batchbar[hidden]{display:none}
 .batchbar span{padding:0 8px;color:var(--ink-2);white-space:nowrap}.batchbar button{border:1px solid var(--line);border-radius:12px;
   background:var(--surface);color:var(--ink);padding:9px 12px;cursor:pointer}.batchbar button:hover{border-color:var(--tungsten)}
+.batchbar button svg{width:17px;height:17px;margin-right:6px;vertical-align:-4px;stroke:currentColor;fill:none;stroke-width:2}
 .batchbar .danger{color:var(--drop)}
 
 @media (max-width:1080px){.sgrid,.sgrid.mixgrid{grid-template-columns:minmax(0,1fr)}
@@ -754,6 +784,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 }
 #searchBtn{display:none}
 </style>
+<style>.reviewimage{width:160px;height:112px;border-radius:8px;overflow:hidden;background:#000;margin:8px 0}.reviewimage img{width:100%;height:100%;object-fit:contain;display:block}.review-select-mode .reviewasset{cursor:crosshair}</style>
 </head>
 <body>
 <!-- Lucide static 1.31.0, ISC. Local pinned subset; no CDN/runtime dependency.
@@ -796,7 +827,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 
 <header class="top">
   <button class="ib" id="filterBtn" title="筛选"><svg viewBox="0 0 24 24"><use href="#i-sliders-horizontal"/></svg></button>
-  <a class="brand" href="#" id="brandHome"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="pg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF9A76"/><stop offset="1" stop-color="#F2557B"/></linearGradient></defs><path d="M16 29c-6.1 0-10.4-3.9-10.4-9.2 0-4.6 3-8.2 7-8.2 1.5 0 2.6.5 3.4 1.2.8-.7 1.9-1.2 3.4-1.2 4 0 7 3.6 7 8.2C26.4 25.1 22.1 29 16 29z" fill="url(#pg)"/><path d="M16 13.2V28" stroke="#0B0B0D" stroke-width="1.1" opacity=".28" stroke-linecap="round"/><path d="M17.2 11.4c.6-3 3-4.9 6-5.1-.2 3-2.4 5-6 5.1z" fill="#5FB95F"/><path d="M16 11.6c0-2 .5-3.6 1.6-4.8" stroke="#8A5A3B" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg><h1 class="disp">Peach</h1><span class="sub mono">蜜桃</span></a>
+  <a class="brand" href="#" id="brandHome"><img class="mark" src="/peach-logo.png" alt=""><h1 class="disp">Peach</h1><span class="sub mono">蜜桃</span></a>
   <div class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-search"/></svg>
     <input id="q" type="search" placeholder="FC2" autocomplete="off">
     <div class="searchmenu" id="searchMenu" hidden></div></div>
@@ -823,7 +854,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   <div class="grid" id="grid"></div>
   <section class="shorts" id="shortsSec" hidden>
     <h2 class="disp">竖屏 <span class="mono" style="color:var(--muted);font-size:11px" id="shortsN"></span>
-      <button id="tokBtn">进入沉浸模式</button></h2>
+      <button id="tokBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-play"/></svg><span>进入沉浸模式</span></button></h2>
     <div class="srow" id="srow"></div>
   </section>
   <div class="loadmore mono" id="loadSentinel" hidden>继续载入中…</div>
@@ -832,11 +863,12 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 <div class="scrim" id="scrim"></div>
 <aside class="drawer" id="drawer"></aside>
 <div class="batchbar" id="batchbar" hidden><span id="batchCount">已选 0 项</span>
-  <button data-batch="like">喜欢</button><button data-batch="seen">看过</button><button data-batch="later">稍后看</button>
-  <button class="danger" data-batch="dispose">标记待删</button><button id="batchClear">取消</button></div>
+  <button data-batch="like"><svg viewBox="0 0 24 24"><use href="#i-thumbs-up"/></svg>喜欢</button><button data-batch="seen"><svg viewBox="0 0 24 24"><use href="#i-eye"/></svg>看过</button><button data-batch="later"><svg viewBox="0 0 24 24"><use href="#i-bookmark-plus"/></svg>稍后看</button>
+  <button class="danger" data-batch="dispose"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>加入回收站</button><button data-trash-only data-batch="restore"><svg viewBox="0 0 24 24"><use href="#i-rotate-ccw"/></svg>还原</button><button class="danger" data-trash-only data-batch="delete"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>彻底删除</button><button id="batchClear"><svg viewBox="0 0 24 24"><use href="#i-x"/></svg>取消</button></div>
 
 <div class="tok" id="tok" hidden>
   <div class="toktrack" id="tokTrack"><video id="tokVid" playsinline></video></div>
+  <div class="tokloading" id="tokLoader" role="status" aria-live="polite" hidden><span class="tokspinner" aria-hidden="true"></span><span id="tokLoadingText">加载中…</span></div>
   <div class="tokhint mono">滚轮 / ↑↓ 切换 · Esc 退出 · 横竖屏混流</div>
   <button class="tokclose" id="tokClose" title="关闭" aria-label="关闭"><svg viewBox="0 0 24 24"><use href="#i-x"/></svg></button>
   <div class="tokbtns">
@@ -858,7 +890,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
     <label class="settingrow"><span><b>默认排序</b><small>打开首页时使用的排序。</small></span><select id="defaultSortSetting"><option value="daily">每日轮换</option><option value="rand">随机</option><option value="rating">评分</option><option value="o">高潮计数</option><option value="plays">观看次数</option><option value="long">时长</option><option value="big">体积</option><option value="new">最近入库</option><option value="played">最近看的</option></select></label>
     <label class="settingrow"><span><b>悬停放大</b><small>转圈完成后进入放大预览。</small></span><select id="hoverDelaySetting"><option value="3">3 秒</option><option value="5">5 秒</option><option value="8">8 秒</option></select></label>
     <label class="settingrow"><span><b>快进 / 快退</b><small>卡片预览和详情播放器共用。</small></span><select id="seekSecondsSetting"><option value="5">5 秒</option><option value="10">10 秒</option><option value="30">30 秒</option></select></label>
-    <label class="settingrow"><span><b>搜索记录</b><small>只保存在当前浏览器。</small></span><select id="searchHistoryLimitSetting"><option value="5">最近 5 条</option><option value="10">最近 10 条</option><option value="20">最近 20 条</option></select></label>
+    <label class="settingrow"><span><b>搜索记录</b><small>保存在 Peach 账本，所有访问端同步。</small></span><select id="searchHistoryLimitSetting"><option value="5">最近 5 条</option><option value="10">最近 10 条</option><option value="20">最近 20 条</option></select></label>
     <label class="settingrow"><span><b>相关推荐</b><small>详情下方一次显示的相似作品数量。</small></span><select id="relatedLimitSetting"><option value="12">12 个</option><option value="20">20 个</option><option value="30">30 个</option></select></label>
   </div>
 </section>
@@ -940,13 +972,25 @@ const REP={};   // 创作者/厂牌 → 代表作 id，用来做圆头像（裁�
 let offset=0,total=0,facets=null,current=null,detailReturnPath='/',activeMix=null;
 const CACHE={};
 const cache=items=>{items.forEach(x=>CACHE[x.id]=x);return items};
-let detailStreamSession='',detailPlayer=null,detailStatsTimer=null;
+let detailStreamSession='',detailPlayer=null,detailStatsTimer=null,detailNetTimer=null,detailNetHideTimer=null;
 function newStreamSession(){
   return globalThis.crypto?.randomUUID?.()||`${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 function detailStreamUrl(id){
   if(!detailStreamSession)detailStreamSession=newStreamSession();
   return `/stream?id=${id}&session=${encodeURIComponent(detailStreamSession)}`;
+}
+function directDetailSource(it){
+  return {src:detailStreamUrl(it.id),type:String(it.name||'').toLowerCase().endsWith('.webm')?'video/webm':'video/mp4'};
+}
+async function detailStreamSource(it){
+  const direct=directDetailSource(it);
+  if(!['115','pikpak'].includes(it.location))return direct;
+  try{
+    const plan=await api(`/api/stream-plan?id=${it.id}&session=${encodeURIComponent(detailStreamSession)}`);
+    if(plan.protocol==='hls'&&plan.src)return {src:plan.src,type:plan.mime_type||'application/vnd.apple.mpegurl'};
+  }catch(_e){}
+  return direct;
 }
 function cancelDetailStream(){
   const session=detailStreamSession;if(!session)return;
@@ -960,12 +1004,15 @@ function cancelDetailStream(){
 function disposeStage(push=false){
   const stage=$('#stage');
   if(detailStatsTimer){clearInterval(detailStatsTimer);detailStatsTimer=null}
+  if(detailNetTimer){clearInterval(detailNetTimer);detailNetTimer=null}
+  if(detailNetHideTimer){clearTimeout(detailNetHideTimer);detailNetHideTimer=null}
   if(detailPlayer){try{detailPlayer.pause();detailPlayer.dispose()}catch(_e){}detailPlayer=null}
   stage.querySelectorAll('video').forEach(video=>{
     if(video._hop)clearInterval(video._hop);
     video.pause();video.removeAttribute('src');video.load();video.remove()});
   cancelDetailStream();
   stage.innerHTML='';stage.hidden=true;document.body.classList.remove('detail-open');current=null;activeMix=null;
+  scheduleStickySurfaces();
   if(push)route(detailReturnPath||'/');
 }
 function bufferedAhead(video){
@@ -974,10 +1021,36 @@ function bufferedAhead(video){
     return Math.max(0,video.buffered.end(i)-at);
   return 0;
 }
+function streamEntries(id,session=''){
+  const encoded=session?encodeURIComponent(session):'';
+  return performance.getEntriesByType('resource').filter(x=>x.name.includes('/stream')&&
+    (x.name.includes('/stream?id='+id)||x.name.includes('/stream/hls/'+id+'/'))&&
+    (!encoded||x.name.includes('session='+encoded)));
+}
+function streamSpeedBits(id,session=''){
+  const entries=streamEntries(id,session);
+  const bytes=entries.reduce((n,x)=>n+(x.transferSize||x.encodedBodySize||0),0);
+  const seconds=entries.reduce((n,x)=>n+(x.duration||0),0)/1000;
+  return bytes>0&&seconds>0?bytes*8/seconds:0;
+}
+function playerSpeedBits(player,id,session=''){
+  let vhs=null;try{vhs=player?.tech({IWillNotUseThisInPlugins:true})?.vhs?.stats||null}catch(_e){}
+  const bandwidth=Number(vhs?.bandwidth)||0;
+  return bandwidth>0?bandwidth:streamSpeedBits(id,session);
+}
+function fmtSpeed(bits){
+  if(!Number.isFinite(bits)||bits<=0)return '加载中…';
+  const bytes=bits/8;
+  return bytes>=1048576?`${(bytes/1048576).toFixed(1)} MB/s`:`${Math.max(1,Math.round(bytes/1024))} KB/s`;
+}
 function mountDetailPlayer(it,video,autoplay){
   if(detailPlayer)return detailPlayer;
   const statsButton=$('#playerStatsBtn'),statsPanel=$('#playerStats');
-  if(!globalThis.videojs){video.controls=true;video.src=detailStreamUrl(it.id);if(autoplay)video.play().catch(()=>{});return null}
+  if(!globalThis.videojs){
+    video.controls=true;
+    detailStreamSource(it).then(source=>{video.src=source.src;if(autoplay)video.play().catch(()=>{})}).catch(()=>{});
+    return null;
+  }
   detailPlayer=globalThis.videojs(video,{
     controls:true,preload:'metadata',language:'zh-CN',responsive:true,
     controlBar:{skipButtons:{backward:appSettings.seekSeconds,forward:appSettings.seekSeconds},pictureInPictureToggle:true}
@@ -992,19 +1065,19 @@ function mountDetailPlayer(it,video,autoplay){
     }
   };
   const updateStats=()=>{
-    if(!statsPanel||statsPanel.hidden||!detailPlayer||detailPlayer.isDisposed())return;
-    const quality=video.getVideoPlaybackQuality?video.getVideoPlaybackQuality():null;
-    let vhs=null;try{vhs=detailPlayer.tech({IWillNotUseThisInPlugins:true})?.vhs?.stats||null}catch(_e){}
-    const rect=video.getBoundingClientRect(),current=`${video.videoWidth||it.width||'?'}×${video.videoHeight||it.height||'?'}`;
-    const resources=performance.getEntriesByType('resource').filter(x=>x.name.includes('/stream?id='+it.id));
-    const bytes=resources.reduce((n,x)=>n+(x.transferSize||x.encodedBodySize||0),0);
-    const seconds=resources.reduce((n,x)=>n+(x.duration||0),0)/1000;
-    const speed=vhs?.bandwidth||(seconds>0?bytes*8/seconds:0);
-    const rows=[
+   if(!statsPanel||statsPanel.hidden||!detailPlayer||detailPlayer.isDisposed())return;
+   const quality=video.getVideoPlaybackQuality?video.getVideoPlaybackQuality():null;
+     const rect=video.getBoundingClientRect(),current=`${video.videoWidth||it.width||'?'}×${video.videoHeight||it.height||'?'}`;
+      const resources=streamEntries(it.id,detailStreamSession);
+      const bytes=resources.reduce((n,x)=>n+(x.transferSize||x.encodedBodySize||0),0);
+      const seconds=resources.reduce((n,x)=>n+(x.duration||0),0)/1000;
+      const speed=playerSpeedBits(detailPlayer,it.id,detailStreamSession)||(seconds>0?bytes*8/seconds:0);
+     const segmented=String(detailPlayer.currentSource()?.type||'').includes('mpegurl');
+     const rows=[
       ['视频 ID / 会话',`${it.id} / ${detailStreamSession.slice(0,8)}`],
       ['视口 / 帧',`${Math.round(rect.width)}×${Math.round(rect.height)} / ${quality?`${quality.totalVideoFrames-quality.droppedVideoFrames} of ${quality.totalVideoFrames}`:'—'}`],
       ['当前 / 最佳分辨率',`${current} / ${it.width||'?'}×${it.height||'?'}`],
-      ['编码 / 传输',`${String(it.name||'').split('.').pop()?.toUpperCase()||'—'} / ${vhs?'HLS / DASH':'HTTP Range'}`],
+       ['编码 / 传输',`${String(it.name||'').split('.').pop()?.toUpperCase()||'—'} / ${segmented?'HLS':'HTTP Range'}`],
       ['连接速度',speed?`${(speed/1e6).toFixed(1)} Mbps`:'—'],
       ['网络活动',`${bytes?fmtSize(bytes):'—'} · ${resources.length} 请求`],
       ['缓冲健康',`${bufferedAhead(video).toFixed(1)} 秒`],
@@ -1014,15 +1087,36 @@ function mountDetailPlayer(it,video,autoplay){
     statsPanel.innerHTML='<dl>'+rows.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')+'</dl>';
   };
   detailPlayer.on(['loadstart','loadedmetadata','durationchange','error'],enforceDuration);
-  detailPlayer.ready(()=>{enforceDuration();if(statsButton)statsButton.hidden=false;
-    if(autoplay)detailPlayer.play().catch(()=>{})});
+  const player=detailPlayer;
+  let segmentedSource=false,fallbackUsed=false;
+  const netBadge=$('#playerNet');
+  const updateNet=()=>{if(!netBadge||player.isDisposed())return;
+    netBadge.textContent=`加载速度 ${fmtSpeed(playerSpeedBits(player,it.id,detailStreamSession))}`};
+  const showNet=()=>{if(!netBadge)return;netBadge.hidden=false;updateNet();
+    if(detailNetTimer)clearInterval(detailNetTimer);detailNetTimer=setInterval(updateNet,500)};
+  const hideNet=()=>{if(!netBadge)return;if(detailNetHideTimer)clearTimeout(detailNetHideTimer);
+    detailNetHideTimer=setTimeout(()=>{netBadge.hidden=true;if(detailNetTimer){clearInterval(detailNetTimer);detailNetTimer=null}},1400)};
+  player.on(['loadstart','progress','waiting','stalled'],showNet);
+  player.on(['canplay','playing'],()=>{updateNet();hideNet()});
+  player.on('error',()=>{
+    if(!segmentedSource||fallbackUsed||player.isDisposed())return;
+    fallbackUsed=true;segmentedSource=false;
+    player.src(directDetailSource(it));
+    if(autoplay)player.play().catch(()=>{});
+  });
+  detailPlayer.ready(()=>{enforceDuration();if(statsButton)statsButton.hidden=false});
   if(statsButton&&statsPanel)statsButton.onclick=()=>{
     const open=statsPanel.hidden;statsPanel.hidden=!open;statsButton.setAttribute('aria-pressed',String(open));
     if(open){updateStats();if(detailStatsTimer)clearInterval(detailStatsTimer);detailStatsTimer=setInterval(updateStats,1000)}
     else if(detailStatsTimer){clearInterval(detailStatsTimer);detailStatsTimer=null}
   };
-  detailPlayer.src({src:detailStreamUrl(it.id),type:String(it.name||'').toLowerCase().endsWith('.webm')?'video/webm':'video/mp4'});
-  enforceDuration();setTimeout(enforceDuration,0);setTimeout(enforceDuration,250);
+  detailStreamSource(it).then(source=>{
+    if(!detailPlayer||detailPlayer!==player||player.isDisposed())return;
+    segmentedSource=String(source.type||'').includes('mpegurl');
+    player.src(source);
+    enforceDuration();setTimeout(enforceDuration,0);setTimeout(enforceDuration,250);
+    if(autoplay)player.play().catch(()=>{});
+  }).catch(()=>{});
   return detailPlayer;
 }
 const selected=new Set();
@@ -1030,10 +1124,14 @@ let selectMode=false,lastSelectedId=null;
 function paintSelection(){
   document.querySelectorAll('.card[data-id]').forEach(card=>card.classList.toggle('selected',selected.has(+card.dataset.id)));
   $('#batchbar').hidden=!selected.size;$('#batchCount').textContent=`已选 ${selected.size} 项`;
+  $('#batchbar').querySelectorAll('[data-trash-only]').forEach(button=>button.hidden=state.state!=='trash');
+  $('#batchbar').querySelectorAll('[data-batch="like"],[data-batch="seen"],[data-batch="later"],[data-batch="dispose"]').forEach(button=>button.hidden=state.state==='trash');
 }
 function setSelectMode(on,clear=false){selectMode=!!on;document.body.classList.toggle('select-mode',selectMode);
+  if(selectMode)releaseHoverPreviews();
   $('#selectMode').setAttribute('aria-pressed',selectMode);if(clear){selected.clear();lastSelectedId=null}paintSelection()}
-function visibleCardIds(){return [...document.querySelectorAll('#grid .card[data-id]')].map(card=>+card.dataset.id)}
+/* 只取网格直属卡片：竖屏条是嵌在网格里的横向滚动条，不该被 Shift 范围选中顺带框进来。 */
+function visibleCardIds(){return [...document.querySelectorAll('#grid > .card[data-id]')].map(card=>+card.dataset.id)}
 function toggleSelection(id,range=false){
   if(range&&lastSelectedId!=null){const ids=visibleCardIds(),a=ids.indexOf(lastSelectedId),b=ids.indexOf(id);
     if(a>=0&&b>=0){for(let i=Math.min(a,b);i<=Math.max(a,b);i++)selected.add(ids[i])}
@@ -1044,11 +1142,14 @@ function toggleSelection(id,range=false){
 $('#selectMode').onclick=()=>setSelectMode(!selectMode,!selectMode?false:true);
 $('#batchClear').onclick=()=>setSelectMode(false,true);
 $('#batchbar').querySelectorAll('[data-batch]').forEach(button=>button.onclick=async()=>{
-  const labels={like:'喜欢',seen:'标为看过',later:'加入稍后看',dispose:'标记待删'};
+  const labels={like:'喜欢',seen:'标为看过',later:'加入稍后看',dispose:'加入回收站',restore:'还原',delete:'彻底删除'};
   const operation=button.dataset.batch,ids=[...selected];if(!ids.length)return;
-  if(!confirm(`确认对 ${ids.length} 个作品执行“${labels[operation]}”？\n这会写入本机账本；标记待删不会删除文件。`))return;
+  if(!confirm(`确认对 ${ids.length} 个作品执行“${labels[operation]}”？\n${operation==='delete'?'此操作会永久删除文件和账本记录，不可恢复。':'回收站中的文件仍保留，可从回收站入口永久清除。'}`))return;
   button.disabled=true;
-  try{await api('/api/batch',{method:'POST',body:JSON.stringify({ids,operation})});setSelectMode(false,true);await load(true)}
+  try{const r=await api('/api/batch',{method:'POST',body:JSON.stringify({ids,operation})});
+    if(r.blocked&&r.blocked.length)alert(`已永久删除 ${r.purged} 个；${r.blocked.length} 个删不掉，仍留在回收站：\n`
+      +r.blocked.slice(0,5).map(x=>`${x.path}（${x.reason}）`).join('\n'));
+    setSelectMode(false,true);await load(true)}
   finally{button.disabled=false;paintSelection()}
 });
 
@@ -1083,7 +1184,7 @@ function wireHover(el,it){
   if(it.location!=='local'){        // 远端源：只换预览图逐格扫视，零网络流量
     const im=pic.querySelector('.poster'); if(!im)return;
     let t=null,i=4;
-    el.addEventListener('mouseenter',()=>{armLong();t=setInterval(()=>{
+    el.addEventListener('mouseenter',()=>{if(selectMode)return;armLong();t=setInterval(()=>{
       i=(i+1)%9; im.src=`/poster?id=${it.id}&c=${i}`},430)});
     const stop=()=>{clearLong();clearInterval(t);t=null;im.src=`/poster?id=${it.id}&c=4`};
     el._stopHover=stop;el.addEventListener('mouseleave',stop);
@@ -1091,7 +1192,7 @@ function wireHover(el,it){
   }
   let timer=null,v=null;
   el.addEventListener('mouseenter',()=>{
-    if(window.__scrolling)return;          // 滚动中不起播，否则每张卡都发请求 → 卡死
+    if(selectMode||window.__scrolling)return;          // 多选或滚动中不启动预览
     timer=setTimeout(()=>{
       if(window.__scrolling)return;
       releaseHoverPreviews(document,el);   // 同一时间只保留一个本地视频预览
@@ -1120,14 +1221,16 @@ window.addEventListener('pagehide',()=>releaseHoverPreviews());
 document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseHoverPreviews()});
 
 function cardHtml(it,cls){
-  const ar=(it.width&&it.height)?Math.min(1.9,Math.max(0.5,it.width/it.height)):16/9;
+  const ar=(it.ctx_orient==='竖屏'||cls==='scard')
+    ? ((it.width&&it.height)?Math.min(0.9,Math.max(0.5,it.width/it.height)):9/16)
+    : 16/9;
 
   const thumb=it.has_thumb
     ? `<img class="poster" src="/poster?id=${it.id}&c=4" alt="" loading="lazy">`
     : `<span class="nopic">无预览</span>`;
   const tr=it.leave_ratio!=null?`<div class="scrub"><i style="width:${Math.round(it.leave_ratio*100)}%"></i></div>`:'';
   const fl=[it.feedback==='dislike'&&'dislike',it.feedback==='seen'&&'seen',
-            it.disposal==='pending'&&'dispose',it.watch_later&&'later']
+            it.disposal==='trash'&&'dispose',it.watch_later&&'later']
             .filter(Boolean).map(c=>`<i class="${c}"></i>`).join('');
   const performer=(it.performers||[])[0]||'';
   const performerRef=(it.performer_entities||[])[0];
@@ -1157,10 +1260,10 @@ function cardHtml(it,cls){
       <button data-seek="-${appSettings.seekSeconds}" title="后退 ${appSettings.seekSeconds} 秒" aria-label="后退 ${appSettings.seekSeconds} 秒">${icon('rotate-ccw')}<b>${appSettings.seekSeconds}</b></button>
       <button data-seek="${appSettings.seekSeconds}" title="前进 ${appSettings.seekSeconds} 秒" aria-label="前进 ${appSettings.seekSeconds} 秒">${icon('rotate-cw')}<b>${appSettings.seekSeconds}</b></button>
       <button data-open title="打开详情" aria-label="打开详情">${icon('maximize')}</button></div>`;
-  return `<article class="card ${cls||''} ${it.disposal==='pending'?'pending-delete':''}" data-id="${it.id}">
+  return `<article class="card ${cls||''} ${it.disposal==='trash'?'pending-delete':''}" data-id="${it.id}">
     <div class="pic">${thumb}<button class="cardopenhit" data-open aria-label="打开 ${esc(it.name)} 详情"></button>
       <div class="badge mono">${srcBadge(it.location,it.cost)}</div>
-      <span class="selectionMark">${icon('check')}</span><span class="deleteMark">${icon('trash')}<b>待删</b></span>
+      <span class="selectionMark">${icon('check')}</span><span class="deleteMark">${icon('trash')}<b>回收站</b></span>
       <span class="dur mono">${fmtDur(it.duration)}</span>${tr}${tools}</div>
     <div class="meta">${avatar}<div class="mtext"><button class="t cardtitle" data-open>${esc(it.name)}</button>
       <div class="s mono">${whoKind?`<button class="who entitylink" data-entity-kind="${whoKind}" data-entity-name="${esc(who)}">${esc(who)}</button>`:`<span class="who">${esc(who)}</span>`}
@@ -1184,8 +1287,9 @@ function mixCardHtml(it){
     <div class="mixmeta"><span class="mixglyph">${icon('play')}</span><div class="mixcopy">
       <b>Mix · ${esc(label)}</b><span>${esc(it.name)}及相似作品</span></div></div></article>`;
 }
-function batchWithMix(items){
+function batchWithMix(items,enabled=true){
   const cards=items.map(it=>cardHtml(it));
+  if(!enabled)return cards.join('');
   const seed=items.find(it=>it.creator||(it.performers||[]).length||it.studio)||items[0];
   if(seed&&items.length>=8)cards.splice(7,0,mixCardHtml(seed));
   return cards.join('');
@@ -1209,6 +1313,7 @@ function wireCards(root,onClick,onTag){
       if(later){e.stopPropagation();api('/api/watch-later',{method:'POST',body:JSON.stringify({id:it.id})})
         .then(r=>{it.watch_later=r.watch_later;later.setAttribute('aria-pressed',r.watch_later);
           later.innerHTML=r.watch_later?icon('check'):icon('bookmark-plus')});return}
+      if(selectMode||e.shiftKey||e.ctrlKey||e.metaKey){e.preventDefault();e.stopPropagation();toggleSelection(it.id,e.shiftKey);return}
       if(e.target.closest('[data-open]')){e.stopPropagation();(onClick||openItem)(+el.dataset.id);return}
       const ent=e.target.closest('[data-entity-kind]');
       if(ent){e.stopPropagation();openEntity(ent.dataset.entityKind,ent.dataset.entityName);return}
@@ -1221,7 +1326,7 @@ function wireCards(root,onClick,onTag){
     };
     el.querySelectorAll('[data-open]').forEach(opener=>{
       opener.dataset.openWired='1';
-      opener.onclick=e=>{e.stopPropagation();(onClick||openItem)(+el.dataset.id)};
+      opener.onclick=e=>{e.stopPropagation();if(selectMode||e.shiftKey||e.ctrlKey||e.metaKey){e.preventDefault();toggleSelection(it.id,e.shiftKey);return}(onClick||openItem)(+el.dataset.id)};
     });
     if(it)wireHover(el,it);
   });
@@ -1316,10 +1421,12 @@ async function buildBars(){
     const k=b.dataset.nav;
     closeDrawerAfterNav();
     if(k==='immerse'){openTok();return}
-    if(k==='stats'){openStats();return}
+     if(k==='stats'){openStats();return}
+     if(k==='review'){openReview();return}
     if(k==='performers'||k==='tags'){openIndex(k);return}
     if(k==='shorts'){state.orient='竖屏';state.state=''}
     else{state.orient='';state.state=k}
+    if(k==='trash')route('/trash');
     buildEdge();buildBars();load(true)});
   const bind=()=>$('#drawer').querySelectorAll('.chip').forEach(b=>b.onclick=()=>{
     const k=b.dataset.key,v=b.dataset.val;
@@ -1353,12 +1460,23 @@ const SORTS=[['daily','每日轮换'],['rand','随机'],['rating','评分'],
              ['o','高潮计数'],['plays','观看次数'],['long','时长'],['big','体积'],
              ['new','最近入库'],['played','最近看的']];
 function renderCount(){
-  const n=$('#grid').children.length;
+  const n=$('#grid').querySelectorAll(':scope > .card[data-id]').length;   // 竖屏条不计入「显示 N」
   $('#count').innerHTML=
     `<span class="mono">${total.toLocaleString()} 个符合 · 显示 ${n}</span>`
-    +`<span class="sorts"><button class="batchaction" id="batchAction" title="重新抽取一批推荐">↻ 换一批</button>`+SORTS.map(([k,l])=>
+    +`<span class="sorts">${state.state==='trash'?`<button class="batchaction" id="emptyTrash" title="永久删除回收站内容">清空回收站</button>`:''}<button class="batchaction" id="batchAction" title="换一批" aria-label="换一批">${icon('refresh-cw')}</button>`+SORTS.map(([k,l])=>
       `<button data-sort="${k}" aria-pressed="${state.sort===k}">${l}</button>`).join('')+`</span>`;
   $('#batchAction').onclick=()=>{state.sort='seed';state.seed=String(Date.now()%99991);load(true)};
+  if(state.state==='trash')$('#emptyTrash').onclick=async(e)=>{
+    if(!confirm('永久删除回收站中的全部文件和账本记录？此操作不可恢复。'))return;
+    e.currentTarget.disabled=true;
+    try{
+      const r=await api('/api/trash/empty',{method:'POST'});
+      /* 删不掉的文件（占用中、网盘离线）会连同账本行一起留在回收站，必须说出来，
+         否则用户看到条目还在会以为清空又没生效。 */
+      if(r.blocked&&r.blocked.length)alert(`已永久删除 ${r.purged} 个；${r.blocked.length} 个删不掉，仍留在回收站：\n`
+        +r.blocked.slice(0,5).map(x=>`${x.path}（${x.reason}）`).join('\n'));
+    }finally{await load(true)}
+  };
   $('#count').querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{
     state.sort=b.dataset.sort;
     if(state.sort==='seed')state.seed=String(Date.now()%99991);
@@ -1430,7 +1548,7 @@ async function openStats(push=true){
         +kv('快进扫过', cs.skimmed.toLocaleString(), '真实观看远低于到达位置')
         +kv('不合口味', cs.dislike.toLocaleString())
         +kv('看过了', cs.seen.toLocaleString())
-        +kv('标记待删', cs.pending.toLocaleString()))}
+        +kv('回收站', cs.trash.toLocaleString()))}
       ${card('标签来源', d.tag_source.map(t=>
           kv(t.k, t.n.toLocaleString(), t.assets.toLocaleString()+' 个视频')).join(''))}
       ${card('C 盘', d.disk_c
@@ -1460,6 +1578,56 @@ function showHomeSurfaces(){
   $('#tiers').style.display='';$('#tagbar').style.display='';
 }
 function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
+
+let reviewData=null,reviewCategory='creator_tags',reviewSelectMode=false;
+const REVIEW_LABELS={creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',media_failure:'媒体失败'};
+async function openReview(push=true){
+  releaseHoverPreviews();disposeStage(false);document.body.classList.remove('entity-open');
+  if(push)route('/review');
+  $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';$('#count').textContent='';
+  $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;$('#tiers').style.display='none';$('#tagbar').style.display='none';
+  reviewData=await api('/api/review');
+  const render=()=>{
+    const rows=reviewData.sections[reviewCategory]||[];
+    const title=REVIEW_LABELS[reviewCategory];
+    const value=row=>row.tags||row.japanese_name||row.path||row.suggested_query||'';
+     $('#stats').innerHTML=`<div class="review"><div class="reviewhead"><button class="backbtn" id="reviewBack" title="返回浏览" aria-label="返回浏览">${icon('arrow-left')}</button><h2 class="disp">人工复核</h2><span class="mono" style="color:var(--muted)">候选不会自动写入真相</span><button class="pill" id="reviewSelectMode" aria-pressed="${reviewSelectMode}">${icon('square-check-big')}多选模式</button></div>
+      <div class="reviewtabs">${Object.entries(REVIEW_LABELS).map(([key,label])=>`<button data-review-tab="${key}" aria-pressed="${key===reviewCategory}">${label} <span class="mono">${reviewData.counts[key]||0}</span></button>`).join('')}</div>
+      <section class="reviewsection"><h3>${title}</h3><div class="reviewlist">${rows.length?rows.map(row=>{
+        const key=row.item_key,decision=row.decision||'pending';
+        const tags=String(row.tags||'').split('|').filter(Boolean).map(tag=>`<span>${esc(tag)}</span>`).join('');
+        const titleText=row.creator||row.studio||row.current_name||row.name||key;
+        const evidence=row.reason||row.evidence||row.note||row.decision_note||'';
+         const preview=reviewCategory==='creator_tags'
+           ? `<div class="reviewasset-grid">${(row.preview_assets||[]).map(asset=>`<label class="reviewasset" title="${esc(asset.name)}"><img src="/poster?id=${asset.id}&c=4" alt="" loading="lazy"><input type="checkbox" data-review-asset="${asset.id}" checked></label>`).join('')}</div>`
+           : (row.preview_url?`<div class="reviewimage"><img src="${esc(row.preview_url)}" alt="" loading="lazy"></div>`:'<p class="empty">未取得图片预览</p>');
+         return `<article class="reviewitem" data-review-key="${esc(key)}" data-decision="${esc(decision)}"><h4>${esc(titleText)}</h4><p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>${tags?`<div class="reviewtags">${tags}</div>`:''}${preview}<p>${esc(evidence)}</p><div class="reviewactions"><button class="approve" data-review-status="approved">通过</button><button data-review-status="skipped">跳过</button><button class="reject" data-review-status="rejected">拒绝</button></div></article>`}).join(''):'<p class="empty">暂无候选</p>'}</div></section></div>`;
+     $('#reviewBack').onclick=()=>{route('/');showHomeSurfaces();load(true)};
+     $('#reviewSelectMode').onclick=()=>{reviewSelectMode=!reviewSelectMode;document.body.classList.toggle('review-select-mode',reviewSelectMode);$('#reviewSelectMode').setAttribute('aria-pressed',reviewSelectMode);wireReviewSelection($('#stats'))};
+     wireReviewSelection($('#stats'));
+    $('#stats').querySelectorAll('[data-review-tab]').forEach(button=>button.onclick=()=>{reviewCategory=button.dataset.reviewTab;render()});
+    $('#stats').querySelectorAll('[data-review-status]').forEach(button=>button.onclick=async()=>{
+      const item=button.closest('[data-review-key]'),row=rows.find(x=>String(x.item_key)===item.dataset.reviewKey);button.disabled=true;
+       const selectedIds=[...item.querySelectorAll('[data-review-asset]:checked')].map(input=>+input.dataset.reviewAsset);
+       const result=await api('/api/review/decision',{method:'POST',body:JSON.stringify({category:reviewCategory,item_key:item.dataset.reviewKey,status:button.dataset.reviewStatus,creator:row.creator,tags:row.tags,studio:row.studio,entity_id:row.entity_id,avatar_url:row.avatar_url,selected_ids:selectedIds})});
+      if(result.ok){row.decision=button.dataset.reviewStatus;item.dataset.decision=row.decision}
+      button.disabled=false;
+    });
+  };
+  render();window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function wireReviewSelection(root){
+  root.querySelectorAll('.reviewasset-grid').forEach(grid=>{
+    if(grid.dataset.selectionWired)return;grid.dataset.selectionWired='1';
+    let start=null,marquee=null;
+    const finish=e=>{if(!start)return;grid.releasePointerCapture?.(e.pointerId);marquee?.remove();start=null;marquee=null};
+    grid.addEventListener('pointerdown',e=>{
+      if(!reviewSelectMode||e.button!==0)return;start={x:e.clientX,y:e.clientY};marquee=document.createElement('div');marquee.className='reviewmarquee';document.body.appendChild(marquee);grid.setPointerCapture?.(e.pointerId);e.preventDefault()});
+    grid.addEventListener('pointermove',e=>{if(!start||!marquee)return;const left=Math.min(start.x,e.clientX),top=Math.min(start.y,e.clientY),right=Math.max(start.x,e.clientX),bottom=Math.max(start.y,e.clientY);Object.assign(marquee.style,{left:left+'px',top:top+'px',width:right-left+'px',height:bottom-top+'px'});const box={left,top,right,bottom};grid.querySelectorAll('.reviewasset').forEach(card=>{const r=card.getBoundingClientRect(),hit=r.right>=box.left&&r.left<=box.right&&r.bottom>=box.top&&r.top<=box.bottom;const input=card.querySelector('input');if(hit&&input)input.checked=true})});
+    grid.addEventListener('pointerup',finish);grid.addEventListener('pointercancel',finish);
+  });
+}
 
 /* ── 全部艺人 / 创作者 / 标签索引页 ── */
 let tagIndexMode='alphabet',tagIndexCategory='all',indexRequestSeq=0;
@@ -1551,11 +1719,17 @@ function renderEntityCollection(kind,name,items,entityTag,append=false){
   wireCards(grid,undefined,tag=>updateEntityCollection(kind,name,tag===entityTag?'':tag,true));
   const more=section.querySelector('.entitymore');
   more.hidden=append?!items.has_more:grid.children.length>=Number(section.dataset.total||0);
-  more.onclick=async()=>{more.disabled=true;const seq=entityRequestSeq;
+  const requestMore=async()=>{if(more.hidden||more.disabled)return;more.disabled=true;const seq=entityRequestSeq;
     try{const next=await fetchEntityItems(kind,name,entityTag,grid.children.length);
       if(seq===entityRequestSeq&&$('#index').dataset.entityKind===kind&&$('#index').dataset.entityName===name)
         renderEntityCollection(kind,name,next,entityTag,true)}
-    finally{if(seq===entityRequestSeq)more.disabled=false}}
+    finally{if(seq===entityRequestSeq)more.disabled=false}};
+  more.onclick=requestMore;
+  more._observer?.disconnect();
+  if(!more.hidden){
+    more._observer=new IntersectionObserver(entries=>{if(entries.some(x=>x.isIntersecting))requestMore()},{rootMargin:'320px'});
+    more._observer.observe(more);
+  }
 }
 async function updateEntityCollection(kind,name,entityTag,push=true){
   if(push)route(entityPath(kind,name)+(entityTag?'?tag='+encodeURIComponent(entityTag):''));
@@ -1630,12 +1804,14 @@ const EDGE_ICONS=[
   ['performers','艺人','user-round'],
   ['tags','标签','tags'],
   ['flagged','已标记','star'],
+  ['trash','回收站','trash'],
   ['ads','疑似广告','list-filter'],
   ['immerse','沉浸模式','play'],
   ['stats','统计与管理','chart'],
+  ['review','人工复核','square-check-big'],
 ];
 function navOn(k){
-  if(['immerse','stats','performers','tags'].includes(k))return false;
+  if(['immerse','stats','performers','tags','review'].includes(k))return false;
   if(k==='shorts')return state.orient==='竖屏';
   return state.state===k && state.orient!=='竖屏';
 }
@@ -1656,9 +1832,11 @@ function buildEdge(){
     const k=b.dataset.nav;
     closeDrawerAfterNav();                 // 点了就收起抽屉，且短暂禁止悬停把它立刻弹回
     if(k==='immerse'){openTok();return}
-    if(k==='stats'){openStats();return}
+     if(k==='stats'){openStats();return}
+     if(k==='review'){openReview();return}
     if(k==='performers'||k==='tags'){openIndex(k);return}
     if(k==='shorts'){state.orient='竖屏';state.state=''}else{state.orient='';state.state=k}
+    if(k==='trash')route('/trash');
     buildEdge();buildBars();load(true)});
 }
 let edgeT=null;
@@ -1703,6 +1881,7 @@ async function load(reset){
   if(!reset&&listLoading)return;
   if(!reset)listLoading=true;
   try{
+  if(reset)disposeStage(false);
   showHomeSurfaces();
   if(reset)offset=0;
   renderCombo();
@@ -1719,12 +1898,15 @@ async function load(reset){
   }
   adsBatch=null;
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
+  /* 只有首页默认列表排除竖屏——那里另有独立的竖屏条承接它们。
+     搜索必须能搜到竖屏作品，否则按名字找一条竖屏视频会得到 0 结果。 */
+  if(location.pathname==='/'&&!state.q&&!state.orient)p.set('exclude_vertical','1');
   p.set('limit',appSettings.batchSize); p.set('offset',offset);
   if(!reset)p.set('count','0');
   const d=await api('/api/items?'+p);cache(d.items);
   if(requestSeq!==loadRequestSeq)return;
   if(reset)total=d.total;
-  const html=batchWithMix(d.items);
+  const html=batchWithMix(d.items,location.pathname==='/'&&state.state!=='trash');
   if(reset)releaseHoverPreviews($('#grid'));
   if(reset)$('#grid').innerHTML=html; else $('#grid').insertAdjacentHTML('beforeend',html);
   renderCount();
@@ -1743,10 +1925,11 @@ loadObserver.observe($('#loadSentinel'));
 const SEARCH_HINTS=['Prestige','FC2','Sakura Misaki','丝袜','足交','ABW'];
 const searchSuggestion=SEARCH_HINTS[Math.floor(Math.random()*SEARCH_HINTS.length)];
 $('#q').dataset.suggestion=searchSuggestion;$('#q').placeholder=searchSuggestion;
-const SEARCH_HISTORY_KEY='peach.search.history.v1';
-const readSearchHistory=()=>{try{return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY)||'[]').filter(x=>typeof x==='string').slice(0,appSettings.searchHistoryLimit)}catch(_e){return[]}};
-const writeSearchHistory=list=>localStorage.setItem(SEARCH_HISTORY_KEY,JSON.stringify(list.slice(0,appSettings.searchHistoryLimit)));
-const rememberSearch=query=>{if(query)writeSearchHistory([query,...readSearchHistory().filter(x=>foldName(x)!==foldName(query))])};
+let searchHistory=[];
+const readSearchHistory=()=>searchHistory.slice(0,appSettings.searchHistoryLimit);
+const loadSearchHistory=()=>api('/api/search-history?limit='+appSettings.searchHistoryLimit).then(d=>{searchHistory=Array.isArray(d.items)?d.items:[];return searchHistory}).catch(()=>searchHistory);
+const writeSearchHistory=list=>{searchHistory=list.slice(0,appSettings.searchHistoryLimit);return searchHistory};
+const rememberSearch=async query=>{if(!query)return;await api('/api/search-history',{method:'POST',body:JSON.stringify({query})});writeSearchHistory([query,...readSearchHistory().filter(x=>foldName(x)!==foldName(query))])};
 function renderSearchMenu(){const menu=$('#searchMenu'),history=readSearchHistory();
   const recommendations=[...SEARCH_HINTS].sort(()=>Math.random()-.5).filter(x=>!history.some(h=>foldName(h)===foldName(x))).slice(0,5);
   const row=(value,type)=>`<div class="searchoption" data-search-value="${esc(value)}">${icon(type==='history'?'history':'sparkles')}<span>${esc(value)}</span>${type==='history'?`<button class="removehistory" data-remove-history="${esc(value)}" aria-label="删除历史 ${esc(value)}">${icon('x')}</button>`:''}</div>`;
@@ -1755,27 +1938,38 @@ function renderSearchMenu(){const menu=$('#searchMenu'),history=readSearchHistor
   menu.hidden=false;
   menu.querySelectorAll('[data-search-value]').forEach(x=>x.onclick=e=>{if(e.target.closest('[data-remove-history]'))return;
     $('#q').value=x.dataset.searchValue;runSearch(false,true);menu.hidden=true});
-  menu.querySelectorAll('[data-remove-history]').forEach(b=>b.onclick=e=>{e.stopPropagation();writeSearchHistory(readSearchHistory().filter(x=>foldName(x)!==foldName(b.dataset.removeHistory)));renderSearchMenu()})}
+  menu.querySelectorAll('[data-remove-history]').forEach(b=>b.onclick=async e=>{e.stopPropagation();await api('/api/search-history',{method:'POST',body:JSON.stringify({operation:'remove',query:b.dataset.removeHistory})});writeSearchHistory(readSearchHistory().filter(x=>foldName(x)!==foldName(b.dataset.removeHistory)));renderSearchMenu()})}
 const runSearch=(useSuggestion=false,committed=false)=>{let query=$('#q').value.trim();
   if(useSuggestion&&!query){query=$('#q').dataset.suggestion||'';$('#q').value=query}
   if(committed)rememberSearch(query);
+  disposeStage(false);
   state.q=query;route(state.q?'/?q='+encodeURIComponent(state.q):'/',true);load(true)};
 $('#q').oninput=()=>{if(!$('#searchMenu').hidden)renderSearchMenu()};
 $('#q').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();runSearch(true,true);$('#searchMenu').hidden=true;$('#q').blur()}};
-$('#q').addEventListener('focus',renderSearchMenu);
+$('#q').addEventListener('focus',()=>{loadSearchHistory().then(renderSearchMenu)});
 
+const SHORTS_ROW_OFFSET=2;   // 竖屏条插在第几行之后，0 表示置顶
 async function loadShorts(requestSeq=loadRequestSeq){
-  if(state.orient==='竖屏'||state.state==='ads'){$('#shortsSec').hidden=true;return}
+  if(location.pathname!=='/'||state.orient==='竖屏'||state.state==='ads'||state.state==='trash'){$('#shortsSec').hidden=true;return}
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
   p.set('orient','竖屏');p.set('limit',18);p.set('offset',0);p.set('sort','new');
   const d=await api('/api/items?'+p);
   if(requestSeq!==loadRequestSeq)return;
   if(!d.items.length){$('#shortsSec').hidden=true;return}
   cache(d.items);
-  $('#shortsSec').hidden=false; $('#shortsN').textContent=d.total.toLocaleString()+' 个';
   releaseHoverPreviews($('#srow'));
-  $('#srow').innerHTML=d.items.map(it=>cardHtml(it,'scard')).join('');
-  wireCards($('#srow'),openTok); wireDrag($('#srow'));
+  const grid=$('#grid');grid.querySelector('#shortsInline')?.remove();
+  /* 竖屏条整行占位（grid-column:1/-1），插在行边界上才不会把上一行截断留空。
+     早先的做法是另拉一批横屏视频补满余位，但那批 id 不在分页序列里，
+     翻下一页必然重复，而且被当成 scard 渲染会把横屏压成竖框。 */
+  const columns=Math.max(1,getComputedStyle(grid).gridTemplateColumns.split(' ').length);
+  const cards=[...grid.children].filter(x=>x.matches('.card[data-id]'));
+  const anchor=cards[Math.min(cards.length,columns*SHORTS_ROW_OFFSET)]||null;
+   const inline=`<section class="shorts-inline" id="shortsInline"><h2 class="disp">竖屏 <span class="mono" style="color:var(--muted);font-size:11px">${d.total.toLocaleString()} 个</span><button class="shorts-enter" type="button">${icon('play')}<span>进入沉浸模式</span></button></h2><div class="srow">${d.items.map(it=>cardHtml(it,'scard')).join('')}</div></section>`;
+  if(anchor)anchor.insertAdjacentHTML('beforebegin',inline); else grid.insertAdjacentHTML('beforeend',inline);
+  const section=grid.querySelector('#shortsInline');
+  section.querySelector('.shorts-enter').onclick=()=>openTok();
+  wireCards(section.querySelector('.srow'),openTok); wireDrag(section.querySelector('.srow'));
 }
 
 /* ── 就地展开播放 ── */
@@ -1832,8 +2026,9 @@ async function openItem(id,push=true,mixContext=null){
   $('#stage').hidden=false;document.body.classList.add('detail-open');delete $('#stage').dataset.c;
   $('#stage').innerHTML=`<div class="sgrid ${mixContext?'mixgrid':''}">
     <div class="vwrap"><canvas class="ambientcanvas" id="ambientCanvas" width="32" height="18"></canvas><button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>
-      <button class="playerstatsbtn" id="playerStatsBtn" aria-label="播放统计" title="播放统计" aria-pressed="false" hidden>${icon('chart')}</button>
-      <div class="playerstats" id="playerStats" role="status" hidden></div>
+       <button class="playerstatsbtn" id="playerStatsBtn" aria-label="播放统计" title="播放统计" aria-pressed="false" hidden>${icon('chart')}</button>
+       <div class="playernet" id="playerNet" role="status" aria-live="polite" hidden></div>
+       <div class="playerstats" id="playerStats" role="status" hidden></div>
       ${gated?`<div class="gate" id="gate">
           ${srcBadge(it.location,it.cost,'srcbig')}
           <span style="font-size:12px;color:var(--muted)">点此开始拉流 · ${fmtSize(it.size||0)}</span></div>
@@ -1860,14 +2055,14 @@ async function openItem(id,push=true,mixContext=null){
         <button class="seen" data-kind="seen" aria-label="看过了" title="看过了 · 只降低近期推荐" aria-pressed="${it.feedback==='seen'}">${icon('eye')}</button>
         <button class="later" id="stageLater" aria-label="稍后看" title="稍后看 · 加入或移出队列" aria-pressed="${!!it.watch_later}">${it.watch_later?icon('check'):icon('bookmark-plus')}</button>
         <button class="upgrade" id="betterVersion" aria-label="寻找更好版本" title="寻找高清、无水印或完整版" aria-pressed="${!!it.better_version}">${icon('sparkles')}</button>
-        <button class="dispose" data-kind="dispose" aria-label="加入待删候选" title="加入待删候选 · 不立即删除；统一复核 CSV 后才执行" aria-pressed="${it.disposal==='pending'}">${icon('trash')}</button></div>
+        <button class="dispose" data-kind="dispose" aria-label="加入回收站" title="加入回收站 · 文件仍保留，可从回收站永久清除" aria-pressed="${it.disposal==='trash'}">${icon('trash')}</button></div>
       <div class="preference">
         <textarea id="likeReason" maxlength="2000" placeholder="为什么喜欢？">${esc(it.like_reason||'')}</textarea>
         <div class="preference-foot"><span id="preferenceState">仅保存在本机</span>
           <button class="savepreference" id="savePreference">保存原因</button></div>
       </div>
       <button class="obtn" data-kind="o">${icon('sperm')}<span>记一次高潮</span><b class="mono" id="oCount">${it.o_count||0}</b></button>
-      <div class="hint mono">待删仅作标记，不会删除文件。</div>
+      <div class="hint mono">回收站中的文件仍保留，清空回收站后才会永久删除。</div>
     </div></div>
     ${mixContext?'':`<div class="next"><h3>接着看</h3><div class="nrow" id="nrow">载入中…</div></div>`}`;
 
@@ -1880,7 +2075,7 @@ async function openItem(id,push=true,mixContext=null){
     Object.assign(it,{feedback:r.feedback,disposal:r.disposal,o_count:r.o_count});
     $('#stage').querySelector('.dislike').setAttribute('aria-pressed',r.feedback==='dislike');
     $('#stage').querySelector('.seen').setAttribute('aria-pressed',r.feedback==='seen');
-    $('#stage').querySelector('.dispose').setAttribute('aria-pressed',r.disposal==='pending');
+    $('#stage').querySelector('.dispose').setAttribute('aria-pressed',r.disposal==='trash');
     $('#oCount').textContent=r.o_count||0});
   const renderDetailTags=()=>{
     const wrap=$('#detailTags');if(!wrap)return;
@@ -2022,7 +2217,7 @@ function wireTelemetry(it,v,sel){
 }
 
 /* ── 短片全屏 ── */
-let tokList=[],tokIdx=0,tokSwitching=false;
+let tokList=[],tokIdx=0,tokSwitching=false,tokNetTimer=null,tokLoadHideTimer=null,tokLoadingLabel='加载中…';
 /* 沉浸模式 = 滚动刷新的连续流，横屏竖屏都进（不是「短片模式」）。
    队列滚到尾自动续取下一页，形成无限流。 */
 let tokOffset=0, tokLoading=false;
@@ -2036,68 +2231,100 @@ async function fetchTok(off){
   for(let i=list.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[list[i],list[j]]=[list[j],list[i]]}
   return list;
 }
+function updateTokLoading(it){
+  const text=$('#tokLoadingText');if(!text)return;
+  const speed=it?streamSpeedBits(it.id):0;
+  text.textContent=speed?`${tokLoadingLabel} · ${fmtSpeed(speed)}`:tokLoadingLabel;
+}
+function setTokLoading(on,label='加载中…',it=null){
+  const loader=$('#tokLoader');if(!loader)return;
+  if(tokLoadHideTimer){clearTimeout(tokLoadHideTimer);tokLoadHideTimer=null}
+  if(!on){loader.hidden=true;if(tokNetTimer){clearInterval(tokNetTimer);tokNetTimer=null}return}
+  tokLoadingLabel=label;loader.hidden=false;updateTokLoading(it);
+  if(tokNetTimer)clearInterval(tokNetTimer);
+  tokNetTimer=setInterval(()=>updateTokLoading(tokList[tokIdx]),500);
+}
+function waitTokReady(video,timeout=15000){
+  if(video.readyState>=3)return Promise.resolve();
+  return new Promise(resolve=>{
+    let finished=false;
+    const done=()=>{if(finished)return;finished=true;
+      ['loadeddata','canplay','error'].forEach(event=>video.removeEventListener(event,done));resolve()};
+    ['loadeddata','canplay','error'].forEach(event=>video.addEventListener(event,done,{once:true}));
+    setTimeout(done,timeout);
+  });
+}
 async function openTok(startId,push=true){
   if(push)route('/immerse');
-  tokOffset=0;
-  tokList=await fetchTok(0);
-  if(!tokList.length){alert('当前筛选下没有可直接播放的内容（计费源不进沉浸模式）');return}
-  tokIdx=Math.max(0,tokList.findIndex(x=>x.id===startId));
-  $('#tok').hidden=false;document.body.style.overflow='hidden';tokShow();
+  $('#tok').hidden=false;document.body.style.overflow='hidden';setTokLoading(true,'加载内容…');
+  try{
+    tokOffset=0;
+    tokList=await fetchTok(0);
+    if(startId&&!tokList.some(x=>x.id===startId)){
+      const selectedItem=await api('/api/item?id='+startId);
+      if(selectedItem.id)tokList=[selectedItem,...tokList.filter(x=>x.id!==startId)];
+    }
+    if(!tokList.length){alert('当前筛选下没有可直接播放的内容（计费源不进沉浸模式）');$('#tokClose').click();return}
+    tokIdx=Math.max(0,tokList.findIndex(x=>x.id===startId));
+    await tokShow();
+  }catch(_e){setTokLoading(false);$('#tokClose').click()}
 }
 async function tokShow(dir){
   const it=tokList[tokIdx];if(!it||tokSwitching)return;
-  tokSwitching=true;
-  const full=await api('/api/item?id='+it.id);
-  const track=$('#tokTrack'),old=$('#tokVid');
-  let v=old;
-  if(dir&&old&&old.getAttribute('src')){
-    v=document.createElement('video');v.id='tokIncoming';v.playsInline=true;v.preload='auto';
-    v.src='/stream?id='+it.id;v.style.transform=`translate(-50%,${dir>0?100:-100}%)`;track.appendChild(v);
-    await Promise.race([new Promise(resolve=>v.addEventListener('loadeddata',resolve,{once:true})),
-      new Promise(resolve=>setTimeout(resolve,650))]);
-    requestAnimationFrame(()=>requestAnimationFrame(()=>{
-      old.style.transform=`translate(-50%,${dir>0?-100:100}%)`;v.style.transform='translate(-50%,0)'}));
-    await new Promise(resolve=>setTimeout(resolve,210));
-    old.pause();old.remove();v.id='tokVid';v.style.transform='translateX(-50%)';
-  }else{
-    v.src='/stream?id='+it.id;
-  }
-  if(location.pathname==='/'){
-    const url=new URL(location.href),query=new URLSearchParams();
-    for(const key of ['q','loc','creator','studio','tag','len','dur_min','dur_max','orient','state','sort']){
-      const value=state[key];if(value&&!(key==='loc'&&value==='local,115')&&!(key==='sort'&&value==='daily'))query.set(key,value)
+  tokSwitching=true;setTokLoading(true,dir?'切换中…':'加载中…',it);
+  try{
+    const full=await api('/api/item?id='+it.id);
+    const track=$('#tokTrack'),old=$('#tokVid');
+    let v=old;
+    if(dir&&old&&old.getAttribute('src')){
+      v=document.createElement('video');v.id='tokIncoming';v.playsInline=true;v.preload='auto';
+      v.src='/stream?id='+it.id;v.style.transform=`translate(-50%,${dir>0?100:-100}%)`;track.appendChild(v);
+      await waitTokReady(v);
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{
+        old.style.transform=`translate(-50%,${dir>0?-100:100}%)`;v.style.transform='translate(-50%,0)'}));
+      await new Promise(resolve=>setTimeout(resolve,210));
+      old.pause();old.remove();v.id='tokVid';v.style.transform='translateX(-50%)';
+    }else{
+      v.preload='auto';v.src='/stream?id='+it.id;await waitTokReady(v);
     }
-    url.search=query.toString();history.replaceState({},'',url.pathname+(url.search||''));
-  }
-  v.play().catch(()=>{});
-  $('#tokTitle').textContent=it.name;
-  const who=(full.performers&&full.performers[0])||full.creator||it.code||'未归属';
-  $('#tokWho').textContent=who;
-  $('#tokWho').onclick=e=>{e.preventDefault();
-    $('#tokClose').click();
-    if(full.performers&&full.performers[0])openEntity('performer',full.performers[0]);
-    else if(full.creator)openEntity('creator',full.creator);
-    else if(it.code){state.q=it.code;buildEdge();buildBars();load(true)}};
-  $('#tokMeta').textContent=`· ${fmtDur(it.duration)} · ${it.ctx_orient||''} · ${tokIdx+1}/${tokList.length}`;
-  // 进度条
-  const bar=$('#tokBar'), prog=$('#tokProg');
-  v.ontimeupdate=null;
-  const upd=()=>{const d=v.duration||it.duration||0;
-    if(d)prog.style.width=(v.currentTime/d*100).toFixed(2)+'%'};
-  v.addEventListener('timeupdate',upd);
-  bar.onclick=e=>{const r=bar.getBoundingClientRect();
-    const d=v.duration||0; if(d)v.currentTime=d*((e.clientX-r.left)/r.width)};
-  $('#tokDislike').setAttribute('aria-pressed',full.feedback==='dislike');
-  $('#tokSeen').setAttribute('aria-pressed',full.feedback==='seen');
-  $('#tokSeen .toklabel').textContent=full.feedback==='seen'?'已看':'看过';
-  $('#tokOn').textContent=full.o_count||0;
-  api('/api/play',{method:'POST',body:JSON.stringify({id:it.id})});
-  wireTelemetry(it,v,{});
-  tokSwitching=false;
+    if(location.pathname==='/'){
+      const url=new URL(location.href),query=new URLSearchParams();
+      for(const key of ['q','loc','creator','studio','tag','len','dur_min','dur_max','orient','state','sort']){
+        const value=state[key];if(value&&!(key==='loc'&&value==='local,115')&&!(key==='sort'&&value==='daily'))query.set(key,value)
+      }
+      url.search=query.toString();history.replaceState({},'',url.pathname+(url.search||''));
+    }
+    v.play().catch(()=>{});
+    $('#tokTitle').textContent=it.name;
+    const who=(full.performers&&full.performers[0])||full.creator||it.code||'未归属';
+    $('#tokWho').textContent=who;
+    $('#tokWho').onclick=e=>{e.preventDefault();
+      $('#tokClose').click();
+      if(full.performers&&full.performers[0])openEntity('performer',full.performers[0]);
+      else if(full.creator)openEntity('creator',full.creator);
+      else if(it.code){state.q=it.code;buildEdge();buildBars();load(true)}};
+    $('#tokMeta').textContent=`· ${fmtDur(it.duration)} · ${it.ctx_orient||''} · ${tokIdx+1}/${tokList.length}`;
+    // 进度条
+    const bar=$('#tokBar'), prog=$('#tokProg');
+    v.ontimeupdate=null;
+    const upd=()=>{const d=v.duration||it.duration||0;
+      if(d)prog.style.width=(v.currentTime/d*100).toFixed(2)+'%'};
+    v.addEventListener('timeupdate',upd);
+    bar.onclick=e=>{const r=bar.getBoundingClientRect();
+      const d=v.duration||0; if(d)v.currentTime=d*((e.clientX-r.left)/r.width)};
+    $('#tokDislike').setAttribute('aria-pressed',full.feedback==='dislike');
+    $('#tokSeen').setAttribute('aria-pressed',full.feedback==='seen');
+    $('#tokSeen .toklabel').textContent=full.feedback==='seen'?'已看':'看过';
+    $('#tokOn').textContent=full.o_count||0;
+    api('/api/play',{method:'POST',body:JSON.stringify({id:it.id})});
+    wireTelemetry(it,v,{});
+    setTokLoading(false);
+  }catch(_e){setTokLoading(false)}finally{tokSwitching=false}
 }
 async function tokNext(d){
   if(tokSwitching)return;
   tokIdx=tokIdx+d;
+  setTokLoading(true,'切换中…',tokList[tokIdx]);
   // 滚到尾部就续取下一页 —— 无限流
   if(tokIdx>=tokList.length-3 && !tokLoading){
     tokLoading=true; tokOffset+=60;
@@ -2119,7 +2346,7 @@ $('#q').addEventListener('blur',()=>setTimeout(()=>{if(!$('#q').value&&!$('#sear
 $('#brandHome').onclick=e=>{e.preventDefault();
   state={loc:state.loc,creator:'',studio:'',tag:'',len:'',dur_min:'',dur_max:'',orient:'',state:'',sort:appSettings.defaultSort,seed:String((Date.now()^(Math.random()*1e9|0))%99991),q:'',thumb:'1'};
   route('/');$('#q').value='';disposeStage(false);buildBars();load(true);window.scrollTo({top:0,behavior:'smooth'})};
-$('#tokClose').onclick=()=>{route('/');$('#tok').hidden=true;$('#tokTrack').querySelectorAll('video').forEach(v=>{
+$('#tokClose').onclick=()=>{setTokLoading(false);route('/');$('#tok').hidden=true;$('#tokTrack').querySelectorAll('video').forEach(v=>{
   v.pause();v.removeAttribute('src');v.load();if(v.id!=='tokVid')v.remove()});
   const v=$('#tokVid');if(v){v.style.transform='translateX(-50%)'}tokSwitching=false;document.body.style.overflow=''};
 let wl=0;
@@ -2196,6 +2423,10 @@ function wireAllDrag(){['#tagbar','#srow','#nrow'].forEach(s=>wireDrag($(s)));
 
 async function restoreRoute(){
   const path=decodeURIComponent(location.pathname),parts=path.split('/').filter(Boolean);
+  if(path==='/trash'){
+    state={...state,creator:'',studio:'',tag:'',orient:'',state:'trash',q:''};$('#q').value='';
+    buildEdge();buildBars();load(true);return;
+  }
   if(parts[0]==='mix'&&/^\d+$/.test(parts[1]||'')&&/^\d+$/.test(parts[2]||'')){await openMix(+parts[1],+parts[2],false);return}
   if(parts[0]==='item'&&/^\d+$/.test(parts[1]||'')){await openItem(+parts[1],false);return}
   const entityKind=ROUTE_ENTITIES[parts[0]];
@@ -2208,6 +2439,7 @@ async function restoreRoute(){
       tagIndexCategory=TAG_CATEGORIES.some(([key])=>key===category)?category:'all'}
     await openIndex(path.slice(1),params.get('q')||'',false);return}
   if(path==='/stats'){await openStats(false);return}
+  if(path==='/review'){await openReview(false);return}
   if(path==='/immerse'){await openTok(undefined,false);return}
   showHomeSurfaces();disposeStage(false);
 }

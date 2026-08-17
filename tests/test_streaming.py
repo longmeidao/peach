@@ -4,6 +4,8 @@ import asyncio
 import unittest
 
 from peach.streaming import CancellableFileResponse, StreamSessionRegistry
+from peach.mp4index import segment_plan
+from peach.segments import build_hls_playlist
 
 
 class StreamSessionRegistryTests(unittest.IsolatedAsyncioTestCase):
@@ -68,3 +70,13 @@ class StreamSessionRegistryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(headers["content-range"], "bytes 0-63/64")
         self.assertEqual(headers["content-length"], "64")
         self.assertEqual(body, bytes(range(64)))
+
+    def test_hls_playlist_is_time_addressable_without_full_file_ranges(self):
+        # 分片边界由真实关键帧决定，不再按固定秒数等分（见 tests/test_segments.py）。
+        plan = segment_plan([0.0, 6.0, 12.0], 13.5, 6)
+        self.assertEqual(plan, [(0.0, 6.0), (6.0, 6.0), (12.0, 1.5)])
+        playlist = build_hls_playlist(plan, lambda index: f"/seg/{index}.ts")
+        self.assertIn("#EXT-X-PLAYLIST-TYPE:VOD", playlist)
+        self.assertIn("/seg/0.ts", playlist)
+        self.assertIn("/seg/2.ts", playlist)
+        self.assertEqual(playlist.count("#EXTINF:"), 3)

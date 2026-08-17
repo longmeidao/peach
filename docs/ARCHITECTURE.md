@@ -8,7 +8,7 @@ Peach 是逻辑前后端分离、部署仍为一个进程的 FastAPI 模块化�
 
 1. **Ledger**：资产、行为、来源和知识的唯一真相源。SQLite 适合当前单用户规模。
 2. **API / 应用层**：FastAPI 承载页面、JSON、媒体响应和写入边界。
-3. **Media Engine**：FastAPI 只持有一个 `MediaEngine`。本地文件是原生后端；Stash 是公开协议适配器，再按扫描、元数据、预览、流媒体逐项替换。
+3. **Media Engine**：FastAPI 只持有一个 `MediaEngine`。本地文件是原生后端；Stash 是公开协议适配器，再按扫描、元数据、预览、流媒体逐项替换。挂载网盘的已知时长原生 MP4 由 `stream-plan` 选择按时间生成的 HLS 片段，其他情况回退标准 Range。
 4. **Web**：当前是无构建步骤的单页，保持移动端优先；不做 React 重写。
 5. **AI Provider**：`InferenceProvider` 与 `AgentProvider` 分离。AI 只产出带来源和置信度的候选。
 6. **Profile**：默认单用户，数据模型预留 user/profile，不引入完整账号体系。

@@ -21,6 +21,7 @@ from peach.jobs import (
     SourceAccessPolicy,
     require_free_space,
 )
+from peach.media import resolve_case_insensitive
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -175,7 +176,7 @@ def run(args: argparse.Namespace) -> int:
                     return
                 try:
                     duration, width, height, codec, fps, audio = probe_file(
-                        str(choice.path), path, args.timeout
+                        str(choice.path), resolve_case_insensitive(path), args.timeout
                     )
                     if duration <= 0:
                         with lock:

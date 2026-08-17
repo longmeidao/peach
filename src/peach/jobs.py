@@ -115,19 +115,46 @@ class PidFileLock:
     def _running(pid: int) -> bool:
         if pid <= 0:
             return False
+        if os.name == "nt":
+            return PidFileLock._running_windows(pid)
         try:
             os.kill(pid, 0)
         except ProcessLookupError:
             return False
         except PermissionError:
             return True
-        except OSError as exc:
-            # Windows 对已消失的 PID 抛 WinError 87（参数错误），不是 ProcessLookupError。
-            # 漏掉它会让每一个被强杀留下的陈旧锁把后续所有运行直接崩掉，而不是清理后继续。
-            if getattr(exc, "winerror", None) == 87:
-                return False
-            raise
         return True
+
+    @staticmethod
+    def _running_windows(pid: int) -> bool:
+        """用 OpenProcess 查存活，绝不能用 `os.kill(pid, 0)`。
+
+        Windows 上 `signal.CTRL_C_EVENT == 0`，所以 Unix 那个探测存活的经典写法
+        `os.kill(pid, 0)` 实际会调用 `GenerateConsoleCtrlEvent(CTRL_C_EVENT, ...)`，
+        把 Ctrl+C 发给整个控制台进程组——包括调用者自己。锁里写的又是自己的 PID，
+        于是「检查锁是否还活着」会当场把自己打断：在真实控制台里跑批处理或测试时
+        表现为毫无征兆的 KeyboardInterrupt；重定向、无控制台的环境反而不复现，
+        因为控制台事件无处投递。
+        """
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        ERROR_ACCESS_DENIED = 5
+        STILL_ACTIVE = 259
+
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            # 拒绝访问说明进程存在但不归我们管；其余错误一律视为已消失。
+            return ctypes.get_last_error() == ERROR_ACCESS_DENIED
+        try:
+            code = wintypes.DWORD()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return True
+            return code.value == STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
 
     def acquire(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
