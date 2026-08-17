@@ -55,7 +55,8 @@
 - 回收站的两条删除路径此前从未真正执行过，已修复：`media.py` 漏 `from functools import lru_cache` 导致整个包 import 失败；`ASSET_REFERENCE_TABLES` 从未定义，`/api/batch` 的 `delete` 必然 `NameError`；`/api/trash/empty` 只加了 dispatch 分支、`w_empty_trash` 没有函数体。现已统一到 `purge_assets()` 并补齐数据层测试。之前「API 写读删已复核」的说法不成立，属于未验证即结论。
 - 管理界面新增 `/review` 人工复核页，分为创作者标签、厂牌 Logo、女优头像、媒体失败四层；候选通过 `review_decision` 留痕，创作者标签只有点击「通过」后才写入 `asset_tag/asset_entity`，其余候选默认不改真相字段。
 - HLS 分片改为关键帧对齐：`peach.mp4index` 从 MP4 `moov/stss` 直接读关键帧表（实测 0.01 秒，`moov` 在尾部也能定位），播放列表报真实时长；时间戳改用 `-copyts` 保持跨段连续；片段缓存写入磁盘并按最后访问时间淘汰；FFmpeg 并发加信号量闸门。读不出关键帧的片源直接回退标准 Range，`/api/stream-plan` 也只在计划成立且带 session 时才宣告 HLS。
-- 厂牌 Logo 来源改为厂牌自己的社交账号头像（`scripts/fetch_studio_avatar_candidates.py`）。已确认 7 个 handle 并实测取到方图并保存：Deep's、Hunter、Alice JAPAN、E-BODY、Glory Quest、K M Produce、TMA；映射表 `R:\peach-data\generated\studio-x-handles.csv`，候选 `studio-logo-social-candidate-20260817.csv`，图片 `generated\studio-logos\`。其余 79 个 handle 未取得，留空待查。长条形 Logo 补自身底色填成正方形而不是丢弃。
+- 厂牌 Logo 来源改为厂牌自己的社交账号头像（`scripts/fetch_studio_avatar_candidates.py`）。已确认 10 个 handle 并**逐张看图核对品牌归属**后落盘：Deep's、Hunter、Alice JAPAN、E-BODY、Glory Quest、K M Produce、TMA、Aroma Planning、M's Video Group、DAHLIA；映射表 `R:\peach-data\generated\studio-x-handles.csv`，候选 `studio-logo-social-candidate-20260817.csv`，图片 `generated\studio-logos\`。其余 76 个未取得，留空待查。长条形 Logo 补自身底色填成正方形而不是丢弃。
+- Logo 归属的判据是图不是 handle：`@ms_harapekori` 看不出与 M's Video Group 的关系，看图确认是对的；`@OFFICEKS` 能取到 400×400 但图只有色块无品牌文字，而同名公司有多家，因此判为未取得。`@bazooka`、`@bibibi_25` 同理被排除。
 - 复核层已加固：候选按前缀取最新批次（不再写死日期）、缺主键的行跳过并计数（不再退化成行号）、批准的 creator/tags 以候选文件为权威（请求体只作确认）、未勾选整条通过受 `REVIEW_APPLY_LIMIT=500` 约束、写入改为 `executemany` 并在完成后 `cache_bust()`。`/api/review` 走缓存，创作者预览由一次分组查询取代 42 次三重 LEFT JOIN。候选目录改由 `PeachSettings.candidate_root` 提供，测试不再读真实 `generated` 目录。
 
 ## 数据与批处理
@@ -101,7 +102,7 @@
 3. 补齐女优身份剩余缺口：38 位查不到日文名（多数本名已是日文，无需改动）、15 位图库未收录、5 位所有候选不过质量门槛。头像质量权重的后续档位（人脸感知裁图、清晰关键帧）仍未实现。
 4. 通过官方/公开来源补齐 86 个厂牌 Logo，保留来源和质量门槛。Logo 与头像的取源方向相反：头像应取整理好的图库，Logo 是品牌标识，官网与维基才是权威来源。
 5. PikPak 抽帧已可走直连：代理策略组「📦 PikPak 视频」切到 DIRECT 后实测九帧 64.2 秒、30.5 MB（走代理时为 13.7 秒、163 MB），慢约 4.7 倍但流量少约 5 倍且不占代理预算。创作者采样 88 板据此约 2.7 GB。
-6. 修 115 的 34 条抽帧失败：已完成代码侧一半——`peach.media` 新增 `resolve_case_insensitive`（同目录大小写不敏感匹配，带缓存）且 `FilesystemBackend.file_for` 已接入；`scripts/sheets.py` 与 `scripts/probe.py` 的 worker 直接用账本路径跑 FFmpeg，**尚未接入该函数**，接入后才能救回 17 条（34 条中 17 条为大小写不一致，已实测确认）。剩余步骤：给两个脚本 worker 加 `resolve_case_insensitive` 调用 → 重跑 `sheets --location 115`（约 5 GB 直连流量）→ 验证 17 条 snapshot 落库。`sheets.py` 遇 `prim:reserved` 非法色彩元数据的重试已完成并有测试。
+6. 115 抽帧失败的大小写部分已修复：`peach.media.resolve_case_insensitive` 与 `FilesystemBackend.file_for`、`scripts/sheets.py`、`scripts/probe.py` 的 worker 均已接入；2026-08-17 重跑 33 条九帧，31 成功、2 失败。剩余步骤是查清这 2 条的失败原因，在此之前它们留在复核队列。`sheets.py` 遇 `prim:reserved` 非法色彩元数据的重试已完成并有测试。
 7. HLS `stream-plan` 和按需 TS 片段已接入现有 Video.js 内置 VHS；尚未完成自适应码率、多路清单、首帧/seek 的桌面与手机验收。CloudDrive 约 100 MiB 固定块预取仍是来源层成本，服务端分片只能避免整部 MP4 Range，不会消除来源层块预取。
 8. 配置并评估 Stash CommunityScrapers/元数据 Provider，确认缺口后才写新来源适配器。
 9. 配置可复核的真实追更源，之后再接 APScheduler；AI 结果继续只作为候选。
@@ -115,9 +116,9 @@
 <!-- job-status:start -->
 
 <!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->
-<!-- generated 2026-08-17T18:44Z -->
+<!-- generated 2026-08-17T18:55Z -->
 
-- 最近自动交接：`claude` / `SessionEnd` / `other`，2026-08-17T18:44:06+00:00。
+- 最近自动交接：`claude` / `Stop` / `completed`，2026-08-17T18:55:17+00:00。
 - 资产 81770 条，其中视频 24890 条。
 - 待抽帧（可抽 / 缺时长待 probe / 合计）：
   - `local`：3 / 1 / 4
