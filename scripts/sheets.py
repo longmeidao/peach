@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from collections import Counter
 from pathlib import Path
 
 from peach.config import DATABASE_PATH, FFMPEG_DIR, GENERATED_DIR, LOG_DIR, STATE_DIR
@@ -87,10 +88,15 @@ def _capture_frame(ffmpeg: str, path: str, timestamp: float, destination: Path,
     return ok, (completed.stderr or b"").decode("utf-8", "replace")
 
 
-def make_sheet(ffmpeg: str, path: str, duration: float, destination: Path, frames: int) -> bool:
-    """输入端 seek 抽帧后调用 FFmpeg tile；不线性解码整片。"""
+def make_sheet(ffmpeg: str, path: str, duration: float, destination: Path,
+               frames: int) -> tuple[bool, str]:
+    """输入端 seek 抽帧后调用 FFmpeg tile；不线性解码整片。
+
+    失败时返回可区分的原因，不能只返回「失败」：asset 12510 与 18349 都失败了一整天，
+    一个是片源头损坏、一个是账本时长记错，光看计数分不出来，也就没法决定该修哪一边。
+    """
     if not duration or duration < 2:
-        return False
+        return False, "no_duration"
     temporary = Path(tempfile.mkdtemp(prefix="sheet_"))
     try:
         captured: list[Path] = []
@@ -103,7 +109,9 @@ def make_sheet(ffmpeg: str, path: str, duration: float, destination: Path, frame
             if ok:
                 captured.append(frame)
         if len(captured) < 2:
-            return False
+            # 一帧都解不出来是片源问题；解得出一部分说明片源可用，是账本时长比真实文件长，
+            # 采样点落到了文件末尾之后。两者要修的地方不同。
+            return False, "broken_source" if not captured else "duration_mismatch"
         for index, frame in enumerate(captured):
             target = temporary / f"s{index:02d}.jpg"
             if frame != target:
@@ -118,7 +126,9 @@ def make_sheet(ffmpeg: str, path: str, duration: float, destination: Path, frame
             capture_output=True,
             timeout=60,
         )
-        return destination.is_file() and destination.stat().st_size > 4096
+        if destination.is_file() and destination.stat().st_size > 4096:
+            return True, ""
+        return False, "tile_failed"
     finally:
         shutil.rmtree(temporary, ignore_errors=True)
 
@@ -171,6 +181,7 @@ def run(args: argparse.Namespace) -> int:
         for task in tasks:
             pending.put(task)
         counters = {"done": 0, "failed": 0, "existing": 0}
+        failure_reasons: Counter[str] = Counter()
         started = time.time()
         # 起跑线检查拦不住运行期把盘吃光的第三方缓存；这里边跑边看。
         guard = DiskGuard(Path("C:/"), args.min_free, args.disk_check_secs)
@@ -189,17 +200,23 @@ def run(args: argparse.Namespace) -> int:
                         results.put((str(destination), asset_id))
                         with lock:
                             counters["existing"] += 1
-                    elif make_sheet(
-                        str(ffmpeg.path), resolve_case_insensitive(path), duration,
-                        destination, args.frames,
-                    ):
-                        results.put((str(destination), asset_id))
                     else:
-                        with lock:
-                            counters["failed"] += 1
-                except Exception:
+                        ok, reason = make_sheet(
+                            str(ffmpeg.path), resolve_case_insensitive(path), duration,
+                            destination, args.frames,
+                        )
+                        if ok:
+                            results.put((str(destination), asset_id))
+                        else:
+                            with lock:
+                                counters["failed"] += 1
+                                failure_reasons[reason] += 1
+                            log(f"[fail] asset {asset_id} {reason} {path}")
+                except Exception as exc:
                     with lock:
                         counters["failed"] += 1
+                        failure_reasons["exception"] += 1
+                    log(f"[fail] asset {asset_id} exception {type(exc).__name__} {path}")
                 finally:
                     with lock:
                         counters["done"] += 1
@@ -236,6 +253,9 @@ def run(args: argparse.Namespace) -> int:
             connection.commit()
         elapsed = time.time() - started
         log(f"完成 {counters['done']:,}，失败 {counters['failed']}，已存在 {counters['existing']}，耗时 {elapsed/3600:.2f} 小时")
+        if failure_reasons:
+            breakdown = "，".join(f"{reason} {count}" for reason, count in failure_reasons.most_common())
+            log(f"失败原因：{breakdown}")
         connection.close()
         if stop_reason:
             # 已完成的部分都已入库；磁盘闸门中止不能报成正常完成，否则续跑决策会被误导。

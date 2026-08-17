@@ -134,6 +134,35 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertFalse(self.traffic_watch.is_direct({"chains": ["Proxy", "Relay"]}))
         self.assertEqual(self.creator_boards.safe_name("A/B:C"), "A_B_C")
 
+    def test_age_gate_is_crossed_by_the_affirmative_link_only(self):
+        """AV 厂牌官网普遍先给年龄确认页，不穿过它只能拿到约 10 KB 的空壳。
+
+        判据必须是锚文本：否定链接指向站外（实测 dasdas.jp / muku.tv 都指向 dmm.com），
+        肯定链接指向站内，两者的 href 本身看不出区别。跟错就会离开厂牌域名，
+        而离开域名抓到的社交账号就不再属于这个厂牌。
+        """
+        module = load_script("find_studio_socials")
+        gate = (
+            '<a href="https://dasdas.jp/top">はい（入室する）</a>'
+            '<a href="https://www.dmm.com/">いいえ</a>'
+        )
+        self.assertEqual(
+            module.affirmative_link(gate, "https://dasdas.jp/"), "https://dasdas.jp/top")
+        # 只有否定链接时不得跟随，否则会走到站外。
+        self.assertIsNone(module.affirmative_link(
+            '<a href="https://www.dmm.com/">いいえ</a>', "https://dasdas.jp/"))
+        # 肯定文案但跨域，同样不跟。
+        self.assertIsNone(module.affirmative_link(
+            '<a href="https://elsewhere.example/top">ENTER</a>', "https://dasdas.jp/"))
+        self.assertIsNone(module.affirmative_link("<p>没有链接</p>", "https://dasdas.jp/"))
+
+    def test_platform_paths_are_not_mistaken_for_accounts(self):
+        module = load_script("find_studio_socials")
+        html = ('<a href="https://twitter.com/intent/tweet">分享</a>'
+                '<a href="https://x.com/dahliaofficial0">官方</a>'
+                '<a href="https://twitter.com/share">share</a>')
+        self.assertEqual(module.handles_in(html), {"dahliaofficial0"})
+
     def test_powershell_scripts_with_chinese_carry_a_utf8_bom(self):
         """没有 BOM 的 .ps1，Windows PowerShell 5.1 会按 ANSI（简中系统即 GBK）读。
 
@@ -213,6 +242,71 @@ class OperationalScriptTests(unittest.TestCase):
                                       Path(tmp) / "sheet.jpg", frames=1)
             self.assertEqual(calls, expected, stderr)
 
+    def test_failed_sheet_says_whether_the_source_or_the_duration_is_wrong(self):
+        """asset 12510 与 18349 都只报「失败」，一个是片源头坏、一个是账本时长记错。
+
+        分不出来就没法决定该修片源还是修账本，所以原因必须能区分。
+        """
+        sheets = self.sheets
+
+        def capture_none(_ffmpeg, _path, _timestamp, _destination, color_override):
+            return False, "missing mandatory atoms, broken header"
+
+        def capture_first_only(_ffmpeg, _path, timestamp, destination, color_override):
+            # 账本时长比真实文件长时，只有最早的采样点还落在文件里。
+            if timestamp > 100.0:
+                return False, ""
+            destination.write_bytes(b"x" * 2048)
+            return True, ""
+
+        for capture, expected in (
+            (capture_none, "broken_source"),
+            (capture_first_only, "duration_mismatch"),
+        ):
+            with tempfile.TemporaryDirectory() as tmp:
+                with mock.patch.object(sheets, "_capture_frame", capture):
+                    ok, reason = sheets.make_sheet(
+                        "ffmpeg", "R:/media/one.mp4", 752.24, Path(tmp) / "sheet.jpg", frames=9,
+                    )
+            self.assertFalse(ok)
+            self.assertEqual(reason, expected)
+
+    def test_sheet_failure_reason_reaches_the_log(self):
+        """原因只写在返回值里等于没写；批次日志和汇总都要能看到。"""
+        sheets = self.sheets
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "ledger.db"
+            connection = sqlite3.connect(db)
+            connection.execute(
+                "CREATE TABLE asset(id INTEGER PRIMARY KEY,location TEXT,path TEXT,"
+                "medium TEXT,duration REAL,size INTEGER,snapshot_path TEXT)"
+            )
+            connection.execute(
+                "INSERT INTO asset VALUES(18349,'local',?,'video',752.24,1000,NULL)",
+                (str(root / "one.mp4"),),
+            )
+            connection.commit()
+            connection.close()
+
+            args = sheets.build_parser().parse_args([
+                "--db", str(db), "--workers", "1", "--min-free", "0",
+                "--output-root", str(root / "out"), "--log-dir", str(root / "log"),
+            ])
+            choice = type("C", (), {"path": "ffmpeg"})
+            with mock.patch.object(
+                sheets, "make_sheet",
+                lambda *_args, **_kwargs: (False, "duration_mismatch"),
+            ), mock.patch.object(sheets.FFmpegResolver, "ffmpeg", lambda _self: choice), \
+                    redirect_stdout(io.StringIO()):
+                sheets.run(args)
+
+            written = "\n".join(p.read_text(encoding="utf-8")
+                                for p in (root / "log").glob("sheets-*.log"))
+        self.assertIn("18349", written)
+        self.assertIn("duration_mismatch", written)
+        self.assertIn("失败原因：duration_mismatch 1", written)
+
     def test_sheets_stops_mid_run_when_the_disk_gate_trips(self):
         """验证接线，不只是 DiskGuard 类本身：起跑通过、运行中触线要真的停并报非零码。"""
         sheets = self.sheets
@@ -253,7 +347,7 @@ class OperationalScriptTests(unittest.TestCase):
                 written.append(path)
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 destination.write_bytes(b"x" * 8192)
-                return True
+                return True, ""
 
             choice = type("C", (), {"path": "ffmpeg"})
             with mock.patch.object(sheets, "make_sheet", fake_sheet), \
@@ -342,10 +436,10 @@ class OperationalScriptTests(unittest.TestCase):
             original = sheets.subprocess.run
             sheets.subprocess.run = fake_run
             try:
-                ok = sheets.make_sheet("ffmpeg", "reserved.mp4", 600.0, dest, 9)
+                ok, reason = sheets.make_sheet("ffmpeg", "reserved.mp4", 600.0, dest, 9)
             finally:
                 sheets.subprocess.run = original
-            self.assertTrue(ok)
+            self.assertTrue(ok, reason)
             self.assertEqual(
                 sum(1 for c in calls if "bt709" in c), 9,
                 "9 帧都应在首次失败后用色彩覆盖重试",

@@ -1,6 +1,6 @@
 # Peach 当前状态
 
-最后核验：2026-08-17
+最后核验：2026-08-18
 
 ## 运行态
 
@@ -55,7 +55,7 @@
 - 回收站的两条删除路径此前从未真正执行过，已修复：`media.py` 漏 `from functools import lru_cache` 导致整个包 import 失败；`ASSET_REFERENCE_TABLES` 从未定义，`/api/batch` 的 `delete` 必然 `NameError`；`/api/trash/empty` 只加了 dispatch 分支、`w_empty_trash` 没有函数体。现已统一到 `purge_assets()` 并补齐数据层测试。之前「API 写读删已复核」的说法不成立，属于未验证即结论。
 - 管理界面新增 `/review` 人工复核页，分为创作者标签、厂牌 Logo、女优头像、媒体失败四层；候选通过 `review_decision` 留痕，创作者标签只有点击「通过」后才写入 `asset_tag/asset_entity`，其余候选默认不改真相字段。
 - HLS 分片改为关键帧对齐：`peach.mp4index` 从 MP4 `moov/stss` 直接读关键帧表（实测 0.01 秒，`moov` 在尾部也能定位），播放列表报真实时长；时间戳改用 `-copyts` 保持跨段连续；片段缓存写入磁盘并按最后访问时间淘汰；FFmpeg 并发加信号量闸门。读不出关键帧的片源直接回退标准 Range，`/api/stream-plan` 也只在计划成立且带 session 时才宣告 HLS。
-- 厂牌 Logo 来源改为厂牌自己的社交账号头像（`scripts/fetch_studio_avatar_candidates.py`）。已确认 10 个 handle 并**逐张看图核对品牌归属**后落盘：Deep's、Hunter、Alice JAPAN、E-BODY、Glory Quest、K M Produce、TMA、Aroma Planning、M's Video Group、DAHLIA；映射表 `R:\peach-data\generated\studio-x-handles.csv`，候选 `studio-logo-social-candidate-20260817.csv`，图片 `generated\studio-logos\`。其余 76 个未取得，留空待查。长条形 Logo 补自身底色填成正方形而不是丢弃。
+- 厂牌 Logo 来源改为厂牌自己的社交账号头像（`scripts/fetch_studio_avatar_candidates.py`）。已确认 13 个 handle 并**逐张看图核对品牌归属**后落盘：Deep's、Hunter、Alice JAPAN、E-BODY、Glory Quest、K M Produce、TMA、Aroma Planning、M's Video Group、DAHLIA、Milu、Das、Muku；其中 Das 与 Muku 由 `scripts/find_studio_socials.py` 穿过官网年龄门后取得，Deep's 也由官网独立复证；映射表 `R:\peach-data\generated\studio-x-handles.csv`，候选 `studio-logo-social-candidate-20260817.csv`，图片 `generated\studio-logos\`。其余 76 个未取得，留空待查。长条形 Logo 补自身底色填成正方形而不是丢弃。
 - Logo 归属的判据是图不是 handle：`@ms_harapekori` 看不出与 M's Video Group 的关系，看图确认是对的；`@OFFICEKS` 能取到 400×400 但图只有色块无品牌文字，而同名公司有多家，因此判为未取得。`@bazooka`、`@bibibi_25` 同理被排除。
 - 复核层已加固：候选按前缀取最新批次（不再写死日期）、缺主键的行跳过并计数（不再退化成行号）、批准的 creator/tags 以候选文件为权威（请求体只作确认）、未勾选整条通过受 `REVIEW_APPLY_LIMIT=500` 约束、写入改为 `executemany` 并在完成后 `cache_bust()`。`/api/review` 走缓存，创作者预览由一次分组查询取代 42 次三重 LEFT JOIN。候选目录改由 `PeachSettings.candidate_root` 提供，测试不再读真实 `generated` 目录。
 
@@ -75,6 +75,10 @@
 - 机械识别批次已接手：读取 42 个未处理创作者板，生成 `R:\peach-data\generated\creator-tags-candidate-20260817.csv`；仅输出 `candidate/skip`，未写入 ledger。现有 `creator-tags-review.csv` 的 `applied` 记录不重复处理，聚合目录和广告板保留 `skip`。
 - Logo/头像机械候选已导出：`studio-logo-candidate-20260817.csv` 含 86 个缺失厂牌，`performer-avatar-candidate-20260817.csv` 含 20 个 `no_avatar/avatar_rejected` 女优；均只保留来源候选，不写真相字段。
 - 115 抽帧 worker 已接入 `resolve_case_insensitive`：小样本通过后完成 33 条 9 帧批次，31 条成功登记 snapshot、2 条仍失败（asset `12510`、`18349`），未伪报成功；日志 `R:\peach-data\logs\sheets-20260817-171917.log`。
+- 这 2 条失败已于 2026-08-18 用 FFmpeg 直接复现定因，两条是不同问题，都不是路径或色彩元数据：
+  - `18349`（`B:\xxr\1(14)(1).mp4`）：ledger 记的是 `752.24` 秒、`1280×720`，ffprobe 实测为 `110.87` 秒、`1920×1072`，只有 `size` 98,246,962 两边一致。`make_sheet` 按 ledger 时长算的 9 个采样点里有 8 个落在文件末尾之后，只抽到 1 帧，触发 `len(captured) < 2` 判失败。t=61.8 秒实测能抽出 11,405 字节的帧，片源可用；要修的是 ledger 的时长与分辨率，不是抽帧代码。
+  - `12510`（`捅主任` 目录下的 `好色™ Tv.mp4`）：FFmpeg 报 `stream 0, missing mandatory atoms, broken header`，`profile`、`pix_fmt` 均为 `unknown`、`level=-99`，解码器建不起来，任何时间戳都抽不出帧。片源本身损坏，应归媒体失败候选，不再重试。
+- 由此暴露的代码缺陷已修：`scripts/sheets.py` 的 `make_sheet` 改为返回「是否成功 + 原因」，一帧都解不出记 `broken_source`、解得出一部分记 `duration_mismatch`，另有 `tile_failed`、`no_duration`、`exception`。worker 逐条写 `[fail] asset <id> <原因> <路径>`，批次结束再打一行原因分布。之前只累加失败计数，两种完全不同的故障在日志里长得一样。
 - 番号体系女优身份已回填真实 ledger（备份 `ledger.pre-performer-merge-20260815.db`）：556 位中 496 位改为日文规范名，写入 980 条别名（罗马字、假名、曾用名）、496 条外部引用，缓存高清头像 498 张（14 → 512）。完整性 `ok`、外键违规 0、资产数 81,847 不变；实体 606 → 604。
 - 名字取自 r18 `combined=` 端点的罗马字精确回配（425 位），av-wiki 的 URL slug 回配补 63 位，javdb 多番号交集补 6 位，双源确认 9 位。r18 记录的是拍摄当时的艺名，av-wiki 用于纠正到现用艺名，旧名一律降为别名。
 - 头像来自 Gfriends 图库（10.7 万张、51 个质量分档目录），门槛为长边 ≥500 且短边 ≥300。竖构图人像不能套方图的短边 512 门槛，否则会拒掉 `0-Hand-Storage`(334×501) 与 `8-GRAPHIS`(360×508) 这些最优来源。5 位所有候选都不过门槛，宁缺毋滥。
@@ -86,7 +90,7 @@
 
 ## 验证基线
 
-- 当前主分支基线：全量隔离 `unittest` 169 项通过（入口只有 `& .\scripts\test.ps1`，不接受「只跑本批相关」的缩水口径）；版本、托盘、迁移、mDNS、媒体转码、Provider、DiskGuard、语义路由、标准 Range、Video.js、稳定时长、详情播放释放、多选、实体资料、分页性能边界、搜索历史，以及回收站的还原/彻底删除/清空与删不掉文件的降级均有测试。
+- 当前主分支基线：全量隔离 `unittest` 209 项通过，2026-08-18 于主目录当前工作区实测（入口只有 `& .\scripts\test.ps1`，不接受「只跑本批相关」的缩水口径）；版本、托盘、迁移、mDNS、媒体转码、Provider、DiskGuard、语义路由、标准 Range、Video.js、稳定时长、详情播放释放、多选、实体资料、分页性能边界、搜索历史，以及回收站的还原/彻底删除/清空与删不掉文件的降级均有测试。
 - 前一生产版本已分别通过 HTTP/HTTPS health、`peach.local` 解析、真实 CloudDrive Range、桌面 1280×720 和手机 390×844 检查。本次 HLS 代码已切换生产托盘；真实资产 `31222/MIDE-981-C.mp4` 的中段 HLS 片段在严格 CA HTTPS 下返回 `200`、约 9.7 MB，响应后的临时文件已清理。尚未完成浏览器 seek 和手机 HLS 视觉验收。
 - 浏览器验收不得写真实喜欢、反馈或播放数据；需要交互写入时使用隔离 ledger 副本。
 - 并行 worktree 测试必须设置 `PYTHONPATH=<当前工作树>\src` 并核对 `peach.__file__`，否则 editable install 可能误加载主目录旧代码。
@@ -97,12 +101,12 @@
 
 ## 下一批工作
 
-1. 读完剩余 45 位单一创作者的风格板，写 candidate 交复核。这批覆盖约 2,300 条无标签视频，且板已生成、不再花流量。注意天花板：全库 7,622 条无标签视频里创作者板最多覆盖约 2,800 条，其余既无创作者也无有效番号（384 个 FC2 + 约 330 个 `WX` 业余码，三源实测零命中）。
+1. 创作者板的机械识别已做完：`creator-tags-review.csv` 里 42 条 pending 全部产出 candidate（34 candidate、8 skip，见 `creator-tags-candidate-20260817.csv`），没有未覆盖的板。剩下的是用户在 `/review` 页面逐条复核，点「通过」才写 `asset_tag/asset_entity`。注意天花板：全库 7,622 条无标签视频里创作者板最多覆盖约 2,800 条，其余既无创作者也无有效番号（384 个 FC2 + 约 330 个 `WX` 业余码，三源实测零命中）。
 2. 首尾帧额外抽样：识别水印、出处和 `full version available`，生成带证据的「不完整版/剪辑版」候选。首个回归样本为 115 的 `04_Stepsistercaughtmejerkingoff,deepthroat,throatpie.mp4` 片尾。
 3. 补齐女优身份剩余缺口：38 位查不到日文名（多数本名已是日文，无需改动）、15 位图库未收录、5 位所有候选不过质量门槛。头像质量权重的后续档位（人脸感知裁图、清晰关键帧）仍未实现。
 4. 通过官方/公开来源补齐 86 个厂牌 Logo，保留来源和质量门槛。Logo 与头像的取源方向相反：头像应取整理好的图库，Logo 是品牌标识，官网与维基才是权威来源。
 5. PikPak 抽帧已可走直连：代理策略组「📦 PikPak 视频」切到 DIRECT 后实测九帧 64.2 秒、30.5 MB（走代理时为 13.7 秒、163 MB），慢约 4.7 倍但流量少约 5 倍且不占代理预算。创作者采样 88 板据此约 2.7 GB。
-6. 115 抽帧失败的大小写部分已修复：`peach.media.resolve_case_insensitive` 与 `FilesystemBackend.file_for`、`scripts/sheets.py`、`scripts/probe.py` 的 worker 均已接入；2026-08-17 重跑 33 条九帧，31 成功、2 失败。剩余步骤是查清这 2 条的失败原因，在此之前它们留在复核队列。`sheets.py` 遇 `prim:reserved` 非法色彩元数据的重试已完成并有测试。
+6. 115 抽帧失败的大小写部分已修复：`peach.media.resolve_case_insensitive` 与 `FilesystemBackend.file_for`、`scripts/sheets.py`、`scripts/probe.py` 的 worker 均已接入；2026-08-17 重跑 33 条九帧，31 成功、2 失败。这 2 条的原因已查清（见上一节）：`18349` 是 ledger 时长记错、`12510` 是片源头损坏。待办变成三件，都需要先获授权再动真相字段：重新 probe `18349` 并纠正时长与分辨率后重抽、把 `12510` 归入媒体失败候选、给 `sheets.py` 补上时长越界与解码失败的区分。`sheets.py` 遇 `prim:reserved` 非法色彩元数据的重试已完成并有测试。
 7. HLS `stream-plan` 和按需 TS 片段已接入现有 Video.js 内置 VHS；尚未完成自适应码率、多路清单、首帧/seek 的桌面与手机验收。CloudDrive 约 100 MiB 固定块预取仍是来源层成本，服务端分片只能避免整部 MP4 Range，不会消除来源层块预取。
 8. 配置并评估 Stash CommunityScrapers/元数据 Provider，确认缺口后才写新来源适配器。
 9. 配置可复核的真实追更源，之后再接 APScheduler；AI 结果继续只作为候选。
@@ -116,9 +120,9 @@
 <!-- job-status:start -->
 
 <!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->
-<!-- generated 2026-08-17T18:55Z -->
+<!-- generated 2026-08-17T19:19Z -->
 
-- 最近自动交接：`claude` / `Stop` / `completed`，2026-08-17T18:55:17+00:00。
+- 最近自动交接：`claude` / `SessionEnd` / `other`，2026-08-17T19:19:33+00:00。
 - 资产 81770 条，其中视频 24890 条。
 - 待抽帧（可抽 / 缺时长待 probe / 合计）：
   - `local`：3 / 1 / 4
