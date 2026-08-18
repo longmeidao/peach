@@ -1,4 +1,10 @@
 {
+  "permissions": {
+    "allow": [
+      "PowerShell(& .\\\\scripts\\\\test.ps1 *)",
+      "PowerShell(.\\\\scripts\\\\test.ps1 *)"
+    ]
+  },
   "hooks": {
     "Stop": [{"hooks": [{"type": "command", "command": "python", "args": ["${CLAUDE_PROJECT_DIR}/scripts/job_status.py", "--write", "--hook-event"], "timeout": 30}]}],
     "StopFailure": [{"hooks": [{"type": "command", "command": "python", "args": ["${CLAUDE_PROJECT_DIR}/scripts/job_status.py", "--write", "--hook-event"], "timeout": 30}]}],

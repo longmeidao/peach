@@ -6,6 +6,7 @@ feedback functions; schema changes belong to the migration runner.
 from __future__ import annotations
 
 import os
+import csv
 import json
 import re
 import sqlite3
@@ -15,6 +16,7 @@ from pathlib import Path
 from typing import Sequence
 from urllib.parse import urlsplit
 
+from .config import GENERATED_DIR
 from .entities import normalize_entity_name, upsert_asset_entity
 from .media import remap_managed_path
 
@@ -24,12 +26,23 @@ FAVICON = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect wi
 
 CACHE_TTL = 90
 
+# 清空回收站时要一并清掉的资产引用表，物理删除的边界只写在这一处。
+# `asset_search` 不在其中：0004 的 `asset_search_asset_delete` 触发器已经负责 FTS 行，
+# 这里再删一遍只会重复，还会诱使测试库伪造一张同名普通表，把 has_fts() 骗成 True。
+ASSET_REFERENCE_TABLES = (
+    "asset_tag", "media_binding", "activity_event", "asset_entity",
+    "watch_queue", "asset_preference", "asset_tag_preference", "asset_quality_goal",
+)
+
 
 class WebContract:
     """单个应用实例的数据库、写锁和聚合缓存；不共享模块级可变状态。"""
 
     def __init__(self, db_path: Path, snapshot_root: Path | None = None,
-                 legacy_snapshot_roots: Sequence[Path] = ()):
+                 legacy_snapshot_roots: Sequence[Path] = (),
+                 candidate_root: Path | None = None):
+        # 候选 CSV 的目录做成实例属性而不是模块常量，复核层才能在临时目录里被测试。
+        self.candidate_root = Path(candidate_root) if candidate_root is not None else GENERATED_DIR
         self.db_path = Path(db_path)
         self.snapshot_root = Path(snapshot_root) if snapshot_root is not None else None
         self.legacy_snapshot_roots = tuple(Path(path) for path in legacy_snapshot_roots)
@@ -85,6 +98,10 @@ class WebContract:
 
 def q_items(contract: WebContract, args):
     where, par = ["a.medium='video'"], []
+    if args.get("state") == "trash":
+        where.append("a.disposal='trash'")
+    else:
+        where.append("(a.disposal IS NULL OR a.disposal <> 'trash')")
     if args.get("loc"):
         locs = [x for x in args["loc"].split(",") if x]
         where.append("a.location IN (%s)" % ",".join("?" * len(locs))); par += locs
@@ -128,6 +145,8 @@ def q_items(contract: WebContract, args):
         where.append("a.duration <= ?"); par.append(max(0, float(args["dur_max"])))
     if args.get("orient"):
         where.append("a.ctx_orient = ?"); par.append(args["orient"])
+    elif args.get("exclude_vertical") == "1":
+        where.append("(a.ctx_orient IS NULL OR a.ctx_orient <> '竖屏')")
     if args.get("q"):
         query = args["q"].strip()
         if len(query) >= 3 and contract.has_fts():
@@ -257,6 +276,42 @@ def con_entities(contract: WebContract, ids, qm):
         ).fetchall()
     finally:
         connection.close()
+
+
+def q_search_history(contract: WebContract, limit: int = 10):
+    connection = contract.db()
+    try:
+        rows = connection.execute(
+            "SELECT query FROM search_history ORDER BY last_used_at DESC, query LIMIT ?",
+            (max(1, min(limit, 50)),),
+        ).fetchall()
+    finally:
+        connection.close()
+    return {"items": [row["query"] for row in rows]}
+
+
+def w_search_history(contract: WebContract, body):
+    operation = body.get("operation", "remember")
+    query = str(body.get("query", "")).strip()
+    if operation == "remove":
+        if not query:
+            raise ValueError("query is required")
+        with contract.write_lock:
+            connection = contract.db(write=True)
+            connection.execute("DELETE FROM search_history WHERE query=?", (query,))
+            connection.commit(); connection.close()
+        return {"ok": True, "operation": operation}
+    if operation != "remember" or not query or len(query) > 200:
+        raise ValueError("invalid search history request")
+    with contract.write_lock:
+        connection = contract.db(write=True)
+        connection.execute(
+            "INSERT INTO search_history(query,used_count,last_used_at) VALUES(?,1,datetime('now')) "
+            "ON CONFLICT(query) DO UPDATE SET used_count=used_count+1,last_used_at=excluded.last_used_at",
+            (query,),
+        )
+        connection.commit(); connection.close()
+    return {"ok": True, "operation": operation}
 
 
 def attach_card_performers(contract: WebContract, rows):
@@ -670,10 +725,12 @@ def q_stats(contract: WebContract):
         "SELECT source k, count(*) n, count(DISTINCT asset_id) assets "
         "FROM asset_tag GROUP BY source ORDER BY n DESC")]
     out["tag_cov"] = one("SELECT count(DISTINCT asset_id) FROM asset_tag "
-                         "WHERE source IN ('name','r18','vision','vision-creator')")
+                         "WHERE source IN ('name','r18','vision','vision-creator',"
+                         "'vision_creator','vision_creator_review')")
     out["top_tags"] = [dict(r, cat=tag_cat(r["k"])) for r in c.execute(
         "SELECT t.tag k, count(*) n FROM asset_tag t JOIN asset a ON a.id=t.asset_id "
-        "WHERE a.medium='video' AND t.source IN ('name','r18','vision','vision-creator') "
+        "WHERE a.medium='video' AND t.source IN ('name','r18','vision','vision-creator',"
+        "'vision_creator','vision_creator_review') "
         "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
         "AND performer.normalized_name=lower(trim(t.tag))) "
         "GROUP BY t.tag ORDER BY n DESC LIMIT 30")]
@@ -683,7 +740,7 @@ def q_stats(contract: WebContract):
         "o_total": one("SELECT COALESCE(sum(o_count),0) FROM asset"),
         "dislike": one("SELECT count(*) FROM asset WHERE feedback='dislike'"),
         "seen": one("SELECT count(*) FROM asset WHERE feedback='seen'"),
-        "pending": one("SELECT count(*) FROM asset WHERE disposal='pending'"),
+        "trash": one("SELECT count(*) FROM asset WHERE disposal='trash'"),
         "skimmed": one("SELECT count(*) FROM asset WHERE duration>0 AND play_seconds>0 "
                        "AND max_reached>0.6 AND play_seconds/duration < max_reached-0.25"),
     }
@@ -698,6 +755,242 @@ def q_stats(contract: WebContract):
     except Exception:
         out["disk_c"] = None
     return out
+
+
+# 候选文件名带批次日期，代码里只认前缀并永远取目录里最新的一份；
+# 把日期写死在源码里会让下一批候选生成后复核页静默变空。
+CANDIDATE_PREFIX = {
+    "creator_tags": "creator-tags-candidate-",
+    "studio_logos": "studio-logo-candidate-",
+    "performer_avatars": "performer-avatar-candidate-",
+}
+# 每类候选的稳定主键列。缺这一列的行直接跳过并计数，绝不退化成行号——
+# 行号会在 CSV 重排后把历史决定悄悄挪到别的条目上。
+CANDIDATE_KEY = {
+    "creator_tags": "board",
+    "studio_logos": "studio",
+    "performer_avatars": "entity_id",
+}
+REVIEW_PREVIEW_LIMIT = 60
+REVIEW_APPLY_LIMIT = 500
+
+
+def latest_candidate_file(category: str, root: Path | None = None) -> Path | None:
+    prefix = CANDIDATE_PREFIX.get(category)
+    if not prefix:
+        return None
+    matches = sorted((root or GENERATED_DIR).glob(f"{prefix}*.csv"))
+    return matches[-1] if matches else None
+
+
+def read_candidates(category: str, root: Path | None = None) -> tuple[list[dict], str | None, int]:
+    """读取最新一批候选，返回（有稳定主键的行, 文件名, 被跳过的行数）。"""
+    path = latest_candidate_file(category, root)
+    if path is None or not path.is_file():
+        return [], None, 0
+    key_column = CANDIDATE_KEY[category]
+    with path.open(encoding="utf-8-sig", newline="") as handle:
+        raw = list(csv.DictReader(handle))
+    rows, skipped = [], 0
+    for row in raw:
+        key = str(row.get(key_column) or "").strip()
+        if not key:
+            skipped += 1
+            continue
+        row["item_key"] = key
+        rows.append(row)
+    return rows, path.name, skipped
+
+
+def _creator_previews(connection, creators: list[str]) -> dict[str, list[dict]]:
+    """一次查完所有候选创作者的预览作品；按候选逐个查是 N+1。"""
+    wanted = [name for name in dict.fromkeys(creators) if name]
+    if not wanted:
+        return {}
+    marks = ",".join("?" * len(wanted))
+    rows = connection.execute(
+        "SELECT a.id,a.name,a.duration,e.canonical_name,alias.alias,a.creator FROM asset a "
+        "LEFT JOIN asset_entity ae ON ae.asset_id=a.id AND ae.role='creator' "
+        "LEFT JOIN entity e ON e.id=ae.entity_id AND e.kind='creator' "
+        "LEFT JOIN entity_alias alias ON alias.entity_id=e.id "
+        "WHERE a.medium='video' AND (a.disposal IS NULL OR a.disposal<>'trash') "
+        "AND a.snapshot_path IS NOT NULL "
+        f"AND (e.canonical_name IN ({marks}) OR alias.alias IN ({marks}) OR a.creator IN ({marks})) "
+        "ORDER BY a.id",
+        [*wanted, *wanted, *wanted],
+    ).fetchall()
+    previews: dict[str, list[dict]] = {name: [] for name in wanted}
+    seen: dict[str, set] = {name: set() for name in wanted}
+    for row in rows:
+        for candidate in (row["canonical_name"], row["alias"], row["creator"]):
+            bucket = previews.get(candidate)
+            if bucket is None or len(bucket) >= REVIEW_PREVIEW_LIMIT or row["id"] in seen[candidate]:
+                continue
+            seen[candidate].add(row["id"])
+            bucket.append({"id": row["id"], "name": row["name"], "duration": row["duration"]})
+    return previews
+
+
+def _review_rows(contract: WebContract, category: str) -> tuple[list[dict], str | None, int]:
+    rows, source, skipped = read_candidates(category, contract.candidate_root)
+    connection = contract.db()
+    try:
+        decisions = {
+            row["item_key"]: dict(row) for row in connection.execute(
+                "SELECT item_key,status,note,updated_at FROM review_decision WHERE category=?",
+                (category,),
+            )
+        }
+        if category == "creator_tags":
+            previews = _creator_previews(
+                connection, [str(row.get("creator") or "").strip() for row in rows],
+            )
+            for row in rows:
+                row["preview_assets"] = previews.get(str(row.get("creator") or "").strip(), [])
+    finally:
+        connection.close()
+    for row in rows:
+        decision = decisions.get(row["item_key"], {})
+        row["decision"] = decision.get("status", "pending")
+        row["decision_note"] = decision.get("note", "")
+        row["preview_url"] = row.get("resolved_url") or row.get("source_url") or row.get("avatar_url") or ""
+    return rows, source, skipped
+
+
+def q_review(contract: WebContract):
+    connection = contract.db()
+    failures = [dict(row) for row in connection.execute(
+        "SELECT id,name,location,path,duration FROM asset "
+        "WHERE location='115' AND medium='video' AND snapshot_path IS NULL AND duration>2"
+    )]
+    decisions = {
+        row["item_key"]: dict(row) for row in connection.execute(
+            "SELECT item_key,status,note,updated_at FROM review_decision WHERE category='media_failure'"
+        )
+    }
+    connection.close()
+    for row in failures:
+        decision = decisions.get(str(row["id"]), {})
+        row["item_key"] = str(row["id"])
+        row["decision"] = decision.get("status", "pending")
+        row["decision_note"] = decision.get("note", "")
+    sections, sources, skipped = {}, {}, {}
+    for category in CANDIDATE_PREFIX:
+        rows, source, dropped = _review_rows(contract, category)
+        sections[category] = rows
+        sources[category] = source
+        skipped[category] = dropped
+    sections["media_failure"] = failures
+    sources["media_failure"] = "ledger"
+    # 候选文件缺失和主键缺失都要说出来。静默的空列表会被读成「没有待复核项」。
+    return {"sections": sections, "sources": sources, "skipped_rows": skipped,
+            "counts": {key: len(value) for key, value in sections.items()}}
+
+
+def w_review_decision(contract: WebContract, body):
+    category = str(body.get("category", "")).strip()
+    item_key = str(body.get("item_key", "")).strip()
+    status = str(body.get("status", "")).strip()
+    if category not in {"creator_tags", "studio_logos", "performer_avatars", "media_failure"}:
+        raise ValueError("invalid review category")
+    if not item_key or status not in {"approved", "rejected", "skipped"}:
+        raise ValueError("invalid review decision")
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    note = str(body.get("note", "")).strip()[:2000]
+    with contract.write_lock:
+        connection = contract.db(write=True)
+        connection.execute(
+            "INSERT INTO review_decision(category,item_key,status,note,updated_at) VALUES(?,?,?,?,?) "
+            "ON CONFLICT(category,item_key) DO UPDATE SET status=excluded.status,note=excluded.note,updated_at=excluded.updated_at",
+            (category, item_key, status, note, now),
+        )
+        applied = 0
+        if category == "creator_tags" and status == "approved":
+            # 权威值只能来自候选文件本身。早先版本直接采信请求体，于是「批准候选 X」
+            # 可以写入与 X 无关的创作者和标签，而 review_decision 里留痕仍写着 X 通过。
+            candidates = {row["item_key"]: row
+                          for row in read_candidates(category, contract.candidate_root)[0]}
+            candidate = candidates.get(item_key)
+            if candidate is None:
+                connection.rollback(); connection.close()
+                raise ValueError("候选不在当前批次，无法批准")
+            if str(candidate.get("status") or "").strip() != "candidate":
+                connection.rollback(); connection.close()
+                raise ValueError("只有 candidate 状态的复核项可以批准")
+            creator = str(candidate.get("creator") or "").strip()
+            tags = [tag.strip() for tag in str(candidate.get("tags") or "").split("|") if tag.strip()]
+            claimed_creator = str(body.get("creator", "")).strip()
+            claimed_tags = [tag.strip() for tag in str(body.get("tags", "")).split("|") if tag.strip()]
+            if (claimed_creator and claimed_creator != creator) or (claimed_tags and claimed_tags != tags):
+                connection.rollback(); connection.close()
+                raise ValueError("提交内容与候选不一致，拒绝写入")
+            if not creator or not tags:
+                connection.rollback(); connection.close()
+                raise ValueError("approved creator review requires creator and tags")
+            entity = connection.execute(
+                "SELECT e.id FROM entity e LEFT JOIN entity_alias a ON a.entity_id=e.id "
+                "WHERE e.kind='creator' AND (e.canonical_name=? OR a.alias=?) LIMIT 1",
+                (creator, creator),
+            ).fetchone()
+            if not entity:
+                connection.rollback(); connection.close()
+                raise ValueError("creator entity not found")
+            assets = connection.execute(
+                "SELECT DISTINCT ae.asset_id FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
+                "WHERE ae.entity_id=? AND ae.role='creator' AND a.medium='video' AND a.disposal IS NULL",
+                (entity["id"],),
+            ).fetchall()
+            selected_ids = {int(value) for value in body.get("selected_ids") or []}
+            available_ids = {asset["asset_id"] for asset in assets}
+            if selected_ids:
+                if not selected_ids <= available_ids:
+                    connection.rollback(); connection.close()
+                    raise ValueError("selected assets are outside the reviewed creator")
+                asset_ids = sorted(selected_ids)
+            else:
+                # 没有勾选就是「整条候选通过」。早先版本在这里什么都不写，
+                # 却照样把决定记成 approved——留痕说通过、实际没写是最糟的组合。
+                asset_ids = sorted(available_ids)
+                if len(asset_ids) > REVIEW_APPLY_LIMIT:
+                    connection.rollback(); connection.close()
+                    raise ValueError(
+                        f"该创作者有 {len(asset_ids)} 条作品，超过单次批准上限 "
+                        f"{REVIEW_APPLY_LIMIT}，请在页面上显式勾选后再通过"
+                    )
+            payload = json.dumps({"review_item": item_key}, ensure_ascii=False)
+            connection.executemany(
+                "INSERT OR IGNORE INTO asset_tag(asset_id,tag,confidence,source) "
+                "VALUES(?,?,0.6,'vision_creator_review')",
+                [(asset_id, tag) for asset_id in asset_ids for tag in tags],
+            )
+            for tag in tags:
+                # 标签实体只解析一次，关系走 executemany。
+                # 逐条调用 upsert_asset_entity 会在持写锁期间跑上千次往返，把其它写入全挡住。
+                normalized = normalize_entity_name(tag)
+                connection.execute(
+                    "INSERT INTO entity(kind,canonical_name,normalized_name,metadata_json,"
+                    "created_at,updated_at) VALUES('tag',?,?,'{}',?,?) "
+                    "ON CONFLICT(kind,normalized_name) DO UPDATE SET "
+                    "canonical_name=excluded.canonical_name,updated_at=excluded.updated_at",
+                    (tag, normalized, now, now),
+                )
+                entity_id = connection.execute(
+                    "SELECT id FROM entity WHERE kind='tag' AND normalized_name=?", (normalized,),
+                ).fetchone()[0]
+                connection.executemany(
+                    "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence,"
+                    "metadata_json,first_seen_at,last_seen_at) "
+                    "VALUES(?,?,'tag','vision_creator_review',0.6,?,?,?) "
+                    "ON CONFLICT(asset_id,entity_id,role,source) DO UPDATE SET "
+                    "confidence=excluded.confidence,metadata_json=excluded.metadata_json,"
+                    "last_seen_at=excluded.last_seen_at",
+                    [(asset_id, entity_id, payload, now, now) for asset_id in asset_ids],
+                )
+            applied = len(asset_ids)
+        connection.commit(); connection.close()
+    contract.cache_bust()   # 标签写完，聚合缓存必须失效，否则 facets 最多 90 秒还是旧数
+    return {"ok": True, "category": category, "item_key": item_key, "status": status, "applied_assets": applied}
+
 
 def q_facets(contract: WebContract):
     c = contract.db()
@@ -739,7 +1032,7 @@ def q_facets(contract: WebContract):
         "THEN 1 ELSE 0 END) flagged, "
         "SUM(EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
         "WHERE ae.asset_id=a.id AND e.kind='creator')) attributed "
-        "FROM asset a WHERE a.medium='video'").fetchone()
+        "FROM asset a WHERE a.medium='video' AND (a.disposal IS NULL OR a.disposal<>'trash')").fetchone()
     out["stats"] = dict(st)
     c.close()
     return out
@@ -796,7 +1089,7 @@ def w_feedback(contract: WebContract, body):
         elif kind == "dispose":
             cur = c.execute("SELECT disposal FROM asset WHERE id=?", (aid,)).fetchone()["disposal"]
             c.execute("UPDATE asset SET disposal=?, feedback_at=? WHERE id=?",
-                      (None if cur == "pending" else "pending", time.time(), aid))
+                      (None if cur == "trash" else "trash", time.time(), aid))
         elif kind == "o":
             c.execute("UPDATE asset SET o_count=COALESCE(o_count,0)+1 WHERE id=?", (aid,))
         elif kind == "rate":
@@ -952,6 +1245,56 @@ def w_item_tag(contract: WebContract, body):
             "tags": [item["k"] for item in q_item(contract, aid)["tags"]]}
 
 
+def purge_assets(connection, rows):
+    """物理删除媒体，再删对应账本行；调用方负责事务提交。
+
+    顺序是先删文件再删行，且删不掉的文件整条跳过——留一条指向缺失文件的账本行还能在
+    回收站里看到并重试，反过来先删行会留下没人认领的媒体文件，那才是真正的丢失。
+    快照是 `R:\\peach-data\\generated` 下可再生的产物，删不掉不阻塞主媒体的清除。
+    """
+    purged, blocked = [], []
+    for row in rows:
+        media = row["path"]
+        if media:
+            try:
+                os.remove(media)
+            except FileNotFoundError:
+                pass
+            except OSError as error:
+                blocked.append({"id": row["id"], "path": media,
+                                "reason": error.strerror or str(error)})
+                continue
+        snapshot = row["snapshot_path"]
+        if snapshot:
+            try:
+                os.remove(snapshot)
+            except OSError:
+                pass
+        purged.append(row["id"])
+    if purged:
+        marks = ",".join("?" * len(purged))
+        for table in ASSET_REFERENCE_TABLES:
+            connection.execute(f"DELETE FROM {table} WHERE asset_id IN ({marks})", purged)
+        connection.execute(f"DELETE FROM asset WHERE id IN ({marks})", purged)
+    return {"purged": len(purged), "blocked": blocked}
+
+
+def w_empty_trash(contract: WebContract):
+    """永久清空回收站：只处理 disposal='trash' 的资产，其余一律不碰。"""
+    contract.cache_bust()
+    with contract.write_lock:
+        connection = contract.db(write=True)
+        try:
+            rows = connection.execute(
+                "SELECT id,path,snapshot_path FROM asset WHERE disposal='trash'",
+            ).fetchall()
+            result = purge_assets(connection, rows)
+            connection.commit()
+        finally:
+            connection.close()
+    return {"ok": True, "operation": "empty-trash", **result}
+
+
 def w_batch(contract: WebContract, body):
     """Apply one explicit, reversible marker to a bounded selected set."""
     raw_ids = body.get("ids")
@@ -961,22 +1304,36 @@ def w_batch(contract: WebContract, body):
     if not ids or len(ids) > 200:
         raise ValueError("batch requires 1 to 200 assets")
     operation = body.get("operation")
-    if operation not in {"like", "seen", "later", "dispose"}:
+    if operation not in {"like", "seen", "later", "dispose", "restore", "delete"}:
         raise ValueError("unsupported batch operation")
     marks = ",".join("?" * len(ids))
     contract.cache_bust()
     with contract.write_lock:
         connection = contract.db(write=True)
         found = connection.execute(
-            f"SELECT id FROM asset WHERE id IN ({marks})", ids,
+            f"SELECT id,path,snapshot_path,disposal FROM asset WHERE id IN ({marks})", ids,
         ).fetchall()
         valid_ids = [row["id"] for row in found]
         if not valid_ids:
             connection.close()
             raise ValueError("assets not found")
+        if operation in {"restore", "delete"} and any(row["disposal"] != "trash" for row in found):
+            connection.close()
+            raise ValueError("restore/delete is only allowed for recycle-bin assets")
         now = time.time()
-        if operation in {"seen", "dispose"}:
-            column, value = ("feedback", "seen") if operation == "seen" else ("disposal", "pending")
+        if operation == "restore":
+            placeholders = ",".join("?" * len(valid_ids))
+            connection.execute(
+                f"UPDATE asset SET disposal=NULL,feedback_at=? WHERE id IN ({placeholders})",
+                [now, *valid_ids],
+            )
+        elif operation == "delete":
+            purged = purge_assets(connection, found)
+            connection.commit()
+            connection.close()
+            return {"ok": True, "operation": operation, **purged}
+        elif operation in {"seen", "dispose"}:
+            column, value = ("feedback", "seen") if operation == "seen" else ("disposal", "trash")
             placeholders = ",".join("?" * len(valid_ids))
             connection.execute(
                 f"UPDATE asset SET {column}=?,feedback_at=? WHERE id IN ({placeholders})",
@@ -1032,6 +1389,11 @@ def dispatch_api_get(contract: WebContract, path, args):
         return q_related(contract, int(args["id"]), min(int(args.get("limit", "24")), 60))
     if path == "/api/facets":
         return contract.cached("facets", lambda: q_facets(contract))
+    if path == "/api/search-history":
+        return q_search_history(contract, int(args.get("limit", "10")))
+    if path == "/api/review":
+        # 复核页要扫候选 CSV、全部决定和一次媒体失败全表扫描，不该每次打开都重算。
+        return contract.cached("review", lambda: q_review(contract))
     raise KeyError(path)
 
 
@@ -1052,4 +1414,10 @@ def dispatch_api_post(contract: WebContract, path, body):
         return w_item_tag(contract, body)
     if path == "/api/batch":
         return w_batch(contract, body)
+    if path == "/api/search-history":
+        return w_search_history(contract, body)
+    if path == "/api/trash/empty":
+        return w_empty_trash(contract)
+    if path == "/api/review/decision":
+        return w_review_decision(contract, body)
     raise KeyError(path)

@@ -6,6 +6,7 @@ import threading
 from collections.abc import MutableSet
 from pathlib import Path
 from time import monotonic
+from typing import Any
 
 from starlette.responses import FileResponse, Response
 from starlette.types import Receive, Scope, Send
@@ -16,6 +17,7 @@ class StreamSessionRegistry:
 
     def __init__(self, *, tombstone_seconds: float = 300.0) -> None:
         self._active: dict[str, MutableSet[asyncio.Task[object]]] = {}
+        self._processes: dict[str, MutableSet[Any]] = {}
         self._cancelled: dict[str, float] = {}
         self._tombstone_seconds = tombstone_seconds
         self._lock = threading.RLock()
@@ -36,6 +38,29 @@ class StreamSessionRegistry:
             self._active.setdefault(session, set()).add(task)
             return True
 
+    def register_process(self, session: str, process: Any) -> bool:
+        """把生成 HLS 片段的子进程纳入同一个可取消会话。"""
+        with self._lock:
+            self._prune(monotonic())
+            if session in self._cancelled:
+                return False
+            self._processes.setdefault(session, set()).add(process)
+            return True
+
+    def unregister_process(self, session: str, process: Any) -> None:
+        with self._lock:
+            processes = self._processes.get(session)
+            if not processes:
+                return
+            processes.discard(process)
+            if not processes:
+                self._processes.pop(session, None)
+
+    def is_cancelled(self, session: str) -> bool:
+        with self._lock:
+            self._prune(monotonic())
+            return session in self._cancelled
+
     def unregister(self, session: str, task: asyncio.Task[object]) -> None:
         with self._lock:
             tasks = self._active.get(session)
@@ -50,9 +75,16 @@ class StreamSessionRegistry:
             self._prune(monotonic())
             self._cancelled[session] = monotonic()
             tasks = tuple(self._active.pop(session, ()))
+            processes = tuple(self._processes.pop(session, ()))
         for task in tasks:
             task.cancel()
-        return len(tasks)
+        for process in processes:
+            try:
+                if process.returncode is None:
+                    process.kill()
+            except (OSError, ProcessLookupError):
+                pass
+        return len(tasks) + len(processes)
 
     def active_count(self, session: str) -> int:
         with self._lock:

@@ -1,5 +1,6 @@
 import importlib.util
 import sqlite3
+import struct
 import tempfile
 import unittest
 from pathlib import Path
@@ -46,7 +47,34 @@ CREATE TABLE asset_tag_preference(profile_id TEXT,asset_id INTEGER,normalized_ta
 CREATE TABLE media_binding(
   asset_id INTEGER,backend TEXT,external_id TEXT,metadata_json TEXT,last_synced_at TEXT,
   PRIMARY KEY(asset_id,backend),UNIQUE(backend,external_id));
+CREATE TABLE activity_event(id INTEGER PRIMARY KEY,asset_id INTEGER,kind TEXT,created_at TEXT);
+CREATE TABLE search_history(
+  query TEXT PRIMARY KEY, used_count INTEGER NOT NULL DEFAULT 1, last_used_at TEXT NOT NULL);
+CREATE TABLE review_decision(
+  category TEXT NOT NULL,item_key TEXT NOT NULL,status TEXT NOT NULL,
+  reviewer TEXT NOT NULL DEFAULT 'local-default',note TEXT NOT NULL DEFAULT '',updated_at TEXT NOT NULL,
+  PRIMARY KEY(category,item_key));
 """
+
+
+def _box(kind: bytes, payload: bytes) -> bytes:
+    return struct.pack(">I", len(payload) + 8) + kind + payload
+
+
+def minimal_mp4(*, timescale: int, sample_delta: int, samples: int, keyframe_every: int) -> bytes:
+    """只含时间表的最小 MP4：够 peach.mp4index 解析关键帧，不含真实媒体数据。"""
+    mdhd = _box(b"mdhd", struct.pack(">4sIIII HH", bytes(4), 0, 0, timescale,
+                                     samples * sample_delta, 0, 0))
+    hdlr = _box(b"hdlr", struct.pack(">4sI4s", bytes(4), 0, b"vide") + bytes(12))
+    stts = _box(b"stts", struct.pack(">IIII", 0, 1, samples, sample_delta))
+    sync = [n for n in range(1, samples + 1) if (n - 1) % keyframe_every == 0]
+    stss = _box(b"stss", struct.pack(">II", 0, len(sync))
+                + b"".join(struct.pack(">I", n) for n in sync))
+    stbl = _box(b"stbl", stts + stss)
+    mdia = _box(b"mdia", mdhd + hdlr + _box(b"minf", stbl))
+    return (_box(b"ftyp", b"isom" + bytes(8))
+            + _box(b"moov", _box(b"trak", mdia))
+            + _box(b"mdat", bytes(64)))
 
 
 @unittest.skipUnless(HAS_DEPS, "FastAPI/httpx 尚未安装")
@@ -63,12 +91,20 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.logo_root = self.root / "logos"
         self.transcode_root = self.root / "transcodes"
         self.vendor_root = self.root / "vendor"
+        # 复核候选必须来自临时目录：早先版本直接读真实的 R:\peach-data\generated。
+        self.candidate_root = self.root / "generated"
+        self.candidate_root.mkdir()
         for path in (self.media_root, self.snapshot_root, self.poster_root,
                      self.avatar_root, self.logo_root, self.vendor_root):
             path.mkdir()
         (self.vendor_root / "player.js").write_text("window.vendorReady=true;", encoding="utf-8")
         self.media_file = self.media_root / "one.mp4"
         self.media_file.write_bytes(b"0123456789")
+        # HLS 分片按真实关键帧切，所以它的测试媒体必须带可解析的 moov/stss；
+        # Range 契约测试仍用上面那个 10 字节文件，两者不要互相牵连。
+        self.hls_file = self.media_root / "segmented.mp4"
+        self.hls_file.write_bytes(minimal_mp4(timescale=1000, sample_delta=40,
+                                              samples=338, keyframe_every=25))
         self.snapshot_file = self.snapshot_root / "cloud" / "local" / "one.jpg"
         self.snapshot_file.parent.mkdir(parents=True)
         self.snapshot_file.write_bytes(b"snapshot")
@@ -105,6 +141,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             legacy_snapshot_roots=(self.legacy_snapshot_root,),
             poster_root=self.poster_root, avatar_root=self.avatar_root, logo_root=self.logo_root,
             ffmpeg_root=self.root / "ffmpeg", transcode_root=self.transcode_root,
+            candidate_root=self.candidate_root,
         ))
         self.client = httpx.AsyncClient(
             transport=httpx.ASGITransport(app=self.app), base_url="http://test"
@@ -119,6 +156,63 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["mode"], "fastapi")
         self.assertEqual(response.json()["version"], __version__)
+
+    async def test_peach_logo_is_served_as_png(self):
+        response = await self.client.get("/peach-logo.png")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "image/png")
+        self.assertTrue(response.content.startswith(b"\x89PNG\r\n\x1a\n"))
+
+    async def test_emptying_the_recycle_bin_is_actually_wired_and_deletes_media(self):
+        """接线本身要有测试：此前 dispatch 接上了 `/api/trash/empty`，函数却根本没写。
+
+        单测直接调用函数抓不到这类错误，只有走一遍 HTTP 才会暴露。
+        """
+        disposed = await self.client.post("/api/feedback?t=secret",
+                                          json={"id": 1, "kind": "dispose"})
+        self.assertEqual(disposed.json()["disposal"], "trash")
+        self.assertTrue(self.media_file.exists())
+
+        emptied = await self.client.post("/api/trash/empty?t=secret")
+        self.assertEqual(emptied.status_code, 200)
+        self.assertEqual(emptied.json()["purged"], 1)
+        self.assertEqual(emptied.json()["blocked"], [])
+        self.assertFalse(self.media_file.exists(), "清空回收站必须真的删掉媒体文件")
+
+        listed = await self.client.get("/api/items?t=secret")
+        self.assertEqual([item["id"] for item in listed.json()["items"]], [])
+
+    async def test_recycle_bin_route_and_batch_delete_are_reachable(self):
+        page = await self.client.get("/trash?t=secret")
+        self.assertEqual(page.status_code, 200)
+        refused = await self.client.post("/api/batch?t=secret",
+                                         json={"ids": [1], "operation": "delete"})
+        self.assertEqual(refused.status_code, 400, "不在回收站的资产不允许彻底删除")
+
+        await self.client.post("/api/feedback?t=secret", json={"id": 1, "kind": "dispose"})
+        deleted = await self.client.post("/api/batch?t=secret",
+                                         json={"ids": [1], "operation": "delete"})
+        self.assertEqual(deleted.status_code, 200)
+        self.assertEqual(deleted.json()["purged"], 1)
+        self.assertFalse(self.media_file.exists())
+
+    async def test_search_history_is_shared_through_the_api(self):
+        saved = await self.client.post("/api/search-history?t=secret", json={"query": "ABW"})
+        self.assertEqual(saved.status_code, 200)
+        history = await self.client.get("/api/search-history?t=secret")
+        self.assertEqual(history.json()["items"], ["ABW"])
+        removed = await self.client.post("/api/search-history?t=secret", json={"operation": "remove", "query": "ABW"})
+        self.assertEqual(removed.status_code, 200)
+
+    async def test_review_queue_is_readable_and_decisions_are_persisted(self):
+        response = await self.client.get("/api/review?t=secret")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("creator_tags", response.json()["sections"])
+        decided = await self.client.post(
+            "/api/review/decision?t=secret",
+            json={"category": "media_failure", "item_key": "12510", "status": "skipped"},
+        )
+        self.assertEqual(decided.status_code, 200)
 
     async def test_auth_and_items_contract(self):
         denied = await self.client.get("/api/items")
@@ -222,7 +316,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         await self.client.get("/?t=secret")
         for path in ("/item/1", "/performers/Alice", "/studios/Prestige",
                      "/creators/luckydog11", "/series/Example", "/performers",
-                     "/creators", "/tags", "/stats", "/immerse", "/mix/1/2"):
+                     "/creators", "/tags", "/stats", "/immerse", "/trash", "/review", "/mix/1/2"):
             response = await self.client.get(path)
             self.assertEqual(response.status_code, 200, path)
             self.assertIn("Peach test", response.text)
@@ -297,6 +391,60 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.content, b"0123456789")
         self.assertEqual(response.headers["content-range"], "bytes 0-9/10")
         self.assertEqual(response.headers["content-length"], "10")
+
+    async def test_remote_stream_plan_and_hls_playlist_are_segmented(self):
+        con = sqlite3.connect(self.db)
+        con.execute("UPDATE asset SET location='115', duration=13.5, path=? WHERE id=1",
+                    (str(self.hls_file),))
+        con.commit()
+        con.close()
+
+        # 默认计划是标准 Range：HLS 的 TS 分片装不下浏览器能解的 HEVC，见 ADR-0016。
+        default_plan = await self.client.get(
+            "/api/stream-plan?id=1&session=hls-test&t=secret",
+        )
+        self.assertEqual(default_plan.status_code, 200)
+        self.assertEqual(default_plan.json()["protocol"], "range")
+        self.assertIn("/stream?id=1", default_plan.json()["src"])
+
+        plan = await self.client.get(
+            "/api/stream-plan?id=1&session=hls-test&mode=hls&t=secret",
+        )
+        self.assertEqual(plan.status_code, 200)
+        self.assertEqual(plan.json()["protocol"], "hls")
+        self.assertEqual(plan.json()["segment_seconds"], 6)
+        self.assertIn("/stream/hls/1/index.m3u8?session=hls-test", plan.json()["src"])
+
+        playlist = await self.client.get(
+            "/stream/hls/1/index.m3u8?session=hls-test&t=secret",
+        )
+        self.assertEqual(playlist.status_code, 200)
+        self.assertEqual(playlist.headers["content-type"], "application/vnd.apple.mpegurl")
+        self.assertEqual(playlist.text.count("#EXTINF:"), 3)
+
+    async def test_hls_segment_is_generated_for_one_requested_time_slice(self):
+        con = sqlite3.connect(self.db)
+        con.execute("UPDATE asset SET location='115', duration=13.5, path=? WHERE id=1",
+                    (str(self.hls_file),))
+        con.commit()
+        con.close()
+        segment = self.root / "segment.ts"
+        segment.write_bytes(b"one segment")
+
+        async def generate(source, start, duration, *, asset_id, index, session, registry):
+            # 关键帧每秒一个，6 秒目标 → 第 1 段从 6.0 开始，长 6.0。
+            self.assertEqual((start, duration), (6.0, 6.0))
+            self.assertEqual((asset_id, index, session), (1, 1, "hls-test"))
+            return segment
+
+        with patch.object(self.app.state.hls_service, "generate", new=generate):
+            response = await self.client.get(
+                "/stream/hls/1/1.ts?session=hls-test&t=secret",
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"one segment")
+        self.assertEqual(response.headers["content-type"], "video/mp2t")
+        self.assertTrue(segment.exists(), "片段要留在缓存里，重复请求不该再跑一次 FFmpeg")
 
     async def test_transcoded_stream_has_browser_mime_and_marker(self):
         avi = self.media_root / "two.avi"

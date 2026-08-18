@@ -2,6 +2,7 @@ import csv
 import importlib.util
 import io
 import sqlite3
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
@@ -48,10 +49,18 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertIn("peach.__file__", script)
         self.assertIn("-m unittest discover", script)
         self.assertNotIn("pytest", script.lower())
+        # 文档里可以「提到」裸命令来说明它为什么不可信，但绝不能让它单独出现成为一条可照抄的指令。
+        # 判据因此不是黑名单，而是：凡出现该命令的行，必须在同一行指向 test.ps1。
         for relative in ("AGENTS.md", "README.md", "docs/HANDOFF.md"):
             instructions = (ROOT / relative).read_text(encoding="utf-8")
             self.assertIn("scripts\\test.ps1", instructions)
-            self.assertNotIn("python -m unittest discover", instructions)
+            for number, line in enumerate(instructions.splitlines(), 1):
+                if "unittest discover" not in line:
+                    continue
+                self.assertIn(
+                    "test.ps1", line,
+                    f"{relative}:{number} 单独出现了裸命令，读者会照抄；必须同时点明唯一入口",
+                )
 
     def test_structural_creator_and_mainstream_release_guards(self):
         self.assertTrue(is_structural_creator("asce"))
@@ -125,6 +134,234 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertFalse(self.traffic_watch.is_direct({"chains": ["Proxy", "Relay"]}))
         self.assertEqual(self.creator_boards.safe_name("A/B:C"), "A_B_C")
 
+    def test_age_gate_is_crossed_by_the_affirmative_link_only(self):
+        """AV 厂牌官网普遍先给年龄确认页，不穿过它只能拿到约 10 KB 的空壳。
+
+        判据必须是锚文本：否定链接指向站外（实测 dasdas.jp / muku.tv 都指向 dmm.com），
+        肯定链接指向站内，两者的 href 本身看不出区别。跟错就会离开厂牌域名，
+        而离开域名抓到的社交账号就不再属于这个厂牌。
+        """
+        module = load_script("find_studio_socials")
+        gate = (
+            '<a href="https://dasdas.jp/top">はい（入室する）</a>'
+            '<a href="https://www.dmm.com/">いいえ</a>'
+        )
+        self.assertEqual(
+            module.affirmative_link(gate, "https://dasdas.jp/"), "https://dasdas.jp/top")
+        # 只有否定链接时不得跟随，否则会走到站外。
+        self.assertIsNone(module.affirmative_link(
+            '<a href="https://www.dmm.com/">いいえ</a>', "https://dasdas.jp/"))
+        # 肯定文案但跨域，同样不跟。
+        self.assertIsNone(module.affirmative_link(
+            '<a href="https://elsewhere.example/top">ENTER</a>', "https://dasdas.jp/"))
+        self.assertIsNone(module.affirmative_link("<p>没有链接</p>", "https://dasdas.jp/"))
+
+    def test_platform_paths_are_not_mistaken_for_accounts(self):
+        module = load_script("find_studio_socials")
+        html = ('<a href="https://twitter.com/intent/tweet">分享</a>'
+                '<a href="https://x.com/dahliaofficial0">官方</a>'
+                '<a href="https://twitter.com/share">share</a>')
+        self.assertEqual(module.handles_in(html), {"dahliaofficial0"})
+
+    def test_powershell_scripts_with_chinese_carry_a_utf8_bom(self):
+        """没有 BOM 的 .ps1，Windows PowerShell 5.1 会按 ANSI（简中系统即 GBK）读。
+
+        `scripts/test.ps1` 的中文 throw 消息因此被解成乱码，引号配对错乱，
+        整个脚本在解析期就失败并闪退——报错行还会落在纯 ASCII 的语句上，极难定位。
+        pwsh 7 默认按 UTF-8 读无 BOM 文件，所以这个故障只在 5.1 上出现。
+        """
+        for path in sorted((ROOT / "scripts").glob("*.ps1")):
+            raw = path.read_bytes()
+            if all(byte < 128 for byte in raw):
+                continue
+            self.assertTrue(
+                raw.startswith(b"\xef\xbb\xbf"),
+                f"{path.name} 含非 ASCII 却没有 UTF-8 BOM，PowerShell 5.1 会解析失败",
+            )
+
+    def test_logo_candidates_are_squared_by_padding_not_discarded(self):
+        """界面按方框渲染。接近方的直接用，长条形补背景填方，只有太小的才丢。"""
+        import io
+
+        from PIL import Image
+
+        from peach.images import PAD, REJECT, SQUARE, classify, pad_to_square
+
+        self.assertEqual(classify(512, 512)[0], SQUARE)
+        self.assertEqual(classify(600, 500)[0], SQUARE, "轻微非方图不必补")
+        self.assertEqual(classify(1600, 900)[0], PAD, "16:9 补成方图，而不是丢掉")
+        self.assertEqual(classify(64, 64)[0], REJECT, "短边过小，补白也救不回来")
+
+        wide = Image.new("RGBA", (400, 100), (10, 20, 30, 255))
+        buffer = io.BytesIO()
+        wide.save(buffer, "PNG")
+        squared = Image.open(io.BytesIO(pad_to_square(buffer.getvalue())))
+        self.assertEqual(squared.size, (400, 400))
+        # 补出来的边取原图四角底色，和 Logo 自身背景连成一片，不是凭空刷白。
+        self.assertEqual(squared.getpixel((5, 5)), (10, 20, 30, 255))
+        self.assertEqual(squared.getpixel((200, 200)), (10, 20, 30, 255))
+
+    def test_studio_avatar_candidates_never_guess_a_handle_by_default(self):
+        """猜错 handle 会产出一个「看起来很官方」的错误 Logo，和它要取代的搜索猜测同一种失败。"""
+        module = load_script("fetch_studio_avatar_candidates")
+        self.assertEqual(module.guess_handle("PREMIUM"), "PREMIUM")
+        self.assertEqual(module.guess_handle("S1 NO.1 STYLE"), "S1NO1STYLE")
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "in.csv"
+            source.write_text("studio\nBAZOOKA\n", encoding="utf-8-sig")
+            output = Path(tmp) / "out.csv"
+            with mock.patch.object(sys, "argv", [
+                "fetch_studio_avatar_candidates", "--input", str(source), "--output", str(output),
+            ]):
+                module.main()
+            written = list(csv.DictReader(output.open(encoding="utf-8-sig", newline="")))
+        self.assertEqual(len(written), 1)
+        self.assertEqual(written[0]["confirmation"], "no-handle")
+        self.assertEqual(written[0]["accepted"], "False")
+        self.assertIn("未取得", written[0]["reason"])
+
+    def test_frame_retry_is_reserved_for_bad_color_metadata(self):
+        """坏色彩元数据才重试。无条件重试会让网盘超时的文件每帧白跑两次 45 秒。"""
+        sheets = self.sheets
+        for stderr, expected in (
+            ("[swscale] Unsupported color primaries: reserved", [False, True]),
+            ("color_trc reserved is invalid", [False, True]),
+            ("ffmpeg timeout", [False]),
+            ("Error opening input: Input/output error", [False]),
+        ):
+            calls: list[bool] = []
+
+            def fake_capture(_ffmpeg, _path, _timestamp, _destination, color_override,
+                             _stderr=stderr, _calls=calls):
+                _calls.append(color_override)
+                return False, _stderr
+
+            with tempfile.TemporaryDirectory() as tmp:
+                with mock.patch.object(sheets, "_capture_frame", fake_capture):
+                    sheets.make_sheet("ffmpeg", "R:/media/one.mp4", 100.0,
+                                      Path(tmp) / "sheet.jpg", frames=1)
+            self.assertEqual(calls, expected, stderr)
+
+    def test_failed_sheet_says_whether_the_source_or_the_duration_is_wrong(self):
+        """asset 12510 与 18349 都只报「失败」，一个是片源头坏、一个是账本时长记错。
+
+        分不出来就没法决定该修片源还是修账本，所以原因必须能区分。
+        """
+        sheets = self.sheets
+
+        def capture_none(_ffmpeg, _path, _timestamp, _destination, color_override):
+            return False, "missing mandatory atoms, broken header"
+
+        def capture_first_only(_ffmpeg, _path, timestamp, destination, color_override):
+            # 账本时长比真实文件长时，只有最早的采样点还落在文件里。
+            if timestamp > 100.0:
+                return False, ""
+            destination.write_bytes(b"x" * 2048)
+            return True, ""
+
+        for capture, expected in (
+            (capture_none, "broken_source"),
+            (capture_first_only, "duration_mismatch"),
+        ):
+            with tempfile.TemporaryDirectory() as tmp:
+                with mock.patch.object(sheets, "_capture_frame", capture):
+                    ok, reason = sheets.make_sheet(
+                        "ffmpeg", "R:/media/one.mp4", 752.24, Path(tmp) / "sheet.jpg", frames=9,
+                    )
+            self.assertFalse(ok)
+            self.assertEqual(reason, expected)
+
+    def test_sheet_failure_reason_reaches_the_log(self):
+        """原因只写在返回值里等于没写；批次日志和汇总都要能看到。"""
+        sheets = self.sheets
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "ledger.db"
+            connection = sqlite3.connect(db)
+            connection.execute(
+                "CREATE TABLE asset(id INTEGER PRIMARY KEY,location TEXT,path TEXT,"
+                "medium TEXT,duration REAL,size INTEGER,snapshot_path TEXT)"
+            )
+            connection.execute(
+                "INSERT INTO asset VALUES(18349,'local',?,'video',752.24,1000,NULL)",
+                (str(root / "one.mp4"),),
+            )
+            connection.commit()
+            connection.close()
+
+            args = sheets.build_parser().parse_args([
+                "--db", str(db), "--workers", "1", "--min-free", "0",
+                "--output-root", str(root / "out"), "--log-dir", str(root / "log"),
+            ])
+            choice = type("C", (), {"path": "ffmpeg"})
+            with mock.patch.object(
+                sheets, "make_sheet",
+                lambda *_args, **_kwargs: (False, "duration_mismatch"),
+            ), mock.patch.object(sheets.FFmpegResolver, "ffmpeg", lambda _self: choice), \
+                    redirect_stdout(io.StringIO()):
+                sheets.run(args)
+
+            written = "\n".join(p.read_text(encoding="utf-8")
+                                for p in (root / "log").glob("sheets-*.log"))
+        self.assertIn("18349", written)
+        self.assertIn("duration_mismatch", written)
+        self.assertIn("失败原因：duration_mismatch 1", written)
+
+    def test_sheets_can_reshoot_one_named_asset_over_a_stale_product(self):
+        """点名重抽是为了盖掉上一次的错结果，撞上已存在的产物就短路等于没修。"""
+        sheets = self.sheets
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "ledger.db"
+            connection = sqlite3.connect(db)
+            connection.execute(
+                "CREATE TABLE asset(id INTEGER PRIMARY KEY,location TEXT,path TEXT,"
+                "medium TEXT,duration REAL,size INTEGER,snapshot_path TEXT)"
+            )
+            # 18349 已有陈旧产物且已登记；1 是同来源的另一条待抽项，不该被顺带带走。
+            connection.execute(
+                "INSERT INTO asset VALUES(18349,'local',?,'video',110.87,2000,'stale.jpg')",
+                (str(root / "one.mp4"),),
+            )
+            connection.execute(
+                "INSERT INTO asset VALUES(1,'local',?,'video',600.0,1000,NULL)",
+                (str(root / "two.mp4"),),
+            )
+            connection.commit()
+            connection.close()
+
+            output_root = root / "out"
+            stale = sheets.output_path(output_root, "local", str(root / "one.mp4"))
+            stale.write_bytes(b"x" * 8192)
+
+            args = sheets.build_parser().parse_args([
+                "--db", str(db), "--workers", "1", "--min-free", "0",
+                "--asset", "18349",
+                "--output-root", str(output_root), "--log-dir", str(root / "log"),
+            ])
+
+            shot: list[str] = []
+
+            def fake_sheet(_ffmpeg, path, _duration, destination, _frames):
+                shot.append(path)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(b"y" * 9000)
+                return True, ""
+
+            choice = type("C", (), {"path": "ffmpeg"})
+            with mock.patch.object(sheets, "make_sheet", fake_sheet),                  mock.patch.object(sheets.FFmpegResolver, "ffmpeg", lambda _self: choice),                  redirect_stdout(io.StringIO()):
+                sheets.run(args)
+
+            connection = sqlite3.connect(db)
+            snapshots = dict(connection.execute("SELECT id,snapshot_path FROM asset").fetchall())
+            connection.close()
+            rewritten = stale.read_bytes()
+
+        self.assertEqual(len(shot), 1, "点名只该抽这一条")
+        self.assertIn("one.mp4", shot[0])
+        self.assertEqual(rewritten[:1], b"y", "陈旧产物必须被真正覆盖")
+        self.assertIsNone(snapshots[1], "没点名的待抽项不该被这一趟带走")
+
     def test_sheets_stops_mid_run_when_the_disk_gate_trips(self):
         """验证接线，不只是 DiskGuard 类本身：起跑通过、运行中触线要真的停并报非零码。"""
         sheets = self.sheets
@@ -165,7 +402,7 @@ class OperationalScriptTests(unittest.TestCase):
                 written.append(path)
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 destination.write_bytes(b"x" * 8192)
-                return True
+                return True, ""
 
             choice = type("C", (), {"path": "ffmpeg"})
             with mock.patch.object(sheets, "make_sheet", fake_sheet), \
@@ -226,6 +463,92 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(selection("all"), "(duration IS NULL OR duration<=0)")
         self.assertEqual(self.probe.build_parser().parse_args([]).redo, "none")
         self.assertEqual(self.probe.build_parser().parse_args(["--redo", "zero"]).redo, "zero")
+
+    def test_probe_can_target_one_asset_whose_recorded_duration_is_wrong(self):
+        """asset 18349 账本记 752.24 秒、真实文件 110.87 秒，--redo 的 0/-1 判据够不着。
+
+        点名重探时不套时长筛选，但计费来源边界必须照旧生效。
+        """
+        probe = self.probe
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "ledger.db"
+            connection = sqlite3.connect(db)
+            connection.execute(
+                "CREATE TABLE asset(id INTEGER PRIMARY KEY,location TEXT,path TEXT,"
+                "medium TEXT,duration REAL,size INTEGER,width INTEGER,height INTEGER,"
+                "vcodec TEXT,fps REAL,has_audio INTEGER,ctx_length TEXT,ctx_orient TEXT,"
+                "ctx_quality TEXT)"
+            )
+            for asset_id, duration in ((18349, 752.24), (1, None)):
+                connection.execute(
+                    "INSERT INTO asset(id,location,path,medium,duration,size) "
+                    "VALUES(?,'local',?,'video',?,1000)",
+                    (asset_id, str(root / f"{asset_id}.mp4"), duration),
+                )
+            connection.commit()
+            connection.close()
+
+            args = probe.build_parser().parse_args([
+                "--db", str(db), "--workers", "1", "--min-free", "0",
+                "--asset", "18349", "--log-dir", str(root / "log"),
+                "--lock", str(root / "probe.lock"),
+            ])
+            self.assertEqual(args.asset, [18349])
+
+            probed: list[str] = []
+            choice = type("C", (), {"path": "ffprobe"})
+
+            def fake_probe(_ffprobe, path, _timeout):
+                probed.append(path)
+                return 110.866667, 1920, 1072, "h264", 30.0, None
+
+            with mock.patch.object(probe, "probe_file", fake_probe),                  mock.patch.object(probe.FFmpegResolver, "ffprobe", lambda _self: choice),                  redirect_stdout(io.StringIO()):
+                probe.run(args)
+
+            connection = sqlite3.connect(db)
+            rows = dict(connection.execute("SELECT id,duration FROM asset").fetchall())
+            connection.close()
+
+        self.assertEqual(len(probed), 1, "点名只该动这一条，不能顺带重探全库")
+        self.assertAlmostEqual(rows[18349], 110.866667, places=5)
+        self.assertIsNone(rows[1], "没点名的未探测条目不该被这一趟带走")
+
+    def test_sheet_retries_reserved_color_metadata_frames(self):
+        """prim:reserved 会被 swscale 拒绝；首次失败后用 bt709 声明兜底重试。
+
+        符玄12.mp4 实测：`scale=480:-1` 报 Error -129，覆盖色彩声明后正常。
+        """
+        sheets = self.sheets
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "sheet.jpg"
+            calls = []
+
+            def fake_run(command, **kwargs):
+                calls.append(list(command))
+                if "-filter_complex" in command:
+                    dest.write_bytes(b"x" * 8192)
+                    return type("R", (), {"returncode": 0})()
+                target = Path(command[-1])
+                if "bt709" in command:
+                    target.write_bytes(b"y" * 2048)
+                    return type("R", (), {"returncode": 0, "stderr": b""})()
+                return type("R", (), {
+                    "returncode": 1,
+                    "stderr": b"[swscale] Unsupported color primaries: reserved",
+                })()
+
+            original = sheets.subprocess.run
+            sheets.subprocess.run = fake_run
+            try:
+                ok, reason = sheets.make_sheet("ffmpeg", "reserved.mp4", 600.0, dest, 9)
+            finally:
+                sheets.subprocess.run = original
+            self.assertTrue(ok, reason)
+            self.assertEqual(
+                sum(1 for c in calls if "bt709" in c), 9,
+                "9 帧都应在首次失败后用色彩覆盖重试",
+            )
 
     def test_code_normalization(self):
         normalise = self.scrape_codes.normalise

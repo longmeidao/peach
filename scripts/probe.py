@@ -21,6 +21,7 @@ from peach.jobs import (
     SourceAccessPolicy,
     require_free_space,
 )
+from peach.media import resolve_case_insensitive
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -42,6 +43,13 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("none", "zero", "failed", "all"),
         default="none",
         help="额外重探已记录但无效的时长：zero=0（软失败）、failed=-1（硬失败）、all=两者",
+    )
+    parser.add_argument(
+        "--asset",
+        type=int,
+        action="append",
+        help="按 id 重探指定资产，绕过时长筛选。用于账本时长与真实文件不符的个案："
+             "这类值看着正常，--redo 的 0/-1 判据够不着",
     )
     parser.add_argument("--allow-metered", action="store_true")
     parser.add_argument("--db", type=Path, default=DATABASE_PATH)
@@ -140,12 +148,21 @@ def run(args: argparse.Namespace) -> int:
         if args.redo != "none":
             log(f"重探已失败记录：--redo {args.redo}")
         connection = sqlite3.connect(args.db)
-        sql = (
-            "SELECT id,path FROM asset WHERE medium='video' AND "
-            + duration_selection(args.redo)
-            + " AND location != 'online'" + source_sql + " ORDER BY size ASC"
-        )
-        parameters: tuple[object, ...] = source_parameters
+        if args.asset:
+            # 显式点名就不再套时长筛选，但计费来源和 online 的边界照旧生效。
+            placeholders = ",".join("?" for _ in args.asset)
+            sql = (
+                f"SELECT id,path FROM asset WHERE medium='video' AND id IN ({placeholders})"
+                " AND location != 'online'" + source_sql + " ORDER BY size ASC"
+            )
+            parameters: tuple[object, ...] = tuple(args.asset) + source_parameters
+        else:
+            sql = (
+                "SELECT id,path FROM asset WHERE medium='video' AND "
+                + duration_selection(args.redo)
+                + " AND location != 'online'" + source_sql + " ORDER BY size ASC"
+            )
+            parameters = source_parameters
         if args.limit:
             sql += " LIMIT ?"
             parameters += (args.limit,)
@@ -175,7 +192,7 @@ def run(args: argparse.Namespace) -> int:
                     return
                 try:
                     duration, width, height, codec, fps, audio = probe_file(
-                        str(choice.path), path, args.timeout
+                        str(choice.path), resolve_case_insensitive(path), args.timeout
                     )
                     if duration <= 0:
                         with lock:

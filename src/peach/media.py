@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Protocol, Sequence
 
 from .repository import LedgerRepository, MediaAsset
+from .segments import HLS_SEGMENT_SECONDS
 from .stash import StashClient
 
 
@@ -17,6 +19,35 @@ def normalized_path(path: Path | str) -> Path:
         return candidate.resolve()
     except OSError:
         return Path(os.path.abspath(os.fspath(candidate)))
+
+
+@lru_cache(maxsize=512)
+def _case_insensitive_match(parent_key: str, name_key: str) -> str | None:
+    """同目录大小写不敏感匹配；只为大小写敏感的挂载层（CloudDrive/APFS）兜底。
+
+    NTFS 上 `Path.is_file()` 已不区分大小写，正常情况不会走到这里。
+    结果按 (parent, name) 缓存，避免同一目录反复 scandir。
+    """
+    target = name_key.casefold()
+    try:
+        with os.scandir(parent_key) as entries:
+            for entry in entries:
+                if entry.is_file() and entry.name.casefold() == target:
+                    return entry.name
+    except OSError:
+        return None
+    return None
+
+
+def resolve_case_insensitive(path: Path | str) -> str:
+    """返回可直接打开的实际路径：原路径不存在时按大小写不敏感匹配同目录文件。"""
+    candidate = Path(path)
+    if candidate.is_file():
+        return str(candidate)
+    matched = _case_insensitive_match(str(candidate.parent), candidate.name)
+    if matched is not None:
+        return str(candidate.parent / matched)
+    return str(candidate)
 
 
 def remap_managed_path(
@@ -55,6 +86,16 @@ class StreamCandidate:
     uri: str
     mime_type: str | None = None
     label: str | None = None
+
+
+@dataclass(frozen=True)
+class StreamPlan:
+    """协议层播放计划；来源层决定是否值得切到短分片。"""
+
+    protocol: str
+    mime_type: str
+    segment_seconds: int | None = None
+    reason: str = ""
 
 
 class MediaNotFound(RuntimeError):
@@ -105,9 +146,12 @@ class FilesystemBackend:
         roots = (self.snapshot_root,) if thumbnail else self.allowed_roots
         if not any(path == root or root in path.parents for root in roots):
             raise MediaUnavailable(asset.id)
-        if not path.is_file():
-            raise MediaUnavailable(asset.id)
-        return path
+        if path.is_file():
+            return path
+        matched = _case_insensitive_match(str(path.parent), path.name)
+        if matched is not None:
+            return path.parent / matched
+        raise MediaUnavailable(asset.id)
 
     def stream_candidates(self, asset: MediaAsset) -> Sequence[StreamCandidate]:
         try:
@@ -187,3 +231,28 @@ class MediaEngine:
         for backend in self.backends:
             candidates.extend(backend.stream_candidates(asset))
         return tuple(candidates)
+
+    def stream_plan(self, asset_id: int, *, mode: str = "auto") -> StreamPlan:
+        """远端挂载的 MP4 默认走标准 Range；HLS 只在显式要求时给出。见 ADR-0016。
+
+        默认 HLS 会把 HEVC 用 `-c copy` 原样装进 MPEG-TS，而 Chromium 的 MSE 不支持
+        TS 里的 HEVC（实测 `isTypeSupported('video/mp2t; codecs="hvc1…"')` 为 false）。
+        数据能进缓冲、时间轴照走，却一帧都解不出来，于是是静默黑屏而不是报错。
+        同一浏览器直接 Range 播放同一个文件可正常出帧。
+        """
+        asset = self.asset(asset_id)
+        suffix = Path(asset.path or asset.name or "").suffix.lower()
+        if (
+            mode == "hls"
+            and asset.location in {"115", "pikpak"}
+            and suffix in {".mp4", ".m4v"}
+            and asset.duration is not None
+            and asset.duration > 0
+        ):
+            return StreamPlan(
+                "hls",
+                "application/vnd.apple.mpegurl",
+                HLS_SEGMENT_SECONDS,
+                "remote-mounted-file",
+            )
+        return StreamPlan("range", "video/mp4", reason="standard-http-range")

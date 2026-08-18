@@ -6,12 +6,14 @@ import argparse
 import hashlib
 import os
 import queue
+import re
 import shutil
 import sqlite3
 import subprocess
 import tempfile
 import threading
 import time
+from collections import Counter
 from pathlib import Path
 
 from peach.config import DATABASE_PATH, FFMPEG_DIR, GENERATED_DIR, LOG_DIR, STATE_DIR
@@ -24,6 +26,7 @@ from peach.jobs import (
     SourceAccessPolicy,
     require_free_space,
 )
+from peach.media import resolve_case_insensitive
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -38,6 +41,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=20.0,
         help="运行期复查磁盘余量的间隔；0 表示每条都查",
+    )
+    parser.add_argument(
+        "--asset",
+        type=int,
+        action="append",
+        help="按 id 只抽指定资产，绕过来源与批量筛选。用于修复个别失败条目，"
+             "避免为一条重跑整个来源的待抽队列",
     )
     parser.add_argument("--allow-metered", action="store_true")
     parser.add_argument("--db", type=Path, default=DATABASE_PATH)
@@ -54,29 +64,61 @@ def output_path(output_root: Path, location: str, path: str) -> Path:
     return directory / f"{digest}.jpg"
 
 
-def make_sheet(ffmpeg: str, path: str, duration: float, destination: Path, frames: int) -> bool:
-    """输入端 seek 抽帧后调用 FFmpeg tile；不线性解码整片。"""
+COLOR_OVERRIDE = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"]
+
+# 只有坏色彩元数据才值得用 bt709 覆盖重试。无条件重试会让网盘超时这类必然失败的文件
+# 每帧都白跑第二次：单帧最坏耗时从 45 秒翻到 90 秒，9 帧就是 13.5 分钟。
+COLOR_METADATA_ERROR = re.compile(
+    r"(reserved|unsupported|invalid)[^\n]{0,60}(color|primaries|trc|space)"
+    r"|(color|primaries|trc|space)[^\n]{0,60}(reserved|unsupported|invalid)",
+    re.IGNORECASE,
+)
+
+
+def _capture_frame(ffmpeg: str, path: str, timestamp: float, destination: Path,
+                   color_override: bool) -> tuple[bool, str]:
+    """抽一帧，返回（是否成功, stderr）。stderr 用于判断值不值得重试。"""
+    command = [ffmpeg, "-y", "-v", "error", "-rw_timeout", "8000000"]
+    if color_override:
+        # 部分网盘视频把色彩原色写成 reserved（非法值），swscale 会拒绝缩放；
+        # 声明为 bt709 只是覆盖坏的元数据，不改动像素。
+        command += COLOR_OVERRIDE
+    command += [
+        "-ss", f"{timestamp:.2f}", "-i", path, "-frames:v", "1",
+        "-vf", "scale=480:-1", "-q:v", "4", str(destination),
+    ]
+    try:
+        completed = subprocess.run(command, capture_output=True, timeout=45)
+    except subprocess.TimeoutExpired:
+        return False, "ffmpeg timeout"
+    ok = destination.is_file() and destination.stat().st_size > 1024
+    return ok, (completed.stderr or b"").decode("utf-8", "replace")
+
+
+def make_sheet(ffmpeg: str, path: str, duration: float, destination: Path,
+               frames: int) -> tuple[bool, str]:
+    """输入端 seek 抽帧后调用 FFmpeg tile；不线性解码整片。
+
+    失败时返回可区分的原因，不能只返回「失败」：asset 12510 与 18349 都失败了一整天，
+    一个是片源头损坏、一个是账本时长记错，光看计数分不出来，也就没法决定该修哪一边。
+    """
     if not duration or duration < 2:
-        return False
+        return False, "no_duration"
     temporary = Path(tempfile.mkdtemp(prefix="sheet_"))
     try:
         captured: list[Path] = []
         for index in range(frames):
             timestamp = duration * (0.03 + 0.94 * (index + 0.5) / frames)
             frame = temporary / f"{index:02d}.jpg"
-            subprocess.run(
-                [
-                    ffmpeg, "-y", "-v", "error", "-rw_timeout", "8000000",
-                    "-ss", f"{timestamp:.2f}", "-i", path, "-frames:v", "1",
-                    "-vf", "scale=480:-1", "-q:v", "4", str(frame),
-                ],
-                capture_output=True,
-                timeout=45,
-            )
-            if frame.is_file() and frame.stat().st_size > 1024:
+            ok, stderr = _capture_frame(ffmpeg, path, timestamp, frame, color_override=False)
+            if not ok and COLOR_METADATA_ERROR.search(stderr):
+                ok, _ = _capture_frame(ffmpeg, path, timestamp, frame, color_override=True)
+            if ok:
                 captured.append(frame)
         if len(captured) < 2:
-            return False
+            # 一帧都解不出来是片源问题；解得出一部分说明片源可用，是账本时长比真实文件长，
+            # 采样点落到了文件末尾之后。两者要修的地方不同。
+            return False, "broken_source" if not captured else "duration_mismatch"
         for index, frame in enumerate(captured):
             target = temporary / f"s{index:02d}.jpg"
             if frame != target:
@@ -91,7 +133,9 @@ def make_sheet(ffmpeg: str, path: str, duration: float, destination: Path, frame
             capture_output=True,
             timeout=60,
         )
-        return destination.is_file() and destination.stat().st_size > 4096
+        if destination.is_file() and destination.stat().st_size > 4096:
+            return True, ""
+        return False, "tile_failed"
     finally:
         shutil.rmtree(temporary, ignore_errors=True)
 
@@ -122,12 +166,23 @@ def run(args: argparse.Namespace) -> int:
         if args.allow_metered:
             log("已显式允许计费来源")
         connection = sqlite3.connect(args.db)
-        sql = (
-            "SELECT id,location,path,duration FROM asset WHERE medium='video' "
-            "AND snapshot_path IS NULL AND location != 'online' AND duration > 2"
-            + source_sql + " ORDER BY size DESC"
-        )
-        parameters: tuple[object, ...] = source_parameters
+        if args.asset:
+            # 点名重抽时不套 snapshot_path IS NULL：修完时长要重抽的那条，可能已经带着
+            # 上一次的错误结果。计费来源和 online 的边界照旧生效。
+            placeholders = ",".join("?" for _ in args.asset)
+            sql = (
+                "SELECT id,location,path,duration FROM asset WHERE medium='video' "
+                f"AND id IN ({placeholders}) AND location != 'online' AND duration > 2"
+                + source_sql + " ORDER BY size DESC"
+            )
+            parameters: tuple[object, ...] = tuple(args.asset) + source_parameters
+        else:
+            sql = (
+                "SELECT id,location,path,duration FROM asset WHERE medium='video' "
+                "AND snapshot_path IS NULL AND location != 'online' AND duration > 2"
+                + source_sql + " ORDER BY size DESC"
+            )
+            parameters = source_parameters
         if args.limit:
             sql += " LIMIT ?"
             parameters += (args.limit,)
@@ -144,6 +199,7 @@ def run(args: argparse.Namespace) -> int:
         for task in tasks:
             pending.put(task)
         counters = {"done": 0, "failed": 0, "existing": 0}
+        failure_reasons: Counter[str] = Counter()
         started = time.time()
         # 起跑线检查拦不住运行期把盘吃光的第三方缓存；这里边跑边看。
         guard = DiskGuard(Path("C:/"), args.min_free, args.disk_check_secs)
@@ -158,18 +214,28 @@ def run(args: argparse.Namespace) -> int:
                     return
                 destination = output_path(args.output_root, location, path)
                 try:
-                    if destination.is_file() and destination.stat().st_size > 4096:
+                    if (not args.asset and destination.is_file()
+                            and destination.stat().st_size > 4096):
                         results.put((str(destination), asset_id))
                         with lock:
                             counters["existing"] += 1
-                    elif make_sheet(str(ffmpeg.path), path, duration, destination, args.frames):
-                        results.put((str(destination), asset_id))
                     else:
-                        with lock:
-                            counters["failed"] += 1
-                except Exception:
+                        ok, reason = make_sheet(
+                            str(ffmpeg.path), resolve_case_insensitive(path), duration,
+                            destination, args.frames,
+                        )
+                        if ok:
+                            results.put((str(destination), asset_id))
+                        else:
+                            with lock:
+                                counters["failed"] += 1
+                                failure_reasons[reason] += 1
+                            log(f"[fail] asset {asset_id} {reason} {path}")
+                except Exception as exc:
                     with lock:
                         counters["failed"] += 1
+                        failure_reasons["exception"] += 1
+                    log(f"[fail] asset {asset_id} exception {type(exc).__name__} {path}")
                 finally:
                     with lock:
                         counters["done"] += 1
@@ -206,6 +272,9 @@ def run(args: argparse.Namespace) -> int:
             connection.commit()
         elapsed = time.time() - started
         log(f"完成 {counters['done']:,}，失败 {counters['failed']}，已存在 {counters['existing']}，耗时 {elapsed/3600:.2f} 小时")
+        if failure_reasons:
+            breakdown = "，".join(f"{reason} {count}" for reason, count in failure_reasons.most_common())
+            log(f"失败原因：{breakdown}")
         connection.close()
         if stop_reason:
             # 已完成的部分都已入库；磁盘闸门中止不能报成正常完成，否则续跑决策会被误导。

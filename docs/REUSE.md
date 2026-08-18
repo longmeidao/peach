@@ -56,8 +56,8 @@
 
 已完成：共享 Media/Job/HTTP 边界、feedparser、Pillow、Beautiful Soup、FTS5、可安全导入的批处理脚本和按任务范围终止进程。
 
-1. Video.js 已接管详情播放；下一步增加 Media Engine 的 HLS/DASH 流方案 API，让 CloudDrive 使用短分片而不是依赖虚拟盘固定块预取。
+1. Video.js 已接管详情播放；`MediaEngine.stream_plan` 已让 115/PikPak 原生 MP4 使用 HLS 临时短片段，仍需补自适应码率、多路清单和生产验收。CloudDrive 的虚拟盘固定块预取仍属于来源层成本。
 2. 编写新来源适配器前，先配置并评估 Stash 元数据 Provider。
 3. 将剩余 status/suggest/ledger 应用逻辑移到 repository/application 端口，再删除旧 CLI 表面。
 4. Peach 不做 token/成本日志扫描器，也不绑定 T3 Code 私有 RPC；使用其界面、CodexBar 和官方实时配额入口。
-5. “模仿/参考/对齐”不等于允许凭记忆近似。先取得并登记可复现证据；否则标记 `未取得`，不得作为忠实复刻发布。
+5. 「模仿/参考/对齐」不等于允许凭记忆近似。先取得并登记可复现证据；否则标记 `未取得`，不得作为忠实复刻发布。2026-08-17 的 YouTube 详情与 Shorts 动作栏参考已登记在 `docs/HANDOFF.md`，Peach 只复用可测量的层级、尺寸和状态语义。

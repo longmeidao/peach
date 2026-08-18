@@ -6,6 +6,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $Pythonw = Join-Path $ProjectRoot '.venv\Scripts\pythonw.exe'
+$BuiltTray = Join-Path $ProjectRoot 'dist\Peach\Peach.exe'
 $Startup = [Environment]::GetFolderPath('Startup')
 $ShortcutPath = Join-Path $Startup 'Peach.lnk'
 
@@ -40,11 +41,12 @@ if (-not (Test-Path -LiteralPath $Pythonw -PathType Leaf)) {
 
 $Shell = New-Object -ComObject WScript.Shell
 $Shortcut = $Shell.CreateShortcut($ShortcutPath)
-$Shortcut.TargetPath = $Pythonw
-$Shortcut.Arguments = '-m peach.tray'
-$Shortcut.WorkingDirectory = $ProjectRoot
+$Shortcut.TargetPath = if (Test-Path -LiteralPath $BuiltTray -PathType Leaf) { $BuiltTray } else { $Pythonw }
+$Shortcut.Arguments = if (Test-Path -LiteralPath $BuiltTray -PathType Leaf) { '' } else { '-m peach.tray' }
+$Shortcut.WorkingDirectory = if (Test-Path -LiteralPath $BuiltTray -PathType Leaf) { Split-Path -Parent $BuiltTray } else { $ProjectRoot }
 $Shortcut.Description = 'Start Peach and show its system tray menu'
-$Shortcut.IconLocation = "$Pythonw,0"
+$Shortcut.IconLocation = if (Test-Path -LiteralPath $BuiltTray -PathType Leaf) { "$BuiltTray,0" } else { "$Pythonw,0" }
+$Shortcut.WindowStyle = 7
 $Shortcut.Save()
 
 & $PSCommandPath -Action Status

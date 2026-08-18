@@ -2,9 +2,9 @@
 
 Peach（蜜桃）是一个单用户、本地优先的个人媒体系统：统一索引本地/网盘/在线资产，记录真实消费反馈，并逐步提供搜索、推荐和追更。
 
-当前界面以作品、女优、厂牌、创作者和系列实体为导航：名字进入带简介、别名和渠道链接的资料页，内容标签才直接叠加筛选。“稍后看”和“喜欢/为什么喜欢”使用独立 profile 数据，不和“看过/不喜欢”混用；用户原始偏好说明是本机真相，AI 以后只能提出可审核的归一化候选。
+当前界面以作品、女优、厂牌、创作者和系列实体为导航：名字进入带简介、别名和渠道链接的资料页，内容标签才直接叠加筛选：首页默认排除竖屏视频，竖屏入口保留全量竖屏集合并可直接进入指定视频的沉浸模式。「稍后看」和「喜欢/为什么喜欢」使用独立 profile 数据，不和「看过/不喜欢」混用；用户原始偏好说明是本机真相，AI 以后只能提出可审核的归一化候选。
 
-顶栏齿轮打开设置：自动换一批默认每 5 分钟执行一次，只在首页空闲态生效；还可调整每批作品数、默认排序、悬停放大延时、快进/快退秒数、搜索记录条数和相关推荐数量。设置只保存在当前浏览器。视频环境光是播放器的默认视觉效果，不再暴露成技术开关。详情页的闪光图标用于标记“寻找高清、无水印或完整版”，该状态写入 ledger，但不会删除当前文件。
+顶栏齿轮打开设置：自动换一批默认每 5 分钟执行一次，只在首页空闲态生效；还可调整每批作品数、默认排序、悬停放大延时、快进/快退秒数、搜索记录条数和相关推荐数量。体验设置保存在当前浏览器，搜索历史写入 ledger 并在访问端之间同步。视频环境光是播放器的默认视觉效果，不再暴露成技术开关。详情页的闪光图标用于标记「寻找高清、无水印或完整版」，该状态写入 ledger，但不会删除当前文件。
 
 ## 边界
 
@@ -19,7 +19,7 @@ Peach（蜜桃）是一个单用户、本地优先的个人媒体系统：统一
 
 `R:\peach-data` 使用固定分层：`database` 保存真相库，`generated` 保存可再生成的视觉资产，`sources` 保存原始分析输入，`state` 保存人工维护状态，`secrets` 保存本机凭据材料，`logs` 保存运行记录，`archive` 保存历史备份，`inbox` 是临时下载落地区，`tools` 保存不进入 Git 的本机运行时工具。
 
-详情播放器固定使用本地自托管 Video.js 8.23.9：MP4/WebM/Ogg 走标准 HTTP Range，显示账本中的稳定总时长、±10 秒控制和播放统计；AVI 等不兼容容器首次播放时由 Peach 管理的 FFmpeg 生成 `generated/transcodes` 下的 H.264/AAC MP4 缓存。缓存可删除重建，原媒体永不改写。
+详情播放器固定使用本地自托管 Video.js 8.23.9：本地 MP4/WebM/Ogg 走标准 HTTP Range；115/PikPak 的已知时长原生 MP4 通过 `stream-plan` 改走 6 秒 HLS 临时片段，跳转时只生成目标时间附近的片段。两者都显示账本中的稳定总时长、±10 秒控制和播放统计；AVI 等不兼容容器首次播放时由 Peach 管理的 FFmpeg 生成 `generated/transcodes` 下的 H.264/AAC MP4 缓存。缓存可删除重建，原媒体永不改写。
 
 ## 结构
 
@@ -102,9 +102,9 @@ Per-Monitor V2 DPI，单击打开 `https://peach.local/`；右键可查看状态
 
 每台访问设备都必须单独信任 `peach-local-ca.crt`，只需安装一次，证书续签仍可沿用同一 CA：
 
-- macOS：把 CA 拖入“钥匙串访问”的“登录”或“系统”钥匙串，双击后在“信任”中将 SSL
+- macOS：把 CA 拖入「钥匙串访问」的「登录」或「系统」钥匙串，双击后在「信任」中将 SSL
   设为始终信任。Apple 官方步骤：<https://support.apple.com/guide/keychain-access/kyca11871/mac>。
-- iPhone/iPad：先安装 CA 描述文件，再进入“设置 → 通用 → 关于本机 → 证书信任设置”，
+- iPhone/iPad：先安装 CA 描述文件，再进入「设置 → 通用 → 关于本机 → 证书信任设置」，
   为该根证书开启完全信任。Apple 官方步骤：<https://support.apple.com/en-us/102390>。
 - 只传 `peach-local-ca.crt`。绝不传 `peach-local-ca.key`、`peach.key` 或整个 `tls` 目录。
 
@@ -130,6 +130,7 @@ Per-Monitor V2 DPI，单击打开 `https://peach.local/`；右键可查看状态
 | `/tags` | 标签管理，支持字母表与标签云 |
 | `/stats` | 统计 |
 | `/immerse` | 沉浸模式 |
+| `/trash` | 回收站 |
 | `/mix/{seed_id}/{item_id}` | 自动 Mix 播放器与右侧队列 |
 
 公共状态和媒体：
@@ -137,8 +138,10 @@ Per-Monitor V2 DPI，单击打开 `https://peach.local/`；右键可查看状态
 | URL | 用途 |
 |---|---|
 | `/healthz` | 无副作用健康状态 |
+| `/api/stream-plan?id={asset_id}` | 为远端原生 MP4 选择 HLS 或标准 Range |
 | `/favicon.svg` | Peach 图标 |
 | `/stream?id={asset_id}` | 原片或兼容转码的 Range 流 |
+| `/stream/hls/{asset_id}/index.m3u8` | 远端按时间定位的 HLS VOD 清单 |
 | `/thumb?id={asset_id}` | 缩略图 |
 | `/poster?id={asset_id}&c={0..8}` | 海报/接触表格子 |
 | `/avatar?id={asset_id}` | 作品代表头像 |
@@ -147,11 +150,11 @@ Per-Monitor V2 DPI，单击打开 `https://peach.local/`；右键可查看状态
 
 只读 API：`GET /api/items`、`/api/item`、`/api/entity`、`/api/index`、`/api/stats`、
 `/api/tops`、`/api/ads`、`/api/related`、`/api/facets`、`/api/providers`、
-`/api/providers/opencode-go/models`。
+`/api/providers/opencode-go/models`、`/api/search-history`。
 
 写入 API：`POST /api/activity`、`/api/play`、`/api/feedback`、`/api/watch-later`、
-`/api/preference`、`/api/item-tag`、`/api/batch`。标签隐藏只写本地 profile 覆盖，不销毁
-原始来源断言。除上述明确端点外，`/api/*` 返回 404。公共页面不再使用
+`/api/preference`、`/api/item-tag`、`/api/batch`、`/api/trash/empty`。标签隐藏只写本地 profile 覆盖，不销毁
+原始来源断言；搜索历史通过 `POST /api/search-history` 共享写入账本；媒体先进入回收站，只有显式清空回收站才永久删除。除上述明确端点外，`/api/*` 返回 404。公共页面不再使用
 `/entity/{kind}/{name}`；内部 JSON 的 `/api/entity` 只是兼容契约，不暴露数据库路由结构。
 
 并行代码任务不共享编辑目录。由协调者在主目录创建独立 worktree：

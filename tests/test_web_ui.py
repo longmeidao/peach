@@ -9,283 +9,472 @@ class WebUiSourceTests(unittest.TestCase):
             encoding="utf-8"
         )
 
+    # 页面源断言必须自带有界失败信息。assertIn 失败时会把整个 index.html（约 189 KB）
+    # 原样塞进错误消息，一条失败就产出 195 KB 输出；工具管道遇到超大输出会转存成文件，
+    # 看起来就像「整个会话输出消失」。真实成因是断言消息，不是测试竞态或运行器挂起。
+    def assertPageContains(self, needle: str, message: str = ""):
+        if needle not in self.page:
+            self.fail(f"index.html 缺少：{needle!r}" + (f"（{message}）" if message else ""))
+
+    def assertPageLacks(self, needle: str, message: str = ""):
+        if needle in self.page:
+            self.fail(f"index.html 不应再出现：{needle!r}" + (f"（{message}）" if message else ""))
+
     def test_studio_metadata_is_not_compiled_as_inline_javascript(self):
-        self.assertNotIn('onerror="this.parentNode.innerHTML=', self.page)
-        self.assertNotIn('onload="if(this.naturalWidth', self.page)
-        self.assertIn("img.addEventListener('error',fallback", self.page)
+        self.assertPageLacks('onerror="this.parentNode.innerHTML=')
+        self.assertPageLacks('onload="if(this.naturalWidth')
+        self.assertPageContains("img.addEventListener('error',fallback")
+
+    def test_brand_icon_uses_shared_square_png(self):
+        self.assertPageContains('<link rel="icon" href="/peach-logo.png" type="image/png">')
+        self.assertPageContains('<img class="mark" src="/peach-logo.png" alt="">')
 
     def test_entity_routes_are_semantic_and_not_model_shaped(self):
-        self.assertNotIn("route(`/entity/", self.page)
-        self.assertIn("performer:'performers'", self.page)
-        self.assertIn("studio:'studios'", self.page)
-        self.assertIn("creator:'creators'", self.page)
+        self.assertPageLacks("route(`/entity/")
+        self.assertPageContains("performer:'performers'")
+        self.assertPageContains("studio:'studios'")
+        self.assertPageContains("creator:'creators'")
 
     def test_detail_close_disposes_playback_source(self):
-        self.assertIn("function disposeStage", self.page)
-        self.assertIn("video.pause();video.removeAttribute('src');video.load();video.remove()", self.page)
-        self.assertIn("$('#closeStage').onclick=()=>disposeStage(true)", self.page)
-        self.assertIn("function cancelDetailStream()", self.page)
-        self.assertIn("/api/stream-cancel?session=", self.page)
-        self.assertIn("keepalive:true", self.page)
-        self.assertIn("dataset.peachStreamCancel=JSON.stringify(result)", self.page)
-        self.assertIn("detailPlayer.src({src:detailStreamUrl(it.id)", self.page)
-        self.assertIn("detailPlayer.dispose()", self.page)
+        self.assertPageContains("function disposeStage")
+        self.assertPageContains("video.pause();video.removeAttribute('src');video.load();video.remove()")
+        self.assertPageContains(
+            "document.body.classList.remove('detail-open');current=null;activeMix=null;\n  scheduleStickySurfaces();"
+        )
+        self.assertPageContains("$('#closeStage').onclick=()=>disposeStage(true)")
+        self.assertPageContains("function cancelDetailStream()")
+        self.assertPageContains("/api/stream-cancel?session=")
+        self.assertPageContains("keepalive:true")
+        self.assertPageContains("dataset.peachStreamCancel=JSON.stringify(result)")
+        self.assertPageContains("/api/stream-plan?id=")
+        self.assertPageContains("detailStreamSource(it).then(source=>")
+        self.assertPageContains("fallbackUsed=false")
+        self.assertPageContains("player.src(directDetailSource(it))")
+        self.assertPageContains("detailPlayer.dispose()")
 
     def test_detail_uses_pinned_videojs_and_authoritative_duration(self):
-        self.assertIn('/vendor/videojs/8.23.9/video.min.js', self.page)
-        self.assertIn('/vendor/videojs/8.23.9/video-js.min.css', self.page)
-        self.assertIn("function mountDetailPlayer(it,video,autoplay)", self.page)
-        self.assertIn("detailPlayer.duration(expected)", self.page)
-        self.assertIn("['loadstart','loadedmetadata','durationchange','error']", self.page)
-        self.assertIn("const d=it.duration||v.duration||0", self.page)
-        self.assertIn("skipButtons:{backward:appSettings.seekSeconds,forward:appSettings.seekSeconds}", self.page)
+        self.assertPageContains('/vendor/videojs/8.23.9/video.min.js')
+        self.assertPageContains('/vendor/videojs/8.23.9/video-js.min.css')
+        self.assertPageContains("function mountDetailPlayer(it,video,autoplay)")
+        self.assertPageContains("detailPlayer.duration(expected)")
+        self.assertPageContains("['loadstart','loadedmetadata','durationchange','error']")
+        self.assertPageContains("const d=it.duration||v.duration||0")
+        self.assertPageContains("skipButtons:{backward:appSettings.seekSeconds,forward:appSettings.seekSeconds}")
 
     def test_player_stats_cover_direct_range_and_future_segmented_streams(self):
-        self.assertIn('id="playerStatsBtn"', self.page)
-        self.assertIn("HTTP Range", self.page)
-        self.assertIn("bufferedAhead(video)", self.page)
-        self.assertIn("getVideoPlaybackQuality", self.page)
-        self.assertIn("?.vhs?.stats", self.page)
+        self.assertPageContains('id="playerStatsBtn"')
+        self.assertPageContains("HTTP Range")
+        self.assertPageContains("bufferedAhead(video)")
+        self.assertPageContains("getVideoPlaybackQuality")
+        self.assertPageContains("?.vhs?.stats")
+        self.assertPageContains("application/vnd.apple.mpegurl")
+        self.assertPageContains("/stream/hls/")
+
+    def test_fullscreen_uses_the_entire_player_and_reports_loading_speed(self):
+        self.assertPageContains(".vwrap>.video-js.vjs-fullscreen")
+        self.assertPageContains("max-height:none!important")
+        self.assertPageContains('id="playerNet"')
+        self.assertPageContains("function streamSpeedBits(id,session='')")
+        self.assertPageContains("function fmtSpeed(bits)")
+        self.assertPageContains("加载速度 ${fmtSpeed")
+
+    def test_immerse_mode_has_loading_state_and_full_viewport_cover(self):
+        self.assertPageContains('id="tokLoader"')
+        self.assertPageContains('class="tokspinner"')
+        self.assertPageContains("function setTokLoading(on,label='加载中…',it=null)")
+        self.assertPageContains("function waitTokReady(video,timeout=15000)")
+        self.assertPageContains("width:100%;height:100%;left:50%;transform:translateX(-50%);object-fit:cover")
+        self.assertPageContains("<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><use href=\"#i-play\"/>")
+        self.assertPageContains("await tokShow()")
 
     def test_tag_geometry_uses_shared_tokens(self):
-        self.assertIn("--tag-radius:999px", self.page)
-        self.assertIn("border-radius:var(--tag-radius)", self.page)
-        self.assertIn("height:40px;padding:0 20px", self.page)
-        self.assertIn("overflow-x:auto;overflow-y:hidden", self.page)
+        self.assertPageContains("--tag-radius:999px")
+        self.assertPageContains("border-radius:var(--tag-radius)")
+        self.assertPageContains("height:40px;padding:0 20px")
+        self.assertPageContains("overflow-x:auto;overflow-y:hidden")
 
     def test_multiselect_has_explicit_mode_range_and_toggle_controls(self):
-        self.assertIn('id="selectMode"', self.page)
-        self.assertIn("e.shiftKey||e.ctrlKey||e.metaKey||selectMode", self.page)
-        self.assertIn("visibleCardIds()", self.page)
-        self.assertIn("lastSelectedId", self.page)
-        self.assertIn('class="selectionMark"', self.page)
+        self.assertPageContains('id="selectMode"')
+        self.assertPageContains("e.shiftKey||e.ctrlKey||e.metaKey||selectMode")
+        self.assertPageContains("visibleCardIds()")
+        self.assertPageContains("lastSelectedId")
+        self.assertPageContains('class="selectionMark"')
+        self.assertPageContains("if(selectMode||e.shiftKey||e.ctrlKey||e.metaKey)")
+        self.assertPageContains(".select-mode .cardopenhit,.select-mode .hovertools,.select-mode .previewcounter")
+        self.assertPageContains("if(selectMode)releaseHoverPreviews()")
+
+    def test_manage_collects_the_four_admin_entries_behind_one_top_level_icon(self):
+        """统计、疑似广告、回收站、人工复核各占一个顶层图标时，侧栏一半是管理入口。
+
+        它们合并到「管理」下的二级导航；URL 保持原样，只是多了一条共用导航条。
+        """
+        self.assertPageContains("['manage','管理','settings']")
+        self.assertPageContains("const MANAGE_SECTIONS=[")
+        for section in ("'stats','统计'", "'ads','疑似广告'", "'trash','回收站'", "'review','人工复核'"):
+            self.assertPageContains(section)
+        self.assertPageContains("function manageSection()")
+        self.assertPageContains("function buildManageBar()")
+        self.assertPageContains('id="managebar"')
+        self.assertPageContains("if(k==='manage'){openManage();return}")
+        # 顶层图标里不再各自占位
+        edge = self.page.split("const EDGE_ICONS=[", 1)[1].split("];", 1)[0]
+        for gone in ("'trash'", "'ads'", "'stats'", "'review'"):
+            self.assertNotIn(gone, edge, f"{gone} 应该已经收进管理，不再是顶层入口")
+        self.assertIn("'manage'", edge)
+
+    def test_review_reuses_the_standard_selection_instead_of_its_own_mode(self):
+        """复核页曾自造「多选模式」按钮加框选，只在这一页生效，用户得先发现再记住。
+
+        现在与主网格一致：点一下切换，Shift 选一段。
+        """
+        self.assertPageLacks("reviewSelectMode")
+        self.assertPageLacks("reviewmarquee")
+        self.assertPageLacks("review-select-mode")
+        self.assertPageContains("function wireReviewAssets(root)")
+        self.assertPageContains("if(e.shiftKey&&anchor!==null)")
+        self.assertPageContains("[data-pick-all]")
+        self.assertPageContains("[data-pick-none]")
+        self.assertPageContains('[data-review-asset][aria-pressed="true"]')
+        self.assertPageContains("const canApprove=reviewCategory!=='creator_tags'||String(row.status||'').trim()==='candidate'")
+        self.assertPageContains("${canApprove?'':' disabled'}")
+
+    def test_surface_navigation_clears_stale_panels_and_ignores_late_responses(self):
+        """跨页面请求返回较慢时，旧统计/复核响应不能覆盖当前页面。"""
+        self.assertPageContains("if(location.pathname!=='/review')return")
+        self.assertPageContains("if(requestSeq!==indexRequestSeq||location.pathname!=='/'+kind)return")
+        self.assertPageContains("decodeURIComponent(location.pathname)!==decodeURIComponent(expectedPath)")
+        index = self.page.split("async function openIndex", 1)[1].split("const d=await api", 1)[0]
+        self.assertIn("showHomeSurfaces();", index)
+        self.assertPageContains("if(!$('#stats').hidden){\n    if(location.pathname==='/review'){await openReview(false);return}")
+
+    def test_immersive_close_restores_the_home_surface(self):
+        self.assertPageContains("document.body.style.overflow='';showHomeSurfaces();load(true)")
+
+    def test_review_asset_picker_wraps_instead_of_scrolling_sideways(self):
+        """一个创作者可能有几十条候选，横向滚动条要一直拉才能看完。"""
+        self.assertPageContains(".reviewasset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr))")
+        self.assertPageContains(".reviewasset.picked{opacity:1;outline:2px solid var(--tungsten)")
+        self.assertPageContains('.reviewitem[data-decision="approved"]::before{background:var(--keep)}')
+
+    def test_top_level_highlight_is_exclusive_and_covers_index_pages(self):
+        """首页原来只看 state.state，进管理区和索引页时它仍然亮着，两个入口同时高亮。"""
+        self.assertPageContains("if(k==='performers'||k==='tags')return path==='/'+k")
+        self.assertPageContains("if(k==='')return path==='/'&&!manageSection()&&!state.state")
+        self.assertPageContains("buildEdge();     // 顶层高亮跟随管理区")
+
+    def test_manage_surfaces_hide_the_home_rails(self):
+        """回收站和疑似广告是行政列表，不该顶着首页的人物/厂牌横条。
+
+        `showHomeSurfaces` 会先把横条恢复出来，所以隐藏必须排在它之后，否则被立刻覆盖。
+        """
+        self.assertPageContains("if(current){$('#tiers').style.display='none';$('#tagbar').style.display='none'}")
+        home = self.page.split("function showHomeSurfaces(){", 1)[1].split("}", 1)[0]
+        self.assertLess(home.index("$('#tiers').style.display=''"), home.index("buildManageBar()"),
+                        "buildManageBar 必须排在恢复首页横条之后，否则隐藏会被覆盖")
+
+    def test_search_suggestions_come_from_real_data_in_bulk(self):
+        """写死的 6 个词翻两次就重复。顶部聚合只有几十条，也不够；索引接口一次给近千条。"""
+        self.assertPageContains("async function loadSearchPool()")
+        self.assertPageContains("['performers','creators','tags'].map(")
+        self.assertPageContains("`/api/index?kind=${kind}&limit=400`")
+        self.assertPageContains("Promise.all([loadSearchHistory(),loadSearchPool()])")
+        self.assertPageContains("[...searchPool()]")
+
+    def test_admin_surfaces_fill_wide_screens(self):
+        """统计和复核是信息密集的行政界面，宽屏下居中会浪费两侧空间。"""
+        self.assertPageContains(".stats{padding:8px 0 42px}")
+        self.assertPageContains(".review{padding:8px 0 42px}")
+        self.assertPageLacks("max-width:1440px")
+
+    def test_returning_home_from_any_surface_moves_the_highlight(self):
+        """点回首页时路径还停在 /review 之类上，navOn('') 仍然为假，高亮不切换。"""
+        self.assertPageContains("if(location.pathname!=='/')route('/');")
+        self.assertEqual(self.page.count("if(location.pathname!=='/')route('/');"), 2,
+                         "抽屉和窄栏两处导航都要修")
+
+    def test_ads_icon_matches_the_lucide_stroke_style(self):
+        """图标库里没有表示广告的图形，自绘的感叹号必须和其余图标同风格。"""
+        self.assertPageContains('<symbol id="i-alert" viewBox="0 0 24 24">')
+        self.assertPageContains("['ads','疑似广告','alert']")
 
     def test_pending_delete_is_visible_without_deleting_media(self):
-        self.assertIn("it.disposal==='pending'?'pending-delete':''", self.page)
-        self.assertIn(".card.pending-delete .poster", self.page)
-        self.assertIn('<b>待删</b>', self.page)
+        self.assertPageContains("it.disposal==='trash'?'pending-delete':''")
+        self.assertPageContains(".card.pending-delete .poster")
+        self.assertPageContains('<b>回收站</b>')
 
     def test_surface_has_measured_beeg_glow_geometry(self):
-        self.assertIn("height:49vh", self.page)
-        self.assertIn("animation:ambient-in .8s ease .5s both", self.page)
+        self.assertPageContains("height:49vh")
+        self.assertPageContains("linear-gradient(to bottom,rgba(0,0,0,.6),var(--ground))")
+        self.assertPageContains("animation:ambient-in .8s ease .5s both")
 
     def test_detail_deduplicates_identity_and_supports_tag_editing(self):
-        self.assertIn("const identitySeen=new Set()", self.page)
-        self.assertIn("data-remove-tag", self.page)
-        self.assertIn("/api/item-tag", self.page)
-        self.assertIn('class="tagplus"', self.page)
+        self.assertPageContains("const identitySeen=new Set()")
+        self.assertPageContains("data-remove-tag")
+        self.assertPageContains("/api/item-tag")
+        self.assertPageContains('class="tagplus"')
 
     def test_tag_picker_supports_search_recent_selection_and_keyboard(self):
-        self.assertIn('class="tagpicker"', self.page)
-        self.assertIn("peach.recentTags", self.page)
-        self.assertIn("最近使用", self.page)
-        self.assertIn("e.key==='ArrowDown'||e.key==='ArrowUp'", self.page)
-        self.assertIn("e.key==='Escape'", self.page)
+        self.assertPageContains('class="tagpicker"')
+        self.assertPageContains("peach.recentTags")
+        self.assertPageContains("最近使用")
+        self.assertPageContains("e.key==='ArrowDown'||e.key==='ArrowUp'")
+        self.assertPageContains("e.key==='Escape'")
 
     def test_source_icons_are_visible_in_detail_and_list_badges(self):
-        self.assertIn(".srcbig svg{stroke:currentColor;fill:none", self.page)
-        self.assertIn("local:icon('hard-drive')", self.page)
+        self.assertPageContains(".srcbig svg{stroke:currentColor;fill:none")
+        self.assertPageContains("local:icon('hard-drive')")
 
     def test_beeg_evidence_driven_surfaces_are_translucent_and_rail_is_continuous(self):
-        self.assertIn(".brandpill{", self.page)
-        self.assertIn("background:var(--overlay-5);border:1px solid var(--border-10)", self.page)
-        self.assertIn("border:1px solid var(--border-15);\n  border-radius:999px;background:transparent", self.page)
-        self.assertIn("--overlay-5:rgba(245,250,255,.05)", self.page)
-        self.assertIn("--border-15:rgba(245,250,255,.15)", self.page)
-        self.assertIn("background:var(--ground);\n  border-right:0", self.page)
-        self.assertIn("['performers','艺人','user-round']", self.page)
-        self.assertIn("['tags','标签','tags']", self.page)
+        self.assertPageContains(".brandpill{")
+        self.assertPageContains("background:var(--overlay-5);border:1px solid var(--border-10)")
+        self.assertPageContains("border:1px solid var(--border-15);\n  border-radius:999px;background:transparent")
+        self.assertPageContains("--overlay-5:rgba(245,250,255,.05)")
+        self.assertPageContains("--border-15:rgba(245,250,255,.15)")
+        self.assertPageContains("background:var(--ground);\n  border-right:0")
+        self.assertPageContains("['performers','艺人','user-round']")
+        self.assertPageContains("['tags','标签','tags']")
 
     def test_entity_profile_hides_home_facets_and_renders_context(self):
-        self.assertIn("body.entity-open #tiers,body.entity-open #tagbar{display:none}", self.page)
-        self.assertIn('src="/logo?studio=${encodeURIComponent(d.canonical_name)}"', self.page)
-        self.assertIn('class="entitytags"', self.page)
-        self.assertIn('class="relatedpeople"', self.page)
-        self.assertIn("data-related-performer", self.page)
+        self.assertPageContains("body.entity-open #tiers,body.entity-open #tagbar{display:none}")
+        self.assertPageContains('src="/logo?studio=${encodeURIComponent(d.canonical_name)}"')
+        self.assertPageContains('class="entitytags"')
+        self.assertPageContains('class="relatedpeople"')
+        self.assertPageContains("data-related-performer")
 
     def test_every_home_navigation_restores_the_shared_facets(self):
-        self.assertIn("function showHomeSurfaces()", self.page)
-        self.assertIn("$('#tiers').style.display='';$('#tagbar').style.display=''", self.page)
-        self.assertIn("function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}", self.page)
-        self.assertIn("async function load(reset)", self.page)
-        self.assertIn("showHomeSurfaces();\n  if(reset)offset=0", self.page)
-        self.assertIn("showHomeSurfaces();disposeStage(false)", self.page)
+        self.assertPageContains("function showHomeSurfaces()")
+        self.assertPageContains("$('#tiers').style.display='';$('#tagbar').style.display=''")
+        self.assertPageContains("function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}")
+        self.assertPageContains("async function load(reset)")
+        self.assertPageContains("showHomeSurfaces();\n  if(reset)offset=0")
+        self.assertPageContains("showHomeSurfaces();disposeStage(false)")
 
     def test_entity_tags_filter_inside_the_current_entity_page(self):
-        self.assertIn("if(entityTag)p.set('tag',entityTag)", self.page)
-        self.assertIn("async function updateEntityCollection", self.page)
-        self.assertIn("updateEntityCollection(kind,name,next,true)", self.page)
-        self.assertIn("renderEntityCollection(kind,name,items,entityTag)", self.page)
-        self.assertNotIn("openEntity(kind,name,true,next)", self.page)
+        self.assertPageContains("if(entityTag)p.set('tag',entityTag)")
+        self.assertPageContains("async function updateEntityCollection")
+        self.assertPageContains("updateEntityCollection(kind,name,next,true)")
+        self.assertPageContains("renderEntityCollection(kind,name,items,entityTag)")
+        self.assertPageLacks("openEntity(kind,name,true,next)")
         self.assertNotIn(
             "document.body.classList.remove('entity-open');$('#index').hidden=true;state.tag=b.dataset.entityTag",
             self.page,
         )
 
     def test_large_collections_render_in_bounded_batches(self):
-        self.assertIn("p.set('limit','48')", self.page)
-        self.assertIn("if(offset)p.set('count','0')", self.page)
-        self.assertIn('class="entitymore"', self.page)
-        self.assertIn("const indexLimit=people?120:180", self.page)
-        self.assertIn('class="indexmore"', self.page)
-        self.assertIn("adsBatch.items.slice(offset,offset+appSettings.batchSize)", self.page)
-        self.assertIn("p.set('limit',appSettings.batchSize)", self.page)
-        self.assertIn("offset+=appSettings.batchSize", self.page)
-        self.assertIn("if(!reset)p.set('count','0')", self.page)
-        self.assertIn("!listLoading&&!$('#loadSentinel').hidden", self.page)
-        self.assertIn("indexRequestSeq", self.page)
-        self.assertIn("barsRequestSeq", self.page)
-        self.assertIn("async function getBarsData()", self.page)
-        self.assertIn("Date.now()-barsDataAt<30000", self.page)
-        self.assertNotIn("p.set('limit','120')", self.page)
+        self.assertPageContains("p.set('limit','48')")
+        self.assertPageContains("if(offset)p.set('count','0')")
+        self.assertPageContains('class="entitymore"')
+        self.assertPageContains("const indexLimit=people?120:180")
+        self.assertPageContains('class="indexmore"')
+        self.assertPageContains("adsBatch.items.slice(offset,offset+appSettings.batchSize)")
+        self.assertPageContains("p.set('limit',appSettings.batchSize)")
+        self.assertPageContains("offset+=appSettings.batchSize")
+        self.assertPageContains("if(!reset)p.set('count','0')")
+        self.assertPageContains("!listLoading&&!$('#loadSentinel').hidden")
+        self.assertPageContains("indexRequestSeq")
+        self.assertPageContains("barsRequestSeq")
+        self.assertPageContains("async function getBarsData()")
+        self.assertPageContains("Date.now()-barsDataAt<30000")
+        self.assertPageLacks("p.set('limit','120')")
+        self.assertPageContains("more._observer=new IntersectionObserver")
+        self.assertPageContains("more.hidden=append?!items.has_more")
 
     def test_mix_cards_share_the_home_flow_and_open_a_routed_side_queue(self):
-        self.assertIn('class="card mixcard" data-mix-seed=', self.page)
-        self.assertIn("cards.splice(7,0,mixCardHtml(seed))", self.page)
-        self.assertIn(".mixstack::before,.mixstack::after", self.page)
-        self.assertIn('<span class="mixbadge">${icon(\'play\')}Mix</span>', self.page)
-        self.assertIn("async function openMix(seedId,itemId=seedId,push=true)", self.page)
-        self.assertIn("route(`/mix/${seedId}/${itemId}`)", self.page)
-        self.assertIn('class="mixqueue"', self.page)
-        self.assertIn('class="mixitem ${x.id===itemId?\'current\':\'\'}"', self.page)
-        self.assertIn("data-mix-item", self.page)
-        self.assertIn("if(!mixContext)api('/api/related?id='", self.page)
+        self.assertPageContains('class="card mixcard" data-mix-seed=')
+        self.assertPageContains("cards.splice(7,0,mixCardHtml(seed))")
+        self.assertPageContains(".mixstack::before,.mixstack::after")
+        self.assertPageContains('<span class="mixbadge">${icon(\'play\')}Mix</span>')
+        self.assertPageContains("async function openMix(seedId,itemId=seedId,push=true)")
+        self.assertPageContains("route(`/mix/${seedId}/${itemId}`)")
+        self.assertPageContains('class="mixqueue"')
+        self.assertPageContains('class="mixitem ${x.id===itemId?\'current\':\'\'}"')
+        self.assertPageContains("data-mix-item")
+        self.assertPageContains("if(!mixContext)api('/api/related?id='")
+        self.assertPageContains("batchWithMix(d.items,location.pathname==='/'&&state.state!=='trash')")
+        self.assertPageContains("location.pathname!=='/'||state.orient==='竖屏'||state.state==='ads'||state.state==='trash'")
+        self.assertPageContains("route(section==='trash'?'/trash':'/')")
+        self.assertPageContains("if(path==='/trash')")
+        self.assertPageContains("/api/trash/empty")
 
     def test_filter_and_sort_rows_stay_visible_in_both_scroll_directions(self):
-        self.assertIn("--filterH:58px", self.page)
-        self.assertIn(".tagbar{position:sticky;top:var(--topH)", self.page)
-        self.assertIn(".count{position:sticky;top:calc(var(--topH) + var(--filterH))", self.page)
-        self.assertIn("border-bottom:1px solid transparent;background:transparent", self.page)
-        self.assertIn("background:transparent;border-bottom:1px solid transparent", self.page)
-        self.assertIn(".tagbar.is-stuck,.count.is-stuck{background:color-mix(in srgb,#020408 84%,transparent)", self.page)
-        self.assertIn("background:color-mix(in srgb,#020408 84%,transparent)", self.page)
-        self.assertIn("backdrop-filter:saturate(1.35) blur(16px)", self.page)
-        self.assertIn("function updateStickySurfaces()", self.page)
-        self.assertIn("css.position==='sticky'", self.page)
-        self.assertIn("el.classList.toggle('is-stuck',stuck)", self.page)
-        self.assertNotIn(".tagbar.tuck", self.page)
-        self.assertNotIn("function onScrollFrame", self.page)
-        self.assertIn(":root{--tile:168px;--topH:52px;--sortH:60px}", self.page)
+        self.assertPageContains("--filterH:58px")
+        self.assertPageContains(".tagbar{position:sticky;top:var(--topH)")
+        self.assertPageContains(".count{position:sticky;top:calc(var(--topH) + var(--filterH))")
+        self.assertPageContains("border-bottom:1px solid transparent;background:transparent")
+        self.assertPageContains("background:transparent;border-bottom:1px solid transparent")
+        self.assertPageContains(".tagbar.is-stuck,.count.is-stuck{background:color-mix(in srgb,#020408 84%,transparent)")
+        self.assertPageContains("background:color-mix(in srgb,#020408 84%,transparent)")
+        self.assertPageContains("backdrop-filter:saturate(1.35) blur(16px)")
+        self.assertPageContains("function updateStickySurfaces()")
+        self.assertPageContains("css.position==='sticky'")
+        self.assertPageContains("el.classList.toggle('is-stuck',stuck)")
+        self.assertPageLacks(".tagbar.tuck")
+        self.assertPageLacks("function onScrollFrame")
+        self.assertPageContains(":root{--tile:168px;--topH:52px;--sortH:60px}")
 
     def test_mobile_count_and_sort_controls_share_one_scrollable_row(self):
-        self.assertIn(".count{align-items:center;flex-direction:row", self.page)
-        self.assertIn("overflow-x:auto;overflow-y:hidden;scrollbar-width:none", self.page)
-        self.assertIn(".count>span:first-child{line-height:36px;white-space:nowrap}", self.page)
-        self.assertIn(".count .sorts{width:max-content;margin-left:0;flex:0 0 auto;overflow:visible}", self.page)
-        self.assertIn("flex:0 0 auto;white-space:nowrap", self.page)
-        self.assertIn(".count .sorts button{min-height:36px}", self.page)
+        self.assertPageContains(".count{align-items:center;flex-direction:row")
+        self.assertPageContains("overflow-x:auto;overflow-y:hidden;scrollbar-width:none")
+        self.assertPageContains(".count>span:first-child{line-height:36px;white-space:nowrap}")
+        self.assertPageContains(".count .sorts{width:max-content;margin-left:0;flex:0 0 auto;overflow:visible}")
+        self.assertPageContains("flex:0 0 auto;white-space:nowrap")
+        self.assertPageContains(".count .sorts button{min-height:36px}")
 
     def test_entity_collection_posters_and_titles_open_item_details(self):
-        self.assertIn('class="cardopenhit" data-open', self.page)
-        self.assertIn('<button class="t cardtitle" data-open>', self.page)
-        self.assertIn("if(e.target.closest('[data-open]')){e.stopPropagation();(onClick||openItem)(+el.dataset.id)", self.page)
-        self.assertIn(".cardopenhit{position:absolute;inset:0;z-index:3", self.page)
-        self.assertIn("el.querySelectorAll('[data-open]').forEach(opener=>", self.page)
-        self.assertIn("opener.dataset.openWired='1'", self.page)
-        self.assertIn(".hovertools button{pointer-events:none", self.page)
-        self.assertIn(".card.longhover .seektools button,.card:hover .later-tools button{pointer-events:auto}", self.page)
+        self.assertPageContains('class="cardopenhit" data-open')
+        self.assertPageContains('<button class="t cardtitle" data-open>')
+        self.assertPageContains("if(e.target.closest('[data-open]')){e.stopPropagation();(onClick||openItem)(+el.dataset.id)")
+        self.assertPageContains(".cardopenhit{position:absolute;inset:0;z-index:3")
+        self.assertPageContains("el.querySelectorAll('[data-open]').forEach(opener=>")
+        self.assertPageContains("opener.dataset.openWired='1'")
+        self.assertPageContains(".hovertools button{pointer-events:none")
+        self.assertPageContains(".card.longhover .seektools button,.card:hover .later-tools button{pointer-events:auto}")
 
     def test_remote_hover_previews_do_not_stream_full_media(self):
-        self.assertIn("if(it.location!=='local')", self.page)
-        self.assertIn("el.dataset.hoverMode=it.location==='local'?'video':'frames'", self.page)
-        self.assertIn("function releaseHoverPreviews(root=document,except=null)", self.page)
-        self.assertIn("releaseHoverPreviews(document,el)", self.page)
-        self.assertIn("window.addEventListener('pagehide',()=>releaseHoverPreviews())", self.page)
-        self.assertIn("if(document.hidden)releaseHoverPreviews()", self.page)
-        self.assertIn("if(reset)releaseHoverPreviews($('#grid'))", self.page)
-        self.assertIn("releaseHoverPreviews($('#srow'))", self.page)
+        self.assertPageContains("if(it.location!=='local')")
+        self.assertPageContains("el.dataset.hoverMode=it.location==='local'?'video':'frames'")
+        self.assertPageContains("function releaseHoverPreviews(root=document,except=null)")
+        self.assertPageContains("releaseHoverPreviews(document,el)")
+        self.assertPageContains("window.addEventListener('pagehide',()=>releaseHoverPreviews())")
+        self.assertPageContains("if(document.hidden)releaseHoverPreviews()")
+        self.assertPageContains("if(reset)releaseHoverPreviews($('#grid'))")
+        self.assertPageContains("releaseHoverPreviews($('#srow'))")
 
     def test_detail_close_returns_to_the_collection_that_opened_it(self):
-        self.assertIn("detailReturnPath='/'", self.page)
-        self.assertIn("if(push)detailReturnPath=location.pathname+location.search", self.page)
-        self.assertIn("if(push)route(detailReturnPath||'/')", self.page)
+        self.assertPageContains("detailReturnPath='/'")
+        self.assertPageContains("if(push)detailReturnPath=location.pathname+location.search")
+        self.assertPageContains("if(push)route(detailReturnPath||'/')")
 
     def test_entity_profile_uses_logo_links_without_a_redundant_back_row(self):
-        self.assertIn("const faviconUrl=url=>", self.page)
-        self.assertIn('class="entitylinkicon"', self.page)
-        self.assertIn('class="entitylinklabel"', self.page)
-        self.assertIn("img.dataset.studio&&!img.dataset.fallback", self.page)
-        self.assertNotIn('<span class="mono" style="color:var(--muted)">${labels[kind]||kind}资料页</span>', self.page)
+        self.assertPageContains("const faviconUrl=url=>")
+        self.assertPageContains('class="entitylinkicon"')
+        self.assertPageContains('class="entitylinklabel"')
+        self.assertPageContains("img.dataset.studio&&!img.dataset.fallback")
+        self.assertPageLacks('<span class="mono" style="color:var(--muted)">${labels[kind]||kind}资料页</span>')
 
     def test_status_tags_are_separated_and_nonessential_states_are_hidden(self):
-        self.assertIn(".sep{flex:none;width:1px;height:19px", self.page)
-        self.assertIn("{k:'later',label:'稍后看'},{k:'flagged',label:'已标记'}", self.page)
-        self.assertNotIn("{k:'played',label:'看过'}", self.page)
-        self.assertNotIn("{k:'ads',label:'疑似广告'}", self.page)
+        self.assertPageContains(".sep{flex:none;width:1px;height:19px")
+        self.assertPageContains("{k:'later',label:'稍后看'},{k:'flagged',label:'已标记'}")
+        self.assertPageLacks("{k:'played',label:'看过'}")
+        self.assertPageLacks("{k:'ads',label:'疑似广告'}")
 
     def test_search_placeholder_is_an_actionable_recommendation(self):
-        self.assertIn("const SEARCH_HINTS=['Prestige','FC2','Sakura Misaki','丝袜','足交','ABW']", self.page)
-        self.assertIn("$('#q').dataset.suggestion=searchSuggestion", self.page)
-        self.assertIn("runSearch(true,true)", self.page)
-        self.assertNotIn("试试：", self.page)
-        self.assertNotIn("ABW 番号", self.page)
+        self.assertPageContains("const SEARCH_HINTS=['Prestige','FC2','Sakura Misaki','丝袜','足交','ABW']")
+        self.assertPageContains("$('#q').dataset.suggestion=searchSuggestion")
+        self.assertPageContains("runSearch(true,true)")
+        self.assertPageLacks("试试：")
+        self.assertPageLacks("ABW 番号")
 
     def test_card_identity_is_not_repeated_as_a_content_tag(self):
-        self.assertNotIn("const perf=(it.performers||[])", self.page)
-        self.assertIn('${tgs?`<div class="ctags">${tgs}</div>`', self.page)
+        self.assertPageLacks("const perf=(it.performers||[])")
+        self.assertPageContains('${tgs?`<div class="ctags">${tgs}</div>`')
 
     def test_compact_card_title_is_one_line_and_identity_kind_matches_name(self):
-        self.assertIn('body[data-density="dense"] .card .meta .t{display:block;max-width:100%;min-height:1.35em;overflow:hidden;', self.page)
-        self.assertIn("performer?{kind:'performer',name:performer}", self.page)
-        self.assertIn("it.code?{kind:'',name:it.code}", self.page)
-        self.assertIn("it.studio?{kind:'studio',name:it.studio}", self.page)
-        self.assertNotIn("const whoKind=it.creator?'creator':(it.studio?'studio':'')", self.page)
+        self.assertPageContains('body[data-density="dense"] .card .meta .t{display:block;max-width:100%;min-height:1.35em;overflow:hidden;')
+        self.assertPageContains("performer?{kind:'performer',name:performer}")
+        self.assertPageContains("it.code?{kind:'',name:it.code}")
+        self.assertPageContains("it.studio?{kind:'studio',name:it.studio}")
+        self.assertPageLacks("const whoKind=it.creator?'creator':(it.studio?'studio':'')")
+
+    def test_creator_name_is_single_line_and_ellipsized(self):
+        self.assertPageContains('.meta .who{color:var(--tungsten);min-width:0;max-width:100%;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')
+
+    def test_only_portrait_cards_use_media_ratio(self):
+        self.assertPageContains("const ar=(it.ctx_orient==='竖屏'||cls==='scard')")
+        self.assertPageContains(": 16/9;")
+
+    def test_portrait_strip_sits_on_a_row_boundary_without_borrowing_extra_items(self):
+        """竖屏条整行占位，必须插在行边界上，而不是另拉一批横屏视频补满余位。
+
+        补位的那批 id 不在分页序列里，翻下一页必然重复；而且它们被当作 `scard`
+        渲染会按竖屏比例压扁横屏画面。行边界插入既不额外请求也不会重复。
+        """
+        self.assertPageContains('.shorts-inline{grid-column:1/-1;margin:28px 0 8px;padding-top:0}')
+        self.assertPageContains("it.ctx_orient==='竖屏'||cls==='scard'")
+        self.assertPageContains('grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr))')
+        self.assertPageContains('const anchor=cards[Math.min(cards.length,columns*SHORTS_ROW_OFFSET)]')
+        self.assertPageContains("anchor.insertAdjacentHTML('beforebegin',inline)")
+        self.assertPageLacks("fillerParams")
+        self.assertPageLacks('const remainder=')
+        self.assertPageContains('.srow .scard{flex:none;width:214px;cursor:pointer}')
+
+    def test_only_the_default_home_list_drops_portrait_videos(self):
+        """搜索必须能命中竖屏作品；排除竖屏只是首页默认列表的取景，不是全局过滤。"""
+        self.assertPageContains("if(location.pathname==='/'&&!state.q&&!state.orient)p.set('exclude_vertical','1')")
+        self.assertPageLacks("if(!state.orient)p.set('exclude_vertical','1')")
+
+    def test_grid_count_and_range_select_ignore_the_portrait_strip(self):
+        """竖屏条嵌在网格里，但它既不是「显示 N」的一员，也不该被 Shift 范围选中。"""
+        self.assertPageContains("$('#grid').querySelectorAll(':scope > .card[data-id]').length")
+        self.assertPageContains("document.querySelectorAll('#grid > .card[data-id]')")
+
+    def test_recycle_bin_has_its_own_route_and_reports_undeletable_files(self):
+        self.assertPageContains("route(section==='trash'?'/trash':'/')")
+        self.assertPageContains("if(path==='/trash'){")
+        self.assertPageContains("/api/trash/empty")
+        self.assertPageContains("r.blocked&&r.blocked.length")
 
     def test_card_hover_hides_source_and_duration_and_missing_size_is_explicit(self):
-        self.assertIn('.card:hover .badge,.card:hover .dur{opacity:0}', self.page)
-        self.assertIn('.meta .t{font-size:14px;line-height:1.35;min-height:2.7em;', self.page)
-        self.assertIn("const sizeText=Number(it.size)>0?fmtSize(Number(it.size)):'大小未知';", self.page)
-        self.assertIn('<span class="size">${sizeText}</span>', self.page)
+        self.assertPageContains('.card:hover .badge,.card:hover .dur{opacity:0}')
+        self.assertPageContains('.meta .t{font-size:14px;line-height:1.35;min-height:2.7em;')
+        self.assertPageContains("const sizeText=Number(it.size)>0?fmtSize(Number(it.size)):'大小未知';")
+        self.assertPageContains('<span class="size">${sizeText}</span>')
 
     def test_tags_page_has_cloud_and_alphabet_modes(self):
-        self.assertIn('data-tag-view="cloud"', self.page)
-        self.assertIn('data-tag-view="alphabet"', self.page)
-        self.assertIn('class="alphabet"', self.page)
-        self.assertIn('data-tag-category=', self.page)
-        self.assertIn("['general','内容']", self.page)
-        self.assertIn("['artist','人物']", self.page)
-        self.assertIn("category=params.get('category')", self.page)
+        self.assertPageContains('data-tag-view="cloud"')
+        self.assertPageContains('data-tag-view="alphabet"')
+        self.assertPageContains('class="alphabet"')
+        self.assertPageContains('data-tag-category=')
+        self.assertPageContains("['general','内容']")
+        self.assertPageContains("['artist','人物']")
+        self.assertPageContains("category=params.get('category')")
 
     def test_secondary_back_controls_are_icon_only(self):
-        self.assertIn('id="i-arrow-left"', self.page)
-        self.assertIn("${icon('arrow-left')}</button>", self.page)
-        self.assertNotIn("${icon('chevron-left')}<span>返回</span>", self.page)
+        self.assertPageContains('id="i-arrow-left"')
+        self.assertPageContains("${icon('arrow-left')}</button>")
+        self.assertPageLacks("${icon('chevron-left')}<span>返回</span>")
 
     def test_climax_uses_pinned_healthicons_symbol(self):
-        self.assertIn('id="i-sperm"', self.page)
-        self.assertIn("icon('sperm')", self.page)
+        self.assertPageContains('id="i-sperm"')
+        self.assertPageContains("icon('sperm')")
 
     def test_settings_own_useful_experience_preferences(self):
-        self.assertIn("const DEFAULT_SETTINGS={autoRefresh:true,refreshMinutes:5", self.page)
-        self.assertIn('id="settingsPanel"', self.page)
-        self.assertIn("scheduleAutoRefresh()", self.page)
-        self.assertIn("refreshAll(true)", self.page)
-        self.assertIn("appSettings.hoverDelaySeconds", self.page)
-        self.assertIn("appSettings.batchSize", self.page)
-        self.assertIn("appSettings.defaultSort", self.page)
-        self.assertIn("appSettings.seekSeconds", self.page)
-        self.assertIn("appSettings.searchHistoryLimit", self.page)
-        self.assertIn("appSettings.relatedLimit", self.page)
-        self.assertNotIn('id="ambientSetting"', self.page)
-        self.assertIn("color:#f5f7fa;color-scheme:dark", self.page)
+        self.assertPageContains("const DEFAULT_SETTINGS={autoRefresh:true,refreshMinutes:5")
+        self.assertPageContains('id="settingsPanel"')
+        self.assertPageContains("scheduleAutoRefresh()")
+        self.assertPageContains("refreshAll(true)")
+        self.assertPageContains("appSettings.hoverDelaySeconds")
+        self.assertPageContains("appSettings.batchSize")
+        self.assertPageContains("appSettings.defaultSort")
+        self.assertPageContains("appSettings.seekSeconds")
+        self.assertPageContains("appSettings.searchHistoryLimit")
+        self.assertPageContains("appSettings.relatedLimit")
+        self.assertPageLacks('id="ambientSetting"')
+        self.assertPageContains("color:#f5f7fa;color-scheme:dark")
 
     def test_search_menu_has_local_history_and_recommendations(self):
-        self.assertIn("peach.search.history.v1", self.page)
-        self.assertIn("搜索记录", self.page)
-        self.assertIn("recommendations.map", self.page)
-        self.assertIn("rememberSearch(query)", self.page)
-        self.assertIn(".top:has(.search.open){overflow:visible}", self.page)
-        self.assertNotIn("setTimeout(runSearch,320)", self.page)
-        self.assertIn("runSearch(true,true)", self.page)
+        self.assertPageContains("/api/search-history")
+        self.assertPageContains("搜索记录")
+        self.assertPageContains("recommendations.map")
+        self.assertPageContains("rememberSearch(query)")
+        self.assertPageContains(".top:has(.search.open){overflow:visible}")
+        self.assertPageLacks("setTimeout(runSearch,320)")
+        self.assertPageContains("runSearch(true,true)")
 
     def test_detail_has_stats_ambient_and_better_version_goal(self):
-        self.assertIn('class="ambientcanvas"', self.page)
-        self.assertIn("requestVideoFrameCallback", self.page)
-        self.assertIn("--video-glow", self.page)
-        self.assertIn("视频 ID / 会话", self.page)
-        self.assertIn("/api/quality-goal", self.page)
-        self.assertIn('id="betterVersion"', self.page)
-        self.assertNotIn('id="closeStage">收起', self.page)
+        self.assertPageContains('class="ambientcanvas"')
+        self.assertPageContains("requestVideoFrameCallback")
+        self.assertPageContains("--video-glow")
+        self.assertPageContains("视频 ID / 会话")
+        self.assertPageContains("/api/quality-goal")
+        self.assertPageContains('id="betterVersion"')
+        self.assertPageLacks('id="closeStage">收起')
+
+    def test_review_page_is_a_separate_management_layer(self):
+        self.assertPageContains("route('/review')")
+        self.assertPageContains("const REVIEW_LABELS={creator_tags:'创作者标签'")
+        self.assertPageContains("/api/review/decision")
+        self.assertPageContains("if(path==='/review')")
 
 
 if __name__ == "__main__":
