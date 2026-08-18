@@ -16,6 +16,7 @@ CREATE TABLE asset(
   name TEXT,
   medium TEXT,
   size INTEGER,
+  hash TEXT,
   creator TEXT,
   studio TEXT,
   series TEXT,
@@ -802,3 +803,142 @@ class JavModeAndCoverTests(unittest.TestCase):
     def test_missing_cover_resolves_to_none_not_a_broken_path(self):
         self.assertIsNone(self.contract.cover_path("ABW-232"))
         self.assertIsNone(self.contract.cover_path(None))
+
+
+class DuplicateDetectionTests(unittest.TestCase):
+    """同番号不等于重复：合集、分卷和混入的广告都会共用一个 code。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.db_path = str(Path(self.tmp.name) / "ledger.db")
+        self.con = sqlite3.connect(self.db_path)
+        # 后进先出：这条要在临时目录清理之后注册，才会先关连接。Windows 上没关
+        # 的 SQLite 句柄会让 TemporaryDirectory 删不掉文件。
+        self.addCleanup(self.con.close)
+        self.con.executescript(BASE_SCHEMA)
+        self.next_id = 1
+        self.contract = rm_web.WebContract(Path(self.db_path))
+
+    def add(self, code, duration, size, drive="B", name=None, hash_=None):
+        asset_id = self.next_id
+        self.next_id += 1
+        self.con.execute(
+            "INSERT INTO asset(id,location,path,name,medium,code,size,duration,"
+            "hash,first_seen) VALUES(?,'local',?,?,'video',?,?,?,?,'2026-08-19')",
+            # 默认名不能以数字结尾：`ABW-232-1.mp4` 会被正确识别成分卷标记，
+            # 于是每个夹具文件都成了「不同部分」。用 ripN 避开这个约定。
+            (asset_id, rf"{drive}:\{asset_id}.mp4", name or f"{code} rip{asset_id}.mp4",
+             code, size, duration, hash_))
+        self.con.commit()
+        return asset_id
+
+    def groups(self):
+        return rm_web.q_duplicates(self.contract, {"limit": "50"})
+
+    def test_same_duration_rips_are_a_duplicate_cluster(self):
+        self.add("ABW-232", 7200, 5_000_000_000)
+        self.add("ABW-232", 7200, 3_000_000_000)
+        result = self.groups()
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["groups"][0]["count"], 2)
+
+    def test_multi_part_releases_never_collapse_into_one_cluster(self):
+        # PPT-018 实测：109.2/175.2/196.4 分各两份。按番号只留最大会删掉两个部分。
+        for minutes in (109.2, 175.2, 196.4):
+            self.add("PPT-018", minutes * 60, int(minutes * 5e7))
+            self.add("PPT-018", minutes * 60, int(minutes * 4e7))
+        result = self.groups()
+        self.assertEqual(result["total"], 3, "三个部分必须各成一簇")
+        self.assertTrue(all(g["count"] == 2 for g in result["groups"]))
+
+    def test_a_collection_is_not_a_pile_of_duplicates(self):
+        # FC2-PPV-3312576 一个番号 19 个文件，是 19 部不同作品。
+        for index in range(6):
+            self.add("FC2-PPV-3312576", 3000 + index * 600, 1_000_000_000)
+        self.assertEqual(self.groups()["total"], 0)
+
+    def test_advertisements_sharing_the_code_do_not_touch_the_real_work(self):
+        real = self.add("BAZX-302", 11994, 9_000_000_000)
+        self.add("BAZX-302", 78, 20_000_000, name="妹妹直播.mp4")
+        self.add("BAZX-302", 80, 21_000_000, name="N房间的精彩直播.mp4")
+        result = self.groups()
+        flagged = {f["id"] for g in result["groups"] for f in g["files"]}
+        self.assertNotIn(real, flagged, "199 分钟的正片不该被判成重复")
+
+    def test_largest_and_longest_are_marked_separately(self):
+        # 时长差必须落在容差内才是同一簇；体积最大与时长最长可以是不同文件，
+        # 实测 MEYD-692 里最长的那个反而是码率更低的 nyap2p 版本。
+        big = self.add("MEYD-692", 7000, 9_000_000_000)
+        long_ = self.add("MEYD-692", 7020, 8_000_000_000)
+        files = {f["id"]: f for f in self.groups()["groups"][0]["files"]}
+        self.assertTrue(files[big]["is_largest"])
+        self.assertFalse(files[big]["is_longest"])
+        self.assertTrue(files[long_]["is_longest"])
+
+    def test_identical_needs_a_hash_on_every_file(self):
+        self.add("DASD-839", 7200, 5_000_000_000, hash_="abc")
+        self.add("DASD-839", 7200, 5_000_000_000, hash_="abc")
+        self.assertTrue(self.groups()["groups"][0]["identical"])
+
+    def test_a_missing_hash_downgrades_the_claim_to_inference(self):
+        self.add("DASD-839", 7200, 5_000_000_000, hash_="abc")
+        self.add("DASD-839", 7200, 5_000_000_000, hash_=None)
+        self.assertFalse(self.groups()["groups"][0]["identical"])
+
+    def test_cross_drive_duplicates_are_flagged(self):
+        self.add("SSIS-057", 7200, 5_000_000_000, drive="A")
+        self.add("SSIS-057", 7200, 4_000_000_000, drive="B")
+        group = self.groups()["groups"][0]
+        self.assertTrue(group["cross_drive"])
+        self.assertEqual(group["drives"], ["A:", "B:"])
+
+    def test_reclaimable_keeps_the_largest_of_each_cluster(self):
+        self.add("WAAA-415", 7200, 5_000_000_000)
+        self.add("WAAA-415", 7200, 3_000_000_000)
+        self.assertEqual(self.groups()["reclaimable"], 3_000_000_000)
+
+    def test_unknown_duration_is_never_merged_into_a_cluster(self):
+        self.add("HMN-145", 0, 5_000_000_000)
+        self.add("HMN-145", 0, 5_000_000_000)
+        self.assertEqual(self.groups()["total"], 0, "没有时长证据就不判重复")
+
+    def test_recycle_bin_items_are_excluded(self):
+        first = self.add("TRE-080", 7200, 5_000_000_000)
+        self.add("TRE-080", 7200, 4_000_000_000)
+        self.con.execute("UPDATE asset SET disposal='trash' WHERE id=?", (first,))
+        self.con.commit()
+        self.assertEqual(self.groups()["total"], 0)
+
+    def test_long_films_do_not_merge_across_a_percentage_tolerance(self):
+        # HRV-041 实测：237 分与 239 分是两个部分。3% 容差在 4 小时片子上等于
+        # ±7 分钟，会把它们并成一簇，「留最大」就删掉了一个部分。
+        self.add("HRV-041", 237 * 60, 10_000_000_000, name="HRV-041-1.mp4")
+        self.add("HRV-041", 239 * 60, 10_100_000_000, name="HRV-041-2.mp4")
+        self.add("HRV-041", 237 * 60, 4_400_000_000, name="HD_hrv-041-1.mp4")
+        self.add("HRV-041", 239 * 60, 4_460_000_000, name="HD_hrv-041-2.mp4")
+        result = self.groups()
+        self.assertEqual(result["total"], 2, "两个部分必须各成一簇")
+        for group in result["groups"]:
+            durations = {round(f["duration"]) for f in group["files"]}
+            self.assertEqual(len(durations), 1, "同簇内时长必须一致")
+
+    def test_distinct_part_markers_never_share_a_cluster(self):
+        # FCDSS-021 的 -1/-2/-3 时长只差 12 秒，却是三个部分。
+        self.add("FCDSS-021", 14496, 10_140_000_000, name="FCDSS-021-1.mp4")
+        self.add("FCDSS-021", 14500, 10_140_000_000, name="FCDSS-021-2.mp4")
+        self.add("FCDSS-021", 14508, 10_130_000_000, name="FCDSS-021-3.mp4")
+        self.assertEqual(self.groups()["total"], 0, "分卷标记不同不算重复")
+
+    def test_unmarked_rips_of_the_same_part_still_cluster(self):
+        # 没有分卷标记的同时长文件仍应判为重复：站点前缀不是分卷标记。
+        self.add("MEYD-692", 9192, 6_580_000_000, name="hhd800.com@MEYD-692.mp4")
+        self.add("MEYD-692", 9192, 6_570_000_000, name="MEYD-692.mp4")
+        self.add("MEYD-692", 9192, 6_570_000_000, name="meyd-692.mp4")
+        self.assertEqual(self.groups()["groups"][0]["count"], 3)
+
+    def test_part_marker_extraction(self):
+        self.assertEqual(rm_web.part_marker("HRV-041-1.mp4"), "1")
+        self.assertEqual(rm_web.part_marker("HD_hrv-041-2.mp4"), "2")
+        self.assertEqual(rm_web.part_marker("MEYD-692.mp4"), "")
+        self.assertEqual(rm_web.part_marker("hhd800.com@MEYD-692.mp4"), "")

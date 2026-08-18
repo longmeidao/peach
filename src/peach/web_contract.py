@@ -1438,6 +1438,122 @@ def w_batch(contract: WebContract, body):
     return {"ok": True, "operation": operation, "changed": len(valid_ids)}
 
 
+#: 同一部作品的不同版本时长只差几秒；容差必须紧。3% 在 4 小时的片子上等于
+#: ±7 分钟，实测把 `HRV-041` 的 237 分和 239 分两个**不同部分**并成了一簇，
+#: 「每簇留最大」会删掉其中一个部分。宁可漏判几组真重复（只是少回收一点空间），
+#: 也不能把不同部分并进一簇（那是不可逆的内容丢失）。
+DUPLICATE_TOLERANCE = 0.005
+DUPLICATE_FLOOR_SECONDS = 15.0
+
+#: 文件名里的分卷标记。同簇内出现不同的分卷号，说明它们是不同部分而不是重复。
+_PART_MARKER = re.compile(
+    r"(?:^|[^a-z0-9])(?:part|cd|disc|vol)?[-_ ]?([1-9]\d?|[a-h])(?=\.[a-z0-9]{2,4}$)",
+    re.I)
+
+
+def part_marker(name: str) -> str:
+    """取文件名尾部的分卷标记；取不到返回空串。"""
+    match = _PART_MARKER.search(name or "")
+    return match.group(1).lower() if match else ""
+
+
+def duration_clusters(items: list[dict]) -> list[list[dict]]:
+    """按时长把同番号的文件聚成「同一内容」的簇。
+
+    只按番号分组会把三类东西混在一起，对它们做「保留最大」是数据事故：
+
+    - **合集**。`FC2-PPV-3312576` 一个番号 19 个文件，是 19 部不同作品。
+    - **分卷**。`PPT-018` 的时长是 109.2/175.2/196.4 各两份，三个部分各有一个
+      重复版本；按番号只留最大会把另外两个部分整个删掉。
+    - **广告**。`BAZX-302` 的下载目录里混着 0.5~1.8 分钟的推广片，继承了同一个
+      `code`。聚类后它们自成小簇，199.9 分钟的正片独自成簇、根本不算重复。
+
+    时长缺失的一律单独成簇：没有证据就不敢判定为重复。
+    """
+    clusters: list[list[dict]] = []
+    known = sorted((x for x in items if (x.get("duration") or 0) > 0),
+                   key=lambda x: x["duration"])
+    for item in known:
+        marker = part_marker(str(item.get("name") or ""))
+        for cluster in clusters:
+            reference = cluster[0]["duration"]
+            if abs(item["duration"] - reference) > max(
+                    DUPLICATE_FLOOR_SECONDS, reference * DUPLICATE_TOLERANCE):
+                continue
+            # 分卷标记不同就是不同部分，时长再接近也不能并簇：`FCDSS-021` 的
+            # `-1/-2/-3` 时长只差 12 秒，却是三个部分。
+            existing = {part_marker(str(x.get("name") or "")) for x in cluster}
+            if marker and existing - {"", marker}:
+                continue
+            cluster.append(item)
+            break
+        else:
+            clusters.append([item])
+    clusters.extend([x] for x in items if not (x.get("duration") or 0) > 0)
+    return clusters
+
+
+def q_duplicates(contract: WebContract, args):
+    """按番号 + 时长找真重复；每簇标出最大与最长的那个。"""
+    limit = min(max(int(args.get("limit", "60")), 1), 300)
+    offset = max(int(args.get("offset", "0")), 0)
+    connection = contract.db()
+    try:
+        rows = connection.execute(
+            "SELECT id,code,location,path,name,size,duration,hash,disposal "
+            "FROM asset WHERE medium='video' AND code IS NOT NULL AND code<>'' "
+            "AND (disposal IS NULL OR disposal<>'trash')"
+        ).fetchall()
+    finally:
+        connection.close()
+
+    grouped: dict[str, list[dict]] = {}
+    for row in rows:
+        if not is_jav_code(row["code"]):
+            continue
+        item = dict(row)
+        item["drive"] = str(item.pop("path") or "")[:2].upper()
+        grouped.setdefault(normalise_code_key(row["code"]), []).append(item)
+
+    groups = []
+    for code, items in grouped.items():
+        if len(items) < 2:
+            continue
+        for cluster in duration_clusters(items):
+            if len(cluster) < 2:
+                continue
+            largest = max(cluster, key=lambda x: x.get("size") or 0)
+            longest = max(cluster, key=lambda x: x.get("duration") or 0)
+            hashes_present = [x["hash"] for x in cluster if x["hash"]]
+            hashes = set(hashes_present)
+            for item in cluster:
+                item["is_largest"] = item["id"] == largest["id"]
+                item["is_longest"] = item["id"] == longest["id"]
+                item.pop("hash", None)
+                item.pop("disposal", None)
+            groups.append({
+                "code": code,
+                "files": sorted(cluster, key=lambda x: -(x.get("size") or 0)),
+                "count": len(cluster),
+                # 必须每个文件都有 sha1 且完全相同才算确证字节一致。缺一个哈希
+                # 就只是「时长相近」的推断，不能对外宣称已确证。
+                "identical": len(hashes) == 1 and len(hashes_present) == len(cluster),
+                "drives": sorted({x["drive"] for x in cluster}),
+                "cross_drive": len({x["drive"] for x in cluster}) > 1,
+                "reclaimable": sum(x.get("size") or 0 for x in cluster)
+                - (largest.get("size") or 0),
+            })
+    groups.sort(key=lambda g: -g["reclaimable"])
+    window = groups[offset:offset + limit]
+    return {
+        "total": len(groups),
+        "files": sum(g["count"] for g in groups),
+        "reclaimable": sum(g["reclaimable"] for g in groups),
+        "groups": window,
+        "has_more": offset + limit < len(groups),
+    }
+
+
 def dispatch_api_get(contract: WebContract, path, args):
     """Dispatch the stable JSON read contract used by the current web client."""
     if path == "/api/items":
@@ -1455,6 +1571,8 @@ def dispatch_api_get(contract: WebContract, path, args):
             max(int(args.get("offset", "0")), 0),
             args.get("category", ""),
         )
+    if path == "/api/duplicates":
+        return q_duplicates(contract, args)
     if path == "/api/stats":
         return contract.cached("stats", lambda: q_stats(contract))
     if path == "/api/tops":
