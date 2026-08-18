@@ -20,6 +20,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("studio:'studios'", self.page)
         self.assertIn("creator:'creators'", self.page)
 
+    def test_hidden_load_more_buttons_are_actually_removed_from_layout(self):
+        # 有显式 display 的元素不会被浏览器默认的 [hidden]{display:none} 隐藏；
+        # 少了这条规则，按钮画在页面上但 requestMore 首行就 return，点了没反应。
+        self.assertIn(".indexmore[hidden],.entitymore[hidden]{display:none}", self.page)
+
     def test_co_starred_cards_show_every_performer_not_only_the_first(self):
         # 卡片不能再只取 performers[0]：共演作品要叠头像、列名字并给出总数。
         self.assertIn("const coStarred=performers.length>1&&!it.creator", self.page)

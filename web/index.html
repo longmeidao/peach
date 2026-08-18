@@ -271,6 +271,9 @@ button,input,textarea{font:inherit;color:inherit}
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}.relatedperson small{color:var(--muted);font-size:10px}
 .relatedperson:hover .ring{box-shadow:0 0 0 1px var(--border-15)}
 .entitysection{min-width:0;max-width:100%}.entitysection h3{font-size:13px;letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
+/* 显式 display 会盖掉浏览器默认的 [hidden]{display:none}：按钮已经 hidden=true
+   却仍然画出来，而 requestMore 首行就是 if(more.hidden)return，于是点了没反应。 */
+.indexmore[hidden],.entitymore[hidden]{display:none}
 .indexmore,.entitymore{display:flex;align-items:center;justify-content:center;margin:20px auto 0;min-width:124px;
   min-height:40px;padding:8px 16px;border:1px solid var(--border-15);border-radius:999px;background:transparent;
   color:var(--ink-2);cursor:pointer}.indexmore:hover,.entitymore:hover{background:var(--overlay-5);color:var(--ink)}
