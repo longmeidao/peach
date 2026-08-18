@@ -35,6 +35,41 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("studio:'studios'")
         self.assertPageContains("creator:'creators'")
 
+    def test_hidden_load_more_buttons_are_actually_removed_from_layout(self):
+        # 有显式 display 的元素不会被浏览器默认的 [hidden]{display:none} 隐藏；
+        # 少了这条规则，按钮画在页面上但 requestMore 首行就 return，点了没反应。
+        self.assertIn(".indexmore[hidden],.entitymore[hidden]{display:none}", self.page)
+
+    def test_co_starred_cards_show_every_performer_not_only_the_first(self):
+        # 卡片不能再只取 performers[0]：共演作品要叠头像、列名字并给出总数。
+        self.assertIn("const coStarred=performers.length>1&&!it.creator", self.page)
+        self.assertIn('<div class="mavstack">', self.page)
+        self.assertIn("performers.slice(0,3)", self.page)
+        self.assertIn("data-entity-kind=\"performer\" data-entity-name=\"${esc(nm)}\"", self.page)
+        self.assertIn("等 ${performerTotal} 人", self.page)
+        self.assertIn(".mavstack .mav+.mav{margin-left:-14px}", self.page)
+
+    def test_every_card_avatar_falls_back_through_the_same_helper(self):
+        self.assertIn("function avatarInner(name,ref,repId)", self.page)
+        self.assertIn("`/entity-image?kind=performer&id=${ref.id}`", self.page)
+        self.assertIn("this.onerror=null;this.src='/avatar?id=${repId}'", self.page)
+
+    def test_detail_identity_lists_each_performer_with_its_own_portrait(self):
+        self.assertIn("...performerRefs.map((ref,i)=>['performer',i?'':'女优',ref.name,ref])", self.page)
+        self.assertIn("ref&&ref.id?`<img src=\"/entity-image?kind=performer&id=${ref.id}\"", self.page)
+        self.assertNotIn("const performerName=performerRef?.name", self.page)
+
+    def test_large_casts_stay_in_the_dom_behind_one_expander(self):
+        # 收起的行必须留在 DOM 里，展开只是取消 hidden，不重新请求也不丢身份。
+        self.assertIn("const CAST_SHOWN=8", self.page)
+        self.assertIn("const castOverflow=Math.max(0,castRows.length-CAST_SHOWN)", self.page)
+        self.assertIn("还有 ${castOverflow} 位", self.page)
+        self.assertIn("querySelectorAll('[data-castoverflow]').forEach(row=>row.hidden=false)", self.page)
+
+    def test_immerse_mode_names_the_whole_cast(self):
+        self.assertIn("const cast=full.performers||[]", self.page)
+        self.assertIn("cast.slice(0,3).join('、')", self.page)
+
     def test_detail_close_disposes_playback_source(self):
         self.assertPageContains("function disposeStage")
         self.assertPageContains("video.pause();video.removeAttribute('src');video.load();video.remove()")

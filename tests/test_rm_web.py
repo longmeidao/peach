@@ -414,6 +414,52 @@ class WebDataTests(unittest.TestCase):
             {"id": 11, "name": "Canonical Alice"},
         ])
 
+    def _add_performers(self, asset_id, names, start_id=200):
+        con = sqlite3.connect(self.db_path)
+        for offset, name in enumerate(names):
+            entity_id = start_id + offset
+            con.execute(
+                "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
+                "VALUES(?,'performer',?,?)", (entity_id, name, name.casefold()))
+            con.execute(
+                "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                "VALUES(?,?,'performer','test',1.0)", (asset_id, entity_id))
+        con.commit()
+        con.close()
+
+    def test_co_starred_work_carries_every_performer_not_just_the_first(self):
+        self._add_performers(1, ["Canonical Bea", "Canonical Cleo"])
+        item = rm_web.q_items(self.contract, {"limit": "10"})["items"]
+        row = next(row for row in item if row["id"] == 1)
+        self.assertEqual(row["performers"],
+                         ["Canonical Alice", "Canonical Bea", "Canonical Cleo"])
+        self.assertEqual([ref["name"] for ref in row["performer_entities"]],
+                         ["Canonical Alice", "Canonical Bea", "Canonical Cleo"])
+        self.assertEqual(row["performer_total"], 3)
+        # 出镜者名不得再作为内容标签重复出现在同一张卡片上。
+        self.assertNotIn("Canonical Bea", row["tags"])
+
+    def test_card_performers_are_capped_but_the_total_is_still_reported(self):
+        extra = [f"Cast {index:02d}" for index in range(rm_web.CARD_PERFORMERS + 3)]
+        self._add_performers(2, extra)
+        row = next(row for row in rm_web.q_items(self.contract, {"limit": "10"})["items"]
+                   if row["id"] == 2)
+        self.assertEqual(len(row["performer_entities"]), rm_web.CARD_PERFORMERS)
+        self.assertEqual(row["performer_total"], len(extra))
+
+    def test_detail_returns_the_full_cast_without_the_card_cap(self):
+        extra = [f"Cast {index:02d}" for index in range(rm_web.CARD_PERFORMERS + 3)]
+        self._add_performers(1, extra)
+        detail = rm_web.q_item(self.contract, 1)
+        self.assertEqual(len(detail["entity_refs"]["performer"]), len(extra) + 1)
+        self.assertEqual(len(detail["performers"]), len(extra) + 1)
+
+    def test_related_cards_report_the_same_performer_shape_as_the_home_grid(self):
+        self._add_performers(2, ["Canonical Bea"])
+        related = rm_web.q_related(self.contract, 1, 10)
+        row = related["items"][0]
+        self.assertEqual(row["performer_total"], len(row["performer_entities"]))
+
     def test_creator_filters_indexes_and_stats_use_canonical_entities(self):
         by_creator = rm_web.q_items(self.contract, {
             "creator": "Canonical Creator", "limit": "10",
