@@ -378,7 +378,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("data-mix-item")
         self.assertPageContains("if(!mixContext)api('/api/related?id='")
         self.assertPageContains("batchWithMix(d.items,location.pathname==='/'&&state.state!=='trash')")
-        self.assertPageContains("location.pathname!=='/'||state.orient==='竖屏'||state.state==='ads'||state.state==='trash'")
+        # 竖屏条只在首页出现。JAV 模式也排除：番号发行物是横版，竖屏是另一类内容，
+        # 而主列表的 exclude_vertical 管不到这条——它是独立请求、独立插入的。
+        self.assertPageContains("location.pathname!=='/'||javActive()||state.orient==='竖屏'")
+        self.assertPageContains("||state.state==='ads'||state.state==='trash'")
         self.assertPageContains("route(section==='trash'?'/trash':'/')")
         self.assertPageContains("if(path==='/trash')")
         self.assertPageContains("/api/trash/empty")

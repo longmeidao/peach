@@ -469,9 +469,15 @@ function wireCards(root,onClick,onTag){
 
 /* ── 顶部标签条 + 抽屉 ── */
 let barsRequestSeq=0,barsDataCache=null,barsDataAt=0,barsDataPromise=null;
+let barsDataScope='';
 async function getBarsData(){
+  // JAV 模式的顶部三层与筛选面板要跟着收窄，否则会列出只出现在创作者作品里的
+  // 女优和厂牌，点进去却是空的。口径变了必须丢缓存，不能沿用上一套。
+  const scope=javActive()?'&jav=1':'';
+  if(scope!==barsDataScope){barsDataCache=null;barsDataPromise=null;barsDataScope=scope}
   if(barsDataCache&&Date.now()-barsDataAt<30000)return barsDataCache;
-  if(!barsDataPromise)barsDataPromise=Promise.all([api('/api/facets'),api('/api/tops?n=30')])
+  if(!barsDataPromise)barsDataPromise=Promise.all([
+      api('/api/facets'+(scope?'?jav=1':'')),api('/api/tops?n=30'+scope)])
     .then(data=>{barsDataCache=data;barsDataAt=Date.now();return data})
     .finally(()=>{barsDataPromise=null});
   return barsDataPromise
@@ -1354,7 +1360,11 @@ $('#q').addEventListener('focus',()=>{Promise.all([loadSearchHistory(),loadSearc
 
 const SHORTS_ROW_OFFSET=2;   // 竖屏条插在第几行之后，0 表示置顶
 async function loadShorts(requestSeq=loadRequestSeq){
-  if(location.pathname!=='/'||state.orient==='竖屏'||state.state==='ads'||state.state==='trash'){$('#shortsSec').hidden=true;return}
+  // JAV 模式不插竖屏条：番号发行物本身是横版，竖屏是另一类内容。
+  // 主列表的 exclude_vertical 管不到这条——它是独立请求、独立插入的。
+  if(location.pathname!=='/'||javActive()||state.orient==='竖屏'
+     ||state.state==='ads'||state.state==='trash'){
+    $('#shortsSec').hidden=true;$('#grid').querySelector('#shortsInline')?.remove();return}
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
   p.set('orient','竖屏');p.set('limit',18);p.set('offset',0);p.set('sort','new');
   const d=await api('/api/items?'+p);

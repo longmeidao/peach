@@ -604,11 +604,17 @@ def q_related(contract: WebContract, aid, limit=24):
         d.pop("snapshot_path", None)
     return {"items": picked[:limit]}
 
-def q_tops(contract: WebContract, n=28):
+#: JAV 语境下的资产过滤片段。顶部三层与筛选面板都要跟着收窄，否则在 JAV 模式里
+#: 仍然列着只出现在创作者作品里的女优和厂牌，点进去却是空的。
+JAV_ASSET_CLAUSE = "AND a.code IS NOT NULL AND a.code<>'' AND is_jav_code(a.code) "
+
+
+def q_tops(contract: WebContract, n=28, jav=False):
     """顶部三层用的数据：女优圆头像 / 厂牌 / 内容标签。
 
     缓存的人物肖像由前端优先使用；缺失时才回退到代表作接触印相裁切。"""
     c = contract.db()
+    scope = JAV_ASSET_CLAUSE if jav else ""
     base = (
         "SELECT e.id,e.canonical_name,count(DISTINCT ae.asset_id) n,"
         "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
@@ -616,7 +622,7 @@ def q_tops(contract: WebContract, n=28):
         " ORDER BY (a2.play_count IS NULL),a2.size DESC LIMIT 1) rep "
         "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
         "JOIN asset a ON a.id=ae.asset_id "
-        "WHERE a.medium='video' AND e.kind=? "
+        "WHERE a.medium='video' AND e.kind=? " + scope +
         "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT ?"
     )
     out = {}
@@ -1122,17 +1128,20 @@ def w_review_decision(contract: WebContract, body):
     return {"ok": True, "category": category, "item_key": item_key, "status": status, "applied_assets": applied}
 
 
-def q_facets(contract: WebContract):
+def q_facets(contract: WebContract, jav=False):
     c = contract.db()
+    scope = JAV_ASSET_CLAUSE if jav else ""
     out = {}
     out["locations"] = [dict(r) for r in c.execute(
-        "SELECT location AS k, count(*) AS n, "
-        "SUM(CASE WHEN play_count>0 THEN 1 ELSE 0 END) AS played "
-        "FROM asset WHERE medium='video' GROUP BY location ORDER BY n DESC")]
+        "SELECT a.location AS k, count(*) AS n, "
+        "SUM(CASE WHEN a.play_count>0 THEN 1 ELSE 0 END) AS played "
+        "FROM asset a WHERE a.medium='video' " + scope +
+        "GROUP BY a.location ORDER BY n DESC")]
     out["creators"] = [dict(r) for r in c.execute(
         "SELECT e.canonical_name AS k,count(DISTINCT ae.asset_id) AS n "
         "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-        "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='creator' "
+        "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='creator' " + scope +
+        
         "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 60")]
     # 标签要分层 —— 原来一锅端，结果「演员:一个ren」和「1080P」「足交」混在一起。
     # 三类分开：技术规格（画质/时长/画幅，筛选价值低）、内容维度（真正有用的）、演员（另立一栏）。
@@ -1142,7 +1151,7 @@ def q_facets(contract: WebContract):
     rows = [dict(r) for r in c.execute(
         "SELECT e.canonical_name AS k, count(DISTINCT ae.asset_id) AS n "
         "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-        "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='tag' "
+        "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='tag' " + scope +
         "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
         "AND performer.normalized_name=e.normalized_name) "
         "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 400")]
@@ -1152,7 +1161,8 @@ def q_facets(contract: WebContract):
     out["tagperformers"] = [dict(r) for r in c.execute(
         "SELECT e.canonical_name AS k,count(DISTINCT ae.asset_id) AS n "
         "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-        "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='performer' "
+        "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='performer' " + scope +
+        
         "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 20")]
     st = c.execute(
         "SELECT count(*) total, COALESCE(sum(size),0) bytes, "
@@ -1626,7 +1636,10 @@ def dispatch_api_get(contract: WebContract, path, args):
         return contract.cached("stats", lambda: q_stats(contract))
     if path == "/api/tops":
         n = min(int(args.get("n", "28")), 60)
-        return contract.cached(f"tops{n}", lambda: q_tops(contract, n))
+        jav = args.get("jav") == "1"
+        # 缓存键必须带上口径，否则 JAV 与全库两套结果会互相顶掉。
+        return contract.cached(f"tops{n}{'-jav' if jav else ''}",
+                               lambda: q_tops(contract, n, jav=jav))
     if path == "/api/ads":
         return q_ads(
             contract,
@@ -1636,7 +1649,9 @@ def dispatch_api_get(contract: WebContract, path, args):
     if path == "/api/related":
         return q_related(contract, int(args["id"]), min(int(args.get("limit", "24")), 60))
     if path == "/api/facets":
-        return contract.cached("facets", lambda: q_facets(contract))
+        jav = args.get("jav") == "1"
+        return contract.cached(f"facets{'-jav' if jav else ''}",
+                               lambda: q_facets(contract, jav=jav))
     if path == "/api/search-history":
         return q_search_history(contract, int(args.get("limit", "10")))
     if path == "/api/review":
