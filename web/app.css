@@ -862,5 +862,9 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .poster.cover.front[data-frame="front"]{object-position:50% 22%}
 .poster.cover.whole{object-fit:contain;background:#000;object-position:50% 50%}
 
-/* JAV 入口用「番」字本身，不用任何站点的 logo。字形按其余描边图标的视觉重量调。 */
-.edge .glyph{font-size:19px;line-height:1;font-weight:500;letter-spacing:0}
+/* JAV 入口用「番」字本身，不用任何站点的 logo。外面描一个方框，让它和其余
+   描边图标在同一条导航里看起来是同一类东西，而不是一个突兀的汉字。
+   窄栏与抽屉共用同一份字形，两处必须一致。 */
+.glyph{display:inline-grid;place-items:center;width:22px;height:22px;
+  border:1.6px solid currentColor;border-radius:5px;
+  font-size:13px;line-height:1;font-weight:600;letter-spacing:0;flex:none}

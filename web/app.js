@@ -533,7 +533,7 @@ async function buildBars(){
   const sec=(t,b,x,cat)=>`<div class="sec${cat?' cat-'+cat:''}"><h3>${t}${x||''}</h3>${b}</div>`;
   // 与窄栏共用 EDGE_ICONS —— 两边条目必须一致，原来抽屉是另一份硬编码
   const navBtn=(k,label,ic)=>`<button data-nav="${k}" aria-pressed="${navOn(k)}">
-    ${icon(ic)}<span>${label}</span></button>`;
+    ${ic.length===1?`<span class="glyph">${esc(ic)}</span>`:icon(ic)}<span>${label}</span></button>`;
   $('#drawer').innerHTML=
     `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <b class="disp" style="font-size:15px;letter-spacing:.1em">导航与筛选</b>
