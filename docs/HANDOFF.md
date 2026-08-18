@@ -109,6 +109,8 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 头像与厂牌 Logo 的取源方向相反。头像去精心整理的图库（Gfriends 约 10.7 万张，目录名首字符即质量档位），不要回官方站——同一张脸 DMM 官方只给 125×125，图库存的是 500×500 起，最高 1500×2125。Logo 是品牌标识，官网与维基才是权威来源。
 - 头像门槛按长短边分别判定（长边 ≥500 且短边 ≥300）。竖构图人像宽度天然小，套用为方图设的“短边 ≥512”会拒掉 `0-Hand-Storage`(334×501)、`8-GRAPHIS`(360×508) 这些最优来源。
 - 可用来源实测（2026-08-15）：r18.dev、av-wiki.net、javdb.com、Gfriends 可用；javlibrary、missav、xslist 被 Cloudflare 拦，njav 有验证墙，jav321 无独立女优字段。被 Cloudflare 拦的站一律放弃，不绕过机器人检测。
+- 番号目录被投影成创作者时，判据只能是文件级证据，不能是名字形态。`HD-abp-758`、`pppd-937ch`、`banbi_555`、`AH18` 四者形态相同，真相完全不同：前两个是发行目录（`HD-` 是画质、`-CH` 是中文字幕版，都会让番号提取放弃），第三个是 myfans 账号，第四个是 pixiv 画师。唯一可靠的区分是「目录内的媒体文件名是否解析出同一个番号」——账号目录里放的是作品标题，天然不命中；pixiv 行的 `path` 是 URL，先按这一点排除。`scripts/audit_code_creators.py` 就是这条判据的实现，存疑一律留复核 CSV。
+- 画质前缀（`HD`/`FHD`/`4K`/`1080P`）和版本后缀（`-C`/`-CH`/`-UC`/`-SUB`）不是番号的一部分。番号提取器必须先剥这两层再匹配，否则 `code` 留空、目录名顶替身份，两个错误一起发生。
 - 打创作者级标签前必须先验证这个 creator 是不是聚合目录。按 ledger 路径的下级目录分布判断：`Myfans` 下含至少 4 位不同创作者，`RiaKurumi` 是女优而非创作者且作品分属 cospuri／fellatiojapan／spermmania 三个厂牌。给聚合目录打统一风格标签就是 `asce` 事故的重演。
 
 ## 流量与代理诊断工具
@@ -196,6 +198,9 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 115/PikPak 继续采用视频网站式按需加载，不增加“点击后才拉流”的额外门槛。不得擅自缩短浏览器请求的 Range：旧 32 MiB 人工截断让 Firefox 把部分 MP4 误判为不断增长的媒体时长。当前以标准 Range + session 取消保持协议正确；要由服务端控制分片大小，必须进入正式 HLS/DASH 流方案，不能伪造 `Content-Range` 请求语义。
 - 详情播放器固定复用本地 Video.js 8.23.9（Apache-2.0），不依赖 CDN。控制栏总时长优先采用 ledger 探测值；item 29297 的 `moov/mvhd` 位于文件头，真实总时长为 28,639.916 秒，说明旧“越播越长”不是媒体缺少头部元数据。统计面板在直接 MP4 下显示 Range、缓冲、画面和丢帧；未来 HLS/DASH 继续读取内置 VHS 的请求、带宽和字节统计。
 - Peach 测试唯一入口是 `& .\scripts\test.ps1`；脚本内部运行标准库 `unittest`，仓库不依赖 `pytest`。健康检查端点是 `/healthz`，不是 `/health`。
+- 2026-08-18 回环实测（`/stream?id=823`，取前 200 MiB）：直接读盘 761 MiB/s、Peach HTTP 136 MiB/s、Peach HTTPS 142 MiB/s。TTFB：`/healthz` 36 ms、`/stream` 首块 40 ms、中段 Range 41 ms、`/api/items?limit=60` 167–405 ms。结论是吞吐不构成瓶颈（千兆 LAN 上限本来就低于它），感知慢要从并发槽位、缓存策略和每请求固定开销去找，不要再重复测吞吐。
+- 当前部署的三个已知延迟来源，改动前先看清代价：`/stream` 带 `Cache-Control: no-store`，浏览器无法复用任何已下载片段，每次拖动进度条都重下；uvicorn 只提供 HTTP/1.1 且未安装 `httptools`（回落到纯 Python h11），浏览器对同源限 6 条连接，首页 60 张海报、hover 预览和正片流共抢这 6 条；Starlette `FileResponse` 的 `chunk_size` 是 64 KiB，每块一次线程池读加一次 ASGI send，HTTPS 下再加一次 Python TLS 加密。
+- hover 预览的真实成本是每次悬停一条 `/stream` 加 7 次 `currentTime` 跳段，共 8 个 Range 请求；配合 `no-store`，这些字节一个都不能复用。评估首页流畅度时必须把它算进连接预算。
 - Windows 千兆线路理论上限约 125 MB/s。115 实测单文件由 CloudDrive 启动 2 条约 2 MB/s 的 CDN 连接；`max_download_speed_kbyps=0` 表示未设本地限速。卡顿排查先看 FlowLens 是否存在关闭详情后仍下载的旧连接，再查 Range/缓存，不把单连接速度直接归因于本地带宽。
 
 ## 恢复入口

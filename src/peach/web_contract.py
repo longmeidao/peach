@@ -20,6 +20,11 @@ from .media import remap_managed_path
 
 COST = {"local": "free", "115": "free", "pikpak": "metered", "online": "metered"}
 
+#: 卡片随每条记录返回的女优上限。共演作品必须带上全部出镜者，而不是只留第一位；
+#: 但 BEST 合集实测有 41 位，全量下发会把列表响应撑大，所以截断并同时给出总数，
+#: 由界面显示「等 N 人」。详情页走 q_item，不受这个上限影响。
+CARD_PERFORMERS = 6
+
 FAVICON = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#0B0B0D"/><defs><linearGradient id="pg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF9A76"/><stop offset="1" stop-color="#F2557B"/></linearGradient></defs><path d="M16 28c-5.7 0-9.7-3.6-9.7-8.6 0-4.3 2.8-7.6 6.5-7.6 1.4 0 2.4.5 3.2 1.1.8-.6 1.8-1.1 3.2-1.1 3.7 0 6.5 3.3 6.5 7.6C25.7 24.4 21.7 28 16 28z" fill="url(#pg)"/><path d="M16 13.4V27" stroke="#0B0B0D" stroke-width="1.1" opacity=".3" stroke-linecap="round"/><path d="M17.1 11.7c.6-2.8 2.8-4.6 5.6-4.8-.2 2.8-2.2 4.7-5.6 4.8z" fill="#5FB95F"/><path d="M16 11.9c0-1.9.5-3.4 1.5-4.5" stroke="#8A5A3B" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>')
 
 CACHE_TTL = 90
@@ -217,10 +222,11 @@ def q_items(contract: WebContract, args):
             canonical = emap.get(r["id"], {})
             canonical_tags = canonical.get("tag", [])
             canonical_performers = canonical.get("performer", [])
-            performers = (canonical_performers or [
+            all_performers = canonical_performers or [
                 tag[3:] for tag in ts if tag.startswith("演员:")
-            ])[:3]
-            performer_names = {normalize_entity_name(name) for name in performers}
+            ]
+            performers = all_performers[:CARD_PERFORMERS]
+            performer_names = {normalize_entity_name(name) for name in all_performers}
             visible_tags = canonical_tags or [t for t in ts if not t.startswith("演员:")]
             r["tags"] = [
                 tag for tag in visible_tags
@@ -228,7 +234,9 @@ def q_items(contract: WebContract, args):
                 and normalize_entity_name(tag) not in performer_names
             ][:4]
             r["performers"] = performers
-            r["performer_entities"] = performer_refs.get(r["id"], [])[:3]
+            refs = performer_refs.get(r["id"], [])
+            r["performer_entities"] = refs[:CARD_PERFORMERS]
+            r["performer_total"] = len(refs) or len(all_performers)
     for r in rows:
         r["cost"] = COST.get(r["location"], "metered")
         r["has_thumb"] = contract.has_snapshot(r["snapshot_path"])
@@ -273,8 +281,9 @@ def attach_card_performers(contract: WebContract, rows):
         names.setdefault(asset_id, []).append(name)
         refs.setdefault(asset_id, []).append({"id": entity_id, "name": name})
     for row in rows:
-        row["performers"] = names.get(row["id"], [])[:3]
-        row["performer_entities"] = refs.get(row["id"], [])[:3]
+        row["performers"] = names.get(row["id"], [])[:CARD_PERFORMERS]
+        row["performer_entities"] = refs.get(row["id"], [])[:CARD_PERFORMERS]
+        row["performer_total"] = len(names.get(row["id"], []))
 
 def q_item(contract: WebContract, aid):
     """按 id 直取。

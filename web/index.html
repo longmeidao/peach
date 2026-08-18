@@ -419,6 +419,16 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .mav img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .mav .ini{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   font-size:13px;color:var(--muted);font-family:Bahnschrift,sans-serif}
+/* 共演头像叠放：靠左的在上层，hover 时抬到最前，保证每一位都点得到。 */
+.mavstack{display:flex;flex:none;margin-top:2px}
+.mavstack .mav{margin-top:0;box-shadow:0 0 0 2px var(--ground)}
+.mavstack .mav+.mav{margin-left:-14px}
+.mavstack .mav:nth-child(1){z-index:3}
+.mavstack .mav:nth-child(2){z-index:2}
+.mavstack .mav:nth-child(3){z-index:1}
+.mavstack .mav:hover{z-index:4;box-shadow:0 0 0 2px var(--tungsten)}
+.meta .whosep{color:var(--muted);margin:0 -4px}
+.meta .whomore{color:var(--muted)}
 .mtext{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
 .meta .t{font-size:14px;line-height:1.35;min-height:2.7em;overflow:hidden;display:-webkit-box;
   -webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-all}
@@ -547,6 +557,8 @@ body.entity-open #tiers,body.entity-open #tagbar{display:none}
   display:grid;place-items:center;position:relative;font-size:11px;border:0;padding:0;cursor:pointer}
 .identitymark.logo{border-radius:6px;background:#fff;color:#555}.identitymark img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .identitymark.logo img{object-fit:contain;padding:2px}.identitymark svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
+.castmore{margin-left:36px;padding:0;border:0;background:transparent;color:var(--tungsten);
+  font-size:13px;text-align:left;cursor:pointer;justify-self:start}
 .identityrow .ilabel{font-size:12px;color:var(--muted)}.identityrow .entitylink{font-size:14px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .trace{margin:0 0 18px;padding-top:2px}
 .trace .lab{display:flex;justify-content:space-between;color:var(--muted);margin-bottom:5px}
@@ -1119,6 +1131,13 @@ function wireHover(el,it){
 window.addEventListener('pagehide',()=>releaseHoverPreviews());
 document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseHoverPreviews()});
 
+/* 头像内层：先垫首字母，再叠真实图。规范实体图优先，取不到才回落到旧头像缓存。 */
+function avatarInner(name,ref,repId){
+  const src=ref?`/entity-image?kind=performer&id=${ref.id}`:(repId?`/avatar?id=${repId}`:'');
+  const fallback=ref&&repId?`this.onerror=null;this.src='/avatar?id=${repId}'`:`this.remove()`;
+  return `<span class="ini">${esc((name||'?').slice(0,1))}</span>`+
+    (src?`<img src="${src}" alt="" loading="lazy" onerror="${fallback}">`:'');
+}
 function cardHtml(it,cls){
   const ar=(it.width&&it.height)?Math.min(1.9,Math.max(0.5,it.width/it.height)):16/9;
 
@@ -1129,8 +1148,11 @@ function cardHtml(it,cls){
   const fl=[it.feedback==='dislike'&&'dislike',it.feedback==='seen'&&'seen',
             it.disposal==='pending'&&'dispose',it.watch_later&&'later']
             .filter(Boolean).map(c=>`<i class="${c}"></i>`).join('');
-  const performer=(it.performers||[])[0]||'';
-  const performerRef=(it.performer_entities||[])[0];
+  const performers=it.performers||[];
+  const performerRefs=it.performer_entities||[];
+  const performerTotal=it.performer_total||performers.length;
+  const performer=performers[0]||'';
+  const performerRef=performerRefs[0];
   const identity=it.creator?{kind:'creator',name:it.creator}
     :(performer?{kind:'performer',name:performer}
       :(it.code?{kind:'',name:it.code}
@@ -1138,17 +1160,25 @@ function cardHtml(it,cls){
   const who=identity.name,whoKind=identity.kind;
   const sizeText=Number(it.size)>0?fmtSize(Number(it.size)):'大小未知';
   const tgs=(it.tags||[]).slice(0,3).map(x=>`<span class="tg general" data-tag="${esc(x)}">${esc(x)}</span>`).join('');
-  const avatarName=performer||it.creator||it.studio||who;
-  const avatarKind=performer?'performer':(it.creator?'creator':(it.studio?'studio':''));
-  const avId=REP[avatarName]||REP[it.creator]||REP[it.studio];
-  const avSrc=performerRef
-    ? `/entity-image?kind=performer&id=${performerRef.id}`
-    : (avId?`/avatar?id=${avId}`:'');
-  const av=`<span class="ini">${esc((avatarName||'?').slice(0,1))}</span>`+
-    (avSrc?`<img src="${avSrc}" alt="" loading="lazy" onerror="${avId&&performerRef?`this.onerror=null;this.src='/avatar?id=${avId}'`:`this.remove()`}">`:'');
-  const avatar=avatarKind
-    ? `<button class="mav entitylink" data-entity-kind="${avatarKind}" data-entity-name="${esc(avatarName)}" title="打开${performer?'女优':'资料'}页">${av}</button>`
-    : `<span class="mav">${av}</span>`;
+  // 共演作品的每一位出镜者都要露出，而不是只留第一位。头像叠放最多 3 个，
+  // 名字最多 2 个，剩下的记为「等 N 人」，避免 BEST 合集把整行撑开。
+  const coStarred=performers.length>1&&!it.creator;
+  const avatar=coStarred
+    ? `<div class="mavstack">${performers.slice(0,3)
+        .map((nm,i)=>`<button class="mav entitylink" data-entity-kind="performer" data-entity-name="${esc(nm)}" title="打开女优页：${esc(nm)}">${avatarInner(nm,performerRefs[i],REP[nm])}</button>`)
+        .join('')}</div>`
+    : (()=>{
+        const avatarName=performer||it.creator||it.studio||who;
+        const avatarKind=performer?'performer':(it.creator?'creator':(it.studio?'studio':''));
+        const inner=avatarInner(avatarName,performerRef,REP[avatarName]||REP[it.creator]||REP[it.studio]);
+        return avatarKind
+          ? `<button class="mav entitylink" data-entity-kind="${avatarKind}" data-entity-name="${esc(avatarName)}" title="打开${performer?'女优':'资料'}页">${inner}</button>`
+          : `<span class="mav">${inner}</span>`;
+      })();
+  const whoHtml=coStarred
+    ? performers.slice(0,2).map(nm=>`<button class="who entitylink" data-entity-kind="performer" data-entity-name="${esc(nm)}">${esc(nm)}</button>`).join('<span class="whosep">、</span>')
+      +(performerTotal>2?`<span class="whomore">等 ${performerTotal} 人</span>`:'')
+    : (whoKind?`<button class="who entitylink" data-entity-kind="${whoKind}" data-entity-name="${esc(who)}">${esc(who)}</button>`:`<span class="who">${esc(who)}</span>`);
   const tools=`<button class="previewcounter" data-open title="打开预览" aria-label="打开预览">
       <svg viewBox="-18 -18 36 36"><circle r="17"></circle><circle r="17"></circle></svg>${icon('play','ringplay')}</button>
     <div class="hovertools later-tools"><button class="laterbtn" data-later aria-pressed="${!!it.watch_later}" title="稍后看" aria-label="稍后看">
@@ -1163,7 +1193,7 @@ function cardHtml(it,cls){
       <span class="selectionMark">${icon('check')}</span><span class="deleteMark">${icon('trash')}<b>待删</b></span>
       <span class="dur mono">${fmtDur(it.duration)}</span>${tr}${tools}</div>
     <div class="meta">${avatar}<div class="mtext"><button class="t cardtitle" data-open>${esc(it.name)}</button>
-      <div class="s mono">${whoKind?`<button class="who entitylink" data-entity-kind="${whoKind}" data-entity-name="${esc(who)}">${esc(who)}</button>`:`<span class="who">${esc(who)}</span>`}
+      <div class="s mono">${whoHtml}
         ${it.why?`<span class="why">${esc(it.why)}</span>`:''}
         <span class="size">${sizeText}</span>
         ${it.play_count?`<span>看过 ${it.play_count}</span>`:''}
@@ -1809,26 +1839,36 @@ async function openItem(id,push=true,mixContext=null){
   current=it; CACHE[it.id]=it;
   const gated=it.cost==='metered';
   const who=it.creator||it.code||it.studio||'未归属';
-  const refs=it.entity_refs||{},performerRef=(refs.performer||[])[0],studioRef=(refs.studio||[])[0];
-  const performerName=performerRef?.name||(it.performers||[])[0]||'';
+  const refs=it.entity_refs||{},studioRef=(refs.studio||[])[0];
+  // 共演作品的女优逐行列出，每行带自己的头像；标签只写在第一行，其余留空保持对齐。
+  const performerRefs=(refs.performer||[]).length
+    ? refs.performer
+    : (it.performers||[]).map(name=>({id:null,name}));
   const studioName=studioRef?.name||it.studio||'';
   const identityRaw=[
-    performerName&&['performer','女优',performerName],
-    studioName&&['studio','厂牌',studioName],
-    ...((it.entities&&it.entities.creator)||[]).slice(0,1).map(x=>['creator','创作者',x]),
-    ...((it.entities&&it.entities.series)||[]).slice(0,1).map(x=>['series','系列',x]),
+    ...performerRefs.map((ref,i)=>['performer',i?'':'女优',ref.name,ref]),
+    studioName&&['studio','厂牌',studioName,null],
+    ...((it.entities&&it.entities.creator)||[]).slice(0,1).map(x=>['creator','创作者',x,null]),
+    ...((it.entities&&it.entities.series)||[]).slice(0,1).map(x=>['series','系列',x,null]),
   ].filter(Boolean);
   const identitySeen=new Set();
   const identityEntries=identityRaw.filter(([, ,name])=>{
     const key=foldName(name);if(identitySeen.has(key))return false;identitySeen.add(key);return true});
-  const identityRows=identityEntries.map(([k,l,n])=>{
+  // BEST 合集实测有 41 位出镜者，全铺开会把标签和反馈按钮挤出可视区。
+  // 前 8 位直接展示，其余默认收起但仍在 DOM 里，一次点击即可看全。
+  const CAST_SHOWN=8;
+  const castRows=identityEntries.filter(([k])=>k==='performer');
+  const castOverflow=Math.max(0,castRows.length-CAST_SHOWN);
+  let castIndex=0;
+  const identityRows=identityEntries.map(([k,l,n,ref])=>{
+    const extra=k==='performer'&&castIndex++>=CAST_SHOWN;
     const visual=k==='performer'
-      ? `<span>${esc(n.slice(0,1))}</span>${performerRef?`<img src="/entity-image?kind=performer&id=${performerRef.id}" alt="" onerror="this.remove()">`:''}`
+      ? `<span>${esc(n.slice(0,1))}</span>${ref&&ref.id?`<img src="/entity-image?kind=performer&id=${ref.id}" alt="" onerror="this.remove()">`:''}`
       : k==='studio'
         ? `<span>${esc(n.slice(0,2))}</span><img src="/logo?studio=${encodeURIComponent(n)}" alt="" onerror="this.remove()">`
         : k==='series'?icon('tags'):`<span>${esc(n.slice(0,1))}</span>`;
-    return `<div class="identityrow"><button class="identitymark ${k==='studio'?'logo ':''}entitylink" data-entity-kind="${k}" data-entity-name="${esc(n)}" title="打开${l}页">${visual}</button><span class="ilabel">${l}</span><button class="entitylink" data-entity-kind="${k}" data-entity-name="${esc(n)}">${esc(n)}</button></div>`;
-  }).join('');
+    return `<div class="identityrow"${extra?' hidden data-castoverflow':''}><button class="identitymark ${k==='studio'?'logo ':''}entitylink" data-entity-kind="${k}" data-entity-name="${esc(n)}" title="打开${l||'女优'}页">${visual}</button><span class="ilabel">${l}</span><button class="entitylink" data-entity-kind="${k}" data-entity-name="${esc(n)}">${esc(n)}</button></div>`;
+  }).join('')+(castOverflow?`<button class="castmore" id="castMore">还有 ${castOverflow} 位</button>`:'');
   $('#stage').hidden=false;document.body.classList.add('detail-open');delete $('#stage').dataset.c;
   $('#stage').innerHTML=`<div class="sgrid ${mixContext?'mixgrid':''}">
     <div class="vwrap"><canvas class="ambientcanvas" id="ambientCanvas" width="32" height="18"></canvas><button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>
@@ -1872,6 +1912,9 @@ async function openItem(id,push=true,mixContext=null){
     ${mixContext?'':`<div class="next"><h3>接着看</h3><div class="nrow" id="nrow">载入中…</div></div>`}`;
 
   $('#closeStage').onclick=()=>disposeStage(true);
+  if($('#castMore'))$('#castMore').onclick=e=>{
+    $('#stage').querySelectorAll('[data-castoverflow]').forEach(row=>row.hidden=false);
+    e.currentTarget.remove()};
   $('#stage').querySelectorAll('[data-mix-close]').forEach(b=>b.onclick=()=>disposeStage(true));
   $('#stage').querySelectorAll('[data-mix-item]').forEach(b=>b.onclick=()=>openMix(mixContext.seedId,+b.dataset.mixItem,true));
   const g=$('#gate');
@@ -2071,7 +2114,11 @@ async function tokShow(dir){
   }
   v.play().catch(()=>{});
   $('#tokTitle').textContent=it.name;
-  const who=(full.performers&&full.performers[0])||full.creator||it.code||'未归属';
+  // 共演作品在沉浸模式也要念全出镜者；点击仍进第一位的资料页。
+  const cast=full.performers||[];
+  const who=cast.length
+    ? cast.slice(0,3).join('、')+(cast.length>3?` 等 ${cast.length} 人`:'')
+    : (full.creator||it.code||'未归属');
   $('#tokWho').textContent=who;
   $('#tokWho').onclick=e=>{e.preventDefault();
     $('#tokClose').click();
