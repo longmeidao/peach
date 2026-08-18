@@ -193,11 +193,6 @@ button,input,textarea{font:inherit;color:inherit}
 .index .ihead{display:flex;align-items:center;gap:12px;margin-bottom:14px}
 .index .ihead h2{margin:0;font-size:20px;font-weight:500}
 .index .ihead .isearch{margin-left:auto}
-.backbtn{width:42px;height:42px;padding:0;border:0;border-radius:12px;background:transparent;
-  display:inline-grid;place-items:center;cursor:pointer;color:var(--ink-2);line-height:1;flex:none}
-.backbtn svg{width:26px;height:26px;stroke:currentColor;fill:none;stroke-width:1.7;
-  stroke-linecap:round;stroke-linejoin:round;flex:none}
-.backbtn:hover{color:var(--ink);background:var(--hover);transform:translateX(-2px)}
 .index .isearch{flex:1;max-width:320px;background:var(--sunk);border:1px solid var(--line);
   border-radius:18px;padding:6px 14px}
 .index .isearch input{background:none;border:0;outline:none;width:100%}
@@ -522,7 +517,8 @@ body[data-density="dense"] .card .meta .t{display:block;max-width:100%;min-heigh
   border:1px solid var(--line);overflow:hidden}
 .stage[hidden]{display:none}
 body.detail-open .tagbar{position:relative;top:auto;z-index:1}
-body.entity-open #tiers,body.entity-open #tagbar{display:none}
+body.entity-open #tiers,body.entity-open #tagbar,
+body.index-open #tiers,body.index-open #tagbar{display:none}
 .sgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(350px,390px)}
 .sgrid.mixgrid{grid-template-columns:minmax(0,1fr) minmax(310px,390px)}
 .sgrid.mixgrid>.side{grid-column:1/-1;max-height:none;border-left:0;border-top:1px solid var(--line-soft)}
@@ -873,7 +869,6 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   <symbol id="i-rotate-cw" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></symbol>
   <symbol id="i-maximize" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></symbol>
   <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
-  <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></symbol>
   <symbol id="i-heart" viewBox="0 0 24 24"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></symbol>
   <symbol id="i-play" viewBox="0 0 24 24"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></symbol>
   <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
@@ -1646,7 +1641,9 @@ async function openStats(push=true){
   window.scrollTo({top:0,behavior:'smooth'});
 }
 function showHomeSurfaces(){
-  document.body.classList.remove('entity-open');
+  // 两个类都要清：只清 entity-open 会让从索引页回首页时顶栏一直空着，
+  // 而且下面那两行 style.display='' 恢复不了被 class 隐藏的元素。
+  document.body.classList.remove('entity-open','index-open');
   $('#stats').hidden=true;$('#index').hidden=true;
   $('#tiers').style.display='';$('#tagbar').style.display='';
   buildManageBar();   // 放在最后：管理区要盖掉上面刚恢复的首页横条
@@ -1813,6 +1810,9 @@ async function openIndex(kind,q,push=true){
     if(tagIndexCategory!=='all')indexQuery.set('category',tagIndexCategory)}
   if(push)route('/'+kind+(indexQuery.size?'?'+indexQuery:''),!!q);
   showHomeSurfaces();
+  // 必须在 showHomeSurfaces 之后加：它会清掉这两个类并恢复顶部横条，
+  // 写在前面等于自己加完自己删。
+  document.body.classList.add('index-open');
   disposeStage(false);
   const indexApi=offset=>'/api/index?kind='+kind+'&limit='+indexLimit+'&offset='+offset+
     (q?'&q='+encodeURIComponent(q):'')+
@@ -1842,13 +1842,12 @@ async function openIndex(kind,q,push=true){
   const body=people?`<div class="igrid">${peopleHtml(d.items)}</div>`:tagHtml(tagItems);
   const filters=kind==='tags'?`<div class="tagfilters" aria-label="标签类型">${TAG_CATEGORIES.map(([key,label])=>
     `<button class="${key}" data-tag-category="${key}" aria-pressed="${tagIndexCategory===key}">${label}</button>`).join('')}</div>`:'';
-  $('#index').innerHTML=`<div class="ihead"><button class="backbtn" id="iClose" title="返回浏览" aria-label="返回浏览">${icon('arrow-left')}</button>
+  $('#index').innerHTML=`<div class="ihead">
       <h2 class="disp">${title}</h2>
       <span class="mono" id="indexCount" style="color:var(--muted)">${tagItems.length}${d.has_more?'+':''} 项</span>
       ${kind==='tags'?`<div class="tagmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">字母表</button></div>`:''}
       <div class="isearch"><input id="iq" placeholder="过滤…" value="${esc(q||'')}"></div>
     </div>${filters}<div id="indexBody">${body}</div><button class="indexmore" id="indexMore" type="button" ${d.has_more?'':'hidden'}>载入更多</button>`;
-  $('#iClose').onclick=()=>{route('/');$('#index').hidden=true;load(true)};
   let it2; $('#iq').oninput=e=>{clearTimeout(it2);it2=setTimeout(()=>openIndex(kind,e.target.value.trim(),true),300)};
   $('#index').querySelectorAll('[data-tag-view]').forEach(b=>b.onclick=()=>{
     tagIndexMode=b.dataset.tagView;openIndex('tags',$('#iq').value.trim(),true)});

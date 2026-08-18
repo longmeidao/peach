@@ -310,7 +310,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("['tags','标签','tags']")
 
     def test_entity_profile_hides_home_facets_and_renders_context(self):
-        self.assertPageContains("body.entity-open #tiers,body.entity-open #tagbar{display:none}")
+        self.assertPageContains("body.entity-open #tiers,body.entity-open #tagbar,")
         self.assertPageContains('src="/logo?studio=${encodeURIComponent(d.canonical_name)}"')
         self.assertPageContains('class="entitytags"')
         self.assertPageContains('class="relatedpeople"')
@@ -506,9 +506,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("['artist','人物']")
         self.assertPageContains("category=params.get('category')")
 
-    def test_secondary_back_controls_are_icon_only(self):
-        self.assertPageContains('id="i-arrow-left"')
-        self.assertPageContains("${icon('arrow-left')}</button>")
+    def test_no_page_grows_its_own_back_control(self):
+        """索引页原本有个返回按钮，现在顶栏入口本身就是返回路径。
+
+        这条守的是「不要再长回来」，以及别留下没人用的图标与样式——
+        唯一使用者删掉后，`i-arrow-left` symbol 和 `.backbtn` 都成了死代码。
+        """
+        self.assertPageLacks("${icon('arrow-left')}")
+        self.assertPageLacks('id="i-arrow-left"')
+        self.assertPageLacks(".backbtn")
         self.assertPageLacks("${icon('chevron-left')}<span>返回</span>")
 
     def test_climax_uses_pinned_healthicons_symbol(self):
@@ -588,3 +594,16 @@ if __name__ == "__main__":
         self.assertPageContains("western_identity:'西方身份回配'")
         self.assertPageContains("code_creators:'番号目录存疑'")
         self.assertPageContains("cover_sources:'封面来源'")
+
+    def test_index_pages_drop_the_home_filter_bars_and_back_button(self):
+        # 艺人/标签索引和资料页一样是「专注看某一类实体」的表面。
+        self.assertPageContains(
+            "body.entity-open #tiers,body.entity-open #tagbar,\nbody.index-open #tiers,body.index-open #tagbar{display:none}")
+        self.assertPageLacks('id="iClose"', "顶栏入口本身就是返回路径")
+        self.assertPageLacks("$('#iClose').onclick")
+
+    def test_index_open_is_applied_after_the_surface_reset(self):
+        # showHomeSurfaces 会清掉这两个类；写在它前面等于自己加完自己删。
+        self.assertPageContains(
+            "  showHomeSurfaces();\n  // 必须在 showHomeSurfaces 之后加：")
+        self.assertPageContains("document.body.classList.remove('entity-open','index-open')")
