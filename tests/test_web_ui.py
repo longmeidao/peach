@@ -38,37 +38,77 @@ class WebUiSourceTests(unittest.TestCase):
     def test_hidden_load_more_buttons_are_actually_removed_from_layout(self):
         # 有显式 display 的元素不会被浏览器默认的 [hidden]{display:none} 隐藏；
         # 少了这条规则，按钮画在页面上但 requestMore 首行就 return，点了没反应。
-        self.assertIn(".indexmore[hidden],.entitymore[hidden]{display:none}", self.page)
+        self.assertPageContains(".indexmore[hidden],.entitymore[hidden]{display:none}")
 
     def test_co_starred_cards_show_every_performer_not_only_the_first(self):
         # 卡片不能再只取 performers[0]：共演作品要叠头像、列名字并给出总数。
-        self.assertIn("const coStarred=performers.length>1&&!it.creator", self.page)
-        self.assertIn('<div class="mavstack">', self.page)
-        self.assertIn("performers.slice(0,3)", self.page)
-        self.assertIn("data-entity-kind=\"performer\" data-entity-name=\"${esc(nm)}\"", self.page)
-        self.assertIn("等 ${performerTotal} 人", self.page)
-        self.assertIn(".mavstack .mav+.mav{margin-left:-14px}", self.page)
+        self.assertPageContains("const coStarred=performers.length>1&&!it.creator")
+        self.assertPageContains('<div class="mavstack">')
+        self.assertPageContains("performers.slice(0,3)")
+        self.assertPageContains("data-entity-kind=\"performer\" data-entity-name=\"${esc(nm)}\"")
+        self.assertPageContains("等 ${performerTotal} 人")
+        self.assertPageContains(".mavstack .mav+.mav{margin-left:-14px}")
 
     def test_every_card_avatar_falls_back_through_the_same_helper(self):
-        self.assertIn("function avatarInner(name,ref,repId)", self.page)
-        self.assertIn("`/entity-image?kind=performer&id=${ref.id}`", self.page)
-        self.assertIn("this.onerror=null;this.src='/avatar?id=${repId}'", self.page)
+        self.assertPageContains("function avatarInner(name,ref,repId)")
+        self.assertPageContains("`/entity-image?kind=performer&id=${ref.id}`")
+        self.assertPageContains("this.onerror=null;this.src='/avatar?id=${repId}'")
 
     def test_detail_identity_lists_each_performer_with_its_own_portrait(self):
-        self.assertIn("...performerRefs.map((ref,i)=>['performer',i?'':'女优',ref.name,ref])", self.page)
-        self.assertIn("ref&&ref.id?`<img src=\"/entity-image?kind=performer&id=${ref.id}\"", self.page)
-        self.assertNotIn("const performerName=performerRef?.name", self.page)
+        self.assertPageContains("...performerRefs.map((ref,i)=>['performer',i?'':'女优',ref.name,ref])")
+        self.assertPageContains("ref&&ref.id?`<img src=\"/entity-image?kind=performer&id=${ref.id}\"")
+        self.assertPageLacks("const performerName=performerRef?.name")
 
     def test_large_casts_stay_in_the_dom_behind_one_expander(self):
         # 收起的行必须留在 DOM 里，展开只是取消 hidden，不重新请求也不丢身份。
-        self.assertIn("const CAST_SHOWN=8", self.page)
-        self.assertIn("const castOverflow=Math.max(0,castRows.length-CAST_SHOWN)", self.page)
-        self.assertIn("还有 ${castOverflow} 位", self.page)
-        self.assertIn("querySelectorAll('[data-castoverflow]').forEach(row=>row.hidden=false)", self.page)
+        self.assertPageContains("const CAST_SHOWN=8")
+        self.assertPageContains("const castOverflow=Math.max(0,castRows.length-CAST_SHOWN)")
+        self.assertPageContains("还有 ${castOverflow} 位")
+        self.assertPageContains("querySelectorAll('[data-castoverflow]').forEach(row=>row.hidden=false)")
+
+    def test_playback_keys_reach_both_the_detail_player_and_immerse(self):
+        # 沉浸模式没有 Video.js，详情播放器读的又是同一个原生元素，
+        # 所以快捷键只认 video 元素，两边共用一条实现。
+        self.assertPageContains("function activeVideo()")
+        self.assertPageContains("if(!$('#tok').hidden)return $('#tokVid')")
+        # Video.js 挂载后 #vid 是 <div class="video-js">，真媒体元素是 #vid_html5_api。
+        # 按 id 取会静默失败：给 div 写 currentTime 读得回来，播放却纹丝不动。
+        self.assertPageContains("stage&&!stage.hidden?stage.querySelector('video'):null")
+        self.assertPageLacks("return stage&&!stage.hidden?$('#vid'):null")
+        self.assertPageContains("seekVideoBy(video,appSettings.seekSeconds*(e.key==='ArrowRight'?1:-1))")
+        self.assertPageContains("if(video.paused)video.play().catch(()=>{});else video.pause()")
+
+    def test_space_does_not_also_scroll_the_page(self):
+        self.assertPageContains("if(e.key===' '){\n      e.preventDefault();")
+
+    def test_playback_keys_never_steal_keystrokes_from_inputs(self):
+        self.assertPageContains("function isTypingTarget(el)")
+        self.assertPageContains("el.tagName==='INPUT'||el.tagName==='TEXTAREA'||el.isContentEditable")
+        self.assertPageContains("if(isTypingTarget(e.target)||e.ctrlKey||e.metaKey||e.altKey)return")
+
+    def test_seek_clamps_without_comparing_against_nan_duration(self):
+        # duration 在元数据到位前是 NaN，Math.min(NaN,x) 会把 currentTime 写成 NaN。
+        self.assertPageContains(
+            "Number.isFinite(total)?Math.max(0,Math.min(total,target)):Math.max(0,target)")
+
+    def test_search_menu_is_navigable_by_keyboard(self):
+        self.assertPageContains("function moveSearchActive(step)")
+        self.assertPageContains("if(e.key==='ArrowDown'||e.key==='ArrowUp'){\n    if(moveSearchActive(")
+        self.assertPageContains("options[searchActive].scrollIntoView({block:'nearest'})")
+        self.assertPageContains(".searchoption:hover,.searchoption.active{background:var(--hover)}")
+
+    def test_search_active_index_resets_when_the_list_is_rebuilt(self):
+        # 列表重建后旧索引会指向不存在的行；输入和重新渲染都必须归零。
+        self.assertPageContains("menu.hidden=false;searchActive=-1;")
+        self.assertPageContains("$('#q').oninput=()=>{searchActive=-1;")
+
+    def test_enter_uses_the_highlighted_option_before_the_suggestion(self):
+        self.assertPageContains("const picked=searchOptions()[searchActive]")
+        self.assertPageContains("runSearch(!picked,true)")
 
     def test_immerse_mode_names_the_whole_cast(self):
-        self.assertIn("const cast=full.performers||[]", self.page)
-        self.assertIn("cast.slice(0,3).join('、')", self.page)
+        self.assertPageContains("const cast=full.performers||[]")
+        self.assertPageContains("cast.slice(0,3).join('、')")
 
     def test_detail_close_disposes_playback_source(self):
         self.assertPageContains("function disposeStage")
@@ -290,9 +330,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("updateEntityCollection(kind,name,next,true)")
         self.assertPageContains("renderEntityCollection(kind,name,items,entityTag)")
         self.assertPageLacks("openEntity(kind,name,true,next)")
-        self.assertNotIn(
-            "document.body.classList.remove('entity-open');$('#index').hidden=true;state.tag=b.dataset.entityTag",
-            self.page,
+        self.assertPageLacks(
+            "document.body.classList.remove('entity-open');$('#index').hidden=true;state.tag=b.dataset.entityTag"
         )
 
     def test_large_collections_render_in_bounded_batches(self):
@@ -396,7 +435,10 @@ class WebUiSourceTests(unittest.TestCase):
     def test_search_placeholder_is_an_actionable_recommendation(self):
         self.assertPageContains("const SEARCH_HINTS=['Prestige','FC2','Sakura Misaki','丝袜','足交','ABW']")
         self.assertPageContains("$('#q').dataset.suggestion=searchSuggestion")
-        self.assertPageContains("runSearch(true,true)")
+        # 契约是「没有选中下拉项时，Enter 用当前推荐词」。下拉加了键盘导航后，
+        # 这个条件由 `!picked` 表达：没有高亮项时它就是 true，与旧的字面 true 等价。
+        self.assertPageContains("const picked=searchOptions()[searchActive]")
+        self.assertPageContains("runSearch(!picked,true)")
         self.assertPageLacks("试试：")
         self.assertPageLacks("ABW 番号")
 
@@ -494,7 +536,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("rememberSearch(query)")
         self.assertPageContains(".top:has(.search.open){overflow:visible}")
         self.assertPageLacks("setTimeout(runSearch,320)")
-        self.assertPageContains("runSearch(true,true)")
+        self.assertPageContains("runSearch(!picked,true)")
 
     def test_detail_has_stats_ambient_and_better_version_goal(self):
         self.assertPageContains('class="ambientcanvas"')

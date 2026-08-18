@@ -2071,7 +2071,7 @@ function renderSearchMenu(){const menu=$('#searchMenu'),history=readSearchHistor
   const row=(value,type)=>`<div class="searchoption" data-search-value="${esc(value)}">${icon(type==='history'?'history':'sparkles')}<span>${esc(value)}</span>${type==='history'?`<button class="removehistory" data-remove-history="${esc(value)}" aria-label="删除历史 ${esc(value)}">${icon('x')}</button>`:''}</div>`;
   menu.innerHTML=(history.length?`<section class="searchgroup"><h3>搜索记录</h3>${history.map(x=>row(x,'history')).join('')}</section>`:'')+
     `<section class="searchgroup"><h3>推荐</h3>${recommendations.map(x=>row(x,'recommend')).join('')}</section>`;
-  menu.hidden=false;
+  menu.hidden=false;searchActive=-1;
   menu.querySelectorAll('[data-search-value]').forEach(x=>x.onclick=e=>{if(e.target.closest('[data-remove-history]'))return;
     $('#q').value=x.dataset.searchValue;runSearch(false,true);menu.hidden=true});
   menu.querySelectorAll('[data-remove-history]').forEach(b=>b.onclick=async e=>{e.stopPropagation();await api('/api/search-history',{method:'POST',body:JSON.stringify({operation:'remove',query:b.dataset.removeHistory})});writeSearchHistory(readSearchHistory().filter(x=>foldName(x)!==foldName(b.dataset.removeHistory)));renderSearchMenu()})}
@@ -2080,8 +2080,32 @@ const runSearch=(useSuggestion=false,committed=false)=>{let query=$('#q').value.
   if(committed)rememberSearch(query);
   disposeStage(false);
   state.q=query;route(state.q?'/?q='+encodeURIComponent(state.q):'/',true);load(true)};
-$('#q').oninput=()=>{if(!$('#searchMenu').hidden)renderSearchMenu()};
-$('#q').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();runSearch(true,true);$('#searchMenu').hidden=true;$('#q').blur()}};
+/* 下拉里被键盘选中的那一项。列表每次重建都要归零，否则索引会指向已经不存在的行。 */
+let searchActive=-1;
+const searchOptions=()=>{const menu=$('#searchMenu');
+  return menu.hidden?[]:[...menu.querySelectorAll('[data-search-value]')]};
+function moveSearchActive(step){
+  const options=searchOptions();if(!options.length)return false;
+  searchActive=(searchActive+step+options.length)%options.length;
+  options.forEach((option,index)=>option.classList.toggle('active',index===searchActive));
+  options[searchActive].scrollIntoView({block:'nearest'});
+  return true;
+}
+$('#q').oninput=()=>{searchActive=-1;if(!$('#searchMenu').hidden)renderSearchMenu()};
+$('#q').onkeydown=e=>{
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+    if(moveSearchActive(e.key==='ArrowDown'?1:-1))e.preventDefault();
+    return;
+  }
+  if(e.key!=='Enter')return;
+  e.preventDefault();
+  const picked=searchOptions()[searchActive];
+  if(picked)$('#q').value=picked.dataset.searchValue;
+  searchActive=-1;
+  // 选中某一项时用它原样搜索；没选中才回退到「空输入按 Enter 用推荐词」。
+  runSearch(!picked,true);
+  $('#searchMenu').hidden=true;$('#q').blur();
+};
 $('#q').addEventListener('focus',()=>{Promise.all([loadSearchHistory(),loadSearchPool()]).then(renderSearchMenu)});
 
 const SHORTS_ROW_OFFSET=2;   // 竖屏条插在第几行之后，0 表示置顶
@@ -2517,6 +2541,26 @@ $('#tok').addEventListener('touchend',e=>{const dy=ty-e.changedTouches[0].client
     $('#tokOn').textContent=r.o_count||0;
     if(kind==='dislike'&&r.feedback==='dislike')setTimeout(()=>tokNext(1),260)}});
 
+/* 当前该响应播放快捷键的 video：沉浸模式优先，其次详情播放器，都没开就返回 null。
+   直接操作原生元素而不是 Video.js 实例——沉浸模式没有 Video.js，而详情播放器读的
+   就是这个元素，两边共用一条实现。 */
+function activeVideo(){
+  if(!$('#tok').hidden)return $('#tokVid');
+  const stage=$('#stage');
+  // 不能按 #vid 取：Video.js 挂载后会把 <video id="vid"> 换成同 id 的
+  // <div class="video-js">，真正的媒体元素变成 #vid_html5_api。给那个 div 写
+  // currentTime 只是挂了个同名属性——读得回来、播放却毫无变化，失败得毫无声息。
+  return stage&&!stage.hidden?stage.querySelector('video'):null;
+}
+function isTypingTarget(el){
+  return !!el&&(el.tagName==='INPUT'||el.tagName==='TEXTAREA'||el.isContentEditable);
+}
+function seekVideoBy(video,seconds){
+  const total=video.duration;
+  const target=(video.currentTime||0)+seconds;
+  // duration 在元数据到位前是 NaN，此时只夹下界，不要拿 NaN 去比上界。
+  video.currentTime=Number.isFinite(total)?Math.max(0,Math.min(total,target)):Math.max(0,target);
+}
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
     if(!$('#settingsPanel').hidden){openSettings(false);return}
@@ -2527,6 +2571,22 @@ document.addEventListener('keydown',e=>{
     const st=$('#stage');if(st&&!st.hidden){const c=$('#closeStage');if(c)c.click()}
     return;
   }
+  // 输入态不抢键：搜索框、标签弹窗和任何可编辑区域里的按键归它们自己处理。
+  if(isTypingTarget(e.target)||e.ctrlKey||e.metaKey||e.altKey)return;
+  const video=activeVideo();
+  if(video){
+    if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
+      e.preventDefault();
+      seekVideoBy(video,appSettings.seekSeconds*(e.key==='ArrowRight'?1:-1));
+      return;
+    }
+    if(e.key===' '){
+      e.preventDefault();          // 不加这句空格会把页面滚下去
+      if(video.paused)video.play().catch(()=>{});else video.pause();
+      return;
+    }
+  }
+  // 沉浸模式：纵向切片、横向快进退，和竖屏短视频的手势方向保持一致。
   if(!$('#tok').hidden){if(e.key==='ArrowDown')tokNext(1);if(e.key==='ArrowUp')tokNext(-1)}
 });
 
