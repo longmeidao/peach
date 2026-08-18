@@ -600,13 +600,14 @@ function renderCount(){
   const n=$('#grid').querySelectorAll(':scope > .card[data-id]').length;   // 竖屏条不计入「显示 N」
   $('#count').innerHTML=
     `<span class="mono">${total.toLocaleString()} 个符合 · 显示 ${n}</span>`
-    +(javActive()?`<span class="sorts javlayout">`+JAV_LAYOUTS.map(([k,label,ic])=>
-        `<button data-jav-layout="${k}" aria-pressed="${k===javLayout()}" title="${esc(label)}"
-          aria-label="${esc(label)}">${icon(ic)}</button>`).join('')+`</span>`:'')
     +(state.state==='trash'
       // 回收站是待清理队列，不是浏览列表：换一批和九种排序在这里没有意义。
       ? `<span class="sorts"><button class="batchaction" id="emptyTrash" title="永久删除回收站内容">清空回收站</button></span>`
       : `<span class="sorts"><button class="batchaction" id="batchAction" title="换一批" aria-label="换一批">${icon('refresh-cw')}</button>`
+        // 版式紧跟在「换一批」之后：它同属这一组操作，靠右和排序连成一条。
+        +(javActive()?`<span class="javlayout">`+JAV_LAYOUTS.map(([k,label,ic])=>
+          `<button data-jav-layout="${k}" aria-pressed="${k===javLayout()}" title="${esc(label)}"
+            aria-label="${esc(label)}">${icon(ic)}</button>`).join('')+`</span>`:'')
         +SORTS.map(([k,l])=>`<button data-sort="${k}" aria-pressed="${state.sort===k}">${l}</button>`).join('')+`</span>`);
   if($('#batchAction'))$('#batchAction').onclick=()=>{state.sort='seed';state.seed=String(Date.now()%99991);load(true)};
   $('#count').querySelectorAll('[data-jav-layout]').forEach(b=>
