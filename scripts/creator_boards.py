@@ -67,6 +67,8 @@ def cell_height(ffprobe: str, path: Path) -> int | None:
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     try:
         width, height = (int(value) for value in result.stdout.strip().split(","))
@@ -127,6 +129,8 @@ def build_board(ffmpeg: str, ffprobe: str, paths: list[Path], destination: Path)
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     if result.returncode != 0:
         print("  ffmpeg:", result.stderr.strip()[:160])

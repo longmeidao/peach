@@ -33,6 +33,8 @@ class JobStatusTests(unittest.TestCase):
             cwd=SCRIPT.parents[1],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
         )
         self.assertEqual(result.returncode, 0, result.stderr)

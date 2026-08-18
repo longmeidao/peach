@@ -15,7 +15,8 @@ def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProc
     command = [
         "git", "-c", f"safe.directory={repo.as_posix()}", "-C", str(repo), *args,
     ]
-    result = subprocess.run(command, text=True, capture_output=True, check=False)
+    result = subprocess.run(command, text=True, encoding="utf-8", errors="replace",
+                            capture_output=True, check=False)
     if check and result.returncode:
         raise WorkspaceError((result.stderr or result.stdout).strip())
     return result

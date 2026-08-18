@@ -11,7 +11,7 @@ from peach.versioning import VersionManager
 def git(path: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["git", "-c", f"safe.directory={path.as_posix()}", "-C", str(path), *args],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=True,
     )
 
 
