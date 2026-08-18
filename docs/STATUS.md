@@ -54,7 +54,7 @@
 - 回收站有独立入口 `peach.local/trash`（后端 `/trash` 走 SPA，前端 `restoreRoute` 直接进 `state=trash`）。
 - 回收站的两条删除路径此前从未真正执行过，已修复：`media.py` 漏 `from functools import lru_cache` 导致整个包 import 失败；`ASSET_REFERENCE_TABLES` 从未定义，`/api/batch` 的 `delete` 必然 `NameError`；`/api/trash/empty` 只加了 dispatch 分支、`w_empty_trash` 没有函数体。现已统一到 `purge_assets()` 并补齐数据层测试。之前「API 写读删已复核」的说法不成立，属于未验证即结论。
 - 管理界面新增 `/review` 人工复核页，分为创作者标签、厂牌 Logo、女优头像、媒体失败四层；候选通过 `review_decision` 留痕，创作者标签只有点击「通过」后才写入 `asset_tag/asset_entity`，其余候选默认不改真相字段。
-- HLS 除开头一两段外全部失败过，2026-08-18 已修复。`-copyts` 保留原始时间轴后，FFmpeg 把 `-t` 当成绝对结束时刻而不是片段时长，每段的 `-t` 都约等于一个片段长，起点超过它的片段一律「已经过期」，FFmpeg 以退出码 0、空 stderr 写出 0 字节，服务端只能报一句没有内容的 `ffmpeg failed`。实测 asset 6562（6,332 秒）：片段 0、1 返回 200，片段 2 与 300 都是 503；片段缓存目录里 6562、29914、19490 三个资产也都只留下 `0.ts` 与 `1.ts`。所以症状不只是拖不动，播到约 20 秒就会断。修法是保留 `-copyts`、把 `-t 时长` 换成绝对终点 `-to 起点+时长`；删掉 `-copyts` 同样能出片，但首个 PTS 会退回 0.069，每段都自称从 0 开始，正是当初引入 `-copyts` 要解决的拖动跳位。隔离实例实测片段 2、300、633 全部返回 200（47.2 MB、41.1 MB、69.3 MB），手工核验片段 300 首个 PTS 为 2997.995，绝对位置与跨段连续性都对。**生产托盘尚未重启，仍在跑修复前的代码。**
+- HLS 除开头一两段外全部失败过，2026-08-18 已修复。`-copyts` 保留原始时间轴后，FFmpeg 把 `-t` 当成绝对结束时刻而不是片段时长，每段的 `-t` 都约等于一个片段长，起点超过它的片段一律「已经过期」，FFmpeg 以退出码 0、空 stderr 写出 0 字节，服务端只能报一句没有内容的 `ffmpeg failed`。实测 asset 6562（6,332 秒）：片段 0、1 返回 200，片段 2 与 300 都是 503；片段缓存目录里 6562、29914、19490 三个资产也都只留下 `0.ts` 与 `1.ts`。所以症状不只是拖不动，播到约 20 秒就会断。修法是保留 `-copyts`、把 `-t 时长` 换成绝对终点 `-to 起点+时长`；删掉 `-copyts` 同样能出片，但首个 PTS 会退回 0.069，每段都自称从 0 开始，正是当初引入 `-copyts` 要解决的拖动跳位。隔离实例实测片段 2、300、633 全部返回 200（47.2 MB、41.1 MB、69.3 MB），手工核验片段 300 首个 PTS 为 2997.995，绝对位置与跨段连续性都对。生产托盘已于 2026-08-18 重启并复验：asset 6562 的片段 2、300 与 asset 29914 的片段 5 均返回 200。
 - 同批把静默失败改为自陈：FFmpeg 退出码 0、stderr 全空却写出 0 字节时，错误信息带上 `returncode`、字节数与 `ss`/`to`，不再只说 `ffmpeg failed`。上面那个缺陷能藏这么久，正是因为日志里那句话什么都没说。
 - HLS 分片改为关键帧对齐：`peach.mp4index` 从 MP4 `moov/stss` 直接读关键帧表（实测 0.01 秒，`moov` 在尾部也能定位），播放列表报真实时长；时间戳改用 `-copyts` 保持跨段连续；片段缓存写入磁盘并按最后访问时间淘汰；FFmpeg 并发加信号量闸门。读不出关键帧的片源直接回退标准 Range，`/api/stream-plan` 也只在计划成立且带 session 时才宣告 HLS。
 - 厂牌 Logo 来源改为厂牌自己的社交账号头像（`scripts/fetch_studio_avatar_candidates.py`）。已确认 13 个 handle 并**逐张看图核对品牌归属**后落盘：Deep's、Hunter、Alice JAPAN、E-BODY、Glory Quest、K M Produce、TMA、Aroma Planning、M's Video Group、DAHLIA、Milu、Das、Muku；其中 Das 与 Muku 由 `scripts/find_studio_socials.py` 穿过官网年龄门后取得，Deep's 也由官网独立复证；映射表 `R:\peach-data\generated\studio-x-handles.csv`，候选 `studio-logo-social-candidate-20260817.csv`，图片 `generated\studio-logos\`。其余 76 个未取得，留空待查。长条形 Logo 补自身底色填成正方形而不是丢弃。
@@ -100,6 +100,7 @@
 - 前一生产版本已分别通过 HTTP/HTTPS health、`peach.local` 解析、真实 CloudDrive Range、桌面 1280×720 和手机 390×844 检查。本次 HLS 代码已切换生产托盘；真实资产 `31222/MIDE-981-C.mp4` 的中段 HLS 片段在严格 CA HTTPS 下返回 `200`、约 9.7 MB，响应后的临时文件已清理。尚未完成浏览器 seek 和手机 HLS 视觉验收。
 - 浏览器验收不得写真实喜欢、反馈或播放数据；需要交互写入时使用隔离 ledger 副本。
 - 并行 worktree 测试必须设置 `PYTHONPATH=<当前工作树>\src` 并核对 `peach.__file__`，否则 editable install 可能误加载主目录旧代码。
+- 2026-08-18 重启生产托盘并复验：HTTP `/healthz` 与项目 CA 严格校验的 HTTPS `/healthz` 都返回 `0.6.1`、`db=available`，`peach.local` 解析为 `192.168.50.162`，80/443 由新托盘子进程监听。注意 Windows 上的 `curl --cacert` 走 schannel 会因「revocation status is unknown」失败，那是 schannel 对私有 CA 的吊销检查限制，不是链校验失败；改用 Python `ssl.create_default_context(cafile=...)`（`check_hostname`、`CERT_REQUIRED` 均开）可完成同等严格校验并返回 200。不得因 schannel 失败就改用 HTTP 成功来声称 HTTPS 通过。
 - 本批已重启生产托盘。HTTP 与 HTTPS `/healthz` 均返回 `0.6.1`；HTTPS 使用项目 CA 严格校验，`peach.local` 解析为 `192.168.50.162`，80/443 分别由新托盘子进程监听。生产只读 Range 对 item 29297 返回 `206`、精确 `bytes 0-1048575/4590823524`；HLS plan/中段片段对 item 31222 已在 HTTPS 下通过；桌面与 390×844 的旧 direct 播放验收仍未替换为 HLS seek 验收。
 - 本批在隔离服务、真实 ledger 只读条件下完成桌面默认视口与 390×844 手机验收：Prestige 总数 248 时首批只构建 48 张、追加后 96 张；桌面和手机均无横向溢出。女优页标签筛选前后头像 URL 保持不变并只重建作品区；标签页手机完成态为 169 项，四种旧模糊时长标签为 0。浏览器控制台错误/警告为 0。
 - 详情播放释放和 sticky 遮挡在隔离 ledger 浏览器中验收；生产浏览器只做无写入首页/样式检查，未污染真实播放、喜欢或反馈数据。
@@ -113,7 +114,7 @@
 4. 通过官方/公开来源补齐 86 个厂牌 Logo，保留来源和质量门槛。Logo 与头像的取源方向相反：头像应取整理好的图库，Logo 是品牌标识，官网与维基才是权威来源。
 5. PikPak 抽帧已可走直连：代理策略组「📦 PikPak 视频」切到 DIRECT 后实测九帧 64.2 秒、30.5 MB（走代理时为 13.7 秒、163 MB），慢约 4.7 倍但流量少约 5 倍且不占代理预算。创作者采样 88 板据此约 2.7 GB。
 6. 115 抽帧失败的大小写部分已修复：`peach.media.resolve_case_insensitive` 与 `FilesystemBackend.file_for`、`scripts/sheets.py`、`scripts/probe.py` 的 worker 均已接入；2026-08-17 重跑 33 条九帧，31 成功、2 失败。这 2 条的原因已查清（见上一节）：`18349` 是 ledger 时长记错、`12510` 是片源头损坏。2026-08-18 已全部收尾：`sheets.py` 区分失败原因、`probe.py`/`sheets.py` 新增 `--asset`、`18349` 重探重抽成功、`12510` 判为坏片源并留痕，详见上一节。`sheets.py` 遇 `prim:reserved` 非法色彩元数据的重试已完成并有测试。
-7. HLS `stream-plan` 和按需 TS 片段已接入现有 Video.js 内置 VHS。片段时间窗的绝对终点问题已修（见上节），但**生产托盘还没重启**，重启后才谈得上验收；自适应码率、多路清单、首帧/seek 的桌面与手机验收仍未完成。CloudDrive 约 100 MiB 固定块预取仍是来源层成本，服务端分片只能避免整部 MP4 Range，不会消除来源层块预取。
+7. HLS `stream-plan` 和按需 TS 片段已接入现有 Video.js 内置 VHS。片段时间窗的绝对终点问题已修并已切生产（见上节）；自适应码率、多路清单、首帧/seek 的桌面与手机验收仍未完成。CloudDrive 约 100 MiB 固定块预取仍是来源层成本，服务端分片只能避免整部 MP4 Range，不会消除来源层块预取。
 8. 配置并评估 Stash CommunityScrapers/元数据 Provider，确认缺口后才写新来源适配器。
 9. 配置可复核的真实追更源，之后再接 APScheduler；AI 结果继续只作为候选。
 10. Codex 侧封装技能：`.claude/skills/` 下的六个技能目前只有 Claude 会按 description 自动触发，
@@ -126,17 +127,17 @@
 <!-- job-status:start -->
 
 <!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->
-<!-- generated 2026-08-18T03:08Z -->
+<!-- generated 2026-08-18T03:38Z -->
 
-- 最近自动交接：`claude` / `Stop` / `completed`，2026-08-18T03:08:02+00:00。
-- 资产 81770 条，其中视频 24890 条。
+- 最近自动交接：`claude` / `Stop` / `completed`，2026-08-18T03:38:51+00:00。
+- 资产 81769 条，其中视频 24889 条。
 - 待抽帧（可抽 / 缺时长待 probe / 合计）：
   - `local`：3 / 1 / 4
   - `115`：11 / 139 / 150
   - `pikpak`：4751 / 5445 / 10196
   PikPak 的策略组已可切 DIRECT：2026-08-15 实测走代理时 9 帧 163 MB / 13.7 秒，走直连时 30.5 MB / 64.2 秒——慢约 4.7 倍但流量少约 5 倍且不占代理预算。全量抽帧仍是 773 GB 量级（代理口径），按创作者采样 88 板直连约 2.7 GB。115 一直走直连，同样动作约 285 MB 一张接触表。
 - 无内容标签视频 7537 条（占视频 30%）。
-- `asset_tag` 来源分布：`vision_creator` 27004、`pixiv_tag` 19753、`name` 19319、`stash` 15450、`r18` 2499、`performer` 1887、`follow` 1376、`r18:performer` 1205、`javbus:performer` 49。
+- `asset_tag` 来源分布：`vision_creator` 27004、`pixiv_tag` 19753、`name` 19319、`stash` 15450、`r18` 2496、`performer` 1887、`follow` 1376、`r18:performer` 1204、`javbus:performer` 49。
 - 番号 1457 个，其中 1158 个有厂牌（79%）。
 
 | 产物 | 行数 | 生成时间 | 说明 |
