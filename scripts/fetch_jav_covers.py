@@ -260,12 +260,19 @@ def run(args: argparse.Namespace) -> int:
         for index, code in enumerate(todo, 1):
             try:
                 winner, (width, height), data = best_cover(transport, code, args.delay)
-            except Unavailable as exc:
+            # 网络异常必须按条吞掉。一次 SSL 抖动
+            # （httpx.ConnectError: UNEXPECTED_EOF_WHILE_READING）此前直接打死了
+            # 整个三小时的任务，而且死得很安静——日志停在半路，看起来像跑完了。
+            # 长跑批处理不能因为一个番号的连接问题就整体退出。
+            # `Exception` 已涵盖 Unavailable 与网络异常；Ctrl-C 是 BaseException
+            # 的另一支，不会被这里吞掉，仍能正常中断。
+            except Exception as exc:
                 stats["miss"] += 1
                 rows.append({"code": code, "result": "未取得", "source": "",
                              "width": "", "height": "", "kb": "", "url": "",
-                             "note": str(exc)[:80]})
-                print(f"[{index}/{len(todo)}] 未取得 {code}：{exc}", flush=True)
+                             "note": f"{type(exc).__name__}: {exc}"[:80]})
+                print(f"[{index}/{len(todo)}] 未取得 {code}：{type(exc).__name__} {exc}",
+                      flush=True)
                 continue
             target = args.out / f"{code}.jpg"
             temporary = target.with_suffix(".tmp")
