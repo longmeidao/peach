@@ -737,3 +737,68 @@ class ChineseSearchTermTests(unittest.TestCase):
     def test_unrelated_query_still_finds_nothing(self):
         self._add_term("凉森れむ")
         self.assertEqual(self.found("凉宫"), [])
+
+
+class JavModeAndCoverTests(unittest.TestCase):
+    """JAV 模式的边界与封面查找。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        self.covers = root / "covers"
+        self.covers.mkdir()
+        self.db_path = str(root / "ledger.db")
+        con = sqlite3.connect(self.db_path)
+        con.executescript(BASE_SCHEMA)
+        # 前四条是真番号的四种形态，后三条是 `code` 里实际混着的非番号值。
+        con.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,code,duration,first_seen) "
+            "VALUES(?,'local',?,?,'video',?,100,'2026-08-18')",
+            [(1, r"R:\a.mp4", "a.mp4", "ABW-232"),
+             (2, r"R:\b.mp4", "b.mp4", "259LUXU-1468"),
+             (3, r"R:\c.mp4", "c.mp4", "FC2-PPV-1234567"),
+             (4, r"R:\d.mp4", "d.mp4", "040221-001"),
+             (5, r"R:\e.mp4", "e.mp4", "RAIKUN325"),
+             (6, r"R:\f.mp4", "f.mp4", "HHD800"),
+             (7, r"R:\g.mp4", "g.mp4", None)],
+        )
+        con.commit(); con.close()
+        self.contract = rm_web.WebContract(Path(self.db_path), cover_root=self.covers)
+
+    def ids(self, args):
+        return sorted(row["id"] for row in
+                      rm_web.q_items(self.contract, {**args, "limit": "20"})["items"])
+
+    def test_jav_mode_keeps_only_real_code_shapes(self):
+        self.assertEqual(self.ids({"jav": "1"}), [1, 2, 3, 4])
+
+    def test_uploader_handles_in_the_code_column_are_excluded(self):
+        # `RAIKUN325` 是 myfans 账号名、`HHD800` 是站点水印，都不是番号。
+        self.assertNotIn(5, self.ids({"jav": "1"}))
+        self.assertNotIn(6, self.ids({"jav": "1"}))
+
+    def test_without_the_flag_nothing_is_filtered(self):
+        self.assertEqual(self.ids({}), [1, 2, 3, 4, 5, 6, 7])
+
+    def test_shape_predicate_matches_the_documented_forms(self):
+        for good in ("ABW-232", "259LUXU-1468", "FC2-PPV-1234567", "040221-001"):
+            self.assertTrue(rm_web.is_jav_code(good), good)
+        for bad in ("RAIKUN325", "HHD800", "WX17", "BANBI_555", "", None):
+            self.assertFalse(rm_web.is_jav_code(bad), repr(bad))
+
+    def test_cover_key_normalises_the_same_way_as_the_fetcher(self):
+        self.assertEqual(rm_web.normalise_code_key("abw232"), "ABW-232")
+        self.assertEqual(rm_web.normalise_code_key("ABW-0232"), "ABW-232")
+        self.assertEqual(rm_web.normalise_code_key("278gyan17"), "278GYAN-017")
+
+    def test_cards_report_whether_a_cover_is_on_disk(self):
+        (self.covers / "ABW-232.jpg").write_bytes(b"x")
+        rows = {row["id"]: row for row in
+                rm_web.q_items(self.contract, {"jav": "1", "limit": "20"})["items"]}
+        self.assertTrue(rows[1]["has_cover"])
+        self.assertFalse(rows[2]["has_cover"])
+
+    def test_missing_cover_resolves_to_none_not_a_broken_path(self):
+        self.assertIsNone(self.contract.cover_path("ABW-232"))
+        self.assertIsNone(self.contract.cover_path(None))

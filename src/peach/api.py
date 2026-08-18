@@ -56,6 +56,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
     contract = web_contract.WebContract(
         settings.db_path, settings.snapshot_root, settings.legacy_snapshot_roots,
         candidate_root=settings.candidate_root,
+        cover_root=settings.cover_root,
     )
     repository = LedgerRepository(settings.db_path)
     resolver = FFmpegResolver(settings.ffmpeg_root)
@@ -361,6 +362,19 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
             path = preview_service.poster(id, c)
         except PreviewUnavailable:
             return JSONResponse({"error": "unavailable"}, status_code=404)
+        response = FileResponse(path, media_type="image/jpeg")
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        return response
+
+    @app.api_route("/cover", methods=["GET", "HEAD"])
+    def cover(request: Request, code: str = ""):
+        """官方封套原图。存原图不裁：4:3 与 16:9 两种版式在界面上按比例取景。"""
+        args = _first_query_values(request)
+        if not _authorized(request, settings.token, args):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        path = contract.cover_path(code)
+        if path is None:
+            return JSONResponse({"error": "no cover"}, status_code=404)
         response = FileResponse(path, media_type="image/jpeg")
         response.headers["Cache-Control"] = "public, max-age=86400"
         return response

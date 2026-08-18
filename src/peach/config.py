@@ -17,6 +17,7 @@ INBOX_DIR = DATA_ROOT / "inbox"
 TOOLS_DIR = DATA_ROOT / "tools"
 FFMPEG_DIR = TOOLS_DIR / "ffmpeg"
 TRANSCODE_DIR = GENERATED_DIR / "transcodes"
+COVER_DIR = GENERATED_DIR / "covers"
 MIGRATIONS_DIR = PROJECT_ROOT / "migrations"
 
 
@@ -39,6 +40,8 @@ class PeachSettings:
     poster_root: Path = GENERATED_DIR / "posters"
     avatar_root: Path = GENERATED_DIR / "avatars"
     logo_root: Path = GENERATED_DIR / "logos"
+    # 官方封套按番号存一份原图；4:3 与 16:9 两种版式共用同一文件，靠 CSS 取景。
+    cover_root: Path = COVER_DIR
     ffmpeg_root: Path = FFMPEG_DIR
     transcode_root: Path = TRANSCODE_DIR
     stream_root: Path = GENERATED_DIR / "stream-segments"

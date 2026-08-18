@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Sequence
 from urllib.parse import urlsplit
 
-from .config import GENERATED_DIR
+from .config import COVER_DIR, GENERATED_DIR
 from .entities import normalize_entity_name, upsert_asset_entity
 from .media import remap_managed_path
 
@@ -40,14 +40,62 @@ ASSET_REFERENCE_TABLES = (
 )
 
 
+#: 真番号的四种形态。共同点是字母段与数字段之间有分隔——`code` 字段里混着账号名
+#: 和站点水印（`RAIKUN325` 241 个文件、`WX17` 334 个、`HHD800` 19 个），只按非空过滤
+#: 会把 791 个非 JAV 视频当成 JAV 显示，占该口径的 31%。
+_CODE_STUDIO = re.compile(r"^[A-Z]{2,8}-\d{2,5}$")
+_CODE_AMATEUR = re.compile(r"^\d{3}[A-Z]{2,6}-\d{2,5}$")
+_CODE_FC2 = re.compile(r"^FC2-PPV-\d{5,}$")
+_CODE_DATE = re.compile(r"^\d{6}-\d{2,4}$")
+
+
+def normalise_code_key(code: str | None) -> str:
+    """把番号归一成存封面用的键；与 fetch_jav_covers.normalise_code 同口径。"""
+    value = (code or "").upper().replace("_", "-").replace(" ", "-").strip()
+    if not value:
+        return ""
+    if value.startswith("FC2"):
+        digits = re.search(r"(\d{5,})", value)
+        return f"FC2-PPV-{digits.group(1)}" if digits else value
+    shape = re.match(r"^(\d{3})?([A-Z]+)-?(\d+)$", value)
+    if not shape:
+        return value
+    return f"{shape.group(1) or ''}{shape.group(2)}-{int(shape.group(3)):03d}"
+
+
+def is_jav_code(code: str | None) -> bool:
+    """判形态必须看原值，不能先归一化。
+
+    `normalise_code_key` 会补上分隔符，`RAIKUN325`（myfans 账号名，241 个文件）
+    会被改写成 `RAIKUN-325` 并通过形态检查。分隔符本身就是区分番号与账号名的
+    唯一线索，归一化把它抹掉了。
+
+    代价是 `SOAN045`、`DTW024` 这类漏写分隔符的真番号会被判为非 JAV。二者结构
+    完全相同，无法自动区分；宁可漏掉几个真番号，也不能把 241 个账号作品塞进
+    JAV 模式。这些漏网的应当在 `code` 字段清洗时补上分隔符。
+    """
+    value = (code or "").upper().strip()
+    if not value:
+        return False
+    # FC2 本来就不依赖分隔符，按数字段识别；`FC2PPV_2707471` 是真番号。
+    if value.startswith("FC2"):
+        return bool(re.search(r"\d{5,}", value))
+    # 其余形态必须带字面连字符。下划线在本语料里是账号名标志（`BANBI_555`
+    # 69 个文件），把它当分隔符会让账号名冒充番号。
+    return bool(_CODE_STUDIO.match(value) or _CODE_AMATEUR.match(value)
+                or _CODE_DATE.match(value))
+
+
 class WebContract:
     """单个应用实例的数据库、写锁和聚合缓存；不共享模块级可变状态。"""
 
     def __init__(self, db_path: Path, snapshot_root: Path | None = None,
                  legacy_snapshot_roots: Sequence[Path] = (),
-                 candidate_root: Path | None = None):
+                 candidate_root: Path | None = None,
+                 cover_root: Path | None = None):
         # 候选 CSV 的目录做成实例属性而不是模块常量，复核层才能在临时目录里被测试。
         self.candidate_root = Path(candidate_root) if candidate_root is not None else GENERATED_DIR
+        self.cover_root = Path(cover_root) if cover_root is not None else COVER_DIR
         self.db_path = Path(db_path)
         self.snapshot_root = Path(snapshot_root) if snapshot_root is not None else None
         self.legacy_snapshot_roots = tuple(Path(path) for path in legacy_snapshot_roots)
@@ -78,6 +126,8 @@ class WebContract:
             target, timeout=30, check_same_thread=False, uri=not write,
         )
         connection.row_factory = sqlite3.Row
+        # 番号形态判据只有一份实现，SQL 侧直接调它，避免和封面键的口径各写一套。
+        connection.create_function("is_jav_code", 1, is_jav_code, deterministic=True)
         return connection
 
     def has_snapshot(self, raw_path: str | None) -> bool:
@@ -87,6 +137,17 @@ class WebContract:
             raw_path, self.snapshot_root, self.legacy_snapshot_roots,
         ) if self.snapshot_root is not None else Path(raw_path))
         return path.is_file()
+
+    def cover_path(self, code: str | None) -> Path | None:
+        """封面按归一番号存一份，多个文件共用同一张；没有就返回 None。"""
+        key = normalise_code_key(code)
+        if not key:
+            return None
+        path = self.cover_root / f"{key}.jpg"
+        return path if path.is_file() else None
+
+    def has_cover(self, code: str | None) -> bool:
+        return self.cover_path(code) is not None
 
     def has_fts(self) -> bool:
         if self._fts_available is None:
@@ -152,6 +213,9 @@ def q_items(contract: WebContract, args):
         where.append("a.ctx_orient = ?"); par.append(args["orient"])
     elif args.get("exclude_vertical") == "1":
         where.append("(a.ctx_orient IS NULL OR a.ctx_orient <> '竖屏')")
+    if args.get("jav") == "1":
+        # 只按 `code` 非空过滤会混进账号名与站点水印；判据必须看形态。
+        where.append("a.code IS NOT NULL AND a.code<>'' AND is_jav_code(a.code)")
     if args.get("q"):
         query = args["q"].strip()
         if len(query) >= 3 and contract.has_fts():
@@ -266,6 +330,7 @@ def q_items(contract: WebContract, args):
     for r in rows:
         r["cost"] = COST.get(r["location"], "metered")
         r["has_thumb"] = contract.has_snapshot(r["snapshot_path"])
+        r["has_cover"] = contract.has_cover(r.get("code"))
         r.pop("snapshot_path", None)
         r.pop("path", None)                     # 路径不外发，串流走 id
     return {"total": cnt, "items": rows, "has_more": has_more}
