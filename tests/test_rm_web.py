@@ -877,6 +877,30 @@ class JavModeAndCoverTests(unittest.TestCase):
         self.assertIsNone(self.contract.cover_path("ABW-232"))
         self.assertIsNone(self.contract.cover_path(None))
 
+    def test_cover_frame_reads_the_face_sidecar(self):
+        (self.covers / "ABW-232.jpg").write_bytes(b"x")
+        (self.covers / "ABW-232.face.json").write_text(
+            '{"ratio":1.49,"face":{"cx":0.82,"cy":0.19}}', encoding="utf-8")
+        self.assertEqual(self.contract.cover_frame("ABW-232"), {"cy": 0.19})
+
+    def test_a_cover_without_a_sidecar_falls_back_silently(self):
+        (self.covers / "ABW-232.jpg").write_bytes(b"x")
+        self.assertIsNone(self.contract.cover_frame("ABW-232"))
+
+    def test_a_sidecar_reporting_no_face_is_not_a_frame(self):
+        # 检出率约 48%，没检出是常态而不是错误——必须安静回落。
+        (self.covers / "ABW-232.jpg").write_bytes(b"x")
+        (self.covers / "ABW-232.face.json").write_text(
+            '{"ratio":1.49,"face":null}', encoding="utf-8")
+        self.assertIsNone(self.contract.cover_frame("ABW-232"))
+
+    def test_a_corrupt_sidecar_never_breaks_the_card(self):
+        (self.covers / "ABW-232.jpg").write_bytes(b"x")
+        (self.covers / "ABW-232.face.json").write_text("{not json", encoding="utf-8")
+        self.assertIsNone(self.contract.cover_frame("ABW-232"))
+
+
+
 
 class DuplicateDetectionTests(unittest.TestCase):
     """同番号不等于重复：合集、分卷和混入的广告都会共用一个 code。"""

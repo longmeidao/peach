@@ -151,6 +151,25 @@ class WebContract:
     def has_cover(self, code: str | None) -> bool:
         return self.cover_path(code) is not None
 
+    def cover_frame(self, code: str | None) -> dict | None:
+        """封面的取景提示：宽高比和人脸中心。没算过或没检出就返回 None。
+
+        只用来做纵向微调，横向仍由版式决定——横向靠几何规则已经稳定。
+        取不到时前端退回固定取景，不影响显示。
+        """
+        path = self.cover_path(code)
+        if path is None:
+            return None
+        sidecar = path.with_suffix(".face.json")
+        if not sidecar.is_file():
+            return None
+        try:
+            data = json.loads(sidecar.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        face = data.get("face")
+        return {"cy": face["cy"]} if isinstance(face, dict) and "cy" in face else None
+
     def has_fts(self) -> bool:
         if self._fts_available is None:
             connection = self.db()
@@ -333,6 +352,8 @@ def q_items(contract: WebContract, args):
         r["cost"] = COST.get(r["location"], "metered")
         r["has_thumb"] = contract.has_snapshot(r["snapshot_path"])
         r["has_cover"] = contract.has_cover(r.get("code"))
+        if r["has_cover"]:
+            r["cover_frame"] = contract.cover_frame(r.get("code"))
         r.pop("snapshot_path", None)
         r.pop("path", None)                     # 路径不外发，串流走 id
     return {"total": cnt, "items": rows, "has_more": has_more}

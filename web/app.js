@@ -335,9 +335,13 @@ function avatarInner(name,ref,repId){
 const COVER_FRAME=`onload="const r=this.naturalWidth/this.naturalHeight;this.dataset.frame=r>1.2?'sleeve':'front'"`;
 function coverImage(it,layout){
   const src=`/cover?code=${encodeURIComponent(it.code||'')}`;
+  // 人脸只做纵向微调：人物在画面里的高低差别很大，写死的纵向位置会把一部分
+  // 作品裁掉下巴或留出大片空白。检出率约 48%，取不到就退回固定值。
+  const cy=it.cover_frame&&it.cover_frame.cy;
+  const y=cy!=null?`--cover-y:${Math.round(Math.min(0.6,Math.max(0.05,cy))*100)}%`:'';
   // 封套模式看整张（含剧照拼贴），正封模式只取右侧那半。
   return `<img class="poster cover ${layout==='sleeve'?'whole':'front'}" src="${src}"
-    alt="" loading="lazy" ${COVER_FRAME} onerror="this.remove()">`;
+    alt="" loading="lazy"${y?` style="${y}"`:''} ${COVER_FRAME} onerror="this.remove()">`;
 }
 function cardHtml(it,cls){
   const jav=javActive(),layout=javLayout();
