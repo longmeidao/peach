@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import os
 import csv
+import hashlib
 import json
+import random
 import re
 import sqlite3
 import threading
@@ -609,7 +611,13 @@ def q_related(contract: WebContract, aid, limit=24):
 JAV_ASSET_CLAUSE = "AND a.code IS NOT NULL AND a.code<>'' AND is_jav_code(a.code) "
 
 
-def q_tops(contract: WebContract, n=28, jav=False):
+#: 顶部三层的候选池相对展示位的倍数。严格取前 N 会让这一条永远是同一批人——
+#: 「换一批」刷新后上面纹丝不动。放大候选池再按种子确定性抽样，既保持是常见身份，
+#: 又能真的换一批。倍数太大就会开始出现只有一两部作品的冷门项。
+TOPS_POOL_FACTOR = 4
+
+
+def q_tops(contract: WebContract, n=28, jav=False, seed=""):
     """顶部三层用的数据：女优圆头像 / 厂牌 / 内容标签。
 
     缓存的人物肖像由前端优先使用；缺失时才回退到代表作接触印相裁切。"""
@@ -625,13 +633,23 @@ def q_tops(contract: WebContract, n=28, jav=False):
         "WHERE a.medium='video' AND e.kind=? " + scope +
         "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT ?"
     )
+    def pick(kind):
+        """按数量取候选池，再按种子确定性抽样。种子为空时退回严格前 N。"""
+        pool = [{"id": entity_id, "k": k, "n": cnt, "rep": representative}
+                for entity_id, k, cnt, representative
+                in c.execute(base, (kind, n * TOPS_POOL_FACTOR if seed else n))]
+        if not seed or len(pool) <= n:
+            return pool[:n]
+        # 同一个种子必须给出同一批人：翻页和重绘之间不能抖动。
+        digest = hashlib.blake2b(f"{seed}:{kind}".encode(), digest_size=8).digest()
+        rng = random.Random(int.from_bytes(digest, "big"))
+        chosen = rng.sample(pool, n)
+        # 抽完仍按数量排序，免得常见身份被排到末尾。
+        return sorted(chosen, key=lambda row: -row["n"])
+
     out = {}
-    out["performers"] = []
-    for entity_id, k, cnt, representative in c.execute(base, ("performer", n)):
-        out["performers"].append({"id": entity_id, "k": k, "n": cnt, "rep": representative})
-    out["studios"] = []
-    for entity_id, k, cnt, representative in c.execute(base, ("studio", n)):
-        out["studios"].append({"id": entity_id, "k": k, "n": cnt, "rep": representative})
+    out["performers"] = pick("performer")
+    out["studios"] = pick("studio")
     c.close()
     return out
 
@@ -1637,9 +1655,10 @@ def dispatch_api_get(contract: WebContract, path, args):
     if path == "/api/tops":
         n = min(int(args.get("n", "28")), 60)
         jav = args.get("jav") == "1"
-        # 缓存键必须带上口径，否则 JAV 与全库两套结果会互相顶掉。
-        return contract.cached(f"tops{n}{'-jav' if jav else ''}",
-                               lambda: q_tops(contract, n, jav=jav))
+        seed = str(args.get("seed", ""))[:32]
+        # 缓存键必须带上口径与种子，否则 JAV 与全库、换一批前后会互相顶掉。
+        return contract.cached(f"tops{n}{'-jav' if jav else ''}:{seed}",
+                               lambda: q_tops(contract, n, jav=jav, seed=seed))
     if path == "/api/ads":
         return q_ads(
             contract,

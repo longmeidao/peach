@@ -1015,3 +1015,53 @@ class DuplicateDetectionTests(unittest.TestCase):
         self.assertEqual(rm_web.part_marker("HD_hrv-041-2.mp4"), "2")
         self.assertEqual(rm_web.part_marker("MEYD-692.mp4"), "")
         self.assertEqual(rm_web.part_marker("hhd800.com@MEYD-692.mp4"), "")
+
+
+class TopsRotationTests(unittest.TestCase):
+    """顶部三层要跟着「换一批」真的换人，否则刷新后上面纹丝不动。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.db_path = str(Path(self.tmp.name) / "ledger.db")
+        con = sqlite3.connect(self.db_path)
+        self.addCleanup(con.close)
+        con.executescript(BASE_SCHEMA)
+        # 候选池要大于展示位，抽样才有意义（TOPS_POOL_FACTOR 倍）。
+        for index in range(40):
+            con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
+                        "VALUES(?,'performer',?,?)",
+                        (100 + index, f"P{index:02d}", f"p{index:02d}"))
+            for copy in range(40 - index):          # 让数量各不相同，排序稳定
+                asset_id = index * 100 + copy
+                con.execute("INSERT INTO asset(id,location,path,name,medium,first_seen) "
+                            "VALUES(?,'local',?,?,'video','2026-08-19')",
+                            (asset_id, f"/x/{asset_id}.mp4", f"{asset_id}.mp4"))
+                con.execute("INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                            "VALUES(?,?,'performer','test',1.0)", (asset_id, 100 + index))
+        con.commit()
+        self.contract = rm_web.WebContract(Path(self.db_path))
+
+    def names(self, **kwargs):
+        return [row["k"] for row in rm_web.q_tops(self.contract, 8, **kwargs)["performers"]]
+
+    def test_without_a_seed_it_stays_the_strict_top_list(self):
+        self.assertEqual(self.names(), self.names())
+        self.assertEqual(self.names()[0], "P00", "无种子时仍按数量取前 N")
+
+    def test_a_seed_changes_who_appears(self):
+        self.assertNotEqual(self.names(seed="111"), self.names(seed="222"))
+
+    def test_the_same_seed_is_repeatable(self):
+        # 翻页和重绘之间不能抖动，否则同一批里会看到两套人。
+        self.assertEqual(self.names(seed="111"), self.names(seed="111"))
+
+    def test_a_seeded_batch_is_still_full_and_ordered_by_count(self):
+        rows = rm_web.q_tops(self.contract, 8, seed="111")["performers"]
+        self.assertEqual(len(rows), 8)
+        counts = [row["n"] for row in rows]
+        self.assertEqual(counts, sorted(counts, reverse=True), "抽完仍按数量排序")
+
+    def test_a_small_pool_degrades_to_everything_available(self):
+        rows = rm_web.q_tops(self.contract, 100, seed="111")["performers"]
+        self.assertEqual(len(rows), 40, "候选不足时不能抽空，也不能报错")

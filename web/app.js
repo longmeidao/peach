@@ -476,8 +476,10 @@ async function getBarsData(){
   const scope=javActive()?'&jav=1':'';
   if(scope!==barsDataScope){barsDataCache=null;barsDataPromise=null;barsDataScope=scope}
   if(barsDataCache&&Date.now()-barsDataAt<30000)return barsDataCache;
+  // 顶部三层跟着「换一批」的同一个种子走，刷新后才真的换人。
   if(!barsDataPromise)barsDataPromise=Promise.all([
-      api('/api/facets'+(scope?'?jav=1':'')),api('/api/tops?n=30'+scope)])
+      api('/api/facets'+(scope?'?jav=1':'')),
+      api('/api/tops?n=30'+scope+'&seed='+encodeURIComponent(state.seed||''))])
     .then(data=>{barsDataCache=data;barsDataAt=Date.now();return data})
     .finally(()=>{barsDataPromise=null});
   return barsDataPromise
@@ -1869,7 +1871,10 @@ async function refreshAll(automatic=false){
   }      // 统计/复核页只刷新当前表面
   if(!$('#index').hidden){return}
   state.sort='seed'; state.seed=String(Date.now()%99991);
-  await load(true);
+  // 顶部三层（女优头像、厂牌、标签）此前从不跟着换：它们有 30 秒会话缓存，
+  // 而 refreshAll 只重载网格，于是「换一批」之后上面还是原来那批人。
+  barsDataCache=null;barsDataPromise=null;
+  await Promise.all([load(true),buildBars()]);
   if(!automatic)window.scrollTo({top:0,behavior:'smooth'});
   return true;
 }
