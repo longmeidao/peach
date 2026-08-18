@@ -124,7 +124,12 @@ class MediaEngineTests(unittest.TestCase):
                 backend.stream_candidates(MediaAsset(2, str(root / "nope.mp4"), None)), ()
             )
 
-    def test_remote_mp4_gets_segmented_stream_plan(self):
+    def test_remote_mp4_defaults_to_range_and_only_segments_on_request(self):
+        """默认 HLS 会让 HEVC 静默黑屏：`-c copy` 把 HEVC 装进 MPEG-TS，而 Chromium 的
+        MSE 不支持 TS 里的 HEVC（实测 `video/mp2t; codecs="hvc1…"` 为 false），数据进得了
+        缓冲却一帧都解不出，也没有 error 事件。同一浏览器直接 Range 播同一文件能出帧。
+        见 ADR-0016。
+        """
         repository = unittest.mock.Mock()
         repository.media_asset.return_value = MediaAsset(
             1, r"B:\video\one.mp4", None, (), "115", "one.mp4", 31.5, 100,
@@ -132,9 +137,26 @@ class MediaEngineTests(unittest.TestCase):
         engine = MediaEngine(
             repository, FilesystemBackend([Path("B:/")], Path("snapshots")),
         )
-        plan = engine.stream_plan(1)
+        self.assertEqual(engine.stream_plan(1).protocol, "range")
+        self.assertEqual(engine.stream_plan(1, mode="auto").protocol, "range")
+        plan = engine.stream_plan(1, mode="hls")
         self.assertEqual(plan.protocol, "hls")
         self.assertEqual(plan.segment_seconds, 6)
+
+    def test_hls_stays_unavailable_where_it_never_applied(self):
+        """按需模式不是万能开关：本地来源和时长未知的片源仍然只能走 Range。"""
+        repository = unittest.mock.Mock()
+        repository.media_asset.return_value = MediaAsset(
+            1, r"R:\video\one.mp4", None, (), "local", "one.mp4", 31.5, 100,
+        )
+        engine = MediaEngine(repository, FilesystemBackend([Path("R:/")], Path("snapshots")))
+        self.assertEqual(engine.stream_plan(1, mode="hls").protocol, "range")
+
+        repository.media_asset.return_value = MediaAsset(
+            1, r"B:\video\one.mp4", None, (), "115", "one.mp4", None, 100,
+        )
+        engine = MediaEngine(repository, FilesystemBackend([Path("B:/")], Path("snapshots")))
+        self.assertEqual(engine.stream_plan(1, mode="hls").protocol, "range")
 
     def test_local_or_unknown_duration_keeps_range_plan(self):
         repository = unittest.mock.Mock()

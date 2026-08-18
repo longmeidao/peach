@@ -210,7 +210,8 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
     def _hls_plan(asset_id: int):
         """解析 HLS 的片源路径与关键帧分片计划；任何一步不成立就返回 None 走 Range。"""
         asset = media_engine.asset(asset_id)
-        choice = media_engine.stream_plan(asset_id)
+        # 播放列表和分片端点本身就是 HLS 路径，按 ADR-0016 显式要计划，不受默认值影响。
+        choice = media_engine.stream_plan(asset_id, mode="hls")
         if choice.protocol != "hls" or not asset.duration:
             return None
         source = media_engine.filesystem.file_for(asset, thumbnail=False)
@@ -219,7 +220,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         return None if not plan else (asset, source, plan)
 
     @app.get("/api/stream-plan")
-    def stream_plan(request: Request, id: int, session: str = ""):
+    def stream_plan(request: Request, id: int, session: str = "", mode: str = ""):
         args = _first_query_values(request)
         if not _authorized(request, settings.token, args):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
@@ -229,7 +230,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
             return JSONResponse({"error": "stream cancelled"}, status_code=410)
         try:
             asset = media_engine.asset(id)
-            plan = media_engine.stream_plan(id)
+            plan = media_engine.stream_plan(id, mode=mode or "auto")
             # 只有真的能读出关键帧才宣告 HLS，否则客户端会拿到一个必然 404 的播放列表。
             resolved = _hls_plan(id) if plan.protocol == "hls" else None
         except MediaNotFound:

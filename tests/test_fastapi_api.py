@@ -399,8 +399,16 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         con.commit()
         con.close()
 
-        plan = await self.client.get(
+        # 默认计划是标准 Range：HLS 的 TS 分片装不下浏览器能解的 HEVC，见 ADR-0016。
+        default_plan = await self.client.get(
             "/api/stream-plan?id=1&session=hls-test&t=secret",
+        )
+        self.assertEqual(default_plan.status_code, 200)
+        self.assertEqual(default_plan.json()["protocol"], "range")
+        self.assertIn("/stream?id=1", default_plan.json()["src"])
+
+        plan = await self.client.get(
+            "/api/stream-plan?id=1&session=hls-test&mode=hls&t=secret",
         )
         self.assertEqual(plan.status_code, 200)
         self.assertEqual(plan.json()["protocol"], "hls")

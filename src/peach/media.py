@@ -232,12 +232,19 @@ class MediaEngine:
             candidates.extend(backend.stream_candidates(asset))
         return tuple(candidates)
 
-    def stream_plan(self, asset_id: int) -> StreamPlan:
-        """为挂载网盘选择可按时间定位的协议，其他来源保留标准 Range。"""
+    def stream_plan(self, asset_id: int, *, mode: str = "auto") -> StreamPlan:
+        """远端挂载的 MP4 默认走标准 Range；HLS 只在显式要求时给出。见 ADR-0016。
+
+        默认 HLS 会把 HEVC 用 `-c copy` 原样装进 MPEG-TS，而 Chromium 的 MSE 不支持
+        TS 里的 HEVC（实测 `isTypeSupported('video/mp2t; codecs="hvc1…"')` 为 false）。
+        数据能进缓冲、时间轴照走，却一帧都解不出来，于是是静默黑屏而不是报错。
+        同一浏览器直接 Range 播放同一个文件可正常出帧。
+        """
         asset = self.asset(asset_id)
         suffix = Path(asset.path or asset.name or "").suffix.lower()
         if (
-            asset.location in {"115", "pikpak"}
+            mode == "hls"
+            and asset.location in {"115", "pikpak"}
             and suffix in {".mp4", ".m4v"}
             and asset.duration is not None
             and asset.duration > 0

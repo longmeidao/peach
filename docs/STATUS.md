@@ -56,10 +56,11 @@
 - 管理界面新增 `/review` 人工复核页，分为创作者标签、厂牌 Logo、女优头像、媒体失败四层；候选通过 `review_decision` 留痕，创作者标签只有点击「通过」后才写入 `asset_tag/asset_entity`，其余候选默认不改真相字段。
 - HLS 除开头一两段外全部失败过，2026-08-18 已修复。`-copyts` 保留原始时间轴后，FFmpeg 把 `-t` 当成绝对结束时刻而不是片段时长，每段的 `-t` 都约等于一个片段长，起点超过它的片段一律「已经过期」，FFmpeg 以退出码 0、空 stderr 写出 0 字节，服务端只能报一句没有内容的 `ffmpeg failed`。实测 asset 6562（6,332 秒）：片段 0、1 返回 200，片段 2 与 300 都是 503；片段缓存目录里 6562、29914、19490 三个资产也都只留下 `0.ts` 与 `1.ts`。所以症状不只是拖不动，播到约 20 秒就会断。修法是保留 `-copyts`、把 `-t 时长` 换成绝对终点 `-to 起点+时长`；删掉 `-copyts` 同样能出片，但首个 PTS 会退回 0.069，每段都自称从 0 开始，正是当初引入 `-copyts` 要解决的拖动跳位。隔离实例实测片段 2、300、633 全部返回 200（47.2 MB、41.1 MB、69.3 MB），手工核验片段 300 首个 PTS 为 2997.995，绝对位置与跨段连续性都对。生产托盘已于 2026-08-18 重启并复验：asset 6562 的片段 2、300 与 asset 29914 的片段 5 均返回 200。
 - 同批把静默失败改为自陈：FFmpeg 退出码 0、stderr 全空却写出 0 字节时，错误信息带上 `returncode`、字节数与 `ss`/`to`，不再只说 `ffmpeg failed`。上面那个缺陷能藏这么久，正是因为日志里那句话什么都没说。
+- 远端 MP4 已改为默认标准 Range，HLS 转为按需（`/api/stream-plan?mode=hls`），见 ADR-0016。起因是 asset 22716（115 的 HEVC 重制 MP4）在详情页黑屏：分片全部 200、数据进了缓冲、时间轴照走，但 `videoWidth=0`、解码 0 帧、无 error 事件。`-c copy` 把 HEVC 原样装进 MPEG-TS，而 Chromium 的 MSE 不支持 TS 里的 HEVC；同一浏览器实测 `video/mp2t; codecs="hvc1…"` 为 `false`、`video/mp4; codecs="hvc1…"` 为 `true`，直接 Range 播同一文件解码 997 帧、拖动后继续出帧。文件名含 `HEVC` 的 115 视频有 248 条、PikPak 2 条，此前全部受影响。生产重启后复验 22716：默认计划为 `range`，`mode=hls` 仍给出 76 段计划，播放列表返回 200；详情页取到 `/stream?id=22716`、`readyState=4`、`1920×1080`，当前帧平均亮度 147.1、非黑像素 99.3%。
 - HLS 分片改为关键帧对齐：`peach.mp4index` 从 MP4 `moov/stss` 直接读关键帧表（实测 0.01 秒，`moov` 在尾部也能定位），播放列表报真实时长；时间戳改用 `-copyts` 保持跨段连续；片段缓存写入磁盘并按最后访问时间淘汰；FFmpeg 并发加信号量闸门。读不出关键帧的片源直接回退标准 Range，`/api/stream-plan` 也只在计划成立且带 session 时才宣告 HLS。
 - 厂牌 Logo 来源改为厂牌自己的社交账号头像（`scripts/fetch_studio_avatar_candidates.py`）。已确认 13 个 handle 并**逐张看图核对品牌归属**后落盘：Deep's、Hunter、Alice JAPAN、E-BODY、Glory Quest、K M Produce、TMA、Aroma Planning、M's Video Group、DAHLIA、Milu、Das、Muku；其中 Das 与 Muku 由 `scripts/find_studio_socials.py` 穿过官网年龄门后取得，Deep's 也由官网独立复证；映射表 `R:\peach-data\generated\studio-x-handles.csv`，候选 `studio-logo-social-candidate-20260817.csv`，图片 `generated\studio-logos\`。其余 76 个未取得，留空待查。长条形 Logo 补自身底色填成正方形而不是丢弃。
 - Logo 归属的判据是图不是 handle：`@ms_harapekori` 看不出与 M's Video Group 的关系，看图确认是对的；`@OFFICEKS` 能取到 400×400 但图只有色块无品牌文字，而同名公司有多家，因此判为未取得。`@bazooka`、`@bibibi_25` 同理被排除。
-- 复核层已加固：候选按前缀取最新批次（不再写死日期）、缺主键的行跳过并计数（不再退化成行号）、批准的 creator/tags 以候选文件为权威（请求体只作确认）、未勾选整条通过受 `REVIEW_APPLY_LIMIT=500` 约束、写入改为 `executemany` 并在完成后 `cache_bust()`。`/api/review` 走缓存，创作者预览由一次分组查询取代 42 次三重 LEFT JOIN。候选目录改由 `PeachSettings.candidate_root` 提供，测试不再读真实 `generated` 目录。
+- 复核层已加固：候选按前缀取最新批次（不再写死日期）、缺主键的行跳过并计数（不再退化成行号）、只有 `status=candidate` 的 creator 候选可批准、批准的 creator/tags 以候选文件为权威（请求体只作确认）、未勾选整条通过受 `REVIEW_APPLY_LIMIT=500` 约束、写入改为 `executemany` 并在完成后 `cache_bust()`。`vision_creator_review` 已纳入统计标签覆盖和 Top 标签口径。`/api/review` 走缓存，创作者预览由一次分组查询取代 42 次三重 LEFT JOIN。候选目录改由 `PeachSettings.candidate_root` 提供，测试不再读真实 `generated` 目录。
 
 ## 数据与批处理
 
@@ -96,7 +97,7 @@
 
 ## 验证基线
 
-- 当前主分支基线：全量隔离 `unittest` 213 项通过，2026-08-18 于主目录当前工作区实测（入口只有 `& .\scripts\test.ps1`，不接受「只跑本批相关」的缩水口径）；版本、托盘、迁移、mDNS、媒体转码、Provider、DiskGuard、语义路由、标准 Range、Video.js、稳定时长、详情播放释放、多选、实体资料、分页性能边界、搜索历史，以及回收站的还原/彻底删除/清空与删不掉文件的降级均有测试。
+- 当前主分支基线：全量隔离 `unittest` 227 项通过，2026-08-18 于主目录当前工作区实测（入口只有 `& .\scripts\test.ps1`，不接受「只跑本批相关」的缩水口径）；版本、托盘、迁移、mDNS、媒体转码、Provider、DiskGuard、语义路由、标准 Range、Video.js、稳定时长、详情播放释放、多选、实体资料、分页性能边界、搜索历史，以及回收站的还原/彻底删除/清空与删不掉文件的降级均有测试。
 - 前一生产版本已分别通过 HTTP/HTTPS health、`peach.local` 解析、真实 CloudDrive Range、桌面 1280×720 和手机 390×844 检查。本次 HLS 代码已切换生产托盘；真实资产 `31222/MIDE-981-C.mp4` 的中段 HLS 片段在严格 CA HTTPS 下返回 `200`、约 9.7 MB，响应后的临时文件已清理。尚未完成浏览器 seek 和手机 HLS 视觉验收。
 - 浏览器验收不得写真实喜欢、反馈或播放数据；需要交互写入时使用隔离 ledger 副本。
 - 并行 worktree 测试必须设置 `PYTHONPATH=<当前工作树>\src` 并核对 `peach.__file__`，否则 editable install 可能误加载主目录旧代码。
@@ -127,9 +128,9 @@
 <!-- job-status:start -->
 
 <!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->
-<!-- generated 2026-08-18T03:38Z -->
+<!-- generated 2026-08-18T07:42Z -->
 
-- 最近自动交接：`claude` / `Stop` / `completed`，2026-08-18T03:38:51+00:00。
+- 最近自动交接：`claude` / `SessionEnd` / `other`，2026-08-18T07:40:38+00:00。
 - 资产 81769 条，其中视频 24889 条。
 - 待抽帧（可抽 / 缺时长待 probe / 合计）：
   - `local`：3 / 1 / 4
