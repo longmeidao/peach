@@ -582,3 +582,9 @@ if __name__ == "__main__":
         # sha1 齐全才敢说「一致」，否则只是时长推断——界面必须把差别显示出来。
         self.assertPageContains("g.identical?'<span class=\"dupflag ok\">sha1 一致</span>'")
         self.assertPageContains("时长推断")
+
+    def test_review_page_exposes_the_new_candidate_categories(self):
+        # 这三类此前只落在 CSV 里没有入口，复核负担等于丢回给用户去翻文件。
+        self.assertPageContains("western_identity:'西方身份回配'")
+        self.assertPageContains("code_creators:'番号目录存疑'")
+        self.assertPageContains("cover_sources:'封面来源'")

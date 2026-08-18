@@ -683,6 +683,79 @@ class ReviewQueueTests(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+    def _csv(self, name, fields, rows):
+        path = self.candidates / name
+        with path.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fields)
+            writer.writeheader(); writer.writerows(rows)
+        return path
+
+    def test_settled_western_identity_rows_stay_out_of_the_queue(self):
+        # 168 条里 143 条是「确认无档案」，站上确实没有这个人，没有可判断的东西。
+        fields = ["entity_id", "creator", "videos", "verdict", "matched_variant",
+                  "babepedia_name", "token_overlap", "portrait_url", "profile_url"]
+        self._csv("babepedia-candidates.csv", fields, [
+            {"entity_id": "1", "creator": "ruth_lee", "videos": "336", "verdict": "命中",
+             "matched_variant": "ruth_lee", "babepedia_name": "Ruth Lee",
+             "token_overlap": "1.0", "portrait_url": "https://x/p.jpg", "profile_url": ""},
+            {"entity_id": "2", "creator": "minhie", "videos": "17", "verdict": "需人工确认",
+             "matched_variant": "minhie", "babepedia_name": "Aryminh",
+             "token_overlap": "0.0", "portrait_url": "", "profile_url": ""},
+            {"entity_id": "3", "creator": "luckydog22", "videos": "496",
+             "verdict": "确认无档案", "matched_variant": "", "babepedia_name": "",
+             "token_overlap": "0.0", "portrait_url": "", "profile_url": ""},
+        ])
+        rows = rm_web.q_review(self.contract)["sections"]["western_identity"]
+        self.assertEqual({r["creator"] for r in rows}, {"ruth_lee", "minhie"})
+
+    def test_western_identity_rows_carry_a_readable_evidence_line(self):
+        fields = ["entity_id", "creator", "videos", "verdict", "matched_variant",
+                  "babepedia_name", "token_overlap", "portrait_url"]
+        self._csv("babepedia-candidates.csv", fields, [
+            {"entity_id": "1", "creator": "SexySaffron", "videos": "357", "verdict": "命中",
+             "matched_variant": "Sexy Saffron", "babepedia_name": "Saffron Bacchus",
+             "token_overlap": "0.33", "portrait_url": "https://x/s.jpg"}])
+        row = rm_web.q_review(self.contract)["sections"]["western_identity"][0]
+        self.assertIn("Saffron Bacchus", row["reason"])
+        self.assertIn("写法 Sexy Saffron", row["reason"], "别名跳转必须写明用了哪个写法")
+        self.assertEqual(row["preview_url"], "https://x/s.jpg")
+
+    def test_cover_sources_only_surface_gaps_and_low_resolution(self):
+        fields = ["code", "result", "source", "width", "height", "kb", "url", "note"]
+        self._csv("cover-fetch-log.csv", fields, [
+            {"code": "BAZX-302", "result": "取得", "source": "awsimgsrc.dmm.co.jp",
+             "width": "2184", "height": "1459", "kb": "1065", "url": "u", "note": ""},
+            {"code": "PPT-018", "result": "取得", "source": "pics.dmm.co.jp",
+             "width": "800", "height": "539", "kb": "165", "url": "u", "note": ""},
+            {"code": "HEYZO-1380", "result": "未取得", "source": "", "width": "",
+             "height": "", "kb": "", "url": "", "note": "所有渠道都没有候选"},
+        ])
+        rows = rm_web.q_review(self.contract)["sections"]["cover_sources"]
+        self.assertEqual({r["code"] for r in rows}, {"PPT-018", "HEYZO-1380"},
+                         "2184 宽的高清图不需要人确认")
+
+    def test_stored_cover_previews_from_disk_not_the_origin(self):
+        fields = ["code", "result", "source", "width", "height", "kb", "url", "note"]
+        self._csv("cover-fetch-log.csv", fields, [
+            {"code": "PPT-018", "result": "取得", "source": "pics.dmm.co.jp",
+             "width": "800", "height": "539", "kb": "165", "url": "https://far/away.jpg",
+             "note": ""}])
+        row = rm_web.q_review(self.contract)["sections"]["cover_sources"][0]
+        self.assertEqual(row["preview_url"], "/cover?code=PPT-018")
+
+    def test_code_creator_candidates_reach_the_review_page(self):
+        fields = ["entity_id", "creator", "verdict", "identity", "assets",
+                  "sample_path", "code_action", "reason"]
+        self._csv("code-creator-review.csv", fields, [
+            {"entity_id": "6869", "creator": "banbi_555", "verdict": "存疑",
+             "identity": "BANBI-555", "assets": "69", "sample_path": "A:/x.mp4",
+             "code_action": "", "reason": "名字像番号，但目录内没有同番号文件"}])
+        rows = rm_web.q_review(self.contract)["sections"]["code_creators"]
+        self.assertEqual(rows[0]["item_key"], "6869")
+        self.assertIn("没有同番号文件", rows[0]["reason"])
+
+
+
 
 class ChineseSearchTermTests(unittest.TestCase):
     """短查询必须能通过别名和检索词命中日文汉字身份。"""

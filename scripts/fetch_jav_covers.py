@@ -231,6 +231,15 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _write_log(path: Path, rows: list[dict]) -> None:
+    """每条都落盘：这个任务要跑三四个小时，只在结束时写等于全程看不见进度。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8-sig", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
 def run(args: argparse.Namespace) -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     todo = pending(args.db, args.out, not args.all_codes)
@@ -262,13 +271,10 @@ def run(args: argparse.Namespace) -> int:
                          "url": winner.url, "note": ""})
             print(f"[{index}/{len(todo)}] {code}  {width}x{height} "
                   f"{len(data)//1024} KB  <- {winner.source}", flush=True)
+            _write_log(args.log, rows)
     finally:
         transport.close()
-        args.log.parent.mkdir(parents=True, exist_ok=True)
-        with args.log.open("w", encoding="utf-8-sig", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=FIELDS)
-            writer.writeheader()
-            writer.writerows(rows)
+        _write_log(args.log, rows)
 
     print(f"\n取得 {stats['ok']}，未取得 {stats['miss']} → {args.out}")
     print(f"逐条记录 → {args.log}")

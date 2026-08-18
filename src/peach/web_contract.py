@@ -14,7 +14,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Sequence
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from .config import COVER_DIR, GENERATED_DIR
 from .entities import normalize_entity_name, upsert_asset_entity
@@ -844,6 +844,10 @@ CANDIDATE_PREFIX = {
     "creator_tags": "creator-tags-candidate-",
     "studio_logos": "studio-logo-candidate-",
     "performer_avatars": "performer-avatar-candidate-",
+    # 这三类此前只落在 CSV 里没有界面入口，复核负担等于被丢回给用户去翻文件。
+    "western_identity": "babepedia-candidates",
+    "code_creators": "code-creator-review",
+    "cover_sources": "cover-fetch-log",
 }
 # 每类候选的稳定主键列。缺这一列的行直接跳过并计数，绝不退化成行号——
 # 行号会在 CSV 重排后把历史决定悄悄挪到别的条目上。
@@ -851,7 +855,29 @@ CANDIDATE_KEY = {
     "creator_tags": "board",
     "studio_logos": "studio",
     "performer_avatars": "entity_id",
+    "western_identity": "entity_id",
+    "code_creators": "entity_id",
+    "cover_sources": "code",
 }
+def _needs_review(category: str, row: dict) -> bool:
+    """已经有定论的行不该占复核页。
+
+    babepedia 那批 168 条里有 143 条是「确认无档案」——站上确实没有这个人，
+    没有可判断的东西，全列出来只会把真正要看的 25 条淹掉。封面同理：拿到 2184
+    宽的高清图不需要人确认，未取得和仍停在 800 低清基线的才需要。
+    """
+    if category == "western_identity":
+        return str(row.get("verdict") or "") in ("命中", "需人工确认")
+    if category == "cover_sources":
+        if str(row.get("result") or "") != "取得":
+            return True
+        try:
+            return int(row.get("width") or 0) < 1200
+        except ValueError:
+            return True
+    return True
+
+
 REVIEW_PREVIEW_LIMIT = 60
 REVIEW_APPLY_LIMIT = 500
 
@@ -914,6 +940,7 @@ def _creator_previews(connection, creators: list[str]) -> dict[str, list[dict]]:
 
 def _review_rows(contract: WebContract, category: str) -> tuple[list[dict], str | None, int]:
     rows, source, skipped = read_candidates(category, contract.candidate_root)
+    rows = [row for row in rows if _needs_review(category, row)]
     connection = contract.db()
     try:
         decisions = {
@@ -934,8 +961,30 @@ def _review_rows(contract: WebContract, category: str) -> tuple[list[dict], str 
         decision = decisions.get(row["item_key"], {})
         row["decision"] = decision.get("status", "pending")
         row["decision_note"] = decision.get("note", "")
-        row["preview_url"] = row.get("resolved_url") or row.get("source_url") or row.get("avatar_url") or ""
+        row["preview_url"] = (row.get("resolved_url") or row.get("source_url")
+                              or row.get("avatar_url") or row.get("portrait_url") or "")
+        if category == "cover_sources" and row.get("result") == "取得":
+            # 封面已经在本机，直接看落盘的那张，不要回源站再拉一次。
+            row["preview_url"] = f"/cover?code={quote(str(row.get('code') or ''))}"
+        if not row.get("reason"):
+            row["reason"] = _review_evidence(category, row)
     return rows, source, skipped
+
+
+def _review_evidence(category: str, row: dict) -> str:
+    """给本身没有 reason 列的候选拼一句可判断的证据，别让复核页只剩一个名字。"""
+    if category == "western_identity":
+        overlap = row.get("token_overlap") or "0"
+        variant = row.get("matched_variant") or ""
+        spelling = f"（写法 {variant}）" if variant and variant != row.get("creator") else ""
+        return (f"{row.get('verdict', '')} → {row.get('babepedia_name', '')}"
+                f"{spelling}；词元重合 {overlap}；{row.get('videos', '')} 部作品")
+    if category == "cover_sources":
+        if row.get("result") != "取得":
+            return f"未取得：{row.get('note') or '所有渠道都没有候选'}"
+        return (f"{row.get('source', '')} · {row.get('width', '')}×{row.get('height', '')}"
+                f" · {row.get('kb', '')} KB")
+    return ""
 
 
 def q_review(contract: WebContract):
