@@ -160,6 +160,16 @@ class WebDataTests(unittest.TestCase):
         self.assertNotIn("path", result["items"][0])
         self.assertNotIn("snapshot_path", result["items"][0])
 
+    def test_reviewed_creator_tags_are_included_in_tag_coverage(self):
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO asset_tag(asset_id,tag,source) VALUES(2,'审核标签','vision_creator_review')"
+        )
+        con.commit(); con.close()
+        stats = rm_web.q_stats(self.contract)
+        self.assertEqual(stats["tag_cov"], 2)
+        self.assertIn("审核标签", {row["k"] for row in stats["top_tags"]})
+
     def test_items_support_duration_range(self):
         result = rm_web.q_items(
             self.contract, {"dur_min": "90", "dur_max": "110", "limit": "10"},
@@ -566,6 +576,19 @@ class ReviewQueueTests(unittest.TestCase):
             rm_web.w_review_decision(self.contract, {
                 "category": "creator_tags", "item_key": "已消失的候选", "status": "approved",
             })
+
+    def test_skip_candidate_cannot_be_approved(self):
+        """机械批次明确跳过的聚合目录不能从复核页误批准回真相层。"""
+        self.write_candidates("creator-tags-candidate-20260817.csv",
+                              [{"board": "b1", "creator": "ukiru", "tags": "足系", "status": "skip"}])
+        with self.assertRaises(ValueError):
+            rm_web.w_review_decision(self.contract, {
+                "category": "creator_tags", "item_key": "b1", "status": "approved",
+            })
+        con = sqlite3.connect(self.db_path)
+        self.assertEqual(con.execute("SELECT count(*) FROM asset_tag").fetchone()[0], 0)
+        self.assertEqual(con.execute("SELECT count(*) FROM review_decision").fetchone()[0], 0)
+        con.close()
 
     def test_unselected_approval_is_capped_instead_of_tagging_everything(self):
         self.write_candidates("creator-tags-candidate-20260817.csv",

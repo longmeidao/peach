@@ -97,8 +97,9 @@ button,input,textarea{font:inherit;color:inherit}
 .search input{flex:1;min-width:0;background:none;border:0;outline:none;font-size:15px}
 .search>svg{width:21px;height:21px;flex:none;stroke:var(--muted);fill:none;stroke-width:1.8;stroke-linecap:round}
 .searchmenu{position:absolute;z-index:130;left:0;right:0;top:calc(100% + 8px);padding:8px;
-  border:1px solid var(--border-10);border-radius:14px;background:var(--frost-panel);
-  box-shadow:0 22px 56px -20px #000b;backdrop-filter:saturate(1.5) blur(20px)}
+  border:1px solid var(--border-10);border-radius:14px;
+  background:color-mix(in srgb,var(--surface) 96%,var(--ground));
+  box-shadow:0 22px 56px -20px #000b;backdrop-filter:saturate(1.5) blur(26px)}
 .searchmenu[hidden]{display:none}.searchgroup+ .searchgroup{border-top:1px solid var(--line-soft);margin-top:7px;padding-top:7px}
 .searchgroup h3{margin:6px 10px;color:var(--muted);font-size:10px;letter-spacing:.14em}
 .searchoption{width:100%;height:38px;border:0;border-radius:8px;background:transparent;color:var(--ink);
@@ -163,10 +164,13 @@ button,input,textarea{font:inherit;color:inherit}
 .combo .cb b:hover{opacity:1}
 .combo .clr{background:none;border:0;color:var(--muted);cursor:pointer;font-size:12px;text-decoration:underline}
 /* 统计页 */
-.stats{padding:8px 0 42px;max-width:1440px;margin:0 auto}
-.review{padding:8px 0 42px;max-width:1440px;margin:0 auto}.reviewhead{display:flex;align-items:center;gap:14px;padding:10px 2px 18px;border-bottom:1px solid var(--line-soft);margin-bottom:18px}.reviewhead h2{margin:0;font-size:26px}.reviewtabs{display:flex;gap:7px;overflow-x:auto;margin-bottom:16px}.reviewtabs button,.reviewitem button{border:1px solid var(--border-15);border-radius:999px;background:transparent;color:var(--ink-2);padding:8px 13px;cursor:pointer}.reviewtabs button[aria-pressed="true"],.reviewitem button.approve{background:var(--tungsten-soft);border-color:var(--tungsten);color:var(--ink)}.reviewsection{margin-bottom:20px}.reviewsection h3{margin:0 0 9px;font-size:15px}.reviewlist{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px}.reviewitem{background:var(--surface);border:1px solid var(--line-soft);border-radius:12px;padding:13px;min-width:0}.reviewitem[data-decision="approved"]{border-color:var(--keep)}.reviewitem[data-decision="rejected"],.reviewitem[data-decision="skipped"]{opacity:.55}.reviewitem h4{margin:0 0 6px;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reviewitem p{margin:4px 0;color:var(--muted);font-size:12px;line-height:1.5;overflow-wrap:anywhere}.reviewtags{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0}.reviewtags span{padding:3px 8px;border:1px solid var(--border-15);border-radius:999px;font-size:11px}.reviewactions{display:flex;gap:6px;margin-top:10px}.reviewactions button{border-radius:8px;padding:6px 10px}.reviewactions .reject{color:var(--drop)}.reviewasset-grid{display:flex;gap:6px;overflow-x:auto;padding:7px 0;position:relative;scrollbar-width:thin}.reviewasset{position:relative;flex:0 0 108px;height:82px;border:1px solid var(--border-10);border-radius:7px;overflow:hidden;background:#000;cursor:pointer}.reviewasset img{width:100%;height:100%;object-fit:cover;display:block}.reviewasset input{position:absolute;top:6px;right:6px;width:18px;height:18px;accent-color:var(--tungsten);z-index:2}.reviewasset-grid.marquee-active{cursor:crosshair}.reviewasset-grid.marquee-active .reviewasset{user-select:none}.reviewmarquee{position:fixed;z-index:300;border:1px solid var(--tungsten);background:color-mix(in srgb,var(--tungsten) 16%,transparent);pointer-events:none}
-.statshead{display:flex;align-items:center;justify-content:flex-start;gap:14px;padding:10px 2px 18px;
-  border-bottom:1px solid var(--line-soft);margin-bottom:18px}
+.stats{padding:8px 0 42px}
+.review{padding:8px 0 42px}.reviewhead{display:flex;align-items:baseline;gap:12px;padding:2px 2px 14px;margin-bottom:14px}.reviewhead h2{margin:0;font-size:22px}.reviewtabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:18px;scrollbar-width:none}.reviewtabs::-webkit-scrollbar{display:none}.reviewtabs button{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-15);border-radius:999px;background:transparent;color:var(--ink-2);padding:7px 14px;cursor:pointer;font-size:13px;white-space:nowrap}.reviewtabs button:hover{border-color:var(--tungsten);color:var(--ink)}.reviewtabs button[aria-pressed="true"]{background:var(--tungsten-soft);border-color:var(--tungsten);color:var(--tungsten);font-weight:600}.reviewtabs .n{color:var(--muted);font-size:11px}.reviewsection{margin-bottom:20px}.reviewsection h3{margin:0 0 9px;font-size:15px}.reviewlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px}
+/* 判定状态用左侧色条表达：整卡描边在一列里扫过去时反而认不出来 */
+.reviewitem{position:relative;background:var(--surface);border:1px solid var(--line-soft);border-radius:12px;padding:15px 15px 13px 18px;min-width:0;overflow:hidden}.reviewitem::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:transparent}.reviewitem[data-decision="approved"]::before{background:var(--keep)}.reviewitem[data-decision="rejected"]::before{background:var(--drop)}.reviewitem[data-decision="skipped"]::before{background:var(--muted)}.reviewitem[data-decision="rejected"],.reviewitem[data-decision="skipped"]{opacity:.6}.reviewitem h4{margin:0 0 6px;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reviewitem p{margin:4px 0;color:var(--muted);font-size:12px;line-height:1.55;overflow-wrap:anywhere}.reviewtags{display:flex;flex-wrap:wrap;gap:5px;margin:9px 0}.reviewtags span{padding:3px 9px;border:1px solid var(--border-15);border-radius:999px;font-size:11.5px;color:var(--ink-2)}
+/* 资产选择用换行网格而不是横向滚动条：一个创作者可能有几十条候选，横拉看不完 */
+.reviewpick{margin:10px 0 4px;border:1px solid var(--border-10);border-radius:10px;background:var(--overlay-5);padding:8px}.reviewpickhead{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:11.5px;color:var(--muted)}.reviewpickhead button{border:1px solid var(--border-15);border-radius:7px;background:transparent;color:var(--ink-2);padding:3px 10px;font-size:11.5px;cursor:pointer}.reviewpickhead button:hover{border-color:var(--tungsten);color:var(--ink)}.reviewpickhead [data-picked-count]{margin-right:auto}.reviewasset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px;max-height:268px;overflow-y:auto;scrollbar-width:thin}.reviewasset{position:relative;aspect-ratio:16/10;border:0;padding:0;border-radius:7px;overflow:hidden;background:#000;cursor:pointer;opacity:.5;transition:opacity .12s ease}.reviewasset img{width:100%;height:100%;object-fit:cover;display:block}.reviewasset .pickmark{position:absolute;top:4px;right:4px;width:19px;height:19px;border-radius:50%;display:none;place-items:center;background:var(--tungsten);color:#fff}.reviewasset .pickmark svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:3}.reviewasset.picked{opacity:1;outline:2px solid var(--tungsten);outline-offset:-2px}.reviewasset.picked .pickmark{display:grid}.reviewactions{display:flex;gap:7px;margin-top:12px}.reviewactions button{border:1px solid var(--border-15);border-radius:8px;background:transparent;color:var(--ink-2);padding:7px 14px;font-size:13px;cursor:pointer}.reviewactions button:hover{border-color:var(--tungsten);color:var(--ink)}.reviewactions .approve{background:var(--tungsten);border-color:var(--tungsten);color:#fff;font-weight:600}.reviewactions .approve:hover{background:color-mix(in srgb,var(--tungsten) 82%,#000);color:#fff}.reviewactions .skip{color:var(--meter)}.reviewactions .skip:hover{background:var(--meter);border-color:var(--meter);color:#fff}.reviewactions .reject{color:var(--drop)}.reviewactions .reject:hover{background:var(--drop);border-color:var(--drop);color:#fff}
+.statshead{display:flex;align-items:baseline;gap:12px;padding:2px 2px 14px;margin-bottom:14px}
 .stats h2{margin:0 0 4px;font-size:26px}
 .stats .sub{color:var(--muted);margin:0}
 .scards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:18px}
@@ -280,6 +284,16 @@ button,input,textarea{font:inherit;color:inherit}
 
 /* ── 主区：满屏，大图 ── */
 main{position:relative;z-index:1;padding:14px 16px 90px}
+/* 管理区二级导航：统计 / 疑似广告 / 回收站 / 人工复核 共用一条 */
+.managebar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 16px;
+  padding:6px;border:1px solid var(--line-soft);border-radius:12px;background:var(--surface);width:max-content;max-width:100%}
+.managebar[hidden]{display:none}
+.managebar button{display:inline-flex;align-items:center;gap:7px;border:0;border-radius:9px;
+  background:transparent;color:var(--ink-2);padding:8px 14px;cursor:pointer;font-size:13px;white-space:nowrap}
+.managebar button svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round}
+.managebar button:hover{background:var(--hover);color:var(--ink)}
+.managebar button[aria-pressed="true"]{background:var(--tungsten-soft);color:var(--tungsten);font-weight:600}
 .count{position:sticky;top:calc(var(--topH) + var(--filterH));z-index:60;
   min-height:var(--sortH);color:var(--ink-2);margin:0 -16px 12px;padding:8px 16px;
   display:flex;align-items:center;gap:10px;flex-wrap:nowrap;
@@ -784,7 +798,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 }
 #searchBtn{display:none}
 </style>
-<style>.reviewimage{width:160px;height:112px;border-radius:8px;overflow:hidden;background:#000;margin:8px 0}.reviewimage img{width:100%;height:100%;object-fit:contain;display:block}.review-select-mode .reviewasset{cursor:crosshair}</style>
+<style>.reviewimage{width:160px;height:112px;border-radius:8px;overflow:hidden;background:#000;margin:8px 0}.reviewimage img{width:100%;height:100%;object-fit:contain;display:block}</style>
 </head>
 <body>
 <!-- Lucide static 1.31.0, ISC. Local pinned subset; no CDN/runtime dependency.
@@ -810,6 +824,9 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   <symbol id="i-thumbs-up" viewBox="0 0 24 24"><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/><path d="M7 10v12"/></symbol>
   <symbol id="i-thumbs-down" viewBox="0 0 24 24"><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"/><path d="M17 14V2"/></symbol>
   <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></symbol>
+  <!-- 图标库里没有表示广告的图形；按 Lucide 的 24×24 描边风格自绘一个感叹号圆标，
+       线宽、圆角端点与其余图标一致，不至于在同一条导航里显得格格不入。 -->
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></symbol>
   <symbol id="i-trash" viewBox="0 0 24 24"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
@@ -849,6 +866,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   <section class="stage" id="stage" hidden></section>
   <div class="combo" id="combo"></div>
   <section class="index" id="index" hidden></section>
+  <nav class="managebar" id="managebar" hidden></nav>
   <section class="stats" id="stats" hidden></section>
   <div class="count mono" id="count">载入中…</div>
   <div class="grid" id="grid"></div>
@@ -1421,12 +1439,13 @@ async function buildBars(){
     const k=b.dataset.nav;
     closeDrawerAfterNav();
     if(k==='immerse'){openTok();return}
-     if(k==='stats'){openStats();return}
-     if(k==='review'){openReview();return}
+    if(k==='manage'){openManage();return}
     if(k==='performers'||k==='tags'){openIndex(k);return}
     if(k==='shorts'){state.orient='竖屏';state.state=''}
     else{state.orient='';state.state=k}
-    if(k==='trash')route('/trash');
+    // 从管理区/索引页点回列表类入口时，路径还停在原处，高亮不会切换。
+    if(location.pathname!=='/')route('/');
+    showHomeSurfaces();
     buildEdge();buildBars();load(true)});
   const bind=()=>$('#drawer').querySelectorAll('.chip').forEach(b=>b.onclick=()=>{
     const k=b.dataset.key,v=b.dataset.val;
@@ -1514,7 +1533,7 @@ async function openStats(push=true){
   document.body.classList.remove('entity-open');
   disposeStage(false);
   const d=await api('/api/stats');
-  $('#stats').hidden=false; $('#index').hidden=true; $('#grid').innerHTML='';
+  $('#stats').hidden=false; $('#index').hidden=true; $('#grid').innerHTML='';buildManageBar();
   $('#count').textContent=''; $('#loadSentinel').hidden=true; $('#shortsSec').hidden=true;
   $('#tiers').style.display='none'; $('#tagbar').style.display='none';
   const a=d.attribution, cs=d.consumption;
@@ -1525,10 +1544,7 @@ async function openStats(push=true){
   const card=(t,body)=>`<div class="scard2"><h3>${t}</h3>${body}</div>`;
   const kv=(k,v,u)=>`<div class="kv"><span>${k}</span><b>${v}${u?`<span class="u">${u}</span>`:''}</b></div>`;
   $('#stats').innerHTML=`
-    <div class="statshead"><button class="backbtn" id="statsBack" title="返回浏览" aria-label="返回浏览">${icon('arrow-left')}</button>
-      <div><h2 class="disp">统计与管理</h2>
-      </div>
-    </div>
+    <div class="statshead"><h2 class="disp">统计</h2></div>
     <div class="scards">
       ${card('库存', d.by_loc.map(l=>kv(LOC[l.k]||l.k, l.videos.toLocaleString(), gb(l.bytes))).join('')
         + kv('合计', d.by_loc.reduce((s,l)=>s+l.videos,0).toLocaleString(),
@@ -1567,7 +1583,6 @@ async function openStats(push=true){
       return kv(esc((r.creator?r.creator+' · ':'')+r.name).slice(0,90),
         `真实看 ${real.toFixed(0)}% / 到达 ${mx.toFixed(0)}%`,
         real<mx-25?'快进扫过':(r.o_count?`⌀ ${r.o_count}`:''));}).join('')}</div>`:''}`;
-  $('#statsBack').onclick=()=>closeStats();
   $('#stats').querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
     closeStats(); toggleTag(b.dataset.k)});
   window.scrollTo({top:0,behavior:'smooth'});
@@ -1576,39 +1591,47 @@ function showHomeSurfaces(){
   document.body.classList.remove('entity-open');
   $('#stats').hidden=true;$('#index').hidden=true;
   $('#tiers').style.display='';$('#tagbar').style.display='';
+  buildManageBar();   // 放在最后：管理区要盖掉上面刚恢复的首页横条
 }
 function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
 
-let reviewData=null,reviewCategory='creator_tags',reviewSelectMode=false;
+let reviewData=null,reviewCategory='creator_tags';
 const REVIEW_LABELS={creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',media_failure:'媒体失败'};
 async function openReview(push=true){
   releaseHoverPreviews();disposeStage(false);document.body.classList.remove('entity-open');
   if(push)route('/review');
+  buildManageBar();
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';$('#count').textContent='';
   $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;$('#tiers').style.display='none';$('#tagbar').style.display='none';
   reviewData=await api('/api/review');
+  if(location.pathname!=='/review')return;
   const render=()=>{
     const rows=reviewData.sections[reviewCategory]||[];
     const title=REVIEW_LABELS[reviewCategory];
     const value=row=>row.tags||row.japanese_name||row.path||row.suggested_query||'';
-     $('#stats').innerHTML=`<div class="review"><div class="reviewhead"><button class="backbtn" id="reviewBack" title="返回浏览" aria-label="返回浏览">${icon('arrow-left')}</button><h2 class="disp">人工复核</h2><span class="mono" style="color:var(--muted)">候选不会自动写入真相</span><button class="pill" id="reviewSelectMode" aria-pressed="${reviewSelectMode}">${icon('square-check-big')}多选模式</button></div>
-      <div class="reviewtabs">${Object.entries(REVIEW_LABELS).map(([key,label])=>`<button data-review-tab="${key}" aria-pressed="${key===reviewCategory}">${label} <span class="mono">${reviewData.counts[key]||0}</span></button>`).join('')}</div>
-      <section class="reviewsection"><h3>${title}</h3><div class="reviewlist">${rows.length?rows.map(row=>{
+     $('#stats').innerHTML=`<div class="review"><div class="reviewhead"><h2 class="disp">人工复核</h2></div>
+      <div class="reviewtabs">${Object.entries(REVIEW_LABELS).map(([key,label])=>`<button data-review-tab="${key}" aria-pressed="${key===reviewCategory}">${label} <span class="n mono">${reviewData.counts[key]||0}</span></button>`).join('')}</div>
+      <section class="reviewsection"><div class="reviewlist">${rows.length?rows.map(row=>{
         const key=row.item_key,decision=row.decision||'pending';
         const tags=String(row.tags||'').split('|').filter(Boolean).map(tag=>`<span>${esc(tag)}</span>`).join('');
         const titleText=row.creator||row.studio||row.current_name||row.name||key;
         const evidence=row.reason||row.evidence||row.note||row.decision_note||'';
+        const canApprove=reviewCategory!=='creator_tags'||String(row.status||'').trim()==='candidate';
+        const approveLabel=canApprove?'通过':'已跳过';
+         const assets=row.preview_assets||[];
          const preview=reviewCategory==='creator_tags'
-           ? `<div class="reviewasset-grid">${(row.preview_assets||[]).map(asset=>`<label class="reviewasset" title="${esc(asset.name)}"><img src="/poster?id=${asset.id}&c=4" alt="" loading="lazy"><input type="checkbox" data-review-asset="${asset.id}" checked></label>`).join('')}</div>`
-           : (row.preview_url?`<div class="reviewimage"><img src="${esc(row.preview_url)}" alt="" loading="lazy"></div>`:'<p class="empty">未取得图片预览</p>');
-         return `<article class="reviewitem" data-review-key="${esc(key)}" data-decision="${esc(decision)}"><h4>${esc(titleText)}</h4><p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>${tags?`<div class="reviewtags">${tags}</div>`:''}${preview}<p>${esc(evidence)}</p><div class="reviewactions"><button class="approve" data-review-status="approved">通过</button><button data-review-status="skipped">跳过</button><button class="reject" data-review-status="rejected">拒绝</button></div></article>`}).join(''):'<p class="empty">暂无候选</p>'}</div></section></div>`;
-     $('#reviewBack').onclick=()=>{route('/');showHomeSurfaces();load(true)};
-     $('#reviewSelectMode').onclick=()=>{reviewSelectMode=!reviewSelectMode;document.body.classList.toggle('review-select-mode',reviewSelectMode);$('#reviewSelectMode').setAttribute('aria-pressed',reviewSelectMode);wireReviewSelection($('#stats'))};
-     wireReviewSelection($('#stats'));
+           ? (assets.length?`<div class="reviewpick"><div class="reviewpickhead"><span class="mono" data-picked-count></span>
+               <button type="button" data-pick-all>全选</button><button type="button" data-pick-none>清空</button></div>
+               <div class="reviewasset-grid">${assets.map(asset=>`<button type="button" class="reviewasset picked" data-review-asset="${asset.id}" aria-pressed="true" title="${esc(asset.name)}"><img src="/poster?id=${asset.id}&c=4" alt="" loading="lazy"><span class="pickmark">${icon('check')}</span></button>`).join('')}</div></div>`
+              // 空白一片会被当成界面坏了。真实原因是这些作品还没抽帧，说清楚比留白好。
+              : `<p class="empty">这 ${esc(row.video_count||'')} 条作品尚未抽帧，暂无预览；批准后仍会按候选写入标签</p>`)
+           : (row.preview_url?`<div class="reviewimage"><img src="${esc(row.preview_url)}" alt="" loading="lazy" onerror="this.closest('.reviewimage').remove()"></div>`:'<p class="empty">未取得图片预览</p>');
+         return `<article class="reviewitem" data-review-key="${esc(key)}" data-decision="${esc(decision)}"><h4>${esc(titleText)}</h4><p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>${tags?`<div class="reviewtags">${tags}</div>`:''}${preview}<p>${esc(evidence)}</p><div class="reviewactions"><button class="approve" data-review-status="approved"${canApprove?'':' disabled'}>${approveLabel}</button><button class="skip" data-review-status="skipped">跳过</button><button class="reject" data-review-status="rejected">拒绝</button></div></article>`}).join(''):'<p class="empty">暂无候选</p>'}</div></section></div>`;
+     wireReviewAssets($('#stats'));
     $('#stats').querySelectorAll('[data-review-tab]').forEach(button=>button.onclick=()=>{reviewCategory=button.dataset.reviewTab;render()});
     $('#stats').querySelectorAll('[data-review-status]').forEach(button=>button.onclick=async()=>{
       const item=button.closest('[data-review-key]'),row=rows.find(x=>String(x.item_key)===item.dataset.reviewKey);button.disabled=true;
-       const selectedIds=[...item.querySelectorAll('[data-review-asset]:checked')].map(input=>+input.dataset.reviewAsset);
+       const selectedIds=[...item.querySelectorAll('[data-review-asset][aria-pressed="true"]')].map(cell=>+cell.dataset.reviewAsset);
        const result=await api('/api/review/decision',{method:'POST',body:JSON.stringify({category:reviewCategory,item_key:item.dataset.reviewKey,status:button.dataset.reviewStatus,creator:row.creator,tags:row.tags,studio:row.studio,entity_id:row.entity_id,avatar_url:row.avatar_url,selected_ids:selectedIds})});
       if(result.ok){row.decision=button.dataset.reviewStatus;item.dataset.decision=row.decision}
       button.disabled=false;
@@ -1617,15 +1640,30 @@ async function openReview(push=true){
   render();window.scrollTo({top:0,behavior:'smooth'});
 }
 
-function wireReviewSelection(root){
-  root.querySelectorAll('.reviewasset-grid').forEach(grid=>{
-    if(grid.dataset.selectionWired)return;grid.dataset.selectionWired='1';
-    let start=null,marquee=null;
-    const finish=e=>{if(!start)return;grid.releasePointerCapture?.(e.pointerId);marquee?.remove();start=null;marquee=null};
-    grid.addEventListener('pointerdown',e=>{
-      if(!reviewSelectMode||e.button!==0)return;start={x:e.clientX,y:e.clientY};marquee=document.createElement('div');marquee.className='reviewmarquee';document.body.appendChild(marquee);grid.setPointerCapture?.(e.pointerId);e.preventDefault()});
-    grid.addEventListener('pointermove',e=>{if(!start||!marquee)return;const left=Math.min(start.x,e.clientX),top=Math.min(start.y,e.clientY),right=Math.max(start.x,e.clientX),bottom=Math.max(start.y,e.clientY);Object.assign(marquee.style,{left:left+'px',top:top+'px',width:right-left+'px',height:bottom-top+'px'});const box={left,top,right,bottom};grid.querySelectorAll('.reviewasset').forEach(card=>{const r=card.getBoundingClientRect(),hit=r.right>=box.left&&r.left<=box.right&&r.bottom>=box.top&&r.top<=box.bottom;const input=card.querySelector('input');if(hit&&input)input.checked=true})});
-    grid.addEventListener('pointerup',finish);grid.addEventListener('pointercancel',finish);
+function wireReviewAssets(root){
+  /* 复核页不再自造「多选模式」和框选：交互与主网格一致——点一下切换，Shift 选一段。
+     多一套只在这一页生效的选择方式，用户得先发现它、再记住它。 */
+  root.querySelectorAll('.reviewpick').forEach(pick=>{
+    const cells=[...pick.querySelectorAll('.reviewasset')];
+    const readout=pick.querySelector('[data-picked-count]');
+    let anchor=null;
+    const paint=()=>{
+      const n=cells.filter(c=>c.getAttribute('aria-pressed')==='true').length;
+      if(readout)readout.textContent=`已选 ${n} / ${cells.length}`;
+    };
+    const set=(cell,on)=>{cell.setAttribute('aria-pressed',on);cell.classList.toggle('picked',on)};
+    cells.forEach((cell,index)=>{
+      cell.onclick=e=>{
+        if(e.shiftKey&&anchor!==null){
+          const [a,b]=[Math.min(anchor,index),Math.max(anchor,index)];
+          for(let i=a;i<=b;i++)set(cells[i],true);
+        }else set(cell,cell.getAttribute('aria-pressed')!=='true');
+        anchor=index;paint();
+      };
+    });
+    pick.querySelector('[data-pick-all]').onclick=()=>{cells.forEach(c=>set(c,true));paint()};
+    pick.querySelector('[data-pick-none]').onclick=()=>{cells.forEach(c=>set(c,false));paint()};
+    paint();
   });
 }
 
@@ -1645,13 +1683,14 @@ async function openIndex(kind,q,push=true){
     indexQuery.set('view',tagIndexMode);
     if(tagIndexCategory!=='all')indexQuery.set('category',tagIndexCategory)}
   if(push)route('/'+kind+(indexQuery.size?'?'+indexQuery:''),!!q);
+  showHomeSurfaces();
   disposeStage(false);
   const indexApi=offset=>'/api/index?kind='+kind+'&limit='+indexLimit+'&offset='+offset+
     (q?'&q='+encodeURIComponent(q):'')+
     (kind==='tags'&&tagIndexCategory!=='all'?'&category='+encodeURIComponent(tagIndexCategory):'');
   const d=await api(indexApi(0));
-  if(requestSeq!==indexRequestSeq)return;
-  $('#index').hidden=false; $('#grid').innerHTML=''; $('#count').textContent='';
+  if(requestSeq!==indexRequestSeq||location.pathname!=='/'+kind)return;
+  $('#index').hidden=false;buildEdge(); $('#grid').innerHTML=''; $('#count').textContent='';
   $('#loadSentinel').hidden=true; $('#shortsSec').hidden=true;
   const title=kind==='performers'?'艺人':(kind==='creators'?'创作者':'标签');
   const tagItems=[...d.items];
@@ -1745,13 +1784,16 @@ async function openEntity(kind,name,push=true,requestedTag){
   const entityTag=requestedTag===undefined
     ? (push?'':new URLSearchParams(location.search).get('tag')||'')
     : requestedTag;
-  if(push)route(entityPath(kind,name)+(entityTag?'?tag='+encodeURIComponent(entityTag):''));
+  const expectedPath=entityPath(kind,name);
+  if(push)route(expectedPath+(entityTag?'?tag='+encodeURIComponent(entityTag):''));
+  showHomeSurfaces();
   disposeStage(false);
   const seq=++entityRequestSeq;
   const [d,items]=await Promise.all([
     api(`/api/entity?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`),
     fetchEntityItems(kind,name,entityTag)]);
-  if(d.error||seq!==entityRequestSeq)return;
+  if(d.error||seq!==entityRequestSeq||
+     decodeURIComponent(location.pathname)!==decodeURIComponent(expectedPath))return;
   document.body.classList.add('entity-open');
   $('#index').hidden=false;$('#grid').innerHTML='';$('#count').textContent='';
   $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
@@ -1804,16 +1846,52 @@ const EDGE_ICONS=[
   ['performers','艺人','user-round'],
   ['tags','标签','tags'],
   ['flagged','已标记','star'],
-  ['trash','回收站','trash'],
-  ['ads','疑似广告','list-filter'],
   ['immerse','沉浸模式','play'],
-  ['stats','统计与管理','chart'],
+  ['manage','管理','settings'],
+];
+/* 统计、疑似广告、回收站、人工复核都是「管理」下的二级入口，不再各占一个顶层图标。
+   URL 保持原样（/stats、/trash、/review、?state=ads），只是多了一层共同的导航条。 */
+const MANAGE_SECTIONS=[
+  ['stats','统计','chart'],
+  ['ads','疑似广告','alert'],
+  ['trash','回收站','trash'],
   ['review','人工复核','square-check-big'],
 ];
+function manageSection(){
+  const path=decodeURIComponent(location.pathname);
+  if(path==='/stats')return 'stats';
+  if(path==='/review')return 'review';
+  if(path==='/trash')return 'trash';
+  return state.state==='ads'?'ads':'';
+}
+function buildManageBar(){
+  const current=manageSection(),bar=$('#managebar');
+  bar.hidden=!current;
+  // 管理区是行政界面，不该顶着首页的人物/厂牌横条和标签筛选。
+  if(current){$('#tiers').style.display='none';$('#tagbar').style.display='none'}
+  buildEdge();     // 顶层高亮跟随管理区；否则从首页进来时仍停在「首页」上
+  if(!current)return;
+  bar.innerHTML=MANAGE_SECTIONS.map(([k,label,ic])=>
+    `<button data-manage="${k}" aria-pressed="${k===current}">${icon(ic)}<span>${label}</span></button>`).join('');
+  bar.querySelectorAll('[data-manage]').forEach(b=>b.onclick=()=>openManage(b.dataset.manage));
+}
+function openManage(section='stats'){
+  if(section==='stats'){openStats();return}
+  if(section==='review'){openReview();return}
+  state.orient='';state.state=section==='trash'?'trash':'ads';
+  route(section==='trash'?'/trash':'/');
+  showHomeSurfaces();buildEdge();buildBars();load(true);
+}
 function navOn(k){
-  if(['immerse','stats','performers','tags','review'].includes(k))return false;
+  const path=decodeURIComponent(location.pathname);
+  if(k==='manage')return !!manageSection();
+  if(k==='performers'||k==='tags')return path==='/'+k;
+  if(k==='immerse')return path==='/immerse';
   if(k==='shorts')return state.orient==='竖屏';
-  return state.state===k && state.orient!=='竖屏';
+  // 首页只在真的停在首页列表上时亮：管理区、索引页、实体页都不算，
+  // 否则它会和当前所在的入口同时高亮。
+  if(k==='')return path==='/'&&!manageSection()&&!state.state&&state.orient!=='竖屏';
+  return path==='/'&&state.state===k&&state.orient!=='竖屏';
 }
 function buildEdge(){
   $('#edge').innerHTML=EDGE_ICONS.map(([k,t,ic])=>
@@ -1832,11 +1910,11 @@ function buildEdge(){
     const k=b.dataset.nav;
     closeDrawerAfterNav();                 // 点了就收起抽屉，且短暂禁止悬停把它立刻弹回
     if(k==='immerse'){openTok();return}
-     if(k==='stats'){openStats();return}
-     if(k==='review'){openReview();return}
+    if(k==='manage'){openManage();return}
     if(k==='performers'||k==='tags'){openIndex(k);return}
     if(k==='shorts'){state.orient='竖屏';state.state=''}else{state.orient='';state.state=k}
-    if(k==='trash')route('/trash');
+    if(location.pathname!=='/')route('/');
+    showHomeSurfaces();
     buildEdge();buildBars();load(true)});
 }
 let edgeT=null;
@@ -1906,6 +1984,7 @@ async function load(reset){
   const d=await api('/api/items?'+p);cache(d.items);
   if(requestSeq!==loadRequestSeq)return;
   if(reset)total=d.total;
+  buildManageBar();
   const html=batchWithMix(d.items,location.pathname==='/'&&state.state!=='trash');
   if(reset)releaseHoverPreviews($('#grid'));
   if(reset)$('#grid').innerHTML=html; else $('#grid').insertAdjacentHTML('beforeend',html);
@@ -1923,6 +2002,30 @@ const loadObserver=new IntersectionObserver(entries=>{
 },{rootMargin:'320px'});
 loadObserver.observe($('#loadSentinel'));
 const SEARCH_HINTS=['Prestige','FC2','Sakura Misaki','丝袜','足交','ABW'];
+/* 推荐词取自真实数据，所以每一条都保证能搜到东西；写死的常量池只有 6 个词，
+   翻两次就重复。顶部聚合只给几十条，不够；索引接口一次能给近千条名字。 */
+let searchPoolCache=null;
+function searchPool(){
+  if(searchPoolCache&&searchPoolCache.length)return searchPoolCache;
+  const pool=[];
+  const take=list=>(list||[]).forEach(x=>{const v=x&&x.k;if(v)pool.push(String(v))});
+  if(typeof facets==='object'&&facets){take(facets.creators);take(facets.tagperformers);take(facets.tags)}
+  const seen=new Set();
+  const unique=pool.filter(v=>v.length>1&&!seen.has(v)&&seen.add(v));
+  return unique.length>=8?unique:SEARCH_HINTS;
+}
+async function loadSearchPool(){
+  if(searchPoolCache)return searchPoolCache;
+  try{
+    const lists=await Promise.all(['performers','creators','tags'].map(
+      kind=>api(`/api/index?kind=${kind}&limit=400`)));
+    const seen=new Set();
+    const names=lists.flatMap(d=>(d.items||[]).map(x=>String(x.k||'')))
+      .filter(v=>v.length>1&&!seen.has(v)&&seen.add(v));
+    if(names.length>=50)searchPoolCache=names;
+  }catch(e){/* 取不到就退回聚合结果，不影响搜索本身 */}
+  return searchPool();
+}
 const searchSuggestion=SEARCH_HINTS[Math.floor(Math.random()*SEARCH_HINTS.length)];
 $('#q').dataset.suggestion=searchSuggestion;$('#q').placeholder=searchSuggestion;
 let searchHistory=[];
@@ -1931,7 +2034,7 @@ const loadSearchHistory=()=>api('/api/search-history?limit='+appSettings.searchH
 const writeSearchHistory=list=>{searchHistory=list.slice(0,appSettings.searchHistoryLimit);return searchHistory};
 const rememberSearch=async query=>{if(!query)return;await api('/api/search-history',{method:'POST',body:JSON.stringify({query})});writeSearchHistory([query,...readSearchHistory().filter(x=>foldName(x)!==foldName(query))])};
 function renderSearchMenu(){const menu=$('#searchMenu'),history=readSearchHistory();
-  const recommendations=[...SEARCH_HINTS].sort(()=>Math.random()-.5).filter(x=>!history.some(h=>foldName(h)===foldName(x))).slice(0,5);
+  const recommendations=[...searchPool()].sort(()=>Math.random()-.5).filter(x=>!history.some(h=>foldName(h)===foldName(x))).slice(0,5);
   const row=(value,type)=>`<div class="searchoption" data-search-value="${esc(value)}">${icon(type==='history'?'history':'sparkles')}<span>${esc(value)}</span>${type==='history'?`<button class="removehistory" data-remove-history="${esc(value)}" aria-label="删除历史 ${esc(value)}">${icon('x')}</button>`:''}</div>`;
   menu.innerHTML=(history.length?`<section class="searchgroup"><h3>搜索记录</h3>${history.map(x=>row(x,'history')).join('')}</section>`:'')+
     `<section class="searchgroup"><h3>推荐</h3>${recommendations.map(x=>row(x,'recommend')).join('')}</section>`;
@@ -1946,7 +2049,7 @@ const runSearch=(useSuggestion=false,committed=false)=>{let query=$('#q').value.
   state.q=query;route(state.q?'/?q='+encodeURIComponent(state.q):'/',true);load(true)};
 $('#q').oninput=()=>{if(!$('#searchMenu').hidden)renderSearchMenu()};
 $('#q').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();runSearch(true,true);$('#searchMenu').hidden=true;$('#q').blur()}};
-$('#q').addEventListener('focus',()=>{loadSearchHistory().then(renderSearchMenu)});
+$('#q').addEventListener('focus',()=>{Promise.all([loadSearchHistory(),loadSearchPool()]).then(renderSearchMenu)});
 
 const SHORTS_ROW_OFFSET=2;   // 竖屏条插在第几行之后，0 表示置顶
 async function loadShorts(requestSeq=loadRequestSeq){
@@ -2348,7 +2451,7 @@ $('#brandHome').onclick=e=>{e.preventDefault();
   route('/');$('#q').value='';disposeStage(false);buildBars();load(true);window.scrollTo({top:0,behavior:'smooth'})};
 $('#tokClose').onclick=()=>{setTokLoading(false);route('/');$('#tok').hidden=true;$('#tokTrack').querySelectorAll('video').forEach(v=>{
   v.pause();v.removeAttribute('src');v.load();if(v.id!=='tokVid')v.remove()});
-  const v=$('#tokVid');if(v){v.style.transform='translateX(-50%)'}tokSwitching=false;document.body.style.overflow=''};
+  const v=$('#tokVid');if(v){v.style.transform='translateX(-50%)'}tokSwitching=false;document.body.style.overflow='';showHomeSurfaces();load(true)};
 let wl=0;
 $('#tok').addEventListener('wheel',e=>{const n=Date.now();if(n-wl<260)return;wl=n;tokNext(e.deltaY>0?1:-1)},{passive:true});
 let ty=0;
@@ -2384,7 +2487,10 @@ document.addEventListener('keydown',e=>{
 async function refreshAll(automatic=false){
   if(automatic&&(!appSettings.autoRefresh||document.hidden||location.pathname!=='/'||
       !$('#stage').hidden||!$('#tok').hidden||selectMode||selected.size||document.activeElement===$('#q')))return false;
-  if(!$('#stats').hidden){await openStats();return}      // 统计页只刷统计
+  if(!$('#stats').hidden){
+    if(location.pathname==='/review'){await openReview(false);return}
+    await openStats(false);return
+  }      // 统计/复核页只刷新当前表面
   if(!$('#index').hidden){return}
   state.sort='seed'; state.seed=String(Date.now()%99991);
   await load(true);

@@ -725,10 +725,12 @@ def q_stats(contract: WebContract):
         "SELECT source k, count(*) n, count(DISTINCT asset_id) assets "
         "FROM asset_tag GROUP BY source ORDER BY n DESC")]
     out["tag_cov"] = one("SELECT count(DISTINCT asset_id) FROM asset_tag "
-                         "WHERE source IN ('name','r18','vision','vision-creator')")
+                         "WHERE source IN ('name','r18','vision','vision-creator',"
+                         "'vision_creator','vision_creator_review')")
     out["top_tags"] = [dict(r, cat=tag_cat(r["k"])) for r in c.execute(
         "SELECT t.tag k, count(*) n FROM asset_tag t JOIN asset a ON a.id=t.asset_id "
-        "WHERE a.medium='video' AND t.source IN ('name','r18','vision','vision-creator') "
+        "WHERE a.medium='video' AND t.source IN ('name','r18','vision','vision-creator',"
+        "'vision_creator','vision_creator_review') "
         "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
         "AND performer.normalized_name=lower(trim(t.tag))) "
         "GROUP BY t.tag ORDER BY n DESC LIMIT 30")]
@@ -851,7 +853,7 @@ def _review_rows(contract: WebContract, category: str) -> tuple[list[dict], str 
         decision = decisions.get(row["item_key"], {})
         row["decision"] = decision.get("status", "pending")
         row["decision_note"] = decision.get("note", "")
-        row["preview_url"] = row.get("source_url") or row.get("avatar_url") or ""
+        row["preview_url"] = row.get("resolved_url") or row.get("source_url") or row.get("avatar_url") or ""
     return rows, source, skipped
 
 
@@ -912,6 +914,9 @@ def w_review_decision(contract: WebContract, body):
             if candidate is None:
                 connection.rollback(); connection.close()
                 raise ValueError("候选不在当前批次，无法批准")
+            if str(candidate.get("status") or "").strip() != "candidate":
+                connection.rollback(); connection.close()
+                raise ValueError("只有 candidate 状态的复核项可以批准")
             creator = str(candidate.get("creator") or "").strip()
             tags = [tag.strip() for tag in str(candidate.get("tags") or "").split("|") if tag.strip()]
             claimed_creator = str(body.get("creator", "")).strip()

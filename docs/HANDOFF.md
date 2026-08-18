@@ -1,5 +1,7 @@
 # Peach 交接与长期工作约定
 
+本文件只保存跨任务长期有效的事实和工作规则，不记录逐次聊天流水。
+
 ## 界面、媒体与复核的既定判据
 
 - 卡片实体链接必须由同一个 `{kind,name}` 结构生成，禁止先独立选择显示名、再根据其他字段推断类型。此前 `FSDSS-376-C.mp4` 显示演员 `新ありな`，却因同时存在厂牌而生成 `/studios/新ありな`；真实 ledger 关系是演员 `新ありな`、厂牌 `FALENO`，错误只在前端映射。
@@ -11,15 +13,16 @@
 - 分片缓存写在 `stream_root/<asset>/<size>-<mtime>-<秒数>/<index>.ts`，不随响应删除：回放、断线重连和多设备都会重复请求同一段，每次重跑 FFmpeg 等于让 CloudDrive 再预取一次块。缓存按最后访问时间淘汰，指纹带文件大小和 mtime，换了片源自然失效。FFmpeg 并发有信号量闸门（默认 CPU 核数一半），播放器本身就会并发预取多段。
 - 回收站的物理删除只有一条实现：`purge_assets()`，`/api/batch` 的 `delete` 和 `/api/trash/empty` 共用它。顺序固定为先删媒体文件、再删账本行，删不掉的文件整条跳过并在 `blocked` 里回报，前端必须把 `blocked` 显示出来。反过来先删行会留下没人认领的媒体文件，那是真正不可恢复的丢失；留一条指向缺失文件的回收站行至少还能看见和重试。`asset_search` 不列入 `ASSET_REFERENCE_TABLES`，FTS 行由 `0004` 的删除触发器负责。
 - 复核候选文件名带批次日期，代码里只认前缀并取目录里最新的一份；把日期写死会让下一批生成后页面静默变空。候选行必须有稳定主键（`board`/`studio`/`entity_id`），缺主键的行跳过并计数，绝不退化成行号——行号会在 CSV 重排后把历史决定挪到别的条目上。候选目录走 `PeachSettings.candidate_root`，不是模块常量，否则测试会读到真实的 `R:\peach-data\generated`。
-- 批准的权威值只能来自候选文件本身，请求体里的 `creator`/`tags` 只当确认，不一致直接拒绝。否则「批准候选 X」能写入与 X 无关的标签，而 `review_decision` 留痕仍写着 X 通过——留痕说通过、实际写了别的，是最糟的组合。未勾选即整条通过，但受 `REVIEW_APPLY_LIMIT` 约束，超限必须显式勾选。
+- 批准的权威值只能来自候选文件本身，请求体里的 `creator`/`tags` 只当确认，不一致直接拒绝；只有 `status=candidate` 的创作者候选可以批准，`skip` 行必须在页面禁用批准。否则「批准候选 X」能写入与 X 无关的标签，而 `review_decision` 留痕仍写着 X 通过——留痕说通过、实际写了别的，是最糟的组合。未勾选即整条通过，但受 `REVIEW_APPLY_LIMIT` 约束，超限必须显式勾选。
 - 抽帧的 bt709 覆盖重试只针对坏色彩元数据（stderr 命中 `reserved/unsupported/invalid` + 色彩词）。无条件重试会让网盘超时这类必然失败的文件每帧白跑第二次，单帧最坏耗时从 45 秒翻到 90 秒。判据依赖 stderr，所以不能丢弃 `capture_output` 的错误流。
 - Logo 与头像在界面上都渲染成方框（厂牌方图、女优 160×160 圆头像），候选按实测像素比例处理，判据在 `peach.images.classify`：长宽比 ≤1.35 直接用，更长的补自身四角底色填成正方形（`pad_to_square`，不是刷白也不是裁切），短边 <128 才拒绝。只有 URL 没有实测尺寸不算候选。
 - **AV 厂牌 Logo 的来源是厂牌自己的社交账号头像**：社交头像天然是正方形且由品牌本人发布。取证顺序是 handle → `unavatar.io` 解析出 `pbs.twimg.com` 真实地址 → 从平台 CDN 下载 → 实测，unavatar 只用于解析地址，provenance 两者都记（`scripts/fetch_studio_avatar_candidates.py`）。r18.dev 详情 JSON 只有 `maker.name`/`label.name` 和作品封面，没有 Logo 资源，已排除。
 - **能解析不等于是对的品牌**：`@bazooka` 确实存在且能取到 400×400 头像，但那是 2007 年注册的通用账号，不是这个 AV 厂牌；Wikimedia 搜同名也给出 16:9 的泡泡糖品牌图。所以 handle 必须逐个取证确认，脚本默认不猜，`--guess-handles` 的产出一律标 `needs_confirmation` 且不自动采纳。查不到就留空。
+- 社交 handle 只采信**厂牌自有域名页面上**的链接。日文维基条目的外链里混着引用来源的新闻站，直接抓会把新闻站自己的账号当成厂牌的——实测 `妄想族` 条目就抓出了 `@news_postseven` 与 `@taishurxjp`。官网链接也不必然指向主号：`gloryquest.tv` 链的是 `@lG_Ql`「社内クリエイティ部（BOT）」，头像压着 18+ 徽标，反而不如 `@gloryquest_av` 的干净字标合适。所以官网只用来确认归属，选哪个号仍要看图。
+- AV 厂牌官网普遍先给年龄确认页，不穿过它只能拿到约 10 KB 的空壳。判据必须是锚文本而不是 URL：否定链接指向站外（实测 `dasdas.jp`、`muku.tv` 的「いいえ」都指向 dmm.com），肯定链接「はい（入室する）」指向站内，两者的 href 看不出区别。跟错就离开了厂牌域名，抓到的账号也就不再属于这个厂牌。实现见 `scripts/find_studio_socials.py`，`test_age_gate_is_crossed_by_the_affirmative_link_only` 守这条线。
 - 二手结论不能当证据：搜索摘要曾称 `@EBODY_` 已注销，实测直接解析到 400×400 活跃头像。凡是「某账号/端点已失效」这类判断，取证方式是自己请求一次，不是转述搜索结果。
-- 人工复核入口固定为 `/review`，候选 API 为 `GET /api/review`、`POST /api/review/decision`。候选来自 `R:\peach-data\generated` 下的 CSV；审核状态写 `review_decision`。只有创作者标签 `approved` 会按候选创作者和标签写入 `vision_creator_review` 关系，Logo/头像/媒体失败先只记录决定，不能伪造已下载资源或自动写媒体真相。
+- 人工复核入口固定为 `/review`，候选 API 为 `GET /api/review`、`POST /api/review/decision`。候选来自 `R:\peach-data\generated` 下的 CSV；审核状态写 `review_decision`。只有创作者标签 `approved` 会按候选创作者和标签写入 `vision_creator_review` 关系；该来源也必须进入统计的标签覆盖和 Top 标签口径。Logo/头像/媒体失败先只记录决定，不能伪造已下载资源或自动写媒体真相。
 
-本文件只保存跨任务长期有效的事实和工作规则，不记录逐次聊天流水。
 
 ## 无摩擦接手
 
@@ -35,7 +38,6 @@
   表作为回退，并在此处写明未取得。
 - 无论哪个 harness，触发都是概率性的：必须每次成立的规则要由脚本、测试或 hook 强制，不能只写成技能。
 - 用户不是消息中转站。结论、进度、待办和证据必须写入共享文档或机器可读产物。
-- 面向用户阅读的文档叙述统一使用中文；代码标识、命令、协议和专有名词保留英文。
 
 ## 并行智能体与 Git 工作树
 
@@ -51,10 +53,9 @@
 - 含中文的 `.ps1` 必须带 UTF-8 BOM。没有 BOM 时 Windows PowerShell 5.1 按 ANSI（简中系统即 GBK）读文件，中文被解成乱码后引号配对错乱，脚本在解析期就失败并闪退；报错行还会落在纯 ASCII 的语句上（实测 `test.ps1` 报在第 18 行的 `Join-Path`，真正的坏行在别处），极难定位。pwsh 7 默认按 UTF-8 读无 BOM 文件，同一份字节实测 7.6.3 解析通过、5.1 报 2 处错误。所以**默认终端是 pwsh 7 也不能免疫**：双击 `.ps1` 或右键「使用 PowerShell 运行」走的是文件关联的 `powershell.exe`（5.1），解析失败后窗口立即关闭，连报错都来不及看。`test_powershell_scripts_with_chinese_carry_a_utf8_bom` 守这条线。
 - 权限规则里的反斜杠必须双写。匹配器把 `\` 当转义字符，JSON 写 `"& .\\scripts\\test.ps1"` 解码成单反斜杠后 `\s`、`\t` 不再是字面反斜杠，规则匹配不上，非交互会话直接判拒、任务中断。正确写法是 JSON 里 `"& .\\\\scripts\\\\test.ps1"`；旁证是自动生成过的可用规则 `'R:\\\\media\\\\创作者'` 与 `\\(Get-ChildItem`，路径和括号一律双写。用正斜杠写的规则不受影响。改完要新开会话才生效——配置在会话启动时加载。
 - `.claude/settings.local.json` 在 `.gitignore` 里，26 个 worktree 无一带有它，所以写在那里的允许规则只在主工作树生效——而项目规矩要求测试在 worktree 里跑。`& .\scripts\test.ps1` 的允许规则因此放在被跟踪的 `.claude/settings.json`，随代码进入每个 worktree。手工拼 venv 路径的命令（`python.exe -m unittest *` 等）刻意不上提到共享配置：那是 AGENTS.md 明令禁止的路径，共享化等于给违规开绿灯。
-
-- 2026-08-17：PowerShell 工具会在调用中途被 session teardown 掐断并错标成用户拒绝（`anthropics/claude-code`
-  issue 83486）。改从 Bash 侧跑 `pwsh -NoProfile -File ./scripts/test.ps1`（`powershell.exe` 5.1 按 ANSI
-  读中文会报 `UnexpectedToken`），实测全量 203 项 21 秒通过。入口不变，仍禁止手工拼 venv 路径。
+- 2026-08-17：PowerShell 工具会在调用中途被 session teardown 掐断，丢失的结果被错标成用户拒绝
+  （`anthropics/claude-code` issue 83486，前台长 timeout 和后台写法都中过）。改从 Bash 侧跑
+  `pwsh -NoProfile -File ./scripts/test.ps1`，实测全量 203 项 21 秒通过。入口不变，仍禁止手工拼 venv 路径。
 
 ## Claude 在本项目中的实际能力边界
 
@@ -229,7 +230,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 页面不得按结果总数一次构建全部卡片。首页默认每批 60，可在设置中改为 30/60/90；短片栏 18、相关推荐默认 20（可选 12/20/30）、沉浸队列 60、实体作品 48、艺人索引 120、标签索引 180。疑似广告候选可在服务端统一评分，但浏览器也必须按当前首页批量分段追加。
 - 实体页的总数只用于标题和首批分页判断，第二页起请求使用 `count=0`，通过多取一条判断是否还有下一页，不得重复执行全量 `COUNT(*)`。首页无限滚动同样只在首批计算总数。
 - `q_tops`、艺人索引和实体关联艺人的代表图必须使用单条相关子查询取得，禁止按每个人物再发一次 SQL 的 N+1 实现。
-- 首页聚合数据在浏览器会话中合并并缓存 30 秒；相邻筛选复用同一进行中的请求。首页、顶部聚合、索引和实体页都有请求序号，迟到的旧响应不得覆盖新状态或再次重建 DOM。
+- 首页聚合数据在浏览器会话中合并并缓存 30 秒；相邻筛选复用同一进行中的请求。所有页面表面的异步响应都必须核对请求序号和当前路由，迟到的旧响应不得覆盖新状态或再次重建 DOM。
 - 所有返回首页的入口必须复用 `showHomeSurfaces()`，同时清除实体页状态、隐藏统计/索引页，并恢复 `#tiers` 与 `#tagbar`。统计页会把这两层写成内联 `display:none`，不能只靠重新取首页数据恢复，否则 Logo 回首页会留下空白顶栏。
 - 顶部标签条只能横向滚动，纵向必须隐藏溢出；卡片身份只显示在头像/名称链接，不得再复制成内容标签。搜索推荐词必须是能直接提交的真实关键词，例如 `ABW`，不得写成无法命中的说明短语 `ABW 番号`。
 - 「已标记」是正向收藏入口，只包含 profile 的 `liked=1` 或至少记录过一次高潮的作品；不喜欢、看过和待删分别属于负反馈、观看状态和处置流程，不得混入。

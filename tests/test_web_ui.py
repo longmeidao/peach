@@ -103,6 +103,100 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".select-mode .cardopenhit,.select-mode .hovertools,.select-mode .previewcounter")
         self.assertPageContains("if(selectMode)releaseHoverPreviews()")
 
+    def test_manage_collects_the_four_admin_entries_behind_one_top_level_icon(self):
+        """统计、疑似广告、回收站、人工复核各占一个顶层图标时，侧栏一半是管理入口。
+
+        它们合并到「管理」下的二级导航；URL 保持原样，只是多了一条共用导航条。
+        """
+        self.assertPageContains("['manage','管理','settings']")
+        self.assertPageContains("const MANAGE_SECTIONS=[")
+        for section in ("'stats','统计'", "'ads','疑似广告'", "'trash','回收站'", "'review','人工复核'"):
+            self.assertPageContains(section)
+        self.assertPageContains("function manageSection()")
+        self.assertPageContains("function buildManageBar()")
+        self.assertPageContains('id="managebar"')
+        self.assertPageContains("if(k==='manage'){openManage();return}")
+        # 顶层图标里不再各自占位
+        edge = self.page.split("const EDGE_ICONS=[", 1)[1].split("];", 1)[0]
+        for gone in ("'trash'", "'ads'", "'stats'", "'review'"):
+            self.assertNotIn(gone, edge, f"{gone} 应该已经收进管理，不再是顶层入口")
+        self.assertIn("'manage'", edge)
+
+    def test_review_reuses_the_standard_selection_instead_of_its_own_mode(self):
+        """复核页曾自造「多选模式」按钮加框选，只在这一页生效，用户得先发现再记住。
+
+        现在与主网格一致：点一下切换，Shift 选一段。
+        """
+        self.assertPageLacks("reviewSelectMode")
+        self.assertPageLacks("reviewmarquee")
+        self.assertPageLacks("review-select-mode")
+        self.assertPageContains("function wireReviewAssets(root)")
+        self.assertPageContains("if(e.shiftKey&&anchor!==null)")
+        self.assertPageContains("[data-pick-all]")
+        self.assertPageContains("[data-pick-none]")
+        self.assertPageContains('[data-review-asset][aria-pressed="true"]')
+        self.assertPageContains("const canApprove=reviewCategory!=='creator_tags'||String(row.status||'').trim()==='candidate'")
+        self.assertPageContains("${canApprove?'':' disabled'}")
+
+    def test_surface_navigation_clears_stale_panels_and_ignores_late_responses(self):
+        """跨页面请求返回较慢时，旧统计/复核响应不能覆盖当前页面。"""
+        self.assertPageContains("if(location.pathname!=='/review')return")
+        self.assertPageContains("if(requestSeq!==indexRequestSeq||location.pathname!=='/'+kind)return")
+        self.assertPageContains("decodeURIComponent(location.pathname)!==decodeURIComponent(expectedPath)")
+        index = self.page.split("async function openIndex", 1)[1].split("const d=await api", 1)[0]
+        self.assertIn("showHomeSurfaces();", index)
+        self.assertPageContains("if(!$('#stats').hidden){\n    if(location.pathname==='/review'){await openReview(false);return}")
+
+    def test_immersive_close_restores_the_home_surface(self):
+        self.assertPageContains("document.body.style.overflow='';showHomeSurfaces();load(true)")
+
+    def test_review_asset_picker_wraps_instead_of_scrolling_sideways(self):
+        """一个创作者可能有几十条候选，横向滚动条要一直拉才能看完。"""
+        self.assertPageContains(".reviewasset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr))")
+        self.assertPageContains(".reviewasset.picked{opacity:1;outline:2px solid var(--tungsten)")
+        self.assertPageContains('.reviewitem[data-decision="approved"]::before{background:var(--keep)}')
+
+    def test_top_level_highlight_is_exclusive_and_covers_index_pages(self):
+        """首页原来只看 state.state，进管理区和索引页时它仍然亮着，两个入口同时高亮。"""
+        self.assertPageContains("if(k==='performers'||k==='tags')return path==='/'+k")
+        self.assertPageContains("if(k==='')return path==='/'&&!manageSection()&&!state.state")
+        self.assertPageContains("buildEdge();     // 顶层高亮跟随管理区")
+
+    def test_manage_surfaces_hide_the_home_rails(self):
+        """回收站和疑似广告是行政列表，不该顶着首页的人物/厂牌横条。
+
+        `showHomeSurfaces` 会先把横条恢复出来，所以隐藏必须排在它之后，否则被立刻覆盖。
+        """
+        self.assertPageContains("if(current){$('#tiers').style.display='none';$('#tagbar').style.display='none'}")
+        home = self.page.split("function showHomeSurfaces(){", 1)[1].split("}", 1)[0]
+        self.assertLess(home.index("$('#tiers').style.display=''"), home.index("buildManageBar()"),
+                        "buildManageBar 必须排在恢复首页横条之后，否则隐藏会被覆盖")
+
+    def test_search_suggestions_come_from_real_data_in_bulk(self):
+        """写死的 6 个词翻两次就重复。顶部聚合只有几十条，也不够；索引接口一次给近千条。"""
+        self.assertPageContains("async function loadSearchPool()")
+        self.assertPageContains("['performers','creators','tags'].map(")
+        self.assertPageContains("`/api/index?kind=${kind}&limit=400`")
+        self.assertPageContains("Promise.all([loadSearchHistory(),loadSearchPool()])")
+        self.assertPageContains("[...searchPool()]")
+
+    def test_admin_surfaces_fill_wide_screens(self):
+        """统计和复核是信息密集的行政界面，宽屏下居中会浪费两侧空间。"""
+        self.assertPageContains(".stats{padding:8px 0 42px}")
+        self.assertPageContains(".review{padding:8px 0 42px}")
+        self.assertPageLacks("max-width:1440px")
+
+    def test_returning_home_from_any_surface_moves_the_highlight(self):
+        """点回首页时路径还停在 /review 之类上，navOn('') 仍然为假，高亮不切换。"""
+        self.assertPageContains("if(location.pathname!=='/')route('/');")
+        self.assertEqual(self.page.count("if(location.pathname!=='/')route('/');"), 2,
+                         "抽屉和窄栏两处导航都要修")
+
+    def test_ads_icon_matches_the_lucide_stroke_style(self):
+        """图标库里没有表示广告的图形，自绘的感叹号必须和其余图标同风格。"""
+        self.assertPageContains('<symbol id="i-alert" viewBox="0 0 24 24">')
+        self.assertPageContains("['ads','疑似广告','alert']")
+
     def test_pending_delete_is_visible_without_deleting_media(self):
         self.assertPageContains("it.disposal==='trash'?'pending-delete':''")
         self.assertPageContains(".card.pending-delete .poster")
@@ -198,7 +292,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(!mixContext)api('/api/related?id='")
         self.assertPageContains("batchWithMix(d.items,location.pathname==='/'&&state.state!=='trash')")
         self.assertPageContains("location.pathname!=='/'||state.orient==='竖屏'||state.state==='ads'||state.state==='trash'")
-        self.assertPageContains("if(k==='trash')route('/trash')")
+        self.assertPageContains("route(section==='trash'?'/trash':'/')")
         self.assertPageContains("if(path==='/trash')")
         self.assertPageContains("/api/trash/empty")
 
@@ -315,7 +409,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("document.querySelectorAll('#grid > .card[data-id]')")
 
     def test_recycle_bin_has_its_own_route_and_reports_undeletable_files(self):
-        self.assertPageContains("if(k==='trash')route('/trash')")
+        self.assertPageContains("route(section==='trash'?'/trash':'/')")
         self.assertPageContains("if(path==='/trash'){")
         self.assertPageContains("/api/trash/empty")
         self.assertPageContains("r.blocked&&r.blocked.length")
