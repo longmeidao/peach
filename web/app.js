@@ -600,12 +600,17 @@ function renderCount(){
   const n=$('#grid').querySelectorAll(':scope > .card[data-id]').length;   // 竖屏条不计入「显示 N」
   $('#count').innerHTML=
     `<span class="mono">${total.toLocaleString()} 个符合 · 显示 ${n}</span>`
+    +(javActive()?`<span class="sorts javlayout">`+JAV_LAYOUTS.map(([k,label,ic])=>
+        `<button data-jav-layout="${k}" aria-pressed="${k===javLayout()}" title="${esc(label)}"
+          aria-label="${esc(label)}">${icon(ic)}</button>`).join('')+`</span>`:'')
     +(state.state==='trash'
       // 回收站是待清理队列，不是浏览列表：换一批和九种排序在这里没有意义。
       ? `<span class="sorts"><button class="batchaction" id="emptyTrash" title="永久删除回收站内容">清空回收站</button></span>`
       : `<span class="sorts"><button class="batchaction" id="batchAction" title="换一批" aria-label="换一批">${icon('refresh-cw')}</button>`
         +SORTS.map(([k,l])=>`<button data-sort="${k}" aria-pressed="${state.sort===k}">${l}</button>`).join('')+`</span>`);
   if($('#batchAction'))$('#batchAction').onclick=()=>{state.sort='seed';state.seed=String(Date.now()%99991);load(true)};
+  $('#count').querySelectorAll('[data-jav-layout]').forEach(b=>
+    b.onclick=()=>setJavLayout(b.dataset.javLayout));
   if(state.state==='trash')$('#emptyTrash').onclick=async(e)=>{
     if(!confirm('永久删除回收站中的全部文件和账本记录？此操作不可恢复。'))return;
     e.currentTarget.disabled=true;
@@ -1118,21 +1123,12 @@ function javLayout(){
 function setJavLayout(value){
   appSettings.javLayout=value;
   saveSettings();
-  paintJavBar();
-  // 只重画卡片，不重新请求：版式是纯展示层的事。
+  // 只重画卡片，不重新请求：版式是纯展示层的事。排序行会跟着一起重建。
   if(!$('#grid').hidden)load(true);
 }
 function paintJavBar(){
-  const bar=$('#javbar');if(!bar)return;
-  const on=javActive();
-  bar.hidden=!on;
-  if(!on)return;
-  const current=javLayout();
-  bar.innerHTML=JAV_LAYOUTS.map(([k,label,ic])=>
-    `<button data-jav-layout="${k}" aria-pressed="${k===current}" title="${esc(label)}"
-      aria-label="${esc(label)}">${icon(ic)}</button>`).join('');
-  bar.querySelectorAll('[data-jav-layout]').forEach(b=>
-    b.onclick=()=>setJavLayout(b.dataset.javLayout));
+  // 版式按钮现在长在排序行里（见 renderCount），这里只负责收掉旧容器。
+  const bar=$('#javbar');if(bar)bar.hidden=true;
 }
 function toggleJavMode(){
   state.jav=state.jav==='1'?'':'1';
