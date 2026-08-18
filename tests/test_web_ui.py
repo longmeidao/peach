@@ -5,8 +5,12 @@ from pathlib import Path
 class WebUiSourceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.page = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(
-            encoding="utf-8"
+        # 页面已拆成 index.html + app.css + app.js。这些断言守的是「Web 表面」
+        # 这一个契约，不是某个文件，所以把三份源码接起来一起看。
+        web = Path(__file__).resolve().parents[1] / "web"
+        cls.page = chr(10).join(
+            (web / name).read_text(encoding="utf-8")
+            for name in ("index.html", "app.css", "app.js")
         )
 
     # 页面源断言必须自带有界失败信息。assertIn 失败时会把整个 index.html（约 189 KB）

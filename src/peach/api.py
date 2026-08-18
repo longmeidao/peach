@@ -169,6 +169,27 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
             )
         return response
 
+    @app.api_route("/app.css", methods=["GET", "HEAD"])
+    @app.api_route("/app.js", methods=["GET", "HEAD"])
+    def app_asset(request: Request):
+        """页面拆出来的样式与脚本。和 index.html 同目录，同一套口令。
+
+        没有构建步骤：`app.js` 是普通脚本不是 module，顶层声明仍然是全局的，
+        和内联时行为一致——内联事件处理器和跨函数调用都还指着同一批全局名字。
+        """
+        args = _first_query_values(request)
+        if not _authorized(request, settings.token, args):
+            return PlainTextResponse("需要 ?t=口令", status_code=401)
+        name = request.url.path.lstrip("/")
+        path = settings.page_path.parent / name
+        if not path.is_file():
+            return PlainTextResponse("missing", status_code=404)
+        media = "text/css" if name.endswith(".css") else "text/javascript"
+        response = FileResponse(path, media_type=f"{media}; charset=utf-8")
+        # 页面本体是 no-store，样式与脚本跟着它一起变，不能被旧缓存钉住。
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
     @app.api_route("/favicon.svg", methods=["GET", "HEAD"])
     def favicon():
         response = Response(web_contract.FAVICON, media_type="image/svg+xml")
