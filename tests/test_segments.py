@@ -1,11 +1,13 @@
 """HLS 分片：关键帧对齐、时间戳连续、播放列表报真实时长。"""
+import asyncio
 import struct
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from peach.mp4index import keyframe_seconds, segment_plan
-from peach.segments import build_hls_playlist
+from peach.segments import HlsSegmentService, StreamSessionRegistry, build_hls_playlist
 
 
 def box(kind: bytes, payload: bytes) -> bytes:
@@ -85,3 +87,113 @@ class Mp4IndexTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SegmentCommandTests(unittest.TestCase):
+    """片段的时间窗必须写成绝对终点，否则只有开头两段能产出。
+
+    真实故障：`-copyts` 保留原始时间轴后，`-t` 被 FFmpeg 当成绝对结束时刻而非片段时长。
+    每段的 `-t` 都约等于一个片段长，于是起点超过它的片段一律「已经过期」，FFmpeg 以
+    退出码 0、空 stderr 写出 0 字节，服务端只报一句没有内容的 ffmpeg failed。
+    实测 asset 6562：片段 0 与 1 返回 200，片段 2 和 300 全是 503，播到约 20 秒就断，
+    也拖不动。缓存目录里三个资产都只留下 0.ts 和 1.ts，没有更靠后的片段。
+    """
+
+    def _command_for(self, index: int) -> list[str]:
+        captured: list[list[str]] = []
+
+        class _Process:
+            returncode = 0
+
+            async def communicate(self):
+                return b"", b""
+
+        async def fake_exec(*command, **_kwargs):
+            captured.append(list(command))
+            return _Process()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "clip.mp4"
+            source.write_bytes(bytes(1024))
+            service = HlsSegmentService(
+                resolver=mock.Mock(ffmpeg=lambda: type("C", (), {"path": "ffmpeg"})),
+                work_root=root / "cache",
+            )
+            # 计划固定为等长片段，免得测试依赖真实关键帧表。
+            service._plans[service.fingerprint(source)] = [
+                (round(n * 9.993, 3), 9.993) for n in range(400)
+            ]
+
+            async def drive():
+                with mock.patch("asyncio.create_subprocess_exec", fake_exec):
+                    # 产物由假进程负责写，否则会走到「0 字节」的失败分支。
+                    original = service.cached_path
+
+                    def cached_path(*args, **kwargs):
+                        target = original(*args, **kwargs)
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        return target
+
+                    with mock.patch.object(service, "cached_path", cached_path):
+                        try:
+                            await service.generate(
+                                source, round(index * 9.993, 3), 9.993,
+                                asset_id=6562, index=index, session="s",
+                                registry=StreamSessionRegistry(),
+                            )
+                        except Exception:
+                            pass
+
+            asyncio.run(drive())
+        self.assertTrue(captured, "没有真的调用 FFmpeg")
+        return captured[0]
+
+    def test_silent_ffmpeg_failure_still_says_what_was_observed(self):
+        """FFmpeg 可以退出码 0、stderr 全空却写出 0 字节，只报 ffmpeg failed 等于没报。"""
+        from peach.segments import SegmentUnavailable
+
+        class _Process:
+            returncode = 0
+
+            async def communicate(self):
+                return b"", b""
+
+        async def fake_exec(*_command, **_kwargs):
+            return _Process()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "clip.mp4"
+            source.write_bytes(bytes(1024))
+            service = HlsSegmentService(
+                resolver=mock.Mock(ffmpeg=lambda: type("C", (), {"path": "ffmpeg"})),
+                work_root=root / "cache",
+            )
+
+            async def drive():
+                with mock.patch("asyncio.create_subprocess_exec", fake_exec):
+                    await service.generate(
+                        source, 2997.995, 9.993, asset_id=6562, index=300,
+                        session="s", registry=StreamSessionRegistry(),
+                    )
+
+            with self.assertRaises(SegmentUnavailable) as caught:
+                asyncio.run(drive())
+
+        message = str(caught.exception)
+        self.assertIn("returncode=0", message)
+        self.assertIn("2997.995", message)
+        self.assertIn("3007.988", message)
+
+    def test_every_segment_asks_for_an_absolute_end_not_a_length(self):
+        for index in (0, 1, 2, 300):
+            command = self._command_for(index)
+            self.assertIn("-copyts", command)
+            self.assertNotIn("-t", command, f"片段 {index} 仍在用相对时长")
+            start = float(command[command.index("-ss") + 1])
+            end = float(command[command.index("-to") + 1])
+            self.assertAlmostEqual(end - start, 9.993, places=2)
+            # 决定性判据：终点随片段前移，而不是所有片段都停在第一段的末尾。
+            self.assertGreater(end, start)
+            self.assertAlmostEqual(end, round(index * 9.993, 3) + 9.993, places=2)

@@ -140,7 +140,10 @@ class HlsSegmentService:
         temporary = target.with_name(f"{uuid.uuid4().hex}.tmp.ts")
         command = [
             str(choice.path), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-            "-ss", f"{start:.3f}", "-i", str(source), "-t", f"{duration:.3f}",
+            # 终点必须写成绝对时间戳。-copyts 保留原始时间轴后，-t 会被当成绝对结束时刻
+            # 而不是片段时长，于是除了开头那一两段，每段的 -t 都早已过期，ffmpeg 以
+            # 退出码 0、空 stderr 写出 0 字节，服务端只能报一句没有内容的 ffmpeg failed。
+            "-ss", f"{start:.3f}", "-i", str(source), "-to", f"{start + duration:.3f}",
             "-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn", "-c", "copy",
             # 保留原始时间戳，让每段接着上一段走。早先用 -avoid_negative_ts make_zero
             # 把每段都归零，于是每段都自称从 0 秒开始，拖动进度条时容易跳错位置。
@@ -177,7 +180,16 @@ class HlsSegmentService:
                     detail = (stderr or b"").decode("utf-8", "replace")[-1000:]
                     if registry.is_cancelled(session):
                         raise SegmentCancelled(session)
-                    raise SegmentUnavailable(detail or "ffmpeg failed")
+                    if not detail:
+                        # FFmpeg 可以退出码 0、stderr 全空却写出 0 字节（时间窗取错就是
+                        # 这样）。此时光报 "ffmpeg failed" 等于没报，把能观测到的都说出来。
+                        size = temporary.stat().st_size if temporary.is_file() else None
+                        detail = (
+                            f"ffmpeg wrote no data: returncode={process.returncode} "
+                            f"bytes={'缺文件' if size is None else size} "
+                            f"ss={start:.3f} to={start + duration:.3f}"
+                        )
+                    raise SegmentUnavailable(detail)
                 # 同一片段可能被并发请求各生成一次；原子改名让后到的覆盖同样内容即可。
                 temporary.replace(target)
                 successful = True
