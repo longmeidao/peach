@@ -54,15 +54,24 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("`/entity-image?kind=performer&id=${ref.id}`")
         self.assertPageContains("this.onerror=null;this.src='/avatar?id=${repId}'")
 
-    def test_detail_identity_lists_each_performer_with_its_own_portrait(self):
-        self.assertPageContains("...performerRefs.map((ref,i)=>['performer',i?'':'女优',ref.name,ref])")
-        self.assertPageContains("ref&&ref.id?`<img src=\"/entity-image?kind=performer&id=${ref.id}\"")
+    def test_detail_identity_groups_by_kind_with_the_label_on_top(self):
+        # 逐行一个名字在共演作品上会把整个侧栏撑满，左侧还重复一列标签。
+        self.assertPageContains("const idGroup=(label,kind,list,extra='')=>list.length")
+        self.assertPageContains('<h5 class="idlabel">${label}</h5>')
+        self.assertPageContains(".idrow{display:flex;flex-wrap:wrap")
+        self.assertPageContains("idGroup('女优','performer',castList,")
+        self.assertPageContains("idGroup('厂牌','studio',studioList)")
         self.assertPageLacks("const performerName=performerRef?.name")
+        self.assertPageLacks(".identityrow", "旧的逐行布局必须整段删掉")
+
+    def test_every_identity_cell_can_carry_its_own_portrait(self):
+        self.assertPageContains('item.id?`<img src="/entity-image?kind=performer&id=${item.id}"')
+        self.assertPageContains('<img src="/logo?studio=${encodeURIComponent(item.name)}"')
 
     def test_large_casts_stay_in_the_dom_behind_one_expander(self):
-        # 收起的行必须留在 DOM 里，展开只是取消 hidden，不重新请求也不丢身份。
+        # 收起的格子必须留在 DOM 里，展开只是取消 hidden，不重新请求也不丢身份。
         self.assertPageContains("const CAST_SHOWN=8")
-        self.assertPageContains("const castOverflow=Math.max(0,castRows.length-CAST_SHOWN)")
+        self.assertPageContains("const castOverflow=Math.max(0,castList.length-CAST_SHOWN)")
         self.assertPageContains("还有 ${castOverflow} 位")
         self.assertPageContains("querySelectorAll('[data-castoverflow]').forEach(row=>row.hidden=false)")
 
