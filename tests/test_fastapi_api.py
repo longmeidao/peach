@@ -316,7 +316,10 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         await self.client.get("/?t=secret")
         for path in ("/item/1", "/performers/Alice", "/studios/Prestige",
                      "/creators/luckydog11", "/series/Example", "/performers",
-                     "/creators", "/tags", "/stats", "/immerse", "/trash", "/review", "/mix/1/2"):
+                     "/creators", "/tags", "/stats", "/immerse", "/trash", "/review",
+                     # 前端路由写好了不等于能直接打开：SPA 路径是逐条登记的，
+                     # 漏登记时源码断言照样全绿，只有真的请求一次才会露出 404。
+                     "/duplicates", "/mix/1/2"):
             response = await self.client.get(path)
             self.assertEqual(response.status_code, 200, path)
             self.assertIn("Peach test", response.text)

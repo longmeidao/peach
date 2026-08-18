@@ -556,3 +556,29 @@ class WebUiSourceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_duplicates_page_is_a_management_section(self):
+        self.assertPageContains("['dupes','重复文件','hard-drive']")
+        self.assertPageContains("if(path==='/duplicates')return 'dupes'")
+        self.assertPageContains("if(section==='dupes'){openDuplicates();return}")
+        self.assertPageContains("async function openDuplicates(push=true)")
+
+    def test_duplicate_batch_keeps_one_per_cluster_not_one_per_code(self):
+        # 每组各自选 keeper：合集与分卷已经在数据层拆成不同簇，界面不能再按番号合并。
+        self.assertPageContains("function duplicateVictims(groups,keep)")
+        self.assertPageContains("const flag=keep==='longest'?'is_longest':'is_largest'")
+        self.assertPageContains("for(const f of g.files)if(f.id!==keeper.id)ids.push(f.id)")
+
+    def test_duplicate_removal_is_reversible(self):
+        # 只能进回收站；永久删除仍得从回收站单独执行。
+        self.assertPageContains("operation:'dispose'")
+        self.assertPageLacks("operation:'delete'},{method:'POST'}")
+        self.assertPageContains("文件仍在回收站里，可以还原")
+
+    def test_duplicate_batches_respect_the_two_hundred_id_cap(self):
+        self.assertPageContains("for(let i=0;i<ids.length;i+=200)")
+
+    def test_duplicate_rows_show_the_evidence_grade(self):
+        # sha1 齐全才敢说「一致」，否则只是时长推断——界面必须把差别显示出来。
+        self.assertPageContains("g.identical?'<span class=\"dupflag ok\">sha1 一致</span>'")
+        self.assertPageContains("时长推断")

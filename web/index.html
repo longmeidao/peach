@@ -277,6 +277,30 @@ button,input,textarea{font:inherit;color:inherit}
 .entitysection{min-width:0;max-width:100%}.entitysection h3{font-size:13px;letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
 /* 显式 display 会盖掉浏览器默认的 [hidden]{display:none}：按钮已经 hidden=true
    却仍然画出来，而 requestMore 首行就是 if(more.hidden)return，于是点了没反应。 */
+.managetitle{font-size:26px;line-height:1.2;margin:4px 0 14px;letter-spacing:.02em}
+.managetitle[hidden]{display:none}
+.dupsum{color:var(--muted);margin:0 0 12px}
+.dupactions{display:flex;gap:8px;margin-bottom:16px}
+.dupactions button,.dupbtns button{height:32px;padding:0 14px;border-radius:var(--tag-radius);
+  border:1px solid var(--overlay-10);background:transparent;color:var(--ink);cursor:pointer}
+.dupactions button:hover,.dupbtns button:hover{background:var(--hover)}
+.dupgroup{border:1px solid var(--overlay-10);border-radius:10px;margin-bottom:12px;overflow:hidden}
+.duphead{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--overlay-5);flex-wrap:wrap}
+.duphead .dupbtns{margin-left:auto;display:flex;gap:6px}
+.dupflag{font-size:12px;color:var(--muted);border:1px solid var(--overlay-10);
+  border-radius:var(--tag-radius);padding:2px 8px}
+.dupflag.ok{color:var(--keep);border-color:color-mix(in srgb,var(--keep) 40%,transparent)}
+.duprow{display:grid;grid-template-columns:96px minmax(0,1fr) 44px 84px 84px;gap:10px;
+  align-items:center;padding:7px 12px;border-top:1px solid var(--overlay-5)}
+.duprow .mono{color:var(--muted);font-size:12px}
+.dupname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;
+  border:0;background:transparent;color:inherit;cursor:pointer;padding:0}
+.dupname:hover{color:var(--tungsten)}
+.dupmarks{display:flex;gap:4px}
+.dupmarks i{font-style:normal;font-size:11px;padding:1px 6px;border-radius:var(--tag-radius)}
+.dupmarks i.big{background:color-mix(in srgb,var(--tungsten) 22%,transparent);color:var(--tungsten)}
+.dupmarks i.long{background:color-mix(in srgb,var(--keep) 22%,transparent);color:var(--keep)}
+
 .indexmore[hidden],.entitymore[hidden]{display:none}
 .indexmore,.entitymore{display:flex;align-items:center;justify-content:center;margin:20px auto 0;min-width:124px;
   min-height:40px;padding:8px 16px;border:1px solid var(--border-15);border-radius:999px;background:transparent;
@@ -882,6 +906,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   <div class="combo" id="combo"></div>
   <section class="index" id="index" hidden></section>
   <nav class="managebar" id="managebar" hidden></nav>
+  <h2 class="disp managetitle" id="manageTitle" hidden></h2>
   <section class="stats" id="stats" hidden></section>
   <div class="count mono" id="count">载入中…</div>
   <div class="grid" id="grid"></div>
@@ -1577,7 +1602,7 @@ async function openStats(push=true){
   const card=(t,body)=>`<div class="scard2"><h3>${t}</h3>${body}</div>`;
   const kv=(k,v,u)=>`<div class="kv"><span>${k}</span><b>${v}${u?`<span class="u">${u}</span>`:''}</b></div>`;
   $('#stats').innerHTML=`
-    <div class="statshead"><h2 class="disp">统计</h2></div>
+    <div class="statshead"></div>
     <div class="scards">
       ${card('库存', d.by_loc.map(l=>kv(LOC[l.k]||l.k, l.videos.toLocaleString(), gb(l.bytes))).join('')
         + kv('合计', d.by_loc.reduce((s,l)=>s+l.videos,0).toLocaleString(),
@@ -1630,6 +1655,77 @@ function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
 
 let reviewData=null,reviewCategory='creator_tags';
 const REVIEW_LABELS={creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',media_failure:'媒体失败'};
+let dupData=null;
+/* 重复文件。判据是「同番号 + 时长相近 + 分卷标记一致」，不是同番号即重复——
+   合集、分卷和混入的广告都会共用一个 code，只按番号做「保留最大」会删掉内容。
+   批量一律走 dispose 进回收站，可逆；永久删除仍只能从回收站单独执行。 */
+async function openDuplicates(push=true){
+  releaseHoverPreviews();disposeStage(false);document.body.classList.remove('entity-open');
+  if(push)route('/duplicates');
+  buildManageBar();
+  $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';$('#count').textContent='';
+  $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
+  $('#stats').innerHTML='<div class="review"><p class="empty">正在比对…</p></div>';
+  dupData=await api('/api/duplicates?limit=120');
+  if(location.pathname!=='/duplicates')return;
+  renderDuplicates();
+}
+function renderDuplicates(){
+  const d=dupData;if(!d)return;
+  const groups=d.groups||[];
+  $('#stats').innerHTML=`<div class="review">
+    <p class="dupsum mono">${d.total} 组 · ${d.files} 个文件 · 可回收 ${fmtSize(d.reclaimable)}</p>
+    <div class="dupactions">
+      <button data-dup-all="largest">全部保留最大</button>
+      <button data-dup-all="longest">全部保留最长</button></div>
+    ${groups.length?groups.map((g,gi)=>`<section class="dupgroup" data-dup-group="${gi}">
+      <div class="duphead"><b class="mono">${esc(g.code)}</b>
+        <span class="mono">${g.count} 个 · 可回收 ${fmtSize(g.reclaimable)}</span>
+        ${g.identical?'<span class="dupflag ok">sha1 一致</span>':'<span class="dupflag">时长推断</span>'}
+        ${g.cross_drive?`<span class="dupflag">跨盘 ${esc(g.drives.join(' '))}</span>`:''}
+        <span class="dupbtns"><button data-dup-keep="largest" data-dup-i="${gi}">留最大</button>
+          <button data-dup-keep="longest" data-dup-i="${gi}">留最长</button></span></div>
+      <div class="duplist">${g.files.map(f=>`<div class="duprow">
+        <span class="dupmarks">${f.is_largest?'<i class="big">最大</i>':''}${f.is_longest?'<i class="long">最长</i>':''}</span>
+        <button class="dupname" data-open-dup="${f.id}" title="${esc(f.name)}">${esc(f.name)}</button>
+        <span class="mono">${esc(f.drive||'')}</span>
+        <span class="mono">${fmtSize(f.size||0)}</span>
+        <span class="mono">${fmtDur(f.duration)}</span></div>`).join('')}</div>
+    </section>`).join(''):'<p class="empty">没有找到重复文件</p>'}</div>`;
+  $('#stats').querySelectorAll('[data-open-dup]').forEach(b=>
+    b.onclick=()=>openItem(+b.dataset.openDup));
+  $('#stats').querySelectorAll('[data-dup-keep]').forEach(b=>
+    b.onclick=()=>disposeDuplicates([groups[+b.dataset.dupI]],b.dataset.dupKeep,b));
+  $('#stats').querySelectorAll('[data-dup-all]').forEach(b=>
+    b.onclick=()=>disposeDuplicates(groups,b.dataset.dupAll,b));
+}
+/* 每组只留一个，其余进回收站。keeper 按体积或时长选，两者可能不是同一个文件。 */
+function duplicateVictims(groups,keep){
+  const ids=[];
+  for(const g of groups){
+    const flag=keep==='longest'?'is_longest':'is_largest';
+    const keeper=g.files.find(f=>f[flag])||g.files[0];
+    for(const f of g.files)if(f.id!==keeper.id)ids.push(f.id);
+  }
+  return ids;
+}
+async function disposeDuplicates(groups,keep,button){
+  const ids=duplicateVictims(groups,keep);
+  if(!ids.length)return;
+  const bytes=groups.reduce((n,g)=>n+(g.reclaimable||0),0);
+  if(!confirm(`把 ${ids.length} 个文件移入回收站，每组保留${keep==='longest'?'最长':'最大'}的一个？
+`
+    +`预计回收 ${fmtSize(bytes)}。文件仍在回收站里，可以还原。`))return;
+  button.disabled=true;
+  try{
+    // /api/batch 单次上限 200，分批发。
+    for(let i=0;i<ids.length;i+=200){
+      await api('/api/batch',{method:'POST',
+        body:JSON.stringify({ids:ids.slice(i,i+200),operation:'dispose'})});
+    }
+    await openDuplicates(false);
+  }finally{button.disabled=false}
+}
 async function openReview(push=true){
   releaseHoverPreviews();disposeStage(false);document.body.classList.remove('entity-open');
   if(push)route('/review');
@@ -1642,7 +1738,7 @@ async function openReview(push=true){
     const rows=reviewData.sections[reviewCategory]||[];
     const title=REVIEW_LABELS[reviewCategory];
     const value=row=>row.tags||row.japanese_name||row.path||row.suggested_query||'';
-     $('#stats').innerHTML=`<div class="review"><div class="reviewhead"><h2 class="disp">人工复核</h2></div>
+     $('#stats').innerHTML=`<div class="review">
       <div class="reviewtabs">${Object.entries(REVIEW_LABELS).map(([key,label])=>`<button data-review-tab="${key}" aria-pressed="${key===reviewCategory}">${label} <span class="n mono">${reviewData.counts[key]||0}</span></button>`).join('')}</div>
       <section class="reviewsection"><div class="reviewlist">${rows.length?rows.map(row=>{
         const key=row.item_key,decision=row.decision||'pending';
@@ -1887,6 +1983,7 @@ const EDGE_ICONS=[
 const MANAGE_SECTIONS=[
   ['stats','统计','chart'],
   ['ads','疑似广告','alert'],
+  ['dupes','重复文件','hard-drive'],
   ['trash','回收站','trash'],
   ['review','人工复核','square-check-big'],
 ];
@@ -1895,6 +1992,7 @@ function manageSection(){
   if(path==='/stats')return 'stats';
   if(path==='/review')return 'review';
   if(path==='/trash')return 'trash';
+  if(path==='/duplicates')return 'dupes';
   return state.state==='ads'?'ads':'';
 }
 function buildManageBar(){
@@ -1903,14 +2001,25 @@ function buildManageBar(){
   // 管理区是行政界面，不该顶着首页的人物/厂牌横条和标签筛选。
   if(current){$('#tiers').style.display='none';$('#tagbar').style.display='none'}
   buildEdge();     // 顶层高亮跟随管理区；否则从首页进来时仍停在「首页」上
+  paintManageTitle();
   if(!current)return;
   bar.innerHTML=MANAGE_SECTIONS.map(([k,label,ic])=>
     `<button data-manage="${k}" aria-pressed="${k===current}">${icon(ic)}<span>${label}</span></button>`).join('');
   bar.querySelectorAll('[data-manage]').forEach(b=>b.onclick=()=>openManage(b.dataset.manage));
 }
+/* 管理区四个分页共用同一个标题元素。回收站和疑似广告走首页网格路径，
+   本来就没有标题层；统计/复核/重复各自内嵌 h2 又导致字号不一致。 */
+function paintManageTitle(){
+  const current=manageSection(),el=$('#manageTitle');
+  if(!el)return;
+  const entry=MANAGE_SECTIONS.find(([k])=>k===current);
+  el.hidden=!entry;
+  if(entry)el.textContent=entry[1];
+}
 function openManage(section='stats'){
   if(section==='stats'){openStats();return}
   if(section==='review'){openReview();return}
+  if(section==='dupes'){openDuplicates();return}
   state.orient='';state.state=section==='trash'?'trash':'ads';
   route(section==='trash'?'/trash':'/');
   showHomeSurfaces();buildEdge();buildBars();load(true);
@@ -2599,6 +2708,7 @@ async function refreshAll(automatic=false){
       !$('#stage').hidden||!$('#tok').hidden||selectMode||selected.size||document.activeElement===$('#q')))return false;
   if(!$('#stats').hidden){
     if(location.pathname==='/review'){await openReview(false);return}
+    if(location.pathname==='/duplicates'){await openDuplicates(false);return}
     await openStats(false);return
   }      // 统计/复核页只刷新当前表面
   if(!$('#index').hidden){return}
@@ -2656,6 +2766,7 @@ async function restoreRoute(){
     await openIndex(path.slice(1),params.get('q')||'',false);return}
   if(path==='/stats'){await openStats(false);return}
   if(path==='/review'){await openReview(false);return}
+  if(path==='/duplicates'){await openDuplicates(false);return}
   if(path==='/immerse'){await openTok(undefined,false);return}
   showHomeSurfaces();disposeStage(false);
 }
