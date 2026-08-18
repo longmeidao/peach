@@ -533,7 +533,7 @@ async function buildBars(){
   const sec=(t,b,x,cat)=>`<div class="sec${cat?' cat-'+cat:''}"><h3>${t}${x||''}</h3>${b}</div>`;
   // 与窄栏共用 EDGE_ICONS —— 两边条目必须一致，原来抽屉是另一份硬编码
   const navBtn=(k,label,ic)=>`<button data-nav="${k}" aria-pressed="${navOn(k)}">
-    ${ic.length===1?`<span class="glyph">${esc(ic)}</span>`:icon(ic)}<span>${label}</span></button>`;
+    ${icon(ic)}<span>${label}</span></button>`;
   $('#drawer').innerHTML=
     `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <b class="disp" style="font-size:15px;letter-spacing:.1em">导航与筛选</b>
@@ -1057,7 +1057,7 @@ const EDGE_ICONS=[
   ['','首页','home'],
   ['performers','艺人','user-round'],
   ['tags','标签','tags'],
-  ['jav','JAV','番'],
+  ['jav','JAV','jav'],
   ['flagged','已标记','star'],
   ['immerse','沉浸模式','play'],
   ['manage','管理','settings'],
@@ -1169,9 +1169,8 @@ function navOn(k){
 }
 function buildEdge(){
   $('#edge').innerHTML=EDGE_ICONS.map(([k,t,ic])=>
-    // 单个汉字直接当字形渲染；其余仍走内置 symbol。
     `<button data-nav="${k}" title="${t}" aria-pressed="${navOn(k)}">
-      ${ic.length===1?`<span class="glyph">${esc(ic)}</span>`:icon(ic)}</button>`).join('')
+      ${icon(ic)}</button>`).join('')
 ;
   $('#edge').querySelectorAll('[data-loc]').forEach(b=>b.onclick=()=>{
     const cur=(state.loc||'').split(',').filter(Boolean);

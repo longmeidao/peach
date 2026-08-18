@@ -705,7 +705,8 @@ body{padding-left:var(--railW)}
 .edge{z-index:96}
 body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位，抽屉就是它的展开态 */
 .dnav button{padding-left:0}
-.dnav svg{width:24px;height:24px;margin:0 15px 0 24px}  /* 图标落在窄栏原来的位置 */
+/* 图标落在窄栏原来的位置 */
+.dnav svg{width:24px;height:24px;margin:0 15px 0 24px}
 .dnav{display:flex;flex-direction:column;gap:3px;margin-bottom:18px}
 .dnav button{display:flex;align-items:center;gap:14px;padding:11px 14px;background:none;
   border:0;border-radius:8px;cursor:pointer;text-align:left;font-size:15px;color:var(--ink)}
@@ -866,12 +867,6 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .poster.cover.front[data-frame="front"]{object-position:50% 22%}
 .poster.cover.whole{object-fit:contain;background:#000;object-position:50% 50%}
 
-/* JAV 入口用「番」字本身，不用任何站点的 logo。外面描一个方框，让它和其余
-   描边图标在同一条导航里看起来是同一类东西，而不是一个突兀的汉字。
-   窄栏与抽屉共用同一份字形，两处必须一致。 */
-.glyph{display:inline-grid;place-items:center;width:22px;height:22px;
-  border:1.6px solid currentColor;border-radius:5px;
-  font-size:13px;line-height:1;font-weight:600;letter-spacing:0;flex:none}
 
 /* 版式按钮嵌在排序行里，必须比 `.sorts button` 更具体，否则那条规则的内边距和
    行高会把图标顶偏。图标按钮不设左右内边距，靠 grid 居中。 */
