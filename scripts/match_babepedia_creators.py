@@ -66,25 +66,36 @@ VERDICT_NONE = "确认无档案"
 VERDICT_BLOCKED = "未取得:限流"
 
 
-def name_variants(name: str) -> list[str]:
-    """按可解释的规则生成写法变体，保持顺序、去重。"""
+#: 截断后短于这个长度的写法不再查询。`G3104` 削成 `G`、`N1032` 削成 `N` 之后
+#: 已经不指向任何人，只会撞上无关档案并招来限流——实测三个「限流未取得」全是它们。
+MIN_TRUNCATED = 4
+
+
+def name_variants(name: str) -> list[tuple[str, bool]]:
+    """返回 (写法, 是否有损)，保持顺序、去重。
+
+    前三种只改分隔与空格，字母数字一个不少，属于无损改写；去尾部数字丢掉了识别
+    信息，属于有损。有损写法查出来的结果不能单独构成确认结论：`fantia-3760310`
+    被削成 `fantia` 后会撞上艺名里含 `Fantia` 的人，重合度还够高，足以骗过闸门。
+    """
     text = (name or "").strip()
     spaced = re.sub(r"[._-]+", " ", text)
     camel = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", text)
-    candidates = [
-        text,
-        spaced,
-        camel,
-        re.sub(r"[._-]+", " ", camel),
-        re.sub(r"[\s._-]*\d+$", "", spaced),
+    truncated = re.sub(r"[\s._-]*\d+$", "", spaced).strip()
+    candidates: list[tuple[str, bool]] = [
+        (text, False), (spaced, False), (camel, False),
+        (re.sub(r"[._-]+", " ", camel), False),
     ]
+    if len(truncated.replace(" ", "")) >= MIN_TRUNCATED:
+        candidates.append((truncated, True))
+
     seen: set[str] = set()
-    result: list[str] = []
-    for candidate in candidates:
+    result: list[tuple[str, bool]] = []
+    for candidate, lossy in candidates:
         value = " ".join(candidate.split())
         if value and value.casefold() not in seen:
             seen.add(value.casefold())
-            result.append(value)
+            result.append((value, lossy))
     return result
 
 
@@ -118,7 +129,7 @@ def fetch_title(transport: HttpTransport, query: str, timeout: int = 30) -> str 
 def resolve(transport: HttpTransport, name: str, delay: float,
             retries: int = 3) -> tuple[str, str, str, float]:
     """返回 (判定, 命中变体, 档案名, 词元重合度)。"""
-    for variant in name_variants(name):
+    for variant, lossy in name_variants(name):
         # 重合度按实际命中的变体算：`SexySaffron` 不含分隔符，只切得出一个词元，
         # 拿它去比 `Saffron Bacchus` 会得 0，把真命中误判成需人工确认。
         query_tokens = tokens(name) | tokens(variant)
@@ -137,7 +148,8 @@ def resolve(transport: HttpTransport, name: str, delay: float,
                 break
             overlap = (len(query_tokens & tokens(found)) / len(query_tokens)
                        if query_tokens else 0.0)
-            verdict = VERDICT_HIT if overlap > 0 else VERDICT_REVIEW
+            # 有损写法即使词元对得上也只是线索：削掉数字后剩下的可能是个通用词。
+            verdict = (VERDICT_REVIEW if lossy or overlap == 0 else VERDICT_HIT)
             return verdict, variant, found, round(overlap, 2)
     return VERDICT_NONE, "", "", 0.0
 

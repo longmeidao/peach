@@ -34,6 +34,7 @@
 - 共演作品在卡片上叠放前 3 位女优头像并列出前 2 个名字，超出部分写「等 N 人」；契约每条卡片下发至多 `CARD_PERFORMERS`（当前 6）位并给出 `performer_total`。详情页逐行列出全部出镜者，每行带自己的头像，标签只写在第一行；超过 8 位时其余默认收起，一次点击展开，收起的行始终留在 DOM 里。沉浸模式的归属行同样列出前 3 位。
 - 键盘快捷键：详情与沉浸模式共用一套播放键，左右按设置里的快进秒数快退/快进，空格暂停或继续（必须 `preventDefault`，否则空格会把页面滚下去）。沉浸模式保留上下切片，与横向快进方向不冲突。取当前视频只能用 `stage.querySelector('video')`：Video.js 挂载后会把 `<video id="vid">` 换成同 id 的 `<div class="video-js">`，真媒体元素是 `#vid_html5_api`，按 id 取会拿到那个 div，写 `currentTime` 读得回来但播放纹丝不动。输入框、文本域和可编辑区域内的按键一律不抢。
 - 搜索下拉支持上下键选择、回绕和 `scrollIntoView`；回车优先用高亮项，没有高亮才回退到「空输入用当前推荐词」。列表每次重建都必须把高亮索引归零，否则索引会指向已不存在的行。
+- 短查询的 LIKE 分支必须和 FTS 覆盖同样的身份写法：规范名、`entity_alias` 与 `entity_search_term` 都要比对。trigram 分词器要求三字起步，两字查询永远落在 LIKE 分支上，只补检索词救不了——「凉森」搜不到 `涼森れむ` 就是这么来的。
 - 卡片身份女优优先；头像本身进入女优资料页。缺失厂牌 Logo 显示首字母，不用任意作品图冒充。
 - 「喜欢/为什么喜欢」写 profile 级 `asset_preference`；原因非空会隐含喜欢，但 AI 不能直接改写用户原文。「稍后看」独立写 `watch_queue`。
 - 详情反馈是 Like、不喜欢、看过、稍后看、回收站五个 Lucide 图标；默认首页排除竖屏，竖屏入口保留完整竖屏集合。
@@ -78,6 +79,9 @@
 - `RM-TrafficWatch` 常驻心跳已改用 `pythonw.exe` 隐藏运行。默认 200 GB 守卫统计代理流量；直连来源需显式 `--count-direct`。
 - 番号目录冒充创作者的清理已对生产 ledger 执行（`scripts/audit_code_creators.py`，备份 `ledger.pre-codecreator-20260818-184741.db`）。命中 44 个：31 个判为番号、2 个判为站点作品号、11 个判为存疑只入 CSV。写入删创作者关系 121 条、删实体 33 个、清扁平字段 121 条，`code` 净增 31（另外 65 条已有值，脚本只填空缺不覆盖）。asset、asset_tag、performer 计数一条未变，完整性 `ok`、外键违规 0。`HD-abp-758`、`pppd-937ch`、`PRED-785ch`、`Carib-040221-001-FHD` 等假身份已消失，`banbi_555`、`raikun325`、`luckydog22` 等真实上传者与全部 pixiv 画师保留。复核 CSV：`R:\peach-data\generated\code-creator-review.csv`。
 - 判据不看名字形态，只看文件级证据：目录内的媒体文件名必须解析出同一个番号。`HD-` 是画质前缀、`-CH` 是中文字幕版后缀，两者都会让番号提取放弃，于是 `code` 留空、目录名顶替身份。形态相同但真相不同的 `banbi_555`（myfans 账号）和 `AH18`（pixiv 画师，path 是 URL）因此不会命中。
+- 日文汉字身份已补简体检索词（`scripts/add_chinese_search_terms.py`，备份 `ledger.pre-cnterms-20260818-210036.db`）：280 条写入 `entity_search_term`（performer 208、creator 71、series 1），`entity_search_term` 52 → 332，asset 与 entity 计数一条未变，完整性 `ok`、外键违规 0。实测搜「凉森」由 0 条变 24 条，「铃村」15 条、「七泽」10 条，日文原写法「涼森」仍是 24 条无回归，反例「凉宫」仍为 0。映射表只覆盖本库身份里实际出现的字，表外的字原样保留；日文独有字（`凪`、`辻`、`雫`、`笹`、`咲`、`栞`、`冴`、`榊`）没有简体对应，不列。
+- 这一步只做字形归一，不做译名：`涼森れむ` 转出的是 `凉森れむ`，不是圈内约定的 `凉森玲梦`。后者必须来自真实词库（输入法细胞词库是可行来源），不能编。含假名的 332 位女优仍缺常见译名。
+- `entity_search_term.purpose` 有 CHECK 约束，只接受 `discovery` / `source_lookup`；检索用途一律写 `discovery`，与既有的 52 条 stash 检索词一致。
 - 西方网黄回配 babepedia 的候选已产出（`scripts/match_babepedia_creators.py`，只写 CSV 不写 ledger）：195 个拉丁名 creator 中命中 19 个、需人工确认 8 个、确认无档案 165 个、限流未取得 3 个。判据只认 `<title>`；页面上的 `/babe/` 链接全是 `thumbshot` 相关推荐，实测查 `SexySaffron` 会抓出毫无关系的 `Brianna_Marchant`，一律不采信。待修：去尾部数字属于有损变体，`fantia-3760310` 经它削成 `fantia` 后误配到 `Rio Hcup Fantia`，须封顶为「需人工确认」。
 - 目录创作者审计覆盖全部 66,252 条历史关系：58,803 条为仅目录候选、6,621 条缺少路径交叉核验、745 条 TokyoDolls 错挂「捅主任」已解除、83 条「足交仙人」已按文件名/水印证据归到 `suzuq`。逐项和汇总 CSV 位于 `R:\peach-data\review\creator-attribution-*-20260815.csv`；没有删除媒体或标签。
 - `DiskGuard` 已进入主线并接入 `probe.py`、`sheets.py`、`creator_boards.py`：默认每 20 秒复查系统盘实际余量，触线后停止领取新任务、保留已完成结果并返回退出码 3。CloudDrive 当前缓存上限 50 GiB、策略 LRU；本轮核验时没有上述旧代码长任务在运行。
@@ -134,7 +138,7 @@
 <!-- job-status:start -->
 
 <!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->
-<!-- generated 2026-08-18T10:55Z -->
+<!-- generated 2026-08-18T12:49Z -->
 
 - 最近自动交接：`claude` / `StopFailure` / `failed`，2026-08-18T10:55:20+00:00。
 - 资产 81769 条，其中视频 24889 条。

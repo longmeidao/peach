@@ -36,21 +36,35 @@ def profile(name, nude=True):
 CHALLENGE = (429, "<title>Just a moment...</title>")
 
 
+def spellings(name):
+    return [variant for variant, _ in match.name_variants(name)]
+
+
 class VariantTests(unittest.TestCase):
     def test_camel_case_is_split_into_words(self):
-        self.assertIn("Sexy Saffron", match.name_variants("SexySaffron"))
+        self.assertIn("Sexy Saffron", spellings("SexySaffron"))
 
     def test_separators_become_spaces(self):
-        self.assertIn("ruth lee", match.name_variants("ruth_lee"))
+        self.assertIn("ruth lee", spellings("ruth_lee"))
 
     def test_original_spelling_is_tried_first(self):
-        self.assertEqual(match.name_variants("MattieDoll")[0], "MattieDoll")
+        self.assertEqual(match.name_variants("MattieDoll")[0], ("MattieDoll", False))
 
     def test_trailing_digits_are_dropped_as_a_last_resort(self):
-        self.assertIn("banbi", match.name_variants("banbi_555"))
+        self.assertIn(("banbi", True), match.name_variants("banbi_555"))
+
+    def test_spacing_only_rewrites_are_lossless(self):
+        lossy = dict(match.name_variants("SexySaffron"))
+        self.assertFalse(lossy["SexySaffron"])
+        self.assertFalse(lossy["Sexy Saffron"])
+
+    def test_stub_shorter_than_the_floor_is_never_queried(self):
+        # `G3104` 削成 `G` 后不指向任何人，只会撞上无关档案并招来限流。
+        self.assertNotIn("G", spellings("G3104"))
+        self.assertNotIn("N", spellings("N1032"))
 
     def test_variants_are_unique(self):
-        variants = match.name_variants("Shinaryen")
+        variants = spellings("Shinaryen")
         self.assertEqual(len(variants), len(set(variants)))
 
 
@@ -99,6 +113,16 @@ class ResolveTests(unittest.TestCase):
         transport = _transport({"SexySaffron": CHALLENGE, "Sexy Saffron": CHALLENGE})
         verdict, _, _, _ = match.resolve(transport, "SexySaffron", 0, retries=2)
         self.assertEqual(verdict, match.VERDICT_BLOCKED)
+
+    def test_lossy_variant_can_never_produce_a_confirmed_hit(self):
+        # `fantia-3760310` 是站点作品号。削掉数字剩下的 `fantia` 会撞上艺名里
+        # 含 Fantia 的人，词元重合度还够高——这正是它被误判成命中的真实过程。
+        transport = _transport({"fantia": profile("Rio Hcup Fantia")})
+        verdict, variant, found, overlap = match.resolve(
+            transport, "fantia-3760310", 0)
+        self.assertEqual((verdict, variant, found), (match.VERDICT_REVIEW,
+                                                     "fantia", "Rio Hcup Fantia"))
+        self.assertGreater(overlap, 0, "重合度仍如实记录，只是不再据此判定确认")
 
     def test_partial_name_resolves_to_the_full_stage_name(self):
         transport = _transport({"Shinaryen": profile("Tania Shinaryen")})

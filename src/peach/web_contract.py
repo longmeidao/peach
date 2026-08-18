@@ -160,14 +160,21 @@ def q_items(contract: WebContract, args):
             )
             par.append('"' + query.replace('"', '""') + '"')
         else:
+            # 短查询走 LIKE，必须和 FTS 覆盖同样的身份写法：规范名、别名和检索词。
+            # 只比 canonical_name 会让「凉森」搜不到 `涼森れむ`——trigram 要求三字
+            # 起步，两字查询永远落在这条分支上，补检索词也救不了。
             where.append(
                 "(a.name LIKE ? OR a.code LIKE ? OR EXISTS("
                 "SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
                 "WHERE ae.asset_id=a.id AND e.kind IN ('creator','performer','studio') "
-                "AND e.canonical_name LIKE ?))"
+                "AND (e.canonical_name LIKE ? "
+                "OR EXISTS(SELECT 1 FROM entity_alias al WHERE al.entity_id=e.id "
+                "AND al.alias LIKE ?) "
+                "OR EXISTS(SELECT 1 FROM entity_search_term st WHERE st.entity_id=e.id "
+                "AND st.term LIKE ?))))"
             )
             pattern = f"%{query}%"
-            par += [pattern, pattern, pattern]
+            par += [pattern] * 5
     if args.get("state") == "fresh":
         where.append("(a.play_count IS NULL OR a.play_count=0) AND a.feedback IS NULL")
     elif args.get("state") == "played":

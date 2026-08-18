@@ -681,3 +681,59 @@ class ReviewQueueTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ChineseSearchTermTests(unittest.TestCase):
+    """短查询必须能通过别名和检索词命中日文汉字身份。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.db_path = str(Path(self.tmp.name) / "ledger.db")
+        con = sqlite3.connect(self.db_path)
+        con.executescript(BASE_SCHEMA)
+        con.execute(
+            "INSERT INTO asset(id,location,path,name,medium,duration,first_seen) "
+            "VALUES(1,'local',?,'ABW-232.mp4','video',100,'2026-08-18')",
+            (r"R:\Media\ABW-232.mp4",))
+        con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
+            "VALUES(11,'performer','涼森れむ','涼森れむ')")
+        con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+            "VALUES(1,11,'performer','test',1.0)")
+        con.commit(); con.close()
+        self.contract = rm_web.WebContract(Path(self.db_path))
+
+    def found(self, query):
+        return [row["id"] for row in
+                rm_web.q_items(self.contract, {"q": query, "limit": "10"})["items"]]
+
+    def _add_term(self, term):
+        con = sqlite3.connect(self.db_path)
+        con.execute("INSERT INTO entity_search_term(entity_id,term,purpose,source) "
+                    "VALUES(11,?,'search','hanzi-simplified')", (term,))
+        con.commit(); con.close()
+
+    def test_simplified_query_misses_before_a_term_exists(self):
+        self.assertEqual(self.found("凉森"), [])
+
+    def test_simplified_query_hits_through_the_search_term(self):
+        # 「凉森」只有两字，trigram 用不上，永远走 LIKE 分支。
+        self._add_term("凉森れむ")
+        self.assertEqual(self.found("凉森"), [1])
+
+    def test_original_japanese_spelling_still_works(self):
+        self._add_term("凉森れむ")
+        self.assertEqual(self.found("涼森"), [1])
+
+    def test_alias_is_matched_by_short_queries_too(self):
+        con = sqlite3.connect(self.db_path)
+        con.execute("INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,confidence)"
+                    " VALUES(11,'Remu Suzumori','remu suzumori','r18',1.0)")
+        con.commit(); con.close()
+        self.assertEqual(self.found("Suzumori"), [1])
+
+    def test_unrelated_query_still_finds_nothing(self):
+        self._add_term("凉森れむ")
+        self.assertEqual(self.found("凉宫"), [])
