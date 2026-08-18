@@ -16,7 +16,7 @@ const fmtSize=b=>b>=1099511627776?(b/1099511627776).toFixed(2)+' TB':b>=10737418
 const LOC={local:'本地','115':'115',pikpak:'PikPak',online:'在线'};
 const DURATION_TAGS=new Set(['短片-2分内','中片-10分内','长片-30分内','超长片-30分上']);
 const SETTINGS_KEY='peach.settings.v1';
-const DEFAULT_SETTINGS={autoRefresh:true,refreshMinutes:5,batchSize:60,defaultSort:'daily',hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20};
+const DEFAULT_SETTINGS={autoRefresh:true,refreshMinutes:5,batchSize:60,defaultSort:'daily',hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'cover'};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
@@ -66,7 +66,7 @@ const initialParams=new URLSearchParams(location.search);
 let state={loc:initialParams.get('loc')||'local,115',creator:initialParams.get('creator')||'',studio:initialParams.get('studio')||'',
   tag:initialParams.get('tag')||'',len:initialParams.get('len')||'',dur_min:initialParams.get('dur_min')||'',dur_max:initialParams.get('dur_max')||'',
   orient:initialParams.get('orient')||'',state:initialParams.get('state')||'',sort:initialParams.get('sort')||appSettings.defaultSort,
-  seed:initialParams.get('seed')||String((Date.now()^(Math.random()*1e9|0))%99991),q:initialParams.get('q')||'',thumb:'1'};
+  seed:initialParams.get('seed')||String((Date.now()^(Math.random()*1e9|0))%99991),q:initialParams.get('q')||'',jav:initialParams.get('jav')||'',thumb:'1'};
 $('#q').value=state.q;
 const REP={};   // 创作者/厂牌 → 代表作 id，用来做圆头像（裁接触印相中心格，不另造图）
 let offset=0,total=0,facets=null,current=null,detailReturnPath='/',activeMix=null;
@@ -282,7 +282,9 @@ function wireHover(el,it){
   const armLong=()=>{clearTimeout(longTimer);el.classList.add('previewing');longTimer=setTimeout(()=>el.classList.add('longhover'),Math.max(1,appSettings.hoverDelaySeconds)*1000)};
   const clearLong=()=>{clearTimeout(longTimer);el.classList.remove('previewing','longhover')};
   if(it.location!=='local'){        // 远端源：只换预览图逐格扫视，零网络流量
-    const im=pic.querySelector('.poster'); if(!im)return;
+    // 只扫接触印相的格子。封面图也带 .poster 类（为了共用尺寸样式），
+    // 不排掉的话 hover 会把它的 src 改写成 /poster?id=，封面当场被换掉。
+    const im=pic.querySelector('.poster:not(.cover)'); if(!im)return;
     let t=null,i=4;
     el.addEventListener('mouseenter',()=>{if(selectMode)return;armLong();t=setInterval(()=>{
       i=(i+1)%9; im.src=`/poster?id=${it.id}&c=${i}`},430)});
@@ -327,14 +329,29 @@ function avatarInner(name,ref,repId){
   return `<span class="ini">${esc((name||'?').slice(0,1))}</span>`+
     (src?`<img src="${src}" alt="" loading="lazy" onerror="${fallback}">`:'');
 }
+/* 官方封套有两种形态，实测过：整张封套约 1.48（左侧是剧照拼贴，右侧才是正封），
+   竖版正封约 0.70（本身就是正封，没有左半边可裁）。所以取景不能写死「取右边」，
+   得等图片加载后按它自己的宽高比分流——服务端没存这个比例，也不该为此再存一份。 */
+const COVER_FRAME=`onload="const r=this.naturalWidth/this.naturalHeight;this.dataset.frame=r>1.2?'sleeve':'front'"`;
+function coverImage(it,layout){
+  const src=`/cover?code=${encodeURIComponent(it.code||'')}`;
+  // 封套模式看整张（含剧照拼贴），正封模式只取右侧那半。
+  return `<img class="poster cover ${layout==='sleeve'?'whole':'front'}" src="${src}"
+    alt="" loading="lazy" ${COVER_FRAME} onerror="this.remove()">`;
+}
 function cardHtml(it,cls){
+  const jav=javActive(),layout=javLayout();
+  const useCover=jav&&layout!=='preview'&&it.has_cover;
   const ar=(it.ctx_orient==='竖屏'||cls==='scard')
     ? ((it.width&&it.height)?Math.min(0.9,Math.max(0.5,it.width/it.height)):9/16)
-    : 16/9;
+    // 正封是竖版取景，封套是横版；预览图沿用原来的 16:9。
+    : (useCover?(layout==='sleeve'?16/9:3/4):16/9);
 
-  const thumb=it.has_thumb
-    ? `<img class="poster" src="/poster?id=${it.id}&c=4" alt="" loading="lazy">`
-    : `<span class="nopic">无预览</span>`;
+  const thumb=useCover
+    ? coverImage(it,layout)
+    : (it.has_thumb
+      ? `<img class="poster" src="/poster?id=${it.id}&c=4" alt="" loading="lazy">`
+      : `<span class="nopic">无预览</span>`);
   const tr=it.leave_ratio!=null?`<div class="scrub"><i style="width:${Math.round(it.leave_ratio*100)}%"></i></div>`:'';
   const fl=[it.feedback==='dislike'&&'dislike',it.feedback==='seen'&&'seen',
             it.disposal==='trash'&&'dispose',it.watch_later&&'later']
@@ -540,6 +557,7 @@ async function buildBars(){
     closeDrawerAfterNav();
     if(k==='immerse'){openTok();return}
     if(k==='manage'){openManage();return}
+    if(k==='jav'){toggleJavMode();return}
     if(k==='performers'||k==='tags'){openIndex(k);return}
     if(k==='shorts'){state.orient='竖屏';state.state=''}
     else{state.orient='';state.state=k}
@@ -582,9 +600,12 @@ function renderCount(){
   const n=$('#grid').querySelectorAll(':scope > .card[data-id]').length;   // 竖屏条不计入「显示 N」
   $('#count').innerHTML=
     `<span class="mono">${total.toLocaleString()} 个符合 · 显示 ${n}</span>`
-    +`<span class="sorts">${state.state==='trash'?`<button class="batchaction" id="emptyTrash" title="永久删除回收站内容">清空回收站</button>`:''}<button class="batchaction" id="batchAction" title="换一批" aria-label="换一批">${icon('refresh-cw')}</button>`+SORTS.map(([k,l])=>
-      `<button data-sort="${k}" aria-pressed="${state.sort===k}">${l}</button>`).join('')+`</span>`;
-  $('#batchAction').onclick=()=>{state.sort='seed';state.seed=String(Date.now()%99991);load(true)};
+    +(state.state==='trash'
+      // 回收站是待清理队列，不是浏览列表：换一批和九种排序在这里没有意义。
+      ? `<span class="sorts"><button class="batchaction" id="emptyTrash" title="永久删除回收站内容">清空回收站</button></span>`
+      : `<span class="sorts"><button class="batchaction" id="batchAction" title="换一批" aria-label="换一批">${icon('refresh-cw')}</button>`
+        +SORTS.map(([k,l])=>`<button data-sort="${k}" aria-pressed="${state.sort===k}">${l}</button>`).join('')+`</span>`);
+  if($('#batchAction'))$('#batchAction').onclick=()=>{state.sort='seed';state.seed=String(Date.now()%99991);load(true)};
   if(state.state==='trash')$('#emptyTrash').onclick=async(e)=>{
     if(!confirm('永久删除回收站中的全部文件和账本记录？此操作不可恢复。'))return;
     e.currentTarget.disabled=true;
@@ -806,7 +827,15 @@ async function openReview(push=true){
       const item=button.closest('[data-review-key]'),row=rows.find(x=>String(x.item_key)===item.dataset.reviewKey);button.disabled=true;
        const selectedIds=[...item.querySelectorAll('[data-review-asset][aria-pressed="true"]')].map(cell=>+cell.dataset.reviewAsset);
        const result=await api('/api/review/decision',{method:'POST',body:JSON.stringify({category:reviewCategory,item_key:item.dataset.reviewKey,status:button.dataset.reviewStatus,creator:row.creator,tags:row.tags,studio:row.studio,entity_id:row.entity_id,avatar_url:row.avatar_url,selected_ids:selectedIds})});
-      if(result.ok){row.decision=button.dataset.reviewStatus;item.dataset.decision=row.decision}
+      if(result.ok){
+        // 只改 data 属性的话，条目还杵在队列里，看起来就像没生效。
+        // 判过的直接移出本批并同步计数，下一条立刻顶上来。
+        const index=rows.indexOf(row);
+        if(index>=0)rows.splice(index,1);
+        reviewData.counts[reviewCategory]=Math.max(0,(reviewData.counts[reviewCategory]||1)-1);
+        render();
+        return;
+      }
       button.disabled=false;
     });
   };
@@ -921,6 +950,8 @@ async function fetchEntityItems(kind,name,entityTag,offset=0){
   const p=new URLSearchParams();p.set(kind,name);p.set('limit','48');p.set('offset',String(offset));p.set('sort','new');
   if(offset)p.set('count','0');
   if(entityTag)p.set('tag',entityTag);
+  // 资料页继承 JAV 开关：女优页和厂牌页同样是按番号浏览的语境。
+  if(state.jav==='1')p.set('jav','1');
   const items=await api('/api/items?'+p);cache(items.items);return items
 }
 function renderEntityCollection(kind,name,items,entityTag,append=false){
@@ -1020,6 +1051,7 @@ const EDGE_ICONS=[
   ['','首页','home'],
   ['performers','艺人','user-round'],
   ['tags','标签','tags'],
+  ['jav','JAV','layout-grid'],
   ['flagged','已标记','star'],
   ['immerse','沉浸模式','play'],
   ['manage','管理','settings'],
@@ -1047,6 +1079,7 @@ function buildManageBar(){
   // 管理区是行政界面，不该顶着首页的人物/厂牌横条和标签筛选。
   if(current){$('#tiers').style.display='none';$('#tagbar').style.display='none'}
   buildEdge();     // 顶层高亮跟随管理区；否则从首页进来时仍停在「首页」上
+  paintJavBar();
   paintManageTitle();
   if(!current)return;
   bar.innerHTML=MANAGE_SECTIONS.map(([k,label,ic])=>
@@ -1070,15 +1103,53 @@ function openManage(section='stats'){
   route(section==='trash'?'/trash':'/');
   showHomeSurfaces();buildEdge();buildBars();load(true);
 }
+/* JAV 模式。只有带番号的作品才有官方封套，所以版式切换只在这个语境里出现——
+   首页混着创作者作品和素人流出，给它们切「封面」没有意义。
+   资料页（女优/厂牌）进入时继承这个开关，因为那里同样是按番号浏览。 */
+const JAV_LAYOUTS=[['cover','正封 4:3','user-round'],['sleeve','封套 16:9','layout-grid'],['preview','预览图','eye']];
+function javActive(){
+  if(state.jav!=='1')return false;
+  const path=decodeURIComponent(location.pathname);
+  return path==='/'||path.startsWith('/performers/')||path.startsWith('/studios/');
+}
+function javLayout(){
+  return allowedSetting(appSettings.javLayout,JAV_LAYOUTS.map(([k])=>k),'cover');
+}
+function setJavLayout(value){
+  appSettings.javLayout=value;
+  saveSettings();
+  paintJavBar();
+  // 只重画卡片，不重新请求：版式是纯展示层的事。
+  if(!$('#grid').hidden)load(true);
+}
+function paintJavBar(){
+  const bar=$('#javbar');if(!bar)return;
+  const on=javActive();
+  bar.hidden=!on;
+  if(!on)return;
+  const current=javLayout();
+  bar.innerHTML=JAV_LAYOUTS.map(([k,label,ic])=>
+    `<button data-jav-layout="${k}" aria-pressed="${k===current}" title="${esc(label)}"
+      aria-label="${esc(label)}">${icon(ic)}</button>`).join('');
+  bar.querySelectorAll('[data-jav-layout]').forEach(b=>
+    b.onclick=()=>setJavLayout(b.dataset.javLayout));
+}
+function toggleJavMode(){
+  state.jav=state.jav==='1'?'':'1';
+  state.state='';state.orient='';
+  route(state.jav==='1'?'/?jav=1':'/');
+  showHomeSurfaces();buildEdge();buildBars();load(true);
+}
 function navOn(k){
   const path=decodeURIComponent(location.pathname);
   if(k==='manage')return !!manageSection();
   if(k==='performers'||k==='tags')return path==='/'+k;
   if(k==='immerse')return path==='/immerse';
+  if(k==='jav')return javActive();
   if(k==='shorts')return state.orient==='竖屏';
   // 首页只在真的停在首页列表上时亮：管理区、索引页、实体页都不算，
   // 否则它会和当前所在的入口同时高亮。
-  if(k==='')return path==='/'&&!manageSection()&&!state.state&&state.orient!=='竖屏';
+  if(k==='')return path==='/'&&!manageSection()&&!state.state&&!javActive()&&state.orient!=='竖屏';
   return path==='/'&&state.state===k&&state.orient!=='竖屏';
 }
 function buildEdge(){
@@ -1099,6 +1170,7 @@ function buildEdge(){
     closeDrawerAfterNav();                 // 点了就收起抽屉，且短暂禁止悬停把它立刻弹回
     if(k==='immerse'){openTok();return}
     if(k==='manage'){openManage();return}
+    if(k==='jav'){toggleJavMode();return}
     if(k==='performers'||k==='tags'){openIndex(k);return}
     if(k==='shorts'){state.orient='竖屏';state.state=''}else{state.orient='';state.state=k}
     if(location.pathname!=='/')route('/');
@@ -1167,6 +1239,8 @@ async function load(reset){
   /* 只有首页默认列表排除竖屏——那里另有独立的竖屏条承接它们。
      搜索必须能搜到竖屏作品，否则按名字找一条竖屏视频会得到 0 结果。 */
   if(location.pathname==='/'&&!state.q&&!state.orient)p.set('exclude_vertical','1');
+  // JAV 模式恒不含竖屏：番号发行物本身就是横版，竖屏是另一类内容。
+  if(state.jav==='1')p.set('exclude_vertical','1');
   p.set('limit',appSettings.batchSize); p.set('offset',offset);
   if(!reset)p.set('count','0');
   const d=await api('/api/items?'+p);cache(d.items);

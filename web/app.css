@@ -285,13 +285,18 @@ button,input,textarea{font:inherit;color:inherit}
 .castmore{align-self:center;height:46px;padding:0 12px;border:1px dashed var(--overlay-10);
   border-radius:12px;background:transparent;color:var(--tungsten);font-size:12px;cursor:pointer}
 .castmore:hover{background:var(--hover)}
-.managetitle{font-size:26px;line-height:1.2;margin:4px 0 14px;letter-spacing:.02em}
+.managetitle{font-size:26px;line-height:1.2;margin:16px 0 16px;letter-spacing:.02em}
 .managetitle[hidden]{display:none}
 .dupsum{color:var(--muted);margin:0 0 12px}
 .dupactions{display:flex;gap:8px;margin-bottom:16px}
-.dupactions button,.dupbtns button{height:32px;padding:0 14px;border-radius:var(--tag-radius);
-  border:1px solid var(--overlay-10);background:transparent;color:var(--ink);cursor:pointer}
-.dupactions button:hover,.dupbtns button:hover{background:var(--hover)}
+/* 这两个是会动数据的批量操作（每组只留一个，其余进回收站），必须看着像按钮，
+   不能是一段可点的文字。 */
+.dupactions button,.dupbtns button{height:32px;padding:0 16px;border-radius:var(--tag-radius);
+  border:1px solid var(--border-15);background:var(--surface);color:var(--ink);
+  cursor:pointer;font-size:13px;line-height:1}
+.dupactions button:hover,.dupbtns button:hover{background:var(--hover);border-color:var(--tungsten);
+  color:var(--tungsten)}
+.dupactions button:disabled,.dupbtns button:disabled{opacity:.5;cursor:wait}
 .dupgroup{border:1px solid var(--overlay-10);border-radius:10px;margin-bottom:12px;overflow:hidden}
 .duphead{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--overlay-5);flex-wrap:wrap}
 .duphead .dupbtns{margin-left:auto;display:flex;gap:6px}
@@ -837,3 +842,22 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 }
 #searchBtn{display:none}
 .reviewimage{width:160px;height:112px;border-radius:8px;overflow:hidden;background:#000;margin:8px 0}.reviewimage img{width:100%;height:100%;object-fit:contain;display:block}
+
+/* JAV 版式条。只在 JAV 语境出现——首页混着创作者作品与素人流出，
+   给它们切「封面」没有意义。 */
+.javbar{display:flex;align-items:center;gap:8px;padding:0 0 10px;flex-wrap:wrap}
+.javbar[hidden]{display:none}
+.javhint{color:var(--muted);font-size:12px;margin-right:4px}
+.javbar button{width:34px;height:30px;display:inline-grid;place-items:center;
+  border-radius:var(--tag-radius);border:1px solid var(--overlay-10);background:transparent;
+  color:var(--ink-2);cursor:pointer;padding:0}
+.javbar button svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8}
+.javbar button:hover{background:var(--hover);color:var(--ink)}
+.javbar button[aria-pressed="true"]{background:var(--tungsten-soft);color:var(--tungsten);
+  border-color:color-mix(in srgb,var(--tungsten) 45%,transparent)}
+/* 取景：正封模式下，整张封套要把镜头推到右半边；本身就是竖版正封的则整张用。
+   判据是图片自己的宽高比，由 onload 写进 data-frame。 */
+.poster.cover{width:100%;height:100%;object-fit:cover;display:block}
+.poster.cover.front[data-frame="sleeve"]{object-position:82% 22%}
+.poster.cover.front[data-frame="front"]{object-position:50% 22%}
+.poster.cover.whole{object-fit:contain;background:#000;object-position:50% 50%}

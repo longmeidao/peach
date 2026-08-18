@@ -470,8 +470,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('.meta .who{color:var(--tungsten);min-width:0;max-width:100%;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')
 
     def test_only_portrait_cards_use_media_ratio(self):
+        """竖屏按实际宽高，其余固定比例——否则横屏卡片会在一列里高低不齐。
+
+        JAV 封面是第三种情况：正封是竖版取景（3:4），封套是横版（16:9），
+        判据是当前版式而不是媒体本身，所以它有自己的分支。
+        """
         self.assertPageContains("const ar=(it.ctx_orient==='竖屏'||cls==='scard')")
-        self.assertPageContains(": 16/9;")
+        self.assertPageContains("(useCover?(layout==='sleeve'?16/9:3/4):16/9)")
 
     def test_portrait_strip_sits_on_a_row_boundary_without_borrowing_extra_items(self):
         """竖屏条整行占位，必须插在行边界上，而不是另拉一批横屏视频补满余位。
