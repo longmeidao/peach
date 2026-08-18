@@ -43,6 +43,7 @@ from PIL import Image, UnidentifiedImageError
 
 from peach.config import COVER_DIR, DATABASE_PATH, GENERATED_DIR
 from peach.http import HttpRequest, HttpTransport, HttpxTransport
+from peach.web_contract import is_jav_code
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
@@ -206,13 +207,18 @@ def pending(database: Path, root: Path, only_shaped: bool) -> list[str]:
         ).fetchall()
     finally:
         connection.close()
-    studio = re.compile(r"^[A-Z]{2,8}-\d{2,5}$")
-    amateur = re.compile(r"^\d{3}[A-Z]{2,6}-\d{2,5}$")
     result = []
     for code, _count in rows:
-        key = normalise_code(str(code))
-        if only_shaped and not (studio.match(key) or amateur.match(key)):
+        # 判形态必须看原值。`normalise_code` 会补上分隔符，把 `RAIKUN325`
+        # （myfans 账号名，241 个文件）改写成 `RAIKUN-325` 并通过形态检查，
+        # 于是队列里全是查不到的账号名。判据与 web_contract 共用一份实现。
+        if only_shaped and not is_jav_code(str(code)):
             continue
+        # FC2 在 r18/avsox/javbus 三源实测零命中（见 HANDOFF），本抓取器用的是
+        # 同一批来源。默认跳过 400 个必然落空的请求；`--all-codes` 仍可强制尝试。
+        if only_shaped and str(code).upper().startswith("FC2"):
+            continue
+        key = normalise_code(str(code))
         if not (root / f"{key}.jpg").is_file():
             result.append(key)
     return result
