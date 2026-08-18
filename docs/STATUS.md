@@ -9,7 +9,7 @@
 - mDNS 使用 Python zeroconf 的全合格网卡监听；生产显式固定发布地址，避免隧道网卡误选。没有发布 `lmd-dst.local`。
 - Stash 仍运行于 `127.0.0.1:9999`，只作为过渡期可替换适配器。
 - Python：3.14.7；FFmpeg/ffprobe 由 `R:\peach-data\tools\ffmpeg` 管理，不再依赖 Stash 私有目录。
-- 真实 ledger：`R:\peach-data\database\ledger.db`，迁移 `0000`–`0015` 已应用，零待处理。复核表迁移前备份：`R:\peach-data\database\ledger.pre-0015-20260817-173639.db`；黄金视频删除前备份：`R:\peach-data\database\ledger.pre-golden-delete-20260817-124921.db`；创作者清理前备份：`R:\peach-data\database\ledger.pre-0014-20260817-134153.db`；完整性 `ok`。
+- 真实 ledger：`R:\peach-data\database\ledger.db`，迁移 `0000`–`0015` 已应用，零待处理。复核表迁移前备份：`R:\peach-data\database\ledger.pre-0015-20260817-173639.db`；黄金视频删除前备份：`R:\peach-data\database\ledger.pre-golden-delete-20260817-124921.db`；创作者清理前备份：`R:\peach-data\database\ledger.pre-0014-20260817-134153.db`；时长纠正前备份：`R:\peach-data\database\ledger.pre-duration-fix-20260818-103252.db`；完整性 `ok`。
 - PID 只是观测值，不是配置；每次停止或重启前必须重新核对命令行、父子关系和端口归属。
 
 ## 已核验代码与部署能力
@@ -77,7 +77,11 @@
 - 115 抽帧 worker 已接入 `resolve_case_insensitive`：小样本通过后完成 33 条 9 帧批次，31 条成功登记 snapshot、2 条仍失败（asset `12510`、`18349`），未伪报成功；日志 `R:\peach-data\logs\sheets-20260817-171917.log`。
 - 这 2 条失败已于 2026-08-18 用 FFmpeg 直接复现定因，两条是不同问题，都不是路径或色彩元数据：
   - `18349`（`B:\xxr\1(14)(1).mp4`）：ledger 记的是 `752.24` 秒、`1280×720`，ffprobe 实测为 `110.87` 秒、`1920×1072`，只有 `size` 98,246,962 两边一致。`make_sheet` 按 ledger 时长算的 9 个采样点里有 8 个落在文件末尾之后，只抽到 1 帧，触发 `len(captured) < 2` 判失败。t=61.8 秒实测能抽出 11,405 字节的帧，片源可用；要修的是 ledger 的时长与分辨率，不是抽帧代码。
-  - `12510`（`捅主任` 目录下的 `好色™ Tv.mp4`）：FFmpeg 报 `stream 0, missing mandatory atoms, broken header`，`profile`、`pix_fmt` 均为 `unknown`、`level=-99`，解码器建不起来，任何时间戳都抽不出帧。片源本身损坏，应归媒体失败候选，不再重试。
+  - `12510`（`捅主任` 目录下的 `好色™ Tv.mp4`）：FFmpeg 报 `stream 0, missing mandatory atoms, broken header`，`profile`、`pix_fmt` 均为 `unknown`、`level=-99`，解码器建不起来，任何时间戳都抽不出帧。片源本身损坏，不再重试。
+- 两条都已按上述结论收尾（备份 `R:\peach-data\database\ledger.pre-duration-fix-20260818-103252.db`）：
+  - `18349` 由 `probe.py --asset 18349` 重探改正，`duration` 752.24 → 110.866667、分辨率 1280×720 → 1920×1072、`fps` 25 → 30，情境层随之由「短/720P」变为「速食/2K」。随后 `sheets.py --asset 18349` 重抽成功，产物 `snapshots\cloud\115\45\4519ff7e5d496e1b.jpg` 为 1440×804（3×3 九帧、120,876 字节）并已登记 `snapshot_path`。写入前后 asset 81,770、video 24,890、asset_tag 88,542、entity 8,286 均不变，`integrity_check` 为 `ok`、外键违规 0，只有这一行的事实字段发生变化。
+  - `12510` 经 `/api/review/decision` 写入 `review_decision`（`category=media_failure`、`status=rejected`），note 记录了 FFmpeg 原始报错，`applied_assets` 为 0，不动任何真相字段。`/review` 媒体失败层的待办由 2 条降为 1 条，即这条已判定的坏片源。
+- `probe.py` 与 `sheets.py` 都新增了 `--asset`：按 id 点名处理，绕过各自的批量筛选，计费来源与 `online` 边界照旧生效。`probe` 的 `--redo` 只认 0 和 -1，够不着 `18349` 这种「看着正常但是错的」时长；`sheets` 点名时还会绕过「产物已存在」短路，否则重抽会被上一次的错结果短路掉。两者都有测试。
 - 由此暴露的代码缺陷已修：`scripts/sheets.py` 的 `make_sheet` 改为返回「是否成功 + 原因」，一帧都解不出记 `broken_source`、解得出一部分记 `duration_mismatch`，另有 `tile_failed`、`no_duration`、`exception`。worker 逐条写 `[fail] asset <id> <原因> <路径>`，批次结束再打一行原因分布。之前只累加失败计数，两种完全不同的故障在日志里长得一样。
 - 番号体系女优身份已回填真实 ledger（备份 `ledger.pre-performer-merge-20260815.db`）：556 位中 496 位改为日文规范名，写入 980 条别名（罗马字、假名、曾用名）、496 条外部引用，缓存高清头像 498 张（14 → 512）。完整性 `ok`、外键违规 0、资产数 81,847 不变；实体 606 → 604。
 - 名字取自 r18 `combined=` 端点的罗马字精确回配（425 位），av-wiki 的 URL slug 回配补 63 位，javdb 多番号交集补 6 位，双源确认 9 位。r18 记录的是拍摄当时的艺名，av-wiki 用于纠正到现用艺名，旧名一律降为别名。
@@ -90,7 +94,7 @@
 
 ## 验证基线
 
-- 当前主分支基线：全量隔离 `unittest` 209 项通过，2026-08-18 于主目录当前工作区实测（入口只有 `& .\scripts\test.ps1`，不接受「只跑本批相关」的缩水口径）；版本、托盘、迁移、mDNS、媒体转码、Provider、DiskGuard、语义路由、标准 Range、Video.js、稳定时长、详情播放释放、多选、实体资料、分页性能边界、搜索历史，以及回收站的还原/彻底删除/清空与删不掉文件的降级均有测试。
+- 当前主分支基线：全量隔离 `unittest` 211 项通过，2026-08-18 于主目录当前工作区实测（入口只有 `& .\scripts\test.ps1`，不接受「只跑本批相关」的缩水口径）；版本、托盘、迁移、mDNS、媒体转码、Provider、DiskGuard、语义路由、标准 Range、Video.js、稳定时长、详情播放释放、多选、实体资料、分页性能边界、搜索历史，以及回收站的还原/彻底删除/清空与删不掉文件的降级均有测试。
 - 前一生产版本已分别通过 HTTP/HTTPS health、`peach.local` 解析、真实 CloudDrive Range、桌面 1280×720 和手机 390×844 检查。本次 HLS 代码已切换生产托盘；真实资产 `31222/MIDE-981-C.mp4` 的中段 HLS 片段在严格 CA HTTPS 下返回 `200`、约 9.7 MB，响应后的临时文件已清理。尚未完成浏览器 seek 和手机 HLS 视觉验收。
 - 浏览器验收不得写真实喜欢、反馈或播放数据；需要交互写入时使用隔离 ledger 副本。
 - 并行 worktree 测试必须设置 `PYTHONPATH=<当前工作树>\src` 并核对 `peach.__file__`，否则 editable install 可能误加载主目录旧代码。
@@ -106,7 +110,7 @@
 3. 补齐女优身份剩余缺口：38 位查不到日文名（多数本名已是日文，无需改动）、15 位图库未收录、5 位所有候选不过质量门槛。头像质量权重的后续档位（人脸感知裁图、清晰关键帧）仍未实现。
 4. 通过官方/公开来源补齐 86 个厂牌 Logo，保留来源和质量门槛。Logo 与头像的取源方向相反：头像应取整理好的图库，Logo 是品牌标识，官网与维基才是权威来源。
 5. PikPak 抽帧已可走直连：代理策略组「📦 PikPak 视频」切到 DIRECT 后实测九帧 64.2 秒、30.5 MB（走代理时为 13.7 秒、163 MB），慢约 4.7 倍但流量少约 5 倍且不占代理预算。创作者采样 88 板据此约 2.7 GB。
-6. 115 抽帧失败的大小写部分已修复：`peach.media.resolve_case_insensitive` 与 `FilesystemBackend.file_for`、`scripts/sheets.py`、`scripts/probe.py` 的 worker 均已接入；2026-08-17 重跑 33 条九帧，31 成功、2 失败。这 2 条的原因已查清（见上一节）：`18349` 是 ledger 时长记错、`12510` 是片源头损坏。待办变成三件，都需要先获授权再动真相字段：重新 probe `18349` 并纠正时长与分辨率后重抽、把 `12510` 归入媒体失败候选、给 `sheets.py` 补上时长越界与解码失败的区分。`sheets.py` 遇 `prim:reserved` 非法色彩元数据的重试已完成并有测试。
+6. 115 抽帧失败的大小写部分已修复：`peach.media.resolve_case_insensitive` 与 `FilesystemBackend.file_for`、`scripts/sheets.py`、`scripts/probe.py` 的 worker 均已接入；2026-08-17 重跑 33 条九帧，31 成功、2 失败。这 2 条的原因已查清（见上一节）：`18349` 是 ledger 时长记错、`12510` 是片源头损坏。2026-08-18 已全部收尾：`sheets.py` 区分失败原因、`probe.py`/`sheets.py` 新增 `--asset`、`18349` 重探重抽成功、`12510` 判为坏片源并留痕，详见上一节。`sheets.py` 遇 `prim:reserved` 非法色彩元数据的重试已完成并有测试。
 7. HLS `stream-plan` 和按需 TS 片段已接入现有 Video.js 内置 VHS；尚未完成自适应码率、多路清单、首帧/seek 的桌面与手机验收。CloudDrive 约 100 MiB 固定块预取仍是来源层成本，服务端分片只能避免整部 MP4 Range，不会消除来源层块预取。
 8. 配置并评估 Stash CommunityScrapers/元数据 Provider，确认缺口后才写新来源适配器。
 9. 配置可复核的真实追更源，之后再接 APScheduler；AI 结果继续只作为候选。
@@ -120,13 +124,13 @@
 <!-- job-status:start -->
 
 <!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->
-<!-- generated 2026-08-17T19:19Z -->
+<!-- generated 2026-08-18T02:39Z -->
 
-- 最近自动交接：`claude` / `SessionEnd` / `other`，2026-08-17T19:19:33+00:00。
+- 最近自动交接：`claude` / `SessionEnd` / `other`，2026-08-18T02:39:25+00:00。
 - 资产 81770 条，其中视频 24890 条。
 - 待抽帧（可抽 / 缺时长待 probe / 合计）：
   - `local`：3 / 1 / 4
-  - `115`：12 / 139 / 151
+  - `115`：11 / 139 / 150
   - `pikpak`：4751 / 5445 / 10196
   PikPak 的策略组已可切 DIRECT：2026-08-15 实测走代理时 9 帧 163 MB / 13.7 秒，走直连时 30.5 MB / 64.2 秒——慢约 4.7 倍但流量少约 5 倍且不占代理预算。全量抽帧仍是 773 GB 量级（代理口径），按创作者采样 88 板直连约 2.7 GB。115 一直走直连，同样动作约 285 MB 一张接触表。
 - 无内容标签视频 7537 条（占视频 30%）。

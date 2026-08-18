@@ -307,6 +307,61 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertIn("duration_mismatch", written)
         self.assertIn("失败原因：duration_mismatch 1", written)
 
+    def test_sheets_can_reshoot_one_named_asset_over_a_stale_product(self):
+        """点名重抽是为了盖掉上一次的错结果，撞上已存在的产物就短路等于没修。"""
+        sheets = self.sheets
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "ledger.db"
+            connection = sqlite3.connect(db)
+            connection.execute(
+                "CREATE TABLE asset(id INTEGER PRIMARY KEY,location TEXT,path TEXT,"
+                "medium TEXT,duration REAL,size INTEGER,snapshot_path TEXT)"
+            )
+            # 18349 已有陈旧产物且已登记；1 是同来源的另一条待抽项，不该被顺带带走。
+            connection.execute(
+                "INSERT INTO asset VALUES(18349,'local',?,'video',110.87,2000,'stale.jpg')",
+                (str(root / "one.mp4"),),
+            )
+            connection.execute(
+                "INSERT INTO asset VALUES(1,'local',?,'video',600.0,1000,NULL)",
+                (str(root / "two.mp4"),),
+            )
+            connection.commit()
+            connection.close()
+
+            output_root = root / "out"
+            stale = sheets.output_path(output_root, "local", str(root / "one.mp4"))
+            stale.write_bytes(b"x" * 8192)
+
+            args = sheets.build_parser().parse_args([
+                "--db", str(db), "--workers", "1", "--min-free", "0",
+                "--asset", "18349",
+                "--output-root", str(output_root), "--log-dir", str(root / "log"),
+            ])
+
+            shot: list[str] = []
+
+            def fake_sheet(_ffmpeg, path, _duration, destination, _frames):
+                shot.append(path)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(b"y" * 9000)
+                return True, ""
+
+            choice = type("C", (), {"path": "ffmpeg"})
+            with mock.patch.object(sheets, "make_sheet", fake_sheet),                  mock.patch.object(sheets.FFmpegResolver, "ffmpeg", lambda _self: choice),                  redirect_stdout(io.StringIO()):
+                sheets.run(args)
+
+            connection = sqlite3.connect(db)
+            snapshots = dict(connection.execute("SELECT id,snapshot_path FROM asset").fetchall())
+            connection.close()
+            rewritten = stale.read_bytes()
+
+        self.assertEqual(len(shot), 1, "点名只该抽这一条")
+        self.assertIn("one.mp4", shot[0])
+        self.assertEqual(rewritten[:1], b"y", "陈旧产物必须被真正覆盖")
+        self.assertIsNone(snapshots[1], "没点名的待抽项不该被这一趟带走")
+
     def test_sheets_stops_mid_run_when_the_disk_gate_trips(self):
         """验证接线，不只是 DiskGuard 类本身：起跑通过、运行中触线要真的停并报非零码。"""
         sheets = self.sheets
@@ -408,6 +463,56 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(selection("all"), "(duration IS NULL OR duration<=0)")
         self.assertEqual(self.probe.build_parser().parse_args([]).redo, "none")
         self.assertEqual(self.probe.build_parser().parse_args(["--redo", "zero"]).redo, "zero")
+
+    def test_probe_can_target_one_asset_whose_recorded_duration_is_wrong(self):
+        """asset 18349 账本记 752.24 秒、真实文件 110.87 秒，--redo 的 0/-1 判据够不着。
+
+        点名重探时不套时长筛选，但计费来源边界必须照旧生效。
+        """
+        probe = self.probe
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "ledger.db"
+            connection = sqlite3.connect(db)
+            connection.execute(
+                "CREATE TABLE asset(id INTEGER PRIMARY KEY,location TEXT,path TEXT,"
+                "medium TEXT,duration REAL,size INTEGER,width INTEGER,height INTEGER,"
+                "vcodec TEXT,fps REAL,has_audio INTEGER,ctx_length TEXT,ctx_orient TEXT,"
+                "ctx_quality TEXT)"
+            )
+            for asset_id, duration in ((18349, 752.24), (1, None)):
+                connection.execute(
+                    "INSERT INTO asset(id,location,path,medium,duration,size) "
+                    "VALUES(?,'local',?,'video',?,1000)",
+                    (asset_id, str(root / f"{asset_id}.mp4"), duration),
+                )
+            connection.commit()
+            connection.close()
+
+            args = probe.build_parser().parse_args([
+                "--db", str(db), "--workers", "1", "--min-free", "0",
+                "--asset", "18349", "--log-dir", str(root / "log"),
+                "--lock", str(root / "probe.lock"),
+            ])
+            self.assertEqual(args.asset, [18349])
+
+            probed: list[str] = []
+            choice = type("C", (), {"path": "ffprobe"})
+
+            def fake_probe(_ffprobe, path, _timeout):
+                probed.append(path)
+                return 110.866667, 1920, 1072, "h264", 30.0, None
+
+            with mock.patch.object(probe, "probe_file", fake_probe),                  mock.patch.object(probe.FFmpegResolver, "ffprobe", lambda _self: choice),                  redirect_stdout(io.StringIO()):
+                probe.run(args)
+
+            connection = sqlite3.connect(db)
+            rows = dict(connection.execute("SELECT id,duration FROM asset").fetchall())
+            connection.close()
+
+        self.assertEqual(len(probed), 1, "点名只该动这一条，不能顺带重探全库")
+        self.assertAlmostEqual(rows[18349], 110.866667, places=5)
+        self.assertIsNone(rows[1], "没点名的未探测条目不该被这一趟带走")
 
     def test_sheet_retries_reserved_color_metadata_frames(self):
         """prim:reserved 会被 swscale 拒绝；首次失败后用 bt709 声明兜底重试。

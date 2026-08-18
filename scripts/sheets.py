@@ -42,6 +42,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=20.0,
         help="运行期复查磁盘余量的间隔；0 表示每条都查",
     )
+    parser.add_argument(
+        "--asset",
+        type=int,
+        action="append",
+        help="按 id 只抽指定资产，绕过来源与批量筛选。用于修复个别失败条目，"
+             "避免为一条重跑整个来源的待抽队列",
+    )
     parser.add_argument("--allow-metered", action="store_true")
     parser.add_argument("--db", type=Path, default=DATABASE_PATH)
     parser.add_argument("--output-root", type=Path, default=GENERATED_DIR / "snapshots" / "cloud")
@@ -159,12 +166,23 @@ def run(args: argparse.Namespace) -> int:
         if args.allow_metered:
             log("已显式允许计费来源")
         connection = sqlite3.connect(args.db)
-        sql = (
-            "SELECT id,location,path,duration FROM asset WHERE medium='video' "
-            "AND snapshot_path IS NULL AND location != 'online' AND duration > 2"
-            + source_sql + " ORDER BY size DESC"
-        )
-        parameters: tuple[object, ...] = source_parameters
+        if args.asset:
+            # 点名重抽时不套 snapshot_path IS NULL：修完时长要重抽的那条，可能已经带着
+            # 上一次的错误结果。计费来源和 online 的边界照旧生效。
+            placeholders = ",".join("?" for _ in args.asset)
+            sql = (
+                "SELECT id,location,path,duration FROM asset WHERE medium='video' "
+                f"AND id IN ({placeholders}) AND location != 'online' AND duration > 2"
+                + source_sql + " ORDER BY size DESC"
+            )
+            parameters: tuple[object, ...] = tuple(args.asset) + source_parameters
+        else:
+            sql = (
+                "SELECT id,location,path,duration FROM asset WHERE medium='video' "
+                "AND snapshot_path IS NULL AND location != 'online' AND duration > 2"
+                + source_sql + " ORDER BY size DESC"
+            )
+            parameters = source_parameters
         if args.limit:
             sql += " LIMIT ?"
             parameters += (args.limit,)
@@ -196,7 +214,8 @@ def run(args: argparse.Namespace) -> int:
                     return
                 destination = output_path(args.output_root, location, path)
                 try:
-                    if destination.is_file() and destination.stat().st_size > 4096:
+                    if (not args.asset and destination.is_file()
+                            and destination.stat().st_size > 4096):
                         results.put((str(destination), asset_id))
                         with lock:
                             counters["existing"] += 1
