@@ -249,7 +249,7 @@ $('#batchbar').querySelectorAll('[data-batch]').forEach(button=>button.onclick=a
   try{const r=await api('/api/batch',{method:'POST',body:JSON.stringify({ids,operation})});
     if(r.blocked&&r.blocked.length)alert(`已永久删除 ${r.purged} 个；${r.blocked.length} 个删不掉，仍留在回收站：\n`
       +r.blocked.slice(0,5).map(x=>`${x.path}（${x.reason}）`).join('\n'));
-    setSelectMode(false,true);await load(true)}
+    setSelectMode(false,true);await reloadCurrentSurface()}
   finally{button.disabled=false;paintSelection()}
 });
 
@@ -1051,7 +1051,7 @@ const EDGE_ICONS=[
   ['','首页','home'],
   ['performers','艺人','user-round'],
   ['tags','标签','tags'],
-  ['jav','JAV','layout-grid'],
+  ['jav','JAV','番'],
   ['flagged','已标记','star'],
   ['immerse','沉浸模式','play'],
   ['manage','管理','settings'],
@@ -1140,6 +1140,24 @@ function toggleJavMode(){
   route(state.jav==='1'?'/?jav=1':'/');
   showHomeSurfaces();buildEdge();buildBars();load(true);
 }
+/* 批量操作后回到刚才那一页，而不是首页列表。
+   实体资料页、索引页和管理区各有自己的取数路径，`load(true)` 只会重建首页网格，
+   于是在女优页选一批进回收站后会被莫名其妙地扔回首页。 */
+async function reloadCurrentSurface(){
+  const index=$('#index');
+  const kind=index?.dataset.entityKind,name=index?.dataset.entityName;
+  if(kind&&name&&!index.hidden){
+    await updateEntityCollection(kind,name,
+      new URLSearchParams(location.search).get('tag')||'',false);
+    return;
+  }
+  const path=decodeURIComponent(location.pathname);
+  if(path==='/performers'||path==='/creators'||path==='/tags'){
+    await openIndex(path.slice(1),$('#iq')?.value.trim()||'',false);
+    return;
+  }
+  await load(true);
+}
 function navOn(k){
   const path=decodeURIComponent(location.pathname);
   if(k==='manage')return !!manageSection();
@@ -1154,8 +1172,9 @@ function navOn(k){
 }
 function buildEdge(){
   $('#edge').innerHTML=EDGE_ICONS.map(([k,t,ic])=>
+    // 单个汉字直接当字形渲染；其余仍走内置 symbol。
     `<button data-nav="${k}" title="${t}" aria-pressed="${navOn(k)}">
-      ${icon(ic)}</button>`).join('')
+      ${ic.length===1?`<span class="glyph">${esc(ic)}</span>`:icon(ic)}</button>`).join('')
 ;
   $('#edge').querySelectorAll('[data-loc]').forEach(b=>b.onclick=()=>{
     const cur=(state.loc||'').split(',').filter(Boolean);

@@ -285,7 +285,7 @@ button,input,textarea{font:inherit;color:inherit}
 .castmore{align-self:center;height:46px;padding:0 12px;border:1px dashed var(--overlay-10);
   border-radius:12px;background:transparent;color:var(--tungsten);font-size:12px;cursor:pointer}
 .castmore:hover{background:var(--hover)}
-.managetitle{font-size:26px;line-height:1.2;margin:16px 0 16px;letter-spacing:.02em}
+.managetitle{font-size:26px;line-height:1.2;margin:26px 0 18px;letter-spacing:.02em}
 .managetitle[hidden]{display:none}
 .dupsum{color:var(--muted);margin:0 0 12px}
 .dupactions{display:flex;gap:8px;margin-bottom:16px}
@@ -861,3 +861,6 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .poster.cover.front[data-frame="sleeve"]{object-position:82% 22%}
 .poster.cover.front[data-frame="front"]{object-position:50% 22%}
 .poster.cover.whole{object-fit:contain;background:#000;object-position:50% 50%}
+
+/* JAV 入口用「番」字本身，不用任何站点的 logo。字形按其余描边图标的视觉重量调。 */
+.edge .glyph{font-size:19px;line-height:1;font-weight:500;letter-spacing:0}
