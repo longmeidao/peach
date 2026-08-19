@@ -1,1 +1,8 @@
+# 仓库里一律存 LF，工作区也一律签出 LF。
+# 2026-08：Windows 侧的编辑器把 105 个文件整体改写成 CRLF，git 视作全文件改动，
+# 16000 行的假 diff 把真正未提交的那点改动完全埋掉。跨 Windows/macOS 两台机器
+# 开发时，这条必须显式声明，不能依赖各自的 core.autocrlf。
+* text=auto eol=lf
+
+# 第三方自托管产物按原样保存，不做任何换行改写。
 web/vendor/videojs/** -text
