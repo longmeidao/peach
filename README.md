@@ -153,11 +153,20 @@ sh scripts/setup_macos_port80.sh check          # 先验证，不需要 root
 sudo sh scripts/setup_macos_port80.sh install
 ```
 
-`rdr-anchor` 必须落在 translation 段：pf 要求规则严格按 options → normalization →
-queueing → translation → filtering 排列，追加到 `/etc/pf.conf` 末尾会落在
-`anchor "com.apple/*"`（filtering）之后并报 `Rules must be in order`。脚本因此插在最后
-一条 `rdr-anchor`/`nat-anchor` 之后，并且**先在临时文件上 `pfctl -n -f` 验证过才动系统
-文件**——`/etc/pf.conf` 写坏了，开机时整个包过滤都加载不起来。
+它同时转 80 → 8900 和 443 → 8443；HTTPS 用的还是 `peach-data/secrets/tls` 里那套本机
+CA 证书（`CN=peach.local`，有效期到 2027-09）。
+
+两个 pf 上踩过的坑：
+
+- **`rdr-anchor` 必须落在 translation 段。** pf 要求规则严格按 options → normalization
+  → queueing → translation → filtering 排列，追加到 `/etc/pf.conf` 末尾会落在
+  `anchor "com.apple/*"`（filtering）之后并报 `Rules must be in order`。脚本因此插在
+  最后一条 `rdr-anchor`/`nat-anchor` 之后，并且**先在临时文件上 `pfctl -n -f` 验证过
+  才动系统文件**——`/etc/pf.conf` 写坏了，开机时整个包过滤都加载不起来。
+- **高位端口要显式 `no rdr` 排除。** 只加转发规则时，直连 `127.0.0.1:8900` 会 TCP 连得上、
+  HTTP 却永远收不到响应：lo0 上的 rdr 状态把这条流也一起翻译了。托盘的健康检查正好走这个
+  地址，于是服务明明在跑却一直被判成「未运行」。translation 规则是第一条命中就生效
+  （和 filter 的最后一条命中相反），所以 `no rdr` 必须写在转发规则前面。
 
 跨两台机器开发时换行口径由 `.gitattributes` 的 `* text=auto eol=lf` 固定。不要依赖各自的
 `core.autocrlf`：2026-08 之前 Windows 侧把 105 个文件整体改写成 CRLF，`git status` 长期显示

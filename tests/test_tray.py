@@ -20,6 +20,7 @@ def load_script(name: str):
     return module
 
 
+from peach.config import SECRETS_DIR
 from peach.tray import (
     AlreadyRunning, PeachTray, ServiceManager, ServiceSpec, SingleInstance,
     apply_macos_template, build_service_specs, create_icon, enable_hidpi,
@@ -124,15 +125,29 @@ class MacMenuBarTests(unittest.TestCase):
         self.assertTrue(opaque, "模板图不该整张透明")
         self.assertTrue(all(p[:3] == (0, 0, 0) for p in opaque), "模板图的颜色必须全黑")
 
-    def test_service_spec_avoids_privileged_ports_and_a_pinned_address(self):
-        """80/443 在 macOS 上要 root；地址钉死等于换个 Wi-Fi 就打不开。"""
+    def test_service_specs_avoid_privileged_ports_and_a_pinned_address(self):
+        """80/443 在 macOS 上要 root，所以服务跑在高位端口、由 pf 转发过去；
+        地址钉死等于换个 Wi-Fi 就打不开。"""
         specs = build_service_specs()
-        self.assertEqual(len(specs), 1)
-        command = specs[0].command
-        self.assertIn("--port", command)
-        self.assertGreater(int(command[command.index("--port") + 1]), 1024)
-        self.assertNotIn("--mdns-address", command)
-        self.assertNotIn("--ssl-certfile", command)
+        self.assertIn(len(specs), (1, 2))          # 没有 TLS 材料时只有 http
+        self.assertEqual(specs[0].name, "http")
+        for spec in specs:
+            command = spec.command
+            self.assertIn("--port", command)
+            self.assertGreater(int(command[command.index("--port") + 1]), 1024)
+            self.assertNotIn("--mdns-address", command)
+
+    def test_https_spec_only_appears_with_real_tls_material(self):
+        """macOS 这份是开发环境：没有本机 CA 也应该能用，不像 Windows 那样直接报错。"""
+        specs = {spec.name: spec for spec in build_service_specs()}
+        material = (SECRETS_DIR / "tls" / "peach.crt").is_file()
+        self.assertEqual("https" in specs, material)
+        if material:
+            command = specs["https"].command
+            self.assertIn("--ssl-certfile", command)
+            # 两份服务只能有一份发布 mDNS，否则同名记录互相打架。
+            self.assertIn("--no-mdns", command)
+            self.assertTrue(str(specs["https"].verify).endswith("peach-local-ca.crt"))
 
 
 class TemplateHookTests(unittest.TestCase):

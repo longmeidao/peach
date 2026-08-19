@@ -1,5 +1,5 @@
 #!/bin/sh
-# 让 http://peach.local/ 不带端口也能打开。
+# 让 http(s)://peach.local/ 不带端口也能打开。
 #
 # macOS 和其他 Unix 一样，1024 以下的端口只有 root 能监听。Peach 在 macOS 上跑在
 # 非特权的 8900（见 peach.tray.MACOS_PORT），所以 `peach.local:8900` 通、
@@ -26,6 +26,7 @@ ANCHOR_NAME="gg.lmd.peach"
 ANCHOR_FILE="/etc/pf.anchors/${ANCHOR_NAME}"
 DAEMON="/Library/LaunchDaemons/${ANCHOR_NAME}.pf.plist"
 TARGET_PORT="${PEACH_PORT:-8900}"
+TLS_PORT="${PEACH_TLS_PORT:-8443}"
 ACTION="${1:-install}"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -66,15 +67,24 @@ if [ "$ACTION" = "uninstall" ]; then
     grep -v "$ANCHOR_NAME" /etc/pf.conf > "$WORK/pf.conf"
     cp "$WORK/pf.conf" /etc/pf.conf
     pfctl -f /etc/pf.conf 2>/dev/null || true
-    echo "已移除 80 -> ${TARGET_PORT} 的重定向"
+    echo "已移除 80/443 的重定向"
     exit 0
 fi
 
 cat > "$ANCHOR_FILE" <<RULES
 # 由 scripts/setup_macos_port80.sh 生成，勿手改。
+#
+# translation 规则是**第一条命中就生效**（和 filter 的最后一条命中相反），所以
+# 例外必须写在前面。没有这两条 \`no rdr\` 时，直连 127.0.0.1:${TARGET_PORT} 会 TCP
+# 连得上、HTTP 却永远收不到响应——lo0 上的 rdr 状态把这条流也一起翻译了。托盘的
+# 健康检查正好走这个地址，于是服务明明在跑却一直被判成「未运行」。
+no rdr on lo0 proto tcp from any to any port ${TARGET_PORT}
+no rdr on lo0 proto tcp from any to any port ${TLS_PORT}
 # 本机自己访问走 lo0，其他设备走真实网卡，两条都要。
 rdr pass on lo0 inet proto tcp from any to any port 80 -> 127.0.0.1 port ${TARGET_PORT}
 rdr pass inet proto tcp from any to any port 80 -> 127.0.0.1 port ${TARGET_PORT}
+rdr pass on lo0 inet proto tcp from any to any port 443 -> 127.0.0.1 port ${TLS_PORT}
+rdr pass inet proto tcp from any to any port 443 -> 127.0.0.1 port ${TLS_PORT}
 RULES
 
 # 先在临时文件上验证，通过了才动系统文件。
@@ -104,6 +114,7 @@ pfctl -f /etc/pf.conf
 launchctl bootout system "$DAEMON" 2>/dev/null || true
 launchctl bootstrap system "$DAEMON"
 
-echo "已把 80 重定向到 ${TARGET_PORT}"
-echo "  验证：curl -sI --noproxy '*' http://peach.local/healthz | head -1"
+echo "已把 80 -> ${TARGET_PORT}、443 -> ${TLS_PORT}"
+echo "  验证：curl -s --noproxy '*' -o /dev/null -w '%{http_code}\\n' http://peach.local/healthz"
+echo "        curl -s --noproxy '*' -o /dev/null -w '%{http_code}\\n' https://peach.local/healthz"
 echo "  移除：sudo sh $0 uninstall"

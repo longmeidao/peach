@@ -27,6 +27,8 @@ DEFAULT_LAN_ADDRESS = "192.168.50.162"
 #: macOS 菜单栏项拉起的端口。80/443 在 macOS 上要 root，开发机不该为一个菜单栏图标
 #: 去要管理员权限；本机 CA 的那套 TLS 材料也是给 Windows 生产实例签的。
 MACOS_PORT = 8900
+#: HTTPS 同理，443 也要 root，所以走 8443。
+MACOS_TLS_PORT = 8443
 #: 单击菜单栏/托盘图标打开的地址。Windows 生产实例有本机 CA 的 HTTPS 和 80/443；
 #: macOS 是开发环境，走非特权端口的 HTTP。
 OPEN_URL = (
@@ -256,20 +258,40 @@ def _peach_executable() -> Path:
 
 
 def build_macos_service_specs() -> tuple[ServiceSpec, ...]:
-    """macOS 只起一个非特权端口的 HTTP 服务。
+    """macOS 用非特权端口起 HTTP，有 TLS 材料时再加一个 HTTPS。
 
-    不钉 `--mdns-address`：这台机器会换网络，钉死等于换个 Wi-Fi 就打不开
-    （见 `peach.mdns` 的地址复查）。
+    80/443 在 macOS 上要 root，所以服务本身跑在 8900/8443，由 pf 把 80/443 转过去
+    （`scripts/setup_macos_port80.sh`）。不钉 `--mdns-address`：这台机器会换网络，
+    钉死等于换个 Wi-Fi 就打不开（见 `peach.mdns` 的地址复查）。
+
+    证书缺失时**只是不起 HTTPS**，不像 Windows 那样直接报错——macOS 这份是开发环境，
+    没有本机 CA 也应该能用。
     """
     peach = str(_peach_executable())
-    return (
+    specs = [
         ServiceSpec(
             "http",
             f"http://127.0.0.1:{MACOS_PORT}/healthz",
             (peach, "serve", "--host", "0.0.0.0", "--port", str(MACOS_PORT)),
             True,
         ),
-    )
+    ]
+    cert_dir = SECRETS_DIR / "tls"
+    ca, cert, key = (cert_dir / n for n in
+                     ("peach-local-ca.crt", "peach.crt", "peach.key"))
+    if all(path.is_file() for path in (ca, cert, key)):
+        specs.append(ServiceSpec(
+            "https",
+            # 证书签的是 `peach.local`，SAN 里的 IP 是 Windows 那台的，所以只能按名字校验。
+            f"https://peach.local:{MACOS_TLS_PORT}/healthz",
+            (
+                peach, "serve", "--host", "0.0.0.0", "--port", str(MACOS_TLS_PORT),
+                "--no-mdns",
+                "--ssl-certfile", str(cert), "--ssl-keyfile", str(key),
+            ),
+            str(ca),
+        ))
+    return tuple(specs)
 
 
 def build_service_specs(lan_address: str | None = None) -> tuple[ServiceSpec, ...]:

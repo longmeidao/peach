@@ -185,7 +185,9 @@ def create_app(
         response.headers["Referrer-Policy"] = "same-origin"
         return response
 
-    @app.get("/healthz")
+    # 健康检查常被 HEAD 探测（`curl -I`、各种 uptime 工具）。本仓库其他公开端点
+    # 都显式声明了 GET+HEAD，只有这个漏了，HEAD 会拿到 405。
+    @app.api_route("/healthz", methods=["GET", "HEAD"])
     def healthz() -> dict[str, Any]:
         # 不探测/迁移数据库；健康检查必须无副作用。
         ffmpeg = resolver.ffmpeg()
