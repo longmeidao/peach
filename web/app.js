@@ -14,6 +14,25 @@ const fmtClock=s=>{s=Math.max(0,Math.floor(Number(s)||0));const h=s/3600|0,m=(s%
   return h?`${h}:${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')}`:`${m}:${String(x).padStart(2,'0')}`};
 const fmtSize=b=>b>=1099511627776?(b/1099511627776).toFixed(2)+' TB':b>=1073741824?(b/1073741824).toFixed(1)+' GB':(b/1048576|0)+' MB';
 const LOC={local:'本地','115':'115',pikpak:'PikPak',online:'在线'};
+
+/* ── 脱盘模式 ─────────────────────────────────────────────────────────────────
+   脱盘是来源级的：外置盘拔掉只影响 local，115/PikPak 照常可播；反过来也一样。
+   服务端 /api/sources 是唯一判据，前端只负责置灰筛选和换掉播放器。 ── */
+let sourceOnline={};
+const sourceOffline=key=>sourceOnline[key]===false;
+const OFFLINE_HINT='脱盘模式：这个来源当前没有挂载';
+const OFFLINE_REASON={local:'本地硬盘没有挂载，接上后点重新检测即可播放。',
+  '115':'115 网盘没有挂载，检查 CloudDrive 是否在运行。',
+  pikpak:'PikPak 没有挂载，检查 CloudDrive 是否在运行。'};
+const offlineReason=key=>OFFLINE_REASON[key]||'这个来源当前没有挂载。';
+async function loadSourceStatus(){
+  try{
+    const d=await api('/api/sources');
+    sourceOnline=Object.fromEntries((d.sources||[]).map(s=>[s.location,!!s.online]));
+  }catch(_e){sourceOnline={}}
+  document.body.classList.toggle('offline-source',Object.values(sourceOnline).includes(false));
+  return sourceOnline;
+}
 const DURATION_TAGS=new Set(['短片-2分内','中片-10分内','长片-30分内','超长片-30分上']);
 const SETTINGS_KEY='peach.settings.v1';
 const DEFAULT_SETTINGS={autoRefresh:true,refreshMinutes:5,batchSize:60,defaultSort:'daily',hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'cover'};
@@ -199,10 +218,17 @@ function mountDetailPlayer(it,video,autoplay){
   player.on(['loadstart','progress','waiting','stalled'],showNet);
   player.on(['canplay','playing'],()=>{updateNet();hideNet()});
   player.on('error',()=>{
-    if(!segmentedSource||fallbackUsed||player.isDisposed())return;
-    fallbackUsed=true;segmentedSource=false;
-    player.src(directDetailSource(it));
-    if(autoplay)player.play().catch(()=>{});
+    if(segmentedSource&&!fallbackUsed&&!player.isDisposed()){
+      fallbackUsed=true;segmentedSource=false;
+      player.src(directDetailSource(it));
+      if(autoplay)player.play().catch(()=>{});
+      return;
+    }
+    // 播到一半掉盘时 video 元素只报通用错误；来源状态才分得清脱盘和文件损坏。
+    loadSourceStatus().then(status=>{
+      if(status[it.location]!==false||player.isDisposed())return;
+      player.error({code:2,message:`脱盘模式 · ${offlineReason(it.location)}`});
+    });
   });
   detailPlayer.ready(()=>{enforceDuration();if(statsButton)statsButton.hidden=false});
   if(statsButton&&statsPanel)statsButton.onclick=()=>{
@@ -538,7 +564,10 @@ async function buildBars(){
   const chips=(items,key,multi,limit)=>`<div class="chips">`+items.slice(0,limit||999).map(it=>{
     const sel=(state[key]||'').split(',').filter(Boolean).includes(String(it.k));
     const dot=key==='loc'?(SRCICON[it.k]||`<i class="cost ${it.cost}"></i>`):'';
-    return `<button class="chip" aria-pressed="${sel}" data-key="${key}" data-multi="${multi?1:0}"
+    // 脱盘的来源留在列表里但不可点：数量还有意义，点进去只会得到一屏放不出的卡片。
+    const off=key==='loc'&&sourceOffline(it.k);
+    return `<button class="chip${off?' offline':''}" aria-pressed="${sel}" data-key="${key}" data-multi="${multi?1:0}"
+      ${off?`disabled title="${OFFLINE_HINT}"`:''}
       data-val="${esc(it.k)}">${dot}${esc(it.label||it.k)}${it.n!=null?`<span class="n">${it.n.toLocaleString()}</span>`:''}</button>`;
   }).join('')+`</div>`;
   // 按语义类别区分来源、创作者、内容和技术规格。
@@ -962,7 +991,10 @@ async function openIndex(kind,q,push=true){
     finally{if(requestSeq===indexRequestSeq)more.disabled=false}};
 }
 
-const ENTITY_LABELS={performer:'女优',studio:'厂牌',creator:'创作者',series:'系列'};
+const ENTITY_LABELS={performer:'艺人',studio:'厂牌',creator:'创作者',series:'系列'};
+/* 「女优」只用于番号发行物。素人、创作者自制和网红内容里的出镜者是艺人，
+   套上 JAV 的行业称谓既不准确也会和创作者身份混淆。判据由后端 `is_jav` 给。 */
+const performerLabel=it=>it&&it.is_jav?'女优':'艺人';
 let entityRequestSeq=0;
 async function fetchEntityItems(kind,name,entityTag,offset=0){
   const p=new URLSearchParams();p.set(kind,name);p.set('limit','48');p.set('offset',String(offset));p.set('sort','new');
@@ -1372,7 +1404,9 @@ async function loadShorts(requestSeq=loadRequestSeq){
      ||state.state==='ads'||state.state==='trash'){
     $('#shortsSec').hidden=true;$('#grid').querySelector('#shortsInline')?.remove();return}
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
-  p.set('orient','竖屏');p.set('limit',18);p.set('offset',0);p.set('sort','new');
+  /* 排序跟着主列表走，不再写死 sort=new。写死等价于 `id DESC`：换一批换掉了整页网格，
+     竖屏条却永远是同样那 18 条最新的，连每日轮换都不生效。 */
+  p.set('orient','竖屏');p.set('limit',18);p.set('offset',0);
   const d=await api('/api/items?'+p);
   if(requestSeq!==loadRequestSeq)return;
   if(!d.items.length){$('#shortsSec').hidden=true;return}
@@ -1422,6 +1456,7 @@ async function openItem(id,push=true,mixContext=null){
   const it=await api('/api/item?id='+id); if(it.error)return;
   current=it; CACHE[it.id]=it;
   const gated=it.cost==='metered';
+  const offline=sourceOffline(it.location);
   const who=it.creator||it.code||it.studio||'未归属';
   const refs=it.entity_refs||{},studioRef=(refs.studio||[])[0];
   // 共演作品的女优逐行列出，每行带自己的头像；标签只写在第一行，其余留空保持对齐。
@@ -1459,7 +1494,7 @@ async function openItem(id,push=true,mixContext=null){
         <div class="idrow">${list.map((item,i)=>idCell(kind,item,i)).join('')}${extra}</div></section>`
     : '';
   const identityRows=
-    idGroup('女优','performer',castList,
+    idGroup(performerLabel(it),'performer',castList,
       castOverflow?`<button class="castmore" id="castMore">还有 ${castOverflow} 位</button>`:'')
     +idGroup('厂牌','studio',studioList)
     +idGroup('创作者','creator',creatorList)
@@ -1470,7 +1505,14 @@ async function openItem(id,push=true,mixContext=null){
        <button class="playerstatsbtn" id="playerStatsBtn" aria-label="播放统计" title="播放统计" aria-pressed="false" hidden>${icon('chart')}</button>
        <div class="playernet" id="playerNet" role="status" aria-live="polite" hidden></div>
        <div class="playerstats" id="playerStats" role="status" hidden></div>
-      ${gated?`<div class="gate" id="gate">
+      ${offline?`<div class="gate offline" id="offlineGate" role="status">
+          ${srcBadge(it.location,it.cost,'srcbig')}
+          <b style="font-size:14px">脱盘模式</b>
+          <span style="font-size:12px;color:var(--muted)">${esc(offlineReason(it.location))}</span>
+          <button class="chip" id="offlineRetry" type="button">重新检测</button></div>
+        <video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="none"
+          hidden style="display:none"></video>`
+       :gated?`<div class="gate" id="gate">
           ${srcBadge(it.location,it.cost,'srcbig')}
           <span style="font-size:12px;color:var(--muted)">点此开始拉流 · ${fmtSize(it.size||0)}</span></div>
         <video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="none" hidden></video>`
@@ -1623,7 +1665,18 @@ async function openItem(id,push=true,mixContext=null){
       if(vv.requestVideoFrameCallback)vv.requestVideoFrameCallback((t)=>paint(t));else requestAnimationFrame(paint)};
     vv.addEventListener('play',()=>paint(performance.now()),{once:true});return()=>{stopped=true}};
   let stopAmbient=()=>{};
-  if(g)g.onclick=()=>{vv.hidden=false;g.remove();mountDetailPlayer(it,vv,true);stopAmbient=startAmbient()};
+  const offlineGate=$('#offlineGate');
+  if(offlineGate){
+    const retry=$('#offlineRetry');
+    if(retry)retry.onclick=async()=>{
+      retry.disabled=true;
+      const status=await loadSourceStatus();
+      retry.disabled=false;
+      if(status[it.location]===false){retry.textContent='仍未挂载 · 再试';return}
+      openItem(it.id,false);            // 盘回来了就按正常路径重开，不在这里半路挂播放器
+    };
+  }
+  else if(g)g.onclick=()=>{vv.hidden=false;g.remove();mountDetailPlayer(it,vv,true);stopAmbient=startAmbient()};
   else{mountDetailPlayer(it,vv,true);stopAmbient=startAmbient()}
   vv.addEventListener('emptied',()=>stopAmbient(),{once:true});
   $('#stage').scrollIntoView({behavior:'auto',block:'start'});
@@ -1937,4 +1990,6 @@ async function restoreRoute(){
 }
 window.addEventListener('popstate',restoreRoute);
 buildEdge();
-buildBars().then(async()=>{buildEdge();wireAllDrag();await load(true);await restoreRoute();scheduleStickySurfaces()});
+loadSourceStatus()
+  .then(buildBars)
+  .then(async()=>{buildEdge();wireAllDrag();await load(true);await restoreRoute();scheduleStickySurfaces()});

@@ -501,6 +501,9 @@ def q_item(contract: WebContract, aid):
     c.close()
     d["cost"] = COST.get(d["location"], "metered")
     d["has_thumb"] = contract.has_snapshot(d["snapshot_path"])
+    # 「女优」是番号发行物的行业称谓；其他内容里出镜者只是艺人。形态判据只有
+    # `is_jav_code` 一份（分隔符规则是踩过坑换来的），不能在前端再写一遍。
+    d["is_jav"] = is_jav_code(d.get("code"))
     d.pop("snapshot_path", None); d.pop("path", None)
     return d
 

@@ -63,17 +63,35 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const idGroup=(label,kind,list,extra='')=>list.length")
         self.assertPageContains('<h5 class="idlabel">${label}</h5>')
         self.assertPageContains(".idrow{display:flex;flex-wrap:wrap")
-        self.assertPageContains("idGroup('女优','performer',castList,")
+        # 出镜者标签跟着作品形态走，不再写死「女优」——见 performerLabel。
+        self.assertPageContains("idGroup(performerLabel(it),'performer',castList,")
         self.assertPageContains("idGroup('厂牌','studio',studioList)")
         self.assertPageLacks("const performerName=performerRef?.name")
         self.assertPageLacks(".identityrow", "旧的逐行布局必须整段删掉")
 
+    def test_performer_label_says_actress_only_for_jav(self):
+        """「女优」是番号发行物的行业称谓。
+
+        素人、创作者自制和网红内容里的出镜者是艺人：套上 JAV 称谓既不准确，
+        也会和同名的 creator 身份混淆。形态判据只有后端 `is_jav_code` 一份。
+        """
+        self.assertPageContains("const performerLabel=it=>it&&it.is_jav?'女优':'艺人';")
+        self.assertPageContains("const ENTITY_LABELS={performer:'艺人'")
+
     def test_avatar_tiles_do_not_inherit_the_text_link_underline(self):
-        # 头像格子是 flex 容器，`.entitylink:hover` 的下划线会横穿整行，
-        # 连上面的头像都被划上；它们已有描边和提亮两种 hover 反馈。
-        self.assertPageContains(".idcell:hover,.mav:hover{text-decoration:none}")
+        """取消规则必须真的压过 `.entitylink:hover`，不能只是写在文件里。
+
+        原来的断言只查子串在不在。取消规则当时排在被覆盖的规则之前，两者特异度
+        同为 0-2-0，后来者胜，下划线照旧出现，测试却一直是绿的。
+        """
+        cancel = ".idcell.entitylink:hover,.mav.entitylink:hover{text-decoration:none}"
+        underline = ".entitylink:hover{text-decoration:underline}"
+        self.assertPageContains(cancel)
         # 行内文字身份仍然要保留下划线，别把 entitylink 整条规则删掉。
-        self.assertPageContains(".entitylink:hover{text-decoration:underline}")
+        self.assertPageContains(underline)
+        # 取消规则同时靠更高特异度和更靠后的位置压住它；位置这一半在这里守住。
+        if self.page.index(cancel) < self.page.index(underline):
+            self.fail("头像格子的取消规则排在 .entitylink:hover 之前，会被后者覆盖")
 
     def test_every_identity_cell_can_carry_its_own_portrait(self):
         self.assertPageContains('item.id?`<img src="/entity-image?kind=performer&id=${item.id}"')

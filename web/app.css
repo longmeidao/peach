@@ -286,10 +286,6 @@ button,input,textarea{font:inherit;color:inherit}
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
 .idcell:hover .idface{box-shadow:0 0 0 2px var(--tungsten)}
 .idcell:hover .idname{color:var(--ink)}
-/* 下划线只适合行内文字链接。头像格子是 flex 容器，`.entitylink:hover` 的下划线会
-   横穿整行，连上面的头像都被划上；它们本来就有自己的 hover 反馈——face 描边加
-   名字提亮，卡片头像是描边——不需要再叠一条线。 */
-.idcell:hover,.mav:hover{text-decoration:none}
 .castmore{align-self:center;height:46px;padding:0 12px;border:1px dashed var(--overlay-10);
   border-radius:12px;background:transparent;color:var(--tungsten);font-size:12px;cursor:pointer}
 .castmore:hover{background:var(--hover)}
@@ -329,6 +325,12 @@ button,input,textarea{font:inherit;color:inherit}
 .indexmore:disabled,.entitymore:disabled{opacity:.5;cursor:wait}
 .entitylink{border:0;background:none;padding:0;color:var(--tungsten);cursor:pointer;text-decoration:none}
 .entitylink:hover{text-decoration:underline}
+/* 下划线只适合行内文字链接。头像格子是 flex 容器，`.entitylink:hover` 的下划线会
+   横穿整行，连上面的头像都被划上；它们本来就有自己的 hover 反馈——face 描边加
+   名字提亮，卡片头像是描边——不需要再叠一条线。
+   2026-08-19：这条原本写在 `.entitylink:hover` 之前，两者特异度都是 0-2-0，
+   后来者胜，于是下划线照样出现。现在同时靠加类提高特异度和排在后面来压住它。 */
+.idcell.entitylink:hover,.mav.entitylink:hover{text-decoration:none}
 
 /* ── 主区：满屏，大图 ── */
 main{position:relative;z-index:1;padding:14px 16px 90px}
@@ -880,3 +882,14 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   place-items:center;line-height:0}
 .sorts .javlayout button svg{width:17px;height:17px;stroke:currentColor;fill:none;
   stroke-width:1.8;display:block}
+
+/* ── 脱盘模式 ────────────────────────────────────────────────────────────────
+   来源盘不在时只置灰该来源的筛选，其余来源照常。数量仍然显示：账本是本机真相，
+   脱的是盘不是记录。 ── */
+.chip.offline{opacity:.42;cursor:not-allowed;text-decoration:line-through
+  color-mix(in srgb,var(--muted) 70%,transparent)}
+.chip.offline .n{text-decoration:none}
+.gate.offline{cursor:default;border-style:solid;border-color:var(--meter);gap:7px}
+.gate.offline b{letter-spacing:.08em}
+.gate.offline span{max-width:34ch;text-align:center;line-height:1.6}
+.gate.offline .chip{cursor:pointer;margin-top:4px}

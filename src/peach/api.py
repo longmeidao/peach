@@ -10,17 +10,19 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Res
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__, web_contract
-from .config import PROJECT_ROOT, PeachSettings
+from .config import LOCATION_ROOT_DECLARATIONS, PROJECT_ROOT, PeachSettings
 from .ffmpeg import FFmpegResolver
 from .http import HttpxTransport
 from .media import (
     FilesystemBackend,
     MediaEngine,
     MediaNotFound,
+    MediaOffline,
     MediaUnavailable,
     StashAdapter,
 )
 from .mdns import create_mdns_publisher
+from .platform import is_unmapped, root_online, translate_ledger_path
 from .previews import PreviewService, PreviewUnavailable
 from .providers import OpenCodeGoClient, ProviderUnavailable, default_registry
 from .repository import LedgerRepository
@@ -49,6 +51,40 @@ def _authorized(request: Request, token: str, args: dict[str, str]) -> bool:
         return True
     supplied = args.get("t") or request.headers.get("X-Token") or request.cookies.get("tok")
     return supplied is not None and hmac.compare_digest(str(supplied), token)
+
+
+def _source_status() -> list[dict[str, Any]]:
+    """按 ledger 的 `asset.location` 逐个报告来源可达性。
+
+    脱盘是来源级的：本地硬盘拔掉时 115/PikPak 照常可播，反过来也一样。
+    """
+    rows: list[dict[str, Any]] = []
+    for location, declared in LOCATION_ROOT_DECLARATIONS.items():
+        resolved = translate_ledger_path(declared)
+        mapped = not is_unmapped(resolved)
+        rows.append({
+            "location": location,
+            "declared": declared,
+            "resolved": str(resolved) if mapped else None,
+            "mapped": mapped,
+            "online": bool(mapped and root_online(resolved)),
+        })
+    # 在线资源是 URL，不依赖任何挂载点。
+    rows.append({
+        "location": "online", "declared": None, "resolved": None,
+        "mapped": True, "online": True,
+    })
+    return rows
+
+
+def _offline_response(exc: MediaOffline) -> JSONResponse:
+    """脱盘：来源盘整体不在，客户端据此显示「脱盘模式」而不是当成文件丢失。"""
+    response = JSONResponse(
+        {"error": "offline", "source": exc.source, "id": exc.asset_id},
+        status_code=503,
+    )
+    response.headers["X-Peach-Offline"] = "1"
+    return response
 
 
 def create_app(settings: PeachSettings | None = None) -> FastAPI:
@@ -210,6 +246,8 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
             path = media_engine.filesystem.file_for(asset, thumbnail=False)
         except MediaNotFound:
             return JSONResponse({"error": "no such id"}, status_code=404)
+        except MediaOffline as exc:
+            return _offline_response(exc)
         except MediaUnavailable:
             return JSONResponse({"error": "unavailable"}, status_code=404)
         try:
@@ -257,6 +295,8 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
             resolved = _hls_plan(id) if plan.protocol == "hls" else None
         except MediaNotFound:
             return JSONResponse({"error": "no such id"}, status_code=404)
+        except MediaOffline as exc:
+            return _offline_response(exc)
         except MediaUnavailable:
             return JSONResponse({"error": "unavailable"}, status_code=404)
         if resolved and session:
@@ -297,6 +337,8 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
             resolved = _hls_plan(id)
         except MediaNotFound:
             return JSONResponse({"error": "no such id"}, status_code=404)
+        except MediaOffline as exc:
+            return _offline_response(exc)
         except (MediaUnavailable, TranscodeUnavailable):
             return PlainTextResponse("hls unavailable", status_code=404)
         if resolved is None:
@@ -332,6 +374,8 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
             )
         except MediaNotFound:
             return JSONResponse({"error": "no such id"}, status_code=404)
+        except MediaOffline as exc:
+            return _offline_response(exc)
         except MediaUnavailable:
             return JSONResponse({"error": "unavailable"}, status_code=404)
         except SegmentCancelled:
@@ -368,6 +412,8 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
             path = media_engine.file_for(id, thumbnail=True)
         except MediaNotFound:
             return JSONResponse({"error": "no such id"}, status_code=404)
+        except MediaOffline as exc:
+            return _offline_response(exc)
         except MediaUnavailable:
             return JSONResponse({"error": "unavailable"}, status_code=404)
         response = FileResponse(path)
@@ -464,6 +510,19 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         if not _authorized(request, settings.token, args):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         return providers.health()
+
+    @app.get("/api/sources")
+    def source_health(request: Request):
+        """无副作用的来源可达性。前端据此把脱盘来源的筛选置灰。"""
+        args = _first_query_values(request)
+        if not _authorized(request, settings.token, args):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        rows = _source_status()
+        return {
+            "ok": True,
+            "sources": rows,
+            "offline": [row["location"] for row in rows if not row["online"]],
+        }
 
     @app.get("/api/providers/opencode-go/models")
     def opencode_go_models(request: Request):
