@@ -190,6 +190,21 @@ SAN 里的局域网 IP 会随 DHCP 变化失效，**但不需要人去管，也�
 - **高位端口另外用 `no rdr` 排除一次。** translation 规则是第一条命中就生效（和 filter 的
   最后一条命中相反），所以例外必须写在转发规则前面。
 
+### 两台机器怎么保持一致
+
+- **代码**走私有 GitHub 仓库 `longmeidao/peach`（`origin`）。**不自动推送**：自动推会把还没
+  审的改动直接发出去，也绕过「push 前先确认」。开工前跑一条命令看两边差了多少，别在旧代码
+  上接着写：
+
+  ```bash
+  sh scripts/sync_status.sh      # 落后/领先几个提交、工作区脏不脏、账本同步状态
+  ```
+
+- **账本**走 `peach.sync` 的单写者复制（见上文「账本复制」），和代码是两条独立链路，
+  `sync_status.sh` 会一并报告。
+- **运行数据里的大件**（`generated/`、`archive/`、`sources/`、`tools/`）留在硬盘上，两边共用，
+  不进 Git 也不复制。
+
 跨两台机器开发时换行口径由 `.gitattributes` 的 `* text=auto eol=lf` 固定。不要依赖各自的
 `core.autocrlf`：2026-08 之前 Windows 侧把 105 个文件整体改写成 CRLF，`git status` 长期显示
 117 个文件被修改、16000 行增删，而真正有实质改动的只有 1 个。

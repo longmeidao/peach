@@ -87,6 +87,12 @@ bundle 声明 `LSUIElement`，输出重定向到 `logs/macos-tray.log`。图标�
 - 冲突不能靠合并解决，只能选一边：复制其一覆盖另一份，或删掉一侧 `.sync.json`
   重新播种。别写「已同步」这种含糊结论。
 
+## 代码同步
+
+代码在私有仓库 `longmeidao/peach`（`origin`），两台机器手动 push/pull，**不自动推送**。
+开工前先 `sh scripts/sync_status.sh`：落后远端就先 `git pull --rebase`，别在旧代码上接着
+写；账本是另一条链路（`peach.sync`），同一个脚本会一并报告。
+
 ## Git 陷阱
 
 - **换行**由 `.gitattributes` 的 `* text=auto eol=lf` 固定，不要依赖各自的
