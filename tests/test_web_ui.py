@@ -129,6 +129,20 @@ class WebUiSourceTests(unittest.TestCase):
             "const avatarName=identity.kind?identity.name:"
             "(performer||it.creator||it.studio||who);")
 
+    def test_narrow_search_has_a_way_out(self):
+        """窄屏展开搜索后必须有退出入口。
+
+        失焦那条 140ms 的兜底只在输入框为空时才收起搜索栏，输入过内容就没有出口了。
+        返回箭头无条件收起，并让整条顶栏恢复——展开期间筛选和品牌要让位，否则筛选
+        按钮会和返回箭头叠在同一个位置上。
+        """
+        self.assertPageContains('id="searchBack"')
+        self.assertPageContains("$('#searchBack').onclick=()=>{")
+        self.assertPageContains(".top:has(.search.open) #filterBtn,")
+        self.assertPageContains(".top:has(.search.open) .searchback{display:inline-flex")
+        # 搜索框不铺满：左边留出返回按钮的位置。
+        self.assertPageContains(".search{position:absolute;left:52px;right:8px;top:8px")
+
     def test_avatar_tiles_do_not_inherit_the_text_link_underline(self):
         """取消规则必须真的压过 `.entitylink:hover`，不能只是写在文件里。
 

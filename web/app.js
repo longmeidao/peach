@@ -1877,6 +1877,13 @@ $('#immerseBtn').onclick=()=>openTok();
 
 $('#searchBtn').onclick=()=>{const s=$('.search');s.classList.toggle('open');
   if(s.classList.contains('open'))$('#q').focus()};
+/* 窄屏退出搜索。失焦那条 140ms 的兜底只在输入框为空时才收起搜索栏，
+   输入过内容就没有出口了；返回按钮无条件收起，并清掉下拉栏。 */
+$('#searchBack').onclick=()=>{
+  $('.search').classList.remove('open');
+  $('#searchMenu').hidden=true;
+  $('#q').blur();
+};
 $('#q').addEventListener('blur',()=>setTimeout(()=>{if(!$('#q').value&&!$('#searchMenu').matches(':hover'))$('.search').classList.remove('open');$('#searchMenu').hidden=true},140));
 $('#brandHome').onclick=e=>{e.preventDefault();
   state={loc:state.loc,creator:'',studio:'',tag:'',len:'',dur_min:'',dur_max:'',orient:'',state:'',sort:appSettings.defaultSort,seed:String((Date.now()^(Math.random()*1e9|0))%99991),q:'',thumb:'1'};
