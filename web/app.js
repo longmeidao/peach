@@ -81,11 +81,19 @@ const srcBadge=(loc,cost,cls)=>
   +(SRCICON[loc]||'')+`${LOC[loc]||loc}${cost==='metered'?' · 计费':''}</span>`;
 
 // sort 默认 daily：同一天进来顺序固定，隔天自动换一批（不是每次刷新都变）
+/* 初始种子按天固定，不是每次加载随机。顶部三层（艺人头像 / 厂牌 / 标签）拿 seed 去请求
+   `/api/tops`，随机种子会让它们每刷新一次就换一批人——用户根本没点「换一批」。主网格是
+   `sort=daily`（服务端按当天日期打散），所以只有上面那排在动，很容易看成是玄学。
+   日期一变自动换一批，和服务端 daily 的口径一致；显式「换一批」仍然用随机种子。 */
+const dailySeed=()=>{
+  const now=new Date();
+  return String((now.getFullYear()*10000+(now.getMonth()+1)*100+now.getDate())%99991);
+};
 const initialParams=new URLSearchParams(location.search);
 let state={loc:initialParams.get('loc')||'local,115',creator:initialParams.get('creator')||'',studio:initialParams.get('studio')||'',
   tag:initialParams.get('tag')||'',len:initialParams.get('len')||'',dur_min:initialParams.get('dur_min')||'',dur_max:initialParams.get('dur_max')||'',
   orient:initialParams.get('orient')||'',state:initialParams.get('state')||'',sort:initialParams.get('sort')||appSettings.defaultSort,
-  seed:initialParams.get('seed')||String((Date.now()^(Math.random()*1e9|0))%99991),q:initialParams.get('q')||'',jav:initialParams.get('jav')||'',thumb:'1'};
+  seed:initialParams.get('seed')||dailySeed(),q:initialParams.get('q')||'',jav:initialParams.get('jav')||'',thumb:'1'};
 $('#q').value=state.q;
 const REP={};   // 创作者/厂牌 → 代表作 id，用来做圆头像（裁接触印相中心格，不另造图）
 let offset=0,total=0,facets=null,current=null,detailReturnPath='/',activeMix=null;
@@ -1890,7 +1898,7 @@ $('#searchBack').onclick=()=>{
 };
 $('#q').addEventListener('blur',()=>setTimeout(()=>{if(!$('#q').value&&!$('#searchMenu').matches(':hover'))$('.search').classList.remove('open');$('#searchMenu').hidden=true},140));
 $('#brandHome').onclick=e=>{e.preventDefault();
-  state={loc:state.loc,creator:'',studio:'',tag:'',len:'',dur_min:'',dur_max:'',orient:'',state:'',sort:appSettings.defaultSort,seed:String((Date.now()^(Math.random()*1e9|0))%99991),q:'',thumb:'1'};
+  state={loc:state.loc,creator:'',studio:'',tag:'',len:'',dur_min:'',dur_max:'',orient:'',state:'',sort:appSettings.defaultSort,seed:dailySeed(),q:'',thumb:'1'};
   route('/');$('#q').value='';disposeStage(false);buildBars();load(true);window.scrollTo({top:0,behavior:'smooth'})};
 $('#tokClose').onclick=()=>{setTokLoading(false);route('/');$('#tok').hidden=true;$('#tokTrack').querySelectorAll('video').forEach(v=>{
   v.pause();v.removeAttribute('src');v.load();if(v.id!=='tokVid')v.remove()});

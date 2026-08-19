@@ -162,6 +162,13 @@ sudo sh scripts/setup_macos_port80.sh install
 `DNS:localhost, IP:127.0.0.1, IP:<本机局域网地址>`；CA 不动，所以 Mac 钥匙串和 iPhone 上
 已经装过的信任继续有效，不用重装。
 
+**有效期必须 ≤ 398 天**（脚本用 397，和 `setup_local_tls.ps1` 一致）。Apple 从 2020-09
+起拒绝有效期更长的 TLS 服务器证书，iOS 上即使根证书已被完全信任也照样报「不受信任」，
+而且报错信息完全看不出是有效期的问题。CA 本身不受这条限制。
+
+SAN 里的局域网 IP **会随 DHCP 变化失效**，届时用 IP 访问会报错（用 `peach.local` 不受
+影响，那才是正式入口）。换网络后重跑一次脚本即可；`PEACH_LAN_IP=none` 可以干脆不写 IP。
+
 健康检查走回环而不是 `peach.local`：后者会先解析到局域网 IP，那条路径要穿过 pf 的转发
 规则，连接慢到几秒甚至超时，于是服务在跑却被判成「未运行」。
 

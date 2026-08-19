@@ -153,6 +153,19 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains(".meta span.who{color:var(--ink-2);cursor:default}")
 
+    def test_initial_seed_is_stable_within_a_day(self):
+        """初始种子按天固定，不能每次加载随机。
+
+        顶部三层拿 seed 去请求 `/api/tops`，随机种子会让它们每刷新一次就换一批人，
+        而用户根本没点「换一批」。主网格是 `sort=daily` 看不出来，只有上面那排在动。
+        显式「换一批」仍然用随机种子。
+        """
+        self.assertPageContains("const dailySeed=()=>{")
+        self.assertPageContains("seed:initialParams.get('seed')||dailySeed()")
+        self.assertPageLacks("seed:initialParams.get('seed')||String((Date.now()")
+        # 换一批必须还是随机的，否则同一天点多少次都不换。
+        self.assertPageContains("state.sort='seed';state.seed=String(Date.now()%99991)")
+
     def test_avatar_tiles_do_not_inherit_the_text_link_underline(self):
         """取消规则必须真的压过 `.entitylink:hover`，不能只是写在文件里。
 

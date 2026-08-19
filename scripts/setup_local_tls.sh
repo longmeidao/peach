@@ -18,8 +18,14 @@ TLS_DIR="${PEACH_TLS_DIR:-$HOME/Desktop/lmd.gg/peach/peach-data/secrets/tls}"
 CA_CRT="$TLS_DIR/peach-local-ca.crt"
 CA_KEY="$TLS_DIR/peach-local-ca.key"
 NAME="${PEACH_MDNS_NAME:-peach}.local"
+# 局域网地址是**会变的**：换网络或 DHCP 续租之后证书里这条就作废了，届时用
+# 局域网 IP 访问会报错（用 peach.local 不受影响）。`PEACH_LAN_IP=none` 可以不写。
 LAN_IP="${PEACH_LAN_IP:-$(ipconfig getifaddr "$(route -n get default 2>/dev/null | awk '/interface:/{print $2}')" 2>/dev/null || true)}"
-DAYS="${PEACH_CERT_DAYS:-825}"
+[ "$LAN_IP" = "none" ] && LAN_IP=""
+# 397 天，不是随便挑的：Apple 从 2020-09 起拒绝有效期超过 398 天的 TLS 服务器
+# 证书，iOS 上即使根证书已被信任也照样报「不受信任」。Windows 那份
+# setup_local_tls.ps1 用的也是 397。CA 本身不受这条限制（它是 3650 天）。
+DAYS="${PEACH_CERT_DAYS:-397}"
 
 [ -f "$CA_CRT" ] || { echo "找不到 CA 证书：$CA_CRT" >&2; exit 1; }
 [ -f "$CA_KEY" ] || { echo "找不到 CA 私钥：$CA_KEY（只有它能重签）" >&2; exit 1; }
@@ -66,3 +72,4 @@ echo "已用现有 CA 重签服务器证书（CA 未改动，已装的信任继�
 echo "  SAN: ${SAN}"
 openssl x509 -in "$TLS_DIR/peach.crt" -noout -serial -dates | sed 's/^/  /'
 echo "  重启服务后生效：python scripts/install_macos_agent.py install"
+[ -n "$LAN_IP" ] && echo "  注意：${LAN_IP} 是当前的局域网地址，换网络后需要重跑本脚本；peach.local 不受影响"
