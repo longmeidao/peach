@@ -1,6 +1,6 @@
 # Peach 当前状态
 
-最后核验：2026-08-18
+最后核验：2026-08-19
 
 ## 运行态
 
@@ -80,7 +80,12 @@
 - JAV 浏览模式已就位：顶栏「番」入口切换 `state.jav`，列表按番号形态过滤（不是 `code` 非空——那会混进 740 个账号名与站点水印的视频），恒不含竖屏，资料页继承同一开关。`/api/tops` 与 `/api/facets` 接受 `jav=1` 收窄口径，缓存键必须带上口径与种子，否则两套结果互相顶掉。实测顶部女优 30 个换掉 23 个、筛选创作者 60 个换掉 59 个。
 - 版式切换（正封 4:3 / 封套 16:9 / 预览图）只在 JAV 语境出现，按钮长在排序行里跟着 `renderCount()` 一起重建——放独立容器会被重画覆盖。取景按图片自身宽高比分流：整张封套约 1.48 取右侧，竖版正封约 0.70 整张用，`onload` 写 `data-frame`，服务端不另存这个比例。
 - 顶部三层跟着「换一批」的同一个种子轮换。只失效缓存不够：`q_tops` 是 `ORDER BY n DESC` 的确定性查询，实测两次请求结果完全相同。改为放大候选池到展示位的 4 倍再按种子确定性抽样，同种子可重复、不同种子换人、无种子退回严格前 N。
-- 封面抓取默认跳过 FC2：三源实测零命中（见 HANDOFF），400 个必然落空的请求每次续跑都会重试一遍；`--all-codes` 仍可强制尝试。队列的形态判据与 `web_contract.is_jav_code` 共用一份实现。当前已落盘 107 张，队列 859，续跑中。
+- 封面抓取默认跳过 FC2：三源实测零命中（见 HANDOFF），400 个必然落空的请求每次续跑都会重试一遍；`--all-codes` 仍可强制尝试。队列的形态判据与 `web_contract.is_jav_code` 共用一份实现。当前已落盘 568 张，续跑中。
+- 抓取此前两次死在半路：第一次静默丢掉全部进度，第二次拿到堆栈 `httpx.ConnectError: UNEXPECTED_EOF_WHILE_READING`——一个番号的 SSL 抖动让整个三小时的任务退出，日志停在半路看起来像跑完了。现已按条吞掉异常记进 CSV 再继续，长跑批处理不因单条连接问题整体退出。
+- FC2 的数据线走 fc2cmadb（`scripts/fetch_fc2_metadata.py`，需登录 cookie，只写 CSV 不写 ledger）。页面是 Laravel + Inertia，数据在 `<script type="application/json">` 里，不用解析 HTML。正文能拿到标题、发售日、时长、卖家与封面；真正的价值在评论区的两类人工标记：`<video_id>　演员名`（全角空格分隔，一行可多人）与 `3312576-4 = 2471432` 的等价关系。
+- 等价关系同时是合集判据。`FC2PPV-3312576` 是 21 段合集，本地按 `-1.mp4` 分片存。**合集封面不下发给分片**，否则 21 段不同内容会显示同一张图；判为合集时 `cover_url` 留空，分片回落到自己的缩略图。
+- 只抓库里有的 442 个作品页，但每页评论全量留存：一页评论常给几十个 video_id 标演员，本地只对上两三个，只留对得上的等于把评论区的价值丢掉。产出候选 CSV（复核页 `fc2_markings` 层）、按 video_id 汇总的收获 CSV，以及原始评论 JSONL——留原文是因为解析规则一定会漏掉某种写法，有原文就不必重爬。
+- 线上实测补了三种写法：全角等号 `＝2407240`（主语省略即本页）、「一行名字 + 若干作品链接」的作品集式标记（多指向姊妹站 fc2ppvdb），以及 `comments.data` 与 `article.comments` 重叠导致同一条评论投两票——票数是这批候选唯一的置信度信号，翻倍等于把它作废。演员常标在别的作品页上，候选行的演员由全量收获回填。
 - 番号目录冒充创作者的清理已对生产 ledger 执行（`scripts/audit_code_creators.py`，备份 `ledger.pre-codecreator-20260818-184741.db`）。命中 44 个：31 个判为番号、2 个判为站点作品号、11 个判为存疑只入 CSV。写入删创作者关系 121 条、删实体 33 个、清扁平字段 121 条，`code` 净增 31（另外 65 条已有值，脚本只填空缺不覆盖）。asset、asset_tag、performer 计数一条未变，完整性 `ok`、外键违规 0。`HD-abp-758`、`pppd-937ch`、`PRED-785ch`、`Carib-040221-001-FHD` 等假身份已消失，`banbi_555`、`raikun325`、`luckydog22` 等真实上传者与全部 pixiv 画师保留。复核 CSV：`R:\peach-data\generated\code-creator-review.csv`。
 - 判据不看名字形态，只看文件级证据：目录内的媒体文件名必须解析出同一个番号。`HD-` 是画质前缀、`-CH` 是中文字幕版后缀，两者都会让番号提取放弃，于是 `code` 留空、目录名顶替身份。形态相同但真相不同的 `banbi_555`（myfans 账号）和 `AH18`（pixiv 画师，path 是 URL）因此不会命中。
 - 日文汉字身份已补简体检索词（`scripts/add_chinese_search_terms.py`，备份 `ledger.pre-cnterms-20260818-210036.db`）：280 条写入 `entity_search_term`（performer 208、creator 71、series 1），`entity_search_term` 52 → 332，asset 与 entity 计数一条未变，完整性 `ok`、外键违规 0。实测搜「凉森」由 0 条变 24 条，「铃村」15 条、「七泽」10 条，日文原写法「涼森」仍是 24 条无回归，反例「凉宫」仍为 0。映射表只覆盖本库身份里实际出现的字，表外的字原样保留；日文独有字（`凪`、`辻`、`雫`、`笹`、`咲`、`栞`、`冴`、`榊`）没有简体对应，不列。
@@ -120,19 +125,21 @@
 - 本批在隔离服务、真实 ledger 只读条件下完成桌面默认视口与 390×844 手机验收：Prestige 总数 248 时首批只构建 48 张、追加后 96 张；桌面和手机均无横向溢出。女优页标签筛选前后头像 URL 保持不变并只重建作品区；标签页手机完成态为 169 项，四种旧模糊时长标签为 0。浏览器控制台错误/警告为 0。
 - 详情播放释放和 sticky 遮挡在隔离 ledger 浏览器中验收；生产浏览器只做无写入首页/样式检查，未污染真实播放、喜欢或反馈数据。
 - 2026-08-17 批代码改动（merge_entity 回归主线、sheets 色彩元数据重试、media 大小写不敏感匹配）模块级 `unittest` 全部通过：`test_entity_merge` 4 项、`test_scripts` 16 项、`test_media` 9 项等。注意：实测在工具管道里直跑 `python -m unittest discover` 全量会挂起或整会话输出消失（test_jobs 模块极快退出时竞态最明显），模块级独立运行全部通过；唯一可信入口仍是 `& .\scripts\test.ps1`。
+- 2026-08-19 发现「测试通过」曾有一段并不成立：`test_rm_web.py` 与 `test_web_ui.py` 各有一处 `if __name__ == "__main__": unittest.main()` 被插在类中间，其后缩进 4 格的 16 条测试被解析成 if 块语句，从写下起就没被收集过——不报错、不告警，其中包括复核页三类候选的全部数据层断言。修正后全量由 355 升到 371 且全绿。`tests/test_test_collection.py` 用 AST 禁止这种形状，避免再出现「绿灯但没覆盖」。
 
 ## 下一批工作
 
 1. 创作者板的机械识别已做完：`creator-tags-review.csv` 里 42 条 pending 全部产出 candidate（34 candidate、8 skip，见 `creator-tags-candidate-20260817.csv`），没有未覆盖的板。剩下的是用户在 `/review` 页面逐条复核，点「通过」才写 `asset_tag/asset_entity`。注意天花板：全库 7,622 条无标签视频里创作者板最多覆盖约 2,800 条，其余既无创作者也无有效番号（384 个 FC2 + 约 330 个 `WX` 业余码，三源实测零命中）。
-2. 首尾帧额外抽样：识别水印、出处和 `full version available`，生成带证据的「不完整版/剪辑版」候选。首个回归样本为 115 的 `04_Stepsistercaughtmejerkingoff,deepthroat,throatpie.mp4` 片尾。
-3. 补齐女优身份剩余缺口：38 位查不到日文名（多数本名已是日文，无需改动）、15 位图库未收录、5 位所有候选不过质量门槛。头像质量权重的后续档位（人脸感知裁图、清晰关键帧）仍未实现。
-4. 通过官方/公开来源补齐 86 个厂牌 Logo，保留来源和质量门槛。Logo 与头像的取源方向相反：头像应取整理好的图库，Logo 是品牌标识，官网与维基才是权威来源。
-5. PikPak 抽帧已可走直连：代理策略组「📦 PikPak 视频」切到 DIRECT 后实测九帧 64.2 秒、30.5 MB（走代理时为 13.7 秒、163 MB），慢约 4.7 倍但流量少约 5 倍且不占代理预算。创作者采样 88 板据此约 2.7 GB。
-6. 115 抽帧失败的大小写部分已修复：`peach.media.resolve_case_insensitive` 与 `FilesystemBackend.file_for`、`scripts/sheets.py`、`scripts/probe.py` 的 worker 均已接入；2026-08-17 重跑 33 条九帧，31 成功、2 失败。这 2 条的原因已查清（见上一节）：`18349` 是 ledger 时长记错、`12510` 是片源头损坏。2026-08-18 已全部收尾：`sheets.py` 区分失败原因、`probe.py`/`sheets.py` 新增 `--asset`、`18349` 重探重抽成功、`12510` 判为坏片源并留痕，详见上一节。`sheets.py` 遇 `prim:reserved` 非法色彩元数据的重试已完成并有测试。
-7. HLS `stream-plan` 和按需 TS 片段已接入现有 Video.js 内置 VHS。片段时间窗的绝对终点问题已修并已切生产（见上节）；自适应码率、多路清单、首帧/seek 的桌面与手机验收仍未完成。CloudDrive 约 100 MiB 固定块预取仍是来源层成本，服务端分片只能避免整部 MP4 Range，不会消除来源层块预取。
-8. 配置并评估 Stash CommunityScrapers/元数据 Provider，确认缺口后才写新来源适配器。
-9. 配置可复核的真实追更源，之后再接 APScheduler；AI 结果继续只作为候选。
-10. Codex 侧封装技能：`.claude/skills/` 下的六个技能目前只有 Claude 会按 description 自动触发，
+2. FC2 评论标记跑完后逐条复核 `/review` 的 `fc2_markings` 层。这批候选的置信度只有「几条独立评论这么说」一个信号，写在 `performer_votes` 里；匿名评论一律不自动升级为 `approved`。收获 CSV 里库外 video_id 的标记先存着不入库，等对应作品进库时再回配。还没做的：把复核通过的演员写进 `entity`/`asset_entity`，以及按等价关系做跨号去重。
+3. 首尾帧额外抽样：识别水印、出处和 `full version available`，生成带证据的「不完整版/剪辑版」候选。首个回归样本为 115 的 `04_Stepsistercaughtmejerkingoff,deepthroat,throatpie.mp4` 片尾。
+4. 补齐女优身份剩余缺口：38 位查不到日文名（多数本名已是日文，无需改动）、15 位图库未收录、5 位所有候选不过质量门槛。头像质量权重的后续档位（人脸感知裁图、清晰关键帧）仍未实现。
+5. 通过官方/公开来源补齐 86 个厂牌 Logo，保留来源和质量门槛。Logo 与头像的取源方向相反：头像应取整理好的图库，Logo 是品牌标识，官网与维基才是权威来源。
+6. PikPak 抽帧已可走直连：代理策略组「📦 PikPak 视频」切到 DIRECT 后实测九帧 64.2 秒、30.5 MB（走代理时为 13.7 秒、163 MB），慢约 4.7 倍但流量少约 5 倍且不占代理预算。创作者采样 88 板据此约 2.7 GB。
+7. 115 抽帧失败的大小写部分已修复：`peach.media.resolve_case_insensitive` 与 `FilesystemBackend.file_for`、`scripts/sheets.py`、`scripts/probe.py` 的 worker 均已接入；2026-08-17 重跑 33 条九帧，31 成功、2 失败。这 2 条的原因已查清（见上一节）：`18349` 是 ledger 时长记错、`12510` 是片源头损坏。2026-08-18 已全部收尾：`sheets.py` 区分失败原因、`probe.py`/`sheets.py` 新增 `--asset`、`18349` 重探重抽成功、`12510` 判为坏片源并留痕，详见上一节。`sheets.py` 遇 `prim:reserved` 非法色彩元数据的重试已完成并有测试。
+8. HLS `stream-plan` 和按需 TS 片段已接入现有 Video.js 内置 VHS。片段时间窗的绝对终点问题已修并已切生产（见上节）；自适应码率、多路清单、首帧/seek 的桌面与手机验收仍未完成。CloudDrive 约 100 MiB 固定块预取仍是来源层成本，服务端分片只能避免整部 MP4 Range，不会消除来源层块预取。
+9. 配置并评估 Stash CommunityScrapers/元数据 Provider，确认缺口后才写新来源适配器。
+10. 配置可复核的真实追更源，之后再接 APScheduler；AI 结果继续只作为候选。
+11. Codex 侧封装技能：`.claude/skills/` 下的六个技能目前只有 Claude 会按 description 自动触发，
     Codex 只能靠 `AGENTS.md` 索引表主动读。由 Codex 接手时确认当前版本的技能机制与目录约定，
     封装成 Codex 侧可自动触发的形式并指向同一份 `SKILL.md`；机制不存在或确认不了就写 `未取得`，
     保留索引表回退。规范见 `docs/adr/0015-agent-context-layering.md`。
@@ -142,9 +149,9 @@
 <!-- job-status:start -->
 
 <!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->
-<!-- generated 2026-08-18T20:05Z -->
+<!-- generated 2026-08-18T23:56Z -->
 
-- 最近自动交接：`claude` / `Stop` / `completed`，2026-08-18T20:05:48+00:00。
+- 最近自动交接：`claude` / `StopFailure` / `failed`，2026-08-18T23:56:11+00:00。
 - 资产 81769 条，其中视频 24889 条。
 - 待抽帧（可抽 / 缺时长待 probe / 合计）：
   - `local`：3 / 1 / 4
