@@ -25,6 +25,7 @@ from peach.jobs import (
     SourceAccessPolicy,
     require_free_space,
 )
+from peach.platform import system_volume
 from peach.media import remap_managed_path
 
 
@@ -152,7 +153,7 @@ def _existing_video_boards(output_dir: Path) -> set[str]:
 
 
 def build_from_videos(args: argparse.Namespace, ffmpeg: str, ffprobe: str) -> int:
-    require_free_space(Path("C:/"), args.min_free)
+    require_free_space(system_volume(), args.min_free)
     source_sql, source_parameters = SourceAccessPolicy().sql_filter(
         args.location, args.allow_metered
     )
@@ -184,7 +185,7 @@ def build_from_videos(args: argparse.Namespace, ffmpeg: str, ffprobe: str) -> in
     captured: dict[tuple[str, float], Path] = {}
     started = time.time()
     # 抽帧触发的云盘块缓存落在系统盘，起跑线检查拦不住；边跑边看，触线让未开始的帧直接跳过。
-    guard = DiskGuard(Path("C:/"), args.min_free, args.disk_check_secs)
+    guard = DiskGuard(system_volume(), args.min_free, args.disk_check_secs)
     stop = threading.Event()
     stopped_reason = ""
 

@@ -1,3 +1,4 @@
+import os
 import tempfile
 import threading
 import time
@@ -52,7 +53,10 @@ class TrayTests(unittest.TestCase):
             manager.stop_owned()
             process.terminate.assert_called_once()
 
-    @patch("peach.tray.ctypes.windll.user32.SetProcessDpiAwarenessContext")
+    @unittest.skipUnless(
+        os.name == "nt", "DPI 声明与单实例锁是 Windows 托盘专属能力"
+    )
+    @patch("peach.tray.ctypes.windll.user32.SetProcessDpiAwarenessContext", create=True)
     def test_hidpi_prefers_per_monitor_v2(self, set_context):
         set_context.return_value = True
         self.assertEqual(enable_hidpi(), "per-monitor-v2")
@@ -80,6 +84,9 @@ class TrayTests(unittest.TestCase):
         self.assertEqual(icon.notify.call_count, 2)
         icon.update_menu.assert_called_once()
 
+    @unittest.skipUnless(
+        os.name == "nt", "DPI 声明与单实例锁是 Windows 托盘专属能力"
+    )
     def test_single_instance_rejects_second_windows_lock(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "tray.lock"

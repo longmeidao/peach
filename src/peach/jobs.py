@@ -123,6 +123,10 @@ class PidFileLock:
             return False
         except PermissionError:
             return True
+        except OverflowError:
+            # 锁文件可能是 Windows 那台写的，PID 会超出 POSIX 的 pid_t 范围。
+            # 超界的 PID 一定不是本机活进程，按「已死」清理，而不是让整轮任务崩掉。
+            return False
         return True
 
     @staticmethod

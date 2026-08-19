@@ -21,6 +21,7 @@ from peach.jobs import (
     SourceAccessPolicy,
     require_free_space,
 )
+from peach.platform import system_volume
 from peach.media import resolve_case_insensitive
 
 
@@ -128,7 +129,7 @@ def run(args: argparse.Namespace) -> int:
     choice = FFmpegResolver(FFMPEG_DIR).ffprobe()
     if choice is None:
         raise RuntimeError("ffprobe unavailable")
-    require_free_space(Path("C:/"), args.min_free)
+    require_free_space(system_volume(), args.min_free)
     source_sql, source_parameters = SourceAccessPolicy().sql_filter(
         args.location, args.allow_metered
     )
@@ -180,7 +181,7 @@ def run(args: argparse.Namespace) -> int:
         counters = {"done": 0, "failed": 0}
         started = time.time()
         # 探测本身产物很小，但它触发的云盘块缓存会落在系统盘；边跑边看，不只查起跑线。
-        guard = DiskGuard(Path("C:/"), args.min_free, args.disk_check_secs)
+        guard = DiskGuard(system_volume(), args.min_free, args.disk_check_secs)
         stop = threading.Event()
         stop_reason: list[str] = []
 

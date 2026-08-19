@@ -1,3 +1,4 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -85,7 +86,7 @@ class MediaEngineTests(unittest.TestCase):
     def test_ffmpeg_resolver_uses_managed_bundle(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            binary = root / "bin" / "ffmpeg.exe"
+            binary = root / "bin" / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
             binary.parent.mkdir()
             binary.write_bytes(b"test")
             with patch.dict("os.environ", {"PEACH_FFMPEG": ""}, clear=False), \
@@ -105,7 +106,10 @@ class MediaEngineTests(unittest.TestCase):
             legacy = root / "old" / "snapshots"
             raw = legacy / "cloud" / "local" / "aa" / "one.jpg"
             expected = current / "cloud" / "local" / "aa" / "one.jpg"
-            self.assertEqual(remap_managed_path(raw, current, (legacy,)), expected)
+            self.assertEqual(
+                remap_managed_path(raw, current, (legacy,)),
+                normalized_path(expected),
+            )
 
             unrelated = root / "untrusted" / "one.jpg"
             self.assertEqual(remap_managed_path(unrelated, current, (legacy,)), unrelated.resolve())
@@ -118,7 +122,9 @@ class MediaEngineTests(unittest.TestCase):
             real.write_bytes(b"test")
             backend = FilesystemBackend([root], root / "snapshots")
             result = backend.stream_candidates(MediaAsset(1, str(root / "abw-118.mp4"), None))
-            self.assertEqual(Path(result[0].uri).name, "ABW-118.MP4")
+            opened = Path(result[0].uri)
+            self.assertTrue(opened.is_file())
+            self.assertEqual(opened.name.casefold(), "abw-118.mp4")
             # 完全缺失的名字仍应拒绝
             self.assertEqual(
                 backend.stream_candidates(MediaAsset(2, str(root / "nope.mp4"), None)), ()

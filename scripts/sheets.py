@@ -26,6 +26,7 @@ from peach.jobs import (
     SourceAccessPolicy,
     require_free_space,
 )
+from peach.platform import system_volume
 from peach.media import resolve_case_insensitive
 
 
@@ -147,7 +148,7 @@ def run(args: argparse.Namespace) -> int:
     ffmpeg = resolver.ffmpeg()
     if ffmpeg is None:
         raise RuntimeError("ffmpeg unavailable")
-    require_free_space(Path("C:/"), args.min_free)
+    require_free_space(system_volume(), args.min_free)
     source_sql, source_parameters = SourceAccessPolicy().sql_filter(
         args.location, args.allow_metered
     )
@@ -202,7 +203,7 @@ def run(args: argparse.Namespace) -> int:
         failure_reasons: Counter[str] = Counter()
         started = time.time()
         # 起跑线检查拦不住运行期把盘吃光的第三方缓存；这里边跑边看。
-        guard = DiskGuard(Path("C:/"), args.min_free, args.disk_check_secs)
+        guard = DiskGuard(system_volume(), args.min_free, args.disk_check_secs)
         stop = threading.Event()
         stop_reason: list[str] = []
 

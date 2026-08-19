@@ -4,17 +4,27 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from functools import lru_cache
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Protocol, Sequence
 
+from .platform import (
+    is_unmapped,
+    is_windows_path,
+    root_online,
+    translate_ledger_path,
+    within_root,
+)
 from .repository import LedgerRepository, MediaAsset
 from .segments import HLS_SEGMENT_SECONDS
 from .stash import StashClient
 
 
 def normalized_path(path: Path | str) -> Path:
-    """Windows 离线/云盘可能让 realpath 失败；仍保留绝对路径安全边界。"""
-    candidate = Path(path)
+    """Windows 离线/云盘可能让 realpath 失败；仍保留绝对路径安全边界。
+
+    账本里的盘符路径先按本机挂载点翻译，macOS 上才不会被当成当前目录下的相对路径。
+    """
+    candidate = translate_ledger_path(path)
     try:
         return candidate.resolve()
     except OSError:
@@ -106,6 +116,18 @@ class MediaUnavailable(RuntimeError):
     pass
 
 
+class MediaOffline(MediaUnavailable):
+    """来源盘整体不可达（脱盘），不是这一个文件缺失。
+
+    脱盘只影响挂在该盘上的资产：本地硬盘拔掉时，115/PikPak 的云端资产照常可播。
+    """
+
+    def __init__(self, asset_id: int, source: str):
+        super().__init__(asset_id)
+        self.asset_id = asset_id
+        self.source = source
+
+
 class MediaBackend(Protocol):
     name: str
 
@@ -144,14 +166,35 @@ class FilesystemBackend:
             else normalized_path(raw)
         )
         roots = (self.snapshot_root,) if thumbnail else self.allowed_roots
-        if not any(path == root or root in path.parents for root in roots):
-            raise MediaUnavailable(asset.id)
+        if not any(within_root(path, root) for root in roots):
+            self._raise_unavailable(asset.id, raw, thumbnail)
         if path.is_file():
             return path
         matched = _case_insensitive_match(str(path.parent), path.name)
         if matched is not None:
             return path.parent / matched
-        raise MediaUnavailable(asset.id)
+        self._raise_unavailable(asset.id, raw, thumbnail)
+
+    def _raise_unavailable(self, asset_id: int, raw: str, thumbnail: bool) -> None:
+        """来源盘整体不可达时报 MediaOffline，单个文件缺失仍报 MediaUnavailable。"""
+        if not thumbnail and is_windows_path(raw):
+            translated = translate_ledger_path(raw)
+            source = PureWindowsPath(raw).drive
+            if is_unmapped(translated):
+                raise MediaOffline(asset_id, source)
+            candidate = normalized_path(raw)
+            for root in self.allowed_roots:
+                if within_root(candidate, root):
+                    if not root_online(root):
+                        raise MediaOffline(asset_id, source)
+                    break
+        raise MediaUnavailable(asset_id)
+
+    def source_status(self) -> tuple[dict[str, object], ...]:
+        """当前授权根的在线状态；脱盘模式的判据只有这一份。"""
+        return tuple(
+            {"root": str(root), "online": root_online(root)} for root in self.allowed_roots
+        )
 
     def stream_candidates(self, asset: MediaAsset) -> Sequence[StreamCandidate]:
         try:
