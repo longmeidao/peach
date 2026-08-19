@@ -68,6 +68,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("const performerName=performerRef?.name")
         self.assertPageLacks(".identityrow", "旧的逐行布局必须整段删掉")
 
+    def test_avatar_tiles_do_not_inherit_the_text_link_underline(self):
+        # 头像格子是 flex 容器，`.entitylink:hover` 的下划线会横穿整行，
+        # 连上面的头像都被划上；它们已有描边和提亮两种 hover 反馈。
+        self.assertPageContains(".idcell:hover,.mav:hover{text-decoration:none}")
+        # 行内文字身份仍然要保留下划线，别把 entitylink 整条规则删掉。
+        self.assertPageContains(".entitylink:hover{text-decoration:underline}")
+
     def test_every_identity_cell_can_carry_its_own_portrait(self):
         self.assertPageContains('item.id?`<img src="/entity-image?kind=performer&id=${item.id}"')
         self.assertPageContains('<img src="/logo?studio=${encodeURIComponent(item.name)}"')
