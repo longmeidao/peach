@@ -1,4 +1,6 @@
+import importlib.util
 import os
+import plistlib
 import sys
 import tempfile
 import threading
@@ -6,6 +8,17 @@ import time
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def load_script(name: str):
+    """按路径加载 `scripts/` 下的脚本；它们不是包的一部分。"""
+    spec = importlib.util.spec_from_file_location(f"test_{name}", ROOT / "scripts" / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
 
 from peach.tray import (
     AlreadyRunning, PeachTray, ServiceManager, ServiceSpec, SingleInstance,
@@ -126,6 +139,45 @@ class TemplateHookTests(unittest.TestCase):
     def test_apply_template_is_a_no_op_without_a_backing_nsimage(self):
         """拿不到底层 NSImage 就安静跳过：菜单栏项本身仍然可用。"""
         self.assertFalse(apply_macos_template(Mock(spec=[])))
+
+
+class MacAppBundleTests(unittest.TestCase):
+    """菜单栏项必须打成 bundle 才拿得稳。
+
+    裸控制台进程启动 `peach-tray` 时，AppKit 的运行循环没有应用上下文会立刻返回：
+    服务起来了、托盘父进程却安静退出，退出码 0、零输出。实测就是这样。
+    """
+
+    def setUp(self):
+        self.module = load_script("build_macos_app")
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+        self.tray = self.root / "peach-tray"
+        self.tray.write_text("#!/bin/sh\n", encoding="utf-8")
+
+    def test_bundle_declares_itself_as_a_menu_bar_agent(self):
+        app = self.module.build(self.root, self.tray)
+        info = plistlib.loads((app / "Contents" / "Info.plist").read_bytes())
+        # LSUIElement：只在菜单栏出现，不占 Dock、不进 ⌘Tab。
+        self.assertIs(info["LSUIElement"], True)
+        self.assertEqual(info["CFBundleExecutable"], "Peach")
+        self.assertTrue(info["CFBundleIdentifier"])
+
+    def test_launcher_is_executable_and_keeps_a_log(self):
+        """`open -a` 起的进程没有终端，不落盘就完全看不出它为什么没起来。"""
+        app = self.module.build(self.root, self.tray)
+        launcher = app / "Contents" / "MacOS" / "Peach"
+        self.assertTrue(os.access(launcher, os.X_OK))
+        body = launcher.read_text(encoding="utf-8")
+        self.assertIn(str(self.tray), body)
+        self.assertIn("macos-tray.log", body)
+
+    def test_rebuild_replaces_a_stale_bundle(self):
+        app = self.module.build(self.root, self.tray)
+        (app / "Contents" / "MacOS" / "stale").write_text("x", encoding="utf-8")
+        self.module.build(self.root, self.tray)
+        self.assertFalse((app / "Contents" / "MacOS" / "stale").exists())
 
 
 if __name__ == "__main__":

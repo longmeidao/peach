@@ -63,6 +63,11 @@ macOS 的 FFmpeg 走 PATH（`brew install ffmpeg`）。`peach-data/tools/ffmpeg`
 Windows 的 `.exe`/`.dll`，`FFmpegResolver` 按平台找不带后缀的 `ffmpeg`，会自动跳过它
 ——这套目录可以两台机器共用，不需要分叉。
 
+macOS 的菜单栏项必须打成 `.app`（`scripts/build_macos_app.py`）：裸控制台进程启动时
+AppKit 运行循环没有应用上下文会立刻返回，服务起来了但托盘父进程安静退出、零输出。
+bundle 声明 `LSUIElement`，输出重定向到 `logs/macos-tray.log`。图标要 template image
+才会跟着浅色/深色菜单栏反色；服务用非特权端口 8900。
+
 测试入口：Windows `scripts/test.ps1`，macOS/Linux `scripts/test.sh`。两者契约相同。
 **两边都必须绿**；只在一台上通过的改动不算完成。Windows 托盘专属的 DPI 声明和单实例
 锁在非 Windows 上按 `skipUnless` 跳过，不要改成在 macOS 上伪造通过。

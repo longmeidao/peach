@@ -124,6 +124,23 @@ macOS/Linux 是 `scripts/test.sh`，两者契约相同：从 Git common director
 `.venv`，强制加载当前 worktree 的 `src` 并核对 `peach.__file__`，因此 worktree 不需要
 也不应复制 `.venv`。仓库不使用 pytest。
 
+macOS 日常运行同样可以走菜单栏项，而不是留一个终端窗口：
+
+```bash
+./.venv/bin/python scripts/build_macos_app.py
+open -a dist/Peach.app
+```
+
+菜单栏项复用 `peach.tray`（pystray 自带 darwin 后端），但有三处必须按平台分开：图标要
+是 template image，否则不会跟着浅色/深色菜单栏反色；服务起在非特权的 `8900`，因为
+80/443 在 macOS 上要 root，而本机 CA 的 TLS 材料是给 Windows 生产实例签的；单实例锁
+用 `fcntl.flock`。
+
+必须打成 `.app` 才拿得稳：裸控制台进程启动时 AppKit 的运行循环没有应用上下文会立刻
+返回——服务起来了、托盘父进程却安静退出，退出码 0、零输出。bundle 的 `Info.plist` 声明
+`LSUIElement`（只在菜单栏出现，不占 Dock、不进 ⌘Tab），启动脚本把输出重定向到
+`peach-data/logs/macos-tray.log`。开机自启：系统设置 → 通用 → 登录项 → 加入这个 .app。
+
 跨两台机器开发时换行口径由 `.gitattributes` 的 `* text=auto eol=lf` 固定。不要依赖各自的
 `core.autocrlf`：2026-08 之前 Windows 侧把 105 个文件整体改写成 CRLF，`git status` 长期显示
 117 个文件被修改、16000 行增删，而真正有实质改动的只有 1 个。
