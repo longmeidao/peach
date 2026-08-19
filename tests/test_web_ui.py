@@ -596,10 +596,12 @@ class WebUiSourceTests(unittest.TestCase):
         因此参差不齐。这段代码写下后一直没生效（`.pic` 写死 16/9），接上
         `--card-ratio` 才暴露出来。比例不同的用 contain 上下留黑边。
         """
-        self.assertPageContains("const ar=(it.ctx_orient==='竖屏'||cls==='scard')")
         self.assertPageContains("const PORTRAIT_RATIO=9/16;")
-        self.assertPageContains("    ? PORTRAIT_RATIO")
         self.assertPageLacks("Math.min(0.9,Math.max(0.5,it.width/it.height))")
+        # 比例由列表语境决定，不能由单条媒体决定：混着横竖屏的资料页、相关推荐、
+        # 搜索结果都会因为逐条算而高低不齐。
+        self.assertPageContains("const portrait=cls==='scard'||state.orient==='竖屏';")
+        self.assertPageLacks("it.ctx_orient==='竖屏'||cls==='scard'")
         self.assertPageContains("(jav&&layout==='big'?COVER_FRONT_RATIO:16/9)")
 
     def test_portrait_strip_sits_on_a_row_boundary_without_borrowing_extra_items(self):
@@ -609,7 +611,9 @@ class WebUiSourceTests(unittest.TestCase):
         渲染会按竖屏比例压扁横屏画面。行边界插入既不额外请求也不会重复。
         """
         self.assertPageContains('.shorts-inline{grid-column:1/-1;margin:28px 0 8px;padding-top:0}')
-        self.assertPageContains("it.ctx_orient==='竖屏'||cls==='scard'")
+        # 竖屏比例只给 `scard`（和显式筛了竖屏时）。按 `it.ctx_orient` 逐条算的话，
+        # 任何混着横竖屏的网格都会高低不齐——资料页、相关推荐、搜索结果全中招。
+        self.assertPageContains("const portrait=cls==='scard'||state.orient==='竖屏';")
         self.assertPageContains('grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr))')
         self.assertPageContains('const anchor=cards[Math.min(cards.length,columns*SHORTS_ROW_OFFSET)]')
         self.assertPageContains("anchor.insertAdjacentHTML('beforebegin',inline)")

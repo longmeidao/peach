@@ -410,10 +410,15 @@ function cardHtml(it,cls){
   const useCover=jav&&layout!=='preview'&&it.has_cover;
   /* 卡片比例。这个值以前算出来就没人用过——`.pic` 一直写死 16/9，于是 JAV 的两种
      版式看起来一模一样。现在写进 `--card-ratio`，由 CSS 消费。 */
-  const ar=(it.ctx_orient==='竖屏'||cls==='scard')
+  /* 一个列表里所有卡片必须同高，比例只能由**列表的语境**决定，不能由单条媒体决定。
+     按 `it.ctx_orient` 逐条算的话，任何混着横屏和竖屏的网格都会高低不齐——资料页、
+     相关推荐、搜索结果全中招。竖屏比例只留给两种整列都是竖屏的场合：竖屏条，
+     以及用户显式筛了竖屏的时候。比例对不上的用 contain 上下留黑边。 */
+  const portrait=cls==='scard'||state.orient==='竖屏';
+  const ar=portrait
     ? PORTRAIT_RATIO
     /* 大图只留右侧正封，宽度不变、高度拉长；小图和预览图保持 16:9。
-       没有封面的那些也跟着拉长：一行里高矮混排会把网格撕成锯齿状，
+       没有封面的那些也跟着拉长：一行里高矮混排同样会把网格撕成锯齿状，
        缺封面的用 16:9 预览图上下留黑边即可（`.poster` 本来就是 contain + 黑底）。 */
     : (jav&&layout==='big'?COVER_FRONT_RATIO:16/9);
 
