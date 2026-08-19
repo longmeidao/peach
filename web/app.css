@@ -406,7 +406,7 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .card.pending-delete .poster,.card.pending-delete .hv{filter:grayscale(.9) brightness(.54);opacity:.68}
 .card.pending-delete .meta{opacity:.58}
 .card.pending-delete:hover .meta{opacity:.76}
-.pic{position:relative;aspect-ratio:16/9;background:#000;border-radius:4px;
+.pic{position:relative;aspect-ratio:var(--card-ratio,16/9);background:#000;border-radius:4px;
   overflow:hidden;display:flex;align-items:center;justify-content:center}
 /* 预览图：单格，contain 放进固定 16:9 框 —— 不拉伸、不裁切、不改框体大小 */
 .poster{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;
@@ -874,7 +874,8 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
    判据是图片自己的宽高比，由 onload 写进 data-frame。 */
 .poster.cover{width:100%;height:100%;object-fit:cover;display:block}
 /* --cover-y 由人脸检出写入；没检出时回落到 22%，那是 46 张实测里的常见位置。 */
-.poster.cover.front[data-frame="sleeve"]{object-position:82% var(--cover-y,22%)}
+/* 右侧正封贴着封套右边缘，横向锚点就取最右；容器比例已经把可见窗口收成正封那一块。 */
+.poster.cover.front[data-frame="sleeve"]{object-position:100% var(--cover-y,22%)}
 .poster.cover.front[data-frame="front"]{object-position:50% var(--cover-y,22%)}
 .poster.cover.whole{object-fit:contain;background:#000;object-position:50% 50%}
 

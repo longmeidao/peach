@@ -91,6 +91,41 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("b.onmousedown=e=>e.preventDefault();")
         self.assertPageContains("if(group&&!group.querySelector('[data-search-value]'))group.remove();")
 
+    def test_card_aspect_ratio_actually_reaches_the_element(self):
+        """算出来的卡片比例必须写进 DOM。
+
+        `ar` 从写下起就没有被使用过：`.pic` 写死 `aspect-ratio:16/9`，于是 JAV 的两种
+        版式渲染出来一模一样，竖屏条的 `--card-ratio` 也永远取不到值。
+        """
+        self.assertPageContains('<div class="pic" style="--card-ratio:${ar}">')
+        self.assertPageContains(".pic{position:relative;aspect-ratio:var(--card-ratio,16/9)")
+
+    def test_big_jav_layout_crops_to_the_front_cover(self):
+        """大图＝宽度不变、高度拉长，只留封套右侧那块正封。
+
+        `object-fit:cover` 只有在容器比图片更竖时才横向裁切；容器一旦宽过封套的
+        1.48，就变成纵向裁切、整张封套原样铺满——这正是旧版式「只是撑满画布」的原因。
+        所以裁切必须由容器比例决定，不能只靠 object-position。
+        """
+        self.assertPageContains("const COVER_FRONT_RATIO=0.7;")
+        self.assertPageContains("(useCover&&layout==='big'?COVER_FRONT_RATIO:16/9)")
+        self.assertPageContains('.poster.cover.front[data-frame="sleeve"]{object-position:100%')
+        # 旧键要继续认，设置存在浏览器里，改名不能让用户的选择静默回落。
+        self.assertPageContains("const JAV_LAYOUT_ALIASES={cover:'big',sleeve:'small'};")
+
+    def test_card_avatar_and_name_open_the_same_entity(self):
+        """同一张卡上的头像和名字必须指向同一个身份。
+
+        头像原来先看 performer、名字先看 creator，碰上同名的 creator/performer 重复
+        实体（账本里 35 组）就会一个跳 /performers/x、另一个跳 /creators/x。
+        """
+        self.assertPageContains(
+            "const avatarKind=identity.kind||(performer?'performer':"
+            "(it.creator?'creator':(it.studio?'studio':'')));")
+        self.assertPageContains(
+            "const avatarName=identity.kind?identity.name:"
+            "(performer||it.creator||it.studio||who);")
+
     def test_avatar_tiles_do_not_inherit_the_text_link_underline(self):
         """取消规则必须真的压过 `.entitylink:hover`，不能只是写在文件里。
 
@@ -513,11 +548,11 @@ class WebUiSourceTests(unittest.TestCase):
     def test_only_portrait_cards_use_media_ratio(self):
         """竖屏按实际宽高，其余固定比例——否则横屏卡片会在一列里高低不齐。
 
-        JAV 封面是第三种情况：正封是竖版取景（3:4），封套是横版（16:9），
-        判据是当前版式而不是媒体本身，所以它有自己的分支。
+        JAV 封面是第三种情况：大图只留右侧正封、宽度不变高度拉长，小图和预览图
+        保持 16:9，判据是当前版式而不是媒体本身，所以它有自己的分支。
         """
         self.assertPageContains("const ar=(it.ctx_orient==='竖屏'||cls==='scard')")
-        self.assertPageContains("(useCover?(layout==='sleeve'?16/9:3/4):16/9)")
+        self.assertPageContains("(useCover&&layout==='big'?COVER_FRONT_RATIO:16/9)")
 
     def test_portrait_strip_sits_on_a_row_boundary_without_borrowing_extra_items(self):
         """竖屏条整行占位，必须插在行边界上，而不是另拉一批横屏视频补满余位。

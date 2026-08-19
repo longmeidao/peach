@@ -11,6 +11,13 @@ from .migrations import plan, upgrade
 
 DEFAULT_DB = DATABASE_PATH
 
+#: 只监听这些地址时，服务在局域网上不可达。
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
+
+
+def _is_loopback(host: str) -> bool:
+    return (host or "").strip().lower() in _LOOPBACK_HOSTS
+
 
 def _serve(args: argparse.Namespace) -> int:
     import uvicorn
@@ -21,11 +28,21 @@ def _serve(args: argparse.Namespace) -> int:
         if path is not None and not path.is_file():
             raise SystemExit(f"TLS file not found: {path}")
     tls_enabled = args.ssl_certfile is not None
+    # 绑在回环上就不能发布 mDNS：广播出去的是本机的局域网地址，而那个地址上没有
+    # 任何东西在监听，`peach.local` 于是变成一个必然连不上的名字。更糟的是开发机
+    # 会就此抢占生产用的 `peach.local`，把同一局域网里的真实实例挤掉。
+    publish_mdns = not args.no_mdns and not _is_loopback(args.host)
+    if not args.no_mdns and not publish_mdns:
+        print(
+            f"mDNS 未发布：--host {args.host} 只监听回环，"
+            f"发布 peach.local 会指向一个连不上的地址。"
+            f"需要局域网访问就用 --host 0.0.0.0。"
+        )
     settings = PeachSettings(
         db_path=args.db,
         token=args.token,
         docs_enabled=args.docs,
-        mdns_enabled=not args.no_mdns,
+        mdns_enabled=publish_mdns,
         mdns_name=args.mdns_name,
         mdns_port=args.port,
         mdns_address=args.mdns_address,

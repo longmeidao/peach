@@ -352,6 +352,8 @@ def q_items(contract: WebContract, args):
         r["cost"] = COST.get(r["location"], "metered")
         r["has_thumb"] = contract.has_snapshot(r["snapshot_path"])
         r["has_cover"] = contract.has_cover(r.get("code"))
+        # 卡片上的出镜者称谓要和详情页同一口径：番号发行物才叫女优。
+        r["is_jav"] = is_jav_code(r.get("code"))
         if r["has_cover"]:
             r["cover_frame"] = contract.cover_frame(r.get("code"))
         r.pop("snapshot_path", None)

@@ -35,7 +35,7 @@ async function loadSourceStatus(){
 }
 const DURATION_TAGS=new Set(['短片-2分内','中片-10分内','长片-30分内','超长片-30分上']);
 const SETTINGS_KEY='peach.settings.v1';
-const DEFAULT_SETTINGS={autoRefresh:true,refreshMinutes:5,batchSize:60,defaultSort:'daily',hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'cover'};
+const DEFAULT_SETTINGS={autoRefresh:true,refreshMinutes:5,batchSize:60,defaultSort:'daily',hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big'};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
@@ -359,23 +359,29 @@ function avatarInner(name,ref,repId){
    竖版正封约 0.70（本身就是正封，没有左半边可裁）。所以取景不能写死「取右边」，
    得等图片加载后按它自己的宽高比分流——服务端没存这个比例，也不该为此再存一份。 */
 const COVER_FRAME=`onload="const r=this.naturalWidth/this.naturalHeight;this.dataset.frame=r>1.2?'sleeve':'front'"`;
+/* 整张封套里右侧正封占的宽高比。裁切靠的是容器比例而不是 CSS 裁剪：`object-fit:cover`
+   只在容器比图片更「竖」时才会横向裁，容器一旦宽过 1.48 就变成纵向裁、整张封套原样
+   铺满——这正是「大图」以前只是撑满画布、没取到右侧的原因。 */
+const COVER_FRONT_RATIO=0.7;
 function coverImage(it,layout){
   const src=`/cover?code=${encodeURIComponent(it.code||'')}`;
   // 人脸只做纵向微调：人物在画面里的高低差别很大，写死的纵向位置会把一部分
   // 作品裁掉下巴或留出大片空白。检出率约 48%，取不到就退回固定值。
   const cy=it.cover_frame&&it.cover_frame.cy;
   const y=cy!=null?`--cover-y:${Math.round(Math.min(0.6,Math.max(0.05,cy))*100)}%`:'';
-  // 封套模式看整张（含剧照拼贴），正封模式只取右侧那半。
-  return `<img class="poster cover ${layout==='sleeve'?'whole':'front'}" src="${src}"
+  // 小图看整张（含剧照拼贴），大图只取右侧正封。
+  return `<img class="poster cover ${layout==='small'?'whole':'front'}" src="${src}"
     alt="" loading="lazy"${y?` style="${y}"`:''} ${COVER_FRAME} onerror="this.remove()">`;
 }
 function cardHtml(it,cls){
   const jav=javActive(),layout=javLayout();
   const useCover=jav&&layout!=='preview'&&it.has_cover;
+  /* 卡片比例。这个值以前算出来就没人用过——`.pic` 一直写死 16/9，于是 JAV 的两种
+     版式看起来一模一样。现在写进 `--card-ratio`，由 CSS 消费。 */
   const ar=(it.ctx_orient==='竖屏'||cls==='scard')
     ? ((it.width&&it.height)?Math.min(0.9,Math.max(0.5,it.width/it.height)):9/16)
-    // 正封是竖版取景，封套是横版；预览图沿用原来的 16:9。
-    : (useCover?(layout==='sleeve'?16/9:3/4):16/9);
+    // 大图只留右侧正封，宽度不变、高度拉长；小图和预览图保持 16:9。
+    : (useCover&&layout==='big'?COVER_FRONT_RATIO:16/9);
 
   const thumb=useCover
     ? coverImage(it,layout)
@@ -403,14 +409,17 @@ function cardHtml(it,cls){
   const coStarred=performers.length>1&&!it.creator;
   const avatar=coStarred
     ? `<div class="mavstack">${performers.slice(0,3)
-        .map((nm,i)=>`<button class="mav entitylink" data-entity-kind="performer" data-entity-name="${esc(nm)}" title="打开女优页：${esc(nm)}">${avatarInner(nm,performerRefs[i],REP[nm])}</button>`)
+        .map((nm,i)=>`<button class="mav entitylink" data-entity-kind="performer" data-entity-name="${esc(nm)}" title="打开${esc(performerLabel(it))}页：${esc(nm)}">${avatarInner(nm,performerRefs[i],REP[nm])}</button>`)
         .join('')}</div>`
     : (()=>{
-        const avatarName=performer||it.creator||it.studio||who;
-        const avatarKind=performer?'performer':(it.creator?'creator':(it.studio?'studio':''));
+        /* 头像和名字必须落到同一个身份。原来头像先看 performer、名字先看 creator，
+           碰上同名的 creator/performer 重复实体（账本里有 35 组）就会一个跳
+           `/performers/x`、另一个跳 `/creators/x`，同一张卡上两个入口去两个地方。 */
+        const avatarKind=identity.kind||(performer?'performer':(it.creator?'creator':(it.studio?'studio':'')));
+        const avatarName=identity.kind?identity.name:(performer||it.creator||it.studio||who);
         const inner=avatarInner(avatarName,performerRef,REP[avatarName]||REP[it.creator]||REP[it.studio]);
         return avatarKind
-          ? `<button class="mav entitylink" data-entity-kind="${avatarKind}" data-entity-name="${esc(avatarName)}" title="打开${performer?'女优':'资料'}页">${inner}</button>`
+          ? `<button class="mav entitylink" data-entity-kind="${avatarKind}" data-entity-name="${esc(avatarName)}" title="打开${avatarKind==='performer'?esc(performerLabel(it)):'资料'}页">${inner}</button>`
           : `<span class="mav">${inner}</span>`;
       })();
   const whoHtml=coStarred
@@ -426,7 +435,7 @@ function cardHtml(it,cls){
       <button data-seek="${appSettings.seekSeconds}" title="前进 ${appSettings.seekSeconds} 秒" aria-label="前进 ${appSettings.seekSeconds} 秒">${icon('rotate-cw')}<b>${appSettings.seekSeconds}</b></button>
       <button data-open title="打开详情" aria-label="打开详情">${icon('maximize')}</button></div>`;
   return `<article class="card ${cls||''} ${it.disposal==='trash'?'pending-delete':''}" data-id="${it.id}">
-    <div class="pic">${thumb}<button class="cardopenhit" data-open aria-label="打开 ${esc(it.name)} 详情"></button>
+    <div class="pic" style="--card-ratio:${ar}">${thumb}<button class="cardopenhit" data-open aria-label="打开 ${esc(it.name)} 详情"></button>
       <div class="badge mono">${srcBadge(it.location,it.cost)}</div>
       <span class="selectionMark">${icon('check')}</span><span class="deleteMark">${icon('trash')}<b>回收站</b></span>
       <span class="dur mono">${fmtDur(it.duration)}</span>${tr}${tools}</div>
@@ -1156,14 +1165,18 @@ function openManage(section='stats'){
 /* JAV 模式。只有带番号的作品才有官方封套，所以版式切换只在这个语境里出现——
    首页混着创作者作品和素人流出，给它们切「封面」没有意义。
    资料页（女优/厂牌）进入时继承这个开关，因为那里同样是按番号浏览。 */
-const JAV_LAYOUTS=[['cover','正封 4:3','user-round'],['sleeve','封套 16:9','layout-grid'],['preview','预览图','eye']];
+const JAV_LAYOUTS=[['big','大图 · 只看正封','maximize'],['small','小图 · 整张封套','layout-grid'],
+  ['preview','预览图','eye']];
+/* 旧键沿用：设置存在浏览器里，改名不能让用户的选择静默回落到默认值。 */
+const JAV_LAYOUT_ALIASES={cover:'big',sleeve:'small'};
 function javActive(){
   if(state.jav!=='1')return false;
   const path=decodeURIComponent(location.pathname);
   return path==='/'||path.startsWith('/performers/')||path.startsWith('/studios/');
 }
 function javLayout(){
-  return allowedSetting(appSettings.javLayout,JAV_LAYOUTS.map(([k])=>k),'cover');
+  const raw=JAV_LAYOUT_ALIASES[appSettings.javLayout]||appSettings.javLayout;
+  return allowedSetting(raw,JAV_LAYOUTS.map(([k])=>k),'big');
 }
 function setJavLayout(value){
   appSettings.javLayout=value;
