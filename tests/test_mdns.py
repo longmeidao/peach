@@ -1,12 +1,13 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from peach.mdns import MdnsPublisher, create_mdns_publisher, lan_ipv4
+from peach.mdns import MdnsPublisher, answers_on_network, create_mdns_publisher, lan_ipv4
 
 
 class MdnsPublisherTests(unittest.TestCase):
     def test_registers_and_unregisters_peach_local_on_all_interfaces(self):
-        with patch("peach.mdns.Zeroconf") as zeroconf_type:
+        with patch("peach.mdns.Zeroconf") as zeroconf_type, \
+                patch("peach.mdns.answers_on_network", return_value=True):
             publisher = MdnsPublisher(
                 "Peach.local", 80, address_resolver=lambda: "192.0.2.10"
             )
@@ -37,7 +38,8 @@ class MdnsPublisherTests(unittest.TestCase):
             current[0] = next(addresses, current[0])
             return current[0]
 
-        with patch("peach.mdns.Zeroconf") as zeroconf_type:
+        with patch("peach.mdns.Zeroconf") as zeroconf_type, \
+                patch("peach.mdns.answers_on_network", return_value=True):
             publisher = MdnsPublisher(
                 "peach", 80, address_resolver=resolver, refresh_seconds=0,
             )
@@ -59,7 +61,8 @@ class MdnsPublisherTests(unittest.TestCase):
             except StopIteration:
                 raise RuntimeError("no publishable LAN IPv4 address") from None
 
-        with patch("peach.mdns.Zeroconf"):
+        with patch("peach.mdns.Zeroconf"), \
+                patch("peach.mdns.answers_on_network", return_value=True):
             publisher = MdnsPublisher(
                 "peach", 80, address_resolver=resolver, refresh_seconds=0,
             )
@@ -71,7 +74,8 @@ class MdnsPublisherTests(unittest.TestCase):
 
     def test_a_pinned_address_never_republishes(self):
         """生产上显式钉住地址时复查必须是空转，不能自己换成别的网卡。"""
-        with patch("peach.mdns.Zeroconf") as zeroconf_type:
+        with patch("peach.mdns.Zeroconf") as zeroconf_type, \
+                patch("peach.mdns.answers_on_network", return_value=True):
             publisher = create_mdns_publisher(
                 "peach", 80, address="192.0.2.10", refresh_seconds=0,
             )
@@ -82,7 +86,8 @@ class MdnsPublisherTests(unittest.TestCase):
         self.assertEqual(zeroconf_type.call_count, 1)
 
     def test_secure_publication_uses_https_service(self):
-        with patch("peach.mdns.Zeroconf") as zeroconf_type:
+        with patch("peach.mdns.Zeroconf") as zeroconf_type, \
+                patch("peach.mdns.answers_on_network", return_value=True):
             publisher = MdnsPublisher(
                 "peach", 443, secure=True, address_resolver=lambda: "192.0.2.10"
             )
@@ -100,7 +105,8 @@ class MdnsPublisherTests(unittest.TestCase):
         self.assertIsInstance(create_mdns_publisher("peach", 80), MdnsPublisher)
 
     def test_explicit_address_avoids_tunnel_route(self):
-        with patch("peach.mdns.Zeroconf") as zeroconf_type:
+        with patch("peach.mdns.Zeroconf") as zeroconf_type, \
+                patch("peach.mdns.answers_on_network", return_value=True):
             publisher = create_mdns_publisher(
                 "peach", 80, address="192.168.50.162",
             )
@@ -119,6 +125,38 @@ class MdnsPublisherTests(unittest.TestCase):
             return_value=("host", [], ["172.31.112.1", "192.168.56.1", "192.168.50.162"]),
         ):
             self.assertEqual(lan_ipv4(), "192.168.50.162")
+
+
+class ReachabilityTests(unittest.TestCase):
+    """注册成功不等于对外可见。
+
+    macOS 的「本地网络」隐私门会静默掐掉多播：从终端起的进程继承终端已授权的身份，
+    launchd 起的作业是另一个主体、没有弹窗可点，于是 zeroconf 自认为注册成功、实际
+    一个包都发不出去。`/healthz` 报着 `peach.local`，手机却怎么都解析不到——这种
+    「自称成功」比直接失败难查得多，所以要自己发一次查询验一验。
+    """
+
+    def test_status_says_unreachable_when_nothing_answers(self):
+        with patch("peach.mdns.Zeroconf"), \
+                patch("peach.mdns.answers_on_network", return_value=False):
+            publisher = MdnsPublisher(
+                "peach", 80, address_resolver=lambda: "192.0.2.10", refresh_seconds=0)
+            publisher.start()
+            self.assertEqual(publisher.status, "unreachable")
+            publisher.stop()
+
+    def test_status_is_the_hostname_when_the_record_answers(self):
+        with patch("peach.mdns.Zeroconf"), \
+                patch("peach.mdns.answers_on_network", return_value=True):
+            publisher = MdnsPublisher(
+                "peach", 80, address_resolver=lambda: "192.0.2.10", refresh_seconds=0)
+            publisher.start()
+            self.assertEqual(publisher.status, "peach.local")
+            publisher.stop()
+
+    def test_probe_never_raises_on_a_dead_socket(self):
+        with patch("peach.mdns.socket.socket", side_effect=OSError("no multicast")):
+            self.assertFalse(answers_on_network("peach.local", timeout=0.1))
 
 
 if __name__ == "__main__":

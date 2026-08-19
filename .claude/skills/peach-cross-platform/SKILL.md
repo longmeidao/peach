@@ -93,6 +93,16 @@ bundle 声明 `LSUIElement`，输出重定向到 `logs/macos-tray.log`。图标�
 开工前先 `sh scripts/sync_status.sh`：落后远端就先 `git pull --rebase`，别在旧代码上接着
 写；账本是另一条链路（`peach.sync`），同一个脚本会一并报告。
 
+## macOS 的本地网络权限
+
+`peach serve` 从终端起 mDNS 正常，改由 launchd 起就再也没人应答——终端起的进程继承终端
+已授权的身份，launchd 作业是另一个主体且没有弹窗可点，多播被**静默**丢弃。zeroconf 自认
+注册成功，`/healthz` 照报 `peach.local`。发布器因此会自己查一次验证，验不过报
+`unreachable`。修法：系统设置 → 隐私与安全性 → 本地网络放行，或 `--no-mdns` 改用 IP。
+
+排查手法：同一条命令分别从 shell 和 launchd 起，各发一次 mDNS 查询对比——差异只在启动者
+时，先怀疑这个门。
+
 ## Git 陷阱
 
 - **换行**由 `.gitattributes` 的 `* text=auto eol=lf` 固定，不要依赖各自的

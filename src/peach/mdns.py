@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import socket
+import time
 import ipaddress
 import threading
 from collections.abc import Callable
@@ -61,6 +62,42 @@ def _explicit_resolver(address: str) -> Callable[[], str]:
     if parsed.is_loopback or parsed.is_multicast or parsed.is_unspecified:
         raise ValueError("mDNS address must be a publishable interface IPv4")
     return lambda: str(parsed)
+
+
+
+def answers_on_network(hostname: str, timeout: float = 2.0) -> bool:
+    """本机的 mDNS 记录在网上真的有人应答吗。
+
+    注册成功不等于对外可见：macOS 的「本地网络」隐私门会**静默**掐掉多播。从终端起的
+    进程继承终端已获授权的身份，launchd 起的作业是另一个主体、没有弹窗可点，于是
+    zeroconf 自认为注册成功，实际一个包都发不出去——`/healthz` 报着 `peach.local`，
+    手机却怎么都解析不到。所以要自己发一次查询验一验。
+    """
+    query = b"\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00"
+    for label in hostname.split("."):
+        query += bytes([len(label)]) + label.encode()
+    query += b"\x00\x00\x01\x00\x01"
+    try:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    except OSError:
+        return False
+    probe.settimeout(timeout)
+    try:
+        probe.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
+        probe.sendto(query, ("224.0.0.251", 5353))
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                payload, _ = probe.recvfrom(2048)
+            except socket.timeout:
+                return False
+            if hostname.split(".")[0].encode() in payload:
+                return True
+    except OSError:
+        return False
+    finally:
+        probe.close()
+    return False
 
 
 class MdnsPublisher:
@@ -127,7 +164,15 @@ class MdnsPublisher:
         self._zeroconf = zeroconf
         self._info = info
         self.address = address
-        self.status = self.hostname
+        # 注册成功不代表对外可见，验一次再宣告（见 answers_on_network）。
+        if answers_on_network(self.hostname):
+            self.status = self.hostname
+        else:
+            self.status = "unreachable"
+            LOGGER.error(
+                "%s 已注册但网上无人应答，多半是「本地网络」权限被静默拒绝："
+                "系统设置 → 隐私与安全性 → 本地网络，允许该进程；"
+                "或用 --no-mdns 直接关掉并改用 IP 访问。", self.hostname)
 
     def stop(self) -> None:
         self._stop.set()
