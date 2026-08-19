@@ -17,6 +17,17 @@ DATA_ROOT = Path(
 )
 DATABASE_DIR = DATA_ROOT / "database"
 DATABASE_PATH = DATABASE_DIR / "ledger.db"
+
+# 硬盘上的共享权威副本。两台机器各持一份本地工作副本，运行中定期回写到这里；
+# 同一时刻只有一台在写，两边都动过就报冲突而不是自动合并（见 peach.sync）。
+# 本机直接使用共享副本时（例如尚未迁到本地盘的 Windows），两条路径相等，复制自动停用。
+_WINDOWS_SHARED_ROOT = Path(r"R:\peach-data")
+_POSIX_SHARED_ROOT = Path("/Volumes/RESOURCES/peach-data")
+SHARED_DATA_ROOT = Path(
+    os.environ.get("PEACH_SHARED_DATA_ROOT")
+    or (_WINDOWS_SHARED_ROOT if os.name == "nt" else _POSIX_SHARED_ROOT)
+)
+SHARED_DATABASE_PATH = SHARED_DATA_ROOT / "database" / "ledger.db"
 GENERATED_DIR = DATA_ROOT / "generated"
 SOURCES_DIR = DATA_ROOT / "sources"
 STATE_DIR = DATA_ROOT / "state"

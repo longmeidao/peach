@@ -108,8 +108,11 @@ class WebUiSourceTests(unittest.TestCase):
         所以裁切必须由容器比例决定，不能只靠 object-position。
         """
         self.assertPageContains("const COVER_FRONT_RATIO=0.7;")
-        self.assertPageContains("(useCover&&layout==='big'?COVER_FRONT_RATIO:16/9)")
+        self.assertPageContains("(jav&&layout==='big'?COVER_FRONT_RATIO:16/9)")
         self.assertPageContains('.poster.cover.front[data-frame="sleeve"]{object-position:100%')
+        # 判据是 `jav` 不是 `useCover`：缺封面的卡片也要拉长，用 16:9 预览图上下留黑边，
+        # 否则一行里高矮混排会把网格撕成锯齿状。
+        self.assertPageLacks("useCover&&layout==='big'")
         # 旧键要继续认，设置存在浏览器里，改名不能让用户的选择静默回落。
         self.assertPageContains("const JAV_LAYOUT_ALIASES={cover:'big',sleeve:'small'};")
 
@@ -552,7 +555,7 @@ class WebUiSourceTests(unittest.TestCase):
         保持 16:9，判据是当前版式而不是媒体本身，所以它有自己的分支。
         """
         self.assertPageContains("const ar=(it.ctx_orient==='竖屏'||cls==='scard')")
-        self.assertPageContains("(useCover&&layout==='big'?COVER_FRONT_RATIO:16/9)")
+        self.assertPageContains("(jav&&layout==='big'?COVER_FRONT_RATIO:16/9)")
 
     def test_portrait_strip_sits_on_a_row_boundary_without_borrowing_extra_items(self):
         """竖屏条整行占位，必须插在行边界上，而不是另拉一批横屏视频补满余位。

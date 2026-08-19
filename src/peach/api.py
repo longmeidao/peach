@@ -34,6 +34,7 @@ from .segments import (
 )
 from .stash import StashClient
 from .streaming import CancellableFileResponse, StreamSessionRegistry
+from .sync import LedgerSync
 from .transcodes import TranscodeService, TranscodeUnavailable
 
 
@@ -87,7 +88,11 @@ def _offline_response(exc: MediaOffline) -> JSONResponse:
     return response
 
 
-def create_app(settings: PeachSettings | None = None) -> FastAPI:
+def create_app(
+    settings: PeachSettings | None = None,
+    sync: LedgerSync | None = None,
+) -> FastAPI:
+    """`sync` 由 CLI 注入。测试直接建 app 时不传，复制与只读闸门整体不参与。"""
     settings = settings or PeachSettings()
     contract = web_contract.WebContract(
         settings.db_path, settings.snapshot_root, settings.legacy_snapshot_roots,
@@ -122,6 +127,8 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        if sync is not None:
+            sync.start()
         if mdns is not None:
             try:
                 await asyncio.to_thread(mdns.start)
@@ -133,6 +140,8 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         finally:
             if mdns is not None:
                 await asyncio.to_thread(mdns.stop)
+            if sync is not None:
+                await asyncio.to_thread(sync.stop)
             http_transport.close()
 
     app = FastAPI(
@@ -156,6 +165,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
     app.state.http_transport = http_transport
     stream_sessions = StreamSessionRegistry()
     app.state.stream_sessions = stream_sessions
+    app.state.sync = sync
 
     # 第三方前端依赖固定版本并随 Peach 自托管；局域网断网时仍可播放。
     app.mount(
@@ -187,6 +197,7 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
                 "mdns_service": mdns.name if mdns is not None else None,
                 "mdns_service_host": mdns.hostname if mdns is not None else None,
                 "mdns_address": mdns.address if mdns is not None else None,
+                "ledger_sync": sync.status if sync is not None else "disabled",
                 "scheme": "https" if settings.tls_enabled else "http"}
 
     @app.api_route("/", methods=["GET", "HEAD"])
@@ -554,6 +565,11 @@ def create_app(settings: PeachSettings | None = None) -> FastAPI:
         args = _first_query_values(request)
         if not _authorized(request, settings.token, args):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if sync is not None and sync.read_only:
+            # 两份账本已经分叉。继续写只会让分叉更难收拾，也让「选一边」变成丢数据。
+            return JSONResponse(
+                {"error": "ledger conflict", "detail": sync.detail}, status_code=409,
+            )
         try:
             return web_contract.dispatch_api_post(contract, f"/api/{route}", body)
         except KeyError:

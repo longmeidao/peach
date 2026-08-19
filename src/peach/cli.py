@@ -5,8 +5,15 @@ from datetime import datetime
 from pathlib import Path
 
 from .api import create_app
-from .config import DATABASE_PATH, MIGRATIONS_DIR, PeachSettings
+from .config import (
+    DATABASE_PATH,
+    MIGRATIONS_DIR,
+    SHARED_DATABASE_PATH,
+    STATE_DIR,
+    PeachSettings,
+)
 from .migrations import plan, upgrade
+from .sync import LedgerSync, device_id
 
 
 DEFAULT_DB = DATABASE_PATH
@@ -48,13 +55,35 @@ def _serve(args: argparse.Namespace) -> int:
         mdns_address=args.mdns_address,
         tls_enabled=tls_enabled,
     )
+    sync = _build_sync(args, settings)
     uvicorn.run(
-        create_app(settings), host=args.host, port=args.port, workers=1,
+        create_app(settings, sync), host=args.host, port=args.port, workers=1,
         ssl_certfile=str(args.ssl_certfile) if args.ssl_certfile else None,
         ssl_keyfile=str(args.ssl_keyfile) if args.ssl_keyfile else None,
     )
     return 0
 
+
+def _build_sync(args: argparse.Namespace, settings: PeachSettings) -> LedgerSync | None:
+    """建立本地副本与硬盘权威副本之间的复制，并在启动时先对齐一次。
+
+    冲突不自动挑边：两台机器都写过之后没有安全的合并规则，服务照常起但转只读，
+    由人选一边（把要保留的那份复制成另一份，或删掉一侧的 `.sync.json` 重新播种）。
+    """
+    if args.no_ledger_sync:
+        return None
+    sync = LedgerSync(
+        settings.db_path, args.shared_db, device_id(STATE_DIR),
+        interval=args.ledger_sync_seconds,
+    )
+    decision = sync.startup()
+    print(f"账本同步：{decision.action} · {decision.reason}")
+    if decision.conflict:
+        print(
+            "  服务转只读。请人工选定一份账本："
+            f"本地 {settings.db_path}，共享 {args.shared_db}。"
+        )
+    return sync
 
 def _migrate(args: argparse.Namespace) -> int:
     all_migrations, pending = plan(args.db, MIGRATIONS_DIR)
@@ -85,6 +114,9 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--token", default="")
     serve.add_argument("--docs", action="store_true")
     serve.add_argument("--no-mdns", action="store_true")
+    serve.add_argument("--shared-db", type=Path, default=SHARED_DATABASE_PATH)
+    serve.add_argument("--no-ledger-sync", action="store_true")
+    serve.add_argument("--ledger-sync-seconds", type=float, default=60.0)
     serve.add_argument("--mdns-name", default="peach")
     serve.add_argument("--mdns-address", help="explicit LAN IPv4 to publish")
     serve.add_argument("--ssl-certfile", type=Path)

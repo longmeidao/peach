@@ -380,8 +380,10 @@ function cardHtml(it,cls){
      版式看起来一模一样。现在写进 `--card-ratio`，由 CSS 消费。 */
   const ar=(it.ctx_orient==='竖屏'||cls==='scard')
     ? ((it.width&&it.height)?Math.min(0.9,Math.max(0.5,it.width/it.height)):9/16)
-    // 大图只留右侧正封，宽度不变、高度拉长；小图和预览图保持 16:9。
-    : (useCover&&layout==='big'?COVER_FRONT_RATIO:16/9);
+    /* 大图只留右侧正封，宽度不变、高度拉长；小图和预览图保持 16:9。
+       没有封面的那些也跟着拉长：一行里高矮混排会把网格撕成锯齿状，
+       缺封面的用 16:9 预览图上下留黑边即可（`.poster` 本来就是 contain + 黑底）。 */
+    : (jav&&layout==='big'?COVER_FRONT_RATIO:16/9);
 
   const thumb=useCover
     ? coverImage(it,layout)
