@@ -287,8 +287,11 @@ def build_macos_service_specs() -> tuple[ServiceSpec, ...]:
     if all(path.is_file() for path in (ca, cert, key)):
         specs.append(ServiceSpec(
             "https",
-            # 证书签的是 `peach.local`，SAN 里的 IP 是 Windows 那台的，所以只能按名字校验。
-            f"https://peach.local:{MACOS_TLS_PORT}/healthz",
+            # 健康检查走回环，不走局域网地址。走 `peach.local` 会先解析到本机的
+            # 局域网 IP，那条路径要穿过 pf 的转发规则，连接慢到几秒、还会超时，
+            # 于是服务在跑却被判成「未运行」。证书的 SAN 已经包含 127.0.0.1
+            # （见 scripts/setup_local_tls.sh），主机名校验照样成立。
+            f"https://127.0.0.1:{MACOS_TLS_PORT}/healthz",
             (
                 peach, "serve", "--host", "0.0.0.0", "--port", str(MACOS_TLS_PORT),
                 "--no-mdns",

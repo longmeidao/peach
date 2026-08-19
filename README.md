@@ -153,8 +153,17 @@ sh scripts/setup_macos_port80.sh check          # 先验证，不需要 root
 sudo sh scripts/setup_macos_port80.sh install
 ```
 
-它同时转 80 → 8900 和 443 → 8443；HTTPS 用的还是 `peach-data/secrets/tls` 里那套本机
-CA 证书（`CN=peach.local`，有效期到 2027-09）。
+它同时转 80 → 8900 和 443 → 8443；HTTPS 用的还是 `peach-data/secrets/tls` 里那套本机 CA。
+
+服务器证书的 SAN 必须覆盖实际会被访问到的每个名字。原来只有
+`DNS:peach.local, IP:192.168.50.162`——那个 IP 是 Windows 那台的，于是本机用
+`https://127.0.0.1:8443` 做健康检查会主机名不匹配，手机也只能用名字、不能用局域网 IP。
+`scripts/setup_local_tls.sh` **用现有 CA 重签叶子证书**并补上
+`DNS:localhost, IP:127.0.0.1, IP:<本机局域网地址>`；CA 不动，所以 Mac 钥匙串和 iPhone 上
+已经装过的信任继续有效，不用重装。
+
+健康检查走回环而不是 `peach.local`：后者会先解析到局域网 IP，那条路径要穿过 pf 的转发
+规则，连接慢到几秒甚至超时，于是服务在跑却被判成「未运行」。
 
 两个 pf 上踩过的坑：
 
