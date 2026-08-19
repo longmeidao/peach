@@ -1362,7 +1362,26 @@ function renderSearchMenu(){const menu=$('#searchMenu'),history=readSearchHistor
   menu.hidden=false;searchActive=-1;
   menu.querySelectorAll('[data-search-value]').forEach(x=>x.onclick=e=>{if(e.target.closest('[data-remove-history]'))return;
     $('#q').value=x.dataset.searchValue;runSearch(false,true);menu.hidden=true});
-  menu.querySelectorAll('[data-remove-history]').forEach(b=>b.onclick=async e=>{e.stopPropagation();await api('/api/search-history',{method:'POST',body:JSON.stringify({operation:'remove',query:b.dataset.removeHistory})});writeSearchHistory(readSearchHistory().filter(x=>foldName(x)!==foldName(b.dataset.removeHistory)));renderSearchMenu()})}
+  menu.querySelectorAll('[data-remove-history]').forEach(b=>{
+    /* 按下就 preventDefault，不让删除按钮把焦点从输入框抢走。抢走会触发 `#q` 的
+       blur，那个 handler 140ms 后无条件 `hidden=true`，于是「删一条记录」实际等于
+       「关掉整个下拉栏」。 */
+    b.onmousedown=e=>e.preventDefault();
+    b.onclick=async e=>{
+      e.stopPropagation();
+      const value=b.dataset.removeHistory;
+      await api('/api/search-history',{method:'POST',body:JSON.stringify({operation:'remove',query:value})});
+      writeSearchHistory(readSearchHistory().filter(x=>foldName(x)!==foldName(value)));
+      /* 只摘掉这一行，不整段重建：`renderSearchMenu` 每次都会把推荐词重新洗牌，
+         删一条历史却换了一批推荐，看着像列表自己跳了。 */
+      const row=b.closest('[data-search-value]'),group=row&&row.closest('.searchgroup');
+      if(row)row.remove();
+      if(group&&!group.querySelector('[data-search-value]'))group.remove();
+      // 行没了，键盘选中的下标就不再指向原来那一项，归零重来。
+      searchActive=-1;
+      menu.querySelectorAll('[data-search-value]').forEach(x=>x.classList.remove('active'));
+    };
+  })}
 const runSearch=(useSuggestion=false,committed=false)=>{let query=$('#q').value.trim();
   if(useSuggestion&&!query){query=$('#q').dataset.suggestion||'';$('#q').value=query}
   if(committed)rememberSearch(query);

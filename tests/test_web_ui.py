@@ -82,6 +82,15 @@ class WebUiSourceTests(unittest.TestCase):
         """窄屏下搜索框绝对定位后脱离了流，动作按钮会挤在品牌名右侧、右半条留空。"""
         self.assertPageContains("#immerseBtn{margin-left:auto}")
 
+    def test_deleting_one_search_record_keeps_the_menu_open(self):
+        """删除按钮不能抢焦点，也不能整段重建下拉栏。
+
+        抢焦点会触发 `#q` 的 blur，那个 handler 140ms 后无条件关掉下拉栏；
+        整段重建则会把推荐词重新洗牌，删一条历史却换了一批推荐。
+        """
+        self.assertPageContains("b.onmousedown=e=>e.preventDefault();")
+        self.assertPageContains("if(group&&!group.querySelector('[data-search-value]'))group.remove();")
+
     def test_avatar_tiles_do_not_inherit_the_text_link_underline(self):
         """取消规则必须真的压过 `.entitylink:hover`，不能只是写在文件里。
 
