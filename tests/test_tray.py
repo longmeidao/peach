@@ -113,6 +113,33 @@ class TrayTests(unittest.TestCase):
                 first.close()
 
 
+class ServiceStatusTests(unittest.TestCase):
+    """状态文案要点名是谁没起来。
+
+    只说「部分运行」看不出该去查什么：HTTP 和 HTTPS 会因为端口占用、证书过期、
+    pf 转发写错等完全不同的原因挂掉。
+    """
+
+    def manager(self, health: dict) -> ServiceManager:
+        specs = tuple(
+            ServiceSpec(name, f"http://127.0.0.1/{name}", ("noop",), True)
+            for name in health
+        )
+        manager = ServiceManager(specs)
+        manager._last_health.update(health)
+        return manager
+
+    def test_all_healthy(self):
+        self.assertEqual(self.manager({"http": True, "https": True}).status(), "运行中")
+
+    def test_none_healthy(self):
+        self.assertEqual(self.manager({"http": False, "https": False}).status(), "未运行")
+
+    def test_partial_names_the_broken_one(self):
+        self.assertEqual(self.manager({"http": True, "https": False}).status(), "HTTPS 未运行")
+        self.assertEqual(self.manager({"http": False, "https": True}).status(), "HTTP 未运行")
+
+
 @unittest.skipUnless(sys.platform == "darwin", "菜单栏图标与服务规格是 macOS 专属")
 class MacMenuBarTests(unittest.TestCase):
     def test_template_icon_is_a_black_silhouette(self):

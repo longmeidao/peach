@@ -162,13 +162,19 @@ class ServiceManager:
         return result
 
     def status(self) -> str:
+        """菜单里那一行状态。
+
+        原来只说「部分运行」，看不出是谁没起来、也就不知道该去查什么——两个服务
+        （HTTP 和 HTTPS）各自会因为端口占用、证书过期、pf 转发写错等完全不同的原因
+        挂掉。直接把没起来的那个点名。
+        """
         with self._lock:
-            results = [self._last_health[spec.name] for spec in self.specs]
-        if all(results):
+            down = [spec.name for spec in self.specs if not self._last_health[spec.name]]
+        if not down:
             return "运行中"
-        if any(results):
-            return "部分运行"
-        return "未运行"
+        if len(down) == len(self.specs):
+            return "未运行"
+        return "、".join(name.upper() for name in down) + " 未运行"
 
     def start_missing(self) -> None:
         LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -504,6 +510,7 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
         [
             ("打开 Peach", lambda: webbrowser.open(OPEN_URL)),
             (lambda: f"状态：{manager.status()}", None),
+            (f"地址：{OPEN_URL}", None),
             (None, None),
             ("重启服务", restart),
             ("查看日志", lambda: subprocess.run(["open", str(LOG_DIR)], check=False)),
