@@ -145,6 +145,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".search{position:absolute;left:48px;right:8px;top:8px;height:36px")
         self.assertPageContains(".searchback{display:inline-flex;position:absolute;left:8px;top:8px")
 
+    def test_unlinked_identity_does_not_look_clickable(self):
+        """没有实体链接的归属不能长得像链接。
+
+        番号、「未归属」这类值没有资料页可去，渲染成 `<span>`；但它和按钮共用
+        `.who` 的强调色，看着能点，点下去落到卡片本身、打开的是视频详情。
+        """
+        self.assertPageContains(".meta span.who{color:var(--ink-2);cursor:default}")
+
     def test_avatar_tiles_do_not_inherit_the_text_link_underline(self):
         """取消规则必须真的压过 `.entitylink:hover`，不能只是写在文件里。
 

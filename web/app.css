@@ -508,6 +508,9 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .meta .cardtitle{width:100%;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}
 .meta .s{display:flex;gap:8px;color:var(--muted);align-items:center;flex-wrap:wrap}
 .meta .who{color:var(--tungsten);min-width:0;max-width:100%;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+/* 没有实体链接的归属只是一段文字：番号、「未归属」这类值没有资料页可去。
+   染成强调色会让人以为能点，点下去却落到卡片本身、打开的是视频详情。 */
+.meta span.who{color:var(--ink-2);cursor:default}
 .flags{display:flex;gap:3px;margin-left:auto}
 .flags i{width:6px;height:6px;border-radius:1px;display:block}
 .flags i.dislike{background:var(--drop)}.flags i.seen{background:var(--muted)}
