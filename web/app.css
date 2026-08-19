@@ -840,8 +840,12 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   .ib svg{width:19px;height:19px}
   /* 展开的搜索栏不铺满整条：左边留出返回按钮，和 YouTube 手机版一致——
      否则进了搜索就没有退出的入口，只能靠失焦或 Esc。 */
-  .search{position:absolute;left:52px;right:8px;top:8px;max-width:none;margin:0;
-    display:none;z-index:5;background:var(--surface)}
+  /* 间距统一到顶栏自己的口径：左右留白 8（`.top` 的 padding），返回键与搜索框之间
+     4（`.top` 的 gap），两者同高 36（`.ib` 的窄屏尺寸），纵向各留 (52-36)/2=8。
+     不用 transform 居中——`.searchmenu` 在窄屏是 position:fixed，祖先一有 transform
+     就会改成相对它定位，下拉栏会整个跑偏。 */
+  .search{position:absolute;left:48px;right:8px;top:8px;height:36px;padding:0 14px;
+    max-width:none;margin:0;display:none;z-index:5;background:var(--surface)}
   .search.open{display:flex}
   /* 展开搜索时整条顶栏让位：筛选、品牌和右侧动作全部收起，只留返回箭头和输入框。
      不收起的话筛选按钮和返回箭头会叠在同一个位置上。 */
@@ -852,7 +856,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   .top:has(.search.open) #selectMode,
   .top:has(.search.open) #refresh,
   .top:has(.search.open) #settingsBtn{display:none!important}
-  .top:has(.search.open) .searchback{display:inline-flex;position:absolute;left:6px;top:8px;z-index:6}
+  .top:has(.search.open) .searchback{display:inline-flex;position:absolute;left:8px;top:8px;z-index:6}
   .searchmenu{position:fixed;left:8px;right:8px;top:56px;max-height:70vh;overflow:auto}
   #searchBtn{display:inline-flex!important}
   /* 移动端不需要密度切换和筛选抽屉按钮挤在一起 */

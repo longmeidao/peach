@@ -141,7 +141,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".top:has(.search.open) #filterBtn,")
         self.assertPageContains(".top:has(.search.open) .searchback{display:inline-flex")
         # 搜索框不铺满：左边留出返回按钮的位置。
-        self.assertPageContains(".search{position:absolute;left:52px;right:8px;top:8px")
+        # 左右 8、两者间距 4、同高 36、纵向各 8——全部取自 `.top` 自己的 padding/gap。
+        self.assertPageContains(".search{position:absolute;left:48px;right:8px;top:8px;height:36px")
+        self.assertPageContains(".searchback{display:inline-flex;position:absolute;left:8px;top:8px")
 
     def test_avatar_tiles_do_not_inherit_the_text_link_underline(self):
         """取消规则必须真的压过 `.entitylink:hover`，不能只是写在文件里。
