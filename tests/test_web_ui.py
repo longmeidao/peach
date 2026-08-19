@@ -78,6 +78,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const performerLabel=it=>it&&it.is_jav?'女优':'艺人';")
         self.assertPageContains("const ENTITY_LABELS={performer:'艺人'")
 
+    def test_narrow_top_bar_keeps_the_actions_on_the_right(self):
+        """窄屏下搜索框绝对定位后脱离了流，动作按钮会挤在品牌名右侧、右半条留空。"""
+        self.assertPageContains("#immerseBtn{margin-left:auto}")
+
     def test_avatar_tiles_do_not_inherit_the_text_link_underline(self):
         """取消规则必须真的压过 `.entitylink:hover`，不能只是写在文件里。
 

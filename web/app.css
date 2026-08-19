@@ -845,6 +845,10 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   #searchBtn{display:inline-flex!important}
   /* 移动端不需要密度切换和筛选抽屉按钮挤在一起 */
   #density{display:none}
+  /* 宽屏靠 `.search{flex:1}` 把动作按钮顶到右边；窄屏搜索框收成绝对定位后脱离
+     了流，没有东西再撑开中间，按钮会全部挤在品牌名右侧、右半条留空。
+     动作组的第一个按钮吃掉剩余空间，整组回到右边。 */
+  #immerseBtn{margin-left:auto}
   .entityhero{grid-template-columns:92px minmax(0,1fr);gap:14px;padding:8px 0 18px}
   .entityportrait{width:92px}.entityhero h2{font-size:20px}
   .statshead{align-items:center}.stats h2{font-size:23px}.scards{grid-template-columns:minmax(0,1fr)}
