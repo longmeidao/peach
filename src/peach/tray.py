@@ -16,7 +16,9 @@ import httpx
 import pystray
 from PIL import Image
 
+from .certs import ensure_certificate
 from .config import LOG_DIR, PROJECT_ROOT, SECRETS_DIR, STATE_DIR
+from .mdns import lan_ipv4
 from .versioning import VersionManager
 
 
@@ -212,12 +214,20 @@ class ServiceManager:
             time.sleep(0.25)
         return False
 
-    def stop_owned(self) -> None:
+    def stop_owned(self, name: str | None = None) -> None:
+        """停掉自己拉起来的服务。给 `name` 就只停那一个（证书重签后只需重启 HTTPS）。"""
         with self._lock:
-            processes = list(self._owned.values())
-            self._owned.clear()
-            for spec in self.specs:
-                self._last_health[spec.name] = False
+            if name is None:
+                processes = list(self._owned.values())
+                self._owned.clear()
+                stopped = [spec.name for spec in self.specs]
+            else:
+                process = self._owned.pop(name, None)
+                processes = [process] if process is not None else []
+                stopped = [name]
+            for key in stopped:
+                if key in self._last_health:
+                    self._last_health[key] = False
         for process in processes:
             if process.poll() is None:
                 process.terminate()
@@ -229,9 +239,10 @@ class ServiceManager:
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=3)
-        for handle in self._logs:
-            handle.close()
-        self._logs.clear()
+        if name is None:
+            for handle in self._logs:
+                handle.close()
+            self._logs.clear()
 
     def restart(self) -> bool:
         self.stop_owned()
@@ -532,8 +543,28 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
             for spec in manager.specs:
                 manager.healthy(spec)
 
+    def watch_address() -> None:
+        """本机地址一变就补签证书并重启 HTTPS。
+
+        证书的 SAN 是签死的，而局域网地址随 DHCP 和换网络变化。地址一变，用 IP 访问就
+        报证书无效——这件事没有任何理由让人去记着重跑脚本。
+        """
+        while not stopped.wait(30.0):
+            try:
+                reason = ensure_certificate(
+                    SECRETS_DIR / "tls", "peach.local", {lan_ipv4()})
+            except Exception:
+                LOGGER.exception("证书自检失败")
+                continue
+            if reason is None:
+                continue
+            LOGGER.info("证书已重签（%s），重启 HTTPS 服务", reason)
+            manager.stop_owned("https")
+            manager.start_missing()
+
     stopped = threading.Event()
     threading.Thread(target=poll_health, name="PeachMenuHealth", daemon=True).start()
+    threading.Thread(target=watch_address, name="PeachCertWatch", daemon=True).start()
     try:
         menu.run()
     finally:

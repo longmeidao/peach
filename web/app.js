@@ -35,13 +35,13 @@ async function loadSourceStatus(){
 }
 const DURATION_TAGS=new Set(['短片-2分内','中片-10分内','长片-30分内','超长片-30分上']);
 const SETTINGS_KEY='peach.settings.v1';
-const DEFAULT_SETTINGS={autoRefresh:true,refreshMinutes:5,batchSize:60,defaultSort:'daily',hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big'};
+const DEFAULT_SETTINGS={autoRefresh:true,refreshMinutes:5,batchSize:60,defaultSort:'seed',hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big'};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
 appSettings.refreshMinutes=allowedSetting(+appSettings.refreshMinutes,[1,5,10,30],5);
 appSettings.batchSize=allowedSetting(+appSettings.batchSize,[30,60,90],60);
-appSettings.defaultSort=allowedSetting(appSettings.defaultSort,['daily','rand','rating','o','plays','long','big','new','played'],'daily');
+appSettings.defaultSort=allowedSetting(appSettings.defaultSort,['seed','daily','rand','rating','o','plays','long','big','new','played'],'seed');
 appSettings.hoverDelaySeconds=allowedSetting(+appSettings.hoverDelaySeconds,[3,5,8],5);
 appSettings.seekSeconds=allowedSetting(+appSettings.seekSeconds,[5,10,30],10);
 appSettings.searchHistoryLimit=allowedSetting(+appSettings.searchHistoryLimit,[5,10,20],10);
@@ -81,19 +81,31 @@ const srcBadge=(loc,cost,cls)=>
   +(SRCICON[loc]||'')+`${LOC[loc]||loc}${cost==='metered'?' · 计费':''}</span>`;
 
 // sort 默认 daily：同一天进来顺序固定，隔天自动换一批（不是每次刷新都变）
-/* 初始种子按天固定，不是每次加载随机。顶部三层（艺人头像 / 厂牌 / 标签）拿 seed 去请求
-   `/api/tops`，随机种子会让它们每刷新一次就换一批人——用户根本没点「换一批」。主网格是
-   `sort=daily`（服务端按当天日期打散），所以只有上面那排在动，很容易看成是玄学。
-   日期一变自动换一批，和服务端 daily 的口径一致；显式「换一批」仍然用随机种子。 */
-const dailySeed=()=>{
-  const now=new Date();
-  return String((now.getFullYear()*10000+(now.getMonth()+1)*100+now.getDate())%99991);
-};
+/* 种子存下来，不随每次加载变，也不随日期变。内容只有在点「换一批」时才换。
+
+   顶部三层（艺人头像 / 厂牌 / 标签）拿 seed 去请求 `/api/tops`：种子每次随机就是每刷新
+   一次换一批人，按日期算就是每天换一批——两种都属于「自己会变」，而用户要的是不动。
+   服务端的 `sort=daily` 同理，所以默认排序换成 `seed`，每日轮换保留成一个可选项。 */
+const SEED_KEY='peach.seed';
+const newSeed=()=>String((Date.now()^(Math.random()*1e9|0))%99991);
+function persistedSeed(){
+  try{
+    const saved=localStorage.getItem(SEED_KEY);
+    if(saved)return saved;
+    const fresh=newSeed();localStorage.setItem(SEED_KEY,fresh);return fresh;
+  }catch(_e){return newSeed()}
+}
+//「换一批」要连同新种子一起存下来，否则刷新就退回上一批。
+function rollSeed(){
+  const fresh=newSeed();
+  try{localStorage.setItem(SEED_KEY,fresh)}catch(_e){}
+  return fresh;
+}
 const initialParams=new URLSearchParams(location.search);
 let state={loc:initialParams.get('loc')||'local,115',creator:initialParams.get('creator')||'',studio:initialParams.get('studio')||'',
   tag:initialParams.get('tag')||'',len:initialParams.get('len')||'',dur_min:initialParams.get('dur_min')||'',dur_max:initialParams.get('dur_max')||'',
   orient:initialParams.get('orient')||'',state:initialParams.get('state')||'',sort:initialParams.get('sort')||appSettings.defaultSort,
-  seed:initialParams.get('seed')||dailySeed(),q:initialParams.get('q')||'',jav:initialParams.get('jav')||'',thumb:'1'};
+  seed:initialParams.get('seed')||persistedSeed(),q:initialParams.get('q')||'',jav:initialParams.get('jav')||'',thumb:'1'};
 $('#q').value=state.q;
 const REP={};   // 创作者/厂牌 → 代表作 id，用来做圆头像（裁接触印相中心格，不另造图）
 let offset=0,total=0,facets=null,current=null,detailReturnPath='/',activeMix=null;
@@ -657,7 +669,7 @@ async function buildBars(){
     bind();});
 }
 /* 排序放在计数行 —— 顶栏放不下也不该放，这是列表的属性 */
-const SORTS=[['daily','每日轮换'],['rand','随机'],['rating','评分'],
+const SORTS=[['seed','固定顺序'],['daily','每日轮换'],['rand','随机'],['rating','评分'],
              ['o','高潮计数'],['plays','观看次数'],['long','时长'],['big','体积'],
              ['new','最近入库'],['played','最近看的']];
 function renderCount(){
@@ -673,7 +685,7 @@ function renderCount(){
           `<button data-jav-layout="${k}" aria-pressed="${k===javLayout()}" title="${esc(label)}"
             aria-label="${esc(label)}">${icon(ic)}</button>`).join('')+`</span>`:'')
         +SORTS.map(([k,l])=>`<button data-sort="${k}" aria-pressed="${state.sort===k}">${l}</button>`).join('')+`</span>`);
-  if($('#batchAction'))$('#batchAction').onclick=()=>{state.sort='seed';state.seed=String(Date.now()%99991);load(true)};
+  if($('#batchAction'))$('#batchAction').onclick=()=>{state.sort='seed';state.seed=rollSeed();load(true)};
   $('#count').querySelectorAll('[data-jav-layout]').forEach(b=>
     b.onclick=()=>setJavLayout(b.dataset.javLayout));
   if(state.state==='trash')$('#emptyTrash').onclick=async(e)=>{
@@ -689,7 +701,7 @@ function renderCount(){
   };
   $('#count').querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{
     state.sort=b.dataset.sort;
-    if(state.sort==='seed')state.seed=String(Date.now()%99991);
+    if(state.sort==='seed')state.seed=rollSeed();
     load(true)});
 }
 
@@ -1898,7 +1910,7 @@ $('#searchBack').onclick=()=>{
 };
 $('#q').addEventListener('blur',()=>setTimeout(()=>{if(!$('#q').value&&!$('#searchMenu').matches(':hover'))$('.search').classList.remove('open');$('#searchMenu').hidden=true},140));
 $('#brandHome').onclick=e=>{e.preventDefault();
-  state={loc:state.loc,creator:'',studio:'',tag:'',len:'',dur_min:'',dur_max:'',orient:'',state:'',sort:appSettings.defaultSort,seed:dailySeed(),q:'',thumb:'1'};
+  state={loc:state.loc,creator:'',studio:'',tag:'',len:'',dur_min:'',dur_max:'',orient:'',state:'',sort:appSettings.defaultSort,seed:persistedSeed(),q:'',thumb:'1'};
   route('/');$('#q').value='';disposeStage(false);buildBars();load(true);window.scrollTo({top:0,behavior:'smooth'})};
 $('#tokClose').onclick=()=>{setTokLoading(false);route('/');$('#tok').hidden=true;$('#tokTrack').querySelectorAll('video').forEach(v=>{
   v.pause();v.removeAttribute('src');v.load();if(v.id!=='tokVid')v.remove()});
@@ -1980,7 +1992,7 @@ async function refreshAll(automatic=false){
     await openStats(false);return
   }      // 统计/复核页只刷新当前表面
   if(!$('#index').hidden){return}
-  state.sort='seed'; state.seed=String(Date.now()%99991);
+  state.sort='seed'; state.seed=rollSeed();
   // 顶部三层（女优头像、厂牌、标签）此前从不跟着换：它们有 30 秒会话缓存，
   // 而 refreshAll 只重载网格，于是「换一批」之后上面还是原来那批人。
   barsDataCache=null;barsDataPromise=null;

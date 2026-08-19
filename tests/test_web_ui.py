@@ -153,18 +153,21 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains(".meta span.who{color:var(--ink-2);cursor:default}")
 
-    def test_initial_seed_is_stable_within_a_day(self):
-        """初始种子按天固定，不能每次加载随机。
+    def test_content_only_changes_when_the_user_asks(self):
+        """内容不能自己变：既不能每次加载随机，也不能按日期换。
 
-        顶部三层拿 seed 去请求 `/api/tops`，随机种子会让它们每刷新一次就换一批人，
-        而用户根本没点「换一批」。主网格是 `sort=daily` 看不出来，只有上面那排在动。
-        显式「换一批」仍然用随机种子。
+        顶部三层拿 seed 去请求 `/api/tops`。种子每次随机就是刷一次换一批人，按日期算
+        就是每天换一批——两种都属于「自己会变」。种子存进 localStorage，默认排序也从
+        `daily`（服务端按当天日期打散）换成 `seed`，每日轮换降级成可选项。
         """
-        self.assertPageContains("const dailySeed=()=>{")
-        self.assertPageContains("seed:initialParams.get('seed')||dailySeed()")
-        self.assertPageLacks("seed:initialParams.get('seed')||String((Date.now()")
-        # 换一批必须还是随机的，否则同一天点多少次都不换。
-        self.assertPageContains("state.sort='seed';state.seed=String(Date.now()%99991)")
+        self.assertPageContains("const SEED_KEY='peach.seed';")
+        self.assertPageContains("seed:initialParams.get('seed')||persistedSeed()")
+        self.assertPageLacks("dailySeed()")
+        self.assertPageContains("defaultSort:'seed'")
+        self.assertPageContains("const SORTS=[['seed','固定顺序'],['daily','每日轮换']")
+        # 换一批换出来的那一批要留得住，否则刷新就退回上一批。
+        self.assertPageContains("state.sort='seed';state.seed=rollSeed()")
+        self.assertPageContains("localStorage.setItem(SEED_KEY,fresh)")
 
     def test_avatar_tiles_do_not_inherit_the_text_link_underline(self):
         """取消规则必须真的压过 `.entitylink:hover`，不能只是写在文件里。
