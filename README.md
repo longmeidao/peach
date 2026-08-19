@@ -23,6 +23,8 @@ Windows 口径，本机挂载点由 `src/peach/platform.py` 在读取时翻译�
 - 真相数据库：`peach-data/database/ledger.db`
 - Stash：过渡期可替换 adapter，不是真相源
 
+账本共三份：硬盘上那份是权威副本，两台机器各持一份本地工作副本。详见下文「账本复制」。
+
 盘符映射的默认值按平台给，可用 `PEACH_DRIVE_MAP=R=/Volumes/RESOURCES,B=/mnt/115` 覆盖；
 数据目录用 `PEACH_DATA_ROOT` 覆盖。CloudDrive 在两个平台的挂载方式完全不同——Windows
 是盘符，macOS 是 macFUSE 挂载点——所以这层映射是必需的，不是可选优化。
@@ -31,6 +33,35 @@ Windows 口径，本机挂载点由 `src/peach/platform.py` 在读取时翻译�
 `asset.path`。
 
 项目仓库不保存媒体、数据库、凭据、快照、封面或运行日志。
+
+### 账本复制
+
+三份副本：硬盘 `\<共享\>/database/ledger.db` 是权威副本，Windows 和 macOS 各持一份本地
+工作副本。**这不是多主实时同步**——SQLite 没有安全的自动三方合并，两台机器各自写过之后，
+没有任何规则能把「看过 / 喜欢 / 标签」这类断言合成一份而不丢东西。实际做的是单写者复制：
+
+- 启动时比对世代：硬盘更新就拉取，本地更新就保留；**两边都动过就拒绝自动合并**，服务照常
+  起但转只读（写入端点返回 `409`），由人选一边。
+- 运行中每 60 秒回写硬盘，所以同一时刻只有一台在写。回写前重新判定，别人抢先推过就转冲突，
+  绝不覆盖。
+- 硬盘不在时本地照常读写，插回来再回写。这就是脱盘模式的账本侧。
+
+世代号只表示血缘先后，不表示时间：时钟在两台机器上不可靠，exFAT 的本地时间戳只有 2 秒精度。
+血缘记在库文件旁边的 `ledger.db.sync.json` 里，不进 Git，也不需要改表结构。
+
+复制一律走 SQLite 的 backup API，不复制文件：账本是 WAL 模式，直接拷 `.db` 会漏掉 `-wal`
+里已提交但未 checkpoint 的事务，拷完还可能和目标残留的 `-wal` 拼成一个已经损坏的库。
+
+共享副本位置由 `PEACH_SHARED_DATA_ROOT` 覆盖。**本地副本和共享副本是同一条路径时复制自动停用**，
+所以尚未把数据迁到本机盘的机器行为完全不变。当前状态看 `/healthz` 的 `ledger_sync` 字段。
+
+```bash
+# 不参与复制（例如临时起一个只读实例）
+./.venv/bin/peach serve --port 8900 --no-ledger-sync
+```
+
+冲突的解法是选一边，不是合并：把要保留的那份复制成另一份，或删掉一侧的 `.sync.json` 让它
+重新播种。历史备份仍然只留在硬盘的 `database/` 与 `archive/`。
 
 ### 脱盘模式
 
@@ -179,7 +210,7 @@ Per-Monitor V2 DPI，单击打开 `https://peach.local/`；右键可查看状态
 
 | URL | 用途 |
 |---|---|
-| `/healthz` | 无副作用健康状态 |
+| `/healthz` | 无副作用健康状态，含 `ledger_sync` |
 | `/api/sources` | 各来源挂载可达性，脱盘模式的唯一判据 |
 | `/api/stream-plan?id={asset_id}` | 为远端原生 MP4 选择 HLS 或标准 Range |
 | `/favicon.svg` | Peach 图标 |

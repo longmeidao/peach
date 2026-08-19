@@ -6,7 +6,7 @@ Peach 是逻辑前后端分离、部署仍为一个进程的 FastAPI 模块化�
 
 ## 核心边界
 
-1. **Ledger**：资产、行为、来源和知识的唯一真相源。SQLite 适合当前单用户规模。
+1. **Ledger**：资产、行为、来源和知识的唯一真相源。SQLite 适合当前单用户规模。硬盘上的那份是权威副本，两台机器各持本地工作副本，由 `peach.sync` 做单写者复制：拉取、回写、冲突转只读，**不做多主合并**。
 2. **API / 应用层**：FastAPI 承载页面、JSON、媒体响应和写入边界。
 3. **平台层**：`peach.platform` 是账本路径与本机挂载点之间唯一的翻译层。账本只用 Windows 盘符记录路径，读取时按 `PEACH_DRIVE_MAP` 翻译到本机挂载点；没有挂载点的盘符落到不可达根，对应来源整体按脱盘处理。CloudDrive 在 Windows 是盘符、在 macOS 是 macFUSE 挂载点，差异全部收敛在这里。
 4. **Media Engine**：FastAPI 只持有一个 `MediaEngine`。本地文件是原生后端；Stash 是公开协议适配器，再按扫描、元数据、预览、流媒体逐项替换。挂载网盘的已知时长原生 MP4 由 `stream-plan` 选择按时间生成的 HLS 片段，其他情况回退标准 Range。
@@ -41,7 +41,7 @@ AI/外部元数据 -> 经复核的候选 -> ledger
 `peach-data` 与代码仓库刻意分离（Windows `R:\peach-data`，macOS
 `~/Desktop/lmd.gg/peach/peach-data`，由 `PEACH_DATA_ROOT` 覆盖）：
 
-- `database/`：SQLite 真相库
+- `database/`：SQLite 真相库。本地是工作副本，血缘记在同目录的 `ledger.db.sync.json`
 - `generated/`：快照、海报、头像和厂牌 Logo
 - `sources/`：浏览器、追更、盘点和导出等不可变原始输入
 - `state/`：人工维护的本机状态和锁

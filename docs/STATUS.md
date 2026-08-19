@@ -28,6 +28,7 @@
 - 本地 CA HTTPS 已部署。CA 包含 critical `CA:TRUE` 和签名用途并通过 OpenSSL 链验证。macOS/iOS 只安装 `peach-local-ca.crt`；不得传播任何私钥。
 - 项目代码、运行数据、本地媒体已分离为 `R:\peach-app`、`R:\peach-data`、`R:\media`。旧空 Inbox 和 `Resources/Tools` 兼容表面已移除。
 - 项目已可在 macOS 上独立运行并全量通过测试。账本路径的盘符翻译收敛在 `src/peach/platform.py`；`R:` → `/Volumes/RESOURCES`、`B:`（115）→ `~/Desktop/IMSL/115`、`A:`（PikPak）→ `~/Desktop/IMSL/Pikpak`，可用 `PEACH_DRIVE_MAP` 覆盖。实测本地与 115 的真实资产均返回 `206`，缩略图 `200`；PikPak 挂载当时掉线，按脱盘正确返回 `503` + `X-Peach-Offline`。账本本身未改写。
+- 账本改为三副本单写者复制（`src/peach/sync.py`）：硬盘 `/Volumes/RESOURCES/peach-data/database/ledger.db` 是权威副本，macOS 本地工作副本在 `~/Desktop/lmd.gg/peach/peach-data/database/ledger.db`（迁移后 asset 81769、entity 8253、asset_tag 88538 与源一致，`integrity_check` 为 `ok`，已播种为第 1 代）。启动拉/推、每 60 秒回写、两边都动过转只读并返回 `409`。**Windows 侧仍直接使用硬盘那份，本地副本与共享副本同路径时复制自动停用，行为不变**；等它把 `PEACH_DATA_ROOT` 指到本机盘，三副本才真正成立。
 - 脱盘模式按来源逐个判定：`GET /api/sources` 报告可达性，前端置灰脱盘来源的筛选并在详情页显示「脱盘模式」面板。外置盘不在时 115/PikPak 的 78k 条云端资产仍然可用。
 
 ## 界面与交互现状
