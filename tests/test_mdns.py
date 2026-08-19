@@ -24,6 +24,63 @@ class MdnsPublisherTests(unittest.TestCase):
         zeroconf_type.return_value.unregister_service.assert_called_once_with(info)
         zeroconf_type.return_value.close.assert_called_once()
 
+    def test_address_change_republishes_so_dhcp_moves_are_followed(self):
+        """换 Wi-Fi、DHCP 换地址都只改地址、不通知进程。
+
+        不复查的话 `peach.local` 会一直指向旧地址；zeroconf 的套接字也绑在旧接口上，
+        所以是整体重建而不是只换地址字段。
+        """
+        addresses = iter(["192.0.2.10", "192.0.2.10", "198.51.100.7"])
+        current = ["192.0.2.10"]
+
+        def resolver():
+            current[0] = next(addresses, current[0])
+            return current[0]
+
+        with patch("peach.mdns.Zeroconf") as zeroconf_type:
+            publisher = MdnsPublisher(
+                "peach", 80, address_resolver=resolver, refresh_seconds=0,
+            )
+            publisher.start()
+            self.assertEqual(publisher.address, "192.0.2.10")
+            self.assertEqual(publisher.refresh(), "unchanged")
+            self.assertEqual(publisher.refresh(), "republished")
+            self.assertEqual(publisher.address, "198.51.100.7")
+            publisher.stop()
+        self.assertEqual(zeroconf_type.call_count, 2)
+
+    def test_losing_the_network_withdraws_the_record_instead_of_keeping_a_stale_one(self):
+        """留着一条指向旧地址的记录比没有记录更糟：客户端会一直连一个不存在的地方。"""
+        states = iter(["192.0.2.10"])
+
+        def resolver():
+            try:
+                return next(states)
+            except StopIteration:
+                raise RuntimeError("no publishable LAN IPv4 address") from None
+
+        with patch("peach.mdns.Zeroconf"):
+            publisher = MdnsPublisher(
+                "peach", 80, address_resolver=resolver, refresh_seconds=0,
+            )
+            publisher.start()
+            self.assertEqual(publisher.status, "peach.local")
+            self.assertEqual(publisher.refresh(), "unavailable")
+            self.assertEqual(publisher.status, "unavailable")
+            self.assertIsNone(publisher.address)
+
+    def test_a_pinned_address_never_republishes(self):
+        """生产上显式钉住地址时复查必须是空转，不能自己换成别的网卡。"""
+        with patch("peach.mdns.Zeroconf") as zeroconf_type:
+            publisher = create_mdns_publisher(
+                "peach", 80, address="192.0.2.10", refresh_seconds=0,
+            )
+            publisher.start()
+            self.assertEqual(publisher.refresh(), "unchanged")
+            self.assertEqual(publisher.refresh(), "unchanged")
+            publisher.stop()
+        self.assertEqual(zeroconf_type.call_count, 1)
+
     def test_secure_publication_uses_https_service(self):
         with patch("peach.mdns.Zeroconf") as zeroconf_type:
             publisher = MdnsPublisher(

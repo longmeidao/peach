@@ -1,14 +1,22 @@
 from __future__ import annotations
 
+import logging
 import socket
 import ipaddress
+import threading
 from collections.abc import Callable
 
 from zeroconf import ServiceInfo, Zeroconf
 
 
+LOGGER = logging.getLogger(__name__)
+
 HTTP_SERVICE_TYPE = "_http._tcp.local."
 HTTPS_SERVICE_TYPE = "_https._tcp.local."
+
+#: 重新解析本机地址的间隔。换 Wi-Fi、DHCP 续租换地址、插拔网线都只改地址，
+#: 不会通知进程；不复查的话 `peach.local` 会一直指向旧地址。
+REFRESH_SECONDS = 20.0
 
 
 def _normalized_name(name: str) -> str:
@@ -72,6 +80,7 @@ class MdnsPublisher:
         port: int,
         secure: bool = False,
         address_resolver: Callable[[], str] = lan_ipv4,
+        refresh_seconds: float = REFRESH_SECONDS,
     ) -> None:
         self.name = _normalized_name(name)
         self.port = port
@@ -81,12 +90,22 @@ class MdnsPublisher:
         self._info: ServiceInfo | None = None
         self.address: str | None = None
         self.status = "pending"
+        self.refresh_seconds = refresh_seconds
+        self._stop = threading.Event()
+        self._watcher: threading.Thread | None = None
 
     @property
     def hostname(self) -> str:
         return f"{self.name}.local"
 
     def start(self) -> None:
+        # 起不来也要把复查线程挂上：开机时网络还没就绪是常态，下一轮就能恢复。
+        try:
+            self._register()
+        finally:
+            self._start_watcher()
+
+    def _register(self) -> None:
         if self._zeroconf is not None:
             return
         address = self._address_resolver()
@@ -111,6 +130,46 @@ class MdnsPublisher:
         self.status = self.hostname
 
     def stop(self) -> None:
+        self._stop.set()
+        watcher, self._watcher = self._watcher, None
+        if watcher is not None:
+            watcher.join(timeout=self.refresh_seconds + 5)
+        self._unregister()
+
+    def _start_watcher(self) -> None:
+        if self.refresh_seconds <= 0 or self._watcher is not None:
+            return
+        self._watcher = threading.Thread(target=self._watch, name="peach-mdns", daemon=True)
+        self._watcher.start()
+
+    def _watch(self) -> None:
+        while not self._stop.wait(self.refresh_seconds):
+            try:
+                self.refresh()
+            except Exception:
+                LOGGER.exception("mDNS 地址复查失败")
+
+    def refresh(self) -> str:
+        """本机地址变了就重新广播。
+
+        换网络时 zeroconf 的套接字也绑在旧接口上，所以是整体重建而不是只改地址。
+        地址解析不出来（没网）就先撤掉广播，等下一轮恢复——留着一条指向旧地址的
+        记录比没有记录更糟，客户端会一直连一个不存在的地方。
+        """
+        try:
+            address = self._address_resolver()
+        except (OSError, RuntimeError):
+            if self._zeroconf is not None:
+                self._unregister()
+                self.status = "unavailable"
+            return "unavailable"
+        if self._zeroconf is not None and address == self.address:
+            return "unchanged"
+        self._unregister()
+        self._register()
+        return "republished"
+
+    def _unregister(self) -> None:
         if self._zeroconf is None:
             return
         try:
@@ -126,6 +185,11 @@ class MdnsPublisher:
 
 def create_mdns_publisher(
     name: str, port: int, secure: bool = False, address: str | None = None,
+    refresh_seconds: float = REFRESH_SECONDS,
 ) -> MdnsPublisher:
+    """`address` 显式钉住时复查是空转：解析器返回常量，地址永远不变。"""
     resolver = _explicit_resolver(address) if address else lan_ipv4
-    return MdnsPublisher(name, port, secure=secure, address_resolver=resolver)
+    return MdnsPublisher(
+        name, port, secure=secure, address_resolver=resolver,
+        refresh_seconds=refresh_seconds,
+    )
