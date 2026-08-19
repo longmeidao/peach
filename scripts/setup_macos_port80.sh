@@ -8,10 +8,18 @@
 # 与其让整个服务以 root 跑，不如让内核把 80 转到 8900：pf 的 rdr 规则，服务本身
 # 还是普通用户进程。这是 macOS 上的标准做法，也是唯一不需要提权跑 Python 的做法。
 #
-# 需要 sudo，且只需执行一次；重启后由 LaunchDaemon 重新加载。
+# **`rdr-anchor` 必须落在 translation 段**。pf 要求规则严格按
+# options → normalization → queueing → translation → filtering 排列，
+# 把它追加到 /etc/pf.conf 末尾会落在 `anchor "com.apple/*"`（filtering）之后，
+# 报 `Rules must be in order: ...`。所以插在最后一条 rdr-anchor/nat-anchor 之后。
+#
+# 改 /etc/pf.conf 之前先在临时文件上 `pfctl -n -f` 验证：这个系统文件写坏了，
+# 开机时整个包过滤都加载不起来。install 同时也是修复——它会先剥掉本脚本此前写入的行
+# 再重建。
 #
 #   sudo sh scripts/setup_macos_port80.sh install
 #   sudo sh scripts/setup_macos_port80.sh uninstall
+#   sh scripts/setup_macos_port80.sh check       # 只验证，不需要 root
 set -eu
 
 ANCHOR_NAME="gg.lmd.peach"
@@ -19,6 +27,33 @@ ANCHOR_FILE="/etc/pf.anchors/${ANCHOR_NAME}"
 DAEMON="/Library/LaunchDaemons/${ANCHOR_NAME}.pf.plist"
 TARGET_PORT="${PEACH_PORT:-8900}"
 ACTION="${1:-install}"
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+# 去掉本脚本写过的行，并把 rdr-anchor 插回 translation 段。
+rebuild_conf() {
+    awk -v name="$ANCHOR_NAME" -v anchor_file="$ANCHOR_FILE" '
+        index($0, name) { next }                       # 幂等：先剥掉旧的
+        { line[++n] = $0; if ($0 ~ /^[[:space:]]*(rdr|nat)-anchor/) last = n }
+        END {
+            for (i = 1; i <= n; i++) {
+                print line[i]
+                if (i == last) printf "rdr-anchor \"%s\"\n", name
+            }
+            printf "load anchor \"%s\" from \"%s\"\n", name, anchor_file
+        }
+    ' "$1"
+}
+
+if [ "$ACTION" = "check" ]; then
+    rebuild_conf /etc/pf.conf > "$WORK/pf.conf"
+    if pfctl -n -f "$WORK/pf.conf" 2>"$WORK/err"; then
+        echo "语法检查通过；install 会把它写入 /etc/pf.conf"
+    else
+        echo "语法检查失败：" >&2; cat "$WORK/err" >&2; exit 1
+    fi
+    exit 0
+fi
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "需要 root：sudo sh $0 $ACTION" >&2
@@ -28,11 +63,8 @@ fi
 if [ "$ACTION" = "uninstall" ]; then
     launchctl bootout system "$DAEMON" 2>/dev/null || true
     rm -f "$DAEMON" "$ANCHOR_FILE"
-    # /etc/pf.conf 里的 anchor 行留着无害（锚点为空即无规则），但也一并清掉。
-    if [ -f /etc/pf.conf ]; then
-        grep -v "$ANCHOR_NAME" /etc/pf.conf > /etc/pf.conf.peach.tmp
-        mv /etc/pf.conf.peach.tmp /etc/pf.conf
-    fi
+    grep -v "$ANCHOR_NAME" /etc/pf.conf > "$WORK/pf.conf"
+    cp "$WORK/pf.conf" /etc/pf.conf
     pfctl -f /etc/pf.conf 2>/dev/null || true
     echo "已移除 80 -> ${TARGET_PORT} 的重定向"
     exit 0
@@ -45,15 +77,15 @@ rdr pass on lo0 inet proto tcp from any to any port 80 -> 127.0.0.1 port ${TARGE
 rdr pass inet proto tcp from any to any port 80 -> 127.0.0.1 port ${TARGET_PORT}
 RULES
 
-# rdr-anchor 必须排在 filter 规则之前，所以插在 pf.conf 的 scrub 段之后。
-if ! grep -q "$ANCHOR_NAME" /etc/pf.conf; then
-    cp /etc/pf.conf "/etc/pf.conf.peach.bak.$(date +%Y%m%d-%H%M%S)"
-    printf '\nrdr-anchor "%s"\nload anchor "%s" from "%s"\n' \
-        "$ANCHOR_NAME" "$ANCHOR_NAME" "$ANCHOR_FILE" >> /etc/pf.conf
+# 先在临时文件上验证，通过了才动系统文件。
+rebuild_conf /etc/pf.conf > "$WORK/pf.conf"
+if ! pfctl -n -f "$WORK/pf.conf" 2>"$WORK/err"; then
+    echo "生成的 pf.conf 语法不合法，未改动系统文件：" >&2
+    cat "$WORK/err" >&2
+    exit 1
 fi
-
-# 先做语法检查再真正加载：pf.conf 写坏会让整台机器的包过滤加载失败。
-pfctl -n -f /etc/pf.conf
+cp /etc/pf.conf "/etc/pf.conf.peach.bak.$(date +%Y%m%d-%H%M%S)"
+cp "$WORK/pf.conf" /etc/pf.conf
 
 cat > "$DAEMON" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -73,5 +105,5 @@ launchctl bootout system "$DAEMON" 2>/dev/null || true
 launchctl bootstrap system "$DAEMON"
 
 echo "已把 80 重定向到 ${TARGET_PORT}"
-echo "  验证：curl -sI http://peach.local/healthz | head -1"
+echo "  验证：curl -sI --noproxy '*' http://peach.local/healthz | head -1"
 echo "  移除：sudo sh $0 uninstall"

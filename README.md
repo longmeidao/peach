@@ -149,8 +149,15 @@ LaunchAgent；`dist/Peach.app` 只作双击入口，它做的事只是 `launchct
 整个服务提权：
 
 ```bash
+sh scripts/setup_macos_port80.sh check          # 先验证，不需要 root
 sudo sh scripts/setup_macos_port80.sh install
 ```
+
+`rdr-anchor` 必须落在 translation 段：pf 要求规则严格按 options → normalization →
+queueing → translation → filtering 排列，追加到 `/etc/pf.conf` 末尾会落在
+`anchor "com.apple/*"`（filtering）之后并报 `Rules must be in order`。脚本因此插在最后
+一条 `rdr-anchor`/`nat-anchor` 之后，并且**先在临时文件上 `pfctl -n -f` 验证过才动系统
+文件**——`/etc/pf.conf` 写坏了，开机时整个包过滤都加载不起来。
 
 跨两台机器开发时换行口径由 `.gitattributes` 的 `* text=auto eol=lf` 固定。不要依赖各自的
 `core.autocrlf`：2026-08 之前 Windows 侧把 105 个文件整体改写成 CRLF，`git status` 长期显示
