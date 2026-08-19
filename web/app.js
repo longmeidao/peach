@@ -363,6 +363,10 @@ const COVER_FRAME=`onload="const r=this.naturalWidth/this.naturalHeight;this.dat
    只在容器比图片更「竖」时才会横向裁，容器一旦宽过 1.48 就变成纵向裁、整张封套原样
    铺满——这正是「大图」以前只是撑满画布、没取到右侧的原因。 */
 const COVER_FRONT_RATIO=0.7;
+/* 竖屏一律用同一个比例，不按每条视频的实际宽高。竖屏素材从 0.5 到 0.9 都有，
+   按各自比例渲染会让竖屏条和竖屏网格高低不齐；比例不同的用 contain 上下留黑边
+   （`.poster` 本来就是 contain + 黑底）。 */
+const PORTRAIT_RATIO=9/16;
 function coverImage(it,layout){
   const src=`/cover?code=${encodeURIComponent(it.code||'')}`;
   // 人脸只做纵向微调：人物在画面里的高低差别很大，写死的纵向位置会把一部分
@@ -379,7 +383,7 @@ function cardHtml(it,cls){
   /* 卡片比例。这个值以前算出来就没人用过——`.pic` 一直写死 16/9，于是 JAV 的两种
      版式看起来一模一样。现在写进 `--card-ratio`，由 CSS 消费。 */
   const ar=(it.ctx_orient==='竖屏'||cls==='scard')
-    ? ((it.width&&it.height)?Math.min(0.9,Math.max(0.5,it.width/it.height)):9/16)
+    ? PORTRAIT_RATIO
     /* 大图只留右侧正封，宽度不变、高度拉长；小图和预览图保持 16:9。
        没有封面的那些也跟着拉长：一行里高矮混排会把网格撕成锯齿状，
        缺封面的用 16:9 预览图上下留黑边即可（`.poster` 本来就是 contain + 黑底）。 */

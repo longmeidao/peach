@@ -20,7 +20,14 @@ from .versioning import VersionManager
 
 
 DEFAULT_LAN_ADDRESS = "192.168.50.162"
-OPEN_URL = "https://peach.local/"
+#: macOS 菜单栏项拉起的端口。80/443 在 macOS 上要 root，开发机不该为一个菜单栏图标
+#: 去要管理员权限；本机 CA 的那套 TLS 材料也是给 Windows 生产实例签的。
+MACOS_PORT = 8900
+#: 单击菜单栏/托盘图标打开的地址。Windows 生产实例有本机 CA 的 HTTPS 和 80/443；
+#: macOS 是开发环境，走非特权端口的 HTTP。
+OPEN_URL = (
+    f"http://127.0.0.1:{MACOS_PORT}/" if sys.platform == "darwin" else "https://peach.local/"
+)
 
 
 def enable_hidpi() -> str:
@@ -62,15 +69,37 @@ class AlreadyRunning(RuntimeError):
 
 
 class SingleInstance:
-    """A process-lifetime Windows file lock for the interactive tray."""
+    """交互式托盘/菜单栏项的进程级单实例锁。"""
 
     def __init__(self, path: Path) -> None:
         self.path = path
         self._handle = None
 
     def acquire(self) -> None:
-        if os.name != "nt":
-            return
+        """进程生命周期内的单实例锁。
+
+        Windows 用 `msvcrt.locking`，POSIX 用 `fcntl.flock`——两者都在进程退出时由
+        内核释放，所以强杀之后不会留下一把解不开的锁。没有这层保护的话，菜单栏里会
+        出现两个 Peach，各自再拉起一份服务去抢同一个端口。
+        """
+        if os.name == "nt":
+            self._acquire_windows()
+        else:
+            self._acquire_posix()
+
+    def _acquire_posix(self) -> None:
+        import fcntl
+
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        handle = self.path.open("a+b")
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            handle.close()
+            raise AlreadyRunning("Peach tray is already running") from exc
+        self._handle = handle
+
+    def _acquire_windows(self) -> None:
         import msvcrt
 
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -199,25 +228,49 @@ class ServiceManager:
         return self.wait_until_ready()
 
 
+#: venv 里放可执行文件的目录与后缀。Windows 是 `Scripts\\peach.exe`，POSIX 是 `bin/peach`。
+_BIN_DIR = "Scripts" if os.name == "nt" else "bin"
+_EXECUTABLE = "peach.exe" if os.name == "nt" else "peach"
+
+
 def _peach_executable() -> Path:
     if getattr(sys, "frozen", False):
         # 打包出来的托盘不是可移动的独立发行版：它仍然把服务进程的所有权交给项目 venv，
         # 因为 one-file bootloader 在本 Python 构建上再拉起一个 one-file 进程并不安全。
         # 逐级向上找 .venv，而不是写死 parents[2]——换个输出目录就不该整套失效。
         for parent in Path(sys.executable).resolve().parents:
-            managed = parent / ".venv" / "Scripts" / "peach.exe"
+            managed = parent / ".venv" / _BIN_DIR / _EXECUTABLE
             if managed.is_file():
                 return managed
-    sibling = Path(sys.executable).with_name("peach.exe")
+    sibling = Path(sys.executable).with_name(_EXECUTABLE)
     if sibling.is_file():
         return sibling
-    candidate = PROJECT_ROOT / ".venv" / "Scripts" / "peach.exe"
+    candidate = PROJECT_ROOT / ".venv" / _BIN_DIR / _EXECUTABLE
     if candidate.is_file():
         return candidate
-    raise FileNotFoundError("peach.exe is missing; reinstall the editable project")
+    raise FileNotFoundError(f"{_EXECUTABLE} is missing; reinstall the editable project")
+
+
+def build_macos_service_specs() -> tuple[ServiceSpec, ...]:
+    """macOS 只起一个非特权端口的 HTTP 服务。
+
+    不钉 `--mdns-address`：这台机器会换网络，钉死等于换个 Wi-Fi 就打不开
+    （见 `peach.mdns` 的地址复查）。
+    """
+    peach = str(_peach_executable())
+    return (
+        ServiceSpec(
+            "http",
+            f"http://127.0.0.1:{MACOS_PORT}/healthz",
+            (peach, "serve", "--host", "0.0.0.0", "--port", str(MACOS_PORT)),
+            True,
+        ),
+    )
 
 
 def build_service_specs(lan_address: str | None = None) -> tuple[ServiceSpec, ...]:
+    if sys.platform == "darwin":
+        return build_macos_service_specs()
     address = lan_address or os.environ.get("PEACH_LAN_ADDRESS", DEFAULT_LAN_ADDRESS)
     peach = str(_peach_executable())
     cert_dir = SECRETS_DIR / "tls"
@@ -246,14 +299,41 @@ def build_service_specs(lan_address: str | None = None) -> tuple[ServiceSpec, ..
     )
 
 
-def create_icon(size: int = 64) -> Image.Image:
-    """Load the shared square Peach brand asset at tray resolution."""
+def create_icon(size: int = 64, *, template: bool = False) -> Image.Image:
+    """Load the shared square Peach brand asset at tray resolution.
+
+    `template=True` 返回只有形状的单色版本：macOS 菜单栏图标必须是 template image，
+    由系统按浅色/深色菜单栏自己反色。彩色图标不会跟着变——浅色菜单栏下那颗桃子会
+    糊成一团。形状取自原图的 alpha 通道，颜色一律置黑。
+    """
     resource = Path(getattr(sys, "_MEIPASS", PROJECT_ROOT)) / "resources" / "peach-logo.png"
     if not resource.is_file():
         resource = PROJECT_ROOT / "resources" / "peach-logo.png"
     if not resource.is_file():
         raise FileNotFoundError(f"Peach logo is missing: {resource}")
-    return Image.open(resource).convert("RGBA").resize((size, size), Image.Resampling.LANCZOS)
+    image = Image.open(resource).convert("RGBA").resize((size, size), Image.Resampling.LANCZOS)
+    if not template:
+        return image
+    black = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    black.putalpha(image.getchannel("A"))
+    return black
+
+
+def apply_macos_template(icon) -> bool:
+    """把菜单栏图标标成 template image。
+
+    pystray 的 darwin 后端只做 `setImage_`，不调 `setTemplate_`，所以默认不会跟着
+    系统外观反色。这里在图标已经创建之后补上；拿不到底层 NSImage 就安静跳过——
+    菜单栏项本身仍然可用，只是不会自动反色。
+    """
+    if sys.platform != "darwin":
+        return False
+    image = getattr(icon, "_icon_image", None)
+    setter = getattr(image, "setTemplate_", None)
+    if setter is None:
+        return False
+    setter(True)
+    return True
 
 
 def show_message(title: str, message: str, *, error: bool = False) -> None:
@@ -281,7 +361,8 @@ class PeachTray:
         )
         self.icon = pystray.Icon(
             "Peach",
-            create_icon(),
+            # macOS 菜单栏要单色 template image，Windows 托盘要彩色品牌图。
+            create_icon(template=sys.platform == "darwin"),
             "Peach · 蜜桃",
             pystray.Menu(
                 pystray.MenuItem("打开 Peach", self.open, default=True),
@@ -319,7 +400,9 @@ class PeachTray:
     def open_logs(self, _icon=None, _item=None) -> None:
         LOG_DIR.mkdir(parents=True, exist_ok=True)
         if os.name == "nt":
-            os.startfile(LOG_DIR)
+            os.startfile(LOG_DIR)  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.run(["open", str(LOG_DIR)], check=False)
 
     def check_updates(self, icon=None, _item=None) -> None:
         if not self._update_lock.acquire(blocking=False):
@@ -351,6 +434,8 @@ class PeachTray:
 
     def _setup(self, icon) -> None:
         icon.visible = True
+        # 必须等图标真的创建出来才拿得到底层 NSImage，所以放在 setup 里而不是构造时。
+        apply_macos_template(icon)
         if self._startup_warning:
             icon.notify(self._startup_warning, "Peach")
 

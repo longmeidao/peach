@@ -572,13 +572,17 @@ class WebUiSourceTests(unittest.TestCase):
     def test_creator_name_is_single_line_and_ellipsized(self):
         self.assertPageContains('.meta .who{color:var(--tungsten);min-width:0;max-width:100%;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')
 
-    def test_only_portrait_cards_use_media_ratio(self):
-        """竖屏按实际宽高，其余固定比例——否则横屏卡片会在一列里高低不齐。
+    def test_every_card_kind_has_one_fixed_ratio(self):
+        """三类卡片各自一个固定比例，卡片之间不能高低不齐。
 
-        JAV 封面是第三种情况：大图只留右侧正封、宽度不变高度拉长，小图和预览图
-        保持 16:9，判据是当前版式而不是媒体本身，所以它有自己的分支。
+        竖屏曾经按每条视频的实际宽高算，素材从 0.5 到 0.9 都有，竖屏条和竖屏网格
+        因此参差不齐。这段代码写下后一直没生效（`.pic` 写死 16/9），接上
+        `--card-ratio` 才暴露出来。比例不同的用 contain 上下留黑边。
         """
         self.assertPageContains("const ar=(it.ctx_orient==='竖屏'||cls==='scard')")
+        self.assertPageContains("const PORTRAIT_RATIO=9/16;")
+        self.assertPageContains("    ? PORTRAIT_RATIO")
+        self.assertPageLacks("Math.min(0.9,Math.max(0.5,it.width/it.height))")
         self.assertPageContains("(jav&&layout==='big'?COVER_FRONT_RATIO:16/9)")
 
     def test_portrait_strip_sits_on_a_row_boundary_without_borrowing_extra_items(self):

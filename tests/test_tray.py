@@ -1,4 +1,5 @@
 import os
+import sys
 import tempfile
 import threading
 import time
@@ -8,7 +9,7 @@ from unittest.mock import Mock, patch
 
 from peach.tray import (
     AlreadyRunning, PeachTray, ServiceManager, ServiceSpec, SingleInstance,
-    create_icon, enable_hidpi,
+    apply_macos_template, build_service_specs, create_icon, enable_hidpi,
 )
 from peach.versioning import UpdateResult, VersionSnapshot
 
@@ -84,10 +85,8 @@ class TrayTests(unittest.TestCase):
         self.assertEqual(icon.notify.call_count, 2)
         icon.update_menu.assert_called_once()
 
-    @unittest.skipUnless(
-        os.name == "nt", "DPI 声明与单实例锁是 Windows 托盘专属能力"
-    )
-    def test_single_instance_rejects_second_windows_lock(self):
+    def test_single_instance_rejects_a_second_holder(self):
+        """两个菜单栏项会各自再拉起一份服务去抢同一个端口，必须挡住。"""
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "tray.lock"
             first = SingleInstance(path)
@@ -98,6 +97,35 @@ class TrayTests(unittest.TestCase):
                     second.acquire()
             finally:
                 first.close()
+
+
+@unittest.skipUnless(sys.platform == "darwin", "菜单栏图标与服务规格是 macOS 专属")
+class MacMenuBarTests(unittest.TestCase):
+    def test_template_icon_is_a_black_silhouette(self):
+        """macOS 菜单栏图标必须是 template image：彩色图不会跟着浅色/深色反色。"""
+        colored = create_icon(32)
+        template = create_icon(32, template=True)
+        self.assertEqual(template.size, colored.size)
+        self.assertEqual(template.getchannel("A").tobytes(), colored.getchannel("A").tobytes())
+        opaque = [p for p in template.convert("RGBA").getdata() if p[3] > 0]
+        self.assertTrue(opaque, "模板图不该整张透明")
+        self.assertTrue(all(p[:3] == (0, 0, 0) for p in opaque), "模板图的颜色必须全黑")
+
+    def test_service_spec_avoids_privileged_ports_and_a_pinned_address(self):
+        """80/443 在 macOS 上要 root；地址钉死等于换个 Wi-Fi 就打不开。"""
+        specs = build_service_specs()
+        self.assertEqual(len(specs), 1)
+        command = specs[0].command
+        self.assertIn("--port", command)
+        self.assertGreater(int(command[command.index("--port") + 1]), 1024)
+        self.assertNotIn("--mdns-address", command)
+        self.assertNotIn("--ssl-certfile", command)
+
+
+class TemplateHookTests(unittest.TestCase):
+    def test_apply_template_is_a_no_op_without_a_backing_nsimage(self):
+        """拿不到底层 NSImage 就安静跳过：菜单栏项本身仍然可用。"""
+        self.assertFalse(apply_macos_template(Mock(spec=[])))
 
 
 if __name__ == "__main__":
