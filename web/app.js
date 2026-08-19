@@ -737,7 +737,7 @@ function showHomeSurfaces(){
 function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
 
 let reviewData=null,reviewCategory='creator_tags';
-const REVIEW_LABELS={creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',western_identity:'西方身份回配',code_creators:'番号目录存疑',cover_sources:'封面来源',media_failure:'媒体失败'};
+const REVIEW_LABELS={creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',western_identity:'西方身份回配',code_creators:'番号目录存疑',cover_sources:'封面来源',fc2_markings:'FC2 评论标记',media_failure:'媒体失败'};
 let dupData=null;
 /* 重复文件。判据是「同番号 + 时长相近 + 分卷标记一致」，不是同番号即重复——
    合集、分卷和混入的广告都会共用一个 code，只按番号做「保留最大」会删掉内容。

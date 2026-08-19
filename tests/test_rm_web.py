@@ -679,10 +679,6 @@ class ReviewQueueTests(unittest.TestCase):
                 "selected_ids": [1, 99],
             })
 
-
-if __name__ == "__main__":
-    unittest.main()
-
     def _csv(self, name, fields, rows):
         path = self.candidates / name
         with path.open("w", encoding="utf-8-sig", newline="") as handle:
@@ -742,6 +738,47 @@ if __name__ == "__main__":
              "note": ""}])
         row = rm_web.q_review(self.contract)["sections"]["cover_sources"][0]
         self.assertEqual(row["preview_url"], "/cover?code=PPT-018")
+
+    FC2_FIELDS = ["code", "video_id", "result", "title", "release_date", "duration",
+                  "censored", "writer", "writer_slug", "tags", "performers",
+                  "performer_votes", "is_collection", "collection_parts",
+                  "equivalents", "cover_url", "note"]
+
+    def _fc2_row(self, code, **over):
+        row = {field: "" for field in self.FC2_FIELDS}
+        row.update({"code": code, "video_id": code.split("-")[-1], "result": "取得"})
+        row.update(over)
+        return row
+
+    def test_fc2_markings_only_surface_rows_that_carry_a_marking(self):
+        """FC2 大多数作品页评论区是空的，全列出来会淹掉真正有标记的那几十条。"""
+        self._csv("fc2-candidate-log.csv", self.FC2_FIELDS, [
+            self._fc2_row("FC2-PPV-2355314", performers="真夏",
+                          performer_votes="真夏:2"),
+            self._fc2_row("FC2-PPV-3701252", equivalents="2407240"),
+            self._fc2_row("FC2-PPV-3788093"),
+            self._fc2_row("FC2-PPV-4078398", result="未取得", note="连接失败"),
+        ])
+        rows = rm_web.q_review(self.contract)["sections"]["fc2_markings"]
+        self.assertEqual({r["code"] for r in rows},
+                         {"FC2-PPV-2355314", "FC2-PPV-3701252"})
+
+    def test_fc2_evidence_line_shows_how_many_comments_agree(self):
+        self._csv("fc2-candidate-log.csv", self.FC2_FIELDS, [
+            self._fc2_row("FC2-PPV-2355314", performers="真夏",
+                          performer_votes="真夏:2", writer="陸王24")])
+        row = rm_web.q_review(self.contract)["sections"]["fc2_markings"][0]
+        self.assertIn("真夏:2", row["reason"], "票数是这批候选唯一的置信度信号")
+        self.assertIn("陸王24", row["reason"])
+
+    def test_a_collection_says_its_cover_is_withheld(self):
+        """合集封面套给每个分片会让 21 段不同内容显示同一张图。"""
+        self._csv("fc2-candidate-log.csv", self.FC2_FIELDS, [
+            self._fc2_row("FC2PPV-3312576", is_collection="1",
+                          collection_parts="19", cover_url="")])
+        row = rm_web.q_review(self.contract)["sections"]["fc2_markings"][0]
+        self.assertIn("19 个分片", row["reason"])
+        self.assertIn("封面不下发", row["reason"])
 
     def test_code_creator_candidates_reach_the_review_page(self):
         fields = ["entity_id", "creator", "verdict", "identity", "assets",
@@ -1089,3 +1126,7 @@ class TopsRotationTests(unittest.TestCase):
     def test_a_small_pool_degrades_to_everything_available(self):
         rows = rm_web.q_tops(self.contract, 100, seed="111")["performers"]
         self.assertEqual(len(rows), 40, "候选不足时不能抽空，也不能报错")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -580,10 +580,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("/api/review/decision")
         self.assertPageContains("if(path==='/review')")
 
-
-if __name__ == "__main__":
-    unittest.main()
-
     def test_duplicates_page_is_a_management_section(self):
         self.assertPageContains("['dupes','重复文件','hard-drive']")
         self.assertPageContains("if(path==='/duplicates')return 'dupes'")
@@ -615,6 +611,7 @@ if __name__ == "__main__":
         self.assertPageContains("western_identity:'西方身份回配'")
         self.assertPageContains("code_creators:'番号目录存疑'")
         self.assertPageContains("cover_sources:'封面来源'")
+        self.assertPageContains("fc2_markings:'FC2 评论标记'")
 
     def test_index_pages_drop_the_home_filter_bars_and_back_button(self):
         # 艺人/标签索引和资料页一样是「专注看某一类实体」的表面。
@@ -628,3 +625,7 @@ if __name__ == "__main__":
         self.assertPageContains(
             "  showHomeSurfaces();\n  // 必须在 showHomeSurfaces 之后加：")
         self.assertPageContains("document.body.classList.remove('entity-open','index-open')")
+
+
+if __name__ == "__main__":
+    unittest.main()

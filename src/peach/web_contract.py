@@ -893,6 +893,7 @@ CANDIDATE_PREFIX = {
     "western_identity": "babepedia-candidates",
     "code_creators": "code-creator-review",
     "cover_sources": "cover-fetch-log",
+    "fc2_markings": "fc2-candidate-log",
 }
 # 每类候选的稳定主键列。缺这一列的行直接跳过并计数，绝不退化成行号——
 # 行号会在 CSV 重排后把历史决定悄悄挪到别的条目上。
@@ -903,6 +904,7 @@ CANDIDATE_KEY = {
     "western_identity": "entity_id",
     "code_creators": "entity_id",
     "cover_sources": "code",
+    "fc2_markings": "code",
 }
 def _needs_review(category: str, row: dict) -> bool:
     """已经有定论的行不该占复核页。
@@ -920,6 +922,11 @@ def _needs_review(category: str, row: dict) -> bool:
             return int(row.get("width") or 0) < 1200
         except ValueError:
             return True
+    if category == "fc2_markings":
+        # FC2 大多数作品页评论区是空的，全列出来会把真正有标记的几十条淹掉。
+        # 只有拿到演员名、等价关系或判成合集的才需要人看。
+        return bool(row.get("performers") or row.get("equivalents")
+                    or row.get("is_collection"))
     return True
 
 
@@ -1029,6 +1036,19 @@ def _review_evidence(category: str, row: dict) -> str:
             return f"未取得：{row.get('note') or '所有渠道都没有候选'}"
         return (f"{row.get('source', '')} · {row.get('width', '')}×{row.get('height', '')}"
                 f" · {row.get('kb', '')} KB")
+    if category == "fc2_markings":
+        if row.get("is_collection"):
+            return (f"合集，{row.get('collection_parts', '')} 个分片各自独立；"
+                    f"封面不下发，分片回落到自己的缩略图")
+        bits = []
+        if row.get("performer_votes"):
+            # 票数就是「几条独立评论这么说」，是这批候选唯一的置信度信号。
+            bits.append(f"评论标记 {row.get('performer_votes')}")
+        if row.get("equivalents"):
+            bits.append(f"等同于 {row.get('equivalents')}")
+        if row.get("writer"):
+            bits.append(f"卖家 {row.get('writer')}")
+        return "；".join(bits)
     return ""
 
 
