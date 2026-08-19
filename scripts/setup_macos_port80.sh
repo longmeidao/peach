@@ -28,6 +28,9 @@ DAEMON="/Library/LaunchDaemons/${ANCHOR_NAME}.pf.plist"
 TARGET_PORT="${PEACH_PORT:-8900}"
 TLS_PORT="${PEACH_TLS_PORT:-8443}"
 ACTION="${1:-install}"
+# 默认路由的网卡。转发目标取它的动态地址，所以换 Wi-Fi 也不用重装。
+IFACE="${PEACH_IFACE:-$(route -n get default 2>/dev/null | awk '/interface:/{print $2}')}"
+IFACE="${IFACE:-en0}"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -74,17 +77,20 @@ fi
 cat > "$ANCHOR_FILE" <<RULES
 # 由 scripts/setup_macos_port80.sh 生成，勿手改。
 #
-# translation 规则是**第一条命中就生效**（和 filter 的最后一条命中相反），所以
-# 例外必须写在前面。没有这两条 \`no rdr\` 时，直连 127.0.0.1:${TARGET_PORT} 会 TCP
-# 连得上、HTTP 却永远收不到响应——lo0 上的 rdr 状态把这条流也一起翻译了。托盘的
-# 健康检查正好走这个地址，于是服务明明在跑却一直被判成「未运行」。
+# 转发目标是网卡地址而不是 127.0.0.1。转到回环地址时：外部设备（手机）的回包源地址
+# 是回环地址、路由不回去，连不上；本机直连高位端口也会被 lo0 上残留的 rdr 状态反向
+# 翻译回 :80，TCP 连得上但 HTTP 永远收不到响应。写成 (网卡) 让 pf 动态取当前地址，
+# 换网络或换 DHCP 地址都不用重装。服务监听的是 0.0.0.0，收得到。
+#
+# translation 规则是第一条命中就生效（和 filter 的最后一条命中相反），所以 no rdr
+# 的例外必须写在前面。
 no rdr on lo0 proto tcp from any to any port ${TARGET_PORT}
 no rdr on lo0 proto tcp from any to any port ${TLS_PORT}
 # 本机自己访问走 lo0，其他设备走真实网卡，两条都要。
-rdr pass on lo0 inet proto tcp from any to any port 80 -> 127.0.0.1 port ${TARGET_PORT}
-rdr pass inet proto tcp from any to any port 80 -> 127.0.0.1 port ${TARGET_PORT}
-rdr pass on lo0 inet proto tcp from any to any port 443 -> 127.0.0.1 port ${TLS_PORT}
-rdr pass inet proto tcp from any to any port 443 -> 127.0.0.1 port ${TLS_PORT}
+rdr pass on lo0 inet proto tcp from any to any port 80 -> (${IFACE}) port ${TARGET_PORT}
+rdr pass on ${IFACE} inet proto tcp from any to any port 80 -> (${IFACE}) port ${TARGET_PORT}
+rdr pass on lo0 inet proto tcp from any to any port 443 -> (${IFACE}) port ${TLS_PORT}
+rdr pass on ${IFACE} inet proto tcp from any to any port 443 -> (${IFACE}) port ${TLS_PORT}
 RULES
 
 # 先在临时文件上验证，通过了才动系统文件。
@@ -114,7 +120,7 @@ pfctl -f /etc/pf.conf
 launchctl bootout system "$DAEMON" 2>/dev/null || true
 launchctl bootstrap system "$DAEMON"
 
-echo "已把 80 -> ${TARGET_PORT}、443 -> ${TLS_PORT}"
+echo "已把 80 -> ${TARGET_PORT}、443 -> ${TLS_PORT}（经 ${IFACE}）"
 echo "  验证：curl -s --noproxy '*' -o /dev/null -w '%{http_code}\\n' http://peach.local/healthz"
 echo "        curl -s --noproxy '*' -o /dev/null -w '%{http_code}\\n' https://peach.local/healthz"
 echo "  移除：sudo sh $0 uninstall"

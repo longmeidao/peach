@@ -29,11 +29,10 @@ DEFAULT_LAN_ADDRESS = "192.168.50.162"
 MACOS_PORT = 8900
 #: HTTPS 同理，443 也要 root，所以走 8443。
 MACOS_TLS_PORT = 8443
-#: 单击菜单栏/托盘图标打开的地址。Windows 生产实例有本机 CA 的 HTTPS 和 80/443；
-#: macOS 是开发环境，走非特权端口的 HTTP。
-OPEN_URL = (
-    f"http://127.0.0.1:{MACOS_PORT}/" if sys.platform == "darwin" else "https://peach.local/"
-)
+#: 单击菜单栏/托盘图标打开的地址。两个平台都用 `peach.local` —— 这是唯一对外的名字，
+#: 局域网里的手机和电脑用的是同一个链接，也才吃得到本机 CA 的证书。macOS 上 80/443
+#: 由 pf 转到高位端口（scripts/setup_macos_port80.sh）。
+OPEN_URL = "https://peach.local/"
 
 
 def enable_hidpi() -> str:
@@ -514,7 +513,21 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
         ],
     )
     app["app"] = menu
-    menu.run()
+
+    # `manager.status()` 读的是 `healthy()` 写下的缓存。pystray 那条路径有 `_monitor`
+    # 线程定时重采样，这条路径漏了，于是缓存永远停在启动那一刻——服务还没起来时测的
+    # 那一次 False，菜单里就一直显示「未运行」。
+    def poll_health() -> None:
+        while not stopped.wait(5.0):
+            for spec in manager.specs:
+                manager.healthy(spec)
+
+    stopped = threading.Event()
+    threading.Thread(target=poll_health, name="PeachMenuHealth", daemon=True).start()
+    try:
+        menu.run()
+    finally:
+        stopped.set()
 
 
 def main() -> int:
