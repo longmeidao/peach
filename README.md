@@ -8,14 +8,40 @@ Peach（蜜桃）是一个单用户、本地优先的个人媒体系统：统一
 
 ## 边界
 
-- 项目代码：`R:\peach-app`
-- 真实数据：`R:\peach-data`
-- 本地媒体：`R:\media`
-- 网盘挂载：`A:\`、`B:\`
-- 真相数据库：`R:\peach-data\database\ledger.db`
+Peach 在 Windows 和 macOS 两台机器上各有一份可独立运行的环境，账本里的路径始终使用
+Windows 口径，本机挂载点由 `src/peach/platform.py` 在读取时翻译。
+
+| 角色 | Windows | macOS |
+|---|---|---|
+| 项目代码 | `R:\peach-app` | `~/Desktop/lmd.gg/peach/peach-app` |
+| 运行数据 | `R:\peach-data` | `~/Desktop/lmd.gg/peach/peach-data` |
+| 并行 worktree | `R:\peach-worktrees` | `~/Desktop/lmd.gg/peach/peach-worktrees` |
+| 本地媒体 | `R:\media` | `/Volumes/RESOURCES/media` |
+| 115（账本写 `B:\`） | `B:\` | `~/Desktop/IMSL/115` |
+| PikPak（账本写 `A:\`） | `A:\` | `~/Desktop/IMSL/Pikpak` |
+
+- 真相数据库：`peach-data/database/ledger.db`
 - Stash：过渡期可替换 adapter，不是真相源
 
+盘符映射的默认值按平台给，可用 `PEACH_DRIVE_MAP=R=/Volumes/RESOURCES,B=/mnt/115` 覆盖；
+数据目录用 `PEACH_DATA_ROOT` 覆盖。CloudDrive 在两个平台的挂载方式完全不同——Windows
+是盘符，macOS 是 macFUSE 挂载点——所以这层映射是必需的，不是可选优化。
+
+写回账本的索引脚本仍然只在 Windows 上运行，账本因此保持单一路径口径；macOS 侧只读不写
+`asset.path`。
+
 项目仓库不保存媒体、数据库、凭据、快照、封面或运行日志。
+
+### 脱盘模式
+
+脱盘是**来源级**的，不是全局开关：外置盘拔掉只影响 `local` 的 2.5k 条资产，115/PikPak
+的 78k 条云端资产照常可播；CloudDrive 掉线时反过来也一样。
+
+`GET /api/sources` 无副作用地报告每个来源的可达性，判据是「能否列出挂载点的第一个条目」——
+目录存在还不够，CloudDrive 掉线后挂载点目录仍在，读一个条目才会报 `Device not configured`。
+前端据此把脱盘来源的筛选置灰（数量仍然显示：脱的是盘不是账本），详情页换成「脱盘模式」
+面板而不是挂一个必然失败的播放器。媒体层对应抛 `MediaOffline`，HTTP 侧回 503 加
+`X-Peach-Offline: 1`，和「单个文件缺失」的 404 分开。
 
 `R:\peach-data` 使用固定分层：`database` 保存真相库，`generated` 保存可再生成的视觉资产，`sources` 保存原始分析输入，`state` 保存人工维护状态，`secrets` 保存本机凭据材料，`logs` 保存运行记录，`archive` 保存历史备份，`inbox` 是临时下载落地区，`tools` 保存不进入 Git 的本机运行时工具。
 
@@ -37,6 +63,8 @@ peach-app/
 
 ## 开发
 
+Windows：
+
 ```powershell
 cd R:\peach-app
 & py -3.14 -m venv .venv
@@ -46,14 +74,28 @@ cd R:\peach-app
 & .\.venv\Scripts\peach.exe serve --port 8900
 ```
 
-主目录和独立 worktree 统一只使用同一个测试入口：
+macOS：
 
-```powershell
-& .\scripts\test.ps1
+```bash
+cd ~/Desktop/lmd.gg/peach/peach-app
+python3.14 -m venv .venv
+./.venv/bin/python -m pip install -e .
+./scripts/test.sh
+./.venv/bin/peach migrate status
+./.venv/bin/peach serve --port 8900
 ```
 
-脚本会从 Git common directory 定位 `R:\peach-app\.venv`，强制加载当前 worktree 的
-`src` 并核对 `peach.__file__`，因此 worktree 不需要也不应复制 `.venv`。仓库不使用 pytest。
+macOS 侧的 FFmpeg 走 PATH（`brew install ffmpeg`）：`peach-data/tools/ffmpeg` 里是
+Windows 的 `.exe` 和 `.dll`，`FFmpegResolver` 按平台找不带后缀的 `ffmpeg` 因而自动跳过它。
+
+主目录和独立 worktree 统一只使用同一个测试入口——Windows 是 `scripts/test.ps1`，
+macOS/Linux 是 `scripts/test.sh`，两者契约相同：从 Git common directory 定位主目录的
+`.venv`，强制加载当前 worktree 的 `src` 并核对 `peach.__file__`，因此 worktree 不需要
+也不应复制 `.venv`。仓库不使用 pytest。
+
+跨两台机器开发时换行口径由 `.gitattributes` 的 `* text=auto eol=lf` 固定。不要依赖各自的
+`core.autocrlf`：2026-08 之前 Windows 侧把 105 个文件整体改写成 CRLF，`git status` 长期显示
+117 个文件被修改、16000 行增删，而真正有实质改动的只有 1 个。
 
 `serve` 默认只监听 `127.0.0.1:8900`。公网、反代、HTTPS 和认证属于后续部署阶段，不在开发命令中隐式开启。
 
@@ -138,6 +180,7 @@ Per-Monitor V2 DPI，单击打开 `https://peach.local/`；右键可查看状态
 | URL | 用途 |
 |---|---|
 | `/healthz` | 无副作用健康状态 |
+| `/api/sources` | 各来源挂载可达性，脱盘模式的唯一判据 |
 | `/api/stream-plan?id={asset_id}` | 为远端原生 MP4 选择 HLS 或标准 Range |
 | `/favicon.svg` | Peach 图标 |
 | `/stream?id={asset_id}` | 原片或兼容转码的 Range 流 |
@@ -149,7 +192,7 @@ Per-Monitor V2 DPI，单击打开 `https://peach.local/`；右键可查看状态
 | `/entity-image?kind={kind}&id={entity_id}` | 规范实体头像/Logo |
 
 只读 API：`GET /api/items`、`/api/item`、`/api/entity`、`/api/index`、`/api/stats`、
-`/api/tops`、`/api/ads`、`/api/related`、`/api/facets`、`/api/providers`、
+`/api/tops`、`/api/ads`、`/api/related`、`/api/facets`、`/api/providers`、`/api/sources`、
 `/api/providers/opencode-go/models`、`/api/search-history`。
 
 写入 API：`POST /api/activity`、`/api/play`、`/api/feedback`、`/api/watch-later`、

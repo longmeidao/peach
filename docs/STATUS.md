@@ -11,6 +11,7 @@
 - Python：3.14.7；FFmpeg/ffprobe 由 `R:\peach-data\tools\ffmpeg` 管理，不再依赖 Stash 私有目录。
 - 真实 ledger：`R:\peach-data\database\ledger.db`，迁移 `0000`–`0015` 已应用，零待处理。复核表迁移前备份：`R:\peach-data\database\ledger.pre-0015-20260817-173639.db`；黄金视频删除前备份：`R:\peach-data\database\ledger.pre-golden-delete-20260817-124921.db`；创作者清理前备份：`R:\peach-data\database\ledger.pre-0014-20260817-134153.db`；时长纠正前备份：`R:\peach-data\database\ledger.pre-duration-fix-20260818-103252.db`；完整性 `ok`。
 - PID 只是观测值，不是配置；每次停止或重启前必须重新核对命令行、父子关系和端口归属。
+- macOS 开发机（2026-08-19 起）：代码 `~/Desktop/lmd.gg/peach/peach-app`、数据 `~/Desktop/lmd.gg/peach/peach-data`、worktree `~/Desktop/lmd.gg/peach/peach-worktrees`。Python 3.14.7 + 独立 venv；FFmpeg 走 PATH。生产托盘仍然只在 Windows，macOS 侧是开发环境，不承担对外服务。
 
 ## 已核验代码与部署能力
 
@@ -26,6 +27,8 @@
 - 版本唯一来源为 `src/peach/__init__.py::__version__`。本批把实体作品、艺人/标签索引和广告卡片改为有界增量构建，去除代表图 N+1 查询与后续翻页重复总数统计；详情播放器复用本地 Video.js 8.23.9，并按 pre-1.0 SemVer 升至 `0.5.6`。没有 Git remote 时只报告本地开发版，不伪造更新能力。
 - 本地 CA HTTPS 已部署。CA 包含 critical `CA:TRUE` 和签名用途并通过 OpenSSL 链验证。macOS/iOS 只安装 `peach-local-ca.crt`；不得传播任何私钥。
 - 项目代码、运行数据、本地媒体已分离为 `R:\peach-app`、`R:\peach-data`、`R:\media`。旧空 Inbox 和 `Resources/Tools` 兼容表面已移除。
+- 项目已可在 macOS 上独立运行并全量通过测试。账本路径的盘符翻译收敛在 `src/peach/platform.py`；`R:` → `/Volumes/RESOURCES`、`B:`（115）→ `~/Desktop/IMSL/115`、`A:`（PikPak）→ `~/Desktop/IMSL/Pikpak`，可用 `PEACH_DRIVE_MAP` 覆盖。实测本地与 115 的真实资产均返回 `206`，缩略图 `200`；PikPak 挂载当时掉线，按脱盘正确返回 `503` + `X-Peach-Offline`。账本本身未改写。
+- 脱盘模式按来源逐个判定：`GET /api/sources` 报告可达性，前端置灰脱盘来源的筛选并在详情页显示「脱盘模式」面板。外置盘不在时 115/PikPak 的 78k 条云端资产仍然可用。
 
 ## 界面与交互现状
 
@@ -126,6 +129,9 @@
 - 详情播放释放和 sticky 遮挡在隔离 ledger 浏览器中验收；生产浏览器只做无写入首页/样式检查，未污染真实播放、喜欢或反馈数据。
 - 2026-08-17 批代码改动（merge_entity 回归主线、sheets 色彩元数据重试、media 大小写不敏感匹配）模块级 `unittest` 全部通过：`test_entity_merge` 4 项、`test_scripts` 16 项、`test_media` 9 项等。注意：实测在工具管道里直跑 `python -m unittest discover` 全量会挂起或整会话输出消失（test_jobs 模块极快退出时竞态最明显），模块级独立运行全部通过；唯一可信入口仍是 `& .\scripts\test.ps1`。
 - 2026-08-19 发现「测试通过」曾有一段并不成立：`test_rm_web.py` 与 `test_web_ui.py` 各有一处 `if __name__ == "__main__": unittest.main()` 被插在类中间，其后缩进 4 格的 16 条测试被解析成 if 块语句，从写下起就没被收集过——不报错、不告警，其中包括复核页三类候选的全部数据层断言。修正后全量由 355 升到 371 且全绿。`tests/test_test_collection.py` 用 AST 禁止这种形状，避免再出现「绿灯但没覆盖」。
+
+- 2026-08-19 macOS 侧基线：`./scripts/test.sh` 全量 394 项通过、3 项跳过（2 项是 Windows 托盘专属的 DPI 声明与单实例锁，1 项为原有跳过）。Windows 侧同一批改动尚未复跑 `scripts/test.ps1`，**这是本批唯一未闭合的验证缺口**。
+- 两台机器的 worktree 各自独立：macOS 侧已按 27 个 `agent/*` 分支重建，Windows 路径的失效注册已 `git worktree prune` 清掉。分支本身在 `.git` 里，worktree 目录随时可重建，不需要跨机器复制。
 
 ## 下一批工作
 

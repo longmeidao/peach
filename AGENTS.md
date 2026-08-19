@@ -49,12 +49,14 @@
 | 改完界面、API、契约或文案后声明影响面 | `.claude/skills/peach-surfaces/SKILL.md` |
 | 长跑批处理、刮削、限流、磁盘与流量预算 | `.claude/skills/peach-batch-jobs/SKILL.md` |
 | 模仿、参考或对齐外部产品的界面与行为 | `.claude/skills/peach-reference-evidence/SKILL.md` |
+| 在 macOS 上开工、改路径解析或挂载判定、git status 与 diff 不一致 | `.claude/skills/peach-cross-platform/SKILL.md` |
 | 新增或删除规则、文档、技能 | `.claude/skills/peach-context-rules/SKILL.md` |
 
 ## 工作规则
 
-- `R:\peach-app` is code and documentation. `R:\peach-data`, `R:\media`, `A:\` and `B:\` are runtime data or mounted media and must never be copied into Git.
-- `R:\peach-data\database\ledger.db` is the truth store. Tests use temporary databases only. A real migration requires a SQLite backup and before/after count checks; follow `peach-ledger-write` before any real write.
+- `peach-app` is code and documentation. `peach-data`, the local media root, and the two CloudDrive mounts are runtime data or mounted media and must never be copied into Git. Windows: `R:\peach-app`, `R:\peach-data`, `R:\media`, `A:\`, `B:\`. macOS: `~/Desktop/lmd.gg/peach/peach-app`, `~/Desktop/lmd.gg/peach/peach-data`, `/Volumes/RESOURCES/media`, `~/Desktop/IMSL/Pikpak`, `~/Desktop/IMSL/115`.
+- Ledger paths are always written in the Windows shape (`R:\Media\...`, `A:\...`, `B:\...`). `src/peach/platform.py` translates them to local mounts at read time; never rewrite the ledger to a POSIX shape, and never write `asset.path` from macOS.
+- `peach-data/database/ledger.db` is the truth store. Tests use temporary databases only. A real migration requires a SQLite backup and before/after count checks; follow `peach-ledger-write` before any real write.
 - The project is an early personal project: aggressively remove obsolete code and compatibility layers when the replacement is tested. Do not preserve dead interfaces merely for history; Git is the archive.
 - Preserve real media, ledger rows, behavior history, credentials, network/firewall state, and unrelated long-running jobs.
 - Inspect `git status` and the active listeners/processes before work. Never claim candidate code is production until the service has actually been switched and checked.
@@ -65,9 +67,9 @@
 - Before adding or restoring an implementation, check `docs/REUSE.md`, the current tree and Git history. A missing legacy filename does not prove the capability is missing. Update the reuse register when the decision changes.
 - When the user says to imitate, reference or align with another product, obtain current reproducible evidence first and register it per `peach-reference-evidence`. If evidence is unavailable, write `未取得`; do not ship a guessed approximation as a faithful reproduction.
 - Never require the user to relay implementation details between agents. Put current facts in `docs/STATUS.md`, durable rules in `docs/HANDOFF.md`/`docs/REUSE.md`, procedures in a skill, and architecture decisions in an ADR.
-- During concurrent code work, `R:\peach-app` is integration-only. Each agent works in an isolated Git worktree; a worker commits its branch and reports it ready, but never merges itself. Details in `peach-worktree`.
+- During concurrent code work, the main `peach-app` checkout is integration-only. Each agent works in an isolated Git worktree; a worker commits its branch and reports it ready, but never merges itself. Details in `peach-worktree`.
 - Never use `git add .`, `git add -A`, a directory path, or a glob in an agent checkout. Stage only the exact files owned by the task, then inspect `git diff --cached --name-status`. Implementation and its tests must be committed atomically.
-- Run the verification commands in `README.md` before committing relevant changes.
+- Run the verification commands in `README.md` before committing relevant changes: `scripts/test.ps1` on Windows, `scripts/test.sh` on macOS. Both entry points must stay green; a change that only passes on one platform is not done.
 - Reuse existing usage surfaces and protocols. T3 Code/CodexBar cover historical token and API-equivalent cost views; official provider quota endpoints cover live remaining windows. Do not build another session-log cost scanner or depend on T3 Code's private localhost API.
 
 ## 防止重复错误的硬门槛
