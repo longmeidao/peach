@@ -164,14 +164,29 @@ class MacAppBundleTests(unittest.TestCase):
         self.assertEqual(info["CFBundleExecutable"], "Peach")
         self.assertTrue(info["CFBundleIdentifier"])
 
-    def test_launcher_is_executable_and_keeps_a_log(self):
-        """`open -a` 起的进程没有终端，不落盘就完全看不出它为什么没起来。"""
+    def test_launcher_never_execs_the_interpreter_itself(self):
+        """外壳不能自己 exec 到解释器。
+
+        macOS 26 上主可执行文件是 exec 跳板时状态项注册不上：进程活着、NSStatusItem
+        也建出来了，但按钮窗口永远是 (0,0,34,0)，菜单栏上什么都不出现（FB21015611）。
+        双击只负责踢 LaunchAgent，真正的菜单栏进程是 launchd 的直接子进程。
+        """
         app = self.module.build(self.root, self.tray)
         launcher = app / "Contents" / "MacOS" / "Peach"
         self.assertTrue(os.access(launcher, os.X_OK))
         body = launcher.read_text(encoding="utf-8")
-        self.assertIn(str(self.tray), body)
-        self.assertIn("macos-tray.log", body)
+        self.assertIn("launchctl kickstart", body)
+        self.assertNotIn(str(self.tray), body)
+
+    def test_bundle_carries_a_rounded_icon(self):
+        """方形原图直接当图标会比周围大一圈、四角还是直的。"""
+        app = self.module.build(self.root, self.tray)
+        import plistlib as _plistlib
+        info = _plistlib.loads((app / "Contents" / "Info.plist").read_bytes())
+        icon = ROOT / "resources" / "peach.icns"
+        if icon.is_file():
+            self.assertEqual(info.get("CFBundleIconFile"), "peach")
+            self.assertTrue((app / "Contents" / "Resources" / "peach.icns").is_file())
 
     def test_rebuild_replaces_a_stale_bundle(self):
         app = self.module.build(self.root, self.tray)

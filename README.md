@@ -124,22 +124,33 @@ macOS/Linux 是 `scripts/test.sh`，两者契约相同：从 Git common director
 `.venv`，强制加载当前 worktree 的 `src` 并核对 `peach.__file__`，因此 worktree 不需要
 也不应复制 `.venv`。仓库不使用 pytest。
 
-macOS 日常运行同样可以走菜单栏项，而不是留一个终端窗口：
+macOS 日常运行走菜单栏项，而不是留一个终端窗口：
 
 ```bash
-./.venv/bin/python scripts/build_macos_app.py
-open -a dist/Peach.app
+./.venv/bin/python scripts/make_macos_icon.py        # 圆角 .icns，只需一次
+./.venv/bin/python scripts/install_macos_agent.py install
 ```
 
-菜单栏项复用 `peach.tray`（pystray 自带 darwin 后端），但有三处必须按平台分开：图标要
-是 template image，否则不会跟着浅色/深色菜单栏反色；服务起在非特权的 `8900`，因为
-80/443 在 macOS 上要 root，而本机 CA 的 TLS 材料是给 Windows 生产实例签的；单实例锁
-用 `fcntl.flock`。
+**菜单栏项没有跨平台的轮子。** pystray 名义上支持 darwin，但它的后端漏了三件事：
+`setActivationPolicy_(Accessory)`、`NSImage.setSize_(18,18)`（菜单栏按 18pt 画，直接塞
+64px 位图会被裁掉）和 `setTemplate_`（不设就不会跟着浅色/深色菜单栏反色）。补齐等于
+把它那层薄封装重写一遍，所以 macOS 直接用 AppKit（`src/peach/menubar.py`），Windows
+继续用 pystray。判据不靠猜：`item.button().window().frame()` 能直接读出状态项落在屏幕
+的哪个位置。
 
-必须打成 `.app` 才拿得稳：裸控制台进程启动时 AppKit 的运行循环没有应用上下文会立刻
-返回——服务起来了、托盘父进程却安静退出，退出码 0、零输出。bundle 的 `Info.plist` 声明
-`LSUIElement`（只在菜单栏出现，不占 Dock、不进 ⌘Tab），启动脚本把输出重定向到
-`peach-data/logs/macos-tray.log`。开机自启：系统设置 → 通用 → 登录项 → 加入这个 .app。
+**不能用 .app 外壳直接跑它。** macOS 26 上主可执行文件是 exec 跳板（shell 脚本、C
+launcher 都算）时状态项注册不上：进程活着、`NSStatusItem` 也建出来了，但按钮窗口永远
+是 `(0,0,34,0)`——高度 0、从来没被布局。Apple 受理为 FB21015611，没有绕过办法。同一份
+代码由 launchd 直接拉起时实测 `(858, 949, 34, 33)`，正常落在菜单栏内。所以自启走
+LaunchAgent；`dist/Peach.app` 只作双击入口，它做的事只是 `launchctl kickstart`。
+
+服务起在非特权的 `8900`：80/443 在 macOS 上要 root，而本机 CA 的 TLS 材料是给 Windows
+生产实例签的。想让 `http://peach.local/` 不带端口也能开，把 80 交给内核转发，而不是让
+整个服务提权：
+
+```bash
+sudo sh scripts/setup_macos_port80.sh install
+```
 
 跨两台机器开发时换行口径由 `.gitattributes` 的 `* text=auto eol=lf` 固定。不要依赖各自的
 `core.autocrlf`：2026-08 之前 Windows 侧把 105 个文件整体改写成 CRLF，`git status` 长期显示

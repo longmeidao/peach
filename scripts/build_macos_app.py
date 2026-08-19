@@ -19,17 +19,21 @@ import stat
 from pathlib import Path
 
 from peach import __version__
-from peach.config import LOG_DIR, PROJECT_ROOT
+from peach.config import PROJECT_ROOT
 
 
-BUNDLE_ID = "gg.lmd.peach.tray"
-# `open -a` 启动的进程没有终端，stdout/stderr 直接进虚空。菜单栏项本来就没有窗口，
-# 不落盘的话它为什么没起来完全看不出来——上一版就是这样：进程活着、服务没起、零输出。
+BUNDLE_ID = "gg.lmd.peach.app"
+#: LaunchAgent 的 label，双击 .app 时踢它。
+LABEL = "gg.lmd.peach.tray"
+# 这个外壳**不能**自己 exec 到解释器。macOS 26 上，主可执行文件是 exec 跳板时状态项
+# 注册不上：进程活着、NSStatusItem 也建出来了，但按钮窗口永远是 (0,0,34,0)，菜单栏上
+# 什么都不出现（Apple FB21015611）。同一份代码由 launchd 直接拉起时实测
+# (858, 949, 34, 33)，正常落在菜单栏内。
+#
+# 所以双击 .app 只负责踢一脚 LaunchAgent，真正的菜单栏进程是 launchd 的直接子进程。
 LAUNCHER = """#!/bin/sh
 # 由 scripts/build_macos_app.py 生成，勿手改。
-LOG="{log_dir}/macos-tray.log"
-mkdir -p "{log_dir}"
-exec "{tray}" "$@" >>"$LOG" 2>&1
+exec /bin/launchctl kickstart -k "gui/$(id -u)/{label}"
 """
 
 
@@ -56,13 +60,16 @@ def build(destination: Path, tray: Path) -> Path:
     (app / "Contents" / "Info.plist").write_bytes(plistlib.dumps(info))
 
     launcher = macos / "Peach"
-    launcher.write_text(
-        LAUNCHER.format(tray=tray, log_dir=LOG_DIR), encoding="utf-8")
+    launcher.write_text(LAUNCHER.format(label=LABEL), encoding="utf-8")
     launcher.chmod(launcher.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
-    logo = PROJECT_ROOT / "resources" / "peach-logo.png"
-    if logo.is_file():
-        shutil.copy2(logo, resources / "peach-logo.png")
+    # 访达和 Dock 里的图标。方形原图直接当图标会比周围大一圈、四角还是直的，
+    # 所以用 scripts/make_macos_icon.py 生成的圆角版本。
+    icon = PROJECT_ROOT / "resources" / "peach.icns"
+    if icon.is_file():
+        shutil.copy2(icon, resources / "peach.icns")
+        info["CFBundleIconFile"] = "peach"
+        (app / "Contents" / "Info.plist").write_bytes(plistlib.dumps(info))
     return app
 
 
@@ -79,8 +86,8 @@ def run(args: argparse.Namespace) -> int:
     args.destination.mkdir(parents=True, exist_ok=True)
     app = build(args.destination, args.tray)
     print(f"已生成 {app}")
-    print(f"  启动：open -a '{app}'")
-    print("  开机自启：系统设置 → 通用 → 登录项 → 加入这个 .app")
+    print("  双击它只是踢一脚 LaunchAgent；先注册：")
+    print("    python scripts/install_macos_agent.py install")
     return 0
 
 

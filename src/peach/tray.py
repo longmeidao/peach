@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import logging
 import os
 import subprocess
 import sys
@@ -17,6 +18,9 @@ from PIL import Image
 
 from .config import LOG_DIR, PROJECT_ROOT, SECRETS_DIR, STATE_DIR
 from .versioning import VersionManager
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 DEFAULT_LAN_ADDRESS = "192.168.50.162"
@@ -451,7 +455,48 @@ class PeachTray:
             self._stop_event.set()
 
 
+def run_macos_menu_bar(manager: "ServiceManager") -> None:
+    """macOS 走原生菜单栏项。
+
+    pystray 的 darwin 后端漏了 activation policy 和图标尺寸两件必需的事，补齐等于
+    重写它那层封装，所以这里直接用 AppKit（见 `peach.menubar`）。Windows 继续走 pystray。
+    """
+    from .menubar import MenuBarApp
+
+    versions = VersionManager()
+    snapshot = versions.inspect()
+    app: dict[str, object] = {}
+
+    def restart() -> None:
+        manager.stop_owned()
+        manager.start_missing()
+
+    def quit_now() -> None:
+        manager.stop_owned()
+        holder = app.get("app")
+        if holder is not None:
+            holder.stop()
+
+    menu = MenuBarApp(
+        create_icon(template=True),
+        "Peach · 蜜桃",
+        [
+            ("打开 Peach", lambda: webbrowser.open(OPEN_URL)),
+            (lambda: f"状态：{manager.status()}", None),
+            (None, None),
+            ("重启服务", restart),
+            ("查看日志", lambda: subprocess.run(["open", str(LOG_DIR)], check=False)),
+            (lambda: f"版本 {snapshot.package_version} · {snapshot.build_label}", None),
+            (None, None),
+            ("退出 Peach", quit_now),
+        ],
+    )
+    app["app"] = menu
+    menu.run()
+
+
 def main() -> int:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     enable_hidpi()
     instance = SingleInstance(STATE_DIR / "peach-tray.lock")
     manager = None
@@ -462,7 +507,11 @@ def main() -> int:
         return 0
     try:
         manager = ServiceManager(build_service_specs())
-        PeachTray(manager).run()
+        manager.start_missing()
+        if sys.platform == "darwin":
+            run_macos_menu_bar(manager)
+        else:
+            PeachTray(manager).run()
     except Exception as exc:
         show_message("Peach 启动失败", str(exc), error=True)
         return 1

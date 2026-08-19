@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+r"""把 Peach 菜单栏项注册成 LaunchAgent。
+
+**不能用 .app 外壳直接跑菜单栏项。** macOS 26 上，主可执行文件如果是一个 exec 到
+真正解释器的跳板（shell 脚本、C launcher 都算），状态项就注册不上：进程活着、
+`NSStatusItem` 也建出来了，但它的按钮窗口永远是 `(0,0,34,0)`——高度 0，从来没被
+布局，菜单栏上什么都不出现。Apple 已受理为 FB21015611，目前没有绕过办法。
+
+同一份代码由 launchd 或 shell 直接拉起（没有跳板）时立刻正常：实测按钮窗口
+`(858, 949, 34, 33)`，屏宽 1512，落在菜单栏内。
+
+所以登录自启走 LaunchAgent，而不是把 .app 放进登录项。`.app` 只留作双击入口，
+它做的事也只是 `launchctl kickstart`，不自己 exec 解释器。
+"""
+from __future__ import annotations
+
+import argparse
+import getpass
+import os
+import plistlib
+import subprocess
+from pathlib import Path
+
+from peach.config import LOG_DIR, PROJECT_ROOT
+
+
+LABEL = "gg.lmd.peach.tray"
+
+
+def plist_path() -> Path:
+    return Path.home() / "Library" / "LaunchAgents" / f"{LABEL}.plist"
+
+
+def build_plist(tray: Path) -> dict:
+    return {
+        "Label": LABEL,
+        # 直接跑目标程序，中间不能有 exec 跳板，否则菜单栏项注册不上。
+        "ProgramArguments": [str(tray)],
+        "RunAtLoad": True,
+        # 菜单栏项是用户主动退出的，不要自动拉回来。
+        "KeepAlive": False,
+        "ProcessType": "Interactive",
+        "WorkingDirectory": str(PROJECT_ROOT),
+        "StandardOutPath": str(LOG_DIR / "macos-tray.log"),
+        "StandardErrorPath": str(LOG_DIR / "macos-tray.log"),
+    }
+
+
+def launchctl(*args: str) -> subprocess.CompletedProcess:
+    # 显式给 encoding：text=True 会用平台默认编码，中文输出会静默丢成空 stdout。
+    return subprocess.run(
+        ["launchctl", *args], capture_output=True, text=True,
+        encoding="utf-8", errors="replace")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="注册 / 注销 Peach 菜单栏项的 LaunchAgent")
+    parser.add_argument("action", choices=("install", "uninstall", "status"),
+                        nargs="?", default="install")
+    parser.add_argument("--tray", type=Path,
+                        default=PROJECT_ROOT / ".venv" / "bin" / "peach-tray")
+    return parser
+
+
+def run(args: argparse.Namespace) -> int:
+    target = plist_path()
+    domain = f"gui/{os.getuid()}"
+
+    if args.action == "status":
+        result = launchctl("print", f"{domain}/{LABEL}")
+        print(f"plist：{target}（{'存在' if target.is_file() else '不存在'}）")
+        print("已加载" if result.returncode == 0 else "未加载")
+        return 0
+
+    if args.action == "uninstall":
+        launchctl("bootout", f"{domain}/{LABEL}")
+        if target.is_file():
+            target.unlink()
+        print(f"已注销 {LABEL}")
+        return 0
+
+    if not args.tray.is_file():
+        raise SystemExit(f"找不到 peach-tray：{args.tray}（先 pip install -e .）")
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(plistlib.dumps(build_plist(args.tray)))
+
+    # 重装时先 bootout：同一个 label 不能重复 bootstrap。
+    launchctl("bootout", f"{domain}/{LABEL}")
+    result = launchctl("bootstrap", domain, str(target))
+    if result.returncode != 0:
+        raise SystemExit(f"launchctl bootstrap 失败：{result.stderr.strip()}")
+    launchctl("kickstart", "-k", f"{domain}/{LABEL}")
+    print(f"已注册并启动 {LABEL}（用户 {getpass.getuser()}）")
+    print(f"  plist：{target}")
+    print(f"  日志：{LOG_DIR / 'macos-tray.log'}")
+    print(f"  停止：launchctl bootout {domain}/{LABEL}")
+    return 0
+
+
+def main() -> int:
+    return run(build_parser().parse_args())
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
