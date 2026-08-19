@@ -198,6 +198,37 @@ def best_cover(transport: HttpTransport, code: str, delay: float
 FIELDS = ("code", "result", "source", "width", "height", "kb", "url", "note")
 
 
+#: 判定为「所有渠道都没有」的落空，续跑时不必重来；连接类失败必须重试。
+#: 三态口径：一次超时不等于确认没有，不能靠它把番号永久踢出队列。
+TRANSIENT = re.compile(r"(Error|Timeout|SSL|Connect|Proxy|Protocol)", re.I)
+
+
+def settled_misses(log: Path) -> set[str]:
+    """上一轮已经把所有源探完、确认没有封套的番号。
+
+    这类落空是最贵的：每条都要把全部候选源挨个试完才能确定。实测 194 条里
+    150 条落空，重探一遍就是好几个小时，而结论不会变。
+    """
+    if not log.is_file():
+        return set()
+    with log.open(encoding="utf-8-sig", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    return {str(row.get("code") or "").strip() for row in rows
+            if row.get("result") == "未取得"
+            and not TRANSIENT.search(str(row.get("note") or ""))
+            and str(row.get("code") or "").strip()}
+
+
+def carried_rows(log: Path, keep: set[str]) -> list[dict]:
+    """把这轮跳过的番号的上轮记录原样带进新日志。"""
+    if not log.is_file() or not keep:
+        return []
+    with log.open(encoding="utf-8-sig", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    return [{field: row.get(field, "") for field in FIELDS}
+            for row in rows if str(row.get("code") or "").strip() in keep]
+
+
 def pending(database: Path, root: Path, only_shaped: bool) -> list[str]:
     connection = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True)
     try:
@@ -232,6 +263,8 @@ def build_parser() -> argparse.ArgumentParser:
                         default=GENERATED_DIR / "cover-fetch-log.csv")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--delay", type=float, default=1.5)
+    parser.add_argument("--retry-misses", action="store_true",
+                        help="连上轮确认没有封套的番号也重探一遍")
     parser.add_argument("--all-codes", action="store_true",
                         help="连 FC2/日期番号一起试；默认只跑片商与素人形态")
     return parser
@@ -249,12 +282,19 @@ def _write_log(path: Path, rows: list[dict]) -> None:
 def run(args: argparse.Namespace) -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     todo = pending(args.db, args.out, not args.all_codes)
+    skipped = set()
+    if not args.retry_misses:
+        skipped = settled_misses(args.log) & set(todo)
+        todo = [code for code in todo if code not in skipped]
     if args.limit:
         todo = todo[:args.limit]
-    print(f"待抓番号 {len(todo)} 个（已存在的跳过）")
+    print(f"待抓番号 {len(todo)} 个（已落盘的跳过，"
+          f"上轮确认没有的跳过 {len(skipped)} 个，--retry-misses 可重试）")
 
     transport = HttpxTransport()
-    rows: list[dict] = []
+    # 跳过的那些行要带进新日志。`_write_log` 是整份重写，不接着写就等于把上轮的
+    # 判定删掉，复核页的封面层会跟着凭空少掉一批。
+    rows: list[dict] = carried_rows(args.log, skipped)
     stats = {"ok": 0, "miss": 0}
     try:
         for index, code in enumerate(todo, 1):
@@ -273,17 +313,20 @@ def run(args: argparse.Namespace) -> int:
                              "note": f"{type(exc).__name__}: {exc}"[:80]})
                 print(f"[{index}/{len(todo)}] 未取得 {code}：{type(exc).__name__} {exc}",
                       flush=True)
-                continue
-            target = args.out / f"{code}.jpg"
-            temporary = target.with_suffix(".tmp")
-            temporary.write_bytes(data)
-            temporary.replace(target)
-            stats["ok"] += 1
-            rows.append({"code": code, "result": "取得", "source": winner.source,
-                         "width": width, "height": height, "kb": len(data) // 1024,
-                         "url": winner.url, "note": ""})
-            print(f"[{index}/{len(todo)}] {code}  {width}x{height} "
-                  f"{len(data)//1024} KB  <- {winner.source}", flush=True)
+            else:
+                target = args.out / f"{code}.jpg"
+                temporary = target.with_suffix(".tmp")
+                temporary.write_bytes(data)
+                temporary.replace(target)
+                stats["ok"] += 1
+                rows.append({"code": code, "result": "取得", "source": winner.source,
+                             "width": width, "height": height, "kb": len(data) // 1024,
+                             "url": winner.url, "note": ""})
+                print(f"[{index}/{len(todo)}] {code}  {width}x{height} "
+                      f"{len(data)//1024} KB  <- {winner.source}", flush=True)
+            # 落空的行也要落盘。原来这句只在取得分支里，连续落空时 CSV 整段不动；
+            # 被强杀时 finally 也来不及跑，那一串判定就白做了——而「查不到」恰恰
+            # 是最贵的一类：每条都要把所有候选源挨个探完才能确定。
             _write_log(args.log, rows)
     finally:
         transport.close()

@@ -1,6 +1,8 @@
+import csv
 import importlib.util
 import io
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -118,6 +120,55 @@ class BestCoverTests(unittest.TestCase):
     def test_no_candidate_anywhere_is_reported_not_guessed(self):
         with self.assertRaises(covers.Unavailable):
             covers.best_cover(transport_for({}), "NOPE-999", 0)
+
+
+class SettledMissTests(unittest.TestCase):
+    """续跑不该把上轮已经探完的落空再探一遍——那是最贵的一类。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.log = Path(self.tmp.name) / "cover-fetch-log.csv"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _log(self, rows):
+        with self.log.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=covers.FIELDS)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({field: row.get(field, "") for field in covers.FIELDS})
+
+    def test_a_confirmed_absence_is_not_retried(self):
+        self._log([{"code": "HEYZO-1380", "result": "未取得",
+                    "note": "所有渠道都没有候选"},
+                   {"code": "ABW-220", "result": "未取得",
+                    "note": "候选都不是可用封套"}])
+        self.assertEqual(covers.settled_misses(self.log), {"HEYZO-1380", "ABW-220"})
+
+    def test_a_transport_failure_is_always_retried(self):
+        """一次超时不等于确认没有，不能靠它把番号永久踢出队列。"""
+        self._log([{"code": "SSNI-001", "result": "未取得",
+                    "note": "ConnectError: [SSL: UNEXPECTED_EOF_WHILE_READING]"},
+                   {"code": "SSNI-002", "result": "未取得",
+                    "note": "ReadTimeout: timed out"}])
+        self.assertEqual(covers.settled_misses(self.log), set())
+
+    def test_a_successful_row_is_not_treated_as_a_miss(self):
+        self._log([{"code": "GYAN-017", "result": "取得", "width": "2184"}])
+        self.assertEqual(covers.settled_misses(self.log), set())
+
+    def test_missing_log_means_nothing_is_skipped(self):
+        self.assertEqual(covers.settled_misses(self.log / "nope.csv"), set())
+
+    def test_skipped_rows_are_carried_into_the_new_log(self):
+        """日志是整份重写；不带上就等于把上轮判定删掉，复核页会凭空少一批。"""
+        self._log([{"code": "HEYZO-1380", "result": "未取得",
+                    "note": "所有渠道都没有候选"},
+                   {"code": "GYAN-017", "result": "取得", "width": "2184"}])
+        carried = covers.carried_rows(self.log, {"HEYZO-1380"})
+        self.assertEqual([row["code"] for row in carried], ["HEYZO-1380"])
+        self.assertEqual(sorted(carried[0]), sorted(covers.FIELDS))
 
 
 if __name__ == "__main__":
