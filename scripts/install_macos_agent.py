@@ -20,12 +20,15 @@ import getpass
 import os
 import plistlib
 import subprocess
+import time
 from pathlib import Path
 
 from peach.config import LOG_DIR, PROJECT_ROOT
 
 
 LABEL = "gg.lmd.peach.tray"
+#: 交给 agent 的 PATH。Homebrew 的前缀在 launchd 的默认 PATH 里没有。
+AGENT_PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 
 def plist_path() -> Path:
@@ -41,6 +44,9 @@ def build_plist(tray: Path) -> dict:
         # 菜单栏项是用户主动退出的，不要自动拉回来。
         "KeepAlive": False,
         "ProcessType": "Interactive",
+        # launchd 给的 PATH 只有 /usr/bin:/bin:/usr/sbin:/sbin，找不到 Homebrew 的
+        # ffmpeg/ffprobe，转码和抽帧会静默变成「不可用」。
+        "EnvironmentVariables": {"PATH": AGENT_PATH},
         "WorkingDirectory": str(PROJECT_ROOT),
         "StandardOutPath": str(LOG_DIR / "macos-tray.log"),
         "StandardErrorPath": str(LOG_DIR / "macos-tray.log"),
@@ -86,8 +92,13 @@ def run(args: argparse.Namespace) -> int:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(plistlib.dumps(build_plist(args.tray)))
 
-    # 重装时先 bootout：同一个 label 不能重复 bootstrap。
+    # 重装时先 bootout：同一个 label 不能重复 bootstrap。bootout 是异步的，
+    # 立刻 bootstrap 会撞上「Input/output error (5)」，所以要等它真的消失。
     launchctl("bootout", f"{domain}/{LABEL}")
+    for _ in range(50):
+        if launchctl("print", f"{domain}/{LABEL}").returncode != 0:
+            break
+        time.sleep(0.2)
     result = launchctl("bootstrap", domain, str(target))
     if result.returncode != 0:
         raise SystemExit(f"launchctl bootstrap 失败：{result.stderr.strip()}")
