@@ -19,6 +19,7 @@ from PIL import Image
 from .certs import ensure_certificate
 from .config import LOG_DIR, PROJECT_ROOT, SECRETS_DIR, STATE_DIR
 from .mdns import lan_ipv4
+from .netwatch import NetworkChangeWatcher
 from .versioning import VersionManager
 
 
@@ -543,32 +544,35 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
             for spec in manager.specs:
                 manager.healthy(spec)
 
-    def watch_address() -> None:
-        """本机地址一变就补签证书并重启 HTTPS。
+    def refresh_certificate() -> None:
+        """本机地址变了就补签证书并重启 HTTPS。
 
-        证书的 SAN 是签死的，而局域网地址随 DHCP 和换网络变化。地址一变，用 IP 访问就
-        报证书无效——这件事没有任何理由让人去记着重跑脚本。
+        证书的 SAN 是签死的，而局域网地址随 DHCP 和换网络变化；地址一变，用 IP 访问就
+        报证书无效。这个函数由系统的网络变化事件驱动，不轮询——换 Wi-Fi 的那一刻就跑，
+        而不是等下一个检查周期。
         """
-        while not stopped.wait(30.0):
-            try:
-                reason = ensure_certificate(
-                    SECRETS_DIR / "tls", "peach.local", {lan_ipv4()})
-            except Exception:
-                LOGGER.exception("证书自检失败")
-                continue
-            if reason is None:
-                continue
-            LOGGER.info("证书已重签（%s），重启 HTTPS 服务", reason)
-            manager.stop_owned("https")
-            manager.start_missing()
+        try:
+            reason = ensure_certificate(SECRETS_DIR / "tls", "peach.local", {lan_ipv4()})
+        except Exception:
+            LOGGER.exception("证书自检失败")
+            return
+        if reason is None:
+            return
+        LOGGER.info("证书已重签（%s），重启 HTTPS 服务", reason)
+        manager.stop_owned("https")
+        manager.start_missing()
 
     stopped = threading.Event()
     threading.Thread(target=poll_health, name="PeachMenuHealth", daemon=True).start()
-    threading.Thread(target=watch_address, name="PeachCertWatch", daemon=True).start()
+    # 启动时先对一次账，之后完全由网络变化事件驱动。
+    refresh_certificate()
+    watcher = NetworkChangeWatcher(refresh_certificate)
+    watcher.start()
     try:
         menu.run()
     finally:
         stopped.set()
+        watcher.stop()
 
 
 def main() -> int:

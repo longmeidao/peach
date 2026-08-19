@@ -153,21 +153,22 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains(".meta span.who{color:var(--ink-2);cursor:default}")
 
-    def test_content_only_changes_when_the_user_asks(self):
-        """内容不能自己变：既不能每次加载随机，也不能按日期换。
+    def test_rotation_is_settled_on_load_not_by_a_foreground_timer(self):
+        """换排序是加载时结算的，页面不会在你看着的时候自己重排。
 
-        顶部三层拿 seed 去请求 `/api/tops`。种子每次随机就是刷一次换一批人，按日期算
-        就是每天换一批——两种都属于「自己会变」。种子存进 localStorage，默认排序也从
-        `daily`（服务端按当天日期打散）换成 `seed`，每日轮换降级成可选项。
+        「每 N 分钟」的含义是后台每 N 分钟换一次排序、下次刷新才体现，所以用种子的
+        时间窗实现，而不是前台定时器重绘。默认「每次刷新」。
         """
-        self.assertPageContains("const SEED_KEY='peach.seed';")
+        self.assertPageContains("const SEED_KEY='peach.seed.v2';")
         self.assertPageContains("seed:initialParams.get('seed')||persistedSeed()")
-        self.assertPageLacks("dailySeed()")
-        self.assertPageContains("defaultSort:'seed'")
-        self.assertPageContains("const SORTS=[['seed','固定顺序'],['daily','每日轮换']")
-        # 换一批换出来的那一批要留得住，否则刷新就退回上一批。
+        self.assertPageContains("rotateMinutes:0")
+        self.assertPageContains("if(minutes<0)return saved.value;")
+        self.assertPageContains("if(minutes===0)return writeSeedRecord(newSeed());")
+        # 前台定时重绘必须整段消失，那不是这个设置的语义。
+        self.assertPageLacks("autoRefreshTimer")
+        self.assertPageLacks("scheduleAutoRefresh")
+        # 手动换一批立刻换，并重置计时窗口。
         self.assertPageContains("state.sort='seed';state.seed=rollSeed()")
-        self.assertPageContains("localStorage.setItem(SEED_KEY,fresh)")
 
     def test_avatar_tiles_do_not_inherit_the_text_link_underline(self):
         """取消规则必须真的压过 `.entitylink:hover`，不能只是写在文件里。
@@ -663,10 +664,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("icon('sperm')")
 
     def test_settings_own_useful_experience_preferences(self):
-        self.assertPageContains("const DEFAULT_SETTINGS={autoRefresh:true,refreshMinutes:5")
+        self.assertPageContains("const DEFAULT_SETTINGS={rotateMinutes:0")
         self.assertPageContains('id="settingsPanel"')
-        self.assertPageContains("scheduleAutoRefresh()")
-        self.assertPageContains("refreshAll(true)")
+        # 「换一批」是一个下拉（每次刷新 / 分钟数 / 每天 / 从不），不再是开关加间隔。
+        self.assertPageContains('id="rotateSetting"')
+        self.assertPageContains('<option value="0">每次刷新</option>')
+        self.assertPageContains("appSettings.rotateMinutes")
         self.assertPageContains("appSettings.hoverDelaySeconds")
         self.assertPageContains("appSettings.batchSize")
         self.assertPageContains("appSettings.defaultSort")

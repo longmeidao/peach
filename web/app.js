@@ -35,11 +35,11 @@ async function loadSourceStatus(){
 }
 const DURATION_TAGS=new Set(['短片-2分内','中片-10分内','长片-30分内','超长片-30分上']);
 const SETTINGS_KEY='peach.settings.v1';
-const DEFAULT_SETTINGS={autoRefresh:true,refreshMinutes:5,batchSize:60,defaultSort:'seed',hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big'};
+const DEFAULT_SETTINGS={rotateMinutes:0,batchSize:60,defaultSort:'seed',hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big'};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
-appSettings.refreshMinutes=allowedSetting(+appSettings.refreshMinutes,[1,5,10,30],5);
+appSettings.rotateMinutes=allowedSetting(+appSettings.rotateMinutes,[-1,0,5,10,30,1440],0);
 appSettings.batchSize=allowedSetting(+appSettings.batchSize,[30,60,90],60);
 appSettings.defaultSort=allowedSetting(appSettings.defaultSort,['seed','daily','rand','rating','o','plays','long','big','new','played'],'seed');
 appSettings.hoverDelaySeconds=allowedSetting(+appSettings.hoverDelaySeconds,[3,5,8],5);
@@ -49,8 +49,7 @@ appSettings.relatedLimit=allowedSetting(+appSettings.relatedLimit,[12,20,30],20)
 document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);
 const saveSettings=()=>localStorage.setItem(SETTINGS_KEY,JSON.stringify(appSettings));
 function syncSettingsPanel(){
-  $('#autoRefreshSetting').checked=!!appSettings.autoRefresh;
-  $('#refreshMinutesSetting').value=String(appSettings.refreshMinutes);
+  $('#rotateSetting').value=String(appSettings.rotateMinutes);
   $('#batchSizeSetting').value=String(appSettings.batchSize);
   $('#defaultSortSetting').value=appSettings.defaultSort;
   $('#hoverDelaySetting').value=String(appSettings.hoverDelaySeconds);
@@ -61,8 +60,7 @@ function syncSettingsPanel(){
 function openSettings(open=true){$('#settingsPanel').hidden=!open;if(open)syncSettingsPanel()}
 $('#settingsBtn').onclick=()=>openSettings(true);$('#settingsClose').onclick=()=>openSettings(false);
 $('#settingsPanel').onclick=e=>{if(e.target===$('#settingsPanel'))openSettings(false)};
-$('#autoRefreshSetting').onchange=e=>{appSettings.autoRefresh=e.target.checked;saveSettings();scheduleAutoRefresh()};
-$('#refreshMinutesSetting').onchange=e=>{appSettings.refreshMinutes=+e.target.value||5;saveSettings();scheduleAutoRefresh()};
+$('#rotateSetting').onchange=e=>{appSettings.rotateMinutes=+e.target.value;saveSettings()};
 $('#batchSizeSetting').onchange=e=>{appSettings.batchSize=+e.target.value||60;saveSettings();if(location.pathname==='/')load(true)};
 $('#defaultSortSetting').onchange=e=>{appSettings.defaultSort=e.target.value;saveSettings();state.sort=appSettings.defaultSort;if(location.pathname==='/')load(true)};
 $('#hoverDelaySetting').onchange=e=>{appSettings.hoverDelaySeconds=+e.target.value||5;document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);saveSettings()};
@@ -81,26 +79,36 @@ const srcBadge=(loc,cost,cls)=>
   +(SRCICON[loc]||'')+`${LOC[loc]||loc}${cost==='metered'?' · 计费':''}</span>`;
 
 // sort 默认 daily：同一天进来顺序固定，隔天自动换一批（不是每次刷新都变）
-/* 种子存下来，不随每次加载变，也不随日期变。内容只有在点「换一批」时才换。
+/* 排序种子。顶部三层（艺人头像 / 厂牌 / 标签）和首页网格共用它，所以它一变，整屏就是
+   新的一批。
 
-   顶部三层（艺人头像 / 厂牌 / 标签）拿 seed 去请求 `/api/tops`：种子每次随机就是每刷新
-   一次换一批人，按日期算就是每天换一批——两种都属于「自己会变」，而用户要的是不动。
-   服务端的 `sort=daily` 同理，所以默认排序换成 `seed`，每日轮换保留成一个可选项。 */
-const SEED_KEY='peach.seed';
+   换的频率由设置里的「换一批」决定，默认每次刷新：种子只在页面加载时结算一次，页面不会
+   在你看着的时候自己重排。选了分钟数就是「后台每 N 分钟换一次排序，下次刷新才体现」——
+   同一批在窗口内反复刷新都是同一屏；选「从不」则只有手动点换一批才变。
+
+   种子连同结算时间一起存，否则刷新就退回上一批。 */
+const SEED_KEY='peach.seed.v2';
 const newSeed=()=>String((Date.now()^(Math.random()*1e9|0))%99991);
-function persistedSeed(){
+function readSeedRecord(){
   try{
-    const saved=localStorage.getItem(SEED_KEY);
-    if(saved)return saved;
-    const fresh=newSeed();localStorage.setItem(SEED_KEY,fresh);return fresh;
-  }catch(_e){return newSeed()}
+    const raw=JSON.parse(localStorage.getItem(SEED_KEY)||'null');
+    return raw&&raw.value?{value:String(raw.value),at:+raw.at||0}:null;
+  }catch(_e){return null}
 }
-//「换一批」要连同新种子一起存下来，否则刷新就退回上一批。
-function rollSeed(){
-  const fresh=newSeed();
-  try{localStorage.setItem(SEED_KEY,fresh)}catch(_e){}
-  return fresh;
+function writeSeedRecord(value){
+  try{localStorage.setItem(SEED_KEY,JSON.stringify({value,at:Date.now()}))}catch(_e){}
+  return value;
 }
+function persistedSeed(){
+  const minutes=appSettings.rotateMinutes;
+  const saved=readSeedRecord();
+  if(!saved)return writeSeedRecord(newSeed());
+  if(minutes<0)return saved.value;                       // 从不：只认手动换一批
+  if(minutes===0)return writeSeedRecord(newSeed());      // 每次刷新
+  return Date.now()-saved.at>=minutes*60000 ? writeSeedRecord(newSeed()) : saved.value;
+}
+// 手动「换一批」：立刻换，并重置计时窗口。
+const rollSeed=()=>writeSeedRecord(newSeed());
 const initialParams=new URLSearchParams(location.search);
 let state={loc:initialParams.get('loc')||'local,115',creator:initialParams.get('creator')||'',studio:initialParams.get('studio')||'',
   tag:initialParams.get('tag')||'',len:initialParams.get('len')||'',dur_min:initialParams.get('dur_min')||'',dur_max:initialParams.get('dur_max')||'',
@@ -669,7 +677,7 @@ async function buildBars(){
     bind();});
 }
 /* 排序放在计数行 —— 顶栏放不下也不该放，这是列表的属性 */
-const SORTS=[['seed','固定顺序'],['daily','每日轮换'],['rand','随机'],['rating','评分'],
+const SORTS=[['seed','推荐顺序'],['daily','每日轮换'],['rand','随机'],['rating','评分'],
              ['o','高潮计数'],['plays','观看次数'],['long','时长'],['big','体积'],
              ['new','最近入库'],['played','最近看的']];
 function renderCount(){
@@ -1984,7 +1992,7 @@ document.addEventListener('keydown',e=>{
    不用 RANDOM()：那样翻页会重复和漏掉条目。
    自动刷新只在首页空闲态执行，不打断播放、搜索、选择或其他页面。 */
 async function refreshAll(automatic=false){
-  if(automatic&&(!appSettings.autoRefresh||document.hidden||location.pathname!=='/'||
+  if(automatic&&(document.hidden||location.pathname!=='/'||
       !$('#stage').hidden||!$('#tok').hidden||selectMode||selected.size||document.activeElement===$('#q')))return false;
   if(!$('#stats').hidden){
     if(location.pathname==='/review'){await openReview(false);return}
@@ -2000,10 +2008,8 @@ async function refreshAll(automatic=false){
   if(!automatic)window.scrollTo({top:0,behavior:'smooth'});
   return true;
 }
-let autoRefreshTimer=null;
-function scheduleAutoRefresh(){clearInterval(autoRefreshTimer);if(!appSettings.autoRefresh)return;
-  autoRefreshTimer=setInterval(()=>refreshAll(true),Math.max(1,appSettings.refreshMinutes)*60*1000)}
-scheduleAutoRefresh();
+/* 没有前台定时器：页面不会在你看着的时候自己重排。换排序是加载时结算的，
+   「后台每 N 分钟换一次」的效果由种子的时间窗实现（见 persistedSeed）。 */
 $('#refresh').onclick=()=>{const b=$('#refresh');
   b.style.transition='transform .55s cubic-bezier(.3,.9,.3,1)';b.style.transform='rotate(360deg)';
   setTimeout(()=>{b.style.transition='';b.style.transform=''},580);
