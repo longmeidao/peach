@@ -17,7 +17,7 @@ import pystray
 from PIL import Image
 
 from .certs import ensure_certificate
-from .config import LOG_DIR, PROJECT_ROOT, SECRETS_DIR, STATE_DIR
+from .config import LOG_DIR, MDNS_HOSTNAME, PROJECT_ROOT, SECRETS_DIR, STATE_DIR
 from .mdns import lan_ipv4
 from .netwatch import NetworkChangeWatcher
 from .versioning import VersionManager
@@ -35,7 +35,7 @@ MACOS_TLS_PORT = 8443
 #: 单击菜单栏/托盘图标打开的地址。两个平台都用 `peach.local` —— 这是唯一对外的名字，
 #: 局域网里的手机和电脑用的是同一个链接，也才吃得到本机 CA 的证书。macOS 上 80/443
 #: 由 pf 转到高位端口（scripts/setup_macos_port80.sh）。
-OPEN_URL = "https://peach.local/"
+OPEN_URL = f"https://{MDNS_HOSTNAME}/"
 
 
 def enable_hidpi() -> str:
@@ -552,7 +552,7 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
         而不是等下一个检查周期。
         """
         try:
-            reason = ensure_certificate(SECRETS_DIR / "tls", "peach.local", {lan_ipv4()})
+            reason = ensure_certificate(SECRETS_DIR / "tls", MDNS_HOSTNAME, {lan_ipv4()})
         except Exception:
             LOGGER.exception("证书自检失败")
             return

@@ -50,6 +50,16 @@ LOCATION_ROOT_DECLARATIONS: dict[str, str] = {
     "pikpak": "A:/",
 }
 MEDIA_ROOT_DECLARATIONS: tuple[str, ...] = tuple(LOCATION_ROOT_DECLARATIONS.values())
+
+# 两台机器共用同一个名字：一个地址走到底，不用记哪台是哪个。
+#
+# 代价是**两台不能同时广播**。macOS 走 `dns-sd -P` 代理注册，它直接断言记录、不做冲突
+# 退让；Windows 的 zeroconf 会做冲突检测。同时开着的话谁后注册谁赢，另一台就按名字访问
+# 不到了——不会报错，只是解析到对面。实际用法是一次只开一台，真要同时开就用
+# `PEACH_MDNS_NAME` 给其中一台换个名字。`scripts/check_mdns.py` 能查出撞名：
+# 同一个名字有两个地址应答就是撞上了。
+MDNS_NAME = os.environ.get("PEACH_MDNS_NAME") or "peach"
+MDNS_HOSTNAME = f"{MDNS_NAME}.local"
 # 2026-08 仓库/数据拆分前写入 ledger 的旧快照根；运行时只做受控前缀重映射。
 LEGACY_SNAPSHOT_DECLARATIONS: tuple[str, ...] = (r"R:\Resources\Intake\snapshots",)
 

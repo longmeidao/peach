@@ -1,7 +1,10 @@
+import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
-from peach.mdns import MdnsPublisher, answers_on_network, create_mdns_publisher, lan_ipv4
+from peach.mdns import (
+    DnsSdPublisher, MdnsPublisher, answers_on_network, create_mdns_publisher, lan_ipv4,
+)
 
 
 class MdnsPublisherTests(unittest.TestCase):
@@ -76,8 +79,8 @@ class MdnsPublisherTests(unittest.TestCase):
         """生产上显式钉住地址时复查必须是空转，不能自己换成别的网卡。"""
         with patch("peach.mdns.Zeroconf") as zeroconf_type, \
                 patch("peach.mdns.answers_on_network", return_value=True):
-            publisher = create_mdns_publisher(
-                "peach", 80, address="192.0.2.10", refresh_seconds=0,
+            publisher = MdnsPublisher(
+                "peach", 80, address_resolver=lambda: "192.0.2.10", refresh_seconds=0,
             )
             publisher.start()
             self.assertEqual(publisher.refresh(), "unchanged")
@@ -101,14 +104,18 @@ class MdnsPublisherTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             MdnsPublisher("bad name", 80)
 
-    def test_factory_uses_verified_zeroconf_backend(self):
-        self.assertIsInstance(create_mdns_publisher("peach", 80), MdnsPublisher)
+    def test_factory_picks_the_backend_that_works_on_this_platform(self):
+        """macOS 走系统 mDNSResponder：自带 zeroconf 在 launchd 起的进程里会被
+        「本地网络」隐私门静默拒绝，注册看着成功、一个多播包都发不出去。"""
+        publisher = create_mdns_publisher("peach", 80)
+        expected = DnsSdPublisher if sys.platform == "darwin" else MdnsPublisher
+        self.assertIsInstance(publisher, expected)
 
     def test_explicit_address_avoids_tunnel_route(self):
         with patch("peach.mdns.Zeroconf") as zeroconf_type, \
                 patch("peach.mdns.answers_on_network", return_value=True):
-            publisher = create_mdns_publisher(
-                "peach", 80, address="192.168.50.162",
+            publisher = MdnsPublisher(
+                "peach", 80, address_resolver=lambda: "192.168.50.162", refresh_seconds=0,
             )
             publisher.start()
             self.assertEqual(publisher.address, "192.168.50.162")
@@ -128,30 +135,21 @@ class MdnsPublisherTests(unittest.TestCase):
 
 
 class ReachabilityTests(unittest.TestCase):
-    """注册成功不等于对外可见。
+    """可达性不能由服务进程自证。
 
-    macOS 的「本地网络」隐私门会静默掐掉多播：从终端起的进程继承终端已授权的身份，
-    launchd 起的作业是另一个主体、没有弹窗可点，于是 zeroconf 自认为注册成功、实际
-    一个包都发不出去。`/healthz` 报着 `peach.local`，手机却怎么都解析不到——这种
-    「自称成功」比直接失败难查得多，所以要自己发一次查询验一验。
+    macOS 的「本地网络」隐私门按进程判：launchd 起的作业自己发的多播会被静默丢弃，
+    所以它去探自己必然收不到回应，会把好的记录判成不可达。运行时因此只报「注册还在
+    生效」，真正的可达性验证交给 `scripts/check_mdns.py`——那个从终端跑，有权限。
     """
 
-    def test_status_says_unreachable_when_nothing_answers(self):
+    def test_runtime_status_does_not_depend_on_a_self_probe(self):
         with patch("peach.mdns.Zeroconf"), \
-                patch("peach.mdns.answers_on_network", return_value=False):
-            publisher = MdnsPublisher(
-                "peach", 80, address_resolver=lambda: "192.0.2.10", refresh_seconds=0)
-            publisher.start()
-            self.assertEqual(publisher.status, "unreachable")
-            publisher.stop()
-
-    def test_status_is_the_hostname_when_the_record_answers(self):
-        with patch("peach.mdns.Zeroconf"), \
-                patch("peach.mdns.answers_on_network", return_value=True):
+                patch("peach.mdns.answers_on_network", return_value=False) as probe:
             publisher = MdnsPublisher(
                 "peach", 80, address_resolver=lambda: "192.0.2.10", refresh_seconds=0)
             publisher.start()
             self.assertEqual(publisher.status, "peach.local")
+            probe.assert_not_called()
             publisher.stop()
 
     def test_probe_never_raises_on_a_dead_socket(self):

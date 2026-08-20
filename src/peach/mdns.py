@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import logging
 import socket
+import subprocess
+import sys
+import threading
 import time
 import ipaddress
 import threading
@@ -66,7 +69,7 @@ def _explicit_resolver(address: str) -> Callable[[], str]:
 
 
 def answers_on_network(hostname: str, timeout: float = 2.0) -> bool:
-    """本机的 mDNS 记录在网上真的有人应答吗。
+    """本机的 mDNS 记录在网上真的有人应答吗。**只能从有本地网络权限的进程调用。**
 
     注册成功不等于对外可见：macOS 的「本地网络」隐私门会**静默**掐掉多播。从终端起的
     进程继承终端已获授权的身份，launchd 起的作业是另一个主体、没有弹窗可点，于是
@@ -164,15 +167,7 @@ class MdnsPublisher:
         self._zeroconf = zeroconf
         self._info = info
         self.address = address
-        # 注册成功不代表对外可见，验一次再宣告（见 answers_on_network）。
-        if answers_on_network(self.hostname):
-            self.status = self.hostname
-        else:
-            self.status = "unreachable"
-            LOGGER.error(
-                "%s 已注册但网上无人应答，多半是「本地网络」权限被静默拒绝："
-                "系统设置 → 隐私与安全性 → 本地网络，允许该进程；"
-                "或用 --no-mdns 直接关掉并改用 IP 访问。", self.hostname)
+        self.status = self.hostname
 
     def stop(self) -> None:
         self._stop.set()
@@ -228,13 +223,122 @@ class MdnsPublisher:
             self.status = "stopped"
 
 
+
+class DnsSdPublisher:
+    """macOS：把广播交给系统的 mDNSResponder，不自己跑一套 mDNS 栈。
+
+    自带 zeroconf 在 launchd 起的进程里会被「本地网络」隐私门静默拒绝——注册看着成功，
+    实际一个多播包都发不出去（见 `answers_on_network`）。而 `dns-sd` 只是通过 UNIX 套接字
+    请求系统那个本来就在跑、本来就有权限的 mDNSResponder 代发，同样由 launchd 启动却一切
+    正常，实测过。
+
+    这本来也是 macOS 上更正确的做法：一台机器不该跑两套 mDNS 响应器。
+    """
+
+    backend = "dns-sd-proxy"
+
+    def __init__(
+        self,
+        name: str,
+        port: int,
+        secure: bool = False,
+        address_resolver: Callable[[], str] = lan_ipv4,
+        refresh_seconds: float = REFRESH_SECONDS,
+    ) -> None:
+        self.name = _normalized_name(name)
+        self.port = port
+        self.secure = secure
+        self._address_resolver = address_resolver
+        self.refresh_seconds = refresh_seconds
+        self.address: str | None = None
+        self.status = "pending"
+        self._process: subprocess.Popen | None = None
+        self._stop = threading.Event()
+        self._watcher: threading.Thread | None = None
+
+    @property
+    def hostname(self) -> str:
+        return f"{self.name}.local"
+
+    def _register(self) -> None:
+        if self._process is not None and self._process.poll() is None:
+            return
+        address = self._address_resolver()
+        service = "_https._tcp" if self.secure else "_http._tcp"
+        self._process = subprocess.Popen(
+            ["/usr/bin/dns-sd", "-P", self.name, service, "local",
+             str(self.port), self.hostname, address],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        self.address = address
+        # 不在这里自证可达：本进程由 launchd 启动，「本地网络」隐私门挡的正是自己发多播，
+        # 探针必然收不到回应，会把好的判成 unreachable。记录是系统 mDNSResponder 发的，
+        # `dns-sd` 子进程还活着就说明注册仍在生效——这是本进程能拿到的最强证据。
+        # 真要验，用 `scripts/check_mdns.py`，它从终端跑、有权限。
+        self.status = self.hostname
+
+    def _unregister(self) -> None:
+        process, self._process = self._process, None
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+        self.address = None
+        self.status = "stopped"
+
+    def start(self) -> None:
+        try:
+            self._register()
+        finally:
+            if self.refresh_seconds > 0 and self._watcher is None:
+                self._watcher = threading.Thread(
+                    target=self._watch, name="peach-mdns", daemon=True)
+                self._watcher.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        watcher, self._watcher = self._watcher, None
+        if watcher is not None:
+            watcher.join(timeout=self.refresh_seconds + 5)
+        self._unregister()
+
+    def refresh(self) -> str:
+        """地址变了、或 dns-sd 自己退了，就重新注册。"""
+        try:
+            address = self._address_resolver()
+        except (OSError, RuntimeError):
+            if self._process is not None:
+                self._unregister()
+                self.status = "unavailable"
+            return "unavailable"
+        alive = self._process is not None and self._process.poll() is None
+        if alive and address == self.address:
+            return "unchanged"
+        self._unregister()
+        self._register()
+        return "republished"
+
+    def _watch(self) -> None:
+        while not self._stop.wait(self.refresh_seconds):
+            try:
+                self.refresh()
+            except Exception:
+                LOGGER.exception("mDNS 地址复查失败")
+
+
 def create_mdns_publisher(
     name: str, port: int, secure: bool = False, address: str | None = None,
     refresh_seconds: float = REFRESH_SECONDS,
 ) -> MdnsPublisher:
-    """`address` 显式钉住时复查是空转：解析器返回常量，地址永远不变。"""
+    """`address` 显式钉住时复查是空转：解析器返回常量，地址永远不变。
+
+    macOS 走系统 mDNSResponder（`DnsSdPublisher`），其余平台用进程内的 zeroconf。
+    """
     resolver = _explicit_resolver(address) if address else lan_ipv4
-    return MdnsPublisher(
+    publisher = DnsSdPublisher if sys.platform == "darwin" else MdnsPublisher
+    return publisher(
         name, port, secure=secure, address_resolver=resolver,
         refresh_seconds=refresh_seconds,
     )

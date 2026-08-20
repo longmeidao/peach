@@ -7,6 +7,7 @@ from pathlib import Path
 from .api import create_app
 from .config import (
     DATABASE_PATH,
+    MDNS_NAME,
     MIGRATIONS_DIR,
     SHARED_DATABASE_PATH,
     STATE_DIR,
@@ -117,7 +118,7 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--shared-db", type=Path, default=SHARED_DATABASE_PATH)
     serve.add_argument("--no-ledger-sync", action="store_true")
     serve.add_argument("--ledger-sync-seconds", type=float, default=60.0)
-    serve.add_argument("--mdns-name", default="peach")
+    serve.add_argument("--mdns-name", default=MDNS_NAME)
     serve.add_argument("--mdns-address", help="explicit LAN IPv4 to publish")
     serve.add_argument("--ssl-certfile", type=Path)
     serve.add_argument("--ssl-keyfile", type=Path)

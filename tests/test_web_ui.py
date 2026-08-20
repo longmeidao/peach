@@ -170,6 +170,25 @@ class WebUiSourceTests(unittest.TestCase):
         # 手动换一批立刻换，并重置计时窗口。
         self.assertPageContains("state.sort='seed';state.seed=rollSeed()")
 
+    def test_offline_sources_drop_out_of_the_default_filter(self):
+        """脱盘的来源要从默认筛选里摘掉。
+
+        留着的话首页照样按它筛，出来一屏点开就报脱盘的卡片。只动默认值——地址栏里
+        显式写了 `loc=` 就是用户自己选的。全部脱盘时保持原样：清空会变成什么都不筛。
+        """
+        self.assertPageContains("function dropOfflineFromDefaultLoc(){")
+        self.assertPageContains("if(initialParams.get('loc'))return;")
+        self.assertPageContains("dropOfflineFromDefaultLoc();")
+
+    def test_select_arrow_is_drawn_by_us_and_hugs_the_border(self):
+        """箭头必须自绘。
+
+        原来留了 34px 右内边距却不画箭头、交给系统控件：Safari 把箭头画在内边距里侧，
+        离右边框差一大截，和桌面 Chromium 的样子也对不上。
+        """
+        self.assertPageContains("appearance:none;-webkit-appearance:none")
+        self.assertPageContains("background-position:right 10px center")
+
     def test_avatar_tiles_do_not_inherit_the_text_link_underline(self):
         """取消规则必须真的压过 `.entitylink:hover`，不能只是写在文件里。
 

@@ -31,7 +31,16 @@ async function loadSourceStatus(){
     sourceOnline=Object.fromEntries((d.sources||[]).map(s=>[s.location,!!s.online]));
   }catch(_e){sourceOnline={}}
   document.body.classList.toggle('offline-source',Object.values(sourceOnline).includes(false));
+  dropOfflineFromDefaultLoc();
   return sourceOnline;
+}
+/* 脱盘的来源要从默认筛选里摘掉，否则首页照样按它筛，出来一屏点开就报脱盘的卡片。
+   只动默认值：地址栏里显式写了 `loc=` 就是用户自己选的，不替他改。
+   全部来源都脱盘时保持原样——清空筛选会变成「什么都不筛」，那比原状更糟。 */
+function dropOfflineFromDefaultLoc(){
+  if(initialParams.get('loc'))return;
+  const kept=state.loc.split(',').filter(Boolean).filter(k=>sourceOnline[k]!==false);
+  if(kept.length&&kept.length!==state.loc.split(',').filter(Boolean).length)state.loc=kept.join(',');
 }
 const DURATION_TAGS=new Set(['短片-2分内','中片-10分内','长片-30分内','超长片-30分上']);
 const SETTINGS_KEY='peach.settings.v1';

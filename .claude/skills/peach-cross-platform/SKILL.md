@@ -93,15 +93,18 @@ bundle 声明 `LSUIElement`，输出重定向到 `logs/macos-tray.log`。图标�
 开工前先 `sh scripts/sync_status.sh`：落后远端就先 `git pull --rebase`，别在旧代码上接着
 写；账本是另一条链路（`peach.sync`），同一个脚本会一并报告。
 
-## macOS 的本地网络权限
+## macOS 的 mDNS
 
-`peach serve` 从终端起 mDNS 正常，改由 launchd 起就再也没人应答——终端起的进程继承终端
-已授权的身份，launchd 作业是另一个主体且没有弹窗可点，多播被**静默**丢弃。zeroconf 自认
-注册成功，`/healthz` 照报 `peach.local`。发布器因此会自己查一次验证，验不过报
-`unreachable`。修法：系统设置 → 隐私与安全性 → 本地网络放行，或 `--no-mdns` 改用 IP。
+从终端起正常、改由 launchd 起就没人应答：「本地网络」隐私门按进程判，launchd 作业是另一个
+主体且没有弹窗可点，自己发的多播被**静默**丢弃（设置里给 Python 放行没用，不是这个主体）。
+macOS 因此用 `dns-sd -P` 请系统 mDNSResponder 代发，Windows 继续用 zeroconf。
 
-排查手法：同一条命令分别从 shell 和 launchd 起，各发一次 mDNS 查询对比——差异只在启动者
-时，先怀疑这个门。
+**别让服务进程自证可达**：它发不出多播，探自己必然失败，会把好的判成不可达。验证用
+`scripts/check_mdns.py`（从终端跑）。排查手法：同一条命令分别从 shell 和 launchd 起各查一次，
+差异只在启动者时就是这个门。
+
+两台机器共用 `peach.local`，不能同时广播：谁后注册谁赢，另一台按名字访问不到且不报错。
+一次只开一台，或给其中一台设 `PEACH_MDNS_NAME`；`check_mdns.py` 查得出撞名。
 
 ## Git 陷阱
 
