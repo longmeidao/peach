@@ -679,8 +679,12 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .ncard{flex:none;width:216px;cursor:pointer}
 .ncard .why{color:var(--loupe)}
 
-.settingspanel{position:fixed;z-index:220;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.42);padding:18px}
-.settingspanel[hidden]{display:none}.settingscard{width:min(520px,100%);max-height:min(720px,90vh);overflow:auto;
+/* 内边距吃掉刘海和底部横条：iOS 上 `inset:0` 会一直铺到状态栏和 Home 指示条底下。 */
+.settingspanel{position:fixed;z-index:220;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.42);padding:18px;padding-top:max(18px,env(safe-area-inset-top));padding-bottom:max(18px,env(safe-area-inset-bottom))}
+.settingspanel[hidden]{display:none}/* 高度用 dvh 不用 vh。iOS 上 `vh` 算的是「大视口」——不减地址栏，所以按 90vh 撑出来的
+   面板会顶到地址栏和状态栏底下，上半截被遮住。`dvh` 跟着当前可见高度走。
+   vh 那行留作旧浏览器兜底，后一行覆盖前一行。 */
+.settingscard{width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:auto;
   border:1px solid var(--border-15);border-radius:16px;background:var(--frost-panel);box-shadow:0 30px 90px -30px #000;
   backdrop-filter:saturate(1.7) blur(24px);padding:20px}.settingshead{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
 .settingshead h2{margin:0;font-size:20px}.settingshead button{border:0;background:transparent;color:var(--muted);width:38px;height:38px;border-radius:50%;cursor:pointer}

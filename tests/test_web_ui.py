@@ -189,6 +189,16 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("appearance:none;-webkit-appearance:none")
         self.assertPageContains("background-position:right 10px center")
 
+    def test_settings_panel_fits_the_visible_viewport_on_ios(self):
+        """iOS 上 `vh` 算的是不减地址栏的「大视口」。
+
+        按 90vh 撑出来的面板会顶到地址栏和状态栏底下，上半截被遮住——手机上实测过。
+        `dvh` 跟着当前可见高度走；安全区内边距再把刘海和 Home 指示条让开。
+        """
+        self.assertPageContains("max-height:min(720px,90dvh)")
+        self.assertPageContains("padding-top:max(18px,env(safe-area-inset-top))")
+        self.assertPageContains("padding-bottom:max(18px,env(safe-area-inset-bottom))")
+
     def test_avatar_tiles_do_not_inherit_the_text_link_underline(self):
         """取消规则必须真的压过 `.entitylink:hover`，不能只是写在文件里。
 

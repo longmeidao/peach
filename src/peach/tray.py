@@ -544,29 +544,56 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
             for spec in manager.specs:
                 manager.healthy(spec)
 
-    def refresh_certificate() -> None:
-        """本机地址变了就补签证书并重启 HTTPS。
+    def refresh_certificate() -> bool:
+        """本机地址变了就补签证书并重启 HTTPS。成功返回 True。
 
         证书的 SAN 是签死的，而局域网地址随 DHCP 和换网络变化；地址一变，用 IP 访问就
-        报证书无效。这个函数由系统的网络变化事件驱动，不轮询——换 Wi-Fi 的那一刻就跑，
-        而不是等下一个检查周期。
+        报证书无效。由系统的网络变化事件驱动，不轮询——换 Wi-Fi 的那一刻就跑。
         """
         try:
             reason = ensure_certificate(SECRETS_DIR / "tls", MDNS_HOSTNAME, {lan_ipv4()})
         except Exception:
             LOGGER.exception("证书自检失败")
-            return
+            return False
         if reason is None:
-            return
+            return True
         LOGGER.info("证书已重签（%s），重启 HTTPS 服务", reason)
         manager.stop_owned("https")
         manager.start_missing()
+        return True
+
+    #: 事件到达时网络往往还没就绪，必须配重试；纯事件驱动会在这里断掉。
+    CERT_RETRY_DELAYS = (0.0, 5.0, 15.0, 45.0, 120.0)
+    cert_lock = threading.Lock()
+
+    def refresh_certificate_with_retry() -> None:
+        """换网瞬间地址还没拿到，事件那一刻必然失败——之后没人再管就一直是旧证书。
+
+        实测：一次换网连发 7 个事件，全部落在 `lan_ipv4()` 抛
+        `no publishable LAN IPv4 address` 的窗口里，网络稳定后证书仍停在上一个网段。
+        所以失败要按退避重试，而不是把间隔轮询加回来。
+        """
+        if not cert_lock.acquire(blocking=False):
+            return                      # 已经有一轮在重试，事件重复到达不用叠加
+        try:
+            for delay in CERT_RETRY_DELAYS:
+                if delay and stopped.wait(delay):
+                    return
+                if refresh_certificate():
+                    return
+            LOGGER.error("证书自检重试仍失败，等下一次网络变化再试")
+        finally:
+            cert_lock.release()
+
+    def on_network_change() -> None:
+        threading.Thread(
+            target=refresh_certificate_with_retry, name="PeachCertRetry", daemon=True).start()
 
     stopped = threading.Event()
     threading.Thread(target=poll_health, name="PeachMenuHealth", daemon=True).start()
-    # 启动时先对一次账，之后完全由网络变化事件驱动。
-    refresh_certificate()
-    watcher = NetworkChangeWatcher(refresh_certificate)
+    # 启动时先对一次账，之后由网络变化事件驱动（失败按退避重试）。
+    refresh_certificate_with_retry()
+    watcher = NetworkChangeWatcher(on_network_change)
     watcher.start()
     try:
         menu.run()
