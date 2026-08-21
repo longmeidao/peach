@@ -1,16 +1,17 @@
 ---
 name: peach-worktree
-description: 在用户说并行、开工作树、worktree、暂存、提交、ready、集成分支，或任何要写入 R:\peach-app 的代码任务开始时使用。
+description: 在用户说并行、开工作树、worktree、暂存、提交、ready、集成分支，或任何要写 Peach 代码的任务开始时使用。
 ---
 
 # 并行 worktree 与提交边界
 
-最后复核：2026-08-17
-证据来源：`docs/HANDOFF.md`「并行智能体与 Git 工作树」、`README.md`、ADR-0015。
+最后复核：2026-08-21
+证据来源：`docs/HANDOFF.md`「并行智能体与 Git 工作树」、`README.md`、ADR-0015、ADR-0017。
 
 ## 何时使用
 
-任何会写入 `R:\peach-app` 的代码任务。`R:\peach-app` 主目录只做集成，不做并行编辑。
+任何会写入当前机器 `peach-app` 的代码任务。主目录只做集成，不做并行编辑；worktree 本机重建，
+不跨机器复制目录。
 
 ## 流程
 

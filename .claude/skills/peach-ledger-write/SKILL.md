@@ -5,15 +5,15 @@ description: 在用户说迁移、migrate、--apply、合并实体、merge_entit
 
 # 真实 ledger 写入流程
 
-最后复核：2026-08-17
-证据来源：`docs/HANDOFF.md`「数据安全」「身份合并与来源分工」、ADR-0005、ADR-0015。
+最后复核：2026-08-21
+证据来源：`docs/HANDOFF.md`「数据安全」「身份合并与来源分工」、ADR-0005、ADR-0015、ADR-0017。
 
-真实库：`R:\peach-data\database\ledger.db`（WAL）。测试只用临时 SQLite 与临时媒体，
-绝不写真实库。
+真实库：当前写入者本机 `PEACH_DATA_ROOT/database/ledger.db`（WAL）。绝不能把共享传输副本或
+另一台机器的副本当当前真实库；测试只用临时 SQLite 与临时媒体。
 
 ## 迁移
 
-1. SQLite 备份到 `R:\peach-data\database\ledger.pre-<用途>-<时间戳>.db`。
+1. SQLite 备份到当前本机 `PEACH_DATA_ROOT/database/ledger.pre-<用途>-<时间戳>.db`。
 2. 记录迁移前 asset/tag 计数。
 3. `PRAGMA integrity_check`。
 4. `peach migrate status` 核对版本。

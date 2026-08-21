@@ -5,6 +5,9 @@
 ## 运行态
 
 - 生产入口：Windows 当前用户 Startup 中的 `Peach.lnk`，启动 `R:\peach-app\dist\Peach\Peach.exe`（无参数托盘模式）。当前版本 `0.6.1`。
+- Windows **还没有**内置盘独立环境：代码、`peach-data`、venv、构建产物和 worktree 仍在外置
+  `R:`。目标是迁到 `C:\Users\longm\Peach`，外置盘只保留 `R:\media`；截至本状态尚未实施，
+  不能写成已完成。见 ADR-0017。
 - HTTP：`0.0.0.0:80`；HTTPS：`192.168.50.162:443`。`peach.local` 是唯一正式局域网名称，发布为 `192.168.50.162`。
 - mDNS 使用 Python zeroconf 的全合格网卡监听；生产显式固定发布地址，避免隧道网卡误选。没有发布 `lmd-dst.local`。
 - macOS 菜单栏（2026-08-21）：托盘健康检查固定 `trust_env=False` 直连回环——Stash 设置系统级 HTTP 代理后，httpx 默认把 `127.0.0.1` 的探测送进代理、由代理回 503，服务活着却显示「HTTP 未运行」。状态行改为逐个点名：`HTTP 正常 · HTTPS 正常`，异常的附最近一次失败原因。当前 macOS 地址 `192.168.50.88`，证书 SAN 已随 netwatch 重签覆盖。
@@ -27,11 +30,15 @@
 - Windows 品牌资源已统一为附件生成的 `1024x1024` 正方形蜜桃图：`resources/peach-logo.png`、`resources/peach.ico`；Web favicon、托盘图标和 EXE 内嵌图标共用该资源。PyInstaller 打包产物为 `dist/Peach/Peach.exe`，桌面和 Startup 的 `Peach.lnk` 均按 FlowLens 的 `exe,0` 方式指向它；该 exe 只打包托盘自身，服务进程仍由项目 venv 承担，不是可移动的独立发行版。
 - 版本唯一来源为 `src/peach/__init__.py::__version__`。本批把实体作品、艺人/标签索引和广告卡片改为有界增量构建，去除代表图 N+1 查询与后续翻页重复总数统计；详情播放器复用本地 Video.js 8.23.9，并按 pre-1.0 SemVer 升至 `0.5.6`。没有 Git remote 时只报告本地开发版，不伪造更新能力。
 - 本地 CA HTTPS 已部署。CA 包含 critical `CA:TRUE` 和签名用途并通过 OpenSSL 链验证。macOS/iOS 只安装 `peach-local-ca.crt`；不得传播任何私钥。
-- 项目代码、运行数据、本地媒体已分离为 `R:\peach-app`、`R:\peach-data`、`R:\media`。旧空 Inbox 和 `Resources/Tools` 兼容表面已移除。
+- Windows 侧代码、运行数据与媒体虽然已分目录为 `R:\peach-app`、`R:\peach-data`、`R:\media`，
+  但仍同在外置盘，不满足双机本机独立运行；旧空 Inbox 和 `Resources/Tools` 兼容表面已移除。
 - 项目已可在 macOS 上独立运行并全量通过测试。账本路径的盘符翻译收敛在 `src/peach/platform.py`；`R:` → `/Volumes/RESOURCES`、`B:`（115）→ `~/Desktop/IMSL/115`、`A:`（PikPak）→ `~/Desktop/IMSL/Pikpak`，可用 `PEACH_DRIVE_MAP` 覆盖。实测本地与 115 的真实资产均返回 `206`，缩略图 `200`；PikPak 挂载当时掉线，按脱盘正确返回 `503` + `X-Peach-Offline`。账本本身未改写。
 - 同名跨 kind 的重复身份已合并（`scripts/merge_duplicate_identities.py`，备份 `ledger.pre-identity-merge-20260820-010944.db`）。35 组，保留方只看 provenance 不看数量：performer 侧带 `r18:performer`（真实发行元数据）的保留 performer（14 组，如 Mio Hayakawa、白桃はな），其余保留 creator（21 组，如 高桥千凛、MyElla、跳跳羊——那些 performer 断言全部来自 Stash 扁平模型）。按数量投票会翻车：`小桃` 的 performer 侧 151 条、creator 侧 15 条，但她是本地目录的上传者。结果：entity 8253→8218、creator 1742→1728、performer 597→576、entity_alias 1090→1125（旧称全部留作别名）；asset、asset_entity、asset_tag 一条未变，`foreign_key_check` 0 违规，扁平 `asset.creator` 清理 26 条。复核 CSV：`generated/duplicate-identity-merge.csv`。
 - 本地媒体根多余的一层已去掉（`scripts/flatten_media_level.py`，备份 `ledger.pre-flatten-media-20260820-011133.db`）：`R:\Media\创作者\<名字>` → `R:\Media\<名字>`。`R:\Media` 下原本只有 `创作者` 一个子目录、2552 条本地资产 100% 落在其下，这一层既不分类也不区分，且已名不副实（`合集-洛丽塔 多创作者` 等合集也在里面）。移动 35 个目录（同卷改名，只动元数据）、改写 2552 条路径，本地资产数不变、残留 `创作者` 层 0 条，五条真实资产复验 `206`。计划 CSV：`generated/flatten-media-level.csv`。
-- 账本改为三副本单写者复制（`src/peach/sync.py`）：硬盘 `/Volumes/RESOURCES/peach-data/database/ledger.db` 是权威副本，macOS 本地工作副本在 `~/Desktop/lmd.gg/peach/peach-data/database/ledger.db`（迁移后 asset 81769、entity 8253、asset_tag 88538 与源一致，`integrity_check` 为 `ok`，已播种为第 1 代）。启动拉/推、每 60 秒回写、两边都动过转只读并返回 `409`。**Windows 侧仍直接使用硬盘那份，本地副本与共享副本同路径时复制自动停用，行为不变**；等它把 `PEACH_DATA_ROOT` 指到本机盘，三副本才真正成立。
+- 账本已有三副本单写者复制原型（`src/peach/sync.py`）：macOS 本地副本已播种且完整性通过；
+  Windows 仍直接使用外置盘那份，本地副本与共享副本同路径，复制实际停用。ADR-0017 已决定把
+  Windows 工作副本与共享传输点一起迁到内置盘，并补显式 writer/reader 与运行中安全拉取；这些
+  未完成前不能把“双机同步运行”标为已部署。
 - 脱盘模式按来源逐个判定：`GET /api/sources` 报告可达性，前端置灰脱盘来源的筛选并在详情页显示「脱盘模式」面板。外置盘不在时 115/PikPak 的 78k 条云端资产仍然可用。
 
 ## 界面与交互现状
@@ -134,10 +141,17 @@
 - 2026-08-17 批代码改动（merge_entity 回归主线、sheets 色彩元数据重试、media 大小写不敏感匹配）模块级 `unittest` 全部通过：`test_entity_merge` 4 项、`test_scripts` 16 项、`test_media` 9 项等。注意：实测在工具管道里直跑 `python -m unittest discover` 全量会挂起或整会话输出消失（test_jobs 模块极快退出时竞态最明显），模块级独立运行全部通过；唯一可信入口仍是 `& .\scripts\test.ps1`。
 - 2026-08-19 发现「测试通过」曾有一段并不成立：`test_rm_web.py` 与 `test_web_ui.py` 各有一处 `if __name__ == "__main__": unittest.main()` 被插在类中间，其后缩进 4 格的 16 条测试被解析成 if 块语句，从写下起就没被收集过——不报错、不告警，其中包括复核页三类候选的全部数据层断言。修正后全量由 355 升到 371 且全绿。`tests/test_test_collection.py` 用 AST 禁止这种形状，避免再出现「绿灯但没覆盖」。
 
-- 2026-08-19 macOS 侧基线：`./scripts/test.sh` 全量 394 项通过、3 项跳过（2 项是 Windows 托盘专属的 DPI 声明与单实例锁，1 项为原有跳过）。Windows 侧同一批改动尚未复跑 `scripts/test.ps1`，**这是本批唯一未闭合的验证缺口**。
+- 2026-08-21 macOS 侧基线：`./scripts/test.sh` 全量 453 项通过、3 项跳过；上下文预算检查通过。
+  Windows 独立 checkout 尚未建立，因此同一提交仍未在 Windows 跑 `scripts/test.ps1`，不能标为
+  双平台验证完成。
 - 两台机器的 worktree 各自独立：macOS 侧已按 27 个 `agent/*` 分支重建，Windows 路径的失效注册已 `git worktree prune` 清掉。分支本身在 `.git` 里，worktree 目录随时可重建，不需要跨机器复制。
 
 ## 下一批工作
+
+基础设施前置：先完成 ADR-0017 的 Windows 本机化与同步边界迁移。包括 GitHub 内置盘 clone、
+本机 venv/`peach-data`/worktree、账本安全播种、内置盘 SMB 同步点、writer/reader、artifact
+拆分、托盘重建，以及拔盘后的双机运行验收。完成前不要继续把 `R:\peach-app`、`R:\peach-data`
+当目标路径扩展新功能。
 
 1. 创作者板的机械识别已做完：`creator-tags-review.csv` 里 42 条 pending 全部产出 candidate（34 candidate、8 skip，见 `creator-tags-candidate-20260817.csv`），没有未覆盖的板。剩下的是用户在 `/review` 页面逐条复核，点「通过」才写 `asset_tag/asset_entity`。注意天花板：全库 7,622 条无标签视频里创作者板最多覆盖约 2,800 条，其余既无创作者也无有效番号（384 个 FC2 + 约 330 个 `WX` 业余码，三源实测零命中）。
 2. FC2 评论标记跑完后逐条复核 `/review` 的 `fc2_markings` 层。这批候选的置信度只有「几条独立评论这么说」一个信号，写在 `performer_votes` 里；匿名评论一律不自动升级为 `approved`。收获 CSV 里库外 video_id 的标记先存着不入库，等对应作品进库时再回配。还没做的：把复核通过的演员写进 `entity`/`asset_entity`，以及按等价关系做跨号去重。

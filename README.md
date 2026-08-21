@@ -8,14 +8,17 @@ Peach（蜜桃）是一个单用户、本地优先的个人媒体系统：统一
 
 ## 边界
 
-Peach 在 Windows 和 macOS 两台机器上各有一份可独立运行的环境，账本里的路径始终使用
-Windows 口径，本机挂载点由 `src/peach/platform.py` 在读取时翻译。
+目标架构是 Windows 和 macOS 各自在内置盘持有一份可独立运行的环境，外置盘只提供媒体资源。
+macOS 已完成本机化；Windows 截至 2026-08-21 仍从外置盘的 `R:\peach-app`、`R:\peach-data`
+运行，尚未完成独立环境迁移。账本里的媒体路径始终使用 Windows 口径，本机挂载点由
+`src/peach/platform.py` 在读取时翻译。完整取舍与迁移门槛见
+[`ADR-0017`](docs/adr/0017-dual-host-local-runtime-and-sync-boundaries.md)。
 
-| 角色 | Windows | macOS |
+| 角色 | Windows 目标（待迁移） | macOS 当前 |
 |---|---|---|
-| 项目代码 | `R:\peach-app` | `~/Desktop/lmd.gg/peach/peach-app` |
-| 运行数据 | `R:\peach-data` | `~/Desktop/lmd.gg/peach/peach-data` |
-| 并行 worktree | `R:\peach-worktrees` | `~/Desktop/lmd.gg/peach/peach-worktrees` |
+| 项目代码 | `C:\Users\longm\Peach\peach-app` | `~/Desktop/lmd.gg/peach/peach-app` |
+| 运行数据 | `C:\Users\longm\Peach\peach-data` | `~/Desktop/lmd.gg/peach/peach-data` |
+| 并行 worktree | `C:\Users\longm\Peach\peach-worktrees` | `~/Desktop/lmd.gg/peach/peach-worktrees` |
 | 本地媒体 | `R:\media` | `/Volumes/RESOURCES/media` |
 | 115（账本写 `B:\`） | `B:\` | `~/Desktop/IMSL/115` |
 | PikPak（账本写 `A:\`） | `A:\` | `~/Desktop/IMSL/Pikpak` |
@@ -23,7 +26,8 @@ Windows 口径，本机挂载点由 `src/peach/platform.py` 在读取时翻译�
 - 真相数据库：`peach-data/database/ledger.db`
 - Stash：过渡期可替换 adapter，不是真相源
 
-账本共三份：硬盘上那份是权威副本，两台机器各持一份本地工作副本。详见下文「账本复制」。
+两台机器各持一份本地账本工作副本；专用共享副本只承担单写者同步传输，不再放在外置资源盘。
+GitHub 不保存或同步账本。详见下文「账本复制」。
 
 盘符映射的默认值按平台给，可用 `PEACH_DRIVE_MAP=R=/Volumes/RESOURCES,B=/mnt/115` 覆盖；
 数据目录用 `PEACH_DATA_ROOT` 覆盖。CloudDrive 在两个平台的挂载方式完全不同——Windows
@@ -32,7 +36,8 @@ Windows 口径，本机挂载点由 `src/peach/platform.py` 在读取时翻译�
 写回账本的索引脚本仍然只在 Windows 上运行，账本因此保持单一路径口径；macOS 侧只读不写
 `asset.path`。
 
-项目仓库不保存媒体、数据库、凭据、快照、封面或运行日志。
+项目仓库不保存媒体、数据库、凭据、快照、封面或运行日志，也不保存 `.venv`、构建产物和
+worktree 目录。跨机器继续任务时 push 分支，在另一台按分支重建 worktree。
 
 ### macOS 的 mDNS 必须交给系统的 mDNSResponder
 
@@ -48,11 +53,7 @@ Windows 口径，本机挂载点由 `src/peach/platform.py` 在读取时翻译�
 **可达性不能由服务进程自证**：它发不出多播，探自己必然收不到回应，会把好的判成不可达。
 运行时只报「注册还在生效」，真要验用 `scripts/check_mdns.py`——那个从终端跑，有权限。
 
-两台机器共用同一个 `peach.local`，代价是**不能同时广播**：谁后注册谁赢，另一台按名字就访问
-不到（不报错，只是解析到对面）。一次只开一台；真要同时开，给其中一台设 `PEACH_MDNS_NAME`。
-`check_mdns.py` 查得出撞名——同一个名字有两个地址应答就是撞上了。
-
-双机的固定分工：macOS 独占 `peach.local`，Windows 设 `PEACH_MDNS_NAME=peach-win`
+双机固定使用两个名字：macOS 独占 `peach.local`，Windows 设 `PEACH_MDNS_NAME=peach-win`
 （系统环境变量 + 重装一次自启动，启动进程会继承），访问 `https://peach-win.local/`。
 服务本身可以同时跑——账本单写者复制兜得住——但两边同时写入会很快触发冲突转只读，
 同时运行适合一边主写、另一边只读浏览。Windows 迁移完成前不要让它的托盘开机自启：
@@ -60,32 +61,34 @@ Windows 口径，本机挂载点由 `src/peach/platform.py` 在读取时翻译�
 
 ### 账本复制
 
-三份副本：硬盘 `\<共享\>/database/ledger.db` 是权威副本，Windows 和 macOS 各持一份本地
-工作副本。**这不是多主实时同步**——SQLite 没有安全的自动三方合并，两台机器各自写过之后，
+目标仍是三份副本：Windows 和 macOS 各持一份本地工作副本，Windows 内置盘上的专用 SMB
+同步目录持有共享副本。共享副本只是同步传输点，不是 Peach 直接运行的数据库。**这不是多主
+实时同步**——SQLite 没有安全的自动三方合并，两台机器各自写过之后，
 没有任何规则能把「看过 / 喜欢 / 标签」这类断言合成一份而不丢东西。实际做的是单写者复制：
 
-- 启动时比对世代：硬盘更新就拉取，本地更新就保留；**两边都动过就拒绝自动合并**，服务照常
+- 启动时比对世代：共享副本更新就拉取，本地更新就保留；**两边都动过就拒绝自动合并**，服务照常
   起但转只读（写入端点返回 `409`），由人选一边。
-- 运行中每 60 秒回写硬盘，所以同一时刻只有一台在写。回写前重新判定，别人抢先推过就转冲突，
+- 运行中定期回写共享副本，所以同一时刻只有一台在写。回写前重新判定，别人抢先推过就转冲突，
   绝不覆盖。
-- 硬盘不在时本地照常读写，插回来再回写。这就是脱盘模式的账本侧。
+- 共享目录不可达时本地照常运行，恢复连接后再同步；媒体外置盘是否插入与账本同步无关。
 
-世代号只表示血缘先后，不表示时间：时钟在两台机器上不可靠，exFAT 的本地时间戳只有 2 秒精度。
+世代号只表示血缘先后，不表示时间：时钟在两台机器上不可靠。
 血缘记在库文件旁边的 `ledger.db.sync.json` 里，不进 Git，也不需要改表结构。
 
 复制一律走 SQLite 的 backup API，不复制文件：账本是 WAL 模式，直接拷 `.db` 会漏掉 `-wal`
 里已提交但未 checkpoint 的事务，拷完还可能和目标残留的 `-wal` 拼成一个已经损坏的库。
 
-共享副本位置由 `PEACH_SHARED_DATA_ROOT` 覆盖。**本地副本和共享副本是同一条路径时复制自动停用**，
-所以尚未把数据迁到本机盘的机器行为完全不变。当前状态看 `/healthz` 的 `ledger_sync` 字段。
+共享副本位置由 `PEACH_SHARED_DATA_ROOT` 覆盖。**当前默认值仍指向外置盘，属于迁移中的旧实现**；
+Windows 独立环境、内置盘共享副本、显式 writer/reader 角色和运行中安全拉取完成前，不得声称双机
+同步已部署。当前状态看 `/healthz` 的 `ledger_sync` 字段。
 
 ```bash
-# 不参与复制（例如临时起一个只读实例）
+# 临时禁用复制；这不会自动把写入 API 变成只读
 ./.venv/bin/peach serve --port 8900 --no-ledger-sync
 ```
 
 冲突的解法是选一边，不是合并：把要保留的那份复制成另一份，或删掉一侧的 `.sync.json` 让它
-重新播种。历史备份仍然只留在硬盘的 `database/` 与 `archive/`。
+重新播种。复制必须经过 SQLite backup API。
 
 ### 脱盘模式
 
@@ -98,7 +101,11 @@ Windows 口径，本机挂载点由 `src/peach/platform.py` 在读取时翻译�
 面板而不是挂一个必然失败的播放器。媒体层对应抛 `MediaOffline`，HTTP 侧回 503 加
 `X-Peach-Offline: 1`，和「单个文件缺失」的 404 分开。
 
-`R:\peach-data` 使用固定分层：`database` 保存真相库，`generated` 保存可再生成的视觉资产，`sources` 保存原始分析输入，`state` 保存人工维护状态，`secrets` 保存本机凭据材料，`logs` 保存运行记录，`archive` 保存历史备份，`inbox` 是临时下载落地区，`tools` 保存不进入 Git 的本机运行时工具。
+每台机器的 `peach-data` 使用固定分层：`database` 保存真相库，`generated` 保存派生资产，
+`sources` 保存原始分析输入，`state` 保存人工维护状态，`secrets` 保存本机凭据材料，`logs` 保存
+运行记录，`archive` 保存历史备份，`inbox` 是临时下载落地区，`tools` 保存本机运行时工具。
+这个目录不整体同步；跨机器需要的 durable artifacts 要先从缓存与本机状态中拆出来，再做选择性
+文件同步。
 
 详情播放器固定使用本地自托管 Video.js 8.23.9：本地 MP4/WebM/Ogg 走标准 HTTP Range；115/PikPak 的已知时长原生 MP4 通过 `stream-plan` 改走 6 秒 HLS 临时片段，跳转时只生成目标时间附近的片段。两者都显示账本中的稳定总时长、±10 秒控制和播放统计；AVI 等不兼容容器首次播放时由 Peach 管理的 FFmpeg 生成 `generated/transcodes` 下的 H.264/AAC MP4 缓存。缓存可删除重建，原媒体永不改写。
 
@@ -226,8 +233,9 @@ SAN 里的局域网 IP 会随 DHCP 变化失效，**但不需要人去管，也�
 
 - **账本**走 `peach.sync` 的单写者复制（见上文「账本复制」），和代码是两条独立链路，
   `sync_status.sh` 会一并报告。
-- **运行数据里的大件**（`generated/`、`archive/`、`sources/`、`tools/`）留在硬盘上，两边共用，
-  不进 Git 也不复制。
+- **worktree** 不复制目录。需要在另一台继续的分支先 push，再由另一台从该分支重建 worktree。
+- **运行数据** 不整体进入 GitHub或通用同步。账本只走 `peach.sync`；凭据、日志、锁、工具、临时
+  文件和可重建缓存留在本机；图片资产、原始证据和复核产物完成目录拆分后再选择性同步。
 
 跨两台机器开发时换行口径由 `.gitattributes` 的 `* text=auto eol=lf` 固定。不要依赖各自的
 `core.autocrlf`：2026-08 之前 Windows 侧把 105 个文件整体改写成 CRLF，`git status` 长期显示

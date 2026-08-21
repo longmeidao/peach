@@ -66,7 +66,7 @@ def _serve(args: argparse.Namespace) -> int:
 
 
 def _build_sync(args: argparse.Namespace, settings: PeachSettings) -> LedgerSync | None:
-    """建立本地副本与硬盘权威副本之间的复制，并在启动时先对齐一次。
+    """建立本地工作副本与专用共享副本之间的复制，并在启动时先对齐一次。
 
     冲突不自动挑边：两台机器都写过之后没有安全的合并规则，服务照常起但转只读，
     由人选一边（把要保留的那份复制成另一份，或删掉一侧的 `.sync.json` 重新播种）。

@@ -21,14 +21,14 @@
 - 社交 handle 只采信**厂牌自有域名页面上**的链接。日文维基条目的外链里混着引用来源的新闻站，直接抓会把新闻站自己的账号当成厂牌的——实测 `妄想族` 条目就抓出了 `@news_postseven` 与 `@taishurxjp`。官网链接也不必然指向主号：`gloryquest.tv` 链的是 `@lG_Ql`「社内クリエイティ部（BOT）」，头像压着 18+ 徽标，反而不如 `@gloryquest_av` 的干净字标合适。所以官网只用来确认归属，选哪个号仍要看图。
 - AV 厂牌官网普遍先给年龄确认页，不穿过它只能拿到约 10 KB 的空壳。判据必须是锚文本而不是 URL：否定链接指向站外（实测 `dasdas.jp`、`muku.tv` 的「いいえ」都指向 dmm.com），肯定链接「はい（入室する）」指向站内，两者的 href 看不出区别。跟错就离开了厂牌域名，抓到的账号也就不再属于这个厂牌。实现见 `scripts/find_studio_socials.py`，`test_age_gate_is_crossed_by_the_affirmative_link_only` 守这条线。
 - 二手结论不能当证据：搜索摘要曾称 `@EBODY_` 已注销，实测直接解析到 400×400 活跃头像。凡是「某账号/端点已失效」这类判断，取证方式是自己请求一次，不是转述搜索结果。
-- 人工复核入口固定为 `/review`，候选 API 为 `GET /api/review`、`POST /api/review/decision`。候选来自 `R:\peach-data\generated` 下的 CSV；审核状态写 `review_decision`。只有创作者标签 `approved` 会按候选创作者和标签写入 `vision_creator_review` 关系；该来源也必须进入统计的标签覆盖和 Top 标签口径。Logo/头像/媒体失败先只记录决定，不能伪造已下载资源或自动写媒体真相。
+- 人工复核入口固定为 `/review`，候选 API 为 `GET /api/review`、`POST /api/review/decision`。候选来自本机 `peach-data/generated` 下的 CSV；审核状态写 `review_decision`。只有创作者标签 `approved` 会按候选创作者和标签写入 `vision_creator_review` 关系；该来源也必须进入统计的标签覆盖和 Top 标签口径。Logo/头像/媒体失败先只记录决定，不能伪造已下载资源或自动写媒体真相。
 
 
 ## 无摩擦接手
 
 - Codex 自动读取项目层级中的 `AGENTS.md`；Claude Code 通过 `CLAUDE.md` 导入同一文件。
 - 两个智能体使用同一入口、同一必读顺序，不再生成按日期命名的临时交接文档。
-- 新任务直接以 `R:\peach-app` 为工作目录，并说：「接手 Peach，按项目入口文件继续 STATUS 中的下一任务。」
+- 新任务以当前机器真实的 `peach-app` 为工作目录，并说：「接手 Peach，按项目入口文件继续 STATUS 中的下一任务。」不得把 Windows 迁移前的 `R:\peach-app` 当跨平台固定路径。
 - 改变运行事实的任务同时更新 `docs/STATUS.md`；长期规则更新本文件、`docs/REUSE.md` 或 ADR；
   可执行流程写成 `.claude/skills/<name>/SKILL.md`。写在哪一层的判据与清退机制见
   `docs/adr/0015-agent-context-layering.md`，操作步骤见 `.claude/skills/peach-context-rules/SKILL.md`。
@@ -170,26 +170,26 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 
 ## 数据安全
 
-- 真实 ledger：`R:\peach-data\database\ledger.db`，WAL 模式。正常浏览会合法写入播放/行为字段。
+- 真实 ledger 是当前写入者本机 `peach-data/database/ledger.db`，WAL 模式。正常浏览会合法写入播放/行为字段；平台绝对路径以 `docs/STATUS.md` 为准。
 - 测试必须使用临时 SQLite 和临时媒体；不得写真实 ledger。
 - 真实迁移前依次执行 SQLite 备份、asset/tag 计数、`PRAGMA integrity_check`、迁移版本检查、服务 smoke test。
 - 正式迁移 `0000`–`0014` 已应用。`0003` 增加默认 profile、稍后看、实体链接和搜索词；`0004` 增加 FTS5 trigram；`0005` 回填晚到兼容标签；`0006` 增加 `asset_preference`；`0007` 从创作者身份中移除结构文件夹名 `门槛`、`视频`、`宣传文件`；`0008` 增加 profile 级标签隐藏；`0009` 移除结构集合目录 `asce` 的假创作者关系和低置信 `vision_creator` 传播；`0010` 把 83 条「足交仙人」按水印和文件名证据归到 `suzuq`，并从 745 条 TokyoDolls 资产解除错误的「捅主任」关系；`0011` 记录更好版本目标；`0012` 增加跨访问端共享搜索历史；`0013` 将旧待删状态统一为回收站，默认查询排除回收站，清空回收站才永久删除；`0014` 清理明确的创作者 URL 后缀并保留旧名 alias。
 - `0007` 曾在应用后、提交前被改写注释/格式，导致校验和漂移。本次用迁移前备份重放当前 `0007`，对 298 条受影响资产与生产结果逐条对比，差异为 0 后才校正 `schema_migration` 校验和，然后正常应用 `0008`、`0009`。已应用迁移文件从此不得修改，任何后续变更必须新增版本。
-- 媒体和运行数据只在 `R:\media`、`R:\peach-data`，不进入仓库。
+- 外置盘目标只保存 `R:\media`；代码、运行数据、venv 和 worktree 在两台机器各自的内置盘。`peach-data` 不进入仓库，也不整体交给文件同步。分通道边界见 ADR-0017。
 
 ## 运行与部署
 
-- 日常入口是当前用户 Startup 中的 `Peach.lnk`，使用 `dist/Peach/Peach.exe` 的无参数托盘模式。不再并存系统服务、计划任务或注册表 Run。
+- 当前 Windows 日常入口仍是外置盘 `R:\peach-app` 下的 Startup `Peach.lnk`；目标入口位于 `C:\Users\longm\Peach\peach-app`，迁移后仍只保留一个 Startup 托盘入口。
 - Windows 发布入口使用 `scripts/build_windows.ps1`：先用 `scripts/generate_brand_assets.py` 从原始附件生成正方形 `resources/peach-logo.png` 和多尺寸 `resources/peach.ico`，再构建单一 `dist/Peach/Peach.exe`。无参数运行托盘，`serve`/`migrate` 运行 CLI；桌面快捷方式由 `scripts/create_desktop_shortcut.ps1` 创建，图标使用 `Peach.exe,0`，行为与 FlowLens 的快捷方式一致；Startup 安装仍由 `scripts/manage_tray_startup.ps1` 负责。
-- `dist/Peach/Peach.exe` 是本机打包入口，不是可移动的独立发行版：托盘只打包了自己，服务进程仍由项目 venv 的 `peach.exe` 承担（`_peach_executable()` 从 exe 位置逐级向上找 `.venv\Scripts\peach.exe`）。脱离 `R:\peach-app\.venv` 复制到别的机器不会工作，不要按「单文件绿色版」对外描述。
+- `dist/Peach/Peach.exe` 是本机打包入口，不是可移动的独立发行版：托盘只打包了自己，服务进程仍由项目 venv 的 `peach.exe` 承担（`_peach_executable()` 从 exe 位置逐级向上找 `.venv\Scripts\peach.exe`）。脱离同一台机器的项目 `.venv` 复制不会工作，不要按「单文件绿色版」对外描述。
 - 托盘单击打开 HTTPS；菜单提供状态、重启、日志、更新检查和退出。托盘只终止自己创建的 Peach 服务进程。
 - 创建 Win32 窗口前必须启用 Per-Monitor V2 DPI。正常动作不弹模态 MessageBox；更新检查在后台线程执行，用 pystray 原生非模态通知反馈。
 - `src/peach/__init__.py::__version__` 是版本唯一来源；采用 pre-1.0 SemVer。Git commit 是构建标识，`vX.Y.Z` 是本地发布点。更新检查只 fetch/比较，并行 worktree 模式下不自动覆盖安装。
-- `scripts/manage_tray_startup.ps1` 是唯一自启动管理入口。托盘管理 HTTP `0.0.0.0:80` 和 HTTPS `192.168.50.162:443`，服务日志写入 `R:\peach-data\logs\tray-*.log`。
+- `scripts/manage_tray_startup.ps1` 是唯一自启动管理入口。托盘管理 HTTP `0.0.0.0:80` 和 HTTPS `192.168.50.162:443`，服务日志写入本机 `peach-data/logs`。
 - `peach serve` 用 Python zeroconf 发布唯一入口 `peach.local`；生产显式使用 `--mdns-address 192.168.50.162` 固定 A 地址，但保留 `Zeroconf()` 全合格网卡监听。mDNS 验收必须包含单元测试、运行态 health、DNS-SD、主机名解析和真实 LAN 客户端。
-- `.local` 使用本地 CA，不使用 Let's Encrypt。证书/私钥保存在 `R:\peach-data\secrets`。macOS/iOS 只安装并信任 `peach-local-ca.crt`，不得分发 CA key 或服务器 key。
+- `.local` 使用本地 CA，不使用 Let's Encrypt。证书/私钥保存在本机 `peach-data/secrets`。macOS/iOS 只安装并信任 `peach-local-ca.crt`，不得分发 CA key 或服务器 key。
 - FastAPI 是唯一 Web server。不得恢复平行 `http.server` 或动态 legacy loader。
-- FFmpeg/ffprobe 依次从显式环境变量、`R:\peach-data\tools\ffmpeg\bin`、`PATH` 解析；不得回退到 Stash 私有目录。
+- FFmpeg/ffprobe 依次从显式环境变量、本机 `peach-data/tools/ffmpeg/bin`、`PATH` 解析；不得回退到 Stash 私有目录。
 - 长任务只停止自己拥有且命令行匹配的 Python/FFmpeg 进程树，禁止全机终止 FFmpeg。
 - 导入运维脚本不得触发文件、网络或数据库副作用。`scrape_codes.py` 默认写可续跑复核 CSV；`clean_names.py` 先预览，`--apply` 前备份 SQLite。
 - 切换服务前检查 80、443、8900、9999 端口和实际进程归属。
