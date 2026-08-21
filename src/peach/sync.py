@@ -180,7 +180,10 @@ def copy_database(source: Path, target: Path) -> None:
         finally:
             origin.close()
         shutil.copyfile(snapshot, transfer)
-        with transfer.open("rb") as handle:
+        # Windows 的 FlushFileBuffers 需要可写句柄；只读句柄上调用 fsync 会返回
+        # ``OSError: [Errno 9] Bad file descriptor``。这里同步的是刚写完、尚未发布
+        # 的临时快照，使用读写句柄不会改变内容。
+        with transfer.open("r+b") as handle:
             os.fsync(handle.fileno())
         # 旧副本的 sidecar 不能和新快照拼在一起。同步调用方保证目标没有服务在写。
         for suffix in ("-wal", "-shm", "-journal"):

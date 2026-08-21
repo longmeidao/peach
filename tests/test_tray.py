@@ -186,7 +186,10 @@ class ServiceStatusTests(unittest.TestCase):
         self.assertIn("两侧已经一致", message)
         process.terminate.assert_called_once()
         start.assert_called_once()
-        self.assertEqual(manager._run.call_args.args[0][:2], ["/venv/peach", "ledger-sync"])
+        self.assertEqual(
+            manager._run.call_args.args[0][:2],
+            [str(Path("/venv/peach")), "ledger-sync"],
+        )
 
     def test_manual_sync_refuses_a_healthy_unowned_service(self):
         spec = ServiceSpec("http", "http://127.0.0.1/healthz", ("peach", "serve"), True)
