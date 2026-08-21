@@ -200,9 +200,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 
 ## 当前架构真相
 
-- Ledger 拥有真相和行为；Stash 是可替换适配器，不新增直接 GraphQL helper 或 Stash 私有 FFmpeg 路径。
-- Stash 调用统一经过 `StashClient`；外部 Scene ID 和来源进入 `media_binding`。
-- 规范女优/厂牌/标签/创作者进入 `entity`、`entity_external_ref`、`asset_entity`；扁平 `asset_tag` 和 creator/studio 字段只是兼容投影。
+- Ledger 拥有真相和行为；Stash 是可替换适配器，调用统一经过 `StashClient`，外部 Scene ID 和来源进入 `media_binding`，不新增直接 GraphQL helper 或 Stash 私有 FFmpeg 路径。规范女优/厂牌/标签/创作者进入 `entity`、`entity_external_ref`、`asset_entity`；扁平 `asset_tag` 和 creator/studio 字段只是兼容投影。
 - 详情、筛选、搜索、facets、索引、统计、榜单和相关推荐使用规范关系。
 - 女优、厂牌、创作者、系列名称进入资料页；首页内容标签直接筛选首页，实体资料页的标签只筛选当前实体作品，并保留在 `/performers/{name}?tag=...` 等当前资料页 URL。`source_reference` 是私有来源，不开放为下载链接。
 - 「稍后看」写 `watch_queue`；「喜欢/为什么喜欢」写 profile 级 `asset_preference`。AI 只能把口味说明转成带来源/置信度/复核状态的候选，不能改写用户原文。
@@ -241,8 +239,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 无限滚动同一时间只允许一个追加请求；先判断加载锁再递增 offset，避免快速触发时跳页。图片继续使用原生 `loading=lazy`。只有本地资源可使用真视频 hover；115/PikPak 等远端源必须使用本地接触印相。滚动、换页、隐藏页面或替换卡片 DOM 时，统一停止 hover 并释放 `src`。
 - 2026-08-15 实测：Prestige 显示 248 个总结果时首屏只构建 48 张卡片，点击「载入更多」后为 96；艺人索引 120 条约 311 ms，Prestige 第二页 48 条且跳过总数统计约 94 ms。具体耗时随 ledger 和磁盘状态变化，只把批量边界作为稳定契约。
 - 0.5.5 起，标签筛选行与排序/换批行都常驻顶栏下方，不再按滚动方向隐藏；两行在原始位置保持透明，只在真正吸顶后加半透明黑色磨砂底与分隔线，分别占位，不能盖住卡片内容。窄屏上的结果数量和全部排序按钮必须同处一条横向滚动带，文字不折行、按钮不压缩成竖排。
-- 0.6.1 起，首页每批 60 个普通作品中只插入 1 个自动 Mix 卡片，不额外请求 60 份队列，也不计入作品分页数。卡片复用本批已有种子，点击时才并行请求种子详情与一次 `/api/related`，队列上限 29 个，避免 N+1 和首屏批量构建。
-- Mix 使用 `/mix/{seed_id}/{item_id}`，刷新和前进/后退可恢复同一队列。桌面端播放器右侧显示可滚动列表，当前项着色；窄屏列表移到播放器下方。普通详情继续显示「接着看」，Mix 内不再重复渲染第二份相关推荐。
+- 0.6.1 起，首页每批 60 个普通作品中只插入 1 个自动 Mix 卡片，不额外请求 60 份队列，也不计入作品分页数。卡片复用本批已有种子，点击时才并行请求种子详情与一次 `/api/related`，队列上限 29 个，避免 N+1 和首屏批量构建。Mix 使用 `/mix/{seed_id}/{item_id}`，刷新和前进/后退可恢复同一队列；桌面端播放器右侧显示当前项着色的滚动列表，窄屏列表移到播放器下方。普通详情继续显示「接着看」，Mix 内不再重复渲染第二份相关推荐。
 - Mix 视觉证据来自用户于 2026-08-16 提供的 YouTube 截图 `codex-clipboard-8f6cbb25-399a-4f91-9c2a-a6972484ed50.png` 与 `codex-clipboard-baeb854e-3e27-43fb-9e6a-aa14830c248a.png`：普通流卡片有两层轻微上移的堆叠边、右下角 Mix 标识；打开后右侧是有当前项状态的滚动列表。Peach 有意保留自己的色彩 token、详情反馈区和本地元数据，不复制 YouTube 品牌、推荐文案或登录能力。
 - 首页、女优、厂牌等普通卡片统一由 `wireCards` 调用 `openItem`。只有沉浸/短片等显式传入 `onClick` 的场景允许覆盖。隐藏的 hover 工具必须 `pointer-events:none`，只在实际显示时恢复命中，避免截走海报详情点击。
 - 详情媒体用随机 `session` 标识同一次播放；收起详情、路由切换或替换详情时，前端必须清空 video 后调用 `/api/stream-cancel`，服务端取消该 session 下全部 Range/HLS 片段请求并拒绝迟到请求。只移除 DOM 不能保证 CloudDrive 停止读盘。
@@ -251,18 +248,13 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 详情播放器全屏时必须覆盖 `76vh` 和 `aspect-ratio` 限制，否则浏览器全屏会留下底部黑区；沉浸模式的视频容器使用全视口 `object-fit:cover`。加载速度显示优先使用 Video.js VHS `stats.bandwidth`，再回退到当前 session 的 `PerformanceResourceTiming`，不把 FlowLens API 耦合进页面。
 - Peach 测试唯一入口是 `& .\scripts\test.ps1`；脚本内部运行标准库 `unittest`，仓库不依赖 `pytest`。健康检查端点是 `/healthz`，不是 `/health`。
 - 2026-08-18 回环实测（`/stream?id=823`，取前 200 MiB）：直接读盘 761 MiB/s、Peach HTTP 136 MiB/s、Peach HTTPS 142 MiB/s。TTFB：`/healthz` 36 ms、`/stream` 首块 40 ms、中段 Range 41 ms、`/api/items?limit=60` 167–405 ms。结论是吞吐不构成瓶颈（千兆 LAN 上限本来就低于它），感知慢要从并发槽位、缓存策略和每请求固定开销去找，不要再重复测吞吐。
-- 当前部署的三个已知延迟来源，改动前先看清代价：`/stream` 带 `Cache-Control: no-store`，浏览器无法复用任何已下载片段，每次拖动进度条都重下；uvicorn 只提供 HTTP/1.1 且未安装 `httptools`（回落到纯 Python h11），浏览器对同源限 6 条连接，首页 60 张海报、hover 预览和正片流共抢这 6 条；Starlette `FileResponse` 的 `chunk_size` 是 64 KiB，每块一次线程池读加一次 ASGI send，HTTPS 下再加一次 Python TLS 加密。
-- hover 预览的真实成本是每次悬停一条 `/stream` 加 7 次 `currentTime` 跳段，共 8 个 Range 请求；配合 `no-store`，这些字节一个都不能复用。评估首页流畅度时必须把它算进连接预算。
-- Windows 千兆线路理论上限约 125 MB/s。115 实测单文件由 CloudDrive 启动 2 条约 2 MB/s 的 CDN 连接；`max_download_speed_kbyps=0` 表示未设本地限速。卡顿排查先看 FlowLens 是否存在关闭详情后仍下载的旧连接，再查 Range/缓存，不把单连接速度直接归因于本地带宽。
+- 当前部署的三个已知延迟来源，改动前先看清代价：`/stream` 带 `Cache-Control: no-store`，浏览器无法复用任何已下载片段；uvicorn 只提供 HTTP/1.1 且未安装 `httptools`（回落到纯 Python h11），浏览器对同源限 6 条连接；Starlette `FileResponse` 的 `chunk_size` 是 64 KiB，每块一次线程池读、ASGI send 和可能的 Python TLS 加密。hover 每次悬停产生 1 条 `/stream` 加 7 次 `currentTime` 跳段，共 8 个不可复用的 Range 请求，必须计入连接预算。Windows 千兆线路理论上限约 125 MB/s；115 实测单文件由 CloudDrive 启动 2 条约 2 MB/s 的 CDN 连接，`max_download_speed_kbyps=0` 表示未设本地限速。卡顿先查 FlowLens 是否有详情关闭后的残留下载，再查 Range/缓存，不把单连接速度直接归因于本地带宽。
 
 ## 本机服务、系统代理与双机广播
-
 - **对本机服务的 HTTP 探测必须 `trust_env=False`**。代理客户端（Stash、HapiGo、Surge）会设置 macOS 系统级 HTTP 代理，httpx 默认经 `urllib.getproxies()` 读它，探测 `127.0.0.1` 的请求被送进代理、由代理回 503——服务活着却被判「未运行」。2026-08-21 实测如此，修复在 `peach.tray.ServiceManager.healthy`，`test_health_check_never_goes_through_a_proxy` 守门。任何新写的健康检查/回环探测都适用同一条。
 - **macOS 系统代理例外列表必须包含 `*.local` 和 `192.168.50.0/24`**。浏览器走系统代理时，代理核心解析不了 mDNS 名字，`http://peach.local` 会被代理回 503（终端直连正常，所以只有浏览器坏）。用 `networksetup -setproxybypassdomains <服务> "*.local" "localhost" "127.0.0.1" "192.168.50.0/24"` 设置，`scutil --proxy` 的 `ExceptionsList` 复查。代理客户端重设系统代理后这一列表可能被清掉，排查浏览器打不开 `.local` 时先看这里。
 - **双机广播分工：macOS 独占 `peach.local`，Windows 用 `PEACH_MDNS_NAME=peach-win`**。mDNS 同名谁后注册谁赢；Windows 迁移完成前不得让它的托盘开机自启——残留广播会把 `peach.local` 抢到它自己那边，而它上面没有服务。服务可以同时跑（账本单写者复制兜底），但两边同时写入会很快冲突转只读。
-- **两台机器各有独立的本机 CA**（secrets 按设计不共享）。iPhone/iPad 必须信任「当前正在服务的那台」的 CA 才能用 HTTPS；换机器服务后要装对应的 `peach-local-ca.crt` 并在「证书信任设置」开完全信任。核对指纹：`openssl x509 -in .../peach-local-ca.crt -noout -fingerprint`。
-- 菜单栏状态行逐个点名每个服务：`HTTP 正常 · HTTPS 异常（状态码 503）`，异常附最近一次探测的失败原因；不要改回只报「未运行」的写法。
-
+- **两台机器各有独立的本机 CA**（secrets 按设计不共享）。iPhone/iPad 必须信任「当前正在服务的那台」的 CA 才能用 HTTPS；换机器服务后要装对应的 `peach-local-ca.crt` 并在「证书信任设置」开完全信任。核对指纹：`openssl x509 -in .../peach-local-ca.crt -noout -fingerprint`。菜单栏状态行逐个点名每个服务：`HTTP 正常 · HTTPS 异常（状态码 503）`，异常附最近一次失败原因；不要改回只报「未运行」。
 ## 恢复入口
 
 项目重构时已从活动目录删除 deprecated 脚本和按日期文档，Git 历史仍可恢复。旧 `_SHARED_STATE` 已迁到 `R:\peach-data\state`。重构前根仓库元数据暂存于 `R:\peach-data\archive\peach-root-repo-backup-20260814`，仅作恢复证据。

@@ -32,9 +32,9 @@ DEFAULT_LAN_ADDRESS = "192.168.50.162"
 MACOS_PORT = 8900
 #: HTTPS 同理，443 也要 root，所以走 8443。
 MACOS_TLS_PORT = 8443
-#: 单击菜单栏/托盘图标打开的地址。两个平台都用 `peach.local` —— 这是唯一对外的名字，
-#: 局域网里的手机和电脑用的是同一个链接，也才吃得到本机 CA 的证书。macOS 上 80/443
-#: 由 pf 转到高位端口（scripts/setup_macos_port80.sh）。
+#: 单击菜单栏/托盘图标打开本机的固定地址：macOS 是 `peach.local`，Windows 是
+#: `peach-win.local`。macOS 上 80/443 由 pf 转到高位端口
+#:（scripts/setup_macos_port80.sh）。
 OPEN_URL = f"https://{MDNS_HOSTNAME}/"
 
 

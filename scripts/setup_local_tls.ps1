@@ -1,8 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$Address = '192.168.50.162',
-    [string]$DnsName = 'peach.local',
-    [string]$OutDir = 'R:\peach-data\secrets\tls',
+    [string]$DnsName = 'peach-win.local',
+    [string]$OutDir = (Join-Path ([Environment]::GetFolderPath('Desktop')) 'peach\peach-data\secrets\tls'),
     [switch]$TrustCurrentUser,
     [switch]$Force
 )
