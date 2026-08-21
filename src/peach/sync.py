@@ -267,6 +267,18 @@ class LedgerSync:
             self.status = "in-sync"
         return decision
 
+    def synchronize_now(self) -> SyncPlan:
+        """重新判定并完成一次安全同步，供服务停机后的手动同步使用。"""
+        decision = plan(self.local, self.shared)
+        self.status, self.detail = decision.action, decision.reason
+        if decision.action == "pull":
+            self.pull()
+            self.status = "in-sync"
+        elif decision.action in ("push", "local-ahead"):
+            self.push()
+            self.status = "in-sync"
+        return decision
+
     def push_if_needed(self) -> str:
         """周期回写。别人抢先推过就转冲突，绝不覆盖。"""
         if self.read_only:

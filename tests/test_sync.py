@@ -218,6 +218,35 @@ class LedgerSyncTests(unittest.TestCase):
         self.assertEqual(sync.push_if_needed(), "pushed")
         self.assertEqual(count(self.shared), 3)
 
+    def test_manual_sync_pulls_a_newer_shared_copy(self):
+        make_db(self.local, 1)
+        make_db(self.shared, 2)
+        write_marker(self.local, Marker(3, "mac", "", 0, 0))
+        write_marker(self.shared, Marker(4, "win", "", 0, 0))
+        decision = self.sync().synchronize_now()
+        self.assertEqual(decision.action, "pull")
+        self.assertEqual(count(self.local), 2)
+        self.assertEqual(plan(self.local, self.shared).action, "in-sync")
+
+    def test_manual_sync_pushes_local_changes(self):
+        make_db(self.local, 1)
+        self.shared.parent.mkdir(parents=True)
+        sync = self.sync()
+        sync.startup()
+        make_db(self.local, 1)
+        self.assertEqual(sync.synchronize_now().action, "local-ahead")
+        self.assertEqual(count(self.shared), 2)
+
+    def test_manual_sync_refuses_a_conflict(self):
+        make_db(self.local, 1)
+        make_db(self.shared, 2)
+        write_marker(self.local, Marker(3, "mac", "", 0, 0))
+        write_marker(self.shared, Marker(4, "win", "", 0, 0))
+        make_db(self.local, 1)
+        sync = self.sync()
+        self.assertTrue(sync.synchronize_now().conflict)
+        self.assertEqual(count(self.shared), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

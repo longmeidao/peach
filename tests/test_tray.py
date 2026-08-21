@@ -169,6 +169,34 @@ class ServiceStatusTests(unittest.TestCase):
         self.assertTrue(manager.healthy(spec))
         self.assertIs(seen.get("trust_env"), False)
 
+    @patch("peach.tray.DATABASE_PATH", Path("/local/ledger.db"))
+    @patch("peach.tray.SHARED_DATABASE_PATH", Path("/shared/ledger.db"))
+    def test_manual_sync_stops_owned_service_and_restarts_it(self):
+        spec = ServiceSpec("http", "http://127.0.0.1/healthz", ("peach", "serve"), True)
+        process = Mock()
+        process.poll.return_value = None
+        completed = Mock(returncode=0, stdout="账本同步：in-sync · 两侧已经一致\n", stderr="")
+        manager = ServiceManager((spec,), popen=Mock(return_value=process), run=Mock(return_value=completed))
+        manager._owned["http"] = process
+        with patch.object(manager, "healthy", return_value=True), patch.object(
+            manager, "start_missing"
+        ) as start, patch.object(manager, "wait_until_ready", return_value=True):
+            ok, message = manager.sync_ledger(Path("/venv/peach"))
+        self.assertTrue(ok)
+        self.assertIn("两侧已经一致", message)
+        process.terminate.assert_called_once()
+        start.assert_called_once()
+        self.assertEqual(manager._run.call_args.args[0][:2], ["/venv/peach", "ledger-sync"])
+
+    def test_manual_sync_refuses_a_healthy_unowned_service(self):
+        spec = ServiceSpec("http", "http://127.0.0.1/healthz", ("peach", "serve"), True)
+        runner = Mock()
+        manager = ServiceManager((spec,), health_get=lambda *args, **kwargs: Response(), run=runner)
+        ok, message = manager.sync_ledger(Path("/venv/peach"))
+        self.assertFalse(ok)
+        self.assertIn("不归本托盘管理", message)
+        runner.assert_not_called()
+
 
 @unittest.skipUnless(sys.platform == "darwin", "菜单栏图标与服务规格是 macOS 专属")
 class MacMenuBarTests(unittest.TestCase):

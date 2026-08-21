@@ -104,6 +104,20 @@ def _migrate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _ledger_sync(args: argparse.Namespace) -> int:
+    sync = LedgerSync(args.db, args.shared_db, device_id(STATE_DIR), interval=0)
+    decision = sync.synchronize_now()
+    completed = {
+        "pull": "已从共享副本拉取",
+        "push": "已推送到共享副本",
+        "local-ahead": "已推送到共享副本",
+        "in-sync": "两侧已经一致",
+        "disabled": decision.reason,
+    }
+    print(f"账本同步：{decision.action} · {completed.get(decision.action, decision.reason)}")
+    return {"conflict": 2, "offline": 3, "missing": 4}.get(decision.action, 0)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="peach")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -129,6 +143,11 @@ def build_parser() -> argparse.ArgumentParser:
     migrate.add_argument("--db", type=Path, default=DEFAULT_DB)
     migrate.add_argument("--yes", action="store_true")
     migrate.set_defaults(handler=_migrate)
+
+    ledger_sync = commands.add_parser("ledger-sync", help="synchronize the local ledger now")
+    ledger_sync.add_argument("--db", type=Path, default=DEFAULT_DB)
+    ledger_sync.add_argument("--shared-db", type=Path, default=SHARED_DATABASE_PATH)
+    ledger_sync.set_defaults(handler=_ledger_sync)
     return parser
 
 
