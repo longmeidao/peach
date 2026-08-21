@@ -151,33 +151,41 @@ class ServiceManager:
         self._health_get = health_get
         self._owned: dict[str, subprocess.Popen] = {}
         self._logs: list[object] = []
-        self._last_health = {spec.name: False for spec in specs}
+        self._last_health: dict[str, tuple[bool, str]] = {
+            spec.name: (False, "未检测") for spec in specs
+        }
         self._lock = threading.RLock()
 
     def healthy(self, spec: ServiceSpec) -> bool:
+        # trust_env=False：健康检查永远直连回环。代理客户端（Stash 等）会设置系统级
+        # HTTP 代理，httpx 默认读它（urllib.getproxies 在 macOS 走系统配置），于是
+        # 探测 http://127.0.0.1 的请求被送进代理、由代理回 503——服务明明活着，
+        # 状态却显示「未运行」。实测 Stash 开着时就是这样，HTTPS 探测不受影响。
         try:
-            response = self._health_get(spec.health_url, timeout=0.5, verify=spec.verify)
-            result = response.status_code == 200 and response.json().get("ok") is True
+            response = self._health_get(
+                spec.health_url, timeout=0.5, verify=spec.verify, trust_env=False,
+            )
+            ok = response.status_code == 200 and response.json().get("ok") is True
+            detail = "" if ok else f"状态码 {response.status_code}"
         except (httpx.HTTPError, OSError, ValueError):
-            result = False
+            ok, detail = False, "无响应"
         with self._lock:
-            self._last_health[spec.name] = result
-        return result
+            self._last_health[spec.name] = (ok, detail)
+        return ok
 
     def status(self) -> str:
-        """菜单里那一行状态。
+        """菜单里那一行状态：每个服务逐个点名，正常的和异常的都写出来。
 
-        原来只说「部分运行」，看不出是谁没起来、也就不知道该去查什么——两个服务
-        （HTTP 和 HTTPS）各自会因为端口占用、证书过期、pf 转发写错等完全不同的原因
-        挂掉。直接把没起来的那个点名。
+        只说「未运行」或「部分运行」没法行动——HTTP 和 HTTPS 各自会因为端口占用、
+        证书过期、pf 转发写错等完全不同的原因挂掉。异常的附带最近一次探测的失败原因。
         """
         with self._lock:
-            down = [spec.name for spec in self.specs if not self._last_health[spec.name]]
-        if not down:
-            return "运行中"
-        if len(down) == len(self.specs):
-            return "未运行"
-        return "、".join(name.upper() for name in down) + " 未运行"
+            parts = []
+            for spec in self.specs:
+                ok, detail = self._last_health[spec.name]
+                state = "正常" if ok else f"异常（{detail}）" if detail else "异常"
+                parts.append(f"{spec.name.upper()} {state}")
+        return " · ".join(parts)
 
     def start_missing(self) -> None:
         LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -228,7 +236,7 @@ class ServiceManager:
                 stopped = [name]
             for key in stopped:
                 if key in self._last_health:
-                    self._last_health[key] = False
+                    self._last_health[key] = (False, "已停止")
         for process in processes:
             if process.poll() is None:
                 process.terminate()

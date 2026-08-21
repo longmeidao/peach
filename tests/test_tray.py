@@ -114,10 +114,10 @@ class TrayTests(unittest.TestCase):
 
 
 class ServiceStatusTests(unittest.TestCase):
-    """状态文案要点名是谁没起来。
+    """状态文案逐个点名：正常的和异常的都写明白，异常的带上失败原因。
 
-    只说「部分运行」看不出该去查什么：HTTP 和 HTTPS 会因为端口占用、证书过期、
-    pf 转发写错等完全不同的原因挂掉。
+    只说「未运行」没法行动：HTTP 和 HTTPS 会因为端口占用、证书过期、pf 转发写错
+    等完全不同的原因挂掉，而且服务活着时探测本身也可能被骗（见代理劫持的回归测试）。
     """
 
     def manager(self, health: dict) -> ServiceManager:
@@ -130,14 +130,40 @@ class ServiceStatusTests(unittest.TestCase):
         return manager
 
     def test_all_healthy(self):
-        self.assertEqual(self.manager({"http": True, "https": True}).status(), "运行中")
+        self.assertEqual(
+            self.manager({"http": (True, ""), "https": (True, "")}).status(),
+            "HTTP 正常 · HTTPS 正常",
+        )
 
     def test_none_healthy(self):
-        self.assertEqual(self.manager({"http": False, "https": False}).status(), "未运行")
+        self.assertEqual(
+            self.manager({"http": (False, "无响应"), "https": (False, "无响应")}).status(),
+            "HTTP 异常（无响应） · HTTPS 异常（无响应）",
+        )
 
-    def test_partial_names_the_broken_one(self):
-        self.assertEqual(self.manager({"http": True, "https": False}).status(), "HTTPS 未运行")
-        self.assertEqual(self.manager({"http": False, "https": True}).status(), "HTTP 未运行")
+    def test_partial_names_the_broken_one_with_reason(self):
+        self.assertEqual(
+            self.manager({"http": (True, ""), "https": (False, "状态码 503")}).status(),
+            "HTTP 正常 · HTTPS 异常（状态码 503）",
+        )
+        self.assertEqual(
+            self.manager({"http": (False, "状态码 503"), "https": (True, "")}).status(),
+            "HTTP 异常（状态码 503） · HTTPS 正常",
+        )
+
+    def test_health_check_never_goes_through_a_proxy(self):
+        """健康检查必须绕过代理：Stash 等客户端设置系统级 HTTP 代理后，httpx 默认
+        把 127.0.0.1 的探测送进代理、由代理回 503，服务活着却被判成「未运行」。"""
+        seen: dict = {}
+
+        def probe(url, **kwargs):
+            seen.update(kwargs)
+            return Response()
+
+        spec = ServiceSpec("http", "http://127.0.0.1/healthz", ("noop",), True)
+        manager = ServiceManager((spec,), popen=Mock(), health_get=probe)
+        self.assertTrue(manager.healthy(spec))
+        self.assertIs(seen.get("trust_env"), False)
 
 
 @unittest.skipUnless(sys.platform == "darwin", "菜单栏图标与服务规格是 macOS 专属")
