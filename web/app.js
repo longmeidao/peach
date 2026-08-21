@@ -1543,16 +1543,16 @@ async function openItem(id,push=true,mixContext=null){
   const performerRefs=(refs.performer||[]).length
     ? refs.performer
     : (it.performers||[]).map(name=>({id:null,name}));
-  const studioName=studioRef?.name||it.studio||'';
   // 身份按类别分组：标签作为组标题写在上方，同类横向排开。
   // 逐行一个名字在共演作品上会把整个侧栏撑满，标签列也重复得毫无信息量。
   const identitySeen=new Set();
   const fresh=name=>{const key=foldName(name);
     if(!name||identitySeen.has(key))return false;identitySeen.add(key);return true};
   const castList=performerRefs.filter(ref=>fresh(ref.name));
-  const studioList=(studioName&&fresh(studioName))?[{name:studioName}]:[];
-  const creatorList=((it.entities&&it.entities.creator)||[]).filter(fresh).map(name=>({name}));
-  const seriesList=((it.entities&&it.entities.series)||[]).filter(fresh).map(name=>({name}));
+  const studioFallback=studioRef?[]:(it.studio?[{id:null,name:it.studio}]:[]);
+  const studioList=[...(refs.studio||[]),...studioFallback].filter(ref=>fresh(ref.name));
+  const creatorList=(refs.creator||[]).filter(ref=>fresh(ref.name));
+  const seriesList=(refs.series||[]).filter(ref=>fresh(ref.name));
 
   // BEST 合集实测有 41 位出镜者，全铺开会把标签和反馈按钮挤出可视区。
   // 前 8 位直接展示，其余默认收起但仍在 DOM 里，一次点击即可看全。
@@ -1565,9 +1565,10 @@ async function openItem(id,push=true,mixContext=null){
       : kind==='series'?icon('tags'):`<span>${esc(item.name.slice(0,1))}</span>`;
   const idCell=(kind,item,index)=>{
     const hide=kind==='performer'&&index>=CAST_SHOWN;
+    const content=`<span class="idface">${idFace(kind,item)}</span><span class="idname">${esc(item.name)}</span>`;
+    if(!item.id)return `<span class="idcell${kind==='studio'?' logo':''}" title="${esc(item.name)}"${hide?' hidden data-castoverflow':''}>${content}</span>`;
     return `<button class="idcell entitylink${kind==='studio'?' logo':''}" data-entity-kind="${kind}"
-      data-entity-name="${esc(item.name)}" title="${esc(item.name)}"${hide?' hidden data-castoverflow':''}>
-      <span class="idface">${idFace(kind,item)}</span><span class="idname">${esc(item.name)}</span></button>`;
+      data-entity-name="${esc(item.name)}" title="${esc(item.name)}"${hide?' hidden data-castoverflow':''}>${content}</button>`;
   };
   const idGroup=(label,kind,list,extra='')=>list.length
     ? `<section class="idgroup"><h5 class="idlabel">${label}</h5>

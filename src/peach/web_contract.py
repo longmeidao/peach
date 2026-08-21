@@ -478,8 +478,14 @@ def q_item(contract: WebContract, aid):
     ))
     canonical_tags = [name for _, kind, name in canonical if kind == "tag"]
     canonical_performers = [name for _, kind, name in canonical if kind == "performer"]
+    canonical_creators = {
+        normalize_entity_name(name)
+        for _, kind, name in canonical if kind == "creator"
+    }
     performers = canonical_performers or [
-        tag[3:] for tag in legacy if tag.startswith("演员:")
+        tag[3:] for tag in legacy
+        if tag.startswith("演员:")
+        and normalize_entity_name(tag[3:]) not in canonical_creators
     ]
     performer_names = {normalize_entity_name(name) for name in performers}
     tags = [tag for tag in (canonical_tags or [

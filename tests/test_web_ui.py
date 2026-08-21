@@ -69,6 +69,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("const performerName=performerRef?.name")
         self.assertPageLacks(".identityrow", "旧的逐行布局必须整段删掉")
 
+    def test_detail_only_links_canonical_entities(self):
+        """旧标签可以作为显示回退，但不得伪造一个不存在的资料页。"""
+        self.assertPageContains("if(!item.id)return `<span class=\"idcell")
+        self.assertPageContains("const creatorList=(refs.creator||[])")
+        self.assertPageContains("const seriesList=(refs.series||[])")
+        self.assertPageContains(".idcell:not(.entitylink){cursor:default}")
+        self.assertPageContains(".idcell.entitylink:hover .idface")
+
     def test_performer_label_says_actress_only_for_jav(self):
         """「女优」是番号发行物的行业称谓。
 
