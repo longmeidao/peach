@@ -33,8 +33,8 @@ description: 在 macOS 上开工、改动路径解析或挂载判定、遇到 gi
 用 `PEACH_DRIVE_MAP=R=/mnt/res,B=/mnt/115` 覆盖；数据目录用 `PEACH_DATA_ROOT`。
 CloudDrive 在 Windows 是盘符、在 macOS 是 macFUSE 挂载点，这层不是可选优化。
 
-运行目录不跟着媒体盘符走。Windows 目标根是 `C:\Users\longm\Desktop\peach`，macOS 是
-`~/Desktop/lmd.gg/peach`；Windows 仍在外置 `R:` 上运行，尚未完成迁移。外置盘以后只承担媒体资源。
+运行目录不跟着媒体盘符走。Windows 根目录是 `C:\Users\longm\Desktop\peach`，macOS 是
+`~/Desktop/lmd.gg/peach`；代码、数据、venv 和 worktree 都在内置盘。外置 `R:` 只承担媒体资源。
 
 ## 三条只在 Windows 成立的假设
 
@@ -80,9 +80,8 @@ macOS 的 FFmpeg 走 PATH（`brew install ffmpeg`）；Windows 的 FFmpeg bundle
 - 同步点不可达时本地仍可运行；媒体盘是否插入与账本同步无关。
 - 复制走 SQLite backup API，**不要复制 `.db` 文件**：WAL 里已提交未 checkpoint 的
   事务会丢，还可能和目标残留的 `-wal` 拼成损坏的库。
-- 本地副本与共享副本是同一条路径时复制自动停用。Windows 当前正是这个旧状态；必须迁到
-  内置 `PEACH_DATA_ROOT`，再把共享副本改到专用同步目录。显式 writer/reader 和运行中安全拉取
-  完成前，只能一台接受写入。
+- Windows 本地工作副本与内置盘共享副本已分离；线上 `/healthz` 会报告当前 `ledger_sync`
+  状态。显式 writer/reader 和运行中安全拉取完成前，仍只能一台接受写入。
 - 冲突不能靠合并解决，只能选一边：复制其一覆盖另一份，或删掉一侧 `.sync.json`
   重新播种。别写「已同步」这种含糊结论。
 

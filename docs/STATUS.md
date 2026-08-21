@@ -4,16 +4,21 @@
 
 ## 运行态
 
-- 生产入口：Windows 当前用户 Startup 中的 `Peach.lnk`，启动 `R:\peach-app\dist\Peach\Peach.exe`（无参数托盘模式）。当前版本 `0.6.1`。
-- Windows **还没有**内置盘独立环境：代码、`peach-data`、venv、构建产物和 worktree 仍在外置
-  `R:`。目标是迁到 `C:\Users\longm\Desktop\peach`，外置盘只保留 `R:\media`；截至本状态尚未实施，
-  不能写成已完成。见 ADR-0017。
-- HTTP：`0.0.0.0:80`；HTTPS：`192.168.50.162:443`。`peach.local` 是唯一正式局域网名称，发布为 `192.168.50.162`。
+- 生产入口：Windows 当前用户 Startup 中的 `Peach.lnk`，启动
+  `C:\Users\longm\Desktop\peach\peach-app\dist\Peach\Peach.exe`（无参数托盘模式）。当前线上版本 `0.6.1`。
+- Windows 内置盘环境已完成：代码 `C:\Users\longm\Desktop\peach\peach-app`、运行数据
+  `C:\Users\longm\Desktop\peach\peach-data`、worktree `C:\Users\longm\Desktop\peach\peach-worktrees`、
+  共享账本传输点 `C:\Users\longm\Desktop\peach\peach-sync`。外置盘只提供 `R:\media`。
+- HTTP：`0.0.0.0:80`；HTTPS：`192.168.50.162:443`。Windows 正式局域网名称为
+  `peach-win.local`，2026-08-21 只读实测 `http://peach-win.local/healthz` 返回 `200`、
+  `version=0.6.1`、`db=available`、`ledger_sync=in-sync`。
 - mDNS 使用 Python zeroconf 的全合格网卡监听；生产显式固定发布地址，避免隧道网卡误选。没有发布 `lmd-dst.local`。
 - macOS 菜单栏（2026-08-21）：托盘健康检查固定 `trust_env=False` 直连回环——Stash 设置系统级 HTTP 代理后，httpx 默认把 `127.0.0.1` 的探测送进代理、由代理回 503，服务活着却显示「HTTP 未运行」。状态行改为逐个点名：`HTTP 正常 · HTTPS 正常`，异常的附最近一次失败原因。当前 macOS 地址 `192.168.50.88`，证书 SAN 已随 netwatch 重签覆盖。
 - Stash 仍运行于 `127.0.0.1:9999`，只作为过渡期可替换适配器。
-- Python：3.14.7；FFmpeg/ffprobe 由 `R:\peach-data\tools\ffmpeg` 管理，不再依赖 Stash 私有目录。
-- 真实 ledger：`R:\peach-data\database\ledger.db`，迁移 `0000`–`0015` 已应用，零待处理。复核表迁移前备份：`R:\peach-data\database\ledger.pre-0015-20260817-173639.db`；黄金视频删除前备份：`R:\peach-data\database\ledger.pre-golden-delete-20260817-124921.db`；创作者清理前备份：`R:\peach-data\database\ledger.pre-0014-20260817-134153.db`；时长纠正前备份：`R:\peach-data\database\ledger.pre-duration-fix-20260818-103252.db`；完整性 `ok`。
+- Python：3.14.7；FFmpeg/ffprobe 由
+  `C:\Users\longm\Desktop\peach\peach-data\tools\ffmpeg` 管理，不再依赖 Stash 私有目录。
+- 真实 ledger：`C:\Users\longm\Desktop\peach\peach-data\database\ledger.db`，迁移 `0000`–`0015`
+  已应用，零待处理，完整性 `ok`。历史备份均在同一 `database` 目录，文件名保持不变。
 - PID 只是观测值，不是配置；每次停止或重启前必须重新核对命令行、父子关系和端口归属。
 - macOS 开发机（2026-08-19 起）：代码 `~/Desktop/lmd.gg/peach/peach-app`、数据 `~/Desktop/lmd.gg/peach/peach-data`、worktree `~/Desktop/lmd.gg/peach/peach-worktrees`。Python 3.14.7 + 独立 venv；FFmpeg 走 PATH。生产托盘仍然只在 Windows，macOS 侧是开发环境，不承担对外服务。
 
@@ -30,15 +35,13 @@
 - Windows 品牌资源已统一为附件生成的 `1024x1024` 正方形蜜桃图：`resources/peach-logo.png`、`resources/peach.ico`；Web favicon、托盘图标和 EXE 内嵌图标共用该资源。PyInstaller 打包产物为 `dist/Peach/Peach.exe`，桌面和 Startup 的 `Peach.lnk` 均按 FlowLens 的 `exe,0` 方式指向它；该 exe 只打包托盘自身，服务进程仍由项目 venv 承担，不是可移动的独立发行版。
 - 版本唯一来源为 `src/peach/__init__.py::__version__`。本批把实体作品、艺人/标签索引和广告卡片改为有界增量构建，去除代表图 N+1 查询与后续翻页重复总数统计；详情播放器复用本地 Video.js 8.23.9，并按 pre-1.0 SemVer 升至 `0.5.6`。没有 Git remote 时只报告本地开发版，不伪造更新能力。
 - 本地 CA HTTPS 已部署。CA 包含 critical `CA:TRUE` 和签名用途并通过 OpenSSL 链验证。macOS/iOS 只安装 `peach-local-ca.crt`；不得传播任何私钥。
-- Windows 侧代码、运行数据与媒体虽然已分目录为 `R:\peach-app`、`R:\peach-data`、`R:\media`，
-  但仍同在外置盘，不满足双机本机独立运行；旧空 Inbox 和 `Resources/Tools` 兼容表面已移除。
+- Windows 代码、运行数据、venv、构建产物和 worktree 已从外置盘迁到内置盘；旧空 Inbox 和
+  `Resources/Tools` 兼容表面已移除。外置盘的运行目录不再是当前入口。
 - 项目已可在 macOS 上独立运行并全量通过测试。账本路径的盘符翻译收敛在 `src/peach/platform.py`；`R:` → `/Volumes/RESOURCES`、`B:`（115）→ `~/Desktop/IMSL/115`、`A:`（PikPak）→ `~/Desktop/IMSL/Pikpak`，可用 `PEACH_DRIVE_MAP` 覆盖。实测本地与 115 的真实资产均返回 `206`，缩略图 `200`；PikPak 挂载当时掉线，按脱盘正确返回 `503` + `X-Peach-Offline`。账本本身未改写。
 - 同名跨 kind 的重复身份已合并（`scripts/merge_duplicate_identities.py`，备份 `ledger.pre-identity-merge-20260820-010944.db`）。35 组，保留方只看 provenance 不看数量：performer 侧带 `r18:performer`（真实发行元数据）的保留 performer（14 组，如 Mio Hayakawa、白桃はな），其余保留 creator（21 组，如 高桥千凛、MyElla、跳跳羊——那些 performer 断言全部来自 Stash 扁平模型）。按数量投票会翻车：`小桃` 的 performer 侧 151 条、creator 侧 15 条，但她是本地目录的上传者。结果：entity 8253→8218、creator 1742→1728、performer 597→576、entity_alias 1090→1125（旧称全部留作别名）；asset、asset_entity、asset_tag 一条未变，`foreign_key_check` 0 违规，扁平 `asset.creator` 清理 26 条。复核 CSV：`generated/duplicate-identity-merge.csv`。
 - 本地媒体根多余的一层已去掉（`scripts/flatten_media_level.py`，备份 `ledger.pre-flatten-media-20260820-011133.db`）：`R:\Media\创作者\<名字>` → `R:\Media\<名字>`。`R:\Media` 下原本只有 `创作者` 一个子目录、2552 条本地资产 100% 落在其下，这一层既不分类也不区分，且已名不副实（`合集-洛丽塔 多创作者` 等合集也在里面）。移动 35 个目录（同卷改名，只动元数据）、改写 2552 条路径，本地资产数不变、残留 `创作者` 层 0 条，五条真实资产复验 `206`。计划 CSV：`generated/flatten-media-level.csv`。
-- 账本已有三副本单写者复制原型（`src/peach/sync.py`）：macOS 本地副本已播种且完整性通过；
-  Windows 仍直接使用外置盘那份，本地副本与共享副本同路径，复制实际停用。ADR-0017 已决定把
-  Windows 工作副本与共享传输点一起迁到内置盘，并补显式 writer/reader 与运行中安全拉取；这些
-  未完成前不能把“双机同步运行”标为已部署。
+- 账本三副本单写者复制已分离 Windows/macOS 本地工作副本与 Windows 内置盘共享传输点；
+  当前线上报告 `ledger_sync=in-sync`。它仍依赖单写者纪律：两侧同时改动会转冲突只读，不是多主合并。
 - 脱盘模式按来源逐个判定：`GET /api/sources` 报告可达性，前端置灰脱盘来源的筛选并在详情页显示「脱盘模式」面板。外置盘不在时 115/PikPak 的 78k 条云端资产仍然可用。
 
 ## 界面与交互现状
@@ -76,7 +79,7 @@
 - 同批把静默失败改为自陈：FFmpeg 退出码 0、stderr 全空却写出 0 字节时，错误信息带上 `returncode`、字节数与 `ss`/`to`，不再只说 `ffmpeg failed`。上面那个缺陷能藏这么久，正是因为日志里那句话什么都没说。
 - 远端 MP4 已改为默认标准 Range，HLS 转为按需（`/api/stream-plan?mode=hls`），见 ADR-0016。起因是 asset 22716（115 的 HEVC 重制 MP4）在详情页黑屏：分片全部 200、数据进了缓冲、时间轴照走，但 `videoWidth=0`、解码 0 帧、无 error 事件。`-c copy` 把 HEVC 原样装进 MPEG-TS，而 Chromium 的 MSE 不支持 TS 里的 HEVC；同一浏览器实测 `video/mp2t; codecs="hvc1…"` 为 `false`、`video/mp4; codecs="hvc1…"` 为 `true`，直接 Range 播同一文件解码 997 帧、拖动后继续出帧。文件名含 `HEVC` 的 115 视频有 248 条、PikPak 2 条，此前全部受影响。生产重启后复验 22716：默认计划为 `range`，`mode=hls` 仍给出 76 段计划，播放列表返回 200；详情页取到 `/stream?id=22716`、`readyState=4`、`1920×1080`，当前帧平均亮度 147.1、非黑像素 99.3%。
 - HLS 分片改为关键帧对齐：`peach.mp4index` 从 MP4 `moov/stss` 直接读关键帧表（实测 0.01 秒，`moov` 在尾部也能定位），播放列表报真实时长；时间戳改用 `-copyts` 保持跨段连续；片段缓存写入磁盘并按最后访问时间淘汰；FFmpeg 并发加信号量闸门。读不出关键帧的片源直接回退标准 Range，`/api/stream-plan` 也只在计划成立且带 session 时才宣告 HLS。
-- 厂牌 Logo 来源改为厂牌自己的社交账号头像（`scripts/fetch_studio_avatar_candidates.py`）。已确认 13 个 handle 并**逐张看图核对品牌归属**后落盘：Deep's、Hunter、Alice JAPAN、E-BODY、Glory Quest、K M Produce、TMA、Aroma Planning、M's Video Group、DAHLIA、Milu、Das、Muku；其中 Das 与 Muku 由 `scripts/find_studio_socials.py` 穿过官网年龄门后取得，Deep's 也由官网独立复证；映射表 `R:\peach-data\generated\studio-x-handles.csv`，候选 `studio-logo-social-candidate-20260817.csv`，图片 `generated\studio-logos\`。其余 76 个未取得，留空待查。长条形 Logo 补自身底色填成正方形而不是丢弃。
+- 厂牌 Logo 来源改为厂牌自己的社交账号头像（`scripts/fetch_studio_avatar_candidates.py`）。已确认 13 个 handle 并**逐张看图核对品牌归属**后落盘：Deep's、Hunter、Alice JAPAN、E-BODY、Glory Quest、K M Produce、TMA、Aroma Planning、M's Video Group、DAHLIA、Milu、Das、Muku；其中 Das 与 Muku 由 `scripts/find_studio_socials.py` 穿过官网年龄门后取得，Deep's 也由官网独立复证；映射表 `peach-data/generated/studio-x-handles.csv`，候选 `studio-logo-social-candidate-20260817.csv`，图片 `generated/studio-logos/`。其余 76 个未取得，留空待查。长条形 Logo 补自身底色填成正方形而不是丢弃。
 - Logo 归属的判据是图不是 handle：`@ms_harapekori` 看不出与 M's Video Group 的关系，看图确认是对的；`@OFFICEKS` 能取到 400×400 但图只有色块无品牌文字，而同名公司有多家，因此判为未取得。`@bazooka`、`@bibibi_25` 同理被排除。
 - 复核层已加固：候选按前缀取最新批次（不再写死日期）、缺主键的行跳过并计数（不再退化成行号）、只有 `status=candidate` 的 creator 候选可批准、批准的 creator/tags 以候选文件为权威（请求体只作确认）、未勾选整条通过受 `REVIEW_APPLY_LIMIT=500` 约束、写入改为 `executemany` 并在完成后 `cache_bust()`。`vision_creator_review` 已纳入统计标签覆盖和 Top 标签口径。`/api/review` 走缓存，创作者预览由一次分组查询取代 42 次三重 LEFT JOIN。候选目录改由 `PeachSettings.candidate_root` 提供，测试不再读真实 `generated` 目录。
 
@@ -100,21 +103,21 @@
 - 等价关系同时是合集判据。`FC2PPV-3312576` 是 21 段合集，本地按 `-1.mp4` 分片存。**合集封面不下发给分片**，否则 21 段不同内容会显示同一张图；判为合集时 `cover_url` 留空，分片回落到自己的缩略图。
 - 只抓库里有的 442 个作品页，但每页评论全量留存：一页评论常给几十个 video_id 标演员，本地只对上两三个，只留对得上的等于把评论区的价值丢掉。产出候选 CSV（复核页 `fc2_markings` 层）、按 video_id 汇总的收获 CSV，以及原始评论 JSONL——留原文是因为解析规则一定会漏掉某种写法，有原文就不必重爬。
 - 线上实测补了三种写法：全角等号 `＝2407240`（主语省略即本页）、「一行名字 + 若干作品链接」的作品集式标记（多指向姊妹站 fc2ppvdb），以及 `comments.data` 与 `article.comments` 重叠导致同一条评论投两票——票数是这批候选唯一的置信度信号，翻倍等于把它作废。演员常标在别的作品页上，候选行的演员由全量收获回填。
-- 番号目录冒充创作者的清理已对生产 ledger 执行（`scripts/audit_code_creators.py`，备份 `ledger.pre-codecreator-20260818-184741.db`）。命中 44 个：31 个判为番号、2 个判为站点作品号、11 个判为存疑只入 CSV。写入删创作者关系 121 条、删实体 33 个、清扁平字段 121 条，`code` 净增 31（另外 65 条已有值，脚本只填空缺不覆盖）。asset、asset_tag、performer 计数一条未变，完整性 `ok`、外键违规 0。`HD-abp-758`、`pppd-937ch`、`PRED-785ch`、`Carib-040221-001-FHD` 等假身份已消失，`banbi_555`、`raikun325`、`luckydog22` 等真实上传者与全部 pixiv 画师保留。复核 CSV：`R:\peach-data\generated\code-creator-review.csv`。
+- 番号目录冒充创作者的清理已对生产 ledger 执行（`scripts/audit_code_creators.py`，备份 `ledger.pre-codecreator-20260818-184741.db`）。命中 44 个：31 个判为番号、2 个判为站点作品号、11 个判为存疑只入 CSV。写入删创作者关系 121 条、删实体 33 个、清扁平字段 121 条，`code` 净增 31（另外 65 条已有值，脚本只填空缺不覆盖）。asset、asset_tag、performer 计数一条未变，完整性 `ok`、外键违规 0。`HD-abp-758`、`pppd-937ch`、`PRED-785ch`、`Carib-040221-001-FHD` 等假身份已消失，`banbi_555`、`raikun325`、`luckydog22` 等真实上传者与全部 pixiv 画师保留。复核 CSV：`peach-data/generated/code-creator-review.csv`。
 - 判据不看名字形态，只看文件级证据：目录内的媒体文件名必须解析出同一个番号。`HD-` 是画质前缀、`-CH` 是中文字幕版后缀，两者都会让番号提取放弃，于是 `code` 留空、目录名顶替身份。形态相同但真相不同的 `banbi_555`（myfans 账号）和 `AH18`（pixiv 画师，path 是 URL）因此不会命中。
 - 日文汉字身份已补简体检索词（`scripts/add_chinese_search_terms.py`，备份 `ledger.pre-cnterms-20260818-210036.db`）：280 条写入 `entity_search_term`（performer 208、creator 71、series 1），`entity_search_term` 52 → 332，asset 与 entity 计数一条未变，完整性 `ok`、外键违规 0。实测搜「凉森」由 0 条变 24 条，「铃村」15 条、「七泽」10 条，日文原写法「涼森」仍是 24 条无回归，反例「凉宫」仍为 0。映射表只覆盖本库身份里实际出现的字，表外的字原样保留；日文独有字（`凪`、`辻`、`雫`、`笹`、`咲`、`栞`、`冴`、`榊`）没有简体对应，不列。
 - 这一步只做字形归一，不做译名：`涼森れむ` 转出的是 `凉森れむ`，不是圈内约定的 `凉森玲梦`。后者必须来自真实词库（输入法细胞词库是可行来源），不能编。含假名的 332 位女优仍缺常见译名。
 - `entity_search_term.purpose` 有 CHECK 约束，只接受 `discovery` / `source_lookup`；检索用途一律写 `discovery`，与既有的 52 条 stash 检索词一致。
 - 西方网黄回配 babepedia 的候选已产出（`scripts/match_babepedia_creators.py`，只写 CSV 不写 ledger）：195 个拉丁名 creator 中命中 19 个、需人工确认 8 个、确认无档案 165 个、限流未取得 3 个。判据只认 `<title>`；页面上的 `/babe/` 链接全是 `thumbshot` 相关推荐，实测查 `SexySaffron` 会抓出毫无关系的 `Brianna_Marchant`，一律不采信。待修：去尾部数字属于有损变体，`fantia-3760310` 经它削成 `fantia` 后误配到 `Rio Hcup Fantia`，须封顶为「需人工确认」。
-- 目录创作者审计覆盖全部 66,252 条历史关系：58,803 条为仅目录候选、6,621 条缺少路径交叉核验、745 条 TokyoDolls 错挂「捅主任」已解除、83 条「足交仙人」已按文件名/水印证据归到 `suzuq`。逐项和汇总 CSV 位于 `R:\peach-data\review\creator-attribution-*-20260815.csv`；没有删除媒体或标签。
+- 目录创作者审计覆盖全部 66,252 条历史关系：58,803 条为仅目录候选、6,621 条缺少路径交叉核验、745 条 TokyoDolls 错挂「捅主任」已解除、83 条「足交仙人」已按文件名/水印证据归到 `suzuq`。逐项和汇总 CSV 位于 `peach-data/review/creator-attribution-*-20260815.csv`；没有删除媒体或标签。
 - `DiskGuard` 已进入主线并接入 `probe.py`、`sheets.py`、`creator_boards.py`：默认每 20 秒复查系统盘实际余量，触线后停止领取新任务、保留已完成结果并返回退出码 3。CloudDrive 当前缓存上限 50 GiB、策略 LRU；本轮核验时没有上述旧代码长任务在运行。
-- 机械识别批次已接手：读取 42 个未处理创作者板，生成 `R:\peach-data\generated\creator-tags-candidate-20260817.csv`；仅输出 `candidate/skip`，未写入 ledger。现有 `creator-tags-review.csv` 的 `applied` 记录不重复处理，聚合目录和广告板保留 `skip`。
+- 机械识别批次已接手：读取 42 个未处理创作者板，生成 `peach-data/generated/creator-tags-candidate-20260817.csv`；仅输出 `candidate/skip`，未写入 ledger。现有 `creator-tags-review.csv` 的 `applied` 记录不重复处理，聚合目录和广告板保留 `skip`。
 - Logo/头像机械候选已导出：`studio-logo-candidate-20260817.csv` 含 86 个缺失厂牌，`performer-avatar-candidate-20260817.csv` 含 20 个 `no_avatar/avatar_rejected` 女优；均只保留来源候选，不写真相字段。
-- 115 抽帧 worker 已接入 `resolve_case_insensitive`：小样本通过后完成 33 条 9 帧批次，31 条成功登记 snapshot、2 条仍失败（asset `12510`、`18349`），未伪报成功；日志 `R:\peach-data\logs\sheets-20260817-171917.log`。
+- 115 抽帧 worker 已接入 `resolve_case_insensitive`：小样本通过后完成 33 条 9 帧批次，31 条成功登记 snapshot、2 条仍失败（asset `12510`、`18349`），未伪报成功；日志 `peach-data/logs/sheets-20260817-171917.log`。
 - 这 2 条失败已于 2026-08-18 用 FFmpeg 直接复现定因，两条是不同问题，都不是路径或色彩元数据：
   - `18349`（`B:\xxr\1(14)(1).mp4`）：ledger 记的是 `752.24` 秒、`1280×720`，ffprobe 实测为 `110.87` 秒、`1920×1072`，只有 `size` 98,246,962 两边一致。`make_sheet` 按 ledger 时长算的 9 个采样点里有 8 个落在文件末尾之后，只抽到 1 帧，触发 `len(captured) < 2` 判失败。t=61.8 秒实测能抽出 11,405 字节的帧，片源可用；要修的是 ledger 的时长与分辨率，不是抽帧代码。
   - `12510`（`捅主任` 目录下的 `好色™ Tv.mp4`）：FFmpeg 报 `stream 0, missing mandatory atoms, broken header`，`profile`、`pix_fmt` 均为 `unknown`、`level=-99`，解码器建不起来，任何时间戳都抽不出帧。片源本身损坏，不再重试。
-- 两条都已按上述结论收尾（备份 `R:\peach-data\database\ledger.pre-duration-fix-20260818-103252.db`）：
+- 两条都已按上述结论收尾（备份 `peach-data/database/ledger.pre-duration-fix-20260818-103252.db`）：
   - `18349` 由 `probe.py --asset 18349` 重探改正，`duration` 752.24 → 110.866667、分辨率 1280×720 → 1920×1072、`fps` 25 → 30，情境层随之由「短/720P」变为「速食/2K」。随后 `sheets.py --asset 18349` 重抽成功，产物 `snapshots\cloud\115\45\4519ff7e5d496e1b.jpg` 为 1440×804（3×3 九帧、120,876 字节）并已登记 `snapshot_path`。写入前后 asset 81,770、video 24,890、asset_tag 88,542、entity 8,286 均不变，`integrity_check` 为 `ok`、外键违规 0，只有这一行的事实字段发生变化。
   - `12510` 经 `/api/review/decision` 写入 `review_decision`（`category=media_failure`、`status=rejected`），note 记录了 FFmpeg 原始报错，`applied_assets` 为 0，不动任何真相字段。`/review` 媒体失败层的待办由 2 条降为 1 条，即这条已判定的坏片源。
 - `probe.py` 与 `sheets.py` 都新增了 `--asset`：按 id 点名处理，绕过各自的批量筛选，计费来源与 `online` 边界照旧生效。`probe` 的 `--redo` 只认 0 和 -1，够不着 `18349` 这种「看着正常但是错的」时长；`sheets` 点名时还会绕过「产物已存在」短路，否则重抽会被上一次的错结果短路掉。两者都有测试。
@@ -141,17 +144,16 @@
 - 2026-08-17 批代码改动（merge_entity 回归主线、sheets 色彩元数据重试、media 大小写不敏感匹配）模块级 `unittest` 全部通过：`test_entity_merge` 4 项、`test_scripts` 16 项、`test_media` 9 项等。注意：实测在工具管道里直跑 `python -m unittest discover` 全量会挂起或整会话输出消失（test_jobs 模块极快退出时竞态最明显），模块级独立运行全部通过；唯一可信入口仍是 `& .\scripts\test.ps1`。
 - 2026-08-19 发现「测试通过」曾有一段并不成立：`test_rm_web.py` 与 `test_web_ui.py` 各有一处 `if __name__ == "__main__": unittest.main()` 被插在类中间，其后缩进 4 格的 16 条测试被解析成 if 块语句，从写下起就没被收集过——不报错、不告警，其中包括复核页三类候选的全部数据层断言。修正后全量由 355 升到 371 且全绿。`tests/test_test_collection.py` 用 AST 禁止这种形状，避免再出现「绿灯但没覆盖」。
 
-- 2026-08-21 macOS 侧基线：`./scripts/test.sh` 全量 453 项通过、3 项跳过；上下文预算检查通过。
-  Windows 独立 checkout 尚未建立，因此同一提交仍未在 Windows 跑 `scripts/test.ps1`，不能标为
-  双平台验证完成。
+- 2026-08-21 macOS 侧最新基线：`./scripts/test.sh` 全量 458 项通过、3 项跳过；上下文预算检查通过。
+  Windows 独立 checkout 已建立，但本次文档同步提交尚未在 Windows 跑 `scripts/test.ps1`；不用过去的 Windows
+  测试代替当前提交验证。
 - 两台机器的 worktree 各自独立：macOS 侧已按 27 个 `agent/*` 分支重建，Windows 路径的失效注册已 `git worktree prune` 清掉。分支本身在 `.git` 里，worktree 目录随时可重建，不需要跨机器复制。
 
 ## 下一批工作
 
-基础设施前置：先完成 ADR-0017 的 Windows 本机化与同步边界迁移。包括 GitHub 内置盘 clone、
-本机 venv/`peach-data`/worktree、账本安全播种、内置盘 SMB 同步点、writer/reader、artifact
-拆分、托盘重建，以及拔盘后的双机运行验收。完成前不要继续把 `R:\peach-app`、`R:\peach-data`
-当目标路径扩展新功能。
+基础设施本机化已完成。剩余边界是显式 writer/reader 策略、运行中安全拉取、durable artifact
+拆分和拔盘后的双机完整验收。部分历史运维脚本仍硬编码 `R:\peach-data`，在改为读取
+`PeachSettings` 前不得对当前账本盲目执行。
 
 1. 创作者板的机械识别已做完：`creator-tags-review.csv` 里 42 条 pending 全部产出 candidate（34 candidate、8 skip，见 `creator-tags-candidate-20260817.csv`），没有未覆盖的板。剩下的是用户在 `/review` 页面逐条复核，点「通过」才写 `asset_tag/asset_entity`。注意天花板：全库 7,622 条无标签视频里创作者板最多覆盖约 2,800 条，其余既无创作者也无有效番号（384 个 FC2 + 约 330 个 `WX` 业余码，三源实测零命中）。
 2. FC2 评论标记跑完后逐条复核 `/review` 的 `fc2_markings` 层。这批候选的置信度只有「几条独立评论这么说」一个信号，写在 `performer_votes` 里；匿名评论一律不自动升级为 `approved`。收获 CSV 里库外 video_id 的标记先存着不入库，等对应作品进库时再回配。还没做的：把复核通过的演员写进 `entity`/`asset_entity`，以及按等价关系做跨号去重。
