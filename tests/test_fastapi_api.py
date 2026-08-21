@@ -226,6 +226,28 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(deleted.json()["purged"], 1)
         self.assertFalse(self.media_file.exists())
 
+    async def test_ads_queue_batch_disposal_removes_the_candidate(self):
+        connection = sqlite3.connect(self.db)
+        connection.execute(
+            "UPDATE asset SET name='扫码加入福利群.mp4',size=?,duration=60 WHERE id=1",
+            (20 * 1024 * 1024,),
+        )
+        connection.commit(); connection.close()
+
+        before = await self.client.get("/api/ads?t=secret")
+        self.assertEqual([item["id"] for item in before.json()["items"]], [1])
+
+        disposed = await self.client.post(
+            "/api/batch?t=secret", json={"ids": [1], "operation": "dispose"},
+        )
+        self.assertEqual(disposed.status_code, 200)
+        self.assertEqual(disposed.json()["changed"], 1)
+
+        after = await self.client.get("/api/ads?t=secret")
+        self.assertEqual(after.json()["items"], [])
+        recycle_bin = await self.client.get("/api/items?t=secret&state=trash")
+        self.assertEqual([item["id"] for item in recycle_bin.json()["items"]], [1])
+
     async def test_search_history_is_shared_through_the_api(self):
         saved = await self.client.post("/api/search-history?t=secret", json={"query": "ABW"})
         self.assertEqual(saved.status_code, 200)

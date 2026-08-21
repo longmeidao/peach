@@ -424,6 +424,17 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertLess(home.index("$('#tiers').style.display=''"), home.index("buildManageBar()"),
                         "buildManageBar 必须排在恢复首页横条之后，否则隐藏会被覆盖")
 
+    def test_ads_queue_count_does_not_stick_and_disposal_reports_failures(self):
+        """疑似广告是处置队列；计数行不跟随滚动，写入冲突也不能伪装成成功。"""
+        self.assertPageContains("countRow.classList.toggle('manage-static',staticManageCount)")
+        self.assertPageContains("if(staticManageCount)countRow.classList.remove('is-stuck')")
+        self.assertPageContains(".count.manage-static{position:relative;top:auto;z-index:1}")
+        self.assertPageContains("if(!response.ok){")
+        self.assertPageContains("throw new Error(detail||`请求失败（${response.status}）`)")
+        self.assertPageContains("catch(error){alert(`操作失败：${error.message||'未知错误'}`)}")
+        self.assertPageContains("wireCards($('#grid'));paintSelection();return")
+        self.assertPageContains("b.dataset.kind==='dispose'&&r.disposal==='trash'&&state.state==='ads'")
+
     def test_search_suggestions_come_from_real_data_in_bulk(self):
         """写死的 6 个词翻两次就重复。顶部聚合只有几十条，也不够；索引接口一次给近千条。"""
         self.assertPageContains("async function loadSearchPool()")
