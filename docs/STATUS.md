@@ -1,12 +1,13 @@
 # Peach 当前状态
 
-最后核验：2026-08-19
+最后核验：2026-08-21
 
 ## 运行态
 
 - 生产入口：Windows 当前用户 Startup 中的 `Peach.lnk`，启动 `R:\peach-app\dist\Peach\Peach.exe`（无参数托盘模式）。当前版本 `0.6.1`。
 - HTTP：`0.0.0.0:80`；HTTPS：`192.168.50.162:443`。`peach.local` 是唯一正式局域网名称，发布为 `192.168.50.162`。
 - mDNS 使用 Python zeroconf 的全合格网卡监听；生产显式固定发布地址，避免隧道网卡误选。没有发布 `lmd-dst.local`。
+- macOS 菜单栏（2026-08-21）：托盘健康检查固定 `trust_env=False` 直连回环——Stash 设置系统级 HTTP 代理后，httpx 默认把 `127.0.0.1` 的探测送进代理、由代理回 503，服务活着却显示「HTTP 未运行」。状态行改为逐个点名：`HTTP 正常 · HTTPS 正常`，异常的附最近一次失败原因。当前 macOS 地址 `192.168.50.88`，证书 SAN 已随 netwatch 重签覆盖。
 - Stash 仍运行于 `127.0.0.1:9999`，只作为过渡期可替换适配器。
 - Python：3.14.7；FFmpeg/ffprobe 由 `R:\peach-data\tools\ffmpeg` 管理，不再依赖 Stash 私有目录。
 - 真实 ledger：`R:\peach-data\database\ledger.db`，迁移 `0000`–`0015` 已应用，零待处理。复核表迁移前备份：`R:\peach-data\database\ledger.pre-0015-20260817-173639.db`；黄金视频删除前备份：`R:\peach-data\database\ledger.pre-golden-delete-20260817-124921.db`；创作者清理前备份：`R:\peach-data\database\ledger.pre-0014-20260817-134153.db`；时长纠正前备份：`R:\peach-data\database\ledger.pre-duration-fix-20260818-103252.db`；完整性 `ok`。
