@@ -69,6 +69,8 @@ worktree 目录。跨机器继续任务时 push 分支，在另一台按分支�
 - 运行中定期回写共享副本，所以同一时刻只有一台在写。回写前重新判定，别人抢先推过就转冲突，
   绝不覆盖。
 - 共享目录不可达时本地照常运行，恢复连接后再同步；媒体外置盘是否插入与账本同步无关。
+- macOS 菜单栏和 Windows 托盘都有「同步 Ledger」：它只停止当前托盘拥有的 HTTP/HTTPS，
+  完成一次安全推送或拉取后再恢复服务；发现端口由别的进程占用时拒绝接管。
 
 世代号只表示血缘先后，不表示时间：时钟在两台机器上不可靠。
 血缘记在库文件旁边的 `ledger.db.sync.json` 里，不进 Git，也不需要改表结构。
@@ -78,7 +80,8 @@ worktree 目录。跨机器继续任务时 push 分支，在另一台按分支�
 
 共享副本位置由 `PEACH_SHARED_DATA_ROOT` 覆盖；Windows 默认为
 `C:\Users\longm\Desktop\peach\peach-sync`，macOS 默认为 `/Volumes/peach-sync`。当前同步状态看
-`/healthz` 的 `ledger_sync` 字段；这仍是冲突即只读的单写者复制，不是 SQLite 多主。
+`/healthz` 的 `ledger_sync` 字段，也可用托盘菜单手动同步；这仍是冲突即只读的单写者复制，
+不是 SQLite 多主。
 
 ```bash
 # 临时禁用复制；这不会自动把写入 API 变成只读
@@ -159,6 +162,8 @@ macOS 日常运行走菜单栏项，而不是留一个终端窗口：
 ./.venv/bin/python scripts/make_macos_icon.py        # 圆角 .icns，只需一次
 ./.venv/bin/python scripts/install_macos_agent.py install
 ```
+
+菜单中的「同步 Ledger」会先安全停止本菜单栏项创建的服务，再同步和恢复，不需要退出应用。
 
 **菜单栏项没有跨平台的轮子。** pystray 名义上支持 darwin，但它的后端漏了三件事：
 `setActivationPolicy_(Accessory)`、`NSImage.setSize_(18,18)`（菜单栏按 18pt 画，直接塞
@@ -242,8 +247,8 @@ SAN 里的局域网 IP 会随 DHCP 变化失效，**但不需要人去管，也�
 `serve` 默认只监听 `127.0.0.1:8900`。公网、反代、HTTPS 和认证属于后续部署阶段，不在开发命令中隐式开启。
 
 Windows 日常运行使用登录后托盘，而不是保留命令行窗口或注册系统服务。托盘在启动时声明
-Per-Monitor V2 DPI，单击打开 `https://peach.local/`；右键可查看状态、重启服务、打开日志、
-查看版本/更新通道和退出。更新检查在后台运行并使用非模态系统通知；退出只结束
+Per-Monitor V2 DPI，单击打开 `https://peach-win.local/`；右键可同步 Ledger、查看状态、重启服务、打开日志、
+查看版本/更新通道和退出。同步与更新检查都在后台运行并使用非模态系统通知；退出只结束
 托盘自己启动的 Peach 进程：
 
 ```powershell
