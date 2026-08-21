@@ -13,8 +13,8 @@
   `peach-win.local`；2026-08-22 严格 HTTPS 实测 `version=0.6.2`、`ledger_sync=writer`，
   首页、头像和海报均 200。连续 120 秒浏览观测 local/shared generation 均保持29。
 - mDNS 使用 Python zeroconf 的全合格网卡监听；生产显式固定发布地址，避免隧道网卡误选。没有发布 `lmd-dst.local`。
-- macOS 菜单栏当前停服，代码仍为 `0.6.2`；恢复后管理 `8900/8443` 并由 pf 提供
-  `peach.local:80/443`。新菜单提供「同步 Ledger」和「接管 Ledger 写入」。
+- macOS 菜单栏已按同一重构上线为 `0.6.2` reader，管理 `8900/8443` 并由 pf 提供
+  `peach.local:80/443`。菜单提供「同步 Ledger」和「接管 Ledger 写入」；GET 正常、POST 返回409。
 - Stash 仍运行于 `127.0.0.1:9999`，只作为过渡期可替换适配器。
 - Python：3.14.7；FFmpeg/ffprobe 由
   `C:\Users\longm\Desktop\peach\peach-data\tools\ffmpeg` 管理，不再依赖 Stash 私有目录。
@@ -32,8 +32,9 @@
 - SQLite FTS5 trigram 已覆盖 81,873 个资产；三字符以上走 FTS，短查询回退 LIKE。
 - `FeedAdapter` 已支持显式、有界 RSS/Atom 发现、条件请求和不可变快照；尚未配置真实订阅，也不会启动时自动写 ledger。
 - AI Provider 已拆为推理与 Agent 两层。`/api/providers` 无副作用且不泄露凭据；OpenCode Go 模型清单只在显式访问时拉取，当前不发推理请求。
-- 手动单写者重构已在 Windows 完成 476 项测试并部署：服务启动/浏览/退出不再同步；marker.device
-  指定唯一写入端，另一台 POST 返回 409；托盘显式同步或接管。当前仍待明确授权推送 master、Mac 全测与部署。
+- 手动单写者重构已完成双端部署：Windows 476 项测试通过，Mac 在保留两项本地 UI 修复后
+  479 项测试通过。服务启动/浏览/退出不再同步；marker.device 指定唯一写入端，另一台 POST
+  返回409；托盘只在显式同步或接管时复制。
 - Windows 品牌资源已统一为附件生成的 `1024x1024` 正方形蜜桃图：`resources/peach-logo.png`、`resources/peach.ico`；Web favicon、托盘图标和 EXE 内嵌图标共用该资源。PyInstaller 打包产物为 `dist/Peach/Peach.exe`，桌面和 Startup 的 `Peach.lnk` 均按 FlowLens 的 `exe,0` 方式指向它；该 exe 只打包托盘自身，服务进程仍由项目 venv 承担，不是可移动的独立发行版。
 - 版本唯一来源为 `src/peach/__init__.py::__version__`；Windows 当前部署、本地代码和 Mac 待部署代码均为 `0.6.2`。没有 Git remote 时只报告本地开发版，不伪造更新能力。
 - 本地 CA HTTPS 已部署。CA 包含 critical `CA:TRUE` 和签名用途并通过 OpenSSL 链验证。macOS/iOS 只安装 `peach-local-ca.crt`；不得传播任何私钥。
@@ -43,9 +44,9 @@
 - 跨 kind 重复身份已完成两轮合并（`scripts/merge_duplicate_identities.py`）。首轮是规范名完全相同的 35 组（备份 `ledger.pre-identity-merge-20260820-010944.db`）；2026-08-21 又审计「非空作品集合完全相同 + performer 别名等于 creator 名，或 creator 名由 performer 本名与账号别名组成」的变体，再合并 18 组。保留方只看 provenance 不看数量：`r18:performer` / `javbus:performer` 属于发行出演元数据，保留 performer；只有通用 `performer` 的 Stash 扁平断言则保留对应 creator。因此 `小千` 并入 creator `小千 Qian0791`（7 条）、`一个ren` 并入 creator `一个ren yigeren33`（284 条）；16 组有番号、片商和 JavBus 出演来源的重复名保留 performer。真实 Mac ledger 结果：entity 8218→8200、creator 1728→1712、performer 576→574、entity_alias 1125→1143；asset 和 asset_entity 不变，重写 16 条 JavBus `演员:` 兼容标签、删除 291 条已改归 creator 的假演员标签，asset_tag 88538→88247。备份 `ledger.pre-fuzzy-identity-merge-20260821-195651.db`，复核 CSV `generated/duplicate-identity-merge-20260821.csv`，复扫 0 组，`integrity_check=ok`、`foreign_key_check` 0 违规，同步状态 `in-sync`。
 - 番号体系女优姓名已全量审计并写入真实 Mac ledger（`scripts/localize_performer_names.py`）：574 位中 340 位直接中译、6 组同人旧名合并并中译、8 位用已核实日文名兜底、152 位原本已是映射名；35 位资料不足保持原名，27 位非发行账号不翻译。实际改名 353、增别名 416、重写 `演员:` 兼容标签 1,199；performer 574→568、entity 8200→8194，asset/asset_entity/asset_tag 不变，`integrity_check=ok`、外键违规 0。`Alice Shaku` 现为 `释爱丽丝`，旧罗马字、`釈アリス`、假名继续可解析。备份 `ledger.pre-performer-localization-20260821-203727.db`，复核 CSV `generated/performer-name-localization-20260821.csv`；私有映射固定 revision `8e2d5b7a…`，因上游未声明许可证不进 Git、不分发。
 - 本地媒体根多余的一层已去掉（`scripts/flatten_media_level.py`，备份 `ledger.pre-flatten-media-20260820-011133.db`）：`R:\Media\创作者\<名字>` → `R:\Media\<名字>`。`R:\Media` 下原本只有 `创作者` 一个子目录、2552 条本地资产 100% 落在其下，这一层既不分类也不区分，且已名不副实（`合集-洛丽塔 多创作者` 等合集也在里面）。移动 35 个目录（同卷改名，只动元数据）、改写 2552 条路径，本地资产数不变、残留 `创作者` 层 0 条，五条真实资产复验 `206`。计划 CSV：`generated/flatten-media-level.csv`。
-- 账本三副本已分离 Windows/macOS 本地工作副本与 Windows 内置盘共享传输点。共享当前为
-  generation 29、写入端 Windows；Mac 停在 26，待新代码以 immutable SMB 快照显式拉取。
-  generation 29 相比26只增加 asset 10060 的合法播放遥测，真相/关系表一致。
+- 账本三副本已分离 Windows/macOS 本地工作副本与 Windows 内置盘共享传输点。三者当前均为
+  generation 29，唯一写入端为 Windows，Mac 为 reader。generation 29 相比26只增加 asset
+  10060 的合法播放遥测；真相/关系表一致。Windows 连续120秒、Mac连续172秒浏览均未改generation。
 - 脱盘模式按来源逐个判定：`GET /api/sources` 报告可达性，前端置灰脱盘来源的筛选并在详情页显示「脱盘模式」面板。外置盘不在时 115/PikPak 的 78k 条云端资产仍然可用。
 
 ## 界面与交互现状
