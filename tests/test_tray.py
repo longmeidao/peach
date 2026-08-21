@@ -89,7 +89,11 @@ class TrayTests(unittest.TestCase):
                 return UpdateResult("unconfigured", "未配置更新源", snapshot)
 
         icon = Mock()
-        tray = PeachTray(ServiceManager(tuple()), Versions())
+        # 这里只验证后台更新行为，不创建真实系统托盘。macOS 的 pystray Icon 构造会向
+        # WindowServer 注册应用；在 Codex seatbelt 沙箱内系统会直接 SIGABRT，连测试
+        # 报告都来不及生成，并弹出「Python 意外退出」。
+        with patch("peach.tray.pystray.Icon", return_value=Mock()):
+            tray = PeachTray(ServiceManager(tuple()), Versions())
         tray.check_updates(icon)
         self.assertTrue(completed.wait(2))
         for _ in range(20):
