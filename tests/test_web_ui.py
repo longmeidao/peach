@@ -294,6 +294,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("player.src(directDetailSource(it))")
         self.assertPageContains("detailPlayer.dispose()")
 
+    def test_metered_stream_gate_occupies_the_player_until_clicked(self):
+        # `.vwrap video{display:block}` 不能把 hidden 播放器提前画出来；否则入口和播放器
+        # 会在同一个 flex 容器里各占一半。点击入口后再取消 hidden、移除入口并自动播放。
+        self.assertPageContains(".vwrap>video[hidden]{display:none}")
+        self.assertPageContains(".gate{aspect-ratio:16/9;width:100%")
+        self.assertPageContains(
+            "else if(g)g.onclick=()=>{vv.hidden=false;g.remove();mountDetailPlayer(it,vv,true)"
+        )
+
     def test_detail_uses_pinned_videojs_and_authoritative_duration(self):
         self.assertPageContains('/vendor/videojs/8.23.9/video.min.js')
         self.assertPageContains('/vendor/videojs/8.23.9/video-js.min.css')

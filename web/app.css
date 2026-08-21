@@ -578,6 +578,9 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
   mask-image:radial-gradient(ellipse at center,#000 28%,rgba(0,0,0,.72) 55%,transparent 86%);-webkit-mask-image:radial-gradient(ellipse at center,#000 28%,rgba(0,0,0,.72) 55%,transparent 86%)}
 .vwrap>video,.vwrap>.video-js{position:relative;z-index:1}
 .vwrap video{width:100%;max-height:76vh;display:block}
+/* 计费来源点击前只显示拉流入口。显式 display:block 会覆盖浏览器的 hidden 默认样式，
+   让尚未启动的播放器和入口各占一半，所以这里必须让隐藏视频完全退出布局。 */
+.vwrap>video[hidden]{display:none}
 .vwrap>.video-js{width:100%;height:auto;max-height:76vh;aspect-ratio:16/9;background:#000}
 .vwrap .video-js .vjs-tech{object-fit:contain}
 .vwrap .video-js .vjs-control-bar{height:3.4em;background:linear-gradient(transparent,rgba(0,0,0,.82))}
