@@ -148,7 +148,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 
 ## 身份合并与来源分工
 
-- 规范名用最新艺名，旧名一律降为别名。r18 记录的是作品发行当时的艺名且不会回溯更新，所以改过名的女优在 r18 上永远是旧名；av-wiki 的 URL slug 就是罗马字，可与 r18 一样做精确回配，并给出现用名。
+- 规范名优先使用有出处的简体中文通行名，暂无可靠中译时保留日文，旧艺名、罗马字、假名和繁体名都降为别名。姓名写入不得再和头像成功绑定：`no_avatar` 只表示没取得合格图片，不得阻止已核实姓名落库。多个实体精确命中同一姓名映射时按同人走 `merge_entity`，资料不足时保留原名、不猜译。
 - 「这一页只有一位女优」永远不构成证据。库里大量番号是 BEST 合集（一部片可列 8~11 位），搜索无结果的页面仍会渲染推荐文章，改名后 slug 也会变。同一个错误判据在 javdb、av-wiki 两处各犯过一次，都是靠 dry-run 拦下的：一次让两位不同女优被认成同一人，一次让 5 位里错 3 位。精确回配命中优先于任何「唯一」推断，「唯一」只有在两个番号同证时才作数。
 - `entity(kind, normalized_name)` 的唯一约束冲突通常不是 bug，而是信号：两个实体其实是同一人的新旧艺名。合并走 `peach.entities.merge_entity`，保留作品多的一侧，迁移关系/别名/外部引用/链接/搜索词，并把所有旧称留作别名。`entity_external_ref` 每个 provider 只能留一条，同源的第二条会被丢弃并报告，不能静默覆盖。合并不可逆，必须先取得用户授权并备份。creator / performer 跨类重复不用「作品数多的一侧」规则：只有两边非空作品集合完全相同，且 performer 别名精确命中 creator 名，或 creator 名由 performer 本名与账号别名组成时，才能自动归并；`r18:performer` / `javbus:performer` 是正式发行出演元数据，保留 performer，通用 `performer` 是 Stash 压平后的兼容断言，保留 creator。合并时必须同步 `asset.creator` 与 `演员:` 兼容投影，否则已删实体仍会在详情页伪造链接。
 - 改写 `entity.canonical_name` 属于真相字段写入，与迁移同级：`--apply` 必须同时给 `--backup`。
@@ -182,7 +182,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - Windows 日常入口是当前用户 Startup 中的唯一 `Peach.lnk`，指向 `C:\Users\longm\Desktop\peach\peach-app\dist\Peach\Peach.exe`。`R:\peach-app` 是迁移前的旧位置，不再用作运行入口。
 - Windows 发布入口使用 `scripts/build_windows.ps1`：先用 `scripts/generate_brand_assets.py` 从原始附件生成正方形 `resources/peach-logo.png` 和多尺寸 `resources/peach.ico`，再构建单一 `dist/Peach/Peach.exe`。无参数运行托盘，`serve`/`migrate` 运行 CLI；桌面快捷方式由 `scripts/create_desktop_shortcut.ps1` 创建，图标使用 `Peach.exe,0`，行为与 FlowLens 的快捷方式一致；Startup 安装仍由 `scripts/manage_tray_startup.ps1` 负责。
 - `dist/Peach/Peach.exe` 是本机打包入口，不是可移动的独立发行版：托盘只打包了自己，服务进程仍由项目 venv 的 `peach.exe` 承担（`_peach_executable()` 从 exe 位置逐级向上找 `.venv\Scripts\peach.exe`）。脱离同一台机器的项目 `.venv` 复制不会工作，不要按「单文件绿色版」对外描述。
-- 托盘单击打开 HTTPS；菜单提供状态、重启、日志、更新检查和退出。托盘只终止自己创建的 Peach 服务进程。
+- 托盘单击打开 HTTPS；macOS/Windows 菜单都提供「同步 Ledger」、状态、重启、日志和退出。手动同步只停止自己创建的 HTTP/HTTPS，生成 SQLite 一致快照后原子替换共享副本，再恢复服务；健康端口不归本托盘时拒绝接管。macOS smbfs 不可直接作为 SQLite 写目标，不能退回在 SMB 上打开事务连接。
 - 创建 Win32 窗口前必须启用 Per-Monitor V2 DPI。正常动作不弹模态 MessageBox；更新检查在后台线程执行，用 pystray 原生非模态通知反馈。
 - `src/peach/__init__.py::__version__` 是版本唯一来源；采用 pre-1.0 SemVer。Git commit 是构建标识，`vX.Y.Z` 是本地发布点。更新检查只 fetch/比较，并行 worktree 模式下不自动覆盖安装。
 - `scripts/manage_tray_startup.ps1` 是唯一自启动管理入口。托盘管理 HTTP `0.0.0.0:80` 和 HTTPS `192.168.50.162:443`，服务日志写入本机 `peach-data/logs`。

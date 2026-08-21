@@ -13,14 +13,14 @@
   `peach-win.local`，2026-08-21 只读实测 `http://peach-win.local/healthz` 返回 `200`、
   `version=0.6.1`、`db=available`、`ledger_sync=in-sync`。
 - mDNS 使用 Python zeroconf 的全合格网卡监听；生产显式固定发布地址，避免隧道网卡误选。没有发布 `lmd-dst.local`。
-- macOS 菜单栏（2026-08-21）：托盘健康检查固定 `trust_env=False` 直连回环——Stash 设置系统级 HTTP 代理后，httpx 默认把 `127.0.0.1` 的探测送进代理、由代理回 503，服务活着却显示「HTTP 未运行」。状态行改为逐个点名：`HTTP 正常 · HTTPS 正常`，异常的附最近一次失败原因。当前 macOS 地址 `192.168.50.88`，证书 SAN 已随 netwatch 重签覆盖。
+- macOS 菜单栏（2026-08-21）：当前运行 `0.6.2`，管理 `8900/8443` 并由 pf 提供 `peach.local:80/443`。菜单已上线「同步 Ledger」；它安全停服务、同步后恢复。健康检查固定 `trust_env=False` 直连回环，状态逐个点名 HTTP/HTTPS。当前地址 `192.168.50.88`，证书 SAN 已随 netwatch 重签覆盖。
 - Stash 仍运行于 `127.0.0.1:9999`，只作为过渡期可替换适配器。
 - Python：3.14.7；FFmpeg/ffprobe 由
   `C:\Users\longm\Desktop\peach\peach-data\tools\ffmpeg` 管理，不再依赖 Stash 私有目录。
 - 真实 ledger：`C:\Users\longm\Desktop\peach\peach-data\database\ledger.db`，迁移 `0000`–`0015`
   已应用，零待处理，完整性 `ok`。历史备份均在同一 `database` 目录，文件名保持不变。
 - PID 只是观测值，不是配置；每次停止或重启前必须重新核对命令行、父子关系和端口归属。
-- macOS 开发机（2026-08-19 起）：代码 `~/Desktop/lmd.gg/peach/peach-app`、数据 `~/Desktop/lmd.gg/peach/peach-data`、worktree `~/Desktop/lmd.gg/peach/peach-worktrees`。Python 3.14.7 + 独立 venv；FFmpeg 走 PATH。生产托盘仍然只在 Windows，macOS 侧是开发环境，不承担对外服务。
+- macOS 独立运行环境：代码 `~/Desktop/lmd.gg/peach/peach-app`、数据 `~/Desktop/lmd.gg/peach/peach-data`、worktree `~/Desktop/lmd.gg/peach/peach-worktrees`。Python 3.14.7 + 独立 venv，FFmpeg 走 PATH；菜单栏和 `peach.local` 当前均在运行，不再写成“只开发、不提供服务”。
 
 ## 已核验代码与部署能力
 
@@ -31,17 +31,18 @@
 - SQLite FTS5 trigram 已覆盖 81,873 个资产；三字符以上走 FTS，短查询回退 LIKE。
 - `FeedAdapter` 已支持显式、有界 RSS/Atom 发现、条件请求和不可变快照；尚未配置真实订阅，也不会启动时自动写 ledger。
 - AI Provider 已拆为推理与 Agent 两层。`/api/providers` 无副作用且不泄露凭据；OpenCode Go 模型清单只在显式访问时拉取，当前不发推理请求。
-- Windows 托盘已部署：单击打开 Peach，右键提供状态、重启、日志、版本/更新和退出；Per-Monitor V2 DPI 在创建窗口前启用，更新检查在后台线程执行并使用非模态通知。
+- `0.6.2` 代码已同时给 macOS AppKit 菜单和 Windows pystray 托盘加入「同步 Ledger」；Mac 已重装上线。Windows 当前已部署包仍为 `0.6.1`，需在 Windows 拉取、全测、重建并重启后才算上线，不能把“已推代码”写成“已部署”。
 - Windows 品牌资源已统一为附件生成的 `1024x1024` 正方形蜜桃图：`resources/peach-logo.png`、`resources/peach.ico`；Web favicon、托盘图标和 EXE 内嵌图标共用该资源。PyInstaller 打包产物为 `dist/Peach/Peach.exe`，桌面和 Startup 的 `Peach.lnk` 均按 FlowLens 的 `exe,0` 方式指向它；该 exe 只打包托盘自身，服务进程仍由项目 venv 承担，不是可移动的独立发行版。
-- 版本唯一来源为 `src/peach/__init__.py::__version__`。本批把实体作品、艺人/标签索引和广告卡片改为有界增量构建，去除代表图 N+1 查询与后续翻页重复总数统计；详情播放器复用本地 Video.js 8.23.9，并按 pre-1.0 SemVer 升至 `0.5.6`。没有 Git remote 时只报告本地开发版，不伪造更新能力。
+- 版本唯一来源为 `src/peach/__init__.py::__version__`，当前代码和 Mac 运行版为 `0.6.2`；Windows 已部署包仍为 `0.6.1`。没有 Git remote 时只报告本地开发版，不伪造更新能力。
 - 本地 CA HTTPS 已部署。CA 包含 critical `CA:TRUE` 和签名用途并通过 OpenSSL 链验证。macOS/iOS 只安装 `peach-local-ca.crt`；不得传播任何私钥。
 - Windows 代码、运行数据、venv、构建产物和 worktree 已从外置盘迁到内置盘；旧空 Inbox 和
   `Resources/Tools` 兼容表面已移除。外置盘的运行目录不再是当前入口。
 - 项目已可在 macOS 上独立运行并全量通过测试。账本路径的盘符翻译收敛在 `src/peach/platform.py`；`R:` → `/Volumes/RESOURCES`、`B:`（115）→ `~/Desktop/IMSL/115`、`A:`（PikPak）→ `~/Desktop/IMSL/Pikpak`，可用 `PEACH_DRIVE_MAP` 覆盖。实测本地与 115 的真实资产均返回 `206`，缩略图 `200`；PikPak 挂载当时掉线，按脱盘正确返回 `503` + `X-Peach-Offline`。账本本身未改写。
 - 跨 kind 重复身份已完成两轮合并（`scripts/merge_duplicate_identities.py`）。首轮是规范名完全相同的 35 组（备份 `ledger.pre-identity-merge-20260820-010944.db`）；2026-08-21 又审计「非空作品集合完全相同 + performer 别名等于 creator 名，或 creator 名由 performer 本名与账号别名组成」的变体，再合并 18 组。保留方只看 provenance 不看数量：`r18:performer` / `javbus:performer` 属于发行出演元数据，保留 performer；只有通用 `performer` 的 Stash 扁平断言则保留对应 creator。因此 `小千` 并入 creator `小千 Qian0791`（7 条）、`一个ren` 并入 creator `一个ren yigeren33`（284 条）；16 组有番号、片商和 JavBus 出演来源的重复名保留 performer。真实 Mac ledger 结果：entity 8218→8200、creator 1728→1712、performer 576→574、entity_alias 1125→1143；asset 和 asset_entity 不变，重写 16 条 JavBus `演员:` 兼容标签、删除 291 条已改归 creator 的假演员标签，asset_tag 88538→88247。备份 `ledger.pre-fuzzy-identity-merge-20260821-195651.db`，复核 CSV `generated/duplicate-identity-merge-20260821.csv`，复扫 0 组，`integrity_check=ok`、`foreign_key_check` 0 违规，同步状态 `in-sync`。
+- 番号体系女优姓名已全量审计并写入真实 Mac ledger（`scripts/localize_performer_names.py`）：574 位中 340 位直接中译、6 组同人旧名合并并中译、8 位用已核实日文名兜底、152 位原本已是映射名；35 位资料不足保持原名，27 位非发行账号不翻译。实际改名 353、增别名 416、重写 `演员:` 兼容标签 1,199；performer 574→568、entity 8200→8194，asset/asset_entity/asset_tag 不变，`integrity_check=ok`、外键违规 0。`Alice Shaku` 现为 `释爱丽丝`，旧罗马字、`釈アリス`、假名继续可解析。备份 `ledger.pre-performer-localization-20260821-203727.db`，复核 CSV `generated/performer-name-localization-20260821.csv`；私有映射固定 revision `8e2d5b7a…`，因上游未声明许可证不进 Git、不分发。
 - 本地媒体根多余的一层已去掉（`scripts/flatten_media_level.py`，备份 `ledger.pre-flatten-media-20260820-011133.db`）：`R:\Media\创作者\<名字>` → `R:\Media\<名字>`。`R:\Media` 下原本只有 `创作者` 一个子目录、2552 条本地资产 100% 落在其下，这一层既不分类也不区分，且已名不副实（`合集-洛丽塔 多创作者` 等合集也在里面）。移动 35 个目录（同卷改名，只动元数据）、改写 2552 条路径，本地资产数不变、残留 `创作者` 层 0 条，五条真实资产复验 `206`。计划 CSV：`generated/flatten-media-level.csv`。
 - 账本三副本单写者复制已分离 Windows/macOS 本地工作副本与 Windows 内置盘共享传输点；
-  当前线上报告 `ledger_sync=in-sync`。它仍依赖单写者纪律：两侧同时改动会转冲突只读，不是多主合并。
+  当前 Mac 与共享副本 `in-sync`。Mac→SMB 实测暴露 SQLite 不能直接在 smbfs 打开写目标，现改为本机 backup 快照、共享目录临时文件、原子替换并清理旧 sidecar。它仍依赖单写者纪律，两侧同时改动会转冲突只读，不是多主合并。
 - 脱盘模式按来源逐个判定：`GET /api/sources` 报告可达性，前端置灰脱盘来源的筛选并在详情页显示「脱盘模式」面板。外置盘不在时 115/PikPak 的 78k 条云端资产仍然可用。
 
 ## 界面与交互现状
@@ -106,7 +107,7 @@
 - 番号目录冒充创作者的清理已对生产 ledger 执行（`scripts/audit_code_creators.py`，备份 `ledger.pre-codecreator-20260818-184741.db`）。命中 44 个：31 个判为番号、2 个判为站点作品号、11 个判为存疑只入 CSV。写入删创作者关系 121 条、删实体 33 个、清扁平字段 121 条，`code` 净增 31（另外 65 条已有值，脚本只填空缺不覆盖）。asset、asset_tag、performer 计数一条未变，完整性 `ok`、外键违规 0。`HD-abp-758`、`pppd-937ch`、`PRED-785ch`、`Carib-040221-001-FHD` 等假身份已消失，`banbi_555`、`raikun325`、`luckydog22` 等真实上传者与全部 pixiv 画师保留。复核 CSV：`peach-data/generated/code-creator-review.csv`。
 - 判据不看名字形态，只看文件级证据：目录内的媒体文件名必须解析出同一个番号。`HD-` 是画质前缀、`-CH` 是中文字幕版后缀，两者都会让番号提取放弃，于是 `code` 留空、目录名顶替身份。形态相同但真相不同的 `banbi_555`（myfans 账号）和 `AH18`（pixiv 画师，path 是 URL）因此不会命中。
 - 日文汉字身份已补简体检索词（`scripts/add_chinese_search_terms.py`，备份 `ledger.pre-cnterms-20260818-210036.db`）：280 条写入 `entity_search_term`（performer 208、creator 71、series 1），`entity_search_term` 52 → 332，asset 与 entity 计数一条未变，完整性 `ok`、外键违规 0。实测搜「凉森」由 0 条变 24 条，「铃村」15 条、「七泽」10 条，日文原写法「涼森」仍是 24 条无回归，反例「凉宫」仍为 0。映射表只覆盖本库身份里实际出现的字，表外的字原样保留；日文独有字（`凪`、`辻`、`雫`、`笹`、`咲`、`栞`、`冴`、`榊`）没有简体对应，不列。
-- 这一步只做字形归一，不做译名：`涼森れむ` 转出的是 `凉森れむ`，不是圈内约定的 `凉森玲梦`。后者必须来自真实词库（输入法细胞词库是可行来源），不能编。含假名的 332 位女优仍缺常见译名。
+- 上述旧脚本只做字形归一、不做译名的问题已由 2026-08-21 全量姓名映射批次收尾；仍未命中的 35 位保持原名，不用字形转换冒充中译。
 - `entity_search_term.purpose` 有 CHECK 约束，只接受 `discovery` / `source_lookup`；检索用途一律写 `discovery`，与既有的 52 条 stash 检索词一致。
 - 西方网黄回配 babepedia 的候选已产出（`scripts/match_babepedia_creators.py`，只写 CSV 不写 ledger）：195 个拉丁名 creator 中命中 19 个、需人工确认 8 个、确认无档案 165 个、限流未取得 3 个。判据只认 `<title>`；页面上的 `/babe/` 链接全是 `thumbshot` 相关推荐，实测查 `SexySaffron` 会抓出毫无关系的 `Brianna_Marchant`，一律不采信。待修：去尾部数字属于有损变体，`fantia-3760310` 经它削成 `fantia` 后误配到 `Rio Hcup Fantia`，须封顶为「需人工确认」。
 - 目录创作者审计覆盖全部 66,252 条历史关系：58,803 条为仅目录候选、6,621 条缺少路径交叉核验、745 条 TokyoDolls 错挂「捅主任」已解除、83 条「足交仙人」已按文件名/水印证据归到 `suzuq`。逐项和汇总 CSV 位于 `peach-data/review/creator-attribution-*-20260815.csv`；没有删除媒体或标签。
@@ -144,7 +145,7 @@
 - 2026-08-17 批代码改动（merge_entity 回归主线、sheets 色彩元数据重试、media 大小写不敏感匹配）模块级 `unittest` 全部通过：`test_entity_merge` 4 项、`test_scripts` 16 项、`test_media` 9 项等。注意：实测在工具管道里直跑 `python -m unittest discover` 全量会挂起或整会话输出消失（test_jobs 模块极快退出时竞态最明显），模块级独立运行全部通过；唯一可信入口仍是 `& .\scripts\test.ps1`。
 - 2026-08-19 发现「测试通过」曾有一段并不成立：`test_rm_web.py` 与 `test_web_ui.py` 各有一处 `if __name__ == "__main__": unittest.main()` 被插在类中间，其后缩进 4 格的 16 条测试被解析成 if 块语句，从写下起就没被收集过——不报错、不告警，其中包括复核页三类候选的全部数据层断言。修正后全量由 355 升到 371 且全绿。`tests/test_test_collection.py` 用 AST 禁止这种形状，避免再出现「绿灯但没覆盖」。
 
-- 2026-08-21 macOS 最新基线：`./scripts/test.sh` 全量 458 项通过、3 项跳过；Windows 当前状态提交
+- 2026-08-21 macOS 最新基线：`./scripts/test.sh` 全量 468 项通过、3 项跳过；Windows 当前状态提交
   `& .\scripts\test.ps1` 全量 460 项通过、12 项按平台跳过；上下文预算检查通过。
 - Windows 无外置盘生产验收：HTTP 与严格 CA HTTPS `/healthz` 返回 200，账本、FFmpeg、115 和
   PikPak 可用，只有 `local` 来源离线；115 HTTP 与 PikPak 严格 HTTPS 各完成 1 KiB `206` Range。
@@ -161,7 +162,7 @@
 1. 创作者板的机械识别已做完：`creator-tags-review.csv` 里 42 条 pending 全部产出 candidate（34 candidate、8 skip，见 `creator-tags-candidate-20260817.csv`），没有未覆盖的板。剩下的是用户在 `/review` 页面逐条复核，点「通过」才写 `asset_tag/asset_entity`。注意天花板：全库 7,622 条无标签视频里创作者板最多覆盖约 2,800 条，其余既无创作者也无有效番号（384 个 FC2 + 约 330 个 `WX` 业余码，三源实测零命中）。
 2. FC2 评论标记跑完后逐条复核 `/review` 的 `fc2_markings` 层。这批候选的置信度只有「几条独立评论这么说」一个信号，写在 `performer_votes` 里；匿名评论一律不自动升级为 `approved`。收获 CSV 里库外 video_id 的标记先存着不入库，等对应作品进库时再回配。还没做的：把复核通过的演员写进 `entity`/`asset_entity`，以及按等价关系做跨号去重。
 3. 首尾帧额外抽样：识别水印、出处和 `full version available`，生成带证据的「不完整版/剪辑版」候选。首个回归样本为 115 的 `04_Stepsistercaughtmejerkingoff,deepthroat,throatpie.mp4` 片尾。
-4. 补齐女优身份剩余缺口：38 位查不到日文名（多数本名已是日文，无需改动）、15 位图库未收录、5 位所有候选不过质量门槛。头像质量权重的后续档位（人脸感知裁图、清晰关键帧）仍未实现。
+4. 继续人工补齐姓名审计留下的 35 位未解析发行女优；这些多为艺名、账号式拼写或上游未收录，现状刻意保留原名，不能为追求“全中文”而猜译。头像仍有 15 位图库未收录、5 位所有候选不过质量门槛；姓名与头像进度不得再互相阻塞。
 5. 通过官方/公开来源补齐 86 个厂牌 Logo，保留来源和质量门槛。Logo 与头像的取源方向相反：头像应取整理好的图库，Logo 是品牌标识，官网与维基才是权威来源。
 6. PikPak 抽帧已可走直连：代理策略组「📦 PikPak 视频」切到 DIRECT 后实测九帧 64.2 秒、30.5 MB（走代理时为 13.7 秒、163 MB），慢约 4.7 倍但流量少约 5 倍且不占代理预算。创作者采样 88 板据此约 2.7 GB。
 7. 115 抽帧失败的大小写部分已修复：`peach.media.resolve_case_insensitive` 与 `FilesystemBackend.file_for`、`scripts/sheets.py`、`scripts/probe.py` 的 worker 均已接入；2026-08-17 重跑 33 条九帧，31 成功、2 失败。这 2 条的原因已查清（见上一节）：`18349` 是 ledger 时长记错、`12510` 是片源头损坏。2026-08-18 已全部收尾：`sheets.py` 区分失败原因、`probe.py`/`sheets.py` 新增 `--asset`、`18349` 重探重抽成功、`12510` 判为坏片源并留痕，详见上一节。`sheets.py` 遇 `prim:reserved` 非法色彩元数据的重试已完成并有测试。
@@ -178,9 +179,8 @@
 <!-- job-status:start -->
 
 <!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->
-<!-- generated 2026-08-19T00:23Z -->
+<!-- generated 2026-08-21T12:42Z -->
 
-- 最近自动交接：`claude` / `SessionEnd` / `other`，2026-08-19T00:23:12+00:00。
 - 资产 81769 条，其中视频 24889 条。
 - 待抽帧（可抽 / 缺时长待 probe / 合计）：
   - `local`：3 / 1 / 4
@@ -188,7 +188,7 @@
   - `pikpak`：4751 / 5445 / 10196
   PikPak 的策略组已可切 DIRECT：2026-08-15 实测走代理时 9 帧 163 MB / 13.7 秒，走直连时 30.5 MB / 64.2 秒——慢约 4.7 倍但流量少约 5 倍且不占代理预算。全量抽帧仍是 773 GB 量级（代理口径），按创作者采样 88 板直连约 2.7 GB。115 一直走直连，同样动作约 285 MB 一张接触表。
 - 无内容标签视频 7537 条（占视频 30%）。
-- `asset_tag` 来源分布：`vision_creator` 27004、`pixiv_tag` 19753、`name` 19319、`stash` 15450、`r18` 2496、`performer` 1887、`follow` 1376、`r18:performer` 1204、`javbus:performer` 49。
+- `asset_tag` 来源分布：`vision_creator` 27004、`pixiv_tag` 19753、`name` 19319、`stash` 15450、`r18` 2496、`performer` 1596、`follow` 1376、`r18:performer` 1204、`javbus:performer` 49。
 - 番号 1466 个，其中 1158 个有厂牌（79%）。
 
 | 产物 | 行数 | 生成时间 | 说明 |

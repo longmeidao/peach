@@ -24,6 +24,7 @@
 | HTML 适配器 | Beautiful Soup 或 selectolax | 来源专用选择器和来源记录 |
 | 位图 | Pillow | 头像/Logo 质量和来源策略 |
 | 搜索 | SQLite FTS5 | 索引字段、排序、profile 感知筛选 |
+| 女优姓名对照 | `li-peifeng/Jav-Actors-Mapping` 的固定 revision，仅作私有输入（仓库未声明许可证，不随 Peach 分发） | 精确匹配、冲突复核、别名、来源与真实 ledger 写入 |
 | 媒体探测/转码 | Peach 管理的 FFmpeg/ffprobe | 任务策略和 Media Engine 编排 |
 | HTML5/HLS/DASH 播放 | Video.js 8.23.9 + 内置 VHS（Apache-2.0，本地固定版本） | 流方案、授权、稳定时长、回退顺序和统计面板 |
 | 图标 | 固定版本的本地 Lucide 子集；Health Icons 24 px outline（CC0）用于领域图标 | 标签、状态和交互设计 |
