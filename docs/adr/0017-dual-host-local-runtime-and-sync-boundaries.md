@@ -18,7 +18,7 @@ Peach 的目标是 Windows 与 macOS 各自拥有内置盘上的代码、运行�
 
 ### 每台机器独立持有运行环境
 
-- Windows 目标根目录为 `C:\Users\longm\Peach`：`peach-app`、`peach-data`、
+- Windows 目标根目录为 `C:\Users\longm\Desktop\peach`：`peach-app`、`peach-data`、
   `peach-worktrees` 均位于内置盘。迁移完成前，`R:\peach-app`、`R:\peach-data` 只是旧运行态
   和迁移来源，不是目标路径。
 - macOS 保持 `~/Desktop/lmd.gg/peach/{peach-app,peach-data,peach-worktrees}`。
@@ -73,8 +73,8 @@ Peach 的目标是 Windows 与 macOS 各自拥有内置盘上的代码、运行�
 ## 实施清单
 
 1. 将当前 `master` 推到私有 GitHub；在 Windows 内置盘克隆到
-   `C:\Users\longm\Peach\peach-app`，建立本机 `.venv` 并跑 `scripts\test.ps1`。
-2. 在 Windows 建立 `C:\Users\longm\Peach\peach-data` 与 `peach-worktrees`，把
+   `C:\Users\longm\Desktop\peach\peach-app`，建立本机 `.venv` 并跑 `scripts\test.ps1`。
+2. 在 Windows 建立 `C:\Users\longm\Desktop\peach\peach-data` 与 `peach-worktrees`，把
    `PEACH_DATA_ROOT`、构建产物、桌面/Startup 快捷方式和日志路径切到内置盘。
 3. 停止两端 Peach，确认当前账本世代一致并备份；用 SQLite backup API 把权威账本播种到
    Windows 本机副本，核对迁移版本、计数、完整性和外键。

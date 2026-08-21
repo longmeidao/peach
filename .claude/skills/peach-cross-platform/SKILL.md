@@ -33,7 +33,7 @@ description: 在 macOS 上开工、改动路径解析或挂载判定、遇到 gi
 用 `PEACH_DRIVE_MAP=R=/mnt/res,B=/mnt/115` 覆盖；数据目录用 `PEACH_DATA_ROOT`。
 CloudDrive 在 Windows 是盘符、在 macOS 是 macFUSE 挂载点，这层不是可选优化。
 
-运行目录不跟着媒体盘符走。Windows 目标根是 `C:\Users\longm\Peach`，macOS 是
+运行目录不跟着媒体盘符走。Windows 目标根是 `C:\Users\longm\Desktop\peach`，macOS 是
 `~/Desktop/lmd.gg/peach`；Windows 仍在外置 `R:` 上运行，尚未完成迁移。外置盘以后只承担媒体资源。
 
 ## 三条只在 Windows 成立的假设
@@ -88,7 +88,7 @@ macOS 的 FFmpeg 走 PATH（`brew install ffmpeg`）；Windows 的 FFmpeg bundle
 
 ## 代码同步
 
-代码在私有仓库 `longmeidao/peach`（`origin`），两台机器手动 push/pull，**不自动推送**。
+代码在私有仓库 `longmeidao/peach-app`（`origin`），两台机器手动 push/pull，**不自动推送**。
 开工前先 `sh scripts/sync_status.sh`：落后远端就先 `git pull --rebase`，别在旧代码上接着
 写；账本是另一条链路（`peach.sync`），同一个脚本会一并报告。
 

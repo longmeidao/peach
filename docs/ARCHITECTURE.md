@@ -43,7 +43,7 @@ Windows 与 macOS 各自在内置盘持有代码、`peach-data`、`.venv` 和 wo
 账本走 Peach 单写者复制，其他运行数据按 durable artifact 与本机状态拆分，禁止整体同步。
 Windows 独立环境尚未迁移完成，见 ADR-0017 与 `docs/STATUS.md`。
 
-`peach-data` 与代码仓库刻意分离（Windows 目标为 `C:\Users\longm\Peach\peach-data`，
+`peach-data` 与代码仓库刻意分离（Windows 目标为 `C:\Users\longm\Desktop\peach\peach-data`，
 macOS 为 `~/Desktop/lmd.gg/peach/peach-data`，由 `PEACH_DATA_ROOT` 覆盖）：
 
 - `database/`：SQLite 真相库。本地是工作副本，血缘记在同目录的 `ledger.db.sync.json`
