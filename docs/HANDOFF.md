@@ -255,6 +255,14 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - hover 预览的真实成本是每次悬停一条 `/stream` 加 7 次 `currentTime` 跳段，共 8 个 Range 请求；配合 `no-store`，这些字节一个都不能复用。评估首页流畅度时必须把它算进连接预算。
 - Windows 千兆线路理论上限约 125 MB/s。115 实测单文件由 CloudDrive 启动 2 条约 2 MB/s 的 CDN 连接；`max_download_speed_kbyps=0` 表示未设本地限速。卡顿排查先看 FlowLens 是否存在关闭详情后仍下载的旧连接，再查 Range/缓存，不把单连接速度直接归因于本地带宽。
 
+## 本机服务、系统代理与双机广播
+
+- **对本机服务的 HTTP 探测必须 `trust_env=False`**。代理客户端（Stash、HapiGo、Surge）会设置 macOS 系统级 HTTP 代理，httpx 默认经 `urllib.getproxies()` 读它，探测 `127.0.0.1` 的请求被送进代理、由代理回 503——服务活着却被判「未运行」。2026-08-21 实测如此，修复在 `peach.tray.ServiceManager.healthy`，`test_health_check_never_goes_through_a_proxy` 守门。任何新写的健康检查/回环探测都适用同一条。
+- **macOS 系统代理例外列表必须包含 `*.local` 和 `192.168.50.0/24`**。浏览器走系统代理时，代理核心解析不了 mDNS 名字，`http://peach.local` 会被代理回 503（终端直连正常，所以只有浏览器坏）。用 `networksetup -setproxybypassdomains <服务> "*.local" "localhost" "127.0.0.1" "192.168.50.0/24"` 设置，`scutil --proxy` 的 `ExceptionsList` 复查。代理客户端重设系统代理后这一列表可能被清掉，排查浏览器打不开 `.local` 时先看这里。
+- **双机广播分工：macOS 独占 `peach.local`，Windows 用 `PEACH_MDNS_NAME=peach-win`**。mDNS 同名谁后注册谁赢；Windows 迁移完成前不得让它的托盘开机自启——残留广播会把 `peach.local` 抢到它自己那边，而它上面没有服务。服务可以同时跑（账本单写者复制兜底），但两边同时写入会很快冲突转只读。
+- **两台机器各有独立的本机 CA**（secrets 按设计不共享）。iPhone/iPad 必须信任「当前正在服务的那台」的 CA 才能用 HTTPS；换机器服务后要装对应的 `peach-local-ca.crt` 并在「证书信任设置」开完全信任。核对指纹：`openssl x509 -in .../peach-local-ca.crt -noout -fingerprint`。
+- 菜单栏状态行逐个点名每个服务：`HTTP 正常 · HTTPS 异常（状态码 503）`，异常附最近一次探测的失败原因；不要改回只报「未运行」的写法。
+
 ## 恢复入口
 
 项目重构时已从活动目录删除 deprecated 脚本和按日期文档，Git 历史仍可恢复。旧 `_SHARED_STATE` 已迁到 `R:\peach-data\state`。重构前根仓库元数据暂存于 `R:\peach-data\archive\peach-root-repo-backup-20260814`，仅作恢复证据。
