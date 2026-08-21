@@ -150,7 +150,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 
 - 规范名用最新艺名，旧名一律降为别名。r18 记录的是作品发行当时的艺名且不会回溯更新，所以改过名的女优在 r18 上永远是旧名；av-wiki 的 URL slug 就是罗马字，可与 r18 一样做精确回配，并给出现用名。
 - 「这一页只有一位女优」永远不构成证据。库里大量番号是 BEST 合集（一部片可列 8~11 位），搜索无结果的页面仍会渲染推荐文章，改名后 slug 也会变。同一个错误判据在 javdb、av-wiki 两处各犯过一次，都是靠 dry-run 拦下的：一次让两位不同女优被认成同一人，一次让 5 位里错 3 位。精确回配命中优先于任何「唯一」推断，「唯一」只有在两个番号同证时才作数。
-- `entity(kind, normalized_name)` 的唯一约束冲突通常不是 bug，而是信号：两个实体其实是同一人的新旧艺名。合并走 `peach.entities.merge_entity`，保留作品多的一侧，迁移关系/别名/外部引用/链接/搜索词，并把所有旧称留作别名。`entity_external_ref` 每个 provider 只能留一条，同源的第二条会被丢弃并报告，不能静默覆盖。合并不可逆，必须先取得用户授权并备份。
+- `entity(kind, normalized_name)` 的唯一约束冲突通常不是 bug，而是信号：两个实体其实是同一人的新旧艺名。合并走 `peach.entities.merge_entity`，保留作品多的一侧，迁移关系/别名/外部引用/链接/搜索词，并把所有旧称留作别名。`entity_external_ref` 每个 provider 只能留一条，同源的第二条会被丢弃并报告，不能静默覆盖。合并不可逆，必须先取得用户授权并备份。creator / performer 跨类重复不用「作品数多的一侧」规则：只有两边非空作品集合完全相同，且 performer 别名精确命中 creator 名，或 creator 名由 performer 本名与账号别名组成时，才能自动归并；`r18:performer` / `javbus:performer` 是正式发行出演元数据，保留 performer，通用 `performer` 是 Stash 压平后的兼容断言，保留 creator。合并时必须同步 `asset.creator` 与 `演员:` 兼容投影，否则已删实体仍会在详情页伪造链接。
 - 改写 `entity.canonical_name` 属于真相字段写入，与迁移同级：`--apply` 必须同时给 `--backup`。
 - 头像与厂牌 Logo 的取源方向相反。头像去精心整理的图库（Gfriends 约 10.7 万张，目录名首字符即质量档位），不要回官方站——同一张脸 DMM 官方只给 125×125，图库存的是 500×500 起，最高 1500×2125。Logo 是品牌标识，官网与维基才是权威来源。
 - 头像门槛按长短边分别判定（长边 ≥500 且短边 ≥300）。竖构图人像宽度天然小，套用为方图设的「短边 ≥512」会拒掉 `0-Hand-Storage`(334×501)、`8-GRAPHIS`(360×508) 这些最优来源。
