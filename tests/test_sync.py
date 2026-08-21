@@ -85,6 +85,19 @@ class CopyTests(unittest.TestCase):
             copy_database(source, target)
             self.assertEqual(count(target), 5)
 
+    def test_copy_removes_stale_target_sidecars(self):
+        """原子替换新快照前必须清掉旧 WAL；否则会把两代数据库拼在一起。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            source, target = Path(tmp) / "a.db", Path(tmp) / "b.db"
+            make_db(source, 5)
+            make_db(target, 1)
+            for suffix in ("-wal", "-shm", "-journal"):
+                Path(f"{target}{suffix}").write_bytes(b"stale")
+            copy_database(source, target)
+            self.assertEqual(count(target), 5)
+            for suffix in ("-wal", "-shm", "-journal"):
+                self.assertFalse(Path(f"{target}{suffix}").exists())
+
 
 class PlanTests(unittest.TestCase):
     def setUp(self):
