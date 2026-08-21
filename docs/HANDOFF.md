@@ -179,7 +179,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 
 ## 运行与部署
 
-- 当前 Windows 日常入口仍是外置盘 `R:\peach-app` 下的 Startup `Peach.lnk`；目标入口位于 `C:\Users\longm\Peach\peach-app`，迁移后仍只保留一个 Startup 托盘入口。
+- 当前 Windows 日常入口仍是外置盘 `R:\peach-app` 下的 Startup `Peach.lnk`；目标入口位于 `C:\Users\longm\Desktop\peach\peach-app`，迁移后仍只保留一个 Startup 托盘入口。
 - Windows 发布入口使用 `scripts/build_windows.ps1`：先用 `scripts/generate_brand_assets.py` 从原始附件生成正方形 `resources/peach-logo.png` 和多尺寸 `resources/peach.ico`，再构建单一 `dist/Peach/Peach.exe`。无参数运行托盘，`serve`/`migrate` 运行 CLI；桌面快捷方式由 `scripts/create_desktop_shortcut.ps1` 创建，图标使用 `Peach.exe,0`，行为与 FlowLens 的快捷方式一致；Startup 安装仍由 `scripts/manage_tray_startup.ps1` 负责。
 - `dist/Peach/Peach.exe` 是本机打包入口，不是可移动的独立发行版：托盘只打包了自己，服务进程仍由项目 venv 的 `peach.exe` 承担（`_peach_executable()` 从 exe 位置逐级向上找 `.venv\Scripts\peach.exe`）。脱离同一台机器的项目 `.venv` 复制不会工作，不要按「单文件绿色版」对外描述。
 - 托盘单击打开 HTTPS；菜单提供状态、重启、日志、更新检查和退出。托盘只终止自己创建的 Peach 服务进程。

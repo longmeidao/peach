@@ -16,9 +16,9 @@ macOS 已完成本机化；Windows 截至 2026-08-21 仍从外置盘的 `R:\peac
 
 | 角色 | Windows 目标（待迁移） | macOS 当前 |
 |---|---|---|
-| 项目代码 | `C:\Users\longm\Peach\peach-app` | `~/Desktop/lmd.gg/peach/peach-app` |
-| 运行数据 | `C:\Users\longm\Peach\peach-data` | `~/Desktop/lmd.gg/peach/peach-data` |
-| 并行 worktree | `C:\Users\longm\Peach\peach-worktrees` | `~/Desktop/lmd.gg/peach/peach-worktrees` |
+| 项目代码 | `C:\Users\longm\Desktop\peach\peach-app` | `~/Desktop/lmd.gg/peach/peach-app` |
+| 运行数据 | `C:\Users\longm\Desktop\peach\peach-data` | `~/Desktop/lmd.gg/peach/peach-data` |
+| 并行 worktree | `C:\Users\longm\Desktop\peach\peach-worktrees` | `~/Desktop/lmd.gg/peach/peach-worktrees` |
 | 本地媒体 | `R:\media` | `/Volumes/RESOURCES/media` |
 | 115（账本写 `B:\`） | `B:\` | `~/Desktop/IMSL/115` |
 | PikPak（账本写 `A:\`） | `A:\` | `~/Desktop/IMSL/Pikpak` |
@@ -223,7 +223,7 @@ SAN 里的局域网 IP 会随 DHCP 变化失效，**但不需要人去管，也�
 
 ### 两台机器怎么保持一致
 
-- **代码**走私有 GitHub 仓库 `longmeidao/peach`（`origin`）。阶段性任务完成、测试全绿且无报错
+- **代码**走私有 GitHub 仓库 `longmeidao/peach-app`（`origin`）。阶段性任务完成、测试全绿且无报错
   时直接推送；测试有失败，或改动涉及真实 ledger 写入、不可逆删除、生产入口、凭据时先确认。
   开工前跑一条命令看两边差了多少，别在旧代码上接着写：
 

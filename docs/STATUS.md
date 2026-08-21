@@ -6,7 +6,7 @@
 
 - 生产入口：Windows 当前用户 Startup 中的 `Peach.lnk`，启动 `R:\peach-app\dist\Peach\Peach.exe`（无参数托盘模式）。当前版本 `0.6.1`。
 - Windows **还没有**内置盘独立环境：代码、`peach-data`、venv、构建产物和 worktree 仍在外置
-  `R:`。目标是迁到 `C:\Users\longm\Peach`，外置盘只保留 `R:\media`；截至本状态尚未实施，
+  `R:`。目标是迁到 `C:\Users\longm\Desktop\peach`，外置盘只保留 `R:\media`；截至本状态尚未实施，
   不能写成已完成。见 ADR-0017。
 - HTTP：`0.0.0.0:80`；HTTPS：`192.168.50.162:443`。`peach.local` 是唯一正式局域网名称，发布为 `192.168.50.162`。
 - mDNS 使用 Python zeroconf 的全合格网卡监听；生产显式固定发布地址，避免隧道网卡误选。没有发布 `lmd-dst.local`。
