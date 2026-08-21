@@ -17,7 +17,10 @@ import pystray
 from PIL import Image
 
 from .certs import ensure_certificate
-from .config import LOG_DIR, MDNS_HOSTNAME, PROJECT_ROOT, SECRETS_DIR, STATE_DIR
+from .config import (
+    DATABASE_PATH, LOG_DIR, MDNS_HOSTNAME, PROJECT_ROOT, SECRETS_DIR,
+    SHARED_DATABASE_PATH, STATE_DIR,
+)
 from .mdns import lan_ipv4
 from .netwatch import NetworkChangeWatcher
 from .versioning import VersionManager
@@ -145,10 +148,12 @@ class ServiceManager:
         *,
         popen: Callable[..., subprocess.Popen] = subprocess.Popen,
         health_get: Callable[..., httpx.Response] = httpx.get,
+        run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
     ) -> None:
         self.specs = specs
         self._popen = popen
         self._health_get = health_get
+        self._run = run
         self._owned: dict[str, subprocess.Popen] = {}
         self._logs: list[object] = []
         self._last_health: dict[str, tuple[bool, str]] = {
@@ -257,6 +262,41 @@ class ServiceManager:
         self.stop_owned()
         self.start_missing()
         return self.wait_until_ready()
+
+    def sync_ledger(self, executable: Path | None = None) -> tuple[bool, str]:
+        """停掉本托盘拥有的服务，单次同步后恢复；不碰别的进程拥有的服务。"""
+        with self._lock:
+            external = []
+            for spec in self.specs:
+                owned = self._owned.get(spec.name)
+                if self.healthy(spec) and (owned is None or owned.poll() is not None):
+                    external.append(spec.name.upper())
+        if external:
+            return False, f"未同步：{'/'.join(external)} 服务不归本托盘管理"
+
+        peach = executable or _peach_executable()
+        self.stop_owned()
+        try:
+            creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+            result = self._run(
+                [
+                    str(peach), "ledger-sync", "--db", str(DATABASE_PATH),
+                    "--shared-db", str(SHARED_DATABASE_PATH),
+                ],
+                cwd=str(PROJECT_ROOT), capture_output=True, text=True,
+                encoding="utf-8", errors="replace", shell=False,
+                creationflags=creationflags,
+            )
+            output = (result.stdout or result.stderr or "账本同步没有输出").strip()
+            ok = result.returncode == 0
+        except (OSError, subprocess.SubprocessError) as exc:
+            ok, output = False, f"账本同步启动失败：{exc}"
+        finally:
+            self.start_missing()
+            ready = self.wait_until_ready()
+        if not ready:
+            return False, f"{output}；服务未能在 20 秒内恢复"
+        return ok, output
 
 
 #: venv 里放可执行文件的目录与后缀。Windows 是 `Scripts\\peach.exe`，POSIX 是 `bin/peach`。
@@ -405,6 +445,7 @@ class PeachTray:
         self.version = self.versions.inspect()
         self._stop_event = threading.Event()
         self._restart_lock = threading.Lock()
+        self._sync_lock = threading.Lock()
         self._update_lock = threading.Lock()
         version_menu = pystray.Menu(
             pystray.MenuItem(lambda _item: f"Peach {self.version.package_version}", None, enabled=False),
@@ -422,6 +463,7 @@ class PeachTray:
                 pystray.MenuItem("打开 Peach", self.open, default=True),
                 pystray.MenuItem(lambda _item: f"状态：{self.manager.status()}", None, enabled=False),
                 pystray.Menu.SEPARATOR,
+                pystray.MenuItem("同步 Ledger", self.sync_ledger),
                 pystray.MenuItem("重启服务", self.restart),
                 pystray.MenuItem("查看日志", self.open_logs),
                 pystray.MenuItem("版本与更新", version_menu),
@@ -450,6 +492,22 @@ class PeachTray:
                 self._restart_lock.release()
 
         threading.Thread(target=work, name="PeachRestart", daemon=True).start()
+
+    def sync_ledger(self, icon=None, _item=None) -> None:
+        if not self._sync_lock.acquire(blocking=False):
+            return
+        tray_icon = icon or self.icon
+        tray_icon.notify("正在安全停止服务并同步…", "Peach Ledger")
+
+        def work() -> None:
+            try:
+                ok, message = self.manager.sync_ledger()
+                tray_icon.update_menu()
+                tray_icon.notify(message, "Peach Ledger" if ok else "Peach Ledger 同步失败")
+            finally:
+                self._sync_lock.release()
+
+        threading.Thread(target=work, name="PeachLedgerSync", daemon=True).start()
 
     def open_logs(self, _icon=None, _item=None) -> None:
         LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -516,6 +574,7 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
     versions = VersionManager()
     snapshot = versions.inspect()
     app: dict[str, object] = {}
+    sync_lock = threading.Lock()
 
     def restart() -> None:
         manager.stop_owned()
@@ -527,6 +586,23 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
         if holder is not None:
             holder.stop()
 
+    def sync_ledger() -> None:
+        if not sync_lock.acquire(blocking=False):
+            return
+
+        def work() -> None:
+            try:
+                holder = app.get("app")
+                if holder is not None:
+                    holder.notify("正在安全停止服务并同步…", "Peach Ledger")
+                ok, message = manager.sync_ledger()
+                if holder is not None:
+                    holder.notify(message, "Peach Ledger" if ok else "Peach Ledger 同步失败")
+            finally:
+                sync_lock.release()
+
+        threading.Thread(target=work, name="PeachLedgerSync", daemon=True).start()
+
     menu = MenuBarApp(
         create_icon(template=True),
         "Peach · 蜜桃",
@@ -535,6 +611,7 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
             (lambda: f"状态：{manager.status()}", None),
             (f"地址：{OPEN_URL}", None),
             (None, None),
+            ("同步 Ledger", sync_ledger),
             ("重启服务", restart),
             ("查看日志", lambda: subprocess.run(["open", str(LOG_DIR)], check=False)),
             (lambda: f"版本 {snapshot.package_version} · {snapshot.build_label}", None),
