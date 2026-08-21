@@ -10,6 +10,7 @@ from peach.sync import (
     local_dirty,
     plan,
     read_marker,
+    writer_device,
     write_marker,
 )
 
@@ -98,6 +99,13 @@ class CopyTests(unittest.TestCase):
             for suffix in ("-wal", "-shm", "-journal"):
                 self.assertFalse(Path(f"{target}{suffix}").exists())
 
+    def test_copy_accepts_an_immutable_closed_snapshot_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source, target = Path(tmp) / "shared.db", Path(tmp) / "local.db"
+            make_db(source, 4)
+            copy_database(source, target, source_immutable=True)
+            self.assertEqual(count(target), 4)
+
 
 class PlanTests(unittest.TestCase):
     def setUp(self):
@@ -174,20 +182,20 @@ class LedgerSyncTests(unittest.TestCase):
         make_db(self.local, 4)
         self.shared.parent.mkdir(parents=True)
         sync = self.sync()
-        self.assertEqual(sync.startup().action, "push")
-        self.assertEqual(sync.status, "in-sync")
+        self.assertEqual(sync.synchronize_now().action, "push")
+        self.assertEqual(sync.status, "writer")
         self.assertEqual(count(self.shared), 4)
         self.assertEqual(plan(self.local, self.shared).action, "in-sync")
 
     def test_second_machine_pulls_what_the_first_pushed(self):
         make_db(self.local, 4)
         self.shared.parent.mkdir(parents=True)
-        self.sync("mac").startup()
+        self.sync("mac").synchronize_now()
 
         other_local = self.root / "win" / "ledger.db"
         other_local.parent.mkdir(parents=True)
         other = LedgerSync(other_local, self.shared, "win", interval=0)
-        self.assertEqual(other.startup().action, "pull")
+        self.assertEqual(other.synchronize_now().action, "pull")
         self.assertEqual(count(other_local), 4)
         self.assertEqual(plan(other_local, self.shared).action, "in-sync")
 
@@ -195,7 +203,7 @@ class LedgerSyncTests(unittest.TestCase):
         make_db(self.local, 1)
         self.shared.parent.mkdir(parents=True)
         sync = self.sync()
-        sync.startup()
+        sync.synchronize_now()
         first = read_marker(self.shared).generation
         make_db(self.local, 1)
         self.assertEqual(sync.push_if_needed(), "pushed")
@@ -206,7 +214,7 @@ class LedgerSyncTests(unittest.TestCase):
         make_db(self.local, 1)
         self.shared.parent.mkdir(parents=True)
         sync = self.sync()
-        sync.startup()
+        sync.synchronize_now()
         self.assertFalse(sync.read_only)
 
         # 另一台机器推了新的一代，同时本机也有未回写的改动
@@ -221,7 +229,7 @@ class LedgerSyncTests(unittest.TestCase):
         make_db(self.local, 2)
         self.shared.parent.mkdir(parents=True)
         sync = self.sync()
-        sync.startup()
+        sync.synchronize_now()
 
         detached = LedgerSync(self.local, self.root / "gone" / "ledger.db", "mac", interval=0)
         make_db(self.local, 1)
@@ -245,7 +253,7 @@ class LedgerSyncTests(unittest.TestCase):
         make_db(self.local, 1)
         self.shared.parent.mkdir(parents=True)
         sync = self.sync()
-        sync.startup()
+        sync.synchronize_now()
         make_db(self.local, 1)
         self.assertEqual(sync.synchronize_now().action, "local-ahead")
         self.assertEqual(count(self.shared), 2)
@@ -258,6 +266,55 @@ class LedgerSyncTests(unittest.TestCase):
         make_db(self.local, 1)
         sync = self.sync()
         self.assertTrue(sync.synchronize_now().conflict)
+        self.assertEqual(count(self.shared), 2)
+
+    def test_observe_never_copies_and_only_owner_can_write(self):
+        make_db(self.local, 2)
+        make_db(self.shared, 2)
+        write_marker(self.local, Marker(7, "mac", "", 0, 0))
+        write_marker(self.shared, Marker(7, "mac", "", 0, 0))
+        reader = self.sync("win")
+        self.assertEqual(reader.observe().action, "in-sync")
+        self.assertTrue(reader.read_only)
+        self.assertEqual(reader.status, "reader")
+        writer = self.sync("mac")
+        self.assertEqual(writer.observe().action, "in-sync")
+        self.assertFalse(writer.read_only)
+        self.assertEqual(writer.status, "writer")
+        self.assertEqual(writer_device(self.local, self.shared), "mac")
+
+    def test_reader_cannot_push_a_dirty_local_copy(self):
+        make_db(self.local, 2)
+        make_db(self.shared, 2)
+        write_marker(self.local, Marker(7, "mac", "", 0, 0))
+        write_marker(self.shared, Marker(7, "mac", "", 0, 0))
+        make_db(self.local, 1)
+        decision = self.sync("win").synchronize_now()
+        self.assertTrue(decision.conflict)
+        self.assertEqual(count(self.shared), 2)
+
+    def test_take_ownership_requires_in_sync_and_advances_the_role_generation(self):
+        make_db(self.local, 2)
+        make_db(self.shared, 2)
+        write_marker(self.local, Marker(7, "mac", "", 0, 0))
+        write_marker(self.shared, Marker(7, "mac", "", 0, 0))
+        sync = self.sync("win")
+        decision = sync.take_ownership()
+        self.assertEqual(decision.action, "take-ownership")
+        self.assertEqual(read_marker(self.local).generation, 8)
+        self.assertEqual(read_marker(self.shared).generation, 8)
+        self.assertEqual(writer_device(self.local, self.shared), "win")
+        self.assertFalse(sync.read_only)
+
+    def test_service_stop_never_pushes_local_changes(self):
+        make_db(self.local, 2)
+        make_db(self.shared, 2)
+        write_marker(self.local, Marker(7, "mac", "", 0, 0))
+        write_marker(self.shared, Marker(7, "mac", "", 0, 0))
+        sync = self.sync("mac")
+        sync.observe()
+        make_db(self.local, 1)
+        sync.stop()
         self.assertEqual(count(self.shared), 2)
 
 

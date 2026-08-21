@@ -75,13 +75,14 @@ macOS 的 FFmpeg 走 PATH（`brew install ffmpeg`）；Windows 的 FFmpeg bundle
 **不是多主实时同步**——SQLite 没有安全的自动三方合并。见 ADR-0017、`src/peach/sync.py`
 与 README「账本复制」。
 
-- 启动比对世代：共享副本新就拉、本地新就留、两边都动过就转只读报冲突，由人选一边。
-- 运行中每 60 秒回写，回写前重新判定，别人抢先推过就转冲突，绝不覆盖。
+- 服务启动只观察世代和写入端，不自动拉取或推送，也没有定时同步。
+- marker 的 `device` 是唯一写入端；另一台只读。复制与「接管 Ledger 写入」只能由托盘显式执行。
+- 两边都动过就转只读报冲突，由人选一边。
 - 同步点不可达时本地仍可运行；媒体盘是否插入与账本同步无关。
 - 复制走 SQLite backup API，**不要复制 `.db` 文件**：WAL 里已提交未 checkpoint 的
   事务会丢，还可能和目标残留的 `-wal` 拼成损坏的库。
-- Windows 本地工作副本与内置盘共享副本已分离；线上 `/healthz` 会报告当前 `ledger_sync`
-  状态。显式 writer/reader 和运行中安全拉取完成前，仍只能一台接受写入。
+- Windows 本地工作副本与内置盘共享副本已分离；线上 `/healthz` 用 `writer` / `reader` /
+  `conflict` 报告角色。macOS 从 SMB 拉取时，共享 DB 只能作为 immutable 已关闭快照读取。
 - 冲突不能靠合并解决，只能选一边：复制其一覆盖另一份，或删掉一侧 `.sync.json`
   重新播种。别写「已同步」这种含糊结论。
 

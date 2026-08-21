@@ -263,7 +263,9 @@ class ServiceManager:
         self.start_missing()
         return self.wait_until_ready()
 
-    def sync_ledger(self, executable: Path | None = None) -> tuple[bool, str]:
+    def sync_ledger(
+        self, executable: Path | None = None, *, take_ownership: bool = False,
+    ) -> tuple[bool, str]:
         """停掉本托盘拥有的服务，单次同步后恢复；不碰别的进程拥有的服务。"""
         with self._lock:
             external = []
@@ -278,11 +280,14 @@ class ServiceManager:
         self.stop_owned()
         try:
             creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+            command = [
+                str(peach), "ledger-sync", "--db", str(DATABASE_PATH),
+                "--shared-db", str(SHARED_DATABASE_PATH),
+            ]
+            if take_ownership:
+                command.append("--take-ownership")
             result = self._run(
-                [
-                    str(peach), "ledger-sync", "--db", str(DATABASE_PATH),
-                    "--shared-db", str(SHARED_DATABASE_PATH),
-                ],
+                command,
                 cwd=str(PROJECT_ROOT), capture_output=True, text=True,
                 encoding="utf-8", errors="replace", shell=False,
                 creationflags=creationflags,
@@ -337,7 +342,10 @@ def build_macos_service_specs() -> tuple[ServiceSpec, ...]:
         ServiceSpec(
             "http",
             f"http://127.0.0.1:{MACOS_PORT}/healthz",
-            (peach, "serve", "--host", "0.0.0.0", "--port", str(MACOS_PORT)),
+            (
+                peach, "serve", "--host", "0.0.0.0", "--port", str(MACOS_PORT),
+                "--no-ledger-sync",
+            ),
             True,
         ),
     ]
@@ -354,7 +362,7 @@ def build_macos_service_specs() -> tuple[ServiceSpec, ...]:
             f"https://127.0.0.1:{MACOS_TLS_PORT}/healthz",
             (
                 peach, "serve", "--host", "0.0.0.0", "--port", str(MACOS_TLS_PORT),
-                "--no-mdns",
+                "--no-mdns", "--no-ledger-sync",
                 "--ssl-certfile", str(cert), "--ssl-keyfile", str(key),
             ),
             str(ca),
@@ -378,7 +386,10 @@ def build_service_specs(lan_address: str | None = None) -> tuple[ServiceSpec, ..
         ServiceSpec(
             "http",
             "http://127.0.0.1/healthz",
-            (peach, "serve", "--host", "0.0.0.0", "--port", "80", "--mdns-address", address),
+            (
+                peach, "serve", "--host", "0.0.0.0", "--port", "80",
+                "--mdns-address", address, "--no-ledger-sync",
+            ),
             True,
         ),
         ServiceSpec(
@@ -386,6 +397,7 @@ def build_service_specs(lan_address: str | None = None) -> tuple[ServiceSpec, ..
             f"https://{address}/healthz",
             (
                 peach, "serve", "--host", address, "--port", "443", "--no-mdns",
+                "--no-ledger-sync",
                 "--ssl-certfile", str(cert), "--ssl-keyfile", str(key),
             ),
             str(ca),
@@ -464,6 +476,7 @@ class PeachTray:
                 pystray.MenuItem(lambda _item: f"状态：{self.manager.status()}", None, enabled=False),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem("同步 Ledger", self.sync_ledger),
+                pystray.MenuItem("接管 Ledger 写入", self.take_ownership),
                 pystray.MenuItem("重启服务", self.restart),
                 pystray.MenuItem("查看日志", self.open_logs),
                 pystray.MenuItem("版本与更新", version_menu),
@@ -494,20 +507,27 @@ class PeachTray:
         threading.Thread(target=work, name="PeachRestart", daemon=True).start()
 
     def sync_ledger(self, icon=None, _item=None) -> None:
+        self._run_ledger_action(icon, take_ownership=False)
+
+    def take_ownership(self, icon=None, _item=None) -> None:
+        self._run_ledger_action(icon, take_ownership=True)
+
+    def _run_ledger_action(self, icon=None, *, take_ownership: bool) -> None:
         if not self._sync_lock.acquire(blocking=False):
             return
         tray_icon = icon or self.icon
-        tray_icon.notify("正在安全停止服务并同步…", "Peach Ledger")
+        action = "接管写入" if take_ownership else "同步"
+        tray_icon.notify(f"正在安全停止服务并{action}…", "Peach Ledger")
 
         def work() -> None:
             try:
-                ok, message = self.manager.sync_ledger()
+                ok, message = self.manager.sync_ledger(take_ownership=take_ownership)
                 tray_icon.update_menu()
                 tray_icon.notify(message, "Peach Ledger" if ok else "Peach Ledger 同步失败")
             finally:
                 self._sync_lock.release()
 
-        threading.Thread(target=work, name="PeachLedgerSync", daemon=True).start()
+        threading.Thread(target=work, name="PeachLedgerAction", daemon=True).start()
 
     def open_logs(self, _icon=None, _item=None) -> None:
         LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -586,7 +606,7 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
         if holder is not None:
             holder.stop()
 
-    def sync_ledger() -> None:
+    def run_ledger_action(*, take_ownership: bool) -> None:
         if not sync_lock.acquire(blocking=False):
             return
 
@@ -594,14 +614,21 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
             try:
                 holder = app.get("app")
                 if holder is not None:
-                    holder.notify("正在安全停止服务并同步…", "Peach Ledger")
-                ok, message = manager.sync_ledger()
+                    action = "接管写入" if take_ownership else "同步"
+                    holder.notify(f"正在安全停止服务并{action}…", "Peach Ledger")
+                ok, message = manager.sync_ledger(take_ownership=take_ownership)
                 if holder is not None:
                     holder.notify(message, "Peach Ledger" if ok else "Peach Ledger 同步失败")
             finally:
                 sync_lock.release()
 
         threading.Thread(target=work, name="PeachLedgerSync", daemon=True).start()
+
+    def sync_ledger() -> None:
+        run_ledger_action(take_ownership=False)
+
+    def take_ownership() -> None:
+        run_ledger_action(take_ownership=True)
 
     menu = MenuBarApp(
         create_icon(template=True),
@@ -612,6 +639,7 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
             (f"地址：{OPEN_URL}", None),
             (None, None),
             ("同步 Ledger", sync_ledger),
+            ("接管 Ledger 写入", take_ownership),
             ("重启服务", restart),
             ("查看日志", lambda: subprocess.run(["open", str(LOG_DIR)], check=False)),
             (lambda: f"版本 {snapshot.package_version} · {snapshot.build_label}", None),

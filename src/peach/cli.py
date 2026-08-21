@@ -66,19 +66,17 @@ def _serve(args: argparse.Namespace) -> int:
 
 
 def _build_sync(args: argparse.Namespace, settings: PeachSettings) -> LedgerSync | None:
-    """建立本地工作副本与专用共享副本之间的复制，并在启动时先对齐一次。
+    """建立只读角色观察器；服务启动与浏览绝不触发跨机复制。
 
     冲突不自动挑边：两台机器都写过之后没有安全的合并规则，服务照常起但转只读，
     由人选一边（把要保留的那份复制成另一份，或删掉一侧的 `.sync.json` 重新播种）。
     """
-    if args.no_ledger_sync:
-        return None
     sync = LedgerSync(
         settings.db_path, args.shared_db, device_id(STATE_DIR),
-        interval=args.ledger_sync_seconds,
+        interval=0,
     )
-    decision = sync.startup()
-    print(f"账本同步：{decision.action} · {decision.reason}")
+    decision = sync.observe()
+    print(f"账本角色：{sync.status} · {sync.detail}")
     if decision.conflict:
         print(
             "  服务转只读。请人工选定一份账本："
@@ -106,12 +104,13 @@ def _migrate(args: argparse.Namespace) -> int:
 
 def _ledger_sync(args: argparse.Namespace) -> int:
     sync = LedgerSync(args.db, args.shared_db, device_id(STATE_DIR), interval=0)
-    decision = sync.synchronize_now()
+    decision = sync.take_ownership() if args.take_ownership else sync.synchronize_now()
     completed = {
         "pull": "已从共享副本拉取",
         "push": "已推送到共享副本",
         "local-ahead": "已推送到共享副本",
         "in-sync": "两侧已经一致",
+        "take-ownership": "本机已成为唯一写入端",
         "disabled": decision.reason,
     }
     print(f"账本同步：{decision.action} · {completed.get(decision.action, decision.reason)}")
@@ -131,7 +130,8 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--no-mdns", action="store_true")
     serve.add_argument("--shared-db", type=Path, default=SHARED_DATABASE_PATH)
     serve.add_argument("--no-ledger-sync", action="store_true")
-    serve.add_argument("--ledger-sync-seconds", type=float, default=60.0)
+    serve.add_argument("--ledger-sync-seconds", type=float, default=0.0,
+                       help=argparse.SUPPRESS)
     serve.add_argument("--mdns-name", default=MDNS_NAME)
     serve.add_argument("--mdns-address", help="explicit LAN IPv4 to publish")
     serve.add_argument("--ssl-certfile", type=Path)
@@ -147,6 +147,8 @@ def build_parser() -> argparse.ArgumentParser:
     ledger_sync = commands.add_parser("ledger-sync", help="synchronize the local ledger now")
     ledger_sync.add_argument("--db", type=Path, default=DEFAULT_DB)
     ledger_sync.add_argument("--shared-db", type=Path, default=SHARED_DATABASE_PATH)
+    ledger_sync.add_argument("--take-ownership", action="store_true",
+                             help="claim the single-writer role after both copies are in sync")
     ledger_sync.set_defaults(handler=_ledger_sync)
     return parser
 

@@ -40,8 +40,8 @@ Peach 的目标是 Windows 与 macOS 各自拥有内置盘上的代码、运行�
 - 第一阶段的共享账本副本放在 Windows 内置盘的专用同步目录，由 SMB 暴露给 macOS；它是同步
   传输点，不是任一 Peach 实例直接运行的数据库。Windows 关机时 macOS 仍用本地副本运行，恢复
   后再同步。
-- 两台服务可以同时在线，但账本仍是单写者：完成显式写入者/只读者模式和运行中安全拉取前，
-  只能指定一台接受写入，另一台只读。不得把“同时运行”写成“SQLite 多主写入”。
+- 两台服务可以同时在线，但账本仍是单写者：marker 的 `device` 是唯一写入端，另一台由 API
+  强制只读。服务启动、浏览和退出都不复制；同步与写入端切换只由托盘显式动作执行。
 - 需要跨机器保存的图片资产、原始证据和复核产物从 `generated/`、`sources/`、`review/` 中拆成
   独立、稳定命名的 artifact 集；拆分后可用 Syncthing 一类文件同步工具复制。活账本、`-wal`、
   `-shm`、同步标记、凭据、日志、锁、临时文件、转码与流分片必须排除。
@@ -65,8 +65,8 @@ Peach 的目标是 Windows 与 macOS 各自拥有内置盘上的代码、运行�
 
 - GitHub 同步范围保持小而可审查；worktree、venv 和运行态问题不再跨机器污染。
 - Windows 内置盘克隆、venv、运行数据播种、默认路径、共享同步点和托盘入口已切换完成。
-- `src/peach/config.py` 的 Windows 数据根和共享根已改为内置盘；`peach.sync` 仍缺少显式
-  writer/reader 角色和运行中安全拉取，因此同时运行时仍遵守单写者纪律。
+- `src/peach/config.py` 的 Windows 数据根和共享根已改为内置盘；`peach.sync` 已实现显式
+  writer/reader 角色、手动同步、显式接管和 SMB immutable 快照拉取。
 - artifact 拆分前不启用 `peach-data` 整体同步；外置盘上的旧目录保留为只读迁移来源和备份，
   直到两端独立运行验收完成后再单独决定清退。
 
@@ -75,5 +75,4 @@ Peach 的目标是 Windows 与 macOS 各自拥有内置盘上的代码、运行�
 1. 已完成：Windows 内置盘 checkout、`.venv`、`peach-data`、worktree、账本播种、
    内置盘 SMB 同步点、默认路径和指向内置盘的 Startup 托盘入口。
 2. 已完成：Windows 固定发布 `peach-win.local`；外置盘只保留 `R:\media` 媒体职责。
-3. 待续：显式 writer/reader 角色、运行中安全拉取、durable artifact 拆分，以及拔盘后的
-   双机完整验收。
+3. 待续：durable artifact 拆分，以及拔盘后的双机完整验收。

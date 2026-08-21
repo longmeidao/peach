@@ -5,9 +5,10 @@
 这里做的是单用户场景下能做到、且不会悄悄丢数据的那种：
 
 - 共享副本只负责传输，两台机器各持一份本地工作副本；
-- 启动时比对世代：共享副本更新就拉取，本地更新就保留，**两边都动过就拒绝自动合并**，
-  进只读并报冲突，由人来选一边；
-- 运行中定期回写共享副本，所以同一时刻只有一台在写；
+- 服务启动只观察世代与写入端，**绝不自动 pull/push**；
+- `marker.device` 是当前唯一写入端，另一台服务强制只读；
+- 复制与写入端切换只能由托盘/CLI 显式执行；
+- **两边都动过就拒绝自动合并**，进只读并报冲突，由人来选一边；
 - 同步点不可达时本地照常运行，恢复后再同步。
 
 世代号只表示血缘先后，不表示时间：时钟在两台机器上不可靠，尤其 exFAT 只有
@@ -25,7 +26,6 @@ import os
 import shutil
 import sqlite3
 import tempfile
-import threading
 import uuid
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
@@ -36,7 +36,7 @@ from .platform import root_online
 
 LOGGER = logging.getLogger(__name__)
 
-#: 回写间隔。够短，崩溃时丢的是几十秒的浏览行为；够长，不会一直碾 USB 盘。
+#: 保留兼容参数；生产服务不再启动定时回写线程。
 PUSH_INTERVAL_SECONDS = 60
 
 
@@ -48,7 +48,7 @@ def _now() -> str:
 class Marker:
     """一份副本的血缘与指纹。
 
-    `generation`/`device` 是血缘，两份副本同源时相等；`size`/`mtime_ns` 是**相邻那个
+    `generation` 是血缘，`device` 同时是当前唯一写入端；`size`/`mtime_ns` 是**相邻那个
     库文件**在写下标记那一刻的指纹，用来判断这份副本之后有没有被本机写过。
     """
 
@@ -156,7 +156,19 @@ def local_dirty(db_path: Path, marker: Marker | None) -> bool:
     return current != (marker.size, marker.mtime_ns)
 
 
-def copy_database(source: Path, target: Path) -> None:
+def writer_device(local: Path, shared: Path) -> str | None:
+    """返回当前写入端；共享 marker 在同代时优先，避免半次接管产生双写。"""
+    local_marker, shared_marker = read_marker(local), read_marker(shared)
+    if local_marker is None:
+        return shared_marker.device if shared_marker else None
+    if shared_marker is None:
+        return local_marker.device
+    if shared_marker.generation >= local_marker.generation:
+        return shared_marker.device
+    return local_marker.device
+
+
+def copy_database(source: Path, target: Path, *, source_immutable: bool = False) -> None:
     """用 backup API 生成一致快照，再原子替换目标。
 
     不能让 SQLite 直接把目标连接开在 SMB 上：macOS 的 smbfs 目录可普通写入，SQLite
@@ -170,7 +182,8 @@ def copy_database(source: Path, target: Path) -> None:
     snapshot = Path(snapshot_name)
     transfer = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
     try:
-        origin = sqlite3.connect(f"file:{source}?mode=ro", uri=True)
+        immutable = "&immutable=1" if source_immutable else ""
+        origin = sqlite3.connect(f"file:{source}?mode=ro{immutable}", uri=True)
         try:
             destination = sqlite3.connect(snapshot)
             try:
@@ -220,6 +233,12 @@ def plan(local: Path, shared: Path) -> SyncPlan:
             "conflict", "缺少同步标记，无法判断两份账本的先后",
             local_generation, shared_generation,
         )
+    if (local_generation == shared_generation
+            and local_marker.device != shared_marker.device):
+        return SyncPlan(
+            "conflict", "同一世代的写入端标记不一致",
+            local_generation, shared_generation,
+        )
     if shared_generation > local_generation:
         if dirty:
             return SyncPlan(
@@ -252,18 +271,18 @@ class LedgerSync:
         self.interval = interval
         self.status = "unstarted"
         self.detail = ""
-        self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
 
     @property
     def read_only(self) -> bool:
-        """冲突未解决时禁止写入。宁可拒绝，也不能在两份分叉的账本上继续加断言。"""
-        return self.status == "conflict"
+        """只有 marker 指定的唯一写入端能写；其他服务保持可读。"""
+        return self.status == "conflict" or writer_device(self.local, self.shared) != self.device
 
     # ── 单次动作 ────────────────────────────────────────────────────────────
     def pull(self) -> None:
         shared_marker = read_marker(self.shared)
-        copy_database(self.shared, self.local)
+        # 共享副本由 push 以关闭后的 SQLite 快照原子发布。macOS smbfs 不支持 SQLite
+        # 普通只读连接的锁/sidecar 语义，但 immutable 读取这种已关闭快照是安全的。
+        copy_database(self.shared, self.local, source_immutable=True)
         generation = shared_marker.generation if shared_marker else 1
         origin = shared_marker.device if shared_marker else self.device
         write_marker(self.local, Marker(generation, origin, _now(), 0, 0))
@@ -283,27 +302,62 @@ class LedgerSync:
 
     # ── 生命周期 ────────────────────────────────────────────────────────────
     def startup(self) -> SyncPlan:
+        """兼容旧调用：启动只观察，不再复制。"""
+        return self.observe()
+
+    def observe(self) -> SyncPlan:
+        """只读刷新当前角色与同步状态，不碰 DB 或 marker。"""
         decision = plan(self.local, self.shared)
-        self.status, self.detail = decision.action, decision.reason
-        if decision.action == "pull":
-            self.pull()
-            self.status = "in-sync"
-        elif decision.action == "push":
-            self.push()
-            self.status = "in-sync"
+        owner = writer_device(self.local, self.shared)
+        if decision.conflict:
+            self.status, self.detail = "conflict", decision.reason
+        elif owner == self.device:
+            self.status, self.detail = "writer", f"本机是写入端；{decision.reason}"
+        elif owner:
+            self.status, self.detail = "reader", f"写入端是 {owner}；{decision.reason}"
+        else:
+            self.status, self.detail = "conflict", "没有可验证的写入端"
         return decision
 
     def synchronize_now(self) -> SyncPlan:
         """重新判定并完成一次安全同步，供服务停机后的手动同步使用。"""
         decision = plan(self.local, self.shared)
+        owner = writer_device(self.local, self.shared)
+        if (decision.action in ("push", "local-ahead")
+                and owner is not None and owner != self.device):
+            decision = SyncPlan(
+                "conflict", f"当前写入端是 {owner}，本机不能推送",
+                decision.local_generation, decision.shared_generation,
+            )
         self.status, self.detail = decision.action, decision.reason
         if decision.action == "pull":
             self.pull()
-            self.status = "in-sync"
         elif decision.action in ("push", "local-ahead"):
             self.push()
-            self.status = "in-sync"
+        self.observe()
         return decision
+
+    def take_ownership(self) -> SyncPlan:
+        """在两份完全一致时显式切换唯一写入端，不复制数据库内容。"""
+        decision = plan(self.local, self.shared)
+        if decision.action != "in-sync":
+            self.status, self.detail = "conflict", (
+                f"接管前必须两侧一致；当前是 {decision.action}：{decision.reason}"
+            )
+            return SyncPlan(
+                "conflict", self.detail,
+                decision.local_generation, decision.shared_generation,
+            )
+        local_marker, shared_marker = read_marker(self.local), read_marker(self.shared)
+        generation = max(
+            local_marker.generation if local_marker else 0,
+            shared_marker.generation if shared_marker else 0,
+        ) + 1
+        stamp = _now()
+        write_marker(self.shared, Marker(generation, self.device, stamp, 0, 0))
+        write_marker(self.local, Marker(generation, self.device, stamp, 0, 0))
+        self.observe()
+        return SyncPlan("take-ownership", "本机已成为唯一写入端", generation, generation)
 
     def push_if_needed(self) -> str:
         """周期回写。别人抢先推过就转冲突，绝不覆盖。"""
@@ -322,25 +376,9 @@ class LedgerSync:
         return decision.action
 
     def start(self) -> None:
-        if self.interval <= 0 or self._thread is not None:
-            return
-        self._thread = threading.Thread(target=self._loop, name="peach-ledger-sync", daemon=True)
-        self._thread.start()
+        """服务生命周期不再启动跨机同步线程。"""
+        return None
 
     def stop(self) -> None:
-        self._stop.set()
-        thread, self._thread = self._thread, None
-        if thread is not None:
-            thread.join(timeout=self.interval + 5)
-        # 退出前再回写一次，否则最后一段浏览行为只留在本地副本里。
-        try:
-            self.push_if_needed()
-        except (OSError, sqlite3.Error):
-            LOGGER.exception("退出前回写账本失败")
-
-    def _loop(self) -> None:
-        while not self._stop.wait(self.interval):
-            try:
-                self.push_if_needed()
-            except (OSError, sqlite3.Error):
-                LOGGER.exception("周期回写账本失败")
+        """没有后台同步线程，服务退出也不写任何共享状态。"""
+        return None

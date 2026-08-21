@@ -135,14 +135,15 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         )
         con.commit()
         con.close()
-        self.app = create_app(PeachSettings(
+        self.settings = PeachSettings(
             db_path=self.db, token="secret", page_path=self.page, vendor_path=self.vendor_root,
             allowed_media_roots=(self.media_root,), snapshot_root=self.snapshot_root,
             legacy_snapshot_roots=(self.legacy_snapshot_root,),
             poster_root=self.poster_root, avatar_root=self.avatar_root, logo_root=self.logo_root,
             ffmpeg_root=self.root / "ffmpeg", transcode_root=self.transcode_root,
             candidate_root=self.candidate_root,
-        ))
+        )
+        self.app = create_app(self.settings)
         self.client = httpx.AsyncClient(
             transport=httpx.ASGITransport(app=self.app), base_url="http://test"
         )
@@ -156,6 +157,35 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["mode"], "fastapi")
         self.assertEqual(response.json()["version"], __version__)
+
+    async def test_reader_role_keeps_gets_available_and_rejects_posts(self):
+        class ReaderSync:
+            status = "reader"
+            detail = "写入端是 mac"
+            read_only = True
+
+            def observe(self):
+                return None
+
+            def start(self):
+                return None
+
+            def stop(self):
+                return None
+
+        app = create_app(self.settings, ReaderSync())
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            health = await client.get("/healthz")
+            self.assertEqual(health.json()["ledger_sync"], "reader")
+            listed = await client.get("/api/items?t=secret")
+            self.assertEqual(listed.status_code, 200)
+            denied = await client.post(
+                "/api/feedback?t=secret", json={"id": 1, "kind": "dispose"},
+            )
+            self.assertEqual(denied.status_code, 409)
+            self.assertEqual(denied.json()["error"], "ledger read-only")
 
     async def test_peach_logo_is_served_as_png(self):
         response = await self.client.get("/peach-logo.png")

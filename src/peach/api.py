@@ -189,7 +189,7 @@ def create_app(
     # 都显式声明了 GET+HEAD，只有这个漏了，HEAD 会拿到 405。
     @app.api_route("/healthz", methods=["GET", "HEAD"])
     def healthz() -> dict[str, Any]:
-        # 不探测/迁移数据库；健康检查必须无副作用。
+        # 不探测共享目录或迁移数据库；健康检查必须无副作用。
         ffmpeg = resolver.ffmpeg()
         return {"ok": True, "service": "peach-api", "version": __version__, "mode": "fastapi",
                 "db": "available" if settings.db_path.is_file() else "missing",
@@ -568,9 +568,9 @@ def create_app(
         if not _authorized(request, settings.token, args):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         if sync is not None and sync.read_only:
-            # 两份账本已经分叉。继续写只会让分叉更难收拾，也让「选一边」变成丢数据。
+            # 非写入端或冲突状态都只读；继续写只会产生无法自动合并的分叉。
             return JSONResponse(
-                {"error": "ledger conflict", "detail": sync.detail}, status_code=409,
+                {"error": "ledger read-only", "detail": sync.detail}, status_code=409,
             )
         try:
             return web_contract.dispatch_api_post(contract, f"/api/{route}", body)

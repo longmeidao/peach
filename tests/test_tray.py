@@ -49,6 +49,14 @@ class TrayTests(unittest.TestCase):
         manager.start_missing()
         popen.assert_not_called()
 
+    def test_services_never_own_ledger_sync(self):
+        """浏览服务只观察写入角色；跨机复制只能由托盘显式执行。"""
+        specs = build_service_specs()
+        owners = [spec for spec in specs if "--no-ledger-sync" not in spec.command]
+        self.assertEqual(owners, [])
+        for spec in specs:
+            self.assertIn("--no-ledger-sync", spec.command)
+
     @patch("peach.tray.LOG_DIR")
     def test_start_and_stop_only_owned_service(self, log_dir):
         with tempfile.TemporaryDirectory() as directory:
@@ -190,6 +198,17 @@ class ServiceStatusTests(unittest.TestCase):
             manager._run.call_args.args[0][:2],
             [str(Path("/venv/peach")), "ledger-sync"],
         )
+
+    def test_take_ownership_is_an_explicit_ledger_command(self):
+        manager = ServiceManager(tuple(), run=Mock(return_value=Mock(
+            returncode=0, stdout="账本同步：take-ownership\n", stderr="",
+        )))
+        with patch.object(manager, "start_missing"), patch.object(
+            manager, "wait_until_ready", return_value=True,
+        ):
+            ok, _message = manager.sync_ledger(Path("/venv/peach"), take_ownership=True)
+        self.assertTrue(ok)
+        self.assertIn("--take-ownership", manager._run.call_args.args[0])
 
     def test_manual_sync_refuses_a_healthy_unowned_service(self):
         spec = ServiceSpec("http", "http://127.0.0.1/healthz", ("peach", "serve"), True)
