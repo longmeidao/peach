@@ -284,8 +284,9 @@ button,input,textarea{font:inherit;color:inherit}
 .idface svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2}
 .idname{font-size:12px;line-height:1.25;text-align:center;width:100%;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
-.idcell:hover .idface{box-shadow:0 0 0 2px var(--tungsten)}
-.idcell:hover .idname{color:var(--ink)}
+.idcell:not(.entitylink){cursor:default}
+.idcell.entitylink:hover .idface{box-shadow:0 0 0 2px var(--tungsten)}
+.idcell.entitylink:hover .idname{color:var(--ink)}
 .castmore{align-self:center;height:46px;padding:0 12px;border:1px dashed var(--overlay-10);
   border-radius:12px;background:transparent;color:var(--tungsten);font-size:12px;cursor:pointer}
 .castmore:hover{background:var(--hover)}

@@ -161,6 +161,24 @@ class WebDataTests(unittest.TestCase):
         self.assertNotIn("path", result["items"][0])
         self.assertNotIn("snapshot_path", result["items"][0])
 
+    def test_canonical_creator_beats_same_named_legacy_performer_tag(self):
+        """1065 类数据不能被旧 `演员:` 投影改成艺人。"""
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO asset_tag(asset_id,tag,source) "
+            "VALUES(2,'演员:Canonical Creator','performer')"
+        )
+        con.commit(); con.close()
+
+        item = rm_web.q_item(self.contract, 2)
+        self.assertEqual(item["creator"], "Canonical Creator")
+        self.assertEqual(item["entities"]["creator"], ["Canonical Creator"])
+        self.assertEqual(item["entity_refs"]["creator"], [
+            {"id": 12, "name": "Canonical Creator"},
+        ])
+        self.assertEqual(item["performers"], [])
+        self.assertEqual(item["entity_refs"]["performer"], [])
+
     def test_reviewed_creator_tags_are_included_in_tag_coverage(self):
         con = sqlite3.connect(self.db_path)
         con.execute(
