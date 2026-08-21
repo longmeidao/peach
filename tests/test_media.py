@@ -7,6 +7,7 @@ from unittest.mock import patch
 from peach.ffmpeg import FFmpegResolver
 from peach.media import (
     FilesystemBackend, MediaEngine, StashAdapter, normalized_path, remap_managed_path,
+    resolve_case_insensitive,
 )
 from peach.repository import MediaAsset
 from peach.stash import StashClient
@@ -129,6 +130,20 @@ class MediaEngineTests(unittest.TestCase):
             self.assertEqual(
                 backend.stream_candidates(MediaAsset(2, str(root / "nope.mp4"), None)), ()
             )
+
+    def test_batch_path_resolution_translates_ledger_drive_before_case_matching(self):
+        """sheets/probe 不经过 FilesystemBackend，也必须先翻译账本盘符。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            real = root / "ABW-118.MP4"
+            real.write_bytes(b"test")
+            with patch(
+                "peach.media.translate_ledger_path",
+                return_value=root / "abw-118.mp4",
+            ):
+                opened = Path(resolve_case_insensitive(r"A:\\ABW-118.mp4"))
+            self.assertTrue(opened.is_file())
+            self.assertTrue(opened.parent.samefile(root))
 
     def test_remote_mp4_defaults_to_range_and_only_segments_on_request(self):
         """默认 HLS 会让 HEVC 静默黑屏：`-c copy` 把 HEVC 装进 MPEG-TS，而 Chromium 的

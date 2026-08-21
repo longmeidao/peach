@@ -1,6 +1,7 @@
 import csv
 import importlib.util
 import io
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -169,6 +170,40 @@ class SettledMissTests(unittest.TestCase):
         carried = covers.carried_rows(self.log, {"HEYZO-1380"})
         self.assertEqual([row["code"] for row in carried], ["HEYZO-1380"])
         self.assertEqual(sorted(carried[0]), sorted(covers.FIELDS))
+
+    def test_scoped_batch_keeps_unselected_source_rows(self):
+        self._log([{"code": "HEYZO-1380", "result": "未取得"},
+                   {"code": "KUZU-25010", "result": "未取得"}])
+        selected = {"KUZU-25010"}
+        rows = [row for row in covers.logged_rows(self.log)
+                if row["code"] not in selected]
+        self.assertEqual([row["code"] for row in rows], ["HEYZO-1380"])
+
+
+class PendingCoverTests(unittest.TestCase):
+    def test_queue_can_be_scoped_to_pikpak(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            database = root / "ledger.db"
+            connection = sqlite3.connect(database)
+            connection.execute(
+                "CREATE TABLE asset(code TEXT, medium TEXT, location TEXT)"
+            )
+            connection.executemany(
+                "INSERT INTO asset(code,medium,location) VALUES(?,?,?)",
+                [
+                    ("ABW-232", "video", "pikpak"),
+                    ("SSNI-001", "video", "115"),
+                    ("RAIKUN325", "video", "pikpak"),
+                ],
+            )
+            connection.commit()
+            connection.close()
+
+            self.assertEqual(
+                covers.pending(database, root / "covers", True, "pikpak"),
+                ["ABW-232"],
+            )
 
 
 if __name__ == "__main__":

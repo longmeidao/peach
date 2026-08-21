@@ -51,7 +51,9 @@ def _case_insensitive_match(parent_key: str, name_key: str) -> str | None:
 
 def resolve_case_insensitive(path: Path | str) -> str:
     """返回可直接打开的实际路径：原路径不存在时按大小写不敏感匹配同目录文件。"""
-    candidate = Path(path)
+    # 批处理脚本直接调用本函数，不经过 FilesystemBackend；因此这里也必须先把账本的
+    # Windows 盘符翻译成本机挂载点，否则 macOS 会把 `A:\\...` 当成相对文件名。
+    candidate = normalized_path(path)
     if candidate.is_file():
         return str(candidate)
     matched = _case_insensitive_match(str(candidate.parent), candidate.name)

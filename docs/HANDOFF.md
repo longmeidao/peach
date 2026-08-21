@@ -139,7 +139,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 2026-08-15 的 115 抽帧曾把系统盘写到零：接触表在 `R:\peach-data`，真正膨胀的是 CloudDrive 位于系统盘的稀疏读取缓存。`file_buffer_disk_cache_max_bytes` 现为 50 GiB、策略为 LRU；CloudDrive 退出时会重写配置，后续必须复核该值是否保留。
 - 起跑前一次 `require_free_space` 不是运行期闸门。`DiskGuard` 默认每 20 秒重读 `C:` 实际余量；`probe.py`、`sheets.py` 和 `creator_boards.py` 触线后停止取新任务、保留已完成结果并返回退出码 3，不能伪报正常完成。
 - Windows 查询已消失 PID 可能抛 `OSError(winerror=87)`，不是 `ProcessLookupError`。`PidFileLock` 必须把它识别为陈旧锁并安全清理。
-- 2026-08-15 经 mihomo 实测：115 单文件 ffprobe 约 25 MB，九帧接触表约 285 MB；PikPak 单文件 probe 12–52 MB，九帧约 163 MB/13.7 秒。PikPak 抽帧的主要约束是字节而非耗时。
+- 2026-08-15 经 mihomo 实测：115 单文件 ffprobe 约 25 MB，九帧接触表约 285 MB；PikPak 单文件 probe 12–52 MB，九帧约 163 MB/13.7 秒。PikPak 抽帧的主要约束是字节而非耗时；Windows 夜跑步骤见 `docs/PIKPAK.md`。
 - `-probesize`/`-analyzeduration` 无法减少 CloudDrive 固定块预取。创作者板在未知时长时可回退到 60 秒 seek，因此无需先花约 207 GB 做全量 PikPak probe。
 - 200 GB 守卫默认只统计代理流量，能覆盖 PikPak，不能看到直连 115；需要覆盖直连来源时显式使用 `--count-direct`，且不要在同一直接计量窗口混跑不同来源。
 - 短促测试无法刻画会累积的限流。r18 在 12 个请求的实测里 1.0 秒间隔全过，据此把默认从 2.0 降到 1.0，结果连跑约 18 分钟后开始被拒，556 位里 203 位被判成假阴性；改回 2.0 秒连跑 62 分钟稳定。限流参数只能用与真实批次同量级的运行来标定。

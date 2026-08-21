@@ -209,10 +209,7 @@ def settled_misses(log: Path) -> set[str]:
     这类落空是最贵的：每条都要把全部候选源挨个试完才能确定。实测 194 条里
     150 条落空，重探一遍就是好几个小时，而结论不会变。
     """
-    if not log.is_file():
-        return set()
-    with log.open(encoding="utf-8-sig", newline="") as handle:
-        rows = list(csv.DictReader(handle))
+    rows = logged_rows(log)
     return {str(row.get("code") or "").strip() for row in rows
             if row.get("result") == "未取得"
             and not TRANSIENT.search(str(row.get("note") or ""))
@@ -221,20 +218,31 @@ def settled_misses(log: Path) -> set[str]:
 
 def carried_rows(log: Path, keep: set[str]) -> list[dict]:
     """把这轮跳过的番号的上轮记录原样带进新日志。"""
-    if not log.is_file() or not keep:
+    if not keep:
+        return []
+    return [{field: row.get(field, "") for field in FIELDS}
+            for row in logged_rows(log)
+            if str(row.get("code") or "").strip() in keep]
+
+
+def logged_rows(log: Path) -> list[dict]:
+    if not log.is_file():
         return []
     with log.open(encoding="utf-8-sig", newline="") as handle:
-        rows = list(csv.DictReader(handle))
-    return [{field: row.get(field, "") for field in FIELDS}
-            for row in rows if str(row.get("code") or "").strip() in keep]
+        return list(csv.DictReader(handle))
 
 
-def pending(database: Path, root: Path, only_shaped: bool) -> list[str]:
+def pending(database: Path, root: Path, only_shaped: bool,
+            location: str | None = None) -> list[str]:
     connection = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True)
     try:
+        location_sql = " AND location=?" if location else ""
+        parameters: tuple[object, ...] = (location,) if location else ()
         rows = connection.execute(
             "SELECT code, COUNT(*) FROM asset WHERE medium='video' "
-            "AND code IS NOT NULL AND code<>'' GROUP BY code ORDER BY 2 DESC"
+            "AND code IS NOT NULL AND code<>''" + location_sql
+            + " GROUP BY code ORDER BY 2 DESC",
+            parameters,
         ).fetchall()
     finally:
         connection.close()
@@ -263,6 +271,8 @@ def build_parser() -> argparse.ArgumentParser:
                         default=GENERATED_DIR / "cover-fetch-log.csv")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--delay", type=float, default=1.5)
+    parser.add_argument("--location",
+                        help="只抓指定来源的番号封套，例如 pikpak；封套仍按番号共享")
     parser.add_argument("--retry-misses", action="store_true",
                         help="连上轮确认没有封套的番号也重探一遍")
     parser.add_argument("--all-codes", action="store_true",
@@ -281,20 +291,25 @@ def _write_log(path: Path, rows: list[dict]) -> None:
 
 def run(args: argparse.Namespace) -> int:
     args.out.mkdir(parents=True, exist_ok=True)
-    todo = pending(args.db, args.out, not args.all_codes)
+    todo = pending(args.db, args.out, not args.all_codes, args.location)
     skipped = set()
     if not args.retry_misses:
         skipped = settled_misses(args.log) & set(todo)
         todo = [code for code in todo if code not in skipped]
     if args.limit:
         todo = todo[:args.limit]
+    selected = set(todo)
     print(f"待抓番号 {len(todo)} 个（已落盘的跳过，"
           f"上轮确认没有的跳过 {len(skipped)} 个，--retry-misses 可重试）")
 
     transport = HttpxTransport()
-    # 跳过的那些行要带进新日志。`_write_log` 是整份重写，不接着写就等于把上轮的
-    # 判定删掉，复核页的封面层会跟着凭空少掉一批。
-    rows: list[dict] = carried_rows(args.log, skipped)
+    # 日志是整份重写：这轮只跑 pikpak 或只跑 --limit 时，未选中的旧记录也必须保留；
+    # 只删除本轮会重新生成的番号。否则一次来源小批次就会抹掉其他来源的复核证据。
+    rows: list[dict] = [
+        {field: row.get(field, "") for field in FIELDS}
+        for row in logged_rows(args.log)
+        if str(row.get("code") or "").strip() not in selected
+    ]
     stats = {"ok": 0, "miss": 0}
     try:
         for index, code in enumerate(todo, 1):
