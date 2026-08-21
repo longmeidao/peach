@@ -22,7 +22,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import sqlite3
+import tempfile
 import threading
 import uuid
 from dataclasses import dataclass, replace
@@ -155,17 +157,38 @@ def local_dirty(db_path: Path, marker: Marker | None) -> bool:
 
 
 def copy_database(source: Path, target: Path) -> None:
-    """用 backup API 整库复制，覆盖目标已有内容。"""
+    """用 backup API 生成一致快照，再原子替换目标。
+
+    不能让 SQLite 直接把目标连接开在 SMB 上：macOS 的 smbfs 目录可普通写入，SQLite
+    却可能因锁或事务侧文件失败而报 ``unable to open database file``。先在本机临时目录
+    生成已关闭的独立快照，再传到目标旁边原子替换；复制的不是活跃数据库文件，所以不会
+    漏掉源库 WAL 中已提交的事务。
+    """
     target.parent.mkdir(parents=True, exist_ok=True)
-    origin = sqlite3.connect(f"file:{source}?mode=ro", uri=True)
+    descriptor, snapshot_name = tempfile.mkstemp(prefix="peach-ledger-", suffix=".db")
+    os.close(descriptor)
+    snapshot = Path(snapshot_name)
+    transfer = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
     try:
-        destination = sqlite3.connect(target)
+        origin = sqlite3.connect(f"file:{source}?mode=ro", uri=True)
         try:
-            origin.backup(destination)
+            destination = sqlite3.connect(snapshot)
+            try:
+                origin.backup(destination)
+            finally:
+                destination.close()
         finally:
-            destination.close()
+            origin.close()
+        shutil.copyfile(snapshot, transfer)
+        with transfer.open("rb") as handle:
+            os.fsync(handle.fileno())
+        # 旧副本的 sidecar 不能和新快照拼在一起。同步调用方保证目标没有服务在写。
+        for suffix in ("-wal", "-shm", "-journal"):
+            Path(f"{target}{suffix}").unlink(missing_ok=True)
+        os.replace(transfer, target)
     finally:
-        origin.close()
+        snapshot.unlink(missing_ok=True)
+        transfer.unlink(missing_ok=True)
 
 
 def plan(local: Path, shared: Path) -> SyncPlan:
