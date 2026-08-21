@@ -1,7 +1,9 @@
+import os
 import sys
 import threading
 import time
 import unittest
+from unittest.mock import patch
 
 from peach.netwatch import NETWORK_CHANGE, NetworkChangeWatcher
 
@@ -35,6 +37,20 @@ class NetworkChangeWatcherTests(unittest.TestCase):
     def test_a_failing_callback_does_not_kill_the_watcher(self):
         """回调挂掉不该带走整个托盘。"""
         calls = []
+        notify_read, notify_write = os.pipe()
+        self.addCleanup(os.close, notify_read)
+        self.addCleanup(os.close, notify_write)
+
+        class FakeLibSystem:
+            @staticmethod
+            def notify_register_file_descriptor(_key, descriptor, _flags, token):
+                descriptor._obj.value = notify_read
+                token._obj.value = 1
+                return 0
+
+            @staticmethod
+            def notify_cancel(_token):
+                return 0
 
         def boom():
             calls.append(1)
@@ -42,9 +58,15 @@ class NetworkChangeWatcherTests(unittest.TestCase):
 
         watcher = NetworkChangeWatcher(boom)
         self.addCleanup(watcher.stop)
-        watcher.start()
-        time.sleep(0.2)
-        self.assertTrue(watcher._thread.is_alive())
+        with patch("peach.netwatch._libsystem", return_value=FakeLibSystem()):
+            watcher.start()
+            os.write(notify_write, b"ping")
+            for _ in range(20):
+                if calls:
+                    break
+                time.sleep(0.01)
+            self.assertEqual(calls, [1])
+            self.assertTrue(watcher._thread.is_alive())
 
     @unittest.skipIf(sys.platform == "darwin", "非 macOS 才走这条")
     def test_unsupported_platform_reports_itself(self):
