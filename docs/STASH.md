@@ -43,7 +43,7 @@ Peach 最终可以完全去 Stash，但现在不能直接卸载。Web 主链已�
 ## 2026-08-14 第二阶段进展
 
 - 新增集中 `StashClient`，FastAPI/Media Engine 新代码不再各自实现 GraphQL transport。
-- `FFmpegResolver` 现在只接受环境变量、`R:\peach-data\tools\ffmpeg` 和 PATH；Stash 私有目录 fallback 已删除。
+- `FFmpegResolver` 现在只接受环境变量、本机 `peach-data/tools/ffmpeg` 和 PATH；Stash 私有目录 fallback 已删除。
 - FastAPI 已用 Starlette `FileResponse` 替换候选入口的手写 Range，并验证普通、指定区间、suffix、
   越界 416、HEAD、ETag、Last-Modified。
 - 活跃代码中的 Stash 私有 FFmpeg 路径和重复 GraphQL transport 已归零；`scripts/ledger.py` 也复用集中 `StashClient`。Stash adapter 本身仍在使用，因此仍不能宣称已经去 Stash。

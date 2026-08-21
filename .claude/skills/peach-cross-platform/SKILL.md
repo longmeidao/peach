@@ -5,8 +5,8 @@ description: 在 macOS 上开工、改动路径解析或挂载判定、遇到 gi
 
 # 跨 Windows / macOS 双机开发
 
-最后复核：2026-08-19
-证据来源：`src/peach/platform.py`、`README.md`「边界」、2026-08-19 的 macOS 迁移实测。
+最后复核：2026-08-21
+证据来源：`src/peach/platform.py`、ADR-0017、2026-08-19 的 macOS 迁移实测与 2026-08-21 的 Windows 现状核对。
 
 ## 何时使用
 
@@ -32,6 +32,9 @@ description: 在 macOS 上开工、改动路径解析或挂载判定、遇到 gi
 
 用 `PEACH_DRIVE_MAP=R=/mnt/res,B=/mnt/115` 覆盖；数据目录用 `PEACH_DATA_ROOT`。
 CloudDrive 在 Windows 是盘符、在 macOS 是 macFUSE 挂载点，这层不是可选优化。
+
+运行目录不跟着媒体盘符走。Windows 目标根是 `C:\Users\longm\Peach`，macOS 是
+`~/Desktop/lmd.gg/peach`；Windows 仍在外置 `R:` 上运行，尚未完成迁移。外置盘以后只承担媒体资源。
 
 ## 三条只在 Windows 成立的假设
 
@@ -59,14 +62,8 @@ CloudDrive 在 Windows 是盘符、在 macOS 是 macFUSE 挂载点，这层不�
 
 ## 运行环境
 
-macOS 的 FFmpeg 走 PATH（`brew install ffmpeg`）。`peach-data/tools/ffmpeg` 里是
-Windows 的 `.exe`/`.dll`，`FFmpegResolver` 按平台找不带后缀的 `ffmpeg`，会自动跳过它
-——这套目录可以两台机器共用，不需要分叉。
-
-macOS 的菜单栏项必须打成 `.app`（`scripts/build_macos_app.py`）：裸控制台进程启动时
-AppKit 运行循环没有应用上下文会立刻返回，服务起来了但托盘父进程安静退出、零输出。
-bundle 声明 `LSUIElement`，输出重定向到 `logs/macos-tray.log`。图标要 template image
-才会跟着浅色/深色菜单栏反色；服务用非特权端口 8900。
+macOS 的 FFmpeg 走 PATH（`brew install ffmpeg`）；Windows 的 FFmpeg bundle 留在 Windows
+本机 `peach-data/tools`。菜单栏走 LaunchAgent，服务使用非特权端口 8900。
 
 测试入口：Windows `scripts/test.ps1`，macOS/Linux `scripts/test.sh`。两者契约相同。
 **两边都必须绿**；只在一台上通过的改动不算完成。Windows 托盘专属的 DPI 声明和单实例
@@ -74,16 +71,18 @@ bundle 声明 `LSUIElement`，输出重定向到 `logs/macos-tray.log`。图标�
 
 ## 账本复制
 
-三份副本：硬盘那份是权威，两台机器各持本地工作副本。**不是多主实时同步**——SQLite
-没有安全的自动三方合并。见 `src/peach/sync.py` 与 README「账本复制」。
+目标是两台机器各持本地工作副本，Windows 内置盘上的专用 SMB 目录提供共享传输副本。
+**不是多主实时同步**——SQLite 没有安全的自动三方合并。见 ADR-0017、`src/peach/sync.py`
+与 README「账本复制」。
 
-- 启动比对世代：硬盘新就拉、本地新就留、两边都动过就转只读报冲突，由人选一边。
+- 启动比对世代：共享副本新就拉、本地新就留、两边都动过就转只读报冲突，由人选一边。
 - 运行中每 60 秒回写，回写前重新判定，别人抢先推过就转冲突，绝不覆盖。
-- 硬盘不在时本地照常写，插回来再回写。
+- 同步点不可达时本地仍可运行；媒体盘是否插入与账本同步无关。
 - 复制走 SQLite backup API，**不要复制 `.db` 文件**：WAL 里已提交未 checkpoint 的
   事务会丢，还可能和目标残留的 `-wal` 拼成损坏的库。
-- 本地副本与共享副本是同一条路径时复制自动停用。Windows 目前仍直接用硬盘那份，
-  所以它的行为不变；等它把 `PEACH_DATA_ROOT` 指到本机盘，三份副本才真正成立。
+- 本地副本与共享副本是同一条路径时复制自动停用。Windows 当前正是这个旧状态；必须迁到
+  内置 `PEACH_DATA_ROOT`，再把共享副本改到专用同步目录。显式 writer/reader 和运行中安全拉取
+  完成前，只能一台接受写入。
 - 冲突不能靠合并解决，只能选一边：复制其一覆盖另一份，或删掉一侧 `.sync.json`
   重新播种。别写「已同步」这种含糊结论。
 
@@ -92,6 +91,9 @@ bundle 声明 `LSUIElement`，输出重定向到 `logs/macos-tray.log`。图标�
 代码在私有仓库 `longmeidao/peach`（`origin`），两台机器手动 push/pull，**不自动推送**。
 开工前先 `sh scripts/sync_status.sh`：落后远端就先 `git pull --rebase`，别在旧代码上接着
 写；账本是另一条链路（`peach.sync`），同一个脚本会一并报告。
+
+worktree 目录不跨机器复制。需要交接的任务分支先 commit/push，另一台 fetch 后重新创建本机
+worktree；`.venv`、`peach-data`、构建产物和 worktree 的 `.git` 指针都不进 GitHub。
 
 ## macOS 的 mDNS
 
@@ -103,11 +105,9 @@ macOS 因此用 `dns-sd -P` 请系统 mDNSResponder 代发，Windows 继续用 z
 `scripts/check_mdns.py`（从终端跑）。排查手法：同一条命令分别从 shell 和 launchd 起各查一次，
 差异只在启动者时就是这个门。
 
-两台机器共用 `peach.local`，不能同时广播：谁后注册谁赢，另一台按名字访问不到且不报错。
-一次只开一台，或给其中一台设 `PEACH_MDNS_NAME`；`check_mdns.py` 查得出撞名。
+macOS 固定 `peach.local`，Windows 固定 `peach-win.local`；`check_mdns.py` 负责验证没有撞名。
 
 ## Git 陷阱
-
 - **换行**由 `.gitattributes` 的 `* text=auto eol=lf` 固定，不要依赖各自的
   `core.autocrlf`。2026-08 之前 Windows 侧把 105 个已跟踪文件整体改写成 CRLF，
   `git status` 长期显示 117 个文件被修改、16213 行增删，而真正有实质改动的只有 1 个

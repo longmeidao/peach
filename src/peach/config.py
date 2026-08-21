@@ -18,9 +18,9 @@ DATA_ROOT = Path(
 DATABASE_DIR = DATA_ROOT / "database"
 DATABASE_PATH = DATABASE_DIR / "ledger.db"
 
-# 硬盘上的共享权威副本。两台机器各持一份本地工作副本，运行中定期回写到这里；
-# 同一时刻只有一台在写，两边都动过就报冲突而不是自动合并（见 peach.sync）。
-# 本机直接使用共享副本时（例如尚未迁到本地盘的 Windows），两条路径相等，复制自动停用。
+# 共享副本只承担单写者复制传输，不是 Peach 直接运行的数据库。下面的外置盘默认值是
+# Windows 本机化完成前的兼容状态；ADR-0017 要求迁到内置盘专用同步目录。
+# 本机直接使用共享副本时（当前 Windows 旧状态），两条路径相等，复制自动停用。
 _WINDOWS_SHARED_ROOT = Path(r"R:\peach-data")
 _POSIX_SHARED_ROOT = Path("/Volumes/RESOURCES/peach-data")
 SHARED_DATA_ROOT = Path(

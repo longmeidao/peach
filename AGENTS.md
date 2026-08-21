@@ -20,7 +20,7 @@
 同一件事只用一个词，回话时也用这些词，不要换成同义说法。
 
 - **你**：正在读本文件并改动 Peach 的智能体（Codex 或 Claude）。**我 / 用户**：Peach 的唯一使用者兼维护者。 <!-- copy-lint-disable-line -->
-- **ledger / 账本**：`R:\peach-data\database\ledger.db`，唯一真相源。**真相字段**：直接构成 ledger 断言的列。
+- **ledger / 账本**：每台机器 `peach-data/database/ledger.db` 的本地工作副本，唯一真相源。**真相字段**：直接构成 ledger 断言的列。
 - **候选 candidate**：带来源与置信度、未经复核的断言。只有用户复核后才 `approved`，工作者不得自行升级。
 - **复核产物**：CSV 等可机读、可重放的中间结果；结论必须落在这里，不能只存在于对话。
 - **实体 entity**：女优、厂牌、创作者、系列的规范身份；扁平 `asset_tag`、creator/studio 字段只是兼容投影。
@@ -54,7 +54,7 @@
 
 ## 工作规则
 
-- `peach-app` is code and documentation. `peach-data`, the local media root, and the two CloudDrive mounts are runtime data or mounted media and must never be copied into Git. Windows: `R:\peach-app`, `R:\peach-data`, `R:\media`, `A:\`, `B:\`. macOS: `~/Desktop/lmd.gg/peach/peach-app`, `~/Desktop/lmd.gg/peach/peach-data`, `/Volumes/RESOURCES/media`, `~/Desktop/IMSL/Pikpak`, `~/Desktop/IMSL/115`.
+- `peach-app` is the only GitHub-synced tree. `peach-data`, `.venv`, build output, worktree directories, media and CloudDrive mounts never enter Git. Windows is still on legacy external `R:\peach-app`/`R:\peach-data` and must migrate to internal `C:\Users\longm\Peach`; macOS is already local. The external disk's target role is only `R:\media`/`/Volumes/RESOURCES/media`; see ADR-0017.
 - Ledger paths are always written in the Windows shape (`R:\Media\...`, `A:\...`, `B:\...`). `src/peach/platform.py` translates them to local mounts at read time; never rewrite the ledger to a POSIX shape, and never write `asset.path` from macOS.
 - `peach-data/database/ledger.db` is the truth store. Tests use temporary databases only. A real migration requires a SQLite backup and before/after count checks; follow `peach-ledger-write` before any real write.
 - The project is an early personal project: aggressively remove obsolete code and compatibility layers when the replacement is tested. Do not preserve dead interfaces merely for history; Git is the archive.
