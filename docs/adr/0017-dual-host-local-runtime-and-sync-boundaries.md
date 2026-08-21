@@ -1,14 +1,14 @@
 # ADR-0017：双机本机运行与分通道同步
 
-- 状态：已接受
+- 状态：已接受并实施（显式 writer/reader 与 artifact 拆分待续）
 - 日期：2026-08-21
 
 ## 背景
 
 Peach 的目标是 Windows 与 macOS 各自拥有内置盘上的代码、运行数据、虚拟环境和 worktree，
-两台机器可以同时开发并启动 Peach；外置 `RESOURCES` 盘以后只承担媒体资源盘角色。2026-08-21
-核对发现，macOS 已完成本机化，但 Windows 仍从外置盘的 `R:\peach-app`、`R:\peach-data`
-运行，没有独立代码与运行数据。旧文档把目标状态写成了已完成事实。
+两台机器可以同时开发并启动 Peach；外置 `RESOURCES` 盘只承担媒体资源盘角色。本 ADR 立项时
+核对发现，macOS 已完成本机化，但 Windows 当时仍从外置盘的 `R:\peach-app`、`R:\peach-data`
+运行，没有独立代码与运行数据。该迁移随后已实施，本段保留为决策背景。
 
 外置盘现有 `peach-data` 也不能整体搬进 GitHub或普通双向同步：`database/` 含活跃 WAL 账本和
 大量历史备份，`generated/` 同时混有可重建缓存、图片资产和人工复核产物，另外还有凭据、日志、
@@ -18,9 +18,9 @@ Peach 的目标是 Windows 与 macOS 各自拥有内置盘上的代码、运行�
 
 ### 每台机器独立持有运行环境
 
-- Windows 目标根目录为 `C:\Users\longm\Desktop\peach`：`peach-app`、`peach-data`、
-  `peach-worktrees` 均位于内置盘。迁移完成前，`R:\peach-app`、`R:\peach-data` 只是旧运行态
-  和迁移来源，不是目标路径。
+- Windows 根目录为 `C:\Users\longm\Desktop\peach`：`peach-app`、`peach-data`、
+  `peach-worktrees` 和 `peach-sync` 均位于内置盘。`R:\peach-app`、`R:\peach-data` 是迁移前的旧运行位置，
+  不再是当前路径。
 - macOS 保持 `~/Desktop/lmd.gg/peach/{peach-app,peach-data,peach-worktrees}`。
 - 外置盘的正式职责收窄为媒体资源：Windows `R:\media`，macOS
   `/Volumes/RESOURCES/media`。拔盘只让 `local` 来源进入脱盘模式，不影响代码、账本、115/PikPak
@@ -64,26 +64,16 @@ Peach 的目标是 Windows 与 macOS 各自拥有内置盘上的代码、运行�
 ## 后果
 
 - GitHub 同步范围保持小而可审查；worktree、venv 和运行态问题不再跨机器污染。
-- Windows 首次迁移需要内置盘克隆、venv、运行数据播种、路径配置、托盘重建和独立验收。
-- 现有 `src/peach/config.py` 仍把外置盘设为 Windows 数据根与共享根，`peach.sync` 也缺少显式
-  只读角色和运行中安全拉取；在这些改完并于 Windows 验收前，目标架构尚未部署。
+- Windows 内置盘克隆、venv、运行数据播种、默认路径、共享同步点和托盘入口已切换完成。
+- `src/peach/config.py` 的 Windows 数据根和共享根已改为内置盘；`peach.sync` 仍缺少显式
+  writer/reader 角色和运行中安全拉取，因此同时运行时仍遵守单写者纪律。
 - artifact 拆分前不启用 `peach-data` 整体同步；外置盘上的旧目录保留为只读迁移来源和备份，
   直到两端独立运行验收完成后再单独决定清退。
 
-## 实施清单
+## 实施结果
 
-1. 将当前 `master` 推到私有 GitHub；在 Windows 内置盘克隆到
-   `C:\Users\longm\Desktop\peach\peach-app`，建立本机 `.venv` 并跑 `scripts\test.ps1`。
-2. 在 Windows 建立 `C:\Users\longm\Desktop\peach\peach-data` 与 `peach-worktrees`，把
-   `PEACH_DATA_ROOT`、构建产物、桌面/Startup 快捷方式和日志路径切到内置盘。
-3. 停止两端 Peach，确认当前账本世代一致并备份；用 SQLite backup API 把权威账本播种到
-   Windows 本机副本，核对迁移版本、计数、完整性和外键。
-4. 把共享账本副本迁到 Windows 内置盘的专用 SMB 同步目录；修改默认配置，外置盘不再作为
-   `PEACH_SHARED_DATA_ROOT`。
-5. 为 `peach.sync` 增加显式 writer/reader 角色、运行中安全拉取和可见状态；完成前禁止两端同时
-   接受写入。
-6. 拆分 durable artifacts 与本机缓存，再配置选择性文件同步；不对整个 `peach-data` 开同步。
-7. Windows 重新构建 `dist/Peach/Peach.exe`，安装指向内置盘的新 Startup，固定发布
-   `peach-win.local`。
-8. 拔掉外置盘复验两台 Peach 均可启动、账本可用、115/PikPak 可用且 `local` 正确显示脱盘；
-   插盘后再复验两端本地媒体与账本单写者同步。
+1. 已完成：Windows 内置盘 checkout、`.venv`、`peach-data`、worktree、账本播种、
+   内置盘 SMB 同步点、默认路径和指向内置盘的 Startup 托盘入口。
+2. 已完成：Windows 固定发布 `peach-win.local`；外置盘只保留 `R:\media` 媒体职责。
+3. 待续：显式 writer/reader 角色、运行中安全拉取、durable artifact 拆分，以及拔盘后的
+   双机完整验收。

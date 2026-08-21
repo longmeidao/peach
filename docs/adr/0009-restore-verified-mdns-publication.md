@@ -1,6 +1,6 @@
-# ADR-0009：恢复已验证的 peach.local 发布语义
+# ADR-0009：恢复已验证的 mDNS 发布语义
 
-- 状态：Accepted
+- 状态：Accepted（2026-08-21 补充双机命名与 macOS 系统发布器）
 - 日期：2026-08-14
 - 取代：ADR-0004 中 Windows 使用 `DnsServiceRegister` 的局部决策
 
@@ -18,8 +18,10 @@ health 均成功，但它只能可靠发布服务及真实计算机 SRV 主机�
 ## 决策
 
 - 恢复迁移前的 `Zeroconf()` 全合格网卡监听与 `allow_name_change=True` 发布语义。
-- Windows、macOS 和 Linux 使用同一发布器；删除 Windows ctypes DNS-SD 分支和重复的别名响应器。
-- `peach.local` 是唯一正式 LAN 入口；计算机名只作为诊断信息，不进入产品导航。
+- Windows/Linux 使用 Python zeroconf 全合格网卡发布器；macOS 由系统 `dns-sd -P` / mDNSResponder
+  代发，避开 launchd 主体的本地网络权限门。删除 Windows ctypes DNS-SD 分支和重复的别名响应器。
+- macOS 的正式 LAN 入口为 `peach.local`，Windows 为 `peach-win.local`；计算机名只作为诊断信息，
+  不进入产品导航。
 - 修改 mDNS 时必须对照已成功基线，一次只改变一个网络变量。
 - 验收必须包含单元测试、运行态 health、DNS-SD 服务发现、主机名解析和另一台 LAN 客户端。
   端口枚举、成功回调、同机 health 都只能作为局部证据。

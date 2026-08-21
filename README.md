@@ -8,13 +8,12 @@ Peach（蜜桃）是一个单用户、本地优先的个人媒体系统：统一
 
 ## 边界
 
-目标架构是 Windows 和 macOS 各自在内置盘持有一份可独立运行的环境，外置盘只提供媒体资源。
-macOS 已完成本机化；Windows 截至 2026-08-21 仍从外置盘的 `R:\peach-app`、`R:\peach-data`
-运行，尚未完成独立环境迁移。账本里的媒体路径始终使用 Windows 口径，本机挂载点由
+双机本机化已完成：Windows 和 macOS 各自在内置盘持有一份可独立运行的代码、数据、虚拟环境和
+worktree，外置盘只提供媒体资源。账本里的媒体路径始终使用 Windows 口径，本机挂载点由
 `src/peach/platform.py` 在读取时翻译。完整取舍与迁移门槛见
 [`ADR-0017`](docs/adr/0017-dual-host-local-runtime-and-sync-boundaries.md)。
 
-| 角色 | Windows 目标（待迁移） | macOS 当前 |
+| 角色 | Windows 当前 | macOS 当前 |
 |---|---|---|
 | 项目代码 | `C:\Users\longm\Desktop\peach\peach-app` | `~/Desktop/lmd.gg/peach/peach-app` |
 | 运行数据 | `C:\Users\longm\Desktop\peach\peach-data` | `~/Desktop/lmd.gg/peach/peach-data` |
@@ -53,11 +52,10 @@ worktree 目录。跨机器继续任务时 push 分支，在另一台按分支�
 **可达性不能由服务进程自证**：它发不出多播，探自己必然收不到回应，会把好的判成不可达。
 运行时只报「注册还在生效」，真要验用 `scripts/check_mdns.py`——那个从终端跑，有权限。
 
-双机固定使用两个名字：macOS 独占 `peach.local`，Windows 设 `PEACH_MDNS_NAME=peach-win`
-（系统环境变量 + 重装一次自启动，启动进程会继承），访问 `https://peach-win.local/`。
+双机固定使用两个名字：macOS 使用 `peach.local`，Windows 使用 `peach-win.local`；两个默认值已收敛在
+`src/peach/config.py`，`PEACH_MDNS_NAME` 只用于临时测试覆盖。
 服务本身可以同时跑——账本单写者复制兜得住——但两边同时写入会很快触发冲突转只读，
-同时运行适合一边主写、另一边只读浏览。Windows 迁移完成前不要让它的托盘开机自启：
-残留的广播会把 `peach.local` 抢回它自己，而它上面没有服务在跑。
+同时运行适合一边主写、另一边只读浏览。
 
 ### 账本复制
 
@@ -78,9 +76,9 @@ worktree 目录。跨机器继续任务时 push 分支，在另一台按分支�
 复制一律走 SQLite 的 backup API，不复制文件：账本是 WAL 模式，直接拷 `.db` 会漏掉 `-wal`
 里已提交但未 checkpoint 的事务，拷完还可能和目标残留的 `-wal` 拼成一个已经损坏的库。
 
-共享副本位置由 `PEACH_SHARED_DATA_ROOT` 覆盖。**当前默认值仍指向外置盘，属于迁移中的旧实现**；
-Windows 独立环境、内置盘共享副本、显式 writer/reader 角色和运行中安全拉取完成前，不得声称双机
-同步已部署。当前状态看 `/healthz` 的 `ledger_sync` 字段。
+共享副本位置由 `PEACH_SHARED_DATA_ROOT` 覆盖；Windows 默认为
+`C:\Users\longm\Desktop\peach\peach-sync`，macOS 默认为 `/Volumes/peach-sync`。当前同步状态看
+`/healthz` 的 `ledger_sync` 字段；这仍是冲突即只读的单写者复制，不是 SQLite 多主。
 
 ```bash
 # 临时禁用复制；这不会自动把写入 API 变成只读
@@ -128,7 +126,7 @@ peach-app/
 Windows：
 
 ```powershell
-cd R:\peach-app
+cd C:\Users\longm\Desktop\peach\peach-app
 & py -3.14 -m venv .venv
 & .\.venv\Scripts\python.exe -m pip install -e .
 & .\scripts\test.ps1
@@ -268,19 +266,19 @@ Per-Monitor V2 DPI，单击打开 `https://peach.local/`；右键可查看状态
 托盘同时显示包版本、分支、提交、工作树状态和更新通道；没有 `origin` 时只报告本地开发版。
 即使发现远端提交也不会自动覆盖并行工作树。
 
-需要本机 TLS 时同时提供证书和私钥；二者应放在 `R:\peach-data\secrets`，不要提交 Git：
+需要本机 TLS 时同时提供证书和私钥；二者应放在本机 `peach-data\secrets`，不要提交 Git：
 
 ```powershell
 & .\.venv\Scripts\peach.exe serve --host 0.0.0.0 --port 443 `
   --mdns-address 192.168.50.162 `
-  --ssl-certfile R:\peach-data\secrets\tls\peach.crt `
-  --ssl-keyfile R:\peach-data\secrets\tls\peach.key
+  --ssl-certfile C:\Users\longm\Desktop\peach\peach-data\secrets\tls\peach.crt `
+  --ssl-keyfile C:\Users\longm\Desktop\peach\peach-data\secrets\tls\peach.key
 ```
 
-证书必须包含实际访问名（例如 `peach.local`）并被客户端信任；启用 TLS 时 mDNS 自动发布 HTTPS。
+证书必须包含实际访问名（Windows 为 `peach-win.local`）并被客户端信任；启用 TLS 时 mDNS 自动发布 HTTPS。
 
 本机局域网不使用 Let's Encrypt。项目提供可重复执行的本地 CA + 服务器证书生成脚本；默认只写
-`R:\peach-data\secrets\tls`，`-TrustCurrentUser` 只把 CA 加入当前 Windows 用户的信任库：
+`C:\Users\longm\Desktop\peach\peach-data\secrets\tls`，`-TrustCurrentUser` 只把 CA 加入当前 Windows 用户的信任库：
 
 ```powershell
 & .\scripts\setup_local_tls.ps1 -Address 192.168.50.162 -TrustCurrentUser
@@ -361,8 +359,8 @@ Per-Monitor V2 DPI，单击打开 `https://peach.local/`；右键可查看状态
 
 ```powershell
 & .\.venv\Scripts\python.exe scripts\audit_creator_attributions.py `
-  --output R:\peach-data\review\creator-attribution-items.csv `
-  --summary R:\peach-data\review\creator-attribution-summary.csv
+  --output C:\Users\longm\Desktop\peach\peach-data\review\creator-attribution-items.csv `
+  --summary C:\Users\longm\Desktop\peach\peach-data\review\creator-attribution-summary.csv
 ```
 
 自动纠正必须有水印、番号、发行元数据或用户确认；只有目录同名的记录继续留在复核队列。

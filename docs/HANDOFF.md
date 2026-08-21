@@ -12,7 +12,7 @@
 - 分片用 `-copyts -muxdelay 0 -muxpreload 0` 保持时间戳连续。早先的 `-avoid_negative_ts make_zero` 让每段都从 0 秒开始自称，拖动进度条时容易跳错位置、音画不同步。
 - 分片缓存写在 `stream_root/<asset>/<size>-<mtime>-<秒数>/<index>.ts`，不随响应删除：回放、断线重连和多设备都会重复请求同一段，每次重跑 FFmpeg 等于让 CloudDrive 再预取一次块。缓存按最后访问时间淘汰，指纹带文件大小和 mtime，换了片源自然失效。FFmpeg 并发有信号量闸门（默认 CPU 核数一半），播放器本身就会并发预取多段。
 - 回收站的物理删除只有一条实现：`purge_assets()`，`/api/batch` 的 `delete` 和 `/api/trash/empty` 共用它。顺序固定为先删媒体文件、再删账本行，删不掉的文件整条跳过并在 `blocked` 里回报，前端必须把 `blocked` 显示出来。反过来先删行会留下没人认领的媒体文件，那是真正不可恢复的丢失；留一条指向缺失文件的回收站行至少还能看见和重试。`asset_search` 不列入 `ASSET_REFERENCE_TABLES`，FTS 行由 `0004` 的删除触发器负责。
-- 复核候选文件名带批次日期，代码里只认前缀并取目录里最新的一份；把日期写死会让下一批生成后页面静默变空。候选行必须有稳定主键（`board`/`studio`/`entity_id`），缺主键的行跳过并计数，绝不退化成行号——行号会在 CSV 重排后把历史决定挪到别的条目上。候选目录走 `PeachSettings.candidate_root`，不是模块常量，否则测试会读到真实的 `R:\peach-data\generated`。
+- 复核候选文件名带批次日期，代码里只认前缀并取目录里最新的一份；把日期写死会让下一批生成后页面静默变空。候选行必须有稳定主键（`board`/`studio`/`entity_id`），缺主键的行跳过并计数，绝不退化成行号——行号会在 CSV 重排后把历史决定挪到别的条目上。候选目录走 `PeachSettings.candidate_root`，不是模块常量，否则测试会读到本机真实的 `peach-data/generated`。
 - 批准的权威值只能来自候选文件本身，请求体里的 `creator`/`tags` 只当确认，不一致直接拒绝；只有 `status=candidate` 的创作者候选可以批准，`skip` 行必须在页面禁用批准。否则「批准候选 X」能写入与 X 无关的标签，而 `review_decision` 留痕仍写着 X 通过——留痕说通过、实际写了别的，是最糟的组合。未勾选即整条通过，但受 `REVIEW_APPLY_LIMIT` 约束，超限必须显式勾选。
 - 抽帧的 bt709 覆盖重试只针对坏色彩元数据（stderr 命中 `reserved/unsupported/invalid` + 色彩词）。无条件重试会让网盘超时这类必然失败的文件每帧白跑第二次，单帧最坏耗时从 45 秒翻到 90 秒。判据依赖 stderr，所以不能丢弃 `capture_output` 的错误流。
 - Logo 与头像在界面上都渲染成方框（厂牌方图、女优 160×160 圆头像），候选按实测像素比例处理，判据在 `peach.images.classify`：长宽比 ≤1.35 直接用，更长的补自身四角底色填成正方形（`pad_to_square`，不是刷白也不是裁切），短边 <128 才拒绝。只有 URL 没有实测尺寸不算候选。
@@ -179,14 +179,14 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 
 ## 运行与部署
 
-- 当前 Windows 日常入口仍是外置盘 `R:\peach-app` 下的 Startup `Peach.lnk`；目标入口位于 `C:\Users\longm\Desktop\peach\peach-app`，迁移后仍只保留一个 Startup 托盘入口。
+- Windows 日常入口是当前用户 Startup 中的唯一 `Peach.lnk`，指向 `C:\Users\longm\Desktop\peach\peach-app\dist\Peach\Peach.exe`。`R:\peach-app` 是迁移前的旧位置，不再用作运行入口。
 - Windows 发布入口使用 `scripts/build_windows.ps1`：先用 `scripts/generate_brand_assets.py` 从原始附件生成正方形 `resources/peach-logo.png` 和多尺寸 `resources/peach.ico`，再构建单一 `dist/Peach/Peach.exe`。无参数运行托盘，`serve`/`migrate` 运行 CLI；桌面快捷方式由 `scripts/create_desktop_shortcut.ps1` 创建，图标使用 `Peach.exe,0`，行为与 FlowLens 的快捷方式一致；Startup 安装仍由 `scripts/manage_tray_startup.ps1` 负责。
 - `dist/Peach/Peach.exe` 是本机打包入口，不是可移动的独立发行版：托盘只打包了自己，服务进程仍由项目 venv 的 `peach.exe` 承担（`_peach_executable()` 从 exe 位置逐级向上找 `.venv\Scripts\peach.exe`）。脱离同一台机器的项目 `.venv` 复制不会工作，不要按「单文件绿色版」对外描述。
 - 托盘单击打开 HTTPS；菜单提供状态、重启、日志、更新检查和退出。托盘只终止自己创建的 Peach 服务进程。
 - 创建 Win32 窗口前必须启用 Per-Monitor V2 DPI。正常动作不弹模态 MessageBox；更新检查在后台线程执行，用 pystray 原生非模态通知反馈。
 - `src/peach/__init__.py::__version__` 是版本唯一来源；采用 pre-1.0 SemVer。Git commit 是构建标识，`vX.Y.Z` 是本地发布点。更新检查只 fetch/比较，并行 worktree 模式下不自动覆盖安装。
 - `scripts/manage_tray_startup.ps1` 是唯一自启动管理入口。托盘管理 HTTP `0.0.0.0:80` 和 HTTPS `192.168.50.162:443`，服务日志写入本机 `peach-data/logs`。
-- `peach serve` 用 Python zeroconf 发布唯一入口 `peach.local`；生产显式使用 `--mdns-address 192.168.50.162` 固定 A 地址，但保留 `Zeroconf()` 全合格网卡监听。mDNS 验收必须包含单元测试、运行态 health、DNS-SD、主机名解析和真实 LAN 客户端。
+- `peach serve` 按平台发布固定入口：macOS 为 `peach.local`，Windows 为 `peach-win.local`。Windows 生产显式使用 `--mdns-address 192.168.50.162` 固定 A 地址，但保留 `Zeroconf()` 全合格网卡监听。mDNS 验收必须包含单元测试、运行态 health、DNS-SD、主机名解析和真实 LAN 客户端。
 - `.local` 使用本地 CA，不使用 Let's Encrypt。证书/私钥保存在本机 `peach-data/secrets`。macOS/iOS 只安装并信任 `peach-local-ca.crt`，不得分发 CA key 或服务器 key。
 - FastAPI 是唯一 Web server。不得恢复平行 `http.server` 或动态 legacy loader。
 - FFmpeg/ffprobe 依次从显式环境变量、本机 `peach-data/tools/ffmpeg/bin`、`PATH` 解析；不得回退到 Stash 私有目录。
@@ -253,7 +253,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 ## 本机服务、系统代理与双机广播
 - **对本机服务的 HTTP 探测必须 `trust_env=False`**。代理客户端（Stash、HapiGo、Surge）会设置 macOS 系统级 HTTP 代理，httpx 默认经 `urllib.getproxies()` 读它，探测 `127.0.0.1` 的请求被送进代理、由代理回 503——服务活着却被判「未运行」。2026-08-21 实测如此，修复在 `peach.tray.ServiceManager.healthy`，`test_health_check_never_goes_through_a_proxy` 守门。任何新写的健康检查/回环探测都适用同一条。
 - **macOS 系统代理例外列表必须包含 `*.local` 和 `192.168.50.0/24`**。浏览器走系统代理时，代理核心解析不了 mDNS 名字，`http://peach.local` 会被代理回 503（终端直连正常，所以只有浏览器坏）。用 `networksetup -setproxybypassdomains <服务> "*.local" "localhost" "127.0.0.1" "192.168.50.0/24"` 设置，`scutil --proxy` 的 `ExceptionsList` 复查。代理客户端重设系统代理后这一列表可能被清掉，排查浏览器打不开 `.local` 时先看这里。
-- **双机广播分工：macOS 独占 `peach.local`，Windows 用 `PEACH_MDNS_NAME=peach-win`**。mDNS 同名谁后注册谁赢；Windows 迁移完成前不得让它的托盘开机自启——残留广播会把 `peach.local` 抢到它自己那边，而它上面没有服务。服务可以同时跑（账本单写者复制兜底），但两边同时写入会很快冲突转只读。
+- **双机广播分工：macOS 固定 `peach.local`，Windows 固定 `peach-win.local`**。默认值已收敛到 `peach.config.MDNS_NAME`，`PEACH_MDNS_NAME` 只做临时覆盖。服务可以同时跑（账本单写者复制兜底），但两边同时写入会很快冲突转只读。
 - **两台机器各有独立的本机 CA**（secrets 按设计不共享）。iPhone/iPad 必须信任「当前正在服务的那台」的 CA 才能用 HTTPS；换机器服务后要装对应的 `peach-local-ca.crt` 并在「证书信任设置」开完全信任。核对指纹：`openssl x509 -in .../peach-local-ca.crt -noout -fingerprint`。菜单栏状态行逐个点名每个服务：`HTTP 正常 · HTTPS 异常（状态码 503）`，异常附最近一次失败原因；不要改回只报「未运行」。
 ## 恢复入口
 

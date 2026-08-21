@@ -54,7 +54,7 @@
 
 ## 工作规则
 
-- `peach-app` is the only GitHub-synced tree. `peach-data`, `.venv`, build output, worktree directories, media and CloudDrive mounts never enter Git. Windows is still on legacy external `R:\peach-app`/`R:\peach-data` and must migrate to internal `C:\Users\longm\Desktop\peach`; macOS is already local. The external disk's target role is only `R:\media`/`/Volumes/RESOURCES/media`; see ADR-0017.
+- `peach-app` is the only GitHub-synced tree. `peach-data`, `.venv`, build output, worktree directories, media and CloudDrive mounts never enter Git. Windows and macOS both run code/data/worktrees from their internal disks; Windows uses `C:\Users\longm\Desktop\peach`. The external disk only supplies `R:\media`/`/Volumes/RESOURCES/media`; see ADR-0017.
 - Ledger paths are always written in the Windows shape (`R:\Media\...`, `A:\...`, `B:\...`). `src/peach/platform.py` translates them to local mounts at read time; never rewrite the ledger to a POSIX shape, and never write `asset.path` from macOS.
 - `peach-data/database/ledger.db` is the truth store. Tests use temporary databases only. A real migration requires a SQLite backup and before/after count checks; follow `peach-ledger-write` before any real write.
 - The project is an early personal project: aggressively remove obsolete code and compatibility layers when the replacement is tested. Do not preserve dead interfaces merely for history; Git is the archive.
