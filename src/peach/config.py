@@ -9,7 +9,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # 运行数据目录按平台给默认值，两个平台各自持有一份可独立运行的 peach-data。
 # `PEACH_DATA_ROOT` 覆盖默认值；worktree 也靠这个绝对路径找到同一份数据。
-_WINDOWS_DATA_ROOT = Path(r"R:\peach-data")
+_WINDOWS_PROJECT_ROOT = Path.home() / "Desktop" / "peach"
+_WINDOWS_DATA_ROOT = _WINDOWS_PROJECT_ROOT / "peach-data"
 _POSIX_DATA_ROOT = Path.home() / "Desktop" / "lmd.gg" / "peach" / "peach-data"
 DATA_ROOT = Path(
     os.environ.get("PEACH_DATA_ROOT")
@@ -18,11 +19,10 @@ DATA_ROOT = Path(
 DATABASE_DIR = DATA_ROOT / "database"
 DATABASE_PATH = DATABASE_DIR / "ledger.db"
 
-# 共享副本只承担单写者复制传输，不是 Peach 直接运行的数据库。下面的外置盘默认值是
-# Windows 本机化完成前的兼容状态；ADR-0017 要求迁到内置盘专用同步目录。
-# 本机直接使用共享副本时（当前 Windows 旧状态），两条路径相等，复制自动停用。
-_WINDOWS_SHARED_ROOT = Path(r"R:\peach-data")
-_POSIX_SHARED_ROOT = Path("/Volumes/RESOURCES/peach-data")
+# 共享副本只承担单写者复制传输，不是 Peach 直接运行的数据库。Windows 把它放在
+# 内置盘专用目录并单独通过 SMB 暴露；macOS 按共享名挂载，不再依赖外置资源盘。
+_WINDOWS_SHARED_ROOT = _WINDOWS_PROJECT_ROOT / "peach-sync"
+_POSIX_SHARED_ROOT = Path("/Volumes/peach-sync")
 SHARED_DATA_ROOT = Path(
     os.environ.get("PEACH_SHARED_DATA_ROOT")
     or (_WINDOWS_SHARED_ROOT if os.name == "nt" else _POSIX_SHARED_ROOT)
@@ -51,14 +51,9 @@ LOCATION_ROOT_DECLARATIONS: dict[str, str] = {
 }
 MEDIA_ROOT_DECLARATIONS: tuple[str, ...] = tuple(LOCATION_ROOT_DECLARATIONS.values())
 
-# 两台机器共用同一个名字：一个地址走到底，不用记哪台是哪个。
-#
-# 代价是**两台不能同时广播**。macOS 走 `dns-sd -P` 代理注册，它直接断言记录、不做冲突
-# 退让；Windows 的 zeroconf 会做冲突检测。同时开着的话谁后注册谁赢，另一台就按名字访问
-# 不到了——不会报错，只是解析到对面。实际用法是一次只开一台，真要同时开就用
-# `PEACH_MDNS_NAME` 给其中一台换个名字。`scripts/check_mdns.py` 能查出撞名：
-# 同一个名字有两个地址应答就是撞上了。
-MDNS_NAME = os.environ.get("PEACH_MDNS_NAME") or "peach"
+# 双机固定使用不同名字，避免同时运行时互相抢占 mDNS：macOS 是 peach.local，
+# Windows 是 peach-win.local。`PEACH_MDNS_NAME` 仍可用于临时测试覆盖。
+MDNS_NAME = os.environ.get("PEACH_MDNS_NAME") or ("peach-win" if os.name == "nt" else "peach")
 MDNS_HOSTNAME = f"{MDNS_NAME}.local"
 # 2026-08 仓库/数据拆分前写入 ledger 的旧快照根；运行时只做受控前缀重映射。
 LEGACY_SNAPSHOT_DECLARATIONS: tuple[str, ...] = (r"R:\Resources\Intake\snapshots",)
