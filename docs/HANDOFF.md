@@ -195,7 +195,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 切换服务前检查 80、443、8900、9999 端口和实际进程归属。
 - 115/PikPak 播放依赖 CloudDrive 的 `B:`/`A:`；盘符对 Windows token 可见性不同，最终以 Peach 对已知作品的 `/stream` 实测为准。
 - 浏览器不支持的 AVI 等容器由 `TranscodeService` 缓存为 H.264/AAC MP4，再通过同一 Range 端点提供；永不改写原媒体。
-- 数据库元数据不得插值到 inline JavaScript 事件属性。真实厂牌名中的撇号曾直接造成 Firefox 语法错误。
+- 数据库元数据不得插值到 inline JavaScript 事件属性。真实厂牌名中的撇号曾直接造成 Firefox 语法错误。前端 API 包装必须先检查 HTTP 状态再返回 JSON；冲突只读时写端点会返回 `409` 和错误 JSON，把它当普通成功对象会清空选择并重载，用户只会看到条目原样回来。批量处置和详情反馈必须保留当前选择并明确显示失败原因。
 - 验证分开报告：静态/单元/API、桌面浏览器、390×844 手机、生产服务是否已重启。
 
 ## 当前架构真相

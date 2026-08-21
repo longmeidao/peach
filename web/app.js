@@ -1,6 +1,15 @@
 const $=s=>document.querySelector(s);
 const icon=(name,cls='')=>`<svg${cls?` class="${cls}"`:''} viewBox="0 0 24 24" aria-hidden="true"><use href="#i-${name}"/></svg>`;
-const api=(p,o)=>fetch(p,Object.assign({headers:{'Content-Type':'application/json'}},o||{})).then(r=>r.json());
+const api=async(p,o)=>{
+  const response=await fetch(p,Object.assign({headers:{'Content-Type':'application/json'}},o||{}));
+  let payload=null;
+  try{payload=await response.json()}catch(_e){}
+  if(!response.ok){
+    const detail=payload&&(payload.detail||payload.error);
+    throw new Error(detail||`请求失败（${response.status}）`);
+  }
+  return payload;
+};
 const route=(path,replace=false)=>history[replace?'replaceState':'pushState']({},'',path);
 const ENTITY_ROUTES={performer:'performers',studio:'studios',creator:'creators',series:'series'};
 const ROUTE_ENTITIES={performers:'performer',studios:'studio',creators:'creator',series:'series'};
@@ -324,6 +333,7 @@ $('#batchbar').querySelectorAll('[data-batch]').forEach(button=>button.onclick=a
     if(r.blocked&&r.blocked.length)alert(`已永久删除 ${r.purged} 个；${r.blocked.length} 个删不掉，仍留在回收站：\n`
       +r.blocked.slice(0,5).map(x=>`${x.path}（${x.reason}）`).join('\n'));
     setSelectMode(false,true);await reloadCurrentSurface()}
+  catch(error){alert(`操作失败：${error.message||'未知错误'}`)}
   finally{button.disabled=false;paintSelection()}
 });
 
@@ -1395,6 +1405,10 @@ async function load(reset){
   showHomeSurfaces();
   if(reset)offset=0;
   renderCombo();
+  // 疑似广告是逐项处置队列，计数只是当前队列说明，不是需要跟随浏览的排序工具。
+  const countRow=$('#count'),staticManageCount=state.state==='ads';
+  countRow.classList.toggle('manage-static',staticManageCount);
+  if(staticManageCount)countRow.classList.remove('is-stuck');
   if(state.state==='ads'){
     if(reset||!adsBatch){const nextAds=await api('/api/ads?limit=200');if(requestSeq!==loadRequestSeq)return;
       adsBatch=nextAds;cache(adsBatch.items)}
@@ -1404,7 +1418,7 @@ async function load(reset){
     if(reset)$('#grid').innerHTML=html;else $('#grid').insertAdjacentHTML('beforeend',html);
     $('#count').innerHTML=`疑似广告 ${adsBatch.total} 个 · 当前载入 ${$('#grid').children.length} 个 · 标记后统一复核，不会直接删除`;
     $('#loadSentinel').hidden=$('#grid').children.length>=adsBatch.items.length;
-    $('#shortsSec').hidden=true;wireCards($('#grid'));return;
+    $('#shortsSec').hidden=true;wireCards($('#grid'));paintSelection();return;
   }
   adsBatch=null;
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
@@ -1697,12 +1711,18 @@ async function openItem(id,push=true,mixContext=null){
   $('#stage').querySelectorAll('[data-mix-item]').forEach(b=>b.onclick=()=>openMix(mixContext.seedId,+b.dataset.mixItem,true));
   const g=$('#gate');
   $('#stage').querySelectorAll('[data-kind]').forEach(b=>b.onclick=async()=>{
-    const r=await api('/api/feedback',{method:'POST',body:JSON.stringify({id:it.id,kind:b.dataset.kind})});
-    Object.assign(it,{feedback:r.feedback,disposal:r.disposal,o_count:r.o_count});
-    $('#stage').querySelector('.dislike').setAttribute('aria-pressed',r.feedback==='dislike');
-    $('#stage').querySelector('.seen').setAttribute('aria-pressed',r.feedback==='seen');
-    $('#stage').querySelector('.dispose').setAttribute('aria-pressed',r.disposal==='trash');
-    $('#oCount').textContent=r.o_count||0});
+    try{
+      const r=await api('/api/feedback',{method:'POST',body:JSON.stringify({id:it.id,kind:b.dataset.kind})});
+      Object.assign(it,{feedback:r.feedback,disposal:r.disposal,o_count:r.o_count});
+      $('#stage').querySelector('.dislike').setAttribute('aria-pressed',r.feedback==='dislike');
+      $('#stage').querySelector('.seen').setAttribute('aria-pressed',r.feedback==='seen');
+      $('#stage').querySelector('.dispose').setAttribute('aria-pressed',r.disposal==='trash');
+      $('#oCount').textContent=r.o_count||0;
+      if(b.dataset.kind==='dispose'&&r.disposal==='trash'&&state.state==='ads'){
+        disposeStage(true);await load(true);
+      }
+    }catch(error){alert(`操作失败：${error.message||'未知错误'}`)}
+  });
   const renderDetailTags=()=>{
     const wrap=$('#detailTags');if(!wrap)return;
     const visible=(it.tags||[]).filter(t=>!DURATION_TAGS.has(t.k)).slice(0,40);
