@@ -144,9 +144,12 @@
 - 2026-08-17 批代码改动（merge_entity 回归主线、sheets 色彩元数据重试、media 大小写不敏感匹配）模块级 `unittest` 全部通过：`test_entity_merge` 4 项、`test_scripts` 16 项、`test_media` 9 项等。注意：实测在工具管道里直跑 `python -m unittest discover` 全量会挂起或整会话输出消失（test_jobs 模块极快退出时竞态最明显），模块级独立运行全部通过；唯一可信入口仍是 `& .\scripts\test.ps1`。
 - 2026-08-19 发现「测试通过」曾有一段并不成立：`test_rm_web.py` 与 `test_web_ui.py` 各有一处 `if __name__ == "__main__": unittest.main()` 被插在类中间，其后缩进 4 格的 16 条测试被解析成 if 块语句，从写下起就没被收集过——不报错、不告警，其中包括复核页三类候选的全部数据层断言。修正后全量由 355 升到 371 且全绿。`tests/test_test_collection.py` 用 AST 禁止这种形状，避免再出现「绿灯但没覆盖」。
 
-- 2026-08-21 macOS 侧最新基线：`./scripts/test.sh` 全量 458 项通过、3 项跳过；上下文预算检查通过。
-  Windows 独立 checkout 已建立，但本次文档同步提交尚未在 Windows 跑 `scripts/test.ps1`；不用过去的 Windows
-  测试代替当前提交验证。
+- 2026-08-21 macOS 最新基线：`./scripts/test.sh` 全量 458 项通过、3 项跳过；Windows 当前状态提交
+  `& .\scripts\test.ps1` 全量 460 项通过、12 项按平台跳过；上下文预算检查通过。
+- Windows 无外置盘生产验收：HTTP 与严格 CA HTTPS `/healthz` 返回 200，账本、FFmpeg、115 和
+  PikPak 可用，只有 `local` 来源离线；115 HTTP 与 PikPak 严格 HTTPS 各完成 1 KiB `206` Range。
+- 双机同时在线时账本世代 18、状态 `in-sync`；`peach-win.local` 与 `peach.local` 分别只由
+  `192.168.50.162`、`192.168.50.88` 应答。
 - 两台机器的 worktree 各自独立：macOS 侧已按 27 个 `agent/*` 分支重建，Windows 路径的失效注册已 `git worktree prune` 清掉。分支本身在 `.git` 里，worktree 目录随时可重建，不需要跨机器复制。
 
 ## 下一批工作
