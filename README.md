@@ -52,6 +52,12 @@ Windows 口径，本机挂载点由 `src/peach/platform.py` 在读取时翻译�
 不到（不报错，只是解析到对面）。一次只开一台；真要同时开，给其中一台设 `PEACH_MDNS_NAME`。
 `check_mdns.py` 查得出撞名——同一个名字有两个地址应答就是撞上了。
 
+双机的固定分工：macOS 独占 `peach.local`，Windows 设 `PEACH_MDNS_NAME=peach-win`
+（系统环境变量 + 重装一次自启动，启动进程会继承），访问 `https://peach-win.local/`。
+服务本身可以同时跑——账本单写者复制兜得住——但两边同时写入会很快触发冲突转只读，
+同时运行适合一边主写、另一边只读浏览。Windows 迁移完成前不要让它的托盘开机自启：
+残留的广播会把 `peach.local` 抢回它自己，而它上面没有服务在跑。
+
 ### 账本复制
 
 三份副本：硬盘 `\<共享\>/database/ledger.db` 是权威副本，Windows 和 macOS 各持一份本地
