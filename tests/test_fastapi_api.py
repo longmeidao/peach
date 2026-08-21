@@ -119,9 +119,9 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         con.executescript(BASE_SCHEMA)
         con.execute(
             """INSERT INTO asset(id,location,path,name,medium,size,creator,studio,duration,
-                                  width,height,snapshot_path,first_seen)
+                                  width,height,ctx_orient,snapshot_path,first_seen)
                VALUES(1,'local',?,'one.mp4','video',100,
-                      'Alice','Studio A',100,1920,1080,?,'2026-08-14')""",
+                      'Alice','Studio A',100,1920,1080,'横屏',?,'2026-08-14')""",
             (str(self.media_file), str(self.legacy_snapshot_file)),
         )
         con.execute("INSERT INTO asset_tag(asset_id,tag,source) VALUES(1,'Tag A','test')")
@@ -262,6 +262,15 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(data["items"][0]["has_thumb"])
         self.assertNotIn("path", data["items"][0])
         self.assertEqual(response.headers["cache-control"], "no-store")
+
+        scoped = await self.client.get("/api/facets?t=secret&id=1")
+        self.assertEqual(scoped.status_code, 200)
+        self.assertEqual(scoped.json()["locations"], [
+            {"k": "local", "n": 1, "played": 0},
+        ])
+        self.assertEqual(scoped.json()["orientations"], [
+            {"k": "横屏", "n": 1},
+        ])
 
     async def test_preference_is_an_independent_authenticated_write(self):
         denied = await self.client.post(

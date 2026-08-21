@@ -195,6 +195,21 @@ class WebDataTests(unittest.TestCase):
         )
         self.assertEqual([item["id"] for item in result["items"]], [1])
 
+    def test_facets_are_scoped_to_the_current_entity_or_item(self):
+        creator = rm_web.q_facets(
+            self.contract, scope_kind="creator", scope_name="Canonical Creator",
+        )
+        self.assertEqual({row["k"] for row in creator["locations"]}, {"local", "115"})
+        self.assertEqual({row["k"] for row in creator["orientations"]}, {"横屏", "竖屏"})
+        self.assertEqual(creator["stats"]["duration"], 2)
+
+        item = rm_web.q_facets(self.contract, asset_id=1)
+        self.assertEqual(item["locations"], [{"k": "local", "n": 1, "played": 0}])
+        self.assertEqual(item["orientations"], [{"k": "横屏", "n": 1}])
+        self.assertEqual([row["k"] for row in item["creators"]], ["Canonical Creator"])
+        self.assertEqual([row["k"] for row in item["tags"]], ["足交"])
+        self.assertEqual(item["stats"]["duration"], 1)
+
     def test_items_can_skip_repeated_total_count_on_later_pages(self):
         result = rm_web.q_items(
             self.contract, {"limit": "1", "offset": "0", "count": "0"},

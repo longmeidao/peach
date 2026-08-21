@@ -123,6 +123,17 @@ let state={loc:initialParams.get('loc')||'local,115',creator:initialParams.get('
   tag:initialParams.get('tag')||'',len:initialParams.get('len')||'',dur_min:initialParams.get('dur_min')||'',dur_max:initialParams.get('dur_max')||'',
   orient:initialParams.get('orient')||'',state:initialParams.get('state')||'',sort:initialParams.get('sort')||appSettings.defaultSort,
   seed:initialParams.get('seed')||persistedSeed(),q:initialParams.get('q')||'',jav:initialParams.get('jav')||'',thumb:'1'};
+const ENTITY_FILTER_KEYS=['loc','creator','tag','dur_min','dur_max','orient'];
+const emptyEntityFilters=()=>Object.fromEntries(ENTITY_FILTER_KEYS.map(key=>[key,'']));
+const parseEntityFilters=search=>{const params=new URLSearchParams(search),filters=emptyEntityFilters();
+  ENTITY_FILTER_KEYS.forEach(key=>{filters[key]=params.get(key)||''});return filters};
+const entityFilterSearch=filters=>{const params=new URLSearchParams();
+  ENTITY_FILTER_KEYS.forEach(key=>{if(filters[key])params.set(key,filters[key])});
+  return params.toString()};
+let barsContext={type:'home',filters:state},detailReturnBarsContext=null;
+const cloneBarsContext=context=>context&&context.type==='entity'
+  ? {...context,filters:{...context.filters}}:context;
+const activeFilterState=()=>barsContext.type==='home'?state:barsContext.filters;
 $('#q').value=state.q;
 const REP={};   // 创作者/厂牌 → 代表作 id，用来做圆头像（裁接触印相中心格，不另造图）
 let offset=0,total=0,facets=null,current=null,detailReturnPath='/',activeMix=null;
@@ -557,27 +568,53 @@ function wireCards(root,onClick,onTag){
 /* ── 顶部标签条 + 抽屉 ── */
 let barsRequestSeq=0,barsDataCache=null,barsDataAt=0,barsDataPromise=null;
 let barsDataScope='';
-async function getBarsData(){
+async function getBarsData(context=barsContext){
   // JAV 模式的顶部三层与筛选面板要跟着收窄，否则会列出只出现在创作者作品里的
   // 女优和厂牌，点进去却是空的。口径变了必须丢缓存，不能沿用上一套。
-  const scope=javActive()?'&jav=1':'';
+  const facetParams=new URLSearchParams();
+  if(javActive())facetParams.set('jav','1');
+  if(context.type==='entity'){
+    facetParams.set('scope_kind',context.kind);facetParams.set('scope_name',context.name)
+  }else if(context.type==='item')facetParams.set('id',String(context.id));
+  const scope=facetParams.toString();
   if(scope!==barsDataScope){barsDataCache=null;barsDataPromise=null;barsDataScope=scope}
   if(barsDataCache&&Date.now()-barsDataAt<30000)return barsDataCache;
+  const topsParams=new URLSearchParams({n:'30',seed:state.seed||''});
+  if(javActive())topsParams.set('jav','1');
   // 顶部三层跟着「换一批」的同一个种子走，刷新后才真的换人。
   if(!barsDataPromise)barsDataPromise=Promise.all([
-      api('/api/facets'+(scope?'?jav=1':'')),
-      api('/api/tops?n=30'+scope+'&seed='+encodeURIComponent(state.seed||''))])
+      api('/api/facets'+(scope?'?'+scope:'')),
+      api('/api/tops?'+topsParams)])
     .then(data=>{barsDataCache=data;barsDataAt=Date.now();return data})
     .finally(()=>{barsDataPromise=null});
   return barsDataPromise
 }
+function commitContextFilter(mutate){
+  if(barsContext.type==='entity'){
+    const filters={...barsContext.filters};mutate(filters);
+    barsContext={...barsContext,filters};
+    buildBars();updateEntityCollection(barsContext.kind,barsContext.name,filters,true);return
+  }
+  if(barsContext.type==='item'){
+    const target=cloneBarsContext(detailReturnBarsContext);
+    disposeStage(false);detailReturnBarsContext=null;
+    if(target&&target.type==='entity'){
+      mutate(target.filters);barsContext=target;
+      buildBars();updateEntityCollection(target.kind,target.name,target.filters,true);return
+    }
+    mutate(state);barsContext={type:'home',filters:state};route('/');showHomeSurfaces();
+    buildBars();load(true);return
+  }
+  mutate(state);buildBars();load(true)
+}
 async function buildBars(){
   const requestSeq=++barsRequestSeq;
+  const context=barsContext,filterState=activeFilterState();
   // 两个聚合查询互不依赖。冷启动各需约 1 秒，串行会让手机首屏白等；
   // 并行取回后再一次性绘制顶部与抽屉。
-  const [facetData,tops]=await getBarsData();
+  const [facetData,tops]=await getBarsData(context);
   if(requestSeq!==barsRequestSeq)return;
-  facets=facetData; const st=facets.stats;
+  if(context.type==='home')facets=facetData;
 
   // 顶部三层：女优圆头像 / 厂牌 / 内容标签
   tops.performers.forEach(x=>{if(x.rep)REP[x.k]=x.rep});
@@ -609,26 +646,28 @@ async function buildBars(){
   const views=[{k:'',label:'全部'},{k:'fresh',label:'没看过'},
                {k:'later',label:'稍后看'},{k:'flagged',label:'已标记'}];
   $('#tagbar').innerHTML=
-    views.map(v=>`<button class="pill" data-state="${v.k}" aria-pressed="${state.state===v.k}">${v.label}</button>`).join('')
+    views.map(v=>`<button class="pill" data-state="${v.k}" aria-pressed="${filterState.state===v.k}">${v.label}</button>`).join('')
     +`<span class="sep"></span>`
-    +facets.tags.slice(0,26).map(t=>
-      `<button class="pill" data-tag="${esc(t.k)}" aria-pressed="${state.tag===t.k}">${esc(t.k)}</button>`).join('');
+    +facetData.tags.slice(0,26).map(t=>
+      `<button class="pill" data-tag="${esc(t.k)}" aria-pressed="${filterState.tag===t.k}">${esc(t.k)}</button>`).join('');
   $('#tagbar').querySelectorAll('[data-state]').forEach(b=>b.onclick=()=>{
     state.state=b.dataset.state;buildBars();load(true)});
   $('#tagbar').querySelectorAll('[data-tag]').forEach(b=>b.onclick=()=>{toggleTag(b.dataset.tag)});
   renderCombo(); wireAllDrag();
 
-  const chips=(items,key,multi,limit)=>`<div class="chips">`+items.slice(0,limit||999).map(it=>{
-    const sel=(state[key]||'').split(',').filter(Boolean).includes(String(it.k));
+  const chips=(items,key,multi,limit)=>items.length?`<div class="chips">`+items.slice(0,limit||999).map(it=>{
+    const sel=(filterState[key]||'').split(',').filter(Boolean).includes(String(it.k));
     const dot=key==='loc'?(SRCICON[it.k]||`<i class="cost ${it.cost}"></i>`):'';
     // 脱盘的来源留在列表里但不可点：数量还有意义，点进去只会得到一屏放不出的卡片。
     const off=key==='loc'&&sourceOffline(it.k);
     return `<button class="chip${off?' offline':''}" aria-pressed="${sel}" data-key="${key}" data-multi="${multi?1:0}"
       ${off?`disabled title="${OFFLINE_HINT}"`:''}
       data-val="${esc(it.k)}">${dot}${esc(it.label||it.k)}${it.n!=null?`<span class="n">${it.n.toLocaleString()}</span>`:''}</button>`;
-  }).join('')+`</div>`;
+  }).join('')+`</div>`:'';
   // 按语义类别区分来源、创作者、内容和技术规格。
-  const sec=(t,b,x,cat)=>`<div class="sec${cat?' cat-'+cat:''}"><h3>${t}${x||''}</h3>${b}</div>`;
+  const sec=(t,b,x,cat)=>b?`<div class="sec${cat?' cat-'+cat:''}"><h3>${t}${x||''}</h3>${b}</div>`:'';
+  const scopedCreators=context.type==='entity'&&context.kind==='creator'
+    ? facetData.creators.filter(item=>item.k!==context.name):facetData.creators;
   // 与窄栏共用 EDGE_ICONS —— 两边条目必须一致，原来抽屉是另一份硬编码
   const navBtn=(k,label,ic)=>`<button data-nav="${k}" aria-pressed="${navOn(k)}">
     ${icon(ic)}<span>${label}</span></button>`;
@@ -637,16 +676,16 @@ async function buildBars(){
       <b class="disp" style="font-size:15px;letter-spacing:.1em">导航与筛选</b>
       <button id="drawerClose" class="ib" title="收起">${icon('x')}</button></div>`+
     `<div class="dnav">${EDGE_ICONS.map(([k,label,ic])=>navBtn(k,label,ic)).join('')}</div>`+
-    sec('来源',chips(facets.locations.map(l=>({k:l.k,label:LOC[l.k]||l.k,n:l.n,
+    sec('来源',chips(facetData.locations.map(l=>({k:l.k,label:LOC[l.k]||l.k,n:l.n,
         cost:(l.k==='pikpak'||l.k==='online')?'metered':'free'})),'loc',true),'','src')
-    +sec('时长',`<div class="duration-filter"><div class="duration-readout"><span id="durMinText">不限</span><b>—</b><span id="durMaxText">不限</span></div>
+    +sec('时长',facetData.stats.duration?`<div class="duration-filter"><div class="duration-readout"><span id="durMinText">不限</span><b>—</b><span id="durMaxText">不限</span></div>
       <div class="dual-range" id="durationRange"><span class="range-base"></span><span class="range-fill"></span>
-        <input id="durMin" type="range" min="0" max="180" step="5" value="${state.dur_min?Math.min(180,+state.dur_min/60):0}" aria-label="最短时长（分钟）">
-        <input id="durMax" type="range" min="0" max="180" step="5" value="${state.dur_max?Math.min(180,+state.dur_max/60):180}" aria-label="最长时长（分钟）"></div></div>`,'','meta')
-    +sec('画幅',chips([{k:'竖屏'},{k:'横屏'}],'orient'),'','meta')
-    +sec('创作者',chips(facets.creators,'creator',false,26),'<button data-more="creator">更多</button>','artist')
-    +sec('内容标签',chips(facets.tags,'tag',false,30),'<button data-more="tag">更多</button>','general')
-    +sec('规格',chips(facets.tech,'tag',false,12),'','meta');
+        <input id="durMin" type="range" min="0" max="180" step="5" value="${filterState.dur_min?Math.min(180,+filterState.dur_min/60):0}" aria-label="最短时长（分钟）">
+        <input id="durMax" type="range" min="0" max="180" step="5" value="${filterState.dur_max?Math.min(180,+filterState.dur_max/60):180}" aria-label="最长时长（分钟）"></div></div>`:'','','meta')
+    +sec('画幅',chips(facetData.orientations,'orient'),'','meta')
+    +sec('创作者',chips(scopedCreators,'creator',false,26),scopedCreators.length>26?'<button data-more="creator">更多</button>':'','artist')
+    +sec('内容标签',chips(facetData.tags,'tag',false,30),facetData.tags.length>30?'<button data-more="tag">更多</button>':'','general')
+    +sec('规格',chips(facetData.tech,'tag',false,12),'','meta');
   const dc=$('#drawerClose'); if(dc)dc.onclick=()=>openDrawer(false);
   $('#drawer').querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{
     openIndex(b.dataset.page); closeDrawerAfterNav()});
@@ -665,24 +704,28 @@ async function buildBars(){
     buildEdge();buildBars();load(true)});
   const bind=()=>$('#drawer').querySelectorAll('.chip').forEach(b=>b.onclick=()=>{
     const k=b.dataset.key,v=b.dataset.val;
-    if(b.dataset.multi==='1'){const cur=(state[k]||'').split(',').filter(Boolean);
-      const i=cur.indexOf(v);i>=0?cur.splice(i,1):cur.push(v);state[k]=cur.join(',');}
-    else state[k]=state[k]===v?'':v;
-    buildBars();load(true)});
+    commitContextFilter(filters=>{
+      if(b.dataset.multi==='1'){const cur=(filters[k]||'').split(',').filter(Boolean);
+        const i=cur.indexOf(v);i>=0?cur.splice(i,1):cur.push(v);filters[k]=cur.join(',')}
+      else filters[k]=filters[k]===v?'':v
+    })});
   bind();
   const durMin=$('#durMin'),durMax=$('#durMax'),durRange=$('#durationRange');
-  const syncDuration=(commit=false,changed='')=>{
-    let lo=+durMin.value,hi=+durMax.value;
-    if(lo>hi){if(changed==='min')hi=lo;else lo=hi;durMin.value=lo;durMax.value=hi}
-    durRange.style.setProperty('--lo',(lo/180*100)+'%');durRange.style.setProperty('--hi',(hi/180*100)+'%');
-    $('#durMinText').textContent=lo?lo+' 分钟':'不限';$('#durMaxText').textContent=hi<180?hi+' 分钟':'不限';
-    if(commit){state.len='';state.dur_min=lo?String(lo*60):'';state.dur_max=hi<180?String(hi*60):'';buildBars();load(true)}
-  };
-  durMin.oninput=()=>syncDuration(false,'min');durMax.oninput=()=>syncDuration(false,'max');
-  durMin.onchange=()=>syncDuration(true,'min');durMax.onchange=()=>syncDuration(true,'max');syncDuration();
+  if(durMin&&durMax&&durRange){
+    const syncDuration=(commit=false,changed='')=>{
+      let lo=+durMin.value,hi=+durMax.value;
+      if(lo>hi){if(changed==='min')hi=lo;else lo=hi;durMin.value=lo;durMax.value=hi}
+      durRange.style.setProperty('--lo',(lo/180*100)+'%');durRange.style.setProperty('--hi',(hi/180*100)+'%');
+      $('#durMinText').textContent=lo?lo+' 分钟':'不限';$('#durMaxText').textContent=hi<180?hi+' 分钟':'不限';
+      if(commit)commitContextFilter(filters=>{
+        filters.len='';filters.dur_min=lo?String(lo*60):'';filters.dur_max=hi<180?String(hi*60):''})
+    };
+    durMin.oninput=()=>syncDuration(false,'min');durMax.oninput=()=>syncDuration(false,'max');
+    durMin.onchange=()=>syncDuration(true,'min');durMax.onchange=()=>syncDuration(true,'max');syncDuration();
+  }
   $('#drawer').querySelectorAll('[data-more]').forEach(b=>b.onclick=e=>{e.stopPropagation();
     const sec=b.closest('.sec'), k=b.dataset.more;
-    const src=k==='tag'?facets.tags:facets.creators;
+    const src=k==='tag'?facetData.tags:scopedCreators;
     const lim=k==='tag'?30:26;
     const expanded=b.dataset.on==='1';
     sec.querySelector('.chips').outerHTML=chips(src,k,false,expanded?lim:999);
@@ -1053,28 +1096,30 @@ const ENTITY_LABELS={performer:'艺人',studio:'厂牌',creator:'创作者',seri
    套上 JAV 的行业称谓既不准确也会和创作者身份混淆。判据由后端 `is_jav` 给。 */
 const performerLabel=it=>it&&it.is_jav?'女优':'艺人';
 let entityRequestSeq=0;
-async function fetchEntityItems(kind,name,entityTag,offset=0){
+async function fetchEntityItems(kind,name,filters,offset=0){
   const p=new URLSearchParams();p.set(kind,name);p.set('limit','48');p.set('offset',String(offset));p.set('sort','new');
   if(offset)p.set('count','0');
-  if(entityTag)p.set('tag',entityTag);
+  ENTITY_FILTER_KEYS.forEach(key=>{if(filters[key]&&key!==kind)p.set(key,filters[key])});
   // 资料页继承 JAV 开关：女优页和厂牌页同样是按番号浏览的语境。
   if(state.jav==='1')p.set('jav','1');
   const items=await api('/api/items?'+p);cache(items.items);return items
 }
-function renderEntityCollection(kind,name,items,entityTag,append=false){
+function renderEntityCollection(kind,name,items,filters,append=false){
+  const entityTag=filters.tag||'';
   const section=$('#index').querySelector('.entitysection');if(!section)return;
   if(!append){section.innerHTML=`<h3></h3><div class="grid"></div><button class="entitymore" type="button">载入更多</button>`;
     section.dataset.total=String(items.total||0);
     section.querySelector('h3').textContent=`${ENTITY_LABELS[kind]||kind}的馆藏作品 · ${(items.total||0).toLocaleString()}${entityTag?' · '+entityTag:''}`}
   const grid=section.querySelector('.grid');
   grid.insertAdjacentHTML('beforeend',items.items.map(it=>cardHtml(it)).join(''));
-  wireCards(grid,undefined,tag=>updateEntityCollection(kind,name,tag===entityTag?'':tag,true));
+  wireCards(grid,undefined,tag=>updateEntityCollection(
+    kind,name,{...filters,tag:tag===entityTag?'':tag},true));
   const more=section.querySelector('.entitymore');
   more.hidden=append?!items.has_more:grid.children.length>=Number(section.dataset.total||0);
   const requestMore=async()=>{if(more.hidden||more.disabled)return;more.disabled=true;const seq=entityRequestSeq;
-    try{const next=await fetchEntityItems(kind,name,entityTag,grid.children.length);
+    try{const next=await fetchEntityItems(kind,name,filters,grid.children.length);
       if(seq===entityRequestSeq&&$('#index').dataset.entityKind===kind&&$('#index').dataset.entityName===name)
-        renderEntityCollection(kind,name,next,entityTag,true)}
+        renderEntityCollection(kind,name,next,filters,true)}
     finally{if(seq===entityRequestSeq)more.disabled=false}};
   more.onclick=requestMore;
   more._observer?.disconnect();
@@ -1083,28 +1128,34 @@ function renderEntityCollection(kind,name,items,entityTag,append=false){
     more._observer.observe(more);
   }
 }
-async function updateEntityCollection(kind,name,entityTag,push=true){
-  if(push)route(entityPath(kind,name)+(entityTag?'?tag='+encodeURIComponent(entityTag):''));
+async function updateEntityCollection(kind,name,filters,push=true){
+  const search=entityFilterSearch(filters);
+  if(push)route(entityPath(kind,name)+(search?'?'+search:''));
+  barsContext={type:'entity',kind,name,filters:{...filters}};
   const seq=++entityRequestSeq;
-  const items=await fetchEntityItems(kind,name,entityTag);
+  const items=await fetchEntityItems(kind,name,filters);
   if(seq!==entityRequestSeq)return;
   $('#index').querySelectorAll('[data-entity-tag]').forEach(b=>
-    b.setAttribute('aria-pressed',String(b.dataset.entityTag===entityTag)));
-  renderEntityCollection(kind,name,items,entityTag)
+    b.setAttribute('aria-pressed',String(b.dataset.entityTag===filters.tag)));
+  renderEntityCollection(kind,name,items,filters)
 }
 async function openEntity(kind,name,push=true,requestedTag){
   releaseHoverPreviews();
-  const entityTag=requestedTag===undefined
-    ? (push?'':new URLSearchParams(location.search).get('tag')||'')
-    : requestedTag;
+  const filters=push?emptyEntityFilters():parseEntityFilters(location.search);
+  if(requestedTag!==undefined)filters.tag=requestedTag;
+  if(kind==='creator')filters.creator='';
+  const entityTag=filters.tag||'';
   const expectedPath=entityPath(kind,name);
-  if(push)route(expectedPath+(entityTag?'?tag='+encodeURIComponent(entityTag):''));
+  const search=entityFilterSearch(filters);
+  if(push)route(expectedPath+(search?'?'+search:''));
+  barsContext={type:'entity',kind,name,filters};
   showHomeSurfaces();
   disposeStage(false);
+  detailReturnBarsContext=null;
   const seq=++entityRequestSeq;
   const [d,items]=await Promise.all([
     api(`/api/entity?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`),
-    fetchEntityItems(kind,name,entityTag)]);
+    fetchEntityItems(kind,name,filters)]);
   if(d.error||seq!==entityRequestSeq||
      decodeURIComponent(location.pathname)!==decodeURIComponent(expectedPath))return;
   document.body.classList.add('entity-open');
@@ -1138,13 +1189,15 @@ async function openEntity(kind,name,push=true,requestedTag){
     <div class="entitysection"></div>`;
   $('#index').querySelectorAll('[data-entity-tag]').forEach(b=>b.onclick=()=>{
     const next=b.dataset.entityTag===entityTag?'':b.dataset.entityTag;
-    updateEntityCollection(kind,name,next,true)});
+    const nextFilters={...filters,tag:next};barsContext={type:'entity',kind,name,filters:nextFilters};
+    buildBars();updateEntityCollection(kind,name,nextFilters,true)});
   $('#index').querySelectorAll('.entityfavicon').forEach(img=>img.addEventListener('error',()=>{
     if(img.dataset.studio&&!img.dataset.fallback){img.dataset.fallback='1';img.src='/logo?studio='+encodeURIComponent(img.dataset.studio)}
     else img.remove()}));
   $('#index').querySelectorAll('[data-related-performer]').forEach(b=>b.onclick=()=>
     openEntity('performer',b.dataset.relatedPerformer));
-  renderEntityCollection(kind,name,items,entityTag);
+  renderEntityCollection(kind,name,items,filters);
+  buildBars();
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
@@ -1249,8 +1302,7 @@ async function reloadCurrentSurface(){
   const index=$('#index');
   const kind=index?.dataset.entityKind,name=index?.dataset.entityName;
   if(kind&&name&&!index.hidden){
-    await updateEntityCollection(kind,name,
-      new URLSearchParams(location.search).get('tag')||'',false);
+    await updateEntityCollection(kind,name,parseEntityFilters(location.search),false);
     return;
   }
   const path=decodeURIComponent(location.pathname);
@@ -1339,7 +1391,7 @@ async function load(reset){
   if(!reset&&listLoading)return;
   if(!reset)listLoading=true;
   try{
-  if(reset)disposeStage(false);
+  if(reset){barsContext={type:'home',filters:state};detailReturnBarsContext=null;disposeStage(false)}
   showHomeSurfaces();
   if(reset)offset=0;
   renderCombo();
@@ -1529,12 +1581,16 @@ async function openMix(seedId,itemId=seedId,push=true){
 }
 async function openItem(id,push=true,mixContext=null){
   releaseHoverPreviews();
+  const returnBars=barsContext.type==='item'?detailReturnBarsContext:cloneBarsContext(barsContext);
   if(push)detailReturnPath=location.pathname+location.search;
   disposeStage(false);
+  detailReturnBarsContext=returnBars;
   activeMix=mixContext;
   if(push&&!mixContext)route('/item/'+id);
   const it=await api('/api/item?id='+id); if(it.error)return;
   current=it; CACHE[it.id]=it;
+  barsContext={type:'item',id:it.id,filters:returnBars?.type==='entity'
+    ? {...returnBars.filters}:emptyEntityFilters()};
   const gated=it.cost==='metered';
   const offline=sourceOffline(it.location);
   const who=it.creator||it.code||it.studio||'未归属';
@@ -1630,11 +1686,14 @@ async function openItem(id,push=true,mixContext=null){
     </div></div>
     ${mixContext?'':`<div class="next"><h3>接着看</h3><div class="nrow" id="nrow">载入中…</div></div>`}`;
 
-  $('#closeStage').onclick=()=>disposeStage(true);
+  const closeDetail=()=>{const restore=cloneBarsContext(detailReturnBarsContext);
+    disposeStage(true);detailReturnBarsContext=null;
+    barsContext=restore||{type:'home',filters:state};buildBars()};
+  $('#closeStage').onclick=closeDetail;
   if($('#castMore'))$('#castMore').onclick=e=>{
     $('#stage').querySelectorAll('[data-castoverflow]').forEach(row=>row.hidden=false);
     e.currentTarget.remove()};
-  $('#stage').querySelectorAll('[data-mix-close]').forEach(b=>b.onclick=()=>disposeStage(true));
+  $('#stage').querySelectorAll('[data-mix-close]').forEach(b=>b.onclick=closeDetail);
   $('#stage').querySelectorAll('[data-mix-item]').forEach(b=>b.onclick=()=>openMix(mixContext.seedId,+b.dataset.mixItem,true));
   const g=$('#gate');
   $('#stage').querySelectorAll('[data-kind]').forEach(b=>b.onclick=async()=>{
@@ -1654,7 +1713,8 @@ async function openItem(id,push=true,mixContext=null){
          <div class="tagpickbody" id="tagPickBody"></div>
        </div>`;
     wrap.querySelectorAll('[data-tag]').forEach(s=>s.onclick=()=>{
-      state.tag=s.dataset.tag;disposeStage(false);route('/?tag='+encodeURIComponent(state.tag));buildBars();load(true);window.scrollTo({top:0,behavior:'smooth'})});
+      commitContextFilter(filters=>{filters.tag=s.dataset.tag});
+      window.scrollTo({top:0,behavior:'smooth'})});
     wrap.querySelectorAll('[data-remove-tag]').forEach(b=>b.onclick=async()=>{
       b.disabled=true;const tag=b.dataset.removeTag;
       const r=await api('/api/item-tag',{method:'POST',body:JSON.stringify({id:it.id,operation:'remove',tag})});
@@ -1761,6 +1821,7 @@ async function openItem(id,push=true,mixContext=null){
   else{mountDetailPlayer(it,vv,true);stopAmbient=startAmbient()}
   vv.addEventListener('emptied',()=>stopAmbient(),{once:true});
   $('#stage').scrollIntoView({behavior:'auto',block:'start'});
+  buildBars();
 
   if(!mixContext)api('/api/related?id='+it.id+'&limit='+appSettings.relatedLimit).then(d=>{
     const n=$('#nrow'); if(!n)return; cache(d.items);

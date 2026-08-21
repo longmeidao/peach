@@ -1198,21 +1198,51 @@ def w_review_decision(contract: WebContract, body):
     return {"ok": True, "category": category, "item_key": item_key, "status": status, "applied_assets": applied}
 
 
-def q_facets(contract: WebContract, jav=False):
+def q_facets(
+    contract: WebContract,
+    jav: bool = False,
+    scope_kind: str = "",
+    scope_name: str = "",
+    asset_id: int | None = None,
+):
+    """返回当前浏览集合真正存在的筛选项。
+
+    首页不带 scope，维持全库口径；实体资料页按规范实体收窄，详情页按单个作品收窄。
+    筛选项必须来自和作品列表相同的规范关系，不能让前端拿全库 facets 猜当前页面。
+    """
     c = contract.db()
     scope = JAV_ASSET_CLAUSE if jav else ""
+    scope_params: list[object] = []
+    if asset_id is not None:
+        scope += "AND a.id=? "
+        scope_params.append(int(asset_id))
+    elif scope_kind or scope_name:
+        if scope_kind not in {"creator", "performer", "studio", "series"} or not scope_name:
+            c.close()
+            raise ValueError("invalid facet scope")
+        scope += (
+            "AND EXISTS(SELECT 1 FROM asset_entity scope_ae "
+            "JOIN entity scope_e ON scope_e.id=scope_ae.entity_id "
+            "WHERE scope_ae.asset_id=a.id AND scope_e.kind=? "
+            "AND scope_e.canonical_name=?) "
+        )
+        scope_params.extend((scope_kind, scope_name))
     out = {}
     out["locations"] = [dict(r) for r in c.execute(
         "SELECT a.location AS k, count(*) AS n, "
         "SUM(CASE WHEN a.play_count>0 THEN 1 ELSE 0 END) AS played "
         "FROM asset a WHERE a.medium='video' " + scope +
-        "GROUP BY a.location ORDER BY n DESC")]
+        "GROUP BY a.location ORDER BY n DESC", scope_params)]
+    out["orientations"] = [dict(r) for r in c.execute(
+        "SELECT a.ctx_orient AS k,count(*) AS n FROM asset a "
+        "WHERE a.medium='video' AND a.ctx_orient IS NOT NULL AND a.ctx_orient<>'' " + scope +
+        "GROUP BY a.ctx_orient ORDER BY n DESC", scope_params)]
     out["creators"] = [dict(r) for r in c.execute(
         "SELECT e.canonical_name AS k,count(DISTINCT ae.asset_id) AS n "
         "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
         "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='creator' " + scope +
         
-        "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 60")]
+        "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 60", scope_params)]
     # 标签要分层 —— 原来一锅端，结果「演员:一个ren」和「1080P」「足交」混在一起。
     # 三类分开：技术规格（画质/时长/画幅，筛选价值低）、内容维度（真正有用的）、演员（另立一栏）。
     TECH = ("1080P", "720P", "4K", "2160P", "480P", "低画质", "高帧率",
@@ -1224,7 +1254,7 @@ def q_facets(contract: WebContract, jav=False):
         "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='tag' " + scope +
         "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
         "AND performer.normalized_name=e.normalized_name) "
-        "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 400")]
+        "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 400", scope_params)]
     out["tags"] = [dict(r, cat=tag_cat(r["k"])) for r in rows
                    if r["k"] not in TECH and r["k"] not in LENGTH_TAGS][:44]
     out["tech"] = [r for r in rows if r["k"] in TECH][:14]
@@ -1233,16 +1263,18 @@ def q_facets(contract: WebContract, jav=False):
         "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
         "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='performer' " + scope +
         
-        "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 20")]
+        "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 20", scope_params)]
     st = c.execute(
         "SELECT count(*) total, COALESCE(sum(size),0) bytes, "
+        "SUM(CASE WHEN duration IS NOT NULL THEN 1 ELSE 0 END) duration, "
         "SUM(CASE WHEN play_count>0 THEN 1 ELSE 0 END) played, "
         "SUM(CASE WHEN COALESCE(o_count,0)>0 OR EXISTS(SELECT 1 FROM asset_preference p "
         "WHERE p.asset_id=a.id AND p.profile_id='local-default' AND p.liked=1) "
         "THEN 1 ELSE 0 END) flagged, "
         "SUM(EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
         "WHERE ae.asset_id=a.id AND e.kind='creator')) attributed "
-        "FROM asset a WHERE a.medium='video' AND (a.disposal IS NULL OR a.disposal<>'trash')").fetchone()
+        "FROM asset a WHERE a.medium='video' AND (a.disposal IS NULL OR a.disposal<>'trash') "
+        + scope, scope_params).fetchone()
     out["stats"] = dict(st)
     c.close()
     return out
@@ -1721,8 +1753,15 @@ def dispatch_api_get(contract: WebContract, path, args):
         return q_related(contract, int(args["id"]), min(int(args.get("limit", "24")), 60))
     if path == "/api/facets":
         jav = args.get("jav") == "1"
-        return contract.cached(f"facets{'-jav' if jav else ''}",
-                               lambda: q_facets(contract, jav=jav))
+        scope_kind = str(args.get("scope_kind", ""))
+        scope_name = str(args.get("scope_name", ""))
+        asset_id = int(args["id"]) if args.get("id") else None
+        scope_key = f"{scope_kind}:{scope_name}:{asset_id or ''}"
+        return contract.cached(f"facets{'-jav' if jav else ''}:{scope_key}",
+                               lambda: q_facets(
+                                   contract, jav=jav, scope_kind=scope_kind,
+                                   scope_name=scope_name, asset_id=asset_id,
+                               ))
     if path == "/api/search-history":
         return q_search_history(contract, int(args.get("limit", "10")))
     if path == "/api/review":

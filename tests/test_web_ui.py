@@ -283,7 +283,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "document.body.classList.remove('detail-open');current=null;activeMix=null;\n  scheduleStickySurfaces();"
         )
-        self.assertPageContains("$('#closeStage').onclick=()=>disposeStage(true)")
+        self.assertPageContains("const closeDetail=()=>{const restore=cloneBarsContext(detailReturnBarsContext)")
+        self.assertPageContains("$('#closeStage').onclick=closeDetail")
         self.assertPageContains("function cancelDetailStream()")
         self.assertPageContains("/api/stream-cancel?session=")
         self.assertPageContains("keepalive:true")
@@ -501,14 +502,31 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("showHomeSurfaces();disposeStage(false)")
 
     def test_entity_tags_filter_inside_the_current_entity_page(self):
-        self.assertPageContains("if(entityTag)p.set('tag',entityTag)")
+        self.assertPageContains("ENTITY_FILTER_KEYS.forEach(key=>{if(filters[key]&&key!==kind)p.set(key,filters[key])})")
         self.assertPageContains("async function updateEntityCollection")
-        self.assertPageContains("updateEntityCollection(kind,name,next,true)")
-        self.assertPageContains("renderEntityCollection(kind,name,items,entityTag)")
+        self.assertPageContains("updateEntityCollection(kind,name,nextFilters,true)")
+        self.assertPageContains("renderEntityCollection(kind,name,items,filters)")
         self.assertPageLacks("openEntity(kind,name,true,next)")
         self.assertPageLacks(
             "document.body.classList.remove('entity-open');$('#index').hidden=true;state.tag=b.dataset.entityTag"
         )
+
+    def test_drawer_filters_follow_entity_and_detail_context(self):
+        # 实体页 facets 必须按当前实体取数；详情页则按单个作品取数，不能继续复用首页全库。
+        self.assertPageContains("facetParams.set('scope_kind',context.kind)")
+        self.assertPageContains("facetParams.set('scope_name',context.name)")
+        self.assertPageContains("facetParams.set('id',String(context.id))")
+        self.assertPageContains("barsContext={type:'item',id:it.id,filters:returnBars?.type==='entity'")
+        self.assertPageContains("detailReturnBarsContext=returnBars")
+        # 实体筛选走实体集合自己的更新路径；旧实现调用 load(true) 会把 #index 隐藏并重建首页。
+        self.assertPageContains("updateEntityCollection(barsContext.kind,barsContext.name,filters,true)")
+        self.assertPageContains("function commitContextFilter(mutate)")
+        self.assertPageContains("const search=entityFilterSearch(filters)")
+        # 没有数据的区块不渲染，画幅也必须来自 scoped API，不能硬画横屏/竖屏两个按钮。
+        self.assertPageContains("const sec=(t,b,x,cat)=>b?")
+        self.assertPageContains("const chips=(items,key,multi,limit)=>items.length?")
+        self.assertPageContains("chips(facetData.orientations,'orient')")
+        self.assertPageLacks("chips([{k:'竖屏'},{k:'横屏'}],'orient')")
 
     def test_large_collections_render_in_bounded_batches(self):
         self.assertPageContains("p.set('limit','48')")
@@ -523,7 +541,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("!listLoading&&!$('#loadSentinel').hidden")
         self.assertPageContains("indexRequestSeq")
         self.assertPageContains("barsRequestSeq")
-        self.assertPageContains("async function getBarsData()")
+        self.assertPageContains("async function getBarsData(context=barsContext)")
         self.assertPageContains("Date.now()-barsDataAt<30000")
         self.assertPageLacks("p.set('limit','120')")
         self.assertPageContains("more._observer=new IntersectionObserver")
