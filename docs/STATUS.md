@@ -160,8 +160,8 @@
 
 ## 下一批工作
 
-基础设施本机化已完成。剩余边界是显式 writer/reader 策略、运行中安全拉取、durable artifact
-拆分和拔盘后的双机完整验收。部分历史运维脚本仍硬编码 `R:\peach-data`，在改为读取
+基础设施本机化、显式 writer/reader 和运行中安全手动同步已完成。剩余基础设施边界是 durable
+artifact 拆分、生成资产的跨机同步，以及 macOS 拔盘后的完整验收。部分历史运维脚本仍硬编码 `R:\peach-data`，在改为读取
 `PeachSettings` 前不得对当前账本盲目执行。
 
 1. 创作者板的机械识别已做完：`creator-tags-review.csv` 里 42 条 pending 全部产出 candidate（34 candidate、8 skip，见 `creator-tags-candidate-20260817.csv`），没有未覆盖的板。剩下的是用户在 `/review` 页面逐条复核，点「通过」才写 `asset_tag/asset_entity`。注意天花板：全库 7,622 条无标签视频里创作者板最多覆盖约 2,800 条，其余既无创作者也无有效番号（384 个 FC2 + 约 330 个 `WX` 业余码，三源实测零命中）。
