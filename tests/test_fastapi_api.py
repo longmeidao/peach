@@ -34,6 +34,17 @@ CREATE TABLE entity(
   id INTEGER PRIMARY KEY,kind TEXT,canonical_name TEXT,normalized_name TEXT,
   metadata_json TEXT DEFAULT '{}',created_at TEXT,updated_at TEXT,
   UNIQUE(kind,normalized_name));
+CREATE TABLE entity_alias(
+  entity_id INTEGER,alias TEXT,normalized_alias TEXT,source TEXT,confidence REAL DEFAULT 1.0);
+CREATE TABLE entity_external_ref(
+  entity_id INTEGER,provider TEXT,external_kind TEXT,external_id TEXT,
+  metadata_json TEXT DEFAULT '{}',last_synced_at TEXT);
+CREATE TABLE entity_link(
+  id INTEGER PRIMARY KEY,entity_id INTEGER,link_kind TEXT,label TEXT,url TEXT,
+  hostname TEXT,is_sensitive INTEGER DEFAULT 0,metadata_json TEXT DEFAULT '{}',
+  created_at TEXT,updated_at TEXT);
+CREATE TABLE entity_search_term(
+  entity_id INTEGER,term TEXT,purpose TEXT,source TEXT,created_at TEXT);
 CREATE TABLE asset_entity(
   asset_id INTEGER,entity_id INTEGER,role TEXT,source TEXT,confidence REAL,
   metadata_json TEXT DEFAULT '{}',first_seen_at TEXT,last_seen_at TEXT,
@@ -257,6 +268,26 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(history.json()["items"], ["ABW"])
         removed = await self.client.post("/api/search-history?t=secret", json={"operation": "remove", "query": "ABW"})
         self.assertEqual(removed.status_code, 200)
+
+    async def test_entity_focus_uses_the_apps_configured_avatar_root(self):
+        connection = sqlite3.connect(self.db)
+        connection.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
+            "VALUES(2,'performer','Alice','alice')"
+        )
+        connection.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+            "VALUES(1,2,'performer','test',1.0)"
+        )
+        connection.commit(); connection.close()
+        (self.avatar_root / "performer-2.face.json").write_text(
+            '{"focus":{"axis":"y","pct":23}}', encoding="utf-8")
+
+        response = await self.client.get(
+            "/api/entity?t=secret&kind=performer&name=Alice"
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["avatar_focus"], {"axis": "y", "pct": 23})
 
     async def test_review_queue_is_readable_and_decisions_are_persisted(self):
         response = await self.client.get("/api/review?t=secret")

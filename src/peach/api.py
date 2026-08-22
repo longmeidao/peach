@@ -98,6 +98,7 @@ def create_app(
         settings.db_path, settings.snapshot_root, settings.legacy_snapshot_roots,
         candidate_root=settings.candidate_root,
         cover_root=settings.cover_root,
+        avatar_root=settings.avatar_root,
     )
     repository = LedgerRepository(settings.db_path)
     resolver = FFmpegResolver(settings.ffmpeg_root)
