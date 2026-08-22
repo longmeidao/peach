@@ -154,7 +154,7 @@
 
 - 2026-08-21 macOS 最新基线：`./scripts/test.sh` 全量 468 项通过、3 项跳过；Windows 当前状态提交
   `& .\scripts\test.ps1` 全量 460 项通过、12 项按平台跳过；上下文预算检查通过。
-- 2026-08-22 Javinizer-Go P0 已完成 Windows 接续：e390 与 5fcc 的整合提交 `47d6b84` 保留字段候选与全入口 person 门槛；Windows amd64 v1.5.1 安装于 `peach-data/tools/javinizer/v1.5.1/windows-amd64/javinizer.exe`，SHA-256 `4d5b0bc6a655f765325e55a6638795ac39cd01f11a7c3c40066e5fac79f1abca`。Windows 全量测试 495 项通过、12 项跳过；`IPX-535` 临时库真实 r18dev 生成 5 个字段组。真实 ledger 的 limit=10 联网批生成 43 组（演员10、厂牌10、系列4、发行日期10、标签9），10 份 raw JSON、错误0；紧窗口只读重放 generation 29→29，asset 81,657、asset_entity 155,894、asset_tag 88,049、entity 8,185、review_decision 14 均未变，完整性 `ok`。隔离迁移副本的 `/review` 在 1280×720 与 390×844 无横向溢出、控制台零错误，未批准候选。生产因 PikPak `probe.py --workers 6` 夜跑仍在进行而未应用 `0016`、未重启，不能描述为已部署。
+- 2026-08-22 Javinizer-Go P0 已部署到 Windows：e390 与 5fcc 的整合提交 `47d6b84` 保留字段候选与全入口 person 门槛，生产/远端代码均为 `25ba2c0`；Windows amd64 v1.5.1 位于 `peach-data/tools/javinizer/v1.5.1/windows-amd64/javinizer.exe`，SHA-256 `4d5b0bc6a655f765325e55a6638795ac39cd01f11a7c3c40066e5fac79f1abca`。Windows 全量测试 495 项通过、12 项跳过；`IPX-535` 临时库真实 r18dev 生成 5 个字段组。真实 ledger limit=10 生成 43 组（演员10、厂牌10、系列4、发行日期10、标签9），10 份 raw JSON、错误0；紧窗口 generation 29→29，asset 81,657、asset_entity 155,894、asset_tag 88,049、entity 8,185、review_decision 14 均未变。夜跑结束后主目录脏改动已保护到远端分支 `preserve/windows-review-ads-20260822@968cf04`；正式入口备份 `ledger.pre-migrate-20260822-151328.db`（127,340,544 字节，SHA-256 `b462e6c5…83edd`）后应用 `0016`，五项计数不变、review_decision 18、完整性 `ok`、外键0。托盘于 15:14 重启，HTTP/严格 CA HTTPS `/healthz` 与 `/review` 均 200，真实 API 有43个候选。隔离副本的 1280×720/390×844 视觉验收通过；生产最终视觉因浏览器运行时无可用实例而未取得，不能用 API 结果替代。
 - Windows 无外置盘生产验收：HTTP 与严格 CA HTTPS `/healthz` 返回 200，账本、FFmpeg、115 和
   PikPak 可用，只有 `local` 来源离线；115 HTTP 与 PikPak 严格 HTTPS 各完成 1 KiB `206` Range。
 - 双机同时在线时账本世代 18、状态 `in-sync`；`peach-win.local` 与 `peach.local` 分别只由
@@ -175,7 +175,7 @@ artifact 拆分、生成资产的跨机同步，以及 macOS 拔盘后的完整�
 6. Windows writer 执行 PikPak 视觉夜跑：先用 `probe.py --redo all` 重探当前 5,445 条失败/零时长，再只跑官方封套与九帧缩略图。generation 29 的 Mac 副本基线为可直接抽 4,740、需重探 5,445、短于等于 2 秒 11；Windows 起跑前重算。第一晚以 200 GB 流量守卫与 40 GiB 系统盘闸门为硬上限，允许安全中止和续跑，不承诺一夜全量完成。
 7. 115 抽帧失败的大小写部分已修复：`peach.media.resolve_case_insensitive` 与 `FilesystemBackend.file_for`、`scripts/sheets.py`、`scripts/probe.py` 的 worker 均已接入；2026-08-17 重跑 33 条九帧，31 成功、2 失败。这 2 条的原因已查清（见上一节）：`18349` 是 ledger 时长记错、`12510` 是片源头损坏。2026-08-18 已全部收尾：`sheets.py` 区分失败原因、`probe.py`/`sheets.py` 新增 `--asset`、`18349` 重探重抽成功、`12510` 判为坏片源并留痕，详见上一节。`sheets.py` 遇 `prim:reserved` 非法色彩元数据的重试已完成并有测试。
 8. HLS `stream-plan` 和按需 TS 片段已接入现有 Video.js 内置 VHS。片段时间窗的绝对终点问题已修并已切生产（见上节）；自适应码率、多路清单、首帧/seek 的桌面与手机验收仍未完成。CloudDrive 约 100 MiB 固定块预取仍是来源层成本，服务端分片只能避免整部 MP4 Range，不会消除来源层块预取。
-9. PikPak 夜跑结束后按迁移门槛应用 `0016`、重启生产，再从 `/review` 人工批准 Windows r18dev 小批候选；确认来源质量后逐个启用 Javinizer 已有 scraper，不新增 Peach 私有站点解析器。
+9. 在真实生产浏览器补做 `/review` 的 1280×720/390×844 最终视觉确认，再人工批准 Windows r18dev 小批候选；确认来源质量后逐个启用 Javinizer 已有 scraper，不新增 Peach 私有站点解析器。
 10. 配置可复核的真实追更源，之后再接 APScheduler；AI 结果继续只作为候选。
 11. Codex 侧封装技能：`.claude/skills/` 下的六个技能目前只有 Claude 会按 description 自动触发，
     Codex 只能靠 `AGENTS.md` 索引表主动读。由 Codex 接手时确认当前版本的技能机制与目录约定，
