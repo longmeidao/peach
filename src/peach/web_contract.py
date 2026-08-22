@@ -93,16 +93,44 @@ def is_jav_code(code: str | None) -> bool:
                 or _CODE_DATE.match(value))
 
 
+def face_focus(ratio: float, cx: float, cy: float) -> dict | None:
+    """把归一化人脸中心换算成圆框 object-position 的取景提示。
+
+    竖图（ratio=宽/高 < 1）的取景余量在纵向、横图在横向，脸放在余量轴的中心；
+    换算式由 cover 取景的同一几何关系推出：可见窗口在余量轴上的起点是
+    `(余量) × pos%`，令窗口中心等于脸心即可解出 pos。接近正方时 cover 几乎
+    裁不掉东西，返回 None 维持几何居中；脸太靠边、几何上无法完整居中时
+    夹取到边缘，保证不会比现在更差。
+    """
+    try:
+        ratio = float(ratio)
+        cx = float(cx)
+        cy = float(cy)
+    except (TypeError, ValueError):
+        return None
+    if ratio <= 0 or abs(1.0 - ratio) <= 0.05:
+        return None
+    if ratio < 1.0:
+        pos = (cy - ratio / 2) / (1 - ratio)
+    else:
+        pos = (ratio * cx - 0.5) / (ratio - 1)
+    pct = int(round(min(1.0, max(0.0, pos)) * 100))
+    axis = "y" if ratio < 1.0 else "x"
+    return {"axis": axis, "pct": pct}
+
+
 class WebContract:
     """单个应用实例的数据库、写锁和聚合缓存；不共享模块级可变状态。"""
 
     def __init__(self, db_path: Path, snapshot_root: Path | None = None,
                  legacy_snapshot_roots: Sequence[Path] = (),
                  candidate_root: Path | None = None,
-                 cover_root: Path | None = None):
+                 cover_root: Path | None = None,
+                 avatar_root: Path | None = None):
         # 候选 CSV 的目录做成实例属性而不是模块常量，复核层才能在临时目录里被测试。
         self.candidate_root = Path(candidate_root) if candidate_root is not None else GENERATED_DIR
         self.cover_root = Path(cover_root) if cover_root is not None else COVER_DIR
+        self.avatar_root = Path(avatar_root) if avatar_root is not None else GENERATED_DIR / "avatars"
         self.db_path = Path(db_path)
         self.snapshot_root = Path(snapshot_root) if snapshot_root is not None else None
         self.legacy_snapshot_roots = tuple(Path(path) for path in legacy_snapshot_roots)
@@ -174,6 +202,29 @@ class WebContract:
             return None
         face = data.get("face")
         return {"cy": face["cy"]} if isinstance(face, dict) and "cy" in face else None
+
+    def avatar_focus(self, kind: str, entity_id: int) -> dict | None:
+        """实体图的取景提示：人脸中心换算成的 object-position。
+
+        sidecar 由 `scripts/detect_avatar_faces.py` 离线写入，与封面取景同一
+        约定；没算过、读不出或没检出都返回 None，页面维持几何居中。
+        """
+        path = self.avatar_root / f"{kind}-{int(entity_id)}.face.json"
+        if not path.is_file():
+            return None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        focus = data.get("focus") if isinstance(data, dict) else None
+        if not isinstance(focus, dict):
+            return None
+        axis = focus.get("axis")
+        pct = focus.get("pct")
+        if (axis not in {"x", "y"} or isinstance(pct, bool)
+                or not isinstance(pct, (int, float)) or not 0 <= pct <= 100):
+            return None
+        return {"axis": axis, "pct": int(pct)}
 
     def has_fts(self) -> bool:
         if self._fts_available is None:
@@ -758,6 +809,7 @@ def q_entity(contract: WebContract, args):
     ).fetchone()
     d["asset_count"] = count
     d["representative_asset_id"] = rep
+    d["avatar_focus"] = contract.avatar_focus(kind, d["id"])
     d["tags"] = [dict(r) for r in c.execute(
         "SELECT tag.id,tag.canonical_name k,count(DISTINCT scope.asset_id) n "
         "FROM asset_entity scope "

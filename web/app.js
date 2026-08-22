@@ -413,6 +413,14 @@ function avatarInner(name,ref,repId){
   return `<span class="ini">${esc((name||'?').slice(0,1))}</span>`+
     (src?`<img src="${src}" alt="" loading="lazy" onerror="${fallback}">`:'');
 }
+/* 人脸取景：资料页圆框按检出的人脸中心取景（/api/entity 的 avatar_focus）。
+   没检出或没算过返回空串维持几何居中；换回落图时必须撤掉——那是另一张照片，
+   脸不在同一位置，见 entityhero img 的 onerror。 */
+function facePos(f){
+  return f&&f.axis==='x'?` style="object-position:${f.pct}% 50%"`
+    :f&&f.axis==='y'?` style="object-position:50% ${f.pct}%"`
+    :'';
+}
 /* 官方封套有两种形态，实测过：整张封套约 1.48（左侧是剧照拼贴，右侧才是正封），
    竖版正封约 0.70（本身就是正封，没有左半边可裁）。所以取景不能写死「取右边」，
    得等图片加载后按它自己的宽高比分流——服务端没存这个比例，也不该为此再存一份。 */
@@ -1178,8 +1186,8 @@ async function openEntity(kind,name,push=true,requestedTag){
   const image=d.id?(kind==='studio'
     ? `<img src="/logo?studio=${encodeURIComponent(d.canonical_name)}" alt="${esc(d.canonical_name)}"
         onerror="if(!this.dataset.f){this.dataset.f='1';this.src='/entity-image?kind=studio&id=${d.id}'}else{this.remove()}">`
-    : `<img src="/entity-image?kind=${kind}&id=${d.id}" alt="${esc(d.canonical_name)}"
-        onerror="${d.representative_asset_id?`this.onerror=null;this.src='/avatar?id=${d.representative_asset_id}'`:`this.remove()`}">`):'';
+    : `<img src="/entity-image?kind=${kind}&id=${d.id}" alt="${esc(d.canonical_name)}"${facePos(d.avatar_focus)}
+        onerror="this.removeAttribute('style');${d.representative_asset_id?`this.onerror=null;this.src='/avatar?id=${d.representative_asset_id}'`:`this.remove()`}">`):'';
   const links=(d.links||[]).map(x=>x.clickable&&/^https?:\/\//i.test(x.url||'')
     ? `<a href="${esc(x.url)}" target="_blank" rel="noreferrer"><span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(faviconUrl(x.url))}" data-studio="${kind==='studio'?esc(d.canonical_name):''}" alt=""></span><span class="entitylinklabel">${esc(x.label)}</span><span class="entitylinkarrow" aria-hidden="true">↗</span></a>`
     : `<span class="private" title="私人馆藏来源记录，不直接打开下载页"><span class="entitylinkicon">${icon('globe')}</span><span class="entitylinklabel">来源 · ${esc(x.label||x.hostname||'已记录')}</span></span>`).join('');
