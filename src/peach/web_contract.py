@@ -221,7 +221,8 @@ class WebContract:
             return None
         axis = focus.get("axis")
         pct = focus.get("pct")
-        if axis not in {"x", "y"} or not isinstance(pct, (int, float)):
+        if (axis not in {"x", "y"} or isinstance(pct, bool)
+                or not isinstance(pct, (int, float)) or not 0 <= pct <= 100):
             return None
         return {"axis": axis, "pct": int(pct)}
 

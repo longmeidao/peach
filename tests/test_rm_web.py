@@ -1157,8 +1157,14 @@ class AvatarFocusTests(unittest.TestCase):
             '{"focus":{"axis":"z","pct":50}}', encoding="utf-8")
         (self.avatars / "studio-12.face.json").write_text(
             '{"focus":{"axis":"y","pct":"high"}}', encoding="utf-8")
+        (self.avatars / "creator-13.face.json").write_text(
+            '{"focus":{"axis":"x","pct":-20}}', encoding="utf-8")
+        (self.avatars / "series-14.face.json").write_text(
+            '{"focus":{"axis":"y","pct":true}}', encoding="utf-8")
         self.assertIsNone(self.contract.avatar_focus("performer", 7900))
         self.assertIsNone(self.contract.avatar_focus("studio", 12))
+        self.assertIsNone(self.contract.avatar_focus("creator", 13))
+        self.assertIsNone(self.contract.avatar_focus("series", 14))
 
 
 class DuplicateDetectionTests(unittest.TestCase):
