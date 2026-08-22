@@ -31,6 +31,7 @@ import argparse
 import csv
 import io
 import json
+import os
 import re
 import sqlite3
 import threading
@@ -102,16 +103,23 @@ def load_gfriends(transport: HttpTransport) -> dict[str, list[tuple[str, str]]]:
     for category, items in content.items():
         for display_name, stored in items.items():
             # 键是展示名（可能是别名），值才是实际文件；两者未必相同。
-            key = display_name.rsplit(".", 1)[0]
+            key = normalized(display_name.rsplit(".", 1)[0])
             index.setdefault(key, []).append((category, stored.split("?")[0]))
     for key in index:
-        index[key].sort(key=lambda pair: QUALITY_ORDER.find(pair[0][0].lower()))
+        index[key].sort(key=lambda pair: quality_key(*pair))
     return index
 
 
 def gfriends_url(category: str, filename: str) -> str:
     return (GFRIENDS_RAW + "Content/" + urllib.parse.quote(category)
             + "/" + urllib.parse.quote(filename))
+
+
+def quality_key(category: str, filename: str) -> tuple[int, str, str]:
+    """已知质量档按约定排序；未知或空目录放最后，不能因 find=-1 抢到最前。"""
+    prefix = category[:1].lower()
+    rank = QUALITY_ORDER.find(prefix)
+    return (rank if rank >= 0 else len(QUALITY_ORDER), category, filename)
 
 
 class HostLimiter:
@@ -257,7 +265,8 @@ def audit_missing(record: dict, index: dict, transport: HttpTransport,
     row["current_name"] = record["canonical"]
     entries: list[tuple[str, str]] | None = None
     for name, source in lookup_chain(record):
-        candidate = index.get(name.strip())
+        # load_gfriends 产出规范化键；保留精确键回退，方便复用旧缓存和单元调用。
+        candidate = index.get(normalized(name)) or index.get(name.strip())
         if candidate:
             row["matched_name"] = name
             row["name_source"] = source
@@ -384,11 +393,17 @@ def read_prior(path: Path) -> tuple[list[dict], set[int]]:
 
 def write_csv(path: Path, rows: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=FIELDS)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({key: row.get(key, "") for key in FIELDS})
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        with temporary.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=FIELDS)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({key: row.get(key, "") for key in FIELDS})
+        os.replace(temporary, path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def run(args: argparse.Namespace, transport: HttpTransport | None = None) -> int:
@@ -403,13 +418,16 @@ def run(args: argparse.Namespace, transport: HttpTransport | None = None) -> int
         print(f"索引就绪：{len(index)} 个名字键", flush=True)
 
         connection = open_readonly(args.db)
-        targets = missing_targets(connection, args.avatars, args.limit)
+        targets = missing_targets(connection, args.avatars, 0)
         rows: list[dict] = []
         if args.resume:
             prior, done = read_prior(args.out)
             rows = prior
             targets = [t for t in targets if t["entity_id"] not in done]
             print(f"续跑：已判定 {len(done)} 位，跳过", flush=True)
+        if args.limit:
+            # limit 表示本轮新处理量；必须在续跑排除已完成对象后截取，否则永远卡在首批。
+            targets = targets[:args.limit]
 
         # 孤立审计纯本地、确定性：每轮全量重算，替换旧轮的 orphan 行。
         rows = [row for row in rows if row.get("section") != "orphan"]

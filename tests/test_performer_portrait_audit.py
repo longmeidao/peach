@@ -8,6 +8,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from PIL import Image
 
@@ -224,6 +225,16 @@ class PerformerPortraitAuditTests(unittest.TestCase):
         # 键是展示名、值才是真实文件名，二者可以不同。
         self.assertEqual(index["篠田ゆう"][0][1], "AI-Fix-篠田ゆう.jpg")
 
+    def test_unknown_quality_prefix_sorts_after_known_sources(self):
+        module = self.module
+        tree = {"Content": {
+            "?Future": {"Remu Suzumori.jpg": "future.jpg?t=1"},
+            "7-S1": {"remu suzumori.jpg": "known.jpg?t=2"},
+        }}
+        index = module.load_gfriends(FakeTransport({"Filetree.json": payload(tree)}))
+        self.assertEqual(index["remu suzumori"],
+                         [("7-S1", "known.jpg"), ("?Future", "future.jpg")])
+
     def test_image_inspection_rejects_non_raster(self):
         module = self.module
         self.assertIsNone(module.inspect_image(b"<svg xmlns='http://www.w3.org/2000/svg'/>"))
@@ -281,6 +292,40 @@ class PerformerPortraitAuditTests(unittest.TestCase):
         module.run(self.args(db, resume=True), transport=third)
         self.assertEqual([c for c in third.calls if "Content/" in c], [],
                          "全部已判定后续跑不得再发任何图片请求")
+
+    def test_resume_limit_advances_past_the_completed_first_batch(self):
+        module = self.module
+        db = self.tmp / "ledger.db"
+        make_ledger(db, [
+            {"id": 1, "canonical": "甲", "metadata": {}},
+            {"id": 2, "canonical": "乙", "metadata": {}},
+        ], aliases=[])
+        tree = {"Content": {"7-S1": {
+            "甲.jpg": "a.jpg?t=1", "乙.jpg": "b.jpg?t=1"}}}
+        transport = FakeTransport({
+            "Filetree.json": payload(tree),
+            "Content/": FakeResponse(200, jpeg_bytes(800, 600)),
+        })
+        first = self.args(db)
+        first.limit = 1
+        module.run(first, transport=transport)
+        self.assertEqual([row["entity_id"] for row in self.rows()
+                          if row["section"] == "missing"], ["1"])
+
+        second = self.args(db, resume=True)
+        second.limit = 1
+        module.run(second, transport=transport)
+        self.assertEqual([row["entity_id"] for row in self.rows()
+                          if row["section"] == "missing"], ["1", "2"])
+
+    def test_csv_replace_failure_preserves_the_previous_resume_file(self):
+        previous = "existing resume data\n"
+        self.out.write_text(previous, encoding="utf-8")
+        with mock.patch.object(self.module.os, "replace", side_effect=OSError("locked")):
+            with self.assertRaisesRegex(OSError, "locked"):
+                self.module.write_csv(self.out, [{"section": "missing"}])
+        self.assertEqual(self.out.read_text(encoding="utf-8"), previous)
+        self.assertEqual(list(self.out.parent.glob(f".{self.out.name}.*.tmp")), [])
 
     def test_orphan_ambiguous_unresolved_and_target_exists(self):
         module = self.module
