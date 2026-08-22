@@ -875,8 +875,8 @@ function showHomeSurfaces(){
 }
 function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
 
-let reviewData=null,reviewCategory='creator_tags';
-const REVIEW_LABELS={creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',western_identity:'西方身份回配',code_creators:'番号目录存疑',cover_sources:'封面来源',fc2_markings:'FC2 评论标记',media_failure:'媒体失败'};
+let reviewData=null,reviewCategory='metadata_fields';
+const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',western_identity:'西方身份回配',code_creators:'番号目录存疑',cover_sources:'封面来源',fc2_markings:'FC2 评论标记',media_failure:'媒体失败'};
 let dupData=null;
 /* 重复文件。判据是「同番号 + 时长相近 + 分卷标记一致」，不是同番号即重复——
    合集、分卷和混入的广告都会共用一个 code，只按番号做「保留最大」会删掉内容。
@@ -964,13 +964,16 @@ async function openReview(push=true){
       <div class="reviewtabs">${Object.entries(REVIEW_LABELS).map(([key,label])=>`<button data-review-tab="${key}" aria-pressed="${key===reviewCategory}">${label} <span class="n mono">${reviewData.counts[key]||0}</span></button>`).join('')}</div>
       <section class="reviewsection"><div class="reviewlist">${rows.length?rows.map(row=>{
         const key=row.item_key,decision=row.decision||'pending';
+        const metadata=reviewCategory==='metadata_fields',candidates=row.candidates||[];
         const tags=String(row.tags||'').split('|').filter(Boolean).map(tag=>`<span>${esc(tag)}</span>`).join('');
-        const titleText=row.creator||row.studio||row.current_name||row.name||key;
+        const titleText=metadata?`${row.query||row.code} · ${row.field_label||row.field}`:(row.creator||row.studio||row.current_name||row.name||key);
         const evidence=row.reason||row.evidence||row.note||row.decision_note||'';
-        const canApprove=reviewCategory!=='creator_tags'||String(row.status||'').trim()==='candidate';
+        const canApprove=metadata?candidates.length>0:(reviewCategory!=='creator_tags'||String(row.status||'').trim()==='candidate');
         const approveLabel=canApprove?'通过':'已跳过';
          const assets=row.preview_assets||[];
-         const preview=reviewCategory==='creator_tags'
+         const preview=metadata
+           ? `<div class="metadatacandidates">${candidates.map((candidate,index)=>`<label class="metadatacandidate"><input type="radio" name="metadata-${esc(key)}" value="${esc(candidate.candidate_key)}"${index===0?' checked':''}><span><b>${esc(candidate.source)}</b><span>${esc(candidate.display_value||'')}</span>${(candidate.warnings||[]).map(warning=>`<i>${esc(warning)}</i>`).join('')}</span></label>`).join('')}</div>`
+           : reviewCategory==='creator_tags'
            ? (assets.length?`<div class="reviewpick"><div class="reviewpickhead"><span class="mono" data-picked-count></span>
                <button type="button" data-pick-all>全选</button><button type="button" data-pick-none>清空</button></div>
                <div class="reviewasset-grid">${assets.map(asset=>`<button type="button" class="reviewasset picked" data-review-asset="${asset.id}" aria-pressed="true" title="${esc(asset.name)}"><img src="/poster?id=${asset.id}&c=4" alt="" loading="lazy"><span class="pickmark">${icon('check')}</span></button>`).join('')}</div></div>`
@@ -983,7 +986,8 @@ async function openReview(push=true){
     $('#stats').querySelectorAll('[data-review-status]').forEach(button=>button.onclick=async()=>{
       const item=button.closest('[data-review-key]'),row=rows.find(x=>String(x.item_key)===item.dataset.reviewKey);button.disabled=true;
        const selectedIds=[...item.querySelectorAll('[data-review-asset][aria-pressed="true"]')].map(cell=>+cell.dataset.reviewAsset);
-       const result=await api('/api/review/decision',{method:'POST',body:JSON.stringify({category:reviewCategory,item_key:item.dataset.reviewKey,status:button.dataset.reviewStatus,creator:row.creator,tags:row.tags,studio:row.studio,entity_id:row.entity_id,avatar_url:row.avatar_url,selected_ids:selectedIds})});
+       const candidateKey=item.querySelector('[name^="metadata-"]:checked')?.value||'';
+       const result=await api('/api/review/decision',{method:'POST',body:JSON.stringify({category:reviewCategory,item_key:item.dataset.reviewKey,status:button.dataset.reviewStatus,candidate_key:candidateKey,creator:row.creator,tags:row.tags,studio:row.studio,entity_id:row.entity_id,avatar_url:row.avatar_url,selected_ids:selectedIds})});
       if(result.ok){
         // 只改 data 属性的话，条目还杵在队列里，看起来就像没生效。
         // 判过的直接移出本批并同步计数，下一条立刻顶上来。

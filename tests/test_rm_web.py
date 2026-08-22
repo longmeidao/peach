@@ -1,4 +1,5 @@
 import csv
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -568,7 +569,7 @@ class WebDataTests(unittest.TestCase):
 
 REVIEW_SCHEMA = """
 CREATE TABLE asset(id INTEGER PRIMARY KEY,location TEXT,path TEXT,name TEXT,medium TEXT,
-  duration REAL,creator TEXT,snapshot_path TEXT,disposal TEXT);
+  duration REAL,creator TEXT,studio TEXT,series TEXT,code TEXT,snapshot_path TEXT,disposal TEXT);
 CREATE TABLE asset_tag(asset_id INTEGER,tag TEXT,confidence REAL DEFAULT 1.0,source TEXT,
   PRIMARY KEY(asset_id,tag,source));
 CREATE TABLE entity(id INTEGER PRIMARY KEY,kind TEXT,canonical_name TEXT,normalized_name TEXT,
@@ -578,6 +579,9 @@ CREATE TABLE entity_alias(entity_id INTEGER,alias TEXT,normalized_alias TEXT,sou
 CREATE TABLE asset_entity(asset_id INTEGER,entity_id INTEGER,role TEXT,source TEXT,
   confidence REAL,metadata_json TEXT,first_seen_at TEXT,last_seen_at TEXT,
   UNIQUE(asset_id,entity_id,role,source));
+CREATE TABLE entity_external_ref(entity_id INTEGER,provider TEXT,external_kind TEXT,external_id TEXT,
+  metadata_json TEXT DEFAULT '{}',last_synced_at TEXT,
+  PRIMARY KEY(provider,external_kind,external_id),UNIQUE(entity_id,provider,external_kind));
 CREATE TABLE review_decision(category TEXT,item_key TEXT,status TEXT,reviewer TEXT DEFAULT 'local-default',
   note TEXT DEFAULT '',updated_at TEXT,PRIMARY KEY(category,item_key));
 """
@@ -614,6 +618,81 @@ class ReviewQueueTests(unittest.TestCase):
             writer = csv.DictWriter(handle, fieldnames=["board", "creator", "tags", "status"])
             writer.writeheader(); writer.writerows(rows)
         return path
+
+    def write_metadata_candidates(self, rows):
+        path = self.candidates / "metadata-field-candidates-20260822.csv"
+        fields = ["item_key", "code", "query", "field", "field_label", "current_value",
+                  "candidates_json", "source_count", "status", "size_gb", "videos", "fetched_at"]
+        with path.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fields)
+            writer.writeheader(); writer.writerows(rows)
+        return path
+
+    def test_metadata_field_approval_uses_selected_candidate_and_never_writes_creator(self):
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET code='ABC-001',creator='Folder Creator' WHERE id=1")
+        con.commit(); con.close()
+        candidate = {
+            "candidate_key": "ABC-001:performers:r18dev:abc", "source": "r18dev",
+            "source_url": "https://r18.dev/example", "confidence": 0.9,
+            "value": [{"name": "木村さん", "external_id": "7", "thumb_url": ""}],
+            "display_value": "木村さん", "warnings": [], "raw_snapshot": "/evidence.json",
+        }
+        self.write_metadata_candidates([{
+            "item_key": "ABC-001:performers", "code": "ABC-001", "query": "ABC-001",
+            "field": "performers", "field_label": "演员", "current_value": "",
+            "candidates_json": json.dumps([candidate], ensure_ascii=False), "source_count": "1",
+            "status": "candidate", "size_gb": "1", "videos": "1", "fetched_at": "now",
+        }])
+        queue = rm_web.q_review(self.contract)["sections"]["metadata_fields"]
+        self.assertEqual(queue[0]["candidates"][0]["display_value"], "木村さん")
+        result = rm_web.w_review_decision(self.contract, {
+            "category": "metadata_fields", "item_key": "ABC-001:performers",
+            "candidate_key": candidate["candidate_key"], "status": "approved",
+        })
+        self.assertEqual(result["applied_assets"], 1)
+        con = sqlite3.connect(self.db_path)
+        self.assertEqual(con.execute("SELECT creator FROM asset WHERE id=1").fetchone()[0], "Folder Creator")
+        self.assertEqual(con.execute(
+            "SELECT e.kind,e.canonical_name,ae.role FROM asset_entity ae "
+            "JOIN entity e ON e.id=ae.entity_id WHERE ae.asset_id=1 AND ae.role='performer'"
+        ).fetchall(), [("performer", "木村さん", "performer")])
+        self.assertEqual(con.execute(
+            "SELECT tag FROM asset_tag WHERE asset_id=1 AND source='javinizer:r18dev:performer'"
+        ).fetchall(), [("演员:木村さん",)])
+        self.assertEqual(con.execute(
+            "SELECT provider,external_id FROM entity_external_ref"
+        ).fetchall(), [("r18dev", "7")])
+        note = con.execute(
+            "SELECT note FROM review_decision WHERE category='metadata_fields'"
+        ).fetchone()[0]
+        con.close()
+        self.assertEqual(json.loads(note)["candidate_key"], candidate["candidate_key"])
+
+    def test_metadata_approval_rejects_repeated_name_even_if_csv_is_tampered(self):
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET code='ABC-001' WHERE id=1")
+        con.commit(); con.close()
+        candidate = {
+            "candidate_key": "bad", "source": "r18dev", "confidence": 0.9,
+            "value": [{"name": "木村さん 木村さん", "external_id": "7"}],
+        }
+        self.write_metadata_candidates([{
+            "item_key": "ABC-001:performers", "code": "ABC-001", "query": "ABC-001",
+            "field": "performers", "field_label": "演员", "current_value": "",
+            "candidates_json": json.dumps([candidate], ensure_ascii=False), "source_count": "1",
+            "status": "candidate", "size_gb": "1", "videos": "1", "fetched_at": "now",
+        }])
+        with self.assertRaises(ValueError):
+            rm_web.w_review_decision(self.contract, {
+                "category": "metadata_fields", "item_key": "ABC-001:performers",
+                "candidate_key": "bad", "status": "approved",
+            })
+        con = sqlite3.connect(self.db_path)
+        self.assertEqual(con.execute(
+            "SELECT count(*) FROM review_decision WHERE category='metadata_fields'"
+        ).fetchone()[0], 0)
+        con.close()
 
     def test_latest_batch_is_used_instead_of_a_hardcoded_date(self):
         """候选文件名带批次日期；把日期写死在源码里会让下一批生成后页面静默变空。"""

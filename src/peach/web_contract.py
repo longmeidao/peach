@@ -20,6 +20,7 @@ from urllib.parse import quote, urlsplit
 
 from .config import COVER_DIR, GENERATED_DIR
 from .entities import normalize_entity_name, upsert_asset_entity
+from .metadata import collapse_repeated_phrase
 from .media import remap_managed_path
 
 COST = {"local": "free", "115": "free", "pikpak": "metered", "online": "metered"}
@@ -897,6 +898,7 @@ def q_stats(contract: WebContract):
 # 候选文件名带批次日期，代码里只认前缀并永远取目录里最新的一份；
 # 把日期写死在源码里会让下一批候选生成后复核页静默变空。
 CANDIDATE_PREFIX = {
+    "metadata_fields": "metadata-field-candidates-",
     "creator_tags": "creator-tags-candidate-",
     "studio_logos": "studio-logo-candidate-",
     "performer_avatars": "performer-avatar-candidate-",
@@ -909,6 +911,7 @@ CANDIDATE_PREFIX = {
 # 每类候选的稳定主键列。缺这一列的行直接跳过并计数，绝不退化成行号——
 # 行号会在 CSV 重排后把历史决定悄悄挪到别的条目上。
 CANDIDATE_KEY = {
+    "metadata_fields": "item_key",
     "creator_tags": "board",
     "studio_logos": "studio",
     "performer_avatars": "entity_id",
@@ -1018,6 +1021,15 @@ def _review_rows(contract: WebContract, category: str) -> tuple[list[dict], str 
             )
             for row in rows:
                 row["preview_assets"] = previews.get(str(row.get("creator") or "").strip(), [])
+        elif category == "metadata_fields":
+            for row in rows:
+                try:
+                    candidates = json.loads(str(row.get("candidates_json") or "[]"))
+                except (TypeError, ValueError):
+                    candidates = []
+                row["candidates"] = [candidate for candidate in candidates
+                                     if isinstance(candidate, dict)
+                                     and str(candidate.get("candidate_key") or "").strip()]
     finally:
         connection.close()
     for row in rows:
@@ -1036,6 +1048,10 @@ def _review_rows(contract: WebContract, category: str) -> tuple[list[dict], str 
 
 def _review_evidence(category: str, row: dict) -> str:
     """给本身没有 reason 列的候选拼一句可判断的证据，别让复核页只剩一个名字。"""
+    if category == "metadata_fields":
+        current = str(row.get("current_value") or "").strip() or "尚无"
+        return (f"当前值：{current}；{row.get('videos') or 0} 个同番号资产；"
+                f"{len(row.get('candidates') or [])} 个来源候选")
     if category == "western_identity":
         overlap = row.get("token_overlap") or "0"
         variant = row.get("matched_variant") or ""
@@ -1093,11 +1109,160 @@ def q_review(contract: WebContract):
             "counts": {key: len(value) for key, value in sections.items()}}
 
 
+def _selected_metadata_candidate(contract: WebContract, item_key: str, candidate_key: str) -> tuple[dict, dict]:
+    groups = {row["item_key"]: row
+              for row in read_candidates("metadata_fields", contract.candidate_root)[0]}
+    group = groups.get(item_key)
+    if group is None:
+        raise ValueError("字段候选不在当前批次，无法批准")
+    if str(group.get("status") or "").strip() != "candidate":
+        raise ValueError("只有 candidate 状态的字段候选可以批准")
+    try:
+        candidates = json.loads(str(group.get("candidates_json") or "[]"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("字段候选 JSON 无效") from exc
+    selected = next((candidate for candidate in candidates
+                     if isinstance(candidate, dict)
+                     and str(candidate.get("candidate_key") or "") == candidate_key), None)
+    if selected is None:
+        raise ValueError("所选来源值不在当前字段候选中")
+    return group, selected
+
+
+def _approved_entity_name(value: object) -> str:
+    name = str(value or "").strip()
+    cleaned, repeated = collapse_repeated_phrase(name)
+    if not name or repeated or cleaned != name:
+        raise ValueError("候选仍含重复或未规范化的实体名，拒绝写入")
+    return name
+
+
+def _apply_metadata_candidate(connection, group: dict, candidate: dict, now: str) -> int:
+    field = str(group.get("field") or "").strip()
+    if field not in {"performers", "studio", "series", "tags"}:
+        raise ValueError("该元数据字段没有 Peach 写入映射")
+    code = str(group.get("code") or "").strip()
+    query = str(group.get("query") or code).strip()
+    assets = connection.execute(
+        "SELECT id FROM asset WHERE medium='video' AND (upper(trim(code))=upper(?) "
+        "OR upper(trim(code))=upper(?)) AND (disposal IS NULL OR disposal<>'trash')",
+        (code, query),
+    ).fetchall()
+    asset_ids = sorted({int(row["id"]) for row in assets})
+    if not asset_ids:
+        raise ValueError("当前 ledger 已没有这个番号的可用资产")
+    if len(asset_ids) > REVIEW_APPLY_LIMIT:
+        raise ValueError(f"同番号资产 {len(asset_ids)} 条，超过单次批准上限 {REVIEW_APPLY_LIMIT}")
+    source = str(candidate.get("source") or "").strip()
+    candidate_key = str(candidate.get("candidate_key") or "").strip()
+    if not re.fullmatch(r"[a-z0-9_-]+", source) or not candidate_key:
+        raise ValueError("字段候选来源无效")
+    try:
+        confidence = float(candidate.get("confidence"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("字段候选置信度无效") from exc
+    if not 0 <= confidence <= 1:
+        raise ValueError("字段候选置信度越界")
+    metadata = {
+        "provider": "javinizer-go", "source": source, "source_url": candidate.get("source_url"),
+        "raw_snapshot": candidate.get("raw_snapshot"), "review_item": group["item_key"],
+        "candidate_key": candidate_key,
+    }
+    marks = ",".join("?" * len(asset_ids))
+
+    if field in {"studio", "series"}:
+        name = _approved_entity_name(candidate.get("value"))
+        connection.execute(
+            f"UPDATE asset SET {field}=? WHERE id IN ({marks})", (name, *asset_ids),
+        )
+        connection.execute(
+            f"DELETE FROM asset_entity WHERE asset_id IN ({marks}) AND role=? "
+            "AND source LIKE 'javinizer:%'",
+            (*asset_ids, field),
+        )
+        for asset_id in asset_ids:
+            upsert_asset_entity(
+                connection, kind=field, name=name, asset_id=asset_id, role=field,
+                source=f"javinizer:{source}:{field}", confidence=confidence,
+                metadata=metadata, now=now,
+            )
+        return len(asset_ids)
+
+    if field == "performers":
+        raw_performers = candidate.get("value")
+        if not isinstance(raw_performers, list):
+            raise ValueError("演员候选必须是数组")
+        performers: list[dict] = []
+        seen: set[str] = set()
+        for raw in raw_performers:
+            if not isinstance(raw, dict):
+                raise ValueError("演员候选条目无效")
+            name = _approved_entity_name(raw.get("name"))
+            normalized = normalize_entity_name(name)
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            performers.append({**raw, "name": name})
+        if not performers:
+            raise ValueError("演员候选为空")
+        connection.execute(
+            f"DELETE FROM asset_entity WHERE asset_id IN ({marks}) AND role='performer' "
+            "AND source LIKE 'javinizer:%'", asset_ids,
+        )
+        connection.execute(
+            f"DELETE FROM asset_tag WHERE asset_id IN ({marks}) "
+            "AND source LIKE 'javinizer:%:performer'", asset_ids,
+        )
+        for asset_id in asset_ids:
+            for performer in performers:
+                name = performer["name"]
+                external_id = str(performer.get("external_id") or "").strip()
+                connection.execute(
+                    "INSERT OR IGNORE INTO asset_tag(asset_id,tag,confidence,source) VALUES(?,?,?,?)",
+                    (asset_id, "演员:" + name, confidence, f"javinizer:{source}:performer"),
+                )
+                upsert_asset_entity(
+                    connection, kind="performer", name=name, asset_id=asset_id,
+                    role="performer", source=f"javinizer:{source}:performer",
+                    confidence=confidence, external_provider=(source if external_id else None),
+                    external_id=(external_id or None), metadata=metadata, now=now,
+                )
+        # 演员是 performer 真相，不回写 asset.creator；两种身份混写正是重复名称事故的来源之一。
+        return len(asset_ids)
+
+    raw_tags = candidate.get("value")
+    if not isinstance(raw_tags, list):
+        raise ValueError("标签候选必须是数组")
+    tags = list(dict.fromkeys(_approved_entity_name(tag) for tag in raw_tags))
+    if not tags:
+        raise ValueError("标签候选为空")
+    connection.execute(
+        f"DELETE FROM asset_entity WHERE asset_id IN ({marks}) AND role='tag' "
+        "AND source LIKE 'javinizer:%'", asset_ids,
+    )
+    connection.execute(
+        f"DELETE FROM asset_tag WHERE asset_id IN ({marks}) "
+        "AND source LIKE 'javinizer:%:tag'", asset_ids,
+    )
+    for asset_id in asset_ids:
+        for tag in tags:
+            connection.execute(
+                "INSERT OR IGNORE INTO asset_tag(asset_id,tag,confidence,source) VALUES(?,?,?,?)",
+                (asset_id, tag, confidence, f"javinizer:{source}:tag"),
+            )
+            upsert_asset_entity(
+                connection, kind="tag", name=tag, asset_id=asset_id, role="tag",
+                source=f"javinizer:{source}:tag", confidence=confidence,
+                metadata=metadata, now=now,
+            )
+    return len(asset_ids)
+
+
 def w_review_decision(contract: WebContract, body):
     category = str(body.get("category", "")).strip()
     item_key = str(body.get("item_key", "")).strip()
     status = str(body.get("status", "")).strip()
-    if category not in {"creator_tags", "studio_logos", "performer_avatars", "media_failure"}:
+    if category not in {"metadata_fields", "creator_tags", "studio_logos", "performer_avatars", "media_failure"}:
         raise ValueError("invalid review category")
     if not item_key or status not in {"approved", "rejected", "skipped"}:
         raise ValueError("invalid review decision")
@@ -1111,7 +1276,26 @@ def w_review_decision(contract: WebContract, body):
             (category, item_key, status, note, now),
         )
         applied = 0
-        if category == "creator_tags" and status == "approved":
+        if category == "metadata_fields" and status == "approved":
+            candidate_key = str(body.get("candidate_key") or "").strip()
+            if not candidate_key:
+                connection.rollback(); connection.close()
+                raise ValueError("批准字段候选时必须选择一个来源值")
+            group, candidate = _selected_metadata_candidate(contract, item_key, candidate_key)
+            try:
+                applied = _apply_metadata_candidate(connection, group, candidate, now)
+            except Exception:
+                connection.rollback(); connection.close()
+                raise
+            provenance_note = json.dumps({
+                "candidate_key": candidate_key, "source": candidate.get("source"),
+                "user_note": note,
+            }, ensure_ascii=False, separators=(",", ":"))
+            connection.execute(
+                "UPDATE review_decision SET note=? WHERE category=? AND item_key=?",
+                (provenance_note, category, item_key),
+            )
+        elif category == "creator_tags" and status == "approved":
             # 权威值只能来自候选文件本身。早先版本直接采信请求体，于是「批准候选 X」
             # 可以写入与 X 无关的创作者和标签，而 review_decision 里留痕仍写着 X 通过。
             candidates = {row["item_key"]: row
