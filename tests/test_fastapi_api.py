@@ -21,7 +21,7 @@ if HAS_DEPS:
 BASE_SCHEMA = """
 CREATE TABLE asset(
   id INTEGER PRIMARY KEY, location TEXT NOT NULL, path TEXT NOT NULL, name TEXT,
-  medium TEXT, size INTEGER, creator TEXT, studio TEXT, series TEXT, code TEXT,
+  medium TEXT, size INTEGER, creator TEXT, studio TEXT, series TEXT, code TEXT, release_date TEXT,
   duration REAL, width INTEGER, height INTEGER, ctx_length TEXT, ctx_orient TEXT,
   ctx_quality TEXT, play_count INTEGER DEFAULT 0, last_played TEXT, rating INTEGER,
   o_count INTEGER, watch_ratio REAL, stash_scene_id INTEGER, snapshot_path TEXT, first_seen TEXT,

@@ -355,7 +355,7 @@ Per-Monitor V2 DPI，单击打开 `https://peach-win.local/`；右键可同步 L
 
 ## 批处理安全边界
 
-`scripts/scrape_codes.py` 只把规范化番号交给固定版本 Javinizer-Go，逐来源保存原始 JSON 并生成字段候选 CSV；它没有整批 `--apply`，只有 `/review` 中明确选中某个来源值并批准才写 ledger。`scripts/clean_names.py` 默认只生成改名计划；`--apply` 会先备份 SQLite，并在数据库更新失败时把文件名回滚。两者导入模块时均无副作用，测试不得使用真实路径。
+`scripts/scrape_codes.py` 只把规范化番号交给固定版本 Javinizer-Go，逐来源保存原始 JSON，并为演员、厂牌、系列、发行日期和内容标签生成字段候选；官方/官方镜像标签来源优先。它没有整批 `--apply`，只有 `/review` 中明确选中某个来源值并批准才写 ledger。`scripts/clean_names.py` 默认只生成改名计划；`--apply` 会先备份 SQLite，并在数据库更新失败时把文件名回滚。两者导入模块时均无副作用，测试不得使用真实路径。
 
 历史创作者投影使用逐项只读审计，不再把目录名直接当身份：
 

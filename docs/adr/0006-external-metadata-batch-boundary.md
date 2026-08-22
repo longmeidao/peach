@@ -14,6 +14,7 @@ Peach 需要在线补充番号的 performer、studio、series 和内容分类，
 - 抓取先写逐来源原始 JSON 和可续跑的字段候选 CSV；只有 `/review` 对具体来源值的显式批准才写 ledger，不保留整批 `--apply` 后门。
 - 写入同时包含 source/confidence/provenance，并双写规范 `entity`/`asset_entity` 与当前 UI 兼容投影。
 - 默认查询适配器固定为 Javinizer-Go v1.5.1 的单来源 JSON CLI；Peach 自己聚合来源、规范化字段、保存证据和执行批准，绝不调用其 organizer 或让其持有 Peach 数据库。
+- P0 字段覆盖演员、厂牌、系列、发行日期和内容标签；发行时间只落 `YYYY-MM-DD`，官方/官方镜像 tag 来源排在社区来源前，仍须逐项批准。
 - 对 403/429/503 做来源级冷却；HTML 来源视为易变 adapter，失败不得阻塞 Peach。
 - 导入脚本本身无副作用，网络和真实数据库操作只发生在 `main()` 的显式命令路径。
 

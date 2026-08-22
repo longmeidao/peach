@@ -40,6 +40,8 @@ class MetadataProviderTests(unittest.TestCase):
         command, options = calls[0]
         self.assertEqual(command[-5:], ["IPX-535", "--output", "json", "--scrapers", "r18dev"])
         self.assertFalse(options["shell"])
+        self.assertEqual(options["encoding"], "utf-8")
+        self.assertEqual(options["errors"], "strict")
 
     def test_provider_rejects_paths_and_urls_before_subprocess(self):
         for unsafe in ("/media/IPX-535.mp4", r"R:\media\IPX-535.mp4", "https://x/IPX-535"):
@@ -69,12 +71,15 @@ class MetadataProviderTests(unittest.TestCase):
                 {"dmm_id": 7, "japanese_name": "木村さん"},
                 {"dmm_id": 8, "japanese_name": "画像を拡大する 画像を拡大する"},
             ],
-            "maker": "Studio Studio", "series": "Series A", "genres": ["Anal"],
+            "maker": "Studio Studio", "series": "Series A",
+            "release_date": "2020-09-13T00:00:00Z", "genres": ["Anal"],
         }, {"Anal": "肛交"})
         self.assertEqual(fields["performers"]["value"], [
             {"name": "木村さん", "external_id": "7", "thumb_url": ""},
         ])
         self.assertEqual(fields["studio"]["value"], "Studio")
+        self.assertEqual(fields["release_date"]["value"], "2020-09-13")
+        self.assertIn("已规范化", fields["release_date"]["warnings"][0])
         self.assertEqual(fields["tags"]["value"], ["肛交"])
 
 

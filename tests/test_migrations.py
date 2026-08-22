@@ -24,7 +24,7 @@ class MigrationTests(unittest.TestCase):
         backup = self.root / "before.db"
         done = upgrade(self.db, MIGRATIONS, backup)
         self.assertEqual([m.version for m in done],
-                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015"])
+                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016"])
         self.assertTrue(backup.exists())
         con = sqlite3.connect(self.db)
         tables = {row[0] for row in con.execute(
@@ -40,7 +40,7 @@ class MigrationTests(unittest.TestCase):
                          "entity_search_term", "watch_queue", "asset_preference", "asset_quality_goal",
                          "asset_tag_preference", "asset_search",
                          "schema_migration"} <= tables)
-        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015"])
+        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016"])
         self.assertEqual(upgrade(self.db, MIGRATIONS), [])
         self.assertEqual(plan(self.db, MIGRATIONS)[1], [])
 
@@ -67,7 +67,7 @@ class MigrationTests(unittest.TestCase):
         columns = {row[1] for row in con.execute("PRAGMA table_info(asset)")}
         con.close()
         self.assertTrue({"studio", "feedback", "disposal", "leave_ratio", "play_seconds",
-                         "feedback_at", "seek_count", "max_reached"} <= columns)
+                         "feedback_at", "seek_count", "max_reached", "release_date"} <= columns)
 
     def test_checksum_change_is_rejected(self):
         sqlite3.connect(self.db).close()

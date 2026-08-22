@@ -22,6 +22,7 @@ CREATE TABLE asset(
   studio TEXT,
   series TEXT,
   code TEXT,
+  release_date TEXT,
   duration REAL,
   width INTEGER,
   height INTEGER,
@@ -569,7 +570,8 @@ class WebDataTests(unittest.TestCase):
 
 REVIEW_SCHEMA = """
 CREATE TABLE asset(id INTEGER PRIMARY KEY,location TEXT,path TEXT,name TEXT,medium TEXT,
-  duration REAL,creator TEXT,studio TEXT,series TEXT,code TEXT,snapshot_path TEXT,disposal TEXT);
+  duration REAL,creator TEXT,studio TEXT,series TEXT,code TEXT,release_date TEXT,
+  snapshot_path TEXT,disposal TEXT);
 CREATE TABLE asset_tag(asset_id INTEGER,tag TEXT,confidence REAL DEFAULT 1.0,source TEXT,
   PRIMARY KEY(asset_id,tag,source));
 CREATE TABLE entity(id INTEGER PRIMARY KEY,kind TEXT,canonical_name TEXT,normalized_name TEXT,
@@ -668,6 +670,32 @@ class ReviewQueueTests(unittest.TestCase):
         ).fetchone()[0]
         con.close()
         self.assertEqual(json.loads(note)["candidate_key"], candidate["candidate_key"])
+
+    def test_metadata_release_date_approval_writes_the_date_field(self):
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET code='ABC-001' WHERE id=1")
+        con.commit(); con.close()
+        candidate = {
+            "candidate_key": "ABC-001:release_date:r18dev:abc", "source": "r18dev",
+            "source_url": "https://r18.dev/example", "confidence": 0.9,
+            "value": "2020-09-13", "display_value": "2020-09-13", "warnings": [],
+            "raw_snapshot": "/evidence.json",
+        }
+        self.write_metadata_candidates([{
+            "item_key": "ABC-001:release_date", "code": "ABC-001", "query": "ABC-001",
+            "field": "release_date", "field_label": "发行日期", "current_value": "",
+            "candidates_json": json.dumps([candidate]), "source_count": "1",
+            "status": "candidate", "size_gb": "1", "videos": "1", "fetched_at": "now",
+        }])
+        result = rm_web.w_review_decision(self.contract, {
+            "category": "metadata_fields", "item_key": "ABC-001:release_date",
+            "candidate_key": candidate["candidate_key"], "status": "approved",
+        })
+        self.assertEqual(result["applied_assets"], 1)
+        con = sqlite3.connect(self.db_path)
+        self.assertEqual(con.execute(
+            "SELECT release_date FROM asset WHERE id=1").fetchone()[0], "2020-09-13")
+        con.close()
 
     def test_metadata_approval_rejects_repeated_name_even_if_csv_is_tampered(self):
         con = sqlite3.connect(self.db_path)

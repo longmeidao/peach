@@ -781,8 +781,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签'")
         self.assertPageContains("candidate_key:candidateKey")
         self.assertPageContains("class=\"metadatacandidate\"")
+        self.assertPageContains("candidate.official?' · 官方优先':''")
         self.assertPageContains("/api/review/decision")
         self.assertPageContains("if(path==='/review')")
+
+    def test_jav_release_date_is_visible_in_detail(self):
+        self.assertPageContains("发行 ${esc(it.release_date)}")
 
     def test_duplicates_page_is_a_management_section(self):
         self.assertPageContains("['dupes','重复文件','hard-drive']")

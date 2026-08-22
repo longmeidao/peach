@@ -972,7 +972,7 @@ async function openReview(push=true){
         const approveLabel=canApprove?'通过':'已跳过';
          const assets=row.preview_assets||[];
          const preview=metadata
-           ? `<div class="metadatacandidates">${candidates.map((candidate,index)=>`<label class="metadatacandidate"><input type="radio" name="metadata-${esc(key)}" value="${esc(candidate.candidate_key)}"${index===0?' checked':''}><span><b>${esc(candidate.source)}</b><span>${esc(candidate.display_value||'')}</span>${(candidate.warnings||[]).map(warning=>`<i>${esc(warning)}</i>`).join('')}</span></label>`).join('')}</div>`
+           ? `<div class="metadatacandidates">${candidates.map((candidate,index)=>`<label class="metadatacandidate"><input type="radio" name="metadata-${esc(key)}" value="${esc(candidate.candidate_key)}"${index===0?' checked':''}><span><b>${esc(candidate.source)}${candidate.official?' · 官方优先':''}</b><span>${esc(candidate.display_value||'')}</span>${(candidate.warnings||[]).map(warning=>`<i>${esc(warning)}</i>`).join('')}</span></label>`).join('')}</div>`
            : reviewCategory==='creator_tags'
            ? (assets.length?`<div class="reviewpick"><div class="reviewpickhead"><span class="mono" data-picked-count></span>
                <button type="button" data-pick-all>全选</button><button type="button" data-pick-none>清空</button></div>
@@ -1677,7 +1677,8 @@ async function openItem(id,push=true,mixContext=null){
       <div class="stitle">${esc(it.name)}</div>
       <div class="smeta mono">${srcBadge(it.location,it.cost,'srcbig')}
         <span style="align-self:center">${it.width||'?'}×${it.height||'?'}</span>
-        <span style="align-self:center">${fmtSize(it.size||0)}</span></div>
+        <span style="align-self:center">${fmtSize(it.size||0)}</span>
+        ${it.release_date?`<span style="align-self:center">发行 ${esc(it.release_date)}</span>`:''}</div>
       <div class="detailidentity">${identityRows||`<div class="identityrow"><span></span><span class="ilabel">归属</span><span>${esc(who)}</span></div>`}</div>
       <div class="stags" id="detailTags"></div>
       <div class="trace"><div class="lab mono"><span>离开位置 / 全片</span><span id="ratioTxt">—</span></div>

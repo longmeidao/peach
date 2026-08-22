@@ -580,7 +580,7 @@ class OperationalScriptTests(unittest.TestCase):
                     return {
                         "source": source, "source_url": "https://r18.dev/example",
                         "maker": "Studio A" if source == "r18dev" else "Studio B",
-                        "series": "Series A",
+                        "series": "Series A", "release_date": "2020-09-13T00:00:00Z",
                         "actresses": [{"dmm_id": 7, "japanese_name": "木村さん 木村さん"}],
                         "genres": ["Foot Fetish", "Anal", "Unknown"],
                     }
@@ -589,19 +589,28 @@ class OperationalScriptTests(unittest.TestCase):
                 result = self.scrape_codes.main([
                     "--db", str(db), "--out", str(output), "--raw-dir", str(raw),
                     "--log-dir", str(root / "logs"), "--delay", "0",
-                    "--sources", "r18dev,javbus",
+                    "--sources", "javbus,r18dev",
                 ], provider=provider)
             self.assertEqual(result, 0)
-            self.assertEqual(provider.calls, [("ABC-001", "r18dev"), ("ABC-001", "javbus")])
+            self.assertEqual(provider.calls, [("ABC-001", "javbus"), ("ABC-001", "r18dev")])
 
             with output.open(encoding="utf-8-sig") as handle:
                 rows = list(csv.DictReader(handle))
-            self.assertEqual({row["field"] for row in rows}, {"performers", "studio", "series", "tags"})
+            self.assertEqual({row["field"] for row in rows},
+                             {"performers", "studio", "series", "release_date", "tags"})
             performer = next(row for row in rows if row["field"] == "performers")
             candidates = __import__("json").loads(performer["candidates_json"])
             self.assertEqual({candidate["source"] for candidate in candidates}, {"r18dev", "javbus"})
             self.assertEqual(candidates[0]["display_value"], "木村さん")
             self.assertIn("已规范化", candidates[0]["warnings"][0])
+            release = next(row for row in rows if row["field"] == "release_date")
+            self.assertEqual(__import__("json").loads(release["candidates_json"])[0]["value"],
+                             "2020-09-13")
+            tag_candidates = __import__("json").loads(
+                next(row for row in rows if row["field"] == "tags")["candidates_json"])
+            self.assertEqual([candidate["source"] for candidate in tag_candidates],
+                             ["r18dev", "javbus"], "官方 tag 来源必须排在社区来源前")
+            self.assertTrue(tag_candidates[0]["official"])
             self.assertTrue((raw / "ABC-001" / "r18dev.json").is_file())
             self.assertTrue((raw / "ABC-001" / "javbus.json").is_file())
 

@@ -29,12 +29,21 @@ from peach.metadata import (
 
 
 _logf = None
-FIELD_LABELS = {"performers": "演员", "studio": "厂牌", "series": "系列", "tags": "内容标签"}
+FIELD_LABELS = {
+    "performers": "演员", "studio": "厂牌", "series": "系列",
+    "release_date": "发行日期", "tags": "内容标签",
+}
 FIELDS = [
     "item_key", "code", "query", "field", "field_label", "current_value",
     "candidates_json", "source_count", "status", "size_gb", "videos", "fetched_at",
 ]
 ERROR_FIELDS = ["code", "query", "source", "kind", "status_code", "retryable", "message"]
+TAG_SOURCE_PRIORITY = {
+    "dmm": 100, "mgstage": 100, "tokyohot": 100, "aventertainment": 100,
+    "caribbeancom": 100, "fc2": 100, "r18dev": 90, "libredmm": 90,
+    "javstash": 70, "javdb": 50, "javbus": 40, "javlibrary": 40,
+    "jav321": 30, "dlgetchu": 30,
+}
 
 
 # Javinizer r18dev genre -> Peach's reviewed content taxonomy. Unknown source values
@@ -112,7 +121,11 @@ def _candidate_key(code: str, field: str, source: str, value: object) -> str:
 
 
 def _current_values(connection: sqlite3.Connection, code: str, field: str) -> list[str]:
-    if field in {"studio", "series"}:
+    if field in {"studio", "series", "release_date"}:
+        if field == "release_date" and field not in {
+            str(row[1]) for row in connection.execute("PRAGMA table_info(asset)")
+        }:
+            return []
         rows = connection.execute(
             f"SELECT DISTINCT trim({field}) FROM asset WHERE medium='video' "
             f"AND upper(trim(code))=upper(?) AND {field} IS NOT NULL AND trim({field})<>''",
@@ -251,11 +264,14 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                         log(f"{source} 暂时不可用，本批后续番号进入来源级冷却：{error}")
                     continue
                 for field, extracted in extract_peach_fields(payload, CATEGORY_MAP).items():
+                    tag_priority = TAG_SOURCE_PRIORITY.get(source, 10) if field == "tags" else 0
                     candidate = {
                         "candidate_key": _candidate_key(query, field, source, extracted["value"]),
                         "source": source,
                         "source_url": str(payload.get("source_url") or ""),
                         "confidence": 0.9 if source == "r18dev" else 0.75,
+                        "priority": tag_priority,
+                        "official": bool(field == "tags" and tag_priority >= 90),
                         "value": extracted["value"],
                         "display_value": extracted["display_value"],
                         "warnings": extracted["warnings"],
@@ -265,6 +281,12 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                 if args.delay > 0:
                     time.sleep(args.delay + random.uniform(0, min(0.4, args.delay / 3)))
             for field, candidates in by_field.items():
+                if field == "tags":
+                    candidates.sort(key=lambda item: (
+                        -int(item.get("priority") or 0),
+                        -float(item.get("confidence") or 0),
+                        str(item.get("source") or ""),
+                    ))
                 candidate_writer.writerow({
                     "item_key": f"{query}:{field}", "code": code, "query": query,
                     "field": field, "field_label": FIELD_LABELS[field],

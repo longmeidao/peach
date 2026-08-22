@@ -306,7 +306,7 @@ def q_items(contract: WebContract, args):
     off = int(args.get("offset", 0))
     include_total = args.get("count", "1") != "0"
     fetch_limit = lim if include_total else lim + 1
-    sql = ("SELECT a.id,a.location,a.path,a.name,a.creator,a.studio,a.code,a.size,"
+    sql = ("SELECT a.id,a.location,a.path,a.name,a.creator,a.studio,a.code,a.release_date,a.size,"
            "a.duration,a.width,a.height,a.ctx_length,a.ctx_orient,a.snapshot_path,"
            "a.play_count,a.leave_ratio,a.feedback,a.disposal,a.rating,a.o_count,"
            "a.play_seconds,a.max_reached,a.seek_count,"
@@ -450,7 +450,7 @@ def q_item(contract: WebContract, aid):
        既显示错条目，又反复拉计费流量。教训：按 id 取就按 id 取。"""
     c = contract.db()
     r = c.execute(
-        "SELECT id,location,path,name,creator,studio,code,size,duration,width,height,"
+        "SELECT id,location,path,name,creator,studio,code,release_date,size,duration,width,height,"
         "ctx_length,ctx_orient,snapshot_path,play_count,leave_ratio,feedback,disposal,"
         "rating,o_count,play_seconds,max_reached,seek_count,"
         "COALESCE((SELECT p.liked FROM asset_preference p WHERE p.asset_id=asset.id "
@@ -1145,7 +1145,7 @@ def _approved_entity_name(value: object, kind: str) -> str:
 
 def _apply_metadata_candidate(connection, group: dict, candidate: dict, now: str) -> int:
     field = str(group.get("field") or "").strip()
-    if field not in {"performers", "studio", "series", "tags"}:
+    if field not in {"performers", "studio", "series", "release_date", "tags"}:
         raise ValueError("该元数据字段没有 Peach 写入映射")
     code = str(group.get("code") or "").strip()
     query = str(group.get("query") or code).strip()
@@ -1175,6 +1175,19 @@ def _apply_metadata_candidate(connection, group: dict, candidate: dict, now: str
         "candidate_key": candidate_key,
     }
     marks = ",".join("?" * len(asset_ids))
+
+    if field == "release_date":
+        value = str(candidate.get("value") or "").strip()
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            raise ValueError("发行日期候选必须是 YYYY-MM-DD")
+        try:
+            time.strptime(value, "%Y-%m-%d")
+        except ValueError as exc:
+            raise ValueError("发行日期候选无效") from exc
+        connection.execute(
+            f"UPDATE asset SET release_date=? WHERE id IN ({marks})", (value, *asset_ids),
+        )
+        return len(asset_ids)
 
     if field in {"studio", "series"}:
         name = _approved_entity_name(candidate.get("value"), field)

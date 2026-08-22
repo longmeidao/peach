@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Callable
 
@@ -94,7 +95,7 @@ class JavinizerGoProvider:
         try:
             version = runner(
                 [str(resolved), "version", "--short"], capture_output=True, text=True,
-                timeout=10, check=False, shell=False,
+                encoding="utf-8", errors="strict", timeout=10, check=False, shell=False,
             )
         except OSError as exc:
             raise MetadataProviderError(f"无法验证 Javinizer-Go 版本：{exc}") from exc
@@ -123,7 +124,7 @@ class JavinizerGoProvider:
         try:
             completed = self.runner(
                 command, capture_output=True, text=True, timeout=self.timeout,
-                check=False, shell=False,
+                encoding="utf-8", errors="strict", check=False, shell=False,
             )
         except subprocess.TimeoutExpired as exc:
             raise MetadataProviderError(
@@ -190,8 +191,21 @@ def normalized_performers(raw: object) -> tuple[list[dict], list[str]]:
     return performers, warnings
 
 
+def normalized_release_date(raw: object) -> tuple[str, list[str]]:
+    value = str(raw or "").strip()
+    if not value:
+        return "", []
+    candidate = value[:10]
+    try:
+        normalized = date.fromisoformat(candidate).isoformat()
+    except ValueError:
+        return "", [f"来源发行日期无效，已忽略：{value}"]
+    warnings = [] if value == normalized else [f"来源发行时间已规范化为日期：{value} → {normalized}"]
+    return normalized, warnings
+
+
 def extract_peach_fields(payload: dict, category_map: dict[str, str]) -> dict[str, dict]:
-    """Map raw provider data to the four Peach truth fields supported by P0."""
+    """Map raw provider data to the Peach truth fields supported by P0."""
     out: dict[str, dict] = {}
     performers, warnings = normalized_performers(payload.get("actresses"))
     if performers:
@@ -210,6 +224,13 @@ def extract_peach_fields(payload: dict, category_map: dict[str, str]) -> dict[st
                 "warnings": ([f"来源值含重复片段，已规范化：{raw_name} → {name}"]
                              if repeated else []),
             }
+    release_date, date_warnings = normalized_release_date(payload.get("release_date"))
+    if release_date:
+        out["release_date"] = {
+            "value": release_date,
+            "display_value": release_date,
+            "warnings": date_warnings,
+        }
     mapped = [category_map[name] for name in payload.get("genres") or [] if name in category_map]
     mapped = list(dict.fromkeys(mapped))
     if mapped:
