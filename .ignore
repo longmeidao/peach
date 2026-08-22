@@ -1,0 +1,3 @@
+# ripgrep 专用忽略（不影响 Git）：压缩后的单行 vendor 资产超过工具 JSON 记录 64KB 上限，跳过
+web/vendor/videojs/8.23.9/video.min.js
+web/vendor/videojs/8.23.9/video-js.min.css
