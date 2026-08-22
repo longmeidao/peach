@@ -584,6 +584,17 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(javbus["label"], "Label A")
         self.assertEqual(javbus["series"], "Series A")
 
+        repeated = self.scrape_codes.parse_javbus("""
+          <h3>Repeated</h3>
+          <a href="/star/kimura"><span class="star-name">
+            <span>木村さん</span><span>木村さん</span>
+          </span></a>
+          <a href="/star/bad"><span class="star-name">
+            画像を拡大する 画像を拡大する
+          </span></a>
+        """)
+        self.assertEqual(repeated["performers"], "木村さん")
+
     def test_scrape_writeback_dual_writes_projection_and_entities(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -637,6 +648,43 @@ class OperationalScriptTests(unittest.TestCase):
                 ("tag", "足系", "tag", "r18"),
                 ("tag", "肛交", "tag", "r18"),
             } <= relations)
+
+    def test_scrape_writeback_cleans_old_repeated_review_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "ledger.db"
+            sqlite3.connect(db).close()
+            upgrade(db, MIGRATIONS)
+            connection = sqlite3.connect(db)
+            connection.execute(
+                "INSERT INTO asset(id,location,path,name,medium,code) "
+                "VALUES(1,'local','one.mp4','one.mp4','video','ABC-001')"
+            )
+            connection.commit(); connection.close()
+            output = root / "review.csv"
+            row = {
+                "code": "ABC-001", "query": "ABC-001",
+                "performers": "木村さん 木村さん|画像を拡大する 画像を拡大する",
+                "studio": "", "label": "", "series": "", "title": "",
+                "categories": "", "source": "javbus", "status": "ok",
+                "size_gb": "1", "videos": "1",
+            }
+            with output.open("w", encoding="utf-8-sig", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=self.scrape_codes.FIELDS)
+                writer.writeheader(); writer.writerow(row)
+            with redirect_stdout(io.StringIO()):
+                self.scrape_codes.write_back(str(db), str(output))
+            connection = sqlite3.connect(db)
+            self.assertEqual(connection.execute(
+                "SELECT creator FROM asset WHERE id=1"
+            ).fetchone()[0], "木村さん")
+            self.assertEqual(connection.execute(
+                "SELECT tag FROM asset_tag WHERE asset_id=1"
+            ).fetchall(), [("演员:木村さん",)])
+            self.assertEqual(connection.execute(
+                "SELECT canonical_name FROM entity WHERE kind='performer'"
+            ).fetchall(), [("木村さん",)])
+            connection.close()
 
     def test_creator_tag_review_queue_requires_approval_and_backup(self):
         with tempfile.TemporaryDirectory() as tmp:

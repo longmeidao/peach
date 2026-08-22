@@ -18,7 +18,7 @@ r"""
 import os, sys, csv, json, sqlite3, time
 
 from peach.stash import StashClient, StashError
-from peach.entities import upsert_asset_entity
+from peach.entities import canonicalize_entity_name, upsert_asset_entity
 
 DB = os.path.expandvars(r"R:\peach-data\database\ledger.db")
 VIDEO = {".mp4", ".m4v", ".mkv", ".avi", ".wmv", ".mov", ".ts", ".flv", ".rmvb", ".mpg", ".m2ts"}
@@ -256,13 +256,16 @@ def cmd_stash(client=None):
                 external_provider="stash", external_id=t.get("id"), metadata=t,
             )
         for p in s.get("performers") or []:
+            performer_name = canonicalize_entity_name("performer", p.get("name"))
+            if not performer_name:
+                continue
             c.execute("""INSERT INTO asset_tag(asset_id,tag,confidence,source)
                          VALUES(?,?,1.0,'stash:performer')
                          ON CONFLICT(asset_id,tag) DO UPDATE SET
                            confidence=excluded.confidence,source=excluded.source""",
-                      (aid, "演员:" + p["name"]))
+                      (aid, "演员:" + performer_name))
             upsert_asset_entity(
-                c, kind="performer", name=p.get("name"), now=now,
+                c, kind="performer", name=performer_name, now=now,
                 source="stash:performer", asset_id=aid, role="performer",
                 external_provider="stash", external_id=p.get("id"), metadata=p,
             )

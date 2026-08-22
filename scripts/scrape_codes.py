@@ -33,7 +33,7 @@ import urllib.parse
 
 from bs4 import BeautifulSoup
 
-from peach.entities import upsert_asset_entity
+from peach.entities import canonicalize_entity_name, normalize_entity_name, upsert_asset_entity
 from peach.http import HttpRequest, HttpTransport, HttpxTransport
 
 DEFAULT_DB = r"R:\peach-data\database\ledger.db"
@@ -158,13 +158,27 @@ def from_avsox(code: str, transport: HttpTransport | None = None) -> dict | None
     return parse_avsox(_get(url, transport=transport)) if url else None
 
 
+def _clean_performer_names(values) -> list[str]:
+    names: dict[str, str] = {}
+    for value in values:
+        name = canonicalize_entity_name("performer", value)
+        if not name:
+            continue
+        names.setdefault(normalize_entity_name(name), name)
+    return list(names.values())
+
+
 def parse_javbus(html: str) -> dict | None:
     soup = BeautifulSoup(html, "html.parser")
-    actors = [node.get_text(" ", strip=True) for node in soup.select(".star-name")]
+    actors = _clean_performer_names(
+        node.get_text(" ", strip=True) for node in soup.select(".star-name")
+    )
     if not actors:
-        actors = [node.get_text(" ", strip=True) for node in soup.select('a[href*="/star/"]')]
+        actors = _clean_performer_names(
+            node.get_text(" ", strip=True) for node in soup.select('a[href*="/star/"]')
+        )
     out = dict(BLANK)
-    out["performers"] = "|".join(dict.fromkeys(a for a in actors if a))
+    out["performers"] = "|".join(actors)
     out["studio"] = _linked_value(soup, ("製作商", "制作商"))
     out["label"] = _linked_value(soup, ("發行商", "发行商"))
     out["series"] = _linked_value(soup, ("系列",))
@@ -352,8 +366,9 @@ def write_back(db_path: str = DEFAULT_DB, out_path: str = DEFAULT_OUT) -> int:
                 f"UPDATE asset SET studio=? WHERE id IN ({marks}) "
                 "AND (studio IS NULL OR studio='')",
                 [row["studio"], *ids]).rowcount
-        performer_names = [name.strip() for name in (row.get("performers") or "").split("|")
-                           if name.strip()]
+        performer_names = _clean_performer_names(
+            (row.get("performers") or "").split("|")
+        )
         lead = performer_names[0] if performer_names else ""
         if lead:
             performers += cur.execute(

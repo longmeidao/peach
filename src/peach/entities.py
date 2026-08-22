@@ -9,6 +9,36 @@ def normalize_entity_name(name: str) -> str:
     return str(name).strip().casefold()
 
 
+PERSON_ENTITY_KINDS = frozenset({"creator", "performer"})
+INVALID_PERSON_ENTITY_NAMES = frozenset({"画像を拡大する"})
+
+
+def collapse_repeated_entity_name(name: str) -> str:
+    """把 ``姓名 姓名`` 这类完整重复串收敛为一次。
+
+    这里只处理以空白分隔、前后两半完全相同的高置信错误；不会碰
+    ``M M Produce``、无空白的叠字或带分隔符的内容标签。
+    """
+    original = str(name or "").strip()
+    canonical = " ".join(original.split())
+    parts = canonical.split(" ") if canonical else []
+    half = len(parts) // 2
+    if (len(parts) >= 2 and len(parts) % 2 == 0
+            and [part.casefold() for part in parts[:half]]
+            == [part.casefold() for part in parts[half:]]):
+        return " ".join(parts[:half])
+    return original
+
+
+def canonicalize_entity_name(kind: str, name: str | None) -> str:
+    canonical = str(name or "").strip()
+    if kind in PERSON_ENTITY_KINDS:
+        canonical = collapse_repeated_entity_name(canonical)
+        if canonical in INVALID_PERSON_ENTITY_NAMES:
+            return ""
+    return canonical
+
+
 def merge_entity(
     connection: Connection, *, target_id: int, source_id: int,
     source_name: str, alias_source: str, now: str | None = None,
@@ -85,24 +115,46 @@ def upsert_asset_entity(
     metadata: dict | None = None, now: str | None = None,
 ) -> int | None:
     """写入规范实体关系；调用方负责事务和兼容投影。"""
-    canonical = str(name or "").strip()
+    canonical = canonicalize_entity_name(kind, name)
     if not canonical:
         return None
     stamp = now or datetime.now(timezone.utc).isoformat()
     normalized = normalize_entity_name(canonical)
     payload = json.dumps(metadata or {}, ensure_ascii=False)
-    connection.execute(
-        """INSERT INTO entity(kind,canonical_name,normalized_name,metadata_json,created_at,updated_at)
-           VALUES(?,?,?,?,?,?)
-           ON CONFLICT(kind,normalized_name) DO UPDATE SET
-             canonical_name=excluded.canonical_name,
-             metadata_json=excluded.metadata_json,
-             updated_at=excluded.updated_at""",
-        (kind, canonical, normalized, payload, stamp, stamp),
-    )
-    entity_id = connection.execute(
-        "SELECT id FROM entity WHERE kind=? AND normalized_name=?", (kind, normalized),
-    ).fetchone()[0]
+    entity_id = None
+    if external_provider and external_id is not None:
+        matched = connection.execute(
+            "SELECT e.id FROM entity_external_ref x JOIN entity e ON e.id=x.entity_id "
+            "WHERE x.provider=? AND x.external_kind=? AND x.external_id=? AND e.kind=?",
+            (external_provider, kind, str(external_id), kind),
+        ).fetchone()
+        entity_id = int(matched[0]) if matched else None
+    if entity_id is None:
+        matched = connection.execute(
+            "SELECT id FROM entity WHERE kind=? AND normalized_name=?",
+            (kind, normalized),
+        ).fetchone()
+        entity_id = int(matched[0]) if matched else None
+    if entity_id is None and kind in PERSON_ENTITY_KINDS:
+        alias_matches = connection.execute(
+            "SELECT DISTINCT e.id FROM entity e JOIN entity_alias a ON a.entity_id=e.id "
+            "WHERE e.kind=? AND a.normalized_alias=? ORDER BY e.id LIMIT 2",
+            (kind, normalized),
+        ).fetchall()
+        if len(alias_matches) == 1:
+            entity_id = int(alias_matches[0][0])
+    if entity_id is None:
+        connection.execute(
+            "INSERT INTO entity(kind,canonical_name,normalized_name,metadata_json,created_at,updated_at) "
+            "VALUES(?,?,?,?,?,?)",
+            (kind, canonical, normalized, payload, stamp, stamp),
+        )
+        entity_id = int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
+    else:
+        connection.execute(
+            "UPDATE entity SET metadata_json=?,updated_at=? WHERE id=?",
+            (payload, stamp, entity_id),
+        )
     connection.execute(
         """INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence,
                                      metadata_json,first_seen_at,last_seen_at)
