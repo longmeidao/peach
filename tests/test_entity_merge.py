@@ -7,7 +7,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from peach.entities import merge_entity
+from peach.entities import (
+    canonicalize_entity_name,
+    collapse_repeated_entity_name,
+    merge_entity,
+    upsert_asset_entity,
+)
 from peach.migrations import upgrade
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -88,6 +93,22 @@ class EntityMergeTests(unittest.TestCase):
             self.assertEqual(left, 0, f"{table} 不应残留被删实体的行")
         self.assertEqual(
             self.con.execute("PRAGMA foreign_key_check").fetchall(), [])
+
+    def test_person_upsert_collapses_repeated_name_and_reuses_unique_alias(self):
+        self.con.execute(
+            "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,confidence) "
+            "VALUES(10,'Hashimoto Arina','hashimoto arina','mapping',1.0)"
+        )
+        entity_id = upsert_asset_entity(
+            self.con, kind="performer", name="Hashimoto Arina Hashimoto Arina",
+            asset_id=3, role="performer", source="javbus:performer",
+        )
+        self.assertEqual(entity_id, 10)
+        self.assertEqual(self.con.execute(
+            "SELECT count(*) FROM entity WHERE kind='performer'"
+        ).fetchone()[0], 2, "旧名别名不得被重新建成第三个实体")
+        self.assertEqual(collapse_repeated_entity_name("A B A B"), "A B")
+        self.assertEqual(canonicalize_entity_name("performer", "画像を拡大する"), "")
 
 
 if __name__ == "__main__":

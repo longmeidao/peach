@@ -19,8 +19,12 @@ from typing import Sequence
 from urllib.parse import quote, urlsplit
 
 from .config import COVER_DIR, GENERATED_DIR
-from .entities import normalize_entity_name, upsert_asset_entity
-from .metadata import collapse_repeated_phrase
+from .entities import (
+    canonicalize_entity_name,
+    collapse_repeated_entity_name,
+    normalize_entity_name,
+    upsert_asset_entity,
+)
 from .media import remap_managed_path
 
 COST = {"local": "free", "115": "free", "pikpak": "metered", "online": "metered"}
@@ -1129,12 +1133,14 @@ def _selected_metadata_candidate(contract: WebContract, item_key: str, candidate
     return group, selected
 
 
-def _approved_entity_name(value: object) -> str:
+def _approved_entity_name(value: object, kind: str) -> str:
     name = str(value or "").strip()
-    cleaned, repeated = collapse_repeated_phrase(name)
-    if not name or repeated or cleaned != name:
+    cleaned = canonicalize_entity_name(kind, name)
+    if kind not in {"creator", "performer"}:
+        cleaned = collapse_repeated_entity_name(cleaned)
+    if not name or not cleaned or cleaned != name:
         raise ValueError("候选仍含重复或未规范化的实体名，拒绝写入")
-    return name
+    return cleaned
 
 
 def _apply_metadata_candidate(connection, group: dict, candidate: dict, now: str) -> int:
@@ -1171,7 +1177,7 @@ def _apply_metadata_candidate(connection, group: dict, candidate: dict, now: str
     marks = ",".join("?" * len(asset_ids))
 
     if field in {"studio", "series"}:
-        name = _approved_entity_name(candidate.get("value"))
+        name = _approved_entity_name(candidate.get("value"), field)
         connection.execute(
             f"UPDATE asset SET {field}=? WHERE id IN ({marks})", (name, *asset_ids),
         )
@@ -1197,7 +1203,7 @@ def _apply_metadata_candidate(connection, group: dict, candidate: dict, now: str
         for raw in raw_performers:
             if not isinstance(raw, dict):
                 raise ValueError("演员候选条目无效")
-            name = _approved_entity_name(raw.get("name"))
+            name = _approved_entity_name(raw.get("name"), "performer")
             normalized = normalize_entity_name(name)
             if normalized in seen:
                 continue
@@ -1233,7 +1239,7 @@ def _apply_metadata_candidate(connection, group: dict, candidate: dict, now: str
     raw_tags = candidate.get("value")
     if not isinstance(raw_tags, list):
         raise ValueError("标签候选必须是数组")
-    tags = list(dict.fromkeys(_approved_entity_name(tag) for tag in raw_tags))
+    tags = list(dict.fromkeys(_approved_entity_name(tag, "tag") for tag in raw_tags))
     if not tags:
         raise ValueError("标签候选为空")
     connection.execute(

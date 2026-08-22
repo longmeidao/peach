@@ -5,7 +5,12 @@ import unittest
 from pathlib import Path
 
 from peach.migrations import upgrade
-from scripts.merge_duplicate_identities import apply_rows, collect
+from scripts.merge_duplicate_identities import (
+    apply_repeated_projections,
+    apply_rows,
+    collect,
+    collect_repeated_projections,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -21,7 +26,8 @@ class DuplicateIdentityMergeTests(unittest.TestCase):
             "VALUES(?,'local',?,?,'video',?)",
             [(1, "/x/1.mp4", "1.mp4", "小千 Qian0791"),
              (2, "/x/2.mp4", "2.mp4", "小千 Qian0791"),
-             (3, "/x/3.mp4", "3.mp4", "NOZOMI NOZOMI")])
+             (3, "/x/3.mp4", "3.mp4", "NOZOMI NOZOMI"),
+             (4, "/x/4.mp4", "4.mp4", "NOZOMI NOZOMI")])
         self.con.executemany(
             "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
             "VALUES(?,?,?,?, 't','t')",
@@ -42,6 +48,7 @@ class DuplicateIdentityMergeTests(unittest.TestCase):
              (1, 11, "performer", "performer"), (2, 11, "performer", "performer"),
              (3, 12, "creator", "legacy:asset"),
              (3, 13, "performer", "javbus:performer"),
+             (4, 13, "performer", "javbus:performer"),
              (1, 14, "creator", "legacy:asset"), (2, 14, "creator", "legacy:asset")])
         self.con.executemany(
             "INSERT INTO asset_tag(asset_id,tag,confidence,source) VALUES(?,?,1.0,?)",
@@ -73,6 +80,9 @@ class DuplicateIdentityMergeTests(unittest.TestCase):
             "SELECT 1 FROM entity WHERE id=12").fetchone())
         self.assertEqual(self.con.execute(
             "SELECT creator FROM asset WHERE id=3").fetchone()[0], None)
+        self.assertEqual(self.con.execute(
+            "SELECT creator FROM asset WHERE id=4").fetchone()[0], None,
+            "兼容字段要按坏名字全量清，不能只清旧 creator 关系覆盖的资产")
         tags = dict(self.con.execute(
             "SELECT asset_id,tag FROM asset_tag ORDER BY asset_id"))
         self.assertNotIn(1, tags)
@@ -82,6 +92,48 @@ class DuplicateIdentityMergeTests(unittest.TestCase):
         self.assertEqual(counts["actor_tags_rewritten"], 1)
         self.assertEqual(self.con.execute(
             "PRAGMA foreign_key_check").fetchall(), [])
+
+    def test_projection_audit_repairs_orphan_flat_fields_tags_and_aliases(self):
+        self.con.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,creator) "
+            "VALUES(?,'local',?,?,'video',?)",
+            [(5, "/x/5.mp4", "5.mp4", "瀬奈まお 瀬奈まお"),
+             (6, "/x/6.mp4", "6.mp4", "画像を拡大する 画像を拡大する")],
+        )
+        self.con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(15,'performer','瀬奈まお','瀬奈まお','t','t')"
+        )
+        self.con.execute(
+            "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,confidence) "
+            "VALUES(15,'瀬奈まお 瀬奈まお','瀬奈まお 瀬奈まお','user:merge',1.0)"
+        )
+        self.con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+            "VALUES(5,15,'performer','javbus:performer',1.0)"
+        )
+        self.con.executemany(
+            "INSERT INTO asset_tag(asset_id,tag,confidence,source) VALUES(?,?,1.0,'javbus:performer')",
+            [(5, "演员:瀬奈まお 瀬奈まお"),
+             (6, "演员:画像を拡大する 画像を拡大する")],
+        )
+        rows = collect_repeated_projections(self.con)
+        by_name = {row["bad_name"]: row for row in rows}
+        self.assertEqual(by_name["瀬奈まお 瀬奈まお"]["action"], "use-performer")
+        self.assertEqual(by_name["画像を拡大する 画像を拡大する"]["action"], "remove-invalid")
+        counts = apply_repeated_projections(self.con, rows)
+        self.con.commit()
+        self.assertEqual(self.con.execute(
+            "SELECT creator FROM asset WHERE id=5").fetchone()[0], None)
+        self.assertEqual(self.con.execute(
+            "SELECT creator FROM asset WHERE id=6").fetchone()[0], None)
+        self.assertEqual([row[0] for row in self.con.execute(
+            "SELECT tag FROM asset_tag WHERE asset_id=5")], ["演员:瀬奈まお"])
+        self.assertEqual([row[0] for row in self.con.execute(
+            "SELECT tag FROM asset_tag WHERE asset_id=6")], [])
+        self.assertEqual([row[0] for row in self.con.execute(
+            "SELECT alias FROM entity_alias WHERE entity_id=15")], [])
+        self.assertGreaterEqual(counts["flat_cleared"], 2)
 
 
 if __name__ == "__main__":

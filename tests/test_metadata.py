@@ -67,6 +67,7 @@ class MetadataProviderTests(unittest.TestCase):
             "actresses": [
                 {"dmm_id": 7, "japanese_name": "木村さん 木村さん"},
                 {"dmm_id": 7, "japanese_name": "木村さん"},
+                {"dmm_id": 8, "japanese_name": "画像を拡大する 画像を拡大する"},
             ],
             "maker": "Studio Studio", "series": "Series A", "genres": ["Anal"],
         }, {"Anal": "肛交"})

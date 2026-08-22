@@ -13,6 +13,11 @@ from pathlib import Path
 from typing import Callable
 
 from .config import STATE_DIR, TOOLS_DIR
+from .entities import (
+    canonicalize_entity_name,
+    collapse_repeated_entity_name,
+    normalize_entity_name,
+)
 
 
 JAVINIZER_GO_VERSION = "1.5.1"
@@ -148,23 +153,14 @@ class JavinizerGoProvider:
 
 
 def collapse_repeated_phrase(value: str) -> tuple[str, bool]:
-    """Collapse exact repeated halves such as ``木村さん 木村さん``."""
-    text = " ".join(str(value or "").split()).strip()
-    if not text:
-        return "", False
-    tokens = text.split(" ")
-    if len(tokens) >= 2 and len(tokens) % 2 == 0:
-        half = len(tokens) // 2
-        if [part.casefold() for part in tokens[:half]] == [part.casefold() for part in tokens[half:]]:
-            return " ".join(tokens[:half]), True
-    return text, False
+    """Compatibility wrapper around Peach's shared entity-name gate."""
+    original = str(value or "").strip()
+    cleaned = collapse_repeated_entity_name(original)
+    return cleaned, cleaned != original
 
 
 def safe_entity_name(value: str) -> str:
-    cleaned, repeated = collapse_repeated_phrase(value)
-    if repeated:
-        return cleaned
-    return cleaned
+    return canonicalize_entity_name("performer", value)
 
 
 def normalized_performers(raw: object) -> tuple[list[dict], list[str]]:
@@ -177,10 +173,12 @@ def normalized_performers(raw: object) -> tuple[list[dict], list[str]]:
         preferred = item.get("japanese_name") or " ".join(
             part for part in (item.get("last_name"), item.get("first_name")) if part
         )
-        name, repeated = collapse_repeated_phrase(str(preferred or ""))
+        original = str(preferred or "").strip()
+        name = canonicalize_entity_name("performer", original)
+        repeated = bool(name and name != original)
         if repeated:
             warnings.append(f"来源演员名含重复片段，已规范化：{preferred} → {name}")
-        key = name.casefold()
+        key = normalize_entity_name(name)
         if not name or key in seen:
             continue
         seen.add(key)
