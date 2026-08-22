@@ -58,6 +58,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("`/entity-image?kind=performer&id=${ref.id}`")
         self.assertPageContains("this.onerror=null;this.src='/avatar?id=${repId}'")
 
+    def test_entity_hero_avatar_frames_the_detected_face(self):
+        # 资料页圆框按检出的人脸取景；换回落图时必须先摘掉内联 object-position——
+        # 回落图是另一张照片，脸不在同一位置。
+        self.assertPageContains("function facePos(f)")
+        self.assertPageContains('"${facePos(d.avatar_focus)}')
+        self.assertPageContains("onerror=\"this.removeAttribute('style')")
+
     def test_detail_identity_groups_by_kind_with_the_label_on_top(self):
         # 逐行一个名字在共演作品上会把整个侧栏撑满，左侧还重复一列标签。
         self.assertPageContains("const idGroup=(label,kind,list,extra='')=>list.length")

@@ -1079,6 +1079,88 @@ class JavModeAndCoverTests(unittest.TestCase):
 
 
 
+class FaceFocusMathTests(unittest.TestCase):
+    """人脸中心 → 圆框 object-position 的换算。"""
+
+    def test_a_portrait_centers_the_face_vertically(self):
+        # 640x960（ratio 2/3）、脸心在 cy=0.45：窗口应从余量的 35% 处开始。
+        self.assertEqual(rm_web.face_focus(0.667, 0.5, 0.45),
+                         {"axis": "y", "pct": 35})
+
+    def test_the_centered_face_keeps_the_default_position(self):
+        self.assertEqual(rm_web.face_focus(2 / 3, 0.5, 0.5),
+                         {"axis": "y", "pct": 50})
+
+    def test_faces_too_close_to_an_edge_clamp_instead_of_overflowing(self):
+        self.assertEqual(rm_web.face_focus(0.667, 0.5, 0.0),
+                         {"axis": "y", "pct": 0})
+        self.assertEqual(rm_web.face_focus(0.667, 0.5, 1.0),
+                         {"axis": "y", "pct": 100})
+
+    def test_a_landscape_image_takes_its_margin_horizontally(self):
+        # 1500x1000、脸心在 cx=0.6：窗口应从余量的 80% 处开始。
+        self.assertEqual(rm_web.face_focus(1.5, 0.6, 0.4),
+                         {"axis": "x", "pct": 80})
+        # 脸太靠右时夹取到边缘，不越界。
+        self.assertEqual(rm_web.face_focus(1.5, 0.9, 0.4),
+                         {"axis": "x", "pct": 100})
+
+    def test_near_square_images_have_no_margin_to_reframe(self):
+        self.assertIsNone(rm_web.face_focus(1.0, 0.5, 0.3))
+        self.assertIsNone(rm_web.face_focus(1.03, 0.5, 0.3))
+
+    def test_unreadable_numbers_return_none_not_an_exception(self):
+        self.assertIsNone(rm_web.face_focus(None, 0.5, 0.3))
+        self.assertIsNone(rm_web.face_focus("x", 0.5, 0.3))
+        self.assertIsNone(rm_web.face_focus(-1, 0.5, 0.3))
+
+
+class AvatarFocusTests(unittest.TestCase):
+    """资料页实体图的人脸取景 sidecar。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        self.avatars = root / "avatars"
+        self.avatars.mkdir()
+        self.contract = rm_web.WebContract(
+            Path(str(root / "ledger.db")), avatar_root=self.avatars)
+
+    def test_the_sidecar_focus_is_passed_through(self):
+        (self.avatars / "performer-7900.img").write_bytes(b"x")
+        (self.avatars / "performer-7900.face.json").write_text(
+            '{"ratio":0.667,"face":{"cx":0.5,"cy":0.45},'
+            '"focus":{"axis":"y","pct":35}}', encoding="utf-8")
+        self.assertEqual(self.contract.avatar_focus("performer", 7900),
+                         {"axis": "y", "pct": 35})
+
+    def test_no_sidecar_falls_back_silently(self):
+        (self.avatars / "performer-7900.img").write_bytes(b"x")
+        self.assertIsNone(self.contract.avatar_focus("performer", 7900))
+
+    def test_a_sidecar_without_a_detection_is_not_a_focus(self):
+        # Haar 对侧脸、低头会漏检，没检出是常态而不是错误——必须安静回落。
+        (self.avatars / "performer-7900.img").write_bytes(b"x")
+        (self.avatars / "performer-7900.face.json").write_text(
+            '{"ratio":0.667,"face":null}', encoding="utf-8")
+        self.assertIsNone(self.contract.avatar_focus("performer", 7900))
+
+    def test_a_corrupt_sidecar_never_breaks_the_page(self):
+        (self.avatars / "performer-7900.img").write_bytes(b"x")
+        (self.avatars / "performer-7900.face.json").write_text(
+            "{not json", encoding="utf-8")
+        self.assertIsNone(self.contract.avatar_focus("performer", 7900))
+
+    def test_a_malformed_focus_is_rejected(self):
+        (self.avatars / "performer-7900.face.json").write_text(
+            '{"focus":{"axis":"z","pct":50}}', encoding="utf-8")
+        (self.avatars / "studio-12.face.json").write_text(
+            '{"focus":{"axis":"y","pct":"high"}}', encoding="utf-8")
+        self.assertIsNone(self.contract.avatar_focus("performer", 7900))
+        self.assertIsNone(self.contract.avatar_focus("studio", 12))
+
+
 class DuplicateDetectionTests(unittest.TestCase):
     """同番号不等于重复：合集、分卷和混入的广告都会共用一个 code。"""
 
