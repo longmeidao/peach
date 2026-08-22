@@ -1918,6 +1918,13 @@ function waitTokReady(video,timeout=15000){
     setTimeout(done,timeout);
   });
 }
+function applyTokFit(v){
+  /* 竖屏片源用 contain 完整显示，横屏维持 cover 铺满；按真实宽高判定而不是信元数据。 */
+  const fit=()=>v.classList.toggle('portrait',v.videoWidth>0&&v.videoWidth<v.videoHeight);
+  v.classList.remove('portrait');
+  if(v.readyState>=1)fit();
+  else v.addEventListener('loadedmetadata',fit,{once:true});
+}
 async function openTok(startId,push=true){
   if(push)route('/immerse');
   $('#tok').hidden=false;document.body.style.overflow='hidden';setTokLoading(true,'加载内容…');
@@ -1942,14 +1949,14 @@ async function tokShow(dir){
     let v=old;
     if(dir&&old&&old.getAttribute('src')){
       v=document.createElement('video');v.id='tokIncoming';v.playsInline=true;v.preload='auto';
-      v.src='/stream?id='+it.id;v.style.transform=`translate(-50%,${dir>0?100:-100}%)`;track.appendChild(v);
+      v.src='/stream?id='+it.id;applyTokFit(v);v.style.transform=`translate(-50%,${dir>0?100:-100}%)`;track.appendChild(v);
       await waitTokReady(v);
       requestAnimationFrame(()=>requestAnimationFrame(()=>{
         old.style.transform=`translate(-50%,${dir>0?-100:100}%)`;v.style.transform='translate(-50%,0)'}));
       await new Promise(resolve=>setTimeout(resolve,210));
       old.pause();old.remove();v.id='tokVid';v.style.transform='translateX(-50%)';
     }else{
-      v.preload='auto';v.src='/stream?id='+it.id;await waitTokReady(v);
+      v.preload='auto';v.src='/stream?id='+it.id;applyTokFit(v);await waitTokReady(v);
     }
     if(location.pathname==='/'){
       const url=new URL(location.href),query=new URLSearchParams();

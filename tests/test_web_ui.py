@@ -336,6 +336,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("function setTokLoading(on,label='加载中…',it=null)")
         self.assertPageContains("function waitTokReady(video,timeout=15000)")
         self.assertPageContains("width:100%;height:100%;left:50%;transform:translateX(-50%);object-fit:cover")
+        # 竖屏片源按真实宽高切到 contain 完整显示，不裁上下画面；横屏维持 cover。
+        self.assertPageContains(".toktrack video.portrait{object-fit:contain}")
+        self.assertPageContains("function applyTokFit(v)")
+        self.assertPageContains("v.classList.toggle('portrait',v.videoWidth>0&&v.videoWidth<v.videoHeight)")
+        self.assertPageContains("v.addEventListener('loadedmetadata',fit,{once:true})")
         self.assertPageContains("<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><use href=\"#i-play\"/>")
         self.assertPageContains("await tokShow()")
 
