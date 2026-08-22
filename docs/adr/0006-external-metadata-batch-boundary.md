@@ -11,8 +11,9 @@ Peach 需要在线补充番号的 performer、studio、series 和内容分类，
 
 - 外部元数据作为显式、可恢复的批处理能力，不进入 Web 请求热路径或应用启动流程。
 - 只向已声明来源发送标准化番号；不发送本地文件路径、文件名、媒体内容、播放行为或凭据。
-- 抓取先写可续跑 CSV，只有显式 `--apply` 才写 ledger。
+- 抓取先写逐来源原始 JSON 和可续跑的字段候选 CSV；只有 `/review` 对具体来源值的显式批准才写 ledger，不保留整批 `--apply` 后门。
 - 写入同时包含 source/confidence/provenance，并双写规范 `entity`/`asset_entity` 与当前 UI 兼容投影。
+- 默认查询适配器固定为 Javinizer-Go v1.5.1 的单来源 JSON CLI；Peach 自己聚合来源、规范化字段、保存证据和执行批准，绝不调用其 organizer 或让其持有 Peach 数据库。
 - 对 403/429/503 做来源级冷却；HTML 来源视为易变 adapter，失败不得阻塞 Peach。
 - 导入脚本本身无副作用，网络和真实数据库操作只发生在 `main()` 的显式命令路径。
 

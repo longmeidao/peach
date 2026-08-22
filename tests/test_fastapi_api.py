@@ -1,4 +1,6 @@
+import csv
 import importlib.util
+import json
 import sqlite3
 import struct
 import tempfile
@@ -259,12 +261,48 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
     async def test_review_queue_is_readable_and_decisions_are_persisted(self):
         response = await self.client.get("/api/review?t=secret")
         self.assertEqual(response.status_code, 200)
+        self.assertIn("metadata_fields", response.json()["sections"])
         self.assertIn("creator_tags", response.json()["sections"])
         decided = await self.client.post(
             "/api/review/decision?t=secret",
             json={"category": "media_failure", "item_key": "12510", "status": "skipped"},
         )
         self.assertEqual(decided.status_code, 200)
+
+    async def test_metadata_field_candidate_is_approved_through_the_http_contract(self):
+        connection = sqlite3.connect(self.db)
+        connection.execute("UPDATE asset SET code='ABC-001' WHERE id=1")
+        connection.commit(); connection.close()
+        candidate = {
+            "candidate_key": "ABC-001:studio:r18dev:abc", "source": "r18dev",
+            "source_url": "https://r18.dev/example", "confidence": 0.9,
+            "value": "Studio B", "display_value": "Studio B", "warnings": [],
+            "raw_snapshot": "/evidence.json",
+        }
+        fields = ["item_key", "code", "query", "field", "field_label", "current_value",
+                  "candidates_json", "source_count", "status", "size_gb", "videos", "fetched_at"]
+        path = self.candidate_root / "metadata-field-candidates-20260822.csv"
+        with path.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fields)
+            writer.writeheader(); writer.writerow({
+                "item_key": "ABC-001:studio", "code": "ABC-001", "query": "ABC-001",
+                "field": "studio", "field_label": "厂牌", "current_value": "Studio A",
+                "candidates_json": json.dumps([candidate]), "source_count": "1",
+                "status": "candidate", "size_gb": "1", "videos": "1", "fetched_at": "now",
+            })
+        approved = await self.client.post("/api/review/decision?t=secret", json={
+            "category": "metadata_fields", "item_key": "ABC-001:studio",
+            "candidate_key": candidate["candidate_key"], "status": "approved",
+        })
+        self.assertEqual(approved.status_code, 200)
+        self.assertEqual(approved.json()["applied_assets"], 1)
+        connection = sqlite3.connect(self.db)
+        self.assertEqual(connection.execute("SELECT studio FROM asset WHERE id=1").fetchone()[0], "Studio B")
+        self.assertEqual(connection.execute(
+            "SELECT e.canonical_name FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "WHERE ae.asset_id=1 AND ae.source='javinizer:r18dev:studio'"
+        ).fetchall(), [("Studio B",)])
+        connection.close()
 
     async def test_auth_and_items_contract(self):
         denied = await self.client.get("/api/items")

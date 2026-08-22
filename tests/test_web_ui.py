@@ -387,7 +387,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("[data-pick-all]")
         self.assertPageContains("[data-pick-none]")
         self.assertPageContains('[data-review-asset][aria-pressed="true"]')
-        self.assertPageContains("const canApprove=reviewCategory!=='creator_tags'||String(row.status||'').trim()==='candidate'")
+        self.assertPageContains("const canApprove=metadata?candidates.length>0:(reviewCategory!=='creator_tags'||String(row.status||'').trim()==='candidate')")
         self.assertPageContains("${canApprove?'':' disabled'}")
 
     def test_surface_navigation_clears_stale_panels_and_ignores_late_responses(self):
@@ -778,7 +778,9 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_review_page_is_a_separate_management_layer(self):
         self.assertPageContains("route('/review')")
-        self.assertPageContains("const REVIEW_LABELS={creator_tags:'创作者标签'")
+        self.assertPageContains("const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签'")
+        self.assertPageContains("candidate_key:candidateKey")
+        self.assertPageContains("class=\"metadatacandidate\"")
         self.assertPageContains("/api/review/decision")
         self.assertPageContains("if(path==='/review')")
 

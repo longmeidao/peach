@@ -80,7 +80,7 @@
 - 回收站有独立入口 `peach.local/trash`（后端 `/trash` 走 SPA，前端 `restoreRoute` 直接进 `state=trash`）。
 - 疑似广告是处置队列：队列说明行随页面正常滚走，不复用普通作品列表的 sticky 排序栏。批量或详情加入回收站后会立即刷新队列；Ledger 冲突等非 2xx 写入会明确报错，不再把错误 JSON 当成功后让条目原样出现。
 - 回收站的两条删除路径此前从未真正执行过，已修复：`media.py` 漏 `from functools import lru_cache` 导致整个包 import 失败；`ASSET_REFERENCE_TABLES` 从未定义，`/api/batch` 的 `delete` 必然 `NameError`；`/api/trash/empty` 只加了 dispatch 分支、`w_empty_trash` 没有函数体。现已统一到 `purge_assets()` 并补齐数据层测试。之前「API 写读删已复核」的说法不成立，属于未验证即结论。
-- 管理界面新增 `/review` 人工复核页，分为创作者标签、厂牌 Logo、女优头像、媒体失败四层；候选通过 `review_decision` 留痕，创作者标签只有点击「通过」后才写入 `asset_tag/asset_entity`，其余候选默认不改真相字段。
+- 管理界面 `/review` 已覆盖元数据字段、创作者标签、厂牌 Logo、女优头像、西方身份、番号目录、封面来源、FC2 评论标记和媒体失败。Javinizer-Go 元数据按「番号 × 字段」并列来源候选，批准必须选中具体来源值；服务端从当前 CSV 重取权威值并留下 candidate/source provenance。演员只写 performer 与兼容标签，不写 `asset.creator`；所有实体名在候选生成和批准写入两层拦截重复片段。
 - HLS 除开头一两段外全部失败过，2026-08-18 已修复。`-copyts` 保留原始时间轴后，FFmpeg 把 `-t` 当成绝对结束时刻而不是片段时长，每段的 `-t` 都约等于一个片段长，起点超过它的片段一律「已经过期」，FFmpeg 以退出码 0、空 stderr 写出 0 字节，服务端只能报一句没有内容的 `ffmpeg failed`。实测 asset 6562（6,332 秒）：片段 0、1 返回 200，片段 2 与 300 都是 503；片段缓存目录里 6562、29914、19490 三个资产也都只留下 `0.ts` 与 `1.ts`。所以症状不只是拖不动，播到约 20 秒就会断。修法是保留 `-copyts`、把 `-t 时长` 换成绝对终点 `-to 起点+时长`；删掉 `-copyts` 同样能出片，但首个 PTS 会退回 0.069，每段都自称从 0 开始，正是当初引入 `-copyts` 要解决的拖动跳位。隔离实例实测片段 2、300、633 全部返回 200（47.2 MB、41.1 MB、69.3 MB），手工核验片段 300 首个 PTS 为 2997.995，绝对位置与跨段连续性都对。生产托盘已于 2026-08-18 重启并复验：asset 6562 的片段 2、300 与 asset 29914 的片段 5 均返回 200。
 - 同批把静默失败改为自陈：FFmpeg 退出码 0、stderr 全空却写出 0 字节时，错误信息带上 `returncode`、字节数与 `ss`/`to`，不再只说 `ffmpeg failed`。上面那个缺陷能藏这么久，正是因为日志里那句话什么都没说。
 - 远端 MP4 已改为默认标准 Range，HLS 转为按需（`/api/stream-plan?mode=hls`），见 ADR-0016。起因是 asset 22716（115 的 HEVC 重制 MP4）在详情页黑屏：分片全部 200、数据进了缓冲、时间轴照走，但 `videoWidth=0`、解码 0 帧、无 error 事件。`-c copy` 把 HEVC 原样装进 MPEG-TS，而 Chromium 的 MSE 不支持 TS 里的 HEVC；同一浏览器实测 `video/mp2t; codecs="hvc1…"` 为 `false`、`video/mp4; codecs="hvc1…"` 为 `true`，直接 Range 播同一文件解码 997 帧、拖动后继续出帧。文件名含 `HEVC` 的 115 视频有 248 条、PikPak 2 条，此前全部受影响。生产重启后复验 22716：默认计划为 `range`，`mode=hls` 仍给出 76 段计划，播放列表返回 200；详情页取到 `/stream?id=22716`、`readyState=4`、`1920×1080`，当前帧平均亮度 147.1、非黑像素 99.3%。
@@ -153,6 +153,7 @@
 
 - 2026-08-21 macOS 最新基线：`./scripts/test.sh` 全量 468 项通过、3 项跳过；Windows 当前状态提交
   `& .\scripts\test.ps1` 全量 460 项通过、12 项按平台跳过；上下文预算检查通过。
+- 2026-08-22 Javinizer-Go P0 在 macOS 隔离 worktree 通过 `./scripts/test.sh` 全量 490 项（3 项按平台跳过）；固定 v1.5.1 arm64 二进制校验和与官方一致，公开番号 `IPX-535` 的真实单来源 JSON、临时 ledger 候选生成、1440×1000 与 390×844 复核页均通过。Windows 二进制、Windows 测试、真实 ledger 批次、人工批准和生产服务重启均未执行，不能描述为已部署。
 - Windows 无外置盘生产验收：HTTP 与严格 CA HTTPS `/healthz` 返回 200，账本、FFmpeg、115 和
   PikPak 可用，只有 `local` 来源离线；115 HTTP 与 PikPak 严格 HTTPS 各完成 1 KiB `206` Range。
 - 双机同时在线时账本世代 18、状态 `in-sync`；`peach-win.local` 与 `peach.local` 分别只由
@@ -173,7 +174,7 @@ artifact 拆分、生成资产的跨机同步，以及 macOS 拔盘后的完整�
 6. Windows writer 执行 PikPak 视觉夜跑：先用 `probe.py --redo all` 重探当前 5,445 条失败/零时长，再只跑官方封套与九帧缩略图。generation 29 的 Mac 副本基线为可直接抽 4,740、需重探 5,445、短于等于 2 秒 11；Windows 起跑前重算。第一晚以 200 GB 流量守卫与 40 GiB 系统盘闸门为硬上限，允许安全中止和续跑，不承诺一夜全量完成。
 7. 115 抽帧失败的大小写部分已修复：`peach.media.resolve_case_insensitive` 与 `FilesystemBackend.file_for`、`scripts/sheets.py`、`scripts/probe.py` 的 worker 均已接入；2026-08-17 重跑 33 条九帧，31 成功、2 失败。这 2 条的原因已查清（见上一节）：`18349` 是 ledger 时长记错、`12510` 是片源头损坏。2026-08-18 已全部收尾：`sheets.py` 区分失败原因、`probe.py`/`sheets.py` 新增 `--asset`、`18349` 重探重抽成功、`12510` 判为坏片源并留痕，详见上一节。`sheets.py` 遇 `prim:reserved` 非法色彩元数据的重试已完成并有测试。
 8. HLS `stream-plan` 和按需 TS 片段已接入现有 Video.js 内置 VHS。片段时间窗的绝对终点问题已修并已切生产（见上节）；自适应码率、多路清单、首帧/seek 的桌面与手机验收仍未完成。CloudDrive 约 100 MiB 固定块预取仍是来源层成本，服务端分片只能避免整部 MP4 Range，不会消除来源层块预取。
-9. 配置并评估 Stash CommunityScrapers/元数据 Provider，确认缺口后才写新来源适配器。
+9. 在 Windows 数据工具目录安装并校验 Javinizer-Go v1.5.1 amd64，跑 `r18dev` 小批真实候选后从 `/review` 人工批准；确认来源质量再逐个启用 Javinizer 已有 scraper，不新增 Peach 私有站点解析器。
 10. 配置可复核的真实追更源，之后再接 APScheduler；AI 结果继续只作为候选。
 11. Codex 侧封装技能：`.claude/skills/` 下的六个技能目前只有 Claude 会按 description 自动触发，
     Codex 只能靠 `AGENTS.md` 索引表主动读。由 Codex 接手时确认当前版本的技能机制与目录约定，

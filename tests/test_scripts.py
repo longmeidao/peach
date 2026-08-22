@@ -556,35 +556,7 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(normalise("abw123"), "ABW-123")
         self.assertEqual(normalise("ipvr00296"), "IPVR-296")
 
-    def test_scrape_html_adapters_use_structured_parsing(self):
-        avsox_search = '<a href="/cn/movie/abc123">result</a>'
-        self.assertEqual(
-            self.scrape_codes.avsox_movie_url(avsox_search),
-            "https://avsox.click/cn/movie/abc123",
-        )
-        avsox = self.scrape_codes.parse_avsox("""
-          <h3>Example <b>Title</b></h3>
-          <p><span>制作商:</span><a href="/studio/a">Studio A</a></p>
-          <a class="avatar-box"><span>Alice</span></a>
-          <a class="avatar-box"><span>Bob</span></a>
-        """)
-        self.assertEqual(avsox["performers"], "Alice|Bob")
-        self.assertEqual(avsox["studio"], "Studio A")
-        self.assertEqual(avsox["title"], "Example Title")
-
-        javbus = self.scrape_codes.parse_javbus("""
-          <h3>Bus <em>Title</em></h3>
-          <p><span>製作商:</span><a href="/studio/p">Prestige</a></p>
-          <p><span>發行商:</span><a href="/label/l">Label A</a></p>
-          <p><span>系列:</span><a href="/series/s">Series A</a></p>
-          <a href="/star/alice"><span class="star-name">Alice</span></a>
-        """)
-        self.assertEqual(javbus["performers"], "Alice")
-        self.assertEqual(javbus["studio"], "Prestige")
-        self.assertEqual(javbus["label"], "Label A")
-        self.assertEqual(javbus["series"], "Series A")
-
-    def test_scrape_writeback_dual_writes_projection_and_entities(self):
+    def test_javinizer_scrape_writes_field_candidates_and_raw_evidence_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             db = root / "ledger.db"
@@ -598,45 +570,49 @@ class OperationalScriptTests(unittest.TestCase):
             connection.commit()
             connection.close()
 
-            output = root / "review.csv"
-            row = {
-                "code": "ABC-001", "query": "ABC-001", "performers": "Alice|Bob",
-                "studio": "Studio A", "label": "", "series": "Series A", "title": "",
-                "categories": "Foot Fetish|Anal", "source": "r18", "status": "ok",
-                "size_gb": "1", "videos": "1",
-            }
-            with output.open("w", encoding="utf-8-sig", newline="") as handle:
-                writer = csv.DictWriter(handle, fieldnames=self.scrape_codes.FIELDS)
-                writer.writeheader()
-                writer.writerow(row)
-
+            output = root / "metadata-field-candidates-20260822.csv"
+            raw = root / "sources"
+            class FakeProvider:
+                def __init__(self):
+                    self.calls = []
+                def query(self, code, source):
+                    self.calls.append((code, source))
+                    return {
+                        "source": source, "source_url": "https://r18.dev/example",
+                        "maker": "Studio A" if source == "r18dev" else "Studio B",
+                        "series": "Series A",
+                        "actresses": [{"dmm_id": 7, "japanese_name": "木村さん 木村さん"}],
+                        "genres": ["Foot Fetish", "Anal", "Unknown"],
+                    }
+            provider = FakeProvider()
             with redirect_stdout(io.StringIO()):
-                self.scrape_codes.write_back(str(db), str(output))
+                result = self.scrape_codes.main([
+                    "--db", str(db), "--out", str(output), "--raw-dir", str(raw),
+                    "--log-dir", str(root / "logs"), "--delay", "0",
+                    "--sources", "r18dev,javbus",
+                ], provider=provider)
+            self.assertEqual(result, 0)
+            self.assertEqual(provider.calls, [("ABC-001", "r18dev"), ("ABC-001", "javbus")])
+
+            with output.open(encoding="utf-8-sig") as handle:
+                rows = list(csv.DictReader(handle))
+            self.assertEqual({row["field"] for row in rows}, {"performers", "studio", "series", "tags"})
+            performer = next(row for row in rows if row["field"] == "performers")
+            candidates = __import__("json").loads(performer["candidates_json"])
+            self.assertEqual({candidate["source"] for candidate in candidates}, {"r18dev", "javbus"})
+            self.assertEqual(candidates[0]["display_value"], "木村さん")
+            self.assertIn("已规范化", candidates[0]["warnings"][0])
+            self.assertTrue((raw / "ABC-001" / "r18dev.json").is_file())
+            self.assertTrue((raw / "ABC-001" / "javbus.json").is_file())
 
             connection = sqlite3.connect(db)
             asset = connection.execute(
                 "SELECT creator,studio,series FROM asset WHERE id=1"
             ).fetchone()
-            tags = {row[0] for row in connection.execute(
-                "SELECT tag FROM asset_tag WHERE asset_id=1"
-            )}
-            relations = set(connection.execute(
-                "SELECT e.kind,e.canonical_name,ae.role,ae.source "
-                "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-                "WHERE ae.asset_id=1"
-            ))
+            relation_count = connection.execute("SELECT count(*) FROM asset_entity").fetchone()[0]
             connection.close()
-
-            self.assertEqual(asset, ("Alice", "Studio A", "Series A"))
-            self.assertEqual(tags, {"演员:Alice", "演员:Bob", "足系", "肛交"})
-            self.assertTrue({
-                ("studio", "Studio A", "studio", "r18:studio"),
-                ("series", "Series A", "series", "r18:series"),
-                ("performer", "Alice", "performer", "r18:performer"),
-                ("performer", "Bob", "performer", "r18:performer"),
-                ("tag", "足系", "tag", "r18"),
-                ("tag", "肛交", "tag", "r18"),
-            } <= relations)
+            self.assertEqual(asset, (None, None, None))
+            self.assertEqual(relation_count, 0)
 
     def test_creator_tag_review_queue_requires_approval_and_backup(self):
         with tempfile.TemporaryDirectory() as tmp:
