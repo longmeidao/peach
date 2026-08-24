@@ -39,6 +39,8 @@
 - Windows 品牌资源已统一为附件生成的 `1024x1024` 正方形蜜桃图：`resources/peach-logo.png`、`resources/peach.ico`；Web favicon、托盘图标和 EXE 内嵌图标共用该资源。PyInstaller 打包产物为 `dist/Peach/Peach.exe`，桌面和 Startup 的 `Peach.lnk` 均按 FlowLens 的 `exe,0` 方式指向它；该 exe 只打包托盘自身，服务进程仍由项目 venv 承担，不是可移动的独立发行版。
 - 版本唯一来源为 `src/peach/__init__.py::__version__`；Windows 当前部署和本地代码为 `0.6.3`，Mac 最近一次已核验部署为 `0.6.2`。没有 Git remote 时只报告本地开发版，不伪造更新能力。
 - 本地 CA HTTPS 已部署。CA 包含 critical `CA:TRUE` 和签名用途并通过 OpenSSL 链验证。macOS/iOS 只安装 `peach-local-ca.crt`；不得传播任何私钥。
+- 2026-08-24 安全与架构加固：TLS 目录 ACL 已备份，CA key/server key 禁用继承，只保留 `longm`、SYSTEM、Administrators；托盘仍由 `longm` 运行，80/443 与严格 CA HTTPS 复验通过。配置口令后使用 `/login` POST 设置 HttpOnly cookie，旧 `?t=` 只做一次兼容重定向。异常 500 不再把类型/消息外发；HLS 计划与长转码使用有界执行器，session 取消会终止 FFmpeg。
+- Web 数据边界已开始分域：`LedgerDatabase` 由 `WebContract` 与 `LedgerRepository` 共用，事务统一回滚/关闭；活动写入与纯逻辑已拆到 `web_activity.py`、`web_logic.py`，JSON contract 使用显式 handler 注册表。回收站永久删除先同目录隔离媒体，SQLite commit 失败会恢复原名。
 - Windows 代码、运行数据、venv、构建产物和 worktree 已从外置盘迁到内置盘；旧空 Inbox 和
   `Resources/Tools` 兼容表面已移除。外置盘的运行目录不再是当前入口。
 - 项目已可在 macOS 上独立运行并全量通过测试。账本路径的盘符翻译收敛在 `src/peach/platform.py`；`R:` → `/Volumes/RESOURCES`、`B:`（115）→ `~/Desktop/IMSL/115`、`A:`（PikPak）→ `~/Desktop/IMSL/Pikpak`，可用 `PEACH_DRIVE_MAP` 覆盖。实测本地与 115 的真实资产均返回 `206`，缩略图 `200`；PikPak 挂载当时掉线，按脱盘正确返回 `503` + `X-Peach-Offline`。账本本身未改写。
@@ -161,13 +163,15 @@
   PikPak 可用，只有 `local` 来源离线；115 HTTP 与 PikPak 严格 HTTPS 各完成 1 KiB `206` Range。
 - 双机同时在线时账本世代 18、状态 `in-sync`；`peach-win.local` 与 `peach.local` 分别只由
   `192.168.50.162`、`192.168.50.88` 应答。
-- 两台机器的 worktree 各自独立：macOS 侧已按 27 个 `agent/*` 分支重建，Windows 路径的失效注册已 `git worktree prune` 清掉。分支本身在 `.git` 里，worktree 目录随时可重建，不需要跨机器复制。
+- 两台机器的 worktree 各自独立：macOS 侧按分支本机重建；Windows 于 2026-08-24 逐个核对并删除 5 个已合并且干净的 worktree/分支，只保留未合并任务与当前集成任务。worktree 目录随时可重建，不跨机器复制。
 
 ## 下一批工作
 
 基础设施本机化、显式 writer/reader 和运行中安全手动同步已完成。剩余基础设施边界是 durable
 artifact 拆分、生成资产的跨机同步，以及 macOS 拔盘后的完整验收。部分历史运维脚本仍硬编码 `R:\peach-data`，在改为读取
 `PeachSettings` 前不得对当前账本盲目执行。
+
+2026-08-24 脚本审计发现 7 个脚本在仓库内无直接文件名引用，但零引用不能证明已废弃；它们可能是人工运维入口。逐个核对真实调用、产物和替代入口后才删除，禁止批量移动到 `scripts/archive/`。
 
 1. 创作者板的机械识别已做完：`creator-tags-review.csv` 里 42 条 pending 全部产出 candidate（34 candidate、8 skip，见 `creator-tags-candidate-20260817.csv`），没有未覆盖的板。剩下的是用户在 `/review` 页面逐条复核，点「通过」才写 `asset_tag/asset_entity`。注意天花板：全库 7,622 条无标签视频里创作者板最多覆盖约 2,800 条，其余既无创作者也无有效番号（384 个 FC2 + 约 330 个 `WX` 业余码，三源实测零命中）。
 2. FC2 评论标记跑完后逐条复核 `/review` 的 `fc2_markings` 层。这批候选的置信度只有「几条独立评论这么说」一个信号，写在 `performer_votes` 里；匿名评论一律不自动升级为 `approved`。收获 CSV 里库外 video_id 的标记先存着不入库，等对应作品进库时再回配。还没做的：把复核通过的演员写进 `entity`/`asset_entity`，以及按等价关系做跨号去重。

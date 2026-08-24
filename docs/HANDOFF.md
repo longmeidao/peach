@@ -185,10 +185,10 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 托盘单击打开 HTTPS；macOS/Windows 菜单都提供「同步 Ledger」「接管 Ledger 写入」、状态、重启、日志和退出。HTTP/HTTPS 服务只观察角色，不自动复制；手动同步先停止自己创建的服务，再用 SQLite backup API 与原子替换复制，最后恢复服务。共享源在 macOS smbfs 上必须以 immutable 已关闭快照读取；共享目标不能由 SQLite 直接打开事务连接。健康端口不归本托盘时拒绝接管。
 - 创建 Win32 窗口前必须启用 Per-Monitor V2 DPI。正常动作不弹模态 MessageBox；更新检查在后台线程执行，用 pystray 原生非模态通知反馈。
 - `src/peach/__init__.py::__version__` 是版本唯一来源；采用 pre-1.0 SemVer。Git commit 是构建标识，`vX.Y.Z` 是本地发布点。更新检查只 fetch/比较，并行 worktree 模式下不自动覆盖安装。
-- `scripts/manage_tray_startup.ps1` 是唯一自启动管理入口。托盘管理 HTTP `0.0.0.0:80` 和 HTTPS `192.168.50.162:443`，服务日志写入本机 `peach-data/logs`。
-- `peach serve` 按平台发布固定入口：macOS 为 `peach.local`，Windows 为 `peach-win.local`。Windows 生产显式使用 `--mdns-address 192.168.50.162` 固定 A 地址，但保留 `Zeroconf()` 全合格网卡监听。mDNS 验收必须包含单元测试、运行态 health、DNS-SD、主机名解析和真实 LAN 客户端。
-- `.local` 使用本地 CA，不使用 Let's Encrypt。证书/私钥保存在本机 `peach-data/secrets`。macOS/iOS 只安装并信任 `peach-local-ca.crt`，不得分发 CA key 或服务器 key。
-- FastAPI 是唯一 Web server。不得恢复平行 `http.server` 或动态 legacy loader。
+- `scripts/manage_tray_startup.ps1` 是唯一自启动管理入口。托盘管理 HTTP `0.0.0.0:80` 和当前路由选出的 LAN IPv4 上的 HTTPS 443；显式参数、`PEACH_LAN_ADDRESS`、`lan_ipv4()` 依次覆盖。服务日志写入本机 `peach-data/logs`。
+- `peach serve` 按平台发布固定主机名：macOS 为 `peach.local`，Windows 为 `peach-win.local`。Windows 不在源码钉家庭 IP，仍保留 `Zeroconf()` 全合格网卡监听。mDNS 验收必须包含单元测试、运行态 health、DNS-SD、主机名解析和真实 LAN 客户端。
+- `.local` 使用本地 CA，不使用 Let's Encrypt。证书/私钥保存在本机 `peach-data/secrets`。TLS 私钥禁用 ACL 继承，只允许实际服务身份、SYSTEM、Administrators；当前 Windows 服务身份是 `longm`。macOS/iOS 只安装并信任 `peach-local-ca.crt`，不得分发 CA key 或服务器 key。
+- FastAPI 是唯一 Web server。不得恢复平行 `http.server` 或动态 legacy loader。配置 `--token` 时通过 `/login` POST 取得 HttpOnly cookie；旧 `?t=` 只做一次兼容重定向，dependency 统一 JSON contract 鉴权但不替代登录流程。
 - FFmpeg/ffprobe 依次从显式环境变量、本机 `peach-data/tools/ffmpeg/bin`、`PATH` 解析；不得回退到 Stash 私有目录。
 - 长任务只停止自己拥有且命令行匹配的 Python/FFmpeg 进程树，禁止全机终止 FFmpeg。
 - 导入运维脚本不得触发文件、网络或数据库副作用。`scrape_codes.py` 默认写可续跑复核 CSV；`clean_names.py` 先预览，`--apply` 前备份 SQLite。
