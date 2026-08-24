@@ -157,6 +157,10 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             candidate_root=self.candidate_root,
         )
         self.app = create_app(self.settings)
+        self.assertIs(
+            self.app.state.web_contract.database,
+            self.app.state.repository.database,
+        )
         self.client = httpx.AsyncClient(
             transport=httpx.ASGITransport(app=self.app), base_url="http://test"
         )
@@ -226,7 +230,10 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([item["id"] for item in listed.json()["items"]], [])
 
     async def test_recycle_bin_route_and_batch_delete_are_reachable(self):
-        page = await self.client.get("/trash?t=secret")
+        legacy = await self.client.get("/trash?t=secret")
+        self.assertEqual(legacy.status_code, 303)
+        self.assertEqual(legacy.headers["location"], "/trash")
+        page = await self.client.get("/trash")
         self.assertEqual(page.status_code, 200)
         refused = await self.client.post("/api/batch?t=secret",
                                          json={"ids": [1], "operation": "delete"})
@@ -363,6 +370,18 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             {"k": "横屏", "n": 1},
         ])
 
+    async def test_unexpected_contract_errors_are_logged_but_not_exposed(self):
+        with patch(
+            "peach.api.web_contract.dispatch_api_get",
+            side_effect=RuntimeError("private C:\\ledger.db detail"),
+        ):
+            with self.assertLogs("peach.api", level="ERROR") as captured:
+                response = await self.client.get("/api/items?t=secret")
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.json(), {"error": "internal server error"})
+        self.assertNotIn("ledger.db", response.text)
+        self.assertIn("private C:\\ledger.db detail", "\n".join(captured.output))
+
     async def test_preference_is_an_independent_authenticated_write(self):
         denied = await self.client.post(
             "/api/preference", json={"id": 1, "liked": True, "reason": "镜头自然"},
@@ -434,16 +453,40 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_home_sets_exact_http_only_cookie(self):
         denied = await self.client.get("/")
-        self.assertEqual(denied.status_code, 401)
-        response = await self.client.get("/?t=secret")
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("ready", response.text)
-        cookie = response.headers["set-cookie"]
+        self.assertEqual(denied.status_code, 303)
+        self.assertEqual(denied.headers["location"], "/login?next=/")
+        legacy = await self.client.get("/?t=secret")
+        self.assertEqual(legacy.status_code, 303)
+        self.assertEqual(legacy.headers["location"], "/")
+        cookie = legacy.headers["set-cookie"]
         self.assertIn("tok=secret", cookie)
         self.assertIn("HttpOnly", cookie)
+        response = await self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("ready", response.text)
+
+    async def test_login_posts_the_token_without_putting_it_in_the_url(self):
+        page = await self.client.get("/login?next=/stats")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('type="password"', page.text)
+        refused = await self.client.post(
+            "/login", content="token=wrong&next=%2Fstats",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(refused.status_code, 401)
+        accepted = await self.client.post(
+            "/login", content="token=secret&next=%2Fstats",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(accepted.status_code, 303)
+        self.assertEqual(accepted.headers["location"], "/stats")
+        self.assertNotIn("secret", accepted.headers["location"])
 
     async def test_client_routes_serve_the_single_page_surface(self):
-        await self.client.get("/?t=secret")
+        await self.client.post(
+            "/login", content="token=secret&next=%2F",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
         for path in ("/item/1", "/performers/Alice", "/studios/Prestige",
                      "/creators/luckydog11", "/series/Example", "/performers",
                      "/creators", "/tags", "/stats", "/immerse", "/trash", "/review",
@@ -571,9 +614,16 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             return segment
 
         with patch.object(self.app.state.hls_service, "generate", new=generate):
-            response = await self.client.get(
-                "/stream/hls/1/1.ts?session=hls-test&t=secret",
-            )
+            with patch.object(
+                self.app.state.hls_plan_executor,
+                "submit",
+                wraps=self.app.state.hls_plan_executor.submit,
+            ) as submit:
+                response = await self.client.get(
+                    "/stream/hls/1/1.ts?session=hls-test&t=secret",
+                )
+        submit.assert_called_once()
+        self.assertEqual(self.app.state.hls_plan_executor._max_workers, 2)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"one segment")
         self.assertEqual(response.headers["content-type"], "video/mp2t")

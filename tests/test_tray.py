@@ -51,11 +51,28 @@ class TrayTests(unittest.TestCase):
 
     def test_services_never_own_ledger_sync(self):
         """浏览服务只观察写入角色；跨机复制只能由托盘显式执行。"""
-        specs = build_service_specs()
+        with tempfile.TemporaryDirectory() as directory:
+            tls_dir = Path(directory)
+            for name in ("peach-local-ca.crt", "peach.crt", "peach.key"):
+                (tls_dir / name).write_text("test-only", encoding="utf-8")
+            specs = build_service_specs(lan_address="192.0.2.10", tls_dir=tls_dir)
         owners = [spec for spec in specs if "--no-ledger-sync" not in spec.command]
         self.assertEqual(owners, [])
         for spec in specs:
             self.assertIn("--no-ledger-sync", spec.command)
+
+    def test_windows_service_address_uses_the_current_route_when_not_configured(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tls_dir = Path(directory)
+            for name in ("peach-local-ca.crt", "peach.crt", "peach.key"):
+                (tls_dir / name).write_text("test-only", encoding="utf-8")
+            with patch.dict(os.environ, {}, clear=False), patch(
+                "peach.tray.lan_ipv4", return_value="192.0.2.55",
+            ):
+                os.environ.pop("PEACH_LAN_ADDRESS", None)
+                specs = build_service_specs(tls_dir=tls_dir)
+        commands = [item for spec in specs for item in spec.command]
+        self.assertIn("192.0.2.55", commands)
 
     @patch("peach.tray.LOG_DIR")
     def test_start_and_stop_only_owned_service(self, log_dir):

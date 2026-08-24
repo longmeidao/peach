@@ -11,9 +11,9 @@ import hashlib
 import json
 import random
 import re
-import sqlite3
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Sequence
 from urllib.parse import quote, urlsplit
@@ -26,6 +26,29 @@ from .entities import (
     upsert_asset_entity,
 )
 from .media import remap_managed_path
+from .platform import system_volume
+from .repository import LedgerDatabase
+from .web_activity import (
+    DEFAULT_PROFILE_ID,
+    w_activity,
+    w_feedback,
+    w_play,
+    w_preference,
+    w_quality_goal,
+    w_watch_later,
+)
+from .web_logic import (
+    DUPLICATE_FLOOR_SECONDS,
+    DUPLICATE_TOLERANCE,
+    LENGTH_TAGS,
+    TECH_TAGS,
+    duration_clusters,
+    face_focus,
+    is_jav_code,
+    normalise_code_key,
+    part_marker,
+    tag_cat,
+)
 
 COST = {"local": "free", "115": "free", "pikpak": "metered", "online": "metered"}
 
@@ -47,78 +70,6 @@ ASSET_REFERENCE_TABLES = (
 )
 
 
-#: 真番号的四种形态。共同点是字母段与数字段之间有分隔——`code` 字段里混着账号名
-#: 和站点水印（`RAIKUN325` 241 个文件、`WX17` 334 个、`HHD800` 19 个），只按非空过滤
-#: 会把 791 个非 JAV 视频当成 JAV 显示，占该口径的 31%。
-_CODE_STUDIO = re.compile(r"^[A-Z]{2,8}-\d{2,5}$")
-_CODE_AMATEUR = re.compile(r"^\d{3}[A-Z]{2,6}-\d{2,5}$")
-_CODE_FC2 = re.compile(r"^FC2-PPV-\d{5,}$")
-_CODE_DATE = re.compile(r"^\d{6}-\d{2,4}$")
-
-
-def normalise_code_key(code: str | None) -> str:
-    """把番号归一成存封面用的键；与 fetch_jav_covers.normalise_code 同口径。"""
-    value = (code or "").upper().replace("_", "-").replace(" ", "-").strip()
-    if not value:
-        return ""
-    if value.startswith("FC2"):
-        digits = re.search(r"(\d{5,})", value)
-        return f"FC2-PPV-{digits.group(1)}" if digits else value
-    shape = re.match(r"^(\d{3})?([A-Z]+)-?(\d+)$", value)
-    if not shape:
-        return value
-    return f"{shape.group(1) or ''}{shape.group(2)}-{int(shape.group(3)):03d}"
-
-
-def is_jav_code(code: str | None) -> bool:
-    """判形态必须看原值，不能先归一化。
-
-    `normalise_code_key` 会补上分隔符，`RAIKUN325`（myfans 账号名，241 个文件）
-    会被改写成 `RAIKUN-325` 并通过形态检查。分隔符本身就是区分番号与账号名的
-    唯一线索，归一化把它抹掉了。
-
-    代价是 `SOAN045`、`DTW024` 这类漏写分隔符的真番号会被判为非 JAV。二者结构
-    完全相同，无法自动区分；宁可漏掉几个真番号，也不能把 241 个账号作品塞进
-    JAV 模式。这些漏网的应当在 `code` 字段清洗时补上分隔符。
-    """
-    value = (code or "").upper().strip()
-    if not value:
-        return False
-    # FC2 本来就不依赖分隔符，按数字段识别；`FC2PPV_2707471` 是真番号。
-    if value.startswith("FC2"):
-        return bool(re.search(r"\d{5,}", value))
-    # 其余形态必须带字面连字符。下划线在本语料里是账号名标志（`BANBI_555`
-    # 69 个文件），把它当分隔符会让账号名冒充番号。
-    return bool(_CODE_STUDIO.match(value) or _CODE_AMATEUR.match(value)
-                or _CODE_DATE.match(value))
-
-
-def face_focus(ratio: float, cx: float, cy: float) -> dict | None:
-    """把归一化人脸中心换算成圆框 object-position 的取景提示。
-
-    竖图（ratio=宽/高 < 1）的取景余量在纵向、横图在横向，脸放在余量轴的中心；
-    换算式由 cover 取景的同一几何关系推出：可见窗口在余量轴上的起点是
-    `(余量) × pos%`，令窗口中心等于脸心即可解出 pos。接近正方时 cover 几乎
-    裁不掉东西，返回 None 维持几何居中；脸太靠边、几何上无法完整居中时
-    夹取到边缘，保证不会比现在更差。
-    """
-    try:
-        ratio = float(ratio)
-        cx = float(cx)
-        cy = float(cy)
-    except (TypeError, ValueError):
-        return None
-    if ratio <= 0 or abs(1.0 - ratio) <= 0.05:
-        return None
-    if ratio < 1.0:
-        pos = (cy - ratio / 2) / (1 - ratio)
-    else:
-        pos = (ratio * cx - 0.5) / (ratio - 1)
-    pct = int(round(min(1.0, max(0.0, pos)) * 100))
-    axis = "y" if ratio < 1.0 else "x"
-    return {"axis": axis, "pct": pct}
-
-
 class WebContract:
     """单个应用实例的数据库、写锁和聚合缓存；不共享模块级可变状态。"""
 
@@ -126,15 +77,17 @@ class WebContract:
                  legacy_snapshot_roots: Sequence[Path] = (),
                  candidate_root: Path | None = None,
                  cover_root: Path | None = None,
-                 avatar_root: Path | None = None):
+                 avatar_root: Path | None = None,
+                 database: LedgerDatabase | None = None):
         # 候选 CSV 的目录做成实例属性而不是模块常量，复核层才能在临时目录里被测试。
         self.candidate_root = Path(candidate_root) if candidate_root is not None else GENERATED_DIR
         self.cover_root = Path(cover_root) if cover_root is not None else COVER_DIR
         self.avatar_root = Path(avatar_root) if avatar_root is not None else GENERATED_DIR / "avatars"
-        self.db_path = Path(db_path)
+        self.database = database or LedgerDatabase(db_path)
+        self.db_path = self.database.db_path
         self.snapshot_root = Path(snapshot_root) if snapshot_root is not None else None
         self.legacy_snapshot_roots = tuple(Path(path) for path in legacy_snapshot_roots)
-        self.write_lock = threading.Lock()
+        self.write_lock = self.database.write_lock
         self.cache: dict[str, tuple[float, object]] = {}
         self.cache_lock = threading.Lock()
         self._fts_available: bool | None = None
@@ -155,15 +108,13 @@ class WebContract:
             self.cache.clear()
 
     def db(self, write=False):
-        target = (str(self.db_path) if write else
-                  self.db_path.resolve().as_uri() + "?mode=ro")
-        connection = sqlite3.connect(
-            target, timeout=30, check_same_thread=False, uri=not write,
-        )
-        connection.row_factory = sqlite3.Row
-        # 番号形态判据只有一份实现，SQL 侧直接调它，避免和封面键的口径各写一套。
-        connection.create_function("is_jav_code", 1, is_jav_code, deterministic=True)
-        return connection
+        return self.database.connect(write=write)
+
+    def read_connection(self):
+        return self.database.read_connection()
+
+    def write_transaction(self):
+        return self.database.write_transaction()
 
     def has_snapshot(self, raw_path: str | None) -> bool:
         if not raw_path:
@@ -276,7 +227,7 @@ def q_items(contract: WebContract, args):
                 "WHERE ae.asset_id=a.id AND e.kind='tag' AND e.canonical_name=?) OR "
                 "EXISTS(SELECT 1 FROM asset_tag t WHERE t.asset_id=a.id AND t.tag=?)) AND "
                 "NOT EXISTS(SELECT 1 FROM asset_tag_preference p WHERE p.asset_id=a.id "
-                "AND p.profile_id='local-default' AND p.hidden=1 "
+                f"AND p.profile_id='{DEFAULT_PROFILE_ID}' AND p.hidden=1 "
                 "AND p.normalized_tag=lower(trim(?))))"
             )
             par.extend((tg, tg, tg))
@@ -323,12 +274,12 @@ def q_items(contract: WebContract, args):
     elif args.get("state") == "flagged":
         where.append(
             "(COALESCE(a.o_count,0)>0 OR EXISTS(SELECT 1 FROM asset_preference p "
-            "WHERE p.asset_id=a.id AND p.profile_id='local-default' AND p.liked=1))"
+            f"WHERE p.asset_id=a.id AND p.profile_id='{DEFAULT_PROFILE_ID}' AND p.liked=1))"
         )
     elif args.get("state") == "later":
         where.append(
             "EXISTS(SELECT 1 FROM watch_queue w WHERE w.asset_id=a.id "
-            "AND w.profile_id='local-default')"
+            f"AND w.profile_id='{DEFAULT_PROFILE_ID}')"
         )
     if args.get("thumb") == "1":
         where.append("a.snapshot_path IS NOT NULL")
@@ -362,7 +313,7 @@ def q_items(contract: WebContract, args):
            "a.play_count,a.leave_ratio,a.feedback,a.disposal,a.rating,a.o_count,"
            "a.play_seconds,a.max_reached,a.seek_count,"
            "EXISTS(SELECT 1 FROM watch_queue w WHERE w.asset_id=a.id "
-           "AND w.profile_id='local-default') AS watch_later "
+           f"AND w.profile_id='{DEFAULT_PROFILE_ID}') AS watch_later "
            "FROM asset a WHERE " + " AND ".join(where) + f" ORDER BY {order} LIMIT ? OFFSET ?")
     c = contract.db()
     rows = [dict(r) for r in c.execute(sql, par + [fetch_limit, off])]
@@ -457,21 +408,17 @@ def w_search_history(contract: WebContract, body):
     if operation == "remove":
         if not query:
             raise ValueError("query is required")
-        with contract.write_lock:
-            connection = contract.db(write=True)
+        with contract.write_transaction() as connection:
             connection.execute("DELETE FROM search_history WHERE query=?", (query,))
-            connection.commit(); connection.close()
         return {"ok": True, "operation": operation}
     if operation != "remember" or not query or len(query) > 200:
         raise ValueError("invalid search history request")
-    with contract.write_lock:
-        connection = contract.db(write=True)
+    with contract.write_transaction() as connection:
         connection.execute(
             "INSERT INTO search_history(query,used_count,last_used_at) VALUES(?,1,datetime('now')) "
             "ON CONFLICT(query) DO UPDATE SET used_count=used_count+1,last_used_at=excluded.last_used_at",
             (query,),
         )
-        connection.commit(); connection.close()
     return {"ok": True, "operation": operation}
 
 
@@ -505,22 +452,22 @@ def q_item(contract: WebContract, aid):
         "ctx_length,ctx_orient,snapshot_path,play_count,leave_ratio,feedback,disposal,"
         "rating,o_count,play_seconds,max_reached,seek_count,"
         "COALESCE((SELECT p.liked FROM asset_preference p WHERE p.asset_id=asset.id "
-        "AND p.profile_id='local-default'),0) AS liked,"
+        f"AND p.profile_id='{DEFAULT_PROFILE_ID}'),0) AS liked,"
         "COALESCE((SELECT p.reason FROM asset_preference p WHERE p.asset_id=asset.id "
-        "AND p.profile_id='local-default'),'') AS like_reason,"
+        f"AND p.profile_id='{DEFAULT_PROFILE_ID}'),'') AS like_reason,"
         "COALESCE((SELECT g.wanted FROM asset_quality_goal g WHERE g.asset_id=asset.id "
-        "AND g.profile_id='local-default'),0) AS better_version,"
+        f"AND g.profile_id='{DEFAULT_PROFILE_ID}'),0) AS better_version,"
         "COALESCE((SELECT g.reason FROM asset_quality_goal g WHERE g.asset_id=asset.id "
-        "AND g.profile_id='local-default'),'') AS better_version_reason,"
+        f"AND g.profile_id='{DEFAULT_PROFILE_ID}'),'') AS better_version_reason,"
         "EXISTS(SELECT 1 FROM watch_queue w WHERE w.asset_id=asset.id "
-        "AND w.profile_id='local-default') AS watch_later FROM asset WHERE id=?", (aid,)).fetchone()
+        f"AND w.profile_id='{DEFAULT_PROFILE_ID}') AS watch_later FROM asset WHERE id=?", (aid,)).fetchone()
     if not r:
         c.close(); return {"error": "not found"}
     d = dict(r)
     legacy = [x[0] for x in c.execute(
         "SELECT t.tag FROM asset_tag t WHERE t.asset_id=? AND NOT EXISTS("
         "SELECT 1 FROM asset_tag_preference p WHERE p.asset_id=t.asset_id "
-        "AND p.profile_id='local-default' AND p.hidden=1 "
+        f"AND p.profile_id='{DEFAULT_PROFILE_ID}' AND p.hidden=1 "
         "AND p.normalized_tag=lower(trim(t.tag))) ORDER BY t.tag", (aid,),
     )]
     canonical = list(c.execute(
@@ -528,7 +475,7 @@ def q_item(contract: WebContract, aid):
         "JOIN entity e ON e.id=ae.entity_id WHERE ae.asset_id=? "
         "AND e.kind IN ('tag','performer','creator','studio','series') "
         "AND (e.kind<>'tag' OR NOT EXISTS(SELECT 1 FROM asset_tag_preference p "
-        "WHERE p.asset_id=ae.asset_id AND p.profile_id='local-default' AND p.hidden=1 "
+        f"WHERE p.asset_id=ae.asset_id AND p.profile_id='{DEFAULT_PROFILE_ID}' AND p.hidden=1 "
         "AND p.normalized_tag=e.normalized_name)) "
         "ORDER BY e.kind,e.canonical_name", (aid,),
     ))
@@ -570,25 +517,6 @@ def q_item(contract: WebContract, aid):
     d["is_jav"] = is_jav_code(d.get("code"))
     d.pop("snapshot_path", None); d.pop("path", None)
     return d
-
-# ── 标签语义分级 ──
-LENGTH_TAGS = {"短片-2分内", "中片-10分内", "长片-30分内", "超长片-30分上"}
-TECH_TAGS = {"1080P", "720P", "4K", "2K", "2160P", "480P", "低画质", "高帧率",
-             "横屏", "竖屏",
-             "真人", "混合集", "身份待确认", "R-18", "有码", "无码"}
-COPYRIGHT_HINT = re.compile(
-    r"(ブルーアーカイブ|崩壊|崩坏|原神|勝利の女神|NIKKE|アークナイツ|明日方舟|"
-    r"FGO|Fate|東方|东方|艦これ|舰娘|ウマ娘|赛马娘|ポケモン|宝可梦|"
-    r"サイバーパンク|Honkai|Genshin|Blue Archive|VTuber|hololive|にじさんじ)", re.I)
-
-def tag_cat(t):
-    """meta 规格 / artist 创作者 / character 角色 / copyright 作品 / general 内容。"""
-    if t.startswith("演员:"):  return "artist"
-    if t in LENGTH_TAGS:       return "meta"
-    if t in TECH_TAGS:         return "meta"
-    if COPYRIGHT_HINT.search(t): return "copyright"
-    if re.search(r"(ちゃん|さん|酱|娘)$", t) and len(t) <= 8: return "character"
-    return "general"
 
 def q_ads(contract: WebContract, limit=200, offset=0):
     """疑似广告复核队列 —— **不自动删**，只排队让人看接触印相确认。
@@ -821,7 +749,7 @@ def q_entity(contract: WebContract, args):
         "AND performer.normalized_name=tag.normalized_name) "
         f"AND tag.canonical_name NOT IN ({','.join('?' for _ in LENGTH_TAGS)}) "
         "AND NOT EXISTS(SELECT 1 FROM asset_tag_preference p "
-        " WHERE p.asset_id=scope.asset_id AND p.profile_id='local-default' "
+        f" WHERE p.asset_id=scope.asset_id AND p.profile_id='{DEFAULT_PROFILE_ID}' "
         " AND p.hidden=1 AND p.normalized_tag=tag.normalized_name) "
         "GROUP BY tag.id,tag.canonical_name ORDER BY n DESC,tag.canonical_name LIMIT 36",
         (d["id"], *sorted(LENGTH_TAGS)),
@@ -875,7 +803,7 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="")
                "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
                "AND performer.normalized_name=e.normalized_name) "
                "AND NOT EXISTS(SELECT 1 FROM asset_tag_preference p "
-               "WHERE p.asset_id=ae.asset_id AND p.profile_id='local-default' "
+               f"WHERE p.asset_id=ae.asset_id AND p.profile_id='{DEFAULT_PROFILE_ID}' "
                "AND p.hidden=1 AND p.normalized_tag=e.normalized_name) ")
         par = sorted(LENGTH_TAGS)
         if q: sql += "AND e.canonical_name LIKE ? "; par.append(f"%{q}%")
@@ -944,9 +872,12 @@ def q_stats(contract: WebContract):
     c.close()
     try:
         import shutil
-        du = shutil.disk_usage("C:" + chr(92))
-        out["disk_c"] = {"free": du.free, "total": du.total}
+        volume = system_volume()
+        du = shutil.disk_usage(volume)
+        out["system_disk"] = {"root": str(volume), "free": du.free, "total": du.total}
+        out["disk_c"] = out["system_disk"]  # 0.6.x 客户端兼容别名
     except Exception:
+        out["system_disk"] = None
         out["disk_c"] = None
     return out
 
@@ -1339,8 +1270,7 @@ def w_review_decision(contract: WebContract, body):
         raise ValueError("invalid review decision")
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     note = str(body.get("note", "")).strip()[:2000]
-    with contract.write_lock:
-        connection = contract.db(write=True)
+    with contract.write_transaction() as connection:
         connection.execute(
             "INSERT INTO review_decision(category,item_key,status,note,updated_at) VALUES(?,?,?,?,?) "
             "ON CONFLICT(category,item_key) DO UPDATE SET status=excluded.status,note=excluded.note,updated_at=excluded.updated_at",
@@ -1350,14 +1280,9 @@ def w_review_decision(contract: WebContract, body):
         if category == "metadata_fields" and status == "approved":
             candidate_key = str(body.get("candidate_key") or "").strip()
             if not candidate_key:
-                connection.rollback(); connection.close()
                 raise ValueError("批准字段候选时必须选择一个来源值")
             group, candidate = _selected_metadata_candidate(contract, item_key, candidate_key)
-            try:
-                applied = _apply_metadata_candidate(connection, group, candidate, now)
-            except Exception:
-                connection.rollback(); connection.close()
-                raise
+            applied = _apply_metadata_candidate(connection, group, candidate, now)
             provenance_note = json.dumps({
                 "candidate_key": candidate_key, "source": candidate.get("source"),
                 "user_note": note,
@@ -1373,20 +1298,16 @@ def w_review_decision(contract: WebContract, body):
                           for row in read_candidates(category, contract.candidate_root)[0]}
             candidate = candidates.get(item_key)
             if candidate is None:
-                connection.rollback(); connection.close()
                 raise ValueError("候选不在当前批次，无法批准")
             if str(candidate.get("status") or "").strip() != "candidate":
-                connection.rollback(); connection.close()
                 raise ValueError("只有 candidate 状态的复核项可以批准")
             creator = str(candidate.get("creator") or "").strip()
             tags = [tag.strip() for tag in str(candidate.get("tags") or "").split("|") if tag.strip()]
             claimed_creator = str(body.get("creator", "")).strip()
             claimed_tags = [tag.strip() for tag in str(body.get("tags", "")).split("|") if tag.strip()]
             if (claimed_creator and claimed_creator != creator) or (claimed_tags and claimed_tags != tags):
-                connection.rollback(); connection.close()
                 raise ValueError("提交内容与候选不一致，拒绝写入")
             if not creator or not tags:
-                connection.rollback(); connection.close()
                 raise ValueError("approved creator review requires creator and tags")
             entity = connection.execute(
                 "SELECT e.id FROM entity e LEFT JOIN entity_alias a ON a.entity_id=e.id "
@@ -1394,7 +1315,6 @@ def w_review_decision(contract: WebContract, body):
                 (creator, creator),
             ).fetchone()
             if not entity:
-                connection.rollback(); connection.close()
                 raise ValueError("creator entity not found")
             assets = connection.execute(
                 "SELECT DISTINCT ae.asset_id FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
@@ -1405,7 +1325,6 @@ def w_review_decision(contract: WebContract, body):
             available_ids = {asset["asset_id"] for asset in assets}
             if selected_ids:
                 if not selected_ids <= available_ids:
-                    connection.rollback(); connection.close()
                     raise ValueError("selected assets are outside the reviewed creator")
                 asset_ids = sorted(selected_ids)
             else:
@@ -1413,7 +1332,6 @@ def w_review_decision(contract: WebContract, body):
                 # 却照样把决定记成 approved——留痕说通过、实际没写是最糟的组合。
                 asset_ids = sorted(available_ids)
                 if len(asset_ids) > REVIEW_APPLY_LIMIT:
-                    connection.rollback(); connection.close()
                     raise ValueError(
                         f"该创作者有 {len(asset_ids)} 条作品，超过单次批准上限 "
                         f"{REVIEW_APPLY_LIMIT}，请在页面上显式勾选后再通过"
@@ -1448,7 +1366,6 @@ def w_review_decision(contract: WebContract, body):
                     [(asset_id, entity_id, payload, now, now) for asset_id in asset_ids],
                 )
             applied = len(asset_ids)
-        connection.commit(); connection.close()
     contract.cache_bust()   # 标签写完，聚合缓存必须失效，否则 facets 最多 90 秒还是旧数
     return {"ok": True, "category": category, "item_key": item_key, "status": status, "applied_assets": applied}
 
@@ -1500,9 +1417,6 @@ def q_facets(
         "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 60", scope_params)]
     # 标签要分层 —— 原来一锅端，结果「演员:一个ren」和「1080P」「足交」混在一起。
     # 三类分开：技术规格（画质/时长/画幅，筛选价值低）、内容维度（真正有用的）、演员（另立一栏）。
-    TECH = ("1080P", "720P", "4K", "2160P", "480P", "低画质", "高帧率",
-            "横屏", "竖屏",
-            "真人", "混合集", "身份待确认", "R-18")
     rows = [dict(r) for r in c.execute(
         "SELECT e.canonical_name AS k, count(DISTINCT ae.asset_id) AS n "
         "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
@@ -1511,8 +1425,8 @@ def q_facets(
         "AND performer.normalized_name=e.normalized_name) "
         "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 400", scope_params)]
     out["tags"] = [dict(r, cat=tag_cat(r["k"])) for r in rows
-                   if r["k"] not in TECH and r["k"] not in LENGTH_TAGS][:44]
-    out["tech"] = [r for r in rows if r["k"] in TECH][:14]
+                   if r["k"] not in TECH_TAGS and r["k"] not in LENGTH_TAGS][:44]
+    out["tech"] = [r for r in rows if r["k"] in TECH_TAGS][:16]
     out["tagperformers"] = [dict(r) for r in c.execute(
         "SELECT e.canonical_name AS k,count(DISTINCT ae.asset_id) AS n "
         "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
@@ -1524,7 +1438,7 @@ def q_facets(
         "SUM(CASE WHEN duration IS NOT NULL THEN 1 ELSE 0 END) duration, "
         "SUM(CASE WHEN play_count>0 THEN 1 ELSE 0 END) played, "
         "SUM(CASE WHEN COALESCE(o_count,0)>0 OR EXISTS(SELECT 1 FROM asset_preference p "
-        "WHERE p.asset_id=a.id AND p.profile_id='local-default' AND p.liked=1) "
+        f"WHERE p.asset_id=a.id AND p.profile_id='{DEFAULT_PROFILE_ID}' AND p.liked=1) "
         "THEN 1 ELSE 0 END) flagged, "
         "SUM(EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
         "WHERE ae.asset_id=a.id AND e.kind='creator')) attributed "
@@ -1535,169 +1449,6 @@ def q_facets(
     return out
 
 # ────────────────────────────── 写入 ──────────────────────────────
-
-def w_activity(contract: WebContract, body):
-    """播放埋点。
-
-    「看完」不等于真看完 —— 快进扫过去也会到片尾。所以记两个互相独立的量：
-      · play_seconds  真正播放过的秒数（前端只在 0<dt<2 时累加，拖动不计入）
-      · max_reached   到达过的最远位置 / 时长
-    两者一比就能分辨：max_reached 高但 play_seconds/duration 低 = 快进扫过，不是看完。
-    另记 seek_count（拖动次数）作为佐证。"""
-    aid = int(body["id"]); pos = float(body.get("position", 0))
-    dur = float(body.get("duration", 0)); add = float(body.get("delta", 0))
-    ended = bool(body.get("ended")); seeks = int(body.get("seeks", 0))
-    with contract.write_lock:
-        c = contract.db(write=True)
-        row = c.execute("SELECT play_seconds,max_reached,seek_count FROM asset WHERE id=?",
-                        (aid,)).fetchone()
-        secs = (row["play_seconds"] or 0) + max(add, 0)
-        ratio = 1.0 if ended else (min(pos / dur, 1.0) if dur > 0 else None)
-        mx = max(row["max_reached"] or 0, ratio or 0)
-        sk = (row["seek_count"] or 0) + max(seeks, 0)
-        c.execute("UPDATE asset SET play_seconds=?, leave_ratio=COALESCE(?,leave_ratio), "
-                  "max_reached=?, seek_count=?, last_played=? WHERE id=?",
-                  (secs, ratio, mx, sk, time.time(), aid))
-        c.commit(); c.close()
-    real = (secs / dur) if dur > 0 else None
-    return {"ok": True, "play_seconds": secs, "leave_ratio": ratio,
-            "max_reached": mx, "seek_count": sk, "real_ratio": real}
-
-def w_play(contract: WebContract, body):
-    contract.cache_bust()
-    aid = int(body["id"])
-    with contract.write_lock:
-        c = contract.db(write=True)
-        c.execute("UPDATE asset SET play_count=COALESCE(play_count,0)+1, last_played=? "
-                  "WHERE id=?", (time.time(), aid))
-        c.commit(); c.close()
-    return {"ok": True}
-
-def w_feedback(contract: WebContract, body):
-    contract.cache_bust()
-    """四级反馈，前三级只打标记（见方案 §5.4）。第四级删除不在本服务里。"""
-    aid = int(body["id"]); kind = body.get("kind")
-    with contract.write_lock:
-        c = contract.db(write=True)
-        if kind in ("dislike", "seen"):
-            cur = c.execute("SELECT feedback FROM asset WHERE id=?", (aid,)).fetchone()["feedback"]
-            c.execute("UPDATE asset SET feedback=?, feedback_at=? WHERE id=?",
-                      (None if cur == kind else kind, time.time(), aid))
-        elif kind == "dispose":
-            cur = c.execute("SELECT disposal FROM asset WHERE id=?", (aid,)).fetchone()["disposal"]
-            c.execute("UPDATE asset SET disposal=?, feedback_at=? WHERE id=?",
-                      (None if cur == "trash" else "trash", time.time(), aid))
-        elif kind == "o":
-            c.execute("UPDATE asset SET o_count=COALESCE(o_count,0)+1 WHERE id=?", (aid,))
-        elif kind == "rate":
-            c.execute("UPDATE asset SET rating=? WHERE id=?", (int(body.get("value", 0)), aid))
-        c.commit()
-        r = dict(c.execute("SELECT feedback,disposal,rating,o_count FROM asset WHERE id=?",
-                           (aid,)).fetchone())
-        c.close()
-    return {"ok": True, **r}
-
-
-def w_watch_later(contract: WebContract, body):
-    """把“稍后看”保存为 profile 队列，不混进喜欢/看过反馈。"""
-    contract.cache_bust()
-    aid = int(body["id"])
-    with contract.write_lock:
-        c = contract.db(write=True)
-        exists = c.execute(
-            "SELECT 1 FROM watch_queue WHERE profile_id='local-default' AND asset_id=?",
-            (aid,),
-        ).fetchone()
-        if exists:
-            c.execute(
-                "DELETE FROM watch_queue WHERE profile_id='local-default' AND asset_id=?",
-                (aid,),
-            )
-            queued = False
-        else:
-            c.execute(
-                "INSERT INTO watch_queue(profile_id,asset_id,added_at,source) "
-                "VALUES('local-default',?,strftime('%Y-%m-%dT%H:%M:%fZ','now'),'web')",
-                (aid,),
-            )
-            queued = True
-        c.commit()
-        c.close()
-    return {"ok": True, "watch_later": queued}
-
-
-def w_preference(contract: WebContract, body):
-    """保存 profile 级正向偏好；与看过、不喜欢和稍后看保持独立。"""
-    contract.cache_bust()
-    aid = int(body["id"])
-    liked = 1 if bool(body.get("liked")) else 0
-    reason = body.get("reason", "")
-    if not isinstance(reason, str):
-        raise TypeError("reason must be a string")
-    if len(reason) > 2000:
-        raise ValueError("reason is limited to 2000 characters")
-    with contract.write_lock:
-        c = contract.db(write=True)
-        if not c.execute("SELECT 1 FROM asset WHERE id=?", (aid,)).fetchone():
-            c.close()
-            raise ValueError("asset not found")
-        if not liked and not reason:
-            c.execute(
-                "DELETE FROM asset_preference WHERE profile_id='local-default' AND asset_id=?",
-                (aid,),
-            )
-        else:
-            c.execute(
-                "INSERT INTO asset_preference(profile_id,asset_id,liked,reason,source,updated_at) "
-                "VALUES('local-default',?,?,?,'web',strftime('%Y-%m-%dT%H:%M:%fZ','now')) "
-                "ON CONFLICT(profile_id,asset_id) DO UPDATE SET "
-                "liked=excluded.liked,reason=excluded.reason,source=excluded.source,"
-                "updated_at=excluded.updated_at",
-                (aid, liked, reason),
-            )
-        c.commit()
-        row = c.execute(
-            "SELECT liked,reason FROM asset_preference "
-            "WHERE profile_id='local-default' AND asset_id=?", (aid,),
-        ).fetchone()
-        c.close()
-    return {"ok": True, "liked": bool(row["liked"]) if row else False,
-            "like_reason": row["reason"] if row else ""}
-
-
-def w_quality_goal(contract: WebContract, body):
-    """记录“保留当前版本，同时寻找更好版本”；不修改或删除原资源。"""
-    contract.cache_bust()
-    aid = int(body["id"])
-    wanted = 1 if bool(body.get("wanted")) else 0
-    reason = body.get("reason", "")
-    if not isinstance(reason, str):
-        raise TypeError("reason must be a string")
-    if len(reason) > 500:
-        raise ValueError("reason is limited to 500 characters")
-    with contract.write_lock:
-        c = contract.db(write=True)
-        if not c.execute("SELECT 1 FROM asset WHERE id=?", (aid,)).fetchone():
-            c.close()
-            raise ValueError("asset not found")
-        if not wanted:
-            c.execute(
-                "DELETE FROM asset_quality_goal WHERE profile_id='local-default' AND asset_id=?",
-                (aid,),
-            )
-        else:
-            c.execute(
-                "INSERT INTO asset_quality_goal(profile_id,asset_id,wanted,reason,updated_at) "
-                "VALUES('local-default',?,?,?,strftime('%Y-%m-%dT%H:%M:%fZ','now')) "
-                "ON CONFLICT(profile_id,asset_id) DO UPDATE SET "
-                "wanted=excluded.wanted,reason=excluded.reason,updated_at=excluded.updated_at",
-                (aid, wanted, reason),
-            )
-        c.commit()
-        c.close()
-    return {"ok": True, "better_version": bool(wanted),
-            "better_version_reason": reason if wanted else ""}
-
 
 def w_item_tag(contract: WebContract, body):
     """新增或隐藏单条资源标签；隐藏不销毁刮削/识别来源证据。"""
@@ -1719,13 +1470,13 @@ def w_item_tag(contract: WebContract, body):
         if operation == "remove":
             c.execute(
                 "INSERT INTO asset_tag_preference(profile_id,asset_id,normalized_tag,hidden,updated_at) "
-                "VALUES('local-default',?,?,1,?) ON CONFLICT(profile_id,asset_id,normalized_tag) "
+                f"VALUES('{DEFAULT_PROFILE_ID}',?,?,1,?) ON CONFLICT(profile_id,asset_id,normalized_tag) "
                 "DO UPDATE SET hidden=1,updated_at=excluded.updated_at",
                 (aid, normalized, stamp),
             )
         else:
             c.execute(
-                "DELETE FROM asset_tag_preference WHERE profile_id='local-default' "
+                f"DELETE FROM asset_tag_preference WHERE profile_id='{DEFAULT_PROFILE_ID}' "
                 "AND asset_id=? AND normalized_tag=?", (aid, normalized),
             )
             c.execute(
@@ -1735,61 +1486,98 @@ def w_item_tag(contract: WebContract, body):
             upsert_asset_entity(
                 c, kind="tag", name=tag, asset_id=aid, role="tag",
                 source="web-user", confidence=1.0,
-                metadata={"profile_id": "local-default"}, now=stamp,
+                metadata={"profile_id": DEFAULT_PROFILE_ID}, now=stamp,
             )
         c.commit(); c.close()
     return {"ok": True, "operation": operation, "tag": tag,
             "tags": [item["k"] for item in q_item(contract, aid)["tags"]]}
 
 
-def purge_assets(connection, rows):
-    """物理删除媒体，再删对应账本行；调用方负责事务提交。
+def _restore_staged_media(staged):
+    """Undo same-directory quarantine moves after a database failure."""
+    for original, quarantine in reversed(staged):
+        if quarantine.exists() and not original.exists():
+            os.replace(quarantine, original)
 
-    顺序是先删文件再删行，且删不掉的文件整条跳过——留一条指向缺失文件的账本行还能在
-    回收站里看到并重试，反过来先删行会留下没人认领的媒体文件，那才是真正的丢失。
-    快照是 `R:\\peach-data\\generated` 下可再生的产物，删不掉不阻塞主媒体的清除。
+
+def _finish_purge(outcome):
+    """Delete committed quarantine files; report any residue for explicit cleanup."""
+    cleanup_pending = []
+    for _original, quarantine in outcome.pop("_staged"):
+        try:
+            quarantine.unlink(missing_ok=True)
+        except OSError as error:
+            cleanup_pending.append({
+                "path": str(quarantine), "reason": error.strerror or str(error),
+            })
+    for snapshot in outcome.pop("_snapshots"):
+        try:
+            snapshot.unlink(missing_ok=True)
+        except OSError:
+            pass
+    outcome["cleanup_pending"] = cleanup_pending
+    return outcome
+
+
+def purge_assets(connection, rows):
+    """Quarantine media, delete ledger rows, and leave final removal to the caller.
+
+    Renaming beside the source is reversible and stays on the same filesystem. The
+    caller restores the quarantined names if commit fails, then permanently removes
+    them only after the SQLite transaction has committed.
     """
-    purged, blocked = [], []
+    purged, blocked, staged, snapshots = [], [], [], []
     for row in rows:
         media = row["path"]
         if media:
+            original = Path(media)
             try:
-                os.remove(media)
-            except FileNotFoundError:
-                pass
+                if original.exists() and not original.is_file():
+                    raise OSError("not a regular file")
+                if original.is_file():
+                    quarantine = original.with_name(
+                        f".{original.name}.peach-purge-{uuid.uuid4().hex}.tmp"
+                    )
+                    os.replace(original, quarantine)
+                    staged.append((original, quarantine))
             except OSError as error:
                 blocked.append({"id": row["id"], "path": media,
                                 "reason": error.strerror or str(error)})
                 continue
         snapshot = row["snapshot_path"]
         if snapshot:
-            try:
-                os.remove(snapshot)
-            except OSError:
-                pass
+            snapshots.append(Path(snapshot))
         purged.append(row["id"])
-    if purged:
-        marks = ",".join("?" * len(purged))
-        for table in ASSET_REFERENCE_TABLES:
-            connection.execute(f"DELETE FROM {table} WHERE asset_id IN ({marks})", purged)
-        connection.execute(f"DELETE FROM asset WHERE id IN ({marks})", purged)
-    return {"purged": len(purged), "blocked": blocked}
+    try:
+        if purged:
+            marks = ",".join("?" * len(purged))
+            for table in ASSET_REFERENCE_TABLES:
+                connection.execute(f"DELETE FROM {table} WHERE asset_id IN ({marks})", purged)
+            connection.execute(f"DELETE FROM asset WHERE id IN ({marks})", purged)
+    except BaseException:
+        _restore_staged_media(staged)
+        raise
+    return {
+        "purged": len(purged), "blocked": blocked,
+        "_staged": staged, "_snapshots": snapshots,
+    }
 
 
 def w_empty_trash(contract: WebContract):
     """永久清空回收站：只处理 disposal='trash' 的资产，其余一律不碰。"""
     contract.cache_bust()
-    with contract.write_lock:
-        connection = contract.db(write=True)
-        try:
+    outcome = None
+    try:
+        with contract.write_transaction() as connection:
             rows = connection.execute(
                 "SELECT id,path,snapshot_path FROM asset WHERE disposal='trash'",
             ).fetchall()
-            result = purge_assets(connection, rows)
-            connection.commit()
-        finally:
-            connection.close()
-    return {"ok": True, "operation": "empty-trash", **result}
+            outcome = purge_assets(connection, rows)
+    except BaseException:
+        if outcome is not None:
+            _restore_staged_media(outcome["_staged"])
+        raise
+    return {"ok": True, "operation": "empty-trash", **_finish_purge(outcome)}
 
 
 def w_batch(contract: WebContract, body):
@@ -1805,108 +1593,54 @@ def w_batch(contract: WebContract, body):
         raise ValueError("unsupported batch operation")
     marks = ",".join("?" * len(ids))
     contract.cache_bust()
-    with contract.write_lock:
-        connection = contract.db(write=True)
-        found = connection.execute(
-            f"SELECT id,path,snapshot_path,disposal FROM asset WHERE id IN ({marks})", ids,
-        ).fetchall()
-        valid_ids = [row["id"] for row in found]
-        if not valid_ids:
-            connection.close()
-            raise ValueError("assets not found")
-        if operation in {"restore", "delete"} and any(row["disposal"] != "trash" for row in found):
-            connection.close()
-            raise ValueError("restore/delete is only allowed for recycle-bin assets")
-        now = time.time()
-        if operation == "restore":
-            placeholders = ",".join("?" * len(valid_ids))
-            connection.execute(
-                f"UPDATE asset SET disposal=NULL,feedback_at=? WHERE id IN ({placeholders})",
-                [now, *valid_ids],
-            )
-        elif operation == "delete":
-            purged = purge_assets(connection, found)
-            connection.commit()
-            connection.close()
-            return {"ok": True, "operation": operation, **purged}
-        elif operation in {"seen", "dispose"}:
-            column, value = ("feedback", "seen") if operation == "seen" else ("disposal", "trash")
-            placeholders = ",".join("?" * len(valid_ids))
-            connection.execute(
-                f"UPDATE asset SET {column}=?,feedback_at=? WHERE id IN ({placeholders})",
-                [value, now, *valid_ids],
-            )
-        elif operation == "later":
-            connection.executemany(
-                "INSERT OR IGNORE INTO watch_queue(profile_id,asset_id,added_at,source) "
-                "VALUES('local-default',?,strftime('%Y-%m-%dT%H:%M:%fZ','now'),'web-batch')",
-                [(asset_id,) for asset_id in valid_ids],
-            )
-        else:
-            connection.executemany(
-                "INSERT INTO asset_preference(profile_id,asset_id,liked,reason,source,updated_at) "
-                "VALUES('local-default',?,1,'','web-batch',strftime('%Y-%m-%dT%H:%M:%fZ','now')) "
-                "ON CONFLICT(profile_id,asset_id) DO UPDATE SET liked=1,source='web-batch',"
-                "updated_at=excluded.updated_at",
-                [(asset_id,) for asset_id in valid_ids],
-            )
-        connection.commit(); connection.close()
+    purge_outcome = None
+    try:
+        with contract.write_transaction() as connection:
+            found = connection.execute(
+                f"SELECT id,path,snapshot_path,disposal FROM asset WHERE id IN ({marks})", ids,
+            ).fetchall()
+            valid_ids = [row["id"] for row in found]
+            if not valid_ids:
+                raise ValueError("assets not found")
+            if operation in {"restore", "delete"} and any(row["disposal"] != "trash" for row in found):
+                raise ValueError("restore/delete is only allowed for recycle-bin assets")
+            now = time.time()
+            if operation == "restore":
+                placeholders = ",".join("?" * len(valid_ids))
+                connection.execute(
+                    f"UPDATE asset SET disposal=NULL,feedback_at=? WHERE id IN ({placeholders})",
+                    [now, *valid_ids],
+                )
+            elif operation == "delete":
+                purge_outcome = purge_assets(connection, found)
+            elif operation in {"seen", "dispose"}:
+                column, value = ("feedback", "seen") if operation == "seen" else ("disposal", "trash")
+                placeholders = ",".join("?" * len(valid_ids))
+                connection.execute(
+                    f"UPDATE asset SET {column}=?,feedback_at=? WHERE id IN ({placeholders})",
+                    [value, now, *valid_ids],
+                )
+            elif operation == "later":
+                connection.executemany(
+                    "INSERT OR IGNORE INTO watch_queue(profile_id,asset_id,added_at,source) "
+                    f"VALUES('{DEFAULT_PROFILE_ID}',?,strftime('%Y-%m-%dT%H:%M:%fZ','now'),'web-batch')",
+                    [(asset_id,) for asset_id in valid_ids],
+                )
+            else:
+                connection.executemany(
+                    "INSERT INTO asset_preference(profile_id,asset_id,liked,reason,source,updated_at) "
+                    f"VALUES('{DEFAULT_PROFILE_ID}',?,1,'','web-batch',strftime('%Y-%m-%dT%H:%M:%fZ','now')) "
+                    "ON CONFLICT(profile_id,asset_id) DO UPDATE SET liked=1,source='web-batch',"
+                    "updated_at=excluded.updated_at",
+                    [(asset_id,) for asset_id in valid_ids],
+                )
+    except BaseException:
+        if purge_outcome is not None:
+            _restore_staged_media(purge_outcome["_staged"])
+        raise
+    if purge_outcome is not None:
+        return {"ok": True, "operation": operation, **_finish_purge(purge_outcome)}
     return {"ok": True, "operation": operation, "changed": len(valid_ids)}
-
-
-#: 同一部作品的不同版本时长只差几秒；容差必须紧。3% 在 4 小时的片子上等于
-#: ±7 分钟，实测把 `HRV-041` 的 237 分和 239 分两个**不同部分**并成了一簇，
-#: 「每簇留最大」会删掉其中一个部分。宁可漏判几组真重复（只是少回收一点空间），
-#: 也不能把不同部分并进一簇（那是不可逆的内容丢失）。
-DUPLICATE_TOLERANCE = 0.005
-DUPLICATE_FLOOR_SECONDS = 15.0
-
-#: 文件名里的分卷标记。同簇内出现不同的分卷号，说明它们是不同部分而不是重复。
-_PART_MARKER = re.compile(
-    r"(?:^|[^a-z0-9])(?:part|cd|disc|vol)?[-_ ]?([1-9]\d?|[a-h])(?=\.[a-z0-9]{2,4}$)",
-    re.I)
-
-
-def part_marker(name: str) -> str:
-    """取文件名尾部的分卷标记；取不到返回空串。"""
-    match = _PART_MARKER.search(name or "")
-    return match.group(1).lower() if match else ""
-
-
-def duration_clusters(items: list[dict]) -> list[list[dict]]:
-    """按时长把同番号的文件聚成「同一内容」的簇。
-
-    只按番号分组会把三类东西混在一起，对它们做「保留最大」是数据事故：
-
-    - **合集**。`FC2-PPV-3312576` 一个番号 19 个文件，是 19 部不同作品。
-    - **分卷**。`PPT-018` 的时长是 109.2/175.2/196.4 各两份，三个部分各有一个
-      重复版本；按番号只留最大会把另外两个部分整个删掉。
-    - **广告**。`BAZX-302` 的下载目录里混着 0.5~1.8 分钟的推广片，继承了同一个
-      `code`。聚类后它们自成小簇，199.9 分钟的正片独自成簇、根本不算重复。
-
-    时长缺失的一律单独成簇：没有证据就不敢判定为重复。
-    """
-    clusters: list[list[dict]] = []
-    known = sorted((x for x in items if (x.get("duration") or 0) > 0),
-                   key=lambda x: x["duration"])
-    for item in known:
-        marker = part_marker(str(item.get("name") or ""))
-        for cluster in clusters:
-            reference = cluster[0]["duration"]
-            if abs(item["duration"] - reference) > max(
-                    DUPLICATE_FLOOR_SECONDS, reference * DUPLICATE_TOLERANCE):
-                continue
-            # 分卷标记不同就是不同部分，时长再接近也不能并簇：`FCDSS-021` 的
-            # `-1/-2/-3` 时长只差 12 秒，却是三个部分。
-            existing = {part_marker(str(x.get("name") or "")) for x in cluster}
-            if marker and existing - {"", marker}:
-                continue
-            cluster.append(item)
-            break
-        else:
-            clusters.append([item])
-    clusters.extend([x] for x in items if not (x.get("duration") or 0) > 0)
-    return clusters
 
 
 def q_duplicates(contract: WebContract, args):
@@ -1970,82 +1704,120 @@ def q_duplicates(contract: WebContract, args):
     }
 
 
+class ContractRouteNotFound(KeyError):
+    """The stable JSON contract has no handler for this path."""
+
+
+def _get_item(contract, args):
+    return q_item(contract, int(args["id"]))
+
+
+def _get_index(contract, args):
+    return q_index(
+        contract,
+        args.get("kind", "tags"),
+        args.get("q", ""),
+        min(max(int(args.get("limit", "180")), 1), 600),
+        max(int(args.get("offset", "0")), 0),
+        args.get("category", ""),
+    )
+
+
+def _get_stats(contract, _args):
+    return contract.cached("stats", lambda: q_stats(contract))
+
+
+def _get_tops(contract, args):
+    n = min(int(args.get("n", "28")), 60)
+    jav = args.get("jav") == "1"
+    seed = str(args.get("seed", ""))[:32]
+    return contract.cached(
+        f"tops{n}{'-jav' if jav else ''}:{seed}",
+        lambda: q_tops(contract, n, jav=jav, seed=seed),
+    )
+
+
+def _get_ads(contract, args):
+    return q_ads(
+        contract,
+        min(int(args.get("limit", "60")), 200),
+        max(int(args.get("offset", "0")), 0),
+    )
+
+
+def _get_related(contract, args):
+    return q_related(contract, int(args["id"]), min(int(args.get("limit", "24")), 60))
+
+
+def _get_facets(contract, args):
+    jav = args.get("jav") == "1"
+    scope_kind = str(args.get("scope_kind", ""))
+    scope_name = str(args.get("scope_name", ""))
+    asset_id = int(args["id"]) if args.get("id") else None
+    scope_key = f"{scope_kind}:{scope_name}:{asset_id or ''}"
+    return contract.cached(
+        f"facets{'-jav' if jav else ''}:{scope_key}",
+        lambda: q_facets(
+            contract,
+            jav=jav, scope_kind=scope_kind, scope_name=scope_name, asset_id=asset_id,
+        ),
+    )
+
+
+def _get_search_history(contract, args):
+    return q_search_history(contract, int(args.get("limit", "10")))
+
+
+def _get_review(contract, _args):
+    return contract.cached("review", lambda: q_review(contract))
+
+
+def _post_empty_trash(contract, _body):
+    return w_empty_trash(contract)
+
+
+GET_HANDLERS = {
+    "/api/items": q_items,
+    "/api/item": _get_item,
+    "/api/entity": q_entity,
+    "/api/index": _get_index,
+    "/api/duplicates": q_duplicates,
+    "/api/stats": _get_stats,
+    "/api/tops": _get_tops,
+    "/api/ads": _get_ads,
+    "/api/related": _get_related,
+    "/api/facets": _get_facets,
+    "/api/search-history": _get_search_history,
+    "/api/review": _get_review,
+}
+
+POST_HANDLERS = {
+    "/api/activity": w_activity,
+    "/api/play": w_play,
+    "/api/feedback": w_feedback,
+    "/api/watch-later": w_watch_later,
+    "/api/preference": w_preference,
+    "/api/quality-goal": w_quality_goal,
+    "/api/item-tag": w_item_tag,
+    "/api/batch": w_batch,
+    "/api/search-history": w_search_history,
+    "/api/trash/empty": _post_empty_trash,
+    "/api/review/decision": w_review_decision,
+}
+
+
 def dispatch_api_get(contract: WebContract, path, args):
     """Dispatch the stable JSON read contract used by the current web client."""
-    if path == "/api/items":
-        return q_items(contract, args)
-    if path == "/api/item":
-        return q_item(contract, int(args["id"]))
-    if path == "/api/entity":
-        return q_entity(contract, args)
-    if path == "/api/index":
-        return q_index(
-            contract,
-            args.get("kind", "tags"),
-            args.get("q", ""),
-            min(max(int(args.get("limit", "180")), 1), 600),
-            max(int(args.get("offset", "0")), 0),
-            args.get("category", ""),
-        )
-    if path == "/api/duplicates":
-        return q_duplicates(contract, args)
-    if path == "/api/stats":
-        return contract.cached("stats", lambda: q_stats(contract))
-    if path == "/api/tops":
-        n = min(int(args.get("n", "28")), 60)
-        jav = args.get("jav") == "1"
-        seed = str(args.get("seed", ""))[:32]
-        # 缓存键必须带上口径与种子，否则 JAV 与全库、换一批前后会互相顶掉。
-        return contract.cached(f"tops{n}{'-jav' if jav else ''}:{seed}",
-                               lambda: q_tops(contract, n, jav=jav, seed=seed))
-    if path == "/api/ads":
-        return q_ads(
-            contract,
-            min(int(args.get("limit", "60")), 200),
-            max(int(args.get("offset", "0")), 0),
-        )
-    if path == "/api/related":
-        return q_related(contract, int(args["id"]), min(int(args.get("limit", "24")), 60))
-    if path == "/api/facets":
-        jav = args.get("jav") == "1"
-        scope_kind = str(args.get("scope_kind", ""))
-        scope_name = str(args.get("scope_name", ""))
-        asset_id = int(args["id"]) if args.get("id") else None
-        scope_key = f"{scope_kind}:{scope_name}:{asset_id or ''}"
-        return contract.cached(f"facets{'-jav' if jav else ''}:{scope_key}",
-                               lambda: q_facets(
-                                   contract, jav=jav, scope_kind=scope_kind,
-                                   scope_name=scope_name, asset_id=asset_id,
-                               ))
-    if path == "/api/search-history":
-        return q_search_history(contract, int(args.get("limit", "10")))
-    if path == "/api/review":
-        # 复核页要扫候选 CSV、全部决定和一次媒体失败全表扫描，不该每次打开都重算。
-        return contract.cached("review", lambda: q_review(contract))
-    raise KeyError(path)
+    try:
+        handler = GET_HANDLERS[path]
+    except KeyError as exc:
+        raise ContractRouteNotFound(path) from exc
+    return handler(contract, args)
 
 
 def dispatch_api_post(contract: WebContract, path, body):
-    if path == "/api/activity":
-        return w_activity(contract, body)
-    if path == "/api/play":
-        return w_play(contract, body)
-    if path == "/api/feedback":
-        return w_feedback(contract, body)
-    if path == "/api/watch-later":
-        return w_watch_later(contract, body)
-    if path == "/api/preference":
-        return w_preference(contract, body)
-    if path == "/api/quality-goal":
-        return w_quality_goal(contract, body)
-    if path == "/api/item-tag":
-        return w_item_tag(contract, body)
-    if path == "/api/batch":
-        return w_batch(contract, body)
-    if path == "/api/search-history":
-        return w_search_history(contract, body)
-    if path == "/api/trash/empty":
-        return w_empty_trash(contract)
-    if path == "/api/review/decision":
-        return w_review_decision(contract, body)
-    raise KeyError(path)
+    try:
+        handler = POST_HANDLERS[path]
+    except KeyError as exc:
+        raise ContractRouteNotFound(path) from exc
+    return handler(contract, body)

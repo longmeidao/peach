@@ -1,12 +1,17 @@
 import hmac
 import asyncio
+import html
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
+from functools import partial
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote
 
-from fastapi import Body, FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
+from fastapi import Body, Depends, FastAPI, HTTPException, Request
+from fastapi.responses import (
+    FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response,
+)
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__, web_contract
@@ -25,7 +30,7 @@ from .mdns import create_mdns_publisher
 from .platform import is_unmapped, root_online, translate_ledger_path
 from .previews import PreviewService, PreviewUnavailable
 from .providers import OpenCodeGoClient, ProviderUnavailable, default_registry
-from .repository import LedgerRepository
+from .repository import LedgerDatabase, LedgerRepository
 from .segments import (
     HlsSegmentService,
     SegmentCancelled,
@@ -35,7 +40,10 @@ from .segments import (
 from .stash import StashClient
 from .streaming import CancellableFileResponse, StreamSessionRegistry
 from .sync import LedgerSync
-from .transcodes import TranscodeService, TranscodeUnavailable
+from .transcodes import TranscodeCancelled, TranscodeService, TranscodeUnavailable
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _first_query_values(request: Request) -> dict[str, str]:
@@ -94,13 +102,15 @@ def create_app(
 ) -> FastAPI:
     """`sync` 由 CLI 注入。测试直接建 app 时不传，复制与只读闸门整体不参与。"""
     settings = settings or PeachSettings()
+    database = LedgerDatabase(settings.db_path)
     contract = web_contract.WebContract(
         settings.db_path, settings.snapshot_root, settings.legacy_snapshot_roots,
         candidate_root=settings.candidate_root,
         cover_root=settings.cover_root,
         avatar_root=settings.avatar_root,
+        database=database,
     )
-    repository = LedgerRepository(settings.db_path)
+    repository = LedgerRepository(database)
     resolver = FFmpegResolver(settings.ffmpeg_root)
     http_transport = HttpxTransport()
     filesystem = FilesystemBackend(
@@ -118,6 +128,9 @@ def create_app(
         settings.avatar_root, settings.logo_root, settings.legacy_snapshot_roots,
     )
     transcode_service = TranscodeService(resolver, settings.transcode_root)
+    hls_plan_executor = ThreadPoolExecutor(
+        max_workers=2, thread_name_prefix="PeachHlsPlan",
+    )
     hls_service = HlsSegmentService(resolver, settings.stream_root)
     mdns = create_mdns_publisher(
         settings.mdns_name, settings.mdns_port, secure=settings.tls_enabled,
@@ -144,6 +157,7 @@ def create_app(
             if sync is not None:
                 await asyncio.to_thread(sync.stop)
             http_transport.close()
+            hls_plan_executor.shutdown(wait=False, cancel_futures=True)
 
     app = FastAPI(
         title="Peach API",
@@ -154,11 +168,13 @@ def create_app(
         openapi_url="/openapi.json" if settings.docs_enabled else None,
     )
     app.state.settings = settings
+    app.state.database = database
     app.state.web_contract = contract
     app.state.repository = repository
     app.state.media_engine = media_engine
     app.state.preview_service = preview_service
     app.state.transcode_service = transcode_service
+    app.state.hls_plan_executor = hls_plan_executor
     app.state.hls_service = hls_service
     app.state.mdns = mdns
     app.state.providers = providers
@@ -167,6 +183,19 @@ def create_app(
     stream_sessions = StreamSessionRegistry()
     app.state.stream_sessions = stream_sessions
     app.state.sync = sync
+
+    def require_auth(request: Request) -> dict[str, str]:
+        args = _first_query_values(request)
+        if not _authorized(request, settings.token, args):
+            raise HTTPException(status_code=401, detail="unauthorized")
+        return args
+
+    def set_auth_cookie(response: Response, request: Request) -> None:
+        if settings.token:
+            response.set_cookie(
+                "tok", settings.token, max_age=31536000, path="/", httponly=True,
+                samesite="lax", secure=request.url.scheme == "https",
+            )
 
     # 第三方前端依赖固定版本并随 Peach 自托管；局域网断网时仍可播放。
     app.mount(
@@ -203,20 +232,72 @@ def create_app(
                 "ledger_sync": sync.status if sync is not None else "disabled",
                 "scheme": "https" if settings.tls_enabled else "http"}
 
+    def login_html(next_path: str, *, invalid: bool = False) -> str:
+        safe_next = html.escape(next_path, quote=True)
+        error = '<p role="alert">口令不正确</p>' if invalid else ""
+        return (
+            '<!doctype html><html lang="zh-CN"><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            '<meta name="color-scheme" content="dark"><title>登录 Peach</title>'
+            '<style>'
+            '*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#020408;color:#f5f7fb}'
+            'body{min-height:100dvh;display:grid;place-items:center;padding:24px;font:15px/1.45 system-ui,sans-serif}'
+            'main{width:min(360px,100%);padding:30px;border:1px solid rgba(255,255,255,.12);border-radius:20px;'
+            'background:rgba(30,32,37,.9);box-shadow:0 24px 80px rgba(0,0,0,.48)}'
+            '.brand{display:flex;align-items:center;gap:12px;margin-bottom:24px}.brand img{width:48px;height:48px}'
+            'h1{margin:0;font-size:24px;letter-spacing:.02em}label{display:grid;gap:8px;color:#b8bec9}'
+            'input{width:100%;height:44px;border:1px solid rgba(255,255,255,.16);border-radius:11px;'
+            'background:#0b0d12;color:#fff;padding:0 13px;font:inherit;outline:none}'
+            'input:focus{border-color:#ff8b70;box-shadow:0 0 0 3px rgba(255,139,112,.16)}'
+            'button{width:100%;height:44px;margin-top:16px;border:0;border-radius:11px;cursor:pointer;'
+            'background:linear-gradient(135deg,#ff9a76,#f2557b);color:#130609;font:700 15px system-ui,sans-serif}'
+            'button:hover{filter:brightness(1.06)}p[role=alert]{margin:0 0 14px;color:#ff9a9a}'
+            '</style><body><main><div class="brand"><img src="/peach-logo.png" alt=""><h1>Peach</h1></div>'
+            f'{error}<form method="post" action="/login">'
+            '<label>口令 <input name="token" type="password" '
+            'autocomplete="current-password" required></label>'
+            f'<input name="next" type="hidden" value="{safe_next}">'
+            '<button type="submit">登录</button></form></main></body></html>'
+        )
+
+    @app.get("/login", response_class=HTMLResponse)
+    def login(request: Request, next: str = "/"):
+        next_path = next if next.startswith("/") and not next.startswith("//") else "/"
+        if _authorized(request, settings.token, _first_query_values(request)):
+            return RedirectResponse(next_path, status_code=303)
+        return HTMLResponse(login_html(next_path))
+
+    @app.post("/login")
+    async def login_submit(request: Request):
+        form = parse_qs(
+            (await request.body()).decode("utf-8", "replace"), keep_blank_values=True,
+        )
+        supplied = (form.get("token") or [""])[0]
+        next_path = (form.get("next") or ["/"])[0]
+        if not next_path.startswith("/") or next_path.startswith("//"):
+            next_path = "/"
+        if settings.token and not hmac.compare_digest(str(supplied), settings.token):
+            return HTMLResponse(login_html(next_path, invalid=True), status_code=401)
+        response = RedirectResponse(next_path, status_code=303)
+        set_auth_cookie(response, request)
+        return response
+
     @app.api_route("/", methods=["GET", "HEAD"])
     def index(request: Request):
         args = _first_query_values(request)
         if not _authorized(request, settings.token, args):
-            return PlainTextResponse("需要 ?t=口令", status_code=401)
+            return RedirectResponse(
+                "/login?next=" + quote(request.url.path or "/", safe="/"), status_code=303,
+            )
+        if settings.token and args.get("t"):
+            response = RedirectResponse(request.url.path or "/", status_code=303)
+            set_auth_cookie(response, request)
+            return response
         if not settings.page_path.is_file():
             return PlainTextResponse("Peach page missing", status_code=500)
         response = FileResponse(settings.page_path, media_type="text/html")
         response.headers["Cache-Control"] = "no-store"
-        if settings.token:
-            response.set_cookie(
-                "tok", settings.token, max_age=31536000, path="/", httponly=True,
-                samesite="lax", secure=request.url.scheme == "https",
-            )
+        set_auth_cookie(response, request)
         return response
 
     @app.api_route("/app.css", methods=["GET", "HEAD"])
@@ -265,7 +346,11 @@ def create_app(
         except MediaUnavailable:
             return JSONResponse({"error": "unavailable"}, status_code=404)
         try:
-            path, transcoded = transcode_service.browser_path(id, path)
+            path, transcoded = transcode_service.browser_path(
+                id, path, session=session, registry=stream_sessions,
+            )
+        except TranscodeCancelled:
+            return Response(status_code=410, headers={"Cache-Control": "no-store"})
         except TranscodeUnavailable:
             logging.getLogger(__name__).exception("browser transcode failed for asset %s", id)
             return JSONResponse({"error": "transcode unavailable"}, status_code=503)
@@ -281,7 +366,7 @@ def create_app(
         response.headers["Cache-Control"] = "no-store"
         return response
 
-    def _hls_plan(asset_id: int):
+    def _hls_plan(asset_id: int, session: str = ""):
         """解析 HLS 的片源路径与关键帧分片计划；任何一步不成立就返回 None 走 Range。"""
         asset = media_engine.asset(asset_id)
         # 播放列表和分片端点本身就是 HLS 路径，按 ADR-0016 显式要计划，不受默认值影响。
@@ -289,7 +374,9 @@ def create_app(
         if choice.protocol != "hls" or not asset.duration:
             return None
         source = media_engine.filesystem.file_for(asset, thumbnail=False)
-        source, _ = transcode_service.browser_path(asset_id, source)
+        source, _ = transcode_service.browser_path(
+            asset_id, source, session=session, registry=stream_sessions,
+        )
         plan = hls_service.plan(source, asset.duration)
         return None if not plan else (asset, source, plan)
 
@@ -348,7 +435,7 @@ def create_app(
         if stream_sessions.is_cancelled(session):
             return PlainTextResponse("stream cancelled", status_code=410)
         try:
-            resolved = _hls_plan(id)
+            resolved = _hls_plan(id, session)
         except MediaNotFound:
             return JSONResponse({"error": "no such id"}, status_code=404)
         except MediaOffline as exc:
@@ -375,7 +462,10 @@ def create_app(
         if stream_sessions.is_cancelled(session):
             return Response(status_code=410, headers={"Cache-Control": "no-store"})
         try:
-            resolved = _hls_plan(id)
+            loop = asyncio.get_running_loop()
+            resolved = await loop.run_in_executor(
+                hls_plan_executor, partial(_hls_plan, id, session),
+            )
             if resolved is None:
                 return JSONResponse({"error": "hls unavailable"}, status_code=404)
             _, source, plan = resolved
@@ -393,6 +483,8 @@ def create_app(
         except MediaUnavailable:
             return JSONResponse({"error": "unavailable"}, status_code=404)
         except SegmentCancelled:
+            return Response(status_code=410, headers={"Cache-Control": "no-store"})
+        except TranscodeCancelled:
             return Response(status_code=410, headers={"Cache-Control": "no-store"})
         except TranscodeUnavailable:
             logging.getLogger(__name__).exception("browser transcode failed for asset %s", id)
@@ -550,24 +642,23 @@ def create_app(
         return {"ok": True, "provider": "opencode-go", "models": models}
 
     @app.get("/api/{route:path}")
-    def api_get(route: str, request: Request):
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
+    def api_get(route: str, args: dict[str, str] = Depends(require_auth)):
         try:
             return web_contract.dispatch_api_get(contract, f"/api/{route}", args)
         except KeyError:
             return JSONResponse({"error": "not found"}, status_code=404)
         except (TypeError, ValueError) as exc:
             return JSONResponse({"error": f"{type(exc).__name__}: {exc}"}, status_code=400)
-        except Exception as exc:
-            return JSONResponse({"error": f"{type(exc).__name__}: {exc}"}, status_code=500)
+        except Exception:
+            LOGGER.exception("unhandled GET contract error for /api/%s", route)
+            return JSONResponse({"error": "internal server error"}, status_code=500)
 
     @app.post("/api/{route:path}")
-    def api_post(route: str, request: Request, body: dict[str, Any] = Body(default_factory=dict)):
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
+    def api_post(
+        route: str,
+        body: dict[str, Any] = Body(default_factory=dict),
+        _args: dict[str, str] = Depends(require_auth),
+    ):
         if sync is not None and sync.read_only:
             # 非写入端或冲突状态都只读；继续写只会产生无法自动合并的分叉。
             return JSONResponse(
@@ -579,7 +670,8 @@ def create_app(
             return JSONResponse({"error": "not found"}, status_code=404)
         except (TypeError, ValueError) as exc:
             return JSONResponse({"error": f"{type(exc).__name__}: {exc}"}, status_code=400)
-        except Exception as exc:
-            return JSONResponse({"error": f"{type(exc).__name__}: {exc}"}, status_code=500)
+        except Exception:
+            LOGGER.exception("unhandled POST contract error for /api/%s", route)
+            return JSONResponse({"error": "internal server error"}, status_code=500)
 
     return app

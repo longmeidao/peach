@@ -473,6 +473,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".stats{padding:8px 0 42px}")
         self.assertPageContains(".review{padding:8px 0 42px}")
         self.assertPageLacks("max-width:1440px")
+        self.assertPageContains("card('系统盘', d.system_disk")
 
     def test_returning_home_from_any_surface_moves_the_highlight(self):
         """点回首页时路径还停在 /review 之类上，navOn('') 仍然为假，高亮不切换。"""

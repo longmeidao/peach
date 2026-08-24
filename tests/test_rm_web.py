@@ -3,6 +3,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from unittest import mock
 
@@ -191,6 +192,15 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(stats["tag_cov"], 2)
         self.assertIn("审核标签", {row["k"] for row in stats["top_tags"]})
 
+    def test_stats_use_the_platform_system_volume_and_keep_the_old_alias(self):
+        usage = type("Usage", (), {"free": 20, "total": 100})
+        with mock.patch.object(rm_web, "system_volume", return_value=Path("X:/")), mock.patch(
+            "shutil.disk_usage", return_value=usage,
+        ):
+            stats = rm_web.q_stats(self.contract)
+        self.assertEqual(stats["system_disk"], {"root": "X:\\", "free": 20, "total": 100})
+        self.assertIs(stats["disk_c"], stats["system_disk"])
+
     def test_items_support_duration_range(self):
         result = rm_web.q_items(
             self.contract, {"dur_min": "90", "dur_max": "110", "limit": "10"},
@@ -248,6 +258,27 @@ class WebDataTests(unittest.TestCase):
         second_page = rm_web.q_index(self.contract, "tags", limit=1, offset=1)
         self.assertTrue(first_page["has_more"])
         self.assertNotEqual(first_page["items"][0]["k"], second_page["items"][0]["k"])
+
+    def test_every_technical_tag_uses_the_same_facets_classification(self):
+        connection = sqlite3.connect(self.db_path)
+        for entity_id, tag in enumerate(("2K", "有码", "无码"), start=201):
+            connection.execute(
+                "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(?, 'tag', ?, ?)",
+                (entity_id, tag, tag.lower()),
+            )
+            connection.execute(
+                "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                "VALUES(1,?,'tag','test',1.0)",
+                (entity_id,),
+            )
+        connection.commit()
+        connection.close()
+
+        facets = rm_web.q_facets(self.contract)
+        tech = {row["k"] for row in facets["tech"]}
+        content = {row["k"] for row in facets["tags"]}
+        self.assertTrue({"2K", "有码", "无码"} <= tech)
+        self.assertTrue({"2K", "有码", "无码"}.isdisjoint(content))
 
     def test_activity_accumulates_real_play_time_and_max_position(self):
         first = rm_web.w_activity(self.contract, {
@@ -323,6 +354,39 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(self.contract.cached("same", lambda: "first"), "first")
         self.assertEqual(other.cached("same", lambda: "second"), "second")
 
+    def test_contract_handler_registries_are_complete_and_unknown_routes_fail(self):
+        self.assertEqual(set(rm_web.GET_HANDLERS), {
+            "/api/items", "/api/item", "/api/entity", "/api/index", "/api/duplicates",
+            "/api/stats", "/api/tops", "/api/ads", "/api/related", "/api/facets",
+            "/api/search-history", "/api/review",
+        })
+        self.assertEqual(set(rm_web.POST_HANDLERS), {
+            "/api/activity", "/api/play", "/api/feedback", "/api/watch-later",
+            "/api/preference", "/api/quality-goal", "/api/item-tag", "/api/batch",
+            "/api/search-history", "/api/trash/empty", "/api/review/decision",
+        })
+        with self.assertRaises(rm_web.ContractRouteNotFound):
+            rm_web.dispatch_api_get(self.contract, "/api/typo", {})
+
+    def test_write_transaction_rolls_back_and_closes_on_failure(self):
+        opened = []
+        real_connect = self.contract.database.connect
+
+        def capture(*, write=False):
+            connection = real_connect(write=write)
+            opened.append(connection)
+            return connection
+
+        with mock.patch.object(self.contract.database, "connect", side_effect=capture):
+            with self.assertRaisesRegex(RuntimeError, "abort"):
+                with self.contract.write_transaction() as connection:
+                    connection.execute("UPDATE asset SET name='changed' WHERE id=1")
+                    raise RuntimeError("abort")
+
+        self.assertEqual(self.row(1)["name"], "one.mp4")
+        with self.assertRaises(sqlite3.ProgrammingError):
+            opened[0].execute("SELECT 1")
+
     def test_item_tag_add_and_remove_preserve_source_evidence(self):
         added = rm_web.w_item_tag(self.contract, {
             "id": 1, "operation": "add", "tag": "新标签",
@@ -365,6 +429,28 @@ class WebDataTests(unittest.TestCase):
             left = con.execute(f"SELECT count(*) FROM {table} WHERE asset_id=1").fetchone()[0]
             self.assertEqual(left, 0, f"{table} 残留了已删资产的引用")
         con.close()
+
+    def test_failed_database_commit_restores_quarantined_media(self):
+        path = self.stage_media(1, "commit-failure.mp4")
+        rm_web.w_feedback(self.contract, {"id": 1, "kind": "dispose"})
+
+        @contextmanager
+        def fail_after_body():
+            connection = self.contract.db(write=True)
+            try:
+                yield connection
+                connection.rollback()
+                raise sqlite3.OperationalError("simulated commit failure")
+            finally:
+                connection.close()
+
+        with mock.patch.object(self.contract, "write_transaction", fail_after_body):
+            with self.assertRaisesRegex(sqlite3.OperationalError, "commit failure"):
+                rm_web.w_batch(self.contract, {"ids": [1], "operation": "delete"})
+
+        self.assertTrue(path.is_file(), "数据库失败后媒体必须恢复原名")
+        self.assertEqual(self.row(1)["disposal"], "trash")
+        self.assertEqual(list(path.parent.glob(".*.peach-purge-*.tmp")), [])
 
     def test_delete_and_restore_refuse_assets_outside_the_recycle_bin(self):
         """彻底删除只能作用于回收站，否则一次误选就能删掉在库作品。"""

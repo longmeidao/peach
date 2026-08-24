@@ -305,6 +305,7 @@ Per-Monitor V2 DPI，单击打开 `https://peach-win.local/`；右键可同步 L
 
 | URL | 用途 |
 |---|---|
+| `/login` | 口令登录；通过 POST 设置 HttpOnly cookie，不把口令放进 URL |
 | `/` | 首页 |
 | `/item/{id}` | 作品详情 |
 | `/performers` | 全部女优 |
@@ -334,6 +335,9 @@ Per-Monitor V2 DPI，单击打开 `https://peach-win.local/`；右键可同步 L
 | `/avatar?id={asset_id}` | 作品代表头像 |
 | `/logo?studio={name}` | 厂牌 Logo |
 | `/entity-image?kind={kind}&id={entity_id}` | 规范实体头像/Logo |
+
+配置了 `--token` 时，直接打开页面会跳到 `/login`。旧 `?t=` 入口只保留兼容，会立即设置
+cookie 并重定向到不含口令的干净 URL；新设备不要再复制带口令的链接。
 
 只读 API：`GET /api/items`、`/api/item`、`/api/entity`、`/api/index`、`/api/stats`、
 `/api/tops`、`/api/ads`、`/api/related`、`/api/facets`、`/api/providers`、`/api/sources`、

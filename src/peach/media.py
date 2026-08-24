@@ -5,6 +5,7 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path, PureWindowsPath
+from time import monotonic
 from typing import Protocol, Sequence
 
 from .platform import (
@@ -31,8 +32,13 @@ def normalized_path(path: Path | str) -> Path:
         return Path(os.path.abspath(os.fspath(candidate)))
 
 
+CASE_MATCH_TTL_SECONDS = 5.0
+
+
 @lru_cache(maxsize=512)
-def _case_insensitive_match(parent_key: str, name_key: str) -> str | None:
+def _cached_case_insensitive_match(
+    parent_key: str, name_key: str, _ttl_bucket: int,
+) -> str | None:
     """同目录大小写不敏感匹配；只为大小写敏感的挂载层（CloudDrive/APFS）兜底。
 
     NTFS 上 `Path.is_file()` 已不区分大小写，正常情况不会走到这里。
@@ -47,6 +53,12 @@ def _case_insensitive_match(parent_key: str, name_key: str) -> str | None:
     except OSError:
         return None
     return None
+
+
+def _case_insensitive_match(parent_key: str, name_key: str) -> str | None:
+    """Cache scans briefly without pinning misses or stale names forever."""
+    bucket = int(monotonic() // CASE_MATCH_TTL_SECONDS)
+    return _cached_case_insensitive_match(parent_key, name_key, bucket)
 
 
 def resolve_case_insensitive(path: Path | str) -> str:
