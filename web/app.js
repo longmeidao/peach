@@ -1034,7 +1034,11 @@ async function openReview(push=true){
               // 空白一片会被当成界面坏了。真实原因是这些作品还没抽帧，说清楚比留白好。
               : `<p class="empty">这 ${esc(row.video_count||'')} 条作品尚未抽帧，暂无预览；批准后仍会按候选写入标签</p>`)
            : (row.preview_url?`<div class="reviewimage"><img src="${esc(row.preview_url)}" alt="" loading="lazy" onerror="this.closest('.reviewimage').remove()"></div>`:'<p class="empty">未取得图片预览</p>');
-         return `<article class="reviewitem" data-review-key="${esc(key)}" data-decision="${esc(decision)}"><h4>${esc(titleText)}</h4><p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>${origin}${tags?`<div class="reviewtags">${tags}</div>`:''}${preview}<p>${esc(evidence)}</p><div class="reviewactions"><button class="approve" data-review-status="approved"${canApprove?'':' disabled'}>${approveLabel}</button><button class="skip" data-review-status="skipped">跳过</button><button class="reject" data-review-status="rejected">拒绝</button><span class="reviewstate" aria-live="polite"></span></div></article>`}).join(''):'<p class="empty">暂无候选</p>'}</div></section></div>`;
+         return `<article class="reviewitem" data-review-key="${esc(key)}" data-decision="${esc(decision)}">${
+           // 实体类卡片的名字已经写在创作者入口里，再画一个 h4 就是同一行字上下两遍。
+           subjectKind&&subjectName?'':`<h4>${esc(titleText)}</h4>`}${
+           // 账本规范名当标题，抓取来源给的写法（多为罗马音）留作副标题。
+           row.source_name?`<p class="reviewalias">来源写法：${esc(row.source_name)}</p>`:''}<p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>${origin}${tags?`<div class="reviewtags">${tags}</div>`:''}${preview}<p>${esc(evidence)}</p><div class="reviewactions"><button class="approve" data-review-status="approved"${canApprove?'':' disabled'}>${approveLabel}</button><button class="skip" data-review-status="skipped">跳过</button><button class="reject" data-review-status="rejected">拒绝</button><span class="reviewstate" aria-live="polite"></span></div></article>`}).join(''):'<p class="empty">暂无候选</p>'}</div></section></div>`;
      wireReviewAssets($('#stats'));
     $('#stats').querySelectorAll('[data-review-open-item]').forEach(button=>button.onclick=()=>openItem(+button.dataset.reviewOpenItem));
     // 没有全局委托，每个界面各自接线（见 #stage 的同类处理）。

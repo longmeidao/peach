@@ -1227,6 +1227,14 @@ def _review_rows(contract: WebContract, category: str) -> tuple[list[dict], str 
                 row["candidates"] = [candidate for candidate in candidates
                                      if isinstance(candidate, dict)
                                      and str(candidate.get("candidate_key") or "").strip()]
+            # 和账本已有的值比一遍，只把真差异留在队列里。实测 43 条候选里 24 条
+            # 没有任何新信息：17 条与当前值逐字相同、7 条标签只是顺序不同。
+            rows = [row for row in rows if _metadata_row_adds_information(connection, row)]
+        elif category == "performer_avatars":
+            # 候选 CSV 里的 `current_name` 是抓取来源给的罗马音；账本早就有更好的
+            # 规范名（`Alice Shaku` 的规范名是 `释爱丽丝`），罗马音本身也已经登记
+            # 为别名。复核页该显示账本认的那个名字，来源写法降为副标题。
+            _use_canonical_entity_names(connection, rows)
         _attach_review_asset_context(connection, rows)
     finally:
         connection.close()
@@ -1250,6 +1258,80 @@ def _review_rows(contract: WebContract, category: str) -> tuple[list[dict], str 
         if not row.get("reason"):
             row["reason"] = _review_evidence(category, row)
     return _pending_first(rows), source, skipped
+
+
+#: 元数据里的多值字段用顿号分隔；比较时按集合而不是按字符串。
+MULTI_VALUE_FIELDS = {"performers", "tags"}
+
+
+def _split_multi(value: str) -> list[str]:
+    return [part.strip() for part in re.split(r"[、,，/|]", value or "") if part.strip()]
+
+
+def _performer_identity_keys(connection, names: list[str]) -> frozenset:
+    """把演员名折成身份键：能解析到实体的用实体 id，解析不到的保留原名。
+
+    r18dev 给的是日文名，而账本规范名多数已本地化成中文——`桃谷エリカ` 与
+    `桃谷绘里香` 实测就是同一条实体（日文名早已登记为别名）。按字符串比会把
+    这类候选全判成「有差异」，批准反而把规范名倒退成别名。
+    """
+    keys = set()
+    for name in names:
+        row = connection.execute(
+            "SELECT e.id FROM entity e LEFT JOIN entity_alias a ON a.entity_id=e.id "
+            "WHERE e.kind='performer' AND (e.canonical_name=? OR a.alias=?) LIMIT 1",
+            (name, name),
+        ).fetchone()
+        keys.add(row["id"] if row else normalize_entity_name(name))
+    return frozenset(keys)
+
+
+def _metadata_row_adds_information(connection, row: dict) -> bool:
+    """这一行候选相对账本现值有没有新东西；没有就不该占复核队列。
+
+    复核的成本是人的注意力：把「和现在一模一样」的行混在里面，真正要判的那些
+    就被淹掉了（`_needs_review` 已经对封面和 babepedia 做过同样的取舍）。
+    """
+    current = str(row.get("current_value") or "").strip()
+    if not current:
+        return True                      # 补空值总是有信息，例如发行日期
+    field = str(row.get("field") or "").strip()
+    candidates = row.get("candidates") or []
+    if not candidates:
+        return False
+    if field in MULTI_VALUE_FIELDS:
+        if field == "performers":
+            current_key = _performer_identity_keys(connection, _split_multi(current))
+            return any(
+                _performer_identity_keys(
+                    connection, _split_multi(str(c.get("display_value") or ""))
+                ) != current_key
+                for c in candidates
+            )
+        current_set = frozenset(_split_multi(current))
+        return any(
+            frozenset(_split_multi(str(c.get("display_value") or ""))) != current_set
+            for c in candidates
+        )
+    return any(str(c.get("display_value") or "").strip() != current for c in candidates)
+
+
+def _use_canonical_entity_names(connection, rows: list[dict]) -> None:
+    """把候选行的显示名换成账本规范名，来源写法留在 `source_name`。"""
+    ids = [int(row["entity_id"]) for row in rows
+           if str(row.get("entity_id") or "").strip().isdigit()]
+    if not ids:
+        return
+    marks = ",".join("?" * len(ids))
+    canonical = {row["id"]: row["canonical_name"] for row in connection.execute(
+        f"SELECT id,canonical_name FROM entity WHERE id IN ({marks})", ids)}
+    for row in rows:
+        raw = str(row.get("entity_id") or "").strip()
+        name = canonical.get(int(raw)) if raw.isdigit() else None
+        shown = str(row.get("current_name") or "").strip()
+        if name and name != shown:
+            row["source_name"] = shown
+            row["current_name"] = name
 
 
 def _pending_first(rows: list[dict]) -> list[dict]:

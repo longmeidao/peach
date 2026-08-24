@@ -1031,6 +1031,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "$('#stats').querySelectorAll('[data-entity-kind]').forEach(button=>button.onclick=()=>")
 
+    def test_entity_cards_do_not_print_the_name_twice(self):
+        """创作者入口里已经写了名字，卡片顶上再来一个 h4 就是同一行字上下两遍。"""
+        self.assertPageContains("subjectKind&&subjectName?'':`<h4>${esc(titleText)}</h4>`")
+        # 卡片里只有这一个主体，衬底和居中只会把它推离左边缘，和下面的样本网格对不齐。
+        self.assertPageLacks(
+            ".reviewentity{display:grid;grid-template-columns:132px minmax(0,1fr)")
+        self.assertPageContains("justify-content:start}")
+        self.assertPageContains(".reviewentityface{position:relative;width:76px;height:76px;justify-self:start")
+
     def test_sole_metadata_candidate_is_shown_not_offered_as_a_choice(self):
         """只有一个候选时没什么可选的，单选圈会让人以为还有别的选项。
 

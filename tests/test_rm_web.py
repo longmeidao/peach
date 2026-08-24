@@ -743,6 +743,81 @@ class ReviewQueueTests(unittest.TestCase):
         rows, _source, _skipped = rm_web._review_rows(self.contract, category)
         return [row["item_key"] for row in rows]
 
+    def write_metadata_rows(self, rows):
+        import json as _json
+        payload = []
+        for item in rows:
+            payload.append({
+                "item_key": item["item_key"], "code": item["item_key"],
+                "query": item["item_key"], "field": item["field"],
+                "field_label": item["field"], "current_value": item["current"],
+                "candidates_json": _json.dumps([
+                    {"candidate_key": f"{item['item_key']}:{i}", "source": "r18dev",
+                     "display_value": value}
+                    for i, value in enumerate(item["candidates"])], ensure_ascii=False),
+                "source_count": "1", "status": "candidate", "size_gb": "",
+                "videos": "1", "fetched_at": "",
+            })
+        return self.write_metadata_candidates(payload)
+
+    def test_metadata_candidates_that_repeat_the_current_value_never_queue(self):
+        """复核的成本是注意力：和现值一模一样的行会把真正要判的淹掉。
+
+        实测 43 条里 24 条没有新信息——17 条逐字相同、7 条标签只是顺序不同。
+        """
+        self.write_metadata_rows([
+            {"item_key": "SAME", "field": "studio", "current": "Prestige",
+             "candidates": ["Prestige"]},
+            {"item_key": "REORDER", "field": "tags", "current": "乳系、痴女、高颜值",
+             "candidates": ["高颜值、痴女、乳系"]},
+            {"item_key": "EMPTY", "field": "release_date", "current": "",
+             "candidates": ["2015-02-20"]},
+            {"item_key": "REAL", "field": "studio", "current": "Prestige",
+             "candidates": ["Faleno"]},
+        ])
+        self.assertEqual(sorted(self.queue_keys("metadata_fields")), ["EMPTY", "REAL"])
+
+    def test_japanese_performer_candidate_folds_onto_the_localised_entity(self):
+        """r18dev 给日文名，账本规范名多已本地化成中文，而日文名早登记为别名。
+
+        实测 8 对全部解析到同一条实体：按字符串比会全判成「有差异」，批准反而把
+        规范名倒退成别名。真正要看的是换人，不是换写法。
+        """
+        con = sqlite3.connect(self.db_path)
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
+                    "VALUES(30,'performer','桃谷绘里香','桃谷绘里香')")
+        con.execute("INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,"
+                    "confidence) VALUES(30,'桃谷エリカ','桃谷エリカ','r18dev',1.0)")
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
+                    "VALUES(31,'performer','别人','别人')")
+        con.commit(); con.close()
+        self.write_metadata_rows([
+            {"item_key": "ALIAS", "field": "performers", "current": "桃谷绘里香",
+             "candidates": ["桃谷エリカ"]},
+            {"item_key": "CAST", "field": "performers", "current": "桃谷绘里香",
+             "candidates": ["别人"]},
+        ])
+        # 只是换写法的不入队；真的换人的留下。
+        self.assertEqual(self.queue_keys("metadata_fields"), ["CAST"])
+
+    def test_performer_avatar_rows_show_the_ledger_name_not_the_scraped_romaji(self):
+        """候选 CSV 给的是罗马音，账本早就有更好的名字，罗马音本身也已是别名。"""
+        con = sqlite3.connect(self.db_path)
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
+                    "VALUES(40,'performer','释爱丽丝','释爱丽丝')")
+        con.commit(); con.close()
+        path = self.candidates / "performer-avatar-candidate-20260818.csv"
+        with path.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.DictWriter(
+                handle, fieldnames=["entity_id", "current_name", "assets", "verdict"])
+            writer.writeheader()
+            writer.writerow({"entity_id": "40", "current_name": "Alice Shaku",
+                             "assets": "3", "verdict": "ok"})
+        rows, _source, _skipped = rm_web._review_rows(self.contract, "performer_avatars")
+        self.assertEqual(rows[0]["current_name"], "释爱丽丝")
+        # 来源写法不能丢，降为副标题。
+        self.assertEqual(rows[0]["source_name"], "Alice Shaku")
+
     def test_decided_rows_leave_the_queue_and_skipped_ones_sink(self):
         """判过的不能一刷新又回来。
 
