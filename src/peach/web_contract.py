@@ -14,7 +14,7 @@ import re
 import threading
 import time
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Sequence
 from urllib.parse import quote, urlsplit
 
@@ -84,11 +84,14 @@ class WebContract:
                  candidate_root: Path | None = None,
                  cover_root: Path | None = None,
                  avatar_root: Path | None = None,
+                 logo_root: Path | None = None,
                  database: LedgerDatabase | None = None):
         # 候选 CSV 的目录做成实例属性而不是模块常量，复核层才能在临时目录里被测试。
         self.candidate_root = Path(candidate_root) if candidate_root is not None else GENERATED_DIR
         self.cover_root = Path(cover_root) if cover_root is not None else COVER_DIR
         self.avatar_root = Path(avatar_root) if avatar_root is not None else GENERATED_DIR / "avatars"
+        # `/logo` 就是从这里读；批准候选等于把图装进这个目录。
+        self.logo_root = Path(logo_root) if logo_root is not None else GENERATED_DIR / "logos"
         self.database = database or LedgerDatabase(db_path)
         self.db_path = self.database.db_path
         self.snapshot_root = Path(snapshot_root) if snapshot_root is not None else None
@@ -1222,7 +1225,24 @@ def _review_rows(contract: WebContract, category: str) -> tuple[list[dict], str 
                 row["asset_preview_url"] = ""
         if not row.get("reason"):
             row["reason"] = _review_evidence(category, row)
-    return rows, source, skipped
+    return _pending_first(rows), source, skipped
+
+
+def _pending_first(rows: list[dict]) -> list[dict]:
+    """判过的不再占复核队列。
+
+    早先这里原样返回全部候选，只给每行挂一个 `decision`，靠前端在本地把判过的
+    行 splice 掉——于是「点通过」当场消失、一刷新全回来（厂牌 logo 上最明显）。
+    队列该由服务端定义，前端只负责画。
+
+    `approved` / `rejected` 是终局，直接移出；`跳过` 按字面意思是「稍后再看」，
+    留在队列里但排到最后，否则一次跳过就等于永久隐藏，而界面上没有任何入口
+    能把它找回来。
+    """
+    return sorted(
+        (row for row in rows if row.get("decision") not in ("approved", "rejected")),
+        key=lambda row: row.get("decision") == "skipped",
+    )
 
 
 def _review_evidence(category: str, row: dict) -> str:
@@ -1278,6 +1298,7 @@ def q_review(contract: WebContract):
         row["asset_id"] = row["id"]
         row["asset_name"] = row["name"]
         row["asset_preview_url"] = ""
+    failures = _pending_first(failures)
     sections, sources, skipped = {}, {}, {}
     for category in CANDIDATE_PREFIX:
         rows, source, dropped = _review_rows(contract, category)
@@ -1455,6 +1476,65 @@ def _apply_metadata_candidate(connection, group: dict, candidate: dict, now: str
     return len(asset_ids)
 
 
+#: 候选图的扩展名 -> content type。`/logo` 靠 `.ct` 边车决定回什么头。
+LOGO_CONTENT_TYPES = {
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".webp": "image/webp", ".gif": "image/gif", ".ico": "image/x-icon",
+}
+
+
+def studio_logo_key(studio: str) -> str:
+    """和 `PreviewService.logo` 完全一致的落盘名，两边必须同一套规则。"""
+    return re.sub(r"[^A-Za-z0-9_-]", "_", studio)[:60]
+
+
+def _install_studio_logo(contract: WebContract, studio: str) -> int:
+    r"""把已批准的厂牌 logo 候选装进 `/logo` 真正读的目录。
+
+    早先 `studio_logos` 只出现在分类白名单里，没有任何写入分支：点「通过」只往
+    `review_decision` 记一笔，logo 一张也没装上——配合当时「队列不过滤已判项」的
+    毛病，表现就是点完通过、一刷新原样又回来。
+
+    候选 CSV 的 `saved` 列写的是 `R:\peach-data\...`，那是旧数据根；现在数据在
+    `peach-data` 下，按绝对路径找必然落空。所以只取文件名，在当前候选目录里解析。
+    """
+    rows = {row["item_key"]: row
+            for row in read_candidates("studio_logos", contract.candidate_root)[0]}
+    candidate = rows.get(studio)
+    if candidate is None:
+        raise ValueError("候选不在当前批次，无法批准")
+    saved = str(candidate.get("saved") or "").strip()
+    if not saved:
+        raise ValueError("该候选没有落盘的图片，无法装载")
+    source = contract.candidate_root / "studio-logos" / PurePosixPath(
+        saved.replace("\\", "/")).name
+    if not source.is_file():
+        raise ValueError(f"候选图片不在本机：{source.name}")
+    key = studio_logo_key(studio)
+    if not key:
+        raise ValueError("厂牌名无法生成落盘名")
+    content_type = LOGO_CONTENT_TYPES.get(source.suffix.lower())
+    if content_type is None:
+        raise ValueError(f"不支持的图片格式：{source.suffix}")
+    contract.logo_root.mkdir(parents=True, exist_ok=True)
+    destination = contract.logo_root / f"{key}.img"
+    # 先写临时文件再原子替换：中途失败不会留下半张图被 `/logo` 读到。
+    staging = destination.with_name(f"{destination.name}.{uuid.uuid4().hex}.tmp")
+    staging.write_bytes(source.read_bytes())
+    os.replace(staging, destination)
+    Path(f"{destination}.ct").write_text(content_type, encoding="utf-8")
+    Path(f"{destination}.provenance.json").write_text(json.dumps({
+        "source": "studio logo review",
+        "source_file": source.name,
+        "resolved_url": candidate.get("resolved_url") or "",
+        "handle": candidate.get("handle") or "",
+        "platform": candidate.get("platform") or "",
+        "imported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "purpose": "local studio identity cache",
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    return 1
+
+
 def w_review_decision(contract: WebContract, body):
     category = str(body.get("category", "")).strip()
     item_key = str(body.get("item_key", "")).strip()
@@ -1564,6 +1644,8 @@ def w_review_decision(contract: WebContract, body):
                     [(asset_id, entity_id, payload, now, now) for asset_id in asset_ids],
                 )
             applied = len(asset_ids)
+        elif category == "studio_logos" and status == "approved":
+            applied = _install_studio_logo(contract, item_key)
     contract.cache_bust()   # 标签写完，聚合缓存必须失效，否则 facets 最多 90 秒还是旧数
     return {"ok": True, "category": category, "item_key": item_key, "status": status, "applied_assets": applied}
 

@@ -114,6 +114,7 @@ def create_app(
         candidate_root=settings.candidate_root,
         cover_root=settings.cover_root,
         avatar_root=settings.avatar_root,
+        logo_root=settings.logo_root,
         database=database,
     )
     repository = LedgerRepository(database)

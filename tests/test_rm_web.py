@@ -726,6 +726,82 @@ class ReviewQueueTests(unittest.TestCase):
             writer.writeheader(); writer.writerows(rows)
         return path
 
+    def write_logo_candidates(self, rows):
+        path = self.candidates / "studio-logo-candidate-20260818.csv"
+        fields = ["studio", "handle", "platform", "resolved_url", "saved", "accepted"]
+        with path.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fields)
+            writer.writeheader(); writer.writerows(rows)
+        return path
+
+    def decide(self, category, item_key, status):
+        return rm_web.w_review_decision(
+            self.contract,
+            {"category": category, "item_key": item_key, "status": status})
+
+    def queue_keys(self, category):
+        rows, _source, _skipped = rm_web._review_rows(self.contract, category)
+        return [row["item_key"] for row in rows]
+
+    def test_decided_rows_leave_the_queue_and_skipped_ones_sink(self):
+        """判过的不能一刷新又回来。
+
+        早先 `_review_rows` 原样返回全部候选，只挂一个 `decision`，靠前端在本地
+        splice；于是点「通过」当场消失、刷新全回来（厂牌 logo 上最明显）。
+        `跳过` 是「稍后再看」，仍留在队列但排到最后——否则一次跳过等于永久隐藏，
+        而界面上没有任何入口能把它找回来。
+        """
+        self.write_candidates("creator-tags-candidate-20260818.csv", [
+            {"board": "a", "creator": "ukiru", "tags": "x", "status": "candidate"},
+            {"board": "b", "creator": "ukiru", "tags": "y", "status": "candidate"},
+            {"board": "c", "creator": "ukiru", "tags": "z", "status": "candidate"},
+        ])
+        self.assertEqual(self.queue_keys("creator_tags"), ["a", "b", "c"])
+        self.decide("creator_tags", "b", "rejected")
+        self.assertEqual(self.queue_keys("creator_tags"), ["a", "c"])
+        self.decide("creator_tags", "a", "skipped")
+        self.assertEqual(self.queue_keys("creator_tags"), ["c", "a"])
+
+    def test_approving_a_studio_logo_actually_installs_it(self):
+        """批准必须真的把图装进 `/logo` 读的目录。
+
+        `studio_logos` 此前只在分类白名单里，没有写入分支：点通过只往
+        review_decision 记一笔，logo 一张也没装上。
+        """
+        source_dir = self.candidates / "studio-logos"
+        source_dir.mkdir()
+        (source_dir / "Deep_s.png").write_bytes(b"PNGDATA")
+        # `saved` 列写的是旧数据根 R:\peach-data\...，本机上并不存在，
+        # 必须按文件名在当前候选目录里解析，否则批准永远失败。
+        sep = chr(92)
+        stale = sep.join(["R:", "peach-data", "generated", "studio-logos", "Deep_s.png"])
+        self.write_logo_candidates([
+            {"studio": "Deep's", "handle": "deeps_official", "platform": "x",
+             "resolved_url": "https://example.invalid/a.png", "saved": stale,
+             "accepted": "True"},
+        ])
+        result = self.decide("studio_logos", "Deep's", "approved")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["applied_assets"], 1)
+        # 落盘名必须和 PreviewService.logo 的规则一致，否则 /logo 读不到。
+        installed = self.contract.logo_root / "Deep_s.img"
+        self.assertEqual(installed.read_bytes(), b"PNGDATA")
+        self.assertEqual(
+            (self.contract.logo_root / "Deep_s.img.ct").read_text(encoding="utf-8"),
+            "image/png")
+        self.assertIn("deeps_official", (
+            self.contract.logo_root / "Deep_s.img.provenance.json").read_text(encoding="utf-8"))
+        # 装完就该离开队列。
+        self.assertEqual(self.queue_keys("studio_logos"), [])
+
+    def test_studio_logo_approval_refuses_when_the_image_is_not_on_this_machine(self):
+        self.write_logo_candidates([
+            {"studio": "Ghost", "handle": "h", "platform": "x", "resolved_url": "",
+             "saved": "Ghost.png", "accepted": "True"},
+        ])
+        with self.assertRaises(ValueError):
+            self.decide("studio_logos", "Ghost", "approved")
+
     def test_metadata_field_approval_uses_selected_candidate_and_never_writes_creator(self):
         con = sqlite3.connect(self.db_path)
         con.execute("UPDATE asset SET code='ABC-001',creator='Folder Creator' WHERE id=1")
