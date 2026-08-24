@@ -2,6 +2,7 @@ import hmac
 import asyncio
 import html
 import logging
+import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from functools import partial
@@ -27,7 +28,12 @@ from .media import (
     StashAdapter,
 )
 from .mdns import create_mdns_publisher
-from .platform import is_unmapped, root_online, translate_ledger_path
+from .platform import (
+    is_unmapped,
+    reveal_command,
+    root_online,
+    translate_ledger_path,
+)
 from .previews import PhotoThumbnailService, PreviewService, PreviewUnavailable
 from .providers import OpenCodeGoClient, ProviderUnavailable, default_registry
 from .repository import LedgerDatabase, LedgerRepository
@@ -671,6 +677,48 @@ def create_app(
             "sources": rows,
             "offline": [row["location"] for row in rows if not row["online"]],
         }
+
+    @app.post("/api/reveal")
+    def reveal(request: Request, body: dict[str, Any] = Body(default_factory=dict)):
+        """在本机文件管理器里定位某个资产的源文件。
+
+        用于「跳过去自己整理网盘目录」：A:/B: 是 CloudDrive 挂上来的盘符，在
+        资源管理器里和本地目录没有区别。路径一律由服务端按 asset id 查出来——
+        `q_item` 刻意不把 `path` 发给前端，这里不能反过来让前端把路径传进来。
+
+        写不进 ledger，所以不受 reader 的只读闸门约束；但它会在**服务端所在的
+        机器**上弹窗，从 Mac 浏览时弹在 Windows 那台，也正是文件所在的机器。
+        """
+        args = _first_query_values(request)
+        if not _authorized(request, settings.token, args):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        try:
+            asset_id = int(body.get("id"))
+        except (TypeError, ValueError):
+            return JSONResponse({"error": "id must be an integer"}, status_code=400)
+        asset = repository.media_asset(asset_id)
+        if asset is None or not asset.path:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        target = translate_ledger_path(asset.path)
+        if is_unmapped(target):
+            return JSONResponse(
+                {"error": "source not mapped", "location": asset.location},
+                status_code=409)
+        if not target.exists():
+            # 文件已经不在了——正是「删完回来同步」的入口，前端据此提示对账。
+            return JSONResponse(
+                {"error": "file missing", "location": asset.location},
+                status_code=410)
+        command = reveal_command(target)
+        if command is None:
+            return JSONResponse({"error": "unsupported platform"}, status_code=501)
+        try:
+            # explorer 成功时也返回 1，所以不能用 check=True 判成败。
+            subprocess.Popen(command, close_fds=True)
+        except OSError as error:
+            LOGGER.warning("reveal failed for asset %s: %s", asset_id, error)
+            return JSONResponse({"error": "reveal failed"}, status_code=500)
+        return {"ok": True, "id": asset_id, "location": asset.location}
 
     @app.get("/api/providers/opencode-go/models")
     def opencode_go_models(request: Request):

@@ -9,6 +9,7 @@ from peach.platform import (
     UNMAPPED_ROOT,
     is_unmapped,
     is_windows_path,
+    reveal_command,
     root_online,
     system_volume,
     translate_ledger_path,
@@ -128,6 +129,28 @@ class OfflineModeTests(unittest.TestCase):
             dead = live / "gone"
             status = FilesystemBackend([live, dead], live / "snapshots").source_status()
         self.assertEqual([row["online"] for row in status], [True, False])
+
+
+class RevealCommandTests(unittest.TestCase):
+    """在文件管理器里定位源文件的 argv。"""
+
+    def test_windows_selects_the_file_in_one_argument(self):
+        with patch("peach.platform.os.name", "nt"):
+            command = reveal_command(Path(r"B:\创作者 b\c,d.mp4"))
+        # explorer 要求 `/select,<路径>` 整体是一个参数：拆开或加引号都会
+        # 变成「打开我的文档」。含空格和逗号的真实路径必须原样落在同一个参数里。
+        self.assertEqual(command, ["explorer", r"/select,B:\创作者 b\c,d.mp4"])
+
+    def test_macos_reveals_in_finder(self):
+        with patch("peach.platform.os.name", "posix"),              patch("peach.platform.sys.platform", "darwin"):
+            self.assertEqual(
+                reveal_command(Path("/Volumes/RESOURCES/media/a.mp4")),
+                ["open", "-R", "/Volumes/RESOURCES/media/a.mp4"])
+
+    def test_unsupported_platform_returns_none_instead_of_guessing(self):
+        with patch("peach.platform.os.name", "posix"),              patch("peach.platform.sys.platform", "linux"):
+            self.assertIsNone(reveal_command(Path("/srv/a.mp4")))
+
 
 
 if __name__ == "__main__":

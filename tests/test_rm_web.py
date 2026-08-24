@@ -365,6 +365,7 @@ class WebDataTests(unittest.TestCase):
             "/api/activity", "/api/play", "/api/feedback", "/api/watch-later",
             "/api/preference", "/api/quality-goal", "/api/item-tag", "/api/batch",
             "/api/search-history", "/api/trash/empty", "/api/review/decision",
+            "/api/purge-missing",
         })
         with self.assertRaises(rm_web.ContractRouteNotFound):
             rm_web.dispatch_api_get(self.contract, "/api/typo", {})
@@ -1585,6 +1586,103 @@ class PhotoSetTests(unittest.TestCase):
                          {"error": "not found"})
         self.assertEqual(rm_web.q_photo_set(self.contract, {"id": "x"}),
                          {"error": "invalid id"})
+
+
+class PurgeMissingTests(unittest.TestCase):
+    """按目录对账：磁盘上已删掉的，账本行一并删掉。
+
+    这条路径不可恢复，所以测试重点全在「什么时候**不该**删」。
+    """
+
+    LEDGER_DIR = r"B:\creator\P"
+    OTHER_DIR = r"B:\creator\V"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.db_path = str(self.root / "ledger.db")
+        con = sqlite3.connect(self.db_path)
+        con.executescript(BASE_SCHEMA)
+        sep = chr(92)
+        rows = [
+            (1, "115", self.LEDGER_DIR + sep + "001.jpg", "001.jpg"),
+            (2, "115", self.LEDGER_DIR + sep + "002.jpg", "002.jpg"),
+            (3, "115", self.LEDGER_DIR + sep + "003.jpg", "003.jpg"),
+            # 同来源但另一个目录，任何情况下都不该被这次对账碰到。
+            (4, "115", self.OTHER_DIR + sep + "a.mp4", "a.mp4"),
+        ]
+        con.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,size) "
+            "VALUES(?,?,?,?,'image',10)", rows)
+        con.executemany("INSERT INTO asset_tag(asset_id,tag,source) VALUES(?,?,'t')",
+                        [(2, "标签"), (4, "标签")])
+        con.executemany(
+            "INSERT INTO asset_preference(profile_id,asset_id,liked,reason) "
+            "VALUES('default',?,1,'')", [(2,), (4,)])
+        con.commit()
+        con.close()
+        self.contract = rm_web.WebContract(Path(self.db_path))
+        # 只有 001 和 a.mp4 还在盘上；002、003 当作已被手动删除。
+        for name in ("001.jpg", "a.mp4"):
+            (self.root / name).write_bytes(b"x")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _translate(self, raw):
+        """把账本的 Windows 路径映射到临时目录里的同名文件。"""
+        return self.root / str(raw).rsplit(chr(92), 1)[-1]
+
+    def _run(self, online=True):
+        patch_translate = mock.patch.object(
+            rm_web, "translate_ledger_path", self._translate)
+        patch_online = mock.patch.object(
+            rm_web, "source_is_online", lambda _loc: online)
+        with patch_translate, patch_online:
+            return rm_web.w_purge_missing(self.contract, {"id": 1})
+
+    def ids(self):
+        con = sqlite3.connect(self.db_path)
+        try:
+            return [r[0] for r in con.execute("SELECT id FROM asset ORDER BY id")]
+        finally:
+            con.close()
+
+    def test_offline_source_refuses_instead_of_deleting_everything(self):
+        """盘没挂上时，整目录都会 stat 失败——那不是「文件被删」。
+
+        R: 实测掉线过；若不拦，2,552 条本地资产会一次全部消失。
+        """
+        result = self._run(online=False)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "source offline")
+        self.assertEqual(self.ids(), [1, 2, 3, 4])
+
+    def test_missing_files_are_removed_with_their_derived_rows(self):
+        result = self._run()
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["checked"], 3)
+        self.assertEqual(result["removed"], 2)
+        self.assertEqual(sorted(x["id"] for x in result["items"]), [2, 3])
+        # 另一个目录的 4 必须原样留下。
+        self.assertEqual(self.ids(), [1, 4])
+        con = sqlite3.connect(self.db_path)
+        try:
+            # 衍生行跟着走：用户要的是「删干净」，不是留一堆孤儿。
+            self.assertEqual(
+                [r[0] for r in con.execute("SELECT asset_id FROM asset_tag")], [4])
+            self.assertEqual(
+                [r[0] for r in con.execute("SELECT asset_id FROM asset_preference")], [4])
+        finally:
+            con.close()
+
+    def test_intact_directory_reports_no_change(self):
+        for name in ("002.jpg", "003.jpg"):
+            (self.root / name).write_bytes(b"x")
+        result = self._run()
+        self.assertEqual(result["removed"], 0)
+        self.assertEqual(result["checked"], 3)
+        self.assertEqual(self.ids(), [1, 2, 3, 4])
 
 
 if __name__ == "__main__":

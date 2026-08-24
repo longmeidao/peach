@@ -13,6 +13,7 @@ Windows 上运行，账本因此保持单一路径口径。
 from __future__ import annotations
 
 import os
+import sys
 from functools import lru_cache
 from pathlib import Path, PureWindowsPath
 
@@ -135,3 +136,18 @@ def media_root_status(roots) -> tuple[dict[str, object], ...]:
             }
         )
     return tuple(status)
+
+
+def reveal_command(path: Path) -> list[str] | None:
+    """在文件管理器里定位这个文件的 argv；本平台不支持时返回 None。
+
+    做成纯函数是为了能在没有桌面的环境里测：真正 spawn 的那一步只有一行。
+    `explorer` 要求 `/select,<路径>` 整体是**一个**参数，逗号后不能断开，所以
+    必须用列表传参而不是拼字符串——顺带也就没有引号注入的余地。
+    """
+    target = os.fspath(path)
+    if os.name == "nt":
+        return ["explorer", f"/select,{target}"]
+    if sys.platform == "darwin":
+        return ["open", "-R", target]
+    return None

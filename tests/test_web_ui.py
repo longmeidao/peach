@@ -995,6 +995,28 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("new ResizeObserver(()=>{main.update();strip.update()})")
         self.assertPageContains("activeLightbox.resize?.disconnect()")
 
+    def test_source_tools_never_take_a_path_from_the_client(self):
+        """定位和对账都只发 asset id，路径由服务端查。
+
+        `q_item` 是刻意不把 `path` 发给前端的；这两个入口不能反过来让前端把
+        路径传进来，否则等于开了一个「任意路径」的接口。
+        """
+        self.assertPageContains("api('/api/reveal',{method:'POST',body:JSON.stringify({id})})")
+        self.assertPageContains("api('/api/purge-missing',{method:'POST',body:JSON.stringify({id})})")
+        self.assertPageContains('data-reveal="${id}"')
+        self.assertPageContains('data-sync="${id}"')
+        # 在线资产是 URL，没有本地文件可定位。
+        self.assertPageContains("it.location==='online'?'':sourceTools(it.id)")
+
+    def test_source_tool_icons_declare_stroke_and_no_fill(self):
+        self.assertPageContains(
+            ".srctools button svg{width:15px;height:15px;stroke:currentColor;fill:none")
+        self.assertPageContains('<symbol id="i-folder-open"')
+
+    def test_offline_source_is_reported_as_a_refusal_not_a_failure(self):
+        # 盘没挂上时拒绝对账，措辞必须让人看懂「不是出错，是我不敢删」。
+        self.assertPageContains("'source offline':'来源不在线，已拒绝对账")
+
     def test_photo_view_is_addressable_and_survives_a_reload(self):
         self.assertPageContains("params.get('media')==='photos'?'photos':'videos'")
         self.assertPageContains("params.set('media','photos')")

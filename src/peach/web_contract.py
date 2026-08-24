@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Sequence
 from urllib.parse import quote, urlsplit
 
-from .config import COVER_DIR, GENERATED_DIR
+from .config import COVER_DIR, GENERATED_DIR, LOCATION_ROOT_DECLARATIONS
 from .entities import (
     canonicalize_entity_name,
     collapse_repeated_entity_name,
@@ -26,7 +26,12 @@ from .entities import (
     upsert_asset_entity,
 )
 from .media import remap_managed_path
-from .platform import system_volume
+from .platform import (
+    is_unmapped,
+    root_online,
+    system_volume,
+    translate_ledger_path,
+)
 from .repository import LedgerDatabase
 from .web_activity import (
     DEFAULT_PROFILE_ID,
@@ -790,8 +795,18 @@ def q_entity(contract: WebContract, args):
 # `<作品目录>\P\001.jpg` 这种约定在 A:/B: 上到处都是。图集的 id 用目录里最小的
 # 资产 id，既稳定又不用把真实路径发给前端（`q_item` 同样不发 `path`）。
 
-#: 从 `path` 去掉 `name` 和分隔符，剩下的就是所在目录。
-PHOTO_DIR = "substr(a.path,1,length(a.path)-length(a.name)-1)"
+def dir_expr(alias: str = "a.") -> str:
+    """从 `path` 去掉 `name` 和分隔符，剩下的就是所在目录。
+
+    表别名做成参数，是因为图集查询用 `a.`、按目录对账时直接查 `asset` 不带别名；
+    早先靠对常量做字符串替换来凑另一种写法，改一次别名就会悄悄失配。
+    """
+    return (f"substr({alias}path,1,"
+            f"length({alias}path)-length({alias}name)-1)")
+
+
+#: 图集查询一律带 `a.` 别名。
+PHOTO_DIR = dir_expr()
 
 #: 只写「这是图片」的通用目录名。它们做标题没有信息量，改用上一级目录名。
 GENERIC_PHOTO_DIRS = frozenset({
@@ -1763,6 +1778,70 @@ def w_empty_trash(contract: WebContract):
     return {"ok": True, "operation": "empty-trash", **_finish_purge(outcome)}
 
 
+def source_is_online(location: str) -> bool:
+    """这个来源整体在不在线。对账前的唯一闸门。"""
+    declared = LOCATION_ROOT_DECLARATIONS.get(location)
+    if not declared:
+        return False
+    resolved = translate_ledger_path(declared)
+    return not is_unmapped(resolved) and root_online(resolved)
+
+
+def w_purge_missing(contract: WebContract, body):
+    """按目录对账：文件已经在磁盘上删掉的，账本行一并删掉。
+
+    这条路径服务的是「我在资源管理器里整理网盘目录」——删掉的就是不要的，所以
+    不进复核、不进回收站、不可恢复，播放历史等衍生行跟着一起走。
+
+    真正危险的不是删得太干净，而是把「盘没挂上」误判成「文件没了」：R: 掉线时
+    整条来源 2,552 行都会看起来像被删。所以先做来源级在线判定，整源不在线就
+    一行都不碰。CloudDrive 掉线后挂载点目录仍然存在，`root_online` 因此判的是
+    「能否列出一个条目」而不是「目录在不在」。
+    """
+    asset_id = int(body["id"])
+    with contract.read_connection() as connection:
+        anchor = connection.execute(
+            "SELECT id,location,path,name FROM asset WHERE id=?", (asset_id,),
+        ).fetchone()
+        if not anchor:
+            return {"error": "not found"}
+        location, path, name = anchor["location"], anchor["path"], anchor["name"]
+        if not path or not name:
+            return {"error": "asset has no path"}
+        if not source_is_online(location):
+            # 不是失败，是拒绝：盘不在时无法区分「文件删了」和「盘没挂上」。
+            return {"ok": False, "error": "source offline", "location": location}
+        directory = path[: len(path) - len(name) - 1]
+        rows = connection.execute(
+            f"SELECT id,path,name FROM asset WHERE location=? "
+            f"AND {dir_expr('')}=?",
+            (location, directory),
+        ).fetchall()
+
+    missing = [
+        {"id": row["id"], "name": row["name"]}
+        for row in rows
+        if not translate_ledger_path(row["path"]).is_file()
+    ]
+    if not missing:
+        return {"ok": True, "directory": photo_set_title(directory),
+                "checked": len(rows), "removed": 0, "items": []}
+
+    contract.cache_bust()
+    ids = [item["id"] for item in missing]
+    marks = ",".join("?" * len(ids))
+    with contract.write_transaction() as connection:
+        for table in ASSET_REFERENCE_TABLES:
+            connection.execute(
+                f"DELETE FROM {table} WHERE asset_id IN ({marks})", ids)
+        # asset_search 交给 0004 的删除触发器，这里再删一遍只会重复。
+        connection.execute(f"DELETE FROM asset WHERE id IN ({marks})", ids)
+    return {
+        "ok": True, "directory": photo_set_title(directory),
+        "checked": len(rows), "removed": len(missing), "items": missing,
+    }
+
+
 def w_batch(contract: WebContract, body):
     """Apply one explicit, reversible marker to a bounded selected set."""
     raw_ids = body.get("ids")
@@ -2017,6 +2096,7 @@ POST_HANDLERS = {
     "/api/batch": w_batch,
     "/api/search-history": w_search_history,
     "/api/trash/empty": _post_empty_trash,
+    "/api/purge-missing": w_purge_missing,
     "/api/review/decision": w_review_decision,
 }
 

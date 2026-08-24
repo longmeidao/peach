@@ -1287,12 +1287,16 @@ function renderPhotoWall(kind,name,filters,data,append=false){
     photoWallItems=[];
     section.innerHTML=`<div class="photohead">
         <button class="photoback" type="button">${icon('chevron-left')}<span>全部图集</span></button>
-        <h3>${esc(data.title)} · ${(data.total||0).toLocaleString()} 张</h3></div>
+        <h3>${esc(data.title)} · ${(data.total||0).toLocaleString()} 张</h3>
+        ${sourceTools(data.id)}</div>
       <div class="photowall"></div><button class="entitymore" type="button">载入更多</button>`;
     section.querySelector('.photoback').onclick=()=>{
       entityMediaView={media:'photos',set:0};
       routeEntityView(kind,name,entityMediaView);
       renderPhotoSets(kind,name,filters)};
+    // 对账后整组数量都变了，重开这一组比逐格摘除简单也更不容易错。
+    wireSourceTools(section.querySelector('.photohead'),
+      ()=>openPhotoSet(kind,name,filters,data.id,false));
   }
   const wall=section.querySelector('.photowall');
   const start=photoWallItems.length;
@@ -1314,6 +1318,59 @@ function renderPhotoWall(kind,name,filters,data,append=false){
     more._observer=new IntersectionObserver(entries=>{if(entries.some(x=>x.isIntersecting))requestMore()},{rootMargin:'320px'});
     more._observer.observe(more);
   }
+}
+
+/* ── 源文件管理 ───────────────────────────────────────────────────────────────
+   标题旁两个按钮，服务的是「跳过去自己整理网盘目录」这条来回：定位打开源文件所在
+   目录（A:/B: 是 CloudDrive 挂上来的盘符，在资源管理器里和本地目录没区别），在那边
+   删掉不要的，回来点一下同步，账本跟着对齐。
+   删除不进复核也不可恢复——手动删掉的就是不要的。真正要防的是把「盘没挂上」当成
+   「文件没了」，那个闸门在服务端：整条来源不在线时直接拒绝，一行都不动。
+   路径始终由服务端按 asset id 查，前端拿不到也不该拿到 `path`。 ── */
+const SOURCE_HINTS={
+  'source offline':'来源不在线，已拒绝对账（避免把没挂上的盘当成文件被删）',
+  'source not mapped':'本机没有映射这个来源的盘符',
+  'file missing':'源文件已经不在了，点右边同步把账本对齐',
+  'unsupported platform':'当前服务端系统不支持直接定位文件',
+  'reveal failed':'打开文件管理器失败',
+};
+const sourceHint=message=>SOURCE_HINTS[message]||message;
+
+async function revealSource(id,status){
+  status.textContent='正在定位…';
+  try{
+    await api('/api/reveal',{method:'POST',body:JSON.stringify({id})});
+    status.textContent='已在服务端弹出文件管理器';
+  }catch(e){status.textContent=sourceHint(e.message)}
+}
+
+async function syncMissing(id,status,done){
+  status.textContent='正在核对目录…';
+  try{
+    const r=await api('/api/purge-missing',{method:'POST',body:JSON.stringify({id})});
+    if(r.ok===false){status.textContent=sourceHint(r.error);return}
+    status.textContent=r.removed
+      ? `已从账本移除 ${r.removed} 项（核对 ${r.checked} 项）`
+      : `目录内 ${r.checked} 项都还在，无需改动`;
+    if(r.removed&&done)done(r);
+  }catch(e){status.textContent=sourceHint(e.message)}
+}
+
+/* 两个按钮 + 一行状态。状态用 aria-live，屏幕阅读器和肉眼看到的是同一句。 */
+const sourceTools=id=>`<div class="srctools">
+    <button type="button" data-reveal="${id}" title="在文件管理器里打开源文件所在目录"
+      aria-label="定位源文件">${icon('folder-open')}</button>
+    <button type="button" data-sync="${id}" title="核对该目录：磁盘上已删除的，从账本一并移除"
+      aria-label="同步删除">${icon('refresh-cw')}</button>
+    <span class="srcstate" aria-live="polite"></span></div>`;
+
+function wireSourceTools(root,done){
+  const status=root.querySelector('.srcstate');
+  if(!status)return;
+  const reveal=root.querySelector('[data-reveal]');
+  const sync=root.querySelector('[data-sync]');
+  if(reveal)reveal.onclick=()=>revealSource(Number(reveal.dataset.reveal),status);
+  if(sync)sync.onclick=()=>syncMissing(Number(sync.dataset.sync),status,done);
 }
 
 /* 灯箱按需加载 Swiper：大图轮播、底部缩略图条和键盘左右键都是它自带的模块，
@@ -1960,6 +2017,7 @@ async function openItem(id,push=true,mixContext=null){
     </div>${mixContext?mixQueueHtml(mixContext,it.id):''}
     <div class="side">
       <div class="stitle">${esc(it.name)}</div>
+      ${it.location==='online'?'':sourceTools(it.id)}
       <div class="smeta mono">${srcBadge(it.location,it.cost,'srcbig')}
         <span style="align-self:center">${it.width||'?'}×${it.height||'?'}</span>
         <span style="align-self:center">${fmtSize(it.size||0)}</span>
@@ -1992,6 +2050,9 @@ async function openItem(id,push=true,mixContext=null){
     disposeStage(true);detailReturnBarsContext=null;
     barsContext=restore||{type:'home',filters:state};buildBars()};
   $('#closeStage').onclick=closeDetail;
+  // 对账删掉的可能就是当前这条；删了就没什么可停留的，直接退回列表。
+  wireSourceTools($('#stage'),r=>{
+    if(r.items.some(x=>x.id===it.id))closeDetail();});
   if($('#castMore'))$('#castMore').onclick=e=>{
     $('#stage').querySelectorAll('[data-castoverflow]').forEach(row=>row.hidden=false);
     e.currentTarget.remove()};
