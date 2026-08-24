@@ -611,8 +611,24 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertEqual([candidate["source"] for candidate in tag_candidates],
                              ["r18dev", "javbus"], "官方 tag 来源必须排在社区来源前")
             self.assertTrue(tag_candidates[0]["official"])
+            self.assertEqual(tag_candidates[0]["profile"], "custom")
+            self.assertEqual(tag_candidates[0]["policy_version"],
+                             "metadata-source-policy-v1")
+            self.assertEqual(tag_candidates[0]["field_rank"], 9)
+            self.assertEqual(tag_candidates[0]["source_kind"], "official_mirror")
+            self.assertTrue(all(row["source_profile"] == "custom" for row in rows))
             self.assertTrue((raw / "ABC-001" / "r18dev.json").is_file())
             self.assertTrue((raw / "ABC-001" / "javbus.json").is_file())
+
+            health = output.with_name("metadata-source-health-20260822.csv")
+            with health.open(encoding="utf-8-sig", newline="") as handle:
+                health_rows = {row["source"]: row for row in csv.DictReader(handle)}
+            self.assertEqual(set(health_rows), {"javbus", "r18dev"})
+            self.assertEqual(health_rows["r18dev"]["profile"], "custom")
+            self.assertEqual(health_rows["r18dev"]["attempted"], "1")
+            self.assertEqual(health_rows["r18dev"]["fetched"], "1")
+            self.assertEqual(health_rows["r18dev"]["succeeded"], "1")
+            self.assertEqual(health_rows["r18dev"]["release_date"], "1")
 
             connection = sqlite3.connect(db)
             asset = connection.execute(
@@ -622,6 +638,72 @@ class OperationalScriptTests(unittest.TestCase):
             connection.close()
             self.assertEqual(asset, (None, None, None))
             self.assertEqual(relation_count, 0)
+
+    def test_metadata_health_distinguishes_snapshot_empty_error_and_cooldown(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "ledger.db"
+            sqlite3.connect(db).close(); upgrade(db, MIGRATIONS)
+            connection = sqlite3.connect(db)
+            connection.executemany(
+                "INSERT INTO asset(id,location,path,name,medium,code,size) "
+                "VALUES(?,'local',?,?,'video',?,?)",
+                [(1, "1.mp4", "1.mp4", "ABC-001", 3_000),
+                 (2, "2.mp4", "2.mp4", "DEF-002", 2_000),
+                 (3, "3.mp4", "3.mp4", "GHI-003", 1_000)],
+            )
+            connection.commit(); connection.close()
+            raw = root / "raw"
+            snapshot = raw / "ABC-001" / "r18dev.json"
+            snapshot.parent.mkdir(parents=True)
+            snapshot.write_text(__import__("json").dumps({
+                "result": {"source": "r18dev", "maker": "Studio A"},
+            }), encoding="utf-8")
+
+            class HealthProvider:
+                def __init__(self): self.calls = []
+                def query(self, code, source):
+                    self.calls.append((code, source))
+                    if source == "javbus" and code == "DEF-002":
+                        raise self_error(
+                            "rate limited", kind="rate_limited", status_code=429,
+                            retryable=True, temporary=True,
+                        )
+                    if source == "javbus":
+                        return {"source": source}
+                    return {"source": source, "maker": "Studio A"}
+
+            self_error = self.scrape_codes.MetadataProviderError
+            provider = HealthProvider()
+            output = root / "metadata-field-candidates-health.csv"
+            health = root / "health.csv"
+            with redirect_stdout(io.StringIO()):
+                result = self.scrape_codes.main([
+                    "--db", str(db), "--out", str(output), "--health", str(health),
+                    "--raw-dir", str(raw), "--log-dir", str(root / "logs"),
+                    "--delay", "0", "--sources", "r18dev,javbus",
+                ], provider=provider)
+            self.assertEqual(result, 0)
+            with health.open(encoding="utf-8-sig", newline="") as handle:
+                rows = {row["source"]: row for row in csv.DictReader(handle)}
+            self.assertEqual(rows["r18dev"]["snapshot_reused"], "1")
+            self.assertEqual(rows["r18dev"]["fetched"], "2")
+            self.assertEqual(rows["javbus"]["attempted"], "3")
+            self.assertEqual(rows["javbus"]["fetched"], "2")
+            self.assertEqual(rows["javbus"]["succeeded"], "1")
+            self.assertEqual(rows["javbus"]["empty"], "1")
+            self.assertEqual(rows["javbus"]["errors"], "1")
+            self.assertEqual(rows["javbus"]["retryable_errors"], "1")
+            self.assertEqual(rows["javbus"]["cooldown_skips"], "1")
+            self.assertEqual(rows["javbus"]["blocked"], "1")
+            self.assertEqual(rows["javbus"]["last_error_status"], "429")
+
+            connection = sqlite3.connect(db)
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM asset_entity").fetchone()[0], 0)
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM review_decision").fetchone()[0], 0)
+            connection.close()
 
     def test_creator_tag_review_queue_requires_approval_and_backup(self):
         with tempfile.TemporaryDirectory() as tmp:
