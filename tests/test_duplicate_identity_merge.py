@@ -206,5 +206,74 @@ class DuplicateIdentityMergeTests(unittest.TestCase):
         self.assertGreaterEqual(counts["flat_cleared"], 2)
 
 
+class ContainedAssetSetMergeTests(unittest.TestCase):
+    """跨 kind 判据放宽到「真子集」后的回归。
+
+    早先只认作品集合完全相同，`哆米`(7 部) 与目录投影 `哆米 Dolmi24`(6 部) 这种
+    一侧多出一两部的就永远落在判据外——多出的那几部只被 Stash 认成 performer、
+    没有对应本地目录，是常态而不是反证。放宽后名字那一重证据继续兜底。
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db = Path(self.tmp.name) / "ledger.db"
+        upgrade(self.db, ROOT / "migrations")
+        self.con = sqlite3.connect(self.db)
+        self.con.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,creator) "
+            "VALUES(?,'local',?,?,'video',?)",
+            [(1, "/x/1.mp4", "1.mp4", "哆米 Dolmi24"),
+             (2, "/x/2.mp4", "2.mp4", "哆米 Dolmi24"),
+             (3, "/x/3.mp4", "3.mp4", None),
+             (4, "/x/4.mp4", "4.mp4", "桉X合集")])
+        self.con.executemany(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(?,?,?,?, 't','t')",
+            [(20, "creator", "哆米 Dolmi24", "哆米 dolmi24"),
+             (21, "performer", "哆米", "哆米"),
+             (22, "creator", "桉X合集", "桉x合集"),
+             (23, "performer", "桉X", "桉x")])
+        self.con.executemany(
+            "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,confidence) "
+            "VALUES(?,?,?,?,1.0)",
+            [(21, "Dolmi24", "dolmi24", "stash:performer"),
+             (23, "lananh9496", "lananh9496", "stash:performer")])
+        self.con.executemany(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+            "VALUES(?,?,?,?,1.0)",
+            # creator 只挂 1、2；performer 多出第 3 部——真子集，不是相等。
+            [(1, 20, "creator", "legacy:asset"), (2, 20, "creator", "legacy:asset"),
+             (1, 21, "performer", "performer"), (2, 21, "performer", "performer"),
+             (3, 21, "performer", "performer"),
+             (4, 22, "creator", "legacy:asset"),
+             (4, 23, "performer", "performer")])
+        self.con.commit()
+
+    def tearDown(self):
+        self.con.close()
+        self.tmp.cleanup()
+
+    def test_collect_merges_when_creator_assets_are_a_strict_subset(self):
+        rows = collect(self.con)
+        by_drop = {row["drop_name"]: row for row in rows}
+        self.assertIn("哆米", by_drop)
+        merged = by_drop["哆米"]
+        # performer 侧只有 Stash 扁平断言，保留带真实目录的 creator。
+        self.assertEqual(merged["keep_kind"], "creator")
+        self.assertEqual(merged["keep_name"], "哆米 Dolmi24")
+        self.assertIn("账号别名", merged["match_evidence"])
+        self.assertIn("真包含", merged["match_evidence"])
+        self.assertIn("2/3 部", merged["match_evidence"])
+
+    def test_collect_still_refuses_a_name_that_is_not_alias_backed(self):
+        """`桉X合集` 的多出词「合集」不是 `桉X` 的已登记别名，仍然留给人工。
+
+        目录名里的「合集」可能是同人的合集，也可能是多人合辑；判子集只说明
+        文件重叠，说明不了那一条目录就是这个人。
+        """
+        self.assertNotIn(
+            "桉X", {row["drop_name"] for row in collect(self.con)})
+
+
 if __name__ == "__main__":
     unittest.main()

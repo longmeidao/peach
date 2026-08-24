@@ -100,6 +100,30 @@ def _fuzzy_evidence(
     return None
 
 
+def _asset_relation(
+    creator_assets: frozenset[int], performer_assets: frozenset[int],
+) -> str | None:
+    """两边作品集合的包含关系；没有包含关系就不是同一批文件，返回 None。
+
+    早先只认「完全相同」，于是 `哆米`(7 部) 与 `哆米 Dolmi24`(6 部) 这种一侧多出
+    一两部的目录投影永远落在判据外——多出的那几部恰恰是只被 Stash 认成 performer、
+    没有对应本地目录的作品，属于常态而不是反证。放宽到真子集后，证据强度由名字
+    那一重（别名等于 creator 名，或 creator 名由本名与账号别名拼成）继续兜底，
+    并把包含方向和数量写进复核 CSV，交给人看。
+    """
+    if not creator_assets or not performer_assets:
+        return None
+    if creator_assets == performer_assets:
+        return f"作品集合完全相同（各 {len(creator_assets)} 部）"
+    if creator_assets < performer_assets:
+        return (f"creator 作品集合真包含于 performer"
+                f"（{len(creator_assets)}/{len(performer_assets)} 部）")
+    if performer_assets < creator_assets:
+        return (f"performer 作品集合真包含于 creator"
+                f"（{len(performer_assets)}/{len(creator_assets)} 部）")
+    return None
+
+
 def _release_backed(sources: str) -> bool:
     return bool(RELEASE_SOURCES.intersection(filter(None, sources.split(","))))
 
@@ -205,30 +229,35 @@ def collect(connection: sqlite3.Connection) -> list[dict[str, object]]:
             creator, performer, "creator 规范名是完整重复串",
         )
 
-    creators_by_assets: dict[frozenset[int], list[sqlite3.Row]] = {}
-    performers_by_assets: dict[frozenset[int], list[sqlite3.Row]] = {}
-    for creator in creators:
-        asset_set = assets.get(int(creator["id"]), frozenset())
-        if asset_set:
-            creators_by_assets.setdefault(asset_set, []).append(creator)
+    performers_by_asset: dict[int, set[int]] = {}
     for performer in performers:
-        asset_set = assets.get(int(performer["id"]), frozenset())
-        if asset_set:
-            performers_by_assets.setdefault(asset_set, []).append(performer)
+        for asset_id in assets.get(int(performer["id"]), frozenset()):
+            performers_by_asset.setdefault(asset_id, set()).add(int(performer["id"]))
 
     fuzzy: list[tuple[sqlite3.Row, sqlite3.Row, str]] = []
-    for asset_set in set(creators_by_assets) & set(performers_by_assets):
-        for creator in creators_by_assets[asset_set]:
-            for performer in performers_by_assets[asset_set]:
-                key = (int(creator["id"]), int(performer["id"]))
-                if key in candidates:
-                    continue
-                evidence = _fuzzy_evidence(
-                    str(creator["canonical_name"]), str(performer["canonical_name"]),
-                    aliases.get(int(performer["id"]), []),
-                )
-                if evidence:
-                    fuzzy.append((creator, performer, evidence))
+    for creator in creators:
+        creator_assets = assets.get(int(creator["id"]), frozenset())
+        if not creator_assets:
+            continue
+        nearby = {
+            performer_id
+            for asset_id in creator_assets
+            for performer_id in performers_by_asset.get(asset_id, ())
+        }
+        for performer_id in sorted(nearby):
+            performer = performer_by_id[performer_id]
+            key = (int(creator["id"]), performer_id)
+            if key in candidates:
+                continue
+            relation = _asset_relation(creator_assets, assets.get(performer_id, frozenset()))
+            if not relation:
+                continue
+            evidence = _fuzzy_evidence(
+                str(creator["canonical_name"]), str(performer["canonical_name"]),
+                aliases.get(performer_id, []),
+            )
+            if evidence:
+                fuzzy.append((creator, performer, f"{evidence}；{relation}"))
 
     # 一方若同时命中多个候选，就留给人工复核，避免同作品集合内的连锁误并。
     fuzzy_counts = Counter(

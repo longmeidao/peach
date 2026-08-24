@@ -409,7 +409,11 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseHove
 /* 头像内层：先垫首字母，再叠真实图。规范实体图优先，取不到才回落到旧头像缓存。 */
 function avatarInner(name,ref,repId){
   const src=ref?`/entity-image?kind=performer&id=${ref.id}`:(repId?`/avatar?id=${repId}`:'');
-  const fallback=ref&&repId?`this.onerror=null;this.src='/avatar?id=${repId}'`:`this.remove()`;
+  // 兜底链最后一环必须是 remove()：留着取不到图的 <img>，`:has(img)` 仍然匹配，
+  // 首字母垫底回不来，浏览器还会把 alt 画出来。onerror=null 只是不再重试。
+  const fallback=ref&&repId
+    ?`if(!this.dataset.f){this.dataset.f='1';this.src='/avatar?id=${repId}'}else{this.remove()}`
+    :`this.remove()`;
   return `<span class="ini">${esc((name||'?').slice(0,1))}</span>`+
     (src?`<img src="${src}" alt="" loading="lazy" onerror="${fallback}">`:'');
 }
@@ -1115,9 +1119,8 @@ async function openIndex(kind,q,push=true){
       `<section class="alphagroup"><h3>${letter}</h3><div class="alphalist">${items.map(x=>
         `<button class="alphatag ${x.cat||'general'}" data-k="${esc(x.k)}"><span>${esc(x.k)}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')}</div></section>`).join('')};
   const peopleHtml=items=>items.map(x=>`<button class="icell" data-k="${esc(x.k)}" data-kind="${entityKind}">
-        <span class="ring">${kind==='performers'
-          ? `<img src="/entity-image?kind=performer&id=${x.entity_id}" alt="" loading="lazy" onerror="${x.rep?`this.onerror=null;this.src='/avatar?id=${x.rep}'`:`this.remove()`}">`
-          : (x.rep?`<img src="/avatar?id=${x.rep}" alt="" loading="lazy">`:`<span class="ini">${esc(x.k.slice(0,1))}</span>`)}</span>
+        <span class="ring">${avatarInner(x.k,
+          kind==='performers'&&x.entity_id?{id:x.entity_id}:null, x.rep)}</span>
         <span class="nm">${esc(x.k)}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('');
   const tagHtml=items=>tagIndexMode==='alphabet'?`<div class="alphabet">${tagGroups(items)}</div>`:`<div class="tagwall index-tags">`+items.map(x=>`<button class="tg ${x.cat||'general'}" data-k="${esc(x.k)}"
         style="padding:5px 12px;font-size:13px">${esc(x.k)}
@@ -1326,9 +1329,35 @@ const loadSwiper=()=>swiperLoader||(swiperLoader=new Promise((resolve,reject)=>{
   script.onerror=()=>{swiperLoader=null;reject(new Error('swiper unavailable'))};
   document.head.appendChild(script)}));
 const photoLightKeys=e=>{if(e.key==='Escape')closePhotoLightbox()};
+const ZOOM_MAX=4;
+
+/* 缩放条。Swiper 的 zoom 模块只给 in/out/toggle，没有「缩到这个倍数」的入口，
+   但 `zoom.in()` 用的就是 `params.zoom.maxRatio`——先改上限再 in，就等于设定值。
+   双击和触控板捏合仍由模块自己处理，`zoomChange` 负责把滑块同步回来。 */
+function wirePhotoZoom(box, main){
+  const slider=box.querySelector('.photozoom input');
+  const label=box.querySelector('.photozoom b');
+  const show=scale=>{slider.value=scale;label.textContent=Math.round(scale*100)+'%'};
+  const apply=raw=>{
+    const scale=Math.min(ZOOM_MAX,Math.max(1,Math.round(raw*10)/10));
+    show(scale);
+    if(scale<=1){main.zoom.out();return}
+    main.params.zoom.maxRatio=scale;main.zoom.in();
+  };
+  slider.oninput=()=>apply(Number(slider.value));
+  box.querySelectorAll('[data-zoom-step]').forEach(b=>
+    b.onclick=()=>apply(Number(slider.value)+Number(b.dataset.zoomStep)*0.5));
+  // 翻页会把缩放清回 1，滑块得跟着回位，否则它显示 200% 而图是原始大小。
+  main.on('slideChange',()=>show(1));
+  // `zoomChange` 的第一个参数是 swiper 实例，倍数在第二个；接错了滑块会写进 NaN。
+  main.on('zoomChange',(_swiper,scale)=>show(Math.min(ZOOM_MAX,Math.max(1,scale||1))));
+  return {show};
+}
+
 function closePhotoLightbox(){
   if(!activeLightbox)return;
   document.removeEventListener('keydown',photoLightKeys);
+  activeLightbox.resize?.disconnect();
   activeLightbox.main.destroy(true,true);activeLightbox.strip.destroy(true,true);
   activeLightbox.box.remove();activeLightbox=null;
   document.body.classList.remove('photolight-open');
@@ -1346,9 +1375,15 @@ async function openPhotoLightbox(index){
     <div class="swiper photomain"><div class="swiper-wrapper">${items.map(item=>
       `<div class="swiper-slide"><div class="swiper-zoom-container"><img src="/photo?id=${item.id}"
         alt="${esc(item.name)}" loading="lazy"></div></div>`).join('')}</div>
-      <button class="photonav prev" type="button" aria-label="上一张">${icon('chevron-left')}</button>
-      <button class="photonav next" type="button" aria-label="下一张">${icon('chevron-left')}</button></div>
-    <div class="photocount mono" aria-live="polite">${index+1} / ${items.length}</div>
+      <button class="photonav back" type="button" aria-label="上一张">${icon('chevron-left')}</button>
+      <button class="photonav fwd" type="button" aria-label="下一张">${icon('chevron-left')}</button></div>
+    <div class="photobar">
+      <div class="photocount mono" aria-live="polite">${index+1} / ${items.length}</div>
+      <div class="photozoom">
+        <button type="button" data-zoom-step="-1" aria-label="缩小">−</button>
+        <input type="range" min="1" max="${ZOOM_MAX}" step="0.1" value="1" aria-label="缩放">
+        <button type="button" data-zoom-step="1" aria-label="放大">+</button>
+        <b class="mono">100%</b></div></div>
     <div class="swiper photostrip"><div class="swiper-wrapper">${items.map(item=>
       `<div class="swiper-slide"><img src="/photo-thumb?id=${item.id}" alt="" loading="lazy"></div>`).join('')}</div></div>`;
   document.body.appendChild(box);
@@ -1358,11 +1393,19 @@ async function openPhotoLightbox(index){
     slidesPerView:'auto',spaceBetween:8,freeMode:true,watchSlidesProgress:true,
     centeredSlides:true,centeredSlidesBounds:true,slideToClickedSlide:true});
   const main=new SwiperCtor(box.querySelector('.photomain'),{
-    initialSlide:index,zoom:true,keyboard:{enabled:true},lazyPreloadPrevNext:1,
+    initialSlide:index,zoom:{maxRatio:ZOOM_MAX},keyboard:{enabled:true},lazyPreloadPrevNext:1,
+    // 上下滚也翻页：看图时手在滚轮上，没人愿意为了换一张去够左右键或按钮。
+    mousewheel:{enabled:true,forceToAxis:false},
     thumbs:{swiper:strip},
-    navigation:{prevEl:box.querySelector('.photonav.prev'),nextEl:box.querySelector('.photonav.next')},
+    navigation:{prevEl:box.querySelector('.photonav.back'),nextEl:box.querySelector('.photonav.fwd')},
     on:{slideChange(){counter.textContent=`${this.activeIndex+1} / ${items.length}`}}});
-  activeLightbox={box,main,strip};
+  const zoomBar=wirePhotoZoom(box,main);
+  /* Swiper 只在自己构造的那一刻量一次容器。灯箱是插进已经布好版的页面里的，
+     窗口一改大小（或首屏字体、滚动条落定得比构造晚）slide 就停在旧宽度上，
+     大图按错误的框缩放，看起来就是「显示不全」。挂个 ResizeObserver 让它重量。 */
+  const resize=new ResizeObserver(()=>{main.update();strip.update()});
+  resize.observe(box);
+  activeLightbox={box,main,strip,resize,zoomBar};
   box.querySelector('.photoclose').onclick=closePhotoLightbox;
   // 只在背景本身上关闭：点图片、缩略图条和翻页按钮都不该退出。
   box.addEventListener('click',e=>{if(e.target===box)closePhotoLightbox()});
@@ -1397,8 +1440,11 @@ async function openEntity(kind,name,push=true,requestedTag){
   const image=d.id?(kind==='studio'
     ? `<img src="/logo?studio=${encodeURIComponent(d.canonical_name)}" alt="${esc(d.canonical_name)}"
         onerror="if(!this.dataset.f){this.dataset.f='1';this.src='/entity-image?kind=studio&id=${d.id}'}else{this.remove()}">`
+    /* 兜底链的最后一环必须是 `this.remove()`：留着取不到图的 <img> 会让浏览器
+       画出 alt 文本（整个艺人名横在头像圈里），而 `:has(img)` 仍然匹配，首字母
+       垫底永远回不来。`onerror=null` 只是不再重试，不等于这一环走完了。 */
     : `<img src="/entity-image?kind=${kind}&id=${d.id}" alt="${esc(d.canonical_name)}"${facePos(d.avatar_focus)}
-        onerror="this.removeAttribute('style');${d.representative_asset_id?`this.onerror=null;this.src='/avatar?id=${d.representative_asset_id}'`:`this.remove()`}">`):'';
+        onerror="this.removeAttribute('style');${d.representative_asset_id?`if(!this.dataset.f){this.dataset.f='1';this.src='/avatar?id=${d.representative_asset_id}'}else{this.remove()}`:`this.remove()`}">`):'';
   const links=(d.links||[]).map(x=>x.clickable&&/^https?:\/\//i.test(x.url||'')
     ? `<a href="${esc(x.url)}" target="_blank" rel="noreferrer"><span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(faviconUrl(x.url))}" data-studio="${kind==='studio'?esc(d.canonical_name):''}" alt=""></span><span class="entitylinklabel">${esc(x.label)}</span><span class="entitylinkarrow" aria-hidden="true">↗</span></a>`
     : `<span class="private" title="私人馆藏来源记录，不直接打开下载页"><span class="entitylinkicon">${icon('globe')}</span><span class="entitylinklabel">来源 · ${esc(x.label||x.hostname||'已记录')}</span></span>`).join('');
@@ -1406,7 +1452,7 @@ async function openEntity(kind,name,push=true,requestedTag){
   const tags=(d.tags||[]).map(x=>`<button data-entity-tag="${esc(x.k)}" aria-pressed="${entityTag===x.k}">${esc(x.k)}<small>${x.n.toLocaleString()}</small></button>`).join('');
   const related=(d.related_performers||[]).map(x=>`<button class="relatedperson" data-related-performer="${esc(x.k)}">
       <span class="ring"><span>${esc(x.k.slice(0,1))}</span><img src="/entity-image?kind=performer&id=${x.id}" alt="" loading="lazy"
-        onerror="${x.rep?`this.onerror=null;this.src='/avatar?id=${x.rep}'`:`this.remove()`}"></span>
+        onerror="${x.rep?`if(!this.dataset.f){this.dataset.f='1';this.src='/avatar?id=${x.rep}'}else{this.remove()}`:`this.remove()`}"></span>
       <span class="nm">${esc(x.k)}</span><small>${x.n.toLocaleString()} 部</small></button>`).join('');
   $('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;
   $('#index').innerHTML=`<div class="entityhero"><div class="entityportrait ${kind==='performer'||kind==='creator'?'':'square'}">${image}<span>${esc(name.slice(0,1))}</span></div>

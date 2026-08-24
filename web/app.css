@@ -271,7 +271,9 @@ button,input,textarea{font:inherit;color:inherit}
 .mediatabs[hidden]{display:none}
 .mediatabs button{display:flex;align-items:center;gap:7px;border:0;background:transparent;color:var(--muted);
   padding:8px 4px 10px;margin-bottom:-1px;border-bottom:2px solid transparent;cursor:pointer;font-size:13px}
-.mediatabs button svg{width:16px;height:16px}
+/* 图标是 Lucide 的描边路径，`stroke:currentColor;fill:none` 少一样就会被浏览器
+   按默认的 fill:black/stroke:none 画成黑块——深色底上等于看不见。 */
+.mediatabs button svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
 .mediatabs button b{font-weight:400;font-size:11px;color:var(--muted)}
 .mediatabs button:hover{color:var(--ink-2)}
 .mediatabs button[aria-pressed="true"]{color:var(--ink);border-bottom-color:var(--tungsten)}
@@ -288,7 +290,8 @@ button,input,textarea{font:inherit;color:inherit}
 .photohead h3{margin:0}
 .photoback{display:flex;align-items:center;gap:4px;height:28px;padding:0 10px 0 6px;border:1px solid var(--line);
   border-radius:999px;background:transparent;color:var(--ink-2);font-size:12px;cursor:pointer}
-.photoback svg{width:15px;height:15px}.photoback:hover{background:var(--overlay-5);color:var(--ink)}
+.photoback svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
+.photoback:hover{background:var(--overlay-5);color:var(--ink)}
 /* 瀑布流：账本没有图片宽高，等宽多列流式排版正好不需要比例，也不用等图加载完再算位置。 */
 .photowall{column-count:5;column-gap:10px}
 @media (max-width:1400px){.photowall{column-count:4}}
@@ -301,18 +304,43 @@ button,input,textarea{font:inherit;color:inherit}
 .photolight{position:fixed;inset:0;z-index:200;background:#000;display:grid;
   grid-template-rows:minmax(0,1fr) auto auto;gap:8px;padding:12px 0 14px}
 body.photolight-open{overflow:hidden}
-.photolight .photomain{min-height:0;width:100%}
-.photolight .photomain .swiper-slide{display:grid;place-items:center}
-.photolight .photomain img{max-width:100%;max-height:100%;object-fit:contain;display:block}
+/* 大图靠 `max-height:100%` 收进这一行，而百分比只在父级高度确定时才算数，
+   所以从 .photomain 到 .swiper-zoom-container 每一层都要显式给高。
+   `min-height:0` 不能省：grid 子项的自动最小尺寸是 min-height:auto，也就是
+   「不得小于内容」。竖图按宽度铺开有两三千像素高，那个下限会直接盖掉
+   height:100%，容器被撑成图片原高，max-height 再按它算就等于没限制——
+   表现就是竖图上下被裁掉。 */
+.photolight .photomain{min-height:0;height:100%;width:100%}
+.photolight .photomain .swiper-slide{height:100%;min-height:0;display:grid;place-items:center}
+.photolight .photomain .swiper-zoom-container{width:100%;height:100%;min-height:0;min-width:0;
+  display:grid;place-items:center}
+.photolight .photomain img{max-width:100%;max-height:100%;min-width:0;min-height:0;
+  object-fit:contain;display:block}
 .photoclose{position:absolute;top:12px;right:14px;z-index:3;width:38px;height:38px;display:grid;place-items:center;
-  border:0;border-radius:50%;background:rgba(255,255,255,.12);color:#fff;cursor:pointer}
-.photoclose svg{width:20px;height:20px}.photoclose:hover{background:rgba(255,255,255,.22)}
+  border:0;padding:0;border-radius:50%;background:rgba(255,255,255,.12);color:#fff;cursor:pointer}
+.photoclose svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+.photoclose:hover{background:rgba(255,255,255,.22)}
 .photonav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;width:44px;height:44px;display:grid;
-  place-items:center;border:0;border-radius:50%;background:rgba(255,255,255,.12);color:#fff;cursor:pointer}
-.photonav svg{width:24px;height:24px}.photonav:hover{background:rgba(255,255,255,.22)}
-.photonav.prev{left:14px}.photonav.next{right:14px;transform:translateY(-50%) rotate(180deg)}
+  place-items:center;border:0;padding:0;border-radius:50%;background:rgba(255,255,255,.12);color:#fff;cursor:pointer}
+.photonav svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.photonav:hover{background:rgba(255,255,255,.22)}
+/* 类名用 back/fwd 而不是 prev/next：详情页「接下来」那块用的就是无前缀的 `.next`
+   （padding、border-top 和背景色都在里面），同为 0-1-0 特指度且写在后面，会连人带
+   样式盖到灯箱按钮上，图标被挤得偏右下。翻页方向只翻图标，不转整个按钮。 */
+.photonav.back{left:14px}.photonav.fwd{right:14px}
+.photonav.fwd svg{transform:rotate(180deg)}
 .photonav.swiper-button-disabled{opacity:.3;pointer-events:none}
+/* 页码和缩放条同一行：缩放条压在图上会挡住正在看的东西，放进底栏正好用掉
+   页码两侧本来就空着的位置。页码保持真正居中，缩放条靠右不参与居中计算。 */
+.photobar{position:relative;display:flex;align-items:center;justify-content:center;padding:0 14px;min-height:26px}
 .photocount{text-align:center;color:rgba(255,255,255,.72);font-size:12px}
+.photozoom{position:absolute;right:14px;display:flex;align-items:center;gap:8px;color:rgba(255,255,255,.72)}
+.photozoom button{width:24px;height:24px;display:grid;place-items:center;border:0;border-radius:50%;
+  background:rgba(255,255,255,.12);color:#fff;font-size:15px;line-height:1;cursor:pointer}
+.photozoom button:hover{background:rgba(255,255,255,.22)}
+.photozoom input{width:116px;accent-color:#fff;cursor:pointer}
+.photozoom b{font-weight:400;font-size:11px;width:38px;text-align:right}
+@media (max-width:640px){.photozoom{position:static;margin-left:12px}.photozoom input{width:72px}.photozoom b{display:none}}
 .photolight .photostrip{width:100%;height:72px;padding:0 12px}
 .photolight .photostrip .swiper-slide{width:auto;height:72px;opacity:.5;cursor:pointer;border-radius:6px;overflow:hidden}
 .photolight .photostrip .swiper-slide img{height:100%;width:auto;display:block;object-fit:cover}
@@ -322,7 +350,7 @@ body.photolight-open{overflow:hidden}
   .photowall{column-count:2;column-gap:8px}
   .photosets{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:12px}
   .photolight .photostrip,.photolight .photostrip .swiper-slide{height:56px}
-  .photonav{width:38px;height:38px}.photonav.prev{left:8px}.photonav.next{right:8px}}
+  .photonav{width:38px;height:38px}.photonav.back{left:8px}.photonav.fwd{right:8px}}
 /* 显式 display 会盖掉浏览器默认的 [hidden]{display:none}：按钮已经 hidden=true
    却仍然画出来，而 requestMore 首行就是 if(more.hidden)return，于是点了没反应。 */
 /* 身份区按类别分组：标签是组标题，同类横向排开并按需换行。
