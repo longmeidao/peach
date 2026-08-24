@@ -88,7 +88,7 @@
 - 回收站有独立入口 `peach.local/trash`（后端 `/trash` 走 SPA，前端 `restoreRoute` 直接进 `state=trash`）。
 - 疑似广告是处置队列：队列说明行随页面正常滚走，不复用普通作品列表的 sticky 排序栏。批量或详情加入回收站后会立即刷新队列；Ledger 冲突等非 2xx 写入会明确报错，不再把错误 JSON 当成功后让条目原样出现。
 - 回收站的两条删除路径此前从未真正执行过，已修复：`media.py` 漏 `from functools import lru_cache` 导致整个包 import 失败；`ASSET_REFERENCE_TABLES` 从未定义，`/api/batch` 的 `delete` 必然 `NameError`；`/api/trash/empty` 只加了 dispatch 分支、`w_empty_trash` 没有函数体。现已统一到 `purge_assets()` 并补齐数据层测试。之前「API 写读删已复核」的说法不成立，属于未验证即结论。
-- 管理界面 `/review` 已覆盖元数据字段、创作者标签、厂牌 Logo、女优头像、西方身份、番号目录、封面来源、FC2 评论标记和媒体失败。Javinizer-Go 元数据按「番号 × 字段」并列演员、厂牌、系列、发行日期和标签候选，官方/官方镜像 tag 优先；批准必须选中具体来源值，服务端从当前 CSV 重取权威值并留下 candidate/source provenance。演员只写 performer 与兼容标签，不写 `asset.creator`；所有实体名在候选生成和批准写入两层拦截重复片段。
+- 管理界面 `/review` 已覆盖元数据字段、创作者标签、厂牌 Logo、女优头像、西方身份、番号目录、FC2 评论标记和媒体失败；每项尽量显示代表封面并可打开原视频。封面抓取成功、尺寸和缺失改回机械状态，不再占人工复核。Javinizer-Go 元数据按「番号 × 字段」并列演员、厂牌、系列、发行日期和标签候选，官方/官方镜像 tag 优先；批准必须选中具体来源值并留下 provenance。
 - HLS 除开头一两段外全部失败过，2026-08-18 已修复。`-copyts` 保留原始时间轴后，FFmpeg 把 `-t` 当成绝对结束时刻而不是片段时长，每段的 `-t` 都约等于一个片段长，起点超过它的片段一律「已经过期」，FFmpeg 以退出码 0、空 stderr 写出 0 字节，服务端只能报一句没有内容的 `ffmpeg failed`。实测 asset 6562（6,332 秒）：片段 0、1 返回 200，片段 2 与 300 都是 503；片段缓存目录里 6562、29914、19490 三个资产也都只留下 `0.ts` 与 `1.ts`。所以症状不只是拖不动，播到约 20 秒就会断。修法是保留 `-copyts`、把 `-t 时长` 换成绝对终点 `-to 起点+时长`；删掉 `-copyts` 同样能出片，但首个 PTS 会退回 0.069，每段都自称从 0 开始，正是当初引入 `-copyts` 要解决的拖动跳位。隔离实例实测片段 2、300、633 全部返回 200（47.2 MB、41.1 MB、69.3 MB），手工核验片段 300 首个 PTS 为 2997.995，绝对位置与跨段连续性都对。生产托盘已于 2026-08-18 重启并复验：asset 6562 的片段 2、300 与 asset 29914 的片段 5 均返回 200。
 - 同批把静默失败改为自陈：FFmpeg 退出码 0、stderr 全空却写出 0 字节时，错误信息带上 `returncode`、字节数与 `ss`/`to`，不再只说 `ffmpeg failed`。上面那个缺陷能藏这么久，正是因为日志里那句话什么都没说。
 - 远端 MP4 已改为默认标准 Range，HLS 转为按需（`/api/stream-plan?mode=hls`），见 ADR-0016。起因是 asset 22716（115 的 HEVC 重制 MP4）在详情页黑屏：分片全部 200、数据进了缓冲、时间轴照走，但 `videoWidth=0`、解码 0 帧、无 error 事件。`-c copy` 把 HEVC 原样装进 MPEG-TS，而 Chromium 的 MSE 不支持 TS 里的 HEVC；同一浏览器实测 `video/mp2t; codecs="hvc1…"` 为 `false`、`video/mp4; codecs="hvc1…"` 为 `true`，直接 Range 播同一文件解码 997 帧、拖动后继续出帧。文件名含 `HEVC` 的 115 视频有 248 条、PikPak 2 条，此前全部受影响。生产重启后复验 22716：默认计划为 `range`，`mode=hls` 仍给出 76 段计划，播放列表返回 200；详情页取到 `/stream?id=22716`、`readyState=4`、`1920×1080`，当前帧平均亮度 147.1、非黑像素 99.3%。
@@ -109,7 +109,7 @@
 - 115/PikPak 抽帧主要成本是 CloudDrive 块预取流量：实测九帧接触表约为 115 285 MB、PikPak 163 MB。PikPak 全量抽帧约 773 GB，暂不启动。
 - 2026-08-22 已把 PikPak 下一批范围收窄为「全量重跑 probe → 官方封套 + 九帧缩略图」，不继续跑标签、人物归属或其他元数据刮削。Mac reader 只在账本副本上做了 1 条真实媒体抽样：506 MiB / 1,769 秒视频耗时 11.69 秒，Stash 计得下载 120.9 MiB、上传约 0.10 MiB，路线为香港代理链；封套 `KUZU-25010` 用 3.25 秒确认未取得，下载约 14 KiB。全量夜跑交给 Windows writer，第一晚保留 200 GB 流量上限，见 `docs/PIKPAK.md`。
 - `RM-TrafficWatch` 常驻心跳已改用 `pythonw.exe` 隐藏运行。默认 200 GB 守卫统计代理流量；直连来源需显式 `--count-direct`。
-- JAV 浏览模式已就位：顶栏「番」入口切换 `state.jav`，列表按番号形态过滤（不是 `code` 非空——那会混进 740 个账号名与站点水印的视频），恒不含竖屏，资料页继承同一开关。`/api/tops` 与 `/api/facets` 接受 `jav=1` 收窄口径，缓存键必须带上口径与种子，否则两套结果互相顶掉。实测顶部女优 30 个换掉 23 个、筛选创作者 60 个换掉 59 个。
+- JAV 浏览模式已就位：顶栏「番」入口切换 `state.jav`，列表要求番号形态再加厂牌、女优、系列或发行日期等发行证据；FC2 ID 单独成立。只有 creator `MIB` 的 `JI-103` 不再误入。模式恒不含竖屏，资料页、`/api/tops` 与 `/api/facets` 继承同一口径。
 - 版式切换（正封 4:3 / 封套 16:9 / 预览图）只在 JAV 语境出现，按钮长在排序行里跟着 `renderCount()` 一起重建——放独立容器会被重画覆盖。取景按图片自身宽高比分流：整张封套约 1.48 取右侧，竖版正封约 0.70 整张用，`onload` 写 `data-frame`，服务端不另存这个比例。
 - 顶部三层跟着「换一批」的同一个种子轮换。只失效缓存不够：`q_tops` 是 `ORDER BY n DESC` 的确定性查询，实测两次请求结果完全相同。改为放大候选池到展示位的 4 倍再按种子确定性抽样，同种子可重复、不同种子换人、无种子退回严格前 N。
 - 封面抓取默认跳过 FC2：三源实测零命中（见 HANDOFF），400 个必然落空的请求每次续跑都会重试一遍；`--all-codes` 仍可强制尝试。队列的形态判据与 `web_contract.is_jav_code` 共用一份实现。当前已落盘 568 张，续跑中。
@@ -161,7 +161,7 @@
 
 - 2026-08-21 macOS 最新基线：`./scripts/test.sh` 全量 468 项通过、3 项跳过；Windows 当前状态提交
   `& .\scripts\test.ps1` 全量 460 项通过、12 项按平台跳过；上下文预算检查通过。
-- 2026-08-22 Javinizer-Go P0 已部署到 Windows：e390 与 5fcc 的整合提交 `47d6b84` 保留字段候选与全入口 person 门槛，生产/远端代码均为 `25ba2c0`；Windows amd64 v1.5.1 位于 `peach-data/tools/javinizer/v1.5.1/windows-amd64/javinizer.exe`，SHA-256 `4d5b0bc6a655f765325e55a6638795ac39cd01f11a7c3c40066e5fac79f1abca`。Windows 全量测试 495 项通过、12 项跳过；`IPX-535` 临时库真实 r18dev 生成 5 个字段组。真实 ledger limit=10 生成 43 组（演员10、厂牌10、系列4、发行日期10、标签9），10 份 raw JSON、错误0；紧窗口 generation 29→29，asset 81,657、asset_entity 155,894、asset_tag 88,049、entity 8,185、review_decision 14 均未变。夜跑结束后主目录脏改动已保护到远端分支 `preserve/windows-review-ads-20260822@968cf04`；正式入口备份 `ledger.pre-migrate-20260822-151328.db`（127,340,544 字节，SHA-256 `b462e6c5…83edd`）后应用 `0016`，五项计数不变、review_decision 18、完整性 `ok`、外键0。托盘于 15:14 重启，HTTP/严格 CA HTTPS `/healthz` 与 `/review` 均 200，真实 API 有43个候选。隔离副本的 1280×720/390×844 视觉验收通过；生产最终视觉因浏览器运行时无可用实例而未取得，不能用 API 结果替代。
+- 2026-08-22 Javinizer-Go P0 已部署到 Windows：真实 ledger limit=10 生成 43 组（演员10、厂牌10、系列4、发行日期10、标签9）及10份 raw JSON，错误0。2026-08-24 复核时这43组仍为候选，`metadata_fields` 批准数0，因此真实 `release_date` 仍为0条、`javinizer:*:tag` 仍为0条；旧 `r18` 标签已有2,371条。详情已经消费 `release_date` 与批准后的内容标签，人工批准后直接显示。
 - Windows 无外置盘生产验收：HTTP 与严格 CA HTTPS `/healthz` 返回 200，账本、FFmpeg、115 和
   PikPak 可用，只有 `local` 来源离线；115 HTTP 与 PikPak 严格 HTTPS 各完成 1 KiB `206` Range。
 - 双机同时在线时账本世代 18、状态 `in-sync`；`peach-win.local` 与 `peach.local` 分别只由

@@ -308,6 +308,15 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(decided.status_code, 200)
 
+    async def test_quality_goal_queue_is_readable_from_management(self):
+        saved = await self.client.post(
+            "/api/quality-goal?t=secret", json={"id": 1, "wanted": True},
+        )
+        self.assertEqual(saved.status_code, 200)
+        response = await self.client.get("/api/quality-goals?t=secret&limit=20")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["items"][0]["id"], 1)
+
     async def test_metadata_field_candidate_is_approved_through_the_http_contract(self):
         connection = sqlite3.connect(self.db)
         connection.execute("UPDATE asset SET code='ABC-001' WHERE id=1")
@@ -493,7 +502,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
                      "/creators", "/tags", "/stats", "/immerse", "/trash", "/review",
                      # 前端路由写好了不等于能直接打开：SPA 路径是逐条登记的，
                      # 漏登记时源码断言照样全绿，只有真的请求一次才会露出 404。
-                     "/duplicates", "/mix/1/2"):
+                     "/duplicates", "/quality-goals", "/mix/1/2"):
             response = await self.client.get(path)
             self.assertEqual(response.status_code, 200, path)
             self.assertIn("Peach test", response.text)
