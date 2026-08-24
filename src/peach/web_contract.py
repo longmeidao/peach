@@ -1883,82 +1883,120 @@ def q_duplicates(contract: WebContract, args):
     }
 
 
+class ContractRouteNotFound(KeyError):
+    """The stable JSON contract has no handler for this path."""
+
+
+def _get_item(contract, args):
+    return q_item(contract, int(args["id"]))
+
+
+def _get_index(contract, args):
+    return q_index(
+        contract,
+        args.get("kind", "tags"),
+        args.get("q", ""),
+        min(max(int(args.get("limit", "180")), 1), 600),
+        max(int(args.get("offset", "0")), 0),
+        args.get("category", ""),
+    )
+
+
+def _get_stats(contract, _args):
+    return contract.cached("stats", lambda: q_stats(contract))
+
+
+def _get_tops(contract, args):
+    n = min(int(args.get("n", "28")), 60)
+    jav = args.get("jav") == "1"
+    seed = str(args.get("seed", ""))[:32]
+    return contract.cached(
+        f"tops{n}{'-jav' if jav else ''}:{seed}",
+        lambda: q_tops(contract, n, jav=jav, seed=seed),
+    )
+
+
+def _get_ads(contract, args):
+    return q_ads(
+        contract,
+        min(int(args.get("limit", "60")), 200),
+        max(int(args.get("offset", "0")), 0),
+    )
+
+
+def _get_related(contract, args):
+    return q_related(contract, int(args["id"]), min(int(args.get("limit", "24")), 60))
+
+
+def _get_facets(contract, args):
+    jav = args.get("jav") == "1"
+    scope_kind = str(args.get("scope_kind", ""))
+    scope_name = str(args.get("scope_name", ""))
+    asset_id = int(args["id"]) if args.get("id") else None
+    scope_key = f"{scope_kind}:{scope_name}:{asset_id or ''}"
+    return contract.cached(
+        f"facets{'-jav' if jav else ''}:{scope_key}",
+        lambda: q_facets(
+            contract,
+            jav=jav, scope_kind=scope_kind, scope_name=scope_name, asset_id=asset_id,
+        ),
+    )
+
+
+def _get_search_history(contract, args):
+    return q_search_history(contract, int(args.get("limit", "10")))
+
+
+def _get_review(contract, _args):
+    return contract.cached("review", lambda: q_review(contract))
+
+
+def _post_empty_trash(contract, _body):
+    return w_empty_trash(contract)
+
+
+GET_HANDLERS = {
+    "/api/items": q_items,
+    "/api/item": _get_item,
+    "/api/entity": q_entity,
+    "/api/index": _get_index,
+    "/api/duplicates": q_duplicates,
+    "/api/stats": _get_stats,
+    "/api/tops": _get_tops,
+    "/api/ads": _get_ads,
+    "/api/related": _get_related,
+    "/api/facets": _get_facets,
+    "/api/search-history": _get_search_history,
+    "/api/review": _get_review,
+}
+
+POST_HANDLERS = {
+    "/api/activity": w_activity,
+    "/api/play": w_play,
+    "/api/feedback": w_feedback,
+    "/api/watch-later": w_watch_later,
+    "/api/preference": w_preference,
+    "/api/quality-goal": w_quality_goal,
+    "/api/item-tag": w_item_tag,
+    "/api/batch": w_batch,
+    "/api/search-history": w_search_history,
+    "/api/trash/empty": _post_empty_trash,
+    "/api/review/decision": w_review_decision,
+}
+
+
 def dispatch_api_get(contract: WebContract, path, args):
     """Dispatch the stable JSON read contract used by the current web client."""
-    if path == "/api/items":
-        return q_items(contract, args)
-    if path == "/api/item":
-        return q_item(contract, int(args["id"]))
-    if path == "/api/entity":
-        return q_entity(contract, args)
-    if path == "/api/index":
-        return q_index(
-            contract,
-            args.get("kind", "tags"),
-            args.get("q", ""),
-            min(max(int(args.get("limit", "180")), 1), 600),
-            max(int(args.get("offset", "0")), 0),
-            args.get("category", ""),
-        )
-    if path == "/api/duplicates":
-        return q_duplicates(contract, args)
-    if path == "/api/stats":
-        return contract.cached("stats", lambda: q_stats(contract))
-    if path == "/api/tops":
-        n = min(int(args.get("n", "28")), 60)
-        jav = args.get("jav") == "1"
-        seed = str(args.get("seed", ""))[:32]
-        # 缓存键必须带上口径与种子，否则 JAV 与全库、换一批前后会互相顶掉。
-        return contract.cached(f"tops{n}{'-jav' if jav else ''}:{seed}",
-                               lambda: q_tops(contract, n, jav=jav, seed=seed))
-    if path == "/api/ads":
-        return q_ads(
-            contract,
-            min(int(args.get("limit", "60")), 200),
-            max(int(args.get("offset", "0")), 0),
-        )
-    if path == "/api/related":
-        return q_related(contract, int(args["id"]), min(int(args.get("limit", "24")), 60))
-    if path == "/api/facets":
-        jav = args.get("jav") == "1"
-        scope_kind = str(args.get("scope_kind", ""))
-        scope_name = str(args.get("scope_name", ""))
-        asset_id = int(args["id"]) if args.get("id") else None
-        scope_key = f"{scope_kind}:{scope_name}:{asset_id or ''}"
-        return contract.cached(f"facets{'-jav' if jav else ''}:{scope_key}",
-                               lambda: q_facets(
-                                   contract, jav=jav, scope_kind=scope_kind,
-                                   scope_name=scope_name, asset_id=asset_id,
-                               ))
-    if path == "/api/search-history":
-        return q_search_history(contract, int(args.get("limit", "10")))
-    if path == "/api/review":
-        # 复核页要扫候选 CSV、全部决定和一次媒体失败全表扫描，不该每次打开都重算。
-        return contract.cached("review", lambda: q_review(contract))
-    raise KeyError(path)
+    try:
+        handler = GET_HANDLERS[path]
+    except KeyError as exc:
+        raise ContractRouteNotFound(path) from exc
+    return handler(contract, args)
 
 
 def dispatch_api_post(contract: WebContract, path, body):
-    if path == "/api/activity":
-        return w_activity(contract, body)
-    if path == "/api/play":
-        return w_play(contract, body)
-    if path == "/api/feedback":
-        return w_feedback(contract, body)
-    if path == "/api/watch-later":
-        return w_watch_later(contract, body)
-    if path == "/api/preference":
-        return w_preference(contract, body)
-    if path == "/api/quality-goal":
-        return w_quality_goal(contract, body)
-    if path == "/api/item-tag":
-        return w_item_tag(contract, body)
-    if path == "/api/batch":
-        return w_batch(contract, body)
-    if path == "/api/search-history":
-        return w_search_history(contract, body)
-    if path == "/api/trash/empty":
-        return w_empty_trash(contract)
-    if path == "/api/review/decision":
-        return w_review_decision(contract, body)
-    raise KeyError(path)
+    try:
+        handler = POST_HANDLERS[path]
+    except KeyError as exc:
+        raise ContractRouteNotFound(path) from exc
+    return handler(contract, body)

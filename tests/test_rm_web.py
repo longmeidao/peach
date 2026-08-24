@@ -345,6 +345,20 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(self.contract.cached("same", lambda: "first"), "first")
         self.assertEqual(other.cached("same", lambda: "second"), "second")
 
+    def test_contract_handler_registries_are_complete_and_unknown_routes_fail(self):
+        self.assertEqual(set(rm_web.GET_HANDLERS), {
+            "/api/items", "/api/item", "/api/entity", "/api/index", "/api/duplicates",
+            "/api/stats", "/api/tops", "/api/ads", "/api/related", "/api/facets",
+            "/api/search-history", "/api/review",
+        })
+        self.assertEqual(set(rm_web.POST_HANDLERS), {
+            "/api/activity", "/api/play", "/api/feedback", "/api/watch-later",
+            "/api/preference", "/api/quality-goal", "/api/item-tag", "/api/batch",
+            "/api/search-history", "/api/trash/empty", "/api/review/decision",
+        })
+        with self.assertRaises(rm_web.ContractRouteNotFound):
+            rm_web.dispatch_api_get(self.contract, "/api/typo", {})
+
     def test_write_transaction_rolls_back_and_closes_on_failure(self):
         opened = []
         real_db = self.contract.db
