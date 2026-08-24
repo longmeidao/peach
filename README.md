@@ -317,6 +317,7 @@ Per-Monitor V2 DPI，单击打开 `https://peach-win.local/`；右键可同步 L
 | `/tags` | 标签管理，支持字母表与标签云 |
 | `/stats` | 统计 |
 | `/immerse` | 沉浸模式 |
+| `/quality-goals` | 已标记寻找高清、无水印或完整版的作品 |
 | `/trash` | 回收站 |
 | `/mix/{seed_id}/{item_id}` | 自动 Mix 播放器与右侧队列 |
 

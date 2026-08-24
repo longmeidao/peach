@@ -399,14 +399,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".select-mode .cardopenhit,.select-mode .hovertools,.select-mode .previewcounter")
         self.assertPageContains("if(selectMode)releaseHoverPreviews()")
 
-    def test_manage_collects_the_four_admin_entries_behind_one_top_level_icon(self):
+    def test_manage_collects_admin_entries_behind_one_top_level_icon(self):
         """统计、疑似广告、回收站、人工复核各占一个顶层图标时，侧栏一半是管理入口。
 
         它们合并到「管理」下的二级导航；URL 保持原样，只是多了一条共用导航条。
         """
         self.assertPageContains("['manage','管理','settings']")
         self.assertPageContains("const MANAGE_SECTIONS=[")
-        for section in ("'stats','统计'", "'ads','疑似广告'", "'trash','回收站'", "'review','人工复核'"):
+        for section in ("'stats','统计'", "'ads','疑似广告'", "'dupes','重复文件'",
+                        "'quality','高清版'", "'trash','回收站'", "'review','人工复核'"):
             self.assertPageContains(section)
         self.assertPageContains("function manageSection()")
         self.assertPageContains("function buildManageBar()")
@@ -823,7 +824,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("视频 ID / 会话")
         self.assertPageContains("/api/quality-goal")
         self.assertPageContains('id="betterVersion"')
+        self.assertPageLacks("prompt('要找哪种更好版本？")
+        self.assertPageContains("body:JSON.stringify({id:it.id,wanted})")
         self.assertPageLacks('id="closeStage">收起')
+
+    def test_better_version_targets_have_a_management_page(self):
+        self.assertPageContains("['quality','高清版','sparkles']")
+        self.assertPageContains("if(path==='/quality-goals')return 'quality'")
+        self.assertPageContains("async function openQualityGoals(push=true)")
+        self.assertPageContains("/api/quality-goals?limit=200")
 
     def test_review_page_is_a_separate_management_layer(self):
         self.assertPageContains("route('/review')")
@@ -833,6 +842,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("candidate.official?' · 官方优先':''")
         self.assertPageContains("/api/review/decision")
         self.assertPageContains("if(path==='/review')")
+        self.assertPageContains('class="revieworigin"')
+        self.assertPageContains('data-review-open-item="${row.asset_id}"')
+        self.assertPageContains("openItem(+button.dataset.reviewOpenItem)")
 
     def test_jav_release_date_is_visible_in_detail(self):
         self.assertPageContains("发行 ${esc(it.release_date)}")
@@ -848,6 +860,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("function duplicateVictims(groups,keep)")
         self.assertPageContains("const flag=keep==='longest'?'is_longest':'is_largest'")
         self.assertPageContains("for(const f of g.files)if(f.id!==keeper.id)ids.push(f.id)")
+        self.assertPageContains("g.files.filter(f=>f.location===keep)")
+        self.assertPageContains('data-dup-all="115"')
+        self.assertPageContains('data-dup-all="pikpak"')
+
+    def test_duplicate_group_can_be_entirely_recycled_when_every_file_is_an_ad(self):
+        self.assertPageContains("if(keep==='all'){for(const f of g.files)ids.push(f.id);continue}")
+        self.assertPageContains('data-dup-keep="all"')
+        self.assertPageContains("all:'零个文件'")
 
     def test_duplicate_removal_is_reversible(self):
         # 只能进回收站；永久删除仍得从回收站单独执行。
@@ -867,7 +887,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 这三类此前只落在 CSV 里没有入口，复核负担等于丢回给用户去翻文件。
         self.assertPageContains("western_identity:'西方身份回配'")
         self.assertPageContains("code_creators:'番号目录存疑'")
-        self.assertPageContains("cover_sources:'封面来源'")
+        self.assertPageLacks("cover_sources:'封面来源'")
         self.assertPageContains("fc2_markings:'FC2 评论标记'")
 
     def test_index_pages_drop_the_home_filter_bars_and_back_button(self):

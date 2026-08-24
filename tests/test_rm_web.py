@@ -357,7 +357,7 @@ class WebDataTests(unittest.TestCase):
     def test_contract_handler_registries_are_complete_and_unknown_routes_fail(self):
         self.assertEqual(set(rm_web.GET_HANDLERS), {
             "/api/items", "/api/item", "/api/entity", "/api/photos", "/api/photo-set",
-            "/api/index", "/api/duplicates",
+            "/api/index", "/api/duplicates", "/api/quality-goals",
             "/api/stats", "/api/tops", "/api/ads", "/api/related", "/api/facets",
             "/api/search-history", "/api/review",
         })
@@ -516,6 +516,14 @@ class WebDataTests(unittest.TestCase):
         cleared = rm_web.w_quality_goal(self.contract, {"id": 1, "wanted": False})
         self.assertFalse(cleared["better_version"])
         self.assertFalse(rm_web.q_item(self.contract, 1)["better_version"])
+
+    def test_better_version_targets_have_a_management_read_surface(self):
+        rm_web.w_quality_goal(self.contract, {"id": 1, "wanted": True})
+        queue = rm_web.q_quality_goals(self.contract, {"limit": "20"})
+        self.assertEqual(queue["total"], 1)
+        self.assertEqual(queue["items"][0]["id"], 1)
+        self.assertNotIn("path", queue["items"][0])
+        self.assertFalse(queue["has_more"])
         rm_web.w_batch(self.contract, {"ids": [1, 2], "operation": "dispose"})
         self.assertEqual(self.row(1)["disposal"], "trash")
         with self.assertRaises(ValueError):
@@ -784,6 +792,32 @@ class ReviewQueueTests(unittest.TestCase):
             "SELECT release_date FROM asset WHERE id=1").fetchone()[0], "2020-09-13")
         con.close()
 
+    def test_metadata_tag_approval_writes_tags_for_detail_consumers(self):
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET code='ABC-001' WHERE id=1")
+        con.commit(); con.close()
+        candidate = {
+            "candidate_key": "ABC-001:tags:r18dev:abc", "source": "r18dev",
+            "source_url": "https://r18.dev/example", "confidence": 0.9,
+            "value": ["乳系", "颜射"], "display_value": "乳系、颜射", "warnings": [],
+        }
+        self.write_metadata_candidates([{
+            "item_key": "ABC-001:tags", "code": "ABC-001", "query": "ABC-001",
+            "field": "tags", "field_label": "标签", "current_value": "",
+            "candidates_json": json.dumps([candidate], ensure_ascii=False), "source_count": "1",
+            "status": "candidate", "size_gb": "1", "videos": "1", "fetched_at": "now",
+        }])
+        result = rm_web.w_review_decision(self.contract, {
+            "category": "metadata_fields", "item_key": "ABC-001:tags",
+            "candidate_key": candidate["candidate_key"], "status": "approved",
+        })
+        self.assertEqual(result["applied_assets"], 1)
+        con = sqlite3.connect(self.db_path)
+        self.assertEqual({row[0] for row in con.execute(
+            "SELECT tag FROM asset_tag WHERE asset_id=1 AND source='javinizer:r18dev:tag'"
+        )}, {"乳系", "颜射"})
+        con.close()
+
     def test_metadata_approval_rejects_repeated_name_even_if_csv_is_tampered(self):
         con = sqlite3.connect(self.db_path)
         con.execute("UPDATE asset SET code='ABC-001' WHERE id=1")
@@ -943,7 +977,14 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertIn("写法 Sexy Saffron", row["reason"], "别名跳转必须写明用了哪个写法")
         self.assertEqual(row["preview_url"], "https://x/s.jpg")
 
-    def test_cover_sources_only_surface_gaps_and_low_resolution(self):
+    def test_record_only_review_categories_can_be_decided(self):
+        result = rm_web.w_review_decision(self.contract, {
+            "category": "western_identity", "item_key": "1", "status": "skipped",
+        })
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["applied_assets"], 0)
+
+    def test_cover_fetch_status_never_becomes_manual_review_work(self):
         fields = ["code", "result", "source", "width", "height", "kb", "url", "note"]
         self._csv("cover-fetch-log.csv", fields, [
             {"code": "BAZX-302", "result": "取得", "source": "awsimgsrc.dmm.co.jp",
@@ -954,17 +995,21 @@ class ReviewQueueTests(unittest.TestCase):
              "height": "", "kb": "", "url": "", "note": "所有渠道都没有候选"},
         ])
         rows = rm_web.q_review(self.contract)["sections"]["cover_sources"]
-        self.assertEqual({r["code"] for r in rows}, {"PPT-018", "HEYZO-1380"},
-                         "2184 宽的高清图不需要人确认")
+        self.assertEqual(rows, [], "封面成功、尺寸和缺失都由机械状态处理")
 
-    def test_stored_cover_previews_from_disk_not_the_origin(self):
-        fields = ["code", "result", "source", "width", "height", "kb", "url", "note"]
-        self._csv("cover-fetch-log.csv", fields, [
-            {"code": "PPT-018", "result": "取得", "source": "pics.dmm.co.jp",
-             "width": "800", "height": "539", "kb": "165", "url": "https://far/away.jpg",
-             "note": ""}])
-        row = rm_web.q_review(self.contract)["sections"]["cover_sources"][0]
-        self.assertEqual(row["preview_url"], "/cover?code=PPT-018")
+    def test_metadata_review_links_back_to_one_original_asset(self):
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET code='ABC-001' WHERE id=1")
+        con.commit(); con.close()
+        self.write_metadata_candidates([{
+            "item_key": "ABC-001:tags", "code": "ABC-001", "query": "ABC-001",
+            "field": "tags", "field_label": "标签", "current_value": "",
+            "candidates_json": "[]", "source_count": "1", "status": "candidate",
+            "size_gb": "1", "videos": "1", "fetched_at": "now",
+        }])
+        row = rm_web.q_review(self.contract)["sections"]["metadata_fields"][0]
+        self.assertEqual(row["asset_id"], 1)
+        self.assertEqual(row["asset_name"], "1.mp4")
 
     FC2_FIELDS = ["code", "video_id", "result", "title", "release_date", "duration",
                   "censored", "writer", "writer_slug", "tags", "performers",
@@ -1089,17 +1134,18 @@ class JavModeAndCoverTests(unittest.TestCase):
         self.db_path = str(root / "ledger.db")
         con = sqlite3.connect(self.db_path)
         con.executescript(BASE_SCHEMA)
-        # 前四条是真番号的四种形态，后三条是 `code` 里实际混着的非番号值。
+        # 前四条是真番号的四种形态；JI-103 虽像番号，但只有 creator、没有发行证据。
         con.executemany(
-            "INSERT INTO asset(id,location,path,name,medium,code,duration,first_seen) "
-            "VALUES(?,'local',?,?,'video',?,100,'2026-08-18')",
-            [(1, r"R:\a.mp4", "a.mp4", "ABW-232"),
-             (2, r"R:\b.mp4", "b.mp4", "259LUXU-1468"),
-             (3, r"R:\c.mp4", "c.mp4", "FC2-PPV-1234567"),
-             (4, r"R:\d.mp4", "d.mp4", "040221-001"),
-             (5, r"R:\e.mp4", "e.mp4", "RAIKUN325"),
-             (6, r"R:\f.mp4", "f.mp4", "HHD800"),
-             (7, r"R:\g.mp4", "g.mp4", None)],
+            "INSERT INTO asset(id,location,path,name,medium,code,creator,studio,duration,first_seen) "
+            "VALUES(?,'local',?,?,'video',?,?,?,100,'2026-08-18')",
+            [(1, r"R:\a.mp4", "a.mp4", "ABW-232", None, "Studio A"),
+             (2, r"R:\b.mp4", "b.mp4", "259LUXU-1468", None, "Studio B"),
+             (3, r"R:\c.mp4", "c.mp4", "FC2-PPV-1234567", None, None),
+             (4, r"R:\d.mp4", "d.mp4", "040221-001", None, "Studio D"),
+             (5, r"R:\e.mp4", "e.mp4", "RAIKUN325", None, None),
+             (6, r"R:\f.mp4", "f.mp4", "HHD800", None, None),
+             (7, r"R:\g.mp4", "g.mp4", None, None, None),
+             (8, r"R:\h.mp4", "JI-103 Jioh.mp4", "JI-103", "MIB", None)],
         )
         con.commit(); con.close()
         self.contract = rm_web.WebContract(Path(self.db_path), cover_root=self.covers)
@@ -1116,8 +1162,12 @@ class JavModeAndCoverTests(unittest.TestCase):
         self.assertNotIn(5, self.ids({"jav": "1"}))
         self.assertNotIn(6, self.ids({"jav": "1"}))
 
+    def test_code_shaped_creator_clip_without_release_evidence_is_excluded(self):
+        self.assertNotIn(8, self.ids({"jav": "1"}))
+        self.assertFalse(rm_web.q_item(self.contract, 8)["is_jav"])
+
     def test_without_the_flag_nothing_is_filtered(self):
-        self.assertEqual(self.ids({}), [1, 2, 3, 4, 5, 6, 7])
+        self.assertEqual(self.ids({}), [1, 2, 3, 4, 5, 6, 7, 8])
 
     def test_shape_predicate_matches_the_documented_forms(self):
         for good in ("ABW-232", "259LUXU-1468", "FC2-PPV-1234567", "040221-001"):

@@ -56,6 +56,28 @@ def is_jav_code(code: str | None) -> bool:
     )
 
 
+def is_jav_asset(code: str | None, studio: str | None = None,
+                 release_date: str | None = None,
+                 entity_kinds: tuple[str, ...] | list[str] = ()) -> bool:
+    """Require release evidence in addition to a code-shaped string.
+
+    Creator clips such as ``JI-103`` can look exactly like a studio code. They
+    stay in ordinary browsing until a studio, performer, series, or release
+    date ties them to a published JAV release. FC2 IDs are an explicit release
+    system and do not need those projections.
+    """
+    if not is_jav_code(code):
+        return False
+    value = (code or "").upper().strip()
+    if value.startswith("FC2"):
+        return True
+    return bool(
+        str(studio or "").strip()
+        or str(release_date or "").strip()
+        or {"performer", "studio", "series"}.intersection(entity_kinds)
+    )
+
+
 def face_focus(ratio: float, cx: float, cy: float) -> dict | None:
     """Convert a normalized face center into a circular-frame object position."""
     try:

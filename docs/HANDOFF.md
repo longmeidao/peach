@@ -23,17 +23,14 @@
 - 二手结论不能当证据：搜索摘要曾称 `@EBODY_` 已注销，实测直接解析到 400×400 活跃头像。凡是「某账号/端点已失效」这类判断，取证方式是自己请求一次，不是转述搜索结果。
 - **图集就是目录**：账本没有图集实体，也不需要一个。`<作品目录>\P\001.jpg` 这种约定在 A:/B: 上到处都是，所以 `/api/photos` 按 `path` 去掉文件名分组，图集 id 取该目录里最小的资产 id——稳定、可反查目录，又不用把真实路径发给前端（和 `q_item` 一致）。同名目录在两个来源下算两个图集：文件不同、计费口径也不同。叶子目录只写 `P`、`图片` 这类通用名时，标题取上一级目录名。
 - **瀑布流只读缩略图，原图只在灯箱里读**。图片资产没有接触印相可裁，只能读原图；PikPak 一张动辄几 MB，一屏几十张就是几十兆计费流量。`/photo-thumb` 用 Pillow 缩到 640 宽存进 `photo_root`，每张只回源一次，`/photo` 只服务灯箱当前和相邻的大图。瀑布流用 CSS `column-count`：图片行没有 `width`/`height`，等宽多列流式排版正好不需要比例，也就不必等图加载完再算位置。
-- 人工复核入口固定为 `/review`，候选 API 为 `GET /api/review`、`POST /api/review/decision`。候选来自本机 `peach-data/generated` 下的 CSV；审核状态写 `review_decision`。只有创作者标签 `approved` 会按候选创作者和标签写入 `vision_creator_review` 关系；该来源也必须进入统计的标签覆盖和 Top 标签口径。Logo/头像/媒体失败先只记录决定，不能伪造已下载资源或自动写媒体真相。
-
+- 人工复核入口固定为 `/review`，候选 API 为 `GET /api/review`、`POST /api/review/decision`。候选来自本机 `peach-data/generated` 下的 CSV；每项尽量带代表封面与原视频入口，审核状态写 `review_decision`。元数据与创作者标签批准后写相应真相/投影，Logo、头像、身份和媒体失败只记录决定；封面抓取的成功、尺寸和缺失是机械状态，不进入人工复核。
 
 ## 无摩擦接手
 
 - Codex 自动读取项目层级中的 `AGENTS.md`；Claude Code 通过 `CLAUDE.md` 导入同一文件。
 - 两个智能体使用同一入口、同一必读顺序，不再生成按日期命名的临时交接文档。
 - 新任务以当前机器真实的 `peach-app` 为工作目录，并说：「接手 Peach，按项目入口文件继续 STATUS 中的下一任务。」不得把 Windows 迁移前的 `R:\peach-app` 当跨平台固定路径。
-- 改变运行事实的任务同时更新 `docs/STATUS.md`；长期规则更新本文件、`docs/REUSE.md` 或 ADR；
-  可执行流程写成 `.claude/skills/<name>/SKILL.md`。写在哪一层的判据与清退机制见
-  `docs/adr/0015-agent-context-layering.md`，操作步骤见 `.claude/skills/peach-context-rules/SKILL.md`。
+- 改变运行事实的任务同时更新 `docs/STATUS.md`；长期规则更新本文件、`docs/REUSE.md` 或 ADR；可执行流程写成 `.claude/skills/<name>/SKILL.md`。分层判据见 ADR-0015，步骤见 `peach-context-rules`。
 - 技能目前只有 Claude 侧封装（`.claude/skills/`），Codex 不自动加载，只能靠 `AGENTS.md` 的索引表
   主动读取同一份文件。Codex 接手时自行确认当前版本的技能机制与目录约定，把这几个技能封装成
   Codex 侧可自动触发的形式，内容仍指向同一份 `SKILL.md`，不复制第二份正文；确认不了就保留索引
@@ -204,7 +201,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 ## 当前架构真相
 
 - Ledger 拥有真相和行为；Stash 是可替换适配器，调用统一经过 `StashClient`，外部 Scene ID 和来源进入 `media_binding`，不新增直接 GraphQL helper 或 Stash 私有 FFmpeg 路径。规范女优/厂牌/标签/创作者进入 `entity`、`entity_external_ref`、`asset_entity`；扁平 `asset_tag` 和 creator/studio 字段只是兼容投影。
-- 详情、筛选、搜索、facets、索引、统计、榜单和相关推荐使用规范关系。
+- 详情、筛选、搜索、facets、索引、统计、榜单和相关推荐使用规范关系；JAV 入口除番号形态外还要求厂牌、女优、系列或发行日期等发行证据，FC2 ID 单独成立，creator-only 的 `JI-103` 不算 JAV。
 - 女优、厂牌、创作者、系列名称进入资料页；首页内容标签直接筛选首页，实体资料页的标签只筛选当前实体作品，并保留在 `/performers/{name}?tag=...` 等当前资料页 URL。`source_reference` 是私有来源，不开放为下载链接。
 - 「稍后看」写 `watch_queue`；「喜欢/为什么喜欢」写 profile 级 `asset_preference`。AI 只能把口味说明转成带来源/置信度/复核状态的候选，不能改写用户原文。
 - Web 公共路由使用 `/performers/{name}`、`/studios/{name}`、`/creators/{name}`、`/series/{name}`；删除 `/entity/{kind}/{name}`。收起详情或导航离开时必须 pause、清空 `src`、调用 `load()` 并移除 video，不能只隐藏 DOM。
@@ -212,7 +209,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 长卡连续 hover 5 秒才放大并显示 seek；短卡立即提供「稍后看」。实体文字链接必须消费点击，不能冒泡为展开视频。
 - 卡片身份女优优先：先使用 `performer_entities` 头像和链接，再回退到创作者/厂牌代表图。
 - 喜欢与原因属于同一 profile 偏好；非空原因隐含喜欢，但原文不能直接冒充推荐特征。
-- 详情身份按规范化名称去重；女优与厂牌按内容宽度自然相邻，空间不足时自动换行；创作者独立分组。系列使用无外框、无下划线的 `tags` 图标链接显示全称，不复用标签胶囊或头像格。喜爱理由由反馈操作组中的图标展开；首页流与详情的来源只显示图标，完整名称与费用留在 title/ARIA，侧栏来源筛选保留文字。观看进度只显示标题和百分比，反馈操作组不得作为可收缩的 Flex 项。旧短/中/长片标签不再显示，时长筛选只使用分钟区间。
+- 详情身份按规范化名称去重；女优与厂牌按内容宽度自然相邻，空间不足时自动换行；创作者独立分组。系列使用无外框、无下划线的 `tags` 图标链接显示全称，不复用标签胶囊或头像格。喜爱理由由反馈操作组中的图标展开；首页流与详情的来源只显示图标，完整名称与费用留在 title/ARIA，侧栏来源筛选保留文字。观看进度只显示标题和百分比，反馈操作组不得作为可收缩的 Flex 项；寻找高清版直接切换标记，并在管理区 `/quality-goals` 汇总。旧短/中/长片标签不再显示，时长筛选只使用分钟区间。
 - 反馈使用 Lucide 紧凑图标工具栏。删除操作统一进入回收站；普通查询排除回收站，回收站入口的「清空回收站」才永久删除媒体与对应 ledger 关系。
 - 界面文案不复述标题、控件或实现状态，不用随机示例占位符和模型自我声明；只保留影响决策、防止数据损失、说明隐私/费用或解释陌生状态的文字。
 - 桌面筛选抽屉只在指针进入可见 72 px 侧栏后打开，不恢复内容区隐藏热区。

@@ -44,6 +44,7 @@ from .web_logic import (
     TECH_TAGS,
     duration_clusters,
     face_focus,
+    is_jav_asset,
     is_jav_code,
     normalise_code_key,
     part_marker,
@@ -242,8 +243,8 @@ def q_items(contract: WebContract, args):
     elif args.get("exclude_vertical") == "1":
         where.append("(a.ctx_orient IS NULL OR a.ctx_orient <> '竖屏')")
     if args.get("jav") == "1":
-        # 只按 `code` 非空过滤会混进账号名与站点水印；判据必须看形态。
-        where.append("a.code IS NOT NULL AND a.code<>'' AND is_jav_code(a.code)")
+        # 只有番号形态还不够：JI-103 这类 creator clip 没有任何发行证据。
+        where.append(JAV_ASSET_PREDICATE)
     if args.get("q"):
         query = args["q"].strip()
         if len(query) >= 3 and contract.has_fts():
@@ -355,12 +356,16 @@ def q_items(contract: WebContract, args):
             refs = performer_refs.get(r["id"], [])
             r["performer_entities"] = refs[:CARD_PERFORMERS]
             r["performer_total"] = len(refs) or len(all_performers)
+            r["_entity_kinds"] = tuple(canonical)
     for r in rows:
         r["cost"] = COST.get(r["location"], "metered")
         r["has_thumb"] = contract.has_snapshot(r["snapshot_path"])
         r["has_cover"] = contract.has_cover(r.get("code"))
-        # 卡片上的出镜者称谓要和详情页同一口径：番号发行物才叫女优。
-        r["is_jav"] = is_jav_code(r.get("code"))
+        # 卡片上的出镜者称谓要和详情页同一口径：番号形态加发行证据才叫 JAV。
+        r["is_jav"] = is_jav_asset(
+            r.get("code"), r.get("studio"), r.get("release_date"),
+            r.pop("_entity_kinds", ()),
+        )
         if r["has_cover"]:
             r["cover_frame"] = contract.cover_frame(r.get("code"))
         r.pop("snapshot_path", None)
@@ -512,9 +517,11 @@ def q_item(contract: WebContract, aid):
     c.close()
     d["cost"] = COST.get(d["location"], "metered")
     d["has_thumb"] = contract.has_snapshot(d["snapshot_path"])
-    # 「女优」是番号发行物的行业称谓；其他内容里出镜者只是艺人。形态判据只有
-    # `is_jav_code` 一份（分隔符规则是踩过坑换来的），不能在前端再写一遍。
-    d["is_jav"] = is_jav_code(d.get("code"))
+    # 「女优」是番号发行物的行业称谓；creator clip 即使长得像番号也仍是普通内容。
+    d["is_jav"] = is_jav_asset(
+        d.get("code"), d.get("studio"), d.get("release_date"),
+        [kind for kind, values in d["entities"].items() if values],
+    )
     d.pop("snapshot_path", None); d.pop("path", None)
     return d
 
@@ -622,9 +629,16 @@ def q_related(contract: WebContract, aid, limit=24):
         d.pop("snapshot_path", None)
     return {"items": picked[:limit]}
 
-#: JAV 语境下的资产过滤片段。顶部三层与筛选面板都要跟着收窄，否则在 JAV 模式里
-#: 仍然列着只出现在创作者作品里的女优和厂牌，点进去却是空的。
-JAV_ASSET_CLAUSE = "AND a.code IS NOT NULL AND a.code<>'' AND is_jav_code(a.code) "
+#: JAV 语境下的资产过滤片段。番号形态必须再有发行证据；否则 JI-103 这类
+#: creator clip 会混入 JAV。FC2 本身就是明确的发行 ID，单独保留。
+JAV_ASSET_PREDICATE = (
+    "a.code IS NOT NULL AND a.code<>'' AND is_jav_code(a.code) AND ("
+    "upper(trim(a.code)) LIKE 'FC2%' OR COALESCE(trim(a.studio),'')<>'' "
+    "OR COALESCE(trim(a.release_date),'')<>'' OR EXISTS("
+    "SELECT 1 FROM asset_entity jav_ae JOIN entity jav_e ON jav_e.id=jav_ae.entity_id "
+    "WHERE jav_ae.asset_id=a.id AND jav_e.kind IN ('performer','studio','series')))"
+)
+JAV_ASSET_CLAUSE = "AND " + JAV_ASSET_PREDICATE + " "
 
 
 #: 顶部三层的候选池相对展示位的倍数。严格取前 N 会让这一条永远是同一批人——
@@ -1021,12 +1035,9 @@ def _needs_review(category: str, row: dict) -> bool:
     if category == "western_identity":
         return str(row.get("verdict") or "") in ("命中", "需人工确认")
     if category == "cover_sources":
-        if str(row.get("result") or "") != "取得":
-            return True
-        try:
-            return int(row.get("width") or 0) < 1200
-        except ValueError:
-            return True
+        # 封面抓取的成功、尺寸和缺失都是机械状态，不需要人工批准。旧界面把
+        # 241 个未取得和 800 px 基线封面全塞进复核页，却没有可执行写入动作。
+        return False
     if category == "fc2_markings":
         # FC2 大多数作品页评论区是空的，全列出来会把真正有标记的几十条淹掉。
         # 只有拿到演员名、等价关系或判成合集的才需要人看。
@@ -1095,6 +1106,59 @@ def _creator_previews(connection, creators: list[str]) -> dict[str, list[dict]]:
     return previews
 
 
+def _attach_review_asset_context(connection, rows: list[dict]) -> None:
+    """Attach one representative original video without per-row SQL queries."""
+    codes = [str(row.get("code") or row.get("query") or "").strip()
+             for row in rows]
+    codes = [code for code in dict.fromkeys(codes) if code]
+    assets_by_code: dict[str, dict] = {}
+    if codes:
+        marks = ",".join("?" * len(codes))
+        sql = (
+            "SELECT id,name,code,snapshot_path FROM asset WHERE medium='video' "
+            "AND (disposal IS NULL OR disposal<>'trash') AND (code IN (" + marks + ")"
+        )
+        params: list[object] = list(codes)
+        if any(code.upper().startswith("FC2") for code in codes):
+            sql += " OR code LIKE 'FC2%'"
+        sql += ") ORDER BY (snapshot_path IS NULL),id"
+        for asset in connection.execute(sql, params):
+            key = normalise_code_key(asset["code"])
+            assets_by_code.setdefault(key, dict(asset))
+
+    entity_ids = [int(row["entity_id"]) for row in rows
+                  if str(row.get("entity_id") or "").isdigit()]
+    assets_by_entity: dict[int, dict] = {}
+    if entity_ids:
+        marks = ",".join("?" * len(entity_ids))
+        for asset in connection.execute(
+            "SELECT ae.entity_id,a.id,a.name,a.code,a.snapshot_path "
+            "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
+            f"WHERE ae.entity_id IN ({marks}) AND a.medium='video' "
+            "AND (a.disposal IS NULL OR a.disposal<>'trash') "
+            "ORDER BY (a.snapshot_path IS NULL),a.id",
+            entity_ids,
+        ):
+            assets_by_entity.setdefault(asset["entity_id"], dict(asset))
+
+    for row in rows:
+        code = str(row.get("code") or row.get("query") or "").strip()
+        asset = assets_by_code.get(normalise_code_key(code)) if code else None
+        entity_id = str(row.get("entity_id") or "")
+        if asset is None and entity_id.isdigit():
+            asset = assets_by_entity.get(int(entity_id))
+        if asset is None and row.get("preview_assets"):
+            first = row["preview_assets"][0]
+            asset = {"id": first["id"], "name": first["name"], "code": code,
+                     "snapshot_path": True}
+        if asset is None:
+            continue
+        row["asset_id"] = asset["id"]
+        row["asset_name"] = asset["name"]
+        row["asset_code"] = asset.get("code") or code
+        row["asset_has_snapshot"] = bool(asset.get("snapshot_path"))
+
+
 def _review_rows(contract: WebContract, category: str) -> tuple[list[dict], str | None, int]:
     rows, source, skipped = read_candidates(category, contract.candidate_root)
     rows = [row for row in rows if _needs_review(category, row)]
@@ -1121,6 +1185,7 @@ def _review_rows(contract: WebContract, category: str) -> tuple[list[dict], str 
                 row["candidates"] = [candidate for candidate in candidates
                                      if isinstance(candidate, dict)
                                      and str(candidate.get("candidate_key") or "").strip()]
+        _attach_review_asset_context(connection, rows)
     finally:
         connection.close()
     for row in rows:
@@ -1132,6 +1197,14 @@ def _review_rows(contract: WebContract, category: str) -> tuple[list[dict], str 
         if category == "cover_sources" and row.get("result") == "取得":
             # 封面已经在本机，直接看落盘的那张，不要回源站再拉一次。
             row["preview_url"] = f"/cover?code={quote(str(row.get('code') or ''))}"
+        asset_code = str(row.get("asset_code") or row.get("code") or "")
+        if row.get("asset_id"):
+            if asset_code and contract.has_cover(asset_code):
+                row["asset_preview_url"] = f"/cover?code={quote(asset_code)}"
+            elif row.get("asset_has_snapshot"):
+                row["asset_preview_url"] = f"/poster?id={row['asset_id']}&c=4"
+            else:
+                row["asset_preview_url"] = ""
         if not row.get("reason"):
             row["reason"] = _review_evidence(category, row)
     return rows, source, skipped
@@ -1187,6 +1260,9 @@ def q_review(contract: WebContract):
         row["item_key"] = str(row["id"])
         row["decision"] = decision.get("status", "pending")
         row["decision_note"] = decision.get("note", "")
+        row["asset_id"] = row["id"]
+        row["asset_name"] = row["name"]
+        row["asset_preview_url"] = ""
     sections, sources, skipped = {}, {}, {}
     for category in CANDIDATE_PREFIX:
         rows, source, dropped = _review_rows(contract, category)
@@ -1368,7 +1444,10 @@ def w_review_decision(contract: WebContract, body):
     category = str(body.get("category", "")).strip()
     item_key = str(body.get("item_key", "")).strip()
     status = str(body.get("status", "")).strip()
-    if category not in {"metadata_fields", "creator_tags", "studio_logos", "performer_avatars", "media_failure"}:
+    if category not in {
+        "metadata_fields", "creator_tags", "studio_logos", "performer_avatars",
+        "western_identity", "code_creators", "fc2_markings", "media_failure",
+    }:
         raise ValueError("invalid review category")
     if not item_key or status not in {"approved", "rejected", "skipped"}:
         raise ValueError("invalid review decision")
@@ -1808,6 +1887,35 @@ def q_duplicates(contract: WebContract, args):
     }
 
 
+def q_quality_goals(contract: WebContract, args):
+    """List explicit better-version targets for the management surface."""
+    limit = min(max(int(args.get("limit", "60")), 1), 200)
+    offset = max(int(args.get("offset", "0")), 0)
+    connection = contract.db()
+    try:
+        total = connection.execute(
+            "SELECT count(*) FROM asset_quality_goal WHERE profile_id=? AND wanted=1",
+            (DEFAULT_PROFILE_ID,),
+        ).fetchone()[0]
+        rows = [dict(row) for row in connection.execute(
+            "SELECT a.id,a.name,a.code,a.location,a.size,a.duration,a.snapshot_path,"
+            "g.reason,g.updated_at FROM asset_quality_goal g "
+            "JOIN asset a ON a.id=g.asset_id "
+            "WHERE g.profile_id=? AND g.wanted=1 "
+            "ORDER BY g.updated_at DESC,a.id DESC LIMIT ? OFFSET ?",
+            (DEFAULT_PROFILE_ID, limit, offset),
+        )]
+    finally:
+        connection.close()
+    for row in rows:
+        row["cost"] = COST.get(row["location"], "metered")
+        row["has_thumb"] = contract.has_snapshot(row["snapshot_path"])
+        row["has_cover"] = contract.has_cover(row.get("code"))
+        row.pop("snapshot_path", None)
+    return {"total": total, "items": rows, "offset": offset,
+            "has_more": offset + len(rows) < total}
+
+
 class ContractRouteNotFound(KeyError):
     """The stable JSON contract has no handler for this path."""
 
@@ -1888,6 +1996,7 @@ GET_HANDLERS = {
     "/api/photo-set": q_photo_set,
     "/api/index": _get_index,
     "/api/duplicates": q_duplicates,
+    "/api/quality-goals": q_quality_goals,
     "/api/stats": _get_stats,
     "/api/tops": _get_tops,
     "/api/ads": _get_ads,

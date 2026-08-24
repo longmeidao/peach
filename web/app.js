@@ -884,7 +884,7 @@ function showHomeSurfaces(){
 function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
 
 let reviewData=null,reviewCategory='metadata_fields';
-const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',western_identity:'西方身份回配',code_creators:'番号目录存疑',cover_sources:'封面来源',fc2_markings:'FC2 评论标记',media_failure:'媒体失败'};
+const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',western_identity:'西方身份回配',code_creators:'番号目录存疑',fc2_markings:'FC2 评论标记',media_failure:'媒体失败'};
 let dupData=null;
 /* 重复文件。判据是「同番号 + 时长相近 + 分卷标记一致」，不是同番号即重复——
    合集、分卷和混入的广告都会共用一个 code，只按番号做「保留最大」会删掉内容。
@@ -907,18 +907,23 @@ function renderDuplicates(){
     <p class="dupsum mono">${d.total} 组 · ${d.files} 个文件 · 可回收 ${fmtSize(d.reclaimable)}</p>
     <div class="dupactions">
       <button data-dup-all="largest">全部保留最大</button>
-      <button data-dup-all="longest">全部保留最长</button></div>
+      <button data-dup-all="longest">全部保留最长</button>
+      <button data-dup-all="115">全部优先 115</button>
+      <button data-dup-all="pikpak">全部优先 PikPak</button></div>
     ${groups.length?groups.map((g,gi)=>`<section class="dupgroup" data-dup-group="${gi}">
       <div class="duphead"><b class="mono">${esc(g.code)}</b>
         <span class="mono">${g.count} 个 · 可回收 ${fmtSize(g.reclaimable)}</span>
         ${g.identical?'<span class="dupflag ok">sha1 一致</span>':'<span class="dupflag">时长推断</span>'}
         ${g.cross_drive?`<span class="dupflag">跨盘 ${esc(g.drives.join(' '))}</span>`:''}
         <span class="dupbtns"><button data-dup-keep="largest" data-dup-i="${gi}">留最大</button>
-          <button data-dup-keep="longest" data-dup-i="${gi}">留最长</button></span></div>
+          <button data-dup-keep="longest" data-dup-i="${gi}">留最长</button>
+          <button data-dup-keep="115" data-dup-i="${gi}">留 115</button>
+          <button data-dup-keep="pikpak" data-dup-i="${gi}">留 PikPak</button>
+          <button class="danger" data-dup-keep="all" data-dup-i="${gi}">整组回收</button></span></div>
       <div class="duplist">${g.files.map(f=>`<div class="duprow">
         <span class="dupmarks">${f.is_largest?'<i class="big">最大</i>':''}${f.is_longest?'<i class="long">最长</i>':''}</span>
         <button class="dupname" data-open-dup="${f.id}" title="${esc(f.name)}">${esc(f.name)}</button>
-        <span class="mono">${esc(f.drive||'')}</span>
+        <span class="mono">${esc(LOC[f.location]||f.location||f.drive||'')}</span>
         <span class="mono">${fmtSize(f.size||0)}</span>
         <span class="mono">${fmtDur(f.duration)}</span></div>`).join('')}</div>
     </section>`).join(''):'<p class="empty">没有找到重复文件</p>'}</div>`;
@@ -929,12 +934,17 @@ function renderDuplicates(){
   $('#stats').querySelectorAll('[data-dup-all]').forEach(b=>
     b.onclick=()=>disposeDuplicates(groups,b.dataset.dupAll,b));
 }
-/* 每组只留一个，其余进回收站。keeper 按体积或时长选，两者可能不是同一个文件。 */
+/* 每组只留一个，其余进回收站；整组都是广告时允许一个不留。 */
 function duplicateVictims(groups,keep){
   const ids=[];
   for(const g of groups){
+    if(keep==='all'){for(const f of g.files)ids.push(f.id);continue}
     const flag=keep==='longest'?'is_longest':'is_largest';
-    const keeper=g.files.find(f=>f[flag])||g.files[0];
+    const preferred=(keep==='115'||keep==='pikpak')?g.files.filter(f=>f.location===keep):[];
+    const pool=preferred.length?preferred:g.files;
+    const keeper=(keep==='largest'||keep==='longest')
+      ? (g.files.find(f=>f[flag])||g.files[0])
+      : pool.reduce((best,file)=>(file.size||0)>(best.size||0)?file:best,pool[0]);
     for(const f of g.files)if(f.id!==keeper.id)ids.push(f.id);
   }
   return ids;
@@ -942,9 +952,10 @@ function duplicateVictims(groups,keep){
 async function disposeDuplicates(groups,keep,button){
   const ids=duplicateVictims(groups,keep);
   if(!ids.length)return;
-  const bytes=groups.reduce((n,g)=>n+(g.reclaimable||0),0);
-  if(!confirm(`把 ${ids.length} 个文件移入回收站，每组保留${keep==='longest'?'最长':'最大'}的一个？
-`
+  const victims=new Set(ids);
+  const bytes=groups.reduce((n,g)=>n+g.files.reduce((m,f)=>m+(victims.has(f.id)?f.size||0:0),0),0);
+  const label={largest:'最大的一个',longest:'最长的一个','115':'115（没有则留最大）',pikpak:'PikPak（没有则留最大）',all:'零个文件'}[keep];
+  if(!confirm(`把 ${ids.length} 个文件移入回收站，每组保留${label}？\n`
     +`预计回收 ${fmtSize(bytes)}。文件仍在回收站里，可以还原。`))return;
   button.disabled=true;
   try{
@@ -977,8 +988,13 @@ async function openReview(push=true){
         const titleText=metadata?`${row.query||row.code} · ${row.field_label||row.field}`:(row.creator||row.studio||row.current_name||row.name||key);
         const evidence=row.reason||row.evidence||row.note||row.decision_note||'';
         const canApprove=metadata?candidates.length>0:(reviewCategory!=='creator_tags'||String(row.status||'').trim()==='candidate');
-        const approveLabel=canApprove?'通过':'已跳过';
+         const approveLabel=canApprove?'通过':'已跳过';
          const assets=row.preview_assets||[];
+         const origin=row.asset_id?`<div class="revieworigin">
+             <button class="revieworigincover" data-review-open-item="${row.asset_id}" aria-label="打开原视频 ${esc(row.asset_name||'')}">
+               ${row.asset_preview_url?`<img src="${esc(row.asset_preview_url)}" alt="" loading="lazy" onerror="this.remove()">`:'<span>无封面</span>'}</button>
+             <div><b title="${esc(row.asset_name||'')}">${esc(row.asset_name||'原视频')}</b>
+               <button type="button" data-review-open-item="${row.asset_id}">${icon('play')}打开原视频</button></div></div>`:'';
          const preview=metadata
            ? `<div class="metadatacandidates">${candidates.map((candidate,index)=>`<label class="metadatacandidate"><input type="radio" name="metadata-${esc(key)}" value="${esc(candidate.candidate_key)}"${index===0?' checked':''}><span><b>${esc(candidate.source)}${candidate.official?' · 官方优先':''}</b><span>${esc(candidate.display_value||'')}</span>${(candidate.warnings||[]).map(warning=>`<i>${esc(warning)}</i>`).join('')}</span></label>`).join('')}</div>`
            : reviewCategory==='creator_tags'
@@ -988,8 +1004,9 @@ async function openReview(push=true){
               // 空白一片会被当成界面坏了。真实原因是这些作品还没抽帧，说清楚比留白好。
               : `<p class="empty">这 ${esc(row.video_count||'')} 条作品尚未抽帧，暂无预览；批准后仍会按候选写入标签</p>`)
            : (row.preview_url?`<div class="reviewimage"><img src="${esc(row.preview_url)}" alt="" loading="lazy" onerror="this.closest('.reviewimage').remove()"></div>`:'<p class="empty">未取得图片预览</p>');
-         return `<article class="reviewitem" data-review-key="${esc(key)}" data-decision="${esc(decision)}"><h4>${esc(titleText)}</h4><p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>${tags?`<div class="reviewtags">${tags}</div>`:''}${preview}<p>${esc(evidence)}</p><div class="reviewactions"><button class="approve" data-review-status="approved"${canApprove?'':' disabled'}>${approveLabel}</button><button class="skip" data-review-status="skipped">跳过</button><button class="reject" data-review-status="rejected">拒绝</button></div></article>`}).join(''):'<p class="empty">暂无候选</p>'}</div></section></div>`;
+         return `<article class="reviewitem" data-review-key="${esc(key)}" data-decision="${esc(decision)}"><h4>${esc(titleText)}</h4><p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>${origin}${tags?`<div class="reviewtags">${tags}</div>`:''}${preview}<p>${esc(evidence)}</p><div class="reviewactions"><button class="approve" data-review-status="approved"${canApprove?'':' disabled'}>${approveLabel}</button><button class="skip" data-review-status="skipped">跳过</button><button class="reject" data-review-status="rejected">拒绝</button></div></article>`}).join(''):'<p class="empty">暂无候选</p>'}</div></section></div>`;
      wireReviewAssets($('#stats'));
+    $('#stats').querySelectorAll('[data-review-open-item]').forEach(button=>button.onclick=()=>openItem(+button.dataset.reviewOpenItem));
     $('#stats').querySelectorAll('[data-review-tab]').forEach(button=>button.onclick=()=>{reviewCategory=button.dataset.reviewTab;render()});
     $('#stats').querySelectorAll('[data-review-status]').forEach(button=>button.onclick=async()=>{
       const item=button.closest('[data-review-key]'),row=rows.find(x=>String(x.item_key)===item.dataset.reviewKey);button.disabled=true;
@@ -1009,6 +1026,27 @@ async function openReview(push=true){
     });
   };
   render();window.scrollTo({top:0,behavior:'smooth'});
+}
+
+let qualityData=null;
+async function openQualityGoals(push=true){
+  releaseHoverPreviews();disposeStage(false);document.body.classList.remove('entity-open');
+  if(push)route('/quality-goals');
+  buildManageBar();$('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
+  $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
+  $('#stats').innerHTML='<div class="review"><p class="empty">正在读取…</p></div>';
+  qualityData=await api('/api/quality-goals?limit=200');
+  if(location.pathname!=='/quality-goals')return;
+  const items=qualityData.items||[];
+  $('#stats').innerHTML=`<div class="qualitylist">${items.length?items.map(item=>{
+    const preview=item.has_cover?`/cover?code=${encodeURIComponent(item.code||'')}`:`/poster?id=${item.id}&c=4`;
+    return `<article class="qualityitem"><button class="qualitycover" data-quality-open="${item.id}" aria-label="打开 ${esc(item.name)}">
+        <img src="${preview}" alt="" loading="lazy" onerror="this.remove()"></button>
+      <div><h3><button data-quality-open="${item.id}">${esc(item.name)}</button></h3>
+        <p class="mono">${srcBadge(item.location,item.cost)}<span>${esc(LOC[item.location]||item.location)}</span><span>${fmtDur(item.duration)}</span><span>${fmtSize(item.size||0)}</span></p>
+        ${item.reason?`<p>${esc(item.reason)}</p>`:''}</div></article>`}).join(''):'<p class="empty">没有标记中的高清版目标</p>'}</div>`;
+  $('#stats').querySelectorAll('[data-quality-open]').forEach(button=>button.onclick=()=>openItem(+button.dataset.qualityOpen));
+  window.scrollTo({top:0,behavior:'smooth'});
 }
 
 function wireReviewAssets(root){
@@ -1424,6 +1462,7 @@ const MANAGE_SECTIONS=[
   ['stats','统计','chart'],
   ['ads','疑似广告','alert'],
   ['dupes','重复文件','hard-drive'],
+  ['quality','高清版','sparkles'],
   ['trash','回收站','trash'],
   ['review','人工复核','square-check-big'],
 ];
@@ -1433,6 +1472,7 @@ function manageSection(){
   if(path==='/review')return 'review';
   if(path==='/trash')return 'trash';
   if(path==='/duplicates')return 'dupes';
+  if(path==='/quality-goals')return 'quality';
   return state.state==='ads'?'ads':'';
 }
 function buildManageBar(){
@@ -1461,6 +1501,7 @@ function openManage(section='stats'){
   if(section==='stats'){openStats();return}
   if(section==='review'){openReview();return}
   if(section==='dupes'){openDuplicates();return}
+  if(section==='quality'){openQualityGoals();return}
   state.orient='';state.state=section==='trash'?'trash':'ads';
   route(section==='trash'?'/trash':'/');
   showHomeSurfaces();buildEdge();buildBars();load(true);
@@ -1988,8 +2029,7 @@ async function openItem(id,push=true,mixContext=null){
     $('#stageLater').setAttribute('aria-pressed',r.watch_later);
     $('#stageLater').innerHTML=r.watch_later?icon('check'):icon('bookmark-plus')};
   $('#betterVersion').onclick=async()=>{const b=$('#betterVersion'),wanted=b.getAttribute('aria-pressed')!=='true';
-    const reason=wanted?(prompt('要找哪种更好版本？可留空','高清 / 无水印 / 完整版')||'').trim():'';
-    const r=await api('/api/quality-goal',{method:'POST',body:JSON.stringify({id:it.id,wanted,reason})});
+    const r=await api('/api/quality-goal',{method:'POST',body:JSON.stringify({id:it.id,wanted})});
     it.better_version=r.better_version;it.better_version_reason=r.better_version_reason;
     b.setAttribute('aria-pressed',String(r.better_version));b.title=r.better_version?(r.better_version_reason||'已标记寻找更好版本'):'寻找高清、无水印或完整版'};
   const preferenceToggle=$('#preferenceToggle'),preferencePanel=$('#preferencePanel');
@@ -2303,6 +2343,7 @@ async function refreshAll(automatic=false){
   if(!$('#stats').hidden){
     if(location.pathname==='/review'){await openReview(false);return}
     if(location.pathname==='/duplicates'){await openDuplicates(false);return}
+    if(location.pathname==='/quality-goals'){await openQualityGoals(false);return}
     await openStats(false);return
   }      // 统计/复核页只刷新当前表面
   if(!$('#index').hidden){return}
@@ -2362,6 +2403,7 @@ async function restoreRoute(){
   if(path==='/stats'){await openStats(false);return}
   if(path==='/review'){await openReview(false);return}
   if(path==='/duplicates'){await openDuplicates(false);return}
+  if(path==='/quality-goals'){await openQualityGoals(false);return}
   if(path==='/immerse'){await openTok(undefined,false);return}
   showHomeSurfaces();disposeStage(false);
 }
