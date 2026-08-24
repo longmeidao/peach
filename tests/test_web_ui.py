@@ -71,7 +71,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<h5 class="idlabel">${label}</h5>')
         self.assertPageContains(".idrow{display:flex;flex-wrap:wrap")
         self.assertPageContains('<div class="identityprimary">${primaryIdentity}</div>')
-        self.assertPageContains(".identityprimary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))")
+        self.assertPageContains(".identityprimary{display:flex;flex-wrap:wrap;gap:14px 26px")
+        self.assertPageContains(".identityprimary>.idgroup{width:max-content;max-width:100%}")
         # 出镜者标签跟着作品形态走，不再写死「女优」——见 performerLabel。
         self.assertPageContains("idGroup(performerLabel(it),'performer',castList,")
         self.assertPageContains("idGroup('厂牌','studio',studioList)")
@@ -86,16 +87,34 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".idcell:not(.entitylink){cursor:default}")
         self.assertPageContains(".idcell.entitylink:hover .idface")
 
-    def test_detail_series_is_a_full_width_identity_bar_not_a_tag_or_icon(self):
-        self.assertPageContains('class="seriesbar entitylink" data-entity-kind="series"')
+    def test_detail_series_is_a_plain_icon_link_not_a_tag_pill(self):
+        self.assertPageContains('class="serieslink entitylink" data-entity-kind="series"')
         self.assertPageContains('<div class="seriesrows">${list.map(seriesCell).join(\'\')}</div>')
-        self.assertPageContains(".seriesbar,.seriesbar.entitylink{display:flex;width:100%")
-        self.assertPageContains("border-left:3px solid var(--tungsten)")
+        self.assertPageContains("const content=`${icon('tags')}<span>${esc(item.name)}</span>`")
+        self.assertPageContains(".serieslink,.serieslink.entitylink{display:flex;width:100%")
         self.assertPageContains("white-space:normal;overflow-wrap:anywhere")
-        self.assertPageLacks("kind==='series'?icon('tags')")
+        self.assertPageContains("button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}")
 
     def test_detail_feedback_toolbar_never_shrinks_into_a_line(self):
         self.assertPageContains("width:max-content;overflow:hidden;flex:none")
+
+    def test_detail_like_reason_is_an_icon_disclosure_without_idle_explanation(self):
+        self.assertPageContains('id="preferenceToggle" aria-label="喜爱理由"')
+        self.assertPageContains('id="preferencePanel" hidden')
+        self.assertPageContains("preferenceToggle.onclick=()=>{const open=preferencePanel.hidden")
+        self.assertPageContains('placeholder="为什么喜欢？"')
+        self.assertPageContains('aria-label="保存喜爱理由">${icon(\'check\')}</button>')
+        self.assertPageLacks("仅保存在本机")
+        self.assertPageLacks("回收站中的文件仍保留，清空回收站后才会永久删除。")
+
+    def test_detail_progress_uses_only_titles_and_percentages(self):
+        self.assertPageContains('<span>离开位置</span><span id="ratioTxt">0%</span>')
+        self.assertPageContains('<span>真实观看</span><span id="realTxt">0%</span>')
+        self.assertPageContains("if(t)t.textContent=(r*100).toFixed(0)+'%'")
+        self.assertPageContains("rr.textContent=rp.toFixed(0)+'%'")
+        self.assertPageLacks('class="ticks mono"')
+        self.assertPageLacks("开头就走")
+        self.assertPageLacks("真实看 ${rp.toFixed(0)}% · 到达")
 
     def test_performer_label_says_actress_only_for_jav(self):
         """「女优」是番号发行物的行业称谓。
@@ -512,6 +531,10 @@ class WebUiSourceTests(unittest.TestCase):
     def test_source_icons_are_visible_in_detail_and_list_badges(self):
         self.assertPageContains(".srcbig svg{stroke:currentColor;fill:none")
         self.assertPageContains("local:icon('hard-drive')")
+        self.assertPageContains('title="${esc(label)}" aria-label="${esc(label)}"')
+        self.assertPageContains(".src{display:grid;place-items:center;width:20px;height:20px;padding:0;border:0;background:transparent}")
+        self.assertPageContains(".srcbig{display:inline-grid;place-items:center;width:22px;height:22px;padding:0;border:0;background:transparent}")
+        self.assertPageContains(".edge .srcrow button{width:52px;height:44px")
 
     def test_beeg_evidence_driven_surfaces_are_translucent_and_rail_is_continuous(self):
         self.assertPageContains(".brandpill{")
