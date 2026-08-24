@@ -227,7 +227,10 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([item["id"] for item in listed.json()["items"]], [])
 
     async def test_recycle_bin_route_and_batch_delete_are_reachable(self):
-        page = await self.client.get("/trash?t=secret")
+        legacy = await self.client.get("/trash?t=secret")
+        self.assertEqual(legacy.status_code, 303)
+        self.assertEqual(legacy.headers["location"], "/trash")
+        page = await self.client.get("/trash")
         self.assertEqual(page.status_code, 200)
         refused = await self.client.post("/api/batch?t=secret",
                                          json={"ids": [1], "operation": "delete"})
@@ -447,16 +450,40 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_home_sets_exact_http_only_cookie(self):
         denied = await self.client.get("/")
-        self.assertEqual(denied.status_code, 401)
-        response = await self.client.get("/?t=secret")
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("ready", response.text)
-        cookie = response.headers["set-cookie"]
+        self.assertEqual(denied.status_code, 303)
+        self.assertEqual(denied.headers["location"], "/login?next=/")
+        legacy = await self.client.get("/?t=secret")
+        self.assertEqual(legacy.status_code, 303)
+        self.assertEqual(legacy.headers["location"], "/")
+        cookie = legacy.headers["set-cookie"]
         self.assertIn("tok=secret", cookie)
         self.assertIn("HttpOnly", cookie)
+        response = await self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("ready", response.text)
+
+    async def test_login_posts_the_token_without_putting_it_in_the_url(self):
+        page = await self.client.get("/login?next=/stats")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('type="password"', page.text)
+        refused = await self.client.post(
+            "/login", content="token=wrong&next=%2Fstats",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(refused.status_code, 401)
+        accepted = await self.client.post(
+            "/login", content="token=secret&next=%2Fstats",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(accepted.status_code, 303)
+        self.assertEqual(accepted.headers["location"], "/stats")
+        self.assertNotIn("secret", accepted.headers["location"])
 
     async def test_client_routes_serve_the_single_page_surface(self):
-        await self.client.get("/?t=secret")
+        await self.client.post(
+            "/login", content="token=secret&next=%2F",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
         for path in ("/item/1", "/performers/Alice", "/studios/Prestige",
                      "/creators/luckydog11", "/series/Example", "/performers",
                      "/creators", "/tags", "/stats", "/immerse", "/trash", "/review",

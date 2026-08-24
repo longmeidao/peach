@@ -1,12 +1,15 @@
 import hmac
 import asyncio
+import html
 import logging
 from contextlib import asynccontextmanager
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote
 
-from fastapi import Body, FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
+from fastapi import Body, Depends, FastAPI, HTTPException, Request
+from fastapi.responses import (
+    FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response,
+)
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__, web_contract
@@ -171,6 +174,19 @@ def create_app(
     app.state.stream_sessions = stream_sessions
     app.state.sync = sync
 
+    def require_auth(request: Request) -> dict[str, str]:
+        args = _first_query_values(request)
+        if not _authorized(request, settings.token, args):
+            raise HTTPException(status_code=401, detail="unauthorized")
+        return args
+
+    def set_auth_cookie(response: Response, request: Request) -> None:
+        if settings.token:
+            response.set_cookie(
+                "tok", settings.token, max_age=31536000, path="/", httponly=True,
+                samesite="lax", secure=request.url.scheme == "https",
+            )
+
     # 第三方前端依赖固定版本并随 Peach 自托管；局域网断网时仍可播放。
     app.mount(
         "/vendor",
@@ -206,20 +222,58 @@ def create_app(
                 "ledger_sync": sync.status if sync is not None else "disabled",
                 "scheme": "https" if settings.tls_enabled else "http"}
 
+    def login_html(next_path: str, *, invalid: bool = False) -> str:
+        safe_next = html.escape(next_path, quote=True)
+        error = '<p role="alert">口令不正确</p>' if invalid else ""
+        return (
+            '<!doctype html><html lang="zh-CN"><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            '<title>登录 Peach</title><body><main><h1>Peach</h1>'
+            f'{error}<form method="post" action="/login">'
+            '<label>口令 <input name="token" type="password" '
+            'autocomplete="current-password" required></label>'
+            f'<input name="next" type="hidden" value="{safe_next}">'
+            '<button type="submit">登录</button></form></main></body></html>'
+        )
+
+    @app.get("/login", response_class=HTMLResponse)
+    def login(request: Request, next: str = "/"):
+        next_path = next if next.startswith("/") and not next.startswith("//") else "/"
+        if _authorized(request, settings.token, _first_query_values(request)):
+            return RedirectResponse(next_path, status_code=303)
+        return HTMLResponse(login_html(next_path))
+
+    @app.post("/login")
+    async def login_submit(request: Request):
+        form = parse_qs(
+            (await request.body()).decode("utf-8", "replace"), keep_blank_values=True,
+        )
+        supplied = (form.get("token") or [""])[0]
+        next_path = (form.get("next") or ["/"])[0]
+        if not next_path.startswith("/") or next_path.startswith("//"):
+            next_path = "/"
+        if settings.token and not hmac.compare_digest(str(supplied), settings.token):
+            return HTMLResponse(login_html(next_path, invalid=True), status_code=401)
+        response = RedirectResponse(next_path, status_code=303)
+        set_auth_cookie(response, request)
+        return response
+
     @app.api_route("/", methods=["GET", "HEAD"])
     def index(request: Request):
         args = _first_query_values(request)
         if not _authorized(request, settings.token, args):
-            return PlainTextResponse("需要 ?t=口令", status_code=401)
+            return RedirectResponse(
+                "/login?next=" + quote(request.url.path or "/", safe="/"), status_code=303,
+            )
+        if settings.token and args.get("t"):
+            response = RedirectResponse(request.url.path or "/", status_code=303)
+            set_auth_cookie(response, request)
+            return response
         if not settings.page_path.is_file():
             return PlainTextResponse("Peach page missing", status_code=500)
         response = FileResponse(settings.page_path, media_type="text/html")
         response.headers["Cache-Control"] = "no-store"
-        if settings.token:
-            response.set_cookie(
-                "tok", settings.token, max_age=31536000, path="/", httponly=True,
-                samesite="lax", secure=request.url.scheme == "https",
-            )
+        set_auth_cookie(response, request)
         return response
 
     @app.api_route("/app.css", methods=["GET", "HEAD"])
@@ -553,10 +607,7 @@ def create_app(
         return {"ok": True, "provider": "opencode-go", "models": models}
 
     @app.get("/api/{route:path}")
-    def api_get(route: str, request: Request):
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
+    def api_get(route: str, args: dict[str, str] = Depends(require_auth)):
         try:
             return web_contract.dispatch_api_get(contract, f"/api/{route}", args)
         except KeyError:
@@ -568,10 +619,11 @@ def create_app(
             return JSONResponse({"error": "internal server error"}, status_code=500)
 
     @app.post("/api/{route:path}")
-    def api_post(route: str, request: Request, body: dict[str, Any] = Body(default_factory=dict)):
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
+    def api_post(
+        route: str,
+        body: dict[str, Any] = Body(default_factory=dict),
+        _args: dict[str, str] = Depends(require_auth),
+    ):
         if sync is not None and sync.read_only:
             # 非写入端或冲突状态都只读；继续写只会产生无法自动合并的分叉。
             return JSONResponse(
