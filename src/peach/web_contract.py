@@ -28,6 +28,15 @@ from .entities import (
 from .media import remap_managed_path
 from .platform import system_volume
 from .repository import LedgerDatabase
+from .web_activity import (
+    DEFAULT_PROFILE_ID,
+    w_activity,
+    w_feedback,
+    w_play,
+    w_preference,
+    w_quality_goal,
+    w_watch_later,
+)
 from .web_logic import (
     DUPLICATE_FLOOR_SECONDS,
     DUPLICATE_TOLERANCE,
@@ -218,7 +227,7 @@ def q_items(contract: WebContract, args):
                 "WHERE ae.asset_id=a.id AND e.kind='tag' AND e.canonical_name=?) OR "
                 "EXISTS(SELECT 1 FROM asset_tag t WHERE t.asset_id=a.id AND t.tag=?)) AND "
                 "NOT EXISTS(SELECT 1 FROM asset_tag_preference p WHERE p.asset_id=a.id "
-                "AND p.profile_id='local-default' AND p.hidden=1 "
+                f"AND p.profile_id='{DEFAULT_PROFILE_ID}' AND p.hidden=1 "
                 "AND p.normalized_tag=lower(trim(?))))"
             )
             par.extend((tg, tg, tg))
@@ -265,12 +274,12 @@ def q_items(contract: WebContract, args):
     elif args.get("state") == "flagged":
         where.append(
             "(COALESCE(a.o_count,0)>0 OR EXISTS(SELECT 1 FROM asset_preference p "
-            "WHERE p.asset_id=a.id AND p.profile_id='local-default' AND p.liked=1))"
+            f"WHERE p.asset_id=a.id AND p.profile_id='{DEFAULT_PROFILE_ID}' AND p.liked=1))"
         )
     elif args.get("state") == "later":
         where.append(
             "EXISTS(SELECT 1 FROM watch_queue w WHERE w.asset_id=a.id "
-            "AND w.profile_id='local-default')"
+            f"AND w.profile_id='{DEFAULT_PROFILE_ID}')"
         )
     if args.get("thumb") == "1":
         where.append("a.snapshot_path IS NOT NULL")
@@ -304,7 +313,7 @@ def q_items(contract: WebContract, args):
            "a.play_count,a.leave_ratio,a.feedback,a.disposal,a.rating,a.o_count,"
            "a.play_seconds,a.max_reached,a.seek_count,"
            "EXISTS(SELECT 1 FROM watch_queue w WHERE w.asset_id=a.id "
-           "AND w.profile_id='local-default') AS watch_later "
+           f"AND w.profile_id='{DEFAULT_PROFILE_ID}') AS watch_later "
            "FROM asset a WHERE " + " AND ".join(where) + f" ORDER BY {order} LIMIT ? OFFSET ?")
     c = contract.db()
     rows = [dict(r) for r in c.execute(sql, par + [fetch_limit, off])]
@@ -443,22 +452,22 @@ def q_item(contract: WebContract, aid):
         "ctx_length,ctx_orient,snapshot_path,play_count,leave_ratio,feedback,disposal,"
         "rating,o_count,play_seconds,max_reached,seek_count,"
         "COALESCE((SELECT p.liked FROM asset_preference p WHERE p.asset_id=asset.id "
-        "AND p.profile_id='local-default'),0) AS liked,"
+        f"AND p.profile_id='{DEFAULT_PROFILE_ID}'),0) AS liked,"
         "COALESCE((SELECT p.reason FROM asset_preference p WHERE p.asset_id=asset.id "
-        "AND p.profile_id='local-default'),'') AS like_reason,"
+        f"AND p.profile_id='{DEFAULT_PROFILE_ID}'),'') AS like_reason,"
         "COALESCE((SELECT g.wanted FROM asset_quality_goal g WHERE g.asset_id=asset.id "
-        "AND g.profile_id='local-default'),0) AS better_version,"
+        f"AND g.profile_id='{DEFAULT_PROFILE_ID}'),0) AS better_version,"
         "COALESCE((SELECT g.reason FROM asset_quality_goal g WHERE g.asset_id=asset.id "
-        "AND g.profile_id='local-default'),'') AS better_version_reason,"
+        f"AND g.profile_id='{DEFAULT_PROFILE_ID}'),'') AS better_version_reason,"
         "EXISTS(SELECT 1 FROM watch_queue w WHERE w.asset_id=asset.id "
-        "AND w.profile_id='local-default') AS watch_later FROM asset WHERE id=?", (aid,)).fetchone()
+        f"AND w.profile_id='{DEFAULT_PROFILE_ID}') AS watch_later FROM asset WHERE id=?", (aid,)).fetchone()
     if not r:
         c.close(); return {"error": "not found"}
     d = dict(r)
     legacy = [x[0] for x in c.execute(
         "SELECT t.tag FROM asset_tag t WHERE t.asset_id=? AND NOT EXISTS("
         "SELECT 1 FROM asset_tag_preference p WHERE p.asset_id=t.asset_id "
-        "AND p.profile_id='local-default' AND p.hidden=1 "
+        f"AND p.profile_id='{DEFAULT_PROFILE_ID}' AND p.hidden=1 "
         "AND p.normalized_tag=lower(trim(t.tag))) ORDER BY t.tag", (aid,),
     )]
     canonical = list(c.execute(
@@ -466,7 +475,7 @@ def q_item(contract: WebContract, aid):
         "JOIN entity e ON e.id=ae.entity_id WHERE ae.asset_id=? "
         "AND e.kind IN ('tag','performer','creator','studio','series') "
         "AND (e.kind<>'tag' OR NOT EXISTS(SELECT 1 FROM asset_tag_preference p "
-        "WHERE p.asset_id=ae.asset_id AND p.profile_id='local-default' AND p.hidden=1 "
+        f"WHERE p.asset_id=ae.asset_id AND p.profile_id='{DEFAULT_PROFILE_ID}' AND p.hidden=1 "
         "AND p.normalized_tag=e.normalized_name)) "
         "ORDER BY e.kind,e.canonical_name", (aid,),
     ))
@@ -740,7 +749,7 @@ def q_entity(contract: WebContract, args):
         "AND performer.normalized_name=tag.normalized_name) "
         f"AND tag.canonical_name NOT IN ({','.join('?' for _ in LENGTH_TAGS)}) "
         "AND NOT EXISTS(SELECT 1 FROM asset_tag_preference p "
-        " WHERE p.asset_id=scope.asset_id AND p.profile_id='local-default' "
+        f" WHERE p.asset_id=scope.asset_id AND p.profile_id='{DEFAULT_PROFILE_ID}' "
         " AND p.hidden=1 AND p.normalized_tag=tag.normalized_name) "
         "GROUP BY tag.id,tag.canonical_name ORDER BY n DESC,tag.canonical_name LIMIT 36",
         (d["id"], *sorted(LENGTH_TAGS)),
@@ -794,7 +803,7 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="")
                "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
                "AND performer.normalized_name=e.normalized_name) "
                "AND NOT EXISTS(SELECT 1 FROM asset_tag_preference p "
-               "WHERE p.asset_id=ae.asset_id AND p.profile_id='local-default' "
+               f"WHERE p.asset_id=ae.asset_id AND p.profile_id='{DEFAULT_PROFILE_ID}' "
                "AND p.hidden=1 AND p.normalized_tag=e.normalized_name) ")
         par = sorted(LENGTH_TAGS)
         if q: sql += "AND e.canonical_name LIKE ? "; par.append(f"%{q}%")
@@ -1429,7 +1438,7 @@ def q_facets(
         "SUM(CASE WHEN duration IS NOT NULL THEN 1 ELSE 0 END) duration, "
         "SUM(CASE WHEN play_count>0 THEN 1 ELSE 0 END) played, "
         "SUM(CASE WHEN COALESCE(o_count,0)>0 OR EXISTS(SELECT 1 FROM asset_preference p "
-        "WHERE p.asset_id=a.id AND p.profile_id='local-default' AND p.liked=1) "
+        f"WHERE p.asset_id=a.id AND p.profile_id='{DEFAULT_PROFILE_ID}' AND p.liked=1) "
         "THEN 1 ELSE 0 END) flagged, "
         "SUM(EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
         "WHERE ae.asset_id=a.id AND e.kind='creator')) attributed "
@@ -1440,169 +1449,6 @@ def q_facets(
     return out
 
 # ────────────────────────────── 写入 ──────────────────────────────
-
-def w_activity(contract: WebContract, body):
-    """播放埋点。
-
-    「看完」不等于真看完 —— 快进扫过去也会到片尾。所以记两个互相独立的量：
-      · play_seconds  真正播放过的秒数（前端只在 0<dt<2 时累加，拖动不计入）
-      · max_reached   到达过的最远位置 / 时长
-    两者一比就能分辨：max_reached 高但 play_seconds/duration 低 = 快进扫过，不是看完。
-    另记 seek_count（拖动次数）作为佐证。"""
-    aid = int(body["id"]); pos = float(body.get("position", 0))
-    dur = float(body.get("duration", 0)); add = float(body.get("delta", 0))
-    ended = bool(body.get("ended")); seeks = int(body.get("seeks", 0))
-    with contract.write_lock:
-        c = contract.db(write=True)
-        row = c.execute("SELECT play_seconds,max_reached,seek_count FROM asset WHERE id=?",
-                        (aid,)).fetchone()
-        secs = (row["play_seconds"] or 0) + max(add, 0)
-        ratio = 1.0 if ended else (min(pos / dur, 1.0) if dur > 0 else None)
-        mx = max(row["max_reached"] or 0, ratio or 0)
-        sk = (row["seek_count"] or 0) + max(seeks, 0)
-        c.execute("UPDATE asset SET play_seconds=?, leave_ratio=COALESCE(?,leave_ratio), "
-                  "max_reached=?, seek_count=?, last_played=? WHERE id=?",
-                  (secs, ratio, mx, sk, time.time(), aid))
-        c.commit(); c.close()
-    real = (secs / dur) if dur > 0 else None
-    return {"ok": True, "play_seconds": secs, "leave_ratio": ratio,
-            "max_reached": mx, "seek_count": sk, "real_ratio": real}
-
-def w_play(contract: WebContract, body):
-    contract.cache_bust()
-    aid = int(body["id"])
-    with contract.write_lock:
-        c = contract.db(write=True)
-        c.execute("UPDATE asset SET play_count=COALESCE(play_count,0)+1, last_played=? "
-                  "WHERE id=?", (time.time(), aid))
-        c.commit(); c.close()
-    return {"ok": True}
-
-def w_feedback(contract: WebContract, body):
-    contract.cache_bust()
-    """四级反馈，前三级只打标记（见方案 §5.4）。第四级删除不在本服务里。"""
-    aid = int(body["id"]); kind = body.get("kind")
-    with contract.write_lock:
-        c = contract.db(write=True)
-        if kind in ("dislike", "seen"):
-            cur = c.execute("SELECT feedback FROM asset WHERE id=?", (aid,)).fetchone()["feedback"]
-            c.execute("UPDATE asset SET feedback=?, feedback_at=? WHERE id=?",
-                      (None if cur == kind else kind, time.time(), aid))
-        elif kind == "dispose":
-            cur = c.execute("SELECT disposal FROM asset WHERE id=?", (aid,)).fetchone()["disposal"]
-            c.execute("UPDATE asset SET disposal=?, feedback_at=? WHERE id=?",
-                      (None if cur == "trash" else "trash", time.time(), aid))
-        elif kind == "o":
-            c.execute("UPDATE asset SET o_count=COALESCE(o_count,0)+1 WHERE id=?", (aid,))
-        elif kind == "rate":
-            c.execute("UPDATE asset SET rating=? WHERE id=?", (int(body.get("value", 0)), aid))
-        c.commit()
-        r = dict(c.execute("SELECT feedback,disposal,rating,o_count FROM asset WHERE id=?",
-                           (aid,)).fetchone())
-        c.close()
-    return {"ok": True, **r}
-
-
-def w_watch_later(contract: WebContract, body):
-    """把“稍后看”保存为 profile 队列，不混进喜欢/看过反馈。"""
-    contract.cache_bust()
-    aid = int(body["id"])
-    with contract.write_lock:
-        c = contract.db(write=True)
-        exists = c.execute(
-            "SELECT 1 FROM watch_queue WHERE profile_id='local-default' AND asset_id=?",
-            (aid,),
-        ).fetchone()
-        if exists:
-            c.execute(
-                "DELETE FROM watch_queue WHERE profile_id='local-default' AND asset_id=?",
-                (aid,),
-            )
-            queued = False
-        else:
-            c.execute(
-                "INSERT INTO watch_queue(profile_id,asset_id,added_at,source) "
-                "VALUES('local-default',?,strftime('%Y-%m-%dT%H:%M:%fZ','now'),'web')",
-                (aid,),
-            )
-            queued = True
-        c.commit()
-        c.close()
-    return {"ok": True, "watch_later": queued}
-
-
-def w_preference(contract: WebContract, body):
-    """保存 profile 级正向偏好；与看过、不喜欢和稍后看保持独立。"""
-    contract.cache_bust()
-    aid = int(body["id"])
-    liked = 1 if bool(body.get("liked")) else 0
-    reason = body.get("reason", "")
-    if not isinstance(reason, str):
-        raise TypeError("reason must be a string")
-    if len(reason) > 2000:
-        raise ValueError("reason is limited to 2000 characters")
-    with contract.write_lock:
-        c = contract.db(write=True)
-        if not c.execute("SELECT 1 FROM asset WHERE id=?", (aid,)).fetchone():
-            c.close()
-            raise ValueError("asset not found")
-        if not liked and not reason:
-            c.execute(
-                "DELETE FROM asset_preference WHERE profile_id='local-default' AND asset_id=?",
-                (aid,),
-            )
-        else:
-            c.execute(
-                "INSERT INTO asset_preference(profile_id,asset_id,liked,reason,source,updated_at) "
-                "VALUES('local-default',?,?,?,'web',strftime('%Y-%m-%dT%H:%M:%fZ','now')) "
-                "ON CONFLICT(profile_id,asset_id) DO UPDATE SET "
-                "liked=excluded.liked,reason=excluded.reason,source=excluded.source,"
-                "updated_at=excluded.updated_at",
-                (aid, liked, reason),
-            )
-        c.commit()
-        row = c.execute(
-            "SELECT liked,reason FROM asset_preference "
-            "WHERE profile_id='local-default' AND asset_id=?", (aid,),
-        ).fetchone()
-        c.close()
-    return {"ok": True, "liked": bool(row["liked"]) if row else False,
-            "like_reason": row["reason"] if row else ""}
-
-
-def w_quality_goal(contract: WebContract, body):
-    """记录“保留当前版本，同时寻找更好版本”；不修改或删除原资源。"""
-    contract.cache_bust()
-    aid = int(body["id"])
-    wanted = 1 if bool(body.get("wanted")) else 0
-    reason = body.get("reason", "")
-    if not isinstance(reason, str):
-        raise TypeError("reason must be a string")
-    if len(reason) > 500:
-        raise ValueError("reason is limited to 500 characters")
-    with contract.write_lock:
-        c = contract.db(write=True)
-        if not c.execute("SELECT 1 FROM asset WHERE id=?", (aid,)).fetchone():
-            c.close()
-            raise ValueError("asset not found")
-        if not wanted:
-            c.execute(
-                "DELETE FROM asset_quality_goal WHERE profile_id='local-default' AND asset_id=?",
-                (aid,),
-            )
-        else:
-            c.execute(
-                "INSERT INTO asset_quality_goal(profile_id,asset_id,wanted,reason,updated_at) "
-                "VALUES('local-default',?,?,?,strftime('%Y-%m-%dT%H:%M:%fZ','now')) "
-                "ON CONFLICT(profile_id,asset_id) DO UPDATE SET "
-                "wanted=excluded.wanted,reason=excluded.reason,updated_at=excluded.updated_at",
-                (aid, wanted, reason),
-            )
-        c.commit()
-        c.close()
-    return {"ok": True, "better_version": bool(wanted),
-            "better_version_reason": reason if wanted else ""}
-
 
 def w_item_tag(contract: WebContract, body):
     """新增或隐藏单条资源标签；隐藏不销毁刮削/识别来源证据。"""
@@ -1624,13 +1470,13 @@ def w_item_tag(contract: WebContract, body):
         if operation == "remove":
             c.execute(
                 "INSERT INTO asset_tag_preference(profile_id,asset_id,normalized_tag,hidden,updated_at) "
-                "VALUES('local-default',?,?,1,?) ON CONFLICT(profile_id,asset_id,normalized_tag) "
+                f"VALUES('{DEFAULT_PROFILE_ID}',?,?,1,?) ON CONFLICT(profile_id,asset_id,normalized_tag) "
                 "DO UPDATE SET hidden=1,updated_at=excluded.updated_at",
                 (aid, normalized, stamp),
             )
         else:
             c.execute(
-                "DELETE FROM asset_tag_preference WHERE profile_id='local-default' "
+                f"DELETE FROM asset_tag_preference WHERE profile_id='{DEFAULT_PROFILE_ID}' "
                 "AND asset_id=? AND normalized_tag=?", (aid, normalized),
             )
             c.execute(
@@ -1640,7 +1486,7 @@ def w_item_tag(contract: WebContract, body):
             upsert_asset_entity(
                 c, kind="tag", name=tag, asset_id=aid, role="tag",
                 source="web-user", confidence=1.0,
-                metadata={"profile_id": "local-default"}, now=stamp,
+                metadata={"profile_id": DEFAULT_PROFILE_ID}, now=stamp,
             )
         c.commit(); c.close()
     return {"ok": True, "operation": operation, "tag": tag,
@@ -1777,13 +1623,13 @@ def w_batch(contract: WebContract, body):
             elif operation == "later":
                 connection.executemany(
                     "INSERT OR IGNORE INTO watch_queue(profile_id,asset_id,added_at,source) "
-                    "VALUES('local-default',?,strftime('%Y-%m-%dT%H:%M:%fZ','now'),'web-batch')",
+                    f"VALUES('{DEFAULT_PROFILE_ID}',?,strftime('%Y-%m-%dT%H:%M:%fZ','now'),'web-batch')",
                     [(asset_id,) for asset_id in valid_ids],
                 )
             else:
                 connection.executemany(
                     "INSERT INTO asset_preference(profile_id,asset_id,liked,reason,source,updated_at) "
-                    "VALUES('local-default',?,1,'','web-batch',strftime('%Y-%m-%dT%H:%M:%fZ','now')) "
+                    f"VALUES('{DEFAULT_PROFILE_ID}',?,1,'','web-batch',strftime('%Y-%m-%dT%H:%M:%fZ','now')) "
                     "ON CONFLICT(profile_id,asset_id) DO UPDATE SET liked=1,source='web-batch',"
                     "updated_at=excluded.updated_at",
                     [(asset_id,) for asset_id in valid_ids],
