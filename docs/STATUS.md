@@ -1,6 +1,6 @@
 # Peach 当前状态
 
-最后核验：2026-08-22
+最后核验：2026-08-24
 
 ## 运行态
 
@@ -10,8 +10,9 @@
   `C:\Users\longm\Desktop\peach\peach-data`、worktree `C:\Users\longm\Desktop\peach\peach-worktrees`、
   共享账本传输点 `C:\Users\longm\Desktop\peach\peach-sync`。外置盘只提供 `R:\media`。
 - HTTP：`0.0.0.0:80`；HTTPS：`192.168.50.162:443`。Windows 正式局域网名称为
-  `peach-win.local`；2026-08-22 严格 HTTPS 实测 `version=0.6.2`、`ledger_sync=writer`，
-  首页、头像和海报均 200。连续 120 秒浏览观测 local/shared generation 均保持29。
+  `peach-win.local`；2026-08-24 已部署 `version=0.6.3`、`ledger_sync=writer`，修复 Ledger
+  同步通知把子进程 GBK 输出误按 UTF-8 解码的乱码。2026-08-22 的严格 HTTPS 首页、头像和海报
+  验收均为 200；当时连续 120 秒浏览观测 local/shared generation 均保持29。
 - mDNS 使用 Python zeroconf 的全合格网卡监听；生产显式固定发布地址，避免隧道网卡误选。没有发布 `lmd-dst.local`。
 - macOS 菜单栏已按同一重构上线为 `0.6.2` reader，管理 `8900/8443` 并由 pf 提供
   `peach.local:80/443`。菜单提供「同步 Ledger」和「接管 Ledger 写入」；GET 正常、POST 返回409。
@@ -36,7 +37,7 @@
   479 项测试通过。服务启动/浏览/退出不再同步；marker.device 指定唯一写入端，另一台 POST
   返回409；托盘只在显式同步或接管时复制。
 - Windows 品牌资源已统一为附件生成的 `1024x1024` 正方形蜜桃图：`resources/peach-logo.png`、`resources/peach.ico`；Web favicon、托盘图标和 EXE 内嵌图标共用该资源。PyInstaller 打包产物为 `dist/Peach/Peach.exe`，桌面和 Startup 的 `Peach.lnk` 均按 FlowLens 的 `exe,0` 方式指向它；该 exe 只打包托盘自身，服务进程仍由项目 venv 承担，不是可移动的独立发行版。
-- 版本唯一来源为 `src/peach/__init__.py::__version__`；Windows 当前部署、本地代码和 Mac 待部署代码均为 `0.6.2`。没有 Git remote 时只报告本地开发版，不伪造更新能力。
+- 版本唯一来源为 `src/peach/__init__.py::__version__`；Windows 当前部署和本地代码为 `0.6.3`，Mac 最近一次已核验部署为 `0.6.2`。没有 Git remote 时只报告本地开发版，不伪造更新能力。
 - 本地 CA HTTPS 已部署。CA 包含 critical `CA:TRUE` 和签名用途并通过 OpenSSL 链验证。macOS/iOS 只安装 `peach-local-ca.crt`；不得传播任何私钥。
 - Windows 代码、运行数据、venv、构建产物和 worktree 已从外置盘迁到内置盘；旧空 Inbox 和
   `Resources/Tools` 兼容表面已移除。外置盘的运行目录不再是当前入口。

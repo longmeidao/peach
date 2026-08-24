@@ -198,6 +198,10 @@ class ServiceStatusTests(unittest.TestCase):
             manager._run.call_args.args[0][:2],
             [str(Path("/venv/peach")), "ledger-sync"],
         )
+        self.assertEqual(manager._run.call_args.kwargs["encoding"], "utf-8")
+        self.assertEqual(
+            manager._run.call_args.kwargs["env"]["PYTHONIOENCODING"], "utf-8",
+        )
 
     def test_take_ownership_is_an_explicit_ledger_command(self):
         manager = ServiceManager(tuple(), run=Mock(return_value=Mock(

@@ -286,10 +286,16 @@ class ServiceManager:
             ]
             if take_ownership:
                 command.append("--take-ownership")
+            sync_environment = os.environ.copy()
+            # Windows 上 Python 的 stdout 被管道捕获时默认使用 ANSI code page
+            #（简中系统是 GBK），而父进程按 UTF-8 解码。明确约定子进程输出 UTF-8，
+            # 不能只锁定父进程的 decoding，否则中文通知会全部变成替换字符。
+            sync_environment["PYTHONIOENCODING"] = "utf-8"
             result = self._run(
                 command,
                 cwd=str(PROJECT_ROOT), capture_output=True, text=True,
                 encoding="utf-8", errors="replace", shell=False,
+                env=sync_environment,
                 creationflags=creationflags,
             )
             output = (result.stdout or result.stderr or "账本同步没有输出").strip()
