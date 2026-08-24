@@ -249,6 +249,27 @@ class WebDataTests(unittest.TestCase):
         self.assertTrue(first_page["has_more"])
         self.assertNotEqual(first_page["items"][0]["k"], second_page["items"][0]["k"])
 
+    def test_every_technical_tag_uses_the_same_facets_classification(self):
+        connection = sqlite3.connect(self.db_path)
+        for entity_id, tag in enumerate(("2K", "有码", "无码"), start=201):
+            connection.execute(
+                "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(?, 'tag', ?, ?)",
+                (entity_id, tag, tag.lower()),
+            )
+            connection.execute(
+                "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                "VALUES(1,?,'tag','test',1.0)",
+                (entity_id,),
+            )
+        connection.commit()
+        connection.close()
+
+        facets = rm_web.q_facets(self.contract)
+        tech = {row["k"] for row in facets["tech"]}
+        content = {row["k"] for row in facets["tags"]}
+        self.assertTrue({"2K", "有码", "无码"} <= tech)
+        self.assertTrue({"2K", "有码", "无码"}.isdisjoint(content))
+
     def test_activity_accumulates_real_play_time_and_max_position(self):
         first = rm_web.w_activity(self.contract, {
             "id": 1, "position": 50, "duration": 100, "delta": 12, "seeks": 2,

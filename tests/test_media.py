@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import peach.media as media_module
 from peach.ffmpeg import FFmpegResolver
 from peach.media import (
     FilesystemBackend, MediaEngine, StashAdapter, normalized_path, remap_managed_path,
@@ -144,6 +145,21 @@ class MediaEngineTests(unittest.TestCase):
                 opened = Path(resolve_case_insensitive(r"A:\\ABW-118.mp4"))
             self.assertTrue(opened.is_file())
             self.assertTrue(opened.parent.samefile(root))
+
+    def test_case_insensitive_miss_expires_after_the_short_ttl(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with patch("peach.media.monotonic", return_value=0):
+                self.assertIsNone(
+                    media_module._case_insensitive_match(str(root), "abw-118.mp4")
+                )
+            real = root / "ABW-118.MP4"
+            real.write_bytes(b"test")
+            with patch("peach.media.monotonic", return_value=6):
+                self.assertEqual(
+                    media_module._case_insensitive_match(str(root), "abw-118.mp4"),
+                    real.name,
+                )
 
     def test_remote_mp4_defaults_to_range_and_only_segments_on_request(self):
         """默认 HLS 会让 HEVC 静默黑屏：`-c copy` 把 HEVC 装进 MPEG-TS，而 Chromium 的

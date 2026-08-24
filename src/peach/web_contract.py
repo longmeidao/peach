@@ -1511,9 +1511,6 @@ def q_facets(
         "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 60", scope_params)]
     # 标签要分层 —— 原来一锅端，结果「演员:一个ren」和「1080P」「足交」混在一起。
     # 三类分开：技术规格（画质/时长/画幅，筛选价值低）、内容维度（真正有用的）、演员（另立一栏）。
-    TECH = ("1080P", "720P", "4K", "2160P", "480P", "低画质", "高帧率",
-            "横屏", "竖屏",
-            "真人", "混合集", "身份待确认", "R-18")
     rows = [dict(r) for r in c.execute(
         "SELECT e.canonical_name AS k, count(DISTINCT ae.asset_id) AS n "
         "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
@@ -1522,8 +1519,8 @@ def q_facets(
         "AND performer.normalized_name=e.normalized_name) "
         "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 400", scope_params)]
     out["tags"] = [dict(r, cat=tag_cat(r["k"])) for r in rows
-                   if r["k"] not in TECH and r["k"] not in LENGTH_TAGS][:44]
-    out["tech"] = [r for r in rows if r["k"] in TECH][:14]
+                   if r["k"] not in TECH_TAGS and r["k"] not in LENGTH_TAGS][:44]
+    out["tech"] = [r for r in rows if r["k"] in TECH_TAGS][:16]
     out["tagperformers"] = [dict(r) for r in c.execute(
         "SELECT e.canonical_name AS k,count(DISTINCT ae.asset_id) AS n "
         "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "

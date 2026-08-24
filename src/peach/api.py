@@ -378,7 +378,7 @@ def create_app(
         if stream_sessions.is_cancelled(session):
             return Response(status_code=410, headers={"Cache-Control": "no-store"})
         try:
-            resolved = _hls_plan(id)
+            resolved = await asyncio.to_thread(_hls_plan, id)
             if resolved is None:
                 return JSONResponse({"error": "hls unavailable"}, status_code=404)
             _, source, plan = resolved
