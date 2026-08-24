@@ -392,10 +392,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("function setTokLoading(on,label='加载中…',it=null)")
         self.assertPageContains("function waitTokReady(video,timeout=15000)")
         self.assertPageContains("width:100%;height:100%;left:50%;transform:translateX(-50%);object-fit:cover")
-        # 竖屏片源按真实宽高切到 contain 完整显示，不裁上下画面；横屏维持 cover。
-        self.assertPageContains(".toktrack video.portrait{object-fit:contain}")
+        # cover 只是基线；片源与视口比例差得多时切到 contain 完整显示。
+        # 判据本身由 test_immersive_fit_compares_source_against_the_viewport 覆盖，
+        # 这里只确认沉浸模式仍然接着那条规则走。
+        self.assertPageContains(".toktrack video.contain{object-fit:contain}")
         self.assertPageContains("function applyTokFit(v)")
-        self.assertPageContains("v.classList.toggle('portrait',v.videoWidth>0&&v.videoWidth<v.videoHeight)")
         self.assertPageContains("v.addEventListener('loadedmetadata',fit,{once:true})")
         self.assertPageContains("<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><use href=\"#i-play\"/>")
         self.assertPageContains("await tokShow()")
@@ -994,6 +995,34 @@ class WebUiSourceTests(unittest.TestCase):
         # 窗口一改大小 slide 就停在旧宽度，大图按错误的框缩放。
         self.assertPageContains("new ResizeObserver(()=>{main.update();strip.update()})")
         self.assertPageContains("activeLightbox.resize?.disconnect()")
+
+    def test_immersive_fit_compares_source_against_the_viewport(self):
+        """竖屏沉浸模式看横屏视频必须完整显示。
+
+        旧判据只看「片源是不是竖屏」：竖屏片源 contain、横屏一律 cover。于是
+        16:9 进 9:19.5 的竖屏视口照样 cover，按高度放大到两边各裁掉一大半，
+        也就是「看不全」。判据必须同时看视口比例。
+        """
+        self.assertPageContains("const source=v.videoWidth/v.videoHeight")
+        self.assertPageContains("track.clientWidth/track.clientHeight")
+        self.assertPageContains("const mismatch=source>box?source/box:box/source")
+        self.assertPageContains("v.classList.toggle('contain',mismatch>TOK_FIT_TOLERANCE)")
+        self.assertPageContains(".toktrack video.contain{object-fit:contain}")
+        # 旧判据不能残留：它正是「横屏一律铺满」的来源。
+        self.assertPageLacks("v.videoWidth<v.videoHeight")
+        self.assertPageLacks(".toktrack video.portrait")
+
+    def test_immersive_fit_tolerance_stays_tight_enough_to_not_crop_shorts(self):
+        """容差放宽会顺手把竖屏短片改成 cover——那是没人要求的回退。
+
+        9:16 片源在 9:19.5 手机上比例差 1.22；容差必须小于它，这类片源才继续
+        完整显示。原代码对竖屏用 contain 是有意的选择，不该被这次修复带走。
+        """
+        self.assertPageContains("const TOK_FIT_TOLERANCE=1.05")
+
+    def test_immersive_fit_is_recomputed_when_the_viewport_changes(self):
+        # 视口比例随旋转和窗口尺寸变；只在 loadedmetadata 算一次，转屏后就错。
+        self.assertPageContains("$('#tokTrack').querySelectorAll('video').forEach(tokFitOne)")
 
     def test_source_tools_never_take_a_path_from_the_client(self):
         """定位和对账都只发 asset id，路径由服务端查。

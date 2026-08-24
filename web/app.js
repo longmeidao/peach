@@ -2263,13 +2263,38 @@ function waitTokReady(video,timeout=15000){
     setTimeout(done,timeout);
   });
 }
+/* 沉浸模式默认 cover 铺满，但那只在片源和视口比例接近时才成立。
+   旧判据是「片源是不是竖屏」：于是 16:9 的横屏进竖屏视口照样 cover，按高度放大到
+   两边各裁掉一大半——就是「竖屏沉浸模式看横屏视频看不全」。
+   判据改成两者比例差多少。容差取得很紧（1.05）是刻意的：原代码对竖屏片源用
+   contain，是「不裁掉正在看的画面」的有意选择，只有横屏那一格判错了。放宽到
+   1.25 会顺手把 9:16 片源在 9:19.5 手机上改成 cover、裁掉约 18% 高度——那是
+   没人要求的回退。现在只有比例几乎一致时才 cover（省掉取整产生的 1px 黑边），
+   其余一律完整显示。
+   视口比例会随旋转和窗口尺寸改变，所以必须跟着重算，不能只在 loadedmetadata 算一次。 */
+const TOK_FIT_TOLERANCE=1.05;
+function tokFitOne(v){
+  if(!v||!v.videoWidth||!v.videoHeight)return;
+  const track=v.parentElement;
+  const box=(track&&track.clientWidth&&track.clientHeight)
+    ? track.clientWidth/track.clientHeight
+    : window.innerWidth/window.innerHeight;
+  if(!box||!isFinite(box))return;
+  const source=v.videoWidth/v.videoHeight;
+  const mismatch=source>box?source/box:box/source;
+  v.classList.toggle('contain',mismatch>TOK_FIT_TOLERANCE);
+}
 function applyTokFit(v){
-  /* 竖屏片源用 contain 完整显示，横屏维持 cover 铺满；按真实宽高判定而不是信元数据。 */
-  const fit=()=>v.classList.toggle('portrait',v.videoWidth>0&&v.videoWidth<v.videoHeight);
-  v.classList.remove('portrait');
+  v.classList.remove('contain');
+  const fit=()=>tokFitOne(v);
   if(v.readyState>=1)fit();
   else v.addEventListener('loadedmetadata',fit,{once:true});
 }
+// 旋转手机或改窗口大小后，原来该铺满的可能要改成完整显示，反之亦然。
+addEventListener('resize',()=>{
+  if($('#tok').hidden)return;
+  $('#tokTrack').querySelectorAll('video').forEach(tokFitOne);
+});
 async function openTok(startId,push=true){
   if(push)route('/immerse');
   $('#tok').hidden=false;document.body.style.overflow='hidden';setTokLoading(true,'加载内容…');
