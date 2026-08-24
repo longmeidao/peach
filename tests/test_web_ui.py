@@ -998,6 +998,19 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("new ResizeObserver(()=>{main.update();strip.update()})")
         self.assertPageContains("activeLightbox.resize?.disconnect()")
 
+    def test_failed_review_decisions_are_shown_instead_of_silently_swallowed(self):
+        """「点了没反应」的真身：失败被吞掉，按钮还卡在 disabled。
+
+        `api()` 在任何非 2xx 都 throw，而这个 async onclick 原来没有 catch：
+        异常成了 unhandled rejection，`button.disabled=false` 永远到不了，于是
+        按钮永久禁用、界面一句话都不给。失败必须说出来并把按钮放开让人重试。
+        """
+        self.assertPageContains('<span class="reviewstate" aria-live="polite"></span>')
+        self.assertPageContains("if(state)state.textContent=result.error||'服务端拒绝了这次判定'")
+        self.assertPageContains("if(state)state.textContent=e.message")
+        # 成功路径 return，其余出口都必须回到放开按钮那一行。
+        self.assertPageContains("button.disabled=false;")
+
     def test_entity_subject_reviews_lead_with_the_creator_not_one_sample(self):
         """创作者标签和西方身份判的是「这个人」，不是某一条作品。
 
