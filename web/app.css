@@ -293,9 +293,6 @@ button,input,textarea{font:inherit;color:inherit}
 .photowall{column-count:5;column-gap:10px}
 @media (max-width:1400px){.photowall{column-count:4}}
 @media (max-width:1000px){.photowall{column-count:3}}
-@media (max-width:640px){.photowall{column-count:2;column-gap:8px}
-  .photosets{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:12px}
-  .photolight .photostrip,.photolight .photostrip .swiper-slide{height:56px}}
 .photocell{display:block;width:100%;border:0;padding:0;margin:0 0 10px;background:transparent;
   border-radius:8px;overflow:hidden;cursor:zoom-in;break-inside:avoid;line-height:0}
 .photocell img{width:100%;height:auto;display:block;background:var(--sunk)}
@@ -320,6 +317,12 @@ body.photolight-open{overflow:hidden}
 .photolight .photostrip .swiper-slide{width:auto;height:72px;opacity:.5;cursor:pointer;border-radius:6px;overflow:hidden}
 .photolight .photostrip .swiper-slide img{height:100%;width:auto;display:block;object-fit:cover}
 .photolight .photostrip .swiper-slide-thumb-active{opacity:1;box-shadow:0 0 0 2px #fff inset}
+/* 窄屏断点写在这一段之后：和上面同优先级，写在前面会被原样盖掉。 */
+@media (max-width:640px){
+  .photowall{column-count:2;column-gap:8px}
+  .photosets{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:12px}
+  .photolight .photostrip,.photolight .photostrip .swiper-slide{height:56px}
+  .photonav{width:38px;height:38px}.photonav.prev{left:8px}.photonav.next{right:8px}}
 /* 显式 display 会盖掉浏览器默认的 [hidden]{display:none}：按钮已经 hidden=true
    却仍然画出来，而 requestMore 首行就是 if(more.hidden)return，于是点了没反应。 */
 /* 身份区按类别分组：标签是组标题，同类横向排开并按需换行。

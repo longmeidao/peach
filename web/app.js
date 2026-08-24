@@ -1211,7 +1211,8 @@ async function switchEntityMedia(kind,name,filters,media){
 }
 
 const photoSetCard=item=>`<button class="photoset" data-photo-set="${item.id}">
-    <span class="photosetcover"><img src="/photo-thumb?id=${item.id}" alt="" loading="lazy" onerror="this.remove()"></span>
+    <span class="photosetcover"><img src="/photo-thumb?id=${item.id}" alt="" loading="lazy"
+      decoding="async" fetchpriority="low" onerror="this.remove()"></span>
     <span class="photosetname" title="${esc(item.title)}">${esc(item.title)}</span>
     <small class="mono">${item.n.toLocaleString()} 张 · ${fmtSize(item.bytes||0)}</small></button>`;
 
@@ -1236,6 +1237,7 @@ async function openPhotoSet(kind,name,filters,setId,push=true){
 
 const photoCell=(item,index)=>`<button class="photocell" data-photo-index="${index}" title="${esc(item.name)}">
     <img src="/photo-thumb?id=${item.id}" alt="${esc(item.name)}" loading="lazy"
+      decoding="async" fetchpriority="low"
       onerror="this.closest('.photocell').remove()"></button>`;
 
 function renderPhotoWall(kind,name,filters,data,append=false){
