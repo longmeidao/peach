@@ -1034,6 +1034,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_entity_cards_do_not_print_the_name_twice(self):
         """创作者入口里已经写了名字，卡片顶上再来一个 h4 就是同一行字上下两遍。"""
         self.assertPageContains("subjectKind&&subjectName?'':`<h4>${esc(titleText)}</h4>`")
+        # 作品数同理：创作者入口里已经写了「115 部作品」，上面不该再来一行「样本/资产：115」。
+        self.assertPageContains("subjectKind&&subjectName?'':`<p>${esc(row.board||row.assets")
         # 卡片里只有这一个主体，衬底和居中只会把它推离左边缘，和下面的样本网格对不齐。
         self.assertPageLacks(
             ".reviewentity{display:grid;grid-template-columns:132px minmax(0,1fr)")
