@@ -853,9 +853,9 @@ async function openStats(push=true){
         +kv('回收站', cs.trash.toLocaleString()))}
       ${card('标签来源', d.tag_source.map(t=>
           kv(t.k, t.n.toLocaleString(), t.assets.toLocaleString()+' 个视频')).join(''))}
-      ${card('C 盘', d.disk_c
-        ? kv('可用', gb(d.disk_c.free), pct(d.disk_c.free,d.disk_c.total)+'%')
-          +bar(d.disk_c.free,d.disk_c.total)
+      ${card('系统盘', d.system_disk
+        ? kv('可用', gb(d.system_disk.free), pct(d.system_disk.free,d.system_disk.total)+'%')
+          +bar(d.system_disk.free,d.system_disk.total)
           +`<div class="bigsub">CloudDrive 的块缓存会长在这里，低于 40 GB 抽帧任务会拒绝启动</div>`
         : '—')}
     </div>

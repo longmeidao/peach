@@ -192,6 +192,15 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(stats["tag_cov"], 2)
         self.assertIn("审核标签", {row["k"] for row in stats["top_tags"]})
 
+    def test_stats_use_the_platform_system_volume_and_keep_the_old_alias(self):
+        usage = type("Usage", (), {"free": 20, "total": 100})
+        with mock.patch.object(rm_web, "system_volume", return_value=Path("X:/")), mock.patch(
+            "shutil.disk_usage", return_value=usage,
+        ):
+            stats = rm_web.q_stats(self.contract)
+        self.assertEqual(stats["system_disk"], {"root": "X:\\", "free": 20, "total": 100})
+        self.assertIs(stats["disk_c"], stats["system_disk"])
+
     def test_items_support_duration_range(self):
         result = rm_web.q_items(
             self.contract, {"dur_min": "90", "dur_max": "110", "limit": "10"},

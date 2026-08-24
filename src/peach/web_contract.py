@@ -28,6 +28,7 @@ from .entities import (
     upsert_asset_entity,
 )
 from .media import remap_managed_path
+from .platform import system_volume
 from .web_logic import (
     DUPLICATE_FLOOR_SECONDS,
     DUPLICATE_TOLERANCE,
@@ -891,9 +892,12 @@ def q_stats(contract: WebContract):
     c.close()
     try:
         import shutil
-        du = shutil.disk_usage("C:" + chr(92))
-        out["disk_c"] = {"free": du.free, "total": du.total}
+        volume = system_volume()
+        du = shutil.disk_usage(volume)
+        out["system_disk"] = {"root": str(volume), "free": du.free, "total": du.total}
+        out["disk_c"] = out["system_disk"]  # 0.6.x 客户端兼容别名
     except Exception:
+        out["system_disk"] = None
         out["disk_c"] = None
     return out
 

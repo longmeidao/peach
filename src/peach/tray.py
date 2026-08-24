@@ -29,7 +29,6 @@ from .versioning import VersionManager
 LOGGER = logging.getLogger(__name__)
 
 
-DEFAULT_LAN_ADDRESS = "192.168.50.162"
 #: macOS 菜单栏项拉起的端口。80/443 在 macOS 上要 root，开发机不该为一个菜单栏图标
 #: 去要管理员权限；本机 CA 的那套 TLS 材料也是给 Windows 生产实例签的。
 MACOS_PORT = 8900
@@ -383,7 +382,7 @@ def build_service_specs(
 ) -> tuple[ServiceSpec, ...]:
     if sys.platform == "darwin":
         return build_macos_service_specs()
-    address = lan_address or os.environ.get("PEACH_LAN_ADDRESS", DEFAULT_LAN_ADDRESS)
+    address = lan_address or os.environ.get("PEACH_LAN_ADDRESS") or lan_ipv4()
     peach = str(_peach_executable())
     cert_dir = Path(tls_dir) if tls_dir is not None else SECRETS_DIR / "tls"
     ca = cert_dir / "peach-local-ca.crt"
