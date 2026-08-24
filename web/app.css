@@ -266,6 +266,60 @@ button,input,textarea{font:inherit;color:inherit}
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}.relatedperson small{color:var(--muted);font-size:10px}
 .relatedperson:hover .ring{box-shadow:0 0 0 1px var(--border-15)}
 .entitysection{min-width:0;max-width:100%}.entitysection h3{font-size:13px;letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
+/* 作品 / 照片切换。只有该实体真有图片时才出现，没有图片的资料页保持原样。 */
+.mediatabs{display:flex;gap:8px;margin:0 0 18px;border-bottom:1px solid var(--line-soft)}
+.mediatabs[hidden]{display:none}
+.mediatabs button{display:flex;align-items:center;gap:7px;border:0;background:transparent;color:var(--muted);
+  padding:8px 4px 10px;margin-bottom:-1px;border-bottom:2px solid transparent;cursor:pointer;font-size:13px}
+.mediatabs button svg{width:16px;height:16px}
+.mediatabs button b{font-weight:400;font-size:11px;color:var(--muted)}
+.mediatabs button:hover{color:var(--ink-2)}
+.mediatabs button[aria-pressed="true"]{color:var(--ink);border-bottom-color:var(--tungsten)}
+/* 图集卡片：封面用目录里第一张图，不另存封面文件。 */
+.photosets{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px}
+.photoset{display:flex;flex-direction:column;gap:6px;border:0;padding:0;background:transparent;color:inherit;
+  cursor:pointer;text-align:left;min-width:0}
+.photosetcover{display:block;aspect-ratio:3/4;border-radius:10px;overflow:hidden;background:var(--sunk)}
+.photosetcover img{width:100%;height:100%;object-fit:cover;display:block}
+.photoset:hover .photosetcover{box-shadow:0 0 0 1px var(--border-15)}
+.photosetname{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.photoset small{color:var(--muted);font-size:11px}
+.photohead{display:flex;align-items:center;gap:10px;margin:0 0 12px}
+.photohead h3{margin:0}
+.photoback{display:flex;align-items:center;gap:4px;height:28px;padding:0 10px 0 6px;border:1px solid var(--line);
+  border-radius:999px;background:transparent;color:var(--ink-2);font-size:12px;cursor:pointer}
+.photoback svg{width:15px;height:15px}.photoback:hover{background:var(--overlay-5);color:var(--ink)}
+/* 瀑布流：账本没有图片宽高，等宽多列流式排版正好不需要比例，也不用等图加载完再算位置。 */
+.photowall{column-count:5;column-gap:10px}
+@media (max-width:1400px){.photowall{column-count:4}}
+@media (max-width:1000px){.photowall{column-count:3}}
+@media (max-width:640px){.photowall{column-count:2;column-gap:8px}
+  .photosets{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:12px}
+  .photolight .photostrip,.photolight .photostrip .swiper-slide{height:56px}}
+.photocell{display:block;width:100%;border:0;padding:0;margin:0 0 10px;background:transparent;
+  border-radius:8px;overflow:hidden;cursor:zoom-in;break-inside:avoid;line-height:0}
+.photocell img{width:100%;height:auto;display:block;background:var(--sunk)}
+.photocell:hover img{filter:brightness(1.06)}
+/* 灯箱：背景压到纯黑，只留大图、翻页和底部缩略图条。 */
+.photolight{position:fixed;inset:0;z-index:200;background:#000;display:grid;
+  grid-template-rows:minmax(0,1fr) auto auto;gap:8px;padding:12px 0 14px}
+body.photolight-open{overflow:hidden}
+.photolight .photomain{min-height:0;width:100%}
+.photolight .photomain .swiper-slide{display:grid;place-items:center}
+.photolight .photomain img{max-width:100%;max-height:100%;object-fit:contain;display:block}
+.photoclose{position:absolute;top:12px;right:14px;z-index:3;width:38px;height:38px;display:grid;place-items:center;
+  border:0;border-radius:50%;background:rgba(255,255,255,.12);color:#fff;cursor:pointer}
+.photoclose svg{width:20px;height:20px}.photoclose:hover{background:rgba(255,255,255,.22)}
+.photonav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;width:44px;height:44px;display:grid;
+  place-items:center;border:0;border-radius:50%;background:rgba(255,255,255,.12);color:#fff;cursor:pointer}
+.photonav svg{width:24px;height:24px}.photonav:hover{background:rgba(255,255,255,.22)}
+.photonav.prev{left:14px}.photonav.next{right:14px;transform:translateY(-50%) rotate(180deg)}
+.photonav.swiper-button-disabled{opacity:.3;pointer-events:none}
+.photocount{text-align:center;color:rgba(255,255,255,.72);font-size:12px}
+.photolight .photostrip{width:100%;height:72px;padding:0 12px}
+.photolight .photostrip .swiper-slide{width:auto;height:72px;opacity:.5;cursor:pointer;border-radius:6px;overflow:hidden}
+.photolight .photostrip .swiper-slide img{height:100%;width:auto;display:block;object-fit:cover}
+.photolight .photostrip .swiper-slide-thumb-active{opacity:1;box-shadow:0 0 0 2px #fff inset}
 /* 显式 display 会盖掉浏览器默认的 [hidden]{display:none}：按钮已经 hidden=true
    却仍然画出来，而 requestMore 首行就是 if(more.hidden)return，于是点了没反应。 */
 /* 身份区按类别分组：标签是组标题，同类横向排开并按需换行。

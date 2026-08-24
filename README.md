@@ -311,7 +311,7 @@ Per-Monitor V2 DPI，单击打开 `https://peach-win.local/`；右键可同步 L
 | `/performers` | 全部女优 |
 | `/performers/{name}` | 女优资料页 |
 | `/creators` | 全部创作者 |
-| `/creators/{name}` | 创作者资料页 |
+| `/creators/{name}` | 创作者资料页；有图片时带「照片」标签，`?media=photos&set={图集 id}` 可直接分享到某个图集 |
 | `/studios/{name}` | 厂牌资料页 |
 | `/series/{name}` | 系列资料页 |
 | `/tags` | 标签管理，支持字母表与标签云 |
@@ -335,13 +335,18 @@ Per-Monitor V2 DPI，单击打开 `https://peach-win.local/`；右键可同步 L
 | `/avatar?id={asset_id}` | 作品代表头像 |
 | `/logo?studio={name}` | 厂牌 Logo |
 | `/entity-image?kind={kind}&id={entity_id}` | 规范实体头像/Logo |
+| `/photo?id={asset_id}` | 图片原图，灯箱看大图用 |
+| `/photo-thumb?id={asset_id}` | 图片缩略图，服务端缓存一次，瀑布流只读这条 |
 
 配置了 `--token` 时，直接打开页面会跳到 `/login`。旧 `?t=` 入口只保留兼容，会立即设置
 cookie 并重定向到不含口令的干净 URL；新设备不要再复制带口令的链接。
 
-只读 API：`GET /api/items`、`/api/item`、`/api/entity`、`/api/index`、`/api/stats`、
+只读 API：`GET /api/items`、`/api/item`、`/api/entity`、`/api/photos`、`/api/photo-set`、
+`/api/index`、`/api/stats`、
 `/api/tops`、`/api/ads`、`/api/related`、`/api/facets`、`/api/providers`、`/api/sources`、
-`/api/providers/opencode-go/models`、`/api/search-history`。
+`/api/providers/opencode-go/models`、`/api/search-history`。图集按目录聚合：`/api/photos`
+给某个实体名下的图集列表，`/api/photo-set` 给一个图集里的图片，两者都只发图集 id 和目录名，
+不发真实路径。
 
 写入 API：`POST /api/activity`、`/api/play`、`/api/feedback`、`/api/watch-later`、
 `/api/preference`、`/api/item-tag`、`/api/batch`、`/api/trash/empty`。标签隐藏只写本地 profile 覆盖，不销毁

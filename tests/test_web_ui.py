@@ -877,6 +877,32 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks('id="iClose"', "顶栏入口本身就是返回路径")
         self.assertPageLacks("$('#iClose').onclick")
 
+    def test_photo_tab_only_appears_when_the_entity_really_has_images(self):
+        self.assertPageContains('<div class="mediatabs" hidden></div>')
+        self.assertPageContains("tabs.hidden=!photos")
+        self.assertPageContains("tab('photos','照片','layout-grid',photos)")
+        self.assertPageContains(".mediatabs[hidden]{display:none}")
+
+    def test_photo_wall_uses_cached_thumbnails_and_only_the_lightbox_reads_originals(self):
+        # 瀑布流铺原图等于一屏付几十兆 PikPak 流量；缩略图由服务端缓存一次。
+        self.assertPageContains('<img src="/photo-thumb?id=${item.id}"')
+        self.assertPageContains('<img src="/photo?id=${item.id}"')
+        self.assertPageLacks('<img src="/photo?id=${item.id}" class="photocell"')
+        self.assertPageContains(".photowall{column-count:5;column-gap:10px}")
+        self.assertPageContains("break-inside:avoid")
+
+    def test_photo_lightbox_loads_swiper_lazily_with_thumbs_and_keyboard(self):
+        self.assertPageContains("'/vendor/swiper/14.1.0/swiper-bundle.min.js'")
+        self.assertPageContains("thumbs:{swiper:strip}")
+        self.assertPageContains("keyboard:{enabled:true}")
+        self.assertPageContains(".photolight{position:fixed;inset:0;z-index:200;background:#000")
+        self.assertPageLacks('<script src="/vendor/swiper', "灯箱才用得上，不进首屏")
+
+    def test_photo_view_is_addressable_and_survives_a_reload(self):
+        self.assertPageContains("params.get('media')==='photos'?'photos':'videos'")
+        self.assertPageContains("params.set('media','photos')")
+        self.assertPageContains("entityMediaView=push?emptyMediaView():parseMediaView(location.search)")
+
     def test_index_open_is_applied_after_the_surface_reset(self):
         # showHomeSurfaces 会清掉这两个类；写在它前面等于自己加完自己删。
         self.assertPageContains(

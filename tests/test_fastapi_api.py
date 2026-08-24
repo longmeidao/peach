@@ -103,6 +103,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.avatar_root = self.root / "avatars"
         self.logo_root = self.root / "logos"
         self.transcode_root = self.root / "transcodes"
+        self.photo_root = self.root / "photo-thumbs"
         self.vendor_root = self.root / "vendor"
         # 复核候选必须来自临时目录：早先版本直接读真实的 R:\peach-data\generated。
         self.candidate_root = self.root / "generated"
@@ -154,7 +155,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             legacy_snapshot_roots=(self.legacy_snapshot_root,),
             poster_root=self.poster_root, avatar_root=self.avatar_root, logo_root=self.logo_root,
             ffmpeg_root=self.root / "ffmpeg", transcode_root=self.transcode_root,
-            candidate_root=self.candidate_root,
+            candidate_root=self.candidate_root, photo_root=self.photo_root,
         )
         self.app = create_app(self.settings)
         self.assertIs(
@@ -666,6 +667,65 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
                          (b"poster", b"avatar", b"logo", b"snapshot"))
         self.assertEqual(logo.headers["content-type"], "image/png")
         self.assertEqual(poster.headers["cache-control"], "public, max-age=86400")
+
+    def _seed_photo(self):
+        """一张真实 JPEG：缩略图端点要真的解码，假字节测不出这条路径。"""
+        from PIL import Image
+
+        source = self.media_root / "shoot" / "001.jpg"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (1600, 2400), (200, 120, 90)).save(source, "JPEG")
+        con = sqlite3.connect(self.db)
+        con.execute(
+            "INSERT INTO asset(id,location,path,name,medium,size,first_seen) "
+            "VALUES(9,'pikpak',?,'001.jpg','image',?,'2026-08-24')",
+            (str(source), source.stat().st_size),
+        )
+        con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
+            "VALUES(9,'creator','Alice','alice')")
+        con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+            "VALUES(9,9,'creator','legacy:asset',1.0)")
+        con.commit()
+        con.close()
+        return source
+
+    async def test_photo_sets_expose_directories_without_leaking_paths(self):
+        self._seed_photo()
+        headers = {"X-Token": "secret"}
+        listing = await self.client.get("/api/photos?kind=creator&name=Alice", headers=headers)
+        self.assertEqual(listing.status_code, 200)
+        payload = listing.json()
+        self.assertEqual(payload["total"], 1)
+        self.assertEqual(payload["sets"][0]["id"], 9)
+        self.assertEqual(payload["sets"][0]["title"], "shoot")
+        self.assertNotIn(str(self.media_root), json.dumps(payload),
+                         "只发目录名和图集 id，不发真实路径")
+        detail = await self.client.get("/api/photo-set?id=9", headers=headers)
+        self.assertEqual([item["id"] for item in detail.json()["items"]], [9])
+
+    async def test_photo_thumbnail_is_generated_once_and_cached(self):
+        source = self._seed_photo()
+        headers = {"X-Token": "secret"}
+        first = await self.client.get("/photo-thumb?id=9", headers=headers)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.headers["content-type"], "image/jpeg")
+        cached = self.photo_root / "9.jpg"
+        self.assertTrue(cached.is_file(), "缩略图要落盘，计费来源不能每次回源")
+        self.assertLess(cached.stat().st_size, source.stat().st_size)
+        stamp = cached.stat().st_mtime_ns
+        again = await self.client.get("/photo-thumb?id=9", headers=headers)
+        self.assertEqual(again.status_code, 200)
+        self.assertEqual(cached.stat().st_mtime_ns, stamp, "第二次只读缓存")
+        full = await self.client.get("/photo?id=9", headers=headers)
+        self.assertEqual(full.content, source.read_bytes())
+
+    async def test_photo_endpoints_require_the_token(self):
+        self._seed_photo()
+        for path in ("/photo?id=9", "/photo-thumb?id=9"):
+            response = await self.client.get(path)
+            self.assertEqual(response.status_code, 401, path)
 
 
 if __name__ == "__main__":

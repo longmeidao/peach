@@ -6,6 +6,8 @@ import subprocess
 import threading
 from pathlib import Path
 
+from PIL import Image, ImageOps
+
 from .ffmpeg import FFmpegResolver
 from .media import remap_managed_path
 from .repository import LedgerRepository
@@ -154,3 +156,41 @@ class PreviewService:
         if result.returncode != 0 or not Path(command[-1]).is_file():
             Path(command[-1]).unlink(missing_ok=True)
             raise PreviewUnavailable("ffmpeg generation failed")
+
+
+#: 瀑布流一列大约 300 CSS px，二倍屏取 640 够用；再大只是白付云盘流量。
+PHOTO_THUMB_WIDTH = 640
+
+
+class PhotoThumbnailService:
+    """图片资产的缓存缩略图。
+
+    图片和视频不一样：视频有接触印相可裁，图片只能读原图。云盘一张原图动辄几 MB，
+    瀑布流一屏就是几十张，所以每张只回源一次、缩好存下来，之后都读本地缓存。
+    授权由调用方的 MediaEngine 负责，这里只认已解析好的源文件路径。
+    """
+
+    def __init__(self, root: Path, width: int = PHOTO_THUMB_WIDTH):
+        self.root = root.resolve()
+        self.width = width
+
+    def thumbnail(self, asset_id: int, source: Path) -> Path:
+        destination = self.root / f"{asset_id}.jpg"
+        if destination.is_file():
+            return destination
+        self.root.mkdir(parents=True, exist_ok=True)
+        # 临时文件名带线程号：并发请求同一张图时各写各的，最后谁替换都是同一张。
+        temporary = destination.with_name(
+            f"{destination.stem}.{os.getpid()}.{threading.get_ident()}.tmp.jpg")
+        try:
+            with Image.open(source) as opened:
+                image = ImageOps.exif_transpose(opened)
+                if image.mode not in {"RGB", "L"}:
+                    image = image.convert("RGB")
+                image.thumbnail((self.width, self.width * 8), Image.LANCZOS)
+                image.save(temporary, "JPEG", quality=82, optimize=True)
+        except (OSError, ValueError, Image.DecompressionBombError) as exc:
+            temporary.unlink(missing_ok=True)
+            raise PreviewUnavailable("photo thumbnail failed") from exc
+        os.replace(temporary, destination)
+        return destination

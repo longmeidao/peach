@@ -80,6 +80,8 @@ class PeachSettings:
     poster_root: Path = GENERATED_DIR / "posters"
     avatar_root: Path = GENERATED_DIR / "avatars"
     logo_root: Path = GENERATED_DIR / "logos"
+    # 图片资产的缓存缩略图。云盘原图一张就有几 MB，回源一次之后瀑布流只读这里。
+    photo_root: Path = GENERATED_DIR / "photo-thumbs"
     # 官方封套按番号存一份原图；4:3 与 16:9 两种版式共用同一文件，靠 CSS 取景。
     cover_root: Path = COVER_DIR
     ffmpeg_root: Path = FFMPEG_DIR

@@ -28,6 +28,7 @@
 | JAV 元数据查询 | Javinizer-Go v1.5.1 单来源 JSON CLI（MIT） | 只发送规范番号；逐源原始证据、发行日期/实体/标签字段候选、官方 tag 优先、重复值硬门槛、人工批准和 ledger 投影 |
 | 媒体探测/转码 | Peach 管理的 FFmpeg/ffprobe | 任务策略和 Media Engine 编排 |
 | HTML5/HLS/DASH 播放 | Video.js 8.23.9 + 内置 VHS（Apache-2.0，本地固定版本） | 流方案、授权、稳定时长、回退顺序和统计面板 |
+| 照片灯箱轮播 | Swiper 14.1.0（MIT，本地固定版本，按需 `<script>` 注入）的 Thumbs / Keyboard / Zoom 模块 | 图集来源与顺序、缩略图缓存与计费口径、瀑布流本身（CSS `column-count`，不经过 Swiper） |
 | 图标 | 固定版本的本地 Lucide 子集；Health Icons 24 px outline（CC0）用于领域图标 | 标签、状态和交互设计 |
 | 定时轮询 | 持久追更配置落地后使用 APScheduler | 任务定义和安全策略 |
 | 本地文件事件 | watchdog + 定期对账 | 媒体身份和漏报修复 |

@@ -356,7 +356,8 @@ class WebDataTests(unittest.TestCase):
 
     def test_contract_handler_registries_are_complete_and_unknown_routes_fail(self):
         self.assertEqual(set(rm_web.GET_HANDLERS), {
-            "/api/items", "/api/item", "/api/entity", "/api/index", "/api/duplicates",
+            "/api/items", "/api/item", "/api/entity", "/api/photos", "/api/photo-set",
+            "/api/index", "/api/duplicates",
             "/api/stats", "/api/tops", "/api/ads", "/api/related", "/api/facets",
             "/api/search-history", "/api/review",
         })
@@ -1440,6 +1441,100 @@ class TopsRotationTests(unittest.TestCase):
     def test_a_small_pool_degrades_to_everything_available(self):
         rows = rm_web.q_tops(self.contract, 100, seed="111")["performers"]
         self.assertEqual(len(rows), 40, "候选不足时不能抽空，也不能报错")
+
+
+class PhotoSetTests(unittest.TestCase):
+    """图集就是目录：账本没有图集实体，同一目录下的图片本来就是一份图集。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.db_path = str(Path(self.tmp.name) / "ledger.db")
+        self.con = sqlite3.connect(self.db_path)
+        self.addCleanup(self.con.close)
+        self.con.executescript(BASE_SCHEMA)
+        self.con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
+            "VALUES(1,'creator','桃子','桃子')")
+        self.con.execute(
+            "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,confidence) "
+            "VALUES(1,'taozi','taozi','stash:performer',0.9)")
+        self.next_id = 1
+        self.contract = rm_web.WebContract(Path(self.db_path))
+
+    def add(self, path, medium="image", location="pikpak", size=1000,
+            linked=True, disposal=None):
+        asset_id = self.next_id
+        self.next_id += 1
+        self.con.execute(
+            "INSERT INTO asset(id,location,path,name,medium,size,disposal) VALUES(?,?,?,?,?,?,?)",
+            (asset_id, location, path, path.rsplit("\\", 1)[-1], medium, size, disposal))
+        if linked:
+            self.con.execute(
+                "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                "VALUES(?,1,'creator','legacy:asset',1.0)", (asset_id,))
+        self.con.commit()
+        return asset_id
+
+    def sets(self, name="桃子"):
+        return rm_web.q_entity_photos(self.contract, {"kind": "creator", "name": name})
+
+    def test_photos_group_by_directory_and_id_is_the_first_image(self):
+        first = self.add(r"A:\创作者\桃子\夏日写真\P\001.jpg")
+        self.add(r"A:\创作者\桃子\夏日写真\P\002.jpg")
+        other = self.add(r"A:\创作者\桃子\冬日\001.jpg")
+        self.add(r"A:\创作者\桃子\正片.mp4", medium="video")
+        result = self.sets()
+        self.assertEqual(result["total"], 3)
+        self.assertEqual([(item["id"], item["n"]) for item in result["sets"]],
+                         [(first, 2), (other, 1)], "按张数排序，id 取目录里第一张")
+
+    def test_generic_leaf_directories_borrow_the_parent_name(self):
+        self.add(r"A:\创作者\桃子\夏日写真\P\001.jpg")
+        self.add(r"B:\创作者\桃子\冬日\图片\001.jpg", location="115")
+        titles = {item["title"] for item in self.sets()["sets"]}
+        self.assertEqual(titles, {"夏日写真", "冬日"}, "`P`、`图片` 这类目录名没有信息量")
+
+    def test_alias_resolves_to_the_same_entity_and_trash_is_excluded(self):
+        self.add(r"A:\创作者\桃子\夏日写真\001.jpg")
+        self.add(r"A:\创作者\桃子\夏日写真\002.jpg", disposal="trash")
+        self.assertEqual(self.sets("taozi")["total"], 1)
+
+    def test_unlinked_images_do_not_appear_on_the_profile(self):
+        self.add(r"A:\别人\写真\001.jpg", linked=False)
+        self.assertEqual(self.sets()["sets"], [])
+
+    def test_a_set_lists_its_own_directory_in_file_name_order(self):
+        second = self.add(r"A:\创作者\桃子\夏日写真\002.jpg")
+        first = self.add(r"A:\创作者\桃子\夏日写真\001.jpg")
+        self.add(r"A:\创作者\桃子\冬日\001.jpg")
+        result = rm_web.q_photo_set(self.contract, {"id": first, "limit": "1"})
+        self.assertEqual(result["title"], "夏日写真")
+        self.assertEqual(result["total"], 2)
+        self.assertEqual([item["id"] for item in result["items"]], [first])
+        self.assertTrue(result["has_more"])
+        rest = rm_web.q_photo_set(self.contract, {"id": first, "limit": "1", "offset": "1"})
+        self.assertEqual([item["id"] for item in rest["items"]], [second])
+        self.assertFalse(rest["has_more"])
+
+    def test_the_same_directory_on_two_sources_stays_two_sets(self):
+        pikpak = self.add(r"A:\创作者\桃子\夏日写真\001.jpg")
+        self.con.execute(
+            "INSERT INTO asset(id,location,path,name,medium,size) "
+            r"VALUES(99,'115','A:\创作者\桃子\夏日写真\001.jpg','001.jpg','image',10)")
+        self.con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+            "VALUES(99,1,'creator','legacy:asset',1.0)")
+        self.con.commit()
+        self.assertEqual(rm_web.q_photo_set(self.contract, {"id": pikpak})["total"], 1)
+        self.assertEqual({item["location"] for item in self.sets()["sets"]}, {"pikpak", "115"})
+
+    def test_a_video_id_is_not_a_photo_set(self):
+        video = self.add(r"A:\创作者\桃子\正片.mp4", medium="video")
+        self.assertEqual(rm_web.q_photo_set(self.contract, {"id": video}),
+                         {"error": "not found"})
+        self.assertEqual(rm_web.q_photo_set(self.contract, {"id": "x"}),
+                         {"error": "invalid id"})
 
 
 if __name__ == "__main__":

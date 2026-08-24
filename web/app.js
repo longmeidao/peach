@@ -1151,16 +1151,184 @@ function renderEntityCollection(kind,name,items,filters,append=false){
   }
 }
 async function updateEntityCollection(kind,name,filters,push=true){
+  // 标签是作品筛选，点了就回到作品视图：留在照片里既不生效，标签条也会自相矛盾。
+  entityMediaView=emptyMediaView();
   const search=entityFilterSearch(filters);
   if(push)route(entityPath(kind,name)+(search?'?'+search:''));
   barsContext={type:'entity',kind,name,filters:{...filters}};
   const seq=++entityRequestSeq;
   const items=await fetchEntityItems(kind,name,filters);
   if(seq!==entityRequestSeq)return;
+  entityVideoCount=items.total||0;
+  renderMediaTabs(kind,name,filters);
   $('#index').querySelectorAll('[data-entity-tag]').forEach(b=>
     b.setAttribute('aria-pressed',String(b.dataset.entityTag===filters.tag)));
   renderEntityCollection(kind,name,items,filters)
 }
+/* ── 资料页的照片 ─────────────────────────────────────────────────────────────
+   图集就是目录：账本里没有图集实体，`<作品目录>\P\001.jpg` 这种约定本身就是分组依据，
+   后端按目录聚合，用目录里最小的资产 id 当图集 id。三层：图集列表 → 瀑布流 → 灯箱。
+   瀑布流用 CSS `column-count` 而不是 JS 布局：图片行没有宽高，等宽多列流式排版正好
+   不需要知道比例，也就不用等图片加载完再算位置。
+   缩略图一律走 `/photo-thumb`（服务端缓存），只有灯箱里的大图读 `/photo` 原图——
+   PikPak 是计费来源，瀑布流直接铺原图等于一屏付几十兆流量。 ── */
+const emptyMediaView=()=>({media:'videos',set:0});
+const parseMediaView=search=>{const params=new URLSearchParams(search),set=params.get('set')||'';
+  return {media:params.get('media')==='photos'?'photos':'videos',set:/^\d+$/.test(set)?Number(set):0}};
+const entityViewSearch=(filters,view)=>{const params=new URLSearchParams(entityFilterSearch(filters));
+  if(view&&view.media==='photos'){params.set('media','photos');if(view.set)params.set('set',String(view.set))}
+  return params.toString()};
+let entityPhotos=null,entityMediaView=emptyMediaView(),entityVideoCount=0,photoWallItems=[];
+const routeEntityView=(kind,name,view)=>{
+  const filters=barsContext.type==='entity'?barsContext.filters:emptyEntityFilters();
+  const search=entityViewSearch(filters,view);
+  route(entityPath(kind,name)+(search?'?'+search:''))};
+const photoTotalOf=()=>entityPhotos&&!entityPhotos.error?(entityPhotos.total||0):0;
+
+function renderMediaTabs(kind,name,filters){
+  const tabs=$('#index').querySelector('.mediatabs');if(!tabs)return;
+  const photos=photoTotalOf();
+  tabs.hidden=!photos;
+  if(!photos){tabs.innerHTML='';return}
+  const tab=(media,label,glyph,count)=>`<button data-media="${media}"
+      aria-pressed="${(entityMediaView.media==='photos')===(media==='photos')}">${icon(glyph)}<span>${label}</span>
+      <b class="mono">${count.toLocaleString()}</b></button>`;
+  tabs.innerHTML=tab('videos','作品','play',entityVideoCount)+tab('photos','照片','layout-grid',photos);
+  tabs.querySelectorAll('[data-media]').forEach(b=>
+    b.onclick=()=>switchEntityMedia(kind,name,filters,b.dataset.media));
+}
+
+async function switchEntityMedia(kind,name,filters,media){
+  if((entityMediaView.media==='photos')===(media==='photos')&&!entityMediaView.set)return;
+  entityMediaView=media==='photos'?{media:'photos',set:0}:emptyMediaView();
+  routeEntityView(kind,name,entityMediaView);
+  renderMediaTabs(kind,name,filters);
+  if(media==='photos'){renderPhotoSets(kind,name,filters);return}
+  const seq=++entityRequestSeq;
+  const items=await fetchEntityItems(kind,name,filters);
+  if(seq!==entityRequestSeq)return;
+  renderEntityCollection(kind,name,items,filters);
+}
+
+const photoSetCard=item=>`<button class="photoset" data-photo-set="${item.id}">
+    <span class="photosetcover"><img src="/photo-thumb?id=${item.id}" alt="" loading="lazy" onerror="this.remove()"></span>
+    <span class="photosetname" title="${esc(item.title)}">${esc(item.title)}</span>
+    <small class="mono">${item.n.toLocaleString()} 张 · ${fmtSize(item.bytes||0)}</small></button>`;
+
+function renderPhotoSets(kind,name,filters){
+  const section=$('#index').querySelector('.entitysection');if(!section)return;
+  const sets=(entityPhotos&&entityPhotos.sets)||[];
+  section.innerHTML=`<h3>图集 · ${sets.length} 组 · ${photoTotalOf().toLocaleString()} 张</h3>
+    <div class="photosets">${sets.map(photoSetCard).join('')}</div>`;
+  section.querySelectorAll('[data-photo-set]').forEach(b=>
+    b.onclick=()=>openPhotoSet(kind,name,filters,Number(b.dataset.photoSet)));
+}
+
+async function openPhotoSet(kind,name,filters,setId,push=true){
+  const seq=++entityRequestSeq;
+  const data=await api('/api/photo-set?id='+setId+'&limit=120');
+  if(seq!==entityRequestSeq||data.error)return;
+  entityMediaView={media:'photos',set:setId};
+  if(push)routeEntityView(kind,name,entityMediaView);
+  renderMediaTabs(kind,name,filters);
+  renderPhotoWall(kind,name,filters,data);
+}
+
+const photoCell=(item,index)=>`<button class="photocell" data-photo-index="${index}" title="${esc(item.name)}">
+    <img src="/photo-thumb?id=${item.id}" alt="${esc(item.name)}" loading="lazy"
+      onerror="this.closest('.photocell').remove()"></button>`;
+
+function renderPhotoWall(kind,name,filters,data,append=false){
+  const section=$('#index').querySelector('.entitysection');if(!section)return;
+  if(!append){
+    photoWallItems=[];
+    section.innerHTML=`<div class="photohead">
+        <button class="photoback" type="button">${icon('chevron-left')}<span>全部图集</span></button>
+        <h3>${esc(data.title)} · ${(data.total||0).toLocaleString()} 张</h3></div>
+      <div class="photowall"></div><button class="entitymore" type="button">载入更多</button>`;
+    section.querySelector('.photoback').onclick=()=>{
+      entityMediaView={media:'photos',set:0};
+      routeEntityView(kind,name,entityMediaView);
+      renderPhotoSets(kind,name,filters)};
+  }
+  const wall=section.querySelector('.photowall');
+  const start=photoWallItems.length;
+  photoWallItems.push(...data.items);
+  wall.insertAdjacentHTML('beforeend',data.items.map((item,i)=>photoCell(item,start+i)).join(''));
+  wall.querySelectorAll('.photocell:not([data-wired])').forEach(cell=>{
+    cell.dataset.wired='1';
+    cell.onclick=()=>openPhotoLightbox(Number(cell.dataset.photoIndex))});
+  const more=section.querySelector('.entitymore');
+  more.hidden=!data.has_more;
+  const requestMore=async()=>{if(more.hidden||more.disabled)return;more.disabled=true;const seq=entityRequestSeq;
+    try{const next=await api(`/api/photo-set?id=${data.id}&limit=120&offset=${photoWallItems.length}`);
+      if(seq===entityRequestSeq&&!next.error&&$('#index').dataset.entityName===name)
+        renderPhotoWall(kind,name,filters,next,true)}
+    finally{if(seq===entityRequestSeq)more.disabled=false}};
+  more.onclick=requestMore;
+  more._observer?.disconnect();
+  if(!more.hidden){
+    more._observer=new IntersectionObserver(entries=>{if(entries.some(x=>x.isIntersecting))requestMore()},{rootMargin:'320px'});
+    more._observer.observe(more);
+  }
+}
+
+/* 灯箱按需加载 Swiper：大图轮播、底部缩略图条和键盘左右键都是它自带的模块，
+   没必要自己写一遍；但它只有看照片时才用得上，不该进首屏。 */
+let swiperLoader=null,activeLightbox=null;
+const loadSwiper=()=>swiperLoader||(swiperLoader=new Promise((resolve,reject)=>{
+  const style=document.createElement('link');
+  style.rel='stylesheet';style.href='/vendor/swiper/14.1.0/swiper-bundle.min.css';
+  document.head.appendChild(style);
+  const script=document.createElement('script');
+  script.src='/vendor/swiper/14.1.0/swiper-bundle.min.js';
+  script.onload=()=>resolve(window.Swiper);
+  script.onerror=()=>{swiperLoader=null;reject(new Error('swiper unavailable'))};
+  document.head.appendChild(script)}));
+const photoLightKeys=e=>{if(e.key==='Escape')closePhotoLightbox()};
+function closePhotoLightbox(){
+  if(!activeLightbox)return;
+  document.removeEventListener('keydown',photoLightKeys);
+  activeLightbox.main.destroy(true,true);activeLightbox.strip.destroy(true,true);
+  activeLightbox.box.remove();activeLightbox=null;
+  document.body.classList.remove('photolight-open');
+}
+async function openPhotoLightbox(index){
+  const items=photoWallItems;
+  if(!items.length||index<0||index>=items.length)return;
+  let SwiperCtor;
+  try{SwiperCtor=await loadSwiper()}
+  catch(_e){window.open('/photo?id='+items[index].id,'_blank','noopener');return}
+  closePhotoLightbox();
+  const box=document.createElement('div');
+  box.className='photolight';
+  box.innerHTML=`<button class="photoclose" type="button" aria-label="关闭">${icon('x')}</button>
+    <div class="swiper photomain"><div class="swiper-wrapper">${items.map(item=>
+      `<div class="swiper-slide"><div class="swiper-zoom-container"><img src="/photo?id=${item.id}"
+        alt="${esc(item.name)}" loading="lazy"></div></div>`).join('')}</div>
+      <button class="photonav prev" type="button" aria-label="上一张">${icon('chevron-left')}</button>
+      <button class="photonav next" type="button" aria-label="下一张">${icon('chevron-left')}</button></div>
+    <div class="photocount mono" aria-live="polite">${index+1} / ${items.length}</div>
+    <div class="swiper photostrip"><div class="swiper-wrapper">${items.map(item=>
+      `<div class="swiper-slide"><img src="/photo-thumb?id=${item.id}" alt="" loading="lazy"></div>`).join('')}</div></div>`;
+  document.body.appendChild(box);
+  document.body.classList.add('photolight-open');
+  const counter=box.querySelector('.photocount');
+  const strip=new SwiperCtor(box.querySelector('.photostrip'),{
+    slidesPerView:'auto',spaceBetween:8,freeMode:true,watchSlidesProgress:true,
+    centeredSlides:true,centeredSlidesBounds:true,slideToClickedSlide:true});
+  const main=new SwiperCtor(box.querySelector('.photomain'),{
+    initialSlide:index,zoom:true,keyboard:{enabled:true},lazyPreloadPrevNext:1,
+    thumbs:{swiper:strip},
+    navigation:{prevEl:box.querySelector('.photonav.prev'),nextEl:box.querySelector('.photonav.next')},
+    on:{slideChange(){counter.textContent=`${this.activeIndex+1} / ${items.length}`}}});
+  activeLightbox={box,main,strip};
+  box.querySelector('.photoclose').onclick=closePhotoLightbox;
+  // 只在背景本身上关闭：点图片、缩略图条和翻页按钮都不该退出。
+  box.addEventListener('click',e=>{if(e.target===box)closePhotoLightbox()});
+  document.addEventListener('keydown',photoLightKeys);
+}
+
 async function openEntity(kind,name,push=true,requestedTag){
   releaseHoverPreviews();
   const filters=push?emptyEntityFilters():parseEntityFilters(location.search);
@@ -1168,16 +1336,19 @@ async function openEntity(kind,name,push=true,requestedTag){
   if(kind==='creator')filters.creator='';
   const entityTag=filters.tag||'';
   const expectedPath=entityPath(kind,name);
-  const search=entityFilterSearch(filters);
+  // 深链和前进后退要能直接落到照片视图；点进来的新页面一律从作品开始。
+  entityMediaView=push?emptyMediaView():parseMediaView(location.search);
+  const search=entityViewSearch(filters,entityMediaView);
   if(push)route(expectedPath+(search?'?'+search:''));
   barsContext={type:'entity',kind,name,filters};
   showHomeSurfaces();
   disposeStage(false);
   detailReturnBarsContext=null;
   const seq=++entityRequestSeq;
-  const [d,items]=await Promise.all([
+  const [d,items,photos]=await Promise.all([
     api(`/api/entity?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`),
-    fetchEntityItems(kind,name,filters)]);
+    fetchEntityItems(kind,name,filters),
+    api(`/api/photos?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`)]);
   if(d.error||seq!==entityRequestSeq||
      decodeURIComponent(location.pathname)!==decodeURIComponent(expectedPath))return;
   document.body.classList.add('entity-open');
@@ -1208,6 +1379,7 @@ async function openEntity(kind,name,push=true,requestedTag){
       ${tags?`<section><h3>相关标签</h3><div class="entitytags">${tags}</div></section>`:''}
       ${related?`<section><h3>关联艺人</h3><div class="relatedpeople">${related}</div></section>`:''}
     </div>`:''}
+    <div class="mediatabs" hidden></div>
     <div class="entitysection"></div>`;
   $('#index').querySelectorAll('[data-entity-tag]').forEach(b=>b.onclick=()=>{
     const next=b.dataset.entityTag===entityTag?'':b.dataset.entityTag;
@@ -1218,7 +1390,13 @@ async function openEntity(kind,name,push=true,requestedTag){
     else img.remove()}));
   $('#index').querySelectorAll('[data-related-performer]').forEach(b=>b.onclick=()=>
     openEntity('performer',b.dataset.relatedPerformer));
-  renderEntityCollection(kind,name,items,filters);
+  entityPhotos=photos&&!photos.error?photos:null;
+  entityVideoCount=items.total||0;
+  if(entityMediaView.media==='photos'&&!photoTotalOf())entityMediaView=emptyMediaView();
+  renderMediaTabs(kind,name,filters);
+  if(entityMediaView.media!=='photos')renderEntityCollection(kind,name,items,filters);
+  else if(entityMediaView.set)await openPhotoSet(kind,name,filters,entityMediaView.set,false);
+  else renderPhotoSets(kind,name,filters);
   buildBars();
   window.scrollTo({top:0,behavior:'smooth'});
 }

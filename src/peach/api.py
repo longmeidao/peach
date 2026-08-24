@@ -28,7 +28,7 @@ from .media import (
 )
 from .mdns import create_mdns_publisher
 from .platform import is_unmapped, root_online, translate_ledger_path
-from .previews import PreviewService, PreviewUnavailable
+from .previews import PhotoThumbnailService, PreviewService, PreviewUnavailable
 from .providers import OpenCodeGoClient, ProviderUnavailable, default_registry
 from .repository import LedgerDatabase, LedgerRepository
 from .segments import (
@@ -127,6 +127,7 @@ def create_app(
         repository, resolver, settings.snapshot_root, settings.poster_root,
         settings.avatar_root, settings.logo_root, settings.legacy_snapshot_roots,
     )
+    photo_service = PhotoThumbnailService(settings.photo_root)
     transcode_service = TranscodeService(resolver, settings.transcode_root)
     hls_plan_executor = ThreadPoolExecutor(
         max_workers=2, thread_name_prefix="PeachHlsPlan",
@@ -173,6 +174,7 @@ def create_app(
     app.state.repository = repository
     app.state.media_engine = media_engine
     app.state.preview_service = preview_service
+    app.state.photo_service = photo_service
     app.state.transcode_service = transcode_service
     app.state.hls_plan_executor = hls_plan_executor
     app.state.hls_service = hls_service
@@ -523,6 +525,45 @@ def create_app(
         except MediaUnavailable:
             return JSONResponse({"error": "unavailable"}, status_code=404)
         response = FileResponse(path)
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        return response
+
+    @app.api_route("/photo", methods=["GET", "HEAD"])
+    def photo(request: Request, id: int):
+        """图片资产原图。灯箱看大图用这条，瀑布流一律走 `/photo-thumb`。"""
+        args = _first_query_values(request)
+        if not _authorized(request, settings.token, args):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        try:
+            path = media_engine.file_for(id)
+        except MediaNotFound:
+            return JSONResponse({"error": "no such id"}, status_code=404)
+        except MediaOffline as exc:
+            return _offline_response(exc)
+        except MediaUnavailable:
+            return JSONResponse({"error": "unavailable"}, status_code=404)
+        response = FileResponse(path)
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        return response
+
+    @app.api_route("/photo-thumb", methods=["GET", "HEAD"])
+    def photo_thumb(request: Request, id: int):
+        args = _first_query_values(request)
+        if not _authorized(request, settings.token, args):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        try:
+            source = media_engine.file_for(id)
+        except MediaNotFound:
+            return JSONResponse({"error": "no such id"}, status_code=404)
+        except MediaOffline as exc:
+            return _offline_response(exc)
+        except MediaUnavailable:
+            return JSONResponse({"error": "unavailable"}, status_code=404)
+        try:
+            path = photo_service.thumbnail(id, source)
+        except PreviewUnavailable:
+            return JSONResponse({"error": "unavailable"}, status_code=404)
+        response = FileResponse(path, media_type="image/jpeg")
         response.headers["Cache-Control"] = "public, max-age=86400"
         return response
 

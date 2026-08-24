@@ -681,11 +681,7 @@ def q_entity(contract: WebContract, args):
     if kind not in {"performer", "studio", "creator", "series"} or not name:
         return {"error": "invalid entity"}
     c = contract.db()
-    row = c.execute(
-        "SELECT DISTINCT e.* FROM entity e LEFT JOIN entity_alias a ON a.entity_id=e.id "
-        "WHERE e.kind=? AND (e.canonical_name=? OR a.alias=?) LIMIT 1",
-        (kind, name, name),
-    ).fetchone()
+    row = _resolve_entity(c, kind, name)
     if not row:
         c.close()
         return {"error": "not found"}
@@ -774,6 +770,114 @@ def q_entity(contract: WebContract, args):
     d["related_performers"] = related
     c.close()
     return d
+
+# ────────────────────────────── 照片 ──────────────────────────────
+# 图集就是目录：账本没有图集实体，一个目录下的图片本来就是一份图集，
+# `<作品目录>\P\001.jpg` 这种约定在 A:/B: 上到处都是。图集的 id 用目录里最小的
+# 资产 id，既稳定又不用把真实路径发给前端（`q_item` 同样不发 `path`）。
+
+#: 从 `path` 去掉 `name` 和分隔符，剩下的就是所在目录。
+PHOTO_DIR = "substr(a.path,1,length(a.path)-length(a.name)-1)"
+
+#: 只写「这是图片」的通用目录名。它们做标题没有信息量，改用上一级目录名。
+GENERIC_PHOTO_DIRS = frozenset({
+    "p", "photo", "photos", "pic", "pics", "picture", "pictures",
+    "image", "images", "img", "图片", "写真", "照片",
+})
+
+
+def _resolve_entity(c, kind, name):
+    """按规范名或别名取实体。旧名进来也要能落到同一条身份上。"""
+    return c.execute(
+        "SELECT DISTINCT e.* FROM entity e LEFT JOIN entity_alias a ON a.entity_id=e.id "
+        "WHERE e.kind=? AND (e.canonical_name=? OR a.alias=?) LIMIT 1",
+        (kind, name, name),
+    ).fetchone()
+
+
+def photo_set_title(directory: str) -> str:
+    """图集标题：叶子目录名；叶子只是 `P`、`图片` 这类通用名时用上一级。"""
+    parts = [part for part in str(directory).replace("/", "\\").split("\\") if part]
+    if not parts:
+        return "未命名图集"
+    leaf = parts[-1]
+    if leaf.casefold() in GENERIC_PHOTO_DIRS and len(parts) > 1:
+        return parts[-2]
+    return leaf
+
+
+def q_entity_photos(contract: WebContract, args):
+    """实体名下的图集列表。封面用目录里第一张图，不另存封面文件。"""
+    kind, name = args.get("kind", ""), args.get("name", "")
+    if kind not in {"performer", "studio", "creator", "series"} or not name:
+        return {"error": "invalid entity"}
+    c = contract.db()
+    try:
+        row = _resolve_entity(c, kind, name)
+        if not row:
+            return {"error": "not found"}
+        sets = [{
+            "id": item["id"],
+            "title": photo_set_title(item["dir"]),
+            "n": item["n"],
+            "bytes": item["bytes"] or 0,
+            "location": item["location"],
+            "cost": COST.get(item["location"], "metered"),
+        } for item in c.execute(
+            f"SELECT {PHOTO_DIR} dir,min(a.id) id,count(*) n,sum(a.size) bytes,a.location "
+            "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
+            "WHERE ae.entity_id=? AND a.medium='image' AND a.name IS NOT NULL "
+            "AND (a.disposal IS NULL OR a.disposal<>'trash') "
+            f"GROUP BY {PHOTO_DIR},a.location ORDER BY n DESC,dir",
+            (row["id"],),
+        )]
+        return {
+            "kind": kind, "name": row["canonical_name"], "entity_id": row["id"],
+            "sets": sets, "total": sum(item["n"] for item in sets),
+        }
+    finally:
+        c.close()
+
+
+def q_photo_set(contract: WebContract, args):
+    """一个图集里的图片。按文件名排，`001.jpg` 这类编号才不会乱序。"""
+    try:
+        set_id = int(args.get("id", ""))
+    except (TypeError, ValueError):
+        return {"error": "invalid id"}
+    limit = max(1, min(int(args.get("limit") or 120), 600))
+    offset = max(0, int(args.get("offset") or 0))
+    c = contract.db()
+    try:
+        anchor = c.execute(
+            "SELECT id,location,path,name FROM asset "
+            "WHERE id=? AND medium='image' AND name IS NOT NULL", (set_id,),
+        ).fetchone()
+        if not anchor:
+            return {"error": "not found"}
+        directory = anchor["path"][: len(anchor["path"]) - len(anchor["name"]) - 1]
+        par = (directory, anchor["location"])
+        total = c.execute(
+            f"SELECT count(*) FROM asset a WHERE a.medium='image' AND a.name IS NOT NULL "
+            f"AND {PHOTO_DIR}=? AND a.location=? "
+            "AND (a.disposal IS NULL OR a.disposal<>'trash')", par,
+        ).fetchone()[0]
+        items = [{"id": item["id"], "name": item["name"], "size": item["size"] or 0}
+                 for item in c.execute(
+                     f"SELECT a.id,a.name,a.size FROM asset a WHERE a.medium='image' "
+                     f"AND a.name IS NOT NULL AND {PHOTO_DIR}=? AND a.location=? "
+                     "AND (a.disposal IS NULL OR a.disposal<>'trash') "
+                     "ORDER BY a.name,a.id LIMIT ? OFFSET ?",
+                     (*par, limit, offset),
+                 )]
+        return {
+            "id": anchor["id"], "title": photo_set_title(directory),
+            "location": anchor["location"], "cost": COST.get(anchor["location"], "metered"),
+            "total": total, "items": items, "has_more": offset + len(items) < total,
+        }
+    finally:
+        c.close()
+
 
 def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category=""):
     """全部艺人 / 创作者 / 标签的索引页数据。"""
@@ -1780,6 +1884,8 @@ GET_HANDLERS = {
     "/api/items": q_items,
     "/api/item": _get_item,
     "/api/entity": q_entity,
+    "/api/photos": q_entity_photos,
+    "/api/photo-set": q_photo_set,
     "/api/index": _get_index,
     "/api/duplicates": q_duplicates,
     "/api/stats": _get_stats,
