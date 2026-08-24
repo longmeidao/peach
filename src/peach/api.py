@@ -2,7 +2,9 @@ import hmac
 import asyncio
 import html
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
+from functools import partial
 from typing import Any
 from urllib.parse import parse_qs, quote
 
@@ -38,7 +40,7 @@ from .segments import (
 from .stash import StashClient
 from .streaming import CancellableFileResponse, StreamSessionRegistry
 from .sync import LedgerSync
-from .transcodes import TranscodeService, TranscodeUnavailable
+from .transcodes import TranscodeCancelled, TranscodeService, TranscodeUnavailable
 
 
 LOGGER = logging.getLogger(__name__)
@@ -126,6 +128,9 @@ def create_app(
         settings.avatar_root, settings.logo_root, settings.legacy_snapshot_roots,
     )
     transcode_service = TranscodeService(resolver, settings.transcode_root)
+    hls_plan_executor = ThreadPoolExecutor(
+        max_workers=2, thread_name_prefix="PeachHlsPlan",
+    )
     hls_service = HlsSegmentService(resolver, settings.stream_root)
     mdns = create_mdns_publisher(
         settings.mdns_name, settings.mdns_port, secure=settings.tls_enabled,
@@ -152,6 +157,7 @@ def create_app(
             if sync is not None:
                 await asyncio.to_thread(sync.stop)
             http_transport.close()
+            hls_plan_executor.shutdown(wait=False, cancel_futures=True)
 
     app = FastAPI(
         title="Peach API",
@@ -168,6 +174,7 @@ def create_app(
     app.state.media_engine = media_engine
     app.state.preview_service = preview_service
     app.state.transcode_service = transcode_service
+    app.state.hls_plan_executor = hls_plan_executor
     app.state.hls_service = hls_service
     app.state.mdns = mdns
     app.state.providers = providers
@@ -325,7 +332,11 @@ def create_app(
         except MediaUnavailable:
             return JSONResponse({"error": "unavailable"}, status_code=404)
         try:
-            path, transcoded = transcode_service.browser_path(id, path)
+            path, transcoded = transcode_service.browser_path(
+                id, path, session=session, registry=stream_sessions,
+            )
+        except TranscodeCancelled:
+            return Response(status_code=410, headers={"Cache-Control": "no-store"})
         except TranscodeUnavailable:
             logging.getLogger(__name__).exception("browser transcode failed for asset %s", id)
             return JSONResponse({"error": "transcode unavailable"}, status_code=503)
@@ -341,7 +352,7 @@ def create_app(
         response.headers["Cache-Control"] = "no-store"
         return response
 
-    def _hls_plan(asset_id: int):
+    def _hls_plan(asset_id: int, session: str = ""):
         """解析 HLS 的片源路径与关键帧分片计划；任何一步不成立就返回 None 走 Range。"""
         asset = media_engine.asset(asset_id)
         # 播放列表和分片端点本身就是 HLS 路径，按 ADR-0016 显式要计划，不受默认值影响。
@@ -349,7 +360,9 @@ def create_app(
         if choice.protocol != "hls" or not asset.duration:
             return None
         source = media_engine.filesystem.file_for(asset, thumbnail=False)
-        source, _ = transcode_service.browser_path(asset_id, source)
+        source, _ = transcode_service.browser_path(
+            asset_id, source, session=session, registry=stream_sessions,
+        )
         plan = hls_service.plan(source, asset.duration)
         return None if not plan else (asset, source, plan)
 
@@ -408,7 +421,7 @@ def create_app(
         if stream_sessions.is_cancelled(session):
             return PlainTextResponse("stream cancelled", status_code=410)
         try:
-            resolved = _hls_plan(id)
+            resolved = _hls_plan(id, session)
         except MediaNotFound:
             return JSONResponse({"error": "no such id"}, status_code=404)
         except MediaOffline as exc:
@@ -435,7 +448,10 @@ def create_app(
         if stream_sessions.is_cancelled(session):
             return Response(status_code=410, headers={"Cache-Control": "no-store"})
         try:
-            resolved = await asyncio.to_thread(_hls_plan, id)
+            loop = asyncio.get_running_loop()
+            resolved = await loop.run_in_executor(
+                hls_plan_executor, partial(_hls_plan, id, session),
+            )
             if resolved is None:
                 return JSONResponse({"error": "hls unavailable"}, status_code=404)
             _, source, plan = resolved
@@ -453,6 +469,8 @@ def create_app(
         except MediaUnavailable:
             return JSONResponse({"error": "unavailable"}, status_code=404)
         except SegmentCancelled:
+            return Response(status_code=410, headers={"Cache-Control": "no-store"})
+        except TranscodeCancelled:
             return Response(status_code=410, headers={"Cache-Control": "no-store"})
         except TranscodeUnavailable:
             logging.getLogger(__name__).exception("browser transcode failed for asset %s", id)

@@ -1,4 +1,3 @@
-import asyncio
 import csv
 import importlib.util
 import json
@@ -614,13 +613,17 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((asset_id, index, session), (1, 1, "hls-test"))
             return segment
 
-        real_to_thread = asyncio.to_thread
         with patch.object(self.app.state.hls_service, "generate", new=generate):
-            with patch("peach.api.asyncio.to_thread", wraps=real_to_thread) as offload:
+            with patch.object(
+                self.app.state.hls_plan_executor,
+                "submit",
+                wraps=self.app.state.hls_plan_executor.submit,
+            ) as submit:
                 response = await self.client.get(
                     "/stream/hls/1/1.ts?session=hls-test&t=secret",
                 )
-        offload.assert_awaited_once()
+        submit.assert_called_once()
+        self.assertEqual(self.app.state.hls_plan_executor._max_workers, 2)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"one segment")
         self.assertEqual(response.headers["content-type"], "video/mp2t")

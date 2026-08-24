@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 import threading
+import time
 import uuid
 from pathlib import Path
 
@@ -16,20 +17,29 @@ class TranscodeUnavailable(RuntimeError):
     pass
 
 
+class TranscodeCancelled(TranscodeUnavailable):
+    pass
+
+
 class TranscodeService:
     """Create immutable browser-playable MP4 cache entries without touching sources."""
 
-    def __init__(self, resolver: FFmpegResolver, cache_root: Path):
+    def __init__(
+        self, resolver: FFmpegResolver, cache_root: Path, *, max_concurrent: int = 2,
+    ):
         self.resolver = resolver
         self.cache_root = cache_root
         self._locks: dict[int, threading.Lock] = {}
         self._locks_guard = threading.Lock()
+        self._slots = threading.Semaphore(max(1, max_concurrent))
 
     @staticmethod
     def needs_transcode(source: Path) -> bool:
         return source.suffix.lower() not in BROWSER_NATIVE_SUFFIXES
 
-    def browser_path(self, asset_id: int, source: Path) -> tuple[Path, bool]:
+    def browser_path(
+        self, asset_id: int, source: Path, *, session: str = "", registry=None,
+    ) -> tuple[Path, bool]:
         if not self.needs_transcode(source):
             return source, False
 
@@ -60,19 +70,43 @@ class TranscodeService:
                 "-movflags", "+faststart", str(temporary),
             ]
             creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+            process = None
+            registered = False
             try:
-                result = subprocess.run(
-                    command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                    stderr=subprocess.PIPE, timeout=3600, check=False,
-                    creationflags=creationflags,
-                )
-                if result.returncode or not temporary.is_file() or not temporary.stat().st_size:
-                    detail = result.stderr.decode("utf-8", "replace")[-1000:]
+                with self._slots:
+                    process = subprocess.Popen(
+                        command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                        stderr=subprocess.PIPE, creationflags=creationflags,
+                    )
+                    if registry is not None and session:
+                        registered = registry.register_process(session, process)
+                        if not registered:
+                            process.kill()
+                            process.communicate()
+                            raise TranscodeCancelled(session)
+                    deadline = time.monotonic() + 3600
+                    while True:
+                        try:
+                            _stdout, stderr = process.communicate(timeout=0.5)
+                            break
+                        except subprocess.TimeoutExpired:
+                            if registry is not None and session and registry.is_cancelled(session):
+                                process.kill()
+                                process.communicate()
+                                raise TranscodeCancelled(session)
+                            if time.monotonic() >= deadline:
+                                process.kill()
+                                process.communicate()
+                                raise TranscodeUnavailable("ffmpeg timed out")
+                if process.returncode or not temporary.is_file() or not temporary.stat().st_size:
+                    detail = (stderr or b"").decode("utf-8", "replace")[-1000:]
                     raise TranscodeUnavailable(detail or "ffmpeg failed")
                 temporary.replace(target)
-            except (OSError, subprocess.TimeoutExpired) as exc:
+            except OSError as exc:
                 raise TranscodeUnavailable("ffmpeg failed") from exc
             finally:
+                if registered:
+                    registry.unregister_process(session, process)
                 temporary.unlink(missing_ok=True)
 
             for stale in self.cache_root.glob(f"{asset_id}-*.mp4"):
