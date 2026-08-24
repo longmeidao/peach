@@ -51,7 +51,11 @@ class TrayTests(unittest.TestCase):
 
     def test_services_never_own_ledger_sync(self):
         """浏览服务只观察写入角色；跨机复制只能由托盘显式执行。"""
-        specs = build_service_specs()
+        with tempfile.TemporaryDirectory() as directory:
+            tls_dir = Path(directory)
+            for name in ("peach-local-ca.crt", "peach.crt", "peach.key"):
+                (tls_dir / name).write_text("test-only", encoding="utf-8")
+            specs = build_service_specs(tls_dir=tls_dir)
         owners = [spec for spec in specs if "--no-ledger-sync" not in spec.command]
         self.assertEqual(owners, [])
         for spec in specs:

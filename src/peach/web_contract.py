@@ -14,6 +14,7 @@ import re
 import sqlite3
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Sequence
 from urllib.parse import quote, urlsplit
@@ -164,6 +165,34 @@ class WebContract:
         # 番号形态判据只有一份实现，SQL 侧直接调它，避免和封面键的口径各写一套。
         connection.create_function("is_jav_code", 1, is_jav_code, deterministic=True)
         return connection
+
+    @contextmanager
+    def read_connection(self):
+        """Yield one read-only connection and always close it.
+
+        ``sqlite3.Connection`` only commits or rolls back when used as a context
+        manager; it does not close itself. Keep the lifecycle rule in one place.
+        """
+        connection = self.db()
+        try:
+            yield connection
+        finally:
+            connection.close()
+
+    @contextmanager
+    def write_transaction(self):
+        """Serialize one write transaction, roll it back on failure, then close."""
+        with self.write_lock:
+            connection = self.db(write=True)
+            try:
+                yield connection
+            except BaseException:
+                connection.rollback()
+                raise
+            else:
+                connection.commit()
+            finally:
+                connection.close()
 
     def has_snapshot(self, raw_path: str | None) -> bool:
         if not raw_path:
@@ -457,21 +486,17 @@ def w_search_history(contract: WebContract, body):
     if operation == "remove":
         if not query:
             raise ValueError("query is required")
-        with contract.write_lock:
-            connection = contract.db(write=True)
+        with contract.write_transaction() as connection:
             connection.execute("DELETE FROM search_history WHERE query=?", (query,))
-            connection.commit(); connection.close()
         return {"ok": True, "operation": operation}
     if operation != "remember" or not query or len(query) > 200:
         raise ValueError("invalid search history request")
-    with contract.write_lock:
-        connection = contract.db(write=True)
+    with contract.write_transaction() as connection:
         connection.execute(
             "INSERT INTO search_history(query,used_count,last_used_at) VALUES(?,1,datetime('now')) "
             "ON CONFLICT(query) DO UPDATE SET used_count=used_count+1,last_used_at=excluded.last_used_at",
             (query,),
         )
-        connection.commit(); connection.close()
     return {"ok": True, "operation": operation}
 
 
@@ -1339,8 +1364,7 @@ def w_review_decision(contract: WebContract, body):
         raise ValueError("invalid review decision")
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     note = str(body.get("note", "")).strip()[:2000]
-    with contract.write_lock:
-        connection = contract.db(write=True)
+    with contract.write_transaction() as connection:
         connection.execute(
             "INSERT INTO review_decision(category,item_key,status,note,updated_at) VALUES(?,?,?,?,?) "
             "ON CONFLICT(category,item_key) DO UPDATE SET status=excluded.status,note=excluded.note,updated_at=excluded.updated_at",
@@ -1350,14 +1374,9 @@ def w_review_decision(contract: WebContract, body):
         if category == "metadata_fields" and status == "approved":
             candidate_key = str(body.get("candidate_key") or "").strip()
             if not candidate_key:
-                connection.rollback(); connection.close()
                 raise ValueError("批准字段候选时必须选择一个来源值")
             group, candidate = _selected_metadata_candidate(contract, item_key, candidate_key)
-            try:
-                applied = _apply_metadata_candidate(connection, group, candidate, now)
-            except Exception:
-                connection.rollback(); connection.close()
-                raise
+            applied = _apply_metadata_candidate(connection, group, candidate, now)
             provenance_note = json.dumps({
                 "candidate_key": candidate_key, "source": candidate.get("source"),
                 "user_note": note,
@@ -1373,20 +1392,16 @@ def w_review_decision(contract: WebContract, body):
                           for row in read_candidates(category, contract.candidate_root)[0]}
             candidate = candidates.get(item_key)
             if candidate is None:
-                connection.rollback(); connection.close()
                 raise ValueError("候选不在当前批次，无法批准")
             if str(candidate.get("status") or "").strip() != "candidate":
-                connection.rollback(); connection.close()
                 raise ValueError("只有 candidate 状态的复核项可以批准")
             creator = str(candidate.get("creator") or "").strip()
             tags = [tag.strip() for tag in str(candidate.get("tags") or "").split("|") if tag.strip()]
             claimed_creator = str(body.get("creator", "")).strip()
             claimed_tags = [tag.strip() for tag in str(body.get("tags", "")).split("|") if tag.strip()]
             if (claimed_creator and claimed_creator != creator) or (claimed_tags and claimed_tags != tags):
-                connection.rollback(); connection.close()
                 raise ValueError("提交内容与候选不一致，拒绝写入")
             if not creator or not tags:
-                connection.rollback(); connection.close()
                 raise ValueError("approved creator review requires creator and tags")
             entity = connection.execute(
                 "SELECT e.id FROM entity e LEFT JOIN entity_alias a ON a.entity_id=e.id "
@@ -1394,7 +1409,6 @@ def w_review_decision(contract: WebContract, body):
                 (creator, creator),
             ).fetchone()
             if not entity:
-                connection.rollback(); connection.close()
                 raise ValueError("creator entity not found")
             assets = connection.execute(
                 "SELECT DISTINCT ae.asset_id FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
@@ -1405,7 +1419,6 @@ def w_review_decision(contract: WebContract, body):
             available_ids = {asset["asset_id"] for asset in assets}
             if selected_ids:
                 if not selected_ids <= available_ids:
-                    connection.rollback(); connection.close()
                     raise ValueError("selected assets are outside the reviewed creator")
                 asset_ids = sorted(selected_ids)
             else:
@@ -1413,7 +1426,6 @@ def w_review_decision(contract: WebContract, body):
                 # 却照样把决定记成 approved——留痕说通过、实际没写是最糟的组合。
                 asset_ids = sorted(available_ids)
                 if len(asset_ids) > REVIEW_APPLY_LIMIT:
-                    connection.rollback(); connection.close()
                     raise ValueError(
                         f"该创作者有 {len(asset_ids)} 条作品，超过单次批准上限 "
                         f"{REVIEW_APPLY_LIMIT}，请在页面上显式勾选后再通过"
@@ -1448,7 +1460,6 @@ def w_review_decision(contract: WebContract, body):
                     [(asset_id, entity_id, payload, now, now) for asset_id in asset_ids],
                 )
             applied = len(asset_ids)
-        connection.commit(); connection.close()
     contract.cache_bust()   # 标签写完，聚合缓存必须失效，否则 facets 最多 90 秒还是旧数
     return {"ok": True, "category": category, "item_key": item_key, "status": status, "applied_assets": applied}
 

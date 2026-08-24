@@ -363,6 +363,18 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             {"k": "横屏", "n": 1},
         ])
 
+    async def test_unexpected_contract_errors_are_logged_but_not_exposed(self):
+        with patch(
+            "peach.api.web_contract.dispatch_api_get",
+            side_effect=RuntimeError("private C:\\ledger.db detail"),
+        ):
+            with self.assertLogs("peach.api", level="ERROR") as captured:
+                response = await self.client.get("/api/items?t=secret")
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.json(), {"error": "internal server error"})
+        self.assertNotIn("ledger.db", response.text)
+        self.assertIn("private C:\\ledger.db detail", "\n".join(captured.output))
+
     async def test_preference_is_an_independent_authenticated_write(self):
         denied = await self.client.post(
             "/api/preference", json={"id": 1, "liked": True, "reason": "镜头自然"},

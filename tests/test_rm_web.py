@@ -323,6 +323,25 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(self.contract.cached("same", lambda: "first"), "first")
         self.assertEqual(other.cached("same", lambda: "second"), "second")
 
+    def test_write_transaction_rolls_back_and_closes_on_failure(self):
+        opened = []
+        real_db = self.contract.db
+
+        def capture(write=False):
+            connection = real_db(write)
+            opened.append(connection)
+            return connection
+
+        with mock.patch.object(self.contract, "db", side_effect=capture):
+            with self.assertRaisesRegex(RuntimeError, "abort"):
+                with self.contract.write_transaction() as connection:
+                    connection.execute("UPDATE asset SET name='changed' WHERE id=1")
+                    raise RuntimeError("abort")
+
+        self.assertEqual(self.row(1)["name"], "one.mp4")
+        with self.assertRaises(sqlite3.ProgrammingError):
+            opened[0].execute("SELECT 1")
+
     def test_item_tag_add_and_remove_preserve_source_evidence(self):
         added = rm_web.w_item_tag(self.contract, {
             "id": 1, "operation": "add", "tag": "新标签",

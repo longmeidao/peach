@@ -376,12 +376,16 @@ def build_macos_service_specs() -> tuple[ServiceSpec, ...]:
     return tuple(specs)
 
 
-def build_service_specs(lan_address: str | None = None) -> tuple[ServiceSpec, ...]:
+def build_service_specs(
+    lan_address: str | None = None,
+    *,
+    tls_dir: Path | None = None,
+) -> tuple[ServiceSpec, ...]:
     if sys.platform == "darwin":
         return build_macos_service_specs()
     address = lan_address or os.environ.get("PEACH_LAN_ADDRESS", DEFAULT_LAN_ADDRESS)
     peach = str(_peach_executable())
-    cert_dir = SECRETS_DIR / "tls"
+    cert_dir = Path(tls_dir) if tls_dir is not None else SECRETS_DIR / "tls"
     ca = cert_dir / "peach-local-ca.crt"
     cert = cert_dir / "peach.crt"
     key = cert_dir / "peach.key"

@@ -38,6 +38,9 @@ from .sync import LedgerSync
 from .transcodes import TranscodeService, TranscodeUnavailable
 
 
+LOGGER = logging.getLogger(__name__)
+
+
 def _first_query_values(request: Request) -> dict[str, str]:
     """兼容 urllib.parse.parse_qs：取首值并忽略空值。"""
     result: dict[str, str] = {}
@@ -560,8 +563,9 @@ def create_app(
             return JSONResponse({"error": "not found"}, status_code=404)
         except (TypeError, ValueError) as exc:
             return JSONResponse({"error": f"{type(exc).__name__}: {exc}"}, status_code=400)
-        except Exception as exc:
-            return JSONResponse({"error": f"{type(exc).__name__}: {exc}"}, status_code=500)
+        except Exception:
+            LOGGER.exception("unhandled GET contract error for /api/%s", route)
+            return JSONResponse({"error": "internal server error"}, status_code=500)
 
     @app.post("/api/{route:path}")
     def api_post(route: str, request: Request, body: dict[str, Any] = Body(default_factory=dict)):
@@ -579,7 +583,8 @@ def create_app(
             return JSONResponse({"error": "not found"}, status_code=404)
         except (TypeError, ValueError) as exc:
             return JSONResponse({"error": f"{type(exc).__name__}: {exc}"}, status_code=400)
-        except Exception as exc:
-            return JSONResponse({"error": f"{type(exc).__name__}: {exc}"}, status_code=500)
+        except Exception:
+            LOGGER.exception("unhandled POST contract error for /api/%s", route)
+            return JSONResponse({"error": "internal server error"}, status_code=500)
 
     return app
