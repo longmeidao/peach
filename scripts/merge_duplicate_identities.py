@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-r"""同一个人被同时记成 creator 和 performer 的去重。
+r"""同一个人被记成两条实体的去重（跨 kind 与同 kind 两类）。
 
 `entity` 的唯一约束是 `(kind, normalized_name)`，所以同名但 kind 不同的两条记录
 可以并存。实际发生了 35 组：卡片上的头像和名字会一个跳 `/performers/x`、另一个跳
@@ -27,6 +27,23 @@ r"""同一个人被同时记成 creator 和 performer 的去重。
 按数量投票会翻车：`小桃` 的 performer 侧有 151 条、creator 侧只有 15 条，但它是
 本地 `media/创作者/小桃` 的上传者，不是女优。
 
+## 同 kind 的目录名投影
+
+跨 kind 那一轮合并完成后，`R:\Media\<本名 + 账号名>` 这类目录还会各自留下一条**同为
+creator** 的实体，`(kind, normalized_name)` 唯一约束拦不住它：`小桃` / `小桃 shixiaotaone`
+和 `猫猫碎冰冰` / `猫猫碎冰冰 & 趣趣` 就是这样在详情页和 `/creators` 索引页并排出现的。
+
+判据要求四项同时成立，缺一项就留给人工，不自动合并：
+
+1. 两条同 kind，被丢弃方的作品集合非空且**完全落在**保留方的作品集合里；
+2. 被丢弃方的名字词集**真包含**保留方的名字词集，多出来的词（去掉 `&` 之类的连接符后）
+   全部是保留方的已登记别名；
+3. 被丢弃方只有 `legacy:asset` 断言，且没有别名、没有外部引用——只是目录名投影；
+4. 该投影只匹配到唯一一个保留方。
+
+保留方是带别名和外部引用的规范实体，被丢弃的名字降为别名，扁平 `asset.creator` 一并
+改写成保留名（ADR-0005：兼容投影跟着规范关系走）。
+
 合并不可逆。默认只产出复核 CSV，`--apply` 才写 ledger 且必须给 `--backup`。
 """
 from __future__ import annotations
@@ -51,6 +68,12 @@ from peach.migrations import sqlite_backup
 #: 真实发行元数据的来源标记。只有这些能把一条断言判成「这是女优，不是上传者」。
 RELEASE_SOURCES = frozenset({"r18:performer", "javbus:performer"})
 MERGE_ALIAS_SOURCE = "merge:duplicate-identity"
+
+#: 目录名里把两个称呼拼在一起的连接符。它们本身不是名字的一部分。
+JOINER_TOKENS = frozenset({"&", "＆", "+", "＋", "/", "／", "、", "，", ","})
+
+#: 目录名投影的唯一来源标记：没有别名、没有外部引用，只有从路径投影出来的断言。
+PROJECTION_SOURCES = frozenset({"legacy:asset"})
 
 
 def _fold(value: str) -> str:
@@ -81,6 +104,40 @@ def _release_backed(sources: str) -> bool:
     return bool(RELEASE_SOURCES.intersection(filter(None, sources.split(","))))
 
 
+def _name_tokens(value: str) -> frozenset[str]:
+    """名字按空白切成词集；空词和纯连接符不算名字的一部分。"""
+    return frozenset(
+        token for token in (_fold(part) for part in str(value).split())
+        if token and token not in JOINER_TOKENS
+    )
+
+
+def _projection_only(sources: str, aliases: int, refs: int) -> bool:
+    """只有路径投影出来的断言，没有别名也没有外部引用。"""
+    present = {source for source in str(sources or "").split(",") if source}
+    return bool(present) and present <= PROJECTION_SOURCES and not aliases and not refs
+
+
+def _variant_evidence(
+    keep_name: str, drop_name: str, keep_aliases: list[str],
+) -> str | None:
+    """返回同 kind 目录名投影可自动合并的名字证据。
+
+    仅由「作品集合被完全包含」的调用方使用：只有名字证据不足以判定同人，
+    `猫猫碎冰冰 & 趣趣` 这种拼名目录必须靠「同一批文件」加「多出的词是已登记别名」
+    两重证据才成立。
+    """
+    keep_tokens = _name_tokens(keep_name)
+    drop_tokens = _name_tokens(drop_name)
+    if not keep_tokens or not keep_tokens < drop_tokens:
+        return None
+    extra = drop_tokens - keep_tokens
+    aliases = {_fold(alias) for alias in keep_aliases if _fold(alias)}
+    if not extra or not extra <= aliases:
+        return None
+    return "同 kind 目录名投影：多出的词是保留方别名"
+
+
 def collect(connection: sqlite3.Connection) -> list[dict[str, object]]:
     """找出高置信跨 kind 重复实体，并按 provenance 定出保留哪一边。"""
     connection.row_factory = sqlite3.Row
@@ -89,7 +146,9 @@ def collect(connection: sqlite3.Connection) -> list[dict[str, object]]:
         SELECT e.id, e.kind, e.canonical_name, e.normalized_name,
                (SELECT count(*) FROM asset_entity ae WHERE ae.entity_id=e.id) AS links,
                (SELECT group_concat(DISTINCT ae.source) FROM asset_entity ae
-                 WHERE ae.entity_id=e.id) AS sources
+                 WHERE ae.entity_id=e.id) AS sources,
+               (SELECT count(*) FROM entity_alias a WHERE a.entity_id=e.id) AS alias_count,
+               (SELECT count(*) FROM entity_external_ref r WHERE r.entity_id=e.id) AS ref_count
         FROM entity e
         WHERE e.kind IN ('creator','performer')
         ORDER BY e.id
@@ -199,9 +258,83 @@ def collect(connection: sqlite3.Connection) -> list[dict[str, object]]:
             "drop_id": drop["id"],
             "drop_name": drop["canonical_name"],
             "drop_links": drop["links"],
-            "creator_sources": creator["sources"] or "",
-            "performer_sources": performer["sources"] or "",
+            "keep_sources": keep["sources"] or "",
+            "drop_sources": drop["sources"] or "",
             "evidence": "发行元数据" if release_backed else "目录身份 + Stash 扁平 performer",
+        })
+    # 跨 kind 已经排进计划的实体不再参与同 kind 那一趟：先合并会把 id 删掉，
+    # 第二趟再引用同一个 id 就是合并进一条不存在的实体。
+    engaged = {int(row["keep_id"]) for row in plan} | {int(row["drop_id"]) for row in plan}
+    plan.extend(_variant_plan(entity_rows, aliases, assets, engaged))
+    return plan
+
+
+def _variant_plan(
+    entity_rows: list[sqlite3.Row],
+    aliases: dict[int, list[str]],
+    assets: dict[int, frozenset[int]],
+    engaged: set[int],
+) -> list[dict[str, object]]:
+    """同 kind 的目录名投影：`小桃 shixiaotaone` 并回 `小桃`。
+
+    先按别名反查候选保留方——多出来的词必须是别名，所以至少有一个词能命中——再逐项
+    核对作品集合、词集和 provenance。命中多个保留方的投影一律不合并。
+    """
+    by_id = {int(row["id"]): row for row in entity_rows}
+    alias_owners: dict[tuple[str, str], set[int]] = {}
+    for entity_id, values in aliases.items():
+        row = by_id.get(entity_id)
+        if row is None:
+            continue
+        for alias in values:
+            folded = _fold(alias)
+            if folded:
+                alias_owners.setdefault((str(row["kind"]), folded), set()).add(entity_id)
+
+    matches: dict[int, list[tuple[sqlite3.Row, str]]] = {}
+    for drop_id, drop in by_id.items():
+        drop_assets = assets.get(drop_id, frozenset())
+        if drop_id in engaged or not drop_assets or not _projection_only(
+            drop["sources"], int(drop["alias_count"]), int(drop["ref_count"])
+        ):
+            continue
+        keep_ids = {
+            keep_id
+            for token in _name_tokens(str(drop["canonical_name"]))
+            for keep_id in alias_owners.get((str(drop["kind"]), token), set())
+            if keep_id != drop_id and keep_id not in engaged
+        }
+        for keep_id in sorted(keep_ids):
+            keep = by_id[keep_id]
+            if not drop_assets <= assets.get(keep_id, frozenset()):
+                continue
+            evidence = _variant_evidence(
+                str(keep["canonical_name"]), str(drop["canonical_name"]),
+                aliases.get(keep_id, []),
+            )
+            if evidence:
+                matches.setdefault(drop_id, []).append((keep, evidence))
+
+    plan: list[dict[str, object]] = []
+    for drop_id, found in sorted(matches.items()):
+        if len(found) != 1:
+            continue
+        keep, evidence = found[0]
+        drop = by_id[drop_id]
+        plan.append({
+            "normalized_name": drop["normalized_name"],
+            "match_evidence": evidence,
+            "keep_kind": keep["kind"],
+            "keep_id": keep["id"],
+            "keep_name": keep["canonical_name"],
+            "keep_links": keep["links"],
+            "drop_kind": drop["kind"],
+            "drop_id": drop["id"],
+            "drop_name": drop["canonical_name"],
+            "drop_links": drop["links"],
+            "keep_sources": keep["sources"] or "",
+            "drop_sources": drop["sources"] or "",
+            "evidence": "规范实体 + 目录名投影",
         })
     return plan
 
@@ -214,6 +347,8 @@ def apply_rows(
     扁平字段必须跟着规范关系走（ADR-0005），否则资料页和卡片会各说各话：
 
     - 保留 creator：被并进来的资产可能原本没有 creator，补上；已有别的值不覆盖。
+    - 保留 creator 且丢弃方也是 creator：扁平字段里写的就是被丢弃的目录名，改写成保留名。
+      只填空不改写会留下一个没有实体的名字，详情页的归属兜底和按 creator 的查询都还认它。
     - 保留 performer：creator 实体没了，等值的扁平字段一并清掉。
     """
     counts = Counter()
@@ -233,6 +368,12 @@ def apply_rows(
         counts["dropped_refs"] += moved["dropped_refs"]
 
         if row["keep_kind"] == "creator":
+            if row["drop_kind"] == "creator":
+                connection.execute(
+                    "UPDATE asset SET creator=? WHERE creator=?",
+                    (row["keep_name"], row["drop_name"]))
+                counts["flat_rewritten"] += connection.execute(
+                    "SELECT changes()").fetchone()[0]
             for asset_id in moving:
                 connection.execute(
                     "UPDATE asset SET creator=? WHERE id=? AND (creator IS NULL OR creator='')",
@@ -440,7 +581,7 @@ def write_csv(path: Path, rows: list[dict[str, object]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fields = ["normalized_name", "match_evidence", "keep_kind", "keep_name", "keep_id", "keep_links",
               "drop_kind", "drop_name", "drop_id", "drop_links",
-              "creator_sources", "performer_sources", "evidence"]
+              "keep_sources", "drop_sources", "evidence"]
     with path.open("w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields)
         writer.writeheader()
@@ -461,7 +602,7 @@ def counts_of(connection: sqlite3.Connection) -> dict[str, int]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="合并同名的 creator / performer 重复身份")
+    parser = argparse.ArgumentParser(description="合并 creator / performer 的重复身份（跨 kind 同名与同 kind 目录名投影）")
     parser.add_argument("--db", type=Path, default=DATABASE_PATH)
     parser.add_argument("--review-csv", type=Path,
                         default=GENERATED_DIR / "duplicate-identity-merge.csv")
@@ -481,8 +622,9 @@ def run(args: argparse.Namespace) -> int:
         projection_rows = collect_repeated_projections(connection)
         write_csv(args.review_csv, rows)
         write_projection_csv(args.projection_review_csv, projection_rows)
-        print(f"高置信跨 kind 的重复身份 {len(rows)} 组，复核 CSV：{args.review_csv}")
+        print(f"高置信重复身份 {len(rows)} 组，复核 CSV：{args.review_csv}")
         print("  保留方分布：", dict(Counter(str(row["keep_kind"]) for row in rows)))
+        print("  匹配判据：", dict(Counter(str(row["match_evidence"]) for row in rows)))
         print(f"重复 person 名称/投影 {len(projection_rows)} 组，复核 CSV："
               f"{args.projection_review_csv}")
         print("  处理动作：", dict(Counter(str(row["action"]) for row in projection_rows)))

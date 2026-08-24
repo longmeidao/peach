@@ -93,6 +93,76 @@ class DuplicateIdentityMergeTests(unittest.TestCase):
         self.assertEqual(self.con.execute(
             "PRAGMA foreign_key_check").fetchall(), [])
 
+    def _seed_same_kind_projection(self):
+        """`小桃` / `小桃 shixiaotaone` 这类同 kind 目录名投影。
+
+        20 号是规范实体：带两个账号别名，作品集合是 {20,21,22}。21 号是
+        `R:\\Media\\<本名 + 账号名>` 投影出来的第二条 creator，作品 {20,21} 全落在 20 号里。
+        22 号名字同样由 20 号的本名和别名拼成，但作品 {22,23} 越出了 20 号的集合。
+        """
+        self.con.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,creator) "
+            "VALUES(?,'local',?,?,'video',?)",
+            [(20, "/x/20.mp4", "20.mp4", "小桃 shixiaotaone"),
+             (21, "/x/21.mp4", "21.mp4", "小桃 shixiaotaone"),
+             (22, "/x/22.mp4", "22.mp4", "小桃 taomi"),
+             (23, "/x/23.mp4", "23.mp4", "小桃 taomi")])
+        self.con.executemany(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(?,?,?,?, 't','t')",
+            [(20, "creator", "小桃", "小桃"),
+             (21, "creator", "小桃 shixiaotaone", "小桃 shixiaotaone"),
+             (22, "creator", "小桃 taomi", "小桃 taomi")])
+        self.con.executemany(
+            "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,confidence) "
+            "VALUES(?,?,?,'stash:performer',0.9)",
+            [(20, "shixiaotaone", "shixiaotaone"), (20, "taomi", "taomi")])
+        self.con.executemany(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+            "VALUES(?,?,?,?,1.0)",
+            [(20, 20, "performer", "performer"), (21, 20, "performer", "performer"),
+             (22, 20, "performer", "performer"),
+             (20, 21, "creator", "legacy:asset"), (21, 21, "creator", "legacy:asset"),
+             (22, 22, "creator", "legacy:asset"), (23, 22, "creator", "legacy:asset")])
+        self.con.commit()
+
+    def test_collect_merges_same_kind_directory_projection(self):
+        self._seed_same_kind_projection()
+        rows = [row for row in collect(self.con) if row["drop_id"] == 21]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["keep_id"], 20)
+        self.assertEqual(rows[0]["keep_kind"], "creator")
+        self.assertEqual(rows[0]["drop_kind"], "creator")
+        self.assertIn("同 kind", rows[0]["match_evidence"])
+
+    def test_collect_skips_same_kind_without_asset_or_provenance_evidence(self):
+        self._seed_same_kind_projection()
+        # 21 号一旦有了自己的外部引用就不再是纯目录投影，留给人工。
+        self.con.execute(
+            "INSERT INTO entity_external_ref(entity_id,provider,external_kind,external_id) "
+            "VALUES(21,'stash','performer','777')")
+        self.con.commit()
+        drops = {row["drop_id"] for row in collect(self.con)}
+        self.assertNotIn(21, drops, "带外部引用的实体不是目录投影")
+        self.assertNotIn(22, drops, "作品集合越出保留方时，拼名不足以判同人")
+
+    def test_apply_rewrites_flat_creator_for_same_kind_merge(self):
+        self._seed_same_kind_projection()
+        rows = [row for row in collect(self.con) if row["drop_id"] == 21]
+        counts = apply_rows(self.con, rows)
+        self.con.commit()
+
+        self.assertIsNone(self.con.execute("SELECT 1 FROM entity WHERE id=21").fetchone())
+        self.assertEqual([row[0] for row in self.con.execute(
+            "SELECT creator FROM asset WHERE id IN (20,21) ORDER BY id")], ["小桃", "小桃"])
+        self.assertEqual(counts["flat_rewritten"], 2)
+        self.assertEqual(self.con.execute(
+            "SELECT creator FROM asset WHERE id=22").fetchone()[0], "小桃 taomi",
+            "只改写被丢弃的那个名字，不动别的目录名")
+        self.assertIn("小桃 shixiaotaone", [row[0] for row in self.con.execute(
+            "SELECT alias FROM entity_alias WHERE entity_id=20")])
+        self.assertEqual(self.con.execute("PRAGMA foreign_key_check").fetchall(), [])
+
     def test_projection_audit_repairs_orphan_flat_fields_tags_and_aliases(self):
         self.con.executemany(
             "INSERT INTO asset(id,location,path,name,medium,creator) "
