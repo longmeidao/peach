@@ -14,11 +14,11 @@ import re
 import threading
 import time
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Sequence
 from urllib.parse import quote, urlsplit
 
-from .config import COVER_DIR, GENERATED_DIR
+from .config import COVER_DIR, GENERATED_DIR, LOCATION_ROOT_DECLARATIONS
 from .entities import (
     canonicalize_entity_name,
     collapse_repeated_entity_name,
@@ -26,7 +26,12 @@ from .entities import (
     upsert_asset_entity,
 )
 from .media import remap_managed_path
-from .platform import system_volume
+from .platform import (
+    is_unmapped,
+    root_online,
+    system_volume,
+    translate_ledger_path,
+)
 from .repository import LedgerDatabase
 from .web_activity import (
     DEFAULT_PROFILE_ID,
@@ -79,11 +84,14 @@ class WebContract:
                  candidate_root: Path | None = None,
                  cover_root: Path | None = None,
                  avatar_root: Path | None = None,
+                 logo_root: Path | None = None,
                  database: LedgerDatabase | None = None):
         # 候选 CSV 的目录做成实例属性而不是模块常量，复核层才能在临时目录里被测试。
         self.candidate_root = Path(candidate_root) if candidate_root is not None else GENERATED_DIR
         self.cover_root = Path(cover_root) if cover_root is not None else COVER_DIR
         self.avatar_root = Path(avatar_root) if avatar_root is not None else GENERATED_DIR / "avatars"
+        # `/logo` 就是从这里读；批准候选等于把图装进这个目录。
+        self.logo_root = Path(logo_root) if logo_root is not None else GENERATED_DIR / "logos"
         self.database = database or LedgerDatabase(db_path)
         self.db_path = self.database.db_path
         self.snapshot_root = Path(snapshot_root) if snapshot_root is not None else None
@@ -790,8 +798,18 @@ def q_entity(contract: WebContract, args):
 # `<作品目录>\P\001.jpg` 这种约定在 A:/B: 上到处都是。图集的 id 用目录里最小的
 # 资产 id，既稳定又不用把真实路径发给前端（`q_item` 同样不发 `path`）。
 
-#: 从 `path` 去掉 `name` 和分隔符，剩下的就是所在目录。
-PHOTO_DIR = "substr(a.path,1,length(a.path)-length(a.name)-1)"
+def dir_expr(alias: str = "a.") -> str:
+    """从 `path` 去掉 `name` 和分隔符，剩下的就是所在目录。
+
+    表别名做成参数，是因为图集查询用 `a.`、按目录对账时直接查 `asset` 不带别名；
+    早先靠对常量做字符串替换来凑另一种写法，改一次别名就会悄悄失配。
+    """
+    return (f"substr({alias}path,1,"
+            f"length({alias}path)-length({alias}name)-1)")
+
+
+#: 图集查询一律带 `a.` 别名。
+PHOTO_DIR = dir_expr()
 
 #: 只写「这是图片」的通用目录名。它们做标题没有信息量，改用上一级目录名。
 GENERIC_PHOTO_DIRS = frozenset({
@@ -1077,6 +1095,26 @@ def read_candidates(category: str, root: Path | None = None) -> tuple[list[dict]
     return rows, path.name, skipped
 
 
+def _creator_entity_ids(connection, creators: list[str]) -> dict[str, int]:
+    """创作者名（含别名）-> 规范 creator 实体 id；一次查完，不按候选逐个查。"""
+    wanted = [name for name in dict.fromkeys(creators) if name]
+    if not wanted:
+        return {}
+    marks = ",".join("?" * len(wanted))
+    found: dict[str, int] = {}
+    for row in connection.execute(
+        "SELECT e.id,e.canonical_name,alias.alias FROM entity e "
+        "LEFT JOIN entity_alias alias ON alias.entity_id=e.id "
+        f"WHERE e.kind='creator' AND (e.canonical_name IN ({marks}) "
+        f"OR alias.alias IN ({marks}))",
+        [*wanted, *wanted],
+    ):
+        for name in (row["canonical_name"], row["alias"]):
+            if name in wanted:
+                found.setdefault(name, row["id"])
+    return found
+
+
 def _creator_previews(connection, creators: list[str]) -> dict[str, list[dict]]:
     """一次查完所有候选创作者的预览作品；按候选逐个查是 N+1。"""
     wanted = [name for name in dict.fromkeys(creators) if name]
@@ -1171,11 +1209,15 @@ def _review_rows(contract: WebContract, category: str) -> tuple[list[dict], str 
             )
         }
         if category == "creator_tags":
-            previews = _creator_previews(
-                connection, [str(row.get("creator") or "").strip() for row in rows],
-            )
+            names = [str(row.get("creator") or "").strip() for row in rows]
+            previews = _creator_previews(connection, names)
+            # 这批候选判的是「这位创作者的作品该打什么标签」，主体是创作者本人。
+            # 页面要给出创作者入口（头像 + 作品数），所以这里得把规范实体解析出来。
+            entities = _creator_entity_ids(connection, names)
             for row in rows:
-                row["preview_assets"] = previews.get(str(row.get("creator") or "").strip(), [])
+                name = str(row.get("creator") or "").strip()
+                row["preview_assets"] = previews.get(name, [])
+                row["entity_id"] = entities.get(name, "")
         elif category == "metadata_fields":
             for row in rows:
                 try:
@@ -1207,7 +1249,24 @@ def _review_rows(contract: WebContract, category: str) -> tuple[list[dict], str 
                 row["asset_preview_url"] = ""
         if not row.get("reason"):
             row["reason"] = _review_evidence(category, row)
-    return rows, source, skipped
+    return _pending_first(rows), source, skipped
+
+
+def _pending_first(rows: list[dict]) -> list[dict]:
+    """判过的不再占复核队列。
+
+    早先这里原样返回全部候选，只给每行挂一个 `decision`，靠前端在本地把判过的
+    行 splice 掉——于是「点通过」当场消失、一刷新全回来（厂牌 logo 上最明显）。
+    队列该由服务端定义，前端只负责画。
+
+    `approved` / `rejected` 是终局，直接移出；`跳过` 按字面意思是「稍后再看」，
+    留在队列里但排到最后，否则一次跳过就等于永久隐藏，而界面上没有任何入口
+    能把它找回来。
+    """
+    return sorted(
+        (row for row in rows if row.get("decision") not in ("approved", "rejected")),
+        key=lambda row: row.get("decision") == "skipped",
+    )
 
 
 def _review_evidence(category: str, row: dict) -> str:
@@ -1263,6 +1322,7 @@ def q_review(contract: WebContract):
         row["asset_id"] = row["id"]
         row["asset_name"] = row["name"]
         row["asset_preview_url"] = ""
+    failures = _pending_first(failures)
     sections, sources, skipped = {}, {}, {}
     for category in CANDIDATE_PREFIX:
         rows, source, dropped = _review_rows(contract, category)
@@ -1440,6 +1500,65 @@ def _apply_metadata_candidate(connection, group: dict, candidate: dict, now: str
     return len(asset_ids)
 
 
+#: 候选图的扩展名 -> content type。`/logo` 靠 `.ct` 边车决定回什么头。
+LOGO_CONTENT_TYPES = {
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".webp": "image/webp", ".gif": "image/gif", ".ico": "image/x-icon",
+}
+
+
+def studio_logo_key(studio: str) -> str:
+    """和 `PreviewService.logo` 完全一致的落盘名，两边必须同一套规则。"""
+    return re.sub(r"[^A-Za-z0-9_-]", "_", studio)[:60]
+
+
+def _install_studio_logo(contract: WebContract, studio: str) -> int:
+    r"""把已批准的厂牌 logo 候选装进 `/logo` 真正读的目录。
+
+    早先 `studio_logos` 只出现在分类白名单里，没有任何写入分支：点「通过」只往
+    `review_decision` 记一笔，logo 一张也没装上——配合当时「队列不过滤已判项」的
+    毛病，表现就是点完通过、一刷新原样又回来。
+
+    候选 CSV 的 `saved` 列写的是 `R:\peach-data\...`，那是旧数据根；现在数据在
+    `peach-data` 下，按绝对路径找必然落空。所以只取文件名，在当前候选目录里解析。
+    """
+    rows = {row["item_key"]: row
+            for row in read_candidates("studio_logos", contract.candidate_root)[0]}
+    candidate = rows.get(studio)
+    if candidate is None:
+        raise ValueError("候选不在当前批次，无法批准")
+    saved = str(candidate.get("saved") or "").strip()
+    if not saved:
+        raise ValueError("该候选没有落盘的图片，无法装载")
+    source = contract.candidate_root / "studio-logos" / PurePosixPath(
+        saved.replace("\\", "/")).name
+    if not source.is_file():
+        raise ValueError(f"候选图片不在本机：{source.name}")
+    key = studio_logo_key(studio)
+    if not key:
+        raise ValueError("厂牌名无法生成落盘名")
+    content_type = LOGO_CONTENT_TYPES.get(source.suffix.lower())
+    if content_type is None:
+        raise ValueError(f"不支持的图片格式：{source.suffix}")
+    contract.logo_root.mkdir(parents=True, exist_ok=True)
+    destination = contract.logo_root / f"{key}.img"
+    # 先写临时文件再原子替换：中途失败不会留下半张图被 `/logo` 读到。
+    staging = destination.with_name(f"{destination.name}.{uuid.uuid4().hex}.tmp")
+    staging.write_bytes(source.read_bytes())
+    os.replace(staging, destination)
+    Path(f"{destination}.ct").write_text(content_type, encoding="utf-8")
+    Path(f"{destination}.provenance.json").write_text(json.dumps({
+        "source": "studio logo review",
+        "source_file": source.name,
+        "resolved_url": candidate.get("resolved_url") or "",
+        "handle": candidate.get("handle") or "",
+        "platform": candidate.get("platform") or "",
+        "imported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "purpose": "local studio identity cache",
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    return 1
+
+
 def w_review_decision(contract: WebContract, body):
     category = str(body.get("category", "")).strip()
     item_key = str(body.get("item_key", "")).strip()
@@ -1549,6 +1668,8 @@ def w_review_decision(contract: WebContract, body):
                     [(asset_id, entity_id, payload, now, now) for asset_id in asset_ids],
                 )
             applied = len(asset_ids)
+        elif category == "studio_logos" and status == "approved":
+            applied = _install_studio_logo(contract, item_key)
     contract.cache_bust()   # 标签写完，聚合缓存必须失效，否则 facets 最多 90 秒还是旧数
     return {"ok": True, "category": category, "item_key": item_key, "status": status, "applied_assets": applied}
 
@@ -1761,6 +1882,70 @@ def w_empty_trash(contract: WebContract):
             _restore_staged_media(outcome["_staged"])
         raise
     return {"ok": True, "operation": "empty-trash", **_finish_purge(outcome)}
+
+
+def source_is_online(location: str) -> bool:
+    """这个来源整体在不在线。对账前的唯一闸门。"""
+    declared = LOCATION_ROOT_DECLARATIONS.get(location)
+    if not declared:
+        return False
+    resolved = translate_ledger_path(declared)
+    return not is_unmapped(resolved) and root_online(resolved)
+
+
+def w_purge_missing(contract: WebContract, body):
+    """按目录对账：文件已经在磁盘上删掉的，账本行一并删掉。
+
+    这条路径服务的是「我在资源管理器里整理网盘目录」——删掉的就是不要的，所以
+    不进复核、不进回收站、不可恢复，播放历史等衍生行跟着一起走。
+
+    真正危险的不是删得太干净，而是把「盘没挂上」误判成「文件没了」：R: 掉线时
+    整条来源 2,552 行都会看起来像被删。所以先做来源级在线判定，整源不在线就
+    一行都不碰。CloudDrive 掉线后挂载点目录仍然存在，`root_online` 因此判的是
+    「能否列出一个条目」而不是「目录在不在」。
+    """
+    asset_id = int(body["id"])
+    with contract.read_connection() as connection:
+        anchor = connection.execute(
+            "SELECT id,location,path,name FROM asset WHERE id=?", (asset_id,),
+        ).fetchone()
+        if not anchor:
+            return {"error": "not found"}
+        location, path, name = anchor["location"], anchor["path"], anchor["name"]
+        if not path or not name:
+            return {"error": "asset has no path"}
+        if not source_is_online(location):
+            # 不是失败，是拒绝：盘不在时无法区分「文件删了」和「盘没挂上」。
+            return {"ok": False, "error": "source offline", "location": location}
+        directory = path[: len(path) - len(name) - 1]
+        rows = connection.execute(
+            f"SELECT id,path,name FROM asset WHERE location=? "
+            f"AND {dir_expr('')}=?",
+            (location, directory),
+        ).fetchall()
+
+    missing = [
+        {"id": row["id"], "name": row["name"]}
+        for row in rows
+        if not translate_ledger_path(row["path"]).is_file()
+    ]
+    if not missing:
+        return {"ok": True, "directory": photo_set_title(directory),
+                "checked": len(rows), "removed": 0, "items": []}
+
+    contract.cache_bust()
+    ids = [item["id"] for item in missing]
+    marks = ",".join("?" * len(ids))
+    with contract.write_transaction() as connection:
+        for table in ASSET_REFERENCE_TABLES:
+            connection.execute(
+                f"DELETE FROM {table} WHERE asset_id IN ({marks})", ids)
+        # asset_search 交给 0004 的删除触发器，这里再删一遍只会重复。
+        connection.execute(f"DELETE FROM asset WHERE id IN ({marks})", ids)
+    return {
+        "ok": True, "directory": photo_set_title(directory),
+        "checked": len(rows), "removed": len(missing), "items": missing,
+    }
 
 
 def w_batch(contract: WebContract, body):
@@ -2017,6 +2202,7 @@ POST_HANDLERS = {
     "/api/batch": w_batch,
     "/api/search-history": w_search_history,
     "/api/trash/empty": _post_empty_trash,
+    "/api/purge-missing": w_purge_missing,
     "/api/review/decision": w_review_decision,
 }
 

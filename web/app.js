@@ -407,9 +407,13 @@ window.addEventListener('pagehide',()=>releaseHoverPreviews());
 document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseHoverPreviews()});
 
 /* 头像内层：先垫首字母，再叠真实图。规范实体图优先，取不到才回落到旧头像缓存。 */
-function avatarInner(name,ref,repId){
-  const src=ref?`/entity-image?kind=performer&id=${ref.id}`:(repId?`/avatar?id=${repId}`:'');
-  const fallback=ref&&repId?`this.onerror=null;this.src='/avatar?id=${repId}'`:`this.remove()`;
+function avatarInner(name,ref,repId,kind='performer'){
+  const src=ref?`/entity-image?kind=${kind}&id=${ref.id}`:(repId?`/avatar?id=${repId}`:'');
+  // 兜底链最后一环必须是 remove()：留着取不到图的 <img>，`:has(img)` 仍然匹配，
+  // 首字母垫底回不来，浏览器还会把 alt 画出来。onerror=null 只是不再重试。
+  const fallback=ref&&repId
+    ?`if(!this.dataset.f){this.dataset.f='1';this.src='/avatar?id=${repId}'}else{this.remove()}`
+    :`this.remove()`;
   return `<span class="ini">${esc((name||'?').slice(0,1))}</span>`+
     (src?`<img src="${src}" alt="" loading="lazy" onerror="${fallback}">`:'');
 }
@@ -884,6 +888,8 @@ function showHomeSurfaces(){
 function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
 
 let reviewData=null,reviewCategory='metadata_fields';
+/* 主体是实体而不是单条作品的复核分类。值就是实体 kind。 */
+const ENTITY_REVIEW_CATEGORIES={creator_tags:'creator',western_identity:'creator'};
 const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',western_identity:'西方身份回配',code_creators:'番号目录存疑',fc2_markings:'FC2 评论标记',media_failure:'媒体失败'};
 let dupData=null;
 /* 重复文件。判据是「同番号 + 时长相近 + 分卷标记一致」，不是同番号即重复——
@@ -990,13 +996,37 @@ async function openReview(push=true){
         const canApprove=metadata?candidates.length>0:(reviewCategory!=='creator_tags'||String(row.status||'').trim()==='candidate');
          const approveLabel=canApprove?'通过':'已跳过';
          const assets=row.preview_assets||[];
-         const origin=row.asset_id?`<div class="revieworigin">
+         /* 有些候选判的是「这位创作者」，不是某一条作品：创作者标签看的是他全部
+            作品该打什么标签，西方身份回配的是这个人对不对得上。这类卡片顶上必须给
+            创作者入口，而不是从样本里挑一条画成「原视频」——下面 60 个样本、上面
+            1 个视频，读起来就是错的（西方身份那条更极端：772 部作品配 1 个）。 */
+         const subjectKind=ENTITY_REVIEW_CATEGORIES[reviewCategory];
+         const subjectName=String(row.creator||'').trim();
+         const works=Number(row.video_count||row.videos||0);
+         const origin=subjectKind&&subjectName?`<div class="reviewentity">
+             <button class="reviewentityface" data-entity-kind="${subjectKind}" data-entity-name="${esc(subjectName)}"
+               aria-label="打开创作者页：${esc(subjectName)}">${avatarInner(subjectName,
+                 row.entity_id?{id:row.entity_id}:null,null,subjectKind)}</button>
+             <div><b title="${esc(subjectName)}">${esc(subjectName)}</b>
+               <button type="button" data-entity-kind="${subjectKind}" data-entity-name="${esc(subjectName)}">${icon('user-round')}打开创作者</button>
+               ${works?`<small class="mono">${works.toLocaleString()} 部作品</small>`:''}</div></div>`
+           :row.asset_id?`<div class="revieworigin">
              <button class="revieworigincover" data-review-open-item="${row.asset_id}" aria-label="打开原视频 ${esc(row.asset_name||'')}">
                ${row.asset_preview_url?`<img src="${esc(row.asset_preview_url)}" alt="" loading="lazy" onerror="this.remove()">`:'<span>无封面</span>'}</button>
              <div><b title="${esc(row.asset_name||'')}">${esc(row.asset_name||'原视频')}</b>
                <button type="button" data-review-open-item="${row.asset_id}">${icon('play')}打开原视频</button></div></div>`:'';
+         /* 只有一个候选时没什么可选的，单选圈只是让人以为还有别的选项。
+            改成纯展示，几何对齐上面的「打开原视频」块。
+            radio 保留但不可见：提交路径读的就是 `[name^="metadata-"]:checked`，
+            删掉它会让批准退化成「必须选择一个来源值」的报错，而不是少一个圈。 */
+         const candidateBody=candidate=>`<b>${esc(candidate.source)}${candidate.official?' · 官方优先':''}</b>`
+           +`<span>${esc(candidate.display_value||'')}</span>`
+           +(candidate.warnings||[]).map(warning=>`<i>${esc(warning)}</i>`).join('');
          const preview=metadata
-           ? `<div class="metadatacandidates">${candidates.map((candidate,index)=>`<label class="metadatacandidate"><input type="radio" name="metadata-${esc(key)}" value="${esc(candidate.candidate_key)}"${index===0?' checked':''}><span><b>${esc(candidate.source)}${candidate.official?' · 官方优先':''}</b><span>${esc(candidate.display_value||'')}</span>${(candidate.warnings||[]).map(warning=>`<i>${esc(warning)}</i>`).join('')}</span></label>`).join('')}</div>`
+           ? (candidates.length===1
+             ? `<div class="metadatasole"><input type="radio" name="metadata-${esc(key)}" value="${esc(candidates[0].candidate_key)}" checked>
+                 <span>${candidateBody(candidates[0])}</span></div>`
+             : `<div class="metadatacandidates">${candidates.map((candidate,index)=>`<label class="metadatacandidate"><input type="radio" name="metadata-${esc(key)}" value="${esc(candidate.candidate_key)}"${index===0?' checked':''}><span>${candidateBody(candidate)}</span></label>`).join('')}</div>`)
            : reviewCategory==='creator_tags'
            ? (assets.length?`<div class="reviewpick"><div class="reviewpickhead"><span class="mono" data-picked-count></span>
                <button type="button" data-pick-all>全选</button><button type="button" data-pick-none>清空</button></div>
@@ -1004,23 +1034,37 @@ async function openReview(push=true){
               // 空白一片会被当成界面坏了。真实原因是这些作品还没抽帧，说清楚比留白好。
               : `<p class="empty">这 ${esc(row.video_count||'')} 条作品尚未抽帧，暂无预览；批准后仍会按候选写入标签</p>`)
            : (row.preview_url?`<div class="reviewimage"><img src="${esc(row.preview_url)}" alt="" loading="lazy" onerror="this.closest('.reviewimage').remove()"></div>`:'<p class="empty">未取得图片预览</p>');
-         return `<article class="reviewitem" data-review-key="${esc(key)}" data-decision="${esc(decision)}"><h4>${esc(titleText)}</h4><p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>${origin}${tags?`<div class="reviewtags">${tags}</div>`:''}${preview}<p>${esc(evidence)}</p><div class="reviewactions"><button class="approve" data-review-status="approved"${canApprove?'':' disabled'}>${approveLabel}</button><button class="skip" data-review-status="skipped">跳过</button><button class="reject" data-review-status="rejected">拒绝</button></div></article>`}).join(''):'<p class="empty">暂无候选</p>'}</div></section></div>`;
+         return `<article class="reviewitem" data-review-key="${esc(key)}" data-decision="${esc(decision)}"><h4>${esc(titleText)}</h4><p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>${origin}${tags?`<div class="reviewtags">${tags}</div>`:''}${preview}<p>${esc(evidence)}</p><div class="reviewactions"><button class="approve" data-review-status="approved"${canApprove?'':' disabled'}>${approveLabel}</button><button class="skip" data-review-status="skipped">跳过</button><button class="reject" data-review-status="rejected">拒绝</button><span class="reviewstate" aria-live="polite"></span></div></article>`}).join(''):'<p class="empty">暂无候选</p>'}</div></section></div>`;
      wireReviewAssets($('#stats'));
     $('#stats').querySelectorAll('[data-review-open-item]').forEach(button=>button.onclick=()=>openItem(+button.dataset.reviewOpenItem));
+    // 没有全局委托，每个界面各自接线（见 #stage 的同类处理）。
+    $('#stats').querySelectorAll('[data-entity-kind]').forEach(button=>button.onclick=()=>
+      openEntity(button.dataset.entityKind,button.dataset.entityName));
     $('#stats').querySelectorAll('[data-review-tab]').forEach(button=>button.onclick=()=>{reviewCategory=button.dataset.reviewTab;render()});
     $('#stats').querySelectorAll('[data-review-status]').forEach(button=>button.onclick=async()=>{
       const item=button.closest('[data-review-key]'),row=rows.find(x=>String(x.item_key)===item.dataset.reviewKey);button.disabled=true;
        const selectedIds=[...item.querySelectorAll('[data-review-asset][aria-pressed="true"]')].map(cell=>+cell.dataset.reviewAsset);
        const candidateKey=item.querySelector('[name^="metadata-"]:checked')?.value||'';
-       const result=await api('/api/review/decision',{method:'POST',body:JSON.stringify({category:reviewCategory,item_key:item.dataset.reviewKey,status:button.dataset.reviewStatus,candidate_key:candidateKey,creator:row.creator,tags:row.tags,studio:row.studio,entity_id:row.entity_id,avatar_url:row.avatar_url,selected_ids:selectedIds})});
-      if(result.ok){
-        // 只改 data 属性的话，条目还杵在队列里，看起来就像没生效。
-        // 判过的直接移出本批并同步计数，下一条立刻顶上来。
-        const index=rows.indexOf(row);
-        if(index>=0)rows.splice(index,1);
-        reviewData.counts[reviewCategory]=Math.max(0,(reviewData.counts[reviewCategory]||1)-1);
-        render();
-        return;
+       /* api() 在任何非 2xx 都 throw。这里原来没有 catch：错误被吞成 unhandled
+         rejection，下面的 button.disabled=false 永远到不了，于是按钮永久禁用、
+         界面一句话都不给——用户看到的就是「点了没反应」。
+         失败必须说出来，并且把按钮放开让人能重试。 */
+      const state=item.querySelector('.reviewstate');
+      if(state)state.textContent='';
+      try{
+        const result=await api('/api/review/decision',{method:'POST',body:JSON.stringify({category:reviewCategory,item_key:item.dataset.reviewKey,status:button.dataset.reviewStatus,candidate_key:candidateKey,creator:row.creator,tags:row.tags,studio:row.studio,entity_id:row.entity_id,avatar_url:row.avatar_url,selected_ids:selectedIds})});
+        if(result.ok){
+          // 只改 data 属性的话，条目还杵在队列里，看起来就像没生效。
+          // 判过的直接移出本批并同步计数，下一条立刻顶上来。
+          const index=rows.indexOf(row);
+          if(index>=0)rows.splice(index,1);
+          reviewData.counts[reviewCategory]=Math.max(0,(reviewData.counts[reviewCategory]||1)-1);
+          render();
+          return;
+        }
+        if(state)state.textContent=result.error||'服务端拒绝了这次判定';
+      }catch(e){
+        if(state)state.textContent=e.message||'判定失败，请重试';
       }
       button.disabled=false;
     });
@@ -1115,9 +1159,8 @@ async function openIndex(kind,q,push=true){
       `<section class="alphagroup"><h3>${letter}</h3><div class="alphalist">${items.map(x=>
         `<button class="alphatag ${x.cat||'general'}" data-k="${esc(x.k)}"><span>${esc(x.k)}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')}</div></section>`).join('')};
   const peopleHtml=items=>items.map(x=>`<button class="icell" data-k="${esc(x.k)}" data-kind="${entityKind}">
-        <span class="ring">${kind==='performers'
-          ? `<img src="/entity-image?kind=performer&id=${x.entity_id}" alt="" loading="lazy" onerror="${x.rep?`this.onerror=null;this.src='/avatar?id=${x.rep}'`:`this.remove()`}">`
-          : (x.rep?`<img src="/avatar?id=${x.rep}" alt="" loading="lazy">`:`<span class="ini">${esc(x.k.slice(0,1))}</span>`)}</span>
+        <span class="ring">${avatarInner(x.k,
+          kind==='performers'&&x.entity_id?{id:x.entity_id}:null, x.rep)}</span>
         <span class="nm">${esc(x.k)}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('');
   const tagHtml=items=>tagIndexMode==='alphabet'?`<div class="alphabet">${tagGroups(items)}</div>`:`<div class="tagwall index-tags">`+items.map(x=>`<button class="tg ${x.cat||'general'}" data-k="${esc(x.k)}"
         style="padding:5px 12px;font-size:13px">${esc(x.k)}
@@ -1284,12 +1327,16 @@ function renderPhotoWall(kind,name,filters,data,append=false){
     photoWallItems=[];
     section.innerHTML=`<div class="photohead">
         <button class="photoback" type="button">${icon('chevron-left')}<span>全部图集</span></button>
-        <h3>${esc(data.title)} · ${(data.total||0).toLocaleString()} 张</h3></div>
+        <h3>${esc(data.title)} · ${(data.total||0).toLocaleString()} 张</h3>
+        ${sourceTools(data.id)}</div>
       <div class="photowall"></div><button class="entitymore" type="button">载入更多</button>`;
     section.querySelector('.photoback').onclick=()=>{
       entityMediaView={media:'photos',set:0};
       routeEntityView(kind,name,entityMediaView);
       renderPhotoSets(kind,name,filters)};
+    // 对账后整组数量都变了，重开这一组比逐格摘除简单也更不容易错。
+    wireSourceTools(section.querySelector('.photohead'),
+      ()=>openPhotoSet(kind,name,filters,data.id,false));
   }
   const wall=section.querySelector('.photowall');
   const start=photoWallItems.length;
@@ -1313,6 +1360,59 @@ function renderPhotoWall(kind,name,filters,data,append=false){
   }
 }
 
+/* ── 源文件管理 ───────────────────────────────────────────────────────────────
+   标题旁两个按钮，服务的是「跳过去自己整理网盘目录」这条来回：定位打开源文件所在
+   目录（A:/B: 是 CloudDrive 挂上来的盘符，在资源管理器里和本地目录没区别），在那边
+   删掉不要的，回来点一下同步，账本跟着对齐。
+   删除不进复核也不可恢复——手动删掉的就是不要的。真正要防的是把「盘没挂上」当成
+   「文件没了」，那个闸门在服务端：整条来源不在线时直接拒绝，一行都不动。
+   路径始终由服务端按 asset id 查，前端拿不到也不该拿到 `path`。 ── */
+const SOURCE_HINTS={
+  'source offline':'来源不在线，已拒绝对账（避免把没挂上的盘当成文件被删）',
+  'source not mapped':'本机没有映射这个来源的盘符',
+  'file missing':'源文件已经不在了，点右边同步把账本对齐',
+  'unsupported platform':'当前服务端系统不支持直接定位文件',
+  'reveal failed':'打开文件管理器失败',
+};
+const sourceHint=message=>SOURCE_HINTS[message]||message;
+
+async function revealSource(id,status){
+  status.textContent='正在定位…';
+  try{
+    await api('/api/reveal',{method:'POST',body:JSON.stringify({id})});
+    status.textContent='已在服务端弹出文件管理器';
+  }catch(e){status.textContent=sourceHint(e.message)}
+}
+
+async function syncMissing(id,status,done){
+  status.textContent='正在核对目录…';
+  try{
+    const r=await api('/api/purge-missing',{method:'POST',body:JSON.stringify({id})});
+    if(r.ok===false){status.textContent=sourceHint(r.error);return}
+    status.textContent=r.removed
+      ? `已从账本移除 ${r.removed} 项（核对 ${r.checked} 项）`
+      : `目录内 ${r.checked} 项都还在，无需改动`;
+    if(r.removed&&done)done(r);
+  }catch(e){status.textContent=sourceHint(e.message)}
+}
+
+/* 两个按钮 + 一行状态。状态用 aria-live，屏幕阅读器和肉眼看到的是同一句。 */
+const sourceTools=id=>`<div class="srctools">
+    <button type="button" data-reveal="${id}" title="在文件管理器里打开源文件所在目录"
+      aria-label="定位源文件">${icon('folder-open')}</button>
+    <button type="button" data-sync="${id}" title="核对该目录：磁盘上已删除的，从账本一并移除"
+      aria-label="同步删除">${icon('refresh-cw')}</button>
+    <span class="srcstate" aria-live="polite"></span></div>`;
+
+function wireSourceTools(root,done){
+  const status=root.querySelector('.srcstate');
+  if(!status)return;
+  const reveal=root.querySelector('[data-reveal]');
+  const sync=root.querySelector('[data-sync]');
+  if(reveal)reveal.onclick=()=>revealSource(Number(reveal.dataset.reveal),status);
+  if(sync)sync.onclick=()=>syncMissing(Number(sync.dataset.sync),status,done);
+}
+
 /* 灯箱按需加载 Swiper：大图轮播、底部缩略图条和键盘左右键都是它自带的模块，
    没必要自己写一遍；但它只有看照片时才用得上，不该进首屏。 */
 let swiperLoader=null,activeLightbox=null;
@@ -1326,9 +1426,35 @@ const loadSwiper=()=>swiperLoader||(swiperLoader=new Promise((resolve,reject)=>{
   script.onerror=()=>{swiperLoader=null;reject(new Error('swiper unavailable'))};
   document.head.appendChild(script)}));
 const photoLightKeys=e=>{if(e.key==='Escape')closePhotoLightbox()};
+const ZOOM_MAX=4;
+
+/* 缩放条。Swiper 的 zoom 模块只给 in/out/toggle，没有「缩到这个倍数」的入口，
+   但 `zoom.in()` 用的就是 `params.zoom.maxRatio`——先改上限再 in，就等于设定值。
+   双击和触控板捏合仍由模块自己处理，`zoomChange` 负责把滑块同步回来。 */
+function wirePhotoZoom(box, main){
+  const slider=box.querySelector('.photozoom input');
+  const label=box.querySelector('.photozoom b');
+  const show=scale=>{slider.value=scale;label.textContent=Math.round(scale*100)+'%'};
+  const apply=raw=>{
+    const scale=Math.min(ZOOM_MAX,Math.max(1,Math.round(raw*10)/10));
+    show(scale);
+    if(scale<=1){main.zoom.out();return}
+    main.params.zoom.maxRatio=scale;main.zoom.in();
+  };
+  slider.oninput=()=>apply(Number(slider.value));
+  box.querySelectorAll('[data-zoom-step]').forEach(b=>
+    b.onclick=()=>apply(Number(slider.value)+Number(b.dataset.zoomStep)*0.5));
+  // 翻页会把缩放清回 1，滑块得跟着回位，否则它显示 200% 而图是原始大小。
+  main.on('slideChange',()=>show(1));
+  // `zoomChange` 的第一个参数是 swiper 实例，倍数在第二个；接错了滑块会写进 NaN。
+  main.on('zoomChange',(_swiper,scale)=>show(Math.min(ZOOM_MAX,Math.max(1,scale||1))));
+  return {show};
+}
+
 function closePhotoLightbox(){
   if(!activeLightbox)return;
   document.removeEventListener('keydown',photoLightKeys);
+  activeLightbox.resize?.disconnect();
   activeLightbox.main.destroy(true,true);activeLightbox.strip.destroy(true,true);
   activeLightbox.box.remove();activeLightbox=null;
   document.body.classList.remove('photolight-open');
@@ -1346,9 +1472,15 @@ async function openPhotoLightbox(index){
     <div class="swiper photomain"><div class="swiper-wrapper">${items.map(item=>
       `<div class="swiper-slide"><div class="swiper-zoom-container"><img src="/photo?id=${item.id}"
         alt="${esc(item.name)}" loading="lazy"></div></div>`).join('')}</div>
-      <button class="photonav prev" type="button" aria-label="上一张">${icon('chevron-left')}</button>
-      <button class="photonav next" type="button" aria-label="下一张">${icon('chevron-left')}</button></div>
-    <div class="photocount mono" aria-live="polite">${index+1} / ${items.length}</div>
+      <button class="photonav back" type="button" aria-label="上一张">${icon('chevron-left')}</button>
+      <button class="photonav fwd" type="button" aria-label="下一张">${icon('chevron-left')}</button></div>
+    <div class="photobar">
+      <div class="photocount mono" aria-live="polite">${index+1} / ${items.length}</div>
+      <div class="photozoom">
+        <button type="button" data-zoom-step="-1" aria-label="缩小">−</button>
+        <input type="range" min="1" max="${ZOOM_MAX}" step="0.1" value="1" aria-label="缩放">
+        <button type="button" data-zoom-step="1" aria-label="放大">+</button>
+        <b class="mono">100%</b></div></div>
     <div class="swiper photostrip"><div class="swiper-wrapper">${items.map(item=>
       `<div class="swiper-slide"><img src="/photo-thumb?id=${item.id}" alt="" loading="lazy"></div>`).join('')}</div></div>`;
   document.body.appendChild(box);
@@ -1358,11 +1490,19 @@ async function openPhotoLightbox(index){
     slidesPerView:'auto',spaceBetween:8,freeMode:true,watchSlidesProgress:true,
     centeredSlides:true,centeredSlidesBounds:true,slideToClickedSlide:true});
   const main=new SwiperCtor(box.querySelector('.photomain'),{
-    initialSlide:index,zoom:true,keyboard:{enabled:true},lazyPreloadPrevNext:1,
+    initialSlide:index,zoom:{maxRatio:ZOOM_MAX},keyboard:{enabled:true},lazyPreloadPrevNext:1,
+    // 上下滚也翻页：看图时手在滚轮上，没人愿意为了换一张去够左右键或按钮。
+    mousewheel:{enabled:true,forceToAxis:false},
     thumbs:{swiper:strip},
-    navigation:{prevEl:box.querySelector('.photonav.prev'),nextEl:box.querySelector('.photonav.next')},
+    navigation:{prevEl:box.querySelector('.photonav.back'),nextEl:box.querySelector('.photonav.fwd')},
     on:{slideChange(){counter.textContent=`${this.activeIndex+1} / ${items.length}`}}});
-  activeLightbox={box,main,strip};
+  const zoomBar=wirePhotoZoom(box,main);
+  /* Swiper 只在自己构造的那一刻量一次容器。灯箱是插进已经布好版的页面里的，
+     窗口一改大小（或首屏字体、滚动条落定得比构造晚）slide 就停在旧宽度上，
+     大图按错误的框缩放，看起来就是「显示不全」。挂个 ResizeObserver 让它重量。 */
+  const resize=new ResizeObserver(()=>{main.update();strip.update()});
+  resize.observe(box);
+  activeLightbox={box,main,strip,resize,zoomBar};
   box.querySelector('.photoclose').onclick=closePhotoLightbox;
   // 只在背景本身上关闭：点图片、缩略图条和翻页按钮都不该退出。
   box.addEventListener('click',e=>{if(e.target===box)closePhotoLightbox()});
@@ -1397,8 +1537,11 @@ async function openEntity(kind,name,push=true,requestedTag){
   const image=d.id?(kind==='studio'
     ? `<img src="/logo?studio=${encodeURIComponent(d.canonical_name)}" alt="${esc(d.canonical_name)}"
         onerror="if(!this.dataset.f){this.dataset.f='1';this.src='/entity-image?kind=studio&id=${d.id}'}else{this.remove()}">`
+    /* 兜底链的最后一环必须是 `this.remove()`：留着取不到图的 <img> 会让浏览器
+       画出 alt 文本（整个艺人名横在头像圈里），而 `:has(img)` 仍然匹配，首字母
+       垫底永远回不来。`onerror=null` 只是不再重试，不等于这一环走完了。 */
     : `<img src="/entity-image?kind=${kind}&id=${d.id}" alt="${esc(d.canonical_name)}"${facePos(d.avatar_focus)}
-        onerror="this.removeAttribute('style');${d.representative_asset_id?`this.onerror=null;this.src='/avatar?id=${d.representative_asset_id}'`:`this.remove()`}">`):'';
+        onerror="this.removeAttribute('style');${d.representative_asset_id?`if(!this.dataset.f){this.dataset.f='1';this.src='/avatar?id=${d.representative_asset_id}'}else{this.remove()}`:`this.remove()`}">`):'';
   const links=(d.links||[]).map(x=>x.clickable&&/^https?:\/\//i.test(x.url||'')
     ? `<a href="${esc(x.url)}" target="_blank" rel="noreferrer"><span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(faviconUrl(x.url))}" data-studio="${kind==='studio'?esc(d.canonical_name):''}" alt=""></span><span class="entitylinklabel">${esc(x.label)}</span><span class="entitylinkarrow" aria-hidden="true">↗</span></a>`
     : `<span class="private" title="私人馆藏来源记录，不直接打开下载页"><span class="entitylinkicon">${icon('globe')}</span><span class="entitylinklabel">来源 · ${esc(x.label||x.hostname||'已记录')}</span></span>`).join('');
@@ -1406,7 +1549,7 @@ async function openEntity(kind,name,push=true,requestedTag){
   const tags=(d.tags||[]).map(x=>`<button data-entity-tag="${esc(x.k)}" aria-pressed="${entityTag===x.k}">${esc(x.k)}<small>${x.n.toLocaleString()}</small></button>`).join('');
   const related=(d.related_performers||[]).map(x=>`<button class="relatedperson" data-related-performer="${esc(x.k)}">
       <span class="ring"><span>${esc(x.k.slice(0,1))}</span><img src="/entity-image?kind=performer&id=${x.id}" alt="" loading="lazy"
-        onerror="${x.rep?`this.onerror=null;this.src='/avatar?id=${x.rep}'`:`this.remove()`}"></span>
+        onerror="${x.rep?`if(!this.dataset.f){this.dataset.f='1';this.src='/avatar?id=${x.rep}'}else{this.remove()}`:`this.remove()`}"></span>
       <span class="nm">${esc(x.k)}</span><small>${x.n.toLocaleString()} 部</small></button>`).join('');
   $('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;
   $('#index').innerHTML=`<div class="entityhero"><div class="entityportrait ${kind==='performer'||kind==='creator'?'':'square'}">${image}<span>${esc(name.slice(0,1))}</span></div>
@@ -1914,6 +2057,7 @@ async function openItem(id,push=true,mixContext=null){
     </div>${mixContext?mixQueueHtml(mixContext,it.id):''}
     <div class="side">
       <div class="stitle">${esc(it.name)}</div>
+      ${it.location==='online'?'':sourceTools(it.id)}
       <div class="smeta mono">${srcBadge(it.location,it.cost,'srcbig')}
         <span style="align-self:center">${it.width||'?'}×${it.height||'?'}</span>
         <span style="align-self:center">${fmtSize(it.size||0)}</span>
@@ -1946,6 +2090,9 @@ async function openItem(id,push=true,mixContext=null){
     disposeStage(true);detailReturnBarsContext=null;
     barsContext=restore||{type:'home',filters:state};buildBars()};
   $('#closeStage').onclick=closeDetail;
+  // 对账删掉的可能就是当前这条；删了就没什么可停留的，直接退回列表。
+  wireSourceTools($('#stage'),r=>{
+    if(r.items.some(x=>x.id===it.id))closeDetail();});
   if($('#castMore'))$('#castMore').onclick=e=>{
     $('#stage').querySelectorAll('[data-castoverflow]').forEach(row=>row.hidden=false);
     e.currentTarget.remove()};
@@ -2156,13 +2303,38 @@ function waitTokReady(video,timeout=15000){
     setTimeout(done,timeout);
   });
 }
+/* 沉浸模式默认 cover 铺满，但那只在片源和视口比例接近时才成立。
+   旧判据是「片源是不是竖屏」：于是 16:9 的横屏进竖屏视口照样 cover，按高度放大到
+   两边各裁掉一大半——就是「竖屏沉浸模式看横屏视频看不全」。
+   判据改成两者比例差多少。容差取得很紧（1.05）是刻意的：原代码对竖屏片源用
+   contain，是「不裁掉正在看的画面」的有意选择，只有横屏那一格判错了。放宽到
+   1.25 会顺手把 9:16 片源在 9:19.5 手机上改成 cover、裁掉约 18% 高度——那是
+   没人要求的回退。现在只有比例几乎一致时才 cover（省掉取整产生的 1px 黑边），
+   其余一律完整显示。
+   视口比例会随旋转和窗口尺寸改变，所以必须跟着重算，不能只在 loadedmetadata 算一次。 */
+const TOK_FIT_TOLERANCE=1.05;
+function tokFitOne(v){
+  if(!v||!v.videoWidth||!v.videoHeight)return;
+  const track=v.parentElement;
+  const box=(track&&track.clientWidth&&track.clientHeight)
+    ? track.clientWidth/track.clientHeight
+    : window.innerWidth/window.innerHeight;
+  if(!box||!isFinite(box))return;
+  const source=v.videoWidth/v.videoHeight;
+  const mismatch=source>box?source/box:box/source;
+  v.classList.toggle('contain',mismatch>TOK_FIT_TOLERANCE);
+}
 function applyTokFit(v){
-  /* 竖屏片源用 contain 完整显示，横屏维持 cover 铺满；按真实宽高判定而不是信元数据。 */
-  const fit=()=>v.classList.toggle('portrait',v.videoWidth>0&&v.videoWidth<v.videoHeight);
-  v.classList.remove('portrait');
+  v.classList.remove('contain');
+  const fit=()=>tokFitOne(v);
   if(v.readyState>=1)fit();
   else v.addEventListener('loadedmetadata',fit,{once:true});
 }
+// 旋转手机或改窗口大小后，原来该铺满的可能要改成完整显示，反之亦然。
+addEventListener('resize',()=>{
+  if($('#tok').hidden)return;
+  $('#tokTrack').querySelectorAll('video').forEach(tokFitOne);
+});
 async function openTok(startId,push=true){
   if(push)route('/immerse');
   $('#tok').hidden=false;document.body.style.overflow='hidden';setTokLoading(true,'加载内容…');

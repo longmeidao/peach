@@ -54,9 +54,28 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".mavstack .mav+.mav{margin-left:-14px}")
 
     def test_every_card_avatar_falls_back_through_the_same_helper(self):
-        self.assertPageContains("function avatarInner(name,ref,repId)")
-        self.assertPageContains("`/entity-image?kind=performer&id=${ref.id}`")
-        self.assertPageContains("this.onerror=null;this.src='/avatar?id=${repId}'")
+        # kind 参数化后，创作者复核卡片也能走同一个兜底链；默认仍是 performer，
+        # 既有调用点不受影响。
+        self.assertPageContains("function avatarInner(name,ref,repId,kind='performer')")
+        self.assertPageContains("`/entity-image?kind=${kind}&id=${ref.id}`")
+        self.assertPageContains("this.dataset.f='1';this.src='/avatar?id=${repId}'")
+
+    def test_avatar_fallback_chains_end_by_removing_the_broken_image(self):
+        """取不到图的 <img> 必须被摘掉，不能只停在 onerror=null。
+
+        留着它有两个后果：`.entityportrait:has(img)>span` 仍然匹配，首字母垫底
+        永远回不来；浏览器还会把 alt 当内容画出来——资料页上就是整个艺人名横在
+        头像圈里溢出（loliburin 实测 /entity-image 与 /avatar 双 404）。
+        """
+        for chain in (
+            # 卡片头像、资料页大圆框、关联艺人小圆框三处用的是同一套兜底。
+            "this.dataset.f='1';this.src='/avatar?id=${repId}'}else{this.remove()}",
+            "this.dataset.f='1';this.src='/avatar?id=${d.representative_asset_id}'}"
+            "else{this.remove()}",
+            "this.dataset.f='1';this.src='/avatar?id=${x.rep}'}else{this.remove()}",
+        ):
+            self.assertPageContains(chain)
+        self.assertPageLacks("this.onerror=null;this.src='/avatar?id=")
 
     def test_entity_hero_avatar_frames_the_detected_face(self):
         # 资料页圆框按检出的人脸取景；换回落图时必须先摘掉内联 object-position——
@@ -375,10 +394,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("function setTokLoading(on,label='加载中…',it=null)")
         self.assertPageContains("function waitTokReady(video,timeout=15000)")
         self.assertPageContains("width:100%;height:100%;left:50%;transform:translateX(-50%);object-fit:cover")
-        # 竖屏片源按真实宽高切到 contain 完整显示，不裁上下画面；横屏维持 cover。
-        self.assertPageContains(".toktrack video.portrait{object-fit:contain}")
+        # cover 只是基线；片源与视口比例差得多时切到 contain 完整显示。
+        # 判据本身由 test_immersive_fit_compares_source_against_the_viewport 覆盖，
+        # 这里只确认沉浸模式仍然接着那条规则走。
+        self.assertPageContains(".toktrack video.contain{object-fit:contain}")
         self.assertPageContains("function applyTokFit(v)")
-        self.assertPageContains("v.classList.toggle('portrait',v.videoWidth>0&&v.videoWidth<v.videoHeight)")
         self.assertPageContains("v.addEventListener('loadedmetadata',fit,{once:true})")
         self.assertPageContains("<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><use href=\"#i-play\"/>")
         self.assertPageContains("await tokShow()")
@@ -917,6 +937,163 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("keyboard:{enabled:true}")
         self.assertPageContains(".photolight{position:fixed;inset:0;z-index:200;background:#000")
         self.assertPageLacks('<script src="/vendor/swiper', "灯箱才用得上，不进首屏")
+
+    def test_lightbox_image_is_capped_by_height_not_only_width(self):
+        """竖图必须整张收进灯箱，不能上下被裁掉。
+
+        `max-height:100%` 只在祖先高度确定时才算数，而 grid 子项的自动最小尺寸
+        （min-height:auto）是「不得小于内容」：3072x4096 按宽度铺开有 2533px 高，
+        那个下限会盖掉 height:100%，容器被撑成图片原高，max-height 再按它算就等于
+        没限制。所以从 slide 到图片本身每一层都要显式写 min-height:0。
+        """
+        self.assertPageContains(
+            ".photolight .photomain{min-height:0;height:100%;width:100%}")
+        self.assertPageContains(
+            ".photolight .photomain .swiper-slide{height:100%;min-height:0;")
+        self.assertPageContains(
+            ".photolight .photomain .swiper-zoom-container{width:100%;height:100%;"
+            "min-height:0;min-width:0;")
+        self.assertPageContains(
+            ".photolight .photomain img{max-width:100%;max-height:100%;"
+            "min-width:0;min-height:0;")
+
+    def test_lightbox_nav_classes_avoid_the_generic_next_rule(self):
+        """翻页按钮不能叫 `.next`：详情页「接下来」那块用的就是无前缀 `.next`。
+
+        两者同为 0-1-0 特指度且 `.next` 写在后面，padding、border-top 和背景色会
+        整块盖过来，图标被挤得偏右下——实测偏移 5px/2px。
+        """
+        self.assertPageContains('class="photonav back"')
+        self.assertPageContains('class="photonav fwd"')
+        self.assertPageContains(".photonav.back{left:14px}.photonav.fwd{right:14px}")
+        self.assertPageContains(".photonav.fwd svg{transform:rotate(180deg)}")
+        self.assertPageLacks('class="photonav prev"')
+        self.assertPageLacks('class="photonav next"')
+
+    def test_sprite_icons_declare_stroke_and_no_fill(self):
+        """Lucide 描边图标缺 `fill:none;stroke:currentColor` 就被按默认的
+        fill:black/stroke:none 画成黑块——深色底上等于看不见，`i-x` 这种纯开放
+        路径则整个消失（关闭按钮上「没有 x」就是这么来的）。
+        """
+        for rule in (
+            ".mediatabs button svg{width:16px;height:16px;stroke:currentColor;fill:none",
+            ".photoback svg{width:15px;height:15px;stroke:currentColor;fill:none",
+            ".photoclose svg{width:20px;height:20px;stroke:currentColor;fill:none",
+            ".photonav svg{width:24px;height:24px;stroke:currentColor;fill:none",
+        ):
+            self.assertPageContains(rule)
+
+    def test_lightbox_offers_wheel_paging_and_an_explicit_zoom_bar(self):
+        # zoom 模块只有 in/out/toggle，没有「缩到这个倍数」；`in()` 用的就是
+        # maxRatio，所以先改上限再 in 等于设定值。
+        self.assertPageContains("mousewheel:{enabled:true,forceToAxis:false}")
+        self.assertPageContains("main.params.zoom.maxRatio=scale;main.zoom.in()")
+        self.assertPageContains('<input type="range" min="1" max="${ZOOM_MAX}"')
+        # zoomChange 的第一个参数是 swiper 实例，倍数在第二个；接错了写进 NaN。
+        self.assertPageContains("main.on('zoomChange',(_swiper,scale)=>")
+
+    def test_lightbox_remeasures_when_the_window_resizes(self):
+        # Swiper 只在构造那一刻量一次容器；灯箱是插进已布好版的页面里的，
+        # 窗口一改大小 slide 就停在旧宽度，大图按错误的框缩放。
+        self.assertPageContains("new ResizeObserver(()=>{main.update();strip.update()})")
+        self.assertPageContains("activeLightbox.resize?.disconnect()")
+
+    def test_failed_review_decisions_are_shown_instead_of_silently_swallowed(self):
+        """「点了没反应」的真身：失败被吞掉，按钮还卡在 disabled。
+
+        `api()` 在任何非 2xx 都 throw，而这个 async onclick 原来没有 catch：
+        异常成了 unhandled rejection，`button.disabled=false` 永远到不了，于是
+        按钮永久禁用、界面一句话都不给。失败必须说出来并把按钮放开让人重试。
+        """
+        self.assertPageContains('<span class="reviewstate" aria-live="polite"></span>')
+        self.assertPageContains("if(state)state.textContent=result.error||'服务端拒绝了这次判定'")
+        self.assertPageContains("if(state)state.textContent=e.message")
+        # 成功路径 return，其余出口都必须回到放开按钮那一行。
+        self.assertPageContains("button.disabled=false;")
+
+    def test_entity_subject_reviews_lead_with_the_creator_not_one_sample(self):
+        """创作者标签和西方身份判的是「这个人」，不是某一条作品。
+
+        `_attach_review_asset_context` 会退回到 `preview_assets[0]`，于是卡片顶上
+        挂着随便一条样本、写着「打开原视频」：下面 60 个样本上面 1 个视频，
+        西方身份更极端——772 部作品配 1 个。顶部必须是创作者入口。
+        """
+        self.assertPageContains(
+            "const ENTITY_REVIEW_CATEGORIES={creator_tags:'creator',western_identity:'creator'}")
+        self.assertPageContains("const subjectKind=ENTITY_REVIEW_CATEGORIES[reviewCategory]")
+        self.assertPageContains('<div class="reviewentity">')
+        # 作品数取 video_count（创作者标签）或 videos（西方身份），两批候选列名不同。
+        self.assertPageContains("const works=Number(row.video_count||row.videos||0)")
+        self.assertPageContains("部作品")
+        # 头像走同一个兜底链，取不到图时回落首字母。
+        self.assertPageContains("row.entity_id?{id:row.entity_id}:null,null,subjectKind)")
+        # 复核页没有全局委托，必须自己接线，否则入口点了没反应。
+        self.assertPageContains(
+            "$('#stats').querySelectorAll('[data-entity-kind]').forEach(button=>button.onclick=()=>")
+
+    def test_sole_metadata_candidate_is_shown_not_offered_as_a_choice(self):
+        """只有一个候选时没什么可选的，单选圈会让人以为还有别的选项。
+
+        但 radio 必须留在 DOM 里：提交路径读的就是 `[name^="metadata-"]:checked`，
+        删掉它会让「通过」退化成「必须选择一个来源值」的报错。
+        """
+        self.assertPageContains("candidates.length===1")
+        self.assertPageContains('<div class="metadatasole">')
+        self.assertPageContains('value="${esc(candidates[0].candidate_key)}" checked')
+        self.assertPageContains(".metadatasole input{display:none}")
+        # 提交路径没变，仍然只认 :checked。
+        self.assertPageContains(
+            "item.querySelector('[name^=\"metadata-\"]:checked')?.value")
+
+    def test_immersive_fit_compares_source_against_the_viewport(self):
+        """竖屏沉浸模式看横屏视频必须完整显示。
+
+        旧判据只看「片源是不是竖屏」：竖屏片源 contain、横屏一律 cover。于是
+        16:9 进 9:19.5 的竖屏视口照样 cover，按高度放大到两边各裁掉一大半，
+        也就是「看不全」。判据必须同时看视口比例。
+        """
+        self.assertPageContains("const source=v.videoWidth/v.videoHeight")
+        self.assertPageContains("track.clientWidth/track.clientHeight")
+        self.assertPageContains("const mismatch=source>box?source/box:box/source")
+        self.assertPageContains("v.classList.toggle('contain',mismatch>TOK_FIT_TOLERANCE)")
+        self.assertPageContains(".toktrack video.contain{object-fit:contain}")
+        # 旧判据不能残留：它正是「横屏一律铺满」的来源。
+        self.assertPageLacks("v.videoWidth<v.videoHeight")
+        self.assertPageLacks(".toktrack video.portrait")
+
+    def test_immersive_fit_tolerance_stays_tight_enough_to_not_crop_shorts(self):
+        """容差放宽会顺手把竖屏短片改成 cover——那是没人要求的回退。
+
+        9:16 片源在 9:19.5 手机上比例差 1.22；容差必须小于它，这类片源才继续
+        完整显示。原代码对竖屏用 contain 是有意的选择，不该被这次修复带走。
+        """
+        self.assertPageContains("const TOK_FIT_TOLERANCE=1.05")
+
+    def test_immersive_fit_is_recomputed_when_the_viewport_changes(self):
+        # 视口比例随旋转和窗口尺寸变；只在 loadedmetadata 算一次，转屏后就错。
+        self.assertPageContains("$('#tokTrack').querySelectorAll('video').forEach(tokFitOne)")
+
+    def test_source_tools_never_take_a_path_from_the_client(self):
+        """定位和对账都只发 asset id，路径由服务端查。
+
+        `q_item` 是刻意不把 `path` 发给前端的；这两个入口不能反过来让前端把
+        路径传进来，否则等于开了一个「任意路径」的接口。
+        """
+        self.assertPageContains("api('/api/reveal',{method:'POST',body:JSON.stringify({id})})")
+        self.assertPageContains("api('/api/purge-missing',{method:'POST',body:JSON.stringify({id})})")
+        self.assertPageContains('data-reveal="${id}"')
+        self.assertPageContains('data-sync="${id}"')
+        # 在线资产是 URL，没有本地文件可定位。
+        self.assertPageContains("it.location==='online'?'':sourceTools(it.id)")
+
+    def test_source_tool_icons_declare_stroke_and_no_fill(self):
+        self.assertPageContains(
+            ".srctools button svg{width:15px;height:15px;stroke:currentColor;fill:none")
+        self.assertPageContains('<symbol id="i-folder-open"')
+
+    def test_offline_source_is_reported_as_a_refusal_not_a_failure(self):
+        # 盘没挂上时拒绝对账，措辞必须让人看懂「不是出错，是我不敢删」。
+        self.assertPageContains("'source offline':'来源不在线，已拒绝对账")
 
     def test_photo_view_is_addressable_and_survives_a_reload(self):
         self.assertPageContains("params.get('media')==='photos'?'photos':'videos'")
