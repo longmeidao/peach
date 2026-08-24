@@ -1095,6 +1095,26 @@ def read_candidates(category: str, root: Path | None = None) -> tuple[list[dict]
     return rows, path.name, skipped
 
 
+def _creator_entity_ids(connection, creators: list[str]) -> dict[str, int]:
+    """创作者名（含别名）-> 规范 creator 实体 id；一次查完，不按候选逐个查。"""
+    wanted = [name for name in dict.fromkeys(creators) if name]
+    if not wanted:
+        return {}
+    marks = ",".join("?" * len(wanted))
+    found: dict[str, int] = {}
+    for row in connection.execute(
+        "SELECT e.id,e.canonical_name,alias.alias FROM entity e "
+        "LEFT JOIN entity_alias alias ON alias.entity_id=e.id "
+        f"WHERE e.kind='creator' AND (e.canonical_name IN ({marks}) "
+        f"OR alias.alias IN ({marks}))",
+        [*wanted, *wanted],
+    ):
+        for name in (row["canonical_name"], row["alias"]):
+            if name in wanted:
+                found.setdefault(name, row["id"])
+    return found
+
+
 def _creator_previews(connection, creators: list[str]) -> dict[str, list[dict]]:
     """一次查完所有候选创作者的预览作品；按候选逐个查是 N+1。"""
     wanted = [name for name in dict.fromkeys(creators) if name]
@@ -1189,11 +1209,15 @@ def _review_rows(contract: WebContract, category: str) -> tuple[list[dict], str 
             )
         }
         if category == "creator_tags":
-            previews = _creator_previews(
-                connection, [str(row.get("creator") or "").strip() for row in rows],
-            )
+            names = [str(row.get("creator") or "").strip() for row in rows]
+            previews = _creator_previews(connection, names)
+            # 这批候选判的是「这位创作者的作品该打什么标签」，主体是创作者本人。
+            # 页面要给出创作者入口（头像 + 作品数），所以这里得把规范实体解析出来。
+            entities = _creator_entity_ids(connection, names)
             for row in rows:
-                row["preview_assets"] = previews.get(str(row.get("creator") or "").strip(), [])
+                name = str(row.get("creator") or "").strip()
+                row["preview_assets"] = previews.get(name, [])
+                row["entity_id"] = entities.get(name, "")
         elif category == "metadata_fields":
             for row in rows:
                 try:

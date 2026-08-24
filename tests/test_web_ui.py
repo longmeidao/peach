@@ -54,8 +54,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".mavstack .mav+.mav{margin-left:-14px}")
 
     def test_every_card_avatar_falls_back_through_the_same_helper(self):
-        self.assertPageContains("function avatarInner(name,ref,repId)")
-        self.assertPageContains("`/entity-image?kind=performer&id=${ref.id}`")
+        # kind 参数化后，创作者复核卡片也能走同一个兜底链；默认仍是 performer，
+        # 既有调用点不受影响。
+        self.assertPageContains("function avatarInner(name,ref,repId,kind='performer')")
+        self.assertPageContains("`/entity-image?kind=${kind}&id=${ref.id}`")
         self.assertPageContains("this.dataset.f='1';this.src='/avatar?id=${repId}'")
 
     def test_avatar_fallback_chains_end_by_removing_the_broken_image(self):
@@ -995,6 +997,40 @@ class WebUiSourceTests(unittest.TestCase):
         # 窗口一改大小 slide 就停在旧宽度，大图按错误的框缩放。
         self.assertPageContains("new ResizeObserver(()=>{main.update();strip.update()})")
         self.assertPageContains("activeLightbox.resize?.disconnect()")
+
+    def test_entity_subject_reviews_lead_with_the_creator_not_one_sample(self):
+        """创作者标签和西方身份判的是「这个人」，不是某一条作品。
+
+        `_attach_review_asset_context` 会退回到 `preview_assets[0]`，于是卡片顶上
+        挂着随便一条样本、写着「打开原视频」：下面 60 个样本上面 1 个视频，
+        西方身份更极端——772 部作品配 1 个。顶部必须是创作者入口。
+        """
+        self.assertPageContains(
+            "const ENTITY_REVIEW_CATEGORIES={creator_tags:'creator',western_identity:'creator'}")
+        self.assertPageContains("const subjectKind=ENTITY_REVIEW_CATEGORIES[reviewCategory]")
+        self.assertPageContains('<div class="reviewentity">')
+        # 作品数取 video_count（创作者标签）或 videos（西方身份），两批候选列名不同。
+        self.assertPageContains("const works=Number(row.video_count||row.videos||0)")
+        self.assertPageContains("部作品")
+        # 头像走同一个兜底链，取不到图时回落首字母。
+        self.assertPageContains("row.entity_id?{id:row.entity_id}:null,null,subjectKind)")
+        # 复核页没有全局委托，必须自己接线，否则入口点了没反应。
+        self.assertPageContains(
+            "$('#stats').querySelectorAll('[data-entity-kind]').forEach(button=>button.onclick=()=>")
+
+    def test_sole_metadata_candidate_is_shown_not_offered_as_a_choice(self):
+        """只有一个候选时没什么可选的，单选圈会让人以为还有别的选项。
+
+        但 radio 必须留在 DOM 里：提交路径读的就是 `[name^="metadata-"]:checked`，
+        删掉它会让「通过」退化成「必须选择一个来源值」的报错。
+        """
+        self.assertPageContains("candidates.length===1")
+        self.assertPageContains('<div class="metadatasole">')
+        self.assertPageContains('value="${esc(candidates[0].candidate_key)}" checked')
+        self.assertPageContains(".metadatasole input{display:none}")
+        # 提交路径没变，仍然只认 :checked。
+        self.assertPageContains(
+            "item.querySelector('[name^=\"metadata-\"]:checked')?.value")
 
     def test_immersive_fit_compares_source_against_the_viewport(self):
         """竖屏沉浸模式看横屏视频必须完整显示。

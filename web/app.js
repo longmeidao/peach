@@ -407,8 +407,8 @@ window.addEventListener('pagehide',()=>releaseHoverPreviews());
 document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseHoverPreviews()});
 
 /* 头像内层：先垫首字母，再叠真实图。规范实体图优先，取不到才回落到旧头像缓存。 */
-function avatarInner(name,ref,repId){
-  const src=ref?`/entity-image?kind=performer&id=${ref.id}`:(repId?`/avatar?id=${repId}`:'');
+function avatarInner(name,ref,repId,kind='performer'){
+  const src=ref?`/entity-image?kind=${kind}&id=${ref.id}`:(repId?`/avatar?id=${repId}`:'');
   // 兜底链最后一环必须是 remove()：留着取不到图的 <img>，`:has(img)` 仍然匹配，
   // 首字母垫底回不来，浏览器还会把 alt 画出来。onerror=null 只是不再重试。
   const fallback=ref&&repId
@@ -888,6 +888,8 @@ function showHomeSurfaces(){
 function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
 
 let reviewData=null,reviewCategory='metadata_fields';
+/* 主体是实体而不是单条作品的复核分类。值就是实体 kind。 */
+const ENTITY_REVIEW_CATEGORIES={creator_tags:'creator',western_identity:'creator'};
 const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',western_identity:'西方身份回配',code_creators:'番号目录存疑',fc2_markings:'FC2 评论标记',media_failure:'媒体失败'};
 let dupData=null;
 /* 重复文件。判据是「同番号 + 时长相近 + 分卷标记一致」，不是同番号即重复——
@@ -994,13 +996,37 @@ async function openReview(push=true){
         const canApprove=metadata?candidates.length>0:(reviewCategory!=='creator_tags'||String(row.status||'').trim()==='candidate');
          const approveLabel=canApprove?'通过':'已跳过';
          const assets=row.preview_assets||[];
-         const origin=row.asset_id?`<div class="revieworigin">
+         /* 有些候选判的是「这位创作者」，不是某一条作品：创作者标签看的是他全部
+            作品该打什么标签，西方身份回配的是这个人对不对得上。这类卡片顶上必须给
+            创作者入口，而不是从样本里挑一条画成「原视频」——下面 60 个样本、上面
+            1 个视频，读起来就是错的（西方身份那条更极端：772 部作品配 1 个）。 */
+         const subjectKind=ENTITY_REVIEW_CATEGORIES[reviewCategory];
+         const subjectName=String(row.creator||'').trim();
+         const works=Number(row.video_count||row.videos||0);
+         const origin=subjectKind&&subjectName?`<div class="reviewentity">
+             <button class="reviewentityface" data-entity-kind="${subjectKind}" data-entity-name="${esc(subjectName)}"
+               aria-label="打开创作者页：${esc(subjectName)}">${avatarInner(subjectName,
+                 row.entity_id?{id:row.entity_id}:null,null,subjectKind)}</button>
+             <div><b title="${esc(subjectName)}">${esc(subjectName)}</b>
+               <button type="button" data-entity-kind="${subjectKind}" data-entity-name="${esc(subjectName)}">${icon('user-round')}打开创作者</button>
+               ${works?`<small class="mono">${works.toLocaleString()} 部作品</small>`:''}</div></div>`
+           :row.asset_id?`<div class="revieworigin">
              <button class="revieworigincover" data-review-open-item="${row.asset_id}" aria-label="打开原视频 ${esc(row.asset_name||'')}">
                ${row.asset_preview_url?`<img src="${esc(row.asset_preview_url)}" alt="" loading="lazy" onerror="this.remove()">`:'<span>无封面</span>'}</button>
              <div><b title="${esc(row.asset_name||'')}">${esc(row.asset_name||'原视频')}</b>
                <button type="button" data-review-open-item="${row.asset_id}">${icon('play')}打开原视频</button></div></div>`:'';
+         /* 只有一个候选时没什么可选的，单选圈只是让人以为还有别的选项。
+            改成纯展示，几何对齐上面的「打开原视频」块。
+            radio 保留但不可见：提交路径读的就是 `[name^="metadata-"]:checked`，
+            删掉它会让批准退化成「必须选择一个来源值」的报错，而不是少一个圈。 */
+         const candidateBody=candidate=>`<b>${esc(candidate.source)}${candidate.official?' · 官方优先':''}</b>`
+           +`<span>${esc(candidate.display_value||'')}</span>`
+           +(candidate.warnings||[]).map(warning=>`<i>${esc(warning)}</i>`).join('');
          const preview=metadata
-           ? `<div class="metadatacandidates">${candidates.map((candidate,index)=>`<label class="metadatacandidate"><input type="radio" name="metadata-${esc(key)}" value="${esc(candidate.candidate_key)}"${index===0?' checked':''}><span><b>${esc(candidate.source)}${candidate.official?' · 官方优先':''}</b><span>${esc(candidate.display_value||'')}</span>${(candidate.warnings||[]).map(warning=>`<i>${esc(warning)}</i>`).join('')}</span></label>`).join('')}</div>`
+           ? (candidates.length===1
+             ? `<div class="metadatasole"><input type="radio" name="metadata-${esc(key)}" value="${esc(candidates[0].candidate_key)}" checked>
+                 <span>${candidateBody(candidates[0])}</span></div>`
+             : `<div class="metadatacandidates">${candidates.map((candidate,index)=>`<label class="metadatacandidate"><input type="radio" name="metadata-${esc(key)}" value="${esc(candidate.candidate_key)}"${index===0?' checked':''}><span>${candidateBody(candidate)}</span></label>`).join('')}</div>`)
            : reviewCategory==='creator_tags'
            ? (assets.length?`<div class="reviewpick"><div class="reviewpickhead"><span class="mono" data-picked-count></span>
                <button type="button" data-pick-all>全选</button><button type="button" data-pick-none>清空</button></div>
@@ -1011,6 +1037,9 @@ async function openReview(push=true){
          return `<article class="reviewitem" data-review-key="${esc(key)}" data-decision="${esc(decision)}"><h4>${esc(titleText)}</h4><p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>${origin}${tags?`<div class="reviewtags">${tags}</div>`:''}${preview}<p>${esc(evidence)}</p><div class="reviewactions"><button class="approve" data-review-status="approved"${canApprove?'':' disabled'}>${approveLabel}</button><button class="skip" data-review-status="skipped">跳过</button><button class="reject" data-review-status="rejected">拒绝</button></div></article>`}).join(''):'<p class="empty">暂无候选</p>'}</div></section></div>`;
      wireReviewAssets($('#stats'));
     $('#stats').querySelectorAll('[data-review-open-item]').forEach(button=>button.onclick=()=>openItem(+button.dataset.reviewOpenItem));
+    // 没有全局委托，每个界面各自接线（见 #stage 的同类处理）。
+    $('#stats').querySelectorAll('[data-entity-kind]').forEach(button=>button.onclick=()=>
+      openEntity(button.dataset.entityKind,button.dataset.entityName));
     $('#stats').querySelectorAll('[data-review-tab]').forEach(button=>button.onclick=()=>{reviewCategory=button.dataset.reviewTab;render()});
     $('#stats').querySelectorAll('[data-review-status]').forEach(button=>button.onclick=async()=>{
       const item=button.closest('[data-review-key]'),row=rows.find(x=>String(x.item_key)===item.dataset.reviewKey);button.disabled=true;
