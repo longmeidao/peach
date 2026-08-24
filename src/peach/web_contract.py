@@ -28,6 +28,18 @@ from .entities import (
     upsert_asset_entity,
 )
 from .media import remap_managed_path
+from .web_logic import (
+    DUPLICATE_FLOOR_SECONDS,
+    DUPLICATE_TOLERANCE,
+    LENGTH_TAGS,
+    TECH_TAGS,
+    duration_clusters,
+    face_focus,
+    is_jav_code,
+    normalise_code_key,
+    part_marker,
+    tag_cat,
+)
 
 COST = {"local": "free", "115": "free", "pikpak": "metered", "online": "metered"}
 
@@ -47,78 +59,6 @@ ASSET_REFERENCE_TABLES = (
     "asset_tag", "media_binding", "activity_event", "asset_entity",
     "watch_queue", "asset_preference", "asset_tag_preference", "asset_quality_goal",
 )
-
-
-#: 真番号的四种形态。共同点是字母段与数字段之间有分隔——`code` 字段里混着账号名
-#: 和站点水印（`RAIKUN325` 241 个文件、`WX17` 334 个、`HHD800` 19 个），只按非空过滤
-#: 会把 791 个非 JAV 视频当成 JAV 显示，占该口径的 31%。
-_CODE_STUDIO = re.compile(r"^[A-Z]{2,8}-\d{2,5}$")
-_CODE_AMATEUR = re.compile(r"^\d{3}[A-Z]{2,6}-\d{2,5}$")
-_CODE_FC2 = re.compile(r"^FC2-PPV-\d{5,}$")
-_CODE_DATE = re.compile(r"^\d{6}-\d{2,4}$")
-
-
-def normalise_code_key(code: str | None) -> str:
-    """把番号归一成存封面用的键；与 fetch_jav_covers.normalise_code 同口径。"""
-    value = (code or "").upper().replace("_", "-").replace(" ", "-").strip()
-    if not value:
-        return ""
-    if value.startswith("FC2"):
-        digits = re.search(r"(\d{5,})", value)
-        return f"FC2-PPV-{digits.group(1)}" if digits else value
-    shape = re.match(r"^(\d{3})?([A-Z]+)-?(\d+)$", value)
-    if not shape:
-        return value
-    return f"{shape.group(1) or ''}{shape.group(2)}-{int(shape.group(3)):03d}"
-
-
-def is_jav_code(code: str | None) -> bool:
-    """判形态必须看原值，不能先归一化。
-
-    `normalise_code_key` 会补上分隔符，`RAIKUN325`（myfans 账号名，241 个文件）
-    会被改写成 `RAIKUN-325` 并通过形态检查。分隔符本身就是区分番号与账号名的
-    唯一线索，归一化把它抹掉了。
-
-    代价是 `SOAN045`、`DTW024` 这类漏写分隔符的真番号会被判为非 JAV。二者结构
-    完全相同，无法自动区分；宁可漏掉几个真番号，也不能把 241 个账号作品塞进
-    JAV 模式。这些漏网的应当在 `code` 字段清洗时补上分隔符。
-    """
-    value = (code or "").upper().strip()
-    if not value:
-        return False
-    # FC2 本来就不依赖分隔符，按数字段识别；`FC2PPV_2707471` 是真番号。
-    if value.startswith("FC2"):
-        return bool(re.search(r"\d{5,}", value))
-    # 其余形态必须带字面连字符。下划线在本语料里是账号名标志（`BANBI_555`
-    # 69 个文件），把它当分隔符会让账号名冒充番号。
-    return bool(_CODE_STUDIO.match(value) or _CODE_AMATEUR.match(value)
-                or _CODE_DATE.match(value))
-
-
-def face_focus(ratio: float, cx: float, cy: float) -> dict | None:
-    """把归一化人脸中心换算成圆框 object-position 的取景提示。
-
-    竖图（ratio=宽/高 < 1）的取景余量在纵向、横图在横向，脸放在余量轴的中心；
-    换算式由 cover 取景的同一几何关系推出：可见窗口在余量轴上的起点是
-    `(余量) × pos%`，令窗口中心等于脸心即可解出 pos。接近正方时 cover 几乎
-    裁不掉东西，返回 None 维持几何居中；脸太靠边、几何上无法完整居中时
-    夹取到边缘，保证不会比现在更差。
-    """
-    try:
-        ratio = float(ratio)
-        cx = float(cx)
-        cy = float(cy)
-    except (TypeError, ValueError):
-        return None
-    if ratio <= 0 or abs(1.0 - ratio) <= 0.05:
-        return None
-    if ratio < 1.0:
-        pos = (cy - ratio / 2) / (1 - ratio)
-    else:
-        pos = (ratio * cx - 0.5) / (ratio - 1)
-    pct = int(round(min(1.0, max(0.0, pos)) * 100))
-    axis = "y" if ratio < 1.0 else "x"
-    return {"axis": axis, "pct": pct}
 
 
 class WebContract:
@@ -596,25 +536,6 @@ def q_item(contract: WebContract, aid):
     d["is_jav"] = is_jav_code(d.get("code"))
     d.pop("snapshot_path", None); d.pop("path", None)
     return d
-
-# ── 标签语义分级 ──
-LENGTH_TAGS = {"短片-2分内", "中片-10分内", "长片-30分内", "超长片-30分上"}
-TECH_TAGS = {"1080P", "720P", "4K", "2K", "2160P", "480P", "低画质", "高帧率",
-             "横屏", "竖屏",
-             "真人", "混合集", "身份待确认", "R-18", "有码", "无码"}
-COPYRIGHT_HINT = re.compile(
-    r"(ブルーアーカイブ|崩壊|崩坏|原神|勝利の女神|NIKKE|アークナイツ|明日方舟|"
-    r"FGO|Fate|東方|东方|艦これ|舰娘|ウマ娘|赛马娘|ポケモン|宝可梦|"
-    r"サイバーパンク|Honkai|Genshin|Blue Archive|VTuber|hololive|にじさんじ)", re.I)
-
-def tag_cat(t):
-    """meta 规格 / artist 创作者 / character 角色 / copyright 作品 / general 内容。"""
-    if t.startswith("演员:"):  return "artist"
-    if t in LENGTH_TAGS:       return "meta"
-    if t in TECH_TAGS:         return "meta"
-    if COPYRIGHT_HINT.search(t): return "copyright"
-    if re.search(r"(ちゃん|さん|酱|娘)$", t) and len(t) <= 8: return "character"
-    return "general"
 
 def q_ads(contract: WebContract, limit=200, offset=0):
     """疑似广告复核队列 —— **不自动删**，只排队让人看接触印相确认。
@@ -1899,61 +1820,6 @@ def w_batch(contract: WebContract, body):
     if purge_outcome is not None:
         return {"ok": True, "operation": operation, **_finish_purge(purge_outcome)}
     return {"ok": True, "operation": operation, "changed": len(valid_ids)}
-
-
-#: 同一部作品的不同版本时长只差几秒；容差必须紧。3% 在 4 小时的片子上等于
-#: ±7 分钟，实测把 `HRV-041` 的 237 分和 239 分两个**不同部分**并成了一簇，
-#: 「每簇留最大」会删掉其中一个部分。宁可漏判几组真重复（只是少回收一点空间），
-#: 也不能把不同部分并进一簇（那是不可逆的内容丢失）。
-DUPLICATE_TOLERANCE = 0.005
-DUPLICATE_FLOOR_SECONDS = 15.0
-
-#: 文件名里的分卷标记。同簇内出现不同的分卷号，说明它们是不同部分而不是重复。
-_PART_MARKER = re.compile(
-    r"(?:^|[^a-z0-9])(?:part|cd|disc|vol)?[-_ ]?([1-9]\d?|[a-h])(?=\.[a-z0-9]{2,4}$)",
-    re.I)
-
-
-def part_marker(name: str) -> str:
-    """取文件名尾部的分卷标记；取不到返回空串。"""
-    match = _PART_MARKER.search(name or "")
-    return match.group(1).lower() if match else ""
-
-
-def duration_clusters(items: list[dict]) -> list[list[dict]]:
-    """按时长把同番号的文件聚成「同一内容」的簇。
-
-    只按番号分组会把三类东西混在一起，对它们做「保留最大」是数据事故：
-
-    - **合集**。`FC2-PPV-3312576` 一个番号 19 个文件，是 19 部不同作品。
-    - **分卷**。`PPT-018` 的时长是 109.2/175.2/196.4 各两份，三个部分各有一个
-      重复版本；按番号只留最大会把另外两个部分整个删掉。
-    - **广告**。`BAZX-302` 的下载目录里混着 0.5~1.8 分钟的推广片，继承了同一个
-      `code`。聚类后它们自成小簇，199.9 分钟的正片独自成簇、根本不算重复。
-
-    时长缺失的一律单独成簇：没有证据就不敢判定为重复。
-    """
-    clusters: list[list[dict]] = []
-    known = sorted((x for x in items if (x.get("duration") or 0) > 0),
-                   key=lambda x: x["duration"])
-    for item in known:
-        marker = part_marker(str(item.get("name") or ""))
-        for cluster in clusters:
-            reference = cluster[0]["duration"]
-            if abs(item["duration"] - reference) > max(
-                    DUPLICATE_FLOOR_SECONDS, reference * DUPLICATE_TOLERANCE):
-                continue
-            # 分卷标记不同就是不同部分，时长再接近也不能并簇：`FCDSS-021` 的
-            # `-1/-2/-3` 时长只差 12 秒，却是三个部分。
-            existing = {part_marker(str(x.get("name") or "")) for x in cluster}
-            if marker and existing - {"", marker}:
-                continue
-            cluster.append(item)
-            break
-        else:
-            clusters.append([item])
-    clusters.extend([x] for x in items if not (x.get("duration") or 0) > 0)
-    return clusters
 
 
 def q_duplicates(contract: WebContract, args):
