@@ -271,7 +271,8 @@ button,input,textarea{font:inherit;color:inherit}
 /* 身份区按类别分组：标签是组标题，同类横向排开并按需换行。
    旧版每个名字独占一行、左侧还重复一列标签，共演作品会把整个侧栏撑满。 */
 .detailidentity{display:flex;flex-direction:column;gap:14px;margin:0 0 18px}
-.identityprimary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px 18px;align-items:start}
+.identityprimary{display:flex;flex-wrap:wrap;gap:14px 26px;align-items:flex-start}
+.identityprimary>.idgroup{width:max-content;max-width:100%}
 .idgroup{min-width:0}
 .idlabel{margin:0 0 7px;font-size:12px;font-weight:400;color:var(--muted);letter-spacing:.04em}
 .idrow{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:flex-start}
@@ -293,12 +294,12 @@ button,input,textarea{font:inherit;color:inherit}
   border-radius:12px;background:transparent;color:var(--tungsten);font-size:12px;cursor:pointer}
 .castmore:hover{background:var(--hover)}
 .seriesrows{display:grid;gap:7px}
-.seriesbar,.seriesbar.entitylink{display:flex;width:100%;min-height:38px;align-items:center;padding:8px 12px;
-  border:1px solid var(--border-10);border-left:3px solid var(--tungsten);border-radius:7px;
-  background:var(--overlay-5);color:var(--ink-2);font-size:13px;line-height:1.4;text-align:left;
-  white-space:normal;overflow-wrap:anywhere}
-button.seriesbar{cursor:pointer}.seriesbar:not(.entitylink){cursor:default}
-button.seriesbar.entitylink:hover{border-color:var(--tungsten);background:var(--tungsten-soft);color:var(--ink)}
+.serieslink,.serieslink.entitylink{display:flex;width:100%;align-items:flex-start;gap:7px;padding:0;border:0;
+  background:transparent;color:var(--ink-2);font-size:13px;line-height:1.4;text-align:left;
+  white-space:normal;overflow-wrap:anywhere;text-decoration:none}
+.serieslink svg{width:16px;height:16px;margin-top:1px;flex:none;stroke:currentColor;fill:none;stroke-width:2}
+button.serieslink{cursor:pointer}.serieslink:not(.entitylink){cursor:default}
+button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
 .managetitle{font-size:26px;line-height:1.2;margin:26px 0 18px;letter-spacing:.02em}
 .managetitle[hidden]{display:none}
 .dupsum{color:var(--muted);margin:0 0 12px}
@@ -465,21 +466,16 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .nopic{font-size:11px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
 .badge{position:absolute;top:6px;left:6px;display:flex;gap:4px;z-index:2;align-items:center;
   transition:opacity .15s ease}
-/* 来源徽标：图标 + 名字。绿=免费（本地/115），橙=计费（PikPak） */
-.src{display:inline-flex;align-items:center;gap:4px;padding:2px 7px 2px 3px;border-radius:99px;
-  background:color-mix(in srgb,#000 62%,transparent);backdrop-filter:blur(4px);
-  font-size:12px;line-height:1.6;border:1px solid transparent}
-.src img,.src svg{width:14px;height:14px;border-radius:3px;object-fit:contain;display:block;flex:none}
-.src.free{color:#CFE8CF;border-color:color-mix(in srgb,var(--keep) 55%,transparent)}
-.src.metered{color:#FFD9AE;border-color:var(--meter);background:color-mix(in srgb,var(--meter) 26%,#000)}
+/* 首页流和详情只留来源图标；完整来源与费用通过 title/aria-label 提供。 */
+.src{display:grid;place-items:center;width:20px;height:20px;padding:0;border:0;background:transparent}
+.src img,.src svg{width:18px;height:18px;border-radius:4px;object-fit:contain;display:block;flex:none}
+.src.free{color:#CFE8CF}.src.metered{color:#FFD9AE}
 .src svg{stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 /* 详情面板里的来源 */
-.srcbig{display:inline-flex;align-items:center;gap:6px;padding:4px 11px 4px 5px;border-radius:99px;
-  border:1px solid var(--line);font-size:12.5px}
+.srcbig{display:inline-grid;place-items:center;width:22px;height:22px;padding:0;border:0;background:transparent}
 .srcbig img,.srcbig svg{width:17px;height:17px;border-radius:4px;object-fit:contain;flex:none}
 .srcbig svg{stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.srcbig.metered{border-color:var(--meter);color:var(--meter)}
-.srcbig.free{border-color:color-mix(in srgb,var(--keep) 60%,transparent)}
+.srcbig.metered{color:var(--meter)}.srcbig.free{color:var(--keep)}
 /* 侧栏来源筛选 */
 .edge .srcrow{margin-top:10px;padding-top:10px;border-top:1px solid var(--line-soft);
   display:flex;flex-direction:column;gap:4px;align-items:center}
@@ -659,34 +655,35 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .trace .bar{position:relative;height:4px;background:var(--line);border:0;border-radius:2px}
 .trace .bar u{position:absolute;inset:0 auto 0 0;background:color-mix(in srgb,var(--loupe) 26%,transparent);text-decoration:none}
 .trace .bar b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--tungsten);border-radius:1px}
-.ticks{display:flex;justify-content:space-between;margin-top:4px;color:var(--muted)}
+.trace-real{margin-top:10px}
 .fb{display:flex;align-items:center;gap:0;margin:0 0 12px;padding:0;border:1px solid var(--border-10);border-radius:999px;background:var(--overlay-5);width:max-content;overflow:hidden;flex:none}
 .fb button{width:44px;height:42px;padding:0;border:0;border-right:1px solid var(--border-10);background:transparent;border-radius:0;
   cursor:pointer;display:grid;place-items:center;color:var(--muted);transition:transform .14s ease,color .14s ease,background .14s ease}
 .fb button svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .fb button:last-child{border-right:0}.fb button:hover{transform:none;background:rgba(255,255,255,.12)}
 .fb .like:hover,.fb .like[aria-pressed="true"]{color:var(--tungsten);background:var(--tungsten-soft)}
+.fb .reason:hover,.fb .reason[aria-expanded="true"],.fb .reason[data-has-reason="true"]{color:#FF669D;background:color-mix(in srgb,#FF669D 12%,transparent)}
 .fb .dislike:hover,.fb .dislike[aria-pressed="true"]{color:var(--drop);background:color-mix(in srgb,var(--drop) 12%,transparent)}
 .fb .seen:hover,.fb .seen[aria-pressed="true"]{color:var(--keep);background:color-mix(in srgb,var(--keep) 12%,transparent)}
 .fb .dispose:hover,.fb .dispose[aria-pressed="true"]{color:var(--meter);background:color-mix(in srgb,var(--meter) 12%,transparent)}
 .fb .later:hover,.fb .later[aria-pressed="true"]{color:var(--loupe);background:color-mix(in srgb,var(--loupe) 12%,transparent)}
 .fb .upgrade:hover,.fb .upgrade[aria-pressed="true"]{color:#B78CFF;background:color-mix(in srgb,#B78CFF 13%,transparent)}
-.preference{border:0;padding:0;margin:0 0 14px;background:transparent}
+.preference{border:0;padding:0;margin:0 0 14px;background:transparent}.preference[hidden]{display:none}
 .preference textarea{display:block;width:100%;min-height:62px;resize:vertical;padding:8px 9px;
   color:var(--ink);background:var(--ground);border:1px solid var(--line);border-radius:5px;
   line-height:1.5;font-size:14px}
 .preference textarea:focus{border-color:var(--tungsten);outline:0}
-.preference-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:7px}
-.preference-foot span{color:var(--muted);font-size:12px}
-.savepreference{border:0;border-radius:8px;min-height:38px;padding:7px 15px;background:var(--ink);color:var(--ground);
-  cursor:pointer;font-size:13px}
+.preference-foot{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:7px}
+.preference-foot span{margin-right:auto;color:var(--muted);font-size:12px}.preference-foot span:empty{display:none}
+.savepreference{width:36px;height:36px;padding:0;border:0;border-radius:50%;display:grid;place-items:center;
+  background:var(--ink);color:var(--ground);cursor:pointer}
+.savepreference svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2}
 .savepreference:disabled{opacity:.55;cursor:default}
 .obtn{width:100%;min-height:48px;padding:10px 14px;border:1px solid color-mix(in srgb,#FF4D8D 45%,var(--line));
   background:linear-gradient(135deg,color-mix(in srgb,#FF4D8D 14%,transparent),color-mix(in srgb,#FF8A3D 10%,transparent));
   color:#FF669D;border-radius:10px;cursor:pointer;margin-bottom:10px;font-size:14px;font-weight:650;
   display:flex;align-items:center;justify-content:center;gap:9px;transition:transform .14s ease,filter .14s ease}
 .obtn svg{width:22px;height:22px;fill:currentColor}.obtn:hover{transform:translateY(-1px);filter:brightness(1.16)}
-.hint{color:var(--muted);line-height:1.65;font-size:12px}
 .next{border-top:1px solid var(--line-soft);padding:11px 15px 12px;background:color-mix(in srgb,var(--video-glow,#15202a) 8%,transparent)}
 .next h3{margin:0 0 8px;font-size:12px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
 .nrow{display:flex;gap:11px;overflow-x:auto;padding-bottom:6px}

@@ -92,9 +92,9 @@ const SRCICON={
   pikpak:'<img class="source-icon" src="/logo?studio=pikpak" alt="" onerror="this.remove()">',
   online:icon('globe'),
 };
-const srcBadge=(loc,cost,cls)=>
-  `<span class="${cls||'src'} ${cost==='metered'?'metered':'free'}">`
-  +(SRCICON[loc]||'')+`${LOC[loc]||loc}${cost==='metered'?' · 计费':''}</span>`;
+const srcBadge=(loc,cost,cls)=>{const label=`${LOC[loc]||loc}${cost==='metered'?' · 计费':''}`;
+  return `<span class="${cls||'src'} ${cost==='metered'?'metered':'free'}" title="${esc(label)}" aria-label="${esc(label)}">`
+    +(SRCICON[loc]||'')+'</span>'};
 
 // sort 默认 daily：同一天进来顺序固定，隔天自动换一批（不是每次刷新都变）
 /* 排序种子。顶部三层（艺人头像 / 厂牌 / 标签）和首页网格共用它，所以它一变，整屏就是
@@ -1656,9 +1656,10 @@ async function openItem(id,push=true,mixContext=null){
     ? `<section class="idgroup"><h5 class="idlabel">${label}</h5>
         <div class="idrow">${list.map((item,i)=>idCell(kind,item,i)).join('')}${extra}</div></section>`
     : '';
-  const seriesCell=item=>item.id
-    ? `<button class="seriesbar entitylink" data-entity-kind="series" data-entity-name="${esc(item.name)}" title="${esc(item.name)}">${esc(item.name)}</button>`
-    : `<span class="seriesbar" title="${esc(item.name)}">${esc(item.name)}</span>`;
+  const seriesCell=item=>{const content=`${icon('tags')}<span>${esc(item.name)}</span>`;
+    return item.id
+      ? `<button class="serieslink entitylink" data-entity-kind="series" data-entity-name="${esc(item.name)}" title="${esc(item.name)}">${content}</button>`
+      : `<span class="serieslink" title="${esc(item.name)}">${content}</span>`};
   const seriesGroup=list=>list.length
     ? `<section class="idgroup idseries"><h5 class="idlabel">系列</h5>
         <div class="seriesrows">${list.map(seriesCell).join('')}</div></section>`
@@ -1698,27 +1699,25 @@ async function openItem(id,push=true,mixContext=null){
         ${it.release_date?`<span style="align-self:center">发行 ${esc(it.release_date)}</span>`:''}</div>
       <div class="detailidentity">${identityRows||`<div class="identityrow"><span></span><span class="ilabel">归属</span><span>${esc(who)}</span></div>`}</div>
       <div class="stags" id="detailTags"></div>
-      <div class="trace"><div class="lab mono"><span>离开位置 / 全片</span><span id="ratioTxt">—</span></div>
+      <div class="trace"><div class="lab mono"><span>离开位置</span><span id="ratioTxt">0%</span></div>
         <div class="bar"><u id="watched"></u><b id="mark" style="left:0"></b></div>
-        <div class="ticks mono"><span>开头</span><span>中段</span><span>结尾</span></div>
-        <!-- 「看完」不等于真看完：快进也会到片尾。这条量的是真正播放过的时长占比 -->
-        <div class="lab mono" style="margin-top:9px"><span>真实观看</span><span id="realTxt">—</span></div>
+        <div class="lab mono trace-real"><span>真实观看</span><span id="realTxt">0%</span></div>
         <div class="bar"><u id="realBar" style="background:color-mix(in srgb,var(--keep) 40%,transparent)"></u></div>
       </div>
       <div class="fb">
         <button class="like" id="likeBtn" aria-label="${it.liked?'取消喜欢':'喜欢'}" title="喜欢 · 记录口味偏好" aria-pressed="${!!it.liked}">${icon('thumbs-up')}</button>
+        <button class="reason" id="preferenceToggle" aria-label="喜爱理由" title="喜爱理由" aria-expanded="false" aria-controls="preferencePanel" data-has-reason="${!!it.like_reason}">${icon('heart')}</button>
         <button class="dislike" data-kind="dislike" aria-label="不合口味" title="不合口味 · 降低推荐权重" aria-pressed="${it.feedback==='dislike'}">${icon('thumbs-down')}</button>
         <button class="seen" data-kind="seen" aria-label="看过了" title="看过了 · 只降低近期推荐" aria-pressed="${it.feedback==='seen'}">${icon('eye')}</button>
         <button class="later" id="stageLater" aria-label="稍后看" title="稍后看 · 加入或移出队列" aria-pressed="${!!it.watch_later}">${it.watch_later?icon('check'):icon('bookmark-plus')}</button>
         <button class="upgrade" id="betterVersion" aria-label="寻找更好版本" title="寻找高清、无水印或完整版" aria-pressed="${!!it.better_version}">${icon('sparkles')}</button>
         <button class="dispose" data-kind="dispose" aria-label="加入回收站" title="加入回收站 · 文件仍保留，可从回收站永久清除" aria-pressed="${it.disposal==='trash'}">${icon('trash')}</button></div>
-      <div class="preference">
+      <div class="preference" id="preferencePanel" hidden>
         <textarea id="likeReason" maxlength="2000" placeholder="为什么喜欢？">${esc(it.like_reason||'')}</textarea>
-        <div class="preference-foot"><span id="preferenceState">仅保存在本机</span>
-          <button class="savepreference" id="savePreference">保存原因</button></div>
+        <div class="preference-foot"><span id="preferenceState" aria-live="polite"></span>
+          <button class="savepreference" id="savePreference" title="保存喜爱理由" aria-label="保存喜爱理由">${icon('check')}</button></div>
       </div>
       <button class="obtn" data-kind="o">${icon('sperm')}<span>记一次高潮</span><b class="mono" id="oCount">${it.o_count||0}</b></button>
-      <div class="hint mono">回收站中的文件仍保留，清空回收站后才会永久删除。</div>
     </div></div>
     ${mixContext?'':`<div class="next"><h3>接着看</h3><div class="nrow" id="nrow">载入中…</div></div>`}`;
 
@@ -1813,6 +1812,9 @@ async function openItem(id,push=true,mixContext=null){
     const r=await api('/api/quality-goal',{method:'POST',body:JSON.stringify({id:it.id,wanted,reason})});
     it.better_version=r.better_version;it.better_version_reason=r.better_version_reason;
     b.setAttribute('aria-pressed',String(r.better_version));b.title=r.better_version?(r.better_version_reason||'已标记寻找更好版本'):'寻找高清、无水印或完整版'};
+  const preferenceToggle=$('#preferenceToggle'),preferencePanel=$('#preferencePanel');
+  preferenceToggle.onclick=()=>{const open=preferencePanel.hidden;preferencePanel.hidden=!open;
+    preferenceToggle.setAttribute('aria-expanded',String(open));if(open)$('#likeReason').focus()};
   const savePreference=async()=>{
     const btn=$('#savePreference'),like=$('#likeBtn'),stateText=$('#preferenceState');
     btn.disabled=true;stateText.textContent='保存中…';
@@ -1821,7 +1823,8 @@ async function openItem(id,push=true,mixContext=null){
     try{const r=await api('/api/preference',{method:'POST',body:JSON.stringify({id:it.id,liked,reason})});
       it.liked=r.liked;it.like_reason=r.like_reason;
       like.setAttribute('aria-pressed',r.liked);like.setAttribute('aria-label',r.liked?'取消喜欢':'喜欢');
-      stateText.textContent='已保存';
+      preferenceToggle.dataset.hasReason=String(!!r.like_reason);
+      stateText.textContent='已保存';setTimeout(()=>{if(stateText.textContent==='已保存')stateText.textContent=''},1400);
     }catch(e){stateText.textContent='保存失败 · 请重试'}finally{btn.disabled=false}
   };
   $('#likeBtn').onclick=async()=>{const b=$('#likeBtn');
@@ -1831,9 +1834,8 @@ async function openItem(id,push=true,mixContext=null){
   vv.addEventListener('play',()=>{if(!$('#stage').dataset.c){$('#stage').dataset.c='1';
     api('/api/play',{method:'POST',body:JSON.stringify({id:it.id})})}});
   if(it.play_seconds&&it.duration){
-    const rp=Math.min(it.play_seconds/it.duration,1)*100, mp=(it.max_reached||0)*100;
-    $('#realTxt').textContent=`真实看 ${rp.toFixed(0)}% · 到达 ${mp.toFixed(0)}%`
-      +(rp<mp-25?' · 快进扫过':'')+(it.seek_count?` · 拖动 ${it.seek_count} 次`:'');
+    const rp=Math.min(it.play_seconds/it.duration,1)*100;
+    $('#realTxt').textContent=rp.toFixed(0)+'%';
     $('#realBar').style.width=rp.toFixed(1)+'%';
   }
   wireTelemetry(it,vv,{watched:'#watched',mark:'#mark',ratio:'#ratioTxt'});
@@ -1878,15 +1880,14 @@ function wireTelemetry(it,v,sel){
     const r=Math.min(v.currentTime/d,1);
     const w=sel.watched&&$(sel.watched),m=sel.mark&&$(sel.mark),t=sel.ratio&&$(sel.ratio);
     if(w)w.style.width=(r*100).toFixed(1)+'%'; if(m)m.style.left=(r*100).toFixed(1)+'%';
-    if(t)t.textContent=(r*100).toFixed(0)+'%  '+(r<.15?'· 开头就走':r>.85?'· 基本看完':'· 中后段')};
+    if(t)t.textContent=(r*100).toFixed(0)+'%'};
   const flush=e=>{const d=it.duration||v.duration||0;if(!acc&&!e&&!seeks)return;
     api('/api/activity',{method:'POST',body:JSON.stringify(
       {id:it.id,position:v.currentTime,duration:d,delta:acc,ended:!!e,seeks})})
-      .then(r=>{ // 回填面板：真实观看率 vs 到达位置
+      .then(r=>{ // 回填面板的真实观看率
         const rr=$('#realTxt'); if(rr&&r&&r.real_ratio!=null){
-          const rp=Math.min(r.real_ratio,1)*100, mp=(r.max_reached||0)*100;
-          rr.textContent=`真实看 ${rp.toFixed(0)}% · 到达 ${mp.toFixed(0)}%`
-            +(rp<mp-25?' · 快进扫过':'');
+          const rp=Math.min(r.real_ratio,1)*100;
+          rr.textContent=rp.toFixed(0)+'%';
           const b=$('#realBar'); if(b)b.style.width=rp.toFixed(1)+'%';
         }});
     acc=0;seeks=0};
