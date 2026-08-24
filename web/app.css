@@ -271,6 +271,7 @@ button,input,textarea{font:inherit;color:inherit}
 /* 身份区按类别分组：标签是组标题，同类横向排开并按需换行。
    旧版每个名字独占一行、左侧还重复一列标签，共演作品会把整个侧栏撑满。 */
 .detailidentity{display:flex;flex-direction:column;gap:14px;margin:0 0 18px}
+.identityprimary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px 18px;align-items:start}
 .idgroup{min-width:0}
 .idlabel{margin:0 0 7px;font-size:12px;font-weight:400;color:var(--muted);letter-spacing:.04em}
 .idrow{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:flex-start}
@@ -291,6 +292,13 @@ button,input,textarea{font:inherit;color:inherit}
 .castmore{align-self:center;height:46px;padding:0 12px;border:1px dashed var(--overlay-10);
   border-radius:12px;background:transparent;color:var(--tungsten);font-size:12px;cursor:pointer}
 .castmore:hover{background:var(--hover)}
+.seriesrows{display:grid;gap:7px}
+.seriesbar,.seriesbar.entitylink{display:flex;width:100%;min-height:38px;align-items:center;padding:8px 12px;
+  border:1px solid var(--border-10);border-left:3px solid var(--tungsten);border-radius:7px;
+  background:var(--overlay-5);color:var(--ink-2);font-size:13px;line-height:1.4;text-align:left;
+  white-space:normal;overflow-wrap:anywhere}
+button.seriesbar{cursor:pointer}.seriesbar:not(.entitylink){cursor:default}
+button.seriesbar.entitylink:hover{border-color:var(--tungsten);background:var(--tungsten-soft);color:var(--ink)}
 .managetitle{font-size:26px;line-height:1.2;margin:26px 0 18px;letter-spacing:.02em}
 .managetitle[hidden]{display:none}
 .dupsum{color:var(--muted);margin:0 0 12px}
@@ -652,7 +660,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .trace .bar u{position:absolute;inset:0 auto 0 0;background:color-mix(in srgb,var(--loupe) 26%,transparent);text-decoration:none}
 .trace .bar b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--tungsten);border-radius:1px}
 .ticks{display:flex;justify-content:space-between;margin-top:4px;color:var(--muted)}
-.fb{display:flex;align-items:center;gap:0;margin:0 0 12px;padding:0;border:1px solid var(--border-10);border-radius:999px;background:var(--overlay-5);width:max-content;overflow:hidden}
+.fb{display:flex;align-items:center;gap:0;margin:0 0 12px;padding:0;border:1px solid var(--border-10);border-radius:999px;background:var(--overlay-5);width:max-content;overflow:hidden;flex:none}
 .fb button{width:44px;height:42px;padding:0;border:0;border-right:1px solid var(--border-10);background:transparent;border-radius:0;
   cursor:pointer;display:grid;place-items:center;color:var(--muted);transition:transform .14s ease,color .14s ease,background .14s ease}
 .fb button svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}

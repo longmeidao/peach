@@ -1644,7 +1644,7 @@ async function openItem(id,push=true,mixContext=null){
     ? `<span>${esc(item.name.slice(0,1))}</span>${item.id?`<img src="/entity-image?kind=performer&id=${item.id}" alt="" loading="lazy" onerror="this.remove()">`:''}`
     : kind==='studio'
       ? `<span>${esc(item.name.slice(0,2))}</span><img src="/logo?studio=${encodeURIComponent(item.name)}" alt="" loading="lazy" onerror="this.remove()">`
-      : kind==='series'?icon('tags'):`<span>${esc(item.name.slice(0,1))}</span>`;
+      : `<span>${esc(item.name.slice(0,1))}</span>`;
   const idCell=(kind,item,index)=>{
     const hide=kind==='performer'&&index>=CAST_SHOWN;
     const content=`<span class="idface">${idFace(kind,item)}</span><span class="idname">${esc(item.name)}</span>`;
@@ -1656,12 +1656,21 @@ async function openItem(id,push=true,mixContext=null){
     ? `<section class="idgroup"><h5 class="idlabel">${label}</h5>
         <div class="idrow">${list.map((item,i)=>idCell(kind,item,i)).join('')}${extra}</div></section>`
     : '';
-  const identityRows=
+  const seriesCell=item=>item.id
+    ? `<button class="seriesbar entitylink" data-entity-kind="series" data-entity-name="${esc(item.name)}" title="${esc(item.name)}">${esc(item.name)}</button>`
+    : `<span class="seriesbar" title="${esc(item.name)}">${esc(item.name)}</span>`;
+  const seriesGroup=list=>list.length
+    ? `<section class="idgroup idseries"><h5 class="idlabel">系列</h5>
+        <div class="seriesrows">${list.map(seriesCell).join('')}</div></section>`
+    : '';
+  const primaryIdentity=
     idGroup(performerLabel(it),'performer',castList,
       castOverflow?`<button class="castmore" id="castMore">还有 ${castOverflow} 位</button>`:'')
-    +idGroup('厂牌','studio',studioList)
+    +idGroup('厂牌','studio',studioList);
+  const identityRows=
+    (primaryIdentity?`<div class="identityprimary">${primaryIdentity}</div>`:'')
     +idGroup('创作者','creator',creatorList)
-    +idGroup('系列','series',seriesList);
+    +seriesGroup(seriesList);
   $('#stage').hidden=false;document.body.classList.add('detail-open');delete $('#stage').dataset.c;
   $('#stage').innerHTML=`<div class="sgrid ${mixContext?'mixgrid':''}">
     <div class="vwrap"><canvas class="ambientcanvas" id="ambientCanvas" width="32" height="18"></canvas><button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>

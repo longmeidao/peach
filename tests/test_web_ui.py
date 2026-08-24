@@ -70,6 +70,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const idGroup=(label,kind,list,extra='')=>list.length")
         self.assertPageContains('<h5 class="idlabel">${label}</h5>')
         self.assertPageContains(".idrow{display:flex;flex-wrap:wrap")
+        self.assertPageContains('<div class="identityprimary">${primaryIdentity}</div>')
+        self.assertPageContains(".identityprimary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))")
         # 出镜者标签跟着作品形态走，不再写死「女优」——见 performerLabel。
         self.assertPageContains("idGroup(performerLabel(it),'performer',castList,")
         self.assertPageContains("idGroup('厂牌','studio',studioList)")
@@ -83,6 +85,17 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const seriesList=(refs.series||[])")
         self.assertPageContains(".idcell:not(.entitylink){cursor:default}")
         self.assertPageContains(".idcell.entitylink:hover .idface")
+
+    def test_detail_series_is_a_full_width_identity_bar_not_a_tag_or_icon(self):
+        self.assertPageContains('class="seriesbar entitylink" data-entity-kind="series"')
+        self.assertPageContains('<div class="seriesrows">${list.map(seriesCell).join(\'\')}</div>')
+        self.assertPageContains(".seriesbar,.seriesbar.entitylink{display:flex;width:100%")
+        self.assertPageContains("border-left:3px solid var(--tungsten)")
+        self.assertPageContains("white-space:normal;overflow-wrap:anywhere")
+        self.assertPageLacks("kind==='series'?icon('tags')")
+
+    def test_detail_feedback_toolbar_never_shrinks_into_a_line(self):
+        self.assertPageContains("width:max-content;overflow:hidden;flex:none")
 
     def test_performer_label_says_actress_only_for_jav(self):
         """「女优」是番号发行物的行业称谓。
