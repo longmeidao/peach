@@ -3,6 +3,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from unittest import mock
 
@@ -405,6 +406,28 @@ class WebDataTests(unittest.TestCase):
             left = con.execute(f"SELECT count(*) FROM {table} WHERE asset_id=1").fetchone()[0]
             self.assertEqual(left, 0, f"{table} 残留了已删资产的引用")
         con.close()
+
+    def test_failed_database_commit_restores_quarantined_media(self):
+        path = self.stage_media(1, "commit-failure.mp4")
+        rm_web.w_feedback(self.contract, {"id": 1, "kind": "dispose"})
+
+        @contextmanager
+        def fail_after_body():
+            connection = self.contract.db(write=True)
+            try:
+                yield connection
+                connection.rollback()
+                raise sqlite3.OperationalError("simulated commit failure")
+            finally:
+                connection.close()
+
+        with mock.patch.object(self.contract, "write_transaction", fail_after_body):
+            with self.assertRaisesRegex(sqlite3.OperationalError, "commit failure"):
+                rm_web.w_batch(self.contract, {"ids": [1], "operation": "delete"})
+
+        self.assertTrue(path.is_file(), "数据库失败后媒体必须恢复原名")
+        self.assertEqual(self.row(1)["disposal"], "trash")
+        self.assertEqual(list(path.parent.glob(".*.peach-purge-*.tmp")), [])
 
     def test_delete_and_restore_refuse_assets_outside_the_recycle_bin(self):
         """彻底删除只能作用于回收站，否则一次误选就能删掉在库作品。"""

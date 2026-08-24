@@ -14,6 +14,7 @@ import re
 import sqlite3
 import threading
 import time
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Sequence
@@ -1750,54 +1751,91 @@ def w_item_tag(contract: WebContract, body):
             "tags": [item["k"] for item in q_item(contract, aid)["tags"]]}
 
 
-def purge_assets(connection, rows):
-    """物理删除媒体，再删对应账本行；调用方负责事务提交。
+def _restore_staged_media(staged):
+    """Undo same-directory quarantine moves after a database failure."""
+    for original, quarantine in reversed(staged):
+        if quarantine.exists() and not original.exists():
+            os.replace(quarantine, original)
 
-    顺序是先删文件再删行，且删不掉的文件整条跳过——留一条指向缺失文件的账本行还能在
-    回收站里看到并重试，反过来先删行会留下没人认领的媒体文件，那才是真正的丢失。
-    快照是 `R:\\peach-data\\generated` 下可再生的产物，删不掉不阻塞主媒体的清除。
+
+def _finish_purge(outcome):
+    """Delete committed quarantine files; report any residue for explicit cleanup."""
+    cleanup_pending = []
+    for _original, quarantine in outcome.pop("_staged"):
+        try:
+            quarantine.unlink(missing_ok=True)
+        except OSError as error:
+            cleanup_pending.append({
+                "path": str(quarantine), "reason": error.strerror or str(error),
+            })
+    for snapshot in outcome.pop("_snapshots"):
+        try:
+            snapshot.unlink(missing_ok=True)
+        except OSError:
+            pass
+    outcome["cleanup_pending"] = cleanup_pending
+    return outcome
+
+
+def purge_assets(connection, rows):
+    """Quarantine media, delete ledger rows, and leave final removal to the caller.
+
+    Renaming beside the source is reversible and stays on the same filesystem. The
+    caller restores the quarantined names if commit fails, then permanently removes
+    them only after the SQLite transaction has committed.
     """
-    purged, blocked = [], []
+    purged, blocked, staged, snapshots = [], [], [], []
     for row in rows:
         media = row["path"]
         if media:
+            original = Path(media)
             try:
-                os.remove(media)
-            except FileNotFoundError:
-                pass
+                if original.exists() and not original.is_file():
+                    raise OSError("not a regular file")
+                if original.is_file():
+                    quarantine = original.with_name(
+                        f".{original.name}.peach-purge-{uuid.uuid4().hex}.tmp"
+                    )
+                    os.replace(original, quarantine)
+                    staged.append((original, quarantine))
             except OSError as error:
                 blocked.append({"id": row["id"], "path": media,
                                 "reason": error.strerror or str(error)})
                 continue
         snapshot = row["snapshot_path"]
         if snapshot:
-            try:
-                os.remove(snapshot)
-            except OSError:
-                pass
+            snapshots.append(Path(snapshot))
         purged.append(row["id"])
-    if purged:
-        marks = ",".join("?" * len(purged))
-        for table in ASSET_REFERENCE_TABLES:
-            connection.execute(f"DELETE FROM {table} WHERE asset_id IN ({marks})", purged)
-        connection.execute(f"DELETE FROM asset WHERE id IN ({marks})", purged)
-    return {"purged": len(purged), "blocked": blocked}
+    try:
+        if purged:
+            marks = ",".join("?" * len(purged))
+            for table in ASSET_REFERENCE_TABLES:
+                connection.execute(f"DELETE FROM {table} WHERE asset_id IN ({marks})", purged)
+            connection.execute(f"DELETE FROM asset WHERE id IN ({marks})", purged)
+    except BaseException:
+        _restore_staged_media(staged)
+        raise
+    return {
+        "purged": len(purged), "blocked": blocked,
+        "_staged": staged, "_snapshots": snapshots,
+    }
 
 
 def w_empty_trash(contract: WebContract):
     """永久清空回收站：只处理 disposal='trash' 的资产，其余一律不碰。"""
     contract.cache_bust()
-    with contract.write_lock:
-        connection = contract.db(write=True)
-        try:
+    outcome = None
+    try:
+        with contract.write_transaction() as connection:
             rows = connection.execute(
                 "SELECT id,path,snapshot_path FROM asset WHERE disposal='trash'",
             ).fetchall()
-            result = purge_assets(connection, rows)
-            connection.commit()
-        finally:
-            connection.close()
-    return {"ok": True, "operation": "empty-trash", **result}
+            outcome = purge_assets(connection, rows)
+    except BaseException:
+        if outcome is not None:
+            _restore_staged_media(outcome["_staged"])
+        raise
+    return {"ok": True, "operation": "empty-trash", **_finish_purge(outcome)}
 
 
 def w_batch(contract: WebContract, body):
@@ -1813,52 +1851,53 @@ def w_batch(contract: WebContract, body):
         raise ValueError("unsupported batch operation")
     marks = ",".join("?" * len(ids))
     contract.cache_bust()
-    with contract.write_lock:
-        connection = contract.db(write=True)
-        found = connection.execute(
-            f"SELECT id,path,snapshot_path,disposal FROM asset WHERE id IN ({marks})", ids,
-        ).fetchall()
-        valid_ids = [row["id"] for row in found]
-        if not valid_ids:
-            connection.close()
-            raise ValueError("assets not found")
-        if operation in {"restore", "delete"} and any(row["disposal"] != "trash" for row in found):
-            connection.close()
-            raise ValueError("restore/delete is only allowed for recycle-bin assets")
-        now = time.time()
-        if operation == "restore":
-            placeholders = ",".join("?" * len(valid_ids))
-            connection.execute(
-                f"UPDATE asset SET disposal=NULL,feedback_at=? WHERE id IN ({placeholders})",
-                [now, *valid_ids],
-            )
-        elif operation == "delete":
-            purged = purge_assets(connection, found)
-            connection.commit()
-            connection.close()
-            return {"ok": True, "operation": operation, **purged}
-        elif operation in {"seen", "dispose"}:
-            column, value = ("feedback", "seen") if operation == "seen" else ("disposal", "trash")
-            placeholders = ",".join("?" * len(valid_ids))
-            connection.execute(
-                f"UPDATE asset SET {column}=?,feedback_at=? WHERE id IN ({placeholders})",
-                [value, now, *valid_ids],
-            )
-        elif operation == "later":
-            connection.executemany(
-                "INSERT OR IGNORE INTO watch_queue(profile_id,asset_id,added_at,source) "
-                "VALUES('local-default',?,strftime('%Y-%m-%dT%H:%M:%fZ','now'),'web-batch')",
-                [(asset_id,) for asset_id in valid_ids],
-            )
-        else:
-            connection.executemany(
-                "INSERT INTO asset_preference(profile_id,asset_id,liked,reason,source,updated_at) "
-                "VALUES('local-default',?,1,'','web-batch',strftime('%Y-%m-%dT%H:%M:%fZ','now')) "
-                "ON CONFLICT(profile_id,asset_id) DO UPDATE SET liked=1,source='web-batch',"
-                "updated_at=excluded.updated_at",
-                [(asset_id,) for asset_id in valid_ids],
-            )
-        connection.commit(); connection.close()
+    purge_outcome = None
+    try:
+        with contract.write_transaction() as connection:
+            found = connection.execute(
+                f"SELECT id,path,snapshot_path,disposal FROM asset WHERE id IN ({marks})", ids,
+            ).fetchall()
+            valid_ids = [row["id"] for row in found]
+            if not valid_ids:
+                raise ValueError("assets not found")
+            if operation in {"restore", "delete"} and any(row["disposal"] != "trash" for row in found):
+                raise ValueError("restore/delete is only allowed for recycle-bin assets")
+            now = time.time()
+            if operation == "restore":
+                placeholders = ",".join("?" * len(valid_ids))
+                connection.execute(
+                    f"UPDATE asset SET disposal=NULL,feedback_at=? WHERE id IN ({placeholders})",
+                    [now, *valid_ids],
+                )
+            elif operation == "delete":
+                purge_outcome = purge_assets(connection, found)
+            elif operation in {"seen", "dispose"}:
+                column, value = ("feedback", "seen") if operation == "seen" else ("disposal", "trash")
+                placeholders = ",".join("?" * len(valid_ids))
+                connection.execute(
+                    f"UPDATE asset SET {column}=?,feedback_at=? WHERE id IN ({placeholders})",
+                    [value, now, *valid_ids],
+                )
+            elif operation == "later":
+                connection.executemany(
+                    "INSERT OR IGNORE INTO watch_queue(profile_id,asset_id,added_at,source) "
+                    "VALUES('local-default',?,strftime('%Y-%m-%dT%H:%M:%fZ','now'),'web-batch')",
+                    [(asset_id,) for asset_id in valid_ids],
+                )
+            else:
+                connection.executemany(
+                    "INSERT INTO asset_preference(profile_id,asset_id,liked,reason,source,updated_at) "
+                    "VALUES('local-default',?,1,'','web-batch',strftime('%Y-%m-%dT%H:%M:%fZ','now')) "
+                    "ON CONFLICT(profile_id,asset_id) DO UPDATE SET liked=1,source='web-batch',"
+                    "updated_at=excluded.updated_at",
+                    [(asset_id,) for asset_id in valid_ids],
+                )
+    except BaseException:
+        if purge_outcome is not None:
+            _restore_staged_media(purge_outcome["_staged"])
+        raise
+    if purge_outcome is not None:
+        return {"ok": True, "operation": operation, **_finish_purge(purge_outcome)}
     return {"ok": True, "operation": operation, "changed": len(valid_ids)}
 
 
