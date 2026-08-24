@@ -26,6 +26,7 @@ from .entities import (
     upsert_asset_entity,
 )
 from .media import remap_managed_path
+from .metadata_policy import SOURCE_SPECS
 from .platform import (
     is_unmapped,
     root_online,
@@ -1334,6 +1335,55 @@ def _use_canonical_entity_names(connection, rows: list[dict]) -> None:
             row["current_name"] = name
 
 
+#: 可以不经人判断直接落库的字段。只放「补空且来源唯一」时确实无可判断的那些。
+#: 演员和标签不在其中：那两类来源与账本的分歧是真实的（见 33 条噪音的核对）。
+AUTO_APPLY_FIELDS = frozenset({"release_date"})
+
+
+def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
+    """这一行能否不经复核直接落库；不能就返回 None。
+
+    四项必须同时成立，缺一项就仍然走人工：
+
+    1. 目标字段当前为空——只补空，永不覆盖既有真相字段；
+    2. 只有一个候选——有第二个值就存在取舍，那正是复核要做的事；
+    3. 来源在当前 policy 下是 official / official_mirror；
+    4. 番号在该番号名下**每一条**资产的文件名里逐字出现。
+
+    第 4 条是这条捷径唯一的身份保证。刮削按番号取值，番号错则值错；文件名里
+    逐字出现是本机可核验的证据，而复核界面其实给不了这个保证——它只并排显示
+    番号和日期，并不告诉你番号跟这个文件对不对得上。
+
+    `official` 一律按当前 policy 解析，不读候选 CSV 里的同名字段：那是抓取当时
+    的快照，实测 r18dev 在 CSV 里写着 False，而现行 policy 认它是 official_mirror。
+    """
+    if str(row.get("field") or "").strip() not in AUTO_APPLY_FIELDS:
+        return None
+    if str(row.get("current_value") or "").strip():
+        return None
+    candidates = row.get("candidates") or []
+    if len(candidates) != 1:
+        return None
+    candidate = candidates[0]
+    spec = SOURCE_SPECS.get(str(candidate.get("source") or "").strip())
+    if spec is None or not spec.official:
+        return None
+    code = str(row.get("code") or "").strip()
+    query = str(row.get("query") or code).strip()
+    if not code:
+        return None
+    names = [r["name"] for r in connection.execute(
+        "SELECT name FROM asset WHERE medium='video' AND (upper(trim(code))=upper(?) "
+        "OR upper(trim(code))=upper(?)) AND (disposal IS NULL OR disposal<>'trash')",
+        (code, query))]
+    if not names:
+        return None
+    folded = code.casefold()
+    if not all(folded in str(name or "").casefold() for name in names):
+        return None
+    return candidate
+
+
 def _pending_first(rows: list[dict]) -> list[dict]:
     """判过的不再占复核队列。
 
@@ -1639,6 +1689,63 @@ def _install_studio_logo(contract: WebContract, studio: str) -> int:
         "purpose": "local studio identity cache",
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     return 1
+
+
+def w_review_auto_apply(contract: WebContract, _body=None):
+    """把确定的那部分直接落库，不占人工队列。
+
+    ADR-0018：这是「刮削结果只作候选、不直接改写真相字段」的一个**窄例外**，
+    不是废除该规则。判据见 `metadata_auto_apply_candidate`，四项缺一即回到人工。
+    每条仍写 review_decision 留痕（note 里记来源与判据），所以事后可以追问
+    「这个值是谁写的、凭什么」——留痕才是那条规则真正要保住的东西。
+    """
+    rows, _source, _skipped = read_candidates("metadata_fields", contract.candidate_root)
+    applied, skipped = [], 0
+    with contract.write_transaction() as connection:
+        decided = {row["item_key"] for row in connection.execute(
+            "SELECT item_key FROM review_decision WHERE category='metadata_fields'")}
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        for row in rows:
+            item_key = str(row.get("item_key") or "").strip()
+            if not item_key or item_key in decided:
+                continue
+            if str(row.get("status") or "").strip() != "candidate":
+                continue
+            try:
+                parsed = json.loads(str(row.get("candidates_json") or "[]"))
+            except (TypeError, ValueError):
+                continue
+            row = dict(row)
+            row["candidates"] = [c for c in parsed if isinstance(c, dict)
+                                 and str(c.get("candidate_key") or "").strip()]
+            candidate = metadata_auto_apply_candidate(connection, row)
+            if candidate is None:
+                skipped += 1
+                continue
+            try:
+                count = _apply_metadata_candidate(connection, row, candidate, now)
+            except ValueError:
+                # 落库条件在这一刻不成立（例如资产已删）：回到人工，不记决定。
+                skipped += 1
+                continue
+            connection.execute(
+                "INSERT INTO review_decision(category,item_key,status,note,updated_at) "
+                "VALUES('metadata_fields',?,'approved',?,?) "
+                "ON CONFLICT(category,item_key) DO UPDATE SET status=excluded.status,"
+                "note=excluded.note,updated_at=excluded.updated_at",
+                (item_key, json.dumps({
+                    "auto_applied": True, "rule": "adr-0018-empty-field-single-official-source",
+                    "candidate_key": candidate.get("candidate_key"),
+                    "source": candidate.get("source"),
+                    "value": candidate.get("display_value"),
+                }, ensure_ascii=False, separators=(",", ":")), now),
+            )
+            applied.append({"item_key": item_key, "field": row.get("field"),
+                            "value": candidate.get("display_value"),
+                            "assets": count})
+    contract.cache_bust()
+    return {"ok": True, "applied": len(applied), "left_to_review": skipped,
+            "items": applied}
 
 
 def w_review_decision(contract: WebContract, body):
@@ -2285,6 +2392,7 @@ POST_HANDLERS = {
     "/api/search-history": w_search_history,
     "/api/trash/empty": _post_empty_trash,
     "/api/purge-missing": w_purge_missing,
+    "/api/review/auto-apply": w_review_auto_apply,
     "/api/review/decision": w_review_decision,
 }
 

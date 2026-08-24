@@ -365,7 +365,7 @@ class WebDataTests(unittest.TestCase):
             "/api/activity", "/api/play", "/api/feedback", "/api/watch-later",
             "/api/preference", "/api/quality-goal", "/api/item-tag", "/api/batch",
             "/api/search-history", "/api/trash/empty", "/api/review/decision",
-            "/api/purge-missing",
+            "/api/purge-missing", "/api/review/auto-apply",
         })
         with self.assertRaises(rm_web.ContractRouteNotFound):
             rm_web.dispatch_api_get(self.contract, "/api/typo", {})
@@ -747,18 +747,98 @@ class ReviewQueueTests(unittest.TestCase):
         import json as _json
         payload = []
         for item in rows:
+            code = item.get("code", item["item_key"])
+            source = item.get("source", "r18dev")
             payload.append({
-                "item_key": item["item_key"], "code": item["item_key"],
-                "query": item["item_key"], "field": item["field"],
+                "item_key": item["item_key"], "code": code,
+                "query": code, "field": item["field"],
                 "field_label": item["field"], "current_value": item["current"],
                 "candidates_json": _json.dumps([
-                    {"candidate_key": f"{item['item_key']}:{i}", "source": "r18dev",
-                     "display_value": value}
+                    {"candidate_key": f"{item['item_key']}:{i}", "source": source,
+                     "display_value": value, "value": value, "confidence": 0.9,
+                     "source_url": "", "raw_snapshot": ""}
                     for i, value in enumerate(item["candidates"])], ensure_ascii=False),
                 "source_count": "1", "status": "candidate", "size_gb": "",
                 "videos": "1", "fetched_at": "",
             })
         return self.write_metadata_candidates(payload)
+
+    def _asset(self, aid, code, name):
+        con = sqlite3.connect(self.db_path)
+        con.execute("INSERT INTO asset(id,location,path,name,medium,code) "
+                    "VALUES(?,'local',?,?,'video',?)", (aid, f"/x/{name}", name, code))
+        con.commit(); con.close()
+
+    def _auto(self):
+        return rm_web.w_review_auto_apply(self.contract)
+
+    def _release_row(self, key, code, source="r18dev", current="", n=1):
+        return {"item_key": key, "field": "release_date", "current": current,
+                "candidates": ["2015-02-20"][:n], "code": code, "source": source}
+
+    def test_release_date_from_one_official_source_lands_without_review(self):
+        """ADR-0018 的窄例外：补空 + 唯一候选 + 官方来源 + 番号在文件名里。"""
+        self._asset(90, "PPT-018", "PPT-018-1-uncensored.mp4")
+        self.write_metadata_rows([{"item_key": "PPT-018:release_date", "field": "release_date",
+                                   "current": "", "candidates": ["2015-02-20"],
+                                   "code": "PPT-018"}])
+        result = self._auto()
+        self.assertEqual(result["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(
+                con.execute("SELECT release_date FROM asset WHERE id=90").fetchone()[0],
+                "2015-02-20")
+            # 留痕才是「不直接改写真相字段」真正要保住的东西。
+            note = con.execute("SELECT note FROM review_decision WHERE item_key=?",
+                               ("PPT-018:release_date",)).fetchone()[0]
+            self.assertIn("auto_applied", note)
+            self.assertIn("adr-0018", note)
+        finally:
+            con.close()
+        # 落库后不再占队列。
+        self.assertEqual(self.queue_keys("metadata_fields"), [])
+
+    def test_auto_apply_refuses_when_the_code_is_not_in_the_filename(self):
+        """番号是这条捷径唯一的身份保证：刮削按番号取值，番号错则值错。"""
+        self._asset(91, "PPT-018", "无关的文件名.mp4")
+        self.write_metadata_rows([{"item_key": "PPT-018:release_date", "field": "release_date",
+                                   "current": "", "candidates": ["2015-02-20"],
+                                   "code": "PPT-018"}])
+        self.assertEqual(self._auto()["applied"], 0)
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertIsNone(
+                con.execute("SELECT release_date FROM asset WHERE id=91").fetchone()[0])
+        finally:
+            con.close()
+        self.assertEqual(self.queue_keys("metadata_fields"), ["PPT-018:release_date"])
+
+    def test_auto_apply_never_overwrites_or_picks_between_values(self):
+        self._asset(92, "AAA-1", "AAA-1.mp4")
+        self._asset(93, "BBB-2", "BBB-2.mp4")
+        self.write_metadata_rows([
+            # 已有值：只补空，永不覆盖。
+            {"item_key": "AAA", "field": "release_date", "current": "2001-01-01",
+             "candidates": ["2015-02-20"], "code": "AAA-1"},
+            # 两个候选：存在取舍，正是复核该做的事。
+            {"item_key": "BBB", "field": "release_date", "current": "",
+             "candidates": ["2015-02-20", "2016-03-30"], "code": "BBB-2"},
+        ])
+        self.assertEqual(self._auto()["applied"], 0)
+        self.assertEqual(sorted(self.queue_keys("metadata_fields")), ["AAA", "BBB"])
+
+    def test_auto_apply_ignores_community_sources_and_other_fields(self):
+        self._asset(94, "CCC-3", "CCC-3.mp4")
+        self._asset(95, "DDD-4", "DDD-4.mp4")
+        self.write_metadata_rows([
+            {"item_key": "CCC", "field": "release_date", "current": "",
+             "candidates": ["2015-02-20"], "code": "CCC-3", "source": "javdb"},
+            # 演员和标签不在白名单：那两类分歧是真实的。
+            {"item_key": "DDD", "field": "performers", "current": "",
+             "candidates": ["某人"], "code": "DDD-4"},
+        ])
+        self.assertEqual(self._auto()["applied"], 0)
 
     def test_metadata_candidates_that_repeat_the_current_value_never_queue(self):
         """复核的成本是注意力：和现值一模一样的行会把真正要判的淹掉。

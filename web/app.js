@@ -979,6 +979,13 @@ async function openReview(push=true){
   buildManageBar();
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';$('#count').textContent='';
   $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;$('#tiers').style.display='none';$('#tagbar').style.display='none';
+  /* ADR-0018：确定的那部分先落库再取队列，否则它们会在队列里白占一轮。
+     失败不拦页面——只读端（reader）本来就会 409，那是正常状态不是错误；
+     但也不静默吞掉，留一行 console 便于排查。 */
+  try{
+    const auto=await api('/api/review/auto-apply',{method:'POST',body:'{}'});
+    if(auto&&auto.applied)console.info(`自动落库 ${auto.applied} 条（ADR-0018）`);
+  }catch(e){console.info('自动落库未执行：'+e.message)}
   reviewData=await api('/api/review');
   if(location.pathname!=='/review')return;
   const render=()=>{

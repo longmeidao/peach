@@ -1031,6 +1031,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "$('#stats').querySelectorAll('[data-entity-kind]').forEach(button=>button.onclick=()=>")
 
+    def test_review_page_applies_the_certain_part_before_loading_the_queue(self):
+        """ADR-0018：无可判断的条目不该在队列里白占一轮。"""
+        self.assertPageContains("api('/api/review/auto-apply',{method:'POST',body:'{}'})")
+        # 只读端本来就会 409，那是正常状态：失败不拦页面，但也不静默吞掉。
+        self.assertPageContains("console.info('自动落库未执行：'+e.message)")
+
     def test_entity_cards_do_not_print_the_name_twice(self):
         """创作者入口里已经写了名字，卡片顶上再来一个 h4 就是同一行字上下两遍。"""
         self.assertPageContains("subjectKind&&subjectName?'':`<h4>${esc(titleText)}</h4>`")
