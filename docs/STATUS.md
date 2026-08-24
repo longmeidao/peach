@@ -162,6 +162,7 @@
 - 2026-08-21 macOS 最新基线：`./scripts/test.sh` 全量 468 项通过、3 项跳过；Windows 当前状态提交
   `& .\scripts\test.ps1` 全量 460 项通过、12 项按平台跳过；上下文预算检查通过。
 - 2026-08-22 Javinizer-Go P0 已部署到 Windows：真实 ledger limit=10 生成 43 组（演员10、厂牌10、系列4、发行日期10、标签9）及10份 raw JSON，错误0。2026-08-24 复核时这43组仍为候选，`metadata_fields` 批准数0，因此真实 `release_date` 仍为0条、`javinizer:*:tag` 仍为0条；旧 `r18` 标签已有2,371条。详情已经消费 `release_date` 与批准后的内容标签，人工批准后直接显示。
+- Javinizer-Go P1 来源策略层已实现：锁定 v1.5.1 的14源白名单，新增 baseline（默认仍仅 r18dev）、censored、uncensored、fc2 显式 profile；兼容 `--sources`，冲突与未知 source 在联网前拒绝。五个 Peach 字段分别按 policy 排序，候选携带 source profile、policy version、field rank、source kind 与显式 official。每批无论有无错误都写 `metadata-source-health-*.csv`，按 source 区分快照复用、联网成功、空结果、错误、冷却跳过、耗时与五字段命中。没有批量批准、自动写库或 schema 迁移。
 - Windows 无外置盘生产验收：HTTP 与严格 CA HTTPS `/healthz` 返回 200，账本、FFmpeg、115 和
   PikPak 可用，只有 `local` 来源离线；115 HTTP 与 PikPak 严格 HTTPS 各完成 1 KiB `206` Range。
 - 双机同时在线时账本世代 18、状态 `in-sync`；`peach-win.local` 与 `peach.local` 分别只由

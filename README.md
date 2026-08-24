@@ -367,6 +367,18 @@ cookie 并重定向到不含口令的干净 URL；新设备不要再复制带口
 
 `scripts/scrape_codes.py` 只把规范化番号交给固定版本 Javinizer-Go，逐来源保存原始 JSON，并为演员、厂牌、系列、发行日期和内容标签生成字段候选；官方/官方镜像标签来源优先。它没有整批 `--apply`，只有 `/review` 中明确选中某个来源值并批准才写 ledger。`scripts/clean_names.py` 默认只生成改名计划；`--apply` 会先备份 SQLite，并在数据库更新失败时把文件名回滚。两者导入模块时均无副作用，测试不得使用真实路径。
 
+来源策略必须显式选择，默认行为保持 `baseline=r18dev`；`--sources` 是兼容入口，不能和 `--profile` 同时使用。`fc2` profile 只处理 FC2，其他 profile 默认排除 FC2。每批都会生成 source health CSV：
+
+```powershell
+# 默认 baseline；候选、错误和健康报告都写到显式复核目录
+& .\.venv\Scripts\python.exe scripts\scrape_codes.py --db .\review\ledger.db --out .\review\metadata-field-candidates.csv --health .\review\metadata-source-health.csv
+
+# 显式选择类别；不会自动批准或写回 ledger
+& .\.venv\Scripts\python.exe scripts\scrape_codes.py --db .\review\ledger.db --profile censored --out .\review\censored-candidates.csv
+& .\.venv\Scripts\python.exe scripts\scrape_codes.py --db .\review\ledger.db --profile uncensored --out .\review\uncensored-candidates.csv
+& .\.venv\Scripts\python.exe scripts\scrape_codes.py --db .\review\ledger.db --profile fc2 --out .\review\fc2-candidates.csv
+```
+
 历史创作者投影使用逐项只读审计，不再把目录名直接当身份：
 
 ```powershell

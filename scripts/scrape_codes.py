@@ -26,6 +26,12 @@ from peach.metadata import (
     MetadataProviderError,
     extract_peach_fields,
 )
+from peach.metadata_policy import (
+    PEACH_FIELDS,
+    MetadataPolicy,
+    resolve_policy,
+    sort_candidates,
+)
 
 
 _logf = None
@@ -35,15 +41,15 @@ FIELD_LABELS = {
 }
 FIELDS = [
     "item_key", "code", "query", "field", "field_label", "current_value",
-    "candidates_json", "source_count", "status", "size_gb", "videos", "fetched_at",
+    "candidates_json", "source_count", "source_profile", "policy_version",
+    "status", "size_gb", "videos", "fetched_at",
 ]
 ERROR_FIELDS = ["code", "query", "source", "kind", "status_code", "retryable", "message"]
-TAG_SOURCE_PRIORITY = {
-    "dmm": 100, "mgstage": 100, "tokyohot": 100, "aventertainment": 100,
-    "caribbeancom": 100, "fc2": 100, "r18dev": 90, "libredmm": 90,
-    "javstash": 70, "javdb": 50, "javbus": 40, "javlibrary": 40,
-    "jav321": 30, "dlgetchu": 30,
-}
+HEALTH_FIELDS = [
+    "source", "profile", "attempted", "snapshot_reused", "fetched", "succeeded",
+    "empty", "errors", "retryable_errors", "cooldown_skips", "blocked", "elapsed_ms",
+    *PEACH_FIELDS, "last_error_kind", "last_error_status", "last_error_message",
+]
 
 
 # Javinizer r18dev genre -> Peach's reviewed content taxonomy. Unknown source values
@@ -192,7 +198,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--log-dir", type=Path, default=LOG_DIR)
     parser.add_argument("--config", type=Path, default=STATE_DIR / "javinizer-provider" / "config.yaml")
     parser.add_argument("--binary", type=Path)
-    parser.add_argument("--sources", default="r18dev", help="enabled Javinizer scraper names")
+    source_group = parser.add_mutually_exclusive_group()
+    source_group.add_argument("--profile", choices=("baseline", "censored", "uncensored", "fc2"),
+                              help="explicit Peach source preset; default baseline")
+    source_group.add_argument("--sources", help="compatible comma-separated Javinizer scraper names")
+    parser.add_argument("--health", type=Path, default=None)
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--delay", type=float, default=1.2)
     parser.add_argument("--refresh", action="store_true", help="ignore reusable raw snapshots")
@@ -200,19 +210,56 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _health_output(output: Path) -> Path:
+    name = output.name.replace("metadata-field-candidates-", "metadata-source-health-", 1)
+    if name == output.name:
+        name = output.stem + "-health.csv"
+    return output.with_name(name)
+
+
+def _health_rows(policy: MetadataPolicy) -> dict[str, dict[str, object]]:
+    return {source: {
+        "source": source, "profile": policy.profile, "attempted": 0,
+        "snapshot_reused": 0, "fetched": 0, "succeeded": 0, "empty": 0,
+        "errors": 0, "retryable_errors": 0, "cooldown_skips": 0,
+        "blocked": 0, "elapsed_ms": 0,
+        **{field: 0 for field in PEACH_FIELDS},
+        "last_error_kind": "", "last_error_status": "", "last_error_message": "",
+    } for source in policy.sources}
+
+
+def _write_health(path: Path, rows: dict[str, dict[str, object]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    with temporary.open("w", encoding="utf-8-sig", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=HEALTH_FIELDS)
+        writer.writeheader()
+        for source in rows:
+            writer.writerow(rows[source])
+    os.replace(temporary, path)
+
+
 def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        policy = resolve_policy(profile=args.profile, sources=args.sources)
+    except ValueError as error:
+        parser.error(str(error))
+    explicit_sources = args.sources is not None
+    if args.profile == "fc2" and args.include_fc2:
+        parser.error("fc2 profile 已只处理 FC2，不能再加 --include-fc2")
     output = args.out or _default_output()
     error_name = output.name.replace("metadata-field-candidates-", "metadata-source-errors-", 1)
     if error_name == output.name:
         error_name = output.stem + "-errors.csv"
     errors_path = args.errors or output.with_name(error_name)
+    health_path = args.health or _health_output(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     errors_path.parent.mkdir(parents=True, exist_ok=True)
     configure_log(args.log_dir)
-    sources = [source.strip() for source in args.sources.split(",") if source.strip()]
-    if not sources:
-        raise ValueError("至少指定一个 Javinizer-Go source")
+    sources = list(policy.sources)
+    health = _health_rows(policy)
     adapter = provider or JavinizerGoProvider.create(args.binary, args.config)
 
     connection = sqlite3.connect(args.db.resolve().as_uri() + "?mode=ro", uri=True)
@@ -225,11 +272,12 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
         )
         if _is_explicit_code(str(row[0]))
     ]
-    if not args.include_fc2:
-        codes = [row for row in codes if not row[0].upper().startswith("FC2")]
+    codes = [row for row in codes if policy.allows_code(
+        row[0], include_fc2=args.include_fc2, explicit_sources=explicit_sources,
+    )]
     if args.limit:
         codes = codes[:max(args.limit, 0)]
-    log(f"字段候选批次：番号 {len(codes)}，来源 {','.join(sources)}；只读查询，不写 ledger")
+    log(f"字段候选批次：profile {policy.profile}，番号 {len(codes)}，来源 {','.join(sources)}；只读查询，不写 ledger")
 
     blocked_sources: set[str] = set()
     groups_written = errors_written = 0
@@ -243,12 +291,21 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
             by_field: dict[str, list[dict]] = {}
             fetched_at = datetime.now(timezone.utc).isoformat()
             for source in sources:
+                source_health = health[source]
+                source_health["attempted"] += 1
                 if source in blocked_sources:
+                    source_health["cooldown_skips"] += 1
                     continue
                 snapshot = args.raw_dir / query / f"{source}.json"
+                started = time.perf_counter()
                 payload = None if args.refresh else _read_snapshot(snapshot)
+                reused = payload is not None
                 try:
-                    payload = payload or adapter.query(query, source)
+                    if reused:
+                        source_health["snapshot_reused"] += 1
+                    else:
+                        source_health["fetched"] += 1
+                        payload = adapter.query(query, source)
                     if not snapshot.is_file() or args.refresh:
                         _write_snapshot(snapshot, code=query, source=source, result=payload)
                 except MetadataProviderError as error:
@@ -259,19 +316,35 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                         "message": str(error),
                     })
                     error_handle.flush(); errors_written += 1
-                    if error.retryable or error.status_code in {429, 503}:
+                    source_health["errors"] += 1
+                    source_health["retryable_errors"] += int(error.retryable)
+                    source_health["last_error_kind"] = error.kind
+                    source_health["last_error_status"] = error.status_code or ""
+                    source_health["last_error_message"] = str(error)[:500]
+                    if error.retryable or error.status_code in {403, 429, 503}:
                         blocked_sources.add(source)
+                        source_health["blocked"] = 1
                         log(f"{source} 暂时不可用，本批后续番号进入来源级冷却：{error}")
                     continue
-                for field, extracted in extract_peach_fields(payload, CATEGORY_MAP).items():
-                    tag_priority = TAG_SOURCE_PRIORITY.get(source, 10) if field == "tags" else 0
+                finally:
+                    source_health["elapsed_ms"] += round((time.perf_counter() - started) * 1000)
+                extracted_fields = extract_peach_fields(payload, CATEGORY_MAP)
+                source_health["succeeded"] += 1
+                if not extracted_fields:
+                    source_health["empty"] += 1
+                for field, extracted in extracted_fields.items():
+                    source_health[field] += 1
+                    source_spec = policy.source(source)
                     candidate = {
                         "candidate_key": _candidate_key(query, field, source, extracted["value"]),
                         "source": source,
                         "source_url": str(payload.get("source_url") or ""),
                         "confidence": 0.9 if source == "r18dev" else 0.75,
-                        "priority": tag_priority,
-                        "official": bool(field == "tags" and tag_priority >= 90),
+                        "profile": policy.profile,
+                        "policy_version": policy.version,
+                        "field_rank": policy.field_rank(field, source),
+                        "source_kind": source_spec.kind,
+                        "official": source_spec.official,
                         "value": extracted["value"],
                         "display_value": extracted["display_value"],
                         "warnings": extracted["warnings"],
@@ -281,26 +354,25 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                 if args.delay > 0:
                     time.sleep(args.delay + random.uniform(0, min(0.4, args.delay / 3)))
             for field, candidates in by_field.items():
-                if field == "tags":
-                    candidates.sort(key=lambda item: (
-                        -int(item.get("priority") or 0),
-                        -float(item.get("confidence") or 0),
-                        str(item.get("source") or ""),
-                    ))
+                candidates = sort_candidates(field, candidates, policy)
                 candidate_writer.writerow({
                     "item_key": f"{query}:{field}", "code": code, "query": query,
                     "field": field, "field_label": FIELD_LABELS[field],
                     "current_value": "、".join(_current_values(connection, code, field)),
                     "candidates_json": json.dumps(candidates, ensure_ascii=False, separators=(",", ":")),
-                    "source_count": len(candidates), "status": "candidate",
+                    "source_count": len(candidates), "source_profile": policy.profile,
+                    "policy_version": policy.version, "status": "candidate",
                     "size_gb": round(size_gb, 2), "videos": videos, "fetched_at": fetched_at,
                 })
                 groups_written += 1
             candidate_handle.flush()
+            _write_health(health_path, health)
             if index % 25 == 0:
                 log(f"{index}/{len(codes)}：已落 {groups_written} 个字段组，错误 {errors_written}")
     connection.close()
+    _write_health(health_path, health)
     log(f"完成：{groups_written} 个字段候选组 → {output}")
+    log(f"来源健康 → {health_path}")
     if errors_written:
         log(f"来源错误 {errors_written} 条 → {errors_path}")
     close_log()
