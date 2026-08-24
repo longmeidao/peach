@@ -1,8 +1,55 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+
+from .web_logic import is_jav_code
+
+
+class LedgerDatabase:
+    """Shared SQLite connection and transaction boundary for one Peach app."""
+
+    def __init__(self, db_path: Path):
+        self.db_path = Path(db_path)
+        self.write_lock = threading.Lock()
+
+    def connect(self, *, write: bool = False) -> sqlite3.Connection:
+        target = (
+            str(self.db_path)
+            if write
+            else self.db_path.resolve().as_uri() + "?mode=ro"
+        )
+        connection = sqlite3.connect(
+            target, timeout=30, check_same_thread=False, uri=not write,
+        )
+        connection.row_factory = sqlite3.Row
+        connection.create_function("is_jav_code", 1, is_jav_code, deterministic=True)
+        return connection
+
+    @contextmanager
+    def read_connection(self):
+        connection = self.connect()
+        try:
+            yield connection
+        finally:
+            connection.close()
+
+    @contextmanager
+    def write_transaction(self):
+        with self.write_lock:
+            connection = self.connect(write=True)
+            try:
+                yield connection
+            except BaseException:
+                connection.rollback()
+                raise
+            else:
+                connection.commit()
+            finally:
+                connection.close()
 
 
 @dataclass(frozen=True)
@@ -21,13 +68,14 @@ class MediaAsset:
 
 
 class LedgerRepository:
-    def __init__(self, db_path: Path):
-        self.db_path = db_path
+    def __init__(self, database: Path | LedgerDatabase):
+        self.database = (
+            database if isinstance(database, LedgerDatabase) else LedgerDatabase(database)
+        )
+        self.db_path = self.database.db_path
 
     def media_asset(self, asset_id: int) -> MediaAsset | None:
-        connection = sqlite3.connect(self.db_path.resolve().as_uri() + "?mode=ro", uri=True)
-        connection.row_factory = sqlite3.Row
-        try:
+        with self.database.read_connection() as connection:
             row = connection.execute(
                 "SELECT id,path,snapshot_path,location,name,duration,size "
                 "FROM asset WHERE id=?",
@@ -38,8 +86,6 @@ class LedgerRepository:
                 "ORDER BY backend,external_id",
                 (asset_id,),
             ).fetchall() if row is not None else ()
-        finally:
-            connection.close()
         if row is None:
             return None
         return MediaAsset(

@@ -370,14 +370,14 @@ class WebDataTests(unittest.TestCase):
 
     def test_write_transaction_rolls_back_and_closes_on_failure(self):
         opened = []
-        real_db = self.contract.db
+        real_connect = self.contract.database.connect
 
-        def capture(write=False):
-            connection = real_db(write)
+        def capture(*, write=False):
+            connection = real_connect(write=write)
             opened.append(connection)
             return connection
 
-        with mock.patch.object(self.contract, "db", side_effect=capture):
+        with mock.patch.object(self.contract.database, "connect", side_effect=capture):
             with self.assertRaisesRegex(RuntimeError, "abort"):
                 with self.contract.write_transaction() as connection:
                     connection.execute("UPDATE asset SET name='changed' WHERE id=1")

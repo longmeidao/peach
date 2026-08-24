@@ -158,6 +158,10 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             candidate_root=self.candidate_root,
         )
         self.app = create_app(self.settings)
+        self.assertIs(
+            self.app.state.web_contract.database,
+            self.app.state.repository.database,
+        )
         self.client = httpx.AsyncClient(
             transport=httpx.ASGITransport(app=self.app), base_url="http://test"
         )

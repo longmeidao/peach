@@ -11,11 +11,9 @@ import hashlib
 import json
 import random
 import re
-import sqlite3
 import threading
 import time
 import uuid
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Sequence
 from urllib.parse import quote, urlsplit
@@ -29,6 +27,7 @@ from .entities import (
 )
 from .media import remap_managed_path
 from .platform import system_volume
+from .repository import LedgerDatabase
 from .web_logic import (
     DUPLICATE_FLOOR_SECONDS,
     DUPLICATE_TOLERANCE,
@@ -69,15 +68,17 @@ class WebContract:
                  legacy_snapshot_roots: Sequence[Path] = (),
                  candidate_root: Path | None = None,
                  cover_root: Path | None = None,
-                 avatar_root: Path | None = None):
+                 avatar_root: Path | None = None,
+                 database: LedgerDatabase | None = None):
         # 候选 CSV 的目录做成实例属性而不是模块常量，复核层才能在临时目录里被测试。
         self.candidate_root = Path(candidate_root) if candidate_root is not None else GENERATED_DIR
         self.cover_root = Path(cover_root) if cover_root is not None else COVER_DIR
         self.avatar_root = Path(avatar_root) if avatar_root is not None else GENERATED_DIR / "avatars"
-        self.db_path = Path(db_path)
+        self.database = database or LedgerDatabase(db_path)
+        self.db_path = self.database.db_path
         self.snapshot_root = Path(snapshot_root) if snapshot_root is not None else None
         self.legacy_snapshot_roots = tuple(Path(path) for path in legacy_snapshot_roots)
-        self.write_lock = threading.Lock()
+        self.write_lock = self.database.write_lock
         self.cache: dict[str, tuple[float, object]] = {}
         self.cache_lock = threading.Lock()
         self._fts_available: bool | None = None
@@ -98,43 +99,13 @@ class WebContract:
             self.cache.clear()
 
     def db(self, write=False):
-        target = (str(self.db_path) if write else
-                  self.db_path.resolve().as_uri() + "?mode=ro")
-        connection = sqlite3.connect(
-            target, timeout=30, check_same_thread=False, uri=not write,
-        )
-        connection.row_factory = sqlite3.Row
-        # 番号形态判据只有一份实现，SQL 侧直接调它，避免和封面键的口径各写一套。
-        connection.create_function("is_jav_code", 1, is_jav_code, deterministic=True)
-        return connection
+        return self.database.connect(write=write)
 
-    @contextmanager
     def read_connection(self):
-        """Yield one read-only connection and always close it.
+        return self.database.read_connection()
 
-        ``sqlite3.Connection`` only commits or rolls back when used as a context
-        manager; it does not close itself. Keep the lifecycle rule in one place.
-        """
-        connection = self.db()
-        try:
-            yield connection
-        finally:
-            connection.close()
-
-    @contextmanager
     def write_transaction(self):
-        """Serialize one write transaction, roll it back on failure, then close."""
-        with self.write_lock:
-            connection = self.db(write=True)
-            try:
-                yield connection
-            except BaseException:
-                connection.rollback()
-                raise
-            else:
-                connection.commit()
-            finally:
-                connection.close()
+        return self.database.write_transaction()
 
     def has_snapshot(self, raw_path: str | None) -> bool:
         if not raw_path:

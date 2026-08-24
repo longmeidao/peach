@@ -28,7 +28,7 @@ from .mdns import create_mdns_publisher
 from .platform import is_unmapped, root_online, translate_ledger_path
 from .previews import PreviewService, PreviewUnavailable
 from .providers import OpenCodeGoClient, ProviderUnavailable, default_registry
-from .repository import LedgerRepository
+from .repository import LedgerDatabase, LedgerRepository
 from .segments import (
     HlsSegmentService,
     SegmentCancelled,
@@ -100,13 +100,15 @@ def create_app(
 ) -> FastAPI:
     """`sync` 由 CLI 注入。测试直接建 app 时不传，复制与只读闸门整体不参与。"""
     settings = settings or PeachSettings()
+    database = LedgerDatabase(settings.db_path)
     contract = web_contract.WebContract(
         settings.db_path, settings.snapshot_root, settings.legacy_snapshot_roots,
         candidate_root=settings.candidate_root,
         cover_root=settings.cover_root,
         avatar_root=settings.avatar_root,
+        database=database,
     )
-    repository = LedgerRepository(settings.db_path)
+    repository = LedgerRepository(database)
     resolver = FFmpegResolver(settings.ffmpeg_root)
     http_transport = HttpxTransport()
     filesystem = FilesystemBackend(
@@ -160,6 +162,7 @@ def create_app(
         openapi_url="/openapi.json" if settings.docs_enabled else None,
     )
     app.state.settings = settings
+    app.state.database = database
     app.state.web_contract = contract
     app.state.repository = repository
     app.state.media_engine = media_engine
