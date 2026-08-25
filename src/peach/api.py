@@ -769,8 +769,14 @@ def create_app(
     ):
         if sync is not None and sync.read_only:
             # 非写入端或冲突状态都只读；继续写只会产生无法自动合并的分叉。
+            # `detail` 是诊断信息，`message` 是给用户的可读解释与恢复方式。
             return JSONResponse(
-                {"error": "ledger read-only", "detail": sync.detail}, status_code=409,
+                {
+                    "error": "ledger read-only",
+                    "detail": sync.detail,
+                    "message": sync.read_only_message,
+                },
+                status_code=409,
             )
         try:
             return web_contract.dispatch_api_post(contract, f"/api/{route}", body)

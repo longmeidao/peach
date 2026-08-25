@@ -7,10 +7,12 @@ r"""
 正片 BNST033.mp4 有 3.2 GB，旁边躺着一堆 10.9 MB / 37.40 秒**逐字节等长等时**的
 "催眠(1..N).mp4"，外加 論壇文宣\ 和 1024\ 两个子目录。
 
-三条判据，各自独立记分，命中越多越可信：
+五条判据，各自独立记分，命中越多越可信：
   A 目录名自曝：文宣 / 宣傳 / 廣告 / 1024 / 論壇 等
   B 同目录内体积与时长完全相同的一组小短片（正片不会出现这种整齐的重复）
   C 文件名里的手游推广词与推广站域名
+  D 小且短的文件名带任意站点域名（存疑，交人工）
+  E 目录名是「域名+番号」的推广打包（bbsxv.xyz-DOCP-324 形态）
 
 B 是主力：它不依赖任何关键词，纯靠"广告是同一个文件复制多份"的结构特征。
 故意不把"短"或"小"单独当判据 —— 库里 8710 条 20 秒内的视频绝大多数是正常短片。
@@ -28,7 +30,7 @@ import csv
 import os
 import re
 import sqlite3
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from peach.config import DATABASE_PATH, GENERATED_DIR
 
@@ -60,6 +62,24 @@ RE_ADCOPY = re.compile(
     r"約炮|约炮|女神檔案|女神档案|精彩直播|大秀直播|禮包碼|礼包码|"
     r"最新地址|開車地址|开车地址|徵信|征信|借貸|借贷)", re.I)
 
+# E：目录名是「域名+番号」的推广打包，如 B:\云下载\bbsxv.xyz-DOCP-324\。
+# 实测该包内两条小视频（28 秒 / 91 秒）文件名干净、无等长重复，只有目录暴露身份。
+# 注意裸域名水印目录（www.98T.la@账号、huachishe.com@系列）是转载来源标注，
+# 不是广告；所以必须「域名紧贴番号」才命中，不能只看有域名。
+RE_DIRPACK = re.compile(
+    r"[0-9a-z][-0-9a-z]{1,20}\.[a-z]{2,10}[ \-_]+\[?[A-Za-z]{2,6}-?\d{2,5}", re.I)
+
+def ledger_dir(path: str) -> str:
+    """取账本路径的目录部分。
+
+    账本里的路径永远是 Windows 口径（`B:\\云下载\\...`），而 `os.path.dirname` 在 macOS 上
+    不认反斜杠，整条路径会被当成单个文件名、目录返回空串。后果不只是判据 A/E 失效：
+    判据 B 用「同目录 + 同体积 + 同时长」分组，目录恒为空就等于跨整个库比对。
+    `PureWindowsPath` 两种分隔符都认，两个平台结果一致。
+    """
+    return str(PureWindowsPath(path).parent)
+
+
 # B 的边界：只有"小且短"的整齐重复才算广告，避免误伤分集正片
 MAX_AD_MB = 80
 MAX_AD_SEC = 180
@@ -86,7 +106,7 @@ def find_candidates(db_path: Path | str, min_group: int = 3) -> tuple[list[dict]
             continue
         if size > MAX_AD_MB * 1048576 or duration > MAX_AD_SEC:
             continue
-        key = (os.path.dirname(path).lower(), size, f"{duration:.3f}")
+        key = (ledger_dir(path).lower(), size, f"{duration:.3f}")
         buckets[key].append((aid, loc, path, name, size, duration))
     grouped = {}
     for items in buckets.values():
@@ -96,8 +116,8 @@ def find_candidates(db_path: Path | str, min_group: int = 3) -> tuple[list[dict]
 
     plan = []
     for aid, loc, path, name, size, duration in rows:
-        directory = os.path.dirname(path)
-        parts = directory.split(os.sep)
+        directory = ledger_dir(path)
+        parts = PureWindowsPath(path).parent.parts
         hits = []
         if RE_ADDIR.search(directory) or any(RE_ADDIR_EXACT.match(p) for p in parts):
             hits.append("目录名")
@@ -109,6 +129,8 @@ def find_candidates(db_path: Path | str, min_group: int = 3) -> tuple[list[dict]
         short = duration is not None and 0 < duration <= DOMAIN_AD_SEC
         if RE_ANYDOMAIN.search(name) and small and short:
             hits.append("域名+文案" if RE_ADCOPY.search(name) else "裸域名")
+        elif RE_DIRPACK.search(directory) and small and short:
+            hits.append("推广目录")
         if not hits:
             continue
         # 只有裸域名、没有任何其它佐证的，交人工看一眼再定

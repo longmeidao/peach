@@ -5,7 +5,7 @@ const api=async(p,o)=>{
   let payload=null;
   try{payload=await response.json()}catch(_e){}
   if(!response.ok){
-    const detail=payload&&(payload.detail||payload.error);
+    const detail=payload&&(payload.message||payload.detail||payload.error);
     throw new Error(detail||`请求失败（${response.status}）`);
   }
   return payload;

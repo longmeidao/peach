@@ -186,6 +186,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             status = "reader"
             detail = "写入端是 mac"
             read_only = True
+            read_only_message = "账本由 mac 负责写入，本机当前只能浏览。"
 
             def observe(self):
                 return None
@@ -208,7 +209,11 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
                 "/api/feedback?t=secret", json={"id": 1, "kind": "dispose"},
             )
             self.assertEqual(denied.status_code, 409)
-            self.assertEqual(denied.json()["error"], "ledger read-only")
+            body = denied.json()
+            self.assertEqual(body["error"], "ledger read-only")
+            # `detail` 是诊断串，界面要展示的是 `message`；缺了它前端只能显示内部原话。
+            self.assertEqual(body["detail"], "写入端是 mac")
+            self.assertIn("只能浏览", body["message"])
 
     async def test_peach_logo_is_served_as_png(self):
         response = await self.client.get("/peach-logo.png")

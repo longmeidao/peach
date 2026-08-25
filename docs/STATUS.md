@@ -97,6 +97,20 @@
 - 详情全屏覆盖播放器的 `76vh`/固定比例限制，视频按播放器尺寸渲染；加载或等待时显示基于 VHS/媒体请求的实际速度估算。沉浸模式横屏使用全视口 `object-fit:cover`，竖屏根据媒体真实宽高切到 `contain`，避免桌面宽屏裁掉上下画面；初次加载和切换下一条时显示 spinner 与速度，按钮采用 Shorts 取证的 tonal 圆角层级。
 - 本批修复顶部品牌图与正文 Logo 不一致、竖屏推荐条固定在首批作品中间、竖屏卡片按实际宽高显示、卡片 hover 蓝色边框、半透明层过透、详情关闭时导航仍残留、ambient 上下断层和详情按钮 hover；搜索历史迁移到共享 `search_history` 表。
 - 回收站有独立入口 `peach.local/trash`（后端 `/trash` 走 SPA，前端 `restoreRoute` 直接进 `state=trash`）。
+- 疑似广告的判据有两个维度。文件名维度看「剥掉推广词后还剩不剩内容」（`promo_residue`）；
+  目录维度看创作者位和路径——广告包的文件名往往干净（`极道世界.mp4`），唯一线索是旧导入器
+  从目录名投影出来的创作者位，或 `bbsxv.xyz-DOCP-324` 这种「域名紧贴番号」的打包形态。
+  裸域名水印目录（`www.98T.la@账号`、`huachishe.com@系列`）是转载来源标注，不算广告。
+  `path` 只参与打分，不下发给前端。创作者位本身是推广站域名时，「有归属所以是正片」的减分
+  不成立，两处对 creator 的信任都先排除它。`find_ads.py` 的对应判据是 D 与 E。
+- `find_ads.py` 在 macOS 上曾整体失准：账本路径是 Windows 口径，`os.path.dirname` 不认反斜杠，
+  目录恒为空串，判据 A/E 永不命中，判据 B 的「同目录」分组退化成跨整个库比对。已改用
+  `PureWindowsPath`，两个平台结果一致，`test_ledger_paths_are_split_with_windows_semantics_on_any_host` 守这条线。
+- 只读 409 的文案已分层：响应体 `error` 保持 `ledger read-only`，`detail` 保留内部诊断原话，
+  新增 `message` 给界面直接展示——说明写入端是谁、本机为何只读、下一步去写入端操作或在托盘
+  「接管 Ledger 写入」。前端 `api()` 优先取 `message`，冲突状态则指向「同步 Ledger」。
+- 复核页 `cover_sources` 这一层的通过/跳过/拒绝此前全部 400：`w_review_decision` 的类别白名单
+  漏了它。已放行（只记 `review_decision`，不碰真相字段）。
 - 疑似广告是处置队列：队列说明行随页面正常滚走，不复用普通作品列表的 sticky 排序栏。批量或详情加入回收站后会立即刷新队列；Ledger 冲突等非 2xx 写入会明确报错，不再把错误 JSON 当成功后让条目原样出现。
 - 回收站的两条删除路径此前从未真正执行过，已修复：`media.py` 漏 `from functools import lru_cache` 导致整个包 import 失败；`ASSET_REFERENCE_TABLES` 从未定义，`/api/batch` 的 `delete` 必然 `NameError`；`/api/trash/empty` 只加了 dispatch 分支、`w_empty_trash` 没有函数体。现已统一到 `purge_assets()` 并补齐数据层测试。之前「API 写读删已复核」的说法不成立，属于未验证即结论。
 - 管理界面 `/review` 已覆盖元数据字段、创作者标签、厂牌 Logo、女优头像、西方身份、番号目录、FC2 评论标记、FC2 跨号相似和媒体失败；每项尽量显示代表封面并可打开原视频。封面抓取成功、尺寸和缺失改回机械状态，不再占人工复核。Javinizer-Go 元数据按「番号 × 字段」并列演员、厂牌、系列、发行日期和标签候选，官方/官方镜像 tag 优先；批准必须选中具体来源值并留下 provenance。

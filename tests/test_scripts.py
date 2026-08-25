@@ -125,6 +125,49 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertTrue(all("等长重复x3" in row["hits"] for row in plan))
             self.assertFalse((root / "ad-candidates.csv").exists())
 
+    def test_ledger_paths_are_split_with_windows_semantics_on_any_host(self):
+        """账本路径是 Windows 口径；用 `os.path.dirname` 在 macOS 上会得到空目录，
+        判据 A/E 直接失效，判据 B 的「同目录」分组还会退化成跨整个库比对。"""
+        self.assertEqual(
+            self.find_ads.ledger_dir(r"B:\云下载\bbsxv.xyz-DOCP-324\极道世界.mp4"),
+            r"B:\云下载\bbsxv.xyz-DOCP-324",
+        )
+        self.assertNotEqual(
+            self.find_ads.ledger_dir(r"B:\一\a.mp4"),
+            self.find_ads.ledger_dir(r"B:\二\a.mp4"),
+        )
+
+    def test_promo_dirpack_flags_clean_named_ads_and_spares_watermark_dirs(self):
+        """广告包把域名藏进目录名（bbsxv.xyz-DOCP-324），文件名干净、无等长重复也不得漏；
+        转载水印目录（www.98T.la@账号）是来源标注，不能因带域名就进清单。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "ledger.db"
+            connection = sqlite3.connect(db)
+            connection.execute(
+                "CREATE TABLE asset(id INTEGER,location TEXT,path TEXT,name TEXT,"
+                "size INTEGER,duration REAL,medium TEXT)"
+            )
+            connection.executemany(
+                "INSERT INTO asset VALUES(?,?,?,?,?,?,?)",
+                [
+                    (1, "115", r"B:\云下载\bbsxv.xyz-DOCP-324\极道世界.mp4",
+                     "极道世界.mp4", 75281679, 28.08, "video"),
+                    (2, "115", r"B:\云下载\bbsxv.xyz-DOCP-324\最新情报.wmv",
+                     "最新情报.wmv", 90867046, 90.92, "video"),
+                    (3, "115", r"B:\创作者\luckydog22\www.98T.la@luckydog22\469.avi",
+                     "469.avi", 16 * 1024**2, 92.0, "video"),
+                ],
+            )
+            connection.commit(); connection.close()
+
+            plan, scanned = self.find_ads.find_candidates(db, min_group=3)
+            self.assertEqual(scanned, 3)
+            by_id = {row["id"]: row for row in plan}
+            self.assertIn("推广目录", by_id[1]["hits"])
+            self.assertIn("推广目录", by_id[2]["hits"])
+            self.assertEqual(by_id[1]["confidence"], "确认")
+            self.assertNotIn(3, by_id)
+
     def test_filename_cleanup_is_conservative(self):
         propose = self.clean_names.propose
         self.assertEqual(propose("www.98T.la@sample.mp4"), "sample.mp4")

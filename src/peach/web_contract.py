@@ -550,6 +550,13 @@ PROMO_DOMAIN = re.compile(
 # 判据与 `is_jav_code` 同源：分隔符正是番号与账号名的唯一线索。
 REAL_CODE = re.compile(r"^(?:\d{2,3})?[A-Za-z]{2,8}-\d{2,5}$|^FC2", re.I)
 PART_MARK = re.compile(r"(CD\d|part\d|分卷|-\d{1,2}$|\(\d+\)$)", re.I)
+# 推广站目录的两种形态，与 `scripts/find_ads.py` 的判据 D/E 同源：
+# 创作者位是旧导入器的目录名投影，`bbsxv.xyz-DOCP-324` 这类广告包会直接落在那里；
+# 裸域名目录（98T.la@账号、huachishe.com@系列）是转载水印，不是广告，不能进判据。
+AD_DOMAIN = re.compile(
+    r"\b[0-9a-z][-0-9a-z]{1,20}\.(?:cc|xyz|com|net|la|me|top|vip|club|app|cn|pw|tv|gg)\b", re.I)
+AD_DIRPACK = re.compile(
+    r"[0-9a-z][-0-9a-z]{1,20}\.[a-z]{2,10}[ \-_]+\[?[A-Za-z]{2,6}-?\d{2,5}", re.I)
 
 
 def promo_residue(name: str) -> int:
@@ -578,7 +585,7 @@ def q_ads(contract: WebContract, limit=200, offset=0):
     c = contract.db()
     rows = c.execute(
         "SELECT id,location,name,creator,code,size,duration,width,height,snapshot_path,"
-        "feedback,disposal,play_count,leave_ratio,o_count,studio,ctx_orient "
+        "feedback,disposal,play_count,leave_ratio,o_count,studio,ctx_orient,path "
         "FROM asset WHERE medium='video' AND size < 500*1024*1024 "
         "AND duration IS NOT NULL AND duration BETWEEN 15 AND 1200 "
         "AND (disposal IS NULL)").fetchall()
@@ -593,11 +600,22 @@ def q_ads(contract: WebContract, limit=200, offset=0):
         nm = os.path.splitext(d["name"])[0]
         residue = promo_residue(nm)
         promo = bool(PROMO_PHRASE.search(nm) or PROMO_DOMAIN.search(nm))
+        # 目录维度的证据：广告包的文件名往往干净（`极道世界.mp4`），唯一线索在旧导入器
+        # 从目录名投影出来的创作者位或路径里。creator 位本身是推广站域名时，它就不再是
+        # 「有归属所以是正片」的证据，下面两处对 creator 的信任都必须先排除这种情况。
+        owner = d.get("creator") or ""
+        owner_is_promo = bool(AD_DOMAIN.search(owner))
+        real_owner = bool(owner) and not owner_is_promo
+        folder = os.path.dirname(d.get("path") or "")
         if promo and residue < 6:
             # 名字剥完只剩广告本身，这是最硬的信号。
             s += 60; why.append("整个名字都是推广语")
-        elif promo and residue < 14 and not d["creator"]:
+        elif promo and residue < 14 and not real_owner:
             s += 30; why.append("推广语占了名字主体")
+        if owner_is_promo:
+            s += 50; why.append("创作者位是推广站域名")
+        elif AD_DIRPACK.search(folder):
+            s += 45; why.append("目录是「域名+番号」的推广打包")
         code = (d["code"] or "").strip()
         mx = longer.get(code)
         if mx and REAL_CODE.match(code) and d["duration"] < mx * 0.2 \
@@ -609,14 +627,15 @@ def q_ads(contract: WebContract, limit=200, offset=0):
             s += 15; why.append("不足 4 分钟")
         if (d["size"] or 0) < 120 * 1024**2:
             s += 10; why.append("小于 120 MB")
-        # 有创作者归属、且名字剥完仍有实质描述的，是被打了水印的正片，不是广告。
-        if d["creator"] and residue >= 14:
+        # 有真实创作者归属、且名字剥完仍有实质描述的，是被打了水印的正片，不是广告。
+        if real_owner and residue >= 14:
             s -= 45
         if s >= 40:
             d["score"] = s; d["why"] = " · ".join(why)
             d["cost"] = COST.get(d["location"], "metered")
             d["has_thumb"] = contract.has_snapshot(d["snapshot_path"])
             d.pop("snapshot_path", None)
+            d.pop("path", None)
             out.append(d)
     c.close()
     out.sort(key=lambda x: (-x["score"], -(x["size"] or 0)))
@@ -1857,10 +1876,12 @@ def w_review_decision(contract: WebContract, body):
     category = str(body.get("category", "")).strip()
     item_key = str(body.get("item_key", "")).strip()
     status = str(body.get("status", "")).strip()
+    # 复核页展示的每个 tab 都必须能记录决定；漏掉一个，那一页的通过/跳过/拒绝就全部 400，
+    # 前端静默时看起来就是「点了没反应」。`cover_sources` 曾这样漏掉。
     if category not in {
         "metadata_fields", "creator_tags", "studio_logos", "performer_avatars",
-        "western_identity", "code_creators", "fc2_markings", "fc2_similarity",
-        "video_endcards", "media_failure",
+        "western_identity", "code_creators", "cover_sources", "fc2_markings",
+        "fc2_similarity", "video_endcards", "media_failure",
     }:
         raise ValueError("invalid review category")
     if not item_key or status not in {"approved", "rejected", "skipped"}:

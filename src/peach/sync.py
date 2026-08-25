@@ -277,6 +277,21 @@ class LedgerSync:
         """只有 marker 指定的唯一写入端能写；其他服务保持可读。"""
         return self.status == "conflict" or writer_device(self.local, self.shared) != self.device
 
+    @property
+    def read_only_message(self) -> str:
+        """409 时给界面的解释：发生了什么、影响、怎么恢复。"""
+        if self.status == "conflict":
+            return (
+                f"账本处于冲突状态（{self.detail}），本机暂时只读。"
+                "请在托盘执行「同步 Ledger」；若提示仍冲突，需按日志人工处理。"
+            )
+        owner = writer_device(self.local, self.shared) or "另一台机器"
+        return (
+            f"账本由 {owner} 负责写入，本机当前只能浏览。"
+            "请改在该机器上操作，或在托盘执行「接管 Ledger 写入」"
+            "（要求两侧数据一致）后再试。"
+        )
+
     # ── 单次动作 ────────────────────────────────────────────────────────────
     def pull(self) -> None:
         shared_marker = read_marker(self.shared)
