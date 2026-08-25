@@ -1076,6 +1076,7 @@ CANDIDATE_PREFIX = {
     "cover_sources": "cover-fetch-log",
     "fc2_markings": "fc2-candidate-log",
     "fc2_similarity": "fc2-similarity-candidate-",
+    "video_endcards": "video-endcard-candidate-",
 }
 # 每类候选的稳定主键列。缺这一列的行直接跳过并计数，绝不退化成行号——
 # 行号会在 CSV 重排后把历史决定悄悄挪到别的条目上。
@@ -1089,6 +1090,7 @@ CANDIDATE_KEY = {
     "cover_sources": "code",
     "fc2_markings": "code",
     "fc2_similarity": "pair_key",
+    "video_endcards": "candidate_key",
 }
 def _needs_review(category: str, row: dict) -> bool:
     """已经有定论的行不该占复核页。
@@ -1226,17 +1228,22 @@ def _attach_review_asset_context(connection, rows: list[dict]) -> None:
         ):
             assets_by_entity.setdefault(asset["entity_id"], dict(asset))
 
+    explicit_ids = {
+        int(row["asset_id"]) for row in rows
+        if str(row.get("asset_id") or "").isdigit()
+    }
     comparison_ids = {
         int(value) for row in rows
         for value in (row.get("left_asset_id"), row.get("right_asset_id"))
         if str(value or "").isdigit()
     }
     comparison_assets: dict[int, dict] = {}
-    if comparison_ids:
-        marks = ",".join("?" * len(comparison_ids))
+    requested_ids = comparison_ids | explicit_ids
+    if requested_ids:
+        marks = ",".join("?" * len(requested_ids))
         for asset in connection.execute(
             f"SELECT id,name,code,snapshot_path FROM asset WHERE id IN ({marks})",
-            sorted(comparison_ids),
+            sorted(requested_ids),
         ):
             comparison_assets[asset["id"]] = dict(asset)
 
@@ -1246,6 +1253,9 @@ def _attach_review_asset_context(connection, rows: list[dict]) -> None:
         entity_id = str(row.get("entity_id") or "")
         if asset is None and entity_id.isdigit():
             asset = assets_by_entity.get(int(entity_id))
+        explicit_id = str(row.get("asset_id") or "")
+        if asset is None and explicit_id.isdigit():
+            asset = comparison_assets.get(int(explicit_id))
         if asset is None and row.get("preview_assets"):
             first = row["preview_assets"][0]
             asset = {"id": first["id"], "name": first["name"], "code": code,
@@ -1311,6 +1321,14 @@ def _review_rows(contract: WebContract, category: str) -> tuple[list[dict], str 
         row["decision_note"] = decision.get("note", "")
         row["preview_url"] = (row.get("resolved_url") or row.get("source_url")
                               or row.get("avatar_url") or row.get("portrait_url") or "")
+        if category == "video_endcards":
+            frame = PurePosixPath(str(row.get("frame_key") or ""))
+            asset_id = str(row.get("asset_id") or "")
+            if (asset_id.isdigit() and len(frame.parts) == 2
+                    and frame.parts[0] == asset_id and frame.suffix.lower() == ".png"):
+                row["preview_url"] = (
+                    f"/endcard-frame?id={asset_id}&name={quote(frame.name)}"
+                )
         if category == "cover_sources" and row.get("result") == "取得":
             # 封面已经在本机，直接看落盘的那张，不要回源站再拉一次。
             row["preview_url"] = f"/cover?code={quote(str(row.get('code') or ''))}"
@@ -1842,7 +1860,7 @@ def w_review_decision(contract: WebContract, body):
     if category not in {
         "metadata_fields", "creator_tags", "studio_logos", "performer_avatars",
         "western_identity", "code_creators", "fc2_markings", "fc2_similarity",
-        "media_failure",
+        "video_endcards", "media_failure",
     }:
         raise ValueError("invalid review category")
     if not item_key or status not in {"approved", "rejected", "skipped"}:

@@ -70,7 +70,7 @@
 - 语料边界（成年人、角色扮演标签、营销来源词）以 `AGENTS.md` 的那一条为准，本文件不复制第二份。
 - 不从人脸识别私人真实身份。持久归属必须有番号、文件名、水印、厂牌、公开链接等非人脸证据。
 - 删除和其他不可逆/对外动作先生成带证据和置信度的复核产物，执行步骤单独授权。
-- 单帧逐条判断、过暗/模糊画面、仅靠文件名区分片源水印与广告都属于弱项，应降低置信度或补抽帧，不应伪装成确定事实。
+- 单帧逐条判断、过暗/模糊画面、仅靠文件名区分片源水印与广告都属于弱项，应降低置信度或补抽帧，不应伪装成确定事实。`audit_video_endcards.py` 必须点名 asset 或给正数 limit，使用 Peach FFmpeg 有界抽首尾帧；Windows OCR 走 PowerShell 5.1 的 `Windows.Media.Ocr`，每张图片单独以 `-File` 传参，禁止把路径拼进 `-Command`。帧与 OCR sidecar 只进 `generated/endcard-evidence`，`Full version available` 和来源 URL/handle 只生成 `/review` 候选，不自动写 quality goal 或 ledger。
 
 ## 只存在于聊天中的结论等于不存在
 

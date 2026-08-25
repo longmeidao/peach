@@ -196,7 +196,7 @@
 
 1. 创作者板的机械识别已做完：`creator-tags-review.csv` 里 42 条 pending 全部产出 candidate（34 candidate、8 skip，见 `creator-tags-candidate-20260817.csv`），没有未覆盖的板。剩下的是用户在 `/review` 页面逐条复核，点「通过」才写 `asset_tag/asset_entity`。注意天花板：全库 7,622 条无标签视频里创作者板最多覆盖约 2,800 条，其余既无创作者也无有效番号（384 个 FC2 + 约 330 个 `WX` 业余码，三源实测零命中）。
 2. FC2 评论标记与跨号相似分别在 `/review` 的 `fc2_markings`、`fc2_similarity` 层逐条复核。匿名评论一律不自动升级；库外 video_id 保留 evidence 等待入库。仍未做的是把复核通过的演员写进 `entity`/`asset_entity`，以及由用户决定后执行实际跨号关系写入。
-3. 首尾帧额外抽样：识别水印、出处和 `full version available`，生成带证据的「不完整版/剪辑版」候选。首个回归样本为 115 的 `04_Stepsistercaughtmejerkingoff,deepthroat,throatpie.mp4` 片尾。
+3. 首尾帧出处 P3 已形成最小闭环：`audit_video_endcards.py` 默认拒绝无界全库运行，按 asset/limit 使用 Peach FFmpeg 抽首尾帧，Windows 内置英语 OCR 识别来源 URL、handle 和 `Full version available`，帧/OCR sidecar 可续用，并产候选与健康 CSV；`/review` 的「片尾/出处证据」同时显示证据帧和原视频，批准只记录决定。真实 115 回归 asset `13724` 在 505.607 秒识别出 `Full version available on: fansly.com/smuzililpussy`，两帧 OCR 成功、错误 0，ledger/quality goal/复核决定均不变。未做全库批次，也未把判断自动写成更好版本目标。
 4. 继续人工补齐姓名审计留下的 35 位未解析发行女优；这些多为艺名、账号式拼写或上游未收录，现状刻意保留原名，不能为追求“全中文”而猜译。头像仍有 15 位图库未收录、5 位所有候选不过质量门槛；姓名与头像进度不得再互相阻塞。
 5. 通过官方/公开来源补齐 86 个厂牌 Logo，保留来源和质量门槛。Logo 与头像的取源方向相反：头像应取整理好的图库，Logo 是品牌标识，官网与维基才是权威来源。
 6. Windows writer 执行 PikPak 视觉夜跑：先用 `probe.py --redo all` 重探当前 5,445 条失败/零时长，再只跑官方封套与九帧缩略图。generation 29 的 Mac 副本基线为可直接抽 4,740、需重探 5,445、短于等于 2 秒 11；Windows 起跑前重算。第一晚以 200 GB 流量守卫与 40 GiB 系统盘闸门为硬上限，允许安全中止和续跑，不承诺一夜全量完成。

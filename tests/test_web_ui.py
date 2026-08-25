@@ -910,6 +910,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("cover_sources:'封面来源'")
         self.assertPageContains("fc2_markings:'FC2 评论标记'")
         self.assertPageContains("fc2_similarity:'FC2 跨号相似'")
+        self.assertPageContains("video_endcards:'片尾/出处证据'")
         self.assertPageContains("const comparison=row.comparison_assets||[];")
         self.assertPageContains('class="reviewcompare"')
         self.assertPageContains("reviewCategory==='fc2_similarity'?''")

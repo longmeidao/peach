@@ -600,6 +600,23 @@ def create_app(
         response.headers["Cache-Control"] = "public, max-age=86400"
         return response
 
+    @app.api_route("/endcard-frame", methods=["GET", "HEAD"])
+    def endcard_frame(request: Request, id: int, name: str):
+        """Serve only generated OCR evidence frames, never a client-provided path."""
+        args = _first_query_values(request)
+        if not _authorized(request, settings.token, args):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if (id <= 0 or not name.endswith(".png") or "/" in name or "\\" in name
+                or name.startswith(".")):
+            return JSONResponse({"error": "invalid frame"}, status_code=400)
+        root = (settings.candidate_root / "endcard-evidence" / str(id)).resolve()
+        path = (root / name).resolve()
+        if path.parent != root or not path.is_file():
+            return JSONResponse({"error": "no frame"}, status_code=404)
+        response = FileResponse(path, media_type="image/png")
+        response.headers["Cache-Control"] = "private, max-age=86400"
+        return response
+
     @app.api_route("/avatar", methods=["GET", "HEAD"])
     def avatar(request: Request, id: int):
         args = _first_query_values(request)

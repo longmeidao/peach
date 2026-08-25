@@ -108,6 +108,11 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         # 复核候选必须来自临时目录：早先版本直接读真实的 R:\peach-data\generated。
         self.candidate_root = self.root / "generated"
         self.candidate_root.mkdir()
+        self.endcard_frame = (
+            self.candidate_root / "endcard-evidence" / "1" / "tail-000098000.png"
+        )
+        self.endcard_frame.parent.mkdir(parents=True)
+        self.endcard_frame.write_bytes(b"endcard")
         for path in (self.media_root, self.snapshot_root, self.poster_root,
                      self.avatar_root, self.logo_root, self.vendor_root):
             path.mkdir()
@@ -676,6 +681,24 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
                          (b"poster", b"avatar", b"logo", b"snapshot"))
         self.assertEqual(logo.headers["content-type"], "image/png")
         self.assertEqual(poster.headers["cache-control"], "public, max-age=86400")
+
+    async def test_endcard_frame_is_authenticated_and_confined_to_evidence_root(self):
+        denied = await self.client.get(
+            "/endcard-frame?id=1&name=tail-000098000.png"
+        )
+        self.assertEqual(denied.status_code, 401)
+        response = await self.client.get(
+            "/endcard-frame?id=1&name=tail-000098000.png",
+            headers={"X-Token": "secret"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"endcard")
+        self.assertEqual(response.headers["content-type"], "image/png")
+        traversal = await self.client.get(
+            "/endcard-frame?id=1&name=../index.html",
+            headers={"X-Token": "secret"},
+        )
+        self.assertEqual(traversal.status_code, 400)
 
     def _seed_photo(self):
         """一张真实 JPEG：缩略图端点要真的解码，假字节测不出这条路径。"""

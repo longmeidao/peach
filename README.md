@@ -402,6 +402,13 @@ FC2 跨号检测只读既有评论收获和 ledger 媒体事实。所有等价�
 & .\.venv\Scripts\python.exe scripts\audit_fc2_similarity.py
 ```
 
+首尾帧出处审计必须点名资产或给正数 limit，避免误启动全库云盘读取。Windows 使用系统内置英语 OCR；证据帧、OCR sidecar、候选和健康报告都写在 `generated`，不会修改媒体、ledger 或更好版本目标：
+
+```powershell
+# 已知回归样本；批准仍只记录复核决定
+& .\.venv\Scripts\python.exe scripts\audit_video_endcards.py --asset 13724
+```
+
 历史创作者投影使用逐项只读审计，不再把目录名直接当身份：
 
 ```powershell
