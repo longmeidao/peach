@@ -534,12 +534,47 @@ def q_item(contract: WebContract, aid):
     d.pop("snapshot_path", None); d.pop("path", None)
     return d
 
+# 只认联系方式与站点形态的推广套话。「微信」「成人游戏」这类词单独出现不算：
+# 实测正片标题里就有（「还要微信跟老公汇报战果」是剧情，不是联系方式）。
+PROMO_PHRASE = re.compile(
+    r"(扫码|二维码|加微信|加微|威信\d|微信号|微信\s*[:：]|免费看|免费玩|福利群|最新地址|"
+    r"永久(?:域名|地址|发布)|点击(?:观看|下载|进入)|下载APP|下载|签到|代币|领取|"
+    r"强力推荐|国产大片|在线视频|大饱眼福|房间火爆|澳门|赌场|博彩|棋牌|加我|包养|约炮|"
+    r"GAMES?\d*|APP)", re.I)
+# 结尾不能用 \b：`uuc82.com_2` 里 `m` 和 `_` 都是词字符，构不成边界，域名会漏掉。
+PROMO_DOMAIN = re.compile(
+    r"(?:https?://)?(?:www\.)?[\w-]{2,}\.(?:com|net|me|la|xyz|cc|tv|top|vip|club|"
+    r"info|org|pw|cn|app|site|online|shop)(?![a-z0-9])", re.I)
+# 真番号带厂牌前缀和连字号（ABW-153、259LUXU-1141）。RAIKUN325 这类没有连字号的
+# 是被误填进 code 的创作者账号名，不能拿来做「同番号有完整版」的比较，
+# 判据与 `is_jav_code` 同源：分隔符正是番号与账号名的唯一线索。
+REAL_CODE = re.compile(r"^(?:\d{2,3})?[A-Za-z]{2,8}-\d{2,5}$|^FC2", re.I)
+PART_MARK = re.compile(r"(CD\d|part\d|分卷|-\d{1,2}$|\(\d+\)$)", re.I)
+
+
+def promo_residue(name: str) -> int:
+    """剥掉域名和推广套话后，还剩多少实质描述字符。
+
+    这是区分「广告」与「正片被打了站点水印」的关键：
+    `点击观看 房间火爆` 剥完什么都不剩；
+    `236953.xyz 推特新晋4年绿帽美腿淫妻网黄「一个ren」…` 剥完仍有大段内容描述。
+    """
+    text = PROMO_DOMAIN.sub(" ", name or "")
+    text = PROMO_PHRASE.sub(" ", text)
+    # 只数中日韩文字与字母，忽略编号、扩展名和标点。
+    return len(re.findall(r"[一-鿿぀-ヿ가-힯 A-Za-z]", text))
+
+
 def q_ads(contract: WebContract, limit=200, offset=0):
     """疑似广告复核队列 —— **不自动删**，只排队让人看接触印相确认。
 
     没有可靠的单一判据（试过「同番号短版」会误伤 CD2/part1 分卷，
     试过「同名扩散」会误伤 001.mp4 这类通用名的真文件）。
-    所以给的是**嫌疑分**，按分排序，人工看图定夺，确认的走既定 CSV 删除流程。"""
+    所以给的是**嫌疑分**，按分排序，人工看图定夺，确认的走既定 CSV 删除流程。
+
+    2026-08-15 按用户标记的 21 条真广告重新标定：命中推广词本身不算证据，
+    要看**剥掉推广词后还剩不剩内容**。三类实测误判据此排除：剧情里的「微信」、
+    开头是盗版站域名但正文是真实描述、以及把创作者账号当成番号去比时长。"""
     c = contract.db()
     rows = c.execute(
         "SELECT id,location,name,creator,code,size,duration,width,height,snapshot_path,"
@@ -547,27 +582,36 @@ def q_ads(contract: WebContract, limit=200, offset=0):
         "FROM asset WHERE medium='video' AND size < 500*1024*1024 "
         "AND duration IS NOT NULL AND duration BETWEEN 15 AND 1200 "
         "AND (disposal IS NULL)").fetchall()
-    # 同番号是否存在明显更长的版本
+    # 同番号是否存在明显更长的版本；只在 code 是真番号时才有意义。
     longer = {r[0]: r[1] for r in c.execute(
         "SELECT code, max(duration) FROM asset WHERE medium='video' AND code IS NOT NULL "
         "AND code<>'' AND duration IS NOT NULL GROUP BY code")}
     out = []
-    PROMO = re.compile(r"(扫码|二维码|加微|威信|微信|广告|推广|免费看|福利群|最新地址|"
-                       r"永久|点击|下载APP|在线视频|强力推荐|国产大片|www\.|\.com|\.me|\.la|\.xyz)", re.I)
-    PART = re.compile(r"(CD\d|part\d|分卷|-\d{1,2}$|\(\d+\)$)", re.I)
     for r in rows:
         d = dict(r)
         s, why = 0, []
         nm = os.path.splitext(d["name"])[0]
-        if PROMO.search(nm):
-            s += 50; why.append("名字含推广词")
-        mx = longer.get(d["code"] or "")
-        if mx and d["duration"] < mx * 0.2 and not PART.search(nm):
-            s += 35; why.append(f"同番号有 {mx/60:.0f} 分完整版")
+        residue = promo_residue(nm)
+        promo = bool(PROMO_PHRASE.search(nm) or PROMO_DOMAIN.search(nm))
+        if promo and residue < 6:
+            # 名字剥完只剩广告本身，这是最硬的信号。
+            s += 60; why.append("整个名字都是推广语")
+        elif promo and residue < 14 and not d["creator"]:
+            s += 30; why.append("推广语占了名字主体")
+        code = (d["code"] or "").strip()
+        mx = longer.get(code)
+        if mx and REAL_CODE.match(code) and d["duration"] < mx * 0.2 \
+                and not PART_MARK.search(nm):
+            # 分卷已排除，真番号下不到两成时长基本就是片段/预告，单独即可入队复核。
+            # 用户标记的 `反抗不如享受.mp4`（ABW-220，244 秒）正好卡在旧的 35 分门外。
+            s += 40; why.append(f"同番号有 {mx/60:.0f} 分完整版")
         if d["duration"] < 240:
             s += 15; why.append("不足 4 分钟")
         if (d["size"] or 0) < 120 * 1024**2:
             s += 10; why.append("小于 120 MB")
+        # 有创作者归属、且名字剥完仍有实质描述的，是被打了水印的正片，不是广告。
+        if d["creator"] and residue >= 14:
+            s -= 45
         if s >= 40:
             d["score"] = s; d["why"] = " · ".join(why)
             d["cost"] = COST.get(d["location"], "metered")
