@@ -409,6 +409,16 @@ FC2 跨号检测只读既有评论收获和 ledger 媒体事实。所有等价�
 & .\.venv\Scripts\python.exe scripts\audit_video_endcards.py --asset 13724
 ```
 
+厂牌 Logo 持续校验只使用已确认 handle；没有 handle 时不猜。缓存、provenance、质量门槛和健康报告都会更新，但同图缩放、空结果和重复图不会进入 `/review`：
+
+```powershell
+# 刷新确认来源；只生成变化候选，不自动安装 Logo
+& .\.venv\Scripts\python.exe scripts\fetch_studio_avatar_candidates.py `
+  --input ..\peach-data\generated\studio-logo-candidate-20260817.csv `
+  --handles ..\peach-data\generated\studio-x-handles.csv `
+  --output ..\peach-data\generated\studio-logo-candidate-refresh.csv --refresh
+```
+
 历史创作者投影使用逐项只读审计，不再把目录名直接当身份：
 
 ```powershell

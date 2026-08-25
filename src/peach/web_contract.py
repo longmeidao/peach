@@ -1120,6 +1120,16 @@ def _needs_review(category: str, row: dict) -> bool:
     """
     if category == "western_identity":
         return str(row.get("verdict") or "") in ("命中", "需人工确认")
+    if category == "studio_logos":
+        # 无 handle、无落盘图片和与现有 Logo 完全相同都没有人工可判断项。
+        # 只有新的/变化的确认来源，或明确标 needs_confirmation 的图片才进队列。
+        saved = bool(str(row.get("saved") or "").strip())
+        state = str(row.get("content_state") or "").strip()
+        accepted = str(row.get("accepted") or "").lower() in {"1", "true", "yes"}
+        needs_confirmation = row.get("confirmation") == "needs_confirmation"
+        return saved and state not in {"unchanged", "duplicate", "rejected"} and (
+            accepted or needs_confirmation
+        )
     if category == "cover_sources":
         # 封面抓取的成功、尺寸和缺失都是机械状态，不需要人工批准。旧界面把
         # 241 个未取得和 800 px 基线封面全塞进复核页，却没有可执行写入动作。
@@ -1336,6 +1346,9 @@ def _review_rows(contract: WebContract, category: str) -> tuple[list[dict], str 
         connection.close()
     for row in rows:
         decision = decisions.get(row["item_key"], {})
+        if category == "studio_logos" and row.get("content_state") == "changed":
+            # 同一厂牌上游头像变化是新的事实；旧批次 approved 不得把变化静默藏掉。
+            decision = {}
         row["decision"] = decision.get("status", "pending")
         row["decision_note"] = decision.get("note", "")
         row["preview_url"] = (row.get("resolved_url") or row.get("source_url")
