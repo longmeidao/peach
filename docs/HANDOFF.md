@@ -172,7 +172,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 真实 ledger 是当前写入者本机 `peach-data/database/ledger.db`，WAL 模式。正常浏览会合法写入播放/行为字段；平台绝对路径以 `docs/STATUS.md` 为准。
 - 测试必须使用临时 SQLite 和临时媒体；不得写真实 ledger。
 - 真实迁移前依次执行 SQLite 备份、asset/tag 计数、`PRAGMA integrity_check`、迁移版本检查、服务 smoke test。
-- 正式迁移 `0000`–`0016` 已应用。`0003` 增加默认 profile、稍后看、实体链接和搜索词；`0004` 增加 FTS5 trigram；`0005` 回填晚到兼容标签；`0006` 增加 `asset_preference`；`0007` 从创作者身份中移除结构文件夹名 `门槛`、`视频`、`宣传文件`；`0008` 增加 profile 级标签隐藏；`0009` 移除结构集合目录 `asce` 的假创作者关系和低置信 `vision_creator` 传播；`0010` 把 83 条「足交仙人」按水印和文件名证据归到 `suzuq`，并从 745 条 TokyoDolls 资产解除错误的「捅主任」关系；`0011` 记录更好版本目标；`0012` 增加跨访问端共享搜索历史；`0013` 将旧待删状态统一为回收站，默认查询排除回收站，清空回收站才永久删除；`0014` 清理明确的创作者 URL 后缀并保留旧名 alias；`0015` 增加 `review_decision`；`0016` 增加 `asset.release_date`。
+- Windows 正式迁移 `0000`–`0017` 已应用。`0003` 增加默认 profile、稍后看、实体链接和搜索词；`0004` 增加 FTS5 trigram；`0005` 回填晚到兼容标签；`0006` 增加 `asset_preference`；`0007` 从创作者身份中移除结构文件夹名 `门槛`、`视频`、`宣传文件`；`0008` 增加 profile 级标签隐藏；`0009` 移除结构集合目录 `asce` 的假创作者关系和低置信 `vision_creator` 传播；`0010` 把 83 条「足交仙人」按水印和文件名证据归到 `suzuq`，并从 745 条 TokyoDolls 资产解除错误的「捅主任」关系；`0011` 记录更好版本目标；`0012` 增加跨访问端共享搜索历史；`0013` 将旧待删状态统一为回收站，默认查询排除回收站，清空回收站才永久删除；`0014` 清理明确的创作者 URL 后缀并保留旧名 alias；`0015` 增加 `review_decision`；`0016` 增加 `asset.release_date`；`0017` 增加 profile 级持久播放列表、稳定顺序与续播位置。
 - `0007` 曾在应用后、提交前被改写注释/格式，导致校验和漂移。本次用迁移前备份重放当前 `0007`，对 298 条受影响资产与生产结果逐条对比，差异为 0 后才校正 `schema_migration` 校验和，然后正常应用 `0008`、`0009`。已应用迁移文件从此不得修改，任何后续变更必须新增版本。
 - 外置盘目标只保存 `R:\media`；代码、运行数据、venv 和 worktree 在两台机器各自的内置盘。`peach-data` 不进入仓库，也不整体交给文件同步。分通道边界见 ADR-0017。
 
@@ -203,7 +203,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - Ledger 拥有真相和行为；Stash 是可替换适配器，调用统一经过 `StashClient`，外部 Scene ID 和来源进入 `media_binding`，不新增直接 GraphQL helper 或 Stash 私有 FFmpeg 路径。规范女优/厂牌/标签/创作者进入 `entity`、`entity_external_ref`、`asset_entity`；扁平 `asset_tag` 和 creator/studio 字段只是兼容投影。
 - 详情、筛选、搜索、facets、索引、统计、榜单和相关推荐使用规范关系；JAV 入口除番号形态外还要求厂牌、女优、系列或发行日期等发行证据，FC2 ID 单独成立，creator-only 的 `JI-103` 不算 JAV。
 - 女优、厂牌、创作者、系列名称进入资料页；首页内容标签直接筛选首页，实体资料页的标签只筛选当前实体作品，并保留在 `/performers/{name}?tag=...` 等当前资料页 URL。`source_reference` 是私有来源，不开放为下载链接。
-- 「稍后看」写 `watch_queue`；「喜欢/为什么喜欢」写 profile 级 `asset_preference`。AI 只能把口味说明转成带来源/置信度/复核状态的候选，不能改写用户原文。
+- 「稍后看」写 `watch_queue`；「喜欢/为什么喜欢」写 profile 级 `asset_preference`。AI 只能把口味说明转成带来源/置信度/复核状态的候选，不能改写用户原文。自动 Mix 保存时把当时的项目与顺序复制到 `playlist` / `playlist_item`；播放列表按 profile 隔离，名称、当前项、增删和排序都写 ledger，删除列表不删除媒体，永久删除媒体会同步清理条目与续播引用。
 - Web 公共路由使用 `/performers/{name}`、`/studios/{name}`、`/creators/{name}`、`/series/{name}`；删除 `/entity/{kind}/{name}`。收起详情或导航离开时必须 pause、清空 `src`、调用 `load()` 并移除 video，不能只隐藏 DOM。
 - 「换一批」、统计、沉浸、全部女优、全部标签是动作/目的地，不显示为持续筛选状态。顶部只保留「没看过、稍后看、已标记」等需要主动进入的紧凑状态；「看过」和「疑似广告」不占首页快捷位。
 - 长卡连续 hover 5 秒才放大并显示 seek；短卡立即提供「稍后看」。实体文字链接必须消费点击，不能冒泡为展开视频。
@@ -239,7 +239,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 无限滚动同一时间只允许一个追加请求；先判断加载锁再递增 offset，避免快速触发时跳页。图片继续使用原生 `loading=lazy`。只有本地资源可使用真视频 hover；115/PikPak 等远端源必须使用本地接触印相。滚动、换页、隐藏页面或替换卡片 DOM 时，统一停止 hover 并释放 `src`。
 - 2026-08-15 实测：Prestige 显示 248 个总结果时首屏只构建 48 张卡片，点击「载入更多」后为 96；艺人索引 120 条约 311 ms，Prestige 第二页 48 条且跳过总数统计约 94 ms。具体耗时随 ledger 和磁盘状态变化，只把批量边界作为稳定契约。
 - 0.5.5 起，标签筛选行与排序/换批行都常驻顶栏下方，不再按滚动方向隐藏；两行在原始位置保持透明，只在真正吸顶后加半透明黑色磨砂底与分隔线，分别占位，不能盖住卡片内容。窄屏上的结果数量和全部排序按钮必须同处一条横向滚动带，文字不折行、按钮不压缩成竖排。
-- 0.6.1 起，首页每批 60 个普通作品中只插入 1 个自动 Mix 卡片，不额外请求 60 份队列，也不计入作品分页数。卡片复用本批已有种子，点击时才并行请求种子详情与一次 `/api/related`，队列上限 29 个，避免 N+1 和首屏批量构建。Mix 使用 `/mix/{seed_id}/{item_id}`，刷新和前进/后退可恢复同一队列；桌面端播放器右侧显示当前项着色的滚动列表，窄屏列表移到播放器下方。普通详情继续显示「接着看」，Mix 内不再重复渲染第二份相关推荐。
+- 0.6.1 起，首页每批 60 个普通作品中只插入 1 个自动 Mix 卡片，不额外请求 60 份队列，也不计入作品分页数。卡片复用本批已有种子，点击时才并行请求种子详情与一次 `/api/related`，队列上限 29 个，避免 N+1 和首屏批量构建。Mix 使用 `/mix/{seed_id}/{item_id}`，刷新和前进/后退可恢复同一队列；桌面端播放器右侧显示当前项着色的滚动列表，窄屏列表移到播放器下方。普通详情继续显示「接着看」，Mix 内不再重复渲染第二份相关推荐。0.6.4 起，Mix 可保存当时的稳定顺序；`/playlists` 提供新建、改名、继续播放和删除，详情可加入列表，队列内可上移、下移和移出；`/playlists/{playlist_id}/{item_id}` 可刷新恢复并只更新该列表的续播位置。
 - Mix 视觉证据来自用户于 2026-08-16 提供的 YouTube 截图 `codex-clipboard-8f6cbb25-399a-4f91-9c2a-a6972484ed50.png` 与 `codex-clipboard-baeb854e-3e27-43fb-9e6a-aa14830c248a.png`：普通流卡片有两层轻微上移的堆叠边、右下角 Mix 标识；打开后右侧是有当前项状态的滚动列表。Peach 有意保留自己的色彩 token、详情反馈区和本地元数据，不复制 YouTube 品牌、推荐文案或登录能力。
 - 首页、女优、厂牌等普通卡片统一由 `wireCards` 调用 `openItem`。只有沉浸/短片等显式传入 `onClick` 的场景允许覆盖。隐藏的 hover 工具必须 `pointer-events:none`，只在实际显示时恢复命中，避免截走海报详情点击。
 - 详情媒体用随机 `session` 标识同一次播放；收起详情、路由切换或替换详情时，前端必须清空 video 后调用 `/api/stream-cancel`，服务端取消该 session 下全部 Range/HLS 片段请求并拒绝迟到请求。只移除 DOM 不能保证 CloudDrive 停止读盘。

@@ -339,7 +339,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("function disposeStage")
         self.assertPageContains("video.pause();video.removeAttribute('src');video.load();video.remove()")
         self.assertPageContains(
-            "document.body.classList.remove('detail-open');current=null;activeMix=null;\n  scheduleStickySurfaces();"
+            "document.body.classList.remove('detail-open');current=null;activeQueue=null;\n  scheduleStickySurfaces();"
         )
         self.assertPageContains("const closeDetail=()=>{const restore=cloneBarsContext(detailReturnBarsContext)")
         self.assertPageContains("$('#closeStage').onclick=closeDetail")
@@ -628,7 +628,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("more._observer=new IntersectionObserver")
         self.assertPageContains("more.hidden=append?!items.has_more")
 
-    def test_mix_cards_share_the_home_flow_and_open_a_routed_side_queue(self):
+    def test_mix_and_persistent_playlists_share_the_routed_side_queue(self):
         self.assertPageContains('class="card mixcard" data-mix-seed=')
         self.assertPageContains("cards.splice(7,0,mixCardHtml(seed))")
         self.assertPageContains(".mixstack::before,.mixstack::after")
@@ -637,8 +637,19 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("route(`/mix/${seedId}/${itemId}`)")
         self.assertPageContains('class="mixqueue"')
         self.assertPageContains('class="mixitem ${x.id===itemId?\'current\':\'\'}"')
-        self.assertPageContains("data-mix-item")
-        self.assertPageContains("if(!mixContext)api('/api/related?id='")
+        self.assertPageContains("data-queue-item")
+        self.assertPageContains("if(!queueContext)api('/api/related?id='")
+        self.assertPageContains("async function openPlaylists(push=true)")
+        self.assertPageContains("if(location.pathname!=='/playlists')return")
+        self.assertPageContains("async function openPlaylist(playlistId,itemId=null,push=true)")
+        self.assertPageContains("route(`/playlists/${playlistId}/${chosen}`)")
+        self.assertPageContains("action:'progress'")
+        self.assertPageContains("action:'reorder'")
+        self.assertPageContains("action:'remove'")
+        self.assertPageContains("data-save-mix")
+        self.assertPageContains("source_kind:'mix'")
+        self.assertPageContains('id="addPlaylist"')
+        self.assertPageContains("data-add-playlist")
         self.assertPageContains("batchWithMix(d.items,location.pathname==='/'&&state.state!=='trash')")
         # 竖屏条只在首页出现。JAV 模式也排除：番号发行物是横版，竖屏是另一类内容，
         # 而主列表的 exclude_vertical 管不到这条——它是独立请求、独立插入的。

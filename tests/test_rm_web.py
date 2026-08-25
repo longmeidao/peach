@@ -70,6 +70,12 @@ CREATE TABLE entity_link(id INTEGER PRIMARY KEY,entity_id INTEGER,link_kind TEXT
 CREATE TABLE entity_search_term(entity_id INTEGER,term TEXT,purpose TEXT,source TEXT,created_at TEXT);
 CREATE TABLE watch_queue(profile_id TEXT,asset_id INTEGER,added_at TEXT,source TEXT,
   PRIMARY KEY(profile_id,asset_id));
+CREATE TABLE playlist(
+  id INTEGER PRIMARY KEY,profile_id TEXT,name TEXT,source_kind TEXT,
+  source_seed_asset_id INTEGER,current_asset_id INTEGER,created_at TEXT,updated_at TEXT);
+CREATE TABLE playlist_item(
+  playlist_id INTEGER,asset_id INTEGER,position INTEGER,added_at TEXT,
+  PRIMARY KEY(playlist_id,asset_id),UNIQUE(playlist_id,position));
 CREATE TABLE asset_preference(profile_id TEXT,asset_id INTEGER,liked INTEGER,reason TEXT,
   source TEXT,updated_at TEXT,PRIMARY KEY(profile_id,asset_id));
 CREATE TABLE asset_quality_goal(profile_id TEXT,asset_id INTEGER,wanted INTEGER,reason TEXT,
@@ -365,10 +371,11 @@ class WebDataTests(unittest.TestCase):
             "/api/items", "/api/item", "/api/entity", "/api/photos", "/api/photo-set",
             "/api/index", "/api/duplicates", "/api/quality-goals",
             "/api/stats", "/api/tops", "/api/ads", "/api/related", "/api/facets",
-            "/api/search-history", "/api/review",
+            "/api/search-history", "/api/review", "/api/playlists", "/api/playlist",
         })
         self.assertEqual(set(rm_web.POST_HANDLERS), {
             "/api/activity", "/api/play", "/api/feedback", "/api/watch-later",
+            "/api/playlist",
             "/api/preference", "/api/quality-goal", "/api/item-tag", "/api/batch",
             "/api/search-history", "/api/trash/empty", "/api/review/decision",
             "/api/purge-missing", "/api/review/auto-apply",
@@ -426,6 +433,10 @@ class WebDataTests(unittest.TestCase):
 
     def test_recycle_bin_delete_removes_the_media_and_every_ledger_reference(self):
         path = self.stage_media(1)
+        playlist = rm_web.w_playlist(self.contract, {
+            "action": "create", "name": "待清理", "asset_ids": [1],
+            "source_kind": "mix", "source_seed_asset_id": 1,
+        })["playlist"]
         rm_web.w_feedback(self.contract, {"id": 1, "kind": "dispose"})
         result = rm_web.w_batch(self.contract, {"ids": [1], "operation": "delete"})
 
@@ -436,6 +447,12 @@ class WebDataTests(unittest.TestCase):
         for table in rm_web.ASSET_REFERENCE_TABLES:
             left = con.execute(f"SELECT count(*) FROM {table} WHERE asset_id=1").fetchone()[0]
             self.assertEqual(left, 0, f"{table} 残留了已删资产的引用")
+        self.assertIsNone(con.execute(
+            "SELECT current_asset_id FROM playlist WHERE id=?", (playlist["id"],),
+        ).fetchone()[0])
+        self.assertIsNone(con.execute(
+            "SELECT source_seed_asset_id FROM playlist WHERE id=?", (playlist["id"],),
+        ).fetchone()[0])
         con.close()
 
     def test_failed_database_commit_restores_quarantined_media(self):
@@ -669,6 +686,46 @@ class WebDataTests(unittest.TestCase):
         self.assertFalse(rm_web.w_watch_later(
             self.contract, {"id": 1},
         )["watch_later"])
+
+    def test_persistent_playlist_can_save_mix_reorder_resume_and_edit(self):
+        created = rm_web.w_playlist(self.contract, {
+            "action": "create", "name": "  Alice Mix  ", "asset_ids": [1, 2, 1],
+            "source_kind": "mix", "source_seed_asset_id": 1,
+        })["playlist"]
+        self.assertEqual(created["name"], "Alice Mix")
+        self.assertEqual([item["id"] for item in created["items"]], [1, 2])
+        self.assertEqual(created["current_asset_id"], 1)
+
+        playlist_id = created["id"]
+        renamed = rm_web.w_playlist(self.contract, {
+            "action": "rename", "id": playlist_id, "name": "周末",
+        })["playlist"]
+        self.assertEqual(renamed["name"], "周末")
+        reordered = rm_web.w_playlist(self.contract, {
+            "action": "reorder", "id": playlist_id, "asset_ids": [2, 1],
+        })["playlist"]
+        self.assertEqual([item["id"] for item in reordered["items"]], [2, 1])
+        resumed = rm_web.w_playlist(self.contract, {
+            "action": "progress", "id": playlist_id, "asset_id": 2,
+        })["playlist"]
+        self.assertEqual(resumed["current_asset_id"], 2)
+        edited = rm_web.w_playlist(self.contract, {
+            "action": "remove", "id": playlist_id, "asset_id": 2,
+        })["playlist"]
+        self.assertEqual([item["id"] for item in edited["items"]], [1])
+        self.assertEqual(edited["current_asset_id"], 1)
+        self.assertEqual(rm_web.q_playlists(self.contract)["items"][0]["item_count"], 1)
+
+        deleted = rm_web.w_playlist(self.contract, {
+            "action": "delete", "id": playlist_id,
+        })
+        self.assertEqual(deleted["deleted"], playlist_id)
+        self.assertEqual(rm_web.q_playlists(self.contract)["items"], [])
+        con = sqlite3.connect(self.db_path)
+        self.assertEqual(con.execute(
+            "SELECT count(*) FROM playlist_item WHERE playlist_id=?", (playlist_id,),
+        ).fetchone()[0], 0)
+        con.close()
 
 REVIEW_SCHEMA = """
 CREATE TABLE asset(id INTEGER PRIMARY KEY,location TEXT,path TEXT,name TEXT,medium TEXT,

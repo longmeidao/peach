@@ -51,6 +51,12 @@ CREATE TABLE asset_entity(
   UNIQUE(asset_id,entity_id,role,source));
 CREATE TABLE watch_queue(profile_id TEXT,asset_id INTEGER,added_at TEXT,source TEXT,
   PRIMARY KEY(profile_id,asset_id));
+CREATE TABLE playlist(
+  id INTEGER PRIMARY KEY,profile_id TEXT,name TEXT,source_kind TEXT,
+  source_seed_asset_id INTEGER,current_asset_id INTEGER,created_at TEXT,updated_at TEXT);
+CREATE TABLE playlist_item(
+  playlist_id INTEGER,asset_id INTEGER,position INTEGER,added_at TEXT,
+  PRIMARY KEY(playlist_id,asset_id),UNIQUE(playlist_id,position));
 CREATE TABLE asset_preference(profile_id TEXT,asset_id INTEGER,liked INTEGER,reason TEXT,
   source TEXT,updated_at TEXT,PRIMARY KEY(profile_id,asset_id));
 CREATE TABLE asset_quality_goal(profile_id TEXT,asset_id INTEGER,wanted INTEGER,reason TEXT,
@@ -512,13 +518,31 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
                      "/creators", "/tags", "/stats", "/immerse", "/trash", "/review",
                      # 前端路由写好了不等于能直接打开：SPA 路径是逐条登记的，
                      # 漏登记时源码断言照样全绿，只有真的请求一次才会露出 404。
-                     "/duplicates", "/quality-goals", "/mix/1/2"):
+                     "/duplicates", "/quality-goals", "/mix/1/2", "/playlists",
+                     "/playlists/1/1"):
             response = await self.client.get(path)
             self.assertEqual(response.status_code, 200, path)
             self.assertIn("Peach test", response.text)
 
         removed = await self.client.get("/entity/performer/Alice")
         self.assertEqual(removed.status_code, 404)
+
+    async def test_playlist_api_saves_and_reads_a_mix_without_exposing_paths(self):
+        await self.client.post(
+            "/login", content="token=secret&next=%2F",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        created = await self.client.post("/api/playlist", json={
+            "action": "create", "name": "测试 Mix", "asset_ids": [1],
+            "source_kind": "mix", "source_seed_asset_id": 1,
+        })
+        self.assertEqual(created.status_code, 200)
+        playlist_id = created.json()["playlist"]["id"]
+        listing = (await self.client.get("/api/playlists")).json()["items"]
+        self.assertEqual(listing[0]["item_count"], 1)
+        detail = (await self.client.get(f"/api/playlist?id={playlist_id}")).json()
+        self.assertEqual(detail["items"][0]["id"], 1)
+        self.assertNotIn("path", detail["items"][0])
 
     async def test_pinned_frontend_vendor_assets_are_self_hosted(self):
         response = await self.client.get("/vendor/player.js")
