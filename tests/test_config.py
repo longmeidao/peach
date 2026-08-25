@@ -6,6 +6,14 @@ from peach import config
 
 
 class DefaultPathTests(unittest.TestCase):
+    def test_project_root_uses_pyinstaller_resource_directory_without_a_src_layer(self):
+        source = Path("C:/repo/src/peach/config.py")
+        self.assertEqual(config._project_root(source), Path("C:/repo"))
+        self.assertEqual(
+            config._project_root(source, "C:/bundle/_MEI123"),
+            Path("C:/bundle/_MEI123"),
+        )
+
     def test_windows_runtime_defaults_to_the_desktop_project(self):
         project = Path.home() / "Desktop" / "peach"
         self.assertEqual(config._WINDOWS_DATA_ROOT, project / "peach-data")

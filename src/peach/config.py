@@ -1,11 +1,18 @@
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 from .platform import translate_ledger_path, translate_roots
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+def _project_root(module_file=__file__, bundle_root=None) -> Path:
+    """源码树保留 `src/` 层；PyInstaller 的资源直接落在 `_MEIPASS`。"""
+    return (Path(bundle_root) if bundle_root is not None
+            else Path(module_file).resolve().parents[2])
+
+
+PROJECT_ROOT = _project_root(bundle_root=getattr(sys, "_MEIPASS", None))
 
 # 运行数据目录按平台给默认值，两个平台各自持有一份可独立运行的 peach-data。
 # `PEACH_DATA_ROOT` 覆盖默认值；worktree 也靠这个绝对路径找到同一份数据。
