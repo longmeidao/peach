@@ -20,6 +20,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -40,6 +41,15 @@ LOGGER = logging.getLogger(__name__)
 PUSH_INTERVAL_SECONDS = 60
 
 
+#: 旧标记没有记 WAL 载荷时的占位值；判定时跳过这一层。
+UNKNOWN_WAL = -1
+
+#: WAL 文件头长度。比它短的文件不可能装着帧。
+WAL_HEADER_BYTES = 32
+
+WAL_SUFFIX = "-wal"
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -57,6 +67,10 @@ class Marker:
     written_at: str
     size: int
     mtime_ns: int
+    #: 主库内容摘要。空串表示旧标记没有记过，判定时退回只看 size/mtime。
+    digest: str = ""
+    #: 归一化后的 WAL 载荷大小；-1 表示旧标记没有记过。
+    wal_size: int = UNKNOWN_WAL
 
     def as_json(self) -> str:
         return json.dumps(
@@ -66,6 +80,8 @@ class Marker:
                 "written_at": self.written_at,
                 "size": self.size,
                 "mtime_ns": self.mtime_ns,
+                "digest": self.digest,
+                "wal_size": self.wal_size,
             },
             ensure_ascii=False,
             indent=2,
@@ -110,16 +126,26 @@ def read_marker(db_path: Path) -> Marker | None:
             written_at=str(raw.get("written_at", "")),
             size=int(raw.get("size", -1)),
             mtime_ns=int(raw.get("mtime_ns", -1)),
+            digest=str(raw.get("digest", "")),
+            wal_size=int(raw.get("wal_size", UNKNOWN_WAL)),
         )
     except (KeyError, TypeError, ValueError):
         return None
 
 
-def write_marker(db_path: Path, marker: Marker) -> Marker:
-    """把标记写到库文件旁边，指纹按落盘后的实际状态重算。"""
+def write_marker(db_path: Path, marker: Marker, *, with_digest: bool = True) -> Marker:
+    """把标记写到库文件旁边，指纹按落盘后的实际状态重算。
+
+    `with_digest=False` 用于共享副本：只有本机副本会被 `local_dirty` 检查，给共享副本
+    算摘要等于凭空多读一遍 127 MiB 的 SMB 网络流量，没有任何消费者用得上。
+    """
     current = fingerprint(db_path)
     if current is not None:
-        marker = replace(marker, size=current[0], mtime_ns=current[1])
+        marker = replace(
+            marker, size=current[0], mtime_ns=current[1],
+            digest=digest_database(db_path) if with_digest else "",
+            wal_size=wal_payload_size(db_path),
+        )
     target = marker_path(db_path)
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_name(target.name + ".tmp")
@@ -146,14 +172,61 @@ def device_id(state_dir: Path) -> str:
     return generated
 
 
+def digest_database(db_path: Path) -> str:
+    """主库文件的 SHA-256。127 MiB 实测约 78 ms，只在判据出现分歧时才算。"""
+    hasher = hashlib.sha256()
+    try:
+        with db_path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(4 * 1024 * 1024), b""):
+                hasher.update(chunk)
+    except OSError:
+        return ""
+    return hasher.hexdigest()
+
+
+def wal_payload_size(db_path: Path) -> int:
+    """WAL 里有没有帧，用归一化后的大小表示。
+
+    只读连接打开数据库时 SQLite 会建一个 0 字节的 `-wal`，关闭时又可能删掉它。
+    「不存在」和「0 字节」因此必须等价，否则光是浏览就会被判成写过。
+    小于一个 WAL 头（32 字节）的文件不可能装着帧，一律归零。
+    """
+    try:
+        size = Path(f"{db_path}{WAL_SUFFIX}").stat().st_size
+    except OSError:
+        return 0
+    return size if size >= WAL_HEADER_BYTES else 0
+
+
 def local_dirty(db_path: Path, marker: Marker | None) -> bool:
-    """这份副本在上次标记之后有没有被写过。"""
+    """这份副本在上次标记之后有没有被写过。
+
+    判据分三层，从便宜到贵，每一层都是实测出来的（2026-08-25，见 ADR-0020）：
+
+    1. **WAL 载荷**。只看 `(size, mtime_ns)` 会**漏报**：已提交但还在 WAL 里没回写的
+       事务完全不改主库文件，于是 `plan()` 判成可以 pull，而 `copy_database` 会
+       `unlink` 掉目标的 `-wal`——那些事务就此永久消失。这是数据丢失，不是误报。
+    2. **快路径**。主库指纹和 WAL 载荷都与标记一致就是干净，不做任何哈希。
+    3. **内容摘要**。主库大小不变、只有 mtime 变时，`(size, mtime_ns)` 会**误报**：
+       内容中性的 checkpoint 或备份工具碰一下时间戳都会让只读端被判成脏，
+       于是每次同步都退化成要人工选边。这一层用摘要把「碰过」和「写过」分开。
+
+    旧标记没有 `digest`/`wal_size`，那两层自动跳过，行为退回原来的样子。
+    """
     current = fingerprint(db_path)
     if current is None:
         return False
     if marker is None:
         return True
-    return current != (marker.size, marker.mtime_ns)
+    if marker.wal_size != UNKNOWN_WAL and wal_payload_size(db_path) != marker.wal_size:
+        return True
+    if current == (marker.size, marker.mtime_ns):
+        return False
+    if current[0] != marker.size:
+        return True
+    if marker.digest and digest_database(db_path) == marker.digest:
+        return False
+    return True
 
 
 def writer_device(local: Path, shared: Path) -> str | None:
@@ -312,7 +385,8 @@ class LedgerSync:
         generation = base + 1
         copy_database(self.local, self.shared)
         stamp = _now()
-        write_marker(self.shared, Marker(generation, self.device, stamp, 0, 0))
+        write_marker(self.shared, Marker(generation, self.device, stamp, 0, 0),
+                     with_digest=False)
         write_marker(self.local, Marker(generation, self.device, stamp, 0, 0))
 
     # ── 生命周期 ────────────────────────────────────────────────────────────
@@ -369,7 +443,8 @@ class LedgerSync:
             shared_marker.generation if shared_marker else 0,
         ) + 1
         stamp = _now()
-        write_marker(self.shared, Marker(generation, self.device, stamp, 0, 0))
+        write_marker(self.shared, Marker(generation, self.device, stamp, 0, 0),
+                     with_digest=False)
         write_marker(self.local, Marker(generation, self.device, stamp, 0, 0))
         self.observe()
         return SyncPlan("take-ownership", "本机已成为唯一写入端", generation, generation)
