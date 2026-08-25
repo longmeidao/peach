@@ -252,12 +252,20 @@ class FollowWebSourceTests(unittest.TestCase):
         # 「换一批」自动刷新绝不能顺手触发一次联网检查。
         self.assertPageContains("if(location.pathname==='/follow')return;")
 
+    def test_every_entered_state_can_be_left_again(self):
+        self.assertPageContains("""item.status==='seen'||item.status==='ignored'""")
+        self.assertPageContains(">恢复未看</button>")
+
     def test_credential_dependent_media_is_called_out(self):
         self.assertPageContains("媒体需要登录会话才能取，发现本身不需要")
 
     def test_follow_styles_exist_for_the_card_surface(self):
         for selector in (".followlist{", ".followitem{", ".fbadge{", ".fvariants{"):
             self.assertPageContains(selector)
+
+    def test_the_check_button_stays_visible_on_a_narrow_viewport(self):
+        # 标签条窄屏横滚会把主操作滚出视野；390 宽下它必须独占一行。
+        self.assertPageContains(".follow .reviewtabs .fcheck{margin-left:0;flex:1 1 100%")
 
 
 if __name__ == "__main__":

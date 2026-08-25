@@ -1178,6 +1178,10 @@ function followCard(group){
           item.status==='saved'?`已保存 · asset #${item.asset_id}`:'保存到账本'}</button>
         <button data-follow-status="${item.id}" data-to="seen"${item.status==='seen'?' disabled':''}>标记已看</button>
         <button data-follow-status="${item.id}" data-to="ignored"${item.status==='ignored'?' disabled':''}>忽略</button>
+        ${/* 进得去就要出得来：已看和已忽略都能退回未看。已保存不给退——那一步写了
+             ledger，撤销要删 asset，不是一个按钮该做的事。 */
+          item.status==='seen'||item.status==='ignored'
+            ?`<button data-follow-status="${item.id}" data-to="new">恢复未看</button>`:''}
         <span class="fstate" aria-live="polite"></span>
       </div>
     </div></article>`;

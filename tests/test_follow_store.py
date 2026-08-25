@@ -175,6 +175,14 @@ class RecordTests(_StoreCase):
         self.store.set_status(self.store.items()[0].id, "seen")
         self.assertEqual(len(self.store.items(statuses=("new",))), 1)
 
+    def test_an_ignored_item_can_be_restored_to_new(self):
+        source_id = self._source()
+        self.store.record(source_id, _fetch([_candidate("1", "A")]), moment=MOMENT)
+        item = self.store.items()[0]
+        self.store.set_status(item.id, "ignored")
+        self.store.set_status(item.id, "new")
+        self.assertEqual(self.store.items()[0].status, "new")
+
     def test_saved_status_cannot_be_set_directly(self):
         source_id = self._source()
         self.store.record(source_id, _fetch([_candidate("1", "A")]), moment=MOMENT)
