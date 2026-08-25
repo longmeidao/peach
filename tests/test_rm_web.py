@@ -1324,6 +1324,31 @@ class ReviewQueueTests(unittest.TestCase):
         })
         self.assertEqual(result["applied_assets"], 0)
 
+    def test_endcard_candidate_links_ocr_frame_and_original_video(self):
+        fields = ["candidate_key", "asset_id", "name", "sample_kind",
+                  "timestamp_seconds", "frame_key", "ocr_text", "verdict",
+                  "detected_urls", "confidence", "reason", "status"]
+        self._csv("video-endcard-candidate-20260825.csv", fields, [{
+            "candidate_key": "1", "asset_id": "1", "name": "1.mp4",
+            "sample_kind": "tail", "timestamp_seconds": "98",
+            "frame_key": "1/tail-000098000.png",
+            "ocr_text": "Full version available on: fansly.com/example",
+            "verdict": "incomplete_candidate", "detected_urls": "fansly.com/example",
+            "confidence": "0.98", "reason": "片尾明确写有 Full version available",
+            "status": "candidate",
+        }])
+        row = rm_web.q_review(self.contract)["sections"]["video_endcards"][0]
+        self.assertEqual(row["item_key"], "1")
+        self.assertEqual(row["asset_id"], 1)
+        self.assertEqual(
+            row["preview_url"],
+            "/endcard-frame?id=1&name=tail-000098000.png",
+        )
+        result = rm_web.w_review_decision(self.contract, {
+            "category": "video_endcards", "item_key": "1", "status": "skipped",
+        })
+        self.assertEqual(result["applied_assets"], 0)
+
     def test_code_creator_candidates_reach_the_review_page(self):
         fields = ["entity_id", "creator", "verdict", "identity", "assets",
                   "sample_path", "code_action", "reason"]

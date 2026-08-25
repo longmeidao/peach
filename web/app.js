@@ -890,7 +890,7 @@ function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
 let reviewData=null,reviewCategory='metadata_fields';
 /* 主体是实体而不是单条作品的复核分类。值就是实体 kind。 */
 const ENTITY_REVIEW_CATEGORIES={creator_tags:'creator',western_identity:'creator'};
-const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',western_identity:'西方身份回配',code_creators:'番号目录存疑',fc2_markings:'FC2 评论标记',fc2_similarity:'FC2 跨号相似',media_failure:'媒体失败'};
+const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',western_identity:'西方身份回配',code_creators:'番号目录存疑',fc2_markings:'FC2 评论标记',fc2_similarity:'FC2 跨号相似',video_endcards:'片尾/出处证据',media_failure:'媒体失败'};
 let dupData=null;
 /* 重复文件。判据是「同番号 + 时长相近 + 分卷标记一致」，不是同番号即重复——
    合集、分卷和混入的广告都会共用一个 code，只按番号做「保留最大」会删掉内容。
