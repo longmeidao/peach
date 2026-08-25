@@ -1046,6 +1046,7 @@ async function openReview(push=true){
                <div class="reviewasset-grid">${assets.map(asset=>`<button type="button" class="reviewasset picked" data-review-asset="${asset.id}" aria-pressed="true" title="${esc(asset.name)}"><img src="/poster?id=${asset.id}&c=4" alt="" loading="lazy"><span class="pickmark">${icon('check')}</span></button>`).join('')}</div></div>`
               // 空白一片会被当成界面坏了。真实原因是这些作品还没抽帧，说清楚比留白好。
               : `<p class="empty">这 ${esc(row.video_count||'')} 条作品尚未抽帧，暂无预览；批准后仍会按候选写入标签</p>`)
+           : reviewCategory==='fc2_similarity'?''
            : (row.preview_url?`<div class="reviewimage"><img src="${esc(row.preview_url)}" alt="" loading="lazy" onerror="this.closest('.reviewimage').remove()"></div>`:'<p class="empty">未取得图片预览</p>');
          return `<article class="reviewitem" data-review-key="${esc(key)}" data-decision="${esc(decision)}">${
            // 实体类卡片的名字已经写在创作者入口里，再画一个 h4 就是同一行字上下两遍。
