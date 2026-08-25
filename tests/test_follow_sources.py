@@ -17,7 +17,7 @@ from peach.follow_secrets import Credential, CredentialError, CredentialStore
 from peach.follow_sources import (
     USER_AGENT, F95ZoneConnector, KemonoConnector, Rule34VideoConnector,
     Rule34XxxConnector, SimpCityConnector, build_connector, _iso_from_relative,
-    origin_group_key,
+    origin_group_key, parse_source_url,
 )
 from peach.http import HttpResponse
 
@@ -355,6 +355,71 @@ class OriginGroupKeyTests(unittest.TestCase):
         for value in ("https://rule34video.com/video/4542721/", "https://fanbox.cc/",
                       "not a url", "", None, 12345):
             self.assertIsNone(origin_group_key(value))
+
+
+class ParseSourceUrlTests(unittest.TestCase):
+    """粘进来的链接怎么认。纯解析，不联网。"""
+
+    def test_each_supported_host_maps_to_its_provider_and_ref(self):
+        cases = {
+            "https://kemono.cr/fanbox/user/30917150": ("kemono", "fanbox/30917150"),
+            "https://coomer.st/onlyfans/user/abc": ("coomer", "onlyfans/abc"),
+            "https://pawchive.pw/patreon/user/123": ("pawchive", "patreon/123"),
+            "https://rule34video.com/models/lazyprocrastinator/":
+                ("rule34video", "lazyprocrastinator"),
+            "https://rule34.xxx/index.php?page=post&s=list&tags=lazyprocrastinator":
+                ("rule34xxx", "lazyprocrastinator"),
+            "https://f95zone.to/threads/lazy-collection.50685/": ("f95zone", "50685"),
+        }
+        for url, expected in cases.items():
+            parsed = parse_source_url(url)
+            self.assertEqual((parsed.provider, parsed.ref), expected, url)
+
+    def test_a_deep_link_is_narrowed_to_the_creator(self):
+        parsed = parse_source_url("https://kemono.cr/fanbox/user/30917150/post/11406814")
+        self.assertEqual(parsed.ref, "fanbox/30917150")
+        self.assertEqual(parsed.url, "https://kemono.cr/fanbox/user/30917150")
+
+    def test_threads_get_release_semantics_and_others_get_work(self):
+        self.assertEqual(parse_source_url("https://f95zone.to/threads/x.1/").semantics,
+                         "release")
+        self.assertEqual(
+            parse_source_url("https://rule34video.com/models/abc/").semantics, "work")
+
+    def test_a_bare_host_is_accepted_and_www_is_ignored(self):
+        self.assertEqual(parse_source_url("rule34video.com/models/abc/").provider,
+                         "rule34video")
+        self.assertEqual(parse_source_url("https://www.rule34video.com/models/abc/").ref,
+                         "abc")
+
+    def test_the_thread_slug_becomes_a_readable_label(self):
+        parsed = parse_source_url(
+            "https://f95zone.to/threads/lazy-procrastinator-collection.50685/")
+        self.assertEqual(parsed.label, "lazy procrastinator collection")
+
+    def test_the_label_stops_at_the_release_date_not_at_the_end_of_the_slug(self):
+        # f95 的 slug 惯例是 `<作品名>-<发布日期>-<作者手柄>`，全取会得到一长串元数据。
+        parsed = parse_source_url(
+            "https://f95zone.to/threads/"
+            "lazy-procrastinator-collection-2026-06-28-lazyprocrastinator-lazyprocrast.50685/")
+        self.assertEqual(parsed.label, "lazy procrastinator collection")
+
+    def test_the_right_host_with_the_wrong_path_says_what_shape_is_expected(self):
+        for url, hint in (
+            ("https://kemono.cr/posts", "fanbox/user"),
+            ("https://rule34video.com/latest-updates/", "models"),
+            ("https://rule34.xxx/index.php?page=post&s=view&id=1", "tags="),
+            ("https://f95zone.to/latest", "threads"),
+        ):
+            with self.assertRaises(FollowSourceError) as caught:
+                parse_source_url(url)
+            self.assertIn(hint, str(caught.exception), url)
+
+    def test_credentials_and_non_http_urls_are_refused(self):
+        for url in ("https://user:pw@kemono.cr/fanbox/user/1",
+                    "ftp://kemono.cr/fanbox/user/1", ""):
+            with self.assertRaises(FollowSourceError):
+                parse_source_url(url)
 
 
 class BuildConnectorTests(unittest.TestCase):

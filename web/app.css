@@ -1146,3 +1146,34 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
      不能要求先横滑才发现。窄屏下让它独占一行。 */
   .follow .reviewtabs{flex-wrap:wrap;overflow-x:visible}
   .follow .reviewtabs .fcheck{margin-left:0;flex:1 1 100%;justify-content:center}}
+
+/* ── 追更管理页 ── */
+.fhead{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;margin-bottom:16px}
+.fhead h2{margin:0 0 4px;font-size:20px}
+.fhead>div{flex:1 1 320px;min-width:0}
+.fhead p{margin:0;color:var(--muted);font-size:12px;line-height:1.6;max-width:62ch}
+.faddform{display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex:1 1 340px}
+.faddform input{flex:1 1 260px;min-width:0;border:1px solid var(--border-15);border-radius:9px;background:var(--overlay-5);color:var(--ink);padding:9px 12px;font-size:13px}
+.faddform input:focus-visible{outline:2px solid var(--tungsten);outline-offset:1px;border-color:var(--tungsten)}
+.faddform button{border:1px solid var(--tungsten);border-radius:9px;background:var(--tungsten);color:#fff;font-weight:600;padding:9px 18px;font-size:13px;cursor:pointer;white-space:nowrap}
+.faddform button:disabled{opacity:.6;cursor:default}
+.faddform [data-follow-add-state]{flex:1 1 100%;font-size:11.5px;color:var(--drop);min-height:1em}
+.fsource .fremove{color:var(--drop)}
+.fsource .fremove:hover{border-color:var(--drop);color:var(--drop)}
+.fwarn{margin:0 0 12px;padding:9px 12px;border:1px solid var(--drop);border-radius:9px;color:var(--drop);font-size:12px}
+.flink{border:0;background:none;padding:0;color:var(--tungsten);font:inherit;cursor:pointer;text-decoration:underline}
+.fcontent,.fcreds{margin-top:22px}
+.fcontent h3,.fcreds h3{margin:0 0 8px;font-size:15px}
+.fcontent>p.mono{margin:0 0 10px;color:var(--muted);font-size:12px}
+.fbulk{display:flex;gap:8px;flex-wrap:wrap}
+.fbulk button{border:1px solid var(--border-15);border-radius:8px;background:transparent;color:var(--ink-2);padding:6px 13px;font-size:12px;cursor:pointer}
+.fbulk button:hover:not(:disabled){border-color:var(--tungsten);color:var(--ink)}
+.fcreds ul{list-style:none;margin:0 0 8px;padding:0;display:grid;gap:5px}
+.fcred{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:6px 12px;border:1px solid var(--line-soft);border-radius:9px;font-size:12px}
+.fcred b{min-width:100px}
+.fcred .mono{color:var(--muted);font-size:11.5px}
+.fcred.bad{border-color:var(--drop)}
+.fcred i{font-style:normal;color:var(--drop);font-size:11.5px}
+.fcreds p{margin:4px 0 0;color:var(--muted);font-size:11.5px}
+@media (max-width:640px){.faddform{flex:1 1 100%}.faddform input{flex:1 1 100%}
+  .faddform button{flex:1 1 100%}}

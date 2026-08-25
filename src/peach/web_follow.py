@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 from .follow import FollowSourceError
 from .follow_secrets import CredentialError, CredentialStore
-from .follow_sources import CONNECTORS, build_connector
+from .follow_sources import CONNECTORS, KemonoConnector, build_connector, parse_source_url
 from .follow_store import FollowStore, ReleaseGroup
 
 
@@ -179,6 +179,60 @@ def _failure(contract, row, error, moment, status) -> dict:
             row["id"], str(error), moment, status=status)
     return {"source": row["id"], "provider": row["provider"], "ref": row["ref"],
             "ok": False, "status": status, "error": str(error)}
+
+
+def _resolve_label(contract, parsed, credential) -> str:
+    """尽量把标签换成人看得懂的名字。
+
+    kemono 系有 profile 端点，一次请求就能把 `30917150 · fanbox` 换成创作者名；
+    取不到就保留从链接推出来的标签，不猜。
+    """
+    if parsed.provider not in KemonoConnector.HOSTS:
+        return parsed.label
+    connector = KemonoConnector(provider=parsed.provider, credential=credential)
+    service, _, user = parsed.ref.partition("/")
+    try:
+        response = connector._get(
+            f"https://{connector.host}/api/v1/{service}/user/{user}/profile")
+        if response.status != 200:
+            return parsed.label
+        name = (connector._json(response) or {}).get("name")
+    except (FollowSourceError, CredentialError):
+        return parsed.label
+    return f"{name} · {service}" if name else parsed.label
+
+
+def w_follow_source(contract, body) -> dict:
+    """粘一条来源链接就登记，并立刻检查一次。
+
+    登记成功但首次检查失败不算失败：来源已经在列表里，错误显示在它那一行上——
+    rule34.xxx 缺 key 就是这种情况，把它整个回滚掉反而让人不知道发生了什么。
+    """
+    action = str(body.get("action") or "add")
+    if action == "remove":
+        source_id = body.get("id")
+        if not isinstance(source_id, int):
+            raise ValueError("id must be an integer follow source id")
+        with contract.database.write_transaction() as connection:
+            connection.execute("DELETE FROM follow_source WHERE id=?", (source_id,))
+        return {"ok": True, "removed": source_id}
+    if action != "add":
+        raise ValueError(f"unknown follow source action: {action}")
+
+    parsed = parse_source_url(str(body.get("url") or ""))
+    credentials = CredentialStore(contract.follow_secrets_root)
+    credential = credentials.load(parsed.provider)
+    label = str(body.get("label") or "").strip() or _resolve_label(
+        contract, parsed, credential)
+    with contract.database.write_transaction() as connection:
+        source_id = _store(contract, connection).register(
+            provider=parsed.provider, ref=parsed.ref, label=label, url=parsed.url,
+            semantics=parsed.semantics)
+    checked = w_follow_check(contract, {"source": source_id})
+    outcome = next((row for row in checked["results"]
+                    if row["source"] == source_id), None)
+    return {"ok": True, "source": source_id, "provider": parsed.provider,
+            "ref": parsed.ref, "label": label, "checked": outcome}
 
 
 def q_follow_credentials(contract, _args) -> dict:
