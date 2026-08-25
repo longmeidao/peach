@@ -909,6 +909,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("code_creators:'番号目录存疑'")
         self.assertPageLacks("cover_sources:'封面来源'")
         self.assertPageContains("fc2_markings:'FC2 评论标记'")
+        self.assertPageContains("fc2_similarity:'FC2 跨号相似'")
+        self.assertPageContains("const comparison=row.comparison_assets||[];")
+        self.assertPageContains('class="reviewcompare"')
 
     def test_index_pages_drop_the_home_filter_bars_and_back_button(self):
         # 艺人/标签索引和资料页一样是「专注看某一类实体」的表面。

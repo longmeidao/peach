@@ -1290,6 +1290,40 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertIn("19 个分片", row["reason"])
         self.assertIn("封面不下发", row["reason"])
 
+    def test_fc2_cross_number_similarity_is_a_record_only_review_candidate(self):
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET code='FC2-PPV-1083921' WHERE id=1")
+        con.execute(
+            "INSERT INTO asset(id,location,path,name,medium,code,duration,snapshot_path) "
+            "VALUES(4,'local',?,'right.mp4','video','FC2-PPV-1384193',100,'r.jpg')",
+            (r"R:\Media\right.mp4",),
+        )
+        con.commit(); con.close()
+        fields = ["pair_key", "code", "left_code", "right_code", "evidence_kinds",
+                  "duration_delta_seconds", "size_delta_percent", "shared_performers",
+                  "left_asset_id", "right_asset_id", "warnings", "reason", "status"]
+        self._csv("fc2-similarity-candidate-20260825.csv", fields, [{
+            "pair_key": "1083921|1384193", "code": "FC2-PPV-1083921",
+            "left_code": "FC2-PPV-1083921", "right_code": "FC2-PPV-1384193",
+            "evidence_kinds": "comment_equivalent media_similarity",
+            "duration_delta_seconds": "1.2", "size_delta_percent": "0.5",
+            "shared_performers": "真夏", "warnings": "匿名评论等价标记只作候选",
+            "left_asset_id": "1", "right_asset_id": "4",
+            "reason": "", "status": "candidate",
+        }])
+        row = rm_web.q_review(self.contract)["sections"]["fc2_similarity"][0]
+        self.assertEqual(row["item_key"], "1083921|1384193")
+        self.assertEqual(row["asset_id"], 1)
+        self.assertEqual([asset["id"] for asset in row["comparison_assets"]], [1, 4])
+        self.assertEqual(row["comparison_assets"][1]["preview_url"], "/poster?id=4&c=4")
+        self.assertIn("comment_equivalent", row["reason"])
+        self.assertIn("时长差 1.2 秒", row["reason"])
+        result = rm_web.w_review_decision(self.contract, {
+            "category": "fc2_similarity", "item_key": row["item_key"],
+            "status": "skipped",
+        })
+        self.assertEqual(result["applied_assets"], 0)
+
     def test_code_creator_candidates_reach_the_review_page(self):
         fields = ["entity_id", "creator", "verdict", "identity", "assets",
                   "sample_path", "code_action", "reason"]
