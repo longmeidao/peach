@@ -699,6 +699,8 @@ class ReviewQueueTests(unittest.TestCase):
         root = Path(self.tmp.name)
         self.candidates = root / "generated"
         self.candidates.mkdir()
+        self.logo_root = root / "logos"
+        self.logo_root.mkdir()
         self.db_path = str(root / "ledger.db")
         con = sqlite3.connect(self.db_path)
         con.executescript(REVIEW_SCHEMA)
@@ -711,7 +713,9 @@ class ReviewQueueTests(unittest.TestCase):
             con.execute("INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
                         "VALUES(?,1,'creator','board',1.0)", (asset_id,))
         con.commit(); con.close()
-        self.contract = rm_web.WebContract(Path(self.db_path), candidate_root=self.candidates)
+        self.contract = rm_web.WebContract(
+            Path(self.db_path), candidate_root=self.candidates, logo_root=self.logo_root,
+        )
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -962,6 +966,28 @@ class ReviewQueueTests(unittest.TestCase):
         ])
         with self.assertRaises(ValueError):
             self.decide("studio_logos", "Ghost", "approved")
+
+    def test_logo_queue_excludes_empty_and_unchanged_but_reopens_changed_source(self):
+        fields = ["studio", "resolved_url", "saved", "accepted", "confirmation",
+                  "content_state", "reason"]
+        self._csv("studio-logo-candidate-20260825.csv", fields, [
+            {"studio": "No Handle", "saved": "", "accepted": "False",
+             "confirmation": "no-handle", "content_state": "no_handle"},
+            {"studio": "Same", "saved": "Same.png", "accepted": "False",
+             "confirmation": "confirmed-handle", "content_state": "unchanged"},
+            {"studio": "Changed", "saved": "Changed.png", "accepted": "True",
+             "confirmation": "confirmed-handle", "content_state": "changed",
+             "resolved_url": "https://x/changed.png"},
+        ])
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO review_decision(category,item_key,status,updated_at) "
+            "VALUES('studio_logos','Changed','approved','old')"
+        )
+        con.commit(); con.close()
+        rows = rm_web.q_review(self.contract)["sections"]["studio_logos"]
+        self.assertEqual([row["studio"] for row in rows], ["Changed"])
+        self.assertEqual(rows[0]["decision"], "pending")
 
     def test_metadata_field_approval_uses_selected_candidate_and_never_writes_creator(self):
         con = sqlite3.connect(self.db_path)
