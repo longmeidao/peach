@@ -11,8 +11,8 @@
   `C:\Users\longm\Desktop\peach\peach-data`、worktree `C:\Users\longm\Desktop\peach\peach-worktrees`、
   共享账本传输点 `C:\Users\longm\Desktop\peach\peach-sync`。外置盘只提供 `R:\media`。
 - HTTP：`0.0.0.0:80`；HTTPS：`192.168.50.162:443`。Windows 正式局域网名称为
-  `peach-win.local`；2026-08-24 已部署 `version=0.6.3`、`ledger_sync=writer`，修复 Ledger
-  同步通知把子进程 GBK 输出误按 UTF-8 解码的乱码。2026-08-22 的严格 HTTPS 首页、头像和海报
+  `peach-win.local`；2026-08-25 已部署 `version=0.6.4`、`ledger_sync=writer`，新增可保存 Mix、命名、排序、编辑和续播的持久播放列表；并保留此前对 Ledger
+  同步通知把子进程 GBK 输出误按 UTF-8 解码所致乱码的修复。2026-08-22 的严格 HTTPS 首页、头像和海报
   验收均为 200；当时连续 120 秒浏览观测 local/shared generation 均保持29。
 - mDNS 使用 Python zeroconf 的全合格网卡监听；生产显式固定发布地址，避免隧道网卡误选。没有发布 `lmd-dst.local`。
 - macOS 菜单栏已按同一重构上线为 `0.6.2` reader，管理 `8900/8443` 并由 pf 提供
@@ -20,7 +20,7 @@
 - Stash 仍运行于 `127.0.0.1:9999`，只作为过渡期可替换适配器。
 - Python：3.14.7；FFmpeg/ffprobe 由
   `C:\Users\longm\Desktop\peach\peach-data\tools\ffmpeg` 管理，不再依赖 Stash 私有目录。
-- 真实 ledger：`C:\Users\longm\Desktop\peach\peach-data\database\ledger.db`，迁移 `0000`–`0016`
+- 真实 ledger：`C:\Users\longm\Desktop\peach\peach-data\database\ledger.db`，Windows 迁移 `0000`–`0017`
   已应用，零待处理，完整性 `ok`。历史备份均在同一 `database` 目录，文件名保持不变。
   2026-08-25 复核 Mac 本地副本，`schema_migration` 同样到 `0016`。
 - PID 只是观测值，不是配置；每次停止或重启前必须重新核对命令行、父子关系和端口归属。
@@ -46,7 +46,7 @@
   479 项测试通过。服务启动/浏览/退出不再同步；marker.device 指定唯一写入端，另一台 POST
   返回409；托盘只在显式同步或接管时复制。
 - Windows 品牌资源已统一为附件生成的 `1024x1024` 正方形蜜桃图：`resources/peach-logo.png`、`resources/peach.ico`；Web favicon、托盘图标和 EXE 内嵌图标共用该资源。PyInstaller 打包产物为 `dist/Peach/Peach.exe`，桌面和 Startup 的 `Peach.lnk` 均按 FlowLens 的 `exe,0` 方式指向它；该 exe 只打包托盘自身，服务进程仍由项目 venv 承担，不是可移动的独立发行版。
-- 版本唯一来源为 `src/peach/__init__.py::__version__`；Windows 当前部署和本地代码为 `0.6.3`，Mac 最近一次已核验部署为 `0.6.2`。没有 Git remote 时只报告本地开发版，不伪造更新能力。
+- 版本唯一来源为 `src/peach/__init__.py::__version__`；Windows 当前部署和本地代码为 `0.6.4`，Mac 最近一次已核验部署为 `0.6.2`。没有 Git remote 时只报告本地开发版，不伪造更新能力。
 - 本地 CA HTTPS 已部署。CA 包含 critical `CA:TRUE` 和签名用途并通过 OpenSSL 链验证。macOS/iOS 只安装 `peach-local-ca.crt`；不得传播任何私钥。
 - 2026-08-24 安全与架构加固：TLS 目录 ACL 已备份，CA key/server key 禁用继承，只保留 `longm`、SYSTEM、Administrators；托盘仍由 `longm` 运行，80/443 与严格 CA HTTPS 复验通过。配置口令后使用 `/login` POST 设置 HttpOnly cookie，旧 `?t=` 只做一次兼容重定向。异常 500 不再把类型/消息外发；HLS 计划与长转码使用有界执行器，session 取消会终止 FFmpeg。
 - Web 数据边界已开始分域：`LedgerDatabase` 由 `WebContract` 与 `LedgerRepository` 共用，事务统一回滚/关闭；活动写入与纯逻辑已拆到 `web_activity.py`、`web_logic.py`，JSON contract 使用显式 handler 注册表。回收站永久删除先同目录隔离媒体，SQLite commit 失败会恢复原名。
@@ -73,6 +73,7 @@
 - 短查询的 LIKE 分支必须和 FTS 覆盖同样的身份写法：规范名、`entity_alias` 与 `entity_search_term` 都要比对。trigram 分词器要求三字起步，两字查询永远落在 LIKE 分支上，只补检索词救不了——「凉森」搜不到 `涼森れむ` 就是这么来的。
 - 卡片身份女优优先；头像本身进入女优资料页。缺失厂牌 Logo 显示首字母，不用任意作品图冒充。
 - 「喜欢/为什么喜欢」写 profile 级 `asset_preference`；原因非空会隐含喜欢，但 AI 不能直接改写用户原文。「稍后看」独立写 `watch_queue`。
+- 自动 Mix 可复制为 profile 级持久播放列表；列表保存当时的稳定顺序，支持新建、改名、从详情加入、上移、下移、移出、删除和记录当前项。列表删除不删除视频，媒体被永久删除时对应列表项与续播引用会同步清理。
 - 详情反馈是 Like、不喜欢、看过、稍后看、回收站五个 Lucide 图标；默认首页排除竖屏，竖屏入口保留完整竖屏集合。
 - 长卡连续 hover 5 秒才放大并显示 ±10 秒和详情控制；短卡立即显示稍后看。沉浸模式使用经源码核验的 200 ms TikTok 滚动时序。
 - 资料页新增「照片」标签（2026-08-24）：只有该实体真有图片时才出现，作品/照片各带数量。照片按图集（= 目录）分组，点开进 CSS `column-count` 瀑布流，点图开黑底灯箱，底部缩略图条 + 键盘左右键 + 双击放大由本地固定版本 Swiper 14.1.0 提供，脚本只在第一次开灯箱时注入。瀑布流一律读服务端缓存的 `/photo-thumb`（Pillow 缩到 640 宽，存 `photo_root`），只有灯箱当前和相邻的大图读 `/photo` 原图——PikPak 是计费来源。视图可寻址：`?media=photos&set=<图集 id>` 刷新和前进后退都回得到原处。
@@ -173,6 +174,7 @@
 
 ## 验证基线
 
+- 2026-08-25 Windows `0.6.4`：`& .\scripts\test.ps1` 全量 640 项通过、12 项按平台跳过；新增迁移、数据事务、API、页面源与媒体删除引用测试均通过。
 - 当前主分支基线：2026-08-25 于 macOS 主目录实测 `./scripts/test.sh` 全量 608 项通过、4 项按平台跳过。不接受「只跑本批相关」的缩水口径。覆盖版本、托盘、迁移、mDNS、媒体转码、Provider、DiskGuard、语义路由、标准 Range、Video.js、稳定时长、详情播放释放、多选、实体资料、分页性能边界、搜索历史、广告判据，以及回收站的还原/彻底删除/清空与删不掉文件的降级。
 - 前一生产版本已分别通过 HTTP/HTTPS health、`peach.local` 解析、真实 CloudDrive Range、桌面 1280×720 和手机 390×844 检查。本次 HLS 代码已切换生产托盘；真实资产 `31222/MIDE-981-C.mp4` 的中段 HLS 片段在严格 CA HTTPS 下返回 `200`、约 9.7 MB，响应后的临时文件已清理。尚未完成浏览器 seek 和手机 HLS 视觉验收。
 - 浏览器验收不得写真实喜欢、反馈或播放数据；需要交互写入时使用隔离 ledger 副本。

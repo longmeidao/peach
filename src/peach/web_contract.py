@@ -56,6 +56,7 @@ from .web_logic import (
     part_marker,
     tag_cat,
 )
+from .web_playlists import q_playlist, q_playlists, w_playlist
 
 COST = {"local": "free", "115": "free", "pikpak": "metered", "online": "metered"}
 
@@ -74,6 +75,7 @@ CACHE_TTL = 90
 ASSET_REFERENCE_TABLES = (
     "asset_tag", "media_binding", "activity_event", "asset_entity",
     "watch_queue", "asset_preference", "asset_tag_preference", "asset_quality_goal",
+    "playlist_item",
 )
 
 
@@ -2184,6 +2186,14 @@ def purge_assets(connection, rows):
     try:
         if purged:
             marks = ",".join("?" * len(purged))
+            connection.execute(
+                f"UPDATE playlist SET current_asset_id=NULL WHERE current_asset_id IN ({marks})",
+                purged,
+            )
+            connection.execute(
+                f"UPDATE playlist SET source_seed_asset_id=NULL WHERE source_seed_asset_id IN ({marks})",
+                purged,
+            )
             for table in ASSET_REFERENCE_TABLES:
                 connection.execute(f"DELETE FROM {table} WHERE asset_id IN ({marks})", purged)
             connection.execute(f"DELETE FROM asset WHERE id IN ({marks})", purged)
@@ -2266,6 +2276,14 @@ def w_purge_missing(contract: WebContract, body):
     ids = [item["id"] for item in missing]
     marks = ",".join("?" * len(ids))
     with contract.write_transaction() as connection:
+        connection.execute(
+            f"UPDATE playlist SET current_asset_id=NULL WHERE current_asset_id IN ({marks})",
+            ids,
+        )
+        connection.execute(
+            f"UPDATE playlist SET source_seed_asset_id=NULL WHERE source_seed_asset_id IN ({marks})",
+            ids,
+        )
         for table in ASSET_REFERENCE_TABLES:
             connection.execute(
                 f"DELETE FROM {table} WHERE asset_id IN ({marks})", ids)
@@ -2515,6 +2533,8 @@ GET_HANDLERS = {
     "/api/tops": _get_tops,
     "/api/ads": _get_ads,
     "/api/related": _get_related,
+    "/api/playlists": q_playlists,
+    "/api/playlist": q_playlist,
     "/api/facets": _get_facets,
     "/api/search-history": _get_search_history,
     "/api/review": _get_review,
@@ -2525,6 +2545,7 @@ POST_HANDLERS = {
     "/api/play": w_play,
     "/api/feedback": w_feedback,
     "/api/watch-later": w_watch_later,
+    "/api/playlist": w_playlist,
     "/api/preference": w_preference,
     "/api/quality-goal": w_quality_goal,
     "/api/item-tag": w_item_tag,

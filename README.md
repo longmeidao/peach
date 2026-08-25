@@ -2,7 +2,7 @@
 
 Peach（蜜桃）是一个单用户、本地优先的个人媒体系统：统一索引本地/网盘/在线资产，记录真实消费反馈，并逐步提供搜索、推荐和追更。
 
-当前界面以作品、女优、厂牌、创作者和系列实体为导航：名字进入带简介、别名和渠道链接的资料页，内容标签才直接叠加筛选：首页默认排除竖屏视频，竖屏入口保留全量竖屏集合并可直接进入指定视频的沉浸模式。「稍后看」和「喜欢/为什么喜欢」使用独立 profile 数据，不和「看过/不喜欢」混用；用户原始偏好说明是本机真相，AI 以后只能提出可审核的归一化候选。
+当前界面以作品、女优、厂牌、创作者和系列实体为导航：名字进入带简介、别名和渠道链接的资料页，内容标签才直接叠加筛选：首页默认排除竖屏视频，竖屏入口保留全量竖屏集合并可直接进入指定视频的沉浸模式。「稍后看」「喜欢/为什么喜欢」和播放列表使用独立 profile 数据，不和「看过/不喜欢」混用；自动 Mix 可保存为有名称、有顺序、可继续播放和编辑的列表。用户原始偏好说明是本机真相，AI 以后只能提出可审核的归一化候选。
 
 顶栏齿轮打开设置：「换一批」决定排序多久换一次，默认**每次刷新**，另有 5/10/30 分钟、每天和「从不（只手动）」。选分钟数的含义是**后台每 N 分钟换一次排序、下次刷新时体现**——页面不会在你看着的时候自己重排。首页网格和顶部三层（艺人头像/厂牌/标签）共用同一个种子，所以整屏一起换。还可调整每批作品数、默认排序、悬停放大延时、快进/快退秒数、搜索记录条数和相关推荐数量。体验设置保存在当前浏览器，搜索历史写入 ledger 并在访问端之间同步。视频环境光是播放器的默认视觉效果，不再暴露成技术开关。详情页的闪光图标用于标记「寻找高清、无水印或完整版」，该状态写入 ledger，但不会删除当前文件。
 
@@ -329,6 +329,8 @@ Per-Monitor V2 DPI，单击打开 `https://peach-win.local/`；右键可同步 L
 | `/quality-goals` | 已标记寻找高清、无水印或完整版的作品 |
 | `/trash` | 回收站 |
 | `/mix/{seed_id}/{item_id}` | 自动 Mix 播放器与右侧队列 |
+| `/playlists` | 播放列表管理；新建、改名、继续播放与删除 |
+| `/playlists/{playlist_id}/{item_id}` | 按保存顺序播放，并记录下次继续的位置 |
 
 公共状态和媒体：
 
@@ -351,14 +353,14 @@ Per-Monitor V2 DPI，单击打开 `https://peach-win.local/`；右键可同步 L
 配置了 `--token` 时，直接打开页面会跳到 `/login`。旧 `?t=` 入口只保留兼容，会立即设置
 cookie 并重定向到不含口令的干净 URL；新设备不要再复制带口令的链接。
 
-只读 API：`GET /api/items`、`/api/item`、`/api/entity`、`/api/photos`、`/api/photo-set`、
+只读 API：`GET /api/items`、`/api/item`、`/api/entity`、`/api/photos`、`/api/photo-set`、`/api/playlists`、`/api/playlist`、
 `/api/index`、`/api/stats`、
 `/api/tops`、`/api/ads`、`/api/related`、`/api/facets`、`/api/providers`、`/api/sources`、
 `/api/providers/opencode-go/models`、`/api/search-history`。图集按目录聚合：`/api/photos`
 给某个实体名下的图集列表，`/api/photo-set` 给一个图集里的图片，两者都只发图集 id 和目录名，
 不发真实路径。
 
-写入 API：`POST /api/activity`、`/api/play`、`/api/feedback`、`/api/watch-later`、
+写入 API：`POST /api/activity`、`/api/play`、`/api/feedback`、`/api/watch-later`、`/api/playlist`、
 `/api/preference`、`/api/item-tag`、`/api/batch`、`/api/trash/empty`。标签隐藏只写本地 profile 覆盖，不销毁
 原始来源断言；搜索历史通过 `POST /api/search-history` 共享写入账本；媒体先进入回收站，只有显式清空回收站才永久删除。除上述明确端点外，`/api/*` 返回 404。公共页面不再使用
 `/entity/{kind}/{name}`；内部 JSON 的 `/api/entity` 只是兼容契约，不暴露数据库路由结构。
