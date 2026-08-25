@@ -44,8 +44,13 @@ rule34.xxx 上。不区分这三种关系，界面就只是一堆重复条目。
 
 - `semantics` 区分两类来源：`work`（rule34、kemono——每条是独立作品，`v2` 判为 alt）
   与 `release`（f95、simpcity——每条是同一作品的一次发布，版本从标题摘出并排除在分组键外）。
-- 来源自己声明的关系优先于标题判据：booru 的 `parent_id` 用并查集把父子帖连成一个分量，
-  统一取分量内最小的 `release_key`，**不会被标题判据拆散**。
+- 来源自己声明的关系优先于标题判据。`group_hint` 是一个**全局字符串**，同一个值的条目
+  归为一组，**跨站点成立**：rule34.xxx 从 `source` 归一出的 `fanbox:12304831`，与 kemono
+  上同一帖子的键完全相同，同一个作品在两个站上因此精确合并，不必靠标题去猜。booru 的
+  父子帖也走这条——父帖用自己的 id、子帖用 `parent_id`，拼出来是同一个键。
+- **booru 没有标题，标签拼出来的标签不是名字。** 这类候选带 `title_is_name=False`，
+  `release_key` 附上 `external_id` 使其各自成组，只允许 `group_hint` 合并——否则同一作者
+  标签相似的两个作品会被并掉。
 - 判据保守，宁可少合并：括号只在命中已知标记、创作者别名或版本模式时才剥离；标题末尾的
   裸数字算作品序号而不是版本；`work` 语义下同一来源出现两个都没有变体标记的 main 就整组
   按 `external_id` 拆开。
@@ -73,9 +78,28 @@ rule34.xxx 上。不区分这三种关系，界面就只是一堆重复条目。
 | --- | --- | --- | --- |
 | kemono.cr / coomer.st / pawchive.pw | `/api/v1/{service}/user/{id}/posts` | 无 | 默认 `Accept` 回 403，响应体写明抓取应带 `Accept: text/css`；kemono 回 `{"posts": […]}`，pawchive 回裸列表 |
 | rule34video.com | `/models/{slug}/` | 无 | KVS 引擎无公开 API；`.time` 是时长、`.added` 是相对提交时间、`[data-preview]` 是预览片 |
-| rule34.xxx | `https://api.rule34.xxx/index.php?page=dapi&s=post&q=index` | user_id + api_key | 网页版挂 Turnstile；无 key 时 API 返回 `Missing authentication`；booru 帖子无标题，`parent_id` 是站点维护的变体关系 |
+| rule34.xxx | `https://api.rule34.xxx/index.php?page=dapi&s=post&q=index` | user_id + api_key | 网页版挂 Turnstile；无 key 时 API 返回 `Missing authentication`。**2026-08-26 用真实 key 复核**（见下） |
 | f95zone.to | `/threads/{id}/latest` + `latest_alpha/latest_data.php` | 发现不需要，取媒体需要 | 主贴版本号滞后于回复；`index.rss` 返回「无法以该格式呈现」；`h1.p-title-value` 去掉 `.label` 才是线程标题 |
 | simpcity.cr | — | — | DDoS-Guard 浏览器质询，**未取得**可用入口 |
+
+### rule34.xxx 的真实响应（2026-08-26，用账号 API key 实测）
+
+这一段推翻了先前按公开文档写下的两个判断。文档只列了参数，没列响应，当时标为**未取得**，
+拿到 key 之后逐条核对，字段名全部对上（顶层是裸列表，不是 `{"post": […]}`），但内容不是
+文档能看出来的：
+
+| 实测 | 原实现的错误 |
+| --- | --- |
+| `image` **15/15 都是 32 位十六进制哈希** | 拿文件名当标题 → 标题是乱码，且每条 `release_key` 唯一，永远分不了组 |
+| `parent_id` **15/15 都是 0** | 指望它承担变体分组 → 这个创作者下拿不到任何信号 |
+| `source` **13/15 有值**，其中 6 条指向同一个 fanbox 帖 | 只存进 `extra` 没有使用 |
+
+因此改为：哈希文件名退回用标签拼可读标签并声明 `title_is_name=False`；分组键优先取
+`source` 归一后的跨站键，取不到才退回站内父帖链。同一个 fanbox 帖在 `source` 里有两种
+写法（`lazyprocrast.fanbox.cc/posts/12304831` 与 `www.fanbox.cc/@lazyprocrast/posts/12304831`），
+必须归一到同一个键；而那串数字正是 kemono 上同一帖子的 post id，两侧因此落在同一个
+命名空间里。实测 12 条候选中 6 条收敛成 `fanbox:12304831`——一个 fanbox 帖在 rule34.xxx
+上被切成了 6 段。
 
 lazyp 的跨站身份链已核实：ledger `entity` 6405 `LazyProcrast` ← pixiv 用户 30917150
 ← kemono `fanbox/30917150` `LazyProcrastinator`；rule34video `/models/lazyprocrastinator/`；

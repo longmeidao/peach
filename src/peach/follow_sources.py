@@ -45,8 +45,12 @@ class FollowCandidate:
     duration: float | None = None
     author: str | None = None
     summary: str | None = None
-    #: 来源自带的分组标识（如 booru 的 `parent_id`）。有它就不必靠标题猜同一作品的变体。
+    #: 来源自带的分组标识。可能是站内的父帖，也可能是归一化后的跨站出处键
+    #: （`fanbox:12304831` 这种）。有它就不必靠标题猜同一作品的变体。
     group_hint: str | None = None
+    #: 标题是不是一个真正的名字。booru 没有标题，只能拿标签凑一个可读标签——
+    #: 那种「标题」不能参与按标题分组，否则同一作者的两个作品会因标签相似被并掉。
+    title_is_name: bool = True
     extra: Mapping[str, object] = field(default_factory=dict)
 
 
@@ -133,6 +137,59 @@ def _duration_seconds(text: str | None) -> float | None:
         return None
     hours, minutes, seconds = matched.groups()
     return float(int(hours or 0) * 3600 + int(minutes) * 60 + int(seconds))
+
+
+#: 站点自报出处时能认出来的原始平台。键是主机名后缀，值是分组键的前缀。
+#: 这些前缀是**跨站**的：rule34.xxx 的 `source` 指向某个 fanbox 帖时，产生的键和
+#: kemono 上同一个帖子的键完全相同，跨站重复因此不必靠标题去猜。
+_ORIGIN_HOSTS: tuple[tuple[str, str], ...] = (
+    ("fanbox.cc", "fanbox"),
+    ("patreon.com", "patreon"),
+    ("pixiv.net", "pixiv"),
+    ("x.com", "x"),
+    ("twitter.com", "x"),
+    ("subscribestar.adult", "subscribestar"),
+    ("gumroad.com", "gumroad"),
+)
+
+_ORIGIN_ID_RE = re.compile(r"/(?:posts?|status(?:es)?|artworks)/(\d{4,})")
+
+
+def origin_group_key(source_url: str | None) -> str | None:
+    """把站点自报的出处 URL 归一成跨站可比的分组键。
+
+    实测（2026-08-25）同一个 fanbox 帖在 rule34.xxx 上有两种写法——
+    `lazyprocrast.fanbox.cc/posts/12304831` 和
+    `www.fanbox.cc/@lazyprocrast/posts/12304831`——必须归一到同一个键，
+    而那串数字正是 kemono 上同一帖子的 post id。
+    """
+    if not source_url or not isinstance(source_url, str):
+        return None
+    try:
+        parsed = urllib.parse.urlsplit(source_url.strip())
+    except ValueError:
+        return None
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return None
+    platform = next(
+        (name for suffix, name in _ORIGIN_HOSTS
+         if host == suffix or host.endswith("." + suffix)),
+        None,
+    )
+    if platform is None:
+        return None
+    matched = _ORIGIN_ID_RE.search(parsed.path)
+    return f"{platform}:{matched.group(1)}" if matched else None
+
+
+def _is_opaque_filename(stem: str) -> bool:
+    """文件名是不是哈希。
+
+    rule34.xxx 实测 15/15 的 `image` 都是 32 位十六进制哈希——拿它当标题既不可读，
+    又会让每条帖子各自成组，跨站去重永远不可能命中。
+    """
+    return bool(re.fullmatch(r"[0-9a-f]{16,}", stem.strip().lower()))
 
 
 class _BaseConnector:
@@ -265,6 +322,9 @@ class KemonoConnector(_BaseConnector):
             published_at=_iso_from_text(post.get("published")),
             author=None,
             summary=_plain_text(post.get("substring")),
+            # kemono 系的 post id 就是原平台的 post id，所以这个键和别的站点从
+            # `source` 归一出来的键是同一个命名空间——跨站重复因此能精确命中。
+            group_hint=f"{service}:{post_id}" if post_id else None,
             extra={"service": service, "user": user,
                    "edited": post.get("edited"),
                    "attachment_count": len(attachments)},
@@ -399,15 +459,35 @@ class Rule34XxxConnector(_BaseConnector):
         )
         return SourceFetch(candidates=candidates, raw_body=response.body, **common)
 
+    #: 拼可读标签时跳过的词：作者手柄、媒体类型和评级，留下的才是内容。
+    _TITLE_TAG_STOPWORDS = frozenset({
+        "video", "sound", "animated", "mp4", "webm", "3d", "hd", "60fps",
+        "tagme", "highres", "absurdres",
+    })
+
     def _candidate(self, post: dict, tag: str) -> FollowCandidate:
         post_id = str(post.get("id") or "")
-        # booru 帖子没有标题。用原始文件名当标题，跨站比对时它比标签串靠谱得多；
-        # 没有文件名就退回标签串，并在 extra 里留下判据。
+        tags = str(post.get("tags") or "")
         image = str(post.get("image") or "")
         stem = re.sub(r"\.[a-z0-9]{2,5}$", "", image, flags=re.IGNORECASE)
-        tags = str(post.get("tags") or "")
-        title = _plain_text(stem.replace("_", " ")) or _plain_text(tags) or f"post {post_id}"
+        # booru 帖子没有标题。实测 rule34.xxx 的 `image` 全是 32 位十六进制哈希，
+        # 拿它当标题既不可读，又会让每条帖子各自成组。哈希就退回标签拼一个可读标签，
+        # 并声明这不是名字——标签相似的两个作品不能因此被并成一个。
+        opaque = _is_opaque_filename(stem)
+        if stem and not opaque:
+            title, title_from, title_is_name = (
+                _plain_text(stem.replace("_", " ")) or f"post {post_id}", "image", True)
+        else:
+            title = self._tag_label(tags, tag) or f"post {post_id}"
+            title_from, title_is_name = "tags", False
+        # 出处比站内父帖强得多：实测 15 条 parent_id 全是 0，而 13 条有 source，
+        # 其中 4 条指向同一个 fanbox 帖——那才是真正的同组信号，而且跨站可比。
+        source = post.get("source")
         parent = post.get("parent_id")
+        hint = origin_group_key(str(source) if source else None)
+        if hint is None:
+            anchor = parent if parent not in (None, 0, "0", "") else post_id
+            hint = f"{self.provider}:post:{anchor}" if anchor else None
         return FollowCandidate(
             provider=self.provider,
             external_id=post_id or _stable_id(image, tags),
@@ -417,10 +497,19 @@ class Rule34XxxConnector(_BaseConnector):
             media_url=str(post.get("file_url")) if post.get("file_url") else None,
             thumb_url=str(post.get("preview_url")) if post.get("preview_url") else None,
             published_at=_iso_from_epoch(post.get("change")),
-            group_hint=str(parent) if parent not in (None, 0, "0", "") else None,
+            group_hint=hint,
+            title_is_name=title_is_name,
             extra={"tag": tag, "tags": tags, "score": post.get("score"),
-                   "source": post.get("source"), "title_from": "image" if stem else "tags"},
+                   "source": source, "title_from": title_from},
         )
+
+    @classmethod
+    def _tag_label(cls, tags: str, subject: str) -> str:
+        """用标签拼一个可读标签。只作展示，不参与按标题分组。"""
+        skip = cls._TITLE_TAG_STOPWORDS | {subject.strip().lower()}
+        words = [word.replace("_", " ") for word in tags.split()
+                 if word.lower() not in skip and not word.startswith("rating:")]
+        return " · ".join(words[:5])
 
 
 class F95ZoneConnector(_BaseConnector):
