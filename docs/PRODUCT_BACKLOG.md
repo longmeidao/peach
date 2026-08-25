@@ -6,7 +6,7 @@
 
 1. **寻找更好版本**：已经能逐条标记「高清 / 无水印 / 完整版」等目标；后续仍需相似内容匹配、候选去重、来源发现和人工替换确认。
 2. **现代自适应播放**：Video.js、Range、统计面板和面向 115/PikPak 原生 MP4 的按需 HLS 清单已经上线；自适应码率、多路清单、快速首帧和来源层大块预取优化仍未完成。
-3. **在线追更**：kemono/coomer/pawchive、rule34video、rule34.xxx、f95zone 五类连接器、WIP/alt/跨站重复判定、`follow_source`/`follow_item`、`peach follow`、看的 `/follow` 与管的 `/follow-manage` 两个页面（粘链接即可添加来源）已上线；仍缺定时轮询（APScheduler）、媒体下载落地，以及 simpcity 的可用入口（DDoS-Guard，未取得）。
+3. **在线追更**：kemono/coomer/pawchive、rule34video、rule34.xxx、f95zone 五类连接器、WIP/alt/跨站重复判定、`follow_source`/`follow_item`、`peach follow`、看的 `/follow` 与管的 `/follow-manage` 两个页面（粘链接或只给名字/id，自动跨六个来源查找）已上线；仍缺定时轮询（APScheduler）、媒体下载落地，以及 simpcity 的可用入口（DDoS-Guard，未取得）。
 4. **首尾帧出处与不完整候选**：已有受限 FFmpeg 首尾抽帧、Windows 内置 OCR、证据帧缓存、来源/Full version 候选和 `/review`；仍需决定全库批次范围，并把用户批准后的不完整版判断接到更好版本目标。
 5. **厂牌 Logo 补齐与持续校验**：14 个已确认社交 handle 已有内容缓存、provenance、精确/感知哈希、质量与重复门槛及健康报告；仍有 72 个厂牌没有可信 handle，必须继续从官网/公开来源取证，不能猜账号。
 

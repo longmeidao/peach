@@ -9,7 +9,10 @@ from datetime import datetime, timezone
 
 from .follow import FollowSourceError
 from .follow_secrets import CredentialError, CredentialStore
-from .follow_sources import CONNECTORS, KemonoConnector, build_connector, parse_source_url
+from .follow_discovery import discover
+from .follow_sources import (
+    CONNECTORS, KemonoConnector, build_connector, parse_source_url,
+)
 from .follow_store import FollowStore, ReleaseGroup
 
 
@@ -233,6 +236,71 @@ def w_follow_source(contract, body) -> dict:
                     if row["source"] == source_id), None)
     return {"ok": True, "source": source_id, "provider": parsed.provider,
             "ref": parsed.ref, "label": label, "checked": outcome}
+
+
+#: 一次最多解析多少行。粘一屏链接是正常的，粘一整个书签导出不是。
+MAX_RESOLVE_LINES = 40
+
+
+def _candidate_payload(candidate) -> dict:
+    return {"provider": candidate.provider,
+            "provider_label": PROVIDER_LABELS.get(candidate.provider, candidate.provider),
+            "ref": candidate.ref, "url": candidate.url, "label": candidate.label,
+            "semantics": candidate.semantics, "evidence": candidate.evidence}
+
+
+def w_follow_resolve(contract, body) -> dict:
+    """把粘进来的每一行解析成「可以添加什么」，但**不添加**。
+
+    一行是链接就直接认；不是链接就当成名字或 id 拿去各来源查一遍。两种都只返回结果，
+    由人勾选之后再调 `/api/follow/source` 落地——发现要联网，结果也可能不止一个，
+    自动登记等于替用户做决定。
+    """
+    raw = body.get("lines")
+    if isinstance(raw, str):
+        raw = raw.splitlines()
+    if not isinstance(raw, list):
+        raise ValueError("lines must be a list of strings")
+    lines = [str(line).strip() for line in raw if str(line).strip()]
+    if not lines:
+        raise ValueError("没有可解析的内容")
+    if len(lines) > MAX_RESOLVE_LINES:
+        raise ValueError(f"一次最多解析 {MAX_RESOLVE_LINES} 行，收到 {len(lines)} 行")
+
+    known = {(row["provider"], row["ref"]) for row in
+             (_source_payload(r) for r in _existing_sources(contract))}
+    results = []
+    for line in lines:
+        try:
+            parsed = parse_source_url(line)
+        except FollowSourceError as url_error:
+            if "://" in line or "/" in line:
+                # 看着就是链接，那就照链接的错误报，不要再拿去当名字查一遍。
+                results.append({"line": line, "kind": "error", "error": str(url_error)})
+                continue
+            try:
+                found = discover(line, secrets_root=contract.follow_secrets_root,
+                                 state_root=contract.follow_state_root)
+            except (FollowSourceError, CredentialError) as term_error:
+                results.append({"line": line, "kind": "error", "error": str(term_error)})
+                continue
+            results.append({
+                "line": line, "kind": "term",
+                "candidates": [{**_candidate_payload(c),
+                                "known": (c.provider, c.ref) in known}
+                               for c in found.candidates],
+                "failures": found.failures,
+            })
+            continue
+        results.append({"line": line, "kind": "url",
+                        "candidates": [{**_candidate_payload(parsed),
+                                        "known": (parsed.provider, parsed.ref) in known}]})
+    return {"ok": True, "results": results}
+
+
+def _existing_sources(contract):
+    with contract.database.read_connection() as connection:
+        return _store(contract, connection).sources()
 
 
 def q_follow_credentials(contract, _args) -> dict:

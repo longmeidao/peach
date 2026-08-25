@@ -1327,14 +1327,16 @@ function renderFollowManage(credentials){
   const sources=followData.sources||[],counts=followData.counts||{};
   $('#stats').innerHTML=`<div class="follow followmanage">
     <header class="fhead"><div>
-      <p>粘一条创作者页或线程的链接就能追。支持 kemono.cr、coomer.st、pawchive.pw 的创作者页，
-         rule34video.com 的作者页，rule34.xxx 的标签页，f95zone.to 的线程。</p></div>
+      <p>每行粘一条。链接直接认得；只给名字或 id 也行——会去 kemono.cr、coomer.st、
+         pawchive.pw、rule34video.com、rule34.xxx 和 f95zone.to 各查一遍，查到什么摆出来由你勾选。
+         <b>第一次按名字查要下载创作者索引，可能要几十秒</b>；之后一天内都直接用缓存。</p></div>
       <form class="faddform" id="followAdd">
-        <input name="url" type="url" required spellcheck="false"
-               placeholder="https://kemono.cr/fanbox/user/30917150" aria-label="来源链接">
-        <button type="submit">添加</button>
+        <textarea name="lines" rows="3" required spellcheck="false" aria-label="来源链接或名字"
+          placeholder="每行一条。链接直接认，名字或 id 会去各来源查一遍：&#10;https://kemono.cr/fanbox/user/30917150&#10;LazyProcrastinator&#10;50685"></textarea>
+        <button type="submit">查找</button>
         <span data-follow-add-state aria-live="polite"></span>
       </form></header>
+    <div id="followPicks"></div>
     <ul class="fsources">${sources.map(followSourceRow).join('')||
       '<li class="empty">还没有登记追更来源。把链接粘进上面的输入框。</li>'}</ul>
     <div class="reviewtabs">
@@ -1385,14 +1387,18 @@ function wireFollowManage(){
   if(form)form.onsubmit=async event=>{
     event.preventDefault();
     const state=form.querySelector('[data-follow-add-state]'),button=form.querySelector('button');
-    const url=new FormData(form).get('url');
-    button.disabled=true;state.textContent='识别中…';
+    const lines=String(new FormData(form).get('lines')||'').split('\n')
+      .map(line=>line.trim()).filter(Boolean);
+    if(!lines.length)return;
+    const byName=lines.some(line=>!line.includes('/'));
+    button.disabled=true;
+    state.textContent=byName?'查找中…（首次按名字查要下载创作者索引，可能几十秒）':'识别中…';
     try{
-      await api('/api/follow/source',{method:'POST',body:JSON.stringify({action:'add',url})});
-      /* 登记成功但首次检查失败不算失败：来源已经在列表里，错误显示在它那一行上。
-         rule34.xxx 缺 key 就是这种情况。 */
-      form.reset();await openFollowManage(false);
-    }catch(error){state.textContent=error.message||'添加失败';button.disabled=false}
+      const result=await api('/api/follow/resolve',{method:'POST',
+        body:JSON.stringify({lines})});
+      state.textContent='';renderFollowPicks(result.results||[]);
+    }catch(error){state.textContent=error.message||'查找失败'}
+    finally{button.disabled=false}
   };
   root.querySelectorAll('[data-follow-remove]').forEach(button=>button.onclick=async()=>{
     if(!confirm('不再追这个来源？已经抓到的条目会一并移除，媒体本身不受影响。'))return;
@@ -1434,6 +1440,54 @@ function wireFollowManage(){
   });
   root.querySelectorAll('[data-follow-view]').forEach(button=>
     button.onclick=()=>openFollow());
+}
+
+/* 查找结果先摆出来由人勾选，不自动登记：发现要联网，结果也可能不止一个，
+   替用户决定「就是这个」是错的。已经在追的项灰掉但仍显示，免得人以为没查到。 */
+function renderFollowPicks(results){
+  const box=$('#followPicks');
+  if(!box)return;
+  if(!results.length){box.innerHTML='';return}
+  const blocks=results.map((row,index)=>{
+    if(row.kind==='error')
+      return `<div class="fpick bad"><b>${esc(row.line)}</b><p>${esc(row.error)}</p></div>`;
+    const failures=Object.entries(row.failures||{});
+    const items=(row.candidates||[]).map((c,ci)=>`<label class="fpickitem${c.known?' known':''}">
+      <input type="checkbox" data-pick="${index}-${ci}" value="${esc(c.url)}"
+        data-label="${esc(c.label)}"${c.known?' disabled':' checked'}>
+      <span><b>${esc(c.provider_label)}</b> ${esc(c.label)}
+        <i>${esc(c.known?'已经在追':c.evidence)}</i></span></label>`).join('');
+    return `<div class="fpick"><b>${esc(row.line)}</b>
+      ${items||'<p class="empty">这一条没有查到任何来源</p>'}
+      ${failures.length?`<p class="fpickfail">${failures.map(([k,v])=>
+        `${esc(k)}：${esc(v)}`).join('；')}</p>`:''}</div>`;
+  }).join('');
+  const total=results.reduce((n,row)=>n+(row.candidates||[])
+    .filter(c=>!c.known).length,0);
+  box.innerHTML=`<section class="fpicks"><h3>查找结果</h3>${blocks}
+    ${total?`<div class="fpickactions"><button data-pick-add>添加选中</button>
+      <button data-pick-cancel>取消</button><span data-pick-state aria-live="polite"></span></div>`
+      :'<div class="fpickactions"><button data-pick-cancel>关闭</button></div>'}</section>`;
+  box.querySelector('[data-pick-cancel]').onclick=()=>{box.innerHTML=''};
+  const addButton=box.querySelector('[data-pick-add]');
+  if(addButton)addButton.onclick=async()=>{
+    const picked=[...box.querySelectorAll('[data-pick]:checked')];
+    if(!picked.length)return;
+    const state=box.querySelector('[data-pick-state]');
+    addButton.disabled=true;
+    let done=0;
+    for(const input of picked){
+      state.textContent=`添加中… ${++done}/${picked.length}`;
+      try{
+        await api('/api/follow/source',{method:'POST',body:JSON.stringify(
+          {action:'add',url:input.value,label:input.dataset.label})});
+      }catch(error){
+        // 一条失败不该把其余的一起丢掉，逐条报。
+        state.textContent=`${input.dataset.label}：${error.message}`;
+      }
+    }
+    await openFollowManage(false);
+  };
 }
 
 async function followWrite(button,path,body){

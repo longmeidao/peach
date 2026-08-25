@@ -316,11 +316,26 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains(
             "if(path==='/follow-manage'){await openFollowManage(false);return}")
 
-    def test_sources_are_added_by_pasting_a_link_not_by_a_command(self):
+    def test_sources_are_added_by_pasting_not_by_a_command(self):
         self.assertPageContains('id="followAdd"')
-        self.assertPageContains('placeholder="https://kemono.cr/fanbox/user/30917150"')
+        self.assertPageContains('name="lines"')
         self.assertPageContains("'/api/follow/source'")
         self.assertPageContains("data-follow-remove")
+
+    def test_a_bare_name_or_id_is_looked_up_across_sources(self):
+        self.assertPageContains("'/api/follow/resolve'")
+        self.assertPageContains("function renderFollowPicks(")
+        # 结果先勾选再落地，不自动登记。
+        self.assertPageContains("data-pick-add")
+        self.assertPageContains("data-pick-cancel")
+
+    def test_already_followed_candidates_are_shown_but_not_selectable(self):
+        # 灰掉但仍显示，免得人以为没查到。
+        self.assertPageContains("c.known?' known':''")
+        self.assertPageContains("'已经在追'")
+
+    def test_the_first_name_lookup_warns_about_the_index_download(self):
+        self.assertPageContains("首次按名字查要下载创作者索引，可能几十秒")
 
     def test_the_watch_page_does_not_carry_source_management(self):
         # 输入框、移除、凭据都只属于管理页；看的那页保持干净。
