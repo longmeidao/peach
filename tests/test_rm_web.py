@@ -198,7 +198,13 @@ class WebDataTests(unittest.TestCase):
             "shutil.disk_usage", return_value=usage,
         ):
             stats = rm_web.q_stats(self.contract)
-        self.assertEqual(stats["system_disk"], {"root": "X:\\", "free": 20, "total": 100})
+        # 断言的是「用了 platform 给的系统卷」，不是盘符的字符串写法：
+        # `Path("X:/")` 在 Windows 上渲染成 `X:\`、在 POSIX 上渲染成 `X:/`，
+        # 写死反斜杠会让这条只在 Windows 通过。
+        self.assertEqual(
+            stats["system_disk"],
+            {"root": str(Path("X:/")), "free": 20, "total": 100},
+        )
         self.assertIs(stats["disk_c"], stats["system_disk"])
 
     def test_items_support_duration_range(self):

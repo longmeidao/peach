@@ -61,6 +61,9 @@ class TrayTests(unittest.TestCase):
         for spec in specs:
             self.assertIn("--no-ledger-sync", spec.command)
 
+    @unittest.skipUnless(
+        os.name == "nt", "macOS 走 build_macos_service_specs，不发布 LAN 地址"
+    )
     def test_windows_service_address_uses_the_current_route_when_not_configured(self):
         with tempfile.TemporaryDirectory() as directory:
             tls_dir = Path(directory)
