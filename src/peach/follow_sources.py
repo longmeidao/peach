@@ -638,6 +638,118 @@ class SimpCityConnector(_BaseConnector):
         raise FollowSourceError(self.blocked_reason)
 
 
+@dataclass(frozen=True)
+class ParsedSource:
+    """从一条粘进来的链接认出来的订阅。"""
+
+    provider: str
+    ref: str
+    url: str
+    label: str
+    semantics: str
+
+
+#: 每个来源的条目语义：`work` 是每条一个独立作品，`release` 是同一作品的历次发布。
+_SEMANTICS = {"f95zone": "release", "simpcity": "release"}
+
+_KEMONO_HOSTS = {"kemono.cr": "kemono", "coomer.st": "coomer", "pawchive.pw": "pawchive"}
+_KEMONO_PATH_RE = re.compile(r"^/([a-z0-9_\-]{1,32})/user/([A-Za-z0-9_\-.]{1,64})")
+_R34V_PATH_RE = re.compile(r"^/models/([a-z0-9][a-z0-9_\-]{0,80})")
+_THREAD_PATH_RE = re.compile(r"^/threads/(?:[^/]*?\.)?(\d{1,12})")
+
+
+#: 线程 slug 里从这个 token 起就不是作品名了：f95 的惯例是
+#: `<作品名>-<发布日期>-<作者手柄>`，日期之后全是元数据。
+_SLUG_TAIL_RE = re.compile(r"^(?:19|20)\d{2}$|^v?\d+(?:\.\d+)+[a-z]?$")
+
+
+def _slug_label(slug: str) -> str:
+    words = [word for word in re.split(r"[-_]+", slug) if word]
+    kept: list[str] = []
+    for word in words:
+        if kept and _SLUG_TAIL_RE.match(word):
+            break
+        kept.append(word)
+    return " ".join(kept).strip() or re.sub(r"[-_]+", " ", slug).strip() or slug
+
+
+def parse_source_url(raw_url: str) -> ParsedSource:
+    """把一条来源链接认成可登记的订阅。
+
+    只做纯解析，不联网。认不出来就抛 `FollowSourceError` 并说清楚支持哪些形状——
+    与其静默登记一个永远抓不到东西的来源，不如当场说不认识。
+    """
+    text = (raw_url or "").strip()
+    if not text:
+        raise FollowSourceError("请先粘贴一条来源链接")
+    if "://" not in text:
+        text = "https://" + text
+    try:
+        parsed = urllib.parse.urlsplit(text)
+    except ValueError as exc:
+        raise FollowSourceError("这不是一条合法链接") from exc
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise FollowSourceError("只接受 http(s) 链接")
+    if parsed.username is not None or parsed.password is not None:
+        raise FollowSourceError("链接里不能带账号密码")
+    host = parsed.hostname.lower()
+    bare = host[4:] if host.startswith("www.") else host
+    path = parsed.path or "/"
+
+    provider = _KEMONO_HOSTS.get(bare)
+    if provider:
+        matched = _KEMONO_PATH_RE.match(path)
+        if not matched:
+            raise FollowSourceError(
+                f"{bare} 的链接要指向某个创作者，形如 "
+                f"https://{bare}/fanbox/user/30917150")
+        service, user = matched.group(1), matched.group(2)
+        return ParsedSource(provider, f"{service}/{user}",
+                            f"https://{bare}/{service}/user/{user}",
+                            f"{user} · {service}", "work")
+
+    if bare == "rule34video.com":
+        matched = _R34V_PATH_RE.match(path)
+        if not matched:
+            raise FollowSourceError(
+                "rule34video 的链接要指向作者页，形如 "
+                "https://rule34video.com/models/lazyprocrastinator/")
+        slug = matched.group(1)
+        return ParsedSource("rule34video", slug,
+                            f"https://rule34video.com/models/{slug}/",
+                            _slug_label(slug), "work")
+
+    if bare in ("rule34.xxx", "api.rule34.xxx"):
+        tags = urllib.parse.parse_qs(parsed.query).get("tags", [""])[0].strip()
+        if not tags:
+            raise FollowSourceError(
+                "rule34.xxx 的链接要带标签，形如 "
+                "https://rule34.xxx/index.php?page=post&s=list&tags=lazyprocrastinator")
+        return ParsedSource("rule34xxx", tags,
+                            "https://rule34.xxx/index.php?page=post&s=list"
+                            f"&tags={urllib.parse.quote(tags)}",
+                            _slug_label(tags), "work")
+
+    if bare == "f95zone.to":
+        matched = _THREAD_PATH_RE.match(path)
+        if not matched:
+            raise FollowSourceError(
+                "f95zone 的链接要指向一个线程，形如 "
+                "https://f95zone.to/threads/xxx.50685/")
+        thread = matched.group(1)
+        slug = path.split("/threads/", 1)[1].rsplit(".", 1)[0] if "." in path else ""
+        return ParsedSource("f95zone", thread,
+                            f"https://f95zone.to/threads/{thread}/",
+                            _slug_label(slug) or f"线程 {thread}", "release")
+
+    if bare == "simpcity.cr":
+        raise FollowSourceError(SimpCityConnector.blocked_reason)
+
+    raise FollowSourceError(
+        f"不认识 {bare}。当前支持 kemono.cr、coomer.st、pawchive.pw 的创作者页，"
+        "rule34video.com 的作者页，rule34.xxx 的标签页，以及 f95zone.to 的线程。")
+
+
 CONNECTORS: dict[str, type] = {
     "kemono": KemonoConnector,
     "coomer": KemonoConnector,

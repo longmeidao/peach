@@ -1190,9 +1190,12 @@ async function openQualityGoals(push=true){
 }
 
 /* ── 在线追更 ──
-   一张卡片 = 一个作品，不是一条抓取记录。同一作品在本站的 alt 与 WIP 折进卡片内部，
-   跨站的同一作品折成「另见」，这样 24 条 rule34video 记录读起来才是 20 个作品。
-   联网只发生在用户点「检查更新」的那一刻——页面加载、换一批、popstate 都不联网。 */
+   两个页面，因为是两件事：
+   - `/follow`（左侧导航）是**看**：一张卡片一个作品，点开就去看。本站的 alt 与 WIP
+     折进卡片内部，跨站的同一作品折成「另见」，24 条抓取记录才读成 20 个作品。
+   - `/follow-manage`（管理区）是**管**：加来源、检查更新、移除来源、看凭据状态，
+     以及对内容做批量标记。
+   联网只发生在管理页点「检查更新」的那一刻——看的那一页不联网。 */
 let followData=null,followFilter='new',followBusy=false;
 const FOLLOW_FILTERS=[['new','未看'],['seen','已看'],['saved','已保存'],['ignored','已忽略'],['','全部']];
 
@@ -1263,6 +1266,44 @@ function followCard(group){
     </div></article>`;
 }
 
+/* ── 看的那一页 ── */
+function renderFollow(){
+  const groups=followData.groups||[],counts=followData.counts||{};
+  const sources=followData.sources||[];
+  const broken=sources.filter(s=>s.last_status==='error'||s.last_status==='unauthorized');
+  $('#stats').innerHTML=`<div class="follow">
+    <div class="reviewtabs">${FOLLOW_FILTERS.map(([key,label])=>
+      `<button data-follow-filter="${key}" aria-pressed="${key===followFilter}">${label}${
+        key?` <span class="n mono">${counts[key]||0}</span>`:''}</button>`).join('')}
+      <button class="fcheck" data-follow-manage>${icon('settings')}管理来源</button></div>
+    ${broken.length?`<p class="fwarn">${broken.length} 个来源上次检查失败，去
+      <button class="flink" data-follow-manage>管理来源</button>看原因。</p>`:''}
+    <div class="followlist">${groups.length?groups.map(followCard).join('')
+      :sources.length?'<p class="empty">没有符合条件的追更条目</p>'
+      :`<p class="empty">还没有追更来源。<button class="flink" data-follow-manage>去添加</button></p>`}</div></div>`;
+  wireFollowItems();
+  $('#stats').querySelectorAll('[data-follow-filter]').forEach(button=>button.onclick=()=>{
+    followFilter=button.dataset.followFilter;openFollow(false)});
+  $('#stats').querySelectorAll('[data-follow-manage]').forEach(button=>
+    button.onclick=()=>openFollowManage());
+}
+
+async function openFollow(push=true){
+  releaseHoverPreviews();disposeStage(false);
+  document.body.classList.remove('entity-open','index-open');
+  if(push)route('/follow');
+  $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
+  $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
+  $('#tiers').style.display='none';$('#tagbar').style.display='none';
+  $('#managebar').hidden=true;$('#manageTitle').hidden=true;buildEdge();
+  $('#stats').innerHTML='<div class="follow"><p class="empty">正在读取…</p></div>';
+  followData=await api(`/api/follow?limit=300${followFilter?`&status=${followFilter}`:''}`);
+  if(location.pathname!=='/follow')return;
+  renderFollow();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+/* ── 管的那一页 ── */
 function followSourceRow(source){
   const state=source.last_status||'未检查';
   const bad=state==='error'||state==='unauthorized';
@@ -1271,39 +1312,97 @@ function followSourceRow(source){
     <span class="mono">${esc(source.last_checked_at?source.last_checked_at.replace('T',' ').slice(0,16):'未检查')}</span>
     <span class="fstatus">${esc(state)}</span>
     <button data-follow-check="${source.id}">检查</button>
+    <button class="fremove" data-follow-remove="${source.id}" title="不再追这个来源">移除</button>
     ${source.last_error?`<i>${esc(source.last_error)}</i>`:''}</li>`;
 }
 
-function renderFollow(){
-  const groups=followData.groups||[],counts=followData.counts||{};
-  $('#stats').innerHTML=`<div class="follow">
-    <ul class="fsources">${(followData.sources||[]).map(followSourceRow).join('')||
-      '<li class="empty">还没有登记追更来源。用 <code>peach follow add</code> 添加。</li>'}</ul>
-    <div class="reviewtabs">${FOLLOW_FILTERS.map(([key,label])=>
-      `<button data-follow-filter="${key}" aria-pressed="${key===followFilter}">${label}${
-        key?` <span class="n mono">${counts[key]||0}</span>`:''}</button>`).join('')}
-      <button class="fcheck" data-follow-check="">${icon('refresh-cw')}检查更新</button></div>
-    <div class="followlist">${groups.length?groups.map(followCard).join('')
-      :'<p class="empty">没有符合条件的追更条目</p>'}</div></div>`;
-  wireFollow();
+function followCredentialRow(row){
+  const state=row.present?'已配置':'未配置';
+  return `<li class="fcred${row.world_readable?' bad':''}"><b>${esc(row.provider)}</b>
+    <span>${state}</span><span class="mono">${esc((row.fields||[]).join(', ')||'—')}</span>
+    ${row.world_readable?'<i>文件权限过宽</i>':''}</li>`;
 }
 
-async function openFollow(push=true){
-  releaseHoverPreviews();disposeStage(false);document.body.classList.remove('entity-open');
-  if(push)route('/follow');
-  buildManageBar();$('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
+function renderFollowManage(credentials){
+  const sources=followData.sources||[],counts=followData.counts||{};
+  $('#stats').innerHTML=`<div class="follow followmanage">
+    <header class="fhead"><div>
+      <p>粘一条创作者页或线程的链接就能追。支持 kemono.cr、coomer.st、pawchive.pw 的创作者页，
+         rule34video.com 的作者页，rule34.xxx 的标签页，f95zone.to 的线程。</p></div>
+      <form class="faddform" id="followAdd">
+        <input name="url" type="url" required spellcheck="false"
+               placeholder="https://kemono.cr/fanbox/user/30917150" aria-label="来源链接">
+        <button type="submit">添加</button>
+        <span data-follow-add-state aria-live="polite"></span>
+      </form></header>
+    <ul class="fsources">${sources.map(followSourceRow).join('')||
+      '<li class="empty">还没有登记追更来源。把链接粘进上面的输入框。</li>'}</ul>
+    <div class="reviewtabs">
+      <button class="fcheck" data-follow-check="">${icon('refresh-cw')}检查全部更新</button>
+      <button data-follow-view>${icon('globe')}去看更新</button></div>
+    <section class="fcontent"><h3>内容</h3>
+      <p class="mono">未看 ${counts.new||0} · 已看 ${counts.seen||0} ·
+         已保存 ${counts.saved||0} · 已忽略 ${counts.ignored||0}</p>
+      <div class="fbulk">
+        <button data-follow-bulk="seen">把「未看」全部标记为已看</button>
+        <button data-follow-bulk="ignored">把「未看」全部忽略</button></div></section>
+    <section class="fcreds"><h3>凭据</h3>
+      <ul>${(credentials.providers||[]).map(followCredentialRow).join('')}</ul>
+      <p class="mono">目录：${esc(credentials.root||'')}</p>
+      <p>凭据只留在本机，不进 Git、URL、日志或 ledger。这里只显示字段名，不显示值。</p>
+    </section></div>`;
+  wireFollowManage();
+}
+
+async function openFollowManage(push=true){
+  releaseHoverPreviews();disposeStage(false);
+  document.body.classList.remove('entity-open','index-open');
+  if(push)route('/follow-manage');
+  buildManageBar();
+  $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
   $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
   $('#stats').innerHTML='<div class="follow"><p class="empty">正在读取…</p></div>';
-  followData=await api(`/api/follow?limit=300${followFilter?`&status=${followFilter}`:''}`);
-  if(location.pathname!=='/follow')return;
-  renderFollow();
+  const [data,credentials]=await Promise.all([
+    api('/api/follow?limit=1'),api('/api/follow/credentials')]);
+  if(location.pathname!=='/follow-manage')return;
+  followData=data;
+  renderFollowManage(credentials);
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
-function wireFollow(){
+/* ── 共用接线 ── */
+function wireFollowItems(){
   const root=$('#stats');
-  root.querySelectorAll('[data-follow-filter]').forEach(button=>button.onclick=()=>{
-    followFilter=button.dataset.followFilter;openFollow(false)});
+  root.querySelectorAll('[data-follow-status]').forEach(button=>button.onclick=async()=>{
+    await followWrite(button,'/api/follow/status',
+      {item:+button.dataset.followStatus,to:button.dataset.to})});
+  root.querySelectorAll('[data-follow-save]').forEach(button=>button.onclick=async()=>{
+    await followWrite(button,'/api/follow/save',{item:+button.dataset.followSave})});
+}
+
+function wireFollowManage(){
+  const root=$('#stats'),form=root.querySelector('#followAdd');
+  if(form)form.onsubmit=async event=>{
+    event.preventDefault();
+    const state=form.querySelector('[data-follow-add-state]'),button=form.querySelector('button');
+    const url=new FormData(form).get('url');
+    button.disabled=true;state.textContent='识别中…';
+    try{
+      await api('/api/follow/source',{method:'POST',body:JSON.stringify({action:'add',url})});
+      /* 登记成功但首次检查失败不算失败：来源已经在列表里，错误显示在它那一行上。
+         rule34.xxx 缺 key 就是这种情况。 */
+      form.reset();await openFollowManage(false);
+    }catch(error){state.textContent=error.message||'添加失败';button.disabled=false}
+  };
+  root.querySelectorAll('[data-follow-remove]').forEach(button=>button.onclick=async()=>{
+    if(!confirm('不再追这个来源？已经抓到的条目会一并移除，媒体本身不受影响。'))return;
+    button.disabled=true;
+    try{
+      await api('/api/follow/source',{method:'POST',
+        body:JSON.stringify({action:'remove',id:+button.dataset.followRemove})});
+      await openFollowManage(false);
+    }catch(error){button.disabled=false;alert(error.message)}
+  });
   root.querySelectorAll('[data-follow-check]').forEach(button=>button.onclick=async()=>{
     if(followBusy)return;
     followBusy=true;const label=button.innerHTML;button.disabled=true;
@@ -1312,18 +1411,29 @@ function wireFollow(){
       const id=button.dataset.followCheck;
       const result=await api('/api/follow/check',{method:'POST',
         body:JSON.stringify(id?{source:+id}:{})});
-      const failed=(result.results||[]).filter(r=>!r.ok);
       // 一个来源失败不该让其余来源的更新一起消失，所以逐条报，不整体报错。
+      const failed=(result.results||[]).filter(r=>!r.ok);
       if(failed.length)console.warn('追更检查失败：',failed);
-      await openFollow(false);
+      await openFollowManage(false);
     }catch(e){button.innerHTML=label;alert('检查更新失败：'+e.message)}
     finally{followBusy=false;button.disabled=false}
   });
-  root.querySelectorAll('[data-follow-status]').forEach(button=>button.onclick=async()=>{
-    await followWrite(button,'/api/follow/status',
-      {item:+button.dataset.followStatus,to:button.dataset.to})});
-  root.querySelectorAll('[data-follow-save]').forEach(button=>button.onclick=async()=>{
-    await followWrite(button,'/api/follow/save',{item:+button.dataset.followSave})});
+  root.querySelectorAll('[data-follow-bulk]').forEach(button=>button.onclick=async()=>{
+    const to=button.dataset.followBulk;
+    if(!confirm(`把当前全部「未看」标记为${to==='seen'?'已看':'已忽略'}？`))return;
+    button.disabled=true;
+    try{
+      const pending=await api('/api/follow?status=new&limit=1000');
+      const ids=(pending.groups||[]).flatMap(g=>[g.primary,...g.variants,...g.duplicates])
+        .filter(item=>item.status==='new').map(item=>item.id);
+      for(const id of ids){
+        await api('/api/follow/status',{method:'POST',body:JSON.stringify({item:id,to})});
+      }
+      await openFollowManage(false);
+    }catch(error){button.disabled=false;alert(error.message)}
+  });
+  root.querySelectorAll('[data-follow-view]').forEach(button=>
+    button.onclick=()=>openFollow());
 }
 
 async function followWrite(button,path,body){
@@ -1338,6 +1448,7 @@ async function followWrite(button,path,body){
     if(state)state.textContent=e.message;else alert(e.message);
   }
 }
+
 
 function wireReviewAssets(root){
   /* 复核页不再自造「多选模式」和框选：交互与主网格一致——点一下切换，Shift 选一段。
@@ -1843,6 +1954,7 @@ const EDGE_ICONS=[
   ['jav','JAV','jav'],
   ['flagged','已标记','star'],
   ['playlists','播放列表','list-filter'],
+  ['follow','在线追更','globe'],
   ['immerse','沉浸模式','play'],
   ['manage','管理','settings'],
 ];
@@ -1853,7 +1965,7 @@ const MANAGE_SECTIONS=[
   ['ads','疑似广告','alert'],
   ['dupes','重复文件','hard-drive'],
   ['quality','高清版','sparkles'],
-  ['follow','在线追更','globe'],
+  ['follow','追更来源','globe'],
   ['trash','回收站','trash'],
   ['review','人工复核','square-check-big'],
 ];
@@ -1864,7 +1976,7 @@ function manageSection(){
   if(path==='/trash')return 'trash';
   if(path==='/duplicates')return 'dupes';
   if(path==='/quality-goals')return 'quality';
-  if(path==='/follow')return 'follow';
+  if(path==='/follow-manage')return 'follow';
   return state.state==='ads'?'ads':'';
 }
 function buildManageBar(){
@@ -1894,7 +2006,7 @@ function openManage(section='stats'){
   if(section==='review'){openReview();return}
   if(section==='dupes'){openDuplicates();return}
   if(section==='quality'){openQualityGoals();return}
-  if(section==='follow'){openFollow();return}
+  if(section==='follow'){openFollowManage();return}
   state.orient='';state.state=section==='trash'?'trash':'ads';
   route(section==='trash'?'/trash':'/');
   showHomeSurfaces();buildEdge();buildBars();load(true);
@@ -1954,6 +2066,7 @@ function navOn(k){
   if(k==='performers'||k==='tags')return path==='/'+k;
   if(k==='immerse')return path==='/immerse';
   if(k==='playlists')return path==='/playlists'||path.startsWith('/playlists/');
+  if(k==='follow')return path==='/follow';
   if(k==='jav')return javActive();
   if(k==='shorts')return state.orient==='竖屏';
   // 首页只在真的停在首页列表上时亮：管理区、索引页、实体页都不算，
@@ -1979,6 +2092,7 @@ function buildEdge(){
     closeDrawerAfterNav();                 // 点了就收起抽屉，且短暂禁止悬停把它立刻弹回
     if(k==='immerse'){openTok();return}
     if(k==='playlists'){openPlaylists();return}
+    if(k==='follow'){openFollow();return}
     if(k==='manage'){openManage();return}
     if(k==='jav'){toggleJavMode();return}
     if(k==='performers'||k==='tags'){openIndex(k);return}
@@ -2793,9 +2907,9 @@ async function refreshAll(automatic=false){
     if(location.pathname==='/duplicates'){await openDuplicates(false);return}
     if(location.pathname==='/quality-goals'){await openQualityGoals(false);return}
     if(location.pathname==='/playlists'){await openPlaylists(false);return}
-    /* 追更页刻意不参与「换一批」自动刷新：重画要重新取数，而取数之后紧接着的
+    /* 两个追更页都刻意不参与「换一批」自动刷新：重画要重新取数，而管理页上紧接着的
        动作是联网检查，自动触发等于替用户决定什么时候去打站点。 */
-    if(location.pathname==='/follow')return;
+    if(location.pathname==='/follow'||location.pathname==='/follow-manage')return;
     await openStats(false);return
   }      // 统计/复核页只刷新当前表面
   if(!$('#index').hidden){return}
@@ -2859,6 +2973,7 @@ async function restoreRoute(){
   if(path==='/duplicates'){await openDuplicates(false);return}
   if(path==='/quality-goals'){await openQualityGoals(false);return}
   if(path==='/follow'){await openFollow(false);return}
+  if(path==='/follow-manage'){await openFollowManage(false);return}
   if(path==='/immerse'){await openTok(undefined,false);return}
   showHomeSurfaces();disposeStage(false);
 }

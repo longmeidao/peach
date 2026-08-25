@@ -327,7 +327,8 @@ Per-Monitor V2 DPI，单击打开 `https://peach-win.local/`；右键可同步 L
 | `/stats` | 统计 |
 | `/immerse` | 沉浸模式 |
 | `/quality-goals` | 已标记寻找高清、无水印或完整版的作品 |
-| `/follow` | 在线追更：按作品分组的更新流与来源状态 |
+| `/follow` | 在线追更：按作品分组的更新流，点开就去看 |
+| `/follow-manage` | 追更来源管理：粘链接添加、检查更新、移除来源、凭据状态 |
 | `/trash` | 回收站 |
 | `/mix/{seed_id}/{item_id}` | 自动 Mix 播放器与右侧队列 |
 | `/playlists` | 播放列表管理；新建、改名、继续播放与删除 |
@@ -363,7 +364,7 @@ cookie 并重定向到不含口令的干净 URL；新设备不要再复制带口
 
 写入 API：`POST /api/activity`、`/api/play`、`/api/feedback`、`/api/watch-later`、`/api/playlist`、
 `/api/preference`、`/api/item-tag`、`/api/batch`、`/api/trash/empty`、`/api/follow/check`、
-`/api/follow/status`、`/api/follow/save`。标签隐藏只写本地 profile 覆盖，不销毁
+`/api/follow/status`、`/api/follow/save`、`/api/follow/source`。标签隐藏只写本地 profile 覆盖，不销毁
 原始来源断言；搜索历史通过 `POST /api/search-history` 共享写入账本；媒体先进入回收站，只有显式清空回收站才永久删除。除上述明确端点外，`/api/*` 返回 404。公共页面不再使用
 `/entity/{kind}/{name}`；内部 JSON 的 `/api/entity` 只是兼容契约，不暴露数据库路由结构。
 
@@ -440,6 +441,14 @@ rule34video.com（创作者页 HTML）、rule34.xxx（官方 dapi，需要账号
 f95zone.to（线程 `/latest` 页 + `latest_data.php`）。`FeedAdapter` 的 RSS/Atom 入口保留，
 但这七个来源实测都没有可用 feed。取舍与站点证据见
 [`ADR-0019`](docs/adr/0019-site-follow-connectors-and-variant-grouping.md)。
+
+看和管是两个页面，因为是两件事。左侧导航的 `/follow` 是**看**：一张卡片一个作品，
+点开就去看。管理区的 `/follow-manage` 是**管**：加来源、检查更新、移除来源、看凭据状态。
+
+加来源不用命令，把创作者页或线程的链接粘进输入框就行——kemono/coomer/pawchive 的
+创作者页、rule34video 的作者页、rule34.xxx 的标签页、f95zone 的线程都认得，认不出来
+会当场说清楚支持哪些形状，而不是静默登记一个永远抓不到东西的来源。登记后立刻检查一次；
+首次检查失败不回滚登记，错误显示在那一行上（rule34.xxx 缺 key 就是这种情况）。
 
 联网只发生在显式调用：CLI 是 `peach follow check`，界面是「检查更新」按钮。服务启动、
 健康检查、普通浏览和首页「换一批」都不联网。**不绕过机器人验证**——simpcity.cr 挂着

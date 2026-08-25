@@ -208,6 +208,88 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual(group["variants"][0]["summary"], "New batch up Gofile")
 
 
+class FollowSourceAddTests(FollowContractTests):
+    """粘链接登记来源。首次检查用注入的连接器，测试不联网。"""
+
+    def _add(self, url, fetch=None):
+        with mock.patch.object(web_follow, "build_connector") as factory:
+            factory.return_value.fetch.return_value = fetch or SourceFetch(
+                provider="rule34video", ref="x", request_url="https://x.test/",
+                semantics="work", not_modified=True)
+            return self._post("/api/follow/source", {"action": "add", "url": url})
+
+    def test_pasting_a_creator_link_registers_and_checks_it(self):
+        result = self._add("https://rule34video.com/models/lazyprocrastinator/")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["provider"], "rule34video")
+        self.assertEqual(result["ref"], "lazyprocrastinator")
+        self.assertTrue(result["checked"]["ok"])
+        self.assertEqual(self._get()["sources"][0]["url"],
+                         "https://rule34video.com/models/lazyprocrastinator/")
+
+    def test_a_thread_link_is_registered_with_release_semantics(self):
+        self._add("https://f95zone.to/threads/"
+                  "lazy-procrastinator-collection-2026-06-28-lazyprocrast.50685/")
+        source = self._get()["sources"][0]
+        self.assertEqual(source["provider"], "f95zone")
+        self.assertEqual(source["ref"], "50685")
+        self.assertEqual(source["semantics"], "release")
+        self.assertEqual(source["label"], "lazy procrastinator collection")
+
+    def test_a_kemono_link_keeps_its_service_and_user(self):
+        self._add("https://kemono.cr/fanbox/user/30917150")
+        source = self._get()["sources"][0]
+        self.assertEqual(source["provider"], "kemono")
+        self.assertEqual(source["ref"], "fanbox/30917150")
+
+    def test_the_same_link_twice_does_not_duplicate_the_source(self):
+        self._add("https://rule34video.com/models/lazyprocrastinator/")
+        self._add("https://rule34video.com/models/lazyprocrastinator/")
+        self.assertEqual(len(self._get()["sources"]), 1)
+
+    def test_a_failing_first_check_still_leaves_the_source_registered(self):
+        # rule34.xxx 缺 key 就是这种情况。整个回滚掉反而让人不知道发生了什么。
+        with mock.patch.object(web_follow, "build_connector") as factory:
+            factory.return_value.fetch.side_effect = CredentialError("需要 user_id")
+            result = self._post("/api/follow/source", {
+                "action": "add",
+                "url": "https://rule34.xxx/index.php?page=post&s=list&tags=lazy"})
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["checked"]["ok"])
+        source = self._get()["sources"][0]
+        self.assertEqual(source["last_status"], "unauthorized")
+        self.assertIn("user_id", source["last_error"])
+
+    def test_an_unknown_host_is_refused_with_the_supported_list(self):
+        with self.assertRaises(FollowSourceError) as caught:
+            self._post("/api/follow/source",
+                       {"action": "add", "url": "https://example.test/creator"})
+        self.assertIn("kemono.cr", str(caught.exception))
+
+    def test_simpcity_is_refused_with_the_bot_check_reason(self):
+        with self.assertRaises(FollowSourceError) as caught:
+            self._post("/api/follow/source",
+                       {"action": "add", "url": "https://simpcity.cr/threads/x.1/"})
+        self.assertIn("DDoS-Guard", str(caught.exception))
+
+    def test_removing_a_source_takes_its_items_with_it(self):
+        self._seed()
+        source_id = self._get()["sources"][0]["id"]
+        self.assertTrue(self._get()["groups"])
+        self._post("/api/follow/source", {"action": "remove", "id": source_id})
+        payload = self._get()
+        self.assertEqual(payload["sources"], [])
+        self.assertEqual(payload["groups"], [])
+
+    def test_remove_requires_an_integer_id(self):
+        with self.assertRaises(ValueError):
+            self._post("/api/follow/source", {"action": "remove", "id": "1"})
+
+    def test_unknown_actions_are_rejected(self):
+        with self.assertRaises(ValueError):
+            self._post("/api/follow/source", {"action": "explode"})
+
+
 class FollowWebSourceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -220,11 +302,33 @@ class FollowWebSourceTests(unittest.TestCase):
         if needle not in self.page:
             self.fail(f"Web 表面缺少：{needle!r}" + (f"（{message}）" if message else ""))
 
-    def test_follow_is_a_manage_section_with_its_own_route(self):
-        self.assertPageContains("['follow','在线追更','globe']")
-        self.assertPageContains("if(path==='/follow')return 'follow'")
-        self.assertPageContains("if(section==='follow'){openFollow();return}")
+    def test_watching_lives_in_the_left_rail_and_managing_stays_in_the_manage_area(self):
+        # 看和管是两件事，两个页面：左侧导航进「看」，管理区进「管」。
+        self.assertPageContains("['follow','在线追更','globe'],\n  ['immerse'")
+        self.assertPageContains("if(k==='follow'){openFollow();return}")
+        self.assertPageContains("if(k==='follow')return path==='/follow';")
+        self.assertPageContains("['follow','追更来源','globe']")
+        self.assertPageContains("if(path==='/follow-manage')return 'follow'")
+        self.assertPageContains("if(section==='follow'){openFollowManage();return}")
+
+    def test_both_follow_routes_restore_on_reload(self):
         self.assertPageContains("if(path==='/follow'){await openFollow(false);return}")
+        self.assertPageContains(
+            "if(path==='/follow-manage'){await openFollowManage(false);return}")
+
+    def test_sources_are_added_by_pasting_a_link_not_by_a_command(self):
+        self.assertPageContains('id="followAdd"')
+        self.assertPageContains('placeholder="https://kemono.cr/fanbox/user/30917150"')
+        self.assertPageContains("'/api/follow/source'")
+        self.assertPageContains("data-follow-remove")
+
+    def test_the_watch_page_does_not_carry_source_management(self):
+        # 输入框、移除、凭据都只属于管理页；看的那页保持干净。
+        page = self.page
+        watch = page[page.index("function renderFollow(){"):page.index("async function openFollow")]
+        for management in ("followAdd", "data-follow-remove", "fcreds", "data-follow-bulk"):
+            if management in watch:
+                self.fail(f"看的那一页不应出现管理控件：{management!r}")
 
     def test_approximate_timestamps_are_labelled_as_approximate(self):
         # 站点只给「1 周前」时换算值不是发布时间，界面必须照实说。
@@ -250,7 +354,8 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_network_check_is_an_explicit_button_not_an_auto_refresh(self):
         self.assertPageContains("data-follow-check")
         # 「换一批」自动刷新绝不能顺手触发一次联网检查。
-        self.assertPageContains("if(location.pathname==='/follow')return;")
+        self.assertPageContains(
+            "if(location.pathname==='/follow'||location.pathname==='/follow-manage')return;")
 
     def test_every_entered_state_can_be_left_again(self):
         self.assertPageContains("""item.status==='seen'||item.status==='ignored'""")

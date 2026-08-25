@@ -37,7 +37,8 @@ from .platform import (
 )
 from .repository import LedgerDatabase
 from .web_follow import (
-    q_follow, q_follow_credentials, w_follow_check, w_follow_save, w_follow_status,
+    q_follow, q_follow_credentials, w_follow_check, w_follow_save, w_follow_source,
+    w_follow_status,
 )
 from .web_activity import (
     DEFAULT_PROFILE_ID,
@@ -2556,6 +2557,7 @@ GET_HANDLERS = {
 
 POST_HANDLERS = {
     "/api/follow/check": w_follow_check,
+    "/api/follow/source": w_follow_source,
     "/api/follow/status": w_follow_status,
     "/api/follow/save": w_follow_save,
     "/api/activity": w_activity,
