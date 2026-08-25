@@ -648,6 +648,10 @@ class ParsedSource:
     label: str
     semantics: str
 
+    @property
+    def evidence(self) -> str:
+        return "链接直接指明"
+
 
 #: 每个来源的条目语义：`work` 是每条一个独立作品，`release` 是同一作品的历次发布。
 _SEMANTICS = {"f95zone": "release", "simpcity": "release"}

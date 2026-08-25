@@ -1177,3 +1177,29 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fcreds p{margin:4px 0 0;color:var(--muted);font-size:11.5px}
 @media (max-width:640px){.faddform{flex:1 1 100%}.faddform input{flex:1 1 100%}
   .faddform button{flex:1 1 100%}}
+
+/* ── 查找结果的勾选清单 ── */
+.faddform textarea{flex:1 1 300px;min-width:0;border:1px solid var(--border-15);border-radius:9px;background:var(--overlay-5);color:var(--ink);padding:9px 12px;font-size:13px;font-family:inherit;line-height:1.55;resize:vertical}
+.faddform textarea:focus-visible{outline:2px solid var(--tungsten);outline-offset:1px;border-color:var(--tungsten)}
+.faddform [data-follow-add-state]{color:var(--muted)}
+.fpicks{margin:0 0 18px;padding:14px;border:1px solid var(--line-soft);border-radius:12px;background:var(--surface)}
+.fpicks h3{margin:0 0 10px;font-size:15px}
+.fpick{margin-bottom:12px}
+.fpick>b{display:block;font-size:12.5px;color:var(--muted);margin-bottom:5px;overflow-wrap:anywhere}
+.fpick.bad>b{color:var(--drop)}
+.fpick p{margin:2px 0;font-size:11.5px;color:var(--muted)}
+.fpick.bad p{color:var(--drop)}
+.fpickitem{display:flex;gap:9px;align-items:flex-start;padding:6px 9px;border:1px solid var(--border-10);border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:12.5px}
+.fpickitem:hover{border-color:var(--tungsten)}
+.fpickitem.known{opacity:.55;cursor:default}
+.fpickitem.known:hover{border-color:var(--border-10)}
+.fpickitem input{margin-top:2px;flex:0 0 auto}
+.fpickitem span{min-width:0;overflow-wrap:anywhere}
+.fpickitem b{margin-right:6px}
+.fpickitem i{display:block;font-style:normal;color:var(--muted);font-size:11px;margin-top:1px}
+.fpickfail{color:var(--drop)!important}
+.fpickactions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.fpickactions button{border:1px solid var(--border-15);border-radius:8px;background:transparent;color:var(--ink-2);padding:6px 14px;font-size:12.5px;cursor:pointer}
+.fpickactions [data-pick-add]{background:var(--tungsten);border-color:var(--tungsten);color:#fff;font-weight:600}
+.fpickactions button:disabled{opacity:.6;cursor:default}
+.fpickactions [data-pick-state]{font-size:11.5px;color:var(--muted)}
