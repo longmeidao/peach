@@ -25,6 +25,7 @@
 | 位图 | Pillow | 头像/Logo 质量和来源策略 |
 | 搜索 | SQLite FTS5 | 索引字段、排序、profile 感知筛选 |
 | 女优姓名对照 | `li-peifeng/Jav-Actors-Mapping` 的固定 revision，仅作私有输入（仓库未声明许可证，不随 Peach 分发） | 精确匹配、冲突复核、别名、来源与真实 ledger 写入 |
+| 女优头像候选 | Gfriends 的 GitHub raw 索引与单张媒体（只作外部 Provider，不克隆图库） | 名字链、质量档位、格式/尺寸/SHA-256 门槛、候选缓存、provenance、健康统计和人工复核 |
 | JAV 元数据查询 | Javinizer-Go v1.5.1 单来源 JSON CLI（MIT） | 只发送规范番号；Peach 管 source profile、逐字段优先级、原始证据、健康统计、候选复核与批准后的 ledger 投影 |
 | 媒体探测/转码 | Peach 管理的 FFmpeg/ffprobe | 任务策略和 Media Engine 编排 |
 | HTML5/HLS/DASH 播放 | Video.js 8.23.9 + 内置 VHS（Apache-2.0，本地固定版本） | 流方案、授权、稳定时长、回退顺序和统计面板 |

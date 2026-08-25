@@ -388,6 +388,13 @@ cookie 并重定向到不含口令的干净 URL；新设备不要再复制带口
 & .\.venv\Scripts\python.exe scripts\scrape_codes.py --db .\review\ledger.db --profile fc2 --out .\review\fc2-candidates.csv
 ```
 
+女优头像缺口使用 Gfriends 外部 Provider，但只请求索引和命中的单张图片，不克隆图库。脚本以只读方式打开 ledger，把图片放进候选专用缓存，并生成审计、`/review` 候选和来源健康 CSV；不会安装头像或批准候选：
+
+```powershell
+# 只生成头像候选、缓存证据与健康报告；续跑会复用已校验缓存
+& .\.venv\Scripts\python.exe scripts\audit_performer_portraits.py --resume
+```
+
 历史创作者投影使用逐项只读审计，不再把目录名直接当身份：
 
 ```powershell
