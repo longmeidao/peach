@@ -327,6 +327,7 @@ Per-Monitor V2 DPI，单击打开 `https://peach-win.local/`；右键可同步 L
 | `/stats` | 统计 |
 | `/immerse` | 沉浸模式 |
 | `/quality-goals` | 已标记寻找高清、无水印或完整版的作品 |
+| `/follow` | 在线追更：按作品分组的更新流与来源状态 |
 | `/trash` | 回收站 |
 | `/mix/{seed_id}/{item_id}` | 自动 Mix 播放器与右侧队列 |
 
@@ -354,12 +355,12 @@ cookie 并重定向到不含口令的干净 URL；新设备不要再复制带口
 只读 API：`GET /api/items`、`/api/item`、`/api/entity`、`/api/photos`、`/api/photo-set`、
 `/api/index`、`/api/stats`、
 `/api/tops`、`/api/ads`、`/api/related`、`/api/facets`、`/api/providers`、`/api/sources`、
-`/api/providers/opencode-go/models`、`/api/search-history`。图集按目录聚合：`/api/photos`
+`/api/providers/opencode-go/models`、`/api/search-history`、`/api/follow`、`/api/follow/credentials`。追更只发 `has_media`，不发媒体直链；`/api/follow/credentials` 只报字段名与权限，不返回凭据值。图集按目录聚合：`/api/photos`
 给某个实体名下的图集列表，`/api/photo-set` 给一个图集里的图片，两者都只发图集 id 和目录名，
 不发真实路径。
 
 写入 API：`POST /api/activity`、`/api/play`、`/api/feedback`、`/api/watch-later`、
-`/api/preference`、`/api/item-tag`、`/api/batch`、`/api/trash/empty`。标签隐藏只写本地 profile 覆盖，不销毁
+`/api/preference`、`/api/item-tag`、`/api/batch`、`/api/trash/empty`、`/api/follow/check`、`/api/follow/status`、`/api/follow/save`。标签隐藏只写本地 profile 覆盖，不销毁
 原始来源断言；搜索历史通过 `POST /api/search-history` 共享写入账本；媒体先进入回收站，只有显式清空回收站才永久删除。除上述明确端点外，`/api/*` 返回 404。公共页面不再使用
 `/entity/{kind}/{name}`；内部 JSON 的 `/api/entity` 只是兼容契约，不暴露数据库路由结构。
 
@@ -421,4 +422,26 @@ FC2 跨号检测只读既有评论收获和 ledger 媒体事实。所有等价�
 
 `/api/providers` 是无副作用 capability health；`/api/providers/opencode-go/models` 只在显式访问时拉取 OpenCode Go 的公开模型清单，不发送推理请求或读取本机 CLI 凭据。
 
-在线追更从 `FeedAdapter` 的 RSS/Atom 候选发现开始：只有显式调用才联网，支持条件请求和有界读取，当前不会自动写 ledger。
+在线追更按站点分连接器：kemono.cr / coomer.st / pawchive.pw（同一套公开 JSON API）、
+rule34video.com（创作者页 HTML）、rule34.xxx（官方 dapi，需要账号自己的 API key）、
+f95zone.to（线程 `/latest` 页 + `latest_data.php`）。`FeedAdapter` 的 RSS/Atom 入口保留，
+但这七个来源实测都没有可用 feed。取舍与站点证据见
+[`ADR-0019`](docs/adr/0019-site-follow-connectors-and-variant-grouping.md)。
+
+联网只发生在显式调用：CLI 是 `peach follow check`，界面是「检查更新」按钮。服务启动、
+健康检查、普通浏览和首页「换一批」都不联网。**不绕过机器人验证**——simpcity.cr 挂着
+DDoS-Guard 质询，连接器只登记不可用并原样报出原因。
+
+一张卡片是一个作品，不是一条抓取记录：本站的 alt 与 WIP 折进卡片内部，跨站的同一作品
+折成「另见」，f95 线程的多条回复算动态而不是版本。判据保守，宁可多出一张卡片也不把两个
+作品并成一个。站点只给相对时间时显示成「约 …」，不冒充精确发布时间。
+
+抓到的都是候选：`status` 停在 `new`/`seen` 时不影响任何 asset，只有显式保存才写出一条
+`location='online'` 的新 asset。凭据放在 `peach-data/secrets/follow/<provider>.json`，
+不进 Git、URL、日志或 ledger；`peach follow creds` 只报字段名与权限：
+
+```bash
+./.venv/bin/peach follow add --provider kemono --ref fanbox/30917150 --label LazyProcrastinator --entity 6405
+./.venv/bin/peach follow check
+./.venv/bin/peach follow feed --status new --verbose
+```

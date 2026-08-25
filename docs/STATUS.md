@@ -23,6 +23,8 @@
 - 真实 ledger：`C:\Users\longm\Desktop\peach\peach-data\database\ledger.db`，迁移 `0000`–`0016`
   已应用，零待处理，完整性 `ok`。历史备份均在同一 `database` 目录，文件名保持不变。
   2026-08-25 复核 Mac 本地副本，`schema_migration` 同样到 `0016`。
+  **迁移 `0017`（追更两张表）尚未对任何真实 ledger 执行**，两台机器都要在备份后
+  按 `peach-ledger-write` 单独授权再 apply；在此之前 `/follow` 页面会因缺表报错。
 - PID 只是观测值，不是配置；每次停止或重启前必须重新核对命令行、父子关系和端口归属。
 - macOS 独立运行环境：代码 `~/Desktop/lmd.gg/peach/peach-app`、数据 `~/Desktop/lmd.gg/peach/peach-data`、worktree `~/Desktop/lmd.gg/peach/peach-worktrees`。Python 3.14.7 + 独立 venv，FFmpeg 走 PATH。
 - Mac 的 `peach-data` 实际形状与文档的通用分层有出入，排查前先看清：真实目录名是
@@ -40,7 +42,16 @@
 - `MediaEngine` 统一管理本地文件和 Stash 公开协议适配器。浏览器本地 MP4/WebM/Ogg 直出；115/PikPak 已知时长的原生 MP4 由 `/api/stream-plan` 选择 6 秒 HLS 临时片段，AVI 等由 `TranscodeService` 缓存为 H.264/AAC MP4，原文件不改写。
 - 真实 CloudDrive 作品 4289 已通过 `video/mp4`、1 KiB `206 Partial Content`、缩略图和海报检查；盘符可见性以 Peach `/stream` 为最终证据。
 - SQLite FTS5 trigram 覆盖全部视频与图片资产；三字符以上走 FTS，短查询回退 LIKE。资产总数只看文末自动区块。
-- `FeedAdapter` 已支持显式、有界 RSS/Atom 发现、条件请求和不可变快照；尚未配置真实订阅，也不会启动时自动写 ledger。
+- 在线追更已从「有 adapter 没有源」变成可用表面（ADR-0019）：五类站点连接器
+  （kemono/coomer/pawchive、rule34video、rule34.xxx、f95zone）、WIP/alt/跨站重复判定、
+  `follow_source`/`follow_item` 两张表、`peach follow` 子命令和 `/follow` 页面。
+  联网只在 `peach follow check` 与「检查更新」按钮触发。`FeedAdapter` 的 RSS/Atom 入口保留，
+  但这七个来源实测都没有可用 feed——f95 的 `index.rss` 直接回「无法以该格式呈现」。
+- 追更的两个待办不是代码问题：rule34.xxx 需要用户在
+  `rule34.xxx/index.php?page=account&s=options` 生成 user_id + api_key 并写进
+  `peach-data/secrets/follow/rule34xxx.json`；simpcity.cr 挂着 DDoS-Guard 浏览器质询，
+  可用入口**未取得**，Peach 不绕机器人验证。f95zone 的发现实测不需要 cookies，
+  只有取附件媒体需要登录会话。
 - AI Provider 已拆为推理与 Agent 两层。`/api/providers` 无副作用且不泄露凭据；OpenCode Go 模型清单只在显式访问时拉取，当前不发推理请求。
 - 手动单写者重构已完成双端部署：Windows 476 项测试通过，Mac 在保留两项本地 UI 修复后
   479 项测试通过。服务启动/浏览/退出不再同步；marker.device 指定唯一写入端，另一台 POST
@@ -223,7 +234,13 @@
 
 8. HLS `stream-plan` 和按需 TS 片段已接入现有 Video.js 内置 VHS。片段时间窗的绝对终点问题已修并已切生产（见上节）；自适应码率、多路清单、首帧/seek 的桌面与手机验收仍未完成。CloudDrive 约 100 MiB 固定块预取仍是来源层成本，服务端分片只能避免整部 MP4 Range，不会消除来源层块预取。
 9. 在真实生产浏览器补做 `/review` 的 1280×720/390×844 最终视觉确认，再人工批准 Windows r18dev 小批候选；确认来源质量后逐个启用 Javinizer 已有 scraper，不新增 Peach 私有站点解析器。
-10. 配置可复核的真实追更源，之后再接 APScheduler；AI 结果继续只作为候选。
+10. 追更接下来三件事，按依赖顺序：(a) 在两台机器上备份后 apply 迁移 `0017`；
+    (b) 用户提供 rule34.xxx 的 user_id + api_key，把 rule34.xxx 这一路打通并核对
+    `parent_id` 的真实响应字段（当前实现按公开文档写成，**未取得**真实响应验证）；
+    (c) 再接 APScheduler 做定时轮询。媒体下载能力已在设计里留位
+    （`media_url` + `media_needs_credential`），但没有实现下载器，也没有定流量与磁盘预算。
+    lazyp 的四个来源已在临时库跑通端到端：kemono 50 条、rule34video 24 条、f95 9 条动态，
+    折成 74 张作品卡片。AI 结果继续只作为候选。
 11. `R:` 本地盘的图片仍未入账：`scripts/ledger.py scan` 本来就按扩展名把图片记成 `medium='image'`，但 `local` 这一路是经 Stash 入库的，Stash 只索引视频，所以 `R:\Media\<名字>\P\...` 这类照片目录一条都没有。等外置盘挂上后先只读列一遍目录规模，再决定扫描批次；扫描写真实 ledger，按 `peach-ledger-write` 单独授权。盘不在时不得凭目录约定推断照片存在与否。
 12. Codex 侧封装技能：`.claude/skills/` 下的七个技能目前只有 Claude 会按 description 自动触发，
     Codex 只能靠 `AGENTS.md` 索引表主动读。由 Codex 接手时确认当前版本的技能机制与目录约定，
