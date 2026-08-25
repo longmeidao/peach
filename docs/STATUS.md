@@ -25,7 +25,15 @@
   2026-08-25 复核 Mac 本地副本，`schema_migration` 同样到 `0016`。
   **迁移 `0017`（追更两张表）尚未对任何真实 ledger 执行**，两台机器都要在备份后
   按 `peach-ledger-write` 单独授权再 apply；在此之前 `/follow` 页面会因缺表报错。
-- **Mac 本地账本副本自 2026-08-24 起就是 dirty 的**（marker 记的是第 29 代、
+- 2026-08-25 已挂上 `/Volumes/peach-sync`（钥匙串账号 `peachsync`@`192.168.50.162`，
+  guest 被拒，这条钥匙串记录是唯一的钥匙），并完成一次 `pull`：本地从第 29 代到第 30 代，
+  `plan` 现为 `in-sync`。拉取前备份在 `database/ledger.pre-pull-gen30-20260825T080644Z.db`
+  （121.4 MiB，完整性 ok，asset 81753）。选边有据：集合差显示共享一条 asset 都没多出来，
+  本地多的 96 条全是 `location='115'` 的广告条目，是 Windows 在 29→30 代之间删掉的。
+- `local_dirty` 的判据已按 ADR-0020 改成三层。原先只看 `(size, mtime_ns)`，实测既会
+  **误报**（内容中性的 checkpoint、碰时间戳）也会**漏报**（已提交但还在 WAL 里的事务
+  完全不改主库文件，`copy_database` 会连同 `-wal` 一起删掉，静默丢数据）。
+- **历史记录**：Mac 本地副本自 2026-08-24 起就是 dirty 的（marker 记的是第 29 代、
   `mtime_ns=1787332506518044766`，实际库已是 `1787504652787227090`，大小未变），而共享传输点
   `/Volumes/peach-sync` 当前不可达。下次恢复同步时 `plan()` 会因「共享更新且本地有未回写改动」
   判成 `conflict`，必须由人选一边——Mac 只用来浏览，正确的选择是取 Windows 那一份。
