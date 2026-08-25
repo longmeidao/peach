@@ -180,7 +180,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 
 - Windows 日常入口是当前用户 Startup 中的唯一 `Peach.lnk`，指向 `C:\Users\longm\Desktop\peach\peach-app\dist\Peach\Peach.exe`。`R:\peach-app` 是迁移前的旧位置，不再用作运行入口。
 - Windows 发布入口使用 `scripts/build_windows.ps1`：先用 `scripts/generate_brand_assets.py` 从原始附件生成正方形 `resources/peach-logo.png` 和多尺寸 `resources/peach.ico`，再构建单一 `dist/Peach/Peach.exe`。无参数运行托盘，`serve`/`migrate` 运行 CLI；桌面快捷方式由 `scripts/create_desktop_shortcut.ps1` 创建，图标使用 `Peach.exe,0`，行为与 FlowLens 的快捷方式一致；Startup 安装仍由 `scripts/manage_tray_startup.ps1` 负责。
-- `dist/Peach/Peach.exe` 是本机打包入口，不是可移动的独立发行版：托盘只打包了自己，服务进程仍由项目 venv 的 `peach.exe` 承担（`_peach_executable()` 从 exe 位置逐级向上找 `.venv\Scripts\peach.exe`）。脱离同一台机器的项目 `.venv` 复制不会工作，不要按「单文件绿色版」对外描述。
+- `dist/Peach/Peach.exe` 是本机打包入口，不是可移动的独立发行版：托盘只打包了自己，服务进程仍由项目 venv 的 `peach.exe` 承担（`_peach_executable()` 从 exe 位置逐级向上找 `.venv\Scripts\peach.exe`）。脱离同一台机器的项目 `.venv` 复制不会工作，不要按「单文件绿色版」对外描述。PyInstaller 的资源直接位于 `sys._MEIPASS`，没有源码树的 `src/` 层；打包后的 `migrate`、Web 与品牌资源必须从这里解析，不能再对 `config.py` 固定取 `parents[2]`。
 - 托盘单击打开 HTTPS；macOS/Windows 菜单都提供「同步 Ledger」「接管 Ledger 写入」、状态、重启、日志和退出。HTTP/HTTPS 服务只观察角色，不自动复制；手动同步先停止自己创建的服务，再用 SQLite backup API 与原子替换复制，最后恢复服务。共享源在 macOS smbfs 上必须以 immutable 已关闭快照读取；共享目标不能由 SQLite 直接打开事务连接。健康端口不归本托盘时拒绝接管。
 - 创建 Win32 窗口前必须启用 Per-Monitor V2 DPI。正常动作不弹模态 MessageBox；更新检查在后台线程执行，用 pystray 原生非模态通知反馈。
 - `src/peach/__init__.py::__version__` 是版本唯一来源；采用 pre-1.0 SemVer。Git commit 是构建标识，`vX.Y.Z` 是本地发布点。更新检查只 fetch/比较，并行 worktree 模式下不自动覆盖安装。
