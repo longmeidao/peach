@@ -1075,6 +1075,7 @@ CANDIDATE_PREFIX = {
     "code_creators": "code-creator-review",
     "cover_sources": "cover-fetch-log",
     "fc2_markings": "fc2-candidate-log",
+    "fc2_similarity": "fc2-similarity-candidate-",
 }
 # 每类候选的稳定主键列。缺这一列的行直接跳过并计数，绝不退化成行号——
 # 行号会在 CSV 重排后把历史决定悄悄挪到别的条目上。
@@ -1087,6 +1088,7 @@ CANDIDATE_KEY = {
     "code_creators": "entity_id",
     "cover_sources": "code",
     "fc2_markings": "code",
+    "fc2_similarity": "pair_key",
 }
 def _needs_review(category: str, row: dict) -> bool:
     """已经有定论的行不该占复核页。
@@ -1224,6 +1226,20 @@ def _attach_review_asset_context(connection, rows: list[dict]) -> None:
         ):
             assets_by_entity.setdefault(asset["entity_id"], dict(asset))
 
+    comparison_ids = {
+        int(value) for row in rows
+        for value in (row.get("left_asset_id"), row.get("right_asset_id"))
+        if str(value or "").isdigit()
+    }
+    comparison_assets: dict[int, dict] = {}
+    if comparison_ids:
+        marks = ",".join("?" * len(comparison_ids))
+        for asset in connection.execute(
+            f"SELECT id,name,code,snapshot_path FROM asset WHERE id IN ({marks})",
+            sorted(comparison_ids),
+        ):
+            comparison_assets[asset["id"]] = dict(asset)
+
     for row in rows:
         code = str(row.get("code") or row.get("query") or "").strip()
         asset = assets_by_code.get(normalise_code_key(code)) if code else None
@@ -1235,11 +1251,17 @@ def _attach_review_asset_context(connection, rows: list[dict]) -> None:
             asset = {"id": first["id"], "name": first["name"], "code": code,
                      "snapshot_path": True}
         if asset is None:
-            continue
-        row["asset_id"] = asset["id"]
-        row["asset_name"] = asset["name"]
-        row["asset_code"] = asset.get("code") or code
-        row["asset_has_snapshot"] = bool(asset.get("snapshot_path"))
+            pass
+        else:
+            row["asset_id"] = asset["id"]
+            row["asset_name"] = asset["name"]
+            row["asset_code"] = asset.get("code") or code
+            row["asset_has_snapshot"] = bool(asset.get("snapshot_path"))
+        row["comparison_assets"] = [
+            comparison_assets[int(value)]
+            for value in (row.get("left_asset_id"), row.get("right_asset_id"))
+            if str(value or "").isdigit() and int(value) in comparison_assets
+        ]
 
 
 def _review_rows(contract: WebContract, category: str) -> tuple[list[dict], str | None, int]:
@@ -1300,6 +1322,15 @@ def _review_rows(contract: WebContract, category: str) -> tuple[list[dict], str 
                 row["asset_preview_url"] = f"/poster?id={row['asset_id']}&c=4"
             else:
                 row["asset_preview_url"] = ""
+        for comparison in row.get("comparison_assets") or []:
+            comparison_code = str(comparison.get("code") or "")
+            if comparison_code and contract.has_cover(comparison_code):
+                comparison["preview_url"] = f"/cover?code={quote(comparison_code)}"
+            elif comparison.get("snapshot_path"):
+                comparison["preview_url"] = f"/poster?id={comparison['id']}&c=4"
+            else:
+                comparison["preview_url"] = ""
+            comparison.pop("snapshot_path", None)
         if not row.get("reason"):
             row["reason"] = _review_evidence(category, row)
     return _pending_first(rows), source, skipped
@@ -1475,6 +1506,18 @@ def _review_evidence(category: str, row: dict) -> str:
         if row.get("writer"):
             bits.append(f"卖家 {row.get('writer')}")
         return "；".join(bits)
+    if category == "fc2_similarity":
+        kinds = str(row.get("evidence_kinds") or "").replace(" ", "、")
+        detail = [f"证据 {kinds}" if kinds else "候选证据不足"]
+        if row.get("duration_delta_seconds") != "":
+            detail.append(f"时长差 {row.get('duration_delta_seconds')} 秒")
+        if row.get("size_delta_percent") != "":
+            detail.append(f"体积差 {row.get('size_delta_percent')}%")
+        if row.get("shared_performers"):
+            detail.append(f"共同演员 {row.get('shared_performers')}")
+        if row.get("warnings"):
+            detail.append(str(row.get("warnings")))
+        return "；".join(detail)
     return ""
 
 
@@ -1798,7 +1841,8 @@ def w_review_decision(contract: WebContract, body):
     status = str(body.get("status", "")).strip()
     if category not in {
         "metadata_fields", "creator_tags", "studio_logos", "performer_avatars",
-        "western_identity", "code_creators", "fc2_markings", "media_failure",
+        "western_identity", "code_creators", "fc2_markings", "fc2_similarity",
+        "media_failure",
     }:
         raise ValueError("invalid review category")
     if not item_key or status not in {"approved", "rejected", "skipped"}:

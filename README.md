@@ -395,6 +395,13 @@ cookie 并重定向到不含口令的干净 URL；新设备不要再复制带口
 & .\.venv\Scripts\python.exe scripts\audit_performer_portraits.py --resume
 ```
 
+FC2 跨号检测只读既有评论收获和 ledger 媒体事实。所有等价关系进入 evidence，只有两边都在本地、可打开原视频的 pair 才进入 `/review`；它不会改番号或合并资产：
+
+```powershell
+# 生成 FC2 跨号 evidence、可执行复核候选和健康报告，不联网、不写 ledger
+& .\.venv\Scripts\python.exe scripts\audit_fc2_similarity.py
+```
+
 历史创作者投影使用逐项只读审计，不再把目录名直接当身份：
 
 ```powershell

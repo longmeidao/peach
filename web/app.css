@@ -436,6 +436,8 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
 .qualityitem h3 button:hover{color:var(--tungsten)}.qualityitem p{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0;color:var(--muted)}
 .revieworigin{display:grid;grid-template-columns:132px minmax(0,1fr);gap:10px;align-items:center;margin:10px 0;padding:8px;
   border-radius:9px;background:var(--overlay-5)}
+.reviewcompare{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:10px 0}
+.reviewcompare .revieworigin{margin:0;min-width:0}
 /* 主体是创作者的候选：顶上给创作者入口，几何与 .revieworigin 保持一致，
    只是把 16:10 的封面换成圆形头像——两种卡片并排时不该看着像两套设计。 */
 /* 不给底色也不居中：卡片里只有这一个主体，衬底和留白只会把它推离左边缘，
@@ -459,7 +461,7 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
 .revieworigin>div{min-width:0}.revieworigin b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:8px}
 .revieworigin>div button{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:7px;background:var(--hover);padding:6px 9px;color:var(--ink-2);cursor:pointer}
 .revieworigin>div button:hover{color:var(--tungsten)}.revieworigin>div button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
-@media(max-width:640px){.qualitylist{grid-template-columns:1fr}.qualityitem{grid-template-columns:110px minmax(0,1fr)}.qualitycover{width:110px}.revieworigin{grid-template-columns:110px minmax(0,1fr)}.revieworigincover{width:110px}}
+@media(max-width:640px){.qualitylist{grid-template-columns:1fr}.qualityitem{grid-template-columns:110px minmax(0,1fr)}.qualitycover{width:110px}.reviewcompare{grid-template-columns:1fr}.revieworigin{grid-template-columns:110px minmax(0,1fr)}.revieworigincover{width:110px}}
 
 .indexmore[hidden],.entitymore[hidden]{display:none}
 .indexmore,.entitymore{display:flex;align-items:center;justify-content:center;margin:20px auto 0;min-width:124px;

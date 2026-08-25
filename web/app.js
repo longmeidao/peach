@@ -890,7 +890,7 @@ function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
 let reviewData=null,reviewCategory='metadata_fields';
 /* 主体是实体而不是单条作品的复核分类。值就是实体 kind。 */
 const ENTITY_REVIEW_CATEGORIES={creator_tags:'creator',western_identity:'creator'};
-const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',western_identity:'西方身份回配',code_creators:'番号目录存疑',fc2_markings:'FC2 评论标记',media_failure:'媒体失败'};
+const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',western_identity:'西方身份回配',code_creators:'番号目录存疑',fc2_markings:'FC2 评论标记',fc2_similarity:'FC2 跨号相似',media_failure:'媒体失败'};
 let dupData=null;
 /* 重复文件。判据是「同番号 + 时长相近 + 分卷标记一致」，不是同番号即重复——
    合集、分卷和混入的广告都会共用一个 code，只按番号做「保留最大」会删掉内容。
@@ -1010,7 +1010,13 @@ async function openReview(push=true){
          const subjectKind=ENTITY_REVIEW_CATEGORIES[reviewCategory];
          const subjectName=String(row.creator||'').trim();
          const works=Number(row.video_count||row.videos||0);
-         const origin=subjectKind&&subjectName?`<div class="reviewentity">
+         const comparison=row.comparison_assets||[];
+         const comparisonOrigin=comparison.length>1?`<div class="reviewcompare">${comparison.map(asset=>`<div class="revieworigin">
+             <button class="revieworigincover" data-review-open-item="${asset.id}" aria-label="打开原视频 ${esc(asset.name||'')}">
+               ${asset.preview_url?`<img src="${esc(asset.preview_url)}" alt="" loading="lazy" onerror="this.remove()">`:'<span>无封面</span>'}</button>
+             <div><b title="${esc(asset.name||'')}">${esc(asset.code||asset.name||'原视频')}</b>
+               <button type="button" data-review-open-item="${asset.id}">${icon('play')}打开原视频</button></div></div>`).join('')}</div>`:'';
+         const origin=comparisonOrigin||subjectKind&&subjectName?comparisonOrigin||`<div class="reviewentity">
              <button class="reviewentityface" data-entity-kind="${subjectKind}" data-entity-name="${esc(subjectName)}"
                aria-label="打开创作者页：${esc(subjectName)}">${avatarInner(subjectName,
                  row.entity_id?{id:row.entity_id}:null,null,subjectKind)}</button>
