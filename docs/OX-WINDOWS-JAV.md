@@ -79,11 +79,11 @@ $peachLogDir = Join-Path $peachData 'logs'
 
 ## 4. 高清女优头像：ox 的独立代码任务
 
-`agent/claude/performer-portraits` 分支已于 2026-08-25 删除，`scripts/import_performer_portraits.py`
-只在 Git 历史里（`git log --all --diff-filter=D -- scripts/import_performer_portraits.py` 可定位）。
-当前入口是只产 CSV 的 `scripts/audit_performer_portraits.py`。要补的是写入侧：从最新 master 新建
-独立 worktree，把历史脚本里的 Gfriends 索引、图像完整校验、长边 ≥500/短边 ≥300、provenance
-和按主机限速逻辑迁进来，不要把旧脚本原样捞回来对当前 ledger 跑 `--apply`。
+`agent/claude/performer-portraits` 分支已于 2026-08-25 删除，它的成熟逻辑——Gfriends Filetree
+索引与质量档位排序、Pillow 完整校验、长边 ≥500/短边 ≥300 门槛、provenance 口径、HostLimiter
+按主机限速——已全部由 `scripts/audit_performer_portraits.py` 承接，那份脚本的开头逐条列了这些
+不变量。所以**不需要去 Git 历史里捞旧脚本**。缺的只是写入侧：从最新 master 新建独立 worktree，
+在现有审计器之上加复制头像文件的那一步，仍然先出 CSV、经复核再写。
 
 当前 ledger 已完成中文规范名本地化，所以新审计器必须：
 
