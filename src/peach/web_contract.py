@@ -18,7 +18,9 @@ from pathlib import Path, PurePosixPath
 from typing import Sequence
 from urllib.parse import quote, urlsplit
 
-from .config import COVER_DIR, GENERATED_DIR, LOCATION_ROOT_DECLARATIONS
+from .config import (
+    COVER_DIR, GENERATED_DIR, LOCATION_ROOT_DECLARATIONS, SECRETS_DIR, SOURCES_DIR,
+)
 from .entities import (
     canonicalize_entity_name,
     collapse_repeated_entity_name,
@@ -34,6 +36,9 @@ from .platform import (
     translate_ledger_path,
 )
 from .repository import LedgerDatabase
+from .web_follow import (
+    q_follow, q_follow_credentials, w_follow_check, w_follow_save, w_follow_status,
+)
 from .web_activity import (
     DEFAULT_PROFILE_ID,
     w_activity,
@@ -86,6 +91,8 @@ class WebContract:
                  cover_root: Path | None = None,
                  avatar_root: Path | None = None,
                  logo_root: Path | None = None,
+                 follow_sources_root: Path | None = None,
+                 follow_secrets_root: Path | None = None,
                  database: LedgerDatabase | None = None):
         # 候选 CSV 的目录做成实例属性而不是模块常量，复核层才能在临时目录里被测试。
         self.candidate_root = Path(candidate_root) if candidate_root is not None else GENERATED_DIR
@@ -93,6 +100,11 @@ class WebContract:
         self.avatar_root = Path(avatar_root) if avatar_root is not None else GENERATED_DIR / "avatars"
         # `/logo` 就是从这里读；批准候选等于把图装进这个目录。
         self.logo_root = Path(logo_root) if logo_root is not None else GENERATED_DIR / "logos"
+        # 追更的原始证据与本机凭据目录同样做成实例属性，测试才能落在临时目录里。
+        self.follow_sources_root = (Path(follow_sources_root)
+                                    if follow_sources_root is not None else SOURCES_DIR)
+        self.follow_secrets_root = (Path(follow_secrets_root)
+                                    if follow_secrets_root is not None else SECRETS_DIR)
         self.database = database or LedgerDatabase(db_path)
         self.db_path = self.database.db_path
         self.snapshot_root = Path(snapshot_root) if snapshot_root is not None else None
@@ -2490,6 +2502,8 @@ def _post_empty_trash(contract, _body):
 
 
 GET_HANDLERS = {
+    "/api/follow": q_follow,
+    "/api/follow/credentials": q_follow_credentials,
     "/api/items": q_items,
     "/api/item": _get_item,
     "/api/entity": q_entity,
@@ -2508,6 +2522,9 @@ GET_HANDLERS = {
 }
 
 POST_HANDLERS = {
+    "/api/follow/check": w_follow_check,
+    "/api/follow/status": w_follow_status,
+    "/api/follow/save": w_follow_save,
     "/api/activity": w_activity,
     "/api/play": w_play,
     "/api/feedback": w_feedback,

@@ -181,8 +181,16 @@ class FollowStore:
                 precision, verdict.version, candidate.duration, verdict.release_key,
                 verdict.variant_kind, verdict.variant_label, candidate.group_hint,
                 evidence,
-                json.dumps({"markers": list(verdict.markers), **dict(candidate.extra)},
-                           ensure_ascii=False),
+                # author 单独并进来：连接器把它放在 DTO 的具名字段上，而不是 extra 里，
+                # 但界面上「哪位用户发的这条动态」是要显示的，落库时得带上。
+                # author 与 summary 单独并进来：连接器把它们放在 DTO 的具名字段上而不是
+                # extra 里，但界面要显示「谁发的、说了什么」——f95 线程里九条回复的标题
+                # 全是线程名，摘要才是那条动态的内容。摘要截断，追更不做全文存档。
+                json.dumps({"markers": list(verdict.markers),
+                            **({"author": candidate.author} if candidate.author else {}),
+                            **({"summary": candidate.summary[:400]}
+                               if candidate.summary else {}),
+                            **dict(candidate.extra)}, ensure_ascii=False),
                 stamp, stamp,
             )
             existed = connection.execute(

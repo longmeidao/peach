@@ -490,6 +490,12 @@ class F95ZoneConnector(_BaseConnector):
                 continue
             time_node = article.select_one("time")
             body = article.select_one(".bbWrapper")
+            # XenForo 把被引用的楼层原样嵌在正文里。不剥掉的话，摘要会变成
+            # 「某某 said: … Click to expand…」，而引用里的下载链接还会被算成这条
+            # 回复自己发的——追更判断因此指向错误的楼层。
+            if body is not None:
+                for quote in body.select("blockquote, .bbCodeBlock, .js-expandWatch"):
+                    quote.extract()
             links = [
                 str(node.get("href")) for node in (body.select("a[href]") if body else [])
                 if str(node.get("href", "")).startswith("http")

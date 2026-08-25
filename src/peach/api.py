@@ -658,6 +658,7 @@ def create_app(
     @app.api_route("/review", methods=["GET", "HEAD"])
     @app.api_route("/duplicates", methods=["GET", "HEAD"])
     @app.api_route("/quality-goals", methods=["GET", "HEAD"])
+    @app.api_route("/follow", methods=["GET", "HEAD"])
     def client_route(request: Request, item_id: int | None = None,
                      seed_id: int | None = None, mix_item_id: int | None = None,
                      kind: str | None = None, name: str | None = None):

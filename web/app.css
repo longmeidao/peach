@@ -1085,3 +1085,51 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .gate.offline b{letter-spacing:.08em}
 .gate.offline span{max-width:34ch;text-align:center;line-height:1.6}
 .gate.offline .chip{cursor:pointer;margin-top:4px}
+
+/* ── 在线追更 ── */
+.follow{padding:8px 0 42px}
+.fsources{list-style:none;margin:0 0 16px;padding:0;display:grid;gap:6px}
+.fsource{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 12px;border:1px solid var(--line-soft);border-radius:10px;background:var(--surface);font-size:12.5px}
+.fsource b{font-size:13px}
+.fsource .mono{color:var(--muted);font-size:11.5px}
+.fsource .fstatus{margin-left:auto;color:var(--muted);font-size:11.5px}
+.fsource.bad{border-color:var(--drop)}
+.fsource.bad .fstatus{color:var(--drop)}
+.fsource i{flex:1 1 100%;font-style:normal;color:var(--drop);font-size:11.5px}
+.fsource button{border:1px solid var(--border-15);border-radius:7px;background:transparent;color:var(--ink-2);padding:4px 11px;font-size:11.5px;cursor:pointer}
+.fsource button:hover{border-color:var(--tungsten);color:var(--ink)}
+.follow .reviewtabs .fcheck{margin-left:auto;display:inline-flex;align-items:center;gap:6px;background:var(--tungsten);border-color:var(--tungsten);color:#fff;font-weight:600}
+.follow .reviewtabs .fcheck svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
+.followlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:14px}
+.followitem{display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;background:var(--surface);border:1px solid var(--line-soft);border-radius:12px;padding:12px;min-width:0}
+.followitem[data-status="ignored"],.followitem[data-status="seen"]{opacity:.62}
+.fthumb{display:block;aspect-ratio:16/9;border-radius:8px;overflow:hidden;background:#000;position:relative}
+.fthumb img{width:100%;height:100%;object-fit:cover;display:block}
+.fnothumb{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:11.5px}
+.fbody{min-width:0}
+.fbody h4{margin:0 0 4px;font-size:14px;line-height:1.35;overflow-wrap:anywhere}
+.fbody h4 a{color:inherit;text-decoration:none}
+.fbody h4 a:hover{text-decoration:underline}
+.fbody>p.mono{margin:0 0 7px;color:var(--muted);font-size:11.5px;display:flex;gap:9px;flex-wrap:wrap}
+.fbadges{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px}
+.fbadge{padding:2px 8px;border:1px solid var(--border-15);border-radius:999px;font-size:11px;color:var(--ink-2)}
+.fbadge.wip{border-color:var(--meter);color:var(--meter)}
+.fbadge.ver{border-color:var(--tungsten);color:var(--tungsten)}
+.fbadge.dup{border-style:dashed}
+.fvariants{list-style:none;margin:0 0 8px;padding:0;display:grid;gap:4px;max-height:150px;overflow-y:auto;scrollbar-width:thin}
+.fvariants li{display:flex;align-items:center;gap:7px;font-size:11.5px;min-width:0}
+.fvariants a{color:var(--ink-2);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto}
+.fvariants a:hover{text-decoration:underline}
+.fvariants button{flex:0 0 auto;white-space:nowrap;border:1px solid var(--border-15);border-radius:6px;background:transparent;color:var(--ink-2);padding:2px 8px;font-size:11px;cursor:pointer}
+.fvariants button:disabled{opacity:.5;cursor:default}
+.fvkind{flex:0 0 auto;padding:1px 7px;border-radius:999px;font-size:10.5px;background:var(--overlay-5);color:var(--muted)}
+.fvkind.wip{color:var(--meter)}
+.fvkind.alt{color:var(--tungsten)}
+.fnote{margin:0 0 7px;font-size:11px;color:var(--muted)}
+.factions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.factions button{border:1px solid var(--border-15);border-radius:8px;background:transparent;color:var(--ink-2);padding:5px 12px;font-size:12px;cursor:pointer}
+.factions button:hover:not(:disabled){border-color:var(--tungsten);color:var(--ink)}
+.factions button:disabled{opacity:.55;cursor:default}
+.fstate{flex:1 1 100%;font-size:11px;color:var(--drop)}
+@media (max-width:640px){.followitem{grid-template-columns:110px minmax(0,1fr)}
+  .followlist{grid-template-columns:1fr}}

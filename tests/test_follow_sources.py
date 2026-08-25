@@ -68,7 +68,10 @@ Lazy Procrastinator Collection [2026-06-28] [LazyProcrastinator/LazyProcrast]</h
 </article>
 <article data-content="post-21394555" data-author="kim2311">
   <time datetime="2026-08-22T19:09:23+0100">Aug 22, 2026</time>
-  <div class="bbWrapper">Genre spoilers first page have futa spoiler.</div>
+  <div class="bbWrapper"><blockquote class="bbCodeBlock">Jkhomie1198 said:
+    <a href="https://f95zone.to/masked/gofile.io/50685/abc">Gofile</a>
+    Click to expand...</blockquote>
+  Genre spoilers first page have futa spoiler.</div>
 </article>
 </body></html>"""
 
@@ -207,6 +210,14 @@ class F95ZoneConnectorTests(unittest.TestCase):
         self.assertTrue(title.startswith("Lazy Procrastinator Collection"))
         self.assertNotIn("F95zone", title)
         self.assertIn("[2026-06-28]", title)
+
+    def test_quoted_posts_are_stripped_from_the_reply_body(self):
+        # 引用块里的链接是被引用那层发的。不剥掉会把追更信号指向错误的楼层。
+        result = F95ZoneConnector(transport=_transport(body=F95_HTML)).fetch("50685")
+        second = result.candidates[1]
+        self.assertEqual(second.summary, "Genre spoilers first page have futa spoiler.")
+        self.assertIsNone(second.media_url)
+        self.assertEqual(second.extra["link_count"], 0)
 
     def test_media_is_flagged_as_needing_a_login_session(self):
         # 发现不需要 cookie，取附件需要。下载动作必须先看这个标志。

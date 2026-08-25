@@ -366,12 +366,14 @@ class WebDataTests(unittest.TestCase):
             "/api/index", "/api/duplicates", "/api/quality-goals",
             "/api/stats", "/api/tops", "/api/ads", "/api/related", "/api/facets",
             "/api/search-history", "/api/review",
+            "/api/follow", "/api/follow/credentials",
         })
         self.assertEqual(set(rm_web.POST_HANDLERS), {
             "/api/activity", "/api/play", "/api/feedback", "/api/watch-later",
             "/api/preference", "/api/quality-goal", "/api/item-tag", "/api/batch",
             "/api/search-history", "/api/trash/empty", "/api/review/decision",
             "/api/purge-missing", "/api/review/auto-apply",
+            "/api/follow/check", "/api/follow/status", "/api/follow/save",
         })
         with self.assertRaises(rm_web.ContractRouteNotFound):
             rm_web.dispatch_api_get(self.contract, "/api/typo", {})

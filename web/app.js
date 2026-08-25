@@ -1113,6 +1113,152 @@ async function openQualityGoals(push=true){
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
+/* ── 在线追更 ──
+   一张卡片 = 一个作品，不是一条抓取记录。同一作品在本站的 alt 与 WIP 折进卡片内部，
+   跨站的同一作品折成「另见」，这样 24 条 rule34video 记录读起来才是 20 个作品。
+   联网只发生在用户点「检查更新」的那一刻——页面加载、换一批、popstate 都不联网。 */
+let followData=null,followFilter='new',followBusy=false;
+const FOLLOW_FILTERS=[['new','未看'],['seen','已看'],['saved','已保存'],['ignored','已忽略'],['','全部']];
+
+function followWhen(item){
+  const raw=item.published_at||'';
+  if(!raw)return '时间未取得';
+  const text=raw.replace('T',' ').slice(0,16);
+  // 站点只给「1 周前」时换算出来的是近似值，界面必须照实说，不能冒充发布时间。
+  return item.published_precision==='approximate'?`约 ${text}`:text;
+}
+
+function followBadges(group){
+  const badges=[];
+  if(group.has_wip)badges.push('<span class="fbadge wip">WIP</span>');
+  if(group.primary.version)badges.push(`<span class="fbadge ver">${esc(group.primary.version)}</span>`);
+  if(group.variants.length)badges.push(`<span class="fbadge">${
+    group.is_release?`${group.variants.length+1} 条动态`:`${group.variants.length} 个版本`}</span>`);
+  if(group.duplicates.length)badges.push(`<span class="fbadge dup">另见 ${
+    esc([...new Set(group.duplicates.map(d=>d.provider_label))].join('、'))}</span>`);
+  return badges.join('');
+}
+
+/* 行首那一格说明「这条和主条目的关系」。三种语境的答案不一样：
+   跨站重复项要说是哪个站，线程动态要说是什么时候的哪条回复，本站变体才说变体名。
+   把线程回复标成「main」是没有信息量的——一个线程里九条回复全是 main。 */
+function followVariantRow(group,item,mark){
+  let label=mark;
+  if(!label&&group.is_release)label=(item.published_at||'').slice(5,10)||'动态';
+  if(!label)label=item.variant_kind==='wip'?'WIP':(item.variant_label||item.variant_kind);
+  /* 线程里九条回复的标题全是线程名，摘要才是那条动态的内容。
+     只发了附件的回复没有正文，这时说清楚是没正文，比把线程名再印一遍强。 */
+  const body=group.is_release
+    ?(item.summary||(item.has_media?'（仅附件）':'（无正文）')):item.title;
+  const title=group.is_release&&item.author?`${item.author}：${body}`:body;
+  return `<li><span class="fvkind ${esc(item.variant_kind)}">${esc(label)}</span>
+    <a href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener">${esc(title)}</a>
+    <button data-follow-save="${item.id}"${item.status==='saved'?' disabled':''}>${
+      item.status==='saved'?'已保存':'保存'}</button></li>`;
+}
+
+function followCard(group){
+  const item=group.primary;
+  const thumb=item.thumb_url
+    ? `<img src="${esc(item.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
+    : `<span class="fnothumb">${esc(item.provider_label)}</span>`;
+  const rows=[...group.variants.map(v=>followVariantRow(group,v)),
+              ...group.duplicates.map(d=>followVariantRow(group,d,d.provider_label))].join('');
+  return `<article class="followitem" data-follow-item="${item.id}" data-status="${esc(item.status)}">
+    <a class="fthumb" href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener">${thumb}</a>
+    <div class="fbody">
+      <h4><a href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener">${esc(item.title)}</a></h4>
+      <p class="mono"><span>${esc(item.provider_label)}</span><span>${followWhen(item)}</span>${
+        item.duration?`<span>${fmtDur(item.duration)}</span>`:''}</p>
+      <div class="fbadges">${followBadges(group)}</div>
+      ${rows?`<ul class="fvariants">${rows}</ul>`:''}
+      ${item.media_needs_credential?'<p class="fnote">媒体需要登录会话才能取，发现本身不需要</p>':''}
+      <div class="factions">
+        <button data-follow-save="${item.id}"${item.status==='saved'?' disabled':''}>${
+          item.status==='saved'?`已保存 · asset #${item.asset_id}`:'保存到账本'}</button>
+        <button data-follow-status="${item.id}" data-to="seen"${item.status==='seen'?' disabled':''}>标记已看</button>
+        <button data-follow-status="${item.id}" data-to="ignored"${item.status==='ignored'?' disabled':''}>忽略</button>
+        <span class="fstate" aria-live="polite"></span>
+      </div>
+    </div></article>`;
+}
+
+function followSourceRow(source){
+  const state=source.last_status||'未检查';
+  const bad=state==='error'||state==='unauthorized';
+  return `<li class="fsource${bad?' bad':''}">
+    <b>${esc(source.label)}</b><span class="mono">${esc(source.provider_label)}</span>
+    <span class="mono">${esc(source.last_checked_at?source.last_checked_at.replace('T',' ').slice(0,16):'未检查')}</span>
+    <span class="fstatus">${esc(state)}</span>
+    <button data-follow-check="${source.id}">检查</button>
+    ${source.last_error?`<i>${esc(source.last_error)}</i>`:''}</li>`;
+}
+
+function renderFollow(){
+  const groups=followData.groups||[],counts=followData.counts||{};
+  $('#stats').innerHTML=`<div class="follow">
+    <ul class="fsources">${(followData.sources||[]).map(followSourceRow).join('')||
+      '<li class="empty">还没有登记追更来源。用 <code>peach follow add</code> 添加。</li>'}</ul>
+    <div class="reviewtabs">${FOLLOW_FILTERS.map(([key,label])=>
+      `<button data-follow-filter="${key}" aria-pressed="${key===followFilter}">${label}${
+        key?` <span class="n mono">${counts[key]||0}</span>`:''}</button>`).join('')}
+      <button class="fcheck" data-follow-check="">${icon('refresh-cw')}检查更新</button></div>
+    <div class="followlist">${groups.length?groups.map(followCard).join('')
+      :'<p class="empty">没有符合条件的追更条目</p>'}</div></div>`;
+  wireFollow();
+}
+
+async function openFollow(push=true){
+  releaseHoverPreviews();disposeStage(false);document.body.classList.remove('entity-open');
+  if(push)route('/follow');
+  buildManageBar();$('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
+  $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
+  $('#stats').innerHTML='<div class="follow"><p class="empty">正在读取…</p></div>';
+  followData=await api(`/api/follow?limit=300${followFilter?`&status=${followFilter}`:''}`);
+  if(location.pathname!=='/follow')return;
+  renderFollow();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function wireFollow(){
+  const root=$('#stats');
+  root.querySelectorAll('[data-follow-filter]').forEach(button=>button.onclick=()=>{
+    followFilter=button.dataset.followFilter;openFollow(false)});
+  root.querySelectorAll('[data-follow-check]').forEach(button=>button.onclick=async()=>{
+    if(followBusy)return;
+    followBusy=true;const label=button.innerHTML;button.disabled=true;
+    button.textContent='检查中…';
+    try{
+      const id=button.dataset.followCheck;
+      const result=await api('/api/follow/check',{method:'POST',
+        body:JSON.stringify(id?{source:+id}:{})});
+      const failed=(result.results||[]).filter(r=>!r.ok);
+      // 一个来源失败不该让其余来源的更新一起消失，所以逐条报，不整体报错。
+      if(failed.length)console.warn('追更检查失败：',failed);
+      await openFollow(false);
+    }catch(e){button.innerHTML=label;alert('检查更新失败：'+e.message)}
+    finally{followBusy=false;button.disabled=false}
+  });
+  root.querySelectorAll('[data-follow-status]').forEach(button=>button.onclick=async()=>{
+    await followWrite(button,'/api/follow/status',
+      {item:+button.dataset.followStatus,to:button.dataset.to})});
+  root.querySelectorAll('[data-follow-save]').forEach(button=>button.onclick=async()=>{
+    await followWrite(button,'/api/follow/save',{item:+button.dataset.followSave})});
+}
+
+async function followWrite(button,path,body){
+  const card=button.closest('.followitem'),state=card?.querySelector('.fstate');
+  button.disabled=true;
+  try{
+    await api(path,{method:'POST',body:JSON.stringify(body)});
+    await openFollow(false);
+  }catch(e){
+    button.disabled=false;
+    // 只读端（reader）写入必然 409，那是正常状态；照实显示比静默失败好。
+    if(state)state.textContent=e.message;else alert(e.message);
+  }
+}
+
 function wireReviewAssets(root){
   /* 复核页不再自造「多选模式」和框选：交互与主网格一致——点一下切换，Shift 选一段。
      多一套只在这一页生效的选择方式，用户得先发现它、再记住它。 */
@@ -1626,6 +1772,7 @@ const MANAGE_SECTIONS=[
   ['ads','疑似广告','alert'],
   ['dupes','重复文件','hard-drive'],
   ['quality','高清版','sparkles'],
+  ['follow','在线追更','globe'],
   ['trash','回收站','trash'],
   ['review','人工复核','square-check-big'],
 ];
@@ -1636,6 +1783,7 @@ function manageSection(){
   if(path==='/trash')return 'trash';
   if(path==='/duplicates')return 'dupes';
   if(path==='/quality-goals')return 'quality';
+  if(path==='/follow')return 'follow';
   return state.state==='ads'?'ads':'';
 }
 function buildManageBar(){
@@ -1665,6 +1813,7 @@ function openManage(section='stats'){
   if(section==='review'){openReview();return}
   if(section==='dupes'){openDuplicates();return}
   if(section==='quality'){openQualityGoals();return}
+  if(section==='follow'){openFollow();return}
   state.orient='';state.state=section==='trash'?'trash':'ads';
   route(section==='trash'?'/trash':'/');
   showHomeSurfaces();buildEdge();buildBars();load(true);
@@ -2536,6 +2685,9 @@ async function refreshAll(automatic=false){
     if(location.pathname==='/review'){await openReview(false);return}
     if(location.pathname==='/duplicates'){await openDuplicates(false);return}
     if(location.pathname==='/quality-goals'){await openQualityGoals(false);return}
+    /* 追更页刻意不参与「换一批」自动刷新：重画要重新取数，而取数之后紧接着的
+       动作是联网检查，自动触发等于替用户决定什么时候去打站点。 */
+    if(location.pathname==='/follow')return;
     await openStats(false);return
   }      // 统计/复核页只刷新当前表面
   if(!$('#index').hidden){return}
@@ -2596,6 +2748,7 @@ async function restoreRoute(){
   if(path==='/review'){await openReview(false);return}
   if(path==='/duplicates'){await openDuplicates(false);return}
   if(path==='/quality-goals'){await openQualityGoals(false);return}
+  if(path==='/follow'){await openFollow(false);return}
   if(path==='/immerse'){await openTok(undefined,false);return}
   showHomeSurfaces();disposeStage(false);
 }
