@@ -265,8 +265,18 @@ def _rank(item) -> tuple:
     kind_rank = {"main": 0, "alt": 1, "wip": 2}.get(getattr(item, "variant_kind", "main"), 3)
     provider = getattr(item, "provider", "") or ""
     published = getattr(item, "published_at", None) or ""
+    # `release` 语义下同一组是一个作品的历次动态，代表应当是最新那条；`work` 语义下
+    # 同一组是同一作品的多个副本，代表取最早发布的那个原始版本。
+    if getattr(item, "semantics", "work") == "release":
+        published = _descending(published)
     return (kind_rank, PROVIDER_PRIORITY.get(provider, 99), published,
             str(getattr(item, "external_id", "")))
+
+
+def _descending(text: str) -> str:
+    """把时间戳翻成可以继续用最小值比较的降序键。"""
+    return "".join(chr(0x10FFFD - ord(char)) if ord(char) < 0x10FFFD else char
+                   for char in text)
 
 
 def group_duplicates(items) -> tuple:

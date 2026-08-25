@@ -13,6 +13,7 @@ from .config import (
     STATE_DIR,
     PeachSettings,
 )
+from .follow_cli import register as register_follow
 from .migrations import plan, upgrade
 from .sync import LedgerSync, device_id
 
@@ -150,6 +151,8 @@ def build_parser() -> argparse.ArgumentParser:
     ledger_sync.add_argument("--take-ownership", action="store_true",
                              help="claim the single-writer role after both copies are in sync")
     ledger_sync.set_defaults(handler=_ledger_sync)
+
+    register_follow(commands)
     return parser
 
 

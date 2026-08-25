@@ -45,6 +45,7 @@ class FollowItemRow:
     published_precision: str
     version: str | None
     duration: float | None
+    semantics: str
     release_key: str
     variant_kind: str
     variant_label: str | None
@@ -69,6 +70,11 @@ class ReleaseGroup:
     def providers(self) -> tuple[str, ...]:
         members = (self.primary, *self.variants, *self.duplicates)
         return tuple(dict.fromkeys(item.provider for item in members))
+
+    @property
+    def is_release(self) -> bool:
+        """这一组是同一作品的历次动态（f95 线程），不是同一作品的多个版本。"""
+        return self.primary.semantics == "release"
 
     @property
     def has_wip(self) -> bool:
@@ -240,7 +246,8 @@ class FollowStore:
     # ---- 读取与分组 -----------------------------------------------------
 
     _SELECT = (
-        "SELECT i.*, s.provider, s.ref, s.label AS source_label, s.entity_id"
+        "SELECT i.*, s.provider, s.ref, s.label AS source_label, s.entity_id,"
+        " s.semantics"
         " FROM follow_item i JOIN follow_source s ON s.id=i.source_id"
     )
 
@@ -274,7 +281,8 @@ class FollowStore:
             media_url=row["media_url"], thumb_url=row["thumb_url"],
             published_at=row["published_at"],
             published_precision=row["published_precision"], version=row["version"],
-            duration=row["duration"], release_key=row["release_key"],
+            duration=row["duration"], semantics=row["semantics"],
+            release_key=row["release_key"],
             variant_kind=row["variant_kind"], variant_label=row["variant_label"],
             group_hint=row["group_hint"], status=row["status"], asset_id=row["asset_id"],
             first_seen_at=row["first_seen_at"], last_seen_at=row["last_seen_at"],
@@ -288,7 +296,10 @@ class FollowStore:
         先按来源自带的 `group_hint` 合并（booru 的 `parent_id` 比标题可靠），
         再按标题推出的 `release_key` 合并，最后同一组里选主条目。
         """
-        aligned = _align_by_group_hint(items)
+        # 先按标题判据拆开同站撞车，再按来源自带的关系合并：来源自己声明过的关系
+        # 优先，绝不能被标题判据拆散。
+        aligned = _align_by_group_hint(
+            _split_ambiguous_works(items, _hint_linked(items)))
         primaries = group_duplicates(aligned)
         buckets: dict[int, tuple[FollowItemRow, list[FollowItemRow]]] = {}
         for item, primary in zip(aligned, primaries):
@@ -414,5 +425,52 @@ def _align_by_group_hint(items: tuple[FollowItemRow, ...]) -> tuple[FollowItemRo
     return tuple(
         FollowItemRow(**{**item.__dict__, "release_key": keys[find(id(item))]})
         if keys[find(id(item))] != item.release_key else item
+        for item in items
+    )
+
+
+def _hint_linked(items: tuple[FollowItemRow, ...]) -> frozenset[tuple[str, str]]:
+    """来源已经声明为同一作品的条目：父帖与它在本批里出现的全部子帖。"""
+    present = {(item.provider, item.external_id) for item in items}
+    linked: set[tuple[str, str]] = set()
+    for item in items:
+        parent = (item.provider, item.group_hint or "")
+        if item.group_hint and parent in present:
+            linked.add(parent)
+            linked.add((item.provider, item.external_id))
+    return frozenset(linked)
+
+
+def _split_ambiguous_works(items: tuple[FollowItemRow, ...],
+                           linked: frozenset[tuple[str, str]] = frozenset(),
+                           ) -> tuple[FollowItemRow, ...]:
+    """`work` 语义下，同一来源出现两个 main 就不再按标题合并这一来源的这一组。
+
+    实测踩到的例子：kemono 上「February Poll Animations」（1 月 31 日）和
+    「February Poll + Animations」（2 月 15 日）是两个帖子，归一化后标题完全相同。
+    同一个站点里两个都没有变体标记的帖子本来就是两个作品，撞车只说明标题判据到头了。
+    这时哪个 alt 该挂到哪个 main 也无从判断，所以整组按 `external_id` 拆开，宁可多出
+    几张卡片，也不把两个作品并成一个。
+
+    `release` 语义不适用：那里同一来源的多条本来就是同一个作品的历次动态。
+    """
+    buckets: dict[tuple[str, str], list[FollowItemRow]] = {}
+    for item in items:
+        if item.semantics == "release" or not item.release_key:
+            continue
+        if (item.provider, item.external_id) in linked:
+            continue
+        buckets.setdefault((item.provider, item.release_key), []).append(item)
+    ambiguous = {
+        key for key, members in buckets.items()
+        if sum(1 for member in members if member.variant_kind == "main") > 1
+    }
+    if not ambiguous:
+        return items
+    return tuple(
+        FollowItemRow(**{**item.__dict__,
+                         "release_key": f"{item.release_key}\u0000{item.external_id}"})
+        if (item.provider, item.release_key) in ambiguous
+        and (item.provider, item.external_id) not in linked else item
         for item in items
     )

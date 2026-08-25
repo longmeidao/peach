@@ -246,6 +246,49 @@ class GroupingTests(_StoreCase):
     def test_empty_input_groups_to_nothing(self):
         self.assertEqual(self.store.group(()), ())
 
+    def test_same_provider_title_collision_is_not_merged_under_work_semantics(self):
+        # 实测踩到的：kemono 上「February Poll Animations」和「February Poll + Animations」
+        # 归一化后完全相同，却是两个帖子。同站两个 main 撞车只说明标题判据到头了。
+        source_id = self._source(provider="kemono", ref="fanbox/30917150")
+        self.store.record(source_id, _fetch([
+            FollowCandidate(provider="kemono", external_id="10",
+                            title="February Poll + Animations",
+                            published_at="2026-02-15T21:27:50Z"),
+            FollowCandidate(provider="kemono", external_id="19",
+                            title="February Poll Animations",
+                            published_at="2026-01-31T22:10:13Z"),
+        ], provider="kemono", ref="fanbox/30917150"), moment=MOMENT)
+        groups = self.store.group(self.store.items())
+        self.assertEqual(len(groups), 2)
+        self.assertEqual([g.variants for g in groups], [(), ()])
+
+    def test_an_alt_still_folds_when_its_provider_has_only_one_main(self):
+        source_id = self._source()
+        self.store.record(source_id, _fetch([
+            _candidate("1", "Fiona - Paizuri"),
+            _candidate("2", "Fiona - Paizuri (Nude)"),
+        ]), moment=MOMENT)
+        groups = self.store.group(self.store.items())
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(len(groups[0].variants), 1)
+
+    def test_release_semantics_keeps_thread_activity_in_one_group(self):
+        source_id = self._source(provider="f95zone", ref="50685", semantics="release")
+        self.store.record(source_id, _fetch([
+            FollowCandidate(provider="f95zone", external_id="21383374",
+                            title="Lazy Procrastinator Collection [2026-06-28]",
+                            published_at="2026-08-21T04:14:09Z"),
+            FollowCandidate(provider="f95zone", external_id="21394555",
+                            title="Lazy Procrastinator Collection [2026-06-28]",
+                            published_at="2026-08-22T18:09:23Z"),
+        ], provider="f95zone", ref="50685", semantics="release"), moment=MOMENT)
+        groups = self.store.group(self.store.items())
+        self.assertEqual(len(groups), 1)
+        self.assertTrue(groups[0].is_release)
+        # 线程组的代表是最新那条动态，不是最早那条。
+        self.assertEqual(groups[0].primary.external_id, "21394555")
+        self.assertEqual(groups[0].primary.version, "2026-06-28")
+
 
 class SaveAssetTests(_StoreCase):
     def _one_item(self, **candidate_kwargs):
