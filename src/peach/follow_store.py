@@ -1,0 +1,418 @@
+"""追更订阅与候选条目的 ledger 边界。
+
+这一层只负责登记与候选：`follow_item` 的 `status` 停在 `new`/`seen` 时，不影响任何
+asset、标签或反馈。只有 `save_asset()` 会写出真相，而它要求显式 `confirm=True`，
+并且只 INSERT 一条 `location='online'` 的新 asset，绝不改写既有真相字段。
+
+原始响应按来源存进 `peach-data/sources/follow/`，一次写死；条件请求游标存在
+`follow_source` 行上，因为它可替换、且要参与界面查询。
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import sqlite3
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+
+from .follow import FollowSourceError, write_immutable
+from .follow_sources import FollowCandidate, SourceFetch
+from .follow_variants import classify, group_duplicates
+
+
+def _now_text(moment: datetime | None = None) -> str:
+    moment = moment or datetime.now(timezone.utc)
+    if moment.tzinfo is None:
+        raise FollowSourceError("追更时间戳必须带时区")
+    return moment.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+@dataclass(frozen=True)
+class FollowItemRow:
+    id: int
+    source_id: int
+    provider: str
+    ref: str
+    source_label: str
+    entity_id: int | None
+    external_id: str
+    title: str
+    url: str | None
+    media_url: str | None
+    thumb_url: str | None
+    published_at: str | None
+    published_precision: str
+    version: str | None
+    duration: float | None
+    release_key: str
+    variant_kind: str
+    variant_label: str | None
+    group_hint: str | None
+    status: str
+    asset_id: int | None
+    first_seen_at: str
+    last_seen_at: str
+    metadata: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ReleaseGroup:
+    """一个作品在所有来源上的全部形态。"""
+
+    release_key: str
+    primary: FollowItemRow
+    variants: tuple[FollowItemRow, ...]
+    duplicates: tuple[FollowItemRow, ...]
+
+    @property
+    def providers(self) -> tuple[str, ...]:
+        members = (self.primary, *self.variants, *self.duplicates)
+        return tuple(dict.fromkeys(item.provider for item in members))
+
+    @property
+    def has_wip(self) -> bool:
+        return any(item.variant_kind == "wip" for item in self.variants)
+
+    @property
+    def newest_at(self) -> str:
+        members = (self.primary, *self.variants, *self.duplicates)
+        return max((item.published_at or item.first_seen_at) for item in members)
+
+
+@dataclass(frozen=True)
+class RecordOutcome:
+    source_id: int
+    discovered: int = 0
+    added: int = 0
+    updated: int = 0
+    not_modified: bool = False
+    evidence_path: str | None = None
+
+
+class FollowStore:
+    def __init__(self, connect, *, sources_root: Path | None = None):
+        """`connect` 是返回 sqlite3 连接的可调用对象；由调用方决定读写事务边界。"""
+        self._connect = connect
+        self.sources_root = Path(sources_root) / "follow" if sources_root else None
+
+    # ---- 订阅登记 -------------------------------------------------------
+
+    def register(self, *, provider: str, ref: str, label: str, url: str,
+                 semantics: str = "work", entity_id: int | None = None,
+                 metadata: dict | None = None, moment: datetime | None = None) -> int:
+        if semantics not in ("work", "release"):
+            raise FollowSourceError("semantics 只能是 work 或 release")
+        stamp = _now_text(moment)
+        payload = json.dumps(metadata or {}, ensure_ascii=False)
+        connection = self._connect()
+        connection.execute(
+            "INSERT INTO follow_source"
+            "(entity_id,provider,ref,label,url,semantics,metadata_json,created_at,updated_at)"
+            " VALUES(?,?,?,?,?,?,?,?,?)"
+            " ON CONFLICT(provider,ref) DO UPDATE SET"
+            "  label=excluded.label, url=excluded.url, semantics=excluded.semantics,"
+            "  entity_id=COALESCE(excluded.entity_id, follow_source.entity_id),"
+            "  metadata_json=excluded.metadata_json, updated_at=excluded.updated_at",
+            (entity_id, provider, ref, label, url, semantics, payload, stamp, stamp),
+        )
+        row = connection.execute(
+            "SELECT id FROM follow_source WHERE provider=? AND ref=?", (provider, ref)
+        ).fetchone()
+        return int(row[0])
+
+    def set_enabled(self, source_id: int, enabled: bool,
+                    moment: datetime | None = None) -> None:
+        self._connect().execute(
+            "UPDATE follow_source SET enabled=?, updated_at=? WHERE id=?",
+            (1 if enabled else 0, _now_text(moment), source_id),
+        )
+
+    def sources(self, *, enabled_only: bool = False) -> tuple[sqlite3.Row, ...]:
+        clause = " WHERE enabled=1" if enabled_only else ""
+        return tuple(self._connect().execute(
+            "SELECT s.*, e.canonical_name AS entity_name FROM follow_source s"
+            " LEFT JOIN entity e ON e.id=s.entity_id" + clause +
+            " ORDER BY s.provider, s.ref"
+        ).fetchall())
+
+    def creator_aliases(self, entity_id: int | None) -> tuple[str, ...]:
+        """规范名 + 全部别名。变体判定靠它剥掉标题里的创作者手柄。"""
+        if entity_id is None:
+            return ()
+        connection = self._connect()
+        names = [row[0] for row in connection.execute(
+            "SELECT canonical_name FROM entity WHERE id=?", (entity_id,))]
+        names += [row[0] for row in connection.execute(
+            "SELECT alias FROM entity_alias WHERE entity_id=?", (entity_id,))]
+        return tuple(dict.fromkeys(name for name in names if name))
+
+    # ---- 抓取结果落地 ---------------------------------------------------
+
+    def record(self, source_id: int, fetch: SourceFetch, *,
+               creator_aliases: tuple[str, ...] = (),
+               moment: datetime | None = None) -> RecordOutcome:
+        stamp = _now_text(moment)
+        connection = self._connect()
+        if fetch.not_modified:
+            connection.execute(
+                "UPDATE follow_source SET last_checked_at=?, last_status='not_modified',"
+                " last_error=NULL, updated_at=? WHERE id=?", (stamp, stamp, source_id))
+            return RecordOutcome(source_id, not_modified=True)
+
+        evidence = self._persist_evidence(fetch, moment)
+        added = updated = 0
+        for candidate in fetch.candidates:
+            verdict = classify(candidate.title, creator_aliases=creator_aliases,
+                               version=candidate.version, semantics=fetch.semantics)
+            precision = str(candidate.extra.get("published_precision") or
+                            ("exact" if candidate.published_at else "unknown"))
+            if precision not in ("exact", "approximate", "unknown"):
+                precision = "unknown"
+            values = (
+                source_id, candidate.external_id, candidate.title, candidate.url,
+                candidate.media_url, candidate.thumb_url, candidate.published_at,
+                precision, verdict.version, candidate.duration, verdict.release_key,
+                verdict.variant_kind, verdict.variant_label, candidate.group_hint,
+                evidence,
+                json.dumps({"markers": list(verdict.markers), **dict(candidate.extra)},
+                           ensure_ascii=False),
+                stamp, stamp,
+            )
+            existed = connection.execute(
+                "SELECT 1 FROM follow_item WHERE source_id=? AND external_id=?",
+                (source_id, candidate.external_id)).fetchone() is not None
+            connection.execute(
+                "INSERT INTO follow_item(source_id,external_id,title,url,media_url,"
+                "thumb_url,published_at,published_precision,version,duration,release_key,"
+                "variant_kind,variant_label,group_hint,evidence_path,metadata_json,"
+                "first_seen_at,last_seen_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+                " ON CONFLICT(source_id,external_id) DO UPDATE SET"
+                "  title=excluded.title, url=excluded.url, media_url=excluded.media_url,"
+                "  thumb_url=excluded.thumb_url, published_at=excluded.published_at,"
+                "  published_precision=excluded.published_precision,"
+                "  version=excluded.version, duration=excluded.duration,"
+                "  release_key=excluded.release_key, variant_kind=excluded.variant_kind,"
+                "  variant_label=excluded.variant_label, group_hint=excluded.group_hint,"
+                "  metadata_json=excluded.metadata_json, last_seen_at=excluded.last_seen_at",
+                # status、asset_id 与 first_seen_at 刻意不在 SET 里：用户处理过的条目
+                # 不因为再次抓到就退回 new，首见时间也不该被重写。
+                values,
+            )
+            if existed:
+                updated += 1
+            else:
+                added += 1
+        connection.execute(
+            "UPDATE follow_source SET etag=?, last_modified=?, last_checked_at=?,"
+            " last_status='ok', last_error=NULL, updated_at=? WHERE id=?",
+            (fetch.etag, fetch.last_modified, stamp, stamp, source_id))
+        return RecordOutcome(source_id, len(fetch.candidates), added, updated,
+                             evidence_path=evidence)
+
+    def record_error(self, source_id: int, message: str,
+                     moment: datetime | None = None, *, status: str = "error") -> None:
+        stamp = _now_text(moment)
+        self._connect().execute(
+            "UPDATE follow_source SET last_checked_at=?, last_status=?, last_error=?,"
+            " updated_at=? WHERE id=?", (stamp, status, message[:500], stamp, source_id))
+
+    def _persist_evidence(self, fetch: SourceFetch,
+                          moment: datetime | None) -> str | None:
+        if self.sources_root is None or fetch.raw_body is None:
+            return None
+        reference = moment or datetime.now(timezone.utc)
+        digest = hashlib.sha256(fetch.raw_body).hexdigest()
+        key = hashlib.sha256(f"{fetch.provider}\n{fetch.ref}".encode()).hexdigest()[:20]
+        directory = self.sources_root / fetch.provider / key
+        directory.mkdir(parents=True, exist_ok=True)
+        stamp = reference.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+        path = directory / f"{stamp}-{digest[:12]}.raw"
+        write_immutable(path, fetch.raw_body)
+        write_immutable(path.with_suffix(".json"), (json.dumps({
+            "provider": fetch.provider, "ref": fetch.ref,
+            # 脱敏后的请求 URL：凭据永不进证据目录。
+            "request_url": fetch.request_url, "sha256": digest,
+            "checked_at": _now_text(reference), "candidates": len(fetch.candidates),
+        }, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+        return str(path.relative_to(self.sources_root.parent))
+
+    # ---- 读取与分组 -----------------------------------------------------
+
+    _SELECT = (
+        "SELECT i.*, s.provider, s.ref, s.label AS source_label, s.entity_id"
+        " FROM follow_item i JOIN follow_source s ON s.id=i.source_id"
+    )
+
+    def items(self, *, statuses: tuple[str, ...] = (), source_id: int | None = None,
+              limit: int = 500) -> tuple[FollowItemRow, ...]:
+        clauses, params = [], []
+        if statuses:
+            clauses.append(f"i.status IN ({','.join('?' * len(statuses))})")
+            params.extend(statuses)
+        if source_id is not None:
+            clauses.append("i.source_id=?")
+            params.append(source_id)
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        params.append(int(limit))
+        rows = self._connect().execute(
+            self._SELECT + where +
+            " ORDER BY COALESCE(i.published_at, i.first_seen_at) DESC, i.id DESC LIMIT ?",
+            params).fetchall()
+        return tuple(self._row(row) for row in rows)
+
+    @staticmethod
+    def _row(row) -> FollowItemRow:
+        try:
+            metadata = json.loads(row["metadata_json"] or "{}")
+        except (TypeError, ValueError):
+            metadata = {}
+        return FollowItemRow(
+            id=row["id"], source_id=row["source_id"], provider=row["provider"],
+            ref=row["ref"], source_label=row["source_label"], entity_id=row["entity_id"],
+            external_id=row["external_id"], title=row["title"], url=row["url"],
+            media_url=row["media_url"], thumb_url=row["thumb_url"],
+            published_at=row["published_at"],
+            published_precision=row["published_precision"], version=row["version"],
+            duration=row["duration"], release_key=row["release_key"],
+            variant_kind=row["variant_kind"], variant_label=row["variant_label"],
+            group_hint=row["group_hint"], status=row["status"], asset_id=row["asset_id"],
+            first_seen_at=row["first_seen_at"], last_seen_at=row["last_seen_at"],
+            metadata=metadata if isinstance(metadata, dict) else {},
+        )
+
+    @staticmethod
+    def group(items: tuple[FollowItemRow, ...]) -> tuple[ReleaseGroup, ...]:
+        """把条目折叠成作品分组。
+
+        先按来源自带的 `group_hint` 合并（booru 的 `parent_id` 比标题可靠），
+        再按标题推出的 `release_key` 合并，最后同一组里选主条目。
+        """
+        aligned = _align_by_group_hint(items)
+        primaries = group_duplicates(aligned)
+        buckets: dict[int, tuple[FollowItemRow, list[FollowItemRow]]] = {}
+        for item, primary in zip(aligned, primaries):
+            primary = primary if primary is not None else item
+            buckets.setdefault(id(primary), (primary, []))[1].append(item)
+        groups = [
+            ReleaseGroup(
+                primary.release_key, primary,
+                tuple(m for m in members
+                      if m is not primary and m.provider == primary.provider),
+                tuple(m for m in members
+                      if m is not primary and m.provider != primary.provider),
+            )
+            for primary, members in buckets.values()
+        ]
+        return tuple(sorted(groups, key=lambda g: g.newest_at, reverse=True))
+
+    # ---- 状态与真相写入 -------------------------------------------------
+
+    def set_status(self, item_id: int, status: str) -> None:
+        if status not in ("new", "seen", "saved", "ignored"):
+            raise FollowSourceError(f"未知的追更状态：{status}")
+        if status == "saved":
+            raise FollowSourceError("`saved` 只能由 save_asset() 设置")
+        self._connect().execute(
+            "UPDATE follow_item SET status=? WHERE id=?", (status, item_id))
+
+    def save_asset(self, item_id: int, *, confirm: bool = False,
+                   moment: datetime | None = None) -> int:
+        """把一个候选保存成 `location='online'` 的 asset。
+
+        这是真相写入，必须显式 `confirm=True`。它只 INSERT 新行并回填 `asset_id`，
+        不改写任何既有 asset 的真相字段，也不下载媒体。
+        """
+        if not confirm:
+            raise FollowSourceError("写 ledger 需要显式 confirm=True")
+        connection = self._connect()
+        row = connection.execute(
+            self._SELECT + " WHERE i.id=?", (item_id,)).fetchone()
+        if row is None:
+            raise FollowSourceError(f"追更条目 {item_id} 不存在")
+        item = self._row(row)
+        if item.asset_id:
+            return item.asset_id
+        if not item.url:
+            raise FollowSourceError("候选没有作品页 URL，无法作为在线资产保存")
+        stamp = _now_text(moment)
+        existing = connection.execute(
+            "SELECT id FROM asset WHERE location='online' AND path=?", (item.url,)
+        ).fetchone()
+        if existing is not None:
+            asset_id = int(existing[0])
+        else:
+            creator = connection.execute(
+                "SELECT canonical_name FROM entity WHERE id=?", (item.entity_id,)
+            ).fetchone() if item.entity_id else None
+            cursor = connection.execute(
+                "INSERT INTO asset(location,path,name,medium,creator,duration,"
+                "release_date,first_seen,last_seen) VALUES('online',?,?,?,?,?,?,?,?)",
+                (item.url, item.title, _medium_for(item), creator[0] if creator else None,
+                 item.duration,
+                 (item.published_at or "")[:10] or None, stamp, stamp),
+            )
+            asset_id = int(cursor.lastrowid)
+            if item.entity_id:
+                connection.execute(
+                    "INSERT OR IGNORE INTO asset_entity(asset_id,entity_id,role,source,"
+                    "confidence,first_seen_at,last_seen_at)"
+                    " VALUES(?,?,'creator',?,1.0,?,?)",
+                    (asset_id, item.entity_id, f"follow:{item.provider}", stamp, stamp))
+        connection.execute(
+            "UPDATE follow_item SET status='saved', asset_id=? WHERE id=?",
+            (asset_id, item_id))
+        return asset_id
+
+
+def _medium_for(item: FollowItemRow) -> str:
+    if item.duration:
+        return "video"
+    if item.provider in ("kemono", "coomer", "pawchive"):
+        return "illustration"
+    return "video"
+
+
+def _align_by_group_hint(items: tuple[FollowItemRow, ...]) -> tuple[FollowItemRow, ...]:
+    """让来源自己声明为同一作品的条目共用一个 `release_key`。
+
+    booru 的 `parent_id` 是站点维护的变体关系，比从标题反推可靠得多：父帖与全部子帖
+    连成一个连通分量，整个分量取其中最小的 `release_key`。对齐之后再交给基于标题的
+    分组，两种判据因此不会互相打架。
+    """
+    index = {(item.provider, item.external_id): item for item in items}
+    parent: dict[int, int] = {}
+
+    def find(node: int) -> int:
+        while parent.setdefault(node, node) != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+
+    def union(left: int, right: int) -> None:
+        left_root, right_root = find(left), find(right)
+        if left_root != right_root:
+            parent[left_root] = right_root
+
+    linked = False
+    for item in items:
+        if not item.group_hint:
+            continue
+        relative = index.get((item.provider, item.group_hint))
+        if relative is not None:
+            union(id(item), id(relative))
+            linked = True
+    if not linked:
+        return items
+
+    keys: dict[int, str] = {}
+    for item in items:
+        root = find(id(item))
+        current = keys.get(root)
+        if current is None or item.release_key < current:
+            keys[root] = item.release_key
+    return tuple(
+        FollowItemRow(**{**item.__dict__, "release_key": keys[find(id(item))]})
+        if keys[find(id(item))] != item.release_key else item
+        for item in items
+    )

@@ -269,22 +269,25 @@ def _rank(item) -> tuple:
             str(getattr(item, "external_id", "")))
 
 
-def group_duplicates(items) -> dict[object, object]:
-    """把同一 `release_key` 的条目归组，返回 {条目 → 该组主条目}。
+def group_duplicates(items) -> tuple:
+    """把同一 `release_key` 的条目归组，返回与输入等长的主条目序列。
+
+    `result[i]` 是 `items[i]` 所属组的主条目；没有 `release_key` 的条目对应 `None`。
+    刻意返回位置对齐的序列而不是字典：条目里带 `dict` 字段就不可哈希，用条目本身
+    当键会在调用方那里炸掉，而用 `id()` 当键又会在条目被重建时悄悄失配。
 
     条目需要有 `release_key`、`variant_kind`、`provider`、`published_at`、`external_id`。
     主条目取「main 优先于 alt 优先于 wip，再按来源优先级，再按最早发布」。
     跨站同名作品因此折叠成一张卡片，本站的 alt 与 WIP 挂在主条目下。
     """
-    groups: dict[str, list] = {}
-    for item in items:
+    members: dict[str, list[int]] = {}
+    for index, item in enumerate(items):
         key = getattr(item, "release_key", "") or ""
-        if not key:
-            continue
-        groups.setdefault(key, []).append(item)
-    canonical: dict[object, object] = {}
-    for members in groups.values():
-        primary = min(members, key=_rank)
-        for member in members:
-            canonical[member] = primary
-    return canonical
+        if key:
+            members.setdefault(key, []).append(index)
+    primaries: list[object] = [None] * len(items)
+    for indexes in members.values():
+        winner = min(indexes, key=lambda index: _rank(items[index]))
+        for index in indexes:
+            primaries[index] = items[winner]
+    return tuple(primaries)

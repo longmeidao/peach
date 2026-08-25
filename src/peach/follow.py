@@ -154,6 +154,16 @@ class FeedAdapter:
         )
 
 
+def write_immutable(path: Path, payload: bytes) -> None:
+    """原始证据只写一次。同名不同内容说明取证边界被破坏，直接报错。"""
+    try:
+        with path.open("xb") as handle:
+            handle.write(payload)
+    except FileExistsError:
+        if path.read_bytes() != payload:
+            raise FollowSourceError("immutable follow snapshot collision")
+
+
 @dataclass(frozen=True)
 class FollowState:
     source_url: str
@@ -210,14 +220,14 @@ class FeedSnapshotStore:
             directory.mkdir(parents=True, exist_ok=True)
             raw_path = directory / f"{stamp}-{digest[:12]}.xml"
             metadata_path = raw_path.with_suffix(".json")
-            self._write_immutable(raw_path, result.raw_body)
+            write_immutable(raw_path, result.raw_body)
             metadata = {
                 "source_url": source_url,
                 "checked_at": checked_text,
                 "sha256": digest,
                 "entries": [asdict(entry) for entry in result.entries],
             }
-            self._write_immutable(
+            write_immutable(
                 metadata_path,
                 (json.dumps(metadata, ensure_ascii=False, indent=2) + "\n").encode("utf-8"),
             )
@@ -234,14 +244,6 @@ class FeedSnapshotStore:
         self._write_state(state_path, asdict(state))
         return state
 
-    @staticmethod
-    def _write_immutable(path: Path, payload: bytes) -> None:
-        try:
-            with path.open("xb") as handle:
-                handle.write(payload)
-        except FileExistsError:
-            if path.read_bytes() != payload:
-                raise FollowSourceError("immutable follow snapshot collision")
 
     @staticmethod
     def _write_state(path: Path, payload: dict) -> None:

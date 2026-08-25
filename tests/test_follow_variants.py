@@ -133,26 +133,28 @@ class GroupDuplicatesTests(unittest.TestCase):
         video = _Item("4542713", "rule34video", "fiona paizuri", "main", "2026-08-18")
         booru = _Item("998877", "rule34xxx", "fiona paizuri", "main", "2026-08-19")
         nude = _Item("4542721", "rule34video", "fiona paizuri", "alt", "2026-08-18")
-        canonical = group_duplicates([booru, nude, video])
-        self.assertEqual(canonical[video], video)
-        self.assertEqual(canonical[booru], video)
-        self.assertEqual(canonical[nude], video)
+        self.assertEqual(group_duplicates([booru, nude, video]), (video, video, video))
 
     def test_main_wins_over_alt_and_wip_regardless_of_provider(self):
         wip = _Item("1", "kemono", "mitsuru school movie", "wip", "2026-07-01")
         main = _Item("2", "f95zone", "mitsuru school movie", "main", "2026-08-01")
-        canonical = group_duplicates([wip, main])
-        self.assertEqual(canonical[wip], main)
+        self.assertEqual(group_duplicates([wip, main]), (main, main))
 
     def test_provider_priority_breaks_ties_between_equal_variants(self):
         self.assertLess(PROVIDER_PRIORITY["kemono"], PROVIDER_PRIORITY["rule34video"])
         low = _Item("1", "rule34video", "k", "main", "2026-08-01")
         high = _Item("2", "kemono", "k", "main", "2026-08-01")
-        self.assertEqual(group_duplicates([low, high])[low], high)
+        self.assertEqual(group_duplicates([low, high])[0], high)
 
     def test_items_without_a_release_key_are_skipped(self):
         orphan = _Item("1", "kemono", "", "main", None)
-        self.assertEqual(group_duplicates([orphan]), {})
+        self.assertEqual(group_duplicates([orphan]), (None,))
+
+    def test_result_is_positionally_aligned_with_the_input(self):
+        # 条目带 dict 字段就不可哈希，所以返回值必须按位置对齐，不能拿条目当键。
+        keyed = _Item("1", "kemono", "k", "main", "2026-08-01")
+        loose = _Item("2", "kemono", "", "main", "2026-08-01")
+        self.assertEqual(group_duplicates([loose, keyed]), (None, keyed))
 
     def test_verdict_is_immutable(self):
         verdict = VariantVerdict("k", "main", None, None, ())
