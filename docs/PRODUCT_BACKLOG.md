@@ -7,7 +7,7 @@
 1. **Mix / 合集 / 播放列表**：自动 Mix 已混排进普通视频流，点击后使用独立 `/mix/{seed}/{item}` 路由并在播放器右侧显示当前队列；仍缺可命名、排序、保存、续播、编辑的持久播放列表，以及保存自动 Mix 的能力。
 2. **寻找更好版本**：已经能逐条标记「高清 / 无水印 / 完整版」等目标；后续仍需相似内容匹配、候选去重、来源发现和人工替换确认。
 3. **现代自适应播放**：Video.js、Range、统计面板和面向 115/PikPak 原生 MP4 的按需 HLS 清单已经上线；自适应码率、多路清单、快速首帧和来源层大块预取优化仍未完成。
-4. **在线追更**：已有 RSS/Atom adapter、条件请求和快照存储；真实订阅源、调度、审核写入和 UI 尚未接通。
+4. **在线追更**：kemono/coomer/pawchive、rule34video、rule34.xxx、f95zone 五类连接器、WIP/alt/跨站重复判定、`follow_source`/`follow_item`、`peach follow` 与 `/follow` 页面已上线；仍缺定时轮询（APScheduler）、媒体下载落地，以及 simpcity 的可用入口（DDoS-Guard，未取得）。
 5. **首尾帧出处与不完整候选**：已有受限 FFmpeg 首尾抽帧、Windows 内置 OCR、证据帧缓存、来源/Full version 候选和 `/review`；仍需决定全库批次范围，并把用户批准后的不完整版判断接到更好版本目标。
 
 ## 尚未实现（7 项）
