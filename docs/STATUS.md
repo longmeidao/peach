@@ -25,6 +25,16 @@
   2026-08-25 复核 Mac 本地副本，`schema_migration` 同样到 `0016`。
   **迁移 `0017`（追更两张表）尚未对任何真实 ledger 执行**，两台机器都要在备份后
   按 `peach-ledger-write` 单独授权再 apply；在此之前 `/follow` 页面会因缺表报错。
+- **Mac 本地账本副本自 2026-08-24 起就是 dirty 的**（marker 记的是第 29 代、
+  `mtime_ns=1787332506518044766`，实际库已是 `1787504652787227090`，大小未变），而共享传输点
+  `/Volumes/peach-sync` 当前不可达。下次恢复同步时 `plan()` 会因「共享更新且本地有未回写改动」
+  判成 `conflict`，必须由人选一边——Mac 只用来浏览，正确的选择是取 Windows 那一份。
+  这个 latent conflict 先于追更改动存在，不是 `0017` 造成的。
+- 2026-08-25 发现 `http://peach.local/`（80）不通而 `:8900`/`:8443` 正常：`/etc/pf.anchors/gg.lmd.peach`
+  规则文件还在（8-20 装的），但 `/etc/pf.conf` 里引用它的 `rdr-anchor` 行没了——系统更新会用
+  模板重写 `/etc/pf.conf`，把追加的锚点行抹掉，而锚点文件是独立文件所以留了下来。
+  症状是服务健康、端口正常、只有不带端口的入口打不开。重装用
+  `sudo sh scripts/setup_macos_port80.sh install`（需要用户密码，智能体跑不了）。
 - PID 只是观测值，不是配置；每次停止或重启前必须重新核对命令行、父子关系和端口归属。
 - macOS 独立运行环境：代码 `~/Desktop/lmd.gg/peach/peach-app`、数据 `~/Desktop/lmd.gg/peach/peach-data`、worktree `~/Desktop/lmd.gg/peach/peach-worktrees`。Python 3.14.7 + 独立 venv，FFmpeg 走 PATH。
 - Mac 的 `peach-data` 实际形状与文档的通用分层有出入，排查前先看清：真实目录名是
@@ -234,7 +244,10 @@
 
 8. HLS `stream-plan` 和按需 TS 片段已接入现有 Video.js 内置 VHS。片段时间窗的绝对终点问题已修并已切生产（见上节）；自适应码率、多路清单、首帧/seek 的桌面与手机验收仍未完成。CloudDrive 约 100 MiB 固定块预取仍是来源层成本，服务端分片只能避免整部 MP4 Range，不会消除来源层块预取。
 9. 在真实生产浏览器补做 `/review` 的 1280×720/390×844 最终视觉确认，再人工批准 Windows r18dev 小批候选；确认来源质量后逐个启用 Javinizer 已有 scraper，不新增 Peach 私有站点解析器。
-10. 追更接下来三件事，按依赖顺序：(a) 在两台机器上备份后 apply 迁移 `0017`；
+10. 追更接下来三件事，按依赖顺序：(a) **先在 Windows 写入端**备份后 apply 迁移 `0017`
+    （`peach migrate upgrade --yes`，无 `--yes` 会拒绝改动真实 ledger），Mac 之后走
+    「同步 Ledger」拉取；Mac 只作 reader 浏览时也可以本地先 apply，它换来的只是
+    `/follow` 页面能渲染——写入端点在 reader 上照旧 409；
     (b) 用户提供 rule34.xxx 的 user_id + api_key，把 rule34.xxx 这一路打通并核对
     `parent_id` 的真实响应字段（当前实现按公开文档写成，**未取得**真实响应验证）；
     (c) 再接 APScheduler 做定时轮询。媒体下载能力已在设计里留位
