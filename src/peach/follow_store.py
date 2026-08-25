@@ -171,6 +171,11 @@ class FollowStore:
         for candidate in fetch.candidates:
             verdict = classify(candidate.title, creator_aliases=creator_aliases,
                                version=candidate.version, semantics=fetch.semantics)
+            release_key = verdict.release_key
+            if not candidate.title_is_name:
+                # booru 的「标题」是标签拼出来的，不是名字。让它各自成组，只靠
+                # `group_hint` 合并；否则同一作者标签相似的两个作品会被并掉。
+                release_key = f"{release_key}\u0000{candidate.external_id}"
             precision = str(candidate.extra.get("published_precision") or
                             ("exact" if candidate.published_at else "unknown"))
             if precision not in ("exact", "approximate", "unknown"):
@@ -178,7 +183,7 @@ class FollowStore:
             values = (
                 source_id, candidate.external_id, candidate.title, candidate.url,
                 candidate.media_url, candidate.thumb_url, candidate.published_at,
-                precision, verdict.version, candidate.duration, verdict.release_key,
+                precision, verdict.version, candidate.duration, release_key,
                 verdict.variant_kind, verdict.variant_label, candidate.group_hint,
                 evidence,
                 # author 单独并进来：连接器把它放在 DTO 的具名字段上，而不是 extra 里，
@@ -438,15 +443,20 @@ def _align_by_group_hint(items: tuple[FollowItemRow, ...]) -> tuple[FollowItemRo
 
 
 def _hint_linked(items: tuple[FollowItemRow, ...]) -> frozenset[tuple[str, str]]:
-    """来源已经声明为同一作品的条目：父帖与它在本批里出现的全部子帖。"""
-    present = {(item.provider, item.external_id) for item in items}
-    linked: set[tuple[str, str]] = set()
+    """来源已经声明为同组的条目。
+
+    `group_hint` 是一个全局字符串（`fanbox:12304831`、`rule34xxx:post:998877`），
+    只要两条以上共用它，来源就已经把它们认成同一个作品了。
+    """
+    counts: dict[str, int] = {}
     for item in items:
-        parent = (item.provider, item.group_hint or "")
-        if item.group_hint and parent in present:
-            linked.add(parent)
-            linked.add((item.provider, item.external_id))
-    return frozenset(linked)
+        if item.group_hint:
+            counts[item.group_hint] = counts.get(item.group_hint, 0) + 1
+    shared = {hint for hint, count in counts.items() if count > 1}
+    return frozenset(
+        (item.provider, item.external_id) for item in items
+        if item.group_hint in shared
+    )
 
 
 def _split_ambiguous_works(items: tuple[FollowItemRow, ...],
@@ -480,5 +490,32 @@ def _split_ambiguous_works(items: tuple[FollowItemRow, ...],
                          "release_key": f"{item.release_key}\u0000{item.external_id}"})
         if (item.provider, item.release_key) in ambiguous
         and (item.provider, item.external_id) not in linked else item
+        for item in items
+    )
+
+
+def _align_by_group_hint(items: tuple[FollowItemRow, ...]) -> tuple[FollowItemRow, ...]:
+    """让来源声明为同组的条目共用一个 `release_key`。
+
+    判据是「`group_hint` 字符串相同」，**跨站点成立**：rule34.xxx 从 `source` 归一出的
+    `fanbox:12304831` 与 kemono 上同一帖子的键完全相同，同一个作品在两个站上因此
+    精确合并，不必靠标题去猜。booru 的父子帖也走这条——父帖用自己的 id、子帖用
+    `parent_id`，拼出来是同一个键。
+
+    组键取组内最小的 `release_key`，保证结果与条目顺序无关。
+    """
+    keys: dict[str, str] = {}
+    for item in items:
+        if not item.group_hint or not item.release_key:
+            continue
+        current = keys.get(item.group_hint)
+        if current is None or item.release_key < current:
+            keys[item.group_hint] = item.release_key
+    if not keys:
+        return items
+    return tuple(
+        FollowItemRow(**{**item.__dict__, "release_key": keys[item.group_hint]})
+        if item.group_hint and item.group_hint in keys
+        and keys[item.group_hint] != item.release_key else item
         for item in items
     )

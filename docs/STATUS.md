@@ -261,8 +261,10 @@
     （`peach migrate upgrade --yes`，无 `--yes` 会拒绝改动真实 ledger），Mac 之后走
     「同步 Ledger」拉取；Mac 只作 reader 浏览时也可以本地先 apply，它换来的只是
     `/follow` 页面能渲染——写入端点在 reader 上照旧 409；
-    (b) 用户提供 rule34.xxx 的 user_id + api_key，把 rule34.xxx 这一路打通并核对
-    `parent_id` 的真实响应字段（当前实现按公开文档写成，**未取得**真实响应验证）；
+    (b) ~~核对 rule34.xxx 的真实响应~~ **2026-08-26 已完成**：用账号 key 实测，字段名与
+    文档一致，但内容推翻了两个按文档写下的判断——`image` 15/15 是哈希、`parent_id` 15/15
+    是 0，而 `source` 13/15 有值。分组键因此改为优先取 `source` 归一出的跨站键
+    （`fanbox:12304831`，与 kemono 的 post id 同一命名空间），详见 ADR-0019；
     (c) 再接 APScheduler 做定时轮询。媒体下载能力已在设计里留位
     （`media_url` + `media_needs_credential`），但没有实现下载器，也没有定流量与磁盘预算。
     lazyp 的四个来源已在临时库跑通端到端：kemono 50 条、rule34video 24 条、f95 9 条动态，

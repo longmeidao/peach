@@ -17,6 +17,7 @@ from peach.follow_secrets import Credential, CredentialError, CredentialStore
 from peach.follow_sources import (
     USER_AGENT, F95ZoneConnector, KemonoConnector, Rule34VideoConnector,
     Rule34XxxConnector, SimpCityConnector, build_connector, _iso_from_relative,
+    origin_group_key,
 )
 from peach.http import HttpResponse
 
@@ -75,15 +76,24 @@ Lazy Procrastinator Collection [2026-06-28] [LazyProcrastinator/LazyProcrast]</h
 </article>
 </body></html>"""
 
+# 形状取自 2026-08-25 对 api.rule34.xxx 的实测响应：顶层是裸列表，`image` 是 32 位
+# 十六进制哈希（15/15），`parent_id` 全是 0（15/15），`source` 13/15 有值。
 RULE34XXX_JSON = json.dumps([
-    {"id": 9988776, "image": "fiona_paizuri_nude.mp4", "parent_id": 9988770,
-     "tags": "lazyprocrastinator fiona nude", "change": 1787000000,
-     "file_url": "https://api-cdn.rule34.xxx/images/1/abc.mp4",
-     "preview_url": "https://api-cdn.rule34.xxx/thumbnails/1/abc.jpg",
-     "score": 42, "source": "https://rule34video.com/video/4542721/"},
-    {"id": 9988770, "image": "fiona_paizuri.mp4", "parent_id": 0,
-     "tags": "lazyprocrastinator fiona", "change": 1786990000,
-     "file_url": "https://api-cdn.rule34.xxx/images/1/def.mp4", "score": 40},
+    {"id": 18534395, "image": "3df1cbc67e072d6144588d6c80e490ea.mp4", "parent_id": 0,
+     "tags": "lazyprocrastinator fiona blush video sound", "change": 1787445373,
+     "file_url": "https://api-cdn-mp4.rule34.xxx/images/1232/3df1.mp4",
+     "preview_url": "https://api-cdn.rule34.xxx/thumbnails/1232/t_3df1.jpg",
+     "score": 72, "source": "https://lazyprocrast.fanbox.cc/posts/12304831"},
+    {"id": 18534396, "image": "3bda1572c365b223d8b287c538a38956.mp4", "parent_id": 0,
+     "tags": "lazyprocrastinator fiona video", "change": 1787445300,
+     "file_url": "https://api-cdn-mp4.rule34.xxx/images/1232/3bda.mp4",
+     "score": 70, "source": "https://www.fanbox.cc/@lazyprocrast/posts/12304831"},
+    {"id": 18534397, "image": "93eaeadff5effabe078c738aab85b3bc.mp4", "parent_id": 0,
+     "tags": "lazyprocrastinator sayuri video", "change": 1787445200,
+     "file_url": "https://api-cdn-mp4.rule34.xxx/images/1232/93ea.mp4", "score": 12},
+    {"id": 18534398, "image": "fiona_paizuri_nude.mp4", "parent_id": 18534397,
+     "tags": "lazyprocrastinator fiona nude", "change": 1787445100,
+     "file_url": "https://api-cdn-mp4.rule34.xxx/images/1232/fp.mp4", "score": 9},
 ]).encode()
 
 
@@ -108,6 +118,8 @@ class KemonoConnectorTests(unittest.TestCase):
                          "https://kemono.cr/fanbox/user/30917150/post/11406814")
         self.assertEqual(first.media_url, "https://kemono.cr/1c/fa/1cfae7.png")
         self.assertEqual(first.extra["attachment_count"], 1)
+        # post id 就是原平台的 post id，和别的站点从 source 归一出的键同一个命名空间。
+        self.assertEqual(first.group_hint, "fanbox:11406814")
 
     def test_pawchive_returns_a_bare_list_and_uses_its_own_host(self):
         seen = []
@@ -278,16 +290,39 @@ class Rule34XxxConnectorTests(unittest.TestCase):
             connector.fetch("lazyprocrastinator")
         self.assertEqual(seen, [])
 
-    def test_parent_id_becomes_the_group_hint(self):
+    def test_the_declared_origin_becomes_a_cross_site_group_key(self):
+        # 同一个 fanbox 帖在 source 里有两种写法，必须归一到同一个键——而那串数字
+        # 正是 kemono 上同一帖子的 post id，跨站重复因此能精确命中。
         candidates = self._connector().fetch("lazyprocrastinator").candidates
-        self.assertEqual(candidates[0].group_hint, "9988770")
-        self.assertIsNone(candidates[1].group_hint)
+        self.assertEqual(candidates[0].group_hint, "fanbox:12304831")
+        self.assertEqual(candidates[1].group_hint, "fanbox:12304831")
 
-    def test_filename_is_preferred_over_the_tag_string_as_a_title(self):
+    def test_posts_without_an_origin_fall_back_to_the_booru_parent_chain(self):
+        candidates = self._connector().fetch("lazyprocrastinator").candidates
+        # 父帖用自己的 id，子帖用 parent_id，拼出来是同一个键。
+        self.assertEqual(candidates[2].group_hint, "rule34xxx:post:18534397")
+        self.assertEqual(candidates[3].group_hint, "rule34xxx:post:18534397")
+
+    def test_a_hash_filename_is_not_used_as_a_title(self):
+        # 实测 15/15 的 image 都是哈希。拿它当标题既不可读，又会让每条帖子各自成组。
         first = self._connector().fetch("lazyprocrastinator").candidates[0]
-        self.assertEqual(first.title, "fiona paizuri nude")
-        self.assertEqual(first.extra["title_from"], "image")
-        self.assertEqual(first.published_at, "2026-08-17T20:53:20Z")
+        self.assertNotIn("3df1cbc6", first.title)
+        self.assertEqual(first.extra["title_from"], "tags")
+        self.assertFalse(first.title_is_name)
+        self.assertIn("fiona", first.title)
+        self.assertEqual(first.published_at, "2026-08-23T00:36:13Z")
+
+    def test_a_readable_filename_is_still_preferred_and_counts_as_a_name(self):
+        last = self._connector().fetch("lazyprocrastinator").candidates[3]
+        self.assertEqual(last.title, "fiona paizuri nude")
+        self.assertEqual(last.extra["title_from"], "image")
+        self.assertTrue(last.title_is_name)
+
+    def test_the_tag_label_drops_the_subject_and_media_words(self):
+        first = self._connector().fetch("lazyprocrastinator").candidates[0]
+        for noise in ("lazyprocrastinator", "video", "sound"):
+            self.assertNotIn(noise, first.title)
+
 
     def test_authentication_rejection_is_reported_as_a_credential_error(self):
         connector = self._connector(
@@ -301,6 +336,25 @@ class SimpCityConnectorTests(unittest.TestCase):
         with self.assertRaises(FollowSourceError) as caught:
             SimpCityConnector().fetch("123")
         self.assertIn("DDoS-Guard", str(caught.exception))
+
+
+class OriginGroupKeyTests(unittest.TestCase):
+    def test_the_two_fanbox_url_shapes_normalize_together(self):
+        self.assertEqual(origin_group_key("https://lazyprocrast.fanbox.cc/posts/12304831"),
+                         origin_group_key("https://www.fanbox.cc/@lazyprocrast/posts/12304831"))
+
+    def test_known_platforms_get_their_own_prefix(self):
+        self.assertEqual(origin_group_key("https://x.com/a/status/20861277667730761"),
+                         "x:20861277667730761")
+        self.assertEqual(origin_group_key("https://twitter.com/a/status/12345678"),
+                         "x:12345678")
+        self.assertEqual(origin_group_key("https://www.patreon.com/posts/98765432"),
+                         "patreon:98765432")
+
+    def test_unknown_hosts_and_junk_yield_nothing(self):
+        for value in ("https://rule34video.com/video/4542721/", "https://fanbox.cc/",
+                      "not a url", "", None, 12345):
+            self.assertIsNone(origin_group_key(value))
 
 
 class BuildConnectorTests(unittest.TestCase):

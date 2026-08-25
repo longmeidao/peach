@@ -203,10 +203,12 @@ class GroupingTests(_StoreCase):
         ]), moment=MOMENT)
         self.store.record(booru, _fetch([
             FollowCandidate(provider="rule34xxx", external_id="9988770",
-                            title="fiona paizuri"),
+                            title="fiona paizuri",
+                            group_hint="rule34xxx:post:9988770"),
             FollowCandidate(provider="rule34xxx", external_id="9988776",
                             title="totally different filename",
-                            group_hint="9988770"),
+                            title_is_name=False,
+                            group_hint="rule34xxx:post:9988770"),
         ], provider="rule34xxx"), moment=MOMENT)
 
     def test_alt_folds_under_its_main_and_other_works_stay_apart(self):
@@ -226,11 +228,40 @@ class GroupingTests(_StoreCase):
         self.assertTrue(all(d.provider == "rule34xxx" for d in paizuri.duplicates))
 
     def test_group_hint_beats_an_unrelated_title(self):
-        # booru 子帖的文件名和父帖毫无关系，只有 parent_id 能把它们连起来。
+        # booru 子帖的「标题」是标签拼的，和父帖毫无关系，只有来源声明的键能连起来。
         self._populate()
         groups = self.store.group(self.store.items())
         stray = [g for g in groups if g.primary.title == "totally different filename"]
         self.assertEqual(stray, [])
+
+    def test_a_shared_origin_key_merges_two_different_sites(self):
+        # 这是跨站去重真正靠得住的那条路：rule34.xxx 从 source 归一出的键，
+        # 和 kemono 上同一帖子的键完全相同，标题再不一样也能精确合并。
+        booru = self._source(provider="rule34xxx", ref="lazyprocrastinator")
+        kemono = self._source(provider="kemono", ref="fanbox/30917150")
+        self.store.record(booru, _fetch([
+            FollowCandidate(provider="rule34xxx", external_id="18534395",
+                            title="fiona · blush", title_is_name=False,
+                            group_hint="fanbox:12304831"),
+        ], provider="rule34xxx", ref="lazyprocrastinator"), moment=MOMENT)
+        self.store.record(kemono, _fetch([
+            FollowCandidate(provider="kemono", external_id="12304831",
+                            title="Fiona - Paizuri", group_hint="fanbox:12304831"),
+        ], provider="kemono", ref="fanbox/30917150"), moment=MOMENT)
+        groups = self.store.group(self.store.items())
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(sorted(groups[0].providers), ["kemono", "rule34xxx"])
+
+    def test_a_tag_derived_title_never_merges_two_works_on_its_own(self):
+        # 标签拼出来的「标题」不是名字：同一作者标签相似的两条不能因此被并掉。
+        source_id = self._source(provider="rule34xxx", ref="lazyprocrastinator")
+        self.store.record(source_id, _fetch([
+            FollowCandidate(provider="rule34xxx", external_id="1",
+                            title="fiona · blush", title_is_name=False),
+            FollowCandidate(provider="rule34xxx", external_id="2",
+                            title="fiona · blush", title_is_name=False),
+        ], provider="rule34xxx", ref="lazyprocrastinator"), moment=MOMENT)
+        self.assertEqual(len(self.store.group(self.store.items())), 2)
 
     def test_wip_is_surfaced_on_the_group(self):
         source_id = self._source()
