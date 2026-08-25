@@ -61,17 +61,8 @@ backup。任何一项失败都停止，不换路径猜测，也不使用迁移�
 
 ## 2. PikPak 全量 probe 与九帧接触表
 
-严格照 `docs/PIKPAK.md` 执行：先开 200 GB 流量守卫，再依次运行：
-
-```powershell
-& $peachPython scripts\fetch_jav_covers.py --location pikpak
-& $peachPython scripts\probe.py --location pikpak --allow-metered --redo all --workers 6 --min-free 40
-if ($LASTEXITCODE -ne 0) { throw "PikPak probe 未正常完成：$LASTEXITCODE" }
-& $peachPython scripts\sheets.py --location pikpak --allow-metered --workers 4 --frames 9 --min-free 40
-```
-
-probe 非零退出时不继续 sheets。触发 200 GB 或 40 GiB 磁盘闸门属于安全停止，下次原命令续跑。
-同一窗口不混跑 115、不跑番号元数据、不同步 ledger。
+预检、流量守卫、命令顺序和次日验收全部照 `docs/PIKPAK.md` 执行，本文件不复制第二份命令——
+两处各留一份必然会漂移。这里只补一条边界：同一窗口不混跑 115、不跑番号元数据、不同步 ledger。
 
 ## 3. 番号元数据：候选模式
 
@@ -88,9 +79,11 @@ $peachLogDir = Join-Path $peachData 'logs'
 
 ## 4. 高清女优头像：ox 的独立代码任务
 
-成熟实现仍在 `agent/claude/performer-portraits` 的 `scripts/import_performer_portraits.py` 与测试中；
-不要直接在旧分支对当前 ledger 运行 `--apply`。从最新 master 新建独立 worktree，只把其中的
-Gfriends 索引、图像完整校验、长边 ≥500/短边 ≥300、provenance 和按主机限速逻辑迁入当前脚本。
+`agent/claude/performer-portraits` 分支已于 2026-08-25 删除，`scripts/import_performer_portraits.py`
+只在 Git 历史里（`git log --all --diff-filter=D -- scripts/import_performer_portraits.py` 可定位）。
+当前入口是只产 CSV 的 `scripts/audit_performer_portraits.py`。要补的是写入侧：从最新 master 新建
+独立 worktree，把历史脚本里的 Gfriends 索引、图像完整校验、长边 ≥500/短边 ≥300、provenance
+和按主机限速逻辑迁进来，不要把旧脚本原样捞回来对当前 ledger 跑 `--apply`。
 
 当前 ledger 已完成中文规范名本地化，所以新审计器必须：
 

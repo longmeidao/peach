@@ -14,6 +14,7 @@
 - 回收站的物理删除只有一条实现：`purge_assets()`，`/api/batch` 的 `delete` 和 `/api/trash/empty` 共用它。顺序固定为先删媒体文件、再删账本行，删不掉的文件整条跳过并在 `blocked` 里回报，前端必须把 `blocked` 显示出来。反过来先删行会留下没人认领的媒体文件，那是真正不可恢复的丢失；留一条指向缺失文件的回收站行至少还能看见和重试。`asset_search` 不列入 `ASSET_REFERENCE_TABLES`，FTS 行由 `0004` 的删除触发器负责。
 - 复核候选文件名带批次日期，代码里只认前缀并取目录里最新的一份；把日期写死会让下一批生成后页面静默变空。候选行必须有稳定主键（`board`/`studio`/`entity_id`），缺主键的行跳过并计数，绝不退化成行号——行号会在 CSV 重排后把历史决定挪到别的条目上。候选目录走 `PeachSettings.candidate_root`，不是模块常量，否则测试会读到本机真实的 `peach-data/generated`。
 - 批准的权威值只能来自候选文件本身，请求体里的 `creator`/`tags` 只当确认，不一致直接拒绝；只有 `status=candidate` 的创作者候选可以批准，`skip` 行必须在页面禁用批准。否则「批准候选 X」能写入与 X 无关的标签，而 `review_decision` 留痕仍写着 X 通过——留痕说通过、实际写了别的，是最糟的组合。未勾选即整条通过，但受 `REVIEW_APPLY_LIMIT` 约束，超限必须显式勾选。
+- **命中推广词不算广告，剥完还剩不剩内容才算**。判据在 `web_contract.promo_residue`：先去掉域名和联系方式套话，再数剩下的中日韩文字与字母。`点击观看 房间火爆` 剥完什么都不剩，`236953.xyz 推特新晋…「一个ren」《榨精美足》` 剥完仍是大段描述——后者是被打了站点水印的正片。三类实测误判据此排除：剧情里的「微信」（`还要微信跟老公汇报战果`）、开头是盗版站域名但正文真实、以及拿创作者账号名当番号比时长（`RAIKUN325` 不是番号，`REAL_CODE` 用与 `is_jav_code` 同一条分隔符规则挡掉）。域名正则结尾不能用 `\b`：`uuc82.com_2` 里 `m` 和 `_` 都是词字符，构不成边界。另外 `disposal` 同时承载「这是广告」和「这个来源我不喜欢」两种意图（`1726897607_*` 那批属后者），不能当作纯广告标注集来标定判据。`tests/test_ad_judgement.py` 守这条线。
 - 抽帧的 bt709 覆盖重试只针对坏色彩元数据（stderr 命中 `reserved/unsupported/invalid` + 色彩词）。无条件重试会让网盘超时这类必然失败的文件每帧白跑第二次，单帧最坏耗时从 45 秒翻到 90 秒。判据依赖 stderr，所以不能丢弃 `capture_output` 的错误流。
 - Logo 与头像在界面上都渲染成方框（厂牌方图、女优 160×160 圆头像），候选按实测像素比例处理，判据在 `peach.images.classify`：长宽比 ≤1.35 直接用，更长的补自身四角底色填成正方形（`pad_to_square`，不是刷白也不是裁切），短边 <128 才拒绝。只有 URL 没有实测尺寸不算候选。
 - **AV 厂牌 Logo 的来源是厂牌自己的社交账号头像**：社交头像天然是正方形且由品牌本人发布。取证顺序是 handle → `unavatar.io` 解析出 `pbs.twimg.com` 真实地址 → 从平台 CDN 下载 → 实测，unavatar 只用于解析地址，provenance 两者都记（`scripts/fetch_studio_avatar_candidates.py`）。r18.dev 详情 JSON 只有 `maker.name`/`label.name` 和作品封面，没有 Logo 资源，已排除。
@@ -31,10 +32,7 @@
 - 两个智能体使用同一入口、同一必读顺序，不再生成按日期命名的临时交接文档。
 - 新任务以当前机器真实的 `peach-app` 为工作目录，并说：「接手 Peach，按项目入口文件继续 STATUS 中的下一任务。」不得把 Windows 迁移前的 `R:\peach-app` 当跨平台固定路径。
 - 改变运行事实的任务同时更新 `docs/STATUS.md`；长期规则更新本文件、`docs/REUSE.md` 或 ADR；可执行流程写成 `.claude/skills/<name>/SKILL.md`。分层判据见 ADR-0015，步骤见 `peach-context-rules`。
-- 技能目前只有 Claude 侧封装（`.claude/skills/`），Codex 不自动加载，只能靠 `AGENTS.md` 的索引表
-  主动读取同一份文件。Codex 接手时自行确认当前版本的技能机制与目录约定，把这几个技能封装成
-  Codex 侧可自动触发的形式，内容仍指向同一份 `SKILL.md`，不复制第二份正文；确认不了就保留索引
-  表作为回退，并在此处写明未取得。
+- 七个技能只有 Claude 侧封装（`.claude/skills/`），Codex 不自动加载，只能靠 `AGENTS.md` 的索引表主动读取同一份文件。Codex 侧封装的做法与验收写在 `docs/STATUS.md` 的下一批工作，本文件不复制第二份。
 - 无论哪个 harness，触发都是概率性的：必须每次成立的规则要由脚本、测试或 hook 强制，不能只写成技能。
 - 用户不是消息中转站。结论、进度、待办和证据必须写入共享文档或机器可读产物。
 
@@ -47,7 +45,7 @@
 - 并行任务必须给出输入/输出路径、网络和费用策略、写入边界、验收条件。工作者只产出 `candidate`，不得自行标为 `approved`、执行 `--apply`、改迁移/ADR 或重启服务。
 - 完成顺序不能决定覆盖顺序。仓库启用 Git `rerere` 记录重复冲突的已确认解法，但它不能代替人工审核。
 - `bba0b77` 是已发生的反例：测试被误判为本任务文件而进入提交，对应 `probe.py` 未暂存，导致 HEAD 出现「测试指向不存在实现」。独立 worktree、暂存路径复核和实现/测试原子性因此是强制规则。
-- 「全量 unittest discover 会挂起 / 会话输出消失」这条 2026-08-17 的结论已被证伪，成因另在别处。连跑三次全量 197 项均正常结束，通过时输出仅 6.9 KB。真实机制是 `tests/test_web_ui.py` 对整页做 `assertIn`：`self.page` 是约 189 KB 的 `index.html`，unittest 的失败消息会把整个容器原样打印，**一条断言失败就产出 195 KB 输出**，工具管道遇到超大输出会转存成文件，看起来就像输出消失。已改为有界的 `assertPageContains`/`assertPageLacks`，同样的失败现在是 861 字节。这不影响「唯一入口是 `& .\scripts\test.ps1`」的结论，但不要再把它归因于运行器竞态。
+- 「全量 unittest discover 会挂起 / 会话输出消失」这条 2026-08-17 的结论已被证伪，成因另在别处。连跑三次全量 197 项均正常结束，通过时输出仅 6.9 KB。真实机制是 `tests/test_web_ui.py` 对整页做 `assertIn`：`self.page` 是约 189 KB 的 `index.html`，unittest 的失败消息会把整个容器原样打印，**一条断言失败就产出 195 KB 输出**，工具管道遇到超大输出会转存成文件，看起来就像输出消失。已改为有界的 `assertPageContains`/`assertPageLacks`，同样的失败现在是 861 字节。这不影响「每个平台各有唯一入口（`scripts/test.ps1` / `scripts/test.sh`）」的结论，但不要再把它归因于运行器竞态。
 - Windows 上探测进程存活**绝不能用 `os.kill(pid, 0)`**。`signal.CTRL_C_EVENT == 0`，所以这个 Unix 经典写法实际调用 `GenerateConsoleCtrlEvent(CTRL_C_EVENT, ...)`：对控制台组内的 PID 会把 Ctrl+C 发给整个进程组（信号异步投递，`KeyboardInterrupt` 要到下一次控制台 I/O 才浮出，看起来像凭空报错）；对非组长的活进程则报 WinError 87，而旧代码把 87 当作「进程已死」，活着的任务会被判定为已死、锁被后来者抢走。`PidFileLock._running` 已改用 `OpenProcess` + `GetExitCodeProcess`，`test_liveness_probe_never_signals_its_own_console` 守这条线。这个故障只在真实控制台里出现，重定向和无控制台环境永远不复现——不要因为工具管道跑得过就认为没问题。
 - 含中文的 `.ps1` 必须带 UTF-8 BOM。没有 BOM 时 Windows PowerShell 5.1 按 ANSI（简中系统即 GBK）读文件，中文被解成乱码后引号配对错乱，脚本在解析期就失败并闪退；报错行还会落在纯 ASCII 的语句上（实测 `test.ps1` 报在第 18 行的 `Join-Path`，真正的坏行在别处），极难定位。pwsh 7 默认按 UTF-8 读无 BOM 文件，同一份字节实测 7.6.3 解析通过、5.1 报 2 处错误。所以**默认终端是 pwsh 7 也不能免疫**：双击 `.ps1` 或右键「使用 PowerShell 运行」走的是文件关联的 `powershell.exe`（5.1），解析失败后窗口立即关闭，连报错都来不及看。`test_powershell_scripts_with_chinese_carry_a_utf8_bom` 守这条线。
 - 「归一化」与「判形态」是两件事，混用会让判据自己打自己：`normalise_code` 补上分隔符后，`RAIKUN325`（myfans 账号名，241 个文件）变成 `RAIKUN-325` 就通过了番号检查，`BANBI_555` 同理。分隔符正是区分番号与账号名的唯一线索，归一化把它抹掉了，所以形态判定必须看原值，归一化只服务封面查找那类需要稳定键的场景；两处各犯过一次，现已共用 `is_jav_code`。代价是 `SOAN045`、`DTW024` 这类漏写分隔符的真番号会被判为非 JAV，二者结构相同无法自动区分，宁可漏掉几个也不能把账号作品塞进 JAV 模式。同理，前端「刷新」要区分重取与换一批：`q_tops` 是 `ORDER BY n DESC` 的确定性查询，失效缓存后重取还是同一批人，必须放大候选池再按种子确定性抽样，缓存键带上种子与口径，否则几套结果互相顶掉。
@@ -67,13 +65,10 @@
 - 编写上述领域的代码、正则、批处理、对账和中文文本；
 - 根据番号、文件名、画面水印、Logo 或发行元数据识别女优和厂牌。
 
-此前「Claude 会拒绝露骨行为分类」的记录已废止。一次实际任务读取 30 张创作者板，为 27 位创作者、4,518 个视频写入 27,295 条 `vision_creator` 标签，含口交、足交、手交、乳交、骑乘和后入，最终 27/27 与 ledger 对账一致。
+证据是一次实际任务：读取 30 张创作者板，为 27 位创作者、4,518 个视频写入 27,295 条 `vision_creator` 标签，27/27 与 ledger 对账一致。仍需遵守的边界：
 
-仍需遵守的边界：
-
-- 不处理真实未成年人；本库经用户确认只有成年人。`萝莉`、`学生`、`洛丽塔`、`制服` 是成年角色扮演/题材标签，不能仅凭这些字符串停止编目。
+- 语料边界（成年人、角色扮演标签、营销来源词）以 `AGENTS.md` 的那一条为准，本文件不复制第二份。
 - 不从人脸识别私人真实身份。持久归属必须有番号、文件名、水印、厂牌、公开链接等非人脸证据。
-- 本库经用户确认均为自愿成人内容。`泄露`、`流出`、`G3104` 等是营销或来源风格词，不是非自愿证据；只有文件级直接反证才停止并报告。
 - 删除和其他不可逆/对外动作先生成带证据和置信度的复核产物，执行步骤单独授权。
 - 单帧逐条判断、过暗/模糊画面、仅靠文件名区分片源水印与广告都属于弱项，应降低置信度或补抽帧，不应伪装成确定事实。
 
@@ -142,6 +137,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 2026-08-15 经 mihomo 实测：115 单文件 ffprobe 约 25 MB，九帧接触表约 285 MB；PikPak 单文件 probe 12–52 MB，九帧约 163 MB/13.7 秒。PikPak 抽帧的主要约束是字节而非耗时；Windows 夜跑步骤见 `docs/PIKPAK.md`。
 - `-probesize`/`-analyzeduration` 无法减少 CloudDrive 固定块预取。创作者板在未知时长时可回退到 60 秒 seek，因此无需先花约 207 GB 做全量 PikPak probe。
 - 200 GB 守卫默认只统计代理流量，能覆盖 PikPak，不能看到直连 115；需要覆盖直连来源时显式使用 `--count-direct`，且不要在同一直接计量窗口混跑不同来源。
+- **续跑要跳过两类，不是一类**。已落盘的产物本来就跳过；上一轮判为「所有渠道都没有」的落空也必须跳过。落空恰恰最贵：每条都要把候选源挨个试完才能确定，实测 194 条里 150 条是落空，重探一遍要好几个小时且结论不会变。按三态区分：确认没有的跳过，`ConnectError`、`ReadTimeout` 这类「未取得」必须重试，`--retry-misses` 可强制重探已确认的落空。跳过的行要原样带进新日志，否则整份重写会把上一轮的判定删掉。
 - 短促测试无法刻画会累积的限流。r18 在 12 个请求的实测里 1.0 秒间隔全过，据此把默认从 2.0 降到 1.0，结果连跑约 18 分钟后开始被拒，556 位里 203 位被判成假阴性；改回 2.0 秒连跑 62 分钟稳定。限流参数只能用与真实批次同量级的运行来标定。
 - 限流是各主机自己的事，不是整个任务的属性。`HostLimiter` 按主机各记一个下次可发时刻，线程等 r18 的空档时去查 av-wiki 和 javdb，实测 12 位从约 8 秒/位降到 4.4 秒/位。r18 每位要两个请求，这是并发压不掉的下限。
 - 长任务必须能续跑。一次未捕获的 TLS EOF 曾让 62 分钟的批量结果归零：网络异常要降级为空值而不是抛出，结果要定期写入文件，`--resume` 只把成功判定当作已完成——`no_name` 这类多半是限流假阴性，冻结在复核文件里就再无重试机会。
@@ -157,6 +153,8 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 可用来源实测（2026-08-15）：r18.dev、av-wiki.net、javdb.com、Gfriends 可用；javlibrary、missav、xslist 被 Cloudflare 拦，njav 有验证墙，jav321 无独立女优字段。被 Cloudflare 拦的站一律放弃，不绕过机器人检测。
 - 番号目录被投影成创作者时，判据只能是文件级证据，不能是名字形态。`HD-abp-758`、`pppd-937ch`、`banbi_555`、`AH18` 四者形态相同，真相完全不同：前两个是发行目录（`HD-` 是画质、`-CH` 是中文字幕版，都会让番号提取放弃），第三个是 myfans 账号，第四个是 pixiv 画师。唯一可靠的区分是「目录内的媒体文件名是否解析出同一个番号」——账号目录里放的是作品标题，天然不命中；pixiv 行的 `path` 是 URL，先按这一点排除。`scripts/audit_code_creators.py` 就是这条判据的实现，存疑一律留复核 CSV。
 - 画质前缀（`HD`/`FHD`/`4K`/`1080P`）和版本后缀（`-C`/`-CH`/`-UC`/`-SUB`）不是番号的一部分。番号提取器必须先剥这两层再匹配，否则 `code` 留空、目录名顶替身份，两个错误一起发生。
+- **创作者是频道主，不是出镜者**；文件名里的 `@账号` 多数是蹭流量的引流号。可建创作者的只有`RT_@X - 正文…`（X 是转推原作者）、`女主@X`（明确标注的出镜者）和正文里的中文名；末尾成串裸 `@A @B @C` 是互推、`📷：@X` 是摄影师，都不建。据此删过 8 个假创作者（`KawasawaSen`、`ToBulma`、`Xiaoxiaofoer`、`MitsumeDoji`、`ToukaYuan`、`jiaoshiwb`、`yohuo001`、`yszl_0107`）。
+- **转载渠道水印不是创作者水印**。已确认属于电报群与盗版站的：`@FLshe11`、`@SFJT68`、`@hmfl8`、`@zupi8888`、`52ywy.com`、`5snn.com`、`9P3456.com`。目录名同样可能是伪装，已证实的有`梦比优斯奥特曼（日配）`→MyElla、`宇宙英雄奥特曼`→RecklessDome、`电化学_金属腐蚀…`→梅麻呂3D，判定优先级是画面水印 > 作品名联网反查 > 文件名文本。
 - 打创作者级标签前必须先验证这个 creator 是不是聚合目录。按 ledger 路径的下级目录分布判断：`Myfans` 下含至少 4 位不同创作者，`RiaKurumi` 是女优而非创作者且作品分属 cospuri／fellatiojapan／spermmania 三个厂牌。给聚合目录打统一风格标签就是 `asce` 事故的重演。
 - `merge_entity` 已于 2026-08-17 回到主线 `src/peach/entities.py`（此前只存在于未合并的 `agent/claude/performer-portraits` 分支；配 `tests/test_entity_merge.py`）。两条陷阱：①不得依赖外键级联清理子表——sqlite 连接默认 `foreign_keys=OFF`，真实执行曾留下 5 条孤儿 `entity_alias`/`entity_external_ref` 行，所有子表行必须在函数内显式 DELETE；②计数用 `SELECT changes()`，不能用 `total_changes`（那是整个连接的累计值，会虚报数百倍）。合并前必须 SQLite 备份，合并后立即 `PRAGMA foreign_key_check` 应为 0。
 
@@ -173,7 +171,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 真实 ledger 是当前写入者本机 `peach-data/database/ledger.db`，WAL 模式。正常浏览会合法写入播放/行为字段；平台绝对路径以 `docs/STATUS.md` 为准。
 - 测试必须使用临时 SQLite 和临时媒体；不得写真实 ledger。
 - 真实迁移前依次执行 SQLite 备份、asset/tag 计数、`PRAGMA integrity_check`、迁移版本检查、服务 smoke test。
-- 正式迁移 `0000`–`0014` 已应用。`0003` 增加默认 profile、稍后看、实体链接和搜索词；`0004` 增加 FTS5 trigram；`0005` 回填晚到兼容标签；`0006` 增加 `asset_preference`；`0007` 从创作者身份中移除结构文件夹名 `门槛`、`视频`、`宣传文件`；`0008` 增加 profile 级标签隐藏；`0009` 移除结构集合目录 `asce` 的假创作者关系和低置信 `vision_creator` 传播；`0010` 把 83 条「足交仙人」按水印和文件名证据归到 `suzuq`，并从 745 条 TokyoDolls 资产解除错误的「捅主任」关系；`0011` 记录更好版本目标；`0012` 增加跨访问端共享搜索历史；`0013` 将旧待删状态统一为回收站，默认查询排除回收站，清空回收站才永久删除；`0014` 清理明确的创作者 URL 后缀并保留旧名 alias。
+- 正式迁移 `0000`–`0016` 已应用。`0003` 增加默认 profile、稍后看、实体链接和搜索词；`0004` 增加 FTS5 trigram；`0005` 回填晚到兼容标签；`0006` 增加 `asset_preference`；`0007` 从创作者身份中移除结构文件夹名 `门槛`、`视频`、`宣传文件`；`0008` 增加 profile 级标签隐藏；`0009` 移除结构集合目录 `asce` 的假创作者关系和低置信 `vision_creator` 传播；`0010` 把 83 条「足交仙人」按水印和文件名证据归到 `suzuq`，并从 745 条 TokyoDolls 资产解除错误的「捅主任」关系；`0011` 记录更好版本目标；`0012` 增加跨访问端共享搜索历史；`0013` 将旧待删状态统一为回收站，默认查询排除回收站，清空回收站才永久删除；`0014` 清理明确的创作者 URL 后缀并保留旧名 alias；`0015` 增加 `review_decision`；`0016` 增加 `asset.release_date`。
 - `0007` 曾在应用后、提交前被改写注释/格式，导致校验和漂移。本次用迁移前备份重放当前 `0007`，对 298 条受影响资产与生产结果逐条对比，差异为 0 后才校正 `schema_migration` 校验和，然后正常应用 `0008`、`0009`。已应用迁移文件从此不得修改，任何后续变更必须新增版本。
 - 外置盘目标只保存 `R:\media`；代码、运行数据、venv 和 worktree 在两台机器各自的内置盘。`peach-data` 不进入仓库，也不整体交给文件同步。分通道边界见 ADR-0017。
 
@@ -190,6 +188,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - `.local` 使用本地 CA，不使用 Let's Encrypt。证书/私钥保存在本机 `peach-data/secrets`。TLS 私钥禁用 ACL 继承，只允许实际服务身份、SYSTEM、Administrators；当前 Windows 服务身份是 `longm`。macOS/iOS 只安装并信任 `peach-local-ca.crt`，不得分发 CA key 或服务器 key。
 - FastAPI 是唯一 Web server。不得恢复平行 `http.server` 或动态 legacy loader。配置 `--token` 时通过 `/login` POST 取得 HttpOnly cookie；旧 `?t=` 只做一次兼容重定向，dependency 统一 JSON contract 鉴权但不替代登录流程。
 - FFmpeg/ffprobe 依次从显式环境变量、本机 `peach-data/tools/ffmpeg/bin`、`PATH` 解析；不得回退到 Stash 私有目录。
+- **生成产物走 Syncthing 单向同步，和账本、和 Git 是三条互不兜底的链路**。Windows send-only、Mac receive-only，五个文件夹 `snapshots`、`posters`、`avatars`、`logos`、`covers`；Mac 侧根目录在 `peach-data/artifacts/`（`generated` 是指向它的符号链接，不要把符号链接本身设成同步目录），Trash Can 版本保留 30 天。`.stignore` 不跨设备同步，两端每个目录各放一份。方向是固定的：Mac 不发布正式产物，在 Mac 上生成的图片不会回到 Windows。
 - 长任务只停止自己拥有且命令行匹配的 Python/FFmpeg 进程树，禁止全机终止 FFmpeg。
 - 导入运维脚本不得触发文件、网络或数据库副作用。`scrape_codes.py` 默认写可续跑复核 CSV；`clean_names.py` 先预览，`--apply` 前备份 SQLite。
 - 切换服务前检查 80、443、8900、9999 端口和实际进程归属。
@@ -246,7 +245,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 115/PikPak 继续采用视频网站式按需加载，不增加「点击后才拉流」的额外门槛。已知时长的原生 MP4 通过 `/api/stream-plan` 进入 6 秒 HLS VOD 清单；每个 TS 片段由 FFmpeg 对挂载文件执行目标时间 seek，响应后删除临时文件。不能把 HLS 失败伪装成成功，播放器必须回退标准 `/stream` Range；也不能再次人工截短 `Content-Range`。
 - 详情播放器固定复用本地 Video.js 8.23.9（Apache-2.0），不依赖 CDN。控制栏总时长优先采用 ledger 探测值；item 29297 的 `moov/mvhd` 位于文件头，真实总时长为 28,639.916 秒，说明旧「越播越长」不是媒体缺少头部元数据。统计面板同时区分 HLS 与 HTTP Range，并继续读取内置 VHS 的请求、带宽和字节统计。
 - 详情播放器全屏时必须覆盖 `76vh` 和 `aspect-ratio` 限制，否则浏览器全屏会留下底部黑区；沉浸模式横屏片源使用全视口 `object-fit:cover`，竖屏片源必须按视频真实宽高切到 `contain`，不能裁掉上下画面。加载速度显示优先使用 Video.js VHS `stats.bandwidth`，再回退到当前 session 的 `PerformanceResourceTiming`，不把 FlowLens API 耦合进页面。
-- Peach 测试唯一入口是 `& .\scripts\test.ps1`；脚本内部运行标准库 `unittest`，仓库不依赖 `pytest`。健康检查端点是 `/healthz`，不是 `/health`。
+- Peach 每个平台各有唯一测试入口：Windows 是 `& .\scripts\test.ps1`，macOS/Linux 是 `./scripts/test.sh`。两者契约相同，内部运行标准库 `unittest`，仓库不依赖 `pytest`。两个入口都必须绿，只在一个平台通过的改动不算完成。健康检查端点是 `/healthz`，不是 `/health`。
 - 2026-08-18 回环实测（`/stream?id=823`，取前 200 MiB）：直接读盘 761 MiB/s、Peach HTTP 136 MiB/s、Peach HTTPS 142 MiB/s。TTFB：`/healthz` 36 ms、`/stream` 首块 40 ms、中段 Range 41 ms、`/api/items?limit=60` 167–405 ms。结论是吞吐不构成瓶颈（千兆 LAN 上限本来就低于它），感知慢要从并发槽位、缓存策略和每请求固定开销去找，不要再重复测吞吐。
 - 当前部署的三个已知延迟来源，改动前先看清代价：`/stream` 带 `Cache-Control: no-store`，浏览器无法复用任何已下载片段；uvicorn 只提供 HTTP/1.1 且未安装 `httptools`（回落到纯 Python h11），浏览器对同源限 6 条连接；Starlette `FileResponse` 的 `chunk_size` 是 64 KiB，每块一次线程池读、ASGI send 和可能的 Python TLS 加密。hover 每次悬停产生 1 条 `/stream` 加 7 次 `currentTime` 跳段，共 8 个不可复用的 Range 请求，必须计入连接预算。Windows 千兆线路理论上限约 125 MB/s；115 实测单文件由 CloudDrive 启动 2 条约 2 MB/s 的 CDN 连接，`max_download_speed_kbyps=0` 表示未设本地限速。卡顿先查 FlowLens 是否有详情关闭后的残留下载，再查 Range/缓存，不把单连接速度直接归因于本地带宽。
 
@@ -257,4 +256,4 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - **两台机器各有独立的本机 CA**（secrets 按设计不共享）。iPhone/iPad 必须信任「当前正在服务的那台」的 CA 才能用 HTTPS；换机器服务后要装对应的 `peach-local-ca.crt` 并在「证书信任设置」开完全信任。核对指纹：`openssl x509 -in .../peach-local-ca.crt -noout -fingerprint`。菜单栏状态行逐个点名每个服务：`HTTP 正常 · HTTPS 异常（状态码 503）`，异常附最近一次失败原因；不要改回只报「未运行」。
 ## 恢复入口
 
-项目重构时已从活动目录删除 deprecated 脚本和按日期文档，Git 历史仍可恢复。旧 `_SHARED_STATE` 已迁到 `R:\peach-data\state`。重构前根仓库元数据暂存于 `R:\peach-data\archive\peach-root-repo-backup-20260814`，仅作恢复证据。
+项目重构时已从活动目录删除 deprecated 脚本和按日期文档，Git 历史仍可恢复。旧 `_SHARED_STATE` 和重构前的根仓库元数据备份 `peach-root-repo-backup-20260814` 都在各机 `peach-data` 的 `state`/`archive` 下，只作恢复证据。**不要再按 `R:\peach-data\...` 去找**：那是迁到内置盘之前的位置，Windows 现在是 `C:\Users\longm\Desktop\peach\peach-data`，Mac 的 `archive` 是指向外置盘的符号链接，盘不在时读不到不等于备份没了。

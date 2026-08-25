@@ -43,23 +43,31 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertIsNone(self.scrape_codes._logf)
 
     def test_test_entrypoint_enforces_worktree_source_and_unittest(self):
-        script = (ROOT / "scripts" / "test.ps1").read_text(encoding="utf-8")
-        self.assertIn("rev-parse --git-common-dir", script)
-        self.assertIn("$env:PYTHONPATH = $SourceRoot", script)
-        self.assertIn("peach.__file__", script)
-        self.assertIn("-m unittest discover", script)
-        self.assertNotIn("pytest", script.lower())
+        windows = (ROOT / "scripts" / "test.ps1").read_text(encoding="utf-8")
+        self.assertIn("rev-parse --git-common-dir", windows)
+        self.assertIn("$env:PYTHONPATH = $SourceRoot", windows)
+        self.assertIn("peach.__file__", windows)
+        self.assertIn("-m unittest discover", windows)
+        self.assertNotIn("pytest", windows.lower())
+        # 两个平台各有一个入口，契约必须相同——否则「两边都要绿」只是句口号。
+        posix = (ROOT / "scripts" / "test.sh").read_text(encoding="utf-8")
+        self.assertIn("rev-parse --git-common-dir", posix)
+        self.assertIn('export PYTHONPATH="$SOURCE_ROOT"', posix)
+        self.assertIn("peach.__file__", posix)
+        self.assertIn("-m unittest discover", posix)
+        self.assertNotIn("pytest", posix.lower())
         # 文档里可以「提到」裸命令来说明它为什么不可信，但绝不能让它单独出现成为一条可照抄的指令。
-        # 判据因此不是黑名单，而是：凡出现该命令的行，必须在同一行指向 test.ps1。
+        # 判据因此不是黑名单，而是：凡出现该命令的行，必须在同一行指向某个正式入口。
         for relative in ("AGENTS.md", "README.md", "docs/HANDOFF.md"):
             instructions = (ROOT / relative).read_text(encoding="utf-8")
             self.assertIn("scripts\\test.ps1", instructions)
+            self.assertIn("scripts/test.sh", instructions)
             for number, line in enumerate(instructions.splitlines(), 1):
                 if "unittest discover" not in line:
                     continue
-                self.assertIn(
-                    "test.ps1", line,
-                    f"{relative}:{number} 单独出现了裸命令，读者会照抄；必须同时点明唯一入口",
+                self.assertTrue(
+                    "test.ps1" in line or "test.sh" in line,
+                    f"{relative}:{number} 单独出现了裸命令，读者会照抄；必须同时点明正式入口",
                 )
 
     def test_structural_creator_and_mainstream_release_guards(self):

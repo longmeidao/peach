@@ -54,7 +54,7 @@
 
 ## 工作规则
 
-- `peach-app` is the only GitHub-synced tree. `peach-data`, `.venv`, build output, worktree directories, media and CloudDrive mounts never enter Git. Windows and macOS both run code/data/worktrees from their internal disks; Windows uses `C:\Users\longm\Desktop\peach`. The external disk only supplies `R:\media`/`/Volumes/RESOURCES/media`; see ADR-0017.
+- `peach-app` is the only GitHub-synced tree. `peach-data`, `.venv`, build output, worktree directories, media and CloudDrive mounts never enter Git. Windows and macOS both run code/data/worktrees from their internal disks; Windows uses `C:\Users\longm\Desktop\peach`. The external disk is only supposed to supply `R:\media`/`/Volumes/RESOURCES/media`; the macOS tree still symlinks `archive`/`sources`/`tools` onto it, so check `docs/STATUS.md` for the real shape before assuming a path exists. See ADR-0017.
 - Ledger paths are always written in the Windows shape (`R:\Media\...`, `A:\...`, `B:\...`). `src/peach/platform.py` translates them to local mounts at read time; never rewrite the ledger to a POSIX shape, and never write `asset.path` from macOS.
 - `peach-data/database/ledger.db` is the truth store. Tests use temporary databases only. A real migration requires a SQLite backup and before/after count checks; follow `peach-ledger-write` before any real write.
 - The project is an early personal project: aggressively remove obsolete code and compatibility layers when the replacement is tested. Do not preserve dead interfaces merely for history; Git is the archive.
@@ -75,7 +75,7 @@
 ## 防止重复错误的硬门槛
 
 - PowerShell 变量必须使用任务专属名称；禁止声明 `$HOME`、`$home`、`$CODEX_HOME` 等系统变量的任何大小写变体。`foreach {}` 的结果先存入任务专属数组，再单独接管道格式化，禁止在闭合花括号后直接写管道。
-- 测试只在当前隔离 worktree 根目录运行，唯一入口是 `& .\scripts\test.ps1`。脚本自动定位主项目 venv、强制 `PYTHONPATH=<当前 worktree>\src`、核对 `peach.__file__`，再运行 `unittest`；禁止手工拼接 venv 路径或调用 pytest。健康检查只使用 `/healthz`。
+- 测试只在当前隔离 worktree 根目录运行，每个平台只有一个入口：Windows `& .\scripts\test.ps1`，macOS/Linux `./scripts/test.sh`。两者契约相同——自动定位主项目 venv、强制 `PYTHONPATH=<当前 worktree>/src`、核对 `peach.__file__`，再运行 `unittest`；禁止手工拼接 venv 路径或调用 pytest。健康检查只使用 `/healthz`。
 - HTTPS 结论必须使用项目 CA 做严格校验；Schannel、浏览器或取证入口失败时，立即报告原始错误和未取得的验收面，不能改用 HTTP 成功来声称 HTTPS 已通过。
 - UI 标签、身份、反馈状态和搜索推荐属于语义契约。修改时必须同时增加数据层测试和页面源测试，不能只改显示文本；推荐词上线前必须对真实 `/api/items` 验证至少一个命中，说明性后缀不得混入搜索词。
 - 本仓库最常见的缺陷是「只改了自己测试的那条路径」。收尾前按 `peach-surfaces` 逐项说明每个表面适用还是不适用，不要跳过不适用的项。

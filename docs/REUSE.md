@@ -34,6 +34,7 @@
 | 本地文件事件 | watchdog + 定期对账 | 媒体身份和漏报修复 |
 | 过渡期元数据/媒体 | Stash GraphQL、CommunityScrapers、Stash 任务系统 | 适配、对账、退出门槛 |
 | 局域网发现 | Python zeroconf | 服务生命周期和真实客户端验收 |
+| 生成产物跨机同步 | Syncthing 2.1.x，Windows send-only → Mac receive-only | 目录划分、忽略规则、方向固定与「Mac 不发布正式产物」的边界 |
 | Windows 托盘 | pystray 0.19.5（LGPLv3）、Pillow、Win32 Per-Monitor V2 DPI | Peach 服务归属、后台更新检查、菜单动作、品牌图标 |
 | 智能体用量/配额 | Provider 官方配额接口；T3 Code/CodexBar 提供本地历史 | 任务路由、脱敏、过期快照标记 |
 | 视频出处/片尾证据 | 现有 FFmpeg 抽帧 + 经复核的 OCR/视觉适配器 | 首尾采样策略、来源、不完整版候选 |
@@ -54,6 +55,9 @@
 | `rm-suggest.py` | `scripts/suggest.py` | 排序逻辑逐步移到应用端口后 |
 | `rm-trafficwatch.py` | `scripts/traffic_watch.py` | 只停止任务拥有的进程树 |
 | `rm-sha1.py` | `scripts/sync_sha1_115.py` | 复用 Provider 哈希，不盲目重算网盘媒体 |
+| `import_performer_portraits.py`（原 `agent/claude/performer-portraits`） | `scripts/audit_performer_portraits.py` + `scripts/localize_performer_names.py` | 一次性导入已执行完并记在 STATUS；后继只产 CSV，不写头像文件 |
+| `normalize_code_suffix.py`（原 `agent/claude/code-suffix`） | `web_contract.is_jav_code` + `scripts/audit_code_creators.py` | 226 条后缀已落库；形态判据收敛成一份实现 |
+| `dedupe_performer_creator.py`（原 `agent/claude/dedupe-identity`） | `scripts/merge_duplicate_identities.py` | 后继的判据已扩到跨 kind、同 kind 与真子集三轮，旧脚本判据更窄 |
 
 ## 当前替换队列
 

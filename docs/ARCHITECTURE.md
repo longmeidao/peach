@@ -41,8 +41,9 @@ AI/外部元数据 -> 经复核的候选 -> ledger
 Windows 与 macOS 各自在内置盘持有代码、`peach-data`、`.venv` 和 worktree；外置盘只提供
 `R:\media` / `/Volumes/RESOURCES/media`。代码与任务分支走私有 GitHub，worktree 目录本机重建；
 账本走 Peach 单写者复制，其他运行数据按 durable artifact 与本机状态拆分，禁止整体同步。
-Windows 内置盘环境与共享账本传输点已迁移完成；显式 writer/reader 与 artifact 拆分仍待续，
-见 ADR-0017 与 `docs/STATUS.md`。
+Windows 内置盘环境、共享账本传输点、显式 writer/reader 和生成产物的跨机同步都已完成；
+durable artifact 拆分仍待续，见 ADR-0017 与 `docs/STATUS.md`。三条链路各走各的：代码走 Git，
+账本走 Peach 单写者复制，图片产物走 Syncthing 单向同步，互不兜底。
 
 `peach-data` 与代码仓库刻意分离（Windows 为 `C:\Users\longm\Desktop\peach\peach-data`，
 macOS 为 `~/Desktop/lmd.gg/peach/peach-data`，由 `PEACH_DATA_ROOT` 覆盖）：
@@ -56,3 +57,6 @@ macOS 为 `~/Desktop/lmd.gg/peach/peach-data`，由 `PEACH_DATA_ROOT` 覆盖）�
 - `archive/`：历史迁移证据和备份
 - `inbox/`：等待处理的临时导入
 - `tools/`：FFmpeg 等本机托管运行时；二进制和许可证不进入 Git
+
+以上是约定的分层，不是每台机器的实测形状。Mac 上 `generated` 是指向 `artifacts` 的符号链接，
+另有 `review`、`tmp`，且 `archive`/`sources`/`tools` 指向外置盘。动手前以 `docs/STATUS.md` 为准。

@@ -5,7 +5,7 @@ description: 在用户说并行、开工作树、worktree、暂存、提交、re
 
 # 并行 worktree 与提交边界
 
-最后复核：2026-08-21
+最后复核：2026-08-25
 证据来源：`docs/HANDOFF.md`「并行智能体与 Git 工作树」、`README.md`、ADR-0015、ADR-0017。
 
 ## 何时使用
@@ -22,14 +22,19 @@ description: 在用户说并行、开工作树、worktree、暂存、提交、re
    ```
 
 2. 工作者只在自己的工作树内编辑。工作树不复制 `.venv`。
-3. 测试只用唯一入口，在当前工作树根目录运行：
+3. 测试在当前工作树根目录运行，每个平台只有一个入口：
 
    ```powershell
-   & .\scripts\test.ps1
+   & .\scripts\test.ps1        # Windows
    ```
 
-   脚本从 Git common directory 定位主项目 venv，强制 `PYTHONPATH=<当前工作树>\src`，
+   ```bash
+   ./scripts/test.sh            # macOS / Linux
+   ```
+
+   两者契约相同：从 Git common directory 定位主项目 venv，强制 `PYTHONPATH=<当前工作树>/src`，
    核对 `peach.__file__` 后运行标准库 `unittest`。禁止手工拼接 venv 路径或调用 pytest。
+   两个入口都要绿——只在一个平台通过的改动不算完成。
 4. 报告 `ready` 前先 rebase 到当前 `master` 并重跑测试；同文件冲突在工作者分支解决。
 5. 协调者审核后运行 `integrate`。完成顺序不决定覆盖顺序。
 
@@ -51,6 +56,6 @@ description: 在用户说并行、开工作树、worktree、暂存、提交、re
 - 健康检查端点是 `/healthz`，不是 `/health`。
 - PowerShell 变量必须用任务专属名称，禁止声明 `$HOME`、`$home`、`$CODEX_HOME` 的任何大小写
   变体；`foreach {}` 结果先存入任务专属数组再单独接管道，禁止在闭合花括号后直接写管道。
-- 2026-08-17 实测：在工具管道里直接 `python -m unittest discover` 全量运行会挂起或整会话
-  输出消失（`test_jobs` 等极快退出的模块竞态最明显）。这是管道问题不是测试失败，但唯一
-  可信入口仍是 `& .\scripts\test.ps1`。
+- 工作者报 `ready` 前必须 rebase 到当前 `master`。落后十天的分支不要指望协调者去 merge：
+  共享文件上你那一侧是旧的，冲突解错就会把已上线的修复回退掉。2026-08-25 清理时有 7 条
+  这样的分支，最后是把各自独有的那几个文件移植到当前 master，而不是 merge 分支本体。

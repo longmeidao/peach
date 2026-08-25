@@ -102,8 +102,13 @@ worktree 目录。跨机器继续任务时 push 分支，在另一台按分支�
 每台机器的 `peach-data` 使用固定分层：`database` 保存真相库，`generated` 保存派生资产，
 `sources` 保存原始分析输入，`state` 保存人工维护状态，`secrets` 保存本机凭据材料，`logs` 保存
 运行记录，`archive` 保存历史备份，`inbox` 是临时下载落地区，`tools` 保存本机运行时工具。
-这个目录不整体同步；跨机器需要的 durable artifacts 要先从缓存与本机状态中拆出来，再做选择性
-文件同步。
+这个目录不整体同步。已经拆出来选择性同步的只有五类图片产物（`snapshots`、`posters`、
+`avatars`、`logos`、`covers`），走 Syncthing 单向复制，见下文「两台机器怎么保持一致」；
+其余 durable artifacts 仍要先从缓存与本机状态里拆出来才能同步。
+
+以上是约定的分层。Mac 上的实际形状有出入：真实目录名是 `artifacts`，`generated` 是指向它的
+符号链接，另有 `review`、`tmp`，`archive`/`sources`/`tools` 指向外置盘，盘不在时是断链。
+排查路径问题时以 `docs/STATUS.md` 的实测记录为准，不要按这张表推断某个目录一定存在。
 
 详情播放器固定使用本地自托管 Video.js 8.23.9：本地 MP4/WebM/Ogg 走标准 HTTP Range；115/PikPak 的已知时长原生 MP4 通过 `stream-plan` 改走 6 秒 HLS 临时片段，跳转时只生成目标时间附近的片段。两者都显示账本中的稳定总时长、±10 秒控制和播放统计；AVI 等不兼容容器首次播放时由 Peach 管理的 FFmpeg 生成 `generated/transcodes` 下的 H.264/AAC MP4 缓存。缓存可删除重建，原媒体永不改写。
 
@@ -234,8 +239,12 @@ SAN 里的局域网 IP 会随 DHCP 变化失效，**但不需要人去管，也�
 - **账本**走 `peach.sync` 的单写者复制（见上文「账本复制」），和代码是两条独立链路，
   `sync_status.sh` 会一并报告。
 - **worktree** 不复制目录。需要在另一台继续的分支先 push，再由另一台从该分支重建 worktree。
-- **运行数据** 不整体进入 GitHub或通用同步。账本只走 `peach.sync`；凭据、日志、锁、工具、临时
-  文件和可重建缓存留在本机；图片资产、原始证据和复核产物完成目录拆分后再选择性同步。
+- **图片产物**走 Syncthing，和代码、账本是第三条独立链路：Windows send-only、Mac receive-only，
+  五个文件夹 `snapshots`、`posters`、`avatars`、`logos`、`covers`，Mac 侧根目录在
+  `peach-data/artifacts/`，Trash Can 版本保留 30 天。方向是固定的——Mac 不发布正式产物。
+  `.stignore` 不跨设备同步，两端每个目录各放一份；不要把 `generated` 这个符号链接设成同步目录。
+- **其余运行数据** 不整体进入 GitHub 或通用同步。凭据、日志、锁、工具、临时文件和可重建缓存
+  留在本机；原始证据和复核产物完成目录拆分后再选择性同步。
 
 跨两台机器开发时换行口径由 `.gitattributes` 的 `* text=auto eol=lf` 固定。不要依赖各自的
 `core.autocrlf`：2026-08 之前 Windows 侧把 105 个文件整体改写成 CRLF，`git status` 长期显示

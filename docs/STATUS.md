@@ -1,11 +1,12 @@
 # Peach 当前状态
 
-最后核验：2026-08-24
+最后核验：2026-08-25
 
 ## 运行态
 
 - Windows 手动单写者构建已上线，Startup 入口为
-  `C:\Users\longm\Desktop\peach\peach-app\dist\Peach\Peach.exe`；Mac 保持停服，等待同一代码和显式拉取。
+  `C:\Users\longm\Desktop\peach\peach-app\dist\Peach\Peach.exe`；Mac 是 reader，菜单栏项和
+  `peach.local` 正常提供服务，写入端点返回 409。
 - Windows 内置盘环境已完成：代码 `C:\Users\longm\Desktop\peach\peach-app`、运行数据
   `C:\Users\longm\Desktop\peach\peach-data`、worktree `C:\Users\longm\Desktop\peach\peach-worktrees`、
   共享账本传输点 `C:\Users\longm\Desktop\peach\peach-sync`。外置盘只提供 `R:\media`。
@@ -19,10 +20,18 @@
 - Stash 仍运行于 `127.0.0.1:9999`，只作为过渡期可替换适配器。
 - Python：3.14.7；FFmpeg/ffprobe 由
   `C:\Users\longm\Desktop\peach\peach-data\tools\ffmpeg` 管理，不再依赖 Stash 私有目录。
-- 真实 ledger：`C:\Users\longm\Desktop\peach\peach-data\database\ledger.db`，迁移 `0000`–`0015`
+- 真实 ledger：`C:\Users\longm\Desktop\peach\peach-data\database\ledger.db`，迁移 `0000`–`0016`
   已应用，零待处理，完整性 `ok`。历史备份均在同一 `database` 目录，文件名保持不变。
+  2026-08-25 复核 Mac 本地副本，`schema_migration` 同样到 `0016`。
 - PID 只是观测值，不是配置；每次停止或重启前必须重新核对命令行、父子关系和端口归属。
-- macOS 独立运行环境：代码 `~/Desktop/lmd.gg/peach/peach-app`、数据 `~/Desktop/lmd.gg/peach/peach-data`、worktree `~/Desktop/lmd.gg/peach/peach-worktrees`。Python 3.14.7 + 独立 venv，FFmpeg 走 PATH；菜单栏和 `peach.local` 当前均在运行，不再写成“只开发、不提供服务”。
+- macOS 独立运行环境：代码 `~/Desktop/lmd.gg/peach/peach-app`、数据 `~/Desktop/lmd.gg/peach/peach-data`、worktree `~/Desktop/lmd.gg/peach/peach-worktrees`。Python 3.14.7 + 独立 venv，FFmpeg 走 PATH。
+- Mac 的 `peach-data` 实际形状与文档的通用分层有出入，排查前先看清：真实目录名是
+  `artifacts`，`generated` 是指向它的符号链接；另有 `review`、`tmp` 两个本机目录；
+  `archive`、`sources`、`tools` 是指向 `/Volumes/RESOURCES/peach-data/` 的符号链接，
+  外置盘拔掉时这三个是断链。只有 `media` 在外置盘的说法对 Windows 成立，对 Mac 不成立。
+- 生成产物已由 Syncthing 单向同步：Windows send-only、Mac receive-only，五个文件夹
+  `snapshots`、`posters`、`avatars`、`logos`、`covers`，Mac 侧根目录在 `peach-data/artifacts/`，
+  Trash Can 版本保留 30 天。这条链路与账本复制、与 Git 都无关，三者互不兜底。
 
 ## 已核验代码与部署能力
 
@@ -30,7 +39,7 @@
 - Ledger 是资产、身份、行为和知识真相。规范女优/厂牌/创作者/标签/系列使用 `entity`、`asset_entity`、`entity_external_ref`；扁平字段只作兼容投影。
 - `MediaEngine` 统一管理本地文件和 Stash 公开协议适配器。浏览器本地 MP4/WebM/Ogg 直出；115/PikPak 已知时长的原生 MP4 由 `/api/stream-plan` 选择 6 秒 HLS 临时片段，AVI 等由 `TranscodeService` 缓存为 H.264/AAC MP4，原文件不改写。
 - 真实 CloudDrive 作品 4289 已通过 `video/mp4`、1 KiB `206 Partial Content`、缩略图和海报检查；盘符可见性以 Peach `/stream` 为最终证据。
-- SQLite FTS5 trigram 已覆盖 81,873 个资产；三字符以上走 FTS，短查询回退 LIKE。
+- SQLite FTS5 trigram 覆盖全部视频与图片资产；三字符以上走 FTS，短查询回退 LIKE。资产总数只看文末自动区块。
 - `FeedAdapter` 已支持显式、有界 RSS/Atom 发现、条件请求和不可变快照；尚未配置真实订阅，也不会启动时自动写 ledger。
 - AI Provider 已拆为推理与 Agent 两层。`/api/providers` 无副作用且不泄露凭据；OpenCode Go 模型清单只在显式访问时拉取，当前不发推理请求。
 - 手动单写者重构已完成双端部署：Windows 476 项测试通过，Mac 在保留两项本地 UI 修复后
@@ -101,7 +110,7 @@
 
 ## 数据与批处理
 
-- 真实资产 81,847 条，其中视频 24,967 条。迁移后的完整性检查为 `ok`，外键违规为 0。
+- 迁移后的完整性检查为 `ok`，外键违规为 0。资产与视频计数只写在文末自动区块，正文不复制。
 - 已核对并删除 `asce/The.Great.Escape.S04` 正常向剧集：13 个视频、13 个字幕、16 个派生图，同步清理 26 条 ledger 资产。原因是旧导入器把集合目录 `asce` 投影为创作者，再把创作者板上的低置信标签批量传播。`0009` 已移除 `asce` 假创作者及其 `vision_creator` 断言，保留其他独立来源标签。
 - 番号刮削已处理 1,104 个非 FC2 番号，715 条取得数据；所有 330 个 FC2 在三来源样本中零命中，因此默认跳过。
 - 创作者视觉板已处理 30 张，27 位创作者写入 27,295 条 `vision_creator` 标签，覆盖 4,518 个视频；置信度固定为 0.6，区别于逐条证据。
@@ -114,7 +123,7 @@
 - JAV 浏览模式已就位：顶栏「番」入口切换 `state.jav`，列表要求番号形态再加厂牌、女优、系列或发行日期等发行证据；FC2 ID 单独成立。只有 creator `MIB` 的 `JI-103` 不再误入。模式恒不含竖屏，资料页、`/api/tops` 与 `/api/facets` 继承同一口径。
 - 版式切换（正封 4:3 / 封套 16:9 / 预览图）只在 JAV 语境出现，按钮长在排序行里跟着 `renderCount()` 一起重建——放独立容器会被重画覆盖。取景按图片自身宽高比分流：整张封套约 1.48 取右侧，竖版正封约 0.70 整张用，`onload` 写 `data-frame`，服务端不另存这个比例。
 - 顶部三层跟着「换一批」的同一个种子轮换。只失效缓存不够：`q_tops` 是 `ORDER BY n DESC` 的确定性查询，实测两次请求结果完全相同。改为放大候选池到展示位的 4 倍再按种子确定性抽样，同种子可重复、不同种子换人、无种子退回严格前 N。
-- 封面抓取默认跳过 FC2：三源实测零命中（见 HANDOFF），400 个必然落空的请求每次续跑都会重试一遍；`--all-codes` 仍可强制尝试。队列的形态判据与 `web_contract.is_jav_code` 共用一份实现。当前已落盘 568 张，续跑中。
+- 封面抓取默认跳过 FC2：三源实测零命中（见 HANDOFF），400 个必然落空的请求每次续跑都会重试一遍；`--all-codes` 仍可强制尝试。队列的形态判据与 `web_contract.is_jav_code` 共用一份实现。已落盘张数与待抓队列只看 `docs/OX-WINDOWS-JAV.md` 的实测快照，起跑前重算。
 - 抓取此前两次死在半路：第一次静默丢掉全部进度，第二次拿到堆栈 `httpx.ConnectError: UNEXPECTED_EOF_WHILE_READING`——一个番号的 SSL 抖动让整个三小时的任务退出，日志停在半路看起来像跑完了。现已按条吞掉异常记进 CSV 再继续，长跑批处理不因单条连接问题整体退出。
 - FC2 的数据线走 fc2cmadb（`scripts/fetch_fc2_metadata.py`，需登录 cookie，只写 CSV 不写 ledger）。页面是 Laravel + Inertia，数据在 `<script type="application/json">` 里，不用解析 HTML。正文能拿到标题、发售日、时长、卖家与封面；真正的价值在评论区的两类人工标记：`<video_id>　演员名`（全角空格分隔，一行可多人）与 `3312576-4 = 2471432` 的等价关系。
 - 等价关系同时是合集判据。`FC2PPV-3312576` 是 21 段合集，本地按 `-1.mp4` 分片存。**合集封面不下发给分片**，否则 21 段不同内容会显示同一张图；判为合集时 `cover_url` 留空，分片回落到自己的缩略图。
@@ -150,7 +159,7 @@
 
 ## 验证基线
 
-- 当前主分支基线：全量隔离 `unittest` 227 项通过，2026-08-18 于主目录当前工作区实测（入口只有 `& .\scripts\test.ps1`，不接受「只跑本批相关」的缩水口径）；版本、托盘、迁移、mDNS、媒体转码、Provider、DiskGuard、语义路由、标准 Range、Video.js、稳定时长、详情播放释放、多选、实体资料、分页性能边界、搜索历史，以及回收站的还原/彻底删除/清空与删不掉文件的降级均有测试。
+- 当前主分支基线：2026-08-25 于 macOS 主目录实测 `./scripts/test.sh` 全量 608 项通过、4 项按平台跳过。不接受「只跑本批相关」的缩水口径。覆盖版本、托盘、迁移、mDNS、媒体转码、Provider、DiskGuard、语义路由、标准 Range、Video.js、稳定时长、详情播放释放、多选、实体资料、分页性能边界、搜索历史、广告判据，以及回收站的还原/彻底删除/清空与删不掉文件的降级。
 - 前一生产版本已分别通过 HTTP/HTTPS health、`peach.local` 解析、真实 CloudDrive Range、桌面 1280×720 和手机 390×844 检查。本次 HLS 代码已切换生产托盘；真实资产 `31222/MIDE-981-C.mp4` 的中段 HLS 片段在严格 CA HTTPS 下返回 `200`、约 9.7 MB，响应后的临时文件已清理。尚未完成浏览器 seek 和手机 HLS 视觉验收。
 - 浏览器验收不得写真实喜欢、反馈或播放数据；需要交互写入时使用隔离 ledger 副本。
 - 并行 worktree 测试必须设置 `PYTHONPATH=<当前工作树>\src` 并核对 `peach.__file__`，否则 editable install 可能误加载主目录旧代码。
@@ -158,7 +167,7 @@
 - 本批已重启生产托盘。HTTP 与 HTTPS `/healthz` 均返回 `0.6.1`；HTTPS 使用项目 CA 严格校验，`peach.local` 解析为 `192.168.50.162`，80/443 分别由新托盘子进程监听。生产只读 Range 对 item 29297 返回 `206`、精确 `bytes 0-1048575/4590823524`；HLS plan/中段片段对 item 31222 已在 HTTPS 下通过；桌面与 390×844 的旧 direct 播放验收仍未替换为 HLS seek 验收。
 - 本批在隔离服务、真实 ledger 只读条件下完成桌面默认视口与 390×844 手机验收：Prestige 总数 248 时首批只构建 48 张、追加后 96 张；桌面和手机均无横向溢出。女优页标签筛选前后头像 URL 保持不变并只重建作品区；标签页手机完成态为 169 项，四种旧模糊时长标签为 0。浏览器控制台错误/警告为 0。
 - 详情播放释放和 sticky 遮挡在隔离 ledger 浏览器中验收；生产浏览器只做无写入首页/样式检查，未污染真实播放、喜欢或反馈数据。
-- 2026-08-17 批代码改动（merge_entity 回归主线、sheets 色彩元数据重试、media 大小写不敏感匹配）模块级 `unittest` 全部通过：`test_entity_merge` 4 项、`test_scripts` 16 项、`test_media` 9 项等。注意：实测在工具管道里直跑 `python -m unittest discover` 全量会挂起或整会话输出消失（test_jobs 模块极快退出时竞态最明显），模块级独立运行全部通过；唯一可信入口仍是 `& .\scripts\test.ps1`。
+- 2026-08-17 批代码改动（merge_entity 回归主线、sheets 色彩元数据重试、media 大小写不敏感匹配）模块级 `unittest` 全部通过：`test_entity_merge` 4 项、`test_scripts` 16 项、`test_media` 9 项等。唯一可信入口是各平台的 `test.ps1` / `test.sh`。（当时把「全量 discover 会挂起」归因为运行器竞态，已被证伪，成因见 `docs/HANDOFF.md`。）
 - 2026-08-19 发现「测试通过」曾有一段并不成立：`test_rm_web.py` 与 `test_web_ui.py` 各有一处 `if __name__ == "__main__": unittest.main()` 被插在类中间，其后缩进 4 格的 16 条测试被解析成 if 块语句，从写下起就没被收集过——不报错、不告警，其中包括复核页三类候选的全部数据层断言。修正后全量由 355 升到 371 且全绿。`tests/test_test_collection.py` 用 AST 禁止这种形状，避免再出现「绿灯但没覆盖」。
 
 - 2026-08-21 macOS 最新基线：`./scripts/test.sh` 全量 468 项通过、3 项跳过；Windows 当前状态提交
@@ -167,15 +176,21 @@
 - Javinizer-Go P1 来源策略层已实现：锁定 v1.5.1 的14源白名单，新增 baseline（默认仍仅 r18dev）、censored、uncensored、fc2 显式 profile；兼容 `--sources`，冲突与未知 source 在联网前拒绝。五个 Peach 字段分别按 policy 排序，候选携带 source profile、policy version、field rank、source kind 与显式 official。每批无论有无错误都写 `metadata-source-health-*.csv`，按 source 区分快照复用、联网成功、空结果、错误、冷却跳过、耗时与五字段命中。没有批量批准、自动写库或 schema 迁移。
 - Windows 无外置盘生产验收：HTTP 与严格 CA HTTPS `/healthz` 返回 200，账本、FFmpeg、115 和
   PikPak 可用，只有 `local` 来源离线；115 HTTP 与 PikPak 严格 HTTPS 各完成 1 KiB `206` Range。
-- 双机同时在线时账本世代 18、状态 `in-sync`；`peach-win.local` 与 `peach.local` 分别只由
+- 双机同时在线时两个名字互不串台；`peach-win.local` 与 `peach.local` 分别只由
   `192.168.50.162`、`192.168.50.88` 应答。
-- 两台机器的 worktree 各自独立：macOS 侧按分支本机重建；Windows 于 2026-08-24 逐个核对并删除 5 个已合并且干净的 worktree/分支，只保留未合并任务与当前集成任务。worktree 目录随时可重建，不跨机器复制。
+- 两台机器的 worktree 各自独立，按分支本机重建，不跨机器复制。2026-08-25 macOS 侧完成一轮清空：
+  39 个 worktree 与 41 条分支全部删除，只留 `master`。删除前逐条核对——32 条已并入 `origin/master`，
+  2 条的补丁已被压缩合并（`git cherry` 判定），7 条真有独有提交的逐条比对后处置，见下。
 
 ## 下一批工作
 
-基础设施本机化、显式 writer/reader 和运行中安全手动同步已完成。剩余基础设施边界是 durable
-artifact 拆分、生成资产的跨机同步，以及 macOS 拔盘后的完整验收。部分历史运维脚本仍硬编码 `R:\peach-data`，在改为读取
-`PeachSettings` 前不得对当前账本盲目执行。
+基础设施本机化、显式 writer/reader、运行中安全手动同步和生成资产的跨机同步都已完成。剩余基础设施
+边界是 durable artifact 拆分与 macOS 拔盘后的完整验收。部分历史运维脚本仍硬编码 `R:\peach-data`，
+在改为读取 `PeachSettings` 前不得对当前账本盲目执行。
+
+文末自动区块只能在 writer 上、外置盘挂着时重算。2026-08-25 在 Mac reader 上实测：账本口径的数字
+与线上一致，但产物表全部退化成「未生成」——那些 CSV 不在 Mac 的 `artifacts` 下。在这种条件下跑
+`job_status.py --write` 会把已有行覆盖成空值，看起来像产物丢了。
 
 2026-08-24 脚本审计发现 7 个脚本在仓库内无直接文件名引用，但零引用不能证明已废弃；它们可能是人工运维入口。逐个核对真实调用、产物和替代入口后才删除，禁止批量移动到 `scripts/archive/`。
 
@@ -185,12 +200,18 @@ artifact 拆分、生成资产的跨机同步，以及 macOS 拔盘后的完整�
 4. 继续人工补齐姓名审计留下的 35 位未解析发行女优；这些多为艺名、账号式拼写或上游未收录，现状刻意保留原名，不能为追求“全中文”而猜译。头像仍有 15 位图库未收录、5 位所有候选不过质量门槛；姓名与头像进度不得再互相阻塞。
 5. 通过官方/公开来源补齐 86 个厂牌 Logo，保留来源和质量门槛。Logo 与头像的取源方向相反：头像应取整理好的图库，Logo 是品牌标识，官网与维基才是权威来源。
 6. Windows writer 执行 PikPak 视觉夜跑：先用 `probe.py --redo all` 重探当前 5,445 条失败/零时长，再只跑官方封套与九帧缩略图。generation 29 的 Mac 副本基线为可直接抽 4,740、需重探 5,445、短于等于 2 秒 11；Windows 起跑前重算。第一晚以 200 GB 流量守卫与 40 GiB 系统盘闸门为硬上限，允许安全中止和续跑，不承诺一夜全量完成。
-7. 115 抽帧失败的大小写部分已修复：`peach.media.resolve_case_insensitive` 与 `FilesystemBackend.file_for`、`scripts/sheets.py`、`scripts/probe.py` 的 worker 均已接入；2026-08-17 重跑 33 条九帧，31 成功、2 失败。这 2 条的原因已查清（见上一节）：`18349` 是 ledger 时长记错、`12510` 是片源头损坏。2026-08-18 已全部收尾：`sheets.py` 区分失败原因、`probe.py`/`sheets.py` 新增 `--asset`、`18349` 重探重抽成功、`12510` 判为坏片源并留痕，详见上一节。`sheets.py` 遇 `prim:reserved` 非法色彩元数据的重试已完成并有测试。
+7. Web 契约层的结构债，按当前实测行数排序，改动前先看清代价：`src/peach/web_contract.py`
+   已到 2,414 行（2026-08-23 评审时是 1,980，`web_activity.py`/`web_logic.py` 拆出去之后仍在长），
+   `web/app.js` 2,599 行，`src/peach/repository.py` 100 行只包一层数据库边界。拆分方向是按领域切成
+   catalog 查询 / stats / activity 写入 / review 状态机 / trash，`web_contract.py` 只留分发门面，
+   路由字符串与函数签名不动，现有契约层测试应零修改通过。行数预算由
+   `tests/test_context_budget.py` 管入口文件，不管这两个文件，所以只能靠这条记着。
+
 8. HLS `stream-plan` 和按需 TS 片段已接入现有 Video.js 内置 VHS。片段时间窗的绝对终点问题已修并已切生产（见上节）；自适应码率、多路清单、首帧/seek 的桌面与手机验收仍未完成。CloudDrive 约 100 MiB 固定块预取仍是来源层成本，服务端分片只能避免整部 MP4 Range，不会消除来源层块预取。
 9. 在真实生产浏览器补做 `/review` 的 1280×720/390×844 最终视觉确认，再人工批准 Windows r18dev 小批候选；确认来源质量后逐个启用 Javinizer 已有 scraper，不新增 Peach 私有站点解析器。
 10. 配置可复核的真实追更源，之后再接 APScheduler；AI 结果继续只作为候选。
 11. `R:` 本地盘的图片仍未入账：`scripts/ledger.py scan` 本来就按扩展名把图片记成 `medium='image'`，但 `local` 这一路是经 Stash 入库的，Stash 只索引视频，所以 `R:\Media\<名字>\P\...` 这类照片目录一条都没有。等外置盘挂上后先只读列一遍目录规模，再决定扫描批次；扫描写真实 ledger，按 `peach-ledger-write` 单独授权。盘不在时不得凭目录约定推断照片存在与否。
-12. Codex 侧封装技能：`.claude/skills/` 下的六个技能目前只有 Claude 会按 description 自动触发，
+12. Codex 侧封装技能：`.claude/skills/` 下的七个技能目前只有 Claude 会按 description 自动触发，
     Codex 只能靠 `AGENTS.md` 索引表主动读。由 Codex 接手时确认当前版本的技能机制与目录约定，
     封装成 Codex 侧可自动触发的形式并指向同一份 `SKILL.md`；机制不存在或确认不了就写 `未取得`，
     保留索引表回退。规范见 `docs/adr/0015-agent-context-layering.md`。
