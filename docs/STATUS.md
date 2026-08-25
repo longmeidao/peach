@@ -23,8 +23,11 @@
 - 真实 ledger：`C:\Users\longm\Desktop\peach\peach-data\database\ledger.db`，Windows 迁移 `0000`–`0017`
   已应用，零待处理，完整性 `ok`。历史备份均在同一 `database` 目录，文件名保持不变。
   2026-08-25 复核 Mac 本地副本，`schema_migration` 同样到 `0016`。
-  **迁移 `0017`（追更两张表）尚未对任何真实 ledger 执行**，两台机器都要在备份后
-  按 `peach-ledger-write` 单独授权再 apply；在此之前 `/follow` 页面会因缺表报错。
+  **追更两张表的迁移号已从 `0017` 改为 `0018`**：两条分支同时占用了 `0017`，
+  远端是 `0017_persistent_playlists`。改号安全的判据是实测——2026-08-25 核对
+  Mac 本地副本与共享副本（第 30 代）的 `schema_migration`，两边最高都是 `0016`，
+  谁都没应用过 `0017`，所以没有触碰「已应用的迁移文件不得修改」这条线。
+  `0018` 尚未对任何真实 ledger 执行；在此之前 `/follow` 会因缺表报错。
 - 2026-08-25 已挂上 `/Volumes/peach-sync`（钥匙串账号 `peachsync`@`192.168.50.162`，
   guest 被拒，这条钥匙串记录是唯一的钥匙），并完成一次 `pull`：本地从第 29 代到第 30 代，
   `plan` 现为 `in-sync`。拉取前备份在 `database/ledger.pre-pull-gen30-20260825T080644Z.db`
@@ -37,7 +40,7 @@
   `mtime_ns=1787332506518044766`，实际库已是 `1787504652787227090`，大小未变），而共享传输点
   `/Volumes/peach-sync` 当前不可达。下次恢复同步时 `plan()` 会因「共享更新且本地有未回写改动」
   判成 `conflict`，必须由人选一边——Mac 只用来浏览，正确的选择是取 Windows 那一份。
-  这个 latent conflict 先于追更改动存在，不是 `0017` 造成的。
+  这个 latent conflict 先于追更改动存在，不是追更迁移造成的。
 - 2026-08-25 发现 `http://peach.local/`（80）不通而 `:8900`/`:8443` 正常：`/etc/pf.anchors/gg.lmd.peach`
   规则文件还在（8-20 装的），但 `/etc/pf.conf` 里引用它的 `rdr-anchor` 行没了——系统更新会用
   模板重写 `/etc/pf.conf`，把追加的锚点行抹掉，而锚点文件是独立文件所以留了下来。
@@ -254,7 +257,7 @@
 
 8. HLS `stream-plan` 和按需 TS 片段已接入现有 Video.js 内置 VHS。片段时间窗的绝对终点问题已修并已切生产（见上节）；自适应码率、多路清单、首帧/seek 的桌面与手机验收仍未完成。CloudDrive 约 100 MiB 固定块预取仍是来源层成本，服务端分片只能避免整部 MP4 Range，不会消除来源层块预取。
 9. 在真实生产浏览器补做 `/review` 的 1280×720/390×844 最终视觉确认，再人工批准 Windows r18dev 小批候选；确认来源质量后逐个启用 Javinizer 已有 scraper，不新增 Peach 私有站点解析器。
-10. 追更接下来三件事，按依赖顺序：(a) **先在 Windows 写入端**备份后 apply 迁移 `0017`
+10. 追更接下来三件事，按依赖顺序：(a) **先在 Windows 写入端**备份后 apply 迁移 `0018`
     （`peach migrate upgrade --yes`，无 `--yes` 会拒绝改动真实 ledger），Mac 之后走
     「同步 Ledger」拉取；Mac 只作 reader 浏览时也可以本地先 apply，它换来的只是
     `/follow` 页面能渲染——写入端点在 reader 上照旧 409；
