@@ -61,6 +61,7 @@ from .web_logic import (
     part_marker,
     tag_cat,
 )
+from .web_playlists import q_playlist, q_playlists, w_playlist
 
 COST = {"local": "free", "115": "free", "pikpak": "metered", "online": "metered"}
 
@@ -79,6 +80,7 @@ CACHE_TTL = 90
 ASSET_REFERENCE_TABLES = (
     "asset_tag", "media_binding", "activity_event", "asset_entity",
     "watch_queue", "asset_preference", "asset_tag_preference", "asset_quality_goal",
+    "playlist_item",
 )
 
 
@@ -1132,6 +1134,16 @@ def _needs_review(category: str, row: dict) -> bool:
     """
     if category == "western_identity":
         return str(row.get("verdict") or "") in ("命中", "需人工确认")
+    if category == "studio_logos":
+        # 无 handle、无落盘图片和与现有 Logo 完全相同都没有人工可判断项。
+        # 只有新的/变化的确认来源，或明确标 needs_confirmation 的图片才进队列。
+        saved = bool(str(row.get("saved") or "").strip())
+        state = str(row.get("content_state") or "").strip()
+        accepted = str(row.get("accepted") or "").lower() in {"1", "true", "yes"}
+        needs_confirmation = row.get("confirmation") == "needs_confirmation"
+        return saved and state not in {"unchanged", "duplicate", "rejected"} and (
+            accepted or needs_confirmation
+        )
     if category == "cover_sources":
         # 封面抓取的成功、尺寸和缺失都是机械状态，不需要人工批准。旧界面把
         # 241 个未取得和 800 px 基线封面全塞进复核页，却没有可执行写入动作。
@@ -1348,6 +1360,9 @@ def _review_rows(contract: WebContract, category: str) -> tuple[list[dict], str 
         connection.close()
     for row in rows:
         decision = decisions.get(row["item_key"], {})
+        if category == "studio_logos" and row.get("content_state") == "changed":
+            # 同一厂牌上游头像变化是新的事实；旧批次 approved 不得把变化静默藏掉。
+            decision = {}
         row["decision"] = decision.get("status", "pending")
         row["decision_note"] = decision.get("note", "")
         row["preview_url"] = (row.get("resolved_url") or row.get("source_url")
@@ -2183,6 +2198,14 @@ def purge_assets(connection, rows):
     try:
         if purged:
             marks = ",".join("?" * len(purged))
+            connection.execute(
+                f"UPDATE playlist SET current_asset_id=NULL WHERE current_asset_id IN ({marks})",
+                purged,
+            )
+            connection.execute(
+                f"UPDATE playlist SET source_seed_asset_id=NULL WHERE source_seed_asset_id IN ({marks})",
+                purged,
+            )
             for table in ASSET_REFERENCE_TABLES:
                 connection.execute(f"DELETE FROM {table} WHERE asset_id IN ({marks})", purged)
             connection.execute(f"DELETE FROM asset WHERE id IN ({marks})", purged)
@@ -2265,6 +2288,14 @@ def w_purge_missing(contract: WebContract, body):
     ids = [item["id"] for item in missing]
     marks = ",".join("?" * len(ids))
     with contract.write_transaction() as connection:
+        connection.execute(
+            f"UPDATE playlist SET current_asset_id=NULL WHERE current_asset_id IN ({marks})",
+            ids,
+        )
+        connection.execute(
+            f"UPDATE playlist SET source_seed_asset_id=NULL WHERE source_seed_asset_id IN ({marks})",
+            ids,
+        )
         for table in ASSET_REFERENCE_TABLES:
             connection.execute(
                 f"DELETE FROM {table} WHERE asset_id IN ({marks})", ids)
@@ -2516,6 +2547,8 @@ GET_HANDLERS = {
     "/api/tops": _get_tops,
     "/api/ads": _get_ads,
     "/api/related": _get_related,
+    "/api/playlists": q_playlists,
+    "/api/playlist": q_playlist,
     "/api/facets": _get_facets,
     "/api/search-history": _get_search_history,
     "/api/review": _get_review,
@@ -2529,6 +2562,7 @@ POST_HANDLERS = {
     "/api/play": w_play,
     "/api/feedback": w_feedback,
     "/api/watch-later": w_watch_later,
+    "/api/playlist": w_playlist,
     "/api/preference": w_preference,
     "/api/quality-goal": w_quality_goal,
     "/api/item-tag": w_item_tag,

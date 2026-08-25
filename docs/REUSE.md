@@ -7,7 +7,7 @@
 以下属于产品行为，继续由 Peach 实现：
 
 - 女优、厂牌、创作者、标签的规范身份、别名和来源；
-- profile 行为、稍后看、口味和推荐排序；
+- profile 行为、稍后看、播放列表、口味和推荐排序；
 - 本地、115、PikPak、Stash、在线来源的绑定和回退策略；
 - 计费来源授权、隐私分类和候选复核导入；
 - 私有获取来源、出处引用和发现关键词；
@@ -27,6 +27,7 @@
 | 搜索 | SQLite FTS5 | 索引字段、排序、profile 感知筛选 |
 | 女优姓名对照 | `li-peifeng/Jav-Actors-Mapping` 的固定 revision，仅作私有输入（仓库未声明许可证，不随 Peach 分发） | 精确匹配、冲突复核、别名、来源与真实 ledger 写入 |
 | 女优头像候选 | Gfriends 的 GitHub raw 索引与单张媒体（只作外部 Provider，不克隆图库） | 名字链、质量档位、格式/尺寸/SHA-256 门槛、候选缓存、provenance、健康统计和人工复核 |
+| 厂牌 Logo 候选 | 厂牌官网确认的社交 handle → unavatar URL 解析 → 平台 CDN 单图 | handle 归属、内容缓存、方形归一、精确/感知哈希、provenance、健康统计与变化复核 |
 | JAV 元数据查询 | Javinizer-Go v1.5.1 单来源 JSON CLI（MIT） | 只发送规范番号；Peach 管 source profile、逐字段优先级、原始证据、健康统计、候选复核与批准后的 ledger 投影 |
 | FC2 跨号证据 | 已缓存的 fc2cmadb 评论收获 + Peach ledger 媒体事实 | 稳定 pair、合集/分片保护、hash/时长/尺寸佐证、库外 evidence、健康统计和人工复核；不依赖 FC2-Leak-Detector/JavSP |
 | 媒体探测/转码 | Peach 管理的 FFmpeg/ffprobe | 任务策略和 Media Engine 编排 |

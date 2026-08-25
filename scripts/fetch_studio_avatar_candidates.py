@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import re
 import sys
 import time
@@ -24,11 +25,30 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach.http import HttpRequest, HttpxTransport      # noqa: E402
 from peach.images import PAD, REJECT, classify, measure_image_size, pad_to_square  # noqa: E402
+from peach.logo_provider import (  # noqa: E402
+    POLICY_VERSION,
+    LogoCandidateCache,
+    hash_distance,
+    inspect_logo,
+    installed_logo_hashes,
+    provenance_now,
+)
+from peach.config import GENERATED_DIR  # noqa: E402
 
 RESOLVER = "https://unavatar.io/{platform}/{handle}?json"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Peach/0.6"
-FIELDS = ("studio", "handle", "platform", "resolved_url", "width", "height",
-          "aspect", "verdict", "saved", "accepted", "confirmation", "reason")
+FIELDS = (
+    "studio", "handle", "platform", "resolver_url", "resolved_url", "width",
+    "height", "aspect", "verdict", "saved", "accepted", "confirmation",
+    "content_state", "duplicate_of", "sha256", "mime_type", "cache_key",
+    "perceptual_hash", "visual_distance", "provenance_key", "policy_version", "reason",
+)
+HEALTH_FIELDS = (
+    "source", "policy_version", "attempted", "no_handle", "resolved",
+    "snapshot_reused", "fetched", "succeeded", "unchanged", "changed", "new",
+    "duplicates", "rejected", "errors", "bytes_fetched", "elapsed_ms",
+    "last_error_kind", "last_error_message",
+)
 
 
 def safe_name(studio: str) -> str:
@@ -58,7 +78,7 @@ def resolve(http, platform: str, handle: str, timeout: float) -> str:
     return str(json.loads(response.body).get("url") or "")
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", type=Path, required=True,
                         help="缺 Logo 的厂牌清单，需含 studio 列")
@@ -73,9 +93,36 @@ def main() -> int:
     parser.add_argument("--image-dir", type=Path,
                         help="落盘目录；默认放在 output 同级的 studio-logos/")
     parser.add_argument("--limit", type=int, default=0)
-    args = parser.parse_args()
+    parser.add_argument(
+        "--cache-dir", type=Path,
+        default=GENERATED_DIR / "provider-cache" / "studio-logos" / "social",
+    )
+    parser.add_argument("--installed-dir", type=Path, default=GENERATED_DIR / "logos")
+    parser.add_argument("--health", type=Path)
+    parser.add_argument("--refresh", action="store_true")
+    return parser
+
+
+def _atomic_csv(path: Path, fields: tuple[str, ...], rows: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        with temporary.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fields)
+            writer.writeheader()
+            writer.writerows({field: row.get(field, "") for field in fields} for row in rows)
+        os.replace(temporary, path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def main(argv: list[str] | None = None, *, transport=None) -> int:
+    args = build_parser().parse_args(argv)
     if args.image_dir is None:
         args.image_dir = args.output.parent / "studio-logos"
+    if args.health is None:
+        args.health = args.output.with_name(args.output.stem + "-health.csv")
 
     with args.input.open(encoding="utf-8-sig", newline="") as handle:
         studios = [(row.get("studio") or "").strip()
@@ -85,50 +132,86 @@ def main() -> int:
     mapping = load_handles(args.handles)
 
     rows: list[dict[str, object]] = []
-    http = HttpxTransport()
+    health: dict[str, object] = {
+        "source": "studio_social_avatar", "policy_version": POLICY_VERSION,
+        "attempted": 0, "no_handle": 0, "resolved": 0, "snapshot_reused": 0,
+        "fetched": 0, "succeeded": 0, "unchanged": 0, "changed": 0, "new": 0,
+        "duplicates": 0, "rejected": 0, "errors": 0, "bytes_fetched": 0,
+        "elapsed_ms": 0, "last_error_kind": "", "last_error_message": "",
+    }
+    started = time.perf_counter()
+    cache = LogoCandidateCache(args.cache_dir)
+    installed_by_key, installed_by_hash = installed_logo_hashes(args.installed_dir)
+    batch_hashes: dict[str, str] = {}
+    owned_http = transport is None
+    http = transport or HttpxTransport()
     last = 0.0
     try:
         for studio in studios:
+            health["attempted"] += 1
             handle = mapping.get(studio, "")
             confirmation = "confirmed-handle"
             if not handle and args.guess_handles:
                 handle, confirmation = guess_handle(studio), "needs_confirmation"
             if not handle:
                 rows.append({"studio": studio, "handle": "", "platform": args.platform,
-                             "resolved_url": "", "width": "", "height": "", "aspect": "",
-                             "verdict": "", "saved": "", "accepted": False,
+                             "resolver_url": "", "resolved_url": "", "width": "",
+                             "height": "", "aspect": "", "verdict": "", "saved": "",
+                             "accepted": False, "policy_version": POLICY_VERSION,
                              "confirmation": "no-handle",
+                             "content_state": "no_handle",
                              "reason": "未取得该厂牌的社交 handle"})
+                health["no_handle"] += 1
                 continue
             wait = args.interval - (time.monotonic() - last)
             if wait > 0:
                 time.sleep(wait)
             last = time.monotonic()
+            resolver_url = RESOLVER.format(platform=args.platform, handle=handle)
             record = {"studio": studio, "handle": handle, "platform": args.platform,
-                      "resolved_url": "", "width": "", "height": "", "aspect": "",
-                      "verdict": "", "saved": "", "accepted": False,
-                      "confirmation": confirmation, "reason": ""}
+                      "resolver_url": resolver_url, "resolved_url": "", "width": "",
+                      "height": "", "aspect": "", "verdict": "", "saved": "",
+                      "accepted": False, "confirmation": confirmation,
+                      "content_state": "", "duplicate_of": "", "sha256": "",
+                      "mime_type": "", "cache_key": "", "perceptual_hash": "",
+                      "visual_distance": "", "provenance_key": "",
+                      "policy_version": POLICY_VERSION, "reason": ""}
             try:
                 url = resolve(http, args.platform, handle, args.timeout)
                 if not url:
                     record["reason"] = "解析不到头像地址"
+                    record["content_state"] = "empty"
                     rows.append(record)
                     continue
                 record["resolved_url"] = url
-                image = http(HttpRequest("GET", url, {"User-Agent": USER_AGENT}),
-                             args.timeout, 8 << 20)
-                size = measure_image_size(image.body)
+                health["resolved"] += 1
+                payload = None if args.refresh else cache.lookup(url)
+                if payload is not None:
+                    health["snapshot_reused"] += 1
+                else:
+                    image = http(HttpRequest("GET", url, {"User-Agent": USER_AGENT}),
+                                 args.timeout, 8 << 20)
+                    payload = image.body
+                    health["fetched"] += 1
+                    health["bytes_fetched"] += len(payload)
+                source_raster = inspect_logo(payload)
             except Exception as exc:
                 record["reason"] = f"取图失败：{type(exc).__name__}"
+                record["content_state"] = "error"
+                health["errors"] += 1
+                health["last_error_kind"] = type(exc).__name__
+                health["last_error_message"] = str(exc)[:500]
                 rows.append(record)
                 continue
-            if size is None:
+            if source_raster is None:
                 record["reason"] = "无法解析为图片"
+                record["content_state"] = "rejected"
+                health["rejected"] += 1
                 rows.append(record)
                 continue
-            width, height = size
+            object_path = cache.store(url, payload, source_raster)
+            width, height = source_raster.width, source_raster.height
             verdict, aspect, reason = classify(width, height)
-            payload = image.body
             if verdict == PAD:
                 # 长条形 Logo 补背景填成正方形，而不是丢掉——界面本来就按方框渲染。
                 padded = pad_to_square(payload)
@@ -136,29 +219,80 @@ def main() -> int:
                     verdict, reason = REJECT, "补方失败"
                 else:
                     payload = padded
+            final_raster = inspect_logo(payload) if verdict != REJECT else None
             saved = ""
+            content_state = "rejected"
+            duplicate_of = ""
+            visual_distance: int | str = ""
+            candidate_digest = final_raster.sha256 if final_raster else ""
             if verdict != REJECT:
                 args.image_dir.mkdir(parents=True, exist_ok=True)
-                suffix = ".png" if verdict == PAD else Path(url.split("?")[0]).suffix or ".img"
+                suffix = final_raster.extension
                 destination = args.image_dir / f"{safe_name(studio)}{suffix}"
                 destination.write_bytes(payload)
-                saved = str(destination)
-            record.update({"width": width, "height": height, "aspect": round(aspect, 3),
-                           "verdict": verdict, "saved": saved,
-                           "accepted": verdict != REJECT and confirmation != "needs_confirmation",
-                           "reason": reason})
+                saved = destination.name
+                installed_signature = installed_by_key.get(safe_name(studio))
+                installed_digest = installed_signature[0] if installed_signature else ""
+                installed_perceptual = installed_signature[1] if installed_signature else ""
+                visual_distance = hash_distance(
+                    installed_perceptual, final_raster.perceptual_hash,
+                ) if installed_signature else ""
+                if (installed_digest == candidate_digest
+                        or installed_signature and visual_distance <= 4):
+                    content_state = "unchanged"
+                elif candidate_digest in installed_by_hash:
+                    content_state = "duplicate"
+                    duplicate_of = installed_by_hash[candidate_digest]
+                elif candidate_digest in batch_hashes:
+                    content_state = "duplicate"
+                    duplicate_of = batch_hashes[candidate_digest]
+                else:
+                    content_state = "changed" if installed_digest else "new"
+                    batch_hashes[candidate_digest] = studio
+            if content_state in {"unchanged", "changed", "new", "rejected"}:
+                health[content_state] += 1
+            if content_state == "duplicate":
+                health["duplicates"] += 1
+            accepted = (
+                verdict != REJECT and confirmation != "needs_confirmation"
+                and content_state in {"new", "changed"}
+            )
+            provenance = provenance_now(
+                studio=studio, handle=handle, platform=args.platform,
+                resolver_url=resolver_url, source_url=url, width=width, height=height,
+                mime_type=source_raster.mime_type, sha256=source_raster.sha256,
+                perceptual_hash=source_raster.perceptual_hash,
+                object_name=object_path.name,
+            )
+            provenance_path = cache.provenance(provenance)
+            record.update({
+                "width": width, "height": height, "aspect": round(aspect, 3),
+                "verdict": verdict, "saved": saved, "accepted": accepted,
+                "content_state": content_state, "duplicate_of": duplicate_of,
+                "sha256": candidate_digest, "mime_type": final_raster.mime_type if final_raster else "",
+                "cache_key": object_path.name,
+                "perceptual_hash": final_raster.perceptual_hash if final_raster else "",
+                "visual_distance": visual_distance,
+                "provenance_key": provenance_path.name,
+                "reason": (
+                    "与已安装 Logo 内容一致" if content_state == "unchanged"
+                    else f"与 {duplicate_of} 内容重复" if content_state == "duplicate"
+                    else reason
+                ),
+            })
+            health["succeeded"] += 1
             rows.append(record)
     finally:
-        http.close()
+        if owned_http:
+            http.close()
 
     rows.sort(key=lambda item: (not item["accepted"], item["aspect"] or 99))
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    with args.output.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=FIELDS)
-        writer.writeheader()
-        writer.writerows(rows)
+    health["elapsed_ms"] = round((time.perf_counter() - started) * 1000)
+    _atomic_csv(args.output, FIELDS, rows)
+    _atomic_csv(args.health, HEALTH_FIELDS, [health])
     accepted = sum(1 for row in rows if row["accepted"])
-    print({"total": len(rows), "accepted": accepted, "output": str(args.output)})
+    print({"total": len(rows), "accepted": accepted, "output": str(args.output),
+           "health": str(args.health)})
     return 0
 
 

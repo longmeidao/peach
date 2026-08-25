@@ -145,7 +145,7 @@ const cloneBarsContext=context=>context&&context.type==='entity'
 const activeFilterState=()=>barsContext.type==='home'?state:barsContext.filters;
 $('#q').value=state.q;
 const REP={};   // 创作者/厂牌 → 代表作 id，用来做圆头像（裁接触印相中心格，不另造图）
-let offset=0,total=0,facets=null,current=null,detailReturnPath='/',activeMix=null;
+let offset=0,total=0,facets=null,current=null,detailReturnPath='/',activeQueue=null;
 const CACHE={};
 const cache=items=>{items.forEach(x=>CACHE[x.id]=x);return items};
 let detailStreamSession='',detailPlayer=null,detailStatsTimer=null,detailNetTimer=null,detailNetHideTimer=null;
@@ -187,7 +187,7 @@ function disposeStage(push=false){
     if(video._hop)clearInterval(video._hop);
     video.pause();video.removeAttribute('src');video.load();video.remove()});
   cancelDetailStream();
-  stage.innerHTML='';stage.hidden=true;document.body.classList.remove('detail-open');current=null;activeMix=null;
+  stage.innerHTML='';stage.hidden=true;document.body.classList.remove('detail-open');current=null;activeQueue=null;
   scheduleStickySurfaces();
   if(push)route(detailReturnPath||'/');
 }
@@ -886,6 +886,82 @@ function showHomeSurfaces(){
   buildManageBar();   // 放在最后：管理区要盖掉上面刚恢复的首页横条
 }
 function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
+
+function playlistDialog(content){
+  document.querySelector('#playlistDialog')?.remove();
+  const dialog=document.createElement('dialog');dialog.id='playlistDialog';dialog.className='playlistdialog';
+  dialog.innerHTML=`<div class="playlistdialoghead"><h2></h2><button type="button" data-dialog-close aria-label="关闭">${icon('x')}</button></div><div class="playlistdialogbody"></div>`;
+  dialog.querySelector('h2').textContent=content.title;
+  dialog.querySelector('.playlistdialogbody').innerHTML=content.body;
+  dialog.querySelector('[data-dialog-close]').onclick=()=>dialog.close();
+  dialog.addEventListener('close',()=>dialog.remove(),{once:true});
+  document.body.append(dialog);dialog.showModal();return dialog;
+}
+async function saveMixAsPlaylist(mix){
+  if(mix?.kind!=='mix')return;
+  const dialog=playlistDialog({title:'保存 Mix',body:`<form class="playlistcreate" data-save-mix-form>
+    <label>名称<input name="name" maxlength="80" value="${esc(mix.title)}" required></label>
+    <button type="submit">保存 ${mix.items.length} 个视频</button><span data-playlist-state></span></form>`});
+  dialog.querySelector('form').onsubmit=async event=>{event.preventDefault();
+    const form=event.currentTarget,stateEl=form.querySelector('[data-playlist-state]');
+    try{const result=await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'create',name:new FormData(form).get('name'),asset_ids:mix.items.map(item=>item.id),source_kind:'mix',source_seed_asset_id:mix.seedId})});
+      dialog.close();await openPlaylist(result.playlist.id,result.playlist.current_asset_id,true)
+    }catch(error){stateEl.textContent=error.message||'保存失败'}
+  };
+  dialog.querySelector('input').select();
+}
+async function openAddToPlaylist(item){
+  const lists=(await api('/api/playlists')).items||[];
+  const rows=lists.map(list=>`<button type="button" class="playlistpickrow" data-add-playlist="${list.id}"><span>${esc(list.name)}</span><small>${list.item_count} 个视频</small></button>`).join('');
+  const dialog=playlistDialog({title:'加入播放列表',body:`<form class="playlistcreate" data-create-playlist>
+      <label>新播放列表<input name="name" maxlength="80" placeholder="输入名称" required></label><button type="submit">新建并加入</button><span data-playlist-state></span></form>
+    <div class="playlistpicklist">${rows||'<p class="empty">还没有播放列表</p>'}</div>`});
+  const finish=async body=>{const stateEl=dialog.querySelector('[data-playlist-state]');
+    try{await api('/api/playlist',{method:'POST',body:JSON.stringify(body)});dialog.close()}
+    catch(error){stateEl.textContent=error.message||'加入失败'}};
+  dialog.querySelector('form').onsubmit=event=>{event.preventDefault();finish({action:'create',name:new FormData(event.currentTarget).get('name'),asset_ids:[item.id]})};
+  dialog.querySelectorAll('[data-add-playlist]').forEach(button=>button.onclick=()=>finish({action:'add',id:+button.dataset.addPlaylist,asset_ids:[item.id]}));
+}
+async function movePlaylistItem(queue,index,delta,currentId){
+  if(queue?.kind!=='playlist')return;
+  const target=index+delta;if(target<0||target>=queue.items.length)return;
+  const ids=queue.items.map(item=>item.id);[ids[index],ids[target]]=[ids[target],ids[index]];
+  await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'reorder',id:queue.playlistId,asset_ids:ids})});
+  await openPlaylist(queue.playlistId,currentId,false);
+}
+async function removePlaylistItem(queue,assetId,currentId){
+  if(queue?.kind!=='playlist'||!confirm('从播放列表移出这个视频？'))return;
+  const result=await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'remove',id:queue.playlistId,asset_id:assetId})});
+  if(!result.playlist.items.length){await openPlaylists(true);return}
+  const next=result.playlist.items.some(item=>item.id===currentId)?currentId:result.playlist.current_asset_id;
+  await openPlaylist(queue.playlistId,next,false);
+}
+async function openPlaylists(push=true){
+  releaseHoverPreviews();disposeStage(false);document.body.classList.remove('entity-open','index-open');
+  if(push)route('/playlists');
+  const data=await api('/api/playlists');
+  if(location.pathname!=='/playlists')return;
+  $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';$('#count').textContent='';
+  $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;$('#tiers').style.display='none';$('#tagbar').style.display='none';
+  $('#managebar').hidden=true;$('#manageTitle').hidden=true;buildEdge();
+  const cards=(data.items||[]).map(list=>{const resume=list.current_asset_id||list.preview_asset_id;
+    const poster=list.preview_asset_id?`<img src="/poster?id=${list.preview_asset_id}&c=4" alt="" loading="lazy" onerror="this.remove()">`:'';
+    return `<article class="playlistcard" data-playlist-card="${list.id}"><button class="playlistcover" data-open-playlist="${list.id}" ${resume?'':'disabled'}>${poster}<span>${list.item_count} 个视频</span></button>
+      <div class="playlistmeta"><input data-playlist-name maxlength="80" value="${esc(list.name)}" aria-label="播放列表名称"><small>${list.source_kind==='mix'?'由 Mix 保存':'手动播放列表'}</small></div>
+      <div class="playlistactions"><button data-rename-playlist="${list.id}">保存名称</button><button data-open-playlist="${list.id}" ${resume?'':'disabled'}>继续播放</button><button class="danger" data-delete-playlist="${list.id}">删除</button></div></article>`}).join('');
+  $('#stats').innerHTML=`<section class="playlistpage"><header><div><h2>播放列表</h2><p>保存 Mix，按自己的顺序继续播放。</p></div><form class="playlistcreate" id="newPlaylist"><label>新播放列表<input name="name" maxlength="80" placeholder="输入名称" required></label><button type="submit">新建</button><span data-playlist-state></span></form></header><div class="playlistcards">${cards||'<p class="empty">还没有播放列表</p>'}</div></section>`;
+  $('#newPlaylist').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget;
+    try{await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'create',name:new FormData(form).get('name'),asset_ids:[]})});await openPlaylists(false)}
+    catch(error){form.querySelector('[data-playlist-state]').textContent=error.message||'新建失败'}};
+  $('#stats').querySelectorAll('[data-open-playlist]').forEach(button=>button.onclick=()=>{
+    const list=data.items.find(item=>item.id===+button.dataset.openPlaylist),resume=list?.current_asset_id||list?.preview_asset_id;
+    if(resume)openPlaylist(list.id,resume,true)});
+  $('#stats').querySelectorAll('[data-rename-playlist]').forEach(button=>button.onclick=async()=>{const card=button.closest('[data-playlist-card]'),input=card.querySelector('[data-playlist-name]');
+    await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'rename',id:+button.dataset.renamePlaylist,name:input.value})});await openPlaylists(false)});
+  $('#stats').querySelectorAll('[data-delete-playlist]').forEach(button=>button.onclick=async()=>{if(!confirm('删除这个播放列表？视频本身不会删除。'))return;
+    await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'delete',id:+button.dataset.deletePlaylist})});await openPlaylists(false)});
+  window.scrollTo({top:0,behavior:'smooth'});
+}
 
 let reviewData=null,reviewCategory='metadata_fields';
 /* 主体是实体而不是单条作品的复核分类。值就是实体 kind。 */
@@ -1766,6 +1842,7 @@ const EDGE_ICONS=[
   ['tags','标签','tags'],
   ['jav','JAV','jav'],
   ['flagged','已标记','star'],
+  ['playlists','播放列表','list-filter'],
   ['immerse','沉浸模式','play'],
   ['manage','管理','settings'],
 ];
@@ -1876,6 +1953,7 @@ function navOn(k){
   if(k==='manage')return !!manageSection();
   if(k==='performers'||k==='tags')return path==='/'+k;
   if(k==='immerse')return path==='/immerse';
+  if(k==='playlists')return path==='/playlists'||path.startsWith('/playlists/');
   if(k==='jav')return javActive();
   if(k==='shorts')return state.orient==='竖屏';
   // 首页只在真的停在首页列表上时亮：管理区、索引页、实体页都不算，
@@ -1900,6 +1978,7 @@ function buildEdge(){
     const k=b.dataset.nav;
     closeDrawerAfterNav();                 // 点了就收起抽屉，且短暂禁止悬停把它立刻弹回
     if(k==='immerse'){openTok();return}
+    if(k==='playlists'){openPlaylists();return}
     if(k==='manage'){openManage();return}
     if(k==='jav'){toggleJavMode();return}
     if(k==='performers'||k==='tags'){openIndex(k);return}
@@ -2122,34 +2201,49 @@ async function loadShorts(requestSeq=loadRequestSeq){
 }
 
 /* ── 就地展开播放 ── */
-function mixQueueHtml(mix,itemId){
-  return `<aside class="mixqueue"><div class="mixqueuehead"><div><h2>${esc(mix.title)}</h2><span>${mix.items.length} 个视频</span></div>
-    <button data-mix-close title="关闭" aria-label="关闭">${icon('x')}</button></div><div class="mixlist">${mix.items.map(x=>{
+function queueHtml(queue,itemId){
+  const action=queue.kind==='mix'
+    ? `<button data-save-mix title="保存为播放列表" aria-label="保存为播放列表">${icon('bookmark-plus')}</button>`
+    : `<button data-edit-playlist title="编辑播放列表" aria-label="编辑播放列表">${icon('list-filter')}</button>`;
+  return `<aside class="mixqueue"><div class="mixqueuehead"><div><h2>${esc(queue.title)}</h2><span>${queue.items.length} 个视频</span></div><div class="mixqueueactions">${action}
+    <button data-queue-close title="关闭" aria-label="关闭">${icon('x')}</button></div></div><div class="mixlist">${queue.items.map((x,index)=>{
       const thumb=x.has_thumb?`<img src="/poster?id=${x.id}&c=4" alt="" loading="lazy">`:'';
-      return `<button class="mixitem ${x.id===itemId?'current':''}" data-mix-item="${x.id}" aria-current="${x.id===itemId?'true':'false'}">
-        <span class="mixitempic">${thumb}<i class="dur mono">${fmtDur(x.duration)}</i></span><span class="mixitemtext"><b>${esc(x.name)}</b><span>${esc(mixLabel(x))}</span></span></button>`;
+      const edit=queue.kind==='playlist'?`<span class="queueedit"><button data-queue-up="${index}" aria-label="上移" ${index===0?'disabled':''}>↑</button><button data-queue-down="${index}" aria-label="下移" ${index===queue.items.length-1?'disabled':''}>↓</button><button data-queue-remove="${x.id}" aria-label="移出播放列表">${icon('x')}</button></span>`:'';
+      return `<div class="mixrow"><button class="mixitem ${x.id===itemId?'current':''}" data-queue-item="${x.id}" aria-current="${x.id===itemId?'true':'false'}">
+        <span class="mixitempic">${thumb}<i class="dur mono">${fmtDur(x.duration)}</i></span><span class="mixitemtext"><b>${esc(x.name)}</b><span>${esc(mixLabel(x))}</span></span></button>${edit}</div>`;
     }).join('')}</div></aside>`;
 }
 async function buildMix(seedId){
   const [seed,related]=await Promise.all([api('/api/item?id='+seedId),api('/api/related?id='+seedId+'&limit=28')]);
   const items=[seed,...(related.items||[]).filter(x=>x.id!==seed.id)];cache(items);
-  return {seedId,title:`Mix · ${mixLabel(seed)}`,items};
+  return {kind:'mix',seedId,title:`Mix · ${mixLabel(seed)}`,items};
 }
 async function openMix(seedId,itemId=seedId,push=true){
-  const previous=activeMix&&activeMix.seedId===seedId?activeMix:null;
+  const previous=activeQueue?.kind==='mix'&&activeQueue.seedId===seedId?activeQueue:null;
   if(push&&!previous)detailReturnPath=location.pathname+location.search;
   const mix=previous||await buildMix(seedId);
   await openItem(itemId,false,mix);
   if(push)route(`/mix/${seedId}/${itemId}`);
 }
-async function openItem(id,push=true,mixContext=null){
+async function openPlaylist(playlistId,itemId=null,push=true){
+  if(push)detailReturnPath=location.pathname+location.search;
+  const playlist=await api('/api/playlist?id='+playlistId);
+  if(!playlist.items.length){await openPlaylists(push);return}
+  const chosen=playlist.items.some(item=>item.id===itemId)
+    ? itemId:(playlist.current_asset_id||playlist.items[0].id);
+  const queue={kind:'playlist',playlistId,title:playlist.name,items:playlist.items};
+  cache(queue.items);await openItem(chosen,false,queue);
+  if(push)route(`/playlists/${playlistId}/${chosen}`);
+  api('/api/playlist',{method:'POST',body:JSON.stringify({action:'progress',id:playlistId,asset_id:chosen})}).catch(()=>{});
+}
+async function openItem(id,push=true,queueContext=null){
   releaseHoverPreviews();
   const returnBars=barsContext.type==='item'?detailReturnBarsContext:cloneBarsContext(barsContext);
   if(push)detailReturnPath=location.pathname+location.search;
   disposeStage(false);
   detailReturnBarsContext=returnBars;
-  activeMix=mixContext;
-  if(push&&!mixContext)route('/item/'+id);
+  activeQueue=queueContext;
+  if(push&&!queueContext)route('/item/'+id);
   const it=await api('/api/item?id='+id); if(it.error)return;
   current=it; CACHE[it.id]=it;
   barsContext={type:'item',id:it.id,filters:returnBars?.type==='entity'
@@ -2210,7 +2304,7 @@ async function openItem(id,push=true,mixContext=null){
     +idGroup('创作者','creator',creatorList)
     +seriesGroup(seriesList);
   $('#stage').hidden=false;document.body.classList.add('detail-open');delete $('#stage').dataset.c;
-  $('#stage').innerHTML=`<div class="sgrid ${mixContext?'mixgrid':''}">
+  $('#stage').innerHTML=`<div class="sgrid ${queueContext?'mixgrid':''}">
     <div class="vwrap"><canvas class="ambientcanvas" id="ambientCanvas" width="32" height="18"></canvas><button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>
        <button class="playerstatsbtn" id="playerStatsBtn" aria-label="播放统计" title="播放统计" aria-pressed="false" hidden>${icon('chart')}</button>
        <div class="playernet" id="playerNet" role="status" aria-live="polite" hidden></div>
@@ -2227,7 +2321,7 @@ async function openItem(id,push=true,mixContext=null){
           <span style="font-size:12px;color:var(--muted)">点此开始拉流 · ${fmtSize(it.size||0)}</span></div>
         <video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="none" hidden></video>`
        :`<video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="metadata"></video>`}
-    </div>${mixContext?mixQueueHtml(mixContext,it.id):''}
+    </div>${queueContext?queueHtml(queueContext,it.id):''}
     <div class="side">
       <div class="stitle">${esc(it.name)}</div>
       ${it.location==='online'?'':sourceTools(it.id)}
@@ -2248,6 +2342,7 @@ async function openItem(id,push=true,mixContext=null){
         <button class="dislike" data-kind="dislike" aria-label="不合口味" title="不合口味 · 降低推荐权重" aria-pressed="${it.feedback==='dislike'}">${icon('thumbs-down')}</button>
         <button class="seen" data-kind="seen" aria-label="看过了" title="看过了 · 只降低近期推荐" aria-pressed="${it.feedback==='seen'}">${icon('eye')}</button>
         <button class="later" id="stageLater" aria-label="稍后看" title="稍后看 · 加入或移出队列" aria-pressed="${!!it.watch_later}">${it.watch_later?icon('check'):icon('bookmark-plus')}</button>
+        <button class="playlistadd" id="addPlaylist" aria-label="加入播放列表" title="加入播放列表">${icon('list-filter')}</button>
         <button class="upgrade" id="betterVersion" aria-label="寻找更好版本" title="寻找高清、无水印或完整版" aria-pressed="${!!it.better_version}">${icon('sparkles')}</button>
         <button class="dispose" data-kind="dispose" aria-label="加入回收站" title="加入回收站 · 文件仍保留，可从回收站永久清除" aria-pressed="${it.disposal==='trash'}">${icon('trash')}</button></div>
       <div class="preference" id="preferencePanel" hidden>
@@ -2257,11 +2352,12 @@ async function openItem(id,push=true,mixContext=null){
       </div>
       <button class="obtn" data-kind="o">${icon('sperm')}<span>记一次高潮</span><b class="mono" id="oCount">${it.o_count||0}</b></button>
     </div></div>
-    ${mixContext?'':`<div class="next"><h3>接着看</h3><div class="nrow" id="nrow">载入中…</div></div>`}`;
+    ${queueContext?'':`<div class="next"><h3>接着看</h3><div class="nrow" id="nrow">载入中…</div></div>`}`;
 
   const closeDetail=()=>{const restore=cloneBarsContext(detailReturnBarsContext);
     disposeStage(true);detailReturnBarsContext=null;
-    barsContext=restore||{type:'home',filters:state};buildBars()};
+    barsContext=restore||{type:'home',filters:state};buildBars();
+    if(location.pathname==='/playlists')openPlaylists(false)};
   $('#closeStage').onclick=closeDetail;
   // 对账删掉的可能就是当前这条；删了就没什么可停留的，直接退回列表。
   wireSourceTools($('#stage'),r=>{
@@ -2269,9 +2365,16 @@ async function openItem(id,push=true,mixContext=null){
   if($('#castMore'))$('#castMore').onclick=e=>{
     $('#stage').querySelectorAll('[data-castoverflow]').forEach(row=>row.hidden=false);
     e.currentTarget.remove()};
-  $('#stage').querySelectorAll('[data-mix-close]').forEach(b=>b.onclick=closeDetail);
-  $('#stage').querySelectorAll('[data-mix-item]').forEach(b=>b.onclick=()=>openMix(mixContext.seedId,+b.dataset.mixItem,true));
+  $('#stage').querySelectorAll('[data-queue-close]').forEach(b=>b.onclick=closeDetail);
+  $('#stage').querySelectorAll('[data-queue-item]').forEach(b=>b.onclick=()=>queueContext.kind==='mix'
+    ?openMix(queueContext.seedId,+b.dataset.queueItem,true)
+    :openPlaylist(queueContext.playlistId,+b.dataset.queueItem,true));
+  $('#stage').querySelectorAll('[data-save-mix]').forEach(b=>b.onclick=()=>saveMixAsPlaylist(queueContext));
+  $('#stage').querySelectorAll('[data-edit-playlist]').forEach(b=>b.onclick=()=>openPlaylists(true));
+  $('#stage').querySelectorAll('[data-queue-up],[data-queue-down]').forEach(b=>b.onclick=()=>movePlaylistItem(queueContext,+b.dataset[b.hasAttribute('data-queue-up')?'queueUp':'queueDown'],b.hasAttribute('data-queue-up')?-1:1,it.id));
+  $('#stage').querySelectorAll('[data-queue-remove]').forEach(b=>b.onclick=()=>removePlaylistItem(queueContext,+b.dataset.queueRemove,it.id));
   const g=$('#gate');
+  $('#addPlaylist').onclick=()=>openAddToPlaylist(it);
   $('#stage').querySelectorAll('[data-kind]').forEach(b=>b.onclick=async()=>{
     try{
       const r=await api('/api/feedback',{method:'POST',body:JSON.stringify({id:it.id,kind:b.dataset.kind})});
@@ -2407,7 +2510,7 @@ async function openItem(id,push=true,mixContext=null){
   $('#stage').scrollIntoView({behavior:'auto',block:'start'});
   buildBars();
 
-  if(!mixContext)api('/api/related?id='+it.id+'&limit='+appSettings.relatedLimit).then(d=>{
+  if(!queueContext)api('/api/related?id='+it.id+'&limit='+appSettings.relatedLimit).then(d=>{
     const n=$('#nrow'); if(!n)return; cache(d.items);
     n.innerHTML=d.items.length?d.items.map(x=>cardHtml(x,'ncard')).join(''):'<span class="empty">暂无</span>';
     wireCards(n);});
@@ -2689,6 +2792,7 @@ async function refreshAll(automatic=false){
     if(location.pathname==='/review'){await openReview(false);return}
     if(location.pathname==='/duplicates'){await openDuplicates(false);return}
     if(location.pathname==='/quality-goals'){await openQualityGoals(false);return}
+    if(location.pathname==='/playlists'){await openPlaylists(false);return}
     /* 追更页刻意不参与「换一批」自动刷新：重画要重新取数，而取数之后紧接着的
        动作是联网检查，自动触发等于替用户决定什么时候去打站点。 */
     if(location.pathname==='/follow')return;
@@ -2737,6 +2841,8 @@ async function restoreRoute(){
     state={...state,creator:'',studio:'',tag:'',orient:'',state:'trash',q:''};$('#q').value='';
     buildEdge();buildBars();load(true);return;
   }
+  if(path==='/playlists'){await openPlaylists(false);return}
+  if(parts[0]==='playlists'&&/^\d+$/.test(parts[1]||'')&&/^\d+$/.test(parts[2]||'')){await openPlaylist(+parts[1],+parts[2],false);return}
   if(parts[0]==='mix'&&/^\d+$/.test(parts[1]||'')&&/^\d+$/.test(parts[2]||'')){await openMix(+parts[1],+parts[2],false);return}
   if(parts[0]==='item'&&/^\d+$/.test(parts[1]||'')){await openItem(+parts[1],false);return}
   const entityKind=ROUTE_ENTITIES[parts[0]];
