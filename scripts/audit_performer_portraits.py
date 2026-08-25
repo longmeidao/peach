@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-r"""女优高清头像缺口审计：只产 CSV，不写 ledger、不落任何头像文件。
+r"""女优高清头像缺口审计：只产候选与缓存证据，不写 ledger、不安装头像。
 
 交接背景（docs/OX-WINDOWS-JAV.md 第 4 节）：ledger 已完成中文规范名本地化，
 界面请求 `generated/avatars/performer-<entity_id>.img`，缺文件时回落到视频抽帧。
 本脚本回答两件事：
 
 1. 哪些 performer 缺头像文件；Gfriends 图库里按质量档位排序的最优来源是什么，
-   尺寸与完整性经逐张下载实测，不用索引推断冒充实测。
+   尺寸、格式、完整性和 SHA-256 经逐张下载实测，不用索引推断冒充实测。
 2. 实体合并后遗留在旧 ID 下的孤立头像文件：其 provenance 记录的名字能唯一命中
    当前实体、且当前目标文件不存在时，才列为 `orphan_relink` 复核候选；
    不覆盖、不删除旧文件。命中不唯一或目标已存在一律只记录原因。
@@ -23,13 +23,14 @@ r"""女优高清头像缺口审计：只产 CSV，不写 ledger、不落任何�
 
 边界：
 - ledger 以 SQLite 只读 URI 打开，本脚本没有任何写库路径；
-- 判定只写入 CSV；`--resume` 跳过已判定行，重试 error 行（网络失败的固定记法）。
+- 外部图只进入候选专用内容寻址缓存，不写 `generated/avatars`；
+- 判定写入审计、`/review` 候选与来源健康 CSV；`--resume` 跳过已判定行，
+  重试 error 和缺少 P2 缓存/provenance 的旧版 ok 行。
 """
 from __future__ import annotations
 
 import argparse
 import csv
-import io
 import json
 import os
 import re
@@ -42,8 +43,16 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
-from PIL import Image, UnidentifiedImageError
-
+from peach.avatar_provider import (
+    POLICY_VERSION,
+    AvatarCandidateCache,
+    acceptable_avatar,
+    atomic_write,
+    inspect_avatar,
+    installed_avatar_hashes,
+    mark_duplicate_candidates,
+    provenance_now,
+)
 from peach.config import DATABASE_PATH, GENERATED_DIR
 from peach.http import HttpRequest, HttpTransport, HttpxTransport
 
@@ -60,21 +69,48 @@ _LIMITER: "HostLimiter | None" = None
 FIELDS = (
     "section", "entity_id", "current_name", "matched_name", "name_source",
     "gfriends_category", "gfriends_file", "width", "height", "url",
-    "verdict", "note", "relink_old_id", "relink_target_id",
+    "mime_type", "sha256", "cache_path", "provenance_path", "policy_version",
+    "duplicate_of_entity_id", "verdict", "note", "relink_old_id", "relink_target_id",
 )
 # 这些判定是结论；error 表示网络层失败，续跑时必须重试。
 FINAL_VERDICTS = {
     "ok", "no_match", "rejected",
-    "orphan_relink", "orphan_ambiguous", "orphan_target_exists", "orphan_no_provenance",
+    "duplicate", "orphan_relink", "orphan_ambiguous", "orphan_target_exists",
+    "orphan_no_provenance",
 }
+CANDIDATE_FIELDS = (
+    "entity_id", "current_name", "matched_name", "name_source", "provider",
+    "source_kind", "source_url", "external_id", "gfriends_category",
+    "gfriends_file", "width", "height", "mime_type", "sha256", "cache_path",
+    "provenance_path", "policy_version", "verdict", "avatar_url", "evidence",
+)
+HEALTH_FIELDS = (
+    "source", "profile", "policy_version", "index_cache_reused", "index_fetched",
+    "attempted", "snapshot_reused", "fetched", "succeeded", "no_match",
+    "rejected", "duplicates", "errors", "bytes_fetched", "elapsed_ms",
+    "last_error_kind", "last_error_status", "last_error_message",
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     parser = argparse.ArgumentParser(description="审计女优头像缺口与孤立头像，产出复核 CSV")
     parser.add_argument("--db", type=Path, default=DATABASE_PATH)
     parser.add_argument("--avatars", type=Path, default=GENERATED_DIR / "avatars")
     parser.add_argument("--out", type=Path,
                         default=GENERATED_DIR / "performer-portrait-audit.csv")
+    parser.add_argument(
+        "--candidates", type=Path,
+        default=GENERATED_DIR / f"performer-avatar-candidate-{stamp}.csv",
+    )
+    parser.add_argument(
+        "--health", type=Path,
+        default=GENERATED_DIR / f"performer-avatar-source-health-{stamp}.csv",
+    )
+    parser.add_argument(
+        "--cache-dir", type=Path,
+        default=GENERATED_DIR / "provider-cache" / "performer-avatars" / "gfriends",
+    )
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--workers", type=int, default=6)
     parser.add_argument("--max-candidates", type=int, default=6,
@@ -83,10 +119,58 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-short-side", type=int, default=300)
     parser.add_argument("--resume", action="store_true",
                         help="跳过 CSV 里已判定的行；error 行重试")
+    parser.add_argument("--refresh", action="store_true",
+                        help="忽略 Gfriends 索引和图片请求缓存")
     return parser
 
 
 # ---------------------------------------------------------------- Gfriends
+
+
+class SourceHealth:
+    def __init__(self):
+        self.started = time.perf_counter()
+        self._lock = threading.Lock()
+        self.row: dict[str, object] = {
+            "source": "gfriends", "profile": "external_fallback",
+            "policy_version": POLICY_VERSION,
+            "index_cache_reused": 0, "index_fetched": 0, "attempted": 0,
+            "snapshot_reused": 0, "fetched": 0, "succeeded": 0,
+            "no_match": 0, "rejected": 0, "duplicates": 0, "errors": 0,
+            "bytes_fetched": 0, "elapsed_ms": 0,
+            "last_error_kind": "", "last_error_status": "",
+            "last_error_message": "",
+        }
+
+    def add(self, field: str, amount: int = 1) -> None:
+        with self._lock:
+            self.row[field] = int(self.row[field]) + amount
+
+    def error(self, kind: str, status: int | str = "", message: str = "") -> None:
+        with self._lock:
+            self.row["errors"] = int(self.row["errors"]) + 1
+            self.row["last_error_kind"] = kind
+            self.row["last_error_status"] = status
+            self.row["last_error_message"] = message[:500]
+
+    def snapshot(self) -> dict[str, object]:
+        with self._lock:
+            row = dict(self.row)
+        row["elapsed_ms"] = round((time.perf_counter() - self.started) * 1000)
+        return row
+
+
+def parse_gfriends(body: bytes) -> dict[str, list[tuple[str, str]]]:
+    content = json.loads(body)["Content"]
+    index: dict[str, list[tuple[str, str]]] = {}
+    for category, items in content.items():
+        for display_name, stored in items.items():
+            # 键是展示名（可能是别名），值才是实际文件；两者未必相同。
+            key = normalized(display_name.rsplit(".", 1)[0])
+            index.setdefault(key, []).append((category, stored.split("?")[0]))
+    for key in index:
+        index[key].sort(key=lambda pair: quality_key(*pair))
+    return index
 
 
 def load_gfriends(transport: HttpTransport) -> dict[str, list[tuple[str, str]]]:
@@ -98,16 +182,50 @@ def load_gfriends(transport: HttpTransport) -> dict[str, list[tuple[str, str]]]:
     )
     if response.status != 200:
         raise RuntimeError(f"Gfriends 索引不可用：HTTP {response.status}")
-    content = json.loads(response.body)["Content"]
-    index: dict[str, list[tuple[str, str]]] = {}
-    for category, items in content.items():
-        for display_name, stored in items.items():
-            # 键是展示名（可能是别名），值才是实际文件；两者未必相同。
-            key = normalized(display_name.rsplit(".", 1)[0])
-            index.setdefault(key, []).append((category, stored.split("?")[0]))
-    for key in index:
-        index[key].sort(key=lambda pair: quality_key(*pair))
-    return index
+    return parse_gfriends(response.body)
+
+
+def load_gfriends_cached(
+    transport: HttpTransport, cache_dir: Path, refresh: bool, health: SourceHealth,
+) -> dict[str, list[tuple[str, str]]]:
+    cache_path = cache_dir / "gfriends-filetree.json"
+    if not refresh and cache_path.is_file():
+        try:
+            index = parse_gfriends(cache_path.read_bytes())
+            health.add("index_cache_reused")
+            return index
+        except (OSError, KeyError, TypeError, ValueError):
+            health.error("invalid_index_cache", message=str(cache_path))
+    try:
+        response = transport(
+            HttpRequest("GET", GFRIENDS_RAW + "Filetree.json",
+                        {"Accept": "application/json"}),
+            60, 32 * 1024 * 1024,
+        )
+    except Exception as error:
+        response = None
+        health.error("index_transport", message=str(error))
+    if response is not None and response.status == 200:
+        try:
+            index = parse_gfriends(response.body)
+        except (KeyError, TypeError, ValueError) as error:
+            health.error("index_payload", status=200, message=str(error))
+        else:
+            atomic_write(cache_path, response.body)
+            health.add("index_fetched")
+            health.add("bytes_fetched", len(response.body))
+            return index
+    elif response is not None:
+        health.error("index_http", status=response.status,
+                     message=f"Gfriends index HTTP {response.status}")
+    if cache_path.is_file():
+        try:
+            index = parse_gfriends(cache_path.read_bytes())
+            health.add("index_cache_reused")
+            return index
+        except (OSError, KeyError, TypeError, ValueError):
+            pass
+    raise RuntimeError("Gfriends 索引不可用，且没有有效本地缓存")
 
 
 def gfriends_url(category: str, filename: str) -> str:
@@ -173,15 +291,10 @@ def limiter() -> "HostLimiter | None":
 
 def inspect_image(data: bytes) -> tuple[tuple[int, int], str] | None:
     """Pillow 完整校验并由解码格式定 MIME；SVG 与损坏数据一律拒绝。"""
-    try:
-        with Image.open(io.BytesIO(data)) as image:
-            size = image.size
-            image_format = (image.format or "").upper()
-            image.verify()
-    except (OSError, UnidentifiedImageError, Image.DecompressionBombError):
+    avatar = inspect_avatar(data)
+    if avatar is None:
         return None
-    content_type = {"JPEG": "image/jpeg", "PNG": "image/png"}.get(image_format)
-    return (size, content_type) if content_type else None
+    return (avatar.width, avatar.height), avatar.mime_type
 
 
 def acceptable(size: tuple[int, int], min_long: int, min_short: int) -> bool:
@@ -257,12 +370,17 @@ def missing_targets(connection: sqlite3.Connection, avatar_dir: Path,
     return targets[:limit] if limit else targets
 
 
-def audit_missing(record: dict, index: dict, transport: HttpTransport,
-                  args: argparse.Namespace) -> dict:
+def audit_missing(
+    record: dict, index: dict, transport: HttpTransport, args: argparse.Namespace,
+    cache: AvatarCandidateCache | None = None, health: SourceHealth | None = None,
+) -> dict:
     row = {field: "" for field in FIELDS}
     row["section"] = "missing"
     row["entity_id"] = record["entity_id"]
     row["current_name"] = record["canonical"]
+    row["policy_version"] = POLICY_VERSION
+    if health is not None:
+        health.add("attempted")
     entries: list[tuple[str, str]] | None = None
     for name, source in lookup_chain(record):
         # load_gfriends 产出规范化键；保留精确键回退，方便复用旧缓存和单元调用。
@@ -275,38 +393,75 @@ def audit_missing(record: dict, index: dict, transport: HttpTransport,
     if not entries:
         row["verdict"] = "no_match"
         row["note"] = "Gfriends 未收录该名字链上的任何写法"
+        if health is not None:
+            health.add("no_match")
         return row
     tried = 0
     for category, filename in entries[:max(args.max_candidates, 1)]:
-        response = fetch(transport, gfriends_url(category, filename), "image/*",
-                         30, 16 * 1024 * 1024)
-        if response is None or response.status != 200:
-            if response is None:
-                # 与 fetch 的降级口径一致：网络失败可续跑，不算来源结论。
-                row["verdict"] = "error"
-                row["note"] = f"下载失败：{category}/{filename}"
-                return row
+        url = gfriends_url(category, filename)
+        data = None if cache is None or args.refresh else cache.lookup(url)
+        if data is not None:
+            if health is not None:
+                health.add("snapshot_reused")
+        else:
+            response = fetch(transport, url, "image/*", 30, 16 * 1024 * 1024)
+            if health is not None:
+                health.add("fetched")
+            if response is None or response.status != 200:
+                if health is not None:
+                    health.error(
+                        "image_transport" if response is None else "image_http",
+                        "" if response is None else response.status,
+                        f"{category}/{filename}",
+                    )
+                if response is None:
+                    # 与 fetch 的降级口径一致：网络失败可续跑，不算来源结论。
+                    row["verdict"] = "error"
+                    row["note"] = f"下载失败：{category}/{filename}"
+                    return row
+                tried += 1
+                continue
+            data = response.body
+            if health is not None:
+                health.add("bytes_fetched", len(data))
+        inspected = inspect_avatar(data)
+        if inspected is None:
             tried += 1
             continue
-        inspected = inspect_image(response.body)
-        if not inspected:
+        if not acceptable_avatar(inspected, args.min_long_side, args.min_short_side):
             tried += 1
             continue
-        size, _content_type = inspected
-        if not acceptable(size, args.min_long_side, args.min_short_side):
-            tried += 1
-            continue
+        cache_path = ""
+        provenance_path = ""
+        if cache is not None:
+            object_path = cache.store(url, data, inspected)
+            provenance = provenance_now(
+                entity_id=int(record["entity_id"]), provider="gfriends",
+                source_kind="external_media_library", matched_name=row["matched_name"],
+                name_source=row["name_source"], external_id=f"{category}/{filename}",
+                upstream_url=url, width=inspected.width, height=inspected.height,
+                mime_type=inspected.mime_type, sha256=inspected.sha256,
+                cache_path=str(object_path.relative_to(cache.root)),
+            )
+            provenance_path = str(cache.store_provenance(provenance))
+            cache_path = str(object_path)
         row.update({
             "gfriends_category": category,
             "gfriends_file": filename,
-            "width": size[0], "height": size[1],
-            "url": gfriends_url(category, filename),
+            "width": inspected.width, "height": inspected.height,
+            "mime_type": inspected.mime_type, "sha256": inspected.sha256,
+            "cache_path": cache_path, "provenance_path": provenance_path,
+            "url": url,
             "verdict": "ok",
             "note": f"{len(entries)} 个来源可选，实测第 {tried + 1} 张合格",
         })
+        if health is not None:
+            health.add("succeeded")
         return row
     row["verdict"] = "rejected"
     row["note"] = f"前 {tried} 张候选未过完整性或尺寸门槛"
+    if health is not None:
+        health.add("rejected")
     return row
 
 
@@ -352,6 +507,11 @@ def audit_orphans(connection: sqlite3.Connection, avatar_dir: Path) -> list[dict
         row["url"] = provenance.get("upstream_url", "")
         row["width"] = provenance.get("width", "")
         row["height"] = provenance.get("height", "")
+        row["mime_type"] = provenance.get("mime_type", "")
+        row["sha256"] = provenance.get("sha256", "")
+        row["cache_path"] = str(avatar_dir / f"performer-{old_id}.img")
+        row["provenance_path"] = str(provenance_path)
+        row["policy_version"] = provenance.get("policy_version", "legacy")
         if len(hits) > 1:
             row["verdict"] = "orphan_ambiguous"
             row["note"] = "provenance 名命中多个当前实体：" + "、".join(
@@ -383,7 +543,12 @@ def read_prior(path: Path) -> tuple[list[dict], set[int]]:
         return kept, done
     with path.open(encoding="utf-8-sig", newline="") as handle:
         for old in csv.DictReader(handle):
-            if old.get("section") == "missing" and old.get("verdict") in FINAL_VERDICTS:
+            verdict = old.get("verdict")
+            cache_complete = bool(old.get("sha256") and old.get("provenance_path"))
+            # 旧版 ok 只有远端 URL，没有本地缓存、内容哈希与稳定 provenance；
+            # --resume 必须重跑这些行，不能把旧审计误当成 P2 候选已完成。
+            final = verdict in FINAL_VERDICTS and (verdict != "ok" or cache_complete)
+            if old.get("section") == "missing" and final:
                 done.add(int(old["entity_id"]))
             elif old.get("section") == "missing":
                 continue  # error 行重试，不保留旧值
@@ -406,19 +571,92 @@ def write_csv(path: Path, rows: list[dict]) -> None:
         raise
 
 
+def candidate_rows(rows: list[dict]) -> list[dict]:
+    candidates = []
+    for row in rows:
+        if row.get("section") != "missing" or row.get("verdict") != "ok":
+            continue
+        candidates.append({
+            "entity_id": row.get("entity_id", ""),
+            "current_name": row.get("current_name", ""),
+            "matched_name": row.get("matched_name", ""),
+            "name_source": row.get("name_source", ""),
+            "provider": "gfriends",
+            "source_kind": "external_media_library",
+            "source_url": row.get("url", ""),
+            "external_id": f"{row.get('gfriends_category', '')}/{row.get('gfriends_file', '')}",
+            "gfriends_category": row.get("gfriends_category", ""),
+            "gfriends_file": row.get("gfriends_file", ""),
+            "width": row.get("width", ""), "height": row.get("height", ""),
+            "mime_type": row.get("mime_type", ""), "sha256": row.get("sha256", ""),
+            # `/api/review` 会原样下发候选列；这里只给不含主机路径的稳定文件名。
+            "cache_path": Path(str(row.get("cache_path") or "")).name,
+            "provenance_path": Path(str(row.get("provenance_path") or "")).name,
+            "policy_version": row.get("policy_version", POLICY_VERSION),
+            "verdict": "ok", "avatar_url": row.get("url", ""),
+            "evidence": (
+                f"Gfriends {row.get('gfriends_category', '')} · "
+                f"{row.get('width', '')}×{row.get('height', '')} · "
+                f"SHA-256 {str(row.get('sha256', ''))[:12]}"
+            ),
+        })
+    return candidates
+
+
+def write_candidates(path: Path, rows: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        with temporary.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=CANDIDATE_FIELDS)
+            writer.writeheader()
+            writer.writerows(candidate_rows(rows))
+        os.replace(temporary, path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def write_health(path: Path, health: SourceHealth) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        with temporary.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=HEALTH_FIELDS)
+            writer.writeheader()
+            writer.writerow(health.snapshot())
+        os.replace(temporary, path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
 def run(args: argparse.Namespace, transport: HttpTransport | None = None) -> int:
     global _LIMITER
     # 静态图库走 GitHub raw，不限速；本脚本没有别的远端主机。
     _LIMITER = HostLimiter({"githubusercontent.com": 0.0})
     owned = transport is None
     client = transport or HttpxTransport()
+    health = SourceHealth()
+    cache = AvatarCandidateCache(args.cache_dir)
     try:
         print("拉取 Gfriends 索引…", flush=True)
-        index = load_gfriends(client)
+        try:
+            index = load_gfriends_cached(client, args.cache_dir, args.refresh, health)
+        except RuntimeError as error:
+            health.error("index_unavailable", message=str(error))
+            write_health(args.health, health)
+            print(str(error), flush=True)
+            print(f"来源健康 → {args.health}", flush=True)
+            return 2
         print(f"索引就绪：{len(index)} 个名字键", flush=True)
 
         connection = open_readonly(args.db)
         targets = missing_targets(connection, args.avatars, 0)
+        live_entity_ids = {int(row[0]) for row in connection.execute(
+            "SELECT id FROM entity WHERE kind='performer'"
+        )}
+        installed_hashes = installed_avatar_hashes(args.avatars, live_entity_ids)
         rows: list[dict] = []
         if args.resume:
             prior, done = read_prior(args.out)
@@ -438,7 +676,7 @@ def run(args: argparse.Namespace, transport: HttpTransport | None = None) -> int
         finished = 0
 
         def process_one(record: dict) -> dict:
-            return audit_missing(record, index, client, args)
+            return audit_missing(record, index, client, args, cache, health)
 
         with futures.ThreadPoolExecutor(max(1, args.workers)) as pool:
             for row in pool.map(process_one, targets):
@@ -447,15 +685,27 @@ def run(args: argparse.Namespace, transport: HttpTransport | None = None) -> int
                     finished += 1
                     # 边跑边落盘：断电或断网不该丢掉已完成的部分。
                     if finished % 20 == 0:
-                        write_csv(args.out, [*rows, *orphan_rows])
+                        partial = [*rows, *orphan_rows]
+                        mark_duplicate_candidates(partial, installed_hashes)
+                        write_csv(args.out, partial)
+                        write_candidates(args.candidates, partial)
+                        write_health(args.health, health)
                         ok = sum(1 for r in rows if r.get("verdict") == "ok")
                         print(f"  {finished}/{len(targets)} 已判定，命中 {ok}", flush=True)
         rows.extend(orphan_rows)
+        mark_duplicate_candidates(rows, installed_hashes)
+        duplicates = sum(1 for row in rows if row.get("verdict") == "duplicate")
+        if duplicates:
+            health.add("duplicates", duplicates)
         write_csv(args.out, rows)
+        write_candidates(args.candidates, rows)
+        write_health(args.health, health)
         connection.close()
 
         summary = Counter(row["verdict"] for row in rows)
         print(f"审计 CSV → {args.out}")
+        print(f"复核候选 → {args.candidates}")
+        print(f"来源健康 → {args.health}")
         print("判定分布：" + "、".join(f"{k} {v}" for k, v in summary.most_common()))
         relinks = summary.get("orphan_relink", 0)
         if relinks:

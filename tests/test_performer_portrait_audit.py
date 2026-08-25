@@ -106,10 +106,15 @@ class PerformerPortraitAuditTests(unittest.TestCase):
         self.avatars = self.tmp / "avatars"
         self.avatars.mkdir()
         self.out = self.tmp / "portrait-audit.csv"
+        self.candidates = self.tmp / "performer-avatar-candidate-test.csv"
+        self.health = self.tmp / "performer-avatar-source-health-test.csv"
+        self.cache = self.tmp / "provider-cache"
 
     def args(self, db: Path, *, resume: bool = False):
         argv = ["--db", str(db), "--avatars", str(self.avatars),
-                "--out", str(self.out)]
+                "--out", str(self.out), "--candidates", str(self.candidates),
+                "--health", str(self.health), "--cache-dir", str(self.cache),
+                "--workers", "1"]
         if resume:
             argv.append("--resume")
         return self.module.build_parser().parse_args(argv)
@@ -170,6 +175,13 @@ class PerformerPortraitAuditTests(unittest.TestCase):
                          "canonical 与 alias 都未命中时必须落到本地化 jp 档")
         self.assertEqual((found["width"], found["height"]), ("500", "600"))
         self.assertEqual(found["gfriends_category"], "0-Hand-Storage")
+        self.assertEqual(found["mime_type"], "image/jpeg")
+        self.assertEqual(len(found["sha256"]), 64)
+        self.assertTrue(Path(found["cache_path"]).is_file())
+        provenance = json.loads(Path(found["provenance_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(provenance["provider"], "gfriends")
+        self.assertEqual(provenance["matched_name"], "立花美涼")
+        self.assertEqual(provenance["sha256"], found["sha256"])
         self.assertEqual(found["url"],
                          module.gfriends_url("0-Hand-Storage", "AI-Fix-立花美涼.jpg"))
         relink = orphans[0]
@@ -184,6 +196,19 @@ class PerformerPortraitAuditTests(unittest.TestCase):
         # dry-run 不写任何头像文件，旧文件一字节不动。
         self.assertFalse((self.avatars / "performer-8022.img").exists())
         self.assertEqual((self.avatars / "performer-8168.img").read_bytes(), original)
+        with self.candidates.open(encoding="utf-8-sig", newline="") as handle:
+            candidates = list(csv.DictReader(handle))
+        self.assertEqual([row["entity_id"] for row in candidates], ["8022"])
+        self.assertEqual(candidates[0]["provider"], "gfriends")
+        self.assertEqual(Path(candidates[0]["cache_path"]).name,
+                         candidates[0]["cache_path"])
+        self.assertEqual(Path(candidates[0]["provenance_path"]).name,
+                         candidates[0]["provenance_path"])
+        with self.health.open(encoding="utf-8-sig", newline="") as handle:
+            health = next(csv.DictReader(handle))
+        self.assertEqual(health["attempted"], "1")
+        self.assertEqual(health["fetched"], "1")
+        self.assertEqual(health["succeeded"], "1")
 
     def test_lookup_order_is_canonical_then_alias_then_localization(self):
         module = self.module
@@ -245,6 +270,51 @@ class PerformerPortraitAuditTests(unittest.TestCase):
         module = self.module
         self.assertIsNone(module.fetch(Exploding(), "https://x.example/a", "text/html"))
 
+    def test_second_run_reuses_index_and_image_cache_without_network(self):
+        module = self.module
+        db = self.tmp / "ledger.db"
+        make_ledger(db, [{"id": 1, "canonical": "立花美涼", "metadata": {}}], aliases=[])
+        first = FakeTransport({
+            "Filetree.json": payload(GFRIENDS_TREE),
+            "AI-Fix": FakeResponse(200, jpeg_bytes(500, 600)),
+        })
+        self.assertEqual(module.run(self.args(db), transport=first), 0)
+
+        offline = FakeTransport({})
+        self.assertEqual(module.run(self.args(db), transport=offline), 0)
+        self.assertEqual(offline.calls, [])
+        with self.health.open(encoding="utf-8-sig", newline="") as handle:
+            health = next(csv.DictReader(handle))
+        self.assertEqual(health["index_cache_reused"], "1")
+        self.assertEqual(health["snapshot_reused"], "1")
+        self.assertEqual(health["fetched"], "0")
+        self.assertEqual(health["succeeded"], "1")
+
+    def test_exact_duplicate_image_is_evidence_but_not_a_review_candidate(self):
+        module = self.module
+        db = self.tmp / "ledger.db"
+        make_ledger(db, [
+            {"id": 1, "canonical": "甲", "metadata": {}},
+            {"id": 2, "canonical": "乙", "metadata": {}},
+        ], aliases=[])
+        tree = {"Content": {"7-S1": {"甲.jpg": "a.jpg", "乙.jpg": "b.jpg"}}}
+        transport = FakeTransport({
+            "Filetree.json": payload(tree),
+            "Content/": FakeResponse(200, jpeg_bytes(800, 600)),
+        })
+        self.assertEqual(module.run(self.args(db), transport=transport), 0)
+        rows = {row["entity_id"]: row for row in self.rows() if row["section"] == "missing"}
+        self.assertEqual(rows["1"]["verdict"], "ok")
+        self.assertEqual(rows["2"]["verdict"], "duplicate")
+        self.assertEqual(rows["2"]["duplicate_of_entity_id"], "1")
+        self.assertTrue(Path(rows["2"]["provenance_path"]).is_file())
+        with self.candidates.open(encoding="utf-8-sig", newline="") as handle:
+            candidates = list(csv.DictReader(handle))
+        self.assertEqual([row["entity_id"] for row in candidates], ["1"])
+        with self.health.open(encoding="utf-8-sig", newline="") as handle:
+            health = next(csv.DictReader(handle))
+        self.assertEqual(health["duplicates"], "1")
+
     def test_host_limiter_throttles_each_site_independently(self):
         """各站各自排队：慢站的等待不该拖住别的站。"""
         module = self.module
@@ -279,7 +349,8 @@ class PerformerPortraitAuditTests(unittest.TestCase):
 
         good = FakeTransport({
             "Filetree.json": payload(tree),
-            "Content/": FakeResponse(200, jpeg_bytes(800, 600)),
+            "a.jpg": FakeResponse(200, jpeg_bytes(800, 600)),
+            "b.jpg": FakeResponse(200, jpeg_bytes(801, 600)),
         })
         module.run(self.args(db, resume=True), transport=good)
         rows = {row["entity_id"]: row["verdict"] for row in self.rows()
