@@ -1018,7 +1018,13 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .tokbar.scrubbing::before,.tokbar.scrubbing i{height:9px}
 .tokui a{color:var(--tungsten);text-decoration:none}
 .tokui a:hover{text-decoration:underline}
-.tokui{pointer-events:none} .tokui a{pointer-events:auto}
+.tokui{pointer-events:none} .tokui a,.tokui .toktitle{pointer-events:auto}
+/* 标题是进详情页的入口，所以是按钮；但它在画面上就是一行字，
+   不能长成按钮的样子。只在悬停时用下划线提示可点，和旁边的创作者链接一致。 */
+.tokui .toktitle{display:block;max-width:100%;margin:0 0 5px;padding:0;border:0;background:none;
+  color:inherit;font:inherit;font-size:14px;text-align:left;cursor:pointer;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tokui .toktitle:hover{text-decoration:underline}
 .tokbtns button[aria-pressed="true"]{background:var(--tungsten);color:#1A1206;border-color:var(--tungsten)}
 .tokclose{position:absolute;top:15px;right:15px;width:42px;height:42px;background:rgba(0,0,0,.5);color:#EEE;
   border:0;border-radius:50%;padding:0;display:grid;place-items:center;cursor:pointer}.tokclose svg{width:21px;height:21px;stroke:currentColor;fill:none}
@@ -1085,6 +1091,9 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   .entityhero{grid-template-columns:92px minmax(0,1fr);gap:14px;padding:8px 0 18px}
   .entityportrait{width:92px}.entityhero h2{font-size:20px}
   .statshead{align-items:center}.stats h2{font-size:23px}.scards{grid-template-columns:minmax(0,1fr)}
+  /* 窄屏下标题也得一起缩。`/follow` 渲染在 `#stats` 里，上面那条 `.stats h2`
+     会只把它打到 23px，而 `#manageTitle` 在 `#stats` 外面，手机上又变成两种大小。 */
+  .pagetitle,.managetitle,.index .ihead h2,.playlistpage h2{font-size:23px}
   .scard2{padding:16px}.kv .u{display:block;margin-left:0;margin-top:2px}
   .ctags .tg:nth-child(n+3){display:none}
 }

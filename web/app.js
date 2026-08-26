@@ -2972,6 +2972,9 @@ async function tokShow(dir){
     }
     v.play().catch(()=>{});
     $('#tokTitle').textContent=it.name;
+    // 标题进详情页。沉浸模式里只看得到文件名，想看标签、相关推荐或改东西
+    // 都得先退出再去列表里把它找回来。路径和旁边的创作者链接一致：先关，再开。
+    $('#tokTitle').onclick=()=>{const id=it.id;$('#tokClose').click();openItem(id)};
     // 共演作品在沉浸模式也要念全出镜者；点击仍进第一位的资料页。
     const cast=full.performers||[];
     const who=cast.length

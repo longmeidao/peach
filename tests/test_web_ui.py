@@ -573,6 +573,16 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("tokTouch.axis=Math.abs(dx)>Math.abs(dy)?'x':'y';")
         self.assertPageContains("{passive:false}")
 
+    def test_immersive_title_opens_the_detail_page(self):
+        """沉浸模式里只看得到文件名。想看标签、相关推荐或改东西，
+        原来得先退出再去列表里把它找回来。旁边的创作者一直是可点的，标题不是。
+        """
+        self.assertPageContains('<button type="button" class="toktitle" id="tokTitle">')
+        self.assertPageContains(
+            "$('#tokTitle').onclick=()=>{const id=it.id;$('#tokClose').click();openItem(id)};")
+        # `.tokui` 整层 pointer-events:none，不把标题放行就是个点不到的按钮。
+        self.assertPageContains(".tokui a,.tokui .toktitle{pointer-events:auto}")
+
     def test_review_reuses_the_standard_selection_instead_of_its_own_mode(self):
         """复核页曾自造「多选模式」按钮加框选，只在这一页生效，用户得先发现再记住。
 
