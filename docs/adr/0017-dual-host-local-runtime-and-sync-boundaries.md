@@ -50,7 +50,8 @@ Peach 的目标是 Windows 与 macOS 各自拥有内置盘上的代码、运行�
   最近成功 JSON 缓存。macOS 会把文件 CA 与系统/登录钥匙串中受信任的同名 Peach CA 合并为
   校验集合，以兼容两台机器各自签发 CA 的现状；只读取公钥证书，不导出私钥。读取前必须确认
   目标实例仍是 writer。launchd 的 Python 主体若被 macOS 本地网络权限拦截，则由系统
-  `/usr/bin/curl` 发起同一严格请求：协议限 HTTPS、禁代理、响应限 8 MiB，令牌经 stdin 传入。
+  `/usr/bin/curl` 经回环 Stash 代理发起同一严格请求：协议限 HTTPS、响应限 8 MiB，令牌经
+  stdin 传入，非回环代理拒绝。
   reader 页面不提供任何复核决定写入。
 
 ### 两个局域网入口

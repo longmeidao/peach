@@ -87,6 +87,11 @@ class PeachSettings:
     )
     review_writer_ca: Path = SECRETS_DIR / "tls" / "peach-local-ca.crt"
     review_mirror_cache: Path = REVIEW_DIR / "writer-review.json"
+    # macOS LaunchAgent 的 Python 可能没有 Local Network 权限；只经本机 Stash 代理兜底。
+    review_writer_proxy: str = os.environ.get(
+        "PEACH_REVIEW_WRITER_PROXY",
+        "http://127.0.0.1:7890" if sys.platform == "darwin" else "",
+    )
     # 本机挂载不到的来源不进授权列表，对应资产按「脱盘」处理而不是报错。
     allowed_media_roots: tuple[Path, ...] = translate_roots(MEDIA_ROOT_DECLARATIONS)
     snapshot_root: Path = GENERATED_DIR / "snapshots"

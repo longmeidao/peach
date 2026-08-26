@@ -153,6 +153,7 @@ def create_app(
         settings.review_writer_ca,
         settings.review_mirror_cache,
         token=settings.token,
+        proxy=settings.review_writer_proxy,
     )
 
     @asynccontextmanager
