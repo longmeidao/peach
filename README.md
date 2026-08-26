@@ -125,8 +125,11 @@ Chrome 历史已清理但 Google Takeout 仍在时，显式增加 ZIP。脚本�
 并按「同 URL、同秒的最大出现次数」与所有既有来源跨源去重；不会把 ZIP 解压到磁盘：
 
 ```powershell
-python scripts/taste_history.py refresh --takeout ~/Downloads/takeout-YYYYMMDD-001.zip
+python scripts/taste_history.py refresh --takeout ~/Downloads/takeout-YYYYMMDD-001.zip --takeout-only
 ```
+
+去掉 `--takeout-only` 会在同一次运行中先刷新当前浏览器数据库；浏览器正在使用历史库时，
+恢复旧导出建议保留该参数。
 
 只用已有源库重新分析，或限制到某个时间点以后：
 
