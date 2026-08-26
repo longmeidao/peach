@@ -10,9 +10,8 @@ import os
 from datetime import datetime, timezone
 
 from .follow import FollowSourceError
-from .follow_secrets import CredentialError, CredentialStore
-from .platform import root_online
 from .follow_discovery import discover
+from .follow_secrets import CredentialError, CredentialStore
 from .follow_sources import (
     CONNECTORS, KemonoConnector, build_connector, parse_source_url,
 )
@@ -402,9 +401,13 @@ def w_follow_credential(contract, body) -> dict:
     store = _credential_store(contract)
     path = store.path_for(provider)
     if not cleaned:
-        # 全部留空 = 删掉这份凭据。给得出「配上」就要给得出「撤掉」。
-        path.unlink(missing_ok=True)
+        # 全部留空 = 撤掉这份凭据。**本机和共享副本一起撤**：只删本机的话，
+        # `load()` 会从共享副本把 key 重新拼回来，而共享副本还会跟着 peach-sync
+        # 传到另一台，变成哪台都撤不掉。共享盘不在就如实说，不静默跳过。
+        outcome = store.clear(provider)
         return {"ok": True, "provider": provider, "cleared": True,
+                "shared_cleared": outcome["shared"],
+                "note": CLEAR_NOTES.get(str(outcome["shared"]), ""),
                 "saved": store.describe(provider)}
     _write_secret(path, cleaned)
     shared_written = _write_shared(store, provider, cleaned)
@@ -414,6 +417,13 @@ def w_follow_credential(contract, body) -> dict:
             "permissions_tightened": os.name != "nt",
             "synced": shared_written,
             "saved": store.describe(provider)}
+
+
+#: 撤销后要不要多说一句。共享副本删掉了或压根没有都不必打扰用户；
+#: 只有「盘不在、这次只撤掉了本机」必须说出来，否则用户以为撤干净了。
+CLEAR_NOTES = {
+    "offline": "共享盘不在，只撤掉了本机这份。等盘回来要再撤一次，否则会被同步回来。",
+}
 
 
 def _write_secret(path, values: dict) -> None:
@@ -441,7 +451,7 @@ def _write_shared(store, provider: str, values: dict) -> bool:
     if not payload:
         return False
     try:
-        if not root_online(shared.parent.parent.parent):
+        if not store.shared_online():
             return False
         _write_secret(shared, payload)
     except OSError:

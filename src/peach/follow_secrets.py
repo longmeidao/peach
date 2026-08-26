@@ -11,6 +11,8 @@ import stat
 from dataclasses import dataclass
 from pathlib import Path
 
+from .platform import root_online
+
 
 class CredentialError(RuntimeError):
     pass
@@ -42,8 +44,9 @@ class CredentialStore:
     def __init__(self, secrets_root: Path, shared_root: Path | None = None,
                  syncable_fields: dict[str, tuple[str, ...]] | None = None):
         self.root = Path(secrets_root) / "follow"
-        self.shared_root = (Path(shared_root) / "secrets" / "follow"
-                            if shared_root is not None else None)
+        self.shared_base = Path(shared_root) if shared_root is not None else None
+        self.shared_root = (self.shared_base / "secrets" / "follow"
+                            if self.shared_base is not None else None)
         self.syncable_fields = syncable_fields or {}
 
     def path_for(self, provider: str) -> Path:
@@ -59,6 +62,16 @@ class CredentialStore:
             return None
         self.path_for(provider)          # 复用同一套名称校验
         return self.shared_root / f"{provider}.json"
+
+    def shared_online(self) -> bool | None:
+        """共享根现在能不能读。没有配置共享时返回 `None`（不适用），不是 `False`。
+
+        「不适用」和「不可达」必须分开：前者不需要告诉用户任何事，后者意味着这次
+        撤销或写入只落在本机，另一台上那份还在。
+        """
+        if self.shared_base is None:
+            return None
+        return root_online(self.shared_base)
 
     def _read(self, path: Path, provider: str) -> dict[str, str]:
         try:
@@ -83,33 +96,69 @@ class CredentialStore:
         except (CredentialError, OSError):
             return {}
 
-    def load(self, provider: str) -> Credential | None:
+    def _local_values(self, provider: str) -> dict[str, str]:
         path = self.path_for(provider)
-        shared = self._shared_values(provider)
-        if not path.is_file():
-            return Credential(provider, dict(shared)) if shared else None
+        return self._read(path, provider) if path.is_file() else {}
+
+    def load(self, provider: str) -> Credential | None:
         # 本机优先：共享副本只补本机没有的可同步字段，不覆盖本机已填的值。
-        values = {**shared, **self._read(path, provider)}
-        return Credential(provider, values)
+        values = {**self._shared_values(provider), **self._local_values(provider)}
+        return Credential(provider, values) if values else None
 
     def describe(self, provider: str) -> dict[str, object]:
         """只报告存在性与权限，绝不返回凭据值。
+
+        **必须和 `load()` 看同一份事实。** 早先这里只看本机文件，而 `load()` 会从共享
+        副本回填，于是撤销本机那份之后界面报「未配置」、连接器却还拿着共享里那把 key
+        在认证。状态和实际用的凭据不一致，比撤不掉更糟——用户会以为已经撤了。
+        所以这里也走 `load()` 的合并口径，并额外分出 `shared_fields`：用户得知道
+        哪几个字段是从共享回填的，否则不知道该去哪台机器上撤。
 
         `world_readable` 只在 POSIX 上有意义：NTFS 的访问控制走 ACL，`st_mode` 里的
         组/其他读位是 Python 合成出来的常量，恒为真——拿它当判据会在 Windows 上
         对每个凭据文件都报「权限过宽」。那里报 `None`（未知），不假装知道。
         """
         path = self.path_for(provider)
-        if not path.is_file():
+        local = self._local_values(provider)
+        shared = self._shared_values(provider)
+        values = {**shared, **local}
+        if not values:
             return {"provider": provider, "present": False, "fields": [],
-                    "world_readable": False}
-        credential = self.load(provider)
+                    "local_fields": [], "shared_fields": [], "world_readable": False}
         return {
             "provider": provider,
             "present": True,
-            "fields": sorted(credential.values) if credential else [],
-            "world_readable": self._world_readable(path),
+            "fields": sorted(values),
+            "local_fields": sorted(local),
+            "shared_fields": sorted(name for name in shared if name not in local),
+            "world_readable": self._world_readable(path) if path.is_file() else None,
         }
+
+    def clear(self, provider: str) -> dict[str, object]:
+        """撤销一份凭据：本机和共享副本一起删。
+
+        只删本机等于没撤。`load()` 会从共享副本重建，而共享副本还会跟着 peach-sync
+        传到另一台——结果是**在任何一台上都撤不掉**。给得出「配上」就要给得出「撤掉」，
+        同步不能把这个保证破坏掉。
+
+        共享盘不可达时如实报 `shared="offline"`，绝不静默跳过：那等于让用户以为撤了
+        其实没撤，等盘回来还会把 key 回填回来。
+        """
+        path = self.path_for(provider)
+        local_removed = path.is_file()
+        path.unlink(missing_ok=True)
+        shared_path = self.shared_path_for(provider)
+        if shared_path is None:
+            return {"local_removed": local_removed, "shared": "none"}
+        if not self.shared_online():
+            return {"local_removed": local_removed, "shared": "offline"}
+        try:
+            if not shared_path.is_file():
+                return {"local_removed": local_removed, "shared": "absent"}
+            shared_path.unlink()
+        except OSError:
+            return {"local_removed": local_removed, "shared": "offline"}
+        return {"local_removed": local_removed, "shared": "removed"}
 
     @staticmethod
     def _world_readable(path: Path) -> bool | None:

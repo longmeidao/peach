@@ -217,7 +217,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 实体头像优先 `generated/avatars/<kind>-<entity_id>.img`；Stash 默认剪影和搜索结果缩略图不能作为头像。
 - 厂牌归一化使用 `scripts/canonicalize_studios.py`，默认 dry-run，apply 前备份。`PREMIUM` 是独立厂牌；只把 Prestige Premium 和日文 Prestige 写法归并到 `Prestige`。
 - FastAPI 与前端逻辑分离、单体部署；在线来源和 AI 只通过显式适配器进入。
-- 追更连接器按站点分开（`follow_sources.py`），只在 `peach follow check` 与 `POST /api/follow/check` 显式联网；解析不出条目一律报错，不报「没有更新」。不绕机器人验证：rule34.xxx 只走带 API key 的官方 dapi，simpcity 登记为不可用。凭据只在 `peach-data/secrets/follow/`，不进快照、日志与 ledger。判据与站点证据见 ADR-0019。
+- 追更连接器按站点分开（`follow_sources.py`），只在 `peach follow check` 与 `POST /api/follow/check` 显式联网；解析不出条目一律报错，不报「没有更新」。不绕机器人验证：rule34.xxx 只走带 API key 的官方 dapi，simpcity 登记为不可用。凭据只在 `peach-data/secrets/follow/`，不进快照、日志与 ledger；只有 `CREDENTIAL_GUIDE` 里逐字段声明 `syncable` 的（当前仅 rule34xxx 的 `user_id`/`api_key`）会多写一份到共享根，`describe()` 与 `load()` 必须看同一份合并事实，撤销时本机与共享一起删，共享盘不在就如实报「只撤掉了本机」而不是静默跳过。判据与站点证据见 ADR-0019。
 - AI 推理 API 与本地 coding/agent runtime 是不同层，不能伪装成一个等价接口。
 - 3 字符以上搜索使用 FTS5 trigram；更短文本回退 LIKE。FTS 写入由迁移 trigger 维护，不在 Web 启动时修补。
 - 详情身份按规范化名称去重：同一个名字已显示为女优时，不再重复显示「创作者」。标签的 × 写入 profile 级隐藏覆盖，不删除刮削/识别断言；+ 新增标签以 `web-user` 同步写入兼容层与规范实体层。
