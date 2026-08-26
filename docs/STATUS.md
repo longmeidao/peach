@@ -58,6 +58,9 @@
   （链接在、目标不在），2026-08-26 之前这会让整次 `follow check` 连同已抓到的候选一起
   失败。现已降级：候选照常入库，证据标成「未取得」并把原因报到 CLI 与界面上。
   实测对着真实断链跑 rule34video，24 条候选全部入库。
+- 追更的「查找」在只读端一度返回 409：`/api/follow/resolve` 只联网发现、不碰账本，
+  却因为是 POST 被写入端闸门一并拦掉。已按 `READ_ONLY_POST_ROUTES` 白名单放行；
+  真正会写的 `check`/`save`/`status`/`source` 仍受闸门管辖。
 - PID 只是观测值，不是配置；每次停止或重启前必须重新核对命令行、父子关系和端口归属。
 - macOS 独立运行环境：代码 `~/Desktop/lmd.gg/peach/peach-app`、数据 `~/Desktop/lmd.gg/peach/peach-data`、worktree `~/Desktop/lmd.gg/peach/peach-worktrees`。Python 3.14.7 + 独立 venv，FFmpeg 走 PATH。
 - Mac 的 `peach-data` 实际形状与文档的通用分层有出入，排查前先看清：真实目录名是

@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 from .follow import FollowSourceError
@@ -305,8 +306,54 @@ def _existing_sources(contract):
         return _store(contract, connection).sources()
 
 
+#: 每个来源要不要凭据、要哪些字段、去哪里拿。写在这里而不是模板里，因为知道
+#: 「rule34.xxx 缺 key 就抓不到」的是连接器边界，不是界面。
+CREDENTIAL_GUIDE: dict[str, dict] = {
+    "kemono": {"requirement": "none"},
+    "coomer": {"requirement": "none"},
+    "pawchive": {"requirement": "none"},
+    "rule34video": {"requirement": "none"},
+    "rule34xxx": {
+        "requirement": "required",
+        "fields": ["user_id", "api_key"],
+        "why": "网页版挂了 Cloudflare 验证码，Peach 不绕验证码，只能走官方 API。",
+        "where": "https://rule34.xxx/index.php?page=account&s=options",
+        "howto": "登录后在账号设置页生成 API key，把 user_id 和 api_key 写进凭据文件。",
+    },
+    "f95zone": {
+        "requirement": "optional",
+        "fields": ["cookie"],
+        "why": "发现更新不需要登录；只有取附件和 masked 下载链接才需要会话。",
+        "where": "https://f95zone.to/",
+        "howto": "登录后从浏览器复制整条 Cookie 请求头，写进凭据文件的 cookie 字段。",
+    },
+    "simpcity": {
+        "requirement": "blocked",
+        "why": "站点由 DDoS-Guard 的浏览器质询保护，放行绑客户端 IP 且最短 20 分钟过期，"
+               "撑不起定时追更。Peach 不绕机器人验证。",
+    },
+}
+
+
 def q_follow_credentials(contract, _args) -> dict:
-    """只报告凭据是否存在与字段名，绝不返回凭据值。"""
+    """报告凭据状态和怎么配。只给字段名与文件路径，绝不返回凭据值。"""
     store = CredentialStore(contract.follow_secrets_root)
-    return {"ok": True, "root": str(store.root),
-            "providers": [store.describe(provider) for provider in sorted(CONNECTORS)]}
+    providers = []
+    for provider in sorted(CONNECTORS):
+        described = store.describe(provider)
+        guide = CREDENTIAL_GUIDE.get(provider, {"requirement": "none"})
+        fields = guide.get("fields", [])
+        providers.append({
+            **described,
+            "provider_label": PROVIDER_LABELS.get(provider, provider),
+            "requirement": guide["requirement"],
+            "needs": fields,
+            "missing": [name for name in fields if name not in described["fields"]],
+            "why": guide.get("why", ""),
+            "where": guide.get("where", ""),
+            "howto": guide.get("howto", ""),
+            "path": str(store.path_for(provider)),
+            "example": (json.dumps({name: "…" for name in fields}, ensure_ascii=False)
+                        if fields else ""),
+        })
+    return {"ok": True, "root": str(store.root), "providers": providers}

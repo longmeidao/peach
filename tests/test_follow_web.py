@@ -193,6 +193,28 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual(self._get()["sources"][0]["last_status"], "error")
         self.assertIn("503", self._get()["sources"][0]["last_error"])
 
+    def test_credentials_say_what_each_source_actually_needs(self):
+        payload = self._get("/api/follow/credentials")
+        by_provider = {row["provider"]: row for row in payload["providers"]}
+        self.assertEqual(by_provider["kemono"]["requirement"], "none")
+        self.assertEqual(by_provider["rule34xxx"]["requirement"], "required")
+        self.assertEqual(by_provider["rule34xxx"]["needs"], ["user_id", "api_key"])
+        self.assertEqual(by_provider["rule34xxx"]["missing"], ["user_id", "api_key"])
+        self.assertEqual(by_provider["f95zone"]["requirement"], "optional")
+        self.assertEqual(by_provider["simpcity"]["requirement"], "blocked")
+        self.assertIn("DDoS-Guard", by_provider["simpcity"]["why"])
+        self.assertTrue(by_provider["rule34xxx"]["path"].endswith("rule34xxx.json"))
+
+    def test_a_configured_credential_reports_nothing_missing(self):
+        secrets = self.root / "secrets" / "follow"
+        secrets.mkdir(parents=True)
+        (secrets / "rule34xxx.json").write_text(
+            '{"user_id": "42", "api_key": "sekret"}', encoding="utf-8")
+        row = next(r for r in self._get("/api/follow/credentials")["providers"]
+                   if r["provider"] == "rule34xxx")
+        self.assertEqual(row["missing"], [])
+        self.assertNotIn("sekret", json.dumps(row))
+
     def test_credentials_endpoint_reports_fields_but_never_values(self):
         secrets = self.root / "secrets" / "follow"
         secrets.mkdir(parents=True)
@@ -356,6 +378,31 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_the_first_name_lookup_warns_about_the_index_download(self):
         self.assertPageContains("首次按名字查要下载创作者索引，可能几十秒")
+
+    def test_the_paste_box_cannot_be_dragged_shut(self):
+        self.assertPageContains(".faddform textarea{min-height:82px")
+
+    def test_the_manage_page_is_ordered_by_what_you_do_first(self):
+        # 只看管理页那一段：`<h3>内容` 在别的页面上也出现过，全页搜索会命中错的那个。
+        page = self.page
+        body = page[page.index("function renderFollowManage("):
+                    page.index("function wireFollowItems(")]
+        order = [body.index(f'<h3>{heading}')
+                 for heading in ("添加来源", "来源 ", "内容", "凭据")]
+        self.assertEqual(order, sorted(order), "管理页分区顺序应为 加来源 → 来源 → 内容 → 凭据")
+
+    def test_credential_rows_say_whether_they_are_needed_at_all(self):
+        # 「未配置」本身不是信息：要说清需不需要、需要什么、去哪儿拿。
+        self.assertPageContains("required:['必须配置'")
+        self.assertPageContains("none:['不需要凭据'")
+        self.assertPageContains("blocked:['站点不可接入'")
+        self.assertPageContains("row.path")
+        self.assertPageContains("row.example")
+
+    def test_only_a_missing_required_credential_demands_attention(self):
+        # 可选的、不需要的、站点接不进来的都收起来；永远展开就是永久噪音。
+        self.assertPageContains("row.requirement==='required'&&!configured")
+        self.assertPageContains("${needsAttention?' open':''}")
 
     def test_the_watch_page_does_not_carry_source_management(self):
         # 输入框、移除、凭据都只属于管理页；看的那页保持干净。

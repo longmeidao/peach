@@ -2582,6 +2582,11 @@ POST_HANDLERS = {
 }
 
 
+#: 这些 POST 不写 ledger，只是因为要带请求体才用 POST。写入端闸门不该拦它们——
+#: 追更的「查找」在只读端被拦成 409 是实测踩到的：发现只联网、不碰账本。
+READ_ONLY_POST_ROUTES = frozenset({"/api/follow/resolve"})
+
+
 def dispatch_api_get(contract: WebContract, path, args):
     """Dispatch the stable JSON read contract used by the current web client."""
     try:
