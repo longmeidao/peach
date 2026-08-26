@@ -245,6 +245,56 @@ class FollowContractTests(unittest.TestCase):
         self.assertTrue(result["cleared"])
         self.assertFalse((self.root / "secrets" / "follow" / "rule34xxx.json").exists())
 
+    def test_clearing_also_removes_the_shared_copy(self):
+        """撤销必须两边一起撤，否则等于撤不掉。
+
+        只删本机那份的话，`load()` 会从共享副本把 key 重新拼回来；而共享副本还会跟着
+        peach-sync 传到另一台，结果是**在任何一台上都撤不掉**。给得出「配上」就要
+        给得出「撤掉」，同步这个功能不能把那个保证破坏掉。
+        """
+        self.contract.follow_shared_root = self.root / "shared"
+        (self.root / "shared").mkdir()
+        self._post("/api/follow/credential", {
+            "provider": "rule34xxx", "values": {"user_id": "42", "api_key": "k"}})
+        shared = self.root / "shared" / "secrets" / "follow" / "rule34xxx.json"
+        self.assertTrue(shared.exists())
+
+        result = self._post("/api/follow/credential",
+                            {"provider": "rule34xxx", "values": {}})
+        self.assertEqual(result["shared_cleared"], "removed")
+        self.assertFalse(shared.exists())
+        self.assertIsNone(_credential_store(self.contract).load("rule34xxx"),
+                          "撤销之后连接器不该还拿得到 key")
+
+    def test_a_shared_only_credential_reports_present_not_missing(self):
+        """`describe()` 和 `load()` 必须看同一份事实。
+
+        早先 `describe()` 只看本机文件、`load()` 会从共享副本回填，于是页面报「未配置」
+        而请求照样带着共享里那把 key 发出去。用户看到的状态和系统实际用的凭据不一致，
+        比撤不掉更糟——他会以为已经撤了。
+        """
+        self.contract.follow_shared_root = self.root / "shared"
+        shared = self.root / "shared" / "secrets" / "follow"
+        shared.mkdir(parents=True)
+        (shared / "rule34xxx.json").write_text(
+            '{"user_id": "42", "api_key": "fromshared"}', encoding="utf-8")
+        described = _credential_store(self.contract).describe("rule34xxx")
+        self.assertTrue(described["present"])
+        self.assertEqual(described["fields"], ["api_key", "user_id"])
+        self.assertEqual(described["local_fields"], [])
+        # 用户得知道这几个字段是从共享回填的，否则不知道该去哪台机器上撤。
+        self.assertEqual(described["shared_fields"], ["api_key", "user_id"])
+
+    def test_clearing_says_so_when_the_shared_root_is_offline(self):
+        """共享盘不在时不能静默跳过：那等于让用户以为撤了其实没撤。"""
+        self.contract.follow_shared_root = self.root / "no-such-volume"
+        self._post("/api/follow/credential", {
+            "provider": "rule34xxx", "values": {"user_id": "42", "api_key": "k"}})
+        result = self._post("/api/follow/credential",
+                            {"provider": "rule34xxx", "values": {}})
+        self.assertEqual(result["shared_cleared"], "offline")
+        self.assertIn("只撤掉了本机", result["note"])
+
     def test_only_fields_declared_syncable_reach_the_shared_copy(self):
         """可同步是逐字段声明的，不按字段名猜。
 

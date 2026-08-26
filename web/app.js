@@ -1378,7 +1378,8 @@ function followCredentialRow(row){
   const fields=(row.needs||[]).map(name=>`<label class="fcredfield">
     <span>${esc(name)}</span>
     <input type="password" name="${esc(name)}" autocomplete="off" spellcheck="false"
-      placeholder="${row.fields.includes(name)?'已保存，留空表示不改':'未填写'}"></label>`).join('');
+      placeholder="${(row.shared_fields||[]).includes(name)?'来自共享，留空表示不改'
+        :row.fields.includes(name)?'已保存，留空表示不改':'未填写'}"></label>`).join('');
   const body=row.requirement==='none'?''
     :row.requirement==='blocked'?`<p>${esc(row.why)}</p>`
     :`<p>${esc(row.why)}${row.where?` <a href="${esc(row.where)}" target="_blank" rel="noreferrer noopener">去取</a>`:''}</p>
@@ -1387,6 +1388,7 @@ function followCredentialRow(row){
         <div class="fcredactions"><button type="submit">保存</button>
           ${configured?`<button type="button" class="fquiet" data-cred-clear="${esc(row.provider)}">清除</button>`:''}
           <span data-cred-state aria-live="polite"></span></div></form>
+      ${(row.shared_fields||[]).length?`<p class="fnote">${esc(row.shared_fields.join('、'))} 是从共享副本回填的，本机没有单独存。清除会把两边一起删。</p>`:''}
       <p class="fcredpath mono">${esc(row.path)}</p>
       ${row.world_readable?'<p class="fnote warn">文件权限过宽，请在运行 Peach 的 POSIX 主机上收紧为 0600。</p>':''}`;
   // 两个分支必须用同一个状态类，否则「不需要」那几行走 .fmeta、其余走 .fstate，
@@ -1571,11 +1573,14 @@ function wireFollowManage(){
     }catch(error){state.textContent=error.message||'保存失败';button.disabled=false}
   });
   root.querySelectorAll('[data-cred-clear]').forEach(button=>button.onclick=async()=>{
-    if(!confirm('清除这个来源的凭据？文件会被删除。'))return;
+    if(!confirm('清除这个来源的凭据？本机和共享副本都会被删除。'))return;
     button.disabled=true;
     try{
-      await api('/api/follow/credential',{method:'POST',body:JSON.stringify(
+      // 共享盘不在时后端只撤掉了本机那份，必须让用户看见——否则他以为撤干净了，
+      // 等盘回来 key 又被同步回来。
+      const done=await api('/api/follow/credential',{method:'POST',body:JSON.stringify(
         {provider:button.dataset.credClear,values:{}})});
+      if(done.note)alert(done.note);
       await openFollowManage(false);
     }catch(error){button.disabled=false;alert(error.message)}
   });
