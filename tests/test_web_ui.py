@@ -498,7 +498,8 @@ class WebUiSourceTests(unittest.TestCase):
         契约有两条，都不能各自拍数：
 
         1. 遮罩必须低于抽屉，否则抽屉里点不到任何东西。
-        2. 抽屉打开时窄栏不得吃掉抽屉的点击——要么窄栏排在抽屉之下，要么它被显式停用。
+        2. 抽屉打开时窄栏不得吃掉抽屉的点击——要么窄栏**严格**排在抽屉之下，要么它被显式停用。
+           相等不算「在下面」：那时先后由 DOM 顺序决定，不是可依赖的契约。
            当前设计走后者：抽屉就是窄栏的展开态，展开时窄栏 `pointer-events:none` 让位。
         """
         import re as _re
@@ -511,7 +512,9 @@ class WebUiSourceTests(unittest.TestCase):
 
         scrim, drawer, rail = layer(".scrim"), layer(".drawer"), layer(".edge")
         self.assertLess(scrim, drawer, "遮罩压在抽屉上面，抽屉就点不动了")
-        if rail > drawer:
+        # `>=` 而不是 `>`：两者相等时先后由 DOM 顺序决定，那不是任何人该依赖的契约，
+        # 同样要求展开时让位。
+        if rail >= drawer:
             self.assertIn("body.drawer-open .edge{opacity:0;pointer-events:none}",
                           self.page,
                           "窄栏排在抽屉之上时，展开必须让位，否则它会吃掉抽屉的点击")
