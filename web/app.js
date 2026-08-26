@@ -1355,11 +1355,13 @@ const CRED_STATE={required:['需要','req'],optional:['可选','opt'],
 
 /* placeholder 用库里真实存在的创作者，而不是编一个名字——`facets.creators`
    是首页推荐词同一条数据路径，保证是用户自己库里的人。取不到就退回链接示例。 */
-function followPlaceholder(){
-  const pool=(typeof facets==='object'&&facets&&facets.creators||[])
-    .map(x=>x&&x.k).filter(v=>typeof v==='string'&&v.length>1);
-  if(!pool.length)return 'https://kemono.cr/fanbox/user/30917150';
-  return pool[Math.floor(Math.random()*pool.length)];
+/* 「猜你喜欢」取 `facets.creators`——那是账本里真实存在的创作者，来自用户自己的浏览
+   历史入库，不是编的名字。点一下就直接拿去查，省掉「先复制再粘贴」。 */
+function followSuggestions(known){
+  const seen=new Set((known||[]).map(s=>String(s.label||'').toLowerCase()));
+  return (typeof facets==='object'&&facets&&facets.creators||[])
+    .map(x=>x&&x.k).filter(v=>typeof v==='string'&&v.length>1&&!seen.has(v.toLowerCase()))
+    .slice(0,10);
 }
 
 function followCredentialRow(row){
@@ -1380,12 +1382,14 @@ function followCredentialRow(row){
           <span data-cred-state aria-live="polite"></span></div></form>
       <p class="fcredpath mono">${esc(row.path)}</p>
       ${row.world_readable?'<p class="fnote warn">文件权限过宽，请在运行 Peach 的 POSIX 主机上收紧为 0600。</p>':''}`;
+  // 两个分支必须用同一个状态类，否则「不需要」那几行走 .fmeta、其余走 .fstate，
+  // 同一列出现两套样式和两种对齐——用户一眼就看出来了。
   if(!body)return `<div class="frow fcred none"><b>${esc(row.provider_label)}</b>
-    <span class="fmeta">${esc(label)}</span></div>`;
+    <span class="fcstate none">${esc(label)}</span></div>`;
   return `<details class="frow fcred ${esc(kind)}${configured?' ok':''}"${needsAttention?' open':''}>
     <summary><b>${esc(row.provider_label)}</b>
-      <span class="fstate ${configured?'done':esc(kind)}">${esc(configured?'已配置':label)}</span>
-      ${row.missing.length?`<span class="fstate missing">缺 ${esc(row.missing.join('、'))}</span>`:''}
+      <span class="fcstate ${configured?'done':esc(kind)}">${esc(configured?'已配置':label)}</span>
+      ${row.missing.length?`<span class="fcstate missing">缺 ${esc(row.missing.join('、'))}</span>`:''}
     </summary>${body}</details>`;
 }
 
@@ -1405,11 +1409,14 @@ function renderFollowManage(credentials){
           <button class="fbtn" data-follow-view>${icon('globe')}去看更新</button></div>
         <form class="faddform" id="followAdd">
           <textarea name="lines" rows="1" required spellcheck="false"
-            aria-label="来源链接、名字或 id"
-            placeholder="${esc(followPlaceholder())}"></textarea>
+            aria-label="来源链接、名字或 id"></textarea>
           <button class="fbtn primary" type="submit">查找</button>
         </form>
         <p class="fnote" data-follow-add-state aria-live="polite"></p>
+        ${(()=>{const picks=followSuggestions(sources);return picks.length
+          ?`<div class="fguess"><span class="fmeta">猜你喜欢</span>${picks.map(name=>
+              `<button class="fchip" data-follow-guess="${esc(name)}">${esc(name)}</button>`
+            ).join('')}</div>`:''})()}
       </section>
       <div id="followPicks"></div>
       <section class="fsec">
@@ -1534,6 +1541,13 @@ function wireFollowManage(){
       }
     }catch(e){button.innerHTML=label;alert('检查更新失败：'+e.message)}
     finally{followBusy=false;button.disabled=false}
+  });
+  root.querySelectorAll('[data-follow-guess]').forEach(chip=>chip.onclick=()=>{
+    if(!form)return;
+    const box=form.querySelector('textarea');
+    box.value=chip.dataset.followGuess;
+    box.dispatchEvent(new Event('input'));
+    form.requestSubmit();
   });
   root.querySelectorAll('[data-cred-form]').forEach(form=>form.onsubmit=async event=>{
     event.preventDefault();
