@@ -1349,8 +1349,18 @@ function followSourceRow(source){
     ${source.last_error?`<p class="frowerr">${esc(source.last_error)}</p>`:''}</div>`;
 }
 
+/* 四种状态四种颜色：待办（缺凭据）和完成（已配置）不能同色，那正是要一眼分开的两件事。 */
 const CRED_STATE={required:['需要','req'],optional:['可选','opt'],
   none:['不需要','none'],blocked:['接不进来','blocked']};
+
+/* placeholder 用库里真实存在的创作者，而不是编一个名字——`facets.creators`
+   是首页推荐词同一条数据路径，保证是用户自己库里的人。取不到就退回链接示例。 */
+function followPlaceholder(){
+  const pool=(typeof facets==='object'&&facets&&facets.creators||[])
+    .map(x=>x&&x.k).filter(v=>typeof v==='string'&&v.length>1);
+  if(!pool.length)return 'https://kemono.cr/fanbox/user/30917150';
+  return pool[Math.floor(Math.random()*pool.length)];
+}
 
 function followCredentialRow(row){
   const [label,kind]=CRED_STATE[row.requirement]||CRED_STATE.none;
@@ -1374,8 +1384,8 @@ function followCredentialRow(row){
     <span class="fmeta">${esc(label)}</span></div>`;
   return `<details class="frow fcred ${esc(kind)}${configured?' ok':''}"${needsAttention?' open':''}>
     <summary><b>${esc(row.provider_label)}</b>
-      <span class="fmeta">${esc(configured?'已配置':label)}</span>
-      ${row.missing.length?`<span class="fmeta warn">缺 ${esc(row.missing.join('、'))}</span>`:''}
+      <span class="fstate ${configured?'done':esc(kind)}">${esc(configured?'已配置':label)}</span>
+      ${row.missing.length?`<span class="fstate missing">缺 ${esc(row.missing.join('、'))}</span>`:''}
     </summary>${body}</details>`;
 }
 
@@ -1395,11 +1405,11 @@ function renderFollowManage(credentials){
           <button class="fbtn" data-follow-view>${icon('globe')}去看更新</button></div>
         <form class="faddform" id="followAdd">
           <textarea name="lines" rows="1" required spellcheck="false"
-            aria-label="来源链接、名字或 id" placeholder="粘链接、名字或 id"></textarea>
+            aria-label="来源链接、名字或 id"
+            placeholder="${esc(followPlaceholder())}"></textarea>
           <button class="fbtn primary" type="submit">查找</button>
         </form>
-        <p class="fnote"><span data-follow-add-state aria-live="polite"></span>
-          链接直接认得，名字会去六个来源各查一遍；要一次加多个就每行一条。</p>
+        <p class="fnote" data-follow-add-state aria-live="polite"></p>
       </section>
       <div id="followPicks"></div>
       <section class="fsec">
@@ -1414,7 +1424,7 @@ function renderFollowManage(credentials){
             · 已保存 ${counts.saved||0} · 已忽略 ${counts.ignored||0}
             <button class="flink" data-follow-bulk="seen">全部标记已看</button>
             <button class="flink" data-follow-bulk="ignored">全部忽略</button></p>`:''}`
-          :'<p class="fnote">还没有关注任何来源。把链接或名字粘进上面的输入框。</p>'}
+          :'<p class="fnote">还没有关注任何来源。</p>'}
       </section>
     </div>
     <aside class="faside">
@@ -1480,6 +1490,7 @@ function wireFollowManage(){
     if(!lines.length)return;
     const byName=lines.some(line=>!line.includes('/'));
     button.disabled=true;
+    // 索引下载的提醒只在真按名字查时出现；常驻成一句说明就是噪音。
     state.textContent=byName?'查找中…（首次按名字查要下载创作者索引，可能几十秒）':'识别中…';
     try{
       const result=await api('/api/follow/resolve',{method:'POST',
