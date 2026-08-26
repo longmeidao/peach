@@ -395,7 +395,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("['follow','关注','globe']")
         self.assertPageContains("if(k==='follow'){openFollow();return}")
         self.assertPageContains("if(k==='follow')return path==='/follow';")
-        self.assertPageContains("['follow','追更来源','globe']")
+        self.assertPageContains("['follow','关注','globe']")
         self.assertPageContains("if(path==='/follow-manage')return 'follow'")
         self.assertPageContains("if(section==='follow'){openFollowManage();return}")
 
@@ -426,7 +426,16 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("首次按名字查要下载创作者索引，可能几十秒")
 
     def test_the_input_and_its_button_are_the_same_height(self):
-        self.assertPageContains("height:38px;min-height:38px")
+        # 静止时输入框就该和按钮齐平；固定多行的话按钮只有它一小截高。
+        page = self.page
+        self.assertEqual(page.count(".faddform textarea{"), 1,
+                         "旧规则留在后面会覆盖新输入框样式")
+        rule = page[page.index(".faddform textarea{"):]
+        rule = rule[:rule.index("}")]
+        self.assertIn("height:32px", rule)
+        self.assertIn("min-height:32px", rule)
+        button = page[page.index(".fbtn{"):]
+        self.assertIn("height:32px", button[:button.index("}")])
 
     def test_the_manage_page_is_ordered_by_what_you_do_first(self):
         # 只看管理页那一段：同样的标题在别的页面上也出现过，全页搜索会命中错的那个。
@@ -443,23 +452,53 @@ class FollowWebSourceTests(unittest.TestCase):
         body = page[page.index("function renderFollowManage("):
                     page.index("function wireFollowItems(")]
         self.assertNotIn("<h3>内容", body)
-        self.assertIn("class=\"fcounts\"", body)
+        self.assertIn("条未看", body)
 
     def test_the_page_uses_two_columns_so_the_width_is_not_wasted(self):
-        self.assertPageContains(".followmanage{padding:4px 0 44px;display:grid;"
-                                "grid-template-columns:minmax(0,1fr) 340px")
+        page = self.page
+        rule = page[page.index(".followmanage{"):]
+        rule = rule[:rule.index("}")]
+        self.assertIn("grid-template-columns:minmax(0,1fr)", rule)
+
+    def test_the_panel_has_no_cards_nested_inside_cards(self):
+        """vercel.com/design.md 点名的反模式：卡片套卡片、用边框补救层级。
+
+        分组该靠标题和一条分隔线，不是给每一行都套个盒子。
+        """
+        page = self.page
+        self.assertNotIn(".fcard{", page)
+        self.assertNotIn(".fsource{", page,
+                         "旧来源卡片规则会给新行重新套上边框和圆角")
+        rule = page[page.index(".frow{"):]
+        rule = rule[:rule.index("}")]
+        self.assertIn("border-bottom:1px solid", rule)
+        self.assertNotIn("border-radius", rule)
+
+    def test_the_type_scale_has_no_arbitrary_in_between_sizes(self):
+        """同一份文档点名的另一条：细小灰字加随意字号。
+
+        管理页只用 14 正文 / 13 次要 / 12 元信息三档。
+        """
+        page = self.page
+        block = page[page.index("/* ── 关注管理页 ──"):page.index("/* ── 查找结果的勾选清单")]
+        sizes = sorted({m for m in re.findall(r"font-size:([\d.]+)px", block)},
+                       key=float)
+        self.assertEqual(sizes, ["12", "13", "14"], f"字号档位应只有三档，实际 {sizes}")
 
     def test_credential_rows_say_whether_they_are_needed_at_all(self):
         # 「未配置」本身不是信息：要说清需不需要、需要什么、去哪儿拿。
-        self.assertPageContains("required:['必须配置'")
+        self.assertPageContains("required:['需要'")
         self.assertPageContains("none:['不需要'")
         self.assertPageContains("blocked:['接不进来'")
-        self.assertPageContains("row.path")
+        self.assertPageContains("row.where")
+        self.assertPageContains("row.howto")
 
     def test_the_page_says_where_the_credential_actually_lands(self):
         # 从 Mac 浏览 Windows 实例时，凭据落在 Windows 上——不能写成「本机」。
         self.assertPageContains("运行 Peach 的那台机器")
         self.assertPageContains("Windows 上不收紧文件权限")
+        self.assertPageContains("row.path")
+        self.assertPageContains("row.world_readable")
 
     def test_credentials_are_typed_into_the_page_not_into_a_file_by_hand(self):
         self.assertPageContains('data-cred-form=')
