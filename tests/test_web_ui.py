@@ -538,6 +538,9 @@ class WebUiSourceTests(unittest.TestCase):
         # 缓存键跟着 state 变，否则切到已标记会沿用首页那份。
         scope = self.page.split("const scope=facetParams.toString();", 1)[0]
         self.assertIn("facetParams.set('state'", scope)
+        # 收窄到空时不能留下空带：实测已标记页上两排都没人，#tiers 仍占 28px。
+        self.assertPageContains("$('#tiers').hidden=!(perfRow||studioRow);")
+        self.assertPageContains(".tiers[hidden]{display:none}")
 
     def test_collapsed_rail_is_divided_from_the_content_beside_it(self):
         """窄栏和内容区背景接近，没有分割线就看不出左边那一条到哪里为止。

@@ -116,6 +116,9 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
 .readout span{font-size:11.5px;color:var(--muted)}
 
 /* ── 顶部三层：女优圆头像 / 厂牌 / 内容标签 ── */
+/* 有显式 display 的元素不会被浏览器默认的 [hidden]{display:none} 隐藏，
+   而 showHomeSurfaces 会把它的行内 display 清空——这条写死以免两边抵消。 */
+.tiers[hidden]{display:none}
 .tiers{position:relative;z-index:1;padding:10px 0 8px;
   border-bottom:0;
   background:linear-gradient(180deg,color-mix(in srgb,var(--frost-light) 38%,transparent),transparent)}
