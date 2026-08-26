@@ -31,6 +31,11 @@ def _parser() -> argparse.ArgumentParser:
         help="显式导入 Google Takeout ZIP；可重复指定",
     )
     parser.add_argument(
+        "--takeout-only",
+        action="store_true",
+        help="只导入 --takeout，不自动读取当前浏览器数据库",
+    )
+    parser.add_argument(
         "--source",
         action="append",
         default=[],
@@ -59,7 +64,9 @@ def main() -> int:
     missing_takeouts = [path for path in takeouts if not path.is_file()]
     if missing_takeouts:
         raise SystemExit(f"Takeout 不存在：{missing_takeouts[0]}")
-    sources = discover_history_sources() + _explicit_sources(args.source)
+    if args.takeout_only and (args.action != "refresh" or not takeouts or args.source):
+        raise SystemExit("--takeout-only 仅可与 refresh、--takeout 一起使用，且不能同时指定 --source")
+    sources = [] if args.takeout_only else discover_history_sources() + _explicit_sources(args.source)
     unique = {(source.browser, source.profile, source.path.resolve()): source for source in sources}
     sources = list(unique.values())
     if args.action == "discover":
