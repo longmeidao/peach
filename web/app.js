@@ -688,9 +688,13 @@ async function buildBars(){
       <span class="mk" data-fallback="${fallback}"><img src="/logo?studio=${encodeURIComponent(x.k)}" alt=""
         style="width:100%;height:100%;object-fit:contain"></span>${esc(x.k)}</button>`;
   };
-  $('#tiers').innerHTML=
-    `<div class="tier">${tops.performers.map(avHtml).join('')}</div>`+
-    `<div class="tier">${tops.studios.map(bpHtml).join('')}</div>`;
+  // 空的一排仍占 28px，在「已标记」这种窄集合上就是两条什么都没有的空带。
+  // 没人就不画那一排，两排都没人就整块收起。
+  const perfRow=tops.performers.map(avHtml).join('');
+  const studioRow=tops.studios.map(bpHtml).join('');
+  const tier=html=>html?`<div class="tier">${html}</div>`:'';
+  $('#tiers').innerHTML=tier(perfRow)+tier(studioRow);
+  $('#tiers').hidden=!(perfRow||studioRow);
   $('#tiers').querySelectorAll('[data-entity-kind]').forEach(b=>b.onclick=()=>
     openEntity(b.dataset.entityKind,b.dataset.entityName));
   $('#tiers').querySelectorAll('.mk img').forEach(img=>{
