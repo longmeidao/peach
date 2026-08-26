@@ -1471,7 +1471,10 @@ function wireFollowManage(){
   }
   if(form)form.onsubmit=async event=>{
     event.preventDefault();
-    const state=form.querySelector('[data-follow-add-state]'),button=form.querySelector('button');
+    /* 状态提示在表单外面的说明行里，不能在 form 里找——找不到就是 null，
+       第一次赋值直接抛 TypeError，整个提交静默失败。 */
+    const state=root.querySelector('[data-follow-add-state]');
+    const button=form.querySelector('button');
     const lines=String(new FormData(form).get('lines')||'').split('\n')
       .map(line=>line.trim()).filter(Boolean);
     if(!lines.length)return;
