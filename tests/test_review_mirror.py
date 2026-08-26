@@ -176,6 +176,7 @@ class ReviewMirrorTests(unittest.TestCase):
             "https://writer.test", self.ca, self.cache,
             token="secret", opener=FakeOpener(error=OSError("denied")),
             keychain_paths=(), curl_fallback=True, curl_runner=curl_runner,
+            proxy="http://127.0.0.1:7890",
             now=lambda: 1000.0,
         ).resolve(LOCAL_EMPTY)
 
@@ -184,5 +185,20 @@ class ReviewMirrorTests(unittest.TestCase):
         for args, kwargs in calls:
             self.assertIn("--cacert", args)
             self.assertIn("--noproxy", args)
+            self.assertIn("--proxy", args)
+            self.assertIn("http://127.0.0.1:7890", args)
             self.assertNotIn("secret", args)
             self.assertEqual(kwargs["input"], b"X-Token: secret\n")
+
+    def test_only_a_loopback_proxy_can_receive_writer_requests(self):
+        local = ReviewMirror(
+            "https://writer.test", self.ca, self.cache,
+            proxy="socks5h://localhost:7890",
+        )
+        remote = ReviewMirror(
+            "https://writer.test", self.ca, self.cache,
+            proxy="http://proxy.example:7890",
+        )
+
+        self.assertEqual(local.proxy, "socks5h://localhost:7890")
+        self.assertEqual(remote.proxy, "")

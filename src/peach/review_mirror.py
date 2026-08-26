@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import os
@@ -44,6 +45,7 @@ class ReviewMirror:
         keychain_paths: tuple[Path, ...] | None = None,
         curl_fallback: bool | None = None,
         curl_runner=None,
+        proxy: str = "",
     ):
         self.origin = origin.rstrip("/")
         self.ca_path = Path(ca_path)
@@ -60,6 +62,7 @@ class ReviewMirror:
         self.keychain_paths = tuple(Path(path) for path in keychain_paths)
         self.curl_fallback = sys.platform == "darwin" if curl_fallback is None else curl_fallback
         self._curl_runner = curl_runner or subprocess.run
+        self.proxy = self._loopback_proxy(proxy)
         self._live_payload: dict | None = None
         self._live_at = 0.0
 
@@ -136,12 +139,16 @@ class ReviewMirror:
         """macOS LaunchAgent 无本地网络权限时，借系统 curl 的已授权主体发起同一严格请求。"""
         args = [
             "/usr/bin/curl", "--fail", "--silent", "--show-error",
-            "--proto", "=https", "--tlsv1.2", "--noproxy", "*",
+            "--proto", "=https", "--tlsv1.2",
             "--cacert", str(self.ca_path),
             "--connect-timeout", str(self.timeout),
             "--max-time", str(self.timeout),
             "--max-filesize", str(MAX_REVIEW_BYTES),
         ]
+        if self.proxy:
+            args.extend(["--proxy", self.proxy, "--noproxy", ""])
+        else:
+            args.extend(["--noproxy", "*"])
         header = None
         if self.token:
             args.extend(["--header", "@-"])
@@ -158,6 +165,22 @@ class ReviewMirror:
             detail = result.stderr.decode("utf-8", errors="replace").strip()
             raise ReviewMirrorError(f"curl 退出 {result.returncode}：{detail or '未取得错误详情'}")
         return bytes(result.stdout)
+
+    @staticmethod
+    def _loopback_proxy(value: str) -> str:
+        parsed = urlparse(value)
+        if (parsed.scheme not in {"http", "https", "socks5", "socks5h"}
+                or not parsed.hostname or parsed.username is not None):
+            return ""
+        try:
+            port = parsed.port
+        except ValueError:
+            return ""
+        try:
+            loopback = ipaddress.ip_address(parsed.hostname).is_loopback
+        except ValueError:
+            loopback = parsed.hostname == "localhost"
+        return value if loopback and port is not None else ""
 
     def _client(self):
         if self._opener is not None:

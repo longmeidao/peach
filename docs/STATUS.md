@@ -98,7 +98,8 @@
   对端仍为 writer 后改写预览地址并原子缓存到 `peach-data/review/writer-review.json`；对端离线时
   展示最近缓存。两端 CA 同名但公钥不同，macOS 因此合并文件 CA 与系统/登录钥匙串中受信任的
   Peach CA，只读取公钥证书，不导出私钥；launchd Python 被本地网络权限拦截时，受限调用系统
-  `/usr/bin/curl` 发起同一 HTTPS 请求，禁代理、限 8 MiB，令牌走 stdin。所有决定按钮仍禁用。关注管理在 reader 明确锁住新增、检查、移除、批量和凭据
+  `/usr/bin/curl` 经回环 Stash 代理发起同一 HTTPS 请求，限 8 MiB、令牌走 stdin、非回环代理
+  拒绝。所有决定按钮仍禁用。关注管理在 reader 明确锁住新增、检查、移除、批量和凭据
   写入，并链接到 writer；逐条添加失败会留在当前页面，不再被无条件重载抹掉。没有同步
   `generated`、SQLite/WAL，也没有放宽实际写入端点。
 - PID 只是观测值，不是配置；每次停止或重启前必须重新核对命令行、父子关系和端口归属。
