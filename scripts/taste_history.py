@@ -10,6 +10,7 @@ from peach.taste_history import (
     analyze_history,
     discover_history_sources,
     refresh_history,
+    refresh_takeout_history,
     write_manifest,
 )
 
@@ -21,6 +22,14 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", type=Path, default=DATA_ROOT / "review" / "taste-history")
     parser.add_argument("--manifest", type=Path, default=STATE_DIR / "taste-history" / "manifest.json")
     parser.add_argument("--since", help="只分析此 ISO 时间之后的记录")
+    parser.add_argument(
+        "--takeout",
+        action="append",
+        default=[],
+        type=Path,
+        metavar="ZIP",
+        help="显式导入 Google Takeout ZIP；可重复指定",
+    )
     parser.add_argument(
         "--source",
         action="append",
@@ -46,6 +55,10 @@ def _explicit_sources(values: list[str]) -> list[HistorySource]:
 
 def main() -> int:
     args = _parser().parse_args()
+    takeouts = [path.expanduser() for path in args.takeout]
+    missing_takeouts = [path for path in takeouts if not path.is_file()]
+    if missing_takeouts:
+        raise SystemExit(f"Takeout 不存在：{missing_takeouts[0]}")
     sources = discover_history_sources() + _explicit_sources(args.source)
     unique = {(source.browser, source.profile, source.path.resolve()): source for source in sources}
     sources = list(unique.values())
@@ -57,9 +70,12 @@ def main() -> int:
         return 0
     refresh_results: list[dict[str, object]] = []
     if args.action == "refresh":
-        if not sources:
+        if not sources and not takeouts:
             raise SystemExit("未发现浏览器历史数据库")
-        refresh_results = refresh_history(sources, args.store)
+        if sources:
+            refresh_results = refresh_history(sources, args.store)
+        if takeouts:
+            refresh_results.extend(refresh_takeout_history(takeouts, args.store))
     if not args.store.is_file():
         raise SystemExit(f"历史库不存在：{args.store}")
     analysis = analyze_history(args.store, args.output, since=args.since)

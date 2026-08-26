@@ -120,6 +120,14 @@ creator/tag candidate，不写 ledger，不自动批准。
 python scripts/taste_history.py refresh
 ```
 
+Chrome 历史已清理但 Google Takeout 仍在时，显式增加 ZIP。脚本读取 `Chrome/History.json`，
+以及 My Activity 中的 Chrome、Search、Image Search、Video Search，解除 Google 跳转包装，
+并按「同 URL、同秒的最大出现次数」与所有既有来源跨源去重；不会把 ZIP 解压到磁盘：
+
+```powershell
+python scripts/taste_history.py refresh --takeout ~/Downloads/takeout-YYYYMMDD-001.zip
+```
+
 只用已有源库重新分析，或限制到某个时间点以后：
 
 ```powershell

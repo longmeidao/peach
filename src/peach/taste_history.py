@@ -7,12 +7,15 @@ import re
 import socket
 import sqlite3
 import tempfile
+import zipfile
 from collections import Counter, defaultdict
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
+from zoneinfo import ZoneInfo
 
 
 @dataclass(frozen=True)
@@ -61,6 +64,17 @@ CATEGORY_TERMS: dict[str, set[str]] = {
     "游戏同人": {"game", "gamecg", "hgame", "游戏", "同人"},
     "反差/泄密/探花": {"leak", "leaked", "private", "反差", "探花", "泄密", "流出"},
 }
+TAKEOUT_HISTORY_MEMBER = "Takeout/Chrome/History.json"
+TAKEOUT_ACTIVITY_MEMBERS = (
+    ("chrome", "Google My Activity - Chrome", "Takeout/My Activity/Chrome/MyActivity.html"),
+    ("google_activity", "Google My Activity - Search", "Takeout/My Activity/Search/MyActivity.html"),
+    ("google_activity", "Google My Activity - Image Search", "Takeout/My Activity/Image Search/MyActivity.html"),
+    ("google_activity", "Google My Activity - Video Search", "Takeout/My Activity/Video Search/MyActivity.html"),
+)
+TAKEOUT_ACTIVITY_ACTIONS = {"Visited", "Searched for", "Viewed", "Watched"}
+TAKEOUT_DATE_RE = re.compile(
+    r"^(?P<date>[A-Z][a-z]{2} \d{1,2}, \d{4}, \d{1,2}:\d{2}:\d{2}\s+[AP]M) (?P<zone>HKT|UTC|GMT)$"
+)
 
 
 def discover_history_sources(
@@ -222,6 +236,210 @@ def refresh_history(
             results.append(
                 {"browser": source.browser, "profile": source.profile, "visits": len(visits), "added": added}
             )
+        store.commit()
+    return results
+
+
+def _normalize_takeout_url(value: str) -> str:
+    parsed = urlparse(value)
+    if parsed.hostname in {"google.com", "www.google.com"} and parsed.path == "/url":
+        query = parse_qs(parsed.query)
+        for key in ("q", "url"):
+            if query.get(key):
+                return query[key][0]
+    return value
+
+
+def _parse_takeout_date(value: str) -> datetime:
+    match = TAKEOUT_DATE_RE.fullmatch(value.replace("\u202f", " "))
+    if not match:
+        raise ValueError("Google My Activity 时间格式无法识别")
+    naive = datetime.strptime(match.group("date"), "%b %d, %Y, %I:%M:%S %p")
+    timezone = ZoneInfo("Asia/Hong_Kong") if match.group("zone") == "HKT" else UTC
+    return naive.replace(tzinfo=timezone).astimezone(UTC)
+
+
+class _TakeoutActivityParser(HTMLParser):
+    def __init__(self, *, visit_prefix: str) -> None:
+        super().__init__()
+        self.visit_prefix = visit_prefix
+        self.depth = 0
+        self.card_number = 0
+        self.pending_visit = False
+        self.in_target = False
+        self.href: str | None = None
+        self.title_parts: list[str] = []
+        self.date_text: str | None = None
+        self.visits: list[HistoryVisit] = []
+        self.errors = 0
+        self.matched_action = False
+        self.skipped = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = dict(attrs)
+        if tag == "div" and self.depth == 0 and "outer-cell" in (values.get("class") or "").split():
+            self.depth = 1
+            self.pending_visit = False
+            self.in_target = False
+            self.href = None
+            self.title_parts = []
+            self.date_text = None
+            self.matched_action = False
+            return
+        if not self.depth:
+            return
+        if tag == "div":
+            self.depth += 1
+        elif tag == "a" and self.pending_visit and self.href is None:
+            self.in_target = True
+            self.href = values.get("href")
+
+    def handle_endtag(self, tag: str) -> None:
+        if self.depth and tag == "a" and self.in_target:
+            self.in_target = False
+            self.pending_visit = False
+        if not self.depth or tag != "div":
+            return
+        self.depth -= 1
+        if self.depth:
+            return
+        self.card_number += 1
+        if self.href is None or self.date_text is None:
+            if self.matched_action:
+                self.skipped += 1
+            return
+        try:
+            visited = _parse_takeout_date(self.date_text)
+        except ValueError:
+            self.errors += 1
+            return
+        url = _normalize_takeout_url(self.href)
+        if urlparse(url).scheme not in {"http", "https"}:
+            self.errors += 1
+            return
+        digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
+        self.visits.append(
+            HistoryVisit(
+                f"{self.visit_prefix}:{self.card_number}:{int(visited.timestamp())}:{digest}",
+                visited.isoformat(),
+                url,
+                " ".join(self.title_parts).strip(),
+            )
+        )
+
+    def handle_data(self, data: str) -> None:
+        if not self.depth:
+            return
+        value = data.strip()
+        if value in TAKEOUT_ACTIVITY_ACTIONS:
+            self.matched_action = True
+            self.pending_visit = True
+        elif self.in_target and value:
+            self.title_parts.append(value)
+        elif value.endswith((" HKT", " UTC", " GMT")) and len(value) >= 20:
+            self.date_text = value
+
+
+def _read_takeout_archive(path: Path) -> list[tuple[str, str, list[HistoryVisit], int]]:
+    with zipfile.ZipFile(path) as archive:
+        members = set(archive.namelist())
+        if TAKEOUT_HISTORY_MEMBER not in members and not any(
+            member in members for _browser, _profile, member in TAKEOUT_ACTIVITY_MEMBERS
+        ):
+            raise ValueError("Takeout 未包含可识别的浏览或搜索活动")
+        history_visits: list[HistoryVisit] = []
+        if TAKEOUT_HISTORY_MEMBER in members:
+            history_payload = json.loads(archive.read(TAKEOUT_HISTORY_MEMBER))
+            history_rows = history_payload.get("Browser History")
+            if not isinstance(history_rows, list):
+                raise ValueError("Takeout Chrome History 缺少 Browser History 列表")
+            for index, row in enumerate(history_rows, 1):
+                if not isinstance(row, dict) or not row.get("url") or row.get("time_usec") is None:
+                    raise ValueError("Takeout Chrome History 含无效记录")
+                url = str(row["url"])
+                time_usec = int(row["time_usec"])
+                digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
+                history_visits.append(
+                    HistoryVisit(
+                        f"history:{index}:{time_usec}:{digest}",
+                        _iso_from_unix_microseconds(time_usec),
+                        url,
+                        str(row.get("title") or ""),
+                    )
+                )
+        sources: list[tuple[str, str, list[HistoryVisit], int]] = []
+        if history_visits:
+            sources.append(("chrome", "Takeout Browser History", history_visits, 0))
+        for browser, profile, member in TAKEOUT_ACTIVITY_MEMBERS:
+            if member not in members:
+                continue
+            activity = _TakeoutActivityParser(visit_prefix=hashlib.sha256(member.encode()).hexdigest()[:10])
+            activity.feed(archive.read(member).decode("utf-8"))
+            activity.close()
+            if activity.errors:
+                raise ValueError(f"{profile} 含无法解析的活动记录：{activity.errors}")
+            sources.append((browser, profile, activity.visits, activity.skipped))
+    return sources
+
+
+def _event_fingerprint(url: str, visited_at: str) -> tuple[str, int]:
+    return url, int(datetime.fromisoformat(visited_at).timestamp())
+
+
+def refresh_takeout_history(
+    archives: list[Path],
+    store_path: Path,
+    *,
+    host: str | None = None,
+) -> list[dict[str, object]]:
+    host = host or socket.gethostname()
+    store_path.parent.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(UTC).isoformat()
+    results: list[dict[str, object]] = []
+    with closing(sqlite3.connect(store_path)) as store:
+        _prepare_store(store)
+        existing = Counter(
+            _event_fingerprint(url, visited_at)
+            for visited_at, url in store.execute(
+                "SELECT v.visited_at, v.url FROM history_visit v "
+                "JOIN history_source s ON s.source_key = v.source_key"
+            )
+        )
+        for archive_path in archives:
+            for browser, profile, visits, skipped in _read_takeout_archive(archive_path):
+                source = HistorySource(browser, profile, archive_path)
+                source_key = _source_key(source, host)
+                path_hash = hashlib.sha256(str(archive_path.resolve()).encode("utf-8")).hexdigest()
+                store.execute(
+                    "INSERT INTO history_source VALUES (?, ?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(source_key) DO UPDATE SET last_seen_at=excluded.last_seen_at",
+                    (source_key, source.browser, source.profile, host, path_hash, now, now),
+                )
+                source_seen: Counter[tuple[str, int]] = Counter()
+                additions: list[HistoryVisit] = []
+                for visit in visits:
+                    fingerprint = _event_fingerprint(visit.url, visit.visited_at)
+                    source_seen[fingerprint] += 1
+                    if source_seen[fingerprint] > existing[fingerprint]:
+                        additions.append(visit)
+                before = store.total_changes
+                store.executemany(
+                    "INSERT OR IGNORE INTO history_visit(source_key, visit_key, visited_at, url, title) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    ((source_key, visit.visit_key, visit.visited_at, visit.url, visit.title) for visit in additions),
+                )
+                added = store.total_changes - before
+                for fingerprint, count in source_seen.items():
+                    existing[fingerprint] = max(existing[fingerprint], count)
+                results.append(
+                    {
+                        "browser": browser,
+                        "profile": profile,
+                        "visits": len(visits),
+                        "added": added,
+                        "skipped": skipped,
+                    }
+                )
         store.commit()
     return results
 
