@@ -94,6 +94,8 @@ class RecordOutcome:
     updated: int = 0
     not_modified: bool = False
     evidence_path: str | None = None
+    #: 证据没存下来的原因。发现本身仍然成立，所以这不是失败，但必须说出来。
+    evidence_error: str | None = None
 
 
 class FollowStore:
@@ -166,7 +168,7 @@ class FollowStore:
                 " last_error=NULL, updated_at=? WHERE id=?", (stamp, stamp, source_id))
             return RecordOutcome(source_id, not_modified=True)
 
-        evidence = self._persist_evidence(fetch, moment)
+        evidence, evidence_error = self._persist_evidence(fetch, moment)
         added = updated = 0
         for candidate in fetch.candidates:
             verdict = classify(candidate.title, creator_aliases=creator_aliases,
@@ -227,7 +229,7 @@ class FollowStore:
             " last_status='ok', last_error=NULL, updated_at=? WHERE id=?",
             (fetch.etag, fetch.last_modified, stamp, stamp, source_id))
         return RecordOutcome(source_id, len(fetch.candidates), added, updated,
-                             evidence_path=evidence)
+                             evidence_path=evidence, evidence_error=evidence_error)
 
     def record_error(self, source_id: int, message: str,
                      moment: datetime | None = None, *, status: str = "error") -> None:
@@ -237,24 +239,36 @@ class FollowStore:
             " updated_at=? WHERE id=?", (stamp, status, message[:500], stamp, source_id))
 
     def _persist_evidence(self, fetch: SourceFetch,
-                          moment: datetime | None) -> str | None:
+                          moment: datetime | None) -> tuple[str | None, str | None]:
+        """存原始响应。存不下来不算检查失败。
+
+        Mac 上 `peach-data/sources` 是指向外置盘的符号链接，盘不在时它是一条**断链**——
+        `mkdir(exist_ok=True)` 在断链上会抛 `FileExistsError`（链接在、目标不在），
+        原来这会让整个 `record()` 连同已经抓到的候选一起炸掉。发现本身跟归档盘无关，
+        所以这里降级：候选照常入库，证据标成未取得，原因往上报。
+
+        这和「脱盘模式」是同一条边界——脱的是盘不是账本，不该让整个功能挂掉。
+        """
         if self.sources_root is None or fetch.raw_body is None:
-            return None
+            return None, None
         reference = moment or datetime.now(timezone.utc)
         digest = hashlib.sha256(fetch.raw_body).hexdigest()
         key = hashlib.sha256(f"{fetch.provider}\n{fetch.ref}".encode()).hexdigest()[:20]
         directory = self.sources_root / fetch.provider / key
-        directory.mkdir(parents=True, exist_ok=True)
         stamp = reference.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
         path = directory / f"{stamp}-{digest[:12]}.raw"
-        write_immutable(path, fetch.raw_body)
-        write_immutable(path.with_suffix(".json"), (json.dumps({
-            "provider": fetch.provider, "ref": fetch.ref,
-            # 脱敏后的请求 URL：凭据永不进证据目录。
-            "request_url": fetch.request_url, "sha256": digest,
-            "checked_at": _now_text(reference), "candidates": len(fetch.candidates),
-        }, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
-        return str(path.relative_to(self.sources_root.parent))
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            write_immutable(path, fetch.raw_body)
+            write_immutable(path.with_suffix(".json"), (json.dumps({
+                "provider": fetch.provider, "ref": fetch.ref,
+                # 脱敏后的请求 URL：凭据永不进证据目录。
+                "request_url": fetch.request_url, "sha256": digest,
+                "checked_at": _now_text(reference), "candidates": len(fetch.candidates),
+            }, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+        except OSError as error:
+            return None, f"证据未取得（{self.sources_root} 不可写：{error.strerror or error}）"
+        return str(path.relative_to(self.sources_root.parent)), None
 
     # ---- 读取与分组 -----------------------------------------------------
 

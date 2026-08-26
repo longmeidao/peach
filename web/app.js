@@ -1420,7 +1420,18 @@ function wireFollowManage(){
       // 一个来源失败不该让其余来源的更新一起消失，所以逐条报，不整体报错。
       const failed=(result.results||[]).filter(r=>!r.ok);
       if(failed.length)console.warn('追更检查失败：',failed);
+      /* 证据没存下来不算检查失败，但也不能悄悄少一份原始响应——
+         外置盘没插的时候就是这种情况。 */
+      const noEvidence=(result.results||[]).filter(r=>r.evidence_error);
       await openFollowManage(false);
+      if(noEvidence.length){
+        const box=$('#followPicks');
+        if(box)box.innerHTML=`<section class="fpicks"><h3>检查完成，但证据未存档</h3>
+          <div class="fpick"><p class="fpickfail">${esc(noEvidence[0].evidence_error)}</p>
+          <p>候选已经入库，只是这一次的原始响应没有留档。</p></div>
+          <div class="fpickactions"><button data-pick-cancel>知道了</button></div></section>`;
+        if(box)box.querySelector('[data-pick-cancel]').onclick=()=>{box.innerHTML=''};
+      }
     }catch(e){button.innerHTML=label;alert('检查更新失败：'+e.message)}
     finally{followBusy=false;button.disabled=false}
   });

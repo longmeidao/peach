@@ -150,6 +150,32 @@ class RecordTests(_StoreCase):
         self.assertEqual(sidecar["candidates"], 1)
         self.assertEqual(sidecar["request_url"], "https://rule34video.test/lazyprocrastinator")
 
+    def test_a_broken_evidence_symlink_does_not_lose_the_candidates(self):
+        """Mac 上 `peach-data/sources` 指向外置盘。盘不在时它是一条断链，
+        `mkdir(exist_ok=True)` 会抛 `FileExistsError`（链接在、目标不在）。
+        发现跟归档盘无关，不该让整次检查连同已抓到的候选一起炸掉。"""
+        broken = self.root / "gone"
+        (self.root / "evidence").symlink_to(self.root / "no-such-volume" / "sources")
+        store = FollowStore(lambda: self.connection,
+                            sources_root=self.root / "evidence")
+        source_id = store.register(provider="rule34video", ref="x", label="X",
+                                   url="https://x.test/", moment=MOMENT)
+        outcome = store.record(source_id, _fetch([_candidate("1", "Fiona - Paizuri")]),
+                               moment=MOMENT)
+        self.assertEqual(outcome.added, 1)
+        self.assertIsNone(outcome.evidence_path)
+        self.assertIn("证据未取得", outcome.evidence_error)
+        item = store.items()[0]
+        self.assertEqual(item.title, "Fiona - Paizuri")
+        self.assertIsNone(item.metadata.get("evidence_path"))
+
+    def test_a_readable_evidence_root_reports_no_error(self):
+        source_id = self._source()
+        outcome = self.store.record(source_id, _fetch([_candidate("1", "A")]),
+                                    moment=MOMENT)
+        self.assertIsNotNone(outcome.evidence_path)
+        self.assertIsNone(outcome.evidence_error)
+
     def test_approximate_precision_is_carried_through_from_the_connector(self):
         source_id = self._source()
         self.store.record(source_id, _fetch([

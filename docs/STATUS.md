@@ -46,6 +46,18 @@
   模板重写 `/etc/pf.conf`，把追加的锚点行抹掉，而锚点文件是独立文件所以留了下来。
   症状是服务健康、端口正常、只有不带端口的入口打不开。重装用
   `sudo sh scripts/setup_macos_port80.sh install`（需要用户密码，智能体跑不了）。
+- **接管 Ledger 写入不需要外置盘，但需要挂一次 `peach-sync`。** 两者不是一回事：
+  `peach-sync` 是 Windows 内置盘上的 SMB 共享，外置盘 `/Volumes/RESOURCES` 只供媒体。
+  2026-08-26 实测四种组合：共享没挂时接管被拒（`plan=offline`，`take_ownership` 要求
+  `in-sync`）；挂上后接管成功；**接管之后再拔掉共享，本机照常可写**（`writer_device`
+  读本地 marker 即可判定）。所以「不插盘长期在 Mac 上写」是成立的，只是切换写入端
+  那一次要把共享挂上——只写本地 marker 会让 Windows 同时认为自己是写入端，那正是
+  单写者复制要避免的分叉。
+- **Mac 的 `peach-data/sources` 是指向外置盘的符号链接，盘不在时是断链**，而追更的原始
+  证据就写在 `sources/follow/` 下。`mkdir(exist_ok=True)` 在断链上抛 `FileExistsError`
+  （链接在、目标不在），2026-08-26 之前这会让整次 `follow check` 连同已抓到的候选一起
+  失败。现已降级：候选照常入库，证据标成「未取得」并把原因报到 CLI 与界面上。
+  实测对着真实断链跑 rule34video，24 条候选全部入库。
 - PID 只是观测值，不是配置；每次停止或重启前必须重新核对命令行、父子关系和端口归属。
 - macOS 独立运行环境：代码 `~/Desktop/lmd.gg/peach/peach-app`、数据 `~/Desktop/lmd.gg/peach/peach-data`、worktree `~/Desktop/lmd.gg/peach/peach-worktrees`。Python 3.14.7 + 独立 venv，FFmpeg 走 PATH。
 - Mac 的 `peach-data` 实际形状与文档的通用分层有出入，排查前先看清：真实目录名是

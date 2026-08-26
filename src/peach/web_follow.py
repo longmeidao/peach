@@ -172,6 +172,8 @@ def w_follow_check(contract, body) -> dict:
             "source": row["id"], "provider": provider, "ref": ref, "ok": True,
             "not_modified": outcome.not_modified, "discovered": outcome.discovered,
             "added": outcome.added, "updated": outcome.updated,
+            # 证据没存下来不算检查失败，但界面必须说出来，不能悄悄少一份原始响应。
+            "evidence_error": outcome.evidence_error,
         })
     return {"ok": True, "checked": len(results), "results": results}
 

@@ -124,6 +124,8 @@ def _check(args) -> int:
             else:
                 print(f"+ {provider}/{ref}：发现 {outcome.discovered}，"
                       f"新增 {outcome.added}，更新 {outcome.updated}")
+                if outcome.evidence_error:
+                    print(f"  ⚠ {outcome.evidence_error}")
     finally:
         connection.close()
     return 1 if failures else 0
