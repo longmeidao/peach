@@ -439,6 +439,34 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertNotIn(gone, edge, f"{gone} 应该已经收进管理，不再是顶层入口")
         self.assertIn("'manage'", edge)
 
+    def test_manage_sections_follow_the_order_work_actually_happens_in(self):
+        """导航条的顺序就是做事顺序：先收拾库里已有的，再看要往外拿什么。
+
+        追更来源曾夹在高清版和回收站中间，人工复核掉到最末尾，
+        两者都不挨着自己那一组。
+        """
+        sections = self.page.split("const MANAGE_SECTIONS=[", 1)[1].split("];", 1)[0]
+        order = [line.split("'")[1] for line in sections.splitlines() if line.strip().startswith("['")]
+        self.assertEqual(
+            order, ["stats", "review", "ads", "dupes", "trash", "follow", "quality"],
+            "管理导航的顺序是语义契约：现状 → 复核 → 清理 → 回收站 → 往外拿",
+        )
+
+    def test_edge_and_drawer_share_one_navigation_dispatch(self):
+        """窄栏和抽屉各写一份分支时，抽屉那份漏了追更和播放列表。
+
+        漏掉的入口会落到兜底分支，把 state.state 设成一个后端不认识的值，
+        表现就是抽屉里点「在线追更」没反应，点窄栏同一个图标却能进。
+        """
+        self.assertPageContains("function navTo(k){")
+        self.assertPageContains("if(k==='follow'){openFollow();return}")
+        self.assertPageContains("if(k==='playlists'){openPlaylists();return}")
+        self.assertPageContains(
+            "$('#drawer').querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navTo(b.dataset.nav));")
+        self.assertPageContains("e.stopPropagation();navTo(b.dataset.nav)})")
+        # 分支只能存在一处；再出现第二份就是下一次漂移。
+        self.assertEqual(self.page.count("if(k==='immerse'){openTok();return}"), 1)
+
     def test_review_reuses_the_standard_selection_instead_of_its_own_mode(self):
         """复核页曾自造「多选模式」按钮加框选，只在这一页生效，用户得先发现再记住。
 
@@ -518,8 +546,10 @@ class WebUiSourceTests(unittest.TestCase):
     def test_returning_home_from_any_surface_moves_the_highlight(self):
         """点回首页时路径还停在 /review 之类上，navOn('') 仍然为假，高亮不切换。"""
         self.assertPageContains("if(location.pathname!=='/')route('/');")
-        self.assertEqual(self.page.count("if(location.pathname!=='/')route('/');"), 2,
-                         "抽屉和窄栏两处导航都要修")
+        # 抽屉和窄栏已经共用 navTo，这一句只应该存在一处；
+        # 两份副本正是当初把追更入口漏在抽屉里的原因。
+        self.assertEqual(self.page.count("if(location.pathname!=='/')route('/');"), 1,
+                         "导航分支只能留在 navTo 里")
 
     def test_ads_icon_matches_the_lucide_stroke_style(self):
         """图标库里没有表示广告的图形，自绘的感叹号必须和其余图标同风格。"""
