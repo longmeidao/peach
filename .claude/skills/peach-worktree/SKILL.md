@@ -5,7 +5,7 @@ description: 在用户说并行、开工作树、worktree、暂存、提交、re
 
 # 并行 worktree 与提交边界
 
-最后复核：2026-08-25
+最后复核：2026-08-26
 证据来源：`docs/HANDOFF.md`「并行智能体与 Git 工作树」、`README.md`、ADR-0015、ADR-0017。
 
 ## 何时使用
@@ -20,6 +20,9 @@ description: 在用户说并行、开工作树、worktree、暂存、提交、re
    ```powershell
    & .\.venv\Scripts\python.exe scripts\agent_worktree.py create --agent claude --task <task>
    ```
+
+   它建在 `peach-worktrees/`，Codex 和 Claude 共用这一个目录。**不要用 Claude Code 内置的
+   工作树机制（`.claude/worktrees/`）**：它在分支被集成后会被回收，目录却留在原地。
 
 2. 工作者只在自己的工作树内编辑。工作树不复制 `.venv`。
 3. 测试在当前工作树根目录运行，每个平台只有一个入口：
@@ -53,6 +56,12 @@ description: 在用户说并行、开工作树、worktree、暂存、提交、re
 
 ## 已知陷阱
 
+- **工作树会惄无声息地失效，目录却还在**。2026-08-26 实例：分支被集成后，
+  `.claude/worktrees/<task>` 的注册消失，目录变成主检出里一份旧副本。提示符和文件列表看不出
+  任何差别，但在里面跑的每一条 git 都作用于主检出的 master。后果不是报错而是假结论：
+  那一轮里我一直告诉用户「我还没推」，实际上提交已经被另一个代理的 push 顺带到了 origin。
+  判据不看目录名，只看 `git rev-parse --show-toplevel`；等于 `peach-app` 就是在主检出里。
+  实测入口：`git worktree list` 里没有你那一行，就是已经没了。
 - 健康检查端点是 `/healthz`，不是 `/health`。
 - PowerShell 变量必须用任务专属名称，禁止声明 `$HOME`、`$home`、`$CODEX_HOME` 的任何大小写
   变体；`foreach {}` 结果先存入任务专属数组再单独接管道，禁止在闭合花括号后直接写管道。
