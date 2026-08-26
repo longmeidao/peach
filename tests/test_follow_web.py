@@ -165,6 +165,26 @@ class FollowContractTests(unittest.TestCase):
         self.assertTrue(outcomes["rule34video"]["ok"])
         self.assertTrue(outcomes["rule34video"]["not_modified"])
 
+    def test_an_unwritable_evidence_root_is_reported_without_failing_the_check(self):
+        self._seed()
+        contract = self.contract
+        contract.follow_sources_root = self.root / "evidence"
+        (self.root / "evidence").symlink_to(self.root / "no-such-volume" / "sources")
+        fetch = SourceFetch(
+            provider="rule34video", ref="lazyprocrastinator",
+            request_url="https://rule34video.com/models/lazyprocrastinator/",
+            semantics="work", raw_body=b"<html>2</html>",
+            candidates=(FollowCandidate(provider="rule34video", external_id="999",
+                                        title="Sayuri - Handy"),))
+        with mock.patch.object(web_follow, "build_connector") as factory:
+            factory.return_value.fetch.return_value = fetch
+            result = self._post("/api/follow/check", {})
+        outcome = result["results"][0]
+        self.assertTrue(outcome["ok"])
+        self.assertEqual(outcome["added"], 1)
+        self.assertIn("证据未取得", outcome["evidence_error"])
+        self.assertEqual(self._get()["sources"][0]["last_status"], "ok")
+
     def test_source_errors_are_recorded_for_later_inspection(self):
         self._seed()
         with mock.patch.object(web_follow, "build_connector") as factory:
@@ -375,6 +395,10 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_every_entered_state_can_be_left_again(self):
         self.assertPageContains("""item.status==='seen'||item.status==='ignored'""")
         self.assertPageContains(">恢复未看</button>")
+
+    def test_a_missing_evidence_archive_is_shown_not_swallowed(self):
+        self.assertPageContains("检查完成，但证据未存档")
+        self.assertPageContains("r.evidence_error")
 
     def test_credential_dependent_media_is_called_out(self):
         self.assertPageContains("媒体需要登录会话才能取，发现本身不需要")
