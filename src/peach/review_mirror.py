@@ -42,6 +42,8 @@ class ReviewMirror:
         now=time.time,
         opener=None,
         keychain_paths: tuple[Path, ...] | None = None,
+        curl_fallback: bool | None = None,
+        curl_runner=None,
     ):
         self.origin = origin.rstrip("/")
         self.ca_path = Path(ca_path)
@@ -56,6 +58,8 @@ class ReviewMirror:
                 Path.home() / "Library/Keychains/login.keychain-db",
             ) if sys.platform == "darwin" else ()
         self.keychain_paths = tuple(Path(path) for path in keychain_paths)
+        self.curl_fallback = sys.platform == "darwin" if curl_fallback is None else curl_fallback
+        self._curl_runner = curl_runner or subprocess.run
         self._live_payload: dict | None = None
         self._live_at = 0.0
 
@@ -107,7 +111,17 @@ class ReviewMirror:
             response = self._client().open(request, timeout=self.timeout)
             raw = response.read(MAX_REVIEW_BYTES + 1)
         except Exception as error:
-            raise ReviewMirrorError(f"无法读取写入端：{type(error).__name__}: {error}") from error
+            if not self.curl_fallback:
+                raise ReviewMirrorError(
+                    f"无法读取写入端：{type(error).__name__}: {error}",
+                ) from error
+            try:
+                raw = self._curl_bytes(request.full_url)
+            except ReviewMirrorError as curl_error:
+                raise ReviewMirrorError(
+                    f"无法读取写入端：{type(error).__name__}: {error}；"
+                    f"系统网络通道：{curl_error}",
+                ) from error
         if len(raw) > MAX_REVIEW_BYTES:
             raise ReviewMirrorError("写入端复核响应超过 8 MiB 上限")
         try:
@@ -117,6 +131,33 @@ class ReviewMirror:
         if not isinstance(payload, dict):
             raise ReviewMirrorError("写入端返回的不是 JSON 对象")
         return payload
+
+    def _curl_bytes(self, url: str) -> bytes:
+        """macOS LaunchAgent 无本地网络权限时，借系统 curl 的已授权主体发起同一严格请求。"""
+        args = [
+            "/usr/bin/curl", "--fail", "--silent", "--show-error",
+            "--proto", "=https", "--tlsv1.2", "--noproxy", "*",
+            "--cacert", str(self.ca_path),
+            "--connect-timeout", str(self.timeout),
+            "--max-time", str(self.timeout),
+            "--max-filesize", str(MAX_REVIEW_BYTES),
+        ]
+        header = None
+        if self.token:
+            args.extend(["--header", "@-"])
+            header = f"X-Token: {self.token}\n".encode("utf-8")
+        args.append(url)
+        try:
+            result = self._curl_runner(
+                args, input=header, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                timeout=self.timeout + 2, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise ReviewMirrorError(f"curl 启动失败：{type(error).__name__}: {error}") from error
+        if result.returncode != 0:
+            detail = result.stderr.decode("utf-8", errors="replace").strip()
+            raise ReviewMirrorError(f"curl 退出 {result.returncode}：{detail or '未取得错误详情'}")
+        return bytes(result.stdout)
 
     def _client(self):
         if self._opener is not None:

@@ -60,7 +60,9 @@ worktree 目录。跨机器继续任务时 push 分支，在另一台按分支�
 一次成功结果缓存到本机 `peach-data/review/writer-review.json`；它不复制候选 CSV，也不开放
 批准、跳过或拒绝。关注管理同样在只读端锁住写操作，并明确链接到 writer，不再让失败提示被
 页面重载抹掉。macOS 会合并文件 CA 与系统/登录钥匙串中受信任的同名 Peach CA，解决两台机器
-各自签发 CA 但同名的问题；只读取公钥证书，不导出私钥。writer 地址可用
+各自签发 CA 但同名的问题；只读取公钥证书，不导出私钥。launchd 主体若被 macOS 本地网络权限
+挡住，使用系统 `/usr/bin/curl` 发起同一严格 CA HTTPS 请求；仅限 HTTPS、绕过外网代理、响应
+上限 8 MiB，令牌从 stdin 传入而不出现在进程参数。writer 地址可用
 `PEACH_REVIEW_WRITER_ORIGIN` 显式覆盖。
 
 ### 账本复制

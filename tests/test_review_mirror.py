@@ -157,3 +157,32 @@ class ReviewMirrorTests(unittest.TestCase):
         self.assertIn("test ca", bundle)
         self.assertIn("writer-ca", bundle)
         self.assertEqual(run.call_args.args[0][-1], str(keychain))
+
+    def test_macos_system_curl_fallback_keeps_the_token_off_process_arguments(self):
+        calls = []
+
+        def curl_runner(args, **kwargs):
+            calls.append((args, kwargs))
+            payload = ({"ledger_sync": "writer"} if args[-1].endswith("/healthz") else {
+                "sections": {"creator_tags": [{"item_key": "one"}]},
+                "sources": {"creator_tags": "batch.csv"},
+                "counts": {"creator_tags": 1},
+            })
+            return SimpleNamespace(
+                returncode=0, stdout=json.dumps(payload).encode(), stderr=b"",
+            )
+
+        result = ReviewMirror(
+            "https://writer.test", self.ca, self.cache,
+            token="secret", opener=FakeOpener(error=OSError("denied")),
+            keychain_paths=(), curl_fallback=True, curl_runner=curl_runner,
+            now=lambda: 1000.0,
+        ).resolve(LOCAL_EMPTY)
+
+        self.assertEqual(result["mirror"]["state"], "live")
+        self.assertEqual(len(calls), 2)
+        for args, kwargs in calls:
+            self.assertIn("--cacert", args)
+            self.assertIn("--noproxy", args)
+            self.assertNotIn("secret", args)
+            self.assertEqual(kwargs["input"], b"X-Token: secret\n")
