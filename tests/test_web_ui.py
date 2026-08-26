@@ -96,6 +96,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_route_titles_and_settings_dialog_manage_focus(self):
         self.assertPageContains('const pageTitle=path=>{')
         self.assertPageContains("'follow-manage':'关注管理'")
+        self.assertPageContains("unseen:'没看过','watch-later':'稍后看',flagged:'已标记'")
         self.assertPageContains('syncPageTitle(path);')
         self.assertPageContains("queueMicrotask(()=>$('#settingsClose').focus())")
         self.assertPageContains('if(settingsReturnFocus&&document.contains(settingsReturnFocus))')
@@ -604,10 +605,12 @@ class WebUiSourceTests(unittest.TestCase):
         `/follow` 更是连标题都没有。
         """
         self.assertPageContains(
-            ".pagetitle,.managetitle,.index .ihead h2,.playlistpage h2{")
+            ".pagetitle,.listtitle,.managetitle,.index .ihead h2,.playlistpage h2{")
         self.assertPageLacks(".index .ihead h2{margin:0;font-size:20px;font-weight:500}")
         self.assertPageLacks(".playlistpage h2{margin:0 0 5px;font-size:28px}")
         self.assertPageContains('<h2 class="disp pagetitle">关注</h2>')
+        self.assertPageContains(".listtitle,.managetitle,.follow>.pagetitle{margin:0 0 14px}")
+        self.assertPageContains('id="listTitle" hidden')
 
     def test_immersive_progress_bar_is_reachable_and_draggable(self):
         """4px 高、贴在屏幕最下沿、只能点不能拖——鼠标难瑞，手机几乎摸不到。"""
@@ -710,11 +713,12 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_returning_home_from_any_surface_moves_the_highlight(self):
         """点回首页时路径还停在 /review 之类上，navOn('') 仍然为假，高亮不切换。"""
-        self.assertPageContains("if(location.pathname!=='/')route('/');")
+        self.assertPageContains("route(homePath());")
         # 抽屉和窄栏已经共用 navTo，这一句只应该存在一处；
         # 两份副本正是当初把追更入口漏在抽屉里的原因。
-        self.assertEqual(self.page.count("if(location.pathname!=='/')route('/');"), 1,
-                         "导航分支只能留在 navTo 里")
+        self.assertEqual(self.page.count("function navTo(k){"), 1,
+                         "导航分支只能留一份 navTo")
+        self.assertPageContains("state.state=k}\n  route(homePath());")
 
     def test_ads_icon_matches_the_lucide_stroke_style(self):
         """图标库里没有表示广告的图形，自绘的感叹号必须和其余图标同风格。"""
@@ -847,10 +851,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("source_kind:'mix'")
         self.assertPageContains('id="addPlaylist"')
         self.assertPageContains("data-add-playlist")
-        self.assertPageContains("batchWithMix(d.items,location.pathname==='/'&&state.state!=='trash')")
+        self.assertPageContains("batchWithMix(d.items,isCatalogPath(decodeURIComponent(location.pathname))&&state.state!=='trash')")
         # 竖屏条只在首页出现。JAV 模式也排除：番号发行物是横版，竖屏是另一类内容，
         # 而主列表的 exclude_vertical 管不到这条——它是独立请求、独立插入的。
-        self.assertPageContains("location.pathname!=='/'||javActive()||state.orient==='竖屏'")
+        self.assertPageContains("!isCatalogPath(decodeURIComponent(location.pathname))||javActive()||state.orient==='竖屏'")
         self.assertPageContains("||state.state==='ads'||state.state==='trash'")
         self.assertPageContains("route(section==='trash'?'/trash':'/')")
         self.assertPageContains("if(path==='/trash')")
@@ -976,7 +980,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_only_the_default_home_list_drops_portrait_videos(self):
         """搜索必须能命中竖屏作品；排除竖屏只是首页默认列表的取景，不是全局过滤。"""
-        self.assertPageContains("if(location.pathname==='/'&&!state.q&&!state.orient)p.set('exclude_vertical','1')")
+        self.assertPageContains("if(isCatalogPath(decodeURIComponent(location.pathname))&&!state.q&&!state.orient)p.set('exclude_vertical','1')")
         self.assertPageLacks("if(!state.orient)p.set('exclude_vertical','1')")
 
     def test_grid_count_and_range_select_ignore_the_portrait_strip(self):
@@ -1002,8 +1006,23 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('class="alphabet"')
         self.assertPageContains('data-tag-category=')
         self.assertPageContains("['general','内容']")
-        self.assertPageContains("['artist','人物']")
+        self.assertPageContains("['copyright','作品']")
+        self.assertPageContains("['meta','规格']")
+        self.assertPageLacks("['artist','人物']")
+        self.assertPageLacks("['character','角色']")
         self.assertPageContains("category=params.get('category')")
+
+    def test_state_routes_tag_multiselect_and_header_capabilities_are_explicit(self):
+        self.assertPageContains("const STATE_ROUTES={fresh:'/unseen',later:'/watch-later',flagged:'/flagged'}")
+        self.assertPageContains('href="${v.k?STATE_ROUTES[v.k]:\'/\'}" data-state="${v.k}"')
+        self.assertPageContains("route(homePath());buildBars();load(true)")
+        self.assertPageContains("const selectedIndexTags=new Set()")
+        self.assertPageContains('data-tag-match-any')
+        self.assertPageContains('广泛匹配')
+        self.assertPageContains('data-tag-apply')
+        self.assertPageContains("tag_match:tagIndexMatch")
+        self.assertPageContains("const canSelect=catalog||entity||path==='/tags'")
+        self.assertPageContains("$('#selectMode').hidden=!canSelect;$('#density').hidden=!canDensity;$('#refresh').hidden=!canRefresh")
 
     def test_no_page_grows_its_own_back_control(self):
         """索引页原本有个返回按钮，现在顶栏入口本身就是返回路径。

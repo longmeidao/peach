@@ -14,14 +14,19 @@ const pageTitle=path=>{
   const url=new URL(path,location.origin),parts=decodeURIComponent(url.pathname).split('/').filter(Boolean);
   const fixed={stats:'统计',review:'人工复核',duplicates:'重复文件','quality-goals':'高清版',
     follow:'关注','follow-manage':'关注管理',playlists:'播放列表',performers:'女优',studios:'厂牌',
-    creators:'创作者',series:'系列',tags:'标签',immerse:'沉浸模式',mix:'Mix',item:'作品'};
+    creators:'创作者',series:'系列',tags:'标签',unseen:'没看过','watch-later':'稍后看',flagged:'已标记',
+    immerse:'沉浸模式',mix:'Mix',item:'作品'};
   const label=parts.length>1&&['performers','studios','creators','series'].includes(parts[0])
     ? parts.slice(1).join('/') : fixed[parts[0]];
   return label?`${label} · Peach`:'Peach · 蜜桃';
 };
 const syncPageTitle=path=>{document.title=pageTitle(path)};
+const STATE_ROUTES={fresh:'/unseen',later:'/watch-later',flagged:'/flagged'};
+const ROUTE_STATES=Object.fromEntries(Object.entries(STATE_ROUTES).map(([state,path])=>[path,state]));
+const STATE_LABELS={fresh:'没看过',later:'稍后看',flagged:'已标记'};
+const isCatalogPath=path=>path==='/'||Object.prototype.hasOwnProperty.call(ROUTE_STATES,path);
 const route=(path,replace=false)=>{
-  history[replace?'replaceState':'pushState']({},'',path);syncPageTitle(path);
+  history[replace?'replaceState':'pushState']({},'',path);syncPageTitle(path);queueMicrotask(syncHeaderActions);
 };
 const ENTITY_ROUTES={performer:'performers',studio:'studios',creator:'creators',series:'series'};
 const ROUTE_ENTITIES={performers:'performer',studios:'studio',creators:'creator',series:'series'};
@@ -160,8 +165,17 @@ const rollSeed=()=>writeSeedRecord(newSeed());
 const initialParams=new URLSearchParams(location.search);
 let state={loc:initialParams.get('loc')||'local,115',creator:initialParams.get('creator')||'',studio:initialParams.get('studio')||'',
   tag:initialParams.get('tag')||'',len:initialParams.get('len')||'',dur_min:initialParams.get('dur_min')||'',dur_max:initialParams.get('dur_max')||'',
-  orient:initialParams.get('orient')||'',state:initialParams.get('state')||'',sort:initialParams.get('sort')||appSettings.defaultSort,
+  tag_match:initialParams.get('tag_match')==='any'?'any':'all',orient:initialParams.get('orient')||'',
+  state:ROUTE_STATES[decodeURIComponent(location.pathname)]||initialParams.get('state')||'',sort:initialParams.get('sort')||appSettings.defaultSort,
   seed:initialParams.get('seed')||persistedSeed(),q:initialParams.get('q')||'',jav:initialParams.get('jav')||'',thumb:'1'};
+const HOME_QUERY_KEYS=['loc','creator','studio','tag','tag_match','len','dur_min','dur_max','orient','sort','q','jav'];
+function homePath(filters=state){
+  const path=STATE_ROUTES[filters.state]||'/';
+  const params=new URLSearchParams();
+  HOME_QUERY_KEYS.forEach(key=>{const value=filters[key];if(value&&!(key==='tag_match'&&value==='all'))params.set(key,value)});
+  if(!STATE_ROUTES[filters.state]&&filters.state)params.set('state',filters.state);
+  return path+(params.size?'?'+params:'');
+}
 const ENTITY_FILTER_KEYS=['loc','creator','tag','dur_min','dur_max','orient'];
 const emptyEntityFilters=()=>Object.fromEntries(ENTITY_FILTER_KEYS.map(key=>[key,'']));
 const parseEntityFilters=search=>{const params=new URLSearchParams(search),filters=emptyEntityFilters();
@@ -339,10 +353,11 @@ function paintSelection(){
   $('#batchbar').hidden=!selected.size;$('#batchCount').textContent=`已选 ${selected.size} 项`;
   $('#batchbar').querySelectorAll('[data-trash-only]').forEach(button=>button.hidden=state.state!=='trash');
   $('#batchbar').querySelectorAll('[data-batch="like"],[data-batch="seen"],[data-batch="later"],[data-batch="dispose"]').forEach(button=>button.hidden=state.state==='trash');
+  paintTagIndexSelection();
 }
 function setSelectMode(on,clear=false){selectMode=!!on;document.body.classList.toggle('select-mode',selectMode);
   if(selectMode)releaseHoverPreviews();
-  $('#selectMode').setAttribute('aria-pressed',selectMode);if(clear){selected.clear();lastSelectedId=null}paintSelection()}
+  $('#selectMode').setAttribute('aria-pressed',selectMode);if(clear){selected.clear();selectedIndexTags.clear();lastSelectedId=null}paintSelection()}
 /* 只取网格直属卡片：竖屏条是嵌在网格里的横向滚动条，不该被 Shift 范围选中顺带框进来。 */
 function visibleCardIds(){return [...document.querySelectorAll('#grid > .card[data-id]')].map(card=>+card.dataset.id)}
 function toggleSelection(id,range=false){
@@ -658,10 +673,10 @@ function commitContextFilter(mutate){
       mutate(target.filters);barsContext=target;
       buildBars();updateEntityCollection(target.kind,target.name,target.filters,true);return
     }
-    mutate(state);barsContext={type:'home',filters:state};route('/');showHomeSurfaces();
+    mutate(state);barsContext={type:'home',filters:state};route(homePath());showHomeSurfaces();
     buildBars();load(true);return
   }
-  mutate(state);buildBars();load(true)
+  mutate(state);route(homePath());buildBars();load(true)
 }
 async function buildBars(){
   const requestSeq=++barsRequestSeq;
@@ -706,12 +721,12 @@ async function buildBars(){
   const views=[{k:'',label:'全部'},{k:'fresh',label:'没看过'},
                {k:'later',label:'稍后看'},{k:'flagged',label:'已标记'}];
   $('#tagbar').innerHTML=
-    views.map(v=>`<button class="pill" data-state="${v.k}" aria-pressed="${filterState.state===v.k}">${v.label}</button>`).join('')
+    views.map(v=>`<a class="pill" href="${v.k?STATE_ROUTES[v.k]:'/'}" data-state="${v.k}" aria-pressed="${filterState.state===v.k}">${v.label}</a>`).join('')
     +`<span class="sep"></span>`
     +facetData.tags.slice(0,26).map(t=>
       `<button class="pill" data-tag="${esc(t.k)}" aria-pressed="${filterState.tag===t.k}">${esc(t.k)}</button>`).join('');
-  $('#tagbar').querySelectorAll('[data-state]').forEach(b=>b.onclick=()=>{
-    state.state=b.dataset.state;buildBars();load(true)});
+  $('#tagbar').querySelectorAll('[data-state]').forEach(b=>b.onclick=e=>{
+    e.preventDefault();state.state=b.dataset.state;route(homePath());buildBars();load(true)});
   $('#tagbar').querySelectorAll('[data-tag]').forEach(b=>b.onclick=()=>{toggleTag(b.dataset.tag)});
   renderCombo(); wireAllDrag();
 
@@ -824,7 +839,7 @@ function toggleTag(t){
   if(!t){state.tag='';}
   else{const cur=tagList();const i=cur.indexOf(t);
     i>=0?cur.splice(i,1):cur.push(t);state.tag=cur.join(',')}
-  buildBars();load(true);
+  route(homePath());buildBars();load(true);
 }
 function renderCombo(){
   const cur=tagList(); const extra=[];
@@ -909,7 +924,7 @@ function showHomeSurfaces(){
   document.body.classList.remove('entity-open','index-open');
   $('#stats').hidden=true;$('#index').hidden=true;
   $('#tiers').style.display='';$('#tagbar').style.display='';
-  buildManageBar();   // 放在最后：管理区要盖掉上面刚恢复的首页横条
+  buildManageBar();paintListTitle();   // 放在最后：管理区要盖掉上面刚恢复的首页横条
 }
 function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
 
@@ -1720,7 +1735,19 @@ function wireReviewAssets(root){
 
 /* ── 全部艺人 / 创作者 / 标签索引页 ── */
 let tagIndexMode='alphabet',tagIndexCategory='all',indexRequestSeq=0;
-const TAG_CATEGORIES=[['all','全部'],['general','内容'],['artist','人物'],['character','角色'],['copyright','作品'],['meta','规格']];
+const TAG_CATEGORIES=[['all','全部'],['general','内容'],['copyright','作品'],['meta','规格']];
+const selectedIndexTags=new Set();
+let tagIndexMatch='any';
+function paintTagIndexSelection(){
+  const root=$('#index');if(!root||location.pathname!=='/tags')return;
+  root.querySelectorAll('[data-k]').forEach(button=>{
+    const on=selectedIndexTags.has(button.dataset.k);
+    button.setAttribute('aria-pressed',String(on));button.classList.toggle('selected',on)});
+  const panel=root.querySelector('[data-tag-selection]');if(!panel)return;
+  panel.hidden=!selectMode;
+  const count=panel.querySelector('[data-tag-selected]');if(count)count.textContent=`已选 ${selectedIndexTags.size} 个标签`;
+  const apply=panel.querySelector('[data-tag-apply]');if(apply)apply.disabled=!selectedIndexTags.size;
+}
 async function openIndex(kind,q,push=true){
   releaseHoverPreviews();
   const requestSeq=++indexRequestSeq;
@@ -1755,17 +1782,23 @@ async function openIndex(kind,q,push=true){
       (groups[key]||(groups[key]=[])).push(x)});
     return Object.entries(groups).sort(([a],[b])=>a.localeCompare(b,'zh-CN')).map(([letter,items])=>
       `<section class="alphagroup"><h3>${letter}</h3><div class="alphalist">${items.map(x=>
-        `<button class="alphatag ${x.cat||'general'}" data-k="${esc(x.k)}"><span>${esc(x.k)}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')}</div></section>`).join('')};
+        `<button class="alphatag ${x.cat||'general'}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"><span>${esc(x.k)}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')}</div></section>`).join('')};
   const peopleHtml=items=>items.map(x=>`<button class="icell" data-k="${esc(x.k)}" data-kind="${entityKind}">
         <span class="ring">${avatarInner(x.k,
           kind==='performers'&&x.entity_id?{id:x.entity_id}:null, x.rep)}</span>
         <span class="nm">${esc(x.k)}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('');
-  const tagHtml=items=>tagIndexMode==='alphabet'?`<div class="alphabet">${tagGroups(items)}</div>`:`<div class="tagwall index-tags">`+items.map(x=>`<button class="tg ${x.cat||'general'}" data-k="${esc(x.k)}"
+  const tagHtml=items=>tagIndexMode==='alphabet'?`<div class="alphabet">${tagGroups(items)}</div>`:`<div class="tagwall index-tags">`+items.map(x=>`<button class="tg ${x.cat||'general'}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"
         style="padding:5px 12px;font-size:13px">${esc(x.k)}
         <span style="opacity:.6;font-size:11px">${x.n.toLocaleString()}</span></button>`).join('')+`</div>`;
   const body=people?`<div class="igrid">${peopleHtml(d.items)}</div>`:tagHtml(tagItems);
   const filters=kind==='tags'?`<div class="tagfilters" aria-label="标签类型">${TAG_CATEGORIES.map(([key,label])=>
-    `<button class="${key}" data-tag-category="${key}" aria-pressed="${tagIndexCategory===key}">${label}</button>`).join('')}</div>`:'';
+    `<button class="${key}" data-tag-category="${key}" aria-pressed="${tagIndexCategory===key}">${label}</button>`).join('')}</div>
+    <div class="tagselection" data-tag-selection hidden>
+      <label><input type="checkbox" data-tag-match-any ${tagIndexMatch==='any'?'checked':''}><span><b>广泛匹配</b><small>开启后匹配任一所选标签；关闭后必须同时包含全部标签。</small></span></label>
+      <span class="mono" data-tag-selected>已选 0 个标签</span>
+      <button type="button" data-tag-clear>清空</button>
+      <button type="button" class="primary" data-tag-apply disabled>显示结果</button>
+    </div>`:'';
   $('#index').innerHTML=`<div class="ihead">
       <h2 class="disp">${title}</h2>
       <span class="mono" id="indexCount" style="color:var(--muted)">${tagItems.length}${d.has_more?'+':''} 项</span>
@@ -1779,15 +1812,26 @@ async function openIndex(kind,q,push=true){
     tagIndexCategory=b.dataset.tagCategory;openIndex('tags',$('#iq').value.trim(),true)});
   const wireIndexEntries=root=>root.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
     if(people){openEntity(b.dataset.kind,b.dataset.k);return}
-    $('#index').hidden=true;state.tag=b.dataset.k;route('/?tag='+encodeURIComponent(state.tag));buildBars();load(true)});
+    if(selectMode){const key=b.dataset.k;selectedIndexTags.has(key)?selectedIndexTags.delete(key):selectedIndexTags.add(key);paintTagIndexSelection();return}
+    $('#index').hidden=true;state={...state,state:'',tag:b.dataset.k,tag_match:'all'};route(homePath());buildBars();load(true)});
   wireIndexEntries($('#indexBody'));
+  if(kind==='tags'){
+    const panel=$('#index').querySelector('[data-tag-selection]');
+    panel.querySelector('[data-tag-match-any]').onchange=e=>{tagIndexMatch=e.target.checked?'any':'all'};
+    panel.querySelector('[data-tag-clear]').onclick=()=>{selectedIndexTags.clear();paintTagIndexSelection()};
+    panel.querySelector('[data-tag-apply]').onclick=()=>{
+      if(!selectedIndexTags.size)return;
+      state={...state,state:'',tag:[...selectedIndexTags].join(','),tag_match:tagIndexMatch};
+      selectedIndexTags.clear();setSelectMode(false,false);route(homePath());showHomeSurfaces();buildEdge();buildBars();load(true)};
+    paintTagIndexSelection();
+  }
   let indexOffset=d.items.length;
   $('#indexMore').onclick=async()=>{const more=$('#indexMore');more.disabled=true;
     try{const next=await api(indexApi(indexOffset));if(requestSeq!==indexRequestSeq)return;
       indexOffset+=next.items.length;d.has_more=next.has_more;
       if(people){d.items.push(...next.items);const grid=$('#indexBody .igrid');
         grid.insertAdjacentHTML('beforeend',peopleHtml(next.items));wireIndexEntries(grid)}
-      else{d.items.push(...next.items);tagItems.push(...next.items);$('#indexBody').innerHTML=tagHtml(tagItems);wireIndexEntries($('#indexBody'))}
+      else{d.items.push(...next.items);tagItems.push(...next.items);$('#indexBody').innerHTML=tagHtml(tagItems);wireIndexEntries($('#indexBody'));paintTagIndexSelection()}
       $('#indexCount').textContent=indexOffset+(next.has_more?'+':'')+' 项';more.hidden=!next.has_more}
     finally{if(requestSeq===indexRequestSeq)more.disabled=false}};
 }
@@ -2245,6 +2289,11 @@ function paintManageTitle(){
   el.hidden=!entry;
   if(entry)el.textContent=entry[1];
 }
+function paintListTitle(){
+  const el=$('#listTitle');if(!el)return;
+  const label=!manageSection()?STATE_LABELS[state.state]||'':'';
+  el.hidden=!label;if(label)el.textContent=label;
+}
 function openManage(section='stats'){
   if(section==='stats'){openStats();return}
   if(section==='review'){openReview();return}
@@ -2316,6 +2365,7 @@ function navOn(k){
   // 首页只在真的停在首页列表上时亮：管理区、索引页、实体页都不算，
   // 否则它会和当前所在的入口同时高亮。
   if(k==='')return path==='/'&&!manageSection()&&!state.state&&!javActive()&&state.orient!=='竖屏';
+  if(STATE_ROUTES[k])return path===STATE_ROUTES[k]&&state.orient!=='竖屏';
   return path==='/'&&state.state===k&&state.orient!=='竖屏';
 }
 /* 窄栏与抽屉共用同一套跳转。两边曾各写一份分支，抽屉那份漏了追更和播放列表，
@@ -2327,12 +2377,23 @@ function navTo(k){
   if(k==='follow'){openFollow();return}
   if(k==='manage'){openManage();return}
   if(k==='jav'){toggleJavMode();return}
-  if(k==='performers'||k==='tags'){openIndex(k);return}
+  if(k==='performers'||k==='tags'){setSelectMode(false,true);openIndex(k);return}
   if(k==='shorts'){state.orient='竖屏';state.state=''}else{state.orient='';state.state=k}
-  // 从管理区/索引页点回列表类入口时，路径还停在原处，高亮不会切换。
-  if(location.pathname!=='/')route('/');
+  route(homePath());
   showHomeSurfaces();
   buildEdge();buildBars();load(true);
+}
+function syncHeaderActions(){
+  const path=decodeURIComponent(location.pathname),parts=path.split('/').filter(Boolean);
+  const entity=parts.length>1&&Object.prototype.hasOwnProperty.call(ROUTE_ENTITIES,parts[0]);
+  const catalog=isCatalogPath(path)||path==='/trash';
+  const canSelect=catalog||entity||path==='/tags';
+  const canDensity=catalog||entity;
+  const canRefresh=isCatalogPath(path)||['/stats','/review','/duplicates','/quality-goals','/playlists'].includes(path);
+  $('#selectMode').hidden=!canSelect;$('#density').hidden=!canDensity;$('#refresh').hidden=!canRefresh;
+  $('#refresh').title=isCatalogPath(path)?'换一批推荐':'刷新当前页面';
+  $('#refresh').setAttribute('aria-label',$('#refresh').title);
+  if(!canSelect&&selectMode)setSelectMode(false,true);
 }
 function buildEdge(){
   $('#edge').innerHTML=EDGE_ICONS.map(([k,t,ic])=>
@@ -2348,6 +2409,7 @@ function buildEdge(){
   });
   $('#edge').querySelectorAll('[data-nav]').forEach(b=>b.onclick=e=>{
     e.stopPropagation();navTo(b.dataset.nav)});
+  syncHeaderActions();
 }
 let edgeT=null;
 $('#edge').addEventListener('mouseenter',()=>{if(Date.now()<drawerSuppressUntil)return;
@@ -2414,7 +2476,7 @@ async function load(reset){
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
   /* 只有首页默认列表排除竖屏——那里另有独立的竖屏条承接它们。
      搜索必须能搜到竖屏作品，否则按名字找一条竖屏视频会得到 0 结果。 */
-  if(location.pathname==='/'&&!state.q&&!state.orient)p.set('exclude_vertical','1');
+  if(isCatalogPath(decodeURIComponent(location.pathname))&&!state.q&&!state.orient)p.set('exclude_vertical','1');
   // JAV 模式恒不含竖屏：番号发行物本身就是横版，竖屏是另一类内容。
   if(state.jav==='1')p.set('exclude_vertical','1');
   p.set('limit',appSettings.batchSize); p.set('offset',offset);
@@ -2423,7 +2485,7 @@ async function load(reset){
   if(requestSeq!==loadRequestSeq)return;
   if(reset)total=d.total;
   buildManageBar();
-  const html=batchWithMix(d.items,location.pathname==='/'&&state.state!=='trash');
+  const html=batchWithMix(d.items,isCatalogPath(decodeURIComponent(location.pathname))&&state.state!=='trash');
   if(reset)releaseHoverPreviews($('#grid'));
   if(reset)$('#grid').innerHTML=html; else $('#grid').insertAdjacentHTML('beforeend',html);
   renderCount();
@@ -2536,7 +2598,7 @@ const SHORTS_ROW_OFFSET=2;   // 竖屏条插在第几行之后，0 表示置顶
 async function loadShorts(requestSeq=loadRequestSeq){
   // JAV 模式不插竖屏条：番号发行物本身是横版，竖屏是另一类内容。
   // 主列表的 exclude_vertical 管不到这条——它是独立请求、独立插入的。
-  if(location.pathname!=='/'||javActive()||state.orient==='竖屏'
+  if(!isCatalogPath(decodeURIComponent(location.pathname))||javActive()||state.orient==='竖屏'
      ||state.state==='ads'||state.state==='trash'){
     $('#shortsSec').hidden=true;$('#grid').querySelector('#shortsInline')?.remove();return}
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
@@ -3207,7 +3269,7 @@ document.addEventListener('keydown',e=>{
    不用 RANDOM()：那样翻页会重复和漏掉条目。
    自动刷新只在首页空闲态执行，不打断播放、搜索、选择或其他页面。 */
 async function refreshAll(automatic=false){
-  if(automatic&&(document.hidden||location.pathname!=='/'||
+  if(automatic&&(document.hidden||!isCatalogPath(decodeURIComponent(location.pathname))||
       !$('#stage').hidden||!$('#tok').hidden||selectMode||selected.size||document.activeElement===$('#q')))return false;
   if(!$('#stats').hidden){
     if(location.pathname==='/review'){await openReview(false);return}
@@ -3259,6 +3321,15 @@ function wireAllDrag(){['#tagbar','#srow','#nrow'].forEach(s=>wireDrag($(s)));
 async function restoreRoute(){
   syncPageTitle(location.href);
   const path=decodeURIComponent(location.pathname),parts=path.split('/').filter(Boolean);
+  if(isCatalogPath(path)){
+    const params=new URLSearchParams(location.search);
+    state={...state,loc:params.get('loc')||'local,115',creator:params.get('creator')||'',studio:params.get('studio')||'',
+      tag:params.get('tag')||'',tag_match:params.get('tag_match')==='any'?'any':'all',len:params.get('len')||'',
+      dur_min:params.get('dur_min')||'',dur_max:params.get('dur_max')||'',orient:params.get('orient')||'',
+      state:ROUTE_STATES[path]||params.get('state')||'',sort:params.get('sort')||appSettings.defaultSort,
+      seed:params.get('seed')||state.seed||persistedSeed(),q:params.get('q')||'',jav:params.get('jav')||''};
+    $('#q').value=state.q;buildEdge();buildBars();load(true);return;
+  }
   if(path==='/trash'){
     state={...state,creator:'',studio:'',tag:'',orient:'',state:'trash',q:''};$('#q').value='';
     buildEdge();buildBars();load(true);return;

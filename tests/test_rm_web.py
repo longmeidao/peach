@@ -170,6 +170,17 @@ class WebDataTests(unittest.TestCase):
         self.assertNotIn("path", result["items"][0])
         self.assertNotIn("snapshot_path", result["items"][0])
 
+    def test_multiple_tags_support_all_and_broad_any_matching(self):
+        strict = rm_web.q_items(
+            self.contract, {"tag": "足交,竖屏", "sort": "new", "limit": "10"},
+        )
+        broad = rm_web.q_items(
+            self.contract,
+            {"tag": "足交,竖屏", "tag_match": "any", "sort": "new", "limit": "10"},
+        )
+        self.assertEqual(strict["items"], [])
+        self.assertEqual({item["id"] for item in broad["items"]}, {1, 2})
+
     def test_canonical_creator_beats_same_named_legacy_performer_tag(self):
         """1065 类数据不能被旧 `演员:` 投影改成艺人。"""
         con = sqlite3.connect(self.db_path)

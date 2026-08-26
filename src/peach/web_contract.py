@@ -260,17 +260,24 @@ def q_items(contract: WebContract, args):
             "WHERE ae.asset_id=a.id AND e.kind='series' AND e.canonical_name=?)"
         ); par.append(args["series"])
     if args.get("tag"):
-        # 逗号分隔 = 组合筛选，全部满足。
-        for tg in [x for x in args["tag"].split(",") if x]:
-            where.append(
-                "((EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-                "WHERE ae.asset_id=a.id AND e.kind='tag' AND e.canonical_name=?) OR "
-                "EXISTS(SELECT 1 FROM asset_tag t WHERE t.asset_id=a.id AND t.tag=?)) AND "
-                "NOT EXISTS(SELECT 1 FROM asset_tag_preference p WHERE p.asset_id=a.id "
-                f"AND p.profile_id='{DEFAULT_PROFILE_ID}' AND p.hidden=1 "
-                "AND p.normalized_tag=lower(trim(?))))"
-            )
-            par.extend((tg, tg, tg))
+        tags = [x for x in args["tag"].split(",") if x]
+        tag_clause = (
+            "((EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "WHERE ae.asset_id=a.id AND e.kind='tag' AND e.canonical_name=?) OR "
+            "EXISTS(SELECT 1 FROM asset_tag t WHERE t.asset_id=a.id AND t.tag=?)) AND "
+            "NOT EXISTS(SELECT 1 FROM asset_tag_preference p WHERE p.asset_id=a.id "
+            f"AND p.profile_id='{DEFAULT_PROFILE_ID}' AND p.hidden=1 "
+            "AND p.normalized_tag=lower(trim(?))))"
+        )
+        if args.get("tag_match") == "any" and len(tags) > 1:
+            where.append("(" + " OR ".join(tag_clause for _ in tags) + ")")
+            for tag in tags:
+                par.extend((tag, tag, tag))
+        else:
+            # 默认保持原有组合语义：逗号分隔的标签必须全部满足。
+            for tag in tags:
+                where.append(tag_clause)
+                par.extend((tag, tag, tag))
     if args.get("len"):
         where.append("a.ctx_length = ?"); par.append(args["len"])
     if args.get("dur_min"):
