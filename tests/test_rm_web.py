@@ -381,7 +381,7 @@ class WebDataTests(unittest.TestCase):
             "/api/search-history", "/api/trash/empty", "/api/review/decision",
             "/api/purge-missing", "/api/review/auto-apply",
             "/api/follow/check", "/api/follow/status", "/api/follow/save",
-            "/api/follow/source", "/api/follow/resolve",
+            "/api/follow/source", "/api/follow/resolve", "/api/follow/credential",
         })
         with self.assertRaises(rm_web.ContractRouteNotFound):
             rm_web.dispatch_api_get(self.contract, "/api/typo", {})

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 
 from .follow import FollowSourceError
@@ -333,6 +334,44 @@ CREDENTIAL_GUIDE: dict[str, dict] = {
                "撑不起定时追更。Peach 不绕机器人验证。",
     },
 }
+
+
+def w_follow_credential(contract, body) -> dict:
+    """保存一个来源的凭据到本机文件。
+
+    值只从请求体流向磁盘，**不回显、不记日志、不进任何返回体**。只接受
+    `CREDENTIAL_GUIDE` 里声明过的 provider 和字段名——多余的字段一律拒绝，
+    免得把任意内容写进 secrets 目录。文件权限设成 0600。
+    """
+    provider = str(body.get("provider") or "")
+    guide = CREDENTIAL_GUIDE.get(provider)
+    if guide is None or not guide.get("fields"):
+        raise ValueError(f"{provider or '(空)'} 不接受凭据")
+    values = body.get("values")
+    if not isinstance(values, dict):
+        raise ValueError("values must be an object")
+    allowed = set(guide["fields"])
+    unknown = sorted(set(values) - allowed)
+    if unknown:
+        raise ValueError(f"{provider} 不认识这些字段：{', '.join(unknown)}")
+    cleaned = {name: str(values[name]).strip() for name in guide["fields"]
+               if str(values.get(name) or "").strip()}
+    store = CredentialStore(contract.follow_secrets_root)
+    path = store.path_for(provider)
+    if not cleaned:
+        # 全部留空 = 删掉这份凭据。给得出「配上」就要给得出「撤掉」。
+        path.unlink(missing_ok=True)
+        return {"ok": True, "provider": provider, "cleared": True,
+                "saved": store.describe(provider)}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(json.dumps(cleaned, ensure_ascii=False, indent=2) + "\n",
+                         encoding="utf-8")
+    os.chmod(temporary, 0o600)
+    temporary.replace(path)
+    # 返回的是 describe()，只有字段名，没有值。
+    return {"ok": True, "provider": provider, "cleared": False,
+            "saved": store.describe(provider)}
 
 
 def q_follow_credentials(contract, _args) -> dict:

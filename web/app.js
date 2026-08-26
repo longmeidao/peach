@@ -1317,73 +1317,82 @@ function followSourceRow(source){
 }
 
 const CRED_STATE={required:['必须配置','req'],optional:['可选','opt'],
-  none:['不需要凭据','none'],blocked:['站点不可接入','blocked']};
+  none:['不需要','none'],blocked:['接不进来','blocked']};
 
 function followCredentialRow(row){
   const [label,kind]=CRED_STATE[row.requirement]||CRED_STATE.none;
-  /* 「未配置」本身不是信息——要说清楚这个来源到底需不需要、需要什么、去哪儿拿。
-     不需要凭据的来源只占一行，不展开；需要的才给出文件路径和格式。 */
-  /* 只有「必须配置而且没配」才自动展开——那是唯一需要你现在动手的情况。
-     可选的、不需要的、站点根本接不进来的，都收起来，点开才看细节。 */
   const configured=row.present&&!row.missing.length;
+  /* 只有「必须配置而且没配」才自动展开——那是唯一需要你现在动手的情况。 */
   const needsAttention=row.requirement==='required'&&!configured;
-  const detail=row.requirement==='none'||row.requirement==='blocked'
-    ? (row.why?`<p>${esc(row.why)}</p>`:'')
-    : `<p>${esc(row.why)}</p><p>${esc(row.howto)}</p>
-       ${row.where?`<p><a href="${esc(row.where)}" target="_blank" rel="noreferrer noopener">${esc(row.where)}</a></p>`:''}
-       <p class="mono fcredpath">${esc(row.path)}</p>
-       <pre class="fcredsample">${esc(row.example)}</pre>
-       ${row.world_readable?'<p class="fcredwarn">文件权限过宽，建议 chmod 600</p>':''}`;
+  const fields=(row.needs||[]).map(name=>`<label class="fcredfield">
+    <span>${esc(name)}</span>
+    <input type="password" name="${esc(name)}" autocomplete="off" spellcheck="false"
+      placeholder="${row.fields.includes(name)?'已保存，留空表示不改':'未填写'}"></label>`).join('');
+  /* 值只往磁盘走，不回显：已保存的字段这里也是空的，占位文字说明留空等于不改。 */
+  const body=row.requirement==='none'?'<p>这个来源不需要凭据。</p>'
+    :row.requirement==='blocked'?`<p>${esc(row.why)}</p>`
+    :`<p>${esc(row.why)}</p><p>${esc(row.howto)}</p>
+      ${row.where?`<p><a href="${esc(row.where)}" target="_blank" rel="noreferrer noopener">${esc(row.where)}</a></p>`:''}
+      <form class="fcredform" data-cred-form="${esc(row.provider)}">
+        ${fields}
+        <div class="fcredactions"><button type="submit">保存</button>
+          ${configured?`<button type="button" data-cred-clear="${esc(row.provider)}">清除</button>`:''}
+          <span data-cred-state aria-live="polite"></span></div>
+      </form>
+      <p class="mono fcredpath">${esc(row.path)}</p>
+      ${row.world_readable?'<p class="fcredwarn">文件权限过宽，建议 chmod 600</p>':''}`;
   return `<details class="fcred ${esc(kind)}${configured?' ok':''}"${needsAttention?' open':''}>
     <summary><b>${esc(row.provider_label)}</b>
       <span class="fcredstate">${esc(configured&&row.requirement!=='none'?'已配置':label)}</span>
       ${row.missing.length?`<span class="fcredmissing">缺 ${esc(row.missing.join('、'))}</span>`:''}
-    </summary>${detail}</details>`;
+    </summary>${body}</details>`;
 }
 
 function renderFollowManage(credentials){
   const sources=followData.sources||[],counts=followData.counts||{};
   const broken=sources.filter(s=>s.last_status==='error'||s.last_status==='unauthorized');
-  /* 顺序按「做事的先后」排：先加来源，再看这些来源怎么样，再处理它们抓回来的内容，
-     凭据放最后——它是出问题时才需要翻的东西，不是每次都要看的。 */
+  /* 两栏：左边是干活的地方（加来源、看来源），右边是配置。
+     原来四张通栏卡片各自只装几行内容，在宽屏上就是几条空长条加一大片右留白。
+     计数不再单独占一张卡——它是来源列表的注脚，不是一个功能。 */
   $('#stats').innerHTML=`<div class="follow followmanage">
-    <section class="fcard">
-      <div class="fcardhead"><h3>添加来源</h3>
-        <button class="fghost" data-follow-view>${icon('globe')}去看更新</button></div>
-      <form class="faddform" id="followAdd">
-        <textarea name="lines" rows="3" required spellcheck="false"
-          aria-label="来源链接、名字或 id"
-          placeholder="每行一条，链接和名字可以混着粘"></textarea>
-        <div class="faddside">
-          <button type="submit">查找</button>
-          <span data-follow-add-state aria-live="polite"></span>
-        </div>
-      </form>
-      <p class="fhint">链接直接认得；只给名字或 id 会去六个来源各查一遍，查到什么由你勾选。
-        首次按名字查要下载创作者索引，可能几十秒。</p>
-    </section>
-    <div id="followPicks"></div>
-    <section class="fcard">
-      <div class="fcardhead"><h3>来源 <span class="n mono">${sources.length}</span></h3>
-        <button class="fprimary" data-follow-check="">${icon('refresh-cw')}检查全部更新</button></div>
-      ${broken.length?`<p class="fwarn">${broken.length} 个来源上次检查失败，原因见下方那一行。</p>`:''}
-      <ul class="fsources">${sources.map(followSourceRow).join('')||
-        '<li class="empty">还没有来源。把链接或名字粘进上面的输入框。</li>'}</ul>
-    </section>
-    <section class="fcard">
-      <div class="fcardhead"><h3>内容</h3></div>
-      <p class="fcounts"><span><b>${counts.new||0}</b> 未看</span><span><b>${counts.seen||0}</b> 已看</span>
-        <span><b>${counts.saved||0}</b> 已保存</span><span><b>${counts.ignored||0}</b> 已忽略</span></p>
-      <div class="fbulk">
-        <button data-follow-bulk="seen"${counts.new?'':' disabled'}>把「未看」全部标记为已看</button>
-        <button data-follow-bulk="ignored"${counts.new?'':' disabled'}>把「未看」全部忽略</button></div>
-    </section>
-    <section class="fcard">
-      <div class="fcardhead"><h3>凭据</h3>
-        <span class="mono fcredroot">${esc(credentials.root||'')}</span></div>
-      <div class="fcreds">${(credentials.providers||[]).map(followCredentialRow).join('')}</div>
-      <p class="fhint">凭据只留在本机，不进 Git、URL、日志或 ledger。这里只显示字段名，不显示值。</p>
-    </section></div>`;
+    <div class="fmain">
+      <section class="fcard">
+        <div class="fcardhead"><h3>添加关注</h3>
+          <button class="fghost" data-follow-view>${icon('globe')}去看更新</button></div>
+        <form class="faddform" id="followAdd">
+          <textarea name="lines" rows="3" required spellcheck="false"
+            aria-label="来源链接、名字或 id"
+            placeholder="每行一条，链接和名字可以混着粘"></textarea>
+          <div class="faddside">
+            <button type="submit">查找</button>
+            <span data-follow-add-state aria-live="polite"></span>
+          </div>
+        </form>
+        <p class="fhint">链接直接认得；只给名字或 id 会去六个来源各查一遍，查到什么由你勾选。
+          首次按名字查要下载创作者索引，可能几十秒。</p>
+      </section>
+      <div id="followPicks"></div>
+      <section class="fcard">
+        <div class="fcardhead"><h3>关注列表 <span class="n mono">${sources.length}</span></h3>
+          <button class="fprimary" data-follow-check=""${sources.length?'':' disabled'}>${
+            icon('refresh-cw')}检查全部更新</button></div>
+        ${broken.length?`<p class="fwarn">${broken.length} 个来源上次检查失败，原因见下方那一行。</p>`:''}
+        ${sources.length?`<ul class="fsources">${sources.map(followSourceRow).join('')}</ul>
+          <p class="fcounts">未看 <b>${counts.new||0}</b> · 已看 <b>${counts.seen||0}</b>
+            · 已保存 <b>${counts.saved||0}</b> · 已忽略 <b>${counts.ignored||0}</b>
+            ${counts.new?`<button class="flink" data-follow-bulk="seen">全部标记已看</button>
+              <button class="flink" data-follow-bulk="ignored">全部忽略</button>`:''}</p>`
+          :'<p class="empty fempty">还没有关注任何来源。把链接或名字粘进上面的输入框。</p>'}
+      </section>
+    </div>
+    <aside class="faside">
+      <section class="fcard">
+        <div class="fcardhead"><h3>凭据</h3></div>
+        <div class="fcreds">${(credentials.providers||[]).map(followCredentialRow).join('')}</div>
+        <p class="fhint">凭据只留在本机，不进 Git、URL、日志或 ledger。输入框里的值直接写入
+          本机文件，页面上不会再显示出来。</p>
+      </section>
+    </aside></div>`;
   wireFollowManage();
 }
 
@@ -1466,6 +1475,30 @@ function wireFollowManage(){
       }
     }catch(e){button.innerHTML=label;alert('检查更新失败：'+e.message)}
     finally{followBusy=false;button.disabled=false}
+  });
+  root.querySelectorAll('[data-cred-form]').forEach(form=>form.onsubmit=async event=>{
+    event.preventDefault();
+    const state=form.querySelector('[data-cred-state]'),button=form.querySelector('button');
+    const values={};
+    form.querySelectorAll('input[name]').forEach(input=>{
+      if(input.value.trim())values[input.name]=input.value.trim()});
+    if(!Object.keys(values).length){state.textContent='没有填写内容';return}
+    button.disabled=true;state.textContent='保存中…';
+    try{
+      await api('/api/follow/credential',{method:'POST',body:JSON.stringify(
+        {provider:form.dataset.credForm,values})});
+      // 值不回显：清掉输入框，重画之后只看得到字段名。
+      form.reset();await openFollowManage(false);
+    }catch(error){state.textContent=error.message||'保存失败';button.disabled=false}
+  });
+  root.querySelectorAll('[data-cred-clear]').forEach(button=>button.onclick=async()=>{
+    if(!confirm('清除这个来源的凭据？文件会被删除。'))return;
+    button.disabled=true;
+    try{
+      await api('/api/follow/credential',{method:'POST',body:JSON.stringify(
+        {provider:button.dataset.credClear,values:{}})});
+      await openFollowManage(false);
+    }catch(error){button.disabled=false;alert(error.message)}
   });
   root.querySelectorAll('[data-follow-bulk]').forEach(button=>button.onclick=async()=>{
     const to=button.dataset.followBulk;
