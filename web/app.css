@@ -1177,105 +1177,119 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   .follow .reviewtabs .fcheck{margin-left:0;flex:1 1 100%;justify-content:center}}
 
 /* ── 关注管理页 ──
-   版式判据来自 docs/reference-sources.json 的 vercel-report-design：
-   反模式：卡片套卡片、用边框补救层级、成排通栏空条、细小灰字加随意字号。所以：
-   没有嵌套卡片盒子，分组靠标题和一条发丝分隔线；字号只有三档（14 正文 / 13 次要 /
-   12 元信息），不再有 10.5/11/11.5 混用。控件按实测 Geist：32px 高、6px 圆角、14px 字。 */
+   取证记录见 docs/reference-snapshots/vercel-geist-controls-measured.md。
+   上一版把「避免卡片套卡片」误读成「不要任何容器」，做成了没有可读性的裸列表——
+   而同一份文档明确警告过不要因为躲开那些默认套路就做出一个无设计的模板。
+   2026-08-26 实测 vercel.com/templates：页面底色纯黑，卡片是 8px 圆角 +
+   1px `rgb(41,41,41)` 发丝边 + `rgb(10,10,10)` 比页面亮一档的表面，没有阴影。
+   所以容器要有框；不要的是**框里再套框**——卡片内部的行只用分隔线。
+   控件仍按实测 Geist：32px 高、14px 字、6px 圆角。 */
 .followmanage{padding:2px 0 48px;display:grid;grid-template-columns:minmax(0,1fr) 320px;
-  gap:40px;align-items:start;font-size:14px}
-.followmanage .fmain{display:grid;gap:34px;min-width:0}
-.followmanage .faside{display:grid;gap:34px;min-width:0}
-.followmanage .fsec{min-width:0}
-.followmanage .fsechead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
-  padding-bottom:10px;margin-bottom:12px;border-bottom:1px solid var(--border-10)}
-.followmanage .fsechead h3{margin:0;font-size:14px;font-weight:600;letter-spacing:.01em}
-.followmanage .fsechead .fmeta{flex:1 1 auto}
-.followmanage .fmeta{font-size:12px;color:var(--muted)}
-.followmanage .fmeta b{color:var(--ink);font-variant-numeric:tabular-nums}
-.followmanage .fmeta.warn{color:var(--drop)}
-.followmanage .fnote{margin:10px 0 0;font-size:13px;line-height:1.7;color:var(--muted)}
-.followmanage .fnote.warn{color:var(--drop)}
-.followmanage .fnote b{color:var(--ink-2);font-weight:600}
-.followmanage .fnote code{font-size:12px}
-.followmanage .fnote [data-follow-add-state]{color:var(--drop)}
-.followmanage .fnote [data-follow-add-state]:not(:empty){display:block;margin-bottom:4px}
+  gap:16px;align-items:start;font-size:14px}
+.fmain{display:grid;gap:16px;min-width:0}
+.faside{display:grid;gap:16px;min-width:0}
+/* 容器：发丝边 + 比页面亮一档的表面。内部的行不再各自套框。 */
+.fsec{min-width:0;border:1px solid var(--border-10);border-radius:8px;
+  background:var(--surface);padding:14px 16px 16px}
+.fsechead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
+  padding-bottom:11px;margin-bottom:12px;border-bottom:1px solid var(--border-10)}
+.fsechead h3{margin:0;font-size:14px;font-weight:600;letter-spacing:.01em}
+.fsechead .fmeta{flex:1 1 auto}
+.fmeta{font-size:12px;color:var(--muted)}
+.fmeta b{color:var(--ink);font-variant-numeric:tabular-nums}
+.fmeta.warn{color:var(--drop)}
+.fnote{margin:12px 0 0;font-size:13px;line-height:1.7;color:var(--muted)}
+.fnote:empty{display:none}
+.fnote.warn{color:var(--drop)}
+.fnote b{color:var(--ink-2);font-weight:600}
+.fnote code{font-size:12px}
+[data-follow-add-state]{color:var(--ink-2)}
 
-/* 控件：32px 高、6px 圆角、14px 字。默认是描边透明，主操作才填色。 */
-.followmanage .fbtn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;
+/* 状态标签：四种状态四种颜色，待办和完成一眼分得开。 */
+.fstate{font-size:12px;flex:0 1 auto}
+.fstate.done{color:var(--keep)}
+.fstate.req{color:var(--drop)}
+.fstate.missing{color:var(--drop)}
+.fstate.opt{color:var(--meter)}
+.fstate.none,.fstate.blocked{color:var(--muted)}
+
+.fbtn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;
   box-sizing:border-box;padding:0 12px;border:1px solid var(--border-15);border-radius:6px;
   background:transparent;color:var(--ink-2);font-size:14px;font-family:inherit;cursor:pointer;
   white-space:nowrap;transition:border-color .12s ease,color .12s ease,background-color .12s ease,scale .1s ease}
-.followmanage .fbtn:hover:not(:disabled){border-color:var(--ink-2);color:var(--ink)}
-.followmanage .fbtn:active:not(:disabled){scale:.96}
-.followmanage .fbtn:disabled{opacity:.45;cursor:default}
-.followmanage .fbtn.primary{background:var(--tungsten);border-color:var(--tungsten);color:#fff;font-weight:500}
-.followmanage .fbtn.primary:hover:not(:disabled){background:color-mix(in srgb,var(--tungsten) 86%,#000);
+.fbtn:hover:not(:disabled){border-color:var(--ink-2);color:var(--ink)}
+.fbtn:active:not(:disabled){scale:.96}
+.fbtn:disabled{opacity:.45;cursor:default}
+.fbtn.primary{background:var(--tungsten);border-color:var(--tungsten);color:#fff;font-weight:500}
+.fbtn.primary:hover:not(:disabled){background:color-mix(in srgb,var(--tungsten) 86%,#000);
   border-color:transparent}
-.followmanage .fbtn.small{height:26px;padding:0 10px;font-size:13px}
-.followmanage .fbtn.fquiet{border-color:transparent;color:var(--muted)}
-.followmanage .fbtn.fquiet:hover{border-color:var(--drop);color:var(--drop)}
-.followmanage .fbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8}
+.fbtn.small{height:26px;padding:0 10px;font-size:13px}
+.fbtn.fquiet{border-color:transparent;color:var(--muted)}
+.fbtn.fquiet:hover{border-color:var(--drop);color:var(--drop)}
+.fbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8}
 
-.followmanage .faddform{display:flex;gap:8px;align-items:flex-start}
-.followmanage .faddform textarea{flex:1 1 auto;min-width:0;height:32px;min-height:32px;max-height:220px;
+.faddform{display:flex;gap:8px;align-items:flex-start}
+.faddform textarea{flex:1 1 auto;min-width:0;height:32px;min-height:32px;max-height:220px;
   box-sizing:border-box;border:1px solid var(--border-15);border-radius:6px;
-  background:transparent;color:var(--ink);padding:5px 12px;font-size:14px;font-family:inherit;
-  line-height:20px;resize:none;overflow-y:auto;transition:border-color .12s ease}
-.followmanage .faddform textarea::placeholder{color:var(--muted)}
-.followmanage .faddform textarea:focus-visible{outline:2px solid var(--tungsten);outline-offset:1px;
+  background:var(--ground);color:var(--ink);padding:5px 12px;font-size:14px;font-family:inherit;
+  line-height:20px;resize:none;overflow-y:auto;overflow-x:hidden;transition:border-color .12s ease}
+.faddform textarea::placeholder{color:var(--muted)}
+.faddform textarea:focus-visible{outline:2px solid var(--tungsten);outline-offset:1px;
   border-color:var(--tungsten)}
 
-/* 行：只用分隔线，不各自套框——边框不是用来补救层级的。 */
-.followmanage .frows{display:grid}
-.followmanage .frow{display:flex;align-items:center;gap:12px;padding:9px 0;flex-wrap:wrap;
+/* 卡片内部的行：只用分隔线，不套框——框里再套框正是要避开的那条。 */
+/* grid 项默认 min-width:auto，最宽的一行会把整列撑出容器——窄的那一栏尤其明显。
+   容器和每一项都要显式 min-width:0 才会真的收缩。 */
+.frows{display:grid;min-width:0}
+.frows>*{min-width:0}
+.frow{display:flex;align-items:center;gap:12px;padding:9px 0;flex-wrap:wrap;
   border-bottom:1px solid var(--border-10)}
-.followmanage .frows>.frow:last-child{border-bottom:0}
-.followmanage .frow>b{flex:1 1 180px;min-width:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;
+.frows>.frow:last-child{border-bottom:0}
+.frows>.frow:last-child[open]{border-bottom:0}
+.frow>b{flex:1 1 180px;min-width:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap}
-.followmanage .frow .fmeta{flex:0 0 auto}
-.followmanage .frowerr{flex:1 1 100%;margin:2px 0 0;font-size:13px;line-height:1.6;color:var(--drop)}
-.followmanage .fsource.bad>b{color:var(--drop)}
+.frow .fmeta{flex:0 0 auto}
+.frowerr{flex:1 1 100%;margin:2px 0 0;font-size:13px;line-height:1.6;color:var(--drop)}
+.fsource.bad>b{color:var(--drop)}
 .flink{border:0;background:none;padding:0;margin-left:10px;color:var(--tungsten);font:inherit;
   font-size:13px;cursor:pointer}
 .flink:hover{text-decoration:underline}
 
-.followmanage .fcred summary{display:flex;align-items:center;gap:12px;cursor:pointer;list-style:none;
-  flex:1 1 100%;width:100%;box-sizing:border-box;
+.fcred summary{display:flex;align-items:center;gap:12px;cursor:pointer;list-style:none;
   margin:-9px 0;padding:9px 0}
-.followmanage .fcred summary::-webkit-details-marker{display:none}
-.followmanage .fcred summary b{flex:1 1 auto;min-width:0;font-weight:500}
-.followmanage .fcred.none{color:var(--muted)}
-.followmanage .fcred.ok .fmeta{color:var(--keep)}
-.followmanage .fcred.req>summary .fmeta{color:var(--drop)}
-.followmanage .fcred[open]{display:block;padding-bottom:12px}
-.followmanage .fcred p{margin:8px 0 0;font-size:13px;line-height:1.7;color:var(--muted)}
-.followmanage .fcred a{color:var(--tungsten)}
-.followmanage .fcredpath{font-size:12px!important;overflow-wrap:anywhere;color:var(--ink-2)!important}
-.followmanage .fcredform{display:grid;gap:8px;margin-top:10px}
-.followmanage .fcredfield{display:grid;gap:4px}
-.followmanage .fcredfield span{font-size:12px;color:var(--muted)}
-.followmanage .fcredfield input{height:32px;box-sizing:border-box;border:1px solid var(--border-15);
-  border-radius:6px;background:transparent;color:var(--ink);padding:0 12px;font-size:14px;
+.fcred summary::-webkit-details-marker{display:none}
+.fcred summary b{flex:1 1 auto;min-width:0;font-weight:500}
+.fcred.none{color:var(--muted)}
+.fcred[open]{display:block;padding-bottom:12px}
+.fcred p{margin:8px 0 0;font-size:13px;line-height:1.7;color:var(--muted);
+  overflow-wrap:anywhere}
+.fcred a{color:var(--tungsten)}
+.fcredform{display:grid;gap:8px;margin-top:10px}
+.fcredfield{display:grid;gap:4px}
+.fcredfield span{font-size:12px;color:var(--muted)}
+.fcredfield input{height:32px;box-sizing:border-box;border:1px solid var(--border-15);
+  border-radius:6px;background:var(--ground);color:var(--ink);padding:0 12px;font-size:14px;
   font-family:inherit;transition:border-color .12s ease}
-.followmanage .fcredfield input:focus-visible{outline:2px solid var(--tungsten);outline-offset:1px;
+.fcredfield input:focus-visible{outline:2px solid var(--tungsten);outline-offset:1px;
   border-color:var(--tungsten)}
-.followmanage .fcredactions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:2px}
-.followmanage .fcredactions button{height:32px;box-sizing:border-box;padding:0 14px;border-radius:6px;
+.fcredactions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:2px}
+.fcredactions button{height:32px;box-sizing:border-box;padding:0 14px;border-radius:6px;
   border:1px solid var(--tungsten);background:var(--tungsten);color:#fff;font-size:14px;
   font-family:inherit;cursor:pointer;transition:background-color .12s ease,scale .1s ease}
-.followmanage .fcredactions button:active:not(:disabled){scale:.96}
-.followmanage .fcredactions button:disabled{opacity:.6;cursor:default}
-.followmanage .fcredactions button.fquiet{background:transparent;border-color:var(--border-15);
+.fcredactions button:active:not(:disabled){scale:.96}
+.fcredactions button:disabled{opacity:.6;cursor:default}
+.fcredactions button.fquiet{background:transparent;border-color:var(--border-15);
   color:var(--muted)}
-.followmanage .fcredactions button.fquiet:hover{border-color:var(--drop);color:var(--drop)}
-.followmanage .fcredactions [data-cred-state]{font-size:12px;color:var(--muted)}
+.fcredactions button.fquiet:hover{border-color:var(--drop);color:var(--drop)}
+.fcredactions [data-cred-state]{font-size:12px;color:var(--muted)}
 
-@media (max-width:1080px){.followmanage{grid-template-columns:minmax(0,1fr);gap:34px}}
+@media (max-width:1080px){.followmanage{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:640px){
-  .followmanage .faddform{flex-wrap:wrap}
-  .followmanage .faddform .fbtn{flex:1 1 100%}
-  .followmanage .frow{gap:8px}
-  .followmanage .frow .fmeta:nth-of-type(2){display:none}
+  .fsec{padding:12px 13px 14px}
+  .faddform{flex-wrap:wrap}
+  .faddform .fbtn{flex:1 1 100%}
+  .frow{gap:8px}
+  .frow .fmeta:nth-of-type(2){display:none}
 }
 
 /* ── 查找结果的勾选清单 ── */
