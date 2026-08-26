@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "policy": "上游 Markdown 只作为待审证据；先比较锁定快照，再人工判断是否影响 Peach，禁止自动改代码。",
+  "sources": [
+    {
+      "id": "vercel-report-design",
+      "name": "Vercel Design Report Reference",
+      "url": "https://vercel.com/design.md",
+      "snapshot": "docs/reference-snapshots/vercel-report-design.md",
+      "checked_on": "2026-08-26",
+      "sha256": "2b40b23712e548721ecae7d0672ae9318a83188b9fcd2fb4a7a1b7c147a39903",
+      "role": "报告与证据型页面的版式、层级、语言和数据表达参考；Peach 仅复用可迁移原则。",
+      "consumers": [
+        "web/app.css",
+        "web/app.js",
+        "tests/test_follow_web.py"
+      ]
+    },
+    {
+      "id": "vercel-web-interface-guidelines",
+      "name": "Vercel Web Interface Guidelines",
+      "url": "https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md",
+      "snapshot": "docs/reference-snapshots/vercel-web-interface-guidelines.md",
+      "checked_on": "2026-08-26",
+      "sha256": "5a775e6411f790f518dbc9c1fa7c50a89e6873502d9a3530a6eb223a590bcfe8",
+      "git": {
+        "repository": "https://github.com/vercel-labs/web-interface-guidelines.git",
+        "ref": "refs/heads/main",
+        "revision": "e3d624baaf29dc1fc645aff3e38f03e564d2d6b1"
+      },
+      "role": "通用 Web 可访问性、交互、状态、性能和响应式评审清单。",
+      "consumers": [
+        "web/index.html",
+        "web/app.css",
+        "web/app.js",
+        "tests/test_web_ui.py"
+      ]
+    }
+  ]
+}

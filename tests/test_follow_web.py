@@ -465,7 +465,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn("grid-template-columns:minmax(0,1fr)", rule)
 
     def test_the_panel_has_no_cards_nested_inside_cards(self):
-        """Vercel Web Interface Guidelines 点名的反模式：卡片套卡片、用边框补救层级。
+        """vercel-report-design 点名的反模式：卡片套卡片、用边框补救层级。
 
         分组该靠标题和一条分隔线，不是给每一行都套个盒子。
         """
@@ -478,10 +478,10 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn("border-bottom:1px solid", rule)
         self.assertNotIn("border-radius", rule)
 
-    def test_the_panel_cites_the_latest_registered_vercel_evidence(self):
-        # 2026-08-26 已重新取证，不能再把实现注释退回成只引用 2026-08-15 首录。
-        self.assertPageContains("2026-08-26 重新取证")
-        self.assertPageContains("e3d624baaf29dc1fc645aff3e38f03e564d2d6b1")
+    def test_the_panel_cites_the_registered_report_design_source(self):
+        self.assertPageContains("docs/reference-sources.json")
+        self.assertPageContains("vercel-report-design")
+        self.assertNotIn("e3d624baaf29dc1fc645aff3e38f03e564d2d6b1", self.page)
 
     def test_the_type_scale_has_no_arbitrary_in_between_sizes(self):
         """同一份文档点名的另一条：细小灰字加随意字号。
