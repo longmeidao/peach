@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from peach.versioning import VersionManager
+from peach.versioning import VersionManager, discover_repository_root
 
 
 def git(path: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -25,6 +25,42 @@ def initialize_repo(path: Path) -> None:
 
 
 class VersionManagerTests(unittest.TestCase):
+    def test_repository_discovery_prefers_source_resource_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            initialize_repo(repo)
+            executable = root / "elsewhere" / "Peach.exe"
+
+            self.assertEqual(
+                discover_repository_root(repo, executable=executable),
+                repo.resolve(),
+            )
+
+    def test_repository_discovery_finds_repo_above_packaged_executable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            initialize_repo(repo)
+            bundle_root = root / "pyinstaller" / "_MEI12345"
+            executable = repo / "dist" / "Peach" / "Peach.exe"
+
+            self.assertEqual(
+                discover_repository_root(bundle_root, executable=executable),
+                repo.resolve(),
+            )
+
+    def test_repository_discovery_does_not_invent_remote_for_portable_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundle_root = root / "pyinstaller" / "_MEI12345"
+            executable = root / "portable" / "Peach.exe"
+
+            self.assertEqual(
+                discover_repository_root(bundle_root, executable=executable),
+                bundle_root.resolve(),
+            )
+
     def test_local_development_version_is_readable_without_remote(self):
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory) / "repo"

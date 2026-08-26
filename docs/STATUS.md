@@ -125,7 +125,7 @@
   479 项测试通过。服务启动/浏览/退出不再同步；marker.device 指定唯一写入端，另一台 POST
   返回409；托盘只在显式同步或接管时复制。
 - Windows 品牌资源已统一为附件生成的 `1024x1024` 正方形蜜桃图：`resources/peach-logo.png`、`resources/peach.ico`；Web favicon、托盘图标和 EXE 内嵌图标共用该资源。PyInstaller 打包产物为 `dist/Peach/Peach.exe`，桌面和 Startup 的 `Peach.lnk` 均按 FlowLens 的 `exe,0` 方式指向它；该 exe 只打包托盘自身，服务进程仍由项目 venv 承担，不是可移动的独立发行版。
-- 版本唯一来源为 `src/peach/__init__.py::__version__`；Windows 当前部署和本地代码为 `0.6.4`，Mac 最近一次已核验部署为 `0.6.2`。没有 Git remote 时只报告本地开发版，不伪造更新能力。
+- 版本唯一来源为 `src/peach/__init__.py::__version__`；Windows 当前部署和本地代码为 `0.6.4`，Mac 最近一次已核验部署为 `0.6.2`。打包托盘会从 `dist/Peach/Peach.exe` 向上定位实际 Git 仓库再检查更新，不再把 PyInstaller 临时资源目录误判为「未配置更新源」；复制到仓库外时仍只报告本地开发版，不伪造更新能力。
 - 本地 CA HTTPS 已部署。CA 包含 critical `CA:TRUE` 和签名用途并通过 OpenSSL 链验证。macOS/iOS 只安装 `peach-local-ca.crt`；不得传播任何私钥。
 - 2026-08-24 安全与架构加固：TLS 目录 ACL 已备份，CA key/server key 禁用继承，只保留 `longm`、SYSTEM、Administrators；托盘仍由 `longm` 运行，80/443 与严格 CA HTTPS 复验通过。配置口令后使用 `/login` POST 设置 HttpOnly cookie，旧 `?t=` 只做一次兼容重定向。异常 500 不再把类型/消息外发；HLS 计划与长转码使用有界执行器，session 取消会终止 FFmpeg。
 - Web 数据边界已开始分域：`LedgerDatabase` 由 `WebContract` 与 `LedgerRepository` 共用，事务统一回滚/关闭；活动写入与纯逻辑已拆到 `web_activity.py`、`web_logic.py`，JSON contract 使用显式 handler 注册表。回收站永久删除先同目录隔离媒体，SQLite commit 失败会恢复原名。

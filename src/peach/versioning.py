@@ -2,12 +2,31 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
 from . import __version__
 from .config import PROJECT_ROOT
+
+
+def discover_repository_root(
+    resource_root: Path = PROJECT_ROOT,
+    *,
+    executable: Path | None = None,
+) -> Path:
+    """Find the source repository used by the tray without inventing one."""
+
+    resource_root = resource_root.resolve()
+    if (resource_root / ".git").exists():
+        return resource_root
+
+    executable = (executable or Path(sys.executable)).resolve()
+    for parent in executable.parents:
+        if (parent / ".git").exists():
+            return parent
+    return resource_root
 
 
 @dataclass(frozen=True)
@@ -47,11 +66,11 @@ class VersionManager:
 
     def __init__(
         self,
-        root: Path = PROJECT_ROOT,
+        root: Path | None = None,
         *,
         execute: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
     ) -> None:
-        self.root = root.resolve()
+        self.root = (root if root is not None else discover_repository_root()).resolve()
         self._execute = execute
 
     def _git(self, *args: str, timeout: float = 8.0) -> subprocess.CompletedProcess[str]:
