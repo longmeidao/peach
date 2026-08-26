@@ -3,12 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#020408" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="/peach-logo.png" type="image/png">
 <link rel="stylesheet" href="/vendor/videojs/8.23.9/video-js.min.css">
 <title>Peach · 蜜桃</title>
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
+<a class="skiplink" href="#main">跳到正文</a>
 <!-- Lucide static 1.31.0, ISC. Local pinned subset; no CDN/runtime dependency.
      Climax uses Health Icons sperm outline-24px, CC0/public domain. -->
 <svg aria-hidden="true" width="0" height="0" style="position:absolute;overflow:hidden">
@@ -54,19 +57,19 @@
 </svg>
 
 <header class="top">
-  <button class="ib" id="filterBtn" title="筛选"><svg viewBox="0 0 24 24"><use href="#i-sliders-horizontal"/></svg></button>
+  <button class="ib" id="filterBtn" title="筛选" aria-label="筛选"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-sliders-horizontal"/></svg></button>
   <a class="brand" href="#" id="brandHome"><img class="mark" src="/peach-logo.png" alt=""><h1 class="disp">Peach</h1><span class="sub mono">蜜桃</span></a>
-  <button class="ib searchback" id="searchBack" title="退出搜索" aria-label="退出搜索"><svg viewBox="0 0 24 24"><use href="#i-chevron-left"/></svg></button>
+  <button class="ib searchback" id="searchBack" title="退出搜索" aria-label="退出搜索"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-left"/></svg></button>
   <div class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-search"/></svg>
-    <input id="q" type="search" placeholder="FC2" autocomplete="off">
+    <input id="q" name="q" type="search" placeholder="FC2" autocomplete="off" aria-label="搜索作品、女优、厂牌或标签">
     <div class="searchmenu" id="searchMenu" hidden></div></div>
-  <button class="ib" id="immerseBtn" title="沉浸模式 · 随机连播"><svg viewBox="0 0 24 24"><use href="#i-play"/></svg></button>
+  <button class="ib" id="immerseBtn" title="沉浸模式 · 随机连播" aria-label="进入沉浸模式"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-play"/></svg></button>
 
-  <button class="ib" id="searchBtn" title="搜索"><svg viewBox="0 0 24 24"><use href="#i-search"/></svg></button>
-  <button class="ib" id="selectMode" title="多选（Ctrl 单项，Shift 连续）" aria-label="多选模式" aria-pressed="false"><svg viewBox="0 0 24 24"><use href="#i-square-check-big"/></svg></button>
-  <button class="ib" id="density" title="密度：大图 / 密集"><svg viewBox="0 0 24 24"><use href="#i-layout-grid"/></svg></button>
-  <button class="ib" id="refresh" title="换一批推荐"><svg viewBox="0 0 24 24"><use href="#i-refresh-cw"/></svg></button>
-  <button class="ib" id="settingsBtn" title="设置"><svg viewBox="0 0 24 24"><use href="#i-settings"/></svg></button>
+  <button class="ib" id="searchBtn" title="搜索" aria-label="搜索"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-search"/></svg></button>
+  <button class="ib" id="selectMode" title="多选（Ctrl 单项，Shift 连续）" aria-label="多选模式" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-square-check-big"/></svg></button>
+  <button class="ib" id="density" title="密度：大图 / 密集" aria-label="切换卡片密度"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-layout-grid"/></svg></button>
+  <button class="ib" id="refresh" title="换一批推荐" aria-label="换一批推荐"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-refresh-cw"/></svg></button>
+  <button class="ib" id="settingsBtn" title="设置" aria-label="打开设置"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-settings"/></svg></button>
 
 </header>
 
@@ -75,14 +78,14 @@
 <div class="javbar" id="javbar" hidden></div>
 <nav class="edge" id="edge"></nav>
 
-<main>
+<main id="main" tabindex="-1">
   <section class="stage" id="stage" hidden></section>
   <div class="combo" id="combo"></div>
   <section class="index" id="index" hidden></section>
   <nav class="managebar" id="managebar" hidden></nav>
   <h2 class="disp managetitle" id="manageTitle" hidden></h2>
   <section class="stats" id="stats" hidden></section>
-  <div class="count mono" id="count">载入中…</div>
+  <div class="count mono" id="count" role="status" aria-live="polite" aria-atomic="true">载入中…</div>
   <div class="grid" id="grid"></div>
   <section class="shorts" id="shortsSec" hidden>
     <h2 class="disp">竖屏 <span class="mono" style="color:var(--muted);font-size:11px" id="shortsN"></span>

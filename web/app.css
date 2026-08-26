@@ -30,6 +30,9 @@
   --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --ambient-opacity:1;}
 
 *,*::before,*::after{box-sizing:border-box}
+html{color-scheme:light;scroll-padding-top:calc(var(--topH) + 8px)}
+@media (prefers-color-scheme:dark){html:not([data-theme="light"]){color-scheme:dark}}
+html[data-theme="dark"]{color-scheme:dark}
 html,body{margin:0;padding:0}
 body{background:var(--ground);color:var(--ink);
   font-family:Roboto,"Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI","PingFang SC",sans-serif;
@@ -50,8 +53,13 @@ body::before{content:"";position:absolute;z-index:0;pointer-events:none;top:var(
 .mono{font-family:"Cascadia Mono",Consolas,ui-monospace,monospace;
   font-variant-numeric:tabular-nums;font-size:12px}
 button,input,textarea{font:inherit;color:inherit}
+button,a,input,textarea,select,summary{touch-action:manipulation}
 :focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.skiplink{position:fixed;z-index:1000;left:12px;top:8px;transform:translateY(-150%);
+  padding:9px 13px;border-radius:8px;background:var(--ink);color:var(--ground);text-decoration:none;
+  transition:transform .12s ease}
+.skiplink:focus-visible{transform:translateY(0)}
 /* 滚动条：全站统一，不用浏览器默认。细、无箭头、无轨道底色，悬停才提亮。 */
 *{scrollbar-width:thin;scrollbar-color:var(--sb) transparent}
 ::-webkit-scrollbar{width:8px;height:8px}
@@ -84,7 +92,7 @@ button,input,textarea{font:inherit;color:inherit}
 .brand .sub{font-size:11.5px;line-height:1;letter-spacing:.14em;color:var(--muted);padding-top:2px}
 .search{flex:1;max-width:620px;margin:0 auto;display:flex;align-items:center;gap:8px;
   background:var(--surface);border:1px solid var(--line);border-radius:9999px;padding:8px 16px;position:relative}
-.search:focus-within{border-color:var(--tungsten)}
+.search:focus-within{border-color:var(--tungsten);box-shadow:0 0 0 2px var(--tungsten-soft)}
 .search input{flex:1;min-width:0;background:none;border:0;outline:none;font-size:15px}
 .search>svg{width:21px;height:21px;flex:none;stroke:var(--muted);fill:none;stroke-width:1.8;stroke-linecap:round}
 .searchmenu{position:absolute;z-index:130;left:0;right:0;top:calc(100% + 8px);padding:8px;
@@ -424,6 +432,8 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
 .duprow{display:grid;grid-template-columns:96px minmax(0,1fr) 44px 84px 84px;gap:10px;
   align-items:center;padding:7px 12px;border-top:1px solid var(--overlay-5)}
 .duprow .mono{color:var(--muted);font-size:12px}
+.duppath{grid-column:2/-1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  padding-top:2px;color:var(--muted)}
 .dupname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;
   border:0;background:transparent;color:inherit;cursor:pointer;padding:0}
 .dupname:hover{color:var(--tungsten)}
@@ -1059,6 +1069,7 @@ body.drawer-open .edge button{color:var(--ink-2)}
   .scard2{padding:16px}.kv .u{display:block;margin-left:0;margin-top:2px}
   .ctags .tg:nth-child(n+3){display:none}
 }
+@media (max-width:760px){input,textarea,select{font-size:16px!important}}
 #searchBtn{display:none}
 .searchback{display:none}
 .reviewimage{width:160px;height:112px;border-radius:8px;overflow:hidden;background:#000;margin:8px 0}.reviewimage img{width:100%;height:100%;object-fit:contain;display:block}

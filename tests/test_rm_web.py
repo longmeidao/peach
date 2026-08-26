@@ -1780,6 +1780,13 @@ class DuplicateDetectionTests(unittest.TestCase):
         self.assertTrue(group["cross_drive"])
         self.assertEqual(group["drives"], ["A:", "B:"])
 
+    def test_duplicate_rows_keep_the_full_path_for_review(self):
+        self.add("SSIS-057", 7200, 5_000_000_000, drive="A")
+        self.add("SSIS-057", 7200, 4_000_000_000, drive="B")
+        files = {row["drive"]: row for row in self.groups()["groups"][0]["files"]}
+        self.assertEqual(files["A:"]["path"], r"A:\1.mp4")
+        self.assertEqual(files["B:"]["path"], r"B:\2.mp4")
+
     def test_reclaimable_keeps_the_largest_of_each_cluster(self):
         self.add("WAAA-415", 7200, 5_000_000_000)
         self.add("WAAA-415", 7200, 3_000_000_000)

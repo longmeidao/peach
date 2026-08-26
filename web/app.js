@@ -10,7 +10,19 @@ const api=async(p,o)=>{
   }
   return payload;
 };
-const route=(path,replace=false)=>history[replace?'replaceState':'pushState']({},'',path);
+const pageTitle=path=>{
+  const url=new URL(path,location.origin),parts=decodeURIComponent(url.pathname).split('/').filter(Boolean);
+  const fixed={stats:'统计',review:'人工复核',duplicates:'重复文件','quality-goals':'高清版',
+    follow:'关注','follow-manage':'关注管理',playlists:'播放列表',performers:'女优',studios:'厂牌',
+    creators:'创作者',series:'系列',tags:'标签',immerse:'沉浸模式',mix:'Mix',item:'作品'};
+  const label=parts.length>1&&['performers','studios','creators','series'].includes(parts[0])
+    ? parts.slice(1).join('/') : fixed[parts[0]];
+  return label?`${label} · Peach`:'Peach · 蜜桃';
+};
+const syncPageTitle=path=>{document.title=pageTitle(path)};
+const route=(path,replace=false)=>{
+  history[replace?'replaceState':'pushState']({},'',path);syncPageTitle(path);
+};
 const ENTITY_ROUTES={performer:'performers',studio:'studios',creator:'creators',series:'series'};
 const ROUTE_ENTITIES={performers:'performer',studios:'studio',creators:'creator',series:'series'};
 const entityPath=(kind,name)=>`/${ENTITY_ROUTES[kind]||kind}/${encodeURIComponent(name)}`;
@@ -75,9 +87,27 @@ function syncSettingsPanel(){
   $('#searchHistoryLimitSetting').value=String(appSettings.searchHistoryLimit);
   $('#relatedLimitSetting').value=String(appSettings.relatedLimit);
 }
-function openSettings(open=true){$('#settingsPanel').hidden=!open;if(open)syncSettingsPanel()}
+let settingsReturnFocus=null;
+function openSettings(open=true){
+  const panel=$('#settingsPanel');
+  if(open){
+    settingsReturnFocus=document.activeElement;panel.hidden=false;syncSettingsPanel();
+    queueMicrotask(()=>$('#settingsClose').focus());return
+  }
+  panel.hidden=true;
+  if(settingsReturnFocus&&document.contains(settingsReturnFocus))settingsReturnFocus.focus();
+  settingsReturnFocus=null;
+}
 $('#settingsBtn').onclick=()=>openSettings(true);$('#settingsClose').onclick=()=>openSettings(false);
 $('#settingsPanel').onclick=e=>{if(e.target===$('#settingsPanel'))openSettings(false)};
+$('#settingsPanel').onkeydown=e=>{
+  if(e.key!=='Tab')return;
+  const focusable=[...e.currentTarget.querySelectorAll('button:not([disabled]),select:not([disabled]),input:not([disabled]),textarea:not([disabled]),a[href]')];
+  if(!focusable.length)return;
+  const first=focusable[0],last=focusable.at(-1);
+  if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}
+  else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
+};
 $('#rotateSetting').onchange=e=>{appSettings.rotateMinutes=+e.target.value;saveSettings()};
 $('#batchSizeSetting').onchange=e=>{appSettings.batchSize=+e.target.value||60;saveSettings();if(location.pathname==='/')load(true)};
 $('#defaultSortSetting').onchange=e=>{appSettings.defaultSort=e.target.value;saveSettings();state.sort=appSettings.defaultSort;if(location.pathname==='/')load(true)};
@@ -711,19 +741,7 @@ async function buildBars(){
   const dc=$('#drawerClose'); if(dc)dc.onclick=()=>openDrawer(false);
   $('#drawer').querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{
     openIndex(b.dataset.page); closeDrawerAfterNav()});
-  $('#drawer').querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>{
-    const k=b.dataset.nav;
-    closeDrawerAfterNav();
-    if(k==='immerse'){openTok();return}
-    if(k==='manage'){openManage();return}
-    if(k==='jav'){toggleJavMode();return}
-    if(k==='performers'||k==='tags'){openIndex(k);return}
-    if(k==='shorts'){state.orient='竖屏';state.state=''}
-    else{state.orient='';state.state=k}
-    // 从管理区/索引页点回列表类入口时，路径还停在原处，高亮不会切换。
-    if(location.pathname!=='/')route('/');
-    showHomeSurfaces();
-    buildEdge();buildBars();load(true)});
+  $('#drawer').querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navTo(b.dataset.nav));
   const bind=()=>$('#drawer').querySelectorAll('.chip').forEach(b=>b.onclick=()=>{
     const k=b.dataset.key,v=b.dataset.val;
     commitContextFilter(filters=>{
@@ -1007,7 +1025,8 @@ function renderDuplicates(){
         <button class="dupname" data-open-dup="${f.id}" title="${esc(f.name)}">${esc(f.name)}</button>
         <span class="mono">${esc(LOC[f.location]||f.location||f.drive||'')}</span>
         <span class="mono">${fmtSize(f.size||0)}</span>
-        <span class="mono">${fmtDur(f.duration)}</span></div>`).join('')}</div>
+        <span class="mono">${fmtDur(f.duration)}</span>
+        <span class="mono duppath" title="${esc(f.path||'')}">${esc(f.path||'')}</span></div>`).join('')}</div>
     </section>`).join(''):'<p class="empty">没有找到重复文件</p>'}</div>`;
   $('#stats').querySelectorAll('[data-open-dup]').forEach(b=>
     b.onclick=()=>openItem(+b.dataset.openDup));
@@ -2115,15 +2134,18 @@ const EDGE_ICONS=[
   ['manage','管理','settings'],
 ];
 /* 统计、疑似广告、回收站、人工复核都是「管理」下的二级入口，不再各占一个顶层图标。
-   URL 保持原样（/stats、/trash、/review、?state=ads），只是多了一层共同的导航条。 */
+   URL 保持原样（/stats、/trash、/review、?state=ads），只是多了一层共同的导航条。
+   顺序按做事顺序分成两段：先是库里已有的东西——看现状、复核新进来的候选、
+   清广告与重复、落到回收站；再是要往外拿的——关注和高清版都是「还想要什么」，
+   原先把它夹在高清版和回收站中间，两边都不挨着。 */
 const MANAGE_SECTIONS=[
   ['stats','统计','chart'],
+  ['review','人工复核','square-check-big'],
   ['ads','疑似广告','alert'],
   ['dupes','重复文件','hard-drive'],
-  ['quality','高清版','sparkles'],
-  ['follow','关注','globe'],
   ['trash','回收站','trash'],
-  ['review','人工复核','square-check-big'],
+  ['follow','关注','globe'],
+  ['quality','高清版','sparkles'],
 ];
 function manageSection(){
   const path=decodeURIComponent(location.pathname);
@@ -2230,6 +2252,22 @@ function navOn(k){
   if(k==='')return path==='/'&&!manageSection()&&!state.state&&!javActive()&&state.orient!=='竖屏';
   return path==='/'&&state.state===k&&state.orient!=='竖屏';
 }
+/* 窄栏与抽屉共用同一套跳转。两边曾各写一份分支，抽屉那份漏了追更和播放列表，
+   点下去只把 state.state 设成一个后端不认识的值，看上去就是“点了没反应”。 */
+function navTo(k){
+  closeDrawerAfterNav();                 // 点了就收起抽屉，且短暂禁止悬停把它立刻弹回
+  if(k==='immerse'){openTok();return}
+  if(k==='playlists'){openPlaylists();return}
+  if(k==='follow'){openFollow();return}
+  if(k==='manage'){openManage();return}
+  if(k==='jav'){toggleJavMode();return}
+  if(k==='performers'||k==='tags'){openIndex(k);return}
+  if(k==='shorts'){state.orient='竖屏';state.state=''}else{state.orient='';state.state=k}
+  // 从管理区/索引页点回列表类入口时，路径还停在原处，高亮不会切换。
+  if(location.pathname!=='/')route('/');
+  showHomeSurfaces();
+  buildEdge();buildBars();load(true);
+}
 function buildEdge(){
   $('#edge').innerHTML=EDGE_ICONS.map(([k,t,ic])=>
     `<button data-nav="${k}" title="${t}" aria-pressed="${navOn(k)}">
@@ -2243,19 +2281,7 @@ function buildEdge(){
     buildEdge(); buildBars(); load(true);
   });
   $('#edge').querySelectorAll('[data-nav]').forEach(b=>b.onclick=e=>{
-    e.stopPropagation();
-    const k=b.dataset.nav;
-    closeDrawerAfterNav();                 // 点了就收起抽屉，且短暂禁止悬停把它立刻弹回
-    if(k==='immerse'){openTok();return}
-    if(k==='playlists'){openPlaylists();return}
-    if(k==='follow'){openFollow();return}
-    if(k==='manage'){openManage();return}
-    if(k==='jav'){toggleJavMode();return}
-    if(k==='performers'||k==='tags'){openIndex(k);return}
-    if(k==='shorts'){state.orient='竖屏';state.state=''}else{state.orient='';state.state=k}
-    if(location.pathname!=='/')route('/');
-    showHomeSurfaces();
-    buildEdge();buildBars();load(true)});
+    e.stopPropagation();navTo(b.dataset.nav)});
 }
 let edgeT=null;
 $('#edge').addEventListener('mouseenter',()=>{if(Date.now()<drawerSuppressUntil)return;
@@ -3106,6 +3132,7 @@ function wireAllDrag(){['#tagbar','#srow','#nrow'].forEach(s=>wireDrag($(s)));
   document.querySelectorAll('.tier').forEach(wireDrag)}
 
 async function restoreRoute(){
+  syncPageTitle(location.href);
   const path=decodeURIComponent(location.pathname),parts=path.split('/').filter(Boolean);
   if(path==='/trash'){
     state={...state,creator:'',studio:'',tag:'',orient:'',state:'trash',q:''};$('#q').value='';
