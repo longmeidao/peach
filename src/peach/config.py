@@ -43,6 +43,7 @@ LOG_DIR = DATA_ROOT / "logs"
 ARCHIVE_DIR = DATA_ROOT / "archive"
 INBOX_DIR = DATA_ROOT / "inbox"
 TOOLS_DIR = DATA_ROOT / "tools"
+REVIEW_DIR = DATA_ROOT / "review"
 FFMPEG_DIR = TOOLS_DIR / "ffmpeg"
 TRANSCODE_DIR = GENERATED_DIR / "transcodes"
 COVER_DIR = GENERATED_DIR / "covers"
@@ -78,6 +79,19 @@ class PeachSettings:
     mdns_port: int = 80
     mdns_address: str | None = None
     tls_enabled: bool = False
+    # reader 只从 writer 的严格 CA HTTPS 镜像复核 JSON；不复制候选 CSV，更不放宽写入闸门。
+    # Windows 日常入口固定发布 192.168.50.162；地址变化时可显式覆盖。
+    review_writer_origin: str = os.environ.get(
+        "PEACH_REVIEW_WRITER_ORIGIN",
+        "https://192.168.50.162" if os.name != "nt" else "",
+    )
+    review_writer_ca: Path = SECRETS_DIR / "tls" / "peach-local-ca.crt"
+    review_mirror_cache: Path = REVIEW_DIR / "writer-review.json"
+    # macOS LaunchAgent 的 Python 可能没有 Local Network 权限；只经本机 Stash 代理兜底。
+    review_writer_proxy: str = os.environ.get(
+        "PEACH_REVIEW_WRITER_PROXY",
+        "http://127.0.0.1:7890" if sys.platform == "darwin" else "",
+    )
     # 本机挂载不到的来源不进授权列表，对应资产按「脱盘」处理而不是报错。
     allowed_media_roots: tuple[Path, ...] = translate_roots(MEDIA_ROOT_DECLARATIONS)
     snapshot_root: Path = GENERATED_DIR / "snapshots"

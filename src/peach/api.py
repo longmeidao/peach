@@ -37,6 +37,7 @@ from .platform import (
 from .previews import PhotoThumbnailService, PreviewService, PreviewUnavailable
 from .providers import OpenCodeGoClient, ProviderUnavailable, default_registry
 from .repository import LedgerDatabase, LedgerRepository
+from .review_mirror import ReviewMirror
 from .segments import (
     HlsSegmentService,
     SegmentCancelled,
@@ -105,6 +106,7 @@ def _offline_response(exc: MediaOffline) -> JSONResponse:
 def create_app(
     settings: PeachSettings | None = None,
     sync: LedgerSync | None = None,
+    review_mirror: ReviewMirror | None = None,
 ) -> FastAPI:
     """`sync` 由 CLI 注入。测试直接建 app 时不传，复制与只读闸门整体不参与。"""
     settings = settings or PeachSettings()
@@ -146,6 +148,13 @@ def create_app(
     ) if settings.mdns_enabled else None
     providers = default_registry()
     opencode_go = OpenCodeGoClient(transport=http_transport)
+    review_mirror = review_mirror or ReviewMirror(
+        settings.review_writer_origin,
+        settings.review_writer_ca,
+        settings.review_mirror_cache,
+        token=settings.token,
+        proxy=settings.review_writer_proxy,
+    )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -188,6 +197,7 @@ def create_app(
     app.state.mdns = mdns
     app.state.providers = providers
     app.state.opencode_go = opencode_go
+    app.state.review_mirror = review_mirror
     app.state.http_transport = http_transport
     stream_sessions = StreamSessionRegistry()
     app.state.stream_sessions = stream_sessions
@@ -230,6 +240,7 @@ def create_app(
     def healthz() -> dict[str, Any]:
         # 不探测共享目录或迁移数据库；健康检查必须无副作用。
         ffmpeg = resolver.ffmpeg()
+        read_only = bool(sync is not None and sync.read_only)
         return {"ok": True, "service": "peach-api", "version": __version__, "mode": "fastapi",
                 "db": "available" if settings.db_path.is_file() else "missing",
                 "ffmpeg": ffmpeg.source if ffmpeg else "unavailable",
@@ -239,6 +250,9 @@ def create_app(
                 "mdns_service_host": mdns.hostname if mdns is not None else None,
                 "mdns_address": mdns.address if mdns is not None else None,
                 "ledger_sync": sync.status if sync is not None else "disabled",
+                "ledger_read_only": read_only,
+                "ledger_read_only_message": sync.read_only_message if read_only else None,
+                "ledger_writer_origin": settings.review_writer_origin if read_only else None,
                 "scheme": "https" if settings.tls_enabled else "http"}
 
     def login_html(next_path: str, *, invalid: bool = False) -> str:
@@ -757,7 +771,10 @@ def create_app(
     @app.get("/api/{route:path}")
     def api_get(route: str, args: dict[str, str] = Depends(require_auth)):
         try:
-            return web_contract.dispatch_api_get(contract, f"/api/{route}", args)
+            payload = web_contract.dispatch_api_get(contract, f"/api/{route}", args)
+            if route == "review" and sync is not None and sync.read_only:
+                payload = review_mirror.resolve(payload)
+            return payload
         except KeyError:
             return JSONResponse({"error": "not found"}, status_code=404)
         except (TypeError, ValueError) as exc:

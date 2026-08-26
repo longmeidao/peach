@@ -1,6 +1,6 @@
 # ADR-0017：双机本机运行与分通道同步
 
-- 状态：已接受并实施（显式 writer/reader 与 artifact 拆分待续）
+- 状态：已接受并实施（显式 writer/reader、图片 artifact 与复核只读镜像已落地；其余 artifact 拆分待续）
 - 日期：2026-08-21
 
 ## 背景
@@ -45,6 +45,14 @@ Peach 的目标是 Windows 与 macOS 各自拥有内置盘上的代码、运行�
 - 需要跨机器保存的图片资产、原始证据和复核产物从 `generated/`、`sources/`、`review/` 中拆成
   独立、稳定命名的 artifact 集；拆分后可用 Syncthing 一类文件同步工具复制。活账本、`-wal`、
   `-shm`、同步标记、凭据、日志、锁、临时文件、转码与流分片必须排除。
+- 复核候选在完成 artifact 拆分前仍由 writer 本机生成和解释。reader 不复制原始 CSV，而是通过
+  本地 CA 严格校验的 HTTPS 读取 writer 的归一化 `GET /api/review` 契约，并只保留一个原子替换的
+  最近成功 JSON 缓存。macOS 会把文件 CA 与系统/登录钥匙串中受信任的同名 Peach CA 合并为
+  校验集合，以兼容两台机器各自签发 CA 的现状；只读取公钥证书，不导出私钥。读取前必须确认
+  目标实例仍是 writer。launchd 的 Python 主体若被 macOS 本地网络权限拦截，则由系统
+  `/usr/bin/curl` 经回环 Stash 代理发起同一严格请求：协议限 HTTPS、响应限 8 MiB，令牌经
+  stdin 传入，非回环代理拒绝。
+  reader 页面不提供任何复核决定写入。
 
 ### 两个局域网入口
 
@@ -75,4 +83,6 @@ Peach 的目标是 Windows 与 macOS 各自拥有内置盘上的代码、运行�
 1. 已完成：Windows 内置盘 checkout、`.venv`、`peach-data`、worktree、账本播种、
    内置盘 SMB 同步点、默认路径和指向内置盘的 Startup 托盘入口。
 2. 已完成：Windows 固定发布 `peach-win.local`；外置盘只保留 `R:\media` 媒体职责。
-3. 待续：durable artifact 拆分，以及拔盘后的双机完整验收。
+3. 已完成：五类图片 artifact 单向同步；Mac reader 可实时或从最近缓存浏览 writer 复核队列，
+   不复制候选 CSV，也没有第二条写入路径。
+4. 待续：其余 durable artifact 拆分，以及拔盘后的双机完整验收。
