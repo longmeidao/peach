@@ -5,10 +5,9 @@ import tempfile
 import unittest
 import zipfile
 from contextlib import closing
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote
-from zoneinfo import ZoneInfo
 
 from peach.taste_history import (
     HistorySource,
@@ -75,7 +74,7 @@ class TasteHistoryTests(unittest.TestCase):
         ]
         cards: list[str] = []
         for url, timestamp, title in activity_rows:
-            local = datetime.fromtimestamp(timestamp, UTC).astimezone(ZoneInfo("Asia/Hong_Kong"))
+            local = datetime.fromtimestamp(timestamp, UTC).astimezone(timezone(timedelta(hours=8)))
             hour = (local.hour - 1) % 12 + 1
             date = f"{local:%b} {local.day}, {local.year}, {hour}:{local:%M:%S} {local:%p} HKT"
             wrapped = f"https://www.google.com/url?q={quote(url, safe='')}"

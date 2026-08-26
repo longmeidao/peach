@@ -86,7 +86,10 @@
   分别为 67,104 / 35,166 / 44,367 / 2,225 / 14 条，首次新增 66,676 / 13 / 44,222 / 2,225 / 0，
   无无法解析或跳过记录。与本机浏览器跨来源按同 URL、同秒的最大出现次数去重后，总库为
   284,954 条，时间范围扩到 2023-06-14 至 2026-08-26；第二次 `--takeout-only` 导入五类新增均为
-  0。`--takeout-only` 用于浏览器仍在运行时隔离恢复旧导出，避免活库 backup 阻塞 Takeout 导入。
+  0。Windows 拉取后首次回归发现其标准库没有 IANA `tzdata`，`ZoneInfo("Asia/Hong_Kong")`
+  会让 Takeout 测试直接失败；HKT 在该导出中是固定 UTC+8，现改用标准库固定偏移，不再新增运行时
+  依赖，Windows 全套 910 项通过。`--takeout-only` 用于浏览器仍在运行时隔离恢复旧导出，避免活库
+  backup 阻塞 Takeout 导入。
 - 追更的「查找」在只读端一度返回 409：`/api/follow/resolve` 只联网发现、不碰账本，
   却因为是 POST 被写入端闸门一并拦掉。已按 `READ_ONLY_POST_ROUTES` 白名单放行；
   真正会写的 `check`/`save`/`status`/`source` 仍受闸门管辖。

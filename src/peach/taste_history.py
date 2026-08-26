@@ -11,11 +11,10 @@ import zipfile
 from collections import Counter, defaultdict
 from contextlib import closing
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
-from zoneinfo import ZoneInfo
 
 
 @dataclass(frozen=True)
@@ -75,6 +74,7 @@ TAKEOUT_ACTIVITY_ACTIONS = {"Visited", "Searched for", "Viewed", "Watched"}
 TAKEOUT_DATE_RE = re.compile(
     r"^(?P<date>[A-Z][a-z]{2} \d{1,2}, \d{4}, \d{1,2}:\d{2}:\d{2}\s+[AP]M) (?P<zone>HKT|UTC|GMT)$"
 )
+HONG_KONG_TIMEZONE = timezone(timedelta(hours=8), name="HKT")
 
 
 def discover_history_sources(
@@ -255,8 +255,8 @@ def _parse_takeout_date(value: str) -> datetime:
     if not match:
         raise ValueError("Google My Activity 时间格式无法识别")
     naive = datetime.strptime(match.group("date"), "%b %d, %Y, %I:%M:%S %p")
-    timezone = ZoneInfo("Asia/Hong_Kong") if match.group("zone") == "HKT" else UTC
-    return naive.replace(tzinfo=timezone).astimezone(UTC)
+    source_timezone = HONG_KONG_TIMEZONE if match.group("zone") == "HKT" else UTC
+    return naive.replace(tzinfo=source_timezone).astimezone(UTC)
 
 
 class _TakeoutActivityParser(HTMLParser):
