@@ -386,6 +386,11 @@ class WebDataTests(unittest.TestCase):
         with self.assertRaises(rm_web.ContractRouteNotFound):
             rm_web.dispatch_api_get(self.contract, "/api/typo", {})
 
+    def test_read_only_post_routes_are_declared_and_all_exist(self):
+        # 只读 POST 要绕开写入端闸门；名字写错就会静默失去豁免。
+        self.assertTrue(rm_web.READ_ONLY_POST_ROUTES)
+        self.assertTrue(rm_web.READ_ONLY_POST_ROUTES <= set(rm_web.POST_HANDLERS))
+
     def test_write_transaction_rolls_back_and_closes_on_failure(self):
         opened = []
         real_connect = self.contract.database.connect

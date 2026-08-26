@@ -772,8 +772,11 @@ def create_app(
         body: dict[str, Any] = Body(default_factory=dict),
         _args: dict[str, str] = Depends(require_auth),
     ):
-        if sync is not None and sync.read_only:
+        route_path = f"/api/{route}"
+        if (sync is not None and sync.read_only
+                and route_path not in web_contract.READ_ONLY_POST_ROUTES):
             # 非写入端或冲突状态都只读；继续写只会产生无法自动合并的分叉。
+            # 但只读的 POST 要放行：它们用 POST 只是因为要带请求体，并不碰账本。
             # `detail` 是诊断信息，`message` 是给用户的可读解释与恢复方式。
             return JSONResponse(
                 {
@@ -784,7 +787,7 @@ def create_app(
                 status_code=409,
             )
         try:
-            return web_contract.dispatch_api_post(contract, f"/api/{route}", body)
+            return web_contract.dispatch_api_post(contract, route_path, body)
         except KeyError:
             return JSONResponse({"error": "not found"}, status_code=404)
         except (TypeError, ValueError) as exc:
