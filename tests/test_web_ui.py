@@ -1,3 +1,4 @@
+import re
 import unittest
 from pathlib import Path
 
@@ -23,6 +24,49 @@ class WebUiSourceTests(unittest.TestCase):
     def assertPageLacks(self, needle: str, message: str = ""):
         if needle in self.page:
             self.fail(f"index.html 不应再出现：{needle!r}" + (f"（{message}）" if message else ""))
+
+    def test_every_font_size_comes_from_the_one_type_scale(self):
+        """全站只有一套字号刻度，任何写死的像素都要有理由。
+
+        收敛之前 `app.css` 里散着 21 种字号（9…48px），相邻两档常常只差半个像素——
+        既排不出层级，也没法复核「这里为什么是 12.5」。现在一律走 `--fs-*`。
+
+        唯一的例外是移动端输入框那条 `16px!important`：那是 iOS 的自动放大阈值，
+        不是刻度里的一档。让它跟着 `--fs-lg` 走的话，将来把 lg 调成 17 或 15
+        都会悄悄破坏那个保护，而症状（在 iPhone 上聚焦输入框页面猛地放大）
+        跟字号改动看不出任何关系。
+        """
+        css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
+            encoding="utf-8")
+        literals = re.findall(r"font(?:-size)?:(?:\d+ )?([\d.]+)px", css)
+        self.assertEqual(literals, ["16"],
+                         f"除 iOS 防放大的 16px 外不该有写死字号，实际 {literals}")
+        declared = re.findall(r"--fs-([a-z0-9]+):(\d+)px", css)
+        self.assertEqual(declared,
+                         [("xs", "12"), ("sm", "13"), ("md", "14"), ("lg", "16"),
+                          ("xl", "20"), ("2xl", "24"), ("3xl", "32"), ("4xl", "48")])
+        # 下限是 12px：更小的灰字在 vercel-report-design 里被点名为要拒绝的反射。
+        self.assertNotIn("--fs-", css.split("--fs-xs")[0][-40:],
+                         "刻度必须从 --fs-xs 开始，别在前面塞更小的档")
+
+    def test_pill_shapes_are_reserved_for_things_that_are_actually_tags(self):
+        """整圆胶囊有一个来源，普通元信息不许长成标签。
+
+        `vercel-report-design` 点名要拒绝的反射之一是「把普通元信息做成胶囊徽章」：
+        WIP、变体类型、最大/最长这些是状态标记，做成整圆就跟真标签抢同一种视觉身份，
+        用户会以为可以点。它们改用 `--badge-radius`；按钮和分段器用 `--control-radius`
+        （实测 Geist 的 6px）；只有真正的标签、筛选令牌和连续的条保留 `--pill-radius`。
+        """
+        css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
+            encoding="utf-8")
+        self.assertEqual(re.findall(r"border-radius:9{2,}px", css), [],
+                         "整圆一律走 --pill-radius，别再写字面值")
+        for selector in (".fbadge{", ".fvkind{", ".dupmarks i{"):
+            rule = css[css.index(selector):css.index("}", css.index(selector))]
+            self.assertIn("var(--badge-radius)", rule, f"{selector} 是状态标记，不是标签")
+        for selector in (".dupactions button,.dupbtns button{", ".indexmore,.entitymore{"):
+            rule = css[css.index(selector):css.index("}", css.index(selector))]
+            self.assertIn("var(--control-radius)", rule, f"{selector} 是按钮")
 
     def test_studio_metadata_is_not_compiled_as_inline_javascript(self):
         self.assertPageLacks('onerror="this.parentNode.innerHTML=')
@@ -428,7 +472,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("await tokShow()")
 
     def test_tag_geometry_uses_shared_tokens(self):
-        self.assertPageContains("--tag-radius:999px")
+        # 整圆现在只有一个来源。之前 999px / 99px / 9999px 三种写法并存，
+        # 都是「整圆」的意思却看不出是不是同一个决定。
+        self.assertPageContains("--pill-radius:999px")
+        self.assertPageContains("--tag-radius:var(--pill-radius)")
         self.assertPageContains("border-radius:var(--tag-radius)")
         self.assertPageContains("height:40px;padding:0 20px")
         self.assertPageContains("overflow-x:auto;overflow-y:hidden")
@@ -705,7 +752,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_beeg_evidence_driven_surfaces_are_translucent_and_rail_is_continuous(self):
         self.assertPageContains(".brandpill{")
         self.assertPageContains("background:var(--overlay-5);border:1px solid var(--border-10)")
-        self.assertPageContains("border:1px solid var(--border-15);\n  border-radius:999px;background:transparent")
+        self.assertPageContains("border:1px solid var(--border-15);\n  border-radius:var(--pill-radius);background:transparent")
         self.assertPageContains("--overlay-5:rgba(245,250,255,.05)")
         self.assertPageContains("--border-15:rgba(245,250,255,.15)")
         # 窄栏原本无边框、与内容区连成一片。用户 2026-08-26 明确要求加分割线：
@@ -942,7 +989,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_card_hover_hides_source_and_duration_and_missing_size_is_explicit(self):
         self.assertPageContains('.card:hover .badge,.card:hover .dur{opacity:0}')
-        self.assertPageContains('.meta .t{font-size:14px;line-height:1.35;min-height:2.7em;')
+        self.assertPageContains('.meta .t{font-size:var(--fs-md);line-height:1.35;min-height:2.7em;')
         self.assertPageContains("const sizeText=Number(it.size)>0?fmtSize(Number(it.size)):'大小未知';")
         self.assertPageContains('<span class="size">${sizeText}</span>')
 
