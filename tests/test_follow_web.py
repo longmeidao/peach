@@ -395,7 +395,11 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("['follow','关注','globe']")
         self.assertPageContains("if(k==='follow'){openFollow();return}")
         self.assertPageContains("if(k==='follow')return path==='/follow';")
-        self.assertPageContains("['follow','关注','globe']")
+        # 两个数组现在同名，字面量断言分不出是哪一个：
+        # 管理区这一项得在 MANAGE_SECTIONS 里找，否则它被删了测试照样绿。
+        manage = self.page[self.page.index("const MANAGE_SECTIONS=["):]
+        manage = manage[:manage.index("];")]
+        self.assertIn("['follow','关注','globe']", manage)
         self.assertPageContains("if(path==='/follow-manage')return 'follow'")
         self.assertPageContains("if(section==='follow'){openFollowManage();return}")
 
