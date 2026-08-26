@@ -7,6 +7,14 @@
 - Windows 手动单写者构建已上线，Startup 入口为
   `C:\Users\longm\Desktop\peach\peach-app\dist\Peach\Peach.exe`；Mac 是 reader，菜单栏项和
   `peach.local` 正常提供服务，写入端点返回 409。
+- **托盘必须以普通权限启动**。A: / B: 是 CloudDrive 挂在用户会话里的虚拟盘，
+  提权后的令牌看不到它们（实测：管理员 PowerShell 里 `Get-ChildItem B:\` 失败，普通权限正常）。
+  托盘提权时，它拉起的 `peach serve` 继承同一令牌，`/api/sources` 会把 115 和 PikPak
+  报成 `online:false`，封面、播放和「接着看」卡片全部变成脱盘态；`R:` 是物理盘，不受影响，
+  所以看上去只是「网盘挂不上」。代码侧没有可改的地方：快捷方式没勾「以管理员身份运行」、
+  exe 清单是 `asInvoker`、注册表兼容性标志里也没有 RUNASADMIN，变提权只会是「这一次从已提权的
+  父进程里启动」（子进程继承令牌）。判据：非提权 shell 读不到托盘进程的 `Path` / `CommandLine`。
+  恢复办法：托盘菜单退出，再从资源管理器（或普通权限终端）重新启动。
 - Windows 内置盘环境已完成：代码 `C:\Users\longm\Desktop\peach\peach-app`、运行数据
   `C:\Users\longm\Desktop\peach\peach-data`、worktree `C:\Users\longm\Desktop\peach\peach-worktrees`、
   共享账本传输点 `C:\Users\longm\Desktop\peach\peach-sync`。外置盘只提供 `R:\media`。
