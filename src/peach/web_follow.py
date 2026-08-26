@@ -11,11 +11,13 @@ from datetime import datetime, timezone
 
 from .follow import FollowSourceError
 from .follow_secrets import CredentialError, CredentialStore
+from .platform import root_online
 from .follow_discovery import discover
 from .follow_sources import (
     CONNECTORS, KemonoConnector, build_connector, parse_source_url,
 )
 from .follow_store import FollowStore, ReleaseGroup
+from .taste_history import read_creator_candidates
 
 
 #: 界面上给每个来源的中文短名。没登记的 provider 直接显示原名。
@@ -111,13 +113,44 @@ def q_follow(contract, args) -> dict:
         groups = [_group_payload(group) for group in store.group(items)]
         counts = dict(connection.execute(
             "SELECT status, count(*) FROM follow_item GROUP BY status").fetchall())
+    suggestions = _suggestions(contract, sources)
     return {
         "ok": True,
         "sources": sources,
+        "suggestions": suggestions,
         "groups": groups,
         "counts": {status: int(counts.get(status, 0)) for status in _STATUSES},
         "providers": sorted(CONNECTORS),
     }
+
+
+#: 「猜你喜欢」一次给多少个。这是给人挑的，不是导出全部。
+MAX_SUGGESTIONS = 12
+
+
+def _suggestions(contract, sources) -> list[dict]:
+    """「猜你喜欢」取**浏览历史品味分析**产出的创作者候选，按访问次数排序。
+
+    之前两次都取错了源，记下来免得再犯：`facets.creators` 是「他有谁的文件」，
+    `location='online'` 的资产是「他关注过谁」，两者都不是「他常搜谁」。真正的信号是
+    `scripts/taste_history.py` 从 Chrome/Safari/Zen/Google Takeout 的历史里分析出来的
+    `taste-creator-candidates-*.csv`——用户举的两个名字在那里分别排第 1 和第 3
+    （`lazyprocrastinator` 28 次、`ffxivinitiala` 13 次）。
+
+    分析没跑过就没有建议，不拿别的数据顶替。
+    """
+    followed = {str(row["label"]).casefold() for row in sources}
+    picked = []
+    for row in read_creator_candidates(contract.taste_history_root,
+                                       limit=MAX_SUGGESTIONS * 4):
+        name = row["name"]
+        if name.casefold() in followed:
+            continue
+        picked.append({"name": name, "visits": row["visits"],
+                       "origin": row["sources"]})
+        if len(picked) >= MAX_SUGGESTIONS:
+            break
+    return picked
 
 
 def w_follow_status(contract, body) -> dict:
@@ -147,7 +180,7 @@ def w_follow_check(contract, body) -> dict:
     """
     requested = body.get("source")
     source_id = requested if isinstance(requested, int) else None
-    credentials = CredentialStore(contract.follow_secrets_root)
+    credentials = _credential_store(contract)
     results: list[dict] = []
     with contract.database.read_connection() as connection:
         rows = [dict(row) for row in _store(contract, connection).sources(enabled_only=True)
@@ -227,7 +260,7 @@ def w_follow_source(contract, body) -> dict:
         raise ValueError(f"unknown follow source action: {action}")
 
     parsed = parse_source_url(str(body.get("url") or ""))
-    credentials = CredentialStore(contract.follow_secrets_root)
+    credentials = _credential_store(contract)
     credential = credentials.load(parsed.provider)
     label = str(body.get("label") or "").strip() or _resolve_label(
         contract, parsed, credential)
@@ -317,6 +350,8 @@ CREDENTIAL_GUIDE: dict[str, dict] = {
     "rule34xxx": {
         "requirement": "required",
         "fields": ["user_id", "api_key"],
+        # 账号级、与机器无关，用户明确要求跨机同步。
+        "syncable": ["user_id", "api_key"],
         "why": "网页版挂了 Cloudflare 验证码，Peach 不绕验证码，只能走官方 API。",
         "where": "https://rule34.xxx/index.php?page=account&s=options",
         "howto": "登录后在账号设置页生成 API key，把 user_id 和 api_key 写进凭据文件。",
@@ -324,6 +359,8 @@ CREDENTIAL_GUIDE: dict[str, dict] = {
     "f95zone": {
         "requirement": "optional",
         "fields": ["cookie"],
+        # cookie 绑会话与客户端 IP，同步到另一台大概率直接失效——不同步。
+        "syncable": [],
         "why": "发现更新不需要登录；只有取附件和 masked 下载链接才需要会话。",
         "where": "https://f95zone.to/",
         "howto": "登录后从浏览器复制整条 Cookie 请求头，写进凭据文件的 cookie 字段。",
@@ -362,30 +399,73 @@ def w_follow_credential(contract, body) -> dict:
         raise ValueError(f"{provider} 不认识这些字段：{', '.join(unknown)}")
     cleaned = {name: str(values[name]).strip() for name in guide["fields"]
                if str(values.get(name) or "").strip()}
-    store = CredentialStore(contract.follow_secrets_root)
+    store = _credential_store(contract)
     path = store.path_for(provider)
     if not cleaned:
         # 全部留空 = 删掉这份凭据。给得出「配上」就要给得出「撤掉」。
         path.unlink(missing_ok=True)
         return {"ok": True, "provider": provider, "cleared": True,
                 "saved": store.describe(provider)}
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(json.dumps(cleaned, ensure_ascii=False, indent=2) + "\n",
-                         encoding="utf-8")
-    if os.name != "nt":
-        os.chmod(temporary, 0o600)
-    temporary.replace(path)
+    _write_secret(path, cleaned)
+    shared_written = _write_shared(store, provider, cleaned)
     # 返回的是 describe()，只有字段名，没有值。
     return {"ok": True, "provider": provider, "cleared": False,
             # 界面据此说明「这台机器上没有收紧文件权限」，而不是默认收紧过。
             "permissions_tightened": os.name != "nt",
+            "synced": shared_written,
             "saved": store.describe(provider)}
+
+
+def _write_secret(path, values: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(json.dumps(values, ensure_ascii=False, indent=2) + "\n",
+                         encoding="utf-8")
+    if os.name != "nt":
+        os.chmod(temporary, 0o600)
+    temporary.replace(path)
+
+
+def _write_shared(store, provider: str, values: dict) -> bool:
+    """把**声明为可同步的**字段写一份到共享副本。
+
+    只写声明过的字段：共享副本会跟着 `peach-sync` 走 SMB 并进备份，把不该出去的
+    东西写进去就再也收不回来。共享盘不可达时静默跳过——凭据在本机已经存好了，
+    同步失败不该让保存失败。
+    """
+    shared = store.shared_path_for(provider)
+    syncable = set(store.syncable(provider))
+    if shared is None or not syncable:
+        return False
+    payload = {name: value for name, value in values.items() if name in syncable}
+    if not payload:
+        return False
+    try:
+        if not root_online(shared.parent.parent.parent):
+            return False
+        _write_secret(shared, payload)
+    except OSError:
+        return False
+    return True
+
+
+#: 哪些字段可以跨机同步，逐 provider 逐字段声明。绝不按字段名猜——今天 `api_key`
+#: 能同步、`cookie` 不能，明天新增一个 `session_token` 就会落到错误的一侧。
+SYNCABLE_FIELDS: dict[str, tuple[str, ...]] = {
+    provider: tuple(guide.get("syncable", ()))
+    for provider, guide in CREDENTIAL_GUIDE.items()
+}
+
+
+def _credential_store(contract) -> CredentialStore:
+    return CredentialStore(contract.follow_secrets_root,
+                           shared_root=contract.follow_shared_root,
+                           syncable_fields=SYNCABLE_FIELDS)
 
 
 def q_follow_credentials(contract, _args) -> dict:
     """报告凭据状态和怎么配。只给字段名与文件路径，绝不返回凭据值。"""
-    store = CredentialStore(contract.follow_secrets_root)
+    store = _credential_store(contract)
     providers = []
     for provider in sorted(CONNECTORS):
         described = store.describe(provider)

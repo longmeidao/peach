@@ -1360,13 +1360,15 @@ const CRED_STATE={required:['需要','req'],optional:['可选','opt'],
 
 /* placeholder 用库里真实存在的创作者，而不是编一个名字——`facets.creators`
    是首页推荐词同一条数据路径，保证是用户自己库里的人。取不到就退回链接示例。 */
-/* 「猜你喜欢」取 `facets.creators`——那是账本里真实存在的创作者，来自用户自己的浏览
-   历史入库，不是编的名字。点一下就直接拿去查，省掉「先复制再粘贴」。 */
-function followSuggestions(known){
-  const seen=new Set((known||[]).map(s=>String(s.label||'').toLowerCase()));
-  return (typeof facets==='object'&&facets&&facets.creators||[])
-    .map(x=>x&&x.k).filter(v=>typeof v==='string'&&v.length>1&&!seen.has(v.toLowerCase()))
-    .slice(0,10);
+/* 「猜你喜欢」由后端从**用户自己浏览过的在线创作者**里挑（`location='online'` 的
+   pixiv / X 资产，项目初期从浏览记录导入的那批）。曾经用过 `facets.creators`，
+   那是「他有谁的文件」而不是「他喜欢谁」——那些人在 kemono/rule34 上大多找不到，
+   点了白点。判据留在 web_follow._suggestions。 */
+function followSuggestionChips(list){
+  return (list||[]).map(item=>
+    `<button class="fchip" data-follow-guess="${esc(item.name)}"
+      title="浏览历史里出现 ${item.visits} 次${item.origin?` · ${esc(item.origin)}`:''}"
+      >${esc(item.name)}</button>`).join('');
 }
 
 function followCredentialRow(row){
@@ -1418,10 +1420,9 @@ function renderFollowManage(credentials){
           <button class="fbtn primary" type="submit">查找</button>
         </form>
         <p class="fnote" data-follow-add-state aria-live="polite"></p>
-        ${(()=>{const picks=followSuggestions(sources);return picks.length
-          ?`<div class="fguess"><span class="fmeta">猜你喜欢</span>${picks.map(name=>
-              `<button class="fchip" data-follow-guess="${esc(name)}">${esc(name)}</button>`
-            ).join('')}</div>`:''})()}
+        ${(followData.suggestions||[]).length
+          ?`<div class="fguess"><span class="fmeta">猜你喜欢</span>${
+              followSuggestionChips(followData.suggestions)}</div>`:''}
       </section>
       <div id="followPicks"></div>
       <section class="fsec">
