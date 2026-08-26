@@ -1,5 +1,10 @@
 /* 色板：灯箱 / 接触印相。底色带棕不是纯黑，中性灰偏暖向主调靠。
    钨丝灯琥珀作主调，冷青只给数据，语义色（免费/计费/丢弃）与主调分开。 */
+/* 深色的 ground→surface 曾经是 #020408 → #222222，从 2% 亮度跳到 13%；而浅色是
+   #FFFFFF → #F7F8FA，只差 3%。深色那一档本身就是离群值，看着像一块突兀的灰。
+   2026-08-26 按浅色自己的比例校回：深色表面改成 #0C0F14，抽屉的 frost 同样压到近黑，
+   与导航栏、左侧栏（都用 --ground）连成一片。这也和实测的 Vercel 相符——
+   页面纯黑、卡片 rgb(10,10,10)，只抬一档。 */
 :root{
   --ground:#FFFFFF; --surface:#F7F8FA; --sunk:#ECEEF2; --hover:#EEF1F5;
   --line:#D9DDE4; --line-soft:#E8EBF0;
@@ -13,19 +18,19 @@
   --sb:#3A3A40; --sb-hover:#55555E;   /* 336 = 168×2，与目标站的模块单位一致 */
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --ground:#020408; --surface:#222222; --sunk:#0B0D11; --hover:rgba(255,255,255,.07);
+  --ground:#020408; --surface:#0C0F14; --sunk:#0B0D11; --hover:rgba(255,255,255,.07);
   --line:#3A3A3D; --line-soft:#2C2C30;
   --ink:#FFFFFF; --ink-2:#C9CDD4; --muted:#9AA0A8;
   --tungsten:#0095F6; --tungsten-soft:#0A2B45;
-  --frost-panel:rgba(30,30,30,.9); --frost-light:rgba(38,40,44,.86);
+  --frost-panel:rgba(6,9,14,.94); --frost-light:rgba(14,18,24,.90);
   --overlay-5:rgba(245,250,255,.05);--border-10:rgba(245,250,255,.10);--border-15:rgba(245,250,255,.15);
   --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --ambient-opacity:1;}}
 :root[data-theme="dark"]{
-  --ground:#020408; --surface:#222222; --sunk:#0B0D11; --hover:rgba(255,255,255,.07);
+  --ground:#020408; --surface:#0C0F14; --sunk:#0B0D11; --hover:rgba(255,255,255,.07);
   --line:#3A3A3D; --line-soft:#2C2C30;
   --ink:#FFFFFF; --ink-2:#C9CDD4; --muted:#9AA0A8;
   --tungsten:#0095F6; --tungsten-soft:#0A2B45;
-  --frost-panel:rgba(30,30,30,.9); --frost-light:rgba(38,40,44,.86);
+  --frost-panel:rgba(6,9,14,.94); --frost-light:rgba(14,18,24,.90);
   --overlay-5:rgba(245,250,255,.05);--border-10:rgba(245,250,255,.10);--border-15:rgba(245,250,255,.15);
   --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --ambient-opacity:1;}
 
@@ -1189,12 +1194,16 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 [data-follow-add-state]{color:var(--ink-2)}
 
 /* 状态标签：四种状态四种颜色，待办和完成一眼分得开。 */
-.fstate{font-size:12px;flex:0 1 auto}
-.fstate.done{color:var(--keep)}
-.fstate.req{color:var(--drop)}
-.fstate.missing{color:var(--drop)}
-.fstate.opt{color:var(--meter)}
-.fstate.none,.fstate.blocked{color:var(--muted)}
+/* 凭据状态。类名不能叫 `.fstate`——观看页的卡片错误行已经占了那个名字
+   （`flex:1 1 100%;color:var(--drop)`），撞名会让这里整列变成红色独占一行。
+   状态永远贴右：名字那一格吃掉剩余宽度，状态跟在它后面就落在同一列。 */
+.fcstate{font-size:12px;flex:0 1 auto;margin-left:auto}
+.fcstate+.fcstate{margin-left:0}
+.fcstate.done{color:var(--keep)}
+.fcstate.req{color:var(--drop)}
+.fcstate.missing{color:var(--drop)}
+.fcstate.opt{color:var(--meter)}
+.fcstate.none,.fcstate.blocked{color:var(--muted)}
 
 .fbtn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;
   box-sizing:border-box;padding:0 12px;border:1px solid var(--border-15);border-radius:6px;
@@ -1236,14 +1245,28 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fsource.bad>b{color:var(--drop)}
 .flink{border:0;background:none;padding:0;margin-left:10px;color:var(--tungsten);font:inherit;
   font-size:13px;cursor:pointer}
+/* 猜你喜欢：一行可点的名字，点了直接拿去查。 */
+.fguess{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:12px}
+.fguess .fmeta{margin-right:2px}
+.fchip{height:26px;padding:0 11px;border:1px solid var(--border-15);border-radius:6px;
+  background:transparent;color:var(--ink-2);font:inherit;font-size:13px;cursor:pointer;
+  max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  transition:border-color .12s ease,color .12s ease,scale .1s ease}
+.fchip:hover{border-color:var(--tungsten);color:var(--ink)}
+.fchip:active{scale:.96}
 .flink:hover{text-decoration:underline}
 
-.fcred summary{display:flex;align-items:center;gap:12px;cursor:pointer;list-style:none;
-  margin:-9px 0;padding:9px 0}
+/* summary 是 .frow 的 flex 子项，默认 flex:0 1 auto 不撑满整行——于是有折叠体的那几行
+   状态贴在名字后面，没折叠体的却靠右，同一列两种对齐。让它占满，状态就统一在右边。 */
+.fcred summary{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:12px;
+  cursor:pointer;list-style:none;margin:-9px 0;padding:9px 0}
 .fcred summary::-webkit-details-marker{display:none}
 .fcred summary b{flex:1 1 auto;min-width:0;font-weight:500}
 .fcred.none{color:var(--muted)}
-.fcred[open]{display:block;padding-bottom:12px}
+/* 折叠时 .frow 让它是 flex、展开时又变 block，两种几何下 summary 的可用宽度差一个 gap，
+   状态列就差 12px 对不齐。统一成 block：summary 自己是 flex 容器，宽度始终是整行。 */
+details.fcred{display:block}
+.fcred[open]{padding-bottom:12px}
 .fcred p{margin:8px 0 0;font-size:13px;line-height:1.7;color:var(--muted);
   overflow-wrap:anywhere}
 .fcred a{color:var(--tungsten)}

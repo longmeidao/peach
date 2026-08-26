@@ -507,16 +507,44 @@ class FollowWebSourceTests(unittest.TestCase):
         page = self.page
         colours = {}
         for name in ("done", "req", "opt", "none"):
-            rule = page[page.index(f".fstate.{name}"):]
+            rule = page[page.index(f".fcstate.{name}"):]
             colours[name] = rule[:rule.index("}")]
         self.assertNotEqual(colours["done"], colours["req"],
                             "已配置和缺凭据必须能一眼分开")
         self.assertNotEqual(colours["done"], colours["none"])
 
-    def test_the_placeholder_uses_a_creator_from_the_real_library(self):
-        # 不编名字：`facets.creators` 是首页推荐词同一条真实数据路径。
-        self.assertPageContains("function followPlaceholder()")
+    def test_suggestions_come_from_the_real_library_and_are_clickable(self):
+        """「猜你喜欢」取账本里真实存在的创作者，点一下直接拿去查。
+
+        不用 placeholder：占位文字点不了，还占着输入框的语义。
+        """
+        self.assertPageContains("function followSuggestions(")
         self.assertPageContains("facets.creators")
+        self.assertPageContains("data-follow-guess")
+        self.assertPageContains("form.requestSubmit()")
+        page = self.page
+        body = page[page.index("function renderFollowManage("):
+                    page.index("function wireFollowItems(")]
+        self.assertNotIn("placeholder=", body, "输入框不再放占位文字")
+
+    def test_suggestions_skip_sources_already_followed(self):
+        self.assertPageContains("const seen=new Set((known||[])")
+
+    def test_every_credential_state_sits_in_the_same_column(self):
+        """summary 是 .frow 的 flex 子项，默认不撑满整行——于是有折叠体的那几行
+        状态贴在名字后面，没折叠体的却靠右，同一列两种对齐。"""
+        page = self.page
+        rule = page[page.index(".fcred summary{"):]
+        rule = rule[:rule.index("}")]
+        self.assertIn("flex:1 1 auto", rule)
+        self.assertIn("min-width:0", rule)
+        # 两个分支必须用同一个状态类，否则同一列出现两套样式和两种对齐。
+        self.assertNotIn('<span class="fmeta">${esc(label)}</span>', page)
+        self.assertPageContains('<span class="fcstate none">${esc(label)}</span>')
+        state = page[page.index(".fcstate{"):]
+        self.assertIn("margin-left:auto", state[:state.index("}")])
+        # 折叠/展开两种几何下 summary 的可用宽度必须一致，否则状态列差一个 gap。
+        self.assertPageContains("details.fcred{display:block}")
 
     def test_the_add_box_carries_no_standing_how_to_prose(self):
         # 只有「还没有关注任何来源」是有效信息；操作说明常驻就是噪音。
