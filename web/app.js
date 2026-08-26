@@ -1320,89 +1320,91 @@ async function openFollow(push=true){
 function followSourceRow(source){
   const state=source.last_status||'未检查';
   const bad=state==='error'||state==='unauthorized';
-  const idle=!source.last_checked_at;
-  return `<li class="fsource${bad?' bad':idle?' idle':''}">
-    <b>${esc(source.label)}</b><span class="mono">${esc(source.provider_label)}</span>
-    <span class="mono">${esc(source.last_checked_at?localTime(source.last_checked_at):'未检查')}</span>
-    <span class="fstatus">${esc(state)}</span>
-    <button data-follow-check="${source.id}">检查</button>
-    <button class="fremove" data-follow-remove="${source.id}" title="不再追这个来源">移除</button>
-    ${source.last_error?`<i>${esc(source.last_error)}</i>`:''}</li>`;
+  return `<div class="frow fsource${bad?' bad':''}">
+    <b>${esc(source.label)}</b>
+    <span class="fmeta">${esc(source.provider_label)}</span>
+    <span class="fmeta">${esc(source.last_checked_at?localTime(source.last_checked_at):'未检查')}</span>
+    <span class="fmeta${bad?' warn':''}">${esc(state)}</span>
+    <button class="fbtn small" data-follow-check="${source.id}">检查</button>
+    <button class="fbtn small fquiet" data-follow-remove="${source.id}">移除</button>
+    ${source.last_error?`<p class="frowerr">${esc(source.last_error)}</p>`:''}</div>`;
 }
 
-const CRED_STATE={required:['必须配置','req'],optional:['可选','opt'],
+const CRED_STATE={required:['需要','req'],optional:['可选','opt'],
   none:['不需要','none'],blocked:['接不进来','blocked']};
 
 function followCredentialRow(row){
   const [label,kind]=CRED_STATE[row.requirement]||CRED_STATE.none;
   const configured=row.present&&!row.missing.length;
-  /* 只有「必须配置而且没配」才自动展开——那是唯一需要你现在动手的情况。 */
   const needsAttention=row.requirement==='required'&&!configured;
   const fields=(row.needs||[]).map(name=>`<label class="fcredfield">
     <span>${esc(name)}</span>
     <input type="password" name="${esc(name)}" autocomplete="off" spellcheck="false"
       placeholder="${row.fields.includes(name)?'已保存，留空表示不改':'未填写'}"></label>`).join('');
-  /* 值只往磁盘走，不回显：已保存的字段这里也是空的，占位文字说明留空等于不改。 */
-  const body=row.requirement==='none'?'<p>这个来源不需要凭据。</p>'
+  const body=row.requirement==='none'?''
     :row.requirement==='blocked'?`<p>${esc(row.why)}</p>`
-    :`<p>${esc(row.why)}</p><p>${esc(row.howto)}</p>
-      ${row.where?`<p><a href="${esc(row.where)}" target="_blank" rel="noreferrer noopener">${esc(row.where)}</a></p>`:''}
-      <form class="fcredform" data-cred-form="${esc(row.provider)}">
-        ${fields}
+    :`<p>${esc(row.why)}${row.where?` <a href="${esc(row.where)}" target="_blank" rel="noreferrer noopener">去取</a>`:''}</p>
+      ${row.howto?`<p>${esc(row.howto)}</p>`:''}
+      <form class="fcredform" data-cred-form="${esc(row.provider)}">${fields}
         <div class="fcredactions"><button type="submit">保存</button>
-          ${configured?`<button type="button" data-cred-clear="${esc(row.provider)}">清除</button>`:''}
-          <span data-cred-state aria-live="polite"></span></div>
-      </form>
-      <p class="mono fcredpath">${esc(row.path)}</p>
-      ${row.world_readable?'<p class="fcredwarn">文件权限过宽，建议 chmod 600</p>':''}`;
-  return `<details class="fcred ${esc(kind)}${configured?' ok':''}"${needsAttention?' open':''}>
+          ${configured?`<button type="button" class="fquiet" data-cred-clear="${esc(row.provider)}">清除</button>`:''}
+          <span data-cred-state aria-live="polite"></span></div></form>
+      <p class="fcredpath mono">${esc(row.path)}</p>
+      ${row.world_readable?'<p class="fnote warn">文件权限过宽，请在运行 Peach 的 POSIX 主机上收紧为 0600。</p>':''}`;
+  if(!body)return `<div class="frow fcred none"><b>${esc(row.provider_label)}</b>
+    <span class="fmeta">${esc(label)}</span></div>`;
+  return `<details class="frow fcred ${esc(kind)}${configured?' ok':''}"${needsAttention?' open':''}>
     <summary><b>${esc(row.provider_label)}</b>
-      <span class="fcredstate">${esc(configured&&row.requirement!=='none'?'已配置':label)}</span>
-      ${row.missing.length?`<span class="fcredmissing">缺 ${esc(row.missing.join('、'))}</span>`:''}
+      <span class="fmeta">${esc(configured?'已配置':label)}</span>
+      ${row.missing.length?`<span class="fmeta warn">缺 ${esc(row.missing.join('、'))}</span>`:''}
     </summary>${body}</details>`;
 }
 
+/* 版式判据沿用 docs/HANDOFF.md 已登记的 Vercel 设计评审清单（2026-08-15）：
+   要避开卡片套卡片、用边框补救层级、成排通栏空条、
+   细小灰字加随意字号。所以这里不再用嵌套卡片盒子——分组靠标题和一条发丝分隔线，
+   行与行之间也只用分隔线，不各自套框。控件尺寸按实测 Geist：32px 高、6px 圆角、14px。 */
 function renderFollowManage(credentials){
   const sources=followData.sources||[],counts=followData.counts||{};
   const broken=sources.filter(s=>s.last_status==='error'||s.last_status==='unauthorized');
-  /* 两栏：左边是干活的地方（加来源、看来源），右边是配置。
-     原来四张通栏卡片各自只装几行内容，在宽屏上就是几条空长条加一大片右留白。
-     计数不再单独占一张卡——它是来源列表的注脚，不是一个功能。 */
+  const creds=(credentials.providers||[]);
+  const needCred=creds.filter(c=>c.requirement==='required'&&!(c.present&&!c.missing.length));
   $('#stats').innerHTML=`<div class="follow followmanage">
     <div class="fmain">
-      <section class="fcard">
-        <div class="fcardhead"><h3>添加关注</h3>
-          <button class="fghost" data-follow-view>${icon('globe')}去看更新</button></div>
+      <section class="fsec">
+        <div class="fsechead"><h3>添加关注</h3>
+          <button class="fbtn" data-follow-view>${icon('globe')}去看更新</button></div>
         <form class="faddform" id="followAdd">
           <textarea name="lines" rows="1" required spellcheck="false"
-            aria-label="来源链接、名字或 id"
-            placeholder="粘链接、名字或 id"></textarea>
-          <button type="submit">查找</button>
+            aria-label="来源链接、名字或 id" placeholder="粘链接、名字或 id"></textarea>
+          <button class="fbtn primary" type="submit">查找</button>
         </form>
-        <p class="fhint"><span data-follow-add-state aria-live="polite"></span>
-          链接直接认得，名字会去六个来源各查一遍。要一次加多个就每行一条。
-          首次按名字查要下载创作者索引，可能几十秒。</p>
+        <p class="fnote"><span data-follow-add-state aria-live="polite"></span>
+          链接直接认得，名字会去六个来源各查一遍；要一次加多个就每行一条。</p>
       </section>
       <div id="followPicks"></div>
-      <section class="fcard">
-        <div class="fcardhead"><h3>关注列表 <span class="n mono">${sources.length}</span></h3>
-          <button class="fprimary" data-follow-check=""${sources.length?'':' disabled'}>${
-            icon('refresh-cw')}检查全部更新</button></div>
-        ${broken.length?`<p class="fwarn">${broken.length} 个来源上次检查失败，原因见下方那一行。</p>`:''}
-        ${sources.length?`<ul class="fsources">${sources.map(followSourceRow).join('')}</ul>
-          <p class="fcounts">未看 <b>${counts.new||0}</b> · 已看 <b>${counts.seen||0}</b>
-            · 已保存 <b>${counts.saved||0}</b> · 已忽略 <b>${counts.ignored||0}</b>
-            ${counts.new?`<button class="flink" data-follow-bulk="seen">全部标记已看</button>
-              <button class="flink" data-follow-bulk="ignored">全部忽略</button>`:''}</p>`
-          :'<p class="empty fempty">还没有关注任何来源。把链接或名字粘进上面的输入框。</p>'}
+      <section class="fsec">
+        <div class="fsechead"><h3>关注列表</h3>
+          <span class="fmeta">${sources.length} 个来源${
+            counts.new?` · <b>${counts.new}</b> 条未看`:''}</span>
+          <button class="fbtn" data-follow-check=""${sources.length?'':' disabled'}>${
+            icon('refresh-cw')}检查全部</button></div>
+        ${broken.length?`<p class="fnote warn">${broken.length} 个来源上次检查失败，原因见对应那一行。</p>`:''}
+        ${sources.length?`<div class="frows">${sources.map(followSourceRow).join('')}</div>
+          ${counts.new?`<p class="fnote">未看 ${counts.new} · 已看 ${counts.seen||0}
+            · 已保存 ${counts.saved||0} · 已忽略 ${counts.ignored||0}
+            <button class="flink" data-follow-bulk="seen">全部标记已看</button>
+            <button class="flink" data-follow-bulk="ignored">全部忽略</button></p>`:''}`
+          :'<p class="fnote">还没有关注任何来源。把链接或名字粘进上面的输入框。</p>'}
       </section>
     </div>
     <aside class="faside">
-      <section class="fcard">
-        <div class="fcardhead"><h3>凭据</h3></div>
-        <div class="fcreds">${(credentials.providers||[]).map(followCredentialRow).join('')}</div>
-        <p class="fhint">凭据写在<b>运行 Peach 的那台机器</b>上（不是你现在这台浏览器所在的机器），
-          不进 Git、URL、日志或 ledger。保存后页面上不会再显示出来。
+      <section class="fsec">
+        <div class="fsechead"><h3>凭据</h3>
+          ${needCred.length?`<span class="fmeta warn">${needCred.length} 个待配置</span>`:''}</div>
+        <div class="frows">${creds.map(followCredentialRow).join('')}</div>
+        <p class="fnote">写在<b>运行 Peach 的那台机器</b>上，不是你这台浏览器所在的机器。
+          不进 Git、URL、日志或 ledger，保存后页面上不再显示。
           Windows 上不收紧文件权限——NTFS 走 ACL，<code>chmod</code> 在那里没有效果。</p>
       </section>
     </aside></div>`;
@@ -2119,7 +2121,7 @@ const MANAGE_SECTIONS=[
   ['ads','疑似广告','alert'],
   ['dupes','重复文件','hard-drive'],
   ['quality','高清版','sparkles'],
-  ['follow','追更来源','globe'],
+  ['follow','关注','globe'],
   ['trash','回收站','trash'],
   ['review','人工复核','square-check-big'],
 ];
