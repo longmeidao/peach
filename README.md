@@ -56,10 +56,12 @@ worktree 目录。跨机器继续任务时 push 分支，在另一台按分支�
 `src/peach/config.py`，`PEACH_MDNS_NAME` 只用于临时测试覆盖。
 服务本身可以同时跑，但 `ledger.db.sync.json` 的 `device` 只指定一台写入端；另一台的写入
 端点返回 `409`，只能浏览。切换写入端必须使用托盘的「接管 Ledger 写入」。
-只读端的 `/review` 通过严格校验本地 CA 的 HTTPS 读取 writer 已归一化的复核 JSON，并把最近
+只读端的 `/review` 通过严格校验 Peach CA 的 HTTPS 读取 writer 已归一化的复核 JSON，并把最近
 一次成功结果缓存到本机 `peach-data/review/writer-review.json`；它不复制候选 CSV，也不开放
 批准、跳过或拒绝。关注管理同样在只读端锁住写操作，并明确链接到 writer，不再让失败提示被
-页面重载抹掉。writer 地址可用 `PEACH_REVIEW_WRITER_ORIGIN` 显式覆盖。
+页面重载抹掉。macOS 会合并文件 CA 与系统/登录钥匙串中受信任的同名 Peach CA，解决两台机器
+各自签发 CA 但同名的问题；只读取公钥证书，不导出私钥。writer 地址可用
+`PEACH_REVIEW_WRITER_ORIGIN` 显式覆盖。
 
 ### 账本复制
 
