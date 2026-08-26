@@ -465,11 +465,17 @@ class CredentialStoreTests(unittest.TestCase):
         described = self.store.describe("rule34xxx")
         self.assertEqual(described["fields"], ["api_key", "user_id"])
         self.assertNotIn("sekret", json.dumps(described))
-        self.assertFalse(described["world_readable"])
+        self.assertIn(described["world_readable"], (False, None))
 
+    @unittest.skipIf(os.name == "nt", "NTFS 走 ACL，st_mode 的组/其他读位恒为真")
     def test_group_or_world_readable_permissions_are_reported(self):
         self._write("f95zone", {"cookie": "xf=1"}, mode=0o644)
         self.assertTrue(self.store.describe("f95zone")["world_readable"])
+
+    @unittest.skipUnless(os.name == "nt", "只在 Windows 上成立")
+    def test_windows_reports_unknown_rather_than_a_meaningless_permission(self):
+        self._write("f95zone", {"cookie": "xf=1"})
+        self.assertIsNone(self.store.describe("f95zone")["world_readable"])
 
     def test_require_lists_every_missing_field(self):
         self._write("rule34xxx", {"user_id": "42"})

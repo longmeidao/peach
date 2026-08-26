@@ -875,19 +875,28 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 /* 窄栏从 y=0 贯通到底，顶栏只在右侧内容列里。 */
 body{padding-left:var(--railW)}
 @media (max-width:760px){body{padding-left:0}.edge{display:none}}
-.drawer{position:fixed;top:0;bottom:0;left:0;width:360px;z-index:97;
+/* 抽屉从窄栏右侧开始，不再盖住窄栏。
+   原来它压在窄栏上并把窄栏整个 `pointer-events:none`，于是「悬停展开」变成了
+   「目标从光标底下挪走」：注释声称「图标落在窄栏原来的位置」，实测两边差 10–54px
+   （窄栏行距 52px、抽屉 47px、起点还差 54px），瞄准「在线追更」点下去打开的是「统计」。
+   与其逐像素对齐两套各自会因溢出、滚动、条目增减而漂移的列表，不如让它们不重叠——
+   光标底下的图标就永远不动。 */
+.drawer{position:fixed;top:0;bottom:0;left:var(--railW);width:288px;z-index:94;
   background:linear-gradient(180deg,var(--frost-light),var(--frost-panel));
   backdrop-filter:saturate(1.8) blur(20px);-webkit-backdrop-filter:saturate(1.8) blur(20px);
   border-right:1px solid var(--line);padding:16px 12px 60px;overflow-y:auto;
   transform:translateX(-100%);transition:transform .2s cubic-bezier(.3,.8,.3,1)}
 .drawer.open{transform:none;box-shadow:18px 0 60px -24px #000}
-/* 窄栏必须压在抽屉之上，否则抽屉一弹出就吃掉窄栏的点击 */
+/* 窄栏压在抽屉之上并保持可点：它不再被遮住，所以也没有理由让它失效。 */
 .edge{z-index:96}
-body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位，抽屉就是它的展开态 */
-.dnav button{padding-left:0}
-/* 图标落在窄栏原来的位置 */
-.dnav svg{width:24px;height:24px;margin:0 15px 0 24px}
+body.drawer-open .edge button{color:var(--ink-2)}
+/* 窄栏是固定高度的九宫格，条目变多时应当滚动，不能被 flex 悄悄压扁——
+   一压扁行距就和任何参照物都对不上了。 */
+.edge button{flex:none}
+.edge{overflow-y:auto;scrollbar-width:none}
+.edge::-webkit-scrollbar{display:none}
 .dnav{display:flex;flex-direction:column;gap:3px;margin-bottom:18px}
+.dnav button{padding-left:12px}
 .dnav button{display:flex;align-items:center;gap:14px;padding:11px 14px;background:none;
   border:0;border-radius:8px;cursor:pointer;text-align:left;font-size:15px;color:var(--ink)}
 .dnav button:hover{background:var(--hover)}
