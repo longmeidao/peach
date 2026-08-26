@@ -164,7 +164,7 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
 .combo .clr{background:none;border:0;color:var(--muted);cursor:pointer;font-size:12px;text-decoration:underline}
 /* 统计页 */
 .stats{padding:8px 0 42px}
-.playlistpage{padding:8px 0 42px}.playlistpage>header{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:20px}.playlistpage h2{margin:0 0 5px;font-size:28px}.playlistpage p{margin:0;color:var(--muted);font-size:13px}
+.playlistpage{padding:8px 0 42px}.playlistpage>header{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:20px}.playlistpage h2{margin:0 0 5px}.playlistpage p{margin:0;color:var(--muted);font-size:13px}
 .playlistcreate{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}.playlistcreate label{display:grid;gap:5px;color:var(--muted);font-size:11px}.playlistcreate input,.playlistmeta input{min-width:220px;border:1px solid var(--border-15);border-radius:8px;background:var(--surface);color:var(--ink);padding:9px 11px;font:inherit}.playlistcreate button,.playlistactions button{border:1px solid var(--border-15);border-radius:8px;background:transparent;color:var(--ink-2);padding:9px 12px;cursor:pointer}.playlistcreate button:hover,.playlistactions button:hover{border-color:var(--tungsten);color:var(--ink)}.playlistcreate [data-playlist-state]{flex-basis:100%;color:var(--drop);font-size:11px}
 .playlistcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.playlistcard{display:grid;grid-template-columns:112px minmax(0,1fr);gap:12px;padding:12px;border:1px solid var(--line-soft);border-radius:12px;background:var(--surface);min-width:0}.playlistcover{position:relative;aspect-ratio:16/10;border:0;border-radius:8px;background:#000;overflow:hidden;padding:0;cursor:pointer}.playlistcover:disabled{cursor:default}.playlistcover img{width:100%;height:100%;object-fit:cover}.playlistcover span{position:absolute;right:5px;bottom:5px;border-radius:5px;background:#000b;color:#fff;padding:3px 6px;font-size:10px}.playlistmeta{display:grid;align-content:center;gap:6px;min-width:0}.playlistmeta input{min-width:0;width:100%;font-weight:600}.playlistmeta small{color:var(--muted)}.playlistactions{grid-column:1/-1;display:flex;gap:7px;justify-content:flex-end}.playlistactions .danger{color:var(--drop)}
 .playlistdialog{width:min(520px,calc(100vw - 28px));border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--ink);padding:0;box-shadow:0 24px 80px #000b}.playlistdialog::backdrop{background:#000a;backdrop-filter:blur(5px)}.playlistdialoghead{display:flex;align-items:center;justify-content:space-between;padding:16px 17px;border-bottom:1px solid var(--line-soft)}.playlistdialoghead h2{margin:0;font-size:19px}.playlistdialoghead button{width:34px;height:34px;border:0;border-radius:50%;background:transparent;color:var(--ink);display:grid;place-items:center;cursor:pointer}.playlistdialoghead button:hover{background:var(--hover)}.playlistdialoghead svg{width:19px;height:19px;stroke:currentColor;fill:none}.playlistdialogbody{padding:17px}.playlistpicklist{display:grid;gap:7px;margin-top:16px;max-height:320px;overflow-y:auto}.playlistpickrow{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--border-10);border-radius:9px;background:var(--overlay-5);color:var(--ink);padding:11px 12px;text-align:left;cursor:pointer}.playlistpickrow:hover{border-color:var(--tungsten)}.playlistpickrow small{color:var(--muted)}
@@ -208,7 +208,7 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
 /* 索引页：全部创作者 / 全部标签 */
 .index{padding:4px 0 20px;min-width:0;max-width:100%;overflow-x:clip}
 .index .ihead{display:flex;align-items:center;gap:12px;margin-bottom:14px}
-.index .ihead h2{margin:0;font-size:20px;font-weight:500}
+.index .ihead h2{margin:0}
 .index .ihead .isearch{margin-left:auto}
 .index .isearch{flex:1;max-width:320px;background:var(--sunk);border:1px solid var(--line);
   border-radius:18px;padding:6px 14px}
@@ -410,7 +410,11 @@ body.photolight-open{overflow:hidden}
 .serieslink svg{width:16px;height:16px;margin-top:1px;flex:none;stroke:currentColor;fill:none;stroke-width:2}
 button.serieslink{cursor:pointer}.serieslink:not(.entitylink){cursor:default}
 button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
-.managetitle{font-size:26px;line-height:1.2;margin:26px 0 18px;letter-spacing:.02em}
+/* 页面标题只有一套字形。原来管理区 26px、索引页 20px、播放列表 28px，
+   在侧栏里一路点过去就是三种大小；间距由各自的版式决定，字形不再各拍各的。 */
+.pagetitle,.managetitle,.index .ihead h2,.playlistpage h2{
+  font-size:26px;line-height:1.2;letter-spacing:.02em;font-weight:600}
+.managetitle,.follow>.pagetitle{margin:26px 0 18px}
 .managetitle[hidden]{display:none}
 .dupsum{color:var(--muted);margin:0 0 12px}
 .dupactions{display:flex;gap:8px;margin-bottom:16px}
@@ -879,6 +883,12 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .edge button{width:52px;height:52px;border-radius:8px;background:none;border:0;cursor:pointer;
   display:flex;align-items:center;justify-content:center;color:var(--muted);transition:background .12s}
 .edge button:hover{background:var(--hover);color:var(--tungsten)}
+/* 分组分隔线。窄栏和抽屉是同一份入口列表的两个视图，线得画在同一道缝上。 */
+.edge button.groupstart,.dnav button.groupstart{position:relative;margin-top:13px}
+.edge button.groupstart::before,.dnav button.groupstart::before{
+  content:"";position:absolute;top:-7px;height:1px;background:var(--line-soft)}
+.edge button.groupstart::before{left:9px;right:9px}
+.dnav button.groupstart::before{left:0;right:0}
 .edge button[aria-pressed="true"]{background:var(--tungsten-soft);color:var(--tungsten)}
 .edge svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round}
@@ -995,10 +1005,17 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .tokcount{position:absolute;top:3px;right:3px;min-width:16px;height:16px;padding:0 4px;
   border-radius:999px;background:var(--tungsten);color:#17110A;border:2px solid #111;
   display:grid;place-items:center;font:700 9px/1 "Cascadia Mono",monospace}
-/* 进度条 */
-.tokbar{position:absolute;left:0;right:0;bottom:0;height:4px;background:rgba(255,255,255,.16);
-  cursor:pointer;z-index:3}
-.tokbar i{display:block;height:100%;width:0;background:var(--tungsten)}
+/* 进度条。可见部分只有 4px，但命中区得够高——屏幕最下沿的 4px 是鼠标最难瑞的
+   那一条。所以 .tokbar 本体是 20px 的透明热区，轨道和已播部分画在它底部，
+   鼠标靠近（或拖动中）才变粗。touch-action:none 是为了让触控拖动不被当成页面滚动。 */
+.tokbar{position:absolute;left:0;right:0;bottom:0;height:20px;z-index:3;
+  cursor:pointer;touch-action:none;display:flex;align-items:flex-end}
+.tokbar::before{content:"";position:absolute;left:0;right:0;bottom:0;height:4px;
+  background:rgba(255,255,255,.16);transition:height .12s}
+.tokbar i{position:relative;display:block;height:4px;width:0;background:var(--tungsten);
+  transition:height .12s}
+.tokbar:hover::before,.tokbar:hover i,
+.tokbar.scrubbing::before,.tokbar.scrubbing i{height:9px}
 .tokui a{color:var(--tungsten);text-decoration:none}
 .tokui a:hover{text-decoration:underline}
 .tokui{pointer-events:none} .tokui a{pointer-events:auto}

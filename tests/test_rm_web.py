@@ -234,6 +234,38 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual([row["k"] for row in item["tags"]], ["足交"])
         self.assertEqual(item["stats"]["duration"], 1)
 
+    def test_facets_and_tops_narrow_to_the_state_the_page_is_showing(self):
+        """「已标记」页的顶部三层和筛选面板曾走全库口径。
+
+        结果是上面列着一排头像和一排标签，它们在本页一个作品都没有，
+        点进去就是空列表。筛选项必须来自和作品列表相同的集合。
+        """
+        rm_web.w_preference(self.contract, {"id": 2, "liked": True, "reason": ""})
+        self.assertEqual(
+            [item["id"] for item in rm_web.q_items(
+                self.contract, {"state": "flagged", "limit": "10"})["items"]],
+            [2],
+        )
+
+        # 不带 state 仍然是全库口径，首页不受影响。
+        everything = rm_web.q_facets(self.contract)
+        self.assertEqual({row["k"] for row in everything["locations"]}, {"local", "115"})
+
+        flagged = rm_web.q_facets(self.contract, state="flagged")
+        self.assertEqual({row["k"] for row in flagged["locations"]}, {"115"})
+        self.assertEqual({row["k"] for row in flagged["orientations"]}, {"竖屏"})
+        self.assertNotIn("足交", [row["k"] for row in flagged["tags"]])
+
+        # 顶部三层同一口径：Alice 只在 1 号上，应该整个消失；
+        # 厂牌两边都有，但计数要收窄到 1。
+        tops = rm_web.q_tops(self.contract, 30, state="flagged")
+        self.assertEqual([row["k"] for row in tops["performers"]], [])
+        self.assertEqual([(row["k"], row["n"]) for row in tops["studios"]],
+                         [("Canonical Studio", 1)])
+        self.assertEqual(
+            [(row["k"], row["n"]) for row in rm_web.q_tops(self.contract, 30)["studios"]],
+            [("Canonical Studio", 2)])
+
     def test_items_can_skip_repeated_total_count_on_later_pages(self):
         result = rm_web.q_items(
             self.contract, {"limit": "1", "offset": "0", "count": "0"},

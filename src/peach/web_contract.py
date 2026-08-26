@@ -296,20 +296,9 @@ def q_items(contract: WebContract, args):
             )
             pattern = f"%{query}%"
             par += [pattern] * 5
-    if args.get("state") == "fresh":
-        where.append("(a.play_count IS NULL OR a.play_count=0) AND a.feedback IS NULL")
-    elif args.get("state") == "played":
-        where.append("a.play_count > 0")
-    elif args.get("state") == "flagged":
-        where.append(
-            "(COALESCE(a.o_count,0)>0 OR EXISTS(SELECT 1 FROM asset_preference p "
-            f"WHERE p.asset_id=a.id AND p.profile_id='{DEFAULT_PROFILE_ID}' AND p.liked=1))"
-        )
-    elif args.get("state") == "later":
-        where.append(
-            "EXISTS(SELECT 1 FROM watch_queue w WHERE w.asset_id=a.id "
-            f"AND w.profile_id='{DEFAULT_PROFILE_ID}')"
-        )
+    state = state_predicate(str(args.get("state") or ""))
+    if state:
+        where.append(state)
     if args.get("thumb") == "1":
         where.append("a.snapshot_path IS NOT NULL")
 
@@ -732,18 +721,44 @@ JAV_ASSET_PREDICATE = (
 JAV_ASSET_CLAUSE = "AND " + JAV_ASSET_PREDICATE + " "
 
 
+#: 首页的状态筛选（新鲜 / 看过 / 已标记 / 稍后看）。作品列表、顶部三层和筛选面板
+#: 必须用同一份口径：否则「已标记」页会列出全库的人物、厂牌和标签，点进去却是空的。
+def state_predicate(state: str) -> str:
+    """返回这个状态对应的 SQL 谓词（已加括号，不含 `AND`）；未知状态返回空串。"""
+    if state == "fresh":
+        return "((a.play_count IS NULL OR a.play_count=0) AND a.feedback IS NULL)"
+    if state == "played":
+        return "(a.play_count > 0)"
+    if state == "flagged":
+        return ("(COALESCE(a.o_count,0)>0 OR EXISTS(SELECT 1 FROM asset_preference p "
+                f"WHERE p.asset_id=a.id AND p.profile_id='{DEFAULT_PROFILE_ID}' AND p.liked=1))")
+    if state == "later":
+        return ("(EXISTS(SELECT 1 FROM watch_queue w WHERE w.asset_id=a.id "
+                f"AND w.profile_id='{DEFAULT_PROFILE_ID}'))")
+    return ""
+
+
+def state_clause(state: str) -> str:
+    """同一个谓词的 `AND ...` 形式，给拼在 WHERE 后面的查询用。"""
+    predicate = state_predicate(state)
+    return f"AND {predicate} " if predicate else ""
+
+
 #: 顶部三层的候选池相对展示位的倍数。严格取前 N 会让这一条永远是同一批人——
 #: 「换一批」刷新后上面纹丝不动。放大候选池再按种子确定性抽样，既保持是常见身份，
 #: 又能真的换一批。倍数太大就会开始出现只有一两部作品的冷门项。
 TOPS_POOL_FACTOR = 4
 
 
-def q_tops(contract: WebContract, n=28, jav=False, seed=""):
+def q_tops(contract: WebContract, n=28, jav=False, seed="", state=""):
     """顶部三层用的数据：女优圆头像 / 厂牌 / 内容标签。
 
-    缓存的人物肖像由前端优先使用；缺失时才回退到代表作接触印相裁切。"""
+    缓存的人物肖像由前端优先使用；缺失时才回退到代表作接触印相裁切。
+
+    `state` 跟作品列表同一份口径：在「已标记」这类页面上，上面这排头像
+    只应该出现真的有已标记作品的人，否则点进去是空的。"""
     c = contract.db()
-    scope = JAV_ASSET_CLAUSE if jav else ""
+    scope = (JAV_ASSET_CLAUSE if jav else "") + state_clause(state)
     base = (
         "SELECT e.id,e.canonical_name,count(DISTINCT ae.asset_id) n,"
         "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
@@ -2028,6 +2043,7 @@ def q_facets(
     scope_kind: str = "",
     scope_name: str = "",
     asset_id: int | None = None,
+    state: str = "",
 ):
     """返回当前浏览集合真正存在的筛选项。
 
@@ -2035,7 +2051,7 @@ def q_facets(
     筛选项必须来自和作品列表相同的规范关系，不能让前端拿全库 facets 猜当前页面。
     """
     c = contract.db()
-    scope = JAV_ASSET_CLAUSE if jav else ""
+    scope = (JAV_ASSET_CLAUSE if jav else "") + state_clause(state)
     scope_params: list[object] = []
     if asset_id is not None:
         scope += "AND a.id=? "
@@ -2493,9 +2509,10 @@ def _get_tops(contract, args):
     n = min(int(args.get("n", "28")), 60)
     jav = args.get("jav") == "1"
     seed = str(args.get("seed", ""))[:32]
+    state = str(args.get("state", ""))
     return contract.cached(
-        f"tops{n}{'-jav' if jav else ''}:{seed}",
-        lambda: q_tops(contract, n, jav=jav, seed=seed),
+        f"tops{n}{'-jav' if jav else ''}:{seed}:{state}",
+        lambda: q_tops(contract, n, jav=jav, seed=seed, state=state),
     )
 
 
@@ -2516,12 +2533,14 @@ def _get_facets(contract, args):
     scope_kind = str(args.get("scope_kind", ""))
     scope_name = str(args.get("scope_name", ""))
     asset_id = int(args["id"]) if args.get("id") else None
-    scope_key = f"{scope_kind}:{scope_name}:{asset_id or ''}"
+    state = str(args.get("state", ""))
+    scope_key = f"{scope_kind}:{scope_name}:{asset_id or ''}:{state}"
     return contract.cached(
         f"facets{'-jav' if jav else ''}:{scope_key}",
         lambda: q_facets(
             contract,
             jav=jav, scope_kind=scope_kind, scope_name=scope_name, asset_id=asset_id,
+            state=state,
         ),
     )
 

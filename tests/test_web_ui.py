@@ -529,6 +529,50 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("overflow-y:auto", block)
         self.assertIn("overflow-x:hidden", block)
 
+    def test_state_pages_ask_for_facets_narrowed_to_that_state(self):
+        """只改数据层不够：前端不把 state 传上去，顶部三层依旧是全库口径。"""
+        self.assertPageContains(
+            "if(context.type==='home'&&state.state)facetParams.set('state',state.state);")
+        self.assertPageContains(
+            "if(context.type==='home'&&state.state)topsParams.set('state',state.state);")
+        # 缓存键跟着 state 变，否则切到已标记会沿用首页那份。
+        scope = self.page.split("const scope=facetParams.toString();", 1)[0]
+        self.assertIn("facetParams.set('state'", scope)
+
+    def test_nav_groups_are_marked_once_and_drawn_in_both_views(self):
+        """窄栏和抽屉是同一份入口列表的两个视图，分隔线得画在同一道缝上。
+
+        分组用第四个字段标记，而不是往 EDGE_ICONS 里插一个不是入口的条目——
+        那会让每个读这份列表的地方都得先把它过滤掉。
+        """
+        self.assertPageContains("['immerse','沉浸模式','play',1]")
+        self.assertPageContains(".edge button.groupstart,.dnav button.groupstart")
+        self.assertPageContains("group?' class=\"groupstart\"':''")
+
+    def test_every_page_title_uses_one_size(self):
+        """管理区 26px、索引页 20px、播放列表 28px，从侧栏一路点过去就是三种大小。
+
+        `/follow` 更是连标题都没有。
+        """
+        self.assertPageContains(
+            ".pagetitle,.managetitle,.index .ihead h2,.playlistpage h2{")
+        self.assertPageLacks(".index .ihead h2{margin:0;font-size:20px;font-weight:500}")
+        self.assertPageLacks(".playlistpage h2{margin:0 0 5px;font-size:28px}")
+        self.assertPageContains('<h2 class="disp pagetitle">关注</h2>')
+
+    def test_immersive_progress_bar_is_reachable_and_draggable(self):
+        """4px 高、贴在屏幕最下沿、只能点不能拖——鼠标难瑞，手机几乎摸不到。"""
+        self.assertPageContains(".tokbar{position:absolute;left:0;right:0;bottom:0;height:20px")
+        self.assertPageContains("touch-action:none")
+        self.assertPageContains(".tokbar:hover::before,.tokbar:hover i,")
+        self.assertPageContains("function tokWireScrub(bar,prog,video,duration)")
+        self.assertPageContains("bar.setPointerCapture(e.pointerId)")
+        # 拖动中只画进度，松手才 seek：每帧 seek 会让远程源一直重新缓冲。
+        self.assertPageContains("if(scrubbing)prog.style.width=")
+        # 手机上任何位置横划都能拖进度，竖划仍然切片。
+        self.assertPageContains("tokTouch.axis=Math.abs(dx)>Math.abs(dy)?'x':'y';")
+        self.assertPageContains("{passive:false}")
+
     def test_review_reuses_the_standard_selection_instead_of_its_own_mode(self):
         """复核页曾自造「多选模式」按钮加框选，只在这一页生效，用户得先发现再记住。
 

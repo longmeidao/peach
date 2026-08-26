@@ -628,11 +628,15 @@ async function getBarsData(context=barsContext){
   if(context.type==='entity'){
     facetParams.set('scope_kind',context.kind);facetParams.set('scope_name',context.name)
   }else if(context.type==='item')facetParams.set('id',String(context.id));
+  // 已标记/稍后看这类状态页也是一个更窄的集合。不传的话，上面那排头像和
+  // 标签条走的是全库口径，列出来的人和标签在本页一个作品都没有。
+  if(context.type==='home'&&state.state)facetParams.set('state',state.state);
   const scope=facetParams.toString();
   if(scope!==barsDataScope){barsDataCache=null;barsDataPromise=null;barsDataScope=scope}
   if(barsDataCache&&Date.now()-barsDataAt<30000)return barsDataCache;
   const topsParams=new URLSearchParams({n:'30',seed:state.seed||''});
   if(javActive())topsParams.set('jav','1');
+  if(context.type==='home'&&state.state)topsParams.set('state',state.state);
   // 顶部三层跟着「换一批」的同一个种子走，刷新后才真的换人。
   if(!barsDataPromise)barsDataPromise=Promise.all([
       api('/api/facets'+(scope?'?'+scope:'')),
@@ -721,13 +725,14 @@ async function buildBars(){
   const scopedCreators=context.type==='entity'&&context.kind==='creator'
     ? facetData.creators.filter(item=>item.k!==context.name):facetData.creators;
   // 与窄栏共用 EDGE_ICONS —— 两边条目必须一致，原来抽屉是另一份硬编码
-  const navBtn=(k,label,ic)=>`<button data-nav="${k}" aria-pressed="${navOn(k)}">
+  const navBtn=(k,label,ic,group)=>`<button data-nav="${k}" aria-pressed="${navOn(k)}"${
+    group?' class="groupstart"':''}>
     ${icon(ic)}<span>${label}</span></button>`;
   $('#drawer').innerHTML=
     `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <b class="disp" style="font-size:15px;letter-spacing:.1em">导航与筛选</b>
       <button id="drawerClose" class="ib" title="收起">${icon('x')}</button></div>`+
-    `<div class="dnav">${EDGE_ICONS.map(([k,label,ic])=>navBtn(k,label,ic)).join('')}</div>`+
+    `<div class="dnav">${EDGE_ICONS.map(([k,label,ic,group])=>navBtn(k,label,ic,group)).join('')}</div>`+
     sec('来源',chips(facetData.locations.map(l=>({k:l.k,label:LOC[l.k]||l.k,n:l.n,
         cost:(l.k==='pikpak'||l.k==='online')?'metered':'free'})),'loc',true),'','src')
     +sec('时长',facetData.stats.duration?`<div class="duration-filter"><div class="duration-readout"><span id="durMinText">不限</span><b>—</b><span id="durMaxText">不限</span></div>
@@ -1304,6 +1309,7 @@ function renderFollow(){
   const sources=followData.sources||[];
   const broken=sources.filter(s=>s.last_status==='error'||s.last_status==='unauthorized');
   $('#stats').innerHTML=`<div class="follow">
+    <h2 class="disp pagetitle">关注</h2>
     <div class="reviewtabs">${FOLLOW_FILTERS.map(([key,label])=>
       `<button data-follow-filter="${key}" aria-pressed="${key===followFilter}">${label}${
         key?` <span class="n mono">${counts[key]||0}</span>`:''}</button>`).join('')}
@@ -2125,6 +2131,9 @@ const openDrawer=v=>{$('#drawer').classList.toggle('open',v);$('#scrim').classLi
 const closeDrawerAfterNav=()=>{drawerSuppressUntil=Date.now()+650;openDrawer(false)};
 $('#filterBtn').onclick=()=>openDrawer(!$('#drawer').classList.contains('open'));
 /* 常驻窄图标条：点即切视图，鼠标停留 180ms 展开完整抽屉 */
+/* 第四个字段是「从这一条开始是新一组」。用标记而不是插一个分隔线条目，
+   是因为 EDGE_ICONS 同时被窄栏、抽屉和测试当成「入口列表」读；插一个不是入口的条目
+   会让每一处都得先把它过滤掉。上一组是「去哪看」的列表页，下一组是播放器和行政区。 */
 const EDGE_ICONS=[
   ['','首页','home'],
   ['performers','艺人','user-round'],
@@ -2133,7 +2142,7 @@ const EDGE_ICONS=[
   ['flagged','已标记','star'],
   ['playlists','播放列表','list-filter'],
   ['follow','关注','globe'],
-  ['immerse','沉浸模式','play'],
+  ['immerse','沉浸模式','play',1],
   ['manage','管理','settings'],
 ];
 /* 统计、疑似广告、回收站、人工复核都是「管理」下的二级入口，不再各占一个顶层图标。
@@ -2272,8 +2281,8 @@ function navTo(k){
   buildEdge();buildBars();load(true);
 }
 function buildEdge(){
-  $('#edge').innerHTML=EDGE_ICONS.map(([k,t,ic])=>
-    `<button data-nav="${k}" title="${t}" aria-pressed="${navOn(k)}">
+  $('#edge').innerHTML=EDGE_ICONS.map(([k,t,ic,group])=>
+    `<button data-nav="${k}" title="${t}" aria-pressed="${navOn(k)}"${group?' class="groupstart"':''}>
       ${icon(ic)}</button>`).join('')
 ;
   $('#edge').querySelectorAll('[data-loc]').forEach(b=>b.onclick=()=>{
@@ -2970,8 +2979,9 @@ async function tokShow(dir){
     const upd=()=>{const d=v.duration||it.duration||0;
       if(d)prog.style.width=(v.currentTime/d*100).toFixed(2)+'%'};
     v.addEventListener('timeupdate',upd);
-    bar.onclick=e=>{const r=bar.getBoundingClientRect();
-      const d=v.duration||0; if(d)v.currentTime=d*((e.clientX-r.left)/r.width)};
+    // 拖动而不只是点。pointer 一套同时盖鼠标和触控，捕获指针后手滑出进度条
+    // 也不会断。拖动中只画进度，松手才 seek——每帧都 seek 会让远程源一直重新缓冲。
+    tokWireScrub(bar,prog,v,()=>v.duration||it.duration||0);
     $('#tokDislike').setAttribute('aria-pressed',full.feedback==='dislike');
     $('#tokSeen').setAttribute('aria-pressed',full.feedback==='seen');
     $('#tokSeen .toklabel').textContent=full.feedback==='seen'?'已看':'看过';
@@ -2980,6 +2990,28 @@ async function tokShow(dir){
     wireTelemetry(it,v,{});
     setTokLoading(false);
   }catch(_e){setTokLoading(false)}finally{tokSwitching=false}
+}
+/* 进度条拖动。抽成函数是因为每次切片都要重新绑一次，而监听器必须能被覆盖。 */
+function tokWireScrub(bar,prog,video,duration){
+  const ratio=event=>{const r=bar.getBoundingClientRect();
+    return Math.min(1,Math.max(0,(event.clientX-r.left)/r.width))};
+  let scrubbing=false;
+  bar.onpointerdown=e=>{
+    const d=duration(); if(!d)return;
+    scrubbing=true;bar.classList.add('scrubbing');bar.setPointerCapture(e.pointerId);
+    prog.style.width=(ratio(e)*100).toFixed(2)+'%';
+    e.preventDefault();
+  };
+  bar.onpointermove=e=>{if(scrubbing)prog.style.width=(ratio(e)*100).toFixed(2)+'%'};
+  const finish=e=>{
+    if(!scrubbing)return;
+    scrubbing=false;bar.classList.remove('scrubbing');
+    const d=duration(); if(d)video.currentTime=d*ratio(e);
+  };
+  bar.onpointerup=finish;
+  bar.onpointercancel=e=>{scrubbing=false;bar.classList.remove('scrubbing')};
+  // 没拖动的单击走同一条路：pointerdown 已经画了进度，pointerup 落地。
+  bar.onclick=null;
 }
 async function tokNext(d){
   if(tokSwitching)return;
@@ -3018,10 +3050,43 @@ $('#tokClose').onclick=()=>{setTokLoading(false);route('/');$('#tok').hidden=tru
   const v=$('#tokVid');if(v){v.style.transform='translateX(-50%)'}tokSwitching=false;document.body.style.overflow='';showHomeSurfaces();load(true)};
 let wl=0;
 $('#tok').addEventListener('wheel',e=>{const n=Date.now();if(n-wl<260)return;wl=n;tokNext(e.deltaY>0?1:-1)},{passive:true});
-let ty=0;
-$('#tok').addEventListener('touchstart',e=>ty=e.touches[0].clientY,{passive:true});
-$('#tok').addEventListener('touchend',e=>{const dy=ty-e.changedTouches[0].clientY;
-  if(Math.abs(dy)>60)tokNext(dy>0?1:-1)},{passive:true});
+/* 手机上竖划切片、横划拖进度。横划在哪儿起手都行——屏幕最下沿那条
+   进度条在手机上几乎摸不到。方向一旦定下就不再改，否则斜着划会又切片又跳进度。
+   位移按屏宽换算成时长的相对量，所以从任何位置起手都是「往右 = 往后」。 */
+let tokTouch=null;
+$('#tok').addEventListener('touchstart',e=>{
+  if(e.touches.length!==1){tokTouch=null;return}
+  const v=$('#tokVid');
+  tokTouch={x:e.touches[0].clientX,y:e.touches[0].clientY,axis:'',
+    from:v?v.currentTime||0:0};
+},{passive:true});
+$('#tok').addEventListener('touchmove',e=>{
+  if(!tokTouch||e.touches.length!==1)return;
+  const dx=e.touches[0].clientX-tokTouch.x,dy=e.touches[0].clientY-tokTouch.y;
+  if(!tokTouch.axis){
+    if(Math.abs(dx)<12&&Math.abs(dy)<12)return;
+    tokTouch.axis=Math.abs(dx)>Math.abs(dy)?'x':'y';
+    if(tokTouch.axis==='x')$('#tokBar').classList.add('scrubbing');
+  }
+  if(tokTouch.axis!=='x')return;
+  const v=$('#tokVid'),d=v&&(v.duration||0);
+  if(!d)return;
+  e.preventDefault();                       // 横划归进度，不交给页面滚动
+  tokTouch.to=Math.min(d,Math.max(0,tokTouch.from+dx/window.innerWidth*d));
+  $('#tokProg').style.width=(tokTouch.to/d*100).toFixed(2)+'%';
+},{passive:false});
+$('#tok').addEventListener('touchend',e=>{
+  if(!tokTouch)return;
+  const touch=tokTouch;tokTouch=null;
+  $('#tokBar').classList.remove('scrubbing');
+  if(touch.axis==='x'){
+    const v=$('#tokVid');
+    if(v&&touch.to!=null)v.currentTime=touch.to;
+    return;
+  }
+  const dy=touch.y-e.changedTouches[0].clientY;
+  if(Math.abs(dy)>60)tokNext(dy>0?1:-1);
+},{passive:true});
 [['#tokDislike','dislike'],['#tokSeen','seen'],['#tokO','o']].forEach(([s,kind])=>{
   $(s).onclick=async()=>{const it=tokList[tokIdx];
     const r=await api('/api/feedback',{method:'POST',body:JSON.stringify({id:it.id,kind})});
