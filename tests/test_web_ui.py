@@ -495,7 +495,11 @@ class WebUiSourceTests(unittest.TestCase):
         """遮罩铺满全屏。它排在抽屉之上时，抽屉里每一下点击都落在遮罩上，
         而遮罩的 onclick 是「收起抽屉」——表现就是能弹出、什么都点不到、一点就关。
 
-        三层的先后是契约，不能各自拍数：遮罩 < 抽屉 < 窄栏。
+        契约有两条，都不能各自拍数：
+
+        1. 遮罩必须低于抽屉，否则抽屉里点不到任何东西。
+        2. 抽屉打开时窄栏不得吃掉抽屉的点击——要么窄栏排在抽屉之下，要么它被显式停用。
+           当前设计走后者：抽屉就是窄栏的展开态，展开时窄栏 `pointer-events:none` 让位。
         """
         import re as _re
 
@@ -507,7 +511,10 @@ class WebUiSourceTests(unittest.TestCase):
 
         scrim, drawer, rail = layer(".scrim"), layer(".drawer"), layer(".edge")
         self.assertLess(scrim, drawer, "遮罩压在抽屉上面，抽屉就点不动了")
-        self.assertLess(drawer, rail, "抽屉滑入时从窄栏上面横过，窄栏要在最上面")
+        if rail > drawer:
+            self.assertIn("body.drawer-open .edge{opacity:0;pointer-events:none}",
+                          self.page,
+                          "窄栏排在抽屉之上时，展开必须让位，否则它会吃掉抽屉的点击")
 
     def test_detail_side_panel_never_scrolls_sideways(self):
         """`overflow-y:auto` 会把 overflow-x 从 visible 计算成 auto（CSS 规范）。
