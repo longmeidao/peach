@@ -4,6 +4,8 @@
 不是某个文件——判据同 `tests/test_web_ui.py`。
 """
 import json
+import os
+import re
 import sqlite3
 import stat
 import tempfile
@@ -227,7 +229,12 @@ class FollowContractTests(unittest.TestCase):
         path = self.root / "secrets" / "follow" / "rule34xxx.json"
         self.assertEqual(json.loads(path.read_text(encoding="utf-8")),
                          {"user_id": "42", "api_key": "sekret"})
-        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+        if os.name == "nt":
+            # Windows 的 chmod 只能拨只读位，NTFS 权限走 ACL——这里不假装收紧过。
+            self.assertFalse(result["permissions_tightened"])
+        else:
+            self.assertTrue(result["permissions_tightened"])
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
     def test_clearing_a_credential_removes_the_file(self):
         self._post("/api/follow/credential", {
@@ -377,7 +384,15 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_watching_lives_in_the_left_rail_and_managing_stays_in_the_manage_area(self):
         # 看和管是两件事，两个页面：左侧导航进「看」，管理区进「管」。
-        self.assertPageContains("['follow','在线追更','globe'],\n  ['immerse'")
+        # 断言「相邻」这件事本身，不要连换行和缩进一起写死——那种断言一改格式就红，
+        # 红的原因还和它想守的契约无关。
+        rail = self.page[self.page.index("const EDGE_ICONS=["):]
+        rail = rail[:rail.index("];")]
+        keys = re.findall(r"\['([a-z]*)'", rail)
+        self.assertIn("follow", keys)
+        self.assertEqual(keys[keys.index("follow") + 1], "immerse",
+                         "关注入口应当排在沉浸模式前面")
+        self.assertPageContains("['follow','关注','globe']")
         self.assertPageContains("if(k==='follow'){openFollow();return}")
         self.assertPageContains("if(k==='follow')return path==='/follow';")
         self.assertPageContains("['follow','追更来源','globe']")
@@ -410,8 +425,8 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_the_first_name_lookup_warns_about_the_index_download(self):
         self.assertPageContains("首次按名字查要下载创作者索引，可能几十秒")
 
-    def test_the_paste_box_cannot_be_dragged_shut(self):
-        self.assertPageContains(".faddform textarea{min-height:82px")
+    def test_the_input_and_its_button_are_the_same_height(self):
+        self.assertPageContains("height:38px;min-height:38px")
 
     def test_the_manage_page_is_ordered_by_what_you_do_first(self):
         # 只看管理页那一段：同样的标题在别的页面上也出现过，全页搜索会命中错的那个。
@@ -441,6 +456,11 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("blocked:['接不进来'")
         self.assertPageContains("row.path")
 
+    def test_the_page_says_where_the_credential_actually_lands(self):
+        # 从 Mac 浏览 Windows 实例时，凭据落在 Windows 上——不能写成「本机」。
+        self.assertPageContains("运行 Peach 的那台机器")
+        self.assertPageContains("Windows 上不收紧文件权限")
+
     def test_credentials_are_typed_into_the_page_not_into_a_file_by_hand(self):
         self.assertPageContains('data-cred-form=')
         self.assertPageContains("'/api/follow/credential'")
@@ -462,12 +482,21 @@ class FollowWebSourceTests(unittest.TestCase):
             if management in watch:
                 self.fail(f"看的那一页不应出现管理控件：{management!r}")
 
+    def test_times_are_rendered_in_the_viewer_timezone_not_raw_utc(self):
+        # 账本存 UTC；直接把那串字面量印出来，UTC+8 的人看到的每个时间都早 8 小时。
+        self.assertPageContains("function localTime(iso)")
+        self.assertPageContains("new Date(text)")
+        self.assertPageContains("when.getHours()")
+        page = self.page
+        body = page[page.index("function followWhen("):page.index("function followBadges(")]
+        self.assertNotIn(".replace('T',' ').slice(0,16)", body)
+
     def test_approximate_timestamps_are_labelled_as_approximate(self):
         # 站点只给「1 周前」时换算值不是发布时间，界面必须照实说。
         self.assertPageContains("item.published_precision==='approximate'?`约 ${text}`")
 
     def test_release_variant_rows_show_when_not_a_meaningless_kind(self):
-        self.assertPageContains("if(!label&&group.is_release)label=(item.published_at||'').slice(5,10)")
+        self.assertPageContains("if(!label&&group.is_release)label=localTime(item.published_at).slice(5,10)")
 
     def test_release_rows_show_the_reply_body_not_the_thread_title(self):
         self.assertPageContains("const body=group.is_release")

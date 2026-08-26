@@ -337,11 +337,17 @@ CREDENTIAL_GUIDE: dict[str, dict] = {
 
 
 def w_follow_credential(contract, body) -> dict:
-    """保存一个来源的凭据到本机文件。
+    """保存一个来源的凭据，写到**运行 Peach 的那台机器**的 secrets 目录。
 
     值只从请求体流向磁盘，**不回显、不记日志、不进任何返回体**。只接受
     `CREDENTIAL_GUIDE` 里声明过的 provider 和字段名——多余的字段一律拒绝，
-    免得把任意内容写进 secrets 目录。文件权限设成 0600。
+    免得把任意内容写进 secrets 目录。
+
+    **权限收紧只在 POSIX 上真的发生。** Windows 的 `os.chmod` 只能拨动只读位，
+    NTFS 的权限走 ACL，落盘就是继承来的 0o666——所以那里不假装收紧过，
+    `describe()` 的 `world_readable` 也照实报 `None`。要在 Windows 上真正收紧
+    得走 ACL（icacls/pywin32 断继承），那需要在那台机器上实测验证才能落地，
+    当前**未取得**，不写没验过的安全代码。
     """
     provider = str(body.get("provider") or "")
     guide = CREDENTIAL_GUIDE.get(provider)
@@ -367,10 +373,13 @@ def w_follow_credential(contract, body) -> dict:
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_text(json.dumps(cleaned, ensure_ascii=False, indent=2) + "\n",
                          encoding="utf-8")
-    os.chmod(temporary, 0o600)
+    if os.name != "nt":
+        os.chmod(temporary, 0o600)
     temporary.replace(path)
     # 返回的是 describe()，只有字段名，没有值。
     return {"ok": True, "provider": provider, "cleared": False,
+            # 界面据此说明「这台机器上没有收紧文件权限」，而不是默认收紧过。
+            "permissions_tightened": os.name != "nt",
             "saved": store.describe(provider)}
 
 

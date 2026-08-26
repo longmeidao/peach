@@ -1199,10 +1199,23 @@ async function openQualityGoals(push=true){
 let followData=null,followFilter='new',followBusy=false;
 const FOLLOW_FILTERS=[['new','未看'],['seen','已看'],['saved','已保存'],['ignored','已忽略'],['','全部']];
 
+/* 账本里一律存 UTC（ISO 带 Z），界面要按看的人所在时区显示。
+   原来直接把那串字面量印出来，UTC+8 的人看到的每个时间都早 8 小时。 */
+function localTime(iso){
+  if(!iso)return '';
+  // 没有时区标记的按 UTC 解释——存进去的时候就是 UTC。
+  const text=/[Zz]|[+-]\d\d:?\d\d$/.test(iso)?iso:iso+'Z';
+  const when=new Date(text);
+  if(isNaN(when))return String(iso).replace('T',' ').slice(0,16);
+  const pad=n=>String(n).padStart(2,'0');
+  return `${when.getFullYear()}-${pad(when.getMonth()+1)}-${pad(when.getDate())} `
+    +`${pad(when.getHours())}:${pad(when.getMinutes())}`;
+}
+
 function followWhen(item){
   const raw=item.published_at||'';
   if(!raw)return '时间未取得';
-  const text=raw.replace('T',' ').slice(0,16);
+  const text=localTime(raw);
   // 站点只给「1 周前」时换算出来的是近似值，界面必须照实说，不能冒充发布时间。
   return item.published_precision==='approximate'?`约 ${text}`:text;
 }
@@ -1223,7 +1236,7 @@ function followBadges(group){
    把线程回复标成「main」是没有信息量的——一个线程里九条回复全是 main。 */
 function followVariantRow(group,item,mark){
   let label=mark;
-  if(!label&&group.is_release)label=(item.published_at||'').slice(5,10)||'动态';
+  if(!label&&group.is_release)label=localTime(item.published_at).slice(5,10)||'动态';
   if(!label)label=item.variant_kind==='wip'?'WIP':(item.variant_label||item.variant_kind);
   /* 线程里九条回复的标题全是线程名，摘要才是那条动态的内容。
      只发了附件的回复没有正文，这时说清楚是没正文，比把线程名再印一遍强。 */
@@ -1275,12 +1288,12 @@ function renderFollow(){
     <div class="reviewtabs">${FOLLOW_FILTERS.map(([key,label])=>
       `<button data-follow-filter="${key}" aria-pressed="${key===followFilter}">${label}${
         key?` <span class="n mono">${counts[key]||0}</span>`:''}</button>`).join('')}
-      <button class="fcheck" data-follow-manage>${icon('settings')}管理来源</button></div>
+      <button class="fcheck" data-follow-manage>${icon('settings')}管理关注</button></div>
     ${broken.length?`<p class="fwarn">${broken.length} 个来源上次检查失败，去
-      <button class="flink" data-follow-manage>管理来源</button>看原因。</p>`:''}
+      <button class="flink" data-follow-manage>管理关注</button>看原因。</p>`:''}
     <div class="followlist">${groups.length?groups.map(followCard).join('')
-      :sources.length?'<p class="empty">没有符合条件的追更条目</p>'
-      :`<p class="empty">还没有追更来源。<button class="flink" data-follow-manage>去添加</button></p>`}</div></div>`;
+      :sources.length?'<p class="empty">没有符合条件的更新</p>'
+      :`<p class="empty">还没有关注任何来源。<button class="flink" data-follow-manage>去添加</button></p>`}</div></div>`;
   wireFollowItems();
   $('#stats').querySelectorAll('[data-follow-filter]').forEach(button=>button.onclick=()=>{
     followFilter=button.dataset.followFilter;openFollow(false)});
@@ -1307,9 +1320,10 @@ async function openFollow(push=true){
 function followSourceRow(source){
   const state=source.last_status||'未检查';
   const bad=state==='error'||state==='unauthorized';
-  return `<li class="fsource${bad?' bad':''}">
+  const idle=!source.last_checked_at;
+  return `<li class="fsource${bad?' bad':idle?' idle':''}">
     <b>${esc(source.label)}</b><span class="mono">${esc(source.provider_label)}</span>
-    <span class="mono">${esc(source.last_checked_at?source.last_checked_at.replace('T',' ').slice(0,16):'未检查')}</span>
+    <span class="mono">${esc(source.last_checked_at?localTime(source.last_checked_at):'未检查')}</span>
     <span class="fstatus">${esc(state)}</span>
     <button data-follow-check="${source.id}">检查</button>
     <button class="fremove" data-follow-remove="${source.id}" title="不再追这个来源">移除</button>
@@ -1360,15 +1374,13 @@ function renderFollowManage(credentials){
         <div class="fcardhead"><h3>添加关注</h3>
           <button class="fghost" data-follow-view>${icon('globe')}去看更新</button></div>
         <form class="faddform" id="followAdd">
-          <textarea name="lines" rows="3" required spellcheck="false"
+          <textarea name="lines" rows="1" required spellcheck="false"
             aria-label="来源链接、名字或 id"
-            placeholder="每行一条，链接和名字可以混着粘"></textarea>
-          <div class="faddside">
-            <button type="submit">查找</button>
-            <span data-follow-add-state aria-live="polite"></span>
-          </div>
+            placeholder="粘链接、名字或 id"></textarea>
+          <button type="submit">查找</button>
         </form>
-        <p class="fhint">链接直接认得；只给名字或 id 会去六个来源各查一遍，查到什么由你勾选。
+        <p class="fhint"><span data-follow-add-state aria-live="polite"></span>
+          链接直接认得，名字会去六个来源各查一遍。要一次加多个就每行一条。
           首次按名字查要下载创作者索引，可能几十秒。</p>
       </section>
       <div id="followPicks"></div>
@@ -1389,8 +1401,9 @@ function renderFollowManage(credentials){
       <section class="fcard">
         <div class="fcardhead"><h3>凭据</h3></div>
         <div class="fcreds">${(credentials.providers||[]).map(followCredentialRow).join('')}</div>
-        <p class="fhint">凭据只留在本机，不进 Git、URL、日志或 ledger。输入框里的值直接写入
-          本机文件，页面上不会再显示出来。</p>
+        <p class="fhint">凭据写在<b>运行 Peach 的那台机器</b>上（不是你现在这台浏览器所在的机器），
+          不进 Git、URL、日志或 ledger。保存后页面上不会再显示出来。
+          Windows 上不收紧文件权限——NTFS 走 ACL，<code>chmod</code> 在那里没有效果。</p>
       </section>
     </aside></div>`;
   wireFollowManage();
@@ -1425,6 +1438,16 @@ function wireFollowItems(){
 
 function wireFollowManage(){
   const root=$('#stats'),form=root.querySelector('#followAdd');
+  const box=form&&form.querySelector('textarea');
+  /* 常见情况是粘一条，多行是例外——所以静止时就一行高，和按钮齐平；
+     真粘了多行才往下长。原来固定三行，按钮只有它 1/3 高，看着就是没对齐。 */
+  if(box){
+    const grow=()=>{box.style.height='auto';
+      box.style.height=Math.min(box.scrollHeight,240)+'px'};
+    box.addEventListener('input',grow);
+    box.addEventListener('paste',()=>setTimeout(grow,0));
+    grow();
+  }
   if(form)form.onsubmit=async event=>{
     event.preventDefault();
     const state=form.querySelector('[data-follow-add-state]'),button=form.querySelector('button');
@@ -1437,7 +1460,8 @@ function wireFollowManage(){
     try{
       const result=await api('/api/follow/resolve',{method:'POST',
         body:JSON.stringify({lines})});
-      state.textContent='';renderFollowPicks(result.results||[]);
+      state.textContent='';if(box){box.value='';box.style.height='auto'}
+      renderFollowPicks(result.results||[]);
     }catch(error){state.textContent=error.message||'查找失败'}
     finally{button.disabled=false}
   };
@@ -2084,7 +2108,7 @@ const EDGE_ICONS=[
   ['jav','JAV','jav'],
   ['flagged','已标记','star'],
   ['playlists','播放列表','list-filter'],
-  ['follow','在线追更','globe'],
+  ['follow','关注','globe'],
   ['immerse','沉浸模式','play'],
   ['manage','管理','settings'],
 ];
