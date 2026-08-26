@@ -408,6 +408,11 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains(
             "if(path==='/follow-manage'){await openFollowManage(false);return}")
 
+    def test_the_add_state_is_looked_up_outside_the_form(self):
+        # 提示行在表单外面。在 form 里找它会拿到 null，第一次赋值就抛 TypeError，
+        # 整个提交静默失败——实测踩过。
+        self.assertPageContains("const state=root.querySelector('[data-follow-add-state]')")
+
     def test_sources_are_added_by_pasting_not_by_a_command(self):
         self.assertPageContains('id="followAdd"')
         self.assertPageContains('name="lines"')
