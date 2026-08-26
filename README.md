@@ -106,6 +106,31 @@ worktree 目录。跨机器继续任务时 push 分支，在另一台按分支�
 `avatars`、`logos`、`covers`），走 Syncthing 单向复制，见下文「两台机器怎么保持一致」；
 其余 durable artifacts 仍要先从缓存与本机状态里拆出来才能同步。
 
+### 浏览记录口味刷新
+
+`scripts/taste_history.py` 自动发现 Windows 的 Firefox、Zen、Chrome，以及 macOS 的
+Firefox、Zen、Chrome、Safari。它先用 SQLite backup API 取得浏览器仍在写入时也一致的只读副本，
+再把访问记录增量写入 `peach-data/sources/taste-history/history.sqlite`。原始 URL 和标题只在这个
+私有源库中；`peach-data/review/taste-history/` 的 Markdown/CSV 只包含聚合域名、口味维度和
+creator/tag candidate，不写 ledger，不自动批准。
+
+刷新本机全部浏览器并生成报告：
+
+```powershell
+python scripts/taste_history.py refresh
+```
+
+只用已有源库重新分析，或限制到某个时间点以后：
+
+```powershell
+python scripts/taste_history.py analyze --since 2026-08-01T00:00:00+00:00
+```
+
+Safari 的省事入口是让 iPhone/iPad 与 Mac 登录同一 Apple Account，并在两端 iCloud 设置中开启
+Safari；脚本读取 Mac 同步后的 `~/Library/Safari/History.db`，无需从 iPhone 手工导出。首次运行时
+终端/Codex 需要获得 macOS「完全磁盘访问权限」。Safari 历史有保留期限，因此至少每周刷新一次；
+Mac 外置盘未挂载导致 `peach-data/sources` 断链时必须报错，不得静默丢证据。
+
 以上是约定的分层。Mac 上的实际形状有出入：真实目录名是 `artifacts`，`generated` 是指向它的
 符号链接，另有 `review`、`tmp`，`archive`/`sources`/`tools` 指向外置盘，盘不在时是断链。
 排查路径问题时以 `docs/STATUS.md` 的实测记录为准，不要按这张表推断某个目录一定存在。

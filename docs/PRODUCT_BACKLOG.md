@@ -9,7 +9,7 @@
 3. **在线追更**：kemono/coomer/pawchive、rule34video、rule34.xxx、f95zone 五类连接器、WIP/alt/跨站重复判定、`follow_source`/`follow_item`、`peach follow`、看的 `/follow` 与管的 `/follow-manage` 两个页面（粘链接或只给名字/id，自动跨六个来源查找）已上线；仍缺定时轮询（APScheduler）、媒体下载落地，以及 simpcity 的可用入口（DDoS-Guard，未取得）。
 4. **首尾帧出处与不完整候选**：已有受限 FFmpeg 首尾抽帧、Windows 内置 OCR、证据帧缓存、来源/Full version 候选和 `/review`；仍需决定全库批次范围，并把用户批准后的不完整版判断接到更好版本目标。
 5. **厂牌 Logo 补齐与持续校验**：14 个已确认社交 handle 已有内容缓存、provenance、精确/感知哈希、质量与重复门槛及健康报告；仍有 72 个厂牌没有可信 handle，必须继续从官网/公开来源取证，不能猜账号。
-6. **口味证据持续刷新**：ledger 已实时记录搜索、播放、高潮、喜欢/理由、不合口味和稍后看；2026-08-13 的浏览器、Takeout、Telegram、关注列表与库存原始输入也保留在外置盘 `peach-data/sources`。仍需实现 Windows/macOS 浏览器库的一致性快照、来源 manifest、只处理新增时间段的归一化与差异报告、按月生成可复核的创作者/tag/缺口候选；原始 URL 不进 Git、不进日志，AI 结论不得直接改真相字段。
+6. **口味证据持续刷新**：ledger 已实时记录搜索、播放、高潮、喜欢/理由、不合口味和稍后看；浏览器历史现可用 SQLite 一致性副本增量进入私有源库，并生成不含 URL/标题的 creator/tag candidate 与聚合报告。旧 2026-08-13 原始包已确认不在 Windows 外置盘；仍需在 Mac 开启 iCloud Safari、完成首次导入，并把两端每周刷新装成系统计划任务。AI 结论不得直接改真相字段。
 
 ## 尚未实现（6 项）
 
