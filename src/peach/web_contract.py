@@ -2394,7 +2394,8 @@ def q_duplicates(contract: WebContract, args):
         if not is_jav_code(row["code"]):
             continue
         item = dict(row)
-        item["drive"] = str(item.pop("path") or "")[:2].upper()
+        # 盘符只用于判定跨盘；重复项页面还要显示完整路径，不能在契约层丢掉。
+        item["drive"] = str(item.get("path") or "")[:2].upper()
         grouped.setdefault(normalise_code_key(row["code"]), []).append(item)
 
     groups = []

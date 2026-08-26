@@ -110,7 +110,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - **重复错误复盘（2026-08-16）**：反复出现的 pytest、错误 `/health`、worktree 错找 `.venv` 或加载主目录源码、PowerShell `$HOME` 大小写冲突、`foreach {}` 后直接接管道、Schannel 失败后改用 HTTP 冒充 HTTPS，以及浏览器不可用却继续报视觉通过，根因都是「文字提醒没有变成执行门槛」。测试入口已收敛为 `scripts/test.ps1`，自动定位主 venv 并拒绝错误源码；其他禁用模式写入项目 `AGENTS.md`，以后必须由可执行检查、真实端点/CA 校验和失败即时报告共同拦截，不能再靠操作者记忆。
 - **TikTok 单列滚动（2026-08-15）**：当前 bundle `async/89993.30b4c2a9.js`（SHA-256 `C4D4867C5C6C89DCE560D429A4686427C911267DCBB2787AEB31B7BD333E9088`）使用 200 ms、`cubic-bezier(.2,.2,.4,.9)`、目标 `offsetTop`，滚动时临时禁用并恢复 `scrollSnapType`。Peach 复用时长和 easing，保留自己的两视频预载与 wheel/touch 队列。
 - **Apple 播放控件（2026-08-15）**：Apple HIG 「Playing video」 只支持熟悉、克制的传输控制语义，没有提供可复用的 `gobackward.10`/`goforward.10` Web SVG。Peach 使用固定版本的 Lucide 子集和明确的「后退/前进 10 秒」无障碍标签，不声称精确复制 iOS glyph。
-- **Vercel 设计规范（2026-08-15）**：`https://vercel.com/design.md`（SHA-256 `07ED2923294AA326F65F9D9D4094B6E97BF7DE10C39ACD8BE935F2045C5A688F`）只作为评审清单：先用字体和间距建立层级、保持连续画布、避免任意图标瓷砖/嵌套卡片/微小灰字，动画只表达状态或连续性。
+- **Vercel Web Interface Guidelines（2026-08-15 首录，2026-08-26 复核）**：入口 `https://vercel.com/design.md` 首录 SHA-256 为 `07ED2923294AA326F65F9D9D4094B6E97BF7DE10C39ACD8BE935F2045C5A688F`；本次核对官方 `vercel-labs/web-interface-guidelines` 的 `command.md`，资源版本为 commit `e3d624baaf29dc1fc645aff3e38f03e564d2d6b1`（2026-08-18）。Peach 将它作为跨框架评审清单：键盘与可见焦点、触控命中、URL/标题状态、空/错/密集状态、移动端输入、异步播报、减少动画和固有布局；同时保留 Peach 的单用户中文语义、现有色彩 token 与高密度媒体浏览，不复制 Vercel 专属品牌、英文标题大小写或营销文案。
 - **kill-ai-slop**：在 commit `96d1ca568a1db7e1ef9a381644c744440f816ee4` 上作为减法审计清单使用，不安装 skill、不复制 scanner。
 - **Lucide**：通用操作和导航图标使用固定本地 `lucide-static` 1.31.0 子集（ISC）；许可见 `web/vendor/lucide-LICENSE.txt`。品牌/来源 Logo 和计时圈不属于通用图标。
 - **Rule34 样式**：旧代码注释没有 DOM/CSS 证据，已删除「Rule34-style」声明。当前标签颜色是 Peach 自有语义。

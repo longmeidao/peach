@@ -33,6 +33,30 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<link rel="icon" href="/peach-logo.png" type="image/png">')
         self.assertPageContains('<img class="mark" src="/peach-logo.png" alt="">')
 
+    def test_global_navigation_and_controls_have_accessible_context(self):
+        self.assertPageContains('<a class="skiplink" href="#main">跳到正文</a>')
+        self.assertPageContains('<main id="main" tabindex="-1">')
+        self.assertPageContains('id="filterBtn" title="筛选" aria-label="筛选"')
+        self.assertPageContains('id="settingsBtn" title="设置" aria-label="打开设置"')
+        self.assertPageContains('name="q" type="search"')
+        self.assertPageContains('aria-label="搜索作品、女优、厂牌或标签"')
+        self.assertPageContains('id="count" role="status" aria-live="polite" aria-atomic="true"')
+
+    def test_browser_chrome_focus_and_mobile_inputs_follow_the_ui_checklist(self):
+        self.assertPageContains('<meta name="theme-color" content="#FFFFFF"')
+        self.assertPageContains('<meta name="theme-color" content="#020408"')
+        self.assertPageContains('.search:focus-within{border-color:var(--tungsten);box-shadow:')
+        self.assertPageContains('@media (max-width:760px){input,textarea,select{font-size:16px!important}}')
+        self.assertPageContains('button,a,input,textarea,select,summary{touch-action:manipulation}')
+
+    def test_route_titles_and_settings_dialog_manage_focus(self):
+        self.assertPageContains('const pageTitle=path=>{')
+        self.assertPageContains("'follow-manage':'关注管理'")
+        self.assertPageContains('syncPageTitle(path);')
+        self.assertPageContains("queueMicrotask(()=>$('#settingsClose').focus())")
+        self.assertPageContains('if(settingsReturnFocus&&document.contains(settingsReturnFocus))')
+        self.assertPageContains("if(e.key!=='Tab')return")
+
     def test_entity_routes_are_semantic_and_not_model_shaped(self):
         self.assertPageLacks("route(`/entity/")
         self.assertPageContains("performer:'performers'")
@@ -929,6 +953,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(keep==='all'){for(const f of g.files)ids.push(f.id);continue}")
         self.assertPageContains('data-dup-keep="all"')
         self.assertPageContains("all:'零个文件'")
+
+    def test_duplicate_rows_show_the_full_path_without_losing_source_and_size(self):
+        self.assertPageContains('class="mono duppath" title="${esc(f.path||\'\')}"')
+        self.assertPageContains("${esc(f.path||'')}")
+        self.assertPageContains('.duppath{grid-column:2/-1;min-width:0;overflow:hidden')
 
     def test_duplicate_removal_is_reversible(self):
         # 只能进回收站；永久删除仍得从回收站单独执行。

@@ -10,7 +10,19 @@ const api=async(p,o)=>{
   }
   return payload;
 };
-const route=(path,replace=false)=>history[replace?'replaceState':'pushState']({},'',path);
+const pageTitle=path=>{
+  const url=new URL(path,location.origin),parts=decodeURIComponent(url.pathname).split('/').filter(Boolean);
+  const fixed={stats:'统计',review:'人工复核',duplicates:'重复文件','quality-goals':'高清版',
+    follow:'关注','follow-manage':'关注管理',playlists:'播放列表',performers:'女优',studios:'厂牌',
+    creators:'创作者',series:'系列',tags:'标签',immerse:'沉浸模式',mix:'Mix',item:'作品'};
+  const label=parts.length>1&&['performers','studios','creators','series'].includes(parts[0])
+    ? parts.slice(1).join('/') : fixed[parts[0]];
+  return label?`${label} · Peach`:'Peach · 蜜桃';
+};
+const syncPageTitle=path=>{document.title=pageTitle(path)};
+const route=(path,replace=false)=>{
+  history[replace?'replaceState':'pushState']({},'',path);syncPageTitle(path);
+};
 const ENTITY_ROUTES={performer:'performers',studio:'studios',creator:'creators',series:'series'};
 const ROUTE_ENTITIES={performers:'performer',studios:'studio',creators:'creator',series:'series'};
 const entityPath=(kind,name)=>`/${ENTITY_ROUTES[kind]||kind}/${encodeURIComponent(name)}`;
@@ -75,9 +87,27 @@ function syncSettingsPanel(){
   $('#searchHistoryLimitSetting').value=String(appSettings.searchHistoryLimit);
   $('#relatedLimitSetting').value=String(appSettings.relatedLimit);
 }
-function openSettings(open=true){$('#settingsPanel').hidden=!open;if(open)syncSettingsPanel()}
+let settingsReturnFocus=null;
+function openSettings(open=true){
+  const panel=$('#settingsPanel');
+  if(open){
+    settingsReturnFocus=document.activeElement;panel.hidden=false;syncSettingsPanel();
+    queueMicrotask(()=>$('#settingsClose').focus());return
+  }
+  panel.hidden=true;
+  if(settingsReturnFocus&&document.contains(settingsReturnFocus))settingsReturnFocus.focus();
+  settingsReturnFocus=null;
+}
 $('#settingsBtn').onclick=()=>openSettings(true);$('#settingsClose').onclick=()=>openSettings(false);
 $('#settingsPanel').onclick=e=>{if(e.target===$('#settingsPanel'))openSettings(false)};
+$('#settingsPanel').onkeydown=e=>{
+  if(e.key!=='Tab')return;
+  const focusable=[...e.currentTarget.querySelectorAll('button:not([disabled]),select:not([disabled]),input:not([disabled]),textarea:not([disabled]),a[href]')];
+  if(!focusable.length)return;
+  const first=focusable[0],last=focusable.at(-1);
+  if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}
+  else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
+};
 $('#rotateSetting').onchange=e=>{appSettings.rotateMinutes=+e.target.value;saveSettings()};
 $('#batchSizeSetting').onchange=e=>{appSettings.batchSize=+e.target.value||60;saveSettings();if(location.pathname==='/')load(true)};
 $('#defaultSortSetting').onchange=e=>{appSettings.defaultSort=e.target.value;saveSettings();state.sort=appSettings.defaultSort;if(location.pathname==='/')load(true)};
@@ -995,7 +1025,8 @@ function renderDuplicates(){
         <button class="dupname" data-open-dup="${f.id}" title="${esc(f.name)}">${esc(f.name)}</button>
         <span class="mono">${esc(LOC[f.location]||f.location||f.drive||'')}</span>
         <span class="mono">${fmtSize(f.size||0)}</span>
-        <span class="mono">${fmtDur(f.duration)}</span></div>`).join('')}</div>
+        <span class="mono">${fmtDur(f.duration)}</span>
+        <span class="mono duppath" title="${esc(f.path||'')}">${esc(f.path||'')}</span></div>`).join('')}</div>
     </section>`).join(''):'<p class="empty">没有找到重复文件</p>'}</div>`;
   $('#stats').querySelectorAll('[data-open-dup]').forEach(b=>
     b.onclick=()=>openItem(+b.dataset.openDup));
@@ -3099,6 +3130,7 @@ function wireAllDrag(){['#tagbar','#srow','#nrow'].forEach(s=>wireDrag($(s)));
   document.querySelectorAll('.tier').forEach(wireDrag)}
 
 async function restoreRoute(){
+  syncPageTitle(location.href);
   const path=decodeURIComponent(location.pathname),parts=path.split('/').filter(Boolean);
   if(path==='/trash'){
     state={...state,creator:'',studio:'',tag:'',orient:'',state:'trash',q:''};$('#q').value='';
