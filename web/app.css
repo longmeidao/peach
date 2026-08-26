@@ -878,17 +878,13 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .edge{position:fixed;top:0;bottom:0;left:0;width:var(--railW);z-index:92;
   padding-top:14px;
   background:var(--ground);
-  border-right:0;
+  /* 窄栏和内容区背景接近，没有这条线就看不出左边那一条到哪里为止。
+     抽屉展开时它从 left:0 盖住窄栏，线自然跟着消失，那时候分界由抽屉自己的右边框接管。 */
+  border-right:1px solid var(--line-soft);
   display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 0}
 .edge button{width:52px;height:52px;border-radius:8px;background:none;border:0;cursor:pointer;
   display:flex;align-items:center;justify-content:center;color:var(--muted);transition:background .12s}
 .edge button:hover{background:var(--hover);color:var(--tungsten)}
-/* 分组分隔线。窄栏和抽屉是同一份入口列表的两个视图，线得画在同一道缝上。 */
-.edge button.groupstart,.dnav button.groupstart{position:relative;margin-top:13px}
-.edge button.groupstart::before,.dnav button.groupstart::before{
-  content:"";position:absolute;top:-7px;height:1px;background:var(--line-soft)}
-.edge button.groupstart::before{left:9px;right:9px}
-.dnav button.groupstart::before{left:0;right:0}
 .edge button[aria-pressed="true"]{background:var(--tungsten-soft);color:var(--tungsten)}
 .edge svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round}

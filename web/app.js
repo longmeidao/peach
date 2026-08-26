@@ -725,14 +725,13 @@ async function buildBars(){
   const scopedCreators=context.type==='entity'&&context.kind==='creator'
     ? facetData.creators.filter(item=>item.k!==context.name):facetData.creators;
   // 与窄栏共用 EDGE_ICONS —— 两边条目必须一致，原来抽屉是另一份硬编码
-  const navBtn=(k,label,ic,group)=>`<button data-nav="${k}" aria-pressed="${navOn(k)}"${
-    group?' class="groupstart"':''}>
+  const navBtn=(k,label,ic)=>`<button data-nav="${k}" aria-pressed="${navOn(k)}">
     ${icon(ic)}<span>${label}</span></button>`;
   $('#drawer').innerHTML=
     `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <b class="disp" style="font-size:15px;letter-spacing:.1em">导航与筛选</b>
       <button id="drawerClose" class="ib" title="收起">${icon('x')}</button></div>`+
-    `<div class="dnav">${EDGE_ICONS.map(([k,label,ic,group])=>navBtn(k,label,ic,group)).join('')}</div>`+
+    `<div class="dnav">${EDGE_ICONS.map(([k,label,ic])=>navBtn(k,label,ic)).join('')}</div>`+
     sec('来源',chips(facetData.locations.map(l=>({k:l.k,label:LOC[l.k]||l.k,n:l.n,
         cost:(l.k==='pikpak'||l.k==='online')?'metered':'free'})),'loc',true),'','src')
     +sec('时长',facetData.stats.duration?`<div class="duration-filter"><div class="duration-readout"><span id="durMinText">不限</span><b>—</b><span id="durMaxText">不限</span></div>
@@ -2142,9 +2141,6 @@ const openDrawer=v=>{$('#drawer').classList.toggle('open',v);$('#scrim').classLi
 const closeDrawerAfterNav=()=>{drawerSuppressUntil=Date.now()+650;openDrawer(false)};
 $('#filterBtn').onclick=()=>openDrawer(!$('#drawer').classList.contains('open'));
 /* 常驻窄图标条：点即切视图，鼠标停留 180ms 展开完整抽屉 */
-/* 第四个字段是「从这一条开始是新一组」。用标记而不是插一个分隔线条目，
-   是因为 EDGE_ICONS 同时被窄栏、抽屉和测试当成「入口列表」读；插一个不是入口的条目
-   会让每一处都得先把它过滤掉。上一组是「去哪看」的列表页，下一组是播放器和行政区。 */
 const EDGE_ICONS=[
   ['','首页','home'],
   ['performers','艺人','user-round'],
@@ -2153,7 +2149,7 @@ const EDGE_ICONS=[
   ['flagged','已标记','star'],
   ['playlists','播放列表','list-filter'],
   ['follow','关注','globe'],
-  ['immerse','沉浸模式','play',1],
+  ['immerse','沉浸模式','play'],
   ['manage','管理','settings'],
 ];
 /* 统计、疑似广告、回收站、人工复核都是「管理」下的二级入口，不再各占一个顶层图标。
@@ -2292,8 +2288,8 @@ function navTo(k){
   buildEdge();buildBars();load(true);
 }
 function buildEdge(){
-  $('#edge').innerHTML=EDGE_ICONS.map(([k,t,ic,group])=>
-    `<button data-nav="${k}" title="${t}" aria-pressed="${navOn(k)}"${group?' class="groupstart"':''}>
+  $('#edge').innerHTML=EDGE_ICONS.map(([k,t,ic])=>
+    `<button data-nav="${k}" title="${t}" aria-pressed="${navOn(k)}">
       ${icon(ic)}</button>`).join('')
 ;
   $('#edge').querySelectorAll('[data-loc]').forEach(b=>b.onclick=()=>{

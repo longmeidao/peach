@@ -539,15 +539,14 @@ class WebUiSourceTests(unittest.TestCase):
         scope = self.page.split("const scope=facetParams.toString();", 1)[0]
         self.assertIn("facetParams.set('state'", scope)
 
-    def test_nav_groups_are_marked_once_and_drawn_in_both_views(self):
-        """窄栏和抽屉是同一份入口列表的两个视图，分隔线得画在同一道缝上。
+    def test_collapsed_rail_is_divided_from_the_content_beside_it(self):
+        """窄栏和内容区背景接近，没有分割线就看不出左边那一条到哪里为止。
 
-        分组用第四个字段标记，而不是往 EDGE_ICONS 里插一个不是入口的条目——
-        那会让每个读这份列表的地方都得先把它过滤掉。
+        只管收起的状态：抽屉展开时从 `left:0` 盖住窄栏，分界由抽屉自己的右边框接管。
         """
-        self.assertPageContains("['immerse','沉浸模式','play',1]")
-        self.assertPageContains(".edge button.groupstart,.dnav button.groupstart")
-        self.assertPageContains("group?' class=\"groupstart\"':''")
+        rail = self.page.split(".edge{position:fixed", 1)[1].split("}", 1)[0]
+        self.assertIn("border-right:1px solid var(--line-soft)", rail)
+        self.assertNotIn("border-right:0", rail)
 
     def test_every_page_title_uses_one_size(self):
         """管理区 26px、索引页 20px、播放列表 28px，从侧栏一路点过去就是三种大小。
