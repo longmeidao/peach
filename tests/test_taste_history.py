@@ -1,11 +1,22 @@
 import csv
+import json
 import sqlite3
 import tempfile
 import unittest
+import zipfile
 from contextlib import closing
+from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
-from peach.taste_history import HistorySource, analyze_history, discover_history_sources, refresh_history
+from peach.taste_history import (
+    HistorySource,
+    analyze_history,
+    discover_history_sources,
+    refresh_history,
+    refresh_takeout_history,
+)
 
 
 class TasteHistoryTests(unittest.TestCase):
@@ -49,6 +60,41 @@ class TasteHistoryTests(unittest.TestCase):
             db.execute("INSERT INTO history_visits VALUES (3, 1, 700000000, 'hidden')")
             db.commit()
 
+    def _takeout_zip(self, path: Path) -> None:
+        overlap_url = "https://onlyfans.com/takeout_creator"
+        unique_url = "https://rule34.xxx/index.php?page=post&s=list&tags=feet"
+        history = {
+            "Browser History": [
+                {"url": overlap_url, "title": "private takeout title", "time_usec": 1700000000123456},
+                {"url": unique_url, "title": "another private title", "time_usec": 1700000100000000},
+            ]
+        }
+        activity_rows = [
+            (overlap_url, 1700000000, "private activity title"),
+            ("https://fansly.com/activity_only", 1700000200, "activity only title"),
+        ]
+        cards: list[str] = []
+        for url, timestamp, title in activity_rows:
+            local = datetime.fromtimestamp(timestamp, UTC).astimezone(ZoneInfo("Asia/Hong_Kong"))
+            hour = (local.hour - 1) % 12 + 1
+            date = f"{local:%b} {local.day}, {local.year}, {hour}:{local:%M:%S} {local:%p} HKT"
+            wrapped = f"https://www.google.com/url?q={quote(url, safe='')}"
+            cards.append(
+                '<div class="outer-cell"><div><div>Visited&nbsp;'
+                f'<a href="{wrapped}">{title}</a><br>{date}<br>Products:<br>Chrome'
+                "</div></div></div>"
+            )
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("Takeout/Chrome/History.json", json.dumps(history))
+            archive.writestr("Takeout/My Activity/Chrome/MyActivity.html", "<html>" + "".join(cards) + "</html>")
+            archive.writestr(
+                "Takeout/My Activity/Search/MyActivity.html",
+                '<html><div class="outer-cell"><div><div>Searched for&nbsp;'
+                '<a href="https://www.google.com/search?q=test">private search</a><br>'
+                "Nov 15, 2023, 9:18:20 PM HKT<br>Products:<br>Search"
+                "</div></div></div></html>",
+            )
+
     def test_discovers_windows_firefox_and_chrome_profiles(self):
         roaming = self.root / "Roaming"
         local = self.root / "Local"
@@ -89,6 +135,34 @@ class TasteHistoryTests(unittest.TestCase):
         with Path(result["creators"]).open(encoding="utf-8-sig", newline="") as handle:
             creators = {row["candidate"] for row in csv.DictReader(handle)}
         self.assertEqual(creators, {"alice", "creator_name"})
+
+    def test_takeout_import_recovers_activity_and_deduplicates_sources(self):
+        archive = self.root / "takeout.zip"
+        self._takeout_zip(archive)
+        store = self.root / "sources" / "history.sqlite"
+
+        first = refresh_takeout_history([archive], store, host="test-host")
+        second = refresh_takeout_history([archive], store, host="test-host")
+
+        self.assertEqual(
+            [(item["profile"], item["visits"], item["added"]) for item in first],
+            [
+                ("Takeout Browser History", 2, 2),
+                ("Google My Activity - Chrome", 2, 1),
+                ("Google My Activity - Search", 1, 1),
+            ],
+        )
+        self.assertEqual(sum(item["added"] for item in second), 0)
+        with closing(sqlite3.connect(store)) as db:
+            rows = db.execute("SELECT url, title FROM history_visit ORDER BY visited_at").fetchall()
+        self.assertEqual(len(rows), 4)
+        self.assertTrue(all("google.com/url" not in url for url, _title in rows))
+        self.assertIn(("https://fansly.com/activity_only", "activity only title"), rows)
+
+        result = analyze_history(store, self.root / "review")
+        report = Path(result["report"]).read_text(encoding="utf-8")
+        self.assertNotIn("https://", report)
+        self.assertNotIn("private takeout title", report)
 
 
 if __name__ == "__main__":
