@@ -989,7 +989,7 @@ async function openPlaylists(push=true){
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
-let reviewData=null,reviewCategory='metadata_fields';
+let reviewData=null,reviewRuntime=null,reviewCategory='metadata_fields';
 /* 主体是实体而不是单条作品的复核分类。值就是实体 kind。 */
 const ENTITY_REVIEW_CATEGORIES={creator_tags:'creator',western_identity:'creator'};
 const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',western_identity:'西方身份回配',code_creators:'番号目录存疑',fc2_markings:'FC2 评论标记',fc2_similarity:'FC2 跨号相似',video_endcards:'片尾/出处证据',media_failure:'媒体失败'};
@@ -1082,10 +1082,10 @@ async function openReview(push=true){
   buildManageBar();
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';$('#count').textContent='';
   $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;$('#tiers').style.display='none';$('#tagbar').style.display='none';
-  /* ADR-0018：确定的那部分先落库再取队列，否则它们会在队列里白占一轮。
-     失败不拦页面——只读端（reader）本来就会 409，那是正常状态不是错误；
-     但也不静默吞掉，留一行 console 便于排查。 */
-  try{
+  reviewRuntime=await api('/healthz');
+  /* ADR-0018：确定的那部分先落库再取队列。reader 明知不能写就不要制造一次 409；
+     它改为读取 writer 的严格 CA HTTPS 镜像，判定按钮也一起锁住。 */
+  if(!reviewRuntime.ledger_read_only)try{
     const auto=await api('/api/review/auto-apply',{method:'POST',body:'{}'});
     if(auto&&auto.applied)console.info(`自动落库 ${auto.applied} 条（ADR-0018）`);
   }catch(e){console.info('自动落库未执行：'+e.message)}
@@ -1094,8 +1094,16 @@ async function openReview(push=true){
   const render=()=>{
     const rows=reviewData.sections[reviewCategory]||[];
     const title=REVIEW_LABELS[reviewCategory];
+    const mirror=reviewData.mirror||null,locked=!!reviewRuntime.ledger_read_only;
+    const writer=reviewRuntime.ledger_writer_origin
+      ?new URL('/review',reviewRuntime.ledger_writer_origin).href:'';
+    const mirrorText=mirror?.state==='live'?'正在显示写入端的实时复核队列'
+      :mirror?.state==='cached'?`写入端暂时不可达，显示 ${localTime(mirror.fetched_at)} 的缓存`
+      :mirror?.error||reviewRuntime.ledger_read_only_message||'';
     const value=row=>row.tags||row.japanese_name||row.path||row.suggested_query||'';
      $('#stats').innerHTML=`<div class="review">
+      ${locked?`<div class="runtimegate"><span>${esc(mirrorText)}</span>${writer
+        ?`<a href="${esc(writer)}">前往写入端复核</a>`:''}</div>`:''}
       <div class="reviewtabs">${Object.entries(REVIEW_LABELS).map(([key,label])=>`<button data-review-tab="${key}" aria-pressed="${key===reviewCategory}">${label} <span class="n mono">${reviewData.counts[key]||0}</span></button>`).join('')}</div>
       <section class="reviewsection"><div class="reviewlist">${rows.length?rows.map(row=>{
         const key=row.item_key,decision=row.decision||'pending';
@@ -1157,7 +1165,7 @@ async function openReview(push=true){
            // 账本规范名当标题，抓取来源给的写法（多为罗马音）留作副标题。
            row.source_name?`<p class="reviewalias">来源写法：${esc(row.source_name)}</p>`:''}${
            // 实体类卡片的作品数已经写在创作者入口里，这里再写一遍就是同一个数字两处。
-           subjectKind&&subjectName?'':`<p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>`}${origin}${tags?`<div class="reviewtags">${tags}</div>`:''}${preview}<p>${esc(evidence)}</p><div class="reviewactions"><button class="approve" data-review-status="approved"${canApprove?'':' disabled'}>${approveLabel}</button><button class="skip" data-review-status="skipped">跳过</button><button class="reject" data-review-status="rejected">拒绝</button><span class="reviewstate" aria-live="polite"></span></div></article>`}).join(''):'<p class="empty">暂无候选</p>'}</div></section></div>`;
+           subjectKind&&subjectName?'':`<p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>`}${origin}${tags?`<div class="reviewtags">${tags}</div>`:''}${preview}<p>${esc(evidence)}</p><div class="reviewactions"><button class="approve" data-review-status="approved"${canApprove&&!locked?'':' disabled'}>${approveLabel}</button><button class="skip" data-review-status="skipped"${locked?' disabled':''}>跳过</button><button class="reject" data-review-status="rejected"${locked?' disabled':''}>拒绝</button><span class="reviewstate" aria-live="polite"></span></div></article>`}).join(''):'<p class="empty">暂无候选</p>'}</div></section></div>`;
      wireReviewAssets($('#stats'));
     $('#stats').querySelectorAll('[data-review-open-item]').forEach(button=>button.onclick=()=>openItem(+button.dataset.reviewOpenItem));
     // 没有全局委托，每个界面各自接线（见 #stage 的同类处理）。
@@ -1223,7 +1231,7 @@ async function openQualityGoals(push=true){
    - `/follow-manage`（管理区）是**管**：加来源、检查更新、移除来源、看凭据状态，
      以及对内容做批量标记。
    联网只发生在管理页点「检查更新」的那一刻——看的那一页不联网。 */
-let followData=null,followFilter='new',followBusy=false;
+let followData=null,followRuntime=null,followFilter='new',followBusy=false;
 const FOLLOW_FILTERS=[['new','未看'],['seen','已看'],['saved','已保存'],['ignored','已忽略'],['','全部']];
 
 /* 账本里一律存 UTC（ISO 带 Z），界面要按看的人所在时区显示。
@@ -1415,7 +1423,12 @@ function renderFollowManage(credentials){
   const broken=sources.filter(s=>s.last_status==='error'||s.last_status==='unauthorized');
   const creds=(credentials.providers||[]);
   const needCred=creds.filter(c=>c.requirement==='required'&&!(c.present&&!c.missing.length));
+  const locked=!!followRuntime?.ledger_read_only;
+  const writer=followRuntime?.ledger_writer_origin
+    ?new URL('/follow-manage',followRuntime.ledger_writer_origin).href:'';
   $('#stats').innerHTML=`<div class="follow followmanage">
+    ${locked?`<div class="runtimegate"><span>${esc(followRuntime.ledger_read_only_message||'本机当前只能浏览')}</span>${writer
+      ?`<a href="${esc(writer)}">前往写入端管理关注</a>`:''}</div>`:''}
     <div class="fmain">
       <section class="fsec">
         <div class="fsechead"><h3>添加关注</h3>
@@ -1457,6 +1470,11 @@ function renderFollowManage(credentials){
       </section>
     </aside></div>`;
   wireFollowManage();
+  if(locked)$('#stats').querySelectorAll(
+    '#followAdd textarea,#followAdd button,[data-follow-remove],[data-follow-check],'+
+    '[data-follow-bulk],[data-follow-guess],[data-cred-form] input,'+
+    '[data-cred-form] button,[data-cred-clear]'
+  ).forEach(control=>{control.disabled=true});
 }
 
 
@@ -1468,10 +1486,10 @@ async function openFollowManage(push=true){
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
   $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
   $('#stats').innerHTML='<div class="follow"><p class="empty">正在读取…</p></div>';
-  const [data,credentials]=await Promise.all([
-    api('/api/follow?limit=1'),api('/api/follow/credentials')]);
+  const [data,credentials,runtime]=await Promise.all([
+    api('/api/follow?limit=1'),api('/api/follow/credentials'),api('/healthz')]);
   if(location.pathname!=='/follow-manage')return;
-  followData=data;
+  followData=data;followRuntime=runtime;
   renderFollowManage(credentials);
   window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -1639,7 +1657,7 @@ function renderFollowPicks(results){
     if(!picked.length)return;
     const state=box.querySelector('[data-pick-state]');
     addButton.disabled=true;
-    let done=0;
+    let done=0;const failures=[];
     for(const input of picked){
       state.textContent=`添加中… ${++done}/${picked.length}`;
       try{
@@ -1647,8 +1665,13 @@ function renderFollowPicks(results){
           {action:'add',url:input.value,label:input.dataset.label})});
       }catch(error){
         // 一条失败不该把其余的一起丢掉，逐条报。
-        state.textContent=`${input.dataset.label}：${error.message}`;
+        failures.push(`${input.dataset.label}：${error.message}`);
       }
+    }
+    if(failures.length){
+      state.textContent=failures.join('；');
+      addButton.disabled=false;
+      return;
     }
     await openFollowManage(false);
   };

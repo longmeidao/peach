@@ -1,0 +1,191 @@
+"""把 writer 的复核队列安全镜像给 reader。
+
+候选 CSV 仍只由 writer 生成和解释；reader 只缓存 writer 已归一化的 JSON 契约，绝不据此
+批准候选或写 ledger。这样 `/review` 能在 Mac 上浏览，同时不把 `generated`、SQLite/WAL 或
+整个 `peach-data` 变成双向同步目录。
+"""
+from __future__ import annotations
+
+import json
+import logging
+import os
+import ssl
+import tempfile
+import time
+from copy import deepcopy
+from datetime import datetime, timezone
+from pathlib import Path
+from urllib.parse import urljoin, urlparse
+from urllib.request import HTTPSHandler, ProxyHandler, Request, build_opener
+
+
+MAX_REVIEW_BYTES = 8 * 1024 * 1024
+REVIEW_CACHE_SECONDS = 20.0
+LOGGER = logging.getLogger(__name__)
+
+
+class ReviewMirrorError(RuntimeError):
+    """writer 镜像不可用或响应不符合复核契约。"""
+
+
+class ReviewMirror:
+    def __init__(
+        self,
+        origin: str,
+        ca_path: Path,
+        cache_path: Path,
+        *,
+        token: str = "",
+        timeout: float = 5.0,
+        now=time.time,
+        opener=None,
+    ):
+        self.origin = origin.rstrip("/")
+        self.ca_path = Path(ca_path)
+        self.cache_path = Path(cache_path)
+        self.token = token
+        self.timeout = timeout
+        self._now = now
+        self._opener = opener
+        self._live_payload: dict | None = None
+        self._live_at = 0.0
+
+    @property
+    def enabled(self) -> bool:
+        parsed = urlparse(self.origin)
+        return bool(parsed.scheme == "https" and parsed.netloc and self.ca_path.is_file())
+
+    def resolve(self, local_payload: dict) -> dict:
+        """优先返回 writer 实时队列；失败时退回上次安全缓存或本机队列。"""
+        if not self.enabled:
+            return self._annotate(local_payload, state="unavailable",
+                                  error="未配置可严格校验的写入端 HTTPS")
+        try:
+            payload = self._fetch_cached_live()
+            return self._annotate(payload, state="live")
+        except ReviewMirrorError as error:
+            cached = self._read_cache()
+            if cached is not None:
+                return self._annotate(cached["payload"], state="cached",
+                                      fetched_at=cached["fetched_at"], error=str(error))
+            return self._annotate(local_payload, state="unavailable", error=str(error))
+
+    def _fetch_cached_live(self) -> dict:
+        now = self._now()
+        if self._live_payload is not None and now - self._live_at < REVIEW_CACHE_SECONDS:
+            return deepcopy(self._live_payload)
+        health = self._request_json("/healthz")
+        if health.get("ledger_sync") != "writer":
+            raise ReviewMirrorError("目标实例当前不是 ledger writer")
+        payload = self._request_json("/api/review")
+        self._validate(payload)
+        rewritten = self._rewrite_preview_urls(payload)
+        fetched_at = datetime.fromtimestamp(now, timezone.utc).isoformat()
+        try:
+            self._write_cache(rewritten, fetched_at)
+        except OSError as error:
+            # 缓存只是 writer 暂时离线时的降级，落盘失败不能把刚取得的实时队列也变成 500。
+            LOGGER.warning("复核镜像缓存写入失败：%s", error)
+        self._live_payload = rewritten
+        self._live_at = now
+        return deepcopy(rewritten)
+
+    def _request_json(self, path: str) -> dict:
+        request = Request(urljoin(self.origin + "/", path.lstrip("/")))
+        if self.token:
+            request.add_header("X-Token", self.token)
+        try:
+            response = self._client().open(request, timeout=self.timeout)
+            raw = response.read(MAX_REVIEW_BYTES + 1)
+        except Exception as error:
+            raise ReviewMirrorError(f"无法读取写入端：{type(error).__name__}: {error}") from error
+        if len(raw) > MAX_REVIEW_BYTES:
+            raise ReviewMirrorError("写入端复核响应超过 8 MiB 上限")
+        try:
+            payload = json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ReviewMirrorError("写入端返回的不是有效 JSON") from error
+        if not isinstance(payload, dict):
+            raise ReviewMirrorError("写入端返回的不是 JSON 对象")
+        return payload
+
+    def _client(self):
+        if self._opener is not None:
+            return self._opener
+        context = ssl.create_default_context(cafile=str(self.ca_path))
+        # `.local`/LAN 请求不能继承外网代理；Stash fake-IP 会把 peer 解析成 198.18.x。
+        self._opener = build_opener(ProxyHandler({}), HTTPSHandler(context=context))
+        return self._opener
+
+    @staticmethod
+    def _validate(payload: dict) -> None:
+        for key in ("sections", "sources", "counts"):
+            if not isinstance(payload.get(key), dict):
+                raise ReviewMirrorError(f"写入端复核响应缺少 {key}")
+
+    def _rewrite_preview_urls(self, payload: dict) -> dict:
+        result = deepcopy(payload)
+
+        def visit(value):
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    if (key in {"preview_url", "asset_preview_url"}
+                            and isinstance(child, str) and child.startswith("/")):
+                        value[key] = self.origin + child
+                    else:
+                        visit(child)
+            elif isinstance(value, list):
+                for child in value:
+                    visit(child)
+
+        visit(result)
+        return result
+
+    def _write_cache(self, payload: dict, fetched_at: str) -> None:
+        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+        body = json.dumps(
+            {"fetched_at": fetched_at, "payload": payload}, ensure_ascii=False,
+        )
+        temporary: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=self.cache_path.parent,
+                prefix=self.cache_path.name + ".", suffix=".tmp", delete=False,
+            ) as handle:
+                handle.write(body)
+                temporary = Path(handle.name)
+            if os.name != "nt":
+                temporary.chmod(0o600)
+            os.replace(temporary, self.cache_path)
+            temporary = None
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+
+    def _read_cache(self) -> dict | None:
+        try:
+            envelope = json.loads(self.cache_path.read_text(encoding="utf-8"))
+            payload = envelope["payload"]
+            fetched_at = str(envelope["fetched_at"])
+            self._validate(payload)
+        except (OSError, KeyError, TypeError, json.JSONDecodeError, ReviewMirrorError):
+            return None
+        return {"fetched_at": fetched_at, "payload": payload}
+
+    def _annotate(
+        self,
+        payload: dict,
+        *,
+        state: str,
+        fetched_at: str | None = None,
+        error: str = "",
+    ) -> dict:
+        result = deepcopy(payload)
+        result["mirror"] = {
+            "state": state,
+            "origin": self.origin or None,
+            "fetched_at": fetched_at,
+            "error": error or None,
+            "read_only": True,
+        }
+        return result
