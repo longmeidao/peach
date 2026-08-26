@@ -66,6 +66,15 @@
   （链接在、目标不在），2026-08-26 之前这会让整次 `follow check` 连同已抓到的候选一起
   失败。现已降级：候选照常入库，证据标成「未取得」并把原因报到 CLI 与界面上。
   实测对着真实断链跑 rule34video，24 条候选全部入库。
+- 2026-08-26 从 2026-08-13/14 的迁移盘点与会话证据恢复了早期口味分析的位置：原始输入
+  当时已从 `R:\Resources\Sources` 完整迁到 `R:\peach-data\sources`，共 67 个文件、
+  约 421.5 MB；Mac 传回的 `mac/` 包含 `zen-places.sqlite`、`zen-history.tsv`、
+  `zen-visits.tsv`、`safari-History.db` 和 `taste-raw.zip`，其余分在 `takeout/`、
+  `browsers/`、`telegram/`、`follows/`、`inventories/`、`dedup/`、`reports/`。当前 Windows
+  未挂载 `R:`，所以这些外置盘文件的现存状态**未取得**；Windows 内置盘
+  `peach-data/sources` 目前只有 `metadata/`。现有 ledger 已持续保存搜索、播放、高潮、
+  喜欢/理由、不合口味和稍后看等行为，但浏览器/Takeout 原始证据在 2026-08-13 后没有
+  正式的增量快照、差异报告和口味候选刷新入口。
 - 追更的「查找」在只读端一度返回 409：`/api/follow/resolve` 只联网发现、不碰账本，
   却因为是 POST 被写入端闸门一并拦掉。已按 `READ_ONLY_POST_ROUTES` 白名单放行；
   真正会写的 `check`/`save`/`status`/`source` 仍受闸门管辖。
