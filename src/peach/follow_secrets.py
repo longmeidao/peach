@@ -59,16 +59,27 @@ class CredentialStore:
         return Credential(provider, values)
 
     def describe(self, provider: str) -> dict[str, object]:
-        """只报告存在性与权限，绝不返回凭据值。"""
+        """只报告存在性与权限，绝不返回凭据值。
+
+        `world_readable` 只在 POSIX 上有意义：NTFS 的访问控制走 ACL，`st_mode` 里的
+        组/其他读位是 Python 合成出来的常量，恒为真——拿它当判据会在 Windows 上
+        对每个凭据文件都报「权限过宽」。那里报 `None`（未知），不假装知道。
+        """
         path = self.path_for(provider)
         if not path.is_file():
             return {"provider": provider, "present": False, "fields": [],
                     "world_readable": False}
         credential = self.load(provider)
-        mode = stat.S_IMODE(os.stat(path).st_mode)
         return {
             "provider": provider,
             "present": True,
             "fields": sorted(credential.values) if credential else [],
-            "world_readable": bool(mode & (stat.S_IRGRP | stat.S_IROTH)),
+            "world_readable": self._world_readable(path),
         }
+
+    @staticmethod
+    def _world_readable(path: Path) -> bool | None:
+        if os.name == "nt":
+            return None
+        mode = stat.S_IMODE(os.stat(path).st_mode)
+        return bool(mode & (stat.S_IRGRP | stat.S_IROTH))

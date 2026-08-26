@@ -144,18 +144,22 @@ class RecordTests(_StoreCase):
         source_id = self._source()
         outcome = self.store.record(source_id, _fetch([_candidate("1", "A")]),
                                     moment=MOMENT)
-        evidence = self.root / "sources" / "follow" / outcome.evidence_path.split("/", 1)[1]
+        # evidence_path 是相对 `sources/` 的路径，分隔符随平台不同——不能写死 `/`。
+        evidence = self.root / "sources" / Path(outcome.evidence_path)
         self.assertTrue(evidence.is_file())
         sidecar = json.loads(evidence.with_suffix(".json").read_text(encoding="utf-8"))
         self.assertEqual(sidecar["candidates"], 1)
         self.assertEqual(sidecar["request_url"], "https://rule34video.test/lazyprocrastinator")
 
-    def test_a_broken_evidence_symlink_does_not_lose_the_candidates(self):
+    def test_an_unusable_evidence_root_does_not_lose_the_candidates(self):
         """Mac 上 `peach-data/sources` 指向外置盘。盘不在时它是一条断链，
         `mkdir(exist_ok=True)` 会抛 `FileExistsError`（链接在、目标不在）。
-        发现跟归档盘无关，不该让整次检查连同已抓到的候选一起炸掉。"""
-        broken = self.root / "gone"
-        (self.root / "evidence").symlink_to(self.root / "no-such-volume" / "sources")
+        发现跟归档盘无关，不该让整次检查连同已抓到的候选一起炸掉。
+
+        这里用「路径被普通文件占住」构造同一个 `FileExistsError`：断链要 symlink，
+        而非管理员的 Windows 建不了 symlink，那样测试就只在一个平台成立。
+        """
+        (self.root / "evidence").write_text("not a directory", encoding="utf-8")
         store = FollowStore(lambda: self.connection,
                             sources_root=self.root / "evidence")
         source_id = store.register(provider="rule34video", ref="x", label="X",

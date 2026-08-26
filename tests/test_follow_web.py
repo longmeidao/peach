@@ -169,7 +169,8 @@ class FollowContractTests(unittest.TestCase):
         self._seed()
         contract = self.contract
         contract.follow_sources_root = self.root / "evidence"
-        (self.root / "evidence").symlink_to(self.root / "no-such-volume" / "sources")
+        # 用普通文件占住路径构造同一个 FileExistsError：symlink 在非管理员 Windows 上建不了。
+        (self.root / "evidence").write_text("not a directory", encoding="utf-8")
         fetch = SourceFetch(
             provider="rule34video", ref="lazyprocrastinator",
             request_url="https://rule34video.com/models/lazyprocrastinator/",
