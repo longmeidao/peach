@@ -469,19 +469,63 @@ class FollowWebSourceTests(unittest.TestCase):
         rule = rule[:rule.index("}")]
         self.assertIn("grid-template-columns:minmax(0,1fr)", rule)
 
-    def test_the_panel_has_no_cards_nested_inside_cards(self):
-        """vercel-report-design 点名的反模式：卡片套卡片、用边框补救层级。
+    def test_sections_have_a_frame_but_their_rows_do_not(self):
+        """反模式是卡片**套**卡片，不是「不要任何容器」。
 
-        分组该靠标题和一条分隔线，不是给每一行都套个盒子。
+        上一版把两者混为一谈，做成了没有可读性的裸列表——而同一份文档明确警告过
+        不要因为躲开那些默认套路就做出一个无设计的模板。所以：分区有框，
+        框里的行只用分隔线。
         """
         page = self.page
+        section = page[page.index(".fsec{"):]
+        section = section[:section.index("}")]
+        self.assertIn("border:1px solid", section)
+        self.assertIn("border-radius", section)
+        self.assertIn("background:var(--surface)", section)
+
         self.assertNotIn(".fcard{", page)
         self.assertNotIn(".fsource{", page,
                          "旧来源卡片规则会给新行重新套上边框和圆角")
-        rule = page[page.index(".frow{"):]
-        rule = rule[:rule.index("}")]
-        self.assertIn("border-bottom:1px solid", rule)
-        self.assertNotIn("border-radius", rule)
+        row = page[page.index(".frow{"):]
+        row = row[:row.index("}")]
+        self.assertIn("border-bottom:1px solid", row)
+        self.assertNotIn("border-radius", row)
+
+    def test_narrow_column_rows_can_actually_shrink(self):
+        """grid 项默认 `min-width:auto`，最宽的一行会把整列撑出容器。
+
+        实测右栏 320px，凭据行却量到 438px，整页横向溢出 119px。容器和每一项
+        都要显式 `min-width:0`。
+        """
+        page = self.page
+        rule = page[page.index(".frows{"):]
+        self.assertIn("min-width:0", rule[:rule.index("}")])
+        self.assertPageContains(".frows>*{min-width:0}")
+
+    def test_credential_states_are_not_all_the_same_colour(self):
+        """缺凭据是待办，配好了是完成态。同色就等于没说。"""
+        page = self.page
+        colours = {}
+        for name in ("done", "req", "opt", "none"):
+            rule = page[page.index(f".fstate.{name}"):]
+            colours[name] = rule[:rule.index("}")]
+        self.assertNotEqual(colours["done"], colours["req"],
+                            "已配置和缺凭据必须能一眼分开")
+        self.assertNotEqual(colours["done"], colours["none"])
+
+    def test_the_placeholder_uses_a_creator_from_the_real_library(self):
+        # 不编名字：`facets.creators` 是首页推荐词同一条真实数据路径。
+        self.assertPageContains("function followPlaceholder()")
+        self.assertPageContains("facets.creators")
+
+    def test_the_add_box_carries_no_standing_how_to_prose(self):
+        # 只有「还没有关注任何来源」是有效信息；操作说明常驻就是噪音。
+        page = self.page
+        body = page[page.index("function renderFollowManage("):
+                    page.index("function wireFollowItems(")]
+        self.assertNotIn("要一次加多个就每行一条", body)
+        self.assertNotIn("把链接或名字粘进上面的输入框", body)
+        self.assertIn("还没有关注任何来源。</p>", body)
 
     def test_the_panel_cites_the_registered_report_design_source(self):
         self.assertPageContains("docs/reference-sources.json")
