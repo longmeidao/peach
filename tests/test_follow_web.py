@@ -723,13 +723,17 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_the_type_scale_has_no_arbitrary_in_between_sizes(self):
         """同一份文档点名的另一条：细小灰字加随意字号。
 
-        管理页只用 14 正文 / 13 次要 / 12 元信息三档。
+        管理页只用 14 正文 / 13 次要 / 12 元信息三档。这三档现在是全站刻度里的
+        `--fs-md` / `--fs-sm` / `--fs-xs`，不再是写死的像素——面板当初收敛出的那三档
+        本来就该是全站的下三档，各写各的迟早会漂开。所以这里断言的是「只用这三个
+        token，且一个字面像素都不留」。
         """
         page = self.page
         block = page[page.index("/* ── 关注管理页 ──"):page.index("/* ── 查找结果的勾选清单")]
-        sizes = sorted({m for m in re.findall(r"font-size:([\d.]+)px", block)},
-                       key=float)
-        self.assertEqual(sizes, ["12", "13", "14"], f"字号档位应只有三档，实际 {sizes}")
+        self.assertEqual(re.findall(r"font-size:[\d.]+px", block), [],
+                         "面板里不该再有写死的字号")
+        steps = sorted({m for m in re.findall(r"font-size:var\(--fs-([a-z0-9]+)\)", block)})
+        self.assertEqual(steps, ["md", "sm", "xs"], f"字号档位应只有三档，实际 {steps}")
 
     def test_credential_rows_say_whether_they_are_needed_at_all(self):
         # 「未配置」本身不是信息：要说清需不需要、需要什么、去哪儿拿。
