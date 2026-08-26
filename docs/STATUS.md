@@ -61,11 +61,11 @@
   读本地 marker 即可判定）。所以「不插盘长期在 Mac 上写」是成立的，只是切换写入端
   那一次要把共享挂上——只写本地 marker 会让 Windows 同时认为自己是写入端，那正是
   单写者复制要避免的分叉。
-- **Mac 的 `peach-data/sources` 是指向外置盘的符号链接，盘不在时是断链**，而追更的原始
-  证据就写在 `sources/follow/` 下。`mkdir(exist_ok=True)` 在断链上抛 `FileExistsError`
-  （链接在、目标不在），2026-08-26 之前这会让整次 `follow check` 连同已抓到的候选一起
-  失败。现已降级：候选照常入库，证据标成「未取得」并把原因报到 CLI 与界面上。
-  实测对着真实断链跑 rule34video，24 条候选全部入库。
+- **Mac 的 `peach-data/sources` 已迁到内置盘。** 旧目录原是指向
+  `/Volumes/RESOURCES/peach-data/sources` 的断链，2026-08-26 已保留为
+  `peach-data/sources.external-link-20260826`，并用本机私有目录替换运行入口；外置盘继续只承担
+  媒体资源，不再是追更证据和浏览记录采集的前置条件。迁移前 `mkdir(exist_ok=True)` 会在断链上
+  抛 `FileExistsError`；追更已能把这种证据失败降级成「未取得」，不会连同候选一起丢掉。
 - 2026-08-26 从 2026-08-13/14 的迁移盘点与会话证据恢复了早期口味分析的位置：原始输入
   当时已从 `R:\Resources\Sources` 完整迁到 `R:\peach-data\sources`，共 67 个文件、
   约 421.5 MB；Mac 传回的 `mac/` 包含 `zen-places.sqlite`、`zen-history.tsv`、
@@ -78,8 +78,10 @@
   原始 URL/标题只增量写入本机 `peach-data/sources/taste-history/history.sqlite`，聚合报告与
   creator/tag candidate 写 `peach-data/review/taste-history/`，不写 ledger。2026-08-26 Windows
   首批发现 Chrome 1、Firefox 4、Zen 2 共 7 个 profile，导入 382,781 次访问，时间范围
-  2025-11-08 至 2026-08-26；报告不含完整 URL 或标题。Mac Safari 活库本轮**未取得**，待
-  iCloud Safari 同步开启且 Mac 可执行后补入同一流程。
+  2025-11-08 至 2026-08-26；报告不含完整 URL 或标题。同日 Mac 首批发现 Chrome、Safari、Zen
+  各 1 个 profile，导入 171,818 次访问，时间范围 2025-11-08 至 2026-08-26；第二次刷新三者
+  新增均为 0，增量去重成立。Safari 通过 SQLite backup 读取 34,496 次，没有 TCC 错误；Firefox
+  Profiles 目录不存在，未发现可导入源。
 - 追更的「查找」在只读端一度返回 409：`/api/follow/resolve` 只联网发现、不碰账本，
   却因为是 POST 被写入端闸门一并拦掉。已按 `READ_ONLY_POST_ROUTES` 白名单放行；
   真正会写的 `check`/`save`/`status`/`source` 仍受闸门管辖。
@@ -87,8 +89,8 @@
 - macOS 独立运行环境：代码 `~/Desktop/lmd.gg/peach/peach-app`、数据 `~/Desktop/lmd.gg/peach/peach-data`、worktree `~/Desktop/lmd.gg/peach/peach-worktrees`。Python 3.14.7 + 独立 venv，FFmpeg 走 PATH。
 - Mac 的 `peach-data` 实际形状与文档的通用分层有出入，排查前先看清：真实目录名是
   `artifacts`，`generated` 是指向它的符号链接；另有 `review`、`tmp` 两个本机目录；
-  `archive`、`sources`、`tools` 是指向 `/Volumes/RESOURCES/peach-data/` 的符号链接，
-  外置盘拔掉时这三个是断链。只有 `media` 在外置盘的说法对 Windows 成立，对 Mac 不成立。
+  `sources` 已迁为本机私有目录，`archive`、`tools` 仍是指向 `/Volumes/RESOURCES/peach-data/`
+  的符号链接，外置盘拔掉时后两者断链。浏览记录与追更证据不再依赖外置盘。
 - 生成产物已由 Syncthing 单向同步：Windows send-only、Mac receive-only，五个文件夹
   `snapshots`、`posters`、`avatars`、`logos`、`covers`，Mac 侧根目录在 `peach-data/artifacts/`，
   Trash Can 版本保留 30 天。这条链路与账本复制、与 Git 都无关，三者互不兜底。
