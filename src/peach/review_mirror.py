@@ -10,6 +10,8 @@ import json
 import logging
 import os
 import ssl
+import subprocess
+import sys
 import tempfile
 import time
 from copy import deepcopy
@@ -39,6 +41,7 @@ class ReviewMirror:
         timeout: float = 5.0,
         now=time.time,
         opener=None,
+        keychain_paths: tuple[Path, ...] | None = None,
     ):
         self.origin = origin.rstrip("/")
         self.ca_path = Path(ca_path)
@@ -47,6 +50,12 @@ class ReviewMirror:
         self.timeout = timeout
         self._now = now
         self._opener = opener
+        if keychain_paths is None:
+            keychain_paths = (
+                Path("/Library/Keychains/System.keychain"),
+                Path.home() / "Library/Keychains/login.keychain-db",
+            ) if sys.platform == "darwin" else ()
+        self.keychain_paths = tuple(Path(path) for path in keychain_paths)
         self._live_payload: dict | None = None
         self._live_at = 0.0
 
@@ -112,10 +121,31 @@ class ReviewMirror:
     def _client(self):
         if self._opener is not None:
             return self._opener
-        context = ssl.create_default_context(cafile=str(self.ca_path))
+        context = ssl.create_default_context(cadata=self._trusted_ca_pem())
         # `.local`/LAN 请求不能继承外网代理；Stash fake-IP 会把 peer 解析成 198.18.x。
         self._opener = build_opener(ProxyHandler({}), HTTPSHandler(context=context))
         return self._opener
+
+    def _trusted_ca_pem(self) -> str:
+        """合并文件 CA 与 macOS 钥匙串中同名的受信 CA，不读取或导出任何私钥。"""
+        bundle = self.ca_path.read_text(encoding="utf-8")
+        for keychain in self.keychain_paths:
+            if not keychain.is_file():
+                continue
+            try:
+                result = subprocess.run(
+                    [
+                        "/usr/bin/security", "find-certificate", "-a", "-p",
+                        "-c", "Peach Local CA", str(keychain),
+                    ],
+                    capture_output=True, text=True, encoding="utf-8",
+                    timeout=3, check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                continue
+            if result.returncode == 0 and "-----BEGIN CERTIFICATE-----" in result.stdout:
+                bundle += "\n" + result.stdout
+        return bundle
 
     @staticmethod
     def _validate(payload: dict) -> None:

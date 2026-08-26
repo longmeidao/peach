@@ -2,6 +2,8 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from peach.review_mirror import ReviewMirror
 
@@ -137,3 +139,21 @@ class ReviewMirrorTests(unittest.TestCase):
 
         self.assertEqual(result["mirror"]["state"], "unavailable")
         self.assertIn("严格校验", result["mirror"]["error"])
+
+    def test_macos_keychain_ca_is_added_without_replacing_the_file_ca(self):
+        keychain = self.root / "login.keychain-db"
+        keychain.write_text("keychain", encoding="utf-8")
+        exported = "-----BEGIN CERTIFICATE-----\nwriter-ca\n-----END CERTIFICATE-----\n"
+        mirror = ReviewMirror(
+            "https://writer.test", self.ca, self.cache,
+            keychain_paths=(keychain,),
+        )
+
+        with patch("peach.review_mirror.subprocess.run", return_value=SimpleNamespace(
+            returncode=0, stdout=exported,
+        )) as run:
+            bundle = mirror._trusted_ca_pem()
+
+        self.assertIn("test ca", bundle)
+        self.assertIn("writer-ca", bundle)
+        self.assertEqual(run.call_args.args[0][-1], str(keychain))
