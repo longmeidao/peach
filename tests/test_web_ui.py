@@ -491,6 +491,34 @@ class WebUiSourceTests(unittest.TestCase):
         # 分支只能存在一处；再出现第二份就是下一次漂移。
         self.assertEqual(self.page.count("if(k==='immerse'){openTok();return}"), 1)
 
+    def test_scrim_never_covers_the_drawer_it_dims(self):
+        """遮罩铺满全屏。它排在抽屉之上时，抽屉里每一下点击都落在遮罩上，
+        而遮罩的 onclick 是「收起抽屉」——表现就是能弹出、什么都点不到、一点就关。
+
+        三层的先后是契约，不能各自拍数：遮罩 < 抽屉 < 窄栏。
+        """
+        import re as _re
+
+        def layer(selector):
+            # 同一个选择器可能声明多次（窄栏就是），生效的是最后一条。
+            found = _re.findall(_re.escape(selector) + r"\{[^}]*?z-index:(\d+)", self.page)
+            self.assertTrue(found, f"{selector} 应该显式写出 z-index")
+            return int(found[-1])
+
+        scrim, drawer, rail = layer(".scrim"), layer(".drawer"), layer(".edge")
+        self.assertLess(scrim, drawer, "遮罩压在抽屉上面，抽屉就点不动了")
+        self.assertLess(drawer, rail, "抽屉滑入时从窄栏上面横过，窄栏要在最上面")
+
+    def test_detail_side_panel_never_scrolls_sideways(self):
+        """`overflow-y:auto` 会把 overflow-x 从 visible 计算成 auto（CSS 规范）。
+
+        于是侧栏内容宽出 1px 就冒一条横向滚动条。详情侧栏是一列竖排内容，
+        横向永远不应该滚。
+        """
+        block = self.page.split(".side{padding:", 1)[1].split("}", 1)[0]
+        self.assertIn("overflow-y:auto", block)
+        self.assertIn("overflow-x:hidden", block)
+
     def test_review_reuses_the_standard_selection_instead_of_its_own_mode(self):
         """复核页曾自造「多选模式」按钮加框选，只在这一页生效，用户得先发现再记住。
 

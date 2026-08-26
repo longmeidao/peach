@@ -770,7 +770,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .closestage:hover{background:var(--drop);border-color:var(--drop)}
 .closestage svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
 .side{padding:18px;border-left:1px solid var(--line-soft);display:flex;gap:0;
-  flex-direction:column;max-height:76vh;overflow-y:auto;
+  flex-direction:column;max-height:76vh;overflow-y:auto;overflow-x:hidden;
   background:color-mix(in srgb,var(--video-glow,#15202a) 12%,var(--surface) 88%);backdrop-filter:blur(18px)}
 .stitle{font-size:17px;line-height:1.4;word-break:break-all;margin-bottom:8px}
 /* 源文件管理：定位 + 目录对账。图标必须显式写 stroke/fill，Lucide 是描边路径，
@@ -891,14 +891,17 @@ body{padding-left:var(--railW)}
    （窄栏行距 52px、抽屉 47px、起点还差 54px），瞄准「在线追更」点下去打开的是「统计」。
    与其逐像素对齐两套各自会因溢出、滚动、条目增减而漂移的列表，不如让它们不重叠——
    光标底下的图标就永远不动。 */
-.drawer{position:fixed;top:0;bottom:0;left:var(--railW);width:288px;z-index:94;
+.drawer{position:fixed;top:0;bottom:0;left:var(--railW);width:288px;z-index:96;
   background:linear-gradient(180deg,var(--frost-light),var(--frost-panel));
   backdrop-filter:saturate(1.8) blur(20px);-webkit-backdrop-filter:saturate(1.8) blur(20px);
   border-right:1px solid var(--line);padding:16px 12px 60px;overflow-y:auto;
   transform:translateX(-100%);transition:transform .2s cubic-bezier(.3,.8,.3,1)}
 .drawer.open{transform:none;box-shadow:18px 0 60px -24px #000}
-/* 窄栏压在抽屉之上并保持可点：它不再被遮住，所以也没有理由让它失效。 */
-.edge{z-index:96}
+/* 层序是一条契约，不能各自拍数：遮罩 95 < 抽屉 96 < 窄栏 97。
+   抽屉曾经是 94，比遮罩还低——遮罩是 inset:0 铺满全屏的，于是抽屉里每一下
+   点击都落在遮罩上，而遮罩的 onclick 正好是「收起抽屉」：能弹出、一点就关、什么都点不到。
+   窄栏排最上：抽屉滑入时会从它上面横过，它不该被盖。 */
+.edge{z-index:97}
 body.drawer-open .edge button{color:var(--ink-2)}
 /* 窄栏是固定高度的九宫格，条目变多时应当滚动，不能被 flex 悄悄压扁——
    一压扁行距就和任何参照物都对不上了。 */
