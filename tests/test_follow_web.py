@@ -21,6 +21,7 @@ from peach.follow_sources import FollowCandidate, SourceFetch
 from peach.follow_store import FollowStore
 from peach.migrations import discover
 from peach.web_contract import WebContract, dispatch_api_get, dispatch_api_post
+from peach.web_follow import _credential_store
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -244,6 +245,66 @@ class FollowContractTests(unittest.TestCase):
         self.assertTrue(result["cleared"])
         self.assertFalse((self.root / "secrets" / "follow" / "rule34xxx.json").exists())
 
+    def test_only_fields_declared_syncable_reach_the_shared_copy(self):
+        """可同步是逐字段声明的，不按字段名猜。
+
+        用户定的口径是「就同步 apikey，cookie 不同步」——cookie 绑会话和客户端 IP，
+        同步过去也会失效。但判据不能写成「名字里有 cookie 就不同步」：明天来一个
+        `session_token` 就会落到错误的一侧。
+        """
+        self.contract.follow_shared_root = self.root / "shared"
+        (self.root / "shared").mkdir()
+        result = self._post("/api/follow/credential", {
+            "provider": "rule34xxx",
+            "values": {"user_id": "42", "api_key": "sekret"}})
+        self.assertTrue(result["synced"])
+        shared = self.root / "shared" / "secrets" / "follow" / "rule34xxx.json"
+        self.assertEqual(json.loads(shared.read_text(encoding="utf-8")),
+                         {"user_id": "42", "api_key": "sekret"})
+
+        cookie = self._post("/api/follow/credential", {
+            "provider": "f95zone", "values": {"cookie": "xf=1"}})
+        self.assertFalse(cookie["synced"], "cookie 不该进共享副本")
+        self.assertFalse(
+            (self.root / "shared" / "secrets" / "follow" / "f95zone.json").exists())
+        # 本机那份照常写了。
+        self.assertTrue(
+            (self.root / "secrets" / "follow" / "f95zone.json").exists())
+
+    def test_a_synced_field_is_read_back_when_the_local_copy_lacks_it(self):
+        self.contract.follow_shared_root = self.root / "shared"
+        shared = self.root / "shared" / "secrets" / "follow"
+        shared.mkdir(parents=True)
+        (shared / "rule34xxx.json").write_text(
+            '{"user_id": "42", "api_key": "fromshared", "cookie": "nope"}',
+            encoding="utf-8")
+        store = _credential_store(self.contract)
+        loaded = store.load("rule34xxx")
+        self.assertEqual(loaded.values["api_key"], "fromshared")
+        # 共享副本里混进未声明的字段也不会被采纳。
+        self.assertNotIn("cookie", loaded.values)
+
+    def test_the_local_copy_wins_over_the_shared_one(self):
+        self.contract.follow_shared_root = self.root / "shared"
+        shared = self.root / "shared" / "secrets" / "follow"
+        shared.mkdir(parents=True)
+        (shared / "rule34xxx.json").write_text(
+            '{"user_id": "old", "api_key": "old"}', encoding="utf-8")
+        local = self.root / "secrets" / "follow"
+        local.mkdir(parents=True)
+        (local / "rule34xxx.json").write_text(
+            '{"user_id": "mine", "api_key": "mine"}', encoding="utf-8")
+        loaded = _credential_store(self.contract).load("rule34xxx")
+        self.assertEqual(loaded.values["api_key"], "mine")
+
+    def test_an_unreachable_shared_root_does_not_fail_the_save(self):
+        self.contract.follow_shared_root = self.root / "no-such-volume"
+        result = self._post("/api/follow/credential", {
+            "provider": "rule34xxx", "values": {"user_id": "42", "api_key": "k"}})
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["synced"])
+        self.assertTrue((self.root / "secrets" / "follow" / "rule34xxx.json").exists())
+
     def test_only_declared_providers_and_fields_are_accepted(self):
         for body in ({"provider": "kemono", "values": {"x": "1"}},
                      {"provider": "../escape", "values": {"x": "1"}},
@@ -252,6 +313,51 @@ class FollowContractTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self._post("/api/follow/credential", body)
         self.assertFalse((self.root / "secrets").exists())
+
+    def _write_taste(self, rows):
+        root = self.root / "taste"
+        root.mkdir(exist_ok=True)
+        lines = ["candidate,kind,visits,distinct_urls,source_count,sources,status"]
+        lines += [f"{n},creator,{v},1,1,safari:iCloud,candidate" for n, v in rows]
+        (root / "taste-creator-candidates-20260826-193252.csv").write_text(
+            "\n".join(lines) + "\n", encoding="utf-8")
+        self.contract.taste_history_root = root
+
+    def test_suggestions_come_from_the_browsing_taste_analysis(self):
+        """真正的信号是浏览历史分析，不是账本里已有什么。
+
+        `facets.creators` 是「他有谁的文件」，`location='online'` 的资产是「他关注过谁」，
+        两者都不是「他常搜谁」——用户举的名字在前两者里要么没有、要么在目标站上找不到。
+        """
+        self._write_taste([("lazyprocrastinator", 28), ("ffxivinitiala", 13)])
+        with self.contract.database.write_transaction() as connection:
+            connection.execute(
+                "INSERT INTO asset(location,path,name,medium) VALUES"
+                "('local','R:/x.mp4','SomeLocalCreator','video')")
+        suggestions = self._get()["suggestions"]
+        self.assertEqual([s["name"] for s in suggestions],
+                         ["lazyprocrastinator", "ffxivinitiala"])
+        self.assertEqual(suggestions[0]["visits"], 28)
+        self.assertNotIn("SomeLocalCreator", [s["name"] for s in suggestions])
+
+    def test_suggestions_are_ordered_by_how_often_he_looked(self):
+        self._write_taste([("rarely", 2), ("often", 40), ("sometimes", 9)])
+        self.assertEqual([s["name"] for s in self._get()["suggestions"]],
+                         ["often", "sometimes", "rarely"])
+
+    def test_no_analysis_means_no_suggestions_rather_than_a_substitute(self):
+        self.contract.taste_history_root = self.root / "never-run"
+        self.assertEqual(self._get()["suggestions"], [])
+
+    def test_suggestions_skip_sources_already_followed(self):
+        self._write_taste([("lazyprocrastinator", 28), ("bewyx", 21)])
+        with self.contract.database.write_transaction() as connection:
+            FollowStore(lambda: connection).register(
+                provider="kemono", ref="fanbox/30917150",
+                label="lazyprocrastinator", url="https://kemono.cr/fanbox/30917150",
+                moment=MOMENT)
+        names = [s["name"] for s in self._get()["suggestions"]]
+        self.assertEqual(names, ["bewyx"], "已经在追的不该再建议")
 
     def test_credentials_endpoint_reports_fields_but_never_values(self):
         secrets = self.root / "secrets" / "follow"
@@ -518,17 +624,21 @@ class FollowWebSourceTests(unittest.TestCase):
 
         不用 placeholder：占位文字点不了，还占着输入框的语义。
         """
-        self.assertPageContains("function followSuggestions(")
-        self.assertPageContains("facets.creators")
+        self.assertPageContains("function followSuggestionChips(")
+        self.assertPageContains("followData.suggestions")
+        self.assertPageContains("item.visits")
         self.assertPageContains("data-follow-guess")
+        # 不能退回本地文件的创作者：那是「他有谁的文件」，不是「他喜欢谁」。
+        # 只看关注管理那一段——首页搜索推荐用 facets.creators 是另一回事，合法。
+        page = self.page
+        block = page[page.index("function followSuggestionChips("):
+                     page.index("function wireFollowItems(")]
+        self.assertNotIn("facets.creators", block)
         self.assertPageContains("form.requestSubmit()")
         page = self.page
         body = page[page.index("function renderFollowManage("):
                     page.index("function wireFollowItems(")]
         self.assertNotIn("placeholder=", body, "输入框不再放占位文字")
-
-    def test_suggestions_skip_sources_already_followed(self):
-        self.assertPageContains("const seen=new Set((known||[])")
 
     def test_every_credential_state_sits_in_the_same_column(self):
         """summary 是 .frow 的 flex 子项，默认不撑满整行——于是有折叠体的那几行

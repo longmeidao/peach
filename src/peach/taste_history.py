@@ -444,6 +444,41 @@ def refresh_takeout_history(
     return results
 
 
+def read_creator_candidates(output_dir: Path, limit: int = 200) -> list[dict]:
+    """读最新一批创作者候选，按访问次数从多到少。
+
+    只读，不联网、不重跑分析。取最新那个文件而不是合并全部：每次分析都是对当时
+    全量历史的重算，旧文件是快照不是增量，合起来只会把同一个人算两遍。
+    """
+    try:
+        files = sorted(Path(output_dir).glob("taste-creator-candidates-*.csv"))
+    except OSError:
+        return []
+    if not files:
+        return []
+    rows: list[dict] = []
+    try:
+        with files[-1].open("r", encoding="utf-8-sig", newline="") as handle:
+            for row in csv.DictReader(handle):
+                name = (row.get("candidate") or "").strip()
+                if not name:
+                    continue
+                try:
+                    visits = int(row.get("visits") or 0)
+                except ValueError:
+                    visits = 0
+                rows.append({
+                    "name": name,
+                    "visits": visits,
+                    "status": (row.get("status") or "").strip(),
+                    "sources": (row.get("sources") or "").strip(),
+                })
+    except (OSError, csv.Error, UnicodeError):
+        return []
+    rows.sort(key=lambda item: (-item["visits"], item["name"]))
+    return rows[:limit]
+
+
 def _tokens(value: str) -> set[str]:
     decoded = unquote(value).casefold().replace("_", " ").replace("-", " ")
     values = re.findall(r"[a-z0-9]{2,}|[\u3400-\u9fff]{1,12}", decoded)

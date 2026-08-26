@@ -19,7 +19,9 @@ from typing import Sequence
 from urllib.parse import quote, urlsplit
 
 from .config import (
-    COVER_DIR, GENERATED_DIR, LOCATION_ROOT_DECLARATIONS, SECRETS_DIR, SOURCES_DIR,
+    COVER_DIR, DATA_ROOT, GENERATED_DIR, LOCATION_ROOT_DECLARATIONS, SECRETS_DIR,
+    SOURCES_DIR,
+    SHARED_DATA_ROOT,
     STATE_DIR,
 )
 from .entities import (
@@ -98,6 +100,8 @@ class WebContract:
                  follow_sources_root: Path | None = None,
                  follow_secrets_root: Path | None = None,
                  follow_state_root: Path | None = None,
+                 follow_shared_root: Path | None = None,
+                 taste_history_root: Path | None = None,
                  database: LedgerDatabase | None = None):
         # 候选 CSV 的目录做成实例属性而不是模块常量，复核层才能在临时目录里被测试。
         self.candidate_root = Path(candidate_root) if candidate_root is not None else GENERATED_DIR
@@ -112,6 +116,13 @@ class WebContract:
                                     if follow_secrets_root is not None else SECRETS_DIR)
         self.follow_state_root = (Path(follow_state_root)
                                   if follow_state_root is not None else STATE_DIR)
+        # 共享副本只承载**声明为可同步**的凭据字段，见 web_follow.SYNCABLE_FIELDS。
+        self.follow_shared_root = (Path(follow_shared_root)
+                                   if follow_shared_root is not None else SHARED_DATA_ROOT)
+        # 浏览历史品味分析的产出目录，`scripts/taste_history.py --output` 的默认值。
+        self.taste_history_root = (Path(taste_history_root)
+                                   if taste_history_root is not None
+                                   else DATA_ROOT / "review" / "taste-history")
         self.database = database or LedgerDatabase(db_path)
         self.db_path = self.database.db_path
         self.snapshot_root = Path(snapshot_root) if snapshot_root is not None else None
