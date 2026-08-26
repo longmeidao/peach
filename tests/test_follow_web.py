@@ -575,6 +575,21 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("'/api/follow/source'")
         self.assertPageContains("data-follow-remove")
 
+    def test_reader_management_is_locked_and_points_to_the_writer(self):
+        self.assertPageContains("api('/healthz')")
+        self.assertPageContains("followRuntime?.ledger_read_only")
+        self.assertPageContains("前往写入端管理关注")
+        self.assertPageContains("#followAdd textarea,#followAdd button")
+
+    def test_failed_source_adds_stay_visible_instead_of_being_erased_by_reload(self):
+        block = self.page[self.page.index("if(addButton)addButton.onclick=async()=>"):
+                          self.page.index("async function followWrite(")]
+        self.assertIn("const failures=[]", block)
+        self.assertIn("state.textContent=failures.join('；')", block)
+        self.assertLess(block.index("if(failures.length)"),
+                        block.index("await openFollowManage(false)"))
+        self.assertIn("return;", block[block.index("if(failures.length)"):])
+
     def test_a_bare_name_or_id_is_looked_up_across_sources(self):
         self.assertPageContains("'/api/follow/resolve'")
         self.assertPageContains("function renderFollowPicks(")

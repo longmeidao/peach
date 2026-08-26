@@ -646,7 +646,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("[data-pick-none]")
         self.assertPageContains('[data-review-asset][aria-pressed="true"]')
         self.assertPageContains("const canApprove=metadata?candidates.length>0:(reviewCategory!=='creator_tags'||String(row.status||'').trim()==='candidate')")
-        self.assertPageContains("${canApprove?'':' disabled'}")
+        self.assertPageContains("${canApprove&&!locked?'':' disabled'}")
 
     def test_surface_navigation_clears_stale_panels_and_ignores_late_responses(self):
         """跨页面请求返回较慢时，旧统计/复核响应不能覆盖当前页面。"""
@@ -1127,6 +1127,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const comparison=row.comparison_assets||[];")
         self.assertPageContains('class="reviewcompare"')
         self.assertPageContains("reviewCategory==='fc2_similarity'?''")
+
+    def test_reader_review_uses_the_writer_mirror_without_offering_fake_writes(self):
+        self.assertPageContains("reviewRuntime=await api('/healthz')")
+        self.assertPageContains("正在显示写入端的实时复核队列")
+        self.assertPageContains("前往写入端复核")
+        self.assertPageContains("canApprove&&!locked")
+        self.assertPageContains("${locked?' disabled':''}>跳过")
 
     def test_index_pages_drop_the_home_filter_bars_and_back_button(self):
         # 艺人/标签索引和资料页一样是「专注看某一类实体」的表面。

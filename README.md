@@ -56,6 +56,10 @@ worktree 目录。跨机器继续任务时 push 分支，在另一台按分支�
 `src/peach/config.py`，`PEACH_MDNS_NAME` 只用于临时测试覆盖。
 服务本身可以同时跑，但 `ledger.db.sync.json` 的 `device` 只指定一台写入端；另一台的写入
 端点返回 `409`，只能浏览。切换写入端必须使用托盘的「接管 Ledger 写入」。
+只读端的 `/review` 通过严格校验本地 CA 的 HTTPS 读取 writer 已归一化的复核 JSON，并把最近
+一次成功结果缓存到本机 `peach-data/review/writer-review.json`；它不复制候选 CSV，也不开放
+批准、跳过或拒绝。关注管理同样在只读端锁住写操作，并明确链接到 writer，不再让失败提示被
+页面重载抹掉。writer 地址可用 `PEACH_REVIEW_WRITER_ORIGIN` 显式覆盖。
 
 ### 账本复制
 
@@ -280,7 +284,8 @@ SAN 里的局域网 IP 会随 DHCP 变化失效，**但不需要人去管，也�
   `peach-data/artifacts/`，Trash Can 版本保留 30 天。方向是固定的——Mac 不发布正式产物。
   `.stignore` 不跨设备同步，两端每个目录各放一份；不要把 `generated` 这个符号链接设成同步目录。
 - **其余运行数据** 不整体进入 GitHub 或通用同步。凭据、日志、锁、工具、临时文件和可重建缓存
-  留在本机；原始证据和复核产物完成目录拆分后再选择性同步。
+  留在本机；原始证据和复核产物完成目录拆分后再选择性同步。reader 浏览复核使用的是 writer
+  归一化 JSON 的只读 HTTPS 镜像，不把原始候选文件当成新的同步目录。
 
 跨两台机器开发时换行口径由 `.gitattributes` 的 `* text=auto eol=lf` 固定。不要依赖各自的
 `core.autocrlf`：2026-08 之前 Windows 侧把 105 个文件整体改写成 CRLF，`git status` 长期显示

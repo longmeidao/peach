@@ -203,12 +203,23 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             def stop(self):
                 return None
 
-        app = create_app(self.settings, ReaderSync())
+        class ReaderMirror:
+            def resolve(self, payload):
+                result = dict(payload)
+                result["mirror"] = {"state": "live", "read_only": True}
+                return result
+
+        app = create_app(self.settings, ReaderSync(), ReaderMirror())
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://test",
         ) as client:
             health = await client.get("/healthz")
             self.assertEqual(health.json()["ledger_sync"], "reader")
+            self.assertTrue(health.json()["ledger_read_only"])
+            self.assertIn("只能浏览", health.json()["ledger_read_only_message"])
+            reviewed = await client.get("/api/review?t=secret")
+            self.assertEqual(reviewed.status_code, 200)
+            self.assertEqual(reviewed.json()["mirror"]["state"], "live")
             listed = await client.get("/api/items?t=secret")
             self.assertEqual(listed.status_code, 200)
             denied = await client.post(
