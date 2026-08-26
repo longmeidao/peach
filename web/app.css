@@ -1158,7 +1158,9 @@ body.drawer-open .edge button{color:var(--ink-2)}
   .follow .reviewtabs .fcheck{margin-left:0;flex:1 1 100%;justify-content:center}}
 
 /* ── 关注管理页 ──
-   版式判据沿用 docs/HANDOFF.md 已登记的 Vercel 设计评审清单（2026-08-15）：
+   版式判据取自 docs/HANDOFF.md 2026-08-26 重新取证的 Vercel Web Interface Guidelines；
+   官方资源版本为 vercel-labs/web-interface-guidelines commit
+   e3d624baaf29dc1fc645aff3e38f03e564d2d6b1：
    反模式：卡片套卡片、用边框补救层级、成排通栏空条、细小灰字加随意字号。所以：
    没有嵌套卡片盒子，分组靠标题和一条发丝分隔线；字号只有三档（14 正文 / 13 次要 /
    12 元信息），不再有 10.5/11/11.5 混用。控件按实测 Geist：32px 高、6px 圆角、14px 字。 */
