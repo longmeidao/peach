@@ -70,11 +70,16 @@
   当时已从 `R:\Resources\Sources` 完整迁到 `R:\peach-data\sources`，共 67 个文件、
   约 421.5 MB；Mac 传回的 `mac/` 包含 `zen-places.sqlite`、`zen-history.tsv`、
   `zen-visits.tsv`、`safari-History.db` 和 `taste-raw.zip`，其余分在 `takeout/`、
-  `browsers/`、`telegram/`、`follows/`、`inventories/`、`dedup/`、`reports/`。当前 Windows
-  未挂载 `R:`，所以这些外置盘文件的现存状态**未取得**；Windows 内置盘
-  `peach-data/sources` 目前只有 `metadata/`。现有 ledger 已持续保存搜索、播放、高潮、
-  喜欢/理由、不合口味和稍后看等行为，但浏览器/Takeout 原始证据在 2026-08-13 后没有
-  正式的增量快照、差异报告和口味候选刷新入口。
+  `browsers/`、`telegram/`、`follows/`、`inventories/`、`dedup/`、`reports/`。随后在 Windows
+  实测 `R:` 已挂载为 `RESOURCES`（exFAT，约 1 TB），但 `R:\peach-data\sources`、旧
+  `R:\Resources\Sources` 和回收站都没有这批文件，按已删除处理；Mac 上旧副本的现存状态
+  **未取得**。
+- 浏览记录增量刷新已实现：`scripts/taste_history.py` 用 SQLite backup API 一致性读取浏览器活库，
+  原始 URL/标题只增量写入本机 `peach-data/sources/taste-history/history.sqlite`，聚合报告与
+  creator/tag candidate 写 `peach-data/review/taste-history/`，不写 ledger。2026-08-26 Windows
+  首批发现 Chrome 1、Firefox 4、Zen 2 共 7 个 profile，导入 382,781 次访问，时间范围
+  2025-11-08 至 2026-08-26；报告不含完整 URL 或标题。Mac Safari 活库本轮**未取得**，待
+  iCloud Safari 同步开启且 Mac 可执行后补入同一流程。
 - 追更的「查找」在只读端一度返回 409：`/api/follow/resolve` 只联网发现、不碰账本，
   却因为是 POST 被写入端闸门一并拦掉。已按 `READ_ONLY_POST_ROUTES` 白名单放行；
   真正会写的 `check`/`save`/`status`/`source` 仍受闸门管辖。

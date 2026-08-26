@@ -1,0 +1,72 @@
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+from peach.config import DATA_ROOT, SOURCES_DIR, STATE_DIR
+from peach.taste_history import (
+    HistorySource,
+    analyze_history,
+    discover_history_sources,
+    refresh_history,
+    write_manifest,
+)
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="增量采集并分析 Firefox、Zen、Chrome、Safari 浏览记录")
+    parser.add_argument("action", choices=("discover", "refresh", "analyze"))
+    parser.add_argument("--store", type=Path, default=SOURCES_DIR / "taste-history" / "history.sqlite")
+    parser.add_argument("--output", type=Path, default=DATA_ROOT / "review" / "taste-history")
+    parser.add_argument("--manifest", type=Path, default=STATE_DIR / "taste-history" / "manifest.json")
+    parser.add_argument("--since", help="只分析此 ISO 时间之后的记录")
+    parser.add_argument(
+        "--source",
+        action="append",
+        default=[],
+        metavar="BROWSER=PATH",
+        help="显式增加浏览器数据库；可重复指定",
+    )
+    return parser
+
+
+def _explicit_sources(values: list[str]) -> list[HistorySource]:
+    sources: list[HistorySource] = []
+    for value in values:
+        browser, separator, raw_path = value.partition("=")
+        if not separator or browser not in {"chrome", "firefox", "safari", "zen"}:
+            raise SystemExit(f"无效 --source：{value}；格式应为 BROWSER=PATH")
+        path = Path(raw_path).expanduser()
+        if not path.is_file():
+            raise SystemExit(f"浏览记录数据库不存在：{path}")
+        sources.append(HistorySource(browser, path.parent.name, path))
+    return sources
+
+
+def main() -> int:
+    args = _parser().parse_args()
+    sources = discover_history_sources() + _explicit_sources(args.source)
+    unique = {(source.browser, source.profile, source.path.resolve()): source for source in sources}
+    sources = list(unique.values())
+    if args.action == "discover":
+        print(json.dumps([
+            {"browser": source.browser, "profile": source.profile, "path": str(source.path)}
+            for source in sources
+        ], ensure_ascii=False, indent=2))
+        return 0
+    refresh_results: list[dict[str, object]] = []
+    if args.action == "refresh":
+        if not sources:
+            raise SystemExit("未发现浏览器历史数据库")
+        refresh_results = refresh_history(sources, args.store)
+    if not args.store.is_file():
+        raise SystemExit(f"历史库不存在：{args.store}")
+    analysis = analyze_history(args.store, args.output, since=args.since)
+    write_manifest(args.manifest, refresh_results, analysis)
+    print(json.dumps({"refresh": refresh_results, "analysis": analysis}, ensure_ascii=False, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
