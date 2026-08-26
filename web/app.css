@@ -1156,19 +1156,21 @@ body.drawer-open .edge button{color:var(--ink-2)}
   .follow .reviewtabs{flex-wrap:wrap;overflow-x:visible}
   .follow .reviewtabs .fcheck{margin-left:0;flex:1 1 100%;justify-content:center}}
 
-/* ── 追更管理页 ──
-   卡片式分区，顺序按「做事的先后」：加来源 → 看来源 → 处理内容 → 凭据。
-   圆角同心：卡片 14px / 内部控件 9px（padding 5px 时 9+5=14）。 */
-.followmanage{padding:4px 0 44px;display:grid;gap:14px;max-width:1080px}
+/* ── 关注管理页 ──
+   两栏：左边干活（加关注、看列表），右边配置。原来四张通栏卡片各自只装几行内容，
+   宽屏上就是几条空长条加一大片右留白。圆角同心：卡片 14px / 控件 9px（padding 5px）。 */
+.followmanage{padding:4px 0 44px;display:grid;grid-template-columns:minmax(0,1fr) 340px;
+  gap:14px;align-items:start}
+.fmain{display:grid;gap:14px;min-width:0}
+.faside{display:grid;gap:14px;position:sticky;top:12px}
 .fcard{border-radius:14px;background:var(--surface);padding:5px;
   box-shadow:0 0 0 1px var(--border-10),0 1px 2px rgba(0,0,0,.04),0 4px 12px rgba(0,0,0,.04)}
 .fcard>*{margin-left:11px;margin-right:11px}
-.fcardhead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
-  padding:9px 0 10px;margin-bottom:0}
+.fcardhead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:9px 0 10px}
 .fcardhead h3{margin:0;font-size:14px;font-weight:600;flex:1 1 auto}
 .fcardhead .n{color:var(--muted);font-size:11.5px;font-weight:400;margin-left:4px}
-.fcardhead .fcredroot{font-size:11px;color:var(--muted);overflow-wrap:anywhere}
-.fhint{margin:9px 0 11px;font-size:11.5px;line-height:1.65;color:var(--muted);max-width:64ch}
+.fhint{margin:9px 0 11px;font-size:11.5px;line-height:1.65;color:var(--muted)}
+.fempty{margin:2px 0 14px;font-size:12.5px}
 .fprimary,.fghost{display:inline-flex;align-items:center;gap:6px;border-radius:9px;
   padding:6px 13px;font-size:12.5px;cursor:pointer;white-space:nowrap;
   transition:background-color .12s ease,border-color .12s ease,color .12s ease,scale .1s ease}
@@ -1178,9 +1180,8 @@ body.drawer-open .edge button{color:var(--ink-2)}
 .fghost:hover:not(:disabled){border-color:var(--tungsten);color:var(--ink)}
 .fprimary:active:not(:disabled),.fghost:active:not(:disabled){scale:.96}
 .fprimary svg,.fghost svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
-.fprimary:disabled,.fghost:disabled{opacity:.55;cursor:default}
+.fprimary:disabled,.fghost:disabled{opacity:.5;cursor:default}
 
-/* 输入区：左侧输入，右侧动作。textarea 有下限高度，拉不成一条缝。 */
 .faddform{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;align-items:start}
 .faddform textarea{min-height:82px;max-height:340px;border:1px solid var(--border-15);
   border-radius:9px;background:var(--overlay-5);color:var(--ink);padding:9px 12px;
@@ -1189,23 +1190,21 @@ body.drawer-open .edge button{color:var(--ink-2)}
 .faddform textarea::placeholder{color:var(--muted)}
 .faddform textarea:focus-visible{outline:2px solid var(--tungsten);outline-offset:1px;
   border-color:var(--tungsten)}
-.faddside{display:grid;gap:6px;justify-items:stretch;min-width:104px}
+.faddside{display:grid;gap:6px;min-width:96px}
 .faddside button{border-radius:9px;border:1px solid var(--tungsten);background:var(--tungsten);
-  color:#fff;font-weight:600;padding:9px 18px;font-size:13px;cursor:pointer;
+  color:#fff;font-weight:600;padding:9px 16px;font-size:13px;cursor:pointer;
   transition:background-color .12s ease,scale .1s ease}
 .faddside button:hover:not(:disabled){background:color-mix(in srgb,var(--tungsten) 86%,#000)}
 .faddside button:active:not(:disabled){scale:.96}
 .faddside button:disabled{opacity:.6;cursor:default}
 .faddside [data-follow-add-state]{font-size:11px;line-height:1.5;color:var(--muted)}
 
-/* 来源行 */
-.fsources{list-style:none;margin:0 0 11px;padding:0;display:grid;gap:5px}
+.fsources{list-style:none;margin:0 0 9px;padding:0;display:grid;gap:5px}
 .fsource{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:10px;
-  align-items:center;padding:8px 11px;border-radius:9px;background:var(--overlay-5);
-  font-size:12.5px}
+  align-items:center;padding:8px 11px;border-radius:9px;background:var(--overlay-5);font-size:12.5px}
 .fsource b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fsource .mono{color:var(--muted);font-size:11px;white-space:nowrap}
-.fsource .fstatus{font-size:11px;color:var(--muted);min-width:62px;text-align:right}
+.fsource .fstatus{font-size:11px;color:var(--muted);min-width:58px;text-align:right}
 .fsource.bad{background:color-mix(in srgb,var(--drop) 8%,transparent);
   box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--drop) 30%,transparent)}
 .fsource.bad .fstatus{color:var(--drop)}
@@ -1219,23 +1218,15 @@ body.drawer-open .edge button{color:var(--ink-2)}
 .fwarn{margin:0 0 9px;font-size:11.5px;color:var(--drop)}
 .flink{border:0;background:none;padding:0;color:var(--tungsten);font:inherit;cursor:pointer;
   text-decoration:underline}
+/* 计数是列表的注脚，不是一个功能——不再单独占一张卡。 */
+.fcounts{display:flex;gap:8px;flex-wrap:wrap;align-items:baseline;margin:0 0 11px;
+  font-size:11.5px;color:var(--muted)}
+.fcounts b{color:var(--ink);font-variant-numeric:tabular-nums}
+.fcounts .flink{margin-left:6px;font-size:11.5px}
 
-/* 内容计数 */
-.fcounts{display:flex;gap:20px;flex-wrap:wrap;margin:0 0 11px;font-size:12px;color:var(--muted)}
-.fcounts b{display:block;font-size:19px;color:var(--ink);font-weight:600;
-  font-variant-numeric:tabular-nums;line-height:1.25}
-.fbulk{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:11px}
-.fbulk button{border:1px solid var(--border-15);border-radius:9px;background:transparent;
-  color:var(--ink-2);padding:6px 13px;font-size:12px;cursor:pointer;
-  transition:border-color .12s ease,color .12s ease,scale .1s ease}
-.fbulk button:hover:not(:disabled){border-color:var(--tungsten);color:var(--ink)}
-.fbulk button:active:not(:disabled){scale:.96}
-.fbulk button:disabled{opacity:.45;cursor:default}
-
-/* 凭据：不需要的收起来只占一行，需要的才展开给路径和格式 */
 .fcreds{display:grid;gap:5px;margin-bottom:11px}
 .fcred{border-radius:9px;background:var(--overlay-5);padding:0 11px}
-.fcred summary{display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;
+.fcred summary{display:flex;align-items:center;gap:9px;padding:8px 0;cursor:pointer;
   font-size:12.5px;list-style:none}
 .fcred summary::-webkit-details-marker{display:none}
 .fcred summary b{flex:1 1 auto;min-width:0}
@@ -1244,16 +1235,34 @@ body.drawer-open .edge button{color:var(--ink-2)}
 .fcred.opt .fcredstate{color:var(--meter)}
 .fcred.ok .fcredstate{color:var(--keep)}
 .fcredmissing{font-size:11px;color:var(--drop)}
-.fcred p{margin:0 0 6px;font-size:11.5px;line-height:1.65;color:var(--muted)}
+.fcred p{margin:0 0 6px;font-size:11.5px;line-height:1.6;color:var(--muted)}
 .fcred a{color:var(--tungsten);overflow-wrap:anywhere}
-.fcredpath{overflow-wrap:anywhere;color:var(--ink-2)!important}
-.fcredsample{margin:0 0 9px;padding:7px 10px;border-radius:7px;background:var(--overlay-5);
-  font-size:11.5px;color:var(--ink-2);overflow-x:auto}
+.fcredpath{overflow-wrap:anywhere;color:var(--ink-2)!important;font-size:10.5px!important}
 .fcredwarn{color:var(--drop)!important}
+.fcredform{display:grid;gap:6px;margin:8px 0}
+.fcredfield{display:grid;gap:3px}
+.fcredfield span{font-size:11px;color:var(--muted)}
+.fcredfield input{border:1px solid var(--border-15);border-radius:7px;background:var(--ground);
+  color:var(--ink);padding:6px 9px;font-size:12px;font-family:inherit;
+  transition:border-color .12s ease}
+.fcredfield input:focus-visible{outline:2px solid var(--tungsten);outline-offset:1px;
+  border-color:var(--tungsten)}
+.fcredactions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:2px}
+.fcredactions button{border:1px solid var(--tungsten);border-radius:7px;background:var(--tungsten);
+  color:#fff;font-weight:600;padding:5px 13px;font-size:12px;cursor:pointer;
+  transition:background-color .12s ease,scale .1s ease}
+.fcredactions button:active:not(:disabled){scale:.96}
+.fcredactions button:disabled{opacity:.6;cursor:default}
+.fcredactions button[data-cred-clear]{background:transparent;border-color:var(--border-15);
+  color:var(--drop);font-weight:400}
+.fcredactions [data-cred-state]{font-size:11px;color:var(--muted)}
 
+@media (max-width:1000px){
+  .followmanage{grid-template-columns:minmax(0,1fr)}
+  .faside{position:static}
+}
 @media (max-width:720px){
   .faddform{grid-template-columns:minmax(0,1fr)}
-  .faddside{min-width:0}
   .fsource{grid-template-columns:minmax(0,1fr) auto}
   .fsource .mono:nth-of-type(2){display:none}
 }

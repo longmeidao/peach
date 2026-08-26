@@ -38,8 +38,8 @@ from .platform import (
 )
 from .repository import LedgerDatabase
 from .web_follow import (
-    q_follow, q_follow_credentials, w_follow_check, w_follow_resolve, w_follow_save,
-    w_follow_source, w_follow_status,
+    q_follow, q_follow_credentials, w_follow_check, w_follow_credential, w_follow_resolve,
+    w_follow_save, w_follow_source, w_follow_status,
 )
 from .web_activity import (
     DEFAULT_PROFILE_ID,
@@ -2563,6 +2563,7 @@ POST_HANDLERS = {
     "/api/follow/check": w_follow_check,
     "/api/follow/source": w_follow_source,
     "/api/follow/resolve": w_follow_resolve,
+    "/api/follow/credential": w_follow_credential,
     "/api/follow/status": w_follow_status,
     "/api/follow/save": w_follow_save,
     "/api/activity": w_activity,
@@ -2582,9 +2583,12 @@ POST_HANDLERS = {
 }
 
 
-#: 这些 POST 不写 ledger，只是因为要带请求体才用 POST。写入端闸门不该拦它们——
-#: 追更的「查找」在只读端被拦成 409 是实测踩到的：发现只联网、不碰账本。
-READ_ONLY_POST_ROUTES = frozenset({"/api/follow/resolve"})
+#: 这些 POST 不写 ledger，只是因为要带请求体才用 POST。写入端闸门管的是账本分叉，
+#: 不该拦它们——「查找」只联网、「存凭据」只写本机 secrets 文件，都不碰账本。
+#: 追更的「查找」在只读端被拦成 409 是实测踩到的。
+READ_ONLY_POST_ROUTES = frozenset({
+    "/api/follow/resolve", "/api/follow/credential",
+})
 
 
 def dispatch_api_get(contract: WebContract, path, args):

@@ -328,7 +328,7 @@ Per-Monitor V2 DPI，单击打开 `https://peach-win.local/`；右键可同步 L
 | `/immerse` | 沉浸模式 |
 | `/quality-goals` | 已标记寻找高清、无水印或完整版的作品 |
 | `/follow` | 在线追更：按作品分组的更新流，点开就去看 |
-| `/follow-manage` | 追更来源管理：粘链接添加、检查更新、移除来源、凭据状态 |
+| `/follow-manage` | 关注管理：粘链接或名字添加、检查更新、移除来源、填写凭据 |
 | `/trash` | 回收站 |
 | `/mix/{seed_id}/{item_id}` | 自动 Mix 播放器与右侧队列 |
 | `/playlists` | 播放列表管理；新建、改名、继续播放与删除 |
@@ -364,7 +364,10 @@ cookie 并重定向到不含口令的干净 URL；新设备不要再复制带口
 
 写入 API：`POST /api/activity`、`/api/play`、`/api/feedback`、`/api/watch-later`、`/api/playlist`、
 `/api/preference`、`/api/item-tag`、`/api/batch`、`/api/trash/empty`、`/api/follow/check`、
-`/api/follow/status`、`/api/follow/save`、`/api/follow/source`。标签隐藏只写本地 profile 覆盖，不销毁
+`/api/follow/status`、`/api/follow/save`、`/api/follow/source`、`/api/follow/resolve`、
+`/api/follow/credential`。`resolve` 只联网发现、`credential` 只写本机 secrets 文件，两者都不碰账本，
+因此不受单写者闸门管辖；凭据的值只从请求体流向磁盘（0600），不回显、不记日志、不进任何返回体。
+标签隐藏只写本地 profile 覆盖，不销毁
 原始来源断言；搜索历史通过 `POST /api/search-history` 共享写入账本；媒体先进入回收站，只有显式清空回收站才永久删除。除上述明确端点外，`/api/*` 返回 404。公共页面不再使用
 `/entity/{kind}/{name}`；内部 JSON 的 `/api/entity` 只是兼容契约，不暴露数据库路由结构。
 

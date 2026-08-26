@@ -5,6 +5,7 @@
 """
 import json
 import sqlite3
+import stat
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -216,6 +217,35 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual(row["missing"], [])
         self.assertNotIn("sekret", json.dumps(row))
 
+    def test_saving_a_credential_writes_it_without_echoing_the_value(self):
+        result = self._post("/api/follow/credential", {
+            "provider": "rule34xxx",
+            "values": {"user_id": "42", "api_key": "sekret"}})
+        self.assertTrue(result["ok"])
+        self.assertNotIn("sekret", json.dumps(result))
+        self.assertEqual(result["saved"]["fields"], ["api_key", "user_id"])
+        path = self.root / "secrets" / "follow" / "rule34xxx.json"
+        self.assertEqual(json.loads(path.read_text(encoding="utf-8")),
+                         {"user_id": "42", "api_key": "sekret"})
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
+    def test_clearing_a_credential_removes_the_file(self):
+        self._post("/api/follow/credential", {
+            "provider": "rule34xxx", "values": {"user_id": "42", "api_key": "k"}})
+        result = self._post("/api/follow/credential",
+                            {"provider": "rule34xxx", "values": {}})
+        self.assertTrue(result["cleared"])
+        self.assertFalse((self.root / "secrets" / "follow" / "rule34xxx.json").exists())
+
+    def test_only_declared_providers_and_fields_are_accepted(self):
+        for body in ({"provider": "kemono", "values": {"x": "1"}},
+                     {"provider": "../escape", "values": {"x": "1"}},
+                     {"provider": "rule34xxx", "values": {"evil": "1"}},
+                     {"provider": "rule34xxx", "values": "notadict"}):
+            with self.assertRaises(ValueError):
+                self._post("/api/follow/credential", body)
+        self.assertFalse((self.root / "secrets").exists())
+
     def test_credentials_endpoint_reports_fields_but_never_values(self):
         secrets = self.root / "secrets" / "follow"
         secrets.mkdir(parents=True)
@@ -384,21 +414,40 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains(".faddform textarea{min-height:82px")
 
     def test_the_manage_page_is_ordered_by_what_you_do_first(self):
-        # 只看管理页那一段：`<h3>内容` 在别的页面上也出现过，全页搜索会命中错的那个。
+        # 只看管理页那一段：同样的标题在别的页面上也出现过，全页搜索会命中错的那个。
         page = self.page
         body = page[page.index("function renderFollowManage("):
                     page.index("function wireFollowItems(")]
         order = [body.index(f'<h3>{heading}')
-                 for heading in ("添加来源", "来源 ", "内容", "凭据")]
-        self.assertEqual(order, sorted(order), "管理页分区顺序应为 加来源 → 来源 → 内容 → 凭据")
+                 for heading in ("添加关注", "关注列表", "凭据")]
+        self.assertEqual(order, sorted(order), "管理页分区顺序应为 加关注 → 关注列表 → 凭据")
+
+    def test_counts_are_a_footnote_not_their_own_section(self):
+        # 四个数字单独占一张通栏卡片，在宽屏上就是一条空长条。
+        page = self.page
+        body = page[page.index("function renderFollowManage("):
+                    page.index("function wireFollowItems(")]
+        self.assertNotIn("<h3>内容", body)
+        self.assertIn("class=\"fcounts\"", body)
+
+    def test_the_page_uses_two_columns_so_the_width_is_not_wasted(self):
+        self.assertPageContains(".followmanage{padding:4px 0 44px;display:grid;"
+                                "grid-template-columns:minmax(0,1fr) 340px")
 
     def test_credential_rows_say_whether_they_are_needed_at_all(self):
         # 「未配置」本身不是信息：要说清需不需要、需要什么、去哪儿拿。
         self.assertPageContains("required:['必须配置'")
-        self.assertPageContains("none:['不需要凭据'")
-        self.assertPageContains("blocked:['站点不可接入'")
+        self.assertPageContains("none:['不需要'")
+        self.assertPageContains("blocked:['接不进来'")
         self.assertPageContains("row.path")
-        self.assertPageContains("row.example")
+
+    def test_credentials_are_typed_into_the_page_not_into_a_file_by_hand(self):
+        self.assertPageContains('data-cred-form=')
+        self.assertPageContains("'/api/follow/credential'")
+        self.assertPageContains('type="password"')
+        # 值只往磁盘走：保存后清空输入框，页面上再也看不到。
+        self.assertPageContains("form.reset();await openFollowManage(false)")
+        self.assertPageContains("data-cred-clear")
 
     def test_only_a_missing_required_credential_demands_attention(self):
         # 可选的、不需要的、站点接不进来的都收起来；永远展开就是永久噪音。
