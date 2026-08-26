@@ -1379,8 +1379,7 @@ function followCredentialRow(row){
     </summary>${body}</details>`;
 }
 
-/* 版式判据取自 docs/HANDOFF.md 2026-08-26 重新取证的 Vercel Web Interface Guidelines
-   （官方 vercel-labs/web-interface-guidelines commit e3d624baaf29dc1fc645aff3e38f03e564d2d6b1）：
+/* 版式判据来自 docs/reference-sources.json 的 vercel-report-design：
    要避开卡片套卡片、用边框补救层级、成排通栏空条、
    细小灰字加随意字号。所以这里不再用嵌套卡片盒子——分组靠标题和一条发丝分隔线，
    行与行之间也只用分隔线，不各自套框。控件尺寸按实测 Geist：32px 高、6px 圆角、14px。 */
