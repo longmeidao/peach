@@ -708,7 +708,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("border:1px solid var(--border-15);\n  border-radius:999px;background:transparent")
         self.assertPageContains("--overlay-5:rgba(245,250,255,.05)")
         self.assertPageContains("--border-15:rgba(245,250,255,.15)")
-        self.assertPageContains("background:var(--ground);\n  border-right:0")
+        # 窄栏原本无边框、与内容区连成一片。用户 2026-08-26 明确要求加分割线：
+        # 两边背景太接近，看不出左边那一条到哪里为止。其余取证结论不变，只改这一条。
+        self.assertPageContains("border-right:1px solid var(--line-soft)")
         self.assertPageContains("['performers','艺人','user-round']")
         self.assertPageContains("['tags','标签','tags']")
 
