@@ -395,7 +395,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("['follow','关注','globe']")
         self.assertPageContains("if(k==='follow'){openFollow();return}")
         self.assertPageContains("if(k==='follow')return path==='/follow';")
-        self.assertPageContains("['follow','追更来源','globe']")
+        self.assertPageContains("['follow','关注','globe']")
         self.assertPageContains("if(path==='/follow-manage')return 'follow'")
         self.assertPageContains("if(section==='follow'){openFollowManage();return}")
 

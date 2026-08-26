@@ -442,7 +442,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_manage_sections_follow_the_order_work_actually_happens_in(self):
         """导航条的顺序就是做事顺序：先收拾库里已有的，再看要往外拿什么。
 
-        追更来源曾夹在高清版和回收站中间，人工复核掉到最末尾，
+        关注（原「追更来源」）曾夹在高清版和回收站中间，人工复核掉到最末尾，
         两者都不挨着自己那一组。
         """
         sections = self.page.split("const MANAGE_SECTIONS=[", 1)[1].split("];", 1)[0]
