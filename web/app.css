@@ -891,23 +891,22 @@ body{padding-left:var(--railW)}
    （窄栏行距 52px、抽屉 47px、起点还差 54px），瞄准「在线追更」点下去打开的是「统计」。
    与其逐像素对齐两套各自会因溢出、滚动、条目增减而漂移的列表，不如让它们不重叠——
    光标底下的图标就永远不动。 */
-.drawer{position:fixed;top:0;bottom:0;left:var(--railW);width:288px;z-index:96;
+.drawer{position:fixed;top:0;bottom:0;left:0;width:360px;z-index:97;
   background:linear-gradient(180deg,var(--frost-light),var(--frost-panel));
   backdrop-filter:saturate(1.8) blur(20px);-webkit-backdrop-filter:saturate(1.8) blur(20px);
-  border-right:1px solid var(--line);padding:16px 12px 60px;overflow-y:auto;
+  border-right:1px solid var(--line);padding:16px 12px 60px;
+  overflow-y:auto;overflow-x:hidden;
   transform:translateX(-100%);transition:transform .2s cubic-bezier(.3,.8,.3,1)}
 .drawer.open{transform:none;box-shadow:18px 0 60px -24px #000}
-/* 层序是一条契约，不能各自拍数：遮罩 95 < 抽屉 96 < 窄栏 97。
-   抽屉曾经是 94，比遮罩还低——遮罩是 inset:0 铺满全屏的，于是抽屉里每一下
-   点击都落在遮罩上，而遮罩的 onclick 正好是「收起抽屉」：能弹出、一点就关、什么都点不到。
-   窄栏排最上：抽屉滑入时会从它上面横过，它不该被盖。 */
-.edge{z-index:97}
-body.drawer-open .edge button{color:var(--ink-2)}
-/* 窄栏是固定高度的九宫格，条目变多时应当滚动，不能被 flex 悄悄压扁——
-   一压扁行距就和任何参照物都对不上了。 */
-.edge button{flex:none}
-.edge{overflow-y:auto;scrollbar-width:none}
-.edge::-webkit-scrollbar{display:none}
+/* 窄栏必须压在抽屉之上，否则抽屉一弹出就吃掉窄栏的点击 */
+.edge{z-index:96}
+body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位，抽屉就是它的展开态 */
+/* 遮罩必须低于抽屉，否则每一下点击都落在遮罩上，而遮罩的 onclick 正好是收起抽屉——
+   表现成「能弹出但点哪儿都只是把它收起来」。窄栏此时已 pointer-events:none，
+   所以它夹在 95 和 97 之间不影响任何判断。 */
+.dnav button{padding-left:0}
+/* 图标落在窄栏原来的位置 */
+.dnav svg{width:24px;height:24px;margin:0 15px 0 24px}
 .dnav{display:flex;flex-direction:column;gap:3px;margin-bottom:18px}
 .dnav button{padding-left:12px}
 .dnav button{display:flex;align-items:center;gap:14px;padding:11px 14px;background:none;
