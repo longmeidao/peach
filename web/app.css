@@ -1246,6 +1246,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
    控件仍按实测 Geist：32px 高、14px 字、6px 圆角。 */
 .followmanage{padding:2px 0 48px;display:grid;grid-template-columns:minmax(0,1fr) 320px;
   gap:16px;align-items:start;font-size:var(--fs-md)}
+.followmanage>.runtimegate{grid-column:1/-1;margin-bottom:0}
 .fmain{display:grid;gap:16px;min-width:0}
 .faside{display:grid;gap:16px;min-width:0}
 /* 容器：发丝边 + 比页面亮一档的表面。内部的行不再各自套框。 */

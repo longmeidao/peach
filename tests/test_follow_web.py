@@ -742,6 +742,7 @@ class FollowWebSourceTests(unittest.TestCase):
         rule = page[page.index(".followmanage{"):]
         rule = rule[:rule.index("}")]
         self.assertIn("grid-template-columns:minmax(0,1fr)", rule)
+        self.assertPageContains(".followmanage>.runtimegate{grid-column:1/-1")
 
     def test_sections_have_a_frame_but_their_rows_do_not(self):
         """反模式是卡片**套**卡片，不是「不要任何容器」。
@@ -1068,6 +1069,8 @@ class FollowWebSourceTests(unittest.TestCase):
         # 等于说这一组只属于 fanbox，正是这次要消掉的误读。
         self.assertPageContains("function followAuthorName(group)")
         self.assertPageContains("const name=followAuthorName(group);")
+        self.assertPageContains("const official=group.find(source=>source.official_avatar_url);")
+        self.assertPageContains("if(officialName)return officialName;")
         # 取不到头像时是一个明确的空位，不是首字母——首字母会让「未取得」看着像取到了。
         self.assertPageContains("这些来源没有可取的头像")
         avatar = self.page[self.page.index("function followAuthorAvatar(group)"):]

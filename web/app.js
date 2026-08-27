@@ -1546,6 +1546,14 @@ function followAuthorAvatar(group){
 function followAuthorName(group){
   const entity=group.find(source=>source.entity_name);
   if(entity)return entity.entity_name;
+  // 官方主页来源不只优先提供头像，也优先提供作者写法；否则 F95 的线程标题
+  // `Lazy Procrastinator Collection` 会因为大写字母更多而抢成分组标题。
+  const official=group.find(source=>source.official_avatar_url);
+  if(official){
+    const officialName=String(official.label||'')
+      .replace(/\s*[·|]\s*[A-Za-z0-9_-]+\s*$/,'').trim();
+    if(officialName)return officialName;
+  }
   const names=group.map(source=>String(source.label||'').replace(/\s*[·|]\s*[A-Za-z0-9_-]+\s*$/,''))
     .filter(Boolean);
   if(!names.length)return group[0].label||group[0].ref||'';
@@ -2747,7 +2755,11 @@ let searchHistory=[];
 const readSearchHistory=()=>searchHistory.slice(0,appSettings.searchHistoryLimit);
 const loadSearchHistory=()=>api('/api/search-history?limit='+appSettings.searchHistoryLimit).then(d=>{searchHistory=Array.isArray(d.items)?d.items:[];return searchHistory}).catch(()=>searchHistory);
 const writeSearchHistory=list=>{searchHistory=list.slice(0,appSettings.searchHistoryLimit);return searchHistory};
-const rememberSearch=async query=>{if(!query)return;await api('/api/search-history',{method:'POST',body:JSON.stringify({query})});writeSearchHistory([query,...readSearchHistory().filter(x=>foldName(x)!==foldName(query))])};
+// 搜索本身是只读能力；账本暂时只读时，历史记录降级为本次页面内存，不能让一个
+// 非关键 POST 变成未处理异常或妨碍搜索结果。
+const rememberSearch=async query=>{if(!query)return;
+  writeSearchHistory([query,...readSearchHistory().filter(x=>foldName(x)!==foldName(query))]);
+  await api('/api/search-history',{method:'POST',body:JSON.stringify({query})}).catch(()=>null)};
 function renderSearchMenu(){const menu=$('#searchMenu'),history=readSearchHistory();
   const recommendations=[...searchPool()].sort(()=>Math.random()-.5).filter(x=>!history.some(h=>foldName(h)===foldName(x))).slice(0,5);
   const row=(value,type)=>`<div class="searchoption" data-search-value="${esc(value)}">${icon(type==='history'?'history':'sparkles')}<span>${esc(value)}</span>${type==='history'?`<button class="removehistory" data-remove-history="${esc(value)}" aria-label="删除历史 ${esc(value)}">${icon('x')}</button>`:''}</div>`;
@@ -2764,7 +2776,7 @@ function renderSearchMenu(){const menu=$('#searchMenu'),history=readSearchHistor
     b.onclick=async e=>{
       e.stopPropagation();
       const value=b.dataset.removeHistory;
-      await api('/api/search-history',{method:'POST',body:JSON.stringify({operation:'remove',query:value})});
+      await api('/api/search-history',{method:'POST',body:JSON.stringify({operation:'remove',query:value})}).catch(()=>null);
       writeSearchHistory(readSearchHistory().filter(x=>foldName(x)!==foldName(value)));
       /* 只摘掉这一行，不整段重建：`renderSearchMenu` 每次都会把推荐词重新洗牌，
          删一条历史却换了一批推荐，看着像列表自己跳了。 */

@@ -1076,6 +1076,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("搜索记录")
         self.assertPageContains("recommendations.map")
         self.assertPageContains("rememberSearch(query)")
+        self.assertPageContains("body:JSON.stringify({query})}).catch(()=>null)")
         self.assertPageContains(".top:has(.search.open){overflow:visible}")
         self.assertPageLacks("setTimeout(runSearch,320)")
         self.assertPageContains("runSearch(!picked,true)")
