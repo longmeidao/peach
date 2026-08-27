@@ -281,23 +281,40 @@ def _suggestions(contract, sources) -> list[dict]:
     return picked
 
 
-def w_follow_status(contract, body) -> dict:
+def _write_item_ids(body) -> list[int]:
     item_id = body.get("item")
+    item_ids = body.get("items")
+    if isinstance(item_id, int):
+        return [item_id]
+    if isinstance(item_ids, list) and 0 < len(item_ids) <= 1000:
+        if not all(isinstance(value, int) for value in item_ids):
+            raise ValueError("items must contain only integer follow item ids")
+        return list(dict.fromkeys(item_ids))
+    raise ValueError("item must be an integer follow item id or items a non-empty list")
+
+
+def w_follow_status(contract, body) -> dict:
+    item_ids = _write_item_ids(body)
     status = str(body.get("to") or "")
-    if not isinstance(item_id, int):
-        raise ValueError("item must be an integer follow item id")
     with contract.database.write_transaction() as connection:
-        _store(contract, connection).set_status(item_id, status)
-    return {"ok": True, "item": item_id, "status": status}
+        store = _store(contract, connection)
+        for item_id in item_ids:
+            store.set_status(item_id, status)
+    result = {"ok": True, "items": item_ids, "status": status}
+    if len(item_ids) == 1:
+        result["item"] = item_ids[0]
+    return result
 
 
 def w_follow_save(contract, body) -> dict:
-    item_id = body.get("item")
-    if not isinstance(item_id, int):
-        raise ValueError("item must be an integer follow item id")
+    item_ids = _write_item_ids(body)
     with contract.database.write_transaction() as connection:
-        asset_id = _store(contract, connection).save_asset(item_id, confirm=True)
-    return {"ok": True, "item": item_id, "asset_id": asset_id}
+        store = _store(contract, connection)
+        asset_ids = [store.save_asset(item_id, confirm=True) for item_id in item_ids]
+    result = {"ok": True, "items": item_ids, "asset_ids": asset_ids}
+    if len(item_ids) == 1:
+        result.update({"item": item_ids[0], "asset_id": asset_ids[0]})
+    return result
 
 
 def w_follow_check(contract, body) -> dict:
