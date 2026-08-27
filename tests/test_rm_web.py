@@ -335,6 +335,52 @@ class WebDataTests(unittest.TestCase):
         self.assertTrue({"2K", "有码", "无码"} <= tech)
         self.assertTrue({"2K", "有码", "无码"}.isdisjoint(content))
 
+    def test_tag_index_uses_populated_hanime_style_categories(self):
+        connection = sqlite3.connect(self.db_path)
+        tagged = (
+            (301, "中文字幕", "影片属性"),
+            (302, "近亲", "人物关系"),
+            (303, "护士", "角色设定"),
+            (304, "巨乳", "外貌身材"),
+            (305, "浴室", "情境场所"),
+            (306, "出轨", "故事剧情"),
+            (308, "原创内容", "其他内容"),
+            (309, "原神", "其他内容"),
+        )
+        for entity_id, tag, _label in tagged:
+            connection.execute(
+                "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(?, 'tag', ?, ?)",
+                (entity_id, tag, tag.lower()),
+            )
+            connection.execute(
+                "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                "VALUES(1,?,'tag','test',1.0)",
+                (entity_id,),
+            )
+        connection.commit()
+        connection.close()
+
+        expected = {
+            "中文字幕": "meta",
+            "近亲": "relationship",
+            "护士": "role",
+            "巨乳": "appearance",
+            "浴室": "scene",
+            "出轨": "story",
+            "足交": "position",
+            "原创内容": "general",
+            "原神": "general",
+        }
+        index = rm_web.q_index(self.contract, "tags")
+        actual = {row["k"]: row["cat"] for row in index["items"]}
+        self.assertEqual({tag: actual[tag] for tag in expected}, expected)
+        self.assertNotIn("copyright", index["categories"])
+        for category in expected.values():
+            self.assertGreater(index["categories"][category], 0)
+            filtered = rm_web.q_index(self.contract, "tags", category=category)
+            self.assertTrue(filtered["items"])
+            self.assertTrue(all(row["cat"] == category for row in filtered["items"]))
+
     def test_activity_accumulates_real_play_time_and_max_position(self):
         first = rm_web.w_activity(self.contract, {
             "id": 1, "position": 50, "duration": 100, "delta": 12, "seeks": 2,
