@@ -623,6 +623,19 @@ class FollowSourceAddTests(FollowContractTests):
         }])
         self.assertEqual(self._get()["sources"], [], "查找入口不能自动登记来源")
 
+    def test_a_fanbox_subdomain_url_is_shown_as_an_addable_candidate(self):
+        result = self._post("/api/follow/resolve", {
+            "lines": ["https://lazyprocrast.fanbox.cc/"]})
+
+        row = result["results"][0]
+        self.assertEqual(row["kind"], "url")
+        self.assertEqual(row["candidates"], [{
+            "provider": "fanbox", "provider_label": "FANBOX",
+            "ref": "lazyprocrast", "url": "https://lazyprocrast.fanbox.cc/",
+            "label": "lazyprocrast", "author": "", "semantics": "work",
+            "evidence": "链接直接指明", "known": False,
+        }])
+
     def test_a_thread_link_is_registered_with_release_semantics(self):
         self._add("https://f95zone.to/threads/"
                   "lazy-procrastinator-collection-2026-06-28-lazyprocrast.50685/")
@@ -700,7 +713,10 @@ class FollowSourceAddTests(FollowContractTests):
         result = self._post("/api/follow/source", {
             "action": "enabled", "id": source_id, "enabled": False})
         self.assertFalse(result["enabled"])
-        self.assertFalse(self._get()["sources"][0]["enabled"])
+        payload = self._get()
+        self.assertFalse(payload["sources"][0]["enabled"])
+        self.assertEqual(payload["groups"], [], "暂停的来源不应继续出现在关注流")
+        self.assertEqual(payload["counts"]["new"], 0)
         with mock.patch.object(web_follow, "build_connector") as factory:
             checked = self._post("/api/follow/check", {})
         self.assertEqual(checked["checked"], 0)
@@ -893,6 +909,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains(
             '<div class="fpicks"><div class="fsechead"><h3>查找结果</h3>')
         self.assertPageContains('<p class="fpickempty">站内没有查到来源</p>')
+        self.assertPageContains("box.scrollIntoView({block:'nearest',behavior:'smooth'})")
         self.assertNotIn(".fpicks h3{", page,
                          "查找结果不应另起一套标题字号")
 
@@ -940,6 +957,7 @@ class FollowWebSourceTests(unittest.TestCase):
         icons = self.page.split("const SOURCE_ICONS={", 1)[1].split("};", 1)[0]
         for provider in ("fanbox", "patreon", "subscribestar"):
             self.assertIn(provider, icons)
+        self.assertIn("assets.subscribestar.com/assets/public/images/favicons/favicon-32x32-", icons)
         self.assertPageContains("followAliasManager(followData.author_aliases,followData.alias_suggestions)")
         self.assertPageContains("'/api/follow/author-alias'")
 
@@ -1132,8 +1150,9 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('class="tagbar followfilters"')
         self.assertPageContains('class="pill sourcepill" data-follow-provider=')
         self.assertPageContains("内容标签目前由 ${")
-        self.assertPageContains(".sort((a,b)=>b[1]-a[1]).slice(0,20)")
-        self.assertPageContains(".map(([tag,n])=>[tag,tagLabel(tag),n])")
+        self.assertPageContains("const rankedTags=[...tagCounts].sort((a,b)=>b[1]-a[1])")
+        self.assertPageContains("const topTagRows=rankedTags.slice(0,20)")
+        self.assertPageContains("topTagRows.push([tag,tagCounts.get(tag)])")
 
     def test_follow_tags_are_multi_select_and_use_rule34_property_colours(self):
         self.assertPageContains("let followAuthor='',followProvider='',followTags=new Set()")
@@ -1143,6 +1162,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains(".r34-character")
         self.assertPageContains(".r34-copyright")
         self.assertPageContains(".r34-metadata")
+        self.assertPageContains('[class*="r34-"][aria-pressed="true"]')
 
     def test_follow_cards_use_author_avatars_and_open_details_inside_peach(self):
         self.assertPageContains("return followCard(group,siblings)")
@@ -1155,13 +1175,19 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("const src=item.playable?`/follow-stream?id=${item.id}`:''")
         self.assertPageContains('data-follow-detail="${item.id}"')
         self.assertPageContains("route(`/follow/item/${item.id}`)")
-        self.assertPageContains('class="sgrid followdetailgrid"')
+        self.assertPageContains('class="sgrid followdetailgrid${collection?\' mixgrid\':\'\'}"')
         self.assertPageContains('class="followorigin" href="${esc(item.url)}" target="_blank"')
+        self.assertPageContains('title="打开来源页面" aria-label="打开来源页面"')
+        self.assertNotIn('打开来源页面</a>', self.page)
+        self.assertPageContains("followAuthorAvatar(authorSources)")
+        self.assertPageContains("followTagChip(item,tag,'button')")
+        self.assertPageContains(".followdetailtags .tg{max-width:none")
+        self.assertPageContains("const postedBy=item.author&&foldName(item.author)!==foldName(author)")
         self.assertPageContains("openFollowDetail(id);")
         self.assertNotIn('class="cardopenhit" href=', self.page)
         self.assertNotIn('class="t cardtitle" href=', self.page)
         self.assertNotIn('class="fcollectionthumb" href=', self.page)
-        self.assertPageContains("const closeDetail=()=>{disposeStage(true);openFollow(false)}")
+        self.assertPageContains("route(followDetailReturnPath||'/follow')")
         self.assertPageContains(".followitem a{text-decoration:none}")
 
     def test_follow_filters_put_all_first_and_sources_are_icon_only(self):
@@ -1372,11 +1398,12 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("const name=followAuthorName(group);")
         self.assertPageContains("const official=group.find(source=>source.official_avatar_url);")
         self.assertPageContains("if(officialName)return officialName;")
-        # 取不到头像时是一个明确的空位，不是首字母——首字母会让「未取得」看着像取到了。
-        self.assertPageContains("这些来源没有可取的头像")
+        # 取不到图片时回退作者首字母；不能从来源标签切出中文“初”“一”。
+        self.assertPageContains("function followAvatarInitial(group)")
+        self.assertPageContains('title="没有可用头像"')
         avatar = self.page[self.page.index("function followAuthorAvatar(group)"):]
         avatar = avatar[:avatar.index("function followAuthorBlock")]
-        self.assertNotIn("charAt", avatar, "不许用首字母冒充头像")
+        self.assertIn("followAvatarInitial(group)", avatar)
         self.assertIn("source.avatar_url", avatar)
         self.assertIn("source.official_avatar_url", avatar)
         self.assertIn("data-fallback", avatar)
@@ -1389,7 +1416,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("媒体需要登录会话才能取，发现本身不需要")
 
     def test_follow_styles_exist_for_the_card_surface(self):
-        for selector in (".followlist{", ".followitem{", ".fbadge{", ".fcollectionlist{"):
+        for selector in (".followlist{", ".followitem{", ".fbadge{", ".followqueue"):
             self.assertPageContains(selector)
 
     def test_follow_cards_reuse_home_cards_hover_actions_and_mix_stacks(self):
@@ -1398,7 +1425,9 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('class="mixbadge" data-follow-collection=')
         self.assertPageContains(".factions{position:absolute;right:10px;top:10px")
         self.assertPageContains("@media (hover:hover) and (pointer:fine){.followitem:hover .factions")
-        self.assertPageContains("function openFollowCollection(group)")
+        self.assertPageContains("function followQueueHtml(group,itemId)")
+        self.assertPageContains('data-follow-queue-item="${item.id}"')
+        self.assertPageContains("openFollowDetail(+button.dataset.followCollection)")
 
     def test_follow_uses_the_global_multi_select_mode(self):
         self.assertPageContains("const selected=new Set(),followSelected=new Set();")
@@ -1406,6 +1435,12 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("path==='/tags'||path==='/follow'")
         self.assertPageContains('data-follow-batch="save"')
         self.assertPageContains("const body=action==='save'?{items}:{items,to:action};")
+
+    def test_ignore_actions_do_not_reuse_the_close_icon(self):
+        self.assertPageContains('<symbol id="i-eye-off"')
+        self.assertPageContains('data-follow-batch="ignored" hidden><svg viewBox="0 0 24 24"><use href="#i-eye-off"')
+        self.assertPageContains('data-follow-detail-status="ignored" aria-label="忽略" title="忽略"')
+        self.assertPageContains("${icon('eye-off')}</button>")
 
     def test_the_check_button_stays_visible_on_a_narrow_viewport(self):
         # 管理入口不再混进横滚筛选条；390 宽下始终留在标题右侧。

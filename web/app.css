@@ -1219,7 +1219,9 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fsourceavatar:hover{box-shadow:none}.fsourceavatar .favatar{position:absolute;inset:0;width:100%;height:100%;border-radius:50%;outline:0;object-fit:cover}
 .fsourceavatar .favatar.none{display:grid;place-items:center;font-size:var(--fs-sm);color:var(--muted)}
 .followitem .cardtitle{display:block;width:100%;border:0;background:transparent;color:inherit;padding:0;text-align:left;font-family:inherit;cursor:pointer;text-decoration:none}
-.followitem .tg,.followdetailtags .tg,.followfilters .pill[class*="r34-"]{--r34-tag:#55A7FF;border-color:color-mix(in srgb,var(--r34-tag) 42%,transparent);background:color-mix(in srgb,var(--r34-tag) 10%,transparent)}
+.followitem .tg,.followdetailtags .tg{--r34-tag:#55A7FF;border-color:color-mix(in srgb,var(--r34-tag) 42%,transparent);background:color-mix(in srgb,var(--r34-tag) 10%,transparent)}
+.followfilters .pill[class*="r34-"]{--r34-tag:#55A7FF}
+.followfilters .pill[class*="r34-"][aria-pressed="true"]{border-color:color-mix(in srgb,var(--r34-tag) 72%,transparent);background:color-mix(in srgb,var(--r34-tag) 22%,transparent);color:var(--ink)}
 .followitem .r34-artist,.followdetailtags .r34-artist,.followfilters .r34-artist{--r34-tag:#E36C6C}
 .followitem .r34-character,.followdetailtags .r34-character,.followfilters .r34-character{--r34-tag:#68C76F}
 .followitem .r34-copyright,.followdetailtags .r34-copyright,.followfilters .r34-copyright{--r34-tag:#D675D6}
@@ -1243,26 +1245,17 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 @media (hover:none),(pointer:coarse){.followitem .factions{opacity:1;pointer-events:auto}}
 .select-mode .followitem a,.select-mode .followitem [data-follow-detail],.select-mode .followitem .factions,.select-mode .followitem .mixbadge{pointer-events:none!important}
 .fstate{flex:1 1 100%;font-size:var(--fs-xs);color:var(--drop)}
-.followcollectiondialog{width:min(760px,calc(100vw - 28px))}.fcollectionlist{display:grid;gap:6px;max-height:62vh;overflow-y:auto;scrollbar-width:none}
-.fcollectionlist::-webkit-scrollbar{display:none}
-.fcollectionrow{display:grid;grid-template-columns:112px minmax(0,1fr) auto;gap:10px;align-items:center;padding:7px;border-radius:8px}
-.fcollectionrow:hover{background:var(--hover)}.fcollectionthumb{position:relative;aspect-ratio:16/9;border-radius:5px;overflow:hidden;background:#000;display:grid;place-items:center}
-.fcollectionthumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.fcollectioncopy{min-width:0;color:inherit;text-decoration:none}
-.fcollectionthumb:is(button),.fcollectioncopy:is(button){width:100%;border:0;padding:0;color:inherit;font:inherit;text-align:left;cursor:pointer}
-.fcollectioncopy b,.fcollectioncopy span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fcollectioncopy b{font-size:var(--fs-sm)}
-.fcollectioncopy span{margin-top:4px;color:var(--muted);font-size:var(--fs-xs)}.fcollectioncopy .ficon{margin-right:6px}
 .fvkind{display:inline-block;max-width:120px;margin-right:6px;padding:1px 7px;border-radius:var(--badge-radius);overflow:hidden;text-overflow:ellipsis;vertical-align:-2px;background:var(--overlay-5);color:var(--muted);font-size:var(--fs-xs);font-style:normal}
 .fvkind.wip{color:var(--meter)}.fvkind.alt{color:var(--tungsten)}
-.fcollectionrow>button{border:1px solid var(--border-15);border-radius:7px;background:transparent;color:var(--ink-2);padding:6px 10px;cursor:pointer}
-.fcollectionrow>button:disabled{opacity:.5;cursor:default}
 .followdetailmedia{min-height:min(62vh,640px)}.followdetailposter{position:relative;z-index:1;display:block;width:100%;height:100%;max-height:76vh;object-fit:contain;background:#000}
 .followdetailplaceholder{display:grid;place-items:center;gap:10px;color:var(--muted)}.followdetailplaceholder .ficon{width:34px;height:34px;margin:0}
+.followdetailtitle{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;align-items:start;margin-bottom:8px}.followdetailtitle .stitle{margin:0}.followdetailtitle .followorigin{width:30px;height:30px;margin:0;display:grid;place-items:center;border-radius:7px}.followdetailtitle .followorigin:hover{background:var(--hover)}
 .followdetailidentity{display:flex;align-items:center;gap:10px;margin:2px 0 12px}.followdetailidentity .mav{flex:none}.followdetailidentity b,.followdetailidentity span{display:block}.followdetailidentity>div>span{margin-top:3px;color:var(--muted);font-size:var(--fs-xs)}
-.followdetailsummary{margin:0 0 16px;line-height:1.6;color:var(--ink-2);white-space:pre-line}.followdetailtags .tg{color:var(--ink-2)}
+.followdetailsummary{margin:0 0 16px;line-height:1.6;color:var(--ink-2);white-space:pre-line}.followdetailtags .tg{max-width:none;overflow:visible;text-overflow:clip;white-space:normal;text-align:left;color:var(--ink-2);font-family:inherit}.followqueue .mixitempic>.fnothumb{position:static;width:100%;height:100%}
 .followdetailactions button:disabled{opacity:.45;cursor:default}.followorigin{display:inline-flex;align-items:center;gap:7px;width:max-content;margin-top:auto;color:var(--muted);text-decoration:none}.followorigin svg{width:16px;height:16px;stroke:currentColor;fill:none}.followorigin:hover{color:var(--ink);text-decoration:none}
 @media (max-width:640px){.followhead{align-items:center}.follow .fcheck{height:36px;padding:0 13px}
   .followauthors{margin-right:-12px;padding-top:3px}.followfilters{margin-right:-12px;padding-right:12px}
-  .fcollectionrow{grid-template-columns:88px minmax(0,1fr)}.fcollectionrow>button{grid-column:2;justify-self:start}}
+}
 
 /* ── 关注管理页 ──
    取证记录见 docs/reference-snapshots/vercel-geist-controls-measured.md。

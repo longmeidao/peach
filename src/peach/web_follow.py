@@ -480,17 +480,21 @@ def q_follow(contract, args) -> dict:
         alias_map, author_aliases = _follow_alias_state(connection)
         sources = [_source_payload(row, alias_map) for row in source_rows]
         alias_suggestions = _follow_alias_suggestions(source_rows, alias_map)
+        enabled_source_ids = {int(row["id"]) for row in source_rows if row["enabled"]}
         items = tuple(item for item in store.items(
             statuses=statuses, source_id=source_id, limit=limit)
-            if not _excluded_item(item))
+            if item.source_id in enabled_source_ids and not _excluded_item(item))
         groups = [_group_payload(group) for group in store.group(items)]
         counts = dict(connection.execute(
-            "SELECT status, count(*) FROM follow_item GROUP BY status").fetchall())
+            "SELECT i.status, count(*) FROM follow_item i"
+            " JOIN follow_source s ON s.id=i.source_id"
+            " WHERE s.enabled=1 GROUP BY i.status").fetchall())
         excluded_marks = ",".join("?" for _ in RULE34VIDEO_EXCLUDED_IDS)
         excluded_counts = connection.execute(
             "SELECT i.status, count(*) FROM follow_item i"
             " JOIN follow_source s ON s.id=i.source_id"
-            f" WHERE s.provider='rule34video' AND i.external_id IN ({excluded_marks})"
+            f" WHERE s.enabled=1 AND s.provider='rule34video'"
+            f" AND i.external_id IN ({excluded_marks})"
             " GROUP BY i.status",
             tuple(RULE34VIDEO_EXCLUDED_IDS),
         ).fetchall()
