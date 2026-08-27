@@ -50,6 +50,7 @@
 - 真实 ledger 已授权应用 `0021`，并登记 InitialA 的 FANBOX 与 SubscribeStar 来源和 `FFXIVInitialA` 人工别名：FANBOX 首次发现 10 条，SubscribeStar 发现 7 条，其中新增 6 条、更新 1 条。当前 follow_source 12、follow_item 706、follow_author_alias 2，完整性正常。
 - `d32f948` 已合入 `master`：FANBOX、Patreon、SubscribeStar 的官方主页只有一个明确作者名时会自动学习主页账号别名；多人主页不学习，自动证据不覆盖人工映射，模糊相似仍只给建议。关注域测试通过，全量 1086 项通过、13 项按平台跳过。
 - 正式 EXE 已替换为 SHA-256 `83D5B176D2A53500D4697BF53589EE528FE9C872B7694EE2932D98C063EF3788`，上版备份为 `dist/Peach/Peach.pre-d32f948-20260827-215647.exe`；80/443 均恢复监听，项目 CA 严格 HTTPS `/healthz` 返回 200、writer、非只读，正式打包入口为 22 个迁移且 0 待处理。
+- `a789efe` 已合入 `master`：关注卡片封面、标题、整张卡和 Mix 集合行统一打开 `/follow/item/{id}` 站内详情，不再以外站新窗口作为主交互；视频继续走 `/follow-stream`，来源页只留在详情侧栏。关注范围 358 项测试通过、1 项按平台跳过。正式 EXE 已替换为 SHA-256 `5231DF9898054FB1C62B87766994D06966CA09EBFF3146ED60F9630BC6B743B8`，上版备份为 `dist/Peach/Peach.pre-a789efe-20260827-221738.exe`；80/443、22 个迁移且 0 待处理、项目 CA 严格 HTTPS writer 和关注 API 均正常。生产页面实测无媒体与视频详情均不新增浏览器标签，关闭回到 `/follow`，桌面排版与首页详情一致；390×844 为单列且无横向溢出。浏览器自签 HTTPS 导航超时，视觉交互改由同一生产进程的 HTTP 回环入口验收；HTTPS 结论来自独立严格 CA 校验。验收未触发关注写操作，ledger SHA-256 仍为 `1B53408069EBCE5FB44156ABDA785D76A2E3C5DDABE0D30468A1DCB6D31CD600`。
 - 迁移前已知的孤立 `follow_item` rowid 790 原本属于 `rule34xxx/initial_a`，缺失来源 id 恰好被新 FANBOX 来源复用为 12，机械外键检查因而变为 0，但该条现在语义上误挂在 FANBOX 下。已精确核对其 URL、tag 和现存 Rule34.xxx 来源 10；重关联写入未获额外授权，未执行，也未删除该条。
 
 ## 下一批工作
