@@ -41,7 +41,8 @@ class FollowContractTests(unittest.TestCase):
         connection.close()
         self.contract = WebContract(
             self.db, follow_sources_root=self.root / "sources",
-            follow_secrets_root=self.root / "secrets")
+            follow_secrets_root=self.root / "secrets",
+            follow_shared_root=self.root / "shared")
 
     def _seed(self, candidates=None, provider="rule34video", ref="lazyprocrastinator",
               semantics="work"):
