@@ -48,6 +48,14 @@
 - `local_dirty` 的判据已按 ADR-0020 改成三层。原先只看 `(size, mtime_ns)`，实测既会
   **误报**（内容中性的 checkpoint、碰时间戳）也会**漏报**（已提交但还在 WAL 里的事务
   完全不改主库文件，`copy_database` 会连同 `-wal` 一起删掉，静默丢数据）。
+- **2026-08-27 已恢复 `in-sync`，Mac 侧的 latent conflict 就此清掉。** 用户授权后执行了一次
+  显式 `pull`（`synchronize_now()` 会因本机不是写入端而拒，所以直接调 `pull()`）。
+  前置备份 `database/ledger.pre-pull-gen32-20260827T062519Z.db`（127340544 字节，
+  完整性 ok，asset 81554）。前后计数完全一致：asset 81554、entity 8182、
+  asset_entity 155541，`schema_migration` 仍是 `0018`，`foreign_key_check` 0 条。
+  **决定性的一条证据**：pull 之后本地摘要回到 `31adb1d3…`，正是第 32 代 marker 当初记下的
+  那个值——本地文件确实只是在物理层面漂开过，pull 把它一字节不差地拉了回来。
+  写入端仍是 `host-88053062`（没有接管），`plan` 与 `resolve` 都是 `in-sync`。
 - **2026-08-27 复核：Mac 与共享副本的内容其实一模一样，dirty 是物理层面的。**
   当天 `/Volumes/peach-sync` 未挂载（`plan=offline`），挂上后 `plan=local-ahead`、
   `writer=host-88053062`，所以「同步 Ledger」必然报 conflict。但逐表比对的结论是两边
@@ -61,7 +69,7 @@
   `mtime_ns=1787332506518044766`，实际库已是 `1787504652787227090`，大小未变），而共享传输点
   `/Volumes/peach-sync` 当前不可达。下次恢复同步时 `plan()` 会因「共享更新且本地有未回写改动」
   判成 `conflict`，必须由人选一边——Mac 只用来浏览，正确的选择是取 Windows 那一份。
-  这个 latent conflict 先于追更改动存在，不是追更迁移造成的。
+  这个 latent conflict 先于追更改动存在，不是追更迁移造成的。**已于 2026-08-27 清除，见上。**
 - 2026-08-25 发现 `http://peach.local/`（80）不通而 `:8900`/`:8443` 正常：`/etc/pf.anchors/gg.lmd.peach`
   规则文件还在（8-20 装的），但 `/etc/pf.conf` 里引用它的 `rdr-anchor` 行没了——系统更新会用
   模板重写 `/etc/pf.conf`，把追加的锚点行抹掉，而锚点文件是独立文件所以留了下来。
