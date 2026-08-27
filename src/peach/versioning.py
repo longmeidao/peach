@@ -59,6 +59,9 @@ class UpdateResult:
     snapshot: VersionSnapshot
     ahead: int = 0
     behind: int = 0
+    #: 这次快进改动了哪些仓库相对路径。只有 `updated` 会非空，调用方据此判断
+    #: 光重启子服务够不够。
+    changed_paths: tuple[str, ...] = ()
 
 
 class VersionManager:
@@ -141,3 +144,44 @@ class VersionManager:
             state = "current"
             message = f"Peach {current.package_version} 已是当前更新通道的最新版本。"
         return UpdateResult(state, message, current, ahead=ahead, behind=behind)
+
+    def update(self) -> UpdateResult:
+        """把本地检出快进到更新通道，只做快进。
+
+        不 stash、不 rebase、不 `--force`：并行工作树和主检出共用同一个对象库与
+        reflog，任何一种改写历史的「顺手解决」都会把别的分支一起拖下水。凡是快进
+        做不到的，一律原样报出来交给人。
+
+        `check()` 已经 fetch 过并给出了状态，这里只在 `available` 时才动工作区；
+        其余状态（未配置、无跟踪分支、已最新、本地领先、两边分叉）直接透传，
+        调用方不需要再分一次类。
+        """
+        checked = self.check()
+        if checked.state != "available":
+            return checked
+        snapshot = checked.snapshot
+        if snapshot.dirty:
+            return UpdateResult(
+                "blocked",
+                f"更新通道有 {checked.behind} 个新提交，但本地检出有未提交修改；"
+                "先处理掉再同步。",
+                snapshot, behind=checked.behind,
+            )
+        before = self._text("rev-parse", "HEAD")
+        merged = self._git("merge", "--ff-only", str(snapshot.upstream), timeout=60)
+        if merged.returncode != 0:
+            return UpdateResult(
+                "blocked",
+                f"无法快进到 {snapshot.upstream}；本地检出未改变，需要人工处理。",
+                snapshot, behind=checked.behind,
+            )
+        current = self.inspect()
+        changed = tuple(
+            line for line in self._text("diff", "--name-only", f"{before}..HEAD").splitlines()
+            if line
+        )
+        return UpdateResult(
+            "updated",
+            f"已同步 {checked.behind} 个提交：{before[:8]} → {current.commit}。",
+            current, behind=checked.behind, changed_paths=changed,
+        )

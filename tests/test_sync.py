@@ -10,6 +10,7 @@ from peach.sync import (
     local_dirty,
     plan,
     read_marker,
+    resolve,
     writer_device,
     write_marker,
 )
@@ -165,6 +166,60 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(plan(self.local, self.shared).action, "in-sync")
         make_db(self.local, 1)
         self.assertEqual(plan(self.local, self.shared).action, "local-ahead")
+
+
+class ResolveTests(unittest.TestCase):
+    """`resolve` 必须和 `synchronize_now` 得出同一个结论，且一个文件都不碰。
+
+    托盘拿它决定要不要停服务。判错的代价不是报错而是停机：`plan()` 说 `local-ahead`
+    但本机不是写入端时，真跑一次只会得到 conflict，那次停机纯属白停。
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.local = self.root / "local" / "ledger.db"
+        self.shared = self.root / "shared" / "ledger.db"
+        self.addCleanup(self._tmp.cleanup)
+
+    def test_a_reader_with_local_writes_resolves_to_conflict_not_a_push(self):
+        make_db(self.local, 2)
+        make_db(self.shared, 2)
+        write_marker(self.local, Marker(7, "win", "", 0, 0))
+        write_marker(self.shared, Marker(7, "win", "", 0, 0))
+        make_db(self.local, 3)
+
+        self.assertEqual(plan(self.local, self.shared).action, "local-ahead")
+        decision = resolve(self.local, self.shared, "mac")
+        self.assertEqual(decision.action, "conflict")
+        self.assertIn("win", decision.reason)
+
+    def test_the_writer_still_resolves_to_a_push(self):
+        make_db(self.local, 2)
+        make_db(self.shared, 2)
+        write_marker(self.local, Marker(7, "mac", "", 0, 0))
+        write_marker(self.shared, Marker(7, "mac", "", 0, 0))
+        make_db(self.local, 3)
+        self.assertEqual(resolve(self.local, self.shared, "mac").action, "local-ahead")
+
+    def test_resolve_matches_what_synchronize_now_does_and_copies_nothing(self):
+        make_db(self.local, 2)
+        make_db(self.shared, 5)
+        write_marker(self.local, Marker(7, "win", "", 0, 0))
+        write_marker(self.shared, Marker(8, "win", "", 0, 0))
+
+        decision = resolve(self.local, self.shared, "mac")
+        self.assertEqual(decision.action, "pull")
+        self.assertEqual(count(self.local), 2)      # 只读判定，没复制
+
+        applied = LedgerSync(self.local, self.shared, "mac", interval=0).synchronize_now()
+        self.assertEqual(applied.action, decision.action)
+        self.assertEqual(count(self.local), 5)
+
+    def test_an_unreachable_share_resolves_to_offline(self):
+        make_db(self.local, 1)
+        self.assertEqual(
+            resolve(self.local, self.root / "gone" / "ledger.db", "mac").action, "offline")
 
 
 class LedgerSyncTests(unittest.TestCase):

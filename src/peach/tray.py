@@ -3,6 +3,7 @@ from __future__ import annotations
 import ctypes
 import logging
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -23,7 +24,8 @@ from .config import (
 )
 from .mdns import lan_ipv4
 from .netwatch import NetworkChangeWatcher
-from .versioning import VersionManager
+from .sync import COPY_ACTIONS, SyncPlan, device_id, resolve
+from .versioning import VersionManager, VersionSnapshot
 
 
 LOGGER = logging.getLogger(__name__)
@@ -38,6 +40,26 @@ MACOS_TLS_PORT = 8443
 #: `peach-win.local`。macOS 上 80/443 由 pf 转到高位端口
 #:（scripts/setup_macos_port80.sh）。
 OPEN_URL = f"https://{MDNS_HOSTNAME}/"
+
+#: LaunchAgent 的标签，和 `scripts/install_macos_agent.py` 里那个必须一致。
+LAUNCH_AGENT_LABEL = "gg.lmd.peach.tray"
+
+#: 改到这些路径就得重启托盘进程本身。托盘启动那一刻就把它们装进了内存，重启子服务
+#: 追不上——「同步开发进度」之后菜单还是旧的，正是这个原因。
+TRAY_SOURCES = (
+    "src/peach/tray.py",
+    "src/peach/menubar.py",
+    "src/peach/versioning.py",
+    "src/peach/certs.py",
+    "src/peach/netwatch.py",
+    "src/peach/config.py",
+    "pyproject.toml",
+)
+
+
+def tray_restart_required(changed_paths: tuple[str, ...]) -> bool:
+    """这次更新动没动托盘自己的代码。"""
+    return any(path in TRAY_SOURCES for path in changed_paths)
 
 
 def enable_hidpi() -> str:
@@ -148,11 +170,13 @@ class ServiceManager:
         popen: Callable[..., subprocess.Popen] = subprocess.Popen,
         health_get: Callable[..., httpx.Response] = httpx.get,
         run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+        ledger_plan: Callable[[], SyncPlan] | None = None,
     ) -> None:
         self.specs = specs
         self._popen = popen
         self._health_get = health_get
         self._run = run
+        self._ledger_plan = ledger_plan or self._current_ledger_plan
         self._owned: dict[str, subprocess.Popen] = {}
         self._logs: list[object] = []
         self._last_health: dict[str, tuple[bool, str]] = {
@@ -262,10 +286,42 @@ class ServiceManager:
         self.start_missing()
         return self.wait_until_ready()
 
+    @staticmethod
+    def _current_ledger_plan() -> SyncPlan:
+        return resolve(DATABASE_PATH, SHARED_DATABASE_PATH, device_id(STATE_DIR))
+
+    def _ledger_shortcut(self, *, take_ownership: bool) -> tuple[bool, str] | None:
+        """这次同步会不会真的复制？不会就别停服务。
+
+        原来的做法是无条件停服务、跑一遍 CLI、再启回来。共享盘没挂（`offline`）或者
+        本机压根不是写入端（`conflict`）时，那一停一启换来的只有一次白白的停机和一条
+        「同步失败」通知——实测就是本机的日常状态：`/Volumes/peach-sync` 没挂时，
+        点一次「同步 Ledger」网页就断十几秒，然后告诉你盘不可达。
+
+        「接管 Ledger 写入」只在共享盘不可达时短路：它要求两侧 `in-sync`，而 `in-sync`
+        对同步是无事可做、对接管却正是要做的那一次。
+        """
+        try:
+            decision = self._ledger_plan()
+        except OSError as exc:                     # 判定本身失败也不该拖着服务停机
+            return False, f"未同步：无法判定账本状态（{exc}）"
+        if take_ownership:
+            if decision.action == "offline":
+                return False, f"未接管：{decision.reason}；先挂上共享副本所在的盘。"
+            return None
+        if decision.action in COPY_ACTIONS:
+            return None
+        if decision.action in ("offline", "conflict", "missing"):
+            return False, f"未同步：{decision.reason}"
+        return True, f"账本同步：{decision.action} · {decision.reason}"
+
     def sync_ledger(
         self, executable: Path | None = None, *, take_ownership: bool = False,
     ) -> tuple[bool, str]:
         """停掉本托盘拥有的服务，单次同步后恢复；不碰别的进程拥有的服务。"""
+        shortcut = self._ledger_shortcut(take_ownership=take_ownership)
+        if shortcut is not None:
+            return shortcut
         with self._lock:
             external = []
             for spec in self.specs:
@@ -592,6 +648,40 @@ class PeachTray:
             self._stop_event.set()
 
 
+def launchd_owns_this_process(
+    run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+) -> bool:
+    """本进程是不是 LaunchAgent 拉起的那一个。
+
+    判据是 launchd 报的 pid 等于自己的 pid，不是「plist 存在」。`kickstart -k` 只重启
+    launchd 名下那一份；托盘要是从终端跑起来的，kickstart 会在旁边**再**起一个，
+    菜单栏上就出现两个桃子，而旧的那个还占着单实例锁。
+    """
+    result = run(
+        ["launchctl", "print", f"gui/{os.getuid()}/{LAUNCH_AGENT_LABEL}"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
+    )
+    if result.returncode != 0:
+        return False
+    match = re.search(r"^\s*pid\s*=\s*(\d+)", result.stdout or "", re.MULTILINE)
+    return match is not None and int(match.group(1)) == os.getpid()
+
+
+def restart_tray_process(
+    run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+) -> subprocess.CompletedProcess:
+    """让 launchd 杀掉并重新拉起托盘。调用方必须先停掉自己拥有的服务。
+
+    顺序不能反：先重启服务再 kickstart，新托盘会看到一组健康但不属于自己的服务，
+    `_owned` 是空的，之后每次「同步 Ledger」都被自己的归属检查挡成
+    「服务不归本托盘管理」。
+    """
+    return run(
+        ["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{LAUNCH_AGENT_LABEL}"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
+    )
+
+
 def run_macos_menu_bar(manager: "ServiceManager") -> None:
     """macOS 走原生菜单栏项。
 
@@ -601,9 +691,12 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
     from .menubar import MenuBarApp
 
     versions = VersionManager()
-    snapshot = versions.inspect()
+    # 「同步开发进度」会把版本行写旧，所以标题读这个可变快照而不是闭包里那一份。
+    # 不在标题里直接调 `inspect()`：它要开四次 git，而标题每 5 秒刷新一次。
+    state: dict[str, VersionSnapshot] = {"snapshot": versions.inspect()}
     app: dict[str, object] = {}
-    sync_lock = threading.Lock()
+    # 开发进度和账本共用一把锁：两者都会停服务，同时跑等于让两条路径抢同一组进程。
+    action_lock = threading.Lock()
 
     def restart() -> None:
         manager.stop_owned()
@@ -615,21 +708,65 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
         if holder is not None:
             holder.stop()
 
+    def notify(message: str, title: str) -> None:
+        holder = app.get("app")
+        if holder is not None:
+            holder.notify(message, title)
+
+    def sync_source() -> None:
+        """把本地检出快进到更新通道，再让新代码真的跑起来。
+
+        和「同步 Ledger」分成两个按钮，因为它们除了名字里都有「同步」之外没有共同点：
+        走的是 GitHub 而不是 SMB 共享，任一方不可达都不该拖住另一方（本机常态就是
+        共享盘没挂而 GitHub 正常）；快进失败什么都没变，账本同步失败却牵涉唯一写入端
+        和可能的数据取舍。合成一个按钮只会让「失败了」这句话失去意义。
+        """
+        if not action_lock.acquire(blocking=False):
+            return
+
+        def work() -> None:
+            released = False
+            try:
+                notify("正在检查更新通道…", "Peach 开发进度")
+                result = versions.update()
+                state["snapshot"] = result.snapshot
+                if result.state != "updated":
+                    notify(result.message, "Peach 开发进度")
+                    return
+                if tray_restart_required(result.changed_paths):
+                    if launchd_owns_this_process():
+                        notify(f"{result.message}正在重启菜单栏项…", "Peach 开发进度")
+                        manager.stop_owned()
+                        action_lock.release()      # kickstart 之后本进程就没了
+                        released = True
+                        restart_tray_process()
+                        return
+                    notify(
+                        f"{result.message}服务已重启；菜单栏项本身要手动退出重开才会生效。",
+                        "Peach 开发进度",
+                    )
+                    manager.restart()
+                    return
+                manager.restart()
+                notify(f"{result.message}服务已重启。", "Peach 开发进度")
+            finally:
+                if not released:
+                    action_lock.release()
+
+        threading.Thread(target=work, name="PeachSourceSync", daemon=True).start()
+
     def run_ledger_action(*, take_ownership: bool) -> None:
-        if not sync_lock.acquire(blocking=False):
+        if not action_lock.acquire(blocking=False):
             return
 
         def work() -> None:
             try:
-                holder = app.get("app")
-                if holder is not None:
-                    action = "接管写入" if take_ownership else "同步"
-                    holder.notify(f"正在安全停止服务并{action}…", "Peach Ledger")
+                action = "接管写入" if take_ownership else "同步"
+                notify(f"正在判定账本状态并{action}…", "Peach Ledger")
                 ok, message = manager.sync_ledger(take_ownership=take_ownership)
-                if holder is not None:
-                    holder.notify(message, "Peach Ledger" if ok else "Peach Ledger 同步失败")
+                notify(message, "Peach Ledger" if ok else "Peach Ledger 同步失败")
             finally:
-                sync_lock.release()
+                action_lock.release()
 
         threading.Thread(target=work, name="PeachLedgerSync", daemon=True).start()
 
@@ -647,11 +784,13 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
             (lambda: f"状态：{manager.status()}", None),
             (f"地址：{OPEN_URL}", None),
             (None, None),
+            ("同步开发进度", sync_source),
             ("同步 Ledger", sync_ledger),
             ("接管 Ledger 写入", take_ownership),
             ("重启服务", restart),
             ("查看日志", lambda: subprocess.run(["open", str(LOG_DIR)], check=False)),
-            (lambda: f"版本 {snapshot.package_version} · {snapshot.build_label}", None),
+            (lambda: f"版本 {state['snapshot'].package_version}"
+                     f" · {state['snapshot'].build_label}", None),
             (None, None),
             ("退出 Peach", quit_now),
         ],

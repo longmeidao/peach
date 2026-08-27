@@ -1,6 +1,6 @@
 # Peach 当前状态
 
-最后核验：2026-08-26
+最后核验：2026-08-27
 
 ## 运行态
 
@@ -24,7 +24,11 @@
   验收均为 200；当时连续 120 秒浏览观测 local/shared generation 均保持29。
 - mDNS 使用 Python zeroconf 的全合格网卡监听；生产显式固定发布地址，避免隧道网卡误选。没有发布 `lmd-dst.local`。
 - macOS 菜单栏已按同一重构上线为 `0.6.2` reader，管理 `8900/8443` 并由 pf 提供
-  `peach.local:80/443`。菜单提供「同步 Ledger」和「接管 Ledger 写入」；GET 正常、POST 返回409。
+  `peach.local:80/443`。菜单提供「同步开发进度」「同步 Ledger」和「接管 Ledger 写入」；
+  GET 正常、POST 返回409。2026-08-27 实测：服务进程跑的是当前 `master`（`/healthz` 报
+  `0.6.4`），但菜单栏进程本身是 08-26 22:21 拉起来的旧代码——托盘只重启子服务追不上自己，
+  这正是「同步开发进度」在改到托盘层文件时要 `launchctl kickstart -k` 的原因。
+  新菜单项要生效，得先手动退出菜单栏项再从 `.app` 或 `launchctl kickstart` 拉起一次。
 - Stash 仍运行于 `127.0.0.1:9999`，只作为过渡期可替换适配器。
 - Python：3.14.7；FFmpeg/ffprobe 由
   `C:\Users\longm\Desktop\peach\peach-data\tools\ffmpeg` 管理，不再依赖 Stash 私有目录。
@@ -44,6 +48,15 @@
 - `local_dirty` 的判据已按 ADR-0020 改成三层。原先只看 `(size, mtime_ns)`，实测既会
   **误报**（内容中性的 checkpoint、碰时间戳）也会**漏报**（已提交但还在 WAL 里的事务
   完全不改主库文件，`copy_database` 会连同 `-wal` 一起删掉，静默丢数据）。
+- **2026-08-27 复核：Mac 与共享副本的内容其实一模一样，dirty 是物理层面的。**
+  当天 `/Volumes/peach-sync` 未挂载（`plan=offline`），挂上后 `plan=local-ahead`、
+  `writer=host-88053062`，所以「同步 Ledger」必然报 conflict。但逐表比对的结论是两边
+  **完全一致**：32 张表行数全同，按 rowid 顺序对每张表算内容哈希也全同，两侧
+  `schema_migration` 都到 `0018`。差的只有文件字节（local/shared/marker 三个 SHA-256
+  互不相同，主库大小 127340544 未变）——page 布局、freelist、checkpoint 这类内容中性的
+  改动，`local_dirty` 的摘要层分不出来。**因此这个 conflict 没有数据在风险中**，
+  照 STATUS 原定的「取 Windows 那一份」执行不会丢东西。恢复到 `in-sync` 只需要一次
+  `pull`（或按共享 marker 重写本地 marker），但这属于 ledger 写入，要显式授权后再做。
 - **历史记录**：Mac 本地副本自 2026-08-24 起就是 dirty 的（marker 记的是第 29 代、
   `mtime_ns=1787332506518044766`，实际库已是 `1787504652787227090`，大小未变），而共享传输点
   `/Volumes/peach-sync` 当前不可达。下次恢复同步时 `plan()` 会因「共享更新且本地有未回写改动」
