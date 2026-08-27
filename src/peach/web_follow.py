@@ -56,7 +56,8 @@ RULE34VIDEO_EXCLUDED_IDS = frozenset({"4533145"})
 
 # 内容筛选不让载体/渲染方式挤掉动作、角色与作品标签。原始 metadata 仍完整保留。
 LOW_VALUE_FOLLOW_TAGS = frozenset({
-    "2d", "3d", "animated", "animation", "video", "tagme", "sound",
+    "2d", "3d", "2d_animation", "3d_animation", "animated", "animation",
+    "video", "tagme", "sound",
     "no sound", "audio", "loop", "webm", "mp4",
 })
 
