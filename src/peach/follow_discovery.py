@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .follow import FollowSourceError
+from .follow_avatar import resolve_official_profile
 from .follow_secrets import Credential, CredentialError, CredentialStore
 from .follow_sources import (
     DEFAULT_MAX_ITEMS, USER_AGENT, F95ZoneConnector, KemonoConnector,
@@ -148,6 +149,25 @@ def _kemono_candidates(provider: str, term: str, index: CreatorIndex) -> list[Ca
     return picked
 
 
+def _fanbox_candidates(archive_candidates: list[Candidate], transport) -> list[Candidate]:
+    """Resolve verified FANBOX archive identities to their official creator pages."""
+    user_ids = []
+    for candidate in archive_candidates:
+        service, separator, user_id = candidate.ref.partition("/")
+        if (candidate.provider in KemonoConnector.HOSTS and separator
+                and service == "fanbox" and user_id.isdigit()
+                and user_id not in user_ids):
+            user_ids.append(user_id)
+    candidates = []
+    for user_id in user_ids[:MAX_CANDIDATES_PER_SOURCE]:
+        profile = resolve_official_profile("fanbox", user_id, transport=transport)
+        candidates.append(Candidate(
+            "fanbox", profile.creator_id, profile.url,
+            profile.name, "work", "FANBOX 官方资料与归档身份一致",
+        ))
+    return candidates
+
+
 def _rule34video_candidates(term: str, transport) -> list[Candidate]:
     slug = re.sub(r"[^a-z0-9]+", "", term.casefold())
     if not slug:
@@ -254,7 +274,7 @@ def discover(term: str, *, secrets_root: Path, state_root: Path,
 
     credentials = CredentialStore(secrets_root)
     index = CreatorIndex(state_root, transport=transport)
-    wanted = providers or ("kemono", "coomer", "pawchive", "rule34video",
+    wanted = providers or ("kemono", "coomer", "pawchive", "fanbox", "rule34video",
                            "rule34xxx", "f95zone")
     found: list[Candidate] = []
     failures: dict[str, str] = {}
@@ -270,6 +290,7 @@ def discover(term: str, *, secrets_root: Path, state_root: Path,
 
     for provider in ("kemono", "coomer", "pawchive"):
         run(provider, lambda provider=provider: _kemono_candidates(provider, text, index))
+    run("fanbox", lambda: _fanbox_candidates(found, transport))
     if not _NUMERIC_RE.match(text):
         run("rule34video", lambda: _rule34video_candidates(text, transport))
         run("rule34xxx",

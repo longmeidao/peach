@@ -174,6 +174,22 @@ class FollowContractTests(unittest.TestCase):
         self.assertNotIn("media_url", payload)
         self.assertIn('"has_media"', payload)
 
+    def test_external_file_pages_are_exposed_without_leaking_raw_media_urls(self):
+        self._seed(candidates=(FollowCandidate(
+            provider="f95zone", external_id="21435166", title="InitialA Collection",
+            url="https://f95zone.to/threads/160190/post-21435166",
+            media_url="https://gofile.io/d/verified",
+            extra={"links": ["https://gofile.io/d/verified",
+                             "https://pixeldrain.com/l/also-verified",
+                             "https://gofile.io.evil.example/no"]},
+        ),), provider="f95zone", ref="160190", semantics="release")
+        item = self._get()["groups"][0]["primary"]
+        self.assertEqual(item["resource_urls"], [
+            "https://gofile.io/d/verified",
+            "https://pixeldrain.com/l/also-verified",
+        ])
+        self.assertNotIn("media_url", item)
+
     def test_old_archive_images_get_a_thumbnail_without_rewriting_the_ledger(self):
         self._seed(candidates=(FollowCandidate(
             provider="kemono", external_id="1", title="Image release",
@@ -964,7 +980,7 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_already_followed_candidates_are_shown_but_not_selectable(self):
         # 灰掉但仍显示，免得人以为没查到。
         self.assertPageContains("c.known?' known':''")
-        self.assertPageContains("'已经在追'")
+        self.assertPageContains("'已经关注'")
 
     def test_the_first_name_lookup_warns_about_the_index_download(self):
         self.assertPageContains("首次按名字查要下载创作者索引，可能几十秒")
@@ -1180,7 +1196,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('title="打开来源页面" aria-label="打开来源页面"')
         self.assertNotIn('打开来源页面</a>', self.page)
         self.assertPageContains(".followdetailtitle{display:flex;gap:5px")
-        self.assertPageContains(".fnote.followmedianote{margin:18px 0 14px}")
+        self.assertPageContains(".fnote.followmedianote{margin:18px 0 8px}")
         self.assertPageContains("followAuthorAvatar(authorSources)")
         self.assertPageContains("followTagChip(item,tag,'button')")
         self.assertPageContains(".followdetailtags .tg{max-width:none")
@@ -1416,7 +1432,22 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_credential_dependent_media_is_called_out(self):
         self.assertPageContains("媒体链接需要 F95 登录会话解析")
-        self.assertPageContains("已取得外部文件页；视频列表未取得")
+        self.assertPageContains("个外部文件页；视频列表未取得")
+        self.assertPageContains("function followResourceLinks(item)")
+        self.assertPageContains('class="followresources"')
+        self.assertPageContains("${followResourceLinks(item)}")
+
+    def test_follow_external_links_have_a_real_icon_and_no_underlines(self):
+        self.assertPageContains('<symbol id="i-external-link"')
+        self.assertPageContains("icon('external-link')")
+        self.assertPageContains(".followresources a:hover")
+        self.assertPageContains("text-decoration:none")
+
+    def test_follow_check_icons_spin_and_known_copy_says_followed(self):
+        self.assertPageContains("@keyframes follow-spin")
+        self.assertPageContains(".follow .fcheck.busy svg,.frowicon.busy svg")
+        self.assertPageContains("c.known?'已经关注':c.evidence")
+        self.assertPageLacks("已经在追")
 
     def test_follow_styles_exist_for_the_card_surface(self):
         for selector in (".followlist{", ".followitem{", ".fbadge{", ".followqueue"):

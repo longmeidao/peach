@@ -1335,9 +1335,26 @@ function followVideoItems(group){
 
 function followMediaNote(item){
   if(item.media_needs_credential)return '媒体链接需要 F95 登录会话解析';
-  if(item.has_media&&!item.playable&&item.media_kind==='external')
-    return '已取得外部文件页；视频列表未取得';
+  if(item.has_media&&!item.playable&&item.media_kind==='external')return item.resource_urls?.length
+    ?`已取得 ${item.resource_urls.length} 个外部文件页；视频列表未取得`
+    :'外部文件页未取得；视频列表未取得';
   return '';
+}
+
+function followResourceLabel(url){
+  try{
+    const host=new URL(url).hostname.replace(/^www\./,'');
+    return ({'gofile.io':'Gofile','pixeldrain.com':'Pixeldrain','mega.nz':'MEGA',
+      'mega.io':'MEGA','mediafire.com':'MediaFire','drive.google.com':'Google Drive'})[host]||host;
+  }catch{return '外部文件页'}
+}
+
+function followResourceLinks(item){
+  const links=item.resource_urls||[];
+  if(!links.length)return '';
+  return `<div class="followresources">${links.map(url=>
+    `<a href="${esc(url)}" target="_blank" rel="noreferrer noopener">${esc(followResourceLabel(url))}${icon('external-link')}</a>`
+  ).join('')}</div>`;
 }
 
 /* 集合弹层沿用原来的动态语义：线程标题不能冒充每条回复的正文，
@@ -1418,6 +1435,7 @@ async function openFollowDetail(id,push=true){
       ${item.summary?`<p class="followdetailsummary">${esc(item.summary)}</p>`:''}
       ${tags?`<div class="stags followdetailtags">${tags}</div>`:''}
       ${followMediaNote(item)?`<p class="fnote followmedianote">${esc(followMediaNote(item))}</p>`:''}
+      ${followResourceLinks(item)}
       <div class="fb followdetailactions">
         <button class="later" data-follow-detail-save aria-label="${item.status==='saved'?'已保存':'保存到账本'}" title="${item.status==='saved'?'已保存':'保存到账本'}"${item.status==='saved'?' disabled':''}>${item.status==='saved'?icon('check'):icon('bookmark-plus')}</button>
         <button class="seen" data-follow-detail-status="seen" aria-label="标记已看" title="标记已看" aria-pressed="${item.status==='seen'}">${icon('eye')}</button>
@@ -2146,7 +2164,7 @@ function wireFollowManage(){
 }
 
 /* 查找结果先摆出来由人勾选，不自动登记：发现要联网，结果也可能不止一个，
-   替用户决定「就是这个」是错的。已经在追的项灰掉但仍显示，免得人以为没查到。 */
+   替用户决定「就是这个」是错的。已经关注的项灰掉但仍显示，免得人以为没查到。 */
 function renderFollowPicks(results){
   const box=$('#followPicks');
   if(!box)return;
@@ -2160,7 +2178,7 @@ function renderFollowPicks(results){
         data-author="${esc(c.author||'')}"
         data-label="${esc(c.label)}"${c.known?' disabled':' checked'}>
       <span><b>${esc(c.provider_label)}</b> ${esc(c.label)}
-        <i>${esc(c.known?'已经在追':c.evidence)}</i></span></label>`).join('');
+        <i>${esc(c.known?'已经关注':c.evidence)}</i></span></label>`).join('');
     const searches=(row.external_searches||[]).map(search=>
       `<a class="fpicksearch" href="${esc(search.url)}" target="_blank" rel="noreferrer noopener">
         <b>${esc(search.label)}</b><span>${esc(search.query)}</span>

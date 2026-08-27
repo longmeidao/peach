@@ -23,6 +23,14 @@ F95_HIT = json.dumps({"status": "ok", "msg": {"data": [
     {"thread_id": 50685, "title": "Lazy Procrastinator Collection",
      "version": "2026-06-28"}]}}).encode()
 F95_MISS = json.dumps({"status": "ok", "msg": {"data": []}}).encode()
+FANBOX_PROFILE = ("<html><meta name='metadata' content='"
+                  + json.dumps({"urlContext": {"host": {"creatorId": "lazyprocrast"}}})
+                    .replace("'", "&#39;")
+                  + "'></html>").encode()
+FANBOX_CREATOR = json.dumps({"body": {"user": {
+    "userId": "30917150", "name": "LazyProcrastinator",
+    "iconUrl": "https://pixiv.pximg.net/icon.jpeg",
+}}}).encode()
 
 
 def _router(routes, calls=None):
@@ -97,6 +105,8 @@ class CreatorIndexTests(_DiscoveryCase):
 class DiscoverTests(_DiscoveryCase):
     ROUTES = {
         "/api/v1/creators": HttpResponse(200, {}, CREATORS),
+        "/fanbox/creator/30917150": HttpResponse(200, {}, FANBOX_PROFILE),
+        "creator.get?creatorId=lazyprocrast": HttpResponse(200, {}, FANBOX_CREATOR),
         "rule34video.com/models/lazyprocrastinator/": HttpResponse(200, {}, b"<html/>"),
         "cat=animations": HttpResponse(200, {}, F95_HIT),
         "latest_data.php": HttpResponse(200, {}, F95_MISS),
@@ -116,6 +126,15 @@ class DiscoverTests(_DiscoveryCase):
         self.assertTrue(all(c.evidence for c in found.candidates))
         kemono = next(c for c in found.candidates if c.provider == "kemono")
         self.assertEqual(kemono.evidence, "创作者名精确匹配")
+
+    def test_archive_identity_resolves_to_the_official_fanbox_page(self):
+        found = self._discover("LazyProcrastinator", self.ROUTES,
+                               providers=("kemono", "fanbox"))
+        official = next(c for c in found.candidates if c.provider == "fanbox")
+        self.assertEqual(official.ref, "lazyprocrast")
+        self.assertEqual(official.url, "https://lazyprocrast.fanbox.cc/")
+        self.assertEqual(official.label, "LazyProcrastinator")
+        self.assertIn("官方资料", official.evidence)
 
     def test_a_numeric_term_matches_the_site_id_and_skips_name_only_sources(self):
         calls = []

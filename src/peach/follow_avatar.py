@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import urllib.parse
+from dataclasses import dataclass
 
 from bs4 import BeautifulSoup
 
@@ -16,14 +17,23 @@ _USER_ID_RE = re.compile(r"^\d{1,20}$")
 _CREATOR_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,80}$")
 
 
-def resolve_official_avatar(service: str, user_id: str, *,
-                            transport: HttpTransport | None = None) -> str:
-    """Return a fixed-host official avatar URL for one supported creator service.
+@dataclass(frozen=True)
+class OfficialProfile:
+    user_id: str
+    creator_id: str
+    name: str
+    url: str
+    avatar_url: str
+
+
+def resolve_official_profile(service: str, user_id: str, *,
+                             transport: HttpTransport | None = None) -> OfficialProfile:
+    """Return the verified official profile behind one archive identity.
 
     FANBOX archive sources expose the Pixiv numeric user id.  The official creator
     page maps it to the public creator id; ``creator.get`` then returns the current
-    ``user.iconUrl``.  Both requests and the returned image host are fixed here so a
-    client cannot turn this endpoint into an SSRF or open redirect.
+    name and ``user.iconUrl``.  Hosts and returned identity are fixed here so a client
+    cannot turn discovery or the avatar endpoint into an SSRF/open redirect.
     """
     if service != "fanbox" or not _USER_ID_RE.fullmatch(str(user_id or "")):
         raise FollowSourceError("不支持这个官方头像来源")
@@ -70,10 +80,22 @@ def resolve_official_avatar(service: str, user_id: str, *,
         user = body.get("user") or {}
         avatar = str(user.get("iconUrl") or "")
         returned_user_id = str(user.get("userId") or "")
+        name = str(user.get("name") or creator_id).strip()
     except (UnicodeDecodeError, TypeError, ValueError, json.JSONDecodeError) as error:
         raise FollowSourceError("FANBOX 官方资料格式不符") from error
     parsed = urllib.parse.urlsplit(avatar)
     if (returned_user_id != user_id or parsed.scheme != "https"
             or parsed.hostname != "pixiv.pximg.net"):
         raise FollowSourceError("FANBOX 官方资料没有可信的头像地址")
-    return avatar
+    return OfficialProfile(
+        user_id=user_id, creator_id=creator_id, name=name,
+        url=creator_origin + "/", avatar_url=avatar,
+    )
+
+
+def resolve_official_avatar(service: str, user_id: str, *,
+                            transport: HttpTransport | None = None) -> str:
+    """Return a fixed-host official avatar URL for one supported creator service."""
+    return resolve_official_profile(
+        service, user_id, transport=transport,
+    ).avatar_url

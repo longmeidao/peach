@@ -16,7 +16,7 @@ from .follow_discovery import discover
 from .follow_secrets import CredentialError, CredentialStore
 from .follow_sources import (
     CONNECTORS, KemonoConnector, build_connector, canonical_source_ref,
-    parse_source_url,
+    parse_source_url, resource_links,
 )
 from .follow_store import FollowStore, ReleaseGroup
 from .taste_history import read_creator_candidates
@@ -139,6 +139,11 @@ def _excluded_item(item) -> bool:
 def _item_payload(item) -> dict:
     tags = _item_tags(item)
     media_kind = _media_kind(item)
+    recorded_links = item.metadata.get("links")
+    safe_resource_urls = resource_links(
+        "\n".join(str(value) for value in recorded_links)
+        if isinstance(recorded_links, list) else ""
+    )
     return {
         "id": item.id,
         "provider": item.provider,
@@ -165,6 +170,8 @@ def _item_payload(item) -> dict:
         "media_kind": media_kind,
         "playable": bool(item.media_url) and media_kind in {"video", "image"}
                     and not bool(item.metadata.get("media_needs_credential")),
+        # 只投影连接器已验证过的文件页域名；原始媒体 URL 仍不进入 feed。
+        "resource_urls": safe_resource_urls,
         "tags": tags,
         "tag_types": _item_tag_types(item, tags),
     }
