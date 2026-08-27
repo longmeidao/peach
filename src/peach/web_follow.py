@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timezone
 
 from .follow import FollowSourceError
@@ -77,6 +78,55 @@ def _group_payload(group: ReleaseGroup) -> dict:
     }
 
 
+#: 标签里跟在中点后面的服务名。`LazyProcrastinator · fanbox` 和 rule34video 上的
+#: `lazyprocrastinator` 是同一个人，中点后面那截只说明他在哪个平台连载。
+_LABEL_SERVICE_RE = re.compile(r"\s*[·|]\s*[A-Za-z0-9_\-]+\s*$")
+_AUTHOR_NOISE_RE = re.compile(r"[^0-9a-z一-鿿]+")
+
+
+def author_key(row) -> str:
+    """把一条来源归到「哪个作者」。
+
+    这跟 ADR-0019 的变体分组**不是同一个轴**：那个是同一条发布的多个变体，
+    这个是同一个作者在不同站点上的多条来源。用户在 Kemono 和 Pawchive 上关注的
+    `LazyProcrastinator · fanbox`、在 Rule34Video 和 Rule34.xxx 上关注的
+    `lazyprocrastinator`，是四条来源、一个人。
+
+    实体已经绑上就用实体 id——那是规范身份，比名字可靠。没绑才退回名字归一化：
+    去掉「· 服务名」后缀，再去掉大小写、空格、连字符这些不影响身份的噪声。
+    归一化只做到这一步，不做模糊匹配：把两个碰巧相似的名字并成一个人，
+    比让用户自己看到两行严重得多。
+    """
+    entity = row["entity_id"]
+    if entity:
+        return f"entity:{entity}"
+    label = str(row["label"] or row["ref"] or "")
+    stripped = _LABEL_SERVICE_RE.sub("", label)
+    normalized = _AUTHOR_NOISE_RE.sub("", stripped.casefold())
+    return f"name:{normalized}" if normalized else f"source:{row['id']}"
+
+
+def _avatar_url(provider: str, ref: str) -> str | None:
+    """作者头像。**只有实测拿得到的来源才给，取不到就是 `None`。**
+
+    2026-08-27 实测（`curl`，不带凭据）：
+    `https://kemono.cr/icons/fanbox/30917150` → 302 → `img.kemono.cr`，
+    200 `image/webp` 160×160；`pawchive.pw` 同路径 200、14,534 字节。
+    coomer.st 对这个创作者回 404，但那只说明他不在 coomer 上，
+    不能据此断定 coomer 没有这个端点——所以 coomer 照样按同一规则给 URL，
+    取不到时由 `<img onerror>` 收场。
+
+    rule34video / rule34.xxx **未取得**：没有可用的作者页样本可测，不猜一个路径。
+    取不到头像时界面显示站点缩写，不用首字母假装成头像。
+    """
+    if provider not in KemonoConnector.HOSTS:
+        return None
+    service, _, user = str(ref or "").partition("/")
+    if not service or not user:
+        return None
+    return f"https://{KemonoConnector.HOSTS[provider]}/icons/{service}/{user}"
+
+
 def _source_payload(row) -> dict:
     return {
         "id": row["id"],
@@ -84,6 +134,8 @@ def _source_payload(row) -> dict:
         "provider_label": PROVIDER_LABELS.get(row["provider"], row["provider"]),
         "ref": row["ref"],
         "label": row["label"],
+        "author_key": author_key(row),
+        "avatar_url": _avatar_url(row["provider"], row["ref"]),
         "url": row["url"],
         "semantics": row["semantics"],
         "enabled": bool(row["enabled"]),
@@ -203,7 +255,9 @@ def w_follow_check(contract, body) -> dict:
                 row["id"], fetch,
                 creator_aliases=store.creator_aliases(row["entity_id"]), moment=moment)
         results.append({
-            "source": row["id"], "provider": provider, "ref": ref, "ok": True,
+            "source": row["id"], "provider": provider,
+            "provider_label": PROVIDER_LABELS.get(provider, provider),
+            "ref": ref, "label": row["label"], "ok": True,
             "not_modified": outcome.not_modified, "discovered": outcome.discovered,
             "added": outcome.added, "updated": outcome.updated,
             # 证据没存下来不算检查失败，但界面必须说出来，不能悄悄少一份原始响应。
@@ -216,7 +270,10 @@ def _failure(contract, row, error, moment, status) -> dict:
     with contract.database.write_transaction() as connection:
         _store(contract, connection).record_error(
             row["id"], str(error), moment, status=status)
-    return {"source": row["id"], "provider": row["provider"], "ref": row["ref"],
+    # 界面按人看得懂的站名和来源标签报失败，不让用户去猜 `rule34xxx` 是哪个站。
+    return {"source": row["id"], "provider": row["provider"],
+            "provider_label": PROVIDER_LABELS.get(row["provider"], row["provider"]),
+            "ref": row["ref"], "label": row["label"],
             "ok": False, "status": status, "error": str(error)}
 
 

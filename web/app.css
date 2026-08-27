@@ -1234,6 +1234,19 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fnote code{font-size:var(--fs-xs)}
 [data-follow-add-state]{color:var(--ink-2)}
 
+/* 检查结果。这块必须留在页面上——检查完会整页重画，浮层或 alert 都会被冲掉，
+   用户看到的就只是一次闪烁。失败那一路加左侧色条，因为「没有更新」和「检查失败」
+   在文字上都像「什么都没发生」，得有个不用读就能分辨的信号。 */
+.fcheckreport{margin:10px 0 0;padding:9px 12px;border-radius:var(--control-radius);
+  background:var(--overlay-5);border-left:2px solid var(--line);
+  font-size:var(--fs-sm);line-height:1.7;color:var(--ink-2)}
+.fcheckreport.warn{border-left-color:var(--drop)}
+.fcheckreport p{margin:0}
+.fcheckreport b{color:var(--ink);font-variant-numeric:tabular-nums}
+.fcheckreport .flink{margin-left:8px}
+.fcheckfail{color:var(--drop)}
+.fchecknote{color:var(--muted);font-size:var(--fs-xs)}
+
 /* 状态标签：四种状态四种颜色，待办和完成一眼分得开。 */
 /* 凭据状态。类名不能叫 `.fstate`——观看页的卡片错误行已经占了那个名字
    （`flex:1 1 100%;color:var(--drop)`），撞名会让这里整列变成红色独占一行。
@@ -1284,6 +1297,26 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .frow .fmeta{flex:0 0 auto}
 .frowerr{flex:1 1 100%;margin:2px 0 0;font-size:var(--fs-sm);line-height:1.6;color:var(--drop)}
 .fsource.bad>b{color:var(--drop)}
+
+/* 作者分组。同一个人在几个站上是几条来源、一个人，所以头像和名字只出现一次，
+   下面才是各站那几行。分组之间用发丝线隔开，不套框——按 vercel-report-design，
+   卡片套卡片和用边框补救层级都是要拒绝的。
+
+   这段必须排在 `.frow` 之后：测试用 `index('.frow{')` 取那条规则的正文，
+   放前面的话选择器里的同名片段会被先匹配到，取回来的是这里的规则。 */
+.fauthor{border-top:1px solid var(--line-soft)}
+.fauthor:first-child{border-top:0}
+.fauthorhead{display:flex;align-items:center;gap:9px;padding:10px 0 6px}
+.fauthorhead b{font-size:var(--fs-md);min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.fauthorhead .fmeta{margin-left:auto;flex:none}
+.fauthorhead .fmeta.warn{margin-left:0}
+.fauthor .fsource.frow{padding-left:37px}
+.favatar{width:28px;height:28px;flex:none;border-radius:var(--pill-radius);object-fit:cover;
+  background:var(--overlay-5);outline:1px solid oklch(1 0 0 / 0.1);outline-offset:-1px}
+/* 取不到头像时是一个明确的空位，不是首字母——首字母会让「未取得」看着像取到了。 */
+.favatar.none{display:grid;place-items:center;color:var(--muted);
+  font-size:var(--fs-xs);outline-color:var(--line-soft)}
 .flink{border:0;background:none;padding:0;margin-left:10px;color:var(--tungsten);font:inherit;
   font-size:var(--fs-sm);cursor:pointer}
 /* 猜你喜欢：一行可点的名字，点了直接拿去查。 */
