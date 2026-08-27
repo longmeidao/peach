@@ -218,6 +218,14 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 厂牌归一化使用 `scripts/canonicalize_studios.py`，默认 dry-run，apply 前备份。`PREMIUM` 是独立厂牌；只把 Prestige Premium 和日文 Prestige 写法归并到 `Prestige`。
 - FastAPI 与前端逻辑分离、单体部署；在线来源和 AI 只通过显式适配器进入。
 - 追更连接器按站点分开（`follow_sources.py`），只在 `peach follow check` 与 `POST /api/follow/check` 显式联网；解析不出条目一律报错，不报「没有更新」。不绕机器人验证：rule34.xxx 只走带 API key 的官方 dapi，simpcity 登记为不可用。凭据只在 `peach-data/secrets/follow/`，不进快照、日志与 ledger；只有 `CREDENTIAL_GUIDE` 里逐字段声明 `syncable` 的（当前仅 rule34xxx 的 `user_id`/`api_key`）会多写一份到共享根，`describe()` 与 `load()` 必须看同一份合并事实，撤销时本机与共享一起删，共享盘不在就如实报「只撤掉了本机」而不是静默跳过。判据与站点证据见 ADR-0019。
+- Rule34.xxx 的 tag 是大小写不敏感的来源身份；注册、发现与迁移必须共用
+  `canonical_source_ref`，不得把用户两次粘贴的大小写差异存成两条关注。跨站作者归组优先实体，
+  其次使用发现时保存的规范作者键；F95 线程标题尾部的 `Collection(s)` 只是容器说明。关注作者
+  头像与显示名优先来自已验证的官方页面（当前 FANBOX → Pixiv），归档站只作头像回退；官方
+  解析器必须固定请求主机并校验返回图片主机，不能接受客户端 URL。
+- 只有存在历史分页端点的关注来源才显示/执行「抓更早一页」。F95zone 与 SimpCity 不得递增
+  虚假游标。只读告警位于两栏关注管理网格时必须跨满两列；搜索历史写入失败只能降级为页面
+  内存，不能破坏搜索或产生未处理异常。
 - AI 推理 API 与本地 coding/agent runtime 是不同层，不能伪装成一个等价接口。
 - 3 字符以上搜索使用 FTS5 trigram；更短文本回退 LIKE。FTS 写入由迁移 trigger 维护，不在 Web 启动时修补。
 - 详情身份按规范化名称去重：同一个名字已显示为女优时，不再重复显示「创作者」。标签的 × 写入 profile 级隐藏覆盖，不删除刮削/识别断言；+ 新增标签以 `web-user` 同步写入兼容层与规范实体层。

@@ -132,3 +132,13 @@ rule34video / rule34.xxx **未取得**：本机账本里没有这两个站的来
 
 **结论是未取得**，边框颜色这一条没有可复现的依据可用，没有实现。要做得先定一个能复核的
 口径（例如从各站主 CSS 里取按钮/链接的强调色，并记下文件哈希）。
+
+### FANBOX 官方头像补证（2026-08-27）
+
+- `https://www.pixiv.net/fanbox/creator/30917150` 跳到作者官方页
+  `https://lazyprocrast.fanbox.cc/`，页面 `meta[name=metadata]` 给出 `creatorId=lazyprocrast`。
+- 官方 `https://api.fanbox.cc/creator.get?creatorId=lazyprocrast` 返回同一
+  `userId=30917150` 与 `pixiv.pximg.net` 的 `user.iconUrl`；图片实载为 JPEG 160×160、
+  14,534 字节。
+- Peach 只允许 `service=fanbox` 与数字 user id，固定访问 Pixiv/FANBOX 主机，并校验 API
+  返回的 user id 和图片主机；客户端不能提供任意 URL。界面先用官方头像，失败再用归档站。

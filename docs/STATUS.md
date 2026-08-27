@@ -32,14 +32,15 @@
 - Stash 仍运行于 `127.0.0.1:9999`，只作为过渡期可替换适配器。
 - Python：3.14.7；FFmpeg/ffprobe 由
   `C:\Users\longm\Desktop\peach\peach-data\tools\ffmpeg` 管理，不再依赖 Stash 私有目录。
-- 真实 ledger：`C:\Users\longm\Desktop\peach\peach-data\database\ledger.db`，Windows 迁移 `0000`–`0017`
-  已应用，零待处理，完整性 `ok`。历史备份均在同一 `database` 目录，文件名保持不变。
+- 真实 ledger：`C:\Users\longm\Desktop\peach\peach-data\database\ledger.db`，Windows 当前已应用到
+  `0018`；本次新增的 `0019`（追更回翻游标）和 `0020`（Rule34.xxx 来源身份合并）尚未对真实
+  ledger 执行。历史备份均在同一 `database` 目录，文件名保持不变。
   2026-08-25 复核 Mac 本地副本，`schema_migration` 同样到 `0016`。
   **追更两张表的迁移号已从 `0017` 改为 `0018`**：两条分支同时占用了 `0017`，
   远端是 `0017_persistent_playlists`。改号安全的判据是实测——2026-08-25 核对
   Mac 本地副本与共享副本（第 30 代）的 `schema_migration`，两边最高都是 `0016`，
   谁都没应用过 `0017`，所以没有触碰「已应用的迁移文件不得修改」这条线。
-  `0018` 尚未对任何真实 ledger 执行；在此之前 `/follow` 会因缺表报错。
+  `0018` 后来已在真实 ledger 应用；这段改号取证仍保留，避免再占用同一迁移号。
 - 2026-08-25 已挂上 `/Volumes/peach-sync`（钥匙串账号 `peachsync`@`192.168.50.162`，
   guest 被拒，这条钥匙串记录是唯一的钥匙），并完成一次 `pull`：本地从第 29 代到第 30 代，
   `plan` 现为 `in-sync`。拉取前备份在 `database/ledger.pre-pull-gen30-20260825T080644Z.db`
@@ -137,9 +138,15 @@
   `follow_source`/`follow_item` 两张表、`peach follow` 子命令和 `/follow` 页面。
   联网只在 `peach follow check` 与「检查更新」按钮触发。`FeedAdapter` 的 RSS/Atom 入口保留，
   但这七个来源实测都没有可用 feed——f95 的 `index.rss` 直接回「无法以该格式呈现」。
-- 追更的两个待办不是代码问题：rule34.xxx 需要用户在
-  `rule34.xxx/index.php?page=account&s=options` 生成 user_id + api_key 并写进
-  `peach-data/secrets/follow/rule34xxx.json`；simpcity.cr 挂着 DDoS-Guard 浏览器质询，
+- 2026-08-27 审阅 Claude 最近的关注管理/观看及相邻提交，并在隔离 worktree 修正：多女优卡片
+  只显示一位姓名和总人数；Rule34.xxx 标签身份改为大小写不敏感，`0020` 能把真实数据副本中
+  两条重复来源合成一条并保留 100 条候选；F95 的 `Collection` 标题与其余四个来源归入同一
+  `LazyProcrastinator` 作者组；头像先经固定官方端点取 FANBOX/Pixiv 头像，再回退归档站。
+  同时修复 F95 假翻页、只读告警破坏两栏网格、只读搜索历史的未处理异常、Windows 运行
+  launchd 测试、Mac 托盘同步重启失败后服务不恢复，以及同步模块改动不触发托盘重启。
+  临时副本迁移后为 5 个来源、233 条未看；桌面和 390×844 均无横向溢出，官方头像实载
+  160×160。真实 ledger、服务和部署均未改动，等待迁移授权。
+- 追更仍有一个站点级阻塞：simpcity.cr 挂着 DDoS-Guard 浏览器质询，
   可用入口**未取得**，Peach 不绕机器人验证。f95zone 的发现实测不需要 cookies，
   只有取附件媒体需要登录会话。
 - AI Provider 已拆为推理与 Agent 两层。`/api/providers` 无副作用且不泄露凭据；OpenCode Go 模型清单只在显式访问时拉取，当前不发推理请求。
@@ -327,10 +334,8 @@
 
 8. HLS `stream-plan` 和按需 TS 片段已接入现有 Video.js 内置 VHS。片段时间窗的绝对终点问题已修并已切生产（见上节）；自适应码率、多路清单、首帧/seek 的桌面与手机验收仍未完成。CloudDrive 约 100 MiB 固定块预取仍是来源层成本，服务端分片只能避免整部 MP4 Range，不会消除来源层块预取。
 9. 在真实生产浏览器补做 `/review` 的 1280×720/390×844 最终视觉确认，再人工批准 Windows r18dev 小批候选；确认来源质量后逐个启用 Javinizer 已有 scraper，不新增 Peach 私有站点解析器。
-10. 追更接下来三件事，按依赖顺序：(a) **先在 Windows 写入端**备份后 apply 迁移 `0018`
-    （`peach migrate upgrade --yes`，无 `--yes` 会拒绝改动真实 ledger），Mac 之后走
-    「同步 Ledger」拉取；Mac 只作 reader 浏览时也可以本地先 apply，它换来的只是
-    `/follow` 页面能渲染——写入端点在 reader 上照旧 409；
+10. 追更接下来按依赖顺序：(a) **取得明确授权后**在 Windows 写入端备份并应用 `0019`、`0020`，
+    核对 Rule34.xxx 从两条合成一条且条目/状态不丢，再同步 reader；
     (b) ~~核对 rule34.xxx 的真实响应~~ **2026-08-26 已完成**：用账号 key 实测，字段名与
     文档一致，但内容推翻了两个按文档写下的判断——`image` 15/15 是哈希、`parent_id` 15/15
     是 0，而 `source` 13/15 有值。分组键因此改为优先取 `source` 归一出的跨站键
