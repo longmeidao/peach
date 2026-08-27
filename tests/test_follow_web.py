@@ -737,15 +737,13 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertNotIn(".fpicks h3{", page,
                          "查找结果不应另起一套标题字号")
 
-    def test_follow_sources_use_multiple_columns_and_link_to_the_original_page(self):
+    def test_follow_author_groups_use_multiple_columns_and_link_to_the_original_page(self):
         self.assertPageContains('class="frows fsources"')
         grid = self.page[self.page.index(".fsources{"):]
         self.assertIn("repeat(auto-fit,minmax(430px,1fr))", grid[:grid.index("}")])
-        author_grid = self.page[self.page.index(".fsources>.fauthor{"):]
-        self.assertIn("repeat(auto-fit,minmax(400px,1fr))",
-                      author_grid[:author_grid.index("}")],
-                      "同一作者的多个来源也要真正分栏，不能只给作者组外层分栏")
-        self.assertPageContains(".fauthorhead{display:flex;grid-column:1/-1")
+        self.assertPageContains("followAuthorGroups(sources).map(followAuthorBlock).join('')")
+        self.assertNotIn(".fsources>.fauthor{display:grid", self.page,
+                         "多栏单位是作者组，不能拆开作者下面的来源行")
         self.assertPageContains('class="fsourcelink" href="${esc(source.url)}"')
         self.assertPageContains('title="打开原来源"')
         self.assertPageContains('rel="noreferrer noopener"')
