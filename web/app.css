@@ -1182,6 +1182,22 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .follow{padding:8px 0 42px}
 .follow .reviewtabs .fcheck{margin-left:auto;display:inline-flex;align-items:center;gap:6px;background:var(--tungsten);border-color:var(--tungsten);color:#fff;font-weight:600}
 .follow .reviewtabs .fcheck svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
+.fdetails summary{cursor:pointer;list-style:none}
+.fdetails summary::-webkit-details-marker{display:none}
+.fdetails summary::before{content:"› ";display:inline-block;transition:transform .12s}
+.fdetails[open] summary::before{transform:rotate(90deg)}
+.fdetails p{margin:6px 0 0}
+.ficon{width:14px;height:14px;border-radius:3px;object-fit:contain;
+  vertical-align:-2px;margin-right:5px}
+.fauthorhead .ficon{margin-right:2px}
+.ffilter{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.ffilter button{display:inline-flex;align-items:center;border:1px solid var(--border-15);
+  border-radius:var(--pill-radius);background:transparent;color:var(--ink-2);
+  padding:5px 12px;cursor:pointer;font-size:var(--fs-xs)}
+.ffilter button:hover{border-color:var(--tungsten);color:var(--ink)}
+.ffilter button[aria-pressed="true"]{background:var(--tungsten-soft);
+  border-color:var(--tungsten);color:var(--tungsten);font-weight:600}
+.ffilterlabel{align-self:center;margin-right:2px}
 .followlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:14px}
 .followitem{display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;background:var(--surface);border:1px solid var(--line-soft);border-radius:12px;padding:12px;min-width:0}
 .followitem[data-status="ignored"],.followitem[data-status="seen"]{opacity:.62}

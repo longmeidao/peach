@@ -113,13 +113,15 @@ class WebUiSourceTests(unittest.TestCase):
         # 少了这条规则，按钮画在页面上但 requestMore 首行就 return，点了没反应。
         self.assertPageContains(".indexmore[hidden],.entitymore[hidden]{display:none}")
 
-    def test_co_starred_cards_show_every_performer_not_only_the_first(self):
-        # 卡片不能再只取 performers[0]：共演作品要叠头像、列名字并给出总数。
+    def test_co_starred_cards_keep_one_name_and_the_total(self):
+        # 多人合集保留头像提示，但文字只写第一位和总人数，避免名称折成多行。
         self.assertPageContains("const coStarred=performers.length>1&&!it.creator")
         self.assertPageContains('<div class="mavstack">')
         self.assertPageContains("performers.slice(0,3)")
         self.assertPageContains("data-entity-kind=\"performer\" data-entity-name=\"${esc(nm)}\"")
+        self.assertPageContains("data-entity-name=\"${esc(performer)}\"")
         self.assertPageContains("等 ${performerTotal} 人")
+        self.assertPageLacks("performers.slice(0,2).map")
         self.assertPageContains(".mavstack .mav+.mav{margin-left:-14px}")
 
     def test_every_card_avatar_falls_back_through_the_same_helper(self):
@@ -893,6 +895,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("opener.dataset.openWired='1'")
         self.assertPageContains(".hovertools button{pointer-events:none")
         self.assertPageContains(".card.longhover .seektools button,.card:hover .later-tools button{pointer-events:auto}")
+        self.assertPageContains("section.querySelector('h3').textContent=`视频 ·")
+        self.assertPageLacks("的馆藏作品 ·")
 
     def test_remote_hover_previews_do_not_stream_full_media(self):
         self.assertPageContains("if(it.location!=='local')")

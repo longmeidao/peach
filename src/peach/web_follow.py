@@ -8,13 +8,15 @@ from __future__ import annotations
 import json
 import os
 import re
+import urllib.parse
 from datetime import datetime, timezone
 
 from .follow import FollowSourceError
 from .follow_discovery import discover
 from .follow_secrets import CredentialError, CredentialStore
 from .follow_sources import (
-    CONNECTORS, KemonoConnector, build_connector, parse_source_url,
+    CONNECTORS, KemonoConnector, build_connector, canonical_source_ref,
+    parse_source_url,
 )
 from .follow_store import FollowStore, ReleaseGroup
 from .taste_history import read_creator_candidates
@@ -32,6 +34,9 @@ PROVIDER_LABELS = {
 }
 
 _STATUSES = ("new", "seen", "saved", "ignored")
+_BACKFILL_PROVIDERS = frozenset(
+    {"kemono", "coomer", "pawchive", "rule34video", "rule34xxx"}
+)
 
 
 def _store(contract, connection) -> FollowStore:
@@ -113,6 +118,25 @@ def _group_payload(group: ReleaseGroup) -> dict:
 #: `lazyprocrastinator` 是同一个人，中点后面那截只说明他在哪个平台连载。
 _LABEL_SERVICE_RE = re.compile(r"\s*[·|]\s*[A-Za-z0-9_\-]+\s*$")
 _AUTHOR_NOISE_RE = re.compile(r"[^0-9a-z一-鿿]+")
+_F95_TITLE_SUFFIX_RE = re.compile(r"\s+collections?\s*$", re.IGNORECASE)
+
+
+def _normalized_author_name(value: str, *, provider: str = "") -> str:
+    stripped = _LABEL_SERVICE_RE.sub("", str(value or "").strip())
+    if provider == "f95zone":
+        # F95 thread titles describe a container, not a different author.  The real
+        # data is ``Lazy Procrastinator Collection`` while every author source is
+        # ``LazyProcrastinator``; retaining the generic suffix creates a false group.
+        stripped = _F95_TITLE_SUFFIX_RE.sub("", stripped)
+    return _AUTHOR_NOISE_RE.sub("", stripped.casefold())
+
+
+def _source_metadata(row) -> dict:
+    try:
+        payload = json.loads(row["metadata_json"] or "{}")
+    except (KeyError, TypeError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def author_key(row) -> str:
@@ -131,9 +155,11 @@ def author_key(row) -> str:
     entity = row["entity_id"]
     if entity:
         return f"entity:{entity}"
+    recorded = str(_source_metadata(row).get("author_key") or "").strip()
+    if recorded:
+        return f"name:{recorded}"
     label = str(row["label"] or row["ref"] or "")
-    stripped = _LABEL_SERVICE_RE.sub("", label)
-    normalized = _AUTHOR_NOISE_RE.sub("", stripped.casefold())
+    normalized = _normalized_author_name(label, provider=str(row["provider"] or ""))
     return f"name:{normalized}" if normalized else f"source:{row['id']}"
 
 
@@ -158,6 +184,21 @@ def _avatar_url(provider: str, ref: str) -> str | None:
     return f"https://{KemonoConnector.HOSTS[provider]}/icons/{service}/{user}"
 
 
+def _official_avatar_url(provider: str, ref: str) -> str | None:
+    """Local resolver for an avatar from the creator's official profile.
+
+    FANBOX archive refs carry the Pixiv user id, which is enough for Peach's fixed-host
+    resolver to locate the public FANBOX profile and its official ``user.iconUrl``.
+    Other services have no verified resolver yet, so they keep the archive fallback.
+    """
+    if provider not in KemonoConnector.HOSTS:
+        return None
+    service, _, user = str(ref or "").partition("/")
+    if service != "fanbox" or not user.isdigit():
+        return None
+    return "/follow-avatar?" + urllib.parse.urlencode({"service": service, "id": user})
+
+
 def _source_payload(row) -> dict:
     return {
         "id": row["id"],
@@ -166,12 +207,14 @@ def _source_payload(row) -> dict:
         "ref": row["ref"],
         "label": row["label"],
         "author_key": author_key(row),
+        "official_avatar_url": _official_avatar_url(row["provider"], row["ref"]),
         "avatar_url": _avatar_url(row["provider"], row["ref"]),
         "url": row["url"],
         "semantics": row["semantics"],
         "enabled": bool(row["enabled"]),
         "entity_id": row["entity_id"],
         "entity_name": row["entity_name"],
+        "can_backfill": row["provider"] in _BACKFILL_PROVIDERS,
         # 往回抓到哪一页了（0 起，0 = 只抓过第一页）。界面据此说清进度，
         # 否则用户点一次只看到列表变长一点，不知道自己走到第几页。
         "backfill_page": row["backfill_page"],
@@ -273,7 +316,8 @@ def w_follow_check(contract, body) -> dict:
     results: list[dict] = []
     with contract.database.read_connection() as connection:
         rows = [dict(row) for row in _store(contract, connection).sources(enabled_only=True)
-                if source_id is None or row["id"] == source_id]
+                if (source_id is None or row["id"] == source_id)
+                and (not older or row["provider"] in _BACKFILL_PROVIDERS)]
     for row in rows:
         moment = datetime.now(timezone.utc)
         provider, ref = row["provider"], row["ref"]
@@ -369,10 +413,13 @@ def w_follow_source(contract, body) -> dict:
     credential = credentials.load(parsed.provider)
     label = str(body.get("label") or "").strip() or _resolve_label(
         contract, parsed, credential)
+    author_hint = str(body.get("author") or "").strip()
+    author_hint = _normalized_author_name(author_hint) if author_hint else ""
+    metadata = {"author_key": author_hint} if author_hint else None
     with contract.database.write_transaction() as connection:
         source_id = _store(contract, connection).register(
             provider=parsed.provider, ref=parsed.ref, label=label, url=parsed.url,
-            semantics=parsed.semantics)
+            semantics=parsed.semantics, metadata=metadata)
     checked = w_follow_check(contract, {"source": source_id})
     outcome = next((row for row in checked["results"]
                     if row["source"] == source_id), None)
@@ -384,10 +431,11 @@ def w_follow_source(contract, body) -> dict:
 MAX_RESOLVE_LINES = 40
 
 
-def _candidate_payload(candidate) -> dict:
+def _candidate_payload(candidate, *, author: str = "") -> dict:
     return {"provider": candidate.provider,
             "provider_label": PROVIDER_LABELS.get(candidate.provider, candidate.provider),
-            "ref": candidate.ref, "url": candidate.url, "label": candidate.label,
+            "ref": canonical_source_ref(candidate.provider, candidate.ref),
+            "url": candidate.url, "label": candidate.label, "author": author,
             "semantics": candidate.semantics, "evidence": candidate.evidence}
 
 
@@ -409,7 +457,7 @@ def w_follow_resolve(contract, body) -> dict:
     if len(lines) > MAX_RESOLVE_LINES:
         raise ValueError(f"一次最多解析 {MAX_RESOLVE_LINES} 行，收到 {len(lines)} 行")
 
-    known = {(row["provider"], row["ref"]) for row in
+    known = {(row["provider"], canonical_source_ref(row["provider"], row["ref"])) for row in
              (_source_payload(r) for r in _existing_sources(contract))}
     results = []
     for line in lines:
@@ -428,15 +476,17 @@ def w_follow_resolve(contract, body) -> dict:
                 continue
             results.append({
                 "line": line, "kind": "term",
-                "candidates": [{**_candidate_payload(c),
-                                "known": (c.provider, c.ref) in known}
+                "candidates": [{**_candidate_payload(c, author=line),
+                                "known": (c.provider, canonical_source_ref(
+                                    c.provider, c.ref)) in known}
                                for c in found.candidates],
                 "failures": found.failures,
             })
             continue
         results.append({"line": line, "kind": "url",
                         "candidates": [{**_candidate_payload(parsed),
-                                        "known": (parsed.provider, parsed.ref) in known}]})
+                                        "known": (parsed.provider, canonical_source_ref(
+                                            parsed.provider, parsed.ref)) in known}]})
     return {"ok": True, "results": results}
 
 

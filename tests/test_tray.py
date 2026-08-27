@@ -332,13 +332,14 @@ class SourceSyncTests(unittest.TestCase):
     def test_launchd_ownership_requires_a_matching_pid_not_just_a_loaded_job(self):
         """只看「作业已加载」会在终端启动的托盘上 kickstart 出第二个菜单栏图标。"""
         loaded_elsewhere = Mock(returncode=0, stdout="\tpid = 1\n\tstate = running\n")
-        self.assertFalse(launchd_owns_this_process(Mock(return_value=loaded_elsewhere)))
+        self.assertFalse(launchd_owns_this_process(
+            Mock(return_value=loaded_elsewhere), uid=501))
 
         mine = Mock(returncode=0, stdout=f"\tpid = {os.getpid()}\n\tstate = running\n")
-        self.assertTrue(launchd_owns_this_process(Mock(return_value=mine)))
+        self.assertTrue(launchd_owns_this_process(Mock(return_value=mine), uid=501))
 
         self.assertFalse(launchd_owns_this_process(
-            Mock(return_value=Mock(returncode=113, stdout=""))))
+            Mock(return_value=Mock(returncode=113, stdout="")), uid=501))
 
     def test_the_menu_lists_source_sync_next_to_the_ledger_actions(self):
         """标签和位置是语义契约：菜单只有一条，写错了没有第二处会报错。"""
@@ -356,11 +357,18 @@ class SourceSyncTests(unittest.TestCase):
 
     def test_tray_restart_asks_launchd_to_kill_and_relaunch_this_label(self):
         runner = Mock(return_value=Mock(returncode=0, stdout="", stderr=""))
-        restart_tray_process(runner)
+        restart_tray_process(runner, uid=501)
         self.assertEqual(
             runner.call_args.args[0],
-            ["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/gg.lmd.peach.tray"],
+            ["launchctl", "kickstart", "-k", "gui/501/gg.lmd.peach.tray"],
         )
+
+    def test_sync_changes_restart_the_tray_and_failed_kickstart_restores_services(self):
+        self.assertTrue(tray_restart_required(("src/peach/sync.py",)))
+        from peach import tray as tray_module
+        source = inspect.getsource(tray_module.run_macos_menu_bar)
+        self.assertIn("if restarted.returncode != 0:", source)
+        self.assertIn("manager.start_missing()", source)
 
 
 @unittest.skipUnless(sys.platform == "darwin", "菜单栏图标与服务规格是 macOS 专属")

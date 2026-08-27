@@ -19,7 +19,7 @@ from .follow import FollowSourceError
 from .follow_secrets import Credential, CredentialError, CredentialStore
 from .follow_sources import (
     DEFAULT_MAX_ITEMS, USER_AGENT, F95ZoneConnector, KemonoConnector,
-    Rule34VideoConnector, Rule34XxxConnector, _BaseConnector,
+    Rule34VideoConnector, Rule34XxxConnector, _BaseConnector, canonical_source_ref,
 )
 
 #: 创作者索引的缓存有效期。索引是几 MB 的整站清单，不该每次发现都重下一遍。
@@ -152,7 +152,7 @@ def _rule34video_candidates(term: str, transport) -> list[Candidate]:
 def _rule34xxx_candidates(term: str, transport, credential: Credential | None) -> list[Candidate]:
     if credential is None:
         raise CredentialError("rule34xxx 需要 user_id 与 api_key 才能查标签")
-    tag = re.sub(r"\s+", "_", term.strip())
+    tag = canonical_source_ref("rule34xxx", re.sub(r"\s+", "_", term.strip()))
     connector = Rule34XxxConnector(transport=transport, credential=credential, max_items=1)
     result = connector.fetch(tag)
     if not result.candidates:

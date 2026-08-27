@@ -18,6 +18,8 @@ from fastapi.staticfiles import StaticFiles
 from . import __version__, web_contract
 from .config import LOCATION_ROOT_DECLARATIONS, PROJECT_ROOT, PeachSettings
 from .ffmpeg import FFmpegResolver
+from .follow import FollowSourceError
+from .follow_avatar import resolve_official_avatar
 from .http import HttpxTransport
 from .media import (
     FilesystemBackend,
@@ -642,6 +644,20 @@ def create_app(
             return JSONResponse({"error": "unavailable"}, status_code=404)
         response = FileResponse(path, media_type="image/jpeg")
         response.headers["Cache-Control"] = "public, max-age=86400"
+        return response
+
+    @app.api_route("/follow-avatar", methods=["GET", "HEAD"])
+    def follow_avatar(request: Request, service: str, id: str):
+        """Resolve an official creator avatar, then let the image CDN serve it."""
+        args = _first_query_values(request)
+        if not _authorized(request, settings.token, args):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        try:
+            target = resolve_official_avatar(service, id)
+        except (OSError, FollowSourceError):
+            return JSONResponse({"error": "unavailable"}, status_code=404)
+        response = RedirectResponse(target, status_code=307)
+        response.headers["Cache-Control"] = "private, max-age=86400"
         return response
 
     @app.api_route("/logo", methods=["GET", "HEAD"])

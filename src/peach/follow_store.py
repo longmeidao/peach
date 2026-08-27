@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .follow import FollowSourceError, write_immutable
-from .follow_sources import FollowCandidate, SourceFetch
+from .follow_sources import FollowCandidate, SourceFetch, canonical_source_ref
 from .follow_variants import classify, group_duplicates
 
 
@@ -111,6 +111,7 @@ class FollowStore:
                  metadata: dict | None = None, moment: datetime | None = None) -> int:
         if semantics not in ("work", "release"):
             raise FollowSourceError("semantics 只能是 work 或 release")
+        ref = canonical_source_ref(provider, ref)
         stamp = _now_text(moment)
         payload = json.dumps(metadata or {}, ensure_ascii=False)
         connection = self._connect()
@@ -121,7 +122,9 @@ class FollowStore:
             " ON CONFLICT(provider,ref) DO UPDATE SET"
             "  label=excluded.label, url=excluded.url, semantics=excluded.semantics,"
             "  entity_id=COALESCE(excluded.entity_id, follow_source.entity_id),"
-            "  metadata_json=excluded.metadata_json, updated_at=excluded.updated_at",
+            "  metadata_json=CASE WHEN excluded.metadata_json='{}'"
+            "    THEN follow_source.metadata_json ELSE excluded.metadata_json END,"
+            "  updated_at=excluded.updated_at",
             (entity_id, provider, ref, label, url, semantics, payload, stamp, stamp),
         )
         row = connection.execute(

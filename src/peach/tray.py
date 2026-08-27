@@ -50,6 +50,7 @@ TRAY_SOURCES = (
     "src/peach/tray.py",
     "src/peach/menubar.py",
     "src/peach/versioning.py",
+    "src/peach/sync.py",
     "src/peach/certs.py",
     "src/peach/netwatch.py",
     "src/peach/config.py",
@@ -650,6 +651,7 @@ class PeachTray:
 
 def launchd_owns_this_process(
     run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+    *, uid: int | None = None,
 ) -> bool:
     """本进程是不是 LaunchAgent 拉起的那一个。
 
@@ -657,8 +659,13 @@ def launchd_owns_this_process(
     launchd 名下那一份；托盘要是从终端跑起来的，kickstart 会在旁边**再**起一个，
     菜单栏上就出现两个桃子，而旧的那个还占着单实例锁。
     """
+    if uid is None:
+        getuid = getattr(os, "getuid", None)
+        if getuid is None:
+            return False
+        uid = getuid()
     result = run(
-        ["launchctl", "print", f"gui/{os.getuid()}/{LAUNCH_AGENT_LABEL}"],
+        ["launchctl", "print", f"gui/{uid}/{LAUNCH_AGENT_LABEL}"],
         capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
     )
     if result.returncode != 0:
@@ -669,6 +676,7 @@ def launchd_owns_this_process(
 
 def restart_tray_process(
     run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+    *, uid: int | None = None,
 ) -> subprocess.CompletedProcess:
     """让 launchd 杀掉并重新拉起托盘。调用方必须先停掉自己拥有的服务。
 
@@ -676,8 +684,13 @@ def restart_tray_process(
     `_owned` 是空的，之后每次「同步 Ledger」都被自己的归属检查挡成
     「服务不归本托盘管理」。
     """
+    if uid is None:
+        getuid = getattr(os, "getuid", None)
+        if getuid is None:
+            raise OSError("launchd is unavailable on this platform")
+        uid = getuid()
     return run(
-        ["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{LAUNCH_AGENT_LABEL}"],
+        ["launchctl", "kickstart", "-k", f"gui/{uid}/{LAUNCH_AGENT_LABEL}"],
         capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
     )
 
@@ -725,7 +738,6 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
             return
 
         def work() -> None:
-            released = False
             try:
                 notify("正在检查更新通道…", "Peach 开发进度")
                 result = versions.update()
@@ -737,9 +749,13 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
                     if launchd_owns_this_process():
                         notify(f"{result.message}正在重启菜单栏项…", "Peach 开发进度")
                         manager.stop_owned()
-                        action_lock.release()      # kickstart 之后本进程就没了
-                        released = True
-                        restart_tray_process()
+                        restarted = restart_tray_process()
+                        if restarted.returncode != 0:
+                            # kickstart 失败时旧进程仍在；把刚停掉的服务恢复，不能留下
+                            # 一个有菜单图标却没有 HTTP/HTTPS 的半死状态。
+                            manager.start_missing()
+                            notify("代码已同步，但菜单栏项重启失败；服务已恢复。",
+                                   "Peach 开发进度")
                         return
                     notify(
                         f"{result.message}服务已重启；菜单栏项本身要手动退出重开才会生效。",
@@ -750,8 +766,7 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
                 manager.restart()
                 notify(f"{result.message}服务已重启。", "Peach 开发进度")
             finally:
-                if not released:
-                    action_lock.release()
+                action_lock.release()
 
         threading.Thread(target=work, name="PeachSourceSync", daemon=True).start()
 

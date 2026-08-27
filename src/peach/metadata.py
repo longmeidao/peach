@@ -204,6 +204,16 @@ def normalized_release_date(raw: object) -> tuple[str, list[str]]:
     return normalized, warnings
 
 
+def japanese_view(payload: dict) -> dict:
+    """Return the Japanese translation bundled in an r18dev payload."""
+    for translation in payload.get("translations") or []:
+        if not isinstance(translation, dict):
+            continue
+        if str(translation.get("language") or "").lower().startswith("ja"):
+            return translation
+    return {}
+
+
 def extract_peach_fields(payload: dict, category_map: dict[str, str]) -> dict[str, dict]:
     """Map raw provider data to the Peach truth fields supported by P0."""
     out: dict[str, dict] = {}
@@ -214,8 +224,10 @@ def extract_peach_fields(payload: dict, category_map: dict[str, str]) -> dict[st
             "display_value": "、".join(item["name"] for item in performers),
             "warnings": warnings,
         }
+    japanese = japanese_view(payload)
     for field in ("studio", "series"):
-        raw_name = payload.get("maker" if field == "studio" else field)
+        key = "maker" if field == "studio" else field
+        raw_name = str(japanese.get(key) or "").strip() or payload.get(key)
         name, repeated = collapse_repeated_phrase(str(raw_name or ""))
         if name:
             out[field] = {

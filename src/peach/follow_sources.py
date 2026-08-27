@@ -824,6 +824,18 @@ _R34V_PATH_RE = re.compile(r"^/models/([a-z0-9][a-z0-9_\-]{0,80})")
 _THREAD_PATH_RE = re.compile(r"^/threads/(?:[^/]*?\.)?(\d{1,12})")
 
 
+def canonical_source_ref(provider: str, ref: str) -> str:
+    """Return the provider's stable source identity.
+
+    Most provider ids are case-sensitive opaque values.  rule34.xxx tags are not:
+    the API returns the same feed for ``LazyProcrastinator`` and
+    ``lazyprocrastinator``.  Keeping the pasted spelling in the unique key therefore
+    creates duplicate subscriptions when the same author is added in two batches.
+    """
+    value = str(ref or "").strip()
+    return value.casefold() if provider == "rule34xxx" else value
+
+
 #: 线程 slug 里从这个 token 起就不是作品名了：f95 的惯例是
 #: `<作品名>-<发布日期>-<作者手柄>`，日期之后全是元数据。
 _SLUG_TAIL_RE = re.compile(r"^(?:19|20)\d{2}$|^v?\d+(?:\.\d+)+[a-z]?$")
@@ -886,7 +898,10 @@ def parse_source_url(raw_url: str) -> ParsedSource:
                             _slug_label(slug), "work")
 
     if bare in ("rule34.xxx", "api.rule34.xxx"):
-        tags = urllib.parse.parse_qs(parsed.query).get("tags", [""])[0].strip()
+        tags = canonical_source_ref(
+            "rule34xxx",
+            urllib.parse.parse_qs(parsed.query).get("tags", [""])[0],
+        )
         if not tags:
             raise FollowSourceError(
                 "rule34.xxx 的链接要带标签，形如 "

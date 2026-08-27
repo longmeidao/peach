@@ -238,6 +238,18 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.headers["content-type"], "image/png")
         self.assertTrue(response.content.startswith(b"\x89PNG\r\n\x1a\n"))
 
+    async def test_follow_avatar_redirects_only_after_the_official_resolver(self):
+        denied = await self.client.get("/follow-avatar?service=fanbox&id=30917150")
+        self.assertEqual(denied.status_code, 401)
+        with patch("peach.api.resolve_official_avatar",
+                   return_value="https://pixiv.pximg.net/icon.jpeg") as resolver:
+            response = await self.client.get(
+                "/follow-avatar?t=secret&service=fanbox&id=30917150")
+        self.assertEqual(response.status_code, 307)
+        self.assertEqual(response.headers["location"],
+                         "https://pixiv.pximg.net/icon.jpeg")
+        resolver.assert_called_once_with("fanbox", "30917150")
+
     async def test_emptying_the_recycle_bin_is_actually_wired_and_deletes_media(self):
         """接线本身要有测试：此前 dispatch 接上了 `/api/trash/empty`，函数却根本没写。
 

@@ -24,7 +24,7 @@ class MigrationTests(unittest.TestCase):
         backup = self.root / "before.db"
         done = upgrade(self.db, MIGRATIONS, backup)
         self.assertEqual([m.version for m in done],
-                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019"])
+                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020"])
         self.assertTrue(backup.exists())
         con = sqlite3.connect(self.db)
         tables = {row[0] for row in con.execute(
@@ -41,7 +41,7 @@ class MigrationTests(unittest.TestCase):
                          "playlist", "playlist_item",
                          "asset_tag_preference", "asset_search",
                          "schema_migration"} <= tables)
-        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019"])
+        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020"])
         self.assertEqual(upgrade(self.db, MIGRATIONS), [])
         self.assertEqual(plan(self.db, MIGRATIONS)[1], [])
 
@@ -287,6 +287,54 @@ class MigrationTests(unittest.TestCase):
             "SELECT asset_id FROM asset_search WHERE asset_search MATCH ?", ('"Prestige"',)
         ).fetchall(), [])
         connection.close()
+
+    def test_rule34_source_case_duplicates_merge_without_losing_item_state(self):
+        base_migrations = self.root / "base-migrations"
+        base_migrations.mkdir()
+        for path in sorted(MIGRATIONS.glob("*.sql")):
+            if not path.name.startswith("0020_"):
+                shutil.copyfile(path, base_migrations / path.name)
+        sqlite3.connect(self.db).close()
+        upgrade(self.db, base_migrations)
+        connection = sqlite3.connect(self.db)
+        connection.executescript("""
+          INSERT INTO asset(id,location,path,name,medium)
+          VALUES(1,'online','https://example.test/1','saved','video');
+          INSERT INTO follow_source(
+            id,provider,ref,label,url,semantics,metadata_json,created_at,updated_at
+          ) VALUES
+            (10,'rule34xxx','lazyprocrastinator','lazyprocrastinator',
+             'https://rule34.xxx/?tags=lazyprocrastinator','work','{}','1','1'),
+            (11,'rule34xxx','LazyProcrastinator','LazyProcrastinator',
+             'https://rule34.xxx/?tags=LazyProcrastinator','work','{}','2','2');
+          INSERT INTO follow_item(
+            source_id,external_id,title,published_precision,release_key,variant_kind,
+            status,asset_id,metadata_json,first_seen_at,last_seen_at
+          ) VALUES
+            (10,'same','same','exact','same','main','ignored',NULL,'{}','1','2'),
+            (10,'lower-only','lower','exact','lower','main','new',NULL,'{}','1','2'),
+            (11,'same','same','exact','same','main','saved',1,'{}','2','3'),
+            (11,'upper-only','upper','exact','upper','main','seen',NULL,'{}','2','3');
+        """)
+        connection.close()
+
+        upgrade(self.db, MIGRATIONS)
+
+        connection = sqlite3.connect(self.db)
+        sources = connection.execute(
+            "SELECT id,ref,url FROM follow_source WHERE provider='rule34xxx'"
+        ).fetchall()
+        items = connection.execute(
+            "SELECT external_id,status,asset_id FROM follow_item ORDER BY external_id"
+        ).fetchall()
+        connection.close()
+        self.assertEqual(sources, [(10, "lazyprocrastinator",
+            "https://rule34.xxx/?tags=lazyprocrastinator")])
+        self.assertEqual(items, [
+            ("lower-only", "new", None),
+            ("same", "saved", 1),
+            ("upper-only", "seen", None),
+        ])
 
 
 if __name__ == "__main__":

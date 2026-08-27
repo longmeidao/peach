@@ -69,6 +69,13 @@ class RegistrationTests(_StoreCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["label"], "Lazy P")
 
+    def test_rule34_case_variants_are_the_same_source(self):
+        first = self._source(provider="rule34xxx", ref="LazyProcrastinator")
+        second = self._source(provider="rule34xxx", ref="lazyprocrastinator")
+        self.assertEqual(first, second)
+        self.assertEqual(len(self.store.sources()), 1)
+        self.assertEqual(self.store.sources()[0]["ref"], "lazyprocrastinator")
+
     def test_register_keeps_an_existing_entity_when_the_update_omits_it(self):
         entity_id = self._entity()
         self._source(entity_id=entity_id)

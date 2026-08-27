@@ -82,6 +82,28 @@ class MetadataProviderTests(unittest.TestCase):
         self.assertIn("已规范化", fields["release_date"]["warnings"][0])
         self.assertEqual(fields["tags"]["value"], ["肛交"])
 
+    def test_series_and_studio_take_the_japanese_original(self):
+        payload = {
+            "maker": "Prestige",
+            "series": "Prestige 20th Anniversary Special Event",
+            "translations": [
+                {"language": "en", "maker": "Prestige", "series": "Prestige 20th Anniversary Special Event"},
+                {"language": "ja", "maker": "プレステージ", "series": "【プレステージ20周年特別企画】"},
+            ],
+        }
+        fields = extract_peach_fields(payload, {})
+        self.assertEqual(fields["series"]["value"], "【プレステージ20周年特別企画】")
+        self.assertEqual(fields["studio"]["value"], "プレステージ")
+
+    def test_empty_japanese_names_fall_back_to_the_default_view(self):
+        fields = extract_peach_fields({
+            "maker": "FALENO",
+            "series": "FALENO Compilation",
+            "translations": [{"language": "ja", "maker": "", "series": ""}],
+        }, {})
+        self.assertEqual(fields["series"]["value"], "FALENO Compilation")
+        self.assertEqual(fields["studio"]["value"], "FALENO")
+
 
 if __name__ == "__main__":
     unittest.main()

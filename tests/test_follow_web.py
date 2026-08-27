@@ -138,6 +138,17 @@ class FollowContractTests(unittest.TestCase):
         # 第一次常规检查 → 0；两次往回抓 → 1、2，游标一次只走一页。
         self.assertEqual(pages, [0, 1, 2])
 
+    def test_paging_back_skips_sources_without_a_history_endpoint(self):
+        self._seed(provider="f95zone", ref="50685", semantics="release")
+        factory = mock.Mock()
+        with mock.patch.object(web_follow, "build_connector", factory):
+            result = self._post("/api/follow/check", {"older": True})
+        self.assertEqual(result["checked"], 0)
+        factory.assert_not_called()
+        source = next(row for row in self._get()["sources"]
+                      if row["provider"] == "f95zone")
+        self.assertFalse(source["can_backfill"])
+
     def test_feed_groups_variants_under_one_card(self):
         self._seed()
         payload = self._get()
@@ -527,6 +538,20 @@ class FollowSourceAddTests(FollowContractTests):
         self.assertEqual(self._get()["sources"][0]["url"],
                          "https://rule34video.com/models/lazyprocrastinator/")
 
+    def test_a_discovery_author_hint_is_persisted_for_cross_site_grouping(self):
+        with mock.patch.object(web_follow, "build_connector") as factory:
+            factory.return_value.fetch.return_value = SourceFetch(
+                provider="rule34video", ref="lazyprocrastinator",
+                request_url="https://rule34video.test/x", semantics="work",
+                not_modified=True)
+            self._post("/api/follow/source", {
+                "action": "add",
+                "url": "https://rule34video.com/models/lazyprocrastinator/",
+                "author": "Lazy Procrastinator",
+            })
+        source = self._get()["sources"][0]
+        self.assertEqual(source["author_key"], "name:lazyprocrastinator")
+
     def test_a_thread_link_is_registered_with_release_semantics(self):
         self._add("https://f95zone.to/threads/"
                   "lazy-procrastinator-collection-2026-06-28-lazyprocrast.50685/")
@@ -546,6 +571,16 @@ class FollowSourceAddTests(FollowContractTests):
         self._add("https://rule34video.com/models/lazyprocrastinator/")
         self._add("https://rule34video.com/models/lazyprocrastinator/")
         self.assertEqual(len(self._get()["sources"]), 1)
+
+    def test_rule34_case_variants_do_not_duplicate_the_source(self):
+        self._add(
+            "https://rule34.xxx/index.php?page=post&s=list&tags=LazyProcrastinator")
+        self._add(
+            "https://rule34.xxx/index.php?page=post&s=list&tags=lazyprocrastinator")
+        sources = [row for row in self._get()["sources"]
+                   if row["provider"] == "rule34xxx"]
+        self.assertEqual(len(sources), 1)
+        self.assertEqual(sources[0]["ref"], "lazyprocrastinator")
 
     def test_a_failing_first_check_still_leaves_the_source_registered(self):
         # rule34.xxx 缺 key 就是这种情况。整个回滚掉反而让人不知道发生了什么。
@@ -833,6 +868,25 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("row.path")
         self.assertPageContains("row.world_readable")
 
+    def test_credential_explanation_is_collapsed_without_hiding_the_warning(self):
+        summary = self.page.split("存放位置与权限", 1)[1].split("</summary>", 1)[0]
+        self.assertIn("Windows 上不收紧文件权限", summary)
+        self.assertPageContains(".fdetails summary::before")
+
+    def test_follow_source_icons_fail_back_to_plain_text(self):
+        icons = self.page.split("const SOURCE_ICONS={", 1)[1].split("};", 1)[0]
+        self.assertIn("kemono.cr/assets/favicon-", icons)
+        self.assertIn("pawchive.pw/static/favicon.png", icons)
+        self.assertNotIn("kemono.cr/favicon.ico", icons)
+        self.assertPageContains('onerror="this.remove()"')
+
+    def test_follow_watch_filters_use_the_source_identity(self):
+        self.assertPageContains("if(followAuthor&&source.author_key!==followAuthor)return false;")
+        self.assertPageContains("if(followProvider&&source.provider!==followProvider)return false;")
+        self.assertPageContains("const chips=(items,current,attr)=>items.length<2?''")
+        self.assertPageContains("标签 · 只有 ${")
+        self.assertPageContains(".sort((a,b)=>b[1]-a[1]).slice(0,20)")
+
     def test_credentials_are_typed_into_the_page_not_into_a_file_by_hand(self):
         self.assertPageContains('data-cred-form=')
         self.assertPageContains("'/api/follow/credential'")
@@ -926,6 +980,8 @@ class FollowWebSourceTests(unittest.TestCase):
             row.setdefault("entity_id", None)
             row.setdefault("id", 1)
             row.setdefault("ref", "")
+            row.setdefault("provider", "rule34video")
+            row.setdefault("metadata_json", "{}")
             return web_follow.author_key(row)
 
         # 「· 服务名」只说明他在哪个平台连载，不是身份的一部分。
@@ -939,6 +995,15 @@ class FollowWebSourceTests(unittest.TestCase):
                          key(label="LazyProcrastinator", entity_id=7))
         # 不同的人不许并。
         self.assertNotEqual(key(label="bewyx"), key(label="bewyx2"))
+        self.assertEqual(
+            key(label="Lazy Procrastinator Collection", provider="f95zone"),
+            key(label="lazyprocrastinator"),
+        )
+        self.assertEqual(
+            key(label="unrelated", provider="f95zone",
+                metadata_json='{"author_key":"lazyprocrastinator"}'),
+            "name:lazyprocrastinator",
+        )
         # 名字为空时退回来源 id，不能让所有空名字挤成一组。
         self.assertNotEqual(key(label="", id=1), key(label="", id=2))
 
@@ -953,6 +1018,10 @@ class FollowWebSourceTests(unittest.TestCase):
                          "https://kemono.cr/icons/fanbox/30917150")
         self.assertEqual(web_follow._avatar_url("pawchive", "fanbox/30917150"),
                          "https://pawchive.pw/icons/fanbox/30917150")
+        self.assertEqual(
+            web_follow._official_avatar_url("kemono", "fanbox/30917150"),
+            "/follow-avatar?service=fanbox&id=30917150",
+        )
         for provider, ref in (("rule34video", "1290582"),
                               ("rule34xxx", "lazyprocrastinator"),
                               ("f95zone", "50685"),
@@ -1005,6 +1074,12 @@ class FollowWebSourceTests(unittest.TestCase):
         avatar = avatar[:avatar.index("function followAuthorBlock")]
         self.assertNotIn("charAt", avatar, "不许用首字母冒充头像")
         self.assertIn("source.avatar_url", avatar)
+        self.assertIn("source.official_avatar_url", avatar)
+        self.assertIn("data-fallback", avatar)
+
+    def test_discovered_sources_keep_the_search_term_as_the_author_identity(self):
+        self.assertPageContains('data-author="${esc(c.author||\'\')}"')
+        self.assertPageContains("author:input.dataset.author")
 
     def test_credential_dependent_media_is_called_out(self):
         self.assertPageContains("媒体需要登录会话才能取，发现本身不需要")

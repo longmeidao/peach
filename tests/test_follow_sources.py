@@ -562,6 +562,14 @@ class ParseSourceUrlTests(unittest.TestCase):
         self.assertEqual(parsed.ref, "fanbox/30917150")
         self.assertEqual(parsed.url, "https://kemono.cr/fanbox/user/30917150")
 
+    def test_rule34_tags_use_one_case_insensitive_identity(self):
+        upper = parse_source_url(
+            "https://rule34.xxx/index.php?page=post&s=list&tags=LazyProcrastinator")
+        lower = parse_source_url(
+            "https://rule34.xxx/index.php?page=post&s=list&tags=lazyprocrastinator")
+        self.assertEqual(upper.ref, "lazyprocrastinator")
+        self.assertEqual(upper, lower)
+
     def test_threads_get_release_semantics_and_others_get_work(self):
         self.assertEqual(parse_source_url("https://f95zone.to/threads/x.1/").semantics,
                          "release")

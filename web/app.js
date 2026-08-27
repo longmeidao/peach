@@ -530,8 +530,8 @@ function cardHtml(it,cls){
   const who=identity.name,whoKind=identity.kind;
   const sizeText=Number(it.size)>0?fmtSize(Number(it.size)):'大小未知';
   const tgs=(it.tags||[]).slice(0,3).map(x=>`<span class="tg general" data-tag="${esc(x)}">${esc(tagLabel(x))}</span>`).join('');
-  // 共演作品的每一位出镜者都要露出，而不是只留第一位。头像叠放最多 3 个，
-  // 名字最多 2 个，剩下的记为「等 N 人」，避免 BEST 合集把整行撑开。
+  // 共演作品用头像提示多人，但文字只保留第一位，再给总人数。两个长名字加元数据
+  // 会在普通卡片里折成三行；「第一位 + 等 N 人」仍能说明身份与规模。
   const coStarred=performers.length>1&&!it.creator;
   const avatar=coStarred
     ? `<div class="mavstack">${performers.slice(0,3)
@@ -549,8 +549,8 @@ function cardHtml(it,cls){
           : `<span class="mav">${inner}</span>`;
       })();
   const whoHtml=coStarred
-    ? performers.slice(0,2).map(nm=>`<button class="who entitylink" data-entity-kind="performer" data-entity-name="${esc(nm)}">${esc(nm)}</button>`).join('<span class="whosep">、</span>')
-      +(performerTotal>2?`<span class="whomore">等 ${performerTotal} 人</span>`:'')
+    ? `<button class="who entitylink" data-entity-kind="performer" data-entity-name="${esc(performer)}">${esc(performer)}</button>`
+      +`<span class="whomore">等 ${performerTotal} 人</span>`
     : (whoKind?`<button class="who entitylink" data-entity-kind="${whoKind}" data-entity-name="${esc(who)}">${esc(who)}</button>`:`<span class="who">${esc(who)}</span>`);
   const tools=`<button class="previewcounter" data-open title="打开预览" aria-label="打开预览">
       <svg viewBox="-18 -18 36 36"><circle r="17"></circle><circle r="17"></circle></svg>${icon('play','ringplay')}</button>
@@ -1314,7 +1314,7 @@ function followCard(group){
     <a class="fthumb" href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener">${thumb}</a>
     <div class="fbody">
       <h4><a href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener">${esc(item.title)}</a></h4>
-      <p class="mono"><span>${esc(item.provider_label)}</span><span>${followWhen(item)}</span>${
+      <p class="mono"><span>${sourceIcon(item.provider)}${esc(item.provider_label)}</span><span>${followWhen(item)}</span>${
         item.duration?`<span>${fmtDur(item.duration)}</span>`:''}</p>
       <div class="fbadges">${followBadges(group)}</div>
       ${rows?`<ul class="fvariants">${rows}</ul>`:''}
@@ -1365,23 +1365,64 @@ function followCheckSummary(report){
 }
 
 /* ── 看的那一页 ── */
+let followAuthor='',followProvider='',followTag='';
+const TAGGED_PROVIDERS=['rule34xxx'];
 function renderFollow(){
   const groups=followData.groups||[],counts=followData.counts||{};
   const sources=followData.sources||[];
   const broken=sources.filter(s=>s.last_status==='error'||s.last_status==='unauthorized');
+  const byId=new Map(sources.map(source=>[source.id,source]));
+  const sourceOf=group=>byId.get(group.primary&&group.primary.source_id);
+  const authorSources=new Map(),providers=new Map(),tagCounts=new Map();
+  groups.forEach(group=>{
+    (group.primary&&group.primary.tags||[]).forEach(tag=>
+      tagCounts.set(tag,(tagCounts.get(tag)||0)+1));
+    const source=sourceOf(group);if(!source)return;
+    if(source.author_key){
+      if(!authorSources.has(source.author_key))authorSources.set(source.author_key,[]);
+      authorSources.get(source.author_key).push(source);
+    }
+    if(!providers.has(source.provider))providers.set(source.provider,source.provider_label);
+  });
+  const authors=new Map([...authorSources].map(([key,list])=>[key,followAuthorName(list)]));
+  const topTags=[...tagCounts].sort((a,b)=>b[1]-a[1]).slice(0,20)
+    .map(([tag,n])=>[tag,`${tag} ${n}`]);
+  if(followAuthor&&!authors.has(followAuthor))followAuthor='';
+  if(followProvider&&!providers.has(followProvider))followProvider='';
+  if(followTag&&!tagCounts.has(followTag))followTag='';
+  const visible=groups.filter(group=>{
+    const source=sourceOf(group);
+    if(!source)return !followAuthor&&!followProvider;
+    if(followAuthor&&source.author_key!==followAuthor)return false;
+    if(followProvider&&source.provider!==followProvider)return false;
+    if(followTag&&!(group.primary&&group.primary.tags||[]).includes(followTag))return false;
+    return true;
+  });
+  const chips=(items,current,attr)=>items.length<2?'':`<div class="ffilter">`+
+    [['','全部'],...items].map(([key,label])=>
+      `<button data-${attr}="${esc(key)}" aria-pressed="${key===current}">${
+        attr==='follow-provider'&&key?sourceIcon(key):''}${esc(label)}</button>`).join('')+`</div>`;
   $('#stats').innerHTML=`<div class="follow">
     <h2 class="disp pagetitle">关注</h2>
     <div class="reviewtabs">${FOLLOW_FILTERS.map(([key,label])=>
       `<button data-follow-filter="${key}" aria-pressed="${key===followFilter}">${label}${
         key?` <span class="n mono">${counts[key]||0}</span>`:''}</button>`).join('')}
       <button class="fcheck" data-follow-manage>${icon('settings')}管理关注</button></div>
+    ${chips([...authors],followAuthor,'follow-author')}
+    ${chips([...providers],followProvider,'follow-provider')}
+    ${topTags.length?`<div class="ffilter"><span class="fmeta ffilterlabel">标签 · 只有 ${
+      TAGGED_PROVIDERS.map(provider=>esc(providers.get(provider)||provider)).join('、')} 提供</span>`+
+      [['','全部'],...topTags].map(([key,label])=>
+        `<button data-follow-tag="${esc(key)}" aria-pressed="${key===followTag}">${esc(label)}</button>`
+      ).join('')+`</div>`:''}
     ${broken.length?`<p class="fwarn">${broken.length} 个来源上次检查失败，去
       <button class="flink" data-follow-manage>管理关注</button>看原因。</p>`:''}
     ${followCheckReport?followCheckSummary(followCheckReport):''}
-    <div class="followlist">${groups.length?groups.map(followCard).join('')
+    <div class="followlist">${visible.length?visible.map(followCard).join('')
+      :groups.length?'<p class="empty">当前筛选下没有更新</p>'
       :sources.length?'<p class="empty">没有符合条件的更新</p>'
       :`<p class="empty">还没有关注任何来源。<button class="flink" data-follow-manage>去添加</button></p>`}</div>
-    ${sources.length?`<div class="folderfoot">
+    ${sources.some(source=>source.can_backfill)?`<div class="folderfoot">
       <button class="fbtn" data-follow-older>${icon('refresh-cw')}抓更早的一页</button>
       <span class="fmeta">${esc(followBackfillState(sources))}</span></div>`:''}</div>`;
   wireFollowItems();
@@ -1390,6 +1431,12 @@ function renderFollow(){
     followCheckReport=null;button.closest('.fcheckreport')?.remove()});
   $('#stats').querySelectorAll('[data-follow-filter]').forEach(button=>button.onclick=()=>{
     followFilter=button.dataset.followFilter;openFollow(false)});
+  $('#stats').querySelectorAll('[data-follow-author]').forEach(button=>button.onclick=()=>{
+    followAuthor=button.dataset.followAuthor;renderFollow()});
+  $('#stats').querySelectorAll('[data-follow-provider]').forEach(button=>button.onclick=()=>{
+    followProvider=button.dataset.followProvider;renderFollow()});
+  $('#stats').querySelectorAll('[data-follow-tag]').forEach(button=>button.onclick=()=>{
+    followTag=button.dataset.followTag;renderFollow()});
   $('#stats').querySelectorAll('[data-follow-manage]').forEach(button=>
     button.onclick=()=>openFollowManage());
 }
@@ -1397,7 +1444,9 @@ function renderFollow(){
 /* 往回抓到哪儿了。不说的话，用户点一次只看到列表变长一点，不知道自己走到第几页，
    也不知道还要点几次。页码是 0 起的游标（0 = 只抓过第一页），显示成人读的第几页。 */
 function followBackfillState(sources){
-  const pages=sources.map(source=>(source.backfill_page||0)+1);
+  const pages=sources.filter(source=>source.can_backfill)
+    .map(source=>(source.backfill_page||0)+1);
+  if(!pages.length)return '';
   const deepest=Math.max(...pages), shallowest=Math.min(...pages);
   if(deepest<=1)return '每个来源都只抓了第 1 页';
   return shallowest===deepest
@@ -1460,13 +1509,32 @@ function followAuthorGroups(sources){
   return order.map(key=>byKey.get(key));
 }
 
+/* 这些地址来自各站实际声明的图标；内容哈希变更或站点拒绝外链时退回纯文字。 */
+const SOURCE_ICONS={
+  kemono:'https://kemono.cr/assets/favicon-CPB6l7kH.ico',
+  coomer:'https://coomer.st/assets/favicon-CPB6l7kH.ico',
+  pawchive:'https://pawchive.pw/static/favicon.png',
+  rule34video:'https://rule34video.com/favicon-32x32.png',
+  rule34xxx:'https://rule34.xxx/favicon.ico',
+  f95zone:'https://f95zone.to/assets/favicon-32x32.png',
+};
+const sourceIcon=provider=>SOURCE_ICONS[provider]
+  ? `<img class="ficon" src="${esc(SOURCE_ICONS[provider])}" alt="" loading="lazy"
+       referrerpolicy="no-referrer" onerror="this.remove()">`
+  : '';
+
 /* 头像只有实测拿得到的来源才有（kemono 系）。取不到就显示站点缩写，
    **不用首字母假装成头像**——那会让「没取到」看起来像「取到了」。 */
 function followAuthorAvatar(group){
-  const withIcon=group.find(source=>source.avatar_url);
-  if(withIcon)return `<img class="favatar" src="${esc(withIcon.avatar_url)}" alt=""
-    loading="lazy" referrerpolicy="no-referrer" onerror="this.replaceWith(
-      Object.assign(document.createElement('span'),{className:'favatar none',textContent:'—'}))">`;
+  const official=group.find(source=>source.official_avatar_url);
+  const mirror=group.find(source=>source.avatar_url);
+  const src=official?.official_avatar_url||mirror?.avatar_url;
+  const fallback=official&&mirror&&mirror.avatar_url!==src?mirror.avatar_url:'';
+  if(src)return `<img class="favatar" src="${esc(src)}" alt=""
+    ${fallback?`data-fallback="${esc(fallback)}"`:''}
+    loading="lazy" referrerpolicy="no-referrer" onerror="if(!this.dataset.f&&this.dataset.fallback){
+      this.dataset.f='1';this.src=this.dataset.fallback}else{this.replaceWith(
+      Object.assign(document.createElement('span'),{className:'favatar none',textContent:'—'}))}">`;
   return '<span class="favatar none" title="这些来源没有可取的头像">—</span>';
 }
 
@@ -1491,7 +1559,9 @@ function followAuthorBlock(group){
   return `<div class="fauthor${bad?' bad':''}">
     <div class="fauthorhead">${followAuthorAvatar(group)}
       <b>${esc(name)}</b>
-      <span class="fmeta">${group.length>1?`${group.length} 个来源`:esc(group[0].provider_label)}</span>
+      <span class="fmeta">${group.length>1
+        ? group.map(source=>sourceIcon(source.provider)).join('')+`${group.length} 个来源`
+        : sourceIcon(group[0].provider)+esc(group[0].provider_label)}</span>
       ${bad?`<span class="fmeta warn">${bad} 个失败</span>`:''}
     </div>
     ${group.map(followSourceRow).join('')}</div>`;
@@ -1502,7 +1572,7 @@ function followSourceRow(source){
   const bad=state==='error'||state==='unauthorized';
   return `<div class="frow fsource${bad?' bad':''}">
     <b>${esc(source.label)}</b>
-    <span class="fmeta">${esc(source.provider_label)}</span>
+    <span class="fmeta">${sourceIcon(source.provider)}${esc(source.provider_label)}</span>
     <span class="fmeta">${esc(source.last_checked_at?localTime(source.last_checked_at):'未检查')}</span>
     <span class="fmeta${bad?' warn':''}">${esc(state)}</span>
     <button class="fbtn small" data-follow-check="${source.id}">检查</button>
@@ -1610,8 +1680,12 @@ function renderFollowManage(credentials){
         <div class="fsechead"><h3>凭据</h3>
           ${needCred.length?`<span class="fmeta warn">${needCred.length} 个待配置</span>`:''}</div>
         <div class="frows">${creds.map(followCredentialRow).join('')}</div>
-        <p class="fnote">存在<b>运行 Peach 的那台机器</b>上，不进 Git、日志或 ledger。
-          Windows 上不收紧文件权限（NTFS 走 ACL）。</p>
+        <details class="fnote fdetails">
+          <summary>存放位置与权限 · Windows 上不收紧文件权限</summary>
+          <p>存在<b>运行 Peach 的那台机器</b>上，不是浏览器所在机器；
+            不进 Git、URL、日志或 ledger。</p>
+          <p>NTFS 的访问控制走 ACL，<code>chmod</code> 在那里没有效果；POSIX 上建成 0600。</p>
+        </details>
       </section>
     </aside></div>`;
   wireFollowManage();
@@ -1782,6 +1856,7 @@ function renderFollowPicks(results){
     const failures=Object.entries(row.failures||{});
     const items=(row.candidates||[]).map((c,ci)=>`<label class="fpickitem${c.known?' known':''}">
       <input type="checkbox" data-pick="${index}-${ci}" value="${esc(c.url)}"
+        data-author="${esc(c.author||'')}"
         data-label="${esc(c.label)}"${c.known?' disabled':' checked'}>
       <span><b>${esc(c.provider_label)}</b> ${esc(c.label)}
         <i>${esc(c.known?'已经在追':c.evidence)}</i></span></label>`).join('');
@@ -1808,7 +1883,8 @@ function renderFollowPicks(results){
       state.textContent=`添加中… ${++done}/${picked.length}`;
       try{
         await api('/api/follow/source',{method:'POST',body:JSON.stringify(
-          {action:'add',url:input.value,label:input.dataset.label})});
+          {action:'add',url:input.value,label:input.dataset.label,
+           author:input.dataset.author})});
       }catch(error){
         // 一条失败不该把其余的一起丢掉，逐条报。
         failures.push(`${input.dataset.label}：${error.message}`);
@@ -1993,7 +2069,7 @@ function renderEntityCollection(kind,name,items,filters,append=false){
   const section=$('#index').querySelector('.entitysection');if(!section)return;
   if(!append){section.innerHTML=`<h3></h3><div class="grid"></div><button class="entitymore" type="button">载入更多</button>`;
     section.dataset.total=String(items.total||0);
-    section.querySelector('h3').textContent=`${ENTITY_LABELS[kind]||kind}的馆藏作品 · ${(items.total||0).toLocaleString()}${entityTag?' · '+entityTag:''}`}
+    section.querySelector('h3').textContent=`视频 · ${(items.total||0).toLocaleString()}${entityTag?' · '+entityTag:''}`}
   const grid=section.querySelector('.grid');
   grid.insertAdjacentHTML('beforeend',items.items.map(it=>cardHtml(it)).join(''));
   wireCards(grid,undefined,tag=>updateEntityCollection(
