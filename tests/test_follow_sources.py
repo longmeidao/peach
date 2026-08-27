@@ -490,6 +490,13 @@ class Rule34XxxConnectorTests(unittest.TestCase):
             connector.fetch("lazyprocrastinator")
         self.assertEqual(seen, [])
 
+    def test_an_empty_success_response_means_the_tag_has_no_posts(self):
+        # rule34.xxx 的零命中响应是 HTTP 200 + 空正文，不是 JSON `[]`。
+        # 不能把普通的「搜不到」显示成红色 JSON 错误。
+        result = self._connector(body=b" \r\n").fetch("not-a-real-tag")
+        self.assertEqual(result.candidates, ())
+        self.assertEqual(result.raw_body, b" \r\n")
+
     def test_the_declared_origin_becomes_a_cross_site_group_key(self):
         # 同一个 fanbox 帖在 source 里有两种写法，必须归一到同一个键——而那串数字
         # 正是 kemono 上同一帖子的 post id，跨站重复因此能精确命中。
