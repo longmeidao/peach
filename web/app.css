@@ -1438,6 +1438,12 @@ details.fcred{display:block}
 .fpickitem span{min-width:0;overflow-wrap:anywhere}
 .fpickitem b{margin-right:6px}
 .fpickitem i{display:block;font-style:normal;color:var(--muted);font-size:var(--fs-xs);margin-top:1px}
+.fpicksearch{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 9px;
+  align-items:baseline;margin:6px 0;padding:8px 10px;border:1px dashed var(--border-15);
+  border-radius:8px;color:var(--ink-2);text-decoration:none;font-size:var(--fs-xs)}
+.fpicksearch:hover{border-color:var(--tungsten);color:var(--ink)}
+.fpicksearch span{min-width:0;overflow-wrap:anywhere;color:var(--tungsten)}
+.fpicksearch i{grid-column:1/-1;font-style:normal;color:var(--muted)}
 .fpickfail{color:var(--drop)!important}
 .fpickactions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
 .fpickactions button{border:1px solid var(--border-15);border-radius:8px;background:transparent;color:var(--ink-2);padding:6px 14px;font-size:var(--fs-xs);cursor:pointer}

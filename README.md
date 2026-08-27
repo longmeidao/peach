@@ -98,6 +98,7 @@ python3.14 -m venv .venv
 ## 关注与候选
 
 关注管理支持粘贴链接、名称或 ID。联网只发生在显式查找和检查更新时；服务启动、健康检查和普通浏览不会联网。
+F95zone 站内索引没有命中名称时，结果区会给出对应的 Google 查询入口；Google 结果只供人核对真实线程链接，不会自动登记来源。
 
 Rule34.xxx 标签身份不区分大小写。跨站来源按规范作者归组，F95 标题中的 `Collection(s)` 不属于作者名。作者头像优先从已验证的官方 FANBOX/Pixiv 页面取得，归档站只作回退。连接器设计与证据见 [`ADR-0019`](docs/adr/0019-site-follow-connectors-and-variant-grouping.md)。
 
