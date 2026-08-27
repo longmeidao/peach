@@ -28,6 +28,7 @@ from .netwatch import NetworkChangeWatcher
 from .platform import mount_share as mount_smb_share
 from .sync import COPY_ACTIONS, SyncPlan, device_id, resolve
 from .versioning import VersionManager, VersionSnapshot
+from .windows_update import WindowsUpdateInstaller
 
 
 LOGGER = logging.getLogger(__name__)
@@ -542,14 +543,22 @@ def show_message(title: str, message: str, *, error: bool = False) -> None:
 
 
 class PeachTray:
-    def __init__(self, manager: ServiceManager, versions: VersionManager | None = None) -> None:
+    def __init__(
+        self,
+        manager: ServiceManager,
+        versions: VersionManager | None = None,
+        windows_updates: WindowsUpdateInstaller | None = None,
+    ) -> None:
         self.manager = manager
         self.versions = versions or VersionManager()
+        self.windows_updates = windows_updates or WindowsUpdateInstaller(
+            getattr(self.versions, "root", PROJECT_ROOT),
+            state_dir=STATE_DIR,
+            log_dir=LOG_DIR,
+        )
         self.version = self.versions.inspect()
         self._stop_event = threading.Event()
-        self._restart_lock = threading.Lock()
-        self._sync_lock = threading.Lock()
-        self._update_lock = threading.Lock()
+        self._action_lock = threading.Lock()
         version_menu = pystray.Menu(
             pystray.MenuItem(lambda _item: f"Peach {self.version.package_version}", None, enabled=False),
             pystray.MenuItem(lambda _item: self.version.build_label, None, enabled=False),
@@ -566,6 +575,7 @@ class PeachTray:
                 pystray.MenuItem("打开 Peach", self.open, default=True),
                 pystray.MenuItem(lambda _item: f"状态：{self.manager.status()}", None, enabled=False),
                 pystray.Menu.SEPARATOR,
+                pystray.MenuItem("同步开发进度", self.sync_source),
                 pystray.MenuItem("同步 Ledger", self.sync_ledger),
                 pystray.MenuItem("接管 Ledger 写入", self.take_ownership),
                 pystray.MenuItem("重启服务", self.restart),
@@ -580,7 +590,7 @@ class PeachTray:
         webbrowser.open(OPEN_URL)
 
     def restart(self, icon=None, _item=None) -> None:
-        if not self._restart_lock.acquire(blocking=False):
+        if not self._action_lock.acquire(blocking=False):
             return
 
         def work() -> None:
@@ -593,7 +603,7 @@ class PeachTray:
                 if not ready:
                     (icon or self.icon).notify("服务未能在 20 秒内恢复，请查看日志。", "Peach")
             finally:
-                self._restart_lock.release()
+                self._action_lock.release()
 
         threading.Thread(target=work, name="PeachRestart", daemon=True).start()
 
@@ -604,7 +614,7 @@ class PeachTray:
         self._run_ledger_action(icon, take_ownership=True)
 
     def _run_ledger_action(self, icon=None, *, take_ownership: bool) -> None:
-        if not self._sync_lock.acquire(blocking=False):
+        if not self._action_lock.acquire(blocking=False):
             return
         tray_icon = icon or self.icon
         action = "接管写入" if take_ownership else "同步"
@@ -616,7 +626,7 @@ class PeachTray:
                 tray_icon.update_menu()
                 tray_icon.notify(message, "Peach Ledger" if ok else "Peach Ledger 同步失败")
             finally:
-                self._sync_lock.release()
+                self._action_lock.release()
 
         threading.Thread(target=work, name="PeachLedgerAction", daemon=True).start()
 
@@ -628,7 +638,7 @@ class PeachTray:
             subprocess.run(["open", str(LOG_DIR)], check=False)
 
     def check_updates(self, icon=None, _item=None) -> None:
-        if not self._update_lock.acquire(blocking=False):
+        if not self._action_lock.acquire(blocking=False):
             return
         tray_icon = icon or self.icon
         tray_icon.notify("正在检查更新…", "Peach")
@@ -640,9 +650,59 @@ class PeachTray:
                 tray_icon.update_menu()
                 tray_icon.notify(result.message, "Peach 版本与更新")
             finally:
-                self._update_lock.release()
+                self._action_lock.release()
 
         threading.Thread(target=work, name="PeachUpdate", daemon=True).start()
+
+    def sync_source(self, icon=None, _item=None) -> None:
+        if not self._action_lock.acquire(blocking=False):
+            return
+        tray_icon = icon or self.icon
+        tray_icon.notify("正在检查更新通道…", "Peach 开发进度")
+
+        def work() -> None:
+            try:
+                result = self.versions.update()
+                self.version = result.snapshot
+                tray_icon.update_menu()
+                pending = self.windows_updates.pending()
+                if result.state == "updated":
+                    self.windows_updates.mark_pending(
+                        result.snapshot.commit, result.changed_paths,
+                    )
+                    pending = self.windows_updates.pending()
+                elif result.state != "current" or pending is None:
+                    tray_icon.notify(result.message, "Peach 开发进度")
+                    return
+                if pending is None or pending.commit != result.snapshot.commit:
+                    tray_icon.notify(
+                        "待应用记录与当前代码不一致，需要人工检查。", "Peach 开发进度",
+                    )
+                    return
+
+                prepared = self.windows_updates.prepare(
+                    pending.commit, pending.changed_paths,
+                )
+                if prepared.state == "failed":
+                    tray_icon.notify(prepared.message, "Peach 开发进度失败")
+                    return
+                if prepared.state == "replace":
+                    tray_icon.notify(prepared.message, "Peach 开发进度")
+                    self.manager.stop_owned()
+                    self._stop_event.set()
+                    tray_icon.stop()
+                    return
+
+                ready = self.manager.restart()
+                if ready:
+                    self.windows_updates.clear_pending()
+                suffix = "服务已重启。" if ready else "服务未能恢复，请查看日志。"
+                tray_icon.update_menu()
+                tray_icon.notify(f"{prepared.message}{suffix}", "Peach 开发进度")
+            finally:
+                self._action_lock.release()
+
+        threading.Thread(target=work, name="PeachSourceSync", daemon=True).start()
 
     def exit(self, icon=None, _item=None) -> None:
         self._stop_event.set()
