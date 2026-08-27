@@ -529,7 +529,7 @@ function cardHtml(it,cls){
         :(it.studio?{kind:'studio',name:it.studio}:{kind:'',name:'未归属'})));
   const who=identity.name,whoKind=identity.kind;
   const sizeText=Number(it.size)>0?fmtSize(Number(it.size)):'大小未知';
-  const tgs=(it.tags||[]).slice(0,3).map(x=>`<span class="tg general" data-tag="${esc(x)}">${esc(x)}</span>`).join('');
+  const tgs=(it.tags||[]).slice(0,3).map(x=>`<span class="tg general" data-tag="${esc(x)}">${esc(tagLabel(x))}</span>`).join('');
   // 共演作品的每一位出镜者都要露出，而不是只留第一位。头像叠放最多 3 个，
   // 名字最多 2 个，剩下的记为「等 N 人」，避免 BEST 合集把整行撑开。
   const coStarred=performers.length>1&&!it.creator;
@@ -574,7 +574,7 @@ function cardHtml(it,cls){
       ${tgs?`<div class="ctags">${tgs}</div>`:''}</div></div></article>`;
 }
 function mixLabel(it){
-  return it.creator||(it.performers||[])[0]||it.studio||it.code||(it.tags||[])[0]||'为你推荐';
+  return it.creator||(it.performers||[])[0]||it.studio||it.code||tagLabel((it.tags||[])[0])||'为你推荐';
 }
 function mixCardHtml(it){
   const thumb=it.has_thumb
@@ -724,7 +724,7 @@ async function buildBars(){
     views.map(v=>`<a class="pill" href="${v.k?STATE_ROUTES[v.k]:'/'}" data-state="${v.k}" aria-pressed="${filterState.state===v.k}">${v.label}</a>`).join('')
     +`<span class="sep"></span>`
     +facetData.tags.slice(0,26).map(t=>
-      `<button class="pill" data-tag="${esc(t.k)}" aria-pressed="${filterState.tag===t.k}">${esc(t.k)}</button>`).join('');
+      `<button class="pill" data-tag="${esc(t.k)}" aria-pressed="${filterState.tag===t.k}">${esc(tagLabel(t.k))}</button>`).join('');
   $('#tagbar').querySelectorAll('[data-state]').forEach(b=>b.onclick=e=>{
     e.preventDefault();state.state=b.dataset.state;route(homePath());buildBars();load(true)});
   $('#tagbar').querySelectorAll('[data-tag]').forEach(b=>b.onclick=()=>{toggleTag(b.dataset.tag)});
@@ -737,7 +737,7 @@ async function buildBars(){
     const off=key==='loc'&&sourceOffline(it.k);
     return `<button class="chip${off?' offline':''}" aria-pressed="${sel}" data-key="${key}" data-multi="${multi?1:0}"
       ${off?`disabled title="${OFFLINE_HINT}"`:''}
-      data-val="${esc(it.k)}">${dot}${esc(it.label||it.k)}${it.n!=null?`<span class="n">${it.n.toLocaleString()}</span>`:''}</button>`;
+      data-val="${esc(it.k)}">${dot}${esc(it.label||tagLabel(it.k))}${it.n!=null?`<span class="n">${it.n.toLocaleString()}</span>`:''}</button>`;
   }).join('')+`</div>`:'';
   // 按语义类别区分来源、创作者、内容和技术规格。
   const sec=(t,b,x,cat)=>b?`<div class="sec${cat?' cat-'+cat:''}"><h3>${t}${x||''}</h3>${b}</div>`:'';
@@ -760,7 +760,7 @@ async function buildBars(){
     +sec('画幅',chips(facetData.orientations,'orient'),'','meta')
     +sec('创作者',chips(scopedCreators,'creator',false,26),scopedCreators.length>26?'<button data-more="creator">更多</button>':'','artist')
     +sec('内容标签',chips(facetData.tags,'tag',false,30),facetData.tags.length>30?'<button data-more="tag">更多</button>':'','general')
-    +sec('规格',chips(facetData.tech,'tag',false,12),'','meta');
+    +sec('影片属性',chips(facetData.tech,'tag',false,16),'','meta');
   const dc=$('#drawerClose'); if(dc)dc.onclick=()=>openDrawer(false);
   $('#drawer').querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{
     openIndex(b.dataset.page); closeDrawerAfterNav()});
@@ -907,7 +907,7 @@ async function openStats(push=true){
     <div class="scard2" style="margin-bottom:18px"><h3>内容标签 Top 30</h3>
       <div class="tagwall">${d.top_tags.map(t=>
         `<button class="tg ${t.cat}" data-k="${esc(t.k)}" style="padding:5px 12px;font-size:13px">
-          ${esc(t.k)} <span style="opacity:.6;font-size:11px">${t.n.toLocaleString()}</span></button>`).join('')}</div></div>
+          ${esc(tagLabel(t.k))} <span style="opacity:.6;font-size:11px">${t.n.toLocaleString()}</span></button>`).join('')}</div></div>
     ${d.recent.length?`<div class="scard2"><h3>最近看过</h3>${d.recent.map(r=>{
       const real=r.duration?Math.min(r.play_seconds/r.duration,1)*100:0;
       const mx=(r.max_reached||0)*100;
@@ -1820,7 +1820,14 @@ function wireReviewAssets(root){
 
 /* ── 全部艺人 / 创作者 / 标签索引页 ── */
 let tagIndexMode='alphabet',tagIndexCategory='all',indexRequestSeq=0;
-const TAG_CATEGORIES=[['all','全部'],['general','内容'],['copyright','作品'],['meta','规格']];
+const TAG_CATEGORIES=[['all','全部'],['meta','影片属性'],['relationship','人物关系'],
+  ['role','角色设定'],['appearance','外貌身材'],['scene','情境场所'],['story','故事剧情'],
+  ['position','性交体位'],['general','其他内容']];
+const TAG_DISPLAY_NAMES={'1080P':'1080p','60fps':'60FPS','AI去码':'AI解码',
+  '淫语ASMR':'ASMR','JK制服':'JK','OL制服':'OL','眼镜':'眼镜娘','情趣内衣':'性感内衣',
+  '口罩遮脸':'口罩','强制剧情':'强制','足交':'脚交','深喉':'深喉咙','骑乘':'骑乘位',
+  '后入':'背后位','3P多人':'3P','双洞齐插':'双洞齐下','毒龙':'毒龙钻'};
+const tagLabel=tag=>TAG_DISPLAY_NAMES[tag]||tag;
 const selectedIndexTags=new Set();
 let tagIndexMatch='any';
 function paintTagIndexSelection(){
@@ -1862,21 +1869,22 @@ async function openIndex(kind,q,push=true){
   const tagItems=[...d.items];
   const tagGroups=items=>{
     const groups={};[...items].sort((a,b)=>a.k.localeCompare(b.k,'zh-CN',{numeric:true,sensitivity:'base'})).forEach(x=>{
-      const ch=x.k.normalize('NFKC').trim().charAt(0).toUpperCase();
+      const ch=tagLabel(x.k).normalize('NFKC').trim().charAt(0).toUpperCase();
       const key=/[A-Z]/.test(ch)?ch:(/[0-9]/.test(ch)?'#':(/[\u3400-\u9fff]/.test(ch)?'中文':'其他'));
       (groups[key]||(groups[key]=[])).push(x)});
     return Object.entries(groups).sort(([a],[b])=>a.localeCompare(b,'zh-CN')).map(([letter,items])=>
       `<section class="alphagroup"><h3>${letter}</h3><div class="alphalist">${items.map(x=>
-        `<button class="alphatag ${x.cat||'general'}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"><span>${esc(x.k)}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')}</div></section>`).join('')};
+        `<button class="alphatag ${x.cat||'general'}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"><span>${esc(tagLabel(x.k))}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')}</div></section>`).join('')};
   const peopleHtml=items=>items.map(x=>`<button class="icell" data-k="${esc(x.k)}" data-kind="${entityKind}">
         <span class="ring">${avatarInner(x.k,
           kind==='performers'&&x.entity_id?{id:x.entity_id}:null, x.rep)}</span>
         <span class="nm">${esc(x.k)}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('');
   const tagHtml=items=>tagIndexMode==='alphabet'?`<div class="alphabet">${tagGroups(items)}</div>`:`<div class="tagwall index-tags">`+items.map(x=>`<button class="tg ${x.cat||'general'}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"
-        style="padding:5px 12px;font-size:13px">${esc(x.k)}
+        style="padding:5px 12px;font-size:13px">${esc(tagLabel(x.k))}
         <span style="opacity:.6;font-size:11px">${x.n.toLocaleString()}</span></button>`).join('')+`</div>`;
   const body=people?`<div class="igrid">${peopleHtml(d.items)}</div>`:tagHtml(tagItems);
-  const filters=kind==='tags'?`<div class="tagfilters" aria-label="标签类型">${TAG_CATEGORIES.map(([key,label])=>
+  const visibleTagCategories=TAG_CATEGORIES.filter(([key])=>key==='all'||Number(d.categories?.[key]||0)>0);
+  const filters=kind==='tags'?`<div class="tagfilters" aria-label="标签类型">${visibleTagCategories.map(([key,label])=>
     `<button class="${key}" data-tag-category="${key}" aria-pressed="${tagIndexCategory===key}">${label}</button>`).join('')}</div>
     <div class="tagselection" data-tag-selection hidden>
       <label><input type="checkbox" data-tag-match-any ${tagIndexMatch==='any'?'checked':''}><span><b>广泛匹配</b><small>开启后匹配任一所选标签；关闭后必须同时包含全部标签。</small></span></label>
@@ -2273,7 +2281,7 @@ async function openEntity(kind,name,push=true,requestedTag){
     ? `<a href="${esc(x.url)}" target="_blank" rel="noreferrer"><span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(faviconUrl(x.url))}" data-studio="${kind==='studio'?esc(d.canonical_name):''}" alt=""></span><span class="entitylinklabel">${esc(x.label)}</span><span class="entitylinkarrow" aria-hidden="true">↗</span></a>`
     : `<span class="private" title="私人馆藏来源记录，不直接打开下载页"><span class="entitylinkicon">${icon('globe')}</span><span class="entitylinklabel">来源 · ${esc(x.label||x.hostname||'已记录')}</span></span>`).join('');
   const terms=(d.search_terms||[]).map(x=>`<code>${esc(x.term)}</code>`).join('');
-  const tags=(d.tags||[]).map(x=>`<button data-entity-tag="${esc(x.k)}" aria-pressed="${entityTag===x.k}">${esc(x.k)}<small>${x.n.toLocaleString()}</small></button>`).join('');
+  const tags=(d.tags||[]).map(x=>`<button data-entity-tag="${esc(x.k)}" aria-pressed="${entityTag===x.k}">${esc(tagLabel(x.k))}<small>${x.n.toLocaleString()}</small></button>`).join('');
   const related=(d.related_performers||[]).map(x=>`<button class="relatedperson" data-related-performer="${esc(x.k)}">
       <span class="ring"><span>${esc(x.k.slice(0,1))}</span><img src="/entity-image?kind=performer&id=${x.id}" alt="" loading="lazy"
         onerror="${x.rep?`if(!this.dataset.f){this.dataset.f='1';this.src='/avatar?id=${x.rep}'}else{this.remove()}`:`this.remove()`}"></span>
@@ -2900,7 +2908,7 @@ async function openItem(id,push=true,queueContext=null){
   const renderDetailTags=()=>{
     const wrap=$('#detailTags');if(!wrap)return;
     const visible=(it.tags||[]).filter(t=>!DURATION_TAGS.has(t.k)).slice(0,40);
-    wrap.innerHTML=visible.map(t=>`<span class="detailtag"><button class="tagfilter" data-tag="${esc(t.k)}">${esc(t.k)}</button><button class="tagremove" data-remove-tag="${esc(t.k)}" title="从此视频隐藏该标签" aria-label="删除标签 ${esc(t.k)}">${icon('x')}</button></span>`).join('')+
+    wrap.innerHTML=visible.map(t=>`<span class="detailtag"><button class="tagfilter" data-tag="${esc(t.k)}">${esc(tagLabel(t.k))}</button><button class="tagremove" data-remove-tag="${esc(t.k)}" title="从此视频隐藏该标签" aria-label="删除标签 ${esc(tagLabel(t.k))}">${icon('x')}</button></span>`).join('')+
       `<button class="tagplus" id="tagPlus" title="添加标签" aria-label="添加标签" aria-expanded="false">${icon('plus')}</button>
        <div class="tagpicker" id="tagPicker" role="dialog" aria-label="添加标签" hidden>
          <label class="tagpicksearch">${icon('search')}<input id="tagPickSearch" maxlength="80" placeholder="搜索或输入新标签" autocomplete="off"></label>
@@ -2931,7 +2939,7 @@ async function openItem(id,push=true,queueContext=null){
       return {all:source,recent:recent.map(name=>byName.get(foldName(name))||{k:name,n:0})}};
     const pickButton=x=>{const selected=(it.tags||[]).some(t=>foldName(t.k)===foldName(x.k));
       return `<button class="tagpickitem${selected?' selected':''}" data-pick="${esc(x.k)}" aria-pressed="${selected}">
-        ${selected?icon('check'):icon('tags')}<span class="pickname">${esc(x.k)}</span><span class="pickcount">${(x.n||0).toLocaleString()}</span></button>`};
+        ${selected?icon('check'):icon('tags')}<span class="pickname">${esc(tagLabel(x.k))}</span><span class="pickcount">${(x.n||0).toLocaleString()}</span></button>`};
     const renderPicker=()=>{const q=foldName(search.value),data=candidates();
       const filtered=data.all.filter(x=>!q||foldName(x.k).includes(q)).slice(0,120);
       const recent=q?[]:data.recent.filter((x,i,a)=>a.findIndex(y=>foldName(y.k)===foldName(x.k))===i).slice(0,12);

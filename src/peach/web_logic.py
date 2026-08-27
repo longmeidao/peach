@@ -9,11 +9,44 @@ TECH_TAGS = {
     "1080P", "720P", "4K", "2K", "2160P", "480P", "低画质", "高帧率",
     "横屏", "竖屏", "真人", "混合集", "身份待确认", "R-18", "有码", "无码",
 }
-COPYRIGHT_HINT = re.compile(
-    r"(ブルーアーカイブ|崩壊|崩坏|原神|勝利の女神|NIKKE|アークナイツ|明日方舟|"
-    r"FGO|Fate|東方|东方|艦これ|舰娘|ウマ娘|赛马娘|ポケモン|宝可梦|"
-    r"サイバーパンク|Honkai|Genshin|Blue Archive|VTuber|hololive|にじさんじ)", re.I,
-)
+
+# Hanime1 的筛选把可见标签按语义分组。Peach 只收录当前馆藏里确实存在的
+# 分组；未命中的标签仍归「其他内容」，不凭名字臆造作品/角色实体。
+ATTRIBUTE_TAGS = {
+    "中文字幕", "内嵌字幕", "外挂字幕", "AI修复", "AI去码", "淫语ASMR",
+    "日系同人", "游戏同人", "动漫同人", "3D动画", "VR", "60fps",
+}
+RELATIONSHIP_TAGS = {
+    "母子设定", "近亲", "姐弟", "师生", "同事上司", "女友",
+}
+ROLE_TAGS = {
+    "素人", "网红主播", "萝莉", "痴女", "人妻", "御姐", "学生", "秘书OL",
+    "女仆", "熟女", "护士", "OL制服", "JK制服", "空姐", "老师", "教师",
+    "探花", "男主频道",
+}
+APPEARANCE_TAGS = {
+    "丝袜", "制服", "美臀", "乳系", "露脸", "情趣内衣", "美腿", "高跟",
+    "眼镜", "洛丽塔", "苗条", "高颜值", "巨乳", "大腿", "白丝", "黑丝",
+    "臀部", "泳装", "高跟鞋", "内衣情趣", "美乳", "肉丝", "旗袍汉服",
+    "白虎", "双马尾", "婚纱", "裸足", "爆乳", "贫乳", "皮衣皮裙", "体操服",
+    "兽耳兽装", "口罩遮脸", "和服浴衣", "瑜伽裤", "兔女郎", "腋", "丰满",
+}
+SCENE_TAGS = {
+    "酒店", "浴室", "车震", "办公室", "户外露出", "线下约拍", "探花约炮",
+    "教室学校", "厨房客厅", "户外", "车内",
+}
+STORY_TAGS = {
+    "角色扮演", "反差", "绿帽NTR", "调教", "泄密流出", "NTR绿帽",
+    "剧情演绎", "偷拍偷窥", "出轨", "强制剧情", "剧情", "捆绑", "有剧情",
+    "偷窥", "定制", "百合", "慢热前戏", "榨精",
+}
+POSITION_TAGS = {
+    "口交", "主观视角", "骑乘", "自慰", "后入", "多人", "中出内射", "足交",
+    "手交", "潮吹", "打桩", "深喉", "射精", "乳交", "多女出镜",
+    "颜射", "肛交", "射精特写", "3P多人", "女上位", "内射", "吞精", "足底足指",
+    "素股隔丝", "足部射精", "马眼", "POV第一视角", "屁眼", "直接进入", "舔阴",
+    "足控", "龟头责", "口爆", "舔脚", "毒龙", "传教士", "双洞齐插", "马眼尿道",
+}
 
 _CODE_STUDIO = re.compile(r"^[A-Z]{2,8}-\d{2,5}$")
 _CODE_AMATEUR = re.compile(r"^\d{3}[A-Z]{2,6}-\d{2,5}$")
@@ -100,12 +133,20 @@ def tag_cat(tag: str) -> str:
     """Classify one tag for the web surface."""
     if tag.startswith("演员:"):
         return "artist"
-    if tag in LENGTH_TAGS or tag in TECH_TAGS:
+    if tag in LENGTH_TAGS or tag in TECH_TAGS or tag in ATTRIBUTE_TAGS:
         return "meta"
-    if COPYRIGHT_HINT.search(tag):
-        return "copyright"
-    if re.search(r"(ちゃん|さん|酱|娘)$", tag) and len(tag) <= 8:
-        return "character"
+    if tag in RELATIONSHIP_TAGS:
+        return "relationship"
+    if tag in ROLE_TAGS:
+        return "role"
+    if tag in APPEARANCE_TAGS:
+        return "appearance"
+    if tag in SCENE_TAGS:
+        return "scene"
+    if tag in STORY_TAGS:
+        return "story"
+    if tag in POSITION_TAGS:
+        return "position"
     return "general"
 
 

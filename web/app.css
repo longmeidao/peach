@@ -269,9 +269,13 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
 .index-tags .tg,.alphatag{--tag-color:#7A91A8}
 .index-tags .tg.general,.alphatag.general,.tagfilters .general{--tag-color:#55A7FF}
 .index-tags .tg.artist,.alphatag.artist,.tagfilters .artist{--tag-color:#F1A454}
-.index-tags .tg.character,.alphatag.character,.tagfilters .character{--tag-color:#ED78AF}
-.index-tags .tg.copyright,.alphatag.copyright,.tagfilters .copyright{--tag-color:#A989F5}
 .index-tags .tg.meta,.alphatag.meta,.tagfilters .meta{--tag-color:#7F909E}
+.index-tags .tg.relationship,.alphatag.relationship,.tagfilters .relationship{--tag-color:#F1A454}
+.index-tags .tg.role,.alphatag.role,.tagfilters .role{--tag-color:#ED78AF}
+.index-tags .tg.appearance,.alphatag.appearance,.tagfilters .appearance{--tag-color:#A989F5}
+.index-tags .tg.scene,.alphatag.scene,.tagfilters .scene{--tag-color:#53B8A4}
+.index-tags .tg.story,.alphatag.story,.tagfilters .story{--tag-color:#E19A5B}
+.index-tags .tg.position,.alphatag.position,.tagfilters .position{--tag-color:#D66E8D}
 .index .index-tags .tg{border-color:color-mix(in srgb,var(--tag-color) 32%,transparent);color:var(--ink-2);
   background:color-mix(in srgb,var(--tag-color) 7%,transparent)}
 .index .index-tags .tg:hover{border-color:color-mix(in srgb,var(--tag-color) 62%,transparent);
@@ -712,7 +716,7 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .tg{padding:var(--tag-pad-y) var(--tag-pad-x);border-radius:var(--tag-radius);font-size:var(--fs-xs);border:1px solid var(--line);
   line-height:1.45;white-space:nowrap;cursor:pointer;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;max-width:32%;
   background:color-mix(in srgb,var(--surface) 82%,var(--ground))}
-.tg.general,.tg.artist,.tg.character,.tg.copyright,.tg.meta{color:var(--ink-2);border-color:var(--line)}
+.tg.general,.tg.artist,.tg.meta,.tg.relationship,.tg.role,.tg.appearance,.tg.scene,.tg.story,.tg.position{color:var(--ink-2);border-color:var(--line)}
 .tg.artist{font-weight:600}
 .tg:hover{border-color:var(--ink-2);color:var(--ink);background:var(--hover)}
 body[data-density="dense"] .card .ctags .tg:nth-child(n+2){display:none}

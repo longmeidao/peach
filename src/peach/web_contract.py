@@ -384,7 +384,9 @@ def q_items(contract: WebContract, args):
             visible_tags = canonical_tags or [t for t in ts if not t.startswith("演员:")]
             r["tags"] = [
                 tag for tag in visible_tags
-                if tag_cat(tag) in ("general", "character", "copyright")
+                if tag_cat(tag) in (
+                    "general", "relationship", "role", "appearance", "scene", "story", "position",
+                )
                 and normalize_entity_name(tag) not in performer_names
             ][:4]
             r["performers"] = performers
@@ -1061,12 +1063,18 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="")
         if q: sql += "AND e.canonical_name LIKE ? "; par.append(f"%{q}%")
         sql += "GROUP BY e.id,e.canonical_name ORDER BY n DESC"
         all_rows = [dict(r, cat=tag_cat(r["k"])) for r in c.execute(sql, par)]
+        category_counts: dict[str, int] = {}
+        for row in all_rows:
+            category_counts[row["cat"]] = category_counts.get(row["cat"], 0) + 1
         if category and category != "all":
             all_rows = [row for row in all_rows if row["cat"] == category]
         rows = all_rows[offset:offset + limit]
         has_more = offset + limit < len(all_rows)
     c.close()
-    return {"kind": kind, "items": rows, "has_more": has_more}
+    result = {"kind": kind, "items": rows, "has_more": has_more}
+    if kind == "tags":
+        result["categories"] = category_counts
+    return result
 
 def q_stats(contract: WebContract):
     """统计页：库存 / 归属 / 标签 / 消费 / 磁盘。原来挤在顶栏右上角，信息量太小又碍眼。"""
@@ -2110,9 +2118,13 @@ def q_facets(
         "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
         "AND performer.normalized_name=e.normalized_name) "
         "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 400", scope_params)]
-    out["tags"] = [dict(r, cat=tag_cat(r["k"])) for r in rows
-                   if r["k"] not in TECH_TAGS and r["k"] not in LENGTH_TAGS][:44]
-    out["tech"] = [r for r in rows if r["k"] in TECH_TAGS][:16]
+    classified = [
+        dict(r, cat=tag_cat(r["k"]))
+        for r in rows
+        if r["k"] not in LENGTH_TAGS
+    ]
+    out["tags"] = [r for r in classified if r["cat"] != "meta"][:44]
+    out["tech"] = [r for r in classified if r["cat"] == "meta"][:16]
     out["tagperformers"] = [dict(r) for r in c.execute(
         "SELECT e.canonical_name AS k,count(DISTINCT ae.asset_id) AS n "
         "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
