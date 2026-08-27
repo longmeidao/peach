@@ -1353,10 +1353,8 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
    这段必须排在 `.frow` 之后：测试用 `index('.frow{')` 取那条规则的正文，
    放前面的话选择器里的同名片段会被先匹配到，取回来的是这里的规则。 */
 .fauthor{border-top:1px solid var(--line-soft)}
-.fsources>.fauthor{display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));
-  column-gap:22px}
 .fauthor:first-child{border-top:0}
-.fauthorhead{display:flex;grid-column:1/-1;align-items:center;gap:9px;padding:10px 0 6px}
+.fauthorhead{display:flex;align-items:center;gap:9px;padding:10px 0 6px}
 .fauthorhead b{font-size:var(--fs-md);min-width:0;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
 .fauthorhead .fmeta{margin-left:auto;flex:none}
@@ -1420,7 +1418,6 @@ details.fcred{display:block}
   .faddform .fbtn{flex:1 1 100%}
   .frow{gap:8px}
   .fsources{grid-template-columns:1fr}
-  .fsources>.fauthor{grid-template-columns:1fr}
   .frow .fmeta:nth-of-type(2){display:none}
 }
 
