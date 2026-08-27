@@ -1223,7 +1223,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fbadge.dup{border-style:dashed}
 .fnote{font-size:var(--fs-xs);color:var(--muted)}
 .followitem .mixbadge{border:0;cursor:pointer;font:inherit}
-.factions{position:absolute;right:10px;bottom:10px;z-index:7;display:flex;gap:6px;align-items:center;
+.factions{position:absolute;right:10px;top:10px;z-index:7;display:flex;gap:6px;align-items:center;
   opacity:0;pointer-events:none;transition:opacity .15s ease}
 .factions button{width:36px;height:36px;border:1px solid rgba(255,255,255,.16);border-radius:50%;padding:0;
   display:grid;place-items:center;background:rgba(0,0,0,.48);color:#fff;cursor:pointer;
