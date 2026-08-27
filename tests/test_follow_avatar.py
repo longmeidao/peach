@@ -2,7 +2,7 @@ import json
 import unittest
 
 from peach.follow import FollowSourceError
-from peach.follow_avatar import resolve_official_avatar
+from peach.follow_avatar import resolve_official_avatar, resolve_official_profile
 from peach.http import HttpResponse
 
 
@@ -26,7 +26,7 @@ class OfficialAvatarTests(unittest.TestCase):
             + "'></html>"
         ).encode()
         api = json.dumps({"body": {"user": {
-            "userId": user_id, "iconUrl": icon,
+            "userId": user_id, "name": "LazyProcrastinator", "iconUrl": icon,
         }}}).encode()
         return [HttpResponse(200, {"content-type": "text/html"}, page),
                 HttpResponse(200, {"content-type": "application/json"}, api)]
@@ -40,6 +40,13 @@ class OfficialAvatarTests(unittest.TestCase):
         self.assertIn("creatorId=lazyprocrast", transport.requests[1].url)
         self.assertEqual(transport.requests[1].headers["Origin"],
                          "https://lazyprocrast.fanbox.cc")
+
+    def test_the_same_verified_lookup_returns_the_official_profile(self):
+        profile = resolve_official_profile(
+            "fanbox", "30917150", transport=_Transport(self._responses()))
+        self.assertEqual(profile.creator_id, "lazyprocrast")
+        self.assertEqual(profile.name, "LazyProcrastinator")
+        self.assertEqual(profile.url, "https://lazyprocrast.fanbox.cc/")
 
     def test_the_official_api_must_return_the_requested_user(self):
         with self.assertRaises(FollowSourceError):
