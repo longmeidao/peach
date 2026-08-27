@@ -1198,7 +1198,7 @@ class FollowWebSourceTests(unittest.TestCase):
         # 作者手柄本身不算标签：按作者筛已经有专门的筛选条，重复出现没有信息量。
         self.assertEqual(tags, ["1girls"])
         video_tags = web_follow._item_tags(_Item({
-            "tags": ["deep throat", "3D", "breast squeeze"],
+            "tags": ["deep throat", "3D", "3d_animation", "breast squeeze"],
             "categories": ["2D", "Final Fantasy"],
         }))
         self.assertEqual(video_tags,
