@@ -1165,6 +1165,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('class="card followitem${collection.length>1?\' collection\':\'\'}"')
         self.assertPageContains("collection.length>1?'mixstack '")
         self.assertPageContains('class="mixbadge" data-follow-collection=')
+        self.assertPageContains(".factions{position:absolute;right:10px;top:10px")
         self.assertPageContains("@media (hover:hover) and (pointer:fine){.followitem:hover .factions")
         self.assertPageContains("function openFollowCollection(group)")
 
