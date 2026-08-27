@@ -12,7 +12,7 @@
 - macOS 是 reader，代码在 `~/Desktop/lmd.gg/peach/peach-app`，数据在相邻 `peach-data`；`peach.local` 经 8900/8443 和 pf 提供 80/443。GET 正常，写入端点返回 409。
 - 2026-08-27 核对 macOS：服务子进程已跑当前 `master`，但菜单栏进程仍是旧代码。托盘层改动要生效，需手动退出菜单栏项后由 `.app` 或 `launchctl kickstart -k` 重启一次。
 - 两端固定使用不同 mDNS 名和各自本机 CA；CA 私钥、服务器私钥和凭据不跨机同步。生成资产由 Syncthing 单向 Windows → Mac，Git 与 ledger 复制是另外两条链路。
-- Windows 真实 ledger 为 `peach-data/database/ledger.db`，已应用到 `0018`。本分支新增 `0019`（追更回翻游标）和 `0020`（Rule34.xxx 来源身份合并），尚未对真实 ledger 执行。
+- Windows 真实 ledger 为 `peach-data/database/ledger.db`，已应用到 `0020`。迁移前备份为 `database/ledger.pre-migrate-20260827-153611.db`，旧生产 EXE 备份为 `dist/Peach/Peach.pre-82eb548-20260827-153611.exe`。
 - Mac ledger 已于 2026-08-27 经授权从共享副本显式拉取并恢复 `in-sync`，writer 仍是 Windows。拉取前备份为 `database/ledger.pre-pull-gen32-20260827T062519Z.db`；前后 asset 81554、entity 8182、asset_entity 155541，完整性正常且外键违规为 0，证明原 conflict 仅是 SQLite 物理布局与 marker 漂移。
 - Mac 的 `peach-data/sources` 已迁到内置盘；`archive`、`tools` 仍可指向外置盘。追更证据和浏览记录不再依赖外置盘。
 - Stash 仍监听 `127.0.0.1:9999`，只作可替换适配器。Windows FFmpeg/ffprobe 位于 `peach-data/tools/ffmpeg`，macOS 走 PATH。
@@ -35,14 +35,14 @@
 ## 本批修正与验证
 
 - 已审阅 Claude 最近的关注管理、关注观看及相邻提交，移植仍有价值的凭据折叠、来源图标、来源/标签筛选、日文名称和实体页文案，并修复 F95 假翻页、只读网格错位、Windows `os.getuid`、Mac 托盘重启失败恢复与托盘重启文件清单。
-- 临时 ledger 副本应用 `0019`/`0020` 后，来源由 6 个变为 5 个；两条 Rule34.xxx 合为 1 条，100 条候选和用户状态保留，关注统计为 233 条未看。Windows 真实 ledger 未修改。
+- Windows writer 已应用 `0019`/`0020`：来源由 6 个变为 5 个，两条 Rule34.xxx 合为 1 条；迁移前 200 行对应 100 个唯一条目，迁移后仍为 100 个，关注统计为 233 条未看。资产、标签、实体关系计数不变，完整性正常且外键违规为 0。
 - 官方头像链路实载 `160×160` Pixiv 图；关注管理、关注观看和多人卡片在桌面与 390×844 均无横向溢出。新浏览器会话搜索 `MIZD-997` 后控制台 error/warn 为 0。
 - 文档清退后，正式 Windows 测试入口跑完 1005 项，全部通过，13 项按平台跳过。
-- 本批追更分支未部署，候选批准状态未改变。
+- `82eb548` 已构建并部署到 Windows 托盘。打包迁移状态无待处理项；HTTP 与严格 CA HTTPS 健康检查、mDNS、writer 状态、关注管理和关注观看均通过，生产页面控制台无错误。候选批准状态未改变。
 
 ## 下一批工作
 
-1. 取得明确授权后，在 Windows writer 备份真实 ledger，应用 `0019`/`0020`，核对来源、条目、状态、完整性与迁移版本，再重启部署。
+1. 将 Windows writer 的 `0020` 副本同步到共享传输点，再让 Mac reader 拉取；同步前后核对迁移版本、计数、完整性与 writer 身份。
 2. 重启 Mac 菜单栏进程，核对 reader 锁定、HTTPS、mDNS 和真实 LAN 客户端。
 3. 为追更接入 APScheduler；在实现下载器前先确定媒体凭据、流量与磁盘预算。
 4. 在 `/review` 人工处理现有创作者标签、FC2、Javinizer、Logo、头像和媒体失败候选；未经批准不写真相字段。
