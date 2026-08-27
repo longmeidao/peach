@@ -78,3 +78,45 @@ token 上；`app.css` 里除 iOS 那条之外出现任何字面字号都会红�
 
 继续使用自己的 `--tungsten` 主色和既有暗色表面变量，不引入 Geist 的调色板或字体。
 这是有意的差异，不是没做完。
+
+## 关注来源的头像与主题色取证（2026-08-27）
+
+用户要「同一作者跨来源合并并显示头像」和「按站点主题色描边」，两件都要先取证。
+
+### 头像：kemono 系拿得到，rule34 系未取得
+
+`curl`（不带凭据，`--noproxy '*'`）：
+
+| 端点 | 结果 |
+| --- | --- |
+| `https://kemono.cr/icons/fanbox/30917150` | 302 → `img.kemono.cr/icons/...`，200 `image/webp` 160×160 |
+| `https://pawchive.pw/icons/fanbox/30917150` | 200，14,534 字节 |
+| `https://coomer.st/icons/fanbox/30917150` | 404 |
+
+浏览器里另测一次同一 URL（`new Image()` + `referrerPolicy='no-referrer'`）：`load 160x160`。
+所以页面直接引用这个地址是可行的，不需要服务端代理。
+
+coomer 那个 404 **只说明这个创作者不在 coomer 上**，不能据此断定 coomer 没有这个端点——
+所以代码照样按同一规则给它 URL，取不到时由 `<img onerror>` 收场。
+
+rule34video / rule34.xxx **未取得**：本机账本里没有这两个站的来源行，拿不到真实的作者页
+样本可测（试过的一个 `/members/<id>/` 回 404，那只说明 id 是编的）。不猜路径。
+取不到头像时界面显示一个明确的空位，**不用首字母冒充**——首字母会让「未取得」看着像取到了。
+
+### 主题色：未取得，不要按印象填
+
+想用 `<meta name="theme-color">` 当品牌色，实测这条路走不通：
+
+| 站点 | `theme-color` |
+| --- | --- |
+| rule34video.com | `#ffffff` |
+| f95zone.to | `#181a1d` |
+| kemono.cr / coomer.st / pawchive.pw | 无（页面是 JS 渲染的，首屏 HTML 不到 2 KB） |
+| rule34.xxx | 取不到（对 `curl` 回 403） |
+
+`theme-color` 是浏览器 UI 底色，不是品牌色——rule34video 的白和 f95zone 的深灰都只是
+各自页面底色。favicon 兜底也不成立：kemono 系 `/favicon.ico` 404，而 rule34video 和
+f95zone 回的字节数完全相同（15,086），一看就不是各自的图标。
+
+**结论是未取得**，边框颜色这一条没有可复现的依据可用，没有实现。要做得先定一个能复核的
+口径（例如从各站主 CSS 里取按钮/链接的强调色，并记下文件哈希）。

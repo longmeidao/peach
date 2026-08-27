@@ -1232,6 +1232,10 @@ async function openQualityGoals(push=true){
      以及对内容做批量标记。
    联网只发生在管理页点「检查更新」的那一刻——看的那一页不联网。 */
 let followData=null,followRuntime=null,followFilter='new',followBusy=false;
+/* 上一次检查的结果。检查完页面会整页重画，如果不把结果留在这里，用户看到的就只是
+   一次闪烁——他的原话是「完全没返回任何结果」。接口其实每条来源都回了
+   added/updated/not_modified/error，是界面把它们全丢了。 */
+let followCheckReport=null;
 const FOLLOW_FILTERS=[['new','未看'],['seen','已看'],['saved','已保存'],['ignored','已忽略'],['','全部']];
 
 /* 账本里一律存 UTC（ISO 带 Z），界面要按看的人所在时区显示。
@@ -1314,6 +1318,31 @@ function followCard(group){
     </div></article>`;
 }
 
+/* 检查完必须说清三件事：新增了什么、哪些确实没有更新、哪些失败了以及为什么。
+   「没有更新」和「检查失败」在界面上看起来都是「什么都没发生」，但一个不用管，
+   另一个再不管就会一直漏更新——所以失败必须单独列出来并带上原因。 */
+function followCheckSummary(report){
+  const rows=report.results||[];
+  const failed=rows.filter(r=>!r.ok);
+  const added=rows.reduce((n,r)=>n+(r.added||0),0);
+  const updated=rows.reduce((n,r)=>n+(r.updated||0),0);
+  const quiet=rows.filter(r=>r.ok&&!r.added&&!r.updated).length;
+  const bits=[];
+  if(added)bits.push(`新增 <b>${added}</b> 条`);
+  if(updated)bits.push(`更新 <b>${updated}</b> 条`);
+  if(quiet)bits.push(`${quiet} 个来源没有更新`);
+  if(!bits.length&&!failed.length)bits.push('没有任何更新');
+  const evidence=rows.filter(r=>r.evidence_error);
+  return `<div class="fcheckreport${failed.length?' warn':''}" role="status" aria-live="polite">
+    <p>检查了 ${rows.length} 个来源：${bits.join(' · ')}${
+      failed.length?` · <b>${failed.length} 个失败</b>`:''}
+      <button class="flink" data-check-dismiss>知道了</button></p>
+    ${failed.map(row=>`<p class="fcheckfail">${esc([row.provider_label||row.provider,row.ref]
+      .filter(Boolean).join(' '))}${row.provider?'：':''}${esc(row.error||'未说明原因')}</p>`).join('')}
+    ${evidence.length?`<p class="fchecknote">候选已入库，但这一次的原始响应没有留档：${
+      esc(evidence[0].evidence_error)}</p>`:''}</div>`;
+}
+
 /* ── 看的那一页 ── */
 function renderFollow(){
   const groups=followData.groups||[],counts=followData.counts||{};
@@ -1353,6 +1382,60 @@ async function openFollow(push=true){
 }
 
 /* ── 管的那一页 ── */
+/* 同一个作者在不同站点上是多条来源、一个人。用户截图里 `LazyProcrastinator · fanbox`
+   出现两次（Kemono / Pawchive）、`lazyprocrastinator` 出现两次（Rule34Video /
+   Rule34.xxx），四行读起来像四个人。归组用后端给的 `author_key`——那是实体 id
+   或归一化后的名字，不在前端二次猜。
+
+   注意这跟卡片里的变体折叠不是同一个轴：那个折的是同一条发布的多个版本，
+   这里折的是同一个人的多个来源。 */
+function followAuthorGroups(sources){
+  const order=[],byKey=new Map();
+  sources.forEach(source=>{
+    const key=source.author_key||`source:${source.id}`;
+    if(!byKey.has(key)){byKey.set(key,[]);order.push(key)}
+    byKey.get(key).push(source);
+  });
+  return order.map(key=>byKey.get(key));
+}
+
+/* 头像只有实测拿得到的来源才有（kemono 系）。取不到就显示站点缩写，
+   **不用首字母假装成头像**——那会让「没取到」看起来像「取到了」。 */
+function followAuthorAvatar(group){
+  const withIcon=group.find(source=>source.avatar_url);
+  if(withIcon)return `<img class="favatar" src="${esc(withIcon.avatar_url)}" alt=""
+    loading="lazy" referrerpolicy="no-referrer" onerror="this.replaceWith(
+      Object.assign(document.createElement('span'),{className:'favatar none',textContent:'—'}))">`;
+  return '<span class="favatar none" title="这些来源没有可取的头像">—</span>';
+}
+
+/* 分组标题要用作者本人的名字，不是某一条来源的标签。`LazyProcrastinator · fanbox`
+   里「· fanbox」只说明他在哪个平台连载——四条来源合成一组之后还挂着其中一条的
+   平台后缀，等于说这一组只属于 fanbox，那正是这次要消掉的误读。
+   同名的几种写法里取大写最多的那个：`LazyProcrastinator` 比 `lazyprocrastinator`
+   更像作者自己写的名字。 */
+function followAuthorName(group){
+  const entity=group.find(source=>source.entity_name);
+  if(entity)return entity.entity_name;
+  const names=group.map(source=>String(source.label||'').replace(/\s*[·|]\s*[A-Za-z0-9_-]+\s*$/,''))
+    .filter(Boolean);
+  if(!names.length)return group[0].label||group[0].ref||'';
+  const caps=text=>(text.match(/[A-Z]/g)||[]).length;
+  return names.reduce((best,name)=>caps(name)>caps(best)?name:best,names[0]);
+}
+
+function followAuthorBlock(group){
+  const name=followAuthorName(group);
+  const bad=group.filter(s=>s.last_status==='error'||s.last_status==='unauthorized').length;
+  return `<div class="fauthor${bad?' bad':''}">
+    <div class="fauthorhead">${followAuthorAvatar(group)}
+      <b>${esc(name)}</b>
+      <span class="fmeta">${group.length>1?`${group.length} 个来源`:esc(group[0].provider_label)}</span>
+      ${bad?`<span class="fmeta warn">${bad} 个失败</span>`:''}
+    </div>
+    ${group.map(followSourceRow).join('')}</div>`;
+}
+
 function followSourceRow(source){
   const state=source.last_status||'未检查';
   const bad=state==='error'||state==='unauthorized';
@@ -1431,8 +1514,7 @@ function renderFollowManage(credentials){
       ?`<a href="${esc(writer)}">前往写入端管理关注</a>`:''}</div>`:''}
     <div class="fmain">
       <section class="fsec">
-        <div class="fsechead"><h3>添加关注</h3>
-          <button class="fbtn" data-follow-view>${icon('globe')}去看更新</button></div>
+        <div class="fsechead"><h3>添加关注</h3></div>
         <form class="faddform" id="followAdd">
           <textarea name="lines" rows="1" required spellcheck="false"
             aria-label="来源链接、名字或 id"></textarea>
@@ -1449,9 +1531,12 @@ function renderFollowManage(credentials){
           <span class="fmeta">${sources.length} 个来源${
             counts.new?` · <b>${counts.new}</b> 条未看`:''}</span>
           <button class="fbtn" data-follow-check=""${sources.length?'':' disabled'}>${
-            icon('refresh-cw')}检查全部</button></div>
+            icon('refresh-cw')}检查全部</button>
+          <button class="fbtn" data-follow-view>${icon('globe')}去看更新</button></div>
+        ${followCheckReport?followCheckSummary(followCheckReport):''}
         ${broken.length?`<p class="fnote warn">${broken.length} 个来源上次检查失败，原因见对应那一行。</p>`:''}
-        ${sources.length?`<div class="frows">${sources.map(followSourceRow).join('')}</div>
+        ${sources.length?`<div class="frows">${
+          followAuthorGroups(sources).map(followAuthorBlock).join('')}</div>
           ${counts.new?`<p class="fnote">未看 ${counts.new} · 已看 ${counts.seen||0}
             · 已保存 ${counts.saved||0} · 已忽略 ${counts.ignored||0}
             <button class="flink" data-follow-bulk="seen">全部标记已看</button>
@@ -1464,9 +1549,8 @@ function renderFollowManage(credentials){
         <div class="fsechead"><h3>凭据</h3>
           ${needCred.length?`<span class="fmeta warn">${needCred.length} 个待配置</span>`:''}</div>
         <div class="frows">${creds.map(followCredentialRow).join('')}</div>
-        <p class="fnote">写在<b>运行 Peach 的那台机器</b>上，不是你这台浏览器所在的机器。
-          不进 Git、URL、日志或 ledger，保存后页面上不再显示。
-          Windows 上不收紧文件权限——NTFS 走 ACL，<code>chmod</code> 在那里没有效果。</p>
+        <p class="fnote">存在<b>运行 Peach 的那台机器</b>上，不进 Git、日志或 ledger。
+          Windows 上不收紧文件权限（NTFS 走 ACL）。</p>
       </section>
     </aside></div>`;
   wireFollowManage();
@@ -1555,21 +1639,18 @@ function wireFollowManage(){
       const result=await api('/api/follow/check',{method:'POST',
         body:JSON.stringify(id?{source:+id}:{})});
       // 一个来源失败不该让其余来源的更新一起消失，所以逐条报，不整体报错。
-      const failed=(result.results||[]).filter(r=>!r.ok);
-      if(failed.length)console.warn('追更检查失败：',failed);
-      /* 证据没存下来不算检查失败，但也不能悄悄少一份原始响应——
-         外置盘没插的时候就是这种情况。 */
-      const noEvidence=(result.results||[]).filter(r=>r.evidence_error);
+      /* 结果先留下再重画，否则整页重绘会把它冲掉，用户只看到一次闪烁。
+         逐条报而不是整体报错：一个来源缺凭据，不该让其余来源的更新一起消失。 */
+      followCheckReport=result;
       await openFollowManage(false);
-      if(noEvidence.length){
-        const box=$('#followPicks');
-        if(box)box.innerHTML=`<section class="fpicks"><h3>检查完成，但证据未存档</h3>
-          <div class="fpick"><p class="fpickfail">${esc(noEvidence[0].evidence_error)}</p>
-          <p>候选已经入库，只是这一次的原始响应没有留档。</p></div>
-          <div class="fpickactions"><button data-pick-cancel>知道了</button></div></section>`;
-        if(box)box.querySelector('[data-pick-cancel]').onclick=()=>{box.innerHTML=''};
-      }
-    }catch(e){button.innerHTML=label;alert('检查更新失败：'+e.message)}
+    }catch(e){
+      button.innerHTML=label;
+      // 整个请求就失败了（断网、写入端不可达）：同样走那块报告，不弹 alert。
+      followCheckReport={results:[{ok:false,error:e.message}]};
+      const box=$('#stats').querySelector('.fcheckreport');
+      if(box)box.outerHTML=followCheckSummary(followCheckReport);
+      else await openFollowManage(false);
+    }
     finally{followBusy=false;button.disabled=false}
   });
   root.querySelectorAll('[data-follow-guess]').forEach(chip=>chip.onclick=()=>{
@@ -1622,6 +1703,10 @@ function wireFollowManage(){
   });
   root.querySelectorAll('[data-follow-view]').forEach(button=>
     button.onclick=()=>openFollow());
+  root.querySelectorAll('[data-check-dismiss]').forEach(button=>button.onclick=()=>{
+    followCheckReport=null;
+    button.closest('.fcheckreport')?.remove();
+  });
 }
 
 /* 查找结果先摆出来由人勾选，不自动登记：发现要联网，结果也可能不止一个，

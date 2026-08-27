@@ -538,6 +538,10 @@ class FollowWebSourceTests(unittest.TestCase):
         if needle not in self.page:
             self.fail(f"Web 表面缺少：{needle!r}" + (f"（{message}）" if message else ""))
 
+    def assertPageLacks(self, needle, message=""):
+        if needle in self.page:
+            self.fail(f"Web 表面不应出现：{needle!r}" + (f"（{message}）" if message else ""))
+
     def test_watching_lives_in_the_left_rail_and_managing_stays_in_the_manage_area(self):
         # 看和管是两件事，两个页面：左侧导航进「看」，管理区进「管」。
         # 断言「相邻」这件事本身，不要连换行和缩进一起写死——那种断言一改格式就红，
@@ -826,9 +830,95 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("""item.status==='seen'||item.status==='ignored'""")
         self.assertPageContains(">恢复未看</button>")
 
+    def test_the_author_key_merges_one_person_across_sites(self):
+        """归组判据：实体优先，其次名字归一化，绝不模糊匹配。
+
+        把两个碰巧相似的名字并成一个人，比让用户自己看到两行严重得多——
+        前者会把别人的更新混进来且很难发现。
+        """
+        def key(**row):
+            row.setdefault("entity_id", None)
+            row.setdefault("id", 1)
+            row.setdefault("ref", "")
+            return web_follow.author_key(row)
+
+        # 「· 服务名」只说明他在哪个平台连载，不是身份的一部分。
+        same = {key(label="LazyProcrastinator · fanbox"),
+                key(label="lazyprocrastinator"),
+                key(label="Lazy-Procrastinator")}
+        self.assertEqual(len(same), 1, f"应归成同一个作者，实际 {same}")
+        # 实体绑上之后以实体为准，名字再怎么写都不影响。
+        self.assertEqual(key(label="随便写", entity_id=7), "entity:7")
+        self.assertEqual(key(label="別の人", entity_id=7),
+                         key(label="LazyProcrastinator", entity_id=7))
+        # 不同的人不许并。
+        self.assertNotEqual(key(label="bewyx"), key(label="bewyx2"))
+        # 名字为空时退回来源 id，不能让所有空名字挤成一组。
+        self.assertNotEqual(key(label="", id=1), key(label="", id=2))
+
+    def test_avatars_only_come_from_providers_that_actually_serve_one(self):
+        """头像按 peach-reference-evidence：实测拿得到才给，取不到写「未取得」。
+
+        2026-08-27 实测 `https://kemono.cr/icons/fanbox/30917150` → 302 →
+        `img.kemono.cr`，200 `image/webp` 160×160；pawchive.pw 同路径 200。
+        rule34 系没有可用样本可测，所以不给 URL——不猜一个路径。
+        """
+        self.assertEqual(web_follow._avatar_url("kemono", "fanbox/30917150"),
+                         "https://kemono.cr/icons/fanbox/30917150")
+        self.assertEqual(web_follow._avatar_url("pawchive", "fanbox/30917150"),
+                         "https://pawchive.pw/icons/fanbox/30917150")
+        for provider, ref in (("rule34video", "1290582"),
+                              ("rule34xxx", "lazyprocrastinator"),
+                              ("f95zone", "50685"),
+                              ("kemono", "no-slash")):
+            self.assertIsNone(web_follow._avatar_url(provider, ref),
+                              f"{provider} 没有实测过的头像来源，不该猜一个")
+
     def test_a_missing_evidence_archive_is_shown_not_swallowed(self):
-        self.assertPageContains("检查完成，但证据未存档")
+        # 证据未存档现在并进那块检查报告，不再单独弹一层——但话不能少说。
+        self.assertPageContains("候选已入库，但这一次的原始响应没有留档")
         self.assertPageContains("r.evidence_error")
+
+    def test_a_check_says_what_it_actually_found(self):
+        """检查完必须报结果。
+
+        用户的原话是「完全没返回任何结果」：接口每条来源都回了
+        added/updated/not_modified/error，而界面拿到之后只是整页重画，
+        那些数字一个都没露面，看起来就是点了一下什么都没发生。
+
+        「没有更新」和「检查失败」在界面上都像「什么都没发生」，但一个不用管，
+        另一个再不管就会一直漏更新——所以失败必须单独列出来并带上原因。
+        """
+        self.assertPageContains("function followCheckSummary(report)")
+        # 重画会把结果冲掉，所以先存再画。
+        self.assertPageContains("followCheckReport=result;")
+        self.assertPageContains("${followCheckReport?followCheckSummary(followCheckReport):''}")
+        for needle in ("新增 <b>", "更新 <b>", "个来源没有更新", "没有任何更新",
+                       "个失败", "fcheckfail"):
+            self.assertPageContains(needle)
+        # 失败要说清是哪个站，不能让用户去猜 `rule34xxx` 是什么。
+        self.assertPageContains("row.provider_label||row.provider")
+
+    def test_sources_by_the_same_author_are_one_block(self):
+        """同一个作者在几个站上是几条来源、一个人。
+
+        用户截图里 `LazyProcrastinator · fanbox` 出现两次（Kemono / Pawchive）、
+        `lazyprocrastinator` 出现两次（Rule34Video / Rule34.xxx），四行读起来像四个人。
+        归组用后端算好的 `author_key`，前端不二次猜。
+        """
+        self.assertPageContains("function followAuthorGroups(sources)")
+        self.assertPageContains("source.author_key")
+        self.assertPageContains("followAuthorGroups(sources).map(followAuthorBlock)")
+        # 组标题用作者本人的名字：四条来源合成一组之后还挂着其中一条的平台后缀，
+        # 等于说这一组只属于 fanbox，正是这次要消掉的误读。
+        self.assertPageContains("function followAuthorName(group)")
+        self.assertPageContains("const name=followAuthorName(group);")
+        # 取不到头像时是一个明确的空位，不是首字母——首字母会让「未取得」看着像取到了。
+        self.assertPageContains("这些来源没有可取的头像")
+        avatar = self.page[self.page.index("function followAuthorAvatar(group)"):]
+        avatar = avatar[:avatar.index("function followAuthorBlock")]
+        self.assertNotIn("charAt", avatar, "不许用首字母冒充头像")
+        self.assertIn("source.avatar_url", avatar)
 
     def test_credential_dependent_media_is_called_out(self):
         self.assertPageContains("媒体需要登录会话才能取，发现本身不需要")
