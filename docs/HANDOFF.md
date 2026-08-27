@@ -52,9 +52,7 @@
 - 上一条只写成知识没有强制机制，于是同类写法又长了回来。AST 审计发现 6 处仍是裸 `text=True`，其中 `src/peach/versioning.py` 是生产代码——它读 git 输出，而本仓库的提交信息就是中文的，拿 `282f8d9` 自己的标题即可复现 `stdout=None`。已全部锁定 UTF-8，并加 `tests/test_subprocess_encoding.py` 扫全仓强制。该守卫只认 `subprocess.*` 字面调用，包装器（如 `VersionManager._git` 走注入的 `self._execute`）看不见，那个盲点由同文件里一条显式断言补。父进程指定 UTF-8 只决定如何解码，不能改变子进程的输出编码；Windows 托盘调用 Peach 自己的 Python CLI 时还必须传 `PYTHONIOENCODING=utf-8`，否则管道输出仍是 GBK，Ledger 同步通知会出现替换字符。
 - 权限规则里的反斜杠必须双写。匹配器把 `\` 当转义字符，JSON 写 `"& .\\scripts\\test.ps1"` 解码成单反斜杠后 `\s`、`\t` 不再是字面反斜杠，规则匹配不上，非交互会话直接判拒、任务中断。正确写法是 JSON 里 `"& .\\\\scripts\\\\test.ps1"`；旁证是自动生成过的可用规则 `'R:\\\\media\\\\创作者'` 与 `\\(Get-ChildItem`，路径和括号一律双写。用正斜杠写的规则不受影响。改完要新开会话才生效——配置在会话启动时加载。
 - `.claude/settings.local.json` 在 `.gitignore` 里，26 个 worktree 无一带有它，所以写在那里的允许规则只在主工作树生效——而项目规矩要求测试在 worktree 里跑。`& .\scripts\test.ps1` 的允许规则因此放在被跟踪的 `.claude/settings.json`，随代码进入每个 worktree。手工拼 venv 路径的命令（`python.exe -m unittest *` 等）刻意不上提到共享配置：那是 AGENTS.md 明令禁止的路径，共享化等于给违规开绿灯。
-- 2026-08-17：PowerShell 工具会在调用中途被 session teardown 掐断，丢失的结果被错标成用户拒绝
-  （`anthropics/claude-code` issue 83486，前台长 timeout 和后台写法都中过）。改从 Bash 侧跑
-  `pwsh -NoProfile -File ./scripts/test.ps1`，实测全量 203 项 21 秒通过。入口不变，仍禁止手工拼 venv 路径。
+- 2026-08-17：PowerShell 工具会在调用中途被 session teardown 掐断，丢失的结果被错标成用户拒绝（`anthropics/claude-code` issue 83486，前台长 timeout 和后台写法都中过）。改从 Bash 侧跑 `pwsh -NoProfile -File ./scripts/test.ps1`，实测全量 203 项 21 秒通过。入口不变，仍禁止手工拼 venv 路径。
 
 ## Claude 在本项目中的实际能力边界
 
@@ -218,14 +216,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 厂牌归一化使用 `scripts/canonicalize_studios.py`，默认 dry-run，apply 前备份。`PREMIUM` 是独立厂牌；只把 Prestige Premium 和日文 Prestige 写法归并到 `Prestige`。
 - FastAPI 与前端逻辑分离、单体部署；在线来源和 AI 只通过显式适配器进入。
 - 追更连接器按站点分开（`follow_sources.py`），只在 `peach follow check` 与 `POST /api/follow/check` 显式联网；解析不出条目一律报错，不报「没有更新」。不绕机器人验证：rule34.xxx 只走带 API key 的官方 dapi，simpcity 登记为不可用。凭据只在 `peach-data/secrets/follow/`，不进快照、日志与 ledger；只有 `CREDENTIAL_GUIDE` 里逐字段声明 `syncable` 的（当前仅 rule34xxx 的 `user_id`/`api_key`）会多写一份到共享根，`describe()` 与 `load()` 必须看同一份合并事实，撤销时本机与共享一起删，共享盘不在就如实报「只撤掉了本机」而不是静默跳过。判据与站点证据见 ADR-0019。
-- Rule34.xxx 的 tag 是大小写不敏感的来源身份；注册、发现与迁移必须共用
-  `canonical_source_ref`，不得把用户两次粘贴的大小写差异存成两条关注。跨站作者归组优先实体，
-  其次使用发现时保存的规范作者键；F95 线程标题尾部的 `Collection(s)` 只是容器说明。关注作者
-  头像与显示名优先来自已验证的官方页面（当前 FANBOX → Pixiv），归档站只作头像回退；官方
-  解析器必须固定请求主机并校验返回图片主机，不能接受客户端 URL。
-- 只有存在历史分页端点的关注来源才显示/执行「抓更早一页」。F95zone 与 SimpCity 不得递增
-  虚假游标。只读告警位于两栏关注管理网格时必须跨满两列；搜索历史写入失败只能降级为页面
-  内存，不能破坏搜索或产生未处理异常。
+- Rule34.xxx 来源身份大小写不敏感；注册、发现、迁移共用 `canonical_source_ref`。跨站作者按实体或规范作者键归组，F95 标题尾部 `Collection(s)` 不属于作者名。作者显示名和头像优先经固定主机与图片主机校验的官方页面（FANBOX → Pixiv），归档站仅回退。只有支持历史分页的来源才显示/执行回填；只读告警跨满管理页两栏，搜索历史写入失败降级到页面内存。
 - AI 推理 API 与本地 coding/agent runtime 是不同层，不能伪装成一个等价接口。
 - 3 字符以上搜索使用 FTS5 trigram；更短文本回退 LIKE。FTS 写入由迁移 trigger 维护，不在 Web 启动时修补。
 - 详情身份按规范化名称去重：同一个名字已显示为女优时，不再重复显示「创作者」。标签的 × 写入 profile 级隐藏覆盖，不删除刮削/识别断言；+ 新增标签以 `web-user` 同步写入兼容层与规范实体层。
