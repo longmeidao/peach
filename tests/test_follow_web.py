@@ -842,10 +842,12 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("if(path==='/follow-manage')return 'follow'")
         self.assertPageContains("if(section==='follow'){openFollowManage();return}")
 
-    def test_both_follow_routes_restore_on_reload(self):
+    def test_follow_routes_restore_on_reload(self):
         self.assertPageContains("if(path==='/follow'){await openFollow(false);return}")
         self.assertPageContains(
             "if(path==='/follow-manage'){await openFollowManage(false);return}")
+        self.assertPageContains(
+            "if(parts[0]==='follow'&&parts[1]==='item'&&/^\\d+$/.test(parts[2]||'')){await openFollowDetail(+parts[2],false);return}")
 
     def test_the_add_state_is_looked_up_outside_the_form(self):
         # 提示行在表单外面。在 form 里找它会拿到 null，第一次赋值就抛 TypeError，
@@ -1142,16 +1144,24 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains(".r34-copyright")
         self.assertPageContains(".r34-metadata")
 
-    def test_follow_cards_use_author_avatars_and_play_inside_peach(self):
+    def test_follow_cards_use_author_avatars_and_open_details_inside_peach(self):
         self.assertPageContains("return followCard(group,siblings)")
         self.assertPageContains('title="作者头像">${followAuthorAvatar(authorSources)}')
         self.assertNotIn(
             'class="mav fsourceavatar" title="${esc(item.provider_label)}">${sourceIcon(item.provider)}',
             self.page,
         )
-        self.assertPageContains("function openFollowMedia(item)")
-        self.assertPageContains("const src=`/follow-stream?id=${item.id}`")
-        self.assertPageContains('data-follow-play="${item.id}"')
+        self.assertPageContains("async function openFollowDetail(id,push=true)")
+        self.assertPageContains("const src=item.playable?`/follow-stream?id=${item.id}`:''")
+        self.assertPageContains('data-follow-detail="${item.id}"')
+        self.assertPageContains("route(`/follow/item/${item.id}`)")
+        self.assertPageContains('class="sgrid followdetailgrid"')
+        self.assertPageContains('class="followorigin" href="${esc(item.url)}" target="_blank"')
+        self.assertPageContains("openFollowDetail(id);")
+        self.assertNotIn('class="cardopenhit" href=', self.page)
+        self.assertNotIn('class="t cardtitle" href=', self.page)
+        self.assertNotIn('class="fcollectionthumb" href=', self.page)
+        self.assertPageContains("const closeDetail=()=>{disposeStage(true);openFollow(false)}")
         self.assertPageContains(".followitem a{text-decoration:none}")
 
     def test_follow_filters_put_all_first_and_sources_are_icon_only(self):

@@ -1344,12 +1344,10 @@ function openFollowCollection(group){
     const thumb=item.thumb_url
       ?`<img src="${esc(item.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
       :`<span>${sourceIcon(item.provider)}</span>`;
-    const openAttrs=item.playable?`data-follow-play="${item.id}"`:
-      `href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener"`;
-    const openTag=item.playable?'button':'a';
-    return `<div class="fcollectionrow"><${openTag} class="fcollectionthumb" ${openAttrs}>${thumb}</${openTag}>
-      <${openTag} class="fcollectioncopy" ${openAttrs}><b>${esc(copy.title)}</b>
-        <span class="mono"><i class="fvkind ${esc(item.variant_kind||'')}">${esc(copy.label)}</i>${sourceIcon(item.provider)}${followWhen(item)}${item.duration?` · ${fmtDur(item.duration)}`:''}</span></${openTag}>
+    const openAttrs=`data-follow-detail="${item.id}"`;
+    return `<div class="fcollectionrow"><button class="fcollectionthumb" ${openAttrs}>${thumb}</button>
+      <button class="fcollectioncopy" ${openAttrs}><b>${esc(copy.title)}</b>
+        <span class="mono"><i class="fvkind ${esc(item.variant_kind||'')}">${esc(copy.label)}</i>${sourceIcon(item.provider)}${followWhen(item)}${item.duration?` · ${fmtDur(item.duration)}`:''}</span></button>
       <button data-follow-save="${item.id}"${item.status==='saved'?' disabled':''}>${item.status==='saved'?'已保存':'保存'}</button></div>`}).join('')}</div>`});
   dialog.classList.add('followcollectiondialog');
   dialog.querySelectorAll('[data-follow-save]').forEach(button=>button.onclick=async()=>{
@@ -1357,26 +1355,84 @@ function openFollowCollection(group){
     try{await api('/api/follow/save',{method:'POST',body:JSON.stringify({item:+button.dataset.followSave})});button.textContent='已保存'}
     catch(error){button.disabled=false;alert(error.message||'保存失败')}
   });
-  wireFollowPlay(dialog);
+  wireFollowDetail(dialog);
 }
 
-function openFollowMedia(item){
-  if(!item||!item.playable){if(item?.url)window.open(item.url,'_blank','noopener');return}
-  const src=`/follow-stream?id=${item.id}`;
-  const media=item.media_kind==='image'
-    ?`<img src="${src}" alt="${esc(item.title)}">`
-    :`<video controls playsinline preload="metadata" src="${src}"></video>`;
-  const dialog=playlistDialog({title:item.title||'在线媒体',body:`<div class="followplayer">${media}</div>
-    <a class="followorigin" href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener">打开来源页面</a>`});
-  dialog.classList.add('followplayerdialog');
-  dialog.addEventListener('close',()=>{dialog.querySelectorAll('video').forEach(video=>{
-    video.pause();video.removeAttribute('src');video.load()})},{once:true});
+function indexFollowItems(data){
+  const groups=data?.groups||[];
+  followGroupsById=new Map(groups.map(group=>[group.primary.id,group]));
+  followItemsById=new Map(groups.flatMap(group=>followCollectionItems(group).map(item=>[item.id,item])));
 }
 
-function wireFollowPlay(root){
-  root.querySelectorAll('[data-follow-play]').forEach(button=>button.onclick=event=>{
+async function followItemById(id){
+  if(followItemsById.has(id))return followItemsById.get(id);
+  const data=await api('/api/follow?limit=1000');
+  if(!followData)followData=data;
+  indexFollowItems(data);
+  return followItemsById.get(id);
+}
+
+async function openFollowDetail(id,push=true){
+  releaseHoverPreviews();
+  const returnPath=push?location.pathname+location.search:'/follow';
+  const item=await followItemById(+id);if(!item)return;
+  detailReturnPath=returnPath;
+  disposeStage(false);
+  if(push)route(`/follow/item/${item.id}`);
+  const source=(followData?.sources||[]).find(row=>row.id===item.source_id);
+  const src=item.playable?`/follow-stream?id=${item.id}`:'';
+  const media=item.playable&&item.media_kind==='video'
+    ?`<video controls playsinline preload="metadata" src="${src}"></video>`
+    :item.playable&&item.media_kind==='image'
+      ?`<img class="followdetailposter" src="${src}" alt="${esc(item.title)}">`
+      :item.thumb_url
+        ?`<img class="followdetailposter" src="${esc(item.thumb_url)}" alt="${esc(item.title)}" referrerpolicy="no-referrer">`
+        :`<div class="followdetailplaceholder">${sourceIcon(item.provider)}<span>没有可用预览</span></div>`;
+  const badges=followBadges({primary:item,variants:[],duplicates:[],has_wip:item.variant_kind==='wip'});
+  const tags=(item.tags||[]).map(tag=>followTagChip(item,tag)).join('');
+  const author=item.author||source?.entity_name||source?.label||item.source_label||'作者未取得';
+  $('#stage').hidden=false;document.body.classList.add('detail-open');
+  $('#stage').innerHTML=`<div class="sgrid followdetailgrid">
+    <div class="vwrap followdetailmedia"><button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${media}</div>
+    <div class="side followdetailside">
+      <div class="stitle">${esc(item.title)}</div>
+      <div class="followdetailidentity"><span class="mav fsourceavatar">${followAuthorAvatar(source?[source]:[])}</span>
+        <div><b>${esc(author)}</b><span>${sourceIcon(item.provider)}${esc(item.provider_label)}</span></div></div>
+      <div class="smeta mono"><span>${followWhen(item)}</span>${item.duration?`<span>${fmtDur(item.duration)}</span>`:''}${badges?`<span class="fbadges">${badges}</span>`:''}</div>
+      ${item.summary?`<p class="followdetailsummary">${esc(item.summary)}</p>`:''}
+      ${tags?`<div class="stags followdetailtags">${tags}</div>`:''}
+      ${item.media_needs_credential?'<p class="fnote">媒体需要登录会话才能取，发现本身不需要</p>':''}
+      <div class="fb followdetailactions">
+        <button class="later" data-follow-detail-save aria-label="${item.status==='saved'?'已保存':'保存到账本'}" title="${item.status==='saved'?'已保存':'保存到账本'}"${item.status==='saved'?' disabled':''}>${item.status==='saved'?icon('check'):icon('bookmark-plus')}</button>
+        <button class="seen" data-follow-detail-status="seen" aria-label="标记已看" title="标记已看" aria-pressed="${item.status==='seen'}">${icon('eye')}</button>
+        <button class="dislike" data-follow-detail-status="ignored" aria-label="忽略" title="忽略" aria-pressed="${item.status==='ignored'}">${icon('x')}</button>
+        ${item.status==='seen'||item.status==='ignored'?`<button data-follow-detail-status="new" aria-label="恢复未看" title="恢复未看">${icon('rotate-ccw')}</button>`:''}</div>
+      <span class="fstate" aria-live="polite"></span>
+      ${item.url?`<a class="followorigin" href="${esc(item.url)}" target="_blank" rel="noreferrer noopener">${icon('external-link')}打开来源页面</a>`:''}
+    </div></div>`;
+  const closeDetail=()=>{disposeStage(true);openFollow(false)};
+  $('#closeStage').onclick=closeDetail;
+  const write=async(button,path,body,done)=>{
+    const state=$('#stage').querySelector('.fstate');button.disabled=true;
+    try{await api(path,{method:'POST',body:JSON.stringify(body)});done();state.textContent='已更新'}
+    catch(error){button.disabled=false;state.textContent=error.message||'操作失败'}
+  };
+  $('#stage').querySelector('[data-follow-detail-save]')?.addEventListener('click',event=>
+    write(event.currentTarget,'/api/follow/save',{item:item.id},()=>{
+      item.status='saved';event.currentTarget.innerHTML=icon('check');event.currentTarget.title='已保存'}));
+  $('#stage').querySelectorAll('[data-follow-detail-status]').forEach(button=>button.onclick=()=>
+    write(button,'/api/follow/status',{item:item.id,to:button.dataset.followDetailStatus},()=>{
+      item.status=button.dataset.followDetailStatus;
+      $('#stage').querySelectorAll('[data-follow-detail-status]').forEach(control=>
+        control.setAttribute('aria-pressed',String(control.dataset.followDetailStatus===item.status)))}));
+  $('#stage').scrollIntoView({block:'start',behavior:'smooth'});
+}
+
+function wireFollowDetail(root){
+  root.querySelectorAll('[data-follow-detail]').forEach(button=>button.onclick=event=>{
     event.preventDefault();event.stopPropagation();
-    const item=followItemsById.get(+button.dataset.followPlay);if(item)openFollowMedia(item)});
+    if(root.matches?.('dialog'))root.close();
+    openFollowDetail(+button.dataset.followDetail)});
 }
 
 function followCard(group,authorSources=[]){
@@ -1387,9 +1443,7 @@ function followCard(group,authorSources=[]){
   const collection=followCollectionItems(group),collectionCount=collection.filter(row=>row.has_media).length;
   const badges=followBadges(group);
   const tags=(item.tags||[]).slice(0,3).map(tag=>followTagChip(item,tag)).join('');
-  const open=item.playable
-    ?`<button class="cardopenhit" data-follow-play="${item.id}" aria-label="在 Peach 播放 ${esc(item.title)}"></button>`
-    :`<a class="cardopenhit" href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener" aria-label="打开 ${esc(item.title)}"></a>`;
+  const open=`<button class="cardopenhit" data-follow-detail="${item.id}" aria-label="打开 ${esc(item.title)} 详情"></button>`;
   return `<article class="card followitem${collection.length>1?' collection':''}" data-follow-item="${item.id}" data-status="${esc(item.status)}">
     <div class="${collection.length>1?'mixstack ':''}followvisual"><div class="pic">
       ${open}${thumb}
@@ -1403,9 +1457,7 @@ function followCard(group,authorSources=[]){
         ${item.status==='seen'||item.status==='ignored'?`<button data-follow-status="${item.id}" data-to="new" title="恢复未看" aria-label="恢复未看">${icon('rotate-ccw')}</button>`:''}
       </div></div></div>
     <div class="meta"><span class="mav fsourceavatar" title="作者头像">${followAuthorAvatar(authorSources)}</span>
-      <div class="mtext">${item.playable
-        ?`<button class="t cardtitle" data-follow-play="${item.id}">${esc(item.title)}</button>`
-        :`<a class="t cardtitle" href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener">${esc(item.title)}</a>`}
+      <div class="mtext"><button class="t cardtitle" data-follow-detail="${item.id}">${esc(item.title)}</button>
         <div class="s mono"><span>${followWhen(item)}</span>${badges?`<span class="fbadges">${badges}</span>`:''}</div>
         ${tags?`<div class="ctags">${tags}</div>`:''}${item.media_needs_credential?'<span class="fnote">媒体需要登录会话才能取，发现本身不需要</span>':''}</div></div>
     <span class="fstate" aria-live="polite"></span></article>`;
@@ -1456,8 +1508,7 @@ function groupTagType(groups,tag){
 }
 function renderFollow(){
   const groups=followData.groups||[],counts=followData.counts||{};
-  followGroupsById=new Map(groups.map(group=>[group.primary.id,group]));
-  followItemsById=new Map(groups.flatMap(group=>followCollectionItems(group).map(item=>[item.id,item])));
+  indexFollowItems(followData);
   const sources=followData.sources||[];
   const broken=sources.filter(s=>s.last_status==='error'||s.last_status==='unauthorized');
   const byId=new Map(sources.map(source=>[source.id,source]));
@@ -1870,7 +1921,7 @@ async function openFollowManage(push=true){
 /* ── 共用接线 ── */
 function wireFollowItems(){
   const root=$('#stats');
-  wireFollowPlay(root);
+  wireFollowDetail(root);
   root.querySelectorAll('[data-follow-status]').forEach(button=>button.onclick=async event=>{
     event.stopPropagation();
     await followWrite(button,'/api/follow/status',
@@ -1884,9 +1935,10 @@ function wireFollowItems(){
   root.querySelectorAll('.followitem[data-follow-item]').forEach(card=>{
     const id=+card.dataset.followItem;
     card.onclick=event=>{
-      if(event.target.closest('[data-follow-status],[data-follow-save],[data-follow-collection],[data-follow-play],.tg'))return;
+      if(event.target.closest('[data-follow-status],[data-follow-save],[data-follow-collection],[data-follow-detail],.tg'))return;
       if(selectMode||event.shiftKey||event.ctrlKey||event.metaKey){
-        event.preventDefault();event.stopPropagation();toggleFollowSelection(id,event.shiftKey)}
+        event.preventDefault();event.stopPropagation();toggleFollowSelection(id,event.shiftKey);return}
+      openFollowDetail(id);
     };
     card.querySelectorAll('a').forEach(link=>link.onclick=event=>{
       if(selectMode||event.shiftKey||event.ctrlKey||event.metaKey){
@@ -3778,6 +3830,7 @@ async function restoreRoute(){
   if(parts[0]==='playlists'&&/^\d+$/.test(parts[1]||'')&&/^\d+$/.test(parts[2]||'')){await openPlaylist(+parts[1],+parts[2],false);return}
   if(parts[0]==='mix'&&/^\d+$/.test(parts[1]||'')&&/^\d+$/.test(parts[2]||'')){await openMix(+parts[1],+parts[2],false);return}
   if(parts[0]==='item'&&/^\d+$/.test(parts[1]||'')){await openItem(+parts[1],false);return}
+  if(parts[0]==='follow'&&parts[1]==='item'&&/^\d+$/.test(parts[2]||'')){await openFollowDetail(+parts[2],false);return}
   const entityKind=ROUTE_ENTITIES[parts[0]];
   if(entityKind&&parts.length>=2){await openEntity(entityKind,parts.slice(1).join('/'),false);return}
   if(path==='/performers'||path==='/creators'||path==='/tags'){
