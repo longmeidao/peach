@@ -48,6 +48,23 @@
         "scripts/normalize_studio_logos.py",
         "docs/HANDOFF.md"
       ]
+    },
+    {
+      "id": "rule34-follow-tags-and-collections",
+      "name": "Rule34 标签类型与 Rule34Video 合集证据",
+      "url": "https://rule34.xxx/css/desktop.css?46",
+      "snapshot": "docs/reference-snapshots/rule34-follow-tags-and-collections.md",
+      "checked_on": "2026-08-27",
+      "sha256": "011656482c8f503790116da9387c6288b1b37ddba4fc74ce0538beff02a23bdc",
+      "role": "关注页标签类型配色、Rule34Video 内容标签补全与超大跨作者合集排除证据。",
+      "consumers": [
+        "src/peach/follow_sources.py",
+        "src/peach/web_follow.py",
+        "web/app.css",
+        "web/app.js",
+        "tests/test_follow_sources.py",
+        "tests/test_follow_web.py"
+      ]
     }
   ]
 }

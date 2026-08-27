@@ -3,6 +3,7 @@ import asyncio
 import html
 import logging
 import subprocess
+import httpx
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from functools import partial
@@ -12,6 +13,7 @@ from urllib.parse import parse_qs, quote
 from fastapi import Body, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import (
     FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response,
+    StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
 
@@ -20,6 +22,8 @@ from .config import LOCATION_ROOT_DECLARATIONS, PROJECT_ROOT, PeachSettings
 from .ffmpeg import FFmpegResolver
 from .follow import FollowSourceError
 from .follow_avatar import resolve_official_avatar
+from .follow_store import FollowStore
+from .follow_stream import FollowMediaResolver, FollowMediaUnavailable
 from .http import HttpxTransport
 from .media import (
     FilesystemBackend,
@@ -124,6 +128,7 @@ def create_app(
     repository = LedgerRepository(database)
     resolver = FFmpegResolver(settings.ffmpeg_root)
     http_transport = HttpxTransport()
+    follow_media_resolver = FollowMediaResolver(http_transport)
     filesystem = FilesystemBackend(
         settings.allowed_media_roots,
         settings.snapshot_root,
@@ -201,6 +206,7 @@ def create_app(
     app.state.opencode_go = opencode_go
     app.state.review_mirror = review_mirror
     app.state.http_transport = http_transport
+    app.state.follow_media_resolver = follow_media_resolver
     stream_sessions = StreamSessionRegistry()
     app.state.stream_sessions = stream_sessions
     app.state.sync = sync
@@ -659,6 +665,60 @@ def create_app(
         response = RedirectResponse(target, status_code=307)
         response.headers["Cache-Control"] = "private, max-age=86400"
         return response
+
+    @app.api_route("/follow-stream", methods=["GET", "HEAD"])
+    def follow_stream(request: Request, id: int):
+        """Play a remote follow candidate through Peach without exposing its upstream URL."""
+        args = _first_query_values(request)
+        if not _authorized(request, settings.token, args):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        with database.read_connection() as connection:
+            item = FollowStore(lambda: connection).item(id)
+        if item is None:
+            return JSONResponse({"error": "no such follow item"}, status_code=404)
+        try:
+            target = follow_media_resolver.resolve(item)
+            headers = {
+                "User-Agent": "Peach/0.2",
+                "Accept": request.headers.get("accept", "*/*"),
+                "Accept-Encoding": "identity",
+            }
+            if target.referer:
+                headers["Referer"] = target.referer
+            for name in ("range", "if-range"):
+                if request.headers.get(name):
+                    headers[name.title()] = request.headers[name]
+            upstream_request = http_transport.client.build_request(
+                request.method, target.url, headers=headers,
+            )
+            upstream = http_transport.client.send(upstream_request, stream=True)
+        except FollowMediaUnavailable as error:
+            return JSONResponse({"error": str(error)}, status_code=404)
+        except (OSError, httpx.HTTPError):
+            logging.getLogger(__name__).exception("follow media proxy failed for item %s", id)
+            return JSONResponse({"error": "follow media unavailable"}, status_code=502)
+
+        forwarded = {}
+        for name in ("accept-ranges", "content-length", "content-range", "content-type",
+                     "etag", "last-modified"):
+            value = upstream.headers.get(name)
+            if value:
+                forwarded[name] = value
+        forwarded["cache-control"] = "no-store"
+        if request.method == "HEAD":
+            status = upstream.status_code
+            upstream.close()
+            return Response(status_code=status, headers=forwarded)
+
+        def body():
+            try:
+                yield from upstream.iter_raw()
+            finally:
+                upstream.close()
+
+        return StreamingResponse(
+            body(), status_code=upstream.status_code, headers=forwarded,
+        )
 
     @app.api_route("/logo", methods=["GET", "HEAD"])
     def logo(request: Request, studio: str = ""):

@@ -174,6 +174,32 @@ class FollowContractTests(unittest.TestCase):
         self.assertNotIn("media_url", payload)
         self.assertIn('"has_media"', payload)
 
+    def test_old_archive_images_get_a_thumbnail_without_rewriting_the_ledger(self):
+        self._seed(candidates=(FollowCandidate(
+            provider="kemono", external_id="1", title="Image release",
+            url="https://kemono.cr/fanbox/user/1/post/1",
+            media_url="https://kemono.cr/ab/cd/image.jpg",
+        ),), provider="kemono", ref="fanbox/1")
+        item = self._get()["groups"][0]["primary"]
+        self.assertEqual(
+            item["thumb_url"], "https://kemono.cr/thumbnail/data/ab/cd/image.jpg")
+        self.assertEqual(item["media_kind"], "image")
+        self.assertTrue(item["playable"])
+
+    def test_named_large_collection_is_hidden_but_not_deleted(self):
+        self._seed(candidates=(FollowCandidate(
+            provider="rule34video", external_id="4533145", title="Large collection",
+            url="https://rule34video.com/video/4533145/x/",
+            media_url="https://rule34video.com/get_file/x.mp4/",
+        ),))
+        payload = self._get()
+        self.assertEqual(payload["groups"], [])
+        self.assertEqual(payload["counts"]["new"], 0)
+        with self.contract.database.read_connection() as connection:
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM follow_item WHERE external_id='4533145'"
+            ).fetchone()[0], 1)
+
     def test_feed_filters_by_status_and_reports_counts(self):
         self._seed()
         first = self._get()["groups"][0]["primary"]["id"]
@@ -968,6 +994,27 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains(".sort((a,b)=>b[1]-a[1]).slice(0,20)")
         self.assertPageContains(".map(([tag,n])=>[tag,tagLabel(tag),n])")
 
+    def test_follow_tags_are_multi_select_and_use_rule34_property_colours(self):
+        self.assertPageContains("let followAuthor='',followProvider='',followTags=new Set()")
+        self.assertPageContains("![...followTags].every(tag=>")
+        self.assertPageContains("aria-pressed=\"${followTags.has(key)}\"")
+        self.assertPageContains(".r34-artist")
+        self.assertPageContains(".r34-character")
+        self.assertPageContains(".r34-copyright")
+        self.assertPageContains(".r34-metadata")
+
+    def test_follow_cards_use_author_avatars_and_play_inside_peach(self):
+        self.assertPageContains("return followCard(group,siblings)")
+        self.assertPageContains('title="作者头像">${followAuthorAvatar(authorSources)}')
+        self.assertNotIn(
+            'class="mav fsourceavatar" title="${esc(item.provider_label)}">${sourceIcon(item.provider)}',
+            self.page,
+        )
+        self.assertPageContains("function openFollowMedia(item)")
+        self.assertPageContains("const src=`/follow-stream?id=${item.id}`")
+        self.assertPageContains('data-follow-play="${item.id}"')
+        self.assertPageContains(".followitem a{text-decoration:none}")
+
     def test_follow_filters_put_all_first_and_sources_are_icon_only(self):
         self.assertPageContains("const FOLLOW_FILTERS=[['','全部'],['new','未看']")
         self.assertPageContains('title="${esc(label)}" aria-label="来源：${esc(label)}">${sourceIcon(key)}</button>')
@@ -976,13 +1023,14 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertNotIn("全部来源", watch)
         self.assertNotIn("全部标签", watch)
         self.assertPageContains("followProvider=followProvider===button.dataset.followProvider?'':button.dataset.followProvider")
-        self.assertPageContains("followTag=followTag===button.dataset.followTag?'':button.dataset.followTag")
+        self.assertPageContains(
+            "if(followTags.has(tag))followTags.delete(tag);else followTags.add(tag)")
 
     def test_follow_horizontal_rails_are_wired_after_each_render(self):
         self.assertPageContains("wireDrag($('#stats').querySelector('.followauthors'))")
         self.assertPageContains("wireDrag($('#stats').querySelector('.followfilters'))")
         self.assertPageContains(".followauthors{padding:3px 0 10px")
-        self.assertPageContains(".followfilters::-webkit-scrollbar{display:block")
+        self.assertPageContains(".followfilters::-webkit-scrollbar{display:none}")
 
     def test_credentials_are_typed_into_the_page_not_into_a_file_by_hand(self):
         self.assertPageContains('data-cred-form=')
@@ -1014,9 +1062,12 @@ class FollowWebSourceTests(unittest.TestCase):
         body = page[page.index("function followWhen("):page.index("function followBadges(")]
         self.assertNotIn(".replace('T',' ').slice(0,16)", body)
 
-    def test_approximate_timestamps_are_labelled_as_approximate(self):
-        # 站点只给「1 周前」时换算值不是发布时间，界面必须照实说。
-        self.assertPageContains("item.published_precision==='approximate'?`约 ${text}`")
+    def test_approximate_timestamps_keep_precision_without_the_visible_prefix(self):
+        # 精度留在 API，列表按用户要求不显示「约」。
+        body = self.page[self.page.index("function followWhen("):
+                         self.page.index("function followBadges(")]
+        self.assertNotIn("约 ${text}", body)
+        self.assertIn("return text", body)
 
     def test_release_variant_rows_show_when_not_a_meaningless_kind(self):
         self.assertPageContains("if(!label&&group.is_release)label=localTime(item.published_at).slice(5,10)")
@@ -1045,12 +1096,11 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("""item.status==='seen'||item.status==='ignored'""")
         self.assertPageContains('data-to="new" title="恢复未看" aria-label="恢复未看"')
 
-    def test_only_rule34xxx_actually_carries_tags(self):
-        """标签筛选先只覆盖 rule34.xxx，这是用户定的范围。
+    def test_rule34_sources_carry_content_first_tags(self):
+        """Rule34Video 与 Rule34.xxx 都提供标签，载体标签不挤占内容标签。
 
-        `follow_item` 没有 tag 列，只有 rule34.xxx 在 `metadata_json` 里存了原始的
-        空格分隔标签串。kemono 系和 f95zone 的列表接口根本不给标签——它们返回空列表，
-        前端据此把覆盖范围说清楚，而不是画一个对多数条目永远为空的筛选条。
+        Rule34.xxx 是空格分隔串，Rule34Video 是保留空格的列表；两者都从
+        `metadata_json` 投影，原始证据不被改写。
         """
         class _Item:
             def __init__(self, metadata):
@@ -1060,7 +1110,13 @@ class FollowWebSourceTests(unittest.TestCase):
             _Item({"tag": "lazyprocrastinator",
                    "tags": "lazyprocrastinator 1girls animated sound lazyprocrastinator"}))
         # 作者手柄本身不算标签：按作者筛已经有专门的筛选条，重复出现没有信息量。
-        self.assertEqual(tags, ["1girls", "animated", "sound"])
+        self.assertEqual(tags, ["1girls"])
+        video_tags = web_follow._item_tags(_Item({
+            "tags": ["deep throat", "3D", "breast squeeze"],
+            "categories": ["2D", "Final Fantasy"],
+        }))
+        self.assertEqual(video_tags,
+                         ["deep throat", "breast squeeze", "Final Fantasy"])
         self.assertEqual(web_follow._item_tags(_Item({})), [])
         self.assertEqual(web_follow._item_tags(_Item({"tags": "   "})), [])
         # 热门帖能带上百个标签，整串发下去会把筛选条撑爆。

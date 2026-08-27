@@ -11,6 +11,9 @@ from unittest.mock import patch
 from peach import __version__
 
 
+ROOT = Path(__file__).resolve().parents[1]
+
+
 HAS_DEPS = all(importlib.util.find_spec(name) for name in ("fastapi", "httpx"))
 if HAS_DEPS:
     import httpx
@@ -606,6 +609,46 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(head.status_code, 200)
         self.assertEqual(head.content, b"")
         self.assertEqual(head.headers["content-length"], "10")
+
+    async def test_follow_stream_proxies_range_without_exposing_the_upstream_url(self):
+        connection = sqlite3.connect(self.db)
+        connection.executescript((ROOT / "migrations" / "0018_online_follow.sql").read_text(
+            encoding="utf-8"))
+        connection.execute(
+            "INSERT INTO follow_source(id,provider,ref,label,url,semantics,created_at,updated_at)"
+            " VALUES(1,'kemono','fanbox/1','Creator','https://kemono.cr/u','work','x','x')"
+        )
+        connection.execute(
+            "INSERT INTO follow_item(id,source_id,external_id,title,url,media_url,release_key,"
+            "first_seen_at,last_seen_at) VALUES(7,1,'7','Remote','https://kemono.cr/p/7',"
+            "'https://img.kemono.cr/data/7.mp4','remote','x','x')"
+        )
+        connection.commit()
+        connection.close()
+
+        def upstream(request):
+            self.assertEqual(request.headers.get("range"), "bytes=2-5")
+            return httpx.Response(
+                206, stream=httpx.ByteStream(b"2345"), request=request,
+                headers={"content-type": "video/mp4", "content-range": "bytes 2-5/10",
+                         "accept-ranges": "bytes", "content-length": "4"},
+            )
+
+        original = self.app.state.http_transport.client
+        fake = httpx.Client(transport=httpx.MockTransport(upstream), follow_redirects=True)
+        self.app.state.http_transport.client = fake
+        try:
+            denied = await self.client.get("/follow-stream?id=7")
+            response = await self.client.get(
+                "/follow-stream?id=7&t=secret", headers={"Range": "bytes=2-5"})
+        finally:
+            self.app.state.http_transport.client = original
+            fake.close()
+        self.assertEqual(denied.status_code, 401)
+        self.assertEqual(response.status_code, 206)
+        self.assertEqual(response.content, b"2345")
+        self.assertEqual(response.headers["content-range"], "bytes 2-5/10")
+        self.assertNotIn("img.kemono.cr", response.text)
 
     async def test_stream_session_cancel_is_authenticated_and_tombstoned(self):
         denied = await self.client.post("/api/stream-cancel?session=detail-1")

@@ -47,24 +47,43 @@ def _store(contract, connection) -> FollowStore:
 #: rule34.xxx 的热门帖能带上百个标签，整串发下去只会把筛选条撑爆。
 MAX_ITEM_TAGS = 24
 
+# 用户明确点名的既有超大合集。连接器现在会按详情页署名作者数拦截同类条目；这条
+# 只让已经存在的旧候选立即从浏览面隐藏，不删除 ledger 行。
+RULE34VIDEO_EXCLUDED_IDS = frozenset({"4533145"})
+
+# 内容筛选不让载体/渲染方式挤掉动作、角色与作品标签。原始 metadata 仍完整保留。
+LOW_VALUE_FOLLOW_TAGS = frozenset({
+    "2d", "3d", "animated", "animation", "video", "tagme", "sound",
+    "no sound", "audio", "loop", "webm", "mp4",
+})
+
+_IMAGE_MEDIA_RE = re.compile(r"\.(?:avif|gif|jpe?g|png|webp)(?:$|[?#])", re.I)
+_VIDEO_MEDIA_RE = re.compile(r"\.(?:m4v|mov|mp4|og[gv]|webm)(?:/)?(?:$|[?#])", re.I)
+
 
 def _item_tags(item) -> list[str]:
     """条目的真实标签。
 
-    **目前只有 rule34.xxx 有。** 它在 `metadata_json` 里存了原始的空格分隔标签串；
-    kemono 系与 f95zone 的列表接口根本不给标签，所以它们一律是空列表——
-    前端据此把筛选条的覆盖范围说清楚，而不是假装每个来源都有标签。
+    rule34.xxx 存空格分隔标签；Rule34Video 详情页存保留空格的标签列表和分类列表。
+    kemono 系与 f95zone 的列表接口不给标签，所以它们是空列表。
 
     去掉作者手柄本身：按作者筛已经有专门的筛选条，标签里再出现一次没有信息量。
     """
     raw = item.metadata.get("tags")
-    if not isinstance(raw, str) or not raw.strip():
-        return []
+    if isinstance(raw, str):
+        values = raw.split()
+    elif isinstance(raw, list):
+        values = [str(value).strip() for value in raw if str(value).strip()]
+    else:
+        values = []
+    categories = item.metadata.get("categories")
+    if isinstance(categories, list):
+        values.extend(str(value).strip() for value in categories if str(value).strip())
     subject = str(item.metadata.get("tag") or "").casefold()
     seen, tags = set(), []
-    for tag in raw.split():
+    for tag in values:
         key = tag.casefold()
-        if key == subject or key in seen:
+        if key == subject or key in seen or key in LOW_VALUE_FOLLOW_TAGS:
             continue
         seen.add(key)
         tags.append(tag)
@@ -73,7 +92,48 @@ def _item_tags(item) -> list[str]:
     return tags
 
 
+def _item_tag_types(item, tags: list[str]) -> dict[str, str]:
+    raw = item.metadata.get("tag_types")
+    recorded = raw if isinstance(raw, dict) else {}
+    allowed = {"artist", "character", "copyright", "metadata", "general"}
+    return {
+        tag: (str(recorded.get(tag)) if str(recorded.get(tag)) in allowed else "general")
+        for tag in tags
+    }
+
+
+def _media_kind(item) -> str:
+    recorded = str(item.metadata.get("media_kind") or "")
+    if recorded == "video" or item.provider == "rule34video":
+        return "video"
+    media = str(item.media_url or "")
+    if _IMAGE_MEDIA_RE.search(media):
+        return "image"
+    if _VIDEO_MEDIA_RE.search(media):
+        return "video"
+    return "external"
+
+
+def _thumb_url(item) -> str | None:
+    if item.thumb_url:
+        return item.thumb_url
+    # 旧的 Kemono/Pawchive 行在封面修复前已入库：media_url 是图片，但 thumb_url
+    # 为空。按连接器同一条已验证规则即时推导缩略图，不改 ledger 就能补齐旧卡片。
+    if item.provider in KemonoConnector.HOSTS and _IMAGE_MEDIA_RE.search(
+            str(item.media_url or "")):
+        parsed = urllib.parse.urlsplit(str(item.media_url))
+        return f"https://{KemonoConnector.HOSTS[item.provider]}/thumbnail/data{parsed.path}"
+    return None
+
+
+def _excluded_item(item) -> bool:
+    return (item.provider == "rule34video"
+            and item.external_id in RULE34VIDEO_EXCLUDED_IDS)
+
+
 def _item_payload(item) -> dict:
+    tags = _item_tags(item)
+    media_kind = _media_kind(item)
     return {
         "id": item.id,
         "provider": item.provider,
@@ -85,7 +145,7 @@ def _item_payload(item) -> dict:
         "author": item.metadata.get("author") or None,
         "summary": item.metadata.get("summary") or None,
         "url": item.url,
-        "thumb_url": item.thumb_url,
+        "thumb_url": _thumb_url(item),
         "published_at": item.published_at,
         # 界面必须照实显示精度：rule34video 只给「1 周前」，换算值不是发布时间。
         "published_precision": item.published_precision,
@@ -97,7 +157,11 @@ def _item_payload(item) -> dict:
         "asset_id": item.asset_id,
         "media_needs_credential": bool(item.metadata.get("media_needs_credential")),
         "has_media": bool(item.media_url),
-        "tags": _item_tags(item),
+        "media_kind": media_kind,
+        "playable": bool(item.media_url) and media_kind in {"video", "image"}
+                    and not bool(item.metadata.get("media_needs_credential")),
+        "tags": tags,
+        "tag_types": _item_tag_types(item, tags),
     }
 
 
@@ -237,10 +301,22 @@ def q_follow(contract, args) -> dict:
     with contract.database.read_connection() as connection:
         store = _store(contract, connection)
         sources = [_source_payload(row) for row in store.sources()]
-        items = store.items(statuses=statuses, source_id=source_id, limit=limit)
+        items = tuple(item for item in store.items(
+            statuses=statuses, source_id=source_id, limit=limit)
+            if not _excluded_item(item))
         groups = [_group_payload(group) for group in store.group(items)]
         counts = dict(connection.execute(
             "SELECT status, count(*) FROM follow_item GROUP BY status").fetchall())
+        excluded_marks = ",".join("?" for _ in RULE34VIDEO_EXCLUDED_IDS)
+        excluded_counts = connection.execute(
+            "SELECT i.status, count(*) FROM follow_item i"
+            " JOIN follow_source s ON s.id=i.source_id"
+            f" WHERE s.provider='rule34video' AND i.external_id IN ({excluded_marks})"
+            " GROUP BY i.status",
+            tuple(RULE34VIDEO_EXCLUDED_IDS),
+        ).fetchall()
+        for status, count in excluded_counts:
+            counts[status] = max(0, int(counts.get(status, 0)) - int(count))
     suggestions = _suggestions(contract, sources)
     return {
         "ok": True,
@@ -368,6 +444,7 @@ def w_follow_check(contract, body) -> dict:
             # 否则用户分不清少的是被过滤掉的还是根本没抓到——这次问「为什么这么少」
             # 就是因为界面从来没说过这类数字。
             "skipped": fetch.skipped,
+            "skipped_compilations": fetch.skipped_compilations,
             # 列表判不出来、额外抓了详情页的条数。这是唯一会放大请求数的路径。
             "probed": fetch.probed,
             # 证据没存下来不算检查失败，但界面必须说出来，不能悄悄少一份原始响应。

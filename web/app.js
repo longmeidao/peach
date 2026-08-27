@@ -1301,9 +1301,13 @@ function followWhen(item){
   const raw=item.published_at||'';
   if(!raw)return '时间未取得';
   const text=localTime(raw);
-  // 站点只给「1 周前」时换算出来的是近似值，界面必须照实说，不能冒充发布时间。
-  return item.published_precision==='approximate'?`约 ${text}`:text;
+  // 精度仍保留在 API；列表按用户要求不再给近似时间加「约」前缀。
+  return text;
 }
+
+const followTagType=(item,tag)=>item.tag_types&&item.tag_types[tag]||'general';
+const followTagChip=(item,tag,kind='span')=>`<${kind} class="tg r34-${
+  esc(followTagType(item,tag))}" data-follow-tag="${esc(tag)}">${esc(tagLabel(tag))}</${kind}>`;
 
 function followBadges(group){
   const badges=[];
@@ -1340,9 +1344,12 @@ function openFollowCollection(group){
     const thumb=item.thumb_url
       ?`<img src="${esc(item.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
       :`<span>${sourceIcon(item.provider)}</span>`;
-    return `<div class="fcollectionrow"><a class="fcollectionthumb" href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener">${thumb}</a>
-      <a class="fcollectioncopy" href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener"><b>${esc(copy.title)}</b>
-        <span class="mono"><i class="fvkind ${esc(item.variant_kind||'')}">${esc(copy.label)}</i>${sourceIcon(item.provider)}${followWhen(item)}${item.duration?` · ${fmtDur(item.duration)}`:''}</span></a>
+    const openAttrs=item.playable?`data-follow-play="${item.id}"`:
+      `href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener"`;
+    const openTag=item.playable?'button':'a';
+    return `<div class="fcollectionrow"><${openTag} class="fcollectionthumb" ${openAttrs}>${thumb}</${openTag}>
+      <${openTag} class="fcollectioncopy" ${openAttrs}><b>${esc(copy.title)}</b>
+        <span class="mono"><i class="fvkind ${esc(item.variant_kind||'')}">${esc(copy.label)}</i>${sourceIcon(item.provider)}${followWhen(item)}${item.duration?` · ${fmtDur(item.duration)}`:''}</span></${openTag}>
       <button data-follow-save="${item.id}"${item.status==='saved'?' disabled':''}>${item.status==='saved'?'已保存':'保存'}</button></div>`}).join('')}</div>`});
   dialog.classList.add('followcollectiondialog');
   dialog.querySelectorAll('[data-follow-save]').forEach(button=>button.onclick=async()=>{
@@ -1350,20 +1357,42 @@ function openFollowCollection(group){
     try{await api('/api/follow/save',{method:'POST',body:JSON.stringify({item:+button.dataset.followSave})});button.textContent='已保存'}
     catch(error){button.disabled=false;alert(error.message||'保存失败')}
   });
+  wireFollowPlay(dialog);
 }
 
-function followCard(group){
+function openFollowMedia(item){
+  if(!item||!item.playable){if(item?.url)window.open(item.url,'_blank','noopener');return}
+  const src=`/follow-stream?id=${item.id}`;
+  const media=item.media_kind==='image'
+    ?`<img src="${src}" alt="${esc(item.title)}">`
+    :`<video controls playsinline preload="metadata" src="${src}"></video>`;
+  const dialog=playlistDialog({title:item.title||'在线媒体',body:`<div class="followplayer">${media}</div>
+    <a class="followorigin" href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener">打开来源页面</a>`});
+  dialog.classList.add('followplayerdialog');
+  dialog.addEventListener('close',()=>{dialog.querySelectorAll('video').forEach(video=>{
+    video.pause();video.removeAttribute('src');video.load()})},{once:true});
+}
+
+function wireFollowPlay(root){
+  root.querySelectorAll('[data-follow-play]').forEach(button=>button.onclick=event=>{
+    event.preventDefault();event.stopPropagation();
+    const item=followItemsById.get(+button.dataset.followPlay);if(item)openFollowMedia(item)});
+}
+
+function followCard(group,authorSources=[]){
   const item=group.primary;
   const thumb=item.thumb_url
     ? `<img src="${esc(item.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
     : `<span class="fnothumb">${esc(item.provider_label)}</span>`;
   const collection=followCollectionItems(group),collectionCount=collection.filter(row=>row.has_media).length;
   const badges=followBadges(group);
-  const tags=(item.tags||[]).slice(0,3).map(tag=>
-    `<span class="tg general" data-follow-tag="${esc(tag)}">${esc(tagLabel(tag))}</span>`).join('');
+  const tags=(item.tags||[]).slice(0,3).map(tag=>followTagChip(item,tag)).join('');
+  const open=item.playable
+    ?`<button class="cardopenhit" data-follow-play="${item.id}" aria-label="在 Peach 播放 ${esc(item.title)}"></button>`
+    :`<a class="cardopenhit" href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener" aria-label="打开 ${esc(item.title)}"></a>`;
   return `<article class="card followitem${collection.length>1?' collection':''}" data-follow-item="${item.id}" data-status="${esc(item.status)}">
     <div class="${collection.length>1?'mixstack ':''}followvisual"><div class="pic">
-      <a class="cardopenhit" href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener" aria-label="打开 ${esc(item.title)}"></a>${thumb}
+      ${open}${thumb}
       <span class="badge" title="${esc(item.provider_label)}" aria-label="来源：${esc(item.provider_label)}">${sourceIcon(item.provider)}</span>
       <span class="selectionMark">${icon('check')}</span>${item.duration?`<span class="dur mono">${fmtDur(item.duration)}</span>`:''}
       ${collection.length>1?`<button class="mixbadge" data-follow-collection="${item.id}">${icon('play')}${collectionCount||collection.length} 个${collectionCount?'视频':'条目'}</button>`:''}
@@ -1373,8 +1402,10 @@ function followCard(group){
         <button data-follow-status="${item.id}" data-to="ignored" title="忽略" aria-label="忽略"${item.status==='ignored'?' disabled':''}>${icon('x')}</button>
         ${item.status==='seen'||item.status==='ignored'?`<button data-follow-status="${item.id}" data-to="new" title="恢复未看" aria-label="恢复未看">${icon('rotate-ccw')}</button>`:''}
       </div></div></div>
-    <div class="meta"><span class="mav fsourceavatar" title="${esc(item.provider_label)}">${sourceIcon(item.provider)}</span>
-      <div class="mtext"><a class="t cardtitle" href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener">${esc(item.title)}</a>
+    <div class="meta"><span class="mav fsourceavatar" title="作者头像">${followAuthorAvatar(authorSources)}</span>
+      <div class="mtext">${item.playable
+        ?`<button class="t cardtitle" data-follow-play="${item.id}">${esc(item.title)}</button>`
+        :`<a class="t cardtitle" href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener">${esc(item.title)}</a>`}
         <div class="s mono"><span>${followWhen(item)}</span>${badges?`<span class="fbadges">${badges}</span>`:''}</div>
         ${tags?`<div class="ctags">${tags}</div>`:''}${item.media_needs_credential?'<span class="fnote">媒体需要登录会话才能取，发现本身不需要</span>':''}</div></div>
     <span class="fstate" aria-live="polite"></span></article>`;
@@ -1390,11 +1421,13 @@ function followCheckSummary(report){
   const updated=rows.reduce((n,r)=>n+(r.updated||0),0);
   const quiet=rows.filter(r=>r.ok&&!r.added&&!r.updated).length;
   const skipped=rows.reduce((n,r)=>n+(r.skipped||0),0);
+  const compilations=rows.reduce((n,r)=>n+(r.skipped_compilations||0),0);
   const bits=[];
   if(added)bits.push(`新增 <b>${added}</b> 条`);
   if(updated)bits.push(`更新 <b>${updated}</b> 条`);
   // 过滤掉多少也要说：不然用户只看到条目变少，分不清是被过滤了还是根本没抓到。
-  if(skipped)bits.push(`跳过 <b>${skipped}</b> 条无资源`);
+  if(skipped-compilations)bits.push(`跳过 <b>${skipped-compilations}</b> 条无资源`);
+  if(compilations)bits.push(`排除 <b>${compilations}</b> 个超大合集`);
   // 回查是唯一会放大请求数的路径，报出来才看得出某个作者是不是每帖都要多打一次站点。
   const probed=rows.reduce((n,r)=>n+(r.probed||0),0);
   if(probed)bits.push(`回查 <b>${probed}</b> 条详情`);
@@ -1412,11 +1445,19 @@ function followCheckSummary(report){
 }
 
 /* ── 看的那一页 ── */
-let followAuthor='',followProvider='',followTag='',followGroupsById=new Map();
-const TAGGED_PROVIDERS=['rule34xxx'];
+let followAuthor='',followProvider='',followTags=new Set(),followGroupsById=new Map(),followItemsById=new Map();
+const TAGGED_PROVIDERS=['rule34video','rule34xxx'];
+function groupTagType(groups,tag){
+  for(const group of groups){
+    const type=group.primary&&group.primary.tag_types&&group.primary.tag_types[tag];
+    if(type)return type;
+  }
+  return 'general';
+}
 function renderFollow(){
   const groups=followData.groups||[],counts=followData.counts||{};
   followGroupsById=new Map(groups.map(group=>[group.primary.id,group]));
+  followItemsById=new Map(groups.flatMap(group=>followCollectionItems(group).map(item=>[item.id,item])));
   const sources=followData.sources||[];
   const broken=sources.filter(s=>s.last_status==='error'||s.last_status==='unauthorized');
   const byId=new Map(sources.map(source=>[source.id,source]));
@@ -1439,13 +1480,13 @@ function renderFollow(){
     .map(([tag,n])=>[tag,tagLabel(tag),n]);
   if(followAuthor&&!authors.has(followAuthor))followAuthor='';
   if(followProvider&&!providers.has(followProvider))followProvider='';
-  if(followTag&&!tagCounts.has(followTag))followTag='';
+  followTags=new Set([...followTags].filter(tag=>tagCounts.has(tag)));
   const visible=groups.filter(group=>{
     const source=sourceOf(group);
     if(!source)return !followAuthor&&!followProvider;
     if(followAuthor&&source.author_key!==followAuthor)return false;
     if(followProvider&&source.provider!==followProvider)return false;
-    if(followTag&&!(group.primary&&group.primary.tags||[]).includes(followTag))return false;
+    if(followTags.size&&![...followTags].every(tag=>(group.primary&&group.primary.tags||[]).includes(tag)))return false;
     return true;
   });
   const providerPills=[...providers].map(([key,label])=>
@@ -1465,14 +1506,16 @@ function renderFollow(){
       ${providerPills?`<span class="sep" aria-hidden="true"></span>${providerPills}`:''}
       ${topTags.length?`<span class="sep" aria-hidden="true"></span>`+
         topTags.map(([key,label,n])=>
-          `<button class="pill" data-follow-tag="${esc(key)}" aria-pressed="${key===followTag}">${
+          `<button class="pill r34-${esc(groupTagType(groups,key))}" data-follow-tag="${esc(key)}" aria-pressed="${followTags.has(key)}">${
             esc(label)}${n?` <span class="n mono">${n}</span>`:''}</button>`).join(''):''}</div>
     ${topTags.length?`<p class="fmeta followfilternote">内容标签目前由 ${
       TAGGED_PROVIDERS.map(provider=>esc(providers.get(provider)||provider)).join('、')} 提供</p>`:''}
     ${broken.length?`<p class="fwarn">${broken.length} 个来源上次检查失败，去
       <button class="flink" data-follow-manage>管理关注</button>看原因。</p>`:''}
     ${followCheckReport?followCheckSummary(followCheckReport):''}
-    <div class="followlist">${visible.length?visible.map(followCard).join('')
+    <div class="followlist">${visible.length?visible.map(group=>{
+      const source=sourceOf(group),siblings=source&&authorSources.get(source.author_key)||[];
+      return followCard(group,siblings)}).join('')
       :groups.length?'<p class="empty">当前筛选下没有更新</p>'
       :sources.length?'<p class="empty">没有符合条件的更新</p>'
       :`<p class="empty">还没有关注任何来源。<button class="flink" data-follow-manage>去添加</button></p>`}</div>
@@ -1493,7 +1536,8 @@ function renderFollow(){
   $('#stats').querySelectorAll('[data-follow-provider]').forEach(button=>button.onclick=()=>{
     followProvider=followProvider===button.dataset.followProvider?'':button.dataset.followProvider;renderFollow()});
   $('#stats').querySelectorAll('[data-follow-tag]').forEach(button=>button.onclick=()=>{
-    followTag=followTag===button.dataset.followTag?'':button.dataset.followTag;renderFollow()});
+    const tag=button.dataset.followTag;
+    if(followTags.has(tag))followTags.delete(tag);else followTags.add(tag);renderFollow()});
   $('#stats').querySelectorAll('[data-follow-manage]').forEach(button=>
     button.onclick=()=>openFollowManage());
 }
@@ -1782,6 +1826,7 @@ async function openFollowManage(push=true){
 /* ── 共用接线 ── */
 function wireFollowItems(){
   const root=$('#stats');
+  wireFollowPlay(root);
   root.querySelectorAll('[data-follow-status]').forEach(button=>button.onclick=async event=>{
     event.stopPropagation();
     await followWrite(button,'/api/follow/status',
@@ -1795,7 +1840,7 @@ function wireFollowItems(){
   root.querySelectorAll('.followitem[data-follow-item]').forEach(card=>{
     const id=+card.dataset.followItem;
     card.onclick=event=>{
-      if(event.target.closest('[data-follow-status],[data-follow-save],[data-follow-collection],.tg'))return;
+      if(event.target.closest('[data-follow-status],[data-follow-save],[data-follow-collection],[data-follow-play],.tg'))return;
       if(selectMode||event.shiftKey||event.ctrlKey||event.metaKey){
         event.preventDefault();event.stopPropagation();toggleFollowSelection(id,event.shiftKey)}
     };

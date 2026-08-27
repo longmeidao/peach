@@ -1191,9 +1191,9 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .followauthors .favatar{width:64px;height:64px;border-radius:50%;outline:0}
 .followauthors .favatar.none{font-size:var(--fs-lg);background:var(--overlay-5)}
 .followfilters{position:relative;top:auto;z-index:1;height:auto;min-height:58px;margin:0 0 8px;
-  padding:9px 0 8px;border-bottom-color:transparent;scrollbar-width:thin;overscroll-behavior-inline:contain;
+  padding:9px 0 8px;border-bottom-color:transparent;scrollbar-width:none;overscroll-behavior-inline:contain;
   touch-action:pan-x}
-.followfilters::-webkit-scrollbar{display:block;height:5px}.followfilters::-webkit-scrollbar-thumb{background:var(--sb);border-radius:8px}
+.followfilters::-webkit-scrollbar{display:none}
 .followfilters .sep{flex:none;width:1px;height:24px;background:var(--line-soft);margin:0 3px}
 .followfilters .pill .n{margin-left:5px;color:inherit}
 .followfilters .sourcepill{width:40px;padding:0}
@@ -1209,13 +1209,21 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fauthorhead .ficon{margin-right:2px}
 .followlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
 .followitem{min-width:0}.followitem.collection{padding-top:7px}
+.followitem a{text-decoration:none}.followitem a:hover{text-decoration:none}
 .followitem[data-status="ignored"],.followitem[data-status="seen"]{opacity:.62}
 .followvisual{position:relative;isolation:isolate}.followvisual .pic{z-index:1}
 .followvisual .pic>img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;background:#000}
 .fnothumb{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:var(--fs-xs)}
 .followitem .badge .ficon{width:18px;height:18px;margin:0}
 .fsourceavatar{display:grid;place-items:center;cursor:default;background:var(--overlay-5);border:1px solid var(--line-soft)}
-.fsourceavatar:hover{box-shadow:none}.fsourceavatar .ficon{position:static;width:21px;height:21px;margin:0;object-fit:contain;border-radius:4px}
+.fsourceavatar:hover{box-shadow:none}.fsourceavatar .favatar{position:absolute;inset:0;width:100%;height:100%;border-radius:50%;outline:0;object-fit:cover}
+.fsourceavatar .favatar.none{display:grid;place-items:center;font-size:var(--fs-sm);color:var(--muted)}
+.followitem .cardtitle{display:block;width:100%;border:0;background:transparent;color:inherit;padding:0;text-align:left;font-family:inherit;cursor:pointer;text-decoration:none}
+.followitem .tg,.followfilters .pill[class*="r34-"]{--r34-tag:#55A7FF;border-color:color-mix(in srgb,var(--r34-tag) 42%,transparent);background:color-mix(in srgb,var(--r34-tag) 10%,transparent)}
+.followitem .r34-artist,.followfilters .r34-artist{--r34-tag:#E36C6C}
+.followitem .r34-character,.followfilters .r34-character{--r34-tag:#68C76F}
+.followitem .r34-copyright,.followfilters .r34-copyright{--r34-tag:#D675D6}
+.followitem .r34-metadata,.followfilters .r34-metadata{--r34-tag:#F5A24A}
 .followitem .meta .s{min-height:21px}.fbadges{display:flex;flex-wrap:nowrap;gap:5px;min-width:0;overflow:hidden}
 .fbadge{padding:2px 8px;border:1px solid var(--border-15);border-radius:var(--badge-radius);font-size:var(--fs-xs);color:var(--ink-2)}
 .fbadge.wip{border-color:var(--meter);color:var(--meter)}
@@ -1233,18 +1241,23 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .factions button:disabled{opacity:.42;cursor:default}
 @media (hover:hover) and (pointer:fine){.followitem:hover .factions{opacity:1;pointer-events:auto}}
 @media (hover:none),(pointer:coarse){.followitem .factions{opacity:1;pointer-events:auto}}
-.select-mode .followitem a,.select-mode .followitem .factions,.select-mode .followitem .mixbadge{pointer-events:none!important}
+.select-mode .followitem a,.select-mode .followitem [data-follow-play],.select-mode .followitem .factions,.select-mode .followitem .mixbadge{pointer-events:none!important}
 .fstate{flex:1 1 100%;font-size:var(--fs-xs);color:var(--drop)}
-.followcollectiondialog{width:min(760px,calc(100vw - 28px))}.fcollectionlist{display:grid;gap:6px;max-height:62vh;overflow-y:auto}
+.followcollectiondialog{width:min(760px,calc(100vw - 28px))}.fcollectionlist{display:grid;gap:6px;max-height:62vh;overflow-y:auto;scrollbar-width:none}
+.fcollectionlist::-webkit-scrollbar{display:none}
 .fcollectionrow{display:grid;grid-template-columns:112px minmax(0,1fr) auto;gap:10px;align-items:center;padding:7px;border-radius:8px}
 .fcollectionrow:hover{background:var(--hover)}.fcollectionthumb{position:relative;aspect-ratio:16/9;border-radius:5px;overflow:hidden;background:#000;display:grid;place-items:center}
 .fcollectionthumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.fcollectioncopy{min-width:0;color:inherit;text-decoration:none}
+.fcollectionthumb:is(button),.fcollectioncopy:is(button){width:100%;border:0;padding:0;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .fcollectioncopy b,.fcollectioncopy span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fcollectioncopy b{font-size:var(--fs-sm)}
 .fcollectioncopy span{margin-top:4px;color:var(--muted);font-size:var(--fs-xs)}.fcollectioncopy .ficon{margin-right:6px}
 .fvkind{display:inline-block;max-width:120px;margin-right:6px;padding:1px 7px;border-radius:var(--badge-radius);overflow:hidden;text-overflow:ellipsis;vertical-align:-2px;background:var(--overlay-5);color:var(--muted);font-size:var(--fs-xs);font-style:normal}
 .fvkind.wip{color:var(--meter)}.fvkind.alt{color:var(--tungsten)}
 .fcollectionrow>button{border:1px solid var(--border-15);border-radius:7px;background:transparent;color:var(--ink-2);padding:6px 10px;cursor:pointer}
 .fcollectionrow>button:disabled{opacity:.5;cursor:default}
+.followplayerdialog{width:min(960px,calc(100vw - 28px))}.followplayer{display:grid;place-items:center;min-height:220px;max-height:72vh;background:#000;border-radius:8px;overflow:hidden}
+.followplayer video,.followplayer img{display:block;width:100%;max-height:72vh;object-fit:contain;background:#000}
+.followorigin{display:inline-flex;margin-top:12px;color:var(--muted);text-decoration:none}.followorigin:hover{color:var(--ink);text-decoration:none}
 @media (max-width:640px){.followhead{align-items:center}.follow .fcheck{height:36px;padding:0 13px}
   .followauthors{margin-right:-12px;padding-top:3px}.followfilters{margin-right:-12px;padding-right:12px}
   .fcollectionrow{grid-template-columns:88px minmax(0,1fr)}.fcollectionrow>button{grid-column:2;justify-self:start}}
