@@ -60,6 +60,9 @@ class SearchVariantTests(unittest.TestCase):
         # 全小写连写没有切分信号，就只用原词，不去猜词典。
         self.assertEqual(search_variants("lazyprocrastinator"), ("lazyprocrastinator",))
 
+    def test_an_underscored_name_is_also_tried_as_words(self):
+        self.assertEqual(search_variants("initial_a"), ("initial_a", "initial a"))
+
     def test_a_spaced_term_is_left_alone(self):
         self.assertEqual(search_variants("Lazy Procrastinator"), ("Lazy Procrastinator",))
 
@@ -131,6 +134,25 @@ class DiscoverTests(_DiscoveryCase):
     def test_a_missing_thread_yields_nothing_rather_than_a_guessed_link(self):
         found = self._discover("99999999", self.ROUTES, providers=("f95zone",))
         self.assertEqual(found.candidates, ())
+
+    def test_an_f95_miss_offers_google_without_guessing_a_thread(self):
+        found = self._discover(
+            "initial_a", {"latest_data.php": HttpResponse(200, {}, F95_MISS)},
+            providers=("f95zone",))
+        self.assertEqual(found.candidates, ())
+        self.assertEqual(len(found.external_searches), 1)
+        search = found.external_searches[0]
+        self.assertEqual(search.provider, "f95zone")
+        self.assertEqual(search.query, "initial_a f95zone")
+        self.assertEqual(search.url,
+                         "https://www.google.com/search?q=initial_a+f95zone")
+        self.assertIn("真实线程链接", search.evidence)
+
+    def test_an_f95_hit_does_not_add_a_redundant_google_link(self):
+        found = self._discover("LazyProcrastinator", self.ROUTES,
+                               providers=("f95zone",))
+        self.assertTrue(found.candidates)
+        self.assertEqual(found.external_searches, ())
 
     def test_a_partial_name_match_is_reported_as_partial(self):
         found = self._discover("Lazy", self.ROUTES, providers=("kemono",))

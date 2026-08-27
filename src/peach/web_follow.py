@@ -456,6 +456,13 @@ def _candidate_payload(candidate, *, author: str = "") -> dict:
             "semantics": candidate.semantics, "evidence": candidate.evidence}
 
 
+def _external_search_payload(search) -> dict:
+    return {"provider": search.provider,
+            "provider_label": PROVIDER_LABELS.get(search.provider, search.provider),
+            "label": search.label, "query": search.query,
+            "url": search.url, "evidence": search.evidence}
+
+
 def w_follow_resolve(contract, body) -> dict:
     """把粘进来的每一行解析成「可以添加什么」，但**不添加**。
 
@@ -498,6 +505,8 @@ def w_follow_resolve(contract, body) -> dict:
                                     c.provider, c.ref)) in known}
                                for c in found.candidates],
                 "failures": found.failures,
+                "external_searches": [_external_search_payload(search)
+                                      for search in found.external_searches],
             })
             continue
         results.append({"line": line, "kind": "url",

@@ -50,11 +50,24 @@ class Candidate:
 
 
 @dataclass(frozen=True)
+class ExternalSearch:
+    """站内索引没命中时，交给人继续核对的外部搜索入口。"""
+
+    provider: str
+    label: str
+    query: str
+    url: str
+    evidence: str
+
+
+@dataclass(frozen=True)
 class Discovery:
     term: str
     candidates: tuple[Candidate, ...] = ()
     #: 逐来源的失败原因；界面要显示，否则「没查到」和「没查成」分不开。
     failures: dict[str, str] = field(default_factory=dict)
+    #: 搜索引擎只提供继续核对的入口，不伪装成可直接登记的来源。
+    external_searches: tuple[ExternalSearch, ...] = ()
 
 
 class CreatorIndex:
@@ -167,15 +180,30 @@ def search_variants(term: str) -> tuple[str, ...]:
     """一个词的几种写法。
 
     f95 的全文搜索按词匹配，`lazyprocrastinator` 搜不到而 `lazy procrastinator` 能。
-    大小写边界是唯一可靠的切分信号——`LazyProcrastinator` 切得开，全小写的连写切不开，
+    下划线、连字符和大小写边界都是明确的切分信号；全小写的连写仍然切不开，
     那就只用原词，不去猜词典。
     """
     text = term.strip()
     variants = [text]
+    separated = re.sub(r"[_-]+", " ", text).strip()
+    if separated != text and separated not in variants:
+        variants.append(separated)
     split = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", text).strip()
     if split != text and split not in variants:
         variants.append(split)
     return tuple(variants)
+
+
+def _f95_external_search(term: str) -> ExternalSearch:
+    """Google 由浏览器打开；Peach 不抓结果页，也不绕验证码。"""
+    query = f"{term} f95zone"
+    return ExternalSearch(
+        provider="f95zone",
+        label="用 Google 继续查找 F95zone",
+        query=query,
+        url="https://www.google.com/search?" + urllib.parse.urlencode({"q": query}),
+        evidence="F95zone 站内索引未命中，请核对搜索结果里的真实线程链接",
+    )
 
 
 def _f95_candidates(term: str, transport) -> list[Candidate]:
@@ -230,6 +258,7 @@ def discover(term: str, *, secrets_root: Path, state_root: Path,
                            "rule34xxx", "f95zone")
     found: list[Candidate] = []
     failures: dict[str, str] = {}
+    external_searches: list[ExternalSearch] = []
 
     def run(name: str, fn) -> None:
         if name not in wanted:
@@ -247,4 +276,6 @@ def discover(term: str, *, secrets_root: Path, state_root: Path,
             lambda: _rule34xxx_candidates(text, transport,
                                           credentials.load("rule34xxx")))
     run("f95zone", lambda: _f95_candidates(text, transport))
-    return Discovery(text, tuple(found), failures)
+    if "f95zone" in wanted and not any(row.provider == "f95zone" for row in found):
+        external_searches.append(_f95_external_search(text))
+    return Discovery(text, tuple(found), failures, tuple(external_searches))

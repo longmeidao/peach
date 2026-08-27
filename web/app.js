@@ -1945,8 +1945,13 @@ function renderFollowPicks(results){
         data-label="${esc(c.label)}"${c.known?' disabled':' checked'}>
       <span><b>${esc(c.provider_label)}</b> ${esc(c.label)}
         <i>${esc(c.known?'已经在追':c.evidence)}</i></span></label>`).join('');
+    const searches=(row.external_searches||[]).map(search=>
+      `<a class="fpicksearch" href="${esc(search.url)}" target="_blank" rel="noreferrer noopener">
+        <b>${esc(search.label)}</b><span>${esc(search.query)}</span>
+        <i>${esc(search.evidence)}</i></a>`).join('');
     return `<div class="fpick"><b>${esc(row.line)}</b>
-      ${items||'<p class="fpickempty">没有查到来源</p>'}
+      ${items||'<p class="fpickempty">站内没有查到来源</p>'}
+      ${searches}
       ${failures.length?`<p class="fpickfail">${failures.map(([k,v])=>
         `${esc(k)}：${esc(v)}`).join('；')}</p>`:''}</div>`;
   }).join('');

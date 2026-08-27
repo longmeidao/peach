@@ -16,6 +16,7 @@ from unittest import mock
 
 from peach import web_follow
 from peach.follow import FollowSourceError
+from peach.follow_discovery import Discovery, ExternalSearch
 from peach.follow_secrets import CredentialError
 from peach.follow_sources import FollowCandidate, SourceFetch
 from peach.follow_store import FollowStore
@@ -575,6 +576,27 @@ class FollowSourceAddTests(FollowContractTests):
         source = self._get()["sources"][0]
         self.assertEqual(source["author_key"], "name:lazyprocrastinator")
 
+    def test_a_name_miss_exposes_the_google_f95_fallback_without_adding_it(self):
+        fallback = ExternalSearch(
+            provider="f95zone", label="用 Google 继续查找 F95zone",
+            query="initial_a f95zone",
+            url="https://www.google.com/search?q=initial_a+f95zone",
+            evidence="F95zone 站内索引未命中，请核对搜索结果里的真实线程链接",
+        )
+        with mock.patch.object(web_follow, "discover", return_value=Discovery(
+                "initial_a", external_searches=(fallback,))):
+            result = self._post("/api/follow/resolve", {"lines": ["initial_a"]})
+        row = result["results"][0]
+        self.assertEqual(row["candidates"], [])
+        self.assertEqual(row["external_searches"], [{
+            "provider": "f95zone", "provider_label": "F95zone",
+            "label": "用 Google 继续查找 F95zone",
+            "query": "initial_a f95zone",
+            "url": "https://www.google.com/search?q=initial_a+f95zone",
+            "evidence": "F95zone 站内索引未命中，请核对搜索结果里的真实线程链接",
+        }])
+        self.assertEqual(self._get()["sources"], [], "查找入口不能自动登记来源")
+
     def test_a_thread_link_is_registered_with_release_semantics(self):
         self._add("https://f95zone.to/threads/"
                   "lazy-procrastinator-collection-2026-06-28-lazyprocrast.50685/")
@@ -733,9 +755,15 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertNotIn('</section>\n      <div id="followPicks">', manage)
         self.assertPageContains(
             '<div class="fpicks"><div class="fsechead"><h3>查找结果</h3>')
-        self.assertPageContains('<p class="fpickempty">没有查到来源</p>')
+        self.assertPageContains('<p class="fpickempty">站内没有查到来源</p>')
         self.assertNotIn(".fpicks h3{", page,
                          "查找结果不应另起一套标题字号")
+
+    def test_f95_misses_offer_a_clickable_google_query(self):
+        self.assertPageContains("row.external_searches||[]")
+        self.assertPageContains('class="fpicksearch" href="${esc(search.url)}"')
+        self.assertPageContains('target="_blank" rel="noreferrer noopener"')
+        self.assertPageContains("${esc(search.query)}")
 
     def test_follow_author_groups_use_multiple_columns_and_link_to_the_original_page(self):
         self.assertPageContains('class="frows fsources"')
