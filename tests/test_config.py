@@ -1,7 +1,9 @@
+import importlib
 import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from peach import config
 
@@ -30,3 +32,38 @@ class DefaultPathTests(unittest.TestCase):
     def test_each_platform_has_a_distinct_mdns_name(self):
         expected = "peach-win" if os.name == "nt" else "peach"
         self.assertEqual(config.MDNS_NAME, expected)
+
+
+class SharedShareTests(unittest.TestCase):
+    """托盘补挂共享副本要用的坐标。"""
+
+    def test_share_host_is_an_mdns_name_not_a_dhcp_address(self):
+        # 家里的 IP 由路由器 DHCP 分配，钉进源码总有失效的一天；主机名走 mDNS
+        # 才能跟着换。Windows 那台的 mDNS 名和 `MDNS_NAME` 用的是同一个常量。
+        self.assertEqual(config.SHARED_SMB_HOST, "peach-win.local")
+        self.assertNotRegex(config.SHARED_SMB_HOST, r"^\d+\.\d+\.\d+\.\d+$")
+        self.assertEqual(config._WINDOWS_MDNS_NAME, "peach-win")
+
+    def test_share_name_matches_the_macos_mount_point(self):
+        # 挂载点是 `/Volumes/<共享名>`：两者分开写就会挂上一个没人去读的路径。
+        self.assertEqual(config.SHARED_SMB_SHARE, config._POSIX_SHARED_ROOT.name)
+
+    def test_share_user_is_named_because_the_server_refuses_guest(self):
+        self.assertEqual(config.SHARED_SMB_USER, "peachsync")
+
+    def test_every_share_coordinate_can_be_overridden(self):
+        # 主机名换了、共享改名、账号换一个，都不该要求改源码再发一次版。
+        overrides = {
+            "PEACH_SHARED_SMB_HOST": "192.168.1.9",
+            "PEACH_SHARED_SMB_SHARE": "ledger-drop",
+            "PEACH_SHARED_SMB_USER": "someone",
+        }
+        try:
+            with patch.dict(os.environ, overrides):
+                reloaded = importlib.reload(config)
+                self.assertEqual(reloaded.SHARED_SMB_HOST, "192.168.1.9")
+                self.assertEqual(reloaded.SHARED_SMB_SHARE, "ledger-drop")
+                self.assertEqual(reloaded.SHARED_SMB_USER, "someone")
+        finally:
+            importlib.reload(config)
+        self.assertEqual(config.SHARED_SMB_HOST, "peach-win.local")

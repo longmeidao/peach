@@ -27,6 +27,7 @@
 - Rule34.xxx 来源 ref 大小写不敏感；迁移会合并分批添加造成的重复来源并保留条目状态。F95 的 `Collection(s)` 后缀不进入作者名，五个来源可归到同一作者组。
 - 关注作者显示名与头像优先取经过固定主机校验的官方 FANBOX/Pixiv 页面，归档站只作回退。只支持真实历史分页的来源才显示「抓更早一页」。
 - reader 的 `/review` 通过严格 Peach CA HTTPS 读取 writer 的归一化 JSON 并原子缓存；决定按钮和所有关注写操作仍锁定，不同步 SQLite/WAL 或原始候选目录。
+- macOS Ledger 同步在共享根判为 `offline` 时会先通过 NetFS 尝试挂载 `peach-sync`，再重新判定；挂载失败才保留原离线结果，过程中不停止服务。默认使用 `peach-win.local`，可由 `PEACH_SHARED_SMB_*` 覆盖；对应主机没有钥匙串记录时快速失败，不弹出阻塞认证框。
 - 搜索使用 FTS5 trigram，短查询回退 LIKE 并覆盖规范名、别名和检索词。搜索历史在 reader 写入被拒时降级到页面内存，不产生未处理异常。
 - 回收站的单项删除和清空共用 `purge_assets()`：先处理媒体文件，再提交 ledger；删不掉的文件保留可见状态并回报，避免静默遗留。
 - 复核页覆盖元数据、创作者标签、Logo、头像、身份、番号目录、FC2 证据和媒体失败。抓取与 AI 结果仍是候选，批准后才写真相字段。
@@ -43,7 +44,7 @@
 ## 下一批工作
 
 1. 将 Windows writer 的 `0020` 副本同步到共享传输点，再让 Mac reader 拉取；同步前后核对迁移版本、计数、完整性与 writer 身份。
-2. 重启 Mac 菜单栏进程，核对 reader 锁定、HTTPS、mDNS 和真实 LAN 客户端。
+2. 在 Mac Finder 以 `smb://peach-win.local/peach-sync` 连接一次并保存钥匙串记录，再重启菜单栏进程，核对自动挂载、reader 锁定、HTTPS、mDNS 和真实 LAN 客户端。
 3. 为追更接入 APScheduler；在实现下载器前先确定媒体凭据、流量与磁盘预算。
 4. 在 `/review` 人工处理现有创作者标签、FC2、Javinizer、Logo、头像和媒体失败候选；未经批准不写真相字段。
 5. Windows writer 运行 PikPak 夜跑前重算 probe/抽帧队列，并按 `peach-batch-jobs` 设置流量与系统盘闸门。

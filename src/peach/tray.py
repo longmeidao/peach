@@ -20,10 +20,12 @@ from PIL import Image
 from .certs import ensure_certificate
 from .config import (
     DATABASE_PATH, LOG_DIR, MDNS_HOSTNAME, PROJECT_ROOT, SECRETS_DIR,
-    SHARED_DATABASE_PATH, STATE_DIR,
+    SHARED_DATABASE_PATH, SHARED_SMB_HOST, SHARED_SMB_SHARE, SHARED_SMB_USER,
+    STATE_DIR,
 )
 from .mdns import lan_ipv4
 from .netwatch import NetworkChangeWatcher
+from .platform import mount_share as mount_smb_share
 from .sync import COPY_ACTIONS, SyncPlan, device_id, resolve
 from .versioning import VersionManager, VersionSnapshot
 
@@ -172,12 +174,14 @@ class ServiceManager:
         health_get: Callable[..., httpx.Response] = httpx.get,
         run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
         ledger_plan: Callable[[], SyncPlan] | None = None,
+        mount_share: Callable[[], bool] | None = None,
     ) -> None:
         self.specs = specs
         self._popen = popen
         self._health_get = health_get
         self._run = run
         self._ledger_plan = ledger_plan or self._current_ledger_plan
+        self._mount_share = mount_share or self._mount_shared_root
         self._owned: dict[str, subprocess.Popen] = {}
         self._logs: list[object] = []
         self._last_health: dict[str, tuple[bool, str]] = {
@@ -291,6 +295,24 @@ class ServiceManager:
     def _current_ledger_plan() -> SyncPlan:
         return resolve(DATABASE_PATH, SHARED_DATABASE_PATH, device_id(STATE_DIR))
 
+    @staticmethod
+    def _mount_shared_root() -> bool:
+        """把共享副本所在的盘挂回来；不是 macOS 或挂不上都返回 False。"""
+        return mount_smb_share(SHARED_SMB_HOST, SHARED_SMB_SHARE, SHARED_SMB_USER)
+
+    def _ledger_plan_after_mount(self) -> SyncPlan:
+        """判定一次；共享盘没挂就补挂一次再判。
+
+        macOS 重启后 SMB 共享不会自己回来，`offline` 因此是本机的日常状态而不是结论：
+        在此之前菜单栏只能回一句「盘不可达」，而手动挂一下同一条同步链路立刻就通。
+        挂不上时原样返回那个 offline 判定，调用方照旧降级到那条消息。
+        只有 `offline` 才试挂载——判定已经通了还去碰挂载，是一次白跑的网络往返。
+        """
+        decision = self._ledger_plan()
+        if decision.action != "offline" or not self._mount_share():
+            return decision
+        return self._ledger_plan()
+
     def _ledger_shortcut(self, *, take_ownership: bool) -> tuple[bool, str] | None:
         """这次同步会不会真的复制？不会就别停服务。
 
@@ -301,9 +323,12 @@ class ServiceManager:
 
         「接管 Ledger 写入」只在共享盘不可达时短路：它要求两侧 `in-sync`，而 `in-sync`
         对同步是无事可做、对接管却正是要做的那一次。
+
+        判定走 `_ledger_plan_after_mount`：`offline` 先当成「盘掉了」补挂一次再重判，
+        真挂不上才落到下面这条降级消息。
         """
         try:
-            decision = self._ledger_plan()
+            decision = self._ledger_plan_after_mount()
         except OSError as exc:                     # 判定本身失败也不该拖着服务停机
             return False, f"未同步：无法判定账本状态（{exc}）"
         if take_ownership:

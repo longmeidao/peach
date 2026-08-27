@@ -264,6 +264,7 @@ class ServiceStatusTests(unittest.TestCase):
         manager = ServiceManager(
             (spec,), run=runner,
             ledger_plan=lambda: SyncPlan("offline", "共享副本所在的盘不可达，本地照常读写"),
+            mount_share=Mock(return_value=False),
         )
         manager._owned["http"] = process
 
@@ -313,11 +314,93 @@ class ServiceStatusTests(unittest.TestCase):
         manager = ServiceManager(
             tuple(), run=runner,
             ledger_plan=lambda: SyncPlan("offline", "共享副本所在的盘不可达，本地照常读写"),
+            mount_share=Mock(return_value=False),
         )
         ok, message = manager.sync_ledger(Path("/venv/peach"), take_ownership=True)
         self.assertFalse(ok)
         self.assertIn("先挂上共享副本所在的盘", message)
         runner.assert_not_called()
+
+    def test_an_unmounted_share_is_mounted_once_and_then_synced(self):
+        """macOS 重启后 SMB 共享不会自己回来。`offline` 是本机的日常状态，不是结论。"""
+        spec = ServiceSpec("http", "http://127.0.0.1/healthz", ("peach", "serve"), True)
+        process = Mock()
+        process.poll.return_value = None
+        plans = iter([
+            SyncPlan("offline", "共享副本所在的盘不可达，本地照常读写"),
+            SyncPlan("pull", "共享副本更新"),
+        ])
+        mount = Mock(return_value=True)
+        completed = Mock(returncode=0, stdout="账本同步：pull · 共享副本更新\n", stderr="")
+        manager = ServiceManager(
+            (spec,), popen=Mock(return_value=process), run=Mock(return_value=completed),
+            ledger_plan=lambda: next(plans), mount_share=mount,
+        )
+        manager._owned["http"] = process
+        with patch.object(manager, "healthy", return_value=True), patch.object(
+            manager, "start_missing"
+        ), patch.object(manager, "wait_until_ready", return_value=True):
+            ok, message = manager.sync_ledger(Path("/venv/peach"))
+
+        self.assertTrue(ok)
+        self.assertIn("共享副本更新", message)
+        mount.assert_called_once_with()
+        manager._run.assert_called_once()
+
+    def test_a_share_that_will_not_mount_falls_back_to_the_clear_message(self):
+        """挂不上就回到原来那条消息：菜单栏项不能卡住，服务也不该白停一次。"""
+        spec = ServiceSpec("http", "http://127.0.0.1/healthz", ("peach", "serve"), True)
+        process = Mock()
+        process.poll.return_value = None
+        runner = Mock()
+        mount = Mock(return_value=False)
+        manager = ServiceManager(
+            (spec,), run=runner,
+            ledger_plan=lambda: SyncPlan("offline", "共享副本所在的盘不可达，本地照常读写"),
+            mount_share=mount,
+        )
+        manager._owned["http"] = process
+
+        ok, message = manager.sync_ledger(Path("/venv/peach"))
+
+        self.assertFalse(ok)
+        self.assertIn("盘不可达", message)
+        mount.assert_called_once_with()
+        runner.assert_not_called()
+        process.terminate.assert_not_called()
+
+    def test_take_ownership_mounts_the_share_before_refusing(self):
+        """接管同样先补挂：盘只是没挂时，`offline` 之后往往正好是可以接管的 `in-sync`。"""
+        plans = iter([
+            SyncPlan("offline", "共享副本所在的盘不可达，本地照常读写"),
+            SyncPlan("in-sync", "两侧一致"),
+        ])
+        manager = ServiceManager(
+            tuple(),
+            run=Mock(return_value=Mock(
+                returncode=0, stdout="账本同步：take-ownership\n", stderr="")),
+            ledger_plan=lambda: next(plans), mount_share=Mock(return_value=True),
+        )
+        with patch.object(manager, "start_missing"), patch.object(
+            manager, "wait_until_ready", return_value=True,
+        ):
+            ok, _message = manager.sync_ledger(Path("/venv/peach"), take_ownership=True)
+        self.assertTrue(ok)
+        self.assertIn("--take-ownership", manager._run.call_args.args[0])
+
+    def test_a_reachable_share_is_never_remounted(self):
+        """判定已经通了还去碰挂载，只是一次白跑的网络往返。"""
+        mount = Mock()
+        manager = ServiceManager(
+            tuple(),
+            run=Mock(return_value=Mock(returncode=0, stdout="ok", stderr="")),
+            ledger_plan=lambda: SyncPlan("pull", "共享副本更新"), mount_share=mount,
+        )
+        with patch.object(manager, "start_missing"), patch.object(
+            manager, "wait_until_ready", return_value=True,
+        ):
+            manager.sync_ledger(Path("/venv/peach"))
+        mount.assert_not_called()
 
 
 class SourceSyncTests(unittest.TestCase):
