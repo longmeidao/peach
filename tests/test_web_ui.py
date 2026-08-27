@@ -98,9 +98,17 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("'follow-manage':'关注管理'")
         self.assertPageContains("unseen:'没看过','watch-later':'稍后看',flagged:'已标记'")
         self.assertPageContains('syncPageTitle(path);')
+        self.assertPageContains('queueMicrotask(()=>{syncHeaderActions();paintListTitle()})')
         self.assertPageContains("queueMicrotask(()=>$('#settingsClose').focus())")
         self.assertPageContains('if(settingsReturnFocus&&document.contains(settingsReturnFocus))')
         self.assertPageContains("if(e.key!=='Tab')return")
+
+    def test_catalog_state_title_never_leaks_into_other_routes(self):
+        self.assertPageContains("!manageSection()&&isCatalogPath(path)?STATE_LABELS[state.state]||'':''")
+
+    def test_reviewed_tag_labels_do_not_add_machine_translated_suffixes(self):
+        self.assertPageLacks("'深喉':'深喉咙'")
+        self.assertPageContains('const tagLabel=tag=>TAG_DISPLAY_NAMES[tag]||tag;')
 
     def test_entity_routes_are_semantic_and_not_model_shaped(self):
         self.assertPageLacks("route(`/entity/")

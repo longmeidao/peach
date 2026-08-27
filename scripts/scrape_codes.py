@@ -69,7 +69,8 @@ CATEGORY_MAP = {
     "Hidden Camera": "偷拍偷窥", "Amateur": "素人", "Massage": "按摩", "Bath": "浴室",
     "Outdoor": "户外露出", "Car Sex": "车震", "Ass Lover": "美臀", "Butt": "美臀",
     "Glasses": "眼镜", "Virtual Reality": "VR", "POV": "主观视角", "Restraint": "调教",
-    "Incest": "近亲", "Cheating Wife": "绿帽NTR",
+    "Incest": "近亲", "Cheating Wife": "绿帽NTR", "4K": "4K",
+    "Digital Mosaic": "有码", "Cowgirl": "骑乘",
 }
 
 

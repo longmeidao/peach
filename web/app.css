@@ -185,7 +185,7 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
 .combo .clr{background:none;border:0;color:var(--muted);cursor:pointer;font-size:var(--fs-xs);text-decoration:underline}
 /* 统计页 */
 .stats{padding:8px 0 42px}
-.playlistpage{padding:8px 0 42px}.playlistpage>header{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:20px}.playlistpage h2{margin:0 0 5px}.playlistpage p{margin:0;color:var(--muted);font-size:var(--fs-sm)}
+.playlistpage{padding:4px 0 42px}.playlistpage>header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:20px}.playlistpage h2{margin:0 0 5px}.playlistpage p{margin:0;color:var(--muted);font-size:var(--fs-sm)}
 .playlistcreate{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}.playlistcreate label{display:grid;gap:5px;color:var(--muted);font-size:var(--fs-xs)}.playlistcreate input,.playlistmeta input{min-width:220px;border:1px solid var(--border-15);border-radius:8px;background:var(--surface);color:var(--ink);padding:9px 11px;font:inherit}.playlistcreate button,.playlistactions button{border:1px solid var(--border-15);border-radius:8px;background:transparent;color:var(--ink-2);padding:9px 12px;cursor:pointer}.playlistcreate button:hover,.playlistactions button:hover{border-color:var(--tungsten);color:var(--ink)}.playlistcreate [data-playlist-state]{flex-basis:100%;color:var(--drop);font-size:var(--fs-xs)}
 .playlistcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.playlistcard{display:grid;grid-template-columns:112px minmax(0,1fr);gap:12px;padding:12px;border:1px solid var(--line-soft);border-radius:12px;background:var(--surface);min-width:0}.playlistcover{position:relative;aspect-ratio:16/10;border:0;border-radius:8px;background:#000;overflow:hidden;padding:0;cursor:pointer}.playlistcover:disabled{cursor:default}.playlistcover img{width:100%;height:100%;object-fit:cover}.playlistcover span{position:absolute;right:5px;bottom:5px;border-radius:5px;background:#000b;color:#fff;padding:3px 6px;font-size:var(--fs-xs)}.playlistmeta{display:grid;align-content:center;gap:6px;min-width:0}.playlistmeta input{min-width:0;width:100%;font-weight:600}.playlistmeta small{color:var(--muted)}.playlistactions{grid-column:1/-1;display:flex;gap:7px;justify-content:flex-end}.playlistactions .danger{color:var(--drop)}
 .playlistdialog{width:min(520px,calc(100vw - 28px));border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--ink);padding:0;box-shadow:0 24px 80px #000b}.playlistdialog::backdrop{background:#000a;backdrop-filter:blur(5px)}.playlistdialoghead{display:flex;align-items:center;justify-content:space-between;padding:16px 17px;border-bottom:1px solid var(--line-soft)}.playlistdialoghead h2{margin:0;font-size:var(--fs-xl)}.playlistdialoghead button{width:34px;height:34px;border:0;border-radius:50%;background:transparent;color:var(--ink);display:grid;place-items:center;cursor:pointer}.playlistdialoghead button:hover{background:var(--hover)}.playlistdialoghead svg{width:19px;height:19px;stroke:currentColor;fill:none}.playlistdialogbody{padding:17px}.playlistpicklist{display:grid;gap:7px;margin-top:16px;max-height:320px;overflow-y:auto}.playlistpickrow{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--border-10);border-radius:9px;background:var(--overlay-5);color:var(--ink);padding:11px 12px;text-align:left;cursor:pointer}.playlistpickrow:hover{border-color:var(--tungsten)}.playlistpickrow small{color:var(--muted)}
@@ -1179,9 +1179,24 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .gate.offline .chip{cursor:pointer;margin-top:4px}
 
 /* ── 在线追更 ── */
-.follow{padding:8px 0 42px}
-.follow .reviewtabs .fcheck{margin-left:auto;display:inline-flex;align-items:center;gap:6px;background:var(--tungsten);border-color:var(--tungsten);color:#fff;font-weight:600}
-.follow .reviewtabs .fcheck svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
+.follow{padding:4px 0 42px}
+.followhead{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}
+.followhead .pagetitle{margin:0}
+.follow .fcheck{height:40px;padding:0 16px;border:1px solid var(--tungsten);border-radius:var(--pill-radius);
+  display:inline-flex;align-items:center;gap:6px;background:var(--tungsten);color:#fff;font-weight:600;cursor:pointer}
+.follow .fcheck svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
+.followauthors{padding:0 0 10px;margin:0 0 2px}
+.followauthors .av{width:76px}
+.followauthors .av b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:var(--fs-xs);font-weight:500;color:var(--ink-2)}
+.followauthors .av[aria-pressed="true"] .ring{box-shadow:0 0 0 2px var(--tungsten)}
+.followauthors .favatar{width:64px;height:64px;border-radius:50%;outline:0}
+.followauthors .favatar.none{font-size:var(--fs-lg);background:var(--overlay-5)}
+.followfilters{position:relative;top:auto;z-index:1;height:auto;min-height:58px;margin:0 0 8px;
+  padding:9px 0;border-bottom-color:transparent}
+.followfilters .sep{flex:none;width:1px;height:24px;background:var(--line-soft);margin:0 3px}
+.followfilters .pill .n{margin-left:5px;color:inherit}
+.followfilternote{margin:-3px 0 12px}
 .fdetails summary{cursor:pointer;list-style:none}
 .fdetails summary::-webkit-details-marker{display:none}
 .fdetails summary::before{content:"› ";display:inline-block;transition:transform .12s}
@@ -1190,14 +1205,6 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .ficon{width:14px;height:14px;border-radius:3px;object-fit:contain;
   vertical-align:-2px;margin-right:5px}
 .fauthorhead .ficon{margin-right:2px}
-.ffilter{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
-.ffilter button{display:inline-flex;align-items:center;border:1px solid var(--border-15);
-  border-radius:var(--pill-radius);background:transparent;color:var(--ink-2);
-  padding:5px 12px;cursor:pointer;font-size:var(--fs-xs)}
-.ffilter button:hover{border-color:var(--tungsten);color:var(--ink)}
-.ffilter button[aria-pressed="true"]{background:var(--tungsten-soft);
-  border-color:var(--tungsten);color:var(--tungsten);font-weight:600}
-.ffilterlabel{align-self:center;margin-right:2px}
 .followlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:14px}
 .followitem{display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;background:var(--surface);border:1px solid var(--line-soft);border-radius:12px;padding:12px;min-width:0}
 .followitem[data-status="ignored"],.followitem[data-status="seen"]{opacity:.62}
@@ -1231,10 +1238,8 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fstate{flex:1 1 100%;font-size:var(--fs-xs);color:var(--drop)}
 @media (max-width:640px){.followitem{grid-template-columns:110px minmax(0,1fr)}
   .followlist{grid-template-columns:1fr}
-  /* 标签条在窄屏是横滚的，「检查更新」跟着滚出视野——那是这页的主操作，
-     不能要求先横滑才发现。窄屏下让它独占一行。 */
-  .follow .reviewtabs{flex-wrap:wrap;overflow-x:visible}
-  .follow .reviewtabs .fcheck{margin-left:0;flex:1 1 100%;justify-content:center}}
+  .followhead{align-items:center}.follow .fcheck{height:36px;padding:0 13px}
+  .followauthors{margin-right:-12px}.followfilters{margin-right:-12px;padding-right:12px}}
 
 /* ── 关注管理页 ──
    取证记录见 docs/reference-snapshots/vercel-geist-controls-measured.md。

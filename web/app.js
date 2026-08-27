@@ -26,7 +26,8 @@ const ROUTE_STATES=Object.fromEntries(Object.entries(STATE_ROUTES).map(([state,p
 const STATE_LABELS={fresh:'没看过',later:'稍后看',flagged:'已标记'};
 const isCatalogPath=path=>path==='/'||Object.prototype.hasOwnProperty.call(ROUTE_STATES,path);
 const route=(path,replace=false)=>{
-  history[replace?'replaceState':'pushState']({},'',path);syncPageTitle(path);queueMicrotask(syncHeaderActions);
+  history[replace?'replaceState':'pushState']({},'',path);syncPageTitle(path);
+  queueMicrotask(()=>{syncHeaderActions();paintListTitle()});
 };
 const ENTITY_ROUTES={performer:'performers',studio:'studios',creator:'creators',series:'series'};
 const ROUTE_ENTITIES={performers:'performer',studios:'studio',creators:'creator',series:'series'};
@@ -1384,9 +1385,11 @@ function renderFollow(){
     }
     if(!providers.has(source.provider))providers.set(source.provider,source.provider_label);
   });
-  const authors=new Map([...authorSources].map(([key,list])=>[key,followAuthorName(list)]));
+  const authors=new Map([...authorSources].map(([key,list])=>[key,{
+    name:followAuthorName(list),sources:list,
+  }]));
   const topTags=[...tagCounts].sort((a,b)=>b[1]-a[1]).slice(0,20)
-    .map(([tag,n])=>[tag,`${tag} ${n}`]);
+    .map(([tag,n])=>[tag,tagLabel(tag),n]);
   if(followAuthor&&!authors.has(followAuthor))followAuthor='';
   if(followProvider&&!providers.has(followProvider))followProvider='';
   if(followTag&&!tagCounts.has(followTag))followTag='';
@@ -1398,23 +1401,26 @@ function renderFollow(){
     if(followTag&&!(group.primary&&group.primary.tags||[]).includes(followTag))return false;
     return true;
   });
-  const chips=(items,current,attr)=>items.length<2?'':`<div class="ffilter">`+
-    [['','全部'],...items].map(([key,label])=>
-      `<button data-${attr}="${esc(key)}" aria-pressed="${key===current}">${
-        attr==='follow-provider'&&key?sourceIcon(key):''}${esc(label)}</button>`).join('')+`</div>`;
+  const providerPills=[['','全部来源'],...providers].map(([key,label])=>
+    `<button class="pill" data-follow-provider="${esc(key)}" aria-pressed="${key===followProvider}">${
+      key?sourceIcon(key):''}${esc(label)}</button>`).join('');
   $('#stats').innerHTML=`<div class="follow">
-    <h2 class="disp pagetitle">关注</h2>
-    <div class="reviewtabs">${FOLLOW_FILTERS.map(([key,label])=>
-      `<button data-follow-filter="${key}" aria-pressed="${key===followFilter}">${label}${
-        key?` <span class="n mono">${counts[key]||0}</span>`:''}</button>`).join('')}
+    <div class="followhead"><h2 class="disp pagetitle">关注</h2>
       <button class="fcheck" data-follow-manage>${icon('settings')}管理关注</button></div>
-    ${chips([...authors],followAuthor,'follow-author')}
-    ${chips([...providers],followProvider,'follow-provider')}
-    ${topTags.length?`<div class="ffilter"><span class="fmeta ffilterlabel">标签 · 只有 ${
-      TAGGED_PROVIDERS.map(provider=>esc(providers.get(provider)||provider)).join('、')} 提供</span>`+
-      [['','全部'],...topTags].map(([key,label])=>
-        `<button data-follow-tag="${esc(key)}" aria-pressed="${key===followTag}">${esc(label)}</button>`
-      ).join('')+`</div>`:''}
+    ${authors.size?`<div class="tier followauthors" aria-label="按作者筛选">${[...authors].map(([key,author])=>
+      `<button class="av" data-follow-author="${esc(key)}" aria-pressed="${key===followAuthor}">
+        <span class="ring">${followAuthorAvatar(author.sources)}</span><b>${esc(author.name)}</b></button>`
+      ).join('')}</div>`:''}
+    <div class="tagbar followfilters" aria-label="关注筛选">${FOLLOW_FILTERS.map(([key,label])=>
+      `<button class="pill" data-follow-filter="${key}" aria-pressed="${key===followFilter}">${label}${
+        key?` <span class="n mono">${counts[key]||0}</span>`:''}</button>`).join('')}
+      <span class="sep" aria-hidden="true"></span>${providerPills}
+      ${topTags.length?`<span class="sep" aria-hidden="true"></span>`+
+        [['','全部标签',0],...topTags].map(([key,label,n])=>
+          `<button class="pill" data-follow-tag="${esc(key)}" aria-pressed="${key===followTag}">${
+            esc(label)}${n?` <span class="n mono">${n}</span>`:''}</button>`).join(''):''}</div>
+    ${topTags.length?`<p class="fmeta followfilternote">内容标签目前由 ${
+      TAGGED_PROVIDERS.map(provider=>esc(providers.get(provider)||provider)).join('、')} 提供</p>`:''}
     ${broken.length?`<p class="fwarn">${broken.length} 个来源上次检查失败，去
       <button class="flink" data-follow-manage>管理关注</button>看原因。</p>`:''}
     ${followCheckReport?followCheckSummary(followCheckReport):''}
@@ -1432,7 +1438,7 @@ function renderFollow(){
   $('#stats').querySelectorAll('[data-follow-filter]').forEach(button=>button.onclick=()=>{
     followFilter=button.dataset.followFilter;openFollow(false)});
   $('#stats').querySelectorAll('[data-follow-author]').forEach(button=>button.onclick=()=>{
-    followAuthor=button.dataset.followAuthor;renderFollow()});
+    followAuthor=followAuthor===button.dataset.followAuthor?'':button.dataset.followAuthor;renderFollow()});
   $('#stats').querySelectorAll('[data-follow-provider]').forEach(button=>button.onclick=()=>{
     followProvider=button.dataset.followProvider;renderFollow()});
   $('#stats').querySelectorAll('[data-follow-tag]').forEach(button=>button.onclick=()=>{
@@ -1955,7 +1961,7 @@ const TAG_CATEGORIES=[['all','全部'],['meta','影片属性'],['relationship','
   ['position','性交体位'],['general','其他内容']];
 const TAG_DISPLAY_NAMES={'1080P':'1080p','60fps':'60FPS','AI去码':'AI解码',
   '淫语ASMR':'ASMR','JK制服':'JK','OL制服':'OL','眼镜':'眼镜娘','情趣内衣':'性感内衣',
-  '口罩遮脸':'口罩','强制剧情':'强制','足交':'脚交','深喉':'深喉咙','骑乘':'骑乘位',
+  '口罩遮脸':'口罩','强制剧情':'强制','足交':'脚交','骑乘':'骑乘位',
   '后入':'背后位','3P多人':'3P','双洞齐插':'双洞齐下','毒龙':'毒龙钻'};
 const tagLabel=tag=>TAG_DISPLAY_NAMES[tag]||tag;
 const selectedIndexTags=new Set();
@@ -2514,7 +2520,8 @@ function paintManageTitle(){
 }
 function paintListTitle(){
   const el=$('#listTitle');if(!el)return;
-  const label=!manageSection()?STATE_LABELS[state.state]||'':'';
+  const path=decodeURIComponent(location.pathname);
+  const label=!manageSection()&&isCatalogPath(path)?STATE_LABELS[state.state]||'':'';
   el.hidden=!label;if(label)el.textContent=label;
 }
 function openManage(section='stats'){

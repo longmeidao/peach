@@ -35,6 +35,19 @@
         "web/app.js",
         "tests/test_web_ui.py"
       ]
+    },
+    {
+      "id": "fiu758-studio-logo-discovery",
+      "name": "AV研究所厂牌分类与 Logo 发现证据",
+      "url": "https://fiu758.com/?cat=37",
+      "snapshot": "docs/reference-snapshots/fiu758-studio-logo-discovery.md",
+      "checked_on": "2026-08-27",
+      "sha256": "d7878183896e238900cc476c5f0c293a2f1b31684dcde0fad42798c1069b7de9",
+      "role": "只作厂牌日文分类名和 Logo 候选发现；第三方博客不直接升级为 Peach 真相或已安装素材。",
+      "consumers": [
+        "scripts/normalize_studio_logos.py",
+        "docs/HANDOFF.md"
+      ]
     }
   ]
 }

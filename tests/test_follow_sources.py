@@ -140,6 +140,24 @@ class KemonoConnectorTests(unittest.TestCase):
         self.assertEqual(result.candidates[0].thumb_url,
                          "https://kemono.cr/thumbnail/data/1c/fa/1cfae7.png")
 
+    def test_archive_video_uses_an_image_attachment_as_its_cover(self):
+        """主资源是视频/压缩包时，后附的图片仍然是可用封面。"""
+        posts = [{
+            "id": "cover-after-video", "title": "Animation pack",
+            "published": "2026-08-27T00:00:00Z",
+            "file": {"path": "/video/release.mp4"},
+            "attachments": [
+                {"path": "/video/notes.txt"},
+                {"path": "/cover/release.webp"},
+            ],
+        }]
+        result = KemonoConnector(
+            transport=_transport(body=json.dumps(posts).encode())).fetch("fanbox/1")
+        candidate = result.candidates[0]
+        self.assertEqual(candidate.media_url, "https://kemono.cr/video/release.mp4")
+        self.assertEqual(candidate.thumb_url,
+                         "https://kemono.cr/thumbnail/data/cover/release.webp")
+
     def test_no_thumbnail_is_offered_for_things_that_have_none(self):
         # 视频和压缩包没有缩略图，给了也是 404——那会让卡片显示一张碎图，
         # 比一个干净的占位更糟。
