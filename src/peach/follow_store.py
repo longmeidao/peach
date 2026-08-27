@@ -159,7 +159,7 @@ class FollowStore:
 
     def record(self, source_id: int, fetch: SourceFetch, *,
                creator_aliases: tuple[str, ...] = (),
-               moment: datetime | None = None) -> RecordOutcome:
+               moment: datetime | None = None, page: int = 0) -> RecordOutcome:
         stamp = _now_text(moment)
         connection = self._connect()
         if fetch.not_modified:
@@ -224,10 +224,19 @@ class FollowStore:
                 updated += 1
             else:
                 added += 1
-        connection.execute(
-            "UPDATE follow_source SET etag=?, last_modified=?, last_checked_at=?,"
-            " last_status='ok', last_error=NULL, updated_at=? WHERE id=?",
-            (fetch.etag, fetch.last_modified, stamp, stamp, source_id))
+        if page:
+            # 往回抓：**不动 etag/last_modified**。那两个值是第一页的条件请求凭据，
+            # 拿第 3 页的 etag 覆盖掉，下次常规检查就会拿它去问第一页，
+            # 站点回 304，新的更新从此再也进不来。只推进游标。
+            connection.execute(
+                "UPDATE follow_source SET backfill_page=max(backfill_page,?),"
+                " last_checked_at=?, last_status='ok', last_error=NULL, updated_at=?"
+                " WHERE id=?", (page, stamp, stamp, source_id))
+        else:
+            connection.execute(
+                "UPDATE follow_source SET etag=?, last_modified=?, last_checked_at=?,"
+                " last_status='ok', last_error=NULL, updated_at=? WHERE id=?",
+                (fetch.etag, fetch.last_modified, stamp, stamp, source_id))
         return RecordOutcome(source_id, len(fetch.candidates), added, updated,
                              evidence_path=evidence, evidence_error=evidence_error)
 

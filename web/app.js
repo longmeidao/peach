@@ -1332,7 +1332,10 @@ function followCheckSummary(report){
   if(added)bits.push(`新增 <b>${added}</b> 条`);
   if(updated)bits.push(`更新 <b>${updated}</b> 条`);
   // 过滤掉多少也要说：不然用户只看到条目变少，分不清是被过滤了还是根本没抓到。
-  if(skipped)bits.push(`跳过 <b>${skipped}</b> 条非 release`);
+  if(skipped)bits.push(`跳过 <b>${skipped}</b> 条无资源`);
+  // 回查是唯一会放大请求数的路径，报出来才看得出某个作者是不是每帖都要多打一次站点。
+  const probed=rows.reduce((n,r)=>n+(r.probed||0),0);
+  if(probed)bits.push(`回查 <b>${probed}</b> 条详情`);
   if(quiet)bits.push(`${quiet} 个来源没有更新`);
   if(!bits.length&&!failed.length)bits.push('没有任何更新');
   const evidence=rows.filter(r=>r.evidence_error);
@@ -1359,14 +1362,54 @@ function renderFollow(){
       <button class="fcheck" data-follow-manage>${icon('settings')}管理关注</button></div>
     ${broken.length?`<p class="fwarn">${broken.length} 个来源上次检查失败，去
       <button class="flink" data-follow-manage>管理关注</button>看原因。</p>`:''}
+    ${followCheckReport?followCheckSummary(followCheckReport):''}
     <div class="followlist">${groups.length?groups.map(followCard).join('')
       :sources.length?'<p class="empty">没有符合条件的更新</p>'
-      :`<p class="empty">还没有关注任何来源。<button class="flink" data-follow-manage>去添加</button></p>`}</div></div>`;
+      :`<p class="empty">还没有关注任何来源。<button class="flink" data-follow-manage>去添加</button></p>`}</div>
+    ${sources.length?`<div class="folderfoot">
+      <button class="fbtn" data-follow-older>${icon('refresh-cw')}抓更早的一页</button>
+      <span class="fmeta">${esc(followBackfillState(sources))}</span></div>`:''}</div>`;
   wireFollowItems();
+  wireFollowOlder();
+  $('#stats').querySelectorAll('[data-check-dismiss]').forEach(button=>button.onclick=()=>{
+    followCheckReport=null;button.closest('.fcheckreport')?.remove()});
   $('#stats').querySelectorAll('[data-follow-filter]').forEach(button=>button.onclick=()=>{
     followFilter=button.dataset.followFilter;openFollow(false)});
   $('#stats').querySelectorAll('[data-follow-manage]').forEach(button=>
     button.onclick=()=>openFollowManage());
+}
+
+/* 往回抓到哪儿了。不说的话，用户点一次只看到列表变长一点，不知道自己走到第几页，
+   也不知道还要点几次。页码是 0 起的游标（0 = 只抓过第一页），显示成人读的第几页。 */
+function followBackfillState(sources){
+  const pages=sources.map(source=>(source.backfill_page||0)+1);
+  const deepest=Math.max(...pages), shallowest=Math.min(...pages);
+  if(deepest<=1)return '每个来源都只抓了第 1 页';
+  return shallowest===deepest
+    ? `每个来源都抓到第 ${deepest} 页`
+    : `已抓到第 ${shallowest}–${deepest} 页`;
+}
+
+/* 一次只往回一页。追更的常规检查永远只看第一页——每次都从头翻一遍站点既慢又没必要；
+   但那也意味着每个来源只有第一页那点内容，用户问「怎么这么少」就是这个原因。
+   所以往回抓是一个独立的、显式的动作，点一次走一页，不自动、不连翻。 */
+function wireFollowOlder(){
+  const button=$('#stats').querySelector('[data-follow-older]');
+  if(!button)return;
+  button.onclick=async()=>{
+    if(followBusy)return;
+    followBusy=true;const label=button.innerHTML;button.disabled=true;
+    button.textContent='抓取中…';
+    try{
+      followCheckReport=await api('/api/follow/check',
+        {method:'POST',body:JSON.stringify({older:true})});
+      await openFollow(false);
+    }catch(error){
+      button.innerHTML=label;
+      followCheckReport={results:[{ok:false,error:error.message}]};
+      await openFollow(false);
+    }finally{followBusy=false}
+  };
 }
 
 async function openFollow(push=true){
