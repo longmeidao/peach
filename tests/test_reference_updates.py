@@ -28,7 +28,8 @@ class ReferenceUpdateTests(unittest.TestCase):
         sources = {source["id"]: source for source in registry["sources"]}
         self.assertEqual(
             set(sources),
-            {"vercel-report-design", "vercel-web-interface-guidelines"},
+            {"vercel-report-design", "vercel-web-interface-guidelines",
+             "fiu758-studio-logo-discovery"},
         )
         self.assertNotEqual(
             sources["vercel-report-design"]["url"],

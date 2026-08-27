@@ -885,9 +885,12 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_follow_watch_filters_use_the_source_identity(self):
         self.assertPageContains("if(followAuthor&&source.author_key!==followAuthor)return false;")
         self.assertPageContains("if(followProvider&&source.provider!==followProvider)return false;")
-        self.assertPageContains("const chips=(items,current,attr)=>items.length<2?''")
-        self.assertPageContains("标签 · 只有 ${")
+        self.assertPageContains('class="tier followauthors"')
+        self.assertPageContains('class="tagbar followfilters"')
+        self.assertPageContains('class="pill" data-follow-provider=')
+        self.assertPageContains("内容标签目前由 ${")
         self.assertPageContains(".sort((a,b)=>b[1]-a[1]).slice(0,20)")
+        self.assertPageContains(".map(([tag,n])=>[tag,tagLabel(tag),n])")
 
     def test_credentials_are_typed_into_the_page_not_into_a_file_by_hand(self):
         self.assertPageContains('data-cred-form=')
@@ -1093,8 +1096,9 @@ class FollowWebSourceTests(unittest.TestCase):
             self.assertPageContains(selector)
 
     def test_the_check_button_stays_visible_on_a_narrow_viewport(self):
-        # 标签条窄屏横滚会把主操作滚出视野；390 宽下它必须独占一行。
-        self.assertPageContains(".follow .reviewtabs .fcheck{margin-left:0;flex:1 1 100%")
+        # 管理入口不再混进横滚筛选条；390 宽下始终留在标题右侧。
+        self.assertPageContains(".followhead{display:flex;align-items:center;justify-content:space-between")
+        self.assertPageContains(".followhead{align-items:center}.follow .fcheck{height:36px")
 
 
 if __name__ == "__main__":

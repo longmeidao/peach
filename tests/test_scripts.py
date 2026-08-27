@@ -42,6 +42,15 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertIsNone(self.clean_names._logf)
         self.assertIsNone(self.scrape_codes._logf)
 
+    def test_official_jav_tags_only_enter_the_reviewed_taxonomy(self):
+        category_map = self.scrape_codes.CATEGORY_MAP
+        self.assertEqual(category_map["Deep Throat"], "深喉")
+        self.assertEqual(category_map["4K"], "4K")
+        self.assertEqual(category_map["Digital Mosaic"], "有码")
+        self.assertEqual(category_map["Cowgirl"], "骑乘")
+        self.assertNotIn("Featured Actress", category_map,
+                         "来源营销分类不是内容标签，不能因为官方给了就直接入库")
+
     def test_test_entrypoint_enforces_worktree_source_and_unittest(self):
         windows = (ROOT / "scripts" / "test.ps1").read_text(encoding="utf-8")
         self.assertIn("rev-parse --git-common-dir", windows)
@@ -270,6 +279,36 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(written[0]["confirmation"], "no-handle")
         self.assertEqual(written[0]["accepted"], "False")
         self.assertIn("未取得", written[0]["reason"])
+
+    def test_installed_long_studio_logos_are_backed_up_then_squared(self):
+        """历史长条图也走方图策略；测试只能写临时目录。"""
+        from PIL import Image
+
+        module = load_script("normalize_studio_logos")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "logos"
+            backup = Path(tmp) / "backup"
+            root.mkdir()
+            wide = root / "wide.img"
+            buffer = io.BytesIO()
+            Image.new("RGB", (400, 100), "white").save(buffer, "PNG")
+            original = buffer.getvalue()
+            wide.write_bytes(original)
+            Path(f"{wide}.ct").write_text("image/png", encoding="utf-8")
+
+            dry = module.normalize(root)
+            self.assertEqual(dry[0]["action"], "would-pad")
+            self.assertEqual(wide.read_bytes(), original, "dry-run 不得改图")
+            with self.assertRaises(ValueError):
+                module.normalize(root, apply=True)
+
+            applied = module.normalize(root, apply=True, backup_dir=backup)
+            self.assertEqual(applied[0]["action"], "padded")
+            self.assertEqual((backup / "wide.img").read_bytes(), original)
+            with Image.open(wide) as squared:
+                self.assertEqual(squared.size, (400, 400))
+            self.assertEqual(Path(f"{wide}.ct").read_text(encoding="utf-8"), "image/png")
+            self.assertTrue(Path(f"{wide}.normalization.json").is_file())
 
     def test_frame_retry_is_reserved_for_bad_color_metadata(self):
         """坏色彩元数据才重试。无条件重试会让网盘超时的文件每帧白跑两次 45 秒。"""

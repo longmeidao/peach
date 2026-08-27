@@ -461,13 +461,19 @@ class KemonoConnector(_BaseConnector):
         primary = post.get("file") if isinstance(post.get("file"), dict) else {}
         attachments = [a for a in (post.get("attachments") or []) if isinstance(a, dict)]
         media = primary.get("path") or (attachments[0].get("path") if attachments else None)
+        # 正片/压缩包仍是主要资源；封面则要从所有附件里另找第一张图片。
+        # 过去把两件事绑在同一个 `media` 上，主文件只要是 mp4/zip，后面明明附了
+        # jpg 也会显示「没有预览图」。
+        preview = next((path for path in (
+            primary.get("path"), *(item.get("path") for item in attachments)
+        ) if path and str(path).lower().endswith(self._THUMBABLE)), None)
         return FollowCandidate(
             provider=self.provider,
             external_id=post_id or _stable_id(title, str(post.get("published"))),
             title=title,
             url=page,
             media_url=f"https://{self.host}{media}" if media else None,
-            thumb_url=self._thumb_url(media),
+            thumb_url=self._thumb_url(preview),
             published_at=_iso_from_text(post.get("published")),
             author=None,
             summary=_plain_text(post.get("substring")),
