@@ -723,6 +723,28 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("data-pick-add")
         self.assertPageContains("data-pick-cancel")
 
+    def test_lookup_results_stay_inside_the_add_section_with_one_title_scale(self):
+        page = self.page
+        manage = page[page.index("function renderFollowManage("):
+                      page.index("function wireFollowItems(")]
+        add_section = manage[manage.index('<section class="fsec">'):
+                             manage.index('</section>')]
+        self.assertIn('id="followPicks"', add_section)
+        self.assertNotIn('</section>\n      <div id="followPicks">', manage)
+        self.assertPageContains(
+            '<div class="fpicks"><div class="fsechead"><h3>查找结果</h3>')
+        self.assertPageContains('<p class="fpickempty">没有查到来源</p>')
+        self.assertNotIn(".fpicks h3{", page,
+                         "查找结果不应另起一套标题字号")
+
+    def test_follow_sources_use_multiple_columns_and_link_to_the_original_page(self):
+        self.assertPageContains('class="frows fsources"')
+        grid = self.page[self.page.index(".fsources{"):]
+        self.assertIn("repeat(auto-fit,minmax(430px,1fr))", grid[:grid.index("}")])
+        self.assertPageContains('class="fsourcelink" href="${esc(source.url)}"')
+        self.assertPageContains('title="打开原来源"')
+        self.assertPageContains('rel="noreferrer noopener"')
+
     def test_already_followed_candidates_are_shown_but_not_selectable(self):
         # 灰掉但仍显示，免得人以为没查到。
         self.assertPageContains("c.known?' known':''")
@@ -871,7 +893,8 @@ class FollowWebSourceTests(unittest.TestCase):
         token，且一个字面像素都不留」。
         """
         page = self.page
-        block = page[page.index("/* ── 关注管理页 ──"):page.index("/* ── 查找结果的勾选清单")]
+        # 查找结果现在属于同一个管理分区，所以字号检查也要覆盖这一段，直到关注页脚。
+        block = page[page.index("/* ── 关注管理页 ──"):page.index("/* 关注页底部")]
         self.assertEqual(re.findall(r"font-size:[\d.]+px", block), [],
                          "面板里不该再有写死的字号")
         steps = sorted({m for m in re.findall(r"font-size:var\(--fs-([a-z0-9]+)\)", block)})

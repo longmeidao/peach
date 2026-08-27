@@ -1636,7 +1636,8 @@ function followSourceRow(source){
   const state=source.last_status||'未检查';
   const bad=state==='error'||state==='unauthorized';
   return `<div class="frow fsource${bad?' bad':''}">
-    <b>${esc(source.label)}</b>
+    <b><a class="fsourcelink" href="${esc(source.url)}" target="_blank"
+      rel="noreferrer noopener" title="打开原来源">${esc(source.label)}</a></b>
     <span class="fmeta">${sourceIcon(source.provider)}${esc(source.provider_label)}</span>
     <span class="fmeta">${esc(source.last_checked_at?localTime(source.last_checked_at):'未检查')}</span>
     <span class="fmeta${bad?' warn':''}">${esc(state)}</span>
@@ -1720,8 +1721,8 @@ function renderFollowManage(credentials){
         ${(followData.suggestions||[]).length
           ?`<div class="fguess"><span class="fmeta">猜你喜欢</span>${
               followSuggestionChips(followData.suggestions)}</div>`:''}
+        <div id="followPicks"></div>
       </section>
-      <div id="followPicks"></div>
       <section class="fsec">
         <div class="fsechead"><h3>关注列表</h3>
           <span class="fmeta">${sources.length} 个来源${
@@ -1731,7 +1732,7 @@ function renderFollowManage(credentials){
           <button class="fbtn" data-follow-view>${icon('globe')}去看更新</button></div>
         ${followCheckReport?followCheckSummary(followCheckReport):''}
         ${broken.length?`<p class="fnote warn">${broken.length} 个来源上次检查失败，原因见对应那一行。</p>`:''}
-        ${sources.length?`<div class="frows">${
+        ${sources.length?`<div class="frows fsources">${
           followAuthorGroups(sources).map(followAuthorBlock).join('')}</div>
           ${counts.new?`<p class="fnote">未看 ${counts.new} · 已看 ${counts.seen||0}
             · 已保存 ${counts.saved||0} · 已忽略 ${counts.ignored||0}
@@ -1945,16 +1946,16 @@ function renderFollowPicks(results){
       <span><b>${esc(c.provider_label)}</b> ${esc(c.label)}
         <i>${esc(c.known?'已经在追':c.evidence)}</i></span></label>`).join('');
     return `<div class="fpick"><b>${esc(row.line)}</b>
-      ${items||'<p class="empty">这一条没有查到任何来源</p>'}
+      ${items||'<p class="fpickempty">没有查到来源</p>'}
       ${failures.length?`<p class="fpickfail">${failures.map(([k,v])=>
         `${esc(k)}：${esc(v)}`).join('；')}</p>`:''}</div>`;
   }).join('');
   const total=results.reduce((n,row)=>n+(row.candidates||[])
     .filter(c=>!c.known).length,0);
-  box.innerHTML=`<section class="fpicks"><h3>查找结果</h3>${blocks}
+  box.innerHTML=`<div class="fpicks"><div class="fsechead"><h3>查找结果</h3></div>${blocks}
     ${total?`<div class="fpickactions"><button data-pick-add>添加选中</button>
       <button data-pick-cancel>取消</button><span data-pick-state aria-live="polite"></span></div>`
-      :'<div class="fpickactions"><button data-pick-cancel>关闭</button></div>'}</section>`;
+      :'<div class="fpickactions"><button data-pick-cancel>关闭</button></div>'}</div>`;
   box.querySelector('[data-pick-cancel]').onclick=()=>{box.innerHTML=''};
   const addButton=box.querySelector('[data-pick-add]');
   if(addButton)addButton.onclick=async()=>{

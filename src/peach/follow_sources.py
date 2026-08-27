@@ -616,7 +616,9 @@ class Rule34XxxConnector(_BaseConnector):
         body = response.body.decode("utf-8", errors="replace").strip()
         if body.startswith('"') and "authentication" in body.lower():
             raise CredentialError("rule34xxx 拒绝了 user_id/api_key")
-        payload = self._json(response)
+        # rule34.xxx 在标签没有任何帖子时返回 HTTP 200 + 空正文，不是 JSON `[]`。
+        # 这只代表零命中；非空但无法解析的响应仍按结构异常报告，避免吞掉站点改版。
+        payload = [] if not body else self._json(response)
         posts = payload.get("post", []) if isinstance(payload, dict) else payload
         if not isinstance(posts, list):
             raise FollowSourceError("rule34xxx 的帖子列表格式不符")
