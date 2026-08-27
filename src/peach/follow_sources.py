@@ -61,12 +61,22 @@ def resource_links(text: str | None) -> list[str]:
     """
     found = []
     for link in _LINK_RE.findall(text or ""):
-        host = (urllib.parse.urlsplit(link).hostname or "").lower()
-        host = host[4:] if host.startswith("www.") else host
-        if any(host == domain or host.endswith("." + domain)
-               for domain in _FILE_HOST_DOMAINS):
+        if _is_resource_url(link):
             found.append(link)
     return found
+
+
+def _is_resource_url(url: str) -> bool:
+    try:
+        parsed = urllib.parse.urlsplit(url)
+    except ValueError:
+        return False
+    host = (parsed.hostname or "").lower()
+    host = host[4:] if host.startswith("www.") else host
+    return parsed.scheme == "https" and any(
+        host == domain or host.endswith("." + domain)
+        for domain in _FILE_HOST_DOMAINS
+    )
 
 
 @dataclass(frozen=True)
@@ -287,6 +297,21 @@ class _BaseConnector:
             merged["If-Modified-Since"] = last_modified
         try:
             response = self.transport(HttpRequest("GET", url, merged),
+                                      self.timeout, self.max_bytes)
+        except (OSError, httpx.HTTPError) as exc:
+            raise FollowSourceError(f"{self.provider} 请求失败") from exc
+        if len(response.body) > self.max_bytes:
+            raise FollowSourceError(f"{self.provider} 响应超出大小上限")
+        return response
+
+    def _post(self, url: str, body: bytes, *,
+              headers: Mapping[str, str] | None = None) -> HttpResponse:
+        if self.blocked_reason:
+            raise FollowSourceError(self.blocked_reason)
+        merged = self._headers()
+        merged.update(headers or {})
+        try:
+            response = self.transport(HttpRequest("POST", url, merged, body),
                                       self.timeout, self.max_bytes)
         except (OSError, httpx.HTTPError) as exc:
             raise FollowSourceError(f"{self.provider} 请求失败") from exc
@@ -805,11 +830,10 @@ class F95ZoneConnector(_BaseConnector):
     主贴的版本号更新常常滞后于回复——真正的新链接先出现在楼下——所以这里读的是
     线程的 `/latest` 页而不是主贴；`latest_data.php` 另给线程当前的 `version` 与时间戳。
 
-    **发现不需要登录，取媒体需要。** 2026-08-25 实测 `/latest` 页在无 cookie 下
-    完整返回回复正文与外链（`/masked/...` 之类），所以追更判定本身不吃凭据；但
-    `attachments.f95zone.to` 上的附件图片和 `masked` 链接的真实跳转要登录会话才拿得到。
-    候选因此带 `media_needs_credential`，下载动作必须先看这个标志，不要拿 403 的
-    附件冒充「已保存」。
+    **发现不需要登录，解析 masked 链接需要。** 2026-08-28 实测 `/latest` 页在无
+    cookie 下完整返回回复正文与 `/masked/...`；配置 cookie 后向同一路径 POST
+    `xhr=1&download=1` 才返回真实网盘 URL。cookie 只发回 f95zone.to，绝不跟着
+    真实链接送到 Gofile / Pixeldrain。
 
     `ref` 是线程 id，例如 `50685`。
     """
@@ -819,6 +843,7 @@ class F95ZoneConnector(_BaseConnector):
     _THREAD_RE = re.compile(r"^\d{1,12}$")
     #: latest_data.php 按分类分库，线程不在哪个分类里事先不知道，只能逐个试。
     CATEGORIES = ("games", "animations", "comics", "assets", "mods")
+    _MASKED_PATH_RE = re.compile(r"^/masked/", re.IGNORECASE)
 
     def fetch(self, ref: str, *, etag: str | None = None,
               last_modified: str | None = None, page: int = 0) -> SourceFetch:
@@ -876,21 +901,75 @@ class F95ZoneConnector(_BaseConnector):
                 str(node.get("href")) for node in (body.select("a[href]") if body else [])
                 if str(node.get("href", "")).startswith("http")
             ]
+            media_links, needs_credential = self._media_links(links)
             yield FollowCandidate(
                 provider=self.provider,
                 external_id=post_id,
                 title=thread_title,
                 url=f"https://f95zone.to/threads/{thread}/post-{post_id}",
-                media_url=links[0] if links else None,
+                media_url=media_links[0] if media_links else None,
                 published_at=_iso_from_text(time_node.get("datetime"))
                 if time_node is not None else None,
                 author=_plain_text(str(article.get("data-author") or "")) or None,
                 summary=_plain_text(body.get_text(" ")) if body else None,
-                extra={"thread_id": thread, "link_count": len(links),
-                       "links": links[:8],
-                       # 发现是公开的，取媒体不是：附件与 masked 跳转都要登录会话。
-                       "media_needs_credential": True},
+                extra={"thread_id": thread, "link_count": len(media_links),
+                       "links": media_links[:8],
+                       "media_needs_credential": needs_credential},
             )
+
+    def _media_links(self, links: list[str]) -> tuple[list[str], bool]:
+        """只保留文件分发链接，并用本机 F95 会话解开 masked URL。"""
+        cookie = str(self.credential.values.get("cookie") or "") \
+            if self.credential else ""
+        media: list[str] = []
+        needs_credential = False
+        for link in links:
+            if self._is_masked(link):
+                target = self._resolve_masked(link, cookie) if cookie else None
+                if target is None:
+                    needs_credential = True
+                    media.append(link)
+                elif target not in media:
+                    media.append(target)
+                continue
+            if _is_resource_url(link) and link not in media:
+                media.append(link)
+        return media, needs_credential
+
+    @classmethod
+    def _is_masked(cls, url: str) -> bool:
+        try:
+            parsed = urllib.parse.urlsplit(url)
+        except ValueError:
+            return False
+        host = (parsed.hostname or "").casefold()
+        return (parsed.scheme == "https"
+                and (host == "f95zone.to" or host.endswith(".f95zone.to"))
+                and bool(cls._MASKED_PATH_RE.match(parsed.path)))
+
+    def _resolve_masked(self, url: str, cookie: str) -> str | None:
+        # masked.js 使用同路径 XHR POST。失败只让这一条维持「需会话」，不能让整个
+        # 线程的公开发现一起失败。
+        try:
+            response = self._post(
+                url,
+                b"xhr=1&download=1",
+                headers={
+                    "Accept": "application/json",
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                    "Cookie": cookie,
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+            )
+            if response.status != 200:
+                return None
+            payload = self._json(response)
+        except FollowSourceError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        target = str(payload.get("msg") or "")
+        return target if payload.get("status") == "ok" and _is_resource_url(target) else None
 
     def thread_index(self, category: str, query: str) -> tuple[dict, ...]:
         """在 `latest_data.php` 里按名字查线程；用于登记订阅时确认 id 与版本。"""

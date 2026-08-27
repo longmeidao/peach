@@ -1326,6 +1326,20 @@ function followCollectionItems(group){
     if(!item||seen.has(item.id))return false;seen.add(item.id);return true});
 }
 
+// F95 的「8 条动态」可能只有一个网盘页，也可能一条实际视频都没有。Mix 是播放
+// 语义，只能由已解析、可在 Peach 内播放的视频触发，不能拿回复数或外链数冒充。
+function followVideoItems(group){
+  return followCollectionItems(group).filter(item=>
+    item.playable&&item.media_kind==='video');
+}
+
+function followMediaNote(item){
+  if(item.media_needs_credential)return '媒体链接需要 F95 登录会话解析';
+  if(item.has_media&&!item.playable&&item.media_kind==='external')
+    return '已取得外部文件页；视频列表未取得';
+  return '';
+}
+
 /* 集合弹层沿用原来的动态语义：线程标题不能冒充每条回复的正文，
    行首则说明它与主条目的关系。 */
 function followCollectionCopy(group,item,mark=''){
@@ -1338,8 +1352,8 @@ function followCollectionCopy(group,item,mark=''){
 }
 
 function followQueueHtml(group,itemId){
-  const items=followCollectionItems(group);
-  return `<aside class="mixqueue followqueue"><div class="mixqueuehead"><div><h2>${esc(group.primary.title||'视频集合')}</h2><span>${items.length} 个${items.some(item=>item.has_media)?'视频':'条目'}</span></div><div class="mixqueueactions">
+  const items=followVideoItems(group);
+  return `<aside class="mixqueue followqueue"><div class="mixqueuehead"><div><h2>${esc(group.primary.title||'视频集合')}</h2><span>${items.length} 个视频</span></div><div class="mixqueueactions">
     <button data-follow-queue-close title="关闭" aria-label="关闭">${icon('x')}</button></div></div><div class="mixlist">${items.map(item=>{
       const copy=followCollectionCopy(group,item,group.duplicates.includes(item)?item.provider_label:'');
       const thumb=item.thumb_url
@@ -1373,7 +1387,7 @@ async function openFollowDetail(id,push=true){
   if(!push)followDetailReturnPath='/follow';
   const item=await followItemById(+id);if(!item)return;
   const group=followGroupByItemId.get(item.id);
-  const collection=group&&followCollectionItems(group).length>1?group:null;
+  const collection=group&&followVideoItems(group).length>1?group:null;
   disposeStage(false);
   if(push)route(`/follow/item/${item.id}`);
   const source=(followData?.sources||[]).find(row=>row.id===item.source_id);
@@ -1403,7 +1417,7 @@ async function openFollowDetail(id,push=true){
       <div class="smeta mono"><span>${followWhen(item)}</span>${item.duration?`<span>${fmtDur(item.duration)}</span>`:''}${badges?`<span class="fbadges">${badges}</span>`:''}</div>
       ${item.summary?`<p class="followdetailsummary">${esc(item.summary)}</p>`:''}
       ${tags?`<div class="stags followdetailtags">${tags}</div>`:''}
-      ${item.media_needs_credential?'<p class="fnote">媒体需要登录会话才能取，发现本身不需要</p>':''}
+      ${followMediaNote(item)?`<p class="fnote followmedianote">${esc(followMediaNote(item))}</p>`:''}
       <div class="fb followdetailactions">
         <button class="later" data-follow-detail-save aria-label="${item.status==='saved'?'已保存':'保存到账本'}" title="${item.status==='saved'?'已保存':'保存到账本'}"${item.status==='saved'?' disabled':''}>${item.status==='saved'?icon('check'):icon('bookmark-plus')}</button>
         <button class="seen" data-follow-detail-status="seen" aria-label="标记已看" title="标记已看" aria-pressed="${item.status==='seen'}">${icon('eye')}</button>
@@ -1449,16 +1463,16 @@ function followCard(group,authorSources=[]){
   const thumb=item.thumb_url
     ? `<img src="${esc(item.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
     : `<span class="fnothumb">${esc(item.provider_label)}</span>`;
-  const collection=followCollectionItems(group),collectionCount=collection.filter(row=>row.has_media).length;
+  const videos=followVideoItems(group),isMix=videos.length>1;
   const badges=followBadges(group);
   const tags=(item.tags||[]).slice(0,3).map(tag=>followTagChip(item,tag)).join('');
   const open=`<button class="cardopenhit" data-follow-detail="${item.id}" aria-label="打开 ${esc(item.title)} 详情"></button>`;
-  return `<article class="card followitem${collection.length>1?' collection':''}" data-follow-item="${item.id}" data-status="${esc(item.status)}">
-    <div class="${collection.length>1?'mixstack ':''}followvisual"><div class="pic">
+  return `<article class="card followitem${isMix?' collection':''}" data-follow-item="${item.id}" data-status="${esc(item.status)}">
+    <div class="${isMix?'mixstack ':''}followvisual"><div class="pic">
       ${open}${thumb}
       <span class="badge" title="${esc(item.provider_label)}" aria-label="来源：${esc(item.provider_label)}">${sourceIcon(item.provider)}</span>
       <span class="selectionMark">${icon('check')}</span>${item.duration?`<span class="dur mono">${fmtDur(item.duration)}</span>`:''}
-      ${collection.length>1?`<button class="mixbadge" data-follow-collection="${item.id}">${icon('play')}${collectionCount||collection.length} 个${collectionCount?'视频':'条目'}</button>`:''}
+      ${isMix?`<button class="mixbadge" data-follow-collection="${videos[0].id}">${icon('play')}${videos.length} 个视频</button>`:''}
       <div class="factions">
         <button data-follow-save="${item.id}" title="${item.status==='saved'?'已保存':'保存到账本'}" aria-label="${item.status==='saved'?'已保存':'保存到账本'}"${item.status==='saved'?' disabled':''}>${item.status==='saved'?icon('check'):icon('bookmark-plus')}</button>
         <button data-follow-status="${item.id}" data-to="seen" title="标记已看" aria-label="标记已看"${item.status==='seen'?' disabled':''}>${icon('eye')}</button>
@@ -1468,7 +1482,7 @@ function followCard(group,authorSources=[]){
     <div class="meta"><span class="mav fsourceavatar" title="作者头像">${followAuthorAvatar(authorSources)}</span>
       <div class="mtext"><button class="t cardtitle" data-follow-detail="${item.id}">${esc(item.title)}</button>
         <div class="s mono"><span>${followWhen(item)}</span>${badges?`<span class="fbadges">${badges}</span>`:''}</div>
-        ${tags?`<div class="ctags">${tags}</div>`:''}${item.media_needs_credential?'<span class="fnote">媒体需要登录会话才能取，发现本身不需要</span>':''}</div></div>
+        ${tags?`<div class="ctags">${tags}</div>`:''}${followMediaNote(item)?`<span class="fnote">${esc(followMediaNote(item))}</span>`:''}</div></div>
     <span class="fstate" aria-live="polite"></span></article>`;
 }
 
