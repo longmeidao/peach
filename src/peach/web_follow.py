@@ -40,6 +40,7 @@ _STATUSES = ("new", "seen", "saved", "ignored")
 _BACKFILL_PROVIDERS = frozenset(
     {"kemono", "coomer", "pawchive", "rule34video", "rule34xxx"}
 )
+_OFFICIAL_IDENTITY_PROVIDERS = frozenset({"fanbox", "patreon", "subscribestar"})
 
 
 def _store(contract, connection) -> FollowStore:
@@ -266,6 +267,103 @@ def _follow_alias_state(connection) -> tuple[dict[str, str], list[dict]]:
                 "source": str(row["source"]),
             })
     return mapping, [group for group in groups.values() if group["aliases"]]
+
+
+def _upsert_follow_author_alias(connection, canonical_name: str, alias_name: str,
+                                *, source: str) -> dict | None:
+    """Persist one alias without letting automatic evidence overwrite a decision.
+
+    Manual confirmation may deliberately regroup an existing alias. Automatic learning is
+    narrower: it only fills a previously unknown platform handle and leaves every existing
+    mapping, especially a manual one, untouched.
+    """
+    canonical_key = _normalized_author_name(canonical_name)
+    alias_key = _normalized_author_name(alias_name)
+    if not canonical_key or not alias_key:
+        raise ValueError("规范作者名和平台别名都不能为空")
+    if canonical_key == alias_key:
+        raise ValueError("这两个名字归一化后相同，不需要维护别名")
+
+    stamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    mapping, _ = _follow_alias_state(connection)
+    canonical_root = mapping.get(canonical_key, canonical_key)
+    alias_root = mapping.get(alias_key, alias_key)
+    if source != "manual":
+        existing = connection.execute(
+            "SELECT 1 FROM follow_author_alias WHERE alias_key=?", (alias_key,)
+        ).fetchone()
+        if existing is not None or alias_root != alias_key:
+            return None
+        canonical_row = connection.execute(
+            "SELECT canonical_name FROM follow_author_alias WHERE canonical_key=? "
+            "ORDER BY CASE WHEN alias_key=canonical_key THEN 0 ELSE 1 END LIMIT 1",
+            (canonical_root,),
+        ).fetchone()
+        if canonical_row is not None:
+            canonical_name = str(canonical_row["canonical_name"])
+    elif canonical_root != alias_root:
+        connection.execute(
+            "UPDATE follow_author_alias SET canonical_key=?,canonical_name=?,updated_at=? "
+            "WHERE canonical_key=?",
+            (canonical_root, canonical_name, stamp, alias_root),
+        )
+
+    conflict = (
+        "DO UPDATE SET canonical_key=excluded.canonical_key,"
+        "canonical_name=excluded.canonical_name,alias_name=excluded.alias_name,"
+        "source=excluded.source,updated_at=excluded.updated_at"
+        if source == "manual" else "DO NOTHING"
+    )
+    sql = (
+        "INSERT INTO follow_author_alias(alias_key,alias_name,canonical_key,"
+        "canonical_name,source,created_at,updated_at) VALUES(?,?,?,?,?,?,?) "
+        f"ON CONFLICT(alias_key) {conflict}"
+    )
+    connection.execute(
+        sql, (canonical_root, canonical_name, canonical_root, canonical_name,
+              source, stamp, stamp),
+    )
+    inserted = connection.execute(
+        sql, (alias_key, alias_name, canonical_root, canonical_name,
+              source, stamp, stamp),
+    ).rowcount
+    if source != "manual" and not inserted:
+        return None
+    return {"canonical": canonical_name, "alias": alias_name, "source": source}
+
+
+def _official_profile_handle(provider: str, ref: str) -> str:
+    if provider == "fanbox":
+        return str(ref or "").strip()
+    if provider == "subscribestar":
+        return str(ref or "").strip().rsplit("/", 1)[-1]
+    if provider == "patreon":
+        value = str(ref or "").strip().strip("/")
+        if value.startswith("user/") or value.isdigit():
+            return ""
+        return value.rsplit("/", 1)[-1]
+    return ""
+
+
+def _learn_official_author_alias(connection, provider: str, ref: str,
+                                  candidates) -> dict | None:
+    """Learn a platform handle only from one unambiguous official profile name."""
+    if provider not in _OFFICIAL_IDENTITY_PROVIDERS:
+        return None
+    authors: dict[str, str] = {}
+    for candidate in candidates:
+        name = str(candidate.author or "").strip()
+        key = _normalized_author_name(name)
+        if key:
+            authors.setdefault(key, name)
+    if len(authors) != 1:
+        return None
+    canonical_key, canonical_name = next(iter(authors.items()))
+    handle = _official_profile_handle(provider, ref)
+    if not handle or _normalized_author_name(handle) == canonical_key:
+        return None
+    return _upsert_follow_author_alias(
+        connection, canonical_name, handle, source=f"official:{provider}")
 
 
 def _follow_alias_suggestions(rows, aliases: dict[str, str]) -> list[dict]:
@@ -514,6 +612,8 @@ def w_follow_check(contract, body) -> dict:
                 row["id"], fetch,
                 creator_aliases=store.creator_aliases(row["entity_id"]), moment=moment,
                 page=page)
+            learned_alias = _learn_official_author_alias(
+                connection, provider, ref, fetch.candidates)
         results.append({
             "source": row["id"], "provider": provider,
             "provider_label": PROVIDER_LABELS.get(provider, provider),
@@ -532,6 +632,7 @@ def w_follow_check(contract, body) -> dict:
             "probed": fetch.probed,
             # 证据没存下来不算检查失败，但界面必须说出来，不能悄悄少一份原始响应。
             "evidence_error": outcome.evidence_error,
+            "author_alias_learned": learned_alias,
         })
     return {"ok": True, "checked": len(results), "results": results}
 
@@ -642,42 +743,9 @@ def w_follow_author_alias(contract, body) -> dict:
 
     canonical_name = str(body.get("canonical") or "").strip()
     alias_name = str(body.get("alias") or "").strip()
-    canonical_key = _normalized_author_name(canonical_name)
-    alias_key = _normalized_author_name(alias_name)
-    if not canonical_key or not alias_key:
-        raise ValueError("规范作者名和平台别名都不能为空")
-    if canonical_key == alias_key:
-        raise ValueError("这两个名字归一化后相同，不需要维护别名")
-
-    stamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     with contract.database.write_transaction() as connection:
-        mapping, _ = _follow_alias_state(connection)
-        canonical_root = mapping.get(canonical_key, canonical_key)
-        alias_root = mapping.get(alias_key, alias_key)
-        if canonical_root != alias_root:
-            connection.execute(
-                "UPDATE follow_author_alias SET canonical_key=?,canonical_name=?,updated_at=? "
-                "WHERE canonical_key=?",
-                (canonical_root, canonical_name, stamp, alias_root),
-            )
-        connection.execute(
-            "INSERT INTO follow_author_alias(alias_key,alias_name,canonical_key,"
-            "canonical_name,source,created_at,updated_at) VALUES(?,?,?,?,?,?,?) "
-            "ON CONFLICT(alias_key) DO UPDATE SET canonical_key=excluded.canonical_key,"
-            "canonical_name=excluded.canonical_name,alias_name=excluded.alias_name,"
-            "source=excluded.source,updated_at=excluded.updated_at",
-            (canonical_root, canonical_name, canonical_root, canonical_name,
-             "manual", stamp, stamp),
-        )
-        connection.execute(
-            "INSERT INTO follow_author_alias(alias_key,alias_name,canonical_key,"
-            "canonical_name,source,created_at,updated_at) VALUES(?,?,?,?,?,?,?) "
-            "ON CONFLICT(alias_key) DO UPDATE SET canonical_key=excluded.canonical_key,"
-            "canonical_name=excluded.canonical_name,alias_name=excluded.alias_name,"
-            "source=excluded.source,updated_at=excluded.updated_at",
-            (alias_key, alias_name, canonical_root, canonical_name,
-             "manual", stamp, stamp),
-        )
+        _upsert_follow_author_alias(
+            connection, canonical_name, alias_name, source="manual")
         _, groups = _follow_alias_state(connection)
     return {"ok": True, "canonical": canonical_name, "alias": alias_name,
             "author_aliases": groups}

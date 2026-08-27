@@ -108,7 +108,8 @@ macOS/Linux 用 `./scripts/test.sh follow`。可选域为 `follow`、`catalog`�
 F95zone 站内索引没有命中名称时，结果区会给出对应的 Google 查询入口；Google 结果只供人核对真实线程链接，不会自动登记来源。
 
 Rule34.xxx 标签身份不区分大小写。跨站来源按规范作者归组，F95 标题中的 `Collection(s)` 不属于作者名。
-相似平台名只产生别名建议，用户确认后才合并作者组；别名可随时移除。作者头像优先从已验证的
+官方主页同时给出唯一作者名与平台账号时，Peach 自动学习该平台别名；已有人工作决定时不覆盖。
+只有名称相似而没有官方身份链的情况仍只产生建议，用户确认后才合并；别名可随时移除。作者头像优先从已验证的
 官方 FANBOX/Pixiv 页面取得，归档站只作回退。连接器设计与证据见
 [`ADR-0019`](docs/adr/0019-site-follow-connectors-and-variant-grouping.md)。
 

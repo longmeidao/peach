@@ -745,6 +745,59 @@ class FollowSourceAddTests(FollowContractTests):
         self.assertTrue(removed["ok"])
         self.assertEqual(len({row["author_key"] for row in self._get()["sources"]}), 2)
 
+    def test_an_official_profile_learns_its_handle_as_an_alias(self):
+        self._source("rule34video", "ffxivinitiala", "FFXIVInitialA")
+        fetch = SourceFetch(
+            provider="fanbox", ref="ffxivinitiala",
+            request_url="https://api.fanbox.cc/post.listCreator",
+            semantics="work", candidates=(FollowCandidate(
+                provider="fanbox", external_id="1", title="Free post",
+                url="https://ffxivinitiala.fanbox.cc/posts/1", author="InitialA",
+            ),),
+        )
+        result = self._add("https://ffxivinitiala.fanbox.cc/", fetch=fetch)
+        self.assertEqual(result["checked"]["author_alias_learned"], {
+            "canonical": "InitialA", "alias": "ffxivinitiala",
+            "source": "official:fanbox",
+        })
+        payload = self._get()
+        self.assertEqual({row["author_key"] for row in payload["sources"]},
+                         {"name:initiala"})
+        self.assertEqual(payload["author_aliases"][0]["aliases"][0]["source"],
+                         "official:fanbox")
+
+    def test_ambiguous_official_profile_does_not_learn_an_alias(self):
+        fetch = SourceFetch(
+            provider="fanbox", ref="shared-handle",
+            request_url="https://api.fanbox.cc/post.listCreator",
+            semantics="work", candidates=(
+                FollowCandidate(provider="fanbox", external_id="1", title="One",
+                                author="First"),
+                FollowCandidate(provider="fanbox", external_id="2", title="Two",
+                                author="Second"),
+            ),
+        )
+        result = self._add("https://shared-handle.fanbox.cc/", fetch=fetch)
+        self.assertIsNone(result["checked"]["author_alias_learned"])
+        self.assertEqual(self._get()["author_aliases"], [])
+
+    def test_official_evidence_never_overwrites_a_manual_alias(self):
+        self._source("rule34video", "shared-handle", "SharedHandle")
+        self._post("/api/follow/author-alias", {
+            "action": "add", "canonical": "KnownAuthor", "alias": "SharedHandle"})
+        fetch = SourceFetch(
+            provider="fanbox", ref="shared-handle",
+            request_url="https://api.fanbox.cc/post.listCreator",
+            semantics="work", candidates=(FollowCandidate(
+                provider="fanbox", external_id="1", title="One", author="OtherAuthor",
+            ),),
+        )
+        result = self._add("https://shared-handle.fanbox.cc/", fetch=fetch)
+        self.assertIsNone(result["checked"]["author_alias_learned"])
+        aliases = self._get()["author_aliases"]
+        self.assertEqual(aliases[0]["canonical_name"], "KnownAuthor")
+        self.assertEqual(aliases[0]["aliases"][0]["source"], "manual")
+
     def test_alias_names_must_be_distinct_and_nonempty(self):
         for body in ({"canonical": "InitialA", "alias": "initial-a"},
                      {"canonical": "", "alias": "FFXIVInitialA"}):
