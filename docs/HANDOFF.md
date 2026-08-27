@@ -22,13 +22,14 @@
 - 社交 handle 只采信**厂牌自有域名页面上**的链接。日文维基条目的外链里混着引用来源的新闻站，直接抓会把新闻站自己的账号当成厂牌的——实测 `妄想族` 条目就抓出了 `@news_postseven` 与 `@taishurxjp`。官网链接也不必然指向主号：`gloryquest.tv` 链的是 `@lG_Ql`「社内クリエイティ部（BOT）」，头像压着 18+ 徽标，反而不如 `@gloryquest_av` 的干净字标合适。所以官网只用来确认归属，选哪个号仍要看图。
 - AV 厂牌官网普遍先给年龄确认页，不穿过它只能拿到约 10 KB 的空壳。判据必须是锚文本而不是 URL：否定链接指向站外（实测 `dasdas.jp`、`muku.tv` 的「いいえ」都指向 dmm.com），肯定链接「はい（入室する）」指向站内，两者的 href 看不出区别。跟错就离开了厂牌域名，抓到的账号也就不再属于这个厂牌。实现见 `scripts/find_studio_socials.py`，`test_age_gate_is_crossed_by_the_affirmative_link_only` 守这条线。
 - 二手结论不能当证据：搜索摘要曾称 `@EBODY_` 已注销，实测直接解析到 400×400 活跃头像。凡是「某账号/端点已失效」这类判断，取证方式是自己请求一次，不是转述搜索结果。
-- **图集就是目录**：账本没有图集实体，也不需要一个。`<作品目录>\P\001.jpg` 这种约定在 A:/B: 上到处都是，所以 `/api/photos` 按 `path` 去掉文件名分组，图集 id 取该目录里最小的资产 id——稳定、可反查目录，又不用把真实路径发给前端（和 `q_item` 一致）。同名目录在两个来源下算两个图集：文件不同、计费口径也不同。叶子目录只写 `P`、`图片` 这类通用名时，标题取上一级目录名。
+- **图集就是目录**：账本没有图集实体，也不需要一个。`<作品目录>\P\001.jpg` 这种约定在 A:/B: 上到处都是，所以 `/api/photos` 按 `path` 去掉文件名分组，图集 ID 取该目录里最小的资产 ID——稳定、可反查目录，又不用把真实路径发给前端（和 `q_item` 一致）。同名目录在两个来源下算两个图集：文件不同、计费口径也不同。叶子目录只写 `P`、`图片` 这类通用名时，标题取上一级目录名。
 - **瀑布流只读缩略图，原图只在灯箱里读**。图片资产没有接触印相可裁，只能读原图；PikPak 一张动辄几 MB，一屏几十张就是几十兆计费流量。`/photo-thumb` 用 Pillow 缩到 640 宽存进 `photo_root`，每张只回源一次，`/photo` 只服务灯箱当前和相邻的大图。瀑布流用 CSS `column-count`：图片行没有 `width`/`height`，等宽多列流式排版正好不需要比例，也就不必等图加载完再算位置。
 - 人工复核入口固定为 `/review`，候选 API 为 `GET /api/review`、`POST /api/review/decision`。候选来自 writer 本机 `peach-data/generated` 下的 CSV；每项尽量带代表封面与原视频入口，审核状态写 `review_decision`。元数据与创作者标签批准后写相应真相/投影，Logo、头像、身份和媒体失败只记录决定；封面抓取的成功、尺寸和缺失是机械状态，不进入人工复核。双机同时在线时，reader 的 `GET /api/review` 只通过 Peach CA 严格校验的 HTTPS 读取 writer 已归一化 JSON，先确认目标 `/healthz` 是 `ledger_sync=writer`，绕过外网代理并原子缓存到本机 `review/writer-review.json`；macOS 合并文件 CA 与系统/登录钥匙串中受信任的同名 Peach CA，只读取公钥证书，不导出私钥。launchd 主体被本地网络权限挡住时，使用系统 `/usr/bin/curl` 经回环 Stash 代理发起同一严格请求；仅限 HTTPS、8 MiB 上限，令牌走 stdin，非回环代理拒绝。writer 临时离线时只展示上次缓存。reader 永远禁用批准、跳过和拒绝，关注管理也禁用新增、检查、移除和凭据修改，并链接到 writer。不得为修复空页面而同步整个 `generated`、SQLite/WAL，或把真实写入端点加入 reader 白名单。
 
 ## 无摩擦接手
 
 - Codex 自动读取项目层级中的 `AGENTS.md`；Claude Code 通过 `CLAUDE.md` 导入同一文件。
+- 正式测试入口只有 Windows `& .\scripts\test.ps1` 和 macOS/Linux `./scripts/test.sh`；不要另拼测试命令。
 - 两个智能体使用同一入口、同一必读顺序，不再生成按日期命名的临时交接文档。
 - 新任务以当前机器真实的 `peach-app` 为工作目录，并说：「接手 Peach，按项目入口文件继续 STATUS 中的下一任务。」不得把 Windows 迁移前的 `R:\peach-app` 当跨平台固定路径。
 - 改变运行事实的任务同时更新 `docs/STATUS.md`；长期规则更新本文件、`docs/REUSE.md` 或 ADR；可执行流程写成 `.claude/skills/<name>/SKILL.md`。分层判据见 ADR-0015，步骤见 `peach-context-rules`。
@@ -38,37 +39,9 @@
 
 ## 并行智能体与 Git 工作树
 
-操作步骤（创建工作树、暂存边界、ready/integrate、唯一测试入口）见
-`.claude/skills/peach-worktree/SKILL.md`。本节只保留决定这些规则的事实与证据。
-
-- Codex 负责架构、文件归属、审核、迁移、真实 ledger 写入、服务重启和最终验收；Claude 适合并行执行抽帧板阅读、候选元数据刮削、CSV 对账等边界明确的机械批次。
-- 并行任务必须给出输入/输出路径、网络和费用策略、写入边界、验收条件。工作者只产出 `candidate`，不得自行标为 `approved`、执行 `--apply`、改迁移/ADR 或重启服务。
-- 完成顺序不能决定覆盖顺序。仓库启用 Git `rerere` 记录重复冲突的已确认解法，但它不能代替人工审核。
-- `bba0b77` 是已发生的反例：测试被误判为本任务文件而进入提交，对应 `probe.py` 未暂存，导致 HEAD 出现「测试指向不存在实现」。独立 worktree、暂存路径复核和实现/测试原子性因此是强制规则。
-- 「全量 unittest discover 会挂起 / 会话输出消失」这条 2026-08-17 的结论已被证伪，成因另在别处。连跑三次全量 197 项均正常结束，通过时输出仅 6.9 KB。真实机制是 `tests/test_web_ui.py` 对整页做 `assertIn`：`self.page` 是约 189 KB 的 `index.html`，unittest 的失败消息会把整个容器原样打印，**一条断言失败就产出 195 KB 输出**，工具管道遇到超大输出会转存成文件，看起来就像输出消失。已改为有界的 `assertPageContains`/`assertPageLacks`，同样的失败现在是 861 字节。这不影响「每个平台各有唯一入口（`scripts/test.ps1` / `scripts/test.sh`）」的结论，但不要再把它归因于运行器竞态。
-- Windows 上探测进程存活**绝不能用 `os.kill(pid, 0)`**。`signal.CTRL_C_EVENT == 0`，所以这个 Unix 经典写法实际调用 `GenerateConsoleCtrlEvent(CTRL_C_EVENT, ...)`：对控制台组内的 PID 会把 Ctrl+C 发给整个进程组（信号异步投递，`KeyboardInterrupt` 要到下一次控制台 I/O 才浮出，看起来像凭空报错）；对非组长的活进程则报 WinError 87，而旧代码把 87 当作「进程已死」，活着的任务会被判定为已死、锁被后来者抢走。`PidFileLock._running` 已改用 `OpenProcess` + `GetExitCodeProcess`，`test_liveness_probe_never_signals_its_own_console` 守这条线。这个故障只在真实控制台里出现，重定向和无控制台环境永远不复现——不要因为工具管道跑得过就认为没问题。
-- 含中文的 `.ps1` 必须带 UTF-8 BOM。没有 BOM 时 Windows PowerShell 5.1 按 ANSI（简中系统即 GBK）读文件，中文被解成乱码后引号配对错乱，脚本在解析期就失败并闪退；报错行还会落在纯 ASCII 的语句上（实测 `test.ps1` 报在第 18 行的 `Join-Path`，真正的坏行在别处），极难定位。pwsh 7 默认按 UTF-8 读无 BOM 文件，同一份字节实测 7.6.3 解析通过、5.1 报 2 处错误。所以**默认终端是 pwsh 7 也不能免疫**：双击 `.ps1` 或右键「使用 PowerShell 运行」走的是文件关联的 `powershell.exe`（5.1），解析失败后窗口立即关闭，连报错都来不及看。`test_powershell_scripts_with_chinese_carry_a_utf8_bom` 守这条线。
-- 「归一化」与「判形态」是两件事，混用会让判据自己打自己：`normalise_code` 补上分隔符后，`RAIKUN325`（myfans 账号名，241 个文件）变成 `RAIKUN-325` 就通过了番号检查，`BANBI_555` 同理。分隔符正是区分番号与账号名的唯一线索，归一化把它抹掉了，所以形态判定必须看原值，归一化只服务封面查找那类需要稳定键的场景；两处各犯过一次，现已共用 `is_jav_code`。代价是 `SOAN045`、`DTW024` 这类漏写分隔符的真番号会被判为非 JAV，二者结构相同无法自动区分，宁可漏掉几个也不能把账号作品塞进 JAV 模式。同理，前端「刷新」要区分重取与换一批：`q_tops` 是 `ORDER BY n DESC` 的确定性查询，失效缓存后重取还是同一批人，必须放大候选池再按种子确定性抽样，缓存键带上种子与口径，否则几套结果互相顶掉。
-- 上一条只写成知识没有强制机制，于是同类写法又长了回来。AST 审计发现 6 处仍是裸 `text=True`，其中 `src/peach/versioning.py` 是生产代码——它读 git 输出，而本仓库的提交信息就是中文的，拿 `282f8d9` 自己的标题即可复现 `stdout=None`。已全部锁定 UTF-8，并加 `tests/test_subprocess_encoding.py` 扫全仓强制。该守卫只认 `subprocess.*` 字面调用，包装器（如 `VersionManager._git` 走注入的 `self._execute`）看不见，那个盲点由同文件里一条显式断言补。父进程指定 UTF-8 只决定如何解码，不能改变子进程的输出编码；Windows 托盘调用 Peach 自己的 Python CLI 时还必须传 `PYTHONIOENCODING=utf-8`，否则管道输出仍是 GBK，Ledger 同步通知会出现替换字符。
-- 权限规则里的反斜杠必须双写。匹配器把 `\` 当转义字符，JSON 写 `"& .\\scripts\\test.ps1"` 解码成单反斜杠后 `\s`、`\t` 不再是字面反斜杠，规则匹配不上，非交互会话直接判拒、任务中断。正确写法是 JSON 里 `"& .\\\\scripts\\\\test.ps1"`；旁证是自动生成过的可用规则 `'R:\\\\media\\\\创作者'` 与 `\\(Get-ChildItem`，路径和括号一律双写。用正斜杠写的规则不受影响。改完要新开会话才生效——配置在会话启动时加载。
-- `.claude/settings.local.json` 在 `.gitignore` 里，26 个 worktree 无一带有它，所以写在那里的允许规则只在主工作树生效——而项目规矩要求测试在 worktree 里跑。`& .\scripts\test.ps1` 的允许规则因此放在被跟踪的 `.claude/settings.json`，随代码进入每个 worktree。手工拼 venv 路径的命令（`python.exe -m unittest *` 等）刻意不上提到共享配置：那是 AGENTS.md 明令禁止的路径，共享化等于给违规开绿灯。
-- 2026-08-17：PowerShell 工具会在调用中途被 session teardown 掐断，丢失的结果被错标成用户拒绝（`anthropics/claude-code` issue 83486，前台长 timeout 和后台写法都中过）。改从 Bash 侧跑 `pwsh -NoProfile -File ./scripts/test.ps1`，实测全量 203 项 21 秒通过。入口不变，仍禁止手工拼 venv 路径。
-
-## Claude 在本项目中的实际能力边界
-
-2026-08-14 的真实执行证明 Claude 可以正常完成：
-
-- 查看成人内容并分类行为、着装、身体属性、场景和制作风格；
-- 从公开番号库刮削元数据并映射本地词表；
-- 编写上述领域的代码、正则、批处理、对账和中文文本；
-- 根据番号、文件名、画面水印、Logo 或发行元数据识别女优和厂牌。
-
-证据是一次实际任务：读取 30 张创作者板，为 27 位创作者、4,518 个视频写入 27,295 条 `vision_creator` 标签，27/27 与 ledger 对账一致。仍需遵守的边界：
-
-- 语料边界（成年人、角色扮演标签、营销来源词）以 `AGENTS.md` 的那一条为准，本文件不复制第二份。
-- 不从人脸识别私人真实身份。持久归属必须有番号、文件名、水印、厂牌、公开链接等非人脸证据。
-- 删除和其他不可逆/对外动作先生成带证据和置信度的复核产物，执行步骤单独授权。
-- 单帧逐条判断、过暗/模糊画面、仅靠文件名区分片源水印与广告都属于弱项，应降低置信度或补抽帧，不应伪装成确定事实。`audit_video_endcards.py` 必须点名 asset 或给正数 limit，使用 Peach FFmpeg 有界抽首尾帧；Windows OCR 走 PowerShell 5.1 的 `Windows.Media.Ocr`，每张图片单独以 `-File` 传参，禁止把路径拼进 `-Command`。帧与 OCR sidecar 只进 `generated/endcard-evidence`，`Full version available` 和来源 URL/handle 只生成 `/review` 候选，不自动写 quality goal 或 ledger。
+操作步骤与平台陷阱统一见 `.claude/skills/peach-worktree/SKILL.md` 和
+`.claude/skills/peach-cross-platform/SKILL.md`。保留的事故证据只有 `bba0b77`：测试先提交、实现漏暂存，
+因此隔离工作树、逐文件暂存复核和实现/测试原子提交是强制边界；其余已由脚本或测试守住的复盘从常驻上下文清退。
 
 ## 只存在于聊天中的结论等于不存在
 
@@ -93,53 +66,17 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - Peach 覆盖上游默认三处：智能体入口文件保留称呼「你」（术语表已定义其含义）；`DOM/CSS/JS` 是证据 <!-- copy-lint-disable-line -->
   三元组的固定写法，不展开成 JavaScript；`对齐`、`复盘` 是已注册的项目术语与技能触发词，不替换。
   其余上游黑话词（兜底、落盘、闭环、链路）一律改写成具体机制。
-- 2026-08-17 已按此规范整改存量文档：154 处弯引号与 ASCII 引号改为直角引号「」，黑话与 `id`
-  大小写共 16 处改写。整改只动措辞，不动事实、数字与限制。
 
 ## 参考产品证据登记
 
-凡用户要求「模仿/参考/对齐」，必须先取得当前可复现证据：实时行为加 DOM/CSS/JS；源码不可得时才使用精确截图测量。记录 URL、日期、版本/hash、复用行为和 Peach 的主动差异。证据不可得就写 `未取得`，不得把猜测描述成忠实复刻。
+具体快照、URL、版本、SHA 与 Peach 差异统一登记在 `docs/reference-sources.json` 和
+`docs/reference-snapshots/`；获取、失效复核与接受更新的流程见
+`.claude/skills/peach-reference-evidence/SKILL.md`。本文件不再复制会随上游变化的测量值。
 
-- **Beeg 卡片控件（2026-08-15）**：当前根页面加载 `https://beeg.com/dist/main.9442c3b8.css`（SHA-256 `E585B07CA0C312C28903DB939144B26A3C4BFBC9499F5997BDDE168A197CDB34`）和 `main.9442c3b8.js`（SHA-256 `A7321F6E84D97417B588B6E98EEC86A15B30DC4C36B03537481CC55A4CF933E7`）。计时圈为 36 px、上/右 12 px、`rgba(0,0,0,.24)`、`saturate(180%) blur(12px)`、2 px 白色圆环；桌面 hover 放大 1.2。稍后看控件使用同类透明处理，位于右下 12 px。Peach 等到预览可用后才启用计时圈，按用户要求连续悬停 5 秒才放大；放大层保留 Peach 自己的居中 -10/+10/详情控件。
-- **Beeg 表面层（2026-08-15，同一 CSS/hash）**：暗色背景 `rgb(2,4,8)`，表面 `rgb(34,34,34)`。当前压缩 JS 的 Button 组件证明：`plain/outlined` 是透明背景，`filled` 才使用 `rgba(245,250,255,.05)`；边框分别是 15% 和 10% 白色内描边。frost utility 的 `rgba(38,40,44,.72)` / `rgba(30,30,30,.72)` 只用于指定浮层，不能套到全部厂牌和标签。页首蓝绿背景是 `/dist/assets/glow.webp`（1000×563，SHA-256 `ACA7A914D82843EE4A655C35651931CDC0D42308EDC0F7CB16D8EC63C7AE3ECA`）以 `49vh` 铺放并向 `rgb(2,4,8)` 渐隐；Peach 不复制许可不明位图，使用本地 CSS 光晕。此前把「取到 frost token」误写成全部表面已对齐，现已纠正。
-- **Beeg 实体资料页（2026-08-15）**：`view-source:https://beeg.com/DianaRider` 可取得 SPA 启动 HTML及上述当前 CSS/JS；原始 Vue source map 返回 404，明确记为 `未取得`。压缩 JS 中 `TagProfile` 的可复现结构是：无大外框卡片、桌面 160×160 圆头像、资料文字并排，别名/统计/简介/链接分层，关联实体另起一段。Peach 资料页据此隐藏首页三层筛选，在资料下显示馆藏已有标签、关联艺人和作品；不声称取得原始 Vue 文件。
-- **Beeg 照片页（2026-08-24）**：`https://beeg.com/DianaRider?media=photos` 的浏览器通道被本机策略拒绝（`preview_start` 返回 `blocked by policy`），改用 Git curl 取得同一版资产：启动 HTML 7,124 字节，`main.9442c3b8.css` SHA-256 与 2026-08-15 登记值一致，`main.9442c3b8.js` SHA-256 `A7321F6E84D97417B588B6E98EEC86A15B30DC4C36B03537481CC55A4CF933E7`。可复现的是数据形状：照片按「图集（set）」寻址，客户端取 `/photos?set=<id>` 和 `/photo/<id>`，缩略图由 `thumbs.externulls.com` 按 `/photos/<id>/to.webp?size_new=<宽>x<高>` 现取现缩。**照片栅格的列数、间距和灯箱行为均为 `未取得`**：那部分由 Vue 运行时渲染，静态 bundle 里没有对应选择器，本轮也没有可用的浏览器通道去实测。Peach 只复用「图集优先 + 缩略图按尺寸单独取」这两条结构决定，展示改成用户要求的瀑布流与黑底灯箱，不声称复刻其栅格。
-- **失败报告规则（2026-08-15）**：浏览器工具拒绝 URL 不等于公网不可达；本机 `curl.exe` 的 Schannel 握手失败也不等于代理失效。本次使用同一 `127.0.0.1:7897` 代理的 Git curl 成功取得当前资产。任何取证、浏览器或视觉验证失败都必须立即报告失败步骤、原始错误、影响和替代路径；静态/API 测试不得冒充视觉验收。
-- **重复错误复盘（2026-08-16）**：反复出现的 pytest、错误 `/health`、worktree 错找 `.venv` 或加载主目录源码、PowerShell `$HOME` 大小写冲突、`foreach {}` 后直接接管道、Schannel 失败后改用 HTTP 冒充 HTTPS，以及浏览器不可用却继续报视觉通过，根因都是「文字提醒没有变成执行门槛」。测试入口已收敛为 `scripts/test.ps1`，自动定位主 venv 并拒绝错误源码；其他禁用模式写入项目 `AGENTS.md`，以后必须由可执行检查、真实端点/CA 校验和失败即时报告共同拦截，不能再靠操作者记忆。
-- **TikTok 单列滚动（2026-08-15）**：当前 bundle `async/89993.30b4c2a9.js`（SHA-256 `C4D4867C5C6C89DCE560D429A4686427C911267DCBB2787AEB31B7BD333E9088`）使用 200 ms、`cubic-bezier(.2,.2,.4,.9)`、目标 `offsetTop`，滚动时临时禁用并恢复 `scrollSnapType`。Peach 复用时长和 easing，保留自己的两视频预载与 wheel/touch 队列。
-- **Apple 播放控件（2026-08-15）**：Apple HIG 「Playing video」 只支持熟悉、克制的传输控制语义，没有提供可复用的 `gobackward.10`/`goforward.10` Web SVG。Peach 使用固定版本的 Lucide 子集和明确的「后退/前进 10 秒」无障碍标签，不声称精确复制 iOS glyph。
-- **Vercel 两份可变 Markdown**：`https://vercel.com/design.md` 是报告与证据型页面的设计参考，Peach 只复用连续画布、克制边界、清晰层级等可迁移原则；`vercel-labs/web-interface-guidelines` 的 `command.md` 是另一份通用 Web 评审清单，覆盖键盘与焦点、触控命中、URL/标题状态、空/错/密集状态、移动端输入、异步播报和减少动画，两者不得合并成同一版本链。URL、锁定日期、SHA-256、Git revision、快照与实际消费者统一登记在 `docs/reference-sources.json`；`python scripts/check_reference_updates.py check --diff` 只读比较，上游变化只作为待审证据，人工判断影响面并完成代码与测试后，才用带预期 SHA/revision 的 `accept` 更新快照，脚本永不自动修改 Peach 实现或复制 Vercel 品牌壳、专属 CSS、营销文案。
-- **kill-ai-slop**：在 commit `96d1ca568a1db7e1ef9a381644c744440f816ee4` 上作为减法审计清单使用，不安装 skill、不复制 scanner。
-- **Lucide**：通用操作和导航图标使用固定本地 `lucide-static` 1.31.0 子集（ISC）；许可见 `web/vendor/lucide-LICENSE.txt`。品牌/来源 Logo 和计时圈不属于通用图标。
-- **Rule34 样式**：旧代码注释没有 DOM/CSS 证据，已删除「Rule34-style」声明。当前标签颜色是 Peach 自有语义。
-- **T3 Code/CodexBar 用量**：这是复用决策，不是 Peach UI 复制。T3 Code 已提供 Codex + Claude 历史 token/成本界面；实时剩余额度使用官方 Provider 入口，Peach 不再造日志扫描器。
-- **标签添加与筛选（2026-08-15 / 2026-08-27）**：macOS 标签添加弹窗只复用用户截图可证实的搜索、最近使用、全部标签、已选状态和键盘操作。2026-08-27 由 Chrome 实时打开 `https://hanime1.me/search`（标题「搜尋 - H動漫/裏番/線上看 - Hanime1.me」）并取得展开弹窗的 1,175 字符可见文本，SHA-256 `e4d38f86752053c62412c18bb44588fa2f7659d798ab078bc45dd9d3e691595f`；此前点击后控制结果超时不代表网站无响应。弹窗证实多标签、广泛配对（任一 / 全部）和 7 类词表：影片属性、人物关系、角色设定、外貌身材、情境场所、故事剧情、性交体位。Peach 只显示有真实馆藏命中的类别，另留「其他内容」，不保留空的「作品」；词形采用 `1080p`、`60FPS`、`AI解码`、`ASMR`、`JK`、`OL` 等当前写法，筛选键仍保留 ledger 原值。后续 tagging 只把该词表当候选来源，仍须经过来源、规范化和人工复核边界。
-- **YouTube 详情参考（2026-08-17）**：实时取得 `https://www.youtube.com/watch?v=dQw4w9WgXcQ` 当前页面 HTML；页面使用 `Roboto`、暗色详情播放器与高对比控制条，播放器资源预加载 `hqdefault.jpg`，当前页面 bundle 版本由 WIZ 配置标识为 `youtube.web-front-end-critical_20260811.08_p0`。用户同时提供详情/卡片截图。Peach 只复用可复现的层级原则：详情操作采用连续圆角操作组、hover 提亮、active 使用蓝色语义；播放区 ambient 使用模糊画面并向上下渐隐。未复制 YouTube 品牌、播放器源码或登录能力。
-- **YouTube Shorts 播放/动作栏参考（2026-08-17）**：实时取得 `https://www.youtube.com/shorts/BJynPKgwfyA`，页面 `INNERTUBE_CLIENT_VERSION=2.20260813.05.00`；协作浏览器快照未取得，但运行时 DOM/CSS 可复核。`#shorts-player` 为 `396×704`，视频 `object-fit:cover`；右侧动作容器宽 `72px`、左右内边距 `12px`；动作按钮为 `48×48px`、`rgba(255,255,255,.1)`、圆角 `24px`，文字位于独立的垂直标签容器；全屏按钮同为 `48px` 圆形。Peach 复用 48px tonal 圆形和克制的动作层级；横屏片源全视口 cover，竖屏片源按真实宽高切到 contain 保留完整画面，并保留自己的 Lucide 图标、色彩 token、横竖屏混流和业务反馈语义。
-- **Javinizer-Go 元数据 Provider（v1.5.1，tag `f57985c8c98a0ad7283f72854c249b8612300637`）**：Peach 只发送规范番号并逐 source 查询，不调用 organizer、不新增站点 scraper。`metadata_policy.py` 固定14源白名单、baseline/censored/uncensored/fc2 profile、五字段独立顺序与 policy version；`--sources` 保持兼容且不能与 `--profile` 混用。候选携带 profile/rank/source kind/official/provenance，批准后才写 ledger；每批另写 source health，区分快照、联网、空结果、错误与403/429/503/retryable来源级冷却。
-- **FC2 跨号相似**：`audit_fc2_similarity.py` 不联网，复用 `fc2-comment-harvest.csv`、`fc2-candidate-log.csv` 和只读 ledger。评论等价关系全部写 evidence；只有两边都有本地资产的 pair 才进 `/review`，库外 counterpart 延后到入库再回配。机械推断只接受跨号 exact hash，或时长/体积/分辨率同时接近且已有共同演员标记；不同分片标记拒绝推断，合集只提示分片复核、绝不整体合并。FC2-Leak-Detector/JavSP 的 GPL/旧代码不作为依赖。
-## 智能体用量与任务路由
+## 批处理边界
 
-- 调度看官方配额窗口，不看 API 等价美元估算。Codex 使用 App Server `account/rateLimits/read`；Claude 使用 Claude Code 已登录用量界面。不得打印、复制或保存 OAuth token。
-- Codex 负责架构、迁移、浏览器依赖网站、最终 review/apply 和长期任务；Claude 负责边界明确的刮削、归一化、候选 CSV 对账、文件名/番号/水印提取和经复核的风格板分类。
-- 女优/创作者归属可使用发行番号、文件名、水印、厂牌、别名、公开链接和跨来源一致性。人脸最多用于同库一致性辅助，持久身份仍需非人脸证据。
-- 目录名只是一条候选证据。当前扫描器已停止从目录生成创作者；历史 `legacy:asset` 关系使用 `scripts/audit_creator_attributions.py` 逐项审计。即使目录名与真实创作者同名，也不能把整个子树直接传播成创作者真相。
-- 待办数量统一报告「可执行 / 被阻塞 / 合计」。例如 PikPak 的 4,740 与 10,196 不是矛盾：前者有时长可抽帧，另有 5,445 条缺时长需先 probe。
-
-## 批处理失败值与流量边界
-
-- 测量失败不能写成下游可误认的正常值。`probe.py` 曾把「ffprobe 无时长」写成 `duration=0`，导致数据同时退出 `duration IS NULL` probe 队列又进不了 `duration>2` 抽帧队列。现在失败写 `-1`，并提供 `--redo zero|failed|all`。
-- 两组状态数字看似矛盾时，先查是否有两边查询都遗漏的状态，不要直接认定其中一组错误。
-- 2026-08-15 的 115 抽帧曾把系统盘写到零：接触表在 `R:\peach-data`，真正膨胀的是 CloudDrive 位于系统盘的稀疏读取缓存。`file_buffer_disk_cache_max_bytes` 现为 50 GiB、策略为 LRU；CloudDrive 退出时会重写配置，后续必须复核该值是否保留。
-- 起跑前一次 `require_free_space` 不是运行期闸门。`DiskGuard` 默认每 20 秒重读 `C:` 实际余量；`probe.py`、`sheets.py` 和 `creator_boards.py` 触线后停止取新任务、保留已完成结果并返回退出码 3，不能伪报正常完成。
-- Windows 查询已消失 PID 可能抛 `OSError(winerror=87)`，不是 `ProcessLookupError`。`PidFileLock` 必须把它识别为陈旧锁并安全清理。
-- 2026-08-15 经 mihomo 实测：115 单文件 ffprobe 约 25 MB，九帧接触表约 285 MB；PikPak 单文件 probe 12–52 MB，九帧约 163 MB/13.7 秒。PikPak 抽帧的主要约束是字节而非耗时；Windows 夜跑步骤见 `docs/PIKPAK.md`。
-- `-probesize`/`-analyzeduration` 无法减少 CloudDrive 固定块预取。创作者板在未知时长时可回退到 60 秒 seek，因此无需先花约 207 GB 做全量 PikPak probe。
-- 200 GB 守卫默认只统计代理流量，能覆盖 PikPak，不能看到直连 115；需要覆盖直连来源时显式使用 `--count-direct`，且不要在同一直接计量窗口混跑不同来源。
-- **续跑要跳过两类，不是一类**。已落盘的产物本来就跳过；上一轮判为「所有渠道都没有」的落空也必须跳过。落空恰恰最贵：每条都要把候选源挨个试完才能确定，实测 194 条里 150 条是落空，重探一遍要好几个小时且结论不会变。按三态区分：确认没有的跳过，`ConnectError`、`ReadTimeout` 这类「未取得」必须重试，`--retry-misses` 可强制重探已确认的落空。跳过的行要原样带进新日志，否则整份重写会把上一轮的判定删掉。
-- 短促测试无法刻画会累积的限流。r18 在 12 个请求的实测里 1.0 秒间隔全过，据此把默认从 2.0 降到 1.0，结果连跑约 18 分钟后开始被拒，556 位里 203 位被判成假阴性；改回 2.0 秒连跑 62 分钟稳定。限流参数只能用与真实批次同量级的运行来标定。
-- 限流是各主机自己的事，不是整个任务的属性。`HostLimiter` 按主机各记一个下次可发时刻，线程等 r18 的空档时去查 av-wiki 和 javdb，实测 12 位从约 8 秒/位降到 4.4 秒/位。r18 每位要两个请求，这是并发压不掉的下限。
-- 长任务必须能续跑。一次未捕获的 TLS EOF 曾让 62 分钟的批量结果归零：网络异常要降级为空值而不是抛出，结果要定期写入文件，`--resume` 只把成功判定当作已完成——`no_name` 这类多半是限流假阴性，冻结在复核文件里就再无重试机会。
+失败值、磁盘闸门、限流、续跑、流量与进程规则统一见
+`.claude/skills/peach-batch-jobs/SKILL.md`；当前批次数量与运行进度只写 `docs/STATUS.md`。
 
 ## 身份合并与来源分工
 
@@ -170,7 +107,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 - 真实 ledger 是当前写入者本机 `peach-data/database/ledger.db`，WAL 模式。正常浏览会合法写入播放/行为字段；平台绝对路径以 `docs/STATUS.md` 为准。
 - 测试必须使用临时 SQLite 和临时媒体；不得写真实 ledger。
 - 真实迁移前依次执行 SQLite 备份、asset/tag 计数、`PRAGMA integrity_check`、迁移版本检查、服务 smoke test。
-- Windows 正式迁移 `0000`–`0017` 已应用。`0003` 增加默认 profile、稍后看、实体链接和搜索词；`0004` 增加 FTS5 trigram；`0005` 回填晚到兼容标签；`0006` 增加 `asset_preference`；`0007` 从创作者身份中移除结构文件夹名 `门槛`、`视频`、`宣传文件`；`0008` 增加 profile 级标签隐藏；`0009` 移除结构集合目录 `asce` 的假创作者关系和低置信 `vision_creator` 传播；`0010` 把 83 条「足交仙人」按水印和文件名证据归到 `suzuq`，并从 745 条 TokyoDolls 资产解除错误的「捅主任」关系；`0011` 记录更好版本目标；`0012` 增加跨访问端共享搜索历史；`0013` 将旧待删状态统一为回收站，默认查询排除回收站，清空回收站才永久删除；`0014` 清理明确的创作者 URL 后缀并保留旧名 alias；`0015` 增加 `review_decision`；`0016` 增加 `asset.release_date`；`0017` 增加 profile 级持久播放列表、稳定顺序与续播位置。
+- 已应用与待应用迁移以 `docs/STATUS.md` 和实际 `migrate status` 为准，不在长期上下文复制会过期的版本清单。
 - `0007` 曾在应用后、提交前被改写注释/格式，导致校验和漂移。本次用迁移前备份重放当前 `0007`，对 298 条受影响资产与生产结果逐条对比，差异为 0 后才校正 `schema_migration` 校验和，然后正常应用 `0008`、`0009`。已应用迁移文件从此不得修改，任何后续变更必须新增版本。
 - 外置盘目标只保存 `R:\media`；代码、运行数据、venv 和 worktree 在两台机器各自的内置盘。`peach-data` 不进入仓库，也不整体交给文件同步。分通道边界见 ADR-0017。
 
@@ -199,55 +136,17 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 ## 当前架构真相
 
 - Ledger 拥有真相和行为；Stash 是可替换适配器，调用统一经过 `StashClient`，外部 Scene ID 和来源进入 `media_binding`，不新增直接 GraphQL helper 或 Stash 私有 FFmpeg 路径。规范女优/厂牌/标签/创作者进入 `entity`、`entity_external_ref`、`asset_entity`；扁平 `asset_tag` 和 creator/studio 字段只是兼容投影。
-- 详情、筛选、搜索、facets、索引、统计、榜单和相关推荐使用规范关系；JAV 入口除番号形态外还要求厂牌、女优、系列或发行日期等发行证据，FC2 ID 单独成立，creator-only 的 `JI-103` 不算 JAV。
-- 女优、厂牌、创作者、系列名称进入资料页；首页内容标签直接筛选首页，实体资料页的标签只筛选当前实体作品，并保留在 `/performers/{name}?tag=...` 等当前资料页 URL。`source_reference` 是私有来源，不开放为下载链接。
-- 「稍后看」写 `watch_queue`；「喜欢/为什么喜欢」写 profile 级 `asset_preference`。AI 只能把口味说明转成带来源/置信度/复核状态的候选，不能改写用户原文。自动 Mix 保存时把当时的项目与顺序复制到 `playlist` / `playlist_item`；播放列表按 profile 隔离，名称、当前项、增删和排序都写 ledger，删除列表不删除媒体，永久删除媒体会同步清理条目与续播引用。
-- Web 公共路由使用 `/performers/{name}`、`/studios/{name}`、`/creators/{name}`、`/series/{name}`；删除 `/entity/{kind}/{name}`。收起详情或导航离开时必须 pause、清空 `src`、调用 `load()` 并移除 video，不能只隐藏 DOM。
-- 「换一批」、统计、沉浸、全部女优、全部标签是动作/目的地，不显示为持续筛选状态。顶部只保留「没看过、稍后看、已标记」等需要主动进入的紧凑状态；「看过」和「疑似广告」不占首页快捷位。
-- 长卡连续 hover 5 秒才放大并显示 seek；短卡立即提供「稍后看」。实体文字链接必须消费点击，不能冒泡为展开视频。
-- 卡片身份女优优先：先使用 `performer_entities` 头像和链接，再回退到创作者/厂牌代表图。
-- 喜欢与原因属于同一 profile 偏好；非空原因隐含喜欢，但原文不能直接冒充推荐特征。
-- 详情身份按规范化名称去重；女优与厂牌按内容宽度自然相邻，空间不足时自动换行；创作者独立分组。系列使用无外框、无下划线的 `tags` 图标链接显示全称，不复用标签胶囊或头像格。喜爱理由由反馈操作组中的图标展开；首页流与详情的来源只显示图标，完整名称与费用留在 title/ARIA，侧栏来源筛选保留文字。观看进度只显示标题和百分比，反馈操作组不得作为可收缩的 Flex 项；寻找高清版直接切换标记，并在管理区 `/quality-goals` 汇总。旧短/中/长片标签不再显示，时长筛选只使用分钟区间。
-- 反馈使用 Lucide 紧凑图标工具栏。删除操作统一进入回收站；普通查询排除回收站，回收站入口的「清空回收站」才永久删除媒体与对应 ledger 关系。
-- 界面文案不复述标题、控件或实现状态，不用随机示例占位符和模型自我声明；只保留影响决策、防止数据损失、说明隐私/费用或解释陌生状态的文字。
-- 桌面筛选抽屉只在指针进入可见 72 px 侧栏后打开，不恢复内容区隐藏热区。
-- 厂牌 Logo 使用带来源的官方缓存；缺失时显示首字母，不得用任意作品图冒充，覆盖进度见 `docs/STATUS.md`。
-- 实体头像优先 `generated/avatars/<kind>-<entity_id>.img`；Stash 默认剪影和搜索结果缩略图不能作为头像。
-- 厂牌归一化使用 `scripts/canonicalize_studios.py`，默认 dry-run，apply 前备份。`PREMIUM` 是独立厂牌；只把 Prestige Premium 和日文 Prestige 写法归并到 `Prestige`。
-- FastAPI 与前端逻辑分离、单体部署；在线来源和 AI 只通过显式适配器进入。
-- 追更连接器按站点分开（`follow_sources.py`），只在 `peach follow check` 与 `POST /api/follow/check` 显式联网；解析不出条目一律报错，不报「没有更新」。不绕机器人验证：rule34.xxx 只走带 API key 的官方 dapi，simpcity 登记为不可用。凭据只在 `peach-data/secrets/follow/`，不进快照、日志与 ledger；只有 `CREDENTIAL_GUIDE` 里逐字段声明 `syncable` 的（当前仅 rule34xxx 的 `user_id`/`api_key`）会多写一份到共享根，`describe()` 与 `load()` 必须看同一份合并事实，撤销时本机与共享一起删，共享盘不在就如实报「只撤掉了本机」而不是静默跳过。判据与站点证据见 ADR-0019。
-- Rule34.xxx 来源身份大小写不敏感；注册、发现、迁移共用 `canonical_source_ref`。跨站作者按实体或规范作者键归组，F95 标题尾部 `Collection(s)` 不属于作者名。作者显示名和头像优先经固定主机与图片主机校验的官方页面（FANBOX → Pixiv），归档站仅回退。只有支持历史分页的来源才显示/执行回填；只读告警跨满管理页两栏，搜索历史写入失败降级到页面内存。
-- AI 推理 API 与本地 coding/agent runtime 是不同层，不能伪装成一个等价接口。
-- 3 字符以上搜索使用 FTS5 trigram；更短文本回退 LIKE。FTS 写入由迁移 trigger 维护，不在 Web 启动时修补。
-- 详情身份按规范化名称去重：同一个名字已显示为女优时，不再重复显示「创作者」。标签的 × 写入 profile 级隐藏覆盖，不删除刮削/识别断言；+ 新增标签以 `web-user` 同步写入兼容层与规范实体层。
-- 卡片多选有显式模式；普通点击打开详情，`Ctrl`/⌘ 切换单项，`Shift` 以上次选中为锚点选中当前可见网格范围。批量操作仍必须二次确认。待删只是候选，但卡片必须灰化并显示状态，不能仅靠不显眼的小点。
-- `/tags` 是独立标签管理页，默认字母表模式，也可切换标签云；两种模式都显示数量并进入首页组合筛选。
-- 高潮按钮复用 Health Icons 官方 `outline-24px/contraceptives/sperm.svg`，来源 `resolvetosavelives/healthicons`，CC0。一般操作继续使用本地 Lucide 子集。
-- 账本路径大小写不一致时的重新匹配实现在 `peach.media.resolve_case_insensitive`（同目录 casefold 匹配，`lru_cache` 512 条；NTFS 上 `is_file()` 已不敏感，正常不触发），`FilesystemBackend.file_for` 与 `scripts/sheets.py`、`scripts/probe.py` 的 worker 都已接入。这两个脚本直接用账本路径跑 FFmpeg、不走 MediaEngine，新增同类脚本时必须自己调用，否则大小写敏感的挂载层（CloudDrive/APFS）会抽帧失败。
-- `scripts/sheets.py` 抽帧遇到 `prim:reserved` 非法色彩元数据会自动带 bt709 声明重试（`_capture_frame`）：正常文件走原命令零影响，失败帧才重试，不能为了「修复」把色彩覆盖无条件加到所有输入上。
+- FastAPI 与前端保持单体部署，在线来源和 AI 只通过显式适配器进入；AI runtime 与推理 API 的协议边界见 ADR-0003。
+- 当前页面、路由、交互与性能实现只写 `docs/STATUS.md`，由 API 和 `tests/test_web_ui.py` 守住；本文件不再复制易过期的版本号、像素值和控件清单。
+- 追更连接器、凭据、变体和跨站归组以 ADR-0019 为准。Rule34.xxx 来源身份大小写不敏感；作者显示名与头像优先经固定主机校验的官方页面，归档站只回退。
+- 账本路径兼容和抽帧失败处理统一见 `.claude/skills/peach-cross-platform/SKILL.md` 与 `.claude/skills/peach-batch-jobs/SKILL.md`。
 
 ## Web 性能边界
 
-- 页面不得按结果总数一次构建全部卡片。首页默认每批 60，可在设置中改为 30/60/90；短片栏 18、相关推荐默认 20（可选 12/20/30）、沉浸队列 60、实体作品 48、艺人索引 120、标签索引 180。疑似广告候选可在服务端统一评分，但浏览器也必须按当前首页批量分段追加。
-- 实体页的总数只用于标题和首批分页判断，第二页起请求使用 `count=0`，通过多取一条判断是否还有下一页，不得重复执行全量 `COUNT(*)`。首页无限滚动同样只在首批计算总数。
-- `q_tops`、艺人索引和实体关联艺人的代表图必须使用单条相关子查询取得，禁止按每个人物再发一次 SQL 的 N+1 实现。
-- 首页聚合数据在浏览器会话中合并并缓存 30 秒；相邻筛选复用同一进行中的请求。所有页面表面的异步响应都必须核对请求序号和当前路由，迟到的旧响应不得覆盖新状态或再次重建 DOM。
-- 所有返回首页的入口必须复用 `showHomeSurfaces()`，同时清除实体页状态、隐藏统计/索引页，并恢复 `#tiers` 与 `#tagbar`。统计页会把这两层写成内联 `display:none`，不能只靠重新取首页数据恢复，否则 Logo 回首页会留下空白顶栏。
-- 顶部标签条只能横向滚动，纵向必须隐藏溢出；卡片身份只显示在头像/名称链接，不得再复制成内容标签。搜索推荐词必须是能直接提交的真实关键词，例如 `ABW`，不得写成无法命中的说明短语 `ABW 番号`。
-- 「已标记」是正向收藏入口，只包含 profile 的 `liked=1` 或至少记录过一次高潮的作品；不喜欢、看过和待删分别属于负反馈、观看状态和处置流程，不得混入。
-- 无限滚动同一时间只允许一个追加请求；先判断加载锁再递增 offset，避免快速触发时跳页。图片继续使用原生 `loading=lazy`。只有本地资源可使用真视频 hover；115/PikPak 等远端源必须使用本地接触印相。滚动、换页、隐藏页面或替换卡片 DOM 时，统一停止 hover 并释放 `src`。
-- 2026-08-15 实测：Prestige 显示 248 个总结果时首屏只构建 48 张卡片，点击「载入更多」后为 96；艺人索引 120 条约 311 ms，Prestige 第二页 48 条且跳过总数统计约 94 ms。具体耗时随 ledger 和磁盘状态变化，只把批量边界作为稳定契约。
-- 0.5.5 起，标签筛选行与排序/换批行都常驻顶栏下方，不再按滚动方向隐藏；两行在原始位置保持透明，只在真正吸顶后加半透明黑色磨砂底与分隔线，分别占位，不能盖住卡片内容。窄屏上的结果数量和全部排序按钮必须同处一条横向滚动带，文字不折行、按钮不压缩成竖排。
-- 0.6.1 起，首页每批 60 个普通作品中只插入 1 个自动 Mix 卡片，不额外请求 60 份队列，也不计入作品分页数。卡片复用本批已有种子，点击时才并行请求种子详情与一次 `/api/related`，队列上限 29 个，避免 N+1 和首屏批量构建。Mix 使用 `/mix/{seed_id}/{item_id}`，刷新和前进/后退可恢复同一队列；桌面端播放器右侧显示当前项着色的滚动列表，窄屏列表移到播放器下方。普通详情继续显示「接着看」，Mix 内不再重复渲染第二份相关推荐。0.6.4 起，Mix 可保存当时的稳定顺序；`/playlists` 提供新建、改名、继续播放和删除，详情可加入列表，队列内可上移、下移和移出；`/playlists/{playlist_id}/{item_id}` 可刷新恢复并只更新该列表的续播位置。
-- Mix 视觉证据来自用户于 2026-08-16 提供的 YouTube 截图 `codex-clipboard-8f6cbb25-399a-4f91-9c2a-a6972484ed50.png` 与 `codex-clipboard-baeb854e-3e27-43fb-9e6a-aa14830c248a.png`：普通流卡片有两层轻微上移的堆叠边、右下角 Mix 标识；打开后右侧是有当前项状态的滚动列表。Peach 有意保留自己的色彩 token、详情反馈区和本地元数据，不复制 YouTube 品牌、推荐文案或登录能力。
-- 首页、女优、厂牌等普通卡片统一由 `wireCards` 调用 `openItem`。只有沉浸/短片等显式传入 `onClick` 的场景允许覆盖。隐藏的 hover 工具必须 `pointer-events:none`，只在实际显示时恢复命中，避免截走海报详情点击。
-- 详情媒体用随机 `session` 标识同一次播放；收起详情、路由切换或替换详情时，前端必须清空 video 后调用 `/api/stream-cancel`，服务端取消该 session 下全部 Range/HLS 片段请求并拒绝迟到请求。只移除 DOM 不能保证 CloudDrive 停止读盘。
-- 115/PikPak 继续采用视频网站式按需加载，不增加「点击后才拉流」的额外门槛。已知时长的原生 MP4 通过 `/api/stream-plan` 进入 6 秒 HLS VOD 清单；每个 TS 片段由 FFmpeg 对挂载文件执行目标时间 seek，响应后删除临时文件。不能把 HLS 失败伪装成成功，播放器必须回退标准 `/stream` Range；也不能再次人工截短 `Content-Range`。
-- 详情播放器固定复用本地 Video.js 8.23.9（Apache-2.0），不依赖 CDN。控制栏总时长优先采用 ledger 探测值；item 29297 的 `moov/mvhd` 位于文件头，真实总时长为 28,639.916 秒，说明旧「越播越长」不是媒体缺少头部元数据。统计面板同时区分 HLS 与 HTTP Range，并继续读取内置 VHS 的请求、带宽和字节统计。
-- 详情播放器全屏时必须覆盖 `76vh` 和 `aspect-ratio` 限制，否则浏览器全屏会留下底部黑区；沉浸模式横屏片源使用全视口 `object-fit:cover`，竖屏片源必须按视频真实宽高切到 `contain`，不能裁掉上下画面。加载速度显示优先使用 Video.js VHS `stats.bandwidth`，再回退到当前 session 的 `PerformanceResourceTiming`，不把 FlowLens API 耦合进页面。
-- Peach 每个平台各有唯一测试入口：Windows 是 `& .\scripts\test.ps1`，macOS/Linux 是 `./scripts/test.sh`。两者契约相同，内部运行标准库 `unittest`，仓库不依赖 `pytest`。两个入口都必须绿，只在一个平台通过的改动不算完成。健康检查端点是 `/healthz`，不是 `/health`。
-- 2026-08-18 回环实测（`/stream?id=823`，取前 200 MiB）：直接读盘 761 MiB/s、Peach HTTP 136 MiB/s、Peach HTTPS 142 MiB/s。TTFB：`/healthz` 36 ms、`/stream` 首块 40 ms、中段 Range 41 ms、`/api/items?limit=60` 167–405 ms。结论是吞吐不构成瓶颈（千兆 LAN 上限本来就低于它），感知慢要从并发槽位、缓存策略和每请求固定开销去找，不要再重复测吞吐。
-- 当前部署的三个已知延迟来源，改动前先看清代价：`/stream` 带 `Cache-Control: no-store`，浏览器无法复用任何已下载片段；uvicorn 只提供 HTTP/1.1 且未安装 `httptools`（回落到纯 Python h11），浏览器对同源限 6 条连接；Starlette `FileResponse` 的 `chunk_size` 是 64 KiB，每块一次线程池读、ASGI send 和可能的 Python TLS 加密。hover 每次悬停产生 1 条 `/stream` 加 7 次 `currentTime` 跳段，共 8 个不可复用的 Range 请求，必须计入连接预算。Windows 千兆线路理论上限约 125 MB/s；115 实测单文件由 CloudDrive 启动 2 条约 2 MB/s 的 CDN 连接，`max_download_speed_kbyps=0` 表示未设本地限速。卡顿先查 FlowLens 是否有详情关闭后的残留下载，再查 Range/缓存，不把单连接速度直接归因于本地带宽。
+- 列表必须分批构建；首批才计算总数，后续多取一条判断是否还有下一页。无限滚动同一时间只允许一个追加请求。
+- 聚合查询禁止按实体发 N+1 SQL；相邻请求可复用缓存，但异步响应必须核对请求序号和当前路由，旧响应不得覆盖新页面。
+- 远端媒体 hover 只读本地预览；离开详情、换页或替换 DOM 时停止播放并取消当前 stream session，不能让 CloudDrive 继续读盘。
+- 当前批量大小、播放器版本、像素值与性能测量属于实现快照，统一留在测试、`docs/STATUS.md` 或参考快照，不写入长期上下文。
 
 ## 本机服务、系统代理与双机广播
 - **对本机服务的 HTTP 探测必须 `trust_env=False`**。代理客户端（Stash、HapiGo、Surge）会设置 macOS 系统级 HTTP 代理，httpx 默认经 `urllib.getproxies()` 读它，探测 `127.0.0.1` 的请求被送进代理、由代理回 503——服务活着却被判「未运行」。2026-08-21 实测如此，修复在 `peach.tray.ServiceManager.healthy`，`test_health_check_never_goes_through_a_proxy` 守门。任何新写的健康检查/回环探测都适用同一条。

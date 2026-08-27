@@ -5,8 +5,8 @@ description: 在用户说抽帧、接触表、probe、sheets、creator_boards、
 
 # 长跑批处理与流量边界
 
-最后复核：2026-08-17
-证据来源：`docs/HANDOFF.md`「批处理失败值与流量边界」、`docs/STATUS.md`、ADR-0015。
+最后复核：2026-08-27
+证据来源：`scripts/probe.py`、`scripts/sheets.py`、`src/peach/jobs.py`、相关单元测试与 ADR-0015。
 
 ## 失败值
 
@@ -23,9 +23,9 @@ description: 在用户说抽帧、接触表、probe、sheets、creator_boards、
 `probe.py`、`sheets.py`、`creator_boards.py` 触线后停止领新任务、保留已完成结果并返回退出码 3，
 不得伪报正常完成。
 
-2026-08-15 的 115 抽帧曾把系统盘写到零：接触表在 `R:\peach-data`，真正膨胀的是 CloudDrive
-位于系统盘的稀疏读取缓存。`file_buffer_disk_cache_max_bytes` 现为 50 GiB、LRU；CloudDrive 退出
-时会重写配置，事后必须复核该值。
+2026-08-15 的 115 抽帧曾把系统盘写到零：真正膨胀的是 CloudDrive 位于系统盘的稀疏读取缓存，
+不是产物所在磁盘。CloudDrive 退出可能重写配置，长跑前后都要复核缓存上限和淘汰策略，不能把
+历史配置值当成当前事实。
 
 ## 限流
 

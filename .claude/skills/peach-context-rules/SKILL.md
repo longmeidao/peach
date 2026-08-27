@@ -5,9 +5,9 @@ description: 在用户说加条规则、写进 AGENTS.md、写个技能、文件
 
 # 上下文写作与清退
 
-最后复核：2026-08-17
-证据来源：ADR-0015、`docs/HANDOFF.md`「重复错误复盘（2026-08-16）」、用户于 2026-08-17 提供的
-`My AGENTS.md & SKILLS.md Breakdown` 逐字稿。
+最后复核：2026-08-27
+证据来源：ADR-0015、`scripts/check_context_budget.py`、`tests/test_context_budget.py`、用户于
+2026-08-17 提供的 `My AGENTS.md & SKILLS.md Breakdown` 逐字稿。
 
 判据与理由的完整版在 `docs/adr/0015-agent-context-layering.md`，本文件只给操作步骤。
 
