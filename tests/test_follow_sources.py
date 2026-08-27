@@ -515,6 +515,17 @@ class PagingBackTests(unittest.TestCase):
 
 
 class F95ZoneConnectorTests(unittest.TestCase):
+    @staticmethod
+    def _masked_transport(record):
+        def call(request, timeout, max_bytes):
+            record.append(request)
+            if request.method == "GET":
+                return HttpResponse(200, {}, F95_HTML)
+            return HttpResponse(200, {}, json.dumps({
+                "status": "ok", "msg": "https://gofile.io/d/oOdYTK",
+            }).encode())
+        return call
+
     def test_latest_page_yields_replies_not_just_the_opening_post(self):
         seen = []
         result = F95ZoneConnector(
@@ -545,6 +556,33 @@ class F95ZoneConnectorTests(unittest.TestCase):
         # 发现不需要 cookie，取附件需要。下载动作必须先看这个标志。
         result = F95ZoneConnector(transport=_transport(body=F95_HTML)).fetch("50685")
         self.assertTrue(result.candidates[0].extra["media_needs_credential"])
+
+    def test_cookie_resolves_masked_media_without_leaking_to_the_file_host(self):
+        seen = []
+        result = F95ZoneConnector(
+            transport=self._masked_transport(seen),
+            credential=Credential("f95zone", {"cookie": "xf=1"}),
+        ).fetch("50685")
+        candidate = result.candidates[0]
+        self.assertEqual(candidate.media_url, "https://gofile.io/d/oOdYTK")
+        self.assertEqual(candidate.extra["links"], ["https://gofile.io/d/oOdYTK"])
+        self.assertFalse(candidate.extra["media_needs_credential"])
+        self.assertEqual([request.method for request in seen], ["GET", "POST"])
+        self.assertEqual(seen[1].url,
+                         "https://f95zone.to/masked/gofile.io/50685/abc")
+        self.assertEqual(seen[1].headers["Cookie"], "xf=1")
+        self.assertEqual(seen[1].body, b"xhr=1&download=1")
+        self.assertFalse(any("gofile.io/d/" in request.url for request in seen))
+
+    def test_non_file_links_do_not_turn_a_reply_into_media(self):
+        body = F95_HTML.replace(
+            b"https://f95zone.to/masked/gofile.io/50685/abc",
+            b"https://example.com/creator",
+        )
+        result = F95ZoneConnector(transport=_transport(body=body)).fetch("50685")
+        self.assertIsNone(result.candidates[0].media_url)
+        self.assertEqual(result.candidates[0].extra["link_count"], 0)
+        self.assertFalse(result.candidates[0].extra["media_needs_credential"])
 
     def test_only_absolute_links_count_as_media(self):
         result = F95ZoneConnector(transport=_transport(body=F95_HTML)).fetch("50685")

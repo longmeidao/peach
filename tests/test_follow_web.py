@@ -1179,6 +1179,8 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('class="followorigin" href="${esc(item.url)}" target="_blank"')
         self.assertPageContains('title="打开来源页面" aria-label="打开来源页面"')
         self.assertNotIn('打开来源页面</a>', self.page)
+        self.assertPageContains(".followdetailtitle{display:flex;gap:5px")
+        self.assertPageContains(".followmedianote{margin:18px 0 14px}")
         self.assertPageContains("followAuthorAvatar(authorSources)")
         self.assertPageContains("followTagChip(item,tag,'button')")
         self.assertPageContains(".followdetailtags .tg{max-width:none")
@@ -1413,16 +1415,22 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("author:input.dataset.author")
 
     def test_credential_dependent_media_is_called_out(self):
-        self.assertPageContains("媒体需要登录会话才能取，发现本身不需要")
+        self.assertPageContains("媒体链接需要 F95 登录会话解析")
+        self.assertPageContains("已取得外部文件页；视频列表未取得")
 
     def test_follow_styles_exist_for_the_card_surface(self):
         for selector in (".followlist{", ".followitem{", ".fbadge{", ".followqueue"):
             self.assertPageContains(selector)
 
     def test_follow_cards_reuse_home_cards_hover_actions_and_mix_stacks(self):
-        self.assertPageContains('class="card followitem${collection.length>1?\' collection\':\'\'}"')
-        self.assertPageContains("collection.length>1?'mixstack '")
+        self.assertPageContains("function followVideoItems(group)")
+        self.assertPageContains("item.playable&&item.media_kind==='video'")
+        self.assertPageContains('class="card followitem${isMix?\' collection\':\'\'}"')
+        self.assertPageContains("isMix?'mixstack '")
         self.assertPageContains('class="mixbadge" data-follow-collection=')
+        self.assertPageContains("${videos.length} 个视频")
+        self.assertPageContains("const collection=group&&followVideoItems(group).length>1?group:null")
+        self.assertPageContains("const items=followVideoItems(group)")
         self.assertPageContains(".factions{position:absolute;right:10px;top:10px")
         self.assertPageContains("@media (hover:hover) and (pointer:fine){.followitem:hover .factions")
         self.assertPageContains("function followQueueHtml(group,itemId)")

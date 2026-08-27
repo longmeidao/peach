@@ -21,7 +21,7 @@
 |---|---|---|
 | HTTP | 全项目共用的 `httpx.Client`/transport | 来源策略、DTO、脱敏 |
 | RSS/Atom | `feedparser` | 有界抓取、快照、复核、导入 |
-| 追更来源接口 | kemono 系公开 JSON API（`Accept: text/css`，站点自述的抓取路径）、rule34.xxx 官方 dapi（需账号 API key）、f95zone `latest_data.php` 与线程页 | 连接器边界、凭据隔离、变体与跨站重复判定、候选复核与批准后的 online asset 投影 |
+| 追更来源接口 | kemono 系公开 JSON API（`Accept: text/css`，站点自述的抓取路径）、rule34.xxx 官方 dapi（需账号 API key）、f95zone `latest_data.php`、线程页与站内 masked XHR | 连接器边界、凭据隔离、文件站目标校验、变体与跨站重复判定、候选复核与批准后的 online asset 投影 |
 | HTML 适配器 | Beautiful Soup 或 selectolax | 来源专用选择器和来源记录 |
 | 位图 | Pillow | 头像/Logo 质量和来源策略 |
 | 搜索 | SQLite FTS5 | 索引字段、排序、profile 感知筛选 |

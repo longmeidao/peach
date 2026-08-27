@@ -65,6 +65,21 @@
         "tests/test_follow_sources.py",
         "tests/test_follow_web.py"
       ]
+    },
+    {
+      "id": "f95-masked-gofile-media",
+      "name": "F95 掩码链接与 Gofile 文件列表证据",
+      "url": "https://f95zone.to/assets/js/masked.js",
+      "snapshot": "docs/reference-snapshots/f95-masked-gofile-media.md",
+      "checked_on": "2026-08-28",
+      "sha256": "b4fa8a7c397f330ed2f2880fe0dbc1bc7a34e47bb91d935e5f42f2c9502f206d",
+      "role": "F95 Cookie 解掩码、文件站目标校验、Gofile 文件列表未取得说明与 Mix 计数边界。",
+      "consumers": [
+        "src/peach/follow_sources.py",
+        "web/app.js",
+        "tests/test_follow_sources.py",
+        "tests/test_follow_web.py"
+      ]
     }
   ]
 }
