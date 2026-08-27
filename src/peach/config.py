@@ -35,6 +35,15 @@ SHARED_DATA_ROOT = Path(
     or (_WINDOWS_SHARED_ROOT if os.name == "nt" else _POSIX_SHARED_ROOT)
 )
 SHARED_DATABASE_PATH = SHARED_DATA_ROOT / "database" / "ledger.db"
+
+# macOS 重启后不会自动挂回这个 SMB 共享，`plan()` 于是把本机的日常状态判成 offline。
+# 托盘按下面的坐标补挂一次，所以主机与账号必须是配置项而不是散在代码里的字面量：
+# 家里的 IP 由 DHCP 分配，钉死总有失效的一天，主机名一律走 Windows 那台的 mDNS 名。
+# 账号要和钥匙串里已有的那条记录同名——服务端拒绝 guest，匿名挂载不会成功。
+_WINDOWS_MDNS_NAME = "peach-win"
+SHARED_SMB_HOST = os.environ.get("PEACH_SHARED_SMB_HOST") or f"{_WINDOWS_MDNS_NAME}.local"
+SHARED_SMB_SHARE = os.environ.get("PEACH_SHARED_SMB_SHARE") or _POSIX_SHARED_ROOT.name
+SHARED_SMB_USER = os.environ.get("PEACH_SHARED_SMB_USER") or "peachsync"
 GENERATED_DIR = DATA_ROOT / "generated"
 SOURCES_DIR = DATA_ROOT / "sources"
 STATE_DIR = DATA_ROOT / "state"
@@ -61,7 +70,8 @@ MEDIA_ROOT_DECLARATIONS: tuple[str, ...] = tuple(LOCATION_ROOT_DECLARATIONS.valu
 
 # 双机固定使用不同名字，避免同时运行时互相抢占 mDNS：macOS 是 peach.local，
 # Windows 是 peach-win.local。`PEACH_MDNS_NAME` 仍可用于临时测试覆盖。
-MDNS_NAME = os.environ.get("PEACH_MDNS_NAME") or ("peach-win" if os.name == "nt" else "peach")
+MDNS_NAME = os.environ.get("PEACH_MDNS_NAME") or (
+    _WINDOWS_MDNS_NAME if os.name == "nt" else "peach")
 MDNS_HOSTNAME = f"{MDNS_NAME}.local"
 # 2026-08 仓库/数据拆分前写入 ledger 的旧快照根；运行时只做受控前缀重映射。
 LEGACY_SNAPSHOT_DECLARATIONS: tuple[str, ...] = (r"R:\Resources\Intake\snapshots",)
