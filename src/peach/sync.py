@@ -280,6 +280,10 @@ def copy_database(source: Path, target: Path, *, source_immutable: bool = False)
         transfer.unlink(missing_ok=True)
 
 
+#: `synchronize_now` 里真的会复制数据库的那几个判定；其余都是「没什么可做」。
+COPY_ACTIONS = ("pull", "push", "local-ahead")
+
+
 def plan(local: Path, shared: Path) -> SyncPlan:
     """只读判定，不碰任何文件。"""
     if local == shared or local.resolve() == shared.resolve():
@@ -326,6 +330,25 @@ def plan(local: Path, shared: Path) -> SyncPlan:
     if dirty:
         return SyncPlan("local-ahead", "本地有待回写的改动", local_generation, shared_generation)
     return SyncPlan("in-sync", "两侧一致", local_generation, shared_generation)
+
+
+def resolve(local: Path, shared: Path, device: str) -> SyncPlan:
+    """`synchronize_now` 将要照着做的那个判定，但不碰任何文件。
+
+    比 `plan()` 多的一层是写入端：本机不是写入端时，`push` / `local-ahead` 会被拒，
+    真跑一次的结果只能是 conflict。调用方要先知道「这次到底会不会复制」才能决定要不要
+    停服务——共享盘没挂、两侧已经一致、或本机根本推不动的时候，停一遍服务再启回来
+    是白白一次停机，还会把「没什么可做」报成同步失败。
+    """
+    decision = plan(local, shared)
+    owner = writer_device(local, shared)
+    if (decision.action in ("push", "local-ahead")
+            and owner is not None and owner != device):
+        return SyncPlan(
+            "conflict", f"当前写入端是 {owner}，本机不能推送",
+            decision.local_generation, decision.shared_generation,
+        )
+    return decision
 
 
 class LedgerSync:
@@ -410,14 +433,7 @@ class LedgerSync:
 
     def synchronize_now(self) -> SyncPlan:
         """重新判定并完成一次安全同步，供服务停机后的手动同步使用。"""
-        decision = plan(self.local, self.shared)
-        owner = writer_device(self.local, self.shared)
-        if (decision.action in ("push", "local-ahead")
-                and owner is not None and owner != self.device):
-            decision = SyncPlan(
-                "conflict", f"当前写入端是 {owner}，本机不能推送",
-                decision.local_generation, decision.shared_generation,
-            )
+        decision = resolve(self.local, self.shared, self.device)
         self.status, self.detail = decision.action, decision.reason
         if decision.action == "pull":
             self.pull()

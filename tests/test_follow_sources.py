@@ -36,9 +36,11 @@ KEMONO_POSTS = json.dumps([
      "published": "2026-02-14T21:51:10", "edited": None,
      "file": {"name": "a.png", "path": "/1c/fa/1cfae7.png"},
      "attachments": [{"name": "a.zip", "path": "/1c/fa/1cfae7.zip"}]},
+    # 第二条只有附件、没有正文文件，`media_url` 要能从附件里取到。它原本连附件也没有，
+    # 但那种帖子现在会被判为「不是 release」丢掉，别的断言就都少了一条。
     {"id": "11400490", "user": "30917150", "service": "fanbox",
      "title": "Villainous Valentine's Day 6", "published": "2026-02-13T21:30:28",
-     "file": {}, "attachments": []},
+     "file": {}, "attachments": [{"name": "b.png", "path": "/2f/46/2f468d.png"}]},
 ]).encode()
 
 RULE34VIDEO_HTML = b"""<html><body>
@@ -97,6 +99,13 @@ RULE34XXX_JSON = json.dumps([
 ]).encode()
 
 
+def _routed(route):
+    """按 URL 分派的测试传输。探测详情页的请求要能和列表请求分开回不同的响应。"""
+    def call(request, timeout, max_bytes):
+        return route(request)
+    return call
+
+
 class KemonoConnectorTests(unittest.TestCase):
     def test_fetch_normalizes_posts_and_sends_the_documented_accept_header(self):
         seen = []
@@ -120,6 +129,151 @@ class KemonoConnectorTests(unittest.TestCase):
         self.assertEqual(first.extra["attachment_count"], 1)
         # post id 就是原平台的 post id，和别的站点从 source 归一出的键同一个命名空间。
         self.assertEqual(first.group_hint, "fanbox:11406814")
+
+    def test_archive_posts_get_a_cover_thumbnail(self):
+        """归档站的卡片以前一律没有封面——不是取不到，是压根没去取。
+
+        2026-08-27 实测 `https://kemono.cr/thumbnail/data<path>` 回 200 `image/jpeg`；
+        去掉 `thumbnail/` 前缀则是 404，所以这个前缀是必需的。
+        """
+        result = KemonoConnector(transport=_transport(body=KEMONO_POSTS)).fetch("fanbox/1")
+        self.assertEqual(result.candidates[0].thumb_url,
+                         "https://kemono.cr/thumbnail/data/1c/fa/1cfae7.png")
+
+    def test_no_thumbnail_is_offered_for_things_that_have_none(self):
+        # 视频和压缩包没有缩略图，给了也是 404——那会让卡片显示一张碎图，
+        # 比一个干净的占位更糟。
+        connector = KemonoConnector()
+        self.assertIsNone(connector._thumb_url("/a/b/clip.mp4"))
+        self.assertIsNone(connector._thumb_url("/a/b/pack.zip"))
+        self.assertIsNone(connector._thumb_url(None))
+
+    def test_a_post_that_only_links_a_file_host_is_a_release(self):
+        """用户定的判据：资源贴要么贴附件，要么附上网盘链接。
+
+        只做图的作者也算——一张图片附件就够，不要求压缩包或视频。
+        """
+        posts = json.loads(KEMONO_POSTS)
+        posts.append({"id": "777", "title": "Monthly pack",
+                      "published": "2026-02-01T00:00:00", "file": {}, "attachments": [],
+                      "substring": "gofile - https://gofile.io/d/xyz"})
+        result = KemonoConnector(
+            transport=_transport(body=json.dumps(posts).encode())).fetch("fanbox/1")
+        self.assertIn("777", [c.external_id for c in result.candidates])
+        self.assertEqual(result.skipped, 0)
+        self.assertEqual(result.probed, 0, "摘要里就能判出来，不该多打一次站点")
+
+    def test_a_post_it_cannot_judge_is_probed_not_guessed(self):
+        """列表判不出来时去抓详情，而不是猜。
+
+        列表接口只给 `substring`（正文摘要），网盘链接常常在摘要之外。判不出来直接
+        当「不是 release」会删掉真东西，当「是」又等于没过滤——所以判据是三态，
+        只有第三种答案才允许下一步联网。
+        """
+        posts = json.loads(KEMONO_POSTS)
+        posts.append({"id": "888", "title": "March pack", "published": "2026-03-01T00:00:00",
+                      "file": {}, "attachments": [], "substring": "Here you go"})
+        detail = json.dumps({"post": {"id": "888",
+                                      "content": "<p>https://mega.nz/folder/abc</p>"}}).encode()
+        bodies = {"posts": json.dumps(posts).encode(), "post/888": detail}
+
+        def route(request):
+            for key, body in bodies.items():
+                if request.url.endswith(key):
+                    return HttpResponse(200, {}, body)
+            raise AssertionError(f"未预期的请求：{request.url}")
+
+        result = KemonoConnector(transport=_routed(route)).fetch("fanbox/1")
+        self.assertIn("888", [c.external_id for c in result.candidates])
+        self.assertEqual(result.probed, 1)
+
+    def test_a_post_with_no_resource_at_all_is_dropped(self):
+        """公告、感谢这类帖子既没有附件也没有网盘链接，抓了详情之后确认丢掉。"""
+        posts = json.loads(KEMONO_POSTS)
+        posts.append({"id": "999", "title": "Thanks for 10k followers!",
+                      "published": "2026-02-01T00:00:00", "file": {}, "attachments": [],
+                      "substring": "You are all wonderful"})
+        detail = json.dumps({"post": {"id": "999",
+                                      "content": "<p>See you next month</p>"}}).encode()
+
+        def route(request):
+            if request.url.endswith("post/999"):
+                return HttpResponse(200, {}, detail)
+            return HttpResponse(200, {}, json.dumps(posts).encode())
+
+        result = KemonoConnector(transport=_routed(route)).fetch("fanbox/1")
+        self.assertEqual(result.skipped, 1)
+        self.assertNotIn("999", [c.external_id for c in result.candidates])
+
+    def test_an_unreachable_probe_keeps_the_post(self):
+        """抓不到详情就保留。
+
+        网络抖一下就删掉用户的一份更新，是拿一次失败的请求换一次不可见的数据丢失。
+        探测额度用完时同理——额度是内部限额，不该变成删数据的理由。
+        """
+        posts = json.loads(KEMONO_POSTS)
+        posts.append({"id": "555", "title": "April pack", "published": "2026-04-01T00:00:00",
+                      "file": {}, "attachments": [], "substring": "Here"})
+
+        def route(request):
+            if "post/555" in request.url:
+                return HttpResponse(503, {}, b"")
+            return HttpResponse(200, {}, json.dumps(posts).encode())
+
+        result = KemonoConnector(transport=_routed(route)).fetch("fanbox/1")
+        self.assertIn("555", [c.external_id for c in result.candidates])
+
+        # 额度为 0 时不联网，也不删。
+        offline = KemonoConnector(max_probes=0,
+                                  transport=_transport(body=json.dumps(posts).encode()))
+        kept = offline.fetch("fanbox/1")
+        self.assertIn("555", [c.external_id for c in kept.candidates])
+        self.assertEqual(kept.probed, 0)
+
+    def test_a_release_named_after_a_poll_is_still_a_release(self):
+        """**不要按标题关键词丢投票贴。**
+
+        2026-08-27 拿 LazyProcrastinator 的真实 50 条跑过一版
+        `poll|vote|survey|…` 正则，丢掉 18 条，其中包括
+        `Public Poll Release + Littlest Ramble`、`October Poll Animations Released`
+        ——这位作者的正片就是按投票结果命名的。列表接口不给帖子类型字段，
+        标题不足以区分「投票贴」和「投票选出的成品」，误删一份 release
+        比多出一张卡片糟糕得多。这条测试就是为了挡住那个正则再被加回来。
+        """
+        posts = json.loads(KEMONO_POSTS)
+        posts[0] = {**posts[0], "id": "777",
+                    "title": "Public Poll Release + Littlest Ramble"}
+        result = KemonoConnector(
+            transport=_transport(body=json.dumps(posts).encode())).fetch("fanbox/1")
+        self.assertIn("777", [c.external_id for c in result.candidates])
+        self.assertEqual(result.skipped, 0)
+
+    def test_paging_back_uses_an_offset_and_drops_the_conditional_headers(self):
+        """往回翻要换页，而且**不能带条件请求头**。
+
+        `If-None-Match` 里存的是第一页的 etag。拿它去问第二页，站点很可能回 304，
+        用户点了「抓更早的」却什么都没发生——而且看起来和「确实没有更早的了」
+        一模一样。
+
+        2026-08-27 实测：kemono 的列表接口一页 50 条，`?o=50` 拿到的是第 51 条起，
+        与第一页零重叠。
+        """
+        seen = []
+        connector = KemonoConnector(
+            transport=_transport(body=KEMONO_POSTS, record=seen))
+        connector.fetch("fanbox/30917150", etag='"k1"', last_modified="then", page=2)
+        self.assertEqual(seen[0].url,
+                         "https://kemono.cr/api/v1/fanbox/user/30917150/posts?o=100")
+        self.assertNotIn("If-None-Match", seen[0].headers)
+        self.assertNotIn("If-Modified-Since", seen[0].headers)
+
+    def test_the_first_page_still_sends_conditional_headers(self):
+        # 常规检查必须保留条件请求：追更每天都在跑，没变就不该把整页再传一遍。
+        seen = []
+        KemonoConnector(transport=_transport(body=KEMONO_POSTS, record=seen)).fetch(
+            "fanbox/30917150", etag='"k1"')
+        self.assertEqual(seen[0].headers.get("If-None-Match"), '"k1"')
+        self.assertNotIn("?o=", seen[0].url)
 
     def test_pawchive_returns_a_bare_list_and_uses_its_own_host(self):
         seen = []
@@ -202,6 +356,34 @@ class Rule34VideoConnectorTests(unittest.TestCase):
         connector = Rule34VideoConnector(transport=_transport(body=RULE34VIDEO_HTML))
         with self.assertRaises(FollowSourceError):
             connector.fetch("../models")
+
+
+class PagingBackTests(unittest.TestCase):
+    """各站往回翻的地址形状。都是 2026-08-27 实测过的端点。"""
+
+    def test_rule34video_uses_the_async_block_endpoint(self):
+        # KVS 的分页是异步块请求，`from` 是 1 起的两位页码。实测第 2 页 24 条、
+        # 与第 1 页零重叠。
+        seen = []
+        Rule34VideoConnector(
+            transport=_transport(body=RULE34VIDEO_HTML, record=seen)).fetch(
+                "lazyprocrastinator", page=1)
+        self.assertIn("mode=async", seen[0].url)
+        self.assertIn("block_id=custom_list_videos_common_videos", seen[0].url)
+        self.assertIn("from=02", seen[0].url)
+
+    def test_rule34xxx_uses_pid_and_still_keeps_the_key_out_of_the_evidence_url(self):
+        credential = Credential("rule34xxx", {"user_id": "1", "api_key": "secret"})
+        seen = []
+        result = Rule34XxxConnector(
+            credential=credential,
+            transport=_transport(body=RULE34XXX_JSON, record=seen)).fetch(
+                "lazyprocrastinator", page=3)
+        self.assertIn("pid=3", seen[0].url)
+        # 脱敏后的 URL 进证据档案，凭据永远不能出现在那里。
+        self.assertIn("pid=3", result.request_url)
+        self.assertNotIn("secret", result.request_url)
+        self.assertNotIn("api_key", result.request_url)
 
 
 class F95ZoneConnectorTests(unittest.TestCase):

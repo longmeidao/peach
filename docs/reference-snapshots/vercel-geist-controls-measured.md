@@ -96,6 +96,11 @@ token 上；`app.css` 里除 iOS 那条之外出现任何字面字号都会红�
 浏览器里另测一次同一 URL（`new Image()` + `referrerPolicy='no-referrer'`）：`load 160x160`。
 所以页面直接引用这个地址是可行的，不需要服务端代理。
 
+Windows 那台独立复测过一次，字节数一致。**但 pawchive 回的 content-type 是
+`application/octet-stream`，不是图片类型**——`<img>` 会嗅探内容所以照常显示，
+可一旦改成 `fetch` + `createObjectURL` 就必须自己指定 MIME，否则那张图不会渲染。
+这条差异只在换实现方式时才咬人，所以记在这里。
+
 coomer 那个 404 **只说明这个创作者不在 coomer 上**，不能据此断定 coomer 没有这个端点——
 所以代码照样按同一规则给它 URL，取不到时由 `<img onerror>` 收场。
 
@@ -115,8 +120,15 @@ rule34video / rule34.xxx **未取得**：本机账本里没有这两个站的来
 | rule34.xxx | 取不到（对 `curl` 回 403） |
 
 `theme-color` 是浏览器 UI 底色，不是品牌色——rule34video 的白和 f95zone 的深灰都只是
-各自页面底色。favicon 兜底也不成立：kemono 系 `/favicon.ico` 404，而 rule34video 和
-f95zone 回的字节数完全相同（15,086），一看就不是各自的图标。
+各自页面底色。
+
+**下面这句我当时写错了，留着当反例**：我写的是「rule34video 和 f95zone 的
+`/favicon.ico` 字节数完全相同（15,086），一看就不是各自的图标」。Windows 那台复核时
+算了 sha256：`2fe52ae2ed3c4201…` 和 `196f7bb69a3f788e…`，**是两个不同的文件**。
+多分辨率 `.ico` 撞上同样的字节数是常见巧合，字节数相同推不出内容相同——
+要判同一份文件就得算摘要，别拿长度当指纹。
+
+各站图标的实测结果在 `follow-source-icons-measured.md`，不在这份里。
 
 **结论是未取得**，边框颜色这一条没有可复现的依据可用，没有实现。要做得先定一个能复核的
 口径（例如从各站主 CSS 里取按钮/链接的强调色，并记下文件哈希）。

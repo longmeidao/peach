@@ -74,6 +74,70 @@ class FollowContractTests(unittest.TestCase):
     def _post(self, path, body):
         return dispatch_api_post(self.contract, path, body)
 
+    def test_paging_back_advances_the_cursor_without_touching_the_etag(self):
+        """往回抓推进游标，但**绝不覆盖 etag**。
+
+        etag 和 last_modified 是第一页的条件请求凭据。拿第 3 页的 etag 覆盖掉，
+        下次常规检查就会拿它去问第一页、站点回 304，新的更新从此再也进不来——
+        一个「往回看历史」的功能会安静地把追更本身弄坏。
+        """
+        source_id = self._seed()
+
+        def record(etag, page):
+            with self.contract.database.write_transaction() as connection:
+                FollowStore(lambda: connection,
+                            sources_root=self.contract.follow_sources_root).record(
+                    source_id, SourceFetch(
+                        provider="rule34video", ref="lazyprocrastinator",
+                        request_url="https://rule34video.test/x", semantics="work",
+                        # 证据文件名取自「时间戳 + 正文摘要」。这个测试里时间戳是
+                        # 固定的 MOMENT，正文再一样就会撞名，所以让正文随 etag 变。
+                        candidates=(), etag=etag,
+                        raw_body=f"<html>{etag}{page}</html>".encode()),
+                    moment=MOMENT, page=page)
+
+        def state():
+            with self.contract.database.read_connection() as connection:
+                return dict(connection.execute(
+                    "SELECT etag, backfill_page FROM follow_source WHERE id=?",
+                    (source_id,)).fetchone())
+
+        record('"first-page"', 0)
+        self.assertEqual(state()["etag"], '"first-page"')
+
+        record('"third-page"', 2)
+        self.assertEqual(state()["etag"], '"first-page"', "往回抓不该动第一页的 etag")
+        self.assertEqual(state()["backfill_page"], 2)
+
+        # 常规检查照常更新 etag，而且不会让游标倒退。
+        record('"newer"', 0)
+        self.assertEqual(state()["etag"], '"newer"')
+        self.assertEqual(state()["backfill_page"], 2)
+
+    def test_the_check_endpoint_pages_back_only_when_asked(self):
+        """常规检查永远只看第一页，往回抓必须是显式的。"""
+        self._seed()
+        pages = []
+
+        class _Recorder:
+            provider, semantics = "rule34video", "work"
+
+            def fetch(self, ref, *, etag=None, last_modified=None, page=0):
+                pages.append(page)
+                return SourceFetch(provider="rule34video", ref=ref,
+                                   request_url="https://rule34video.test/x",
+                                   semantics="work", candidates=(), raw_body=b"<html/>")
+
+        original = web_follow.build_connector
+        web_follow.build_connector = lambda provider, credential=None: _Recorder()
+        self.addCleanup(setattr, web_follow, "build_connector", original)
+
+        self._post("/api/follow/check", {})
+        self._post("/api/follow/check", {"older": True})
+        self._post("/api/follow/check", {"older": True})
+        # 第一次常规检查 → 0；两次往回抓 → 1、2，游标一次只走一页。
+        self.assertEqual(pages, [0, 1, 2])
+
     def test_feed_groups_variants_under_one_card(self):
         self._seed()
         payload = self._get()
@@ -829,6 +893,28 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_every_entered_state_can_be_left_again(self):
         self.assertPageContains("""item.status==='seen'||item.status==='ignored'""")
         self.assertPageContains(">恢复未看</button>")
+
+    def test_only_rule34xxx_actually_carries_tags(self):
+        """标签筛选先只覆盖 rule34.xxx，这是用户定的范围。
+
+        `follow_item` 没有 tag 列，只有 rule34.xxx 在 `metadata_json` 里存了原始的
+        空格分隔标签串。kemono 系和 f95zone 的列表接口根本不给标签——它们返回空列表，
+        前端据此把覆盖范围说清楚，而不是画一个对多数条目永远为空的筛选条。
+        """
+        class _Item:
+            def __init__(self, metadata):
+                self.metadata = metadata
+
+        tags = web_follow._item_tags(
+            _Item({"tag": "lazyprocrastinator",
+                   "tags": "lazyprocrastinator 1girls animated sound lazyprocrastinator"}))
+        # 作者手柄本身不算标签：按作者筛已经有专门的筛选条，重复出现没有信息量。
+        self.assertEqual(tags, ["1girls", "animated", "sound"])
+        self.assertEqual(web_follow._item_tags(_Item({})), [])
+        self.assertEqual(web_follow._item_tags(_Item({"tags": "   "})), [])
+        # 热门帖能带上百个标签，整串发下去会把筛选条撑爆。
+        many = _Item({"tags": " ".join(f"t{n}" for n in range(200))})
+        self.assertEqual(len(web_follow._item_tags(many)), web_follow.MAX_ITEM_TAGS)
 
     def test_the_author_key_merges_one_person_across_sites(self):
         """归组判据：实体优先，其次名字归一化，绝不模糊匹配。

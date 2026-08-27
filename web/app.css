@@ -1409,3 +1409,9 @@ details.fcred{display:block}
 .fpickactions [data-pick-add]{background:var(--tungsten);border-color:var(--tungsten);color:#fff;font-weight:600}
 .fpickactions button:disabled{opacity:.6;cursor:default}
 .fpickactions [data-pick-state]{font-size:var(--fs-xs);color:var(--muted)}
+
+/* 关注页底部的「往回抓」。放在列表末尾而不是顶部：它的语义是「这些之外还有更早的」，
+   顶部会让人以为是刷新。 */
+.folderfoot{display:flex;align-items:center;gap:12px;margin:18px 0 0;
+  padding-top:14px;border-top:1px solid var(--line-soft)}
+.folderfoot .fmeta{margin-left:0}

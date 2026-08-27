@@ -1,4 +1,5 @@
 import importlib.util
+import inspect
 import os
 import plistlib
 import sys
@@ -24,7 +25,9 @@ from peach.config import SECRETS_DIR
 from peach.tray import (
     AlreadyRunning, PeachTray, ServiceManager, ServiceSpec, SingleInstance,
     apply_macos_template, build_service_specs, create_icon, enable_hidpi,
+    launchd_owns_this_process, restart_tray_process, tray_restart_required,
 )
+from peach.sync import SyncPlan
 from peach.versioning import UpdateResult, VersionSnapshot
 
 
@@ -204,7 +207,10 @@ class ServiceStatusTests(unittest.TestCase):
         process = Mock()
         process.poll.return_value = None
         completed = Mock(returncode=0, stdout="账本同步：in-sync · 两侧已经一致\n", stderr="")
-        manager = ServiceManager((spec,), popen=Mock(return_value=process), run=Mock(return_value=completed))
+        manager = ServiceManager(
+            (spec,), popen=Mock(return_value=process), run=Mock(return_value=completed),
+            ledger_plan=lambda: SyncPlan("pull", "共享副本更新"),
+        )
         manager._owned["http"] = process
         with patch.object(manager, "healthy", return_value=True), patch.object(
             manager, "start_missing"
@@ -224,9 +230,12 @@ class ServiceStatusTests(unittest.TestCase):
         )
 
     def test_take_ownership_is_an_explicit_ledger_command(self):
-        manager = ServiceManager(tuple(), run=Mock(return_value=Mock(
-            returncode=0, stdout="账本同步：take-ownership\n", stderr="",
-        )))
+        manager = ServiceManager(
+            tuple(),
+            run=Mock(return_value=Mock(
+                returncode=0, stdout="账本同步：take-ownership\n", stderr="")),
+            ledger_plan=lambda: SyncPlan("in-sync", "两侧一致"),
+        )
         with patch.object(manager, "start_missing"), patch.object(
             manager, "wait_until_ready", return_value=True,
         ):
@@ -237,11 +246,121 @@ class ServiceStatusTests(unittest.TestCase):
     def test_manual_sync_refuses_a_healthy_unowned_service(self):
         spec = ServiceSpec("http", "http://127.0.0.1/healthz", ("peach", "serve"), True)
         runner = Mock()
-        manager = ServiceManager((spec,), health_get=lambda *args, **kwargs: Response(), run=runner)
+        manager = ServiceManager(
+            (spec,), health_get=lambda *args, **kwargs: Response(), run=runner,
+            ledger_plan=lambda: SyncPlan("pull", "共享副本更新"),
+        )
         ok, message = manager.sync_ledger(Path("/venv/peach"))
         self.assertFalse(ok)
         self.assertIn("不归本托盘管理", message)
         runner.assert_not_called()
+
+    def test_an_unreachable_share_never_stops_the_services(self):
+        """共享盘没挂时，停一遍服务再启回来换不到任何东西，只换来一次断网页。"""
+        spec = ServiceSpec("http", "http://127.0.0.1/healthz", ("peach", "serve"), True)
+        process = Mock()
+        process.poll.return_value = None
+        runner = Mock()
+        manager = ServiceManager(
+            (spec,), run=runner,
+            ledger_plan=lambda: SyncPlan("offline", "共享副本所在的盘不可达，本地照常读写"),
+        )
+        manager._owned["http"] = process
+
+        ok, message = manager.sync_ledger(Path("/venv/peach"))
+
+        self.assertFalse(ok)
+        self.assertIn("盘不可达", message)
+        runner.assert_not_called()
+        process.terminate.assert_not_called()
+
+    def test_a_reader_that_cannot_push_is_reported_without_an_outage(self):
+        """本机不是写入端时结论已经定了，跑一遍 CLI 也只会得到同一个 conflict。"""
+        spec = ServiceSpec("http", "http://127.0.0.1/healthz", ("peach", "serve"), True)
+        process = Mock()
+        process.poll.return_value = None
+        runner = Mock()
+        manager = ServiceManager(
+            (spec,), run=runner,
+            ledger_plan=lambda: SyncPlan("conflict", "当前写入端是 host-88053062，本机不能推送"),
+        )
+        manager._owned["http"] = process
+
+        ok, message = manager.sync_ledger(Path("/venv/peach"))
+
+        self.assertFalse(ok)
+        self.assertIn("不能推送", message)
+        runner.assert_not_called()
+        process.terminate.assert_not_called()
+
+    def test_take_ownership_still_runs_when_the_two_sides_are_in_sync(self):
+        """`in-sync` 对同步是无事可做，对接管却正是要做的那一次；短路不能一视同仁。"""
+        manager = ServiceManager(
+            tuple(),
+            run=Mock(return_value=Mock(
+                returncode=0, stdout="账本同步：take-ownership\n", stderr="")),
+            ledger_plan=lambda: SyncPlan("in-sync", "两侧一致"),
+        )
+        with patch.object(manager, "start_missing"), patch.object(
+            manager, "wait_until_ready", return_value=True,
+        ):
+            ok, _message = manager.sync_ledger(Path("/venv/peach"), take_ownership=True)
+        self.assertTrue(ok)
+        manager._run.assert_called_once()
+
+    def test_take_ownership_refuses_early_when_the_share_is_unreachable(self):
+        runner = Mock()
+        manager = ServiceManager(
+            tuple(), run=runner,
+            ledger_plan=lambda: SyncPlan("offline", "共享副本所在的盘不可达，本地照常读写"),
+        )
+        ok, message = manager.sync_ledger(Path("/venv/peach"), take_ownership=True)
+        self.assertFalse(ok)
+        self.assertIn("先挂上共享副本所在的盘", message)
+        runner.assert_not_called()
+
+
+class SourceSyncTests(unittest.TestCase):
+    """「同步开发进度」这条路径：拉到的代码要真的跑起来，托盘不能自己骗自己。"""
+
+    def test_only_tray_owned_modules_demand_a_tray_restart(self):
+        self.assertFalse(tray_restart_required(("src/peach/web.py", "docs/STATUS.md")))
+        self.assertTrue(tray_restart_required(("src/peach/web.py", "src/peach/menubar.py")))
+        self.assertTrue(tray_restart_required(("pyproject.toml",)))
+        self.assertFalse(tray_restart_required(()))
+
+    def test_launchd_ownership_requires_a_matching_pid_not_just_a_loaded_job(self):
+        """只看「作业已加载」会在终端启动的托盘上 kickstart 出第二个菜单栏图标。"""
+        loaded_elsewhere = Mock(returncode=0, stdout="\tpid = 1\n\tstate = running\n")
+        self.assertFalse(launchd_owns_this_process(Mock(return_value=loaded_elsewhere)))
+
+        mine = Mock(returncode=0, stdout=f"\tpid = {os.getpid()}\n\tstate = running\n")
+        self.assertTrue(launchd_owns_this_process(Mock(return_value=mine)))
+
+        self.assertFalse(launchd_owns_this_process(
+            Mock(return_value=Mock(returncode=113, stdout=""))))
+
+    def test_the_menu_lists_source_sync_next_to_the_ledger_actions(self):
+        """标签和位置是语义契约：菜单只有一条，写错了没有第二处会报错。"""
+        from peach import tray as tray_module
+
+        source = inspect.getsource(tray_module.run_macos_menu_bar)
+        labels = [
+            line.split('"')[1]
+            for line in source.splitlines()
+            if line.strip().startswith('("') and '",' in line
+        ]
+        self.assertIn("同步开发进度", labels)
+        self.assertLess(labels.index("同步开发进度"), labels.index("同步 Ledger"))
+        self.assertIn("sync_source", source)
+
+    def test_tray_restart_asks_launchd_to_kill_and_relaunch_this_label(self):
+        runner = Mock(return_value=Mock(returncode=0, stdout="", stderr=""))
+        restart_tray_process(runner)
+        self.assertEqual(
+            runner.call_args.args[0],
+            ["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/gg.lmd.peach.tray"],
+        )
 
 
 @unittest.skipUnless(sys.platform == "darwin", "菜单栏图标与服务规格是 macOS 专属")
