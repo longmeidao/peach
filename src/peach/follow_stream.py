@@ -1,0 +1,96 @@
+"""Proxy targets for playing a follow candidate inside Peach.
+
+The browser receives only a Peach URL. Upstream URLs stay in the ledger/source layer, and
+Rule34Video's expiring signed URL is resolved only when the user explicitly presses play.
+"""
+from __future__ import annotations
+
+import html
+import re
+import threading
+import time
+import urllib.parse
+from dataclasses import dataclass
+
+from .follow_sources import USER_AGENT
+from .follow_store import FollowItemRow
+from .http import HttpRequest, HttpTransport
+
+
+class FollowMediaUnavailable(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class ResolvedFollowMedia:
+    url: str
+    referer: str | None = None
+
+
+_PROVIDER_HOSTS = {
+    "kemono": ("kemono.cr",),
+    "coomer": ("coomer.st",),
+    "pawchive": ("pawchive.pw",),
+    "rule34video": ("rule34video.com",),
+    "rule34xxx": ("rule34.xxx",),
+    "f95zone": ("f95zone.to",),
+}
+_VIDEO_URL_RE = re.compile(r"\bvideo_url\s*:\s*'([^']+)'", re.IGNORECASE)
+
+
+def _allowed(provider: str, url: str) -> bool:
+    try:
+        parsed = urllib.parse.urlsplit(url)
+    except ValueError:
+        return False
+    host = (parsed.hostname or "").casefold()
+    if parsed.scheme != "https" or not host or parsed.username or parsed.password:
+        return False
+    return any(host == suffix or host.endswith("." + suffix)
+               for suffix in _PROVIDER_HOSTS.get(provider, ()))
+
+
+class FollowMediaResolver:
+    """Resolve stable ledger candidates into short-lived upstream playback URLs."""
+
+    def __init__(self, transport: HttpTransport, *, ttl: float = 300.0,
+                 timeout: float = 20.0, max_bytes: int = 2_000_000):
+        self.transport = transport
+        self.ttl = ttl
+        self.timeout = timeout
+        self.max_bytes = max_bytes
+        self._cache: dict[int, tuple[float, ResolvedFollowMedia]] = {}
+        self._lock = threading.Lock()
+
+    def resolve(self, item: FollowItemRow) -> ResolvedFollowMedia:
+        if item.metadata.get("media_needs_credential"):
+            raise FollowMediaUnavailable("媒体需要来源登录会话")
+        if item.provider != "rule34video":
+            if not item.media_url or not _allowed(item.provider, item.media_url):
+                raise FollowMediaUnavailable("来源媒体地址不可用")
+            return ResolvedFollowMedia(item.media_url, item.url)
+
+        with self._lock:
+            cached = self._cache.get(item.id)
+            if cached and cached[0] > time.monotonic():
+                return cached[1]
+        if not item.url or not _allowed(item.provider, item.url):
+            raise FollowMediaUnavailable("Rule34Video 详情地址不可用")
+        response = self.transport(
+            HttpRequest("GET", item.url, {"User-Agent": USER_AGENT,
+                                           "Accept": "text/html"}),
+            self.timeout, self.max_bytes,
+        )
+        if response.status != 200 or len(response.body) > self.max_bytes:
+            raise FollowMediaUnavailable("Rule34Video 详情页未取得")
+        text = response.body.decode("utf-8", errors="replace")
+        matched = _VIDEO_URL_RE.search(text)
+        if not matched:
+            raise FollowMediaUnavailable("Rule34Video 正片地址未取得")
+        target = html.unescape(matched.group(1)).replace("\\/", "/")
+        if not _allowed(item.provider, target):
+            raise FollowMediaUnavailable("Rule34Video 返回了不受信任的媒体地址")
+        resolved = ResolvedFollowMedia(target, item.url)
+        with self._lock:
+            self._cache[item.id] = (time.monotonic() + self.ttl, resolved)
+        return resolved

@@ -307,6 +307,12 @@ class FollowStore:
             params).fetchall()
         return tuple(self._row(row) for row in rows)
 
+    def item(self, item_id: int) -> FollowItemRow | None:
+        row = self._connect().execute(
+            self._SELECT + " WHERE i.id=?", (int(item_id),)
+        ).fetchone()
+        return self._row(row) if row is not None else None
+
     @staticmethod
     def _row(row) -> FollowItemRow:
         try:

@@ -1,0 +1,47 @@
+# Rule34 追更标签与超大合集证据
+
+- 取证日期：2026-08-27
+- 取证通道：Python HTTPX 直接读取公开 HTML/CSS；浏览器加载详情页 45 秒超时，视觉与实时 DOM 为**未取得**。
+- 用途：Rule34Video 详情补全、超大跨作者合集排除、关注页标签类型配色。
+
+## Rule34Video 详情页
+
+URL：`https://rule34video.com/video/4533145/…/`
+
+本次 HTML 响应 200，298,419 字节，SHA-256
+`CFBA7498BCC829345117226D8756F13A9535F7EDA57809202A041DDE41F662D1`。页面含动态签名，
+整页哈希只标识这一次响应，不作为长期不变版本号。
+
+可重放选择器与字段：
+
+| 内容 | 证据 |
+| --- | --- |
+| 正片与封面 | `VideoObject.contentUrl`、`thumbnailUrl`、`uploadDate`、`duration` |
+| 当前可播地址 | 播放器配置 `video_url`；带短期签名，不能存进公共 JSON |
+| 内容标签 | `a.tag_item[href*="/tags/"]`，本页 31 个 |
+| 作品分类 | `a.video_meta_pill[href*="/categories/"]`，本页 3 个 |
+| 署名作者 | `a.video_meta_pill[href*="/models/"]`，本页 54 位 |
+
+同一作者页抽取的 8 个普通作品均只有 1 位署名作者，内容标签为 3–11 个。因此 Peach 以
+`model_count > 20` 识别超大跨作者合集；详情取不到时保留候选，不用一次网络失败删更新。
+已有的 4533145 行只在读取时隐藏，不删除 ledger。
+
+## Rule34.xxx 标签类型
+
+- 标签列表：`https://rule34.xxx/index.php?page=tags&s=list`
+- 样式：`https://rule34.xxx/css/desktop.css?46`
+- CSS 响应 200，25,126 字节，SHA-256
+  `FC34871535E66A1AE9862C4B0EAE772B11D214845DB93F582492680B66FBE107`
+
+站点用父级类型类区分标签，CSS 原色如下：
+
+| 类型 | 类 | 原色 |
+| --- | --- | --- |
+| Artist | `.tag-type-artist` | `#A00` |
+| Character | `.tag-type-character` | `#0A0` |
+| Copyright | `.tag-type-copyright` | `#A0A` |
+| Metadata | `.tag-type-metadata` | `#F80` |
+
+Peach 保留类型差异，但不复制白底站点的低亮度原色；在深色界面换成可读的同色相描边和浅底。
+General 沿用 Peach 蓝色。`2d`、`3d`、`animated`、`video`、`sound`、`tagme` 等载体标签仍留在
+原始证据里，但不进入前 24 个内容筛选标签。

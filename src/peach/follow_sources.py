@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import re
 import urllib.parse
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from typing import Mapping, Protocol
 
@@ -106,6 +106,9 @@ class SourceFetch:
     #: 这次抓取里被判为「不是 release」而丢掉的条数。必须报出来：用户看到的条目数
     #: 比站点上少的时候，他得能分清少的是被过滤掉的，还是根本没抓到。
     skipped: int = 0
+    #: `skipped` 里有多少条是来源详情确认的超大跨作者合集。单列出来让界面能说清
+    #: 「主动不收」而不是把它误报成「没有资源」。
+    skipped_compilations: int = 0
     #: 列表判不出来、额外抓了详情页的条数。这是唯一会放大请求数的路径，
     #: 报出来才能看出某个作者是不是每一帖都要多打一次站点。
     probed: int = 0
@@ -173,6 +176,10 @@ def _iso_from_relative(text: str | None, *, now: datetime | None = None) -> str 
 
 
 _DURATION_RE = re.compile(r"^\s*(?:(\d+):)?(\d{1,2}):(\d{2})\s*$")
+_ISO_DURATION_RE = re.compile(
+    r"^PT(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?$",
+    re.IGNORECASE,
+)
 
 
 def _duration_seconds(text: str | None) -> float | None:
@@ -183,6 +190,17 @@ def _duration_seconds(text: str | None) -> float | None:
         return None
     hours, minutes, seconds = matched.groups()
     return float(int(hours or 0) * 3600 + int(minutes) * 60 + int(seconds))
+
+
+def _iso_duration_seconds(text) -> float | None:
+    """Schema.org `PT0H27M45S` 时长转秒。"""
+    if not isinstance(text, str):
+        return None
+    matched = _ISO_DURATION_RE.match(text.strip())
+    if not matched or not any(matched.groups()):
+        return None
+    hours, minutes, seconds = (float(value or 0) for value in matched.groups())
+    return hours * 3600 + minutes * 60 + seconds
 
 
 #: 站点自报出处时能认出来的原始平台。键是主机名后缀，值是分组键的前缀。
@@ -496,6 +514,16 @@ class Rule34VideoConnector(_BaseConnector):
     semantics = "work"
     _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_\-]{0,80}$")
     _VIDEO_RE = re.compile(r"^https://rule34video\.com/video/(\d+)/")
+    #: 详情页的署名作者通常只有 1 位；用户给出的超大合集实测有 54 位。20 以上只会
+    #: 排除这种跨作者打包，不影响普通合作作品。
+    MAX_COLLECTION_MODELS = 20
+    DEFAULT_MAX_PROBES = 24
+
+    def __init__(self, *, max_probes: int = DEFAULT_MAX_PROBES,
+                 max_collection_models: int = MAX_COLLECTION_MODELS, **kwargs):
+        super().__init__(**kwargs)
+        self.max_probes = max(0, int(max_probes))
+        self.max_collection_models = max(1, int(max_collection_models))
 
     def fetch(self, ref: str, *, etag: str | None = None,
               last_modified: str | None = None, page: int = 0) -> SourceFetch:
@@ -519,21 +547,37 @@ class Rule34VideoConnector(_BaseConnector):
         self._check_status(response)
         soup = BeautifulSoup(response.body, "html.parser")
         seen: set[str] = set()
-        candidates: list[FollowCandidate] = []
+        listed: list[FollowCandidate] = []
         for anchor in soup.select('a[href*="/video/"]'):
             href = (anchor.get("href") or "").strip()
             matched = self._VIDEO_RE.match(href)
             if not matched or matched.group(1) in seen:
                 continue
             seen.add(matched.group(1))
-            candidates.append(self._candidate(anchor, href, matched.group(1)))
-            if len(candidates) >= self.max_items:
+            listed.append(self._candidate(anchor, href, matched.group(1)))
+            if len(listed) >= self.max_items:
                 break
-        if not candidates:
+        if not listed:
             raise FollowSourceError(
                 "rule34video 创作者页没有解析出任何作品：页面结构可能已变，"
                 "或该 slug 不存在")
-        return SourceFetch(candidates=tuple(candidates), raw_body=response.body, **common)
+        candidates: list[FollowCandidate] = []
+        skipped_compilations = probed = 0
+        for candidate in listed:
+            enriched = candidate
+            if probed < self.max_probes and candidate.url:
+                probed += 1
+                enriched = self._probe_detail(candidate)
+            model_count = int(enriched.extra.get("model_count") or 0)
+            if model_count > self.max_collection_models:
+                skipped_compilations += 1
+                continue
+            candidates.append(enriched)
+        return SourceFetch(
+            candidates=tuple(candidates), skipped=skipped_compilations,
+            skipped_compilations=skipped_compilations, probed=probed,
+            raw_body=response.body, **common,
+        )
 
     def _candidate(self, anchor, href: str, video_id: str) -> FollowCandidate:
         title = _plain_text(anchor.get("title"))
@@ -565,6 +609,79 @@ class Rule34VideoConnector(_BaseConnector):
                    "published_precision": "approximate" if added_text else "unknown",
                    "media_kind": "preview_clip"},
         )
+
+    def _probe_detail(self, candidate: FollowCandidate) -> FollowCandidate:
+        """详情页补全封面、正片、绝对日期和标签；失败时保留列表候选。
+
+        Rule34Video 的列表页只有预览片和相对时间，详情页才同时给 JSON-LD 正片、
+        内容标签、分类与署名作者。探测有每页 24 条上限，不会无界放大请求。
+        """
+        try:
+            response = self._get(candidate.url or "", headers={"Accept": "text/html"})
+            if response.status != 200:
+                return candidate
+            detail = self._detail(response.body)
+        except (FollowSourceError, OSError, httpx.HTTPError, ValueError):
+            return candidate
+        if not detail:
+            return candidate
+        extra = {**dict(candidate.extra), **detail["extra"]}
+        return replace(
+            candidate,
+            title=detail.get("title") or candidate.title,
+            media_url=detail.get("media_url") or candidate.media_url,
+            thumb_url=detail.get("thumb_url") or candidate.thumb_url,
+            published_at=detail.get("published_at") or candidate.published_at,
+            duration=detail.get("duration") or candidate.duration,
+            extra=extra,
+        )
+
+    @staticmethod
+    def _detail(body: bytes) -> dict[str, object]:
+        soup = BeautifulSoup(body, "html.parser")
+        video = {}
+        for node in soup.find_all("script", attrs={"type": "application/ld+json"}):
+            try:
+                payload = json.loads(node.get_text() or "{}")
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if isinstance(payload, dict) and payload.get("@type") == "VideoObject":
+                video = payload
+                break
+        tags = [_plain_text(node.get_text(" ")) for node in soup.select(
+            'a.tag_item[href*="/tags/"]')]
+        categories = [_plain_text(node.get_text(" ")) for node in soup.select(
+            'a.video_meta_pill[href*="/categories/"]')]
+        models = [_plain_text(node.get_text(" ")) for node in soup.select(
+            'a.video_meta_pill[href*="/models/"]')]
+        tags = list(dict.fromkeys(value for value in tags if value))
+        categories = list(dict.fromkeys(value for value in categories if value))
+        models = list(dict.fromkeys(value for value in models if value))
+        if not video and not tags and not categories and not models:
+            return {}
+        tag_types = {tag: "general" for tag in tags}
+        for category in categories:
+            tag_types[category] = (
+                "metadata" if category.casefold() in {"2d", "3d"} else "copyright")
+        published = _iso_from_text(video.get("uploadDate"))
+        return {
+            "title": _plain_text(video.get("name")),
+            "media_url": (str(video.get("contentUrl"))
+                          if video.get("contentUrl") else None),
+            "thumb_url": (str(video.get("thumbnailUrl"))
+                          if video.get("thumbnailUrl") else None),
+            "published_at": published,
+            "duration": _iso_duration_seconds(video.get("duration")),
+            "extra": {
+                **({"published_precision": "exact"} if published else {}),
+                **({"media_kind": "video"} if video.get("contentUrl") else {}),
+                "tags": tags,
+                "categories": categories,
+                "models": models,
+                "model_count": len(models),
+                "tag_types": tag_types,
+            },
+        }
 
 
 class Rule34XxxConnector(_BaseConnector):

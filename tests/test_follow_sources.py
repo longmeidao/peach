@@ -61,6 +61,22 @@ RULE34VIDEO_HTML = b"""<html><body>
 <a class="th" href="https://rule34video.com/video/4542713/fiona-paizuri/" title="dup ignored"></a>
 </body></html>"""
 
+RULE34VIDEO_DETAIL_HTML = b"""<html><body>
+<script type="application/ld+json">{
+  "@context":"https://schema.org","@type":"VideoObject",
+  "name":"Fiona - Paizuri (Nude)",
+  "thumbnailUrl":"https://rule34video.com/contents/videos_screenshots/4542000/4542721/preview.jpg",
+  "uploadDate":"2026-08-18","duration":"PT0H7M13S",
+  "contentUrl":"https://rule34video.com/get_file/51/aa/4542721/4542721_360.mp4/"
+}</script>
+<a class="item btn_link video_meta_pill" href="https://rule34video.com/categories/3d/">3D</a>
+<a class="item btn_link video_meta_pill" href="https://rule34video.com/categories/final-fantasy/">Final Fantasy</a>
+<a class="item btn_link video_meta_pill" href="https://rule34video.com/models/lazyprocrastinator/">LazyProcrastinator</a>
+<a class="tag_item" href="https://rule34video.com/tags/1/">deep throat</a>
+<a class="tag_item" href="https://rule34video.com/tags/2/">breast squeeze</a>
+<script>video_url: 'https://rule34video.com/get_file/51/aa/4542721.mp4/?v-acctoken=test'</script>
+</body></html>"""
+
 F95_HTML = b"""<html><head><title>Collection - Video - Lazy | F95zone</title></head><body>
 <h1 class="p-title-value"><span class="label">Collection</span><span class="label">Video</span>
 Lazy Procrastinator Collection [2026-06-28] [LazyProcrastinator/LazyProcrast]</h1>
@@ -374,6 +390,44 @@ class Rule34VideoConnectorTests(unittest.TestCase):
         connector = Rule34VideoConnector(transport=_transport(body=RULE34VIDEO_HTML))
         with self.assertRaises(FollowSourceError):
             connector.fetch("../models")
+
+    def test_detail_enrichment_adds_full_cover_video_date_and_content_tags(self):
+        seen = []
+
+        def transport(request, timeout, max_bytes):
+            seen.append(request.url)
+            body = (RULE34VIDEO_HTML if "/models/" in request.url
+                    else RULE34VIDEO_DETAIL_HTML)
+            return HttpResponse(200, {}, body)
+
+        result = Rule34VideoConnector(transport=transport).fetch("lazyprocrastinator")
+        first = result.candidates[0]
+        self.assertEqual(result.probed, 2)
+        self.assertEqual(first.published_at, "2026-08-18T00:00:00Z")
+        self.assertEqual(first.extra["published_precision"], "exact")
+        self.assertEqual(first.duration, 433.0)
+        self.assertEqual(first.extra["tags"], ["deep throat", "breast squeeze"])
+        self.assertEqual(first.extra["categories"], ["3D", "Final Fantasy"])
+        self.assertEqual(first.extra["tag_types"]["3D"], "metadata")
+        self.assertEqual(first.extra["tag_types"]["Final Fantasy"], "copyright")
+        self.assertTrue(first.thumb_url.endswith("/preview.jpg"))
+        self.assertIn("4542721_360.mp4", first.media_url)
+
+    def test_detail_with_many_credited_models_is_not_collected(self):
+        models = "".join(
+            f'<a class="item btn_link video_meta_pill" href="https://rule34video.com/models/m{n}/">M{n}</a>'
+            for n in range(21)
+        ).encode()
+        detail = RULE34VIDEO_DETAIL_HTML.replace(b"</body>", models + b"</body>")
+
+        def transport(request, timeout, max_bytes):
+            return HttpResponse(200, {},
+                                RULE34VIDEO_HTML if "/models/" in request.url else detail)
+
+        result = Rule34VideoConnector(transport=transport).fetch("lazyprocrastinator")
+        self.assertEqual(result.candidates, ())
+        self.assertEqual(result.skipped, 2)
+        self.assertEqual(result.skipped_compilations, 2)
 
 
 class PagingBackTests(unittest.TestCase):
