@@ -908,6 +908,217 @@ class F95ZoneConnector(_BaseConnector):
         return tuple(row for row in rows if isinstance(row, dict))
 
 
+class FanboxConnector(_BaseConnector):
+    """pixivFANBOX 官方公开帖子列表。
+
+    只保留 `feeRequired=0` 且没有受限的帖子；付费标题可以被公开接口看见，
+    但这条来源的用途是跟踪作者直接公开分发的内容，不能把付费预告混进来。
+    """
+
+    provider = "fanbox"
+    semantics = "work"
+    _CREATOR_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+    def _headers(self) -> dict[str, str]:
+        headers = super()._headers()
+        headers.update({
+            "Accept": "application/json",
+            "Origin": "https://www.fanbox.cc",
+            "Referer": "https://www.fanbox.cc/",
+        })
+        return headers
+
+    def fetch(self, ref: str, *, etag: str | None = None,
+              last_modified: str | None = None, page: int = 0) -> SourceFetch:
+        creator = str(ref or "").strip()
+        if not self._CREATOR_RE.fullmatch(creator):
+            raise FollowSourceError(f"fanbox 的 ref 必须是创作者 id，收到：{ref!r}")
+        if page:
+            raise FollowSourceError("fanbox 官方来源暂不支持向前翻页")
+        # 2026-08-27 实测公开接口单页为 10 条；不要把本地通用上限 100 原样塞给站点。
+        query = urllib.parse.urlencode({"creatorId": creator,
+                                        "limit": min(self.max_items, 10)})
+        url = f"https://api.fanbox.cc/post.listCreator?{query}"
+        response = self._get(url, etag=etag, last_modified=last_modified)
+        common = {"provider": self.provider, "ref": creator, "request_url": url,
+                  "semantics": self.semantics, **self._conditional(response)}
+        if response.status == 304:
+            return SourceFetch(not_modified=True, **common)
+        self._check_status(response)
+        payload = self._json(response)
+        posts = ((payload or {}).get("body") or {}).get("posts")
+        if not isinstance(posts, list):
+            raise FollowSourceError("fanbox 返回的帖子列表格式不符")
+        candidates, skipped = [], 0
+        for post in posts[:self.max_items]:
+            if not isinstance(post, dict) or not str(post.get("id") or "").isdigit():
+                continue
+            if post.get("isRestricted") or int(post.get("feeRequired") or 0) > 0:
+                skipped += 1
+                continue
+            post_id = str(post["id"])
+            cover = post.get("cover") if isinstance(post.get("cover"), dict) else {}
+            user = post.get("user") if isinstance(post.get("user"), dict) else {}
+            candidates.append(FollowCandidate(
+                provider=self.provider,
+                external_id=post_id,
+                title=_plain_text(str(post.get("title") or "")) or f"FANBOX 帖子 {post_id}",
+                url=f"https://{creator}.fanbox.cc/posts/{post_id}",
+                thumb_url=str(cover.get("url")) if cover.get("url") else None,
+                published_at=_iso_from_text(post.get("publishedDatetime")),
+                author=_plain_text(str(user.get("name") or "")),
+                summary=_plain_text(str(post.get("excerpt") or "")),
+                group_hint=f"fanbox:{post_id}",
+                extra={"fee_required": 0, "official": True},
+            ))
+        return SourceFetch(candidates=tuple(candidates), skipped=skipped,
+                           raw_body=response.body, **common)
+
+
+def _visible_post_image(node) -> str | None:
+    image = node.select_one("img[src]") if node is not None else None
+    return str(image.get("src")) if image is not None and image.get("src") else None
+
+
+class SubscribeStarConnector(_BaseConnector):
+    """SubscribeStar 的公开创作者页；不登录，也不穿过付费墙。"""
+
+    provider = "subscribestar"
+    semantics = "work"
+    HOSTS = frozenset({"subscribestar.adult", "subscribestar.com"})
+    _SLUG_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
+
+    @classmethod
+    def _split_ref(cls, ref: str) -> tuple[str, str]:
+        host, _, slug = str(ref or "").strip().partition("/")
+        if host not in cls.HOSTS or not cls._SLUG_RE.fullmatch(slug):
+            raise FollowSourceError(
+                "subscribestar 的 ref 必须形如 subscribestar.adult/creator")
+        return host, slug
+
+    def fetch(self, ref: str, *, etag: str | None = None,
+              last_modified: str | None = None, page: int = 0) -> SourceFetch:
+        host, slug = self._split_ref(ref)
+        if page:
+            raise FollowSourceError("SubscribeStar 官方来源暂不支持向前翻页")
+        url = f"https://{host}/{slug}"
+        response = self._get(url, headers={"Accept": "text/html"},
+                             etag=etag, last_modified=last_modified)
+        common = {"provider": self.provider, "ref": ref, "request_url": url,
+                  "semantics": self.semantics, **self._conditional(response)}
+        if response.status == 304:
+            return SourceFetch(not_modified=True, **common)
+        self._check_status(response)
+        try:
+            soup = BeautifulSoup(response.body.decode("utf-8"), "html.parser")
+        except UnicodeDecodeError as exc:
+            raise FollowSourceError("subscribestar 返回的页面不是 UTF-8") from exc
+        candidates = []
+        for post in soup.select("div.post[data-id]")[:self.max_items]:
+            post_id = str(post.get("data-id") or "")
+            if not post_id.isdigit():
+                continue
+            title_node = post.select_one(".post-title h2")
+            date_node = post.select_one(".post-date a[href]")
+            author_node = post.select_one(".post-user")
+            title = _plain_text(title_node.get_text(" ") if title_node else "")
+            published = _iso_from_text(date_node.get_text(" ") if date_node else "")
+            if published is None and date_node is not None:
+                try:
+                    parsed = datetime.strptime(
+                        date_node.get_text(" ").strip(), "%b %d, %Y %I:%M %p")
+                    published = _iso_utc(parsed)
+                except ValueError:
+                    pass
+            candidates.append(FollowCandidate(
+                provider=self.provider,
+                external_id=post_id,
+                title=title or f"SubscribeStar 帖子 {post_id}",
+                url=f"https://{host}/posts/{post_id}",
+                thumb_url=_visible_post_image(post.select_one(".post-uploads")),
+                published_at=published,
+                author=_plain_text(author_node.get_text(" ") if author_node else ""),
+                summary=_plain_text(
+                    post.select_one(".post-content").get_text(" ")
+                    if post.select_one(".post-content") else ""),
+                group_hint=f"subscribestar:{post_id}",
+                extra={"official": True, "published_precision": "approximate"},
+            ))
+        return SourceFetch(candidates=tuple(candidates), raw_body=response.body, **common)
+
+
+class PatreonConnector(_BaseConnector):
+    """Patreon 公开创作者页。
+
+    Patreon 的正式 posts API 要创作者 OAuth scope，不能用于任意作者；这里仅读取官网
+    已经服务端渲染给公开访客的帖子卡片，不碰登录态或私有 API。
+    """
+
+    provider = "patreon"
+    semantics = "work"
+    _VANITY_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
+    _POST_RE = re.compile(r"/posts/(?:[^/?#]*-)?(\d{4,})(?:[/?#]|$)")
+
+    def _url(self, ref: str) -> str:
+        value = str(ref or "").strip()
+        if value.startswith("user/") and value[5:].isdigit():
+            return f"https://www.patreon.com/user?u={value[5:]}"
+        if not self._VANITY_RE.fullmatch(value):
+            raise FollowSourceError(f"patreon 的 ref 必须是创作者短名，收到：{ref!r}")
+        return f"https://www.patreon.com/cw/{value}"
+
+    def fetch(self, ref: str, *, etag: str | None = None,
+              last_modified: str | None = None, page: int = 0) -> SourceFetch:
+        if page:
+            raise FollowSourceError("Patreon 官方来源暂不支持向前翻页")
+        url = self._url(ref)
+        response = self._get(url, headers={"Accept": "text/html"},
+                             etag=etag, last_modified=last_modified)
+        common = {"provider": self.provider, "ref": ref, "request_url": url,
+                  "semantics": self.semantics, **self._conditional(response)}
+        if response.status == 304:
+            return SourceFetch(not_modified=True, **common)
+        self._check_status(response)
+        try:
+            soup = BeautifulSoup(response.body.decode("utf-8"), "html.parser")
+        except UnicodeDecodeError as exc:
+            raise FollowSourceError("patreon 返回的页面不是 UTF-8") from exc
+        candidates, seen = [], set()
+        for anchor in soup.select("a[href*='/posts/']"):
+            href = str(anchor.get("href") or "")
+            matched = self._POST_RE.search(urllib.parse.urlsplit(href).path)
+            if not matched or matched.group(1) in seen:
+                continue
+            post_id = matched.group(1)
+            seen.add(post_id)
+            node = anchor
+            for _ in range(8):
+                if node is None or node.select_one("h3") is not None:
+                    break
+                node = node.parent
+            title_node = node.select_one("h3") if node is not None else None
+            title = _plain_text(title_node.get_text(" ") if title_node else "")
+            if not title:
+                slug = urllib.parse.urlsplit(href).path.rsplit("/", 1)[-1]
+                title = _slug_label(re.sub(rf"-{post_id}$", "", slug))
+            text = _plain_text(node.get_text(" ") if node is not None else "") or ""
+            relative = _RELATIVE_RE.search(text)
+            candidates.append(FollowCandidate(
+                provider=self.provider,
+                external_id=post_id,
+                title=title or f"Patreon 帖子 {post_id}",
+                url=urllib.parse.urljoin("https://www.patreon.com", href),
+                thumb_url=_visible_post_image(node),
+                published_at=_iso_from_relative(relative.group(0)) if relative else None,
+                group_hint=f"patreon:{post_id}",
+                extra={"official": True, "public_page": True,
+                       "published_precision": "approximate"},
+            ))
+            if len(candidates) >= self.max_items:
+                break
+        return SourceFetch(candidates=tuple(candidates), raw_body=response.body, **common)
+
+
 class SimpCityConnector(_BaseConnector):
     """simpcity.cr 目前挂着 DDoS-Guard 的浏览器质询。
 
@@ -947,6 +1158,7 @@ _KEMONO_HOSTS = {"kemono.cr": "kemono", "coomer.st": "coomer", "pawchive.pw": "p
 _KEMONO_PATH_RE = re.compile(r"^/([a-z0-9_\-]{1,32})/user/([A-Za-z0-9_\-.]{1,64})")
 _R34V_PATH_RE = re.compile(r"^/models/([a-z0-9][a-z0-9_\-]{0,80})")
 _THREAD_PATH_RE = re.compile(r"^/threads/(?:[^/]*?\.)?(\d{1,12})")
+_DIRECT_CREATOR_RE = re.compile(r"^/([A-Za-z0-9_-]{1,80})(?:/|$)")
 
 
 def canonical_source_ref(provider: str, ref: str) -> str:
@@ -1011,6 +1223,45 @@ def parse_source_url(raw_url: str) -> ParsedSource:
                             f"https://{bare}/{service}/user/{user}",
                             f"{user} · {service}", "work")
 
+    if bare == "fanbox.cc" or bare.endswith(".fanbox.cc"):
+        if bare.endswith(".fanbox.cc") and bare != "www.fanbox.cc":
+            creator = bare.removesuffix(".fanbox.cc")
+        else:
+            matched = re.match(r"^/@([A-Za-z0-9_-]{1,64})(?:/|$)", path)
+            creator = matched.group(1) if matched else ""
+        if not creator:
+            raise FollowSourceError(
+                "FANBOX 的链接要指向创作者主页，形如 https://creator.fanbox.cc/")
+        return ParsedSource("fanbox", creator, f"https://{creator}.fanbox.cc/",
+                            creator, "work")
+
+    if bare in SubscribeStarConnector.HOSTS:
+        matched = _DIRECT_CREATOR_RE.match(path)
+        if not matched or matched.group(1) in {"posts", "search", "login", "signup"}:
+            raise FollowSourceError(
+                "SubscribeStar 的链接要指向创作者主页，形如 "
+                "https://subscribestar.adult/creator")
+        slug = matched.group(1)
+        return ParsedSource("subscribestar", f"{bare}/{slug}",
+                            f"https://{bare}/{slug}", slug, "work")
+
+    if bare == "patreon.com":
+        user_id = urllib.parse.parse_qs(parsed.query).get("u", [""])[0]
+        if path.rstrip("/") == "/user" and user_id.isdigit():
+            return ParsedSource("patreon", f"user/{user_id}",
+                                f"https://www.patreon.com/user?u={user_id}",
+                                f"Patreon {user_id}", "work")
+        parts = [part for part in path.split("/") if part]
+        if parts and parts[0] == "cw":
+            parts = parts[1:]
+        reserved = {"posts", "join", "login", "signup", "home", "explore"}
+        if not parts or parts[0].lower() in reserved:
+            raise FollowSourceError(
+                "Patreon 的链接要指向创作者主页，形如 https://patreon.com/cw/creator")
+        vanity = parts[0]
+        return ParsedSource("patreon", vanity,
+                            f"https://www.patreon.com/cw/{vanity}", vanity, "work")
+
     if bare == "rule34video.com":
         matched = _R34V_PATH_RE.match(path)
         if not matched:
@@ -1052,11 +1303,15 @@ def parse_source_url(raw_url: str) -> ParsedSource:
         raise FollowSourceError(SimpCityConnector.blocked_reason)
 
     raise FollowSourceError(
-        f"不认识 {bare}。当前支持 kemono.cr、coomer.st、pawchive.pw 的创作者页，"
-        "rule34video.com 的作者页，rule34.xxx 的标签页，以及 f95zone.to 的线程。")
+        f"不认识 {bare}。当前支持 FANBOX、Patreon、SubscribeStar，"
+        "kemono.cr、coomer.st、pawchive.pw 的创作者页，rule34video.com 的作者页，"
+        "rule34.xxx 的标签页，以及 f95zone.to 的线程。")
 
 
 CONNECTORS: dict[str, type] = {
+    "fanbox": FanboxConnector,
+    "patreon": PatreonConnector,
+    "subscribestar": SubscribeStarConnector,
     "kemono": KemonoConnector,
     "coomer": KemonoConnector,
     "pawchive": KemonoConnector,

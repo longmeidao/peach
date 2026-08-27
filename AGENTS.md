@@ -69,13 +69,13 @@
 - Never require the user to relay implementation details between agents. Put current facts in `docs/STATUS.md`, durable rules in `docs/HANDOFF.md`/`docs/REUSE.md`, procedures in a skill, and architecture decisions in an ADR.
 - During concurrent code work, the main `peach-app` checkout is integration-only. Each agent works in an isolated Git worktree created by `scripts/agent_worktree.py create` under `peach-worktrees/`, never anywhere else and never in the main checkout; a worker commits its branch and reports it ready, but never merges itself. Before every commit confirm you are still in that worktree — `git rev-parse --show-toplevel` must not be the main checkout. Details in `peach-worktree`.
 - Never use `git add .`, `git add -A`, a directory path, or a glob in an agent checkout. Stage only the exact files owned by the task, then inspect `git diff --cached --name-status`. Implementation and its tests must be committed atomically.
-- Run the verification commands in `README.md` before committing relevant changes: `scripts/test.ps1` on Windows, `scripts/test.sh` on macOS. Both entry points must stay green; a change that only passes on one platform is not done.
+- Run the relevant functional scope from `README.md` before committing: `scripts/test.ps1` on Windows, `scripts/test.sh` on macOS. Cross-domain, migration, shared-harness, dependency, build/release, or broad changes require `full`; both platform entry contracts must stay green.
 - Reuse existing usage surfaces and protocols. T3 Code/CodexBar cover historical token and API-equivalent cost views; official provider quota endpoints cover live remaining windows. Do not build another session-log cost scanner or depend on T3 Code's private localhost API.
 
 ## 防止重复错误的硬门槛
 
 - PowerShell 变量必须使用任务专属名称；禁止声明 `$HOME`、`$home`、`$CODEX_HOME` 等系统变量的任何大小写变体。`foreach {}` 的结果先存入任务专属数组，再单独接管道格式化，禁止在闭合花括号后直接写管道。
-- 测试只在当前隔离 worktree 根目录运行，每个平台只有一个入口：Windows `& .\scripts\test.ps1`，macOS/Linux `./scripts/test.sh`。两者契约相同——自动定位主项目 venv、强制 `PYTHONPATH=<当前 worktree>/src`、核对 `peach.__file__`，再运行 `unittest`；禁止手工拼接 venv 路径或调用 pytest。健康检查只使用 `/healthz`。
+- 测试只在当前隔离 worktree 根目录运行，每个平台只有一个入口：Windows `& .\scripts\test.ps1`，macOS/Linux `./scripts/test.sh`。局部改动跑对应功能域；跨域、迁移、共享测试设施、依赖、构建/发布或大面积改动跑默认 `full`。两者自动定位主项目 venv、强制 `PYTHONPATH=<当前 worktree>/src`、核对 `peach.__file__` 后运行 `unittest`；禁止手工拼接 venv 路径或调用 pytest。健康检查只使用 `/healthz`。
 - HTTPS 结论必须使用项目 CA 做严格校验；Schannel、浏览器或取证入口失败时，立即报告原始错误和未取得的验收面，不能改用 HTTP 成功来声称 HTTPS 已通过。
 - UI 标签、身份、反馈状态和搜索推荐属于语义契约。修改时必须同时增加数据层测试和页面源测试，不能只改显示文本；推荐词上线前必须对真实 `/api/items` 验证至少一个命中，说明性后缀不得混入搜索词。
 - 本仓库最常见的缺陷是「只改了自己测试的那条路径」。收尾前按 `peach-surfaces` 逐项说明每个表面适用还是不适用，不要跳过不适用的项。

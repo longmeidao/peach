@@ -4,6 +4,8 @@
 # 并核对 peach.__file__ 确实来自这个 worktree。worktree 不复制 .venv。
 set -euo pipefail
 
+SCOPE="${1:-full}"
+
 WORKTREE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 GIT_COMMON_RAW="$(git -C "$WORKTREE_ROOT" rev-parse --git-common-dir)"
@@ -36,4 +38,4 @@ if [[ "$LOADED_MODULE" != "$SOURCE_ROOT/"* ]]; then
 fi
 
 echo "Peach source: $LOADED_MODULE"
-exec "$PYTHON" -m unittest discover -s tests -p 'test_*.py' -v
+exec "$PYTHON" scripts/test_runner.py --scope "$SCOPE"

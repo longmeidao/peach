@@ -695,6 +695,62 @@ class FollowSourceAddTests(FollowContractTests):
         with self.assertRaises(ValueError):
             self._post("/api/follow/source", {"action": "explode"})
 
+    def test_a_source_can_be_excluded_from_update_checks(self):
+        source_id = self._seed()
+        result = self._post("/api/follow/source", {
+            "action": "enabled", "id": source_id, "enabled": False})
+        self.assertFalse(result["enabled"])
+        self.assertFalse(self._get()["sources"][0]["enabled"])
+        with mock.patch.object(web_follow, "build_connector") as factory:
+            checked = self._post("/api/follow/check", {})
+        self.assertEqual(checked["checked"], 0)
+        factory.assert_not_called()
+
+    def test_source_enabled_requires_typed_values_and_an_existing_source(self):
+        for body in ({"action": "enabled", "id": "1", "enabled": False},
+                     {"action": "enabled", "id": 1, "enabled": 0},
+                     {"action": "enabled", "id": 999, "enabled": True}):
+            with self.assertRaises(ValueError):
+                self._post("/api/follow/source", body)
+    def _source(self, provider, ref, label):
+        with self.contract.database.write_transaction() as connection:
+            return FollowStore(lambda: connection).register(
+                provider=provider, ref=ref, label=label,
+                url=f"https://{provider}.test/{ref}", moment=MOMENT)
+
+    def test_similar_cross_platform_names_are_suggested_but_not_auto_merged(self):
+        self._source("fanbox", "initiala", "InitialA")
+        self._source("rule34video", "ffxivinitiala", "FFXIVInitialA")
+        payload = self._get()
+        self.assertEqual(len({row["author_key"] for row in payload["sources"]}), 2)
+        self.assertEqual(payload["alias_suggestions"], [{
+            "canonical": "InitialA", "alias": "FFXIVInitialA",
+            "evidence": "规范化名称存在包含关系，仅供人工确认",
+        }])
+
+    def test_confirmed_alias_merges_sources_and_can_be_removed(self):
+        self._source("fanbox", "initiala", "InitialA")
+        self._source("rule34video", "ffxivinitiala", "FFXIVInitialA")
+        added = self._post("/api/follow/author-alias", {
+            "action": "add", "canonical": "InitialA", "alias": "FFXIVInitialA"})
+        self.assertTrue(added["ok"])
+        payload = self._get()
+        self.assertEqual({row["author_key"] for row in payload["sources"]},
+                         {"name:initiala"})
+        self.assertEqual(payload["author_aliases"][0]["canonical_name"], "InitialA")
+        self.assertEqual(payload["author_aliases"][0]["aliases"][0]["name"],
+                         "FFXIVInitialA")
+        removed = self._post("/api/follow/author-alias", {
+            "action": "remove", "alias": "FFXIVInitialA"})
+        self.assertTrue(removed["ok"])
+        self.assertEqual(len({row["author_key"] for row in self._get()["sources"]}), 2)
+
+    def test_alias_names_must_be_distinct_and_nonempty(self):
+        for body in ({"canonical": "InitialA", "alias": "initial-a"},
+                     {"canonical": "", "alias": "FFXIVInitialA"}):
+            with self.assertRaises(ValueError):
+                self._post("/api/follow/author-alias", body)
+
 
 class FollowWebSourceTests(unittest.TestCase):
     @classmethod
@@ -801,6 +857,36 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('class="fsourcelink" href="${esc(source.url)}"')
         self.assertPageContains('title="打开原来源"')
         self.assertPageContains('rel="noreferrer noopener"')
+        author = self.page[self.page.index(".fauthor{"):]
+        self.assertIn("border-top:0", author[:author.index("}")],
+                      "每一栏首个作者上方都不应出现横线")
+
+    def test_source_actions_are_icon_only_and_stay_on_one_row(self):
+        row = self.page[self.page.index("function followSourceRow(source)"):]
+        row = row[:row.index("function followAliasManager")]
+        self.assertIn("data-follow-check", row)
+        self.assertIn("data-follow-remove", row)
+        self.assertIn("${icon('refresh-cw')}", row)
+        self.assertIn("${icon('trash')}", row)
+        self.assertNotIn(">检查</button>", row)
+        self.assertNotIn(">移除</button>", row)
+        rule = self.page[self.page.index(".fauthor .fsource.frow{"):]
+        self.assertIn("flex-wrap:nowrap", rule[:rule.index("}")])
+
+    def test_each_channel_has_a_styled_update_checkbox(self):
+        self.assertPageContains('class="fchannelcheck"')
+        self.assertPageContains('type="checkbox" data-follow-enabled=')
+        self.assertPageContains("{action:'enabled',id:Number(control.dataset.followEnabled),enabled}")
+        self.assertPageContains(".fchannelcheck input{position:absolute;width:1px;height:1px;opacity:0")
+        self.assertPageContains(".fchannelcheck input:checked+span{")
+        self.assertPageContains("${icon('check')}")
+
+    def test_official_channel_icons_and_alias_manager_are_visible(self):
+        icons = self.page.split("const SOURCE_ICONS={", 1)[1].split("};", 1)[0]
+        for provider in ("fanbox", "patreon", "subscribestar"):
+            self.assertIn(provider, icons)
+        self.assertPageContains("followAliasManager(followData.author_aliases,followData.alias_suggestions)")
+        self.assertPageContains("'/api/follow/author-alias'")
 
     def test_already_followed_candidates_are_shown_but_not_selectable(self):
         # 灰掉但仍显示，免得人以为没查到。

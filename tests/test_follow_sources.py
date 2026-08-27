@@ -15,9 +15,10 @@ from pathlib import Path
 from peach.follow import FollowSourceError
 from peach.follow_secrets import Credential, CredentialError, CredentialStore
 from peach.follow_sources import (
-    USER_AGENT, F95ZoneConnector, KemonoConnector, Rule34VideoConnector,
-    Rule34XxxConnector, SimpCityConnector, build_connector, _iso_from_relative,
-    origin_group_key, parse_source_url,
+    USER_AGENT, F95ZoneConnector, FanboxConnector, KemonoConnector,
+    PatreonConnector, Rule34VideoConnector, Rule34XxxConnector,
+    SimpCityConnector, SubscribeStarConnector, build_connector,
+    _iso_from_relative, origin_group_key, parse_source_url,
 )
 from peach.http import HttpResponse
 
@@ -93,6 +94,61 @@ Lazy Procrastinator Collection [2026-06-28] [LazyProcrastinator/LazyProcrast]</h
   Genre spoilers first page have futa spoiler.</div>
 </article>
 </body></html>"""
+
+FANBOX_JSON = json.dumps({"body": {"posts": [
+    {"id": "12489354", "title": "MobiusFF Sarah Animations", "feeRequired": 0,
+     "publishedDatetime": "2026-08-26T23:34:51+09:00", "isRestricted": False,
+     "user": {"name": "InitialA"}, "cover": {"url": "https://img.test/cover.jpg"},
+     "excerpt": "Public release"},
+    {"id": "12400000", "title": "Paid preview", "feeRequired": 500,
+     "publishedDatetime": "2026-08-20T00:00:00+09:00", "isRestricted": True},
+]}}).encode()
+
+SUBSCRIBESTAR_HTML = b"""<html><body>
+<div class="post is-shown" data-id="2650844">
+  <a class="post-user" href="/initiala">InitialA</a>
+  <div class="post-date"><a href="/posts/2650844">Aug 26, 2026 02:34 pm</a></div>
+  <div class="post-title"><h2>MobiusFF Sarah Animations</h2></div>
+  <div class="post-uploads"><img src="https://img.test/one.jpg"></div>
+  <div class="post-content">Posted for FREE tiers</div>
+</div></body></html>"""
+
+PATREON_HTML = b"""<html><body><div class="card">
+<a href="https://www.patreon.com/sample/posts/new-public-work-167576581"></a>
+<h3>New public work</h3><p>2 days ago</p><img src="https://img.test/patreon.jpg">
+<a href="https://www.patreon.com/sample/posts/new-public-work-167576581">duplicate</a>
+</div></body></html>"""
+
+
+class OfficialConnectorTests(unittest.TestCase):
+    def test_fanbox_keeps_only_public_free_posts(self):
+        seen = []
+        result = FanboxConnector(
+            transport=_transport(body=FANBOX_JSON, record=seen)).fetch("ffxivinitiala")
+        self.assertIn("creatorId=ffxivinitiala", seen[0].url)
+        self.assertEqual(seen[0].headers["Origin"], "https://www.fanbox.cc")
+        self.assertEqual(len(result.candidates), 1)
+        self.assertEqual(result.skipped, 1)
+        self.assertEqual(result.candidates[0].group_hint, "fanbox:12489354")
+        self.assertEqual(result.candidates[0].published_at, "2026-08-26T14:34:51Z")
+
+    def test_subscribestar_reads_public_profile_posts_without_login(self):
+        result = SubscribeStarConnector(
+            transport=_transport(body=SUBSCRIBESTAR_HTML)).fetch(
+                "subscribestar.adult/initiala")
+        self.assertEqual(len(result.candidates), 1)
+        post = result.candidates[0]
+        self.assertEqual(post.external_id, "2650844")
+        self.assertEqual(post.title, "MobiusFF Sarah Animations")
+        self.assertEqual(post.author, "InitialA")
+        self.assertEqual(post.url, "https://subscribestar.adult/posts/2650844")
+
+    def test_patreon_uses_server_rendered_public_cards_and_deduplicates_links(self):
+        result = PatreonConnector(transport=_transport(body=PATREON_HTML)).fetch("sample")
+        self.assertEqual(len(result.candidates), 1)
+        self.assertEqual(result.candidates[0].external_id, "167576581")
+        self.assertEqual(result.candidates[0].title, "New public work")
+        self.assertEqual(result.candidates[0].group_hint, "patreon:167576581")
 
 # 形状取自 2026-08-25 对 api.rule34.xxx 的实测响应：顶层是裸列表，`image` 是 32 位
 # 十六进制哈希（15/15），`parent_id` 全是 0（15/15），`source` 13/15 有值。
@@ -631,6 +687,15 @@ class ParseSourceUrlTests(unittest.TestCase):
             "https://rule34.xxx/index.php?page=post&s=list&tags=lazyprocrastinator":
                 ("rule34xxx", "lazyprocrastinator"),
             "https://f95zone.to/threads/lazy-collection.50685/": ("f95zone", "50685"),
+            "https://ffxivinitiala.fanbox.cc/posts/12489354":
+                ("fanbox", "ffxivinitiala"),
+            "https://www.fanbox.cc/@ffxivinitiala/posts/12489354":
+                ("fanbox", "ffxivinitiala"),
+            "https://subscribestar.adult/initiala":
+                ("subscribestar", "subscribestar.adult/initiala"),
+            "https://www.patreon.com/cw/somnivagrious":
+                ("patreon", "somnivagrious"),
+            "https://www.patreon.com/user?u=12345": ("patreon", "user/12345"),
         }
         for url, expected in cases.items():
             parsed = parse_source_url(url)
@@ -654,6 +719,8 @@ class ParseSourceUrlTests(unittest.TestCase):
                          "release")
         self.assertEqual(
             parse_source_url("https://rule34video.com/models/abc/").semantics, "work")
+        self.assertEqual(parse_source_url("https://creator.fanbox.cc/").semantics,
+                         "work")
 
     def test_a_bare_host_is_accepted_and_www_is_ignored(self):
         self.assertEqual(parse_source_url("rule34video.com/models/abc/").provider,
@@ -679,6 +746,9 @@ class ParseSourceUrlTests(unittest.TestCase):
             ("https://rule34video.com/latest-updates/", "models"),
             ("https://rule34.xxx/index.php?page=post&s=view&id=1", "tags="),
             ("https://f95zone.to/latest", "threads"),
+            ("https://www.fanbox.cc/", "创作者主页"),
+            ("https://subscribestar.adult/posts/1", "创作者主页"),
+            ("https://www.patreon.com/posts/123", "创作者主页"),
         ):
             with self.assertRaises(FollowSourceError) as caught:
                 parse_source_url(url)
@@ -699,6 +769,11 @@ class BuildConnectorTests(unittest.TestCase):
     def test_unknown_provider_is_rejected(self):
         with self.assertRaises(FollowSourceError):
             build_connector("nyaa")
+
+    def test_official_channel_connectors_are_registered(self):
+        self.assertIsInstance(build_connector("fanbox"), FanboxConnector)
+        self.assertIsInstance(build_connector("patreon"), PatreonConnector)
+        self.assertIsInstance(build_connector("subscribestar"), SubscribeStarConnector)
 
 
 class RelativeDateTests(unittest.TestCase):

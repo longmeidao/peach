@@ -56,14 +56,16 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertIn("rev-parse --git-common-dir", windows)
         self.assertIn("$env:PYTHONPATH = $SourceRoot", windows)
         self.assertIn("peach.__file__", windows)
-        self.assertIn("-m unittest discover", windows)
+        self.assertIn("scripts\\test_runner.py --scope $Scope", windows)
+        self.assertIn("ValidateSet('full', 'follow'", windows)
         self.assertNotIn("pytest", windows.lower())
         # 两个平台各有一个入口，契约必须相同——否则「两边都要绿」只是句口号。
         posix = (ROOT / "scripts" / "test.sh").read_text(encoding="utf-8")
         self.assertIn("rev-parse --git-common-dir", posix)
         self.assertIn('export PYTHONPATH="$SOURCE_ROOT"', posix)
         self.assertIn("peach.__file__", posix)
-        self.assertIn("-m unittest discover", posix)
+        self.assertIn('scripts/test_runner.py --scope "$SCOPE"', posix)
+        self.assertIn('SCOPE="${1:-full}"', posix)
         self.assertNotIn("pytest", posix.lower())
         # 文档里可以「提到」裸命令来说明它为什么不可信，但绝不能让它单独出现成为一条可照抄的指令。
         # 判据因此不是黑名单，而是：凡出现该命令的行，必须在同一行指向某个正式入口。
@@ -78,6 +80,22 @@ class OperationalScriptTests(unittest.TestCase):
                     "test.ps1" in line or "test.sh" in line,
                     f"{relative}:{number} 单独出现了裸命令，读者会照抄；必须同时点明正式入口",
                 )
+
+    def test_functional_test_scopes_are_explicit_and_full_remains_the_default(self):
+        runner = load_script("test_runner")
+        follow = {path.name for path in runner.selected_files("follow")}
+        full = {path.name for path in runner.selected_files("full")}
+        self.assertIn("test_follow_web.py", follow)
+        self.assertIn("test_migrations.py", follow)
+        self.assertNotIn("test_media.py", follow)
+        self.assertGreater(len(full), len(follow))
+        self.assertEqual(runner.unclassified_files(), (),
+                         "每个测试文件都应属于至少一个功能域")
+
+    def test_the_full_runner_can_import_repository_scripts(self):
+        runner = load_script("test_runner")
+        suite = runner.build_suite("tooling")
+        self.assertGreater(suite.countTestCases(), 0)
 
     def test_structural_creator_and_mainstream_release_guards(self):
         self.assertTrue(is_structural_creator("asce"))

@@ -19,6 +19,9 @@ from .follow_store import FollowStore
 
 #: 登记订阅时按 provider 拼作品页 URL；只用于展示与去重，不参与抓取。
 _SOURCE_URL = {
+    "fanbox": "https://{ref}.fanbox.cc/",
+    "patreon": "https://www.patreon.com/cw/{ref}",
+    "subscribestar": "https://{ref}",
     "kemono": "https://kemono.cr/{ref}",
     "coomer": "https://coomer.st/{ref}",
     "pawchive": "https://pawchive.pw/{ref}",

@@ -31,6 +31,18 @@ rule34.xxx 上。不区分这三种关系，界面就只是一堆重复条目。
 - 凭据从 `peach-data/secrets/follow/<provider>.json` 读，只进请求头或查询参数，
   **绝不进快照、日志、`request_url` 或 ledger**。dapi 只接受查询参数，因此记录下来的是
   脱敏副本。
+- 官方免费渠道是一等来源：FANBOX 走公开 `post.listCreator` 且只收 `feeRequired=0`、
+  `isRestricted=false` 的帖子；SubscribeStar 与 Patreon 只读官网公开创作者页，不登录、
+  不穿过付费墙。Patreon 的正式 posts API 需要创作者 OAuth scope，因此不能拿它读取任意
+  外部作者，公开页解析是有意的边界。
+- `follow_source.enabled` 由来源行左侧的渠道复选框维护；“检查全部”只读取启用来源。
+  关闭渠道不删除来源或既有条目。
+
+### 作者别名
+
+- 平台账号名只做保守检测，不自动合并。规范化名称存在包含关系时产生建议；用户确认后写入
+  `follow_author_alias`，只改变关注页作者归组，不提升为全局 `entity` 真相。
+- 用户可删除别名，来源立即恢复为独立作者组。全局实体已经绑定时仍以实体 id 优先。
 
 ### 变体分组
 
@@ -81,6 +93,9 @@ rule34.xxx 上。不区分这三种关系，界面就只是一堆重复条目。
 | rule34.xxx | `https://api.rule34.xxx/index.php?page=dapi&s=post&q=index` | user_id + api_key | 网页版挂 Turnstile；无 key 时 API 返回 `Missing authentication`。**2026-08-26 用真实 key 复核**（见下） |
 | f95zone.to | `/threads/{id}/latest` + `latest_alpha/latest_data.php` | 发现不需要，取媒体需要 | 主贴版本号滞后于回复；`index.rss` 返回「无法以该格式呈现」；`h1.p-title-value` 去掉 `.label` 才是线程标题 |
 | simpcity.cr | — | — | DDoS-Guard 浏览器质询，**未取得**可用入口 |
+| fanbox.cc | `api.fanbox.cc/post.listCreator` | 无 | 2026-08-27 实测公开 JSON 给出 `feeRequired`、`isRestricted`、标题、时间和封面；InitialA 的 10 条样本均为免费公开 |
+| subscribestar.adult | `/{creator}` | 无 | 2026-08-27 实测公开 HTML 含 `div.post[data-id]`、帖子链接、标题和时间；InitialA 页面明确声明内容公开免费 |
+| patreon.com | `/cw/{creator}` | 无 | 2026-08-27 实测公开页服务端渲染最新帖子卡片；官方 posts API 需 `campaigns.posts` OAuth scope |
 
 ### rule34.xxx 的真实响应（2026-08-26，用账号 API key 实测）
 
