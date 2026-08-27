@@ -1180,7 +1180,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('title="打开来源页面" aria-label="打开来源页面"')
         self.assertNotIn('打开来源页面</a>', self.page)
         self.assertPageContains(".followdetailtitle{display:flex;gap:5px")
-        self.assertPageContains(".followmedianote{margin:18px 0 14px}")
+        self.assertPageContains(".fnote.followmedianote{margin:18px 0 14px}")
         self.assertPageContains("followAuthorAvatar(authorSources)")
         self.assertPageContains("followTagChip(item,tag,'button')")
         self.assertPageContains(".followdetailtags .tg{max-width:none")
