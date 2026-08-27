@@ -1327,9 +1327,12 @@ function followCheckSummary(report){
   const added=rows.reduce((n,r)=>n+(r.added||0),0);
   const updated=rows.reduce((n,r)=>n+(r.updated||0),0);
   const quiet=rows.filter(r=>r.ok&&!r.added&&!r.updated).length;
+  const skipped=rows.reduce((n,r)=>n+(r.skipped||0),0);
   const bits=[];
   if(added)bits.push(`新增 <b>${added}</b> 条`);
   if(updated)bits.push(`更新 <b>${updated}</b> 条`);
+  // 过滤掉多少也要说：不然用户只看到条目变少，分不清是被过滤了还是根本没抓到。
+  if(skipped)bits.push(`跳过 <b>${skipped}</b> 条非 release`);
   if(quiet)bits.push(`${quiet} 个来源没有更新`);
   if(!bits.length&&!failed.length)bits.push('没有任何更新');
   const evidence=rows.filter(r=>r.evidence_error);

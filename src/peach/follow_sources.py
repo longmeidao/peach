@@ -64,6 +64,9 @@ class SourceFetch:
     etag: str | None = None
     last_modified: str | None = None
     not_modified: bool = False
+    #: 这次抓取里被判为「不是 release」而丢掉的条数。必须报出来：用户看到的条目数
+    #: 比站点上少的时候，他得能分清少的是被过滤掉的，还是根本没抓到。
+    skipped: int = 0
     raw_body: bytes | None = field(default=None, repr=False, compare=False)
 
 
@@ -299,12 +302,61 @@ class KemonoConnector(_BaseConnector):
         posts = payload.get("posts", []) if isinstance(payload, dict) else payload
         if not isinstance(posts, list):
             raise FollowSourceError(f"{self.provider} 的帖子列表格式不符")
-        candidates = tuple(
-            self._candidate(post, service, user)
-            for post in posts[: self.max_items]
-            if isinstance(post, dict)
-        )
-        return SourceFetch(candidates=candidates, raw_body=response.body, **common)
+        kept, skipped = [], 0
+        for post in posts[: self.max_items]:
+            if not isinstance(post, dict):
+                continue
+            if not self._is_release(post):
+                skipped += 1
+                continue
+            kept.append(self._candidate(post, service, user))
+        return SourceFetch(candidates=tuple(kept), skipped=skipped,
+                           raw_body=response.body, **common)
+
+    @classmethod
+    def _is_release(cls, post: dict) -> bool:
+        """这一帖算不算「一份能看的东西」。
+
+        **只有一条判据：有没有附件或正文文件。** 归档站的时间线里混着大量纯文字帖
+        （公告、感谢、排期），它们永远不可能是 release，丢掉是安全的。
+
+        **按标题关键词丢投票贴的做法试过，是错的，不要再加回来。** 2026-08-27 拿
+        LazyProcrastinator 的真实 50 条数据跑过一版
+        `poll|vote|survey|...` 的正则，50 条丢掉 18 条，其中包括
+        `Public Poll Release + Littlest Ramble`、`February Poll + Animations`、
+        `October Poll Animations Released`——这位作者的正片就是按投票结果命名的，
+        「Poll」出现在标题里恰恰因为那是投票选出来的那份成品。
+        列表接口不给帖子类型字段，标题也就不足以区分「投票贴」和「投票选出的成品」。
+        误删一份 release 比多出一张卡片糟糕得多，所以宁可放过。
+
+        丢掉的只是候选，**原始响应仍然整份存进证据档案**——判错了能从那里追回来，
+        不用重新联网。这也是这个过滤敢放在抓取侧而不是显示侧的原因。
+        """
+        has_file = bool((post.get("file") or {}).get("path")
+                        if isinstance(post.get("file"), dict) else None)
+        has_attachment = any(
+            isinstance(item, dict) and item.get("path")
+            for item in (post.get("attachments") or []))
+        return has_file or has_attachment
+
+    #: 缩略图能直接当封面用的扩展名。视频和压缩包没有缩略图，给了也是 404，
+    #: 那会让卡片显示一个碎图而不是干净的占位。
+    _THUMBABLE = (".jpg", ".jpeg", ".png", ".webp", ".gif")
+
+    def _thumb_url(self, media: str | None) -> str | None:
+        """归档站的封面。
+
+        2026-08-27 实测：`https://kemono.cr/thumbnail/data<path>` 与
+        `https://img.kemono.cr/thumbnail/data<path>` 都回 200 `image/jpeg`
+        （同一张 35,387 字节的图）；换成 `/data<path>` 则是 404，所以这个
+        `thumbnail/` 前缀是必需的，不是可选的美化。
+
+        以前这里根本没设 `thumb_url`，归档站的卡片因此一律没有封面——
+        不是取不到，是压根没去取。
+        """
+        if not media or not str(media).lower().endswith(self._THUMBABLE):
+            return None
+        return f"https://{self.host}/thumbnail/data{media}"
 
     def _candidate(self, post: dict, service: str, user: str) -> FollowCandidate:
         post_id = str(post.get("id") or "")
@@ -319,6 +371,7 @@ class KemonoConnector(_BaseConnector):
             title=title,
             url=page,
             media_url=f"https://{self.host}{media}" if media else None,
+            thumb_url=self._thumb_url(media),
             published_at=_iso_from_text(post.get("published")),
             author=None,
             summary=_plain_text(post.get("substring")),

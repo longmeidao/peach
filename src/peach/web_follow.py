@@ -38,6 +38,36 @@ def _store(contract, connection) -> FollowStore:
     return FollowStore(lambda: connection, sources_root=contract.follow_sources_root)
 
 
+#: 一条目最多给前端多少个 tag。筛选条是给人扫一眼用的，不是导出全部——
+#: rule34.xxx 的热门帖能带上百个标签，整串发下去只会把筛选条撑爆。
+MAX_ITEM_TAGS = 24
+
+
+def _item_tags(item) -> list[str]:
+    """条目的真实标签。
+
+    **目前只有 rule34.xxx 有。** 它在 `metadata_json` 里存了原始的空格分隔标签串；
+    kemono 系与 f95zone 的列表接口根本不给标签，所以它们一律是空列表——
+    前端据此把筛选条的覆盖范围说清楚，而不是假装每个来源都有标签。
+
+    去掉作者手柄本身：按作者筛已经有专门的筛选条，标签里再出现一次没有信息量。
+    """
+    raw = item.metadata.get("tags")
+    if not isinstance(raw, str) or not raw.strip():
+        return []
+    subject = str(item.metadata.get("tag") or "").casefold()
+    seen, tags = set(), []
+    for tag in raw.split():
+        key = tag.casefold()
+        if key == subject or key in seen:
+            continue
+        seen.add(key)
+        tags.append(tag)
+        if len(tags) >= MAX_ITEM_TAGS:
+            break
+    return tags
+
+
 def _item_payload(item) -> dict:
     return {
         "id": item.id,
@@ -62,6 +92,7 @@ def _item_payload(item) -> dict:
         "asset_id": item.asset_id,
         "media_needs_credential": bool(item.metadata.get("media_needs_credential")),
         "has_media": bool(item.media_url),
+        "tags": _item_tags(item),
     }
 
 
@@ -260,6 +291,10 @@ def w_follow_check(contract, body) -> dict:
             "ref": ref, "label": row["label"], "ok": True,
             "not_modified": outcome.not_modified, "discovered": outcome.discovered,
             "added": outcome.added, "updated": outcome.updated,
+            # 抓到了但判为「不是 release」而丢掉的条数。丢了多少必须说出来，
+            # 否则用户分不清少的是被过滤掉的还是根本没抓到——这次问「为什么这么少」
+            # 就是因为界面从来没说过这类数字。
+            "skipped": fetch.skipped,
             # 证据没存下来不算检查失败，但界面必须说出来，不能悄悄少一份原始响应。
             "evidence_error": outcome.evidence_error,
         })

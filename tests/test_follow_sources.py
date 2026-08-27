@@ -36,9 +36,11 @@ KEMONO_POSTS = json.dumps([
      "published": "2026-02-14T21:51:10", "edited": None,
      "file": {"name": "a.png", "path": "/1c/fa/1cfae7.png"},
      "attachments": [{"name": "a.zip", "path": "/1c/fa/1cfae7.zip"}]},
+    # 第二条只有附件、没有正文文件，`media_url` 要能从附件里取到。它原本连附件也没有，
+    # 但那种帖子现在会被判为「不是 release」丢掉，别的断言就都少了一条。
     {"id": "11400490", "user": "30917150", "service": "fanbox",
      "title": "Villainous Valentine's Day 6", "published": "2026-02-13T21:30:28",
-     "file": {}, "attachments": []},
+     "file": {}, "attachments": [{"name": "b.png", "path": "/2f/46/2f468d.png"}]},
 ]).encode()
 
 RULE34VIDEO_HTML = b"""<html><body>
@@ -120,6 +122,53 @@ class KemonoConnectorTests(unittest.TestCase):
         self.assertEqual(first.extra["attachment_count"], 1)
         # post id 就是原平台的 post id，和别的站点从 source 归一出的键同一个命名空间。
         self.assertEqual(first.group_hint, "fanbox:11406814")
+
+    def test_archive_posts_get_a_cover_thumbnail(self):
+        """归档站的卡片以前一律没有封面——不是取不到，是压根没去取。
+
+        2026-08-27 实测 `https://kemono.cr/thumbnail/data<path>` 回 200 `image/jpeg`；
+        去掉 `thumbnail/` 前缀则是 404，所以这个前缀是必需的。
+        """
+        result = KemonoConnector(transport=_transport(body=KEMONO_POSTS)).fetch("fanbox/1")
+        self.assertEqual(result.candidates[0].thumb_url,
+                         "https://kemono.cr/thumbnail/data/1c/fa/1cfae7.png")
+
+    def test_no_thumbnail_is_offered_for_things_that_have_none(self):
+        # 视频和压缩包没有缩略图，给了也是 404——那会让卡片显示一张碎图，
+        # 比一个干净的占位更糟。
+        connector = KemonoConnector()
+        self.assertIsNone(connector._thumb_url("/a/b/clip.mp4"))
+        self.assertIsNone(connector._thumb_url("/a/b/pack.zip"))
+        self.assertIsNone(connector._thumb_url(None))
+
+    def test_posts_with_nothing_attached_are_not_releases(self):
+        """纯文字帖永远不可能是 release，丢掉是安全的。丢了几条要报出来。"""
+        posts = json.loads(KEMONO_POSTS)
+        posts.append({"id": "999", "title": "Thanks for 10k followers!",
+                      "published": "2026-02-01T00:00:00", "file": {}, "attachments": []})
+        result = KemonoConnector(
+            transport=_transport(body=json.dumps(posts).encode())).fetch("fanbox/1")
+        self.assertEqual(len(result.candidates), 2)
+        self.assertEqual(result.skipped, 1)
+        self.assertNotIn("999", [c.external_id for c in result.candidates])
+
+    def test_a_release_named_after_a_poll_is_still_a_release(self):
+        """**不要按标题关键词丢投票贴。**
+
+        2026-08-27 拿 LazyProcrastinator 的真实 50 条跑过一版
+        `poll|vote|survey|…` 正则，丢掉 18 条，其中包括
+        `Public Poll Release + Littlest Ramble`、`October Poll Animations Released`
+        ——这位作者的正片就是按投票结果命名的。列表接口不给帖子类型字段，
+        标题不足以区分「投票贴」和「投票选出的成品」，误删一份 release
+        比多出一张卡片糟糕得多。这条测试就是为了挡住那个正则再被加回来。
+        """
+        posts = json.loads(KEMONO_POSTS)
+        posts[0] = {**posts[0], "id": "777",
+                    "title": "Public Poll Release + Littlest Ramble"}
+        result = KemonoConnector(
+            transport=_transport(body=json.dumps(posts).encode())).fetch("fanbox/1")
+        self.assertIn("777", [c.external_id for c in result.candidates])
+        self.assertEqual(result.skipped, 0)
 
     def test_pawchive_returns_a_bare_list_and_uses_its_own_host(self):
         seen = []
