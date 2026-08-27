@@ -96,6 +96,11 @@ token 上；`app.css` 里除 iOS 那条之外出现任何字面字号都会红�
 浏览器里另测一次同一 URL（`new Image()` + `referrerPolicy='no-referrer'`）：`load 160x160`。
 所以页面直接引用这个地址是可行的，不需要服务端代理。
 
+Windows 那台独立复测过一次，字节数一致。**但 pawchive 回的 content-type 是
+`application/octet-stream`，不是图片类型**——`<img>` 会嗅探内容所以照常显示，
+可一旦改成 `fetch` + `createObjectURL` 就必须自己指定 MIME，否则那张图不会渲染。
+这条差异只在换实现方式时才咬人，所以记在这里。
+
 coomer 那个 404 **只说明这个创作者不在 coomer 上**，不能据此断定 coomer 没有这个端点——
 所以代码照样按同一规则给它 URL，取不到时由 `<img onerror>` 收场。
 
