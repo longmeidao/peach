@@ -29,6 +29,45 @@ USER_AGENT = "Peach/0.2 (+local self-hosted follow reader)"
 #: 单次抓取的条目上限。追更只关心增量，不做全站归档。
 DEFAULT_MAX_ITEMS = 100
 
+#: 网盘与文件分发站。**判「这一帖有没有交付资源」只认这张表，不认「有外链」**——
+#: 投票链接（`forms.gle`）、社交主页、打赏页都是外链，把它们算成资源会让每一帖都算
+#: release，过滤就等于没做。
+#:
+#: 这张表注定不全，作者换网盘就得往里加。加的时候只加**分发文件**的域名：
+#: 判据是点进去拿到的是文件，不是一个页面。
+_FILE_HOST_DOMAINS = frozenset({
+    "gofile.io", "mega.nz", "mega.io", "mediafire.com", "pixeldrain.com",
+    "workupload.com", "catbox.moe", "1fichier.com", "dropbox.com",
+    "drive.google.com", "docs.google.com", "1drv.ms", "onedrive.live.com",
+    "sendspace.com", "bunkr.site", "bunkrr.su", "cyberdrop.me",
+    "krakenfiles.com", "buzzheavier.com", "saint2.su", "swisstransfer.com",
+    "wetransfer.com", "we.tl", "ufile.io", "zippyshare.com", "anonfiles.com",
+    "qiwi.gg", "mixdrop.co", "gigafile.nu", "xgf.nu", "firestorage.jp",
+    "terabox.com", "1024terabox.com", "pan.baidu.com", "123pan.com",
+    "aliyundrive.com", "alipan.com", "pan.quark.cn", "lanzou.com",
+    "lanzoui.com", "lanzoux.com", "yadi.sk", "disk.yandex.ru",
+    "disk.yandex.com", "fileditch.com",
+})
+
+_LINK_RE = re.compile(r"https?://[^\s\"'<>)\]]+", re.IGNORECASE)
+
+
+def resource_links(text: str | None) -> list[str]:
+    """文本里指向网盘 / 文件站的链接。
+
+    只按域名判，不按「看起来像下载」判。匹配到注册域边界：`gofile.io` 命中
+    `https://gofile.io/d/x` 和 `https://www.gofile.io/d/x`，但**不**命中
+    `https://gofile.io.evil.example/`——那个的注册域根本不是 gofile。
+    """
+    found = []
+    for link in _LINK_RE.findall(text or ""):
+        host = (urllib.parse.urlsplit(link).hostname or "").lower()
+        host = host[4:] if host.startswith("www.") else host
+        if any(host == domain or host.endswith("." + domain)
+               for domain in _FILE_HOST_DOMAINS):
+            found.append(link)
+    return found
+
 
 @dataclass(frozen=True)
 class FollowCandidate:
@@ -67,6 +106,9 @@ class SourceFetch:
     #: 这次抓取里被判为「不是 release」而丢掉的条数。必须报出来：用户看到的条目数
     #: 比站点上少的时候，他得能分清少的是被过滤掉的，还是根本没抓到。
     skipped: int = 0
+    #: 列表判不出来、额外抓了详情页的条数。这是唯一会放大请求数的路径，
+    #: 报出来才能看出某个作者是不是每一帖都要多打一次站点。
+    probed: int = 0
     raw_body: bytes | None = field(default=None, repr=False, compare=False)
 
 
@@ -75,7 +117,8 @@ class FollowConnector(Protocol):
     semantics: str
 
     def fetch(self, ref: str, *, etag: str | None = None,
-              last_modified: str | None = None) -> SourceFetch: ...
+              last_modified: str | None = None,
+              page: int = 0) -> SourceFetch: ...
 
 
 def _iso_utc(value: datetime) -> str:
@@ -268,12 +311,22 @@ class KemonoConnector(_BaseConnector):
     _SERVICE_RE = re.compile(r"^[a-z0-9_\-]{1,32}$")
     _USER_RE = re.compile(r"^[A-Za-z0-9_\-.]{1,64}$")
 
-    def __init__(self, provider: str = "kemono", **kwargs):
+    #: 一次抓取最多为「判不出来」的帖子额外打几次详情页。这是唯一会让请求数随条目数
+    #: 增长的路径：一个从不贴附件、只发网盘链接的作者会让每一帖都触发一次。上限用完
+    #: 之后剩下的判不出来的帖子一律保留——宁可多留卡片，不能因为额度用完就删更新。
+    DEFAULT_MAX_PROBES = 12
+
+    #: 列表接口一页的条数，2026-08-27 实测为 50（`?o=50` 拿到的是第 51 条起）。
+    PAGE_SIZE = 50
+
+    def __init__(self, provider: str = "kemono", *,
+                 max_probes: int = DEFAULT_MAX_PROBES, **kwargs):
         if provider not in self.HOSTS:
             raise FollowSourceError(f"未知的 kemono 系来源：{provider}")
         super().__init__(**kwargs)
         self.provider = provider
         self.host = self.HOSTS[provider]
+        self.max_probes = max_probes
 
     def _headers(self) -> dict[str, str]:
         headers = super()._headers()
@@ -288,10 +341,16 @@ class KemonoConnector(_BaseConnector):
         return service, user
 
     def fetch(self, ref: str, *, etag: str | None = None,
-              last_modified: str | None = None) -> SourceFetch:
+              last_modified: str | None = None, page: int = 0) -> SourceFetch:
         service, user = self._split_ref(ref)
         url = f"https://{self.host}/api/v1/{service}/user/{user}/posts"
-        response = self._get(url, etag=etag, last_modified=last_modified)
+        if page:
+            # 实测这个接口一页固定 50 条，往回翻用 `?o=` 偏移。
+            url = f"{url}?o={page * self.PAGE_SIZE}"
+        # 往回翻时不带条件请求头：`If-None-Match` 存的是第一页的 etag，
+        # 拿它去问第二页，站点很可能回 304，结果就是「点了没反应」。
+        response = (self._get(url) if page
+                    else self._get(url, etag=etag, last_modified=last_modified))
         common = {"provider": self.provider, "ref": ref, "request_url": url,
                   "semantics": self.semantics, **self._conditional(response)}
         if response.status == 304:
@@ -302,42 +361,79 @@ class KemonoConnector(_BaseConnector):
         posts = payload.get("posts", []) if isinstance(payload, dict) else payload
         if not isinstance(posts, list):
             raise FollowSourceError(f"{self.provider} 的帖子列表格式不符")
-        kept, skipped = [], 0
+        kept, skipped, probed = [], 0, 0
         for post in posts[: self.max_items]:
             if not isinstance(post, dict):
                 continue
-            if not self._is_release(post):
+            verdict = self._delivers_resource(post)
+            if verdict is None and probed < self.max_probes:
+                # 列表接口判不出来才去抓详情。这是唯一一处「一帖一请求」，
+                # 所以只在拿不准时用，并且有上限。
+                probed += 1
+                verdict = self._probe_post(post, service, user)
+            # 只有**明确判定不是** release 才丢。额度用完后仍然「不知道」的一律保留：
+            # 因为探测预算耗尽就删掉用户的更新，是拿一个内部限额换一次不可见的数据丢失。
+            if verdict is False:
                 skipped += 1
                 continue
             kept.append(self._candidate(post, service, user))
-        return SourceFetch(candidates=tuple(kept), skipped=skipped,
+        return SourceFetch(candidates=tuple(kept), skipped=skipped, probed=probed,
                            raw_body=response.body, **common)
 
-    @classmethod
-    def _is_release(cls, post: dict) -> bool:
-        """这一帖算不算「一份能看的东西」。
+    @staticmethod
+    def _delivers_resource(post: dict) -> bool | None:
+        """这一帖交付了资源没有。`None` 表示**列表接口判不出来**，要去抓详情。
 
-        **只有一条判据：有没有附件或正文文件。** 归档站的时间线里混着大量纯文字帖
-        （公告、感谢、排期），它们永远不可能是 release，丢掉是安全的。
+        用户定的判据是「真正的资源贴要么贴附件，要么附上网盘链接」，而且
+        **有些作者只做图**——所以一张图片附件就足够算数，不要求是压缩包或视频。
 
-        **按标题关键词丢投票贴的做法试过，是错的，不要再加回来。** 2026-08-27 拿
-        LazyProcrastinator 的真实 50 条数据跑过一版
-        `poll|vote|survey|...` 的正则，50 条丢掉 18 条，其中包括
-        `Public Poll Release + Littlest Ramble`、`February Poll + Animations`、
-        `October Poll Animations Released`——这位作者的正片就是按投票结果命名的，
-        「Poll」出现在标题里恰恰因为那是投票选出来的那份成品。
-        列表接口不给帖子类型字段，标题也就不足以区分「投票贴」和「投票选出的成品」。
-        误删一份 release 比多出一张卡片糟糕得多，所以宁可放过。
+        三态而不是布尔，是因为列表接口只给 `substring`（正文摘要），网盘链接常常在
+        摘要之外。判不出来时直接当成「不是 release」会删掉真东西，当成「是」又等于
+        没过滤；只有第三种答案「不知道」才允许下一步去抓详情。
 
-        丢掉的只是候选，**原始响应仍然整份存进证据档案**——判错了能从那里追回来，
-        不用重新联网。这也是这个过滤敢放在抓取侧而不是显示侧的原因。
+        **按标题关键词判投票贴是错的，不要再加回来。** 2026-08-27 拿
+        LazyProcrastinator 的真实 50 条跑过一版 `poll|vote|survey|…` 正则，丢掉 18 条，
+        其中有 `Public Poll Release + Littlest Ramble`、`October Poll Animations
+        Released`——这位作者的正片就是按投票结果命名的。同一份数据里，
+        那条「February Poll + Animations」的详情页 `poll` 字段是 `null`、正文里挂着
+        gofile 链接，按资源判就是 release，按标题判就被删了。
         """
         has_file = bool((post.get("file") or {}).get("path")
                         if isinstance(post.get("file"), dict) else None)
         has_attachment = any(
             isinstance(item, dict) and item.get("path")
             for item in (post.get("attachments") or []))
-        return has_file or has_attachment
+        if has_file or has_attachment:
+            return True
+        if resource_links(post.get("substring")):
+            return True
+        return None
+
+    def _probe_post(self, post: dict, service: str, user: str) -> bool:
+        """抓详情页再判一次。**抓不到就当它是 release。**
+
+        这一步是兜底，不是判据来源：网络抖一下就删掉用户的一份更新，是拿一次失败的
+        请求换一次不可见的数据丢失。宁可多留一张卡片。
+        """
+        post_id = str(post.get("id") or "")
+        if not post_id:
+            return True
+        url = f"https://{self.host}/api/v1/{service}/user/{user}/post/{post_id}"
+        try:
+            response = self._get(url)
+            if response.status >= 400:
+                return True
+            payload = self._json(response)
+        except (FollowSourceError, OSError, httpx.HTTPError):
+            return True
+        if not isinstance(payload, dict):
+            return True
+        detail = payload.get("post") if isinstance(payload.get("post"), dict) else payload
+        for key in ("attachments", "videos", "previews"):
+            if any(isinstance(item, dict) and item.get("path")
+                   for item in (payload.get(key) or [])):
+                return True
+        return bool(resource_links(str(detail.get("content") or "")))
 
     #: 缩略图能直接当封面用的扩展名。视频和压缩包没有缩略图，给了也是 404，
     #: 那会让卡片显示一个碎图而不是干净的占位。
@@ -396,13 +492,20 @@ class Rule34VideoConnector(_BaseConnector):
     _VIDEO_RE = re.compile(r"^https://rule34video\.com/video/(\d+)/")
 
     def fetch(self, ref: str, *, etag: str | None = None,
-              last_modified: str | None = None) -> SourceFetch:
+              last_modified: str | None = None, page: int = 0) -> SourceFetch:
         slug = (ref or "").strip().strip("/").lower()
         if not self._SLUG_RE.match(slug):
             raise FollowSourceError(f"rule34video 的 ref 必须是作者 slug，收到：{ref!r}")
         url = f"https://rule34video.com/models/{slug}/"
-        response = self._get(url, headers={"Accept": "text/html"},
-                             etag=etag, last_modified=last_modified)
+        if page:
+            # KVS 的分页是异步块请求，`from` 是 1 起的两位页码（`from:02`）。
+            # 2026-08-27 实测这个端点回的是同样结构的 24 条卡片。
+            url = (f"{url}?mode=async&function=get_block"
+                   f"&block_id=custom_list_videos_common_videos"
+                   f"&sort_by=post_date&from={page + 1:02d}")
+        response = (self._get(url, headers={"Accept": "text/html"}) if page
+                    else self._get(url, headers={"Accept": "text/html"},
+                                   etag=etag, last_modified=last_modified))
         common = {"provider": self.provider, "ref": slug, "request_url": url,
                   "semantics": self.semantics, **self._conditional(response)}
         if response.status == 304:
@@ -475,7 +578,7 @@ class Rule34XxxConnector(_BaseConnector):
     _TAG_RE = re.compile(r"^[^\s&?#]{1,100}$")
 
     def fetch(self, ref: str, *, etag: str | None = None,
-              last_modified: str | None = None) -> SourceFetch:
+              last_modified: str | None = None, page: int = 0) -> SourceFetch:
         tag = (ref or "").strip()
         if not self._TAG_RE.match(tag):
             raise FollowSourceError(f"rule34xxx 的 ref 必须是单个标签，收到：{ref!r}")
@@ -484,15 +587,21 @@ class Rule34XxxConnector(_BaseConnector):
                 "rule34xxx 需要 user_id 与 api_key；请把它们写进 "
                 "peach-data/secrets/follow/rule34xxx.json")
         user_id, api_key = self.credential.require("user_id", "api_key")
-        query = urllib.parse.urlencode({
+        # `pid` 是 0 起的页号，页大小就是 `limit`。
+        parameters = {
             "page": "dapi", "s": "post", "q": "index", "json": "1",
             "limit": str(min(self.max_items, 1000)), "tags": tag,
             "user_id": user_id, "api_key": api_key,
-        })
+        }
+        if page:
+            parameters["pid"] = str(page)
+        query = urllib.parse.urlencode(parameters)
         url = f"https://api.rule34.xxx/index.php?{query}"
-        safe_url = f"https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&tags={tag}"
-        response = self._get(url, headers={"Accept": "application/json"},
-                             etag=etag, last_modified=last_modified)
+        safe_url = (f"https://api.rule34.xxx/index.php?page=dapi&s=post&q=index"
+                    f"&tags={tag}" + (f"&pid={page}" if page else ""))
+        response = (self._get(url, headers={"Accept": "application/json"}) if page
+                    else self._get(url, headers={"Accept": "application/json"},
+                                   etag=etag, last_modified=last_modified))
         common = {"provider": self.provider, "ref": tag, "request_url": safe_url,
                   "semantics": self.semantics, **self._conditional(response)}
         if response.status == 304:
@@ -587,7 +696,7 @@ class F95ZoneConnector(_BaseConnector):
     CATEGORIES = ("games", "animations", "comics", "assets", "mods")
 
     def fetch(self, ref: str, *, etag: str | None = None,
-              last_modified: str | None = None) -> SourceFetch:
+              last_modified: str | None = None, page: int = 0) -> SourceFetch:
         thread = (ref or "").strip()
         if not self._THREAD_RE.match(thread):
             raise FollowSourceError(f"f95zone 的 ref 必须是线程 id，收到：{ref!r}")
@@ -687,7 +796,7 @@ class SimpCityConnector(_BaseConnector):
         "要接入需要你在浏览器里通过质询后提供会话 cookie，或改用其他来源。")
 
     def fetch(self, ref: str, *, etag: str | None = None,
-              last_modified: str | None = None) -> SourceFetch:
+              last_modified: str | None = None, page: int = 0) -> SourceFetch:
         raise FollowSourceError(self.blocked_reason)
 
 
