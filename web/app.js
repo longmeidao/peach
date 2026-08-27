@@ -1337,31 +1337,25 @@ function followCollectionCopy(group,item,mark=''){
   return {label,title:group.is_release&&item.author?`${item.author}：${body}`:body};
 }
 
-function openFollowCollection(group){
-  const items=followCollectionItems(group),title=group.primary.title||'视频集合';
-  const dialog=playlistDialog({title,body:`<div class="fcollectionlist">${items.map(item=>{
-    const copy=followCollectionCopy(group,item,group.duplicates.includes(item)?item.provider_label:'');
-    const thumb=item.thumb_url
-      ?`<img src="${esc(item.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
-      :`<span>${sourceIcon(item.provider)}</span>`;
-    const openAttrs=`data-follow-detail="${item.id}"`;
-    return `<div class="fcollectionrow"><button class="fcollectionthumb" ${openAttrs}>${thumb}</button>
-      <button class="fcollectioncopy" ${openAttrs}><b>${esc(copy.title)}</b>
-        <span class="mono"><i class="fvkind ${esc(item.variant_kind||'')}">${esc(copy.label)}</i>${sourceIcon(item.provider)}${followWhen(item)}${item.duration?` · ${fmtDur(item.duration)}`:''}</span></button>
-      <button data-follow-save="${item.id}"${item.status==='saved'?' disabled':''}>${item.status==='saved'?'已保存':'保存'}</button></div>`}).join('')}</div>`});
-  dialog.classList.add('followcollectiondialog');
-  dialog.querySelectorAll('[data-follow-save]').forEach(button=>button.onclick=async()=>{
-    button.disabled=true;
-    try{await api('/api/follow/save',{method:'POST',body:JSON.stringify({item:+button.dataset.followSave})});button.textContent='已保存'}
-    catch(error){button.disabled=false;alert(error.message||'保存失败')}
-  });
-  wireFollowDetail(dialog);
+function followQueueHtml(group,itemId){
+  const items=followCollectionItems(group);
+  return `<aside class="mixqueue followqueue"><div class="mixqueuehead"><div><h2>${esc(group.primary.title||'视频集合')}</h2><span>${items.length} 个${items.some(item=>item.has_media)?'视频':'条目'}</span></div><div class="mixqueueactions">
+    <button data-follow-queue-close title="关闭" aria-label="关闭">${icon('x')}</button></div></div><div class="mixlist">${items.map(item=>{
+      const copy=followCollectionCopy(group,item,group.duplicates.includes(item)?item.provider_label:'');
+      const thumb=item.thumb_url
+        ?`<img src="${esc(item.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
+        :`<span class="fnothumb">${sourceIcon(item.provider)}</span>`;
+      return `<div class="mixrow"><button class="mixitem ${item.id===itemId?'current':''}" data-follow-queue-item="${item.id}" aria-current="${item.id===itemId?'true':'false'}">
+        <span class="mixitempic">${thumb}${item.duration?`<i class="dur mono">${fmtDur(item.duration)}</i>`:''}</span>
+        <span class="mixitemtext"><b>${esc(copy.title)}</b><span><i class="fvkind ${esc(item.variant_kind||'')}">${esc(copy.label)}</i>${followWhen(item)}</span></span></button></div>`;
+    }).join('')}</div></aside>`;
 }
 
 function indexFollowItems(data){
   const groups=data?.groups||[];
-  followGroupsById=new Map(groups.map(group=>[group.primary.id,group]));
-  followItemsById=new Map(groups.flatMap(group=>followCollectionItems(group).map(item=>[item.id,item])));
+  followItemsById=new Map();followGroupByItemId=new Map();
+  groups.forEach(group=>followCollectionItems(group).forEach(item=>{
+    followItemsById.set(item.id,item);followGroupByItemId.set(item.id,group)}));
 }
 
 async function followItemById(id){
@@ -1374,12 +1368,18 @@ async function followItemById(id){
 
 async function openFollowDetail(id,push=true){
   releaseHoverPreviews();
-  const returnPath=push?location.pathname+location.search:'/follow';
+  const entering=!location.pathname.startsWith('/follow/item/');
+  if(push&&entering)followDetailReturnPath=location.pathname+location.search;
+  if(!push)followDetailReturnPath='/follow';
   const item=await followItemById(+id);if(!item)return;
-  detailReturnPath=returnPath;
+  const group=followGroupByItemId.get(item.id);
+  const collection=group&&followCollectionItems(group).length>1?group:null;
   disposeStage(false);
   if(push)route(`/follow/item/${item.id}`);
   const source=(followData?.sources||[]).find(row=>row.id===item.source_id);
+  const authorSources=(followData?.sources||[]).filter(row=>
+    source?.author_key&&row.author_key===source.author_key);
+  if(!authorSources.length&&source)authorSources.push(source);
   const src=item.playable?`/follow-stream?id=${item.id}`:'';
   const media=item.playable&&item.media_kind==='video'
     ?`<video controls playsinline preload="metadata" src="${src}"></video>`
@@ -1389,15 +1389,17 @@ async function openFollowDetail(id,push=true){
         ?`<img class="followdetailposter" src="${esc(item.thumb_url)}" alt="${esc(item.title)}" referrerpolicy="no-referrer">`
         :`<div class="followdetailplaceholder">${sourceIcon(item.provider)}<span>没有可用预览</span></div>`;
   const badges=followBadges({primary:item,variants:[],duplicates:[],has_wip:item.variant_kind==='wip'});
-  const tags=(item.tags||[]).map(tag=>followTagChip(item,tag)).join('');
-  const author=item.author||source?.entity_name||source?.label||item.source_label||'作者未取得';
+  const tags=(item.tags||[]).map(tag=>followTagChip(item,tag,'button')).join('');
+  const author=followAuthorName(authorSources)||item.author||item.source_label||'作者未取得';
+  const postedBy=item.author&&foldName(item.author)!==foldName(author)?item.author:'';
   $('#stage').hidden=false;document.body.classList.add('detail-open');
-  $('#stage').innerHTML=`<div class="sgrid followdetailgrid">
+  $('#stage').innerHTML=`<div class="sgrid followdetailgrid${collection?' mixgrid':''}">
     <div class="vwrap followdetailmedia"><button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${media}</div>
+    ${collection?followQueueHtml(collection,item.id):''}
     <div class="side followdetailside">
-      <div class="stitle">${esc(item.title)}</div>
-      <div class="followdetailidentity"><span class="mav fsourceavatar">${followAuthorAvatar(source?[source]:[])}</span>
-        <div><b>${esc(author)}</b><span>${sourceIcon(item.provider)}${esc(item.provider_label)}</span></div></div>
+      <div class="followdetailtitle"><div class="stitle">${esc(item.title)}</div>${item.url?`<a class="followorigin" href="${esc(item.url)}" target="_blank" rel="noreferrer noopener" title="打开来源页面" aria-label="打开来源页面">${icon('external-link')}</a>`:''}</div>
+      <div class="followdetailidentity"><span class="mav fsourceavatar">${followAuthorAvatar(authorSources)}</span>
+        <div><b>${esc(author)}</b>${postedBy?`<span>发布者 ${esc(postedBy)}</span>`:''}</div></div>
       <div class="smeta mono"><span>${followWhen(item)}</span>${item.duration?`<span>${fmtDur(item.duration)}</span>`:''}${badges?`<span class="fbadges">${badges}</span>`:''}</div>
       ${item.summary?`<p class="followdetailsummary">${esc(item.summary)}</p>`:''}
       ${tags?`<div class="stags followdetailtags">${tags}</div>`:''}
@@ -1405,13 +1407,20 @@ async function openFollowDetail(id,push=true){
       <div class="fb followdetailactions">
         <button class="later" data-follow-detail-save aria-label="${item.status==='saved'?'已保存':'保存到账本'}" title="${item.status==='saved'?'已保存':'保存到账本'}"${item.status==='saved'?' disabled':''}>${item.status==='saved'?icon('check'):icon('bookmark-plus')}</button>
         <button class="seen" data-follow-detail-status="seen" aria-label="标记已看" title="标记已看" aria-pressed="${item.status==='seen'}">${icon('eye')}</button>
-        <button class="dislike" data-follow-detail-status="ignored" aria-label="忽略" title="忽略" aria-pressed="${item.status==='ignored'}">${icon('x')}</button>
+        <button class="dislike" data-follow-detail-status="ignored" aria-label="忽略" title="忽略" aria-pressed="${item.status==='ignored'}">${icon('eye-off')}</button>
         ${item.status==='seen'||item.status==='ignored'?`<button data-follow-detail-status="new" aria-label="恢复未看" title="恢复未看">${icon('rotate-ccw')}</button>`:''}</div>
       <span class="fstate" aria-live="polite"></span>
-      ${item.url?`<a class="followorigin" href="${esc(item.url)}" target="_blank" rel="noreferrer noopener">${icon('external-link')}打开来源页面</a>`:''}
     </div></div>`;
-  const closeDetail=()=>{disposeStage(true);openFollow(false)};
+  const closeDetail=async()=>{disposeStage(false);route(followDetailReturnPath||'/follow');await openFollow(false)};
   $('#closeStage').onclick=closeDetail;
+  $('#stage').querySelectorAll('[data-follow-queue-close]').forEach(button=>button.onclick=closeDetail);
+  $('#stage').querySelectorAll('[data-follow-queue-item]').forEach(button=>button.onclick=()=>
+    openFollowDetail(+button.dataset.followQueueItem,true));
+  $('#stage').querySelectorAll('.followdetailtags [data-follow-tag]').forEach(button=>button.onclick=async()=>{
+    const tag=button.dataset.followTag;
+    if(followTags.has(tag))followTags.delete(tag);else followTags.add(tag);
+    await closeDetail();
+  });
   const write=async(button,path,body,done)=>{
     const state=$('#stage').querySelector('.fstate');button.disabled=true;
     try{await api(path,{method:'POST',body:JSON.stringify(body)});done();state.textContent='已更新'}
@@ -1453,7 +1462,7 @@ function followCard(group,authorSources=[]){
       <div class="factions">
         <button data-follow-save="${item.id}" title="${item.status==='saved'?'已保存':'保存到账本'}" aria-label="${item.status==='saved'?'已保存':'保存到账本'}"${item.status==='saved'?' disabled':''}>${item.status==='saved'?icon('check'):icon('bookmark-plus')}</button>
         <button data-follow-status="${item.id}" data-to="seen" title="标记已看" aria-label="标记已看"${item.status==='seen'?' disabled':''}>${icon('eye')}</button>
-        <button data-follow-status="${item.id}" data-to="ignored" title="忽略" aria-label="忽略"${item.status==='ignored'?' disabled':''}>${icon('x')}</button>
+        <button data-follow-status="${item.id}" data-to="ignored" title="忽略" aria-label="忽略"${item.status==='ignored'?' disabled':''}>${icon('eye-off')}</button>
         ${item.status==='seen'||item.status==='ignored'?`<button data-follow-status="${item.id}" data-to="new" title="恢复未看" aria-label="恢复未看">${icon('rotate-ccw')}</button>`:''}
       </div></div></div>
     <div class="meta"><span class="mav fsourceavatar" title="作者头像">${followAuthorAvatar(authorSources)}</span>
@@ -1497,7 +1506,7 @@ function followCheckSummary(report){
 }
 
 /* ── 看的那一页 ── */
-let followAuthor='',followProvider='',followTags=new Set(),followGroupsById=new Map(),followItemsById=new Map();
+let followAuthor='',followProvider='',followTags=new Set(),followGroupByItemId=new Map(),followItemsById=new Map(),followDetailReturnPath='/follow';
 const TAGGED_PROVIDERS=['rule34video','rule34xxx'];
 function groupTagType(groups,tag){
   for(const group of groups){
@@ -1513,22 +1522,29 @@ function renderFollow(){
   const broken=sources.filter(s=>s.last_status==='error'||s.last_status==='unauthorized');
   const byId=new Map(sources.map(source=>[source.id,source]));
   const sourceOf=group=>byId.get(group.primary&&group.primary.source_id);
-  const authorSources=new Map(),providers=new Map(),tagCounts=new Map();
+  const authorSources=new Map(),activeAuthors=new Set(),providers=new Map(),tagCounts=new Map();
+  sources.forEach(source=>{
+    if(!source.author_key)return;
+    if(!authorSources.has(source.author_key))authorSources.set(source.author_key,[]);
+    authorSources.get(source.author_key).push(source);
+  });
   groups.forEach(group=>{
     (group.primary&&group.primary.tags||[]).forEach(tag=>
       tagCounts.set(tag,(tagCounts.get(tag)||0)+1));
     const source=sourceOf(group);if(!source)return;
-    if(source.author_key){
-      if(!authorSources.has(source.author_key))authorSources.set(source.author_key,[]);
-      authorSources.get(source.author_key).push(source);
-    }
+    if(source.author_key)activeAuthors.add(source.author_key);
     if(!providers.has(source.provider))providers.set(source.provider,source.provider_label);
   });
-  const authors=new Map([...authorSources].map(([key,list])=>[key,{
+  const authors=new Map([...authorSources].filter(([key])=>activeAuthors.has(key)).map(([key,list])=>[key,{
     name:followAuthorName(list),sources:list,
   }]));
-  const topTags=[...tagCounts].sort((a,b)=>b[1]-a[1]).slice(0,20)
-    .map(([tag,n])=>[tag,tagLabel(tag),n]);
+  const rankedTags=[...tagCounts].sort((a,b)=>b[1]-a[1]);
+  const topTagRows=rankedTags.slice(0,20);
+  followTags.forEach(tag=>{
+    if(tagCounts.has(tag)&&!topTagRows.some(([key])=>key===tag))
+      topTagRows.push([tag,tagCounts.get(tag)]);
+  });
+  const topTags=topTagRows.map(([tag,n])=>[tag,tagLabel(tag),n]);
   if(followAuthor&&!authors.has(followAuthor))followAuthor='';
   if(followProvider&&!providers.has(followProvider))followProvider='';
   followTags=new Set([...followTags].filter(tag=>tagCounts.has(tag)));
@@ -1665,7 +1681,7 @@ function followAuthorGroups(sources){
 const SOURCE_ICONS={
   fanbox:'https://www.fanbox.cc/favicon.ico',
   patreon:'https://www.patreon.com/favicon.ico',
-  subscribestar:'https://subscribestar.adult/favicon.ico',
+  subscribestar:'https://assets.subscribestar.com/assets/public/images/favicons/favicon-32x32-b9aa1e7e5bab6cb1b28b5161e16f9d42.png',
   kemono:'https://kemono.cr/assets/favicon-CPB6l7kH.ico',
   coomer:'https://coomer.st/assets/favicon-CPB6l7kH.ico',
   pawchive:'https://pawchive.pw/static/favicon.png',
@@ -1678,19 +1694,26 @@ const sourceIcon=provider=>SOURCE_ICONS[provider]
        referrerpolicy="no-referrer" onerror="this.remove()">`
   : '';
 
-/* 头像只有实测拿得到的来源才有（kemono 系）。取不到就显示站点缩写，
-   **不用首字母假装成头像**——那会让「没取到」看起来像「取到了」。 */
+function followAvatarInitial(group){
+  const name=followAuthorName(group).trim();
+  const ascii=name.match(/[A-Za-z0-9]/);
+  return (ascii?ascii[0]:Array.from(name)[0]||'?').toUpperCase();
+}
+
+/* 同一作者的官方来源优先提供头像，归档来源只回退。都取不到时明确用作者首字母，
+   不再从某条来源的中文显示标签切出“初”“一”之类与作者无关的字。 */
 function followAuthorAvatar(group){
   const official=group.find(source=>source.official_avatar_url);
   const mirror=group.find(source=>source.avatar_url);
   const src=official?.official_avatar_url||mirror?.avatar_url;
   const fallback=official&&mirror&&mirror.avatar_url!==src?mirror.avatar_url:'';
-  if(src)return `<img class="favatar" src="${esc(src)}" alt=""
+  const initial=followAvatarInitial(group);
+  if(src)return `<img class="favatar" src="${esc(src)}" alt="" data-initial="${esc(initial)}"
     ${fallback?`data-fallback="${esc(fallback)}"`:''}
     loading="lazy" referrerpolicy="no-referrer" onerror="if(!this.dataset.f&&this.dataset.fallback){
       this.dataset.f='1';this.src=this.dataset.fallback}else{this.replaceWith(
-      Object.assign(document.createElement('span'),{className:'favatar none',textContent:'—'}))}">`;
-  return '<span class="favatar none" title="这些来源没有可取的头像">—</span>';
+      Object.assign(document.createElement('span'),{className:'favatar none',textContent:this.dataset.initial}))}">`;
+  return `<span class="favatar none" title="没有可用头像">${esc(initial)}</span>`;
 }
 
 /* 分组标题要用作者本人的名字，不是某一条来源的标签。`LazyProcrastinator · fanbox`
@@ -1699,6 +1722,7 @@ function followAuthorAvatar(group){
    同名的几种写法里取大写最多的那个：`LazyProcrastinator` 比 `lazyprocrastinator`
    更像作者自己写的名字。 */
 function followAuthorName(group){
+  if(!group.length)return '';
   const entity=group.find(source=>source.entity_name);
   if(entity)return entity.entity_name;
   const aliasGroup=(followData.author_aliases||[]).find(
@@ -1854,11 +1878,11 @@ function renderFollowManage(credentials){
           <button class="fbtn primary" type="submit">查找</button>
         </form>
         <p class="fnote" data-follow-add-state aria-live="polite"></p>
+        <div id="followPicks"></div>
         ${(followData.suggestions||[]).length
           ?`<div class="fguess"><span class="fmeta">猜你喜欢</span>${
               followSuggestionChips(followData.suggestions)}</div>`:''}
         ${followAliasManager(followData.author_aliases,followData.alias_suggestions)}
-        <div id="followPicks"></div>
       </section>
       <section class="fsec">
         <div class="fsechead"><h3>关注列表</h3>
@@ -1930,8 +1954,7 @@ function wireFollowItems(){
     event.stopPropagation();
     await followWrite(button,'/api/follow/save',{item:+button.dataset.followSave})});
   root.querySelectorAll('[data-follow-collection]').forEach(button=>button.onclick=event=>{
-    event.stopPropagation();const group=followGroupsById.get(+button.dataset.followCollection);
-    if(group)openFollowCollection(group)});
+    event.stopPropagation();openFollowDetail(+button.dataset.followCollection)});
   root.querySelectorAll('.followitem[data-follow-item]').forEach(card=>{
     const id=+card.dataset.followItem;
     card.onclick=event=>{
@@ -2140,6 +2163,7 @@ function renderFollowPicks(results){
     ${total?`<div class="fpickactions"><button data-pick-add>添加选中</button>
       <button data-pick-cancel>取消</button><span data-pick-state aria-live="polite"></span></div>`
       :'<div class="fpickactions"><button data-pick-cancel>关闭</button></div>'}</div>`;
+  box.scrollIntoView({block:'nearest',behavior:'smooth'});
   box.querySelector('[data-pick-cancel]').onclick=()=>{box.innerHTML=''};
   const addButton=box.querySelector('[data-pick-add]');
   if(addButton)addButton.onclick=async()=>{
