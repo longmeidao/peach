@@ -830,6 +830,28 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("""item.status==='seen'||item.status==='ignored'""")
         self.assertPageContains(">恢复未看</button>")
 
+    def test_only_rule34xxx_actually_carries_tags(self):
+        """标签筛选先只覆盖 rule34.xxx，这是用户定的范围。
+
+        `follow_item` 没有 tag 列，只有 rule34.xxx 在 `metadata_json` 里存了原始的
+        空格分隔标签串。kemono 系和 f95zone 的列表接口根本不给标签——它们返回空列表，
+        前端据此把覆盖范围说清楚，而不是画一个对多数条目永远为空的筛选条。
+        """
+        class _Item:
+            def __init__(self, metadata):
+                self.metadata = metadata
+
+        tags = web_follow._item_tags(
+            _Item({"tag": "lazyprocrastinator",
+                   "tags": "lazyprocrastinator 1girls animated sound lazyprocrastinator"}))
+        # 作者手柄本身不算标签：按作者筛已经有专门的筛选条，重复出现没有信息量。
+        self.assertEqual(tags, ["1girls", "animated", "sound"])
+        self.assertEqual(web_follow._item_tags(_Item({})), [])
+        self.assertEqual(web_follow._item_tags(_Item({"tags": "   "})), [])
+        # 热门帖能带上百个标签，整串发下去会把筛选条撑爆。
+        many = _Item({"tags": " ".join(f"t{n}" for n in range(200))})
+        self.assertEqual(len(web_follow._item_tags(many)), web_follow.MAX_ITEM_TAGS)
+
     def test_the_author_key_merges_one_person_across_sites(self):
         """归组判据：实体优先，其次名字归一化，绝不模糊匹配。
 
