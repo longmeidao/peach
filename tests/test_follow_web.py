@@ -181,6 +181,14 @@ class FollowContractTests(unittest.TestCase):
                          {"new": 1, "seen": 0, "saved": 0, "ignored": 1})
         self.assertEqual(len(self._get(status="ignored")["groups"]), 1)
 
+    def test_feed_status_accepts_a_multi_selection(self):
+        self._seed()
+        group = self._get()["groups"][0]
+        items = [group["primary"]["id"], group["variants"][0]["id"]]
+        result = self._post("/api/follow/status", {"items": items, "to": "seen"})
+        self.assertEqual(result["items"], items)
+        self.assertEqual(self._get(status="seen")["counts"]["seen"], 2)
+
     def test_feed_ignores_a_nonsense_limit_instead_of_failing(self):
         self._seed()
         self.assertEqual(len(self._get(limit="nope")["groups"]), 1)
@@ -207,6 +215,20 @@ class FollowContractTests(unittest.TestCase):
                 (result["asset_id"],)).fetchone()
         self.assertEqual(row["location"], "online")
         self.assertEqual(self._get(status="saved")["counts"]["saved"], 1)
+
+    def test_saving_accepts_a_multi_selection_atomically(self):
+        self._seed()
+        group = self._get()["groups"][0]
+        items = [group["primary"]["id"], group["variants"][0]["id"]]
+        result = self._post("/api/follow/save", {"items": items})
+        self.assertEqual(result["items"], items)
+        self.assertEqual(len(result["asset_ids"]), 2)
+        with self.contract.database.read_connection() as connection:
+            count = connection.execute(
+                "SELECT count(*) FROM asset WHERE id IN (?, ?)",
+                result["asset_ids"],
+            ).fetchone()[0]
+        self.assertEqual(count, 2)
 
     def test_check_is_the_only_endpoint_that_reaches_the_network(self):
         self._seed()
@@ -887,10 +909,26 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("if(followProvider&&source.provider!==followProvider)return false;")
         self.assertPageContains('class="tier followauthors"')
         self.assertPageContains('class="tagbar followfilters"')
-        self.assertPageContains('class="pill" data-follow-provider=')
+        self.assertPageContains('class="pill sourcepill" data-follow-provider=')
         self.assertPageContains("内容标签目前由 ${")
         self.assertPageContains(".sort((a,b)=>b[1]-a[1]).slice(0,20)")
         self.assertPageContains(".map(([tag,n])=>[tag,tagLabel(tag),n])")
+
+    def test_follow_filters_put_all_first_and_sources_are_icon_only(self):
+        self.assertPageContains("const FOLLOW_FILTERS=[['','全部'],['new','未看']")
+        self.assertPageContains('title="${esc(label)}" aria-label="来源：${esc(label)}">${sourceIcon(key)}</button>')
+        watch = self.page.split("function renderFollow(){", 1)[1].split(
+            "function followBackfillState", 1)[0]
+        self.assertNotIn("全部来源", watch)
+        self.assertNotIn("全部标签", watch)
+        self.assertPageContains("followProvider=followProvider===button.dataset.followProvider?'':button.dataset.followProvider")
+        self.assertPageContains("followTag=followTag===button.dataset.followTag?'':button.dataset.followTag")
+
+    def test_follow_horizontal_rails_are_wired_after_each_render(self):
+        self.assertPageContains("wireDrag($('#stats').querySelector('.followauthors'))")
+        self.assertPageContains("wireDrag($('#stats').querySelector('.followfilters'))")
+        self.assertPageContains(".followauthors{padding:3px 0 10px")
+        self.assertPageContains(".followfilters::-webkit-scrollbar{display:block")
 
     def test_credentials_are_typed_into_the_page_not_into_a_file_by_hand(self):
         self.assertPageContains('data-cred-form=')
@@ -951,7 +989,7 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_every_entered_state_can_be_left_again(self):
         self.assertPageContains("""item.status==='seen'||item.status==='ignored'""")
-        self.assertPageContains(">恢复未看</button>")
+        self.assertPageContains('data-to="new" title="恢复未看" aria-label="恢复未看"')
 
     def test_only_rule34xxx_actually_carries_tags(self):
         """标签筛选先只覆盖 rule34.xxx，这是用户定的范围。
@@ -1092,8 +1130,22 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("媒体需要登录会话才能取，发现本身不需要")
 
     def test_follow_styles_exist_for_the_card_surface(self):
-        for selector in (".followlist{", ".followitem{", ".fbadge{", ".fvariants{"):
+        for selector in (".followlist{", ".followitem{", ".fbadge{", ".fcollectionlist{"):
             self.assertPageContains(selector)
+
+    def test_follow_cards_reuse_home_cards_hover_actions_and_mix_stacks(self):
+        self.assertPageContains('class="card followitem${collection.length>1?\' collection\':\'\'}"')
+        self.assertPageContains("collection.length>1?'mixstack '")
+        self.assertPageContains('class="mixbadge" data-follow-collection=')
+        self.assertPageContains("@media (hover:hover) and (pointer:fine){.followitem:hover .factions")
+        self.assertPageContains("function openFollowCollection(group)")
+
+    def test_follow_uses_the_global_multi_select_mode(self):
+        self.assertPageContains("const selected=new Set(),followSelected=new Set();")
+        self.assertPageContains("function toggleFollowSelection(id,range=false)")
+        self.assertPageContains("path==='/tags'||path==='/follow'")
+        self.assertPageContains('data-follow-batch="save"')
+        self.assertPageContains("const body=action==='save'?{items}:{items,to:action};")
 
     def test_the_check_button_stays_visible_on_a_narrow_viewport(self):
         # 管理入口不再混进横滚筛选条；390 宽下始终留在标题右侧。

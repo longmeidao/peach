@@ -1185,17 +1185,19 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .follow .fcheck{height:40px;padding:0 16px;border:1px solid var(--tungsten);border-radius:var(--pill-radius);
   display:inline-flex;align-items:center;gap:6px;background:var(--tungsten);color:#fff;font-weight:600;cursor:pointer}
 .follow .fcheck svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
-.followauthors{padding:0 0 10px;margin:0 0 2px}
+.followauthors{padding:3px 0 10px;margin:0 0 2px;overscroll-behavior-inline:contain}
 .followauthors .av{width:76px}
-.followauthors .av b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  font-size:var(--fs-xs);font-weight:500;color:var(--ink-2)}
 .followauthors .av[aria-pressed="true"] .ring{box-shadow:0 0 0 2px var(--tungsten)}
 .followauthors .favatar{width:64px;height:64px;border-radius:50%;outline:0}
 .followauthors .favatar.none{font-size:var(--fs-lg);background:var(--overlay-5)}
 .followfilters{position:relative;top:auto;z-index:1;height:auto;min-height:58px;margin:0 0 8px;
-  padding:9px 0;border-bottom-color:transparent}
+  padding:9px 0 8px;border-bottom-color:transparent;scrollbar-width:thin;overscroll-behavior-inline:contain;
+  touch-action:pan-x}
+.followfilters::-webkit-scrollbar{display:block;height:5px}.followfilters::-webkit-scrollbar-thumb{background:var(--sb);border-radius:8px}
 .followfilters .sep{flex:none;width:1px;height:24px;background:var(--line-soft);margin:0 3px}
 .followfilters .pill .n{margin-left:5px;color:inherit}
+.followfilters .sourcepill{width:40px;padding:0}
+.followfilters .sourcepill .ficon{width:21px;height:21px;margin:0}
 .followfilternote{margin:-3px 0 12px}
 .fdetails summary{cursor:pointer;list-style:none}
 .fdetails summary::-webkit-details-marker{display:none}
@@ -1205,41 +1207,47 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .ficon{width:14px;height:14px;border-radius:3px;object-fit:contain;
   vertical-align:-2px;margin-right:5px}
 .fauthorhead .ficon{margin-right:2px}
-.followlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:14px}
-.followitem{display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;background:var(--surface);border:1px solid var(--line-soft);border-radius:12px;padding:12px;min-width:0}
+.followlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
+.followitem{min-width:0}.followitem.collection{padding-top:7px}
 .followitem[data-status="ignored"],.followitem[data-status="seen"]{opacity:.62}
-.fthumb{display:block;aspect-ratio:16/9;border-radius:8px;overflow:hidden;background:#000;position:relative}
-.fthumb img{width:100%;height:100%;object-fit:cover;display:block}
+.followvisual{position:relative;isolation:isolate}.followvisual .pic{z-index:1}
+.followvisual .pic>img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;background:#000}
 .fnothumb{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:var(--fs-xs)}
-.fbody{min-width:0}
-.fbody h4{margin:0 0 4px;font-size:var(--fs-md);line-height:1.35;overflow-wrap:anywhere}
-.fbody h4 a{color:inherit;text-decoration:none}
-.fbody h4 a:hover{text-decoration:underline}
-.fbody>p.mono{margin:0 0 7px;color:var(--muted);font-size:var(--fs-xs);display:flex;gap:9px;flex-wrap:wrap}
-.fbadges{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px}
+.followitem .badge .ficon{width:18px;height:18px;margin:0}
+.fsourceavatar{display:grid;place-items:center;cursor:default;background:var(--overlay-5);border:1px solid var(--line-soft)}
+.fsourceavatar:hover{box-shadow:none}.fsourceavatar .ficon{position:static;width:21px;height:21px;margin:0;object-fit:contain;border-radius:4px}
+.followitem .meta .s{min-height:21px}.fbadges{display:flex;flex-wrap:nowrap;gap:5px;min-width:0;overflow:hidden}
 .fbadge{padding:2px 8px;border:1px solid var(--border-15);border-radius:var(--badge-radius);font-size:var(--fs-xs);color:var(--ink-2)}
 .fbadge.wip{border-color:var(--meter);color:var(--meter)}
 .fbadge.ver{border-color:var(--tungsten);color:var(--tungsten)}
 .fbadge.dup{border-style:dashed}
-.fvariants{list-style:none;margin:0 0 8px;padding:0;display:grid;gap:4px;max-height:150px;overflow-y:auto;scrollbar-width:thin}
-.fvariants li{display:flex;align-items:center;gap:7px;font-size:var(--fs-xs);min-width:0}
-.fvariants a{color:var(--ink-2);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto}
-.fvariants a:hover{text-decoration:underline}
-.fvariants button{flex:0 0 auto;white-space:nowrap;border:1px solid var(--border-15);border-radius:6px;background:transparent;color:var(--ink-2);padding:2px 8px;font-size:var(--fs-xs);cursor:pointer}
-.fvariants button:disabled{opacity:.5;cursor:default}
-.fvkind{flex:0 0 auto;padding:1px 7px;border-radius:var(--badge-radius);font-size:var(--fs-xs);background:var(--overlay-5);color:var(--muted)}
-.fvkind.wip{color:var(--meter)}
-.fvkind.alt{color:var(--tungsten)}
-.fnote{margin:0 0 7px;font-size:var(--fs-xs);color:var(--muted)}
-.factions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.factions button{border:1px solid var(--border-15);border-radius:8px;background:transparent;color:var(--ink-2);padding:5px 12px;font-size:var(--fs-xs);cursor:pointer}
-.factions button:hover:not(:disabled){border-color:var(--tungsten);color:var(--ink)}
-.factions button:disabled{opacity:.55;cursor:default}
+.fnote{font-size:var(--fs-xs);color:var(--muted)}
+.followitem .mixbadge{border:0;cursor:pointer;font:inherit}
+.factions{position:absolute;right:10px;bottom:10px;z-index:7;display:flex;gap:6px;align-items:center;
+  opacity:0;pointer-events:none;transition:opacity .15s ease}
+.factions button{width:36px;height:36px;border:1px solid rgba(255,255,255,.16);border-radius:50%;padding:0;
+  display:grid;place-items:center;background:rgba(0,0,0,.48);color:#fff;cursor:pointer;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.factions button svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2}
+.factions button:hover:not(:disabled){background:rgba(255,255,255,.18);transform:scale(1.08)}
+.factions button:disabled{opacity:.42;cursor:default}
+@media (hover:hover) and (pointer:fine){.followitem:hover .factions{opacity:1;pointer-events:auto}}
+@media (hover:none),(pointer:coarse){.followitem .factions{opacity:1;pointer-events:auto}}
+.select-mode .followitem a,.select-mode .followitem .factions,.select-mode .followitem .mixbadge{pointer-events:none!important}
 .fstate{flex:1 1 100%;font-size:var(--fs-xs);color:var(--drop)}
-@media (max-width:640px){.followitem{grid-template-columns:110px minmax(0,1fr)}
-  .followlist{grid-template-columns:1fr}
-  .followhead{align-items:center}.follow .fcheck{height:36px;padding:0 13px}
-  .followauthors{margin-right:-12px}.followfilters{margin-right:-12px;padding-right:12px}}
+.followcollectiondialog{width:min(760px,calc(100vw - 28px))}.fcollectionlist{display:grid;gap:6px;max-height:62vh;overflow-y:auto}
+.fcollectionrow{display:grid;grid-template-columns:112px minmax(0,1fr) auto;gap:10px;align-items:center;padding:7px;border-radius:8px}
+.fcollectionrow:hover{background:var(--hover)}.fcollectionthumb{position:relative;aspect-ratio:16/9;border-radius:5px;overflow:hidden;background:#000;display:grid;place-items:center}
+.fcollectionthumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.fcollectioncopy{min-width:0;color:inherit;text-decoration:none}
+.fcollectioncopy b,.fcollectioncopy span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fcollectioncopy b{font-size:var(--fs-sm)}
+.fcollectioncopy span{margin-top:4px;color:var(--muted);font-size:var(--fs-xs)}.fcollectioncopy .ficon{margin-right:6px}
+.fvkind{display:inline-block;max-width:120px;margin-right:6px;padding:1px 7px;border-radius:var(--badge-radius);overflow:hidden;text-overflow:ellipsis;vertical-align:-2px;background:var(--overlay-5);color:var(--muted);font-size:var(--fs-xs);font-style:normal}
+.fvkind.wip{color:var(--meter)}.fvkind.alt{color:var(--tungsten)}
+.fcollectionrow>button{border:1px solid var(--border-15);border-radius:7px;background:transparent;color:var(--ink-2);padding:6px 10px;cursor:pointer}
+.fcollectionrow>button:disabled{opacity:.5;cursor:default}
+@media (max-width:640px){.followhead{align-items:center}.follow .fcheck{height:36px;padding:0 13px}
+  .followauthors{margin-right:-12px;padding-top:3px}.followfilters{margin-right:-12px;padding-right:12px}
+  .fcollectionrow{grid-template-columns:88px minmax(0,1fr)}.fcollectionrow>button{grid-column:2;justify-self:start}}
 
 /* ── 关注管理页 ──
    取证记录见 docs/reference-snapshots/vercel-geist-controls-measured.md。

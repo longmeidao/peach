@@ -347,18 +347,25 @@ function mountDetailPlayer(it,video,autoplay){
   }).catch(()=>{});
   return detailPlayer;
 }
-const selected=new Set();
-let selectMode=false,lastSelectedId=null;
+const selected=new Set(),followSelected=new Set();
+let selectMode=false,lastSelectedId=null,followLastSelectedId=null,selectSurface='';
 function paintSelection(){
   document.querySelectorAll('.card[data-id]').forEach(card=>card.classList.toggle('selected',selected.has(+card.dataset.id)));
-  $('#batchbar').hidden=!selected.size;$('#batchCount').textContent=`已选 ${selected.size} 项`;
-  $('#batchbar').querySelectorAll('[data-trash-only]').forEach(button=>button.hidden=state.state!=='trash');
-  $('#batchbar').querySelectorAll('[data-batch="like"],[data-batch="seen"],[data-batch="later"],[data-batch="dispose"]').forEach(button=>button.hidden=state.state==='trash');
+  document.querySelectorAll('.followitem[data-follow-item]').forEach(card=>
+    card.classList.toggle('selected',followSelected.has(+card.dataset.followItem)));
+  const followPage=location.pathname==='/follow',picked=followPage?followSelected:selected;
+  $('#batchbar').hidden=!picked.size;$('#batchCount').textContent=`已选 ${picked.size} 项`;
+  $('#batchbar').querySelectorAll('[data-batch]').forEach(button=>button.hidden=followPage);
+  $('#batchbar').querySelectorAll('[data-follow-batch],[data-follow-control]').forEach(button=>button.hidden=!followPage);
+  $('#batchbar').querySelectorAll('[data-trash-only]').forEach(button=>button.hidden=followPage||state.state!=='trash');
+  $('#batchbar').querySelectorAll('[data-batch="like"],[data-batch="seen"],[data-batch="later"],[data-batch="dispose"]').forEach(button=>button.hidden=followPage||state.state==='trash');
   paintTagIndexSelection();
 }
-function setSelectMode(on,clear=false){selectMode=!!on;document.body.classList.toggle('select-mode',selectMode);
+function setSelectMode(on,clear=false){
+  if(on&&!selectMode)selectSurface=location.pathname==='/follow'?'follow':'catalog';
+  selectMode=!!on;if(!selectMode)selectSurface='';document.body.classList.toggle('select-mode',selectMode);
   if(selectMode)releaseHoverPreviews();
-  $('#selectMode').setAttribute('aria-pressed',selectMode);if(clear){selected.clear();selectedIndexTags.clear();lastSelectedId=null}paintSelection()}
+  $('#selectMode').setAttribute('aria-pressed',selectMode);if(clear){selected.clear();followSelected.clear();selectedIndexTags.clear();lastSelectedId=null;followLastSelectedId=null}paintSelection()}
 /* 只取网格直属卡片：竖屏条是嵌在网格里的横向滚动条，不该被 Shift 范围选中顺带框进来。 */
 function visibleCardIds(){return [...document.querySelectorAll('#grid > .card[data-id]')].map(card=>+card.dataset.id)}
 function toggleSelection(id,range=false){
@@ -368,8 +375,18 @@ function toggleSelection(id,range=false){
   }else{selected.has(id)?selected.delete(id):selected.add(id)}
   lastSelectedId=id;setSelectMode(true);paintSelection();
 }
+function visibleFollowIds(){return [...document.querySelectorAll('.followlist > .followitem[data-follow-item]')]
+  .map(card=>+card.dataset.followItem)}
+function toggleFollowSelection(id,range=false){
+  if(range&&followLastSelectedId!=null){const ids=visibleFollowIds(),a=ids.indexOf(followLastSelectedId),b=ids.indexOf(id);
+    if(a>=0&&b>=0){for(let i=Math.min(a,b);i<=Math.max(a,b);i++)followSelected.add(ids[i])}
+    else followSelected.add(id);
+  }else{followSelected.has(id)?followSelected.delete(id):followSelected.add(id)}
+  followLastSelectedId=id;setSelectMode(true);paintSelection();
+}
 $('#selectMode').onclick=()=>setSelectMode(!selectMode,!selectMode?false:true);
 $('#batchClear').onclick=()=>setSelectMode(false,true);
+$('#followBatchAll').onclick=()=>{visibleFollowIds().forEach(id=>followSelected.add(id));setSelectMode(true);paintSelection()};
 $('#batchbar').querySelectorAll('[data-batch]').forEach(button=>button.onclick=async()=>{
   const labels={like:'喜欢',seen:'标为看过',later:'加入稍后看',dispose:'加入回收站',restore:'还原',delete:'彻底删除'};
   const operation=button.dataset.batch,ids=[...selected];if(!ids.length)return;
@@ -380,6 +397,19 @@ $('#batchbar').querySelectorAll('[data-batch]').forEach(button=>button.onclick=a
       +r.blocked.slice(0,5).map(x=>`${x.path}（${x.reason}）`).join('\n'));
     setSelectMode(false,true);await reloadCurrentSurface()}
   catch(error){alert(`操作失败：${error.message||'未知错误'}`)}
+  finally{button.disabled=false;paintSelection()}
+});
+$('#batchbar').querySelectorAll('[data-follow-batch]').forEach(button=>button.onclick=async()=>{
+  const action=button.dataset.followBatch,items=[...followSelected];if(!items.length)return;
+  const labels={save:'保存到账本',seen:'标记已看',ignored:'忽略'};
+  if(!confirm(`确认对 ${items.length} 个关注作品执行“${labels[action]}”？`))return;
+  button.disabled=true;
+  try{
+    const path=action==='save'?'/api/follow/save':'/api/follow/status';
+    const body=action==='save'?{items}:{items,to:action};
+    await api(path,{method:'POST',body:JSON.stringify(body)});
+    setSelectMode(false,true);await openFollow(false);
+  }catch(error){alert(`操作失败：${error.message||'未知错误'}`)}
   finally{button.disabled=false;paintSelection()}
 });
 
@@ -1252,7 +1282,7 @@ let followData=null,followRuntime=null,followFilter='new',followBusy=false;
    一次闪烁——他的原话是「完全没返回任何结果」。接口其实每条来源都回了
    added/updated/not_modified/error，是界面把它们全丢了。 */
 let followCheckReport=null;
-const FOLLOW_FILTERS=[['new','未看'],['seen','已看'],['saved','已保存'],['ignored','已忽略'],['','全部']];
+const FOLLOW_FILTERS=[['','全部'],['new','未看'],['seen','已看'],['saved','已保存'],['ignored','已忽略']];
 
 /* 账本里一律存 UTC（ISO 带 Z），界面要按看的人所在时区显示。
    原来直接把那串字面量印出来，UTC+8 的人看到的每个时间都早 8 小时。 */
@@ -1286,22 +1316,40 @@ function followBadges(group){
   return badges.join('');
 }
 
-/* 行首那一格说明「这条和主条目的关系」。三种语境的答案不一样：
-   跨站重复项要说是哪个站，线程动态要说是什么时候的哪条回复，本站变体才说变体名。
-   把线程回复标成「main」是没有信息量的——一个线程里九条回复全是 main。 */
-function followVariantRow(group,item,mark){
+function followCollectionItems(group){
+  const seen=new Set();
+  return [group.primary,...group.variants,...group.duplicates].filter(item=>{
+    if(!item||seen.has(item.id))return false;seen.add(item.id);return true});
+}
+
+/* 集合弹层沿用原来的动态语义：线程标题不能冒充每条回复的正文，
+   行首则说明它与主条目的关系。 */
+function followCollectionCopy(group,item,mark=''){
   let label=mark;
   if(!label&&group.is_release)label=localTime(item.published_at).slice(5,10)||'动态';
-  if(!label)label=item.variant_kind==='wip'?'WIP':(item.variant_label||item.variant_kind);
-  /* 线程里九条回复的标题全是线程名，摘要才是那条动态的内容。
-     只发了附件的回复没有正文，这时说清楚是没正文，比把线程名再印一遍强。 */
+  if(!label)label=item.variant_kind==='wip'?'WIP':(item.variant_label||item.variant_kind||'视频');
   const body=group.is_release
     ?(item.summary||(item.has_media?'（仅附件）':'（无正文）')):item.title;
-  const title=group.is_release&&item.author?`${item.author}：${body}`:body;
-  return `<li><span class="fvkind ${esc(item.variant_kind)}">${esc(label)}</span>
-    <a href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener">${esc(title)}</a>
-    <button data-follow-save="${item.id}"${item.status==='saved'?' disabled':''}>${
-      item.status==='saved'?'已保存':'保存'}</button></li>`;
+  return {label,title:group.is_release&&item.author?`${item.author}：${body}`:body};
+}
+
+function openFollowCollection(group){
+  const items=followCollectionItems(group),title=group.primary.title||'视频集合';
+  const dialog=playlistDialog({title,body:`<div class="fcollectionlist">${items.map(item=>{
+    const copy=followCollectionCopy(group,item,group.duplicates.includes(item)?item.provider_label:'');
+    const thumb=item.thumb_url
+      ?`<img src="${esc(item.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
+      :`<span>${sourceIcon(item.provider)}</span>`;
+    return `<div class="fcollectionrow"><a class="fcollectionthumb" href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener">${thumb}</a>
+      <a class="fcollectioncopy" href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener"><b>${esc(copy.title)}</b>
+        <span class="mono"><i class="fvkind ${esc(item.variant_kind||'')}">${esc(copy.label)}</i>${sourceIcon(item.provider)}${followWhen(item)}${item.duration?` · ${fmtDur(item.duration)}`:''}</span></a>
+      <button data-follow-save="${item.id}"${item.status==='saved'?' disabled':''}>${item.status==='saved'?'已保存':'保存'}</button></div>`}).join('')}</div>`});
+  dialog.classList.add('followcollectiondialog');
+  dialog.querySelectorAll('[data-follow-save]').forEach(button=>button.onclick=async()=>{
+    button.disabled=true;
+    try{await api('/api/follow/save',{method:'POST',body:JSON.stringify({item:+button.dataset.followSave})});button.textContent='已保存'}
+    catch(error){button.disabled=false;alert(error.message||'保存失败')}
+  });
 }
 
 function followCard(group){
@@ -1309,29 +1357,27 @@ function followCard(group){
   const thumb=item.thumb_url
     ? `<img src="${esc(item.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
     : `<span class="fnothumb">${esc(item.provider_label)}</span>`;
-  const rows=[...group.variants.map(v=>followVariantRow(group,v)),
-              ...group.duplicates.map(d=>followVariantRow(group,d,d.provider_label))].join('');
-  return `<article class="followitem" data-follow-item="${item.id}" data-status="${esc(item.status)}">
-    <a class="fthumb" href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener">${thumb}</a>
-    <div class="fbody">
-      <h4><a href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener">${esc(item.title)}</a></h4>
-      <p class="mono"><span>${sourceIcon(item.provider)}${esc(item.provider_label)}</span><span>${followWhen(item)}</span>${
-        item.duration?`<span>${fmtDur(item.duration)}</span>`:''}</p>
-      <div class="fbadges">${followBadges(group)}</div>
-      ${rows?`<ul class="fvariants">${rows}</ul>`:''}
-      ${item.media_needs_credential?'<p class="fnote">媒体需要登录会话才能取，发现本身不需要</p>':''}
+  const collection=followCollectionItems(group),collectionCount=collection.filter(row=>row.has_media).length;
+  const badges=followBadges(group);
+  const tags=(item.tags||[]).slice(0,3).map(tag=>
+    `<span class="tg general" data-follow-tag="${esc(tag)}">${esc(tagLabel(tag))}</span>`).join('');
+  return `<article class="card followitem${collection.length>1?' collection':''}" data-follow-item="${item.id}" data-status="${esc(item.status)}">
+    <div class="${collection.length>1?'mixstack ':''}followvisual"><div class="pic">
+      <a class="cardopenhit" href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener" aria-label="打开 ${esc(item.title)}"></a>${thumb}
+      <span class="badge" title="${esc(item.provider_label)}" aria-label="来源：${esc(item.provider_label)}">${sourceIcon(item.provider)}</span>
+      <span class="selectionMark">${icon('check')}</span>${item.duration?`<span class="dur mono">${fmtDur(item.duration)}</span>`:''}
+      ${collection.length>1?`<button class="mixbadge" data-follow-collection="${item.id}">${icon('play')}${collectionCount||collection.length} 个${collectionCount?'视频':'条目'}</button>`:''}
       <div class="factions">
-        <button data-follow-save="${item.id}"${item.status==='saved'?' disabled':''}>${
-          item.status==='saved'?`已保存 · asset #${item.asset_id}`:'保存到账本'}</button>
-        <button data-follow-status="${item.id}" data-to="seen"${item.status==='seen'?' disabled':''}>标记已看</button>
-        <button data-follow-status="${item.id}" data-to="ignored"${item.status==='ignored'?' disabled':''}>忽略</button>
-        ${/* 进得去就要出得来：已看和已忽略都能退回未看。已保存不给退——那一步写了
-             ledger，撤销要删 asset，不是一个按钮该做的事。 */
-          item.status==='seen'||item.status==='ignored'
-            ?`<button data-follow-status="${item.id}" data-to="new">恢复未看</button>`:''}
-        <span class="fstate" aria-live="polite"></span>
-      </div>
-    </div></article>`;
+        <button data-follow-save="${item.id}" title="${item.status==='saved'?'已保存':'保存到账本'}" aria-label="${item.status==='saved'?'已保存':'保存到账本'}"${item.status==='saved'?' disabled':''}>${item.status==='saved'?icon('check'):icon('bookmark-plus')}</button>
+        <button data-follow-status="${item.id}" data-to="seen" title="标记已看" aria-label="标记已看"${item.status==='seen'?' disabled':''}>${icon('eye')}</button>
+        <button data-follow-status="${item.id}" data-to="ignored" title="忽略" aria-label="忽略"${item.status==='ignored'?' disabled':''}>${icon('x')}</button>
+        ${item.status==='seen'||item.status==='ignored'?`<button data-follow-status="${item.id}" data-to="new" title="恢复未看" aria-label="恢复未看">${icon('rotate-ccw')}</button>`:''}
+      </div></div></div>
+    <div class="meta"><span class="mav fsourceavatar" title="${esc(item.provider_label)}">${sourceIcon(item.provider)}</span>
+      <div class="mtext"><a class="t cardtitle" href="${esc(item.url||'#')}" target="_blank" rel="noreferrer noopener">${esc(item.title)}</a>
+        <div class="s mono"><span>${followWhen(item)}</span>${badges?`<span class="fbadges">${badges}</span>`:''}</div>
+        ${tags?`<div class="ctags">${tags}</div>`:''}${item.media_needs_credential?'<span class="fnote">媒体需要登录会话才能取，发现本身不需要</span>':''}</div></div>
+    <span class="fstate" aria-live="polite"></span></article>`;
 }
 
 /* 检查完必须说清三件事：新增了什么、哪些确实没有更新、哪些失败了以及为什么。
@@ -1366,10 +1412,11 @@ function followCheckSummary(report){
 }
 
 /* ── 看的那一页 ── */
-let followAuthor='',followProvider='',followTag='';
+let followAuthor='',followProvider='',followTag='',followGroupsById=new Map();
 const TAGGED_PROVIDERS=['rule34xxx'];
 function renderFollow(){
   const groups=followData.groups||[],counts=followData.counts||{};
+  followGroupsById=new Map(groups.map(group=>[group.primary.id,group]));
   const sources=followData.sources||[];
   const broken=sources.filter(s=>s.last_status==='error'||s.last_status==='unauthorized');
   const byId=new Map(sources.map(source=>[source.id,source]));
@@ -1401,22 +1448,23 @@ function renderFollow(){
     if(followTag&&!(group.primary&&group.primary.tags||[]).includes(followTag))return false;
     return true;
   });
-  const providerPills=[['','全部来源'],...providers].map(([key,label])=>
-    `<button class="pill" data-follow-provider="${esc(key)}" aria-pressed="${key===followProvider}">${
-      key?sourceIcon(key):''}${esc(label)}</button>`).join('');
+  const providerPills=[...providers].map(([key,label])=>
+    `<button class="pill sourcepill" data-follow-provider="${esc(key)}" aria-pressed="${key===followProvider}"
+      title="${esc(label)}" aria-label="来源：${esc(label)}">${sourceIcon(key)}</button>`).join('');
+  const allCount=Object.values(counts).reduce((total,count)=>total+(+count||0),0);
   $('#stats').innerHTML=`<div class="follow">
     <div class="followhead"><h2 class="disp pagetitle">关注</h2>
       <button class="fcheck" data-follow-manage>${icon('settings')}管理关注</button></div>
     ${authors.size?`<div class="tier followauthors" aria-label="按作者筛选">${[...authors].map(([key,author])=>
       `<button class="av" data-follow-author="${esc(key)}" aria-pressed="${key===followAuthor}">
-        <span class="ring">${followAuthorAvatar(author.sources)}</span><b>${esc(author.name)}</b></button>`
+        <span class="ring">${followAuthorAvatar(author.sources)}</span><span class="nm">${esc(author.name)}</span></button>`
       ).join('')}</div>`:''}
     <div class="tagbar followfilters" aria-label="关注筛选">${FOLLOW_FILTERS.map(([key,label])=>
       `<button class="pill" data-follow-filter="${key}" aria-pressed="${key===followFilter}">${label}${
-        key?` <span class="n mono">${counts[key]||0}</span>`:''}</button>`).join('')}
-      <span class="sep" aria-hidden="true"></span>${providerPills}
+        ` <span class="n mono">${key?counts[key]||0:allCount}</span>`}</button>`).join('')}
+      ${providerPills?`<span class="sep" aria-hidden="true"></span>${providerPills}`:''}
       ${topTags.length?`<span class="sep" aria-hidden="true"></span>`+
-        [['','全部标签',0],...topTags].map(([key,label,n])=>
+        topTags.map(([key,label,n])=>
           `<button class="pill" data-follow-tag="${esc(key)}" aria-pressed="${key===followTag}">${
             esc(label)}${n?` <span class="n mono">${n}</span>`:''}</button>`).join(''):''}</div>
     ${topTags.length?`<p class="fmeta followfilternote">内容标签目前由 ${
@@ -1433,6 +1481,9 @@ function renderFollow(){
       <span class="fmeta">${esc(followBackfillState(sources))}</span></div>`:''}</div>`;
   wireFollowItems();
   wireFollowOlder();
+  wireDrag($('#stats').querySelector('.followauthors'));
+  wireDrag($('#stats').querySelector('.followfilters'));
+  paintSelection();
   $('#stats').querySelectorAll('[data-check-dismiss]').forEach(button=>button.onclick=()=>{
     followCheckReport=null;button.closest('.fcheckreport')?.remove()});
   $('#stats').querySelectorAll('[data-follow-filter]').forEach(button=>button.onclick=()=>{
@@ -1440,9 +1491,9 @@ function renderFollow(){
   $('#stats').querySelectorAll('[data-follow-author]').forEach(button=>button.onclick=()=>{
     followAuthor=followAuthor===button.dataset.followAuthor?'':button.dataset.followAuthor;renderFollow()});
   $('#stats').querySelectorAll('[data-follow-provider]').forEach(button=>button.onclick=()=>{
-    followProvider=button.dataset.followProvider;renderFollow()});
+    followProvider=followProvider===button.dataset.followProvider?'':button.dataset.followProvider;renderFollow()});
   $('#stats').querySelectorAll('[data-follow-tag]').forEach(button=>button.onclick=()=>{
-    followTag=button.dataset.followTag;renderFollow()});
+    followTag=followTag===button.dataset.followTag?'':button.dataset.followTag;renderFollow()});
   $('#stats').querySelectorAll('[data-follow-manage]').forEach(button=>
     button.onclick=()=>openFollowManage());
 }
@@ -1730,11 +1781,30 @@ async function openFollowManage(push=true){
 /* ── 共用接线 ── */
 function wireFollowItems(){
   const root=$('#stats');
-  root.querySelectorAll('[data-follow-status]').forEach(button=>button.onclick=async()=>{
+  root.querySelectorAll('[data-follow-status]').forEach(button=>button.onclick=async event=>{
+    event.stopPropagation();
     await followWrite(button,'/api/follow/status',
       {item:+button.dataset.followStatus,to:button.dataset.to})});
-  root.querySelectorAll('[data-follow-save]').forEach(button=>button.onclick=async()=>{
+  root.querySelectorAll('[data-follow-save]').forEach(button=>button.onclick=async event=>{
+    event.stopPropagation();
     await followWrite(button,'/api/follow/save',{item:+button.dataset.followSave})});
+  root.querySelectorAll('[data-follow-collection]').forEach(button=>button.onclick=event=>{
+    event.stopPropagation();const group=followGroupsById.get(+button.dataset.followCollection);
+    if(group)openFollowCollection(group)});
+  root.querySelectorAll('.followitem[data-follow-item]').forEach(card=>{
+    const id=+card.dataset.followItem;
+    card.onclick=event=>{
+      if(event.target.closest('[data-follow-status],[data-follow-save],[data-follow-collection],.tg'))return;
+      if(selectMode||event.shiftKey||event.ctrlKey||event.metaKey){
+        event.preventDefault();event.stopPropagation();toggleFollowSelection(id,event.shiftKey)}
+    };
+    card.querySelectorAll('a').forEach(link=>link.onclick=event=>{
+      if(selectMode||event.shiftKey||event.ctrlKey||event.metaKey){
+        event.preventDefault();event.stopPropagation();toggleFollowSelection(id,event.shiftKey)}
+    });
+    const mark=card.querySelector('.selectionMark');
+    if(mark)mark.onclick=event=>{event.preventDefault();event.stopPropagation();toggleFollowSelection(id,event.shiftKey)};
+  });
 }
 
 function wireFollowManage(){
@@ -2581,6 +2651,7 @@ async function reloadCurrentSurface(){
     await openIndex(path.slice(1),$('#iq')?.value.trim()||'',false);
     return;
   }
+  if(path==='/follow'){await openFollow(false);return}
   await load(true);
 }
 function navOn(k){
@@ -2615,10 +2686,12 @@ function navTo(k){
 }
 function syncHeaderActions(){
   const path=decodeURIComponent(location.pathname),parts=path.split('/').filter(Boolean);
+  if(selectMode&&selectSurface!==(path==='/follow'?'follow':'catalog'))
+    setSelectMode(false,true);
   const entity=parts.length>1&&Object.prototype.hasOwnProperty.call(ROUTE_ENTITIES,parts[0]);
   const catalog=isCatalogPath(path)||path==='/trash';
-  const canSelect=catalog||entity||path==='/tags';
-  const canDensity=catalog||entity;
+  const canSelect=catalog||entity||path==='/tags'||path==='/follow';
+  const canDensity=catalog||entity||path==='/follow';
   const canRefresh=isCatalogPath(path)||['/stats','/review','/duplicates','/quality-goals','/playlists'].includes(path);
   $('#selectMode').hidden=!canSelect;$('#density').hidden=!canDensity;$('#refresh').hidden=!canRefresh;
   $('#refresh').title=isCatalogPath(path)?'换一批推荐':'刷新当前页面';
@@ -3475,7 +3548,7 @@ document.addEventListener('keydown',e=>{
     if(!$('#searchMenu').hidden){$('#searchMenu').hidden=true;return}
     if(!$('#tok').hidden){$('#tokClose').click();return}
     if($('#drawer').classList.contains('open')){openDrawer(false);return}
-    if(selectMode||selected.size){setSelectMode(false,true);return}
+    if(selectMode||selected.size||followSelected.size){setSelectMode(false,true);return}
     const st=$('#stage');if(st&&!st.hidden){const c=$('#closeStage');if(c)c.click()}
     return;
   }
