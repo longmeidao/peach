@@ -1365,14 +1365,33 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 
    这段必须排在 `.frow` 之后：测试用 `index('.frow{')` 取那条规则的正文，
    放前面的话选择器里的同名片段会被先匹配到，取回来的是这里的规则。 */
-.fauthor{border-top:1px solid var(--line-soft)}
-.fauthor:first-child{border-top:0}
+.fauthor{border-top:0}
 .fauthorhead{display:flex;align-items:center;gap:9px;padding:10px 0 6px}
 .fauthorhead b{font-size:var(--fs-md);min-width:0;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
 .fauthorhead .fmeta{margin-left:auto;flex:none}
 .fauthorhead .fmeta.warn{margin-left:0}
-.fauthor .fsource.frow{padding-left:37px}
+.fauthor .fsource.frow{padding-left:37px;display:grid;
+  grid-template-columns:22px minmax(0,1fr) auto auto auto auto;gap:10px;flex-wrap:nowrap}
+.fauthor .fsource.frow>b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fsource.disabled{opacity:.62}
+.fchannelcheck{position:relative;width:20px;height:20px;display:grid;place-items:center;align-self:center;cursor:pointer}
+.fchannelcheck input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.fchannelcheck span{width:18px;height:18px;border:1px solid var(--border-15);border-radius:5px;
+  display:grid;place-items:center;background:var(--ground);color:transparent;transition:.14s ease}
+.fchannelcheck span svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2.5}
+.fchannelcheck input:checked+span{background:var(--tungsten);border-color:var(--tungsten);color:var(--ground)}
+.fchannelcheck input:focus-visible+span{outline:2px solid var(--tungsten);outline-offset:2px}
+.fchannelcheck input:disabled+span{cursor:not-allowed;opacity:.55}
+.fsourceactions{display:flex;gap:4px;white-space:nowrap}
+.frowicon{width:32px;height:32px;padding:0;display:grid;place-items:center;flex:none;
+  border:1px solid var(--border-15);border-radius:6px;background:transparent;color:var(--muted);cursor:pointer}
+.frowicon:hover{color:var(--ink);border-color:var(--tungsten)}
+.frowicon:disabled{cursor:not-allowed;opacity:.42;color:var(--muted);border-color:var(--border-15)}
+.frowicon.danger:hover{color:var(--drop);border-color:var(--drop)}
+.frowicon svg{width:16px;height:16px;stroke:currentColor;fill:none}
+.frowicon.busy svg{animation:spin .8s linear infinite}
+.fsource.frow>.frowerr{grid-column:1/-1}
 .favatar{width:28px;height:28px;flex:none;border-radius:var(--pill-radius);object-fit:cover;
   background:var(--overlay-5);outline:1px solid oklch(1 0 0 / 0.1);outline-offset:-1px}
 /* 取不到头像时是一个明确的空位，不是首字母——首字母会让「未取得」看着像取到了。 */
@@ -1390,6 +1409,21 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fchip:hover{border-color:var(--tungsten);color:var(--ink)}
 .fchip:active{scale:.96}
 .flink:hover{text-decoration:underline}
+.faliasmanager{margin-top:12px;border-top:1px solid var(--line-soft);padding-top:10px}
+.faliasmanager>summary{cursor:pointer;color:var(--ink-2);font-weight:600;list-style-position:inside}
+.faliassuggestions,.faliasrows{display:grid;gap:6px;margin-top:10px}
+.faliassuggest,.faliasrow{display:flex;align-items:center;gap:10px;min-width:0}
+.faliassuggest>span,.faliasrow>span{display:flex;align-items:center;gap:7px;min-width:0;flex:1;flex-wrap:wrap}
+.faliassuggest i{font-style:normal;color:var(--muted)}
+.faliassuggest small{color:var(--muted)}
+.faliasform{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:7px;margin-top:10px}
+.faliasform input{min-width:0;height:34px;padding:0 10px;border:1px solid var(--border-15);
+  border-radius:6px;background:var(--ground);color:var(--ink);font:inherit}
+.faliaschip{display:inline-flex;align-items:center;gap:3px;color:var(--ink-2)}
+.faliaschip button{width:24px;height:24px;padding:0;border:0;background:transparent;color:var(--muted);
+  display:grid;place-items:center;cursor:pointer}
+.faliaschip button:hover{color:var(--drop)}
+.faliaschip svg{width:14px;height:14px;stroke:currentColor;fill:none}
 
 /* summary 是 .frow 的 flex 子项，默认 flex:0 1 auto 不撑满整行——于是有折叠体的那几行
    状态贴在名字后面，没折叠体的却靠右，同一列两种对齐。让它占满，状态就统一在右边。 */
@@ -1432,6 +1466,8 @@ details.fcred{display:block}
   .frow{gap:8px}
   .fsources{grid-template-columns:1fr}
   .frow .fmeta:nth-of-type(2){display:none}
+  .faliasform{grid-template-columns:1fr}
+  .faliasform .fbtn{width:100%}
 }
 
 /* 查找结果属于「添加关注」这一个动作，留在同一容器里；发丝线只分阶段，不再另套卡片。 */

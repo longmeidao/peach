@@ -5,7 +5,7 @@ description: 在用户说并行、开工作树、worktree、暂存、提交、re
 
 # 并行 worktree 与提交边界
 
-最后复核：2026-08-26
+最后复核：2026-08-27
 证据来源：`docs/HANDOFF.md`「并行智能体与 Git 工作树」、`README.md`、ADR-0015、ADR-0017。
 
 ## 何时使用
@@ -25,19 +25,21 @@ description: 在用户说并行、开工作树、worktree、暂存、提交、re
    工作树机制（`.claude/worktrees/`）**：它在分支被集成后会被回收，目录却留在原地。
 
 2. 工作者只在自己的工作树内编辑。工作树不复制 `.venv`。
-3. 测试在当前工作树根目录运行，每个平台只有一个入口：
+3. 测试在当前工作树根目录运行，每个平台只有一个入口。日常开发先跑本功能域：
 
    ```powershell
-   & .\scripts\test.ps1        # Windows
+   & .\scripts\test.ps1 -Scope follow   # Windows 示例
    ```
 
    ```bash
-   ./scripts/test.sh            # macOS / Linux
+   ./scripts/test.sh follow              # macOS / Linux 示例
    ```
 
+   可选域为 `follow`、`catalog`、`media`、`sync`、`metadata`、`tooling`；不传参数是 `full`。
    两者契约相同：从 Git common directory 定位主项目 venv，强制 `PYTHONPATH=<当前工作树>/src`，
    核对 `peach.__file__` 后运行标准库 `unittest`。禁止手工拼接 venv 路径或调用 pytest。
-   两个入口都要绿——只在一个平台通过的改动不算完成。
+   跨多个域、迁移、共享测试设施、依赖、构建/发布或大面积改动必须跑 `full`；局部功能只跑
+   本域及其公共门槛。两个平台的入口契约都要保持可用。
 4. 报告 `ready` 前先 rebase 到当前 `master` 并重跑测试；同文件冲突在工作者分支解决。
 5. 协调者审核后运行 `integrate`。完成顺序不决定覆盖顺序。
 

@@ -61,6 +61,17 @@ class FollowCliTests(unittest.TestCase):
         _, output = self._run("add", "--provider", "kemono", "--ref", "fanbox/30917150")
         self.assertIn("· work ·", output)
 
+    def test_add_derives_official_creator_page_urls(self):
+        cases = (
+            ("fanbox", "ffxivinitiala", "https://ffxivinitiala.fanbox.cc/"),
+            ("patreon", "sample", "https://www.patreon.com/cw/sample"),
+            ("subscribestar", "subscribestar.adult/initiala",
+             "https://subscribestar.adult/initiala"),
+        )
+        for provider, ref, expected in cases:
+            _, output = self._run("add", "--provider", provider, "--ref", ref)
+            self.assertIn(expected, output)
+
     def test_list_says_so_when_nothing_is_registered(self):
         _, output = self._run("list")
         self.assertIn("还没有登记", output)

@@ -1,5 +1,8 @@
 ﻿[CmdletBinding()]
-param()
+param(
+    [ValidateSet('full', 'follow', 'catalog', 'media', 'sync', 'metadata', 'tooling')]
+    [string]$Scope = 'full'
+)
 
 $ErrorActionPreference = 'Stop'
 $WorktreeRoot = (Resolve-Path -LiteralPath (Split-Path -Parent $PSScriptRoot)).Path
@@ -47,7 +50,7 @@ try {
     }
 
     Write-Host "Peach source: $LoadedPath"
-    & $Python -m unittest discover -s tests -p 'test_*.py' -v
+    & $Python scripts\test_runner.py --scope $Scope
     exit $LASTEXITCODE
 } finally {
     Pop-Location

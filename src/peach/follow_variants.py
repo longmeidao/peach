@@ -251,6 +251,9 @@ def classify(
 
 #: 同一 `release_key` 下选主条目时的来源优先级；越小越优先。未列出的排在最后。
 PROVIDER_PRIORITY: dict[str, int] = {
+    "fanbox": 1,
+    "subscribestar": 2,
+    "patreon": 3,
     "kemono": 10,
     "pawchive": 15,
     "coomer": 20,

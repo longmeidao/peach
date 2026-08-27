@@ -1612,6 +1612,9 @@ function followAuthorGroups(sources){
 
 /* 这些地址来自各站实际声明的图标；内容哈希变更或站点拒绝外链时退回纯文字。 */
 const SOURCE_ICONS={
+  fanbox:'https://www.fanbox.cc/favicon.ico',
+  patreon:'https://www.patreon.com/favicon.ico',
+  subscribestar:'https://subscribestar.adult/favicon.ico',
   kemono:'https://kemono.cr/assets/favicon-CPB6l7kH.ico',
   coomer:'https://coomer.st/assets/favicon-CPB6l7kH.ico',
   pawchive:'https://pawchive.pw/static/favicon.png',
@@ -1647,6 +1650,9 @@ function followAuthorAvatar(group){
 function followAuthorName(group){
   const entity=group.find(source=>source.entity_name);
   if(entity)return entity.entity_name;
+  const aliasGroup=(followData.author_aliases||[]).find(
+    item=>`name:${item.canonical_key}`===group[0]?.author_key);
+  if(aliasGroup)return aliasGroup.canonical_name;
   // 官方主页来源不只优先提供头像，也优先提供作者写法；否则 F95 的线程标题
   // `Lazy Procrastinator Collection` 会因为大写字母更多而抢成分组标题。
   const official=group.find(source=>source.official_avatar_url);
@@ -1679,15 +1685,50 @@ function followAuthorBlock(group){
 function followSourceRow(source){
   const state=source.last_status||'未检查';
   const bad=state==='error'||state==='unauthorized';
-  return `<div class="frow fsource${bad?' bad':''}">
+  return `<div class="frow fsource${bad?' bad':''}${source.enabled?'':' disabled'}">
+    <label class="fchannelcheck" title="${source.enabled?'参与检查更新':'暂停检查更新'}">
+      <input type="checkbox" data-follow-enabled="${source.id}" ${source.enabled?'checked':''}
+        aria-label="${source.enabled?'暂停':'启用'} ${esc(source.label)} 的更新检查">
+      <span aria-hidden="true">${icon('check')}</span>
+    </label>
     <b><a class="fsourcelink" href="${esc(source.url)}" target="_blank"
       rel="noreferrer noopener" title="打开原来源">${esc(source.label)}</a></b>
-    <span class="fmeta">${sourceIcon(source.provider)}${esc(source.provider_label)}</span>
-    <span class="fmeta">${esc(source.last_checked_at?localTime(source.last_checked_at):'未检查')}</span>
-    <span class="fmeta${bad?' warn':''}">${esc(state)}</span>
-    <button class="fbtn small" data-follow-check="${source.id}">检查</button>
-    <button class="fbtn small fquiet" data-follow-remove="${source.id}">移除</button>
+    <span class="fmeta fprovider">${sourceIcon(source.provider)}${esc(source.provider_label)}</span>
+    <span class="fmeta fchecked">${esc(source.last_checked_at?localTime(source.last_checked_at):'未检查')}</span>
+    <span class="fmeta fstatus${bad?' warn':''}">${esc(state)}</span>
+    <span class="fsourceactions">
+      <button class="frowicon" data-follow-check="${source.id}" title="检查更新"
+        ${source.enabled?'':'disabled'}
+        aria-label="检查 ${esc(source.label)} 的更新">${icon('refresh-cw')}</button>
+      <button class="frowicon danger" data-follow-remove="${source.id}" title="移除来源"
+        aria-label="移除 ${esc(source.label)}">${icon('trash')}</button>
+    </span>
     ${source.last_error?`<p class="frowerr">${esc(source.last_error)}</p>`:''}</div>`;
+}
+
+function followAliasManager(groups,suggestions){
+  groups=groups||[];suggestions=suggestions||[];
+  const detected=suggestions.map(item=>`<div class="faliassuggest">
+    <span><b>${esc(item.canonical)}</b><i>+</i><b>${esc(item.alias)}</b>
+      <small>${esc(item.evidence)}</small></span>
+    <button class="fbtn small" data-follow-alias-add
+      data-canonical="${esc(item.canonical)}" data-alias="${esc(item.alias)}">合并</button>
+  </div>`).join('');
+  const saved=groups.map(group=>`<div class="faliasrow"><b>${esc(group.canonical_name)}</b>
+    <span>${group.aliases.map(alias=>`<span class="faliaschip">${esc(alias.name)}
+      <button type="button" data-follow-alias-remove="${esc(alias.name)}"
+        title="移除别名" aria-label="移除别名 ${esc(alias.name)}">${icon('x')}</button></span>`).join('')}</span>
+  </div>`).join('');
+  return `<details class="faliasmanager"${suggestions.length?' open':''}>
+    <summary>作者别名${suggestions.length?` · 检测到 ${suggestions.length} 组可能重复`:groups.length?` · ${groups.length} 组`:''}</summary>
+    ${detected?`<div class="faliassuggestions">${detected}</div>`:''}
+    <form class="faliasform" id="followAliasAdd">
+      <input name="canonical" required placeholder="规范作者名" aria-label="规范作者名">
+      <input name="alias" required placeholder="平台别名" aria-label="平台别名">
+      <button class="fbtn" type="submit">保存别名</button>
+    </form>
+    ${saved?`<div class="faliasrows">${saved}</div>`:'<p class="fnote">还没有保存作者别名。</p>'}
+  </details>`;
 }
 
 /* 四种状态四种颜色：待办（缺凭据）和完成（已配置）不能同色，那正是要一眼分开的两件事。 */
@@ -1765,6 +1806,7 @@ function renderFollowManage(credentials){
         ${(followData.suggestions||[]).length
           ?`<div class="fguess"><span class="fmeta">猜你喜欢</span>${
               followSuggestionChips(followData.suggestions)}</div>`:''}
+        ${followAliasManager(followData.author_aliases,followData.alias_suggestions)}
         <div id="followPicks"></div>
       </section>
       <section class="fsec">
@@ -1801,7 +1843,9 @@ function renderFollowManage(credentials){
   wireFollowManage();
   if(locked)$('#stats').querySelectorAll(
     '#followAdd textarea,#followAdd button,[data-follow-remove],[data-follow-check],'+
-    '[data-follow-bulk],[data-follow-guess],[data-cred-form] input,'+
+    '[data-follow-enabled],'+
+    '[data-follow-bulk],[data-follow-guess],[data-follow-alias-add],'+
+    '[data-follow-alias-remove],#followAliasAdd input,#followAliasAdd button,[data-cred-form] input,'+
     '[data-cred-form] button,[data-cred-clear]'
   ).forEach(control=>{control.disabled=true});
 }
@@ -1895,10 +1939,20 @@ function wireFollowManage(){
       await openFollowManage(false);
     }catch(error){button.disabled=false;alert(error.message)}
   });
+  root.querySelectorAll('[data-follow-enabled]').forEach(control=>control.onchange=async()=>{
+    const enabled=control.checked;control.disabled=true;
+    try{
+      await api('/api/follow/source',{method:'POST',body:JSON.stringify(
+        {action:'enabled',id:Number(control.dataset.followEnabled),enabled})});
+      await openFollowManage(false);
+    }catch(error){control.checked=!enabled;control.disabled=false;alert(error.message)}
+  });
   root.querySelectorAll('[data-follow-check]').forEach(button=>button.onclick=async()=>{
     if(followBusy)return;
-    followBusy=true;const label=button.innerHTML;button.disabled=true;
-    button.textContent='检查中…';
+    followBusy=true;const label=button.innerHTML,oldTitle=button.title;
+    const oldAria=button.getAttribute('aria-label');
+    button.disabled=true;button.classList.add('busy');button.title='检查中…';
+    button.setAttribute('aria-label','检查中…');
     try{
       const id=button.dataset.followCheck;
       const result=await api('/api/follow/check',{method:'POST',
@@ -1916,7 +1970,35 @@ function wireFollowManage(){
       if(box)box.outerHTML=followCheckSummary(followCheckReport);
       else await openFollowManage(false);
     }
-    finally{followBusy=false;button.disabled=false}
+    finally{followBusy=false;button.disabled=false;button.classList.remove('busy');
+      button.title=oldTitle;if(oldAria===null)button.removeAttribute('aria-label');
+      else button.setAttribute('aria-label',oldAria)}
+  });
+  const saveAuthorAlias=async(canonical,alias,button)=>{
+    button.disabled=true;
+    try{
+      await api('/api/follow/author-alias',{method:'POST',body:JSON.stringify(
+        {action:'add',canonical,alias})});
+      await openFollowManage(false);
+    }catch(error){button.disabled=false;alert(error.message)}
+  };
+  root.querySelectorAll('[data-follow-alias-add]').forEach(button=>button.onclick=()=>
+    saveAuthorAlias(button.dataset.canonical,button.dataset.alias,button));
+  const aliasForm=root.querySelector('#followAliasAdd');
+  if(aliasForm)aliasForm.onsubmit=event=>{
+    event.preventDefault();const data=new FormData(aliasForm),button=aliasForm.querySelector('button');
+    saveAuthorAlias(String(data.get('canonical')||'').trim(),
+      String(data.get('alias')||'').trim(),button);
+  };
+  root.querySelectorAll('[data-follow-alias-remove]').forEach(button=>button.onclick=async()=>{
+    const alias=button.dataset.followAliasRemove;
+    if(!confirm(`移除作者别名「${alias}」？对应来源会恢复成独立作者组。`))return;
+    button.disabled=true;
+    try{
+      await api('/api/follow/author-alias',{method:'POST',body:JSON.stringify(
+        {action:'remove',alias})});
+      await openFollowManage(false);
+    }catch(error){button.disabled=false;alert(error.message)}
   });
   root.querySelectorAll('[data-follow-guess]').forEach(chip=>chip.onclick=()=>{
     if(!form)return;

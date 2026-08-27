@@ -141,6 +141,7 @@ class GroupDuplicatesTests(unittest.TestCase):
         self.assertEqual(group_duplicates([wip, main]), (main, main))
 
     def test_provider_priority_breaks_ties_between_equal_variants(self):
+        self.assertLess(PROVIDER_PRIORITY["fanbox"], PROVIDER_PRIORITY["kemono"])
         self.assertLess(PROVIDER_PRIORITY["kemono"], PROVIDER_PRIORITY["rule34video"])
         low = _Item("1", "rule34video", "k", "main", "2026-08-01")
         high = _Item("2", "kemono", "k", "main", "2026-08-01")

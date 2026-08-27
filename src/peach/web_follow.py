@@ -24,6 +24,9 @@ from .taste_history import read_creator_candidates
 
 #: 界面上给每个来源的中文短名。没登记的 provider 直接显示原名。
 PROVIDER_LABELS = {
+    "fanbox": "FANBOX",
+    "patreon": "Patreon",
+    "subscribestar": "SubscribeStar",
     "kemono": "Kemono",
     "coomer": "Coomer",
     "pawchive": "Pawchive",
@@ -195,6 +198,16 @@ def _normalized_author_name(value: str, *, provider: str = "") -> str:
     return _AUTHOR_NOISE_RE.sub("", stripped.casefold())
 
 
+def _author_display_name(row) -> str:
+    """Return the readable author spelling carried by one follow source."""
+    if row["entity_id"] and row["entity_name"]:
+        return str(row["entity_name"])
+    label = _LABEL_SERVICE_RE.sub("", str(row["label"] or row["ref"] or "").strip())
+    if str(row["provider"] or "") == "f95zone":
+        label = _F95_TITLE_SUFFIX_RE.sub("", label)
+    return label.strip()
+
+
 def _source_metadata(row) -> dict:
     try:
         payload = json.loads(row["metadata_json"] or "{}")
@@ -203,7 +216,7 @@ def _source_metadata(row) -> dict:
     return payload if isinstance(payload, dict) else {}
 
 
-def author_key(row) -> str:
+def author_key(row, aliases: dict[str, str] | None = None) -> str:
     """把一条来源归到「哪个作者」。
 
     这跟 ADR-0019 的变体分组**不是同一个轴**：那个是同一条发布的多个变体，
@@ -221,10 +234,74 @@ def author_key(row) -> str:
         return f"entity:{entity}"
     recorded = str(_source_metadata(row).get("author_key") or "").strip()
     if recorded:
-        return f"name:{recorded}"
-    label = str(row["label"] or row["ref"] or "")
-    normalized = _normalized_author_name(label, provider=str(row["provider"] or ""))
-    return f"name:{normalized}" if normalized else f"source:{row['id']}"
+        normalized = recorded
+    else:
+        label = str(row["label"] or row["ref"] or "")
+        normalized = _normalized_author_name(label, provider=str(row["provider"] or ""))
+    if normalized:
+        normalized = (aliases or {}).get(normalized, normalized)
+        return f"name:{normalized}"
+    return f"source:{row['id']}"
+
+
+def _follow_alias_state(connection) -> tuple[dict[str, str], list[dict]]:
+    rows = connection.execute(
+        "SELECT alias_key,alias_name,canonical_key,canonical_name,source "
+        "FROM follow_author_alias ORDER BY canonical_name,alias_name"
+    ).fetchall()
+    mapping = {str(row["alias_key"]): str(row["canonical_key"]) for row in rows}
+    groups: dict[str, dict] = {}
+    for row in rows:
+        canonical_key = str(row["canonical_key"])
+        group = groups.setdefault(canonical_key, {
+            "canonical_key": canonical_key,
+            "canonical_name": str(row["canonical_name"]),
+            "aliases": [],
+        })
+        if str(row["alias_key"]) != canonical_key:
+            group["aliases"].append({
+                "key": str(row["alias_key"]),
+                "name": str(row["alias_name"]),
+                "source": str(row["source"]),
+            })
+    return mapping, [group for group in groups.values() if group["aliases"]]
+
+
+def _follow_alias_suggestions(rows, aliases: dict[str, str]) -> list[dict]:
+    """Suggest conservative cross-platform aliases; never merge automatically."""
+    identities: dict[str, dict] = {}
+    for row in rows:
+        if row["entity_id"]:
+            continue
+        raw_key = author_key(row).removeprefix("name:")
+        if not raw_key or raw_key.startswith("source:"):
+            continue
+        identity = identities.setdefault(raw_key, {
+            "key": raw_key, "name": _author_display_name(row), "providers": set(),
+        })
+        identity["providers"].add(str(row["provider"]))
+        candidate_name = _author_display_name(row)
+        if candidate_name and len(candidate_name) < len(identity["name"]):
+            identity["name"] = candidate_name
+
+    suggestions = []
+    values = sorted(identities.values(), key=lambda item: item["key"])
+    for index, left in enumerate(values):
+        for right in values[index + 1:]:
+            if aliases.get(left["key"], left["key"]) == aliases.get(
+                    right["key"], right["key"]):
+                continue
+            shorter, longer = sorted((left, right), key=lambda item: len(item["key"]))
+            if len(shorter["key"]) < 5 or shorter["key"] not in longer["key"]:
+                continue
+            suggestions.append({
+                "canonical": shorter["name"],
+                "alias": longer["name"],
+                "evidence": "规范化名称存在包含关系，仅供人工确认",
+            })
+            if len(suggestions) >= 12:
+                return suggestions
+    return suggestions
 
 
 def _avatar_url(provider: str, ref: str) -> str | None:
@@ -263,14 +340,14 @@ def _official_avatar_url(provider: str, ref: str) -> str | None:
     return "/follow-avatar?" + urllib.parse.urlencode({"service": service, "id": user})
 
 
-def _source_payload(row) -> dict:
+def _source_payload(row, aliases: dict[str, str] | None = None) -> dict:
     return {
         "id": row["id"],
         "provider": row["provider"],
         "provider_label": PROVIDER_LABELS.get(row["provider"], row["provider"]),
         "ref": row["ref"],
         "label": row["label"],
-        "author_key": author_key(row),
+        "author_key": author_key(row, aliases),
         "official_avatar_url": _official_avatar_url(row["provider"], row["ref"]),
         "avatar_url": _avatar_url(row["provider"], row["ref"]),
         "url": row["url"],
@@ -300,7 +377,10 @@ def q_follow(contract, args) -> dict:
     source_id = int(source) if str(source or "").isdigit() else None
     with contract.database.read_connection() as connection:
         store = _store(contract, connection)
-        sources = [_source_payload(row) for row in store.sources()]
+        source_rows = store.sources()
+        alias_map, author_aliases = _follow_alias_state(connection)
+        sources = [_source_payload(row, alias_map) for row in source_rows]
+        alias_suggestions = _follow_alias_suggestions(source_rows, alias_map)
         items = tuple(item for item in store.items(
             statuses=statuses, source_id=source_id, limit=limit)
             if not _excluded_item(item))
@@ -321,6 +401,8 @@ def q_follow(contract, args) -> dict:
     return {
         "ok": True,
         "sources": sources,
+        "author_aliases": author_aliases,
+        "alias_suggestions": alias_suggestions,
         "suggestions": suggestions,
         "groups": groups,
         "counts": {status: int(counts.get(status, 0)) for status in _STATUSES},
@@ -499,6 +581,18 @@ def w_follow_source(contract, body) -> dict:
         with contract.database.write_transaction() as connection:
             connection.execute("DELETE FROM follow_source WHERE id=?", (source_id,))
         return {"ok": True, "removed": source_id}
+    if action == "enabled":
+        source_id = body.get("id")
+        enabled = body.get("enabled")
+        if not isinstance(source_id, int) or not isinstance(enabled, bool):
+            raise ValueError("id must be an integer and enabled must be a boolean")
+        with contract.database.write_transaction() as connection:
+            store = _store(contract, connection)
+            exists = any(row["id"] == source_id for row in store.sources())
+            if not exists:
+                raise ValueError("这个关注来源不存在")
+            store.set_enabled(source_id, enabled)
+        return {"ok": True, "source": source_id, "enabled": enabled}
     if action != "add":
         raise ValueError(f"unknown follow source action: {action}")
 
@@ -519,6 +613,73 @@ def w_follow_source(contract, body) -> dict:
                     if row["source"] == source_id), None)
     return {"ok": True, "source": source_id, "provider": parsed.provider,
             "ref": parsed.ref, "label": label, "checked": outcome}
+
+
+def w_follow_author_alias(contract, body) -> dict:
+    """Add or remove a user-confirmed cross-platform follow-author alias."""
+    action = str(body.get("action") or "add")
+    if action == "remove":
+        alias_name = str(body.get("alias") or "").strip()
+        alias_key = _normalized_author_name(alias_name)
+        if not alias_key:
+            raise ValueError("别名不能为空")
+        with contract.database.write_transaction() as connection:
+            row = connection.execute(
+                "SELECT canonical_key FROM follow_author_alias WHERE alias_key=?",
+                (alias_key,),
+            ).fetchone()
+            if row is None:
+                raise ValueError("这个作者别名不存在")
+            if str(row["canonical_key"]) == alias_key:
+                raise ValueError("规范名不能作为别名移除")
+            connection.execute(
+                "DELETE FROM follow_author_alias WHERE alias_key=?", (alias_key,))
+            _, groups = _follow_alias_state(connection)
+        return {"ok": True, "removed": alias_name, "author_aliases": groups}
+    if action != "add":
+        raise ValueError(f"unknown follow author alias action: {action}")
+
+    canonical_name = str(body.get("canonical") or "").strip()
+    alias_name = str(body.get("alias") or "").strip()
+    canonical_key = _normalized_author_name(canonical_name)
+    alias_key = _normalized_author_name(alias_name)
+    if not canonical_key or not alias_key:
+        raise ValueError("规范作者名和平台别名都不能为空")
+    if canonical_key == alias_key:
+        raise ValueError("这两个名字归一化后相同，不需要维护别名")
+
+    stamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    with contract.database.write_transaction() as connection:
+        mapping, _ = _follow_alias_state(connection)
+        canonical_root = mapping.get(canonical_key, canonical_key)
+        alias_root = mapping.get(alias_key, alias_key)
+        if canonical_root != alias_root:
+            connection.execute(
+                "UPDATE follow_author_alias SET canonical_key=?,canonical_name=?,updated_at=? "
+                "WHERE canonical_key=?",
+                (canonical_root, canonical_name, stamp, alias_root),
+            )
+        connection.execute(
+            "INSERT INTO follow_author_alias(alias_key,alias_name,canonical_key,"
+            "canonical_name,source,created_at,updated_at) VALUES(?,?,?,?,?,?,?) "
+            "ON CONFLICT(alias_key) DO UPDATE SET canonical_key=excluded.canonical_key,"
+            "canonical_name=excluded.canonical_name,alias_name=excluded.alias_name,"
+            "source=excluded.source,updated_at=excluded.updated_at",
+            (canonical_root, canonical_name, canonical_root, canonical_name,
+             "manual", stamp, stamp),
+        )
+        connection.execute(
+            "INSERT INTO follow_author_alias(alias_key,alias_name,canonical_key,"
+            "canonical_name,source,created_at,updated_at) VALUES(?,?,?,?,?,?,?) "
+            "ON CONFLICT(alias_key) DO UPDATE SET canonical_key=excluded.canonical_key,"
+            "canonical_name=excluded.canonical_name,alias_name=excluded.alias_name,"
+            "source=excluded.source,updated_at=excluded.updated_at",
+            (alias_key, alias_name, canonical_root, canonical_name,
+             "manual", stamp, stamp),
+        )
+        _, groups = _follow_alias_state(connection)
+    return {"ok": True, "canonical": canonical_name, "alias": alias_name,
+            "author_aliases": groups}
 
 
 #: 一次最多解析多少行。粘一屏链接是正常的，粘一整个书签导出不是。
