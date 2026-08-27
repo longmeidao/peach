@@ -29,6 +29,7 @@ from peach.tray import (
 )
 from peach.sync import SyncPlan
 from peach.versioning import UpdateResult, VersionSnapshot
+from peach.windows_update import PendingWindowsUpdate, WindowsUpdatePreparation
 
 
 class Response:
@@ -437,6 +438,91 @@ class SourceSyncTests(unittest.TestCase):
         self.assertIn("同步开发进度", labels)
         self.assertLess(labels.index("同步开发进度"), labels.index("同步 Ledger"))
         self.assertIn("sync_source", source)
+
+    def test_windows_tray_lists_source_sync_next_to_ledger(self):
+        source = inspect.getsource(PeachTray.__init__)
+        self.assertIn('MenuItem("同步开发进度", self.sync_source)', source)
+        self.assertLess(source.index("同步开发进度"), source.index("同步 Ledger"))
+
+    def test_windows_source_sync_tests_then_restarts_services(self):
+        snapshot = VersionSnapshot("0.6.4", "master", "abc12345", False, True, "origin/master")
+        completed = threading.Event()
+
+        class Versions:
+            root = ROOT
+
+            def inspect(self):
+                return snapshot
+
+            def update(self):
+                return UpdateResult(
+                    "updated", "updated", snapshot, behind=1,
+                    changed_paths=("docs/STATUS.md",),
+                )
+
+        class Updates:
+            value = None
+
+            def pending(self):
+                return self.value
+
+            def mark_pending(self, commit, changed_paths):
+                self.value = PendingWindowsUpdate(commit, changed_paths)
+
+            def prepare(self, _commit, _changed_paths):
+                return WindowsUpdatePreparation("services", "测试通过。")
+
+            def clear_pending(self):
+                self.value = None
+                completed.set()
+
+        manager = Mock()
+        manager.restart.return_value = True
+        icon = Mock()
+        with patch("peach.tray.pystray.Icon", return_value=Mock()):
+            tray = PeachTray(manager, Versions(), Updates())
+        tray.sync_source(icon)
+        self.assertTrue(completed.wait(2))
+        manager.restart.assert_called_once()
+        manager.stop_owned.assert_not_called()
+
+    def test_windows_source_sync_stops_services_only_after_replacer_is_ready(self):
+        snapshot = VersionSnapshot("0.6.4", "master", "abc12345", False, True, "origin/master")
+        stopped = threading.Event()
+
+        class Versions:
+            root = ROOT
+
+            def inspect(self):
+                return snapshot
+
+            def update(self):
+                return UpdateResult(
+                    "updated", "updated", snapshot, behind=1,
+                    changed_paths=("src/peach/tray.py",),
+                )
+
+        class Updates:
+            value = None
+
+            def pending(self):
+                return self.value
+
+            def mark_pending(self, commit, changed_paths):
+                self.value = PendingWindowsUpdate(commit, changed_paths)
+
+            def prepare(self, _commit, _changed_paths):
+                return WindowsUpdatePreparation("replace", "替换已准备。")
+
+        manager = Mock()
+        manager.stop_owned.side_effect = lambda: stopped.set()
+        icon = Mock()
+        with patch("peach.tray.pystray.Icon", return_value=Mock()):
+            tray = PeachTray(manager, Versions(), Updates())
+        tray.sync_source(icon)
+        self.assertTrue(stopped.wait(2))
+        icon.stop.assert_called_once()
+        manager.restart.assert_not_called()
 
     def test_tray_restart_asks_launchd_to_kill_and_relaunch_this_label(self):
         runner = Mock(return_value=Mock(returncode=0, stdout="", stderr=""))
