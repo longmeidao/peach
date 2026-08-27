@@ -13,7 +13,7 @@
 - 2026-08-27 核对 macOS：服务子进程已跑当前 `master`，但菜单栏进程仍是旧代码。托盘层改动要生效，需手动退出菜单栏项后由 `.app` 或 `launchctl kickstart -k` 重启一次。
 - 两端固定使用不同 mDNS 名和各自本机 CA；CA 私钥、服务器私钥和凭据不跨机同步。生成资产由 Syncthing 单向 Windows → Mac，Git 与 ledger 复制是另外两条链路。
 - Windows 真实 ledger 为 `peach-data/database/ledger.db`，已应用到 `0018`。本分支新增 `0019`（追更回翻游标）和 `0020`（Rule34.xxx 来源身份合并），尚未对真实 ledger 执行。
-- Mac 本地副本与共享副本逐表行数及内容哈希一致；当前 conflict 来自 SQLite 物理布局/marker 差异，不是业务数据分叉。恢复 `in-sync` 仍属于 ledger 写入，需授权后从 Windows 共享副本 pull。
+- Mac ledger 已于 2026-08-27 经授权从共享副本显式拉取并恢复 `in-sync`，writer 仍是 Windows。拉取前备份为 `database/ledger.pre-pull-gen32-20260827T062519Z.db`；前后 asset 81554、entity 8182、asset_entity 155541，完整性正常且外键违规为 0，证明原 conflict 仅是 SQLite 物理布局与 marker 漂移。
 - Mac 的 `peach-data/sources` 已迁到内置盘；`archive`、`tools` 仍可指向外置盘。追更证据和浏览记录不再依赖外置盘。
 - Stash 仍监听 `127.0.0.1:9999`，只作可替换适配器。Windows FFmpeg/ffprobe 位于 `peach-data/tools/ffmpeg`，macOS 走 PATH。
 
@@ -27,7 +27,7 @@
 - Rule34.xxx 来源 ref 大小写不敏感；迁移会合并分批添加造成的重复来源并保留条目状态。F95 的 `Collection(s)` 后缀不进入作者名，五个来源可归到同一作者组。
 - 关注作者显示名与头像优先取经过固定主机校验的官方 FANBOX/Pixiv 页面，归档站只作回退。只支持真实历史分页的来源才显示「抓更早一页」。
 - reader 的 `/review` 通过严格 Peach CA HTTPS 读取 writer 的归一化 JSON 并原子缓存；决定按钮和所有关注写操作仍锁定，不同步 SQLite/WAL 或原始候选目录。
-- 搜索使用 FTS5 trigram，短查询回退 LIKE 并覆盖规范名、别名和检索词。搜索历史在只读冲突时降级到页面内存，不产生未处理异常。
+- 搜索使用 FTS5 trigram，短查询回退 LIKE 并覆盖规范名、别名和检索词。搜索历史在 reader 写入被拒时降级到页面内存，不产生未处理异常。
 - 回收站的单项删除和清空共用 `purge_assets()`：先处理媒体文件，再提交 ledger；删不掉的文件保留可见状态并回报，避免静默遗留。
 - 复核页覆盖元数据、创作者标签、Logo、头像、身份、番号目录、FC2 证据和媒体失败。抓取与 AI 结果仍是候选，批准后才写真相字段。
 - 浏览历史增量采集使用 SQLite backup API，一致性读取本机浏览器和 Takeout；原始 URL/标题只留本机私有库，聚合候选不写 ledger。
@@ -35,15 +35,15 @@
 ## 本批修正与验证
 
 - 已审阅 Claude 最近的关注管理、关注观看及相邻提交，移植仍有价值的凭据折叠、来源图标、来源/标签筛选、日文名称和实体页文案，并修复 F95 假翻页、只读网格错位、Windows `os.getuid`、Mac 托盘重启失败恢复与托盘重启文件清单。
-- 临时 ledger 副本应用 `0019`/`0020` 后，来源由 6 个变为 5 个；两条 Rule34.xxx 合为 1 条，100 条候选和用户状态保留，关注统计为 233 条未看。真实 ledger 未修改。
+- 临时 ledger 副本应用 `0019`/`0020` 后，来源由 6 个变为 5 个；两条 Rule34.xxx 合为 1 条，100 条候选和用户状态保留，关注统计为 233 条未看。Windows 真实 ledger 未修改。
 - 官方头像链路实载 `160×160` Pixiv 图；关注管理、关注观看和多人卡片在桌面与 390×844 均无横向溢出。新浏览器会话搜索 `MIZD-997` 后控制台 error/warn 为 0。
 - 文档清退后，正式 Windows 测试入口跑完 1005 项，全部通过，13 项按平台跳过。
-- 生产服务、真实 ledger、候选批准状态和部署均未改变。
+- 本批追更分支未部署，候选批准状态未改变。
 
 ## 下一批工作
 
 1. 取得明确授权后，在 Windows writer 备份真实 ledger，应用 `0019`/`0020`，核对来源、条目、状态、完整性与迁移版本，再重启部署。
-2. 恢复 Mac ledger 为 `in-sync`，重启菜单栏进程，核对 reader 锁定、HTTPS、mDNS 和真实 LAN 客户端。
+2. 重启 Mac 菜单栏进程，核对 reader 锁定、HTTPS、mDNS 和真实 LAN 客户端。
 3. 为追更接入 APScheduler；在实现下载器前先确定媒体凭据、流量与磁盘预算。
 4. 在 `/review` 人工处理现有创作者标签、FC2、Javinizer、Logo、头像和媒体失败候选；未经批准不写真相字段。
 5. Windows writer 运行 PikPak 夜跑前重算 probe/抽帧队列，并按 `peach-batch-jobs` 设置流量与系统盘闸门。
