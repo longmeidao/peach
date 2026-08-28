@@ -600,8 +600,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".tastegrid{display:grid;grid-template-columns:repeat(12")
         self.assertPageContains(".tastepanel-wide{grid-column:span 8}")
         self.assertPageContains(".tasteranks{display:grid;grid-template-columns:repeat(auto-fill")
-        self.assertPageContains(".tasterank{width:100%;min-width:0;min-height:60px")
+        self.assertPageContains(".tasterank{width:100%;min-width:0;min-height:58px")
         self.assertPageContains("@media(max-width:640px){.tastehead")
+        self.assertPageContains("justify-content:flex-start;gap:10px 14px;flex-wrap:wrap")
+        self.assertPageContains("class=\"tasterank${visual?' tasterank-visual':''}\"")
+        self.assertPageContains("grid-template-columns:32px minmax(0,1fr) 18px")
+        self.assertPageContains(".tasterank-visual{grid-template-columns:32px 30px minmax(0,1fr) 18px}")
+        self.assertPageContains(".tasterank>svg{justify-self:end")
+        self.assertPageContains("border:0;border-bottom:1px solid var(--line-soft);border-radius:0;background:transparent")
 
     def test_stats_and_taste_use_density_aware_bento_without_forcing_work_queues(self):
         self.assertPageContains(".scards{display:grid;grid-template-columns:repeat(12")

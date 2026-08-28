@@ -1042,7 +1042,7 @@ const tasteRanking=(title,rows,kind,empty='暂无足够证据',panel='tastepanel
     const media=visual==='domain'
       ?`<span class="tasteavatar tastesite"><span class="ini">${esc(row.name.slice(0,1).toUpperCase())}</span><img src="${esc(faviconUrl('https://'+row.name))}" data-fallback="${esc(faviconFallbackUrl(row.name))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="const f=this.dataset.fallback;if(f){delete this.dataset.fallback;this.src=f}else this.remove()"></span>`
       :visual?`<span class="tasteavatar">${avatarInner(row.name,ref,rep,visual)}</span>`:'';
-    return `<${clickable?'button':'div'} class="tasterank"${clickable?` data-taste-kind="${kind}" data-taste-name="${esc(row.name)}"`:''}>
+    return `<${clickable?'button':'div'} class="tasterank${visual?' tasterank-visual':''}"${clickable?` data-taste-kind="${kind}" data-taste-name="${esc(row.name)}"`:''}>
       <span class="tastepos mono">${index+1}</span>${media}<span><b>${esc(row.name)}</b><small>${esc(detail)}</small></span>
       ${clickable?icon('chevron-right'):''}</${clickable?'button':'div'}>`}).join(''):`<p class="empty">${empty}</p>`}</div></section>`;
 function openTasteSignal(kind,name){
