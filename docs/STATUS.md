@@ -8,7 +8,7 @@
 
 - Windows 是当前 ledger writer。启动入口为 `C:\Users\longm\Desktop\peach\peach-app\dist\Peach\Peach.exe`，代码、数据、worktree 和共享传输点都在 `C:\Users\longm\Desktop\peach\` 下；外置盘只提供 `R:\media`。
 - 托盘必须以普通权限启动：提升权限后的令牌看不到 CloudDrive 的 `A:` / `B:`，会把 PikPak 和 115 误报为脱盘。异常时从托盘退出，再由资源管理器或普通权限终端启动。
-- Windows HTTP 为 `0.0.0.0:80`，HTTPS 为当前 LAN IPv4 的 443，mDNS 名为 `peach-win.local`。线上服务版本最后核验为 `0.7.10`、`ledger_sync=writer`。
+- Windows HTTP 为 `0.0.0.0:80`，HTTPS 为当前 LAN IPv4 的 443，mDNS 名为 `peach-win.local`。线上服务版本最后核验为 `0.7.12`、`ledger_sync=writer`。
 - macOS 是 reader，代码在 `~/Desktop/lmd.gg/peach/peach-app`，数据在相邻 `peach-data`；`peach.local` 经 8900/8443 和 pf 提供 80/443。GET 正常，写入端点返回 409。
 - 2026-08-27 核对 macOS：服务子进程已跑当前 `master`，但菜单栏进程仍是旧代码。托盘层改动要生效，需手动退出菜单栏项后由 `.app` 或 `launchctl kickstart -k` 重启一次。
 - 两端固定使用不同 mDNS 名和各自本机 CA；CA 私钥、服务器私钥和凭据不跨机同步。生成资产由 Syncthing 单向 Windows → Mac，Git 与 ledger 复制是另外两条链路。
@@ -36,7 +36,7 @@
 
 ## 本批修正与验证
 
-- 0.7.12 修复艺人／厂牌资料页从深链或刷新进入时只看 URL 参数、因此漏掉 JAV 三种版式按钮的问题：页面现在从实际返回作品的 `is_jav` 推断资料页能力，并只给 JAV 卡片应用封面比例。照片查看器的缩放加减号改用本地 SVG，桌面和手机实测按钮与图标水平、垂直中心偏差均为 0 px；新增图片详情，显示文件名、来源和大小，切换图片时同步更新，并复用既有 `/api/reveal` 按 asset id 在资源管理器定位，客户端仍不接收或提交原始路径。照片 DTO 只新增安全的 `location`，没有迁移或真实 ledger 写入。Windows `catalog` 402 项、正式全量 1183 项通过，13 项按平台跳过；1440×900 下资料页三种版式按钮均可见，390×844 下详情面板 360 px 且位于 390 px 视口内，两端均无横向溢出和控制台错误。生产尚未切换，生产验收待集成后完成。
+- 0.7.12 修复艺人／厂牌资料页从深链或刷新进入时只看 URL 参数、因此漏掉 JAV 三种版式按钮的问题：页面现在从实际返回作品的 `is_jav` 推断资料页能力，并只给 JAV 卡片应用封面比例。照片查看器的缩放加减号改用本地 SVG，桌面和手机实测按钮与图标水平、垂直中心偏差均为 0 px；新增图片详情，显示文件名、来源和大小，切换图片时同步更新，并复用既有 `/api/reveal` 按 asset id 在资源管理器定位，客户端仍不接收或提交原始路径。照片 DTO 只新增安全的 `location`，没有迁移或真实 ledger 写入。Windows `catalog` 402 项、正式全量 1183 项通过，13 项按平台跳过；1440×900 下资料页三种版式按钮均可见，390×844 下详情面板 360 px 且位于 390 px 视口内，两端均无横向溢出和控制台错误。生产托盘已受控重启且继续使用原 0.7.11 EXE，80／443 由新子进程接管；HTTP 与项目 CA 严格 HTTPS `/healthz` 均返回 0.7.12、writer、非只读。生产资料页实测三种版式按钮均可见；真实 115 图片详情显示文件名、来源、大小和 asset id 定位入口，1280 px 与 390×844 下均无横向溢出，缩放图标中心偏差为 0 px。未点击生产定位按钮，未写真实 ledger。
 - 0.7.11 将管理画像入口统一命名为“口味”；资源同步不再占用独立管理页，改为统计页末尾，旧 `/resource-sync` 深链自动替换为 `/stats#resource-sync`。同步配置按 Vercel 表单卡重排：主信息在上层，安全说明和 36px 次级操作放在带分隔线的底栏；扫描结果共用一套 12px 外框与内部 1px 分隔线，来源、汇总和确认操作不再各自嵌套卡片或压住边缘。按钮具备明确 hover／focus 和原位旋转忙碌态；窄屏规则提高到组件作用域，避免被后置基础规则覆盖。Windows 正式全量 1181 项通过、13 项按平台跳过。临时数据库的 1280×720 浏览器实测结果为三列来源、两列汇总、底栏按钮完全位于 1176px 外框内；390×844 下来源与汇总均为单列，外框 358px、底栏 356px、按钮 324×36，文档与视口同为 390px，无横向溢出。
 - 0.7.11 正式 EXE 已替换为 SHA-256 `FCD54E557D9FE36FE3D3B0FFC50E486701CA5B990334A280F203691BF94EC9B0`，上版备份为 `dist/Peach/Peach.pre-0.7.11-20260829-004620.exe`；打包入口在临时 ledger 上确认 22 个迁移、0 待处理。80／443 均由新进程恢复，OpenSSL 以项目 CA、`peach-win.local` SNI 与主机名严格校验返回 `Verify return code: 0 (ok)`，固定到实际监听地址后的 `/healthz` 返回 0.7.11、writer、非只读，`/stats` 与旧 `/resource-sync` 均为 200。生产浏览器实测管理栏只有“口味”且无独立资源同步入口；1280×720 下配置卡 1166px、底栏 1164px、按钮 102×36，390×844 下卡片 348px、底栏 346px、按钮 314×36、无横向溢出和控制台错误；旧链接原位进入 `/stats#resource-sync`。未点击扫描、未执行同步应用。停止旧 SQLite 连接时主文件 SHA-256 由 `27F540B8F6B296F544EA2B250D159C0D7A2DFA6F59FA962F20AAE4CB2B63A8E3` 变为 `14F30D85F33631B74E99D9E1F48BBA090F57CD1D12AD3804AD47C2CC00FB8F60`，时间点与停服一致且重启后 WAL 为 0 字节，符合关闭连接时的 WAL 回写；只读复核为 `integrity_check=ok`、外键违规 0，asset 81555、follow_source 14、follow_item 1551、entity 8177。
 
