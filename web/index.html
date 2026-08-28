@@ -107,18 +107,22 @@
   <button id="batchClear"><svg viewBox="0 0 24 24"><use href="#i-x"/></svg>取消</button></div>
 
 <div class="tok" id="tok" hidden>
-  <div class="toktrack" id="tokTrack"><video id="tokVid" playsinline></video></div>
+  <div class="tokstage">
+    <div class="toktrack" id="tokTrack"><video id="tokVid" playsinline></video></div>
+    <div class="tokbtns">
+      <div class="tokaction"><button id="tokDislike" title="标为不喜欢" aria-label="标为不喜欢"><svg viewBox="0 0 24 24"><use href="#i-thumbs-down"/></svg></button><span class="toklabel">不喜欢</span></div>
+      <div class="tokaction"><button id="tokSeen" title="标为看过" aria-label="标为看过"><svg viewBox="0 0 24 24"><use href="#i-eye"/></svg></button><span class="toklabel" id="tokSeenLabel">看过</span></div>
+      <div class="tokaction"><button id="tokO" title="记一次高潮" aria-label="记一次高潮"><svg viewBox="0 0 24 24"><use href="#i-heart"/></svg></button><span class="toklabel">高潮 <b id="tokOn">0</b></span></div>
+    </div>
+  </div>
   <div class="tokloading" id="tokLoader" role="status" aria-live="polite" hidden><span class="tokspinner" aria-hidden="true"></span><span id="tokLoadingText">加载中…</span></div>
   <div class="tokhint mono">滚轮 / ↑↓ 切换 · Esc 退出 · 横竖屏混流</div>
   <button class="tokclose" id="tokClose" title="关闭" aria-label="关闭"><svg viewBox="0 0 24 24"><use href="#i-x"/></svg></button>
-  <div class="tokbtns">
-    <button id="tokDislike" title="标为不喜欢" aria-label="标为不喜欢"><svg viewBox="0 0 24 24"><use href="#i-thumbs-down"/></svg><span class="toklabel">不喜欢</span></button>
-    <button id="tokSeen" title="标为看过" aria-label="标为看过"><svg viewBox="0 0 24 24"><use href="#i-eye"/></svg><span class="toklabel">看过</span></button>
-    <button id="tokO" title="记一次高潮" aria-label="记一次高潮"><svg viewBox="0 0 24 24"><use href="#i-heart"/></svg><span class="toklabel">高潮</span><b class="tokcount" id="tokOn">0</b></button>
-  </div>
   <div class="tokbar" id="tokBar"><i id="tokProg"></i></div>
-  <div class="tokui"><button type="button" class="toktitle" id="tokTitle"></button>
-    <div class="mono"><a href="#" id="tokWho"></a> <span id="tokMeta"></span></div></div>
+  <div class="tokui">
+    <div class="tokauthor"><button type="button" class="tokavatar" id="tokAvatar" aria-label="打开资料"></button><a href="#" id="tokWho"></a><span id="tokMeta"></span></div>
+    <button type="button" class="toktitle" id="tokTitle"></button>
+  </div>
 </div>
 
 <section class="settingspanel" id="settingsPanel" hidden aria-modal="true" role="dialog" aria-labelledby="settingsTitle">

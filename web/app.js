@@ -3595,6 +3595,9 @@ function tokFitOne(v){
     : window.innerWidth/window.innerHeight;
   if(!box||!isFinite(box))return;
   const source=v.videoWidth/v.videoHeight;
+  const wide=source>=1;
+  track.closest('.tokstage')?.classList.toggle('wide',wide);
+  $('#tok').classList.toggle('tok-wide',wide);
   const mismatch=source>box?source/box:box/source;
   v.classList.toggle('contain',mismatch>TOK_FIT_TOLERANCE);
 }
@@ -3659,12 +3662,18 @@ async function tokShow(dir){
     const who=cast.length
       ? cast.slice(0,3).join('、')+(cast.length>3?` 等 ${cast.length} 人`:'')
       : (full.creator||it.code||'未归属');
+    const ownerKind=cast.length?'performer':(full.creator?'creator':'');
+    const ownerName=cast.length?cast[0]:(full.creator||it.code||'未归属');
+    const ownerRef=ownerKind?(full.entity_refs?.[ownerKind]?.[0]||null):null;
+    $('#tokAvatar').innerHTML=avatarInner(ownerName,ownerRef,REP[ownerName],ownerKind||'performer');
     $('#tokWho').textContent=who;
-    $('#tokWho').onclick=e=>{e.preventDefault();
+    const openTokOwner=e=>{e.preventDefault();
       $('#tokClose').click();
       if(full.performers&&full.performers[0])openEntity('performer',full.performers[0]);
       else if(full.creator)openEntity('creator',full.creator);
       else if(it.code){state.q=it.code;buildEdge();buildBars();load(true)}};
+    $('#tokWho').onclick=openTokOwner;
+    $('#tokAvatar').onclick=openTokOwner;
     $('#tokMeta').textContent=`· ${fmtDur(it.duration)} · ${it.ctx_orient||''} · ${tokIdx+1}/${tokList.length}`;
     // 进度条
     const bar=$('#tokBar'), prog=$('#tokProg');
@@ -3677,7 +3686,7 @@ async function tokShow(dir){
     tokWireScrub(bar,prog,v,()=>v.duration||it.duration||0);
     $('#tokDislike').setAttribute('aria-pressed',full.feedback==='dislike');
     $('#tokSeen').setAttribute('aria-pressed',full.feedback==='seen');
-    $('#tokSeen .toklabel').textContent=full.feedback==='seen'?'已看':'看过';
+    $('#tokSeenLabel').textContent=full.feedback==='seen'?'已看':'看过';
     $('#tokOn').textContent=full.o_count||0;
     api('/api/play',{method:'POST',body:JSON.stringify({id:it.id})});
     wireTelemetry(it,v,{});
@@ -3740,7 +3749,8 @@ $('#brandHome').onclick=e=>{e.preventDefault();
   route('/');$('#q').value='';disposeStage(false);buildBars();load(true);window.scrollTo({top:0,behavior:'smooth'})};
 $('#tokClose').onclick=()=>{setTokLoading(false);route('/');$('#tok').hidden=true;$('#tokTrack').querySelectorAll('video').forEach(v=>{
   v.pause();v.removeAttribute('src');v.load();if(v.id!=='tokVid')v.remove()});
-  const v=$('#tokVid');if(v){v.style.transform='translateX(-50%)'}tokSwitching=false;document.body.style.overflow='';showHomeSurfaces();load(true)};
+  const v=$('#tokVid');if(v){v.style.transform='translateX(-50%)'}$('#tok').classList.remove('tok-wide');
+  $('#tok .tokstage').classList.remove('wide');tokSwitching=false;document.body.style.overflow='';showHomeSurfaces();load(true)};
 let wl=0;
 $('#tok').addEventListener('wheel',e=>{const n=Date.now();if(n-wl<260)return;wl=n;tokNext(e.deltaY>0?1:-1)},{passive:true});
 /* 手机上竖划切片、横划拖进度。横划在哪儿起手都行——屏幕最下沿那条
@@ -3785,7 +3795,7 @@ $('#tok').addEventListener('touchend',e=>{
     const r=await api('/api/feedback',{method:'POST',body:JSON.stringify({id:it.id,kind})});
     $('#tokDislike').setAttribute('aria-pressed',r.feedback==='dislike');
     $('#tokSeen').setAttribute('aria-pressed',r.feedback==='seen');
-    $('#tokSeen .toklabel').textContent=r.feedback==='seen'?'已看':'看过';
+    $('#tokSeenLabel').textContent=r.feedback==='seen'?'已看':'看过';
     $('#tokOn').textContent=r.o_count||0;
     if(kind==='dislike'&&r.feedback==='dislike')setTimeout(()=>tokNext(1),260)}});
 
