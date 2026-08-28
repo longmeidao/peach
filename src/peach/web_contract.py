@@ -1010,6 +1010,10 @@ def q_entity(contract: WebContract, args):
         "SELECT alias FROM entity_alias WHERE entity_id=? ORDER BY confidence DESC,alias",
         (d["id"],),
     )]
+    # 罗马字仍是检索和旧链接的重要身份键，但中文/日文规范名下面再把英文全列一遍
+    # 只会像名称没有本地化。展示契约单独收窄，身份契约 `aliases` 保持完整。
+    d["display_aliases"] = _display_entity_aliases(
+        d["canonical_name"], d["aliases"])
     links = []
     for link in c.execute(
         "SELECT link_kind,label,url,hostname,is_sensitive,metadata_json "
@@ -1111,12 +1115,31 @@ GENERIC_PHOTO_DIRS = frozenset({
 
 
 def _resolve_entity(c, kind, name):
-    """按规范名或别名取实体。旧名进来也要能落到同一条身份上。"""
-    return c.execute(
-        "SELECT DISTINCT e.* FROM entity e LEFT JOIN entity_alias a ON a.entity_id=e.id "
-        "WHERE e.kind=? AND (e.canonical_name=? OR a.alias=?) LIMIT 1",
-        (kind, name, name),
+    """先取精确规范名，再取唯一别名；撞名时不任意指向另一位。"""
+    canonical = c.execute(
+        "SELECT e.* FROM entity e WHERE e.kind=? AND e.canonical_name=? LIMIT 1",
+        (kind, name),
     ).fetchone()
+    if canonical:
+        return canonical
+    aliases = c.execute(
+        "SELECT DISTINCT e.* FROM entity e JOIN entity_alias a ON a.entity_id=e.id "
+        "WHERE e.kind=? AND a.alias=? ORDER BY e.id LIMIT 2",
+        (kind, name),
+    ).fetchall()
+    return aliases[0] if len(aliases) == 1 else None
+
+
+def _display_entity_aliases(canonical_name: str, aliases: list[str]) -> list[str]:
+    """本地化规范名不重复展示纯拉丁转写；原始别名仍完整保留在 API。"""
+    east_asian = re.compile(r"[\u3040-\u30ff\u3400-\u9fff]")
+    canonical_key = normalize_entity_name(canonical_name)
+    unique_aliases = [alias for alias in aliases
+                      if normalize_entity_name(alias) != canonical_key]
+    if not east_asian.search(canonical_name or ""):
+        return unique_aliases
+    return [alias for alias in unique_aliases
+            if east_asian.search(alias or "") or not re.search(r"[A-Za-z]", alias or "")]
 
 
 def photo_set_title(directory: str) -> str:
@@ -1660,11 +1683,7 @@ def _performer_identity_keys(connection, names: list[str]) -> frozenset:
     """
     keys = set()
     for name in names:
-        row = connection.execute(
-            "SELECT e.id FROM entity e LEFT JOIN entity_alias a ON a.entity_id=e.id "
-            "WHERE e.kind='performer' AND (e.canonical_name=? OR a.alias=?) LIMIT 1",
-            (name, name),
-        ).fetchone()
+        row = _resolve_entity(connection, "performer", name)
         keys.add(row["id"] if row else normalize_entity_name(name))
     return frozenset(keys)
 
@@ -2197,11 +2216,7 @@ def w_review_decision(contract: WebContract, body):
                 raise ValueError("提交内容与候选不一致，拒绝写入")
             if not creator or not tags:
                 raise ValueError("approved creator review requires creator and tags")
-            entity = connection.execute(
-                "SELECT e.id FROM entity e LEFT JOIN entity_alias a ON a.entity_id=e.id "
-                "WHERE e.kind='creator' AND (e.canonical_name=? OR a.alias=?) LIMIT 1",
-                (creator, creator),
-            ).fetchone()
+            entity = _resolve_entity(connection, "creator", creator)
             if not entity:
                 raise ValueError("creator entity not found")
             assets = connection.execute(
