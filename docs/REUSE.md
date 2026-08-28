@@ -1,6 +1,15 @@
 # 复用清单
 
-这是 Codex 与 Claude 共用的实现查找表。新增或恢复代码前必须先查本文件。
+这是 Codex 与 Claude 共用的实现查找表。新增、恢复或重写代码前必须按
+`.claude/skills/peach-reuse-first/SKILL.md` 先查本文件、当前树、Git 历史和成熟外部实现。
+
+## 复用决策门槛
+
+- 先用真实输入做无写入 POC，再决定“直接依赖、固定来源实现、保留自研”三者之一。
+- 采用项要记录固定版本、许可证、首个消费者和 Peach 保留的领域边界；候选依赖不得空转。
+- 保留自研要记录被拒绝的候选和不可替代约束，不能只写“特殊需求”。
+- 外部项目不适合作为运行时依赖，但其公开数据模型或算法明显更成熟时，固定 revision 后作为参考
+  实现；许可证不允许派生或来源不稳定时只作行为证据，不复制代码。
 
 ## Peach 必须自研的领域逻辑
 
@@ -72,3 +81,23 @@
 3. 将剩余 status/suggest/ledger 应用逻辑移到 repository/application 端口，再删除旧 CLI 表面。
 4. Peach 不做 token/成本日志扫描器，也不绑定 T3 Code 私有 RPC；使用其界面、CodexBar 和官方实时配额入口。
 5. 「模仿/参考/对齐」不等于允许凭记忆近似。先取得并登记可复现证据；否则标记 `未取得`，不得作为忠实复刻发布。2026-08-17 的 YouTube 详情与 Shorts 动作栏参考已登记在 `docs/HANDOFF.md`，Peach 只复用可测量的层级、尺寸和状态语义。
+
+## 2026-08-28 自研实现审计
+
+本轮覆盖追更来源、浏览器历史、批处理锁、MP4 索引、证书、迁移、网络监听、流媒体、同步与更新。
+以下是候选判断，不等于依赖已经进入生产；替换仍须按上面的同批闭环执行。
+
+| 当前能力 | 判断 | 已验证证据与 Peach 边界 |
+|---|---|---|
+| `taste_history.py` 自写 Chrome/Firefox/Zen/Safari 发现、快照与 SQLite 解析 | **优先替换为 `browserexport==0.4.4`** | Python 3.14 依赖解析通过；在本机 7 个 Chrome/Firefox/Zen profile 上与 Peach 逐库计数完全一致。Peach 保留 Takeout、隐私存储、域名分析和 candidate 生成。 |
+| `jobs.PidFileLock` | **优先替换为 `portalocker==4.3.0` 的 `PidFileLock`** | Python 3.14 解析通过，现成覆盖 PID 写入、锁持有者、原子替换、陈旧文件与释放清理。Peach 只保留任务归属和错误文案映射。 |
+| Rule34Video 媒体页解析 | **部分替换为 `yt-dlp==2026.8.19`** | 对真实视频 4533145 无写入提取成功，取得 4 个格式、31 个标签、缩略图与时间。Peach 仍负责作者分页、合集/超多 model 排除、来源分组和跨站去重。 |
+| FANBOX 正文解析 | **按 PixivUtil2 FANBOX 模型重做规范化层** | 当前 Peach 只读取 article 的 `blocks` 与 `imageMap`；成熟实现还覆盖 image/file/article/video、`fileMap`、`embedMap`、`urlEmbedMap` 和旧正文。未找到兼具窄依赖、活跃维护与当前传输可用性的 Python wheel；实现时固定 PixivUtil2 revision，只复用公开数据模型，不引入整套下载器。传输继续用 `curl_cffi==0.16.2`。 |
+| `mp4index.py` 有界 MP4 关键帧索引 | **保留自研** | PyAV 需要 demux，`pymp4` 依赖旧 Construct，Bento4 是额外二进制；都不能证明在云盘文件上保留“只读 moov/stss/stts、避免整片流量”的约束。 |
+| `certs.py` 固定项目 CA 与短期叶证书 | **保留自研 policy，继续调用 OpenSSL** | mkcert 会接管本机 CA 安装/私钥，不能保持跨设备固定项目 CA；cryptography 只替换证书编码且增加原生依赖，不能删除 Peach 的 Apple 398 天与 CA 生命周期策略。 |
+| `migrations.py` SQLite 迁移 | **保留自研** | Alembic 会引入 SQLAlchemy/Mako/greenlet；现有范围只需顺序 SQL、校验和、备份与 PyInstaller 资源定位，没有 ORM 消费者。 |
+| Gofile API | **保留直接 HTTP** | 官方没有维护中的 Python SDK；社区 wrapper 只是薄封装，不能绕过 Premium `contents` 权限，也不能减少 Peach 的 Bearer 隔离与媒体规范化。 |
+| `netwatch.py`、streaming/segments、sync、versioning/Windows update | **保留现有边界** | 分别是无 PyObjC 的系统通知、FFmpeg/Starlette 上的会话策略、单 writer ledger 规则和 Git/PyInstaller 更新契约；通用替代会保留同量 policy 或扩大依赖。 |
+
+FANBOX、浏览器历史、PID 锁和 Rule34Video 依次进入替换实施；其余保留项在约束改变或候选实现更新时
+重新跑 POC，不因本表结论永久豁免外部检索。
