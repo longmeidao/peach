@@ -1334,6 +1334,7 @@ function followVideoItems(group){
 }
 
 function followMediaNote(item){
+  if(item.media_error)return `媒体未取得：${item.media_error}`;
   if(item.media_needs_credential)return '媒体链接需要 F95 登录会话解析';
   if(item.has_media&&!item.playable&&item.media_kind==='external')return item.resource_urls?.length
     ?`已取得 ${item.resource_urls.length} 个外部文件页；视频列表未取得`

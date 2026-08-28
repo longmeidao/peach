@@ -1266,7 +1266,14 @@ class FanboxConnector(_BaseConnector):
             post_id = str(post["id"])
             cover = post.get("cover") if isinstance(post.get("cover"), dict) else {}
             user = post.get("user") if isinstance(post.get("user"), dict) else {}
-            detail = self._post_detail(post_id)
+            try:
+                detail = self._post_detail(post_id)
+            except FollowSourceError as error:
+                # FANBOX 会把单篇 post.info 临时换成 Cloudflare 验证页。
+                # 列表本身仍是可信的公开更新；保留卡片并明确标记媒体未取得，
+                # 不能让一篇详情失败拖垮整个作者来源。
+                detail = {"summary": "", "links": [], "images": (),
+                          "error": str(error)}
             probed += 1
             links = detail["links"]
             images = detail["images"]
@@ -1286,6 +1293,7 @@ class FanboxConnector(_BaseConnector):
                 group_hint=f"fanbox:{post_id}",
                 extra={"fee_required": 0, "official": True, "links": links,
                        "media_items": media_items,
+                       "media_error": detail.get("error"),
                        "image_count": len(images),
                        "gofile_video_count": sum(
                            item.get("media_kind") == "video" for item in gofile_media)},
