@@ -29,6 +29,7 @@ from .ffmpeg import FFmpegResolver
 from .follow import FollowSourceError
 from .follow_scheduler import FollowUpdateScheduler
 from .follow_avatar import resolve_official_avatar
+from .follow_covers import FollowCoverService, FollowCoverUnavailable
 from .follow_store import FollowStore
 from .follow_stream import FollowMediaResolver, FollowMediaUnavailable
 from .http import HttpxTransport
@@ -147,6 +148,8 @@ def create_app(
     http_transport = HttpxTransport()
     follow_media_resolver = FollowMediaResolver(http_transport).with_credential_loader(
         lambda provider: web_follow._credential_store(contract).load(provider))
+    follow_cover_service = FollowCoverService(
+        resolver, follow_media_resolver, settings.poster_root / "follow")
     filesystem = FilesystemBackend(
         settings.allowed_media_roots,
         settings.snapshot_root,
@@ -233,6 +236,7 @@ def create_app(
     app.state.review_mirror = review_mirror
     app.state.http_transport = http_transport
     app.state.follow_media_resolver = follow_media_resolver
+    app.state.follow_cover_service = follow_cover_service
     app.state.follow_scheduler = follow_scheduler
     stream_sessions = StreamSessionRegistry()
     app.state.stream_sessions = stream_sessions
@@ -747,6 +751,28 @@ def create_app(
         return StreamingResponse(
             body(), status_code=upstream.status_code, headers=forwarded,
         )
+
+    @app.api_route("/follow-cover", methods=["GET", "HEAD"])
+    def follow_cover(request: Request, id: int):
+        """Return a cached clear still for a follow video; keep its URL server-side."""
+        args = _first_query_values(request)
+        if not _authorized(request, settings.token, args):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        with database.read_connection() as connection:
+            item = FollowStore(lambda: connection).item(id)
+        if item is None:
+            return JSONResponse({"error": "no such follow item"}, status_code=404)
+        try:
+            path = request.app.state.follow_cover_service.cover(item)
+        except FollowCoverUnavailable:
+            # Paheal itself only has this low-resolution fallback. A temporary FFmpeg or
+            # network failure should degrade to the old cover instead of leaving a hole.
+            if str(item.thumb_url or "").startswith("https://"):
+                return RedirectResponse(str(item.thumb_url), status_code=307)
+            return JSONResponse({"error": "follow cover unavailable"}, status_code=404)
+        response = FileResponse(path, media_type="image/jpeg")
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        return response
 
     @app.api_route("/logo", methods=["GET", "HEAD"])
     def logo(request: Request, studio: str = ""):

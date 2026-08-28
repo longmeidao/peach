@@ -253,6 +253,43 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual(item["media_kind"], "image")
         self.assertTrue(item["playable"])
 
+    def test_old_rule34xxx_previews_are_upgraded_without_rewriting_the_ledger(self):
+        self._seed(candidates=(FollowCandidate(
+            provider="rule34xxx", external_id="1", title="Remote video",
+            url="https://rule34.xxx/index.php?page=post&s=view&id=1",
+            media_url="https://api-cdn-mp4.rule34.xxx/images/42/"
+                      "0123456789abcdef0123456789abcdef.mp4",
+            thumb_url="https://api-cdn.rule34.xxx/thumbnails/42/"
+                      "thumbnail_0123456789abcdef0123456789abcdef.jpg",
+            extra={"media_kind": "video"},
+        ),), provider="rule34xxx", ref="artist")
+        item = self._get()["groups"][0]["primary"]
+        self.assertEqual(
+            item["thumb_url"],
+            "https://api-cdn.rule34.xxx/images/42/"
+            "0123456789abcdef0123456789abcdef.jpg")
+
+    def test_paheal_cards_use_same_origin_clear_cover_routes(self):
+        self._seed(candidates=(
+            FollowCandidate(
+                provider="rule34paheal", external_id="video", title="Video",
+                media_url="https://r34i.paheal-cdn.net/ab/cd/video",
+                thumb_url="https://r34t.paheal.net/ab/cd/video",
+                extra={"media_kind": "video"}),
+            FollowCandidate(
+                provider="rule34paheal", external_id="image", title="Image",
+                media_url="https://r34i.paheal-cdn.net/ab/cd/image",
+                thumb_url="https://r34t.paheal.net/ab/cd/image",
+                extra={"media_kind": "image"}),
+        ), provider="rule34paheal", ref="artist")
+        items = {group["primary"]["external_id"]: group["primary"]
+                 for group in self._get()["groups"]}
+        self.assertEqual(items["video"]["thumb_url"],
+                         f"/follow-cover?id={items['video']['id']}")
+        self.assertEqual(items["image"]["thumb_url"],
+                         f"/follow-stream?id={items['image']['id']}")
+        self.assertNotIn("r34i.paheal-cdn.net", json.dumps(items))
+
     def test_named_large_collection_is_hidden_but_not_deleted(self):
         self._seed(candidates=(FollowCandidate(
             provider="rule34video", external_id="4533145", title="Large collection",

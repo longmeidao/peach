@@ -67,6 +67,9 @@ LOW_VALUE_FOLLOW_TAGS = frozenset({
 
 _IMAGE_MEDIA_RE = re.compile(r"\.(?:avif|gif|jpe?g|png|webp)(?:$|[?#])", re.I)
 _VIDEO_MEDIA_RE = re.compile(r"\.(?:m4v|mov|mp4|og[gv]|webm)(?:/)?(?:$|[?#])", re.I)
+_RULE34XXX_PREVIEW_RE = re.compile(
+    r"^https://api-cdn\.rule34\.xxx/thumbnails/(\d+)/thumbnail_"
+    r"([0-9a-f]{32})\.jpg(?:[?#].*)?$", re.I)
 
 
 def _item_tags(item) -> list[str]:
@@ -149,6 +152,21 @@ def _media_items(item) -> list[dict]:
 
 
 def _thumb_url(item) -> str | None:
+    # rule34.xxx 的历史行存的是 250px preview。官方 dapi 的 sample_url 与它使用
+    # 同一 bucket/hash；2026-08-28 对生产历史行实测推导后为 1920x1080。
+    if item.provider == "rule34xxx" and item.thumb_url:
+        matched = _RULE34XXX_PREVIEW_RE.match(str(item.thumb_url))
+        if matched:
+            return ("https://api-cdn.rule34.xxx/images/"
+                    f"{matched.group(1)}/{matched.group(2)}.jpg")
+    # Paheal 图片直接经现有同源代理读原图；视频站点没有高清 poster，改由
+    # /follow-cover 抽首帧并缓存。两条路径都不把原始媒体 URL放进公共 JSON。
+    if item.provider == "rule34paheal" and item.media_url:
+        kind = _media_kind(item)
+        if kind == "image":
+            return f"/follow-stream?id={item.id}"
+        if kind == "video":
+            return f"/follow-cover?id={item.id}"
     if item.thumb_url:
         return item.thumb_url
     # 旧的 Kemono/Pawchive 行在封面修复前已入库：media_url 是图片，但 thumb_url

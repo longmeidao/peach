@@ -305,6 +305,7 @@ RULE34XXX_JSON = json.dumps([
     {"id": 18534395, "image": "3df1cbc67e072d6144588d6c80e490ea.mp4", "parent_id": 0,
      "tags": "lazyprocrastinator fiona blush video sound", "change": 1787445373,
      "file_url": "https://api-cdn-mp4.rule34.xxx/images/1232/3df1.mp4",
+     "sample_url": "https://api-cdn.rule34.xxx/images/1232/3df1.jpg",
      "preview_url": "https://api-cdn.rule34.xxx/thumbnails/1232/t_3df1.jpg",
      "score": 72, "source": "https://lazyprocrast.fanbox.cc/posts/12304831"},
     {"id": 18534396, "image": "3bda1572c365b223d8b287c538a38956.mp4", "parent_id": 0,
@@ -882,6 +883,14 @@ class Rule34XxxConnectorTests(unittest.TestCase):
         self.assertFalse(first.title_is_name)
         self.assertIn("fiona", first.title)
         self.assertEqual(first.published_at, "2026-08-23T00:36:13Z")
+
+    def test_sample_image_is_preferred_over_the_small_preview(self):
+        first = self._connector().fetch("lazyprocrastinator").candidates[0]
+        self.assertEqual(
+            first.thumb_url, "https://api-cdn.rule34.xxx/images/1232/3df1.jpg")
+        self.assertEqual(
+            first.extra["preview_url"],
+            "https://api-cdn.rule34.xxx/thumbnails/1232/t_3df1.jpg")
 
     def test_a_readable_filename_is_still_preferred_and_counts_as_a_name(self):
         last = self._connector().fetch("lazyprocrastinator").candidates[3]

@@ -718,6 +718,53 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.headers["content-range"], "bytes 2-5/10")
         self.assertNotIn("img.kemono.cr", response.text)
 
+    async def test_follow_cover_serves_cached_frame_and_falls_back_to_source_thumb(self):
+        connection = sqlite3.connect(self.db)
+        connection.executescript((ROOT / "migrations" / "0018_online_follow.sql").read_text(
+            encoding="utf-8"))
+        connection.execute(
+            "INSERT INTO follow_source(id,provider,ref,label,url,semantics,created_at,updated_at)"
+            " VALUES(1,'rule34paheal','artist','Artist','https://rule34.paheal.net/u',"
+            "'work','x','x')"
+        )
+        connection.execute(
+            "INSERT INTO follow_item(id,source_id,external_id,title,url,media_url,thumb_url,"
+            "release_key,metadata_json,first_seen_at,last_seen_at) VALUES(7,1,'7','Remote',"
+            "'https://rule34.paheal.net/post/view/7',"
+            "'https://r34i.paheal-cdn.net/ab/cd/video',"
+            "'https://r34t.paheal.net/ab/cd/video','remote',"
+            "'{\"media_kind\":\"video\"}','x','x')"
+        )
+        connection.commit()
+        connection.close()
+        frame = self.root / "clear.jpg"
+        frame.write_bytes(b"clear-jpeg")
+
+        class Cover:
+            def __init__(self):
+                self.fail = False
+
+            def cover(self, _item):
+                if self.fail:
+                    from peach.follow_covers import FollowCoverUnavailable
+                    raise FollowCoverUnavailable("test")
+                return frame
+
+        cover = Cover()
+        self.app.state.follow_cover_service = cover
+        denied = await self.client.get("/follow-cover?id=7")
+        response = await self.client.get("/follow-cover?id=7&t=secret")
+        self.assertEqual(denied.status_code, 401)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"clear-jpeg")
+        self.assertEqual(response.headers["cache-control"], "public, max-age=86400")
+        cover.fail = True
+        fallback = await self.client.get(
+            "/follow-cover?id=7&t=secret", follow_redirects=False)
+        self.assertEqual(fallback.status_code, 307)
+        self.assertEqual(fallback.headers["location"],
+                         "https://r34t.paheal.net/ab/cd/video")
+
     async def test_stream_session_cancel_is_authenticated_and_tombstoned(self):
         denied = await self.client.post("/api/stream-cancel?session=detail-1")
         self.assertEqual(denied.status_code, 401)
