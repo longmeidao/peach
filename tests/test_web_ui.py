@@ -68,6 +68,26 @@ class WebUiSourceTests(unittest.TestCase):
             rule = css[css.index(selector):css.index("}", css.index(selector))]
             self.assertIn("var(--control-radius)", rule, f"{selector} 是按钮")
 
+    def test_shared_geist_component_tokens_cover_the_whole_shell(self):
+        """全站壳层、浮层和普通操作使用同一组语义 token。"""
+        css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
+            encoding="utf-8")
+        self.assertIn("--control-radius:6px; --badge-radius:4px; --floating-radius:12px", css)
+        for selector, token in (
+                (".ib{", "var(--control-radius)"),
+                (".searchmenu{", "var(--floating-radius)"),
+                (".searchoption{", "var(--control-radius)"),
+                (".playlistcreate button,.playlistactions button{", "var(--control-radius)"),
+                (".playlistdialog{", "var(--floating-radius)"),
+                (".playlistpickrow{", "var(--control-radius)"),
+                (".settingscard{", "var(--floating-radius)"),
+                (".settingrow select{", "var(--control-radius)"),
+        ):
+            start = css.index(selector)
+            rule = css[start:css.index("}", start)]
+            self.assertIn(token, rule, f"{selector} 没使用 {token}")
+        self.assertNotRegex(css, r"transition:\s*all(?:[; }])")
+
     def test_close_actions_share_geist_control_geometry(self):
         css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
             encoding="utf-8")
@@ -87,6 +107,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("body.settings-open{overflow:hidden}")
         self.assertPageContains("document.body.classList.add('settings-open')")
         self.assertPageContains("document.body.classList.remove('settings-open')")
+
+    def test_settings_titlebar_stays_visible_inside_its_scroll_container(self):
+        self.assertPageContains(".settingsscroll{max-height:inherit;overflow-y:auto;padding:0 20px 20px")
+        self.assertPageContains("overscroll-behavior:contain;scroll-padding-top:76px")
+        self.assertPageContains(".settingshead{position:sticky;z-index:2;top:0")
+        self.assertPageContains("border-bottom:1px solid var(--line-soft);background:var(--frost-panel)")
+        self.assertPageContains("@media(max-width:600px){.settingsscroll{padding:0 17px 17px}")
 
     def test_studio_metadata_is_not_compiled_as_inline_javascript(self):
         self.assertPageLacks('onerror="this.parentNode.innerHTML=')
