@@ -259,6 +259,7 @@ PROVIDER_PRIORITY: dict[str, int] = {
     "coomer": 20,
     "rule34video": 30,
     "rule34xxx": 40,
+    "rule34paheal": 45,
     "f95zone": 50,
     "simpcity": 60,
 }

@@ -128,7 +128,8 @@ def create_app(
     repository = LedgerRepository(database)
     resolver = FFmpegResolver(settings.ffmpeg_root)
     http_transport = HttpxTransport()
-    follow_media_resolver = FollowMediaResolver(http_transport)
+    follow_media_resolver = FollowMediaResolver(http_transport).with_credential_loader(
+        lambda provider: web_follow._credential_store(contract).load(provider))
     filesystem = FilesystemBackend(
         settings.allowed_media_roots,
         settings.snapshot_root,
@@ -667,7 +668,7 @@ def create_app(
         return response
 
     @app.api_route("/follow-stream", methods=["GET", "HEAD"])
-    def follow_stream(request: Request, id: int):
+    def follow_stream(request: Request, id: int, media: int | None = None):
         """Play a remote follow candidate through Peach without exposing its upstream URL."""
         args = _first_query_values(request)
         if not _authorized(request, settings.token, args):
@@ -677,7 +678,7 @@ def create_app(
         if item is None:
             return JSONResponse({"error": "no such follow item"}, status_code=404)
         try:
-            target = follow_media_resolver.resolve(item)
+            target = follow_media_resolver.resolve(item, media)
             headers = {
                 "User-Agent": "Peach/0.2",
                 "Accept": request.headers.get("accept", "*/*"),
@@ -685,6 +686,7 @@ def create_app(
             }
             if target.referer:
                 headers["Referer"] = target.referer
+            headers.update(target.headers or {})
             for name in ("range", "if-range"):
                 if request.headers.get(name):
                     headers[name.title()] = request.headers[name]

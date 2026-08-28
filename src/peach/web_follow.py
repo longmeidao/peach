@@ -24,6 +24,7 @@ from .taste_history import read_creator_candidates
 
 #: 界面上给每个来源的中文短名。没登记的 provider 直接显示原名。
 PROVIDER_LABELS = {
+    "gofile": "Gofile",
     "fanbox": "FANBOX",
     "patreon": "Patreon",
     "subscribestar": "SubscribeStar",
@@ -32,13 +33,14 @@ PROVIDER_LABELS = {
     "pawchive": "Pawchive",
     "rule34video": "Rule34Video",
     "rule34xxx": "Rule34.xxx",
+    "rule34paheal": "Rule34 Paheal",
     "f95zone": "F95zone",
     "simpcity": "SimpCity",
 }
 
 _STATUSES = ("new", "seen", "saved", "ignored")
 _BACKFILL_PROVIDERS = frozenset(
-    {"kemono", "coomer", "pawchive", "rule34video", "rule34xxx"}
+    {"kemono", "coomer", "pawchive", "rule34video", "rule34xxx", "rule34paheal"}
 )
 _OFFICIAL_IDENTITY_PROVIDERS = frozenset({"fanbox", "patreon", "subscribestar"})
 
@@ -109,7 +111,9 @@ def _item_tag_types(item, tags: list[str]) -> dict[str, str]:
 
 def _media_kind(item) -> str:
     recorded = str(item.metadata.get("media_kind") or "")
-    if recorded == "video" or item.provider == "rule34video":
+    if recorded in {"video", "image"}:
+        return recorded
+    if item.provider == "rule34video":
         return "video"
     media = str(item.media_url or "")
     if _IMAGE_MEDIA_RE.search(media):
@@ -117,6 +121,30 @@ def _media_kind(item) -> str:
     if _VIDEO_MEDIA_RE.search(media):
         return "video"
     return "external"
+
+
+def _media_items(item) -> list[dict]:
+    """给浏览器媒体序号和展示字段；真实上游 URL 仍只留在服务端 metadata。"""
+    raw = item.metadata.get("media_items")
+    if not isinstance(raw, list):
+        return []
+    result = []
+    for index, media in enumerate(raw):
+        if not isinstance(media, dict):
+            continue
+        kind = str(media.get("media_kind") or "")
+        if kind not in {"video", "image"}:
+            continue
+        thumb = str(media.get("thumb_url") or "")
+        result.append({
+            "index": index,
+            "name": str(media.get("name") or f"{kind} {index + 1}"),
+            "media_kind": kind,
+            "thumb_url": thumb if thumb.startswith("https://") else None,
+            "size": media.get("size"),
+            "resource_provider": str(media.get("resource_provider") or ""),
+        })
+    return result
 
 
 def _thumb_url(item) -> str | None:
@@ -157,6 +185,9 @@ def _excluded_item(item) -> bool:
 def _item_payload(item) -> dict:
     tags = _item_tags(item)
     media_kind = _media_kind(item)
+    media_items = _media_items(item)
+    if media_items:
+        media_kind = media_items[0]["media_kind"]
     recorded_links = item.metadata.get("links")
     safe_resource_urls = resource_links(
         "\n".join(str(value) for value in recorded_links)
@@ -184,10 +215,12 @@ def _item_payload(item) -> dict:
         "status": item.status,
         "asset_id": item.asset_id,
         "media_needs_credential": bool(item.metadata.get("media_needs_credential")),
-        "has_media": bool(item.media_url),
+        "has_media": bool(item.media_url) or bool(media_items),
         "media_kind": media_kind,
-        "playable": bool(item.media_url) and media_kind in {"video", "image"}
+        "playable": (bool(item.media_url) or bool(media_items))
+                    and media_kind in {"video", "image"}
                     and not bool(item.metadata.get("media_needs_credential")),
+        "media_items": media_items,
         # 只投影连接器已验证过的文件页域名；原始媒体 URL 仍不进入 feed。
         "resource_urls": safe_resource_urls,
         "tags": tags,
@@ -641,7 +674,11 @@ def w_follow_check(contract, body) -> dict:
         provider, ref = row["provider"], row["ref"]
         page = (row["backfill_page"] + 1) if older else 0
         try:
-            connector = build_connector(provider, credential=credentials.load(provider))
+            connector_kwargs = {"credential": credentials.load(provider)}
+            gofile_credential = credentials.load("gofile")
+            if gofile_credential is not None:
+                connector_kwargs["gofile_credential"] = gofile_credential
+            connector = build_connector(provider, **connector_kwargs)
             fetch = connector.fetch(ref, etag=row["etag"],
                                     last_modified=row["last_modified"], page=page)
         except CredentialError as error:
@@ -875,6 +912,14 @@ def _existing_sources(contract):
 #: 每个来源要不要凭据、要哪些字段、去哪里拿。写在这里而不是模板里，因为知道
 #: 「rule34.xxx 缺 key 就抓不到」的是连接器边界，不是界面。
 CREDENTIAL_GUIDE: dict[str, dict] = {
+    "gofile": {
+        "requirement": "optional",
+        "fields": ["api_token"],
+        "syncable": [],
+        "why": "用于展开 Gofile 文件页，取得其中的图片和视频列表；不配置仍会保留文件页链接。",
+        "where": "https://gofile.io/myprofile",
+        "howto": "登录 Gofile 后在个人资料页复制 API token。",
+    },
     "kemono": {"requirement": "none"},
     "coomer": {"requirement": "none"},
     "pawchive": {"requirement": "none"},
@@ -1010,7 +1055,7 @@ def q_follow_credentials(contract, _args) -> dict:
     """报告凭据状态和怎么配。只给字段名与文件路径，绝不返回凭据值。"""
     store = _credential_store(contract)
     providers = []
-    for provider in sorted(CONNECTORS):
+    for provider in sorted(set(CONNECTORS) | set(CREDENTIAL_GUIDE)):
         described = store.describe(provider)
         guide = CREDENTIAL_GUIDE.get(provider, {"requirement": "none"})
         fields = guide.get("fields", [])

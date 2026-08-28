@@ -75,6 +75,9 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 `.claude/skills/peach-reference-evidence/SKILL.md`。本文件不再复制会随上游变化的测量值。
 F95 masked 链接与 Gofile 文件列表的凭据边界见 `f95-masked-gofile-media`；Mix 只按已解析且
 可播放的视频计数，不按回复数或网盘页数计数。
+FANBOX 多图、Gofile Bearer API、Paheal 标签页与跨站出处键见
+`follow-fanbox-gofile-paheal`。Gofile token 是独立可选凭据：只进请求头，不进 URL、证据、
+ledger 的公开投影或浏览器 JSON；未配置时保留分享页，但不得声称已经取得文件列表。
 
 ## 批处理边界
 

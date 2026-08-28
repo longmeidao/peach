@@ -1382,6 +1382,18 @@ function followQueueHtml(group,itemId){
     }).join('')}</div></aside>`;
 }
 
+function followEmbeddedQueueHtml(item,mediaIndex){
+  const items=item.media_items||[];
+  return `<aside class="mixqueue followqueue"><div class="mixqueuehead"><div><h2>${esc(item.title||'媒体集合')}</h2><span>${items.length} 个媒体</span></div><div class="mixqueueactions">
+    <button data-follow-queue-close title="关闭" aria-label="关闭">${icon('x')}</button></div></div><div class="mixlist">${items.map(media=>{
+      const thumb=media.thumb_url
+        ?`<img src="${esc(media.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
+        :`<span class="fnothumb">${sourceIcon(media.resource_provider||item.provider)}</span>`;
+      return `<div class="mixrow"><button class="mixitem ${media.index===mediaIndex?'current':''}" data-follow-media-item="${media.index}" aria-current="${media.index===mediaIndex?'true':'false'}">
+        <span class="mixitempic">${thumb}</span><span class="mixitemtext"><b>${esc(media.name)}</b><span>${media.media_kind==='image'?'图片':'视频'}</span></span></button></div>`;
+    }).join('')}</div></aside>`;
+}
+
 function indexFollowItems(data){
   const groups=data?.groups||[];
   followItemsById=new Map();followGroupByItemId=new Map();
@@ -1397,24 +1409,29 @@ async function followItemById(id){
   return followItemsById.get(id);
 }
 
-async function openFollowDetail(id,push=true){
+async function openFollowDetail(id,push=true,mediaIndex=null){
   releaseHoverPreviews();
   const entering=!location.pathname.startsWith('/follow/item/');
   if(push&&entering)followDetailReturnPath=location.pathname+location.search;
   if(!push)followDetailReturnPath='/follow';
   const item=await followItemById(+id);if(!item)return;
   const group=followGroupByItemId.get(item.id);
-  const collection=group&&followVideoItems(group).length>1?group:null;
+  const embedded=item.media_items||[];
+  const selectedMedia=embedded.length
+    ?embedded.find(media=>media.index===(mediaIndex??embedded[0].index))||embedded[0]
+    :null;
+  const collection=!embedded.length&&group&&followVideoItems(group).length>1?group:null;
   disposeStage(false);
   if(push)route(`/follow/item/${item.id}`);
   const source=(followData?.sources||[]).find(row=>row.id===item.source_id);
   const authorSources=(followData?.sources||[]).filter(row=>
     source?.author_key&&row.author_key===source.author_key);
   if(!authorSources.length&&source)authorSources.push(source);
-  const src=item.playable?`/follow-stream?id=${item.id}`:'';
-  const media=item.playable&&item.media_kind==='video'
+  const src=item.playable?`/follow-stream?id=${item.id}${selectedMedia?`&media=${selectedMedia.index}`:''}`:'';
+  const selectedKind=selectedMedia?.media_kind||item.media_kind;
+  const media=item.playable&&selectedKind==='video'
     ?`<video controls playsinline preload="metadata" src="${src}"></video>`
-    :item.playable&&item.media_kind==='image'
+    :item.playable&&selectedKind==='image'
       ?`<img class="followdetailposter" src="${src}" alt="${esc(item.title)}">`
       :item.thumb_url
         ?`<img class="followdetailposter" src="${esc(item.thumb_url)}" alt="${esc(item.title)}" referrerpolicy="no-referrer">`
@@ -1424,9 +1441,9 @@ async function openFollowDetail(id,push=true){
   const author=followAuthorName(authorSources)||item.author||item.source_label||'作者未取得';
   const postedBy=item.author&&foldName(item.author)!==foldName(author)?item.author:'';
   $('#stage').hidden=false;document.body.classList.add('detail-open');
-  $('#stage').innerHTML=`<div class="sgrid followdetailgrid${collection?' mixgrid':''}">
+  $('#stage').innerHTML=`<div class="sgrid followdetailgrid${collection||embedded.length>1?' mixgrid':''}">
     <div class="vwrap followdetailmedia"><button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${media}</div>
-    ${collection?followQueueHtml(collection,item.id):''}
+    ${embedded.length>1?followEmbeddedQueueHtml(item,selectedMedia.index):(collection?followQueueHtml(collection,item.id):'')}
     <div class="side followdetailside">
       <div class="followdetailtitle"><div class="stitle">${esc(item.title)}</div>${item.url?`<a class="followorigin" href="${esc(item.url)}" target="_blank" rel="noreferrer noopener" title="打开来源页面" aria-label="打开来源页面">${icon('external-link')}</a>`:''}</div>
       <div class="followdetailidentity"><span class="mav fsourceavatar">${followAuthorAvatar(authorSources)}</span>
@@ -1448,6 +1465,8 @@ async function openFollowDetail(id,push=true){
   $('#stage').querySelectorAll('[data-follow-queue-close]').forEach(button=>button.onclick=closeDetail);
   $('#stage').querySelectorAll('[data-follow-queue-item]').forEach(button=>button.onclick=()=>
     openFollowDetail(+button.dataset.followQueueItem,true));
+  $('#stage').querySelectorAll('[data-follow-media-item]').forEach(button=>button.onclick=()=>
+    openFollowDetail(item.id,true,+button.dataset.followMediaItem));
   $('#stage').querySelectorAll('.followdetailtags [data-follow-tag]').forEach(button=>button.onclick=async()=>{
     const tag=button.dataset.followTag;
     if(followTags.has(tag))followTags.delete(tag);else followTags.add(tag);
@@ -1481,7 +1500,11 @@ function followCard(group,authorSources=[]){
   const thumb=item.thumb_url
     ? `<img src="${esc(item.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
     : `<span class="fnothumb">${esc(item.provider_label)}</span>`;
-  const videos=followVideoItems(group),isMix=videos.length>1;
+  const videos=followVideoItems(group),embedded=item.media_items||[];
+  const isMix=embedded.length>1||videos.length>1;
+  const mixCount=embedded.length>1?embedded.length:videos.length;
+  const mixKind=embedded.length&&embedded.every(media=>media.media_kind==='image')?'图片':'视频';
+  const mixTarget=embedded.length>1?item.id:videos[0]?.id;
   const badges=followBadges(group);
   const tags=(item.tags||[]).slice(0,3).map(tag=>followTagChip(item,tag)).join('');
   const open=`<button class="cardopenhit" data-follow-detail="${item.id}" aria-label="打开 ${esc(item.title)} 详情"></button>`;
@@ -1490,7 +1513,7 @@ function followCard(group,authorSources=[]){
       ${open}${thumb}
       <span class="badge" title="${esc(item.provider_label)}" aria-label="来源：${esc(item.provider_label)}">${sourceIcon(item.provider)}</span>
       <span class="selectionMark">${icon('check')}</span>${item.duration?`<span class="dur mono">${fmtDur(item.duration)}</span>`:''}
-      ${isMix?`<button class="mixbadge" data-follow-collection="${videos[0].id}">${icon('play')}${videos.length} 个视频</button>`:''}
+      ${isMix?`<button class="mixbadge" data-follow-collection="${mixTarget}">${icon('play')}${mixCount} 个${mixKind}</button>`:''}
       <div class="factions">
         <button data-follow-save="${item.id}" title="${item.status==='saved'?'已保存':'保存到账本'}" aria-label="${item.status==='saved'?'已保存':'保存到账本'}"${item.status==='saved'?' disabled':''}>${item.status==='saved'?icon('check'):icon('bookmark-plus')}</button>
         <button data-follow-status="${item.id}" data-to="seen" title="标记已看" aria-label="标记已看"${item.status==='seen'?' disabled':''}>${icon('eye')}</button>
@@ -1539,7 +1562,7 @@ function followCheckSummary(report){
 
 /* ── 看的那一页 ── */
 let followAuthor='',followProvider='',followTags=new Set(),followGroupByItemId=new Map(),followItemsById=new Map(),followDetailReturnPath='/follow';
-const TAGGED_PROVIDERS=['rule34video','rule34xxx'];
+const TAGGED_PROVIDERS=['rule34video','rule34xxx','rule34paheal'];
 function groupTagType(groups,tag){
   for(const group of groups){
     const type=group.primary&&group.primary.tag_types&&group.primary.tag_types[tag];
@@ -1719,6 +1742,8 @@ const SOURCE_ICONS={
   pawchive:'https://pawchive.pw/static/favicon.png',
   rule34video:'https://rule34video.com/favicon-32x32.png',
   rule34xxx:'https://rule34.xxx/favicon.ico',
+  rule34paheal:'https://rule34.paheal.net/favicon.ico',
+  gofile:'https://gofile.io/favicon.ico',
   f95zone:'https://f95zone.to/assets/favicon-32x32.png',
 };
 const sourceIcon=provider=>SOURCE_ICONS[provider]
