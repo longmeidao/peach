@@ -339,8 +339,8 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-xs)}.relatedperson small{color:var(--muted);font-size:var(--fs-xs)}
 .relatedperson:hover .ring{box-shadow:0 0 0 1px var(--border-15)}
 .entitysection{min-width:0;max-width:100%}.entitysection h3{font-size:var(--fs-sm);letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
-.entitycollectionhead{display:flex;align-items:center;gap:10px;margin:0 0 12px}
-.entitycollectionhead h3{margin:0;margin-right:auto}.entitycollectionhead .javlayout{display:inline-flex;gap:6px}
+.entitycollectionhead{display:flex;align-items:center;gap:10px;margin:0 0 12px;min-width:0}
+.entitycollectionhead h3{margin:0;flex:0 0 auto}.entitycollectionhead .javlayout{display:inline-flex;gap:6px}
 /* 作品 / 照片切换。只有该实体真有图片时才出现，没有图片的资料页保持原样。 */
 .mediatabs{display:flex;gap:8px;margin:0 0 18px;border-bottom:1px solid var(--line-soft)}
 .mediatabs[hidden]{display:none}
@@ -559,19 +559,20 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
   -webkit-backdrop-filter:saturate(1.35) blur(16px)}
 .count:empty{display:none}
 .count>span:first-child{flex:none}
-.count .sorts{display:flex;gap:5px;margin-left:auto;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
-.count .sorts::-webkit-scrollbar{display:none}
-.count .sorts button{padding:5px 11px;border:1px solid var(--border-15);border-radius:7px;
+.count .sorts,.entitycollectionhead .sorts{display:flex;gap:5px;margin-left:auto;flex-wrap:nowrap;
+  overflow-x:auto;scrollbar-width:none;min-width:0}
+.count .sorts::-webkit-scrollbar,.entitycollectionhead .sorts::-webkit-scrollbar{display:none}
+.count .sorts button,.entitycollectionhead .sorts button{padding:5px 11px;border:1px solid var(--border-15);border-radius:7px;
   background:transparent;cursor:pointer;font-size:var(--fs-xs);color:var(--ink-2);
   flex:0 0 auto;white-space:nowrap}
-.count .sorts button:hover{border-color:var(--tungsten);color:var(--ink)}
-.count .sorts button[aria-pressed="true"]{background:var(--tungsten-soft);
+.count .sorts button:hover,.entitycollectionhead .sorts button:hover{border-color:var(--tungsten);color:var(--ink)}
+.count .sorts button[aria-pressed="true"],.entitycollectionhead .sorts button[aria-pressed="true"]{background:var(--tungsten-soft);
   border-color:var(--tungsten);color:var(--tungsten)}
-.count .sorts .batchaction{background:var(--tungsten);border-color:var(--tungsten);color:#fff;
+.count .sorts .batchaction,.entitycollectionhead .sorts .batchaction{background:var(--tungsten);border-color:var(--tungsten);color:#fff;
   font-weight:650;padding-inline:14px}
-.count .sorts #batchAction{width:36px;padding:0;display:inline-grid;place-items:center}
-.count .sorts #batchAction svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
-.count .sorts .batchaction:hover{background:color-mix(in srgb,var(--tungsten) 82%,#000);color:#fff}
+.count .sorts #batchAction,.entitycollectionhead .sorts .entitybatch{width:36px;padding:0;display:inline-grid;place-items:center}
+.count .sorts #batchAction svg,.entitycollectionhead .sorts .entitybatch svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
+.count .sorts .batchaction:hover,.entitycollectionhead .sorts .batchaction:hover{background:color-mix(in srgb,var(--tungsten) 82%,#000);color:#fff}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
 .shorts-inline{grid-column:1/-1;margin:28px 0 8px;padding-top:0}
 .shorts-inline h2{margin:0 0 10px;font-size:var(--fs-lg);display:flex;align-items:center;gap:10px}
@@ -1102,6 +1103,9 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   .count>span:first-child{line-height:36px;white-space:nowrap}
   .count .sorts{width:max-content;margin-left:0;flex:0 0 auto;overflow:visible}
   .count .sorts button{min-height:36px}
+  .entitycollectionhead{align-items:flex-start;flex-direction:column}
+  .entitycollectionhead .sorts{width:100%;margin-left:0;padding-bottom:2px}
+  .entitycollectionhead .sorts button{min-height:36px}
   .playlistpage>header{align-items:stretch;flex-direction:column}.playlistcreate input{min-width:0;width:100%}.playlistcreate label{flex:1 1 100%}.playlistcard{grid-template-columns:92px minmax(0,1fr)}.playlistactions{justify-content:flex-start;overflow-x:auto}.playlistactions button{white-space:nowrap}
   .fb{width:100%}.fb button{flex:1 1 0;min-width:38px}
   /* 顶栏在窄屏会被搜索框撑破 —— 搜索收成一个按钮，点了才展开 */

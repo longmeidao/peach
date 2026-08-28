@@ -209,12 +209,13 @@ function homePath(filters=state){
   if(!STATE_ROUTES[filters.state]&&filters.state)params.set('state',filters.state);
   return path+(params.size?'?'+params:'');
 }
-const ENTITY_FILTER_KEYS=['loc','creator','tag','dur_min','dur_max','orient'];
-const emptyEntityFilters=()=>Object.fromEntries(ENTITY_FILTER_KEYS.map(key=>[key,'']));
+const ENTITY_FILTER_KEYS=['loc','creator','tag','dur_min','dur_max','orient','sort'];
+const emptyEntityFilters=()=>Object.fromEntries(
+  ENTITY_FILTER_KEYS.map(key=>[key,key==='sort'?'new':'']));
 const parseEntityFilters=search=>{const params=new URLSearchParams(search),filters=emptyEntityFilters();
-  ENTITY_FILTER_KEYS.forEach(key=>{filters[key]=params.get(key)||''});return filters};
+  ENTITY_FILTER_KEYS.forEach(key=>{filters[key]=params.get(key)||(key==='sort'?'new':'')});return filters};
 const entityFilterSearch=filters=>{const params=new URLSearchParams();
-  ENTITY_FILTER_KEYS.forEach(key=>{if(filters[key])params.set(key,filters[key])});
+  ENTITY_FILTER_KEYS.forEach(key=>{if(filters[key]&&!(key==='sort'&&filters[key]==='new'))params.set(key,filters[key])});
   return params.toString()};
 let barsContext={type:'home',filters:state},detailReturnBarsContext=null;
 const cloneBarsContext=context=>context&&context.type==='entity'
@@ -591,7 +592,10 @@ function cardHtml(it,cls){
   const performerTotal=it.performer_total||performers.length;
   const performer=performers[0]||'';
   const performerRef=performerRefs[0];
-  const identity=it.creator?{kind:'creator',name:it.creator}
+  // 番号旧投影常把女优罗马字同时塞进 `asset.creator`。规范 performer 实体已经
+  // 本地化时，不能再让旧扁平字段抢走卡片署名和链接；非番号创作者作品仍优先 creator。
+  const primaryCreator=it.is_jav&&performer?'':it.creator;
+  const identity=primaryCreator?{kind:'creator',name:primaryCreator}
     :(performer?{kind:'performer',name:performer}
       :(it.code?{kind:'',name:it.code}
         :(it.studio?{kind:'studio',name:it.studio}:{kind:'',name:'未归属'})));
@@ -603,7 +607,7 @@ function cardHtml(it,cls){
   const tgs=(it.tags||[]).slice(0,3).map(x=>`<span class="tg general" data-tag="${esc(x)}">${esc(tagLabel(x))}</span>`).join('');
   // 共演作品用头像提示多人，但文字只保留第一位，再给总人数。两个长名字加元数据
   // 会在普通卡片里折成三行；「第一位 + 等 N 人」仍能说明身份与规模。
-  const coStarred=performers.length>1&&!it.creator;
+  const coStarred=performers.length>1&&!primaryCreator;
   const avatar=coStarred
     ? `<div class="mavstack">${performers.slice(0,3)
         .map((nm,i)=>`<button class="mav entitylink" data-entity-kind="performer" data-entity-name="${esc(nm)}" title="打开${esc(performerLabel(it))}页：${esc(nm)}">${avatarInner(nm,performerRefs[i],REP[nm])}</button>`)
@@ -612,8 +616,8 @@ function cardHtml(it,cls){
         /* 头像和名字必须落到同一个身份。原来头像先看 performer、名字先看 creator，
            碰上同名的 creator/performer 重复实体（账本里有 35 组）就会一个跳
            `/performers/x`、另一个跳 `/creators/x`，同一张卡上两个入口去两个地方。 */
-        const avatarKind=identity.kind||(performer?'performer':(it.creator?'creator':(it.studio?'studio':'')));
-        const avatarName=identity.kind?identity.name:(performer||it.creator||it.studio||who);
+        const avatarKind=identity.kind||(performer?'performer':(primaryCreator?'creator':(it.studio?'studio':'')));
+        const avatarName=identity.kind?identity.name:(performer||primaryCreator||it.studio||who);
         const inner=avatarInner(avatarName,performerRef,REP[avatarName]||REP[it.creator]||REP[it.studio]);
         return avatarKind
           ? `<button class="mav entitylink" data-entity-kind="${avatarKind}" data-entity-name="${esc(avatarName)}" title="打开${avatarKind==='performer'?esc(performerLabel(it)):'资料'}页">${inner}</button>`
@@ -645,7 +649,8 @@ function cardHtml(it,cls){
       ${tgs?`<div class="ctags">${tgs}</div>`:''}</div></div></article>`;
 }
 function mixLabel(it){
-  return it.creator||(it.performers||[])[0]||it.studio||it.code||tagLabel((it.tags||[])[0])||'为你推荐';
+  const performer=(it.performers||[])[0];
+  return (it.is_jav&&performer?performer:it.creator)||performer||it.studio||it.code||tagLabel((it.tags||[])[0])||'为你推荐';
 }
 function mixCardHtml(it){
   const thumb=it.has_thumb
@@ -2558,9 +2563,11 @@ const ENTITY_LABELS={performer:'艺人',studio:'厂牌',creator:'创作者',seri
 const performerLabel=it=>it&&it.is_jav?'女优':'艺人';
 let entityRequestSeq=0;
 async function fetchEntityItems(kind,name,filters,offset=0){
-  const p=new URLSearchParams();p.set(kind,name);p.set('limit','48');p.set('offset',String(offset));p.set('sort','new');
+  const p=new URLSearchParams();p.set(kind,name);p.set('limit','48');p.set('offset',String(offset));
+  p.set('sort',filters.sort||'new');
+  if(filters.sort==='seed')p.set('seed',state.seed);
   if(offset)p.set('count','0');
-  ENTITY_FILTER_KEYS.forEach(key=>{if(filters[key]&&key!==kind)p.set(key,filters[key])});
+  ENTITY_FILTER_KEYS.forEach(key=>{if(filters[key]&&key!==kind&&key!=='sort')p.set(key,filters[key])});
   // 资料页继承 JAV 开关：女优页和厂牌页同样是按番号浏览的语境。
   if(state.jav==='1')p.set('jav','1');
   const items=await api('/api/items?'+p);cache(items.items);return items
@@ -2573,11 +2580,21 @@ function renderEntityCollection(kind,name,items,filters,append=false){
     renderedPartGroups.clear();
     entityCollectionPage={items:[...(items.items||[])],total:items.total||0,
       has_more:items.has_more==null?(items.items||[]).length<(items.total||0):!!items.has_more};
-    section.innerHTML=`<div class="entitycollectionhead"><h3></h3>${javActive()?javLayoutButtons():''}</div>
+    section.innerHTML=`<div class="entitycollectionhead"><h3></h3><span class="sorts">
+      <button class="batchaction entitybatch" type="button" title="换一批" aria-label="换一批">${icon('refresh-cw')}</button>
+      ${javActive()?javLayoutButtons():''}
+      ${SORTS.map(([key,label])=>`<button type="button" data-entity-sort="${key}"
+        aria-pressed="${(filters.sort||'new')===key}">${label}</button>`).join('')}</span></div>
       <div class="grid"></div><button class="entitymore" type="button">载入更多</button>`;
     section.dataset.total=String(items.total||0);
     section.querySelector('h3').textContent=`视频 · ${(items.total||0).toLocaleString()}${entityTag?' · '+entityTag:''}`;
-    wireJavLayoutButtons(section)
+    wireJavLayoutButtons(section);
+    section.querySelector('.entitybatch').onclick=()=>{
+      state.seed=rollSeed();updateEntityCollection(kind,name,{...filters,sort:'seed'},true)};
+    section.querySelectorAll('[data-entity-sort]').forEach(button=>button.onclick=()=>{
+      const sort=button.dataset.entitySort;
+      if(sort==='seed')state.seed=rollSeed();
+      updateEntityCollection(kind,name,{...filters,sort},true)});
   }else{
     entityCollectionPage.items.push(...(items.items||[]));
     entityCollectionPage.has_more=!!items.has_more;
@@ -2916,7 +2933,7 @@ async function openEntity(kind,name,push=true,requestedTag){
   $('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;
   $('#index').innerHTML=`<div class="entityhero"><div class="entityportrait ${kind==='performer'||kind==='creator'?'':'square'}">${image}<span>${esc(name.slice(0,1))}</span></div>
       <div><h2>${esc(d.canonical_name)}</h2>
-        <div class="alias">${(d.aliases||[]).length?'别名 · '+d.aliases.map(esc).join(' / '):'暂无别名'} · ${d.asset_count.toLocaleString()} 个视频</div>
+        <div class="alias">${(d.display_aliases||[]).length?'别名 · '+d.display_aliases.map(esc).join(' / '):'暂无别名'} · ${d.asset_count.toLocaleString()} 个视频</div>
         ${d.summary?`<div class="entitysummary">${esc(d.summary)}</div>`:''}
         ${links?`<div class="entitylinks">${links}</div>`:''}
         ${terms?`<div class="entityterms">馆藏检索词 · ${terms}</div>`:''}</div></div>

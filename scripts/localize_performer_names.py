@@ -87,6 +87,11 @@ def _contains_latin(value: str) -> bool:
     return bool(re.search(r"[A-Za-z]", value or ""))
 
 
+def _is_non_latin_east_asian(value: str) -> bool:
+    return bool(re.search(r"[\u3040-\u30ff\u3400-\u9fff]", value or "")) \
+        and not _contains_latin(value)
+
+
 def _target_name(mapping: ActorMapping) -> tuple[str, str]:
     override = REVIEWED_CN_OVERRIDES.get(mapping.jp)
     if override and override in mapping.keywords:
@@ -126,7 +131,12 @@ def collect(
                (SELECT count(DISTINCT ae.asset_id) FROM asset_entity ae
                  WHERE ae.entity_id=e.id) assets,
                (SELECT group_concat(DISTINCT ae.source) FROM asset_entity ae
-                 WHERE ae.entity_id=e.id) sources
+                 WHERE ae.entity_id=e.id) sources,
+               (SELECT x.external_id FROM entity_external_ref x
+                 WHERE x.entity_id=e.id AND x.provider='r18'
+                   AND x.external_kind IN ('performer','performer_name')
+                 ORDER BY CASE x.external_kind WHEN 'performer_name' THEN 0 ELSE 1 END
+                 LIMIT 1) release_name
         FROM entity e WHERE e.kind='performer' ORDER BY e.id
         """
     ).fetchall()
@@ -213,6 +223,19 @@ def collect(
 
         mapping = mappings[mapping_index]
         target, target_source = _target_name(mapping)
+        # 外部映射偶有把 `zh_cn` 填成罗马字。不能因此把已有的日文/中文规范名
+        # 倒退成英文；已发生倒退时，仅用同时出现在该映射条目中的 r18 发行名恢复。
+        if _contains_latin(target):
+            release_name = str(entity["release_name"] or "").strip()
+            mapping_names = {
+                normalize_entity_name(value)
+                for value in (mapping.jp, *mapping.keywords) if value
+            }
+            if (_is_non_latin_east_asian(release_name)
+                    and normalize_entity_name(release_name) in mapping_names):
+                target, target_source = release_name, "r18-nonlatin-release-name"
+            elif _is_non_latin_east_asian(str(entity["canonical_name"])):
+                target, target_source = str(entity["canonical_name"]), "preserve-nonlatin"
         base.update(
             target_name=target,
             mapping_key=mapping.key,

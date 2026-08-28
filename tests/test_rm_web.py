@@ -815,6 +815,55 @@ class WebDataTests(unittest.TestCase):
             self.contract, {"id": 1},
         )["watch_later"])
 
+    def test_entity_name_prefers_canonical_and_only_displays_local_aliases(self):
+        con = sqlite3.connect(self.db_path)
+        con.executemany(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
+            "VALUES(?,'performer',?,?)",
+            [(16, "飯岡かなこ", "飯岡かなこ"),
+             (17, "森泽佳奈", "森泽佳奈"),
+             (18, "释爱丽丝", "释爱丽丝")],
+        )
+        con.executemany(
+            "INSERT INTO entity_alias VALUES(?,?,?,?,1.0)",
+            [(17, "飯岡かなこ", "飯岡かなこ", "legacy"),
+             (16, "共同旧名", "共同旧名", "legacy"),
+             (17, "共同旧名", "共同旧名", "legacy"),
+             (18, "Alice Shaku", "alice shaku", "mapping"),
+             (18, "しゃくありす", "しゃくありす", "mapping"),
+             (18, "釈アリス", "釈アリス", "mapping"),
+             (18, "释爱丽丝", "释爱丽丝", "legacy")],
+        )
+        con.commit(); con.close()
+
+        exact = rm_web.q_entity(
+            self.contract, {"kind": "performer", "name": "飯岡かなこ"})
+        self.assertEqual(exact["id"], 16, "规范名不能被另一实体的同名别名抢占")
+        self.assertEqual(rm_web.q_entity(
+            self.contract, {"kind": "performer", "name": "共同旧名"}),
+            {"error": "not found"}, "撞名别名不能任意指向其中一位")
+
+        localized = rm_web.q_entity(
+            self.contract, {"kind": "performer", "name": "释爱丽丝"})
+        self.assertIn("Alice Shaku", localized["aliases"], "罗马字仍须可用于身份检索")
+        self.assertEqual(localized["display_aliases"], ["しゃくありす", "釈アリス"])
+
+    def test_entity_filter_and_video_sort_compose_in_one_items_query(self):
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+            "VALUES(2,11,'performer','test',1.0)")
+        con.commit(); con.close()
+
+        newest = rm_web.q_items(self.contract, {
+            "performer": "Canonical Alice", "sort": "new", "limit": "10",
+        })
+        biggest = rm_web.q_items(self.contract, {
+            "performer": "Canonical Alice", "sort": "big", "limit": "10",
+        })
+        self.assertEqual([item["id"] for item in newest["items"]], [1, 2])
+        self.assertEqual([item["id"] for item in biggest["items"]], [2, 1])
+
     def test_persistent_playlist_can_save_mix_reorder_resume_and_edit(self):
         created = rm_web.w_playlist(self.contract, {
             "action": "create", "name": "  Alice Mix  ", "asset_ids": [1, 2, 1],

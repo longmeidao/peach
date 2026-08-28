@@ -23,7 +23,8 @@ class PerformerLocalizationTests(unittest.TestCase):
         self.con.executemany(
             "INSERT INTO asset(id,location,path,name,medium) VALUES(?,'local',?,?,'video')",
             [(1, "/x/1.mp4", "1.mp4"), (2, "/x/2.mp4", "2.mp4"),
-             (3, "/x/3.mp4", "3.mp4"), (4, "/x/4.mp4", "4.mp4")])
+             (3, "/x/3.mp4", "3.mp4"), (4, "/x/4.mp4", "4.mp4"),
+             (5, "/x/5.mp4", "5.mp4")])
         self.con.executemany(
             "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
             "VALUES(?,'performer',?,?, 't','t')",
@@ -31,17 +32,22 @@ class PerformerLocalizationTests(unittest.TestCase):
              (11, "Mio Hayakawa", "mio hayakawa"),
              (12, "吉川蓮", "吉川蓮"),
              (13, "Unknown Roman", "unknown roman"),
-             (14, "account_01", "account_01")])
+             (14, "account_01", "account_01"),
+             (15, "Hitomi Hoshiya", "hitomi hoshiya")])
         self.con.executemany(
             "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
             "VALUES(?,?,'performer',?,1.0)",
             [(1, 10, "r18:performer"), (2, 11, "r18:performer"),
              (3, 12, "r18:performer"), (4, 13, "r18:performer"),
-             (4, 14, "performer")])
+             (4, 14, "performer"), (5, 15, "r18:performer")])
         self.con.executemany(
             "INSERT INTO asset_tag(asset_id,tag,confidence,source) VALUES(?,?,1.0,'r18:performer')",
             [(1, "演员:Alice Shaku"), (2, "演员:Mio Hayakawa"),
-             (3, "演员:吉川蓮"), (4, "演员:Unknown Roman")])
+             (3, "演员:吉川蓮"), (4, "演员:Unknown Roman"),
+             (5, "演员:Hitomi Hoshiya")])
+        self.con.execute(
+            "INSERT INTO entity_external_ref(entity_id,provider,external_kind,external_id) "
+            "VALUES(15,'r18','performer_name','星谷瞳')")
         self.con.commit()
 
         self.mapping = root / "actors.xml"
@@ -51,6 +57,8 @@ class PerformerLocalizationTests(unittest.TestCase):
  keyword="釈アリス,釋愛麗絲,释爱丽丝,Shaku Alice" tmdb_id="5294947" verified="1" />
 <a zh_cn="吉川莲" zh_tw="吉川蓮" jp="吉川蓮"
  keyword="Mio Hayakawa,早川美緒,吉川蓮" tmdb_id="123" verified="1" />
+<a zh_cn="Hitomi Hoshiya" zh_tw="星谷瞳" jp="星谷瞳"
+ keyword="Hitomi Hoshiya,星谷瞳" tmdb_id="456" verified="1" />
 </actor></actor-mapping>""", encoding="utf-8")
         self.review = root / "review.csv"
         with self.review.open("w", encoding="utf-8-sig", newline="") as handle:
@@ -66,6 +74,8 @@ class PerformerLocalizationTests(unittest.TestCase):
                  "kana": "よしかわれん", "former_names": ""},
                 {"entity_id": 13, "current_name": "Unknown Roman", "japanese_name": "未収録花子",
                  "kana": "", "former_names": ""},
+                {"entity_id": 15, "current_name": "Hitomi Hoshiya", "japanese_name": "星谷瞳",
+                 "kana": "ほしやひとみ", "former_names": ""},
             ])
 
     def tearDown(self):
@@ -87,6 +97,9 @@ class PerformerLocalizationTests(unittest.TestCase):
         self.assertEqual(rows[13]["target_name"], "未収録花子")
         self.assertEqual(rows[13]["action"], "localize-jp-fallback")
         self.assertEqual(rows[14]["action"], "keep-non-release")
+        self.assertEqual(rows[15]["target_name"], "星谷瞳")
+        self.assertEqual(rows[15]["action"], "localize")
+        self.assertIn("r18-nonlatin-release-name", rows[15]["resolution"])
 
     def test_apply_preserves_aliases_and_rewrites_actor_tags(self):
         counts = apply_rows(self.con, self.plan(), "abc123")
@@ -97,6 +110,7 @@ class PerformerLocalizationTests(unittest.TestCase):
         self.assertNotIn(12, names)
         self.assertEqual(names[13], "未収録花子")
         self.assertEqual(names[14], "account_01")
+        self.assertEqual(names[15], "星谷瞳")
         aliases = {row[0] for row in self.con.execute(
             "SELECT alias FROM entity_alias WHERE entity_id=10")}
         self.assertTrue({"Alice Shaku", "釈アリス", "しゃくありす", "釋愛麗絲"} <= aliases)
@@ -105,6 +119,7 @@ class PerformerLocalizationTests(unittest.TestCase):
         self.assertEqual(tags[2], "演员:吉川莲")
         self.assertEqual(tags[3], "演员:吉川莲")
         self.assertEqual(tags[4], "演员:未収録花子")
+        self.assertEqual(tags[5], "演员:星谷瞳")
         self.assertEqual(counts["merged"], 1)
         self.assertEqual(self.con.execute("PRAGMA foreign_key_check").fetchall(), [])
 

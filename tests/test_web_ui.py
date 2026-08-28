@@ -123,7 +123,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_co_starred_cards_keep_one_name_and_the_total(self):
         # 多人合集保留头像提示，但文字只写第一位和总人数，避免名称折成多行。
-        self.assertPageContains("const coStarred=performers.length>1&&!it.creator")
+        self.assertPageContains("const coStarred=performers.length>1&&!primaryCreator")
         self.assertPageContains('<div class="mavstack">')
         self.assertPageContains("performers.slice(0,3)")
         self.assertPageContains("data-entity-kind=\"performer\" data-entity-name=\"${esc(nm)}\"")
@@ -269,10 +269,10 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains(
             "const avatarKind=identity.kind||(performer?'performer':"
-            "(it.creator?'creator':(it.studio?'studio':'')));")
+            "(primaryCreator?'creator':(it.studio?'studio':'')));")
         self.assertPageContains(
             "const avatarName=identity.kind?identity.name:"
-            "(performer||it.creator||it.studio||who);")
+            "(performer||primaryCreator||it.studio||who);")
 
     def test_narrow_search_has_a_way_out(self):
         """窄屏展开搜索后必须有退出入口。
@@ -842,7 +842,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("showHomeSurfaces();disposeStage(false)")
 
     def test_entity_tags_filter_inside_the_current_entity_page(self):
-        self.assertPageContains("ENTITY_FILTER_KEYS.forEach(key=>{if(filters[key]&&key!==kind)p.set(key,filters[key])})")
+        self.assertPageContains("ENTITY_FILTER_KEYS.forEach(key=>{if(filters[key]&&key!==kind&&key!=='sort')p.set(key,filters[key])})")
         self.assertPageContains("async function updateEntityCollection")
         self.assertPageContains("updateEntityCollection(kind,name,nextFilters,true)")
         self.assertPageContains("renderEntityCollection(kind,name,items,filters)")
@@ -850,6 +850,28 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks(
             "document.body.classList.remove('entity-open');$('#index').hidden=true;state.tag=b.dataset.entityTag"
         )
+
+    def test_every_entity_video_collection_reuses_applicable_sort_controls(self):
+        self.assertPageContains("const ENTITY_LABELS={performer:'艺人',studio:'厂牌',creator:'创作者',series:'系列'}")
+        self.assertPageContains('class="batchaction entitybatch"')
+        self.assertPageContains('data-entity-sort="${key}"')
+        self.assertPageContains("p.set('sort',filters.sort||'new')")
+        self.assertPageContains("if(filters.sort==='seed')p.set('seed',state.seed)")
+        self.assertPageContains("updateEntityCollection(kind,name,{...filters,sort},true)")
+        self.assertPageContains("key==='sort'&&filters[key]==='new'")
+        self.assertPageContains(".entitycollectionhead .sorts")
+        # 照片瀑布流没有视频排序语义，切换后直接渲染照片，不复用作品头。
+        self.assertPageContains("if(media==='photos'){renderPhotoWall(kind,name,filters,entityPhotos);return}")
+
+    def test_entity_profile_uses_display_aliases_not_search_identity_aliases(self):
+        self.assertPageContains("(d.display_aliases||[]).length")
+        self.assertPageLacks("(d.aliases||[]).length?'别名")
+
+    def test_jav_cards_prefer_the_canonical_performer_over_legacy_creator_text(self):
+        self.assertPageContains("const primaryCreator=it.is_jav&&performer?'':it.creator")
+        self.assertPageContains("const identity=primaryCreator?{kind:'creator',name:primaryCreator}")
+        self.assertPageContains("const coStarred=performers.length>1&&!primaryCreator")
+        self.assertPageContains("return (it.is_jav&&performer?performer:it.creator)||performer")
 
     def test_drawer_filters_follow_entity_and_detail_context(self):
         # 实体页 facets 必须按当前实体取数；详情页则按单个作品取数，不能继续复用首页全库。
@@ -1292,7 +1314,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks(".photosetcover{display:block;aspect-ratio:3/4")
 
     def test_jav_entity_pages_render_and_wire_the_same_layout_buttons(self):
-        self.assertPageContains('<div class="entitycollectionhead"><h3></h3>${javActive()?javLayoutButtons():\'\'}</div>')
+        self.assertPageContains('<div class="entitycollectionhead"><h3></h3><span class="sorts">')
+        self.assertPageContains("${javActive()?javLayoutButtons():''}")
         self.assertPageContains("wireJavLayoutButtons(section)")
         self.assertPageContains("renderEntityCollection(kind,name,{...entityCollectionPage,items:[...entityCollectionPage.items]}")
         self.assertPageContains(".entitycollectionhead .javlayout{display:inline-flex;gap:6px}")
