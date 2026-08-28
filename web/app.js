@@ -72,6 +72,8 @@ function dropOfflineFromDefaultLoc(){
 const DURATION_TAGS=new Set(['短片-2分内','中片-10分内','长片-30分内','超长片-30分上']);
 const SETTINGS_KEY='peach.settings.v1';
 const DEFAULT_SIDEBAR_ORDER=['','performers','tags','jav','flagged','playlists','follow','immerse','manage'];
+const OPTIONAL_SIDEBAR_KEYS=['stats','review','ads','dupes','trash','follow-manage','quality'];
+const ALL_SIDEBAR_KEYS=[...DEFAULT_SIDEBAR_ORDER,...OPTIONAL_SIDEBAR_KEYS];
 const DEFAULT_SETTINGS={rotateMinutes:0,batchSize:60,defaultSort:'seed',hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
@@ -83,7 +85,7 @@ appSettings.hoverDelaySeconds=allowedSetting(+appSettings.hoverDelaySeconds,[3,5
 appSettings.seekSeconds=allowedSetting(+appSettings.seekSeconds,[5,10,30],10);
 appSettings.searchHistoryLimit=allowedSetting(+appSettings.searchHistoryLimit,[5,10,20],10);
 appSettings.relatedLimit=allowedSetting(+appSettings.relatedLimit,[12,20,30],20);
-appSettings.sidebarOrder=[...new Set([...(Array.isArray(appSettings.sidebarOrder)?appSettings.sidebarOrder:[]),...DEFAULT_SIDEBAR_ORDER])].filter(key=>DEFAULT_SIDEBAR_ORDER.includes(key));
+appSettings.sidebarOrder=[...new Set(Array.isArray(appSettings.sidebarOrder)?appSettings.sidebarOrder:DEFAULT_SIDEBAR_ORDER)].filter(key=>ALL_SIDEBAR_KEYS.includes(key));
 document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);
 const saveSettings=()=>localStorage.setItem(SETTINGS_KEY,JSON.stringify(appSettings));
 function syncSettingsPanel(){
@@ -809,7 +811,7 @@ async function buildBars(){
   const scopedCreators=context.type==='entity'&&context.kind==='creator'
     ? facetData.creators.filter(item=>item.k!==context.name):facetData.creators;
   // 与窄栏共用 EDGE_ICONS —— 两边条目必须一致，原来抽屉是另一份硬编码
-  const navBtn=(k,label,ic)=>`<button data-nav="${k}" aria-pressed="${navOn(k)}">
+  const navBtn=(k,label,ic)=>`<button data-nav="${k}" draggable="true" aria-pressed="${navOn(k)}">
     ${icon(ic)}<span>${label}</span></button>`;
   $('#drawer').innerHTML=
     `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -830,6 +832,7 @@ async function buildBars(){
   $('#drawer').querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{
     openIndex(b.dataset.page); closeDrawerAfterNav()});
   $('#drawer').querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navTo(b.dataset.nav));
+  wireNavigationDrag($('#drawer').querySelector('.dnav'));
   const bind=()=>$('#drawer').querySelectorAll('.chip').forEach(b=>b.onclick=()=>{
     const k=b.dataset.key,v=b.dataset.val;
     commitContextFilter(filters=>{
@@ -2856,8 +2859,8 @@ const EDGE_ICONS=[
   ['immerse','沉浸模式','play'],
   ['manage','管理','settings'],
 ];
-/* 统计、疑似广告、回收站、人工复核都是「管理」下的二级入口，不再各占一个顶层图标。
-   URL 保持原样（/stats、/trash、/review、?state=ads），只是多了一层共同的导航条。
+/* 统计、疑似广告、回收站、人工复核默认都收在「管理」下，不主动占用顶层空间；
+   用户仍可在设置里把某个具体页面加到顶层。URL 保持原样（/stats、/trash、/review、?state=ads）。
    顺序按做事顺序分成两段：先是库里已有的东西——看现状、复核新进来的候选、
    清广告与重复、落到回收站；再是要往外拿的——关注和高清版都是「还想要什么」，
    原先把它夹在高清版和回收站中间，两边都不挨着。 */
@@ -2870,24 +2873,107 @@ const MANAGE_SECTIONS=[
   ['follow','关注','rss'],
   ['quality','高清版','sparkles'],
 ];
+const OPTIONAL_EDGE_ICONS=MANAGE_SECTIONS.map(([key,label,ic])=>
+  key==='follow'?['follow-manage','关注管理',ic]:[key,label,ic]);
+const NAV_CATALOG=[...EDGE_ICONS,...OPTIONAL_EDGE_ICONS];
+const DIRECT_MANAGE_NAV={stats:'stats',review:'review',ads:'ads',dupes:'dupes',trash:'trash','follow-manage':'follow',quality:'quality'};
 function orderedEdgeIcons(){
-  const byKey=new Map(EDGE_ICONS.map(item=>[item[0],item]));
+  const byKey=new Map(NAV_CATALOG.map(item=>[item[0],item]));
   return appSettings.sidebarOrder.map(key=>byKey.get(key)).filter(Boolean);
 }
+function saveSidebarSetting(){
+  saveSettings();renderSidebarOrderSetting();buildEdge();buildBars();
+}
+function moveSidebarItem(key,targetKey,after=false){
+  if(key===targetKey)return;
+  const next=[...appSettings.sidebarOrder],from=next.indexOf(key);
+  if(from<0)return;
+  next.splice(from,1);
+  const target=next.indexOf(targetKey);
+  if(target<0)return;
+  next.splice(target+(after?1:0),0,key);
+  appSettings.sidebarOrder=next;saveSidebarSetting();
+}
+function wireNavigationDrag(root){
+  if(!root)return;
+  const items=[...root.querySelectorAll(':scope > [data-nav]')];
+  items.forEach(item=>{
+    if(root.id==='edge')item.onpointerdown=()=>{
+      // 按下时就决定是点击或拖动；不能让 180ms 悬停计时器在按住期间把窄栏换成抽屉。
+      clearTimeout(edgeT);edgeT=null;drawerSuppressUntil=Date.now()+900;
+    };
+    item.ondragstart=e=>{
+      sidebarDragKey=item.dataset.nav;item.classList.add('nav-dragging');
+      e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',sidebarDragKey||'__home__');
+    };
+    item.ondragover=e=>{
+      if(sidebarDragKey===null||sidebarDragKey===item.dataset.nav)return;
+      e.preventDefault();e.dataTransfer.dropEffect='move';
+      const after=e.clientY>item.getBoundingClientRect().top+item.offsetHeight/2;
+      items.forEach(node=>node.classList.remove('nav-drop-before','nav-drop-after'));
+      item.classList.add(after?'nav-drop-after':'nav-drop-before');
+    };
+    item.ondrop=e=>{
+      e.preventDefault();
+      const after=item.classList.contains('nav-drop-after'),target=item.dataset.nav,key=sidebarDragKey;
+      sidebarDragKey=null;moveSidebarItem(key,target,after);
+    };
+    item.ondragend=()=>{
+      sidebarDragKey=null;items.forEach(node=>node.classList.remove('nav-dragging','nav-drop-before','nav-drop-after'));
+    };
+  });
+}
+let sidebarDragKey=null;
 function renderSidebarOrderSetting(){
   const root=$('#sidebarOrderSetting');if(!root)return;
-  const labels=new Map(EDGE_ICONS.map(([key,label])=>[key,label]));
-  root.innerHTML=appSettings.sidebarOrder.map((key,index)=>{
-    const entry=EDGE_ICONS.find(item=>item[0]===key),label=labels.get(key)||key;
-    return `<div class="sidebarorderrow"><span>${icon(entry?.[2]||'home')}<b>${esc(label)}</b></span><span>
+  const byKey=new Map(NAV_CATALOG.map(item=>[item[0],item]));
+  const visible=appSettings.sidebarOrder.map(key=>byKey.get(key)).filter(Boolean);
+  const available=NAV_CATALOG.filter(([key])=>!appSettings.sidebarOrder.includes(key));
+  const rows=visible.map(([key,label,ic],index)=>
+    `<div class="sidebarorderrow" draggable="true" data-sidebar-row="${esc(key)}">
+      <span class="sidebarorderlabel"><i class="sidebardrag" aria-hidden="true">${icon('grip-vertical')}</i>${icon(ic)}<b>${esc(label)}</b></span><span class="sidebarorderactions">
       <button data-sidebar-key="${esc(key)}" data-sidebar-move="-1" aria-label="上移 ${esc(label)}" title="上移"${index===0?' disabled':''}>${icon('chevron-up')}</button>
-      <button data-sidebar-key="${esc(key)}" data-sidebar-move="1" aria-label="下移 ${esc(label)}" title="下移"${index===appSettings.sidebarOrder.length-1?' disabled':''}>${icon('chevron-down')}</button></span></div>`;
-  }).join('');
+      <button data-sidebar-key="${esc(key)}" data-sidebar-move="1" aria-label="下移 ${esc(label)}" title="下移"${index===visible.length-1?' disabled':''}>${icon('chevron-down')}</button>
+      <button data-sidebar-key="${esc(key)}" data-sidebar-hide aria-label="隐藏 ${esc(label)}" title="隐藏"${visible.length===1?' disabled':''}>${icon('eye-off')}</button></span></div>`).join('');
+  const options=available.map(([key,label])=>`<option value="${esc(key===''?'__home__':key)}">${esc(label)}</option>`).join('');
+  root.innerHTML=rows+`<div class="sidebaradd"><select data-sidebar-add-select aria-label="选择要添加的页面"${available.length?'':' disabled'}>${options||'<option>全部页面都已显示</option>'}</select>
+    <button data-sidebar-add${available.length?'':' disabled'}>${icon('plus')}<span>添加</span></button></div>`;
   root.querySelectorAll('[data-sidebar-move]').forEach(button=>button.onclick=()=>{
     const from=appSettings.sidebarOrder.indexOf(button.dataset.sidebarKey),to=from+(+button.dataset.sidebarMove);
     if(from<0||to<0||to>=appSettings.sidebarOrder.length)return;
     const next=[...appSettings.sidebarOrder];[next[from],next[to]]=[next[to],next[from]];
-    appSettings.sidebarOrder=next;saveSettings();renderSidebarOrderSetting();buildEdge();buildBars();
+    appSettings.sidebarOrder=next;saveSidebarSetting();
+  });
+  root.querySelectorAll('[data-sidebar-hide]').forEach(button=>button.onclick=()=>{
+    if(appSettings.sidebarOrder.length<=1)return;
+    appSettings.sidebarOrder=appSettings.sidebarOrder.filter(key=>key!==button.dataset.sidebarKey);
+    saveSidebarSetting();
+  });
+  root.querySelector('[data-sidebar-add]')?.addEventListener('click',()=>{
+    const raw=root.querySelector('[data-sidebar-add-select]')?.value,key=raw==='__home__'?'':raw;
+    if(key===undefined||appSettings.sidebarOrder.includes(key)||!ALL_SIDEBAR_KEYS.includes(key))return;
+    appSettings.sidebarOrder=[...appSettings.sidebarOrder,key];saveSidebarSetting();
+  });
+  root.querySelectorAll('[data-sidebar-row]').forEach(row=>{
+    row.ondragstart=e=>{
+      sidebarDragKey=row.dataset.sidebarRow;row.classList.add('dragging');
+      e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',sidebarDragKey||'__home__');
+    };
+    row.ondragover=e=>{
+      if(sidebarDragKey===null||sidebarDragKey===row.dataset.sidebarRow)return;
+      e.preventDefault();e.dataTransfer.dropEffect='move';
+      const after=e.clientY>row.getBoundingClientRect().top+row.offsetHeight/2;
+      root.querySelectorAll('[data-sidebar-row]').forEach(item=>item.classList.remove('drop-before','drop-after'));
+      row.classList.add(after?'drop-after':'drop-before');
+    };
+    row.ondrop=e=>{
+      e.preventDefault();
+      const after=row.classList.contains('drop-after'),target=row.dataset.sidebarRow,key=sidebarDragKey;
+      sidebarDragKey=null;moveSidebarItem(key,target,after);
+    };
+    row.ondragend=()=>{
+      sidebarDragKey=null;root.querySelectorAll('[data-sidebar-row]').forEach(item=>item.classList.remove('dragging','drop-before','drop-after'));
+    };
   });
 }
 function manageSection(){
@@ -3001,7 +3087,12 @@ async function reloadCurrentSurface(){
 }
 function navOn(k){
   const path=decodeURIComponent(location.pathname);
-  if(k==='manage')return !!manageSection();
+  const directSection=DIRECT_MANAGE_NAV[k];
+  if(directSection)return manageSection()===directSection;
+  if(k==='manage'){
+    const current=manageSection();
+    return !!current&&!orderedEdgeIcons().some(([key])=>DIRECT_MANAGE_NAV[key]===current);
+  }
   if(k==='performers'||k==='tags')return path==='/'+k;
   if(k==='immerse')return path==='/immerse';
   if(k==='playlists')return path==='/playlists'||path.startsWith('/playlists/');
@@ -3018,6 +3109,7 @@ function navOn(k){
    点下去只把 state.state 设成一个后端不认识的值，看上去就是“点了没反应”。 */
 function navTo(k){
   closeDrawerAfterNav();                 // 点了就收起抽屉，且短暂禁止悬停把它立刻弹回
+  if(DIRECT_MANAGE_NAV[k]){openManage(DIRECT_MANAGE_NAV[k]);return}
   if(k==='immerse'){openTok();return}
   if(k==='playlists'){openPlaylists();return}
   if(k==='follow'){openFollow();return}
@@ -3045,7 +3137,7 @@ function syncHeaderActions(){
 }
 function buildEdge(){
   $('#edge').innerHTML=orderedEdgeIcons().map(([k,t,ic])=>
-    `<button data-nav="${k}" title="${t}" aria-pressed="${navOn(k)}">
+    `<button data-nav="${k}" draggable="true" title="${t}" aria-pressed="${navOn(k)}">
       ${icon(ic)}</button>`).join('')
 ;
   $('#edge').querySelectorAll('[data-loc]').forEach(b=>b.onclick=()=>{
@@ -3057,6 +3149,7 @@ function buildEdge(){
   });
   $('#edge').querySelectorAll('[data-nav]').forEach(b=>b.onclick=e=>{
     e.stopPropagation();navTo(b.dataset.nav)});
+  wireNavigationDrag($('#edge'));
   syncHeaderActions();
 }
 let edgeT=null;
