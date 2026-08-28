@@ -4178,7 +4178,7 @@ $('#q').addEventListener('blur',()=>setTimeout(()=>{if(!$('#q').value&&!$('#sear
 $('#brandHome').onclick=e=>{e.preventDefault();
   state={loc:state.loc,creator:'',studio:'',tag:'',len:'',dur_min:'',dur_max:'',orient:'',state:'',sort:appSettings.defaultSort,seed:persistedSeed(),q:'',thumb:'1'};
   route('/');$('#q').value='';disposeStage(false);buildBars();load(true);window.scrollTo({top:0,behavior:'smooth'})};
-$('#tokClose').onclick=()=>{setTokLoading(false);route('/');$('#tok').hidden=true;$('#tokTrack').querySelectorAll('video').forEach(v=>{
+$('#tokClose').onclick=()=>{setTokLoading(false);clearTokTap();route('/');$('#tok').hidden=true;$('#tokTrack').querySelectorAll('video').forEach(v=>{
   disposeTokVideo(v,v.id!=='tokVid')});
   const v=$('#tokVid');if(v){v.style.transform='translateX(-50%)'}$('#tok').classList.remove('tok-wide');
   $('#tok .tokstage').classList.remove('wide');tokSwitching=false;document.body.style.overflow='';showHomeSurfaces();load(true)};
@@ -4191,9 +4191,40 @@ $('#tok').addEventListener('wheel',e=>{const n=Date.now();if(n-wl<260)return;wl=
 /* 手机上竖划切片、横划拖进度。横划在哪儿起手都行——屏幕最下沿那条
    进度条在手机上几乎摸不到。方向一旦定下就不再改，否则斜着划会又切片又跳进度。
    位移按屏宽换算成时长的相对量，所以从任何位置起手都是「往右 = 往后」。 */
-let tokTouch=null;
+const TOK_DOUBLE_TAP_MS=280;
+let tokTouch=null,tokTapTimer=null,tokLastTap=null,tokIgnoreClickUntil=0;
+function clearTokTap(){
+  if(tokTapTimer)clearTimeout(tokTapTimer);
+  tokTapTimer=null;tokLastTap=null;
+}
+function toggleVideoPlayback(video){
+  if(!video)return;
+  if(video.paused)video.play().catch(()=>{});else video.pause();
+}
+function handleTokTap(clientX){
+  const video=$('#tokVid');if(!video)return;
+  const side=clientX<window.innerWidth/2?-1:1;
+  const now=Date.now();
+  if(tokLastTap&&tokLastTap.side===side&&now-tokLastTap.at<=TOK_DOUBLE_TAP_MS){
+    clearTokTap();
+    seekVideoBy(video,appSettings.seekSeconds*side);
+    return;
+  }
+  // 两次点在不同半区时，第一下仍是一次完整的单击；立即兑现后再等当前点击。
+  if(tokTapTimer){clearTimeout(tokTapTimer);tokTapTimer=null;toggleVideoPlayback(video)}
+  tokLastTap={side,at:now};
+  tokTapTimer=setTimeout(()=>{
+    tokTapTimer=null;tokLastTap=null;
+    if(!$('#tok').hidden)toggleVideoPlayback($('#tokVid'));
+  },TOK_DOUBLE_TAP_MS);
+}
+$('#tokTrack').onclick=()=>{
+  // 触屏的合成 click 会紧跟 touchend；那一下已经由单击/双击判定接管，不能再切一次。
+  if(Date.now()<tokIgnoreClickUntil)return;
+  toggleVideoPlayback($('#tokVid'));
+};
 $('#tok').addEventListener('touchstart',e=>{
-  if(e.touches.length!==1){tokTouch=null;return}
+  if(e.touches.length!==1||!e.target.closest('.toktrack')){tokTouch=null;return}
   const v=$('#tokVid');
   tokTouch={x:e.touches[0].clientX,y:e.touches[0].clientY,axis:'',
     from:v?v.currentTime||0:0};
@@ -4216,14 +4247,22 @@ $('#tok').addEventListener('touchmove',e=>{
 $('#tok').addEventListener('touchend',e=>{
   if(!tokTouch)return;
   const touch=tokTouch;tokTouch=null;
+  tokIgnoreClickUntil=Date.now()+700;
   $('#tokBar').classList.remove('scrubbing');
   if(touch.axis==='x'){
     const v=$('#tokVid');
     if(v&&touch.to!=null)v.currentTime=touch.to;
     return;
   }
-  const dy=touch.y-e.changedTouches[0].clientY;
-  if(Math.abs(dy)>60)tokNext(dy>0?1:-1);
+  const end=e.changedTouches[0],dx=end.clientX-touch.x,dy=touch.y-end.clientY;
+  if(Math.abs(dy)>60){clearTokTap();tokNext(dy>0?1:-1);return}
+  if(Math.abs(dx)<=14&&Math.abs(dy)<=14){
+    e.preventDefault();
+    handleTokTap(end.clientX);
+  }
+},{passive:false});
+$('#tok').addEventListener('touchcancel',()=>{
+  tokTouch=null;$('#tokBar').classList.remove('scrubbing');
 },{passive:true});
 [['#tokDislike','dislike'],['#tokSeen','seen'],['#tokO','o']].forEach(([s,kind])=>{
   $(s).onclick=async()=>{const it=tokList[tokIdx];
@@ -4282,7 +4321,7 @@ document.addEventListener('keydown',e=>{
     }
     if(e.key===' '){
       e.preventDefault();          // 不加这句空格会把页面滚下去
-      if(video.paused)video.play().catch(()=>{});else video.pause();
+      toggleVideoPlayback(video);
       return;
     }
   }

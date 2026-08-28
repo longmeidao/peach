@@ -380,7 +380,23 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("stage&&!stage.hidden?stage.querySelector('video'):null")
         self.assertPageLacks("return stage&&!stage.hidden?$('#vid'):null")
         self.assertPageContains("seekVideoBy(video,appSettings.seekSeconds*(e.key==='ArrowRight'?1:-1))")
-        self.assertPageContains("if(video.paused)video.play().catch(()=>{});else video.pause()")
+        self.assertPageContains("toggleVideoPlayback(video)")
+
+    def test_immerse_click_toggles_playback_and_mobile_double_tap_seeks(self):
+        self.assertPageContains("function toggleVideoPlayback(video)")
+        self.assertPageContains("$('#tokTrack').onclick=()=>{")
+        self.assertPageContains("if(Date.now()<tokIgnoreClickUntil)return")
+        self.assertPageContains("const TOK_DOUBLE_TAP_MS=280")
+        self.assertPageContains("const side=clientX<window.innerWidth/2?-1:1")
+        self.assertPageContains("seekVideoBy(video,appSettings.seekSeconds*side)")
+        self.assertPageContains("handleTokTap(end.clientX)")
+        self.assertPageContains("touch-action:manipulation;cursor:pointer")
+
+    def test_mobile_player_error_is_centred_away_from_the_network_badge(self):
+        self.assertPageContains(
+            ".vwrap .video-js.vjs-error .vjs-error-display .vjs-modal-dialog-content{")
+        self.assertPageContains(
+            "display:flex;align-items:center;justify-content:center;padding:56px 24px;text-align:center")
 
     def test_space_does_not_also_scroll_the_page(self):
         self.assertPageContains("if(e.key===' '){\n      e.preventDefault();")
