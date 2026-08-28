@@ -59,6 +59,7 @@
 - `f09e7aa` 已经由 `6ae030d` 合入 `master`：关注详情补齐真正的外链 SVG 图标，F95 已验证的 Gofile／Pixeldrain 文件页进入 `resource_urls` 并直接显示可点击链接；没有文件页时不再声称“已取得”。`/follow/item/{id}` 注册为 SPA 直达路由，刷新不再返回 404。名称查找会用归档 FANBOX 的数字 Pixiv 身份核对官方 FANBOX 资料，`LazyProcrastinator` 可发现 `https://lazyprocrast.fanbox.cc/`，不猜子域名；已有候选文案统一为“已经关注”。检查全部和单来源检查图标都在忙碌态使用同一旋转动画，但生产验收未实际触发检查更新。
 - 正式 Windows 全量测试 1096 项通过、13 项按平台跳过；新 EXE 的打包迁移为 22 个、0 待处理。生产 EXE 已替换为 SHA-256 `BBDBB6EC7D3C2312E45F8F68B41BD5158749EF78D9A2C676F42FE7FED2D6A91F`，上版备份为 `dist/Peach/Peach.pre-6ae030d-20260828-031013.exe`；80/443 已恢复。项目 CA 的证书链和主机名校验通过，Schannel 因无法确认本地 CA 吊销状态而使用 `--ssl-revoke-best-effort`，`/healthz` 返回 writer，`/follow/item/190` 返回 200。
 - 生产 API 共 330 组、400 条关注条目，4 条带外部文件页；item 565 显示 Gofile 与 Pixeldrain，item 190 返回真实 Rule34.xxx 来源 URL。生产浏览器实测标题旁外链图标为可见 16×16 SVG，文件页链接各带可见 15×15 图标，管理页查找可见官方 FANBOX 和“已经关注”，控制台无错误。验收未触发关注写操作，部署前后 ledger SHA-256 均为 `7389FC058C28651795E7AF77A7AD27CEED84A48E2B8AEF52767982E73957F80D`。
+- `9051557` 已经由 `825348a` 合入 `master`：F95zone 回复只有在正文含论坛附件或已验证的文件站外链时才进入关注候选；引用块、纯讨论和普通网页链接会计入“跳过无资源”。附件直链同时作为预览图；历史纯讨论条目只在读取层隐藏，不删除 ledger。关注域 372 项、正式 Windows 全量 1100 项均通过，分别有 1/13 项按平台跳过。正式 EXE 已替换为 SHA-256 `D5447756E913704AD413FFFF7A57F1E10660D8B2CF7B3D57C2D6D2D8947372E7`，上版备份为 `dist/Peach/Peach.pre-825348a-20260828-095720.exe`；80/443、22 个迁移且 0 待处理、项目 CA 严格 HTTPS writer 和关注 API 均正常。生产流当前显示 151 组，其中 F95zone 资源条目 4 条；未触发检查更新，部署前后 ledger 哈希不变。
 
 ## 下一批工作
 
