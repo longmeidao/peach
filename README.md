@@ -97,6 +97,7 @@ macOS/Linux 用 `./scripts/test.sh follow`。可选域为 `follow`、`catalog`�
 | `/review` | 人工复核 |
 | `/trash` | 回收站 |
 | `/stats` | 统计 |
+| `/taste` | 品味画像与浏览记录管理 |
 
 `/healthz` 提供无副作用健康状态，`/api/sources` 提供来源可达性。其他 API 契约以实现和测试为准，不在 README 维护容易漂移的端点全集。
 

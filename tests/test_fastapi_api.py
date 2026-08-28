@@ -5,6 +5,7 @@ import sqlite3
 import struct
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
@@ -114,6 +115,10 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.transcode_root = self.root / "transcodes"
         self.photo_root = self.root / "photo-thumbs"
         self.vendor_root = self.root / "vendor"
+        self.taste_store = self.root / "sources" / "taste-history" / "history.sqlite"
+        self.taste_import_root = self.root / "sources" / "taste-history" / "imports"
+        self.taste_output_root = self.root / "review" / "taste-history"
+        self.taste_manifest = self.root / "state" / "taste-history" / "manifest.json"
         # 复核候选必须来自临时目录：早先版本直接读真实的 R:\peach-data\generated。
         self.candidate_root = self.root / "generated"
         self.candidate_root.mkdir()
@@ -170,6 +175,10 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             poster_root=self.poster_root, avatar_root=self.avatar_root, logo_root=self.logo_root,
             ffmpeg_root=self.root / "ffmpeg", transcode_root=self.transcode_root,
             candidate_root=self.candidate_root, photo_root=self.photo_root,
+            taste_history_store=self.taste_store,
+            taste_history_import_root=self.taste_import_root,
+            taste_history_output_root=self.taste_output_root,
+            taste_history_manifest=self.taste_manifest,
         )
         self.app = create_app(self.settings)
         self.assertIs(
@@ -318,6 +327,44 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(history.json()["items"], ["ABW"])
         removed = await self.client.post("/api/search-history?t=secret", json={"operation": "remove", "query": "ABW"})
         self.assertEqual(removed.status_code, 200)
+
+    async def test_taste_import_combines_private_history_with_peach_behavior(self):
+        with closing(sqlite3.connect(self.db)) as connection:
+            connection.execute(
+                "UPDATE asset SET play_count=2,play_seconds=600,last_played=? WHERE id=1",
+                (1_700_000_200,),
+            )
+            connection.commit()
+        payload = json.dumps([{
+            "url": "https://rule34.xxx/index.php?page=post&s=list&tags=tag+a",
+            "dt": 1_700_000_000,
+            "metadata": None,
+        }]).encode()
+        imported = await self.client.post(
+            "/api/taste/import?t=secret",
+            content=payload,
+            headers={"Content-Type": "application/octet-stream",
+                     "X-Peach-Filename": "history.json"},
+        )
+        self.assertEqual(imported.status_code, 200, imported.text)
+        dashboard = imported.json()["dashboard"]
+        self.assertEqual(dashboard["summary"]["history_visits"], 1)
+        self.assertEqual(dashboard["summary"]["peach_items"], 1)
+        self.assertEqual(dashboard["rankings"]["tags"][0]["name"], "Tag A")
+        self.assertNotIn("rule34.xxx/index.php", imported.text)
+        self.assertTrue(self.taste_store.is_file())
+        self.assertTrue(self.taste_manifest.is_file())
+
+        listed = await self.client.get("/api/taste?t=secret&window=all")
+        self.assertEqual(listed.status_code, 200)
+        source_key = listed.json()["sources"][0]["source_key"]
+        removed = await self.client.post(
+            "/api/taste/source?t=secret",
+            json={"operation": "remove", "source_key": source_key, "window": "all"},
+        )
+        self.assertEqual(removed.status_code, 200)
+        self.assertEqual(removed.json()["removed"], 1)
+        self.assertEqual(removed.json()["dashboard"]["summary"]["history_visits"], 0)
 
     async def test_entity_focus_uses_the_apps_configured_avatar_root(self):
         connection = sqlite3.connect(self.db)
@@ -561,7 +608,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         )
         for path in ("/item/1", "/performers/Alice", "/studios/Prestige",
                      "/creators/luckydog11", "/series/Example", "/performers",
-                     "/creators", "/tags", "/stats", "/immerse", "/trash", "/review",
+                     "/creators", "/tags", "/stats", "/taste", "/immerse", "/trash", "/review",
                      # 前端路由写好了不等于能直接打开：SPA 路径是逐条登记的，
                      # 漏登记时源码断言照样全绿，只有真的请求一次才会露出 404。
                      "/unseen", "/watch-later", "/flagged",

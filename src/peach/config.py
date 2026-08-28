@@ -120,5 +120,9 @@ class PeachSettings:
     stream_root: Path = GENERATED_DIR / "stream-segments"
     # 复核候选 CSV 的目录。走 settings 而不是模块常量，测试才不会读到真实的 generated 目录。
     candidate_root: Path = GENERATED_DIR
+    taste_history_store: Path = SOURCES_DIR / "taste-history" / "history.sqlite"
+    taste_history_import_root: Path = SOURCES_DIR / "taste-history" / "imports"
+    taste_history_output_root: Path = DATA_ROOT / "review" / "taste-history"
+    taste_history_manifest: Path = STATE_DIR / "taste-history" / "manifest.json"
     # 自动追更频率是本机运行偏好，不属于 ledger 真相。
     follow_state_root: Path = STATE_DIR

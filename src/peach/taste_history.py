@@ -8,6 +8,7 @@ import socket
 import sqlite3
 import tempfile
 import zipfile
+import math
 from collections import Counter, defaultdict
 from contextlib import closing
 from dataclasses import dataclass
@@ -15,6 +16,11 @@ from datetime import UTC, datetime, timedelta, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
+
+from browserexport.parse import read_visits as read_browser_visits
+from browserexport.browsers.chrome import Chrome
+from browserexport.browsers.firefox import Firefox
+from browserexport.browsers.safari import Safari
 
 
 @dataclass(frozen=True)
@@ -143,32 +149,48 @@ def _iso_from_safari(value: int | float) -> str:
     return (datetime(2001, 1, 1, tzinfo=UTC) + timedelta(seconds=float(value))).isoformat()
 
 
-def _read_visits(snapshot: Path, browser: str) -> list[HistoryVisit]:
-    with closing(sqlite3.connect(snapshot)) as db:
-        if browser in {"firefox", "zen"}:
-            rows = db.execute(
-                "SELECT v.id, v.visit_date, p.url, COALESCE(p.title, '') "
-                "FROM moz_historyvisits v JOIN moz_places p ON p.id = v.place_id "
-                "WHERE v.visit_date IS NOT NULL AND p.url IS NOT NULL"
-            )
-            convert = _iso_from_unix_microseconds
-        elif browser == "chrome":
-            rows = db.execute(
-                "SELECT v.id, v.visit_time, u.url, COALESCE(u.title, '') "
-                "FROM visits v JOIN urls u ON u.id = v.url "
-                "WHERE v.visit_time IS NOT NULL AND u.url IS NOT NULL"
-            )
-            convert = _iso_from_chrome
-        elif browser == "safari":
-            rows = db.execute(
-                "SELECT v.id, v.visit_time, i.url, COALESCE(v.title, '') "
-                "FROM history_visits v JOIN history_items i ON i.id = v.history_item "
-                "WHERE v.visit_time IS NOT NULL AND i.url IS NOT NULL"
-            )
-            convert = _iso_from_safari
-        else:
-            raise ValueError(f"不支持的浏览器类型：{browser}")
-        return [HistoryVisit(str(row[0]), convert(row[1]), row[2], row[3]) for row in rows]
+def _read_visits(snapshot: Path, _browser: str | None = None) -> list[HistoryVisit]:
+    """Use browserexport's maintained schema adapters and keep Peach's private DTO.
+
+    The source database is already a consistent SQLite backup when this is called for a
+    running browser.  Exported JSON/JSONL and compressed files can be passed directly.
+    """
+    occurrences: Counter[tuple[str, str]] = Counter()
+    visits: list[HistoryVisit] = []
+
+    def consume(source, browser: str | None = None) -> None:
+        known = {"chrome": Chrome, "firefox": Firefox, "zen": Firefox, "safari": Safari}
+        iterator = known[browser].extract_visits(source) if browser in known else read_browser_visits(source)
+        for visit in iterator:
+            visited = visit.dt
+            if visited.tzinfo is None:
+                visited = visited.replace(tzinfo=UTC)
+            visited_at = visited.astimezone(UTC).isoformat()
+            url = str(visit.url)
+            fingerprint = (url, visited_at)
+            occurrences[fingerprint] += 1
+            ordinal = occurrences[fingerprint]
+            visit_key = hashlib.sha256(
+                f"{visited_at}\0{url}\0{ordinal}".encode("utf-8")
+            ).hexdigest()
+            title = ""
+            if visit.metadata is not None:
+                title = str(visit.metadata.title or "")
+            visits.append(HistoryVisit(visit_key, visited_at, url, title))
+
+    try:
+        with snapshot.open("rb") as handle:
+            is_sqlite = handle.read(16) == b"SQLite format 3\x00"
+    except OSError:
+        is_sqlite = False
+    if is_sqlite:
+        # browserexport 0.4.4 accepts an owned connection.  Passing a path uses a
+        # context manager that commits but does not close sqlite3.Connection on Windows.
+        with closing(sqlite3.connect(_readonly_uri(snapshot), uri=True)) as connection:
+            consume(connection, _browser)
+    else:
+        consume(snapshot)
+    return visits
 
 
 def _source_key(source: HistorySource, host: str) -> str:
@@ -442,6 +464,354 @@ def refresh_takeout_history(
                 )
         store.commit()
     return results
+
+
+def refresh_export_history(
+    exports: list[Path],
+    store_path: Path,
+    *,
+    host: str | None = None,
+) -> list[dict[str, object]]:
+    """Import browserexport SQLite/JSON/JSONL (including compressed variants).
+
+    Raw exports stay in the private sources directory.  Only normalized visits enter the
+    private history store; no URL or title is copied to the Peach ledger.
+    """
+    host = host or socket.gethostname()
+    store_path.parent.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(UTC).isoformat()
+    results: list[dict[str, object]] = []
+    with closing(sqlite3.connect(store_path)) as store:
+        _prepare_store(store)
+        for export_path in exports:
+            visits = _read_visits(export_path)
+            source = HistorySource("browserexport", export_path.name, export_path)
+            source_key = _source_key(source, host)
+            path_hash = hashlib.sha256(str(export_path.resolve()).encode("utf-8")).hexdigest()
+            store.execute(
+                "INSERT INTO history_source VALUES (?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(source_key) DO UPDATE SET last_seen_at=excluded.last_seen_at",
+                (source_key, source.browser, source.profile, host, path_hash, now, now),
+            )
+            before = store.total_changes
+            store.executemany(
+                "INSERT OR IGNORE INTO history_visit(source_key, visit_key, visited_at, url, title) "
+                "VALUES (?, ?, ?, ?, ?)",
+                ((source_key, visit.visit_key, visit.visited_at, visit.url, visit.title)
+                 for visit in visits),
+            )
+            results.append({
+                "browser": source.browser,
+                "profile": source.profile,
+                "visits": len(visits),
+                "added": store.total_changes - before,
+                "skipped": 0,
+            })
+        store.commit()
+    return results
+
+
+def import_history_exports(
+    exports: list[Path],
+    store_path: Path,
+    *,
+    host: str | None = None,
+) -> list[dict[str, object]]:
+    """Route Google Takeout archives and browserexport-compatible files."""
+    results: list[dict[str, object]] = []
+    for export_path in exports:
+        is_takeout = False
+        if zipfile.is_zipfile(export_path):
+            with zipfile.ZipFile(export_path) as archive:
+                members = set(archive.namelist())
+                is_takeout = TAKEOUT_HISTORY_MEMBER in members or any(
+                    member in members for _browser, _profile, member in TAKEOUT_ACTIVITY_MEMBERS
+                )
+        if is_takeout:
+            results.extend(refresh_takeout_history([export_path], store_path, host=host))
+        else:
+            results.extend(refresh_export_history([export_path], store_path, host=host))
+    return results
+
+
+def remove_history_source(store_path: Path, source_key: str) -> int:
+    """Remove one normalized source while retaining the immutable raw export."""
+    if not store_path.is_file():
+        return 0
+    with closing(sqlite3.connect(store_path)) as store:
+        _prepare_store(store)
+        row = store.execute(
+            "SELECT count(*) FROM history_visit WHERE source_key=?", (source_key,),
+        ).fetchone()
+        removed = int(row[0]) if row else 0
+        store.execute("DELETE FROM history_visit WHERE source_key=?", (source_key,))
+        store.execute("DELETE FROM history_source WHERE source_key=?", (source_key,))
+        store.commit()
+    return removed
+
+
+def _history_dashboard_evidence(store_path: Path, since: str | None) -> dict[str, object]:
+    empty = {
+        "visits": 0, "sources": [], "range_start": None, "range_end": None,
+        "tags": Counter(), "creators": Counter(), "categories": Counter(),
+        "domains": Counter(),
+    }
+    if not store_path.is_file():
+        return empty
+    with closing(sqlite3.connect(store_path)) as store:
+        store.row_factory = sqlite3.Row
+        try:
+            source_rows = [dict(row) for row in store.execute(
+                "SELECT s.source_key,s.browser,s.profile,s.host,s.first_seen_at,s.last_seen_at,"
+                "count(v.visit_key) visits,min(v.visited_at) range_start,max(v.visited_at) range_end "
+                "FROM history_source s LEFT JOIN history_visit v ON v.source_key=s.source_key "
+                "GROUP BY s.source_key ORDER BY s.last_seen_at DESC,s.browser,s.profile"
+            )]
+            query = (
+                "SELECT v.visited_at,v.url FROM history_visit v "
+                "JOIN history_source s ON s.source_key=v.source_key"
+            )
+            params: tuple[str, ...] = ()
+            if since:
+                query += " WHERE v.visited_at>=?"
+                params = (since,)
+            rows = store.execute(query, params)
+        except sqlite3.DatabaseError:
+            return empty
+
+        tags: Counter[str] = Counter()
+        creators: Counter[str] = Counter()
+        categories: Counter[str] = Counter()
+        domains: Counter[str] = Counter()
+        seen: set[tuple[str, int]] = set()
+        range_start: str | None = None
+        range_end: str | None = None
+        visits = 0
+        for row in rows:
+            visited_at, url = str(row["visited_at"]), str(row["url"])
+            try:
+                fingerprint = (url, int(datetime.fromisoformat(visited_at).timestamp()))
+            except ValueError:
+                continue
+            if fingerprint in seen:
+                continue
+            seen.add(fingerprint)
+            visits += 1
+            range_start = visited_at if range_start is None or visited_at < range_start else range_start
+            range_end = visited_at if range_end is None or visited_at > range_end else range_end
+            domain, row_tags, row_creators = _url_candidates(url)
+            if domain and _is_taste_domain(domain):
+                domains[domain] += 1
+            tags.update(row_tags)
+            creators.update(row_creators)
+            for tag in row_tags:
+                compact = tag.replace(" ", "")
+                for category, terms in CATEGORY_TERMS.items():
+                    if compact in terms or tag in terms:
+                        categories[category] += 1
+        return {
+            "visits": visits,
+            "sources": source_rows,
+            "range_start": range_start,
+            "range_end": range_end,
+            "tags": tags,
+            "creators": creators,
+            "categories": categories,
+            "domains": domains,
+        }
+
+
+def _epoch(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        try:
+            return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            return None
+
+
+def _peach_dashboard_evidence(connection: sqlite3.Connection, since: str | None) -> dict[str, object]:
+    since_epoch = datetime.fromisoformat(since).timestamp() if since else None
+    rows = connection.execute(
+        "SELECT a.id,a.creator,a.studio,a.play_count,a.play_seconds,a.o_count,a.rating,"
+        "a.feedback,a.last_played,COALESCE(p.liked,0) liked "
+        "FROM asset a LEFT JOIN asset_preference p ON p.asset_id=a.id AND p.profile_id='local-default' "
+        "WHERE COALESCE(a.play_count,0)>0 OR COALESCE(a.play_seconds,0)>0 "
+        "OR COALESCE(a.o_count,0)>0 OR COALESCE(a.rating,0)>0 "
+        "OR a.feedback IN ('seen','dislike') OR COALESCE(p.liked,0)>0"
+    ).fetchall()
+    assets: dict[int, dict[str, object]] = {}
+    total_seconds = 0.0
+    liked = disliked = 0
+    for raw in rows:
+        row = dict(raw)
+        played_at = _epoch(row.get("last_played"))
+        if since_epoch is not None and (played_at is None or played_at < since_epoch):
+            continue
+        seconds = max(float(row.get("play_seconds") or 0), 0)
+        plays = max(int(row.get("play_count") or 0), 0)
+        o_count = max(int(row.get("o_count") or 0), 0)
+        rating = max(int(row.get("rating") or 0), 0)
+        is_liked = bool(row.get("liked"))
+        is_disliked = row.get("feedback") == "dislike"
+        positive = (1.0 if plays or seconds else 0.0) + math.log2(1 + seconds / 60)
+        positive += min(plays, 12) * .75 + min(o_count, 8) * 1.5 + rating / 20
+        positive += 3.0 if is_liked else 0.0
+        positive += .5 if row.get("feedback") == "seen" else 0.0
+        row["positive"] = max(positive, 0.0)
+        row["negative"] = 1.0 if is_disliked else 0.0
+        assets[int(row["id"])] = row
+        total_seconds += seconds
+        liked += int(is_liked)
+        disliked += int(is_disliked)
+
+    scores: dict[str, Counter[str]] = defaultdict(Counter)
+    negatives: dict[str, Counter[str]] = defaultdict(Counter)
+    items: dict[str, dict[str, set[int]]] = defaultdict(lambda: defaultdict(set))
+    labels: dict[str, dict[str, str]] = defaultdict(dict)
+    entity_kinds: dict[int, set[str]] = defaultdict(set)
+    if assets:
+        ids = list(assets)
+        for offset in range(0, len(ids), 800):
+            batch = ids[offset:offset + 800]
+            placeholders = ",".join("?" for _ in batch)
+            entity_rows = connection.execute(
+                "SELECT ae.asset_id,e.kind,e.canonical_name,e.normalized_name "
+                f"FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id WHERE ae.asset_id IN ({placeholders})",
+                batch,
+            )
+            for entity in entity_rows:
+                aid = int(entity["asset_id"])
+                kind = str(entity["kind"])
+                normalized = str(entity["normalized_name"] or entity["canonical_name"]).casefold()
+                labels[kind][normalized] = str(entity["canonical_name"])
+                entity_kinds[aid].add(kind)
+                if assets[aid]["positive"]:
+                    scores[kind][normalized] += float(assets[aid]["positive"])
+                    items[kind][normalized].add(aid)
+                if assets[aid]["negative"]:
+                    negatives[kind][normalized] += 1
+
+        for aid, asset in assets.items():
+            for kind, column in (("creator", "creator"), ("studio", "studio")):
+                value = str(asset.get(column) or "").strip()
+                if not value or kind in entity_kinds[aid]:
+                    continue
+                normalized = value.casefold()
+                labels[kind][normalized] = value
+                if asset["positive"]:
+                    scores[kind][normalized] += float(asset["positive"])
+                    items[kind][normalized].add(aid)
+                if asset["negative"]:
+                    negatives[kind][normalized] += 1
+
+    tagged = sum("tag" in entity_kinds[aid] for aid in assets)
+    identified = sum(bool(entity_kinds[aid] & {"creator", "performer"}) for aid in assets)
+    return {
+        "assets": len(assets), "seconds": total_seconds, "liked": liked, "disliked": disliked,
+        "scores": scores, "negatives": negatives, "items": items, "labels": labels,
+        "coverage": {
+            "tagged": tagged, "identified": identified,
+            "untagged": len(assets) - tagged, "unidentified": len(assets) - identified,
+        },
+    }
+
+
+def _rank_combined(
+    kind: str,
+    web_values: Counter[str],
+    peach: dict[str, object],
+    *,
+    limit: int = 30,
+) -> list[dict[str, object]]:
+    scores = peach["scores"].get(kind, Counter())
+    labels = peach["labels"].get(kind, {})
+    item_sets = peach["items"].get(kind, {})
+    normalized_web: Counter[str] = Counter()
+    web_labels: dict[str, str] = {}
+    for label, count in web_values.items():
+        normalized = label.casefold().strip()
+        normalized_web[normalized] += count
+        web_labels.setdefault(normalized, label)
+    rows: list[dict[str, object]] = []
+    for normalized in set(scores) | set(normalized_web):
+        web_visits = int(normalized_web[normalized])
+        peach_score = float(scores[normalized])
+        combined = peach_score + math.log2(1 + web_visits) * 2.0
+        rows.append({
+            "name": labels.get(normalized) or web_labels.get(normalized) or normalized,
+            "score": round(combined, 2),
+            "web_visits": web_visits,
+            "peach_score": round(peach_score, 2),
+            "peach_items": len(item_sets.get(normalized, set())),
+            "evidence": [source for source, present in (
+                ("浏览记录", web_visits > 0), ("Peach", peach_score > 0),
+            ) if present],
+        })
+    rows.sort(key=lambda row: (-float(row["score"]), -int(row["web_visits"]), str(row["name"])))
+    return rows[:limit]
+
+
+def build_taste_dashboard(
+    history_store: Path,
+    ledger_connection: sqlite3.Connection,
+    *,
+    since: str | None = None,
+) -> dict[str, object]:
+    """Build a privacy-bounded, read-only taste view from both evidence stores."""
+    history = _history_dashboard_evidence(history_store, since)
+    peach = _peach_dashboard_evidence(ledger_connection, since)
+    tags = _rank_combined("tag", history["tags"], peach)
+    creators = _rank_combined("creator", history["creators"], peach)
+    performers = _rank_combined("performer", Counter(), peach)
+
+    category_scores: Counter[str] = Counter(history["categories"])
+    for row in tags:
+        compact = str(row["name"]).casefold().replace(" ", "")
+        for category, terms in CATEGORY_TERMS.items():
+            if compact in terms:
+                category_scores[category] += max(1, round(float(row["peach_score"])))
+
+    gaps = [row for row in tags if row["web_visits"] >= 2 and not row["peach_items"]][:12]
+    negative_tags = []
+    for normalized, count in peach["negatives"].get("tag", Counter()).most_common(12):
+        negative_tags.append({
+            "name": peach["labels"].get("tag", {}).get(normalized, normalized),
+            "disliked_items": count,
+        })
+    return {
+        "summary": {
+            "history_visits": history["visits"],
+            "history_sources": len(history["sources"]),
+            "peach_items": peach["assets"],
+            "peach_seconds": round(float(peach["seconds"])),
+            "liked": peach["liked"],
+            "disliked": peach["disliked"],
+            "range_start": history["range_start"],
+            "range_end": history["range_end"],
+        },
+        "sources": history["sources"],
+        "rankings": {
+            "categories": [{"name": name, "score": score}
+                           for name, score in category_scores.most_common(20)],
+            "tags": tags,
+            "creators": creators,
+            "performers": performers,
+            "domains": [{"name": name, "visits": count}
+                        for name, count in history["domains"].most_common(20)],
+            "negative_tags": negative_tags,
+        },
+        "coverage": peach["coverage"],
+        "gaps": gaps,
+        "privacy": {
+            "raw_history_local_only": True,
+            "ledger_unchanged": True,
+            "candidate_only": True,
+        },
+    }
 
 
 def read_creator_candidates(output_dir: Path, limit: int = 200) -> list[dict]:

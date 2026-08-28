@@ -544,7 +544,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("['manage','管理','settings']")
         self.assertPageContains("const MANAGE_SECTIONS=[")
         for section in ("'stats','统计'", "'ads','疑似广告'", "'dupes','重复文件'",
-                        "'quality','高清版'", "'trash','回收站'", "'review','人工复核'"):
+                        "'quality','高清版'", "'trash','回收站'", "'review','人工复核'",
+                        "'taste','品味'"):
             self.assertPageContains(section)
         self.assertPageContains("function manageSection()")
         self.assertPageContains("function buildManageBar()")
@@ -565,9 +566,21 @@ class WebUiSourceTests(unittest.TestCase):
         sections = self.page.split("const MANAGE_SECTIONS=[", 1)[1].split("];", 1)[0]
         order = [line.split("'")[1] for line in sections.splitlines() if line.strip().startswith("['")]
         self.assertEqual(
-            order, ["stats", "review", "ads", "dupes", "trash", "follow", "quality"],
+            order, ["stats", "taste", "review", "ads", "dupes", "trash", "follow", "quality"],
             "管理导航的顺序是语义契约：现状 → 复核 → 清理 → 回收站 → 往外拿",
         )
+
+    def test_taste_page_combines_private_exports_and_peach_behavior(self):
+        self.assertPageContains("if(path==='/taste'){await openTaste(false);return}")
+        self.assertPageContains("/api/taste?window=")
+        self.assertPageContains("/api/taste/import")
+        self.assertPageContains("/api/taste/refresh")
+        self.assertPageContains("/api/taste/source")
+        self.assertPageContains("原始 URL、标题与搜索内容不会显示在页面")
+        self.assertPageContains("data-taste-window")
+        self.assertPageContains("data-taste-remove")
+        self.assertPageContains(".tastegrid{display:grid")
+        self.assertPageContains("@media(max-width:640px){.tastehead")
 
     def test_edge_and_drawer_share_one_navigation_dispatch(self):
         """窄栏和抽屉各写一份分支时，抽屉那份漏了追更和播放列表。
