@@ -550,6 +550,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("function manageSection()")
         self.assertPageContains("function buildManageBar()")
         self.assertPageContains('id="managebar"')
+        self.assertPageContains('class="managebar-toggle"')
+        self.assertPageContains('aria-controls="managebar-menu"')
+        self.assertPageContains("bar.classList.toggle('is-open')")
+        self.assertPageContains('.managebar.is-open .managebar-menu{display:grid}')
         self.assertPageContains("if(k==='manage'){openManage();return}")
         # 顶层图标里不再各自占位
         edge = self.page.split("const EDGE_ICONS=[", 1)[1].split("];", 1)[0]
@@ -586,16 +590,32 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("rank.peach_performers||rank.performers||[]")
         self.assertPageContains("visual==='domain'")
         self.assertPageContains("avatarInner(row.name,ref,rep,visual)")
+        self.assertPageContains("'simpcity.cr':'https://simpcity.cr/data/assets/logo/favicon.png'")
+        self.assertPageContains("'hanime1.me':'https://vdownload.hembed.com/image/icon/tab_logo.png")
+        self.assertPageContains("'kemono.cr':'https://kemono.cr/assets/favicon-CPB6l7kH.ico'")
+        self.assertPageContains("const faviconFallbackUrl=domain=>`https://www.google.com/s2/favicons")
+        self.assertPageContains("支持 macOS / Windows 的 Zen、Safari、Firefox、Chrome")
         self.assertPageLacks("negative_tags")
         self.assertPageContains(".tastegrid{display:grid;grid-template-columns:repeat(12")
         self.assertPageContains(".tastepanel-wide{grid-column:span 8}")
+        self.assertPageContains(".tasteranks{display:grid;grid-template-columns:repeat(auto-fill")
+        self.assertPageContains(".tasterank{width:100%;min-width:0;min-height:60px")
         self.assertPageContains("@media(max-width:640px){.tastehead")
+
+    def test_stats_and_taste_use_density_aware_bento_without_forcing_work_queues(self):
+        self.assertPageContains(".scards{display:grid;grid-template-columns:repeat(12")
+        self.assertPageContains(".statcard-third{grid-column:span 4}")
+        self.assertPageContains(".statcard-half{grid-column:span 6}")
+        self.assertPageContains(".statcard-quarter{grid-column:span 3}")
+        self.assertPageContains("const card=(t,body,size='third')")
 
     def test_taste_drilldown_and_legacy_duration_tags_never_leak_filter_state(self):
         self.assertPageContains("const cleanTagFilter=value=>")
         self.assertPageContains("tag:cleanTagFilter(initialParams.get('tag'))")
         self.assertPageContains("tag:cleanTagFilter(params.get('tag'))")
         self.assertPageContains("state={...state,creator:'',studio:'',tag:'',tag_match:'all'")
+        self.assertPageContains("function enterManagementSurface()")
+        self.assertPageContains("loadRequestSeq++;listLoading=false;$('#combo').innerHTML=''")
 
     def test_sidebar_add_controls_have_one_explicit_height(self):
         self.assertPageContains(".sidebaradd select,.sidebaradd button{height:42px;box-sizing:border-box}")
