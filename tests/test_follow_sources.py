@@ -96,6 +96,7 @@ Lazy Procrastinator Collection [2026-06-28] [LazyProcrastinator/LazyProcrast]</h
 <article data-content="post-21400001" data-author="LazyProcrastinator">
   <time datetime="2026-08-23T09:00:00+0100">Aug 23, 2026</time>
   <div class="bbWrapper">Preview attached
+    <a href="https://pixeldrain.com/u/preview-pack">Download</a>
     <div data-lb-id="attachment6372325"
          data-src="https://attachments.f95zone.to/2026/08/6372325_preview.png">
       <img data-src="https://attachments.f95zone.to/2026/08/6372325_preview.png">
@@ -748,6 +749,13 @@ class F95ZoneConnectorTests(unittest.TestCase):
             "https://attachments.f95zone.to/2026/08/6372325_preview.png",
         ])
 
+    def test_inline_meme_without_a_file_resource_is_skipped(self):
+        body = F95_HTML.replace(
+            b'<a href="https://pixeldrain.com/u/preview-pack">Download</a>', b'')
+        result = F95ZoneConnector(transport=_transport(body=body)).fetch("50685")
+        self.assertEqual([row.external_id for row in result.candidates], ["21383374"])
+        self.assertEqual(result.skipped, 2)
+
     def test_media_is_flagged_as_needing_a_login_session(self):
         # 发现不需要 cookie，取附件需要。下载动作必须先看这个标志。
         result = F95ZoneConnector(transport=_transport(body=F95_HTML)).fetch("50685")
@@ -795,7 +803,8 @@ class F95ZoneConnectorTests(unittest.TestCase):
         result = F95ZoneConnector(transport=_transport(body=F95_HTML)).fetch("50685")
         self.assertEqual(result.candidates[0].media_url,
                          "https://f95zone.to/masked/gofile.io/50685/abc")
-        self.assertIsNone(result.candidates[1].media_url)
+        self.assertEqual(result.candidates[1].media_url,
+                         "https://pixeldrain.com/u/preview-pack")
 
     def test_cookie_is_sent_only_when_supplied(self):
         seen = []

@@ -7,7 +7,7 @@
       "name": "Vercel Design Report Reference",
       "url": "https://vercel.com/design.md",
       "snapshot": "docs/reference-snapshots/vercel-report-design.md",
-      "checked_on": "2026-08-26",
+      "checked_on": "2026-08-28",
       "sha256": "2b40b23712e548721ecae7d0672ae9318a83188b9fcd2fb4a7a1b7c147a39903",
       "role": "报告与证据型页面的版式、层级、语言和数据表达参考；Peach 仅复用可迁移原则。",
       "consumers": [

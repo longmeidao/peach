@@ -167,18 +167,22 @@ def _f95_has_resource(media_url: str | None, metadata: dict) -> bool:
     if isinstance(links, list) and resource_links(
             "\n".join(str(value) for value in links)):
         return True
-    try:
-        return int(metadata.get("attachment_count") or 0) > 0
-    except (TypeError, ValueError):
-        return False
+    attachments = metadata.get("attachments")
+    if isinstance(attachments, list):
+        return any(
+            str(value).startswith("https://")
+            and not _IMAGE_MEDIA_RE.search(str(value))
+            for value in attachments
+        )
+    return False
 
 
 def _excluded_item(item) -> bool:
     if (item.provider == "rule34video"
             and item.external_id in RULE34VIDEO_EXCLUDED_IDS):
         return True
-    # 旧版曾把没有附件、也没有文件站外链的纯讨论回复写进候选。读取时隐藏，
-    # 不改 ledger；有效的历史条目在下一次检查后会补上资源证据并重新出现。
+    # 旧版曾把纯讨论和图片表情包写进候选。读取时隐藏，不改 ledger；真正的
+    # 文件附件与文件站链接仍保留，下一次检查会按当前证据重新归类。
     return (item.provider == "f95zone"
             and not _f95_has_resource(item.media_url, item.metadata))
 

@@ -110,10 +110,10 @@ let settingsReturnFocus=null;
 function openSettings(open=true){
   const panel=$('#settingsPanel');
   if(open){
-    settingsReturnFocus=document.activeElement;panel.hidden=false;syncSettingsPanel();
+    settingsReturnFocus=document.activeElement;panel.hidden=false;document.body.classList.add('settings-open');syncSettingsPanel();
     queueMicrotask(()=>$('#settingsClose').focus());return
   }
-  panel.hidden=true;
+  panel.hidden=true;document.body.classList.remove('settings-open');
   if(settingsReturnFocus&&document.contains(settingsReturnFocus))settingsReturnFocus.focus();
   settingsReturnFocus=null;
 }
@@ -1490,6 +1490,7 @@ async function openQualityGoals(push=true){
      以及对内容做批量标记。
    联网只发生在管理页点「检查更新」的那一刻——看的那一页不联网。 */
 let followData=null,followRuntime=null,followFilter='new',followBusy=false;
+let followCredentialProviders=new Set();
 /* 上一次检查的结果。检查完页面会整页重画，如果不把结果留在这里，用户看到的就只是
    一次闪烁——他的原话是「完全没返回任何结果」。接口其实每条来源都回了
    added/updated/not_modified/error，是界面把它们全丢了。 */
@@ -1547,7 +1548,9 @@ function followVideoItems(group){
 
 function followMediaNote(item){
   if(item.media_error)return `媒体未取得：${item.media_error}`;
-  if(item.media_needs_credential)return '媒体链接需要 F95 登录会话解析';
+  if(item.media_needs_credential)return followCredentialProviders.has(item.provider)
+    ?'已保存 F95 登录会话，等待下次检查重新解析资源'
+    :'媒体链接需要 F95 登录会话解析';
   if(item.has_media&&!item.playable&&item.media_kind==='external')return item.resource_urls?.length
     ?`已取得 ${item.resource_urls.length} 个外部文件页；视频列表未取得`
     :'外部文件页未取得；视频列表未取得';
@@ -1869,7 +1872,7 @@ function renderFollow(){
   const allCount=Object.values(counts).reduce((total,count)=>total+(+count||0),0);
   $('#stats').innerHTML=`<div class="follow">
     <div class="followhead"><h2 class="disp pagetitle">关注</h2>
-      <button class="fcheck" data-follow-manage>${icon('settings')}管理关注</button></div>
+      <button class="fbtn primary fcheck" data-follow-manage>${icon('settings')}管理关注</button></div>
     ${authors.size?`<div class="tier followauthors" aria-label="按作者筛选">${[...authors].map(([key,author])=>
       `<button class="av" data-follow-author="${esc(key)}" aria-pressed="${key===followAuthor}">
         <span class="ring">${followAuthorAvatar(author.sources)}</span><span class="nm">${esc(author.name)}</span></button>`
@@ -1960,7 +1963,13 @@ async function openFollow(push=true,renderForDetail=false){
   $('#tiers').style.display='none';$('#tagbar').style.display='none';
   $('#managebar').hidden=true;$('#manageTitle').hidden=true;buildEdge();
   $('#stats').innerHTML='<div class="follow"><p class="empty">正在读取…</p></div>';
-  followData=await api(`/api/follow?limit=300${followFilter?`&status=${followFilter}`:''}`);
+  const [data,credentials]=await Promise.all([
+    api(`/api/follow?limit=300${followFilter?`&status=${followFilter}`:''}`),
+    api('/api/follow/credentials').catch(()=>({providers:[]})),
+  ]);
+  followData=data;
+  followCredentialProviders=new Set((credentials.providers||[])
+    .filter(provider=>provider.present).map(provider=>provider.provider));
   if(location.pathname!=='/follow'&&!renderForDetail)return;
   renderFollow();
   if(!renderForDetail)window.scrollTo({top:0,behavior:'smooth'});
