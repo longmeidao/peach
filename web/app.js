@@ -79,7 +79,7 @@ function dropOfflineFromDefaultLoc(){
 const DURATION_TAGS=new Set(['短片-2分内','中片-10分内','长片-30分内','超长片-30分上']);
 const SETTINGS_KEY='peach.settings.v1';
 const DEFAULT_SIDEBAR_ORDER=['','performers','tags','jav','flagged','playlists','follow','immerse','manage'];
-const OPTIONAL_SIDEBAR_KEYS=['stats','review','ads','dupes','trash','follow-manage','quality'];
+const OPTIONAL_SIDEBAR_KEYS=['stats','review','ads','dupes','resources','trash','follow-manage','quality'];
 const ALL_SIDEBAR_KEYS=[...DEFAULT_SIDEBAR_ORDER,...OPTIONAL_SIDEBAR_KEYS];
 const DEFAULT_SETTINGS={rotateMinutes:0,batchSize:60,defaultSort:'seed',hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
@@ -1032,6 +1032,49 @@ function showHomeSurfaces(){
   buildManageBar();paintListTitle();   // 放在最后：管理区要盖掉上面刚恢复的首页横条
 }
 function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
+
+async function openResourceSync(push=true){
+  releaseHoverPreviews();
+  if(push)route('/resource-sync');
+  enterManagementSurface();disposeStage(false);
+  $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';buildManageBar();
+  $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
+  $('#stats').innerHTML=`<section class="resourcesync">
+    <div class="resourcesynchead"><div><h3>网盘与账本对账</h3>
+      <p>只检查已挂载来源。网盘上已删除的条目先进入 Peach 回收站；封面、截图、海报、图片缩略图和播放缓存只清理没有在用的副本。</p></div>
+      <button class="primary" id="resourceScan">${icon('refresh-cw')}扫描差异</button></div>
+    <div class="resourcesyncnote">来源离线时整库跳过，避免把“网盘没挂上”误判成“文件已删除”。候选 CSV、来源证据、女优头像和厂牌 Logo 不属于缓存，不会删除。</div>
+    <div id="resourceSyncResult" aria-live="polite"></div></section>`;
+  const scan=$('#resourceScan'),result=$('#resourceSyncResult');
+  const render=payload=>{
+    const sources=payload.sources||[];
+    const cache=payload.cache||{files:0,bytes:0};
+    result.innerHTML=`<div class="resourcesources">${sources.map(source=>`<article>
+      <b>${esc(LOC[source.location]||source.location)}</b><span class="${source.online?'online':'offline'}">${source.online?'已挂载':'离线，已跳过'}</span>
+      <strong>${source.online?`${source.missing.toLocaleString()} 项已从网盘删除`:'—'}</strong>
+      <small>${source.online?`已核对 ${source.checked.toLocaleString()} 项`:`账本有 ${source.total.toLocaleString()} 项`}</small></article>`).join('')}</div>
+      <div class="resourcecache"><div><b>${cache.files.toLocaleString()}</b><span>个孤立缓存</span><small>${fmtSize(cache.bytes||0)}</small></div>
+      <div><b>${Number(payload.missing||0).toLocaleString()}</b><span>项待同步</span><small>应用后进入回收站</small></div></div>
+      ${(payload.missing||cache.files)?`<button class="danger" id="resourceApply">同步到回收站并清理缓存</button>`:
+        '<p class="resourcesyncok">账本与已挂载来源一致，没有孤立缓存。</p>'}`;
+    $('#resourceApply')?.addEventListener('click',async event=>{
+      const button=event.currentTarget;
+      if(!confirm(`把 ${payload.missing||0} 项移入回收站，并清理 ${cache.files||0} 个可重建缓存？`))return;
+      button.disabled=true;button.textContent='正在重新核对并应用…';
+      try{
+        const applied=await api('/api/resource-sync/apply',{method:'POST',body:JSON.stringify({confirm:true,clean_cache:true})});
+        result.innerHTML=`<p class="resourcesyncok">已把 ${applied.moved_to_trash.toLocaleString()} 项移入回收站，清理 ${applied.cache_removed.toLocaleString()} 个缓存，释放 ${fmtSize(applied.bytes_reclaimed||0)}。</p>`;
+      }catch(error){button.disabled=false;button.textContent='重试同步';result.insertAdjacentHTML('beforeend',`<p class="resourceerror">${esc(error.message)}</p>`)}
+    });
+  };
+  scan.onclick=async()=>{
+    scan.disabled=true;scan.innerHTML=`${icon('refresh-cw')}正在扫描…`;result.innerHTML='<p class="resourcescanning">正在核对网盘元数据，不会读取视频内容。</p>';
+    try{render(await api('/api/resource-sync/scan',{method:'POST',body:'{}'}))}
+    catch(error){result.innerHTML=`<p class="resourceerror">扫描失败：${esc(error.message)}</p>`}
+    finally{scan.disabled=false;scan.innerHTML=`${icon('refresh-cw')}重新扫描`}
+  };
+  window.scrollTo({top:0,behavior:'smooth'});
+}
 
 let tasteWindow='all';
 const tasteDate=value=>value?new Date(value).toLocaleDateString('zh-CN'):'—';
@@ -2796,7 +2839,7 @@ function renderPhotoWall(kind,name,filters,data,append=false){
    标题旁两个按钮，服务的是「跳过去自己整理网盘目录」这条来回：定位打开源文件所在
    目录（A:/B: 是 CloudDrive 挂上来的盘符，在资源管理器里和本地目录没区别），在那边
    删掉不要的，回来点一下同步，账本跟着对齐。
-   删除不进复核也不可恢复——手动删掉的就是不要的。真正要防的是把「盘没挂上」当成
+   删除不进复核，但账本记录先放进回收站。真正要防的是把「盘没挂上」当成
    「文件没了」，那个闸门在服务端：整条来源不在线时直接拒绝，一行都不动。
    路径始终由服务端按 asset id 查，前端拿不到也不该拿到 `path`。 ── */
 const SOURCE_HINTS={
@@ -2822,7 +2865,7 @@ async function syncMissing(id,status,done){
     const r=await api('/api/purge-missing',{method:'POST',body:JSON.stringify({id})});
     if(r.ok===false){status.textContent=sourceHint(r.error);return}
     status.textContent=r.removed
-      ? `已从账本移除 ${r.removed} 项（核对 ${r.checked} 项）`
+      ? `已把 ${r.removed} 项移入回收站（核对 ${r.checked} 项）`
       : `目录内 ${r.checked} 项都还在，无需改动`;
     if(r.removed&&done)done(r);
   }catch(e){status.textContent=sourceHint(e.message)}
@@ -2832,7 +2875,7 @@ async function syncMissing(id,status,done){
 const sourceTools=id=>`<div class="srctools">
     <button type="button" data-reveal="${id}" title="在文件管理器里打开源文件所在目录"
       aria-label="定位源文件">${icon('folder-open')}</button>
-    <button type="button" data-sync="${id}" title="核对该目录：磁盘上已删除的，从账本一并移除"
+    <button type="button" data-sync="${id}" title="核对该目录：磁盘上已删除的，移入 Peach 回收站"
       aria-label="同步删除">${icon('refresh-cw')}</button>
     <span class="srcstate" aria-live="polite"></span></div>`;
 
@@ -3044,6 +3087,7 @@ const MANAGE_SECTIONS=[
   ['review','人工复核','square-check-big'],
   ['ads','疑似广告','alert'],
   ['dupes','重复文件','hard-drive'],
+  ['resources','资源同步','refresh-cw'],
   ['trash','回收站','trash'],
   ['follow','关注','rss'],
   ['quality','高清版','sparkles'],
@@ -3051,7 +3095,7 @@ const MANAGE_SECTIONS=[
 const OPTIONAL_EDGE_ICONS=MANAGE_SECTIONS.map(([key,label,ic])=>
   key==='follow'?['follow-manage','关注管理',ic]:[key,label,ic]);
 const NAV_CATALOG=[...EDGE_ICONS,...OPTIONAL_EDGE_ICONS];
-const DIRECT_MANAGE_NAV={stats:'stats',review:'review',ads:'ads',dupes:'dupes',trash:'trash','follow-manage':'follow',quality:'quality'};
+const DIRECT_MANAGE_NAV={stats:'stats',review:'review',ads:'ads',dupes:'dupes',resources:'resources',trash:'trash','follow-manage':'follow',quality:'quality'};
 function orderedEdgeIcons(){
   const byKey=new Map(NAV_CATALOG.map(item=>[item[0],item]));
   return appSettings.sidebarOrder.map(key=>byKey.get(key)).filter(Boolean);
@@ -3158,6 +3202,7 @@ function manageSection(){
   if(path==='/review')return 'review';
   if(path==='/trash')return 'trash';
   if(path==='/duplicates')return 'dupes';
+  if(path==='/resource-sync')return 'resources';
   if(path==='/quality-goals')return 'quality';
   if(path==='/follow-manage')return 'follow';
   return state.state==='ads'?'ads':'';
@@ -3202,6 +3247,7 @@ function openManage(section='stats'){
   if(section==='taste'){openTaste();return}
   if(section==='review'){openReview();return}
   if(section==='dupes'){openDuplicates();return}
+  if(section==='resources'){openResourceSync();return}
   if(section==='quality'){openQualityGoals();return}
   if(section==='follow'){openFollowManage();return}
   state.orient='';state.state=section==='trash'?'trash':'ads';
@@ -4335,6 +4381,7 @@ async function restoreRoute(){
   if(path==='/taste'){await openTaste(false);return}
   if(path==='/review'){await openReview(false);return}
   if(path==='/duplicates'){await openDuplicates(false);return}
+  if(path==='/resource-sync'){await openResourceSync(false);return}
   if(path==='/quality-goals'){await openQualityGoals(false);return}
   if(path==='/follow'){await openFollow(false);return}
   if(path==='/follow-manage'){await openFollowManage(false);return}

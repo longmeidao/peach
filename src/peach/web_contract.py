@@ -11,6 +11,7 @@ import hashlib
 import json
 import random
 import re
+import shutil
 import threading
 import time
 import uuid
@@ -108,6 +109,10 @@ class WebContract:
                  cover_root: Path | None = None,
                  avatar_root: Path | None = None,
                  logo_root: Path | None = None,
+                 poster_root: Path | None = None,
+                 photo_root: Path | None = None,
+                 transcode_root: Path | None = None,
+                 stream_root: Path | None = None,
                  follow_sources_root: Path | None = None,
                  follow_secrets_root: Path | None = None,
                  follow_state_root: Path | None = None,
@@ -123,6 +128,15 @@ class WebContract:
         self.avatar_root = Path(avatar_root) if avatar_root is not None else GENERATED_DIR / "avatars"
         # `/logo` 就是从这里读；批准候选等于把图装进这个目录。
         self.logo_root = Path(logo_root) if logo_root is not None else GENERATED_DIR / "logos"
+        self.poster_root = Path(poster_root) if poster_root is not None else GENERATED_DIR / "posters"
+        self.photo_root = Path(photo_root) if photo_root is not None else GENERATED_DIR / "photo-thumbs"
+        self.transcode_root = (Path(transcode_root) if transcode_root is not None
+                               else GENERATED_DIR / "transcodes")
+        self.stream_root = Path(stream_root) if stream_root is not None else GENERATED_DIR / "stream-segments"
+        # API construction passes every managed cache root. A bare WebContract is also used
+        # by isolated unit tests; it must never wander into the machine's real generated tree.
+        self.resource_cleanup_enabled = any(
+            root is not None for root in (poster_root, photo_root, transcode_root, stream_root))
         # 追更的原始证据与本机凭据目录同样做成实例属性，测试才能落在临时目录里。
         self.follow_sources_root = (Path(follow_sources_root)
                                     if follow_sources_root is not None else SOURCES_DIR)
@@ -1351,7 +1365,6 @@ def q_stats(contract: WebContract):
         "FROM asset WHERE last_played IS NOT NULL ORDER BY last_played DESC LIMIT 12")]
     c.close()
     try:
-        import shutil
         volume = system_volume()
         du = shutil.disk_usage(volume)
         out["system_disk"] = {"root": str(volume), "free": du.free, "total": du.total}
@@ -2495,7 +2508,9 @@ def w_empty_trash(contract: WebContract):
         if outcome is not None:
             _restore_staged_media(outcome["_staged"])
         raise
-    return {"ok": True, "operation": "empty-trash", **_finish_purge(outcome)}
+    result = {"ok": True, "operation": "empty-trash", **_finish_purge(outcome)}
+    result.update(_clean_resource_orphans(contract))
+    return result
 
 
 def source_is_online(location: str) -> bool:
@@ -2507,11 +2522,191 @@ def source_is_online(location: str) -> bool:
     return not is_unmapped(resolved) and root_online(resolved)
 
 
+def _scan_missing_resources(contract: WebContract) -> dict:
+    """Read-only reconciliation against every mounted filesystem source."""
+    with contract.read_connection() as connection:
+        rows = connection.execute(
+            "SELECT id,location,path FROM asset "
+            "WHERE path IS NOT NULL AND COALESCE(disposal,'')!='trash' "
+            "AND location IN ('local','115','pikpak') ORDER BY location,id",
+        ).fetchall()
+    grouped: dict[str, list] = {}
+    for row in rows:
+        grouped.setdefault(row["location"], []).append(row)
+    missing_ids: list[int] = []
+    sources = []
+    for location in LOCATION_ROOT_DECLARATIONS:
+        items = grouped.get(location, [])
+        online = source_is_online(location)
+        missing = []
+        if online:
+            for row in items:
+                if not translate_ledger_path(row["path"]).is_file():
+                    missing.append(row["id"])
+            missing_ids.extend(missing)
+        sources.append({
+            "location": location, "online": online, "checked": len(items) if online else 0,
+            "total": len(items), "missing": len(missing),
+        })
+    return {"sources": sources, "missing_ids": missing_ids}
+
+
+def _cache_file(path: Path, kind: str, output: list[tuple[str, Path, int]]) -> None:
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return
+    output.append((kind, path, size))
+
+
+def _resource_orphan_plan(contract: WebContract, excluded_ids: Sequence[int] = ()) -> dict:
+    """Find only reproducible generated files that no active asset still owns.
+
+    Review CSVs, provider evidence, logos and entity portraits are deliberately outside this
+    boundary: they are provenance or shared identity assets, not disposable per-asset caches.
+    """
+    if not contract.resource_cleanup_enabled:
+        return {"files": [], "dirs": set(), "summary": {},
+                "total_files": 0, "total_bytes": 0}
+    with contract.read_connection() as connection:
+        rows = connection.execute(
+            "SELECT id,code,snapshot_path FROM asset WHERE COALESCE(disposal,'')!='trash'",
+        ).fetchall()
+    excluded = {int(item) for item in excluded_ids}
+    rows = [row for row in rows if int(row["id"]) not in excluded]
+    active_ids = {int(row["id"]) for row in rows}
+    active_codes = {normalise_code_key(row["code"]) for row in rows if row["code"]}
+    active_codes.discard("")
+    active_snapshots = set()
+    for row in rows:
+        raw = row["snapshot_path"]
+        if raw:
+            active_snapshots.add(remap_managed_path(
+                raw, contract.snapshot_root, contract.legacy_snapshot_roots,
+            ) if contract.snapshot_root is not None else Path(raw))
+
+    files: list[tuple[str, Path, int]] = []
+    cleanup_dirs: set[Path] = set()
+    if contract.snapshot_root and contract.snapshot_root.is_dir():
+        for path in contract.snapshot_root.rglob("*"):
+            if path.is_file() and path not in active_snapshots:
+                _cache_file(path, "snapshots", files)
+
+    patterns = (
+        (contract.poster_root, "posters", re.compile(r"^(\d+)_\d+\.jpg$")),
+        (contract.photo_root, "photo-thumbs", re.compile(r"^(\d+)\.jpg$")),
+        (contract.transcode_root, "transcodes", re.compile(r"^(\d+)-.+\.mp4$")),
+    )
+    for root, kind, pattern in patterns:
+        if not root.is_dir():
+            continue
+        for path in root.iterdir():
+            match = pattern.match(path.name)
+            if match and int(match.group(1)) not in active_ids and path.is_file():
+                _cache_file(path, kind, files)
+
+    if contract.stream_root.is_dir():
+        for directory in contract.stream_root.iterdir():
+            if not directory.is_dir() or not directory.name.isdigit():
+                continue
+            if int(directory.name) in active_ids:
+                continue
+            cleanup_dirs.add(directory)
+            for path in directory.rglob("*"):
+                if path.is_file():
+                    _cache_file(path, "stream-segments", files)
+
+    if contract.avatar_root.is_dir():
+        for path in contract.avatar_root.iterdir():
+            match = re.match(r"^(\d+)\.jpg$", path.name)
+            if match and int(match.group(1)) not in active_ids and path.is_file():
+                _cache_file(path, "asset-avatars", files)
+
+    if contract.cover_root.is_dir():
+        for path in contract.cover_root.iterdir():
+            key = ""
+            if path.name.endswith(".face.json"):
+                key = path.name[:-10]
+            elif path.suffix.lower() == ".jpg":
+                key = path.stem
+            if key and normalise_code_key(key) not in active_codes and path.is_file():
+                _cache_file(path, "covers", files)
+
+    summary: dict[str, dict[str, int]] = {}
+    for kind, _path, size in files:
+        bucket = summary.setdefault(kind, {"files": 0, "bytes": 0})
+        bucket["files"] += 1
+        bucket["bytes"] += size
+    return {
+        "files": files, "dirs": cleanup_dirs, "summary": summary,
+        "total_files": len(files), "total_bytes": sum(item[2] for item in files),
+    }
+
+
+def _clean_resource_orphans(contract: WebContract) -> dict:
+    plan = _resource_orphan_plan(contract)
+    removed = 0
+    reclaimed = 0
+    blocked = []
+    for kind, path, size in plan["files"]:
+        try:
+            path.unlink(missing_ok=True)
+            removed += 1
+            reclaimed += size
+        except OSError as error:
+            blocked.append({"kind": kind, "name": path.name,
+                            "reason": error.strerror or str(error)})
+    for directory in sorted(plan["dirs"], key=lambda item: len(item.parts), reverse=True):
+        try:
+            shutil.rmtree(directory)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            # Individual file failures above already carry useful detail; a non-empty cache
+            # directory is harmless and will be reconsidered on the next scan.
+            pass
+    return {"cache_removed": removed, "bytes_reclaimed": reclaimed,
+            "cache_blocked": blocked}
+
+
+def w_resource_sync_scan(contract: WebContract, _body=None):
+    scan = _scan_missing_resources(contract)
+    caches = _resource_orphan_plan(contract, scan["missing_ids"])
+    return {
+        "ok": True, "sources": scan["sources"],
+        "missing": len(scan["missing_ids"]),
+        "cache": {"files": caches["total_files"], "bytes": caches["total_bytes"],
+                  "by_kind": caches["summary"]},
+    }
+
+
+def w_resource_sync_apply(contract: WebContract, body):
+    if body.get("confirm") is not True:
+        raise ValueError("resource sync requires confirmation")
+    # Apply never trusts an earlier browser result. Mount state and file existence are
+    # checked again immediately before the bounded ledger write.
+    scan = _scan_missing_resources(contract)
+    missing_ids = scan["missing_ids"]
+    if missing_ids:
+        with contract.write_transaction() as connection:
+            stamp = time.time()
+            connection.executemany(
+                "UPDATE asset SET disposal='trash',feedback_at=? WHERE id=?",
+                [(stamp, asset_id) for asset_id in missing_ids],
+            )
+    contract.cache_bust()
+    cleanup = _clean_resource_orphans(contract) if body.get("clean_cache", True) else {
+        "cache_removed": 0, "bytes_reclaimed": 0, "cache_blocked": [],
+    }
+    return {"ok": True, "moved_to_trash": len(missing_ids),
+            "sources": scan["sources"], **cleanup}
+
+
 def w_purge_missing(contract: WebContract, body):
-    """按目录对账：文件已经在磁盘上删掉的，账本行一并删掉。
+    """按目录对账：文件已经在磁盘上删掉的，账本行移入回收站。
 
     这条路径服务的是「我在资源管理器里整理网盘目录」——删掉的就是不要的，所以
-    不进复核、不进回收站、不可恢复，播放历史等衍生行跟着一起走。
+    不进复核；账本记录仍先进入回收站，源文件恢复后还能还原。
 
     真正危险的不是删得太干净，而是把「盘没挂上」误判成「文件没了」：R: 掉线时
     整条来源 2,552 行都会看起来像被删。所以先做来源级在线判定，整源不在线就
@@ -2549,21 +2744,13 @@ def w_purge_missing(contract: WebContract, body):
 
     contract.cache_bust()
     ids = [item["id"] for item in missing]
-    marks = ",".join("?" * len(ids))
     with contract.write_transaction() as connection:
-        connection.execute(
-            f"UPDATE playlist SET current_asset_id=NULL WHERE current_asset_id IN ({marks})",
-            ids,
+        stamp = time.time()
+        connection.executemany(
+            "UPDATE asset SET disposal='trash',feedback_at=? WHERE id=?",
+            [(stamp, asset_id) for asset_id in ids],
         )
-        connection.execute(
-            f"UPDATE playlist SET source_seed_asset_id=NULL WHERE source_seed_asset_id IN ({marks})",
-            ids,
-        )
-        for table in ASSET_REFERENCE_TABLES:
-            connection.execute(
-                f"DELETE FROM {table} WHERE asset_id IN ({marks})", ids)
-        # asset_search 交给 0004 的删除触发器，这里再删一遍只会重复。
-        connection.execute(f"DELETE FROM asset WHERE id IN ({marks})", ids)
+    contract.cache_bust()
     return {
         "ok": True, "directory": photo_set_title(directory),
         "checked": len(rows), "removed": len(missing), "items": missing,
@@ -2629,7 +2816,9 @@ def w_batch(contract: WebContract, body):
             _restore_staged_media(purge_outcome["_staged"])
         raise
     if purge_outcome is not None:
-        return {"ok": True, "operation": operation, **_finish_purge(purge_outcome)}
+        result = {"ok": True, "operation": operation, **_finish_purge(purge_outcome)}
+        result.update(_clean_resource_orphans(contract))
+        return result
     return {"ok": True, "operation": operation, "changed": len(valid_ids)}
 
 
@@ -2855,6 +3044,8 @@ POST_HANDLERS = {
     "/api/taste/source": w_taste_source,
     "/api/trash/empty": _post_empty_trash,
     "/api/purge-missing": w_purge_missing,
+    "/api/resource-sync/scan": w_resource_sync_scan,
+    "/api/resource-sync/apply": w_resource_sync_apply,
     "/api/review/auto-apply": w_review_auto_apply,
     "/api/review/decision": w_review_decision,
 }
@@ -2865,7 +3056,7 @@ POST_HANDLERS = {
 #: 追更的「查找」在只读端被拦成 409 是实测踩到的。
 READ_ONLY_POST_ROUTES = frozenset({
     "/api/follow/resolve", "/api/follow/credential",
-    "/api/taste/refresh", "/api/taste/source",
+    "/api/taste/refresh", "/api/taste/source", "/api/resource-sync/scan",
 })
 
 

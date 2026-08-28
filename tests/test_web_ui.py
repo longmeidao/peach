@@ -545,7 +545,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const MANAGE_SECTIONS=[")
         for section in ("'stats','统计'", "'ads','疑似广告'", "'dupes','重复文件'",
                         "'quality','高清版'", "'trash','回收站'", "'review','人工复核'",
-                        "'taste','品味'"):
+                        "'taste','品味'", "'resources','资源同步'"):
             self.assertPageContains(section)
         self.assertPageContains("function manageSection()")
         self.assertPageContains("function buildManageBar()")
@@ -571,7 +571,7 @@ class WebUiSourceTests(unittest.TestCase):
         sections = self.page.split("const MANAGE_SECTIONS=[", 1)[1].split("];", 1)[0]
         order = [line.split("'")[1] for line in sections.splitlines() if line.strip().startswith("['")]
         self.assertEqual(
-            order, ["stats", "taste", "review", "ads", "dupes", "trash", "follow", "quality"],
+            order, ["stats", "taste", "review", "ads", "dupes", "resources", "trash", "follow", "quality"],
             "管理导航的顺序是语义契约：现状 → 复核 → 清理 → 回收站 → 往外拿",
         )
 
@@ -1230,7 +1230,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('data-nav="${k}" draggable="true"')
         self.assertPageContains("data-sidebar-hide")
         self.assertPageContains("data-sidebar-add-select")
-        self.assertPageContains("const OPTIONAL_SIDEBAR_KEYS=['stats','review','ads','dupes','trash','follow-manage','quality']")
+        self.assertPageContains("const OPTIONAL_SIDEBAR_KEYS=['stats','review','ads','dupes','resources','trash','follow-manage','quality']")
         self.assertPageContains("if(DIRECT_MANAGE_NAV[k]){openManage(DIRECT_MANAGE_NAV[k]);return}")
         self.assertPageContains(".settingscard{width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:hidden")
         self.assertPageContains(".settingsscroll{max-height:inherit;overflow-y:auto")
@@ -1543,6 +1543,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('data-sync="${id}"')
         # 在线资产是 URL，没有本地文件可定位。
         self.assertPageContains("it.location==='online'?'':sourceTools(it.id)")
+
+    def test_resource_sync_is_preview_first_and_keeps_offline_sources_safe(self):
+        self.assertPageContains("if(path==='/resource-sync'){await openResourceSync(false);return}")
+        self.assertPageContains("api('/api/resource-sync/scan',{method:'POST',body:'{}'})")
+        self.assertPageContains("api('/api/resource-sync/apply',{method:'POST'")
+        self.assertPageContains("来源离线时整库跳过")
+        self.assertPageContains("同步到回收站并清理缓存")
+        self.assertPageContains("候选 CSV、来源证据、女优头像和厂牌 Logo 不属于缓存")
 
     def test_source_tool_icons_declare_stroke_and_no_fill(self):
         self.assertPageContains(

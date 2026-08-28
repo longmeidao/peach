@@ -498,6 +498,7 @@ class WebDataTests(unittest.TestCase):
             "/api/preference", "/api/quality-goal", "/api/item-tag", "/api/batch",
             "/api/search-history", "/api/trash/empty", "/api/review/decision",
             "/api/purge-missing", "/api/review/auto-apply",
+            "/api/resource-sync/scan", "/api/resource-sync/apply",
             "/api/follow/check", "/api/follow/status", "/api/follow/save",
             "/api/follow/source", "/api/follow/resolve", "/api/follow/credential",
             "/api/follow/author-alias", "/api/follow/schedule",
@@ -2236,23 +2237,103 @@ class PurgeMissingTests(unittest.TestCase):
         self.assertEqual(result["error"], "source offline")
         self.assertEqual(self.ids(), [1, 2, 3, 4])
 
-    def test_missing_files_are_removed_with_their_derived_rows(self):
+    def test_missing_files_move_to_trash_without_losing_metadata(self):
         result = self._run()
         self.assertTrue(result["ok"])
         self.assertEqual(result["checked"], 3)
         self.assertEqual(result["removed"], 2)
         self.assertEqual(sorted(x["id"] for x in result["items"]), [2, 3])
-        # 另一个目录的 4 必须原样留下。
-        self.assertEqual(self.ids(), [1, 4])
+        # 另一个目录的 4 必须原样留下；缺失项先进入回收站，恢复源文件后仍可还原。
+        self.assertEqual(self.ids(), [1, 2, 3, 4])
         con = sqlite3.connect(self.db_path)
         try:
-            # 衍生行跟着走：用户要的是「删干净」，不是留一堆孤儿。
             self.assertEqual(
-                [r[0] for r in con.execute("SELECT asset_id FROM asset_tag")], [4])
+                con.execute("SELECT disposal FROM asset WHERE id=2").fetchone()[0], "trash")
             self.assertEqual(
-                [r[0] for r in con.execute("SELECT asset_id FROM asset_preference")], [4])
+                con.execute("SELECT disposal FROM asset WHERE id=3").fetchone()[0], "trash")
+            # 元数据等到清空回收站才随账本行一起删。
+            self.assertEqual(
+                [r[0] for r in con.execute("SELECT asset_id FROM asset_tag")], [2, 4])
+            self.assertEqual(
+                [r[0] for r in con.execute("SELECT asset_id FROM asset_preference")], [2, 4])
         finally:
             con.close()
+
+    def test_full_sync_scans_all_online_assets_and_cleans_only_rebuildable_caches(self):
+        roots = {}
+        for name in ("snapshots", "posters", "photo-thumbs", "transcodes",
+                     "stream-segments", "avatars", "covers"):
+            roots[name] = self.root / name
+            roots[name].mkdir()
+        cache_files = [
+            roots["snapshots"] / "2.jpg",
+            roots["posters"] / "2_4.jpg",
+            roots["photo-thumbs"] / "2.jpg",
+            roots["transcodes"] / "2-10-20.mp4",
+            roots["stream-segments"] / "2" / "10-20-6" / "0.ts",
+            roots["avatars"] / "2.jpg",
+            roots["covers"] / "hey-002.jpg",
+        ]
+        for path in cache_files:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"cache")
+        evidence = self.root / "candidate.csv"
+        evidence.write_text("review evidence", encoding="utf-8")
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET code='HEY-002',snapshot_path=? WHERE id=2",
+                    (str(cache_files[0]),))
+        con.commit();con.close()
+        self.contract.snapshot_root = roots["snapshots"]
+        self.contract.poster_root = roots["posters"]
+        self.contract.photo_root = roots["photo-thumbs"]
+        self.contract.transcode_root = roots["transcodes"]
+        self.contract.stream_root = roots["stream-segments"]
+        self.contract.avatar_root = roots["avatars"]
+        self.contract.cover_root = roots["covers"]
+        self.contract.resource_cleanup_enabled = True
+
+        def online(location):
+            return location == "115"
+        with mock.patch.object(rm_web, "translate_ledger_path", self._translate), \
+             mock.patch.object(rm_web, "source_is_online", online):
+            preview = rm_web.w_resource_sync_scan(self.contract)
+            self.assertEqual(preview["missing"], 2)
+            self.assertEqual(preview["cache"]["files"], len(cache_files))
+            result = rm_web.w_resource_sync_apply(
+                self.contract, {"confirm": True, "clean_cache": True})
+
+        self.assertEqual(result["moved_to_trash"], 2)
+        self.assertEqual(result["cache_removed"], len(cache_files))
+        self.assertTrue(all(not path.exists() for path in cache_files))
+        self.assertTrue(evidence.is_file(), "候选证据不属于可删除缓存")
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(
+                con.execute("SELECT count(*) FROM asset WHERE disposal='trash'").fetchone()[0], 2)
+        finally:
+            con.close()
+
+    def test_full_sync_keeps_a_cover_shared_by_an_active_asset(self):
+        covers = self.root / "covers"
+        covers.mkdir()
+        shared = covers / "hey-002.jpg"
+        shared.write_bytes(b"cover")
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET code='HEY-002' WHERE id IN (1,2)")
+        con.commit();con.close()
+        self.contract.cover_root = covers
+        self.contract.avatar_root = self.root / "avatars"
+        self.contract.poster_root = self.root / "posters"
+        self.contract.photo_root = self.root / "photo-thumbs"
+        self.contract.transcode_root = self.root / "transcodes"
+        self.contract.stream_root = self.root / "stream-segments"
+        self.contract.resource_cleanup_enabled = True
+        with mock.patch.object(rm_web, "translate_ledger_path", self._translate), \
+             mock.patch.object(rm_web, "source_is_online", lambda loc: loc == "115"):
+            preview = rm_web.w_resource_sync_scan(self.contract)
+        self.assertEqual(preview["missing"], 2)
+        self.assertTrue(shared.is_file())
+        self.assertNotIn("covers", preview["cache"]["by_kind"])
 
     def test_intact_directory_reports_no_change(self):
         for name in ("002.jpg", "003.jpg"):
