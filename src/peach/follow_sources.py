@@ -884,12 +884,16 @@ class Rule34XxxConnector(_BaseConnector):
             url=f"https://rule34.xxx/index.php?page=post&s=view&id={post_id}"
                 if post_id else None,
             media_url=str(post.get("file_url")) if post.get("file_url") else None,
-            thumb_url=str(post.get("preview_url")) if post.get("preview_url") else None,
+            # dapi 的 preview_url 只有约 250px；sample_url 对视频是同帧 JPEG，
+            # 对图片则是站点选定的样图。gallery-dl 的 booru 抽取器也把这三层
+            # 作为可配置回退链，不能把最小 preview 固定成 Peach 封面。
+            thumb_url=str(post.get("sample_url") or post.get("preview_url") or "") or None,
             published_at=_iso_from_epoch(post.get("change")),
             group_hint=hint,
             title_is_name=title_is_name,
             extra={"tag": tag, "tags": tags, "score": post.get("score"),
-                   "source": source, "title_from": title_from},
+                   "source": source, "title_from": title_from,
+                   "preview_url": post.get("preview_url")},
         )
 
     @classmethod
