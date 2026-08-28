@@ -22,6 +22,8 @@ from browserexport.browsers.chrome import Chrome
 from browserexport.browsers.firefox import Firefox
 from browserexport.browsers.safari import Safari
 
+from .web_logic import LENGTH_TAGS
+
 
 @dataclass(frozen=True)
 class HistorySource:
@@ -662,24 +664,24 @@ def _peach_dashboard_evidence(connection: sqlite3.Connection, since: str | None)
         positive += 3.0 if is_liked else 0.0
         positive += .5 if row.get("feedback") == "seen" else 0.0
         row["positive"] = max(positive, 0.0)
-        row["negative"] = 1.0 if is_disliked else 0.0
         assets[int(row["id"])] = row
         total_seconds += seconds
         liked += int(is_liked)
         disliked += int(is_disliked)
 
     scores: dict[str, Counter[str]] = defaultdict(Counter)
-    negatives: dict[str, Counter[str]] = defaultdict(Counter)
     items: dict[str, dict[str, set[int]]] = defaultdict(lambda: defaultdict(set))
     labels: dict[str, dict[str, str]] = defaultdict(dict)
     entity_kinds: dict[int, set[str]] = defaultdict(set)
+    entity_ids: dict[str, dict[str, int]] = defaultdict(dict)
+    representatives: dict[str, dict[str, int]] = defaultdict(dict)
     if assets:
         ids = list(assets)
         for offset in range(0, len(ids), 800):
             batch = ids[offset:offset + 800]
             placeholders = ",".join("?" for _ in batch)
             entity_rows = connection.execute(
-                "SELECT ae.asset_id,e.kind,e.canonical_name,e.normalized_name "
+                "SELECT ae.asset_id,e.id entity_id,e.kind,e.canonical_name,e.normalized_name "
                 f"FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id WHERE ae.asset_id IN ({placeholders})",
                 batch,
             )
@@ -688,12 +690,12 @@ def _peach_dashboard_evidence(connection: sqlite3.Connection, since: str | None)
                 kind = str(entity["kind"])
                 normalized = str(entity["normalized_name"] or entity["canonical_name"]).casefold()
                 labels[kind][normalized] = str(entity["canonical_name"])
+                entity_ids[kind][normalized] = int(entity["entity_id"])
+                representatives[kind].setdefault(normalized, aid)
                 entity_kinds[aid].add(kind)
                 if assets[aid]["positive"]:
                     scores[kind][normalized] += float(assets[aid]["positive"])
                     items[kind][normalized].add(aid)
-                if assets[aid]["negative"]:
-                    negatives[kind][normalized] += 1
 
         for aid, asset in assets.items():
             for kind, column in (("creator", "creator"), ("studio", "studio")):
@@ -702,17 +704,17 @@ def _peach_dashboard_evidence(connection: sqlite3.Connection, since: str | None)
                     continue
                 normalized = value.casefold()
                 labels[kind][normalized] = value
+                representatives[kind].setdefault(normalized, aid)
                 if asset["positive"]:
                     scores[kind][normalized] += float(asset["positive"])
                     items[kind][normalized].add(aid)
-                if asset["negative"]:
-                    negatives[kind][normalized] += 1
 
     tagged = sum("tag" in entity_kinds[aid] for aid in assets)
     identified = sum(bool(entity_kinds[aid] & {"creator", "performer"}) for aid in assets)
     return {
         "assets": len(assets), "seconds": total_seconds, "liked": liked, "disliked": disliked,
-        "scores": scores, "negatives": negatives, "items": items, "labels": labels,
+        "scores": scores, "items": items, "labels": labels,
+        "entity_ids": entity_ids, "representatives": representatives,
         "coverage": {
             "tagged": tagged, "identified": identified,
             "untagged": len(assets) - tagged, "unidentified": len(assets) - identified,
@@ -747,12 +749,27 @@ def _rank_combined(
             "web_visits": web_visits,
             "peach_score": round(peach_score, 2),
             "peach_items": len(item_sets.get(normalized, set())),
+            "entity_id": peach["entity_ids"].get(kind, {}).get(normalized),
+            "representative_asset_id": peach["representatives"].get(kind, {}).get(normalized),
             "evidence": [source for source, present in (
                 ("浏览记录", web_visits > 0), ("Peach", peach_score > 0),
             ) if present],
         })
     rows.sort(key=lambda row: (-float(row["score"]), -int(row["web_visits"]), str(row["name"])))
     return rows[:limit]
+
+
+def _rank_for_source(
+    rows: list[dict[str, object]], source: str, *, limit: int = 20,
+) -> list[dict[str, object]]:
+    """Let one evidence store order a list while retaining cross-store context."""
+    if source == "browser":
+        selected = [row for row in rows if int(row["web_visits"]) > 0]
+        selected.sort(key=lambda row: (-int(row["web_visits"]), -int(row["peach_items"]), str(row["name"])))
+    else:
+        selected = [row for row in rows if float(row["peach_score"]) > 0]
+        selected.sort(key=lambda row: (-float(row["peach_score"]), -int(row["web_visits"]), str(row["name"])))
+    return selected[:limit]
 
 
 def build_taste_dashboard(
@@ -764,9 +781,11 @@ def build_taste_dashboard(
     """Build a privacy-bounded, read-only taste view from both evidence stores."""
     history = _history_dashboard_evidence(history_store, since)
     peach = _peach_dashboard_evidence(ledger_connection, since)
-    tags = _rank_combined("tag", history["tags"], peach)
-    creators = _rank_combined("creator", history["creators"], peach)
-    performers = _rank_combined("performer", Counter(), peach)
+    all_tags = [row for row in _rank_combined("tag", history["tags"], peach, limit=1000)
+                if row["name"] not in LENGTH_TAGS]
+    all_creators = _rank_combined("creator", history["creators"], peach, limit=1000)
+    all_performers = _rank_combined("performer", Counter(), peach, limit=1000)
+    tags, creators, performers = all_tags[:30], all_creators[:30], all_performers[:30]
 
     category_scores: Counter[str] = Counter(history["categories"])
     for row in tags:
@@ -775,13 +794,7 @@ def build_taste_dashboard(
             if compact in terms:
                 category_scores[category] += max(1, round(float(row["peach_score"])))
 
-    gaps = [row for row in tags if row["web_visits"] >= 2 and not row["peach_items"]][:12]
-    negative_tags = []
-    for normalized, count in peach["negatives"].get("tag", Counter()).most_common(12):
-        negative_tags.append({
-            "name": peach["labels"].get("tag", {}).get(normalized, normalized),
-            "disliked_items": count,
-        })
+    gaps = [row for row in all_tags if row["web_visits"] >= 2 and not row["peach_items"]][:12]
     return {
         "summary": {
             "history_visits": history["visits"],
@@ -800,9 +813,13 @@ def build_taste_dashboard(
             "tags": tags,
             "creators": creators,
             "performers": performers,
+            "browser_tags": _rank_for_source(all_tags, "browser"),
+            "browser_creators": _rank_for_source(all_creators, "browser"),
+            "peach_tags": _rank_for_source(all_tags, "peach"),
+            "peach_creators": _rank_for_source(all_creators, "peach"),
+            "peach_performers": _rank_for_source(all_performers, "peach"),
             "domains": [{"name": name, "visits": count}
                         for name, count in history["domains"].most_common(20)],
-            "negative_tags": negative_tags,
         },
         "coverage": peach["coverage"],
         "gaps": gaps,
@@ -810,6 +827,7 @@ def build_taste_dashboard(
             "raw_history_local_only": True,
             "ledger_unchanged": True,
             "candidate_only": True,
+            "dislikes_do_not_downrank_tags": True,
         },
     }
 

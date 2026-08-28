@@ -152,7 +152,7 @@ Gofile token 是另一份本机可选凭据，只进 Gofile 请求头，不进 U
 - Ledger 拥有真相和行为；Stash 是可替换适配器，调用统一经过 `StashClient`，外部 Scene ID 和来源进入 `media_binding`，不新增直接 GraphQL helper 或 Stash 私有 FFmpeg 路径。规范女优/厂牌/标签/创作者进入 `entity`、`entity_external_ref`、`asset_entity`；扁平 `asset_tag` 和 creator/studio 字段只是兼容投影。
 - FastAPI 与前端保持单体部署，在线来源和 AI 只通过显式适配器进入；AI runtime 与推理 API 的协议边界见 ADR-0003。
 - 当前页面、路由、交互与性能实现只写 `docs/STATUS.md`，由 API 和 `tests/test_web_ui.py` 守住；本文件不再复制易过期的版本号、像素值和控件清单。
-- `/taste` 只读合并 Peach 行为与本机私有浏览历史，时间窗使用当前资产的 `last_played` 和浏览访问时间；画像、补标签缺口和排名都只是候选。原始 URL／标题不进入页面或 ledger；上传原件保存在 `sources/taste-history/imports`，移除数据源只清理规范化分析库，不删除原件。浏览器数据库解析固定复用 `browserexport==0.4.4`，运行中浏览器仍先由 Peach 的 SQLite backup API 取得一致快照。
+- `/taste` 只读合并 Peach 行为与本机私有浏览历史，且明确以浏览器记录为主要画像、Peach 内部为辅助证据；两者分别排序，不把“不合口味”自动归因或降权到 Tag。模糊时长旧 Tag 只作兼容识别，禁止进入品味、索引、详情和筛选状态。时间窗使用当前资产的 `last_played` 和浏览访问时间；画像、补标签缺口和排名都只是候选。原始 URL／标题不进入页面或 ledger；上传原件保存在 `sources/taste-history/imports`，移除数据源只清理规范化分析库，不删除原件。浏览器数据库解析固定复用 `browserexport==0.4.4`，运行中浏览器仍先由 Peach 的 SQLite backup API 取得一致快照。
 - 追更连接器、凭据、变体和跨站归组以 ADR-0019 为准。Rule34.xxx 来源身份大小写不敏感；作者显示名与头像优先经固定主机校验的官方页面，归档站只回退。
 - 自动追更固定使用 APScheduler 3.11.3，只在 ledger writer 启动。频率保存在 `peach-data/state/follow-schedule.json`，默认每小时且启动后等待一个完整间隔；不要改成启动即抓。任务必须保持 `coalesce=True`、`max_instances=1`，并与手动检查共用 `WebContract.follow_check_lock`，reader 只显示不可用状态。
 - 账本路径兼容和抽帧失败处理统一见 `.claude/skills/peach-cross-platform/SKILL.md` 与 `.claude/skills/peach-batch-jobs/SKILL.md`。

@@ -196,8 +196,9 @@ function persistedSeed(){
 // 手动「换一批」：立刻换，并重置计时窗口。
 const rollSeed=()=>writeSeedRecord(newSeed());
 const initialParams=new URLSearchParams(location.search);
+const cleanTagFilter=value=>String(value||'').split(',').filter(tag=>tag&&!DURATION_TAGS.has(tag)).join(',');
 let state={loc:initialParams.get('loc')||'local,115',creator:initialParams.get('creator')||'',studio:initialParams.get('studio')||'',
-  tag:initialParams.get('tag')||'',len:initialParams.get('len')||'',dur_min:initialParams.get('dur_min')||'',dur_max:initialParams.get('dur_max')||'',
+  tag:cleanTagFilter(initialParams.get('tag')),len:initialParams.get('len')||'',dur_min:initialParams.get('dur_min')||'',dur_max:initialParams.get('dur_max')||'',
   tag_match:initialParams.get('tag_match')==='any'?'any':'all',orient:initialParams.get('orient')||'',
   state:ROUTE_STATES[decodeURIComponent(location.pathname)]||initialParams.get('state')||'',sort:initialParams.get('sort')||appSettings.defaultSort,
   seed:initialParams.get('seed')||persistedSeed(),q:initialParams.get('q')||'',jav:initialParams.get('jav')||'',thumb:'1'};
@@ -1016,14 +1017,18 @@ function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
 let tasteWindow='all';
 const tasteDate=value=>value?new Date(value).toLocaleDateString('zh-CN'):'—';
 const tasteHours=seconds=>seconds>=3600?(seconds/3600).toFixed(1)+' 小时':Math.round(seconds/60)+' 分钟';
-const tasteRanking=(title,rows,kind,empty='暂无足够证据')=>`<section class="tastepanel"><h3>${title}</h3>
+const tasteRanking=(title,rows,kind,empty='暂无足够证据',panel='tastepanel-half',visual='')=>`<section class="tastepanel ${panel}"><h3>${title}</h3>
   <div class="tasteranks">${rows.length?rows.map((row,index)=>{
     const clickable=kind&&row.peach_items>0;
     const detail=row.web_visits!=null
-      ?`${row.evidence.join(' + ')} · 浏览 ${row.web_visits} · Peach ${row.peach_items}`
+      ?`${row.web_visits?`浏览 ${row.web_visits}`:''}${row.web_visits&&row.peach_items?' · ':''}${row.peach_items?`Peach ${row.peach_items}`:''}`
       :`${Number(row.score||row.visits||0).toLocaleString()}`;
+    const ref=row.entity_id?{id:row.entity_id}:null,rep=row.representative_asset_id||null;
+    const media=visual==='domain'
+      ?`<span class="tasteavatar tastesite"><span class="ini">${esc(row.name.slice(0,1).toUpperCase())}</span><img src="${esc(faviconUrl('https://'+row.name))}" alt="" loading="lazy" onerror="this.remove()"></span>`
+      :visual?`<span class="tasteavatar">${avatarInner(row.name,ref,rep,visual)}</span>`:'';
     return `<${clickable?'button':'div'} class="tasterank"${clickable?` data-taste-kind="${kind}" data-taste-name="${esc(row.name)}"`:''}>
-      <span class="tastepos mono">${index+1}</span><span><b>${esc(row.name)}</b><small>${esc(detail)}</small></span>
+      <span class="tastepos mono">${index+1}</span>${media}<span><b>${esc(row.name)}</b><small>${esc(detail)}</small></span>
       ${clickable?icon('chevron-right'):''}</${clickable?'button':'div'}>`}).join(''):`<p class="empty">${empty}</p>`}</div></section>`;
 function openTasteSignal(kind,name){
   if(kind==='tag'){
@@ -1042,7 +1047,6 @@ function renderTaste(d){
   const gapRows=(d.gaps||[]).map(row=>({...row,evidence:['浏览记录']}));
   const domainRows=(rank.domains||[]).map(row=>({name:row.name,score:row.visits}));
   const categoryRows=(rank.categories||[]).map(row=>({name:row.name,score:row.score}));
-  const negativeRows=(rank.negative_tags||[]).map(row=>({name:row.name,score:row.disliked_items}));
   $('#stats').innerHTML=`<div class="tastepage">
     <header class="tastehead"><div><p>${d.updated_at?`更新于 ${tasteDate(d.updated_at)}`:'尚未采集浏览记录'}</p></div>
       <div class="tasteactions"><select data-taste-window aria-label="分析范围">
@@ -1055,18 +1059,21 @@ function renderTaste(d){
       ${summary('Peach 看过',Number(s.peach_items||0).toLocaleString(),tasteHours(s.peach_seconds||0))}
       ${summary('明确反馈',Number(s.liked||0).toLocaleString(),`喜欢 ${s.liked||0} · 不喜欢 ${s.disliked||0}`)}
       ${summary('私有导出',Number(storage.exports||0).toLocaleString(),fmtSize(storage.bytes||0))}</div>
-    <div class="tastegrid">
-      ${tasteRanking('口味维度',categoryRows,'')}
-      ${tasteRanking('Tag',rank.tags||[],'tag')}
-      ${tasteRanking('创作者',rank.creators||[],'creator')}
-      ${tasteRanking('女优',rank.performers||[],'performer')}
-      ${tasteRanking('浏览候选',gapRows,'','这些词在浏览记录中出现，但 Peach 观看记录还没有对应证据')}
-      ${tasteRanking('常访问来源',domainRows,'')}
-      ${tasteRanking('不合口味',negativeRows,'','Peach 里还没有明确的不喜欢标签')}
-      <section class="tastepanel"><h3>数据完整度</h3><div class="tastecoverage">
+    <section class="tastegroup"><header><div><h2>浏览器记录</h2><p>当前分析主体；只展示聚合后的口味证据。</p></div><span>主</span></header><div class="tastegrid">
+      ${tasteRanking('口味维度',categoryRows,'','','tastepanel-compact')}
+      ${tasteRanking('Tag',rank.browser_tags||[],'tag','','tastepanel-wide')}
+      ${tasteRanking('创作者',rank.browser_creators||[],'creator','','tastepanel-half','creator')}
+      ${tasteRanking('常访问网站',domainRows,'','','tastepanel-half','domain')}
+      ${tasteRanking('浏览候选',gapRows,'','这些词在浏览记录中出现，但 Peach 观看记录还没有对应证据','tastepanel-full')}
+    </div></section>
+    <section class="tastegroup"><header><div><h2>Peach 内部</h2><p>播放、评分与明确反馈只作为独立证据，不反向代表全部浏览口味。</p></div><span>辅</span></header><div class="tastegrid">
+      ${tasteRanking('Tag',rank.peach_tags||[],'tag','','tastepanel-half')}
+      ${tasteRanking('创作者',rank.peach_creators||[],'creator','','tastepanel-half','creator')}
+      ${tasteRanking('女优',rank.peach_performers||rank.performers||[],'performer','','tastepanel-wide','performer')}
+      <section class="tastepanel tastepanel-compact"><h3>数据完整度</h3><div class="tastecoverage">
         <div><b>${coverage.tagged||0}</b><span>有标签</span><small>${coverage.untagged||0} 项待补</small></div>
         <div><b>${coverage.identified||0}</b><span>有身份</span><small>${coverage.unidentified||0} 项待补</small></div></div></section>
-    </div>
+    </div><p class="tastenegative">“不合口味”只记录到具体项目与理由，不自动给 Tag 降权。</p></section>
     <section class="tastepanel tastesources"><header><h3>数据源</h3><p>移除只清理分析库；原始导出仍保留在本机私有 sources。</p></header>
       <div>${sourceRows||'<p class="empty">导入 Google Takeout ZIP、browserexport SQLite / JSON / JSONL，或读取本机浏览器。</p>'}</div></section>
     <p class="tasteprivacy">原始 URL、标题与搜索内容不会显示在页面，也不会写入 ledger；所有画像均为候选。</p>
@@ -1091,6 +1098,8 @@ function renderTaste(d){
 }
 async function openTaste(push=true){
   releaseHoverPreviews();disposeStage(false);document.body.classList.remove('entity-open');
+  state={...state,creator:'',studio:'',tag:'',tag_match:'all',len:'',dur_min:'',dur_max:'',orient:'',state:'',q:'',jav:''};
+  $('#q').value='';
   if(push)route('/taste');
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';$('#count').textContent='';
   $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;buildManageBar();
@@ -4246,7 +4255,7 @@ async function restoreRoute(){
   if(isCatalogPath(path)){
     const params=new URLSearchParams(location.search);
     state={...state,loc:params.get('loc')||'local,115',creator:params.get('creator')||'',studio:params.get('studio')||'',
-      tag:params.get('tag')||'',tag_match:params.get('tag_match')==='any'?'any':'all',len:params.get('len')||'',
+      tag:cleanTagFilter(params.get('tag')),tag_match:params.get('tag_match')==='any'?'any':'all',len:params.get('len')||'',
       dur_min:params.get('dur_min')||'',dur_max:params.get('dur_max')||'',orient:params.get('orient')||'',
       state:ROUTE_STATES[path]||params.get('state')||'',sort:params.get('sort')||appSettings.defaultSort,
       seed:params.get('seed')||state.seed||persistedSeed(),q:params.get('q')||'',jav:params.get('jav')||''};
