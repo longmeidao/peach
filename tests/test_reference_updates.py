@@ -31,7 +31,7 @@ class ReferenceUpdateTests(unittest.TestCase):
             {"vercel-report-design", "vercel-web-interface-guidelines",
              "fiu758-studio-logo-discovery", "rule34-follow-tags-and-collections",
              "f95-masked-gofile-media", "follow-fanbox-gofile-paheal",
-             "fanbox-browser-transport"},
+             "fanbox-browser-transport", "beeg-profile-layout"},
         )
         self.assertNotEqual(
             sources["vercel-report-design"]["url"],

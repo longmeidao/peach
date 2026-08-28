@@ -346,7 +346,7 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
 .entitysection{min-width:0;max-width:100%}.entitysection h3{font-size:var(--fs-sm);letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
 .entitycollectionhead{display:flex;align-items:center;gap:10px;margin:0 0 12px;min-width:0}
 .entitycollectionhead h3{margin:0;flex:0 0 auto}.entitycollectionhead .javlayout{display:inline-flex;gap:6px}
-/* 作品 / 照片切换。只有该实体真有图片时才出现，没有图片的资料页保持原样。 */
+/* 视频 / 照片切换。只有该实体真有图片时才出现，没有图片的资料页保持原样。 */
 .mediatabs{display:flex;gap:8px;margin:0 0 18px;border-bottom:1px solid var(--line-soft)}
 .mediatabs[hidden]{display:none}
 .mediatabs button{display:flex;align-items:center;gap:7px;border:0;background:transparent;color:var(--muted);
@@ -786,12 +786,14 @@ body.entity-open #tiers,body.entity-open #tagbar,
 body.index-open #tiers,body.index-open #tagbar{display:none}
 .sgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(350px,390px)}
 /* Mix、分卷、播放列表和关注合集都保留普通详情的主结构：媒体在左、信息在右；
-   切换队列只加在媒体下方，不再抢走详情栏。 */
+   切换队列作为完整的第二行，避免详情栏跨到队列旁边并制造背景断层。 */
 .sgrid.mixgrid{grid-template-columns:minmax(0,1fr) minmax(350px,390px);
-  grid-template-areas:"media side" "queue side";align-items:start}
+  grid-template-areas:"media side" "queue queue";align-items:start;
+  --detail-surface:color-mix(in srgb,var(--video-glow,#15202a) 12%,var(--surface) 88%)}
 .sgrid.mixgrid>.vwrap{grid-area:media}
-.sgrid.mixgrid>.side{grid-area:side;max-height:none}
-.sgrid.mixgrid>.mixqueue{grid-area:queue;max-height:360px;border-left:0;border-top:1px solid var(--line-soft)}
+.sgrid.mixgrid>.side{grid-area:side;align-self:stretch;max-height:none;background:var(--detail-surface)}
+.sgrid.mixgrid>.mixqueue{grid-area:queue;max-height:360px;border-left:0;border-top:1px solid var(--line-soft);
+  background:var(--detail-surface)}
 .sgrid.mixgrid .mixqueueactions [data-queue-close],
 .sgrid.mixgrid .mixqueueactions [data-follow-queue-close]{display:none}
 .mixqueue{min-width:0;max-height:76vh;display:flex;flex-direction:column;border-left:1px solid var(--line-soft);
@@ -814,6 +816,32 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .mixitemtext{min-width:0}.mixitemtext b,.mixitemtext span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mixitemtext b{font-size:var(--fs-xs);line-height:1.4}.mixitemtext span{font-size:var(--fs-xs);color:var(--muted);margin-top:3px}
 .queueedit{display:grid;grid-template-columns:repeat(3,24px);gap:2px;padding-right:5px}.queueedit button{width:24px;height:24px;border:0;border-radius:5px;background:transparent;color:var(--muted);padding:0;display:grid;place-items:center;cursor:pointer}.queueedit button:hover:not(:disabled){background:var(--hover);color:var(--ink)}.queueedit button:disabled{opacity:.25;cursor:default}.queueedit svg{width:14px;height:14px;stroke:currentColor;fill:none}
+/* 详情下方的集合不是侧栏列表，而是与「接着看」同语义的横向切换带。
+   Mix、分卷、播放列表、视频合集与多媒体只改变标题和标识，共用同一套卡片尺寸。 */
+.sgrid.mixgrid>.mixqueue{padding:14px 14px 16px;overflow:hidden}
+.sgrid.mixgrid>.mixqueue .mixqueuehead{min-height:0;padding:0 0 11px;border:0}
+.sgrid.mixgrid>.mixqueue .mixqueuehead h2{font-size:var(--fs-sm);letter-spacing:.06em}
+.sgrid.mixgrid>.mixqueue .mixqueuehead span{max-width:72ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sgrid.mixgrid>.mixqueue .mixlist{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(190px,220px);
+  gap:10px;overflow-x:auto;overflow-y:hidden;padding:0 0 3px;overscroll-behavior-inline:contain;scroll-snap-type:x proximity}
+.sgrid.mixgrid>.mixqueue .mixrow{display:block;position:relative;min-width:0;background:transparent;scroll-snap-align:start}
+.sgrid.mixgrid>.mixqueue .mixitem{display:flex;flex-direction:column;align-items:stretch;gap:7px;padding:0}
+.sgrid.mixgrid>.mixqueue .mixitem:hover,.sgrid.mixgrid>.mixqueue .mixitem.current{background:transparent}
+.sgrid.mixgrid>.mixqueue .mixitempic{width:100%;border:1px solid transparent}
+.sgrid.mixgrid>.mixqueue .mixitem.current .mixitempic{border-color:var(--tungsten);box-shadow:0 0 0 1px var(--tungsten)}
+.sgrid.mixgrid>.mixqueue .mixitemtext{width:100%;padding:0 2px}
+.sgrid.mixgrid>.mixqueue .mixitemtext b{font-size:var(--fs-sm)}
+.sgrid.mixgrid>.mixqueue .mixitem[data-media-kind="image"] .mixitempic img{object-fit:cover}
+.sgrid.mixgrid>.mixqueue .queueedit{position:absolute;z-index:3;right:5px;top:5px;padding:3px;border-radius:7px;background:rgba(0,0,0,.62)}
+/* 宽屏时详情栏决定首行高度，脱盘／错误占位也要铺满同一行，不能留下半块空背景。 */
+@media (min-width:1081px){
+  .sgrid.mixgrid>.vwrap{align-self:stretch}
+  .sgrid.mixgrid>.vwrap>.gate{height:100%;aspect-ratio:auto}
+}
+/* 横向队列把标题和摘要视为一个信息块，保存入口紧跟整个信息块并垂直居中。 */
+.sgrid.mixgrid>.mixqueue .mixqueuehead{grid-template-columns:max-content max-content minmax(0,1fr);gap:5px 8px}
+.sgrid.mixgrid>.mixqueue .mixqueuehead>div:first-child{min-width:0}
+.sgrid.mixgrid>.mixqueue .mixqueueactions{grid-column:2;grid-row:1;align-self:center}
 .vwrap{background:#000;position:relative;display:flex;align-items:center;justify-content:center;isolation:isolate}
 .ambientcanvas{position:absolute;z-index:0;inset:-34px;width:calc(100% + 68px);height:calc(100% + 68px);
   filter:blur(46px) saturate(1.45);opacity:.42;transform:scale(1.06);pointer-events:none;
@@ -1131,7 +1159,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .batchbar .danger{color:var(--drop)}
 
 @media (max-width:1080px){.sgrid,.sgrid.mixgrid{grid-template-columns:minmax(0,1fr)}
-  .sgrid.mixgrid{grid-template-areas:"media" "queue" "side"}
+  .sgrid.mixgrid{grid-template-areas:"media" "side" "queue"}
   .side,.sgrid.mixgrid>.side{grid-column:auto;border-left:0;border-top:1px solid var(--line-soft);max-height:none}
   .mixqueue,.sgrid.mixgrid>.mixqueue{max-height:420px;border-left:0;border-top:1px solid var(--line-soft)}}
 @media (max-width:760px){
@@ -1264,7 +1292,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .follow{padding:4px 0 42px}
 .followhead{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}
 .followhead .pagetitle{margin:0}
-.followmediatabs{margin-bottom:8px}
+.followmediatabs{margin:2px 0 18px}
 .follow .fcheck{font-weight:600}
 .follow .fcheck svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
 .follow .fcheck.busy svg,.frowicon.busy svg{animation:follow-spin .8s linear infinite}
@@ -1282,7 +1310,6 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .followfilters .pill .n{margin-left:5px;color:inherit}
 .followfilters .sourcepill{width:40px;padding:0}
 .followfilters .sourcepill .ficon{width:21px;height:21px;margin:0}
-.followfilternote{margin:-3px 0 12px}
 .fdetails summary{cursor:pointer;list-style:none}
 .fdetails summary::-webkit-details-marker{display:none}
 .fdetails summary::before{content:"› ";display:inline-block;transition:transform .12s}
@@ -1292,7 +1319,13 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   vertical-align:-2px;margin-right:5px}
 .fauthorhead .ficon{margin-right:2px}
 .followlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
+.followlist.followphotowall{display:block;column-count:5;column-gap:10px}
+@media (max-width:1400px){.followlist.followphotowall{column-count:4}}
+@media (max-width:1000px){.followlist.followphotowall{column-count:3}}
 .followitem{min-width:0}.followitem.collection{padding-top:7px}
+.followitem.imagecard{display:inline-flex;width:100%;margin:0 0 14px;break-inside:avoid}
+.followitem.imagecard .pic{aspect-ratio:auto;min-height:120px;background:var(--sunk)}
+.followitem.imagecard .followvisual .pic>img{position:relative;inset:auto;width:100%;height:auto;object-fit:cover;background:transparent}
 .followitem a{text-decoration:none}.followitem a:hover{text-decoration:none}
 .followitem[data-status="ignored"],.followitem[data-status="seen"]{opacity:.62}
 .followvisual{position:relative;isolation:isolate}.followvisual .pic{z-index:1}
@@ -1331,7 +1364,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fstate{flex:1 1 100%;font-size:var(--fs-xs);color:var(--drop)}
 .fvkind{display:inline-block;max-width:120px;margin-right:6px;padding:1px 7px;border-radius:var(--badge-radius);overflow:hidden;text-overflow:ellipsis;vertical-align:-2px;background:var(--overlay-5);color:var(--muted);font-size:var(--fs-xs);font-style:normal}
 .fvkind.wip{color:var(--meter)}.fvkind.alt{color:var(--tungsten)}
-.followdetailmedia{--follow-image-arrow-inset:16px;min-height:min(62vh,640px)}.followdetailposter{position:relative;z-index:1;display:block;width:100%;height:100%;max-height:76vh;object-fit:contain;background:#000}.followimagearrow{position:absolute;z-index:4;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:46px;height:46px;border:1px solid rgba(255,255,255,.24);border-radius:50%;background:rgba(0,0,0,.56);color:#fff;cursor:pointer;backdrop-filter:blur(10px)}.followimagearrow:hover{background:rgba(255,255,255,.18)}.followimagearrow.prev{left:var(--follow-image-arrow-inset)}.followimagearrow.next{right:var(--follow-image-arrow-inset)}.followimagearrow svg{width:25px;height:25px;stroke:currentColor;fill:none}.followimagedots{position:absolute;z-index:4;left:50%;bottom:18px;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;gap:8px;max-width:calc(100% - 120px);padding:8px 11px;border-radius:14px;background:rgba(0,0,0,.5);overflow:hidden}.followimagedots button{flex:none;width:8px;height:8px;padding:0;border:0;border-radius:50%;background:rgba(255,255,255,.42);cursor:pointer}.followimagedots button[aria-current="true"]{width:20px;border-radius:5px;background:#fff}
+.followdetailmedia{--follow-image-arrow-inset:16px;min-height:min(62vh,640px)}.followdetailmedia.image{min-height:0;background:color-mix(in srgb,var(--video-glow,#15202a) 12%,var(--surface) 88%)}.followdetailposter{position:relative;z-index:1;display:block;width:auto;height:auto;max-width:100%;max-height:76vh;object-fit:contain;background:transparent}.followimagearrow{position:absolute;z-index:4;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:46px;height:46px;border:1px solid rgba(255,255,255,.24);border-radius:50%;background:rgba(0,0,0,.56);color:#fff;cursor:pointer;backdrop-filter:blur(10px)}.followimagearrow:hover{background:rgba(255,255,255,.18)}.followimagearrow.prev{left:var(--follow-image-arrow-inset)}.followimagearrow.next{right:var(--follow-image-arrow-inset)}.followimagearrow svg{width:25px;height:25px;stroke:currentColor;fill:none}.followimagedots{position:absolute;z-index:4;left:50%;bottom:18px;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;gap:8px;max-width:calc(100% - 120px);padding:8px 11px;border-radius:14px;background:rgba(0,0,0,.5);overflow:hidden}.followimagedots button{flex:none;width:8px;height:8px;padding:0;border:0;border-radius:50%;background:rgba(255,255,255,.42);cursor:pointer}.followimagedots button[aria-current="true"]{width:20px;border-radius:5px;background:#fff}
 .followdetailplaceholder{display:grid;place-items:center;gap:10px;color:var(--muted)}.followdetailplaceholder .ficon{width:34px;height:34px;margin:0}
 .followdetailtitle{display:flex;gap:5px;align-items:flex-start;margin-bottom:8px}.followdetailtitle .stitle{width:auto;max-width:calc(100% - 35px);margin:0}.followdetailtitle .followorigin{flex:none;width:30px;height:30px;margin:0;display:grid;place-items:center;border-radius:7px}.followdetailtitle .followorigin:hover{background:var(--hover)}
 .followdetailidentity{display:flex;align-items:center;gap:10px;margin:2px 0 12px}.followdetailidentity .mav{flex:none}.followdetailidentity b,.followdetailidentity span{display:block}.followdetailidentity>div>span{margin-top:3px;color:var(--muted);font-size:var(--fs-xs)}
@@ -1339,6 +1372,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fnote.followmedianote{margin:18px 0 8px}.followresources{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}.followresources a{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 11px;border:1px solid var(--border-15);border-radius:7px;color:var(--ink-2);text-decoration:none}.followresources a:hover{border-color:var(--tungsten);color:var(--ink);text-decoration:none}.followresources svg{width:15px;height:15px;stroke:currentColor;fill:none}.followdetailactions{margin-top:2px}.followdetailactions button:disabled{opacity:.45;cursor:default}.followorigin{display:inline-flex;align-items:center;gap:7px;width:max-content;margin-top:auto;color:var(--muted);text-decoration:none}.followorigin svg{width:16px;height:16px;stroke:currentColor;fill:none}.followorigin:hover{color:var(--ink);text-decoration:none}
 @media (max-width:640px){.followhead{align-items:center}
   .followauthors{margin-right:-12px;padding-top:3px}.followfilters{margin-right:-12px;padding-right:12px}
+  .followlist.followphotowall{column-count:2;column-gap:8px}
   .followdetailmedia{--follow-image-arrow-inset:10px}.followimagearrow{width:42px;height:42px}.followimagedots{bottom:12px}
 }
 

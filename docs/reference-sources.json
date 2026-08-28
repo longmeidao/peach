@@ -120,6 +120,21 @@
         "tests/test_http.py",
         "tests/test_follow_sources.py"
       ]
+    },
+    {
+      "id": "beeg-profile-layout",
+      "name": "Beeg Reislin 资料页布局证据",
+      "url": "https://beeg.com/Reislin",
+      "snapshot": "docs/reference-snapshots/beeg-profile-layout.md",
+      "checked_on": "2026-08-29",
+      "sha256": "fee5f561e2dffcb15cba4be45115d927d37d2957fc23895ccf25809f16fb63da",
+      "role": "女优、厂牌与关注页的信息顺序、头像轨道、标签位置和内容入口参考；合集详情按 Peach 现有详情结构适配。",
+      "consumers": [
+        "web/app.css",
+        "web/app.js",
+        "tests/test_follow_web.py",
+        "tests/test_web_ui.py"
+      ]
     }
   ]
 }

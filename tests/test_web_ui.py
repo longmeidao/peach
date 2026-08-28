@@ -947,6 +947,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('class="entitytags"')
         self.assertPageContains('class="relatedpeople"')
         self.assertPageContains("data-related-performer")
+        profile = self.page[self.page.index("async function openEntity("):]
+        self.assertLess(profile.index("<div class=\"entityhero\">"),
+                        profile.index("关联艺人"))
+        self.assertLess(profile.index("关联艺人"), profile.index("相关标签"))
+        self.assertLess(profile.index("相关标签"),
+                        profile.index("<div class=\"mediatabs\" hidden>"))
 
     def test_every_home_navigation_restores_the_shared_facets(self):
         self.assertPageContains("function showHomeSurfaces()")
@@ -1418,6 +1424,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<div class="mediatabs" hidden></div>')
         self.assertPageContains("tabs.hidden=!photos")
         self.assertPageContains("tab('photos','照片','layout-grid',photos)")
+        self.assertPageContains("tab('videos','视频','play',entityVideoCount)")
         self.assertPageContains(".mediatabs[hidden]{display:none}")
 
     def test_photo_wall_uses_cached_thumbnails_and_only_the_lightbox_reads_originals(self):
