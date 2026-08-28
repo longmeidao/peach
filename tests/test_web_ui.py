@@ -553,6 +553,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('class="managebar-toggle"')
         self.assertPageContains('aria-controls="managebar-menu"')
         self.assertPageContains("bar.classList.toggle('is-open')")
+        self.assertPageContains('.managebar .managebar-toggle{display:none}')
         self.assertPageContains('.managebar.is-open .managebar-menu{display:grid}')
         self.assertPageContains("if(k==='manage'){openManage();return}")
         # 顶层图标里不再各自占位
