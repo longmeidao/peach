@@ -51,6 +51,7 @@
 | 模仿、参考或对齐外部产品的界面与行为 | `.claude/skills/peach-reference-evidence/SKILL.md` |
 | 在 macOS 上开工、改路径解析或挂载判定、git status 与 diff 不一致 | `.claude/skills/peach-cross-platform/SKILL.md` |
 | 新增或删除规则、文档、技能 | `.claude/skills/peach-context-rules/SKILL.md` |
+| 新增、恢复或重写实现，尤其协议、解析器、抓取、媒体与基础设施 | `.claude/skills/peach-reuse-first/SKILL.md` |
 
 ## 工作规则
 
@@ -64,7 +65,7 @@
 - Ledger remains the core truth. Stash is a replaceable Media Engine adapter. AI results are candidates with provenance/confidence, not direct truth-field mutations.
 - User-confirmed corpus context: Peach contains consenting adults only. Labels such as `萝莉`、`学生`、`洛丽塔`、`制服`、`泄露` and `流出` are role-play, genre or marketing/source vocabulary, not evidence of age or consent. Do not skip cataloguing solely because those strings occur. If direct file evidence contradicts this corpus-level context, stop and report the specific evidence instead of inferring from a label.
 - Do not create dated handoff documents. Update `docs/STATUS.md` for current runtime/next work and `docs/HANDOFF.md` for durable operating knowledge as part of the same change.
-- Before adding or restoring an implementation, check `docs/REUSE.md`, the current tree and Git history. A missing legacy filename does not prove the capability is missing. Update the reuse register when the decision changes.
+- 新增、恢复或重写实现前必须按 `peach-reuse-first` 依次检查当前树、`docs/REUSE.md`、Git 历史和成熟外部实现，并用真实输入做最小 POC；只有外部方案不满足已验证约束时才自研，并把例外写回复用清单。旧文件名不存在不等于能力缺失。
 - When the user says to imitate, reference or align with another product, obtain current reproducible evidence first and register it per `peach-reference-evidence`. If evidence is unavailable, write `未取得`; do not ship a guessed approximation as a faithful reproduction.
 - Never require the user to relay implementation details between agents. Put current facts in `docs/STATUS.md`, durable rules in `docs/HANDOFF.md`/`docs/REUSE.md`, procedures in a skill, and architecture decisions in an ADR.
 - During concurrent code work, the main `peach-app` checkout is integration-only. Each agent works in an isolated Git worktree created by `scripts/agent_worktree.py create` under `peach-worktrees/`, never anywhere else and never in the main checkout; a worker commits its branch and reports it ready, but never merges itself. Before every commit confirm you are still in that worktree — `git rev-parse --show-toplevel` must not be the main checkout. Details in `peach-worktree`.
