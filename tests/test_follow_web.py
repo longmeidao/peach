@@ -206,14 +206,16 @@ class FollowContractTests(unittest.TestCase):
                  "url": "https://store1.gofile.io/download/one.mp4",
                  "thumb_url": "https://store1.gofile.io/one.jpg",
                  "resource_provider": "gofile"},
-                {"id": "two", "name": "two.mp4", "media_kind": "video",
-                 "url": "https://store1.gofile.io/download/two.mp4",
+                {"id": "two", "name": "two.jpg", "media_kind": "image",
+                 "url": "https://store1.gofile.io/download/two.jpg",
                  "resource_provider": "gofile"},
             ]},
         ),), provider="fanbox", ref="lazyprocrast")
         item = self._get()["groups"][0]["primary"]
         self.assertTrue(item["playable"])
         self.assertEqual([media["index"] for media in item["media_items"]], [0, 1])
+        self.assertEqual([media["media_kind"] for media in item["media_items"]],
+                         ["video", "image"])
         self.assertEqual(item["media_items"][0]["name"], "one.mp4")
         self.assertNotIn("url", item["media_items"][0])
         self.assertNotIn("store1.gofile.io/download", json.dumps(item))
@@ -1596,6 +1598,25 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("function followQueueHtml(group,itemId)")
         self.assertPageContains('data-follow-queue-item="${item.id}"')
         self.assertPageContains("openFollowDetail(+button.dataset.followCollection)")
+
+    def test_follow_reuses_media_tabs_and_keeps_mixed_updates_in_both_views(self):
+        self.assertPageContains("const followMediaKinds=group=>")
+        self.assertPageContains("function followItemMediaKinds(item)")
+        self.assertPageContains("const item=followItemForMedia(group)")
+        self.assertPageContains('class="mediatabs followmediatabs"')
+        self.assertPageContains('data-follow-media="videos"')
+        self.assertPageContains('data-follow-media="images"')
+        self.assertPageContains("<span>视频</span>")
+        self.assertPageContains("<span>图片</span>")
+        self.assertPageContains("followMediaView=new URLSearchParams(location.search).get('media')==='images'?'images':'videos'")
+        self.assertPageContains("const preferredKind=followMediaView==='images'?'image':'video'")
+
+    def test_mix_and_follow_queues_stay_below_media_with_details_on_the_right(self):
+        self.assertPageContains('grid-template-areas:"media side" "queue side"')
+        self.assertPageContains('.sgrid.mixgrid>.vwrap{grid-area:media}')
+        self.assertPageContains('.sgrid.mixgrid>.side{grid-area:side;max-height:none}')
+        self.assertPageContains('.sgrid.mixgrid>.mixqueue{grid-area:queue;max-height:360px')
+        self.assertPageContains('grid-template-areas:"media" "queue" "side"')
 
     def test_follow_uses_the_global_multi_select_mode(self):
         self.assertPageContains("const selected=new Set(),followSelected=new Set();")

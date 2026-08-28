@@ -784,9 +784,15 @@ body.detail-open .tagbar{position:relative;top:auto;z-index:1}
 body.entity-open #tiers,body.entity-open #tagbar,
 body.index-open #tiers,body.index-open #tagbar{display:none}
 .sgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(350px,390px)}
-.sgrid.mixgrid{grid-template-columns:minmax(0,1fr) minmax(310px,390px)}
-.sgrid.mixgrid>.side{grid-column:1/-1;max-height:none;border-left:0;border-top:1px solid var(--line-soft)}
-.sgrid.mixgrid .vwrap>.closestage{display:none}
+/* Mix、分卷、播放列表和关注合集都保留普通详情的主结构：媒体在左、信息在右；
+   切换队列只加在媒体下方，不再抢走详情栏。 */
+.sgrid.mixgrid{grid-template-columns:minmax(0,1fr) minmax(350px,390px);
+  grid-template-areas:"media side" "queue side";align-items:start}
+.sgrid.mixgrid>.vwrap{grid-area:media}
+.sgrid.mixgrid>.side{grid-area:side;max-height:none}
+.sgrid.mixgrid>.mixqueue{grid-area:queue;max-height:360px;border-left:0;border-top:1px solid var(--line-soft)}
+.sgrid.mixgrid .mixqueueactions [data-queue-close],
+.sgrid.mixgrid .mixqueueactions [data-follow-queue-close]{display:none}
 .mixqueue{min-width:0;max-height:76vh;display:flex;flex-direction:column;border-left:1px solid var(--line-soft);
   background:color-mix(in srgb,var(--video-glow,#15202a) 10%,var(--surface) 90%)}
 .mixqueuehead{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;
@@ -1124,8 +1130,9 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .batchbar .danger{color:var(--drop)}
 
 @media (max-width:1080px){.sgrid,.sgrid.mixgrid{grid-template-columns:minmax(0,1fr)}
+  .sgrid.mixgrid{grid-template-areas:"media" "queue" "side"}
   .side,.sgrid.mixgrid>.side{grid-column:auto;border-left:0;border-top:1px solid var(--line-soft);max-height:none}
-  .mixqueue{max-height:420px;border-left:0;border-top:1px solid var(--line-soft)}}
+  .mixqueue,.sgrid.mixgrid>.mixqueue{max-height:420px;border-left:0;border-top:1px solid var(--line-soft)}}
 @media (max-width:760px){
   .readout{display:none} .brand .sub{display:none}
   :root{--tile:168px;--topH:52px;--sortH:60px}
@@ -1256,6 +1263,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .follow{padding:4px 0 42px}
 .followhead{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}
 .followhead .pagetitle{margin:0}
+.followmediatabs{margin-bottom:8px}
 .follow .fcheck{font-weight:600}
 .follow .fcheck svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
 .follow .fcheck.busy svg,.frowicon.busy svg{animation:follow-spin .8s linear infinite}
