@@ -8,7 +8,7 @@
 
 - Windows 是当前 ledger writer。启动入口为 `C:\Users\longm\Desktop\peach\peach-app\dist\Peach\Peach.exe`，代码、数据、worktree 和共享传输点都在 `C:\Users\longm\Desktop\peach\` 下；外置盘只提供 `R:\media`。
 - 托盘必须以普通权限启动：提升权限后的令牌看不到 CloudDrive 的 `A:` / `B:`，会把 PikPak 和 115 误报为脱盘。异常时从托盘退出，再由资源管理器或普通权限终端启动。
-- Windows HTTP 为 `0.0.0.0:80`，HTTPS 为当前 LAN IPv4 的 443，mDNS 名为 `peach-win.local`。线上服务版本最后核验为 `0.6.4`、`ledger_sync=writer`。
+- Windows HTTP 为 `0.0.0.0:80`，HTTPS 为当前 LAN IPv4 的 443，mDNS 名为 `peach-win.local`。线上服务版本最后核验为 `0.7.0`、`ledger_sync=writer`。
 - macOS 是 reader，代码在 `~/Desktop/lmd.gg/peach/peach-app`，数据在相邻 `peach-data`；`peach.local` 经 8900/8443 和 pf 提供 80/443。GET 正常，写入端点返回 409。
 - 2026-08-27 核对 macOS：服务子进程已跑当前 `master`，但菜单栏进程仍是旧代码。托盘层改动要生效，需手动退出菜单栏项后由 `.app` 或 `launchctl kickstart -k` 重启一次。
 - 两端固定使用不同 mDNS 名和各自本机 CA；CA 私钥、服务器私钥和凭据不跨机同步。生成资产由 Syncthing 单向 Windows → Mac，Git 与 ledger 复制是另外两条链路。
@@ -23,7 +23,7 @@
 - 本地浏览器支持 MP4/WebM/Ogg；AVI 等由 `TranscodeService` 缓存成 H.264/AAC MP4。远端 MP4 默认走标准 Range，显式 HLS 使用关键帧对齐片段，失败会回退 Range，永不改写原媒体。
 - 首页、详情、实体资料、标签管理、照片、播放列表、统计、复核、回收站、关注管理和关注观看共用同一 SPA 与 JSON 契约；桌面和 390×844 手机均在验收范围内。
 - 多女优卡片叠放前 3 个头像，只显示第一位姓名和真实总人数，例如 `かわいゆい 等 37 人`；详情与沉浸模式仍保留完整或扩展后的出演信息。
-- 当前源码的在线追更支持 FANBOX、Patreon、SubscribeStar、kemono/coomer/pawchive、rule34video、rule34.xxx 和 f95zone；SimpCity 仍被 DDoS-Guard 阻塞，Peach 不绕过机器人验证。官方渠道只读取公开免费发布，不绕过登录或付费墙。
+- 当前源码的在线追更支持 FANBOX、Patreon、SubscribeStar、kemono/coomer/pawchive、rule34video、rule34.xxx、Rule34 Paheal 和 f95zone；Gofile API token 可展开 FANBOX/F95 外部文件页。SimpCity 仍被 DDoS-Guard 阻塞，Peach 不绕过机器人验证。官方渠道只读取公开免费发布，不绕过登录或付费墙。
 - Rule34.xxx 来源 ref 大小写不敏感；迁移会合并分批添加造成的重复来源并保留条目状态。F95 的 `Collection(s)` 后缀不进入作者名，五个来源可归到同一作者组。
 - 关注作者显示名与头像优先取经过固定主机校验的官方 FANBOX/Pixiv 页面，归档站只作回退。官方主页只出现一个明确作者名时，主页账号自动记为有出处的关注别名；已有映射尤其是人工作决定不会被覆盖，只有名称相似时仍只给建议。只支持真实历史分页的来源才显示「抓更早一页」。
 - reader 的 `/review` 通过严格 Peach CA HTTPS 读取 writer 的归一化 JSON 并原子缓存；决定按钮和所有关注写操作仍锁定，不同步 SQLite/WAL 或原始候选目录。
@@ -60,19 +60,22 @@
 - 正式 Windows 全量测试 1096 项通过、13 项按平台跳过；新 EXE 的打包迁移为 22 个、0 待处理。生产 EXE 已替换为 SHA-256 `BBDBB6EC7D3C2312E45F8F68B41BD5158749EF78D9A2C676F42FE7FED2D6A91F`，上版备份为 `dist/Peach/Peach.pre-6ae030d-20260828-031013.exe`；80/443 已恢复。项目 CA 的证书链和主机名校验通过，Schannel 因无法确认本地 CA 吊销状态而使用 `--ssl-revoke-best-effort`，`/healthz` 返回 writer，`/follow/item/190` 返回 200。
 - 生产 API 共 330 组、400 条关注条目，4 条带外部文件页；item 565 显示 Gofile 与 Pixeldrain，item 190 返回真实 Rule34.xxx 来源 URL。生产浏览器实测标题旁外链图标为可见 16×16 SVG，文件页链接各带可见 15×15 图标，管理页查找可见官方 FANBOX 和“已经关注”，控制台无错误。验收未触发关注写操作，部署前后 ledger SHA-256 均为 `7389FC058C28651795E7AF77A7AD27CEED84A48E2B8AEF52767982E73957F80D`。
 - `9051557` 已经由 `825348a` 合入 `master`：F95zone 回复只有在正文含论坛附件或已验证的文件站外链时才进入关注候选；引用块、纯讨论和普通网页链接会计入“跳过无资源”。附件直链同时作为预览图；历史纯讨论条目只在读取层隐藏，不删除 ledger。关注域 372 项、正式 Windows 全量 1100 项均通过，分别有 1/13 项按平台跳过。正式 EXE 已替换为 SHA-256 `D5447756E913704AD413FFFF7A57F1E10660D8B2CF7B3D57C2D6D2D8947372E7`，上版备份为 `dist/Peach/Peach.pre-825348a-20260828-095720.exe`；80/443、22 个迁移且 0 待处理、项目 CA 严格 HTTPS writer 和关注 API 均正常。生产流当前显示 151 组，其中 F95zone 资源条目 4 条；未触发检查更新，部署前后 ledger 哈希不变。
+- `4dbd3c7`、`dcfae42`、`c495178` 已合入 `master`：版本由长期漏升的 `0.6.4` 升为 `0.7.0`；新增 Rule34 Paheal 来源、Gofile 独立 API token 输入与 Bearer 代理、FANBOX 正文外链和多图/多视频队列。外部媒体只经 `/follow-stream` 代理，token 不进入 URL 或关注 JSON。FANBOX `post.info` 若被验证页拦截，公开列表更新仍会入库并明确显示“媒体未取得”，不会拖垮整个作者来源。最终全量 1107 项通过、13 项按平台跳过；后续 FANBOX 修正的关注域 380 项通过、1 项跳过。
+- 正式 EXE 已替换为 SHA-256 `59A8E43797EC6FDB13093465453DB09EF31EC64C3E8F49CAF5B1F328F55449DB`，备份为 `dist/Peach/Peach.pre-0.7.0-final-20260828-110113.exe`；22 个迁移且 0 待处理，生产健康检查为 writer、非只读，严格 HTTPS 浏览器可打开 `/follow`。真实 ledger 写入前备份为 `database/ledger.pre-follow-paheal-20260828-104302.db`（SHA-256 `423B470B5609FF08DB29D223114C1ED7066DABA2D86DD4ABC96D05D58F2A65DC`）；来源 13→14、条目 713→737，完整性正常、外键违规 0。重复添加大小写不同的 Paheal 链接仍复用来源 15 且新增 0；目标 7428820 与已停用 SubscribeStar 2639932 及同批媒体共享 `subscribestar:2639932`，去重键已在真实库和 API 验证。生产页面显示 Rule34 Paheal 来源、InitialA 作者筛选、右侧 8 视频详情队列和标题旁来源外链；手机视口本轮浏览器读取超时，视觉验收未取得。
 
 ## 下一批工作
 
 1. 另行授权后先备份 ledger，再把 `follow_item` 181、184、185 从 `seen` 恢复为 `new`，复核状态计数、完整性与新哈希。
 2. 分类剩余 44 个无预览变体，区分确无图片与来源解析遗漏。
-3. 在 `/review` 人工处理本批 JAV 日文系列名、官方标签及现有创作者标签、FC2、Javinizer、Logo、头像和媒体失败候选；未经批准不写真相字段。
-4. 将 Windows writer 的最新副本同步到共享传输点，再让 Mac reader 拉取；同步前后核对迁移版本、计数、完整性与 writer 身份。
-5. 在 Mac Finder 以 `smb://peach-win.local/peach-sync` 连接一次并保存钥匙串记录，再重启菜单栏进程，核对自动挂载、reader 锁定、HTTPS、mDNS 和真实 LAN 客户端。
-6. 为追更接入 APScheduler；在实现下载器前先确定媒体凭据、流量与磁盘预算。
-7. Windows writer 运行 PikPak 夜跑前重算 probe/抽帧队列，并按 `peach-batch-jobs` 设置流量与系统盘闸门。
-8. 继续拆分 `web_contract.py` 的 catalog、stats、activity、review、trash 领域，保持路由和现有契约测试不变。
-9. 补做 HLS 首帧、seek、自适应码率及桌面/手机视觉验收。
-10. 外置盘挂载后先只读盘点 `R:\Media\<名字>\P\...` 图片规模；扫描写真 ledger，需另行授权。
+3. 在关注管理凭证中填入 Gofile API token，再检查 LazyProcrastinator FANBOX；当前目标正文已确认含 Gofile `OS2Qz9` 和 6 图，但 Gofile 21 视频与生产多图仍因 token 未配置、FANBOX 验证页而未取得。
+4. 在 `/review` 人工处理本批 JAV 日文系列名、官方标签及现有创作者标签、FC2、Javinizer、Logo、头像和媒体失败候选；未经批准不写真相字段。
+5. 将 Windows writer 的最新副本同步到共享传输点，再让 Mac reader 拉取；同步前后核对迁移版本、计数、完整性与 writer 身份。
+6. 在 Mac Finder 以 `smb://peach-win.local/peach-sync` 连接一次并保存钥匙串记录，再重启菜单栏进程，核对自动挂载、reader 锁定、HTTPS、mDNS 和真实 LAN 客户端。
+7. 为追更接入 APScheduler；在实现下载器前先确定媒体凭据、流量与磁盘预算。
+8. Windows writer 运行 PikPak 夜跑前重算 probe/抽帧队列，并按 `peach-batch-jobs` 设置流量与系统盘闸门。
+9. 继续拆分 `web_contract.py` 的 catalog、stats、activity、review、trash 领域，保持路由和现有契约测试不变。
+10. 补做 HLS 首帧、seek、自适应码率及桌面/手机视觉验收。
+11. 外置盘挂载后先只读盘点 `R:\Media\<名字>\P\...` 图片规模；扫描写真 ledger，需另行授权。
 
 ## 批处理进度（自动生成）
 
