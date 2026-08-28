@@ -12,10 +12,10 @@ const api=async(p,o)=>{
 };
 const pageTitle=path=>{
   const url=new URL(path,location.origin),parts=decodeURIComponent(url.pathname).split('/').filter(Boolean);
-  const fixed={stats:'统计',taste:'品味',review:'人工复核',duplicates:'重复文件','quality-goals':'高清版',
+  const fixed={stats:'统计',taste:'口味',review:'人工复核',duplicates:'重复文件','quality-goals':'高清版',
     follow:'关注','follow-manage':'关注管理',playlists:'播放列表',performers:'女优',studios:'厂牌',
     creators:'创作者',series:'系列',tags:'标签',unseen:'没看过','watch-later':'稍后看',flagged:'已标记',
-    immerse:'沉浸模式',mix:'Mix',item:'作品','resource-sync':'资源同步'};
+    immerse:'沉浸模式',mix:'Mix',item:'作品','resource-sync':'统计'};
   const label=parts.length>1&&['performers','studios','creators','series'].includes(parts[0])
     ? parts.slice(1).join('/') : fixed[parts[0]];
   return label?`${label} · Peach`:'Peach · 蜜桃';
@@ -79,7 +79,7 @@ function dropOfflineFromDefaultLoc(){
 const DURATION_TAGS=new Set(['短片-2分内','中片-10分内','长片-30分内','超长片-30分上']);
 const SETTINGS_KEY='peach.settings.v1';
 const DEFAULT_SIDEBAR_ORDER=['','performers','tags','jav','flagged','playlists','follow','immerse','manage'];
-const OPTIONAL_SIDEBAR_KEYS=['stats','review','ads','dupes','resources','trash','follow-manage','quality'];
+const OPTIONAL_SIDEBAR_KEYS=['stats','review','ads','dupes','trash','follow-manage','quality'];
 const ALL_SIDEBAR_KEYS=[...DEFAULT_SIDEBAR_ORDER,...OPTIONAL_SIDEBAR_KEYS];
 const DEFAULT_SETTINGS={rotateMinutes:0,batchSize:60,defaultSort:'seed',hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
@@ -93,6 +93,7 @@ appSettings.seekSeconds=allowedSetting(+appSettings.seekSeconds,[5,10,30],10);
 appSettings.searchHistoryLimit=allowedSetting(+appSettings.searchHistoryLimit,[5,10,20],10);
 appSettings.relatedLimit=allowedSetting(+appSettings.relatedLimit,[12,20,30],20);
 appSettings.sidebarOrder=[...new Set(Array.isArray(appSettings.sidebarOrder)?appSettings.sidebarOrder:DEFAULT_SIDEBAR_ORDER)].filter(key=>ALL_SIDEBAR_KEYS.includes(key));
+if(!appSettings.sidebarOrder.length)appSettings.sidebarOrder=[...DEFAULT_SIDEBAR_ORDER];
 document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);
 const saveSettings=()=>localStorage.setItem(SETTINGS_KEY,JSON.stringify(appSettings));
 function syncSettingsPanel(){
@@ -968,7 +969,7 @@ function enterManagementSurface(){
   $('#tiers').style.display='none';$('#tagbar').style.display='none';
   document.body.classList.remove('entity-open','index-open');
 }
-async function openStats(push=true){
+async function openStats(push=true,focusResource=false){
   releaseHoverPreviews();
   if(push)route('/stats');
   enterManagementSurface();
@@ -1023,10 +1024,13 @@ async function openStats(push=true){
       const mx=(r.max_reached||0)*100;
       return kv(esc((r.creator?r.creator+' · ':'')+r.name).slice(0,90),
         `真实看 ${real.toFixed(0)}% / 到达 ${mx.toFixed(0)}%`,
-        real<mx-25?'快进扫过':(r.o_count?`⌀ ${r.o_count}`:''));}).join('')}</div>`:''}`;
+        real<mx-25?'快进扫过':(r.o_count?`⌀ ${r.o_count}`:''));}).join('')}</div>`:''}
+    ${resourceSyncMarkup()}`;
   $('#stats').querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
     closeStats(); toggleTag(b.dataset.k)});
-  window.scrollTo({top:0,behavior:'smooth'});
+  await wireResourceSync();
+  if(focusResource)$('#resource-sync')?.scrollIntoView({block:'start'});
+  else window.scrollTo({top:0,behavior:'smooth'});
 }
 function showHomeSurfaces(){
   // 两个类都要清：只清 entity-open 会让从索引页回首页时顶栏一直空着，
@@ -1038,30 +1042,35 @@ function showHomeSurfaces(){
 }
 function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
 
-async function openResourceSync(push=true){
-  releaseHoverPreviews();
-  if(push)route('/resource-sync');
-  enterManagementSurface();disposeStage(false);
-  $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';buildManageBar();
-  $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
-  $('#stats').innerHTML=`<section class="resourcesync">
-    <div class="resourcesynchead"><div><h3>网盘与账本对账</h3>
-      <p>只检查已挂载来源。网盘上已删除的条目先进入 Peach 回收站；封面、截图、海报、图片缩略图和播放缓存只清理没有在用的副本。</p></div>
-      <button class="primary" id="resourceScan">${icon('refresh-cw')}扫描差异</button></div>
-    <div class="resourcesyncnote">来源离线时整库跳过，避免把“网盘没挂上”误判成“文件已删除”。候选 CSV、来源证据、女优头像和厂牌 Logo 不属于缓存，不会删除。</div>
+function resourceSyncMarkup(){
+  return `<section class="resourcesync" id="resource-sync" aria-labelledby="resourceSyncTitle">
+    <h2 id="resourceSyncTitle">资源同步</h2>
+    <div class="resourcesyncbox"><div class="resourcesyncbody"><h3>网盘与账本</h3>
+      <p>核对已挂载网盘与账本。网盘上已删除的条目先进入回收站；只清理没有在用的预览与播放缓存。</p></div>
+      <div class="resourcesyncfooter"><p>离线来源会整库跳过。候选 CSV、来源证据、女优头像和厂牌 Logo 不会删除。</p>
+      <button class="resourceaction" type="button" id="resourceScan" aria-busy="false">${icon('refresh-cw')}<span>扫描差异</span></button></div></div>
     <div id="resourceSyncResult" aria-live="polite"></div></section>`;
+}
+async function wireResourceSync(){
   const scan=$('#resourceScan'),result=$('#resourceSyncResult');
+  if(!scan||!result)return;
+  const active=()=>location.pathname==='/stats'&&!$('#stats').hidden&&document.body.contains(result);
+  const setBusy=(busy,done=false)=>{
+    scan.disabled=busy;scan.setAttribute('aria-busy',String(busy));
+    scan.innerHTML=`${icon('refresh-cw',busy?'spin':'')}<span>${busy?'扫描中':done?'重新扫描':'扫描差异'}</span>`;
+  };
   const render=payload=>{
     const sources=payload.sources||[];
     const cache=payload.cache||{files:0,bytes:0};
-    result.innerHTML=`<div class="resourcesources">${sources.map(source=>`<article>
-      <b>${esc(LOC[source.location]||source.location)}</b><span class="${source.online?'online':'offline'}">${source.online?'已挂载':'离线，已跳过'}</span>
-      <strong>${source.online?`${source.missing.toLocaleString()} 项已从网盘删除`:'—'}</strong>
-      <small>${source.online?`已核对 ${source.checked.toLocaleString()} 项${source.unreadable?` · ${source.unreadable.toLocaleString()} 项暂时无法读取`:''}`:`账本有 ${source.total.toLocaleString()} 项`}</small></article>`).join('')}</div>
-      <div class="resourcecache"><div><b>${cache.files.toLocaleString()}</b><span>个孤立缓存</span><small>${fmtSize(cache.bytes||0)}</small></div>
-      <div><b>${Number(payload.missing||0).toLocaleString()}</b><span>项待同步</span><small>应用后进入回收站</small></div></div>
-      ${(payload.missing||cache.files)?`<button class="danger" id="resourceApply">同步到回收站并清理缓存</button>`:
-        '<p class="resourcesyncok">账本与已挂载来源一致，没有孤立缓存。</p>'}`;
+    const hasChanges=Boolean(payload.missing||cache.files);
+    result.innerHTML=`<div class="resourcepanel"><div class="resourcesources">${sources.map(source=>`<article>
+      <div class="resourcesourcetitle"><b>${esc(LOC[source.location]||source.location)}</b><span class="${source.online?'online':'offline'}">${source.online?'已挂载':'离线，已跳过'}</span></div>
+      <strong>${source.online?source.missing.toLocaleString():'—'}</strong>
+      <small>${source.online?`项已从网盘删除 · 已核对 ${source.checked.toLocaleString()} 项${source.unreadable?` · ${source.unreadable.toLocaleString()} 项暂时无法读取`:''}`:`账本有 ${source.total.toLocaleString()} 项`}</small></article>`).join('')}</div>
+      <div class="resourcecache"><div><span>孤立缓存</span><b>${cache.files.toLocaleString()}</b><small>${fmtSize(cache.bytes||0)}</small></div>
+      <div><span>待同步</span><b>${Number(payload.missing||0).toLocaleString()}</b><small>项；应用后进入回收站</small></div></div>
+      <div class="resourceapplyrow">${hasChanges?`<p>确认后才会更改账本；操作可从回收站恢复。</p><button class="resourceaction resourcedanger" type="button" id="resourceApply">同步并清理</button>`:
+        '<p class="resourcesyncok">账本与已挂载来源一致，没有孤立缓存。</p>'}</div></div>`;
     $('#resourceApply')?.addEventListener('click',async event=>{
       const button=event.currentTarget;
       if(!confirm(`把 ${payload.missing||0} 项移入回收站，并清理 ${cache.files||0} 个可重建缓存？`))return;
@@ -1073,29 +1082,33 @@ async function openResourceSync(push=true){
     });
   };
   const followScan=async payload=>{
-    scan.disabled=true;scan.innerHTML=`${icon('refresh-cw')}正在扫描…`;result.innerHTML='<p class="resourcescanning">正在后台核对网盘元数据，不会读取视频内容。</p>';
+    setBusy(true);result.innerHTML='<p class="resourcescanning">正在后台核对网盘元数据，不会读取视频内容。</p>';
     try{
       if(!payload)payload=await api('/api/resource-sync/scan',{method:'POST',body:JSON.stringify({background:true,restart:true})});
       while(payload.status==='running'){
         const done=payload.sources||[];
         result.innerHTML=`<p class="resourcescanning">后台扫描中：已完成 ${payload.completed_sources||0} / ${payload.total_sources||3} 个来源${done.length?`（${done.map(source=>esc(LOC[source.location]||source.location)).join('、')}）`:''}。离开本页不会中断。</p>`;
         await new Promise(resolve=>setTimeout(resolve,2000));
-        if(location.pathname!=='/resource-sync')return;
+        if(!active())return;
         payload=await api('/api/resource-sync/scan',{method:'POST',body:JSON.stringify({background:true})});
       }
       if(payload.status==='failed')throw new Error(payload.error||'后台扫描失败');
-      if(location.pathname!=='/resource-sync')return;
+      if(!active())return;
       render(payload);
     }
     catch(error){result.innerHTML=`<p class="resourceerror">扫描失败：${esc(error.message)}</p>`}
-    finally{scan.disabled=false;scan.innerHTML=`${icon('refresh-cw')}重新扫描`}
+    finally{setBusy(false,true)}
   };
   scan.onclick=()=>followScan(null);
   try{
     const existing=await api('/api/resource-sync/scan',{method:'POST',body:JSON.stringify({background:true,status_only:true})});
     if(existing.status!=='idle')void followScan(existing);
   }catch(_error){}
-  window.scrollTo({top:0,behavior:'smooth'});
+}
+async function openResourceSync(push=true){
+  if(push)route('/stats#resource-sync');
+  else if(location.pathname==='/resource-sync')route('/stats#resource-sync',true);
+  await openStats(false,true);
 }
 
 let tasteWindow='all';
@@ -1175,7 +1188,7 @@ function renderTaste(d){
       tasteWindow='all';renderTaste(payload.dashboard)}catch(error){stateEl.textContent=error.message||'导入失败'}};
   root.querySelectorAll('[data-taste-kind]').forEach(button=>button.onclick=()=>openTasteSignal(button.dataset.tasteKind,button.dataset.tasteName));
   root.querySelectorAll('[data-taste-remove]').forEach(button=>button.onclick=async()=>{
-    if(!confirm('从品味分析中移除这个数据源？原始导出文件会保留。'))return;
+    if(!confirm('从口味分析中移除这个数据源？原始导出文件会保留。'))return;
     button.disabled=true;stateEl.textContent='正在移除…';
     try{const result=await api('/api/taste/source',{method:'POST',body:JSON.stringify({operation:'remove',source_key:button.dataset.tasteRemove,window:tasteWindow})});renderTaste(result.dashboard)}
     catch(error){stateEl.textContent=error.message||'移除失败';button.disabled=false}});
@@ -3114,11 +3127,10 @@ const EDGE_ICONS=[
    原先把它夹在高清版和回收站中间，两边都不挨着。 */
 const MANAGE_SECTIONS=[
   ['stats','统计','chart'],
-  ['taste','品味','heart'],
+  ['taste','口味','heart'],
   ['review','人工复核','square-check-big'],
   ['ads','疑似广告','alert'],
   ['dupes','重复文件','hard-drive'],
-  ['resources','资源同步','refresh-cw'],
   ['trash','回收站','trash'],
   ['follow','关注','rss'],
   ['quality','高清版','sparkles'],
@@ -3126,7 +3138,7 @@ const MANAGE_SECTIONS=[
 const OPTIONAL_EDGE_ICONS=MANAGE_SECTIONS.map(([key,label,ic])=>
   key==='follow'?['follow-manage','关注管理',ic]:[key,label,ic]);
 const NAV_CATALOG=[...EDGE_ICONS,...OPTIONAL_EDGE_ICONS];
-const DIRECT_MANAGE_NAV={stats:'stats',review:'review',ads:'ads',dupes:'dupes',resources:'resources',trash:'trash','follow-manage':'follow',quality:'quality'};
+const DIRECT_MANAGE_NAV={stats:'stats',review:'review',ads:'ads',dupes:'dupes',trash:'trash','follow-manage':'follow',quality:'quality'};
 function orderedEdgeIcons(){
   const byKey=new Map(NAV_CATALOG.map(item=>[item[0],item]));
   return appSettings.sidebarOrder.map(key=>byKey.get(key)).filter(Boolean);
@@ -3233,7 +3245,6 @@ function manageSection(){
   if(path==='/review')return 'review';
   if(path==='/trash')return 'trash';
   if(path==='/duplicates')return 'dupes';
-  if(path==='/resource-sync')return 'resources';
   if(path==='/quality-goals')return 'quality';
   if(path==='/follow-manage')return 'follow';
   return state.state==='ads'?'ads':'';
@@ -3278,7 +3289,6 @@ function openManage(section='stats'){
   if(section==='taste'){openTaste();return}
   if(section==='review'){openReview();return}
   if(section==='dupes'){openDuplicates();return}
-  if(section==='resources'){openResourceSync();return}
   if(section==='quality'){openQualityGoals();return}
   if(section==='follow'){openFollowManage();return}
   state.orient='';state.state=section==='trash'?'trash':'ads';
