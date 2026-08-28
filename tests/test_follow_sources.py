@@ -194,6 +194,16 @@ class OfficialConnectorTests(unittest.TestCase):
         self.assertEqual(gofile_request.headers["Authorization"], "Bearer secret")
         self.assertNotIn("secret", gofile_request.url)
 
+    def test_one_blocked_detail_keeps_the_public_list_item(self):
+        def route(request):
+            if "post.info" in request.url:
+                return HttpResponse(403, {}, b"challenge")
+            return HttpResponse(200, {}, FANBOX_JSON)
+        result = FanboxConnector(transport=_routed(route)).fetch("ffxivinitiala")
+        self.assertEqual(len(result.candidates), 1)
+        self.assertIn("HTTP 403", result.candidates[0].extra["media_error"])
+        self.assertEqual(result.candidates[0].extra["media_items"], ())
+
     def test_subscribestar_reads_public_profile_posts_without_login(self):
         result = SubscribeStarConnector(
             transport=_transport(body=SUBSCRIBESTAR_HTML)).fetch(

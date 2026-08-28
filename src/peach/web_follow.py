@@ -215,6 +215,7 @@ def _item_payload(item) -> dict:
         "status": item.status,
         "asset_id": item.asset_id,
         "media_needs_credential": bool(item.metadata.get("media_needs_credential")),
+        "media_error": str(item.metadata.get("media_error") or "") or None,
         "has_media": bool(item.media_url) or bool(media_items),
         "media_kind": media_kind,
         "playable": (bool(item.media_url) or bool(media_items))
