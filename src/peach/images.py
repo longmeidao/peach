@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import io
+from collections import Counter
 
 from PIL import Image
 
@@ -42,21 +43,19 @@ def classify(width: int, height: int) -> tuple[str, float, str]:
 
 
 def _background_color(image: Image.Image) -> tuple[int, int, int, int]:
-    """取四角出现最多的颜色当底色，让补出来的边和 Logo 自身背景连成一片。
+    """取边缘主色当不透明底色；图片带透明像素时继续保持透明。
 
-    纯色底的 Logo 这样补完看不出接缝；四角本身透明就保持透明，不要凭空刷白。
+    Logo 字样可能贴到四角，不能把某个角上的文字颜色误当成背景。只要原图有
+    透明像素，补边就保持透明；完全不透明时再从整圈边缘取出现最多的颜色。
     """
     width, height = image.size
-    corners = [
-        image.getpixel((0, 0)),
-        image.getpixel((width - 1, 0)),
-        image.getpixel((0, height - 1)),
-        image.getpixel((width - 1, height - 1)),
-    ]
-    opaque = [pixel for pixel in corners if pixel[3] > 8]
-    if not opaque:
+    if image.getchannel("A").getextrema()[0] < 255:
         return (0, 0, 0, 0)
-    return max(set(opaque), key=opaque.count)
+    border = [image.getpixel((x, 0)) for x in range(width)]
+    border.extend(image.getpixel((x, height - 1)) for x in range(width))
+    border.extend(image.getpixel((0, y)) for y in range(1, height - 1))
+    border.extend(image.getpixel((width - 1, y)) for y in range(1, height - 1))
+    return Counter(border).most_common(1)[0][0]
 
 
 def pad_to_square(payload: bytes) -> bytes | None:

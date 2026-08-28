@@ -279,6 +279,18 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(squared.getpixel((5, 5)), (10, 20, 30, 255))
         self.assertEqual(squared.getpixel((200, 200)), (10, 20, 30, 255))
 
+        # 透明 Logo 的字样可能贴到四角。角上的蓝字不是底色，补边必须继续透明；
+        # 否则 PREMIUM 会整张铺蓝，白字 Logo 也会因错误白底而消失。
+        transparent = Image.new("RGBA", (400, 100), (0, 0, 0, 0))
+        for x in range(80):
+            transparent.putpixel((x, 0), (0, 174, 239, 255))
+        buffer = io.BytesIO()
+        transparent.save(buffer, "PNG")
+        squared = Image.open(io.BytesIO(pad_to_square(buffer.getvalue())))
+        self.assertEqual(squared.getpixel((5, 5)), (0, 0, 0, 0))
+        self.assertEqual(squared.getpixel((200, 200)), (0, 0, 0, 0))
+        self.assertEqual(squared.getpixel((20, 150)), (0, 174, 239, 255))
+
     def test_studio_avatar_candidates_never_guess_a_handle_by_default(self):
         """猜错 handle 会产出一个「看起来很官方」的错误 Logo，和它要取代的搜索猜测同一种失败。"""
         module = load_script("fetch_studio_avatar_candidates")
