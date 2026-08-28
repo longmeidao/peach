@@ -811,6 +811,7 @@ def create_app(
     @app.api_route("/taste", methods=["GET", "HEAD"])
     @app.api_route("/duplicates", methods=["GET", "HEAD"])
     @app.api_route("/quality-goals", methods=["GET", "HEAD"])
+    @app.api_route("/resource-sync", methods=["GET", "HEAD"])
     @app.api_route("/follow", methods=["GET", "HEAD"])
     @app.api_route("/follow-manage", methods=["GET", "HEAD"])
     @app.api_route("/follow/item/{item_id}", methods=["GET", "HEAD"])
