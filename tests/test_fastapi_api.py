@@ -777,6 +777,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((poster.content, avatar.content, logo.content, thumb.content),
                          (b"poster", b"avatar", b"logo", b"snapshot"))
         self.assertEqual(logo.headers["content-type"], "image/png")
+        self.assertEqual(logo.headers["cache-control"], "public, no-cache")
         self.assertEqual(poster.headers["cache-control"], "public, max-age=86400")
 
     async def test_endcard_frame_is_authenticated_and_confined_to_evidence_root(self):
