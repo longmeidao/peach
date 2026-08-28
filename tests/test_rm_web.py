@@ -2340,6 +2340,9 @@ class PurgeMissingTests(unittest.TestCase):
         self.assertEqual(source["unreadable"], 4)
 
     def test_background_sync_polls_then_rechecks_only_missing_candidates(self):
+        idle = rm_web.w_resource_sync_scan(
+            self.contract, {"background": True, "status_only": True})
+        self.assertEqual(idle["status"], "idle")
         with mock.patch.object(rm_web, "translate_ledger_path", self._translate), \
              mock.patch.object(rm_web, "source_is_online", lambda loc: loc == "115"):
             started = rm_web.w_resource_sync_scan(
@@ -2355,6 +2358,9 @@ class PurgeMissingTests(unittest.TestCase):
                 time.sleep(0.01)
             self.assertEqual(status["status"], "complete")
             self.assertEqual(status["missing"], 2)
+            resumed = rm_web.w_resource_sync_scan(
+                self.contract, {"background": True, "status_only": True})
+            self.assertEqual(resumed["scan_id"], status["scan_id"])
             result = rm_web.w_resource_sync_apply(self.contract, {
                 "confirm": True, "clean_cache": False, "scan_id": status["scan_id"],
             })

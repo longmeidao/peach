@@ -1621,6 +1621,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("background:true,restart:true")
         self.assertPageContains("payload.status==='running'")
         self.assertPageContains("location.pathname!=='/resource-sync'")
+        self.assertPageContains("background:true,status_only:true")
+        self.assertPageContains("void followScan(existing)")
         self.assertPageContains("来源离线时整库跳过")
         self.assertPageContains("同步到回收站并清理缓存")
         self.assertPageContains("候选 CSV、来源证据、女优头像和厂牌 Logo 不属于缓存")

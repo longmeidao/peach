@@ -1072,10 +1072,10 @@ async function openResourceSync(push=true){
       }catch(error){button.disabled=false;button.textContent='重试同步';result.insertAdjacentHTML('beforeend',`<p class="resourceerror">${esc(error.message)}</p>`)}
     });
   };
-  scan.onclick=async()=>{
+  const followScan=async payload=>{
     scan.disabled=true;scan.innerHTML=`${icon('refresh-cw')}正在扫描…`;result.innerHTML='<p class="resourcescanning">正在后台核对网盘元数据，不会读取视频内容。</p>';
     try{
-      let payload=await api('/api/resource-sync/scan',{method:'POST',body:JSON.stringify({background:true,restart:true})});
+      if(!payload)payload=await api('/api/resource-sync/scan',{method:'POST',body:JSON.stringify({background:true,restart:true})});
       while(payload.status==='running'){
         const done=payload.sources||[];
         result.innerHTML=`<p class="resourcescanning">后台扫描中：已完成 ${payload.completed_sources||0} / ${payload.total_sources||3} 个来源${done.length?`（${done.map(source=>esc(LOC[source.location]||source.location)).join('、')}）`:''}。离开本页不会中断。</p>`;
@@ -1090,6 +1090,11 @@ async function openResourceSync(push=true){
     catch(error){result.innerHTML=`<p class="resourceerror">扫描失败：${esc(error.message)}</p>`}
     finally{scan.disabled=false;scan.innerHTML=`${icon('refresh-cw')}重新扫描`}
   };
+  scan.onclick=()=>followScan(null);
+  try{
+    const existing=await api('/api/resource-sync/scan',{method:'POST',body:JSON.stringify({background:true,status_only:true})});
+    if(existing.status!=='idle')void followScan(existing);
+  }catch(_error){}
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
