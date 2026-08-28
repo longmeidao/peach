@@ -1583,6 +1583,28 @@ function followVideoItems(group){
     item.playable&&item.media_kind==='video');
 }
 
+/* 关注条目和资料页的作品不是同一种 DTO，但媒体 Tab 的语义相同：一个卡片只要
+   含对应媒体就进入对应视图。旧的外部文件页没有可判定图片类型，继续留在默认的
+   视频视图，避免加 Tab 后把原本可见的待解析更新悄悄藏掉。 */
+function followItemMediaKinds(item){
+  const kinds=new Set();
+  const embedded=item.media_items||[];
+  if(embedded.length)embedded.forEach(media=>{
+    if(media.media_kind==='image'||media.media_kind==='video')kinds.add(media.media_kind)});
+  else kinds.add(item.media_kind==='image'?'image':'video');
+  return kinds;
+}
+const followMediaKinds=group=>{
+  const kinds=new Set();
+  followCollectionItems(group).forEach(item=>
+    followItemMediaKinds(item).forEach(kind=>kinds.add(kind)));
+  return kinds;
+};
+const followItemForMedia=(group,view=followMediaView)=>{
+  const wanted=view==='images'?'image':'video';
+  return followCollectionItems(group).find(item=>followItemMediaKinds(item).has(wanted))||group.primary;
+};
+
 function followMediaNote(item){
   if(item.media_error)return `媒体未取得：${item.media_error}`;
   if(item.media_needs_credential)return followCredentialProviders.has(item.provider)
@@ -1670,8 +1692,10 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   const item=await followItemById(+id);if(!item)return;
   const group=followGroupByItemId.get(item.id);
   const embedded=item.media_items||[];
+  const preferredKind=followMediaView==='images'?'image':'video';
+  const preferredMedia=embedded.find(media=>media.media_kind===preferredKind)||embedded[0];
   const selectedMedia=embedded.length
-    ?embedded.find(media=>media.index===(mediaIndex??embedded[0].index))||embedded[0]
+    ?embedded.find(media=>media.index===(mediaIndex??preferredMedia.index))||preferredMedia
     :null;
   const imageMedia=embedded.filter(media=>media.media_kind==='image');
   const imagePosition=imageMedia.findIndex(media=>media.index===selectedMedia?.index);
@@ -1788,14 +1812,15 @@ function wireFollowDetail(root){
 }
 
 function followCard(group,authorSources=[]){
-  const item=group.primary;
+  const item=followItemForMedia(group);
   const thumb=item.thumb_url
     ? `<img src="${esc(item.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
     : `<span class="fnothumb">${esc(item.provider_label)}</span>`;
-  const videos=followVideoItems(group),embedded=item.media_items||[];
+  const videos=followMediaView==='videos'?followVideoItems(group):[],embedded=item.media_items||[];
   const isMix=embedded.length>1||videos.length>1;
   const mixCount=embedded.length>1?embedded.length:videos.length;
-  const mixKind=embedded.length&&embedded.every(media=>media.media_kind==='image')?'图片':'视频';
+  const mixKind=embedded.length&&embedded.every(media=>media.media_kind==='image')?'图片'
+    :embedded.length&&embedded.some(media=>media.media_kind==='image')?'媒体':'视频';
   const mixTarget=embedded.length>1?item.id:videos[0]?.id;
   const badges=followBadges(group);
   const tags=(item.tags||[]).slice(0,3).map(tag=>followTagChip(item,tag)).join('');
@@ -1853,7 +1878,7 @@ function followCheckSummary(report){
 }
 
 /* ── 看的那一页 ── */
-let followAuthor='',followProvider='',followTags=new Set(),followGroupByItemId=new Map(),followItemsById=new Map(),followDetailReturnPath='/follow';
+let followAuthor='',followProvider='',followTags=new Set(),followMediaView='videos',followGroupByItemId=new Map(),followItemsById=new Map(),followDetailReturnPath='/follow';
 const TAGGED_PROVIDERS=['rule34video','rule34xxx','rule34paheal'];
 function groupTagType(groups,tag){
   for(const group of groups){
@@ -1895,7 +1920,7 @@ function renderFollow(){
   if(followAuthor&&!authors.has(followAuthor))followAuthor='';
   if(followProvider&&!providers.has(followProvider))followProvider='';
   followTags=new Set([...followTags].filter(tag=>tagCounts.has(tag)));
-  const visible=groups.filter(group=>{
+  const filtered=groups.filter(group=>{
     const source=sourceOf(group);
     if(!source)return !followAuthor&&!followProvider;
     if(followAuthor&&source.author_key!==followAuthor)return false;
@@ -1903,6 +1928,13 @@ function renderFollow(){
     if(followTags.size&&![...followTags].every(tag=>(group.primary&&group.primary.tags||[]).includes(tag)))return false;
     return true;
   });
+  const mediaCounts={videos:0,images:0};
+  filtered.forEach(group=>followMediaKinds(group).forEach(kind=>
+    mediaCounts[kind==='image'?'images':'videos']++));
+  if(followMediaView==='images'&&!mediaCounts.images)followMediaView='videos';
+  if(followMediaView==='videos'&&!mediaCounts.videos&&mediaCounts.images)followMediaView='images';
+  const wantedKind=followMediaView==='images'?'image':'video';
+  const visible=filtered.filter(group=>followMediaKinds(group).has(wantedKind));
   const providerPills=[...providers].map(([key,label])=>
     `<button class="pill sourcepill" data-follow-provider="${esc(key)}" aria-pressed="${key===followProvider}"
       title="${esc(label)}" aria-label="来源：${esc(label)}">${sourceIcon(key)}</button>`).join('');
@@ -1910,6 +1942,10 @@ function renderFollow(){
   $('#stats').innerHTML=`<div class="follow">
     <div class="followhead"><h2 class="disp pagetitle">关注</h2>
       <button class="fbtn primary fcheck" data-follow-manage>${icon('settings')}管理关注</button></div>
+    ${mediaCounts.images?`<div class="mediatabs followmediatabs" aria-label="关注媒体类型">
+      <button data-follow-media="videos" aria-pressed="${followMediaView==='videos'}">${icon('play')}<span>视频</span><b class="mono">${mediaCounts.videos.toLocaleString()}</b></button>
+      <button data-follow-media="images" aria-pressed="${followMediaView==='images'}">${icon('layout-grid')}<span>图片</span><b class="mono">${mediaCounts.images.toLocaleString()}</b></button>
+    </div>`:''}
     ${authors.size?`<div class="tier followauthors" aria-label="按作者筛选">${[...authors].map(([key,author])=>
       `<button class="av" data-follow-author="${esc(key)}" aria-pressed="${key===followAuthor}">
         <span class="ring">${followAuthorAvatar(author.sources)}</span><span class="nm">${esc(author.name)}</span></button>`
@@ -1945,6 +1981,9 @@ function renderFollow(){
     followCheckReport=null;button.closest('.fcheckreport')?.remove()});
   $('#stats').querySelectorAll('[data-follow-filter]').forEach(button=>button.onclick=()=>{
     followFilter=button.dataset.followFilter;openFollow(false)});
+  $('#stats').querySelectorAll('[data-follow-media]').forEach(button=>button.onclick=()=>{
+    followMediaView=button.dataset.followMedia;
+    route('/follow'+(followMediaView==='images'?'?media=images':''));renderFollow()});
   $('#stats').querySelectorAll('[data-follow-author]').forEach(button=>button.onclick=()=>{
     followAuthor=followAuthor===button.dataset.followAuthor?'':button.dataset.followAuthor;renderFollow()});
   $('#stats').querySelectorAll('[data-follow-provider]').forEach(button=>button.onclick=()=>{
@@ -1994,7 +2033,9 @@ function wireFollowOlder(){
 async function openFollow(push=true,renderForDetail=false){
   releaseHoverPreviews();disposeStage(false);
   document.body.classList.remove('entity-open','index-open');
-  if(push)route('/follow');
+  if(push){followMediaView='videos';route('/follow')}
+  else if(location.pathname==='/follow')
+    followMediaView=new URLSearchParams(location.search).get('media')==='images'?'images':'videos';
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
   $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
   $('#tiers').style.display='none';$('#tagbar').style.display='none';
