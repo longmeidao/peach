@@ -269,6 +269,10 @@ function cancelStreamSession(session){
 }
 function disposeStage(push=false){
   const stage=$('#stage');
+  // 关注详情会把舞台插到头像和筛选条之后。离开详情前先放回 main 的固定槽位，
+  // 否则下一次重绘 #stats 会连同 #stage 一起删掉，后续所有详情都打不开。
+  const main=$('#main'),combo=$('#combo');
+  if(stage.parentElement!==main)main.insertBefore(stage,combo);
   if(detailStatsTimer){clearInterval(detailStatsTimer);detailStatsTimer=null}
   if(detailNetTimer){clearInterval(detailNetTimer);detailNetTimer=null}
   if(detailNetHideTimer){clearTimeout(detailNetHideTimer);detailNetHideTimer=null}
@@ -1613,6 +1617,10 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   const tags=(item.tags||[]).map(tag=>followTagChip(item,tag,'button')).join('');
   const author=followAuthorName(authorSources)||item.author||item.source_label||'作者未取得';
   const postedBy=item.author&&foldName(item.author)!==foldName(author)?item.author:'';
+  // 关注列表的头像与筛选就是详情的上文；舞台放在筛选和卡片网格之间，
+  // 不再占用 main 最顶部、把用户从原来的筛选上下文里切走。
+  const followList=$('#stats').querySelector('.followlist');
+  if(followList)followList.before($('#stage'));
   $('#stage').hidden=false;document.body.classList.add('detail-open');
   $('#stage').innerHTML=`<div class="sgrid followdetailgrid${collection||embeddedQueue?' mixgrid':''}">
     <div class="vwrap followdetailmedia"><button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${media}${imageControls}</div>
@@ -1665,7 +1673,28 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
       item.status=button.dataset.followDetailStatus;
       $('#stage').querySelectorAll('[data-follow-detail-status]').forEach(control=>
         control.setAttribute('aria-pressed',String(control.dataset.followDetailStatus===item.status)))}));
-  $('#stage').scrollIntoView({block:'start',behavior:'smooth'});
+  alignFollowImageControls();
+  ($('#stats').querySelector('.followhead')||$('#stage')).scrollIntoView({block:'start',behavior:'smooth'});
+}
+
+/* object-fit:contain 后图片左右黑边会随图片比例和窗口改变。箭头应位于黑边的视觉中心，
+   不能永远贴容器边缘；黑边太窄时才退回原来的安全内边距。 */
+function alignFollowImageControls(){
+  const frame=$('#stage:not([hidden]) .followdetailmedia');
+  const image=frame?.querySelector('.followdetailposter');
+  const arrow=frame?.querySelector('.followimagearrow');
+  if(!frame||!image||!arrow)return;
+  const align=()=>{
+    if(!image.naturalWidth||!image.naturalHeight)return;
+    const box=frame.getBoundingClientRect(),ratio=image.naturalWidth/image.naturalHeight;
+    const renderedWidth=Math.min(box.width,box.height*ratio);
+    const gutter=Math.max(0,(box.width-renderedWidth)/2);
+    const fallback=matchMedia('(max-width:640px)').matches?10:16;
+    const inset=gutter>=arrow.offsetWidth+fallback*2?(gutter-arrow.offsetWidth)/2:fallback;
+    frame.style.setProperty('--follow-image-arrow-inset',`${Math.round(inset)}px`);
+  };
+  if(image.complete)requestAnimationFrame(align);
+  else image.addEventListener('load',align,{once:true});
 }
 
 function wireFollowDetail(root){
@@ -1879,7 +1908,7 @@ function wireFollowOlder(){
   };
 }
 
-async function openFollow(push=true){
+async function openFollow(push=true,renderForDetail=false){
   releaseHoverPreviews();disposeStage(false);
   document.body.classList.remove('entity-open','index-open');
   if(push)route('/follow');
@@ -1889,9 +1918,9 @@ async function openFollow(push=true){
   $('#managebar').hidden=true;$('#manageTitle').hidden=true;buildEdge();
   $('#stats').innerHTML='<div class="follow"><p class="empty">正在读取…</p></div>';
   followData=await api(`/api/follow?limit=300${followFilter?`&status=${followFilter}`:''}`);
-  if(location.pathname!=='/follow')return;
+  if(location.pathname!=='/follow'&&!renderForDetail)return;
   renderFollow();
-  window.scrollTo({top:0,behavior:'smooth'});
+  if(!renderForDetail)window.scrollTo({top:0,behavior:'smooth'});
 }
 
 /* ── 管的那一页 ── */
@@ -3334,7 +3363,7 @@ window.addEventListener('scroll',()=>{
   releaseHoverPreviews();
   clearTimeout(scrollT); scrollT=setTimeout(()=>{window.__scrolling=false},180);
 },{passive:true});
-window.addEventListener('resize',scheduleStickySurfaces,{passive:true});
+window.addEventListener('resize',()=>{scheduleStickySurfaces();alignFollowImageControls()},{passive:true});
 
 /* 只在真正进入 72 px 图标栏时展开；内容区左缘不再设隐形热区。 */
 $('#edge').addEventListener('mouseleave',()=>clearTimeout(edgeT));
@@ -4291,7 +4320,8 @@ async function restoreRoute(){
   if(parts[0]==='mix'&&/^\d+$/.test(parts[1]||'')&&/^\d+$/.test(parts[2]||'')){await openMix(+parts[1],+parts[2],false);return}
   if(parts[0]==='parts'&&/^\d+$/.test(parts[1]||'')&&/^\d+$/.test(parts[2]||'')){await openParts(+parts[1],+parts[2],false);return}
   if(parts[0]==='item'&&/^\d+$/.test(parts[1]||'')){await openItem(+parts[1],false);return}
-  if(parts[0]==='follow'&&parts[1]==='item'&&/^\d+$/.test(parts[2]||'')){await openFollowDetail(+parts[2],false);return}
+  if(parts[0]==='follow'&&parts[1]==='item'&&/^\d+$/.test(parts[2]||'')){
+    await openFollow(false,true);await openFollowDetail(+parts[2],false);return}
   const entityKind=ROUTE_ENTITIES[parts[0]];
   if(entityKind&&parts.length>=2){await openEntity(entityKind,parts.slice(1).join('/'),false);return}
   if(path==='/performers'||path==='/creators'||path==='/tags'){
