@@ -962,6 +962,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["sets"][0]["id"], 9)
         self.assertEqual(payload["sets"][0]["title"], "shoot")
         self.assertEqual([item["id"] for item in payload["items"]], [9])
+        self.assertEqual(payload["items"][0]["location"], "pikpak")
         self.assertTrue(payload["has_more"])
         self.assertNotIn(str(self.media_root), json.dumps(payload),
                          "只发目录名和图集 id，不发真实路径")
@@ -971,6 +972,23 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(next_page.json()["has_more"])
         detail = await self.client.get("/api/photo-set?id=9", headers=headers)
         self.assertEqual([item["id"] for item in detail.json()["items"]], [9])
+        self.assertEqual(detail.json()["items"][0]["location"], "pikpak")
+        self.assertNotIn(str(self.media_root), json.dumps(detail.json()),
+                         "图片详情也只发安全元数据，真实路径留在服务端")
+
+    async def test_photo_detail_reveal_resolves_the_asset_id_on_the_server(self):
+        source = self._seed_photo()
+        headers = {"X-Token": "secret"}
+        command = ["file-manager", "select-source"]
+        with (patch("peach.api.reveal_command", return_value=command) as resolve,
+              patch("peach.api.subprocess.Popen") as launch):
+            response = await self.client.post(
+                "/api/reveal", headers=headers,
+                json={"id": 9, "path": "C:/client-must-not-control-this"},
+            )
+        self.assertEqual(response.status_code, 200)
+        resolve.assert_called_once_with(source)
+        launch.assert_called_once_with(command, close_fds=True)
 
     async def test_photo_thumbnail_is_generated_once_and_cached(self):
         source = self._seed_photo()

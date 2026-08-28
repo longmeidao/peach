@@ -1441,6 +1441,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("wireJavLayoutButtons(section)")
         self.assertPageContains("renderEntityCollection(kind,name,{...entityCollectionPage,items:[...entityCollectionPage.items]}")
         self.assertPageContains(".entitycollectionhead .javlayout{display:inline-flex;gap:6px}")
+        self.assertPageContains("let entityRequestSeq=0,entityJavLayout=false")
+        self.assertPageContains("(items.items||[]).some(item=>item.is_jav)")
+        self.assertPageContains("return state.jav==='1'||entityJavLayout")
+        self.assertPageContains("const jav=javActive()&&!!it.is_jav,layout=javLayout()")
 
     def test_photo_lightbox_loads_swiper_lazily_with_thumbs_and_keyboard(self):
         self.assertPageContains("'/vendor/swiper/14.1.0/swiper-bundle.min.js'")
@@ -1502,6 +1506,19 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<input type="range" min="1" max="${ZOOM_MAX}"')
         # zoomChange 的第一个参数是 swiper 实例，倍数在第二个；接错了写进 NaN。
         self.assertPageContains("main.on('zoomChange',(_swiper,scale)=>")
+        # 文本字形受字体基线影响，会让圆按钮里的 +/- 肉眼偏上或偏下；SVG 几何才稳定居中。
+        self.assertPageContains('data-zoom-step="-1" aria-label="缩小">${icon(\'minus\')}')
+        self.assertPageContains('data-zoom-step="1" aria-label="放大">${icon(\'plus\')}')
+        self.assertPageContains(".photozoom button svg{width:15px;height:15px;display:block;")
+
+    def test_lightbox_photo_detail_reveals_by_asset_id_without_leaking_a_path(self):
+        self.assertPageContains('<button class="photodetailtoggle" type="button"')
+        self.assertPageContains('<aside class="photodetail" aria-label="图片详情" hidden>')
+        self.assertPageContains("LOC[item.location]||item.location||'来源未知'")
+        self.assertPageContains("reveal.dataset.photoReveal=String(item.id)")
+        self.assertPageContains("revealSource(Number(reveal.dataset.photoReveal),status)")
+        self.assertPageContains(".photodetail[hidden]{display:none}")
+        self.assertPageLacks("item.path", "图片详情不能取得或渲染 ledger 绝对路径")
 
     def test_lightbox_remeasures_when_the_window_resizes(self):
         # Swiper 只在构造那一刻量一次容器；灯箱是插进已布好版的页面里的，
