@@ -148,7 +148,7 @@ class WebContract:
         # 共享副本只承载**声明为可同步**的凭据字段，见 web_follow.SYNCABLE_FIELDS。
         self.follow_shared_root = (Path(follow_shared_root)
                                    if follow_shared_root is not None else SHARED_DATA_ROOT)
-        # 浏览历史品味分析的产出目录，`scripts/taste_history.py --output` 的默认值。
+        # 浏览历史口味分析的产出目录，`scripts/taste_history.py --output` 的默认值。
         self.taste_history_root = (Path(taste_history_root)
                                    if taste_history_root is not None
                                    else DATA_ROOT / "review" / "taste-history")

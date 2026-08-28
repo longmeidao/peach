@@ -621,7 +621,7 @@ MAX_SUGGESTIONS = 12
 
 
 def _suggestions(contract, sources) -> list[dict]:
-    """「猜你喜欢」取**浏览历史品味分析**产出的创作者候选，按访问次数排序。
+    """「猜你喜欢」取**浏览历史口味分析**产出的创作者候选，按访问次数排序。
 
     之前两次都取错了源，记下来免得再犯：`facets.creators` 是「他有谁的文件」，
     `location='online'` 的资产是「他关注过谁」，两者都不是「他常搜谁」。真正的信号是

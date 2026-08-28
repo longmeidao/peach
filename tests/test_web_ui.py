@@ -608,7 +608,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const MANAGE_SECTIONS=[")
         for section in ("'stats','统计'", "'ads','疑似广告'", "'dupes','重复文件'",
                         "'quality','高清版'", "'trash','回收站'", "'review','人工复核'",
-                        "'taste','品味'", "'resources','资源同步'"):
+                        "'taste','口味'"):
             self.assertPageContains(section)
         self.assertPageContains("function manageSection()")
         self.assertPageContains("function buildManageBar()")
@@ -634,7 +634,7 @@ class WebUiSourceTests(unittest.TestCase):
         sections = self.page.split("const MANAGE_SECTIONS=[", 1)[1].split("];", 1)[0]
         order = [line.split("'")[1] for line in sections.splitlines() if line.strip().startswith("['")]
         self.assertEqual(
-            order, ["stats", "taste", "review", "ads", "dupes", "resources", "trash", "follow", "quality"],
+            order, ["stats", "taste", "review", "ads", "dupes", "trash", "follow", "quality"],
             "管理导航的顺序是语义契约：现状 → 复核 → 清理 → 回收站 → 往外拿",
         )
 
@@ -1287,6 +1287,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("api('/api/follow/schedule'")
         self.assertPageContains('id="sidebarOrderSetting"')
         self.assertPageContains("appSettings.sidebarOrder")
+        self.assertPageContains("if(!appSettings.sidebarOrder.length)appSettings.sidebarOrder=[...DEFAULT_SIDEBAR_ORDER]")
         self.assertPageContains("orderedEdgeIcons()")
         self.assertPageContains('draggable="true" data-sidebar-row=')
         self.assertPageContains("row.ondragstart=e=>")
@@ -1299,7 +1300,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('data-nav="${k}" draggable="true"')
         self.assertPageContains("data-sidebar-hide")
         self.assertPageContains("data-sidebar-add-select")
-        self.assertPageContains("const OPTIONAL_SIDEBAR_KEYS=['stats','review','ads','dupes','resources','trash','follow-manage','quality']")
+        self.assertPageContains("const OPTIONAL_SIDEBAR_KEYS=['stats','review','ads','dupes','trash','follow-manage','quality']")
         self.assertPageContains("if(DIRECT_MANAGE_NAV[k]){openManage(DIRECT_MANAGE_NAV[k]);return}")
         self.assertPageContains(".settingscard{width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:hidden")
         self.assertPageContains(".settingsscroll{max-height:inherit;overflow-y:auto")
@@ -1613,19 +1614,34 @@ class WebUiSourceTests(unittest.TestCase):
         # 在线资产是 URL，没有本地文件可定位。
         self.assertPageContains("it.location==='online'?'':sourceTools(it.id)")
 
-    def test_resource_sync_is_preview_first_and_keeps_offline_sources_safe(self):
+    def test_resource_sync_is_embedded_in_stats_and_keeps_offline_sources_safe(self):
+        self.assertPageContains("${resourceSyncMarkup()}")
         self.assertPageContains("if(path==='/resource-sync'){await openResourceSync(false);return}")
+        self.assertPageContains("route('/stats#resource-sync',true)")
         self.assertPageContains("api('/api/resource-sync/scan',{method:'POST'")
         self.assertPageContains("api('/api/resource-sync/apply',{method:'POST'")
         self.assertPageContains("source.unreadable")
         self.assertPageContains("background:true,restart:true")
         self.assertPageContains("payload.status==='running'")
-        self.assertPageContains("location.pathname!=='/resource-sync'")
+        self.assertPageContains("location.pathname==='/stats'")
         self.assertPageContains("background:true,status_only:true")
         self.assertPageContains("void followScan(existing)")
-        self.assertPageContains("来源离线时整库跳过")
-        self.assertPageContains("同步到回收站并清理缓存")
-        self.assertPageContains("候选 CSV、来源证据、女优头像和厂牌 Logo 不属于缓存")
+        self.assertPageContains("离线来源会整库跳过")
+        self.assertPageContains("同步并清理")
+        self.assertPageContains('class="resourcesyncfooter"')
+        self.assertPageContains('class="resourcepanel"')
+        self.assertPageContains('class="resourceapplyrow"')
+        self.assertPageContains("候选 CSV、来源证据、女优头像和厂牌 Logo 不会删除")
+        self.assertPageContains(".resourceaction{box-sizing:border-box;height:36px")
+        self.assertPageContains("@media(max-width:640px){.resourcesync .resourcesyncfooter{align-items:stretch;flex-direction:column")
+        self.assertPageContains(".resourcesync .resourcesources{grid-template-columns:1fr}")
+        self.assertPageContains(".resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--line-soft);border-radius:12px")
+        self.assertPageContains(".resourcesources article+article{border-left:1px solid var(--line-soft)}")
+        self.assertPageContains(".resourceapplyrow .resourcesyncok{color:var(--success)}")
+        self.assertPageContains("border-radius:var(--control-radius)")
+        self.assertPageContains("animation:resource-spin .8s linear infinite")
+        sections = self.page.split("const MANAGE_SECTIONS=[", 1)[1].split("];", 1)[0]
+        self.assertNotIn("'resources'", sections)
 
     def test_source_tool_icons_declare_stroke_and_no_fill(self):
         self.assertPageContains(
