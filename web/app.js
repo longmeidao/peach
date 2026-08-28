@@ -665,12 +665,17 @@ function mixLabel(it){
   return (it.is_jav&&performer?performer:it.creator)||performer||it.studio||it.code||tagLabel((it.tags||[])[0])||'为你推荐';
 }
 function mixCardHtml(it){
-  const thumb=it.has_thumb
-    ? `<img class="poster" src="/poster?id=${it.id}&c=4" alt="" loading="lazy">`
-    : `<span class="nopic">无预览</span>`;
+  const jav=javActive(),layout=javLayout();
+  const useCover=jav&&layout!=='preview'&&it.has_cover;
+  const ar=jav&&layout==='big'?COVER_FRONT_RATIO:16/9;
+  const thumb=useCover
+    ? coverImage(it,layout)
+    : (it.has_thumb
+      ? `<img class="poster" src="/poster?id=${it.id}&c=4" alt="" loading="lazy">`
+      : `<span class="nopic">无预览</span>`);
   const label=mixLabel(it);
   return `<article class="card mixcard" data-mix-seed="${it.id}">
-    <div class="mixstack"><div class="pic">${thumb}<button class="cardopenhit" data-open-mix aria-label="打开 Mix · ${esc(label)}"></button>
+    <div class="mixstack"><div class="pic" style="--card-ratio:${ar}">${thumb}<button class="cardopenhit" data-open-mix aria-label="打开 Mix · ${esc(label)}"></button>
       <span class="mixbadge">${icon('play')}Mix</span></div></div>
     <div class="mixmeta"><span class="mixglyph">${icon('play')}</span><div class="mixcopy">
       <b>Mix · ${esc(label)}</b><span>${esc(it.name)}及相似作品</span></div></div></article>`;

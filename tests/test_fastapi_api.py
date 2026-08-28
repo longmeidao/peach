@@ -112,7 +112,9 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.poster_root = self.root / "posters"
         self.avatar_root = self.root / "avatars"
         self.logo_root = self.root / "logos"
+        self.cover_root = self.root / "covers"
         self.transcode_root = self.root / "transcodes"
+        self.stream_root = self.root / "stream-segments"
         self.photo_root = self.root / "photo-thumbs"
         self.vendor_root = self.root / "vendor"
         self.taste_store = self.root / "sources" / "taste-history" / "history.sqlite"
@@ -128,7 +130,8 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.endcard_frame.parent.mkdir(parents=True)
         self.endcard_frame.write_bytes(b"endcard")
         for path in (self.media_root, self.snapshot_root, self.poster_root,
-                     self.avatar_root, self.logo_root, self.vendor_root):
+                     self.avatar_root, self.logo_root, self.cover_root,
+                     self.vendor_root):
             path.mkdir()
         (self.vendor_root / "player.js").write_text("window.vendorReady=true;", encoding="utf-8")
         self.media_file = self.media_root / "one.mp4"
@@ -173,6 +176,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             allowed_media_roots=(self.media_root,), snapshot_root=self.snapshot_root,
             legacy_snapshot_roots=(self.legacy_snapshot_root,),
             poster_root=self.poster_root, avatar_root=self.avatar_root, logo_root=self.logo_root,
+            cover_root=self.cover_root, stream_root=self.stream_root,
             ffmpeg_root=self.root / "ffmpeg", transcode_root=self.transcode_root,
             candidate_root=self.candidate_root, photo_root=self.photo_root,
             taste_history_store=self.taste_store,

@@ -2559,6 +2559,24 @@ def _cache_file(path: Path, kind: str, output: list[tuple[str, Path, int]]) -> N
     output.append((kind, path, size))
 
 
+def _managed_cache_root(contract: WebContract, root: Path | None) -> bool:
+    """Only let a ledger clean caches inside its own runtime data directory.
+
+    Production stores ``ledger.db`` under ``peach-data/database`` and generated files under
+    the sibling ``peach-data/generated`` directory. Isolated tests commonly put the database
+    directly in a temporary root. In both shapes the database identifies the only directory
+    tree cleanup may enter. This prevents a temporary database paired with a forgotten default
+    cache root from treating the real generated files as orphans.
+    """
+    if root is None:
+        return False
+    database_parent = Path(contract.db_path).resolve().parent
+    data_root = (database_parent.parent if database_parent.name.casefold() == "database"
+                 else database_parent)
+    resolved = Path(root).resolve()
+    return resolved != data_root and resolved.is_relative_to(data_root)
+
+
 def _resource_orphan_plan(contract: WebContract, excluded_ids: Sequence[int] = ()) -> dict:
     """Find only reproducible generated files that no active asset still owns.
 
@@ -2587,7 +2605,8 @@ def _resource_orphan_plan(contract: WebContract, excluded_ids: Sequence[int] = (
 
     files: list[tuple[str, Path, int]] = []
     cleanup_dirs: set[Path] = set()
-    if contract.snapshot_root and contract.snapshot_root.is_dir():
+    if (_managed_cache_root(contract, contract.snapshot_root)
+            and contract.snapshot_root.is_dir()):
         for path in contract.snapshot_root.rglob("*"):
             if path.is_file() and path not in active_snapshots:
                 _cache_file(path, "snapshots", files)
@@ -2598,14 +2617,15 @@ def _resource_orphan_plan(contract: WebContract, excluded_ids: Sequence[int] = (
         (contract.transcode_root, "transcodes", re.compile(r"^(\d+)-.+\.mp4$")),
     )
     for root, kind, pattern in patterns:
-        if not root.is_dir():
+        if not _managed_cache_root(contract, root) or not root.is_dir():
             continue
         for path in root.iterdir():
             match = pattern.match(path.name)
             if match and int(match.group(1)) not in active_ids and path.is_file():
                 _cache_file(path, kind, files)
 
-    if contract.stream_root.is_dir():
+    if (_managed_cache_root(contract, contract.stream_root)
+            and contract.stream_root.is_dir()):
         for directory in contract.stream_root.iterdir():
             if not directory.is_dir() or not directory.name.isdigit():
                 continue
@@ -2616,13 +2636,15 @@ def _resource_orphan_plan(contract: WebContract, excluded_ids: Sequence[int] = (
                 if path.is_file():
                     _cache_file(path, "stream-segments", files)
 
-    if contract.avatar_root.is_dir():
+    if (_managed_cache_root(contract, contract.avatar_root)
+            and contract.avatar_root.is_dir()):
         for path in contract.avatar_root.iterdir():
             match = re.match(r"^(\d+)\.jpg$", path.name)
             if match and int(match.group(1)) not in active_ids and path.is_file():
                 _cache_file(path, "asset-avatars", files)
 
-    if contract.cover_root.is_dir():
+    if (_managed_cache_root(contract, contract.cover_root)
+            and contract.cover_root.is_dir()):
         for path in contract.cover_root.iterdir():
             key = ""
             if path.name.endswith(".face.json"):

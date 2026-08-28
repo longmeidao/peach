@@ -232,6 +232,52 @@ def logged_rows(log: Path) -> list[dict]:
         return list(csv.DictReader(handle))
 
 
+def restore_logged_successes(transport: HttpTransport, log: Path, root: Path,
+                             delay: float = 0.0) -> dict:
+    """Re-download missing covers from the exact successful URLs already in the audit log.
+
+    This is intentionally narrower than a fresh scrape: it makes no discovery requests,
+    preserves the existing audit log and refuses an upstream image whose dimensions changed.
+    """
+    root.mkdir(parents=True, exist_ok=True)
+    restored = skipped = 0
+    failed: list[dict[str, str]] = []
+    successes = [row for row in logged_rows(log)
+                 if row.get("result") == "取得" and row.get("code") and row.get("url")]
+    for index, row in enumerate(successes, 1):
+        code = normalise_code(str(row["code"]))
+        target = root / f"{code}.jpg"
+        if target.is_file():
+            skipped += 1
+            continue
+        temporary = target.with_suffix(".restore.tmp")
+        try:
+            data = _fetch(transport, str(row["url"]), referer="https://www.avbase.net/",
+                          limit=16 * 1024 * 1024)
+            with Image.open(io.BytesIO(data)) as image:
+                size = image.size
+                image.verify()
+            expected = (int(row["width"]), int(row["height"]))
+            if size != expected or size[0] < MIN_WIDTH:
+                raise Unavailable(f"尺寸变化：日志 {expected[0]}x{expected[1]}，当前 {size[0]}x{size[1]}")
+            temporary.write_bytes(data)
+            temporary.replace(target)
+            restored += 1
+            print(f"[{index}/{len(successes)}] 恢复 {code}  {size[0]}x{size[1]}", flush=True)
+        # 与完整抓取同一条长跑边界：单张网络异常降级成失败记录，不能让余下恢复归零；
+        # KeyboardInterrupt 等 BaseException 仍会正常中断。
+        except Exception as exc:
+            failed.append({"code": code, "error": f"{type(exc).__name__}: {exc}"[:120]})
+            print(f"[{index}/{len(successes)}] 未恢复 {code}：{type(exc).__name__} {exc}",
+                  flush=True)
+        finally:
+            temporary.unlink(missing_ok=True)
+            if delay:
+                time.sleep(delay)
+    return {"logged": len(successes), "restored": restored, "skipped": skipped,
+            "failed": failed}
+
+
 def pending(database: Path, root: Path, only_shaped: bool,
             location: str | None = None) -> list[str]:
     connection = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True)
@@ -275,6 +321,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="只抓指定来源的番号封套，例如 pikpak；封套仍按番号共享")
     parser.add_argument("--retry-misses", action="store_true",
                         help="连上轮确认没有封套的番号也重探一遍")
+    parser.add_argument("--restore-successes", action="store_true",
+                        help="只按成功日志中的原 URL 恢复缺失封套，不重新探测来源")
     parser.add_argument("--all-codes", action="store_true",
                         help="连 FC2/日期番号一起试；默认只跑片商与素人形态")
     return parser
@@ -291,6 +339,16 @@ def _write_log(path: Path, rows: list[dict]) -> None:
 
 def run(args: argparse.Namespace) -> int:
     args.out.mkdir(parents=True, exist_ok=True)
+    if args.restore_successes:
+        transport = HttpxTransport()
+        try:
+            result = restore_logged_successes(transport, args.log, args.out, args.delay)
+        finally:
+            transport.close()
+        print(f"成功日志 {result['logged']}，恢复 {result['restored']}，"
+              f"已存在 {result['skipped']}，失败 {len(result['failed'])} → {args.out}")
+        return 2 if result["failed"] else 0
+
     todo = pending(args.db, args.out, not args.all_codes, args.location)
     skipped = set()
     if not args.retry_misses:
