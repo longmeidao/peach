@@ -561,6 +561,7 @@ function coverImage(it,layout){
 }
 function cardHtml(it,cls){
   const jav=javActive(),layout=javLayout();
+  const parts=it.part_group||null;
   const useCover=jav&&layout!=='preview'&&it.has_cover;
   /* 卡片比例。这个值以前算出来就没人用过——`.pic` 一直写死 16/9，于是 JAV 的两种
      版式看起来一模一样。现在写进 `--card-ratio`，由 CSS 消费。 */
@@ -595,7 +596,10 @@ function cardHtml(it,cls){
       :(it.code?{kind:'',name:it.code}
         :(it.studio?{kind:'studio',name:it.studio}:{kind:'',name:'未归属'})));
   const who=identity.name,whoKind=identity.kind;
-  const sizeText=Number(it.size)>0?fmtSize(Number(it.size)):'大小未知';
+  const shownName=parts?.title||it.name;
+  const shownSize=parts?.total_size??it.size;
+  const shownDuration=parts?.total_duration??it.duration;
+  const sizeText=Number(shownSize)>0?fmtSize(Number(shownSize)):'大小未知';
   const tgs=(it.tags||[]).slice(0,3).map(x=>`<span class="tg general" data-tag="${esc(x)}">${esc(tagLabel(x))}</span>`).join('');
   // 共演作品用头像提示多人，但文字只保留第一位，再给总人数。两个长名字加元数据
   // 会在普通卡片里折成三行；「第一位 + 等 N 人」仍能说明身份与规模。
@@ -627,12 +631,12 @@ function cardHtml(it,cls){
       <button data-seek="-${appSettings.seekSeconds}" title="后退 ${appSettings.seekSeconds} 秒" aria-label="后退 ${appSettings.seekSeconds} 秒">${icon('rotate-ccw')}<b>${appSettings.seekSeconds}</b></button>
       <button data-seek="${appSettings.seekSeconds}" title="前进 ${appSettings.seekSeconds} 秒" aria-label="前进 ${appSettings.seekSeconds} 秒">${icon('rotate-cw')}<b>${appSettings.seekSeconds}</b></button>
       <button data-open title="打开详情" aria-label="打开详情">${icon('maximize')}</button></div>`;
-  return `<article class="card ${cls||''} ${it.disposal==='trash'?'pending-delete':''}" data-id="${it.id}">
-    <div class="pic" style="--card-ratio:${ar}">${thumb}<button class="cardopenhit" data-open aria-label="打开 ${esc(it.name)} 详情"></button>
+  return `<article class="card ${parts?'partcard ':''}${cls||''} ${it.disposal==='trash'?'pending-delete':''}" data-id="${it.id}"${parts?` data-part-seed="${parts.seed_id}"`:''}>
+    ${parts?'<div class="partstack">':''}<div class="pic" style="--card-ratio:${ar}">${thumb}<button class="cardopenhit" data-open aria-label="打开 ${esc(shownName)}${parts?'分卷':'详情'}"></button>
       <div class="badge mono">${srcBadge(it.location,it.cost)}</div>
       <span class="selectionMark">${icon('check')}</span><span class="deleteMark">${icon('trash')}<b>回收站</b></span>
-      <span class="dur mono">${fmtDur(it.duration)}</span>${tr}${tools}</div>
-    <div class="meta">${avatar}<div class="mtext"><button class="t cardtitle" data-open>${esc(it.name)}</button>
+      ${parts?`<span class="partbadge">${parts.count} 卷</span>`:''}<span class="dur mono">${fmtDur(shownDuration)}</span>${tr}${tools}</div>${parts?'</div>':''}
+    <div class="meta">${avatar}<div class="mtext"><button class="t cardtitle" data-open>${esc(shownName)}</button>
       <div class="s mono">${whoHtml}
         ${it.why?`<span class="why">${esc(it.why)}</span>`:''}
         <span class="size">${sizeText}</span>
@@ -654,11 +658,21 @@ function mixCardHtml(it){
     <div class="mixmeta"><span class="mixglyph">${icon('play')}</span><div class="mixcopy">
       <b>Mix · ${esc(label)}</b><span>${esc(it.name)}及相似作品</span></div></div></article>`;
 }
+let renderedPartGroups=new Set();
+function collapseMultipartItems(items){
+  return items.filter(it=>{
+    const key=it.part_group?.key;
+    if(!key)return true;
+    if(renderedPartGroups.has(key))return false;
+    renderedPartGroups.add(key);return true;
+  });
+}
 function batchWithMix(items,enabled=true){
-  const cards=items.map(it=>cardHtml(it));
+  const visible=collapseMultipartItems(items);
+  const cards=visible.map(it=>cardHtml(it));
   if(!enabled)return cards.join('');
-  const seed=items.find(it=>it.creator||(it.performers||[]).length||it.studio)||items[0];
-  if(seed&&items.length>=8)cards.splice(7,0,mixCardHtml(seed));
+  const seed=visible.find(it=>it.creator||(it.performers||[]).length||it.studio)||visible[0];
+  if(seed&&visible.length>=8)cards.splice(7,0,mixCardHtml(seed));
   return cards.join('');
 }
 function wireMixCards(root){
@@ -671,6 +685,7 @@ function wireCards(root,onClick,onTag){
   root.querySelectorAll('[data-id]').forEach(el=>{
     if(el.dataset.wired)return; el.dataset.wired='1';
     const it=CACHE[el.dataset.id];
+    const openCard=id=>onClick?onClick(id):(it?.part_group?openParts(it.part_group.seed_id,id):openItem(id));
     el.onclick=e=>{
       const seek=e.target.closest('[data-seek]');
       if(seek){e.stopPropagation();const v=el.querySelector('video.hv');
@@ -681,7 +696,7 @@ function wireCards(root,onClick,onTag){
         .then(r=>{it.watch_later=r.watch_later;later.setAttribute('aria-pressed',r.watch_later);
           later.innerHTML=r.watch_later?icon('check'):icon('bookmark-plus')});return}
       if(selectMode||e.shiftKey||e.ctrlKey||e.metaKey){e.preventDefault();e.stopPropagation();toggleSelection(it.id,e.shiftKey);return}
-      if(e.target.closest('[data-open]')){e.stopPropagation();(onClick||openItem)(+el.dataset.id);return}
+      if(e.target.closest('[data-open]')){e.stopPropagation();openCard(+el.dataset.id);return}
       const ent=e.target.closest('[data-entity-kind]');
       if(ent){e.stopPropagation();openEntity(ent.dataset.entityKind,ent.dataset.entityName);return}
       const tg=e.target.closest('.tg');
@@ -689,11 +704,11 @@ function wireCards(root,onClick,onTag){
         state.tag=tg.dataset.tag;buildBars();load(true);
         window.scrollTo({top:0,behavior:'smooth'});return}
       if(e.shiftKey||e.ctrlKey||e.metaKey||selectMode){e.preventDefault();toggleSelection(it.id,e.shiftKey);return}
-      (onClick||openItem)(+el.dataset.id);
+      openCard(+el.dataset.id);
     };
     el.querySelectorAll('[data-open]').forEach(opener=>{
       opener.dataset.openWired='1';
-      opener.onclick=e=>{e.stopPropagation();if(selectMode||e.shiftKey||e.ctrlKey||e.metaKey){e.preventDefault();toggleSelection(it.id,e.shiftKey);return}(onClick||openItem)(+el.dataset.id)};
+      opener.onclick=e=>{e.stopPropagation();if(selectMode||e.shiftKey||e.ctrlKey||e.metaKey){e.preventDefault();toggleSelection(it.id,e.shiftKey);return}openCard(+el.dataset.id)};
     });
     if(it)wireHover(el,it);
   });
@@ -2468,7 +2483,9 @@ function renderEntityCollection(kind,name,items,filters,append=false){
   const entityTag=filters.tag||'';
   const section=$('#index').querySelector('.entitysection');if(!section)return;
   if(!append){
-    entityCollectionPage={items:[...(items.items||[])],total:items.total||0,has_more:!!items.has_more};
+    renderedPartGroups.clear();
+    entityCollectionPage={items:[...(items.items||[])],total:items.total||0,
+      has_more:items.has_more==null?(items.items||[]).length<(items.total||0):!!items.has_more};
     section.innerHTML=`<div class="entitycollectionhead"><h3></h3>${javActive()?javLayoutButtons():''}</div>
       <div class="grid"></div><button class="entitymore" type="button">载入更多</button>`;
     section.dataset.total=String(items.total||0);
@@ -2479,13 +2496,13 @@ function renderEntityCollection(kind,name,items,filters,append=false){
     entityCollectionPage.has_more=!!items.has_more;
   }
   const grid=section.querySelector('.grid');
-  grid.insertAdjacentHTML('beforeend',items.items.map(it=>cardHtml(it)).join(''));
+  grid.insertAdjacentHTML('beforeend',collapseMultipartItems(items.items).map(it=>cardHtml(it)).join(''));
   wireCards(grid,undefined,tag=>updateEntityCollection(
     kind,name,{...filters,tag:tag===entityTag?'':tag},true));
   const more=section.querySelector('.entitymore');
   more.hidden=!entityCollectionPage.has_more;
   const requestMore=async()=>{if(more.hidden||more.disabled)return;more.disabled=true;const seq=entityRequestSeq;
-    try{const next=await fetchEntityItems(kind,name,filters,grid.children.length);
+    try{const next=await fetchEntityItems(kind,name,filters,entityCollectionPage.items.length);
       if(seq===entityRequestSeq&&$('#index').dataset.entityKind===kind&&$('#index').dataset.entityName===name)
         renderEntityCollection(kind,name,next,filters,true)}
     finally{if(seq===entityRequestSeq)more.disabled=false}};
@@ -3196,7 +3213,7 @@ async function load(reset){
   try{
   if(reset){barsContext={type:'home',filters:state};detailReturnBarsContext=null;disposeStage(false)}
   showHomeSurfaces();
-  if(reset)offset=0;
+  if(reset){offset=0;renderedPartGroups.clear()}
   renderCombo();
   // 疑似广告是逐项处置队列，计数只是当前队列说明，不是需要跟随浏览的排序工具。
   const countRow=$('#count'),staticManageCount=state.state==='ads';
@@ -3230,7 +3247,7 @@ async function load(reset){
   if(reset)releaseHoverPreviews($('#grid'));
   if(reset)$('#grid').innerHTML=html; else $('#grid').insertAdjacentHTML('beforeend',html);
   renderCount();
-  $('#loadSentinel').hidden=$('#grid').querySelectorAll('[data-id]').length>=total;
+  $('#loadSentinel').hidden=reset?d.items.length>=total:!d.has_more;
   wireCards($('#grid'));
   wireMixCards($('#grid'));
   paintSelection();
@@ -3373,13 +3390,14 @@ async function loadShorts(requestSeq=loadRequestSeq){
 function queueHtml(queue,itemId){
   const action=queue.kind==='mix'
     ? `<button data-save-mix title="保存为播放列表" aria-label="保存为播放列表">${icon('bookmark-plus')}</button>`
-    : `<button data-edit-playlist title="编辑播放列表" aria-label="编辑播放列表">${icon('list-filter')}</button>`;
-  return `<aside class="mixqueue"><div class="mixqueuehead"><div><h2>${esc(queue.title)}</h2><span>${queue.items.length} 个视频</span></div><div class="mixqueueactions">${action}
+    : queue.kind==='playlist'?`<button data-edit-playlist title="编辑播放列表" aria-label="编辑播放列表">${icon('list-filter')}</button>`:'';
+  const countLabel=queue.kind==='parts'?`${queue.items.length} 卷`:`${queue.items.length} 个视频`;
+  return `<aside class="mixqueue"><div class="mixqueuehead"><div><h2>${esc(queue.title)}</h2><span>${countLabel}</span></div><div class="mixqueueactions">${action}
     <button data-queue-close title="关闭" aria-label="关闭">${icon('x')}</button></div></div><div class="mixlist">${queue.items.map((x,index)=>{
       const thumb=x.has_thumb?`<img src="/poster?id=${x.id}&c=4" alt="" loading="lazy">`:'';
       const edit=queue.kind==='playlist'?`<span class="queueedit"><button data-queue-up="${index}" aria-label="上移" ${index===0?'disabled':''}>↑</button><button data-queue-down="${index}" aria-label="下移" ${index===queue.items.length-1?'disabled':''}>↓</button><button data-queue-remove="${x.id}" aria-label="移出播放列表">${icon('x')}</button></span>`:'';
       return `<div class="mixrow"><button class="mixitem ${x.id===itemId?'current':''}" data-queue-item="${x.id}" aria-current="${x.id===itemId?'true':'false'}">
-        <span class="mixitempic">${thumb}<i class="dur mono">${fmtDur(x.duration)}</i></span><span class="mixitemtext"><b>${esc(x.name)}</b><span>${esc(mixLabel(x))}</span></span></button>${edit}</div>`;
+        <span class="mixitempic">${thumb}<i class="dur mono">${fmtDur(x.duration)}</i></span><span class="mixitemtext"><b>${esc(x.name)}</b><span>${queue.kind==='parts'?`第 ${esc(x.part_label)} 卷`:esc(mixLabel(x))}</span></span></button>${edit}</div>`;
     }).join('')}</div></aside>`;
 }
 async function buildMix(seedId){
@@ -3393,6 +3411,19 @@ async function openMix(seedId,itemId=seedId,push=true){
   const mix=previous||await buildMix(seedId);
   await openItem(itemId,false,mix);
   if(push)route(`/mix/${seedId}/${itemId}`);
+}
+async function openParts(seedId,itemId=seedId,push=true){
+  const previous=activeQueue?.kind==='parts'&&activeQueue.seedId===seedId?activeQueue:null;
+  if(push&&!previous)detailReturnPath=location.pathname+location.search;
+  let queue=previous;
+  if(!queue){
+    const group=await api('/api/parts?id='+seedId);
+    if(group.error){await openItem(itemId,true);return}
+    queue={kind:'parts',seedId,title:`分卷 · ${group.title}`,items:group.items};cache(queue.items);
+  }
+  const chosen=queue.items.some(item=>item.id===itemId)?itemId:queue.items[0].id;
+  await openItem(chosen,false,queue);
+  if(push)route(`/parts/${seedId}/${chosen}`);
 }
 async function openPlaylist(playlistId,itemId=null,push=true){
   if(push)detailReturnPath=location.pathname+location.search;
@@ -3537,6 +3568,7 @@ async function openItem(id,push=true,queueContext=null){
   $('#stage').querySelectorAll('[data-queue-close]').forEach(b=>b.onclick=closeDetail);
   $('#stage').querySelectorAll('[data-queue-item]').forEach(b=>b.onclick=()=>queueContext.kind==='mix'
     ?openMix(queueContext.seedId,+b.dataset.queueItem,true)
+    :queueContext.kind==='parts'?openParts(queueContext.seedId,+b.dataset.queueItem,true)
     :openPlaylist(queueContext.playlistId,+b.dataset.queueItem,true));
   $('#stage').querySelectorAll('[data-save-mix]').forEach(b=>b.onclick=()=>saveMixAsPlaylist(queueContext));
   $('#stage').querySelectorAll('[data-edit-playlist]').forEach(b=>b.onclick=()=>openPlaylists(true));
@@ -4119,6 +4151,7 @@ async function restoreRoute(){
   if(path==='/playlists'){await openPlaylists(false);return}
   if(parts[0]==='playlists'&&/^\d+$/.test(parts[1]||'')&&/^\d+$/.test(parts[2]||'')){await openPlaylist(+parts[1],+parts[2],false);return}
   if(parts[0]==='mix'&&/^\d+$/.test(parts[1]||'')&&/^\d+$/.test(parts[2]||'')){await openMix(+parts[1],+parts[2],false);return}
+  if(parts[0]==='parts'&&/^\d+$/.test(parts[1]||'')&&/^\d+$/.test(parts[2]||'')){await openParts(+parts[1],+parts[2],false);return}
   if(parts[0]==='item'&&/^\d+$/.test(parts[1]||'')){await openItem(+parts[1],false);return}
   if(parts[0]==='follow'&&parts[1]==='item'&&/^\d+$/.test(parts[2]||'')){await openFollowDetail(+parts[2],false);return}
   const entityKind=ROUTE_ENTITIES[parts[0]];

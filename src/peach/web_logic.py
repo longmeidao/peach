@@ -56,7 +56,7 @@ _CODE_DATE = re.compile(r"^\d{6}-\d{2,4}$")
 DUPLICATE_TOLERANCE = 0.005
 DUPLICATE_FLOOR_SECONDS = 15.0
 _PART_MARKER = re.compile(
-    r"(?:^|[^a-z0-9])(?:part|cd|disc|vol)?[-_ ]?([1-9]\d?|[a-h])(?=\.[a-z0-9]{2,4}$)",
+    r"(?:^|[^a-z0-9])(?:part|pt|cd|disc|disk|dvd|vol)?[-_ ]?([1-9]\d?|[a-h])(?=\.[a-z0-9]{2,4}$)",
     re.I,
 )
 
@@ -154,6 +154,30 @@ def part_marker(name: str) -> str:
     """Return a trailing multipart marker, if present."""
     match = _PART_MARKER.search(name or "")
     return match.group(1).lower() if match else ""
+
+
+def ordered_multipart_items(items: list[dict]) -> list[dict]:
+    """Return one unambiguous, contiguous multipart release in playback order.
+
+    Bare A/B and numeric suffixes are both common in the existing library.  A
+    repeated marker means that one part has duplicate encodes, while mixed
+    letter/number markers are ambiguous; neither case is safe to collapse into
+    one browsing card automatically.
+    """
+    marked = [(item, part_marker(str(item.get("name") or ""))) for item in items]
+    if len(marked) < 2 or any(not marker for _, marker in marked):
+        return []
+    markers = [marker for _, marker in marked]
+    if len(set(markers)) != len(markers):
+        return []
+    numeric = all(marker.isdigit() for marker in markers)
+    alphabetic = all(len(marker) == 1 and marker.isalpha() for marker in markers)
+    if not (numeric or alphabetic):
+        return []
+    positions = [int(marker) if numeric else ord(marker) - ord("a") + 1 for marker in markers]
+    if sorted(positions) != list(range(1, len(positions) + 1)):
+        return []
+    return [item for _, item in sorted(zip(positions, (item for item, _ in marked)))]
 
 
 def duration_clusters(items: list[dict]) -> list[list[dict]]:

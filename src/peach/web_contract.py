@@ -63,6 +63,7 @@ from .web_logic import (
     is_jav_asset,
     is_jav_code,
     normalise_code_key,
+    ordered_multipart_items,
     part_marker,
     tag_cat,
 )
@@ -410,6 +411,7 @@ def q_items(contract: WebContract, args):
             r["cover_frame"] = contract.cover_frame(r.get("code"))
         r.pop("snapshot_path", None)
         r.pop("path", None)                     # 路径不外发，串流走 id
+    attach_multipart_groups(contract, rows)
     return {"total": cnt, "items": rows, "has_more": has_more}
 
 def con_tags(contract: WebContract, ids, qm):
@@ -484,6 +486,86 @@ def attach_card_performers(contract: WebContract, rows):
         row["performers"] = names.get(row["id"], [])[:CARD_PERFORMERS]
         row["performer_entities"] = refs.get(row["id"], [])[:CARD_PERFORMERS]
         row["performer_total"] = len(names.get(row["id"], []))
+
+
+def _multipart_rows(contract: WebContract, codes) -> list[dict]:
+    raw_codes = sorted({str(code) for code in codes if str(code or "").strip()})
+    if not raw_codes:
+        return []
+    placeholders = ",".join("?" * len(raw_codes))
+    connection = contract.db()
+    try:
+        rows = [dict(row) for row in connection.execute(
+            "SELECT id,name,code,size,duration FROM asset "
+            f"WHERE medium='video' AND code IN ({placeholders}) "
+            "AND (disposal IS NULL OR disposal<>'trash')",
+            raw_codes,
+        )]
+    finally:
+        connection.close()
+    return [row for row in rows if part_marker(str(row.get("name") or ""))]
+
+
+def _multipart_groups(contract: WebContract, codes) -> dict[str, list[dict]]:
+    candidates: dict[str, list[dict]] = {}
+    for row in _multipart_rows(contract, codes):
+        candidates.setdefault(normalise_code_key(row.get("code")), []).append(row)
+    return {
+        code: ordered
+        for code, items in candidates.items()
+        if (ordered := ordered_multipart_items(items))
+    }
+
+
+def attach_multipart_groups(contract: WebContract, rows) -> None:
+    """Annotate list cards with one derived multipart release, without ledger writes."""
+    if not rows:
+        return
+    groups = _multipart_groups(
+        contract,
+        [row.get("code") for row in rows if part_marker(str(row.get("name") or ""))],
+    )
+    for row in rows:
+        code = normalise_code_key(row.get("code"))
+        group = groups.get(code)
+        if not group or not any(item["id"] == row["id"] for item in group):
+            continue
+        row["part_group"] = {
+            "key": code,
+            "title": code or str(row.get("code") or "分卷作品"),
+            "count": len(group),
+            "seed_id": group[0]["id"],
+            "item_ids": [item["id"] for item in group],
+            "total_duration": sum(float(item.get("duration") or 0) for item in group),
+            "total_size": sum(int(item.get("size") or 0) for item in group),
+        }
+
+
+def q_parts(contract: WebContract, args):
+    """Return an explicitly marked multipart release in playback order."""
+    asset_id = int(args["id"])
+    connection = contract.db()
+    try:
+        seed = connection.execute(
+            "SELECT id,code FROM asset WHERE id=? AND medium='video' "
+            "AND (disposal IS NULL OR disposal<>'trash')",
+            (asset_id,),
+        ).fetchone()
+    finally:
+        connection.close()
+    if not seed or not seed["code"]:
+        return {"error": "multipart release not found"}
+    code = normalise_code_key(seed["code"])
+    group = _multipart_groups(contract, [seed["code"]]).get(code, [])
+    if not group or not any(item["id"] == asset_id for item in group):
+        return {"error": "multipart release not found"}
+    items = []
+    for row in group:
+        item = q_item(contract, row["id"])
+        marker = part_marker(str(row.get("name") or ""))
+        item["part_label"] = marker.upper() if marker.isalpha() else marker
+        items.append(item)
+    return {"title": code or str(seed["code"]), "count": len(items), "items": items}
 
 def q_item(contract: WebContract, aid):
     """按 id 直取。
@@ -2619,6 +2701,7 @@ GET_HANDLERS = {
     "/api/follow/schedule": q_follow_schedule,
     "/api/items": q_items,
     "/api/item": _get_item,
+    "/api/parts": q_parts,
     "/api/entity": q_entity,
     "/api/photos": q_entity_photos,
     "/api/photo-set": q_photo_set,
