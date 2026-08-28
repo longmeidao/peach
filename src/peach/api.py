@@ -1,14 +1,19 @@
 import hmac
 import asyncio
 import html
+import hashlib
 import logging
+import os
+import re
 import subprocess
+import uuid
 import httpx
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from functools import partial
+from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, quote
+from urllib.parse import parse_qs, quote, unquote
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import (
@@ -16,6 +21,7 @@ from fastapi.responses import (
     StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
+from browserexport.common import BrowserexportError
 
 from . import __version__, web_contract, web_follow
 from .config import LOCATION_ROOT_DECLARATIONS, PROJECT_ROOT, PeachSettings
@@ -55,6 +61,7 @@ from .stash import StashClient
 from .streaming import CancellableFileResponse, StreamSessionRegistry
 from .sync import LedgerSync
 from .transcodes import TranscodeCancelled, TranscodeService, TranscodeUnavailable
+from .taste_history import analyze_history, import_history_exports, write_manifest
 
 
 LOGGER = logging.getLogger(__name__)
@@ -125,6 +132,10 @@ def create_app(
         avatar_root=settings.avatar_root,
         logo_root=settings.logo_root,
         follow_state_root=settings.follow_state_root,
+        taste_history_root=settings.taste_history_output_root,
+        taste_history_store=settings.taste_history_store,
+        taste_history_import_root=settings.taste_history_import_root,
+        taste_history_manifest=settings.taste_history_manifest,
         database=database,
     )
     repository = LedgerRepository(database)
@@ -767,6 +778,7 @@ def create_app(
     @app.api_route("/immerse", methods=["GET", "HEAD"])
     @app.api_route("/trash", methods=["GET", "HEAD"])
     @app.api_route("/review", methods=["GET", "HEAD"])
+    @app.api_route("/taste", methods=["GET", "HEAD"])
     @app.api_route("/duplicates", methods=["GET", "HEAD"])
     @app.api_route("/quality-goals", methods=["GET", "HEAD"])
     @app.api_route("/follow", methods=["GET", "HEAD"])
@@ -879,6 +891,70 @@ def create_app(
         except Exception:
             LOGGER.exception("unhandled GET contract error for /api/%s", route)
             return JSONResponse({"error": "internal server error"}, status_code=500)
+
+    @app.post("/api/taste/import")
+    async def taste_import(
+        request: Request,
+        _args: dict[str, str] = Depends(require_auth),
+    ):
+        """Stream one private history export to local storage, then import it.
+
+        This deliberately avoids multipart/form-data and its extra parser dependency.  The
+        browser sends the file bytes as-is and provides only a display filename header.
+        """
+        maximum = 1024 * 1024 * 1024
+        try:
+            declared = int(request.headers.get("content-length") or 0)
+        except ValueError:
+            declared = 0
+        if declared > maximum:
+            return JSONResponse({"error": "导出文件超过 1 GB"}, status_code=413)
+        filename = unquote(request.headers.get("x-peach-filename") or "history-export")
+        filename = re.sub(r"[^\w.()\-\u3400-\u9fff]+", "-", os.path.basename(filename)).strip(".-")
+        filename = filename[-160:] or "history-export"
+        root = contract.taste_history_import_root
+        root.mkdir(parents=True, exist_ok=True)
+        temporary = root / f".{uuid.uuid4().hex}.part"
+        imported_target: Path | None = None
+        digest = hashlib.sha256()
+        size = 0
+        try:
+            with temporary.open("xb") as handle:
+                async for chunk in request.stream():
+                    size += len(chunk)
+                    if size > maximum:
+                        raise OverflowError
+                    digest.update(chunk)
+                    handle.write(chunk)
+            if not size:
+                raise ValueError("导出文件为空")
+            target = root / f"{digest.hexdigest()[:12]}-{filename}"
+            if target.exists():
+                temporary.unlink()
+            else:
+                os.replace(temporary, target)
+                imported_target = target
+            results = await asyncio.to_thread(
+                import_history_exports, [target], contract.taste_history_store,
+            )
+            analysis = await asyncio.to_thread(
+                analyze_history, contract.taste_history_store, contract.taste_history_root,
+            )
+            write_manifest(contract.taste_history_manifest, results, analysis)
+            contract.cache_bust()
+            return {
+                "refresh": results,
+                "dashboard": web_contract.q_taste(contract, {"window": "all"}),
+            }
+        except OverflowError:
+            temporary.unlink(missing_ok=True)
+            return JSONResponse({"error": "导出文件超过 1 GB"}, status_code=413)
+        except (BrowserexportError, OSError, ValueError, TypeError) as exc:
+            temporary.unlink(missing_ok=True)
+            if imported_target is not None:
+                imported_target.unlink(missing_ok=True)
+            LOGGER.warning("taste history import rejected: %s", exc)
+            return JSONResponse({"error": str(exc)}, status_code=400)
 
     @app.post("/api/{route:path}")
     def api_post(

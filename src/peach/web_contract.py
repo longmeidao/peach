@@ -14,6 +14,7 @@ import re
 import threading
 import time
 import uuid
+from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
 from typing import Sequence
 from urllib.parse import quote, urlsplit
@@ -39,6 +40,14 @@ from .platform import (
     translate_ledger_path,
 )
 from .repository import LedgerDatabase
+from .taste_history import (
+    analyze_history,
+    build_taste_dashboard,
+    discover_history_sources,
+    refresh_history,
+    remove_history_source,
+    write_manifest,
+)
 from .web_follow import (
     q_follow, q_follow_credentials, q_follow_schedule,
     w_follow_check, w_follow_credential, w_follow_resolve, w_follow_schedule,
@@ -104,6 +113,9 @@ class WebContract:
                  follow_state_root: Path | None = None,
                  follow_shared_root: Path | None = None,
                  taste_history_root: Path | None = None,
+                 taste_history_store: Path | None = None,
+                 taste_history_import_root: Path | None = None,
+                 taste_history_manifest: Path | None = None,
                  database: LedgerDatabase | None = None):
         # 候选 CSV 的目录做成实例属性而不是模块常量，复核层才能在临时目录里被测试。
         self.candidate_root = Path(candidate_root) if candidate_root is not None else GENERATED_DIR
@@ -125,6 +137,15 @@ class WebContract:
         self.taste_history_root = (Path(taste_history_root)
                                    if taste_history_root is not None
                                    else DATA_ROOT / "review" / "taste-history")
+        self.taste_history_store = (Path(taste_history_store)
+                                    if taste_history_store is not None
+                                    else SOURCES_DIR / "taste-history" / "history.sqlite")
+        self.taste_history_import_root = (Path(taste_history_import_root)
+                                          if taste_history_import_root is not None
+                                          else SOURCES_DIR / "taste-history" / "imports")
+        self.taste_history_manifest = (Path(taste_history_manifest)
+                                       if taste_history_manifest is not None
+                                       else STATE_DIR / "taste-history" / "manifest.json")
         self.database = database or LedgerDatabase(db_path)
         self.db_path = self.database.db_path
         self.snapshot_root = Path(snapshot_root) if snapshot_root is not None else None
@@ -447,6 +468,74 @@ def q_search_history(contract: WebContract, limit: int = 10):
     finally:
         connection.close()
     return {"items": [row["query"] for row in rows]}
+
+
+TASTE_WINDOWS = {"all": None, "90d": 90, "365d": 365}
+
+
+def _taste_since(window: str) -> str | None:
+    if window not in TASTE_WINDOWS:
+        raise ValueError("invalid taste window")
+    days = TASTE_WINDOWS[window]
+    return (datetime.now(UTC) - timedelta(days=days)).isoformat() if days else None
+
+
+def q_taste(contract: WebContract, args=None):
+    args = args or {}
+    window = str(args.get("window") or "all")
+    with contract.read_connection() as connection:
+        payload = build_taste_dashboard(
+            contract.taste_history_store,
+            connection,
+            since=_taste_since(window),
+        )
+    updated_at = None
+    try:
+        manifest = json.loads(contract.taste_history_manifest.read_text(encoding="utf-8"))
+        updated_at = manifest.get("updated_at")
+    except (OSError, ValueError, TypeError):
+        pass
+    export_count = export_bytes = 0
+    try:
+        for path in contract.taste_history_import_root.iterdir():
+            if path.is_file() and not path.name.endswith(".part"):
+                export_count += 1
+                export_bytes += path.stat().st_size
+    except OSError:
+        pass
+    payload.update({
+        "window": window,
+        "updated_at": updated_at,
+        "storage": {"exports": export_count, "bytes": export_bytes},
+    })
+    return payload
+
+
+def w_taste_refresh(contract: WebContract, body):
+    window = str(body.get("window") or "all")
+    sources = discover_history_sources()
+    results = refresh_history(sources, contract.taste_history_store) if sources else []
+    if contract.taste_history_store.is_file():
+        analysis = analyze_history(contract.taste_history_store, contract.taste_history_root)
+        write_manifest(contract.taste_history_manifest, results, analysis)
+    contract.cache_bust()
+    return {"refresh": results, "dashboard": q_taste(contract, {"window": window})}
+
+
+def w_taste_source(contract: WebContract, body):
+    if body.get("operation") != "remove":
+        raise ValueError("invalid taste source operation")
+    source_key = str(body.get("source_key") or "")
+    if not re.fullmatch(r"[0-9a-f]{64}", source_key):
+        raise ValueError("invalid taste source key")
+    removed = remove_history_source(contract.taste_history_store, source_key)
+    analysis = analyze_history(contract.taste_history_store, contract.taste_history_root)
+    write_manifest(contract.taste_history_manifest, [{"removed": removed}], analysis)
+    contract.cache_bust()
+    return {
+        "removed": removed,
+        "dashboard": q_taste(contract, {"window": str(body.get("window") or "all")}),
+    }
 
 
 def w_search_history(contract: WebContract, body):
@@ -2687,6 +2776,14 @@ def _get_search_history(contract, args):
     return q_search_history(contract, int(args.get("limit", "10")))
 
 
+def _get_taste(contract, args):
+    window = str(args.get("window") or "all")
+    return contract.cached(
+        f"taste:{window}",
+        lambda: q_taste(contract, {"window": window}),
+    )
+
+
 def _get_review(contract, _args):
     return contract.cached("review", lambda: q_review(contract))
 
@@ -2716,6 +2813,7 @@ GET_HANDLERS = {
     "/api/playlist": q_playlist,
     "/api/facets": _get_facets,
     "/api/search-history": _get_search_history,
+    "/api/taste": _get_taste,
     "/api/review": _get_review,
 }
 
@@ -2738,6 +2836,8 @@ POST_HANDLERS = {
     "/api/item-tag": w_item_tag,
     "/api/batch": w_batch,
     "/api/search-history": w_search_history,
+    "/api/taste/refresh": w_taste_refresh,
+    "/api/taste/source": w_taste_source,
     "/api/trash/empty": _post_empty_trash,
     "/api/purge-missing": w_purge_missing,
     "/api/review/auto-apply": w_review_auto_apply,
@@ -2750,6 +2850,7 @@ POST_HANDLERS = {
 #: 追更的「查找」在只读端被拦成 409 是实测踩到的。
 READ_ONLY_POST_ROUTES = frozenset({
     "/api/follow/resolve", "/api/follow/credential",
+    "/api/taste/refresh", "/api/taste/source",
 })
 
 

@@ -91,7 +91,7 @@
 
 | 当前能力 | 判断 | 已验证证据与 Peach 边界 |
 |---|---|---|
-| `taste_history.py` 自写 Chrome/Firefox/Zen/Safari 发现、快照与 SQLite 解析 | **优先替换为 `browserexport==0.4.4`** | Python 3.14 依赖解析通过；在本机 7 个 Chrome/Firefox/Zen profile 上与 Peach 逐库计数完全一致。Peach 保留 Takeout、隐私存储、域名分析和 candidate 生成。 |
+| `taste_history.py` 自写 Chrome/Firefox/Zen/Safari SQLite 解析 | **已替换为 `browserexport==0.4.4`** | Python 3.14 依赖解析通过；审计 POC 在本机 7 个 Chrome/Firefox/Zen profile 上与 Peach 逐库计数完全一致。首个消费者是 `/taste` 的本机读取与导出导入；Peach 保留 SQLite backup、Takeout、私有原始存储、域名分析和 candidate 生成，并在 Windows 自己关闭只读连接以避开依赖的文件句柄滞留。 |
 | `jobs.PidFileLock` | **优先替换为 `portalocker==4.3.0` 的 `PidFileLock`** | Python 3.14 解析通过，现成覆盖 PID 写入、锁持有者、原子替换、陈旧文件与释放清理。Peach 只保留任务归属和错误文案映射。 |
 | Rule34Video 媒体页解析 | **部分替换为 `yt-dlp==2026.8.19`** | 对真实视频 4533145 无写入提取成功，取得 4 个格式、31 个标签、缩略图与时间。Peach 仍负责作者分页、合集/超多 model 排除、来源分组和跨站去重。 |
 | FANBOX 正文解析 | **已采用 PixivUtil2 `v20251112` / `e537e96` 的公开正文模型** | Peach 的独立规范化 DTO 已覆盖 image/text/file/article/video/entry、`fileMap`、`embedMap`、`urlEmbedMap` 和旧 HTML 正文，并保留正文顺序、稳定去重、可播放媒体与文件页边界；BSD-2-Clause 依据写在实现头部。PixivUtil2 是完整下载器而非可嵌入解析库，因此不引入整套依赖；传输继续固定 `curl_cffi==0.16.2`。真实公开帖 12228983 只读 POC 得到 article、6 图和 Gofile `OS2Qz9`。 |
@@ -101,5 +101,5 @@
 | Gofile API | **保留直接 HTTP** | 官方没有维护中的 Python SDK；社区 wrapper 只是薄封装，不能绕过 Premium `contents` 权限，也不能减少 Peach 的 Bearer 隔离与媒体规范化。 |
 | `netwatch.py`、streaming/segments、sync、versioning/Windows update | **保留现有边界** | 分别是无 PyObjC 的系统通知、FFmpeg/Starlette 上的会话策略、单 writer ledger 规则和 Git/PyInstaller 更新契约；通用替代会保留同量 policy 或扩大依赖。 |
 
-FANBOX、浏览器历史、PID 锁和 Rule34Video 依次进入替换实施；其余保留项在约束改变或候选实现更新时
+FANBOX 与浏览器历史替换已完成；PID 锁和 Rule34Video 依次进入替换实施。其余保留项在约束改变或候选实现更新时
 重新跑 POC，不因本表结论永久豁免外部检索。

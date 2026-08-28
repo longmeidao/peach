@@ -12,7 +12,9 @@ from urllib.parse import quote
 from peach.taste_history import (
     HistorySource,
     analyze_history,
+    build_taste_dashboard,
     discover_history_sources,
+    import_history_exports,
     refresh_history,
     refresh_takeout_history,
 )
@@ -30,10 +32,11 @@ class TasteHistoryTests(unittest.TestCase):
         path.parent.mkdir(parents=True)
         with closing(sqlite3.connect(path)) as db:
             db.executescript(
-                "CREATE TABLE moz_places(id INTEGER PRIMARY KEY, url TEXT, title TEXT);"
+                "CREATE TABLE moz_places(id INTEGER PRIMARY KEY, url TEXT, title TEXT, "
+                "description TEXT, preview_image_url TEXT);"
                 "CREATE TABLE moz_historyvisits(id INTEGER PRIMARY KEY, place_id INTEGER, visit_date INTEGER);"
             )
-            db.execute("INSERT INTO moz_places VALUES (1, ?, ?)", ("https://rule34.xxx/search?tags=feet+cosplay", "secret"))
+            db.execute("INSERT INTO moz_places VALUES (1, ?, ?, NULL, NULL)", ("https://rule34.xxx/search?tags=feet+cosplay", "secret"))
             db.execute("INSERT INTO moz_historyvisits VALUES (1, 1, 1700000000000000)")
             db.commit()
 
@@ -42,10 +45,10 @@ class TasteHistoryTests(unittest.TestCase):
         with closing(sqlite3.connect(path)) as db:
             db.executescript(
                 "CREATE TABLE urls(id INTEGER PRIMARY KEY, url TEXT, title TEXT);"
-                "CREATE TABLE visits(id INTEGER PRIMARY KEY, url INTEGER, visit_time INTEGER);"
+                "CREATE TABLE visits(id INTEGER PRIMARY KEY, url INTEGER, visit_time INTEGER, visit_duration INTEGER);"
             )
             db.execute("INSERT INTO urls VALUES (1, ?, ?)", ("https://onlyfans.com/creator_name", "private title"))
-            db.execute("INSERT INTO visits VALUES (2, 1, 13344473600000000)")
+            db.execute("INSERT INTO visits VALUES (2, 1, 13344473600000000, 0)")
             db.commit()
 
     def _safari_db(self, path: Path) -> None:
@@ -162,6 +165,54 @@ class TasteHistoryTests(unittest.TestCase):
         report = Path(result["report"]).read_text(encoding="utf-8")
         self.assertNotIn("https://", report)
         self.assertNotIn("private takeout title", report)
+
+    def test_browserexport_json_and_peach_behavior_build_one_private_dashboard(self):
+        exported = self.root / "history.json"
+        exported.write_text(json.dumps([
+            {
+                "url": "https://rule34.xxx/index.php?page=post&s=list&tags=feet",
+                "dt": 1_700_000_000,
+                "metadata": {"title": "private", "description": None,
+                             "preview_image": None, "duration": None},
+            },
+            {
+                "url": "https://onlyfans.com/alice",
+                "dt": 1_700_000_100,
+                "metadata": None,
+            },
+        ]), encoding="utf-8")
+        store = self.root / "sources" / "history.sqlite"
+        imported = import_history_exports([exported], store, host="test-host")
+        self.assertEqual(imported[0]["added"], 2)
+
+        ledger = self.root / "ledger.db"
+        with closing(sqlite3.connect(ledger)) as db:
+            db.row_factory = sqlite3.Row
+            db.executescript(
+                "CREATE TABLE asset(id INTEGER PRIMARY KEY,creator TEXT,studio TEXT,play_count INTEGER,"
+                "play_seconds REAL,o_count INTEGER,rating INTEGER,feedback TEXT,last_played REAL);"
+                "CREATE TABLE asset_preference(profile_id TEXT,asset_id INTEGER,liked INTEGER);"
+                "CREATE TABLE entity(id INTEGER PRIMARY KEY,kind TEXT,canonical_name TEXT,normalized_name TEXT);"
+                "CREATE TABLE asset_entity(asset_id INTEGER,entity_id INTEGER);"
+            )
+            db.execute("INSERT INTO asset VALUES(1,'Alice','Studio',2,600,1,80,NULL,1700000200)")
+            db.execute("INSERT INTO asset_preference VALUES('local-default',1,1)")
+            db.execute("INSERT INTO entity VALUES(1,'tag','feet','feet')")
+            db.execute("INSERT INTO entity VALUES(2,'creator','Alice','alice')")
+            db.execute("INSERT INTO asset_entity VALUES(1,1)")
+            db.execute("INSERT INTO asset_entity VALUES(1,2)")
+            db.commit()
+            dashboard = build_taste_dashboard(store, db)
+
+        self.assertEqual(dashboard["summary"]["history_visits"], 2)
+        self.assertEqual(dashboard["summary"]["peach_items"], 1)
+        feet = dashboard["rankings"]["tags"][0]
+        self.assertEqual(feet["name"], "feet")
+        self.assertEqual(feet["web_visits"], 1)
+        self.assertEqual(feet["peach_items"], 1)
+        alice = dashboard["rankings"]["creators"][0]
+        self.assertEqual(alice["evidence"], ["浏览记录", "Peach"])
+        self.assertNotIn("url", json.dumps(dashboard).casefold())
 
 
 if __name__ == "__main__":

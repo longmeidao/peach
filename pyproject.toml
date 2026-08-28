@@ -10,6 +10,7 @@ requires-python = ">=3.12"
 dependencies = [
   "APScheduler==3.11.3",
   "beautifulsoup4==4.15.0",
+  "browserexport==0.4.4",
   "curl_cffi==0.16.2",
   "fastapi==0.116.1",
   "feedparser==6.0.12",

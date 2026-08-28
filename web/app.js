@@ -12,7 +12,7 @@ const api=async(p,o)=>{
 };
 const pageTitle=path=>{
   const url=new URL(path,location.origin),parts=decodeURIComponent(url.pathname).split('/').filter(Boolean);
-  const fixed={stats:'统计',review:'人工复核',duplicates:'重复文件','quality-goals':'高清版',
+  const fixed={stats:'统计',taste:'品味',review:'人工复核',duplicates:'重复文件','quality-goals':'高清版',
     follow:'关注','follow-manage':'关注管理',playlists:'播放列表',performers:'女优',studios:'厂牌',
     creators:'创作者',series:'系列',tags:'标签',unseen:'没看过','watch-later':'稍后看',flagged:'已标记',
     immerse:'沉浸模式',mix:'Mix',item:'作品'};
@@ -1007,6 +1007,93 @@ function showHomeSurfaces(){
   buildManageBar();paintListTitle();   // 放在最后：管理区要盖掉上面刚恢复的首页横条
 }
 function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
+
+let tasteWindow='all';
+const tasteDate=value=>value?new Date(value).toLocaleDateString('zh-CN'):'—';
+const tasteHours=seconds=>seconds>=3600?(seconds/3600).toFixed(1)+' 小时':Math.round(seconds/60)+' 分钟';
+const tasteRanking=(title,rows,kind,empty='暂无足够证据')=>`<section class="tastepanel"><h3>${title}</h3>
+  <div class="tasteranks">${rows.length?rows.map((row,index)=>{
+    const clickable=kind&&row.peach_items>0;
+    const detail=row.web_visits!=null
+      ?`${row.evidence.join(' + ')} · 浏览 ${row.web_visits} · Peach ${row.peach_items}`
+      :`${Number(row.score||row.visits||0).toLocaleString()}`;
+    return `<${clickable?'button':'div'} class="tasterank"${clickable?` data-taste-kind="${kind}" data-taste-name="${esc(row.name)}"`:''}>
+      <span class="tastepos mono">${index+1}</span><span><b>${esc(row.name)}</b><small>${esc(detail)}</small></span>
+      ${clickable?icon('chevron-right'):''}</${clickable?'button':'div'}>`}).join(''):`<p class="empty">${empty}</p>`}</div></section>`;
+function openTasteSignal(kind,name){
+  if(kind==='tag'){
+    state={...state,tag:name,tag_match:'all',creator:'',studio:'',q:'',state:'',orient:''};
+    $('#q').value='';route(homePath());showHomeSurfaces();buildBars();load(true);return
+  }
+  openEntity(kind,name);
+}
+function renderTaste(d){
+  const s=d.summary||{},coverage=d.coverage||{},rank=d.rankings||{},storage=d.storage||{};
+  const summary=(label,value,sub)=>`<div class="tastesummary"><span>${label}</span><b>${value}</b><small>${sub}</small></div>`;
+  const sourceRows=(d.sources||[]).map(source=>`<div class="tastesource">
+    <span class="tastebrowser">${icon(source.browser==='browserexport'?'upload':'database')}</span>
+    <span><b>${esc(source.profile)}</b><small>${esc(source.browser)} · ${esc(source.host)} · ${Number(source.visits||0).toLocaleString()} 条</small></span>
+    <button data-taste-remove="${source.source_key}" title="移除分析记录" aria-label="移除 ${esc(source.profile)}">${icon('trash')}</button></div>`).join('');
+  const gapRows=(d.gaps||[]).map(row=>({...row,evidence:['浏览记录']}));
+  const domainRows=(rank.domains||[]).map(row=>({name:row.name,score:row.visits}));
+  const categoryRows=(rank.categories||[]).map(row=>({name:row.name,score:row.score}));
+  const negativeRows=(rank.negative_tags||[]).map(row=>({name:row.name,score:row.disliked_items}));
+  $('#stats').innerHTML=`<div class="tastepage">
+    <header class="tastehead"><div><p>${d.updated_at?`更新于 ${tasteDate(d.updated_at)}`:'尚未采集浏览记录'}</p></div>
+      <div class="tasteactions"><select data-taste-window aria-label="分析范围">
+        <option value="all">全部时间</option><option value="365d">最近一年</option><option value="90d">最近 90 天</option></select>
+        <button data-taste-refresh>${icon('refresh-cw')}读取本机浏览器</button>
+        <button data-taste-import>${icon('upload')}导入历史</button><input data-taste-file type="file" hidden></div></header>
+    <div class="tastestate" data-taste-state role="status" aria-live="polite"></div>
+    <div class="tastesummaries">
+      ${summary('浏览记录',Number(s.history_visits||0).toLocaleString(),`${s.history_sources||0} 个数据源 · ${tasteDate(s.range_start)}—${tasteDate(s.range_end)}`)}
+      ${summary('Peach 看过',Number(s.peach_items||0).toLocaleString(),tasteHours(s.peach_seconds||0))}
+      ${summary('明确反馈',Number(s.liked||0).toLocaleString(),`喜欢 ${s.liked||0} · 不喜欢 ${s.disliked||0}`)}
+      ${summary('私有导出',Number(storage.exports||0).toLocaleString(),fmtSize(storage.bytes||0))}</div>
+    <div class="tastegrid">
+      ${tasteRanking('口味维度',categoryRows,'')}
+      ${tasteRanking('Tag',rank.tags||[],'tag')}
+      ${tasteRanking('创作者',rank.creators||[],'creator')}
+      ${tasteRanking('女优',rank.performers||[],'performer')}
+      ${tasteRanking('浏览候选',gapRows,'','这些词在浏览记录中出现，但 Peach 观看记录还没有对应证据')}
+      ${tasteRanking('常访问来源',domainRows,'')}
+      ${tasteRanking('不合口味',negativeRows,'','Peach 里还没有明确的不喜欢标签')}
+      <section class="tastepanel"><h3>数据完整度</h3><div class="tastecoverage">
+        <div><b>${coverage.tagged||0}</b><span>有标签</span><small>${coverage.untagged||0} 项待补</small></div>
+        <div><b>${coverage.identified||0}</b><span>有身份</span><small>${coverage.unidentified||0} 项待补</small></div></div></section>
+    </div>
+    <section class="tastepanel tastesources"><header><h3>数据源</h3><p>移除只清理分析库；原始导出仍保留在本机私有 sources。</p></header>
+      <div>${sourceRows||'<p class="empty">导入 Google Takeout ZIP、browserexport SQLite / JSON / JSONL，或读取本机浏览器。</p>'}</div></section>
+    <p class="tasteprivacy">原始 URL、标题与搜索内容不会显示在页面，也不会写入 ledger；所有画像均为候选。</p>
+  </div>`;
+  const root=$('#stats'),stateEl=root.querySelector('[data-taste-state]'),file=root.querySelector('[data-taste-file]');
+  root.querySelector('[data-taste-window]').value=d.window||tasteWindow;
+  root.querySelector('[data-taste-window]').onchange=e=>{tasteWindow=e.target.value;openTaste(false)};
+  root.querySelector('[data-taste-refresh]').onclick=async e=>{const button=e.currentTarget;button.disabled=true;stateEl.textContent='正在读取本机浏览器…';
+    try{const result=await api('/api/taste/refresh',{method:'POST',body:JSON.stringify({window:tasteWindow})});renderTaste(result.dashboard)}
+    catch(error){stateEl.textContent=error.message||'读取失败';button.disabled=false}};
+  root.querySelector('[data-taste-import]').onclick=()=>file.click();
+  file.onchange=async()=>{const selected=file.files[0];if(!selected)return;stateEl.textContent=`正在导入 ${selected.name}…`;
+    try{const response=await fetch('/api/taste/import',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Peach-Filename':encodeURIComponent(selected.name)},body:selected});
+      const payload=await response.json().catch(()=>null);if(!response.ok)throw new Error(payload?.error||`导入失败（${response.status}）`);
+      tasteWindow='all';renderTaste(payload.dashboard)}catch(error){stateEl.textContent=error.message||'导入失败'}};
+  root.querySelectorAll('[data-taste-kind]').forEach(button=>button.onclick=()=>openTasteSignal(button.dataset.tasteKind,button.dataset.tasteName));
+  root.querySelectorAll('[data-taste-remove]').forEach(button=>button.onclick=async()=>{
+    if(!confirm('从品味分析中移除这个数据源？原始导出文件会保留。'))return;
+    button.disabled=true;stateEl.textContent='正在移除…';
+    try{const result=await api('/api/taste/source',{method:'POST',body:JSON.stringify({operation:'remove',source_key:button.dataset.tasteRemove,window:tasteWindow})});renderTaste(result.dashboard)}
+    catch(error){stateEl.textContent=error.message||'移除失败';button.disabled=false}});
+}
+async function openTaste(push=true){
+  releaseHoverPreviews();disposeStage(false);document.body.classList.remove('entity-open');
+  if(push)route('/taste');
+  $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';$('#count').textContent='';
+  $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;buildManageBar();
+  $('#stats').innerHTML='<div class="tastepage"><p class="empty">正在分析…</p></div>';
+  try{const data=await api('/api/taste?window='+tasteWindow);if(location.pathname==='/taste')renderTaste(data)}
+  catch(error){$('#stats').innerHTML=`<div class="tastepage"><p class="empty">${esc(error.message||'分析未取得')}</p></div>`}
+  window.scrollTo({top:0,behavior:'smooth'});
+}
 
 function playlistDialog(content){
   document.querySelector('#playlistDialog')?.remove();
@@ -2883,6 +2970,7 @@ const EDGE_ICONS=[
    原先把它夹在高清版和回收站中间，两边都不挨着。 */
 const MANAGE_SECTIONS=[
   ['stats','统计','chart'],
+  ['taste','品味','heart'],
   ['review','人工复核','square-check-big'],
   ['ads','疑似广告','alert'],
   ['dupes','重复文件','hard-drive'],
@@ -2996,6 +3084,7 @@ function renderSidebarOrderSetting(){
 function manageSection(){
   const path=decodeURIComponent(location.pathname);
   if(path==='/stats')return 'stats';
+  if(path==='/taste')return 'taste';
   if(path==='/review')return 'review';
   if(path==='/trash')return 'trash';
   if(path==='/duplicates')return 'dupes';
@@ -3033,6 +3122,7 @@ function paintListTitle(){
 }
 function openManage(section='stats'){
   if(section==='stats'){openStats();return}
+  if(section==='taste'){openTaste();return}
   if(section==='review'){openReview();return}
   if(section==='dupes'){openDuplicates();return}
   if(section==='quality'){openQualityGoals();return}
@@ -4087,6 +4177,7 @@ async function refreshAll(automatic=false){
       !$('#stage').hidden||!$('#tok').hidden||selectMode||selected.size||document.activeElement===$('#q')))return false;
   if(!$('#stats').hidden){
     if(location.pathname==='/review'){await openReview(false);return}
+    if(location.pathname==='/taste'){await openTaste(false);return}
     if(location.pathname==='/duplicates'){await openDuplicates(false);return}
     if(location.pathname==='/quality-goals'){await openQualityGoals(false);return}
     if(location.pathname==='/playlists'){await openPlaylists(false);return}
@@ -4164,6 +4255,7 @@ async function restoreRoute(){
       tagIndexCategory=TAG_CATEGORIES.some(([key])=>key===category)?category:'all'}
     await openIndex(path.slice(1),params.get('q')||'',false);return}
   if(path==='/stats'){await openStats(false);return}
+  if(path==='/taste'){await openTaste(false);return}
   if(path==='/review'){await openReview(false);return}
   if(path==='/duplicates'){await openDuplicates(false);return}
   if(path==='/quality-goals'){await openQualityGoals(false);return}
