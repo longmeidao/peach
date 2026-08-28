@@ -579,8 +579,26 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("原始 URL、标题与搜索内容不会显示在页面")
         self.assertPageContains("data-taste-window")
         self.assertPageContains("data-taste-remove")
-        self.assertPageContains(".tastegrid{display:grid")
+        self.assertPageContains("<h2>浏览器记录</h2>")
+        self.assertPageContains("<h2>Peach 内部</h2>")
+        self.assertPageContains("不自动给 Tag 降权")
+        self.assertPageContains("rank.browser_tags||[]")
+        self.assertPageContains("rank.peach_performers||rank.performers||[]")
+        self.assertPageContains("visual==='domain'")
+        self.assertPageContains("avatarInner(row.name,ref,rep,visual)")
+        self.assertPageLacks("negative_tags")
+        self.assertPageContains(".tastegrid{display:grid;grid-template-columns:repeat(12")
+        self.assertPageContains(".tastepanel-wide{grid-column:span 8}")
         self.assertPageContains("@media(max-width:640px){.tastehead")
+
+    def test_taste_drilldown_and_legacy_duration_tags_never_leak_filter_state(self):
+        self.assertPageContains("const cleanTagFilter=value=>")
+        self.assertPageContains("tag:cleanTagFilter(initialParams.get('tag'))")
+        self.assertPageContains("tag:cleanTagFilter(params.get('tag'))")
+        self.assertPageContains("state={...state,creator:'',studio:'',tag:'',tag_match:'all'")
+
+    def test_sidebar_add_controls_have_one_explicit_height(self):
+        self.assertPageContains(".sidebaradd select,.sidebaradd button{height:42px;box-sizing:border-box}")
 
     def test_edge_and_drawer_share_one_navigation_dispatch(self):
         """窄栏和抽屉各写一份分支时，抽屉那份漏了追更和播放列表。

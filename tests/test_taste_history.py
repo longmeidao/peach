@@ -199,8 +199,12 @@ class TasteHistoryTests(unittest.TestCase):
             db.execute("INSERT INTO asset_preference VALUES('local-default',1,1)")
             db.execute("INSERT INTO entity VALUES(1,'tag','feet','feet')")
             db.execute("INSERT INTO entity VALUES(2,'creator','Alice','alice')")
+            db.execute("INSERT INTO entity VALUES(3,'tag','中片-10分内','中片-10分内')")
+            db.execute("INSERT INTO entity VALUES(4,'performer','Bob','bob')")
             db.execute("INSERT INTO asset_entity VALUES(1,1)")
             db.execute("INSERT INTO asset_entity VALUES(1,2)")
+            db.execute("INSERT INTO asset_entity VALUES(1,3)")
+            db.execute("INSERT INTO asset_entity VALUES(1,4)")
             db.commit()
             dashboard = build_taste_dashboard(store, db)
 
@@ -212,6 +216,13 @@ class TasteHistoryTests(unittest.TestCase):
         self.assertEqual(feet["peach_items"], 1)
         alice = dashboard["rankings"]["creators"][0]
         self.assertEqual(alice["evidence"], ["浏览记录", "Peach"])
+        self.assertEqual(alice["entity_id"], 2)
+        self.assertEqual(dashboard["rankings"]["browser_creators"][0]["name"], "Alice")
+        self.assertEqual(dashboard["rankings"]["peach_creators"][0]["name"], "Alice")
+        self.assertEqual(dashboard["rankings"]["peach_performers"][0]["entity_id"], 4)
+        self.assertNotIn("中片-10分内", json.dumps(dashboard, ensure_ascii=False))
+        self.assertNotIn("negative_tags", dashboard["rankings"])
+        self.assertTrue(dashboard["privacy"]["dislikes_do_not_downrank_tags"])
         self.assertNotIn("url", json.dumps(dashboard).casefold())
 
 
