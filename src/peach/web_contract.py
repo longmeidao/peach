@@ -1208,13 +1208,14 @@ def q_entity_photos(contract: WebContract, args):
             "AND (a.disposal IS NULL OR a.disposal<>'trash')",
             (row["id"],),
         ).fetchone()[0]
-        items = [{"id": item["id"], "name": item["name"], "size": item["size"] or 0}
+        items = [{"id": item["id"], "name": item["name"], "size": item["size"] or 0,
+                  "location": item["location"]}
                  for item in c.execute(
-                     f"SELECT a.id,a.name,a.size,{PHOTO_DIR} dir "
+                     f"SELECT a.id,a.name,a.size,a.location,{PHOTO_DIR} dir "
                      "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
                      "WHERE ae.entity_id=? AND a.medium='image' AND a.name IS NOT NULL "
                      "AND (a.disposal IS NULL OR a.disposal<>'trash') "
-                     f"GROUP BY a.id,a.name,a.size,{PHOTO_DIR} "
+                     f"GROUP BY a.id,a.name,a.size,a.location,{PHOTO_DIR} "
                      "ORDER BY dir,a.name,a.id LIMIT ? OFFSET ?",
                      (row["id"], limit, offset),
                  )]
@@ -1250,9 +1251,10 @@ def q_photo_set(contract: WebContract, args):
             f"AND {PHOTO_DIR}=? AND a.location=? "
             "AND (a.disposal IS NULL OR a.disposal<>'trash')", par,
         ).fetchone()[0]
-        items = [{"id": item["id"], "name": item["name"], "size": item["size"] or 0}
+        items = [{"id": item["id"], "name": item["name"], "size": item["size"] or 0,
+                  "location": item["location"]}
                  for item in c.execute(
-                     f"SELECT a.id,a.name,a.size FROM asset a WHERE a.medium='image' "
+                     f"SELECT a.id,a.name,a.size,a.location FROM asset a WHERE a.medium='image' "
                      f"AND a.name IS NOT NULL AND {PHOTO_DIR}=? AND a.location=? "
                      "AND (a.disposal IS NULL OR a.disposal<>'trash') "
                      "ORDER BY a.name,a.id LIMIT ? OFFSET ?",

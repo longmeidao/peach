@@ -574,7 +574,9 @@ function coverImage(it,layout){
     alt="" loading="lazy"${y?` style="${y}"`:''} ${COVER_FRAME} onerror="this.remove()">`;
 }
 function cardHtml(it,cls){
-  const jav=javActive(),layout=javLayout();
+  /* 资料页可能同时收录番号和非番号作品；版式按钮属于页面，但封套比例只施加给
+     真实 `is_jav` 卡片，不能把同页的创作者视频也拉成竖封。 */
+  const jav=javActive()&&!!it.is_jav,layout=javLayout();
   const parts=it.part_group||null;
   const useCover=jav&&layout!=='preview'&&it.has_cover;
   /* 卡片比例。这个值以前算出来就没人用过——`.pic` 一直写死 16/9，于是 JAV 的两种
@@ -666,7 +668,7 @@ function mixLabel(it){
   return (it.is_jav&&performer?performer:it.creator)||performer||it.studio||it.code||tagLabel((it.tags||[])[0])||'为你推荐';
 }
 function mixCardHtml(it){
-  const jav=javActive(),layout=javLayout();
+  const jav=javActive()&&!!it.is_jav,layout=javLayout();
   const useCover=jav&&layout!=='preview'&&it.has_cover;
   const ar=jav&&layout==='big'?COVER_FRONT_RATIO:16/9;
   const thumb=useCover
@@ -2701,7 +2703,7 @@ const ENTITY_LABELS={performer:'艺人',studio:'厂牌',creator:'创作者',seri
 /* 「女优」只用于番号发行物。素人、创作者自制和网红内容里的出镜者是艺人，
    套上 JAV 的行业称谓既不准确也会和创作者身份混淆。判据由后端 `is_jav` 给。 */
 const performerLabel=it=>it&&it.is_jav?'女优':'艺人';
-let entityRequestSeq=0;
+let entityRequestSeq=0,entityJavLayout=false;
 async function fetchEntityItems(kind,name,filters,offset=0){
   const p=new URLSearchParams();p.set(kind,name);p.set('limit','48');p.set('offset',String(offset));
   p.set('sort',filters.sort||'new');
@@ -2970,6 +2972,28 @@ function wirePhotoZoom(box, main){
   return {show};
 }
 
+/* 图片详情只展示安全元数据，定位仍只把 asset id 交给服务端。绝不能为了显示路径把
+   ledger 的本机绝对路径送进浏览器。 */
+function wirePhotoDetail(box,items,index){
+  const toggle=box.querySelector('.photodetailtoggle');
+  const panel=box.querySelector('.photodetail');
+  const title=panel.querySelector('b');
+  const meta=panel.querySelector('.photodetailmeta');
+  const reveal=panel.querySelector('[data-photo-reveal]');
+  const status=panel.querySelector('.srcstate');
+  const paint=at=>{
+    const item=items[at];if(!item)return;
+    title.textContent=item.name||'未命名图片';
+    meta.textContent=[LOC[item.location]||item.location||'来源未知',
+      Number(item.size)>0?fmtSize(Number(item.size)):'大小未知'].join(' · ');
+    reveal.dataset.photoReveal=String(item.id);status.textContent='';
+  };
+  toggle.onclick=()=>{const open=panel.hidden;panel.hidden=!open;
+    toggle.setAttribute('aria-expanded',String(open))};
+  reveal.onclick=()=>revealSource(Number(reveal.dataset.photoReveal),status);
+  paint(index);return {paint};
+}
+
 function closePhotoLightbox(){
   if(!activeLightbox)return;
   document.removeEventListener('keydown',photoLightKeys);
@@ -2994,12 +3018,18 @@ async function openPhotoLightbox(index){
       <button class="photonav back" type="button" aria-label="上一张">${icon('chevron-left')}</button>
       <button class="photonav fwd" type="button" aria-label="下一张">${icon('chevron-left')}</button></div>
     <div class="photobar">
+      <button class="photodetailtoggle" type="button" aria-expanded="false">${icon('info')}<span>图片详情</span></button>
       <div class="photocount mono" aria-live="polite">${index+1} / ${items.length}</div>
       <div class="photozoom">
-        <button type="button" data-zoom-step="-1" aria-label="缩小">−</button>
+        <button type="button" data-zoom-step="-1" aria-label="缩小">${icon('minus')}</button>
         <input type="range" min="1" max="${ZOOM_MAX}" step="0.1" value="1" aria-label="缩放">
-        <button type="button" data-zoom-step="1" aria-label="放大">+</button>
+        <button type="button" data-zoom-step="1" aria-label="放大">${icon('plus')}</button>
         <b class="mono">100%</b></div></div>
+    <aside class="photodetail" aria-label="图片详情" hidden>
+      <div class="photodetailcopy"><b></b><span class="photodetailmeta"></span></div>
+      <button type="button" data-photo-reveal="">${icon('folder-open')}<span>在资源管理器中显示</span></button>
+      <span class="srcstate" aria-live="polite"></span>
+    </aside>
     <div class="swiper photostrip"><div class="swiper-wrapper">${items.map(item=>
       `<div class="swiper-slide"><img src="/photo-thumb?id=${item.id}" alt="" loading="lazy"></div>`).join('')}</div></div>`;
   document.body.appendChild(box);
@@ -3016,12 +3046,14 @@ async function openPhotoLightbox(index){
     navigation:{prevEl:box.querySelector('.photonav.back'),nextEl:box.querySelector('.photonav.fwd')},
     on:{slideChange(){counter.textContent=`${this.activeIndex+1} / ${items.length}`}}});
   const zoomBar=wirePhotoZoom(box,main);
+  const detail=wirePhotoDetail(box,items,index);
+  main.on('slideChange',()=>detail.paint(main.activeIndex));
   /* Swiper 只在自己构造的那一刻量一次容器。灯箱是插进已经布好版的页面里的，
      窗口一改大小（或首屏字体、滚动条落定得比构造晚）slide 就停在旧宽度上，
      大图按错误的框缩放，看起来就是「显示不全」。挂个 ResizeObserver 让它重量。 */
   const resize=new ResizeObserver(()=>{main.update();strip.update()});
   resize.observe(box);
-  activeLightbox={box,main,strip,resize,zoomBar};
+  activeLightbox={box,main,strip,resize,zoomBar,detail};
   box.querySelector('.photoclose').onclick=closePhotoLightbox;
   // 只在背景本身上关闭：点图片、缩略图条和翻页按钮都不该退出。
   box.addEventListener('click',e=>{if(e.target===box)closePhotoLightbox()});
@@ -3043,6 +3075,7 @@ async function openEntity(kind,name,push=true,requestedTag){
   showHomeSurfaces();
   disposeStage(false);
   detailReturnBarsContext=null;
+  entityJavLayout=false;
   const seq=++entityRequestSeq;
   const [d,items,photos]=await Promise.all([
     api(`/api/entity?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`),
@@ -3050,6 +3083,10 @@ async function openEntity(kind,name,push=true,requestedTag){
     api(`/api/photos?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`)]);
   if(d.error||seq!==entityRequestSeq||
      decodeURIComponent(location.pathname)!==decodeURIComponent(expectedPath))return;
+  /* 直达或刷新资料页时 URL 没有 `jav=1`。以返回作品的真实 `is_jav` 恢复女优／厂牌
+     语境，避免大图／小图／预览图按钮只在从 JAV 首页点进来时偶然存在。 */
+  entityJavLayout=(kind==='performer'||kind==='studio')&&
+    (state.jav==='1'||(items.items||[]).some(item=>item.is_jav));
   document.body.classList.add('entity-open');
   $('#index').hidden=false;$('#grid').innerHTML='';$('#count').textContent='';
   $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
@@ -3303,9 +3340,11 @@ const JAV_LAYOUTS=[['big','大图 · 只看正封','maximize'],['small','小图 
 /* 旧键沿用：设置存在浏览器里，改名不能让用户的选择静默回落到默认值。 */
 const JAV_LAYOUT_ALIASES={cover:'big',sleeve:'small'};
 function javActive(){
-  if(state.jav!=='1')return false;
   const path=decodeURIComponent(location.pathname);
-  return path==='/'||path.startsWith('/performers/')||path.startsWith('/studios/');
+  if(path==='/')return state.jav==='1';
+  if(path.startsWith('/performers/')||path.startsWith('/studios/'))
+    return state.jav==='1'||entityJavLayout;
+  return false;
 }
 function javLayout(){
   const raw=JAV_LAYOUT_ALIASES[appSettings.javLayout]||appSettings.javLayout;
