@@ -5,8 +5,15 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from peach.ffmpeg import BinaryChoice
-from peach.follow_covers import FollowCoverService, FollowCoverUnavailable
+from PIL import Image
+
+from peach.ffmpeg import BinaryChoice, FFmpegResolver
+from peach.follow_covers import (
+    FOLLOW_COVER_FILTER,
+    FOLLOW_COVER_SCAN_SECONDS,
+    FollowCoverService,
+    FollowCoverUnavailable,
+)
 from peach.follow_stream import ResolvedFollowMedia
 
 
@@ -39,7 +46,7 @@ class FollowCoverServiceTests(unittest.TestCase):
             id=7, provider=provider, metadata={"media_kind": kind},
             url="https://rule34.paheal.net/post/view/7")
 
-    def test_first_frame_is_generated_once_and_cached(self):
+    def test_first_non_black_frame_is_generated_once_and_cached(self):
         commands = []
 
         def run(command, **kwargs):
@@ -54,7 +61,55 @@ class FollowCoverServiceTests(unittest.TestCase):
         self.assertEqual(first.read_bytes(), b"jpeg")
         self.assertEqual(len(commands), 1)
         self.assertIn("-frames:v", commands[0])
-        self.assertIn("scale='min(1280,iw)':-2", commands[0])
+        filter_value = commands[0][commands[0].index("-vf") + 1]
+        self.assertIn("blackframe=amount=0:threshold=32", filter_value)
+        self.assertIn(
+            "metadata=select:key=lavfi.blackframe.pblack:value=98:function=less",
+            filter_value,
+        )
+        self.assertIn("scale='min(1280,iw)':-2", filter_value)
+        self.assertEqual(
+            commands[0][commands[0].index("-t") + 1],
+            str(FOLLOW_COVER_SCAN_SECONDS),
+        )
+
+    def test_ffmpeg_filter_skips_a_black_intro(self):
+        choice = FFmpegResolver(self.root).ffmpeg()
+        if choice is None:
+            self.skipTest("ffmpeg is unavailable")
+        source = self.root / "black-intro.mp4"
+        still = self.root / "selected.jpg"
+        generated = subprocess.run(
+            [
+                str(choice.path), "-y", "-v", "error",
+                "-f", "lavfi", "-i", "color=c=black:s=320x180:d=1:r=5",
+                "-f", "lavfi", "-i", "color=c=red:s=320x180:d=1:r=5",
+                "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[v]",
+                "-map", "[v]", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                str(source),
+            ],
+            capture_output=True,
+            check=False,
+            timeout=20,
+        )
+        if generated.returncode != 0:
+            self.skipTest("test ffmpeg cannot create an H.264 fixture")
+        selected = subprocess.run(
+            [
+                str(choice.path), "-y", "-v", "error", "-i", str(source),
+                "-frames:v", "1", "-vf", FOLLOW_COVER_FILTER,
+                "-q:v", "4", str(still),
+            ],
+            capture_output=True,
+            check=False,
+            timeout=20,
+        )
+        self.assertEqual(selected.returncode, 0, selected.stderr.decode(errors="replace"))
+        with Image.open(still).convert("RGB") as image:
+            red, green, blue = image.resize((1, 1)).getpixel((0, 0))
+        self.assertGreater(red, 150)
+        self.assertLess(green, 80)
+        self.assertLess(blue, 80)
 
     def test_only_paheal_videos_enter_the_generator(self):
         for provider, kind in (("rule34xxx", "video"),
