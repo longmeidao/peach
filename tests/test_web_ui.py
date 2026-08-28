@@ -1615,8 +1615,12 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_resource_sync_is_preview_first_and_keeps_offline_sources_safe(self):
         self.assertPageContains("if(path==='/resource-sync'){await openResourceSync(false);return}")
-        self.assertPageContains("api('/api/resource-sync/scan',{method:'POST',body:'{}'})")
+        self.assertPageContains("api('/api/resource-sync/scan',{method:'POST'")
         self.assertPageContains("api('/api/resource-sync/apply',{method:'POST'")
+        self.assertPageContains("source.unreadable")
+        self.assertPageContains("background:true,restart:true")
+        self.assertPageContains("payload.status==='running'")
+        self.assertPageContains("location.pathname!=='/resource-sync'")
         self.assertPageContains("来源离线时整库跳过")
         self.assertPageContains("同步到回收站并清理缓存")
         self.assertPageContains("候选 CSV、来源证据、女优头像和厂牌 Logo 不属于缓存")
