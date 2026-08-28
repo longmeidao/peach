@@ -107,6 +107,20 @@ class TasteHistoryTests(unittest.TestCase):
         )
         self.assertEqual([source.browser for source in sources], ["chrome", "firefox"])
 
+    def test_discovers_macos_zen_safari_firefox_and_chrome_profiles(self):
+        support = self.root / "Library" / "Application Support"
+        paths = [
+            support / "Firefox" / "Profiles" / "firefox" / "places.sqlite",
+            support / "zen" / "Profiles" / "zen" / "places.sqlite",
+            support / "Google" / "Chrome" / "Default" / "History",
+            self.root / "Library" / "Safari" / "History.db",
+        ]
+        for path in paths:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.touch()
+        sources = discover_history_sources(home=self.root, platform_name="macos")
+        self.assertEqual([source.browser for source in sources], ["chrome", "firefox", "safari", "zen"])
+
     def test_refresh_is_incremental_and_report_omits_urls_and_titles(self):
         firefox = self.root / "firefox" / "places.sqlite"
         chrome = self.root / "chrome" / "History"
@@ -170,7 +184,10 @@ class TasteHistoryTests(unittest.TestCase):
         exported = self.root / "history.json"
         exported.write_text(json.dumps([
             {
-                "url": "https://rule34.xxx/index.php?page=post&s=list&tags=feet",
+                "url": (
+                    "https://rule34.xxx/index.php?page=post&s=list&tags="
+                    "feet+-gay+-ai_generated+detroit_become_human+big_breasts"
+                ),
                 "dt": 1_700_000_000,
                 "metadata": {"title": "private", "description": None,
                              "preview_image": None, "duration": None},
@@ -220,6 +237,13 @@ class TasteHistoryTests(unittest.TestCase):
         self.assertEqual(dashboard["rankings"]["browser_creators"][0]["name"], "Alice")
         self.assertEqual(dashboard["rankings"]["peach_creators"][0]["name"], "Alice")
         self.assertEqual(dashboard["rankings"]["peach_performers"][0]["entity_id"], 4)
+        browser_tags = {row["name"] for row in dashboard["rankings"]["browser_tags"]}
+        self.assertIn("detroit_become_human", browser_tags)
+        self.assertIn("big_breasts", browser_tags)
+        self.assertTrue({"ai", "generated", "ai_generated", "gay"}.isdisjoint(browser_tags))
+        categories = {row["name"] for row in dashboard["rankings"]["categories"]}
+        self.assertIn("游戏同人", categories)
+        self.assertIn("乳系", categories)
         self.assertNotIn("中片-10分内", json.dumps(dashboard, ensure_ascii=False))
         self.assertNotIn("negative_tags", dashboard["rankings"])
         self.assertTrue(dashboard["privacy"]["dislikes_do_not_downrank_tags"])

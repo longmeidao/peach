@@ -41,6 +41,9 @@ class HistoryVisit:
 
 
 QUERY_KEYS = {"q", "query", "search", "keyword", "keywords", "tag", "tags", "term"}
+NEGATIVE_QUERY_TERM = re.compile(
+    r"(?<![a-z0-9\u3400-\u9fff])-[a-z0-9\u3400-\u9fff]+(?:[_-][a-z0-9\u3400-\u9fff]+)*"
+)
 CREATOR_MARKERS = {"artist", "artists", "author", "channel", "creator", "creators", "model", "models", "profile"}
 CREATOR_HOSTS = {"fansly.com", "onlyfans.com", "patreon.com", "rule34video.com"}
 RESERVED_HANDLES = {
@@ -68,7 +71,7 @@ CATEGORY_TERMS: dict[str, set[str]] = {
     "口交": {"blowjob", "deepthroat", "oral", "口交", "深喉"},
     "马眼/尿道/龟头": {"glans", "glansjob", "sounding", "urethra", "尿道", "马眼", "龟头"},
     "ASMR/音声": {"asmr", "audio", "音声"},
-    "游戏同人": {"game", "gamecg", "hgame", "游戏", "同人"},
+    "游戏同人": {"detroit", "detroitbecomehuman", "game", "gamecg", "hgame", "游戏", "同人"},
     "反差/泄密/探花": {"leak", "leaked", "private", "反差", "探花", "泄密", "流出"},
 }
 TAKEOUT_HISTORY_MEMBER = "Takeout/Chrome/History.json"
@@ -607,7 +610,7 @@ def _history_dashboard_evidence(store_path: Path, since: str | None) -> dict[str
             tags.update(row_tags)
             creators.update(row_creators)
             for tag in row_tags:
-                compact = tag.replace(" ", "")
+                compact = tag.replace(" ", "").replace("_", "")
                 for category, terms in CATEGORY_TERMS.items():
                     if compact in terms or tag in terms:
                         categories[category] += 1
@@ -789,7 +792,7 @@ def build_taste_dashboard(
 
     category_scores: Counter[str] = Counter(history["categories"])
     for row in tags:
-        compact = str(row["name"]).casefold().replace(" ", "")
+        compact = str(row["name"]).casefold().replace(" ", "").replace("_", "")
         for category, terms in CATEGORY_TERMS.items():
             if compact in terms:
                 category_scores[category] += max(1, round(float(row["peach_score"])))
@@ -868,8 +871,16 @@ def read_creator_candidates(output_dir: Path, limit: int = 200) -> list[dict]:
 
 
 def _tokens(value: str) -> set[str]:
-    decoded = unquote(value).casefold().replace("_", " ").replace("-", " ")
-    values = re.findall(r"[a-z0-9]{2,}|[\u3400-\u9fff]{1,12}", decoded)
+    decoded = unquote(value).casefold()
+    # Search syntaxes use a leading minus for exclusion. Remove the whole
+    # operand before tokenizing, including grouped forms such as -ai_generated.
+    decoded = NEGATIVE_QUERY_TERM.sub(" ", decoded).replace("-", " ")
+    # Underscores are part of one source tag (detroit_become_human,
+    # big_breasts), not separators between independent preferences.
+    values = re.findall(
+        r"(?:[a-z0-9]{2,}|[\u3400-\u9fff]{1,12})(?:_(?:[a-z0-9]+|[\u3400-\u9fff]+))*",
+        decoded,
+    )
     return {value for value in values if value not in STOPWORDS and not value.isdigit()}
 
 
@@ -953,7 +964,7 @@ def analyze_history(store_path: Path, output_dir: Path, *, since: str | None = N
                 tag_visits[tag] += 1
                 tag_urls[tag].add(url_hash)
                 tag_sources[tag].add(source_label)
-                compact = tag.replace(" ", "")
+                compact = tag.replace(" ", "").replace("_", "")
                 for category, terms in CATEGORY_TERMS.items():
                     if compact in terms or tag in terms:
                         category_visits[category] += 1

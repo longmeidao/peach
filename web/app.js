@@ -33,7 +33,14 @@ const ENTITY_ROUTES={performer:'performers',studio:'studios',creator:'creators',
 const ROUTE_ENTITIES={performers:'performer',studios:'studio',creators:'creator',series:'series'};
 const entityPath=(kind,name)=>`/${ENTITY_ROUTES[kind]||kind}/${encodeURIComponent(name)}`;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const faviconUrl=url=>{try{return new URL('/favicon.ico',url).href}catch{return ''}};
+const SITE_FAVICONS={
+  'kemono.cr':'https://kemono.cr/assets/favicon-CPB6l7kH.ico',
+  'simpcity.cr':'https://simpcity.cr/data/assets/logo/favicon.png',
+  'hanime1.me':'https://vdownload.hembed.com/image/icon/tab_logo.png?secure=EJYLwnrDlidVi_wFp3DaGw==,4867726124',
+};
+const faviconUrl=url=>{try{const parsed=new URL(url),host=parsed.hostname.replace(/^www\./,'');
+  return SITE_FAVICONS[host]||new URL('/favicon.ico',parsed).href}catch{return ''}};
+const faviconFallbackUrl=domain=>`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`;
 const foldName=s=>String(s??'').normalize('NFKC').trim().toLocaleLowerCase();
 const fmtDur=s=>{if(!s)return'—';s=Math.round(s);const h=s/3600|0,m=(s%3600)/60|0,x=s%60;
   return h?`${h}:${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')}`:`${m}:${String(x).padStart(2,'0')}`};
@@ -944,10 +951,18 @@ function renderCombo(){
 }
 
 /* ── 统计与管理 ── */
+let adsBatch=null,loadRequestSeq=0,listLoading=false;
+function enterManagementSurface(){
+  // A catalog request started before browser Back must not repaint filters over
+  // the management page after it resolves.
+  loadRequestSeq++;listLoading=false;$('#combo').innerHTML='';
+  $('#tiers').style.display='none';$('#tagbar').style.display='none';
+  document.body.classList.remove('entity-open','index-open');
+}
 async function openStats(push=true){
   releaseHoverPreviews();
   if(push)route('/stats');
-  document.body.classList.remove('entity-open');
+  enterManagementSurface();
   disposeStage(false);
   const d=await api('/api/stats');
   $('#stats').hidden=false; $('#index').hidden=true; $('#grid').innerHTML='';buildManageBar();
@@ -958,7 +973,7 @@ async function openStats(push=true){
   const gb=b=>b>=1099511627776?(b/1099511627776).toFixed(2)+' TB':(b/1073741824).toFixed(1)+' GB';
   const hrs=s=>s>=3600?(s/3600).toFixed(1)+' 小时':Math.round(s/60)+' 分钟';
   const bar=(x,y)=>`<div class="prog"><i style="width:${pct(x,y)}%"></i></div>`;
-  const card=(t,body)=>`<div class="scard2"><h3>${t}</h3>${body}</div>`;
+  const card=(t,body,size='third')=>`<div class="scard2 statcard-${size}"><h3>${t}</h3>${body}</div>`;
   const kv=(k,v,u)=>`<div class="kv"><span>${k}</span><b>${v}${u?`<span class="u">${u}</span>`:''}</b></div>`;
   $('#stats').innerHTML=`
     <div class="statshead"></div>
@@ -981,20 +996,20 @@ async function openStats(push=true){
         +kv('快进扫过', cs.skimmed.toLocaleString(), '真实观看远低于到达位置')
         +kv('不合口味', cs.dislike.toLocaleString())
         +kv('看过了', cs.seen.toLocaleString())
-        +kv('回收站', cs.trash.toLocaleString()))}
+        +kv('回收站', cs.trash.toLocaleString()),'half')}
       ${card('标签来源', d.tag_source.map(t=>
-          kv(t.k, t.n.toLocaleString(), t.assets.toLocaleString()+' 个视频')).join(''))}
+          kv(t.k, t.n.toLocaleString(), t.assets.toLocaleString()+' 个视频')).join(''),'quarter')}
       ${card('系统盘', d.system_disk
         ? kv('可用', gb(d.system_disk.free), pct(d.system_disk.free,d.system_disk.total)+'%')
           +bar(d.system_disk.free,d.system_disk.total)
           +`<div class="bigsub">CloudDrive 的块缓存会长在这里，低于 40 GB 抽帧任务会拒绝启动</div>`
-        : '—')}
+        : '—','quarter')}
     </div>
-    <div class="scard2" style="margin-bottom:18px"><h3>内容标签 Top 30</h3>
+    <div class="scard2 statswide"><h3>内容标签 Top 30</h3>
       <div class="tagwall">${d.top_tags.map(t=>
         `<button class="tg ${t.cat}" data-k="${esc(t.k)}" style="padding:5px 12px;font-size:13px">
           ${esc(tagLabel(t.k))} <span style="opacity:.6;font-size:11px">${t.n.toLocaleString()}</span></button>`).join('')}</div></div>
-    ${d.recent.length?`<div class="scard2"><h3>最近看过</h3>${d.recent.map(r=>{
+    ${d.recent.length?`<div class="scard2 statswide"><h3>最近看过</h3>${d.recent.map(r=>{
       const real=r.duration?Math.min(r.play_seconds/r.duration,1)*100:0;
       const mx=(r.max_reached||0)*100;
       return kv(esc((r.creator?r.creator+' · ':'')+r.name).slice(0,90),
@@ -1018,14 +1033,14 @@ let tasteWindow='all';
 const tasteDate=value=>value?new Date(value).toLocaleDateString('zh-CN'):'—';
 const tasteHours=seconds=>seconds>=3600?(seconds/3600).toFixed(1)+' 小时':Math.round(seconds/60)+' 分钟';
 const tasteRanking=(title,rows,kind,empty='暂无足够证据',panel='tastepanel-half',visual='')=>`<section class="tastepanel ${panel}"><h3>${title}</h3>
-  <div class="tasteranks">${rows.length?rows.map((row,index)=>{
+  <div class="tasteranks${visual?' tasteranks-visual':''}">${rows.length?rows.map((row,index)=>{
     const clickable=kind&&row.peach_items>0;
     const detail=row.web_visits!=null
       ?`${row.web_visits?`浏览 ${row.web_visits}`:''}${row.web_visits&&row.peach_items?' · ':''}${row.peach_items?`Peach ${row.peach_items}`:''}`
       :`${Number(row.score||row.visits||0).toLocaleString()}`;
     const ref=row.entity_id?{id:row.entity_id}:null,rep=row.representative_asset_id||null;
     const media=visual==='domain'
-      ?`<span class="tasteavatar tastesite"><span class="ini">${esc(row.name.slice(0,1).toUpperCase())}</span><img src="${esc(faviconUrl('https://'+row.name))}" alt="" loading="lazy" onerror="this.remove()"></span>`
+      ?`<span class="tasteavatar tastesite"><span class="ini">${esc(row.name.slice(0,1).toUpperCase())}</span><img src="${esc(faviconUrl('https://'+row.name))}" data-fallback="${esc(faviconFallbackUrl(row.name))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="const f=this.dataset.fallback;if(f){delete this.dataset.fallback;this.src=f}else this.remove()"></span>`
       :visual?`<span class="tasteavatar">${avatarInner(row.name,ref,rep,visual)}</span>`:'';
     return `<${clickable?'button':'div'} class="tasterank"${clickable?` data-taste-kind="${kind}" data-taste-name="${esc(row.name)}"`:''}>
       <span class="tastepos mono">${index+1}</span>${media}<span><b>${esc(row.name)}</b><small>${esc(detail)}</small></span>
@@ -1051,7 +1066,7 @@ function renderTaste(d){
     <header class="tastehead"><div><p>${d.updated_at?`更新于 ${tasteDate(d.updated_at)}`:'尚未采集浏览记录'}</p></div>
       <div class="tasteactions"><select data-taste-window aria-label="分析范围">
         <option value="all">全部时间</option><option value="365d">最近一年</option><option value="90d">最近 90 天</option></select>
-        <button data-taste-refresh>${icon('refresh-cw')}读取本机浏览器</button>
+        <button data-taste-refresh>${icon('refresh-cw')}读取 Peach 主机</button>
         <button data-taste-import>${icon('upload')}导入历史</button><input data-taste-file type="file" hidden></div></header>
     <div class="tastestate" data-taste-state role="status" aria-live="polite"></div>
     <div class="tastesummaries">
@@ -1074,14 +1089,14 @@ function renderTaste(d){
         <div><b>${coverage.tagged||0}</b><span>有标签</span><small>${coverage.untagged||0} 项待补</small></div>
         <div><b>${coverage.identified||0}</b><span>有身份</span><small>${coverage.unidentified||0} 项待补</small></div></div></section>
     </div><p class="tastenegative">“不合口味”只记录到具体项目与理由，不自动给 Tag 降权。</p></section>
-    <section class="tastepanel tastesources"><header><h3>数据源</h3><p>移除只清理分析库；原始导出仍保留在本机私有 sources。</p></header>
+    <section class="tastepanel tastesources"><header><h3>数据源</h3><p>支持 macOS / Windows 的 Zen、Safari、Firefox、Chrome；这里列出已经采集的设备。</p></header>
       <div>${sourceRows||'<p class="empty">导入 Google Takeout ZIP、browserexport SQLite / JSON / JSONL，或读取本机浏览器。</p>'}</div></section>
     <p class="tasteprivacy">原始 URL、标题与搜索内容不会显示在页面，也不会写入 ledger；所有画像均为候选。</p>
   </div>`;
   const root=$('#stats'),stateEl=root.querySelector('[data-taste-state]'),file=root.querySelector('[data-taste-file]');
   root.querySelector('[data-taste-window]').value=d.window||tasteWindow;
   root.querySelector('[data-taste-window]').onchange=e=>{tasteWindow=e.target.value;openTaste(false)};
-  root.querySelector('[data-taste-refresh]').onclick=async e=>{const button=e.currentTarget;button.disabled=true;stateEl.textContent='正在读取本机浏览器…';
+  root.querySelector('[data-taste-refresh]').onclick=async e=>{const button=e.currentTarget;button.disabled=true;stateEl.textContent='正在读取 Peach 所在主机的浏览器…';
     try{const result=await api('/api/taste/refresh',{method:'POST',body:JSON.stringify({window:tasteWindow})});renderTaste(result.dashboard)}
     catch(error){stateEl.textContent=error.message||'读取失败';button.disabled=false}};
   root.querySelector('[data-taste-import]').onclick=()=>file.click();
@@ -1097,7 +1112,7 @@ function renderTaste(d){
     catch(error){stateEl.textContent=error.message||'移除失败';button.disabled=false}});
 }
 async function openTaste(push=true){
-  releaseHoverPreviews();disposeStage(false);document.body.classList.remove('entity-open');
+  releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   state={...state,creator:'',studio:'',tag:'',tag_match:'all',len:'',dur_min:'',dur_max:'',orient:'',state:'',q:'',jav:''};
   $('#q').value='';
   if(push)route('/taste');
@@ -3127,8 +3142,15 @@ function buildManageBar(){
   paintJavBar();
   paintManageTitle();
   if(!current)return;
-  bar.innerHTML=MANAGE_SECTIONS.map(([k,label,ic])=>
-    `<button data-manage="${k}" aria-pressed="${k===current}">${icon(ic)}<span>${label}</span></button>`).join('');
+  const entry=MANAGE_SECTIONS.find(([k])=>k===current);
+  bar.classList.remove('is-open');
+  bar.innerHTML=`<button class="managebar-toggle" type="button" aria-expanded="false" aria-controls="managebar-menu">
+      <span class="managebar-current">${icon(entry[2])}<span>管理 · ${entry[1]}</span></span>${icon('chevron-down')}
+    </button><div class="managebar-menu" id="managebar-menu">${MANAGE_SECTIONS.map(([k,label,ic])=>
+      `<button data-manage="${k}" aria-pressed="${k===current}">${icon(ic)}<span>${label}</span></button>`).join('')}</div>`;
+  const toggle=bar.querySelector('.managebar-toggle');
+  toggle.onclick=()=>{const open=bar.classList.toggle('is-open');toggle.setAttribute('aria-expanded',String(open))};
+  toggle.onkeydown=event=>{if(event.key==='Escape'){bar.classList.remove('is-open');toggle.setAttribute('aria-expanded','false');toggle.focus()}};
   bar.querySelectorAll('[data-manage]').forEach(b=>b.onclick=()=>openManage(b.dataset.manage));
 }
 /* 管理区四个分页共用同一个标题元素。回收站和疑似广告走首页网格路径，
@@ -3321,7 +3343,6 @@ $('#drawer').addEventListener('mouseleave',()=>{
 $('#scrim').onclick=()=>openDrawer(false);
 
 /* ── 列表 ── */
-let adsBatch=null,loadRequestSeq=0,listLoading=false;
 async function load(reset){
   const requestSeq=reset?++loadRequestSeq:loadRequestSeq;
   if(!reset&&listLoading)return;
