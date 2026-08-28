@@ -26,6 +26,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
     "metadata": ("test_metadata*.py", "test_fc2*.py", "test_babepedia_match.py",
                  "test_jav*.py", "test_code_creators.py", "test_logo_provider.py",
                  "test_avatar_provider.py", "test_performer*.py",
+                 "test_series_localization.py",
                  "test_duplicate_identity_merge.py", "test_entity_merge.py",
                  "test_stash_entity_import.py", "test_migrations.py"),
     "tooling": ("test_scripts.py", "test_agent_worktree.py", "test_versioning.py",

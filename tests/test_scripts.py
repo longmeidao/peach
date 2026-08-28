@@ -759,6 +759,47 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertEqual(asset, (None, None, None))
             self.assertEqual(relation_count, 0)
 
+    def test_javinizer_scrape_codes_file_limits_batch_in_file_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "ledger.db"
+            sqlite3.connect(db).close()
+            upgrade(db, MIGRATIONS)
+            connection = sqlite3.connect(db)
+            connection.executemany(
+                "INSERT INTO asset(id,location,path,name,medium,code,size) "
+                "VALUES(?,'local',?,?,'video',?,?)",
+                [(1, "large.mp4", "large.mp4", "AAA-001", 10_000),
+                 (2, "small.mp4", "small.mp4", "BBB-002", 1_000)],
+            )
+            connection.commit()
+            connection.close()
+            codes_file = root / "codes.txt"
+            codes_file.write_text("# exact batch\nBBB002\n", encoding="utf-8")
+
+            class FakeProvider:
+                def __init__(self):
+                    self.calls = []
+
+                def query(self, code, source):
+                    self.calls.append((code, source))
+                    return {"source": source, "series": "Series B"}
+
+            provider = FakeProvider()
+            output = root / "candidates.csv"
+            with redirect_stdout(io.StringIO()):
+                result = self.scrape_codes.main([
+                    "--db", str(db), "--out", str(output),
+                    "--raw-dir", str(root / "raw"), "--log-dir", str(root / "logs"),
+                    "--delay", "0", "--sources", "r18dev",
+                    "--codes-file", str(codes_file),
+                ], provider=provider)
+            self.assertEqual(result, 0)
+            self.assertEqual(provider.calls, [("BBB-002", "r18dev")])
+            with output.open(encoding="utf-8-sig", newline="") as handle:
+                rows = list(csv.DictReader(handle))
+            self.assertEqual({row["query"] for row in rows}, {"BBB-002"})
+
     def test_metadata_health_distinguishes_snapshot_empty_error_and_cooldown(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
