@@ -874,13 +874,10 @@ function renderCount(){
       ? `<span class="sorts"><button class="batchaction" id="emptyTrash" title="永久删除回收站内容">清空回收站</button></span>`
       : `<span class="sorts"><button class="batchaction" id="batchAction" title="换一批" aria-label="换一批">${icon('refresh-cw')}</button>`
         // 版式紧跟在「换一批」之后：它同属这一组操作，靠右和排序连成一条。
-        +(javActive()?`<span class="javlayout">`+JAV_LAYOUTS.map(([k,label,ic])=>
-          `<button data-jav-layout="${k}" aria-pressed="${k===javLayout()}" title="${esc(label)}"
-            aria-label="${esc(label)}">${icon(ic)}</button>`).join('')+`</span>`:'')
+        +(javActive()?javLayoutButtons():'')
         +SORTS.map(([k,l])=>`<button data-sort="${k}" aria-pressed="${state.sort===k}">${l}</button>`).join('')+`</span>`);
   if($('#batchAction'))$('#batchAction').onclick=()=>{state.sort='seed';state.seed=rollSeed();load(true)};
-  $('#count').querySelectorAll('[data-jav-layout]').forEach(b=>
-    b.onclick=()=>setJavLayout(b.dataset.javLayout));
+  wireJavLayoutButtons($('#count'));
   if(state.state==='trash')$('#emptyTrash').onclick=async(e)=>{
     if(!confirm('永久删除回收站中的全部文件和账本记录？此操作不可恢复。'))return;
     e.currentTarget.disabled=true;
@@ -2463,18 +2460,27 @@ async function fetchEntityItems(kind,name,filters,offset=0){
   if(state.jav==='1')p.set('jav','1');
   const items=await api('/api/items?'+p);cache(items.items);return items
 }
+let entityCollectionPage={items:[],total:0,has_more:false};
 function renderEntityCollection(kind,name,items,filters,append=false){
   const entityTag=filters.tag||'';
   const section=$('#index').querySelector('.entitysection');if(!section)return;
-  if(!append){section.innerHTML=`<h3></h3><div class="grid"></div><button class="entitymore" type="button">载入更多</button>`;
+  if(!append){
+    entityCollectionPage={items:[...(items.items||[])],total:items.total||0,has_more:!!items.has_more};
+    section.innerHTML=`<div class="entitycollectionhead"><h3></h3>${javActive()?javLayoutButtons():''}</div>
+      <div class="grid"></div><button class="entitymore" type="button">载入更多</button>`;
     section.dataset.total=String(items.total||0);
-    section.querySelector('h3').textContent=`视频 · ${(items.total||0).toLocaleString()}${entityTag?' · '+entityTag:''}`}
+    section.querySelector('h3').textContent=`视频 · ${(items.total||0).toLocaleString()}${entityTag?' · '+entityTag:''}`;
+    wireJavLayoutButtons(section)
+  }else{
+    entityCollectionPage.items.push(...(items.items||[]));
+    entityCollectionPage.has_more=!!items.has_more;
+  }
   const grid=section.querySelector('.grid');
   grid.insertAdjacentHTML('beforeend',items.items.map(it=>cardHtml(it)).join(''));
   wireCards(grid,undefined,tag=>updateEntityCollection(
     kind,name,{...filters,tag:tag===entityTag?'':tag},true));
   const more=section.querySelector('.entitymore');
-  more.hidden=append?!items.has_more:grid.children.length>=Number(section.dataset.total||0);
+  more.hidden=!entityCollectionPage.has_more;
   const requestMore=async()=>{if(more.hidden||more.disabled)return;more.disabled=true;const seq=entityRequestSeq;
     try{const next=await fetchEntityItems(kind,name,filters,grid.children.length);
       if(seq===entityRequestSeq&&$('#index').dataset.entityKind===kind&&$('#index').dataset.entityName===name)
@@ -2503,8 +2509,8 @@ async function updateEntityCollection(kind,name,filters,push=true){
   renderEntityCollection(kind,name,items,filters)
 }
 /* ── 资料页的照片 ─────────────────────────────────────────────────────────────
-   图集就是目录：账本里没有图集实体，`<作品目录>\P\001.jpg` 这种约定本身就是分组依据，
-   后端按目录聚合，用目录里最小的资产 id 当图集 id。三层：图集列表 → 瀑布流 → 灯箱。
+   图集就是目录：账本里没有图集实体，`<作品目录>\P\001.jpg` 这种约定只保留在后端，
+   页面不先造一层固定比例封面，照片标签直接进入瀑布流，再点图进入灯箱。
    瀑布流用 CSS `column-count` 而不是 JS 布局：图片行没有宽高，等宽多列流式排版正好
    不需要知道比例，也就不用等图片加载完再算位置。
    缩略图一律走 `/photo-thumb`（服务端缓存），只有灯箱里的大图读 `/photo` 原图——
@@ -2540,26 +2546,11 @@ async function switchEntityMedia(kind,name,filters,media){
   entityMediaView=media==='photos'?{media:'photos',set:0}:emptyMediaView();
   routeEntityView(kind,name,entityMediaView);
   renderMediaTabs(kind,name,filters);
-  if(media==='photos'){renderPhotoSets(kind,name,filters);return}
+  if(media==='photos'){renderPhotoWall(kind,name,filters,entityPhotos);return}
   const seq=++entityRequestSeq;
   const items=await fetchEntityItems(kind,name,filters);
   if(seq!==entityRequestSeq)return;
   renderEntityCollection(kind,name,items,filters);
-}
-
-const photoSetCard=item=>`<button class="photoset" data-photo-set="${item.id}">
-    <span class="photosetcover"><img src="/photo-thumb?id=${item.id}" alt="" loading="lazy"
-      decoding="async" fetchpriority="low" onerror="this.remove()"></span>
-    <span class="photosetname" title="${esc(item.title)}">${esc(item.title)}</span>
-    <small class="mono">${item.n.toLocaleString()} 张 · ${fmtSize(item.bytes||0)}</small></button>`;
-
-function renderPhotoSets(kind,name,filters){
-  const section=$('#index').querySelector('.entitysection');if(!section)return;
-  const sets=(entityPhotos&&entityPhotos.sets)||[];
-  section.innerHTML=`<h3>图集 · ${sets.length} 组 · ${photoTotalOf().toLocaleString()} 张</h3>
-    <div class="photosets">${sets.map(photoSetCard).join('')}</div>`;
-  section.querySelectorAll('[data-photo-set]').forEach(b=>
-    b.onclick=()=>openPhotoSet(kind,name,filters,Number(b.dataset.photoSet)));
 }
 
 async function openPhotoSet(kind,name,filters,setId,push=true){
@@ -2579,20 +2570,26 @@ const photoCell=(item,index)=>`<button class="photocell" data-photo-index="${ind
 
 function renderPhotoWall(kind,name,filters,data,append=false){
   const section=$('#index').querySelector('.entitysection');if(!section)return;
+  const entityWide=!data.id;
   if(!append){
     photoWallItems=[];
-    section.innerHTML=`<div class="photohead">
-        <button class="photoback" type="button">${icon('chevron-left')}<span>全部图集</span></button>
-        <h3>${esc(data.title)} · ${(data.total||0).toLocaleString()} 张</h3>
-        ${sourceTools(data.id)}</div>
-      <div class="photowall"></div><button class="entitymore" type="button">载入更多</button>`;
-    section.querySelector('.photoback').onclick=()=>{
-      entityMediaView={media:'photos',set:0};
-      routeEntityView(kind,name,entityMediaView);
-      renderPhotoSets(kind,name,filters)};
-    // 对账后整组数量都变了，重开这一组比逐格摘除简单也更不容易错。
-    wireSourceTools(section.querySelector('.photohead'),
-      ()=>openPhotoSet(kind,name,filters,data.id,false));
+    section.innerHTML=entityWide
+      ? `<div class="photohead"><h3>照片 · ${(data.total||0).toLocaleString()} 张</h3></div>
+        <div class="photowall"></div><button class="entitymore" type="button">载入更多</button>`
+      : `<div class="photohead">
+          <button class="photoback" type="button">${icon('chevron-left')}<span>全部照片</span></button>
+          <h3>${esc(data.title)} · ${(data.total||0).toLocaleString()} 张</h3>
+          ${sourceTools(data.id)}</div>
+        <div class="photowall"></div><button class="entitymore" type="button">载入更多</button>`;
+    if(!entityWide){
+      section.querySelector('.photoback').onclick=()=>{
+        entityMediaView={media:'photos',set:0};
+        routeEntityView(kind,name,entityMediaView);
+        renderPhotoWall(kind,name,filters,entityPhotos)};
+      // 对账后整组数量都变了，重开这一组比逐格摘除简单也更不容易错。
+      wireSourceTools(section.querySelector('.photohead'),
+        ()=>openPhotoSet(kind,name,filters,data.id,false));
+    }
   }
   const wall=section.querySelector('.photowall');
   const start=photoWallItems.length;
@@ -2604,7 +2601,9 @@ function renderPhotoWall(kind,name,filters,data,append=false){
   const more=section.querySelector('.entitymore');
   more.hidden=!data.has_more;
   const requestMore=async()=>{if(more.hidden||more.disabled)return;more.disabled=true;const seq=entityRequestSeq;
-    try{const next=await api(`/api/photo-set?id=${data.id}&limit=120&offset=${photoWallItems.length}`);
+    try{const next=await api(entityWide
+      ? `/api/photos?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}&limit=120&offset=${photoWallItems.length}`
+      : `/api/photo-set?id=${data.id}&limit=120&offset=${photoWallItems.length}`);
       if(seq===entityRequestSeq&&!next.error&&$('#index').dataset.entityName===name)
         renderPhotoWall(kind,name,filters,next,true)}
     finally{if(seq===entityRequestSeq)more.disabled=false}};
@@ -2835,7 +2834,7 @@ async function openEntity(kind,name,push=true,requestedTag){
   renderMediaTabs(kind,name,filters);
   if(entityMediaView.media!=='photos')renderEntityCollection(kind,name,items,filters);
   else if(entityMediaView.set)await openPhotoSet(kind,name,filters,entityMediaView.set,false);
-  else renderPhotoSets(kind,name,filters);
+  else renderPhotoWall(kind,name,filters,entityPhotos);
   buildBars();
   window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -2955,10 +2954,21 @@ function javLayout(){
   const raw=JAV_LAYOUT_ALIASES[appSettings.javLayout]||appSettings.javLayout;
   return allowedSetting(raw,JAV_LAYOUTS.map(([k])=>k),'big');
 }
+const javLayoutButtons=()=>`<span class="javlayout">`+JAV_LAYOUTS.map(([k,label,ic])=>
+  `<button data-jav-layout="${k}" aria-pressed="${k===javLayout()}" title="${esc(label)}"
+    aria-label="${esc(label)}">${icon(ic)}</button>`).join('')+`</span>`;
+const wireJavLayoutButtons=root=>root?.querySelectorAll('[data-jav-layout]').forEach(b=>
+  b.onclick=()=>setJavLayout(b.dataset.javLayout));
 function setJavLayout(value){
   appSettings.javLayout=value;
   saveSettings();
-  // 只重画卡片，不重新请求：版式是纯展示层的事。排序行会跟着一起重建。
+  // 只重画卡片，不重新请求：版式是纯展示层的事。资料页保留已经载入的分页。
+  const index=$('#index'),kind=index?.dataset.entityKind,name=index?.dataset.entityName;
+  if(kind&&name&&!index.hidden&&entityMediaView.media!=='photos'){
+    renderEntityCollection(kind,name,{...entityCollectionPage,items:[...entityCollectionPage.items]},
+      barsContext.type==='entity'?barsContext.filters:emptyEntityFilters());
+    return;
+  }
   if(!$('#grid').hidden)load(true);
 }
 function paintJavBar(){

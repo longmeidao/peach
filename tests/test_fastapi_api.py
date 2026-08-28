@@ -805,6 +805,9 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         source = self.media_root / "shoot" / "001.jpg"
         source.parent.mkdir(parents=True, exist_ok=True)
         Image.new("RGB", (1600, 2400), (200, 120, 90)).save(source, "JPEG")
+        source2 = self.media_root / "shoot-2" / "002.jpg"
+        source2.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (2400, 1600), (90, 120, 200)).save(source2, "JPEG")
         con = sqlite3.connect(self.db)
         con.execute(
             "INSERT INTO asset(id,location,path,name,medium,size,first_seen) "
@@ -812,11 +815,19 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             (str(source), source.stat().st_size),
         )
         con.execute(
+            "INSERT INTO asset(id,location,path,name,medium,size,first_seen) "
+            "VALUES(10,'pikpak',?,'002.jpg','image',?,'2026-08-24')",
+            (str(source2), source2.stat().st_size),
+        )
+        con.execute(
             "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
             "VALUES(9,'creator','Alice','alice')")
         con.execute(
             "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
             "VALUES(9,9,'creator','legacy:asset',1.0)")
+        con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+            "VALUES(10,9,'creator','legacy:asset',1.0)")
         con.commit()
         con.close()
         return source
@@ -824,14 +835,21 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
     async def test_photo_sets_expose_directories_without_leaking_paths(self):
         self._seed_photo()
         headers = {"X-Token": "secret"}
-        listing = await self.client.get("/api/photos?kind=creator&name=Alice", headers=headers)
+        listing = await self.client.get(
+            "/api/photos?kind=creator&name=Alice&limit=1", headers=headers)
         self.assertEqual(listing.status_code, 200)
         payload = listing.json()
-        self.assertEqual(payload["total"], 1)
+        self.assertEqual(payload["total"], 2)
         self.assertEqual(payload["sets"][0]["id"], 9)
         self.assertEqual(payload["sets"][0]["title"], "shoot")
+        self.assertEqual([item["id"] for item in payload["items"]], [9])
+        self.assertTrue(payload["has_more"])
         self.assertNotIn(str(self.media_root), json.dumps(payload),
                          "只发目录名和图集 id，不发真实路径")
+        next_page = await self.client.get(
+            "/api/photos?kind=creator&name=Alice&limit=1&offset=1", headers=headers)
+        self.assertEqual([item["id"] for item in next_page.json()["items"]], [10])
+        self.assertFalse(next_page.json()["has_more"])
         detail = await self.client.get("/api/photo-set?id=9", headers=headers)
         self.assertEqual([item["id"] for item in detail.json()["items"]], [9])
 

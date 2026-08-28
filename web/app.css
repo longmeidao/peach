@@ -327,6 +327,8 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-xs)}.relatedperson small{color:var(--muted);font-size:var(--fs-xs)}
 .relatedperson:hover .ring{box-shadow:0 0 0 1px var(--border-15)}
 .entitysection{min-width:0;max-width:100%}.entitysection h3{font-size:var(--fs-sm);letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
+.entitycollectionhead{display:flex;align-items:center;gap:10px;margin:0 0 12px}
+.entitycollectionhead h3{margin:0;margin-right:auto}.entitycollectionhead .javlayout{display:inline-flex;gap:6px}
 /* 作品 / 照片切换。只有该实体真有图片时才出现，没有图片的资料页保持原样。 */
 .mediatabs{display:flex;gap:8px;margin:0 0 18px;border-bottom:1px solid var(--line-soft)}
 .mediatabs[hidden]{display:none}
@@ -338,15 +340,6 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
 .mediatabs button b{font-weight:400;font-size:var(--fs-xs);color:var(--muted)}
 .mediatabs button:hover{color:var(--ink-2)}
 .mediatabs button[aria-pressed="true"]{color:var(--ink);border-bottom-color:var(--tungsten)}
-/* 图集卡片：封面用目录里第一张图，不另存封面文件。 */
-.photosets{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px}
-.photoset{display:flex;flex-direction:column;gap:6px;border:0;padding:0;background:transparent;color:inherit;
-  cursor:pointer;text-align:left;min-width:0}
-.photosetcover{display:block;aspect-ratio:3/4;border-radius:10px;overflow:hidden;background:var(--sunk)}
-.photosetcover img{width:100%;height:100%;object-fit:cover;display:block}
-.photoset:hover .photosetcover{box-shadow:0 0 0 1px var(--border-15)}
-.photosetname{font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.photoset small{color:var(--muted);font-size:var(--fs-xs)}
 .photohead{display:flex;align-items:center;gap:10px;margin:0 0 12px}
 .photohead h3{margin:0}
 .photoback{display:flex;align-items:center;gap:4px;height:28px;padding:0 10px 0 6px;border:1px solid var(--line);

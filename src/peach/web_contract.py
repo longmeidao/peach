@@ -960,10 +960,15 @@ def photo_set_title(directory: str) -> str:
 
 
 def q_entity_photos(contract: WebContract, args):
-    """实体名下的图集列表。封面用目录里第一张图，不另存封面文件。"""
+    """实体名下的图片瀑布流；目录分组只保留为兼容元数据。"""
     kind, name = args.get("kind", ""), args.get("name", "")
     if kind not in {"performer", "studio", "creator", "series"} or not name:
         return {"error": "invalid entity"}
+    try:
+        limit = max(1, min(int(args.get("limit") or 120), 600))
+        offset = max(0, int(args.get("offset") or 0))
+    except (TypeError, ValueError):
+        return {"error": "invalid pagination"}
     c = contract.db()
     try:
         row = _resolve_entity(c, kind, name)
@@ -984,9 +989,27 @@ def q_entity_photos(contract: WebContract, args):
             f"GROUP BY {PHOTO_DIR},a.location ORDER BY n DESC,dir",
             (row["id"],),
         )]
+        total = c.execute(
+            "SELECT count(DISTINCT a.id) "
+            "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
+            "WHERE ae.entity_id=? AND a.medium='image' AND a.name IS NOT NULL "
+            "AND (a.disposal IS NULL OR a.disposal<>'trash')",
+            (row["id"],),
+        ).fetchone()[0]
+        items = [{"id": item["id"], "name": item["name"], "size": item["size"] or 0}
+                 for item in c.execute(
+                     f"SELECT a.id,a.name,a.size,{PHOTO_DIR} dir "
+                     "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
+                     "WHERE ae.entity_id=? AND a.medium='image' AND a.name IS NOT NULL "
+                     "AND (a.disposal IS NULL OR a.disposal<>'trash') "
+                     f"GROUP BY a.id,a.name,a.size,{PHOTO_DIR} "
+                     "ORDER BY dir,a.name,a.id LIMIT ? OFFSET ?",
+                     (row["id"], limit, offset),
+                 )]
         return {
             "kind": kind, "name": row["canonical_name"], "entity_id": row["id"],
-            "sets": sets, "total": sum(item["n"] for item in sets),
+            "sets": sets, "total": total, "items": items,
+            "has_more": offset + len(items) < total,
         }
     finally:
         c.close()
