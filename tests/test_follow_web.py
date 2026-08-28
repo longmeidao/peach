@@ -190,6 +190,24 @@ class FollowContractTests(unittest.TestCase):
         ])
         self.assertNotIn("media_url", item)
 
+    def test_f95_discussion_without_attachments_or_file_links_is_hidden(self):
+        self._seed(candidates=(
+            FollowCandidate(
+                provider="f95zone", external_id="discussion", title="Thread",
+                url="https://f95zone.to/threads/50685/post-discussion",
+                summary="Thanks for sharing"),
+            FollowCandidate(
+                provider="f95zone", external_id="attachment", title="Thread",
+                url="https://f95zone.to/threads/50685/post-attachment",
+                thumb_url="https://attachments.f95zone.to/preview.png",
+                extra={"attachment_count": 1,
+                       "attachments": ["https://attachments.f95zone.to/preview.png"]}),
+        ), provider="f95zone", ref="50685", semantics="release")
+        payload = self._get()
+        items = [group["primary"] for group in payload["groups"]]
+        self.assertEqual([item["external_id"] for item in items], ["attachment"])
+        self.assertEqual(payload["counts"]["new"], 1)
+
     def test_old_archive_images_get_a_thumbnail_without_rewriting_the_ledger(self):
         self._seed(candidates=(FollowCandidate(
             provider="kemono", external_id="1", title="Image release",
@@ -569,11 +587,16 @@ class FollowContractTests(unittest.TestCase):
                             url="https://f95zone.to/threads/50685/post-21383374",
                             published_at="2026-08-21T04:14:09Z", author="Jkhomie1198",
                             summary="New batch up Gofile",
-                            extra={"media_needs_credential": True}),
+                            media_url="https://f95zone.to/masked/gofile.io/50685/abc",
+                            extra={"links": [
+                                "https://f95zone.to/masked/gofile.io/50685/abc"],
+                                "media_needs_credential": True}),
             FollowCandidate(provider="f95zone", external_id="21394555",
                             title="Lazy Procrastinator Collection [2026-06-28]",
                             url="https://f95zone.to/threads/50685/post-21394555",
-                            published_at="2026-08-22T18:09:23Z"),
+                            published_at="2026-08-22T18:09:23Z",
+                            thumb_url="https://attachments.f95zone.to/preview.png",
+                            extra={"attachment_count": 1}),
         ))
         group = self._get()["groups"][0]
         self.assertTrue(group["is_release"])
