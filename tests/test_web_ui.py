@@ -413,6 +413,30 @@ class WebUiSourceTests(unittest.TestCase):
     def test_immerse_mode_names_the_whole_cast(self):
         self.assertPageContains("const cast=full.performers||[]")
         self.assertPageContains("cast.slice(0,3).join('、')")
+        self.assertPageContains("$('#tokAvatar').innerHTML=avatarInner(ownerName,ownerRef,REP[ownerName],ownerKind||'performer')")
+
+    def test_immerse_desktop_matches_the_youtube_shorts_layout_hierarchy(self):
+        self.assertPageContains('class="tokstage"')
+        self.assertPageContains('.tokstage{position:absolute;left:50%;top:50%;width:min(56.25vh,calc(100vw - 240px));aspect-ratio:9/16')
+        self.assertPageContains('.toktrack{position:absolute;inset:0;overflow:hidden;border-radius:12px;background:#000')
+        self.assertPageContains('.tokbtns{position:absolute;left:calc(100% + 12px);bottom:8px;width:72px')
+        self.assertPageContains('width:48px;height:48px;padding:0;border-radius:50%;border:0')
+        self.assertPageContains('.tokui{position:absolute;left:20px;bottom:20px;width:min(520px,calc(50% - 28.125vh - 36px))')
+        self.assertPageContains('<div class="tokauthor"><button type="button" class="tokavatar"')
+        self.assertPageContains('<button type="button" class="toktitle" id="tokTitle"></button>')
+
+    def test_immerse_mobile_returns_to_a_full_viewport_player(self):
+        self.assertPageContains('.tokstage,.tokstage.wide{inset:0;width:100%;height:100%;aspect-ratio:auto;transform:none}')
+        self.assertPageContains('.toktrack{border-radius:0;box-shadow:none}')
+        self.assertPageContains('.tokbtns{left:auto;right:max(8px,env(safe-area-inset-right));bottom:92px;width:56px')
+
+    def test_immerse_moves_landscape_video_to_the_right(self):
+        self.assertPageContains("const wide=source>=1")
+        self.assertPageContains("track.closest('.tokstage')?.classList.toggle('wide',wide)")
+        self.assertPageContains("$('#tok').classList.toggle('tok-wide',wide)")
+        self.assertPageContains('.tokstage.wide{left:auto;right:24px;width:min(64vw,177.778vh);aspect-ratio:16/9')
+        self.assertPageContains('.tokstage.wide .tokbtns{left:auto;right:12px;bottom:18px}')
+        self.assertPageContains('.tok.tok-wide .tokui{width:min(500px,calc(36vw - 56px))}')
 
     def test_detail_close_disposes_playback_source(self):
         self.assertPageContains("function disposeStage")
@@ -643,7 +667,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "$('#tokTitle').onclick=()=>{const id=it.id;$('#tokClose').click();openItem(id)};")
         # `.tokui` 整层 pointer-events:none，不把标题放行就是个点不到的按钮。
-        self.assertPageContains(".tokui a,.tokui .toktitle{pointer-events:auto}")
+        self.assertPageContains("cursor:pointer;pointer-events:auto;")
 
     def test_review_reuses_the_standard_selection_instead_of_its_own_mode(self):
         """复核页曾自造「多选模式」按钮加框选，只在这一页生效，用户得先发现再记住。

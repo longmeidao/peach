@@ -73,6 +73,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 具体快照、URL、版本、SHA 与 Peach 差异统一登记在 `docs/reference-sources.json` 和
 `docs/reference-snapshots/`；获取、失效复核与接受更新的流程见
 `.claude/skills/peach-reference-evidence/SKILL.md`。本文件不再复制会随上游变化的测量值。
+YouTube Shorts 沉浸页使用用户截图记录 `docs/reference-snapshots/youtube-shorts-immersive-user-screenshot.md`：竖屏复用中央 9:16 舞台和外置动作列，横屏按用户补充要求改为靠右 16:9 舞台；Peach 保留自己的反馈语义，不复制订阅或社交动作。
 F95 masked 链接与 Gofile 文件列表的凭据边界见 `f95-masked-gofile-media`；Mix 只按已解析且
 可播放的视频计数，不按回复数或网盘页数计数。
 FANBOX 多图、Gofile Bearer API、Paheal 标签页与跨站出处键见
