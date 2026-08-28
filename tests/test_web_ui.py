@@ -1512,12 +1512,18 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".photozoom button svg{width:15px;height:15px;display:block;")
 
     def test_lightbox_photo_detail_reveals_by_asset_id_without_leaking_a_path(self):
-        self.assertPageContains('<button class="photodetailtoggle" type="button"')
+        self.assertPageContains('aria-label="图片详情" title="图片详情">${icon(\'info\')}</button>')
+        self.assertPageLacks("${icon('info')}<span>图片详情</span>",
+                             "详情入口只显示圆圈 i，不再加文字按钮外框")
         self.assertPageContains('<aside class="photodetail" aria-label="图片详情" hidden>')
         self.assertPageContains("LOC[item.location]||item.location||'来源未知'")
+        self.assertPageContains("size<1024*1024?`${Math.max(1,Math.round(size/1024))} KB`")
         self.assertPageContains("reveal.dataset.photoReveal=String(item.id)")
         self.assertPageContains("revealSource(Number(reveal.dataset.photoReveal),status)")
+        self.assertPageContains("const dismissOutside=target=>{if(panel.hidden||toggle.contains(target)||panel.contains(target))return false")
+        self.assertPageContains("if(detail.dismissOutside(e.target))return")
         self.assertPageContains(".photodetail[hidden]{display:none}")
+        self.assertPageContains(".photodetailtoggle{justify-self:start;width:30px;height:30px;display:grid;place-items:center")
         self.assertPageLacks("item.path", "图片详情不能取得或渲染 ledger 绝对路径")
 
     def test_lightbox_remeasures_when_the_window_resizes(self):

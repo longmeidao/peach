@@ -979,16 +979,13 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
     async def test_photo_detail_reveal_resolves_the_asset_id_on_the_server(self):
         source = self._seed_photo()
         headers = {"X-Token": "secret"}
-        command = ["file-manager", "select-source"]
-        with (patch("peach.api.reveal_command", return_value=command) as resolve,
-              patch("peach.api.subprocess.Popen") as launch):
+        with patch("peach.api.reveal_path", return_value=True) as reveal:
             response = await self.client.post(
                 "/api/reveal", headers=headers,
                 json={"id": 9, "path": "C:/client-must-not-control-this"},
             )
         self.assertEqual(response.status_code, 200)
-        resolve.assert_called_once_with(source)
-        launch.assert_called_once_with(command, close_fds=True)
+        reveal.assert_called_once_with(source)
 
     async def test_photo_thumbnail_is_generated_once_and_cached(self):
         source = self._seed_photo()

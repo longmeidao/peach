@@ -3015,6 +3015,8 @@ function wirePhotoZoom(box, main){
 
 /* 图片详情只展示安全元数据，定位仍只把 asset id 交给服务端。绝不能为了显示路径把
    ledger 的本机绝对路径送进浏览器。 */
+const fmtPhotoSize=raw=>{const size=Number(raw)||0;if(!size)return'大小未知';
+  return size<1024*1024?`${Math.max(1,Math.round(size/1024))} KB`:fmtSize(size)};
 function wirePhotoDetail(box,items,index){
   const toggle=box.querySelector('.photodetailtoggle');
   const panel=box.querySelector('.photodetail');
@@ -3025,14 +3027,16 @@ function wirePhotoDetail(box,items,index){
   const paint=at=>{
     const item=items[at];if(!item)return;
     title.textContent=item.name||'未命名图片';
-    meta.textContent=[LOC[item.location]||item.location||'来源未知',
-      Number(item.size)>0?fmtSize(Number(item.size)):'大小未知'].join(' · ');
+    meta.textContent=[LOC[item.location]||item.location||'来源未知',fmtPhotoSize(item.size)].join(' · ');
     reveal.dataset.photoReveal=String(item.id);status.textContent='';
   };
-  toggle.onclick=()=>{const open=panel.hidden;panel.hidden=!open;
-    toggle.setAttribute('aria-expanded',String(open))};
+  const dismiss=()=>{panel.hidden=true;toggle.setAttribute('aria-expanded','false')};
+  const dismissOutside=target=>{if(panel.hidden||toggle.contains(target)||panel.contains(target))return false;
+    dismiss();return true};
+  toggle.onclick=()=>{if(panel.hidden){panel.hidden=false;toggle.setAttribute('aria-expanded','true')}
+    else dismiss()};
   reveal.onclick=()=>revealSource(Number(reveal.dataset.photoReveal),status);
-  paint(index);return {paint};
+  paint(index);return {paint,dismiss,dismissOutside,isOpen:()=>!panel.hidden};
 }
 
 function closePhotoLightbox(){
@@ -3059,7 +3063,8 @@ async function openPhotoLightbox(index){
       <button class="photonav back" type="button" aria-label="上一张">${icon('chevron-left')}</button>
       <button class="photonav fwd" type="button" aria-label="下一张">${icon('chevron-left')}</button></div>
     <div class="photobar">
-      <button class="photodetailtoggle" type="button" aria-expanded="false">${icon('info')}<span>图片详情</span></button>
+      <button class="photodetailtoggle" type="button" aria-expanded="false"
+        aria-label="图片详情" title="图片详情">${icon('info')}</button>
       <div class="photocount mono" aria-live="polite">${index+1} / ${items.length}</div>
       <div class="photozoom">
         <button type="button" data-zoom-step="-1" aria-label="缩小">${icon('minus')}</button>
@@ -3097,7 +3102,9 @@ async function openPhotoLightbox(index){
   activeLightbox={box,main,strip,resize,zoomBar,detail};
   box.querySelector('.photoclose').onclick=closePhotoLightbox;
   // 只在背景本身上关闭：点图片、缩略图条和翻页按钮都不该退出。
-  box.addEventListener('click',e=>{if(e.target===box)closePhotoLightbox()});
+  box.addEventListener('click',e=>{
+    if(detail.dismissOutside(e.target))return;
+    if(e.target===box)closePhotoLightbox()});
   document.addEventListener('keydown',photoLightKeys);
 }
 

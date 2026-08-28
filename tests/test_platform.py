@@ -12,7 +12,8 @@ from peach.platform import (
     is_windows_path,
     mount_share,
     mount_share_command,
-    reveal_command,
+    _windows_reveal,
+    reveal_path,
     root_online,
     share_credentials_command,
     share_credentials_present,
@@ -137,25 +138,49 @@ class OfflineModeTests(unittest.TestCase):
         self.assertEqual([row["online"] for row in status], [True, False])
 
 
-class RevealCommandTests(unittest.TestCase):
-    """在文件管理器里定位源文件的 argv。"""
+class RevealPathTests(unittest.TestCase):
+    """在文件管理器里定位源文件。"""
 
-    def test_windows_selects_the_file_in_one_argument(self):
-        with patch("peach.platform.os.name", "nt"):
-            command = reveal_command(Path(r"B:\创作者 b\c,d.mp4"))
-        # explorer 要求 `/select,<路径>` 整体是一个参数：拆开或加引号都会
-        # 变成「打开我的文档」。含空格和逗号的真实路径必须原样落在同一个参数里。
-        self.assertEqual(command, ["explorer", r"/select,B:\创作者 b\c,d.mp4"])
+    @unittest.skipUnless(os.name == "nt", "Windows Shell API only")
+    def test_windows_uses_the_native_shell_selection_api(self):
+        ole32, shell32 = Mock(), Mock()
+        ole32.CoInitializeEx.return_value = 0
+
+        def parse(_path, _bind, output, _attributes, _read_attributes):
+            output._obj.value = 1234
+            return 0
+
+        shell32.SHParseDisplayName.side_effect = parse
+        shell32.SHOpenFolderAndSelectItems.return_value = 0
+        with patch("peach.platform.ctypes.WinDLL",
+                   side_effect=lambda name: ole32 if name == "ole32" else shell32):
+            _windows_reveal(Path(r"B:\创作者 a\c,d.mp4"))
+        self.assertEqual(shell32.SHParseDisplayName.call_args.args[0],
+                         r"B:\创作者 a\c,d.mp4")
+        self.assertEqual(shell32.SHOpenFolderAndSelectItems.call_args.args[1:],
+                         (0, None, 0))
+        ole32.CoTaskMemFree.assert_called_once()
+        ole32.CoUninitialize.assert_called_once_with()
+
+    def test_windows_reveal_delegates_to_the_native_shell(self):
+        source = Path(r"B:\创作者 a\c,d.mp4")
+        with (patch("peach.platform.os.name", "nt"),
+              patch("peach.platform._windows_reveal") as reveal):
+            self.assertTrue(reveal_path(source))
+        reveal.assert_called_once_with(source)
 
     def test_macos_reveals_in_finder(self):
-        with patch("peach.platform.os.name", "posix"),              patch("peach.platform.sys.platform", "darwin"):
-            self.assertEqual(
-                reveal_command(Path("/Volumes/RESOURCES/media/a.mp4")),
-                ["open", "-R", "/Volumes/RESOURCES/media/a.mp4"])
+        source = Path("/Volumes/RESOURCES/media/a.mp4")
+        with (patch("peach.platform.os.name", "posix"),
+              patch("peach.platform.sys.platform", "darwin"),
+              patch("peach.platform.subprocess.Popen") as launch):
+            self.assertTrue(reveal_path(source))
+        launch.assert_called_once_with(["open", "-R", str(source)], close_fds=True)
 
-    def test_unsupported_platform_returns_none_instead_of_guessing(self):
-        with patch("peach.platform.os.name", "posix"),              patch("peach.platform.sys.platform", "linux"):
-            self.assertIsNone(reveal_command(Path("/srv/a.mp4")))
+    def test_unsupported_platform_returns_false_instead_of_guessing(self):
+        with (patch("peach.platform.os.name", "posix"),
+              patch("peach.platform.sys.platform", "linux")):
+            self.assertFalse(reveal_path(Path("/srv/a.mp4")))
 
 
 
