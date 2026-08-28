@@ -430,13 +430,24 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('.toktrack{border-radius:0;box-shadow:none}')
         self.assertPageContains('.tokbtns{left:auto;right:max(8px,env(safe-area-inset-right));bottom:92px;width:56px')
 
-    def test_immerse_moves_landscape_video_to_the_right(self):
+    def test_immerse_centres_landscape_video_while_keeping_actions_inside(self):
         self.assertPageContains("const wide=source>=1")
         self.assertPageContains("track.closest('.tokstage')?.classList.toggle('wide',wide)")
         self.assertPageContains("$('#tok').classList.toggle('tok-wide',wide)")
-        self.assertPageContains('.tokstage.wide{left:auto;right:24px;width:min(64vw,177.778vh);aspect-ratio:16/9')
+        self.assertPageContains('.tokstage.wide{left:50%;right:auto;width:min(64vw,177.778vh);aspect-ratio:16/9;transform:translate(-50%,-50%)}')
         self.assertPageContains('.tokstage.wide .tokbtns{left:auto;right:12px;bottom:18px}')
         self.assertPageContains('.tok.tok-wide .tokui{width:min(500px,calc(36vw - 56px))}')
+
+    def test_immerse_cancels_each_stream_when_switching_closing_or_leaving(self):
+        self.assertPageContains('function tokStreamUrl(video,id)')
+        self.assertPageContains('video.dataset.streamSession=session')
+        self.assertPageContains('`/stream?id=${id}&session=${encodeURIComponent(session)}`')
+        self.assertPageContains('function disposeTokVideo(video,remove=false)')
+        self.assertPageContains('disposeTokVideo(old,true)')
+        self.assertPageContains('disposeTokVideo(v,v.id!==\'tokVid\')')
+        self.assertPageContains("querySelectorAll('#tokIncoming').forEach(video=>disposeTokVideo(video,true))")
+        self.assertPageContains("addEventListener('pagehide',()=>{")
+        self.assertPageContains("$('#tokTrack').querySelectorAll('video').forEach(cancelTokStream)")
 
     def test_detail_close_disposes_playback_source(self):
         self.assertPageContains("function disposeStage")

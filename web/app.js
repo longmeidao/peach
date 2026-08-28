@@ -216,6 +216,10 @@ async function detailStreamSource(it){
 function cancelDetailStream(){
   const session=detailStreamSession;if(!session)return;
   detailStreamSession='';
+  cancelStreamSession(session);
+}
+function cancelStreamSession(session){
+  if(!session)return;
   fetch(`/api/stream-cancel?session=${encodeURIComponent(session)}`,{
     method:'POST',credentials:'same-origin',keepalive:true
   }).then(r=>r.json()).then(result=>{
@@ -3541,6 +3545,19 @@ function wireTelemetry(it,v,sel){
 
 /* ── 短片全屏 ── */
 let tokList=[],tokIdx=0,tokSwitching=false,tokNetTimer=null,tokLoadHideTimer=null,tokLoadingLabel='加载中…';
+function tokStreamUrl(video,id){
+  const session=newStreamSession();video.dataset.streamSession=session;
+  return `/stream?id=${id}&session=${encodeURIComponent(session)}`;
+}
+function cancelTokStream(video){
+  const session=video?.dataset.streamSession||'';if(!session)return;
+  delete video.dataset.streamSession;cancelStreamSession(session);
+}
+function disposeTokVideo(video,remove=false){
+  if(!video)return;
+  video.pause();cancelTokStream(video);video.removeAttribute('src');video.load();
+  if(remove)video.remove();
+}
 /* 沉浸模式 = 滚动刷新的连续流，横屏竖屏都进（不是「短片模式」）。
    队列滚到尾自动续取下一页，形成无限流。 */
 let tokOffset=0, tokLoading=false;
@@ -3636,14 +3653,14 @@ async function tokShow(dir){
     let v=old;
     if(dir&&old&&old.getAttribute('src')){
       v=document.createElement('video');v.id='tokIncoming';v.playsInline=true;v.preload='auto';
-      v.src='/stream?id='+it.id;applyTokFit(v);v.style.transform=`translate(-50%,${dir>0?100:-100}%)`;track.appendChild(v);
+      v.src=tokStreamUrl(v,it.id);applyTokFit(v);v.style.transform=`translate(-50%,${dir>0?100:-100}%)`;track.appendChild(v);
       await waitTokReady(v);
       requestAnimationFrame(()=>requestAnimationFrame(()=>{
         old.style.transform=`translate(-50%,${dir>0?-100:100}%)`;v.style.transform='translate(-50%,0)'}));
       await new Promise(resolve=>setTimeout(resolve,210));
-      old.pause();old.remove();v.id='tokVid';v.style.transform='translateX(-50%)';
+      disposeTokVideo(old,true);v.id='tokVid';v.style.transform='translateX(-50%)';
     }else{
-      v.preload='auto';v.src='/stream?id='+it.id;applyTokFit(v);await waitTokReady(v);
+      disposeTokVideo(v);v.preload='auto';v.src=tokStreamUrl(v,it.id);applyTokFit(v);await waitTokReady(v);
     }
     if(location.pathname==='/'){
       const url=new URL(location.href),query=new URLSearchParams();
@@ -3691,7 +3708,10 @@ async function tokShow(dir){
     api('/api/play',{method:'POST',body:JSON.stringify({id:it.id})});
     wireTelemetry(it,v,{});
     setTokLoading(false);
-  }catch(_e){setTokLoading(false)}finally{tokSwitching=false}
+  }catch(_e){
+    $('#tokTrack').querySelectorAll('#tokIncoming').forEach(video=>disposeTokVideo(video,true));
+    setTokLoading(false)
+  }finally{tokSwitching=false}
 }
 /* 进度条拖动。抽成函数是因为每次切片都要重新绑一次，而监听器必须能被覆盖。 */
 function tokWireScrub(bar,prog,video,duration){
@@ -3748,9 +3768,13 @@ $('#brandHome').onclick=e=>{e.preventDefault();
   state={loc:state.loc,creator:'',studio:'',tag:'',len:'',dur_min:'',dur_max:'',orient:'',state:'',sort:appSettings.defaultSort,seed:persistedSeed(),q:'',thumb:'1'};
   route('/');$('#q').value='';disposeStage(false);buildBars();load(true);window.scrollTo({top:0,behavior:'smooth'})};
 $('#tokClose').onclick=()=>{setTokLoading(false);route('/');$('#tok').hidden=true;$('#tokTrack').querySelectorAll('video').forEach(v=>{
-  v.pause();v.removeAttribute('src');v.load();if(v.id!=='tokVid')v.remove()});
+  disposeTokVideo(v,v.id!=='tokVid')});
   const v=$('#tokVid');if(v){v.style.transform='translateX(-50%)'}$('#tok').classList.remove('tok-wide');
   $('#tok .tokstage').classList.remove('wide');tokSwitching=false;document.body.style.overflow='';showHomeSurfaces();load(true)};
+addEventListener('pagehide',()=>{
+  cancelDetailStream();
+  $('#tokTrack').querySelectorAll('video').forEach(cancelTokStream);
+});
 let wl=0;
 $('#tok').addEventListener('wheel',e=>{const n=Date.now();if(n-wl<260)return;wl=n;tokNext(e.deltaY>0?1:-1)},{passive:true});
 /* 手机上竖划切片、横划拖进度。横划在哪儿起手都行——屏幕最下沿那条
