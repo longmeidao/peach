@@ -93,6 +93,16 @@ Lazy Procrastinator Collection [2026-06-28] [LazyProcrastinator/LazyProcrast]</h
     Click to expand...</blockquote>
   Genre spoilers first page have futa spoiler.</div>
 </article>
+<article data-content="post-21400001" data-author="LazyProcrastinator">
+  <time datetime="2026-08-23T09:00:00+0100">Aug 23, 2026</time>
+  <div class="bbWrapper">Preview attached
+    <div data-lb-id="attachment6372325"
+         data-src="https://attachments.f95zone.to/2026/08/6372325_preview.png">
+      <img data-src="https://attachments.f95zone.to/2026/08/6372325_preview.png">
+    </div>
+    <a href="https://f95zone.to/attachments/6372325/">View attachment</a>
+  </div>
+</article>
 </body></html>"""
 
 FANBOX_JSON = json.dumps({"body": {"posts": [
@@ -533,7 +543,8 @@ class F95ZoneConnectorTests(unittest.TestCase):
         self.assertEqual(seen[0].url, "https://f95zone.to/threads/50685/latest")
         self.assertEqual(result.semantics, "release")
         self.assertEqual([c.external_id for c in result.candidates],
-                         ["21383374", "21394555"])
+                         ["21383374", "21400001"])
+        self.assertEqual(result.skipped, 1)
         self.assertEqual(result.candidates[0].author, "Jkhomie1198")
         self.assertEqual(result.candidates[0].published_at, "2026-08-21T04:14:09Z")
 
@@ -544,13 +555,22 @@ class F95ZoneConnectorTests(unittest.TestCase):
         self.assertNotIn("F95zone", title)
         self.assertIn("[2026-06-28]", title)
 
-    def test_quoted_posts_are_stripped_from_the_reply_body(self):
+    def test_quoted_links_and_discussion_only_replies_are_skipped(self):
         # 引用块里的链接是被引用那层发的。不剥掉会把追更信号指向错误的楼层。
         result = F95ZoneConnector(transport=_transport(body=F95_HTML)).fetch("50685")
-        second = result.candidates[1]
-        self.assertEqual(second.summary, "Genre spoilers first page have futa spoiler.")
-        self.assertIsNone(second.media_url)
-        self.assertEqual(second.extra["link_count"], 0)
+        self.assertNotIn("21394555", [row.external_id for row in result.candidates])
+        self.assertEqual(result.skipped, 1)
+
+    def test_reply_with_an_attachment_is_kept_and_gets_a_thumbnail(self):
+        result = F95ZoneConnector(transport=_transport(body=F95_HTML)).fetch("50685")
+        candidate = result.candidates[1]
+        self.assertEqual(candidate.external_id, "21400001")
+        self.assertEqual(candidate.thumb_url,
+                         "https://attachments.f95zone.to/2026/08/6372325_preview.png")
+        self.assertEqual(candidate.extra["attachment_count"], 1)
+        self.assertEqual(candidate.extra["attachments"], [
+            "https://attachments.f95zone.to/2026/08/6372325_preview.png",
+        ])
 
     def test_media_is_flagged_as_needing_a_login_session(self):
         # 发现不需要 cookie，取附件需要。下载动作必须先看这个标志。
@@ -580,9 +600,20 @@ class F95ZoneConnectorTests(unittest.TestCase):
             b"https://example.com/creator",
         )
         result = F95ZoneConnector(transport=_transport(body=body)).fetch("50685")
-        self.assertIsNone(result.candidates[0].media_url)
-        self.assertEqual(result.candidates[0].extra["link_count"], 0)
-        self.assertFalse(result.candidates[0].extra["media_needs_credential"])
+        self.assertEqual([row.external_id for row in result.candidates], ["21400001"])
+        self.assertEqual(result.skipped, 2)
+
+    def test_a_valid_page_with_only_discussion_returns_an_empty_fetch(self):
+        body = F95_HTML.replace(
+            b"https://f95zone.to/masked/gofile.io/50685/abc",
+            b"https://example.com/creator",
+        ).replace(
+            b'<article data-content="post-21400001"',
+            b'<article data-content="comment-21400001"',
+        )
+        result = F95ZoneConnector(transport=_transport(body=body)).fetch("50685")
+        self.assertEqual(result.candidates, ())
+        self.assertEqual(result.skipped, 2)
 
     def test_only_absolute_links_count_as_media(self):
         result = F95ZoneConnector(transport=_transport(body=F95_HTML)).fetch("50685")

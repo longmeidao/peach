@@ -131,9 +131,27 @@ def _thumb_url(item) -> str | None:
     return None
 
 
+def _f95_has_resource(media_url: str | None, metadata: dict) -> bool:
+    if media_url:
+        return True
+    links = metadata.get("links")
+    if isinstance(links, list) and resource_links(
+            "\n".join(str(value) for value in links)):
+        return True
+    try:
+        return int(metadata.get("attachment_count") or 0) > 0
+    except (TypeError, ValueError):
+        return False
+
+
 def _excluded_item(item) -> bool:
-    return (item.provider == "rule34video"
-            and item.external_id in RULE34VIDEO_EXCLUDED_IDS)
+    if (item.provider == "rule34video"
+            and item.external_id in RULE34VIDEO_EXCLUDED_IDS):
+        return True
+    # 旧版曾把没有附件、也没有文件站外链的纯讨论回复写进候选。读取时隐藏，
+    # 不改 ledger；有效的历史条目在下一次检查后会补上资源证据并重新出现。
+    return (item.provider == "f95zone"
+            and not _f95_has_resource(item.media_url, item.metadata))
 
 
 def _item_payload(item) -> dict:
@@ -507,6 +525,21 @@ def q_follow(contract, args) -> dict:
         ).fetchall()
         for status, count in excluded_counts:
             counts[status] = max(0, int(counts.get(status, 0)) - int(count))
+        f95_excluded_counts: dict[str, int] = {}
+        for row in connection.execute(
+                "SELECT i.status,i.media_url,i.metadata_json FROM follow_item i"
+                " JOIN follow_source s ON s.id=i.source_id"
+                " WHERE s.enabled=1 AND s.provider='f95zone'").fetchall():
+            try:
+                metadata = json.loads(row["metadata_json"] or "{}")
+            except (TypeError, ValueError):
+                metadata = {}
+            if not _f95_has_resource(
+                    row["media_url"], metadata if isinstance(metadata, dict) else {}):
+                status = str(row["status"])
+                f95_excluded_counts[status] = f95_excluded_counts.get(status, 0) + 1
+        for status, count in f95_excluded_counts.items():
+            counts[status] = max(0, int(counts.get(status, 0)) - count)
     suggestions = _suggestions(contract, sources)
     return {
         "ok": True,

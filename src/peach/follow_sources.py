@@ -844,6 +844,7 @@ class F95ZoneConnector(_BaseConnector):
     #: latest_data.php 按分类分库，线程不在哪个分类里事先不知道，只能逐个试。
     CATEGORIES = ("games", "animations", "comics", "assets", "mods")
     _MASKED_PATH_RE = re.compile(r"^/masked/", re.IGNORECASE)
+    _ATTACHMENT_PATH_RE = re.compile(r"^/attachments/\d+/?$", re.IGNORECASE)
 
     def fetch(self, ref: str, *, etag: str | None = None,
               last_modified: str | None = None, page: int = 0) -> SourceFetch:
@@ -862,11 +863,13 @@ class F95ZoneConnector(_BaseConnector):
         self._check_status(response)
         soup = BeautifulSoup(response.body, "html.parser")
         title = self._thread_title(soup)
-        candidates = tuple(self._replies(soup, thread, title or f"thread {thread}"))
-        if not candidates:
+        candidates, parsed, skipped = self._replies(
+            soup, thread, title or f"thread {thread}")
+        if not parsed:
             raise FollowSourceError(
                 "f95zone 线程页没有解析出任何回复：可能需要登录，或页面结构已变")
-        return SourceFetch(candidates=candidates, raw_body=response.body, **common)
+        return SourceFetch(candidates=candidates, skipped=skipped,
+                           raw_body=response.body, **common)
 
     @staticmethod
     def _thread_title(soup) -> str | None:
@@ -884,11 +887,15 @@ class F95ZoneConnector(_BaseConnector):
 
     def _replies(self, soup, thread: str, thread_title: str):
         posts = soup.select('article[data-content^="post-"]')
+        candidates: list[FollowCandidate] = []
+        parsed = 0
+        skipped = 0
         for article in posts[-self.max_items:]:
             content = str(article.get("data-content") or "")
             post_id = content.removeprefix("post-")
             if not post_id.isdigit():
                 continue
+            parsed += 1
             time_node = article.select_one("time")
             body = article.select_one(".bbWrapper")
             # XenForo 把被引用的楼层原样嵌在正文里。不剥掉的话，摘要会变成
@@ -902,20 +909,58 @@ class F95ZoneConnector(_BaseConnector):
                 if str(node.get("href", "")).startswith("http")
             ]
             media_links, needs_credential = self._media_links(links)
-            yield FollowCandidate(
+            attachment_urls = self._attachment_urls(body)
+            if not media_links and not attachment_urls:
+                skipped += 1
+                continue
+            direct_attachment = next((url for url in attachment_urls
+                                      if urllib.parse.urlsplit(url).hostname
+                                      == "attachments.f95zone.to"), None)
+            candidates.append(FollowCandidate(
                 provider=self.provider,
                 external_id=post_id,
                 title=thread_title,
                 url=f"https://f95zone.to/threads/{thread}/post-{post_id}",
                 media_url=media_links[0] if media_links else None,
+                thumb_url=direct_attachment,
                 published_at=_iso_from_text(time_node.get("datetime"))
                 if time_node is not None else None,
                 author=_plain_text(str(article.get("data-author") or "")) or None,
                 summary=_plain_text(body.get_text(" ")) if body else None,
                 extra={"thread_id": thread, "link_count": len(media_links),
                        "links": media_links[:8],
+                       "attachment_count": len(attachment_urls),
+                       "attachments": attachment_urls[:8],
                        "media_needs_credential": needs_credential},
-            )
+            ))
+        return tuple(candidates), parsed, skipped
+
+    @classmethod
+    def _attachment_urls(cls, body) -> list[str]:
+        """只认回复正文内的 F95 附件，避免把头像或签名图算成发布内容。"""
+        if body is None:
+            return []
+        direct: list[str] = []
+        pages: list[str] = []
+        for node in body.select("[data-src], a[href]"):
+            for attribute in ("data-src", "href"):
+                value = str(node.get(attribute) or "").strip()
+                if not value.startswith("https://"):
+                    continue
+                try:
+                    parsed = urllib.parse.urlsplit(value)
+                except ValueError:
+                    continue
+                host = (parsed.hostname or "").casefold()
+                if host == "attachments.f95zone.to":
+                    if value not in direct:
+                        direct.append(value)
+                elif (host == "f95zone.to" or host.endswith(".f95zone.to")) \
+                        and cls._ATTACHMENT_PATH_RE.match(parsed.path):
+                    if value not in pages:
+                        pages.append(value)
+        # 同一附件通常同时有直链和详情页；优先保留可直接预览的直链，避免重复计数。
+        return direct or pages
 
     def _media_links(self, links: list[str]) -> tuple[list[str], bool]:
         """只保留文件分发链接，并用本机 F95 会话解开 masked URL。"""
