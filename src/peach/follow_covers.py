@@ -1,7 +1,8 @@
 """Generate cached high-resolution covers for remote follow videos.
 
 Paheal exposes the original video and a 150/250px thumbnail, but no larger still.
-The card therefore extracts the first decodable frame once and serves the cached JPEG.
+The card therefore extracts the first non-black decodable frame once and serves the
+cached JPEG.
 """
 from __future__ import annotations
 
@@ -14,6 +15,20 @@ from pathlib import Path
 from .ffmpeg import FFmpegResolver
 from .follow_store import FollowItemRow
 from .follow_stream import FollowMediaResolver, FollowMediaUnavailable
+
+
+# FFmpeg's blackframe filter exports ``lavfi.blackframe.pblack`` only when the
+# configured amount is reached.  Setting amount=0 makes that percentage available
+# on every frame; metadata/select can then drop frames that are at least 98% black.
+# Scan at most the opening 30 seconds so an all-black/broken video still reaches the
+# existing low-resolution fallback promptly.
+FOLLOW_COVER_SCAN_SECONDS = 30
+FOLLOW_COVER_FILTER = (
+    "blackframe=amount=0:threshold=32,"
+    "metadata=select:key=lavfi.blackframe.pblack:value=98:function=less,"
+    "scale='min(1280,iw)':-2"
+)
+_CACHE_VERSION = "nonblack-v1"
 
 
 class FollowCoverUnavailable(RuntimeError):
@@ -47,7 +62,9 @@ class FollowCoverService:
         if choice is None:
             raise FollowCoverUnavailable("ffmpeg 不可用")
 
-        fingerprint = hashlib.sha256(target.url.encode("utf-8")).hexdigest()[:16]
+        fingerprint = hashlib.sha256(
+            f"{_CACHE_VERSION}\0{target.url}".encode("utf-8")
+        ).hexdigest()[:16]
         destination = self.root / f"{item.id}-{fingerprint}.jpg"
         if destination.is_file():
             return destination
@@ -65,8 +82,8 @@ class FollowCoverService:
             if target.referer:
                 command.extend(("-referer", target.referer))
             command.extend((
-                "-i", target.url, "-frames:v", "1",
-                "-vf", "scale='min(1280,iw)':-2", "-update", "1",
+                "-t", str(FOLLOW_COVER_SCAN_SECONDS), "-i", target.url,
+                "-frames:v", "1", "-vf", FOLLOW_COVER_FILTER, "-update", "1",
                 "-q:v", "4", str(temporary),
             ))
             try:
