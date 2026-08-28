@@ -73,6 +73,10 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 具体快照、URL、版本、SHA 与 Peach 差异统一登记在 `docs/reference-sources.json` 和
 `docs/reference-snapshots/`；获取、失效复核与接受更新的流程见
 `.claude/skills/peach-reference-evidence/SKILL.md`。本文件不再复制会随上游变化的测量值。
+**Vercel Geist Grid（2026-08-28）**：官方页 `https://vercel.com/geist/grid` 的实时 DOM 使用资源类
+`grid-module__AMTIxG__grid`；网格引导线由父级统一拥有，单元透明、0 圆角，示例按阅读顺序逐行排列，
+并明确要求各断点可预测重排、可点击单元独立显示 focus。Peach 复用共享边线与 3／2／1 列重排，
+但 Tag 仍保留 6px 小圆角，普通排行不复制演示页的大留白或装饰性引导线。
 YouTube Shorts 沉浸页使用用户截图记录 `docs/reference-snapshots/youtube-shorts-immersive-user-screenshot.md`：竖屏复用中央 9:16 舞台和外置动作列，横屏使用在整个视口视觉居中的 16:9 舞台并把动作列收进视频右侧；Peach 保留自己的反馈语义，不复制订阅或社交动作。沉浸视频每次加载都要带独立 `session`，切片、关闭、失败和页面离开时取消旧会话；只清浏览器的 `src` 不足以停止 CloudDrive 预读或 FFmpeg。
 F95 masked 链接与 Gofile 文件列表的凭据边界见 `f95-masked-gofile-media`；Mix 只按已解析且
 可播放的视频计数，不按回复数或网盘页数计数。
