@@ -2335,6 +2335,26 @@ class PurgeMissingTests(unittest.TestCase):
         self.assertTrue(shared.is_file())
         self.assertNotIn("covers", preview["cache"]["by_kind"])
 
+    def test_cache_cleanup_never_crosses_the_database_data_root(self):
+        """临时数据库漏配缓存根时，宁可不清理，也不能越界碰真实 generated。"""
+        with tempfile.TemporaryDirectory() as outside_tmp:
+            outside = Path(outside_tmp)
+            cover = outside / "covers" / "orphan-001.jpg"
+            segment = outside / "stream-segments" / "999" / "0.ts"
+            cover.parent.mkdir()
+            segment.parent.mkdir(parents=True)
+            cover.write_bytes(b"cover")
+            segment.write_bytes(b"segment")
+            self.contract.cover_root = cover.parent
+            self.contract.stream_root = outside / "stream-segments"
+            self.contract.resource_cleanup_enabled = True
+
+            result = rm_web._clean_resource_orphans(self.contract)
+
+            self.assertEqual(result["cache_removed"], 0)
+            self.assertTrue(cover.is_file())
+            self.assertTrue(segment.is_file())
+
     def test_intact_directory_reports_no_change(self):
         for name in ("002.jpg", "003.jpg"):
             (self.root / name).write_bytes(b"x")

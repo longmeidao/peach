@@ -1001,6 +1001,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('class="card mixcard" data-mix-seed=')
         self.assertPageContains("cards.splice(7,0,mixCardHtml(seed))")
         self.assertPageContains(".mixstack::before,.mixstack::after")
+        # Mix 是同一网格里的同级卡片，JAV 大图不能让它单独掉回 16:9；有封面时
+        # 也应和普通作品卡共用同一张官方封套，而不是永远显示视频接触表。
+        self.assertPageContains("const useCover=jav&&layout!=='preview'&&it.has_cover;")
+        self.assertPageContains("const ar=jav&&layout==='big'?COVER_FRONT_RATIO:16/9;")
+        self.assertPageContains('<div class="mixstack"><div class="pic" style="--card-ratio:${ar}">')
+        self.assertPageContains("? coverImage(it,layout)")
         self.assertPageContains('<span class="mixbadge">${icon(\'play\')}Mix</span>')
         self.assertPageContains("async function openMix(seedId,itemId=seedId,push=true)")
         self.assertPageContains("route(`/mix/${seedId}/${itemId}`)")

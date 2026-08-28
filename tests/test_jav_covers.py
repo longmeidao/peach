@@ -180,6 +180,50 @@ class SettledMissTests(unittest.TestCase):
         self.assertEqual([row["code"] for row in rows], ["HEYZO-1380"])
 
 
+class RestoreLoggedSuccessTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.log = Path(self.tmp.name) / "cover-fetch-log.csv"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _log(self, rows):
+        with self.log.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=covers.FIELDS)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({field: row.get(field, "") for field in covers.FIELDS})
+
+    def test_missing_successes_are_restored_from_the_recorded_url(self):
+        url = "https://awsimgsrc.dmm.co.jp/cover.jpg"
+        data = jpeg(800, 539)
+        self._log([{"code": "ABP-993", "result": "取得", "width": "800",
+                    "height": "539", "url": url}])
+        output = Path(self.tmp.name) / "covers"
+
+        result = covers.restore_logged_successes(
+            transport_for({url: (200, data)}), self.log, output)
+
+        self.assertEqual(result, {"logged": 1, "restored": 1, "skipped": 0,
+                                  "failed": []})
+        self.assertEqual((output / "ABP-993.jpg").read_bytes(), data)
+        self.assertFalse((output / "ABP-993.restore.tmp").exists())
+
+    def test_changed_upstream_image_is_refused_without_overwriting(self):
+        url = "https://awsimgsrc.dmm.co.jp/cover.jpg"
+        self._log([{"code": "ABP-993", "result": "取得", "width": "800",
+                    "height": "539", "url": url}])
+        output = Path(self.tmp.name) / "covers"
+
+        result = covers.restore_logged_successes(
+            transport_for({url: (200, jpeg(900, 600))}), self.log, output)
+
+        self.assertEqual(result["restored"], 0)
+        self.assertEqual([item["code"] for item in result["failed"]], ["ABP-993"])
+        self.assertFalse((output / "ABP-993.jpg").exists())
+
+
 class PendingCoverTests(unittest.TestCase):
     def test_queue_can_be_scoped_to_pikpak(self):
         with tempfile.TemporaryDirectory() as tmp:
