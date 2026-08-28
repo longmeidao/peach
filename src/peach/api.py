@@ -5,7 +5,6 @@ import hashlib
 import logging
 import os
 import re
-import subprocess
 import uuid
 import httpx
 from concurrent.futures import ThreadPoolExecutor
@@ -44,7 +43,7 @@ from .media import (
 from .mdns import create_mdns_publisher
 from .platform import (
     is_unmapped,
-    reveal_command,
+    reveal_path,
     root_online,
     translate_ledger_path,
 )
@@ -886,12 +885,9 @@ def create_app(
             return JSONResponse(
                 {"error": "file missing", "location": asset.location},
                 status_code=410)
-        command = reveal_command(target)
-        if command is None:
-            return JSONResponse({"error": "unsupported platform"}, status_code=501)
         try:
-            # explorer 成功时也返回 1，所以不能用 check=True 判成败。
-            subprocess.Popen(command, close_fds=True)
+            if not reveal_path(target):
+                return JSONResponse({"error": "unsupported platform"}, status_code=501)
         except OSError as error:
             LOGGER.warning("reveal failed for asset %s: %s", asset_id, error)
             return JSONResponse({"error": "reveal failed"}, status_code=500)
