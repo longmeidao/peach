@@ -422,6 +422,26 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             {"k": "横屏", "n": 1},
         ])
 
+    async def test_multipart_api_keeps_assets_separate_but_returns_an_ordered_queue(self):
+        connection = sqlite3.connect(self.db)
+        connection.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,size,studio,code,duration,"
+            "width,height,first_seen) VALUES(?,'local',?,?,'video',?,'S1','OJIE-325',?,"
+            "1920,1080,'2026-08-28')",
+            [
+                (4, str(self.media_root / "OJIE-325-B.mp4"), "OJIE-325-B.mp4", 10_000, 14349),
+                (5, str(self.media_root / "OJIE-325-A.mp4"), "OJIE-325-A.mp4", 20_000, 14281),
+            ],
+        )
+        connection.commit(); connection.close()
+
+        listed = (await self.client.get("/api/items?t=secret&q=OJIE-325&limit=10")).json()
+        self.assertEqual(listed["total"], 2)
+        self.assertTrue(all(item["part_group"]["count"] == 2 for item in listed["items"]))
+        queue = (await self.client.get("/api/parts?t=secret&id=4")).json()
+        self.assertEqual([item["part_label"] for item in queue["items"]], ["A", "B"])
+        self.assertTrue(all("path" not in item for item in queue["items"]))
+
     async def test_unexpected_contract_errors_are_logged_but_not_exposed(self):
         with patch(
             "peach.api.web_contract.dispatch_api_get",
@@ -545,7 +565,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
                      # 前端路由写好了不等于能直接打开：SPA 路径是逐条登记的，
                      # 漏登记时源码断言照样全绿，只有真的请求一次才会露出 404。
                      "/unseen", "/watch-later", "/flagged",
-                     "/duplicates", "/quality-goals", "/mix/1/2", "/playlists",
+                     "/duplicates", "/quality-goals", "/mix/1/2", "/parts/1/2", "/playlists",
                      "/playlists/1/1", "/follow", "/follow-manage",
                      "/follow/item/190"):
             response = await self.client.get(path)

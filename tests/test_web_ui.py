@@ -825,7 +825,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("$('#tiers').style.display='';$('#tagbar').style.display=''")
         self.assertPageContains("function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}")
         self.assertPageContains("async function load(reset)")
-        self.assertPageContains("showHomeSurfaces();\n  if(reset)offset=0")
+        self.assertPageContains("showHomeSurfaces();\n  if(reset){offset=0;renderedPartGroups.clear()}")
         self.assertPageContains("showHomeSurfaces();disposeStage(false)")
 
     def test_entity_tags_filter_inside_the_current_entity_page(self):
@@ -905,6 +905,21 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(path==='/trash')")
         self.assertPageContains("/api/trash/empty")
 
+    def test_multipart_releases_use_a_distinct_group_card_and_queue(self):
+        self.assertPageContains("function collapseMultipartItems(items)")
+        self.assertPageContains("renderedPartGroups.clear()")
+        self.assertPageContains("data-part-seed")
+        self.assertPageContains('<span class="partbadge">${parts.count} 卷</span>')
+        self.assertPageContains("async function openParts(seedId,itemId=seedId,push=true)")
+        self.assertPageContains("api('/api/parts?id='+seedId)")
+        self.assertPageContains("title:`分卷 · ${group.title}`")
+        self.assertPageContains("route(`/parts/${seedId}/${chosen}`)")
+        self.assertPageContains("queue.kind==='parts'?`${queue.items.length} 卷`")
+        self.assertPageContains("queueContext.kind==='parts'?openParts")
+        self.assertPageContains("if(parts[0]==='parts'")
+        self.assertPageContains(".partstack::before,.partstack::after")
+        self.assertPageLacks("Mix · ${group.title}")
+
     def test_filter_and_sort_rows_stay_visible_in_both_scroll_directions(self):
         self.assertPageContains("--filterH:58px")
         self.assertPageContains(".tagbar{position:sticky;top:var(--topH)")
@@ -932,7 +947,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_entity_collection_posters_and_titles_open_item_details(self):
         self.assertPageContains('class="cardopenhit" data-open')
         self.assertPageContains('<button class="t cardtitle" data-open>')
-        self.assertPageContains("if(e.target.closest('[data-open]')){e.stopPropagation();(onClick||openItem)(+el.dataset.id)")
+        self.assertPageContains("const openCard=id=>onClick?onClick(id):(it?.part_group?openParts")
+        self.assertPageContains("if(e.target.closest('[data-open]')){e.stopPropagation();openCard(+el.dataset.id)")
         self.assertPageContains(".cardopenhit{position:absolute;inset:0;z-index:3")
         self.assertPageContains("el.querySelectorAll('[data-open]').forEach(opener=>")
         self.assertPageContains("opener.dataset.openWired='1'")
@@ -1044,7 +1060,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_card_hover_hides_source_and_duration_and_missing_size_is_explicit(self):
         self.assertPageContains('.card:hover .badge,.card:hover .dur{opacity:0}')
         self.assertPageContains('.meta .t{font-size:var(--fs-md);line-height:1.35;min-height:2.7em;')
-        self.assertPageContains("const sizeText=Number(it.size)>0?fmtSize(Number(it.size)):'大小未知';")
+        self.assertPageContains("const sizeText=Number(shownSize)>0?fmtSize(Number(shownSize)):'大小未知';")
         self.assertPageContains('<span class="size">${sizeText}</span>')
 
     def test_tags_page_has_cloud_and_alphabet_modes(self):

@@ -568,17 +568,20 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 .shorts-inline .scard .pic{aspect-ratio:var(--card-ratio,9/16)}
 .card{cursor:pointer;display:flex;flex-direction:column;gap:8px;min-width:0;
   position:relative;transition:transform .18s ease,filter .18s ease;transform-origin:center}
-.mixcard{padding-top:7px}
-.mixstack{position:relative;isolation:isolate}
-.mixstack::before,.mixstack::after{content:"";position:absolute;border-radius:4px;
+.mixcard,.partcard{padding-top:7px}
+.mixstack,.partstack{position:relative;isolation:isolate}
+.mixstack::before,.mixstack::after,.partstack::before,.partstack::after{content:"";position:absolute;border-radius:4px;
   border:1px solid var(--border-15);background:color-mix(in srgb,var(--surface) 84%,var(--video-glow,#15202a));z-index:0}
-.mixstack::before{inset:0 12px 8px;transform:translateY(-7px);opacity:.54}
-.mixstack::after{inset:0 6px 4px;transform:translateY(-4px);opacity:.78}
-.mixstack .pic{z-index:1}
+.mixstack::before,.partstack::before{inset:0 12px 8px;transform:translateY(-7px);opacity:.54}
+.mixstack::after,.partstack::after{inset:0 6px 4px;transform:translateY(-4px);opacity:.78}
+.mixstack .pic,.partstack .pic{z-index:1}
 .mixbadge{position:absolute;right:9px;bottom:9px;z-index:6;display:flex;align-items:center;gap:6px;
   min-height:28px;padding:4px 9px;border-radius:6px;background:rgba(12,8,8,.72);color:#fff;
   backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);font-size:var(--fs-xs);font-weight:700}
 .mixbadge svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
+.partbadge{position:absolute;right:9px;top:9px;z-index:6;min-height:27px;padding:5px 9px;border-radius:6px;
+  background:rgba(12,8,8,.72);color:#fff;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  font-size:var(--fs-xs);font-weight:700}
 .mixcard .mixmeta{display:flex;min-width:0;gap:9px;align-items:flex-start}
 .mixglyph{width:40px;height:40px;flex:none;border-radius:50%;display:grid;place-items:center;
   color:var(--ink);background:var(--overlay-5);border:1px solid var(--border-10)}

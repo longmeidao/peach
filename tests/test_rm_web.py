@@ -230,6 +230,34 @@ class WebDataTests(unittest.TestCase):
         )
         self.assertEqual([item["id"] for item in result["items"]], [1])
 
+    def test_explicit_ab_parts_share_one_derived_group_and_ordered_queue(self):
+        connection = sqlite3.connect(self.db_path)
+        connection.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,size,studio,code,duration,"
+            "width,height,first_seen) VALUES(?,'local',?,?,'video',?,'S1','OJIE-325',?,"
+            "1920,1080,'2026-08-28')",
+            [
+                (4, r"R:\OJIE-325-B.mp4", "OJIE-325-B.mp4", 10_000, 14349),
+                (5, r"R:\OJIE-325-A.mp4", "OJIE-325-A.mp4", 20_000, 14281),
+            ],
+        )
+        connection.commit(); connection.close()
+
+        listed = rm_web.q_items(
+            self.contract, {"q": "OJIE-325", "sort": "new", "limit": "10"},
+        )["items"]
+        self.assertEqual(len(listed), 2, "API 仍保留两个真实资产")
+        self.assertEqual({row["part_group"]["key"] for row in listed}, {"OJIE-325"})
+        self.assertEqual(listed[0]["part_group"]["count"], 2)
+        self.assertEqual(listed[0]["part_group"]["seed_id"], 5)
+        self.assertEqual(listed[0]["part_group"]["total_size"], 30_000)
+
+        parts = rm_web.q_parts(self.contract, {"id": "4"})
+        self.assertEqual(parts["title"], "OJIE-325")
+        self.assertEqual([item["name"] for item in parts["items"]],
+                         ["OJIE-325-A.mp4", "OJIE-325-B.mp4"])
+        self.assertEqual([item["part_label"] for item in parts["items"]], ["A", "B"])
+
     def test_facets_are_scoped_to_the_current_entity_or_item(self):
         creator = rm_web.q_facets(
             self.contract, scope_kind="creator", scope_name="Canonical Creator",
@@ -458,7 +486,7 @@ class WebDataTests(unittest.TestCase):
     def test_contract_handler_registries_are_complete_and_unknown_routes_fail(self):
         self.assertEqual(set(rm_web.GET_HANDLERS), {
             "/api/items", "/api/item", "/api/entity", "/api/photos", "/api/photo-set",
-            "/api/index", "/api/duplicates", "/api/quality-goals",
+            "/api/index", "/api/parts", "/api/duplicates", "/api/quality-goals",
             "/api/stats", "/api/tops", "/api/ads", "/api/related", "/api/facets",
             "/api/search-history", "/api/review", "/api/playlists", "/api/playlist",
             "/api/follow", "/api/follow/credentials", "/api/follow/schedule",
@@ -1924,8 +1952,23 @@ class DuplicateDetectionTests(unittest.TestCase):
     def test_part_marker_extraction(self):
         self.assertEqual(rm_web.part_marker("HRV-041-1.mp4"), "1")
         self.assertEqual(rm_web.part_marker("HD_hrv-041-2.mp4"), "2")
+        self.assertEqual(rm_web.part_marker("Movie-pt3.mkv"), "3")
+        self.assertEqual(rm_web.part_marker("Movie-disk4.mp4"), "4")
         self.assertEqual(rm_web.part_marker("MEYD-692.mp4"), "")
         self.assertEqual(rm_web.part_marker("hhd800.com@MEYD-692.mp4"), "")
+
+    def test_multipart_group_rejects_duplicate_or_gapped_markers(self):
+        duplicate = [
+            {"id": 1, "name": "OJIE-325-A.mp4"},
+            {"id": 2, "name": "OJIE-325-A.mp4"},
+            {"id": 3, "name": "OJIE-325-B.mp4"},
+        ]
+        gapped = [
+            {"id": 1, "name": "FCDSS-021-1.mp4"},
+            {"id": 3, "name": "FCDSS-021-3.mp4"},
+        ]
+        self.assertEqual(rm_web.ordered_multipart_items(duplicate), [])
+        self.assertEqual(rm_web.ordered_multipart_items(gapped), [])
 
 
 class TopsRotationTests(unittest.TestCase):
