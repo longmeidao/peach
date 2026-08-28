@@ -25,9 +25,12 @@ rule34.xxx 上。不区分这三种关系，界面就只是一堆重复条目。
   （ADR-0007 已否决那条路）。
 - 联网只在显式调用时发生：CLI 的 `peach follow check` 和 Web 的
   `POST /api/follow/check`。服务启动、健康检查、普通浏览和首页「换一批」都不联网。
-- **不绕过任何机器人验证。** rule34.xxx 网页版挂着 Cloudflare Turnstile，因此只走官方
+- **不求解任何机器人质询。** rule34.xxx 网页版挂着 Cloudflare Turnstile，因此只走官方
   dapi 并要求账号自己的 API key；simpcity.cr 挂着 DDoS-Guard 浏览器质询，连接器只登记
-  不可用并原样报出原因，不做质询求解。
+  不可用并原样报出原因，不做质询求解。FANBOX 公开 `post.info` 是一个有证据的窄例外：
+  普通 HTTPX 与地址栏会返回 403 或 `general_error`，而同一公开请求携带用户自己的可选
+  Cookie 并保留 Firefox TLS/HTTP2 特征可得到原始 JSON。它不执行浏览器脚本、不解质询、
+  不登录，也仍只收 `feeRequired=0`、`isRestricted=false` 的免费帖子。
 - 凭据从 `peach-data/secrets/follow/<provider>.json` 读，只进请求头或查询参数，
   **绝不进快照、日志、`request_url` 或 ledger**。dapi 只接受查询参数，因此记录下来的是
   脱敏副本。
@@ -95,7 +98,7 @@ rule34.xxx 上。不区分这三种关系，界面就只是一堆重复条目。
 | rule34.xxx | `https://api.rule34.xxx/index.php?page=dapi&s=post&q=index` | user_id + api_key | 网页版挂 Turnstile；无 key 时 API 返回 `Missing authentication`。**2026-08-26 用真实 key 复核**（见下） |
 | f95zone.to | `/threads/{id}/latest` + `latest_alpha/latest_data.php` | 发现不需要，取媒体需要 | 主贴版本号滞后于回复；`index.rss` 返回「无法以该格式呈现」；`h1.p-title-value` 去掉 `.label` 才是线程标题 |
 | simpcity.cr | — | — | DDoS-Guard 浏览器质询，**未取得**可用入口 |
-| fanbox.cc | `api.fanbox.cc/post.listCreator` | 无 | 2026-08-27 实测公开 JSON 给出 `feeRequired`、`isRestricted`、标题、时间和封面；InitialA 的 10 条样本均为免费公开 |
+| fanbox.cc | `api.fanbox.cc/post.listCreator` + `post.info` | 详情可选用户 Cookie | 2026-08-27 实测列表 JSON 给出 `feeRequired`、`isRestricted`、标题、时间和封面；2026-08-28 复核详情需要 Firefox 传输特征，InitialA 的 10 条列表样本均为免费公开 |
 | subscribestar.adult | `/{creator}` | 无 | 2026-08-27 实测公开 HTML 含 `div.post[data-id]`、帖子链接、标题和时间；InitialA 页面明确声明内容公开免费 |
 | patreon.com | `/cw/{creator}` | 无 | 2026-08-27 实测公开页服务端渲染最新帖子卡片；官方 posts API 需 `campaigns.posts` OAuth scope |
 
@@ -126,7 +129,7 @@ f95zone 线程 50685，`creator` 字段写作 `LazyProcrastinator/LazyProcrast`�
 
 ## 拒绝方案
 
-- 求解 Turnstile / DDoS-Guard 质询，或用无头浏览器绕过机器人验证。
+- 求解 Turnstile / DDoS-Guard 质询，或用无头浏览器执行验证脚本。
 - 把站点专用 HTML 规则塞进 `FeedAdapter`。
 - 抓取结果直接写 ledger 真相字段或自动升级为 `approved`。
 - 靠标题相似度做跨站合并的模糊匹配——两个作品并成一张卡片比多出一张卡片糟糕得多，

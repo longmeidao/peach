@@ -175,6 +175,32 @@ class OfficialConnectorTests(unittest.TestCase):
                          ["https://gofile.io/d/OS2Qz9"])
         self.assertEqual(result.probed, 1)
 
+    def test_fanbox_routes_only_post_info_through_the_browser_transport(self):
+        list_seen = []
+        detail_seen = []
+
+        def list_route(request):
+            list_seen.append(request)
+            return HttpResponse(200, {}, FANBOX_JSON)
+
+        def detail_route(request):
+            detail_seen.append(request)
+            return HttpResponse(200, {}, FANBOX_DETAIL_JSON)
+
+        result = FanboxConnector(
+            transport=_routed(list_route),
+            detail_transport=_routed(detail_route),
+        ).fetch("ffxivinitiala")
+        self.assertEqual(len(result.candidates), 1)
+        self.assertTrue(all("post.listCreator" in request.url for request in list_seen))
+        self.assertEqual(len(detail_seen), 1)
+        self.assertIn("post.info", detail_seen[0].url)
+        self.assertIn("Firefox/147.0", detail_seen[0].headers["User-Agent"])
+        self.assertEqual(
+            detail_seen[0].headers["Referer"],
+            "https://www.fanbox.cc/@ffxivinitiala/posts/12489354",
+        )
+
     def test_fanbox_uses_gofile_api_token_and_keeps_only_playable_files(self):
         seen = []
         def route(request):
@@ -239,6 +265,16 @@ class OfficialConnectorTests(unittest.TestCase):
         self.assertEqual(len(result.candidates), 1)
         self.assertIn("HTTP 403", result.candidates[0].extra["media_error"])
         self.assertEqual(result.candidates[0].extra["media_items"], ())
+
+    def test_fanbox_general_error_is_reported_instead_of_as_bad_json_shape(self):
+        def route(request):
+            if "post.info" in request.url:
+                return HttpResponse(200, {"content-type": "application/json"},
+                                    b'{"error":"general_error"}')
+            return HttpResponse(200, {}, FANBOX_JSON)
+
+        result = FanboxConnector(transport=_routed(route)).fetch("ffxivinitiala")
+        self.assertIn("general_error", result.candidates[0].extra["media_error"])
 
     def test_subscribestar_reads_public_profile_posts_without_login(self):
         result = SubscribeStarConnector(

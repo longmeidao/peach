@@ -9,6 +9,7 @@ description = "Local-first media library, behavior ledger, and discovery applica
 requires-python = ">=3.12"
 dependencies = [
   "beautifulsoup4==4.15.0",
+  "curl_cffi==0.16.2",
   "fastapi==0.116.1",
   "feedparser==6.0.12",
   "httpx==0.28.1",

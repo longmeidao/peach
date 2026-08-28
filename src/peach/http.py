@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from typing import Mapping, Protocol
 
 import httpx
+from curl_cffi import requests as curl_requests
+from curl_cffi.requests.exceptions import CurlError
 
 
 @dataclass(frozen=True)
@@ -74,3 +76,52 @@ class HttpxTransport:
     def close(self) -> None:
         if self._owns_client:
             self.client.close()
+
+
+class CurlCffiTransport:
+    """保持浏览器 TLS/HTTP2 指纹的有界同步 transport。
+
+    只给明确需要浏览器传输特征的公开接口使用；它不求解验证码，也不重试。
+    """
+
+    def __init__(self, *, impersonate: str,
+                 session: curl_requests.Session | None = None):
+        self.session = session or curl_requests.Session(impersonate=impersonate)
+        self._owns_session = session is None
+
+    def __call__(
+        self,
+        request: HttpRequest,
+        timeout: float,
+        max_bytes: int,
+    ) -> HttpResponse:
+        chunks: list[bytes] = []
+        total = 0
+        try:
+            with self.session.stream(
+                request.method,
+                request.url,
+                headers=dict(request.headers),
+                content=request.body,
+                timeout=timeout,
+                allow_redirects=True,
+            ) as response:
+                for chunk in response.iter_content():
+                    remaining = max_bytes + 1 - total
+                    if remaining <= 0:
+                        break
+                    chunks.append(chunk[:remaining])
+                    total += min(len(chunk), remaining)
+                    if total > max_bytes:
+                        break
+                return HttpResponse(
+                    response.status_code,
+                    dict(response.headers),
+                    b"".join(chunks),
+                )
+        except CurlError as exc:
+            raise OSError("browser transport request failed") from exc
+
+    def close(self) -> None:
+        if self._owns_session:
+            self.session.close()

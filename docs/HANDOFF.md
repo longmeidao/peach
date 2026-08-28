@@ -77,6 +77,8 @@ F95 masked 链接与 Gofile 文件列表的凭据边界见 `f95-masked-gofile-me
 可播放的视频计数，不按回复数或网盘页数计数。
 FANBOX 多图、Gofile Bearer API、Paheal 标签页与跨站出处键见
 `follow-fanbox-gofile-paheal`。FANBOX Cookie 是本机可选凭据，只发给 FANBOX API；
+FANBOX `post.info` 的 Firefox 传输边界与复用依据见 `fanbox-browser-transport`；只允许公开
+JSON，不解机器人质询、不执行网页脚本、不读取付费帖子。
 Gofile token 是另一份本机可选凭据，只进 Gofile 请求头，不进 URL、证据、ledger 的公开投影
 或浏览器 JSON。Gofile 当前把 contents API 限给 Premium；`error-notPremium` 要按套餐限制
 报告，不能误报成 token 无效。未取得文件列表时保留分享页，不得声称已经取得视频。

@@ -20,10 +20,10 @@ from bs4 import BeautifulSoup
 
 from .follow import DEFAULT_MAX_BYTES, FollowSourceError, _plain_text, _stable_id
 from .follow_secrets import Credential, CredentialError
-from .http import HttpRequest, HttpResponse, HttpTransport, HttpxTransport
+from .http import CurlCffiTransport, HttpRequest, HttpResponse, HttpTransport, HttpxTransport
 
 
-#: 所有连接器共用的 UA。站点按它识别 Peach，不冒充浏览器。
+#: 默认连接器共用的 UA。只有 ADR-0019 明确登记的 FANBOX 详情传输例外。
 USER_AGENT = "Peach/0.2 (+local self-hosted follow reader)"
 
 #: 单次抓取的条目上限。追更只关心增量，不做全站归档。
@@ -1231,6 +1231,17 @@ class FanboxConnector(_BaseConnector):
     provider = "fanbox"
     semantics = "work"
     _CREATOR_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+    _IMPERSONATION = "firefox147"
+
+    def __init__(self, *, detail_transport: HttpTransport | None = None, **kwargs):
+        injected_transport = kwargs.get("transport")
+        super().__init__(**kwargs)
+        # 测试或调用方显式注入 transport 时保持单一边界；正式运行只把容易被
+        # TLS/HTTP2 指纹拦截的 post.info 切到浏览器传输，公开列表仍复用 HTTPX。
+        self.detail_transport = (
+            detail_transport or injected_transport
+            or CurlCffiTransport(impersonate=self._IMPERSONATION)
+        )
 
     def _headers(self) -> dict[str, str]:
         headers = super()._headers()
@@ -1238,12 +1249,9 @@ class FanboxConnector(_BaseConnector):
             "Accept": "application/json",
             "Origin": "https://www.fanbox.cc",
             "Referer": "https://www.fanbox.cc/",
-            # post.info 会对 Peach 的工具 UA 返回 403，但同一公开请求使用
-            # 浏览器 UA 即为 200；这里不携带 cookie，也不越过付费限制。
             "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/140.0.0.0 Safari/537.36"
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:147.0) "
+                "Gecko/20100101 Firefox/147.0"
             ),
         })
         if self.credential and self.credential.values.get("cookie"):
@@ -1282,7 +1290,7 @@ class FanboxConnector(_BaseConnector):
             cover = post.get("cover") if isinstance(post.get("cover"), dict) else {}
             user = post.get("user") if isinstance(post.get("user"), dict) else {}
             try:
-                detail = self._post_detail(post_id)
+                detail = self._post_detail(post_id, creator)
             except FollowSourceError as error:
                 # FANBOX 会把单篇 post.info 临时换成 Cloudflare 验证页。
                 # 列表本身仍是可信的公开更新；保留卡片并明确标记媒体未取得，
@@ -1316,12 +1324,22 @@ class FanboxConnector(_BaseConnector):
         return SourceFetch(candidates=tuple(candidates), skipped=skipped,
                            probed=probed, raw_body=response.body, **common)
 
-    def _post_detail(self, post_id: str) -> dict[str, object]:
+    def _post_detail(self, post_id: str, creator: str) -> dict[str, object]:
         """公开详情补全正文外链和按正文顺序排列的多图。"""
         url = "https://api.fanbox.cc/post.info?" + urllib.parse.urlencode({"postId": post_id})
-        response = self._get(url)
+        headers = self._headers()
+        headers["Referer"] = f"https://www.fanbox.cc/@{creator}/posts/{post_id}"
+        try:
+            response = self.detail_transport(
+                HttpRequest("GET", url, headers), self.timeout, self.max_bytes)
+        except (OSError, httpx.HTTPError) as exc:
+            raise FollowSourceError("fanbox 请求失败") from exc
+        if len(response.body) > self.max_bytes:
+            raise FollowSourceError("fanbox 响应超出大小上限")
         self._check_status(response)
         payload = self._json(response)
+        if isinstance(payload, dict) and payload.get("error"):
+            raise FollowSourceError(f"fanbox 帖子详情返回错误：{payload['error']}")
         body = (payload or {}).get("body") if isinstance(payload, dict) else None
         post = body.get("post") if isinstance(body, dict) else None
         if not isinstance(post, dict):

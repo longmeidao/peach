@@ -15,7 +15,7 @@ Peach 是逻辑前后端分离、部署仍为一个进程的 FastAPI 模块化�
 7. **Profile**：默认单用户，数据模型预留 user/profile，不引入完整账号体系。
 8. **追更来源**：RSS/Atom 等成熟协议先归一化为只读候选；原始证据、复核和 ledger 写入分层。
 9. **任务系统**：Peach 自己定义来源成本、磁盘闸门、进程归属、进度和来源证据；HTTP、调度、媒体探测、图片与协议解析使用成熟组件。
-10. **HTTP / 搜索**：网络适配器共用长生命周期 HTTPX transport；作品全文搜索使用 SQLite FTS5 trigram，短查询保留 LIKE 回退。
+10. **HTTP / 搜索**：网络适配器默认共用长生命周期 HTTPX transport；FANBOX 公开 `post.info` 是有证据登记的窄例外，使用固定版本 `curl_cffi` 保留 Firefox TLS/HTTP2 传输特征，但不求解质询、不登录、不读取付费内容。作品全文搜索使用 SQLite FTS5 trigram，短查询保留 LIKE 回退。
 
 ## 数据流
 
