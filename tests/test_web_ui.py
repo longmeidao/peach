@@ -872,7 +872,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("Date.now()-barsDataAt<30000")
         self.assertPageLacks("p.set('limit','120')")
         self.assertPageContains("more._observer=new IntersectionObserver")
-        self.assertPageContains("more.hidden=append?!items.has_more")
+        self.assertPageContains("more.hidden=!entityCollectionPage.has_more")
 
     def test_mix_and_persistent_playlists_share_the_routed_side_queue(self):
         self.assertPageContains('class="card mixcard" data-mix-seed=')
@@ -1239,6 +1239,19 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks('<img src="/photo?id=${item.id}" class="photocell"')
         self.assertPageContains(".photowall{column-count:5;column-gap:10px}")
         self.assertPageContains("break-inside:avoid")
+
+    def test_photo_tab_opens_the_flat_waterfall_without_fixed_ratio_album_cards(self):
+        self.assertPageContains("if(media==='photos'){renderPhotoWall(kind,name,filters,entityPhotos);return}")
+        self.assertPageContains("<h3>照片 · ${(data.total||0).toLocaleString()} 张</h3>")
+        self.assertPageContains("/api/photos?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}&limit=120&offset=${photoWallItems.length}")
+        self.assertPageLacks("renderPhotoSets")
+        self.assertPageLacks(".photosetcover{display:block;aspect-ratio:3/4")
+
+    def test_jav_entity_pages_render_and_wire_the_same_layout_buttons(self):
+        self.assertPageContains('<div class="entitycollectionhead"><h3></h3>${javActive()?javLayoutButtons():\'\'}</div>')
+        self.assertPageContains("wireJavLayoutButtons(section)")
+        self.assertPageContains("renderEntityCollection(kind,name,{...entityCollectionPage,items:[...entityCollectionPage.items]}")
+        self.assertPageContains(".entitycollectionhead .javlayout{display:inline-flex;gap:6px}")
 
     def test_photo_lightbox_loads_swiper_lazily_with_thumbs_and_keyboard(self):
         self.assertPageContains("'/vendor/swiper/14.1.0/swiper-bundle.min.js'")
