@@ -8,7 +8,7 @@
 
 - Windows 是当前 ledger writer。启动入口为 `C:\Users\longm\Desktop\peach\peach-app\dist\Peach\Peach.exe`，代码、数据、worktree 和共享传输点都在 `C:\Users\longm\Desktop\peach\` 下；外置盘只提供 `R:\media`。
 - 托盘必须以普通权限启动：提升权限后的令牌看不到 CloudDrive 的 `A:` / `B:`，会把 PikPak 和 115 误报为脱盘。异常时从托盘退出，再由资源管理器或普通权限终端启动。
-- Windows HTTP 为 `0.0.0.0:80`，HTTPS 为当前 LAN IPv4 的 443，mDNS 名为 `peach-win.local`。线上服务版本最后核验为 `0.7.9`、`ledger_sync=writer`。
+- Windows HTTP 为 `0.0.0.0:80`，HTTPS 为当前 LAN IPv4 的 443，mDNS 名为 `peach-win.local`。线上服务版本最后核验为 `0.7.10`、`ledger_sync=writer`。
 - macOS 是 reader，代码在 `~/Desktop/lmd.gg/peach/peach-app`，数据在相邻 `peach-data`；`peach.local` 经 8900/8443 和 pf 提供 80/443。GET 正常，写入端点返回 409。
 - 2026-08-27 核对 macOS：服务子进程已跑当前 `master`，但菜单栏进程仍是旧代码。托盘层改动要生效，需手动退出菜单栏项后由 `.app` 或 `launchctl kickstart -k` 重启一次。
 - 两端固定使用不同 mDNS 名和各自本机 CA；CA 私钥、服务器私钥和凭据不跨机同步。生成资产由 Syncthing 单向 Windows → Mac，Git 与 ledger 复制是另外两条链路。
@@ -35,6 +35,8 @@
 - 浏览历史增量采集使用 SQLite backup API 与固定版本 `browserexport==0.4.4`，一致性读取本机 Chrome／Firefox／Zen／Safari，也接受 Google Takeout ZIP 和 browserexport SQLite／JSON／JSONL 导出；原始 URL、标题和导出文件只留本机私有目录，聚合候选不写 ledger。
 
 ## 本批修正与验证
+
+- 0.7.10 修复设置弹层滚动后标题和关闭操作一起离开视口的问题：标题栏现在粘在弹层自己的滚动容器顶部，配合 `overscroll-behavior:contain` 与焦点滚动预留；桌面滚动 540px、390×844 手机滚动 620px 后标题栏位置分别保持 37px／63px，页面无横向溢出且控制台错误为 0。按当前 Vercel Geist Materials 与 Web Interface Guidelines 重新核对全站组件语义：普通操作 6px、状态标记 4px、菜单与 Modal 12px、Tag 胶囊，媒体空间导航和头像保留圆形；搜索、播放列表、设置、顶栏、管理、详情、关注和移动端共用 token，并新增源码门槛拒绝 `transition:all` 与局部漂移。正式 Windows 全量 1178 项通过、13 项按平台跳过；新 EXE SHA-256 为 `A8CA4CCC2FDFEEDB004C9AC9D521F94609FF37E6B798DB718DB2B9245EBF7FD5`，上版备份为 `dist/Peach/Peach.pre-0.7.10-20260828-232322.exe`。首次替换启动与旧服务退出发生竞态，重启新托盘一次后 80/443 恢复；项目 CA 严格 HTTPS 返回 0.7.10、writer、非只读。未触发关注检查或其他 ledger 写操作，部署前后 ledger SHA-256 均为 `A03E3B450B2721B7FB8078D4A3751C498750B1A8608C66F49CCBD96AE949BF6F`。
 
 - 0.7.9 将 Rule34.xxx 封面从 250×141 `preview_url` 升级为官方 `sample_url`，历史行按同一 bucket/hash 只读升级，不改 ledger；Rule34 Paheal 图片直接读原图，视频按需双并发抽取并缓存最大 1280px JPEG。抽帧在开头 30 秒用 FFmpeg `blackframe` 选第一张黑色像素低于 98% 的帧，版本化缓存键会自动淘汰旧黑帧，全黑或超时继续回退低清封面。真实生产样本：Rule34.xxx 为 1080×1920，Paheal 图片为 1920×2964，Paheal 视频封面为 1280×720、黑像素占 28.9%，旧缓存已在请求后原子替换。关注域 410 项、Windows 正式全量 1176 项通过，分别有 1/13 项按平台跳过。正式 EXE SHA-256 为 `2719F6D3CC9951DC11FB387A49CFEF1ED19DC4A7CCEF27100C44A47A53833F65`，上版备份为 `dist/Peach/Peach.pre-0.7.9-20260828-224816.exe`；22 个迁移、0 待处理，80/443 已恢复，项目 CA 严格 HTTPS 返回 0.7.9、writer、非只读。生产浏览器首屏实测 Rule34.xxx 3840×2160、Paheal 1280×720，无横向溢出与控制台错误。未触发关注检查，ledger SHA-256 保持 `A03E3B450B2721B7FB8078D4A3751C498750B1A8608C66F49CCBD96AE949BF6F`。
 - 0.7.8 修复 JAV 大图的两个同批回归：Mix 卡片现在与同一网格里的作品共用大图比例和官方封面，不再单独掉回 16:9；生成缓存清理新增数据库所属 data root 边界，临时数据库即使漏配默认缓存根也不能越界删除真实 `peach-data/generated`。事故复核确认 0.7.6 开发期的 FastAPI 清空回收站测试虽然使用临时 ledger，却漏传 `cover_root`／`stream_root`，因此把真实 `covers` 当成孤立缓存；目录在 2026-08-28 21:12 被清空。旧抓取日志仍有 484 条证据，其中 243 张成功、241 张未取得；新增 `fetch_jav_covers.py --restore-successes` 只按成功记录的原 URL、原尺寸原子恢复，不重新探测来源、不写 ledger。与并发关注封面改动重放后，Windows 正式全量测试 1175 项通过、13 项按平台跳过。243 张成功记录已全部按原尺寸恢复，日志 SHA-256 仍为 `EED7DA6D1D522260BBF060C0B47FDF22E98FDDF202AE4DA65FB435A5FE309B39`，ledger SHA-256 仍为 `A03E3B450B2721B7FB8078D4A3751C498750B1A8608C66F49CCBD96AE949BF6F`。用户手动重启服务后，项目 CA 严格 HTTPS 返回 0.7.8、writer、非只读；`ABP-993` 封面返回 200 `image/jpeg`。生产页面桌面实测 Mix 与普通 JAV 卡片均为 383.3×547.6、比例 0.7；390×844 下 `ABP-993` 为 348×497.1、无横向溢出，浏览器错误 0。生产 EXE 未在本批替换。
