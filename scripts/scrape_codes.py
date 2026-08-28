@@ -204,11 +204,51 @@ def build_parser() -> argparse.ArgumentParser:
                               help="explicit Peach source preset; default baseline")
     source_group.add_argument("--sources", help="compatible comma-separated Javinizer scraper names")
     parser.add_argument("--health", type=Path, default=None)
+    parser.add_argument(
+        "--codes-file", type=Path,
+        help="只处理文件中列出的番号；每行一个，空行和 # 注释忽略",
+    )
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--delay", type=float, default=1.2)
     parser.add_argument("--refresh", action="store_true", help="ignore reusable raw snapshots")
     parser.add_argument("--include-fc2", action="store_true")
     return parser
+
+
+def _requested_codes(path: Path) -> list[str]:
+    requested: list[str] = []
+    seen: set[str] = set()
+    for raw in path.read_text(encoding="utf-8-sig").splitlines():
+        value = raw.split("#", 1)[0].strip()
+        if not value:
+            continue
+        query = normalise(value)
+        if query not in seen:
+            seen.add(query)
+            requested.append(query)
+    return requested
+
+
+def _select_requested_codes(
+    codes: list[tuple[str, float, int]], path: Path,
+) -> list[tuple[str, float, int]]:
+    requested = _requested_codes(path)
+    available: dict[str, tuple[str, float, int]] = {}
+    for code, size_gb, videos in codes:
+        query = normalise(code)
+        previous = available.get(query)
+        if previous is None:
+            available[query] = (code, size_gb, videos)
+        else:
+            available[query] = (
+                previous[0], previous[1] + size_gb, previous[2] + videos,
+            )
+    missing = [query for query in requested if query not in available]
+    if missing:
+        preview = "、".join(missing[:10])
+        suffix = f" 等 {len(missing)} 个" if len(missing) > 10 else ""
+        raise ValueError(f"番号文件含 ledger 中不存在的番号：{preview}{suffix}")
+    return [available[query] for query in requested]
 
 
 def _health_output(output: Path) -> Path:
@@ -276,6 +316,11 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
     codes = [row for row in codes if policy.allows_code(
         row[0], include_fc2=args.include_fc2, explicit_sources=explicit_sources,
     )]
+    if args.codes_file:
+        try:
+            codes = _select_requested_codes(codes, args.codes_file)
+        except (OSError, UnicodeError, ValueError) as error:
+            parser.error(str(error))
     if args.limit:
         codes = codes[:max(args.limit, 0)]
     log(f"字段候选批次：profile {policy.profile}，番号 {len(codes)}，来源 {','.join(sources)}；只读查询，不写 ledger")
