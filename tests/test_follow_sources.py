@@ -194,6 +194,42 @@ class OfficialConnectorTests(unittest.TestCase):
         self.assertEqual(gofile_request.headers["Authorization"], "Bearer secret")
         self.assertNotIn("secret", gofile_request.url)
 
+    def test_fanbox_cookie_stays_on_fanbox_requests(self):
+        seen = []
+        def route(request):
+            seen.append(request)
+            if "api.gofile.io" in request.url:
+                return HttpResponse(200, {}, GOFILE_JSON)
+            return HttpResponse(200, {}, FANBOX_DETAIL_JSON if "post.info" in request.url
+                                else FANBOX_JSON)
+        FanboxConnector(
+            transport=_routed(route),
+            credential=Credential("fanbox", {"cookie": "FANBOXSESSID=session"}),
+            gofile_credential=Credential("gofile", {"api_token": "secret"}),
+        ).fetch("ffxivinitiala")
+        fanbox_requests = [request for request in seen if "api.fanbox.cc" in request.url]
+        self.assertTrue(fanbox_requests)
+        self.assertTrue(all(request.headers.get("Cookie") == "FANBOXSESSID=session"
+                            for request in fanbox_requests))
+        gofile_request = next(request for request in seen if "api.gofile.io" in request.url)
+        self.assertNotIn("Cookie", gofile_request.headers)
+
+    def test_gofile_premium_requirement_is_not_reported_as_a_bad_token(self):
+        def route(request):
+            if "api.gofile.io" in request.url:
+                return HttpResponse(401, {"content-type": "application/json"},
+                                    b'{"status":"error-notPremium","data":{}}')
+            return HttpResponse(200, {}, FANBOX_DETAIL_JSON if "post.info" in request.url
+                                else FANBOX_JSON)
+        connector = FanboxConnector(
+            transport=_routed(route),
+            gofile_credential=Credential("gofile", {"api_token": "valid-token"}),
+        )
+        with self.assertRaises(FollowSourceError) as caught:
+            connector.fetch("ffxivinitiala")
+        self.assertIn("Premium", str(caught.exception))
+        self.assertIn("token 有效", str(caught.exception))
+
     def test_one_blocked_detail_keeps_the_public_list_item(self):
         def route(request):
             if "post.info" in request.url:

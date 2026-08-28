@@ -76,8 +76,10 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 F95 masked 链接与 Gofile 文件列表的凭据边界见 `f95-masked-gofile-media`；Mix 只按已解析且
 可播放的视频计数，不按回复数或网盘页数计数。
 FANBOX 多图、Gofile Bearer API、Paheal 标签页与跨站出处键见
-`follow-fanbox-gofile-paheal`。Gofile token 是独立可选凭据：只进请求头，不进 URL、证据、
-ledger 的公开投影或浏览器 JSON；未配置时保留分享页，但不得声称已经取得文件列表。
+`follow-fanbox-gofile-paheal`。FANBOX Cookie 是本机可选凭据，只发给 FANBOX API；
+Gofile token 是另一份本机可选凭据，只进 Gofile 请求头，不进 URL、证据、ledger 的公开投影
+或浏览器 JSON。Gofile 当前把 contents API 限给 Premium；`error-notPremium` 要按套餐限制
+报告，不能误报成 token 无效。未取得文件列表时保留分享页，不得声称已经取得视频。
 
 ## 批处理边界
 

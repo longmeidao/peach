@@ -386,6 +386,9 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual(by_provider["rule34xxx"]["needs"], ["user_id", "api_key"])
         self.assertEqual(by_provider["rule34xxx"]["missing"], ["user_id", "api_key"])
         self.assertEqual(by_provider["f95zone"]["requirement"], "optional")
+        self.assertEqual(by_provider["fanbox"]["requirement"], "optional")
+        self.assertEqual(by_provider["fanbox"]["needs"], ["cookie"])
+        self.assertTrue(by_provider["fanbox"]["path"].endswith("fanbox.json"))
         self.assertEqual(by_provider["gofile"]["requirement"], "optional")
         self.assertEqual(by_provider["gofile"]["needs"], ["api_token"])
         self.assertTrue(by_provider["gofile"]["path"].endswith("gofile.json"))
@@ -1276,6 +1279,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('data-cred-form=')
         self.assertPageContains("'/api/follow/credential'")
         self.assertPageContains('type="password"')
+        self.assertPageContains("const fields=(row.needs||[]).map")
         # 值只往磁盘走：保存后清空输入框，页面上再也看不到。
         self.assertPageContains("form.reset();await openFollowManage(false)")
         self.assertPageContains("data-cred-clear")
