@@ -1033,7 +1033,7 @@ let tasteWindow='all';
 const tasteDate=value=>value?new Date(value).toLocaleDateString('zh-CN'):'—';
 const tasteHours=seconds=>seconds>=3600?(seconds/3600).toFixed(1)+' 小时':Math.round(seconds/60)+' 分钟';
 const tasteRanking=(title,rows,kind,empty='暂无足够证据',panel='tastepanel-half',visual='')=>`<section class="tastepanel ${panel}"><h3>${title}</h3>
-  <div class="tasteranks${visual?' tasteranks-visual':''}">${rows.length?rows.map((row,index)=>{
+  <div class="tasteranks${kind==='tag'?' tasteranks-tags':''}${visual?' tasteranks-visual':''}">${rows.length?rows.map((row,index)=>{
     const clickable=kind&&row.peach_items>0;
     const detail=row.web_visits!=null
       ?`${row.web_visits?`浏览 ${row.web_visits}`:''}${row.web_visits&&row.peach_items?' · ':''}${row.peach_items?`Peach ${row.peach_items}`:''}`
@@ -1042,7 +1042,7 @@ const tasteRanking=(title,rows,kind,empty='暂无足够证据',panel='tastepanel
     const media=visual==='domain'
       ?`<span class="tasteavatar tastesite"><span class="ini">${esc(row.name.slice(0,1).toUpperCase())}</span><img src="${esc(faviconUrl('https://'+row.name))}" data-fallback="${esc(faviconFallbackUrl(row.name))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="const f=this.dataset.fallback;if(f){delete this.dataset.fallback;this.src=f}else this.remove()"></span>`
       :visual?`<span class="tasteavatar">${avatarInner(row.name,ref,rep,visual)}</span>`:'';
-    return `<${clickable?'button':'div'} class="tasterank${visual?' tasterank-visual':''}"${clickable?` data-taste-kind="${kind}" data-taste-name="${esc(row.name)}"`:''}>
+    return `<${clickable?'button':'div'} class="tasterank${kind==='tag'?' tasterank-tag':''}${visual?' tasterank-visual':''}"${clickable?` data-taste-kind="${kind}" data-taste-name="${esc(row.name)}"`:''}>
       <span class="tastepos mono">${index+1}</span>${media}<span><b>${esc(row.name)}</b><small>${esc(detail)}</small></span>
       ${clickable?icon('chevron-right'):''}</${clickable?'button':'div'}>`}).join(''):`<p class="empty">${empty}</p>`}</div></section>`;
 function openTasteSignal(kind,name){
