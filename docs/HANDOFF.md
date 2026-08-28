@@ -153,6 +153,7 @@ Gofile token 是另一份本机可选凭据，只进 Gofile 请求头，不进 U
 - FastAPI 与前端保持单体部署，在线来源和 AI 只通过显式适配器进入；AI runtime 与推理 API 的协议边界见 ADR-0003。
 - 当前页面、路由、交互与性能实现只写 `docs/STATUS.md`，由 API 和 `tests/test_web_ui.py` 守住；本文件不再复制易过期的版本号、像素值和控件清单。
 - 追更连接器、凭据、变体和跨站归组以 ADR-0019 为准。Rule34.xxx 来源身份大小写不敏感；作者显示名与头像优先经固定主机校验的官方页面，归档站只回退。
+- 自动追更固定使用 APScheduler 3.11.3，只在 ledger writer 启动。频率保存在 `peach-data/state/follow-schedule.json`，默认每小时且启动后等待一个完整间隔；不要改成启动即抓。任务必须保持 `coalesce=True`、`max_instances=1`，并与手动检查共用 `WebContract.follow_check_lock`，reader 只显示不可用状态。
 - 账本路径兼容和抽帧失败处理统一见 `.claude/skills/peach-cross-platform/SKILL.md` 与 `.claude/skills/peach-batch-jobs/SKILL.md`。
 
 ## Web 性能边界

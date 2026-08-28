@@ -167,6 +167,13 @@ class FollowContractTests(unittest.TestCase):
         primary = self._get()["groups"][0]["primary"]
         self.assertEqual(primary["published_precision"], "approximate")
 
+    def test_feed_can_restore_one_exact_item_outside_the_recent_limit(self):
+        self._seed()
+        item_id = self._get()["groups"][0]["primary"]["id"]
+        payload = self._get(item=str(item_id), limit="1")
+        self.assertEqual(payload["groups"][0]["primary"]["id"], item_id)
+        self.assertEqual(len(payload["groups"][0]["variants"]), 1)
+
     def test_feed_never_exposes_the_raw_media_url(self):
         # 界面只需要知道有没有媒体；直链是来源层的事，不进公共 JSON。
         self._seed()
@@ -913,14 +920,15 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn("follow", keys)
         self.assertEqual(keys[keys.index("follow") + 1], "immerse",
                          "关注入口应当排在沉浸模式前面")
-        self.assertPageContains("['follow','关注','globe']")
+        self.assertPageContains("['follow','关注','rss']")
         self.assertPageContains("if(k==='follow'){openFollow();return}")
         self.assertPageContains("if(k==='follow')return path==='/follow';")
         # 两个数组现在同名，字面量断言分不出是哪一个：
         # 管理区这一项得在 MANAGE_SECTIONS 里找，否则它被删了测试照样绿。
         manage = self.page[self.page.index("const MANAGE_SECTIONS=["):]
         manage = manage[:manage.index("];")]
-        self.assertIn("['follow','关注','globe']", manage)
+        self.assertIn("['follow','关注','rss']", manage)
+        self.assertPageContains('<symbol id="i-rss"')
         self.assertPageContains("if(path==='/follow-manage')return 'follow'")
         self.assertPageContains("if(section==='follow'){openFollowManage();return}")
 
@@ -930,6 +938,8 @@ class FollowWebSourceTests(unittest.TestCase):
             "if(path==='/follow-manage'){await openFollowManage(false);return}")
         self.assertPageContains(
             "if(parts[0]==='follow'&&parts[1]==='item'&&/^\\d+$/.test(parts[2]||'')){await openFollowDetail(+parts[2],false);return}")
+        self.assertPageContains("api(`/api/follow?item=${encodeURIComponent(id)}`)")
+        self.assertPageContains(".then(async()=>{buildEdge();wireAllDrag();await restoreRoute();scheduleStickySurfaces()})")
 
     def test_the_add_state_is_looked_up_outside_the_form(self):
         # 提示行在表单外面。在 form 里找它会拿到 null，第一次赋值就抛 TypeError，
@@ -1237,11 +1247,11 @@ class FollowWebSourceTests(unittest.TestCase):
             'class="mav fsourceavatar" title="${esc(item.provider_label)}">${sourceIcon(item.provider)}',
             self.page,
         )
-        self.assertPageContains("async function openFollowDetail(id,push=true,mediaIndex=null)")
+        self.assertPageContains("async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=false)")
         self.assertPageContains("const src=item.playable?`/follow-stream?id=${item.id}${selectedMedia?")
         self.assertPageContains('data-follow-detail="${item.id}"')
         self.assertPageContains("route(`/follow/item/${item.id}`)")
-        self.assertPageContains('class="sgrid followdetailgrid${collection||embedded.length>1?\' mixgrid\':\'\'}"')
+        self.assertPageContains('class="sgrid followdetailgrid${collection||embeddedQueue?\' mixgrid\':\'\'}"')
         self.assertPageContains('class="followorigin" href="${esc(item.url)}" target="_blank"')
         self.assertPageContains('title="打开来源页面" aria-label="打开来源页面"')
         self.assertNotIn('打开来源页面</a>', self.page)
@@ -1257,6 +1267,14 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertNotIn('class="fcollectionthumb" href=', self.page)
         self.assertPageContains("route(followDetailReturnPath||'/follow')")
         self.assertPageContains(".followitem a{text-decoration:none}")
+
+    def test_follow_image_collections_use_buttons_dots_and_arrow_keys(self):
+        self.assertPageContains('class="followimagearrow prev"')
+        self.assertPageContains('class="followimagedots" role="group"')
+        self.assertPageContains('data-follow-image-item="${image.index}"')
+        self.assertPageContains("imageDots.length&&(e.key==='ArrowLeft'||e.key==='ArrowRight')")
+        self.assertPageContains("openFollowDetail(item.id,false,+index,true)")
+        self.assertPageContains(".followimagedots button[aria-current=\"true\"]")
 
     def test_follow_filters_put_all_first_and_sources_are_icon_only(self):
         self.assertPageContains("const FOLLOW_FILTERS=[['','全部'],['new','未看']")

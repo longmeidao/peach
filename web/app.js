@@ -71,7 +71,8 @@ function dropOfflineFromDefaultLoc(){
 }
 const DURATION_TAGS=new Set(['短片-2分内','中片-10分内','长片-30分内','超长片-30分上']);
 const SETTINGS_KEY='peach.settings.v1';
-const DEFAULT_SETTINGS={rotateMinutes:0,batchSize:60,defaultSort:'seed',hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big'};
+const DEFAULT_SIDEBAR_ORDER=['','performers','tags','jav','flagged','playlists','follow','immerse','manage'];
+const DEFAULT_SETTINGS={rotateMinutes:0,batchSize:60,defaultSort:'seed',hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
@@ -82,6 +83,7 @@ appSettings.hoverDelaySeconds=allowedSetting(+appSettings.hoverDelaySeconds,[3,5
 appSettings.seekSeconds=allowedSetting(+appSettings.seekSeconds,[5,10,30],10);
 appSettings.searchHistoryLimit=allowedSetting(+appSettings.searchHistoryLimit,[5,10,20],10);
 appSettings.relatedLimit=allowedSetting(+appSettings.relatedLimit,[12,20,30],20);
+appSettings.sidebarOrder=[...new Set([...(Array.isArray(appSettings.sidebarOrder)?appSettings.sidebarOrder:[]),...DEFAULT_SIDEBAR_ORDER])].filter(key=>DEFAULT_SIDEBAR_ORDER.includes(key));
 document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);
 const saveSettings=()=>localStorage.setItem(SETTINGS_KEY,JSON.stringify(appSettings));
 function syncSettingsPanel(){
@@ -92,6 +94,8 @@ function syncSettingsPanel(){
   $('#seekSecondsSetting').value=String(appSettings.seekSeconds);
   $('#searchHistoryLimitSetting').value=String(appSettings.searchHistoryLimit);
   $('#relatedLimitSetting').value=String(appSettings.relatedLimit);
+  renderSidebarOrderSetting();
+  loadFollowScheduleSetting();
 }
 let settingsReturnFocus=null;
 function openSettings(open=true){
@@ -121,6 +125,32 @@ $('#hoverDelaySetting').onchange=e=>{appSettings.hoverDelaySeconds=+e.target.val
 $('#seekSecondsSetting').onchange=e=>{appSettings.seekSeconds=+e.target.value||10;saveSettings()};
 $('#searchHistoryLimitSetting').onchange=e=>{appSettings.searchHistoryLimit=+e.target.value||10;saveSettings();writeSearchHistory(readSearchHistory())};
 $('#relatedLimitSetting').onchange=e=>{appSettings.relatedLimit=+e.target.value||20;saveSettings()};
+let followScheduleRequest=0;
+const followScheduleCopy=status=>{
+  if(!status.available)return '只在账本写入端运行';
+  if(status.running)return '正在检查全部来源…';
+  if(status.last_error)return `上次失败：${status.last_error}`;
+  if(status.last_finished_at)return `上次完成 ${localTime(status.last_finished_at)} · 新增 ${status.last_added||0}`;
+  if(status.next_run_at)return `下次 ${localTime(status.next_run_at)}`;
+  return status.enabled?'等待首次运行':'已关闭';
+};
+async function loadFollowScheduleSetting(){
+  const select=$('#followScheduleSetting'),state=$('#followScheduleState'),request=++followScheduleRequest;
+  select.disabled=true;
+  try{
+    const status=await api('/api/follow/schedule');if(request!==followScheduleRequest)return;
+    select.value=status.enabled?String(status.interval_minutes):'0';
+    select.disabled=!status.available;state.textContent=followScheduleCopy(status);
+  }catch(error){if(request===followScheduleRequest)state.textContent=`状态未取得：${error.message||error}`}
+}
+$('#followScheduleSetting').onchange=async e=>{
+  const minutes=+e.target.value,state=$('#followScheduleState');e.target.disabled=true;state.textContent='正在保存…';
+  try{
+    const status=await api('/api/follow/schedule',{method:'POST',body:JSON.stringify({enabled:minutes>0,interval_minutes:minutes||60})});
+    state.textContent=followScheduleCopy(status);
+  }catch(error){state.textContent=error.message||'保存失败'}
+  finally{e.target.disabled=false}
+};
 /* 来源图标：品牌使用已缓存的官方资产；通用操作图标统一使用本地 Lucide 子集。 */
 const SRCICON={
   local:icon('hard-drive'),
@@ -785,7 +815,7 @@ async function buildBars(){
     `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <b class="disp" style="font-size:15px;letter-spacing:.1em">导航与筛选</b>
       <button id="drawerClose" class="ib" title="收起">${icon('x')}</button></div>`+
-    `<div class="dnav">${EDGE_ICONS.map(([k,label,ic])=>navBtn(k,label,ic)).join('')}</div>`+
+    `<div class="dnav">${orderedEdgeIcons().map(([k,label,ic])=>navBtn(k,label,ic)).join('')}</div>`+
     sec('来源',chips(facetData.locations.map(l=>({k:l.k,label:LOC[l.k]||l.k,n:l.n,
         cost:(l.k==='pikpak'||l.k==='online')?'metered':'free'})),'loc',true),'','src')
     +sec('时长',facetData.stats.duration?`<div class="duration-filter"><div class="duration-readout"><span id="durMinText">不限</span><b>—</b><span id="durMaxText">不限</span></div>
@@ -1408,23 +1438,27 @@ function indexFollowItems(data){
 
 async function followItemById(id){
   if(followItemsById.has(id))return followItemsById.get(id);
-  const data=await api('/api/follow?limit=1000');
+  const data=await api(`/api/follow?item=${encodeURIComponent(id)}`);
   if(!followData)followData=data;
   indexFollowItems(data);
   return followItemsById.get(id);
 }
 
-async function openFollowDetail(id,push=true,mediaIndex=null){
+async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=false){
   releaseHoverPreviews();
   const entering=!location.pathname.startsWith('/follow/item/');
   if(push&&entering)followDetailReturnPath=location.pathname+location.search;
-  if(!push)followDetailReturnPath='/follow';
+  if(!push&&!preserveReturn)followDetailReturnPath='/follow';
   const item=await followItemById(+id);if(!item)return;
   const group=followGroupByItemId.get(item.id);
   const embedded=item.media_items||[];
   const selectedMedia=embedded.length
     ?embedded.find(media=>media.index===(mediaIndex??embedded[0].index))||embedded[0]
     :null;
+  const imageMedia=embedded.filter(media=>media.media_kind==='image');
+  const imagePosition=imageMedia.findIndex(media=>media.index===selectedMedia?.index);
+  const imageCarousel=imageMedia.length>1&&imagePosition>=0;
+  const embeddedQueue=embedded.length>1&&!imageCarousel;
   const collection=!embedded.length&&group&&followVideoItems(group).length>1?group:null;
   disposeStage(false);
   if(push)route(`/follow/item/${item.id}`);
@@ -1441,14 +1475,17 @@ async function openFollowDetail(id,push=true,mediaIndex=null){
       :item.thumb_url
         ?`<img class="followdetailposter" src="${esc(item.thumb_url)}" alt="${esc(item.title)}" referrerpolicy="no-referrer">`
         :`<div class="followdetailplaceholder">${sourceIcon(item.provider)}<span>没有可用预览</span></div>`;
+  const imageControls=imageCarousel?`<button class="followimagearrow prev" data-follow-image-step="-1" aria-label="上一张图片" title="上一张">${icon('chevron-left')}</button>
+    <button class="followimagearrow next" data-follow-image-step="1" aria-label="下一张图片" title="下一张">${icon('chevron-right')}</button>
+    <div class="followimagedots" role="group" aria-label="${imageMedia.length} 张图片">${imageMedia.map((image,index)=>`<button data-follow-image-item="${image.index}" aria-current="${index===imagePosition}" aria-label="第 ${index+1} 张，共 ${imageMedia.length} 张" title="第 ${index+1} 张"></button>`).join('')}</div>`:'';
   const badges=followBadges({primary:item,variants:[],duplicates:[],has_wip:item.variant_kind==='wip'});
   const tags=(item.tags||[]).map(tag=>followTagChip(item,tag,'button')).join('');
   const author=followAuthorName(authorSources)||item.author||item.source_label||'作者未取得';
   const postedBy=item.author&&foldName(item.author)!==foldName(author)?item.author:'';
   $('#stage').hidden=false;document.body.classList.add('detail-open');
-  $('#stage').innerHTML=`<div class="sgrid followdetailgrid${collection||embedded.length>1?' mixgrid':''}">
-    <div class="vwrap followdetailmedia"><button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${media}</div>
-    ${embedded.length>1?followEmbeddedQueueHtml(item,selectedMedia.index):(collection?followQueueHtml(collection,item.id):'')}
+  $('#stage').innerHTML=`<div class="sgrid followdetailgrid${collection||embeddedQueue?' mixgrid':''}">
+    <div class="vwrap followdetailmedia"><button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${media}${imageControls}</div>
+    ${embeddedQueue?followEmbeddedQueueHtml(item,selectedMedia.index):(collection?followQueueHtml(collection,item.id):'')}
     <div class="side followdetailside">
       <div class="followdetailtitle"><div class="stitle">${esc(item.title)}</div>${item.url?`<a class="followorigin" href="${esc(item.url)}" target="_blank" rel="noreferrer noopener" title="打开来源页面" aria-label="打开来源页面">${icon('external-link')}</a>`:''}</div>
       <div class="followdetailidentity"><span class="mav fsourceavatar">${followAuthorAvatar(authorSources)}</span>
@@ -1471,7 +1508,14 @@ async function openFollowDetail(id,push=true,mediaIndex=null){
   $('#stage').querySelectorAll('[data-follow-queue-item]').forEach(button=>button.onclick=()=>
     openFollowDetail(+button.dataset.followQueueItem,true));
   $('#stage').querySelectorAll('[data-follow-media-item]').forEach(button=>button.onclick=()=>
-    openFollowDetail(item.id,true,+button.dataset.followMediaItem));
+    openFollowDetail(item.id,false,+button.dataset.followMediaItem,true));
+  const switchImage=index=>openFollowDetail(item.id,false,+index,true);
+  $('#stage').querySelectorAll('[data-follow-image-item]').forEach(button=>button.onclick=()=>
+    switchImage(button.dataset.followImageItem));
+  $('#stage').querySelectorAll('[data-follow-image-step]').forEach(button=>button.onclick=()=>{
+    const next=(imagePosition+(+button.dataset.followImageStep)+imageMedia.length)%imageMedia.length;
+    switchImage(imageMedia[next].index);
+  });
   $('#stage').querySelectorAll('.followdetailtags [data-follow-tag]').forEach(button=>button.onclick=async()=>{
     const tag=button.dataset.followTag;
     if(followTags.has(tag))followTags.delete(tag);else followTags.add(tag);
@@ -1952,7 +1996,7 @@ function renderFollowManage(credentials){
             counts.new?` · <b>${counts.new}</b> 条未看`:''}</span>
           <button class="fbtn" data-follow-check=""${sources.length?'':' disabled'}>${
             icon('refresh-cw')}检查全部</button>
-          <button class="fbtn" data-follow-view>${icon('globe')}去看更新</button></div>
+          <button class="fbtn" data-follow-view>${icon('rss')}去看更新</button></div>
         ${followCheckReport?followCheckSummary(followCheckReport):''}
         ${broken.length?`<p class="fnote warn">${broken.length} 个来源上次检查失败，原因见对应那一行。</p>`:''}
         ${sources.length?`<div class="frows fsources">${
@@ -2809,7 +2853,7 @@ const EDGE_ICONS=[
   ['jav','JAV','jav'],
   ['flagged','已标记','star'],
   ['playlists','播放列表','list-filter'],
-  ['follow','关注','globe'],
+  ['follow','关注','rss'],
   ['immerse','沉浸模式','play'],
   ['manage','管理','settings'],
 ];
@@ -2824,9 +2868,29 @@ const MANAGE_SECTIONS=[
   ['ads','疑似广告','alert'],
   ['dupes','重复文件','hard-drive'],
   ['trash','回收站','trash'],
-  ['follow','关注','globe'],
+  ['follow','关注','rss'],
   ['quality','高清版','sparkles'],
 ];
+function orderedEdgeIcons(){
+  const byKey=new Map(EDGE_ICONS.map(item=>[item[0],item]));
+  return appSettings.sidebarOrder.map(key=>byKey.get(key)).filter(Boolean);
+}
+function renderSidebarOrderSetting(){
+  const root=$('#sidebarOrderSetting');if(!root)return;
+  const labels=new Map(EDGE_ICONS.map(([key,label])=>[key,label]));
+  root.innerHTML=appSettings.sidebarOrder.map((key,index)=>{
+    const entry=EDGE_ICONS.find(item=>item[0]===key),label=labels.get(key)||key;
+    return `<div class="sidebarorderrow"><span>${icon(entry?.[2]||'home')}<b>${esc(label)}</b></span><span>
+      <button data-sidebar-key="${esc(key)}" data-sidebar-move="-1" aria-label="上移 ${esc(label)}" title="上移"${index===0?' disabled':''}>${icon('chevron-up')}</button>
+      <button data-sidebar-key="${esc(key)}" data-sidebar-move="1" aria-label="下移 ${esc(label)}" title="下移"${index===appSettings.sidebarOrder.length-1?' disabled':''}>${icon('chevron-down')}</button></span></div>`;
+  }).join('');
+  root.querySelectorAll('[data-sidebar-move]').forEach(button=>button.onclick=()=>{
+    const from=appSettings.sidebarOrder.indexOf(button.dataset.sidebarKey),to=from+(+button.dataset.sidebarMove);
+    if(from<0||to<0||to>=appSettings.sidebarOrder.length)return;
+    const next=[...appSettings.sidebarOrder];[next[from],next[to]]=[next[to],next[from]];
+    appSettings.sidebarOrder=next;saveSettings();renderSidebarOrderSetting();buildEdge();buildBars();
+  });
+}
 function manageSection(){
   const path=decodeURIComponent(location.pathname);
   if(path==='/stats')return 'stats';
@@ -2970,7 +3034,7 @@ function syncHeaderActions(){
   if(!canSelect&&selectMode)setSelectMode(false,true);
 }
 function buildEdge(){
-  $('#edge').innerHTML=EDGE_ICONS.map(([k,t,ic])=>
+  $('#edge').innerHTML=orderedEdgeIcons().map(([k,t,ic])=>
     `<button data-nav="${k}" title="${t}" aria-pressed="${navOn(k)}">
       ${icon(ic)}</button>`).join('')
 ;
@@ -3855,6 +3919,13 @@ document.addEventListener('keydown',e=>{
   }
   // 输入态不抢键：搜索框、标签弹窗和任何可编辑区域里的按键归它们自己处理。
   if(isTypingTarget(e.target)||e.ctrlKey||e.metaKey||e.altKey)return;
+  const imageDots=[...document.querySelectorAll('#stage:not([hidden]) .followimagedots [data-follow-image-item]')];
+  if(imageDots.length&&(e.key==='ArrowLeft'||e.key==='ArrowRight')){
+    e.preventDefault();
+    const current=Math.max(0,imageDots.findIndex(dot=>dot.getAttribute('aria-current')==='true'));
+    imageDots[(current+(e.key==='ArrowRight'?1:-1)+imageDots.length)%imageDots.length].click();
+    return;
+  }
   const video=activeVideo();
   if(video){
     if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
@@ -3969,4 +4040,4 @@ window.addEventListener('popstate',restoreRoute);
 buildEdge();
 loadSourceStatus()
   .then(buildBars)
-  .then(async()=>{buildEdge();wireAllDrag();await load(true);await restoreRoute();scheduleStickySurfaces()});
+  .then(async()=>{buildEdge();wireAllDrag();await restoreRoute();scheduleStickySurfaces()});

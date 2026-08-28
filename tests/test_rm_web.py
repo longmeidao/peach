@@ -461,7 +461,7 @@ class WebDataTests(unittest.TestCase):
             "/api/index", "/api/duplicates", "/api/quality-goals",
             "/api/stats", "/api/tops", "/api/ads", "/api/related", "/api/facets",
             "/api/search-history", "/api/review", "/api/playlists", "/api/playlist",
-            "/api/follow", "/api/follow/credentials",
+            "/api/follow", "/api/follow/credentials", "/api/follow/schedule",
         })
         self.assertEqual(set(rm_web.POST_HANDLERS), {
             "/api/activity", "/api/play", "/api/feedback", "/api/watch-later",
@@ -471,7 +471,7 @@ class WebDataTests(unittest.TestCase):
             "/api/purge-missing", "/api/review/auto-apply",
             "/api/follow/check", "/api/follow/status", "/api/follow/save",
             "/api/follow/source", "/api/follow/resolve", "/api/follow/credential",
-            "/api/follow/author-alias",
+            "/api/follow/author-alias", "/api/follow/schedule",
         })
         with self.assertRaises(rm_web.ContractRouteNotFound):
             rm_web.dispatch_api_get(self.contract, "/api/typo", {})
