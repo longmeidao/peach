@@ -2835,6 +2835,16 @@ def _background_resource_scan(contract: WebContract, restart: bool = False) -> d
 def w_resource_sync_scan(contract: WebContract, body=None):
     body = body or {}
     if body.get("background") is True:
+        if body.get("status_only") is True:
+            with contract.resource_scan_lock:
+                state = contract.resource_scan_state
+                if state is None:
+                    return {
+                        "ok": True, "status": "idle", "scan_id": "", "sources": [],
+                        "completed_sources": 0,
+                        "total_sources": len(LOCATION_ROOT_DECLARATIONS),
+                    }
+                return _resource_scan_public(state)
         return _background_resource_scan(contract, restart=body.get("restart") is True)
     scan = _scan_missing_resources(contract)
     caches = _resource_orphan_plan(contract, scan["missing_ids"])
