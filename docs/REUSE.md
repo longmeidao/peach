@@ -92,7 +92,7 @@
 | `taste_history.py` 自写 Chrome/Firefox/Zen/Safari 发现、快照与 SQLite 解析 | **优先替换为 `browserexport==0.4.4`** | Python 3.14 依赖解析通过；在本机 7 个 Chrome/Firefox/Zen profile 上与 Peach 逐库计数完全一致。Peach 保留 Takeout、隐私存储、域名分析和 candidate 生成。 |
 | `jobs.PidFileLock` | **优先替换为 `portalocker==4.3.0` 的 `PidFileLock`** | Python 3.14 解析通过，现成覆盖 PID 写入、锁持有者、原子替换、陈旧文件与释放清理。Peach 只保留任务归属和错误文案映射。 |
 | Rule34Video 媒体页解析 | **部分替换为 `yt-dlp==2026.8.19`** | 对真实视频 4533145 无写入提取成功，取得 4 个格式、31 个标签、缩略图与时间。Peach 仍负责作者分页、合集/超多 model 排除、来源分组和跨站去重。 |
-| FANBOX 正文解析 | **按 PixivUtil2 FANBOX 模型重做规范化层** | 当前 Peach 只读取 article 的 `blocks` 与 `imageMap`；成熟实现还覆盖 image/file/article/video、`fileMap`、`embedMap`、`urlEmbedMap` 和旧正文。未找到兼具窄依赖、活跃维护与当前传输可用性的 Python wheel；实现时固定 PixivUtil2 revision，只复用公开数据模型，不引入整套下载器。传输继续用 `curl_cffi==0.16.2`。 |
+| FANBOX 正文解析 | **已采用 PixivUtil2 `v20251112` / `e537e96` 的公开正文模型** | Peach 的独立规范化 DTO 已覆盖 image/text/file/article/video/entry、`fileMap`、`embedMap`、`urlEmbedMap` 和旧 HTML 正文，并保留正文顺序、稳定去重、可播放媒体与文件页边界；BSD-2-Clause 依据写在实现头部。PixivUtil2 是完整下载器而非可嵌入解析库，因此不引入整套依赖；传输继续固定 `curl_cffi==0.16.2`。真实公开帖 12228983 只读 POC 得到 article、6 图和 Gofile `OS2Qz9`。 |
 | `mp4index.py` 有界 MP4 关键帧索引 | **保留自研** | PyAV 需要 demux，`pymp4` 依赖旧 Construct，Bento4 是额外二进制；都不能证明在云盘文件上保留“只读 moov/stss/stts、避免整片流量”的约束。 |
 | `certs.py` 固定项目 CA 与短期叶证书 | **保留自研 policy，继续调用 OpenSSL** | mkcert 会接管本机 CA 安装/私钥，不能保持跨设备固定项目 CA；cryptography 只替换证书编码且增加原生依赖，不能删除 Peach 的 Apple 398 天与 CA 生命周期策略。 |
 | `migrations.py` SQLite 迁移 | **保留自研** | Alembic 会引入 SQLAlchemy/Mako/greenlet；现有范围只需顺序 SQL、校验和、备份与 PyInstaller 资源定位，没有 ORM 消费者。 |

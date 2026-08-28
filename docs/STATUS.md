@@ -67,11 +67,12 @@
 - `b0730af` 已经由 `a0a8ccc` 合入 `master`：0.7.2 将 FANBOX `post.info` 收窄到固定版本 `curl_cffi` 的 Firefox 传输；列表及其他来源仍走共用 HTTPX，不执行网页脚本、不求解机器人质询、不读取付费帖子。用管理页已保存的 Cookie 对 LazyProcrastinator 帖子 12228983 做只读复核，已取得 6 图、正文和 Gofile `OS2Qz9` 资源页，证明 Cookie 没填错，先前的 403／`general_error` 来自传输指纹。关注域 386 项、正式 Windows 全量 1114 项通过，分别有 1/13 项按平台跳过。
 - 0.7.2 正式 EXE 已替换为 SHA-256 `F5F78CDACD9F466A6B8A423151F510F16D40A47BB052B984971D0F59D3EC51E6`，上版备份为 `dist/Peach/Peach.pre-0.7.2-20260828-142052.exe`；80/443 已恢复，打包迁移为 22 个、0 待处理，项目 CA 严格 HTTPS `/healthz` 返回 200、0.7.2、writer。生产凭据 API 显示 FANBOX Cookie 已配置、Gofile token 当前未配置；本轮没有触发检查更新，部署前后 ledger SHA-256 均为 `C2C6F09522305F682636379F43E74A4E60D9475C39FBE0FBC3505A7879CB963C`。本改动没有页面、CSS 或交互变化，桌面/手机视觉验收不适用。
 - 2026-08-28 已完成全仓自研实现复用审计：浏览器历史、批处理 PID 锁、Rule34Video 媒体页和 FANBOX 正文模型有成熟替代或参考实现，进入替换队列；MP4 有界索引、固定项目 CA、SQLite 迁移、Gofile、系统网络监听、流媒体会话、单 writer 同步与 Windows 更新因已验证的 Peach 约束继续保留。详细候选、版本、真实 POC 与拒绝理由写入 `docs/REUSE.md`；本轮只改规则与文档，没有新增运行时依赖、部署、生产或 ledger 写入。
+- 0.7.3 首项复用替换已完成：FANBOX 正文规范化固定参考 PixivUtil2 `v20251112` / `e537e96`，覆盖 image/text/file/article/video/entry、正文 blocks、四类 map 与旧 HTML；图片和视频进入现有多媒体切换，其他文件保留资源链接，URL 稳定去重。已保存 Cookie 对公开帖 12228983 的只读实测为 article、6 图、Gofile `OS2Qz9`；follow 391 项、正式 Windows 全量 1119 项通过，分别有 1/13 项按平台跳过。本轮尚未触发生产检查更新或写 ledger。
 
 ## 下一批工作
 
 1. 另行授权后先备份 ledger，再把 `follow_item` 181、184、185 从 `seen` 恢复为 `new`，复核状态计数、完整性与新哈希。
-2. 先按复用审计重做 FANBOX 正文规范化层，再依次替换浏览器历史、PID 锁和 Rule34Video 媒体页；每项固定版本/revision、首个消费者和隔离测试同批落地。
+2. 继续按复用审计依次替换浏览器历史、PID 锁和 Rule34Video 媒体页；每项固定版本/revision、首个消费者和隔离测试同批落地。
 3. 分类剩余 44 个无预览变体，区分确无图片与来源解析遗漏。
 4. 另行确认后在生产关注页检查 LazyProcrastinator FANBOX，把已验证的 6 图、正文与 Gofile `OS2Qz9` 资源页写入关注候选；Gofile token 当前未配置，且此前验证的账户不是 Premium，21 个视频仍未取得。
 5. 在 `/review` 人工处理本批 JAV 日文系列名、官方标签及现有创作者标签、FC2、Javinizer、Logo、头像和媒体失败候选；未经批准不写真相字段。

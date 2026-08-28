@@ -18,6 +18,7 @@ from typing import Mapping, Protocol
 import httpx
 from bs4 import BeautifulSoup
 
+from .fanbox import FanboxContentError, normalize_fanbox_post
 from .follow import DEFAULT_MAX_BYTES, FollowSourceError, _plain_text, _stable_id
 from .follow_secrets import Credential, CredentialError
 from .http import CurlCffiTransport, HttpRequest, HttpResponse, HttpTransport, HttpxTransport
@@ -36,6 +37,7 @@ DEFAULT_MAX_ITEMS = 100
 #: 这张表注定不全，作者换网盘就得往里加。加的时候只加**分发文件**的域名：
 #: 判据是点进去拿到的是文件，不是一个页面。
 _FILE_HOST_DOMAINS = frozenset({
+    "downloads.fanbox.cc",
     "gofile.io", "mega.nz", "mega.io", "mediafire.com", "pixeldrain.com",
     "workupload.com", "catbox.moe", "1fichier.com", "dropbox.com",
     "drive.google.com", "docs.google.com", "1drv.ms", "onedrive.live.com",
@@ -61,7 +63,7 @@ def resource_links(text: str | None) -> list[str]:
     """
     found = []
     for link in _LINK_RE.findall(text or ""):
-        if _is_resource_url(link):
+        if _is_resource_url(link) and link not in found:
             found.append(link)
     return found
 
@@ -1295,20 +1297,23 @@ class FanboxConnector(_BaseConnector):
                 # FANBOX 会把单篇 post.info 临时换成 Cloudflare 验证页。
                 # 列表本身仍是可信的公开更新；保留卡片并明确标记媒体未取得，
                 # 不能让一篇详情失败拖垮整个作者来源。
-                detail = {"summary": "", "links": [], "images": (),
+                detail = {"summary": "", "links": [], "media_items": (),
+                          "post_type": None, "image_count": 0,
+                          "video_count": 0, "file_count": 0,
                           "error": str(error)}
             probed += 1
             links = detail["links"]
-            images = detail["images"]
+            direct_media = detail["media_items"]
             gofile_media = self._gofile_media(links)
-            media_items = tuple(images) + gofile_media
+            media_items = tuple(direct_media) + gofile_media
             candidates.append(FollowCandidate(
                 provider=self.provider,
                 external_id=post_id,
                 title=_plain_text(str(post.get("title") or "")) or f"FANBOX 帖子 {post_id}",
                 url=f"https://{creator}.fanbox.cc/posts/{post_id}",
-                thumb_url=(str(images[0].get("thumb_url") or images[0].get("url"))
-                           if images else
+                thumb_url=(str(direct_media[0].get("thumb_url")
+                               or direct_media[0].get("url"))
+                           if direct_media else
                            str(cover.get("url")) if cover.get("url") else None),
                 published_at=_iso_from_text(post.get("publishedDatetime")),
                 author=_plain_text(str(user.get("name") or "")),
@@ -1317,7 +1322,10 @@ class FanboxConnector(_BaseConnector):
                 extra={"fee_required": 0, "official": True, "links": links,
                        "media_items": media_items,
                        "media_error": detail.get("error"),
-                       "image_count": len(images),
+                       "post_type": detail.get("post_type"),
+                       "image_count": detail.get("image_count", 0),
+                       "video_count": detail.get("video_count", 0),
+                       "file_count": detail.get("file_count", 0),
                        "gofile_video_count": sum(
                            item.get("media_kind") == "video" for item in gofile_media)},
             ))
@@ -1344,34 +1352,22 @@ class FanboxConnector(_BaseConnector):
         post = body.get("post") if isinstance(body, dict) else None
         if not isinstance(post, dict):
             raise FollowSourceError("fanbox 帖子详情格式不符")
-        article = post.get("body") if isinstance(post.get("body"), dict) else {}
-        blocks = article.get("blocks") if isinstance(article.get("blocks"), list) else []
-        image_map = article.get("imageMap") if isinstance(article.get("imageMap"), dict) else {}
-        text_parts: list[str] = []
-        image_ids: list[str] = []
-        for block in blocks:
-            if not isinstance(block, dict):
-                continue
-            if block.get("type") == "p" and block.get("text"):
-                text_parts.append(str(block["text"]))
-            if block.get("type") == "image" and block.get("imageId"):
-                image_ids.append(str(block["imageId"]))
-        images = []
-        for image_id in image_ids or list(image_map):
-            image = image_map.get(image_id)
-            if not isinstance(image, dict) or not image.get("originalUrl"):
-                continue
-            images.append({
-                "id": image_id,
-                "name": f"图片 {len(images)+1}",
-                "url": str(image["originalUrl"]),
-                "thumb_url": str(image.get("thumbnailUrl") or image["originalUrl"]),
-                "media_kind": "image",
-                "resource_provider": "fanbox",
-            })
-        text = "\n".join(text_parts)
-        return {"summary": _plain_text(text), "links": resource_links(text),
-                "images": tuple(images)}
+        if post.get("isRestricted") or int(post.get("feeRequired") or 0) > 0:
+            raise FollowSourceError("fanbox 帖子详情不是公开免费正文")
+        try:
+            content = normalize_fanbox_post(post)
+        except FanboxContentError as exc:
+            raise FollowSourceError(str(exc)) from exc
+        links = resource_links("\n".join((content.summary, *content.links)))
+        return {
+            "summary": _plain_text(content.summary),
+            "links": links,
+            "media_items": content.media_items,
+            "post_type": content.post_type,
+            "image_count": content.image_count,
+            "video_count": content.video_count,
+            "file_count": content.file_count,
+        }
 
 
 def _visible_post_image(node) -> str | None:

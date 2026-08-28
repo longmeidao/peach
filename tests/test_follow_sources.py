@@ -114,7 +114,7 @@ FANBOX_JSON = json.dumps({"body": {"posts": [
      "publishedDatetime": "2026-08-20T00:00:00+09:00", "isRestricted": True},
 ]}}).encode()
 
-FANBOX_DETAIL_JSON = json.dumps({"body": {"post": {"body": {
+FANBOX_DETAIL_JSON = json.dumps({"body": {"post": {"type": "article", "body": {
     "blocks": [
         {"type": "p", "text": "gofile - https://gofile.io/d/OS2Qz9"},
         {"type": "image", "imageId": "one"},
@@ -173,6 +173,10 @@ class OfficialConnectorTests(unittest.TestCase):
         self.assertEqual(len(result.candidates[0].extra["media_items"]), 2)
         self.assertEqual(result.candidates[0].extra["links"],
                          ["https://gofile.io/d/OS2Qz9"])
+        self.assertEqual(result.candidates[0].extra["post_type"], "article")
+        self.assertEqual(result.candidates[0].extra["image_count"], 2)
+        self.assertEqual(result.candidates[0].extra["video_count"], 0)
+        self.assertEqual(result.candidates[0].extra["file_count"], 0)
         self.assertEqual(result.probed, 1)
 
     def test_fanbox_routes_only_post_info_through_the_browser_transport(self):
