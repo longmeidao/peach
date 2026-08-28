@@ -218,10 +218,16 @@ class TasteHistoryTests(unittest.TestCase):
             db.execute("INSERT INTO entity VALUES(2,'creator','Alice','alice')")
             db.execute("INSERT INTO entity VALUES(3,'tag','中片-10分内','中片-10分内')")
             db.execute("INSERT INTO entity VALUES(4,'performer','Bob','bob')")
+            db.execute("INSERT INTO entity VALUES(5,'tag','游戏同人','游戏同人')")
+            db.execute("INSERT INTO entity VALUES(6,'tag','足系','足系')")
             db.execute("INSERT INTO asset_entity VALUES(1,1)")
             db.execute("INSERT INTO asset_entity VALUES(1,2)")
             db.execute("INSERT INTO asset_entity VALUES(1,3)")
             db.execute("INSERT INTO asset_entity VALUES(1,4)")
+            db.execute("INSERT INTO asset VALUES(2,NULL,NULL,0,0,0,0,NULL,NULL)")
+            db.execute("INSERT INTO asset VALUES(3,NULL,NULL,0,0,0,0,NULL,NULL)")
+            db.execute("INSERT INTO asset_entity VALUES(2,5)")
+            db.execute("INSERT INTO asset_entity VALUES(3,6)")
             db.commit()
             dashboard = build_taste_dashboard(store, db)
 
@@ -248,6 +254,13 @@ class TasteHistoryTests(unittest.TestCase):
         self.assertNotIn("negative_tags", dashboard["rankings"])
         self.assertTrue(dashboard["privacy"]["dislikes_do_not_downrank_tags"])
         self.assertNotIn("url", json.dumps(dashboard).casefold())
+        analysis = dashboard["analysis"]
+        self.assertEqual(analysis["confidence"]["level"], "early")
+        self.assertTrue(any("足系" in row["text"] for row in analysis["points"]))
+        explore_tags = {row["tag"] for row in analysis["explore"]}
+        self.assertTrue({"游戏同人", "足系"}.issubset(explore_tags))
+        self.assertTrue(all(row["items"] > 0 for row in analysis["explore"]))
+        self.assertIn("不合口味", analysis["next_steps"][-1]["detail"])
 
 
 if __name__ == "__main__":

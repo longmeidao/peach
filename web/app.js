@@ -1099,6 +1099,24 @@ function openTasteSignal(kind,name){
   }
   openEntity(kind,name);
 }
+function tasteAnalysisSection(analysis){
+  if(!analysis||!analysis.headline)return '';
+  const points=(analysis.points||[]).map(point=>`<div class="tasteinsight">
+    <span>${esc(point.label)}</span><b>${esc(point.text)}</b><small>${esc(point.note)}</small></div>`).join('');
+  const explore=(analysis.explore||[]).map(item=>`<button class="tasteexploreitem" data-taste-kind="tag" data-taste-name="${esc(item.tag)}">
+    <span><b>${esc(item.title)}</b><small>${esc(item.detail)}</small></span>${icon('chevron-right')}</button>`).join('');
+  const steps=(analysis.next_steps||[]).map(item=>`<button class="tastenextstep" data-taste-route="${esc(item.route)}">
+    <span>${esc(item.title)}</span><b>${esc(item.detail)}</b><small>${esc(item.note)}</small>${icon('chevron-right')}</button>`).join('');
+  const confidence=analysis.confidence||{};
+  return `<section class="tasteanalysis"><header><div><h2>口味总结</h2><p>${esc(analysis.headline)}</p></div>
+      <span class="tasteconfidence ${esc(confidence.level||'early')}">${esc(confidence.label||'仍在学习')}</span></header>
+    <div class="tasteanalysisbody">
+      <article class="tasteanalysispoints"><h3>证据摘要</h3><div>${points||'<p class="empty">暂无足够证据</p>'}</div>
+        <p>${esc(confidence.note||'')}</p></article>
+      <article class="tasteexplore"><h3>怎么找到更合口味</h3><div>${explore||'<p class="empty">馆藏里暂时没有可验证的匹配入口</p>'}</div></article>
+      ${steps?`<div class="tastenextsteps">${steps}</div>`:''}
+    </div></section>`;
+}
 function renderTaste(d){
   const s=d.summary||{},coverage=d.coverage||{},rank=d.rankings||{},storage=d.storage||{};
   const summary=(label,value,sub)=>`<div class="tastesummary"><span>${label}</span><b>${value}</b><small>${sub}</small></div>`;
@@ -1121,6 +1139,7 @@ function renderTaste(d){
       ${summary('Peach 看过',Number(s.peach_items||0).toLocaleString(),tasteHours(s.peach_seconds||0))}
       ${summary('明确反馈',Number(s.liked||0).toLocaleString(),`喜欢 ${s.liked||0} · 不喜欢 ${s.disliked||0}`)}
       ${summary('私有导出',Number(storage.exports||0).toLocaleString(),fmtSize(storage.bytes||0))}</div>
+    ${tasteAnalysisSection(d.analysis)}
     <section class="tastegroup"><header><div><h2>浏览器记录</h2><p>当前分析主体；只展示聚合后的口味证据。</p></div><span>主</span></header><div class="tastegrid">
       ${tasteRanking('口味维度',categoryRows,'','','tastepanel-compact')}
       ${tasteRanking('Tag',rank.browser_tags||[],'tag','','tastepanel-wide')}
@@ -1143,6 +1162,12 @@ function renderTaste(d){
   const root=$('#stats'),stateEl=root.querySelector('[data-taste-state]'),file=root.querySelector('[data-taste-file]');
   root.querySelector('[data-taste-window]').value=d.window||tasteWindow;
   root.querySelector('[data-taste-window]').onchange=e=>{tasteWindow=e.target.value;openTaste(false)};
+  root.querySelectorAll('[data-taste-route]').forEach(button=>button.onclick=()=>{
+    const path=button.dataset.tasteRoute;
+    if(path==='/follow-manage'){openFollowManage();return}
+    if(path==='/review'){openReview();return}
+    closeStats(true);
+  });
   root.querySelector('[data-taste-refresh]').onclick=async e=>{const button=e.currentTarget;button.disabled=true;stateEl.textContent='正在读取 Peach 所在主机的浏览器…';
     try{const result=await api('/api/taste/refresh',{method:'POST',body:JSON.stringify({window:tasteWindow})});renderTaste(result.dashboard)}
     catch(error){stateEl.textContent=error.message||'读取失败';button.disabled=false}};

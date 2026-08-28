@@ -631,6 +631,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".tasterank:is(button):hover{background:var(--overlay-5)}")
         self.assertPageLacks("box-shadow:inset 3px 0 var(--tungsten)")
         self.assertPageContains(".tastesources>div{display:grid;grid-auto-flow:row;grid-template-columns:repeat(3")
+        self.assertPageContains("tasteAnalysisSection(d.analysis)")
+        self.assertPageContains("<h2>口味总结</h2>")
+        self.assertPageContains("<h3>怎么找到更合口味</h3>")
+        self.assertPageContains("data-taste-route")
+        self.assertPageContains("if(path==='/follow-manage'){openFollowManage();return}")
+        self.assertPageContains(".tasteanalysisbody{display:grid;grid-template-columns:repeat(12")
+        self.assertPageContains(".tasteexploreitem:hover,.tastenextstep:hover{background:var(--overlay-5)}")
 
     def test_stats_and_taste_use_density_aware_bento_without_forcing_work_queues(self):
         self.assertPageContains(".scards{display:grid;grid-template-columns:repeat(12")
