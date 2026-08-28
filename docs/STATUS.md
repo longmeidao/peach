@@ -8,7 +8,7 @@
 
 - Windows 是当前 ledger writer。启动入口为 `C:\Users\longm\Desktop\peach\peach-app\dist\Peach\Peach.exe`，代码、数据、worktree 和共享传输点都在 `C:\Users\longm\Desktop\peach\` 下；外置盘只提供 `R:\media`。
 - 托盘必须以普通权限启动：提升权限后的令牌看不到 CloudDrive 的 `A:` / `B:`，会把 PikPak 和 115 误报为脱盘。异常时从托盘退出，再由资源管理器或普通权限终端启动。
-- Windows HTTP 为 `0.0.0.0:80`，HTTPS 为当前 LAN IPv4 的 443，mDNS 名为 `peach-win.local`。线上服务版本最后核验为 `0.7.2`、`ledger_sync=writer`。
+- Windows HTTP 为 `0.0.0.0:80`，HTTPS 为当前 LAN IPv4 的 443，mDNS 名为 `peach-win.local`。线上服务版本最后核验为 `0.7.4`、`ledger_sync=writer`。
 - macOS 是 reader，代码在 `~/Desktop/lmd.gg/peach/peach-app`，数据在相邻 `peach-data`；`peach.local` 经 8900/8443 和 pf 提供 80/443。GET 正常，写入端点返回 409。
 - 2026-08-27 核对 macOS：服务子进程已跑当前 `master`，但菜单栏进程仍是旧代码。托盘层改动要生效，需手动退出菜单栏项后由 `.app` 或 `launchctl kickstart -k` 重启一次。
 - 两端固定使用不同 mDNS 名和各自本机 CA；CA 私钥、服务器私钥和凭据不跨机同步。生成资产由 Syncthing 单向 Windows → Mac，Git 与 ledger 复制是另外两条链路。
@@ -73,6 +73,7 @@
 - 0.7.3 首项复用替换已完成：FANBOX 正文规范化固定参考 PixivUtil2 `v20251112` / `e537e96`，覆盖 image/text/file/article/video/entry、正文 blocks、四类 map 与旧 HTML；图片和视频进入现有多媒体切换，其他文件保留资源链接，URL 稳定去重。已保存 Cookie 对公开帖 12228983 的只读实测为 article、6 图、Gofile `OS2Qz9`；follow 391 项、正式 Windows 全量 1119 项通过，分别有 1/13 项按平台跳过。
 - 0.7.3 正式 EXE 已替换为 SHA-256 `97EBAEE965794D100FA3BC7093B042EB36F1147CDEE1432C3504D7ECFB9D4582`，上版备份为 `dist/Peach/Peach.pre-0.7.3-20260828-152459.exe`；80/443 已由新进程恢复监听，打包迁移为 22 个、0 待处理，项目 CA 严格 HTTPS `/healthz` 返回 200、0.7.3、writer，`/follow` 返回 200。部署没有触发生产检查更新，部署前后 ledger SHA-256 均为 `BC98556370E285C2B627DBA3A36820E79AFF4599A33A265B0DBDDE520379A697`；本改动没有页面、CSS 或交互变化，桌面/手机视觉验收不适用。
 - 0.7.4 追更详情的多图改为左右按钮、方向键和点状分页；多视频继续使用 Mix 右侧队列。直达详情按条目 ID 精确读取，启动时不再先绘制首页。关注入口统一使用 RSS 图标，左侧窄栏与筛选抽屉共用可在设置中调整的顺序。自动追更固定复用 APScheduler 3.11.3，只在 writer 启动，默认每小时、首次等待完整间隔，手动与自动检查共用互斥锁；设置页可关闭或调整为 15 分钟至每天，并显示最近/下次运行状态。正式全量 1130 项先发现 1 条点状分页圆角门槛，修正后覆盖该门槛的 `catalog` 368 项全部通过；全量其余 1129 项通过、13 项按平台跳过。
+- 0.7.4 正式 EXE 已替换为 SHA-256 `027C985CD85B509BDEAD52D3FB209CBA25421B674BED96E0A97D97C82C8B2C1C`，上版备份为 `dist/Peach/Peach.pre-0.7.4-20260828-160731.exe`；80/443 已恢复，打包迁移为 22 个、0 待处理，项目 CA 严格 HTTPS `/healthz` 返回 200、0.7.4、writer。生产 `/follow/item/791` 返回 200，精确 API 恢复到 FANBOX 条目 791 及 6 张图片；自动更新已启用为每小时，下次运行时间可读且首次未立即执行。浏览器实测左右按钮、左右键、6 个圆点、刷新后保留详情、RSS 导航、设置中的侧栏排序与自动更新状态均正常，控制台无错误；侧栏顺序测试后已恢复原顺序。本轮没有手动触发关注检查。`migrate status` 在 16:05 将 WAL 检查点写回主库，主文件 SHA-256 由部署前快照值变为 `B1D499D5AA89D2BCB7A7311B167C726B07EA4FF0620E1FB467FC3F03519C487A`，部署重启后保持稳定；SQLite `integrity_check=ok`、外键违规 0，asset 81555、follow_item 1008。
 
 ## 下一批工作
 
