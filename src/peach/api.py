@@ -743,7 +743,9 @@ def create_app(
         except PreviewUnavailable:
             return JSONResponse({"error": "unavailable"}, status_code=404)
         response = FileResponse(path, media_type=content_type)
-        response.headers["Cache-Control"] = "public, max-age=86400"
+        # Logo 可以缓存，但文件会在人工批准或重新归一后原地替换。固定 URL 若缓存
+        # 一整天，浏览器会继续显示旧图；no-cache 会复用本地副本并用 ETag 重验。
+        response.headers["Cache-Control"] = "public, no-cache"
         return response
 
     @app.api_route("/item/{item_id}", methods=["GET", "HEAD"])
