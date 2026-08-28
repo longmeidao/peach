@@ -190,6 +190,27 @@ class FollowContractTests(unittest.TestCase):
         ])
         self.assertNotIn("media_url", item)
 
+    def test_media_collections_expose_only_safe_display_fields_and_indices(self):
+        self._seed(candidates=(FollowCandidate(
+            provider="fanbox", external_id="12228983", title="Poll Results",
+            url="https://lazyprocrast.fanbox.cc/posts/12228983",
+            extra={"media_items": [
+                {"id": "one", "name": "one.mp4", "media_kind": "video",
+                 "url": "https://store1.gofile.io/download/one.mp4",
+                 "thumb_url": "https://store1.gofile.io/one.jpg",
+                 "resource_provider": "gofile"},
+                {"id": "two", "name": "two.mp4", "media_kind": "video",
+                 "url": "https://store1.gofile.io/download/two.mp4",
+                 "resource_provider": "gofile"},
+            ]},
+        ),), provider="fanbox", ref="lazyprocrast")
+        item = self._get()["groups"][0]["primary"]
+        self.assertTrue(item["playable"])
+        self.assertEqual([media["index"] for media in item["media_items"]], [0, 1])
+        self.assertEqual(item["media_items"][0]["name"], "one.mp4")
+        self.assertNotIn("url", item["media_items"][0])
+        self.assertNotIn("store1.gofile.io/download", json.dumps(item))
+
     def test_f95_discussion_without_attachments_or_file_links_is_hidden(self):
         self._seed(candidates=(
             FollowCandidate(
@@ -365,6 +386,9 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual(by_provider["rule34xxx"]["needs"], ["user_id", "api_key"])
         self.assertEqual(by_provider["rule34xxx"]["missing"], ["user_id", "api_key"])
         self.assertEqual(by_provider["f95zone"]["requirement"], "optional")
+        self.assertEqual(by_provider["gofile"]["requirement"], "optional")
+        self.assertEqual(by_provider["gofile"]["needs"], ["api_token"])
+        self.assertTrue(by_provider["gofile"]["path"].endswith("gofile.json"))
         self.assertEqual(by_provider["simpcity"]["requirement"], "blocked")
         self.assertIn("DDoS-Guard", by_provider["simpcity"]["why"])
         self.assertTrue(by_provider["rule34xxx"]["path"].endswith("rule34xxx.json"))
@@ -1210,11 +1234,11 @@ class FollowWebSourceTests(unittest.TestCase):
             'class="mav fsourceavatar" title="${esc(item.provider_label)}">${sourceIcon(item.provider)}',
             self.page,
         )
-        self.assertPageContains("async function openFollowDetail(id,push=true)")
-        self.assertPageContains("const src=item.playable?`/follow-stream?id=${item.id}`:''")
+        self.assertPageContains("async function openFollowDetail(id,push=true,mediaIndex=null)")
+        self.assertPageContains("const src=item.playable?`/follow-stream?id=${item.id}${selectedMedia?")
         self.assertPageContains('data-follow-detail="${item.id}"')
         self.assertPageContains("route(`/follow/item/${item.id}`)")
-        self.assertPageContains('class="sgrid followdetailgrid${collection?\' mixgrid\':\'\'}"')
+        self.assertPageContains('class="sgrid followdetailgrid${collection||embedded.length>1?\' mixgrid\':\'\'}"')
         self.assertPageContains('class="followorigin" href="${esc(item.url)}" target="_blank"')
         self.assertPageContains('title="打开来源页面" aria-label="打开来源页面"')
         self.assertNotIn('打开来源页面</a>', self.page)
@@ -1482,8 +1506,10 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('class="card followitem${isMix?\' collection\':\'\'}"')
         self.assertPageContains("isMix?'mixstack '")
         self.assertPageContains('class="mixbadge" data-follow-collection=')
-        self.assertPageContains("${videos.length} 个视频")
-        self.assertPageContains("const collection=group&&followVideoItems(group).length>1?group:null")
+        self.assertPageContains("${mixCount} 个${mixKind}")
+        self.assertPageContains("function followEmbeddedQueueHtml(item,mediaIndex)")
+        self.assertPageContains("data-follow-media-item=")
+        self.assertPageContains("const collection=!embedded.length&&group&&followVideoItems(group).length>1?group:null")
         self.assertPageContains("const items=followVideoItems(group)")
         self.assertPageContains(".factions{position:absolute;right:10px;top:10px")
         self.assertPageContains("@media (hover:hover) and (pointer:fine){.followitem:hover .factions")

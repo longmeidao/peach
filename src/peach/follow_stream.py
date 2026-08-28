@@ -11,8 +11,10 @@ import threading
 import time
 import urllib.parse
 from dataclasses import dataclass
+from typing import Callable, Mapping
 
 from .follow_sources import USER_AGENT
+from .follow_secrets import Credential
 from .follow_store import FollowItemRow
 from .http import HttpRequest, HttpTransport
 
@@ -25,6 +27,7 @@ class FollowMediaUnavailable(RuntimeError):
 class ResolvedFollowMedia:
     url: str
     referer: str | None = None
+    headers: Mapping[str, str] | None = None
 
 
 _PROVIDER_HOSTS = {
@@ -33,6 +36,7 @@ _PROVIDER_HOSTS = {
     "pawchive": ("pawchive.pw",),
     "rule34video": ("rule34video.com",),
     "rule34xxx": ("rule34.xxx",),
+    "rule34paheal": ("paheal.net", "paheal-cdn.net"),
     "f95zone": ("f95zone.to",),
 }
 _VIDEO_URL_RE = re.compile(r"\bvideo_url\s*:\s*'([^']+)'", re.IGNORECASE)
@@ -62,9 +66,39 @@ class FollowMediaResolver:
         self._cache: dict[int, tuple[float, ResolvedFollowMedia]] = {}
         self._lock = threading.Lock()
 
-    def resolve(self, item: FollowItemRow) -> ResolvedFollowMedia:
+    def with_credential_loader(
+            self, loader: Callable[[str], Credential | None]) -> "FollowMediaResolver":
+        self._credential_loader = loader
+        return self
+
+    def resolve(self, item: FollowItemRow, media_index: int | None = None) -> ResolvedFollowMedia:
         if item.metadata.get("media_needs_credential"):
             raise FollowMediaUnavailable("媒体需要来源登录会话")
+        media_items = item.metadata.get("media_items")
+        if isinstance(media_items, list) and media_items:
+            index = 0 if media_index is None else media_index
+            if index < 0 or index >= len(media_items):
+                raise FollowMediaUnavailable("媒体序号不存在")
+            media = media_items[index]
+            if not isinstance(media, dict):
+                raise FollowMediaUnavailable("媒体条目格式不符")
+            url = str(media.get("url") or "")
+            resource_provider = str(media.get("resource_provider") or "")
+            if resource_provider == "gofile":
+                if not _allowed_resource(url, ("gofile.io",)):
+                    raise FollowMediaUnavailable("Gofile 返回了不受信任的媒体地址")
+                loader = getattr(self, "_credential_loader", None)
+                credential = loader("gofile") if loader else None
+                token = str(credential.values.get("api_token") or "") if credential else ""
+                if not token:
+                    raise FollowMediaUnavailable("Gofile API token 未配置")
+                return ResolvedFollowMedia(
+                    url, item.url, {"Authorization": f"Bearer {token}"})
+            if resource_provider == "fanbox":
+                if not _allowed_resource(url, ("fanbox.cc",)):
+                    raise FollowMediaUnavailable("FANBOX 返回了不受信任的图片地址")
+                return ResolvedFollowMedia(url, item.url)
+            raise FollowMediaUnavailable("媒体来源不受支持")
         if item.provider != "rule34video":
             if not item.media_url or not _allowed(item.provider, item.media_url):
                 raise FollowMediaUnavailable("来源媒体地址不可用")
@@ -94,3 +128,13 @@ class FollowMediaResolver:
         with self._lock:
             self._cache[item.id] = (time.monotonic() + self.ttl, resolved)
         return resolved
+
+
+def _allowed_resource(url: str, hosts: tuple[str, ...]) -> bool:
+    try:
+        parsed = urllib.parse.urlsplit(url)
+    except ValueError:
+        return False
+    host = (parsed.hostname or "").casefold()
+    return (parsed.scheme == "https" and not parsed.username and not parsed.password
+            and any(host == suffix or host.endswith("." + suffix) for suffix in hosts))

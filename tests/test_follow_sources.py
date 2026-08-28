@@ -16,7 +16,7 @@ from peach.follow import FollowSourceError
 from peach.follow_secrets import Credential, CredentialError, CredentialStore
 from peach.follow_sources import (
     USER_AGENT, F95ZoneConnector, FanboxConnector, KemonoConnector,
-    PatreonConnector, Rule34VideoConnector, Rule34XxxConnector,
+    PatreonConnector, Rule34PahealConnector, Rule34VideoConnector, Rule34XxxConnector,
     SimpCityConnector, SubscribeStarConnector, build_connector,
     _iso_from_relative, origin_group_key, parse_source_url,
 )
@@ -114,6 +114,30 @@ FANBOX_JSON = json.dumps({"body": {"posts": [
      "publishedDatetime": "2026-08-20T00:00:00+09:00", "isRestricted": True},
 ]}}).encode()
 
+FANBOX_DETAIL_JSON = json.dumps({"body": {"post": {"body": {
+    "blocks": [
+        {"type": "p", "text": "gofile - https://gofile.io/d/OS2Qz9"},
+        {"type": "image", "imageId": "one"},
+        {"type": "image", "imageId": "two"},
+    ],
+    "imageMap": {
+        "one": {"originalUrl": "https://downloads.fanbox.cc/one.jpg",
+                "thumbnailUrl": "https://downloads.fanbox.cc/one-thumb.jpg"},
+        "two": {"originalUrl": "https://downloads.fanbox.cc/two.jpg",
+                "thumbnailUrl": "https://downloads.fanbox.cc/two-thumb.jpg"},
+    },
+}}}}).encode()
+
+GOFILE_JSON = json.dumps({"status": "ok", "data": {"type": "folder", "children": {
+    "v1": {"id": "v1", "type": "file", "name": "one.mp4", "mimetype": "video/mp4",
+           "link": "https://store1.gofile.io/download/one.mp4",
+           "thumbnail": "https://store1.gofile.io/one.jpg", "size": 123},
+    "v2": {"id": "v2", "type": "file", "name": "two.mp4", "mimetype": "video/mp4",
+           "link": "https://store1.gofile.io/download/two.mp4"},
+    "txt": {"id": "txt", "type": "file", "name": "readme.txt", "mimetype": "text/plain",
+            "link": "https://store1.gofile.io/download/readme.txt"},
+}}}).encode()
+
 SUBSCRIBESTAR_HTML = b"""<html><body>
 <div class="post is-shown" data-id="2650844">
   <a class="post-user" href="/initiala">InitialA</a>
@@ -133,14 +157,40 @@ PATREON_HTML = b"""<html><body><div class="card">
 class OfficialConnectorTests(unittest.TestCase):
     def test_fanbox_keeps_only_public_free_posts(self):
         seen = []
-        result = FanboxConnector(
-            transport=_transport(body=FANBOX_JSON, record=seen)).fetch("ffxivinitiala")
+        def route(request):
+            seen.append(request)
+            return HttpResponse(200, {}, FANBOX_DETAIL_JSON if "post.info" in request.url
+                                else FANBOX_JSON)
+        result = FanboxConnector(transport=_routed(route)).fetch("ffxivinitiala")
         self.assertIn("creatorId=ffxivinitiala", seen[0].url)
         self.assertEqual(seen[0].headers["Origin"], "https://www.fanbox.cc")
         self.assertEqual(len(result.candidates), 1)
         self.assertEqual(result.skipped, 1)
         self.assertEqual(result.candidates[0].group_hint, "fanbox:12489354")
         self.assertEqual(result.candidates[0].published_at, "2026-08-26T14:34:51Z")
+        self.assertEqual(len(result.candidates[0].extra["media_items"]), 2)
+        self.assertEqual(result.candidates[0].extra["links"],
+                         ["https://gofile.io/d/OS2Qz9"])
+        self.assertEqual(result.probed, 1)
+
+    def test_fanbox_uses_gofile_api_token_and_keeps_only_playable_files(self):
+        seen = []
+        def route(request):
+            seen.append(request)
+            if "api.gofile.io" in request.url:
+                return HttpResponse(200, {}, GOFILE_JSON)
+            return HttpResponse(200, {}, FANBOX_DETAIL_JSON if "post.info" in request.url
+                                else FANBOX_JSON)
+        result = FanboxConnector(
+            transport=_routed(route),
+            gofile_credential=Credential("gofile", {"api_token": "secret"}),
+        ).fetch("ffxivinitiala")
+        post = result.candidates[0]
+        self.assertEqual(post.extra["gofile_video_count"], 2)
+        self.assertEqual(len(post.extra["media_items"]), 4)
+        gofile_request = next(request for request in seen if "api.gofile.io" in request.url)
+        self.assertEqual(gofile_request.headers["Authorization"], "Bearer secret")
+        self.assertNotIn("secret", gofile_request.url)
 
     def test_subscribestar_reads_public_profile_posts_without_login(self):
         result = SubscribeStarConnector(
@@ -180,12 +230,50 @@ RULE34XXX_JSON = json.dumps([
      "file_url": "https://api-cdn-mp4.rule34.xxx/images/1232/fp.mp4", "score": 9},
 ]).encode()
 
+PAHEAL_LIST_HTML = b"""<div class='shm-image-list'>
+<div class='shm-thumb thumb' data-ext='mp4'
+ data-tags='amina animated blender final_fantasy_vii initiala tifa_lockhart'
+ data-post-id='7428820'><a class='shm-thumb-link' href='/post/view/7428820'>
+ <img src='https://r34t.paheal.net/df/fb/thumb'></a>
+ <a href='https://r34i.paheal-cdn.net/df/fb/video'>File Only</a></div></div>"""
+
+PAHEAL_DETAIL_HTML = b"""<video id='main_image' poster='https://r34t.paheal.net/df/fb/thumb'>
+<source src='https://r34i.paheal-cdn.net/df/fb/video' type='video/mp4'></video>
+<table><tr data-row='Uploader'><td><a class='username'>VHSephi</a>
+<time datetime='2026-08-26T15:21:00+00:00'></time></td></tr>
+<tr data-row='Tags'><td><a class='tag'>Amina</a><a class='tag'>animated</a>
+<a class='tag'>Final_Fantasy_VII</a><a class='tag'>InitialA</a>
+<a class='tag'>Tifa_Lockhart</a></td></tr>
+<tr data-row='Source Link'><th><a href='/source_history/7428820'>Source</a></th>
+<td><a href='https://subscribestar.adult/posts/2639932'>origin</a></td></tr>
+<tr data-row='Info'><td>1280x720, 28.4s // 6.3MB // mp4</td></tr></table>"""
+
 
 def _routed(route):
     """按 URL 分派的测试传输。探测详情页的请求要能和列表请求分开回不同的响应。"""
     def call(request, timeout, max_bytes):
         return route(request)
     return call
+
+
+class Rule34PahealConnectorTests(unittest.TestCase):
+    def _connector(self):
+        return Rule34PahealConnector(transport=_routed(
+            lambda request: HttpResponse(
+                200, {}, PAHEAL_DETAIL_HTML if "/post/view/" in request.url
+                else PAHEAL_LIST_HTML)))
+
+    def test_tag_page_uses_detail_source_for_exact_cross_site_grouping(self):
+        result = self._connector().fetch("initiala")
+        self.assertEqual(len(result.candidates), 1)
+        item = result.candidates[0]
+        self.assertEqual(item.external_id, "7428820")
+        self.assertEqual(item.group_hint, "subscribestar:2639932")
+        self.assertEqual(item.duration, 28.4)
+        self.assertEqual(item.published_at, "2026-08-26T15:21:00Z")
+        self.assertEqual(item.media_url,
+                         "https://r34i.paheal-cdn.net/df/fb/video")
+        self.assertFalse(item.title_is_name)
 
 
 class KemonoConnectorTests(unittest.TestCase):
@@ -755,6 +843,8 @@ class ParseSourceUrlTests(unittest.TestCase):
                 ("rule34video", "lazyprocrastinator"),
             "https://rule34.xxx/index.php?page=post&s=list&tags=lazyprocrastinator":
                 ("rule34xxx", "lazyprocrastinator"),
+            "https://rule34.paheal.net/post/view/7428820#search=InitialA":
+                ("rule34paheal", "initiala"),
             "https://f95zone.to/threads/lazy-collection.50685/": ("f95zone", "50685"),
             "https://ffxivinitiala.fanbox.cc/posts/12489354":
                 ("fanbox", "ffxivinitiala"),
@@ -814,6 +904,7 @@ class ParseSourceUrlTests(unittest.TestCase):
             ("https://kemono.cr/posts", "fanbox/user"),
             ("https://rule34video.com/latest-updates/", "models"),
             ("https://rule34.xxx/index.php?page=post&s=view&id=1", "tags="),
+            ("https://rule34.paheal.net/post/view/7428820", "搜索标签"),
             ("https://f95zone.to/latest", "threads"),
             ("https://www.fanbox.cc/", "创作者主页"),
             ("https://subscribestar.adult/posts/1", "创作者主页"),
@@ -843,6 +934,7 @@ class BuildConnectorTests(unittest.TestCase):
         self.assertIsInstance(build_connector("fanbox"), FanboxConnector)
         self.assertIsInstance(build_connector("patreon"), PatreonConnector)
         self.assertIsInstance(build_connector("subscribestar"), SubscribeStarConnector)
+        self.assertIsInstance(build_connector("rule34paheal"), Rule34PahealConnector)
 
 
 class RelativeDateTests(unittest.TestCase):

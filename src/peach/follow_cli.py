@@ -27,6 +27,7 @@ _SOURCE_URL = {
     "pawchive": "https://pawchive.pw/{ref}",
     "rule34video": "https://rule34video.com/models/{ref}/",
     "rule34xxx": "https://rule34.xxx/index.php?page=post&s=list&tags={ref}",
+    "rule34paheal": "https://rule34.paheal.net/post/list/{ref}/1",
     "f95zone": "https://f95zone.to/threads/{ref}/",
     "simpcity": "https://simpcity.cr/threads/{ref}/",
 }
@@ -101,7 +102,9 @@ def _check(args) -> int:
             provider, ref = row["provider"], row["ref"]
             try:
                 credential = credentials.load(provider)
-                connector = build_connector(provider, credential=credential)
+                connector = build_connector(
+                    provider, credential=credential,
+                    gofile_credential=credentials.load("gofile"))
                 fetch = connector.fetch(
                     ref,
                     etag=None if args.force else row["etag"],

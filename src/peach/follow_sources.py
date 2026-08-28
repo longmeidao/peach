@@ -275,12 +275,14 @@ class _BaseConnector:
     def __init__(self, *, timeout: float = 15.0, max_bytes: int = DEFAULT_MAX_BYTES,
                  max_items: int = DEFAULT_MAX_ITEMS,
                  transport: HttpTransport | None = None,
-                 credential: Credential | None = None):
+                 credential: Credential | None = None,
+                 gofile_credential: Credential | None = None):
         self.timeout = timeout
         self.max_bytes = max_bytes
         self.max_items = max_items
         self.transport = transport or HttpxTransport()
         self.credential = credential
+        self.gofile_credential = gofile_credential
 
     def _headers(self) -> dict[str, str]:
         return {"User-Agent": USER_AGENT}
@@ -338,6 +340,66 @@ class _BaseConnector:
             return json.loads(response.body.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise FollowSourceError(f"{self.provider} 返回的不是合法 JSON") from exc
+
+    def _gofile_media(self, links: list[str]) -> tuple[dict[str, object], ...]:
+        """用用户自己的 GoFile API token 展开文件页，token 永不进入 URL/候选。"""
+        folders = []
+        for link in links:
+            try:
+                parsed = urllib.parse.urlsplit(link)
+            except ValueError:
+                continue
+            host = (parsed.hostname or "").casefold()
+            matched = re.fullmatch(r"/d/([A-Za-z0-9_-]+)", parsed.path.rstrip("/"))
+            if (host == "gofile.io" or host.endswith(".gofile.io")) and matched:
+                folders.append(matched.group(1))
+        if not folders or self.gofile_credential is None:
+            return ()
+        token, = self.gofile_credential.require("api_token")
+        items: list[dict[str, object]] = []
+        seen: set[str] = set()
+        for folder in dict.fromkeys(folders):
+            url = f"https://api.gofile.io/contents/{urllib.parse.quote(folder)}"
+            response = self._get(url, headers={
+                "Accept": "application/json", "Authorization": f"Bearer {token}",
+            })
+            if response.status in (401, 403):
+                raise CredentialError("Gofile 拒绝了 API token")
+            self._check_status(response)
+            payload = self._json(response)
+            if not isinstance(payload, dict) or payload.get("status") != "ok":
+                if isinstance(payload, dict) and payload.get("status") == "error-token":
+                    raise CredentialError("Gofile 拒绝了 API token")
+                raise FollowSourceError("Gofile 文件列表未取得")
+            stack = [payload.get("data")]
+            while stack and len(items) < self.max_items:
+                node = stack.pop()
+                if not isinstance(node, dict):
+                    continue
+                children = node.get("children")
+                if isinstance(children, dict):
+                    stack.extend(reversed(list(children.values())))
+                elif isinstance(children, list):
+                    stack.extend(reversed(children))
+                if str(node.get("type") or "").casefold() != "file":
+                    continue
+                media_type = str(node.get("mimetype") or "").casefold()
+                kind = ("video" if media_type.startswith("video/") else
+                        "image" if media_type.startswith("image/") else "")
+                link = str(node.get("link") or node.get("downloadLink") or "")
+                if not kind or not link.startswith("https://") or link in seen:
+                    continue
+                seen.add(link)
+                items.append({
+                    "id": str(node.get("id") or _stable_id(link)),
+                    "name": _plain_text(str(node.get("name") or "")) or f"{kind} {len(items)+1}",
+                    "url": link,
+                    "thumb_url": str(node.get("thumbnail") or "") or None,
+                    "media_kind": kind,
+                    "size": node.get("size"),
+                    "resource_provider": "gofile",
+                })
+        return tuple(items)
 
 
 class KemonoConnector(_BaseConnector):
@@ -824,6 +886,110 @@ class Rule34XxxConnector(_BaseConnector):
         return " · ".join(words[:5])
 
 
+class Rule34PahealConnector(_BaseConnector):
+    """rule34.paheal.net 标签页；详情页补齐原始出处用于精确跨站去重。"""
+
+    provider = "rule34paheal"
+    semantics = "work"
+    _TAG_RE = re.compile(r"^[^/?#]{1,100}$")
+    _DURATION_RE = re.compile(r"\b(\d+(?:\.\d+)?)s\b", re.IGNORECASE)
+    _TITLE_STOPWORDS = frozenset({"animated", "blender", "video", "sound", "mp4", "webm"})
+
+    def __init__(self, *, max_items: int = 24, **kwargs):
+        super().__init__(max_items=max_items, **kwargs)
+
+    def fetch(self, ref: str, *, etag: str | None = None,
+              last_modified: str | None = None, page: int = 0) -> SourceFetch:
+        tag = str(ref or "").strip()
+        if not self._TAG_RE.fullmatch(tag):
+            raise FollowSourceError(f"rule34.paheal 的 ref 必须是单个标签，收到：{ref!r}")
+        page_number = page + 1
+        encoded = urllib.parse.quote(tag, safe="()_")
+        url = f"https://rule34.paheal.net/post/list/{encoded}/{page_number}"
+        response = (self._get(url, headers={"Accept": "text/html"}) if page else
+                    self._get(url, headers={"Accept": "text/html"},
+                              etag=etag, last_modified=last_modified))
+        common = {"provider": self.provider, "ref": tag, "request_url": url,
+                  "semantics": self.semantics, **self._conditional(response)}
+        if response.status == 304:
+            return SourceFetch(not_modified=True, **common)
+        self._check_status(response)
+        soup = BeautifulSoup(response.body, "html.parser")
+        candidates = []
+        for thumb in soup.select(".shm-image-list .shm-thumb[data-post-id]")[:self.max_items]:
+            post_id = str(thumb.get("data-post-id") or "")
+            if not post_id.isdigit():
+                continue
+            tags = str(thumb.get("data-tags") or "")
+            extension = str(thumb.get("data-ext") or "").casefold()
+            link = thumb.select_one("a.shm-thumb-link[href]")
+            file_link = thumb.select_one("a[href*='paheal-cdn.net'], a[href*='r34i.paheal']")
+            image = thumb.select_one("img[src]")
+            detail = self._detail(post_id)
+            tag_values = detail.get("tags") or tags.split()
+            title = self._tag_label(tag_values, tag) or f"Paheal 帖子 {post_id}"
+            media_url = str(detail.get("media_url") or
+                            (file_link.get("href") if file_link else "")) or None
+            candidates.append(FollowCandidate(
+                provider=self.provider,
+                external_id=post_id,
+                title=title,
+                url=urllib.parse.urljoin("https://rule34.paheal.net",
+                                         str(link.get("href") if link else f"/post/view/{post_id}")),
+                media_url=media_url,
+                thumb_url=str(detail.get("thumb_url") or
+                              (image.get("src") if image else "")) or None,
+                published_at=detail.get("published_at"),
+                duration=detail.get("duration"),
+                author=detail.get("author"),
+                group_hint=origin_group_key(detail.get("source")) or
+                           f"{self.provider}:post:{post_id}",
+                title_is_name=False,
+                extra={"tag": tag, "tags": " ".join(tag_values),
+                       "source": detail.get("source"), "title_from": "tags",
+                       "media_kind": "video" if extension in {"mp4", "webm", "mov"}
+                                     else "image",
+                       "tag_types": {value: "general" for value in tag_values}},
+            ))
+        if not candidates:
+            raise FollowSourceError("rule34.paheal 标签页没有解析出任何作品")
+        return SourceFetch(candidates=tuple(candidates), probed=len(candidates),
+                           raw_body=response.body, **common)
+
+    def _detail(self, post_id: str) -> dict[str, object]:
+        url = f"https://rule34.paheal.net/post/view/{post_id}"
+        response = self._get(url, headers={"Accept": "text/html"})
+        if response.status != 200:
+            return {}
+        soup = BeautifulSoup(response.body, "html.parser")
+        video = soup.select_one("video#main_image")
+        source_node = soup.select_one("tr[data-row='Source Link'] td a[href]")
+        time_node = soup.select_one("tr[data-row='Uploader'] time[datetime]")
+        author_node = soup.select_one("tr[data-row='Uploader'] a.username")
+        info_node = soup.select_one("tr[data-row='Info'] td")
+        tags = [_plain_text(node.get_text(" ")) for node in
+                soup.select("tr[data-row='Tags'] a.tag")]
+        media = (video.select_one("source[src]") if video is not None else
+                 soup.select_one("img#main_image[src]"))
+        duration_match = self._DURATION_RE.search(info_node.get_text(" ") if info_node else "")
+        return {
+            "media_url": str(media.get("src")) if media is not None and media.get("src") else None,
+            "thumb_url": (str(video.get("poster")) if video is not None and video.get("poster")
+                          else None),
+            "published_at": _iso_from_text(time_node.get("datetime") if time_node else None),
+            "duration": float(duration_match.group(1)) if duration_match else None,
+            "author": _plain_text(author_node.get_text(" ") if author_node else ""),
+            "source": str(source_node.get("href")) if source_node is not None else None,
+            "tags": [tag for tag in tags if tag],
+        }
+
+    @classmethod
+    def _tag_label(cls, tags: list[str], subject: str) -> str:
+        skip = cls._TITLE_STOPWORDS | {subject.casefold()}
+        values = [tag.replace("_", " ") for tag in tags if tag.casefold() not in skip]
+        return " · ".join(values[:5])
+
+
 class F95ZoneConnector(_BaseConnector):
     """f95zone.to 的线程追更。
 
@@ -868,7 +1034,17 @@ class F95ZoneConnector(_BaseConnector):
         if not parsed:
             raise FollowSourceError(
                 "f95zone 线程页没有解析出任何回复：可能需要登录，或页面结构已变")
-        return SourceFetch(candidates=candidates, skipped=skipped,
+        enriched = []
+        for candidate in candidates:
+            links = [str(value) for value in candidate.extra.get("links", [])]
+            media_items = self._gofile_media(links)
+            enriched.append(replace(
+                candidate,
+                extra={**dict(candidate.extra), "media_items": media_items,
+                       "gofile_video_count": sum(
+                           item.get("media_kind") == "video" for item in media_items)},
+            ))
+        return SourceFetch(candidates=tuple(enriched), skipped=skipped,
                            raw_body=response.body, **common)
 
     @staticmethod
@@ -1073,7 +1249,7 @@ class FanboxConnector(_BaseConnector):
         posts = ((payload or {}).get("body") or {}).get("posts")
         if not isinstance(posts, list):
             raise FollowSourceError("fanbox 返回的帖子列表格式不符")
-        candidates, skipped = [], 0
+        candidates, skipped, probed = [], 0, 0
         for post in posts[:self.max_items]:
             if not isinstance(post, dict) or not str(post.get("id") or "").isdigit():
                 continue
@@ -1083,20 +1259,71 @@ class FanboxConnector(_BaseConnector):
             post_id = str(post["id"])
             cover = post.get("cover") if isinstance(post.get("cover"), dict) else {}
             user = post.get("user") if isinstance(post.get("user"), dict) else {}
+            detail = self._post_detail(post_id)
+            probed += 1
+            links = detail["links"]
+            images = detail["images"]
+            gofile_media = self._gofile_media(links)
+            media_items = tuple(images) + gofile_media
             candidates.append(FollowCandidate(
                 provider=self.provider,
                 external_id=post_id,
                 title=_plain_text(str(post.get("title") or "")) or f"FANBOX 帖子 {post_id}",
                 url=f"https://{creator}.fanbox.cc/posts/{post_id}",
-                thumb_url=str(cover.get("url")) if cover.get("url") else None,
+                thumb_url=(str(images[0].get("thumb_url") or images[0].get("url"))
+                           if images else
+                           str(cover.get("url")) if cover.get("url") else None),
                 published_at=_iso_from_text(post.get("publishedDatetime")),
                 author=_plain_text(str(user.get("name") or "")),
-                summary=_plain_text(str(post.get("excerpt") or "")),
+                summary=detail["summary"] or _plain_text(str(post.get("excerpt") or "")),
                 group_hint=f"fanbox:{post_id}",
-                extra={"fee_required": 0, "official": True},
+                extra={"fee_required": 0, "official": True, "links": links,
+                       "media_items": media_items,
+                       "image_count": len(images),
+                       "gofile_video_count": sum(
+                           item.get("media_kind") == "video" for item in gofile_media)},
             ))
         return SourceFetch(candidates=tuple(candidates), skipped=skipped,
-                           raw_body=response.body, **common)
+                           probed=probed, raw_body=response.body, **common)
+
+    def _post_detail(self, post_id: str) -> dict[str, object]:
+        """公开详情补全正文外链和按正文顺序排列的多图。"""
+        url = "https://api.fanbox.cc/post.info?" + urllib.parse.urlencode({"postId": post_id})
+        response = self._get(url)
+        self._check_status(response)
+        payload = self._json(response)
+        body = (payload or {}).get("body") if isinstance(payload, dict) else None
+        post = body.get("post") if isinstance(body, dict) else None
+        if not isinstance(post, dict):
+            raise FollowSourceError("fanbox 帖子详情格式不符")
+        article = post.get("body") if isinstance(post.get("body"), dict) else {}
+        blocks = article.get("blocks") if isinstance(article.get("blocks"), list) else []
+        image_map = article.get("imageMap") if isinstance(article.get("imageMap"), dict) else {}
+        text_parts: list[str] = []
+        image_ids: list[str] = []
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "p" and block.get("text"):
+                text_parts.append(str(block["text"]))
+            if block.get("type") == "image" and block.get("imageId"):
+                image_ids.append(str(block["imageId"]))
+        images = []
+        for image_id in image_ids or list(image_map):
+            image = image_map.get(image_id)
+            if not isinstance(image, dict) or not image.get("originalUrl"):
+                continue
+            images.append({
+                "id": image_id,
+                "name": f"图片 {len(images)+1}",
+                "url": str(image["originalUrl"]),
+                "thumb_url": str(image.get("thumbnailUrl") or image["originalUrl"]),
+                "media_kind": "image",
+                "resource_provider": "fanbox",
+            })
+        text = "\n".join(text_parts)
+        return {"summary": _plain_text(text), "links": resource_links(text),
+                "images": tuple(images)}
 
 
 def _visible_post_image(node) -> str | None:
@@ -1294,7 +1521,7 @@ def canonical_source_ref(provider: str, ref: str) -> str:
     creates duplicate subscriptions when the same author is added in two batches.
     """
     value = str(ref or "").strip()
-    return value.casefold() if provider == "rule34xxx" else value
+    return value.casefold() if provider in {"rule34xxx", "rule34paheal"} else value
 
 
 #: 线程 slug 里从这个 token 起就不是作品名了：f95 的惯例是
@@ -1411,6 +1638,21 @@ def parse_source_url(raw_url: str) -> ParsedSource:
                             f"&tags={urllib.parse.quote(tags)}",
                             _slug_label(tags), "work")
 
+    if bare == "rule34.paheal.net":
+        tag = urllib.parse.parse_qs(parsed.fragment).get("search", [""])[0]
+        if not tag:
+            matched = re.match(r"^/post/list/([^/]+)/\d+$", path)
+            tag = urllib.parse.unquote(matched.group(1)) if matched else ""
+        tag = canonical_source_ref("rule34paheal", tag)
+        if not tag:
+            raise FollowSourceError(
+                "rule34.paheal 的链接要带搜索标签，形如 "
+                "https://rule34.paheal.net/post/view/7428820#search=InitialA")
+        encoded = urllib.parse.quote(tag, safe="()_")
+        return ParsedSource("rule34paheal", tag,
+                            f"https://rule34.paheal.net/post/list/{encoded}/1",
+                            _slug_label(tag), "work")
+
     if bare == "f95zone.to":
         matched = _THREAD_PATH_RE.match(path)
         if not matched:
@@ -1429,7 +1671,7 @@ def parse_source_url(raw_url: str) -> ParsedSource:
     raise FollowSourceError(
         f"不认识 {bare}。当前支持 FANBOX、Patreon、SubscribeStar，"
         "kemono.cr、coomer.st、pawchive.pw 的创作者页，rule34video.com 的作者页，"
-        "rule34.xxx 的标签页，以及 f95zone.to 的线程。")
+        "rule34.xxx 与 rule34.paheal.net 的标签页，以及 f95zone.to 的线程。")
 
 
 CONNECTORS: dict[str, type] = {
@@ -1441,6 +1683,7 @@ CONNECTORS: dict[str, type] = {
     "pawchive": KemonoConnector,
     "rule34video": Rule34VideoConnector,
     "rule34xxx": Rule34XxxConnector,
+    "rule34paheal": Rule34PahealConnector,
     "f95zone": F95ZoneConnector,
     "simpcity": SimpCityConnector,
 }

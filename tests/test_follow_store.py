@@ -289,6 +289,23 @@ class GroupingTests(_StoreCase):
         self.assertEqual(len(groups), 1)
         self.assertEqual(sorted(groups[0].providers), ["kemono", "rule34xxx"])
 
+    def test_paheal_and_existing_sources_deduplicate_on_the_subscribestar_post(self):
+        paheal = self._source(provider="rule34paheal", ref="initiala")
+        mirror = self._source(provider="rule34xxx", ref="initiala")
+        self.store.record(paheal, _fetch([
+            FollowCandidate(provider="rule34paheal", external_id="7428820",
+                            title="Amina · Tifa", title_is_name=False,
+                            group_hint="subscribestar:2639932"),
+        ], provider="rule34paheal", ref="initiala"), moment=MOMENT)
+        self.store.record(mirror, _fetch([
+            FollowCandidate(provider="rule34xxx", external_id="18540000",
+                            title="Different tag label", title_is_name=False,
+                            group_hint="subscribestar:2639932"),
+        ], provider="rule34xxx", ref="initiala"), moment=MOMENT)
+        groups = self.store.group(self.store.items())
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(sorted(groups[0].providers), ["rule34paheal", "rule34xxx"])
+
     def test_a_tag_derived_title_never_merges_two_works_on_its_own(self):
         # 标签拼出来的「标题」不是名字：同一作者标签相似的两条不能因此被并掉。
         source_id = self._source(provider="rule34xxx", ref="lazyprocrastinator")
