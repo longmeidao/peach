@@ -800,6 +800,8 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vwrap .video-js .vjs-tech{object-fit:contain}
 .vwrap .video-js .vjs-control-bar{height:3.4em;background:linear-gradient(transparent,rgba(0,0,0,.82))}
 .vwrap .video-js .vjs-progress-control{min-width:0}.vwrap .video-js .vjs-time-control{font-size:var(--fs-xs)}
+.vwrap .video-js.vjs-error .vjs-error-display .vjs-modal-dialog-content{
+  display:flex;align-items:center;justify-content:center;padding:56px 24px;text-align:center;overflow-wrap:anywhere}
 .vwrap>.video-js.vjs-fullscreen,.video-js.vjs-fullscreen{width:100%!important;height:100%!important;
   max-width:none!important;max-height:none!important;aspect-ratio:auto!important}
 .vwrap>.video-js.vjs-fullscreen .vjs-tech,.video-js.vjs-fullscreen .vjs-tech{
@@ -1030,7 +1032,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   transform:translate(-50%,-50%)}
 .tokstage.wide{left:50%;right:auto;width:min(64vw,177.778vh);aspect-ratio:16/9;transform:translate(-50%,-50%)}
 .toktrack{position:absolute;inset:0;overflow:hidden;border-radius:12px;background:#000;
-  box-shadow:0 0 64px rgba(0,0,0,.34)}.toktrack video{position:absolute;inset:0;max-height:none;max-width:none;
+  box-shadow:0 0 64px rgba(0,0,0,.34);touch-action:manipulation;cursor:pointer}.toktrack video{position:absolute;inset:0;max-height:none;max-width:none;
   width:100%;height:100%;left:50%;transform:translateX(-50%);object-fit:cover;background:#000;will-change:transform;
   transition:transform .2s cubic-bezier(.2,.2,.4,.9)}
 /* 片源与视口比例差得多时按原始比例完整显示（留黑边），不裁掉画面。
