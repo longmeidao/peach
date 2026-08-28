@@ -164,6 +164,8 @@ class OfficialConnectorTests(unittest.TestCase):
         result = FanboxConnector(transport=_routed(route)).fetch("ffxivinitiala")
         self.assertIn("creatorId=ffxivinitiala", seen[0].url)
         self.assertEqual(seen[0].headers["Origin"], "https://www.fanbox.cc")
+        self.assertIn("Mozilla/5.0", seen[0].headers["User-Agent"])
+        self.assertIn("Mozilla/5.0", seen[1].headers["User-Agent"])
         self.assertEqual(len(result.candidates), 1)
         self.assertEqual(result.skipped, 1)
         self.assertEqual(result.candidates[0].group_hint, "fanbox:12489354")

@@ -1225,6 +1225,13 @@ class FanboxConnector(_BaseConnector):
             "Accept": "application/json",
             "Origin": "https://www.fanbox.cc",
             "Referer": "https://www.fanbox.cc/",
+            # post.info 会对 Peach 的工具 UA 返回 403，但同一公开请求使用
+            # 浏览器 UA 即为 200；这里不携带 cookie，也不越过付费限制。
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/140.0.0.0 Safari/537.36"
+            ),
         })
         return headers
 
