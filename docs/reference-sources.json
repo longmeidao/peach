@@ -87,7 +87,7 @@
       "url": "https://lazyprocrast.fanbox.cc/posts/12228983",
       "snapshot": "docs/reference-snapshots/follow-fanbox-gofile-paheal.md",
       "checked_on": "2026-08-28",
-      "sha256": "f4283802828f50f5a24a439707400325a237ad997c0720c4a9eb0b48cc90c824",
+      "sha256": "a1e2d6d66b7acab8d4b13639fb38ed37764a24ae4f60ff36e84adfa50abc611a",
       "role": "FANBOX 多图顺序、Gofile Bearer 文件列表、Paheal 标签订阅和出处去重证据。",
       "consumers": [
         "src/peach/follow_sources.py",
@@ -98,6 +98,27 @@
         "tests/test_follow_store.py",
         "tests/test_follow_stream.py",
         "tests/test_follow_web.py"
+      ]
+    },
+    {
+      "id": "fanbox-browser-transport",
+      "name": "FANBOX 浏览器传输证据",
+      "url": "https://github.com/Nandaka/PixivUtil2/blob/fc0f9adf44e590dde9242b3755b53528f159720a/common/PixivBrowserFactory.py",
+      "snapshot": "docs/reference-snapshots/fanbox-browser-transport.md",
+      "checked_on": "2026-08-28",
+      "sha256": "6d329f1cbf8e7e9eeec5e59397a427e7b3e8f419353c172121f09a41a35e8c7b",
+      "git": {
+        "repository": "https://github.com/Nandaka/PixivUtil2.git",
+        "ref": "refs/heads/master",
+        "revision": "fc0f9adf44e590dde9242b3755b53528f159720a"
+      },
+      "role": "FANBOX 公开 post.info 的 Firefox TLS/HTTP2 传输边界；不复用登录、下载器或质询处理。",
+      "consumers": [
+        "pyproject.toml",
+        "src/peach/http.py",
+        "src/peach/follow_sources.py",
+        "tests/test_http.py",
+        "tests/test_follow_sources.py"
       ]
     }
   ]

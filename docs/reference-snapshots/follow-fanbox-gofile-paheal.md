@@ -9,6 +9,16 @@
 请求：`GET https://api.fanbox.cc/post.info?postId=12228983`，带 FANBOX 要求的公开
 `Origin` 与 `Referer`。
 
+### 2026-08-28 纠正记录
+
+本快照最初把 HTTP 200 误写成普通 HTTP 客户端可稳定复现。当天重新核对后，HTTPX 和浏览器
+地址栏分别得到 HTTP 403 或 `{"error":"general_error"}`；保存的 FANBOX Cookie 本身没有
+填错。使用 `curl_cffi==0.16.2` 的 `firefox147` 传输特征、同一 Cookie、`Origin` 和帖子
+`Referer` 后，才重新得到下述完全相同的 6,961 字节响应与 SHA-256。
+
+这项纠正只改变传输假设，不改变响应结构和产品边界：Peach 不执行网页脚本、不求解质询，
+只回查公开、免费且不受限的官方 `post.info`；Cookie 仍只发给 `api.fanbox.cc`。
+
 - HTTP 200，6,961 字节，SHA-256
   `039DCE0418EBCA7703CC2277C8B9B803717D84C6DAF7989F6D55722DDA577653`。
 - 顶层结构为 `body.post`；帖子免费且不受限。
