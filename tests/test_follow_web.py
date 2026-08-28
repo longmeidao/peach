@@ -937,7 +937,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains(
             "if(path==='/follow-manage'){await openFollowManage(false);return}")
         self.assertPageContains(
-            "if(parts[0]==='follow'&&parts[1]==='item'&&/^\\d+$/.test(parts[2]||'')){await openFollowDetail(+parts[2],false);return}")
+            "await openFollow(false,true);await openFollowDetail(+parts[2],false)")
         self.assertPageContains("api(`/api/follow?item=${encodeURIComponent(id)}`)")
         self.assertPageContains(".then(async()=>{buildEdge();wireAllDrag();await restoreRoute();scheduleStickySurfaces()})")
 
@@ -1275,6 +1275,17 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("imageDots.length&&(e.key==='ArrowLeft'||e.key==='ArrowRight')")
         self.assertPageContains("openFollowDetail(item.id,false,+index,true)")
         self.assertPageContains(".followimagedots button[aria-current=\"true\"]")
+        self.assertPageContains("function alignFollowImageControls()")
+        self.assertPageContains("const renderedWidth=Math.min(box.width,box.height*ratio)")
+        self.assertPageContains("--follow-image-arrow-inset")
+
+    def test_follow_detail_keeps_filter_context_and_clears_initial_loading(self):
+        self.assertPageContains("async function openFollow(push=true,renderForDetail=false)")
+        self.assertPageContains("if(location.pathname!=='/follow'&&!renderForDetail)return")
+        self.assertPageContains("await openFollow(false,true);await openFollowDetail(+parts[2],false)")
+        self.assertPageContains("const followList=$('#stats').querySelector('.followlist')")
+        self.assertPageContains("if(followList)followList.before($('#stage'))")
+        self.assertPageContains("if(stage.parentElement!==main)main.insertBefore(stage,combo)")
 
     def test_follow_filters_put_all_first_and_sources_are_icon_only(self):
         self.assertPageContains("const FOLLOW_FILTERS=[['','全部'],['new','未看']")
