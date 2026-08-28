@@ -617,6 +617,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
                      # 漏登记时源码断言照样全绿，只有真的请求一次才会露出 404。
                      "/unseen", "/watch-later", "/flagged",
                      "/duplicates", "/quality-goals", "/mix/1/2", "/parts/1/2", "/playlists",
+                     "/resource-sync",
                      "/playlists/1/1", "/follow", "/follow-manage",
                      "/follow/item/190"):
             response = await self.client.get(path)
