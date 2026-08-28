@@ -87,7 +87,7 @@
       "url": "https://lazyprocrast.fanbox.cc/posts/12228983",
       "snapshot": "docs/reference-snapshots/follow-fanbox-gofile-paheal.md",
       "checked_on": "2026-08-28",
-      "sha256": "d0de92b8a96aa504f4af06f727b2b590afd2a6b9c05756ea27f551184d0d6057",
+      "sha256": "f4283802828f50f5a24a439707400325a237ad997c0720c4a9eb0b48cc90c824",
       "role": "FANBOX 多图顺序、Gofile Bearer 文件列表、Paheal 标签订阅和出处去重证据。",
       "consumers": [
         "src/peach/follow_sources.py",

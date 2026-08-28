@@ -288,10 +288,13 @@ class _BaseConnector:
         return {"User-Agent": USER_AGENT}
 
     def _get(self, url: str, *, headers: Mapping[str, str] | None = None,
-             etag: str | None = None, last_modified: str | None = None) -> HttpResponse:
+             etag: str | None = None, last_modified: str | None = None,
+             connector_headers: bool = True) -> HttpResponse:
         if self.blocked_reason:
             raise FollowSourceError(self.blocked_reason)
-        merged = self._headers()
+        # 跨站资源 API 不能继承来源站的 Cookie。Gofile 只拿自己的 Bearer token；
+        # FANBOX/F95 的会话不得跟着资源链接发到第三方主机。
+        merged = self._headers() if connector_headers else {"User-Agent": USER_AGENT}
         merged.update(headers or {})
         if etag:
             merged["If-None-Match"] = etag
@@ -362,14 +365,24 @@ class _BaseConnector:
             url = f"https://api.gofile.io/contents/{urllib.parse.quote(folder)}"
             response = self._get(url, headers={
                 "Accept": "application/json", "Authorization": f"Bearer {token}",
-            })
-            if response.status in (401, 403):
+            }, connector_headers=False)
+            payload = None
+            try:
+                payload = self._json(response)
+            except FollowSourceError:
+                # 非 JSON 的 401/403 仍按凭据拒绝处理；其他状态交给通用错误。
+                pass
+            api_status = payload.get("status") if isinstance(payload, dict) else None
+            if api_status == "error-notPremium":
+                raise FollowSourceError(
+                    "Gofile 文件列表 API 需要 Premium 账户；token 有效，"
+                    "但当前账户套餐不支持此接口")
+            if response.status in (401, 403) or api_status == "error-token":
                 raise CredentialError("Gofile 拒绝了 API token")
             self._check_status(response)
-            payload = self._json(response)
+            if payload is None:
+                payload = self._json(response)
             if not isinstance(payload, dict) or payload.get("status") != "ok":
-                if isinstance(payload, dict) and payload.get("status") == "error-token":
-                    raise CredentialError("Gofile 拒绝了 API token")
                 raise FollowSourceError("Gofile 文件列表未取得")
             stack = [payload.get("data")]
             while stack and len(items) < self.max_items:
@@ -1233,6 +1246,8 @@ class FanboxConnector(_BaseConnector):
                 "Chrome/140.0.0.0 Safari/537.36"
             ),
         })
+        if self.credential and self.credential.values.get("cookie"):
+            headers["Cookie"] = self.credential.values["cookie"]
         return headers
 
     def fetch(self, ref: str, *, etag: str | None = None,

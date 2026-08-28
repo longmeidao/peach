@@ -913,13 +913,22 @@ def _existing_sources(contract):
 #: 每个来源要不要凭据、要哪些字段、去哪里拿。写在这里而不是模板里，因为知道
 #: 「rule34.xxx 缺 key 就抓不到」的是连接器边界，不是界面。
 CREDENTIAL_GUIDE: dict[str, dict] = {
+    "fanbox": {
+        "requirement": "optional",
+        "fields": ["cookie"],
+        # FANBOX Cookie 绑定浏览器会话与风控环境，不跨机同步。
+        "syncable": [],
+        "why": "公开列表不需要登录；帖子详情被 FANBOX 验证页拦住时，可用浏览器会话取得正文、多图和外部资源链接。",
+        "where": "https://www.fanbox.cc/",
+        "howto": "登录 FANBOX 后，从一次成功的 api.fanbox.cc/post.info 请求复制整条 Cookie 请求头。",
+    },
     "gofile": {
         "requirement": "optional",
         "fields": ["api_token"],
         "syncable": [],
-        "why": "用于展开 Gofile 文件页，取得其中的图片和视频列表；不配置仍会保留文件页链接。",
+        "why": "用于展开 Gofile 文件页，取得其中的图片和视频列表；Gofile 当前要求 Premium 才能读取 contents API，不配置仍会保留文件页链接。",
         "where": "https://gofile.io/myprofile",
-        "howto": "登录 Gofile 后在个人资料页复制 API token。",
+        "howto": "登录 Premium Gofile 账户后，在个人资料页复制 API token。",
     },
     "kemono": {"requirement": "none"},
     "coomer": {"requirement": "none"},

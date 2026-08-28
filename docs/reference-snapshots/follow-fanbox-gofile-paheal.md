@@ -2,7 +2,7 @@
 
 - 取证日期：2026-08-28
 - 用途：FANBOX 多图切换、Gofile 文件页展开、Paheal 标签订阅与跨站去重。
-- 凭据保护：只记录公开响应结构、状态、字节数和 SHA-256；API token 未取得、未记录。
+- 凭据保护：只记录公开响应结构、状态、字节数和 SHA-256；API token 只用于现场状态验证，未记录。
 
 ## FANBOX 官方帖子详情
 
@@ -24,14 +24,23 @@ Mix 同款队列切换；正文中的文件站链接继续作为可点击资源�
 `GET https://api.gofile.io/contents/{contentId}`，账号 API token 仅放在
 `Authorization: Bearer` 请求头。
 
+官方文档在 2026-08-28 复核时明确说明：所有 API 请求都要 Bearer token，大多数 API
+端点只向 Premium 账户开放；超出端点限流时返回 HTTP 429。
+
 - 未带 token 请求 `OS2Qz9` 返回 34 字节
   `{"status":"error-token","data":{}}`，SHA-256
   `C745FF20204557E4775521417A9351E949E9BBB0B3078582649BF961FC513C61`。
 - 用户所说的 21 个视频在没有 token 时**未取得**，不能把分享页文字当成视频数。
+- 用本机已保存的 32 字符 token 请求 `GET /accounts/getid` 返回 HTTP 200、`status=ok`，
+  证明 token 有效；同一 token 请求 `GET /contents/OS2Qz9` 返回 HTTP 401、
+  `status=error-notPremium`。拒绝原因是账户套餐，不是 token 错误。
 
 Peach 新增独立的 Gofile API token 输入；配置后递归读取 API 返回的 `children`，只保留
 MIME 为图片或视频的文件。文件直链留在服务端 metadata，浏览器只收到媒体序号、名称、
 类型与缩略图；播放由 `/follow-stream` 代理，token 仍只进上游请求头。
+
+FANBOX Cookie 是另一份本机可选凭据，只发给 `api.fanbox.cc`，用于公开 `post.info`
+被验证页拦截时复用用户自己的浏览器会话；Gofile 跨站请求不会继承这份 Cookie。
 
 ## Rule34 Paheal
 
