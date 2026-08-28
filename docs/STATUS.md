@@ -8,7 +8,7 @@
 
 - Windows 是当前 ledger writer。启动入口为 `C:\Users\longm\Desktop\peach\peach-app\dist\Peach\Peach.exe`，代码、数据、worktree 和共享传输点都在 `C:\Users\longm\Desktop\peach\` 下；外置盘只提供 `R:\media`。
 - 托盘必须以普通权限启动：提升权限后的令牌看不到 CloudDrive 的 `A:` / `B:`，会把 PikPak 和 115 误报为脱盘。异常时从托盘退出，再由资源管理器或普通权限终端启动。
-- Windows HTTP 为 `0.0.0.0:80`，HTTPS 为当前 LAN IPv4 的 443，mDNS 名为 `peach-win.local`。线上服务版本最后核验为 `0.7.1`、`ledger_sync=writer`。
+- Windows HTTP 为 `0.0.0.0:80`，HTTPS 为当前 LAN IPv4 的 443，mDNS 名为 `peach-win.local`。线上服务版本最后核验为 `0.7.2`、`ledger_sync=writer`。
 - macOS 是 reader，代码在 `~/Desktop/lmd.gg/peach/peach-app`，数据在相邻 `peach-data`；`peach.local` 经 8900/8443 和 pf 提供 80/443。GET 正常，写入端点返回 409。
 - 2026-08-27 核对 macOS：服务子进程已跑当前 `master`，但菜单栏进程仍是旧代码。托盘层改动要生效，需手动退出菜单栏项后由 `.app` 或 `launchctl kickstart -k` 重启一次。
 - 两端固定使用不同 mDNS 名和各自本机 CA；CA 私钥、服务器私钥和凭据不跨机同步。生成资产由 Syncthing 单向 Windows → Mac，Git 与 ledger 复制是另外两条链路。
@@ -64,13 +64,14 @@
 - 正式 EXE 已替换为 SHA-256 `59A8E43797EC6FDB13093465453DB09EF31EC64C3E8F49CAF5B1F328F55449DB`，备份为 `dist/Peach/Peach.pre-0.7.0-final-20260828-110113.exe`；22 个迁移且 0 待处理，生产健康检查为 writer、非只读，严格 HTTPS 浏览器可打开 `/follow`。真实 ledger 写入前备份为 `database/ledger.pre-follow-paheal-20260828-104302.db`（SHA-256 `423B470B5609FF08DB29D223114C1ED7066DABA2D86DD4ABC96D05D58F2A65DC`）；来源 13→14、条目 713→737，完整性正常、外键违规 0。重复添加大小写不同的 Paheal 链接仍复用来源 15 且新增 0；目标 7428820 与已停用 SubscribeStar 2639932 及同批媒体共享 `subscribestar:2639932`，去重键已在真实库和 API 验证。生产页面显示 Rule34 Paheal 来源、InitialA 作者筛选、右侧 8 视频详情队列和标题旁来源外链；手机视口本轮浏览器读取超时，视觉验收未取得。
 - `8b7255c` 已合入 `master`：管理页新增 FANBOX Cookie 密码输入，Cookie 只发给 `api.fanbox.cc`，不会继承到 Gofile。Gofile 现场验证为 token 有效（`/accounts/getid` HTTP 200），但 `/contents/OS2Qz9` 返回 HTTP 401、`error-notPremium`；界面和检查结果改为按 Premium 套餐限制报告，不再误报 token 无效。关注域 382 项、正式 Windows 全量 1110 项通过，分别有 1/13 项按平台跳过。
 - 0.7.1 正式 EXE 已替换为 SHA-256 `F3AB422B9004AA5AF4ACDE3BEF055E19D4D88D1E7BCEB5EDA478F39C687E6A38`，上版备份为 `dist/Peach/Peach.pre-0.7.1-20260828-131711.exe`；80/443 已恢复，打包迁移为 22 个、0 待处理，项目 CA 严格 HTTPS `/healthz` 返回 200、writer。生产凭据 API 显示 FANBOX `cookie` 可选输入、Gofile token 已配置。内置浏览器两次加载 `/follow-manage` 均超时，视觉验收未取得；本轮没有触发检查更新或写 ledger。
-- 0.7.2 源码将 FANBOX `post.info` 收窄到固定版本 `curl_cffi` 的 Firefox 传输；列表及其他来源仍走共用 HTTPX，不执行网页脚本、不求解机器人质询、不读取付费帖子。用管理页已保存的 Cookie 对 LazyProcrastinator 帖子 12228983 做只读复核，已取得 6 图、正文和 Gofile `OS2Qz9` 资源页，证明 Cookie 没填错，先前的 403／`general_error` 来自传输指纹。关注域 386 项、正式 Windows 全量 1114 项通过，分别有 1/13 项按平台跳过；本轮没有触发检查更新或写 ledger。
+- `b0730af` 已经由 `a0a8ccc` 合入 `master`：0.7.2 将 FANBOX `post.info` 收窄到固定版本 `curl_cffi` 的 Firefox 传输；列表及其他来源仍走共用 HTTPX，不执行网页脚本、不求解机器人质询、不读取付费帖子。用管理页已保存的 Cookie 对 LazyProcrastinator 帖子 12228983 做只读复核，已取得 6 图、正文和 Gofile `OS2Qz9` 资源页，证明 Cookie 没填错，先前的 403／`general_error` 来自传输指纹。关注域 386 项、正式 Windows 全量 1114 项通过，分别有 1/13 项按平台跳过。
+- 0.7.2 正式 EXE 已替换为 SHA-256 `F5F78CDACD9F466A6B8A423151F510F16D40A47BB052B984971D0F59D3EC51E6`，上版备份为 `dist/Peach/Peach.pre-0.7.2-20260828-142052.exe`；80/443 已恢复，打包迁移为 22 个、0 待处理，项目 CA 严格 HTTPS `/healthz` 返回 200、0.7.2、writer。生产凭据 API 显示 FANBOX Cookie 已配置、Gofile token 当前未配置；本轮没有触发检查更新，部署前后 ledger SHA-256 均为 `C2C6F09522305F682636379F43E74A4E60D9475C39FBE0FBC3505A7879CB963C`。本改动没有页面、CSS 或交互变化，桌面/手机视觉验收不适用。
 
 ## 下一批工作
 
 1. 另行授权后先备份 ledger，再把 `follow_item` 181、184、185 从 `seen` 恢复为 `new`，复核状态计数、完整性与新哈希。
 2. 分类剩余 44 个无预览变体，区分确无图片与来源解析遗漏。
-3. 另行确认后在生产关注页检查 LazyProcrastinator FANBOX，把已验证的 6 图、正文与 Gofile `OS2Qz9` 资源页写入关注候选；Gofile token 已配置但账户不是 Premium，21 个视频仍未取得。
+3. 另行确认后在生产关注页检查 LazyProcrastinator FANBOX，把已验证的 6 图、正文与 Gofile `OS2Qz9` 资源页写入关注候选；Gofile token 当前未配置，且此前验证的账户不是 Premium，21 个视频仍未取得。
 4. 在 `/review` 人工处理本批 JAV 日文系列名、官方标签及现有创作者标签、FC2、Javinizer、Logo、头像和媒体失败候选；未经批准不写真相字段。
 5. 将 Windows writer 的最新副本同步到共享传输点，再让 Mac reader 拉取；同步前后核对迁移版本、计数、完整性与 writer 身份。
 6. 在 Mac Finder 以 `smb://peach-win.local/peach-sync` 连接一次并保存钥匙串记录，再重启菜单栏进程，核对自动挂载、reader 锁定、HTTPS、mDNS 和真实 LAN 客户端。
