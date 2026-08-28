@@ -68,6 +68,26 @@ class WebUiSourceTests(unittest.TestCase):
             rule = css[css.index(selector):css.index("}", css.index(selector))]
             self.assertIn("var(--control-radius)", rule, f"{selector} 是按钮")
 
+    def test_close_actions_share_geist_control_geometry(self):
+        css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
+            encoding="utf-8")
+        for selector in (".playlistdialoghead button{", ".photoclose{",
+                         ".mixqueuehead button{", ".closestage{",
+                         ".settingshead button{"):
+            start = css.rindex(selector) if selector == ".closestage{" else css.index(selector)
+            rule = css[start:css.index("}", start)]
+            self.assertIn("var(--control-radius)", rule,
+                          f"{selector} 是关闭操作，不是圆形标签")
+        self.assertIn(".settingshead button:hover{background:var(--hover);color:var(--ink)}",
+                      css)
+
+    def test_settings_overlay_owns_the_top_fixed_layer(self):
+        self.assertPageContains("--layer-dialog:1000")
+        self.assertPageContains(".settingspanel{position:fixed;z-index:var(--layer-dialog);inset:0;isolation:isolate")
+        self.assertPageContains("body.settings-open{overflow:hidden}")
+        self.assertPageContains("document.body.classList.add('settings-open')")
+        self.assertPageContains("document.body.classList.remove('settings-open')")
+
     def test_studio_metadata_is_not_compiled_as_inline_javascript(self):
         self.assertPageLacks('onerror="this.parentNode.innerHTML=')
         self.assertPageLacks('onload="if(this.naturalWidth')

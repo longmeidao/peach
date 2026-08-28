@@ -1026,6 +1026,8 @@ class F95ZoneConnector(_BaseConnector):
     CATEGORIES = ("games", "animations", "comics", "assets", "mods")
     _MASKED_PATH_RE = re.compile(r"^/masked/", re.IGNORECASE)
     _ATTACHMENT_PATH_RE = re.compile(r"^/attachments/\d+/?$", re.IGNORECASE)
+    _INLINE_IMAGE_RE = re.compile(
+        r"\.(?:avif|bmp|gif|jpe?g|png|webp)(?:$|[?#])", re.IGNORECASE)
 
     def fetch(self, ref: str, *, etag: str | None = None,
               last_modified: str | None = None, page: int = 0) -> SourceFetch:
@@ -1101,7 +1103,13 @@ class F95ZoneConnector(_BaseConnector):
             ]
             media_links, needs_credential = self._media_links(links)
             attachment_urls = self._attachment_urls(body)
-            if not media_links and not attachment_urls:
+            # F95 会把正文里粘贴的 GIF / meme 也存到 attachments.f95zone.to。
+            # 它们只是讨论插图，不是作者交付的资源；单凭一张内嵌图片不能让楼层
+            # 进入追更。非图片附件仍保留，带文件站链接的楼层也保留全部预览图。
+            downloadable_attachments = [
+                url for url in attachment_urls if not self._INLINE_IMAGE_RE.search(url)
+            ]
+            if not media_links and not downloadable_attachments:
                 skipped += 1
                 continue
             direct_attachment = next((url for url in attachment_urls

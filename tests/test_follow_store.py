@@ -365,7 +365,7 @@ class GroupingTests(_StoreCase):
         self.assertEqual(len(groups), 1)
         self.assertEqual(len(groups[0].variants), 1)
 
-    def test_release_semantics_keeps_thread_activity_in_one_group(self):
+    def test_f95_resource_replies_are_independent_release_groups(self):
         source_id = self._source(provider="f95zone", ref="50685", semantics="release")
         self.store.record(source_id, _fetch([
             FollowCandidate(provider="f95zone", external_id="21383374",
@@ -376,9 +376,10 @@ class GroupingTests(_StoreCase):
                             published_at="2026-08-22T18:09:23Z"),
         ], provider="f95zone", ref="50685", semantics="release"), moment=MOMENT)
         groups = self.store.group(self.store.items())
-        self.assertEqual(len(groups), 1)
-        self.assertTrue(groups[0].is_release)
-        # 线程组的代表是最新那条动态，不是最早那条。
+        self.assertEqual(len(groups), 2)
+        self.assertTrue(all(group.is_release for group in groups))
+        self.assertTrue(all(group.variants == () for group in groups))
+        # 最新楼层排在前面，但不会把较早的资源楼层吞成「动态」。
         self.assertEqual(groups[0].primary.external_id, "21394555")
         self.assertEqual(groups[0].primary.version, "2026-06-28")
 

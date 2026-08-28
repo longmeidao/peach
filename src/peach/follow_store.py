@@ -177,7 +177,11 @@ class FollowStore:
             verdict = classify(candidate.title, creator_aliases=creator_aliases,
                                version=candidate.version, semantics=fetch.semantics)
             release_key = verdict.release_key
-            if not candidate.title_is_name:
+            if fetch.provider == "f95zone":
+                # F95 的线程标题只是容器名；每个带资源的楼层都是一次独立发布。
+                # 同一楼层若展开出多个视频，由 media_items 在详情里组成 Mix。
+                release_key = f"{release_key}\u0000{candidate.external_id}"
+            elif not candidate.title_is_name:
                 # booru 的「标题」是标签拼出来的，不是名字。让它各自成组，只靠
                 # `group_hint` 合并；否则同一作者标签相似的两个作品会被并掉。
                 release_key = f"{release_key}\u0000{candidate.external_id}"
@@ -360,8 +364,18 @@ class FollowStore:
         """
         # 先按标题判据拆开同站撞车，再按来源自带的关系合并：来源自己声明过的关系
         # 优先，绝不能被标题判据拆散。
+        # 兼容已经落库的旧 F95 行：旧版用线程标题作为 release_key，读时也要按
+        # 楼层拆开，部署后无需改写真实 ledger 就会立即显示成独立条目。
+        split_posts = tuple(
+            FollowItemRow(**{**item.__dict__,
+                             "release_key": f"{item.release_key}\u0000{item.external_id}"})
+            if item.provider == "f95zone"
+            and not item.release_key.endswith(f"\u0000{item.external_id}")
+            else item
+            for item in items
+        )
         aligned = _align_by_group_hint(
-            _split_ambiguous_works(items, _hint_linked(items)))
+            _split_ambiguous_works(split_posts, _hint_linked(split_posts)))
         primaries = group_duplicates(aligned)
         buckets: dict[int, tuple[FollowItemRow, list[FollowItemRow]]] = {}
         for item, primary in zip(aligned, primaries):

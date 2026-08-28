@@ -218,7 +218,7 @@ class FollowContractTests(unittest.TestCase):
         self.assertNotIn("url", item["media_items"][0])
         self.assertNotIn("store1.gofile.io/download", json.dumps(item))
 
-    def test_f95_discussion_without_attachments_or_file_links_is_hidden(self):
+    def test_f95_discussion_and_inline_memes_are_hidden(self):
         self._seed(candidates=(
             FollowCandidate(
                 provider="f95zone", external_id="discussion", title="Thread",
@@ -230,10 +230,15 @@ class FollowContractTests(unittest.TestCase):
                 thumb_url="https://attachments.f95zone.to/preview.png",
                 extra={"attachment_count": 1,
                        "attachments": ["https://attachments.f95zone.to/preview.png"]}),
+            FollowCandidate(
+                provider="f95zone", external_id="download", title="Thread",
+                url="https://f95zone.to/threads/50685/post-download",
+                extra={"attachment_count": 1,
+                       "attachments": ["https://attachments.f95zone.to/archive.zip"]}),
         ), provider="f95zone", ref="50685", semantics="release")
         payload = self._get()
         items = [group["primary"] for group in payload["groups"]]
-        self.assertEqual([item["external_id"] for item in items], ["attachment"])
+        self.assertEqual([item["external_id"] for item in items], ["download"])
         self.assertEqual(payload["counts"]["new"], 1)
 
     def test_old_archive_images_get_a_thumbnail_without_rewriting_the_ledger(self):
@@ -614,7 +619,7 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual(rule34["fields"], ["api_key", "user_id"])
         self.assertNotIn("sekret", json.dumps(payload))
 
-    def test_f95_thread_activity_is_labelled_as_a_release_group(self):
+    def test_f95_resource_replies_are_returned_as_independent_items(self):
         self._seed(provider="f95zone", ref="50685", semantics="release", candidates=(
             FollowCandidate(provider="f95zone", external_id="21383374",
                             title="Lazy Procrastinator Collection [2026-06-28]",
@@ -629,17 +634,19 @@ class FollowContractTests(unittest.TestCase):
                             title="Lazy Procrastinator Collection [2026-06-28]",
                             url="https://f95zone.to/threads/50685/post-21394555",
                             published_at="2026-08-22T18:09:23Z",
-                            thumb_url="https://attachments.f95zone.to/preview.png",
-                            extra={"attachment_count": 1}),
+                            extra={"attachment_count": 1, "attachments": [
+                                "https://attachments.f95zone.to/2026/08/archive.zip"]}),
         ))
-        group = self._get()["groups"][0]
-        self.assertTrue(group["is_release"])
-        self.assertEqual(group["primary"]["external_id"], "21394555")
-        self.assertEqual(group["primary"]["version"], "2026-06-28")
-        self.assertTrue(group["variants"][0]["media_needs_credential"])
-        # 线程动态要说清是谁发的；一个线程里九条回复全标成 main 没有信息量。
-        self.assertEqual(group["variants"][0]["author"], "Jkhomie1198")
-        self.assertEqual(group["variants"][0]["summary"], "New batch up Gofile")
+        groups = self._get()["groups"]
+        self.assertEqual(len(groups), 2)
+        self.assertEqual([group["primary"]["external_id"] for group in groups],
+                         ["21394555", "21383374"])
+        self.assertTrue(all(group["is_release"] for group in groups))
+        self.assertTrue(all(group["variants"] == [] for group in groups))
+        older = groups[1]["primary"]
+        self.assertTrue(older["media_needs_credential"])
+        self.assertEqual(older["author"], "Jkhomie1198")
+        self.assertEqual(older["summary"], "New batch up Gofile")
 
 
 class FollowSourceAddTests(FollowContractTests):
@@ -1512,6 +1519,9 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_credential_dependent_media_is_called_out(self):
         self.assertPageContains("媒体链接需要 F95 登录会话解析")
+        self.assertPageContains("已保存 F95 登录会话，等待下次检查重新解析资源")
+        self.assertPageContains("followCredentialProviders=new Set")
+        self.assertPageContains("api('/api/follow/credentials').catch")
         self.assertPageContains("个外部文件页；视频列表未取得")
         self.assertPageContains("function followResourceLinks(item)")
         self.assertPageContains('class="followresources"')
@@ -1566,7 +1576,14 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_the_check_button_stays_visible_on_a_narrow_viewport(self):
         # 管理入口不再混进横滚筛选条；390 宽下始终留在标题右侧。
         self.assertPageContains(".followhead{display:flex;align-items:center;justify-content:space-between")
-        self.assertPageContains(".followhead{align-items:center}.follow .fcheck{height:36px")
+        self.assertPageContains('@media (max-width:640px){.followhead{align-items:center}')
+
+    def test_manage_follow_is_a_geist_action_not_a_filter_pill(self):
+        self.assertPageContains('class="fbtn primary fcheck" data-follow-manage')
+        rule = self.page[self.page.index(".follow .fcheck{"):
+                         self.page.index("}", self.page.index(".follow .fcheck{"))]
+        self.assertNotIn("--pill-radius", rule)
+        self.assertNotIn("height:40px", rule)
 
 
 if __name__ == "__main__":
