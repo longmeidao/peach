@@ -15,7 +15,7 @@ const pageTitle=path=>{
   const fixed={stats:'统计',taste:'品味',review:'人工复核',duplicates:'重复文件','quality-goals':'高清版',
     follow:'关注','follow-manage':'关注管理',playlists:'播放列表',performers:'女优',studios:'厂牌',
     creators:'创作者',series:'系列',tags:'标签',unseen:'没看过','watch-later':'稍后看',flagged:'已标记',
-    immerse:'沉浸模式',mix:'Mix',item:'作品'};
+    immerse:'沉浸模式',mix:'Mix',item:'作品','resource-sync':'资源同步'};
   const label=parts.length>1&&['performers','studios','creators','series'].includes(parts[0])
     ? parts.slice(1).join('/') : fixed[parts[0]];
   return label?`${label} · Peach`:'Peach · 蜜桃';
@@ -1057,7 +1057,7 @@ async function openResourceSync(push=true){
     result.innerHTML=`<div class="resourcesources">${sources.map(source=>`<article>
       <b>${esc(LOC[source.location]||source.location)}</b><span class="${source.online?'online':'offline'}">${source.online?'已挂载':'离线，已跳过'}</span>
       <strong>${source.online?`${source.missing.toLocaleString()} 项已从网盘删除`:'—'}</strong>
-      <small>${source.online?`已核对 ${source.checked.toLocaleString()} 项`:`账本有 ${source.total.toLocaleString()} 项`}</small></article>`).join('')}</div>
+      <small>${source.online?`已核对 ${source.checked.toLocaleString()} 项${source.unreadable?` · ${source.unreadable.toLocaleString()} 项暂时无法读取`:''}`:`账本有 ${source.total.toLocaleString()} 项`}</small></article>`).join('')}</div>
       <div class="resourcecache"><div><b>${cache.files.toLocaleString()}</b><span>个孤立缓存</span><small>${fmtSize(cache.bytes||0)}</small></div>
       <div><b>${Number(payload.missing||0).toLocaleString()}</b><span>项待同步</span><small>应用后进入回收站</small></div></div>
       ${(payload.missing||cache.files)?`<button class="danger" id="resourceApply">同步到回收站并清理缓存</button>`:
@@ -1067,14 +1067,26 @@ async function openResourceSync(push=true){
       if(!confirm(`把 ${payload.missing||0} 项移入回收站，并清理 ${cache.files||0} 个可重建缓存？`))return;
       button.disabled=true;button.textContent='正在重新核对并应用…';
       try{
-        const applied=await api('/api/resource-sync/apply',{method:'POST',body:JSON.stringify({confirm:true,clean_cache:true})});
+        const applied=await api('/api/resource-sync/apply',{method:'POST',body:JSON.stringify({confirm:true,clean_cache:true,scan_id:payload.scan_id||''})});
         result.innerHTML=`<p class="resourcesyncok">已把 ${applied.moved_to_trash.toLocaleString()} 项移入回收站，清理 ${applied.cache_removed.toLocaleString()} 个缓存，释放 ${fmtSize(applied.bytes_reclaimed||0)}。</p>`;
       }catch(error){button.disabled=false;button.textContent='重试同步';result.insertAdjacentHTML('beforeend',`<p class="resourceerror">${esc(error.message)}</p>`)}
     });
   };
   scan.onclick=async()=>{
-    scan.disabled=true;scan.innerHTML=`${icon('refresh-cw')}正在扫描…`;result.innerHTML='<p class="resourcescanning">正在核对网盘元数据，不会读取视频内容。</p>';
-    try{render(await api('/api/resource-sync/scan',{method:'POST',body:'{}'}))}
+    scan.disabled=true;scan.innerHTML=`${icon('refresh-cw')}正在扫描…`;result.innerHTML='<p class="resourcescanning">正在后台核对网盘元数据，不会读取视频内容。</p>';
+    try{
+      let payload=await api('/api/resource-sync/scan',{method:'POST',body:JSON.stringify({background:true,restart:true})});
+      while(payload.status==='running'){
+        const done=payload.sources||[];
+        result.innerHTML=`<p class="resourcescanning">后台扫描中：已完成 ${payload.completed_sources||0} / ${payload.total_sources||3} 个来源${done.length?`（${done.map(source=>esc(LOC[source.location]||source.location)).join('、')}）`:''}。离开本页不会中断。</p>`;
+        await new Promise(resolve=>setTimeout(resolve,2000));
+        if(location.pathname!=='/resource-sync')return;
+        payload=await api('/api/resource-sync/scan',{method:'POST',body:JSON.stringify({background:true})});
+      }
+      if(payload.status==='failed')throw new Error(payload.error||'后台扫描失败');
+      if(location.pathname!=='/resource-sync')return;
+      render(payload);
+    }
     catch(error){result.innerHTML=`<p class="resourceerror">扫描失败：${esc(error.message)}</p>`}
     finally{scan.disabled=false;scan.innerHTML=`${icon('refresh-cw')}重新扫描`}
   };

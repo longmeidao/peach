@@ -15,9 +15,10 @@ import shutil
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
-from typing import Sequence
+from typing import Callable, Sequence
 from urllib.parse import quote, urlsplit
 
 from .config import (
@@ -169,6 +170,9 @@ class WebContract:
         self.cache_lock = threading.Lock()
         self.follow_check_lock = threading.Lock()
         self.follow_scheduler = None
+        self.resource_scan_lock = threading.Lock()
+        self.resource_scan_state: dict | None = None
+        self.resource_scan_thread: threading.Thread | None = None
         self._fts_available: bool | None = None
 
     def cached(self, key, fn):
@@ -2522,7 +2526,74 @@ def source_is_online(location: str) -> bool:
     return not is_unmapped(resolved) and root_online(resolved)
 
 
-def _scan_missing_resources(contract: WebContract) -> dict:
+RESOURCE_SCAN_WORKERS = 8
+
+
+def _scan_resource_directory(
+    item: tuple[Path, dict[str, list[int]]],
+) -> tuple[list[int], int]:
+    parent, expected = item
+    present: set[str] = set()
+    unreadable = 0
+    try:
+        with os.scandir(parent) as entries:
+            for entry in entries:
+                key = entry.name.casefold()
+                if key not in expected:
+                    continue
+                try:
+                    if entry.is_file():
+                        present.add(key)
+                except OSError:
+                    # The name was returned but its type could not be read.  Preserve the
+                    # ledger row and report it as unreadable instead of declaring deletion.
+                    present.add(key)
+                    unreadable += len(expected[key])
+    except FileNotFoundError:
+        return [asset_id for ids in expected.values() for asset_id in ids], 0
+    except OSError:
+        return [], sum(len(ids) for ids in expected.values())
+    return (
+        [asset_id for key, ids in expected.items() if key not in present for asset_id in ids],
+        unreadable,
+    )
+
+
+def _missing_resource_ids(rows: Sequence) -> tuple[list[int], int]:
+    """Compare ledger paths one directory listing at a time.
+
+    Cloud mounts make one ``stat`` request per path painfully slow.  ``scandir`` reuses the
+    directory enumeration that the filesystem already returns, while retaining the same
+    case-insensitive Windows path semantics.  An unreadable directory is skipped rather than
+    being mistaken for a directory that the user deleted.
+    """
+    directories: dict[Path, dict[str, list[int]]] = {}
+    for row in rows:
+        path = translate_ledger_path(row["path"])
+        expected = directories.setdefault(path.parent, {})
+        expected.setdefault(path.name.casefold(), []).append(int(row["id"]))
+
+    directory_items = list(directories.items())
+    if len(directory_items) <= 1:
+        results = [_scan_resource_directory(item) for item in directory_items]
+    else:
+        # CloudDrive directory reads are latency-bound metadata requests.  Keep concurrency
+        # deliberately small: enough to hide round trips without turning a scan into a media
+        # download or overwhelming either mounted provider.
+        with ThreadPoolExecutor(
+            max_workers=min(RESOURCE_SCAN_WORKERS, len(directory_items)),
+            thread_name_prefix="PeachResourceScan",
+        ) as executor:
+            results = list(executor.map(_scan_resource_directory, directory_items))
+    missing = [asset_id for ids, _unreadable in results for asset_id in ids]
+    unreadable = sum(count for _ids, count in results)
+    return missing, unreadable
+
+
+def _scan_missing_resources(
+    contract: WebContract,
+    progress: Callable[[dict], None] | None = None,
+) -> dict:
     """Read-only reconciliation against every mounted filesystem source."""
     with contract.read_connection() as connection:
         rows = connection.execute(
@@ -2539,15 +2610,18 @@ def _scan_missing_resources(contract: WebContract) -> dict:
         items = grouped.get(location, [])
         online = source_is_online(location)
         missing = []
+        unreadable = 0
         if online:
-            for row in items:
-                if not translate_ledger_path(row["path"]).is_file():
-                    missing.append(row["id"])
+            missing, unreadable = _missing_resource_ids(items)
             missing_ids.extend(missing)
-        sources.append({
-            "location": location, "online": online, "checked": len(items) if online else 0,
-            "total": len(items), "missing": len(missing),
-        })
+        source = {
+            "location": location, "online": online,
+            "checked": max(0, len(items) - unreadable) if online else 0,
+            "total": len(items), "missing": len(missing), "unreadable": unreadable,
+        }
+        sources.append(source)
+        if progress is not None:
+            progress(source)
     return {"sources": sources, "missing_ids": missing_ids}
 
 
@@ -2691,7 +2765,77 @@ def _clean_resource_orphans(contract: WebContract) -> dict:
             "cache_blocked": blocked}
 
 
-def w_resource_sync_scan(contract: WebContract, _body=None):
+def _resource_scan_public(state: dict) -> dict:
+    if state["status"] == "complete":
+        return {**state["result"], "status": "complete", "scan_id": state["scan_id"]}
+    return {
+        "ok": state["status"] != "failed",
+        "status": state["status"],
+        "scan_id": state["scan_id"],
+        "sources": [dict(source) for source in state["sources"]],
+        "completed_sources": len(state["sources"]),
+        "total_sources": len(LOCATION_ROOT_DECLARATIONS),
+        **({"error": state["error"]} if state["status"] == "failed" else {}),
+    }
+
+
+def _run_resource_scan(contract: WebContract, scan_id: str) -> None:
+    def progress(source: dict) -> None:
+        with contract.resource_scan_lock:
+            state = contract.resource_scan_state
+            if state is not None and state["scan_id"] == scan_id:
+                state["sources"].append(dict(source))
+
+    try:
+        scan = _scan_missing_resources(contract, progress)
+        caches = _resource_orphan_plan(contract, scan["missing_ids"])
+        result = {
+            "ok": True, "sources": scan["sources"],
+            "missing": len(scan["missing_ids"]),
+            "cache": {"files": caches["total_files"], "bytes": caches["total_bytes"],
+                      "by_kind": caches["summary"]},
+        }
+        with contract.resource_scan_lock:
+            state = contract.resource_scan_state
+            if state is not None and state["scan_id"] == scan_id:
+                state.update(status="complete", result=result,
+                             missing_ids=list(scan["missing_ids"]), completed_at=time.time())
+    except Exception as error:  # Background failures must become a pollable state.
+        with contract.resource_scan_lock:
+            state = contract.resource_scan_state
+            if state is not None and state["scan_id"] == scan_id:
+                state.update(status="failed", error=f"{type(error).__name__}: {error}",
+                             completed_at=time.time())
+
+
+def _background_resource_scan(contract: WebContract, restart: bool = False) -> dict:
+    thread = None
+    with contract.resource_scan_lock:
+        state = contract.resource_scan_state
+        if state is not None and state["status"] == "running":
+            return _resource_scan_public(state)
+        if state is not None and not restart:
+            return _resource_scan_public(state)
+        scan_id = uuid.uuid4().hex
+        state = {
+            "scan_id": scan_id, "status": "running", "sources": [],
+            "started_at": time.time(), "result": None, "missing_ids": [], "error": "",
+        }
+        contract.resource_scan_state = state
+        thread = threading.Thread(
+            target=_run_resource_scan, args=(contract, scan_id), daemon=True,
+            name="PeachResourceScanJob",
+        )
+        contract.resource_scan_thread = thread
+        response = _resource_scan_public(state)
+    thread.start()
+    return response
+
+
+def w_resource_sync_scan(contract: WebContract, body=None):
+    body = body or {}
+    if body.get("background") is True:
+        return _background_resource_scan(contract, restart=body.get("restart") is True)
     scan = _scan_missing_resources(contract)
     caches = _resource_orphan_plan(contract, scan["missing_ids"])
     return {
@@ -2702,13 +2846,52 @@ def w_resource_sync_scan(contract: WebContract, _body=None):
     }
 
 
+def _recheck_resource_scan_ids(contract: WebContract, asset_ids: Sequence[int]) -> list[int]:
+    if not asset_ids:
+        return []
+    rows = []
+    with contract.read_connection() as connection:
+        for offset in range(0, len(asset_ids), 400):
+            batch = list(asset_ids[offset:offset + 400])
+            marks = ",".join("?" for _item in batch)
+            rows.extend(connection.execute(
+                "SELECT id,location,path FROM asset "
+                f"WHERE id IN ({marks}) AND path IS NOT NULL "
+                "AND COALESCE(disposal,'')!='trash'",
+                batch,
+            ).fetchall())
+    grouped: dict[str, list] = {}
+    for row in rows:
+        grouped.setdefault(row["location"], []).append(row)
+    missing = []
+    for location, items in grouped.items():
+        if not source_is_online(location):
+            continue
+        source_missing, _unreadable = _missing_resource_ids(items)
+        missing.extend(source_missing)
+    return missing
+
+
 def w_resource_sync_apply(contract: WebContract, body):
     if body.get("confirm") is not True:
         raise ValueError("resource sync requires confirmation")
-    # Apply never trusts an earlier browser result. Mount state and file existence are
-    # checked again immediately before the bounded ledger write.
-    scan = _scan_missing_resources(contract)
-    missing_ids = scan["missing_ids"]
+    scan_id = str(body.get("scan_id") or "")
+    if scan_id:
+        with contract.resource_scan_lock:
+            state = contract.resource_scan_state
+            if (state is None or state["scan_id"] != scan_id
+                    or state["status"] != "complete"):
+                raise ValueError("resource scan expired; scan again")
+            candidates = list(state["missing_ids"])
+            sources = [dict(source) for source in state["result"]["sources"]]
+        # Do not trust the background result at write time.  Recheck only its bounded
+        # candidate set; online sources and unreadable directories retain the safe skip.
+        missing_ids = _recheck_resource_scan_ids(contract, candidates)
+        scan = {"sources": sources, "missing_ids": missing_ids}
+    else:
+        # Compatibility path for non-browser callers: still perform a fresh full scan.
+        scan = _scan_missing_resources(contract)
+        missing_ids = scan["missing_ids"]
     if missing_ids:
         with contract.write_transaction() as connection:
             stamp = time.time()

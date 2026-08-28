@@ -1,7 +1,9 @@
 import csv
 import json
+import os
 import sqlite3
 import tempfile
+import time
 import unittest
 from contextlib import contextmanager
 from pathlib import Path
@@ -2306,6 +2308,58 @@ class PurgeMissingTests(unittest.TestCase):
         self.assertEqual(result["cache_removed"], len(cache_files))
         self.assertTrue(all(not path.exists() for path in cache_files))
         self.assertTrue(evidence.is_file(), "候选证据不属于可删除缓存")
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(
+                con.execute("SELECT count(*) FROM asset WHERE disposal='trash'").fetchone()[0], 2)
+        finally:
+            con.close()
+
+    def test_full_sync_lists_each_directory_once_instead_of_stating_every_file(self):
+        real_scandir = os.scandir
+        with mock.patch.object(rm_web, "translate_ledger_path", self._translate), \
+             mock.patch.object(rm_web, "source_is_online", lambda loc: loc == "115"), \
+             mock.patch.object(rm_web.os, "scandir", wraps=real_scandir) as scandir:
+            preview = rm_web.w_resource_sync_scan(self.contract)
+
+        self.assertEqual(preview["missing"], 2)
+        self.assertEqual(scandir.call_count, 1)
+        source = next(row for row in preview["sources"] if row["location"] == "115")
+        self.assertEqual(source["checked"], 4)
+        self.assertEqual(source["unreadable"], 0)
+
+    def test_full_sync_skips_an_unreadable_directory_instead_of_trashing_it(self):
+        with mock.patch.object(rm_web, "translate_ledger_path", self._translate), \
+             mock.patch.object(rm_web, "source_is_online", lambda loc: loc == "115"), \
+             mock.patch.object(rm_web.os, "scandir", side_effect=PermissionError("offline")):
+            preview = rm_web.w_resource_sync_scan(self.contract)
+
+        self.assertEqual(preview["missing"], 0)
+        source = next(row for row in preview["sources"] if row["location"] == "115")
+        self.assertEqual(source["checked"], 0)
+        self.assertEqual(source["unreadable"], 4)
+
+    def test_background_sync_polls_then_rechecks_only_missing_candidates(self):
+        with mock.patch.object(rm_web, "translate_ledger_path", self._translate), \
+             mock.patch.object(rm_web, "source_is_online", lambda loc: loc == "115"):
+            started = rm_web.w_resource_sync_scan(
+                self.contract, {"background": True, "restart": True})
+            self.assertEqual(started["status"], "running")
+            deadline = time.time() + 2
+            while True:
+                status = rm_web.w_resource_sync_scan(
+                    self.contract, {"background": True})
+                if status["status"] != "running":
+                    break
+                self.assertLess(time.time(), deadline)
+                time.sleep(0.01)
+            self.assertEqual(status["status"], "complete")
+            self.assertEqual(status["missing"], 2)
+            result = rm_web.w_resource_sync_apply(self.contract, {
+                "confirm": True, "clean_cache": False, "scan_id": status["scan_id"],
+            })
+
+        self.assertEqual(result["moved_to_trash"], 2)
         con = sqlite3.connect(self.db_path)
         try:
             self.assertEqual(
