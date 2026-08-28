@@ -1524,6 +1524,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(detail.dismissOutside(e.target))return")
         self.assertPageContains(".photodetail[hidden]{display:none}")
         self.assertPageContains(".photodetailtoggle{justify-self:start;width:30px;height:30px;display:grid;place-items:center")
+        # Lucide 的 info 圆点是长度 .01 的短线；没有圆头时会缩成几乎不可见的横杠。
+        css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
+            encoding="utf-8")
+        start = css.index(".photodetailtoggle svg{")
+        rule = css[start:css.index("}", start)]
+        self.assertIn("stroke-linecap:round", rule)
+        self.assertPageContains('<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>')
         self.assertPageLacks("item.path", "图片详情不能取得或渲染 ledger 绝对路径")
 
     def test_lightbox_remeasures_when_the_window_resizes(self):
