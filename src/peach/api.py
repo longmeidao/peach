@@ -17,10 +17,11 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, web_contract
+from . import __version__, web_contract, web_follow
 from .config import LOCATION_ROOT_DECLARATIONS, PROJECT_ROOT, PeachSettings
 from .ffmpeg import FFmpegResolver
 from .follow import FollowSourceError
+from .follow_scheduler import FollowUpdateScheduler
 from .follow_avatar import resolve_official_avatar
 from .follow_store import FollowStore
 from .follow_stream import FollowMediaResolver, FollowMediaUnavailable
@@ -123,6 +124,7 @@ def create_app(
         cover_root=settings.cover_root,
         avatar_root=settings.avatar_root,
         logo_root=settings.logo_root,
+        follow_state_root=settings.follow_state_root,
         database=database,
     )
     repository = LedgerRepository(database)
@@ -163,11 +165,18 @@ def create_app(
         token=settings.token,
         proxy=settings.review_writer_proxy,
     )
+    follow_scheduler = FollowUpdateScheduler(
+        settings.follow_state_root,
+        lambda: web_follow.w_follow_check(contract, {"automatic": True}),
+        available=sync is None or not sync.read_only,
+    )
+    contract.follow_scheduler = follow_scheduler
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         if sync is not None:
             sync.start()
+        follow_scheduler.start()
         if mdns is not None:
             try:
                 await asyncio.to_thread(mdns.start)
@@ -177,6 +186,7 @@ def create_app(
         try:
             yield
         finally:
+            follow_scheduler.stop()
             if mdns is not None:
                 await asyncio.to_thread(mdns.stop)
             if sync is not None:
@@ -208,6 +218,7 @@ def create_app(
     app.state.review_mirror = review_mirror
     app.state.http_transport = http_transport
     app.state.follow_media_resolver = follow_media_resolver
+    app.state.follow_scheduler = follow_scheduler
     stream_sessions = StreamSessionRegistry()
     app.state.stream_sessions = stream_sessions
     app.state.sync = sync

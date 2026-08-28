@@ -313,6 +313,23 @@ class FollowStore:
         ).fetchone()
         return self._row(row) if row is not None else None
 
+    def items_for_item(self, item_id: int) -> tuple[FollowItemRow, ...]:
+        """Return the target and its grouping peers for a direct detail route."""
+        target = self.item(item_id)
+        if target is None:
+            return ()
+        clauses = ["i.release_key=?"]
+        params: list[object] = [target.release_key]
+        if target.group_hint:
+            clauses.append("i.group_hint=?")
+            params.append(target.group_hint)
+        rows = self._connect().execute(
+            self._SELECT + " WHERE " + " OR ".join(clauses) +
+            " ORDER BY COALESCE(i.published_at, i.first_seen_at) DESC, i.id DESC",
+            params,
+        ).fetchall()
+        return tuple(self._row(row) for row in rows)
+
     @staticmethod
     def _row(row) -> FollowItemRow:
         try:

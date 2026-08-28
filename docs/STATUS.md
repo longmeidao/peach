@@ -72,6 +72,7 @@
 - 2026-08-28 已完成全仓自研实现复用审计：浏览器历史、批处理 PID 锁、Rule34Video 媒体页和 FANBOX 正文模型有成熟替代或参考实现，进入替换队列；MP4 有界索引、固定项目 CA、SQLite 迁移、Gofile、系统网络监听、流媒体会话、单 writer 同步与 Windows 更新因已验证的 Peach 约束继续保留。详细候选、版本、真实 POC 与拒绝理由写入 `docs/REUSE.md`；本轮只改规则与文档，没有新增运行时依赖、部署、生产或 ledger 写入。
 - 0.7.3 首项复用替换已完成：FANBOX 正文规范化固定参考 PixivUtil2 `v20251112` / `e537e96`，覆盖 image/text/file/article/video/entry、正文 blocks、四类 map 与旧 HTML；图片和视频进入现有多媒体切换，其他文件保留资源链接，URL 稳定去重。已保存 Cookie 对公开帖 12228983 的只读实测为 article、6 图、Gofile `OS2Qz9`；follow 391 项、正式 Windows 全量 1119 项通过，分别有 1/13 项按平台跳过。
 - 0.7.3 正式 EXE 已替换为 SHA-256 `97EBAEE965794D100FA3BC7093B042EB36F1147CDEE1432C3504D7ECFB9D4582`，上版备份为 `dist/Peach/Peach.pre-0.7.3-20260828-152459.exe`；80/443 已由新进程恢复监听，打包迁移为 22 个、0 待处理，项目 CA 严格 HTTPS `/healthz` 返回 200、0.7.3、writer，`/follow` 返回 200。部署没有触发生产检查更新，部署前后 ledger SHA-256 均为 `BC98556370E285C2B627DBA3A36820E79AFF4599A33A265B0DBDDE520379A697`；本改动没有页面、CSS 或交互变化，桌面/手机视觉验收不适用。
+- 0.7.4 追更详情的多图改为左右按钮、方向键和点状分页；多视频继续使用 Mix 右侧队列。直达详情按条目 ID 精确读取，启动时不再先绘制首页。关注入口统一使用 RSS 图标，左侧窄栏与筛选抽屉共用可在设置中调整的顺序。自动追更固定复用 APScheduler 3.11.3，只在 writer 启动，默认每小时、首次等待完整间隔，手动与自动检查共用互斥锁；设置页可关闭或调整为 15 分钟至每天，并显示最近/下次运行状态。正式全量 1130 项先发现 1 条点状分页圆角门槛，修正后覆盖该门槛的 `catalog` 368 项全部通过；全量其余 1129 项通过、13 项按平台跳过。
 
 ## 下一批工作
 
@@ -82,7 +83,7 @@
 5. 在 `/review` 人工处理本批 JAV 日文系列名、官方标签及现有创作者标签、FC2、Javinizer、Logo、头像和媒体失败候选；未经批准不写真相字段。
 6. 将 Windows writer 的最新副本同步到共享传输点，再让 Mac reader 拉取；同步前后核对迁移版本、计数、完整性与 writer 身份。
 7. 在 Mac Finder 以 `smb://peach-win.local/peach-sync` 连接一次并保存钥匙串记录，再重启菜单栏进程，核对自动挂载、reader 锁定、HTTPS、mDNS 和真实 LAN 客户端。
-8. 为追更接入 APScheduler；在实现下载器前先确定媒体凭据、流量与磁盘预算。
+8. 在实现下载器前先确定媒体凭据、流量与磁盘预算。
 9. Windows writer 运行 PikPak 夜跑前重算 probe/抽帧队列，并按 `peach-batch-jobs` 设置流量与系统盘闸门。
 10. 继续拆分 `web_contract.py` 的 catalog、stats、activity、review、trash 领域，保持路由和现有契约测试不变。
 11. 补做 HLS 首帧、seek、自适应码率及桌面/手机视觉验收。

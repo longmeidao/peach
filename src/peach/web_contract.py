@@ -40,7 +40,8 @@ from .platform import (
 )
 from .repository import LedgerDatabase
 from .web_follow import (
-    q_follow, q_follow_credentials, w_follow_check, w_follow_credential, w_follow_resolve,
+    q_follow, q_follow_credentials, q_follow_schedule,
+    w_follow_check, w_follow_credential, w_follow_resolve, w_follow_schedule,
     w_follow_author_alias, w_follow_save, w_follow_source, w_follow_status,
 )
 from .web_activity import (
@@ -130,6 +131,8 @@ class WebContract:
         self.write_lock = self.database.write_lock
         self.cache: dict[str, tuple[float, object]] = {}
         self.cache_lock = threading.Lock()
+        self.follow_check_lock = threading.Lock()
+        self.follow_scheduler = None
         self._fts_available: bool | None = None
 
     def cached(self, key, fn):
@@ -2590,6 +2593,7 @@ def _post_empty_trash(contract, _body):
 GET_HANDLERS = {
     "/api/follow": q_follow,
     "/api/follow/credentials": q_follow_credentials,
+    "/api/follow/schedule": q_follow_schedule,
     "/api/items": q_items,
     "/api/item": _get_item,
     "/api/entity": q_entity,
@@ -2611,6 +2615,7 @@ GET_HANDLERS = {
 
 POST_HANDLERS = {
     "/api/follow/check": w_follow_check,
+    "/api/follow/schedule": w_follow_schedule,
     "/api/follow/source": w_follow_source,
     "/api/follow/author-alias": w_follow_author_alias,
     "/api/follow/resolve": w_follow_resolve,

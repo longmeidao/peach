@@ -1,6 +1,7 @@
 """追更的 Web 契约层。
 
-读接口无副作用；`/api/follow/check` 是唯一会联网的端点，且只在用户显式点击时触发。
+读接口无副作用；`/api/follow/check` 是唯一会联网的端点，可由用户点击或已启用的
+APScheduler 任务触发。
 `/api/follow/save` 写真相，走和 CLI 同一个 `save_asset(confirm=True)` 边界。
 """
 from __future__ import annotations
@@ -533,6 +534,8 @@ def q_follow(contract, args) -> dict:
         limit = 200
     source = args.get("source")
     source_id = int(source) if str(source or "").isdigit() else None
+    requested_item = args.get("item")
+    item_id = int(requested_item) if str(requested_item or "").isdigit() else None
     with contract.database.read_connection() as connection:
         store = _store(contract, connection)
         source_rows = store.sources()
@@ -540,9 +543,13 @@ def q_follow(contract, args) -> dict:
         sources = [_source_payload(row, alias_map) for row in source_rows]
         alias_suggestions = _follow_alias_suggestions(source_rows, alias_map)
         enabled_source_ids = {int(row["id"]) for row in source_rows if row["enabled"]}
-        items = tuple(item for item in store.items(
-            statuses=statuses, source_id=source_id, limit=limit)
-            if item.source_id in enabled_source_ids and not _excluded_item(item))
+        if item_id is not None:
+            items = tuple(item for item in store.items_for_item(item_id)
+                          if item.source_id in enabled_source_ids and not _excluded_item(item))
+        else:
+            items = tuple(item for item in store.items(
+                statuses=statuses, source_id=source_id, limit=limit)
+                if item.source_id in enabled_source_ids and not _excluded_item(item))
         groups = [_group_payload(group) for group in store.group(items)]
         counts = dict(connection.execute(
             "SELECT i.status, count(*) FROM follow_item i"
@@ -658,6 +665,15 @@ def w_follow_check(contract, body) -> dict:
     没有 `source` 就检查全部已启用来源。逐个来源独立成败：一个来源缺凭据或被
     机器人验证挡住，不该让其余来源的更新一起消失。
     """
+    if not contract.follow_check_lock.acquire(blocking=False):
+        return {"ok": False, "busy": True, "checked": 0, "results": []}
+    try:
+        return _run_follow_check(contract, body)
+    finally:
+        contract.follow_check_lock.release()
+
+
+def _run_follow_check(contract, body) -> dict:
     requested = body.get("source")
     source_id = requested if isinstance(requested, int) else None
     # 往回抓一页。这是**显式的、一次一页**的动作：常规检查永远只看第一页，
@@ -717,6 +733,24 @@ def w_follow_check(contract, body) -> dict:
             "author_alias_learned": learned_alias,
         })
     return {"ok": True, "checked": len(results), "results": results}
+
+
+def q_follow_schedule(contract, _args) -> dict:
+    scheduler = contract.follow_scheduler
+    if scheduler is None:
+        return {"ok": True, "available": False, "enabled": False,
+                "interval_minutes": 60, "running": False, "next_run_at": None}
+    return scheduler.status()
+
+
+def w_follow_schedule(contract, body) -> dict:
+    scheduler = contract.follow_scheduler
+    if scheduler is None:
+        raise ValueError("automatic follow updates are unavailable")
+    return scheduler.update(
+        enabled=body.get("enabled", True),
+        interval_minutes=body.get("interval_minutes", 60),
+    )
 
 
 def _failure(contract, row, error, moment, status) -> dict:

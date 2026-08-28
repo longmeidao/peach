@@ -1111,6 +1111,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("appSettings.seekSeconds")
         self.assertPageContains("appSettings.searchHistoryLimit")
         self.assertPageContains("appSettings.relatedLimit")
+        self.assertPageContains('id="followScheduleSetting"')
+        self.assertPageContains("api('/api/follow/schedule'")
+        self.assertPageContains('id="sidebarOrderSetting"')
+        self.assertPageContains("appSettings.sidebarOrder")
+        self.assertPageContains("orderedEdgeIcons()")
         self.assertPageLacks('id="ambientSetting"')
         self.assertPageContains("color:#f5f7fa;color-scheme:dark")
 
