@@ -1271,7 +1271,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('class="tier followauthors"')
         self.assertPageContains('class="tagbar followfilters"')
         self.assertPageContains('class="pill sourcepill" data-follow-provider=')
-        self.assertPageContains("内容标签目前由 ${")
+        self.assertPageLacks("内容标签目前由 ${")
         self.assertPageContains("const rankedTags=[...tagCounts].sort((a,b)=>b[1]-a[1])")
         self.assertPageContains("const topTagRows=rankedTags.slice(0,20)")
         self.assertPageContains("topTagRows.push([tag,tagCounts.get(tag)])")
@@ -1585,7 +1585,7 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_follow_cards_reuse_home_cards_hover_actions_and_mix_stacks(self):
         self.assertPageContains("function followVideoItems(group)")
         self.assertPageContains("item.playable&&item.media_kind==='video'")
-        self.assertPageContains('class="card followitem${isMix?\' collection\':\'\'}"')
+        self.assertPageContains('class="card followitem${isMix?\' collection\':\'\'}${imageView?\' imagecard\':\'\'}"')
         self.assertPageContains("isMix?'mixstack '")
         self.assertPageContains('class="mixbadge" data-follow-collection=')
         self.assertPageContains("${mixCount} 个${mixKind}")
@@ -1610,13 +1610,33 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("<span>图片</span>")
         self.assertPageContains("followMediaView=new URLSearchParams(location.search).get('media')==='images'?'images':'videos'")
         self.assertPageContains("const preferredKind=followMediaView==='images'?'image':'video'")
+        watch = self.page.split("function renderFollow(){", 1)[1].split(
+            "function followBackfillState", 1)[0]
+        self.assertLess(watch.index('class="tier followauthors"'),
+                        watch.index('class="mediatabs followmediatabs"'))
+        self.assertLess(watch.index('class="tagbar followfilters"'),
+                        watch.index('class="mediatabs followmediatabs"'))
+        self.assertPageContains("followMediaView==='images'?' followphotowall':''")
+        self.assertPageContains(".followlist.followphotowall{display:block;column-count:5")
+        self.assertPageContains(".followitem.imagecard .followvisual .pic>img{position:relative")
 
     def test_mix_and_follow_queues_stay_below_media_with_details_on_the_right(self):
-        self.assertPageContains('grid-template-areas:"media side" "queue side"')
+        self.assertPageContains('grid-template-areas:"media side" "queue queue"')
         self.assertPageContains('.sgrid.mixgrid>.vwrap{grid-area:media}')
-        self.assertPageContains('.sgrid.mixgrid>.side{grid-area:side;max-height:none}')
+        self.assertPageContains('.sgrid.mixgrid>.side{grid-area:side;align-self:stretch;max-height:none;background:var(--detail-surface)}')
         self.assertPageContains('.sgrid.mixgrid>.mixqueue{grid-area:queue;max-height:360px')
-        self.assertPageContains('grid-template-areas:"media" "queue" "side"')
+        self.assertPageContains('grid-template-areas:"media" "side" "queue"')
+        self.assertPageContains('background:var(--detail-surface)')
+        self.assertPageContains("const kindLabel={mix:'Mix',parts:'分卷',playlist:'播放列表'}")
+        self.assertPageContains('<h2>视频合集</h2>')
+        self.assertPageContains('<h2>多媒体</h2>')
+        self.assertPageContains('.sgrid.mixgrid>.mixqueue .mixlist{display:grid;grid-auto-flow:column')
+        self.assertPageContains('.sgrid.mixgrid>.vwrap>.gate{height:100%;aspect-ratio:auto}')
+        self.assertPageContains('.sgrid.mixgrid>.mixqueue .mixqueuehead>div:first-child{min-width:0}')
+        self.assertPageContains('.sgrid.mixgrid>.mixqueue .mixqueueactions{grid-column:2;grid-row:1;align-self:center}')
+        self.assertPageContains("wireDrag($('#stage').querySelector('.mixlist'))")
+        self.assertPageContains("followdetailmedia${selectedKind==='image'?' image':''}")
+        self.assertPageContains('.followdetailmedia.image{min-height:0;background:')
 
     def test_follow_uses_the_global_multi_select_mode(self):
         self.assertPageContains("const selected=new Set(),followSelected=new Set();")

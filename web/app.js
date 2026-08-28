@@ -1645,7 +1645,7 @@ function followCollectionCopy(group,item,mark=''){
 
 function followQueueHtml(group,itemId){
   const items=followVideoItems(group);
-  return `<aside class="mixqueue followqueue"><div class="mixqueuehead"><div><h2>${esc(group.primary.title||'视频集合')}</h2><span>${items.length} 个视频</span></div><div class="mixqueueactions">
+  return `<aside class="mixqueue followqueue" data-queue-kind="collection"><div class="mixqueuehead"><div><h2>视频合集</h2><span>${esc(group.primary.title||'未命名合集')} · ${items.length} 个视频</span></div><div class="mixqueueactions">
     <button data-follow-queue-close title="关闭" aria-label="关闭">${icon('x')}</button></div></div><div class="mixlist">${items.map(item=>{
       const copy=followCollectionCopy(group,item,group.duplicates.includes(item)?item.provider_label:'');
       const thumb=item.thumb_url
@@ -1659,12 +1659,12 @@ function followQueueHtml(group,itemId){
 
 function followEmbeddedQueueHtml(item,mediaIndex){
   const items=item.media_items||[];
-  return `<aside class="mixqueue followqueue"><div class="mixqueuehead"><div><h2>${esc(item.title||'媒体集合')}</h2><span>${items.length} 个媒体</span></div><div class="mixqueueactions">
+  return `<aside class="mixqueue followqueue" data-queue-kind="media"><div class="mixqueuehead"><div><h2>多媒体</h2><span>${esc(item.title||'未命名内容')} · ${items.length} 个媒体</span></div><div class="mixqueueactions">
     <button data-follow-queue-close title="关闭" aria-label="关闭">${icon('x')}</button></div></div><div class="mixlist">${items.map(media=>{
       const thumb=media.thumb_url
         ?`<img src="${esc(media.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
         :`<span class="fnothumb">${sourceIcon(media.resource_provider||item.provider)}</span>`;
-      return `<div class="mixrow"><button class="mixitem ${media.index===mediaIndex?'current':''}" data-follow-media-item="${media.index}" aria-current="${media.index===mediaIndex?'true':'false'}">
+      return `<div class="mixrow"><button class="mixitem ${media.index===mediaIndex?'current':''}" data-follow-media-item="${media.index}" data-media-kind="${media.media_kind}" aria-current="${media.index===mediaIndex?'true':'false'}">
         <span class="mixitempic">${thumb}</span><span class="mixitemtext"><b>${esc(media.name)}</b><span>${media.media_kind==='image'?'图片':'视频'}</span></span></button></div>`;
     }).join('')}</div></aside>`;
 }
@@ -1730,7 +1730,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   if(followList)followList.before($('#stage'));
   $('#stage').hidden=false;document.body.classList.add('detail-open');
   $('#stage').innerHTML=`<div class="sgrid followdetailgrid${collection||embeddedQueue?' mixgrid':''}">
-    <div class="vwrap followdetailmedia"><button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${media}${imageControls}</div>
+    <div class="vwrap followdetailmedia${selectedKind==='image'?' image':''}"><button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${media}${imageControls}</div>
     ${embeddedQueue?followEmbeddedQueueHtml(item,selectedMedia.index):(collection?followQueueHtml(collection,item.id):'')}
     <div class="side followdetailside">
       <div class="followdetailtitle"><div class="stitle">${esc(item.title)}</div>${item.url?`<a class="followorigin" href="${esc(item.url)}" target="_blank" rel="noreferrer noopener" title="打开来源页面" aria-label="打开来源页面">${icon('external-link')}</a>`:''}</div>
@@ -1762,6 +1762,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     const next=(imagePosition+(+button.dataset.followImageStep)+imageMedia.length)%imageMedia.length;
     switchImage(imageMedia[next].index);
   });
+  wireDrag($('#stage').querySelector('.mixlist'));
   $('#stage').querySelectorAll('.followdetailtags [data-follow-tag]').forEach(button=>button.onclick=async()=>{
     const tag=button.dataset.followTag;
     if(followTags.has(tag))followTags.delete(tag);else followTags.add(tag);
@@ -1813,8 +1814,11 @@ function wireFollowDetail(root){
 
 function followCard(group,authorSources=[]){
   const item=followItemForMedia(group);
-  const thumb=item.thumb_url
-    ? `<img src="${esc(item.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
+  const imageView=followMediaView==='images';
+  const selectedMedia=imageView?(item.media_items||[]).find(media=>media.media_kind==='image'):null;
+  const thumbUrl=selectedMedia?.thumb_url||item.thumb_url;
+  const thumb=thumbUrl
+    ? `<img src="${esc(thumbUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
     : `<span class="fnothumb">${esc(item.provider_label)}</span>`;
   const videos=followMediaView==='videos'?followVideoItems(group):[],embedded=item.media_items||[];
   const isMix=embedded.length>1||videos.length>1;
@@ -1825,7 +1829,7 @@ function followCard(group,authorSources=[]){
   const badges=followBadges(group);
   const tags=(item.tags||[]).slice(0,3).map(tag=>followTagChip(item,tag)).join('');
   const open=`<button class="cardopenhit" data-follow-detail="${item.id}" aria-label="打开 ${esc(item.title)} 详情"></button>`;
-  return `<article class="card followitem${isMix?' collection':''}" data-follow-item="${item.id}" data-status="${esc(item.status)}">
+  return `<article class="card followitem${isMix?' collection':''}${imageView?' imagecard':''}" data-follow-item="${item.id}" data-status="${esc(item.status)}">
     <div class="${isMix?'mixstack ':''}followvisual"><div class="pic">
       ${open}${thumb}
       <span class="badge" title="${esc(item.provider_label)}" aria-label="来源：${esc(item.provider_label)}">${sourceIcon(item.provider)}</span>
@@ -1879,7 +1883,6 @@ function followCheckSummary(report){
 
 /* ── 看的那一页 ── */
 let followAuthor='',followProvider='',followTags=new Set(),followMediaView='videos',followGroupByItemId=new Map(),followItemsById=new Map(),followDetailReturnPath='/follow';
-const TAGGED_PROVIDERS=['rule34video','rule34xxx','rule34paheal'];
 function groupTagType(groups,tag){
   for(const group of groups){
     const type=group.primary&&group.primary.tag_types&&group.primary.tag_types[tag];
@@ -1942,10 +1945,6 @@ function renderFollow(){
   $('#stats').innerHTML=`<div class="follow">
     <div class="followhead"><h2 class="disp pagetitle">关注</h2>
       <button class="fbtn primary fcheck" data-follow-manage>${icon('settings')}管理关注</button></div>
-    ${mediaCounts.images?`<div class="mediatabs followmediatabs" aria-label="关注媒体类型">
-      <button data-follow-media="videos" aria-pressed="${followMediaView==='videos'}">${icon('play')}<span>视频</span><b class="mono">${mediaCounts.videos.toLocaleString()}</b></button>
-      <button data-follow-media="images" aria-pressed="${followMediaView==='images'}">${icon('layout-grid')}<span>图片</span><b class="mono">${mediaCounts.images.toLocaleString()}</b></button>
-    </div>`:''}
     ${authors.size?`<div class="tier followauthors" aria-label="按作者筛选">${[...authors].map(([key,author])=>
       `<button class="av" data-follow-author="${esc(key)}" aria-pressed="${key===followAuthor}">
         <span class="ring">${followAuthorAvatar(author.sources)}</span><span class="nm">${esc(author.name)}</span></button>`
@@ -1958,12 +1957,14 @@ function renderFollow(){
         topTags.map(([key,label,n])=>
           `<button class="pill r34-${esc(groupTagType(groups,key))}" data-follow-tag="${esc(key)}" aria-pressed="${followTags.has(key)}">${
             esc(label)}${n?` <span class="n mono">${n}</span>`:''}</button>`).join(''):''}</div>
-    ${topTags.length?`<p class="fmeta followfilternote">内容标签目前由 ${
-      TAGGED_PROVIDERS.map(provider=>esc(providers.get(provider)||provider)).join('、')} 提供</p>`:''}
+    ${mediaCounts.images?`<div class="mediatabs followmediatabs" aria-label="关注媒体类型">
+      <button data-follow-media="videos" aria-pressed="${followMediaView==='videos'}">${icon('play')}<span>视频</span><b class="mono">${mediaCounts.videos.toLocaleString()}</b></button>
+      <button data-follow-media="images" aria-pressed="${followMediaView==='images'}">${icon('layout-grid')}<span>图片</span><b class="mono">${mediaCounts.images.toLocaleString()}</b></button>
+    </div>`:''}
     ${broken.length?`<p class="fwarn">${broken.length} 个来源上次检查失败，去
       <button class="flink" data-follow-manage>管理关注</button>看原因。</p>`:''}
     ${followCheckReport?followCheckSummary(followCheckReport):''}
-    <div class="followlist">${visible.length?visible.map(group=>{
+    <div class="followlist${followMediaView==='images'?' followphotowall':''}">${visible.length?visible.map(group=>{
       const source=sourceOf(group),siblings=source&&authorSources.get(source.author_key)||[];
       return followCard(group,siblings)}).join('')
       :groups.length?'<p class="empty">当前筛选下没有更新</p>'
@@ -2843,7 +2844,7 @@ function renderMediaTabs(kind,name,filters){
   const tab=(media,label,glyph,count)=>`<button data-media="${media}"
       aria-pressed="${(entityMediaView.media==='photos')===(media==='photos')}">${icon(glyph)}<span>${label}</span>
       <b class="mono">${count.toLocaleString()}</b></button>`;
-  tabs.innerHTML=tab('videos','作品','play',entityVideoCount)+tab('photos','照片','layout-grid',photos);
+  tabs.innerHTML=tab('videos','视频','play',entityVideoCount)+tab('photos','照片','layout-grid',photos);
   tabs.querySelectorAll('[data-media]').forEach(b=>
     b.onclick=()=>switchEntityMedia(kind,name,filters,b.dataset.media));
 }
@@ -3163,8 +3164,8 @@ async function openEntity(kind,name,push=true,requestedTag){
         ${links?`<div class="entitylinks">${links}</div>`:''}
         ${terms?`<div class="entityterms">馆藏检索词 · ${terms}</div>`:''}</div></div>
     ${(tags||related)?`<div class="entitymeta">
-      ${tags?`<section><h3>相关标签</h3><div class="entitytags">${tags}</div></section>`:''}
       ${related?`<section><h3>关联艺人</h3><div class="relatedpeople">${related}</div></section>`:''}
+      ${tags?`<section><h3>相关标签</h3><div class="entitytags">${tags}</div></section>`:''}
     </div>`:''}
     <div class="mediatabs" hidden></div>
     <div class="entitysection"></div>`;
@@ -3732,7 +3733,8 @@ function queueHtml(queue,itemId){
     ? `<button data-save-mix title="保存为播放列表" aria-label="保存为播放列表">${icon('bookmark-plus')}</button>`
     : queue.kind==='playlist'?`<button data-edit-playlist title="编辑播放列表" aria-label="编辑播放列表">${icon('list-filter')}</button>`:'';
   const countLabel=queue.kind==='parts'?`${queue.items.length} 卷`:`${queue.items.length} 个视频`;
-  return `<aside class="mixqueue"><div class="mixqueuehead"><div><h2>${esc(queue.title)}</h2><span>${countLabel}</span></div><div class="mixqueueactions">${action}
+  const kindLabel={mix:'Mix',parts:'分卷',playlist:'播放列表'}[queue.kind]||'视频合集';
+  return `<aside class="mixqueue" data-queue-kind="${esc(queue.kind)}"><div class="mixqueuehead"><div><h2>${kindLabel}</h2><span>${esc(queue.title)} · ${countLabel}</span></div><div class="mixqueueactions">${action}
     <button data-queue-close title="关闭" aria-label="关闭">${icon('x')}</button></div></div><div class="mixlist">${queue.items.map((x,index)=>{
       const thumb=x.has_thumb?`<img src="/poster?id=${x.id}&c=4" alt="" loading="lazy">`:'';
       const edit=queue.kind==='playlist'?`<span class="queueedit"><button data-queue-up="${index}" aria-label="上移" ${index===0?'disabled':''}>↑</button><button data-queue-down="${index}" aria-label="下移" ${index===queue.items.length-1?'disabled':''}>↓</button><button data-queue-remove="${x.id}" aria-label="移出播放列表">${icon('x')}</button></span>`:'';
@@ -3914,6 +3916,7 @@ async function openItem(id,push=true,queueContext=null){
   $('#stage').querySelectorAll('[data-edit-playlist]').forEach(b=>b.onclick=()=>openPlaylists(true));
   $('#stage').querySelectorAll('[data-queue-up],[data-queue-down]').forEach(b=>b.onclick=()=>movePlaylistItem(queueContext,+b.dataset[b.hasAttribute('data-queue-up')?'queueUp':'queueDown'],b.hasAttribute('data-queue-up')?-1:1,it.id));
   $('#stage').querySelectorAll('[data-queue-remove]').forEach(b=>b.onclick=()=>removePlaylistItem(queueContext,+b.dataset.queueRemove,it.id));
+  wireDrag($('#stage').querySelector('.mixlist'));
   const g=$('#gate');
   $('#addPlaylist').onclick=()=>openAddToPlaylist(it);
   $('#stage').querySelectorAll('[data-kind]').forEach(b=>b.onclick=async()=>{
