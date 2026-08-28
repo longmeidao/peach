@@ -42,6 +42,7 @@
 | 媒体探测/转码 | Peach 管理的 FFmpeg/ffprobe | 任务策略和 Media Engine 编排 |
 | HTML5/HLS/DASH 播放 | Video.js 8.23.9 + 内置 VHS（Apache-2.0，本地固定版本） | 流方案、授权、稳定时长、回退顺序和统计面板 |
 | 照片灯箱轮播 | Swiper 14.1.0（MIT，本地固定版本，按需 `<script>` 注入）的 Thumbs / Keyboard / Zoom 模块 | 图集来源与顺序、缩略图缓存与计费口径、瀑布流本身（CSS `column-count`，不经过 Swiper） |
+| 导航排序 | 浏览器原生 HTML Drag and Drop | 桌面鼠标直接拖动、落点提示、上下移动按钮作为键盘与触屏回退、`localStorage` 持久化；不为单列排序引入额外运行时依赖 |
 | 图标 | 固定版本的本地 Lucide 子集；Health Icons 24 px outline（CC0）用于领域图标 | 标签、状态和交互设计 |
 | 定时轮询 | APScheduler 3.11.3（MIT，固定稳定版；3.x `BackgroundScheduler` / interval trigger） | 只在 ledger writer 启动、持久频率、首次延迟、单实例、手动/自动互斥、运行状态与来源错误汇总 |
 | 本地文件事件 | watchdog + 定期对账 | 媒体身份和漏报修复 |
