@@ -199,8 +199,19 @@ button.busy>svg{animation:peach-spin .8s linear infinite}
 .runtimegate{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px;padding:10px 12px;border:1px solid color-mix(in srgb,var(--meter) 35%,var(--line));border-radius:var(--control-radius);background:color-mix(in srgb,var(--meter) 8%,var(--surface));color:var(--ink);font-size:var(--fs-sm)}.runtimegate span{flex:1 1 320px;min-width:0}.runtimegate a{flex:0 0 auto;color:var(--ink);font-weight:650;text-decoration:none}.runtimegate a:hover{text-decoration:underline}
 .review{padding:8px 0 42px}.reviewhead{display:flex;align-items:baseline;gap:12px;padding:2px 2px 0;margin-bottom:12px}.reviewhead h2{margin:0;font-size:var(--fs-xl)}.reviewtabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:16px;scrollbar-width:none}.reviewtabs::-webkit-scrollbar{display:none}.reviewtabs button{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:7px 14px;cursor:pointer;font-size:var(--fs-sm);white-space:nowrap}.reviewtabs button:hover{border-color:var(--tungsten);color:var(--ink)}.reviewtabs button[aria-pressed="true"]{background:var(--tungsten-soft);border-color:var(--tungsten);color:var(--tungsten);font-weight:600}.reviewtabs .n{color:var(--muted);font-size:var(--fs-xs)}.reviewsection{margin-bottom:20px}.reviewsection h3{margin:0 0 9px;font-size:var(--fs-lg)}.reviewlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px}
 /* 判定状态用左侧色条表达：整卡描边在一列里扫过去时反而认不出来 */
-.reviewitem{position:relative;background:var(--surface);border:1px solid var(--line-soft);border-radius:12px;padding:15px 15px 13px 18px;min-width:0;overflow:hidden}.reviewitem::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:transparent}.reviewitem[data-decision="approved"]::before{background:var(--keep)}.reviewitem[data-decision="rejected"]::before{background:var(--drop)}.reviewitem[data-decision="skipped"]::before{background:var(--muted)}.reviewitem[data-decision="rejected"],.reviewitem[data-decision="skipped"]{opacity:.6}.reviewitem h4{margin:0 0 6px;font-size:var(--fs-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reviewitem p{margin:4px 0;color:var(--muted);font-size:var(--fs-xs);line-height:1.55;overflow-wrap:anywhere}
-.reviewitem .reviewactions{margin:14px -15px -13px;padding:12px 15px;background:var(--overlay-5);
+.reviewitem{position:relative;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line-soft);border-radius:12px;padding:15px 15px 13px 18px;min-width:0;overflow:hidden}
+/* Geist Scroller vertical-with-buttons 实测机制：滚动条隐藏，32px 圆钮按滚动位置启停。 */
+.reviewscroll{flex:1 1 auto;min-height:0;overflow-y:auto;scrollbar-width:none}
+.reviewscroll::-webkit-scrollbar{display:none}
+.reviewscrollbtns{display:flex;gap:6px;justify-content:flex-end;margin:4px 0 10px}
+.reviewscrollbtns[hidden]{display:none}
+.reviewscrollbtns button{width:32px;height:32px;border:1px solid var(--border-10);border-radius:50%;
+  background:var(--surface);color:var(--ink-2);cursor:pointer;display:grid;place-items:center;padding:0}
+.reviewscrollbtns button:hover:not(:disabled){color:var(--ink);border-color:var(--border-15)}
+.reviewscrollbtns button:disabled{opacity:.35;cursor:default}
+.reviewscrollbtns button svg{width:16px;height:16px;stroke:currentColor;fill:none;
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.reviewitem::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:transparent}.reviewitem[data-decision="approved"]::before{background:var(--keep)}.reviewitem[data-decision="rejected"]::before{background:var(--drop)}.reviewitem[data-decision="skipped"]::before{background:var(--muted)}.reviewitem[data-decision="rejected"],.reviewitem[data-decision="skipped"]{opacity:.6}.reviewitem h4{margin:0 0 6px;font-size:var(--fs-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reviewitem p{margin:4px 0;color:var(--muted);font-size:var(--fs-xs);line-height:1.55;overflow-wrap:anywhere}
+.reviewitem .reviewactions{margin:14px -15px -13px -18px;padding:12px 15px 12px 18px;margin-top:auto;background:var(--overlay-5);
   border-top:1px solid var(--border-10);border-radius:0 0 12px 12px;display:flex;gap:8px}
 .reviewtags{display:flex;flex-wrap:wrap;gap:5px;margin:9px 0}.reviewtags span{padding:3px 9px;border:1px solid var(--border-15);border-radius:var(--pill-radius);font-size:var(--fs-xs);color:var(--ink-2)}
 /* 唯一候选：纯展示，几何对齐 .revieworigin，不画单选圈。radio 仍在 DOM 里，
@@ -425,6 +436,7 @@ body.photolight-open{overflow:hidden}
 .photozoom button svg{width:15px;height:15px;display:block;stroke:currentColor;fill:none;stroke-width:2}
 .photozoom button:hover{background:rgba(255,255,255,.22)}
 
+.fcollapse{overflow:auto hidden}
 /* Geist loading-dots：3 点 4px，blink 1.4s 交错；行内加载的统一形态。 */
 .ldots{display:inline-flex;align-items:center;gap:4px}
 .ldots i{width:4px;height:4px;border-radius:50%;background:var(--muted);
@@ -561,7 +573,7 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
 /* 不给底色也不居中：卡片里只有这一个主体，衬底和留白只会把它推离左边缘，
    和下面的样本网格、证据文字对不齐。 */
 .reviewentity{margin:0 -15px 14px -18px;padding:0 15px 14px 18px;border-bottom:1px solid var(--border-10);display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:center;
-  margin:0 0 12px;padding:0;justify-content:start}
+  justify-content:start}
 .reviewentityface{position:relative;width:44px;height:44px;justify-self:start;border:0;padding:0;
   border-radius:50%;overflow:hidden;background:var(--sunk);color:var(--muted);cursor:pointer;
   display:grid;place-items:center;font-size:var(--fs-2xl)}
@@ -1788,7 +1800,9 @@ details.fcred{display:block}
 .fsrcmenu{position:absolute;left:0;top:calc(100% + 6px);z-index:40;min-width:180px;
   padding:6px;border:1px solid var(--border-15);border-radius:10px;background:var(--surface);
   box-shadow:0 12px 40px #0006;display:grid;gap:2px;
-  transform-origin:top left;animation:menu-in .16s cubic-bezier(.2,.8,.2,1)}
+  overflow:auto hidden;transition:height .2s cubic-bezier(.4,0,.2,1),opacity .2s cubic-bezier(.4,0,.2,1)}
+.fsrcmenu[hidden]{display:none}
+.fsrcmenu.left{left:auto;right:0}
 @keyframes menu-in{from{opacity:0;transform:translateY(-4px) scale(.97)}to{opacity:1;transform:none}}
 .fsrcmenu label{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:6px;
   cursor:pointer;font-size:var(--fs-sm);color:var(--ink-2)}

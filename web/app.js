@@ -1510,6 +1510,7 @@ async function openReview(push=true){
            // 实体类卡片的作品数已经写在创作者入口里，这里再写一遍就是同一个数字两处。
            subjectKind&&subjectName?'':`<p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>`}${origin}${tags?`<div class="reviewtags">${tags}</div>`:''}${preview}<p>${esc(evidence)}</p><div class="reviewactions"><button class="approve" data-review-status="approved"${canApprove&&!locked?'':' disabled'}>${approveLabel}</button><button class="skip" data-review-status="skipped"${locked?' disabled':''}>跳过</button><button class="reject" data-review-status="rejected"${locked?' disabled':''}>拒绝</button><span class="reviewstate" aria-live="polite"></span></div></article>`}).join(''):emptyState('square-check-big','暂无候选','该分类当前没有待人工复核的项目。')}</div></section></div>`;
      wireReviewAssets($('#stats'));
+     wireReviewScrollers($('#stats'));
     $('#stats').querySelectorAll('[data-review-open-item]').forEach(button=>button.onclick=()=>openItem(+button.dataset.reviewOpenItem));
     // 没有全局委托，每个界面各自接线（见 #stage 的同类处理）。
     $('#stats').querySelectorAll('[data-entity-kind]').forEach(button=>button.onclick=()=>
@@ -1578,6 +1579,13 @@ let followData=null,followRuntime=null,followFilter='new',followBusy=false;
 /* 来源筛选：fsrcProviders 记录见过的全部来源（默认全选），
    fsrcUnchecked 只记被取消勾选的——新来源自动进入「全选」。 */
 const fsrcProviders=new Set(),fsrcUnchecked=new Set();
+let fsrcOpened=null;
+if(!globalThis.__peachFsrcCloser){
+  globalThis.__peachFsrcCloser=true;
+  document.addEventListener('click',event=>{
+    if(fsrcOpened&&!fsrcOpened.mount.contains(event.target)){
+      fsrcOpened.setOpen(false);fsrcOpened=null}},true);
+}
 /* 关注页一次取一屏。counts 是全库口径（「未看 2292」），groups 只有这一页——
    两个数并排显示时看起来像自相矛盾，实际是两个口径，所以列表底部要能继续加载。 */
 const FOLLOW_PAGE=300;
@@ -2480,6 +2488,36 @@ function wireFollowItems(){
 function wireFollowManage(){
   const root=$('#stats'),form=root.querySelector('#followAdd');
   renderFollowSrcFilter(root.querySelector('#followSrcFilter'));
+  /* 作者别名的折叠用 Geist Collapse 机制：内容包 .fcollapse，开合时 JS 量
+     scrollHeight 写 inline height 过渡（原生 details 无过渡；此前试过
+     ::details-content 方案会吞内容，已弃）。凭据行是 flex 行布局不接。 */
+  root.querySelectorAll('details.faliasmanager').forEach(details=>{
+    if(details.querySelector(':scope > .fcollapse'))return;
+    const body=document.createElement('div');body.className='fcollapse';
+    [...details.children].forEach(child=>{
+      if(child.tagName==='SUMMARY')return;
+      body.appendChild(child)});
+    details.appendChild(body);
+    const summary=details.querySelector('summary');
+    const settle=fn=>{
+      body.addEventListener('transitionend',function done(e){
+        if(e.propertyName!=='height')return;
+        body.removeEventListener('transitionend',done);fn()},{once:true});
+      setTimeout(fn,260)};
+    summary.addEventListener('click',e=>{
+      e.preventDefault();
+      if(!details.open){
+        details.open=true;
+        body.style.height='0px';body.getBoundingClientRect();
+        body.style.height=body.scrollHeight+'px';
+        settle(()=>{body.style.height='auto'});
+      }else{
+        body.style.height=body.scrollHeight+'px';body.getBoundingClientRect();
+        body.style.height='0px';
+        settle(()=>{details.open=false;body.style.height=''});
+      }
+    });
+  });
   const box=form&&form.querySelector('textarea');
   /* 常见情况是粘一条，多行是例外——所以静止时就一行高，和按钮齐平；
      真粘了多行才往下长。原来固定三行，按钮只有它 1/3 高，看着就是没对齐。 */
@@ -2656,18 +2694,41 @@ function renderFollowSrcFilter(mount){
         <span>${esc(provider)}</span></label>`).join('')}</div>`;
   const toggle=mount.querySelector('[data-srcfilter-toggle]');
   const menu=mount.querySelector('[data-srcfilter-menu]');
-  toggle.onclick=e=>{e.stopPropagation();
-    const open=menu.hidden;menu.hidden=!open;
-    toggle.setAttribute('aria-expanded',String(open))};
+  /* Geist Collapse 机制（照抄其实测实现：JS 量 scrollHeight 写 inline height，
+     transition:height .2s cubic-bezier(.4,0,.2,1)，overflow:auto hidden）。
+     settle 双通道收尾：后台标签页冻结 CSS 过渡时 transitionend 不来，260ms 兜底。
+     右缘检测：展开会超出视口就翻到触发钮左侧。 */
+  const settle=fn=>{
+    menu.addEventListener('transitionend',function done(e){
+      if(e.propertyName!=='height')return;
+      menu.removeEventListener('transitionend',done);fn()},{once:true});
+    setTimeout(fn,260)};
+  const setOpen=open=>{
+    if(open){
+      menu.hidden=false;
+      const flip=toggle.getBoundingClientRect().left
+        +menu.getBoundingClientRect().width>innerWidth-8;
+      menu.classList.toggle('left',flip);
+      menu.style.height='0px';menu.getBoundingClientRect();
+      menu.style.height=menu.scrollHeight+'px';
+      settle(()=>{menu.style.height='auto'});
+    }else{
+      menu.style.height=menu.scrollHeight+'px';menu.getBoundingClientRect();
+      menu.style.height='0px';
+      settle(()=>{menu.hidden=true;menu.style.height=''});
+    }
+    toggle.setAttribute('aria-expanded',String(open));
+  };
+  const setOpenTracked=open=>{
+    setOpen(open);
+    fsrcOpened=open?{mount,setOpen}:null};
+  toggle.onclick=e=>{e.stopPropagation();setOpenTracked(menu.hidden)};
   menu.querySelectorAll('[data-srcfilter]').forEach(input=>input.onchange=()=>{
     input.checked?fsrcUnchecked.delete(input.dataset.srcfilter)
       :fsrcUnchecked.add(input.dataset.srcfilter);
     mount.querySelector('[data-srcfilter-label]').textContent=label();
     document.querySelectorAll('.fpickitem').forEach(item=>{
       item.hidden=fsrcUnchecked.has(item.dataset.provider||'')})});
-  document.addEventListener('click',event=>{
-    if(menu.hidden||mount.contains(event.target))return;
-    menu.hidden=true;toggle.setAttribute('aria-expanded','false')});
 }
 function renderFollowPicks(results){
   const box=$('#followPicks');
@@ -2702,11 +2763,7 @@ function renderFollowPicks(results){
   }).join('');
   const total=results.reduce((n,row)=>n+(row.candidates||[])
     .filter(c=>!c.known && srcChecked(c.provider_label||'')).length,0);
-  box.innerHTML=`<div class="fpicks"><div class="fpickhead"><h3>查找结果</h3>
-    <div class="fsrcfilter">
-      <button type="button" class="fbtn" data-srcfilter-toggle aria-expanded="false">${icon('list-filter')}<span data-srcfilter-label>来源：全部</span>${icon('chevron-down')}</button>
-      <div class="fsrcmenu" data-srcfilter-menu hidden>${providers.map(provider=>
-        `<label><input type="checkbox" data-srcfilter="${esc(provider)}"${srcChecked(provider)?' checked':''}><span>${esc(provider)}</span></label>`).join('')}</div></div></div>${blocks}
+  box.innerHTML=`<div class="fpicks"><div class="fpickhead"><h3>查找结果</h3></div>${blocks}
     ${total?`<div class="fpickactions"><button data-pick-add>添加选中</button>
       <button data-pick-cancel>取消</button><span data-pick-state aria-live="polite"></span></div>`
       :'<div class="fpickactions"><button data-pick-cancel>关闭</button></div>'}</div>`;
@@ -2758,6 +2815,36 @@ async function followWrite(button,path,body){
 }
 
 
+
+/* 复核卡等高 + 中间滚动（Geist Scroller vertical-with-buttons 实测机制：
+   overflow-y:auto + scrollbar-width:none 隐藏滚动条，32px 圆钮按滚动位置启停）。
+   卡片在网格里拉伸到同行最高；头部（作者块）固定，中间自滚，动作条钉底。 */
+function wireReviewScrollers(root){
+  root.querySelectorAll('.reviewitem').forEach(item=>{
+    if(item.querySelector('.reviewscroll'))return;
+    const actions=item.querySelector('.reviewactions');
+    if(!actions)return;
+    const scroll=document.createElement('div');scroll.className='reviewscroll';
+    const head=item.querySelector(':scope > .reviewentity');
+    const btns=document.createElement('div');btns.className='reviewscrollbtns';
+    btns.innerHTML='<button type="button" data-scroll="-1" aria-label="向上滚动">'+icon('chevron-up')+'</button>'
+      +'<button type="button" data-scroll="1" aria-label="向下滚动">'+icon('chevron-down')+'</button>';
+    [...item.children].forEach(child=>{
+      if(child===actions||child===head)return;
+      scroll.appendChild(child)});
+    item.insertBefore(scroll,actions);
+    item.insertBefore(btns,actions);
+    const up=btns.querySelector('[data-scroll="-1"]'),down=btns.querySelector('[data-scroll="1"]');
+    const sync=()=>{
+      const max=scroll.scrollHeight-scroll.clientHeight;
+      up.disabled=scroll.scrollTop<=2;down.disabled=scroll.scrollTop>=max-2;
+      btns.hidden=max<=2};
+    up.onclick=()=>scroll.scrollBy({top:-140,behavior:'smooth'});
+    down.onclick=()=>scroll.scrollBy({top:140,behavior:'smooth'});
+    scroll.addEventListener('scroll',sync,{passive:true});
+    new ResizeObserver(sync).observe(scroll);sync();
+  });
+}
 function wireReviewAssets(root){
   /* 复核页不再自造「多选模式」和框选：交互与主网格一致——点一下切换，Shift 选一段。
      多一套只在这一页生效的选择方式，用户得先发现它、再记住它。 */
