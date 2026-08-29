@@ -1527,6 +1527,24 @@ class FollowWebSourceTests(unittest.TestCase):
             self.assertPageContains(needle)
         # 失败要说清是哪个站，不能让用户去猜 `rule34xxx` 是什么。
         self.assertPageContains("row.provider_label||row.provider")
+        # 回执带一个具名的后续动作：光摆数字会让人去点「…条详情」那半句，
+        # 文案里不再留悬空的「详情」，去看更新作为显式按钮接住这个意图。
+        self.assertPageContains("action:{label:'去看更新',run:()=>openFollow()}")
+        self.assertPageContains("if(action)item.querySelector('.tact')")
+        self.assertPageLacks("条详情")
+
+    def test_follow_bulk_actions_are_buttons_not_inline_links(self):
+        """批量标记已看／全部忽略是 2292 条级别的操作，不能长得像行内文字链接。
+
+        裸蓝字链接和旁边的计数文本混在一行里，看起来像一句说明文字；
+        分不清哪半句是统计、哪半句可以点。改成 .fbtn 次级按钮——与本页
+        「检查全部／去看更新」同一套控件语言——按钮的边界让「这会改状态」
+        在点击之前就看得见。
+        """
+        self.assertPageContains('<button class="fbtn" data-follow-bulk="seen">全部标记已看</button>')
+        self.assertPageContains('<button class="fbtn" data-follow-bulk="ignored">全部忽略</button>')
+        self.assertPageLacks('class="flink" data-follow-bulk')
+        self.assertPageContains('.fbulk{display:flex;gap:8px;margin:8px 0 0}')
 
     def test_sources_by_the_same_author_are_one_block(self):
         """同一个作者在几个站上是几条来源、一个人。

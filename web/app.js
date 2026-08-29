@@ -178,17 +178,22 @@ const emptyState=(ic,title,desc)=>`<div class="emptystate"><div class="es-icon">
 /* Toast：挂在 #toasts（body 直下）而不是 #stats 里——检查完会整页重画，
    页内浮层会被冲掉，这里不会。对齐 Geist 的处方（取证见
    docs/reference-snapshots/vercel-geist-toast.md）：只做用户主动动作的
-   非阻塞回执，自动消失；hover 暂停计时，右上角关闭。失败这类必须跟进的
+   非阻塞回执，自动消失；hover 暂停计时，右上角关闭。回执可以带一个
+   明确的后续动作（action.label + action.run）：光摆数字会让用户去找
+   「哪里能点」，Geist 的做法是给一个具名的下一步。失败这类必须跟进的
    事只发一句短 toast，原因和恢复入口留在页面里的持久行上。 */
-const toast=(html,{timeout=6000,warn=false}={})=>{
+const toast=(html,{timeout=6000,warn=false,action=null}={})=>{
   const root=$('#toasts');
   const item=document.createElement('div');
   item.className='toast'+(warn?' warn':'');
-  item.innerHTML=`${warn?icon('alert'):''}<p>${html}</p><button title="关闭" aria-label="关闭提示">${icon('x')}</button>`;
+  item.innerHTML=`${warn?icon('alert'):''}<p>${html}</p>${
+    action?`<button class="tact">${esc(action.label)}</button>`:''
+    }<button class="tclose" title="关闭" aria-label="关闭提示">${icon('x')}</button>`;
   let timer=null;
   const close=()=>{clearTimeout(timer);item.classList.add('leaving');
     setTimeout(()=>item.remove(),160)};
-  item.querySelector('button').onclick=close;
+  item.querySelector('.tclose').onclick=close;
+  if(action)item.querySelector('.tact').onclick=()=>{close();action.run()};
   const arm=()=>{if(timeout)timer=setTimeout(close,timeout)};
   item.addEventListener('mouseenter',()=>clearTimeout(timer));
   item.addEventListener('mouseleave',arm);
@@ -1900,7 +1905,7 @@ function followCheckBits(report){
   if(compilations)bits.push(`排除 <b>${compilations}</b> 个超大合集`);
   // 回查是唯一会放大请求数的路径，报出来才看得出某个作者是不是每帖都要多打一次站点。
   const probed=rows.reduce((n,r)=>n+(r.probed||0),0);
-  if(probed)bits.push(`回查 <b>${probed}</b> 条详情`);
+  if(probed)bits.push(`回查 <b>${probed}</b> 条`);
   if(quiet)bits.push(`${quiet} 个来源没有更新`);
   if(!bits.length)bits.push('没有任何更新');
   return {rows,bits};
@@ -1909,7 +1914,9 @@ function followCheckToast(report){
   const {rows,bits}=followCheckBits(report);
   const failed=rows.filter(r=>!r.ok).length;
   toast(`检查了 <b>${rows.length}</b> 个来源：${bits.join(' · ')}`+
-    (failed?` · <b>${failed} 个失败</b>`:''),{warn:!!failed,timeout:failed?8000:6000});
+    (failed?` · <b>${failed} 个失败</b>`:''),
+    {warn:!!failed,timeout:failed?8000:6000,
+     action:{label:'去看更新',run:()=>openFollow()}});
 }
 /* 页内持久行：只装失败与取证缺档，渲染在管理页自己的检查区里。全部成功时
    返回空串——成功摘要整条交给 toast，页面上不再出现通栏横条。关注页不渲染
@@ -2337,9 +2344,9 @@ function renderFollowManage(credentials){
         ${sources.length?`<div class="frows fsources">${
           followAuthorGroups(sources).map(followAuthorBlock).join('')}</div>
           ${counts.new?`<p class="fnote">未看 ${counts.new} · 已看 ${counts.seen||0}
-            · 已保存 ${counts.saved||0} · 已忽略 ${counts.ignored||0}
-            <button class="flink" data-follow-bulk="seen">全部标记已看</button>
-            <button class="flink" data-follow-bulk="ignored">全部忽略</button></p>`:''}`
+            · 已保存 ${counts.saved||0} · 已忽略 ${counts.ignored||0}</p>
+            <div class="fbulk"><button class="fbtn" data-follow-bulk="seen">全部标记已看</button>
+            <button class="fbtn" data-follow-bulk="ignored">全部忽略</button></div>`:''}`
           :'<p class="fnote">还没有关注任何来源。</p>'}
       </section>
     </div>

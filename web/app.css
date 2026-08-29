@@ -1039,10 +1039,14 @@ body.settings-open{overflow:hidden}
   stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .toast p{flex:1;margin:0;min-width:0}
 .toast b{font-variant-numeric:tabular-nums}
-.toast button{flex:none;width:24px;height:24px;padding:0;border:0;border-radius:var(--control-radius);
+/* 动作是具名的下一步（去看更新），文字按钮跟正文同行；关闭才是 24px 图标位。 */
+.toast .tact{flex:none;align-self:center;border:0;background:none;padding:0;
+  color:var(--tungsten);font:inherit;font-size:var(--fs-sm);cursor:pointer}
+.toast .tact:hover{text-decoration:underline}
+.toast .tclose{flex:none;width:24px;height:24px;padding:0;border:0;border-radius:var(--control-radius);
   background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer}
-.toast button:hover{background:var(--hover);color:var(--ink)}
-.toast button svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+.toast .tclose:hover{background:var(--hover);color:var(--ink)}
+.toast .tclose svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
 .toast.leaving{opacity:0;transform:translateY(4px);transition:opacity .15s ease,transform .15s ease}
 
 /* ── 审查遮挡 ──
@@ -1508,6 +1512,9 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fcheckreport b{color:var(--ink);font-variant-numeric:tabular-nums}
 .fcheckfail{color:var(--drop)}
 .fchecknote{color:var(--muted);font-size:var(--fs-xs)}
+/* 批量动作是 2292 条级别的操作，不是行内文字链接：按钮的边界让「这会改状态」
+   在点击前就看得见，也和本页其他 .fbtn（检查全部／去看更新）同一套语言。 */
+.fbulk{display:flex;gap:8px;margin:8px 0 0}
 
 /* 状态标签：四种状态四种颜色，待办和完成一眼分得开。 */
 /* 凭据状态。类名不能叫 `.fstate`——观看页的卡片错误行已经占了那个名字
