@@ -179,6 +179,8 @@ class WebContract:
         self.legacy_snapshot_roots = tuple(Path(path) for path in legacy_snapshot_roots)
         self.cache: dict[str, tuple[float, object]] = {}
         self.cache_lock = threading.Lock()
+        #: 每次 cache_bust 递增。在途计算据此判断自己出发后缓存是否失效过。
+        self.cache_generation = 0
         self.follow_check_lock = threading.Lock()
         self.follow_scheduler = None
         self.resource_scan_lock = threading.Lock()
@@ -187,19 +189,35 @@ class WebContract:
         self._fts_available: bool | None = None
 
     def cached(self, key, fn):
+        """带 TTL 的读缓存。`fn` 刻意在锁外算——它会读 CSV、查库，拿着锁算会把
+        并发请求全串起来。
+
+        代价是计算期间缓存可能被 `cache_bust()` 清掉，那份还没写回的值就是失效前的
+        快照。复核页正是这个场景：`q_review` 在算，用户批准了一条候选，
+        `w_review_decision` 调 `cache_bust`；旧实现照样把批准前的快照写回去，
+        于是用户批准完刷新，看到的还是批准前的列表，而且持续整整一个 TTL。
+
+        用代次挡住：写回前确认这期间没有失效过，否则丢弃这次结果。
+        """
         now = time.time()
         with self.cache_lock:
             hit = self.cache.get(key)
             if hit and now - hit[0] < CACHE_TTL:
                 return hit[1]
+            generation = self.cache_generation
         value = fn()
         with self.cache_lock:
-            self.cache[key] = (now, value)
+            if generation == self.cache_generation:
+                # 时间戳沿用进入时的 now：算得比 TTL 还久的结果直接算过期，
+                # 宁可下次重算，也不要把一份已经旧了的数据当新的用。
+                self.cache[key] = (now, value)
         return value
 
     def cache_bust(self):
         with self.cache_lock:
             self.cache.clear()
+            # 在途计算靠这个数认出「我出发之后缓存失效过」，从而放弃写回。
+            self.cache_generation += 1
 
     def db(self, write=False):
         return self.database.connect(write=write)
