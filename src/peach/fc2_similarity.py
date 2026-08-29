@@ -6,7 +6,7 @@ from collections import defaultdict
 from itertools import combinations
 from typing import Iterable, Mapping
 
-from .web_logic import DUPLICATE_FLOOR_SECONDS, DUPLICATE_TOLERANCE, part_marker
+from .catalog_rules import DUPLICATE_FLOOR_SECONDS, DUPLICATE_TOLERANCE, part_marker
 
 
 POLICY_VERSION = "fc2-similarity-policy-v1"

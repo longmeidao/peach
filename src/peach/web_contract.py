@@ -64,7 +64,7 @@ from .web_activity import (
     w_quality_goal,
     w_watch_later,
 )
-from .web_logic import (
+from .catalog_rules import (
     DUPLICATE_FLOOR_SECONDS,
     DUPLICATE_TOLERANCE,
     LENGTH_TAGS,

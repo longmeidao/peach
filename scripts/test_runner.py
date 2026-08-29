@@ -32,7 +32,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
     "tooling": ("test_scripts.py", "test_agent_worktree.py", "test_versioning.py",
                 "test_windows_update.py", "test_certs.py", "test_config.py",
                 "test_job_status.py", "test_jobs.py", "test_reference_updates.py",
-                "test_subprocess_encoding.py"),
+                "test_subprocess_encoding.py", "test_module_layering.py"),
 }
 
 SCOPE_TEST_IDS: dict[str, tuple[str, ...]] = {

@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from .web_logic import is_jav_code
+from .catalog_rules import is_jav_code
 
 
 class LedgerDatabase:
