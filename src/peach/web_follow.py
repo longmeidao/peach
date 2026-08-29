@@ -12,6 +12,7 @@ import re
 import urllib.parse
 from datetime import datetime, timezone
 
+from . import follow_providers
 from .follow import FollowSourceError
 from .follow_discovery import discover
 from .follow_secrets import CredentialError, CredentialStore
@@ -24,26 +25,11 @@ from .taste_history import read_creator_candidates
 
 
 #: 界面上给每个来源的中文短名。没登记的 provider 直接显示原名。
-PROVIDER_LABELS = {
-    "gofile": "Gofile",
-    "fanbox": "FANBOX",
-    "patreon": "Patreon",
-    "subscribestar": "SubscribeStar",
-    "kemono": "Kemono",
-    "coomer": "Coomer",
-    "pawchive": "Pawchive",
-    "rule34video": "Rule34Video",
-    "rule34xxx": "Rule34.xxx",
-    "rule34paheal": "Rule34 Paheal",
-    "f95zone": "F95zone",
-    "simpcity": "SimpCity",
-}
+PROVIDER_LABELS = follow_providers.labels()
 
 _STATUSES = ("new", "seen", "saved", "ignored")
-_BACKFILL_PROVIDERS = frozenset(
-    {"kemono", "coomer", "pawchive", "rule34video", "rule34xxx", "rule34paheal"}
-)
-_OFFICIAL_IDENTITY_PROVIDERS = frozenset({"fanbox", "patreon", "subscribestar"})
+_BACKFILL_PROVIDERS = follow_providers.backfill_providers()
+_OFFICIAL_IDENTITY_PROVIDERS = follow_providers.official_identity_providers()
 
 
 def _store(contract, connection) -> FollowStore:

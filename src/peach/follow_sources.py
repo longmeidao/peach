@@ -19,6 +19,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from .fanbox import FanboxContentError, normalize_fanbox_post
+from . import follow_providers
 from .follow import DEFAULT_MAX_BYTES, FollowSourceError, plain_text, stable_id
 from .follow_secrets import Credential, CredentialError
 from .http import CurlCffiTransport, HttpRequest, HttpResponse, HttpTransport, HttpxTransport
@@ -1559,7 +1560,7 @@ class ParsedSource:
 
 
 #: 每个来源的条目语义：`work` 是每条一个独立作品，`release` 是同一作品的历次发布。
-_SEMANTICS = {"f95zone": "release", "simpcity": "release"}
+_SEMANTICS = follow_providers.semantics()
 
 _KEMONO_HOSTS = {"kemono.cr": "kemono", "coomer.st": "coomer", "pawchive.pw": "pawchive"}
 _KEMONO_PATH_RE = re.compile(r"^/([a-z0-9_\-]{1,32})/user/([A-Za-z0-9_\-.]{1,64})")

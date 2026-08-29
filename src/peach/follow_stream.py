@@ -13,6 +13,7 @@ import urllib.parse
 from dataclasses import dataclass
 from typing import Callable, Mapping
 
+from . import follow_providers
 from .follow_sources import USER_AGENT
 from .follow_secrets import Credential
 from .follow_store import FollowItemRow
@@ -30,15 +31,8 @@ class ResolvedFollowMedia:
     headers: Mapping[str, str] | None = None
 
 
-_PROVIDER_HOSTS = {
-    "kemono": ("kemono.cr",),
-    "coomer": ("coomer.st",),
-    "pawchive": ("pawchive.pw",),
-    "rule34video": ("rule34video.com",),
-    "rule34xxx": ("rule34.xxx",),
-    "rule34paheal": ("paheal.net", "paheal-cdn.net"),
-    "f95zone": ("f95zone.to",),
-}
+#: 媒体代理允许的主机，投影自 follow_providers；不在表里的 provider 一律拒绝。
+_PROVIDER_HOSTS = follow_providers.hosts()
 _VIDEO_URL_RE = re.compile(r"\bvideo_url\s*:\s*'([^']+)'", re.IGNORECASE)
 
 
