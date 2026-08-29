@@ -3,6 +3,7 @@ import json
 import os
 import sqlite3
 import tempfile
+import threading
 import time
 import unittest
 from contextlib import contextmanager
@@ -552,6 +553,55 @@ class WebDataTests(unittest.TestCase):
             1,
         )
         con.close()
+
+    def test_item_tag_rolls_back_and_closes_when_the_entity_write_fails(self):
+        """加标签是一个事务：实体那步失败时 asset_tag 不能留下半条记录，连接也要关掉。
+
+        改用 write_transaction 之前这里是手动 commit/close，只有「资产不存在」那条
+        路径会关连接，任何 execute 抛出都既不回滚也不关闭。"""
+        opened = []
+        real_connect = self.contract.database.connect
+
+        def capture(*, write=False):
+            connection = real_connect(write=write)
+            opened.append(connection)
+            return connection
+
+        with mock.patch.object(self.contract.database, "connect", side_effect=capture):
+            with mock.patch.object(rm_web, "upsert_asset_entity",
+                                   side_effect=RuntimeError("entity write failed")):
+                with self.assertRaisesRegex(RuntimeError, "entity write failed"):
+                    rm_web.w_item_tag(self.contract, {
+                        "id": 1, "operation": "add", "tag": "回滚标签",
+                    })
+
+        con = sqlite3.connect(self.db_path)
+        self.assertIsNone(
+            con.execute(
+                "SELECT 1 FROM asset_tag WHERE asset_id=1 AND tag='回滚标签'").fetchone(),
+            "事务中途失败后不能把标签行留在账本里",
+        )
+        con.close()
+        self.assertTrue(opened, "没有取到写连接，测试本身失效")
+        with self.assertRaises(sqlite3.ProgrammingError):
+            opened[-1].execute("SELECT 1")
+
+    def test_item_tag_releases_the_write_lock_between_calls(self):
+        """写事务只能取一次 database.write_lock：那是把不可重入锁。
+
+        谁把外层的手动取锁加回来（或在 write_transaction 里再取一次），第二次写入
+        就会永远等自己已经持有的锁。这个断言就是那个陷阱的守卫。"""
+        rm_web.w_item_tag(self.contract, {"id": 1, "operation": "add", "tag": "第一次"})
+        finished = threading.Event()
+
+        def second_write():
+            rm_web.w_item_tag(self.contract, {"id": 1, "operation": "add", "tag": "第二次"})
+            finished.set()
+
+        worker = threading.Thread(target=second_write, daemon=True)
+        worker.start()
+        worker.join(timeout=10)
+        self.assertTrue(finished.is_set(), "第二次写入没能在 10 秒内拿到写锁，写锁没被释放")
 
     def stage_media(self, aid, name="clip.mp4"):
         """把某条资产指向真实的临时文件，物理删除才有东西可删。"""
