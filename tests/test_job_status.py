@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -54,6 +55,33 @@ class JobStatusTests(unittest.TestCase):
             self.assertNotIn("access_token", saved)
             self.assertNotIn("transcript_path", saved)
             self.assertFalse(list(state.parent.glob("*.tmp")))
+
+    def test_rendered_times_are_local_while_stored_times_stay_utc(self) -> None:
+        """STATUS.md 是给人读的：时间按本地时区渲染，存进 state 的仍是 UTC。
+
+        这条口径 2026-08-26 定下时只落到了 web/app.js，这条生成链路漏了，
+        于是同一份文档里「generated」和交接时间是 UTC、产物表格是本地，
+        三个数字两种时钟且都不标注。"""
+        moment = datetime.fromisoformat(MODULE._local("2026-08-29T02:51:51+00:00"))
+        self.assertEqual(
+            moment, datetime(2026, 8, 29, 2, 51, 51, tzinfo=timezone.utc),
+            "换算只能改变显示的时区，不能改变它指的时刻",
+        )
+        self.assertEqual(
+            moment.utcoffset(), datetime.now().astimezone().utcoffset(),
+            "渲染出的时间要带本机时区偏移",
+        )
+        self.assertEqual(MODULE._local("说不清"), "说不清", "解析不了就原样显示")
+
+        with tempfile.TemporaryDirectory() as root:
+            state = Path(root) / "state" / "handoff.json"
+            MODULE.record_hook_event(state, {"hook_event_name": "Stop"})
+            stored = json.loads(state.read_text(encoding="utf-8"))["at"]
+        self.assertEqual(
+            datetime.fromisoformat(stored).utcoffset(),
+            timedelta(0),
+            "存储一律 UTC，这一半不能跟着显示口径走",
+        )
 
     def test_write_back_replaces_only_managed_block(self) -> None:
         with tempfile.TemporaryDirectory() as root:
