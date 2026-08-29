@@ -41,9 +41,9 @@ from .media import (
     StashAdapter,
 )
 from .mdns import create_mdns_publisher
+from .interaction import reveal_path
 from .platform import (
     is_unmapped,
-    reveal_path,
     root_online,
     translate_ledger_path,
 )
