@@ -121,17 +121,17 @@
 <!-- job-status:start -->
 
 <!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->
-<!-- generated 2026-08-27T07:08Z -->
+<!-- generated 2026-08-29T02:51Z -->
 
-- 最近自动交接：`claude` / `SessionEnd` / `other`，2026-08-27T07:08:40+00:00。
-- 资产 81554 条，其中视频 24674 条。
+- 最近自动交接：`claude` / `SessionEnd` / `other`，2026-08-29T02:51:51+00:00。
+- 资产 81555 条，其中视频 24675 条。
 - 待抽帧（可抽 / 缺时长待 probe / 合计）：
   - `local`：3 / 1 / 4
   - `115`：11 / 139 / 150
   - `pikpak`：8881 / 1310 / 10191
   PikPak 的策略组已可切 DIRECT：2026-08-15 实测走代理时 9 帧 163 MB / 13.7 秒，走直连时 30.5 MB / 64.2 秒——慢约 4.7 倍但流量少约 5 倍且不占代理预算。全量抽帧仍是 773 GB 量级（代理口径），按创作者采样 88 板直连约 2.7 GB。115 一直走直连，同样动作约 285 MB 一张接触表。
-- 无内容标签视频 7442 条（占视频 30%）。
-- `asset_tag` 来源分布：`vision_creator` 27004、`pixiv_tag` 19753、`name` 19271、`stash` 15450、`r18` 2254、`performer` 1589、`follow` 1376、`r18:performer` 1126、`javbus:performer` 37。
+- 无内容标签视频 7443 条（占视频 30%）。
+- `asset_tag` 来源分布：`vision_creator` 27004、`pixiv_tag` 19753、`name` 19271、`stash` 12899、`r18` 2254、`performer` 1589、`follow` 1376、`r18:performer` 1126、`javbus:performer` 37。
 - 番号 1462 个，其中 1155 个有厂牌（79%）。
 
 | 产物 | 行数 | 生成时间 | 说明 |
