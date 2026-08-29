@@ -5,6 +5,7 @@ import asyncio
 import os
 import subprocess
 import uuid
+from collections import OrderedDict
 from pathlib import Path
 
 from .ffmpeg import FFmpegResolver
@@ -14,6 +15,7 @@ from .streaming import StreamSessionRegistry
 HLS_SEGMENT_SECONDS = 6
 # 片段缓存上限。超了按最后访问时间淘汰；片段可再生，丢了只是重跑一次 FFmpeg。
 DEFAULT_CACHE_BYTES = 2 << 30
+PLAN_CACHE_LIMIT = 256
 
 
 class SegmentUnavailable(RuntimeError):
@@ -62,7 +64,7 @@ class HlsSegmentService:
         # 每个分片请求都会起一个 FFmpeg；播放器本身就并发预取，多设备同看能把机器打满。
         self._limit = max_concurrent or max(1, (os.cpu_count() or 4) // 2)
         self._semaphore: asyncio.Semaphore | None = None
-        self._plans: dict[tuple, list[tuple[float, float]]] = {}
+        self._plans: OrderedDict[tuple, list[tuple[float, float]]] = OrderedDict()
 
     def _gate(self) -> asyncio.Semaphore:
         if self._semaphore is None:
@@ -81,11 +83,12 @@ class HlsSegmentService:
         key = (*self.fingerprint(source), self.segment_seconds, round(duration, 3))
         cached = self._plans.get(key)
         if cached is not None:
+            self._plans.move_to_end(key)
             return cached or None
         keyframes = keyframe_seconds(source)
         result = segment_plan(keyframes, duration, self.segment_seconds) if keyframes else []
-        if len(self._plans) > 256:
-            self._plans.clear()
+        while len(self._plans) >= PLAN_CACHE_LIMIT:
+            self._plans.popitem(last=False)
         self._plans[key] = result
         return result or None
 
