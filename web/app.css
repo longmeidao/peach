@@ -494,7 +494,7 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
 /* 页面标题只有一套字形。原来管理区 26px、索引页 20px、播放列表 28px，
    在侧栏里一路点过去就是三种大小；间距由各自的版式决定，字形不再各拍各的。 */
 .pagetitle,.listtitle,.managetitle,.index .ihead h2,.playlistpage h2{
-  font-size:var(--fs-2xl);line-height:1.2;letter-spacing:.02em;font-weight:600}
+  font-size:var(--fs-3xl);line-height:1.15;letter-spacing:-.01em;font-weight:650}
 .listtitle,.managetitle,.follow>.pagetitle{margin:0 0 12px}
 .listtitle[hidden],.managetitle[hidden]{display:none}
 .dupsum{color:var(--muted);margin:0 0 12px}
@@ -1013,14 +1013,15 @@ body.settings-open{overflow:hidden}
 :root[data-theme="dark"] .settingspanel{background:rgba(2,4,8,.62)}
 :root[data-theme="dark"] .settingscard{box-shadow:0 24px 64px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.07)}
 .settingshead h2{margin:0;font-size:var(--fs-xl)}.settingshead button{border:0;background:transparent;color:var(--muted);width:34px;height:34px;border-radius:var(--control-radius);cursor:pointer;display:grid;place-items:center;transition:background-color .12s ease,color .12s ease}.settingshead button:hover{background:var(--hover);color:var(--ink)}
-.settingshead svg{width:20px;height:20px;stroke:currentColor;fill:none}.settingrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:14px 0;border-top:1px solid var(--line-soft)}
+.settingshead svg{width:20px;height:20px;stroke:currentColor;fill:none}.settingrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:14px 0 14px;border-top:1px solid var(--line-soft)}
 .settingrow:first-of-type{border-top:0}.settingrow b{display:block;font-size:var(--fs-md)}.settingrow small{display:block;color:var(--muted);margin-top:3px;line-height:1.45}/* 箭头自绘。原来留了 34px 右内边距却不画箭头，交给系统控件自己画：Safari 把箭头画在
    内边距**里侧**，于是离右边框差着一大截，和桌面 Chromium 的样子也对不上。
    `appearance:none` 关掉系统绘制，用背景图贴住右边框。 */
 .settingrow select{min-width:148px;border:1px solid var(--line);border-radius:var(--control-radius);background:#181a1d;color:#f5f7fa;color-scheme:dark;padding:9px 34px 9px 11px;font:inherit;font-size:var(--fs-md);appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;background-size:16px 16px}.settingrow select:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.settingrow select option{background:#181a1d;color:#f5f7fa}.settingrow input[type=checkbox]{width:20px;height:20px;accent-color:var(--tungsten)}
-.settinggroup{margin-top:12px;border:1px solid var(--border-10);border-radius:8px;
-  background:var(--overlay-5);padding:2px 14px 12px}
-.settinggroup>h3{margin:0 0 2px;font-size:var(--fs-sm);font-weight:600;color:var(--ink-2)}
+.settinggroup{margin-top:16px;border:1px solid var(--border-10);border-radius:8px;
+  background:var(--overlay-5);padding:0 16px 4px}
+.settinggroup>h3{margin:0;padding:14px 0 10px;font-size:var(--fs-lg);font-weight:600;color:var(--ink)}
+.settinggroup .settingrow{margin:0 -16px;padding-left:16px;padding-right:16px}
 .sidebarsetting{display:grid;gap:12px;padding:0}.sidebarsetting>span b,.sidebarsetting>span small{display:block}.sidebarsetting>span small{margin-top:3px;color:var(--muted);line-height:1.45}.sidebarorder{display:grid;gap:6px}.sidebarorderrow{position:relative;display:flex;align-items:center;justify-content:space-between;min-height:48px;padding:5px 6px;border:1px solid var(--line-soft);border-radius:9px;background:var(--overlay-3);cursor:grab}.sidebarorderrow:active{cursor:grabbing}.sidebarorderrow.dragging{opacity:.42}.sidebarorderrow.drop-before::before,.sidebarorderrow.drop-after::after{content:'';position:absolute;z-index:2;left:7px;right:7px;height:2px;border-radius:2px;background:var(--tungsten)}.sidebarorderrow.drop-before::before{top:-5px}.sidebarorderrow.drop-after::after{bottom:-5px}.sidebarorderrow>span{display:flex;align-items:center;gap:8px}.sidebarorderrow svg{width:18px;height:18px;stroke:currentColor;fill:none}.sidebarorderlabel{min-width:0}.sidebarorderlabel>b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sidebardrag{display:grid;place-items:center;width:24px;color:var(--muted)}.sidebardrag svg{width:20px;height:20px}.sidebarorderactions{flex:none}.sidebarorderrow button,.sidebaradd button{display:grid;place-items:center;min-width:34px;height:34px;border:0;border-radius:7px;background:transparent;color:var(--muted);cursor:pointer}.sidebarorderrow button:hover:not(:disabled),.sidebaradd button:hover:not(:disabled){background:var(--hover);color:var(--ink)}.sidebarorderrow button:disabled,.sidebaradd button:disabled{opacity:.25;cursor:default}.sidebaradd{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:5px}.sidebaradd select{min-width:0;border:1px solid var(--line);border-radius:8px;background:#181a1d;color:#f5f7fa;color-scheme:dark;padding:9px 34px 9px 11px;font:inherit;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;background-size:16px 16px}.sidebaradd button{grid-template-columns:auto auto;gap:6px;padding:0 11px;border:1px solid var(--line);color:var(--ink-2)}.sidebaradd svg{width:17px;height:17px;stroke:currentColor;fill:none}
 .sidebaradd select,.sidebaradd button{height:42px;box-sizing:border-box}.sidebaradd select{padding-top:0;padding-bottom:0}
 @media(max-width:600px){.settingsscroll{padding:0 17px 17px}.settingshead{padding-top:17px}.settingrow{grid-template-columns:1fr;gap:9px}.settingrow select{width:100%;min-width:0}.settingrow input[type=checkbox]{justify-self:start}}
@@ -1083,10 +1084,6 @@ body.censor .brand .mark,body.censor .src img,body.censor .ficon{filter:none}
 .edge svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round}
 /* 窄栏从 y=0 贯通到底，顶栏只在右侧内容列里。 */
-/* 低密度管理页不全宽：内容列对齐 Vercel 后台设置卡实测（约 914px，见
-   vercel-geist-semantics-measured.md）；首页/关注等浏览页保持全宽。 */
-body[data-surface="/stats"] #stats,body[data-surface="/taste"] #stats{
-  max-width:1004px;margin-inline:auto}
 body{padding-left:var(--railW)}
 @media (max-width:760px){body{padding-left:0}.edge{display:none}}
 /* 抽屉从窄栏右侧开始，不再盖住窄栏。
@@ -1519,6 +1516,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   stroke:var(--drop);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .fcheckreport>div{flex:1;min-width:0}
 .fcheckreport p,.fwarn p{margin:0}
+.fwarn>span{flex:1;min-width:0}
 .fcheckreport b{color:var(--ink);font-variant-numeric:tabular-nums}
 .fcheckfail{color:var(--drop)}
 .fchecknote{color:var(--muted);font-size:var(--fs-xs)}
@@ -1529,6 +1527,11 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .sbadge.ok{background:color-mix(in srgb,var(--success) 14%,transparent);color:var(--success)}
 .sbadge.error{background:color-mix(in srgb,var(--drop) 14%,transparent);color:var(--drop)}
 .sbadge.none{background:var(--overlay-5);color:var(--muted)}
+.fwarn .wclose{flex:none;width:24px;height:24px;margin-left:auto;padding:0;border:0;
+  border-radius:var(--control-radius);background:transparent;color:var(--muted);
+  display:grid;place-items:center;cursor:pointer}
+.fwarn .wclose:hover{background:var(--hover);color:var(--ink)}
+.fwarn .wclose svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
 /* 批量动作是 2292 条级别的操作，不是行内文字链接：按钮的边界让「这会改状态」
    在点击前就看得见，也和本页其他 .fbtn（检查全部／去看更新）同一套语言。 */
 .fbulk{display:inline-flex;gap:8px;margin-left:10px;vertical-align:middle}

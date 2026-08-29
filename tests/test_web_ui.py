@@ -1288,19 +1288,29 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("if(window.__scrolling||censorOn())return;", self.page)
 
     def test_management_surfaces_are_narrow_and_geist_semantics_hold(self):
-        """低密度管理页不全宽；语义色与状态徽章对齐 Geist 实测。
+        """语义色、状态徽章与导航激活重算对齐 Geist 实测。
 
-        Vercel 后台设置列实测约 914px（vercel-geist-semantics-measured.md），
-        统计/口味限宽居中；复核是卡片网格、高清版是宽表格，限宽反而挤压
-        （用户回执），保持全宽。检查失败报告是红发丝边 + 微红底的 danger
-        语义块，不是左侧粗条；来源行状态用低饱和徽章；清空回收站是销毁类
-        操作，用 danger 色而不是主色实底。
+        限宽布局已按用户回执整体改回：限宽列与上方导航和标题的版式不适配，
+        在重排导航与标题之前不许再回来。检查失败报告是红发丝边 + 微红底的
+        danger 语义块，不是左侧粗条；来源行状态用低饱和徽章；清空回收站是
+        销毁类操作，用 danger 色而不是主色实底；组合标签时顶部 pill 按按下
+        态逐个命中，combo 芯片显示显示名；导航激活态随路由重算。
         """
-        for surface in ("/stats", "/taste"):
-            self.assertPageContains(f'body[data-surface="{surface}"] #stats')
-        self.assertPageLacks('body[data-surface="/review"] #stats')
-        self.assertPageLacks('body[data-surface="/quality-goals"] #stats')
+        # 限宽已回退：整条规则不许再出现（重排导航/标题前是已知的坏版式）。
+        self.assertPageLacks("max-width:1004px;margin-inline:auto")
         self.assertPageContains("document.body.dataset.surface=new URL(path,location.origin).pathname")
+        # 导航激活态随路由重算：抽屉/窄栏按钮是 buildBars 时一次性画的，
+        # 管理页不跑 buildBars，不重算就会停留在上一个页面的按下态。
+        self.assertPageContains("paintNav();")
+        self.assertPageContains("function paintNav(){")
+        self.assertPageContains(".edge button[data-nav],#drawer .dnav button[data-nav]")
+        # 组合标签：pill 按按下态逐个命中；combo 芯片显示显示名、操作用原始 key。
+        self.assertPageContains("String(filterState.tag||'').split(',').includes(String(t.k))")
+        self.assertPageContains("${esc(tagLabel(t))} <b data-untag=\"${esc(t)}\">✕</b>")
+        # fwarn 提供 dismiss（会话内记忆），关闭钮样式与 toast 关闭钮同量纲。
+        self.assertPageContains("data-fwarn-dismiss")
+        self.assertPageContains("sessionStorage.setItem('peach-fwarn-dismissed','1')")
+        self.assertPageContains(".fwarn .wclose{flex:none;width:24px;height:24px;margin-left:auto;padding:0;border:0;")
         # 报告条：danger 语义（红发丝边 + 微红底），不再是左侧粗条。
         self.assertPageContains("background:color-mix(in srgb,var(--drop) 7%,transparent);\n  border:1px solid color-mix(in srgb,var(--drop) 30%,transparent);")
         self.assertPageLacks("border-left:2px solid var(--drop)")
@@ -1311,8 +1321,14 @@ class WebUiSourceTests(unittest.TestCase):
         # 清空回收站：danger 语义色。
         self.assertPageContains('class="batchaction danger" id="emptyTrash"')
         self.assertPageContains(".count .sorts .batchaction.danger{background:transparent;border-color:color-mix(in srgb,var(--drop) 38%,transparent);color:var(--drop)}")
-        # 设置分组用框体隔开（用户回执）：每组建卡，不只是一条分隔线。
-        self.assertPageContains(".settinggroup{margin-top:12px;border:1px solid var(--border-10);border-radius:8px;")
+        # 设置分组用框体隔开（用户回执）：每组建卡，分隔线顶格到卡边，
+        # 标题字号与行内边距对齐 Vercel 后台设置卡。
+        self.assertPageContains(".settinggroup{margin-top:16px;border:1px solid var(--border-10);border-radius:8px;")
+        self.assertPageContains(".settinggroup>h3{margin:0;padding:14px 0 10px;font-size:var(--fs-lg);font-weight:600;color:var(--ink)}")
+        self.assertPageContains(".settinggroup .settingrow{margin:0 -16px;padding-left:16px;padding-right:16px}")
+        self.assertPageContains(
+            ".pagetitle,.listtitle,.managetitle,.index .ihead h2,.playlistpage h2{"
+            "\n  font-size:var(--fs-3xl);line-height:1.15;letter-spacing:-.01em;font-weight:650}")
         # 全站字体栈必须有 CJK sans 兜底：Bahnschrift/Consolas 都没有中文字形，
         # generic sans-serif/monospace 在中文 Chrome 的默认可能落到宋体。
         css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(

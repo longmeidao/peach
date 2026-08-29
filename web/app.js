@@ -26,7 +26,15 @@ const pageTitle=path=>{
 const syncPageTitle=path=>{
   document.title=pageTitle(path);
   document.body.dataset.surface=new URL(path,location.origin).pathname;
+  paintNav();
 };
+/* 导航激活态必须在每次路由变化时重算：抽屉与窄栏的按钮是 buildBars 时
+   一次性画出来的，管理页不跑 buildBars，切页后它们会停留在上一个页面的
+   按下态（实测 /stats 下「首页」还亮着）。 */
+function paintNav(){
+  document.querySelectorAll('.edge button[data-nav],#drawer .dnav button[data-nav]')
+    .forEach(b=>b.setAttribute('aria-pressed',String(navOn(b.dataset.nav))));
+}
 const STATE_ROUTES={fresh:'/unseen',later:'/watch-later',flagged:'/flagged'};
 const ROUTE_STATES=Object.fromEntries(Object.entries(STATE_ROUTES).map(([state,path])=>[path,state]));
 const STATE_LABELS={fresh:'没看过',later:'稍后看',flagged:'已标记'};
@@ -868,7 +876,8 @@ async function buildBars(){
     views.map(v=>`<a class="pill" href="${v.k?STATE_ROUTES[v.k]:'/'}" data-state="${v.k}" aria-pressed="${filterState.state===v.k}">${v.label}</a>`).join('')
     +`<span class="sep"></span>`
     +facetData.tags.slice(0,26).map(t=>
-      `<button class="pill" data-tag="${esc(t.k)}" aria-pressed="${filterState.tag===t.k}">${esc(tagLabel(t.k))}</button>`).join('');
+      `<button class="pill" data-tag="${esc(t.k)}" aria-pressed="${
+        String(filterState.tag||'').split(',').includes(String(t.k))}">${esc(tagLabel(t.k))}</button>`).join('');
   $('#tagbar').querySelectorAll('[data-state]').forEach(b=>b.onclick=e=>{
     e.preventDefault();state.state=b.dataset.state;route(homePath());buildBars();load(true)});
   $('#tagbar').querySelectorAll('[data-tag]').forEach(b=>b.onclick=()=>{toggleTag(b.dataset.tag)});
@@ -991,7 +1000,7 @@ function renderCombo(){
   $('#combo').innerHTML=
     extra.map(([k,v])=>`<span class="cb">${k==='creator'?'创作者':'厂牌'} ${esc(v)}
       <b data-clear="${k}">✕</b></span>`).join('')
-    +cur.map(t=>`<span class="cb">${esc(t)} <b data-untag="${esc(t)}">✕</b></span>`).join('')
+    +cur.map(t=>`<span class="cb">${esc(tagLabel(t))} <b data-untag="${esc(t)}">✕</b></span>`).join('')
     +`<button class="clr" id="clrAll">全部清除</button>`;
   $('#combo').querySelectorAll('[data-untag]').forEach(b=>b.onclick=()=>toggleTag(b.dataset.untag));
   $('#combo').querySelectorAll('[data-clear]').forEach(b=>b.onclick=()=>{
@@ -2036,7 +2045,8 @@ function renderFollow(){
       <button data-follow-media="videos" aria-pressed="${followMediaView==='videos'}">${icon('play')}<span>视频</span><b class="mono">${mediaCounts.videos.toLocaleString()}</b></button>
       <button data-follow-media="images" aria-pressed="${followMediaView==='images'}">${icon('layout-grid')}<span>图片</span><b class="mono">${mediaCounts.images.toLocaleString()}</b></button>
     </div>`:''}
-    ${broken.length?`<p class="fwarn">${icon('alert')}<span>${broken.length} 个来源上次检查失败，去<button class="flink" data-follow-manage>管理关注</button>看原因。</span></p>`:''}
+    ${broken.length&&!sessionStorage.getItem('peach-fwarn-dismissed')
+      ?`<p class="fwarn">${icon('alert')}<span>${broken.length} 个来源上次检查失败，去<button class="flink" data-follow-manage>管理关注</button>看原因。</span><button class="wclose" data-fwarn-dismiss title="本次会话不再显示" aria-label="关闭提醒">${icon('x')}</button></p>`:''}
     <div class="followlist${followMediaView==='images'?' followphotowall':''}">${visible.length?visible.map(group=>{
       const source=sourceOf(group),siblings=source&&authorSources.get(source.author_key)||[];
       return followCard(group,siblings)}).join('')
@@ -2065,6 +2075,8 @@ function renderFollow(){
     if(followTags.has(tag))followTags.delete(tag);else followTags.add(tag);renderFollow()});
   $('#stats').querySelectorAll('[data-follow-manage]').forEach(button=>
     button.onclick=()=>openFollowManage());
+  $('#stats').querySelectorAll('[data-fwarn-dismiss]').forEach(button=>button.onclick=()=>{
+    sessionStorage.setItem('peach-fwarn-dismissed','1');renderFollow()});
 }
 
 /* 往回抓到哪儿了。不说的话，用户点一次只看到列表变长一点，不知道自己走到第几页，
