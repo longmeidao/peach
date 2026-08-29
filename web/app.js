@@ -1572,6 +1572,39 @@ async function openQualityGoals(push=true){
      以及对内容做批量标记。
    联网只发生在管理页点「检查更新」的那一刻——看的那一页不联网。 */
 let followData=null,followRuntime=null,followFilter='new',followBusy=false;
+/* 关注页一次取一屏。counts 是全库口径（「未看 2292」），groups 只有这一页——
+   两个数并排显示时看起来像自相矛盾，实际是两个口径，所以列表底部要能继续加载。 */
+const FOLLOW_PAGE=300;
+const followPageUrl=offset=>
+  `/api/follow?limit=${FOLLOW_PAGE}&offset=${offset}`
+  +(followFilter?`&status=${followFilter}`:'');
+/* 分组在取回之后做，所以同一个作品可能被这一页的边界切开：
+   前 300 条里有它的一个变体，后 300 条里有另一个。按 release_key 合并，
+   不然界面上会出现两张长得几乎一样的卡。 */
+function mergeFollowGroups(existing,incoming){
+  const byKey=new Map(existing.map(group=>[group.release_key,group]));
+  for(const group of incoming){
+    const seen=byKey.get(group.release_key);
+    if(!seen){byKey.set(group.release_key,group);existing.push(group);continue}
+    const ids=new Set([seen.primary,...seen.variants,...seen.duplicates].map(i=>i.id));
+    for(const item of [group.primary,...group.variants,...group.duplicates]){
+      if(!ids.has(item.id)){seen.variants.push(item);ids.add(item.id)}
+    }
+  }
+  return existing;
+}
+async function loadMoreFollow(button){
+  if(!followData||followBusy)return;
+  followBusy=true;if(button)button.classList.add('busy');
+  try{
+    const next=await api(followPageUrl((followData.offset||0)+FOLLOW_PAGE));
+    followData={...next,
+      groups:mergeFollowGroups([...followData.groups],next.groups||[]),
+      // counts 一直是全库口径，用新的那份即可；offset/has_more 跟着最新一页走。
+      sources:next.sources||followData.sources};
+    renderFollow();
+  }finally{followBusy=false;if(button)button.classList.remove('busy')}
+}
 let followCredentialProviders=new Set();
 /* 上一次检查的结果。检查完页面会整页重画，如果不把结果留在这里，用户看到的就只是
    一次闪烁——他的原话是「完全没返回任何结果」。接口其实每条来源都回了
@@ -2031,9 +2064,14 @@ function renderFollow(){
       :groups.length?'<p class="empty">当前筛选下没有更新</p>'
       :sources.length?'<p class="empty">没有符合条件的更新</p>'
       :`<p class="empty">还没有关注任何来源。<button class="flink" data-follow-manage>去添加</button></p>`}</div>
+    ${followData.has_more?`<div class="followmore">
+      <button class="fbtn" data-follow-more>${icon('refresh-cw')}加载更多</button>
+      <span class="fmeta">已显示 ${visible.length.toLocaleString()} 项</span></div>`:''}
     ${sources.some(source=>source.can_backfill)?`<div class="folderfoot">
       <button class="fbtn" data-follow-older>${icon('refresh-cw')}抓更早的一页</button>
       <span class="fmeta">${esc(followBackfillState(sources))}</span></div>`:''}</div>`;
+  const more=$('#stats').querySelector('[data-follow-more]');
+  if(more)more.onclick=()=>loadMoreFollow(more);
   wireFollowItems();
   wireFollowOlder();
   wireDrag($('#stats').querySelector('.followauthors'));
@@ -2105,7 +2143,7 @@ async function openFollow(push=true,renderForDetail=false){
   $('#managebar').hidden=true;$('#manageTitle').hidden=true;buildEdge();
   $('#stats').innerHTML='<div class="follow"><p class="empty">正在读取…</p></div>';
   const [data,credentials]=await Promise.all([
-    api(`/api/follow?limit=300${followFilter?`&status=${followFilter}`:''}`),
+    api(followPageUrl(0)),
     api('/api/follow/credentials').catch(()=>({providers:[]})),
   ]);
   followData=data;
@@ -3292,8 +3330,25 @@ function orderedEdgeIcons(){
   const byKey=new Map(NAV_CATALOG.map(item=>[item[0],item]));
   return appSettings.sidebarOrder.map(key=>byKey.get(key)).filter(Boolean);
 }
+/* 侧栏顺序跟账本走，不跟浏览器走：在 Windows 上排好，Mac 上就该是同一份。
+   本地那份仍然写，但只当首屏缓存（见 loadSyncedSettings）。
+   写服务端失败不回滚也不打断：reader 会返回 409，本地顺序照样已经生效，
+   只是这次改动不跨机同步——那是只读端的既定约束，不是操作失败。 */
 function saveSidebarSetting(){
   saveSettings();renderSidebarOrderSetting();buildEdge();buildBars();
+  api('/api/settings',{method:'POST',
+    body:JSON.stringify({sidebarOrder:appSettings.sidebarOrder})}).catch(()=>{});
+}
+/* 启动时用账本上的那份纠正本地缓存。
+   不等它回来再画侧栏：侧栏在首屏就要出现，等一个网络往返会闪一下。
+   所以先用本地缓存画，服务端回来后只有真的不一致才重绘。 */
+async function loadSyncedSettings(){
+  let remote=null;
+  try{remote=await api('/api/settings')}catch(_e){return}
+  const order=Array.isArray(remote&&remote.sidebarOrder)?remote.sidebarOrder:null;
+  if(!order||!order.length||order.join(',')===appSettings.sidebarOrder.join(','))return;
+  appSettings.sidebarOrder=order;
+  saveSettings();renderSidebarOrderSetting();buildEdge();buildBars();wireAllDrag();
 }
 function moveSidebarItem(key,targetKey,after=false){
   if(key===targetKey)return;
@@ -4649,4 +4704,5 @@ window.addEventListener('popstate',restoreRoute);
 buildEdge();
 loadSourceStatus()
   .then(buildBars)
-  .then(async()=>{buildEdge();wireAllDrag();await restoreRoute();scheduleStickySurfaces()});
+  .then(async()=>{buildEdge();wireAllDrag();await restoreRoute();scheduleStickySurfaces()})
+  .then(loadSyncedSettings);

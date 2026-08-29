@@ -76,11 +76,19 @@ class ParallelGenerationTests(unittest.TestCase):
         raise AssertionError("找不到落在不同锁片上的两个资产 id")
 
     def test_two_assets_do_not_queue_behind_each_other(self):
-        both_inside = threading.Barrier(2, timeout=5)
+        # 不用 Barrier 双向等待：全量跑的时候机器是满载的，双向等待里任何一边被调度
+        # 器延迟都会让两边一起超时，失败信息还看不出是并发坏了还是机器慢。
+        # 改成单向信号——A 进去后挂住，B 必须能在这期间进来，然后才放 A 走。
+        first_inside, second_inside = threading.Event(), threading.Event()
+        release_first = threading.Event()
+        timeout = 15
 
         def fake_run(command):
-            # 两个线程必须同时到达这里；串行的话先到的会等到 Barrier 超时。
-            both_inside.wait()
+            if not first_inside.is_set():
+                first_inside.set()
+                release_first.wait(timeout)
+            else:
+                second_inside.set()
             Path(command[-1]).write_bytes(b"jpg")
 
         done = []
@@ -93,10 +101,17 @@ class ParallelGenerationTests(unittest.TestCase):
             ]
             for worker in workers:
                 worker.start()
+            self.assertTrue(first_inside.wait(timeout), "第一个生成没有开始")
+            entered = second_inside.wait(timeout)
+            release_first.set()
             for worker in workers:
-                worker.join(8)
+                worker.join(timeout)
 
-        self.assertEqual(len(done), 2, "两个生成都要完成；串行时 Barrier 会先超时")
+        self.assertTrue(
+            entered,
+            "第二个资产在第一个持锁期间进不来——生成锁又变回全局串行了",
+        )
+        self.assertEqual(len(done), 2, "两个生成都要完成")
         self.assertTrue(all(path.is_file() for path in done))
 
     def test_the_same_asset_is_generated_only_once(self):

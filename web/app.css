@@ -1056,7 +1056,7 @@ body.settings-open{overflow:hidden}
 .toast.leaving{opacity:0;transform:translateY(4px);transition:opacity .15s ease,transform .15s ease}
 
 /* ── 审查遮挡 ──
-   共享屏幕 / 录屏 / 截图时的全站内容遮蔽，顶栏开关（#censorBtn）+ body.censor，
+   共享屏幕 / 录屏 / 截图时的全站内容遮蔽，设置项（#censorSetting）+ body.censor，
    默认开启，localStorage 只记用户显式关闭。所有内容图与视频统一重糊 + 重度
    去饱和 + 压暗——只留深灰块，截图管道的审查没有可识别的画面就不会拦整张图；
    不挑页面：卡片、悬停预览、灯箱、沉浸模式、关注流（封面、详情海报、图片墙）
@@ -1736,5 +1736,9 @@ details.fcred{display:block}
 /* 关注页底部的「往回抓」。放在列表末尾而不是顶部：它的语义是「这些之外还有更早的」，
    顶部会让人以为是刷新。 */
 .folderfoot{display:flex;align-items:center;gap:12px;margin:18px 0 0;
+  padding-top:14px;border-top:1px solid var(--line-soft)}
+/* 「加载更多」和「抓更早的一页」是两件事：前者翻本地已有的条目，
+   后者去站点上要更早的。版式共用一套，语义不同不合并。 */
+.followmore{display:flex;align-items:center;gap:12px;margin:18px 0 0;
   padding-top:14px;border-top:1px solid var(--line-soft)}
 .folderfoot .fmeta{margin-left:0}

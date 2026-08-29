@@ -84,6 +84,7 @@ from .catalog_rules import (
 )
 from .web_playlists import q_playlist, q_playlists, w_playlist
 from .web_review import q_review, w_review_auto_apply, w_review_decision
+from .web_settings import q_settings, w_settings
 from .web_resource_sync import (
     clean_resource_orphans,
     source_is_online,
@@ -1797,6 +1798,7 @@ def _post_empty_trash(contract, _body):
 
 
 GET_HANDLERS = {
+    "/api/settings": q_settings,
     "/api/follow": q_follow,
     "/api/follow/credentials": q_follow_credentials,
     "/api/follow/schedule": q_follow_schedule,
@@ -1848,6 +1850,7 @@ POST_HANDLERS = {
     "/api/resource-sync/apply": w_resource_sync_apply,
     "/api/review/auto-apply": w_review_auto_apply,
     "/api/review/decision": w_review_decision,
+    "/api/settings": w_settings,
 }
 
 

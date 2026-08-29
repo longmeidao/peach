@@ -548,6 +548,10 @@ def q_follow(contract, args) -> dict:
         limit = max(1, min(int(args.get("limit") or 200), 1000))
     except (TypeError, ValueError):
         limit = 200
+    try:
+        offset = max(0, int(args.get("offset") or 0))
+    except (TypeError, ValueError):
+        offset = 0
     source = args.get("source")
     source_id = int(source) if str(source or "").isdigit() else None
     requested_item = args.get("item")
@@ -562,10 +566,15 @@ def q_follow(contract, args) -> dict:
         if item_id is not None:
             items = tuple(item for item in store.items_for_item(item_id)
                           if item.source_id in enabled_source_ids and not _excluded_item(item))
+            has_more = False   # 直达详情只取这一组，没有下一页
         else:
-            items = tuple(item for item in store.items(
-                statuses=statuses, source_id=source_id, limit=limit)
-                if item.source_id in enabled_source_ids and not _excluded_item(item))
+            # 多取一条只为判断「还有没有下一页」：过滤和分组都在取回之后做，
+            # 用剩下几条去反推有没有更多会把「这一页恰好全被过滤掉」误判成到底了。
+            page = store.items(statuses=statuses, source_id=source_id,
+                               limit=limit + 1, offset=offset)
+            has_more = len(page) > limit
+            items = tuple(item for item in page[:limit]
+                          if item.source_id in enabled_source_ids and not _excluded_item(item))
         groups = [_group_payload(group) for group in store.group(items)]
         counts = dict(connection.execute(
             "SELECT i.status, count(*) FROM follow_item i"
@@ -606,6 +615,10 @@ def q_follow(contract, args) -> dict:
         "suggestions": suggestions,
         "groups": groups,
         "counts": {status: int(counts.get(status, 0)) for status in _STATUSES},
+        # counts 是全库口径，groups 只是这一页——两个数并排显示过，看起来像自相矛盾。
+        "offset": offset,
+        "limit": limit,
+        "has_more": has_more,
         "providers": sorted(CONNECTORS),
     }
 
