@@ -1155,7 +1155,10 @@ async function openResourceSync(push=true){
   await openStats(false,true);
 }
 
-let tasteWindow='all';
+/* 口味仪表按窗口缓存：数据来自浏览器历史的聚合，会话里几乎不变，
+   每次进页都打接口只会让人盯着「正在分析…」。命中缓存直接渲染；
+   换窗口、导入、移除数据源、显式「读取」才真正打接口并更新缓存。 */
+let tasteWindow='all',tasteCache=new Map(),tasteRequest=0;
 const tasteDate=value=>value?new Date(value).toLocaleDateString('zh-CN'):'—';
 const tasteHours=seconds=>seconds>=3600?(seconds/3600).toFixed(1)+' 小时':Math.round(seconds/60)+' 分钟';
 const tasteRanking=(title,rows,kind,empty='暂无足够证据',panel='tastepanel-half',visual='')=>`<section class="tastepanel ${panel}"><h3>${title}</h3>
@@ -1225,18 +1228,20 @@ function renderTaste(d){
   root.querySelector('[data-taste-refresh]').onclick=async e=>{const button=e.currentTarget;
     button.disabled=true;button.classList.add('busy');
     stateEl.textContent='正在读取 Peach 所在主机的浏览器…';
-    try{const result=await api('/api/taste/refresh',{method:'POST',body:JSON.stringify({window:tasteWindow})});renderTaste(result.dashboard)}
+    try{const result=await api('/api/taste/refresh',{method:'POST',body:JSON.stringify({window:tasteWindow})});
+      tasteCache.set(tasteWindow,result.dashboard);renderTaste(result.dashboard)}
     catch(error){stateEl.textContent=error.message||'读取失败';button.disabled=false;button.classList.remove('busy')}};
   root.querySelector('[data-taste-import]').onclick=()=>file.click();
   file.onchange=async()=>{const selected=file.files[0];if(!selected)return;stateEl.textContent=`正在导入 ${selected.name}…`;
     try{const response=await fetch('/api/taste/import',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Peach-Filename':encodeURIComponent(selected.name)},body:selected});
       const payload=await response.json().catch(()=>null);if(!response.ok)throw new Error(payload?.error||`导入失败（${response.status}）`);
-      tasteWindow='all';renderTaste(payload.dashboard)}catch(error){stateEl.textContent=error.message||'导入失败'}};
+      tasteWindow='all';tasteCache.set('all',payload.dashboard);renderTaste(payload.dashboard)}catch(error){stateEl.textContent=error.message||'导入失败'}};
   root.querySelectorAll('[data-taste-kind]').forEach(button=>button.onclick=()=>openTasteSignal(button.dataset.tasteKind,button.dataset.tasteName));
   root.querySelectorAll('[data-taste-remove]').forEach(button=>button.onclick=async()=>{
     if(!confirm('从口味分析中移除这个数据源？原始导出文件会保留。'))return;
     button.disabled=true;stateEl.textContent='正在移除…';
-    try{const result=await api('/api/taste/source',{method:'POST',body:JSON.stringify({operation:'remove',source_key:button.dataset.tasteRemove,window:tasteWindow})});renderTaste(result.dashboard)}
+    try{const result=await api('/api/taste/source',{method:'POST',body:JSON.stringify({operation:'remove',source_key:button.dataset.tasteRemove,window:tasteWindow})});
+      tasteCache.set(tasteWindow,result.dashboard);renderTaste(result.dashboard)}
     catch(error){stateEl.textContent=error.message||'移除失败';button.disabled=false}});
 }
 async function openTaste(push=true){
@@ -1246,9 +1251,18 @@ async function openTaste(push=true){
   if(push)route('/taste');
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';$('#count').textContent='';
   $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;buildManageBar();
-  $('#stats').innerHTML='<div class="tastepage"><p class="empty">正在分析…</p></div>';
-  try{const data=await api('/api/taste?window='+tasteWindow);if(location.pathname==='/taste')renderTaste(data)}
-  catch(error){$('#stats').innerHTML=`<div class="tastepage"><p class="empty">${esc(error.message||'分析未取得')}</p></div>`}
+  const cached=tasteCache.get(tasteWindow);
+  if(cached)renderTaste(cached);
+  else $('#stats').innerHTML='<div class="tastepage"><p class="empty">正在分析…</p></div>';
+  if(!cached){
+    const request=++tasteRequest;
+    try{const data=await api('/api/taste?window='+tasteWindow);
+      tasteCache.set(tasteWindow,data);
+      if(request===tasteRequest&&location.pathname==='/taste')renderTaste(data)}
+    catch(error){
+      if(request===tasteRequest)$('#stats').innerHTML=
+        `<div class="tastepage"><p class="empty">${esc(error.message||'分析未取得')}</p></div>`}
+  }
   window.scrollTo({top:0,behavior:'smooth'});
 }
 

@@ -1291,13 +1291,16 @@ class WebUiSourceTests(unittest.TestCase):
         """低密度管理页不全宽；语义色与状态徽章对齐 Geist 实测。
 
         Vercel 后台设置列实测约 914px（vercel-geist-semantics-measured.md），
-        统计/口味/复核/高清版限宽居中；首页/关注等浏览页保持全宽。检查失败
-        报告是红发丝边 + 微红底的 danger 语义块，不是左侧粗条；来源行状态
-        用低饱和徽章；清空回收站是销毁类操作，用 danger 色而不是主色实底。
+        统计/口味限宽居中；复核是卡片网格、高清版是宽表格，限宽反而挤压
+        （用户回执），保持全宽。检查失败报告是红发丝边 + 微红底的 danger
+        语义块，不是左侧粗条；来源行状态用低饱和徽章；清空回收站是销毁类
+        操作，用 danger 色而不是主色实底。
         """
-        for surface in ("/stats", "/taste", "/review", "/quality-goals"):
+        for surface in ("/stats", "/taste"):
             self.assertPageContains(f'body[data-surface="{surface}"] #stats')
-        self.assertPageContains("document.body.dataset.surface=path")
+        self.assertPageLacks('body[data-surface="/review"] #stats')
+        self.assertPageLacks('body[data-surface="/quality-goals"] #stats')
+        self.assertPageContains("document.body.dataset.surface=new URL(path,location.origin).pathname")
         # 报告条：danger 语义（红发丝边 + 微红底），不再是左侧粗条。
         self.assertPageContains("background:color-mix(in srgb,var(--drop) 7%,transparent);\n  border:1px solid color-mix(in srgb,var(--drop) 30%,transparent);")
         self.assertPageLacks("border-left:2px solid var(--drop)")
@@ -1308,6 +1311,8 @@ class WebUiSourceTests(unittest.TestCase):
         # 清空回收站：danger 语义色。
         self.assertPageContains('class="batchaction danger" id="emptyTrash"')
         self.assertPageContains(".count .sorts .batchaction.danger{background:transparent;border-color:color-mix(in srgb,var(--drop) 38%,transparent);color:var(--drop)}")
+        # 设置分组用框体隔开（用户回执）：每组建卡，不只是一条分隔线。
+        self.assertPageContains(".settinggroup{margin-top:12px;border:1px solid var(--border-10);border-radius:8px;")
         # 全站字体栈必须有 CJK sans 兜底：Bahnschrift/Consolas 都没有中文字形，
         # generic sans-serif/monospace 在中文 Chrome 的默认可能落到宋体。
         css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
@@ -1317,6 +1322,23 @@ class WebUiSourceTests(unittest.TestCase):
                 continue
             if "sans-serif" in line or "monospace" in line:
                 self.assertIn("YaHei", line, f"app.css:{i} 字体栈缺 CJK 兜底：{line.strip()[:90]}")
+
+    def test_taste_dashboard_is_cached_within_the_session(self):
+        """口味仪表按窗口做会话内缓存，进页不再每次等「正在分析…」。
+
+        口味数据来自浏览器历史聚合，会话里几乎不变；每次切页都打接口只剩
+        等待。命中缓存直接渲染；换窗口、导入、移除数据源和显式「读取」
+        才打接口，并把返回写回缓存。请求带序号：慢响应返回时人已经换到
+        别的窗口或页面，旧数据不能覆盖新渲染。
+        """
+        self.assertPageContains("let tasteWindow='all',tasteCache=new Map(),tasteRequest=0;")
+        self.assertPageContains("const cached=tasteCache.get(tasteWindow);")
+        self.assertPageContains("if(cached)renderTaste(cached);")
+        self.assertPageContains("tasteCache.set(tasteWindow,data);")
+        self.assertPageContains("if(request===tasteRequest&&location.pathname==='/taste')renderTaste(data)")
+        # 三个写路径都更新缓存，别让缓存变陈旧。
+        self.assertPageContains("tasteCache.set(tasteWindow,result.dashboard);renderTaste(result.dashboard)")
+        self.assertPageContains("tasteWindow='all';tasteCache.set('all',payload.dashboard);renderTaste(payload.dashboard)")
 
     def test_no_page_grows_its_own_back_control(self):
         """索引页原本有个返回按钮，现在顶栏入口本身就是返回路径。
