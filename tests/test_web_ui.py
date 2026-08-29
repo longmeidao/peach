@@ -6,12 +6,15 @@ from pathlib import Path
 class WebUiSourceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        # 页面已拆成 index.html + app.css + app.js。这些断言守的是「Web 表面」
-        # 这一个契约，不是某个文件，所以把三份源码接起来一起看。
+        # 页面拆成 index.html + app.css + app.js + web/js 下的 ES module。这些断言
+        # 守的是「Web 表面」这一个契约，不是某个文件，所以把所有源码接起来一起看。
+        # 模块目录用 glob 而不是写死清单：再拆出新模块时不必回头改这里。写死的后果
+        # 是断言悄悄扫不到新文件——它照样「通过」，但什么也没守住。
         web = Path(__file__).resolve().parents[1] / "web"
+        sources = [web / "index.html", web / "app.css", web / "app.js"]
+        sources.extend(sorted((web / "js").glob("*.js")))
         cls.page = chr(10).join(
-            (web / name).read_text(encoding="utf-8")
-            for name in ("index.html", "app.css", "app.js")
+            path.read_text(encoding="utf-8") for path in sources
         )
 
     # 页面源断言必须自带有界失败信息。assertIn 失败时会把整个 index.html（约 189 KB）

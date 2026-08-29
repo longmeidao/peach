@@ -151,6 +151,9 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         (self.logo_root / "Studio_A.img.ct").write_text("image/png", encoding="utf-8")
         self.page = self.root / "index.html"
         self.page.write_text("<!doctype html><title>Peach test</title><main>ready</main>", encoding="utf-8")
+        # 前端已拆成 ES module，`/js/{name}` 从页面同级的 js/ 取文件。
+        (self.root / "js").mkdir()
+        (self.root / "js" / "core.js").write_text("export const ok = 1;", encoding="utf-8")
         con = sqlite3.connect(self.db)
         con.executescript(BASE_SCHEMA)
         con.execute(
@@ -253,6 +256,27 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "image/png")
         self.assertTrue(response.content.startswith(b"\x89PNG\r\n\x1a\n"))
+
+    async def test_front_end_modules_are_served_and_the_name_cannot_escape(self):
+        """ES module 拆分之后新增的静态路由。
+
+        路径穿越是静态路由最典型的入口。这里不做 resolve 后比根目录，而是根本不接受
+        分隔符——名字必须是一层平铺的 `[a-z0-9_-]+.js`，别的一律 404。
+        """
+        served = await self.client.get("/js/core.js?t=secret")
+        self.assertEqual(served.status_code, 200)
+        self.assertTrue(served.headers["content-type"].startswith("text/javascript"))
+        self.assertEqual(served.headers["cache-control"], "no-store")
+        self.assertIn("export", served.text, "取回的必须是真的 module")
+
+        for escape in ("..%2f..%2fapp.js", "..%5c..%5csecrets.json", "sub%2fmod.js",
+                       "Core.js", "core.mjs", "core.js.map"):
+            denied = await self.client.get(f"/js/{escape}?t=secret")
+            self.assertEqual(denied.status_code, 404, f"{escape} 不该被提供")
+
+    async def test_front_end_modules_need_the_same_token_as_the_page(self):
+        unauthorized = await self.client.get("/js/core.js")
+        self.assertEqual(unauthorized.status_code, 401)
 
     async def test_follow_avatar_redirects_only_after_the_official_resolver(self):
         denied = await self.client.get("/follow-avatar?service=fanbox&id=30917150")
