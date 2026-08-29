@@ -241,6 +241,20 @@ def create_app(
     app.state.stream_sessions = stream_sessions
     app.state.sync = sync
 
+    # 媒体三异常的统一出口，路由里不再手抄同一组 try/except。
+    # 404/503/404 是逐个异常的状态码契约，不许并成一种。
+    @app.exception_handler(MediaNotFound)
+    def _media_not_found_handler(request: Request, exc: MediaNotFound):
+        return JSONResponse({"error": "no such id"}, status_code=404)
+
+    @app.exception_handler(MediaOffline)
+    def _media_offline_handler(request: Request, exc: MediaOffline):
+        return _offline_response(exc)
+
+    @app.exception_handler(MediaUnavailable)
+    def _media_unavailable_handler(request: Request, exc: MediaUnavailable):
+        return JSONResponse({"error": "unavailable"}, status_code=404)
+
     def require_auth(request: Request) -> dict[str, str]:
         args = _first_query_values(request)
         if not _authorized(request, settings.token, args):
@@ -397,15 +411,8 @@ def create_app(
         args = _first_query_values(request)
         if not _authorized(request, settings.token, args):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
-        try:
-            asset = media_engine.asset(id)
-            path = media_engine.filesystem.file_for(asset, thumbnail=False)
-        except MediaNotFound:
-            return JSONResponse({"error": "no such id"}, status_code=404)
-        except MediaOffline as exc:
-            return _offline_response(exc)
-        except MediaUnavailable:
-            return JSONResponse({"error": "unavailable"}, status_code=404)
+        asset = media_engine.asset(id)
+        path = media_engine.filesystem.file_for(asset, thumbnail=False)
         try:
             path, transcoded = transcode_service.browser_path(
                 id, path, session=session, registry=stream_sessions,
@@ -450,17 +457,10 @@ def create_app(
             return JSONResponse({"error": "invalid session"}, status_code=400)
         if session and stream_sessions.is_cancelled(session):
             return JSONResponse({"error": "stream cancelled"}, status_code=410)
-        try:
-            asset = media_engine.asset(id)
-            plan = media_engine.stream_plan(id, mode=mode or "auto")
-            # 只有真的能读出关键帧才宣告 HLS，否则客户端会拿到一个必然 404 的播放列表。
-            resolved = _hls_plan(id) if plan.protocol == "hls" else None
-        except MediaNotFound:
-            return JSONResponse({"error": "no such id"}, status_code=404)
-        except MediaOffline as exc:
-            return _offline_response(exc)
-        except MediaUnavailable:
-            return JSONResponse({"error": "unavailable"}, status_code=404)
+        asset = media_engine.asset(id)
+        plan = media_engine.stream_plan(id, mode=mode or "auto")
+        # 只有真的能读出关键帧才宣告 HLS，否则客户端会拿到一个必然 404 的播放列表。
+        resolved = _hls_plan(id) if plan.protocol == "hls" else None
         if resolved and session:
             return {
                 "id": id,
@@ -497,10 +497,6 @@ def create_app(
             return PlainTextResponse("stream cancelled", status_code=410)
         try:
             resolved = _hls_plan(id, session)
-        except MediaNotFound:
-            return JSONResponse({"error": "no such id"}, status_code=404)
-        except MediaOffline as exc:
-            return _offline_response(exc)
         except (MediaUnavailable, TranscodeUnavailable):
             return PlainTextResponse("hls unavailable", status_code=404)
         if resolved is None:
@@ -537,12 +533,6 @@ def create_app(
                 source, start, duration, asset_id=id, index=index,
                 session=session, registry=stream_sessions,
             )
-        except MediaNotFound:
-            return JSONResponse({"error": "no such id"}, status_code=404)
-        except MediaOffline as exc:
-            return _offline_response(exc)
-        except MediaUnavailable:
-            return JSONResponse({"error": "unavailable"}, status_code=404)
         except SegmentCancelled:
             return Response(status_code=410, headers={"Cache-Control": "no-store"})
         except TranscodeCancelled:
@@ -575,14 +565,7 @@ def create_app(
         args = _first_query_values(request)
         if not _authorized(request, settings.token, args):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
-        try:
-            path = media_engine.file_for(id, thumbnail=True)
-        except MediaNotFound:
-            return JSONResponse({"error": "no such id"}, status_code=404)
-        except MediaOffline as exc:
-            return _offline_response(exc)
-        except MediaUnavailable:
-            return JSONResponse({"error": "unavailable"}, status_code=404)
+        path = media_engine.file_for(id, thumbnail=True)
         response = FileResponse(path)
         response.headers["Cache-Control"] = "public, max-age=86400"
         return response
@@ -593,14 +576,7 @@ def create_app(
         args = _first_query_values(request)
         if not _authorized(request, settings.token, args):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
-        try:
-            path = media_engine.file_for(id)
-        except MediaNotFound:
-            return JSONResponse({"error": "no such id"}, status_code=404)
-        except MediaOffline as exc:
-            return _offline_response(exc)
-        except MediaUnavailable:
-            return JSONResponse({"error": "unavailable"}, status_code=404)
+        path = media_engine.file_for(id)
         response = FileResponse(path)
         response.headers["Cache-Control"] = "public, max-age=86400"
         return response
@@ -610,14 +586,7 @@ def create_app(
         args = _first_query_values(request)
         if not _authorized(request, settings.token, args):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
-        try:
-            source = media_engine.file_for(id)
-        except MediaNotFound:
-            return JSONResponse({"error": "no such id"}, status_code=404)
-        except MediaOffline as exc:
-            return _offline_response(exc)
-        except MediaUnavailable:
-            return JSONResponse({"error": "unavailable"}, status_code=404)
+        source = media_engine.file_for(id)
         try:
             path = photo_service.thumbnail(id, source)
         except PreviewUnavailable:
