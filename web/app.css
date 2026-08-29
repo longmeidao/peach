@@ -531,7 +531,7 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
   border:1px solid var(--line-soft);border-radius:12px;background:var(--surface)}
 .qualitycover{width:150px;aspect-ratio:16/10;border:0;border-radius:8px;overflow:hidden;background:#000;padding:0;cursor:pointer}
 .qualitycover img{width:100%;height:100%;object-fit:contain;display:block}.qualityitem h3{margin:2px 0 8px;font-size:var(--fs-lg)}
-.qualityitem h3 button{max-width:100%;border:0;background:transparent;padding:0;color:inherit;text-align:left;cursor:pointer;overflow-wrap:anywhere}
+.qualityitem h3 button{max-width:100%;border:0;background:transparent;padding:0;color:inherit;text-align:left;cursor:pointer;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .qualityitem h3 button:hover{color:var(--tungsten)}.qualityitem p{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0;color:var(--muted)}
 .revieworigin{display:grid;grid-template-columns:132px minmax(0,1fr);gap:10px;align-items:center;margin:10px 0;padding:8px;
   border-radius:9px;background:var(--overlay-5)}
@@ -1506,8 +1506,14 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 /* 容器：发丝边 + 比页面亮一档的表面。内部的行不再各自套框。 */
 .fsec{min-width:0;border:1px solid var(--border-10);border-radius:8px;
   background:var(--surface);padding:14px 16px 16px}
+/* 面板上中下异色：头部条与页脚条通到卡边（负边距抵消内边距），
+   头 = 微亮面、主体 = 卡面、页 = hover 底 + 上发丝线；圆角随卡收口。 */
 .fsechead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
-  padding-bottom:11px;margin-bottom:12px;border-bottom:1px solid var(--border-10)}
+  margin:-14px -16px 12px;padding:12px 16px;background:var(--overlay-5);
+  border-bottom:1px solid var(--border-10);border-radius:7px 7px 0 0}
+.fsecfoot{margin:14px -16px -16px;padding:12px 16px 0;background:var(--hover);
+  border-top:1px solid var(--border-10);border-radius:0 0 7px 7px}
+.fsecfoot .fnote{margin:0 0 12px}
 .fsechead h3{margin:0;font-size:var(--fs-md);font-weight:600;letter-spacing:.01em}
 .fsechead .fmeta{flex:1 1 auto}
 .fmeta{font-size:var(--fs-xs);color:var(--muted)}
@@ -1711,6 +1717,8 @@ details.fcred{display:block}
 @media (max-width:1080px){.followmanage{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:640px){
   .fsec{padding:12px 13px 14px}
+  .fsechead{margin:-12px -13px 12px;padding:12px 13px}
+  .fsecfoot{margin:14px -13px -14px;padding:12px 13px 0}
   .faddform{flex-wrap:wrap}
   .faddform .fbtn{flex:1 1 100%}
   .frow{gap:8px}

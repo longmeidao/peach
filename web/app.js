@@ -2395,10 +2395,10 @@ function renderFollowManage(credentials){
         ${broken.length?`<p class="fnote warn">${broken.length} 个来源上次检查失败，原因见对应那一行。</p>`:''}
         ${sources.length?`<div class="frows fsources">${
           followAuthorGroups(sources).map(followAuthorBlock).join('')}</div>
-          ${counts.new?`<p class="fnote fbulkrow">未看 ${counts.new} · 已看 ${counts.seen||0}
+          ${counts.new?`<div class="fsecfoot"><p class="fnote fbulkrow">未看 ${counts.new} · 已看 ${counts.seen||0}
             · 已保存 ${counts.saved||0} · 已忽略 ${counts.ignored||0}
             <span class="fbulk"><button class="fbtn" data-follow-bulk="seen">全部标记已看</button>
-            <button class="fbtn" data-follow-bulk="ignored">全部忽略</button></span></p>`:''}`
+            <button class="fbtn" data-follow-bulk="ignored">全部忽略</button></span></p></div>`:''}`
           :'<p class="fnote">还没有关注任何来源。</p>'}
       </section>
     </div>
