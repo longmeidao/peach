@@ -23,6 +23,7 @@ from .fanbox import FanboxContentError, normalize_fanbox_post
 from . import follow_providers
 from .follow import DEFAULT_MAX_BYTES, FollowSourceError, plain_text, stable_id
 from .follow_secrets import Credential, CredentialError
+from .follow_gofile import GofileExpander
 from .http import CurlCffiTransport, HttpRequest, HttpResponse, HttpTransport, HttpxTransport
 
 
@@ -433,74 +434,15 @@ class _BaseConnector:
         return self.parse_json(response)
 
     def _gofile_media(self, links: list[str]) -> tuple[dict[str, object], ...]:
-        """用用户自己的 GoFile API token 展开文件页，token 永不进入 URL/候选。"""
-        folders = []
-        for link in links:
-            try:
-                parsed = urllib.parse.urlsplit(link)
-            except ValueError:
-                continue
-            host = (parsed.hostname or "").casefold()
-            matched = re.fullmatch(r"/d/([A-Za-z0-9_-]+)", parsed.path.rstrip("/"))
-            if (host == "gofile.io" or host.endswith(".gofile.io")) and matched:
-                folders.append(matched.group(1))
-        if not folders or self.gofile_credential is None:
-            return ()
-        token, = self.gofile_credential.require("api_token")
-        items: list[dict[str, object]] = []
-        seen: set[str] = set()
-        for folder in dict.fromkeys(folders):
-            url = f"https://api.gofile.io/contents/{urllib.parse.quote(folder)}"
-            response = self._get(url, headers={
-                "Accept": "application/json", "Authorization": f"Bearer {token}",
-            }, connector_headers=False)
-            payload = None
-            try:
-                payload = self.parse_json(response)
-            except FollowSourceError:
-                # 非 JSON 的 401/403 仍按凭据拒绝处理；其他状态交给通用错误。
-                pass
-            api_status = payload.get("status") if isinstance(payload, dict) else None
-            if api_status == "error-notPremium":
-                raise FollowSourceError(
-                    "Gofile 文件列表 API 需要 Premium 账户；token 有效，"
-                    "但当前账户套餐不支持此接口")
-            if response.status in (401, 403) or api_status == "error-token":
-                raise CredentialError("Gofile 拒绝了 API token")
-            self._check_status(response)
-            if payload is None:
-                payload = self.parse_json(response)
-            if not isinstance(payload, dict) or payload.get("status") != "ok":
-                raise FollowSourceError("Gofile 文件列表未取得")
-            stack = [payload.get("data")]
-            while stack and len(items) < self.max_items:
-                node = stack.pop()
-                if not isinstance(node, dict):
-                    continue
-                children = node.get("children")
-                if isinstance(children, dict):
-                    stack.extend(reversed(list(children.values())))
-                elif isinstance(children, list):
-                    stack.extend(reversed(children))
-                if str(node.get("type") or "").casefold() != "file":
-                    continue
-                media_type = str(node.get("mimetype") or "").casefold()
-                kind = ("video" if media_type.startswith("video/") else
-                        "image" if media_type.startswith("image/") else "")
-                link = str(node.get("link") or node.get("downloadLink") or "")
-                if not kind or not link.startswith("https://") or link in seen:
-                    continue
-                seen.add(link)
-                items.append({
-                    "id": str(node.get("id") or stable_id(link)),
-                    "name": plain_text(str(node.get("name") or "")) or f"{kind} {len(items)+1}",
-                    "url": link,
-                    "thumb_url": str(node.get("thumbnail") or "") or None,
-                    "media_kind": kind,
-                    "size": node.get("size"),
-                    "resource_provider": "gofile",
-                })
-        return tuple(items)
+        """把帖子里的 Gofile 链接展开成媒体条目；实现见 `follow_gofile`。
+
+        留一个薄委托而不是让连接器直接构造展开器：调用点（f95zone / fanbox）不必知道
+        展开器怎么造，而 Gofile 的 HTTP 细节也不再摊在站点基类里。
+        """
+        return GofileExpander(
+            self.transport, credential=self.gofile_credential,
+            timeout=self.timeout, max_bytes=self.max_bytes, max_items=self.max_items,
+        ).expand(links)
 
 
 class KemonoConnector(_BaseConnector):
