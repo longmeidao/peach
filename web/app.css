@@ -1018,20 +1018,20 @@ body.settings-open{overflow:hidden}
    内边距**里侧**，于是离右边框差着一大截，和桌面 Chromium 的样子也对不上。
    `appearance:none` 关掉系统绘制，用背景图贴住右边框。 */
 .settingrow select{min-width:148px;border:1px solid var(--line);border-radius:var(--control-radius);background:#181a1d;color:#f5f7fa;color-scheme:dark;padding:9px 34px 9px 11px;font:inherit;font-size:var(--fs-md);appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;background-size:16px 16px}.settingrow select:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.settingrow select option{background:#181a1d;color:#f5f7fa}.settingrow input[type=checkbox]{width:20px;height:20px;accent-color:var(--tungsten)}
-.settinggroup{margin-top:16px;border:1px solid var(--line-soft);border-radius:12px;
+.settinggroup{margin:16px -20px 0 0;border:1px solid var(--line-soft);border-radius:12px 0 0 12px;
   background:var(--surface);padding:0 16px 12px}
 .settinggroup>h3{margin:0;padding:14px 0 10px;font-size:var(--fs-lg);font-weight:600;color:var(--ink)}
 .settinggroup .settingrow{margin:0 -16px;padding-left:16px;padding-right:16px}
 /* 布尔开关用 Geist Toggle 而不是原生复选框（取证 vercel-geist-semantics-measured.md）：
    14×28 轨道 + 11px 圆点，关 = 灰轨道圆点靠左，开 = 主题蓝圆点靠右；
    Geist 的「Switch」是分段选择器（radio 语义），布尔开关的正确控件叫 Toggle。 */
-#censorSetting{appearance:none;-webkit-appearance:none;width:28px;height:14px;flex:none;
+#censorSetting{appearance:none;-webkit-appearance:none;width:36px;height:20px;flex:none;
   border-radius:var(--pill-radius);background:var(--line);position:relative;cursor:pointer;margin:0;
   transition:background-color .15s ease}
-#censorSetting::after{content:'';position:absolute;top:1.5px;left:2px;width:11px;height:11px;
+#censorSetting::after{content:'';position:absolute;top:1.5px;left:2px;width:17px;height:17px;
   border-radius:50%;background:rgba(237,237,237,.84);transition:left .15s ease}
 #censorSetting:checked{background:var(--tungsten)}
-#censorSetting:checked::after{left:15px}
+#censorSetting:checked::after{left:17px}
 #censorSetting:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .sidebarsetting{display:grid;gap:12px;padding:0}.sidebarsetting>span b,.sidebarsetting>span small{display:block}.sidebarsetting>span small{margin-top:3px;color:var(--muted);line-height:1.45}.sidebarorder{display:grid;gap:6px}.sidebarorderrow{position:relative;display:flex;align-items:center;justify-content:space-between;min-height:48px;padding:5px 6px;border:1px solid var(--line-soft);border-radius:9px;background:var(--overlay-3);cursor:grab}.sidebarorderrow:active{cursor:grabbing}.sidebarorderrow.dragging{opacity:.42}.sidebarorderrow.drop-before::before,.sidebarorderrow.drop-after::after{content:'';position:absolute;z-index:2;left:7px;right:7px;height:2px;border-radius:2px;background:var(--tungsten)}.sidebarorderrow.drop-before::before{top:-5px}.sidebarorderrow.drop-after::after{bottom:-5px}.sidebarorderrow>span{display:flex;align-items:center;gap:8px}.sidebarorderrow svg{width:18px;height:18px;stroke:currentColor;fill:none}.sidebarorderlabel{min-width:0}.sidebarorderlabel>b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sidebardrag{display:grid;place-items:center;width:24px;color:var(--muted)}.sidebardrag svg{width:20px;height:20px}.sidebarorderactions{flex:none}.sidebarorderrow button,.sidebaradd button{display:grid;place-items:center;min-width:34px;height:34px;border:0;border-radius:7px;background:transparent;color:var(--muted);cursor:pointer}.sidebarorderrow button:hover:not(:disabled),.sidebaradd button:hover:not(:disabled){background:var(--hover);color:var(--ink)}.sidebarorderrow button:disabled,.sidebaradd button:disabled{opacity:.25;cursor:default}.sidebaradd{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:5px}
 .sidebaraddfield{position:relative;display:grid}
@@ -1039,7 +1039,7 @@ body.settings-open{overflow:hidden}
   color:var(--muted);pointer-events:none;display:grid;place-items:center}
 .sidebaraddfield>i svg{width:16px;height:16px;stroke:currentColor;fill:none;
   stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.sidebaraddfield select{padding-left:34px}.sidebaradd select{min-width:0;border:1px solid var(--line);border-radius:8px;background:#181a1d;color:#f5f7fa;color-scheme:dark;padding:9px 34px 9px 11px;font:inherit;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;background-size:16px 16px}.sidebaradd button{grid-template-columns:auto auto;gap:6px;padding:0 11px;border:1px solid var(--line);color:var(--ink-2)}.sidebaradd svg{width:17px;height:17px;stroke:currentColor;fill:none}
+.sidebaradd .sidebaraddfield select{padding-left:34px}.sidebaradd select{min-width:0;border:1px solid var(--line);border-radius:8px;background:#181a1d;color:#f5f7fa;color-scheme:dark;padding:9px 34px 9px 11px;font:inherit;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;background-size:16px 16px}.sidebaradd button{grid-template-columns:auto auto;gap:6px;padding:0 11px;border:1px solid var(--line);color:var(--ink-2)}.sidebaradd svg{width:17px;height:17px;stroke:currentColor;fill:none}
 .sidebaradd select,.sidebaradd button{height:42px;box-sizing:border-box}.sidebaradd select{padding-top:0;padding-bottom:0}
 @media(max-width:600px){.settingsscroll{padding:0 17px 17px}.settingshead{padding-top:17px}.settingrow{grid-template-columns:1fr;gap:9px}.settingrow select{width:100%;min-width:0}.settingrow input[type=checkbox]{justify-self:start}}
 

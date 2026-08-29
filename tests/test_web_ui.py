@@ -1329,12 +1329,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(slot)slot.innerHTML=icon(addIconOf(select.value))")
         # 设置分组用框体隔开（用户回执）：每组建卡，分隔线顶格到卡边，
         # 标题字号与行内边距对齐 Vercel 后台设置卡。
-        self.assertPageContains(".settinggroup{margin-top:16px;border:1px solid var(--line-soft);border-radius:12px;")
+        self.assertPageContains(".settinggroup{margin:16px -20px 0 0;border:1px solid var(--line-soft);border-radius:12px 0 0 12px;")
         # 组卡面与全站卡片同源（--surface 实底），不用白色透明叠加。
         self.assertPageContains("background:var(--surface);padding:0 16px 12px}")
         # 布尔开关是 Geist Toggle（14×28 轨道 + 圆点），不是原生复选框；
         # Geist 的 Switch 是分段选择器，别用错控件。
-        self.assertPageContains("#censorSetting{appearance:none;-webkit-appearance:none;width:28px;height:14px;flex:none;")
+        self.assertPageContains("#censorSetting{appearance:none;-webkit-appearance:none;width:36px;height:20px;flex:none;")
         self.assertPageContains("#censorSetting:checked{background:var(--tungsten)}")
         self.assertPageContains(".settinggroup>h3{margin:0;padding:14px 0 10px;font-size:var(--fs-lg);font-weight:600;color:var(--ink)}")
         self.assertPageContains(".settinggroup .settingrow{margin:0 -16px;padding-left:16px;padding-right:16px}")
