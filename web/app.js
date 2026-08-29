@@ -3292,8 +3292,25 @@ function orderedEdgeIcons(){
   const byKey=new Map(NAV_CATALOG.map(item=>[item[0],item]));
   return appSettings.sidebarOrder.map(key=>byKey.get(key)).filter(Boolean);
 }
+/* 侧栏顺序跟账本走，不跟浏览器走：在 Windows 上排好，Mac 上就该是同一份。
+   本地那份仍然写，但只当首屏缓存（见 loadSyncedSettings）。
+   写服务端失败不回滚也不打断：reader 会返回 409，本地顺序照样已经生效，
+   只是这次改动不跨机同步——那是只读端的既定约束，不是操作失败。 */
 function saveSidebarSetting(){
   saveSettings();renderSidebarOrderSetting();buildEdge();buildBars();
+  api('/api/settings',{method:'POST',
+    body:JSON.stringify({sidebarOrder:appSettings.sidebarOrder})}).catch(()=>{});
+}
+/* 启动时用账本上的那份纠正本地缓存。
+   不等它回来再画侧栏：侧栏在首屏就要出现，等一个网络往返会闪一下。
+   所以先用本地缓存画，服务端回来后只有真的不一致才重绘。 */
+async function loadSyncedSettings(){
+  let remote=null;
+  try{remote=await api('/api/settings')}catch(_e){return}
+  const order=Array.isArray(remote&&remote.sidebarOrder)?remote.sidebarOrder:null;
+  if(!order||!order.length||order.join(',')===appSettings.sidebarOrder.join(','))return;
+  appSettings.sidebarOrder=order;
+  saveSettings();renderSidebarOrderSetting();buildEdge();buildBars();wireAllDrag();
 }
 function moveSidebarItem(key,targetKey,after=false){
   if(key===targetKey)return;
@@ -4649,4 +4666,5 @@ window.addEventListener('popstate',restoreRoute);
 buildEdge();
 loadSourceStatus()
   .then(buildBars)
-  .then(async()=>{buildEdge();wireAllDrag();await restoreRoute();scheduleStickySurfaces()});
+  .then(async()=>{buildEdge();wireAllDrag();await restoreRoute();scheduleStickySurfaces()})
+  .then(loadSyncedSettings);

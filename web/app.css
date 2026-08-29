@@ -1056,7 +1056,7 @@ body.settings-open{overflow:hidden}
 .toast.leaving{opacity:0;transform:translateY(4px);transition:opacity .15s ease,transform .15s ease}
 
 /* ── 审查遮挡 ──
-   共享屏幕 / 录屏 / 截图时的全站内容遮蔽，顶栏开关（#censorBtn）+ body.censor，
+   共享屏幕 / 录屏 / 截图时的全站内容遮蔽，设置项（#censorSetting）+ body.censor，
    默认开启，localStorage 只记用户显式关闭。所有内容图与视频统一重糊 + 重度
    去饱和 + 压暗——只留深灰块，截图管道的审查没有可识别的画面就不会拦整张图；
    不挑页面：卡片、悬停预览、灯箱、沉浸模式、关注流（封面、详情海报、图片墙）
