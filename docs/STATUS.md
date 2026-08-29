@@ -115,6 +115,8 @@
 11. 继续拆分 `web_contract.py` 的 catalog、stats、activity、review、trash 领域，保持路由和现有契约测试不变。
 12. 补做 HLS 首帧、seek、自适应码率及桌面/手机视觉验收。
 13. 外置盘挂载后先只读盘点 `R:\Media\<名字>\P\...` 图片规模；扫描写真 ledger，需另行授权。
+14. 重做品味分析页的视觉再决定是否合入：`agent/codex/taste-analysis`（cd3effe）功能可用但版式不过关，2026-08-29 集成时按用户判断跳过。重做时以该分支的 `taste_history.py` 分析逻辑为底，版式另出。
+15. 清退三个已无合入价值的分支，删除前逐个确认：`agent/claude/dup-keeper-options`（重复页的留 115／留 PikPak／整组回收／完整路径已由 master 等价实现且更完整）、`agent/claude/follow-panel-batch`（关注页已改为多选标签与 mixstack 卡片，分支是单选＋列表旧版；其证据文档已单独取入 master）、`agent/ox/ox-windows-jav-readonly`（相对 master 零差异）。`preserve/windows-review-ads-20260822` 是归档分支，不在清退范围。
 
 ## 批处理进度（自动生成）
 
