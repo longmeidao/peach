@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import html
 import json
 import re
 import urllib.parse
@@ -894,7 +895,10 @@ class Rule34XxxConnector(_BaseConnector):
 
     def _candidate(self, post: dict, tag: str) -> FollowCandidate:
         post_id = str(post.get("id") or "")
-        tags = str(post.get("tags") or "")
+        # dapi 返回的标签是 HTML 转义形态（实测 `miqo&#039;te`）。实体不反转义
+        # 就进 metadata，读取层再转一次就成了双重转义，用户看到的就是 `&#039;`
+        # 字面量，同一个标签还会和反转义后的写法分裂成两个身份。
+        tags = html.unescape(str(post.get("tags") or ""))
         image = str(post.get("image") or "")
         stem = re.sub(r"\.[a-z0-9]{2,5}$", "", image, flags=re.IGNORECASE)
         # booru 帖子没有标题。实测 rule34.xxx 的 `image` 全是 32 位十六进制哈希，
@@ -909,7 +913,10 @@ class Rule34XxxConnector(_BaseConnector):
             title_from, title_is_name = "tags", False
         # 出处比站内父帖强得多：实测 15 条 parent_id 全是 0，而 13 条有 source，
         # 其中 4 条指向同一个 fanbox 帖——那才是真正的同组信号，而且跨站可比。
+        # source 是站点转义过的 URL（`&amp;` 代替 `&`），反转义后才是真实地址；
+        # 归组键只取 path，query 里的实体不影响既有分组的稳定性。
         source = post.get("source")
+        source = html.unescape(str(source)) if source else None
         parent = post.get("parent_id")
         hint = origin_group_key(str(source) if source else None)
         if hint is None:

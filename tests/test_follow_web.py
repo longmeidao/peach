@@ -181,6 +181,27 @@ class FollowContractTests(unittest.TestCase):
         self.assertNotIn("media_url", payload)
         self.assertIn('"has_media"', payload)
 
+    def test_feed_unescapes_html_entities_in_tags_and_titles(self):
+        """关注出口的标签与标题统一反转义。
+
+        rule34.xxx 的 dapi 曾把 `miqo&#039;te` 这类 HTML 转义形态直接写进
+        metadata，页面转义后用户看到的就是 `&#039;` 字面量，同一个标签还会和
+        反转义后的写法分裂成两个身份。出口归一是幂等的：旧行不修账本也能正常
+        显示与筛选，新入库由连接器反转义，不再产生脏数据。
+        """
+        self._seed(candidates=(
+            FollowCandidate(provider="rule34xxx", external_id="18534401",
+                            title="barnabas&#039; mother · biting lip",
+                            url="https://rule34.xxx/index.php?page=post&s=view&id=18534401",
+                            extra={"tags": "miqo&#039;te y&#039;shtola barnabas&#039;_mother"}),
+        ), provider="rule34xxx", ref="final_fantasy")
+        item = self._get()["groups"][0]["primary"]
+        self.assertEqual(item["tags"], ["miqo'te", "y'shtola", "barnabas'_mother"])
+        self.assertEqual(item["tag_types"],
+                         {"miqo'te": "general", "y'shtola": "general",
+                          "barnabas'_mother": "general"})
+        self.assertEqual(item["title"], "barnabas' mother · biting lip")
+
     def test_external_file_pages_are_exposed_without_leaking_raw_media_urls(self):
         self._seed(candidates=(FollowCandidate(
             provider="f95zone", external_id="21435166", title="InitialA Collection",
@@ -1438,6 +1459,11 @@ class FollowWebSourceTests(unittest.TestCase):
                          ["deep throat", "breast squeeze", "Final Fantasy"])
         self.assertEqual(web_follow._item_tags(_Item({})), [])
         self.assertEqual(web_follow._item_tags(_Item({"tags": "   "})), [])
+        # rule34.xxx 旧行存的是 HTML 转义形态；出口归一后与反转义的新写法
+        # 是同一个身份，脏/净并存的重复项也合并成一个。
+        legacy = web_follow._item_tags(
+            _Item({"tags": "miqo&#039;te y&#039;shtola miqo&#039;te"}))
+        self.assertEqual(legacy, ["miqo'te", "y'shtola"])
         # 热门帖能带上百个标签，整串发下去会把筛选条撑爆。
         many = _Item({"tags": " ".join(f"t{n}" for n in range(200))})
         self.assertEqual(len(web_follow._item_tags(many)), web_follow.MAX_ITEM_TAGS)

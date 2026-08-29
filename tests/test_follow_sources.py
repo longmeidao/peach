@@ -903,6 +903,29 @@ class Rule34XxxConnectorTests(unittest.TestCase):
         for noise in ("lazyprocrastinator", "video", "sound"):
             self.assertNotIn(noise, first.title)
 
+    def test_dapi_tags_and_source_urls_are_unescaped(self):
+        """dapi 返回的标签和出处 URL 是 HTML 转义形态，入库前必须反转义。
+
+        线上实测（2026-08-29）：rule34.xxx 的 JSON 里标签写作 `miqo&#039;te`、
+        出处 URL 里 `&amp;` 代替 `&`。实体原样进 metadata，页面转义后用户看到
+        的就是 `&#039;` 字面量（生产账本 131 行中招），同一个标签还会和反转义
+        后的写法分裂成两个身份。归组键只取 path，query 里的实体不影响分组。
+        """
+        body = json.dumps([{
+            "id": 18534501, "image": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6.jpg",
+            "parent_id": 0,
+            "tags": "miqo&#039;te y&#039;shtola final_fantasy",
+            "change": 1787445400,
+            "file_url": "https://api-cdn.rule34.xxx/images/1232/miqo.jpg",
+            "source": "https://porn3dx.com/post/42957/aranea?list_type=key&amp;sort=new",
+        }]).encode()
+        candidate = self._connector(body=body).fetch("final_fantasy").candidates[0]
+        self.assertEqual(candidate.extra["tags"], "miqo'te y'shtola final_fantasy")
+        self.assertNotIn("&#039;", candidate.title)
+        self.assertEqual(
+            candidate.extra["source"],
+            "https://porn3dx.com/post/42957/aranea?list_type=key&sort=new")
+
 
     def test_authentication_rejection_is_reported_as_a_credential_error(self):
         connector = self._connector(

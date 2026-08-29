@@ -6,6 +6,7 @@ APScheduler 任务触发。
 """
 from __future__ import annotations
 
+import html
 import json
 import os
 import re
@@ -64,6 +65,10 @@ def _item_tags(item) -> list[str]:
     rule34.xxx 存空格分隔标签；Rule34Video 详情页存保留空格的标签列表和分类列表。
     kemono 系与 f95zone 的列表接口不给标签，所以它们是空列表。
 
+    实体在这里统一反转义：rule34.xxx 的 dapi 曾把 `miqo&#039;te` 这类转义形态
+    直接写进 metadata，归一后旧行照常显示与筛选，也和反转义后的新写法并成
+    同一个身份。unescape 是幂等的，对已干净的标签不起作用。
+
     去掉作者手柄本身：按作者筛已经有专门的筛选条，标签里再出现一次没有信息量。
     """
     raw = item.metadata.get("tags")
@@ -76,7 +81,8 @@ def _item_tags(item) -> list[str]:
     categories = item.metadata.get("categories")
     if isinstance(categories, list):
         values.extend(str(value).strip() for value in categories if str(value).strip())
-    subject = str(item.metadata.get("tag") or "").casefold()
+    values = [html.unescape(value) for value in values]
+    subject = html.unescape(str(item.metadata.get("tag") or "")).casefold()
     seen, tags = set(), []
     for tag in values:
         key = tag.casefold()
@@ -209,7 +215,9 @@ def _item_payload(item) -> dict:
         "source_id": item.source_id,
         "source_label": item.source_label,
         "external_id": item.external_id,
-        "title": item.title,
+        # 旧 rule34xxx 行的标题由带实体的标签拼成（`barnabas&#039; mother`）；
+        # 出口统一反转义，与 _item_tags 同一处理，unescape 幂等。
+        "title": html.unescape(item.title) if item.title else item.title,
         "author": item.metadata.get("author") or None,
         "summary": item.metadata.get("summary") or None,
         "url": item.url,
