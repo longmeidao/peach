@@ -20,7 +20,13 @@ const pageTitle=path=>{
     ? parts.slice(1).join('/') : fixed[parts[0]];
   return label?`${label} · Peach`:'Peach · 蜜桃';
 };
-const syncPageTitle=path=>{document.title=pageTitle(path)};
+/* 路由同时把页面表面写进 body[data-surface]：限宽等按表面生效的版式
+   （管理页不全宽）靠它切换，不用每个渲染函数自己记得加类。
+   调用方有传 path 也有传 href 的，这里统一归一成 pathname。 */
+const syncPageTitle=path=>{
+  document.title=pageTitle(path);
+  document.body.dataset.surface=new URL(path,location.origin).pathname;
+};
 const STATE_ROUTES={fresh:'/unseen',later:'/watch-later',flagged:'/flagged'};
 const ROUTE_STATES=Object.fromEntries(Object.entries(STATE_ROUTES).map(([state,path])=>[path,state]));
 const STATE_LABELS={fresh:'没看过',later:'稍后看',flagged:'已标记'};
@@ -165,7 +171,8 @@ $('#followScheduleSetting').onchange=async e=>{
 const SRCICON={
   local:icon('hard-drive'),
   '115':'<img class="source-icon" src="/logo?studio=115" alt="" onerror="this.remove()">',
-  pikpak:'<img class="source-icon" src="/logo?studio=pikpak" alt="" onerror="this.remove()">',
+  // PikPak 官方触屏图标（取证 follow-source-icons-measured.md）；/logo 的生成 logo 不对版。
+  pikpak:'<img class="source-icon" src="https://mypikpak.com/apple-touch-icon.png" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">',
   online:icon('globe'),
 };
 const srcBadge=(loc,cost,cls)=>{const label=`${LOC[loc]||loc}${cost==='metered'?' · 计费':''}`;
@@ -944,7 +951,7 @@ function renderCount(){
     `<span class="mono">${total.toLocaleString()} 个符合 · 显示 ${n}</span>`
     +(state.state==='trash'
       // 回收站是待清理队列，不是浏览列表：换一批和九种排序在这里没有意义。
-      ? `<span class="sorts"><button class="batchaction" id="emptyTrash" title="永久删除回收站内容">清空回收站</button></span>`
+      ? `<span class="sorts"><button class="batchaction danger" id="emptyTrash" title="永久删除回收站内容">清空回收站</button></span>`
       : `<span class="sorts">`
         // 顶栏已有「换一批推荐」（#refresh），排序行不再放同一个动作；
         // 版式按钮跟排序连成一条。
@@ -2208,6 +2215,9 @@ function followAuthorBlock(group){
 function followSourceRow(source){
   const state=source.last_status||'未检查';
   const bad=state==='error'||state==='unauthorized';
+  /* 状态用 Geist 的低饱和徽章（取证 vercel-geist-semantics-measured.md）：
+     行级状态不上实底彩色，ok 绿 tint、失败红 tint、未检查灰。 */
+  const badge=state==='ok'?'ok':bad?'error':'none';
   return `<div class="frow fsource${bad?' bad':''}${source.enabled?'':' disabled'}">
     <label class="fchannelcheck" title="${source.enabled?'参与检查更新':'暂停检查更新'}">
       <input type="checkbox" data-follow-enabled="${source.id}" ${source.enabled?'checked':''}
@@ -2218,7 +2228,7 @@ function followSourceRow(source){
       rel="noreferrer noopener" title="打开原来源">${esc(source.label)}</a></b>
     <span class="fmeta fprovider">${sourceIcon(source.provider)}${esc(source.provider_label)}</span>
     <span class="fmeta fchecked">${esc(source.last_checked_at?localTime(source.last_checked_at):'未检查')}</span>
-    <span class="fmeta fstatus${bad?' warn':''}">${esc(state)}</span>
+    <span class="sbadge ${badge}">${esc(state)}</span>
     <span class="fsourceactions">
       <button class="frowicon" data-follow-check="${source.id}" title="检查更新"
         ${source.enabled?'':'disabled'}
@@ -2343,10 +2353,10 @@ function renderFollowManage(credentials){
         ${broken.length?`<p class="fnote warn">${broken.length} 个来源上次检查失败，原因见对应那一行。</p>`:''}
         ${sources.length?`<div class="frows fsources">${
           followAuthorGroups(sources).map(followAuthorBlock).join('')}</div>
-          ${counts.new?`<p class="fnote">未看 ${counts.new} · 已看 ${counts.seen||0}
-            · 已保存 ${counts.saved||0} · 已忽略 ${counts.ignored||0}</p>
-            <div class="fbulk"><button class="fbtn" data-follow-bulk="seen">全部标记已看</button>
-            <button class="fbtn" data-follow-bulk="ignored">全部忽略</button></div>`:''}`
+          ${counts.new?`<p class="fnote fbulkrow">未看 ${counts.new} · 已看 ${counts.seen||0}
+            · 已保存 ${counts.saved||0} · 已忽略 ${counts.ignored||0}
+            <span class="fbulk"><button class="fbtn" data-follow-bulk="seen">全部标记已看</button>
+            <button class="fbtn" data-follow-bulk="ignored">全部忽略</button></span></p>`:''}`
           :'<p class="fnote">还没有关注任何来源。</p>'}
       </section>
     </div>
@@ -4547,22 +4557,21 @@ $('#refresh').onclick=async()=>{const b=$('#refresh');
   try{await refreshAll()}finally{b.classList.remove('busy')}};
 
 /* ── 审查遮挡 ──
-   共享屏幕 / 录屏 / 截图时把全站内容画面盖住：封面与预览图一旦以原始画面
-   进截图，截图管道的审查就会拦下整张图。所以默认遮挡，localStorage 只记
-   「用户显式关掉」（'0'）这一种状态；从没动过开关的新会话一律先盖住。
-   开启时顺手撤掉正在飞的悬停预览——动起来的画面比静帧更漏。悬停预览的
-   启动路径也查这个开关，遮挡期间不再拉流。 */
+   共享屏幕 / 录屏 / 截图时把全站内容画面盖住。开关在设置面板（安全组），
+   默认关闭：日常浏览不需要遮挡；只在「用会审查内容的模型做截图或视觉
+   测试」的会话里打开（项目规则见 AGENTS.md）。开启时顺手撤掉正在飞的
+   悬停预览——动起来的画面比静帧更漏。悬停预览的启动路径也查这个开关，
+   遮挡期间不再拉流。 */
 const CENSOR_KEY='peach-censor';
 const censorOn=()=>document.body.classList.contains('censor');
 function applyCensor(on){
   document.body.classList.toggle('censor',on);
-  const b=$('#censorBtn');
-  b.setAttribute('aria-pressed',String(on));
-  b.title=on?'审查遮挡：开启中，点击恢复画面':'审查遮挡：已恢复画面，共享屏幕或截图前请重新开启';
+  const box=$('#censorSetting');
+  if(box)box.checked=on;
 }
-applyCensor(localStorage.getItem(CENSOR_KEY)!=='0');
-$('#censorBtn').onclick=()=>{
-  const on=!censorOn();
+applyCensor(localStorage.getItem(CENSOR_KEY)==='1');
+$('#censorSetting').onchange=e=>{
+  const on=e.target.checked;
   localStorage.setItem(CENSOR_KEY,on?'1':'0');
   applyCensor(on);
   if(on)releaseHoverPreviews();

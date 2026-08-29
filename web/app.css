@@ -10,7 +10,7 @@
   --line:#D9DDE4; --line-soft:#E8EBF0;
   --ink:#14161A; --ink-2:#454B55; --muted:#767C87;
   --tungsten:#0095F6; --tungsten-soft:#DCEEFD;
-  --loupe:#127A72; --keep:#2E7D32; --meter:#B26A10; --drop:#C0392B;
+  --loupe:#127A72; --keep:#2E7D32; --meter:#B26A10; --drop:#C0392B; --success:#2E7D32;
   --tile:336px; --topH:56px; --filterH:58px; --sortH:53px; --railW:72px;
   /* 圆角也是有词汇的，不是随手挑一个数。
      --pill:整圆，只给真正的胶囊——标签、筛选令牌、滚动条和进度条这类连续的条。
@@ -37,7 +37,7 @@
   --tungsten:#0095F6; --tungsten-soft:#0A2B45;
   --frost-panel:rgba(6,9,14,.94); --frost-light:rgba(14,18,24,.90);
   --overlay-5:rgba(245,250,255,.05);--border-10:rgba(245,250,255,.10);--border-15:rgba(245,250,255,.15);
-  --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --ambient-opacity:1;}}
+  --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --success:#5FB95F; --ambient-opacity:1;}}
 :root[data-theme="dark"]{
   --ground:#020408; --surface:#0C0F14; --sunk:#0B0D11; --hover:rgba(255,255,255,.07);
   --line:#3A3A3D; --line-soft:#2C2C30;
@@ -45,7 +45,7 @@
   --tungsten:#0095F6; --tungsten-soft:#0A2B45;
   --frost-panel:rgba(6,9,14,.94); --frost-light:rgba(14,18,24,.90);
   --overlay-5:rgba(245,250,255,.05);--border-10:rgba(245,250,255,.10);--border-15:rgba(245,250,255,.15);
-  --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --ambient-opacity:1;}
+  --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --success:#5FB95F; --ambient-opacity:1;}
 
 *,*::before,*::after{box-sizing:border-box}
 html{color-scheme:light;scroll-padding-top:calc(var(--topH) + 8px)}
@@ -69,7 +69,7 @@ body::before{content:"";position:absolute;z-index:0;pointer-events:none;top:var(
 @keyframes ambient-in{from{opacity:0}to{opacity:var(--ambient-opacity)}}
 .disp{font-family:Bahnschrift,"Segoe UI Variable Display","Microsoft YaHei UI",sans-serif;
   font-weight:600;letter-spacing:.02em}
-.mono{font-family:"Cascadia Mono",Consolas,ui-monospace,monospace;
+.mono{font-family:"Cascadia Mono",Consolas,ui-monospace,"Microsoft YaHei UI","PingFang SC",monospace;
   font-variant-numeric:tabular-nums;font-size:var(--fs-xs)}
 button,input,textarea{font:inherit;color:inherit}
 button,a,input,textarea,select,summary{touch-action:manipulation}
@@ -113,7 +113,7 @@ button.busy>svg{animation:peach-spin .8s linear infinite}
 .ib[aria-pressed="true"]{color:var(--tungsten);background:var(--tungsten-soft)}
 .brand{display:flex;align-items:center;gap:9px;flex:none;text-decoration:none;color:inherit;height:32px}
 .mark{width:28px;height:28px;flex:none;display:block;object-fit:contain}
-.brand h1{font-family:Bahnschrift,"Segoe UI Variable Display",sans-serif;font-weight:600;margin:0;font-size:var(--fs-xl);line-height:1;letter-spacing:.08em}
+.brand h1{font-family:Bahnschrift,"Segoe UI Variable Display","Microsoft YaHei UI","PingFang SC",sans-serif;font-weight:600;margin:0;font-size:var(--fs-xl);line-height:1;letter-spacing:.08em}
 .brand .sub{font-size:var(--fs-xs);line-height:1;letter-spacing:.14em;color:var(--muted);padding-top:2px}
 .search{flex:1;max-width:620px;margin:0 auto;display:flex;align-items:center;gap:8px;
   background:var(--surface);border:1px solid var(--line);border-radius:var(--pill-radius);padding:8px 16px;position:relative}
@@ -153,7 +153,7 @@ button.busy>svg{animation:peach-spin .8s linear infinite}
 .av[aria-pressed="true"] .ring{box-shadow:0 0 0 2px var(--tungsten)}
 .av .ring img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .av .ring .ini{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  font-size:var(--fs-xl);color:var(--muted);font-family:Bahnschrift,sans-serif}
+  font-size:var(--fs-xl);color:var(--muted);font-family:Bahnschrift,"Microsoft YaHei UI","Microsoft YaHei","PingFang SC",sans-serif}
 .av .nm{display:block;font-size:var(--fs-xs);color:var(--ink-2);overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap;max-width:76px}
 .av[aria-pressed="true"] .nm{color:var(--tungsten)}
@@ -165,7 +165,7 @@ button.busy>svg{animation:peach-spin .8s linear infinite}
 .brandpill[aria-pressed="true"]{border-color:var(--tungsten);background:var(--tungsten-soft)}
 .brandpill .mk{width:32px;height:32px;border-radius:50%;background:#CFCFCF;flex:none;
   display:flex;align-items:center;justify-content:center;font-size:var(--fs-xs);
-  font-family:Bahnschrift,sans-serif;color:var(--tungsten);overflow:hidden;position:relative}
+  font-family:Bahnschrift,"Microsoft YaHei UI","Microsoft YaHei","PingFang SC",sans-serif;color:var(--tungsten);overflow:hidden;position:relative}
 .brandpill .mk img{position:absolute;inset:3px;width:calc(100% - 6px);height:calc(100% - 6px);
   object-fit:contain;display:block;filter:saturate(.72) brightness(.84);opacity:.9}
 
@@ -197,7 +197,7 @@ button.busy>svg{animation:peach-spin .8s linear infinite}
 .playlistcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.playlistcard{display:grid;grid-template-columns:112px minmax(0,1fr);gap:12px;padding:12px;border:1px solid var(--line-soft);border-radius:12px;background:var(--surface);min-width:0}.playlistcover{position:relative;aspect-ratio:16/10;border:0;border-radius:8px;background:#000;overflow:hidden;padding:0;cursor:pointer}.playlistcover:disabled{cursor:default}.playlistcover img{width:100%;height:100%;object-fit:cover}.playlistcover span{position:absolute;right:5px;bottom:5px;border-radius:5px;background:#000b;color:#fff;padding:3px 6px;font-size:var(--fs-xs)}.playlistmeta{display:grid;align-content:center;gap:6px;min-width:0}.playlistmeta input{min-width:0;width:100%;font-weight:600}.playlistmeta small{color:var(--muted)}.playlistactions{grid-column:1/-1;display:flex;gap:7px;justify-content:flex-end}.playlistactions .danger{color:var(--drop)}
 .playlistdialog{width:min(520px,calc(100vw - 28px));border:1px solid var(--line);border-radius:var(--floating-radius);background:var(--surface);color:var(--ink);padding:0;box-shadow:0 2px 4px #0003,0 24px 80px #000b}.playlistdialog::backdrop{background:#000a;backdrop-filter:blur(5px)}.playlistdialoghead{display:flex;align-items:center;justify-content:space-between;padding:16px 17px;border-bottom:1px solid var(--line-soft)}.playlistdialoghead h2{margin:0;font-size:var(--fs-xl)}.playlistdialoghead button{width:34px;height:34px;border:0;border-radius:var(--control-radius);background:transparent;color:var(--ink);display:grid;place-items:center;cursor:pointer}.playlistdialoghead button:hover{background:var(--hover)}.playlistdialoghead svg{width:19px;height:19px;stroke:currentColor;fill:none}.playlistdialogbody{padding:17px}.playlistpicklist{display:grid;gap:7px;margin-top:16px;max-height:320px;overflow-y:auto;overscroll-behavior:contain}.playlistpickrow{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--border-10);border-radius:var(--control-radius);background:var(--overlay-5);color:var(--ink);padding:11px 12px;text-align:left;cursor:pointer}.playlistpickrow:hover{border-color:var(--tungsten)}.playlistpickrow small{color:var(--muted)}
 .runtimegate{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px;padding:10px 12px;border:1px solid color-mix(in srgb,var(--meter) 35%,var(--line));border-radius:var(--control-radius);background:color-mix(in srgb,var(--meter) 8%,var(--surface));color:var(--ink);font-size:var(--fs-sm)}.runtimegate span{flex:1 1 320px;min-width:0}.runtimegate a{flex:0 0 auto;color:var(--ink);font-weight:650;text-decoration:none}.runtimegate a:hover{text-decoration:underline}
-.review{padding:8px 0 42px}.reviewhead{display:flex;align-items:baseline;gap:12px;padding:2px 2px 14px;margin-bottom:14px}.reviewhead h2{margin:0;font-size:var(--fs-xl)}.reviewtabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:18px;scrollbar-width:none}.reviewtabs::-webkit-scrollbar{display:none}.reviewtabs button{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:7px 14px;cursor:pointer;font-size:var(--fs-sm);white-space:nowrap}.reviewtabs button:hover{border-color:var(--tungsten);color:var(--ink)}.reviewtabs button[aria-pressed="true"]{background:var(--tungsten-soft);border-color:var(--tungsten);color:var(--tungsten);font-weight:600}.reviewtabs .n{color:var(--muted);font-size:var(--fs-xs)}.reviewsection{margin-bottom:20px}.reviewsection h3{margin:0 0 9px;font-size:var(--fs-lg)}.reviewlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px}
+.review{padding:8px 0 42px}.reviewhead{display:flex;align-items:baseline;gap:12px;padding:2px 2px 0;margin-bottom:12px}.reviewhead h2{margin:0;font-size:var(--fs-xl)}.reviewtabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:16px;scrollbar-width:none}.reviewtabs::-webkit-scrollbar{display:none}.reviewtabs button{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:7px 14px;cursor:pointer;font-size:var(--fs-sm);white-space:nowrap}.reviewtabs button:hover{border-color:var(--tungsten);color:var(--ink)}.reviewtabs button[aria-pressed="true"]{background:var(--tungsten-soft);border-color:var(--tungsten);color:var(--tungsten);font-weight:600}.reviewtabs .n{color:var(--muted);font-size:var(--fs-xs)}.reviewsection{margin-bottom:20px}.reviewsection h3{margin:0 0 9px;font-size:var(--fs-lg)}.reviewlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px}
 /* 判定状态用左侧色条表达：整卡描边在一列里扫过去时反而认不出来 */
 .reviewitem{position:relative;background:var(--surface);border:1px solid var(--line-soft);border-radius:12px;padding:15px 15px 13px 18px;min-width:0;overflow:hidden}.reviewitem::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:transparent}.reviewitem[data-decision="approved"]::before{background:var(--keep)}.reviewitem[data-decision="rejected"]::before{background:var(--drop)}.reviewitem[data-decision="skipped"]::before{background:var(--muted)}.reviewitem[data-decision="rejected"],.reviewitem[data-decision="skipped"]{opacity:.6}.reviewitem h4{margin:0 0 6px;font-size:var(--fs-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reviewitem p{margin:4px 0;color:var(--muted);font-size:var(--fs-xs);line-height:1.55;overflow-wrap:anywhere}.reviewtags{display:flex;flex-wrap:wrap;gap:5px;margin:9px 0}.reviewtags span{padding:3px 9px;border:1px solid var(--border-15);border-radius:var(--pill-radius);font-size:var(--fs-xs);color:var(--ink-2)}
 /* 唯一候选：纯展示，几何对齐 .revieworigin，不画单选圈。radio 仍在 DOM 里，
@@ -266,7 +266,7 @@ button.busy>svg{animation:peach-spin .8s linear infinite}
   background:var(--sunk);position:relative}
 .icell .ring img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .icell .ring .ini{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  font-size:var(--fs-2xl);color:var(--muted);font-family:Bahnschrift,sans-serif}
+  font-size:var(--fs-2xl);color:var(--muted);font-family:Bahnschrift,"Microsoft YaHei UI","Microsoft YaHei","PingFang SC",sans-serif}
 .icell .nm{font-size:var(--fs-xs);text-align:center;line-height:1.3;word-break:break-all}
 .icell .n{font-size:var(--fs-xs);color:var(--muted)}
 .tagwall{display:flex;flex-wrap:wrap;gap:7px}
@@ -495,7 +495,7 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
    在侧栏里一路点过去就是三种大小；间距由各自的版式决定，字形不再各拍各的。 */
 .pagetitle,.listtitle,.managetitle,.index .ihead h2,.playlistpage h2{
   font-size:var(--fs-2xl);line-height:1.2;letter-spacing:.02em;font-weight:600}
-.listtitle,.managetitle,.follow>.pagetitle{margin:0 0 14px}
+.listtitle,.managetitle,.follow>.pagetitle{margin:0 0 12px}
 .listtitle[hidden],.managetitle[hidden]{display:none}
 .dupsum{color:var(--muted);margin:0 0 12px}
 .dupactions{display:flex;gap:8px;margin-bottom:16px}
@@ -622,6 +622,8 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 .entitycollectionhead .sorts .entitybatch{width:36px;padding:0;display:inline-grid;place-items:center}
 .entitycollectionhead .sorts .entitybatch svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
 .count .sorts .batchaction:hover,.entitycollectionhead .sorts .batchaction:hover{background:color-mix(in srgb,var(--tungsten) 82%,#000);color:#fff}
+.count .sorts .batchaction.danger{background:transparent;border-color:color-mix(in srgb,var(--drop) 38%,transparent);color:var(--drop)}
+.count .sorts .batchaction.danger:hover{background:color-mix(in srgb,var(--drop) 10%,transparent);border-color:color-mix(in srgb,var(--drop) 58%,transparent);color:var(--drop)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
 .shorts-inline{grid-column:1/-1;margin:28px 0 8px;padding-top:0}
 .shorts-inline h2{margin:0 0 10px;font-size:var(--fs-lg);display:flex;align-items:center;gap:10px}
@@ -748,7 +750,7 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .mav:hover{box-shadow:0 0 0 2px var(--tungsten)}
 .mav img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .mav .ini{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  font-size:var(--fs-sm);color:var(--muted);font-family:Bahnschrift,sans-serif}
+  font-size:var(--fs-sm);color:var(--muted);font-family:Bahnschrift,"Microsoft YaHei UI","Microsoft YaHei","PingFang SC",sans-serif}
 /* 共演头像叠放：靠左的在上层，hover 时抬到最前，保证每一位都点得到。 */
 .mavstack{display:flex;flex:none;margin-top:2px}
 .mavstack .mav{margin-top:0;box-shadow:0 0 0 2px var(--ground)}
@@ -1016,7 +1018,9 @@ body.settings-open{overflow:hidden}
    内边距**里侧**，于是离右边框差着一大截，和桌面 Chromium 的样子也对不上。
    `appearance:none` 关掉系统绘制，用背景图贴住右边框。 */
 .settingrow select{min-width:148px;border:1px solid var(--line);border-radius:var(--control-radius);background:#181a1d;color:#f5f7fa;color-scheme:dark;padding:9px 34px 9px 11px;font:inherit;font-size:var(--fs-md);appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;background-size:16px 16px}.settingrow select:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.settingrow select option{background:#181a1d;color:#f5f7fa}.settingrow input[type=checkbox]{width:20px;height:20px;accent-color:var(--tungsten)}
-.sidebarsetting{display:grid;gap:12px;padding:14px 0 0;border-top:1px solid var(--line-soft)}.sidebarsetting>span b,.sidebarsetting>span small{display:block}.sidebarsetting>span small{margin-top:3px;color:var(--muted);line-height:1.45}.sidebarorder{display:grid;gap:6px}.sidebarorderrow{position:relative;display:flex;align-items:center;justify-content:space-between;min-height:48px;padding:5px 6px;border:1px solid var(--line-soft);border-radius:9px;background:var(--overlay-3);cursor:grab}.sidebarorderrow:active{cursor:grabbing}.sidebarorderrow.dragging{opacity:.42}.sidebarorderrow.drop-before::before,.sidebarorderrow.drop-after::after{content:'';position:absolute;z-index:2;left:7px;right:7px;height:2px;border-radius:2px;background:var(--tungsten)}.sidebarorderrow.drop-before::before{top:-5px}.sidebarorderrow.drop-after::after{bottom:-5px}.sidebarorderrow>span{display:flex;align-items:center;gap:8px}.sidebarorderrow svg{width:18px;height:18px;stroke:currentColor;fill:none}.sidebarorderlabel{min-width:0}.sidebarorderlabel>b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sidebardrag{display:grid;place-items:center;width:24px;color:var(--muted)}.sidebardrag svg{width:20px;height:20px}.sidebarorderactions{flex:none}.sidebarorderrow button,.sidebaradd button{display:grid;place-items:center;min-width:34px;height:34px;border:0;border-radius:7px;background:transparent;color:var(--muted);cursor:pointer}.sidebarorderrow button:hover:not(:disabled),.sidebaradd button:hover:not(:disabled){background:var(--hover);color:var(--ink)}.sidebarorderrow button:disabled,.sidebaradd button:disabled{opacity:.25;cursor:default}.sidebaradd{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:5px}.sidebaradd select{min-width:0;border:1px solid var(--line);border-radius:8px;background:#181a1d;color:#f5f7fa;color-scheme:dark;padding:9px 34px 9px 11px;font:inherit;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;background-size:16px 16px}.sidebaradd button{grid-template-columns:auto auto;gap:6px;padding:0 11px;border:1px solid var(--line);color:var(--ink-2)}.sidebaradd svg{width:17px;height:17px;stroke:currentColor;fill:none}
+.settinggroup>h3{margin:0 0 2px;font-size:var(--fs-sm);font-weight:600;color:var(--ink-2)}
+.settinggroup+.settinggroup{border-top:1px solid var(--line-soft);margin-top:14px;padding-top:14px}
+.sidebarsetting{display:grid;gap:12px;padding:14px 0 0}.sidebarsetting>span b,.sidebarsetting>span small{display:block}.sidebarsetting>span small{margin-top:3px;color:var(--muted);line-height:1.45}.sidebarorder{display:grid;gap:6px}.sidebarorderrow{position:relative;display:flex;align-items:center;justify-content:space-between;min-height:48px;padding:5px 6px;border:1px solid var(--line-soft);border-radius:9px;background:var(--overlay-3);cursor:grab}.sidebarorderrow:active{cursor:grabbing}.sidebarorderrow.dragging{opacity:.42}.sidebarorderrow.drop-before::before,.sidebarorderrow.drop-after::after{content:'';position:absolute;z-index:2;left:7px;right:7px;height:2px;border-radius:2px;background:var(--tungsten)}.sidebarorderrow.drop-before::before{top:-5px}.sidebarorderrow.drop-after::after{bottom:-5px}.sidebarorderrow>span{display:flex;align-items:center;gap:8px}.sidebarorderrow svg{width:18px;height:18px;stroke:currentColor;fill:none}.sidebarorderlabel{min-width:0}.sidebarorderlabel>b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sidebardrag{display:grid;place-items:center;width:24px;color:var(--muted)}.sidebardrag svg{width:20px;height:20px}.sidebarorderactions{flex:none}.sidebarorderrow button,.sidebaradd button{display:grid;place-items:center;min-width:34px;height:34px;border:0;border-radius:7px;background:transparent;color:var(--muted);cursor:pointer}.sidebarorderrow button:hover:not(:disabled),.sidebaradd button:hover:not(:disabled){background:var(--hover);color:var(--ink)}.sidebarorderrow button:disabled,.sidebaradd button:disabled{opacity:.25;cursor:default}.sidebaradd{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:5px}.sidebaradd select{min-width:0;border:1px solid var(--line);border-radius:8px;background:#181a1d;color:#f5f7fa;color-scheme:dark;padding:9px 34px 9px 11px;font:inherit;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;background-size:16px 16px}.sidebaradd button{grid-template-columns:auto auto;gap:6px;padding:0 11px;border:1px solid var(--line);color:var(--ink-2)}.sidebaradd svg{width:17px;height:17px;stroke:currentColor;fill:none}
 .sidebaradd select,.sidebaradd button{height:42px;box-sizing:border-box}.sidebaradd select{padding-top:0;padding-bottom:0}
 @media(max-width:600px){.settingsscroll{padding:0 17px 17px}.settingshead{padding-top:17px}.settingrow{grid-template-columns:1fr;gap:9px}.settingrow select{width:100%;min-width:0}.settingrow input[type=checkbox]{justify-self:start}}
 
@@ -1078,6 +1082,11 @@ body.censor .brand .mark,body.censor .src img,body.censor .ficon{filter:none}
 .edge svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round}
 /* 窄栏从 y=0 贯通到底，顶栏只在右侧内容列里。 */
+/* 低密度管理页不全宽：内容列对齐 Vercel 后台设置卡实测（约 914px，见
+   vercel-geist-semantics-measured.md）；首页/关注等浏览页保持全宽。 */
+body[data-surface="/stats"] #stats,body[data-surface="/taste"] #stats,
+body[data-surface="/review"] #stats,body[data-surface="/quality-goals"] #stats{
+  max-width:1004px;margin-inline:auto}
 body{padding-left:var(--railW)}
 @media (max-width:760px){body{padding-left:0}.edge{display:none}}
 /* 抽屉从窄栏右侧开始，不再盖住窄栏。
@@ -1501,9 +1510,10 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
    检查的失败明细）。Geist 的 toast 处方：失败不能只发 toast——那是转身就丢的
    通知；原因和恢复入口必须留在页面上。左侧红条让「没有更新」和「检查失败」
    不用读文字就能分辨。成功的摘要不再落在这里，整条交给 toast。 */
-.fcheckreport,.fwarn{display:flex;align-items:flex-start;gap:8px;margin:10px 0 0;
-  padding:9px 12px;border-radius:var(--control-radius);
-  background:var(--overlay-5);border-left:2px solid var(--drop);
+.fcheckreport,.fwarn{display:flex;align-items:flex-start;gap:8px;margin:10px 0 14px;
+  padding:10px 12px;border-radius:var(--control-radius);
+  background:color-mix(in srgb,var(--drop) 7%,transparent);
+  border:1px solid color-mix(in srgb,var(--drop) 30%,transparent);
   font-size:var(--fs-sm);line-height:1.7;color:var(--ink-2)}
 .fcheckreport>svg,.fwarn>svg{width:14px;height:14px;flex:none;margin-top:4px;
   stroke:var(--drop);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -1512,9 +1522,16 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fcheckreport b{color:var(--ink);font-variant-numeric:tabular-nums}
 .fcheckfail{color:var(--drop)}
 .fchecknote{color:var(--muted);font-size:var(--fs-xs)}
+/* 行级状态徽章：Geist Badge 的低饱和变体（取证 vercel-geist-semantics-measured.md）。
+   行内状态不上实底彩色——ok 绿 tint、失败红 tint、未检查灰。 */
+.sbadge{display:inline-flex;align-items:center;height:20px;padding:0 8px;flex:none;
+  border-radius:var(--pill-radius);font-size:var(--fs-xs);font-variant-numeric:tabular-nums}
+.sbadge.ok{background:color-mix(in srgb,var(--success) 14%,transparent);color:var(--success)}
+.sbadge.error{background:color-mix(in srgb,var(--drop) 14%,transparent);color:var(--drop)}
+.sbadge.none{background:var(--overlay-5);color:var(--muted)}
 /* 批量动作是 2292 条级别的操作，不是行内文字链接：按钮的边界让「这会改状态」
    在点击前就看得见，也和本页其他 .fbtn（检查全部／去看更新）同一套语言。 */
-.fbulk{display:flex;gap:8px;margin:8px 0 0}
+.fbulk{display:inline-flex;gap:8px;margin-left:10px;vertical-align:middle}
 
 /* 状态标签：四种状态四种颜色，待办和完成一眼分得开。 */
 /* 凭据状态。类名不能叫 `.fstate`——观看页的卡片错误行已经占了那个名字

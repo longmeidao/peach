@@ -783,7 +783,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks(".index .ihead h2{margin:0;font-size:20px;font-weight:500}")
         self.assertPageLacks(".playlistpage h2{margin:0 0 5px;font-size:28px}")
         self.assertPageContains('<h2 class="disp pagetitle">关注</h2>')
-        self.assertPageContains(".listtitle,.managetitle,.follow>.pagetitle{margin:0 0 14px}")
+        self.assertPageContains(".listtitle,.managetitle,.follow>.pagetitle{margin:0 0 12px}")
         self.assertPageContains('id="listTitle" hidden')
 
     def test_immersive_progress_bar_is_reachable_and_draggable(self):
@@ -1262,28 +1262,61 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const canSelect=catalog||entity||path==='/tags'")
         self.assertPageContains("$('#selectMode').hidden=!canSelect;$('#density').hidden=!canDensity;$('#refresh').hidden=!canRefresh")
 
-    def test_censor_obscures_all_content_media_by_default(self):
-        """审查遮挡必须默认开启，且盖住的是全站所有内容图与视频。
+    def test_censor_lives_in_settings_and_stays_off_by_default(self):
+        """审查遮挡在设置面板，默认关闭；导航栏不出现。
 
-        封面和预览图一旦以原始画面进截图，截图管道的内容审查会拦下整张图
-        （关注页实测发生过），所以遮挡是默认态：localStorage 只记「用户显式
-        关闭」（'0'），没动过开关的会话一律先盖住。CSS 按 element 类型生效
-        而不是按页面类名，新页面、关注流、灯箱、沉浸模式不需要各自接入；
-        悬停预览的启动路径必须查这个开关——动起来的画面比静帧更漏。
+        日常浏览不该被遮挡（用户回执）；截图会交给会审查内容的模型时才在
+        设置里打开（AGENTS.md 工作规则）。规则按元素类型生效（img/video/
+        videojs 海报层），开关一开仍然全站覆盖；悬停预览的启动路径必须查
+        这个开关——动起来的画面比静帧更漏。
         """
-        # 默认遮挡：只有显式 '0' 才恢复画面。
-        self.assertPageContains("applyCensor(localStorage.getItem(CENSOR_KEY)!=='0')")
-        # 全站按元素类型盖：内容 img / video / videojs 海报层一个不落，
-        # 模糊 + 重度去饱和 + 压暗，截图里只剩深灰块。
+        # 顶栏不出现独立开关，开关在设置面板「安全」组。
+        self.assertPageLacks('id="censorBtn"')
+        self.assertPageContains('<input type="checkbox" id="censorSetting">')
+        # 默认关闭：localStorage 记 '1' 才开，没动过的会话一律不遮。
+        self.assertPageContains("applyCensor(localStorage.getItem(CENSOR_KEY)==='1')")
+        # 全站按元素类型盖：内容 img / video / videojs 海报层一个不落。
         self.assertPageContains("body.censor img,body.censor video,body.censor .vjs-poster{\n  filter:blur(30px) saturate(.3) brightness(.6)}")
         # 豁免只给与内容无关的界面小图：品牌标、来源徽章、favicon。
         self.assertPageContains("body.censor .brand .mark,body.censor .src img,body.censor .ficon{filter:none}")
-        # 顶栏开关开启时撤掉正在飞的悬停预览。
+        # 开关变化写回 localStorage 并撤掉正在飞的悬停预览。
+        self.assertPageContains("$('#censorSetting').onchange=")
         self.assertPageContains("if(on)releaseHoverPreviews()")
         # 悬停预览三条启动路径（长按轮播、悬停起播、定时器到点）都要被拦。
         self.assertIn("if(selectMode||censorOn())return;armLong()", self.page)
         self.assertIn("if(selectMode||censorOn()||window.__scrolling)return;", self.page)
         self.assertIn("if(window.__scrolling||censorOn())return;", self.page)
+
+    def test_management_surfaces_are_narrow_and_geist_semantics_hold(self):
+        """低密度管理页不全宽；语义色与状态徽章对齐 Geist 实测。
+
+        Vercel 后台设置列实测约 914px（vercel-geist-semantics-measured.md），
+        统计/口味/复核/高清版限宽居中；首页/关注等浏览页保持全宽。检查失败
+        报告是红发丝边 + 微红底的 danger 语义块，不是左侧粗条；来源行状态
+        用低饱和徽章；清空回收站是销毁类操作，用 danger 色而不是主色实底。
+        """
+        for surface in ("/stats", "/taste", "/review", "/quality-goals"):
+            self.assertPageContains(f'body[data-surface="{surface}"] #stats')
+        self.assertPageContains("document.body.dataset.surface=path")
+        # 报告条：danger 语义（红发丝边 + 微红底），不再是左侧粗条。
+        self.assertPageContains("background:color-mix(in srgb,var(--drop) 7%,transparent);\n  border:1px solid color-mix(in srgb,var(--drop) 30%,transparent);")
+        self.assertPageLacks("border-left:2px solid var(--drop)")
+        # 来源行状态徽章（ok 绿 tint / 失败红 tint / 未检查灰）。
+        self.assertPageContains('<span class="sbadge ${badge}">${esc(state)}</span>')
+        self.assertPageContains(".sbadge.ok{background:color-mix(in srgb,var(--success) 14%,transparent);color:var(--success)}")
+        self.assertPageContains(".sbadge.error{background:color-mix(in srgb,var(--drop) 14%,transparent);color:var(--drop)}")
+        # 清空回收站：danger 语义色。
+        self.assertPageContains('class="batchaction danger" id="emptyTrash"')
+        self.assertPageContains(".count .sorts .batchaction.danger{background:transparent;border-color:color-mix(in srgb,var(--drop) 38%,transparent);color:var(--drop)}")
+        # 全站字体栈必须有 CJK sans 兜底：Bahnschrift/Consolas 都没有中文字形，
+        # generic sans-serif/monospace 在中文 Chrome 的默认可能落到宋体。
+        css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
+            encoding="utf-8")
+        for i, line in enumerate(css.splitlines(), 1):
+            if "font-family" not in line or "inherit" in line:
+                continue
+            if "sans-serif" in line or "monospace" in line:
+                self.assertIn("YaHei", line, f"app.css:{i} 字体栈缺 CJK 兜底：{line.strip()[:90]}")
 
     def test_no_page_grows_its_own_back_control(self):
         """索引页原本有个返回按钮，现在顶栏入口本身就是返回路径。

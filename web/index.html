@@ -79,7 +79,6 @@
   <button class="ib" id="searchBtn" title="搜索" aria-label="搜索"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-search"/></svg></button>
   <button class="ib" id="selectMode" title="多选（Ctrl 单项，Shift 连续）" aria-label="多选模式" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-square-check-big"/></svg></button>
   <button class="ib" id="density" title="密度：大图 / 密集" aria-label="切换卡片密度"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-layout-grid"/></svg></button>
-  <button class="ib" id="censorBtn" title="审查遮挡：共享屏幕时遮住封面与预览图" aria-label="审查遮挡" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-eye-off"/></svg></button>
   <button class="ib" id="refresh" title="换一批推荐" aria-label="换一批推荐"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-refresh-cw"/></svg></button>
   <button class="ib" id="settingsBtn" title="设置" aria-label="打开设置"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-settings"/></svg></button>
 
@@ -139,15 +138,29 @@
   <div class="settingscard">
     <div class="settingsscroll">
       <div class="settingshead"><h2 id="settingsTitle">设置</h2><button id="settingsClose" aria-label="关闭设置"><svg viewBox="0 0 24 24"><use href="#i-x"/></svg></button></div>
+      <section class="settinggroup"><h3>浏览</h3>
       <label class="settingrow"><span><b>换一批</b><small>排序多久换一次。页面不会自己重排，换的结果在下次刷新时体现。</small></span><select id="rotateSetting"><option value="0">每次刷新</option><option value="5">5 分钟</option><option value="10">10 分钟</option><option value="30">30 分钟</option><option value="1440">每天</option><option value="-1">从不（只手动）</option></select></label>
       <label class="settingrow"><span><b>每批作品</b><small>首页每次加载的作品数量。</small></span><select id="batchSizeSetting"><option value="30">30 个</option><option value="60">60 个</option><option value="90">90 个</option></select></label>
       <label class="settingrow"><span><b>默认排序</b><small>打开首页时使用的排序。「推荐顺序」按上面的「换一批」频率轮换。</small></span><select id="defaultSortSetting"><option value="seed">推荐顺序</option><option value="daily">每日轮换</option><option value="rand">随机</option><option value="rating">评分</option><option value="o">高潮计数</option><option value="plays">观看次数</option><option value="long">时长</option><option value="big">体积</option><option value="new">最近入库</option><option value="played">最近看的</option></select></label>
       <label class="settingrow"><span><b>悬停放大</b><small>转圈完成后进入放大预览。</small></span><select id="hoverDelaySetting"><option value="3">3 秒</option><option value="5">5 秒</option><option value="8">8 秒</option></select></label>
+      </section>
+      <section class="settinggroup"><h3>播放</h3>
       <label class="settingrow"><span><b>快进 / 快退</b><small>卡片预览和详情播放器共用。</small></span><select id="seekSecondsSetting"><option value="5">5 秒</option><option value="10">10 秒</option><option value="30">30 秒</option></select></label>
-      <label class="settingrow"><span><b>搜索记录</b><small>保存在 Peach 账本，所有访问端同步。</small></span><select id="searchHistoryLimitSetting"><option value="5">最近 5 条</option><option value="10">最近 10 条</option><option value="20">最近 20 条</option></select></label>
       <label class="settingrow"><span><b>相关推荐</b><small>详情下方一次显示的相似作品数量。</small></span><select id="relatedLimitSetting"><option value="12">12 个</option><option value="20">20 个</option><option value="30">30 个</option></select></label>
+      </section>
+      <section class="settinggroup"><h3>搜索</h3>
+      <label class="settingrow"><span><b>搜索记录</b><small>保存在 Peach 账本，所有访问端同步。</small></span><select id="searchHistoryLimitSetting"><option value="5">最近 5 条</option><option value="10">最近 10 条</option><option value="20">最近 20 条</option></select></label>
+      </section>
+      <section class="settinggroup"><h3>关注</h3>
       <label class="settingrow"><span><b>关注自动更新</b><small id="followScheduleState" aria-live="polite">读取运行状态…</small></span><select id="followScheduleSetting"><option value="0">关闭</option><option value="15">每 15 分钟</option><option value="30">每 30 分钟</option><option value="60">每小时</option><option value="180">每 3 小时</option><option value="360">每 6 小时</option><option value="720">每 12 小时</option><option value="1440">每天</option></select></label>
+      </section>
+      <section class="settinggroup"><h3>界面</h3>
       <section class="sidebarsetting" aria-labelledby="sidebarOrderTitle"><span><b id="sidebarOrderTitle">左侧导航</b><small>直接拖动排序；可隐藏入口，也可从具体页面列表重新添加。窄栏和筛选抽屉会保持一致。</small></span><div class="sidebarorder" id="sidebarOrderSetting"></div></section>
+      </section>
+      <section class="settinggroup"><h3>安全</h3>
+      <label class="settingrow"><span><b>审查遮挡</b><small>共享屏幕或截图前开启，遮住全站封面与预览图。默认关闭；只在用会审查内容的模型做测试时需要。</small></span><input type="checkbox" id="censorSetting"></label>
+      </section>
+</section>
     </div>
   </div>
 </section>

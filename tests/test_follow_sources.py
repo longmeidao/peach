@@ -926,6 +926,30 @@ class Rule34XxxConnectorTests(unittest.TestCase):
             candidate.extra["source"],
             "https://porn3dx.com/post/42957/aranea?list_type=key&sort=new")
 
+    def test_rate_limit_body_is_reported_as_rate_limit_not_bad_json(self):
+        """限流要报成限流：用户需要知道「等一会儿再试」而不是「响应坏了」。
+
+        rule34.xxx 限流时回 HTTP 200 + 文本正文（实测句式 "You currently have
+        a limit of 60 requests every 60 second(s)"）。按「不是合法 JSON」上报，
+        检查失败的红色明细里就只剩一句没头没尾的原因。
+        """
+        body = (b"<!doctype html><html><body>You currently have a limit of "
+                b"60 requests every 60 second(s). Please try again later."
+                b"</body></html>")
+        with self.assertRaises(FollowSourceError) as caught:
+            self._connector(body=body).fetch("lazyprocrastinator")
+        message = str(caught.exception)
+        self.assertIn("频率限制", message)
+        self.assertIn("60", message)
+        self.assertNotIn("JSON", message)
+
+    def test_http_429_reports_throttling(self):
+        connector = self._connector(body=b"{}", status=429)
+        with self.assertRaises(FollowSourceError) as caught:
+            connector.fetch("lazyprocrastinator")
+        self.assertIn("429", str(caught.exception))
+        self.assertIn("频繁", str(caught.exception))
+
 
     def test_authentication_rejection_is_reported_as_a_credential_error(self):
         connector = self._connector(

@@ -270,6 +270,12 @@ def _is_opaque_filename(stem: str) -> bool:
     return bool(re.fullmatch(r"[0-9a-f]{16,}", stem.strip().lower()))
 
 
+def _exc_summary(exc: Exception, limit: int = 140) -> str:
+    """把底层网络异常压成一行能看懂的原因，跟着「请求失败」一起报给用户。"""
+    text = f"{type(exc).__name__}: {exc}".strip()
+    return re.sub(r"\s+", " ", text)[:limit]
+
+
 class _BaseConnector:
     provider = ""
     semantics = "work"
@@ -308,7 +314,8 @@ class _BaseConnector:
             response = self.transport(HttpRequest("GET", url, merged),
                                       self.timeout, self.max_bytes)
         except (OSError, httpx.HTTPError) as exc:
-            raise FollowSourceError(f"{self.provider} 请求失败") from exc
+            raise FollowSourceError(
+                f"{self.provider} 请求失败：{_exc_summary(exc)}") from exc
         if len(response.body) > self.max_bytes:
             raise FollowSourceError(f"{self.provider} 响应超出大小上限")
         return response
@@ -323,7 +330,8 @@ class _BaseConnector:
             response = self.transport(HttpRequest("POST", url, merged, body),
                                       self.timeout, self.max_bytes)
         except (OSError, httpx.HTTPError) as exc:
-            raise FollowSourceError(f"{self.provider} 请求失败") from exc
+            raise FollowSourceError(
+                f"{self.provider} 请求失败：{_exc_summary(exc)}") from exc
         if len(response.body) > self.max_bytes:
             raise FollowSourceError(f"{self.provider} 响应超出大小上限")
         return response
@@ -339,15 +347,45 @@ class _BaseConnector:
             raise FollowSourceError(
                 f"{self.provider} 拒绝访问（HTTP {response.status}）：需要有效凭据，"
                 "或站点已加机器人验证")
+        if response.status == 429:
+            raise FollowSourceError(
+                f"{self.provider} 返回 HTTP 429：请求过于频繁，稍后再试")
         if response.status != 200:
             raise FollowSourceError(f"{self.provider} 返回 HTTP {response.status}")
+
+    #: 上游限流页的固定句式（2026-08-29 实测 rule34.xxx）：HTTP 200 + 文本正文
+    #: "You currently have a limit of 60 requests every 60 second(s)"。不识别的话
+    #  会被报成「请求失败/不是合法 JSON」，用户看不出是被限流了。
+    _RATE_LIMIT_RE = re.compile(
+        r"limit of (\d+) requests? every (\d+) seconds?", re.IGNORECASE)
+
+    def _upstream_reason(self, response: HttpResponse) -> str | None:
+        """能从响应正文里读出的明确失败原因；读不出就返回 None。"""
+        text = response.body.decode("utf-8", errors="replace")
+        matched = self._RATE_LIMIT_RE.search(text)
+        if matched:
+            count, seconds = matched.group(1), matched.group(2)
+            return (f"{self.provider} 触发频率限制：每 {seconds} 秒最多 "
+                    f"{count} 次请求，请稍后再试")
+        return None
+
+    @staticmethod
+    def _body_snippet(response: HttpResponse, limit: int = 120) -> str:
+        text = re.sub(r"<[^>]+>", " ", response.body.decode("utf-8", errors="replace"))
+        return re.sub(r"\s+", " ", text).strip()[:limit]
 
     def parse_json(self, response: HttpResponse):
         """解析一份已经取回的响应；不是合法 JSON 就抛错。"""
         try:
             return json.loads(response.body.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise FollowSourceError(f"{self.provider} 返回的不是合法 JSON") from exc
+            reason = self._upstream_reason(response)
+            if reason:
+                raise FollowSourceError(reason) from exc
+            snippet = self._body_snippet(response)
+            detail = f"：{snippet}" if snippet else ""
+            raise FollowSourceError(
+                f"{self.provider} 返回的不是合法 JSON{detail}") from exc
 
     def _request(self, url: str, *, ref: str, etag: str | None = None,
                  last_modified: str | None = None, page: int = 0,
