@@ -165,7 +165,6 @@ class WebContract:
         self.db_path = self.database.db_path
         self.snapshot_root = Path(snapshot_root) if snapshot_root is not None else None
         self.legacy_snapshot_roots = tuple(Path(path) for path in legacy_snapshot_roots)
-        self.write_lock = self.database.write_lock
         self.cache: dict[str, tuple[float, object]] = {}
         self.cache_lock = threading.Lock()
         self.follow_check_lock = threading.Lock()
@@ -2391,10 +2390,12 @@ def w_item_tag(contract: WebContract, body):
         raise ValueError("tag must be 1 to 80 characters and cannot be a performer marker")
     normalized = normalize_entity_name(tag)
     stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    with contract.write_lock:
-        c = contract.db(write=True)
+    # 事务边界只有一个入口：write_transaction 自己取 database.write_lock 并在异常时回滚。
+    # 这里曾经手取同一把不可重入的锁再手动 commit/close，任何 execute 抛出都会漏掉
+    # 回滚和关闭；也正因为那把锁是同一把，直接改调 write_transaction 而不撤掉外层
+    # with 会自死锁。
+    with contract.write_transaction() as c:
         if not c.execute("SELECT 1 FROM asset WHERE id=?", (aid,)).fetchone():
-            c.close()
             raise ValueError("asset not found")
         if operation == "remove":
             c.execute(
@@ -2417,7 +2418,6 @@ def w_item_tag(contract: WebContract, body):
                 source="web-user", confidence=1.0,
                 metadata={"profile_id": DEFAULT_PROFILE_ID}, now=stamp,
             )
-        c.commit(); c.close()
     return {"ok": True, "operation": operation, "tag": tag,
             "tags": [item["k"] for item in q_item(contract, aid)["tags"]]}
 

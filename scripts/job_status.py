@@ -53,12 +53,30 @@ def _readonly(path: Path) -> sqlite3.Connection:
     return sqlite3.connect("file:" + path.resolve().as_posix() + "?mode=ro", uri=True)
 
 
+def _local(text: str) -> str:
+    """把存成 UTC 的时间戳按本机时区显示。
+
+    存储一律 UTC 是对的，不动；但 STATUS.md 是给人读的，显示 UTC 等于让每个数字
+    都要心算 8 小时。这条口径 2026-08-26 就定了（账本存 UTC，看的地方按本地渲染），
+    当时只落到了 web/app.js，这条生成链路漏了。
+
+    解析不了就原样返回：显示得难看，好过把一个解析不出的值显示成某个确定的时刻。
+    """
+    try:
+        moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except (AttributeError, TypeError, ValueError):
+        return text
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone().isoformat(timespec="seconds")
+
+
 def collect(db_path: Path, generated: Path, state_path: Path | None = None) -> list[str]:
     conn = _readonly(db_path)
     one = lambda sql, *a: conn.execute(sql, a).fetchone()[0]
 
     lines: list[str] = [START, "", "<!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->",
-                        f"<!-- generated {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%MZ')} -->", ""]
+                        f"<!-- generated {datetime.now().astimezone().isoformat(timespec='minutes')} -->", ""]
 
     if state_path and state_path.is_file():
         try:
@@ -66,7 +84,7 @@ def collect(db_path: Path, generated: Path, state_path: Path | None = None) -> l
             lines.append(
                 f"- 最近自动交接：`{event.get('agent', 'unknown')}` / "
                 f"`{event.get('event', 'unknown')}` / `{event.get('outcome', 'unknown')}`，"
-                f"{event.get('at', 'unknown')}。"
+                f"{_local(str(event.get('at', 'unknown')))}。"
             )
         except (OSError, ValueError, TypeError):
             lines.append("- 最近自动交接：状态文件不可读；本次账本数字仍已重新计算。")
@@ -107,7 +125,7 @@ def collect(db_path: Path, generated: Path, state_path: Path | None = None) -> l
     conn.close()
 
     lines.append("")
-    lines.append("| 产物 | 行数 | 生成时间 | 说明 |")
+    lines.append("| 产物 | 行数 | 生成时间（本地） | 说明 |")
     lines.append("| --- | ---: | --- | --- |")
     for name, desc in ARTIFACTS.items():
         path = generated / name
@@ -116,7 +134,9 @@ def collect(db_path: Path, generated: Path, state_path: Path | None = None) -> l
             continue
         with path.open(encoding="utf-8-sig", newline="") as handle:
             rows = sum(1 for _ in csv.DictReader(handle))
-        stamp = datetime.fromtimestamp(path.stat().st_mtime).strftime("%m-%d %H:%M")
+        # mtime 本来就是本地时间，显式 astimezone 是为了和上面两处同一个时钟，
+        # 列宽放不下偏移量，所以时区写在表头里。
+        stamp = datetime.fromtimestamp(path.stat().st_mtime).astimezone().strftime("%m-%d %H:%M")
         lines.append(f"| `{name}` | {rows} | {stamp} | {desc} |")
 
     lines += ["", END]
