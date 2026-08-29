@@ -783,11 +783,11 @@ def _resolve_label(contract, parsed, credential) -> str:
     connector = KemonoConnector(provider=parsed.provider, credential=credential)
     service, _, user = parsed.ref.partition("/")
     try:
-        response = connector._get(
+        response = connector.probe(
             f"https://{connector.host}/api/v1/{service}/user/{user}/profile")
         if response.status != 200:
             return parsed.label
-        name = (connector._json(response) or {}).get("name")
+        name = (connector.parse_json(response) or {}).get("name")
     except (FollowSourceError, CredentialError):
         return parsed.label
     return f"{name} · {service}" if name else parsed.label

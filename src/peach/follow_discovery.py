@@ -102,9 +102,7 @@ class CreatorIndex:
     def _refresh(self, provider: str, path: Path) -> list[dict]:
         connector = KemonoConnector(provider=provider, transport=self.transport,
                                     max_bytes=48 * 1024 * 1024)
-        response = connector._get(f"https://{connector.host}/api/v1/creators")
-        connector._check_status(response)
-        payload = connector._json(response)
+        payload = connector.fetch_json(f"https://{connector.host}/api/v1/creators")
         if not isinstance(payload, list):
             raise FollowSourceError(f"{provider} 的创作者清单格式不符")
         rows = [
@@ -173,8 +171,8 @@ def _rule34video_candidates(term: str, transport) -> list[Candidate]:
     if not slug:
         return []
     connector = Rule34VideoConnector(transport=transport)
-    response = connector._get(f"https://rule34video.com/models/{slug}/",
-                              headers={"Accept": "text/html"})
+    response = connector.probe(f"https://rule34video.com/models/{slug}/",
+                               headers={"Accept": "text/html"})
     if response.status != 200:
         return []
     return [Candidate("rule34video", slug,
@@ -230,8 +228,8 @@ def _f95_candidates(term: str, transport) -> list[Candidate]:
     connector = F95ZoneConnector(transport=transport)
     picked: list[Candidate] = []
     if _NUMERIC_RE.match(term):
-        response = connector._get(f"https://f95zone.to/threads/{term}/",
-                                  headers={"Accept": "text/html"})
+        response = connector.probe(f"https://f95zone.to/threads/{term}/",
+                                   headers={"Accept": "text/html"})
         if response.status == 200:
             picked.append(Candidate("f95zone", term,
                                     f"https://f95zone.to/threads/{term}/",

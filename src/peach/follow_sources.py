@@ -341,11 +341,57 @@ class _BaseConnector:
         if response.status != 200:
             raise FollowSourceError(f"{self.provider} 返回 HTTP {response.status}")
 
-    def _json(self, response: HttpResponse):
+    def parse_json(self, response: HttpResponse):
+        """解析一份已经取回的响应；不是合法 JSON 就抛错。"""
         try:
             return json.loads(response.body.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise FollowSourceError(f"{self.provider} 返回的不是合法 JSON") from exc
+
+    def _request(self, url: str, *, ref: str, etag: str | None = None,
+                 last_modified: str | None = None, page: int = 0,
+                 headers: Mapping[str, str] | None = None,
+                 request_url: str | None = None,
+                 ) -> tuple[dict[str, object], HttpResponse | None]:
+        """每个连接器 fetch 开头都一样的那段：条件请求 → 304 短路 → 状态检查。
+
+        返回 `(common, response)`。`response` 为 None 表示站点回了 304，调用方直接
+        `return SourceFetch(not_modified=True, **common)`，不用再自己拼 common。
+
+        往回翻页时不带条件请求头：`If-None-Match` 存的是第一页的 etag，拿它去问第二页
+        很可能换回 304，表现就是「点了没反应」。这条规则过去在每个连接器里各写一遍，
+        现在只有这里一处。
+
+        `request_url` 是落进证据的那个 URL。带凭据的真实请求 URL 绝不能落盘——
+        rule34xxx 的 `api_key` 在查询串里，必须传一个脱敏版本进来。
+        """
+        response = (self._get(url, headers=headers) if page
+                    else self._get(url, headers=headers,
+                                   etag=etag, last_modified=last_modified))
+        common: dict[str, object] = {
+            "provider": self.provider, "ref": ref,
+            "request_url": request_url or url,
+            "semantics": self.semantics, **self._conditional(response),
+        }
+        if response.status == 304:
+            return common, None
+        self._check_status(response)
+        return common, response
+
+    def probe(self, url: str, *, headers: Mapping[str, str] | None = None) -> HttpResponse:
+        """探测一个 URL 是否存在，不检查状态码。
+
+        发现流程按状态码判断「这个作者页在不在」，404 是有意义的答案而不是故障，
+        所以这里刻意不做 `_check_status`。有了它，`follow_discovery` 不必再去摸
+        连接器的私有方法。
+        """
+        return self._get(url, headers=headers)
+
+    def fetch_json(self, url: str, *, headers: Mapping[str, str] | None = None):
+        """取回并解析一份 JSON；状态码不是 200 就抛错。"""
+        response = self._get(url, headers=headers)
+        self._check_status(response)
+        return self.parse_json(response)
 
     def _gofile_media(self, links: list[str]) -> tuple[dict[str, object], ...]:
         """用用户自己的 GoFile API token 展开文件页，token 永不进入 URL/候选。"""
@@ -371,7 +417,7 @@ class _BaseConnector:
             }, connector_headers=False)
             payload = None
             try:
-                payload = self._json(response)
+                payload = self.parse_json(response)
             except FollowSourceError:
                 # 非 JSON 的 401/403 仍按凭据拒绝处理；其他状态交给通用错误。
                 pass
@@ -384,7 +430,7 @@ class _BaseConnector:
                 raise CredentialError("Gofile 拒绝了 API token")
             self._check_status(response)
             if payload is None:
-                payload = self._json(response)
+                payload = self.parse_json(response)
             if not isinstance(payload, dict) or payload.get("status") != "ok":
                 raise FollowSourceError("Gofile 文件列表未取得")
             stack = [payload.get("data")]
@@ -468,16 +514,11 @@ class KemonoConnector(_BaseConnector):
         if page:
             # 实测这个接口一页固定 50 条，往回翻用 `?o=` 偏移。
             url = f"{url}?o={page * self.PAGE_SIZE}"
-        # 往回翻时不带条件请求头：`If-None-Match` 存的是第一页的 etag，
-        # 拿它去问第二页，站点很可能回 304，结果就是「点了没反应」。
-        response = (self._get(url) if page
-                    else self._get(url, etag=etag, last_modified=last_modified))
-        common = {"provider": self.provider, "ref": ref, "request_url": url,
-                  "semantics": self.semantics, **self._conditional(response)}
-        if response.status == 304:
+        common, response = self._request(url, ref=ref, etag=etag,
+                                         last_modified=last_modified, page=page)
+        if response is None:
             return SourceFetch(not_modified=True, **common)
-        self._check_status(response)
-        payload = self._json(response)
+        payload = self.parse_json(response)
         # kemono 回 {"posts": [...]}，pawchive 直接回列表；两种都要吃。
         posts = payload.get("posts", []) if isinstance(payload, dict) else payload
         if not isinstance(posts, list):
@@ -544,7 +585,7 @@ class KemonoConnector(_BaseConnector):
             response = self._get(url)
             if response.status >= 400:
                 return True
-            payload = self._json(response)
+            payload = self.parse_json(response)
         except (FollowSourceError, OSError, httpx.HTTPError):
             return True
         if not isinstance(payload, dict):
@@ -640,14 +681,11 @@ class Rule34VideoConnector(_BaseConnector):
             url = (f"{url}?mode=async&function=get_block"
                    f"&block_id=custom_list_videos_common_videos"
                    f"&sort_by=post_date&from={page + 1:02d}")
-        response = (self._get(url, headers={"Accept": "text/html"}) if page
-                    else self._get(url, headers={"Accept": "text/html"},
-                                   etag=etag, last_modified=last_modified))
-        common = {"provider": self.provider, "ref": slug, "request_url": url,
-                  "semantics": self.semantics, **self._conditional(response)}
-        if response.status == 304:
+        common, response = self._request(url, ref=slug, etag=etag,
+                                         last_modified=last_modified, page=page,
+                                         headers={"Accept": "text/html"})
+        if response is None:
             return SourceFetch(not_modified=True, **common)
-        self._check_status(response)
         soup = BeautifulSoup(response.body, "html.parser")
         seen: set[str] = set()
         listed: list[FollowCandidate] = []
@@ -825,20 +863,19 @@ class Rule34XxxConnector(_BaseConnector):
         url = f"https://api.rule34.xxx/index.php?{query}"
         safe_url = (f"https://api.rule34.xxx/index.php?page=dapi&s=post&q=index"
                     f"&tags={tag}" + (f"&pid={page}" if page else ""))
-        response = (self._get(url, headers={"Accept": "application/json"}) if page
-                    else self._get(url, headers={"Accept": "application/json"},
-                                   etag=etag, last_modified=last_modified))
-        common = {"provider": self.provider, "ref": tag, "request_url": safe_url,
-                  "semantics": self.semantics, **self._conditional(response)}
-        if response.status == 304:
+        # request_url 传脱敏版：真实 url 的查询串里带 api_key，绝不能落进证据。
+        common, response = self._request(url, ref=tag, etag=etag,
+                                         last_modified=last_modified, page=page,
+                                         headers={"Accept": "application/json"},
+                                         request_url=safe_url)
+        if response is None:
             return SourceFetch(not_modified=True, **common)
-        self._check_status(response)
         body = response.body.decode("utf-8", errors="replace").strip()
         if body.startswith('"') and "authentication" in body.lower():
             raise CredentialError("rule34xxx 拒绝了 user_id/api_key")
         # rule34.xxx 在标签没有任何帖子时返回 HTTP 200 + 空正文，不是 JSON `[]`。
         # 这只代表零命中；非空但无法解析的响应仍按结构异常报告，避免吞掉站点改版。
-        payload = [] if not body else self._json(response)
+        payload = [] if not body else self.parse_json(response)
         posts = payload.get("post", []) if isinstance(payload, dict) else payload
         if not isinstance(posts, list):
             raise FollowSourceError("rule34xxx 的帖子列表格式不符")
@@ -926,14 +963,11 @@ class Rule34PahealConnector(_BaseConnector):
         page_number = page + 1
         encoded = urllib.parse.quote(tag, safe="()_")
         url = f"https://rule34.paheal.net/post/list/{encoded}/{page_number}"
-        response = (self._get(url, headers={"Accept": "text/html"}) if page else
-                    self._get(url, headers={"Accept": "text/html"},
-                              etag=etag, last_modified=last_modified))
-        common = {"provider": self.provider, "ref": tag, "request_url": url,
-                  "semantics": self.semantics, **self._conditional(response)}
-        if response.status == 304:
+        common, response = self._request(url, ref=tag, etag=etag,
+                                         last_modified=last_modified, page=page,
+                                         headers={"Accept": "text/html"})
+        if response is None:
             return SourceFetch(not_modified=True, **common)
-        self._check_status(response)
         soup = BeautifulSoup(response.body, "html.parser")
         candidates = []
         for thumb in soup.select(".shm-image-list .shm-thumb[data-post-id]")[:self.max_items]:
@@ -1043,12 +1077,10 @@ class F95ZoneConnector(_BaseConnector):
         headers = {"Accept": "text/html"}
         if self.credential and self.credential.values.get("cookie"):
             headers["Cookie"] = self.credential.values["cookie"]
-        response = self._get(url, headers=headers, etag=etag, last_modified=last_modified)
-        common = {"provider": self.provider, "ref": thread, "request_url": url,
-                  "semantics": self.semantics, **self._conditional(response)}
-        if response.status == 304:
+        common, response = self._request(url, ref=thread, etag=etag,
+                                         last_modified=last_modified, headers=headers)
+        if response is None:
             return SourceFetch(not_modified=True, **common)
-        self._check_status(response)
         soup = BeautifulSoup(response.body, "html.parser")
         title = self._thread_title(soup)
         candidates, parsed, skipped = self._replies(
@@ -1212,7 +1244,7 @@ class F95ZoneConnector(_BaseConnector):
             )
             if response.status != 200:
                 return None
-            payload = self._json(response)
+            payload = self.parse_json(response)
         except FollowSourceError:
             return None
         if not isinstance(payload, dict):
@@ -1231,7 +1263,7 @@ class F95ZoneConnector(_BaseConnector):
         url = f"https://f95zone.to/sam/latest_alpha/latest_data.php?{params}"
         response = self._get(url, headers={"Accept": "application/json"})
         self._check_status(response)
-        payload = self._json(response)
+        payload = self.parse_json(response)
         rows = ((payload or {}).get("msg") or {}).get("data") or []
         return tuple(row for row in rows if isinstance(row, dict))
 
@@ -1284,13 +1316,11 @@ class FanboxConnector(_BaseConnector):
         query = urllib.parse.urlencode({"creatorId": creator,
                                         "limit": min(self.max_items, 10)})
         url = f"https://api.fanbox.cc/post.listCreator?{query}"
-        response = self._get(url, etag=etag, last_modified=last_modified)
-        common = {"provider": self.provider, "ref": creator, "request_url": url,
-                  "semantics": self.semantics, **self._conditional(response)}
-        if response.status == 304:
+        common, response = self._request(url, ref=creator, etag=etag,
+                                         last_modified=last_modified)
+        if response is None:
             return SourceFetch(not_modified=True, **common)
-        self._check_status(response)
-        payload = self._json(response)
+        payload = self.parse_json(response)
         posts = ((payload or {}).get("body") or {}).get("posts")
         if not isinstance(posts, list):
             raise FollowSourceError("fanbox 返回的帖子列表格式不符")
@@ -1358,7 +1388,7 @@ class FanboxConnector(_BaseConnector):
         if len(response.body) > self.max_bytes:
             raise FollowSourceError("fanbox 响应超出大小上限")
         self._check_status(response)
-        payload = self._json(response)
+        payload = self.parse_json(response)
         if isinstance(payload, dict) and payload.get("error"):
             raise FollowSourceError(f"fanbox 帖子详情返回错误：{payload['error']}")
         body = (payload or {}).get("body") if isinstance(payload, dict) else None
@@ -1410,13 +1440,11 @@ class SubscribeStarConnector(_BaseConnector):
         if page:
             raise FollowSourceError("SubscribeStar 官方来源暂不支持向前翻页")
         url = f"https://{host}/{slug}"
-        response = self._get(url, headers={"Accept": "text/html"},
-                             etag=etag, last_modified=last_modified)
-        common = {"provider": self.provider, "ref": ref, "request_url": url,
-                  "semantics": self.semantics, **self._conditional(response)}
-        if response.status == 304:
+        common, response = self._request(url, ref=ref, etag=etag,
+                                         last_modified=last_modified,
+                                         headers={"Accept": "text/html"})
+        if response is None:
             return SourceFetch(not_modified=True, **common)
-        self._check_status(response)
         try:
             soup = BeautifulSoup(response.body.decode("utf-8"), "html.parser")
         except UnicodeDecodeError as exc:
@@ -1480,13 +1508,11 @@ class PatreonConnector(_BaseConnector):
         if page:
             raise FollowSourceError("Patreon 官方来源暂不支持向前翻页")
         url = self._url(ref)
-        response = self._get(url, headers={"Accept": "text/html"},
-                             etag=etag, last_modified=last_modified)
-        common = {"provider": self.provider, "ref": ref, "request_url": url,
-                  "semantics": self.semantics, **self._conditional(response)}
-        if response.status == 304:
+        common, response = self._request(url, ref=ref, etag=etag,
+                                         last_modified=last_modified,
+                                         headers={"Accept": "text/html"})
+        if response is None:
             return SourceFetch(not_modified=True, **common)
-        self._check_status(response)
         try:
             soup = BeautifulSoup(response.body.decode("utf-8"), "html.parser")
         except UnicodeDecodeError as exc:
