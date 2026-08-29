@@ -127,6 +127,20 @@ f95zone 线程 50685，`creator` 字段写作 `LazyProcrastinator/LazyProcrast`�
 同一个人在 rule34video 上就有 `[Lazyprocrastinator]`、`(Lazyprocastinator)`、
 `[LazyProcrast]` 三种拼法，所以别名剥离必须模糊匹配。
 
+### 站点表补记（2026-08-29）
+
+上表为 2026-08-25 的初始实测；其后接入的内容按当前 `docs/STATUS.md`「已核验能力」补齐，
+连接器细节以 `follow_sources.py`／`follow_providers.py` 登记为准：
+
+| 来源 | 入口 | 凭据 | 结论 |
+| --- | --- | --- | --- |
+| rule34.paheal.net | `/post/list/{tag}/{page}` 标签页，详情 `/post/view/{id}` | 无 | 标签页解析缩略图网格，详情页补齐原始出处用于精确跨站去重；ref 是单个标签，深链形如 `/post/view/7428820#search=InitialA`。视频封面按需抽帧生成，不预先探测（0.7.9） |
+
+Gofile 不是追更来源而是媒体来源（`follow_providers` 中 `source_url=None`，只出现在界面）：
+FANBOX 与 f95zone 正文里的 `gofile.io` 文件夹链接，用用户自己的 GoFile Premium API token
+（`secrets/follow/gofile.json`）经 `api.gofile.io/contents/{id}` 展开成媒体项；token 只进
+Bearer 头，不进 URL、候选或快照。
+
 ## 拒绝方案
 
 - 求解 Turnstile / DDoS-Guard 质询，或用无头浏览器执行验证脚本。
