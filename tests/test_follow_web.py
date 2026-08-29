@@ -347,6 +347,42 @@ class FollowContractTests(unittest.TestCase):
         self._seed()
         self.assertEqual(len(self._get(limit="nope")["groups"]), 1)
 
+    def test_counts_are_whole_library_while_groups_are_one_page(self):
+        """计数是全库口径，列表只有一页——界面并排显示这两个数时看起来像自相矛盾。
+
+        用户实测：状态条写着「未看 2292」，下面视频 220 + 图片 11 只有 231。
+        两个数都对，差的是口径，所以响应必须带上 has_more 让界面能说清楚、能续取。
+        """
+        self._seed()
+        page = self._get(limit=1)
+        self.assertEqual(page["limit"], 1)
+        self.assertEqual(page["offset"], 0)
+        self.assertTrue(page["has_more"], "还有条目没取，has_more 必须为真")
+        # counts 不随分页缩小：它统计的是整库。
+        self.assertGreater(sum(page["counts"].values()), len(page["groups"]))
+
+    def test_the_last_page_reports_no_more(self):
+        self._seed()
+        full = self._get()
+        self.assertFalse(full["has_more"], "一页装得下时不该说还有下一页")
+
+    def test_paging_does_not_repeat_or_skip_items(self):
+        """翻页靠 OFFSET，排序必须绝对稳定，否则两页之间会重复或漏掉条目。"""
+        self._seed()
+        everything = [item["id"] for group in self._get()["groups"]
+                      for item in [group["primary"], *group["variants"]]]
+        seen, offset = [], 0
+        while True:
+            page = self._get(limit=1, offset=offset)
+            for group in page["groups"]:
+                seen.extend(item["id"] for item in [group["primary"], *group["variants"]])
+            if not page["has_more"]:
+                break
+            offset += 1
+            self.assertLess(offset, 50, "分页没有收敛")
+        self.assertEqual(sorted(set(seen)), sorted(set(everything)),
+                         "逐页取回的条目集合必须和一次取全一致")
+
     def test_sources_are_listed_with_their_last_status(self):
         self._seed()
         source = self._get()["sources"][0]

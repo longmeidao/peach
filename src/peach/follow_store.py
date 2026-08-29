@@ -295,7 +295,13 @@ class FollowStore:
     )
 
     def items(self, *, statuses: tuple[str, ...] = (), source_id: int | None = None,
-              limit: int = 500) -> tuple[FollowItemRow, ...]:
+              limit: int = 500, offset: int = 0) -> tuple[FollowItemRow, ...]:
+        """按发布时间倒序取一页条目。
+
+        排序里带 `i.id DESC` 兜底不只是为了稳定：分页靠 OFFSET，而 `published_at`
+        在同一批抓取里大量并列，只按它排的话两次查询的相对顺序可以不同，翻页就会
+        重复或漏掉条目。
+        """
         clauses, params = [], []
         if statuses:
             clauses.append(f"i.status IN ({','.join('?' * len(statuses))})")
@@ -304,10 +310,11 @@ class FollowStore:
             clauses.append("i.source_id=?")
             params.append(source_id)
         where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
-        params.append(int(limit))
+        params.extend((int(limit), max(0, int(offset))))
         rows = self._connect().execute(
             self._SELECT + where +
-            " ORDER BY COALESCE(i.published_at, i.first_seen_at) DESC, i.id DESC LIMIT ?",
+            " ORDER BY COALESCE(i.published_at, i.first_seen_at) DESC, i.id DESC"
+            " LIMIT ? OFFSET ?",
             params).fetchall()
         return tuple(self._row(row) for row in rows)
 

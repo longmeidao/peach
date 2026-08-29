@@ -1737,4 +1737,8 @@ details.fcred{display:block}
    顶部会让人以为是刷新。 */
 .folderfoot{display:flex;align-items:center;gap:12px;margin:18px 0 0;
   padding-top:14px;border-top:1px solid var(--line-soft)}
+/* 「加载更多」和「抓更早的一页」是两件事：前者翻本地已有的条目，
+   后者去站点上要更早的。版式共用一套，语义不同不合并。 */
+.followmore{display:flex;align-items:center;gap:12px;margin:18px 0 0;
+  padding-top:14px;border-top:1px solid var(--line-soft)}
 .folderfoot .fmeta{margin-left:0}
