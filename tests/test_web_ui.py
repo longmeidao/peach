@@ -1318,7 +1318,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("background:color-mix(in srgb,var(--drop) 7%,transparent);\n  border:1px solid color-mix(in srgb,var(--drop) 30%,transparent);")
         self.assertPageLacks("border-left:2px solid var(--drop)")
         # 来源行状态徽章（ok 绿 tint / 失败红 tint / 未检查灰）。
-        self.assertPageContains('<span class="sbadge ${badge}"><i aria-hidden="true"></i>${esc(state)}</span>')
+        self.assertPageContains('<span class="sbadge ${badge}" title="${esc(state)}"><i aria-hidden="true"></i></span>')
         self.assertPageContains(".sbadge i{width:6px;height:6px;border-radius:50%;background:var(--muted);flex:none}")
         self.assertPageContains(".sbadge.ok i{background:var(--success)}")
         self.assertPageContains(".sbadge.error i{background:var(--drop)}")

@@ -1613,7 +1613,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('<button class="fbtn" data-follow-bulk="ignored">全部忽略</button>')
         self.assertPageLacks('class="flink" data-follow-bulk')
         # 不另起一行：按钮内联在计数行里（用户回执）。
-        self.assertPageContains('.fbulk{display:inline-flex;gap:8px;margin-left:10px;vertical-align:middle}')
+        self.assertPageContains('.fbulk{display:inline-flex;gap:8px;margin-left:auto}')
 
     def test_sources_by_the_same_author_are_one_block(self):
         """同一个作者在几个站上是几条来源、一个人。

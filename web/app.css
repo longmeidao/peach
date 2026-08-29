@@ -47,10 +47,6 @@
   --overlay-5:rgba(245,250,255,.05);--border-10:rgba(245,250,255,.10);--border-15:rgba(245,250,255,.15);
   --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --success:#5FB95F; --ambient-opacity:1;}
 
-/* Geist Collapse：details 展开收起有高度过渡（Chrome 131+，不支持则无动画直接开合）。 */
-:root{interpolate-size:allow-keywords}
-details::details-content{block-size:0;overflow:hidden;transition:block-size .25s ease,
-  content-visibility .25s ease allow-discrete;content-visibility:hidden}
 *,*::before,*::after{box-sizing:border-box}
 html{color-scheme:light;scroll-padding-top:calc(var(--topH) + 8px)}
 @media (prefers-color-scheme:dark){html:not([data-theme="light"]){color-scheme:dark}}
@@ -561,7 +557,7 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
    只是把 16:10 的封面换成圆形头像——两种卡片并排时不该看着像两套设计。 */
 /* 不给底色也不居中：卡片里只有这一个主体，衬底和留白只会把它推离左边缘，
    和下面的样本网格、证据文字对不齐。 */
-.reviewentity{padding-bottom:10px;border-bottom:1px solid var(--border-10);display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:center;
+.reviewentity{margin:0 -15px 12px -18px;padding:0 15px 12px 18px;border-bottom:1px solid var(--border-10);display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:center;
   margin:0 0 12px;padding:0;justify-content:start}
 .reviewentityface{position:relative;width:44px;height:44px;justify-self:start;border:0;padding:0;
   border-radius:50%;overflow:hidden;background:var(--sunk);color:var(--muted);cursor:pointer;
@@ -572,7 +568,7 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
 .reviewentityname{border:0;background:none;padding:0;color:var(--ink);font:inherit;cursor:pointer;text-align:left}
 .reviewentityname:hover{color:var(--tungsten);text-decoration:underline}
 .reviewentity b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:8px}
-.reviewentity>div button{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:7px;
+.reviewentity>div button:not(.reviewentityname){display:inline-flex;align-items:center;gap:6px;border:0;border-radius:7px;
   background:var(--hover);padding:6px 9px;color:var(--ink-2);cursor:pointer}
 .reviewentity>div button:hover{color:var(--tungsten)}
 .reviewentity>div button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
@@ -1541,7 +1537,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fsecfoot{margin:14px -16px -16px;padding:12px 16px;background:var(--hover);
   border-top:1px solid var(--border-10);border-radius:0 0 7px 7px}
 .fsecfoot .fnote{margin:0}
-.fsecfoot .fbtn{background:var(--surface)}
+.fsecfoot .fbtn,.fsechead .fbtn{background:var(--surface)}
 /* 重复页的「操作」条独立于 .fsec 容器：自带卡面与边框，不用负边距。 */
 .dupactions.fsechead{margin:0 0 14px;padding:10px 14px;background:var(--surface);
   border:1px solid var(--border-10);border-radius:8px}
@@ -1553,9 +1549,17 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fmeta{font-size:var(--fs-xs);color:var(--muted)}
 .fmeta b{color:var(--ink);font-variant-numeric:tabular-nums}
 .fmeta.warn{color:var(--drop)}
-.fdesc{display:grid;gap:3px;margin:12px 0 0;font-size:var(--fs-xs);cursor:help}
-.fdesc b{color:var(--ink-2)}
-.fdesc span{color:var(--muted);line-height:1.5}
+.fdesc{position:relative;display:grid;gap:3px;margin:12px 0 0;font-size:var(--fs-xs)}
+.fdesc b{color:var(--ink-2);display:inline-flex;align-items:center;gap:6px}
+.fdesc>span:first-of-type{color:var(--muted);line-height:1.5}
+.fdescinfo{display:inline-grid;place-items:center;width:14px;height:14px;color:var(--muted)}
+.fdescinfo svg{width:13px;height:13px;stroke:currentColor;fill:none;
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.fdescpop{display:none;position:absolute;left:0;bottom:calc(100% + 8px);z-index:60;width:max-content;
+  max-width:340px;padding:10px 12px;border-radius:10px;background:#fff;color:#111;
+  font-size:var(--fs-xs);line-height:1.6;box-shadow:0 12px 40px #0007;text-align:left}
+.fdescpop code{font-family:"Cascadia Mono",Consolas,ui-monospace,"Microsoft YaHei UI","PingFang SC",monospace}
+.fdesc:hover .fdescpop,.fdesc:focus-within .fdescpop{display:block}
 .fnote{margin:12px 0 0;font-size:var(--fs-sm);line-height:1.7;color:var(--muted)}
 .fnote:empty{display:none}
 .fnote.warn{color:var(--drop)}
@@ -1593,7 +1597,8 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fwarn .wclose svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
 /* 批量动作是 2292 条级别的操作，不是行内文字链接：按钮的边界让「这会改状态」
    在点击前就看得见，也和本页其他 .fbtn（检查全部／去看更新）同一套语言。 */
-.fbulk{display:inline-flex;gap:8px;margin-left:10px;vertical-align:middle}
+.fbulk{display:inline-flex;gap:8px;margin-left:auto}
+.fnote.fbulkrow{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px}
 
 /* 状态标签：四种状态四种颜色，待办和完成一眼分得开。 */
 /* 凭据状态。类名不能叫 `.fstate`——观看页的卡片错误行已经占了那个名字
@@ -1662,7 +1667,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   text-overflow:ellipsis;white-space:nowrap}
 .fauthorhead .fmeta{margin-left:auto;flex:none}
 .fauthorhead .fmeta.warn{margin-left:0}
-.fauthor .fsource.frow{padding-left:37px;display:grid;
+.fauthor .fsource.frow{padding-left:0px;display:grid;
   grid-template-columns:22px minmax(0,1fr) auto auto auto auto;gap:10px;flex-wrap:nowrap}
 .fauthor .fsource.frow>b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fsource.disabled{opacity:.62}

@@ -938,7 +938,7 @@ function renderCount(){
     `<span class="mono">${total.toLocaleString()} 个符合 · 显示 ${n}</span>`
     +(state.state==='trash'
       // 回收站是待清理队列，不是浏览列表：换一批和九种排序在这里没有意义。
-      ? `<span class="sorts"><button class="batchaction danger" id="emptyTrash" title="永久删除回收站内容">清空回收站</button></span>`
+      ? (total?`<span class="sorts"><button class="batchaction danger" id="emptyTrash" title="永久删除回收站内容">清空回收站</button></span>`:'')
       : `<span class="sorts">`
         // 顶栏已有「换一批推荐」（#refresh），排序行不再放同一个动作；
         // 版式按钮跟排序连成一条。
@@ -2277,7 +2277,7 @@ function followSourceRow(source){
       rel="noreferrer noopener" title="打开原来源">${esc(source.label)}</a></b>
     <span class="fmeta fprovider">${sourceIcon(source.provider)}${esc(source.provider_label)}</span>
     <span class="fmeta fchecked">${esc(source.last_checked_at?localTime(source.last_checked_at):'未检查')}</span>
-    <span class="sbadge ${badge}"><i aria-hidden="true"></i>${esc(state)}</span>
+    <span class="sbadge ${badge}" title="${esc(state)}"><i aria-hidden="true"></i></span>
     <span class="fsourceactions">
       <button class="frowicon" data-follow-check="${source.id}" title="检查更新"
         ${source.enabled?'':'disabled'}
@@ -2379,6 +2379,7 @@ function renderFollowManage(credentials){
     <div class="fmain">
       <section class="fsec">
         <div class="fsechead"><h3>添加关注</h3></div>
+        <div class="fsrcfilter" id="followSrcFilter"></div>
         <form class="faddform" id="followAdd">
           <textarea name="lines" rows="1" required spellcheck="false"
             aria-label="来源链接、名字或 id"></textarea>
@@ -2402,8 +2403,8 @@ function renderFollowManage(credentials){
         ${broken.length?`<p class="fnote warn">${broken.length} 个来源上次检查失败，原因见对应那一行。</p>`:''}
         ${sources.length?`<div class="frows fsources">${
           followAuthorGroups(sources).map(followAuthorBlock).join('')}</div>
-          ${counts.new?`<div class="fsecfoot"><p class="fnote fbulkrow">未看 ${counts.new} · 已看 ${counts.seen||0}
-            · 已保存 ${counts.saved||0} · 已忽略 ${counts.ignored||0}
+          ${counts.new?`<div class="fsecfoot"><p class="fnote fbulkrow"><span class="fbulkcounts">未看 ${counts.new} · 已看 ${counts.seen||0}
+            · 已保存 ${counts.saved||0} · 已忽略 ${counts.ignored||0}</span>
             <span class="fbulk"><button class="fbtn" data-follow-bulk="seen">全部标记已看</button>
             <button class="fbtn" data-follow-bulk="ignored">全部忽略</button></span></p></div>`:''}`
           :'<p class="fnote">还没有关注任何来源。</p>'}
@@ -2414,8 +2415,10 @@ function renderFollowManage(credentials){
         <div class="fsechead"><h3>凭据</h3>
           ${needCred.length?`<span class="fmeta warn">${needCred.length} 个待配置</span>`:''}</div>
         <div class="frows">${creds.map(followCredentialRow).join('')}</div>
-        <p class="fdesc" title="存在运行 Peach 的那台机器上，不是浏览器所在机器；不进 Git、URL、日志或 ledger。NTFS 的访问控制走 ACL，chmod 在那里没有效果；POSIX 上建成 0600。">
-          <b>存放位置与权限</b><span>Windows 上不收紧文件权限</span></p>
+        <p class="fdesc"><b>存放位置与权限
+            <i class="fdescinfo" aria-hidden="true">${icon('info')}</i></b>
+          <span>Windows 上不收紧文件权限</span>
+          <span class="fdescpop" role="tooltip">存在<b>运行 Peach 的那台机器</b>上，不是浏览器所在机器；不进 Git、URL、日志或 ledger。NTFS 的访问控制走 ACL，<code>chmod</code> 在那里没有效果；POSIX 上建成 0600。</span></p>
       </section>
     </aside></div>`;
   wireFollowManage();
@@ -2477,6 +2480,7 @@ function wireFollowItems(){
 
 function wireFollowManage(){
   const root=$('#stats'),form=root.querySelector('#followAdd');
+  renderFollowSrcFilter(root.querySelector('#followSrcFilter'));
   const box=form&&form.querySelector('textarea');
   /* 常见情况是粘一条，多行是例外——所以静止时就一行高，和按钮齐平；
      真粘了多行才往下长。原来固定三行，按钮只有它 1/3 高，看着就是没对齐。 */
@@ -2636,6 +2640,38 @@ function wireFollowManage(){
 
 /* 查找结果先摆出来由人勾选，不自动登记：发现要联网，结果也可能不止一个，
    替用户决定「就是这个」是错的。已经关注的项灰掉但仍显示，免得人以为没查到。 */
+/* 来源筛选的常驻控件：挂在「添加关注」面板里，列出全部已关注来源，
+   默认全选；取消勾选的来源，其查找结果行隐藏、也不进「添加选中」。 */
+let fsrcMenuOpen=false;
+function renderFollowSrcFilter(mount){
+  if(!mount)return;
+  const providers=[...new Set((followData?.sources||[])
+    .map(source=>source.provider_label).filter(Boolean))];
+  providers.forEach(provider=>{if(!fsrcProviders.has(provider))fsrcProviders.add(provider)});
+  if(!providers.length){mount.innerHTML='';return}
+  const label=()=>{const n=providers.filter(p=>!fsrcUnchecked.has(p)).length;
+    return n===providers.length?'来源：全部':`来源：${n}/${providers.length}`};
+  mount.innerHTML=`<button type="button" class="fbtn" data-srcfilter-toggle aria-expanded="${fsrcMenuOpen}">
+      ${icon('list-filter')}<span data-srcfilter-label>${esc(label())}</span>${icon('chevron-down')}</button>
+    <div class="fsrcmenu" data-srcfilter-menu${fsrcMenuOpen?'':' hidden'}>${providers.map(provider=>
+      `<label><input type="checkbox" data-srcfilter="${esc(provider)}"${fsrcUnchecked.has(provider)?'':' checked'}>
+        <span>${esc(provider)}</span></label>`).join('')}</div>`;
+  const toggle=mount.querySelector('[data-srcfilter-toggle]');
+  const menu=mount.querySelector('[data-srcfilter-menu]');
+  toggle.onclick=e=>{e.stopPropagation();
+    fsrcMenuOpen=menu.hidden;menu.hidden=!fsrcMenuOpen;
+    toggle.setAttribute('aria-expanded',String(fsrcMenuOpen))};
+  menu.querySelectorAll('[data-srcfilter]').forEach(input=>input.onchange=()=>{
+    input.checked?fsrcUnchecked.delete(input.dataset.srcfilter)
+      :fsrcUnchecked.add(input.dataset.srcfilter);
+    mount.querySelector('[data-srcfilter-label]').textContent=label();
+    document.querySelectorAll('.fpickitem').forEach(item=>{
+      item.hidden=fsrcUnchecked.has(item.dataset.provider||'')})});
+  document.onclick=event=>{
+    if(!fsrcMenuOpen)return;
+    if(mount.contains(event.target))return;
+    fsrcMenuOpen=false;menu.hidden=true;toggle.setAttribute('aria-expanded','false')};
+}
 function renderFollowPicks(results){
   const box=$('#followPicks');
   if(!box)return;
@@ -2679,28 +2715,9 @@ function renderFollowPicks(results){
       :'<div class="fpickactions"><button data-pick-cancel>关闭</button></div>'}</div>`;
   box.scrollIntoView({block:'nearest',behavior:'smooth'});
   box.querySelector('[data-pick-cancel]').onclick=()=>{box.innerHTML=''};
-  const applySrcFilter=()=>box.querySelectorAll('.fpickitem').forEach(item=>{
+  const applySrcFilter=()=>document.querySelectorAll('.fpickitem').forEach(item=>{
     item.hidden=fsrcUnchecked.has(item.dataset.provider||'')});
   applySrcFilter();
-  const filterLabel=()=>{const n=providers.filter(p=>!fsrcUnchecked.has(p)).length;
-    const slot=box.querySelector('[data-srcfilter-label]');
-    if(slot)slot.textContent=n===providers.length?'来源：全部':`来源：${n}/${providers.length}`};
-  filterLabel();
-  box.querySelectorAll('[data-srcfilter]').forEach(input=>input.onchange=()=>{
-    input.checked?fsrcUnchecked.delete(input.dataset.srcfilter)
-      :fsrcUnchecked.add(input.dataset.srcfilter);
-    filterLabel();applySrcFilter()});
-  const filterToggle=box.querySelector('[data-srcfilter-toggle]');
-  const filterMenu=box.querySelector('[data-srcfilter-menu]');
-  if(filterToggle&&filterMenu){
-    filterToggle.onclick=e=>{e.stopPropagation();
-      const open=filterMenu.hidden;filterMenu.hidden=!open;
-      filterToggle.setAttribute('aria-expanded',String(open))};
-    document.addEventListener('click',event=>{
-      if(!filterMenu.hidden&&!filterMenu.contains(event.target)
-        &&!filterToggle.contains(event.target)){filterMenu.hidden=true;
-        filterToggle.setAttribute('aria-expanded','false')}},{once:false});
-  }
   const addButton=box.querySelector('[data-pick-add]');
   if(addButton)addButton.onclick=async()=>{
     const picked=[...box.querySelectorAll('[data-pick]:checked')]
@@ -3756,7 +3773,10 @@ async function load(reset){
   buildManageBar();
   const html=batchWithMix(d.items,isCatalogPath(decodeURIComponent(location.pathname))&&state.state!=='trash');
   if(reset)releaseHoverPreviews($('#grid'));
-  if(reset)$('#grid').innerHTML=html; else $('#grid').insertAdjacentHTML('beforeend',html);
+  if(reset&&state.state==='trash'&&!d.items.length)
+    $('#grid').innerHTML=`<div class="trashempty">${emptyState('trash-2','回收站是空的','删掉的内容会先到这里；确认不再需要后再清空。')}</div>`;
+  else if(reset)$('#grid').innerHTML=html;
+  else $('#grid').insertAdjacentHTML('beforeend',html);
   renderCount();
   $('#loadSentinel').hidden=reset?d.items.length>=total:!d.has_more;
   wireCards($('#grid'));
