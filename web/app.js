@@ -1244,8 +1244,7 @@ async function openTaste(push=true){
     <span class="skeleton" style="width:38%"></span>
     <span class="skeleton" style="width:100%"></span>
     <span class="skeleton" style="width:100%"></span>
-    <span class="skeleton" style="width:72%"></span>
-    <span class="ldots" aria-label="加载中"><i></i><i></i><i></i></span></div></div>`;
+    <span class="skeleton" style="width:72%"></span></div></div>`;
   if(!cached){
     const request=++tasteRequest;
     try{const data=await api('/api/taste?window='+tasteWindow);
@@ -2379,10 +2378,10 @@ function renderFollowManage(credentials){
     <div class="fmain">
       <section class="fsec">
         <div class="fsechead"><h3>添加关注</h3></div>
-        <div class="fsrcfilter" id="followSrcFilter"></div>
         <form class="faddform" id="followAdd">
           <textarea name="lines" rows="1" required spellcheck="false"
             aria-label="来源链接、名字或 id"></textarea>
+          <div class="fsrcfilter" id="followSrcFilter"></div>
           <button class="fbtn primary" type="submit">查找</button>
         </form>
         <p class="fnote" data-follow-add-state aria-live="polite"></p>
@@ -2642,7 +2641,6 @@ function wireFollowManage(){
    替用户决定「就是这个」是错的。已经关注的项灰掉但仍显示，免得人以为没查到。 */
 /* 来源筛选的常驻控件：挂在「添加关注」面板里，列出全部已关注来源，
    默认全选；取消勾选的来源，其查找结果行隐藏、也不进「添加选中」。 */
-let fsrcMenuOpen=false;
 function renderFollowSrcFilter(mount){
   if(!mount)return;
   const providers=[...new Set((followData?.sources||[])
@@ -2651,26 +2649,25 @@ function renderFollowSrcFilter(mount){
   if(!providers.length){mount.innerHTML='';return}
   const label=()=>{const n=providers.filter(p=>!fsrcUnchecked.has(p)).length;
     return n===providers.length?'来源：全部':`来源：${n}/${providers.length}`};
-  mount.innerHTML=`<button type="button" class="fbtn" data-srcfilter-toggle aria-expanded="${fsrcMenuOpen}">
+  mount.innerHTML=`<button type="button" class="fbtn" data-srcfilter-toggle aria-expanded="false">
       ${icon('list-filter')}<span data-srcfilter-label>${esc(label())}</span>${icon('chevron-down')}</button>
-    <div class="fsrcmenu" data-srcfilter-menu${fsrcMenuOpen?'':' hidden'}>${providers.map(provider=>
+    <div class="fsrcmenu" data-srcfilter-menu hidden>${providers.map(provider=>
       `<label><input type="checkbox" data-srcfilter="${esc(provider)}"${fsrcUnchecked.has(provider)?'':' checked'}>
         <span>${esc(provider)}</span></label>`).join('')}</div>`;
   const toggle=mount.querySelector('[data-srcfilter-toggle]');
   const menu=mount.querySelector('[data-srcfilter-menu]');
   toggle.onclick=e=>{e.stopPropagation();
-    fsrcMenuOpen=menu.hidden;menu.hidden=!fsrcMenuOpen;
-    toggle.setAttribute('aria-expanded',String(fsrcMenuOpen))};
+    const open=menu.hidden;menu.hidden=!open;
+    toggle.setAttribute('aria-expanded',String(open))};
   menu.querySelectorAll('[data-srcfilter]').forEach(input=>input.onchange=()=>{
     input.checked?fsrcUnchecked.delete(input.dataset.srcfilter)
       :fsrcUnchecked.add(input.dataset.srcfilter);
     mount.querySelector('[data-srcfilter-label]').textContent=label();
     document.querySelectorAll('.fpickitem').forEach(item=>{
       item.hidden=fsrcUnchecked.has(item.dataset.provider||'')})});
-  document.onclick=event=>{
-    if(!fsrcMenuOpen)return;
-    if(mount.contains(event.target))return;
-    fsrcMenuOpen=false;menu.hidden=true;toggle.setAttribute('aria-expanded','false')};
+  document.addEventListener('click',event=>{
+    if(menu.hidden||mount.contains(event.target))return;
+    menu.hidden=true;toggle.setAttribute('aria-expanded','false')});
 }
 function renderFollowPicks(results){
   const box=$('#followPicks');
@@ -3774,7 +3771,7 @@ async function load(reset){
   const html=batchWithMix(d.items,isCatalogPath(decodeURIComponent(location.pathname))&&state.state!=='trash');
   if(reset)releaseHoverPreviews($('#grid'));
   if(reset&&state.state==='trash'&&!d.items.length)
-    $('#grid').innerHTML=`<div class="trashempty">${emptyState('trash-2','回收站是空的','删掉的内容会先到这里；确认不再需要后再清空。')}</div>`;
+    $('#grid').innerHTML=`<div class="trashempty">${emptyState('trash','回收站是空的','删掉的内容会先到这里；确认不再需要后再清空。')}</div>`;
   else if(reset)$('#grid').innerHTML=html;
   else $('#grid').insertAdjacentHTML('beforeend',html);
   renderCount();
