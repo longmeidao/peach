@@ -125,9 +125,9 @@
 <!-- job-status:start -->
 
 <!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->
-<!-- generated 2026-08-29T02:51Z -->
+<!-- generated 2026-08-29T12:23+08:00 -->
 
-- 最近自动交接：`claude` / `SessionEnd` / `other`，2026-08-29T02:51:51+00:00。
+- 最近自动交接：`claude` / `SessionEnd` / `other`，2026-08-29T12:23:24+08:00。
 - 资产 81555 条，其中视频 24675 条。
 - 待抽帧（可抽 / 缺时长待 probe / 合计）：
   - `local`：3 / 1 / 4
@@ -138,7 +138,7 @@
 - `asset_tag` 来源分布：`vision_creator` 27004、`pixiv_tag` 19753、`name` 19271、`stash` 12899、`r18` 2254、`performer` 1589、`follow` 1376、`r18:performer` 1126、`javbus:performer` 37。
 - 番号 1462 个，其中 1155 个有厂牌（79%）。
 
-| 产物 | 行数 | 生成时间 | 说明 |
+| 产物 | 行数 | 生成时间（本地） | 说明 |
 | --- | ---: | --- | --- |
 | `code-scrape.csv` | 1135 | 08-22 10:39 | 番号刮削结果 |
 | `name-clean.csv` | 7 | 08-22 10:42 | 文件名净化清单 |
