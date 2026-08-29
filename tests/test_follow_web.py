@@ -943,10 +943,13 @@ class FollowSourceAddTests(FollowContractTests):
 class FollowWebSourceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        # 和 test_web_ui 同一口径：Web 表面是拼起来的一个契约，不是某个文件。
+        # web/js 下的 ES module 用 glob 收，拆出新模块时不必回头改这里。
         web = ROOT / "web"
+        sources = [web / "index.html", web / "app.css", web / "app.js"]
+        sources.extend(sorted((web / "js").glob("*.js")))
         cls.page = chr(10).join(
-            (web / name).read_text(encoding="utf-8")
-            for name in ("index.html", "app.css", "app.js"))
+            path.read_text(encoding="utf-8") for path in sources)
 
     def assertPageContains(self, needle, message=""):
         if needle not in self.page:

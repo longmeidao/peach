@@ -364,10 +364,11 @@ def create_app(
     @app.api_route("/app.css", methods=["GET", "HEAD"])
     @app.api_route("/app.js", methods=["GET", "HEAD"])
     def app_asset(request: Request):
-        """页面拆出来的样式与脚本。和 index.html 同目录，同一套口令。
+        """页面拆出来的样式与入口脚本。和 index.html 同目录，同一套口令。
 
-        没有构建步骤：`app.js` 是普通脚本不是 module，顶层声明仍然是全局的，
-        和内联时行为一致——内联事件处理器和跨函数调用都还指着同一批全局名字。
+        仍然没有构建步骤：`app.js` 现在是 ES module，浏览器原生解析 import，
+        拆出来的模块见下面的 `/js/{name}`。页面里没有任何内联事件处理器，
+        全部是 `.onclick=` 属性赋值，所以顶层声明不再是全局也不影响绑定。
         """
         args = _first_query_values(request)
         if not _authorized(request, settings.token, args):
@@ -379,6 +380,27 @@ def create_app(
         media = "text/css" if name.endswith(".css") else "text/javascript"
         response = FileResponse(path, media_type=f"{media}; charset=utf-8")
         # 页面本体是 no-store，样式与脚本跟着它一起变，不能被旧缓存钉住。
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @app.api_route("/js/{name}", methods=["GET", "HEAD"])
+    def app_module(name: str, request: Request):
+        """`app.js` 拆出来的 ES module。同一套口令。
+
+        文件名严格限制为一层平铺的 `[a-z0-9_-]+.js`：静态路由拼路径是典型的目录
+        穿越入口，与其在这里做 resolve 后再比较根目录，不如根本不接受分隔符。
+        前端模块规模不大，平铺够用。
+        """
+        args = _first_query_values(request)
+        if not _authorized(request, settings.token, args):
+            return PlainTextResponse("需要 ?t=口令", status_code=401)
+        if not re.fullmatch(r"[a-z0-9_-]+\.js", name):
+            return PlainTextResponse("bad module name", status_code=404)
+        path = settings.page_path.parent / "js" / name
+        if not path.is_file():
+            return PlainTextResponse("missing", status_code=404)
+        response = FileResponse(path, media_type="text/javascript; charset=utf-8")
+        # 和 index.html/app.js 同一口径：页面一变模块就跟着变，不能被旧缓存钉住。
         response.headers["Cache-Control"] = "no-store"
         return response
 

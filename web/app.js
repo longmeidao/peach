@@ -1,53 +1,31 @@
-const $=s=>document.querySelector(s);
-const icon=(name,cls='')=>`<svg${cls?` class="${cls}"`:''} viewBox="0 0 24 24" aria-hidden="true"><use href="#i-${name}"/></svg>`;
-const api=async(p,o)=>{
-  const response=await fetch(p,Object.assign({headers:{'Content-Type':'application/json'}},o||{}));
-  let payload=null;
-  try{payload=await response.json()}catch(_e){}
-  if(!response.ok){
-    const detail=payload&&(payload.message||payload.detail||payload.error);
-    throw new Error(detail||`请求失败（${response.status}）`);
-  }
-  return payload;
-};
-const pageTitle=path=>{
-  const url=new URL(path,location.origin),parts=decodeURIComponent(url.pathname).split('/').filter(Boolean);
-  const fixed={stats:'统计',taste:'口味',review:'人工复核',duplicates:'重复文件','quality-goals':'高清版',
-    follow:'关注','follow-manage':'关注管理',playlists:'播放列表',performers:'女优',studios:'厂牌',
-    creators:'创作者',series:'系列',tags:'标签',unseen:'没看过','watch-later':'稍后看',flagged:'已标记',
-    immerse:'沉浸模式',mix:'Mix',item:'作品','resource-sync':'统计'};
-  const label=parts.length>1&&['performers','studios','creators','series'].includes(parts[0])
-    ? parts.slice(1).join('/') : fixed[parts[0]];
-  return label?`${label} · Peach`:'Peach · 蜜桃';
-};
-const syncPageTitle=path=>{document.title=pageTitle(path)};
-const STATE_ROUTES={fresh:'/unseen',later:'/watch-later',flagged:'/flagged'};
-const ROUTE_STATES=Object.fromEntries(Object.entries(STATE_ROUTES).map(([state,path])=>[path,state]));
-const STATE_LABELS={fresh:'没看过',later:'稍后看',flagged:'已标记'};
-const isCatalogPath=path=>path==='/'||Object.prototype.hasOwnProperty.call(ROUTE_STATES,path);
+import {
+  $,
+  icon,
+  api,
+  pageTitle,
+  syncPageTitle,
+  STATE_ROUTES,
+  ROUTE_STATES,
+  STATE_LABELS,
+  isCatalogPath,
+  ENTITY_ROUTES,
+  ROUTE_ENTITIES,
+  entityPath,
+  esc,
+  SITE_FAVICONS,
+  faviconUrl,
+  faviconFallbackUrl,
+  foldName,
+  fmtDur,
+  fmtClock,
+  fmtSize,
+  LOC,
+} from './js/core.js';
+
 const route=(path,replace=false)=>{
   history[replace?'replaceState':'pushState']({},'',path);syncPageTitle(path);
   queueMicrotask(()=>{syncHeaderActions();paintListTitle()});
 };
-const ENTITY_ROUTES={performer:'performers',studio:'studios',creator:'creators',series:'series'};
-const ROUTE_ENTITIES={performers:'performer',studios:'studio',creators:'creator',series:'series'};
-const entityPath=(kind,name)=>`/${ENTITY_ROUTES[kind]||kind}/${encodeURIComponent(name)}`;
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const SITE_FAVICONS={
-  'kemono.cr':'https://kemono.cr/assets/favicon-CPB6l7kH.ico',
-  'simpcity.cr':'https://simpcity.cr/data/assets/logo/favicon.png',
-  'hanime1.me':'https://vdownload.hembed.com/image/icon/tab_logo.png?secure=EJYLwnrDlidVi_wFp3DaGw==,4867726124',
-};
-const faviconUrl=url=>{try{const parsed=new URL(url),host=parsed.hostname.replace(/^www\./,'');
-  return SITE_FAVICONS[host]||new URL('/favicon.ico',parsed).href}catch{return ''}};
-const faviconFallbackUrl=domain=>`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`;
-const foldName=s=>String(s??'').normalize('NFKC').trim().toLocaleLowerCase();
-const fmtDur=s=>{if(!s)return'—';s=Math.round(s);const h=s/3600|0,m=(s%3600)/60|0,x=s%60;
-  return h?`${h}:${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')}`:`${m}:${String(x).padStart(2,'0')}`};
-const fmtClock=s=>{s=Math.max(0,Math.floor(Number(s)||0));const h=s/3600|0,m=(s%3600)/60|0,x=s%60;
-  return h?`${h}:${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')}`:`${m}:${String(x).padStart(2,'0')}`};
-const fmtSize=b=>b>=1099511627776?(b/1099511627776).toFixed(2)+' TB':b>=1073741824?(b/1073741824).toFixed(1)+' GB':(b/1048576|0)+' MB';
-const LOC={local:'本地','115':'115',pikpak:'PikPak',online:'在线'};
 
 /* ── 脱盘模式 ─────────────────────────────────────────────────────────────────
    脱盘是来源级的：外置盘拔掉只影响 local，115/PikPak 照常可播；反过来也一样。
