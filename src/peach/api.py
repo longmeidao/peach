@@ -921,7 +921,7 @@ def create_app(
                     if size > maximum:
                         raise OverflowError
                     digest.update(chunk)
-                    handle.write(chunk)
+                    await asyncio.to_thread(handle.write, chunk)
             if not size:
                 raise ValueError("导出文件为空")
             target = root / f"{digest.hexdigest()[:12]}-{filename}"
