@@ -11,29 +11,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import DATABASE_PATH, SECRETS_DIR, SOURCES_DIR
+from . import follow_providers
 from .follow import FollowSourceError
 from .follow_secrets import CredentialError, CredentialStore
 from .follow_sources import CONNECTORS, build_connector
 from .follow_store import FollowStore
 
 
-#: 登记订阅时按 provider 拼作品页 URL；只用于展示与去重，不参与抓取。
-_SOURCE_URL = {
-    "fanbox": "https://{ref}.fanbox.cc/",
-    "patreon": "https://www.patreon.com/cw/{ref}",
-    "subscribestar": "https://{ref}",
-    "kemono": "https://kemono.cr/{ref}",
-    "coomer": "https://coomer.st/{ref}",
-    "pawchive": "https://pawchive.pw/{ref}",
-    "rule34video": "https://rule34video.com/models/{ref}/",
-    "rule34xxx": "https://rule34.xxx/index.php?page=post&s=list&tags={ref}",
-    "rule34paheal": "https://rule34.paheal.net/post/list/{ref}/1",
-    "f95zone": "https://f95zone.to/threads/{ref}/",
-    "simpcity": "https://simpcity.cr/threads/{ref}/",
-}
+#: 形状与登记表一致，投影自 follow_providers；新增来源只改那一处。
+_SOURCE_URL = follow_providers.source_urls()
 
 #: 这些来源的每个条目是同一作品的一次发布，不是独立作品。
-_RELEASE_PROVIDERS = frozenset({"f95zone", "simpcity"})
+_RELEASE_PROVIDERS = follow_providers.release_providers()
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:

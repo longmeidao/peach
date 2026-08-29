@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+from . import follow_providers
 import difflib
 import re
 import unicodedata
@@ -250,19 +251,7 @@ def classify(
 
 
 #: 同一 `release_key` 下选主条目时的来源优先级；越小越优先。未列出的排在最后。
-PROVIDER_PRIORITY: dict[str, int] = {
-    "fanbox": 1,
-    "subscribestar": 2,
-    "patreon": 3,
-    "kemono": 10,
-    "pawchive": 15,
-    "coomer": 20,
-    "rule34video": 30,
-    "rule34xxx": 40,
-    "rule34paheal": 45,
-    "f95zone": 50,
-    "simpcity": 60,
-}
+PROVIDER_PRIORITY: dict[str, int] = follow_providers.priorities()
 
 
 def _rank(item) -> tuple:

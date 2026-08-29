@@ -19,7 +19,8 @@ import httpx
 from bs4 import BeautifulSoup
 
 from .fanbox import FanboxContentError, normalize_fanbox_post
-from .follow import DEFAULT_MAX_BYTES, FollowSourceError, _plain_text, _stable_id
+from . import follow_providers
+from .follow import DEFAULT_MAX_BYTES, FollowSourceError, plain_text, stable_id
 from .follow_secrets import Credential, CredentialError
 from .http import CurlCffiTransport, HttpRequest, HttpResponse, HttpTransport, HttpxTransport
 
@@ -406,8 +407,8 @@ class _BaseConnector:
                     continue
                 seen.add(link)
                 items.append({
-                    "id": str(node.get("id") or _stable_id(link)),
-                    "name": _plain_text(str(node.get("name") or "")) or f"{kind} {len(items)+1}",
+                    "id": str(node.get("id") or stable_id(link)),
+                    "name": plain_text(str(node.get("name") or "")) or f"{kind} {len(items)+1}",
                     "url": link,
                     "thumb_url": str(node.get("thumbnail") or "") or None,
                     "media_kind": kind,
@@ -576,7 +577,7 @@ class KemonoConnector(_BaseConnector):
 
     def _candidate(self, post: dict, service: str, user: str) -> FollowCandidate:
         post_id = str(post.get("id") or "")
-        title = _plain_text(post.get("title")) or "(untitled)"
+        title = plain_text(post.get("title")) or "(untitled)"
         page = f"https://{self.host}/{service}/user/{user}/post/{post_id}" if post_id else None
         primary = post.get("file") if isinstance(post.get("file"), dict) else {}
         attachments = [a for a in (post.get("attachments") or []) if isinstance(a, dict)]
@@ -589,14 +590,14 @@ class KemonoConnector(_BaseConnector):
         ) if path and str(path).lower().endswith(self._THUMBABLE)), None)
         return FollowCandidate(
             provider=self.provider,
-            external_id=post_id or _stable_id(title, str(post.get("published"))),
+            external_id=post_id or stable_id(title, str(post.get("published"))),
             title=title,
             url=page,
             media_url=f"https://{self.host}{media}" if media else None,
             thumb_url=self._thumb_url(preview),
             published_at=_iso_from_text(post.get("published")),
             author=None,
-            summary=_plain_text(post.get("substring")),
+            summary=plain_text(post.get("substring")),
             # kemono 系的 post id 就是原平台的 post id，所以这个键和别的站点从
             # `source` 归一出来的键是同一个命名空间——跨站重复因此能精确命中。
             group_hint=f"{service}:{post_id}" if post_id else None,
@@ -682,10 +683,10 @@ class Rule34VideoConnector(_BaseConnector):
         )
 
     def _candidate(self, anchor, href: str, video_id: str) -> FollowCandidate:
-        title = _plain_text(anchor.get("title"))
+        title = plain_text(anchor.get("title"))
         if not title:
             node = anchor.select_one(".thumb_title") or anchor.select_one(".title")
-            title = _plain_text(node.get_text(" ")) if node else None
+            title = plain_text(node.get_text(" ")) if node else None
         thumb = anchor.select_one("img")
         thumb_url = None
         if thumb is not None:
@@ -695,7 +696,7 @@ class Rule34VideoConnector(_BaseConnector):
         # `.time` 是时长，`.added` 是相对提交时间——列表页没有绝对时间。
         duration_node = anchor.select_one(".time")
         added_node = anchor.select_one(".added")
-        added_text = _plain_text(added_node.get_text(" ")) if added_node else None
+        added_text = plain_text(added_node.get_text(" ")) if added_node else None
         preview = anchor.select_one("[data-preview]")
         return FollowCandidate(
             provider=self.provider,
@@ -706,7 +707,7 @@ class Rule34VideoConnector(_BaseConnector):
             thumb_url=thumb_url if isinstance(thumb_url, str) else None,
             published_at=_iso_from_relative(added_text),
             duration=_duration_seconds(
-                _plain_text(duration_node.get_text(" ")) if duration_node else None),
+                plain_text(duration_node.get_text(" ")) if duration_node else None),
             extra={"added_text": added_text,
                    "published_precision": "approximate" if added_text else "unknown",
                    "media_kind": "preview_clip"},
@@ -750,11 +751,11 @@ class Rule34VideoConnector(_BaseConnector):
             if isinstance(payload, dict) and payload.get("@type") == "VideoObject":
                 video = payload
                 break
-        tags = [_plain_text(node.get_text(" ")) for node in soup.select(
+        tags = [plain_text(node.get_text(" ")) for node in soup.select(
             'a.tag_item[href*="/tags/"]')]
-        categories = [_plain_text(node.get_text(" ")) for node in soup.select(
+        categories = [plain_text(node.get_text(" ")) for node in soup.select(
             'a.video_meta_pill[href*="/categories/"]')]
-        models = [_plain_text(node.get_text(" ")) for node in soup.select(
+        models = [plain_text(node.get_text(" ")) for node in soup.select(
             'a.video_meta_pill[href*="/models/"]')]
         tags = list(dict.fromkeys(value for value in tags if value))
         categories = list(dict.fromkeys(value for value in categories if value))
@@ -767,7 +768,7 @@ class Rule34VideoConnector(_BaseConnector):
                 "metadata" if category.casefold() in {"2d", "3d"} else "copyright")
         published = _iso_from_text(video.get("uploadDate"))
         return {
-            "title": _plain_text(video.get("name")),
+            "title": plain_text(video.get("name")),
             "media_url": (str(video.get("contentUrl"))
                           if video.get("contentUrl") else None),
             "thumb_url": (str(video.get("thumbnailUrl"))
@@ -865,7 +866,7 @@ class Rule34XxxConnector(_BaseConnector):
         opaque = _is_opaque_filename(stem)
         if stem and not opaque:
             title, title_from, title_is_name = (
-                _plain_text(stem.replace("_", " ")) or f"post {post_id}", "image", True)
+                plain_text(stem.replace("_", " ")) or f"post {post_id}", "image", True)
         else:
             title = self._tag_label(tags, tag) or f"post {post_id}"
             title_from, title_is_name = "tags", False
@@ -879,7 +880,7 @@ class Rule34XxxConnector(_BaseConnector):
             hint = f"{self.provider}:post:{anchor}" if anchor else None
         return FollowCandidate(
             provider=self.provider,
-            external_id=post_id or _stable_id(image, tags),
+            external_id=post_id or stable_id(image, tags),
             title=title,
             url=f"https://rule34.xxx/index.php?page=post&s=view&id={post_id}"
                 if post_id else None,
@@ -986,7 +987,7 @@ class Rule34PahealConnector(_BaseConnector):
         time_node = soup.select_one("tr[data-row='Uploader'] time[datetime]")
         author_node = soup.select_one("tr[data-row='Uploader'] a.username")
         info_node = soup.select_one("tr[data-row='Info'] td")
-        tags = [_plain_text(node.get_text(" ")) for node in
+        tags = [plain_text(node.get_text(" ")) for node in
                 soup.select("tr[data-row='Tags'] a.tag")]
         media = (video.select_one("source[src]") if video is not None else
                  soup.select_one("img#main_image[src]"))
@@ -997,7 +998,7 @@ class Rule34PahealConnector(_BaseConnector):
                           else None),
             "published_at": _iso_from_text(time_node.get("datetime") if time_node else None),
             "duration": float(duration_match.group(1)) if duration_match else None,
-            "author": _plain_text(author_node.get_text(" ") if author_node else ""),
+            "author": plain_text(author_node.get_text(" ") if author_node else ""),
             "source": str(source_node.get("href")) if source_node is not None else None,
             "tags": [tag for tag in tags if tag],
         }
@@ -1080,7 +1081,7 @@ class F95ZoneConnector(_BaseConnector):
             return None
         for label in heading.select(".label, .labelLink"):
             label.extract()
-        return _plain_text(heading.get_text(" "))
+        return plain_text(heading.get_text(" "))
 
     def _replies(self, soup, thread: str, thread_title: str):
         posts = soup.select('article[data-content^="post-"]')
@@ -1128,8 +1129,8 @@ class F95ZoneConnector(_BaseConnector):
                 thumb_url=direct_attachment,
                 published_at=_iso_from_text(time_node.get("datetime"))
                 if time_node is not None else None,
-                author=_plain_text(str(article.get("data-author") or "")) or None,
-                summary=_plain_text(body.get_text(" ")) if body else None,
+                author=plain_text(str(article.get("data-author") or "")) or None,
+                summary=plain_text(body.get_text(" ")) if body else None,
                 extra={"thread_id": thread, "link_count": len(media_links),
                        "links": media_links[:8],
                        "attachment_count": len(attachment_urls),
@@ -1321,15 +1322,15 @@ class FanboxConnector(_BaseConnector):
             candidates.append(FollowCandidate(
                 provider=self.provider,
                 external_id=post_id,
-                title=_plain_text(str(post.get("title") or "")) or f"FANBOX 帖子 {post_id}",
+                title=plain_text(str(post.get("title") or "")) or f"FANBOX 帖子 {post_id}",
                 url=f"https://{creator}.fanbox.cc/posts/{post_id}",
                 thumb_url=(str(direct_media[0].get("thumb_url")
                                or direct_media[0].get("url"))
                            if direct_media else
                            str(cover.get("url")) if cover.get("url") else None),
                 published_at=_iso_from_text(post.get("publishedDatetime")),
-                author=_plain_text(str(user.get("name") or "")),
-                summary=detail["summary"] or _plain_text(str(post.get("excerpt") or "")),
+                author=plain_text(str(user.get("name") or "")),
+                summary=detail["summary"] or plain_text(str(post.get("excerpt") or "")),
                 group_hint=f"fanbox:{post_id}",
                 extra={"fee_required": 0, "official": True, "links": links,
                        "media_items": media_items,
@@ -1372,7 +1373,7 @@ class FanboxConnector(_BaseConnector):
             raise FollowSourceError(str(exc)) from exc
         links = resource_links("\n".join((content.summary, *content.links)))
         return {
-            "summary": _plain_text(content.summary),
+            "summary": plain_text(content.summary),
             "links": links,
             "media_items": content.media_items,
             "post_type": content.post_type,
@@ -1428,7 +1429,7 @@ class SubscribeStarConnector(_BaseConnector):
             title_node = post.select_one(".post-title h2")
             date_node = post.select_one(".post-date a[href]")
             author_node = post.select_one(".post-user")
-            title = _plain_text(title_node.get_text(" ") if title_node else "")
+            title = plain_text(title_node.get_text(" ") if title_node else "")
             published = _iso_from_text(date_node.get_text(" ") if date_node else "")
             if published is None and date_node is not None:
                 try:
@@ -1444,8 +1445,8 @@ class SubscribeStarConnector(_BaseConnector):
                 url=f"https://{host}/posts/{post_id}",
                 thumb_url=_visible_post_image(post.select_one(".post-uploads")),
                 published_at=published,
-                author=_plain_text(author_node.get_text(" ") if author_node else ""),
-                summary=_plain_text(
+                author=plain_text(author_node.get_text(" ") if author_node else ""),
+                summary=plain_text(
                     post.select_one(".post-content").get_text(" ")
                     if post.select_one(".post-content") else ""),
                 group_hint=f"subscribestar:{post_id}",
@@ -1504,11 +1505,11 @@ class PatreonConnector(_BaseConnector):
                     break
                 node = node.parent
             title_node = node.select_one("h3") if node is not None else None
-            title = _plain_text(title_node.get_text(" ") if title_node else "")
+            title = plain_text(title_node.get_text(" ") if title_node else "")
             if not title:
                 slug = urllib.parse.urlsplit(href).path.rsplit("/", 1)[-1]
                 title = _slug_label(re.sub(rf"-{post_id}$", "", slug))
-            text = _plain_text(node.get_text(" ") if node is not None else "") or ""
+            text = plain_text(node.get_text(" ") if node is not None else "") or ""
             relative = _RELATIVE_RE.search(text)
             candidates.append(FollowCandidate(
                 provider=self.provider,
@@ -1559,7 +1560,7 @@ class ParsedSource:
 
 
 #: 每个来源的条目语义：`work` 是每条一个独立作品，`release` 是同一作品的历次发布。
-_SEMANTICS = {"f95zone": "release", "simpcity": "release"}
+_SEMANTICS = follow_providers.semantics()
 
 _KEMONO_HOSTS = {"kemono.cr": "kemono", "coomer.st": "coomer", "pawchive.pw": "pawchive"}
 _KEMONO_PATH_RE = re.compile(r"^/([a-z0-9_\-]{1,32})/user/([A-Za-z0-9_\-.]{1,64})")
