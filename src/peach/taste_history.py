@@ -22,7 +22,7 @@ from browserexport.browsers.chrome import Chrome
 from browserexport.browsers.firefox import Firefox
 from browserexport.browsers.safari import Safari
 
-from .web_logic import LENGTH_TAGS
+from .catalog_rules import LENGTH_TAGS
 
 
 @dataclass(frozen=True)

@@ -1,4 +1,12 @@
-"""Pure, database-free rules shared by Peach's web contract domains."""
+"""编目规则：什么是番号、什么是分卷、标签属于哪一类、两条记录算不算重复。
+
+不碰数据库、不碰 HTTP、不依赖任何 Peach 模块，是最底下那层纯策略。
+
+这个文件曾经叫 `web_logic.py`，但里面没有一行是 web 的，而依赖它的四个模块里有
+三个不是 web 层：`repository`（数据层）取 `is_jav_code`，`taste_history` 取
+`LENGTH_TAGS`，`fc2_similarity` 取重复判据。数据层 import 一个叫 web 的模块，
+读代码的人会以为分层反了——反的其实是名字。2026-08-29 改名，内容一行未动。
+"""
 from __future__ import annotations
 
 import re
