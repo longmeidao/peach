@@ -17,7 +17,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
     "catalog": ("test_ad_judgement.py", "test_duplicate_identity_merge.py",
                 "test_entity_merge.py", "test_fastapi_api.py", "test_migrations.py",
                 "test_review_mirror.py", "test_rm_ledger.py", "test_rm_web.py",
-                "test_taste_history.py", "test_web_ui.py"),
+                "test_taste_history.py", "test_web_ui.py", "test_web_resource_sync.py"),
     "media": ("test_endcard.py", "test_fastapi_api.py", "test_jobs.py",
               "test_media.py", "test_providers.py", "test_segments.py",
               "test_streaming.py", "test_transcodes.py"),
