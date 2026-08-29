@@ -1318,9 +1318,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("background:color-mix(in srgb,var(--drop) 7%,transparent);\n  border:1px solid color-mix(in srgb,var(--drop) 30%,transparent);")
         self.assertPageLacks("border-left:2px solid var(--drop)")
         # 来源行状态徽章（ok 绿 tint / 失败红 tint / 未检查灰）。
-        self.assertPageContains('<span class="sbadge ${badge}">${esc(state)}</span>')
-        self.assertPageContains(".sbadge.ok{background:color-mix(in srgb,var(--success) 14%,transparent);color:var(--success)}")
-        self.assertPageContains(".sbadge.error{background:color-mix(in srgb,var(--drop) 14%,transparent);color:var(--drop)}")
+        self.assertPageContains('<span class="sbadge ${badge}"><i aria-hidden="true"></i>${esc(state)}</span>')
+        self.assertPageContains(".sbadge i{width:6px;height:6px;border-radius:50%;background:var(--muted);flex:none}")
+        self.assertPageContains(".sbadge.ok i{background:var(--success)}")
+        self.assertPageContains(".sbadge.error i{background:var(--drop)}")
         # 清空回收站：danger 语义色。
         self.assertPageContains('class="batchaction danger" id="emptyTrash"')
         self.assertPageContains(".count .sorts .batchaction.danger{background:var(--drop);border-color:var(--drop);color:#fff;font-weight:500}")
@@ -1701,7 +1702,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks(
             ".reviewentity{display:grid;grid-template-columns:132px minmax(0,1fr)")
         self.assertPageContains("justify-content:start}")
-        self.assertPageContains(".reviewentityface{position:relative;width:76px;height:76px;justify-self:start")
+        self.assertPageContains(".reviewentityface{position:relative;width:44px;height:44px;justify-self:start")
 
     def test_sole_metadata_candidate_is_shown_not_offered_as_a_choice(self):
         """只有一个候选时没什么可选的，单选圈会让人以为还有别的选项。

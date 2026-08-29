@@ -1240,7 +1240,12 @@ async function openTaste(push=true){
   $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;buildManageBar();
   const cached=tasteCache.get(tasteWindow);
   if(cached)renderTaste(cached);
-  else $('#stats').innerHTML='<div class="tastepage"><p class="empty">正在分析…</p></div>';
+  else $('#stats').innerHTML=`<div class="tastepage"><div class="skeletonpanel">
+    <span class="skeleton" style="width:38%"></span>
+    <span class="skeleton" style="width:100%"></span>
+    <span class="skeleton" style="width:100%"></span>
+    <span class="skeleton" style="width:72%"></span>
+    <span class="ldots" aria-label="加载中"><i></i><i></i><i></i></span></div></div>`;
   if(!cached){
     const request=++tasteRequest;
     try{const data=await api('/api/taste?window='+tasteWindow);
@@ -1353,11 +1358,11 @@ function renderDuplicates(){
   const groups=d.groups||[];
   $('#stats').innerHTML=`<div class="review">
     <p class="dupsum mono">${d.total} 组 · ${d.files} 个文件 · 可回收 ${fmtSize(d.reclaimable)}</p>
-    <div class="dupactions">
+    ${groups.length?`<div class="fsechead dupactions"><h3>操作</h3>
       <button data-dup-all="largest">全部保留最大</button>
       <button data-dup-all="longest">全部保留最长</button>
       <button data-dup-all="115">全部优先 115</button>
-      <button data-dup-all="pikpak">全部优先 PikPak</button></div>
+      <button data-dup-all="pikpak">全部优先 PikPak</button></div>`:''}
     ${groups.length?groups.map((g,gi)=>`<section class="dupgroup" data-dup-group="${gi}">
       <div class="duphead"><b class="mono">${esc(g.code)}</b>
         <span class="mono">${g.count} 个 · 可回收 ${fmtSize(g.reclaimable)}</span>
@@ -1471,8 +1476,7 @@ async function openReview(push=true){
              <button class="reviewentityface" data-entity-kind="${subjectKind}" data-entity-name="${esc(subjectName)}"
                aria-label="打开创作者页：${esc(subjectName)}">${avatarInner(subjectName,
                  row.entity_id?{id:row.entity_id}:null,null,subjectKind)}</button>
-             <div><b title="${esc(subjectName)}">${esc(subjectName)}</b>
-               <button type="button" data-entity-kind="${subjectKind}" data-entity-name="${esc(subjectName)}">${icon('user-round')}打开创作者</button>
+             <div><b><button type="button" class="reviewentityname" data-entity-kind="${subjectKind}" data-entity-name="${esc(subjectName)}">${esc(subjectName)}</button></b>
                ${works?`<small class="mono">${works.toLocaleString()} 部作品</small>`:''}</div></div>`
            :row.asset_id?`<div class="revieworigin">
              <button class="revieworigincover" data-review-open-item="${row.asset_id}" aria-label="打开原视频 ${esc(row.asset_name||'')}">
@@ -1572,6 +1576,9 @@ async function openQualityGoals(push=true){
      以及对内容做批量标记。
    联网只发生在管理页点「检查更新」的那一刻——看的那一页不联网。 */
 let followData=null,followRuntime=null,followFilter='new',followBusy=false;
+/* 来源筛选：fsrcProviders 记录见过的全部来源（默认全选），
+   fsrcUnchecked 只记被取消勾选的——新来源自动进入「全选」。 */
+const fsrcProviders=new Set(),fsrcUnchecked=new Set();
 /* 关注页一次取一屏。counts 是全库口径（「未看 2292」），groups 只有这一页——
    两个数并排显示时看起来像自相矛盾，实际是两个口径，所以列表底部要能继续加载。 */
 const FOLLOW_PAGE=300;
@@ -2270,7 +2277,7 @@ function followSourceRow(source){
       rel="noreferrer noopener" title="打开原来源">${esc(source.label)}</a></b>
     <span class="fmeta fprovider">${sourceIcon(source.provider)}${esc(source.provider_label)}</span>
     <span class="fmeta fchecked">${esc(source.last_checked_at?localTime(source.last_checked_at):'未检查')}</span>
-    <span class="sbadge ${badge}">${esc(state)}</span>
+    <span class="sbadge ${badge}"><i aria-hidden="true"></i>${esc(state)}</span>
     <span class="fsourceactions">
       <button class="frowicon" data-follow-check="${source.id}" title="检查更新"
         ${source.enabled?'':'disabled'}
@@ -2407,12 +2414,8 @@ function renderFollowManage(credentials){
         <div class="fsechead"><h3>凭据</h3>
           ${needCred.length?`<span class="fmeta warn">${needCred.length} 个待配置</span>`:''}</div>
         <div class="frows">${creds.map(followCredentialRow).join('')}</div>
-        <details class="fnote fdetails">
-          <summary><span class="fsumhead">存放位置与权限</span><span class="fsumdesc">Windows 上不收紧文件权限</span></summary>
-          <p>存在<b>运行 Peach 的那台机器</b>上，不是浏览器所在机器；
-            不进 Git、URL、日志或 ledger。</p>
-          <p>NTFS 的访问控制走 ACL，<code>chmod</code> 在那里没有效果；POSIX 上建成 0600。</p>
-        </details>
+        <p class="fdesc" title="存在运行 Peach 的那台机器上，不是浏览器所在机器；不进 Git、URL、日志或 ledger。NTFS 的访问控制走 ACL，chmod 在那里没有效果；POSIX 上建成 0600。">
+          <b>存放位置与权限</b><span>Windows 上不收紧文件权限</span></p>
       </section>
     </aside></div>`;
   wireFollowManage();
@@ -2494,7 +2497,9 @@ function wireFollowManage(){
       .map(line=>line.trim()).filter(Boolean);
     if(!lines.length)return;
     const byName=lines.some(line=>!line.includes('/'));
-    button.disabled=true;
+    button.disabled=true;button.classList.add('busy');
+    const oldButton=button.innerHTML;
+    button.innerHTML=`${icon('refresh-cw')}<span>查找中</span>`;
     // 索引下载的提醒只在真按名字查时出现；常驻成一句说明就是噪音。
     state.textContent=byName?'查找中…（首次按名字查要下载创作者索引，可能几十秒）':'识别中…';
     try{
@@ -2503,7 +2508,7 @@ function wireFollowManage(){
       state.textContent='';if(box){box.value='';box.style.height='auto'}
       renderFollowPicks(result.results||[]);
     }catch(error){state.textContent=error.message||'查找失败'}
-    finally{button.disabled=false}
+    finally{button.disabled=false;button.classList.remove('busy');button.innerHTML=oldButton}
   };
   root.querySelectorAll('[data-follow-remove]').forEach(button=>button.onclick=async()=>{
     if(!confirm('不再追这个来源？已经抓到的条目会一并移除，媒体本身不受影响。'))return;
@@ -2635,11 +2640,18 @@ function renderFollowPicks(results){
   const box=$('#followPicks');
   if(!box)return;
   if(!results.length){box.innerHTML='';return}
+  /* 来源筛选：默认全选（集合为空 = 全部）；取消勾选的来源其结果行隐藏，
+     隐藏行不进「添加选中」。新来源出现时默认勾上。 */
+  const providers=[...new Set(results.flatMap(row=>(row.candidates||[])
+    .map(c=>c.provider_label).filter(Boolean)))];
+  providers.forEach(provider=>{if(!fsrcProviders.has(provider))fsrcProviders.add(provider)});
+  const srcChecked=provider=>fsrcProviders.has(provider) &&
+    !fsrcUnchecked.has(provider);
   const blocks=results.map((row,index)=>{
     if(row.kind==='error')
       return `<div class="fpick bad"><b>${esc(row.line)}</b><p>${esc(row.error)}</p></div>`;
     const failures=Object.entries(row.failures||{});
-    const items=(row.candidates||[]).map((c,ci)=>`<label class="fpickitem${c.known?' known':''}">
+    const items=(row.candidates||[]).map((c,ci)=>`<label class="fpickitem${c.known?' known':''}" data-provider="${esc(c.provider_label||'')}">
       <input type="checkbox" data-pick="${index}-${ci}" value="${esc(c.url)}"
         data-author="${esc(c.author||'')}"
         data-label="${esc(c.label)}"${c.known?' disabled':' checked'}>
@@ -2656,16 +2668,44 @@ function renderFollowPicks(results){
         `${esc(k)}：${esc(v)}`).join('；')}</p>`:''}</div>`;
   }).join('');
   const total=results.reduce((n,row)=>n+(row.candidates||[])
-    .filter(c=>!c.known).length,0);
-  box.innerHTML=`<div class="fpicks"><div class="fsechead"><h3>查找结果</h3></div>${blocks}
+    .filter(c=>!c.known && srcChecked(c.provider_label||'')).length,0);
+  box.innerHTML=`<div class="fpicks"><div class="fpickhead"><h3>查找结果</h3>
+    <div class="fsrcfilter">
+      <button type="button" class="fbtn" data-srcfilter-toggle aria-expanded="false">${icon('list-filter')}<span data-srcfilter-label>来源：全部</span>${icon('chevron-down')}</button>
+      <div class="fsrcmenu" data-srcfilter-menu hidden>${providers.map(provider=>
+        `<label><input type="checkbox" data-srcfilter="${esc(provider)}"${srcChecked(provider)?' checked':''}><span>${esc(provider)}</span></label>`).join('')}</div></div></div>${blocks}
     ${total?`<div class="fpickactions"><button data-pick-add>添加选中</button>
       <button data-pick-cancel>取消</button><span data-pick-state aria-live="polite"></span></div>`
       :'<div class="fpickactions"><button data-pick-cancel>关闭</button></div>'}</div>`;
   box.scrollIntoView({block:'nearest',behavior:'smooth'});
   box.querySelector('[data-pick-cancel]').onclick=()=>{box.innerHTML=''};
+  const applySrcFilter=()=>box.querySelectorAll('.fpickitem').forEach(item=>{
+    item.hidden=fsrcUnchecked.has(item.dataset.provider||'')});
+  applySrcFilter();
+  const filterLabel=()=>{const n=providers.filter(p=>!fsrcUnchecked.has(p)).length;
+    const slot=box.querySelector('[data-srcfilter-label]');
+    if(slot)slot.textContent=n===providers.length?'来源：全部':`来源：${n}/${providers.length}`};
+  filterLabel();
+  box.querySelectorAll('[data-srcfilter]').forEach(input=>input.onchange=()=>{
+    input.checked?fsrcUnchecked.delete(input.dataset.srcfilter)
+      :fsrcUnchecked.add(input.dataset.srcfilter);
+    filterLabel();applySrcFilter()});
+  const filterToggle=box.querySelector('[data-srcfilter-toggle]');
+  const filterMenu=box.querySelector('[data-srcfilter-menu]');
+  if(filterToggle&&filterMenu){
+    filterToggle.onclick=e=>{e.stopPropagation();
+      const open=filterMenu.hidden;filterMenu.hidden=!open;
+      filterToggle.setAttribute('aria-expanded',String(open))};
+    document.addEventListener('click',event=>{
+      if(!filterMenu.hidden&&!filterMenu.contains(event.target)
+        &&!filterToggle.contains(event.target)){filterMenu.hidden=true;
+        filterToggle.setAttribute('aria-expanded','false')}},{once:false});
+  }
   const addButton=box.querySelector('[data-pick-add]');
   if(addButton)addButton.onclick=async()=>{
-    const picked=[...box.querySelectorAll('[data-pick]:checked')];
+    const picked=[...box.querySelectorAll('[data-pick]:checked')]
+      .filter(input=>{const row=input.closest('.fpickitem');
+        return !row||!row.hidden;});
     if(!picked.length)return;
     const state=box.querySelector('[data-pick-state]');
     addButton.disabled=true;

@@ -1089,7 +1089,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn('id="followPicks"', add_section)
         self.assertNotIn('</section>\n      <div id="followPicks">', manage)
         self.assertPageContains(
-            '<div class="fpicks"><div class="fsechead"><h3>查找结果</h3>')
+            '<div class="fpicks"><div class="fpickhead"><h3>查找结果</h3>')
         self.assertPageContains('<p class="fpickempty">站内没有查到来源</p>')
         self.assertPageContains("box.scrollIntoView({block:'nearest',behavior:'smooth'})")
         self.assertNotIn(".fpicks h3{", page,
@@ -1158,10 +1158,13 @@ class FollowWebSourceTests(unittest.TestCase):
                          "旧规则留在后面会覆盖新输入框样式")
         rule = page[page.index(".faddform textarea{"):]
         rule = rule[:rule.index("}")]
-        self.assertIn("height:32px", rule)
-        self.assertIn("min-height:32px", rule)
-        button = page[page.index(".fbtn{"):]
+        self.assertIn("height:38px", rule)
+        self.assertIn("min-height:38px", rule)
+        button = page[page.index("\n.fbtn{"):]
         self.assertIn("height:32px", button[:button.index("}")])
+        # faddform 里的按钮随输入栏同高（Geist 输入 32px 基线之上的一档）。
+        add_button = page[page.index(".faddform .fbtn{"):]
+        self.assertIn("height:38px", add_button[:add_button.index("}")])
 
     def test_the_manage_page_is_ordered_by_what_you_do_first(self):
         # 只看管理页那一段：同样的标题在别的页面上也出现过，全页搜索会命中错的那个。
