@@ -13,7 +13,6 @@ dependencies = [
   "browserexport==0.4.4",
   "curl_cffi==0.16.2",
   "fastapi==0.116.1",
-  "feedparser==6.0.12",
   "httpx==0.28.1",
   "pillow==12.3.0",
   "pystray==0.19.5",
