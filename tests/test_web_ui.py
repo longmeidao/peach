@@ -1323,12 +1323,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".sbadge.error{background:color-mix(in srgb,var(--drop) 14%,transparent);color:var(--drop)}")
         # 清空回收站：danger 语义色。
         self.assertPageContains('class="batchaction danger" id="emptyTrash"')
-        self.assertPageContains(".count .sorts .batchaction.danger{background:transparent;border-color:color-mix(in srgb,var(--drop) 38%,transparent);color:var(--drop)}")
+        self.assertPageContains(".count .sorts .batchaction.danger{background:var(--drop);border-color:var(--drop);color:#fff;font-weight:500}")
+        # Geist 按钮的 prefix 模式：侧栏「添加」控件带选中入口的图标，换选项换图标。
+        self.assertPageContains("class=\"sidebaraddfield\"><i data-add-icon")
+        self.assertPageContains("if(slot)slot.innerHTML=icon(addIconOf(select.value))")
         # 设置分组用框体隔开（用户回执）：每组建卡，分隔线顶格到卡边，
         # 标题字号与行内边距对齐 Vercel 后台设置卡。
         self.assertPageContains(".settinggroup{margin-top:16px;border:1px solid var(--line-soft);border-radius:12px;")
         # 组卡面与全站卡片同源（--surface 实底），不用白色透明叠加。
-        self.assertPageContains("background:var(--surface);padding:0 16px 4px}")
+        self.assertPageContains("background:var(--surface);padding:0 16px 12px}")
         # 布尔开关是 Geist Toggle（14×28 轨道 + 圆点），不是原生复选框；
         # Geist 的 Switch 是分段选择器，别用错控件。
         self.assertPageContains("#censorSetting{appearance:none;-webkit-appearance:none;width:28px;height:14px;flex:none;")

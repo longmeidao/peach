@@ -3402,8 +3402,17 @@ function renderSidebarOrderSetting(){
       <button data-sidebar-key="${esc(key)}" data-sidebar-move="1" aria-label="下移 ${esc(label)}" title="下移"${index===visible.length-1?' disabled':''}>${icon('chevron-down')}</button>
       <button data-sidebar-key="${esc(key)}" data-sidebar-hide aria-label="隐藏 ${esc(label)}" title="隐藏"${visible.length===1?' disabled':''}>${icon('eye-off')}</button></span></div>`).join('');
   const options=available.map(([key,label])=>`<option value="${esc(key===''?'__home__':key)}">${esc(label)}</option>`).join('');
-  root.innerHTML=rows+`<div class="sidebaradd"><select data-sidebar-add-select aria-label="选择要添加的页面"${available.length?'':' disabled'}>${options||'<option>全部页面都已显示</option>'}</select>
+  /* 添加控件带 prefix 图标（Geist 按钮的 prefix 模式）：图标跟当前选中的
+     入口走，换选项即换图标。native option 画不了图标，只能挂在 select 左侧。 */
+  const addIconOf=value=>{const item=NAV_CATALOG.find(([k])=>(k===''?'__home__':k)===value);
+    return item?item[2]:'plus'};
+  const firstValue=available.length?(available[0][0]===''?'__home__':available[0][0]):'';
+  root.innerHTML=rows+`<div class="sidebaradd"><span class="sidebaraddfield"><i data-add-icon aria-hidden="true">${icon(addIconOf(firstValue))}</i><select data-sidebar-add-select aria-label="选择要添加的页面"${available.length?'':' disabled'}>${options||'<option>全部页面都已显示</option>'}</select></span>
     <button data-sidebar-add${available.length?'':' disabled'}>${icon('plus')}<span>添加</span></button></div>`;
+  root.querySelectorAll('[data-sidebar-add-select]').forEach(select=>select.onchange=()=>{
+    const slot=root.querySelector('[data-add-icon]');
+    if(slot)slot.innerHTML=icon(addIconOf(select.value));
+  });
   root.querySelectorAll('[data-sidebar-move]').forEach(button=>button.onclick=()=>{
     const from=appSettings.sidebarOrder.indexOf(button.dataset.sidebarKey),to=from+(+button.dataset.sidebarMove);
     if(from<0||to<0||to>=appSettings.sidebarOrder.length)return;
