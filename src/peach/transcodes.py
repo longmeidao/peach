@@ -5,6 +5,7 @@ import subprocess
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
 from .ffmpeg import FFmpegResolver
@@ -29,7 +30,7 @@ class TranscodeService:
     ):
         self.resolver = resolver
         self.cache_root = cache_root
-        self._locks: dict[int, threading.Lock] = {}
+        self._locks: dict[int, list] = {}
         self._locks_guard = threading.Lock()
         self._slots = threading.Semaphore(max(1, max_concurrent))
 
@@ -114,6 +115,25 @@ class TranscodeService:
                     stale.unlink(missing_ok=True)
             return target, True
 
-    def _lock_for(self, asset_id: int) -> threading.Lock:
+    @contextmanager
+    def _lock_for(self, asset_id: int):
+        """同一 asset 的转码互斥；引用归零的条目随手清掉，长跑不再只增不减。
+
+        清理之所以安全：任何等锁线程都先在 guard 里加过引用，持有者退出临界区、
+        释放锁之后再减引用。减到零的那一刻不可能还有持有者或等待者，此时删除
+        才不会让后来的线程拿到第二把锁绕过互斥。
+        """
         with self._locks_guard:
-            return self._locks.setdefault(asset_id, threading.Lock())
+            entry = self._locks.get(asset_id)
+            if entry is None:
+                entry = [threading.Lock(), 0]
+                self._locks[asset_id] = entry
+            entry[1] += 1
+        try:
+            with entry[0]:
+                yield
+        finally:
+            with self._locks_guard:
+                entry[1] -= 1
+                if entry[1] <= 0:
+                    self._locks.pop(asset_id, None)
