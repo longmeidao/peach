@@ -177,3 +177,23 @@ def upsert_asset_entity(
             (entity_id, external_provider, kind, str(external_id), payload, stamp),
         )
     return int(entity_id)
+
+
+def resolve_entity(connection: Connection, kind: str, name: str):
+    """先取精确规范名，再取唯一别名；撞名时不任意指向另一位。
+
+    别名撞名返回 None 而不是随便挑一个：指错实体会把作品挂到另一个人名下，
+    那是要人工复核才能发现的错误。
+    """
+    canonical = connection.execute(
+        "SELECT e.* FROM entity e WHERE e.kind=? AND e.canonical_name=? LIMIT 1",
+        (kind, name),
+    ).fetchone()
+    if canonical:
+        return canonical
+    aliases = connection.execute(
+        "SELECT DISTINCT e.* FROM entity e JOIN entity_alias a ON a.entity_id=e.id "
+        "WHERE e.kind=? AND a.alias=? ORDER BY e.id LIMIT 2",
+        (kind, name),
+    ).fetchall()
+    return aliases[0] if len(aliases) == 1 else None
