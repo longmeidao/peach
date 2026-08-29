@@ -212,3 +212,31 @@ def duration_clusters(items: list[dict]) -> list[list[dict]]:
             clusters.append([item])
     clusters.extend([item] for item in items if not (item.get("duration") or 0) > 0)
     return clusters
+
+
+def dir_expr(alias: str = "a.") -> str:
+    """从 `path` 去掉 `name` 和分隔符，剩下的就是所在目录。
+
+    表别名做成参数，是因为图集查询用 `a.`、按目录对账时直接查 `asset` 不带别名；
+    早先靠对常量做字符串替换来凑另一种写法，改一次别名就会悄悄失配。
+    """
+    return (f"substr({alias}path,1,"
+            f"length({alias}path)-length({alias}name)-1)")
+
+
+#: 只写「这是图片」的通用目录名。它们做标题没有信息量，改用上一级目录名。
+GENERIC_PHOTO_DIRS = frozenset({
+    "p", "photo", "photos", "pic", "pics", "picture", "pictures",
+    "image", "images", "img", "图片", "写真", "照片",
+})
+
+
+def photo_set_title(directory: str) -> str:
+    """图集标题：叶子目录名；叶子只是 `P`、`图片` 这类通用名时用上一级。"""
+    parts = [part for part in str(directory).replace("/", "\\").split("\\") if part]
+    if not parts:
+        return "未命名图集"
+    leaf = parts[-1]
+    if leaf.casefold() in GENERIC_PHOTO_DIRS and len(parts) > 1:
+        return parts[-2]
+    return leaf
