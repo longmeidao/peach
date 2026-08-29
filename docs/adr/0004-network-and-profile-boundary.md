@@ -12,7 +12,9 @@
 - 局域网服务由 FastAPI 生命周期按平台发布固定入口：macOS 为 `peach.local`，Windows 为
   `peach-win.local`；可用 `--no-mdns` 关闭，不再依赖旧 HTTP server。macOS 使用系统 mDNSResponder，
   Windows 保留 Python zeroconf 全合格网卡监听语义。不得只凭 UDP 5353 监听者数量推断冲突，也不得
-  用 DNS-SD 注册回调替代客户端解析验证。详细复盘见 ADR-0009。
+  用 DNS-SD 注册回调替代客户端解析验证。详细复盘见 ADR-0009。本条最初的 Windows
+  `DnsServiceRegister` 局部决策已被 [ADR-0009](0009-restore-verified-mdns-publication.md)
+  取代，以其恢复的 zeroconf 发布语义为准。
 - Uvicorn 支持显式证书/私钥的本机 TLS。`.local` 不能申请公开受信的 Let's Encrypt 证书；局域网需要 TLS 时使用受各客户端信任的本地 CA（如 mkcert），证书材料只放每台机器的 `peach-data\secrets`。
 - 公网启用前必须完成强口令/身份、TLS、反代可信头、CSRF/速率限制、secret storage、审计与备份恢复验收。
 
