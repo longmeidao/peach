@@ -486,6 +486,46 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(self.contract.cached("same", lambda: "first"), "first")
         self.assertEqual(other.cached("same", lambda: "second"), "second")
 
+    def test_a_bust_during_a_slow_computation_discards_the_stale_result(self):
+        """算到一半时缓存失效，算完不能把失效前的快照写回去。
+
+        复核页就是这个场景：`q_review` 要读候选 CSV 又要查库，用户在这期间批准了
+        一条候选，`w_review_decision` 调 `cache_bust`。写回一旦发生，用户批准完刷新
+        看到的还是批准前的列表，而且要等满一个 TTL 才会消失。
+        """
+        entered, may_finish = threading.Event(), threading.Event()
+
+        def slow():
+            entered.set()
+            self.assertTrue(may_finish.wait(5), "测试自身超时")
+            return "批准前的快照"
+
+        result = []
+        worker = threading.Thread(
+            target=lambda: result.append(self.contract.cached("review", slow)),
+            daemon=True,
+        )
+        worker.start()
+        self.assertTrue(entered.wait(5), "慢计算没有开始")
+        self.contract.cache_bust()
+        may_finish.set()
+        worker.join(5)
+
+        self.assertEqual(result, ["批准前的快照"], "本次调用仍应拿到自己算出的值")
+        self.assertEqual(
+            self.contract.cached("review", lambda: "批准后的列表"), "批准后的列表",
+            "失效期间算出的值不得写回缓存",
+        )
+
+    def test_a_bust_before_the_computation_starts_still_caches_normally(self):
+        """代次机制不能把正常的缓存也挡掉——失效发生在计算开始之前就不算竞态。"""
+        self.contract.cache_bust()
+        self.assertEqual(self.contract.cached("k", lambda: "算一次"), "算一次")
+        self.assertEqual(
+            self.contract.cached("k", lambda: "不该被调用"), "算一次",
+            "第二次必须命中缓存",
+        )
+
     def test_contract_handler_registries_are_complete_and_unknown_routes_fail(self):
         self.assertEqual(set(rm_web.GET_HANDLERS), {
             "/api/items", "/api/item", "/api/entity", "/api/photos", "/api/photo-set",
