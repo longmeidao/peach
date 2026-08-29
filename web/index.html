@@ -79,6 +79,7 @@
   <button class="ib" id="searchBtn" title="搜索" aria-label="搜索"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-search"/></svg></button>
   <button class="ib" id="selectMode" title="多选（Ctrl 单项，Shift 连续）" aria-label="多选模式" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-square-check-big"/></svg></button>
   <button class="ib" id="density" title="密度：大图 / 密集" aria-label="切换卡片密度"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-layout-grid"/></svg></button>
+  <button class="ib" id="censorBtn" title="审查遮挡：共享屏幕时遮住封面与预览图" aria-label="审查遮挡" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-eye-off"/></svg></button>
   <button class="ib" id="refresh" title="换一批推荐" aria-label="换一批推荐"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-refresh-cw"/></svg></button>
   <button class="ib" id="settingsBtn" title="设置" aria-label="打开设置"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-settings"/></svg></button>
 
@@ -150,6 +151,8 @@
     </div>
   </div>
 </section>
+
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
 
 <script src="/vendor/videojs/8.23.9/video.min.js"></script>
 <script src="/vendor/videojs/8.23.9/lang/zh-CN.js"></script>

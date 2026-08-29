@@ -171,6 +171,31 @@ const SRCICON={
 const srcBadge=(loc,cost,cls)=>{const label=`${LOC[loc]||loc}${cost==='metered'?' · 计费':''}`;
   return `<span class="${cls||'src'} ${cost==='metered'?'metered':'free'}" title="${esc(label)}" aria-label="${esc(label)}">`
     +(SRCICON[loc]||'')+'</span>'};
+/* 空态用 Vercel 的「icon tile + 标题 + 一句解释」结构。不放假动作按钮：
+   能执行的操作仍然留在各页自己的工具栏里，空态只负责解释为什么是空的。 */
+const emptyState=(ic,title,desc)=>`<div class="emptystate"><div class="es-icon">${icon(ic)}</div><h3>${esc(title)}</h3><p>${esc(desc)}</p></div>`;
+
+/* Toast：挂在 #toasts（body 直下）而不是 #stats 里——检查完会整页重画，
+   页内浮层会被冲掉，这里不会。对齐 Geist 的处方（取证见
+   docs/reference-snapshots/vercel-geist-toast.md）：只做用户主动动作的
+   非阻塞回执，自动消失；hover 暂停计时，右上角关闭。失败这类必须跟进的
+   事只发一句短 toast，原因和恢复入口留在页面里的持久行上。 */
+const toast=(html,{timeout=6000,warn=false}={})=>{
+  const root=$('#toasts');
+  const item=document.createElement('div');
+  item.className='toast'+(warn?' warn':'');
+  item.innerHTML=`${warn?icon('alert'):''}<p>${html}</p><button title="关闭" aria-label="关闭提示">${icon('x')}</button>`;
+  let timer=null;
+  const close=()=>{clearTimeout(timer);item.classList.add('leaving');
+    setTimeout(()=>item.remove(),160)};
+  item.querySelector('button').onclick=close;
+  const arm=()=>{if(timeout)timer=setTimeout(close,timeout)};
+  item.addEventListener('mouseenter',()=>clearTimeout(timer));
+  item.addEventListener('mouseleave',arm);
+  root.prepend(item);arm();
+  while(root.children.length>4)root.lastElementChild.remove();
+  return item;
+};
 
 // sort 默认 daily：同一天进来顺序固定，隔天自动换一批（不是每次刷新都变）
 /* 排序种子。顶部三层（艺人头像 / 厂牌 / 标签）和首页网格共用它，所以它一变，整屏就是
@@ -496,7 +521,7 @@ function wireHover(el,it){
     // 不排掉的话 hover 会把它的 src 改写成 /poster?id=，封面当场被换掉。
     const im=pic.querySelector('.poster:not(.cover)'); if(!im)return;
     let t=null,i=4;
-    el.addEventListener('mouseenter',()=>{if(selectMode)return;armLong();t=setInterval(()=>{
+    el.addEventListener('mouseenter',()=>{if(selectMode||censorOn())return;armLong();t=setInterval(()=>{
       i=(i+1)%9; im.src=`/poster?id=${it.id}&c=${i}`},430)});
     const stop=()=>{clearLong();clearInterval(t);t=null;im.src=`/poster?id=${it.id}&c=4`};
     el._stopHover=stop;el.addEventListener('mouseleave',stop);
@@ -504,9 +529,9 @@ function wireHover(el,it){
   }
   let timer=null,v=null;
   el.addEventListener('mouseenter',()=>{
-    if(selectMode||window.__scrolling)return;          // 多选或滚动中不启动预览
+    if(selectMode||censorOn()||window.__scrolling)return;   // 多选、遮挡或滚动中不启动预览
     timer=setTimeout(()=>{
-      if(window.__scrolling)return;
+      if(window.__scrolling||censorOn())return;
       releaseHoverPreviews(document,el);   // 同一时间只保留一个本地视频预览
       v=document.createElement('video');
       v.className='hv'; v.muted=true; v.playsInline=true; v.loop=true; v.preload='metadata';
@@ -915,11 +940,11 @@ function renderCount(){
     +(state.state==='trash'
       // 回收站是待清理队列，不是浏览列表：换一批和九种排序在这里没有意义。
       ? `<span class="sorts"><button class="batchaction" id="emptyTrash" title="永久删除回收站内容">清空回收站</button></span>`
-      : `<span class="sorts"><button class="batchaction" id="batchAction" title="换一批" aria-label="换一批">${icon('refresh-cw')}</button>`
-        // 版式紧跟在「换一批」之后：它同属这一组操作，靠右和排序连成一条。
+      : `<span class="sorts">`
+        // 顶栏已有「换一批推荐」（#refresh），排序行不再放同一个动作；
+        // 版式按钮跟排序连成一条。
         +(javActive()?javLayoutButtons():'')
         +SORTS.map(([k,l])=>`<button data-sort="${k}" aria-pressed="${state.sort===k}">${l}</button>`).join('')+`</span>`);
-  if($('#batchAction'))$('#batchAction').onclick=()=>{state.sort='seed';state.seed=rollSeed();load(true)};
   wireJavLayoutButtons($('#count'));
   if(state.state==='trash')$('#emptyTrash').onclick=async(e)=>{
     if(!confirm('永久删除回收站中的全部文件和账本记录？此操作不可恢复。'))return;
@@ -1059,7 +1084,8 @@ async function wireResourceSync(){
   const active=()=>location.pathname==='/stats'&&!$('#stats').hidden&&document.body.contains(result);
   const setBusy=(busy,done=false)=>{
     scan.disabled=busy;scan.setAttribute('aria-busy',String(busy));
-    scan.innerHTML=`${icon('refresh-cw',busy?'spin':'')}<span>${busy?'扫描中':done?'重新扫描':'扫描差异'}</span>`;
+    scan.classList.toggle('busy',busy);
+    scan.innerHTML=`${icon('refresh-cw')}<span>${busy?'扫描中':done?'重新扫描':'扫描差异'}</span>`;
   };
   const render=payload=>{
     const sources=payload.sources||[];
@@ -1076,11 +1102,15 @@ async function wireResourceSync(){
     $('#resourceApply')?.addEventListener('click',async event=>{
       const button=event.currentTarget;
       if(!confirm(`把 ${payload.missing||0} 项移入回收站，并清理 ${cache.files||0} 个可重建缓存？`))return;
-      button.disabled=true;button.textContent='正在重新核对并应用…';
+      button.disabled=true;button.classList.add('busy');
+      button.innerHTML=`${icon('refresh-cw')}<span>正在重新核对并应用…</span>`;
       try{
         const applied=await api('/api/resource-sync/apply',{method:'POST',body:JSON.stringify({confirm:true,clean_cache:true,scan_id:payload.scan_id||''})});
         result.innerHTML=`<p class="resourcesyncok">已把 ${applied.moved_to_trash.toLocaleString()} 项移入回收站，清理 ${applied.cache_removed.toLocaleString()} 个缓存，释放 ${fmtSize(applied.bytes_reclaimed||0)}。</p>`;
-      }catch(error){button.disabled=false;button.textContent='重试同步';result.insertAdjacentHTML('beforeend',`<p class="resourceerror">${esc(error.message)}</p>`)}
+      }catch(error){
+        button.disabled=false;button.classList.remove('busy');
+        button.innerHTML=`${icon('refresh-cw')}<span>重试同步</span>`;
+        result.insertAdjacentHTML('beforeend',`<p class="resourceerror">${esc(error.message)}</p>`)}
     });
   };
   const followScan=async payload=>{
@@ -1180,9 +1210,11 @@ function renderTaste(d){
   const root=$('#stats'),stateEl=root.querySelector('[data-taste-state]'),file=root.querySelector('[data-taste-file]');
   root.querySelector('[data-taste-window]').value=d.window||tasteWindow;
   root.querySelector('[data-taste-window]').onchange=e=>{tasteWindow=e.target.value;openTaste(false)};
-  root.querySelector('[data-taste-refresh]').onclick=async e=>{const button=e.currentTarget;button.disabled=true;stateEl.textContent='正在读取 Peach 所在主机的浏览器…';
+  root.querySelector('[data-taste-refresh]').onclick=async e=>{const button=e.currentTarget;
+    button.disabled=true;button.classList.add('busy');
+    stateEl.textContent='正在读取 Peach 所在主机的浏览器…';
     try{const result=await api('/api/taste/refresh',{method:'POST',body:JSON.stringify({window:tasteWindow})});renderTaste(result.dashboard)}
-    catch(error){stateEl.textContent=error.message||'读取失败';button.disabled=false}};
+    catch(error){stateEl.textContent=error.message||'读取失败';button.disabled=false;button.classList.remove('busy')}};
   root.querySelector('[data-taste-import]').onclick=()=>file.click();
   file.onchange=async()=>{const selected=file.files[0];if(!selected)return;stateEl.textContent=`正在导入 ${selected.name}…`;
     try{const response=await fetch('/api/taste/import',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Peach-Filename':encodeURIComponent(selected.name)},body:selected});
@@ -1330,7 +1362,7 @@ function renderDuplicates(){
         <span class="mono">${fmtSize(f.size||0)}</span>
         <span class="mono">${fmtDur(f.duration)}</span>
         <span class="mono duppath" title="${esc(f.path||'')}">${esc(f.path||'')}</span></div>`).join('')}</div>
-    </section>`).join(''):'<p class="empty">没有找到重复文件</p>'}</div>`;
+    </section>`).join(''):emptyState('database','没有找到重复文件','所有来源之间没有检测到内容相同的文件。扫描新来源后，这里会自动更新。')}</div>`;
   $('#stats').querySelectorAll('[data-open-dup]').forEach(b=>
     b.onclick=()=>openItem(+b.dataset.openDup));
   $('#stats').querySelectorAll('[data-dup-keep]').forEach(b=>
@@ -1460,7 +1492,7 @@ async function openReview(push=true){
            // 账本规范名当标题，抓取来源给的写法（多为罗马音）留作副标题。
            row.source_name?`<p class="reviewalias">来源写法：${esc(row.source_name)}</p>`:''}${
            // 实体类卡片的作品数已经写在创作者入口里，这里再写一遍就是同一个数字两处。
-           subjectKind&&subjectName?'':`<p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>`}${origin}${tags?`<div class="reviewtags">${tags}</div>`:''}${preview}<p>${esc(evidence)}</p><div class="reviewactions"><button class="approve" data-review-status="approved"${canApprove&&!locked?'':' disabled'}>${approveLabel}</button><button class="skip" data-review-status="skipped"${locked?' disabled':''}>跳过</button><button class="reject" data-review-status="rejected"${locked?' disabled':''}>拒绝</button><span class="reviewstate" aria-live="polite"></span></div></article>`}).join(''):'<p class="empty">暂无候选</p>'}</div></section></div>`;
+           subjectKind&&subjectName?'':`<p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>`}${origin}${tags?`<div class="reviewtags">${tags}</div>`:''}${preview}<p>${esc(evidence)}</p><div class="reviewactions"><button class="approve" data-review-status="approved"${canApprove&&!locked?'':' disabled'}>${approveLabel}</button><button class="skip" data-review-status="skipped"${locked?' disabled':''}>跳过</button><button class="reject" data-review-status="rejected"${locked?' disabled':''}>拒绝</button><span class="reviewstate" aria-live="polite"></span></div></article>`}).join(''):emptyState('square-check-big','暂无候选','该分类当前没有待人工复核的项目。')}</div></section></div>`;
      wireReviewAssets($('#stats'));
     $('#stats').querySelectorAll('[data-review-open-item]').forEach(button=>button.onclick=()=>openItem(+button.dataset.reviewOpenItem));
     // 没有全局委托，每个界面各自接线（见 #stage 的同类处理）。
@@ -1514,7 +1546,7 @@ async function openQualityGoals(push=true){
         <img src="${preview}" alt="" loading="lazy" onerror="this.remove()"></button>
       <div><h3><button data-quality-open="${item.id}">${esc(item.name)}</button></h3>
         <p class="mono">${srcBadge(item.location,item.cost)}<span>${esc(LOC[item.location]||item.location)}</span><span>${fmtDur(item.duration)}</span><span>${fmtSize(item.size||0)}</span></p>
-        ${item.reason?`<p>${esc(item.reason)}</p>`:''}</div></article>`}).join(''):'<p class="empty">没有标记中的高清版目标</p>'}</div>`;
+        ${item.reason?`<p>${esc(item.reason)}</p>`:''}</div></article>`}).join(''):emptyState('sparkles','没有标记中的高清版目标','现有版本都已满足条件，或还没有加入追踪。')}</div>`;
   $('#stats').querySelectorAll('[data-quality-open]').forEach(button=>button.onclick=()=>openItem(+button.dataset.qualityOpen));
   window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -1849,11 +1881,12 @@ function followCard(group,authorSources=[]){
 }
 
 /* 检查完必须说清三件事：新增了什么、哪些确实没有更新、哪些失败了以及为什么。
-   「没有更新」和「检查失败」在界面上看起来都是「什么都没发生」，但一个不用管，
-   另一个再不管就会一直漏更新——所以失败必须单独列出来并带上原因。 */
-function followCheckSummary(report){
+   反馈走两条通道（Geist toast 处方，取证见 docs/reference-snapshots/vercel-geist-toast.md）：
+   「检查了 N 个来源」是用户主动动作的非阻塞回执 → toast，自动消失；
+   失败是「不跟进就会一直漏更新」的事 → 摘要里只留一句短提示，原因和
+   恢复入口放进页内的持久行（followCheckFailNote），关掉 toast 也还在。 */
+function followCheckBits(report){
   const rows=report.results||[];
-  const failed=rows.filter(r=>!r.ok);
   const added=rows.reduce((n,r)=>n+(r.added||0),0);
   const updated=rows.reduce((n,r)=>n+(r.updated||0),0);
   const quiet=rows.filter(r=>r.ok&&!r.added&&!r.updated).length;
@@ -1869,16 +1902,30 @@ function followCheckSummary(report){
   const probed=rows.reduce((n,r)=>n+(r.probed||0),0);
   if(probed)bits.push(`回查 <b>${probed}</b> 条详情`);
   if(quiet)bits.push(`${quiet} 个来源没有更新`);
-  if(!bits.length&&!failed.length)bits.push('没有任何更新');
+  if(!bits.length)bits.push('没有任何更新');
+  return {rows,bits};
+}
+function followCheckToast(report){
+  const {rows,bits}=followCheckBits(report);
+  const failed=rows.filter(r=>!r.ok).length;
+  toast(`检查了 <b>${rows.length}</b> 个来源：${bits.join(' · ')}`+
+    (failed?` · <b>${failed} 个失败</b>`:''),{warn:!!failed,timeout:failed?8000:6000});
+}
+/* 页内持久行：只装失败与取证缺档，渲染在管理页自己的检查区里。全部成功时
+   返回空串——成功摘要整条交给 toast，页面上不再出现通栏横条。关注页不渲染
+   这块：那里的持久行是 .fwarn，带「去管理关注」的恢复入口。 */
+function followCheckFailNote(report){
+  const rows=report.results||[];
+  const failed=rows.filter(r=>!r.ok);
   const evidence=rows.filter(r=>r.evidence_error);
-  return `<div class="fcheckreport${failed.length?' warn':''}" role="status" aria-live="polite">
-    <p>检查了 ${rows.length} 个来源：${bits.join(' · ')}${
-      failed.length?` · <b>${failed.length} 个失败</b>`:''}
-      <button class="flink" data-check-dismiss>知道了</button></p>
+  if(!failed.length&&!evidence.length)return '';
+  return `<div class="fcheckreport" role="status">${icon('alert')}<div>
+    <p><b>${failed.length} 个来源检查失败</b></p>
     ${failed.map(row=>`<p class="fcheckfail">${esc([row.provider_label||row.provider,row.ref]
       .filter(Boolean).join(' '))}${row.provider?'：':''}${esc(row.error||'未说明原因')}</p>`).join('')}
     ${evidence.length?`<p class="fchecknote">候选已入库，但这一次的原始响应没有留档：${
-      esc(evidence[0].evidence_error)}</p>`:''}</div>`;
+      esc(evidence[0].evidence_error)}</p>`:''}
+  </div></div>`;
 }
 
 /* ── 看的那一页 ── */
@@ -1961,9 +2008,7 @@ function renderFollow(){
       <button data-follow-media="videos" aria-pressed="${followMediaView==='videos'}">${icon('play')}<span>视频</span><b class="mono">${mediaCounts.videos.toLocaleString()}</b></button>
       <button data-follow-media="images" aria-pressed="${followMediaView==='images'}">${icon('layout-grid')}<span>图片</span><b class="mono">${mediaCounts.images.toLocaleString()}</b></button>
     </div>`:''}
-    ${broken.length?`<p class="fwarn">${broken.length} 个来源上次检查失败，去
-      <button class="flink" data-follow-manage>管理关注</button>看原因。</p>`:''}
-    ${followCheckReport?followCheckSummary(followCheckReport):''}
+    ${broken.length?`<p class="fwarn">${icon('alert')}<span>${broken.length} 个来源上次检查失败，去<button class="flink" data-follow-manage>管理关注</button>看原因。</span></p>`:''}
     <div class="followlist${followMediaView==='images'?' followphotowall':''}">${visible.length?visible.map(group=>{
       const source=sourceOf(group),siblings=source&&authorSources.get(source.author_key)||[];
       return followCard(group,siblings)}).join('')
@@ -1978,8 +2023,6 @@ function renderFollow(){
   wireDrag($('#stats').querySelector('.followauthors'));
   wireDrag($('#stats').querySelector('.followfilters'));
   paintSelection();
-  $('#stats').querySelectorAll('[data-check-dismiss]').forEach(button=>button.onclick=()=>{
-    followCheckReport=null;button.closest('.fcheckreport')?.remove()});
   $('#stats').querySelectorAll('[data-follow-filter]').forEach(button=>button.onclick=()=>{
     followFilter=button.dataset.followFilter;openFollow(false)});
   $('#stats').querySelectorAll('[data-follow-media]').forEach(button=>button.onclick=()=>{
@@ -2017,15 +2060,16 @@ function wireFollowOlder(){
   if(!button)return;
   button.onclick=async()=>{
     if(followBusy)return;
-    followBusy=true;const label=button.innerHTML;button.disabled=true;
-    button.textContent='抓取中…';
+    followBusy=true;button.disabled=true;button.classList.add('busy');
+    button.innerHTML=`${icon('refresh-cw')}<span>抓取中…</span>`;
     try{
       followCheckReport=await api('/api/follow/check',
         {method:'POST',body:JSON.stringify({older:true})});
+      followCheckToast(followCheckReport);
       await openFollow(false);
     }catch(error){
-      button.innerHTML=label;
       followCheckReport={results:[{ok:false,error:error.message}]};
+      followCheckToast(followCheckReport);
       await openFollow(false);
     }finally{followBusy=false}
   };
@@ -2288,7 +2332,7 @@ function renderFollowManage(credentials){
           <button class="fbtn" data-follow-check=""${sources.length?'':' disabled'}>${
             icon('refresh-cw')}检查全部</button>
           <button class="fbtn" data-follow-view>${icon('rss')}去看更新</button></div>
-        ${followCheckReport?followCheckSummary(followCheckReport):''}
+        ${followCheckReport?followCheckFailNote(followCheckReport):''}
         ${broken.length?`<p class="fnote warn">${broken.length} 个来源上次检查失败，原因见对应那一行。</p>`:''}
         ${sources.length?`<div class="frows fsources">${
           followAuthorGroups(sources).map(followAuthorBlock).join('')}</div>
@@ -2305,7 +2349,7 @@ function renderFollowManage(credentials){
           ${needCred.length?`<span class="fmeta warn">${needCred.length} 个待配置</span>`:''}</div>
         <div class="frows">${creds.map(followCredentialRow).join('')}</div>
         <details class="fnote fdetails">
-          <summary>存放位置与权限 · Windows 上不收紧文件权限</summary>
+          <summary><span class="fsumhead">存放位置与权限</span><span class="fsumdesc">Windows 上不收紧文件权限</span></summary>
           <p>存在<b>运行 Peach 的那台机器</b>上，不是浏览器所在机器；
             不进 Git、URL、日志或 ledger。</p>
           <p>NTFS 的访问控制走 ACL，<code>chmod</code> 在那里没有效果；POSIX 上建成 0600。</p>
@@ -2421,7 +2465,7 @@ function wireFollowManage(){
   });
   root.querySelectorAll('[data-follow-check]').forEach(button=>button.onclick=async()=>{
     if(followBusy)return;
-    followBusy=true;const label=button.innerHTML,oldTitle=button.title;
+    followBusy=true;const oldTitle=button.title;
     const oldAria=button.getAttribute('aria-label');
     button.disabled=true;button.classList.add('busy');button.title='检查中…';
     button.setAttribute('aria-label','检查中…');
@@ -2433,14 +2477,16 @@ function wireFollowManage(){
       /* 结果先留下再重画，否则整页重绘会把它冲掉，用户只看到一次闪烁。
          逐条报而不是整体报错：一个来源缺凭据，不该让其余来源的更新一起消失。 */
       followCheckReport=result;
+      followCheckToast(result);
       await openFollowManage(false);
     }catch(e){
-      button.innerHTML=label;
       // 整个请求就失败了（断网、写入端不可达）：同样走那块报告，不弹 alert。
       followCheckReport={results:[{ok:false,error:e.message}]};
+      followCheckToast(followCheckReport);
+      const note=followCheckFailNote(followCheckReport);
       const box=$('#stats').querySelector('.fcheckreport');
-      if(box)box.outerHTML=followCheckSummary(followCheckReport);
-      else await openFollowManage(false);
+      if(box)box.outerHTML=note;
+      else $('#stats').querySelector('.fsec')?.insertAdjacentHTML('afterbegin',note);
     }
     finally{followBusy=false;button.disabled=false;button.classList.remove('busy');
       button.title=oldTitle;if(oldAria===null)button.removeAttribute('aria-label');
@@ -2522,10 +2568,6 @@ function wireFollowManage(){
   });
   root.querySelectorAll('[data-follow-view]').forEach(button=>
     button.onclick=()=>openFollow());
-  root.querySelectorAll('[data-check-dismiss]').forEach(button=>button.onclick=()=>{
-    followCheckReport=null;
-    button.closest('.fcheckreport')?.remove();
-  });
 }
 
 /* 查找结果先摆出来由人勾选，不自动登记：发现要联网，结果也可能不止一个，
@@ -3339,7 +3381,10 @@ function buildManageBar(){
   const current=manageSection(),bar=$('#managebar');
   bar.hidden=!current;
   // 管理区是行政界面，不该顶着首页的人物/厂牌横条和标签筛选。
+  // 隐藏 tagbar 的同时同步 count 栏的吸顶偏移：它默认按「顶栏+筛选条」留位，
+  // 筛选条不在时那个偏移会留出一条 58px 的缝，滚动内容从缝里穿出来。
   if(current){$('#tiers').style.display='none';$('#tagbar').style.display='none'}
+  $('#count').classList.toggle('no-tagbar',!!current);
   buildEdge();     // 顶层高亮跟随管理区；否则从首页进来时仍停在「首页」上
   paintJavBar();
   paintManageTitle();
@@ -4479,7 +4524,7 @@ async function refreshAll(automatic=false){
     await openStats(false);return
   }      // 统计/复核页只刷新当前表面
   if(!$('#index').hidden){return}
-  state.sort='seed'; state.seed=rollSeed();
+  state.sort='seed';state.seed=rollSeed();
   // 顶部三层（女优头像、厂牌、标签）此前从不跟着换：它们有 30 秒会话缓存，
   // 而 refreshAll 只重载网格，于是「换一批」之后上面还是原来那批人。
   barsDataCache=null;barsDataPromise=null;
@@ -4489,10 +4534,32 @@ async function refreshAll(automatic=false){
 }
 /* 没有前台定时器：页面不会在你看着的时候自己重排。换排序是加载时结算的，
    「后台每 N 分钟换一次」的效果由种子的时间窗实现（见 persistedSeed）。 */
-$('#refresh').onclick=()=>{const b=$('#refresh');
-  b.style.transition='transform .55s cubic-bezier(.3,.9,.3,1)';b.style.transform='rotate(360deg)';
-  setTimeout(()=>{b.style.transition='';b.style.transform=''},580);
-  refreshAll()};
+$('#refresh').onclick=async()=>{const b=$('#refresh');
+  if(b.classList.contains('busy'))return;
+  b.classList.add('busy');
+  try{await refreshAll()}finally{b.classList.remove('busy')}};
+
+/* ── 审查遮挡 ──
+   共享屏幕 / 录屏 / 截图时把全站内容画面盖住：封面与预览图一旦以原始画面
+   进截图，截图管道的审查就会拦下整张图。所以默认遮挡，localStorage 只记
+   「用户显式关掉」（'0'）这一种状态；从没动过开关的新会话一律先盖住。
+   开启时顺手撤掉正在飞的悬停预览——动起来的画面比静帧更漏。悬停预览的
+   启动路径也查这个开关，遮挡期间不再拉流。 */
+const CENSOR_KEY='peach-censor';
+const censorOn=()=>document.body.classList.contains('censor');
+function applyCensor(on){
+  document.body.classList.toggle('censor',on);
+  const b=$('#censorBtn');
+  b.setAttribute('aria-pressed',String(on));
+  b.title=on?'审查遮挡：开启中，点击恢复画面':'审查遮挡：已恢复画面，共享屏幕或截图前请重新开启';
+}
+applyCensor(localStorage.getItem(CENSOR_KEY)!=='0');
+$('#censorBtn').onclick=()=>{
+  const on=!censorOn();
+  localStorage.setItem(CENSOR_KEY,on?'1':'0');
+  applyCensor(on);
+  if(on)releaseHoverPreviews();
+};
 
 /* 横向行支持鼠标拖动（三层顶栏、短片带、接着看都没滚动条，只能滚轮/触摸） */
 function wireDrag(el){

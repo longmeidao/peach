@@ -136,7 +136,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_browser_chrome_focus_and_mobile_inputs_follow_the_ui_checklist(self):
         self.assertPageContains('<meta name="theme-color" content="#FFFFFF"')
         self.assertPageContains('<meta name="theme-color" content="#020408"')
-        self.assertPageContains('.search:focus-within{border-color:var(--tungsten);box-shadow:')
+        # 聚焦环用 color-mix 柔化：边框 72% 主调 + 26% 的外圈，仍是「看得见的焦点」。
+        self.assertPageContains('.search:focus-within{border-color:color-mix(in srgb,var(--tungsten) 72%,transparent);box-shadow:')
         self.assertPageContains('@media (max-width:760px){input,textarea,select{font-size:16px!important}}')
         self.assertPageContains('button,a,input,textarea,select,summary{touch-action:manipulation}')
 
@@ -1261,6 +1262,29 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const canSelect=catalog||entity||path==='/tags'")
         self.assertPageContains("$('#selectMode').hidden=!canSelect;$('#density').hidden=!canDensity;$('#refresh').hidden=!canRefresh")
 
+    def test_censor_obscures_all_content_media_by_default(self):
+        """审查遮挡必须默认开启，且盖住的是全站所有内容图与视频。
+
+        封面和预览图一旦以原始画面进截图，截图管道的内容审查会拦下整张图
+        （关注页实测发生过），所以遮挡是默认态：localStorage 只记「用户显式
+        关闭」（'0'），没动过开关的会话一律先盖住。CSS 按 element 类型生效
+        而不是按页面类名，新页面、关注流、灯箱、沉浸模式不需要各自接入；
+        悬停预览的启动路径必须查这个开关——动起来的画面比静帧更漏。
+        """
+        # 默认遮挡：只有显式 '0' 才恢复画面。
+        self.assertPageContains("applyCensor(localStorage.getItem(CENSOR_KEY)!=='0')")
+        # 全站按元素类型盖：内容 img / video / videojs 海报层一个不落，
+        # 模糊 + 重度去饱和 + 压暗，截图里只剩深灰块。
+        self.assertPageContains("body.censor img,body.censor video,body.censor .vjs-poster{\n  filter:blur(30px) saturate(.3) brightness(.6)}")
+        # 豁免只给与内容无关的界面小图：品牌标、来源徽章、favicon。
+        self.assertPageContains("body.censor .brand .mark,body.censor .src img,body.censor .ficon{filter:none}")
+        # 顶栏开关开启时撤掉正在飞的悬停预览。
+        self.assertPageContains("if(on)releaseHoverPreviews()")
+        # 悬停预览三条启动路径（长按轮播、悬停起播、定时器到点）都要被拦。
+        self.assertIn("if(selectMode||censorOn())return;armLong()", self.page)
+        self.assertIn("if(selectMode||censorOn()||window.__scrolling)return;", self.page)
+        self.assertIn("if(window.__scrolling||censorOn())return;", self.page)
+
     def test_no_page_grows_its_own_back_control(self):
         """索引页原本有个返回按钮，现在顶栏入口本身就是返回路径。
 
@@ -1676,7 +1700,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".resourcesources article+article{border-left:1px solid var(--line-soft)}")
         self.assertPageContains(".resourceapplyrow .resourcesyncok{color:var(--success)}")
         self.assertPageContains("border-radius:var(--control-radius)")
-        self.assertPageContains("animation:resource-spin .8s linear infinite")
+        self.assertPageContains("animation:peach-spin .8s linear infinite")
         sections = self.page.split("const MANAGE_SECTIONS=[", 1)[1].split("];", 1)[0]
         self.assertNotIn("'resources'", sections)
 

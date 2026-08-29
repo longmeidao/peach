@@ -1515,11 +1515,13 @@ class FollowWebSourceTests(unittest.TestCase):
 
         「没有更新」和「检查失败」在界面上都像「什么都没发生」，但一个不用管，
         另一个再不管就会一直漏更新——所以失败必须单独列出来并带上原因。
+        回执走 toast（非阻塞、自动消失），失败明细留在页内持久行上。
         """
-        self.assertPageContains("function followCheckSummary(report)")
+        self.assertPageContains("function followCheckToast(report)")
+        self.assertPageContains("function followCheckFailNote(report)")
         # 重画会把结果冲掉，所以先存再画。
         self.assertPageContains("followCheckReport=result;")
-        self.assertPageContains("${followCheckReport?followCheckSummary(followCheckReport):''}")
+        self.assertPageContains("${followCheckReport?followCheckFailNote(followCheckReport):''}")
         for needle in ("新增 <b>", "更新 <b>", "个来源没有更新", "没有任何更新",
                        "个失败", "fcheckfail"):
             self.assertPageContains(needle)
@@ -1573,8 +1575,9 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("text-decoration:none")
 
     def test_follow_check_icons_spin_and_known_copy_says_followed(self):
-        self.assertPageContains("@keyframes follow-spin")
-        self.assertPageContains(".follow .fcheck.busy svg,.frowicon.busy svg")
+        # 转圈动画全站只有一套：busy 挂在按钮上，图标自己转（peach-spin）。
+        self.assertPageContains("@keyframes peach-spin")
+        self.assertPageContains("button.busy>svg{animation:peach-spin .8s linear infinite}")
         self.assertPageContains("c.known?'已经关注':c.evidence")
         self.assertPageLacks("已经在追")
 
