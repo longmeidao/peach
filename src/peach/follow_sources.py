@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import html
 import json
 import re
 import urllib.parse
@@ -22,6 +23,7 @@ from .fanbox import FanboxContentError, normalize_fanbox_post
 from . import follow_providers
 from .follow import DEFAULT_MAX_BYTES, FollowSourceError, plain_text, stable_id
 from .follow_secrets import Credential, CredentialError
+from .follow_gofile import GofileExpander
 from .http import CurlCffiTransport, HttpRequest, HttpResponse, HttpTransport, HttpxTransport
 
 
@@ -269,6 +271,12 @@ def _is_opaque_filename(stem: str) -> bool:
     return bool(re.fullmatch(r"[0-9a-f]{16,}", stem.strip().lower()))
 
 
+def _exc_summary(exc: Exception, limit: int = 140) -> str:
+    """把底层网络异常压成一行能看懂的原因，跟着「请求失败」一起报给用户。"""
+    text = f"{type(exc).__name__}: {exc}".strip()
+    return re.sub(r"\s+", " ", text)[:limit]
+
+
 class _BaseConnector:
     provider = ""
     semantics = "work"
@@ -307,7 +315,8 @@ class _BaseConnector:
             response = self.transport(HttpRequest("GET", url, merged),
                                       self.timeout, self.max_bytes)
         except (OSError, httpx.HTTPError) as exc:
-            raise FollowSourceError(f"{self.provider} 请求失败") from exc
+            raise FollowSourceError(
+                f"{self.provider} 请求失败：{_exc_summary(exc)}") from exc
         if len(response.body) > self.max_bytes:
             raise FollowSourceError(f"{self.provider} 响应超出大小上限")
         return response
@@ -322,7 +331,8 @@ class _BaseConnector:
             response = self.transport(HttpRequest("POST", url, merged, body),
                                       self.timeout, self.max_bytes)
         except (OSError, httpx.HTTPError) as exc:
-            raise FollowSourceError(f"{self.provider} 请求失败") from exc
+            raise FollowSourceError(
+                f"{self.provider} 请求失败：{_exc_summary(exc)}") from exc
         if len(response.body) > self.max_bytes:
             raise FollowSourceError(f"{self.provider} 响应超出大小上限")
         return response
@@ -338,15 +348,45 @@ class _BaseConnector:
             raise FollowSourceError(
                 f"{self.provider} 拒绝访问（HTTP {response.status}）：需要有效凭据，"
                 "或站点已加机器人验证")
+        if response.status == 429:
+            raise FollowSourceError(
+                f"{self.provider} 返回 HTTP 429：请求过于频繁，稍后再试")
         if response.status != 200:
             raise FollowSourceError(f"{self.provider} 返回 HTTP {response.status}")
+
+    #: 上游限流页的固定句式（2026-08-29 实测 rule34.xxx）：HTTP 200 + 文本正文
+    #: "You currently have a limit of 60 requests every 60 second(s)"。不识别的话
+    #  会被报成「请求失败/不是合法 JSON」，用户看不出是被限流了。
+    _RATE_LIMIT_RE = re.compile(
+        r"limit of (\d+) requests? every (\d+) seconds?", re.IGNORECASE)
+
+    def _upstream_reason(self, response: HttpResponse) -> str | None:
+        """能从响应正文里读出的明确失败原因；读不出就返回 None。"""
+        text = response.body.decode("utf-8", errors="replace")
+        matched = self._RATE_LIMIT_RE.search(text)
+        if matched:
+            count, seconds = matched.group(1), matched.group(2)
+            return (f"{self.provider} 触发频率限制：每 {seconds} 秒最多 "
+                    f"{count} 次请求，请稍后再试")
+        return None
+
+    @staticmethod
+    def _body_snippet(response: HttpResponse, limit: int = 120) -> str:
+        text = re.sub(r"<[^>]+>", " ", response.body.decode("utf-8", errors="replace"))
+        return re.sub(r"\s+", " ", text).strip()[:limit]
 
     def parse_json(self, response: HttpResponse):
         """解析一份已经取回的响应；不是合法 JSON 就抛错。"""
         try:
             return json.loads(response.body.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise FollowSourceError(f"{self.provider} 返回的不是合法 JSON") from exc
+            reason = self._upstream_reason(response)
+            if reason:
+                raise FollowSourceError(reason) from exc
+            snippet = self._body_snippet(response)
+            detail = f"：{snippet}" if snippet else ""
+            raise FollowSourceError(
+                f"{self.provider} 返回的不是合法 JSON{detail}") from exc
 
     def _request(self, url: str, *, ref: str, etag: str | None = None,
                  last_modified: str | None = None, page: int = 0,
@@ -394,74 +434,15 @@ class _BaseConnector:
         return self.parse_json(response)
 
     def _gofile_media(self, links: list[str]) -> tuple[dict[str, object], ...]:
-        """用用户自己的 GoFile API token 展开文件页，token 永不进入 URL/候选。"""
-        folders = []
-        for link in links:
-            try:
-                parsed = urllib.parse.urlsplit(link)
-            except ValueError:
-                continue
-            host = (parsed.hostname or "").casefold()
-            matched = re.fullmatch(r"/d/([A-Za-z0-9_-]+)", parsed.path.rstrip("/"))
-            if (host == "gofile.io" or host.endswith(".gofile.io")) and matched:
-                folders.append(matched.group(1))
-        if not folders or self.gofile_credential is None:
-            return ()
-        token, = self.gofile_credential.require("api_token")
-        items: list[dict[str, object]] = []
-        seen: set[str] = set()
-        for folder in dict.fromkeys(folders):
-            url = f"https://api.gofile.io/contents/{urllib.parse.quote(folder)}"
-            response = self._get(url, headers={
-                "Accept": "application/json", "Authorization": f"Bearer {token}",
-            }, connector_headers=False)
-            payload = None
-            try:
-                payload = self.parse_json(response)
-            except FollowSourceError:
-                # 非 JSON 的 401/403 仍按凭据拒绝处理；其他状态交给通用错误。
-                pass
-            api_status = payload.get("status") if isinstance(payload, dict) else None
-            if api_status == "error-notPremium":
-                raise FollowSourceError(
-                    "Gofile 文件列表 API 需要 Premium 账户；token 有效，"
-                    "但当前账户套餐不支持此接口")
-            if response.status in (401, 403) or api_status == "error-token":
-                raise CredentialError("Gofile 拒绝了 API token")
-            self._check_status(response)
-            if payload is None:
-                payload = self.parse_json(response)
-            if not isinstance(payload, dict) or payload.get("status") != "ok":
-                raise FollowSourceError("Gofile 文件列表未取得")
-            stack = [payload.get("data")]
-            while stack and len(items) < self.max_items:
-                node = stack.pop()
-                if not isinstance(node, dict):
-                    continue
-                children = node.get("children")
-                if isinstance(children, dict):
-                    stack.extend(reversed(list(children.values())))
-                elif isinstance(children, list):
-                    stack.extend(reversed(children))
-                if str(node.get("type") or "").casefold() != "file":
-                    continue
-                media_type = str(node.get("mimetype") or "").casefold()
-                kind = ("video" if media_type.startswith("video/") else
-                        "image" if media_type.startswith("image/") else "")
-                link = str(node.get("link") or node.get("downloadLink") or "")
-                if not kind or not link.startswith("https://") or link in seen:
-                    continue
-                seen.add(link)
-                items.append({
-                    "id": str(node.get("id") or stable_id(link)),
-                    "name": plain_text(str(node.get("name") or "")) or f"{kind} {len(items)+1}",
-                    "url": link,
-                    "thumb_url": str(node.get("thumbnail") or "") or None,
-                    "media_kind": kind,
-                    "size": node.get("size"),
-                    "resource_provider": "gofile",
-                })
-        return tuple(items)
+        """把帖子里的 Gofile 链接展开成媒体条目；实现见 `follow_gofile`。
+
+        留一个薄委托而不是让连接器直接构造展开器：调用点（f95zone / fanbox）不必知道
+        展开器怎么造，而 Gofile 的 HTTP 细节也不再摊在站点基类里。
+        """
+        return GofileExpander(
+            self.transport, credential=self.gofile_credential,
+            timeout=self.timeout, max_bytes=self.max_bytes, max_items=self.max_items,
+        ).expand(links)
 
 
 class KemonoConnector(_BaseConnector):
@@ -894,7 +875,10 @@ class Rule34XxxConnector(_BaseConnector):
 
     def _candidate(self, post: dict, tag: str) -> FollowCandidate:
         post_id = str(post.get("id") or "")
-        tags = str(post.get("tags") or "")
+        # dapi 返回的标签是 HTML 转义形态（实测 `miqo&#039;te`）。实体不反转义
+        # 就进 metadata，读取层再转一次就成了双重转义，用户看到的就是 `&#039;`
+        # 字面量，同一个标签还会和反转义后的写法分裂成两个身份。
+        tags = html.unescape(str(post.get("tags") or ""))
         image = str(post.get("image") or "")
         stem = re.sub(r"\.[a-z0-9]{2,5}$", "", image, flags=re.IGNORECASE)
         # booru 帖子没有标题。实测 rule34.xxx 的 `image` 全是 32 位十六进制哈希，
@@ -909,7 +893,10 @@ class Rule34XxxConnector(_BaseConnector):
             title_from, title_is_name = "tags", False
         # 出处比站内父帖强得多：实测 15 条 parent_id 全是 0，而 13 条有 source，
         # 其中 4 条指向同一个 fanbox 帖——那才是真正的同组信号，而且跨站可比。
+        # source 是站点转义过的 URL（`&amp;` 代替 `&`），反转义后才是真实地址；
+        # 归组键只取 path，query 里的实体不影响既有分组的稳定性。
         source = post.get("source")
+        source = html.unescape(str(source)) if source else None
         parent = post.get("parent_id")
         hint = origin_group_key(str(source) if source else None)
         if hint is None:

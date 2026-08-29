@@ -25,7 +25,7 @@ from .config import (
 )
 from .mdns import lan_ipv4
 from .netwatch import NetworkChangeWatcher
-from .platform import mount_share as mount_smb_share
+from .mount import mount_share as mount_smb_share
 from .sync import COPY_ACTIONS, SyncPlan, device_id, resolve
 from .versioning import VersionManager, VersionSnapshot
 from .windows_update import WindowsUpdateInstaller

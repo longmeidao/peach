@@ -139,7 +139,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_browser_chrome_focus_and_mobile_inputs_follow_the_ui_checklist(self):
         self.assertPageContains('<meta name="theme-color" content="#FFFFFF"')
         self.assertPageContains('<meta name="theme-color" content="#020408"')
-        self.assertPageContains('.search:focus-within{border-color:var(--tungsten);box-shadow:')
+        # 聚焦环用 color-mix 柔化：边框 72% 主调 + 26% 的外圈，仍是「看得见的焦点」。
+        self.assertPageContains('.search:focus-within{border-color:color-mix(in srgb,var(--tungsten) 72%,transparent);box-shadow:')
         self.assertPageContains('@media (max-width:760px){input,textarea,select{font-size:16px!important}}')
         self.assertPageContains('button,a,input,textarea,select,summary{touch-action:manipulation}')
 
@@ -785,7 +786,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks(".index .ihead h2{margin:0;font-size:20px;font-weight:500}")
         self.assertPageLacks(".playlistpage h2{margin:0 0 5px;font-size:28px}")
         self.assertPageContains('<h2 class="disp pagetitle">关注</h2>')
-        self.assertPageContains(".listtitle,.managetitle,.follow>.pagetitle{margin:0 0 14px}")
+        self.assertPageContains(".listtitle,.managetitle,.follow>.pagetitle{margin:0 0 12px}")
         self.assertPageContains('id="listTitle" hidden')
 
     def test_immersive_progress_bar_is_reachable_and_draggable(self):
@@ -1264,6 +1265,100 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const canSelect=catalog||entity||path==='/tags'")
         self.assertPageContains("$('#selectMode').hidden=!canSelect;$('#density').hidden=!canDensity;$('#refresh').hidden=!canRefresh")
 
+    def test_censor_lives_in_settings_and_stays_off_by_default(self):
+        """审查遮挡在设置面板，默认关闭；导航栏不出现。
+
+        日常浏览不该被遮挡（用户回执）；截图会交给会审查内容的模型时才在
+        设置里打开（AGENTS.md 工作规则）。规则按元素类型生效（img/video/
+        videojs 海报层），开关一开仍然全站覆盖；悬停预览的启动路径必须查
+        这个开关——动起来的画面比静帧更漏。
+        """
+        # 顶栏不出现独立开关，开关在设置面板「安全」组。
+        self.assertPageLacks('id="censorBtn"')
+        self.assertPageContains('<input type="checkbox" id="censorSetting">')
+        # 默认关闭：localStorage 记 '1' 才开，没动过的会话一律不遮。
+        self.assertPageContains("applyCensor(localStorage.getItem(CENSOR_KEY)==='1')")
+        # 全站按元素类型盖：内容 img / video / videojs 海报层一个不落。
+        self.assertPageContains("body.censor img,body.censor video,body.censor .vjs-poster{\n  filter:blur(30px) saturate(.3) brightness(.6)}")
+        # 豁免只给与内容无关的界面小图：品牌标、来源徽章、favicon。
+        self.assertPageContains("body.censor .brand .mark,body.censor .src img,body.censor .ficon{filter:none}")
+        # 开关变化写回 localStorage 并撤掉正在飞的悬停预览。
+        self.assertPageContains("$('#censorSetting').onchange=")
+        self.assertPageContains("if(on)releaseHoverPreviews()")
+        # 悬停预览三条启动路径（长按轮播、悬停起播、定时器到点）都要被拦。
+        self.assertIn("if(selectMode||censorOn())return;armLong()", self.page)
+        self.assertIn("if(selectMode||censorOn()||window.__scrolling)return;", self.page)
+        self.assertIn("if(window.__scrolling||censorOn())return;", self.page)
+
+    def test_management_surfaces_are_narrow_and_geist_semantics_hold(self):
+        """语义色、状态徽章与导航激活重算对齐 Geist 实测。
+
+        限宽布局已按用户回执整体改回：限宽列与上方导航和标题的版式不适配，
+        在重排导航与标题之前不许再回来。检查失败报告是红发丝边 + 微红底的
+        danger 语义块，不是左侧粗条；来源行状态用低饱和徽章；清空回收站是
+        销毁类操作，用 danger 色而不是主色实底；组合标签时顶部 pill 按按下
+        态逐个命中，combo 芯片显示显示名；导航激活态随路由重算。
+        """
+        # 限宽已回退：整条规则不许再出现（重排导航/标题前是已知的坏版式）。
+        self.assertPageLacks("max-width:1004px;margin-inline:auto")
+        self.assertPageContains("document.body.dataset.surface=new URL(path,location.origin).pathname")
+        # 导航激活态随路由重算：抽屉/窄栏按钮是 buildBars 时一次性画的，
+        # 管理页不跑 buildBars，不重算就会停留在上一个页面的按下态。
+        self.assertPageContains("paintNav();")
+        self.assertPageContains("function paintNav(){")
+        self.assertPageContains(".edge button[data-nav],#drawer .dnav button[data-nav]")
+        # 组合标签：pill 按按下态逐个命中；combo 芯片显示显示名、操作用原始 key。
+        self.assertPageContains("String(filterState.tag||'').split(',').includes(String(t.k))")
+        self.assertPageContains("${esc(tagLabel(t))} <b data-untag=\"${esc(t)}\">✕</b>")
+        # fwarn 提供 dismiss（会话内记忆），关闭钮样式与 toast 关闭钮同量纲。
+        self.assertPageContains("data-fwarn-dismiss")
+        self.assertPageContains("sessionStorage.setItem('peach-fwarn-dismissed','1')")
+        self.assertPageContains(".fwarn .wclose{flex:none;width:24px;height:24px;margin-left:auto;padding:0;border:0;")
+        # 报告条：danger 语义（红发丝边 + 微红底），不再是左侧粗条。
+        self.assertPageContains("background:color-mix(in srgb,var(--drop) 7%,transparent);\n  border:1px solid color-mix(in srgb,var(--drop) 30%,transparent);")
+        self.assertPageLacks("border-left:2px solid var(--drop)")
+        # 来源行状态徽章（ok 绿 tint / 失败红 tint / 未检查灰）。
+        self.assertPageContains('<span class="sbadge ${badge}">${esc(state)}</span>')
+        self.assertPageContains(".sbadge.ok{background:color-mix(in srgb,var(--success) 14%,transparent);color:var(--success)}")
+        self.assertPageContains(".sbadge.error{background:color-mix(in srgb,var(--drop) 14%,transparent);color:var(--drop)}")
+        # 清空回收站：danger 语义色。
+        self.assertPageContains('class="batchaction danger" id="emptyTrash"')
+        self.assertPageContains(".count .sorts .batchaction.danger{background:transparent;border-color:color-mix(in srgb,var(--drop) 38%,transparent);color:var(--drop)}")
+        # 设置分组用框体隔开（用户回执）：每组建卡，分隔线顶格到卡边，
+        # 标题字号与行内边距对齐 Vercel 后台设置卡。
+        self.assertPageContains(".settinggroup{margin-top:16px;border:1px solid var(--border-10);border-radius:8px;")
+        self.assertPageContains(".settinggroup>h3{margin:0;padding:14px 0 10px;font-size:var(--fs-lg);font-weight:600;color:var(--ink)}")
+        self.assertPageContains(".settinggroup .settingrow{margin:0 -16px;padding-left:16px;padding-right:16px}")
+        self.assertPageContains(
+            ".pagetitle,.listtitle,.managetitle,.index .ihead h2,.playlistpage h2{"
+            "\n  font-size:var(--fs-3xl);line-height:1.15;letter-spacing:-.01em;font-weight:650}")
+        # 全站字体栈必须有 CJK sans 兜底：Bahnschrift/Consolas 都没有中文字形，
+        # generic sans-serif/monospace 在中文 Chrome 的默认可能落到宋体。
+        css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
+            encoding="utf-8")
+        for i, line in enumerate(css.splitlines(), 1):
+            if "font-family" not in line or "inherit" in line:
+                continue
+            if "sans-serif" in line or "monospace" in line:
+                self.assertIn("YaHei", line, f"app.css:{i} 字体栈缺 CJK 兜底：{line.strip()[:90]}")
+
+    def test_taste_dashboard_is_cached_within_the_session(self):
+        """口味仪表按窗口做会话内缓存，进页不再每次等「正在分析…」。
+
+        口味数据来自浏览器历史聚合，会话里几乎不变；每次切页都打接口只剩
+        等待。命中缓存直接渲染；换窗口、导入、移除数据源和显式「读取」
+        才打接口，并把返回写回缓存。请求带序号：慢响应返回时人已经换到
+        别的窗口或页面，旧数据不能覆盖新渲染。
+        """
+        self.assertPageContains("let tasteWindow='all',tasteCache=new Map(),tasteRequest=0;")
+        self.assertPageContains("const cached=tasteCache.get(tasteWindow);")
+        self.assertPageContains("if(cached)renderTaste(cached);")
+        self.assertPageContains("tasteCache.set(tasteWindow,data);")
+        self.assertPageContains("if(request===tasteRequest&&location.pathname==='/taste')renderTaste(data)")
+        # 三个写路径都更新缓存，别让缓存变陈旧。
+        self.assertPageContains("tasteCache.set(tasteWindow,result.dashboard);renderTaste(result.dashboard)")
+        self.assertPageContains("tasteWindow='all';tasteCache.set('all',payload.dashboard);renderTaste(payload.dashboard)")
+
     def test_no_page_grows_its_own_back_control(self):
         """索引页原本有个返回按钮，现在顶栏入口本身就是返回路径。
 
@@ -1679,7 +1774,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".resourcesources article+article{border-left:1px solid var(--line-soft)}")
         self.assertPageContains(".resourceapplyrow .resourcesyncok{color:var(--success)}")
         self.assertPageContains("border-radius:var(--control-radius)")
-        self.assertPageContains("animation:resource-spin .8s linear infinite")
+        self.assertPageContains("animation:peach-spin .8s linear infinite")
         sections = self.page.split("const MANAGE_SECTIONS=[", 1)[1].split("];", 1)[0]
         self.assertNotIn("'resources'", sections)
 

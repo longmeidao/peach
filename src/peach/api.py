@@ -41,9 +41,9 @@ from .media import (
     StashAdapter,
 )
 from .mdns import create_mdns_publisher
+from .interaction import reveal_path
 from .platform import (
     is_unmapped,
-    reveal_path,
     root_online,
     translate_ledger_path,
 )
@@ -81,6 +81,17 @@ def _authorized(request: Request, token: str, args: dict[str, str]) -> bool:
         return True
     supplied = args.get("t") or request.headers.get("X-Token") or request.cookies.get("tok")
     return supplied is not None and hmac.compare_digest(str(supplied), token)
+
+
+class PageLoginRequired(Exception):
+    """页面路由未授权：401 形态是跳登录页，不是响应体。"""
+
+    def __init__(self, next_path: str):
+        self.next_path = next_path
+
+
+class AssetLoginRequired(Exception):
+    """页面资产（app.css/app.js）未授权：401 形态是 PlainText 提示。"""
 
 
 def _source_status() -> list[dict[str, Any]]:
@@ -241,10 +252,52 @@ def create_app(
     app.state.stream_sessions = stream_sessions
     app.state.sync = sync
 
+    # 媒体三异常的统一出口，路由里不再手抄同一组 try/except。
+    # 404/503/404 是逐个异常的状态码契约，不许并成一种。
+    @app.exception_handler(MediaNotFound)
+    def _media_not_found_handler(request: Request, exc: MediaNotFound):
+        return JSONResponse({"error": "no such id"}, status_code=404)
+
+    @app.exception_handler(MediaOffline)
+    def _media_offline_handler(request: Request, exc: MediaOffline):
+        return _offline_response(exc)
+
+    @app.exception_handler(MediaUnavailable)
+    def _media_unavailable_handler(request: Request, exc: MediaUnavailable):
+        return JSONResponse({"error": "unavailable"}, status_code=404)
+
+    # 401 有三种形态，按路由类分组保留（不许统一成一种）：页面路由跳登录页，
+    # 页面资产返回 PlainText 提示，API 与媒体路由返回 JSON。
+    @app.exception_handler(PageLoginRequired)
+    def _page_login_required_handler(request: Request, exc: PageLoginRequired):
+        return RedirectResponse(
+            "/login?next=" + quote(exc.next_path or "/", safe="/"), status_code=303,
+        )
+
+    @app.exception_handler(AssetLoginRequired)
+    def _asset_login_required_handler(request: Request, exc: AssetLoginRequired):
+        return PlainTextResponse("需要 ?t=口令", status_code=401)
+
+    @app.exception_handler(HTTPException)
+    def _http_exception_handler(request: Request, exc: HTTPException):
+        return JSONResponse({"error": str(exc.detail)}, status_code=exc.status_code)
+
     def require_auth(request: Request) -> dict[str, str]:
         args = _first_query_values(request)
         if not _authorized(request, settings.token, args):
             raise HTTPException(status_code=401, detail="unauthorized")
+        return args
+
+    def require_page_auth(request: Request) -> dict[str, str]:
+        args = _first_query_values(request)
+        if not _authorized(request, settings.token, args):
+            raise PageLoginRequired(request.url.path or "/")
+        return args
+
+    def require_asset_auth(request: Request) -> dict[str, str]:
+        args = _first_query_values(request)
+        if not _authorized(request, settings.token, args):
+            raise AssetLoginRequired()
         return args
 
     def set_auth_cookie(response: Response, request: Request) -> None:
@@ -344,12 +397,7 @@ def create_app(
         return response
 
     @app.api_route("/", methods=["GET", "HEAD"])
-    def index(request: Request):
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return RedirectResponse(
-                "/login?next=" + quote(request.url.path or "/", safe="/"), status_code=303,
-            )
+    def index(request: Request, args: dict[str, str] = Depends(require_page_auth)):
         if settings.token and args.get("t"):
             response = RedirectResponse(request.url.path or "/", status_code=303)
             set_auth_cookie(response, request)
@@ -363,16 +411,13 @@ def create_app(
 
     @app.api_route("/app.css", methods=["GET", "HEAD"])
     @app.api_route("/app.js", methods=["GET", "HEAD"])
-    def app_asset(request: Request):
+    def app_asset(request: Request, args: dict[str, str] = Depends(require_asset_auth)):
         """页面拆出来的样式与入口脚本。和 index.html 同目录，同一套口令。
 
         仍然没有构建步骤：`app.js` 现在是 ES module，浏览器原生解析 import，
         拆出来的模块见下面的 `/js/{name}`。页面里没有任何内联事件处理器，
         全部是 `.onclick=` 属性赋值，所以顶层声明不再是全局也不影响绑定。
         """
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return PlainTextResponse("需要 ?t=口令", status_code=401)
         name = request.url.path.lstrip("/")
         path = settings.page_path.parent / name
         if not path.is_file():
@@ -384,16 +429,13 @@ def create_app(
         return response
 
     @app.api_route("/js/{name}", methods=["GET", "HEAD"])
-    def app_module(name: str, request: Request):
-        """`app.js` 拆出来的 ES module。同一套口令。
+    def app_module(name: str, args: dict[str, str] = Depends(require_asset_auth)):
+        """`app.js` 拆出来的 ES module。和入口脚本同一套口令与 401 形态。
 
         文件名严格限制为一层平铺的 `[a-z0-9_-]+.js`：静态路由拼路径是典型的目录
         穿越入口，与其在这里做 resolve 后再比较根目录，不如根本不接受分隔符。
         前端模块规模不大，平铺够用。
         """
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return PlainTextResponse("需要 ?t=口令", status_code=401)
         if not re.fullmatch(r"[a-z0-9_-]+\.js", name):
             return PlainTextResponse("bad module name", status_code=404)
         path = settings.page_path.parent / "js" / name
@@ -415,19 +457,9 @@ def create_app(
         return FileResponse(PROJECT_ROOT / "resources" / "peach-logo.png", media_type="image/png")
 
     @app.api_route("/stream", methods=["GET", "HEAD"])
-    def stream(request: Request, id: int, session: str = ""):
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
-        try:
-            asset = media_engine.asset(id)
-            path = media_engine.filesystem.file_for(asset, thumbnail=False)
-        except MediaNotFound:
-            return JSONResponse({"error": "no such id"}, status_code=404)
-        except MediaOffline as exc:
-            return _offline_response(exc)
-        except MediaUnavailable:
-            return JSONResponse({"error": "unavailable"}, status_code=404)
+    def stream(request: Request, id: int, session: str = "", args: dict[str, str] = Depends(require_auth)):
+        asset = media_engine.asset(id)
+        path = media_engine.filesystem.file_for(asset, thumbnail=False)
         try:
             path, transcoded = transcode_service.browser_path(
                 id, path, session=session, registry=stream_sessions,
@@ -464,25 +496,15 @@ def create_app(
         return None if not plan else (asset, source, plan)
 
     @app.get("/api/stream-plan")
-    def stream_plan(request: Request, id: int, session: str = "", mode: str = ""):
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
+    def stream_plan(request: Request, id: int, session: str = "", mode: str = "", args: dict[str, str] = Depends(require_auth)):
         if session and len(session) > 128:
             return JSONResponse({"error": "invalid session"}, status_code=400)
         if session and stream_sessions.is_cancelled(session):
             return JSONResponse({"error": "stream cancelled"}, status_code=410)
-        try:
-            asset = media_engine.asset(id)
-            plan = media_engine.stream_plan(id, mode=mode or "auto")
-            # 只有真的能读出关键帧才宣告 HLS，否则客户端会拿到一个必然 404 的播放列表。
-            resolved = _hls_plan(id) if plan.protocol == "hls" else None
-        except MediaNotFound:
-            return JSONResponse({"error": "no such id"}, status_code=404)
-        except MediaOffline as exc:
-            return _offline_response(exc)
-        except MediaUnavailable:
-            return JSONResponse({"error": "unavailable"}, status_code=404)
+        asset = media_engine.asset(id)
+        plan = media_engine.stream_plan(id, mode=mode or "auto")
+        # 只有真的能读出关键帧才宣告 HLS，否则客户端会拿到一个必然 404 的播放列表。
+        resolved = _hls_plan(id) if plan.protocol == "hls" else None
         if resolved and session:
             return {
                 "id": id,
@@ -507,10 +529,7 @@ def create_app(
         }
 
     @app.get("/stream/hls/{id}/index.m3u8")
-    def hls_playlist(request: Request, id: int, session: str = ""):
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
+    def hls_playlist(request: Request, id: int, session: str = "", args: dict[str, str] = Depends(require_auth)):
         # 分片必须带 session 才能被取消，播放列表这层就要求它；
         # 否则会生成一份每个分片都必然 400 的目录。
         if not session or len(session) > 128:
@@ -519,10 +538,6 @@ def create_app(
             return PlainTextResponse("stream cancelled", status_code=410)
         try:
             resolved = _hls_plan(id, session)
-        except MediaNotFound:
-            return JSONResponse({"error": "no such id"}, status_code=404)
-        except MediaOffline as exc:
-            return _offline_response(exc)
         except (MediaUnavailable, TranscodeUnavailable):
             return PlainTextResponse("hls unavailable", status_code=404)
         if resolved is None:
@@ -536,10 +551,7 @@ def create_app(
         return response
 
     @app.get("/stream/hls/{id}/{index}.ts")
-    async def hls_segment(request: Request, id: int, index: int, session: str = ""):
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
+    async def hls_segment(request: Request, id: int, index: int, session: str = "", args: dict[str, str] = Depends(require_auth)):
         if not session or len(session) > 128:
             return JSONResponse({"error": "invalid session"}, status_code=400)
         if stream_sessions.is_cancelled(session):
@@ -559,12 +571,6 @@ def create_app(
                 source, start, duration, asset_id=id, index=index,
                 session=session, registry=stream_sessions,
             )
-        except MediaNotFound:
-            return JSONResponse({"error": "no such id"}, status_code=404)
-        except MediaOffline as exc:
-            return _offline_response(exc)
-        except MediaUnavailable:
-            return JSONResponse({"error": "unavailable"}, status_code=404)
         except SegmentCancelled:
             return Response(status_code=410, headers={"Cache-Control": "no-store"})
         except TranscodeCancelled:
@@ -583,63 +589,31 @@ def create_app(
         return response
 
     @app.post("/api/stream-cancel")
-    async def stream_cancel(request: Request, session: str):
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
+    async def stream_cancel(request: Request, session: str, args: dict[str, str] = Depends(require_auth)):
         if not session or len(session) > 128:
             return JSONResponse({"error": "invalid session"}, status_code=400)
         cancelled = stream_sessions.cancel(session)
         return JSONResponse({"ok": True, "cancelled": cancelled})
 
     @app.api_route("/thumb", methods=["GET", "HEAD"])
-    def thumbnail(request: Request, id: int):
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
-        try:
-            path = media_engine.file_for(id, thumbnail=True)
-        except MediaNotFound:
-            return JSONResponse({"error": "no such id"}, status_code=404)
-        except MediaOffline as exc:
-            return _offline_response(exc)
-        except MediaUnavailable:
-            return JSONResponse({"error": "unavailable"}, status_code=404)
+    def thumbnail(request: Request, id: int, args: dict[str, str] = Depends(require_auth)):
+        path = media_engine.file_for(id, thumbnail=True)
         response = FileResponse(path)
         response.headers["Cache-Control"] = "public, max-age=86400"
         return response
 
     @app.api_route("/photo", methods=["GET", "HEAD"])
-    def photo(request: Request, id: int):
+    def photo(request: Request, id: int, args: dict[str, str] = Depends(require_auth)):
         """图片资产原图。灯箱看大图用这条，瀑布流一律走 `/photo-thumb`。"""
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
-        try:
-            path = media_engine.file_for(id)
-        except MediaNotFound:
-            return JSONResponse({"error": "no such id"}, status_code=404)
-        except MediaOffline as exc:
-            return _offline_response(exc)
-        except MediaUnavailable:
-            return JSONResponse({"error": "unavailable"}, status_code=404)
+        """图片资产原图。灯箱看大图用这条，瀑布流一律走 `/photo-thumb`。"""
+        path = media_engine.file_for(id)
         response = FileResponse(path)
         response.headers["Cache-Control"] = "public, max-age=86400"
         return response
 
     @app.api_route("/photo-thumb", methods=["GET", "HEAD"])
-    def photo_thumb(request: Request, id: int):
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
-        try:
-            source = media_engine.file_for(id)
-        except MediaNotFound:
-            return JSONResponse({"error": "no such id"}, status_code=404)
-        except MediaOffline as exc:
-            return _offline_response(exc)
-        except MediaUnavailable:
-            return JSONResponse({"error": "unavailable"}, status_code=404)
+    def photo_thumb(request: Request, id: int, args: dict[str, str] = Depends(require_auth)):
+        source = media_engine.file_for(id)
         try:
             path = photo_service.thumbnail(id, source)
         except PreviewUnavailable:
@@ -649,10 +623,7 @@ def create_app(
         return response
 
     @app.api_route("/poster", methods=["GET", "HEAD"])
-    def poster(request: Request, id: int, c: int = 4):
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
+    def poster(request: Request, id: int, c: int = 4, args: dict[str, str] = Depends(require_auth)):
         try:
             path = preview_service.poster(id, c)
         except PreviewUnavailable:
@@ -662,11 +633,9 @@ def create_app(
         return response
 
     @app.api_route("/cover", methods=["GET", "HEAD"])
-    def cover(request: Request, code: str = ""):
+    def cover(request: Request, code: str = "", args: dict[str, str] = Depends(require_auth)):
         """官方封套原图。存原图不裁：4:3 与 16:9 两种版式在界面上按比例取景。"""
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        """官方封套原图。存原图不裁：4:3 与 16:9 两种版式在界面上按比例取景。"""
         path = contract.cover_path(code)
         if path is None:
             return JSONResponse({"error": "no cover"}, status_code=404)
@@ -675,11 +644,9 @@ def create_app(
         return response
 
     @app.api_route("/endcard-frame", methods=["GET", "HEAD"])
-    def endcard_frame(request: Request, id: int, name: str):
+    def endcard_frame(request: Request, id: int, name: str, args: dict[str, str] = Depends(require_auth)):
         """Serve only generated OCR evidence frames, never a client-provided path."""
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        """Serve only generated OCR evidence frames, never a client-provided path."""
         if (id <= 0 or not name.endswith(".png") or "/" in name or "\\" in name
                 or name.startswith(".")):
             return JSONResponse({"error": "invalid frame"}, status_code=400)
@@ -692,10 +659,7 @@ def create_app(
         return response
 
     @app.api_route("/avatar", methods=["GET", "HEAD"])
-    def avatar(request: Request, id: int):
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
+    def avatar(request: Request, id: int, args: dict[str, str] = Depends(require_auth)):
         try:
             path = preview_service.avatar(id)
         except PreviewUnavailable:
@@ -705,11 +669,9 @@ def create_app(
         return response
 
     @app.api_route("/follow-avatar", methods=["GET", "HEAD"])
-    def follow_avatar(request: Request, service: str, id: str):
+    def follow_avatar(request: Request, service: str, id: str, args: dict[str, str] = Depends(require_auth)):
         """Resolve an official creator avatar, then let the image CDN serve it."""
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        """Resolve an official creator avatar, then let the image CDN serve it."""
         try:
             target = resolve_official_avatar(service, id)
         except (OSError, FollowSourceError):
@@ -719,11 +681,9 @@ def create_app(
         return response
 
     @app.api_route("/follow-stream", methods=["GET", "HEAD"])
-    def follow_stream(request: Request, id: int, media: int | None = None):
+    def follow_stream(request: Request, id: int, media: int | None = None, args: dict[str, str] = Depends(require_auth)):
         """Play a remote follow candidate through Peach without exposing its upstream URL."""
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        """Play a remote follow candidate through Peach without exposing its upstream URL."""
         with database.read_connection() as connection:
             item = FollowStore(lambda: connection).item(id)
         if item is None:
@@ -774,11 +734,9 @@ def create_app(
         )
 
     @app.api_route("/follow-cover", methods=["GET", "HEAD"])
-    def follow_cover(request: Request, id: int):
+    def follow_cover(request: Request, id: int, args: dict[str, str] = Depends(require_auth)):
         """Return a cached clear still for a follow video; keep its URL server-side."""
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        """Return a cached clear still for a follow video; keep its URL server-side."""
         with database.read_connection() as connection:
             item = FollowStore(lambda: connection).item(id)
         if item is None:
@@ -796,10 +754,7 @@ def create_app(
         return response
 
     @app.api_route("/logo", methods=["GET", "HEAD"])
-    def logo(request: Request, studio: str = ""):
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
+    def logo(request: Request, studio: str = "", args: dict[str, str] = Depends(require_auth)):
         try:
             path, content_type = preview_service.logo(studio)
         except PreviewUnavailable:
@@ -840,14 +795,12 @@ def create_app(
                      seed_id: int | None = None, mix_item_id: int | None = None,
                      part_seed_id: int | None = None, part_item_id: int | None = None,
                      playlist_id: int | None = None, playlist_item_id: int | None = None,
-                     kind: str | None = None, name: str | None = None):
-        return index(request)
+                     kind: str | None = None, name: str | None = None,
+                     args: dict[str, str] = Depends(require_page_auth)):
+        return index(request, args)
 
     @app.api_route("/entity-image", methods=["GET", "HEAD"])
-    def entity_image(request: Request, kind: str, id: int):
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
+    def entity_image(request: Request, kind: str, id: int, args: dict[str, str] = Depends(require_auth)):
         try:
             path, content_type = preview_service.entity_image(kind, id)
         except PreviewUnavailable:
@@ -857,18 +810,13 @@ def create_app(
         return response
 
     @app.get("/api/providers")
-    def provider_health(request: Request):
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
+    def provider_health(request: Request, args: dict[str, str] = Depends(require_auth)):
         return providers.health()
 
     @app.get("/api/sources")
-    def source_health(request: Request):
+    def source_health(request: Request, args: dict[str, str] = Depends(require_auth)):
         """无副作用的来源可达性。前端据此把脱盘来源的筛选置灰。"""
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        """无副作用的来源可达性。前端据此把脱盘来源的筛选置灰。"""
         rows = _source_status()
         return {
             "ok": True,
@@ -877,7 +825,7 @@ def create_app(
         }
 
     @app.post("/api/reveal")
-    def reveal(request: Request, body: dict[str, Any] = Body(default_factory=dict)):
+    def reveal(request: Request, body: dict[str, Any] = Body(default_factory=dict), args: dict[str, str] = Depends(require_auth)):
         """在本机文件管理器里定位某个资产的源文件。
 
         用于「跳过去自己整理网盘目录」：A:/B: 是 CloudDrive 挂上来的盘符，在
@@ -887,9 +835,6 @@ def create_app(
         写不进 ledger，所以不受 reader 的只读闸门约束；但它会在**服务端所在的
         机器**上弹窗，从 Mac 浏览时弹在 Windows 那台，也正是文件所在的机器。
         """
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
         try:
             asset_id = int(body.get("id"))
         except (TypeError, ValueError):
@@ -916,10 +861,7 @@ def create_app(
         return {"ok": True, "id": asset_id, "location": asset.location}
 
     @app.get("/api/providers/opencode-go/models")
-    def opencode_go_models(request: Request):
-        args = _first_query_values(request)
-        if not _authorized(request, settings.token, args):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
+    def opencode_go_models(request: Request, args: dict[str, str] = Depends(require_auth)):
         try:
             models = opencode_go.list_models()
         except ProviderUnavailable:
@@ -974,7 +916,7 @@ def create_app(
                     if size > maximum:
                         raise OverflowError
                     digest.update(chunk)
-                    handle.write(chunk)
+                    await asyncio.to_thread(handle.write, chunk)
             if not size:
                 raise ValueError("导出文件为空")
             target = root / f"{digest.hexdigest()[:12]}-{filename}"

@@ -197,3 +197,42 @@ class SegmentCommandTests(unittest.TestCase):
             # 决定性判据：终点随片段前移，而不是所有片段都停在第一段的末尾。
             self.assertGreater(end, start)
             self.assertAlmostEqual(end, round(index * 9.993, 3) + 9.993, places=2)
+
+
+class PlanCacheTests(unittest.TestCase):
+    """计划缓存一满就 clear() 等于没有缓存；改成 LRU 后热条目要能活下来。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.service = HlsSegmentService(
+            resolver=mock.Mock(ffmpeg=lambda: None), work_root=self.root / "cache")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _source(self, number: int) -> Path:
+        path = self.root / f"clip{number}.mp4"
+        path.write_bytes(b"x")
+        return path
+
+    def _plan(self, number: int) -> None:
+        with mock.patch("peach.segments.keyframe_seconds", return_value=[0.0]):
+            self.service.plan(self._source(number), 60.0)
+
+    def _held_sources(self) -> set[str]:
+        return {key[0] for key in self.service._plans}
+
+    def test_cache_keeps_at_most_the_limit_and_evicts_the_oldest_access(self):
+        from peach.segments import PLAN_CACHE_LIMIT
+
+        for number in range(PLAN_CACHE_LIMIT):
+            self._plan(number)
+        self.assertEqual(len(self.service._plans), PLAN_CACHE_LIMIT)
+
+        # 命中一次让 0 号变成最近访问，再插入新条目：被逐出的必须是 1 号。
+        self._plan(0)
+        self._plan(PLAN_CACHE_LIMIT)
+        self.assertEqual(len(self.service._plans), PLAN_CACHE_LIMIT)
+        self.assertIn(str(self._source(0)), self._held_sources())
+        self.assertNotIn(str(self._source(1)), self._held_sources())

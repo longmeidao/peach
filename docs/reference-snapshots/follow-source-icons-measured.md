@@ -18,6 +18,7 @@
 | rule34video.com | 200 | `/favicon-32x32.png` | 200 `image/png` 1,764 B `sha256:5282045bdc85` |
 | rule34.xxx | 200 | `/favicon.ico` | 200 `image/x-icon` 1,150 B `sha256:68bd5752e7b0` |
 | f95zone.to | 200 | `/assets/favicon-32x32.png` | 200 `image/png` 1,679 B `sha256:f658dc0b364c` |
+| mypikpak.com | 未测 | `/apple-touch-icon.png` | 200 `image/png` 3,832 B（2026-08-29 实测，HTTP 头核验；目录来源图标的直连地址，`SRCICON.pikpak` 用它替代 `/logo?studio=pikpak` 的生成 logo） |
 
 ## 两条容易判错的地方
 

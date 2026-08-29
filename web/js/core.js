@@ -26,7 +26,6 @@ const pageTitle=path=>{
     ? parts.slice(1).join('/') : fixed[parts[0]];
   return label?`${label} · Peach`:'Peach · 蜜桃';
 };
-const syncPageTitle=path=>{document.title=pageTitle(path)};
 const STATE_ROUTES={fresh:'/unseen',later:'/watch-later',flagged:'/flagged'};
 const ROUTE_STATES=Object.fromEntries(Object.entries(STATE_ROUTES).map(([state,path])=>[path,state]));
 const STATE_LABELS={fresh:'没看过',later:'稍后看',flagged:'已标记'};
@@ -56,7 +55,6 @@ export {
   icon,
   api,
   pageTitle,
-  syncPageTitle,
   STATE_ROUTES,
   ROUTE_STATES,
   STATE_LABELS,

@@ -290,6 +290,29 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
                          "https://pixiv.pximg.net/icon.jpeg")
         resolver.assert_called_once_with("fanbox", "30917150")
 
+    async def test_unauthorized_keeps_three_shapes_grouped_by_route_class(self):
+        """401 三种形态按路由类分组，收敛到 Depends 之后也不许并成一种。
+
+        页面路由跳登录页、页面资产回 PlainText 提示、API 与媒体路由回 JSON。
+        统一 Depends 后每种形态仍必须出现在正确的路由类上。
+        """
+        page = await self.client.get("/")
+        self.assertEqual(page.status_code, 303)
+        self.assertEqual(page.headers["location"], "/login?next=/")
+
+        asset = await self.client.get("/app.js")
+        self.assertEqual(asset.status_code, 401)
+        self.assertEqual(asset.text, "需要 ?t=口令")
+        self.assertTrue(asset.headers["content-type"].startswith("text/plain"))
+
+        api = await self.client.get("/api/items")
+        self.assertEqual(api.status_code, 401)
+        self.assertEqual(api.json(), {"error": "unauthorized"})
+
+        media = await self.client.get("/thumb?id=1")
+        self.assertEqual(media.status_code, 401)
+        self.assertEqual(media.json(), {"error": "unauthorized"})
+
     async def test_emptying_the_recycle_bin_is_actually_wired_and_deletes_media(self):
         """接线本身要有测试：此前 dispatch 接上了 `/api/trash/empty`，函数却根本没写。
 

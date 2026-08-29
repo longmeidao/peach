@@ -17,7 +17,24 @@ class PreviewUnavailable(RuntimeError):
     pass
 
 
-_GENERATE_LOCK = threading.Lock()
+#: 预览生成的分片锁。原来是一把模块级全局锁：任何一个资产在生成海报，其他资产的
+#: 头像和海报全得排队，而 `avatar()` 持锁要连跑 6 次 ffmpeg（每次 20 秒上限），
+#: 最坏能把所有预览堵上两分钟。
+#:
+#: 分片而不是 per-asset 字典：字典要么只增不减（8 万个资产各留一把锁，永远不回收），
+#: 要么就得处理「删锁时还有人在等」的竞态。分片是固定内存、零清理，代价只是偶尔
+#: 两个不相干的目标撞进同一把锁——那只是少一次并行，不影响正确性。
+_LOCK_STRIPES = 16
+_GENERATE_LOCKS = tuple(threading.Lock() for _ in range(_LOCK_STRIPES))
+
+
+def _generate_lock(destination: Path) -> threading.Lock:
+    """按目标文件取锁：同一个目标一定拿同一把，不同目标大概率并行。
+
+    同一目标同一把锁是这里的正确性要求——两个线程同时生成同一个文件，
+    `os.replace` 会互相覆盖，而其中一个的临时文件可能已经被删掉了。
+    """
+    return _GENERATE_LOCKS[hash(str(destination)) % _LOCK_STRIPES]
 
 
 class PreviewService:
@@ -42,7 +59,7 @@ class PreviewService:
         col, row = cell % 3, cell // 3
         self.poster_root.mkdir(parents=True, exist_ok=True)
         temporary = destination.with_name(destination.stem + ".tmp.jpg")
-        with _GENERATE_LOCK:
+        with _generate_lock(destination):
             if destination.is_file():
                 return destination
             self._run([
@@ -61,7 +78,7 @@ class PreviewService:
         ffmpeg = self._ffmpeg()
         self.avatar_root.mkdir(parents=True, exist_ok=True)
         candidates: list[tuple[Path, float]] = []
-        with _GENERATE_LOCK:
+        with _generate_lock(destination):
             if destination.is_file():
                 return destination
             try:

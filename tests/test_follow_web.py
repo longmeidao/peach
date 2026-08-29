@@ -181,6 +181,27 @@ class FollowContractTests(unittest.TestCase):
         self.assertNotIn("media_url", payload)
         self.assertIn('"has_media"', payload)
 
+    def test_feed_unescapes_html_entities_in_tags_and_titles(self):
+        """关注出口的标签与标题统一反转义。
+
+        rule34.xxx 的 dapi 曾把 `miqo&#039;te` 这类 HTML 转义形态直接写进
+        metadata，页面转义后用户看到的就是 `&#039;` 字面量，同一个标签还会和
+        反转义后的写法分裂成两个身份。出口归一是幂等的：旧行不修账本也能正常
+        显示与筛选，新入库由连接器反转义，不再产生脏数据。
+        """
+        self._seed(candidates=(
+            FollowCandidate(provider="rule34xxx", external_id="18534401",
+                            title="barnabas&#039; mother · biting lip",
+                            url="https://rule34.xxx/index.php?page=post&s=view&id=18534401",
+                            extra={"tags": "miqo&#039;te y&#039;shtola barnabas&#039;_mother"}),
+        ), provider="rule34xxx", ref="final_fantasy")
+        item = self._get()["groups"][0]["primary"]
+        self.assertEqual(item["tags"], ["miqo'te", "y'shtola", "barnabas'_mother"])
+        self.assertEqual(item["tag_types"],
+                         {"miqo'te": "general", "y'shtola": "general",
+                          "barnabas'_mother": "general"})
+        self.assertEqual(item["title"], "barnabas' mother · biting lip")
+
     def test_external_file_pages_are_exposed_without_leaking_raw_media_urls(self):
         self._seed(candidates=(FollowCandidate(
             provider="f95zone", external_id="21435166", title="InitialA Collection",
@@ -1441,6 +1462,11 @@ class FollowWebSourceTests(unittest.TestCase):
                          ["deep throat", "breast squeeze", "Final Fantasy"])
         self.assertEqual(web_follow._item_tags(_Item({})), [])
         self.assertEqual(web_follow._item_tags(_Item({"tags": "   "})), [])
+        # rule34.xxx 旧行存的是 HTML 转义形态；出口归一后与反转义的新写法
+        # 是同一个身份，脏/净并存的重复项也合并成一个。
+        legacy = web_follow._item_tags(
+            _Item({"tags": "miqo&#039;te y&#039;shtola miqo&#039;te"}))
+        self.assertEqual(legacy, ["miqo'te", "y'shtola"])
         # 热门帖能带上百个标签，整串发下去会把筛选条撑爆。
         many = _Item({"tags": " ".join(f"t{n}" for n in range(200))})
         self.assertEqual(len(web_follow._item_tags(many)), web_follow.MAX_ITEM_TAGS)
@@ -1518,16 +1544,37 @@ class FollowWebSourceTests(unittest.TestCase):
 
         「没有更新」和「检查失败」在界面上都像「什么都没发生」，但一个不用管，
         另一个再不管就会一直漏更新——所以失败必须单独列出来并带上原因。
+        回执走 toast（非阻塞、自动消失），失败明细留在页内持久行上。
         """
-        self.assertPageContains("function followCheckSummary(report)")
+        self.assertPageContains("function followCheckToast(report)")
+        self.assertPageContains("function followCheckFailNote(report)")
         # 重画会把结果冲掉，所以先存再画。
         self.assertPageContains("followCheckReport=result;")
-        self.assertPageContains("${followCheckReport?followCheckSummary(followCheckReport):''}")
+        self.assertPageContains("${followCheckReport?followCheckFailNote(followCheckReport):''}")
         for needle in ("新增 <b>", "更新 <b>", "个来源没有更新", "没有任何更新",
                        "个失败", "fcheckfail"):
             self.assertPageContains(needle)
         # 失败要说清是哪个站，不能让用户去猜 `rule34xxx` 是什么。
         self.assertPageContains("row.provider_label||row.provider")
+        # 回执带一个具名的后续动作：光摆数字会让人去点「…条详情」那半句，
+        # 文案里不再留悬空的「详情」，去看更新作为显式按钮接住这个意图。
+        self.assertPageContains("action:{label:'去看更新',run:()=>openFollow()}")
+        self.assertPageContains("if(action)item.querySelector('.tact')")
+        self.assertPageLacks("条详情")
+
+    def test_follow_bulk_actions_are_buttons_not_inline_links(self):
+        """批量标记已看／全部忽略是 2292 条级别的操作，不能长得像行内文字链接。
+
+        裸蓝字链接和旁边的计数文本混在一行里，看起来像一句说明文字；
+        分不清哪半句是统计、哪半句可以点。改成 .fbtn 次级按钮——与本页
+        「检查全部／去看更新」同一套控件语言——按钮的边界让「这会改状态」
+        在点击之前就看得见。
+        """
+        self.assertPageContains('<button class="fbtn" data-follow-bulk="seen">全部标记已看</button>')
+        self.assertPageContains('<button class="fbtn" data-follow-bulk="ignored">全部忽略</button>')
+        self.assertPageLacks('class="flink" data-follow-bulk')
+        # 不另起一行：按钮内联在计数行里（用户回执）。
+        self.assertPageContains('.fbulk{display:inline-flex;gap:8px;margin-left:10px;vertical-align:middle}')
 
     def test_sources_by_the_same_author_are_one_block(self):
         """同一个作者在几个站上是几条来源、一个人。
@@ -1576,8 +1623,9 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("text-decoration:none")
 
     def test_follow_check_icons_spin_and_known_copy_says_followed(self):
-        self.assertPageContains("@keyframes follow-spin")
-        self.assertPageContains(".follow .fcheck.busy svg,.frowicon.busy svg")
+        # 转圈动画全站只有一套：busy 挂在按钮上，图标自己转（peach-spin）。
+        self.assertPageContains("@keyframes peach-spin")
+        self.assertPageContains("button.busy>svg{animation:peach-spin .8s linear infinite}")
         self.assertPageContains("c.known?'已经关注':c.evidence")
         self.assertPageLacks("已经在追")
 
