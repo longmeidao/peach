@@ -12,7 +12,7 @@ SOURCE_COST = {"local": "free", "115": "free", "pikpak": "metered", "online": "m
 
 class PlaylistContract(Protocol):
     def cache_bust(self) -> None: ...
-    def db(self): ...
+    def read_connection(self): ...
     def has_snapshot(self, value) -> bool: ...
     def write_transaction(self): ...
 
@@ -88,8 +88,7 @@ def _replace_order(connection, playlist_id: int, ids: list[int]) -> None:
 
 
 def q_playlists(contract: PlaylistContract, _args=None):
-    connection = contract.db()
-    try:
+    with contract.read_connection() as connection:
         rows = [dict(row) for row in connection.execute(
             "SELECT p.id,p.name,p.source_kind,p.source_seed_asset_id,p.current_asset_id,"
             "p.created_at,p.updated_at,count(pi.asset_id) item_count,"
@@ -99,15 +98,12 @@ def q_playlists(contract: PlaylistContract, _args=None):
             "WHERE p.profile_id=? GROUP BY p.id ORDER BY p.updated_at DESC,p.id DESC",
             (DEFAULT_PROFILE_ID,),
         )]
-    finally:
-        connection.close()
     return {"items": rows}
 
 
 def q_playlist(contract: PlaylistContract, args):
     playlist_id = int(args["id"])
-    connection = contract.db()
-    try:
+    with contract.read_connection() as connection:
         playlist = dict(_playlist(connection, playlist_id))
         items = [dict(row) for row in connection.execute(
             "SELECT a.id,a.location,a.name,a.creator,a.studio,a.code,a.size,a.duration,"
@@ -117,8 +113,6 @@ def q_playlist(contract: PlaylistContract, args):
             "WHERE pi.playlist_id=? ORDER BY pi.position",
             (playlist_id,),
         )]
-    finally:
-        connection.close()
     for item in items:
         item["cost"] = SOURCE_COST.get(item["location"], "metered")
         item["has_thumb"] = contract.has_snapshot(item.pop("snapshot_path", None))

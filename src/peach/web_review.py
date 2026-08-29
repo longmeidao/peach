@@ -38,7 +38,7 @@ class ReviewContract(Protocol):
     logo_root: Path
 
     def cache_bust(self) -> None: ...
-    def db(self, write: bool = False): ...
+    def read_connection(self): ...
     def has_cover(self, code: str) -> bool: ...
     def write_transaction(self): ...
 
@@ -267,8 +267,7 @@ def _attach_review_asset_context(connection, rows: list[dict]) -> None:
 def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], str | None, int]:
     rows, source, skipped = read_candidates(category, contract.candidate_root)
     rows = [row for row in rows if _needs_review(category, row)]
-    connection = contract.db()
-    try:
+    with contract.read_connection() as connection:
         decisions = {
             row["item_key"]: dict(row) for row in connection.execute(
                 "SELECT item_key,status,note,updated_at FROM review_decision WHERE category=?",
@@ -303,8 +302,6 @@ def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], s
             # 为别名。复核页该显示账本认的那个名字，来源写法降为副标题。
             _use_canonical_entity_names(connection, rows)
         _attach_review_asset_context(connection, rows)
-    finally:
-        connection.close()
     for row in rows:
         decision = decisions.get(row["item_key"], {})
         if category == "studio_logos" and row.get("content_state") == "changed":
@@ -529,17 +526,16 @@ def _review_evidence(category: str, row: dict) -> str:
 
 
 def q_review(contract: ReviewContract):
-    connection = contract.db()
-    failures = [dict(row) for row in connection.execute(
-        "SELECT id,name,location,path,duration FROM asset "
-        "WHERE location='115' AND medium='video' AND snapshot_path IS NULL AND duration>2"
-    )]
-    decisions = {
-        row["item_key"]: dict(row) for row in connection.execute(
-            "SELECT item_key,status,note,updated_at FROM review_decision WHERE category='media_failure'"
-        )
-    }
-    connection.close()
+    with contract.read_connection() as connection:
+        failures = [dict(row) for row in connection.execute(
+            "SELECT id,name,location,path,duration FROM asset "
+            "WHERE location='115' AND medium='video' AND snapshot_path IS NULL AND duration>2"
+        )]
+        decisions = {
+            row["item_key"]: dict(row) for row in connection.execute(
+                "SELECT item_key,status,note,updated_at FROM review_decision WHERE category='media_failure'"
+            )
+        }
     for row in failures:
         decision = decisions.get(str(row["id"]), {})
         row["item_key"] = str(row["id"])

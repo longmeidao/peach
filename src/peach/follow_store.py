@@ -460,51 +460,6 @@ def _medium_for(item: FollowItemRow) -> str:
     return "video"
 
 
-def _align_by_group_hint(items: tuple[FollowItemRow, ...]) -> tuple[FollowItemRow, ...]:
-    """让来源自己声明为同一作品的条目共用一个 `release_key`。
-
-    booru 的 `parent_id` 是站点维护的变体关系，比从标题反推可靠得多：父帖与全部子帖
-    连成一个连通分量，整个分量取其中最小的 `release_key`。对齐之后再交给基于标题的
-    分组，两种判据因此不会互相打架。
-    """
-    index = {(item.provider, item.external_id): item for item in items}
-    parent: dict[int, int] = {}
-
-    def find(node: int) -> int:
-        while parent.setdefault(node, node) != node:
-            parent[node] = parent[parent[node]]
-            node = parent[node]
-        return node
-
-    def union(left: int, right: int) -> None:
-        left_root, right_root = find(left), find(right)
-        if left_root != right_root:
-            parent[left_root] = right_root
-
-    linked = False
-    for item in items:
-        if not item.group_hint:
-            continue
-        relative = index.get((item.provider, item.group_hint))
-        if relative is not None:
-            union(id(item), id(relative))
-            linked = True
-    if not linked:
-        return items
-
-    keys: dict[int, str] = {}
-    for item in items:
-        root = find(id(item))
-        current = keys.get(root)
-        if current is None or item.release_key < current:
-            keys[root] = item.release_key
-    return tuple(
-        FollowItemRow(**{**item.__dict__, "release_key": keys[find(id(item))]})
-        if keys[find(id(item))] != item.release_key else item
-        for item in items
-    )
-
-
 def _hint_linked(items: tuple[FollowItemRow, ...]) -> frozenset[tuple[str, str]]:
     """来源已经声明为同组的条目。
 
