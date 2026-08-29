@@ -273,13 +273,10 @@ class WebContract:
 
     def has_fts(self) -> bool:
         if self._fts_available is None:
-            connection = self.db()
-            try:
+            with self.read_connection() as connection:
                 self._fts_available = connection.execute(
                     "SELECT 1 FROM sqlite_schema WHERE type='table' AND name='asset_search'"
                 ).fetchone() is not None
-            finally:
-                connection.close()
         return self._fts_available
 
 # ────────────────────────────── 查询 ──────────────────────────────
@@ -405,13 +402,12 @@ def q_items(contract: WebContract, args):
            "EXISTS(SELECT 1 FROM watch_queue w WHERE w.asset_id=a.id "
            f"AND w.profile_id='{DEFAULT_PROFILE_ID}') AS watch_later "
            "FROM asset a WHERE " + " AND ".join(where) + f" ORDER BY {order} LIMIT ? OFFSET ?")
-    c = contract.db()
-    rows = [dict(r) for r in c.execute(sql, par + [fetch_limit, off])]
-    has_more = len(rows) > lim if not include_total else None
-    rows = rows[:lim]
-    cnt = (c.execute("SELECT count(*) FROM asset a WHERE " + " AND ".join(where), par).fetchone()[0]
-           if include_total else None)
-    c.close()
+    with contract.read_connection() as c:
+        rows = [dict(r) for r in c.execute(sql, par + [fetch_limit, off])]
+        has_more = len(rows) > lim if not include_total else None
+        rows = rows[:lim]
+        cnt = (c.execute("SELECT count(*) FROM asset a WHERE " + " AND ".join(where), par).fetchone()[0]
+               if include_total else None)
     # 卡片要显示出镜者和高权重标签，不能只有番号 —— 一次批量取，别 N+1
     if rows:
         ids = [r["id"] for r in rows]
@@ -465,17 +461,13 @@ def q_items(contract: WebContract, args):
     return {"total": cnt, "items": rows, "has_more": has_more}
 
 def con_tags(contract: WebContract, ids, qm):
-    c = contract.db()
-    try:
+    with contract.read_connection() as c:
         return c.execute(
             f"SELECT asset_id, tag FROM asset_tag WHERE asset_id IN ({qm})", ids).fetchall()
-    finally:
-        c.close()
 
 
 def con_entities(contract: WebContract, ids, qm):
-    connection = contract.db()
-    try:
+    with contract.read_connection() as connection:
         return connection.execute(
             f"SELECT DISTINCT ae.asset_id,e.id,e.kind,e.canonical_name "
             f"FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
@@ -483,19 +475,14 @@ def con_entities(contract: WebContract, ids, qm):
             f"AND e.kind IN ('tag','performer','creator','studio','series') "
             f"ORDER BY ae.asset_id,e.kind,e.canonical_name", ids,
         ).fetchall()
-    finally:
-        connection.close()
 
 
 def q_search_history(contract: WebContract, limit: int = 10):
-    connection = contract.db()
-    try:
+    with contract.read_connection() as connection:
         rows = connection.execute(
             "SELECT query FROM search_history ORDER BY last_used_at DESC, query LIMIT ?",
             (max(1, min(limit, 50)),),
         ).fetchall()
-    finally:
-        connection.close()
     return {"items": [row["query"] for row in rows]}
 
 
@@ -611,16 +598,13 @@ def _multipart_rows(contract: WebContract, codes) -> list[dict]:
     if not raw_codes:
         return []
     placeholders = ",".join("?" * len(raw_codes))
-    connection = contract.db()
-    try:
+    with contract.read_connection() as connection:
         rows = [dict(row) for row in connection.execute(
             "SELECT id,name,code,size,duration FROM asset "
             f"WHERE medium='video' AND code IN ({placeholders}) "
             "AND (disposal IS NULL OR disposal<>'trash')",
             raw_codes,
         )]
-    finally:
-        connection.close()
     return [row for row in rows if part_marker(str(row.get("name") or ""))]
 
 
@@ -662,15 +646,12 @@ def attach_multipart_groups(contract: WebContract, rows) -> None:
 def q_parts(contract: WebContract, args):
     """Return an explicitly marked multipart release in playback order."""
     asset_id = int(args["id"])
-    connection = contract.db()
-    try:
+    with contract.read_connection() as connection:
         seed = connection.execute(
             "SELECT id,code FROM asset WHERE id=? AND medium='video' "
             "AND (disposal IS NULL OR disposal<>'trash')",
             (asset_id,),
         ).fetchone()
-    finally:
-        connection.close()
     if not seed or not seed["code"]:
         return {"error": "multipart release not found"}
     code = normalise_code_key(seed["code"])
@@ -691,39 +672,39 @@ def q_item(contract: WebContract, aid):
        limit 被覆盖成 1 → find 必然失败 → 走兜底 items[0]，
        于是**每次点击都打开同一个默认列表首项**（一个 12.6 GB 的 PikPak 文件），
        既显示错条目，又反复拉计费流量。教训：按 id 取就按 id 取。"""
-    c = contract.db()
-    r = c.execute(
-        "SELECT id,location,path,name,creator,studio,code,release_date,size,duration,width,height,"
-        "ctx_length,ctx_orient,snapshot_path,play_count,leave_ratio,feedback,disposal,"
-        "rating,o_count,play_seconds,max_reached,seek_count,"
-        "COALESCE((SELECT p.liked FROM asset_preference p WHERE p.asset_id=asset.id "
-        f"AND p.profile_id='{DEFAULT_PROFILE_ID}'),0) AS liked,"
-        "COALESCE((SELECT p.reason FROM asset_preference p WHERE p.asset_id=asset.id "
-        f"AND p.profile_id='{DEFAULT_PROFILE_ID}'),'') AS like_reason,"
-        "COALESCE((SELECT g.wanted FROM asset_quality_goal g WHERE g.asset_id=asset.id "
-        f"AND g.profile_id='{DEFAULT_PROFILE_ID}'),0) AS better_version,"
-        "COALESCE((SELECT g.reason FROM asset_quality_goal g WHERE g.asset_id=asset.id "
-        f"AND g.profile_id='{DEFAULT_PROFILE_ID}'),'') AS better_version_reason,"
-        "EXISTS(SELECT 1 FROM watch_queue w WHERE w.asset_id=asset.id "
-        f"AND w.profile_id='{DEFAULT_PROFILE_ID}') AS watch_later FROM asset WHERE id=?", (aid,)).fetchone()
-    if not r:
-        c.close(); return {"error": "not found"}
-    d = dict(r)
-    legacy = [x[0] for x in c.execute(
-        "SELECT t.tag FROM asset_tag t WHERE t.asset_id=? AND NOT EXISTS("
-        "SELECT 1 FROM asset_tag_preference p WHERE p.asset_id=t.asset_id "
-        f"AND p.profile_id='{DEFAULT_PROFILE_ID}' AND p.hidden=1 "
-        "AND p.normalized_tag=lower(trim(t.tag))) ORDER BY t.tag", (aid,),
-    )]
-    canonical = list(c.execute(
-        "SELECT DISTINCT e.id,e.kind,e.canonical_name FROM asset_entity ae "
-        "JOIN entity e ON e.id=ae.entity_id WHERE ae.asset_id=? "
-        "AND e.kind IN ('tag','performer','creator','studio','series') "
-        "AND (e.kind<>'tag' OR NOT EXISTS(SELECT 1 FROM asset_tag_preference p "
-        f"WHERE p.asset_id=ae.asset_id AND p.profile_id='{DEFAULT_PROFILE_ID}' AND p.hidden=1 "
-        "AND p.normalized_tag=e.normalized_name)) "
-        "ORDER BY e.kind,e.canonical_name", (aid,),
-    ))
+    with contract.read_connection() as c:
+        r = c.execute(
+            "SELECT id,location,path,name,creator,studio,code,release_date,size,duration,width,height,"
+            "ctx_length,ctx_orient,snapshot_path,play_count,leave_ratio,feedback,disposal,"
+            "rating,o_count,play_seconds,max_reached,seek_count,"
+            "COALESCE((SELECT p.liked FROM asset_preference p WHERE p.asset_id=asset.id "
+            f"AND p.profile_id='{DEFAULT_PROFILE_ID}'),0) AS liked,"
+            "COALESCE((SELECT p.reason FROM asset_preference p WHERE p.asset_id=asset.id "
+            f"AND p.profile_id='{DEFAULT_PROFILE_ID}'),'') AS like_reason,"
+            "COALESCE((SELECT g.wanted FROM asset_quality_goal g WHERE g.asset_id=asset.id "
+            f"AND g.profile_id='{DEFAULT_PROFILE_ID}'),0) AS better_version,"
+            "COALESCE((SELECT g.reason FROM asset_quality_goal g WHERE g.asset_id=asset.id "
+            f"AND g.profile_id='{DEFAULT_PROFILE_ID}'),'') AS better_version_reason,"
+            "EXISTS(SELECT 1 FROM watch_queue w WHERE w.asset_id=asset.id "
+            f"AND w.profile_id='{DEFAULT_PROFILE_ID}') AS watch_later FROM asset WHERE id=?", (aid,)).fetchone()
+        if not r:
+            return {"error": "not found"}
+        d = dict(r)
+        legacy = [x[0] for x in c.execute(
+            "SELECT t.tag FROM asset_tag t WHERE t.asset_id=? AND NOT EXISTS("
+            "SELECT 1 FROM asset_tag_preference p WHERE p.asset_id=t.asset_id "
+            f"AND p.profile_id='{DEFAULT_PROFILE_ID}' AND p.hidden=1 "
+            "AND p.normalized_tag=lower(trim(t.tag))) ORDER BY t.tag", (aid,),
+        )]
+        canonical = list(c.execute(
+            "SELECT DISTINCT e.id,e.kind,e.canonical_name FROM asset_entity ae "
+            "JOIN entity e ON e.id=ae.entity_id WHERE ae.asset_id=? "
+            "AND e.kind IN ('tag','performer','creator','studio','series') "
+            "AND (e.kind<>'tag' OR NOT EXISTS(SELECT 1 FROM asset_tag_preference p "
+            f"WHERE p.asset_id=ae.asset_id AND p.profile_id='{DEFAULT_PROFILE_ID}' AND p.hidden=1 "
+            "AND p.normalized_tag=e.normalized_name)) "
+            "ORDER BY e.kind,e.canonical_name", (aid,),
+        ))
     canonical_tags = [name for _, kind, name in canonical if kind == "tag"]
     canonical_performers = [name for _, kind, name in canonical if kind == "performer"]
     canonical_creators = {
@@ -754,7 +735,6 @@ def q_item(contract: WebContract, aid):
         d["creator"] = d["entities"]["creator"][0]
     if d["entities"]["studio"]:
         d["studio"] = d["entities"]["studio"][0]
-    c.close()
     d["cost"] = COST.get(d["location"], "metered")
     d["has_thumb"] = contract.has_snapshot(d["snapshot_path"])
     # 「女优」是番号发行物的行业称谓；creator clip 即使长得像番号也仍是普通内容。
@@ -813,17 +793,17 @@ def q_ads(contract: WebContract, limit=200, offset=0):
     2026-08-15 按用户标记的 21 条真广告重新标定：命中推广词本身不算证据，
     要看**剥掉推广词后还剩不剩内容**。三类实测误判据此排除：剧情里的「微信」、
     开头是盗版站域名但正文是真实描述、以及把创作者账号当成番号去比时长。"""
-    c = contract.db()
-    rows = c.execute(
-        "SELECT id,location,name,creator,code,size,duration,width,height,snapshot_path,"
-        "feedback,disposal,play_count,leave_ratio,o_count,studio,ctx_orient,path "
-        "FROM asset WHERE medium='video' AND size < 500*1024*1024 "
-        "AND duration IS NOT NULL AND duration BETWEEN 15 AND 1200 "
-        "AND (disposal IS NULL)").fetchall()
-    # 同番号是否存在明显更长的版本；只在 code 是真番号时才有意义。
-    longer = {r[0]: r[1] for r in c.execute(
-        "SELECT code, max(duration) FROM asset WHERE medium='video' AND code IS NOT NULL "
-        "AND code<>'' AND duration IS NOT NULL GROUP BY code")}
+    with contract.read_connection() as c:
+        rows = c.execute(
+            "SELECT id,location,name,creator,code,size,duration,width,height,snapshot_path,"
+            "feedback,disposal,play_count,leave_ratio,o_count,studio,ctx_orient,path "
+            "FROM asset WHERE medium='video' AND size < 500*1024*1024 "
+            "AND duration IS NOT NULL AND duration BETWEEN 15 AND 1200 "
+            "AND (disposal IS NULL)").fetchall()
+        # 同番号是否存在明显更长的版本；只在 code 是真番号时才有意义。
+        longer = {r[0]: r[1] for r in c.execute(
+            "SELECT code, max(duration) FROM asset WHERE medium='video' AND code IS NOT NULL "
+            "AND code<>'' AND duration IS NOT NULL GROUP BY code")}
     out = []
     for r in rows:
         d = dict(r)
@@ -868,7 +848,6 @@ def q_ads(contract: WebContract, limit=200, offset=0):
             d.pop("snapshot_path", None)
             d.pop("path", None)
             out.append(d)
-    c.close()
     out.sort(key=lambda x: (-x["score"], -(x["size"] or 0)))
     items = out[offset:offset + limit]
     attach_card_performers(contract, items)
@@ -877,54 +856,53 @@ def q_ads(contract: WebContract, limit=200, offset=0):
 def q_related(contract: WebContract, aid, limit=24):
     """接着看 —— 把口味接近的串成播放列表。
     优先级：同创作者 > 共享标签最多 > 同厂牌。全部排除已标记不合口味的。"""
-    c = contract.db()
-    r = c.execute("SELECT id FROM asset WHERE id=?", (aid,)).fetchone()
-    if not r:
-        c.close(); return {"items": []}
-    entity_ids = {}
-    for kind in ("creator", "tag", "studio"):
-        entity_ids[kind] = [x[0] for x in c.execute(
-            "SELECT DISTINCT ae.entity_id FROM asset_entity ae "
-            "JOIN entity e ON e.id=ae.entity_id "
-            "WHERE ae.asset_id=? AND e.kind=?", (aid, kind),
-        )]
-    picked, seen = [], {aid}
+    with contract.read_connection() as c:
+        r = c.execute("SELECT id FROM asset WHERE id=?", (aid,)).fetchone()
+        if not r:
+            return {"items": []}
+        entity_ids = {}
+        for kind in ("creator", "tag", "studio"):
+            entity_ids[kind] = [x[0] for x in c.execute(
+                "SELECT DISTINCT ae.entity_id FROM asset_entity ae "
+                "JOIN entity e ON e.id=ae.entity_id "
+                "WHERE ae.asset_id=? AND e.kind=?", (aid, kind),
+            )]
+        picked, seen = [], {aid}
 
-    def take(sql, par, why):
-        for row in c.execute(sql, par):
-            d = dict(row)
-            if d["id"] in seen or len(picked) >= limit:
-                continue
-            seen.add(d["id"]); d["why"] = why; picked.append(d)
+        def take(sql, par, why):
+            for row in c.execute(sql, par):
+                d = dict(row)
+                if d["id"] in seen or len(picked) >= limit:
+                    continue
+                seen.add(d["id"]); d["why"] = why; picked.append(d)
 
-    COLS = ("id,location,name,creator,studio,code,size,duration,width,height,"
-            "ctx_orient,snapshot_path,play_count,leave_ratio,feedback,disposal,o_count")
-    base = (f"SELECT {COLS} FROM asset a WHERE a.medium='video' AND a.id<>? "
-            "AND (a.feedback IS NULL OR a.feedback<>'dislike') AND a.disposal IS NULL")
-    creators = entity_ids["creator"]
-    if creators:
-        qm = ",".join("?" * len(creators))
-        take(base + f" AND EXISTS (SELECT 1 FROM asset_entity ae WHERE ae.asset_id=a.id "
-             f"AND ae.entity_id IN ({qm})) "
-             "ORDER BY (a.play_count IS NULL OR a.play_count=0) DESC, random() LIMIT ?",
-             tuple([aid] + creators + [limit]), "同创作者")
-    tags = entity_ids["tag"]
-    if tags and len(picked) < limit:
-        qm = ",".join("?" * len(tags))
-        take(f"SELECT {COLS} FROM asset a WHERE a.medium='video' AND a.id<>? "
-             f"AND (a.feedback IS NULL OR a.feedback<>'dislike') AND a.disposal IS NULL "
-             f"AND (SELECT count(DISTINCT ae.entity_id) FROM asset_entity ae "
-             f"WHERE ae.asset_id=a.id AND ae.entity_id IN ({qm})) >= "
-             f"{max(1, min(2, len(tags)))} "
-             "ORDER BY (a.play_count IS NULL OR a.play_count=0) DESC, random() LIMIT ?",
-             tuple([aid] + tags + [limit]), "标签接近")
-    studios = entity_ids["studio"]
-    if studios and len(picked) < limit:
-        qm = ",".join("?" * len(studios))
-        take(base + f" AND EXISTS (SELECT 1 FROM asset_entity ae WHERE ae.asset_id=a.id "
-             f"AND ae.entity_id IN ({qm})) ORDER BY random() LIMIT ?",
-             tuple([aid] + studios + [limit]), "同厂牌")
-    c.close()
+        COLS = ("id,location,name,creator,studio,code,size,duration,width,height,"
+                "ctx_orient,snapshot_path,play_count,leave_ratio,feedback,disposal,o_count")
+        base = (f"SELECT {COLS} FROM asset a WHERE a.medium='video' AND a.id<>? "
+                "AND (a.feedback IS NULL OR a.feedback<>'dislike') AND a.disposal IS NULL")
+        creators = entity_ids["creator"]
+        if creators:
+            qm = ",".join("?" * len(creators))
+            take(base + f" AND EXISTS (SELECT 1 FROM asset_entity ae WHERE ae.asset_id=a.id "
+                 f"AND ae.entity_id IN ({qm})) "
+                 "ORDER BY (a.play_count IS NULL OR a.play_count=0) DESC, random() LIMIT ?",
+                 tuple([aid] + creators + [limit]), "同创作者")
+        tags = entity_ids["tag"]
+        if tags and len(picked) < limit:
+            qm = ",".join("?" * len(tags))
+            take(f"SELECT {COLS} FROM asset a WHERE a.medium='video' AND a.id<>? "
+                 f"AND (a.feedback IS NULL OR a.feedback<>'dislike') AND a.disposal IS NULL "
+                 f"AND (SELECT count(DISTINCT ae.entity_id) FROM asset_entity ae "
+                 f"WHERE ae.asset_id=a.id AND ae.entity_id IN ({qm})) >= "
+                 f"{max(1, min(2, len(tags)))} "
+                 "ORDER BY (a.play_count IS NULL OR a.play_count=0) DESC, random() LIMIT ?",
+                 tuple([aid] + tags + [limit]), "标签接近")
+        studios = entity_ids["studio"]
+        if studios and len(picked) < limit:
+            qm = ",".join("?" * len(studios))
+            take(base + f" AND EXISTS (SELECT 1 FROM asset_entity ae WHERE ae.asset_id=a.id "
+                 f"AND ae.entity_id IN ({qm})) ORDER BY random() LIMIT ?",
+                 tuple([aid] + studios + [limit]), "同厂牌")
     attach_card_performers(contract, picked)
     for d in picked:
         d["cost"] = COST.get(d["location"], "metered")
@@ -980,36 +958,36 @@ def q_tops(contract: WebContract, n=28, jav=False, seed="", state=""):
 
     `state` 跟作品列表同一份口径：在「已标记」这类页面上，上面这排头像
     只应该出现真的有已标记作品的人，否则点进去是空的。"""
-    c = contract.db()
-    scope = (JAV_ASSET_CLAUSE if jav else "") + state_clause(state)
-    base = (
-        "SELECT e.id,e.canonical_name,count(DISTINCT ae.asset_id) n,"
-        "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
-        " WHERE ae2.entity_id=e.id AND a2.medium='video' AND a2.snapshot_path IS NOT NULL "
-        " ORDER BY (a2.play_count IS NULL),a2.size DESC LIMIT 1) rep "
-        "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-        "JOIN asset a ON a.id=ae.asset_id "
-        "WHERE a.medium='video' AND e.kind=? " + scope +
-        "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT ?"
-    )
-    def pick(kind):
-        """按数量取候选池，再按种子确定性抽样。种子为空时退回严格前 N。"""
-        pool = [{"id": entity_id, "k": k, "n": cnt, "rep": representative}
-                for entity_id, k, cnt, representative
-                in c.execute(base, (kind, n * TOPS_POOL_FACTOR if seed else n))]
-        if not seed or len(pool) <= n:
-            return pool[:n]
-        # 同一个种子必须给出同一批人：翻页和重绘之间不能抖动。
-        digest = hashlib.blake2b(f"{seed}:{kind}".encode(), digest_size=8).digest()
-        rng = random.Random(int.from_bytes(digest, "big"))
-        chosen = rng.sample(pool, n)
-        # 抽完仍按数量排序，免得常见身份被排到末尾。
-        return sorted(chosen, key=lambda row: -row["n"])
+    with contract.read_connection() as c:
+        scope = (JAV_ASSET_CLAUSE if jav else "") + state_clause(state)
+        base = (
+            "SELECT e.id,e.canonical_name,count(DISTINCT ae.asset_id) n,"
+            "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
+            " WHERE ae2.entity_id=e.id AND a2.medium='video' AND a2.snapshot_path IS NOT NULL "
+            " ORDER BY (a2.play_count IS NULL),a2.size DESC LIMIT 1) rep "
+            "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "JOIN asset a ON a.id=ae.asset_id "
+            "WHERE a.medium='video' AND e.kind=? " + scope +
+            "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT ?"
+        )
 
-    out = {}
-    out["performers"] = pick("performer")
-    out["studios"] = pick("studio")
-    c.close()
+        def pick(kind):
+            """按数量取候选池，再按种子确定性抽样。种子为空时退回严格前 N。"""
+            pool = [{"id": entity_id, "k": k, "n": cnt, "rep": representative}
+                    for entity_id, k, cnt, representative
+                    in c.execute(base, (kind, n * TOPS_POOL_FACTOR if seed else n))]
+            if not seed or len(pool) <= n:
+                return pool[:n]
+            # 同一个种子必须给出同一批人：翻页和重绘之间不能抖动。
+            digest = hashlib.blake2b(f"{seed}:{kind}".encode(), digest_size=8).digest()
+            rng = random.Random(int.from_bytes(digest, "big"))
+            chosen = rng.sample(pool, n)
+            # 抽完仍按数量排序，免得常见身份被排到末尾。
+            return sorted(chosen, key=lambda row: -row["n"])
+
+        out = {}
+        out["performers"] = pick("performer")
+        out["studios"] = pick("studio")
     return out
 
 
@@ -1023,99 +1001,97 @@ def q_entity(contract: WebContract, args):
     name = args.get("name", "")
     if kind not in {"performer", "studio", "creator", "series"} or not name:
         return {"error": "invalid entity"}
-    c = contract.db()
-    row = resolve_entity(c, kind, name)
-    if not row:
-        c.close()
-        return {"error": "not found"}
-    d = dict(row)
-    try:
-        metadata = json.loads(d.pop("metadata_json") or "{}")
-    except (TypeError, ValueError):
-        metadata = {}
-    d["summary"] = metadata.get("summary") or ""
-    d["metadata"] = {k: v for k, v in metadata.items() if k != "summary"}
-    d["aliases"] = [r[0] for r in c.execute(
-        "SELECT alias FROM entity_alias WHERE entity_id=? ORDER BY confidence DESC,alias",
-        (d["id"],),
-    )]
-    # 罗马字仍是检索和旧链接的重要身份键，但中文/日文规范名下面再把英文全列一遍
-    # 只会像名称没有本地化。展示契约单独收窄，身份契约 `aliases` 保持完整。
-    d["display_aliases"] = _display_entity_aliases(
-        d["canonical_name"], d["aliases"])
-    links = []
-    for link in c.execute(
-        "SELECT link_kind,label,url,hostname,is_sensitive,metadata_json "
-        "FROM entity_link WHERE entity_id=? ORDER BY link_kind,label", (d["id"],),
-    ):
-        item = dict(link)
-        host = item["hostname"] or urlsplit(item["url"]).hostname or ""
-        sensitive = bool(item.pop("is_sensitive")) or item["link_kind"] == "source_reference"
-        item["hostname"] = host
-        item["clickable"] = not sensitive
-        if sensitive:
-            item["url"] = None
+    with contract.read_connection() as c:
+        row = resolve_entity(c, kind, name)
+        if not row:
+            return {"error": "not found"}
+        d = dict(row)
         try:
-            item["metadata"] = json.loads(item.pop("metadata_json") or "{}")
+            metadata = json.loads(d.pop("metadata_json") or "{}")
         except (TypeError, ValueError):
-            item["metadata"] = {}
-        links.append(item)
-    d["links"] = links
-    d["search_terms"] = [dict(r) for r in c.execute(
-        "SELECT term,purpose,source FROM entity_search_term WHERE entity_id=? "
-        "ORDER BY purpose,term", (d["id"],),
-    )]
-    d["external_refs"] = [dict(r) for r in c.execute(
-        "SELECT provider,external_kind,external_id,last_synced_at "
-        "FROM entity_external_ref WHERE entity_id=? ORDER BY provider,external_kind",
-        (d["id"],),
-    )]
-    count, rep = c.execute(
-        "SELECT count(DISTINCT ae.asset_id),"
-        "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
-        " WHERE ae2.entity_id=? AND a2.medium='video' AND a2.snapshot_path IS NOT NULL "
-        " ORDER BY a2.size DESC LIMIT 1) "
-        "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
-        "WHERE ae.entity_id=? AND a.medium='video'", (d["id"], d["id"]),
-    ).fetchone()
-    d["asset_count"] = count
-    d["representative_asset_id"] = rep
-    d["avatar_focus"] = contract.avatar_focus(kind, d["id"])
-    d["tags"] = [dict(r) for r in c.execute(
-        "SELECT tag.id,tag.canonical_name k,count(DISTINCT scope.asset_id) n "
-        "FROM asset_entity scope "
-        "JOIN asset_entity tagged ON tagged.asset_id=scope.asset_id "
-        "JOIN entity tag ON tag.id=tagged.entity_id "
-        "JOIN asset a ON a.id=scope.asset_id "
-        "WHERE scope.entity_id=? AND a.medium='video' AND tag.kind='tag' "
-        "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
-        "AND performer.normalized_name=tag.normalized_name) "
-        f"AND tag.canonical_name NOT IN ({','.join('?' for _ in LENGTH_TAGS)}) "
-        "AND NOT EXISTS(SELECT 1 FROM asset_tag_preference p "
-        f" WHERE p.asset_id=scope.asset_id AND p.profile_id='{DEFAULT_PROFILE_ID}' "
-        " AND p.hidden=1 AND p.normalized_tag=tag.normalized_name) "
-        "GROUP BY tag.id,tag.canonical_name ORDER BY n DESC,tag.canonical_name LIMIT 36",
-        (d["id"], *sorted(LENGTH_TAGS)),
-    )]
-    related = []
-    for performer in c.execute(
-        "SELECT person.id,person.canonical_name k,count(DISTINCT scope.asset_id) n,"
-        "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
-        " WHERE ae2.entity_id=person.id AND a2.medium='video' AND a2.snapshot_path IS NOT NULL "
-        " ORDER BY COALESCE(a2.play_count,0) DESC,COALESCE(a2.play_seconds,0) DESC,"
-        " COALESCE(a2.width,0)*COALESCE(a2.height,0) DESC,a2.size DESC LIMIT 1) rep "
-        "FROM asset_entity scope "
-        "JOIN asset_entity co ON co.asset_id=scope.asset_id "
-        "JOIN entity person ON person.id=co.entity_id "
-        "JOIN asset a ON a.id=scope.asset_id "
-        "WHERE scope.entity_id=? AND a.medium='video' AND person.kind='performer' "
-        "AND person.id<>? "
-        "GROUP BY person.id,person.canonical_name ORDER BY n DESC,person.canonical_name LIMIT 18",
-        (d["id"], d["id"]),
-    ):
-        related.append(dict(performer))
-    d["related_performers"] = related
-    c.close()
+            metadata = {}
+        d["summary"] = metadata.get("summary") or ""
+        d["metadata"] = {k: v for k, v in metadata.items() if k != "summary"}
+        d["aliases"] = [r[0] for r in c.execute(
+            "SELECT alias FROM entity_alias WHERE entity_id=? ORDER BY confidence DESC,alias",
+            (d["id"],),
+        )]
+        # 罗马字仍是检索和旧链接的重要身份键，但中文/日文规范名下面再把英文全列一遍
+        # 只会像名称没有本地化。展示契约单独收窄，身份契约 `aliases` 保持完整。
+        d["display_aliases"] = _display_entity_aliases(
+            d["canonical_name"], d["aliases"])
+        links = []
+        for link in c.execute(
+            "SELECT link_kind,label,url,hostname,is_sensitive,metadata_json "
+            "FROM entity_link WHERE entity_id=? ORDER BY link_kind,label", (d["id"],),
+        ):
+            item = dict(link)
+            host = item["hostname"] or urlsplit(item["url"]).hostname or ""
+            sensitive = bool(item.pop("is_sensitive")) or item["link_kind"] == "source_reference"
+            item["hostname"] = host
+            item["clickable"] = not sensitive
+            if sensitive:
+                item["url"] = None
+            try:
+                item["metadata"] = json.loads(item.pop("metadata_json") or "{}")
+            except (TypeError, ValueError):
+                item["metadata"] = {}
+            links.append(item)
+        d["links"] = links
+        d["search_terms"] = [dict(r) for r in c.execute(
+            "SELECT term,purpose,source FROM entity_search_term WHERE entity_id=? "
+            "ORDER BY purpose,term", (d["id"],),
+        )]
+        d["external_refs"] = [dict(r) for r in c.execute(
+            "SELECT provider,external_kind,external_id,last_synced_at "
+            "FROM entity_external_ref WHERE entity_id=? ORDER BY provider,external_kind",
+            (d["id"],),
+        )]
+        count, rep = c.execute(
+            "SELECT count(DISTINCT ae.asset_id),"
+            "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
+            " WHERE ae2.entity_id=? AND a2.medium='video' AND a2.snapshot_path IS NOT NULL "
+            " ORDER BY a2.size DESC LIMIT 1) "
+            "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
+            "WHERE ae.entity_id=? AND a.medium='video'", (d["id"], d["id"]),
+        ).fetchone()
+        d["asset_count"] = count
+        d["representative_asset_id"] = rep
+        d["avatar_focus"] = contract.avatar_focus(kind, d["id"])
+        d["tags"] = [dict(r) for r in c.execute(
+            "SELECT tag.id,tag.canonical_name k,count(DISTINCT scope.asset_id) n "
+            "FROM asset_entity scope "
+            "JOIN asset_entity tagged ON tagged.asset_id=scope.asset_id "
+            "JOIN entity tag ON tag.id=tagged.entity_id "
+            "JOIN asset a ON a.id=scope.asset_id "
+            "WHERE scope.entity_id=? AND a.medium='video' AND tag.kind='tag' "
+            "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
+            "AND performer.normalized_name=tag.normalized_name) "
+            f"AND tag.canonical_name NOT IN ({','.join('?' for _ in LENGTH_TAGS)}) "
+            "AND NOT EXISTS(SELECT 1 FROM asset_tag_preference p "
+            f" WHERE p.asset_id=scope.asset_id AND p.profile_id='{DEFAULT_PROFILE_ID}' "
+            " AND p.hidden=1 AND p.normalized_tag=tag.normalized_name) "
+            "GROUP BY tag.id,tag.canonical_name ORDER BY n DESC,tag.canonical_name LIMIT 36",
+            (d["id"], *sorted(LENGTH_TAGS)),
+        )]
+        related = []
+        for performer in c.execute(
+            "SELECT person.id,person.canonical_name k,count(DISTINCT scope.asset_id) n,"
+            "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
+            " WHERE ae2.entity_id=person.id AND a2.medium='video' AND a2.snapshot_path IS NOT NULL "
+            " ORDER BY COALESCE(a2.play_count,0) DESC,COALESCE(a2.play_seconds,0) DESC,"
+            " COALESCE(a2.width,0)*COALESCE(a2.height,0) DESC,a2.size DESC LIMIT 1) rep "
+            "FROM asset_entity scope "
+            "JOIN asset_entity co ON co.asset_id=scope.asset_id "
+            "JOIN entity person ON person.id=co.entity_id "
+            "JOIN asset a ON a.id=scope.asset_id "
+            "WHERE scope.entity_id=? AND a.medium='video' AND person.kind='performer' "
+            "AND person.id<>? "
+            "GROUP BY person.id,person.canonical_name ORDER BY n DESC,person.canonical_name LIMIT 18",
+            (d["id"], d["id"]),
+        ):
+            related.append(dict(performer))
+        d["related_performers"] = related
     return d
 
 # ────────────────────────────── 照片 ──────────────────────────────
@@ -1149,8 +1125,7 @@ def q_entity_photos(contract: WebContract, args):
         offset = max(0, int(args.get("offset") or 0))
     except (TypeError, ValueError):
         return {"error": "invalid pagination"}
-    c = contract.db()
-    try:
+    with contract.read_connection() as c:
         row = resolve_entity(c, kind, name)
         if not row:
             return {"error": "not found"}
@@ -1192,8 +1167,6 @@ def q_entity_photos(contract: WebContract, args):
             "sets": sets, "total": total, "items": items,
             "has_more": offset + len(items) < total,
         }
-    finally:
-        c.close()
 
 
 def q_photo_set(contract: WebContract, args):
@@ -1204,8 +1177,7 @@ def q_photo_set(contract: WebContract, args):
         return {"error": "invalid id"}
     limit = max(1, min(int(args.get("limit") or 120), 600))
     offset = max(0, int(args.get("offset") or 0))
-    c = contract.db()
-    try:
+    with contract.read_connection() as c:
         anchor = c.execute(
             "SELECT id,location,path,name FROM asset "
             "WHERE id=? AND medium='image' AND name IS NOT NULL", (set_id,),
@@ -1233,52 +1205,49 @@ def q_photo_set(contract: WebContract, args):
             "location": anchor["location"], "cost": COST.get(anchor["location"], "metered"),
             "total": total, "items": items, "has_more": offset + len(items) < total,
         }
-    finally:
-        c.close()
 
 
 def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category=""):
     """全部艺人 / 创作者 / 标签的索引页数据。"""
-    c = contract.db()
-    if kind in {"creators", "performers"}:
-        entity_kind = "creator" if kind == "creators" else "performer"
-        sql = ("SELECT e.id entity_id,e.canonical_name k,count(DISTINCT ae.asset_id) n,"
-               "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
-               " WHERE ae2.entity_id=e.id AND a2.medium='video' AND a2.snapshot_path IS NOT NULL "
-               " ORDER BY COALESCE(a2.play_count,0) DESC,COALESCE(a2.play_seconds,0) DESC,"
-               " COALESCE(a2.width,0)*COALESCE(a2.height,0) DESC,a2.size DESC LIMIT 1) rep "
-               "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-               "JOIN asset a ON a.id=ae.asset_id "
-               "WHERE a.medium='video' AND e.kind=? ")
-        par = [entity_kind]
-        if q: sql += "AND e.canonical_name LIKE ? "; par.append(f"%{q}%")
-        sql += "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT ? OFFSET ?"
-        par.extend((limit + 1, offset))
-        rows = [dict(r) for r in c.execute(sql, par)]
-        has_more = len(rows) > limit
-        rows = rows[:limit]
-    else:
-        sql = ("SELECT e.canonical_name k, count(DISTINCT ae.asset_id) n "
-               "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-               "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='tag' "
-               f"AND e.canonical_name NOT IN ({','.join('?' for _ in LENGTH_TAGS)}) "
-               "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
-               "AND performer.normalized_name=e.normalized_name) "
-               "AND NOT EXISTS(SELECT 1 FROM asset_tag_preference p "
-               f"WHERE p.asset_id=ae.asset_id AND p.profile_id='{DEFAULT_PROFILE_ID}' "
-               "AND p.hidden=1 AND p.normalized_tag=e.normalized_name) ")
-        par = sorted(LENGTH_TAGS)
-        if q: sql += "AND e.canonical_name LIKE ? "; par.append(f"%{q}%")
-        sql += "GROUP BY e.id,e.canonical_name ORDER BY n DESC"
-        all_rows = [dict(r, cat=tag_cat(r["k"])) for r in c.execute(sql, par)]
-        category_counts: dict[str, int] = {}
-        for row in all_rows:
-            category_counts[row["cat"]] = category_counts.get(row["cat"], 0) + 1
-        if category and category != "all":
-            all_rows = [row for row in all_rows if row["cat"] == category]
-        rows = all_rows[offset:offset + limit]
-        has_more = offset + limit < len(all_rows)
-    c.close()
+    with contract.read_connection() as c:
+        if kind in {"creators", "performers"}:
+            entity_kind = "creator" if kind == "creators" else "performer"
+            sql = ("SELECT e.id entity_id,e.canonical_name k,count(DISTINCT ae.asset_id) n,"
+                   "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
+                   " WHERE ae2.entity_id=e.id AND a2.medium='video' AND a2.snapshot_path IS NOT NULL "
+                   " ORDER BY COALESCE(a2.play_count,0) DESC,COALESCE(a2.play_seconds,0) DESC,"
+                   " COALESCE(a2.width,0)*COALESCE(a2.height,0) DESC,a2.size DESC LIMIT 1) rep "
+                   "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+                   "JOIN asset a ON a.id=ae.asset_id "
+                   "WHERE a.medium='video' AND e.kind=? ")
+            par = [entity_kind]
+            if q: sql += "AND e.canonical_name LIKE ? "; par.append(f"%{q}%")
+            sql += "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT ? OFFSET ?"
+            par.extend((limit + 1, offset))
+            rows = [dict(r) for r in c.execute(sql, par)]
+            has_more = len(rows) > limit
+            rows = rows[:limit]
+        else:
+            sql = ("SELECT e.canonical_name k, count(DISTINCT ae.asset_id) n "
+                   "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+                   "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='tag' "
+                   f"AND e.canonical_name NOT IN ({','.join('?' for _ in LENGTH_TAGS)}) "
+                   "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
+                   "AND performer.normalized_name=e.normalized_name) "
+                   "AND NOT EXISTS(SELECT 1 FROM asset_tag_preference p "
+                   f"WHERE p.asset_id=ae.asset_id AND p.profile_id='{DEFAULT_PROFILE_ID}' "
+                   "AND p.hidden=1 AND p.normalized_tag=e.normalized_name) ")
+            par = sorted(LENGTH_TAGS)
+            if q: sql += "AND e.canonical_name LIKE ? "; par.append(f"%{q}%")
+            sql += "GROUP BY e.id,e.canonical_name ORDER BY n DESC"
+            all_rows = [dict(r, cat=tag_cat(r["k"])) for r in c.execute(sql, par)]
+            category_counts: dict[str, int] = {}
+            for row in all_rows:
+                category_counts[row["cat"]] = category_counts.get(row["cat"], 0) + 1
+            if category and category != "all":
+                all_rows = [row for row in all_rows if row["cat"] == category]
+            rows = all_rows[offset:offset + limit]
+            has_more = offset + limit < len(all_rows)
     result = {"kind": kind, "items": rows, "has_more": has_more}
     if kind == "tags":
         result["categories"] = category_counts
@@ -1286,58 +1255,57 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="")
 
 def q_stats(contract: WebContract):
     """统计页：库存 / 归属 / 标签 / 消费 / 磁盘。原来挤在顶栏右上角，信息量太小又碍眼。"""
-    c = contract.db()
-    out = {}
-    out["by_loc"] = [dict(r) for r in c.execute(
-        "SELECT location k, count(*) n, COALESCE(sum(size),0) bytes, "
-        "SUM(CASE WHEN medium='video' THEN 1 ELSE 0 END) videos "
-        "FROM asset GROUP BY location ORDER BY bytes DESC")]
-    out["by_medium"] = [dict(r) for r in c.execute(
-        "SELECT medium k, count(*) n, COALESCE(sum(size),0) bytes "
-        "FROM asset GROUP BY medium ORDER BY bytes DESC")]
-    v = c.execute("SELECT count(*) FROM asset WHERE medium='video'").fetchone()[0]
-    def one(sql, *a):
-        r = c.execute(sql, a).fetchone()
-        return r[0] if r else 0
-    out["attribution"] = {
-        "videos": v,
-        "creator": one("SELECT count(DISTINCT ae.asset_id) FROM asset_entity ae "
-                       "JOIN entity e ON e.id=ae.entity_id JOIN asset a ON a.id=ae.asset_id "
-                       "WHERE a.medium='video' AND e.kind='creator'"),
-        "code": one("SELECT count(*) FROM asset WHERE medium='video' AND code IS NOT NULL AND code<>''"),
-        "studio": one("SELECT count(DISTINCT ae.asset_id) FROM asset_entity ae "
-                      "JOIN entity e ON e.id=ae.entity_id JOIN asset a ON a.id=ae.asset_id "
-                      "WHERE a.medium='video' AND e.kind='studio'"),
-        "thumb": one("SELECT count(*) FROM asset WHERE medium='video' AND snapshot_path IS NOT NULL"),
-        "duration": one("SELECT count(*) FROM asset WHERE medium='video' AND duration IS NOT NULL"),
-    }
-    out["tag_source"] = [dict(r) for r in c.execute(
-        "SELECT source k, count(*) n, count(DISTINCT asset_id) assets "
-        "FROM asset_tag GROUP BY source ORDER BY n DESC")]
-    out["tag_cov"] = one("SELECT count(DISTINCT asset_id) FROM asset_tag "
-                         "WHERE source IN ('name','r18','vision','vision-creator',"
-                         "'vision_creator','vision_creator_review')")
-    out["top_tags"] = [dict(r, cat=tag_cat(r["k"])) for r in c.execute(
-        "SELECT t.tag k, count(*) n FROM asset_tag t JOIN asset a ON a.id=t.asset_id "
-        "WHERE a.medium='video' AND t.source IN ('name','r18','vision','vision-creator',"
-        "'vision_creator','vision_creator_review') "
-        "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
-        "AND performer.normalized_name=lower(trim(t.tag))) "
-        "GROUP BY t.tag ORDER BY n DESC LIMIT 30")]
-    out["consumption"] = {
-        "played": one("SELECT count(*) FROM asset WHERE play_count>0"),
-        "play_seconds": one("SELECT COALESCE(sum(play_seconds),0) FROM asset"),
-        "o_total": one("SELECT COALESCE(sum(o_count),0) FROM asset"),
-        "dislike": one("SELECT count(*) FROM asset WHERE feedback='dislike'"),
-        "seen": one("SELECT count(*) FROM asset WHERE feedback='seen'"),
-        "trash": one("SELECT count(*) FROM asset WHERE disposal='trash'"),
-        "skimmed": one("SELECT count(*) FROM asset WHERE duration>0 AND play_seconds>0 "
-                       "AND max_reached>0.6 AND play_seconds/duration < max_reached-0.25"),
-    }
-    out["recent"] = [dict(r) for r in c.execute(
-        "SELECT id,name,creator,play_seconds,duration,max_reached,leave_ratio,o_count "
-        "FROM asset WHERE last_played IS NOT NULL ORDER BY last_played DESC LIMIT 12")]
-    c.close()
+    with contract.read_connection() as c:
+        out = {}
+        out["by_loc"] = [dict(r) for r in c.execute(
+            "SELECT location k, count(*) n, COALESCE(sum(size),0) bytes, "
+            "SUM(CASE WHEN medium='video' THEN 1 ELSE 0 END) videos "
+            "FROM asset GROUP BY location ORDER BY bytes DESC")]
+        out["by_medium"] = [dict(r) for r in c.execute(
+            "SELECT medium k, count(*) n, COALESCE(sum(size),0) bytes "
+            "FROM asset GROUP BY medium ORDER BY bytes DESC")]
+        v = c.execute("SELECT count(*) FROM asset WHERE medium='video'").fetchone()[0]
+        def one(sql, *a):
+            r = c.execute(sql, a).fetchone()
+            return r[0] if r else 0
+        out["attribution"] = {
+            "videos": v,
+            "creator": one("SELECT count(DISTINCT ae.asset_id) FROM asset_entity ae "
+                           "JOIN entity e ON e.id=ae.entity_id JOIN asset a ON a.id=ae.asset_id "
+                           "WHERE a.medium='video' AND e.kind='creator'"),
+            "code": one("SELECT count(*) FROM asset WHERE medium='video' AND code IS NOT NULL AND code<>''"),
+            "studio": one("SELECT count(DISTINCT ae.asset_id) FROM asset_entity ae "
+                          "JOIN entity e ON e.id=ae.entity_id JOIN asset a ON a.id=ae.asset_id "
+                          "WHERE a.medium='video' AND e.kind='studio'"),
+            "thumb": one("SELECT count(*) FROM asset WHERE medium='video' AND snapshot_path IS NOT NULL"),
+            "duration": one("SELECT count(*) FROM asset WHERE medium='video' AND duration IS NOT NULL"),
+        }
+        out["tag_source"] = [dict(r) for r in c.execute(
+            "SELECT source k, count(*) n, count(DISTINCT asset_id) assets "
+            "FROM asset_tag GROUP BY source ORDER BY n DESC")]
+        out["tag_cov"] = one("SELECT count(DISTINCT asset_id) FROM asset_tag "
+                             "WHERE source IN ('name','r18','vision','vision-creator',"
+                             "'vision_creator','vision_creator_review')")
+        out["top_tags"] = [dict(r, cat=tag_cat(r["k"])) for r in c.execute(
+            "SELECT t.tag k, count(*) n FROM asset_tag t JOIN asset a ON a.id=t.asset_id "
+            "WHERE a.medium='video' AND t.source IN ('name','r18','vision','vision-creator',"
+            "'vision_creator','vision_creator_review') "
+            "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
+            "AND performer.normalized_name=lower(trim(t.tag))) "
+            "GROUP BY t.tag ORDER BY n DESC LIMIT 30")]
+        out["consumption"] = {
+            "played": one("SELECT count(*) FROM asset WHERE play_count>0"),
+            "play_seconds": one("SELECT COALESCE(sum(play_seconds),0) FROM asset"),
+            "o_total": one("SELECT COALESCE(sum(o_count),0) FROM asset"),
+            "dislike": one("SELECT count(*) FROM asset WHERE feedback='dislike'"),
+            "seen": one("SELECT count(*) FROM asset WHERE feedback='seen'"),
+            "trash": one("SELECT count(*) FROM asset WHERE disposal='trash'"),
+            "skimmed": one("SELECT count(*) FROM asset WHERE duration>0 AND play_seconds>0 "
+                           "AND max_reached>0.6 AND play_seconds/duration < max_reached-0.25"),
+        }
+        out["recent"] = [dict(r) for r in c.execute(
+            "SELECT id,name,creator,play_seconds,duration,max_reached,leave_ratio,o_count "
+            "FROM asset WHERE last_played IS NOT NULL ORDER BY last_played DESC LIMIT 12")]
     try:
         volume = system_volume()
         du = shutil.disk_usage(volume)
@@ -1364,74 +1332,72 @@ def q_facets(
     首页不带 scope，维持全库口径；实体资料页按规范实体收窄，详情页按单个作品收窄。
     筛选项必须来自和作品列表相同的规范关系，不能让前端拿全库 facets 猜当前页面。
     """
-    c = contract.db()
-    scope = (JAV_ASSET_CLAUSE if jav else "") + state_clause(state)
-    scope_params: list[object] = []
-    if asset_id is not None:
-        scope += "AND a.id=? "
-        scope_params.append(int(asset_id))
-    elif scope_kind or scope_name:
-        if scope_kind not in {"creator", "performer", "studio", "series"} or not scope_name:
-            c.close()
-            raise ValueError("invalid facet scope")
-        scope += (
-            "AND EXISTS(SELECT 1 FROM asset_entity scope_ae "
-            "JOIN entity scope_e ON scope_e.id=scope_ae.entity_id "
-            "WHERE scope_ae.asset_id=a.id AND scope_e.kind=? "
-            "AND scope_e.canonical_name=?) "
-        )
-        scope_params.extend((scope_kind, scope_name))
-    out = {}
-    out["locations"] = [dict(r) for r in c.execute(
-        "SELECT a.location AS k, count(*) AS n, "
-        "SUM(CASE WHEN a.play_count>0 THEN 1 ELSE 0 END) AS played "
-        "FROM asset a WHERE a.medium='video' " + scope +
-        "GROUP BY a.location ORDER BY n DESC", scope_params)]
-    out["orientations"] = [dict(r) for r in c.execute(
-        "SELECT a.ctx_orient AS k,count(*) AS n FROM asset a "
-        "WHERE a.medium='video' AND a.ctx_orient IS NOT NULL AND a.ctx_orient<>'' " + scope +
-        "GROUP BY a.ctx_orient ORDER BY n DESC", scope_params)]
-    out["creators"] = [dict(r) for r in c.execute(
-        "SELECT e.canonical_name AS k,count(DISTINCT ae.asset_id) AS n "
-        "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-        "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='creator' " + scope +
+    with contract.read_connection() as c:
+        scope = (JAV_ASSET_CLAUSE if jav else "") + state_clause(state)
+        scope_params: list[object] = []
+        if asset_id is not None:
+            scope += "AND a.id=? "
+            scope_params.append(int(asset_id))
+        elif scope_kind or scope_name:
+            if scope_kind not in {"creator", "performer", "studio", "series"} or not scope_name:
+                raise ValueError("invalid facet scope")
+            scope += (
+                "AND EXISTS(SELECT 1 FROM asset_entity scope_ae "
+                "JOIN entity scope_e ON scope_e.id=scope_ae.entity_id "
+                "WHERE scope_ae.asset_id=a.id AND scope_e.kind=? "
+                "AND scope_e.canonical_name=?) "
+            )
+            scope_params.extend((scope_kind, scope_name))
+        out = {}
+        out["locations"] = [dict(r) for r in c.execute(
+            "SELECT a.location AS k, count(*) AS n, "
+            "SUM(CASE WHEN a.play_count>0 THEN 1 ELSE 0 END) AS played "
+            "FROM asset a WHERE a.medium='video' " + scope +
+            "GROUP BY a.location ORDER BY n DESC", scope_params)]
+        out["orientations"] = [dict(r) for r in c.execute(
+            "SELECT a.ctx_orient AS k,count(*) AS n FROM asset a "
+            "WHERE a.medium='video' AND a.ctx_orient IS NOT NULL AND a.ctx_orient<>'' " + scope +
+            "GROUP BY a.ctx_orient ORDER BY n DESC", scope_params)]
+        out["creators"] = [dict(r) for r in c.execute(
+            "SELECT e.canonical_name AS k,count(DISTINCT ae.asset_id) AS n "
+            "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='creator' " + scope +
         
-        "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 60", scope_params)]
-    # 标签要分层 —— 原来一锅端，结果「演员:一个ren」和「1080P」「足交」混在一起。
-    # 三类分开：技术规格（画质/时长/画幅，筛选价值低）、内容维度（真正有用的）、演员（另立一栏）。
-    rows = [dict(r) for r in c.execute(
-        "SELECT e.canonical_name AS k, count(DISTINCT ae.asset_id) AS n "
-        "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-        "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='tag' " + scope +
-        "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
-        "AND performer.normalized_name=e.normalized_name) "
-        "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 400", scope_params)]
-    classified = [
-        dict(r, cat=tag_cat(r["k"]))
-        for r in rows
-        if r["k"] not in LENGTH_TAGS
-    ]
-    out["tags"] = [r for r in classified if r["cat"] != "meta"][:44]
-    out["tech"] = [r for r in classified if r["cat"] == "meta"][:16]
-    out["tagperformers"] = [dict(r) for r in c.execute(
-        "SELECT e.canonical_name AS k,count(DISTINCT ae.asset_id) AS n "
-        "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-        "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='performer' " + scope +
+            "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 60", scope_params)]
+        # 标签要分层 —— 原来一锅端，结果「演员:一个ren」和「1080P」「足交」混在一起。
+        # 三类分开：技术规格（画质/时长/画幅，筛选价值低）、内容维度（真正有用的）、演员（另立一栏）。
+        rows = [dict(r) for r in c.execute(
+            "SELECT e.canonical_name AS k, count(DISTINCT ae.asset_id) AS n "
+            "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='tag' " + scope +
+            "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
+            "AND performer.normalized_name=e.normalized_name) "
+            "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 400", scope_params)]
+        classified = [
+            dict(r, cat=tag_cat(r["k"]))
+            for r in rows
+            if r["k"] not in LENGTH_TAGS
+        ]
+        out["tags"] = [r for r in classified if r["cat"] != "meta"][:44]
+        out["tech"] = [r for r in classified if r["cat"] == "meta"][:16]
+        out["tagperformers"] = [dict(r) for r in c.execute(
+            "SELECT e.canonical_name AS k,count(DISTINCT ae.asset_id) AS n "
+            "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='performer' " + scope +
         
-        "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 20", scope_params)]
-    st = c.execute(
-        "SELECT count(*) total, COALESCE(sum(size),0) bytes, "
-        "SUM(CASE WHEN duration IS NOT NULL THEN 1 ELSE 0 END) duration, "
-        "SUM(CASE WHEN play_count>0 THEN 1 ELSE 0 END) played, "
-        "SUM(CASE WHEN COALESCE(o_count,0)>0 OR EXISTS(SELECT 1 FROM asset_preference p "
-        f"WHERE p.asset_id=a.id AND p.profile_id='{DEFAULT_PROFILE_ID}' AND p.liked=1) "
-        "THEN 1 ELSE 0 END) flagged, "
-        "SUM(EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-        "WHERE ae.asset_id=a.id AND e.kind='creator')) attributed "
-        "FROM asset a WHERE a.medium='video' AND (a.disposal IS NULL OR a.disposal<>'trash') "
-        + scope, scope_params).fetchone()
-    out["stats"] = dict(st)
-    c.close()
+            "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 20", scope_params)]
+        st = c.execute(
+            "SELECT count(*) total, COALESCE(sum(size),0) bytes, "
+            "SUM(CASE WHEN duration IS NOT NULL THEN 1 ELSE 0 END) duration, "
+            "SUM(CASE WHEN play_count>0 THEN 1 ELSE 0 END) played, "
+            "SUM(CASE WHEN COALESCE(o_count,0)>0 OR EXISTS(SELECT 1 FROM asset_preference p "
+            f"WHERE p.asset_id=a.id AND p.profile_id='{DEFAULT_PROFILE_ID}' AND p.liked=1) "
+            "THEN 1 ELSE 0 END) flagged, "
+            "SUM(EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "WHERE ae.asset_id=a.id AND e.kind='creator')) attributed "
+            "FROM asset a WHERE a.medium='video' AND (a.disposal IS NULL OR a.disposal<>'trash') "
+            + scope, scope_params).fetchone()
+        out["stats"] = dict(st)
     return out
 
 # ────────────────────────────── 写入 ──────────────────────────────
@@ -1648,15 +1614,12 @@ def q_duplicates(contract: WebContract, args):
     """按番号 + 时长找真重复；每簇标出最大与最长的那个。"""
     limit = min(max(int(args.get("limit", "60")), 1), 300)
     offset = max(int(args.get("offset", "0")), 0)
-    connection = contract.db()
-    try:
+    with contract.read_connection() as connection:
         rows = connection.execute(
             "SELECT id,code,location,path,name,size,duration,hash,disposal "
             "FROM asset WHERE medium='video' AND code IS NOT NULL AND code<>'' "
             "AND (disposal IS NULL OR disposal<>'trash')"
         ).fetchall()
-    finally:
-        connection.close()
 
     grouped: dict[str, list[dict]] = {}
     for row in rows:
@@ -1710,8 +1673,7 @@ def q_quality_goals(contract: WebContract, args):
     """List explicit better-version targets for the management surface."""
     limit = min(max(int(args.get("limit", "60")), 1), 200)
     offset = max(int(args.get("offset", "0")), 0)
-    connection = contract.db()
-    try:
+    with contract.read_connection() as connection:
         total = connection.execute(
             "SELECT count(*) FROM asset_quality_goal WHERE profile_id=? AND wanted=1",
             (DEFAULT_PROFILE_ID,),
@@ -1724,8 +1686,6 @@ def q_quality_goals(contract: WebContract, args):
             "ORDER BY g.updated_at DESC,a.id DESC LIMIT ? OFFSET ?",
             (DEFAULT_PROFILE_ID, limit, offset),
         )]
-    finally:
-        connection.close()
     for row in rows:
         row["cost"] = COST.get(row["location"], "metered")
         row["has_thumb"] = contract.has_snapshot(row["snapshot_path"])
