@@ -1004,7 +1004,7 @@ body.settings-open{overflow:hidden}
 .settingspanel{backdrop-filter:blur(5px)}
 .settingscard{width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:hidden;
   border:1px solid var(--border-15);border-radius:var(--floating-radius);background:var(--frost-panel);box-shadow:0 2px 4px #0004,0 30px 90px -30px #000;
-  backdrop-filter:saturate(1.7) blur(24px)}.settingsscroll{max-height:inherit;overflow-y:auto;padding:0 20px 20px;scrollbar-gutter:stable;border-radius:inherit;overscroll-behavior:contain;scroll-padding-top:76px}.settingshead{position:sticky;z-index:2;top:0;display:flex;align-items:center;justify-content:space-between;margin:0 -20px;padding:20px 20px 16px;border-bottom:1px solid var(--line-soft);background:var(--frost-panel);backdrop-filter:saturate(1.7) blur(24px)}
+  backdrop-filter:saturate(1.7) blur(24px)}.settingsscroll{max-height:inherit;overflow-y:auto;padding:0 20px 20px;scrollbar-gutter:stable both-edges;border-radius:inherit;overscroll-behavior:contain;scroll-padding-top:76px}.settingshead{position:sticky;z-index:2;top:0;display:flex;align-items:center;justify-content:space-between;margin:0 -20px;padding:20px 20px 16px;border-bottom:1px solid var(--line-soft);background:var(--frost-panel);backdrop-filter:saturate(1.7) blur(24px)}
 /* 暗色命中要跟随主题机制：app 不写 data-theme，暗色来自 prefers-color-scheme；
    data-theme="dark" 分支给将来手动切主题留位，两条保持同值。
    主题覆盖放在基础规则后面——`.settingscard{` 的子串查找以首条为准。 */
@@ -1018,7 +1018,7 @@ body.settings-open{overflow:hidden}
    内边距**里侧**，于是离右边框差着一大截，和桌面 Chromium 的样子也对不上。
    `appearance:none` 关掉系统绘制，用背景图贴住右边框。 */
 .settingrow select{min-width:148px;border:1px solid var(--line);border-radius:var(--control-radius);background:#181a1d;color:#f5f7fa;color-scheme:dark;padding:9px 34px 9px 11px;font:inherit;font-size:var(--fs-md);appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;background-size:16px 16px}.settingrow select:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.settingrow select option{background:#181a1d;color:#f5f7fa}.settingrow input[type=checkbox]{width:20px;height:20px;accent-color:var(--tungsten)}
-.settinggroup{margin:16px -20px 0 0;border:1px solid var(--line-soft);border-radius:12px 0 0 12px;
+.settinggroup{margin:16px 0 0;border:1px solid var(--line-soft);border-radius:12px;
   background:var(--surface);padding:0 16px 12px}
 .settinggroup>h3{margin:0;padding:14px 0 10px;font-size:var(--fs-lg);font-weight:600;color:var(--ink)}
 .settinggroup .settingrow{margin:0 -16px;padding-left:16px;padding-right:16px}
