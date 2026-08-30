@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from peach.config import DATABASE_PATH, GENERATED_DIR, LOG_DIR, SOURCES_DIR, STATE_DIR
+from peach.jobs import DiskGuard, JobPolicyError
 from peach.metadata import (
     JAVINIZER_GO_VERSION,
     JavinizerGoProvider,
@@ -32,6 +33,7 @@ from peach.metadata_policy import (
     resolve_policy,
     sort_candidates,
 )
+from peach.platform import system_volume
 
 
 _logf = None
@@ -210,6 +212,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--delay", type=float, default=1.2)
+    parser.add_argument("--min-free", type=float, default=40.0,
+                        help="系统盘最低可用 GiB；运行中每隔一段时间复查")
+    parser.add_argument("--disk-check-secs", type=float, default=20.0)
     parser.add_argument("--refresh", action="store_true", help="ignore reusable raw snapshots")
     parser.add_argument("--include-fc2", action="store_true")
     return parser
@@ -299,6 +304,14 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
     output.parent.mkdir(parents=True, exist_ok=True)
     errors_path.parent.mkdir(parents=True, exist_ok=True)
     configure_log(args.log_dir)
+    guard = DiskGuard(system_volume(), args.min_free, args.disk_check_secs)
+    try:
+        free_gb = guard.check(force=True)
+    except JobPolicyError as error:
+        log(f"[stop] {error}")
+        close_log()
+        return error.exit_code
+    log(f"系统盘可用 {free_gb:.1f} GiB，运行期阈值 {args.min_free:.1f} GiB")
     sources = list(policy.sources)
     health = _health_rows(policy)
     adapter = provider or JavinizerGoProvider.create(args.binary, args.config)
@@ -327,12 +340,19 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
 
     blocked_sources: set[str] = set()
     groups_written = errors_written = 0
+    stopped: JobPolicyError | None = None
     with output.open("w", encoding="utf-8-sig", newline="") as candidate_handle, \
             errors_path.open("w", encoding="utf-8-sig", newline="") as error_handle:
         candidate_writer = csv.DictWriter(candidate_handle, fieldnames=FIELDS)
         error_writer = csv.DictWriter(error_handle, fieldnames=ERROR_FIELDS)
         candidate_writer.writeheader(); error_writer.writeheader()
         for index, (code, size_gb, videos) in enumerate(codes, 1):
+            try:
+                guard.check()
+            except JobPolicyError as error:
+                stopped = error
+                log(f"[stop] {error}")
+                break
             query = normalise(code)
             by_field: dict[str, list[dict]] = {}
             fetched_at = datetime.now(timezone.utc).isoformat()
@@ -422,7 +442,7 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
     if errors_written:
         log(f"来源错误 {errors_written} 条 → {errors_path}")
     close_log()
-    return 0
+    return stopped.exit_code if stopped is not None else 0
 
 
 if __name__ == "__main__":

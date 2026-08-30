@@ -43,8 +43,10 @@ class ReviewContract(Protocol):
     def write_transaction(self): ...
 
 
-# 候选文件名带批次日期，代码里只认前缀并永远取目录里最新的一份；
-# 把日期写死在源码里会让下一批候选生成后复核页静默变空。
+# 候选文件名带批次日期，代码里只认前缀并永远取目录里实际最后写完的一份；
+# 文件名允许附加主机/用途，不能用字典序冒充时间顺序。2026-08-30 的
+# `...japanese-official-tags-20260827...` 就曾被更旧的 `...windows-p0-proof-20260822...`
+# 盖住，导致新官方标签在复核页完全不可见。
 CANDIDATE_PREFIX = {
     "metadata_fields": "metadata-field-candidates-",
     "creator_tags": "creator-tags-candidate-",
@@ -111,8 +113,10 @@ def latest_candidate_file(category: str, root: Path | None = None) -> Path | Non
     prefix = CANDIDATE_PREFIX.get(category)
     if not prefix:
         return None
-    matches = sorted((root or GENERATED_DIR).glob(f"{prefix}*.csv"))
-    return matches[-1] if matches else None
+    matches = list((root or GENERATED_DIR).glob(f"{prefix}*.csv"))
+    if not matches:
+        return None
+    return max(matches, key=lambda path: (path.stat().st_mtime_ns, path.name))
 
 
 def read_candidates(category: str, root: Path | None = None) -> tuple[list[dict], str | None, int]:

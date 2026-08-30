@@ -3,11 +3,12 @@
 """
 文件名净化 —— 去掉盗版站塞进文件名的推广域名与残留噪声。
 
-只做可逆、无歧义的改写。刻意不做的几件事（都验证过会出事）：
+只做可逆、无歧义的改写。番号使用 Peach 的统一规范：大写、标准连字符、片商番号
+至少三位数字；FC2 统一为 ``FC2-PPV-<数字>``。刻意不做的几件事（都验证过会出事）：
   * 不删 " (3)" 这类序号：库里 16278 条，去掉后 1520 条与同目录文件直接撞名，
     Telegram 导出全靠它区分同秒落地的文件。
   * 不动 "xxx.mp4.jpg"：那是该 mp4 的缩略图，不是双后缀（真的双后缀只有 2 条）。
-  * 不重排番号/不套命名模板：那依赖刮削完整度，属于另一件事。
+  * 不重排标题/不套命名模板：只替换 ledger 已确认的番号片段。
 
 先出 CSV 供人工核对，加 --apply 才落盘；改名同时同步 ledger 的 path/name。
 
@@ -19,23 +20,29 @@ from __future__ import annotations
 import csv
 import argparse
 from datetime import datetime
+import ntpath
 import os
 import re
 import sqlite3
 import time
+import uuid
+from pathlib import Path
 
-DEFAULT_DB = r"R:\peach-data\database\ledger.db"
-DEFAULT_OUT = r"R:\peach-data\generated\name-clean.csv"
-DEFAULT_LOG_DIR = r"R:\peach-data\logs"
-DEFAULT_BACKUP_DIR = r"R:\peach-data\archive"
+from peach.catalog_rules import is_jav_code, normalise_code_key
+from peach.config import DATABASE_PATH, GENERATED_DIR, LOG_DIR
+
+DEFAULT_DB = DATABASE_PATH
+DEFAULT_OUT = GENERATED_DIR / "name-clean.csv"
+DEFAULT_LOG_DIR = LOG_DIR
 _logf = None
 
 
-def configure_log(log_dir: str) -> None:
+def configure_log(log_dir: str | Path) -> None:
     global _logf
-    os.makedirs(log_dir, exist_ok=True)
-    path = os.path.join(log_dir, time.strftime("clean-names-%Y%m%d-%H%M%S.log"))
-    _logf = open(path, "w", encoding="utf-8", buffering=1)
+    root = Path(log_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / time.strftime("clean-names-%Y%m%d-%H%M%S.log")
+    _logf = path.open("w", encoding="utf-8", buffering=1)
 
 
 def log(msg: str) -> None:
@@ -43,6 +50,13 @@ def log(msg: str) -> None:
     print(line, flush=True)
     if _logf is not None:
         _logf.write(line + "\n")
+
+
+def close_log() -> None:
+    global _logf
+    if _logf is not None:
+        _logf.close()
+        _logf = None
 
 
 TLD = r"(?:com|net|la|xyz|cc|me|top|vip|club|info|org|tv|app|co|pw|gg|cn)"
@@ -61,7 +75,39 @@ RE_ADCOPY = re.compile(
     r"免费看片|请记住本站|更多资源|中文成人网站?)[^.]*(?=\.[A-Za-z0-9]{2,4}$)")
 
 
-def propose(name: str) -> str:
+def _normalise_code_in_name(name: str, code: str | None) -> str:
+    """只替换 ledger 已确认的番号片段，不从文件名重新猜番号。"""
+    if not is_jav_code(code):
+        return name
+    canonical = normalise_code_key(code)
+    if not canonical:
+        return name
+    if canonical.startswith("FC2-PPV-"):
+        digits = canonical.rsplit("-", 1)[-1]
+        pattern = re.compile(
+            rf"(?<![A-Z0-9])FC2(?:[-_ ]?PPV)?[-_ ]*0*{re.escape(digits)}(?!\d)", re.I,
+        )
+    else:
+        amateur = re.fullmatch(r"(\d{3})?([A-Z]+)-(\d+)", canonical)
+        dated = re.fullmatch(r"(\d{6})-(\d{2,4})", canonical)
+        if amateur:
+            prefix, letters, digits = amateur.groups()
+            number = str(int(digits))
+            pattern = re.compile(
+                rf"(?<![A-Z0-9]){re.escape(prefix or '')}{re.escape(letters)}"
+                rf"[-_ ]?0*{re.escape(number)}(?!\d)", re.I,
+            )
+        elif dated:
+            left, right = dated.groups()
+            pattern = re.compile(
+                rf"(?<!\d){re.escape(left)}[-_ ]?{re.escape(right)}(?!\d)", re.I,
+            )
+        else:
+            return name
+    return pattern.sub(canonical, name, count=1)
+
+
+def propose(name: str, code: str | None = None) -> str:
     """返回净化后的文件名；无需改动则原样返回。"""
     stem, dot, ext = name.rpartition(".")
     if not dot or not stem:           # 没有扩展名、或形如 ".mp4" 的空主干，都不碰
@@ -70,6 +116,7 @@ def propose(name: str) -> str:
     new = RE_PREFIX.sub("", name, count=1)
     new = RE_SUFFIX.sub("", new)
     new = RE_ADCOPY.sub("", new)
+    new = _normalise_code_in_name(new, code)
 
     # 同类双后缀 .mp4.mp4（.mp4.jpg 这种缩略图命名不算）
     dbl = re.search(r"\.([A-Za-z0-9]{2,4})\.([A-Za-z0-9]{2,4})$", new)
@@ -94,97 +141,161 @@ def propose(name: str) -> str:
     return new
 
 
-FIELDS = ["id", "location", "dir", "old", "new", "status"]
+FIELDS = ["id", "location", "dir", "old", "new", "old_code", "new_code", "status"]
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="preview or apply conservative filename cleanup")
-    parser.add_argument("--db", default=DEFAULT_DB)
-    parser.add_argument("--out", default=DEFAULT_OUT)
-    parser.add_argument("--log-dir", default=DEFAULT_LOG_DIR)
-    parser.add_argument("--backup-dir", default=DEFAULT_BACKUP_DIR)
+    parser.add_argument("--db", type=Path, default=DEFAULT_DB)
+    parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument("--log-dir", type=Path, default=DEFAULT_LOG_DIR)
+    parser.add_argument("--backup-dir", type=Path,
+                        help="数据库备份目录；默认与 ledger.db 同目录")
     parser.add_argument("--location", choices=("local", "115", "pikpak"))
     parser.add_argument("--apply", action="store_true")
     return parser
 
 
-def write_plan(path: str, plan: list[dict]) -> None:
-    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    with open(path, "w", encoding="utf-8-sig", newline="") as handle:
+def write_plan(path: str | Path, plan: list[dict]) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=FIELDS)
         writer.writeheader()
         writer.writerows(plan)
 
 
-def backup_database(db_path: str, backup_dir: str) -> str:
-    if not os.path.isfile(db_path):
+def backup_database(db_path: str | Path, backup_dir: str | Path | None = None) -> Path:
+    source_path = Path(db_path)
+    if not source_path.is_file():
         raise FileNotFoundError(db_path)
-    os.makedirs(backup_dir, exist_ok=True)
-    destination = os.path.join(
-        backup_dir, "ledger.pre-rename-" + datetime.now().strftime("%Y%m%d-%H%M%S-%f") + ".db",
+    root = Path(backup_dir) if backup_dir else source_path.parent
+    root.mkdir(parents=True, exist_ok=True)
+    destination = root / (
+        "ledger.pre-jav-filename-normalize-"
+        + datetime.now().strftime("%Y%m%d-%H%M%S-%f") + ".db"
     )
-    source = sqlite3.connect(db_path)
+    source = sqlite3.connect(source_path)
     target = sqlite3.connect(destination)
     try:
         source.backup(target)
     finally:
         target.close()
         source.close()
+    verifier = sqlite3.connect(destination)
+    try:
+        integrity = str(verifier.execute("PRAGMA integrity_check").fetchone()[0])
+        foreign_keys = len(verifier.execute("PRAGMA foreign_key_check").fetchall())
+    finally:
+        verifier.close()
+    if integrity != "ok" or foreign_keys:
+        raise RuntimeError(
+            f"备份校验失败：integrity={integrity} foreign_keys={foreign_keys}"
+        )
     return destination
 
 
-def main(argv: list[str] | None = None) -> int:
-    args_ns = build_parser().parse_args(argv)
-    configure_log(args_ns.log_dir)
-    target = (args_ns.db if args_ns.apply else
-              "file:" + os.path.abspath(args_ns.db).replace("\\", "/") + "?mode=ro")
+def _numbered_name(name: str, occupied: set[str]) -> tuple[str, bool]:
+    """目标撞名时保留两份媒体，用稳定的 ``(n)`` 后缀消歧。"""
+    if name.lower() not in occupied:
+        return name, False
+    stem, ext = os.path.splitext(name)
+    index = 2
+    while True:
+        candidate = f"{stem} ({index}){ext}"
+        if candidate.lower() not in occupied:
+            return candidate, True
+        index += 1
+
+
+def build_plan(rows: list[tuple]) -> list[dict]:
+    taken: dict[str, set[str]] = {}
+    for _aid, _location, path, name, _code in rows:
+        taken.setdefault(ntpath.dirname(path).lower(), set()).add(str(name).lower())
+
+    plan: list[dict] = []
+    for aid, location, path, name, code in rows:
+        canonical = normalise_code_key(code) if is_jav_code(code) else str(code or "")
+        proposed = propose(str(name), str(code or ""))
+        if proposed == name and canonical == str(code or ""):
+            continue
+        directory = ntpath.dirname(path)
+        occupied = taken[directory.lower()]
+        occupied.discard(str(name).lower())
+        target, suffixed = _numbered_name(proposed, occupied)
+        occupied.add(target.lower())
+        plan.append({
+            "id": aid, "location": location, "dir": directory,
+            "old": name, "new": target, "old_code": code or "",
+            "new_code": canonical, "status": "ready-suffixed" if suffixed else "ready",
+        })
+    return plan
+
+
+def _rename_path(source: str, destination: str) -> None:
+    """Windows 只改大小写时通过同目录临时名，避免把源误判成目标撞名。"""
+    if source != destination and source.lower() == destination.lower():
+        staging = source + f".peach-rename-{uuid.uuid4().hex}.tmp"
+        os.rename(source, staging)
+        try:
+            os.rename(staging, destination)
+        except Exception:
+            os.rename(staging, source)
+            raise
+    else:
+        os.rename(source, destination)
+
+
+def _database_health(connection: sqlite3.Connection) -> tuple[str, int, int]:
+    integrity = str(connection.execute("PRAGMA integrity_check").fetchone()[0])
+    foreign_keys = len(connection.execute("PRAGMA foreign_key_check").fetchall())
+    assets = int(connection.execute("SELECT count(*) FROM asset").fetchone()[0])
+    return integrity, foreign_keys, assets
+
+
+def run(args_ns: argparse.Namespace) -> int:
+    database = args_ns.db.resolve()
+    target = (str(database) if args_ns.apply else database.as_uri() + "?mode=ro")
     conn = sqlite3.connect(target, uri=not args_ns.apply)
     where = "WHERE name IS NOT NULL"
     sql_args: list = []
     if args_ns.location:
         where += " AND location = ?"
         sql_args.append(args_ns.location)
-    rows = conn.execute(f"SELECT id, location, path, name FROM asset {where}", sql_args).fetchall()
+    rows = conn.execute(
+        f"SELECT id, location, path, name, code FROM asset {where}", sql_args,
+    ).fetchall()
     log(f"扫描 {len(rows)} 条" + (f"（location={args_ns.location}）" if args_ns.location else ""))
 
-    # 同目录已占用的名字，用来挡撞名
-    taken: dict[str, set[str]] = {}
-    for _, _, path, name in rows:
-        taken.setdefault(os.path.dirname(path).lower(), set()).add(name.lower())
-
-    plan = []
-    for aid, loc, path, name in rows:
-        new = propose(name)
-        if new == name:
-            continue
-        d = os.path.dirname(path)
-        status = "collide" if new.lower() in taken[d.lower()] else "ready"
-        plan.append({"id": aid, "location": loc, "dir": d,
-                     "old": name, "new": new, "status": status})
-        if status == "ready":
-            taken[d.lower()].add(new.lower())
-
-    ready = [p for p in plan if p["status"] == "ready"]
-    log(f"待净化 {len(plan)} 条，其中可执行 {len(ready)}，撞名跳过 {len(plan) - len(ready)}")
+    plan = build_plan(rows)
+    ready = [p for p in plan if p["status"].startswith("ready")]
+    suffixed = sum(p["status"] == "ready-suffixed" for p in plan)
+    log(f"待规范 {len(plan)} 条，其中可执行 {len(ready)}，撞名保留双份 {suffixed}")
     write_plan(args_ns.out, plan)
 
     if args_ns.apply:
-        backup = backup_database(args_ns.db, args_ns.backup_dir)
+        before = _database_health(conn)
+        if before[0] != "ok" or before[1]:
+            raise RuntimeError(f"写入前 ledger 校验失败：integrity={before[0]} foreign_keys={before[1]}")
+        backup = backup_database(database, args_ns.backup_dir)
         log(f"数据库备份 → {backup}")
         ok = fail = gone = 0
         for item in ready:
-            src = os.path.join(item["dir"], item["old"])
-            dst = os.path.join(item["dir"], item["new"])
-            if not os.path.exists(src):
+            src = ntpath.join(item["dir"], item["old"])
+            dst = ntpath.join(item["dir"], item["new"])
+            rename_needed = src != dst
+            if rename_needed and not os.path.exists(src):
                 item["status"] = "missing"
                 gone += 1
                 continue
-            if os.path.exists(dst):
+            case_only = src.lower() == dst.lower()
+            if rename_needed and os.path.exists(dst) and not case_only:
                 item["status"] = "collide"
                 fail += 1
                 continue
             try:
-                os.rename(src, dst)
+                if rename_needed:
+                    _rename_path(src, dst)
             except Exception as exc:
                 item["status"] = f"error:{type(exc).__name__}"
                 log(f"  失败 {src} -> {item['new']} : {exc}")
@@ -192,13 +303,15 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             try:
                 conn.execute(
-                    "UPDATE asset SET path=?, name=? WHERE id=?", (dst, item["new"], item["id"]),
+                    "UPDATE asset SET path=?, name=?, code=? WHERE id=?",
+                    (dst, item["new"], item["new_code"], item["id"]),
                 )
                 conn.commit()
             except Exception as exc:
                 conn.rollback()
                 try:
-                    os.rename(dst, src)
+                    if rename_needed:
+                        _rename_path(dst, src)
                     item["status"] = f"db-error-rolled-back:{type(exc).__name__}"
                 except Exception:
                     item["status"] = f"db-error-manual-repair:{type(exc).__name__}"
@@ -207,6 +320,12 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             item["status"] = "done"
             ok += 1
+        after = _database_health(conn)
+        if after[0] != "ok" or after[1] or after[2] != before[2]:
+            raise RuntimeError(
+                f"写入后 ledger 校验失败：integrity={after[0]} foreign_keys={after[1]} "
+                f"assets={before[2]}->{after[2]}"
+            )
         log(f"改名完成 {ok}，失败 {fail}，源已不存在 {gone}")
     conn.close()
 
@@ -214,7 +333,18 @@ def main(argv: list[str] | None = None) -> int:
     log(f"→ {args_ns.out}")
     if not args_ns.apply:
         log("未加 --apply，只出清单未改名。")
-    return 0
+    return 2 if args_ns.apply and any(
+        not str(item["status"]).startswith("done") for item in plan
+    ) else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    args_ns = build_parser().parse_args(argv)
+    configure_log(args_ns.log_dir)
+    try:
+        return run(args_ns)
+    finally:
+        close_log()
 
 
 if __name__ == "__main__":
