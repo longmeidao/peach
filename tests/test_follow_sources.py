@@ -764,6 +764,10 @@ class F95ZoneConnectorTests(unittest.TestCase):
         self.assertEqual(candidate.extra["attachments"], [
             "https://attachments.f95zone.to/2026/08/6372325_preview.png",
         ])
+        self.assertEqual([item["media_kind"] for item in candidate.extra["media_items"]],
+                         ["image"])
+        self.assertEqual(candidate.extra["media_items"][0]["resource_provider"],
+                         "f95zone")
 
     def test_inline_meme_without_a_file_resource_is_skipped(self):
         body = F95_HTML.replace(

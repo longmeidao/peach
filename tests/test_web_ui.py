@@ -2015,7 +2015,7 @@ class WebUiSourceTests(unittest.TestCase):
         reviewed_end_selectors = {
             ".alphatag span:first-of-type", ".av .nm", ".entitylinklabel",
             ".fauthor .fsource.frow>b", ".fauthorhead b",
-            ".fchip", ".folderfoot .fmeta", ".fpickactions [data-pick-state]",
+            ".fchip", ".followpageaction .fmeta", ".fpickactions [data-pick-state]",
             ".frow>b", ".fvkind", ".idname", ".kv>span:first-child",
             ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
             ".mixitemtext [data-truncate-end]", ".mixqueuehead h2",

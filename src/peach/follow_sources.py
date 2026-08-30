@@ -57,6 +57,8 @@ _FILE_HOST_DOMAINS = frozenset({
 })
 
 _LINK_RE = re.compile(r"https?://[^\s\"'<>)\]]+", re.IGNORECASE)
+_F95_IMAGE_RE = re.compile(
+    r"\.(?:avif|bmp|gif|jpe?g|png|webp)(?:$|[?#])", re.IGNORECASE)
 
 
 def resource_links(text: str | None) -> list[str]:
@@ -71,6 +73,33 @@ def resource_links(text: str | None) -> list[str]:
         if _is_resource_url(link) and link not in found:
             found.append(link)
     return found
+
+
+def f95_attachment_media_items(metadata: Mapping[str, object]) -> list[dict[str, object]]:
+    """Project F95 image attachments, including rows saved before galleries existed."""
+    attachments = metadata.get("attachments")
+    if not isinstance(attachments, list):
+        return []
+    result: list[dict[str, object]] = []
+    for index, value in enumerate(attachments):
+        url = str(value or "")
+        try:
+            parsed = urllib.parse.urlsplit(url)
+        except ValueError:
+            continue
+        if (parsed.scheme != "https" or parsed.hostname != "attachments.f95zone.to"
+                or not _F95_IMAGE_RE.search(url)):
+            continue
+        name = urllib.parse.unquote(parsed.path.rsplit("/", 1)[-1]) or f"image-{index + 1}"
+        result.append({
+            "id": f"f95-attachment-{index + 1}",
+            "name": name,
+            "media_kind": "image",
+            "url": url,
+            "thumb_url": url,
+            "resource_provider": "f95zone",
+        })
+    return result
 
 
 def _is_resource_url(url: str) -> bool:
@@ -1094,7 +1123,8 @@ class F95ZoneConnector(_BaseConnector):
         enriched = []
         for candidate in candidates:
             links = [str(value) for value in candidate.extra.get("links", [])]
-            media_items = self._gofile_media(links)
+            image_items = f95_attachment_media_items(candidate.extra)
+            media_items = tuple(image_items) + self._gofile_media(links)
             enriched.append(replace(
                 candidate,
                 extra={**dict(candidate.extra), "media_items": media_items,

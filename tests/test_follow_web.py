@@ -242,6 +242,25 @@ class FollowContractTests(unittest.TestCase):
         ])
         self.assertNotIn("media_url", item)
 
+    def test_legacy_f95_image_attachments_are_projected_without_a_ledger_write(self):
+        self._seed(candidates=(FollowCandidate(
+            provider="f95zone", external_id="21435167", title="Image set",
+            url="https://f95zone.to/threads/160190/post-21435167",
+            media_url="https://pixeldrain.com/l/verified",
+            thumb_url="https://attachments.f95zone.to/2026/08/one.jpg",
+            extra={"links": ["https://pixeldrain.com/l/verified"],
+                   "attachments": [
+                       "https://attachments.f95zone.to/2026/08/one.jpg",
+                       "https://attachments.f95zone.to/2026/08/two.png",
+                   ]},
+        ),), provider="f95zone", ref="160190", semantics="release")
+        item = self._get()["groups"][0]["primary"]
+        self.assertEqual([media["media_kind"] for media in item["media_items"]],
+                         ["image", "image"])
+        self.assertEqual(item["media_kind"], "image")
+        self.assertTrue(item["playable"])
+        self.assertTrue(all("url" not in media for media in item["media_items"]))
+
     def test_media_collections_expose_only_safe_display_fields_and_indices(self):
         self._seed(candidates=(FollowCandidate(
             provider="fanbox", external_id="12228983", title="Poll Results",
@@ -1213,6 +1232,10 @@ class FollowWebSourceTests(unittest.TestCase):
         rule = rule[:rule.index("}")]
         self.assertIn("height:38px", rule)
         self.assertIn("min-height:38px", rule)
+        # 38px - 2px 边框 - 16px 内边距 = 20px 行高；textarea 会从内容区
+        # 顶部排第一行，留下额外内容高度就会让文字视觉上偏上。
+        self.assertIn("padding:8px 12px 8px 38px", rule)
+        self.assertIn("line-height:20px", rule)
         button = page[page.index("\n.fbtn{"):]
         self.assertIn("height:32px", button[:button.index("}")])
         # faddform 里的按钮随输入栏同高（Geist 输入 32px 基线之上的一档）。
@@ -1816,26 +1839,45 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('data-follow-queue-item="${item.id}"')
         self.assertPageContains("openFollowDetail(+button.dataset.followCollection)")
 
-    def test_follow_reuses_media_tabs_and_keeps_mixed_updates_in_both_views(self):
+    def test_follow_reuses_entity_media_buttons_and_offers_the_vercel_switch_variant(self):
         self.assertPageContains("const followMediaKinds=group=>")
         self.assertPageContains("function followItemMediaKinds(item)")
         self.assertPageContains("const item=followItemForMedia(group)")
-        self.assertPageContains('class="mediatabs followmediatabs"')
+        self.assertPageContains('class="followmediaicons"')
+        self.assertPageContains('class="entitymediatoggle" type="button" data-follow-media="videos"')
+        self.assertPageContains('class="insightswitch followmediaswitch" role="radiogroup"')
         self.assertPageContains('data-follow-media="videos"')
         self.assertPageContains('data-follow-media="images"')
-        self.assertPageContains("<span>视频</span>")
-        self.assertPageContains("<span>图片</span>")
-        self.assertPageContains("followMediaView=new URLSearchParams(location.search).get('media')==='images'?'images':'videos'")
+        self.assertPageContains("followMediaUi=FOLLOW_MEDIA_UIS.has(params.get('media-ui'))")
+        self.assertPageContains("params.set('author',followAuthor)")
+        self.assertPageContains("route(followViewPath());renderFollow()")
         self.assertPageContains("const preferredKind=followMediaView==='images'?'image':'video'")
         watch = self.page.split("function renderFollow(){", 1)[1].split(
             "function followBackfillState", 1)[0]
         self.assertLess(watch.index('class="tier followauthors"'),
-                        watch.index('class="mediatabs followmediatabs"'))
+                        watch.index('followMediaControl(mediaCounts)'))
         self.assertLess(watch.index('class="tagbar followfilters"'),
-                        watch.index('class="mediatabs followmediatabs"'))
+                        watch.index('followMediaControl(mediaCounts)'))
         self.assertPageContains("followMediaView==='images'?' followphotowall':''")
         self.assertPageContains(".followlist.followphotowall{display:block;column-count:5")
         self.assertPageContains(".followitem.imagecard .followvisual .pic>img{position:relative")
+
+    def test_external_file_pages_do_not_default_to_video_and_paging_actions_share_one_row(self):
+        self.assertPageContains("else if(item.media_kind==='image'||item.media_kind==='video')kinds.add(item.media_kind)")
+        self.assertPageLacks("else kinds.add(item.media_kind==='image'?'image':'video')")
+        self.assertPageContains('class="followpagination"')
+        self.assertPageContains("${icon('plus')}加载更多")
+        self.assertPageContains("${icon('history')}抓更早的一页")
+        self.assertPageContains("spinnerHtml('加载更多')")
+        self.assertPageContains("loadingDotsHtml('抓取中…')")
+
+    def test_follow_management_list_has_routed_sorting(self):
+        self.assertPageContains('data-follow-sort aria-label="关注列表排序"')
+        self.assertPageContains('<option value="checked"')
+        self.assertPageContains('<option value="name"')
+        self.assertPageContains('<option value="sources"')
+        self.assertPageContains("followManageSort=['checked','name','sources'].includes(requested)?requested:'checked'")
+        self.assertPageContains("return groups.sort((a,b)=>{")
 
     def test_mix_and_follow_queues_stay_below_media_with_details_on_the_right(self):
         self.assertPageContains('grid-template-areas:"media side" "queue queue"')

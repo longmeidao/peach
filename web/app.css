@@ -1724,7 +1724,6 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .follow{padding:4px 0 42px}
 .followhead{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}
 .followhead .pagetitle{margin:0}
-.followmediatabs{margin:2px 0 18px}
 .follow .fcheck{font-weight:600}
 .follow .fcheck svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
 .followauthors{padding:3px 0 10px;margin:0 0 2px;overscroll-behavior-inline:contain}
@@ -1740,6 +1739,17 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .followfilters .pill .n{margin-left:5px;color:inherit}
 .followfilters .sourcepill{width:40px;padding:0}
 .followfilters .sourcepill .ficon{width:21px;height:21px;margin:0}
+.followmediaicons{display:inline-flex;align-items:center;gap:2px;flex:none}
+.followmediaicons .entitymediatoggle{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;padding:0;
+  border:0;border-radius:var(--control-radius);background:transparent;color:var(--muted);cursor:pointer}
+.followmediaicons .entitymediatoggle svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
+.followmediaicons .entitymediatoggle[data-follow-media="images"] svg{fill:currentColor;stroke:none}
+.followmediaicons .entitymediatoggle:hover{background:var(--overlay-5);color:var(--ink)}
+.followmediaicons .entitymediatoggle[aria-pressed="true"]{background:var(--ink-2);color:var(--ground)}
+.followmediaswitch{flex:none;padding:2px;border-radius:7px}.followmediaswitch span{height:28px;grid-auto-flow:column;gap:6px;padding:0 10px}
+.followmediaswitch svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
+.followmediaswitch label:last-child svg{fill:currentColor;stroke:none}
+.followmediaswitch b{font-size:var(--fs-xs);font-weight:400;color:inherit}
 /* 折叠摘要按 Vercel 设置行的 title + description 结构：标题一行、说明弱化一行，
    尖角指引符与文字之间留出固定间距，不再靠一个空格硬贴。 */
 .fdetails{margin-inline:-16px}
@@ -1847,6 +1857,10 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .dupactions.fsechead button:hover{border-color:var(--tungsten);color:var(--tungsten)}
 .fsechead h3{margin:0;font-size:var(--fs-md);font-weight:600;letter-spacing:.01em}
 .fsechead .fmeta{flex:1 1 auto}
+.fmanagesort{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:var(--fs-xs)}
+.fmanagesort select{height:32px;padding:0 28px 0 10px;border:1px solid var(--border-15);border-radius:var(--control-radius);
+  background:var(--surface);color:var(--ink-2);font:inherit;font-size:var(--fs-sm);color-scheme:dark;cursor:pointer}
+.fmanagesort select:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .fmeta{font-size:var(--fs-xs);color:var(--muted)}
 .fmeta b{color:var(--ink);font-variant-numeric:tabular-nums}
 .fmeta.warn{color:var(--drop)}
@@ -1944,7 +1958,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fsearchprefix>svg{width:16px;height:16px;stroke:currentColor;fill:none}
 .faddform textarea{width:100%;flex:1 1 auto;min-width:0;height:38px;min-height:38px;max-height:220px;
   box-sizing:border-box;border:1px solid var(--border-15);border-radius:6px;
-  background:var(--ground);color:var(--ink);padding:5px 12px 5px 38px;font-size:var(--fs-md);font-family:inherit;
+  background:var(--ground);color:var(--ink);padding:8px 12px 8px 38px;font-size:var(--fs-md);font-family:inherit;
   line-height:20px;resize:none;overflow-y:auto;overflow-x:hidden;transition:border-color .12s ease}
 .faddform .fbtn{height:38px;min-height:38px}
 .faddform textarea::placeholder{color:var(--muted)}
@@ -2137,15 +2151,13 @@ details.fcred{display:block}
 .fpickactions [data-pick-state]{display:flex;align-items:center;min-width:0;overflow:hidden;
   white-space:nowrap;text-overflow:ellipsis;font-size:var(--fs-xs);color:var(--muted)}
 
-/* 关注页底部的「往回抓」。放在列表末尾而不是顶部：它的语义是「这些之外还有更早的」，
-   顶部会让人以为是刷新。 */
-.folderfoot{display:flex;align-items:center;gap:12px;min-width:0;white-space:nowrap;margin:18px 0 0;
-  padding-top:14px;border-top:1px solid var(--line-soft)}
-/* 「加载更多」和「抓更早的一页」是两件事：前者翻本地已有的条目，
-   后者去站点上要更早的。版式共用一套，语义不同不合并。 */
-.followmore{display:flex;align-items:center;gap:12px;margin:18px 0 0;
-  padding-top:14px;border-top:1px solid var(--line-soft)}
-.folderfoot .fmeta{min-width:0;margin-left:0;overflow:hidden;text-overflow:ellipsis}
+/* 关注页底部：两个翻页动作同属列表末尾，放在一条底栏；
+   按钮仍保留各自的本地加载 / 站点抓取语义。 */
+.followpagination{display:flex;align-items:center;gap:14px 24px;min-width:0;margin:18px 0 0;
+  padding-top:14px;border-top:1px solid var(--line-soft);white-space:nowrap;overflow-x:auto;scrollbar-width:thin}
+.followpageaction{display:inline-flex;align-items:center;gap:12px;min-width:0;flex:none}
+.followpageaction .fmeta{min-width:0;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:640px){.followpagination{align-items:flex-start;flex-wrap:wrap;white-space:normal}.followpageaction{width:100%}}
 
 /* 资源标识统一由 MiddleTruncate 计算可见文本。星号让本规则与「类 + 元素」的末尾省略
    选择器同权重，并凭源码顺序覆盖，避免两套省略同时生效。 */
