@@ -23,7 +23,7 @@ undefine
 - FastAPI 是唯一 Web server；Ledger 保存资产、规范身份、行为和复核决定。Stash 与 CloudDrive 都经适配层进入，扁平 creator/studio/tag 字段只作兼容投影。
 - 本地浏览器支持 MP4/WebM/Ogg；AVI 等由 `TranscodeService` 缓存成 H.264/AAC MP4。远端 MP4 默认走标准 Range，显式 HLS 使用关键帧对齐片段，失败会回退 Range，永不改写原媒体。
 - 首页、详情、实体资料、标签管理、照片、播放列表、统计、口味、复核、回收站、关注管理和关注观看共用同一 SPA 与 JSON 契约；桌面和 390×844 手机均在验收范围内。
-- 多女优卡片叠放前 3 个头像，只显示第一位姓名和真实总人数，例如 `かわいゆい 等 37 人`；详情与沉浸模式仍保留完整或扩展后的出演信息。
+- 普通多女优卡片叠放前 3 个头像，只显示第一位姓名和真实总人数；JAV 小图只叠前 2 个头像，并收成单行标题与身份，大小、观看次数和标签留到详情。详情与沉浸模式仍保留完整或扩展后的出演信息。
 - 当前源码的在线追更支持 FANBOX、Patreon、SubscribeStar、kemono/coomer/pawchive、rule34video、rule34.xxx、Rule34 Paheal 和 f95zone；FANBOX 可选 Cookie 用于公开详情被验证页拦截时复用用户会话，Gofile Premium API token 可展开 FANBOX/F95 外部文件页。两份凭据只发给各自站点。SimpCity 仍被 DDoS-Guard 阻塞，Peach 不绕过机器人验证。官方渠道只读取公开免费发布，不绕过登录或付费墙。
 - Rule34.xxx 来源 ref 大小写不敏感；迁移会合并分批添加造成的重复来源并保留条目状态。F95 的 `Collection(s)` 后缀不进入作者名，五个来源可归到同一作者组。
 - 关注作者显示名与头像优先取经过固定主机校验的官方 FANBOX/Pixiv 页面，归档站只作回退。官方主页只出现一个明确作者名时，主页账号自动记为有出处的关注别名；已有映射尤其是人工作决定不会被覆盖，只有名称相似时仍只给建议。只支持真实历史分页的来源才显示「抓更早一页」。
@@ -37,6 +37,7 @@ undefine
 
 ## 本批修正与验证
 
+- 2026-08-30 修复 JAV「小图 · 整张封套」多人卡片过高：根因是该版式只改封面比例，仍复用普通卡片的 3 头像、两行标题、大小、观看次数和标签，字段换行后单卡会撑高整行。现在只在 `jav-small` 下显示前 2 个头像，标题和身份各 1 行，次要元数据留到详情；大图、预览图和详情不变。分支重放到最新 `master` 后正式 `catalog` 432 项全绿；生产页面 1280×720 与 390×844 实测多人卡片头像为 2、元数据区 40px、次要字段不占布局，控制台无错误。纯前端资源实时生效，无需重启，本轮未写真实 ledger、未替换生产 EXE。
 - 2026-08-30 修复首页在线来源与导航回归：已保存的 `location=online` 资产不再被默认缩略图门槛静默排除，来源与卡片统一使用 RSS 图标；在线详情只引导到关注页「已保存」，不会把网页 URL 当媒体串流。首页导航会显式清掉 `jav=1`，JAV → 首页后 URL 与高亮同步恢复。隔离 worktree 在 rebase 到最新 master 后 `catalog` 430 项全绿；Windows 托盘与两个 venv 子服务已安全重启，生产 API 的 `loc=online&thumb=1` 返回 1 条、叠加 `jav=1` 返回 0。1280×720 与 390×844 浏览器实测在线卡片、RSS、JAV → 首页、详情门槛和无横向溢出均通过；项目 CA 严格 HTTPS `/healthz` 返回 0.7.13、writer。本轮没有触发关注检查或写真实 ledger，也没有替换生产 EXE。
 - 2026-08-30 按 Vercel Geist `MiddleTruncate` 行为为资源标识补中间省略：新增无依赖 ES module，以 `ResizeObserver`、`Intl.Segmenter` 和 Canvas 测量随容器宽度重算，单个 `…` 保留首尾；完整原文仍用于复制、`aria-label` 与原生提示，外层不再叠加 CSS `text-overflow:ellipsis`。首批覆盖重复文件名／路径、高清版文件名和照片详情文件名；标题、说明和创作者名继续末尾省略。正式全量 1254 项中实现与新增契约均通过，唯一失败是 `HANDOFF.md` 181 行超过 180 行预算；压缩后官方 `tooling` 103 项全绿，字体测量修复后 `catalog` 428 项全绿。官网实时 DOM/CSS/JS 因浏览器脚本超时重置、PowerShell TLS 认证失败及 curl `SEC_E_NO_CREDENTIALS (0x8009030e)` 未取得，已记录语义证据、候选实现与主动差异。生产浏览器首次验收发现 Chromium 在等长数字样式下返回空 `font` 简写、Canvas 退回 10px 字体导致宽度低估；改用完整字体属性回退后，高清版长文件名在桌面与 390×844 均首尾保留且只有一个 `…`，`scrollWidth` 等于 `clientWidth`，完整 `aria-label`／`title` 保留，页面无横向溢出、控制台无错误。项目 CA 严格 HTTPS `/healthz` 返回 0.7.13、writer、非只读，线上 `app.js` 与新模块哈希和 `master` 一致；无需重启，本批未写真实 ledger 或替换生产入口。
 - 2026-08-30 复核 `master` 相对 `origin/master` 的 9 个界面提交：保留有用户回执或可复现证据的 Toggle、卡片面、danger 按钮、标题截断、空态、来源筛选语义与作者块；纠正四类臆测／失效实现。①凭据说明改成可聚焦 Tooltip，打开时才设置 `aria-describedby`，Escape 可关闭，250px 最大宽度并按视口夹取，不再把页面撑出横向滚动条。②添加关注沿用 Projects 工具栏的“输入占余宽 + 方形筛选 + 右侧主操作”，来源菜单固定在视口内、内部滚动且无展开动画。③作者别名按 Geist Collapse 的测量高度和 200ms `ease-in-out` 实现内容／chevron 过渡，并处理快速反向点击。④删除无证据的设置面板入场动画、未使用的 loading-dots／menu 动画，以及没有有效高度约束却注入每张复核卡的 Scroller。官方 bundle SHA、登录态页面测量与 Peach 差异已登记；重放后 `full` 1256 项通过，最终基线上的 `follow` 446 项、`catalog` 430 项也通过。临时数据库上的桌面 1440×900 与手机 390×844 浏览器验收均为横向溢出 0px；筛选菜单 250px、距视口至少 8px、无动画，Tooltip 也保持在视口内，作者别名展开语义正确。生产服务在开工时未运行，本轮未替换生产入口。
