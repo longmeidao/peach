@@ -703,8 +703,16 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("原始 URL、标题与搜索内容不会显示在页面")
         self.assertPageContains("data-taste-window")
         self.assertPageContains("data-taste-remove")
-        self.assertPageContains("<h2>浏览器记录</h2>")
-        self.assertPageContains("<h2>Peach 内部</h2>")
+        self.assertPageContains('role="radiogroup" aria-label="口味证据来源"')
+        self.assertPageContains('name="taste-evidence" value="browser"')
+        self.assertPageContains('name="taste-evidence" value="peach"')
+        self.assertPageContains('data-taste-evidence-panel="browser"')
+        self.assertPageContains('data-taste-evidence-panel="peach"')
+        self.assertPageContains("[data-taste-evidence-panel][hidden]")
+        self.assertPageContains("[data-taste-dimension-panel][hidden]")
+        self.assertPageContains('data-taste-dimension="${source}:${key}"')
+        self.assertPageContains("sourceTabs('browser',[['tags','Tag']")
+        self.assertPageContains("sourceTabs('peach',[['tags','Tag'],['creators','创作者'],['performers','女优']])")
         self.assertPageContains("不自动给 Tag 降权")
         self.assertPageContains("rank.browser_tags||[]")
         self.assertPageContains("rank.peach_performers||rank.performers||[]")
@@ -716,38 +724,40 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const faviconFallbackUrl=domain=>`https://www.google.com/s2/favicons")
         self.assertPageContains("支持 macOS / Windows 的 Zen、Safari、Firefox、Chrome")
         self.assertPageLacks("negative_tags")
-        self.assertPageContains(".tastegrid{display:grid;grid-template-columns:repeat(12")
-        self.assertPageContains(".tastepanel-wide{grid-column:span 8}")
-        self.assertPageContains(".tasteranks{display:grid;grid-auto-flow:row;grid-template-columns:minmax(0,1fr);gap:0}")
-        self.assertPageContains(".tastepanel-wide .tasteranks{grid-template-columns:repeat(3")
-        self.assertPageContains(".tastepanel-full .tasteranks{grid-template-columns:repeat(4")
+        self.assertPageContains(".tastehero{margin-bottom:16px}")
+        self.assertPageContains(".tasteranks{display:grid;grid-template-columns:repeat(3")
+        self.assertPageContains(".tasteranks-tags{grid-template-columns:repeat(4")
         self.assertPageContains(".tasterank{width:100%;min-width:0;min-height:58px")
-        self.assertPageContains("@media(max-width:640px){.tastehead")
-        self.assertPageContains("justify-content:flex-start;gap:10px 14px;flex-wrap:wrap")
-        self.assertPageContains("tasteranks${kind==='tag'?' tasteranks-tags':''}")
+        self.assertPageContains("@media(max-width:640px){.insighttoolbar,.tastehead")
+        self.assertPageContains(".insightdetailbody,.tastehero{min-height:0;grid-template-columns:minmax(0,1fr)}")
+        self.assertPageContains("data-taste-dimension-panel=\"${source}:${key}\"")
         self.assertPageContains("class=\"tasterank${kind==='tag'?' tasterank-tag':''}")
         self.assertPageContains("grid-template-columns:32px minmax(0,1fr) 18px")
         self.assertPageContains(".tasterank-visual{grid-template-columns:32px 30px minmax(0,1fr) 18px}")
         self.assertPageContains(".tasterank>svg{justify-self:end")
-        self.assertPageContains(".tasteranks:not(.tasteranks-tags) .tasterank{border-right:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}")
-        self.assertPageContains(".tasterank-tag{min-height:54px;padding:8px 10px;border:1px solid var(--line-soft);border-radius:6px")
+        self.assertPageContains("border-right:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft);border-radius:0")
+        self.assertPageContains(".tasterank-tag{min-height:54px;padding:8px 10px;border:1px solid var(--line-soft);border-radius:var(--control-radius)")
         self.assertPageContains(".tasterank:is(button):hover{background:var(--overlay-5)}")
         self.assertPageLacks("box-shadow:inset 3px 0 var(--tungsten)")
-        self.assertPageContains(".tastesources>div{display:grid;grid-auto-flow:row;grid-template-columns:repeat(3")
+        self.assertPageContains(".tastesources .insightpanelbody>div{display:grid;grid-template-columns:repeat(3")
 
     def test_stats_use_analytics_panels_and_real_determinate_progress(self):
-        self.assertPageContains(".scards{display:grid;grid-template-columns:repeat(12")
-        self.assertPageContains(".statcard-third{grid-column:span 4}")
-        self.assertPageContains(".statcard-half{grid-column:span 6}")
-        self.assertPageContains(".statcard-quarter{grid-column:span 3}")
-        self.assertPageContains("const card=(t,body,size='third')")
-        self.assertPageContains('class="statcardhead"><h3>${t}</h3>')
-        self.assertPageContains('class="statcardbody">${body}</div>')
+        self.assertPageContains('class="metricstrip" role="tablist" aria-label="统计视图"')
+        self.assertPageContains('role="tab" data-stats-metric="${key}"')
+        self.assertPageContains('role="tabpanel" data-stats-detail="inventory"')
+        self.assertPageContains('class="insighttabs" role="tablist" aria-label="统计维度"')
+        self.assertPageContains('data-stats-tab="tags" aria-selected="true"')
+        self.assertPageContains('data-stats-panel="recent" hidden')
+        self.assertPageContains("panel.hidden=panel.dataset.statsDetail!==button.dataset.statsMetric")
         self.assertPageContains('role="progressbar" aria-label="${esc(label)}"')
         self.assertPageContains('aria-valuemin="0" aria-valuemax="${ceiling}" aria-valuenow="${current}"')
         self.assertPageContains(".statmetric{padding:3px 0 12px;border-bottom:1px solid var(--line-soft)}")
         self.assertPageContains(".geist-progress{height:8px;margin-top:7px;overflow:hidden;border-radius:var(--pill-radius);background:var(--line-soft)}")
         self.assertPageContains("${progressHtml(`${k}：${v.toLocaleString()} / ${max.toLocaleString()}`,v,max)}")
+        self.assertPageContains(".metricstrip button[aria-selected=\"true\"]:after")
+        self.assertPageContains(".insightdetailbody[hidden]")
+        self.assertPageContains("[data-stats-panel][hidden]")
+        self.assertPageLacks("const card=(t,body,size='third')")
         self.assertPageLacks('<div class="statshead"></div>')
         self.assertPageLacks('class="prog"')
 
@@ -1037,12 +1047,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("Promise.all([loadSearchHistory(),loadSearchPool()])")
         self.assertPageContains("[...searchPool()]")
 
-    def test_admin_surfaces_fill_wide_screens(self):
-        """统计和复核是信息密集的行政界面，宽屏下居中会浪费两侧空间。"""
+    def test_insight_surfaces_use_one_readable_measure(self):
+        """统计和口味共享 Vercel 式阅读列；浏览型首页仍保持全宽。"""
         self.assertPageContains(".stats{padding:0 0 42px}")
         self.assertPageContains(".review{--review-fieldset-height:440px;padding:0 0 42px}")
         self.assertPageLacks("max-width:1440px")
-        self.assertPageContains("card('系统盘', d.system_disk")
+        self.assertPageContains(".insightpage,.tastepage{width:min(1100px,100%);margin:0 auto")
+        self.assertPageContains("metricTab('disk','系统盘可用'")
 
     def test_duplicate_and_trash_descriptions_share_one_page_lede(self):
         self.assertPageContains('class="pagelede mono" id="manageLede" hidden')
@@ -1534,7 +1545,8 @@ class WebUiSourceTests(unittest.TestCase):
         持久缓存，再后台更新；请求带序号，慢响应不能覆盖别的窗口或页面。
         """
         self.assertPageContains("const TASTE_CACHE_KEY='peach-taste-dashboard-v2',TASTE_CACHE_FRESH_MS=24*60*60*1000;")
-        self.assertPageContains("let tasteWindow='all',tasteCache=readTasteCache(),tasteRequest=0;")
+        self.assertPageContains("let tasteWindow='all',tasteEvidence='browser',tasteDimension={browser:'tags',peach:'tags'};")
+        self.assertPageContains("let tasteCache=readTasteCache(),tasteRequest=0;")
         self.assertPageContains("localStorage.getItem(TASTE_CACHE_KEY)")
         self.assertPageContains("localStorage.setItem(TASTE_CACHE_KEY,JSON.stringify(Object.fromEntries(tasteCache)))")
         self.assertPageContains("const cachedEntry=tasteCache.get(tasteWindow),cached=cachedEntry?.dashboard;")
@@ -1707,8 +1719,9 @@ class WebUiSourceTests(unittest.TestCase):
             ".playerstats dd", ".relatedperson .nm", ".reviewentity b",
             ".reviewitem h4", ".searchoption span",
             ".sgrid.mixgrid>.mixqueue .mixqueuehead span", ".sidebarorderlabel>b",
+            ".insighttablerow span", ".metricstrip small,.tastesummary>small",
             ".tagpickitem .pickname", ".tasterank b,.tasterank small",
-            ".tastesource b,.tastesource small", ".tastesummary>small", ".tg",
+            ".tastesource b,.tastesource small", ".tg",
             ".tokui .toktitle", "body[data-density=\"dense\"] .card .ctags .tg",
             "body[data-density=\"dense\"] .card .meta .t",
         }
