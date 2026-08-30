@@ -1472,7 +1472,7 @@ async function openReview(push=true){
          const comparisonOrigin=comparison.length>1?`<div class="reviewcompare">${comparison.map(asset=>`<div class="revieworigin">
              <button class="revieworigincover" data-review-open-item="${asset.id}" aria-label="打开原视频 ${esc(asset.name||'')}">
                ${asset.preview_url?`<img src="${esc(asset.preview_url)}" alt="" loading="lazy" onerror="this.remove()">`:'<span>无封面</span>'}</button>
-             <div><b title="${esc(asset.name||'')}">${esc(asset.code||asset.name||'原视频')}</b>
+             <div><b data-middle-truncate title="${esc(asset.name||'')}">${esc(asset.code||asset.name||'原视频')}</b>
                <button type="button" data-review-open-item="${asset.id}">${icon('play')}打开原视频</button></div></div>`).join('')}</div>`:'';
          const origin=comparisonOrigin||subjectKind&&subjectName?comparisonOrigin||`<div class="reviewentity">
              <button class="reviewentityface" data-entity-kind="${subjectKind}" data-entity-name="${esc(subjectName)}"
@@ -1483,7 +1483,7 @@ async function openReview(push=true){
            :row.asset_id?`<div class="revieworigin">
              <button class="revieworigincover" data-review-open-item="${row.asset_id}" aria-label="打开原视频 ${esc(row.asset_name||'')}">
                ${row.asset_preview_url?`<img src="${esc(row.asset_preview_url)}" alt="" loading="lazy" onerror="this.remove()">`:'<span>无封面</span>'}</button>
-             <div><b title="${esc(row.asset_name||'')}">${esc(row.asset_name||'原视频')}</b>
+             <div><b data-middle-truncate title="${esc(row.asset_name||'')}">${esc(row.asset_name||'原视频')}</b>
                <button type="button" data-review-open-item="${row.asset_id}">${icon('play')}打开原视频</button></div></div>`:'';
          /* 只有一个候选时没什么可选的，单选圈只是让人以为还有别的选项。
             改成纯展示，几何对齐上面的「打开原视频」块。
@@ -1747,7 +1747,7 @@ function followQueueHtml(group,itemId){
         :`<span class="fnothumb">${sourceIcon(item.provider)}</span>`;
       return `<div class="mixrow"><button class="mixitem ${item.id===itemId?'current':''}" data-follow-queue-item="${item.id}" aria-current="${item.id===itemId?'true':'false'}">
         <span class="mixitempic">${thumb}${item.duration?`<i class="dur mono">${fmtDur(item.duration)}</i>`:''}</span>
-        <span class="mixitemtext"><b>${esc(copy.title)}</b><span><i class="fvkind ${esc(item.variant_kind||'')}">${esc(copy.label)}</i>${followWhen(item)}</span></span></button></div>`;
+        <span class="mixitemtext"><b data-truncate-end>${esc(copy.title)}</b><span data-truncate-end><i class="fvkind ${esc(item.variant_kind||'')}">${esc(copy.label)}</i>${followWhen(item)}</span></span></button></div>`;
     }).join('')}</div></aside>`;
 }
 
@@ -1759,7 +1759,7 @@ function followEmbeddedQueueHtml(item,mediaIndex){
         ?`<img src="${esc(media.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
         :`<span class="fnothumb">${sourceIcon(media.resource_provider||item.provider)}</span>`;
       return `<div class="mixrow"><button class="mixitem ${media.index===mediaIndex?'current':''}" data-follow-media-item="${media.index}" data-media-kind="${media.media_kind}" aria-current="${media.index===mediaIndex?'true':'false'}">
-        <span class="mixitempic">${thumb}</span><span class="mixitemtext"><b>${esc(media.name)}</b><span>${media.media_kind==='image'?'图片':'视频'}</span></span></button></div>`;
+        <span class="mixitempic">${thumb}</span><span class="mixitemtext"><b data-middle-truncate>${esc(media.name)}</b><span data-truncate-end>${media.media_kind==='image'?'图片':'视频'}</span></span></button></div>`;
     }).join('')}</div></aside>`;
 }
 
@@ -4028,7 +4028,7 @@ function queueHtml(queue,itemId){
       const thumb=x.has_thumb?`<img src="/poster?id=${x.id}&c=4" alt="" loading="lazy">`:'';
       const edit=queue.kind==='playlist'?`<span class="queueedit"><button data-queue-up="${index}" aria-label="上移" ${index===0?'disabled':''}>↑</button><button data-queue-down="${index}" aria-label="下移" ${index===queue.items.length-1?'disabled':''}>↓</button><button data-queue-remove="${x.id}" aria-label="移出播放列表">${icon('x')}</button></span>`:'';
       return `<div class="mixrow"><button class="mixitem ${x.id===itemId?'current':''}" data-queue-item="${x.id}" aria-current="${x.id===itemId?'true':'false'}">
-        <span class="mixitempic">${thumb}<i class="dur mono">${fmtDur(x.duration)}</i></span><span class="mixitemtext"><b>${esc(x.name)}</b><span>${queue.kind==='parts'?`第 ${esc(x.part_label)} 卷`:esc(mixLabel(x))}</span></span></button>${edit}</div>`;
+        <span class="mixitempic">${thumb}<i class="dur mono">${fmtDur(x.duration)}</i></span><span class="mixitemtext"><b data-middle-truncate>${esc(x.name)}</b><span data-truncate-end>${queue.kind==='parts'?`第 ${esc(x.part_label)} 卷`:esc(mixLabel(x))}</span></span></button>${edit}</div>`;
     }).join('')}</div></aside>`;
 }
 async function buildMix(seedId){

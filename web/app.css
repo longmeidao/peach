@@ -572,7 +572,7 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
 .reviewentity small{display:block;margin-top:7px;color:var(--muted);font-size:var(--fs-xs)}
 .revieworigincover{width:132px;aspect-ratio:16/10;border:0;border-radius:7px;overflow:hidden;background:#000;padding:0;cursor:pointer}
 .revieworigincover img{width:100%;height:100%;object-fit:contain;display:block}.revieworigincover span{display:grid;place-items:center;width:100%;height:100%;color:var(--muted)}
-.revieworigin>div{min-width:0}.revieworigin b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:8px}
+.revieworigin>div{min-width:0}.revieworigin b{display:block;overflow:hidden;white-space:nowrap;margin-bottom:8px}
 .revieworigin>div button{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:7px;background:var(--hover);padding:6px 9px;color:var(--ink-2);cursor:pointer}
 .revieworigin>div button:hover{color:var(--tungsten)}.revieworigin>div button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
 @media(max-width:640px){.qualitylist{grid-template-columns:1fr}.qualityitem{grid-template-columns:110px minmax(0,1fr)}.qualitycover{width:110px}.reviewcompare{grid-template-columns:1fr}.revieworigin{grid-template-columns:110px minmax(0,1fr)}.revieworigincover{width:110px}}
@@ -853,7 +853,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .mixitem:hover{background:var(--overlay-5)}.mixitem.current{background:color-mix(in srgb,var(--tungsten) 15%,var(--overlay-5))}
 .mixitempic{position:relative;aspect-ratio:16/9;border-radius:4px;overflow:hidden;background:#000}
 .mixitempic img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.mixitempic .dur{right:4px;bottom:3px}
-.mixitemtext{min-width:0}.mixitemtext b,.mixitemtext span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mixitemtext{min-width:0}.mixitemtext b,.mixitemtext span{display:block;overflow:hidden;white-space:nowrap}.mixitemtext [data-truncate-end]{text-overflow:ellipsis}
 .mixitemtext b{font-size:var(--fs-xs);line-height:1.4}.mixitemtext span{font-size:var(--fs-xs);color:var(--muted);margin-top:3px}
 .queueedit{display:grid;grid-template-columns:repeat(3,24px);gap:2px;padding-right:5px}.queueedit button{width:24px;height:24px;border:0;border-radius:5px;background:transparent;color:var(--muted);padding:0;display:grid;place-items:center;cursor:pointer}.queueedit button:hover:not(:disabled){background:var(--hover);color:var(--ink)}.queueedit button:disabled{opacity:.25;cursor:default}.queueedit svg{width:14px;height:14px;stroke:currentColor;fill:none}
 /* 详情下方的集合不是侧栏列表，而是与「接着看」同语义的横向切换带。
@@ -1830,3 +1830,7 @@ details.fcred{display:block}
 .followmore{display:flex;align-items:center;gap:12px;margin:18px 0 0;
   padding-top:14px;border-top:1px solid var(--line-soft)}
 .folderfoot .fmeta{margin-left:0}
+
+/* 资源标识统一由 MiddleTruncate 计算可见文本。星号让本规则与「类 + 元素」的末尾省略
+   选择器同权重，并凭源码顺序覆盖，避免两套省略同时生效。 */
+*[data-middle-truncate]{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:clip}

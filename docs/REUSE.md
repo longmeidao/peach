@@ -45,7 +45,7 @@
 | 照片灯箱轮播 | Swiper 14.1.0（MIT，本地固定版本，按需 `<script>` 注入）的 Thumbs / Keyboard / Zoom 模块 | 图集来源与顺序、缩略图缓存与计费口径、瀑布流本身（CSS `column-count`，不经过 Swiper） |
 | 导航排序 | 浏览器原生 HTML Drag and Drop | 桌面鼠标直接拖动、落点提示、上下移动按钮作为键盘与触屏回退、`localStorage` 持久化；不为单列排序引入额外运行时依赖 |
 | 图标 | 固定版本的本地 Lucide 子集；Health Icons 24 px outline（CC0）用于领域图标 | 标签、状态和交互设计 |
-| 资源文本中间省略 | Vercel Geist `MiddleTruncate` 行为契约 + 浏览器原生 `ResizeObserver`、`Intl.Segmenter`、Canvas 测量 | 只处理文件名、路径、URL、ID 等首尾都重要的值；保留完整复制、无障碍名称与标题/说明的末尾省略 |
+| 资源文本中间省略 | Vercel Geist `MiddleTruncate` 行为契约 + 浏览器原生 `ResizeObserver`、`Intl.Segmenter`、Canvas 测量 | 文件名、路径、URL、ID 等资源标识用 `data-middle-truncate`；标题、说明、人名、标签等语义文本保留末尾省略；页面源测试登记全部末尾省略选择器，新增截断未先分类会失败 |
 | 定时轮询 | APScheduler 3.11.3（MIT，固定稳定版；3.x `BackgroundScheduler` / interval trigger） | 只在 ledger writer 启动、持久频率、首次延迟、单实例、手动/自动互斥、运行状态与来源错误汇总 |
 | 本地文件事件 | watchdog + 定期对账 | 媒体身份和漏报修复 |
 | 过渡期元数据/媒体 | Stash GraphQL、CommunityScrapers、Stash 任务系统 | 适配、对账、退出门槛 |

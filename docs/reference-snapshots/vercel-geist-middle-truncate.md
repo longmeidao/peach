@@ -35,3 +35,10 @@ Peach 使用原生 `ResizeObserver`、`Intl.Segmenter` 与 Canvas 文本测量�
 
 完整值保存在模块状态中；可见文本只显示首尾与单个 `…`，`aria-label`、原生 `title` 和复制事件
 仍提供完整值。容器宽度、字体加载或动态文本变化后重新计算。
+
+## 项目门槛
+
+- 资源标识一律显式加 `data-middle-truncate`；当前页面源测试锁定全部调用点。
+- CSS `text-overflow:ellipsis` 与多行 line clamp 只留给标题、说明、人名、标签和状态值。
+- `test_every_end_truncation_selector_is_explicitly_reviewed` 登记当前全部末尾省略选择器；新增、删除或改名都会失败，修改者必须先判断其语义，再同步门槛。
+- `*[data-middle-truncate]` 在样式表末尾强制 `text-overflow:clip`，即使资源标识落入旧的末尾省略容器，也不会叠加两种省略算法。
