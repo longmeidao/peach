@@ -919,8 +919,6 @@ body[data-density="dense"] .card .meta .watchcount{display:none}
 .stage:not(.ambient-on){background:color-mix(in srgb,var(--surface) 88%,transparent)}
 .stage[hidden]{display:none}
 .grid>.stage{grid-column:1/-1;width:100%;min-width:0}
-.detailpending{min-height:144px;display:flex;align-items:center;justify-content:center;gap:10px;color:var(--muted)}
-.detailpending .geist-spinner{color:var(--ink)}
 body.entity-open #tiers,body.entity-open #tagbar,
 body.index-open #tiers,body.index-open #tagbar{display:none}
 .sgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(350px,390px)}

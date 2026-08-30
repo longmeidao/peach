@@ -390,13 +390,6 @@ function placeItemDetail(anchor,above=false){
   else main.insertBefore(stage,combo);
 }
 
-function showItemDetailLoading(anchor,above){
-  const stage=$('#stage');placeItemDetail(anchor,above);
-  stage.hidden=false;document.body.classList.add('detail-open');
-  stage.innerHTML=`<div class="detailpending" role="status" aria-busy="true">
-    ${spinnerHtml('正在加载详情')}<span>正在加载详情…</span></div>`;
-}
-
 function itemDetailStickyOffset(){
   const stage=$('#stage');
   return ['.top','#tagbar','#count','.entitycollectionhead'].reduce((bottom,selector)=>{
@@ -4771,7 +4764,6 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   activeQueue=queueContext;
   if(push&&!queueContext)route('/item/'+id);
   const detailSurface=surfaceToken(surfacePath());
-  showItemDetailLoading(origin,above);
   const it=await api('/api/item?id='+id); if(it.error)return;
   if(!surfaceCurrent(detailSurface))return;
   current=it; CACHE[it.id]=it;
