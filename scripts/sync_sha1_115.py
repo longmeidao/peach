@@ -8,7 +8,7 @@
             灌进来之后不管文件叫什么名字，同 SHA1 就是同一个文件。
 
 前置（只需做一次）：
-    pip install -U p115client
+    pip install -e ".[maintenance-115]"
     然后首次运行会要求登录：本脚本用扫码登录，不需要你把密码给任何人。
     cookie 存在 %USERPROFILE%\\.115-cookies.txt，仅本机。
 
@@ -28,7 +28,7 @@ try:
     from p115client.tool.iterdir import iter_files
 except ImportError:
     print("缺少依赖，先执行：")
-    print(r'   .\.venv\Scripts\python.exe -m pip install -U p115client')
+    print(r'   .\.venv\Scripts\python.exe -m pip install -e ".[maintenance-115]"')
     sys.exit(1)
 
 logf = open(LOG, "w", encoding="utf-8", buffering=1)

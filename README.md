@@ -60,7 +60,7 @@ macOS 初始化并运行测试：
 ```bash
 cd ~/Desktop/lmd.gg/peach/peach-app
 python3.14 -m venv .venv
-./.venv/bin/python -m pip install -e .
+./.venv/bin/python -m pip install -e ".[macos]"
 ./scripts/test.sh
 ```
 
@@ -70,6 +70,39 @@ python3.14 -m venv .venv
 macOS/Linux 用 `./scripts/test.sh follow`。可选域为 `follow`、`catalog`、`media`、`sync`、
 `metadata`、`tooling`；不传参数仍跑 `full`。跨多个域、修改迁移/共享测试设施/依赖、准备发布或
 改动影响面较大时必须跑全量，单一局部功能不再反复跑无关测试。
+
+## 依赖维护
+
+Python 运行时与可选工具全部在 `pyproject.toml` 精确固定版本；前端自托管包由
+`package.json`、`package-lock.json` 和 `web/vendor/` 共同固定。可选依赖不进入默认运行环境：
+
+| extra | 消费者 |
+| --- | --- |
+| `build` | PyInstaller 打包 |
+| `macos` | AppKit 菜单栏 |
+| `vision` | 头像、封面的人脸取景脚本 |
+| `maintenance-115` | 115 SHA-1 对账脚本 |
+
+GitHub Dependabot 每周检查 Python、npm 和 GitHub Actions；每个更新 PR 都运行 Windows/macOS、
+Python 3.12/3.14 正式测试。前端依赖更新后，先安装锁定包：
+
+```powershell
+npm ci --ignore-scripts
+```
+
+再从锁定包重建自托管文件和来源哈希：
+
+```powershell
+npm run vendor:web
+```
+
+最后确认仓库里的固定文件与清单一致：
+
+```powershell
+npm run check:vendor
+```
+
+这套 Node 工具只用于维护固定前端文件，Peach 页面仍没有运行时构建步骤，也不依赖 CDN。
 
 检查迁移状态并启动本地开发服务：
 

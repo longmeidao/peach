@@ -3386,10 +3386,10 @@ function wireSourceTools(root,done){
 let swiperLoader=null,activeLightbox=null;
 const loadSwiper=()=>swiperLoader||(swiperLoader=new Promise((resolve,reject)=>{
   const style=document.createElement('link');
-  style.rel='stylesheet';style.href='/vendor/swiper/14.1.0/swiper-bundle.min.css';
+  style.rel='stylesheet';style.href='/vendor/swiper/14.2.0/swiper-bundle.min.css';
   document.head.appendChild(style);
   const script=document.createElement('script');
-  script.src='/vendor/swiper/14.1.0/swiper-bundle.min.js';
+  script.src='/vendor/swiper/14.2.0/swiper-bundle.min.js';
   script.onload=()=>resolve(window.Swiper);
   script.onerror=()=>{swiperLoader=null;reject(new Error('swiper unavailable'))};
   document.head.appendChild(script)}));

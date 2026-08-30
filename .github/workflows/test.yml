@@ -1,0 +1,68 @@
+name: Test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: ${{ matrix.os }} / Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+        python: ["3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          check-latest: true
+
+      - name: 安装 Windows 依赖
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          & .\.venv\Scripts\python.exe -m pip install --upgrade pip
+          & .\.venv\Scripts\python.exe -m pip install -e ".[build,vision,maintenance-115]"
+          & .\.venv\Scripts\python.exe -m pip check
+
+      - name: 运行 Windows 正式测试
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: '& .\scripts\test.ps1'
+
+      - name: 安装 macOS 依赖
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          python -m venv .venv
+          ./.venv/bin/python -m pip install --upgrade pip
+          ./.venv/bin/python -m pip install -e ".[build,macos,vision,maintenance-115]"
+          ./.venv/bin/python -m pip check
+
+      - name: 运行 macOS 正式测试
+        if: runner.os == 'macOS'
+        shell: bash
+        run: ./scripts/test.sh
+
+  web-vendor:
+    name: 固定前端依赖
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run check:vendor
+      - run: npm audit --audit-level=high

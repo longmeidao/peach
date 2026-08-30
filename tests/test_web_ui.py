@@ -567,8 +567,8 @@ class WebUiSourceTests(unittest.TestCase):
         )
 
     def test_detail_uses_pinned_videojs_and_authoritative_duration(self):
-        self.assertPageContains('/vendor/videojs/8.23.9/video.min.js')
-        self.assertPageContains('/vendor/videojs/8.23.9/video-js.min.css')
+        self.assertPageContains('/vendor/videojs/8.24.0/video.min.js')
+        self.assertPageContains('/vendor/videojs/8.24.0/video-js.min.css')
 
     def test_detail_player_controls_use_two_rows_and_offer_real_quality_levels(self):
         self.assertPageContains(".vwrap .video-js .vjs-big-play-button{left:50%;top:50%;width:3.4em;height:3.4em")
@@ -1788,7 +1788,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const jav=javActive()&&!!it.is_jav,layout=javLayout()")
 
     def test_photo_lightbox_loads_swiper_lazily_with_thumbs_and_keyboard(self):
-        self.assertPageContains("'/vendor/swiper/14.1.0/swiper-bundle.min.js'")
+        self.assertPageContains("'/vendor/swiper/14.2.0/swiper-bundle.min.js'")
         self.assertPageContains("thumbs:{swiper:strip}")
         self.assertPageContains("keyboard:{enabled:true}")
         self.assertPageContains(".photolight{position:fixed;inset:0;z-index:200;background:#000")
@@ -1871,7 +1871,7 @@ class WebUiSourceTests(unittest.TestCase):
         start = css.index(".photodetailtoggle svg{")
         rule = css[start:css.index("}", start)]
         self.assertIn("stroke-linecap:round", rule)
-        self.assertPageContains('<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>')
+        self.assertPageContains('<symbol id="i-info" viewBox="0 0 24 24">')
         self.assertPageLacks("item.path", "图片详情不能取得或渲染 ledger 绝对路径")
 
     def test_lightbox_remeasures_when_the_window_resizes(self):

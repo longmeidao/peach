@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=75"]
+requires = ["setuptools==84.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -12,15 +12,15 @@ dependencies = [
   "beautifulsoup4==4.15.0",
   "browserexport==0.4.4",
   "curl_cffi==0.16.2",
-  "fastapi==0.116.1",
+  "fastapi==0.141.1",
   "httpx==0.28.1",
   "pillow==12.3.0",
   "pystray==0.19.5",
-  "pydantic==2.13.4",
+  "pydantic==2.13.5",
   "socksio==1.0.0",
-  "starlette==0.47.3",
-  "uvicorn==0.35.0",
-  "zeroconf==0.150.0",
+  "starlette==1.6.0",
+  "uvicorn==0.52.4",
+  "zeroconf==0.151.3",
 ]
 
 [project.scripts]
@@ -28,7 +28,10 @@ peach = "peach.cli:main"
 peach-tray = "peach.tray:main"
 
 [project.optional-dependencies]
-build = ["pyinstaller==6.22.1"]
+build = ["pyinstaller==6.22.2"]
+macos = ["pyobjc-framework-Cocoa==12.2.2; sys_platform == 'darwin'"]
+vision = ["opencv-python-headless==5.0.0.93"]
+maintenance-115 = ["p115client==0.0.9.6.5.1"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
