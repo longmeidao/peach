@@ -20,6 +20,9 @@ import {
   fmtSize,
   LOC,
 } from './js/core.js';
+import { initMiddleTruncate } from './js/middle-truncate.js';
+
+initMiddleTruncate(document);
 
 /* 路由同时把页面表面写进 body[data-surface]：限宽等按表面生效的版式
    （管理页不全宽）靠它切换，不用每个渲染函数自己记得加类。
@@ -1374,11 +1377,11 @@ function renderDuplicates(){
           <button class="danger" data-dup-keep="all" data-dup-i="${gi}">整组回收</button></span></div>
       <div class="duplist">${g.files.map(f=>`<div class="duprow">
         <span class="dupmarks">${f.is_largest?'<i class="big">最大</i>':''}${f.is_longest?'<i class="long">最长</i>':''}</span>
-        <button class="dupname" data-open-dup="${f.id}" title="${esc(f.name)}">${esc(f.name)}</button>
+        <button class="dupname" data-middle-truncate data-open-dup="${f.id}" title="${esc(f.name)}">${esc(f.name)}</button>
         <span class="mono">${esc(LOC[f.location]||f.location||f.drive||'')}</span>
         <span class="mono">${fmtSize(f.size||0)}</span>
         <span class="mono">${fmtDur(f.duration)}</span>
-        <span class="mono duppath" title="${esc(f.path||'')}">${esc(f.path||'')}</span></div>`).join('')}</div>
+        <span class="mono duppath" data-middle-truncate title="${esc(f.path||'')}">${esc(f.path||'')}</span></div>`).join('')}</div>
     </section>`).join(''):emptyState('database','没有找到重复文件','所有来源之间没有检测到内容相同的文件。扫描新来源后，这里会自动更新。')}</div>`;
   $('#stats').querySelectorAll('[data-open-dup]').forEach(b=>
     b.onclick=()=>openItem(+b.dataset.openDup));
@@ -1561,7 +1564,7 @@ async function openQualityGoals(push=true){
     const preview=item.has_cover?`/cover?code=${encodeURIComponent(item.code||'')}`:`/poster?id=${item.id}&c=4`;
     return `<article class="qualityitem"><button class="qualitycover" data-quality-open="${item.id}" aria-label="打开 ${esc(item.name)}">
         <img src="${preview}" alt="" loading="lazy" onerror="this.remove()"></button>
-      <div><h3><button data-quality-open="${item.id}">${esc(item.name)}</button></h3>
+      <div><h3><button data-middle-truncate data-quality-open="${item.id}">${esc(item.name)}</button></h3>
         <p class="mono">${srcBadge(item.location,item.cost)}<span>${esc(LOC[item.location]||item.location)}</span><span>${fmtDur(item.duration)}</span><span>${fmtSize(item.size||0)}</span></p>
         ${item.reason?`<p>${esc(item.reason)}</p>`:''}</div></article>`}).join(''):emptyState('sparkles','没有标记中的高清版目标','现有版本都已满足条件，或还没有加入追踪。')}</div>`;
   $('#stats').querySelectorAll('[data-quality-open]').forEach(button=>button.onclick=()=>openItem(+button.dataset.qualityOpen));
@@ -3315,7 +3318,7 @@ async function openPhotoLightbox(index){
         <button type="button" data-zoom-step="1" aria-label="放大">${icon('plus')}</button>
         <b class="mono">100%</b></div></div>
     <aside class="photodetail" aria-label="图片详情" hidden>
-      <div class="photodetailcopy"><b></b><span class="photodetailmeta"></span></div>
+      <div class="photodetailcopy"><b data-middle-truncate></b><span class="photodetailmeta"></span></div>
       <button type="button" data-photo-reveal="">${icon('folder-open')}<span>在资源管理器中显示</span></button>
       <span class="srcstate" aria-live="polite"></span>
     </aside>
