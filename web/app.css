@@ -610,7 +610,7 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
 
 /* ── 主区：满屏，大图 ── */
 main{position:relative;z-index:1;padding:14px 16px 90px}
-/* 管理区二级导航：统计 / 垃圾复核 / 回收站 / 人工复核 共用一条 */
+/* 管理区二级导航：统计 / 垃圾文件 / 回收站 / 人工复核 共用一条 */
 .managebar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 16px;
   padding:6px;border:1px solid var(--line-soft);border-radius:12px;background:var(--surface);width:max-content;max-width:100%}
 .managebar[hidden]{display:none}
@@ -757,6 +757,37 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .resourcekind{display:grid;place-items:center;color:var(--muted);border-radius:var(--control-radius)}
 .resourcekind svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7}
 .resourcecardtitle{cursor:default}
+.junkcount{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px}
+.junksummary{flex:none;font-size:var(--fs-sm);color:var(--muted);white-space:nowrap}
+.junkfilters{display:flex;align-items:center;gap:6px;min-width:0;overflow-x:auto;scrollbar-width:none}
+.junkfilters::-webkit-scrollbar{display:none}.junkfilters i{width:1px;height:22px;background:var(--line-soft);flex:none;margin:0 3px}
+.junkfilters a{box-sizing:border-box;min-height:34px;padding:0 11px;display:inline-flex;align-items:center;gap:6px;flex:none;
+  border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);
+  text-decoration:none;font-size:var(--fs-xs);white-space:nowrap}
+.junkfilters a:hover{border-color:color-mix(in srgb,var(--ink) 28%,transparent);background:var(--hover);color:var(--ink)}
+.junkfilters a:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+.junkfilters a[aria-current="page"]{border-color:var(--tungsten);background:var(--tungsten-soft);color:var(--tungsten)}
+.junkfilters a span{font-variant-numeric:tabular-nums;color:inherit;opacity:.72}
+.junkcard{cursor:default;gap:0;overflow:hidden;border:1px solid var(--line-soft);border-radius:12px;background:var(--surface);
+  content-visibility:auto;contain-intrinsic-size:auto 360px}
+.junkcard .pic{border:0;border-radius:0}.junkcard:hover .pic{border:0;box-shadow:none}
+.junkcard .poster{object-fit:contain}.junkbody{display:flex;flex:1;flex-direction:column;min-height:0}
+.junkmeta{display:grid;gap:6px;min-width:0;padding:12px}.junkmeta .s{display:flex;gap:7px;min-width:0;flex-wrap:wrap;
+  color:var(--muted);font-size:var(--fs-xs)}
+.junkmeta .why{overflow-wrap:anywhere}.junkmeta .size{margin-left:auto;white-space:nowrap}
+.junkcardtitle{display:block;width:100%;min-width:0;
+  border:0;padding:0;background:transparent;color:var(--ink);font:inherit;font-weight:600;line-height:1.4;text-align:left}
+button.junkcardtitle{cursor:pointer}button.junkcardtitle:hover{text-decoration:underline;text-underline-offset:3px}
+button.junkcardtitle:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px;border-radius:2px}
+.junkactions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:auto;padding:10px 12px;
+  border-top:1px solid var(--line-soft);background:var(--overlay-5)}
+.junkactions button{box-sizing:border-box;min-width:0;min-height:36px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink-2);
+  font:inherit;font-size:var(--fs-xs);white-space:nowrap;cursor:pointer}
+.junkactions button:hover:not(:disabled){border-color:var(--tungsten);color:var(--ink);background:var(--hover)}
+.junkactions button:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+.junkactions button:disabled{cursor:wait;opacity:.64}.junkactions button svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:2}
+.junkactions .junktrash{color:var(--drop)}.junkactions .junktrash:hover:not(:disabled){border-color:color-mix(in srgb,var(--drop) 46%,transparent);color:var(--drop);background:color-mix(in srgb,var(--drop) 8%,transparent)}
 .badge{position:absolute;top:6px;left:6px;display:flex;gap:4px;z-index:2;align-items:center;
   transition:opacity .15s ease}
 /* 首页流和详情只留来源图标；完整来源与费用通过 title/aria-label 提供。 */
@@ -1455,6 +1486,9 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   .count>span:first-child{line-height:36px;white-space:nowrap}
   .count .sorts{width:max-content;margin-left:0;flex:0 0 auto;overflow:visible}
   .count .sorts button{min-height:36px}
+  .count.junkcount{align-items:stretch;flex-direction:column;overflow:visible;padding-block:8px}
+  .junkcount .junksummary{line-height:1.4}.junkfilters{width:100%;padding-bottom:2px}
+  .junkfilters a{min-height:44px}.junkactions button{min-height:44px;padding-inline:7px}
   .entitycollectionhead{align-items:flex-start;flex-direction:column}
   .entitycollectionhead .sorts{width:100%;margin-left:0;padding-bottom:2px}
   .entitycollectionhead .sorts button{min-height:36px}

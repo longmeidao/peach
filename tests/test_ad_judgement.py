@@ -17,6 +17,7 @@ from peach.web_contract import (
     promo_residue,
     q_ads,
     q_items,
+    w_batch,
 )
 from test_rm_web import BASE_SCHEMA
 
@@ -149,6 +150,7 @@ class ResourceJunkQueueTests(unittest.TestCase):
         )
         by_id = {item["id"]: item for item in result["items"]}
         self.assertIn("网址快捷方式", by_id[3]["why"])
+        self.assertEqual(by_id[3]["junk_kind"], "url")
         self.assertIn("整个名字都是推广语", by_id[2]["why"])
         self.assertNotIn(6, by_id)
         self.assertNotIn(7, by_id)
@@ -169,6 +171,35 @@ class ResourceJunkQueueTests(unittest.TestCase):
             {(item["id"], item["medium"]) for item in result["items"]},
             {(10, "image"), (11, "other")},
         )
+
+    def test_mib_archives_can_be_excluded_and_reconsidered_per_asset(self):
+        """域名文件名可能是真资源；“不是垃圾”必须可持久排除且能撤销。"""
+        self.add(20, "115", r"B:\\MIB\\Mib19.com.zip", "archive", 14 * 1024**3)
+        self.add(21, "115", r"B:\\MIB\\Mib19.com(2).zip", "archive", 15 * 1024**3)
+        self.add(22, "115", r"B:\\广告\\hayob9.com.jpg", "image", 28000)
+
+        pending = q_ads(self.contract, limit=200)
+        self.assertEqual(pending["counts"]["archive"], 2)
+        self.assertEqual([item["id"] for item in q_ads(
+            self.contract, limit=200, kind="archive")["items"]], [21, 20])
+
+        changed = w_batch(self.contract, {"ids": [20], "operation": "dismiss-junk"})
+        self.assertEqual(changed["changed"], 1)
+        self.assertEqual(q_ads(self.contract, limit=200)["pending_total"], 2)
+        dismissed = q_ads(self.contract, limit=200, status="dismissed")
+        self.assertEqual([item["id"] for item in dismissed["items"]], [20])
+        self.assertEqual(dismissed["counts"]["archive"], 1)
+
+        w_batch(self.contract, {"ids": [20], "operation": "reconsider-junk"})
+        self.assertEqual(q_ads(self.contract, limit=200)["pending_total"], 3)
+        self.assertEqual(q_ads(
+            self.contract, limit=200, status="dismissed")["items"], [])
+
+    def test_invalid_junk_filters_are_rejected(self):
+        with self.assertRaisesRegex(ValueError, "invalid junk kind"):
+            q_ads(self.contract, kind="document")
+        with self.assertRaisesRegex(ValueError, "invalid junk status"):
+            q_ads(self.contract, status="deleted")
 
 
 if __name__ == "__main__":

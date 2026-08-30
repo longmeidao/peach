@@ -242,6 +242,16 @@ function persistedSeed(){
 // 手动「换一批」立刻换种子。
 const rollSeed=()=>writeSeedRecord(newSeed());
 const initialParams=new URLSearchParams(location.search);
+const JUNK_KIND_OPTIONS=[['','全部'],['video','视频'],['image','图片'],['archive','压缩包'],
+  ['audio','音频'],['url','网址'],['other','其它']];
+const cleanJunkKind=value=>JUNK_KIND_OPTIONS.some(([key])=>key===value)?value:'';
+let junkKind=cleanJunkKind(initialParams.get('type')||'');
+let junkView=initialParams.get('view')==='dismissed'?'dismissed':'pending';
+function junkPath(kind=junkKind,view=junkView){
+  const params=new URLSearchParams();
+  if(kind)params.set('type',kind);if(view==='dismissed')params.set('view','dismissed');
+  return '/junk-files'+(params.size?'?'+params:'');
+}
 const cleanTagFilter=value=>String(value||'').split(',').filter(tag=>tag&&!DURATION_TAGS.has(tag)).join(',');
 const cleanSort=(value,fallback=appSettings.defaultSort)=>SORT_KEYS.includes(value)?value:fallback;
 let state={loc:initialParams.get('loc')||'local,115',creator:initialParams.get('creator')||'',studio:initialParams.get('studio')||'',
@@ -829,6 +839,77 @@ function resourceCardHtml(it){
       <span class="t resourcecardtitle" data-middle-truncate title="${esc(it.name||'')}">${esc(it.name||'未命名资源')}</span>
       <div class="s mono"><span class="who">${esc(label)}</span>${it.why?`<span class="why">${esc(it.why)}</span>`:''}<span class="size">${Number(it.size)>0?fmtSize(Number(it.size)):'大小未知'}</span></div>
     </div></div></article>`;
+}
+const JUNK_KIND_META={
+  video:['视频','play'],image:['图片','pics'],archive:['压缩包','hard-drive'],
+  audio:['音频','hard-drive'],url:['网址快捷方式','globe'],other:['其它文件','hard-drive'],
+};
+function junkCardHtml(it){
+  const kind=it.junk_kind||'other',meta=JUNK_KIND_META[kind]||JUNK_KIND_META.other;
+  const preview=kind==='video'
+    ? `<img class="poster" src="/thumb?id=${it.id}&c=4" width="640" height="360" alt="" loading="lazy" onerror="this.remove()">`
+    : kind==='image'
+      ? `<img class="poster" src="/photo-thumb?id=${it.id}" width="640" height="360" alt="" loading="lazy" onerror="this.remove()">`:'';
+  const decision=junkView==='dismissed'
+    ? ['reconsider-junk','重新判断','rotate-ccw']
+    : ['dismiss-junk','不是垃圾','check'];
+  const canOpen=kind==='video'||kind==='image';
+  return `<article class="card junkcard" data-id="${it.id}" data-junk-kind="${esc(kind)}">
+    <div class="pic" style="--card-ratio:16/9"><span class="resourceglyph">${icon(meta[1])}<b>${esc(meta[0])}</b></span>${preview}
+      <div class="badge mono">${srcBadge(it.location,it.cost)}</div></div>
+    <div class="junkbody"><div class="junkmeta">
+      ${canOpen?`<button class="t junkcardtitle" type="button" data-junk-open data-middle-truncate title="${esc(it.name||'')}">${esc(it.name||'未命名资源')}</button>`
+        :`<span class="t junkcardtitle" data-middle-truncate title="${esc(it.name||'')}">${esc(it.name||'未命名资源')}</span>`}
+      <div class="s mono"><span class="who">${esc(meta[0])}</span>${it.why?`<span class="why">${esc(it.why)}</span>`:''}<span class="size">${Number(it.size)>0?fmtSize(Number(it.size)):'大小未知'}</span></div>
+    </div><footer class="junkactions">
+      <button type="button" data-junk-operation="${decision[0]}">${icon(decision[2])}<span>${decision[1]}</span></button>
+      <button type="button" class="junktrash" data-junk-operation="dispose">${icon('trash')}<span>移入回收站</span></button>
+    </footer></div></article>`;
+}
+async function runJunkOperation(id,operation){
+  await api('/api/batch',{method:'POST',body:JSON.stringify({ids:[id],operation})});
+  adsBatch=null;await load(true);
+}
+function wireJunkCards(root){
+  root.querySelectorAll('.junkcard').forEach(card=>{
+    const id=+card.dataset.id,item=CACHE[id];
+    card.querySelector('[data-junk-open]')?.addEventListener('click',()=>{
+      if(item?.junk_kind==='image')window.open('/photo?id='+id,'_blank','noopener');
+      else openItem(id);
+    });
+    card.querySelectorAll('[data-junk-operation]').forEach(button=>button.onclick=async()=>{
+      const operation=button.dataset.junkOperation;
+      button.disabled=true;button.setAttribute('aria-busy','true');
+      try{
+        await runJunkOperation(id,operation);
+        const disposed=operation==='dispose',reconsidered=operation==='reconsider-junk';
+        toast(disposed?'已移入回收站':reconsidered?'已重新加入垃圾判断':'已标记为不是垃圾',{
+          action:{label:'撤销',run:()=>runJunkOperation(id,disposed?'restore':reconsidered?'dismiss-junk':'reconsider-junk')},
+        });
+      }catch(error){
+        toast(`操作失败：${esc(error.message||'未知错误')}`,{warn:true});
+        button.disabled=false;button.removeAttribute('aria-busy');
+      }
+    });
+  });
+}
+function renderJunkNavigation(data){
+  const countFor=key=>key?Number(data.counts?.[key]||0):Number(data.all_total||0);
+  const categoryLinks=JUNK_KIND_OPTIONS.map(([key,label])=>{
+    const current=key===junkKind;
+    return `<a href="${junkPath(key,junkView)}" data-junk-kind-link="${esc(key)}"${current?' aria-current="page"':''}>${esc(label)} <span>${countFor(key).toLocaleString()}</span></a>`;
+  }).join('');
+  $('#count').innerHTML=`<div class="junksummary" aria-live="polite">显示 ${Number(data.total||0).toLocaleString()} 个</div>
+    <nav class="junkfilters" aria-label="垃圾文件分类">${categoryLinks}<i aria-hidden="true"></i>
+      <a href="${junkPath('',junkView==='dismissed'?'pending':'dismissed')}" data-junk-view-link="${junkView==='dismissed'?'pending':'dismissed'}"${junkView==='dismissed'?' aria-current="page"':''}>${junkView==='dismissed'?'返回待判断':'已排除'} <span>${Number(data.dismissed_total||0).toLocaleString()}</span></a>
+    </nav>`;
+  $('#count').querySelectorAll('[data-junk-kind-link],[data-junk-view-link]').forEach(link=>link.onclick=event=>{
+    if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
+    event.preventDefault();
+    if(link.hasAttribute('data-junk-kind-link'))junkKind=cleanJunkKind(link.dataset.junkKindLink||'');
+    if(link.dataset.junkViewLink)junkView=link.dataset.junkViewLink;
+    adsBatch=null;route(junkPath());load(true);
+  });
 }
 function openResourceCard(id){
   const item=CACHE[id];
@@ -3795,8 +3876,8 @@ const EDGE_ICONS=[
   ['immerse','沉浸模式','play'],
   ['manage','管理','database'],
 ];
-/* 统计、垃圾复核、回收站、人工复核默认都收在「管理」下，不主动占用顶层空间；
-   用户仍可在设置里把某个具体页面加到顶层。URL 保持原样（/stats、/trash、/review、?state=ads）。
+/* 统计、垃圾文件、回收站、人工复核默认都收在「管理」下，不主动占用顶层空间；
+   用户仍可在设置里把某个具体页面加到顶层。每个页面都有可直接打开的 URL。
    顺序按做事顺序分成两段：先是库里已有的东西——看现状、复核新进来的候选、
    清广告与重复、落到回收站；再是要往外拿的——关注和高清版都是「还想要什么」，
    原先把它夹在高清版和回收站中间，两边都不挨着。 */
@@ -3804,7 +3885,7 @@ const MANAGE_SECTIONS=[
   ['stats','统计','chart'],
   ['taste','口味','heart'],
   ['review','人工复核','square-check-big'],
-  ['ads','垃圾复核','alert'],
+  ['ads','垃圾文件','alert'],
   ['dupes','重复文件','hard-drive'],
   ['trash','回收站','trash'],
   ['follow','关注','rss'],
@@ -3969,7 +4050,7 @@ function manageSection(){
   if(path==='/duplicates')return 'dupes';
   if(path==='/quality-goals')return 'quality';
   if(path==='/follow-manage')return 'follow';
-  return state.state==='ads'?'ads':'';
+  return path==='/junk-files'||state.state==='ads'?'ads':'';
 }
 function buildManageBar(){
   const current=manageSection(),bar=$('#managebar');
@@ -3994,7 +4075,7 @@ function buildManageBar(){
   toggle.onkeydown=event=>{if(event.key==='Escape'){bar.classList.remove('is-open');toggle.setAttribute('aria-expanded','false');toggle.focus()}};
   bar.querySelectorAll('[data-manage]').forEach(b=>b.onclick=()=>openManage(b.dataset.manage));
 }
-/* 管理区四个分页共用同一个标题元素。回收站和垃圾复核走首页网格路径，
+/* 管理区分页共用同一个标题元素。回收站和垃圾文件走首页网格路径，
    本来就没有标题层；统计/复核/重复各自内嵌 h2 又导致字号不一致。 */
 function paintManageTitle(){
   const current=manageSection(),el=$('#manageTitle');
@@ -4022,7 +4103,7 @@ function openManage(section='stats'){
   if(section==='quality'){openQualityGoals();return}
   if(section==='follow'){openFollowManage();return}
   state.orient='';state.state=section==='trash'?'trash':'ads';
-  route(section==='trash'?'/trash':'/');
+  route(section==='trash'?'/trash':junkPath());
   showHomeSurfaces();buildEdge();buildBars();load(true);
 }
 /* JAV 模式。只有带番号的作品才有官方封套，所以版式切换只在这个语境里出现——
@@ -4130,7 +4211,7 @@ function syncHeaderActions(){
   if(selectMode&&selectSurface!==(path==='/follow'?'follow':'catalog'))
     setSelectMode(false,true);
   const entity=parts.length>1&&Object.prototype.hasOwnProperty.call(ROUTE_ENTITIES,parts[0]);
-  const catalog=isCatalogPath(path)||path==='/trash';
+  const catalog=(isCatalogPath(path)&&path!=='/junk-files')||path==='/trash';
   const canSelect=catalog||entity||path==='/tags'||path==='/follow';
   const canDensity=catalog||entity||path==='/follow';
   $('#selectMode').hidden=!canSelect;$('#density').hidden=!canDensity;
@@ -4199,20 +4280,23 @@ async function load(reset){
   showHomeSurfaces();
   if(reset){offset=0;renderedPartGroups.clear()}
   renderCombo();
-  // 垃圾复核是逐项处置队列，计数只是当前队列说明，不是需要跟随浏览的排序工具。
+  // 垃圾文件是逐项处置队列，计数只是当前队列说明，不是需要跟随浏览的排序工具。
   const countRow=$('#count'),staticManageCount=state.state==='ads';
   countRow.classList.toggle('manage-static',staticManageCount);
+  countRow.classList.toggle('junkcount',staticManageCount);
   if(staticManageCount)countRow.classList.remove('is-stuck');
   if(state.state==='ads'){
-    if(reset||!adsBatch){const nextAds=await api('/api/ads?limit=200');if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
+    if(reset||!adsBatch){const junkQuery=new URLSearchParams({limit:'200',status:junkView});if(junkKind)junkQuery.set('kind',junkKind);
+      const nextAds=await api('/api/ads?'+junkQuery);if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
       adsBatch=nextAds;cache(adsBatch.items)}
     const batch=adsBatch.items.slice(offset,offset+appSettings.batchSize);
-    const html=batch.map(resourceCardHtml).join('');
+    const html=batch.map(junkCardHtml).join('');
     if(reset)releaseHoverPreviews($('#grid'));
-    if(reset)$('#grid').innerHTML=html;else $('#grid').insertAdjacentHTML('beforeend',html);
-    $('#count').innerHTML=`垃圾候选 ${adsBatch.total} 个 · 当前载入 ${$('#grid').children.length} 个 · 视频、图片和网址快捷方式都只进入复核，不会直接删除`;
+    if(reset&&!batch.length)$('#grid').innerHTML=emptyState('check',junkView==='dismissed'?'没有已排除的文件':'没有待判断的垃圾文件',junkView==='dismissed'?'点“不是垃圾”的资源会保留在这里，可随时重新判断。':'当前分类没有候选文件。');
+    else if(reset)$('#grid').innerHTML=html;else $('#grid').insertAdjacentHTML('beforeend',html);
+    renderJunkNavigation(adsBatch);
     $('#loadSentinel').hidden=$('#grid').children.length>=adsBatch.items.length;
-    $('#shortsSec').hidden=true;wireCards($('#grid'),openResourceCard);wireResourceCardActions($('#grid'));paintSelection();return;
+    $('#shortsSec').hidden=true;wireJunkCards($('#grid'));return;
   }
   adsBatch=null;
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
@@ -5193,8 +5277,15 @@ async function restoreRoute(){
   surfaceEpoch++;
   syncPageTitle(location.href);
   const path=decodeURIComponent(location.pathname),parts=path.split('/').filter(Boolean);
+  if(path==='/'&&new URLSearchParams(location.search).get('state')==='ads'){
+    route(junkPath(),true);await restoreRoute();return;
+  }
   if(isCatalogPath(path)){
     const params=new URLSearchParams(location.search);
+    if(path==='/junk-files'){
+      junkKind=cleanJunkKind(params.get('type')||'');
+      junkView=params.get('view')==='dismissed'?'dismissed':'pending';
+    }
     state={...state,loc:params.get('loc')||'local,115',creator:params.get('creator')||'',studio:params.get('studio')||'',
       tag:cleanTagFilter(params.get('tag')),tag_match:params.get('tag_match')==='any'?'any':'all',len:params.get('len')||'',
       dur_min:params.get('dur_min')||'',dur_max:params.get('dur_max')||'',orient:params.get('orient')||'',

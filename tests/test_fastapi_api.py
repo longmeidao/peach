@@ -371,6 +371,35 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         recycle_bin = await self.client.get("/api/items?t=secret&state=trash")
         self.assertEqual([item["id"] for item in recycle_bin.json()["items"]], [1])
 
+    async def test_ads_queue_can_filter_and_reverse_not_junk_decisions(self):
+        connection = sqlite3.connect(self.db)
+        connection.execute(
+            "UPDATE asset SET name='Mib19.com.zip',medium='archive',size=? WHERE id=1",
+            (14 * 1024**3,),
+        )
+        connection.commit(); connection.close()
+
+        archive = await self.client.get("/api/ads?t=secret&kind=archive")
+        self.assertEqual([item["id"] for item in archive.json()["items"]], [1])
+        self.assertEqual(archive.json()["counts"]["archive"], 1)
+
+        dismissed = await self.client.post(
+            "/api/batch?t=secret", json={"ids": [1], "operation": "dismiss-junk"},
+        )
+        self.assertEqual(dismissed.status_code, 200)
+        self.assertEqual((await self.client.get("/api/ads?t=secret")).json()["items"], [])
+        excluded = (await self.client.get("/api/ads?t=secret&status=dismissed")).json()
+        self.assertEqual([item["id"] for item in excluded["items"]], [1])
+
+        reconsidered = await self.client.post(
+            "/api/batch?t=secret", json={"ids": [1], "operation": "reconsider-junk"},
+        )
+        self.assertEqual(reconsidered.status_code, 200)
+        self.assertEqual(
+            [item["id"] for item in (await self.client.get("/api/ads?t=secret")).json()["items"]],
+            [1],
+        )
+
     async def test_search_history_is_shared_through_the_api(self):
         saved = await self.client.post("/api/search-history?t=secret", json={"query": "ABW"})
         self.assertEqual(saved.status_code, 200)
@@ -678,7 +707,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
                      "/creators", "/tags", "/stats", "/taste", "/immerse", "/trash", "/review",
                      # 前端路由写好了不等于能直接打开：SPA 路径是逐条登记的，
                      # 漏登记时源码断言照样全绿，只有真的请求一次才会露出 404。
-                     "/unseen", "/watch-later", "/flagged",
+                     "/unseen", "/watch-later", "/flagged", "/junk-files",
                      "/duplicates", "/quality-goals", "/mix/1/2", "/parts/1/2", "/playlists",
                      "/resource-sync",
                      "/playlists/1/1", "/follow", "/follow-manage",

@@ -796,6 +796,7 @@ AD_DOMAIN = re.compile(
 AD_DIRPACK = re.compile(
     r"[0-9a-z][-0-9a-z]{1,20}\.[a-z]{2,10}[ \-_]+\[?[A-Za-z]{2,6}-?\d{2,5}", re.I)
 INTERNET_SHORTCUT_SUFFIXES = frozenset({".url"})
+JUNK_KINDS = frozenset({"video", "image", "audio", "archive", "url", "other"})
 
 
 def promo_residue(name: str) -> int:
@@ -811,7 +812,7 @@ def promo_residue(name: str) -> int:
     return len(re.findall(r"[一-鿿぀-ヿ가-힯 A-Za-z]", text))
 
 
-def q_ads(contract: WebContract, limit=200, offset=0):
+def q_ads(contract: WebContract, limit=200, offset=0, kind="", status="pending"):
     """疑似垃圾复核队列 —— **不自动删**，只排队让人看证据确认。
 
     没有可靠的单一判据（试过「同番号短版」会误伤 CD2/part1 分卷，
@@ -825,6 +826,12 @@ def q_ads(contract: WebContract, limit=200, offset=0):
     物理资源的类型不能成为免检条件。视频保留时长、体积和同番号长版证据；图片、
     音频、压缩包和其它文件走共用的推广名／推广目录证据；Windows ``.url`` 是网址
     快捷方式，在媒体目录中直接进入人工复核。在线资产不是待清理的物理文件，排除。"""
+    kind = str(kind or "").strip().casefold()
+    status = str(status or "pending").strip().casefold()
+    if kind and kind not in JUNK_KINDS:
+        raise ValueError("invalid junk kind")
+    if status not in {"pending", "dismissed"}:
+        raise ValueError("invalid junk status")
     with contract.read_connection() as c:
         rows = c.execute(
             "SELECT id,location,name,medium,creator,code,size,duration,width,height,snapshot_path,"
@@ -836,6 +843,11 @@ def q_ads(contract: WebContract, limit=200, offset=0):
         longer = {r[0]: r[1] for r in c.execute(
             "SELECT code, max(duration) FROM asset WHERE medium='video' AND code IS NOT NULL "
             "AND code<>'' AND duration IS NOT NULL GROUP BY code")}
+        dismissed_keys = [str(row[0]) for row in c.execute(
+            "SELECT item_key FROM review_decision "
+            "WHERE category='junk_file' AND status='rejected'"
+        )]
+        dismissed_ids = {int(key) for key in dismissed_keys if key.isdigit()}
     out = []
     for r in rows:
         d = dict(r)
@@ -845,6 +857,10 @@ def q_ads(contract: WebContract, limit=200, offset=0):
         name_path = PureWindowsPath(name)
         nm = name_path.stem
         suffix = name_path.suffix.casefold()
+        d["junk_kind"] = (
+            "url" if suffix in INTERNET_SHORTCUT_SUFFIXES
+            else (d.get("medium") if d.get("medium") in JUNK_KINDS else "other")
+        )
         residue = promo_residue(nm)
         promo = bool(PROMO_PHRASE.search(nm) or PROMO_DOMAIN.search(nm))
         if suffix in INTERNET_SHORTCUT_SUFFIXES:
@@ -890,10 +906,26 @@ def q_ads(contract: WebContract, limit=200, offset=0):
             d.pop("path", None)
             out.append(d)
     out.sort(key=lambda x: (-x["score"], -(x["size"] or 0)))
-    items = out[offset:offset + limit]
+    pending = [item for item in out if item["id"] not in dismissed_ids]
+    dismissed = [item for item in out if item["id"] in dismissed_ids]
+    pool = dismissed if status == "dismissed" else pending
+    counts = {junk_kind: 0 for junk_kind in JUNK_KINDS}
+    for item in pool:
+        counts[item["junk_kind"]] += 1
+    filtered = [item for item in pool if not kind or item["junk_kind"] == kind]
+    items = filtered[offset:offset + limit]
     attach_card_performers(
         contract, [item for item in items if item.get("medium") == "video"])
-    return {"total": len(out), "items": items}
+    return {
+        "total": len(filtered),
+        "all_total": len(pool),
+        "pending_total": len(pending),
+        "dismissed_total": len(dismissed),
+        "counts": counts,
+        "kind": kind,
+        "status": status,
+        "items": items,
+    }
 
 def q_related(contract: WebContract, aid, limit=24):
     """接着看 —— 把口味接近的串成播放列表。
@@ -1596,7 +1628,10 @@ def w_batch(contract: WebContract, body):
     if not ids or len(ids) > 200:
         raise ValueError("batch requires 1 to 200 assets")
     operation = body.get("operation")
-    if operation not in {"like", "seen", "later", "dispose", "restore", "delete"}:
+    if operation not in {
+        "like", "seen", "later", "dispose", "restore", "delete",
+        "dismiss-junk", "reconsider-junk",
+    }:
         raise ValueError("unsupported batch operation")
     marks = ",".join("?" * len(ids))
     contract.cache_bust()
@@ -1604,13 +1639,17 @@ def w_batch(contract: WebContract, body):
     try:
         with contract.write_transaction() as connection:
             found = connection.execute(
-                f"SELECT id,path,snapshot_path,disposal FROM asset WHERE id IN ({marks})", ids,
+                f"SELECT id,path,snapshot_path,disposal,location FROM asset WHERE id IN ({marks})", ids,
             ).fetchall()
             valid_ids = [row["id"] for row in found]
             if not valid_ids:
                 raise ValueError("assets not found")
             if operation in {"restore", "delete"} and any(row["disposal"] != "trash" for row in found):
                 raise ValueError("restore/delete is only allowed for recycle-bin assets")
+            if operation in {"dismiss-junk", "reconsider-junk"} and any(
+                    row["location"] not in {"local", "115", "pikpak"}
+                    or row["disposal"] is not None for row in found):
+                raise ValueError("junk decisions are only allowed for active physical assets")
             now = time.time()
             if operation == "restore":
                 placeholders = ",".join("?" * len(valid_ids))
@@ -1620,6 +1659,20 @@ def w_batch(contract: WebContract, body):
                 )
             elif operation == "delete":
                 purge_outcome = purge_assets(connection, found)
+            elif operation == "dismiss-junk":
+                connection.executemany(
+                    "INSERT INTO review_decision(category,item_key,status,note,updated_at) "
+                    "VALUES('junk_file',?,'rejected','用户确认不是垃圾',?) "
+                    "ON CONFLICT(category,item_key) DO UPDATE SET "
+                    "status='rejected',note=excluded.note,updated_at=excluded.updated_at",
+                    [(str(asset_id), time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)))
+                     for asset_id in valid_ids],
+                )
+            elif operation == "reconsider-junk":
+                connection.executemany(
+                    "DELETE FROM review_decision WHERE category='junk_file' AND item_key=?",
+                    [(str(asset_id),) for asset_id in valid_ids],
+                )
             elif operation in {"seen", "dispose"}:
                 column, value = ("feedback", "seen") if operation == "seen" else ("disposal", "trash")
                 placeholders = ",".join("?" * len(valid_ids))
@@ -1776,6 +1829,8 @@ def _get_ads(contract, args):
         contract,
         min(int(args.get("limit", "60")), 200),
         max(int(args.get("offset", "0")), 0),
+        args.get("kind", ""),
+        args.get("status", "pending"),
     )
 
 
