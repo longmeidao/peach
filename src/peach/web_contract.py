@@ -388,7 +388,10 @@ def q_items(contract: WebContract, args):
     if state:
         where.append(state)
     if args.get("thumb") == "1":
-        where.append("a.snapshot_path IS NOT NULL")
+        # 已保存的关注条目只登记在线资产，不下载媒体或生成本地缩略图。
+        # 它仍然是可筛选的真实资产；若沿用首页的缩略图门槛，来源 facet 会显示
+        # 「在线 1」，点进去却永远是 0 条。
+        where.append("(a.snapshot_path IS NOT NULL OR a.location = 'online')")
 
     order = {"new": "a.first_seen DESC, a.id DESC",
              "big": "a.size DESC",

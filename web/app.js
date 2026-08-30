@@ -162,7 +162,7 @@ const SRCICON={
   '115':'<img class="source-icon" src="/logo?studio=115" alt="" onerror="this.remove()">',
   // PikPak 官方触屏图标（取证 follow-source-icons-measured.md）；/logo 的生成 logo 不对版。
   pikpak:'<img class="source-icon" src="https://mypikpak.com/apple-touch-icon.png" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">',
-  online:icon('globe'),
+  online:icon('rss'),
 };
 const srcBadge=(loc,cost,cls)=>{const label=`${LOC[loc]||loc}${cost==='metered'?' · 计费':''}`;
   return `<span class="${cls||'src'} ${cost==='metered'?'metered':'free'}" title="${esc(label)}" aria-label="${esc(label)}">`
@@ -3749,6 +3749,7 @@ function navTo(k){
   if(k==='manage'){openManage();return}
   if(k==='jav'){toggleJavMode();return}
   if(k==='performers'||k==='tags'){setSelectMode(false,true);openIndex(k);return}
+  if(k==='')state.jav='';
   if(k==='shorts'){state.orient='竖屏';state.state=''}else{state.orient='';state.state=k}
   route(homePath());
   showHomeSurfaces();
@@ -4069,6 +4070,7 @@ async function openItem(id,push=true,queueContext=null){
     ? {...returnBars.filters}:emptyEntityFilters()};
   const gated=it.cost==='metered';
   const offline=sourceOffline(it.location);
+  const online=it.location==='online';
   const who=it.creator||it.code||it.studio||'未归属';
   const refs=it.entity_refs||{},studioRef=(refs.studio||[])[0];
   // 共演作品的女优逐行列出，每行带自己的头像；标签只写在第一行，其余留空保持对齐。
@@ -4135,6 +4137,13 @@ async function openItem(id,push=true,queueContext=null){
           <button class="chip" id="offlineRetry" type="button">重新检测</button></div>
         <video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="none"
           hidden style="display:none"></video>`
+       :online?`<div class="gate" id="onlineGate" role="status">
+          ${srcBadge(it.location,it.cost,'srcbig')}
+          <b style="font-size:14px">在线资产</b>
+          <span style="font-size:12px;color:var(--muted)">这条内容从关注候选保存；媒体与原始页面在关注详情中查看。</span>
+          <button class="chip" id="openSavedFollow" type="button">打开已保存关注</button></div>
+        <video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="none"
+          hidden style="display:none"></video>`
        :gated?`<div class="gate" id="gate">
           ${srcBadge(it.location,it.cost,'srcbig')}
           <span style="font-size:12px;color:var(--muted)">点此开始拉流 · ${fmtSize(it.size||0)}</span></div>
@@ -4195,6 +4204,7 @@ async function openItem(id,push=true,queueContext=null){
   $('#stage').querySelectorAll('[data-queue-remove]').forEach(b=>b.onclick=()=>removePlaylistItem(queueContext,+b.dataset.queueRemove,it.id));
   wireDrag($('#stage').querySelector('.mixlist'));
   const g=$('#gate');
+  const onlineGate=$('#onlineGate');
   $('#addPlaylist').onclick=()=>openAddToPlaylist(it);
   $('#stage').querySelectorAll('[data-kind]').forEach(b=>b.onclick=async()=>{
     try{
@@ -4324,6 +4334,9 @@ async function openItem(id,push=true,queueContext=null){
       if(status[it.location]===false){retry.textContent='仍未挂载 · 再试';return}
       openItem(it.id,false);            // 盘回来了就按正常路径重开，不在这里半路挂播放器
     };
+  }
+  else if(onlineGate){
+    $('#openSavedFollow').onclick=()=>{followFilter='saved';openFollow()};
   }
   else if(g)g.onclick=()=>{vv.hidden=false;g.remove();mountDetailPlayer(it,vv,true);stopAmbient=startAmbient()};
   else{mountDetailPlayer(it,vv,true);stopAmbient=startAmbient()}
