@@ -1084,8 +1084,7 @@ async function buildBars(){
   const bpHtml=x=>{
     const fallback=`${esc(x.k.slice(0,2))}`;
     return `<button class="brandpill" data-entity-kind="studio" data-entity-name="${esc(x.k)}">
-      <span class="mk" data-fallback="${fallback}"><img src="/logo?studio=${encodeURIComponent(x.k)}" alt=""
-        style="width:100%;height:100%;object-fit:contain"></span>${esc(x.k)}</button>`;
+      <span class="mk" data-fallback="${fallback}"><img src="/logo?studio=${encodeURIComponent(x.k)}" alt=""></span>${esc(x.k)}</button>`;
   };
   // 空的一排仍占 28px，在「已标记」这种窄集合上就是两条什么都没有的空带。
   // 没人就不画那一排，两排都没人就整块收起。

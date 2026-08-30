@@ -1365,6 +1365,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("img.dataset.studio&&!img.dataset.fallback")
         self.assertPageLacks('<span class="mono" style="color:var(--muted)">${labels[kind]||kind}资料页</span>')
 
+    def test_brand_pill_logo_has_one_centered_size_contract(self):
+        # The stylesheet centers the logo with an equal 3 px inset. Inline 100%
+        # dimensions used to override that size while leaving the inset active,
+        # shifting the clipped image down and right inside the round mark.
+        self.assertPageContains(".brandpill .mk img{position:absolute;inset:3px;width:calc(100% - 6px);height:calc(100% - 6px);")
+        self.assertPageLacks('style="width:100%;height:100%;object-fit:contain"')
+
     def test_status_tags_are_separated_and_nonessential_states_are_hidden(self):
         self.assertPageContains(".sep{flex:none;width:1px;height:19px")
         self.assertPageContains("{k:'later',label:'稍后看'},{k:'flagged',label:'已标记'}")
