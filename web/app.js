@@ -396,6 +396,24 @@ function showItemDetailLoading(anchor,above){
   stage.innerHTML=`<div class="detailpending" role="status" aria-busy="true">
     ${spinnerHtml('正在加载详情')}<span>正在加载详情…</span></div>`;
 }
+
+function itemDetailStickyOffset(){
+  const stage=$('#stage');
+  return ['.top','#tagbar','#count','.entitycollectionhead'].reduce((bottom,selector)=>{
+    const el=$(selector),css=el&&getComputedStyle(el);
+    const beforeStage=!!el&&(el.compareDocumentPosition(stage)&Node.DOCUMENT_POSITION_FOLLOWING);
+    if(!beforeStage||el.offsetParent===null||css.position!=='sticky')return bottom;
+    const top=parseFloat(css.top);
+    return Number.isFinite(top)?Math.max(bottom,top+el.getBoundingClientRect().height):bottom;
+  },0);
+}
+
+function scrollItemDetailIntoView(){
+  const stage=$('#stage');
+  stage.style.scrollMarginTop=`${itemDetailStickyOffset()+8}px`;
+  stage.scrollIntoView({behavior:'auto',block:'start'});
+  scheduleStickySurfaces();
+}
 function bufferedAhead(video){
   const at=video.currentTime||0;
   for(let i=0;i<video.buffered.length;i++)if(video.buffered.start(i)<=at&&video.buffered.end(i)>=at)
@@ -5004,8 +5022,8 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   else if(g)g.onclick=()=>{vv.hidden=false;g.remove();const mounted=mountDetailPlayer(it,vv,true);stopAmbient=mountPlayerAmbient(vv);mounted?.one?.('dispose',stopAmbient)};
   else{const mounted=mountDetailPlayer(it,vv,true);stopAmbient=mountPlayerAmbient(vv);mounted?.one?.('dispose',stopAmbient)}
   vv.addEventListener('emptied',()=>stopAmbient(),{once:true});
-  $('#stage').scrollIntoView({behavior:'auto',block:'start'});
   buildBars();
+  scrollItemDetailIntoView();
 
   if(!queueContext)api('/api/related?id='+it.id+'&limit='+appSettings.relatedLimit).then(d=>{
     const n=$('#nrow'); if(!n)return; cache(d.items);
