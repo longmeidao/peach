@@ -5,7 +5,7 @@ const NOTE_VARIANTS=new Set(['secondary','warning','error','success']);
 /** Inline, persistent context beside the field/card/section it describes. */
 export function noteHtml(message,{variant='secondary',label='',className=''}={}){
   const kind=NOTE_VARIANTS.has(variant)?variant:'secondary';
-  const symbol=kind==='success'?'check':'alert';
+  const symbol=kind==='secondary'?'info':kind==='success'?'check':'alert';
   const role=kind==='error'?' role="alert"':' role="note"';
   return `<div class="geist-note geist-note-${kind}${className?` ${esc(className)}`:''}"${role}>
     ${icon(symbol)}<p>${label?`<b>${esc(label)}</b>`:''}<span>${esc(message)}</span></p></div>`;
