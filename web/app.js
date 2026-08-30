@@ -270,6 +270,18 @@ function homePath(filters=state){
   if(!STATE_ROUTES[filters.state]&&filters.state)params.set('state',filters.state);
   return path+(params.size?'?'+params:'');
 }
+/* 所有明确的「回首页」动作必须得到同一个干净状态。只改地址为 `/` 不够：state.jav
+   等内存筛选还会继续进入 /api/items，让页面看似首页却只剩 JAV。来源选择是用户的
+   浏览范围，继续保留；其余分类、搜索和排序恢复首页默认值。 */
+function resetHomeState(){
+  state={loc:state.loc,creator:'',studio:'',tag:'',tag_match:'all',len:'',dur_min:'',dur_max:'',
+    orient:'',state:'',sort:appSettings.defaultSort,seed:persistedSeed(),q:'',jav:'',thumb:'1'};
+}
+function openHome(scroll=false){
+  resetHomeState();route('/');$('#q').value='';disposeStage(false);showHomeSurfaces();
+  buildEdge();buildBars();load(true);
+  if(scroll)window.scrollTo({top:0,behavior:'smooth'});
+}
 const ENTITY_FILTER_KEYS=['loc','creator','tag','dur_min','dur_max','orient','sort'];
 const emptyEntityFilters=()=>Object.fromEntries(
   ENTITY_FILTER_KEYS.map(key=>[key,key==='sort'?'new':'']));
@@ -4307,8 +4319,8 @@ function navTo(k){
   if(k==='follow'){openFollow();return}
   if(k==='manage'){openManage();return}
   if(k==='jav'){toggleJavMode();return}
+  if(k===''){openHome();return}
   if(k==='performers'||k==='tags'){setSelectMode(false,true);openIndex(k);return}
-  if(k==='')state.jav='';
   if(k==='shorts'){state.orient='竖屏';state.state=''}else{state.orient='';state.state=k}
   route(homePath());
   showHomeSurfaces();
@@ -5174,13 +5186,11 @@ $('#searchBack').onclick=()=>{
   $('#q').blur();
 };
 $('#q').addEventListener('blur',()=>setTimeout(()=>{if(!$('#q').value&&!$('#searchMenu').matches(':hover'))$('.search').classList.remove('open');$('#searchMenu').hidden=true},140));
-$('#brandHome').onclick=e=>{e.preventDefault();
-  state={loc:state.loc,creator:'',studio:'',tag:'',len:'',dur_min:'',dur_max:'',orient:'',state:'',sort:appSettings.defaultSort,seed:persistedSeed(),q:'',thumb:'1'};
-  route('/');$('#q').value='';disposeStage(false);buildBars();load(true);window.scrollTo({top:0,behavior:'smooth'})};
-$('#tokClose').onclick=()=>{setTokLoading(false);clearTokTap();route('/');$('#tok').hidden=true;$('#tokTrack').querySelectorAll('video').forEach(v=>{
+$('#brandHome').onclick=e=>{e.preventDefault();openHome(true)};
+$('#tokClose').onclick=()=>{setTokLoading(false);clearTokTap();$('#tok').hidden=true;$('#tokTrack').querySelectorAll('video').forEach(v=>{
   disposeTokVideo(v,v.id!=='tokVid')});
   const v=$('#tokVid');if(v){v.style.transform='translateX(-50%)'}$('#tok').classList.remove('tok-wide');
-  $('#tok .tokstage').classList.remove('wide');tokSwitching=false;document.body.style.overflow='';showHomeSurfaces();load(true)};
+  $('#tok .tokstage').classList.remove('wide');tokSwitching=false;document.body.style.overflow='';openHome()};
 addEventListener('pagehide',()=>{
   cancelDetailStream();
   $('#tokTrack').querySelectorAll('video').forEach(cancelTokStream);

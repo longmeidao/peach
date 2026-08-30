@@ -1024,7 +1024,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(!$('#stats').hidden){\n    if(location.pathname==='/review'){await openReview(false);return}")
 
     def test_immersive_close_restores_the_home_surface(self):
-        self.assertPageContains("document.body.style.overflow='';showHomeSurfaces();load(true)")
+        self.assertPageContains("document.body.style.overflow='';openHome()")
 
     def test_review_asset_picker_wraps_instead_of_scrolling_sideways(self):
         """一个创作者可能有几十条候选，横向滚动条要一直拉才能看完。"""
@@ -1165,13 +1165,20 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks('class="dupsum mono"')
 
     def test_returning_home_from_any_surface_moves_the_highlight(self):
-        """点回首页时路径还停在 /review 之类上，navOn('') 仍然为假，高亮不切换。"""
-        self.assertPageContains("route(homePath());")
+        """Logo、侧栏和沉浸关闭都必须清掉隐藏筛选，不能让 `/` 继续请求 JAV。"""
+        self.assertPageContains("function resetHomeState(){")
+        self.assertPageContains("q:'',jav:'',thumb:'1'};")
+        self.assertPageContains("function openHome(scroll=false){")
+        self.assertPageContains("resetHomeState();route('/');$('#q').value='';disposeStage(false);showHomeSurfaces();")
+        self.assertPageContains("buildEdge();buildBars();load(true);")
         # 抽屉和窄栏已经共用 navTo，这一句只应该存在一处；
         # 两份副本正是当初把追更入口漏在抽屉里的原因。
         self.assertEqual(self.page.count("function navTo(k){"), 1,
                          "导航分支只能留一份 navTo")
-        self.assertPageContains("if(k==='')state.jav='';")
+        self.assertPageContains("if(k===''){openHome();return}")
+        self.assertPageContains("$('#brandHome').onclick=e=>{e.preventDefault();openHome(true)};")
+        self.assertPageContains("document.body.style.overflow='';openHome()")
+        self.assertPageLacks("clearTokTap();route('/');")
         self.assertPageContains("state.state=k}\n  route(homePath());")
 
     def test_ads_icon_matches_the_lucide_stroke_style(self):
