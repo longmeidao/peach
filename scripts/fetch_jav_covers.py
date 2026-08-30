@@ -43,6 +43,8 @@ from PIL import Image, UnidentifiedImageError
 
 from peach.config import COVER_DIR, DATABASE_PATH, GENERATED_DIR
 from peach.http import HttpRequest, HttpTransport, HttpxTransport
+from peach.jobs import DiskGuard, JobPolicyError
+from peach.platform import system_volume
 from peach.web_contract import is_jav_code
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -233,7 +235,7 @@ def logged_rows(log: Path) -> list[dict]:
 
 
 def restore_logged_successes(transport: HttpTransport, log: Path, root: Path,
-                             delay: float = 0.0) -> dict:
+                             delay: float = 0.0, guard: DiskGuard | None = None) -> dict:
     """Re-download missing covers from the exact successful URLs already in the audit log.
 
     This is intentionally narrower than a fresh scrape: it makes no discovery requests,
@@ -245,6 +247,8 @@ def restore_logged_successes(transport: HttpTransport, log: Path, root: Path,
     successes = [row for row in logged_rows(log)
                  if row.get("result") == "取得" and row.get("code") and row.get("url")]
     for index, row in enumerate(successes, 1):
+        if guard is not None:
+            guard.check()
         code = normalise_code(str(row["code"]))
         target = root / f"{code}.jpg"
         if target.is_file():
@@ -317,6 +321,9 @@ def build_parser() -> argparse.ArgumentParser:
                         default=GENERATED_DIR / "cover-fetch-log.csv")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--delay", type=float, default=1.5)
+    parser.add_argument("--min-free", type=float, default=40.0,
+                        help="系统盘最低可用 GiB；运行中每隔一段时间复查")
+    parser.add_argument("--disk-check-secs", type=float, default=20.0)
     parser.add_argument("--location",
                         help="只抓指定来源的番号封套，例如 pikpak；封套仍按番号共享")
     parser.add_argument("--retry-misses", action="store_true",
@@ -339,10 +346,22 @@ def _write_log(path: Path, rows: list[dict]) -> None:
 
 def run(args: argparse.Namespace) -> int:
     args.out.mkdir(parents=True, exist_ok=True)
+    guard = DiskGuard(system_volume(), args.min_free, args.disk_check_secs)
+    try:
+        free_gb = guard.check(force=True)
+    except JobPolicyError as exc:
+        print(f"[stop] {exc}")
+        return exc.exit_code
+    print(f"系统盘可用 {free_gb:.1f} GiB，运行期阈值 {args.min_free:.1f} GiB")
     if args.restore_successes:
         transport = HttpxTransport()
         try:
-            result = restore_logged_successes(transport, args.log, args.out, args.delay)
+            result = restore_logged_successes(
+                transport, args.log, args.out, args.delay, guard=guard,
+            )
+        except JobPolicyError as exc:
+            print(f"[stop] {exc}")
+            return exc.exit_code
         finally:
             transport.close()
         print(f"成功日志 {result['logged']}，恢复 {result['restored']}，"
@@ -369,8 +388,15 @@ def run(args: argparse.Namespace) -> int:
         if str(row.get("code") or "").strip() not in selected
     ]
     stats = {"ok": 0, "miss": 0}
+    stopped: JobPolicyError | None = None
     try:
         for index, code in enumerate(todo, 1):
+            try:
+                guard.check()
+            except JobPolicyError as exc:
+                stopped = exc
+                print(f"[stop] {exc}", flush=True)
+                break
             try:
                 winner, (width, height), data = best_cover(transport, code, args.delay)
             # 网络异常必须按条吞掉。一次 SSL 抖动
@@ -407,7 +433,7 @@ def run(args: argparse.Namespace) -> int:
 
     print(f"\n取得 {stats['ok']}，未取得 {stats['miss']} → {args.out}")
     print(f"逐条记录 → {args.log}")
-    return 0
+    return stopped.exit_code if stopped is not None else 0
 
 
 def main(argv: list[str] | None = None) -> int:

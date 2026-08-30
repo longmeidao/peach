@@ -146,7 +146,7 @@ Gofile token 是另一份本机可选凭据，只进 Gofile 请求头，不进 U
 - **生成产物走 Syncthing 单向同步，和账本、和 Git 是三条互不兜底的链路**。Windows send-only、Mac receive-only，五个文件夹 `snapshots`、`posters`、`avatars`、`logos`、`covers`；Mac 侧根目录在 `peach-data/artifacts/`（`generated` 是指向它的符号链接，不要把符号链接本身设成同步目录），Trash Can 版本保留 30 天。`.stignore` 不跨设备同步，两端每个目录各放一份。方向是固定的：Mac 不发布正式产物，在 Mac 上生成的图片不会回到 Windows。
 - 网盘目录由人在 CloudDrive 外部整理后，必须经「管理 → 资源同步」显式对账，不做后台静默删除。扫描只核对已挂载的 `local`／`115`／`pikpak`；离线来源整源跳过，单个目录不可读时保留账本行并回报。真实账本约 8 万条、3673 个目录，逐文件或同步 HTTP 请求实测 5 分钟仍未返回；因此全库扫描必须使用后台作业并逐来源回报进度，同一目录只枚举一次，目录元数据并发固定为 8。应用不得重跑全库或盲信旧结果，只重新核对本次发现的缺失候选。源文件缺失的 asset 先进入 Peach 回收站，清空回收站才永久删除账本行。同步可清理无正常馆藏引用的 snapshots、posters、photo-thumbs、transcodes、stream-segments、按 asset 生成的头像和共享番号封面；候选 CSV、provider evidence、实体头像与 Logo 不在自动清理边界。
 - 长任务只停止自己拥有且命令行匹配的 Python/FFmpeg 进程树，禁止全机终止 FFmpeg。
-- 导入运维脚本不得触发文件、网络或数据库副作用。`scrape_codes.py` 默认写可续跑复核 CSV；`clean_names.py` 先预览，`--apply` 前备份 SQLite。
+- 导入运维脚本不得触发文件、网络或数据库副作用。`scrape_codes.py` 默认写可续跑复核 CSV；`clean_names.py` 先预览，`--apply` 前把 SQLite 备份到真实库同目录并校验完整性。文件名只按 ledger 已确认的番号规范化，不从名称重新猜番号；大小写单改走同目录临时名，去广告后撞名使用 `(2)` 起的后缀保留两份媒体。复核候选文件可带主机／用途后缀，`web_review.latest_candidate_file` 必须按实际修改时间取最新批次，不能按文件名字典序。
 - 切换服务前检查 80、443、8900、9999 端口和实际进程归属。
 - 115/PikPak 播放依赖 CloudDrive 的 `B:`/`A:`；盘符对 Windows token 可见性不同，最终以 Peach 对已知作品的 `/stream` 实测为准。
 - 浏览器不支持的 AVI 等容器由 `TranscodeService` 缓存为 H.264/AAC MP4，再通过同一 Range 端点提供；永不改写原媒体。

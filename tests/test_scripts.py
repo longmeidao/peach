@@ -202,6 +202,89 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(propose("sample.mp4.jpg"), "sample.mp4.jpg")
         self.assertEqual(propose("(3).mp4"), "(3).mp4")
 
+    def test_filename_cleanup_normalises_only_the_confirmed_ledger_code(self):
+        propose = self.clean_names.propose
+        self.assertEqual(propose("HD-abp-0758.mp4", "ABP-758"), "HD-ABP-758.mp4")
+        self.assertEqual(
+            propose("fc2 3098987 sample.mp4", "FC2PPV-3098987"),
+            "FC2-PPV-3098987 sample.mp4",
+        )
+        self.assertEqual(
+            propose("KUZU_250103-U_iris3.mp4", "KUZU-25010"),
+            "KUZU_250103-U_iris3.mp4",
+            "番号后紧接额外数字时不能把长编号截断改写",
+        )
+        self.assertEqual(
+            propose("raikun325.mp4", "RAIKUN325"), "raikun325.mp4",
+            "没有分隔符的账号名不能先补成番号再改文件名",
+        )
+
+    def test_filename_cleanup_keeps_collision_media_with_a_numbered_suffix(self):
+        rows = [
+            (1, "115", r"B:\番号\ABW-234\ABW-234.mp4", "ABW-234.mp4", "ABW-234"),
+            (2, "115", r"B:\番号\ABW-234\hhd800.com@abw-0234.mp4",
+             "hhd800.com@abw-0234.mp4", "ABW-234"),
+            (3, "115", r"B:\番号\FC2\fc2 3098987.mp4",
+             "fc2 3098987.mp4", "FC2PPV-3098987"),
+        ]
+        plan = self.clean_names.build_plan(rows)
+        by_id = {row["id"]: row for row in plan}
+        self.assertEqual(by_id[2]["new"], "ABW-234 (2).mp4")
+        self.assertEqual(by_id[2]["status"], "ready-suffixed")
+        self.assertEqual(by_id[3]["new"], "FC2-PPV-3098987.mp4")
+        self.assertEqual(by_id[3]["new_code"], "FC2-PPV-3098987")
+
+    def test_filename_cleanup_apply_renames_files_updates_ledger_and_validates_backup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            existing = root / "ABW-234.mp4"
+            advertised = root / "hhd800.com@abw-0234.mp4"
+            lowercase = root / "mide-950-C.mp4"
+            existing.write_bytes(b"first")
+            advertised.write_bytes(b"second")
+            lowercase.write_bytes(b"third")
+            db = root / "ledger.db"
+            connection = sqlite3.connect(db)
+            connection.execute(
+                "CREATE TABLE asset(id INTEGER PRIMARY KEY,location TEXT,path TEXT,"
+                "name TEXT,code TEXT)"
+            )
+            connection.executemany(
+                "INSERT INTO asset VALUES(?,?,?,?,?)",
+                [
+                    (1, "local", str(existing), existing.name, "ABW-234"),
+                    (2, "local", str(advertised), advertised.name, "ABW-234"),
+                    (3, "local", str(lowercase), lowercase.name, "MIDE-950"),
+                ],
+            )
+            connection.commit(); connection.close()
+
+            result = self.clean_names.main([
+                "--db", str(db), "--out", str(root / "plan.csv"),
+                "--log-dir", str(root / "logs"), "--apply",
+            ])
+
+            self.assertEqual(result, 0)
+            self.assertEqual(existing.read_bytes(), b"first")
+            self.assertEqual((root / "ABW-234 (2).mp4").read_bytes(), b"second")
+            self.assertEqual((root / "MIDE-950-C.mp4").read_bytes(), b"third")
+            connection = sqlite3.connect(db)
+            rows = connection.execute(
+                "SELECT id,name,code FROM asset ORDER BY id"
+            ).fetchall()
+            connection.close()
+            self.assertEqual(rows, [
+                (1, "ABW-234.mp4", "ABW-234"),
+                (2, "ABW-234 (2).mp4", "ABW-234"),
+                (3, "MIDE-950-C.mp4", "MIDE-950"),
+            ])
+            backups = list(root.glob("ledger.pre-jav-filename-normalize-*.db"))
+            self.assertEqual(len(backups), 1)
+            backup = sqlite3.connect(backups[0])
+            self.assertEqual(backup.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+            self.assertEqual(backup.execute("SELECT count(*) FROM asset").fetchone()[0], 3)
+            backup.close()
+
     def test_media_batch_scripts_are_import_safe_and_keep_context_rules(self):
         self.assertEqual(self.probe.context_fields(1920, 1080, 180), ("速食", "横屏", "2K"))
         with tempfile.TemporaryDirectory() as tmp:
@@ -709,6 +792,7 @@ class OperationalScriptTests(unittest.TestCase):
                 result = self.scrape_codes.main([
                     "--db", str(db), "--out", str(output), "--raw-dir", str(raw),
                     "--log-dir", str(root / "logs"), "--delay", "0",
+                    "--min-free", "0",
                     "--sources", "javbus,r18dev",
                 ], provider=provider)
             self.assertEqual(result, 0)
@@ -791,7 +875,7 @@ class OperationalScriptTests(unittest.TestCase):
                 result = self.scrape_codes.main([
                     "--db", str(db), "--out", str(output),
                     "--raw-dir", str(root / "raw"), "--log-dir", str(root / "logs"),
-                    "--delay", "0", "--sources", "r18dev",
+                    "--delay", "0", "--min-free", "0", "--sources", "r18dev",
                     "--codes-file", str(codes_file),
                 ], provider=provider)
             self.assertEqual(result, 0)
@@ -842,7 +926,7 @@ class OperationalScriptTests(unittest.TestCase):
                 result = self.scrape_codes.main([
                     "--db", str(db), "--out", str(output), "--health", str(health),
                     "--raw-dir", str(raw), "--log-dir", str(root / "logs"),
-                    "--delay", "0", "--sources", "r18dev,javbus",
+                    "--delay", "0", "--min-free", "0", "--sources", "r18dev,javbus",
                 ], provider=provider)
             self.assertEqual(result, 0)
             with health.open(encoding="utf-8-sig", newline="") as handle:

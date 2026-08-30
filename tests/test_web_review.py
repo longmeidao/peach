@@ -132,6 +132,18 @@ class ReviewQueueTests(unittest.TestCase):
     def _auto(self):
         return rm_review.w_review_auto_apply(self.contract)
 
+    def test_latest_candidate_uses_write_time_not_filename_order(self):
+        older = self.candidates / "metadata-field-candidates-windows-p0-proof-20260822.csv"
+        newer = self.candidates / "metadata-field-candidates-japanese-official-tags-20260827.csv"
+        older.write_text("item_key\nOLD\n", encoding="utf-8")
+        newer.write_text("item_key\nNEW\n", encoding="utf-8")
+        os.utime(older, (1000, 1000))
+        os.utime(newer, (2000, 2000))
+
+        self.assertEqual(
+            rm_review.latest_candidate_file("metadata_fields", self.candidates), newer,
+        )
+
     def _release_row(self, key, code, source="r18dev", current="", n=1):
         return {"item_key": key, "field": "release_date", "current": current,
                 "candidates": ["2015-02-20"][:n], "code": code, "source": source}
