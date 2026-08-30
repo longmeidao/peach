@@ -802,6 +802,13 @@ body[data-density="dense"] .card .ctags .tg:nth-child(n+2){display:none}
 body[data-density="dense"] .card .ctags .tg{max-width:132px;overflow:hidden;text-overflow:ellipsis}
 body[data-density="dense"] .card .meta .t{display:block;max-width:100%;min-height:1.35em;overflow:hidden;
   -webkit-line-clamp:unset;white-space:nowrap;text-overflow:ellipsis}
+/* JAV 小图以扫封套为主：身份保留可点击，次要字段留给详情，避免多人卡片独自撑高整行。 */
+.jav-small .meta .t{display:block;max-width:100%;min-height:1.35em;white-space:nowrap;text-overflow:ellipsis;
+  -webkit-line-clamp:unset}
+.jav-small .meta .s{flex-wrap:nowrap;overflow:hidden}
+.jav-small .meta .who{flex:0 1 auto}
+.jav-small .meta .whomore{flex:none;white-space:nowrap}
+.jav-small .meta .why,.jav-small .meta .size,.jav-small .meta .watchcount,.jav-small .ctags{display:none}
 
 /* 短片带 */
 .shorts{margin:30px 0 8px;border-top:1px solid var(--line-soft);padding-top:16px}
