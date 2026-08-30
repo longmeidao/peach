@@ -94,6 +94,20 @@ Peach 保留的差异：添加关注沿用现有 38px 输入基线，因此筛�
 使用 Peach 的暗色 surface 且不复制箭头或淡入动画。复用的是可聚焦语义、严格视口夹取、
 菜单无展开动画，以及 Collapse 的高度／chevron 过渡，不把三种组件的 motion 混用。
 
+## Context Card／Toast／Material（2026-08-30 补查）
+
+- <https://vercel.com/geist/context-card>：短元数据卡最多保留一个主动作；键盘可进入卡片，
+  Escape 关闭并把焦点交还触发器。触发器的无障碍名称独立存在，卡片只补充上下文。
+- <https://vercel.com/geist/toast>：用户主动动作的非阻塞成功回执用自动消失 Toast；失败若
+  需要处理，原因与恢复动作仍留在原位置。Toast 区域使用 `aria-live="polite"`。
+- <https://vercel.com/geist/material>：浮层的阴影、边框只负责视觉层级，语义必须落在外层
+  `role` 和标题关联上；暗色主题不能只靠阴影分层。
+
+Peach 图片灯箱的信息卡据此保持一个“在资源管理器中显示”动作，改为具名非模态 dialog；
+触发器通过 `aria-controls`／`aria-expanded` 关联，打开后把焦点移到动作，Escape 只关闭信息卡
+并交还焦点。成功回执进入现有 Toast，失败原因保留在卡内。视觉上沿用 Peach 的 12px
+浮层圆角、发丝边与双层阴影，不复制 Vercel 品牌样式。
+
 ## Peach 对应
 
 - 语义按钮：`.fbtn.danger`（清空回收站等销毁类）、`.fbtn.primary` 保持主推进、

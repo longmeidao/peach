@@ -371,22 +371,23 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains(".meta span.who{color:var(--ink-2);cursor:default}")
 
-    def test_rotation_is_settled_on_load_not_by_a_foreground_timer(self):
-        """换排序是加载时结算的，页面不会在你看着的时候自己重排。
-
-        「每 N 分钟」的含义是后台每 N 分钟换一次排序、下次刷新才体现，所以用种子的
-        时间窗实现，而不是前台定时器重绘。默认「每次刷新」。
-        """
+    def test_shuffle_sorts_are_removed_but_manual_refresh_keeps_stable_batches(self):
+        """换批是列表动作，不再伪装成三种排序或自动轮换设置。"""
         self.assertPageContains("const SEED_KEY='peach.seed.v2';")
         self.assertPageContains("seed:initialParams.get('seed')||persistedSeed()")
-        self.assertPageContains("rotateMinutes:0")
-        self.assertPageContains("if(minutes<0)return saved.value;")
-        self.assertPageContains("if(minutes===0)return writeSeedRecord(newSeed());")
-        # 前台定时重绘必须整段消失，那不是这个设置的语义。
-        self.assertPageLacks("autoRefreshTimer")
-        self.assertPageLacks("scheduleAutoRefresh")
-        # 手动换一批立刻换，并重置计时窗口。
+        self.assertPageContains("const SORTS=[['rating','评分'],['o','高潮计数']")
+        for option in ('<option value="seed">', '<option value="daily">',
+                       '<option value="rand">'):
+            self.assertPageLacks(option)
+        self.assertPageLacks('id="rotateSetting"')
+        self.assertPageContains("defaultSort:'new'")
+        self.assertPageContains("const cleanSort=(value,fallback=appSettings.defaultSort)=>")
+        # 手动换一批仍使用稳定种子，避免分页重复或漏项。
+        self.assertPageContains('id="batchAction" type="button"')
         self.assertPageContains("state.sort='seed';state.seed=rollSeed()")
+        # 刷新属于列表，不再占顶栏；JAV 共用同一计数/筛选行。
+        self.assertPageLacks('id="refresh"')
+        self.assertPageContains("+(javActive()?javLayoutButtons():'')")
 
     def test_offline_sources_drop_out_of_the_default_filter(self):
         """脱盘的来源要从默认筛选里摘掉。
@@ -659,7 +660,7 @@ class WebUiSourceTests(unittest.TestCase):
 
         它们合并到「管理」下的二级导航；URL 保持原样，只是多了一条共用导航条。
         """
-        self.assertPageContains("['manage','管理','settings']")
+        self.assertPageContains("['manage','管理','database']")
         self.assertPageContains("const MANAGE_SECTIONS=[")
         for section in ("'stats','统计'", "'ads','疑似广告'", "'dupes','重复文件'",
                         "'quality','高清版'", "'trash','回收站'", "'review','人工复核'",
@@ -1411,7 +1412,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('data-tag-apply')
         self.assertPageContains("tag_match:tagIndexMatch")
         self.assertPageContains("const canSelect=catalog||entity||path==='/tags'")
-        self.assertPageContains("$('#selectMode').hidden=!canSelect;$('#density').hidden=!canDensity;$('#refresh').hidden=!canRefresh")
+        self.assertPageContains("$('#selectMode').hidden=!canSelect;$('#density').hidden=!canDensity")
+        self.assertPageLacks("const canRefresh=")
 
     def test_censor_lives_in_settings_and_stays_off_by_default(self):
         """审查遮挡在设置面板，默认关闭；导航栏不出现。
@@ -1546,12 +1548,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("icon('sperm')")
 
     def test_settings_own_useful_experience_preferences(self):
-        self.assertPageContains("const DEFAULT_SETTINGS={rotateMinutes:0")
+        self.assertPageContains("const DEFAULT_SETTINGS={batchSize:60,defaultSort:'new'")
         self.assertPageContains('id="settingsPanel"')
-        # 「换一批」是一个下拉（每次刷新 / 分钟数 / 每天 / 从不），不再是开关加间隔。
-        self.assertPageContains('id="rotateSetting"')
-        self.assertPageContains('<option value="0">每次刷新</option>')
-        self.assertPageContains("appSettings.rotateMinutes")
+        self.assertPageLacks('id="rotateSetting"')
         self.assertPageContains("appSettings.hoverDelaySeconds")
         self.assertPageContains("appSettings.batchSize")
         self.assertPageContains("appSettings.defaultSort")
@@ -1658,7 +1657,7 @@ class WebUiSourceTests(unittest.TestCase):
                 'class="dupname" data-middle-truncate',
                 'class="mono duppath" data-middle-truncate',
                 '<button data-middle-truncate data-quality-open=',
-                '<b data-middle-truncate></b>',
+                'id="photoDetailTitle" data-middle-truncate',
                 '<div><b data-middle-truncate title="${esc(asset.name||\'\')}"',
                 '<div><b data-middle-truncate title="${esc(row.asset_name||\'\')}"',
                 '<b data-middle-truncate>${esc(media.name)}</b>',
@@ -1856,14 +1855,26 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('aria-label="图片详情" title="图片详情">${icon(\'info\')}</button>')
         self.assertPageLacks("${icon('info')}<span>图片详情</span>",
                              "详情入口只显示圆圈 i，不再加文字按钮外框")
-        self.assertPageContains('<aside class="photodetail" aria-label="图片详情" hidden>')
+        self.assertPageContains('aria-expanded="false" aria-controls="photoDetail"')
+        self.assertPageContains('aria-haspopup="dialog"')
+        self.assertPageContains('<section class="photodetail" id="photoDetail" role="dialog" aria-modal="false"')
+        self.assertPageContains('aria-labelledby="photoDetailTitle" hidden>')
         self.assertPageContains("LOC[item.location]||item.location||'来源未知'")
         self.assertPageContains("size<1024*1024?`${Math.max(1,Math.round(size/1024))} KB`")
         self.assertPageContains("reveal.dataset.photoReveal=String(item.id)")
-        self.assertPageContains("revealSource(Number(reveal.dataset.photoReveal),status)")
+        self.assertPageContains("revealSource(Number(reveal.dataset.photoReveal),status,{toastSuccess:true,button:reveal})")
+        self.assertPageContains("toast('已在资源管理器中显示')")
+        self.assertPageContains("button.innerHTML=`${spinnerHtml('正在定位')}<span>${esc(label)}</span>`")
+        self.assertPageContains("if(activeLightbox?.detail?.isOpen()){activeLightbox.detail.dismiss(true);return}")
+        self.assertPageContains("if(returnFocus&&document.contains(toggle))toggle.focus()")
+        self.assertPageContains("queueMicrotask(()=>reveal.focus())")
         self.assertPageContains("const dismissOutside=target=>{if(panel.hidden||toggle.contains(target)||panel.contains(target))return false")
         self.assertPageContains("if(detail.dismissOutside(e.target))return")
         self.assertPageContains(".photodetail[hidden]{display:none}")
+        self.assertPageContains("box-sizing:border-box;display:grid;align-items:start;gap:14px;padding:16px")
+        self.assertPageContains(".photodetail .srcstate:empty{display:none}")
+        self.assertPageContains(".photodetail>button{min-height:44px}")
+        self.assertPageContains(".photodetailtoggle{width:44px;height:44px}")
         self.assertPageContains(".photodetailtoggle{justify-self:start;width:30px;height:30px;display:grid;place-items:center")
         # Lucide 的 info 圆点是长度 .01 的短线；没有圆头时会缩成几乎不可见的横杠。
         css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
