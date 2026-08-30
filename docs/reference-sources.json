@@ -188,8 +188,8 @@
       "url": "https://vercel.com/sandun-bingshi/~/settings/notifications",
       "snapshot": "docs/reference-snapshots/vercel-notifications-note.md",
       "checked_on": "2026-08-30",
-      "sha256": "2876093eb7f3cad9a56af6a5b3e6d42e5aac8761f64de173bb1985822112b021",
-      "role": "口味页底部补充说明的中性 Note 结构依据；持续可见、信息图标在左，无真实动作时不伪造链接。",
+      "sha256": "3d3c919475d61910fb15d5c5b68272953fc16036338c5e46d2cbde6f6b475348",
+      "role": "口味页底部补充说明的中性 Note 结构依据；信息图标使用 2px 圆端描边，无真实动作时不伪造链接。",
       "consumers": [
         "web/app.css",
         "web/app.js",
@@ -202,7 +202,7 @@
       "url": "https://www.youtube.com/watch?v=jNQXAC9IVRw",
       "snapshot": "docs/reference-snapshots/youtube-player-controls-user-screenshot.md",
       "checked_on": "2026-08-30",
-      "sha256": "871952fba6c2318b7c6bf4edd89e2ab2e723d916d0434b79fff0f87dc04412c2",
+      "sha256": "4d3a0806ee921c523db2964d2b775c625d1fdbee77eb40cf3bd9305038707fb4",
       "role": "实际 YouTube e937390a DOM、CSS、JS 与用户截图锁定播放器几何、状态和设置面板；官方帮助锁定氛围模式和影院模式语义。",
       "consumers": [
         "web/app.css",
