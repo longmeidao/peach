@@ -233,6 +233,27 @@ class WebDataTests(unittest.TestCase):
         )
         self.assertIs(stats["disk_c"], stats["system_disk"])
 
+    def test_stats_report_system_resource_and_cloud_volumes(self):
+        usage = type("Usage", (), {"free": 20, "total": 100})
+        declarations = {"local": "R:/media", "115": "B:/", "pikpak": "A:/"}
+        with mock.patch.object(rm_web, "LOCATION_ROOT_DECLARATIONS", declarations), \
+                mock.patch.object(rm_web, "system_volume", return_value=Path("X:/")), \
+                mock.patch.object(rm_web, "translate_ledger_path",
+                                  side_effect=lambda value: Path(value)), \
+                mock.patch.object(rm_web, "root_online", return_value=True), \
+                mock.patch("shutil.disk_usage", return_value=usage):
+            stats = rm_web.q_stats(self.contract)
+
+        self.assertEqual(
+            [(row["kind"], row["label"]) for row in stats["storage_volumes"]],
+            [("system", "系统盘"), ("local", "资源盘"),
+             ("115", "115 网盘"), ("pikpak", "PikPak 网盘")],
+        )
+        self.assertEqual(stats["storage_summary"], {
+            "volumes": 4, "online": 4, "measured": 4,
+            "free": 80, "used": 320, "total": 400,
+        })
+
     def test_items_support_duration_range(self):
         result = rm_web.q_items(
             self.contract, {"dur_min": "90", "dur_max": "110", "limit": "10"},
@@ -549,6 +570,7 @@ class WebDataTests(unittest.TestCase):
             "/api/purge-missing", "/api/review/auto-apply",
             "/api/resource-sync/scan", "/api/resource-sync/apply",
             "/api/follow/check", "/api/follow/status", "/api/follow/save",
+            "/api/follow/play", "/api/follow/activity",
             "/api/follow/source", "/api/follow/resolve", "/api/follow/credential",
             "/api/follow/author-alias", "/api/follow/schedule",
             "/api/taste/refresh", "/api/taste/source", "/api/settings",

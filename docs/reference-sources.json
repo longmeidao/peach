@@ -17,6 +17,20 @@
       ]
     },
     {
+      "id": "vercel-geist-table-ranking",
+      "name": "Vercel Geist Table 与首页排行布局证据",
+      "url": "https://vercel.com/geist/table",
+      "snapshot": "docs/reference-snapshots/vercel-geist-table-ranking.md",
+      "checked_on": "2026-08-30",
+      "sha256": "b43ee5b96e91a959fe6fa655de316f4438e6ec83fcfbdeae1f8bb7cf6d5d9e15",
+      "role": "统计页使用空间语义表格与标签排行密度的项目级依据；未取得的 Vercel DOM 和像素不作复刻证据。",
+      "consumers": [
+        "web/app.css",
+        "web/app.js",
+        "tests/test_web_ui.py"
+      ]
+    },
+    {
       "id": "vercel-web-interface-guidelines",
       "name": "Vercel Web Interface Guidelines",
       "url": "https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md",

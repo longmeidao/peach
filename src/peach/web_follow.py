@@ -705,6 +705,62 @@ def w_follow_status(contract, body) -> dict:
     return result
 
 
+def _follow_playback_row(connection, item_id: int):
+    row = connection.execute(
+        "SELECT id,status FROM follow_item WHERE id=?", (item_id,),
+    ).fetchone()
+    if row is None:
+        raise ValueError("follow item not found")
+    return row
+
+
+def w_follow_play(contract, body) -> dict:
+    """记录一次关注页直接播放；候选无需先保存成 asset。"""
+    item_id = int(body["item"])
+    contract.cache_bust()
+    with contract.database.write_transaction() as connection:
+        row = _follow_playback_row(connection, item_id)
+        stamp = datetime.now(timezone.utc).timestamp()
+        connection.execute(
+            "INSERT INTO follow_playback(follow_item_id,profile_id,play_count,last_played) "
+            "VALUES(?,'local-default',1,?) ON CONFLICT(follow_item_id,profile_id) "
+            "DO UPDATE SET play_count=follow_playback.play_count+1,last_played=excluded.last_played",
+            (item_id, stamp),
+        )
+        if row["status"] == "new":
+            connection.execute(
+                "UPDATE follow_item SET status='seen' WHERE id=?", (item_id,),
+            )
+    return {"ok": True, "item": item_id, "status": "seen" if row["status"] == "new" else row["status"]}
+
+
+def w_follow_activity(contract, body) -> dict:
+    """累计关注页在线播放的真实时长与最远到达位置。"""
+    item_id = int(body["item"])
+    position = max(float(body.get("position", 0)), 0)
+    duration = max(float(body.get("duration", 0)), 0)
+    delta = max(float(body.get("delta", 0)), 0)
+    ended = bool(body.get("ended"))
+    ratio = 1.0 if ended else (min(position / duration, 1.0) if duration > 0 else 0.0)
+    contract.cache_bust()
+    with contract.database.write_transaction() as connection:
+        _follow_playback_row(connection, item_id)
+        stamp = datetime.now(timezone.utc).timestamp()
+        connection.execute(
+            "INSERT INTO follow_playback(follow_item_id,profile_id,play_count,play_seconds,max_reached,last_played) "
+            "VALUES(?,'local-default',1,?,?,?) ON CONFLICT(follow_item_id,profile_id) DO UPDATE SET "
+            "play_seconds=follow_playback.play_seconds+excluded.play_seconds,"
+            "max_reached=max(follow_playback.max_reached,excluded.max_reached),"
+            "last_played=excluded.last_played",
+            (item_id, delta, ratio, stamp),
+        )
+        result = connection.execute(
+            "SELECT play_seconds,max_reached FROM follow_playback "
+            "WHERE follow_item_id=? AND profile_id='local-default'", (item_id,),
+        ).fetchone()
+    return {"ok": True, "item": item_id, **dict(result)}
+
+
 def w_follow_save(contract, body) -> dict:
     item_ids = _write_item_ids(body)
     with contract.database.write_transaction() as connection:

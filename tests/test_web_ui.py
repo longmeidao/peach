@@ -151,7 +151,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_browser_chrome_focus_and_mobile_inputs_follow_the_ui_checklist(self):
         self.assertPageContains('<meta name="theme-color" content="#FFFFFF"')
-        self.assertPageContains('<meta name="theme-color" content="#020408"')
+        self.assertPageContains('<meta name="theme-color" content="#080A0D"')
         # 聚焦环用 color-mix 柔化：边框 72% 主调 + 26% 的外圈，仍是「看得见的焦点」。
         self.assertPageContains('.search:focus-within{border-color:color-mix(in srgb,var(--tungsten) 72%,transparent);box-shadow:')
         self.assertPageContains('@media (max-width:760px){input,textarea,select{font-size:16px!important}}')
@@ -765,9 +765,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("[data-taste-evidence-panel][hidden]")
         self.assertPageContains("[data-taste-dimension-panel][hidden]")
         self.assertPageContains('data-taste-dimension="${source}:${key}"')
-        self.assertPageContains("sourceTabs('browser',[['tags','Tag']")
-        self.assertPageContains("sourceTabs('peach',[['tags','Tag'],['creators','创作者'],['performers','女优']])")
-        self.assertPageContains("不自动给 Tag 降权")
+        self.assertPageContains("sourceTabs('browser',[['tags','标签']")
+        self.assertPageContains("sourceTabs('peach',[['tags','标签'],['creators','创作者'],['performers','女优']])")
+        self.assertPageContains("不自动给标签降权")
         self.assertPageContains("rank.browser_tags||[]")
         self.assertPageContains("rank.peach_performers||rank.performers||[]")
         self.assertPageContains("visual==='domain'")
@@ -1145,7 +1145,16 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".review{--review-fieldset-height:440px;padding:0 0 42px}")
         self.assertPageLacks("max-width:1440px")
         self.assertPageContains(".insightpage,.tastepage{width:min(1100px,100%);margin:0 auto")
-        self.assertPageContains("metricTab('disk','系统盘可用'")
+        self.assertPageContains("metricTab('storage','使用空间'")
+        self.assertPageContains('class="insightdatatable"')
+        self.assertPageContains('<th>位置</th><th>已用</th><th>可用</th><th>使用率</th>')
+        self.assertPageContains('class="insightranking"')
+        self.assertPageContains("grid-template-columns:repeat(2,minmax(0,1fr))")
+        self.assertPageContains("border-top:1px solid var(--line-soft);border-left:1px solid var(--line-soft);list-style:none")
+        self.assertPageContains(".insighttable{border-top:0}")
+        self.assertPageContains(".insight-layout .managebar{margin-left:auto;margin-right:auto}")
+        self.assertPageContains(".insight-layout .managetitle,.insight-layout .pagelede{width:min(1100px,100%)")
+        self.assertPageContains(".tasteprivacy{margin:12px 16px 0")
 
     def test_duplicate_and_trash_descriptions_share_one_page_lede(self):
         self.assertPageContains('class="pagelede mono" id="manageLede" hidden')
@@ -1369,9 +1378,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("background:transparent;border-bottom:1px solid transparent")
         self.assertPageContains(
             ".tagbar.is-stuck,.count.is-stuck,.entitycollectionhead.is-stuck"
-            "{background:color-mix(in srgb,#020408 84%,transparent)"
+            "{background:color-mix(in srgb,#080A0D 84%,transparent)"
         )
-        self.assertPageContains("background:color-mix(in srgb,#020408 84%,transparent)")
+        self.assertPageContains("background:color-mix(in srgb,#080A0D 84%,transparent)")
         self.assertPageContains("backdrop-filter:saturate(1.35) blur(16px)")
         self.assertPageContains("function updateStickySurfaces()")
         self.assertPageContains("css.position==='sticky'")
@@ -1833,7 +1842,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".playerstats dd", ".relatedperson .nm", ".reviewentity b",
             ".reviewitem h4", ".searchoption span",
             ".sgrid.mixgrid>.mixqueue .mixqueuehead span", ".sidebarorderlabel>b",
-            ".insighttablerow span", ".metricstrip small,.tastesummary>small",
+            ".insightrankrow>span:nth-child(2)", ".insighttablerow span", ".metricstrip small,.tastesummary>small",
             ".tagpickitem .pickname", ".tasterank b,.tasterank small",
             ".tastesource b,.tastesource small", ".tg",
             ".tokui .toktitle", "body[data-density=\"dense\"] .card .ctags .tg",

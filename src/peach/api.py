@@ -354,7 +354,7 @@ def create_app(
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
             '<meta name="color-scheme" content="dark"><title>登录 Peach</title>'
             '<style>'
-            '*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#020408;color:#f5f7fb}'
+            '*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#080A0D;color:#f5f7fb}'
             'body{min-height:100dvh;display:grid;place-items:center;padding:24px;font:15px/1.45 system-ui,sans-serif}'
             'main{width:min(360px,100%);padding:30px;border:1px solid rgba(255,255,255,.12);border-radius:20px;'
             'background:rgba(30,32,37,.9);box-shadow:0 24px 80px rgba(0,0,0,.48)}'
