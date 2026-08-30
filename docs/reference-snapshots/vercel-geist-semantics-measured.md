@@ -69,6 +69,31 @@
   `--surface` 置于 `--ground` 上（统计卡即此方案），设置面板此前用的
   `--overlay-5`（白色 5% 叠加）与全站卡片色系不一致，已统一到 `--surface`。
 
+## Tooltip、Collapse 与 Projects 工具栏（2026-08-30 补测）
+
+- Tooltip：<https://vercel.com/geist/tooltip> 当前加载的组件 chunk 为
+  `/vc-ap-b3331f/_next/static/immutable/chunks/118l4-ay8nz2o.js`，SHA-256
+  `FA7C49EDEB237132B09619409AAF97B09EF265BA8FED71CEBD09D21216F7C8DE`。
+  默认最大宽度 250px，8px 圆角，水平／垂直内边距 8／6px，13px 字、1.3 行高；
+  内容经 Portal 渲染，打开时才给触发器 `aria-describedby`，触发器默认可聚焦，支持
+  hover、focus、触摸和 Escape。上下方向的自动对齐在离左右视口不足 100px 时改为
+  left／right boxAlign。
+- Collapse：<https://vercel.com/geist/collapse> 当前组件位于
+  `/vc-ap-b3331f/_next/static/immutable/chunks/1k513hf7se3-l.js`，SHA-256
+  `0BD8AA9351E4CAA33F01CCEC48C68EDAD491BD1D25234964A4482B7E7E273982`。
+  触发器使用 `aria-controls`／`aria-expanded`；内容区关闭时 `inert`，以测量高度写入
+  inline `height`，`overflow-y:hidden`，高度和 chevron 都使用 200ms `ease-in-out`。
+- 登录态 Projects 页 <https://vercel.com/sandun-bingshi>：2026-08-30 的可见 DOM
+  顺序为 Search、`Filter and Sort Projects`、Add New；实测同一行 36px 高、8px gap，
+  搜索占剩余宽度，筛选按钮 36×36px，Add New 115×36px。筛选菜单 250px 宽、6px
+  内边距、12px 圆角，内部纵向滚动且 `overscroll-behavior:contain`；展开没有动画。
+  用户截图 `codex-clipboard-b47d665c-a203-4c22-8e79-1123b896e555.png` 的 SHA-256 为
+  `037CBD12E6254072817F402864A0B11C641AA920CA4BD9EDEC08D591DAF2EA1E`（1673×189）。
+
+Peach 保留的差异：添加关注沿用现有 38px 输入基线，因此筛选钮是 38×38px；Tooltip
+使用 Peach 的暗色 surface 且不复制箭头或淡入动画。复用的是可聚焦语义、严格视口夹取、
+菜单无展开动画，以及 Collapse 的高度／chevron 过渡，不把三种组件的 motion 混用。
+
 ## Peach 对应
 
 - 语义按钮：`.fbtn.danger`（清空回收站等销毁类）、`.fbtn.primary` 保持主推进、
