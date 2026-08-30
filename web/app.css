@@ -764,6 +764,8 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .junkfilters a{box-sizing:border-box;min-height:34px;padding:0 11px;display:inline-flex;align-items:center;gap:6px;flex:none;
   border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);
   text-decoration:none;font-size:var(--fs-xs);white-space:nowrap}
+.junkfilters a>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round}
 .junkfilters a:hover{border-color:color-mix(in srgb,var(--ink) 28%,transparent);background:var(--hover);color:var(--ink)}
 .junkfilters a:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .junkfilters a[aria-current="page"]{border-color:var(--tungsten);background:var(--tungsten-soft);color:var(--tungsten)}
@@ -772,6 +774,7 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
   content-visibility:auto;contain-intrinsic-size:auto 360px}
 .junkcard .pic{border:0;border-radius:0}.junkcard:hover .pic{border:0;box-shadow:none}
 .junkcard .poster{object-fit:contain}.junkbody{display:flex;flex:1;flex-direction:column;min-height:0}
+.select-mode .junkcard .junkactions{pointer-events:none;opacity:.52}
 .junkmeta{display:grid;gap:6px;min-width:0;padding:12px}.junkmeta .s{display:flex;gap:7px;min-width:0;flex-wrap:wrap;
   color:var(--muted);font-size:var(--fs-xs)}
 .junkmeta .why{overflow-wrap:anywhere}.junkmeta .size{margin-left:auto;white-space:nowrap}
@@ -1509,6 +1512,13 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   .count.junkcount{align-items:stretch;flex-direction:column;overflow:visible;padding-block:8px}
   .junkcount .junksummary{line-height:1.4}.junkfilters{width:100%;padding-bottom:2px}
   .junkfilters a{min-height:44px}.junkactions button{min-height:44px;padding-inline:7px}
+  .batchbar:has([data-junk-batch]:not([hidden])){left:12px;right:12px;bottom:12px;width:auto;transform:none;
+    display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;padding:9px 10px}
+  .batchbar:has([data-junk-batch]:not([hidden]))>span{grid-column:1/-1;padding:0;text-align:center}
+  .batchbar:has([data-junk-batch]:not([hidden])) button{display:inline-flex;min-width:0;min-height:44px;
+    align-items:center;justify-content:center;padding:8px 6px;white-space:nowrap;font-size:var(--fs-xs)}
+  .batchbar:has([data-junk-batch]:not([hidden])) button[hidden]{display:none}
+  .batchbar:has([data-junk-batch]:not([hidden])) button svg{margin-right:4px}
   .entitycollectionhead{align-items:flex-start;flex-direction:column}
   .entitycollectionhead .sorts{width:100%;margin-left:0;padding-bottom:2px}
   .entitycollectionhead .sorts button{min-height:36px}

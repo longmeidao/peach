@@ -42,6 +42,7 @@
   <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></symbol>
   <symbol id="i-hard-drive" viewBox="0 0 24 24"><path d="M10 16h.01" /><path d="M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /><path d="M21.946 12.013H2.054" /><path d="M6 16h.01" /></symbol>
   <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" /></symbol>
+  <symbol id="i-volume-2" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" /></symbol>
   <symbol id="i-rss" viewBox="0 0 24 24"><path d="M4 11a9 9 0 0 1 9 9" /><path d="M4 4a16 16 0 0 1 16 16" /><circle cx="5" cy="19" r="1" fill="currentColor" stroke="none"/></symbol>
   <symbol id="i-thumbs-up" viewBox="0 0 24 24"><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" /><path d="M7 10v12" /></symbol>
   <symbol id="i-thumbs-down" viewBox="0 0 24 24"><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z" /><path d="M17 14V2" /></symbol>
@@ -117,6 +118,7 @@
 <div class="batchbar" id="batchbar" hidden><span id="batchCount">已选 0 项</span>
   <button data-batch="like"><svg viewBox="0 0 24 24"><use href="#i-thumbs-up"/></svg>喜欢</button><button data-batch="seen"><svg viewBox="0 0 24 24"><use href="#i-eye"/></svg>看过</button><button data-batch="later"><svg viewBox="0 0 24 24"><use href="#i-bookmark-plus"/></svg>稍后看</button>
   <button class="danger" data-batch="dispose"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>加入回收站</button><button data-trash-only data-batch="restore"><svg viewBox="0 0 24 24"><use href="#i-rotate-ccw"/></svg>还原</button><button class="danger" data-trash-only data-batch="delete"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>彻底删除</button>
+  <button data-junk-batch="dismiss-junk" hidden><svg viewBox="0 0 24 24"><use href="#i-check"/></svg>不是垃圾</button><button data-junk-batch="reconsider-junk" hidden><svg viewBox="0 0 24 24"><use href="#i-rotate-ccw"/></svg>重新判断</button><button class="danger" data-junk-batch="dispose" hidden><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>移入回收站</button>
   <button id="followBatchAll" data-follow-control hidden><svg viewBox="0 0 24 24"><use href="#i-square-check-big"/></svg>全选当前</button><button data-follow-batch="save" hidden><svg viewBox="0 0 24 24"><use href="#i-bookmark-plus"/></svg>保存到账本</button><button data-follow-batch="seen" hidden><svg viewBox="0 0 24 24"><use href="#i-eye"/></svg>标记已看</button><button data-follow-batch="ignored" hidden><svg viewBox="0 0 24 24"><use href="#i-eye-off"/></svg>忽略</button>
   <button id="batchClear"><svg viewBox="0 0 24 24"><use href="#i-x"/></svg>取消</button></div>
 
