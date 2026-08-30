@@ -1513,7 +1513,6 @@ async function openReview(push=true){
            // 实体类卡片的作品数已经写在创作者入口里，这里再写一遍就是同一个数字两处。
            subjectKind&&subjectName?'':`<p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>`}${origin}${tags?`<div class="reviewtags">${tags}</div>`:''}${preview}<p>${esc(evidence)}</p><div class="reviewactions"><button class="approve" data-review-status="approved"${canApprove&&!locked?'':' disabled'}>${approveLabel}</button><button class="skip" data-review-status="skipped"${locked?' disabled':''}>跳过</button><button class="reject" data-review-status="rejected"${locked?' disabled':''}>拒绝</button><span class="reviewstate" aria-live="polite"></span></div></article>`}).join(''):emptyState('square-check-big','暂无候选','该分类当前没有待人工复核的项目。')}</div></section></div>`;
      wireReviewAssets($('#stats'));
-     wireReviewScrollers($('#stats'));
     $('#stats').querySelectorAll('[data-review-open-item]').forEach(button=>button.onclick=()=>openItem(+button.dataset.reviewOpenItem));
     // 没有全局委托，每个界面各自接线（见 #stage 的同类处理）。
     $('#stats').querySelectorAll('[data-entity-kind]').forEach(button=>button.onclick=()=>
@@ -2426,9 +2425,10 @@ function renderFollowManage(credentials){
           ${needCred.length?`<span class="fmeta warn">${needCred.length} 个待配置</span>`:''}</div>
         <div class="frows">${creds.map(followCredentialRow).join('')}</div>
         <p class="fdesc"><b>存放位置与权限
-            <i class="fdescinfo" aria-hidden="true">${icon('info')}</i></b>
+            <button type="button" class="fdescinfo" data-fdesc-tooltip
+              aria-label="凭据存放位置说明">${icon('info')}</button></b>
           <span>Windows 上不收紧文件权限</span>
-          <span class="fdescpop" role="tooltip">存在<b>运行 Peach 的那台机器</b>上，不是浏览器所在机器；不进 Git、URL、日志或 ledger。NTFS 的访问控制走 ACL，<code>chmod</code> 在那里没有效果；POSIX 上建成 0600。</span></p>
+          <span class="fdescpop" id="follow-credential-tooltip" role="tooltip" hidden>存放在<b>运行 Peach 的那台机器</b>上，不是浏览器所在机器；不进 Git、URL、日志或 ledger。NTFS 的访问控制走 ACL，<code>chmod</code> 在那里没有效果；POSIX 上建成 0600。</span></p>
       </section>
     </aside></div>`;
   wireFollowManage();
@@ -2491,10 +2491,36 @@ function wireFollowItems(){
 function wireFollowManage(){
   const root=$('#stats'),form=root.querySelector('#followAdd');
   renderFollowSrcFilter(root.querySelector('#followSrcFilter'));
+  const tooltipTrigger=root.querySelector('[data-fdesc-tooltip]');
+  const tooltip=root.querySelector('#follow-credential-tooltip');
+  if(tooltipTrigger&&tooltip){
+    let tooltipHovered=false,tooltipFocused=false;
+    const hideTooltip=()=>{
+      tooltip.hidden=true;tooltipTrigger.removeAttribute('aria-describedby');
+      window.removeEventListener('resize',hideTooltip);
+      window.removeEventListener('scroll',hideTooltip,true)};
+    const hideTooltipIfIdle=()=>{if(!tooltipHovered&&!tooltipFocused)hideTooltip()};
+    const showTooltip=()=>{
+      tooltip.hidden=false;tooltipTrigger.setAttribute('aria-describedby',tooltip.id);
+      tooltip.style.left='0px';tooltip.style.top='0px';
+      const anchor=tooltipTrigger.getBoundingClientRect(),box=tooltip.getBoundingClientRect();
+      const left=Math.max(8,Math.min(anchor.left+(anchor.width-box.width)/2,innerWidth-box.width-8));
+      let top=anchor.top-box.height-10;
+      if(top<8)top=Math.min(innerHeight-box.height-8,anchor.bottom+10);
+      tooltip.style.left=left+'px';tooltip.style.top=Math.max(8,top)+'px';
+      window.addEventListener('resize',hideTooltip);
+      window.addEventListener('scroll',hideTooltip,{capture:true,passive:true})};
+    tooltipTrigger.addEventListener('pointerenter',()=>{tooltipHovered=true;showTooltip()});
+    tooltipTrigger.addEventListener('pointerleave',()=>{tooltipHovered=false;hideTooltipIfIdle()});
+    tooltipTrigger.addEventListener('focus',()=>{tooltipFocused=true;showTooltip()});
+    tooltipTrigger.addEventListener('blur',()=>{tooltipFocused=false;hideTooltipIfIdle()});
+    tooltipTrigger.addEventListener('keydown',event=>{
+      if(event.key==='Escape'){tooltipHovered=false;tooltipFocused=false;hideTooltip();tooltipTrigger.blur()}});
+  }
   /* 作者别名的折叠用 Geist Collapse 机制：内容包 .fcollapse，开合时 JS 量
      scrollHeight 写 inline height 过渡（原生 details 无过渡；此前试过
      ::details-content 方案会吞内容，已弃）。凭据行是 flex 行布局不接。 */
-  root.querySelectorAll('details.faliasmanager').forEach(details=>{
+  root.querySelectorAll('details.faliasmanager').forEach((details,index)=>{
     if(details.querySelector(':scope > .fcollapse'))return;
     const body=document.createElement('div');body.className='fcollapse';
     [...details.children].forEach(child=>{
@@ -2502,22 +2528,36 @@ function wireFollowManage(){
       body.appendChild(child)});
     details.appendChild(body);
     const summary=details.querySelector('summary');
-    const settle=fn=>{
-      body.addEventListener('transitionend',function done(e){
-        if(e.propertyName!=='height')return;
-        body.removeEventListener('transitionend',done);fn()},{once:true});
-      setTimeout(fn,260)};
+    let expanded=details.open,transitionRun=0;
+    body.id=`follow-alias-collapse-${index}`;
+    body.inert=!expanded;
+    summary.setAttribute('aria-controls',body.id);
+    summary.setAttribute('aria-expanded',String(expanded));
+    const settle=(run,fn)=>{
+      let done=false,timer;
+      const finish=e=>{
+        if(e&&e.propertyName!=='height')return;
+        if(done)return;done=true;
+        body.removeEventListener('transitionend',finish);clearTimeout(timer);
+        if(run===transitionRun)fn()};
+      body.addEventListener('transitionend',finish);
+      timer=setTimeout(finish,260)};
     summary.addEventListener('click',e=>{
       e.preventDefault();
-      if(!details.open){
+      expanded=!expanded;const run=++transitionRun;
+      summary.setAttribute('aria-expanded',String(expanded));
+      if(expanded){
+        body.inert=false;
+        const start=details.open?body.getBoundingClientRect().height:0;
         details.open=true;
-        body.style.height='0px';body.getBoundingClientRect();
+        body.style.height=start+'px';body.getBoundingClientRect();
         body.style.height=body.scrollHeight+'px';
-        settle(()=>{body.style.height='auto'});
+        settle(run,()=>{body.style.height='auto'});
       }else{
-        body.style.height=body.scrollHeight+'px';body.getBoundingClientRect();
+        body.inert=true;
+        body.style.height=body.getBoundingClientRect().height+'px';body.getBoundingClientRect();
         body.style.height='0px';
-        settle(()=>{details.open=false;body.style.height=''});
+        settle(run,()=>{details.open=false;body.style.height=''});
       }
     });
   });
@@ -2684,41 +2724,42 @@ function wireFollowManage(){
    默认全选；取消勾选的来源，其查找结果行隐藏、也不进「添加选中」。 */
 function renderFollowSrcFilter(mount){
   if(!mount)return;
+  if(fsrcOpened){fsrcOpened.setOpen(false);fsrcOpened=null}
   const providers=[...new Set((followData?.sources||[])
     .map(source=>source.provider_label).filter(Boolean))];
   providers.forEach(provider=>{if(!fsrcProviders.has(provider))fsrcProviders.add(provider)});
   if(!providers.length){mount.innerHTML='';return}
   const label=()=>{const n=providers.filter(p=>!fsrcUnchecked.has(p)).length;
     return n===providers.length?'来源：全部':`来源：${n}/${providers.length}`};
-  mount.innerHTML=`<button type="button" class="fbtn" data-srcfilter-toggle aria-expanded="false">
-      ${icon('list-filter')}<span data-srcfilter-label>${esc(label())}</span>${icon('chevron-down')}</button>
-    <div class="fsrcmenu" data-srcfilter-menu hidden>${providers.map(provider=>
+  mount.innerHTML=`<button type="button" class="fbtn" data-srcfilter-toggle
+      aria-expanded="false" aria-haspopup="menu" aria-controls="follow-source-menu"
+      aria-label="${esc(label())}" title="${esc(label())}">
+      ${icon('list-filter')}</button>
+    <div class="fsrcmenu" id="follow-source-menu" role="menu" data-srcfilter-menu hidden>${providers.map(provider=>
       `<label><input type="checkbox" data-srcfilter="${esc(provider)}"${fsrcUnchecked.has(provider)?'':' checked'}>
         <span>${esc(provider)}</span></label>`).join('')}</div>`;
   const toggle=mount.querySelector('[data-srcfilter-toggle]');
   const menu=mount.querySelector('[data-srcfilter-menu]');
-  /* Geist Collapse 机制（照抄其实测实现：JS 量 scrollHeight 写 inline height，
-     transition:height .2s cubic-bezier(.4,0,.2,1)，overflow:auto hidden）。
-     settle 双通道收尾：后台标签页冻结 CSS 过渡时 transitionend 不来，260ms 兜底。
-     右缘检测：展开会超出视口就翻到触发钮左侧。 */
-  const settle=fn=>{
-    menu.addEventListener('transitionend',function done(e){
-      if(e.propertyName!=='height')return;
-      menu.removeEventListener('transitionend',done);fn()},{once:true});
-    setTimeout(fn,260)};
+  /* Vercel 项目页的 Filter and Sort 菜单没有展开动画。菜单固定在视口内，
+     优先从触发钮右缘向左展开；下方放不下时改到上方，内容在菜单内滚动。 */
+  const positionMenu=()=>{
+    const anchor=toggle.getBoundingClientRect(),width=menu.getBoundingClientRect().width;
+    const height=Math.min(menu.scrollHeight,innerHeight-16);
+    const left=Math.max(8,Math.min(anchor.right-width,innerWidth-width-8));
+    const below=anchor.bottom+8;
+    const top=below+height<=innerHeight-8?below:Math.max(8,anchor.top-height-8);
+    menu.style.left=left+'px';menu.style.top=top+'px'};
+  const closeFromViewport=()=>setOpenTracked(false);
   const setOpen=open=>{
     if(open){
       menu.hidden=false;
-      const flip=toggle.getBoundingClientRect().left
-        +menu.getBoundingClientRect().width>innerWidth-8;
-      menu.classList.toggle('left',flip);
-      menu.style.height='0px';menu.getBoundingClientRect();
-      menu.style.height=menu.scrollHeight+'px';
-      settle(()=>{menu.style.height='auto'});
+      positionMenu();
+      window.addEventListener('resize',positionMenu);
+      window.addEventListener('scroll',closeFromViewport,{capture:true,passive:true});
     }else{
-      menu.style.height=menu.scrollHeight+'px';menu.getBoundingClientRect();
-      menu.style.height='0px';
-      settle(()=>{menu.hidden=true;menu.style.height=''});
+      menu.hidden=true;menu.style.left='';menu.style.top='';
+      window.removeEventListener('resize',positionMenu);
+      window.removeEventListener('scroll',closeFromViewport,true);
     }
     toggle.setAttribute('aria-expanded',String(open));
   };
@@ -2726,10 +2767,12 @@ function renderFollowSrcFilter(mount){
     setOpen(open);
     fsrcOpened=open?{mount,setOpen}:null};
   toggle.onclick=e=>{e.stopPropagation();setOpenTracked(menu.hidden)};
+  mount.onkeydown=event=>{
+    if(event.key==='Escape'&&!menu.hidden){setOpenTracked(false);toggle.focus()}};
   menu.querySelectorAll('[data-srcfilter]').forEach(input=>input.onchange=()=>{
     input.checked?fsrcUnchecked.delete(input.dataset.srcfilter)
       :fsrcUnchecked.add(input.dataset.srcfilter);
-    mount.querySelector('[data-srcfilter-label]').textContent=label();
+    toggle.setAttribute('aria-label',label());toggle.title=label();
     document.querySelectorAll('.fpickitem').forEach(item=>{
       item.hidden=fsrcUnchecked.has(item.dataset.provider||'')})});
 }
@@ -2815,38 +2858,6 @@ async function followWrite(button,path,body){
     // 只读端（reader）写入必然 409，那是正常状态；照实显示比静默失败好。
     if(state)state.textContent=e.message;else alert(e.message);
   }
-}
-
-
-
-/* 复核卡等高 + 中间滚动（Geist Scroller vertical-with-buttons 实测机制：
-   overflow-y:auto + scrollbar-width:none 隐藏滚动条，32px 圆钮按滚动位置启停）。
-   卡片在网格里拉伸到同行最高；头部（作者块）固定，中间自滚，动作条钉底。 */
-function wireReviewScrollers(root){
-  root.querySelectorAll('.reviewitem').forEach(item=>{
-    if(item.querySelector('.reviewscroll'))return;
-    const actions=item.querySelector('.reviewactions');
-    if(!actions)return;
-    const scroll=document.createElement('div');scroll.className='reviewscroll';
-    const head=item.querySelector(':scope > .reviewentity');
-    const btns=document.createElement('div');btns.className='reviewscrollbtns';
-    btns.innerHTML='<button type="button" data-scroll="-1" aria-label="向上滚动">'+icon('chevron-up')+'</button>'
-      +'<button type="button" data-scroll="1" aria-label="向下滚动">'+icon('chevron-down')+'</button>';
-    [...item.children].forEach(child=>{
-      if(child===actions||child===head)return;
-      scroll.appendChild(child)});
-    item.insertBefore(scroll,actions);
-    item.insertBefore(btns,actions);
-    const up=btns.querySelector('[data-scroll="-1"]'),down=btns.querySelector('[data-scroll="1"]');
-    const sync=()=>{
-      const max=scroll.scrollHeight-scroll.clientHeight;
-      up.disabled=scroll.scrollTop<=2;down.disabled=scroll.scrollTop>=max-2;
-      btns.hidden=max<=2};
-    up.onclick=()=>scroll.scrollBy({top:-140,behavior:'smooth'});
-    down.onclick=()=>scroll.scrollBy({top:140,behavior:'smooth'});
-    scroll.addEventListener('scroll',sync,{passive:true});
-    new ResizeObserver(sync).observe(scroll);sync();
-  });
 }
 function wireReviewAssets(root){
   /* 复核页不再自造「多选模式」和框选：交互与主网格一致——点一下切换，Shift 选一段。

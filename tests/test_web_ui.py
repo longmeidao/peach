@@ -1340,10 +1340,16 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".settinggroup{margin:16px 0 0;border:1px solid var(--line-soft);border-radius:12px;")
         # 组卡面与全站卡片同源（--surface 实底），不用白色透明叠加。
         self.assertPageContains("background:var(--surface);padding:0 16px 12px}")
-        # 布尔开关是 Geist Toggle（14×28 轨道 + 圆点），不是原生复选框；
+        # 布尔开关是 Geist 中号 Toggle（36×20 轨道 + 17px 圆点），不是原生复选框；
         # Geist 的 Switch 是分段选择器，别用错控件。
         self.assertPageContains("#censorSetting{appearance:none;-webkit-appearance:none;width:36px;height:20px;flex:none;")
         self.assertPageContains("#censorSetting:checked{background:var(--tungsten)}")
+        # 没有直接证据的 command-menu 入场动画与无有效高度约束的复核卡
+        # Scroller 不应继续作为「Vercel 对齐」进入产品。
+        self.assertPageLacks("animation:panel-in")
+        self.assertPageLacks("@keyframes panel-in")
+        self.assertPageLacks("wireReviewScrollers")
+        self.assertPageLacks("reviewscrollbtns")
         self.assertPageContains(".settinggroup>h3{margin:0;padding:14px 0 10px;font-size:var(--fs-lg);font-weight:600;color:var(--ink)}")
         self.assertPageContains(".settinggroup .settingrow{margin:0 -16px;padding-left:16px;padding-right:16px}")
         self.assertPageContains(

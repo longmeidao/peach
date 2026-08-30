@@ -1166,6 +1166,31 @@ class FollowWebSourceTests(unittest.TestCase):
         add_button = page[page.index(".faddform .fbtn{"):]
         self.assertIn("height:38px", add_button[:add_button.index("}")])
 
+    def test_source_filter_uses_the_project_toolbar_layout_without_menu_motion(self):
+        # Vercel Projects：搜索占剩余宽度，筛选是方形图标按钮，主操作在右；
+        # 菜单没有展开动画，并在自己的视口内滚动。
+        self.assertPageContains(
+            ".faddform{display:grid;grid-template-columns:minmax(0,1fr) 38px auto;gap:8px")
+        self.assertPageContains(
+            ".faddform .fsrcfilter .fbtn{width:38px;height:38px;min-height:38px;padding:0}")
+        self.assertPageContains('aria-expanded="false" aria-haspopup="menu"')
+        self.assertPageContains('aria-label="${esc(label())}" title="${esc(label())}"')
+        self.assertPageLacks("data-srcfilter-label")
+        menu = self.page[self.page.index(".fsrcmenu{"):]
+        menu = menu[:menu.index("}")]
+        self.assertIn("position:fixed", menu)
+        self.assertIn("width:min(250px,calc(100vw - 16px))", menu)
+        self.assertIn("overflow-x:hidden", menu)
+        self.assertIn("overflow-y:auto", menu)
+        self.assertIn("overscroll-behavior:contain", menu)
+        self.assertNotIn("transition", menu)
+        source_filter = self.page[self.page.index("function renderFollowSrcFilter("):
+                                  self.page.index("function renderFollowPicks(")]
+        self.assertNotIn("transitionend", source_filter)
+        self.assertNotIn("style.height", source_filter)
+        self.assertIn("innerWidth-width-8", source_filter)
+        self.assertIn("innerHeight-8", source_filter)
+
     def test_the_manage_page_is_ordered_by_what_you_do_first(self):
         # 只看管理页那一段：同样的标题在别的页面上也出现过，全页搜索会命中错的那个。
         page = self.page
@@ -1316,10 +1341,30 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("row.path")
         self.assertPageContains("row.world_readable")
 
-    def test_credential_explanation_is_collapsed_without_hiding_the_warning(self):
-        summary = self.page.split("存放位置与权限", 1)[1].split("</summary>", 1)[0]
-        self.assertIn("Windows 上不收紧文件权限", summary)
-        self.assertPageContains(".fdetails summary::before")
+    def test_credential_explanation_uses_an_accessible_viewport_clamped_tooltip(self):
+        self.assertPageContains('class="fdescinfo" data-fdesc-tooltip')
+        self.assertPageContains('aria-label="凭据存放位置说明"')
+        self.assertPageContains('id="follow-credential-tooltip" role="tooltip" hidden')
+        self.assertPageContains("tooltipTrigger.setAttribute('aria-describedby',tooltip.id)")
+        self.assertPageContains("tooltipTrigger.removeAttribute('aria-describedby')")
+        self.assertPageContains("event.key==='Escape'")
+        tooltip = self.page[self.page.index(".fdescpop{"):]
+        tooltip = tooltip[:tooltip.index("}")]
+        self.assertIn("position:fixed", tooltip)
+        self.assertIn("max-width:min(250px,calc(100vw - 16px))", tooltip)
+        self.assertIn("pointer-events:none", tooltip)
+        self.assertNotIn("340px", tooltip)
+        self.assertPageContains("innerWidth-box.width-8")
+
+    def test_author_aliases_use_the_real_geist_collapse_motion(self):
+        self.assertPageContains(".fcollapse{overflow:hidden;transition:height .2s ease-in-out}")
+        self.assertPageContains("summary.setAttribute('aria-controls',body.id)")
+        self.assertPageContains("summary.setAttribute('aria-expanded',String(expanded))")
+        self.assertPageContains("body.inert=!expanded")
+        self.assertPageContains("body.inert=true")
+        self.assertPageContains("body.style.height=body.scrollHeight+'px'")
+        self.assertPageContains(".faliasmanager>summary::before")
+        self.assertPageContains("transition:transform .2s ease-in-out")
 
     def test_follow_source_icons_fail_back_to_plain_text(self):
         icons = self.page.split("const SOURCE_ICONS={", 1)[1].split("};", 1)[0]
