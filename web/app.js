@@ -367,10 +367,12 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0){
   if(!controlBar||controlBar.querySelector('[data-player-quality]'))return;
   const root=document.createElement('div');
   root.className='vjs-peach-quality vjs-control';root.dataset.playerQuality='';
-  root.innerHTML='<button type="button" aria-label="切换清晰度" title="清晰度" aria-expanded="false"><span data-player-quality-label>原画</span></button><div class="vjs-peach-quality-menu" role="menu" aria-label="清晰度" hidden></div>';
+  root.innerHTML=`<button type="button" aria-label="切换清晰度" title="清晰度" aria-expanded="false">
+    ${icon('settings')}<span data-player-quality-badge hidden></span></button>
+    <div class="vjs-peach-quality-menu" role="menu" aria-label="清晰度" hidden></div>`;
   const fullscreen=controlBar.querySelector('.vjs-fullscreen-control');
   controlBar.insertBefore(root,fullscreen||null);
-  const toggle=root.querySelector('button'),label=root.querySelector('[data-player-quality-label]');
+  const toggle=root.querySelector('button'),badge=root.querySelector('[data-player-quality-badge]');
   const menu=root.querySelector('.vjs-peach-quality-menu');
   const levels=typeof player.qualityLevels==='function'?player.qualityLevels():null;
   let selected='auto';
@@ -378,21 +380,24 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0){
   const rows=()=>{
     const result=[];
     if(levels?.length){
-      result.push({key:'auto',label:'自动'});
+      result.push({key:'auto',label:'自动',pixels:0});
       for(let index=0;index<levels.length;index++){
         const level=levels[index],pixels=resolution(level.width,level.height);
-        result.push({key:String(index),label:pixels?`${pixels}p`:(level.id||`线路 ${index+1}`)});
+        result.push({key:String(index),label:pixels?`${pixels}p`:(level.id||`线路 ${index+1}`),pixels});
       }
       return result;
     }
     const pixels=resolution(video.videoWidth,video.videoHeight)||Number(fallbackHeight)||0;
-    return [{key:'original',label:pixels?`${pixels}p`:'原画'}];
+    return [{key:'original',label:pixels?`${pixels}p`:'原画',pixels}];
   };
   const render=()=>{
     const options=rows();
     if(!levels?.length)selected='original';
     menu.innerHTML=options.map(option=>`<button type="button" role="menuitemradio" data-player-quality-option="${esc(option.key)}" aria-checked="${option.key===selected}">${esc(option.label)}</button>`).join('');
-    const active=options.find(option=>option.key===selected)||options[0];label.textContent=active.label;
+    const active=options.find(option=>option.key===selected)||options[0];
+    const activePixels=active.pixels||Math.max(0,...options.map(option=>option.pixels||0));
+    badge.textContent=activePixels>=2160?'4K':activePixels>=720?'HD':'';badge.hidden=!badge.textContent;
+    toggle.setAttribute('aria-label',`切换清晰度 · ${active.label}`);toggle.title=`清晰度 · ${active.label}`;
     menu.querySelectorAll('[data-player-quality-option]').forEach(button=>button.onclick=()=>{
       selected=button.dataset.playerQualityOption;
       if(levels?.length)for(let index=0;index<levels.length;index++)levels[index].enabled=selected==='auto'||selected===String(index);
@@ -416,7 +421,11 @@ function mountDetailPlayer(it,video,autoplay,options={}){
   }
   detailPlayer=globalThis.videojs(video,{
     controls:true,preload:'metadata',language:'zh-CN',responsive:true,
-    controlBar:{skipButtons:{backward:appSettings.seekSeconds,forward:appSettings.seekSeconds},pictureInPictureToggle:true}
+    controlBar:{
+      skipButtons:{backward:appSettings.seekSeconds,forward:appSettings.seekSeconds},
+      pictureInPictureToggle:true,currentTimeDisplay:true,timeDivider:true,
+      durationDisplay:true,remainingTimeDisplay:false
+    }
   });
   const expected=Number(it.duration)||0;
   let correcting=false;
