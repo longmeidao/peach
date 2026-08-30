@@ -4839,7 +4839,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
       <div class="preference" id="preferencePanel" hidden>
         <textarea id="likeReason" maxlength="2000" placeholder="为什么喜欢？">${esc(it.like_reason||'')}</textarea>
         <div class="preference-foot"><span id="preferenceState" aria-live="polite"></span>
-          <button class="savepreference" id="savePreference" title="保存喜爱理由" aria-label="保存喜爱理由">${icon('check')}</button></div>
+          <button type="button" class="geist-button primary savepreference" id="savePreference" title="提交喜爱理由" aria-label="提交喜爱理由"><span>提交</span></button></div>
       </div>
       <button class="obtn" data-kind="o">${icon('sperm')}<span>记一次高潮</span><b class="mono" id="oCount">${it.o_count||0}</b></button>
     </div></div></div>
@@ -4959,7 +4959,8 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
     preferenceToggle.setAttribute('aria-expanded',String(open));if(open)$('#likeReason').focus()};
   const savePreference=async()=>{
     const btn=$('#savePreference'),like=$('#likeBtn'),stateText=$('#preferenceState');
-    btn.disabled=true;stateText.textContent='保存中…';
+    btn.disabled=true;btn.setAttribute('aria-busy','true');
+    btn.innerHTML=`${spinnerHtml('正在提交喜爱理由')}<span>提交中…</span>`;stateText.textContent='保存中…';
     const reason=$('#likeReason').value;
     const liked=like.getAttribute('aria-pressed')==='true'||reason.trim().length>0;
     try{const r=await api('/api/preference',{method:'POST',body:JSON.stringify({id:it.id,liked,reason})});
@@ -4967,7 +4968,8 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
       like.setAttribute('aria-pressed',r.liked);like.setAttribute('aria-label',r.liked?'取消喜欢':'喜欢');
       preferenceToggle.dataset.hasReason=String(!!r.like_reason);
       stateText.textContent='已保存';setTimeout(()=>{if(stateText.textContent==='已保存')stateText.textContent=''},1400);
-    }catch(e){stateText.textContent='保存失败 · 请重试'}finally{btn.disabled=false}
+    }catch(e){stateText.textContent='保存失败 · 请重试'}finally{
+      btn.disabled=false;btn.removeAttribute('aria-busy');btn.innerHTML='<span>提交</span>'}
   };
   $('#likeBtn').onclick=async()=>{const b=$('#likeBtn');
     b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')!=='true');await savePreference()};

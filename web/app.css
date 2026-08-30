@@ -86,6 +86,17 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
 .geist-loading-dots>i{width:4px;height:4px;border-radius:50%;background:currentColor;
   animation:geist-loading-dot 1.2s ease-in-out infinite}
 .geist-loading-dots>i:nth-child(2){animation-delay:.15s}.geist-loading-dots>i:nth-child(3){animation-delay:.3s}
+.geist-button{box-sizing:border-box;height:32px;padding:0 6px;border:1px solid var(--border-15);
+  border-radius:var(--control-radius);background:transparent;color:var(--ink);display:inline-flex;
+  align-items:center;justify-content:center;gap:6px;font:inherit;font-size:var(--fs-md);font-weight:500;
+  line-height:1;white-space:nowrap;cursor:pointer;
+  transition:background-color .12s,border-color .12s,color .12s}
+.geist-button:hover:not(:disabled){border-color:var(--ink-2);background:var(--hover)}
+.geist-button:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+.geist-button:disabled{cursor:default;opacity:.55}
+.geist-button.primary{border-color:var(--ink);background:var(--ink);color:var(--ground)}
+.geist-button.primary:hover:not(:disabled){border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));
+  background:color-mix(in srgb,var(--ink) 88%,var(--ground))}
 .skiplink{position:fixed;z-index:1000;left:12px;top:8px;transform:translateY(-150%);
   padding:9px 13px;border-radius:8px;background:var(--ink);color:var(--ground);text-decoration:none;
   transition:transform .12s ease}
@@ -1224,11 +1235,8 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
   line-height:1.5;font-size:var(--fs-md)}
 .preference textarea:focus{border-color:var(--tungsten);outline:0}
 .preference-foot{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:7px}
-.preference-foot span{margin-right:auto;color:var(--muted);font-size:var(--fs-xs)}.preference-foot span:empty{display:none}
-.savepreference{width:36px;height:36px;padding:0;border:0;border-radius:50%;display:grid;place-items:center;
-  background:var(--ink);color:var(--ground);cursor:pointer}
-.savepreference svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2}
-.savepreference:disabled{opacity:.55;cursor:default}
+.preference-foot>span{margin-right:auto;color:var(--muted);font-size:var(--fs-xs)}.preference-foot>span:empty{display:none}
+.savepreference{min-width:58px;padding-inline:12px}
 .obtn{width:100%;min-height:48px;padding:10px 14px;border:1px solid color-mix(in srgb,#FF4D8D 38%,transparent);
   background:color-mix(in srgb,#FF4D8D 10%,transparent);
   color:#FF669D;border-radius:var(--control-radius);cursor:pointer;margin-bottom:10px;font-size:var(--fs-md);font-weight:650;

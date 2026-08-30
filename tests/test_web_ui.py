@@ -80,6 +80,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("--control-radius:6px; --badge-radius:4px; --floating-radius:12px", css)
         for selector, token in (
                 (".ib{", "var(--control-radius)"),
+                (".geist-button{", "var(--control-radius)"),
                 (".searchmenu{", "var(--floating-radius)"),
                 (".searchoption{", "var(--control-radius)"),
                 (".playlistcreate button,.playlistactions button{", "var(--control-radius)"),
@@ -277,7 +278,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('id="preferencePanel" hidden')
         self.assertPageContains("preferenceToggle.onclick=()=>{const open=preferencePanel.hidden")
         self.assertPageContains('placeholder="为什么喜欢？"')
-        self.assertPageContains('aria-label="保存喜爱理由">${icon(\'check\')}</button>')
+        self.assertPageContains('class="geist-button primary savepreference"')
+        self.assertPageContains('aria-label="提交喜爱理由"><span>提交</span></button>')
+        self.assertPageContains("btn.setAttribute('aria-busy','true')")
+        self.assertPageContains("spinnerHtml('正在提交喜爱理由')")
+        self.assertPageContains("btn.removeAttribute('aria-busy');btn.innerHTML='<span>提交</span>'")
+        self.assertPageContains('.geist-button.primary{border-color:var(--ink);background:var(--ink);color:var(--ground)}')
+        self.assertPageContains('.preference-foot>span{margin-right:auto')
+        self.assertPageLacks('aria-label="保存喜爱理由">${icon(\'check\')}</button>')
         self.assertPageLacks("仅保存在本机")
         self.assertPageLacks("回收站中的文件仍保留，清空回收站后才会永久删除。")
 
