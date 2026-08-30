@@ -186,19 +186,21 @@ class WebUiSourceTests(unittest.TestCase):
         # 多人合集保留头像提示，但文字只写第一位和总人数，避免名称折成多行。
         self.assertPageContains("const coStarred=performers.length>1&&!primaryCreator")
         self.assertPageContains('<div class="mavstack">')
-        self.assertPageContains("performers.slice(0,smallJav?2:3)")
+        self.assertPageContains("performers.slice(0,smallLayout?2:3)")
         self.assertPageContains("data-entity-kind=\"performer\" data-entity-name=\"${esc(nm)}\"")
         self.assertPageContains("data-entity-name=\"${esc(performer)}\"")
         self.assertPageContains("等 ${performerTotal} 人")
         self.assertPageContains(".mavstack .mav+.mav{margin-left:-14px}")
 
-    def test_jav_small_cards_limit_cast_and_hide_secondary_metadata(self):
-        # 小图用来扫整张封套：只留两张头像、单行标题和身份，详情仍保留完整资料。
-        self.assertPageContains("const smallJav=jav&&layout==='small'")
-        self.assertPageContains("${smallJav?'jav-small ':''}")
+    def test_jav_small_cards_use_three_fixed_rows_for_every_item_on_the_page(self):
+        # 小图是页面版式：混入的非番号作品也必须保持标题、身份、标签三行同高。
+        self.assertPageContains("const smallLayout=javActive()&&layout==='small'")
+        self.assertPageContains("${smallLayout?'jav-small ':''}")
+        self.assertPageContains(".jav-small .mtext{display:grid;grid-template-rows:1.35em 1.35em 30px")
         self.assertPageContains(".jav-small .meta .t{display:block;max-width:100%;min-height:1.35em;white-space:nowrap;text-overflow:ellipsis;")
-        self.assertPageContains(".jav-small .meta .s{flex-wrap:nowrap;overflow:hidden}")
-        self.assertPageContains(".jav-small .meta .why,.jav-small .meta .size,.jav-small .meta .watchcount,.jav-small .ctags{display:none}")
+        self.assertPageContains(".jav-small .meta .s{min-height:1.35em;flex-wrap:nowrap;overflow:hidden;white-space:nowrap}")
+        self.assertPageContains(".jav-small .ctags{height:30px;align-items:flex-start;flex-wrap:nowrap;overflow:hidden}")
+        self.assertPageContains(".jav-small .meta .why,.jav-small .meta .watchcount{display:none}")
         self.assertPageContains('<span class="watchcount">看过 ${it.play_count}</span>')
 
     def test_every_card_avatar_falls_back_through_the_same_helper(self):
@@ -712,7 +714,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('role="progressbar" aria-label="${esc(label)}"')
         self.assertPageContains('aria-valuemin="0" aria-valuemax="${ceiling}" aria-valuenow="${current}"')
         self.assertPageContains(".statmetric{padding:3px 0 12px;border-bottom:1px solid var(--line-soft)}")
+        self.assertPageContains(".geist-progress{height:8px;margin-top:7px;overflow:hidden;border-radius:var(--pill-radius);background:var(--line-soft)}")
         self.assertPageContains("${progressHtml(`${k}：${v.toLocaleString()} / ${max.toLocaleString()}`,v,max)}")
+        self.assertPageLacks('<div class="statshead"></div>')
         self.assertPageLacks('class="prog"')
 
     def test_note_semantics_replace_empty_states_for_persistent_errors(self):
@@ -977,10 +981,18 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_admin_surfaces_fill_wide_screens(self):
         """统计和复核是信息密集的行政界面，宽屏下居中会浪费两侧空间。"""
-        self.assertPageContains(".stats{padding:8px 0 42px}")
-        self.assertPageContains(".review{--review-fieldset-height:440px;padding:8px 0 42px}")
+        self.assertPageContains(".stats{padding:0 0 42px}")
+        self.assertPageContains(".review{--review-fieldset-height:440px;padding:0 0 42px}")
         self.assertPageLacks("max-width:1440px")
         self.assertPageContains("card('系统盘', d.system_disk")
+
+    def test_duplicate_and_trash_descriptions_share_one_page_lede(self):
+        self.assertPageContains('class="pagelede mono" id="manageLede" hidden')
+        self.assertPageContains(".pagelede{margin:0 0 16px;color:var(--muted);font-size:var(--fs-sm);line-height:1.5}")
+        self.assertPageContains("paintManageLede(`${d.total} 组 · ${d.files} 个文件 · 可回收 ${fmtSize(d.reclaimable)}`)")
+        self.assertPageContains("if(trash)paintManageLede(`${total.toLocaleString()} 个符合 · 显示 ${n}`)")
+        self.assertPageContains(".count.count-actions-only:empty{display:none}")
+        self.assertPageLacks('class="dupsum mono"')
 
     def test_returning_home_from_any_surface_moves_the_highlight(self):
         """点回首页时路径还停在 /review 之类上，navOn('') 仍然为假，高亮不切换。"""
@@ -1948,6 +1960,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--line-soft);border-radius:12px")
         self.assertPageContains(".resourcesources article+article{border-left:1px solid var(--line-soft)}")
         self.assertPageContains(".resourceapplyrow .resourcesyncok{color:var(--success)}")
+        self.assertPageContains(".resourcesync{scroll-margin-top:calc(var(--topH) + 18px);display:grid;gap:16px}")
+        self.assertPageLacks(".resourcesync{scroll-margin-top:calc(var(--topH) + 18px);display:grid;gap:16px;margin-top:32px;padding-top:24px;border-top:1px solid var(--line-soft)}")
         self.assertPageContains("border-radius:var(--control-radius)")
         self.assertPageContains("@keyframes geist-spinner-opacity")
         sections = self.page.split("const MANAGE_SECTIONS=[", 1)[1].split("];", 1)[0]
