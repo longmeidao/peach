@@ -36,7 +36,9 @@ const measuredWidth=(element,value)=>{
   const canvas=measuredWidth.canvas||(measuredWidth.canvas=document.createElement('canvas'));
   const context=canvas.getContext('2d');
   if(!context)return Number.POSITIVE_INFINITY;
-  context.font=style.font;
+  /* Chromium 会在 font-variant-numeric 等长数字开启时把计算后的 font 简写返回为空串；
+     直接赋值会让 Canvas 静默退回 10px sans-serif，进而低估中文文件名宽度。 */
+  context.font=style.font||`${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
   let width=context.measureText(value).width;
   const letterSpacing=parseFloat(style.letterSpacing);
   if(Number.isFinite(letterSpacing))width+=Math.max(0,graphemes(value).length-1)*letterSpacing;
