@@ -480,13 +480,32 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0){
   levels?.on?.(['addqualitylevel','removequalitylevel'],()=>{if(!menu.hidden)showMain();else qualityRows()});
   player.on('dispose',()=>document.removeEventListener('pointerdown',outside));qualityRows();
   mountPlayerTheaterControl(player,root);
+  mountPlayerChromeLayout(player);
 }
 function mountPlayerTheaterControl(player,settingsRoot){
   const controlBar=player.getChild('controlBar')?.el();if(!controlBar||controlBar.querySelector('[data-player-theater]'))return;
   const root=document.createElement('div');root.className='vjs-peach-theater vjs-control';
-  root.innerHTML=`<button type="button" data-player-theater aria-label="影院模式" aria-pressed="${appSettings.theaterMode}">${icon('theater-mode')}<span class="vjs-peach-tooltip" role="tooltip">影院模式 <kbd>T</kbd></span></button>`;
+  root.innerHTML=`<button type="button" data-player-theater aria-label="影院模式" aria-keyshortcuts="T" aria-pressed="${appSettings.theaterMode}">${icon('theater-mode')}<span class="vjs-peach-tooltip" role="tooltip">影院模式 <kbd>T</kbd></span></button>`;
   controlBar.insertBefore(root,settingsRoot.nextSibling);
   root.querySelector('button').onclick=event=>{event.stopPropagation();applyTheaterMode(!appSettings.theaterMode)};
+}
+function mountPlayerChromeLayout(player){
+  const controlBar=player.getChild('controlBar')?.el();if(!controlBar||controlBar.querySelector('.vjs-peach-right-controls'))return;
+  const play=controlBar.querySelector(':scope>.vjs-play-control');
+  if(play&&!play.querySelector(':scope>.vjs-peach-hover'))play.insertAdjacentHTML('beforeend','<span class="vjs-peach-hover" aria-hidden="true"></span>');
+  const controls=[
+    controlBar.querySelector(':scope>.vjs-picture-in-picture-control'),
+    controlBar.querySelector(':scope>.vjs-peach-settings'),
+    controlBar.querySelector(':scope>.vjs-peach-theater'),
+    controlBar.querySelector(':scope>.vjs-fullscreen-control'),
+  ].filter(Boolean);
+  if(!controls.length)return;
+  const group=document.createElement('div');group.className='vjs-peach-right-controls';group.setAttribute('aria-label','播放器视图控制');
+  controlBar.insertBefore(group,controls[0]);
+  controls.forEach(control=>{
+    control.insertAdjacentHTML('beforeend','<span class="vjs-peach-hover" aria-hidden="true"></span>');
+    group.append(control);
+  });
 }
 function mountPlayerSeekPreview(player,it,options={}){
   const progress=player.getChild('controlBar')?.el()?.querySelector('.vjs-progress-control');

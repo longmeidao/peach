@@ -986,57 +986,77 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vwrap>video[hidden]{display:none}
 .vwrap>.video-js{width:100%;height:auto;max-height:76vh;aspect-ratio:16/9;background:#000}
 .vwrap .video-js .vjs-tech{object-fit:contain}
-.vwrap .video-js .vjs-big-play-button{left:50%;top:50%;width:3.4em;height:3.4em;margin:0;
-  transform:translate(-50%,-50%);border:1px solid rgba(255,255,255,.2);border-radius:50%;
-  background:rgba(0,0,0,.58);box-shadow:0 3px 16px #0007;line-height:3.4em}
-.vwrap .video-js .vjs-big-play-button:hover,.vwrap .video-js .vjs-big-play-button:focus{background:rgba(0,0,0,.76)}
+.vwrap .video-js .vjs-big-play-button{left:50%;top:50%;width:56px;height:56px;margin:0;
+  transform:translate(-50%,-50%);border:0;border-radius:50%;
+  background:rgba(0,0,0,.3);box-shadow:none;line-height:56px}
+.vwrap .video-js .vjs-big-play-button:hover,.vwrap .video-js .vjs-big-play-button:focus{background:rgba(255,255,255,.1)}
 .vwrap .video-js .vjs-big-play-button .vjs-icon-placeholder:before{content:"";left:50%;top:50%;width:0;height:0;
   border-top:.72em solid transparent;border-bottom:.72em solid transparent;border-left:1.05em solid #fff;
   transform:translate(-38%,-50%)}
 .vwrap .video-js:has(.vjs-peach-center-controls) .vjs-big-play-button{display:none}
 .vjs-peach-center-controls{position:absolute;z-index:3;left:50%;top:50%;transform:translate(-50%,-50%);
-  display:flex;align-items:center;gap:1.4em;transition:opacity .16s ease;pointer-events:auto}
+  display:flex;align-items:center;gap:12px;transition:opacity .2s cubic-bezier(.05,0,0,1);pointer-events:auto}
 .video-js.vjs-playing:not(.vjs-user-active) .vjs-peach-center-controls{opacity:0;pointer-events:none}
 .video-js.vjs-error .vjs-peach-center-controls{display:none}
-.vjs-peach-center-controls button{position:relative;width:4.8em;height:4.8em;padding:0;border:1px solid rgba(255,255,255,.2);
-  border-radius:50%;display:grid;place-items:center;background:rgba(0,0,0,.56);color:#fff;box-shadow:0 3px 16px #0007;cursor:pointer}
-.vjs-peach-center-controls button:hover,.vjs-peach-center-controls button:focus-visible{background:rgba(0,0,0,.76);border-color:rgba(255,255,255,.38)}
-.vjs-peach-center-controls button svg{width:2.45em;height:2.45em;stroke:currentColor;fill:none;stroke-width:1.9}
-.vjs-peach-center-controls button b{position:absolute;inset:0;display:grid;place-items:center;padding-top:.08em;font:700 1.05em/1 "Cascadia Mono",monospace}
-.vjs-peach-center-controls .vjs-peach-center-toggle{width:5.6em;height:5.6em}
-.vjs-peach-center-play{width:0;height:0;border-top:1.05em solid transparent;border-bottom:1.05em solid transparent;border-left:1.5em solid #fff;transform:translateX(.15em)}
-.vjs-peach-center-pause{display:none;gap:.62em}.vjs-peach-center-pause i{display:block;width:.62em;height:2.2em;border-radius:.12em;background:#fff}
+.vjs-peach-center-controls button{position:relative;width:48px;height:48px;padding:0;border:0;
+  border-radius:50%;display:grid;place-items:center;background:rgba(0,0,0,.3);color:#fff;box-shadow:none;cursor:pointer}
+.vjs-peach-center-controls button:hover,.vjs-peach-center-controls button:focus-visible{background:rgba(255,255,255,.1)}
+.vjs-peach-center-controls button:active{background:rgba(255,255,255,.2)}
+.vjs-peach-center-controls button svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.9;filter:drop-shadow(0 0 1px rgba(0,0,0,.8))}
+.vjs-peach-center-controls button b{position:absolute;inset:0;display:grid;place-items:center;padding-top:1px;font:700 var(--fs-xs)/1 "Cascadia Mono",monospace}
+.vjs-peach-center-controls .vjs-peach-center-toggle{width:56px;height:56px}
+.vjs-peach-center-play{width:0;height:0;border-top:11px solid transparent;border-bottom:11px solid transparent;border-left:16px solid #fff;transform:translateX(2px);filter:drop-shadow(0 0 1px rgba(0,0,0,.8))}
+.vjs-peach-center-pause{display:none;gap:6px}.vjs-peach-center-pause i{display:block;width:6px;height:22px;border-radius:1px;background:#fff;filter:drop-shadow(0 0 1px rgba(0,0,0,.8))}
 .vjs-peach-center-controls[data-state="pause"] .vjs-peach-center-play{display:none}
 .vjs-peach-center-controls[data-state="pause"] .vjs-peach-center-pause{display:flex}
-/* YouTube 式两排控制层：进度独占上排，底排不铺整块面板；所有图标按钮保持同一圆形和高度。 */
-.vwrap .video-js .vjs-control-bar{box-sizing:border-box;left:.8em;right:.8em;bottom:.7em;width:auto;height:7em;
-  padding:2.8em .7em .3em;display:flex;align-items:flex-end;border-radius:0;background:transparent;backdrop-filter:none}
-.vwrap .video-js .vjs-control-bar>.vjs-play-control,
-.vwrap .video-js .vjs-volume-panel>.vjs-mute-control{align-self:flex-end;width:4em;height:4em;margin:0 .18em;
-  border:1px solid rgba(255,255,255,.2);border-radius:50%;background:rgba(0,0,0,.56);box-shadow:0 1px 5px #0006}
-.vwrap .video-js .vjs-control-bar>.vjs-volume-panel{align-self:flex-end;height:4em;margin:0 .18em}
-.vwrap .video-js .vjs-volume-panel>.vjs-mute-control{margin:0}
-.vwrap .video-js .vjs-control-bar>.vjs-play-control:hover,
-.vwrap .video-js .vjs-volume-panel>.vjs-mute-control:hover{background:rgba(0,0,0,.76);border-color:rgba(255,255,255,.38)}
-.vwrap .video-js .vjs-control-bar>.vjs-picture-in-picture-control,
-.vwrap .video-js .vjs-control-bar>.vjs-peach-settings,
-.vwrap .video-js .vjs-control-bar>.vjs-peach-theater,
-.vwrap .video-js .vjs-control-bar>.vjs-fullscreen-control{align-self:flex-end;width:4em;height:4em;margin:0;
-  border:1px solid rgba(255,255,255,.2);border-radius:50%;margin-inline:.18em;
-  background:rgba(0,0,0,.56);box-shadow:0 1px 5px #0006}
-.vwrap .video-js .vjs-control-bar>.vjs-picture-in-picture-control:hover,
-.vwrap .video-js .vjs-control-bar>.vjs-peach-settings:hover,
-.vwrap .video-js .vjs-control-bar>.vjs-peach-theater:hover,
-.vwrap .video-js .vjs-control-bar>.vjs-fullscreen-control:hover{background:rgba(0,0,0,.76)}
-.vwrap .video-js .vjs-progress-control{position:absolute;left:1.2em;right:1.2em;top:.45em;width:auto;height:2.2em;
+/* YouTube `e937390a` 实测控制层：59px 控制栏、40px 左钮、右侧共享胶囊和 6px 进度命中区。 */
+.vwrap .video-js .vjs-control-bar{box-sizing:border-box;left:12px;right:12px;bottom:8px;width:auto;height:59px;
+  padding:3px 0 0;display:flex;align-items:flex-end;border-radius:0;background:transparent;backdrop-filter:none}
+.vwrap .video-js .vjs-control-bar>.vjs-play-control{position:relative;align-self:flex-end;flex:0 0 40px;width:40px;height:40px;margin:0 0 8px;
+  border:0;border-radius:50%;background:rgba(0,0,0,.3);box-shadow:none}
+.vwrap .video-js .vjs-control-bar>.vjs-play-control .vjs-icon-placeholder:before,
+.vwrap .video-js .vjs-volume-panel>.vjs-mute-control .vjs-icon-placeholder:before,
+.vwrap .video-js .vjs-peach-right-controls .vjs-icon-placeholder:before{display:grid;place-items:center;width:100%;height:100%;line-height:normal;filter:drop-shadow(0 0 1px rgba(0,0,0,.8))}
+.vjs-peach-hover{position:absolute;z-index:0;left:0;top:4px;width:100%;height:32px;border-radius:40px;pointer-events:none;
+  background:transparent;transition:background .2s cubic-bezier(.05,0,0,1)}
+.vwrap .video-js .vjs-control-bar>.vjs-play-control:hover>.vjs-peach-hover,
+.vwrap .video-js .vjs-control-bar>.vjs-play-control:focus-visible>.vjs-peach-hover,
+.vjs-peach-right-controls>.vjs-control:hover>.vjs-peach-hover,
+.vjs-peach-right-controls>.vjs-control:focus-within>.vjs-peach-hover{background:rgba(255,255,255,.1)}
+.vwrap .video-js .vjs-control-bar>.vjs-play-control:active>.vjs-peach-hover,
+.vjs-peach-right-controls>.vjs-control:active>.vjs-peach-hover{background:rgba(255,255,255,.2)}
+.vwrap .video-js .vjs-control-bar>.vjs-play-control .vjs-icon-placeholder,
+.vwrap .video-js .vjs-peach-right-controls button,.vjs-peach-settings>button,.vjs-peach-theater>button{position:relative;z-index:1}
+.vwrap .video-js .vjs-control-bar>.vjs-volume-panel{box-sizing:border-box;position:relative;align-self:flex-end;flex:0 0 40px;width:40px;height:40px!important;
+  margin:0 0 8px 12px;padding:0;border:0;border-radius:28px;background:rgba(0,0,0,.3);box-shadow:none;
+  overflow:hidden;transition:width .2s cubic-bezier(0,0,.2,1),flex-basis .2s cubic-bezier(0,0,.2,1),padding-right .2s cubic-bezier(0,0,.2,1)}
+.vwrap .video-js .vjs-control-bar>.vjs-volume-panel:hover,
+.vwrap .video-js .vjs-control-bar>.vjs-volume-panel:focus-within{flex-basis:111px;width:111px;padding-right:16px}
+.vwrap .video-js .vjs-volume-panel>.vjs-mute-control{flex:0 0 40px;width:40px;height:40px;margin:0;border:0;background:transparent}
+.vwrap .video-js .vjs-volume-panel>.vjs-volume-control.vjs-volume-horizontal{display:block;flex:0 0 52px;width:52px;height:40px;margin:0 3px 0 0;opacity:1;visibility:visible}
+.vwrap .video-js .vjs-volume-panel .vjs-volume-bar.vjs-slider-horizontal{width:52px;height:3px;margin:18.5px 0;background:rgba(255,255,255,.3)}
+.vwrap .video-js .vjs-volume-panel .vjs-volume-level{height:3px;background:#fff}
+.vwrap .video-js .vjs-volume-panel .vjs-volume-level:before{top:-4.5px;right:-6px;width:12px;height:12px;font-size:0;border-radius:50%;background:#fff}
+.vjs-peach-right-controls{box-sizing:border-box;position:relative;align-self:flex-end;flex:0 0 auto;height:40px;margin:0 0 8px;
+  padding:0 4px;display:flex;align-items:center;border:0;border-radius:28px;background:rgba(0,0,0,.3);box-shadow:none;
+  overflow:visible;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+.vwrap .video-js .vjs-peach-right-controls>.vjs-control{box-sizing:border-box;position:relative;flex:0 0 48px;width:48px!important;min-width:48px;height:40px!important;
+  margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;color:#fff}
+.vwrap .video-js .vjs-peach-right-controls>.vjs-control>button{width:100%;height:100%;margin:0;padding:0;border:0;background:transparent;color:inherit}
+.vwrap .video-js .vjs-peach-right-controls>.vjs-control:focus,
+.vwrap .video-js .vjs-peach-right-controls>.vjs-control:focus-visible,
+.vwrap .video-js .vjs-peach-right-controls>.vjs-control>button:focus,
+.vwrap .video-js .vjs-peach-right-controls>.vjs-control>button:focus-visible{outline:0;box-shadow:none}
+.vwrap .video-js .vjs-progress-control{position:absolute;left:0;right:0;top:0;width:auto;height:6px;
   min-width:0;display:flex;align-items:center}
-.vwrap .video-js .vjs-progress-control .vjs-progress-holder{width:100%;height:.35em;margin:0;border-radius:var(--pill-radius);background:rgba(255,255,255,.28);transition:height .1s ease}
-.vwrap .video-js .vjs-progress-control:hover .vjs-progress-holder{height:.55em}
-.vwrap .video-js .vjs-load-progress{background:rgba(255,255,255,.36)}
-.vwrap .video-js .vjs-load-progress div{background:rgba(255,255,255,.16)}
+.vwrap .video-js .vjs-progress-control .vjs-progress-holder{width:100%;height:3px;margin:0;border-radius:0;background:rgba(40,40,40,.6);transition:height .1s cubic-bezier(.4,0,1,1)}
+.vwrap .video-js .vjs-progress-control:hover .vjs-progress-holder,.vwrap .video-js .vjs-progress-control:focus-within .vjs-progress-holder{height:4px}
+.vwrap .video-js .vjs-load-progress{background:rgba(255,255,255,.4)}
+.vwrap .video-js .vjs-load-progress div{background:rgba(255,255,255,.2)}
 .vwrap .video-js .vjs-play-progress{background:var(--tungsten)}
-.vwrap .video-js .vjs-play-progress:before{content:"";position:absolute;right:-.58em;top:50%;width:1.16em;height:1.16em;
-  border-radius:50%;background:var(--tungsten);transform:translateY(-50%);box-shadow:0 1px 4px #0008}
+.vwrap .video-js .vjs-play-progress:before{content:"";position:absolute;right:-6px;top:50%;width:12px;height:12px;
+  border-radius:50%;background:var(--tungsten);transform:translateY(-50%) scale(0);box-shadow:none;transition:transform .1s cubic-bezier(.4,0,1,1)}
+.vwrap .video-js .vjs-progress-control:hover .vjs-play-progress:before,.vwrap .video-js .vjs-progress-control:focus-within .vjs-play-progress:before{transform:translateY(-50%) scale(1)}
 .vwrap .video-js .vjs-mouse-display .vjs-time-tooltip{display:none}
 .vjs-peach-seek-preview{position:absolute;z-index:4;bottom:calc(100% + 10px);transform:translateX(-50%);
   display:flex;flex-direction:column;align-items:center;pointer-events:none;color:#fff}
@@ -1047,45 +1067,49 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vjs-peach-seek-preview span{min-width:58px;margin-top:8px;padding:6px 10px;border-radius:var(--pill-radius);
   background:rgba(0,0,0,.68);font-size:var(--fs-sm);font-weight:700;line-height:1;text-align:center;box-shadow:0 2px 8px #0006}
 .vwrap .video-js .vjs-custom-control-spacer{display:block;flex:1 1 auto}
-.vwrap .video-js .vjs-time-control{align-self:flex-end;height:4em;padding:0;font-size:var(--fs-xs);line-height:4em;background:rgba(0,0,0,.56)}
-.vwrap .video-js .vjs-current-time{display:flex;margin-left:.35em;padding-left:1em;border:1px solid rgba(255,255,255,.2);border-right:0;border-radius:2em 0 0 2em}
-.vwrap .video-js .vjs-time-divider{display:flex;min-width:auto;padding:0 .25em;border-top:1px solid rgba(255,255,255,.2);border-bottom:1px solid rgba(255,255,255,.2)}
-.vwrap .video-js .vjs-duration{display:flex;padding-right:1em;border:1px solid rgba(255,255,255,.2);border-left:0;border-radius:0 2em 2em 0}
-.vjs-peach-settings,.vjs-peach-theater{position:relative;flex:0 0 auto;width:4em!important;min-width:4em}
-.vjs-peach-settings>button,.vjs-peach-theater>button{position:relative;width:100%;height:100%;padding:0;border:0;background:transparent;color:inherit;cursor:pointer;display:grid;place-items:center}
-.vjs-peach-settings>button>svg,.vjs-peach-theater>button>svg{width:2.1em;height:2.1em;stroke:currentColor;fill:none;stroke-width:2}
-.vjs-peach-settings [data-player-quality-badge]{position:absolute;right:.15em;top:.05em;min-width:1.7em;height:1.2em;padding:0 .2em;
-  display:grid;place-items:center;border-radius:.2em;background:#f03;color:#fff;font-size:.72em;font-weight:800;line-height:1}
+.vwrap .video-js .vjs-time-control{align-self:flex-end;height:56px;padding:8px 0;margin:0;font-size:var(--fs-sm);line-height:40px;background:transparent}
+.vwrap .video-js .vjs-current-time{display:flex;margin-left:4px;padding-left:8px;border:0;border-radius:0}
+.vwrap .video-js .vjs-time-divider{display:flex;min-width:auto;padding:8px 3px;border:0}
+.vwrap .video-js .vjs-duration{display:flex;padding-right:8px;border:0;border-radius:0}
+.vjs-peach-settings,.vjs-peach-theater{position:relative;flex:0 0 48px;width:48px!important;min-width:48px}
+.vjs-peach-settings>button,.vjs-peach-theater>button{width:100%;height:100%;padding:0;border:0;background:transparent;color:inherit;cursor:pointer;display:grid;place-items:center}
+.vjs-peach-settings>button>svg,.vjs-peach-theater>button>svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;filter:drop-shadow(0 0 1px rgba(0,0,0,.8))}
+.vjs-peach-settings [data-player-quality-badge]{position:absolute;z-index:2;right:4px;top:1px;min-width:17px;height:12px;padding:0 2px;
+  display:grid;place-items:center;border-radius:2px;background:#f03;color:#fff;font-size:var(--fs-xs);font-weight:800;line-height:1;transform:scale(.67);transform-origin:top right}
 .vjs-peach-settings [data-player-quality-badge][hidden]{display:none}
-.vjs-peach-settings-menu{position:absolute;right:-4.5em;bottom:calc(100% + 12px);width:min(34em,calc(100vw - 28px));max-height:min(42em,calc(100vh - 130px));overflow:auto;
-  padding:.8em;border:1px solid rgba(255,255,255,.2);border-radius:2.2em;background:rgba(25,25,25,.82);box-shadow:0 12px 36px #0009;backdrop-filter:blur(18px) saturate(1.2)}
+.vjs-peach-settings-menu{box-sizing:border-box;position:absolute;z-index:5;right:-100px;bottom:52px;width:min(274px,calc(100vw - 28px));max-height:min(420px,calc(100vh - 130px));overflow:auto;
+  padding:8px;border:0;border-radius:12px;background:rgba(0,0,0,.6);box-shadow:none;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  color:#fff;text-shadow:0 0 1px rgba(0,0,0,.8);font:400 var(--fs-md)/1.3 Arial,sans-serif}
 .vjs-peach-settings-menu[hidden]{display:none}
-.vjs-peach-settings-menu button{box-sizing:border-box;width:100%;min-height:5.8em;padding:0 1.4em;border:0;border-radius:1.3em;background:transparent;color:#fff;font:inherit;cursor:pointer}
-.vjs-peach-settings-menu button:hover,.vjs-peach-settings-menu button:focus-visible{background:rgba(255,255,255,.14)}
-.vjs-peach-menu-row{display:grid;grid-template-columns:3.2em minmax(0,1fr) auto 1.5em;gap:.8em;align-items:center;text-align:left}
-.vjs-peach-menu-row>svg{width:2.6em;height:2.6em;stroke:currentColor;fill:none}.vjs-peach-menu-row>span{font-size:1.55em}.vjs-peach-menu-row>b{font-size:1.35em;font-weight:400;color:#ddd;white-space:nowrap}
-.vjs-peach-menu-row[data-player-ambient]{grid-template-columns:3.2em minmax(0,1fr) auto}.vjs-peach-switch{position:relative;width:4.4em;height:2.6em;border-radius:1.5em;background:rgba(255,255,255,.32)}
-.vjs-peach-switch:after{content:"";position:absolute;top:.3em;left:.3em;width:2em;height:2em;border-radius:50%;background:#fff;transition:transform .14s ease}
-.vjs-peach-menu-row[aria-checked="true"] .vjs-peach-switch{background:var(--tungsten)}.vjs-peach-menu-row[aria-checked="true"] .vjs-peach-switch:after{transform:translateX(1.8em)}
-.vjs-peach-menu-back{display:flex;align-items:center;gap:1em;text-align:left;border-bottom:1px solid rgba(255,255,255,.14)!important;border-radius:1.3em 1.3em 0 0!important}
-.vjs-peach-menu-back svg{width:2.2em;height:2.2em}.vjs-peach-menu-back span{font-size:1.55em;font-weight:600}
-.vjs-peach-menu-option{display:flex;align-items:center;justify-content:space-between;text-align:left;font-size:1.35em!important}
-.vjs-peach-menu-option span,.vjs-peach-menu-option svg{width:1.5em;height:1.5em}
+.vjs-peach-settings-menu button{box-sizing:border-box;width:100%;min-height:48px;padding:0 8px;border:0;border-radius:8px;background:transparent;color:#fff;font:inherit;cursor:pointer}
+.vjs-peach-settings-menu button:hover,.vjs-peach-settings-menu button:focus-visible{background:rgba(255,255,255,.1);outline:0}
+.vjs-peach-settings-menu button:active{background:rgba(255,255,255,.2)}
+.vjs-peach-menu-row{display:grid;grid-template-columns:56px minmax(0,1fr) auto 18px;gap:0;align-items:center;text-align:left}
+.vjs-peach-menu-row>svg{justify-self:center;width:24px;height:24px;stroke:currentColor;fill:none}.vjs-peach-menu-row>span{font-size:var(--fs-md)}.vjs-peach-menu-row>b{padding-left:8px;font-size:var(--fs-md);font-weight:400;color:rgba(255,255,255,.7);white-space:nowrap}
+.vjs-peach-menu-row>svg:last-child{width:18px;height:18px;color:rgba(255,255,255,.7)}
+.vjs-peach-menu-row[data-player-ambient]{grid-template-columns:56px minmax(0,1fr) auto}.vjs-peach-switch{position:relative;width:40px;height:24px;border-radius:12px;background:rgba(255,255,255,.3)}
+.vjs-peach-switch:after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:none;transition:transform .2s cubic-bezier(.05,0,0,1)}
+.vjs-peach-menu-row[aria-checked="true"] .vjs-peach-switch{background:rgba(255,255,255,.3)}.vjs-peach-menu-row[aria-checked="true"] .vjs-peach-switch:after{transform:translateX(16px)}
+.vjs-peach-menu-back{display:flex;align-items:center;gap:16px;text-align:left;border:0!important;border-radius:8px!important}
+.vjs-peach-menu-back svg{width:24px;height:24px}.vjs-peach-menu-back span{font-size:var(--fs-md);font-weight:600}
+.vjs-peach-menu-option{display:flex;align-items:center;justify-content:space-between;text-align:left;font-size:var(--fs-md)!important}
+.vjs-peach-menu-option span,.vjs-peach-menu-option svg{width:18px;height:18px}
 .vjs-peach-tooltip{position:absolute;right:50%;bottom:calc(100% + 1em);transform:translateX(50%);display:none;align-items:center;gap:.45em;padding:.65em .85em;border-radius:.75em;background:rgba(40,40,40,.88);box-shadow:0 4px 14px #0007;white-space:nowrap;font-size:1.25em;font-weight:600;pointer-events:none}
 .vjs-peach-tooltip kbd{display:inline-grid;place-items:center;min-width:1.55em;height:1.55em;border:1px solid rgba(255,255,255,.42);border-radius:.35em;font:inherit}
 .vjs-peach-theater>button:hover .vjs-peach-tooltip,.vjs-peach-theater>button:focus-visible .vjs-peach-tooltip{display:flex}
-.vjs-peach-theater>button[aria-pressed="true"]{background:color-mix(in srgb,var(--tungsten) 72%,#000)}
+.vjs-peach-theater>button[aria-pressed="true"]{color:var(--tungsten)}
 @media (max-width:640px){
-  .vwrap .video-js .vjs-control-bar{left:.4em;right:.4em;bottom:.4em;height:6.6em;padding:2.5em .15em .15em}
+  .vwrap .video-js .vjs-control-bar{left:8px;right:8px;bottom:6px;height:59px;padding:3px 0 0}
   .vwrap .video-js .vjs-progress-control,.vwrap .video-js.vjs-layout-tiny .vjs-progress-control,
-  .vwrap .video-js.vjs-layout-x-small .vjs-progress-control{left:.8em;right:.8em;top:.35em;height:2em;display:flex}
+  .vwrap .video-js.vjs-layout-x-small .vjs-progress-control{left:0;right:0;top:0;height:6px;display:flex}
   .vwrap .video-js.vjs-layout-small .vjs-current-time,.vwrap .video-js.vjs-layout-small .vjs-duration,
   .vwrap .video-js.vjs-layout-small .vjs-time-divider{display:flex}
-  .vwrap .video-js .vjs-time-control{font-size:1em}
+  .vwrap .video-js .vjs-time-control{font-size:var(--fs-xs)}
+  .vjs-peach-right-controls>.vjs-picture-in-picture-control{display:none}
   .vjs-peach-seek-preview img{width:160px}
-  .vjs-peach-center-controls{gap:.8em}.vjs-peach-center-controls button{width:4em;height:4em}
-  .vjs-peach-center-controls .vjs-peach-center-toggle{width:4.8em;height:4.8em}
-  .vjs-peach-settings-menu{right:-8.7em;width:min(31em,calc(100vw - 16px));border-radius:1.7em}
+  .vjs-peach-center-controls{gap:8px}.vjs-peach-center-controls button{width:40px;height:40px}
+  .vjs-peach-center-controls .vjs-peach-center-toggle{width:48px;height:48px}
+  .vjs-peach-settings-menu{right:-100px;width:min(274px,calc(100vw - 16px));border-radius:12px}
 }
 .vwrap .video-js.vjs-error .vjs-error-display .vjs-modal-dialog-content{
   display:flex;align-items:center;justify-content:center;padding:56px 24px;text-align:center;overflow-wrap:anywhere}
@@ -1094,11 +1118,12 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vwrap>.video-js.vjs-fullscreen .vjs-tech,.video-js.vjs-fullscreen .vjs-tech{
   width:100%;height:100%;object-fit:contain}
 .playerstatsbtn{position:absolute;left:11px;top:11px;z-index:8;width:40px;height:40px;padding:0;
-  display:grid;place-items:center;border:1px solid rgba(255,255,255,.2);border-radius:50%;
-  background:rgba(0,0,0,.56);color:#fff;cursor:pointer;box-shadow:0 1px 5px #0006}
-.playerstatsbtn[hidden]{display:none}.playerstatsbtn:hover{background:rgba(0,0,0,.76);border-color:rgba(255,255,255,.38)}
-.playerstatsbtn[aria-pressed="true"]{background:rgba(0,149,246,.72)}
-.playerstatsbtn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
+  display:grid;place-items:center;border:0;border-radius:50%;
+  background:rgba(0,0,0,.3);color:#fff;cursor:pointer;box-shadow:none}
+.playerstatsbtn[hidden]{display:none}.playerstatsbtn:hover,.playerstatsbtn:focus-visible{background:rgba(255,255,255,.1);outline:0}
+.playerstatsbtn:active{background:rgba(255,255,255,.2)}
+.playerstatsbtn[aria-pressed="true"]{color:var(--tungsten)}
+.playerstatsbtn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;filter:drop-shadow(0 0 1px rgba(0,0,0,.8))}
 .playerstats{position:absolute;left:11px;top:58px;z-index:8;min-width:320px;max-width:min(520px,calc(100% - 22px));
   padding:10px 12px;border:1px solid rgba(255,255,255,.18);border-radius:8px;
   background:rgba(2,4,8,.78);color:#eef3f8;box-shadow:0 12px 28px #0008;
@@ -1106,17 +1131,18 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .playerstats dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:1px 12px;margin:0}.playerstats dt{text-align:right;font-weight:700}.playerstats dd{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .playerstats[hidden]{display:none}
 .playernet{box-sizing:border-box;position:absolute;left:58px;top:11px;z-index:8;height:40px;min-height:40px;padding:0 11px;
-  display:flex;align-items:center;border:1px solid rgba(255,255,255,.18);border-radius:8px;
-  background:rgba(0,0,0,.46);color:#fff;backdrop-filter:blur(10px);font:var(--fs-xs)/1 "Cascadia Mono",monospace}
+  display:flex;align-items:center;border:0;border-radius:12px;
+  background:rgba(0,0,0,.6);color:#fff;box-shadow:none;backdrop-filter:blur(16px);font:var(--fs-xs)/1 "Cascadia Mono",monospace}
 .playernet[hidden]{display:none}
 .gate{aspect-ratio:16/9;width:100%;background:var(--sunk);border:1px dashed var(--meter);
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer}
 .closestage{position:absolute;top:11px;right:11px;z-index:9;width:40px;height:40px;
-  background:color-mix(in srgb,#000 68%,transparent);color:#F0E9DE;
-  border:1px solid rgba(255,255,255,.24);border-radius:50%;padding:0;cursor:pointer;
+  background:rgba(0,0,0,.3);color:#F0E9DE;
+  border:0;border-radius:50%;padding:0;cursor:pointer;box-shadow:none;
   display:grid;place-items:center}
-.closestage:hover{background:var(--drop);border-color:var(--drop)}
-.closestage svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
+.closestage:hover,.closestage:focus-visible{background:rgba(255,255,255,.1);outline:0}
+.closestage:active{background:rgba(255,255,255,.2)}
+.closestage svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;filter:drop-shadow(0 0 1px rgba(0,0,0,.8))}
 .side{min-width:0;min-height:0;align-self:stretch;border-left:1px solid var(--line-soft);overflow:hidden;
   background:color-mix(in srgb,var(--video-glow,#15202a) 12%,var(--surface) 88%);backdrop-filter:blur(18px)}
 /* 背景属于整列，滚动属于内容。两者不能放在同一层，否则 76vh 会把在线占位、
