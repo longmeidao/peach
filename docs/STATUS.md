@@ -23,6 +23,7 @@ undefine
 - FastAPI 是唯一 Web server；Ledger 保存资产、规范身份、行为和复核决定。Stash 与 CloudDrive 都经适配层进入，扁平 creator/studio/tag 字段只作兼容投影。
 - 本地浏览器支持 MP4/WebM/Ogg；AVI 等由 `TranscodeService` 缓存成 H.264/AAC MP4。远端 MP4 默认走标准 Range，显式 HLS 使用关键帧对齐片段，失败会回退 Range，永不改写原媒体。
 - 首页、详情、实体资料、标签管理、照片、播放列表、统计、口味、复核、回收站、关注管理和关注观看共用同一 SPA 与 JSON 契约；桌面和 390×844 手机均在验收范围内。
+- 2026-08-30 「管理 → 垃圾文件」已有独立 `/junk-files` 路由，并按视频、图片、压缩包、音频、网址和其它文件分类；所有卡片都直接提供「不是垃圾」与「移入回收站」，视频不复用馆藏标记控件。「不是垃圾」按 asset 保存为可撤销的复核决定，可在「已排除」中重新判断，不扩散成来源或域名白名单。真实压缩包分类只读实测 6 项，其中 5 个 `Mib19.com*.zip`，桌面与 390×844 手机布局、44px 手机操作按钮、路由空态和控制台均已验收；未点击操作、未写真实 ledger。
 - 普通多女优卡片叠放前 3 个头像，只显示第一位姓名和真实总人数；JAV 小图是整页版式，混入的非番号作品也统一为标题、身份、标签三行固定高度，大小保留在身份行，超出逐行省略。详情与沉浸模式仍保留完整或扩展后的出演信息。
 - 当前源码的在线追更支持 FANBOX、Patreon、SubscribeStar、kemono/coomer/pawchive、rule34video、rule34.xxx、Rule34 Paheal 和 f95zone；FANBOX 可选 Cookie 用于公开详情被验证页拦截时复用用户会话，Gofile Premium API token 可展开 FANBOX/F95 外部文件页。两份凭据只发给各自站点。SimpCity 仍被 DDoS-Guard 阻塞，Peach 不绕过机器人验证。官方渠道只读取公开免费发布，不绕过登录或付费墙。
 - Rule34.xxx 来源 ref 大小写不敏感；迁移会合并分批添加造成的重复来源并保留条目状态。F95 的 `Collection(s)` 后缀不进入作者名，五个来源可归到同一作者组。

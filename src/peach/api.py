@@ -780,6 +780,7 @@ def create_app(
     @app.api_route("/unseen", methods=["GET", "HEAD"])
     @app.api_route("/watch-later", methods=["GET", "HEAD"])
     @app.api_route("/flagged", methods=["GET", "HEAD"])
+    @app.api_route("/junk-files", methods=["GET", "HEAD"])
     @app.api_route("/stats", methods=["GET", "HEAD"])
     @app.api_route("/immerse", methods=["GET", "HEAD"])
     @app.api_route("/trash", methods=["GET", "HEAD"])

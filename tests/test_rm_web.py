@@ -88,6 +88,10 @@ CREATE TABLE asset_tag_preference(profile_id TEXT,asset_id INTEGER,normalized_ta
 CREATE TABLE media_binding(asset_id INTEGER,backend TEXT,external_id TEXT,metadata_json TEXT,
   last_synced_at TEXT,PRIMARY KEY(asset_id,backend));
 CREATE TABLE activity_event(id INTEGER PRIMARY KEY,asset_id INTEGER,kind TEXT,created_at TEXT);
+CREATE TABLE review_decision(
+  category TEXT,item_key TEXT,status TEXT,note TEXT,updated_at TEXT,
+  PRIMARY KEY(category,item_key)
+);
 """
 
 
