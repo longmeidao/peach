@@ -21,7 +21,10 @@ import {
   LOC,
 } from './js/core.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
-import { emptyStateHtml, noteHtml, progressHtml, scrollerHtml, wireScrollers } from './js/ui-components.js';
+import {
+  emptyStateHtml, loadingDotsHtml, noteHtml, progressHtml, scrollerHtml,
+  spinnerHtml, wireScrollers,
+} from './js/ui-components.js';
 
 initMiddleTruncate(document);
 
@@ -109,16 +112,27 @@ function syncSettingsPanel(){
   renderSidebarOrderSetting();
   loadFollowScheduleSetting();
 }
-let settingsReturnFocus=null;
+let settingsReturnFocus=null,settingsTransition=0;
 function openSettings(open=true){
   const panel=$('#settingsPanel');
   if(open){
-    settingsReturnFocus=document.activeElement;panel.hidden=false;document.body.classList.add('settings-open');syncSettingsPanel();
+    settingsTransition++;panel.classList.remove('closing');
+    settingsReturnFocus=settingsReturnFocus||document.activeElement;panel.hidden=false;document.body.classList.add('settings-open');syncSettingsPanel();
     queueMicrotask(()=>$('#settingsClose').focus());return
   }
-  panel.hidden=true;document.body.classList.remove('settings-open');
-  if(settingsReturnFocus&&document.contains(settingsReturnFocus))settingsReturnFocus.focus();
-  settingsReturnFocus=null;
+  if(panel.hidden||panel.classList.contains('closing'))return;
+  const transition=++settingsTransition;panel.classList.add('closing');
+  const finish=()=>{
+    if(transition!==settingsTransition||!panel.classList.contains('closing'))return;
+    panel.hidden=true;panel.classList.remove('closing');document.body.classList.remove('settings-open');
+    if(settingsReturnFocus&&document.contains(settingsReturnFocus))settingsReturnFocus.focus();
+    settingsReturnFocus=null;
+  };
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches)queueMicrotask(finish);
+  else{
+    panel.querySelector('.settingscard')?.addEventListener('animationend',finish,{once:true});
+    setTimeout(finish,380);
+  }
 }
 $('#settingsBtn').onclick=()=>openSettings(true);$('#settingsClose').onclick=()=>openSettings(false);
 $('#settingsPanel').onclick=e=>{if(e.target===$('#settingsPanel'))openSettings(false)};
@@ -148,7 +162,7 @@ const followScheduleCopy=status=>{
 };
 async function loadFollowScheduleSetting(){
   const select=$('#followScheduleSetting'),state=$('#followScheduleState'),request=++followScheduleRequest;
-  select.disabled=true;
+  select.disabled=true;state.innerHTML=loadingDotsHtml('正在读取状态');
   try{
     const status=await api('/api/follow/schedule');if(request!==followScheduleRequest)return;
     select.value=status.enabled?String(status.interval_minutes):'0';
@@ -156,7 +170,8 @@ async function loadFollowScheduleSetting(){
   }catch(error){if(request===followScheduleRequest)state.textContent=`状态未取得：${error.message||error}`}
 }
 $('#followScheduleSetting').onchange=async e=>{
-  const minutes=+e.target.value,state=$('#followScheduleState');e.target.disabled=true;state.textContent='正在保存…';
+  const minutes=+e.target.value,state=$('#followScheduleState');e.target.disabled=true;
+  state.innerHTML=`${spinnerHtml('保存中')}<span>正在保存…</span>`;
   try{
     const status=await api('/api/follow/schedule',{method:'POST',body:JSON.stringify({enabled:minutes>0,interval_minutes:minutes||60})});
     state.textContent=followScheduleCopy(status);
@@ -1096,8 +1111,7 @@ async function wireResourceSync(){
   const active=()=>location.pathname==='/stats'&&!$('#stats').hidden&&document.body.contains(result);
   const setBusy=(busy,done=false)=>{
     scan.disabled=busy;scan.setAttribute('aria-busy',String(busy));
-    scan.classList.toggle('busy',busy);
-    scan.innerHTML=`${icon('refresh-cw')}<span>${busy?'扫描中':done?'重新扫描':'扫描差异'}</span>`;
+    scan.innerHTML=`${busy?spinnerHtml('扫描中'):icon('refresh-cw')}<span>${busy?'扫描中':done?'重新扫描':'扫描差异'}</span>`;
   };
   const render=payload=>{
     const sources=payload.sources||[];
@@ -1114,24 +1128,24 @@ async function wireResourceSync(){
     $('#resourceApply')?.addEventListener('click',async event=>{
       const button=event.currentTarget;
       if(!confirm(`把 ${payload.missing||0} 项移入回收站，并清理 ${cache.files||0} 个可重建缓存？`))return;
-      button.disabled=true;button.classList.add('busy');
-      button.innerHTML=`${icon('refresh-cw')}<span>正在重新核对并应用…</span>`;
+      button.disabled=true;button.setAttribute('aria-busy','true');
+      button.innerHTML=`${spinnerHtml('正在应用')}<span>正在重新核对并应用…</span>`;
       try{
         const applied=await api('/api/resource-sync/apply',{method:'POST',body:JSON.stringify({confirm:true,clean_cache:true,scan_id:payload.scan_id||''})});
         result.innerHTML=`<p class="resourcesyncok">已把 ${applied.moved_to_trash.toLocaleString()} 项移入回收站，清理 ${applied.cache_removed.toLocaleString()} 个缓存，释放 ${fmtSize(applied.bytes_reclaimed||0)}。</p>`;
       }catch(error){
-        button.disabled=false;button.classList.remove('busy');
+        button.disabled=false;button.removeAttribute('aria-busy');
         button.innerHTML=`${icon('refresh-cw')}<span>重试同步</span>`;
         result.insertAdjacentHTML('beforeend',noteHtml(error.message,{variant:'error',label:'同步失败'}))}
     });
   };
   const followScan=async payload=>{
-    setBusy(true);result.innerHTML='<p class="resourcescanning">正在后台核对网盘元数据，不会读取视频内容。</p>';
+    setBusy(true);result.innerHTML=`<p class="resourcescanning">${loadingDotsHtml('正在后台核对网盘元数据，不会读取视频内容。')}</p>`;
     try{
       if(!payload)payload=await api('/api/resource-sync/scan',{method:'POST',body:JSON.stringify({background:true,restart:true})});
       while(payload.status==='running'){
         const done=payload.sources||[];
-        result.innerHTML=`<p class="resourcescanning">后台扫描中：已完成 ${payload.completed_sources||0} / ${payload.total_sources||3} 个来源${done.length?`（${done.map(source=>esc(LOC[source.location]||source.location)).join('、')}）`:''}。离开本页不会中断。</p>`;
+        result.innerHTML=`<p class="resourcescanning">${loadingDotsHtml(`后台扫描中：已完成 ${payload.completed_sources||0} / ${payload.total_sources||3} 个来源${done.length?`（${done.map(source=>LOC[source.location]||source.location).join('、')}）`:''}。离开本页不会中断。`)}</p>`;
         await new Promise(resolve=>setTimeout(resolve,2000));
         if(!active())return;
         payload=await api('/api/resource-sync/scan',{method:'POST',body:JSON.stringify({background:true})});
@@ -1226,11 +1240,14 @@ function renderTaste(d){
   root.querySelector('[data-taste-window]').value=d.window||tasteWindow;
   root.querySelector('[data-taste-window]').onchange=e=>{tasteWindow=e.target.value;openTaste(false)};
   root.querySelector('[data-taste-refresh]').onclick=async e=>{const button=e.currentTarget;
-    button.disabled=true;button.classList.add('busy');
-    stateEl.textContent='正在读取 Peach 所在主机的浏览器…';
+    const oldButton=button.innerHTML;
+    button.disabled=true;button.setAttribute('aria-busy','true');
+    button.innerHTML=`${spinnerHtml('正在读取')}<span>读取中…</span>`;
+    stateEl.innerHTML=loadingDotsHtml('正在读取 Peach 所在主机的浏览器…');
     try{const result=await api('/api/taste/refresh',{method:'POST',body:JSON.stringify({window:tasteWindow})});
       tasteCache.set(tasteWindow,result.dashboard);renderTaste(result.dashboard)}
-    catch(error){stateEl.textContent=error.message||'读取失败';button.disabled=false;button.classList.remove('busy')}};
+    catch(error){stateEl.textContent=error.message||'读取失败';button.disabled=false;
+      button.removeAttribute('aria-busy');button.innerHTML=oldButton}};
   root.querySelector('[data-taste-import]').onclick=()=>file.click();
   file.onchange=async()=>{const selected=file.files[0];if(!selected)return;stateEl.textContent=`正在导入 ${selected.name}…`;
     try{const response=await fetch('/api/taste/import',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Peach-Filename':encodeURIComponent(selected.name)},body:selected});
@@ -1363,7 +1380,7 @@ async function openDuplicates(push=true){
   buildManageBar();
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';$('#count').textContent='';
   $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
-  $('#stats').innerHTML='<div class="review"><p class="empty">正在比对…</p></div>';
+  $('#stats').innerHTML=`<div class="review"><p class="empty">${loadingDotsHtml('正在比对')}</p></div>`;
   const next=await api('/api/duplicates?limit=120');
   if(!surfaceCurrent(surface))return;
   dupData=next;
@@ -1577,7 +1594,7 @@ async function openQualityGoals(push=true){
   const surface=claimSurface('/quality-goals');
   buildManageBar();$('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
   $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
-  $('#stats').innerHTML='<div class="review"><p class="empty">正在读取…</p></div>';
+  $('#stats').innerHTML=`<div class="review"><p class="empty">${loadingDotsHtml('正在读取')}</p></div>`;
   const next=await api('/api/quality-goals?limit=200');
   if(!surfaceCurrent(surface))return;
   qualityData=next;
@@ -1634,7 +1651,9 @@ function mergeFollowGroups(existing,incoming){
 }
 async function loadMoreFollow(button){
   if(!followData||followBusy)return;
-  followBusy=true;if(button)button.classList.add('busy');
+  followBusy=true;
+  const oldButton=button?.innerHTML;
+  if(button){button.setAttribute('aria-busy','true');button.innerHTML=`${spinnerHtml('加载更多')}<span>加载中…</span>`}
   try{
     const next=await api(followPageUrl((followData.offset||0)+FOLLOW_PAGE));
     followData={...next,
@@ -1642,7 +1661,7 @@ async function loadMoreFollow(button){
       // counts 一直是全库口径，用新的那份即可；offset/has_more 跟着最新一页走。
       sources:next.sources||followData.sources};
     renderFollow();
-  }finally{followBusy=false;if(button)button.classList.remove('busy')}
+  }finally{followBusy=false;if(button){button.removeAttribute('aria-busy');button.innerHTML=oldButton}}
 }
 let followCredentialProviders=new Set();
 /* 上一次检查的结果。检查完页面会整页重画，如果不把结果留在这里，用户看到的就只是
@@ -1993,7 +2012,9 @@ function followCheckBits(report){
 function followCheckToast(report){
   const {rows,bits}=followCheckBits(report);
   const failed=rows.filter(r=>!r.ok).length;
+  const exhausted=rows.filter(r=>r.exhausted).length;
   toast(`检查了 <b>${rows.length}</b> 个来源：${bits.join(' · ')}`+
+    (exhausted?` · <b>${exhausted} 个没有更多内容</b>`:'')+
     (failed?` · <b>${failed} 个失败</b>`:''),
     {warn:!!failed,timeout:failed?8000:6000,
      action:{label:'去看更新',run:()=>openFollow()}});
@@ -2004,15 +2025,23 @@ function followCheckToast(report){
 function followCheckFailNote(report){
   const rows=report.results||[];
   const failed=rows.filter(r=>!r.ok);
+  const exhausted=rows.filter(r=>r.exhausted);
   const evidence=rows.filter(r=>r.evidence_error);
-  if(!failed.length&&!evidence.length)return '';
-  return `<div class="geist-note geist-note-error fcheckreport" role="alert">${icon('alert')}<div>
-    <p><b>${failed.length} 个来源检查失败</b></p>
+  if(!failed.length&&!evidence.length&&!exhausted.length)return '';
+  const dismiss=`<button type="button" class="wclose" data-follow-report-dismiss
+    aria-label="关闭检查结果">${icon('x')}</button>`;
+  const ended=exhausted.length?`<div class="geist-note geist-note-secondary fcheckreport neutral" role="note">
+    ${icon('info')}<div><p><b>${exhausted.length} 个来源没有更多内容</b></p>
+    ${exhausted.map(row=>`<p class="fchecknote">${esc([row.provider_label||row.provider,row.ref]
+      .filter(Boolean).join(' '))}：没有更多历史内容</p>`).join('')}</div>${dismiss}</div>`:'';
+  const errors=failed.length||evidence.length?`<div class="geist-note geist-note-error fcheckreport" role="alert">${icon('alert')}<div>
+    ${failed.length?`<p><b>${failed.length} 个来源检查失败</b></p>`:''}
     ${failed.map(row=>`<p class="fcheckfail">${esc([row.provider_label||row.provider,row.ref]
       .filter(Boolean).join(' '))}${row.provider?'：':''}${esc(row.error||'未说明原因')}</p>`).join('')}
     ${evidence.length?`<p class="fchecknote">候选已入库，但这一次的原始响应没有留档：${
       esc(evidence[0].evidence_error)}</p>`:''}
-  </div></div>`;
+  </div>${dismiss}</div>`:'';
+  return `<div class="fcheckreports">${ended}${errors}</div>`;
 }
 
 /* ── 看的那一页 ── */
@@ -2155,8 +2184,8 @@ function wireFollowOlder(){
   if(!button)return;
   button.onclick=async()=>{
     if(followBusy)return;
-    followBusy=true;button.disabled=true;button.classList.add('busy');
-    button.innerHTML=`${icon('refresh-cw')}<span>抓取中…</span>`;
+    followBusy=true;button.setAttribute('aria-busy','true');
+    button.innerHTML=loadingDotsHtml('抓取中…');
     try{
       followCheckReport=await api('/api/follow/check',
         {method:'POST',body:JSON.stringify({older:true})});
@@ -2166,7 +2195,7 @@ function wireFollowOlder(){
       followCheckReport={results:[{ok:false,error:error.message}]};
       followCheckToast(followCheckReport);
       await openFollow(false);
-    }finally{followBusy=false}
+    }finally{followBusy=false;button.removeAttribute('aria-busy')}
   };
 }
 
@@ -2181,7 +2210,7 @@ async function openFollow(push=true,renderForDetail=false){
   $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
   $('#tiers').style.display='none';$('#tagbar').style.display='none';
   $('#managebar').hidden=true;$('#manageTitle').hidden=true;buildEdge();
-  $('#stats').innerHTML='<div class="follow"><p class="empty">正在读取…</p></div>';
+  $('#stats').innerHTML=`<div class="follow"><p class="empty">${loadingDotsHtml('正在读取')}</p></div>`;
   const [data,credentials]=await Promise.all([
     api(followPageUrl(0)),
     api('/api/follow/credentials').catch(()=>({providers:[]})),
@@ -2301,6 +2330,7 @@ function followSourceRow(source){
   /* 状态用 Geist 的低饱和徽章（取证 vercel-geist-semantics-measured.md）：
      行级状态不上实底彩色，ok 绿 tint、失败红 tint、未检查灰。 */
   const badge=state==='ok'?'ok':bad?'error':'none';
+  const stateTitle=source.history_exhausted?'没有更多历史内容':state;
   return `<div class="frow fsource${bad?' bad':''}${source.enabled?'':' disabled'}">
     <label class="fchannelcheck" title="${source.enabled?'参与检查更新':'暂停检查更新'}">
       <input type="checkbox" data-follow-enabled="${source.id}" ${source.enabled?'checked':''}
@@ -2311,7 +2341,8 @@ function followSourceRow(source){
       rel="noreferrer noopener" title="打开原来源">${esc(source.label)}</a></b>
     <span class="fmeta fprovider">${sourceIcon(source.provider)}${esc(source.provider_label)}</span>
     <span class="fmeta fchecked">${esc(source.last_checked_at?localTime(source.last_checked_at):'未检查')}</span>
-    <span class="sbadge ${badge}" title="${esc(state)}"><i aria-hidden="true"></i></span>
+    <span class="sbadge ${badge}" title="${esc(stateTitle)}"><i aria-hidden="true"></i>
+      ${source.history_exhausted?'<span>没有更多</span>':''}</span>
     <span class="fsourceactions">
       <button class="frowicon" data-follow-check="${source.id}" title="检查更新"
         ${source.enabled?'':'disabled'}
@@ -2414,8 +2445,10 @@ function renderFollowManage(credentials){
       <section class="fsec">
         <div class="fsechead"><h3>添加关注</h3></div>
         <form class="faddform" id="followAdd">
-          <textarea name="lines" rows="1" required spellcheck="false"
-            aria-label="来源链接、名字或 id"></textarea>
+          <div class="fsearchinput" data-follow-search-input>
+            <span class="fsearchprefix" data-follow-search-prefix>${icon('search')}</span>
+            <textarea name="lines" rows="1" required spellcheck="false"
+              aria-label="来源链接、名字或 id"></textarea></div>
           <div class="fsrcfilter" id="followSrcFilter"></div>
           <button class="fbtn primary" type="submit">查找</button>
         </form>
@@ -2475,7 +2508,7 @@ async function openFollowManage(push=true){
   buildManageBar();
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
   $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
-  $('#stats').innerHTML='<div class="follow"><p class="empty">正在读取…</p></div>';
+  $('#stats').innerHTML=`<div class="follow"><p class="empty">${loadingDotsHtml('正在读取')}</p></div>`;
   const [data,credentials,runtime]=await Promise.all([
     api('/api/follow?limit=1'),api('/api/follow/credentials'),api('/healthz')]);
   if(!surfaceCurrent(surface))return;
@@ -2599,17 +2632,18 @@ function wireFollowManage(){
   }
   if(form)form.onsubmit=async event=>{
     event.preventDefault();
+    if(form.dataset.busy==='true')return;
     /* 状态提示在表单外面的说明行里，不能在 form 里找——找不到就是 null，
        第一次赋值直接抛 TypeError，整个提交静默失败。 */
     const state=root.querySelector('[data-follow-add-state]');
-    const button=form.querySelector('button');
+    const button=form.querySelector('button[type="submit"]');
+    const prefix=form.querySelector('[data-follow-search-prefix]');
     const lines=String(new FormData(form).get('lines')||'').split('\n')
       .map(line=>line.trim()).filter(Boolean);
     if(!lines.length)return;
     const byName=lines.some(line=>!line.includes('/'));
-    button.disabled=true;button.classList.add('busy');
-    const oldButton=button.innerHTML;
-    button.innerHTML=`${icon('refresh-cw')}<span>查找中</span>`;
+    form.dataset.busy='true';button.setAttribute('aria-busy','true');
+    if(prefix)prefix.innerHTML=spinnerHtml('查找中');
     // 索引下载的提醒只在真按名字查时出现；常驻成一句说明就是噪音。
     state.textContent=byName?'查找中…（首次按名字查要下载创作者索引，可能几十秒）':'识别中…';
     try{
@@ -2618,7 +2652,8 @@ function wireFollowManage(){
       state.textContent='';if(box){box.value='';box.style.height='auto'}
       renderFollowPicks(result.results||[]);
     }catch(error){state.textContent=error.message||'查找失败'}
-    finally{button.disabled=false;button.classList.remove('busy');button.innerHTML=oldButton}
+    finally{form.dataset.busy='false';button.removeAttribute('aria-busy');
+      if(prefix)prefix.innerHTML=icon('search')}
   };
   root.querySelectorAll('[data-follow-remove]').forEach(button=>button.onclick=async()=>{
     if(!confirm('不再追这个来源？已经抓到的条目会一并移除，媒体本身不受影响。'))return;
@@ -2641,8 +2676,10 @@ function wireFollowManage(){
     if(followBusy)return;
     followBusy=true;const oldTitle=button.title;
     const oldAria=button.getAttribute('aria-label');
-    button.disabled=true;button.classList.add('busy');button.title='检查中…';
+    const oldButton=button.innerHTML;
+    button.setAttribute('aria-busy','true');button.title='检查中…';
     button.setAttribute('aria-label','检查中…');
+    button.innerHTML=`${spinnerHtml('检查中')}${button.matches('.frowicon')?'':'<span>检查中…</span>'}`;
     try{
       const id=button.dataset.followCheck;
       const result=await api('/api/follow/check',{method:'POST',
@@ -2658,11 +2695,11 @@ function wireFollowManage(){
       followCheckReport={results:[{ok:false,error:e.message}]};
       followCheckToast(followCheckReport);
       const note=followCheckFailNote(followCheckReport);
-      const box=$('#stats').querySelector('.fcheckreport');
-      if(box)box.outerHTML=note;
+       const box=$('#stats').querySelector('.fcheckreports');
+       if(box)box.outerHTML=note;
       else $('#stats').querySelector('.fsec')?.insertAdjacentHTML('afterbegin',note);
     }
-    finally{followBusy=false;button.disabled=false;button.classList.remove('busy');
+    finally{followBusy=false;button.removeAttribute('aria-busy');button.innerHTML=oldButton;
       button.title=oldTitle;if(oldAria===null)button.removeAttribute('aria-label');
       else button.setAttribute('aria-label',oldAria)}
   });
@@ -2742,6 +2779,8 @@ function wireFollowManage(){
   });
   root.querySelectorAll('[data-follow-view]').forEach(button=>
     button.onclick=()=>openFollow());
+  root.querySelectorAll('[data-follow-report-dismiss]').forEach(button=>button.onclick=()=>{
+    followCheckReport=null;root.querySelector('.fcheckreports')?.remove()});
 }
 
 /* 查找结果先摆出来由人勾选，不自动登记：发现要联网，结果也可能不止一个，
@@ -2756,11 +2795,11 @@ function renderFollowSrcFilter(mount){
   providers.forEach(provider=>{if(!fsrcProviders.has(provider))fsrcProviders.add(provider)});
   if(!providers.length){mount.innerHTML='';return}
   const label=()=>{const n=providers.filter(p=>!fsrcUnchecked.has(p)).length;
-    return n===providers.length?'来源：全部':`来源：${n}/${providers.length}`};
+    return n===providers.length?'全部来源':`${n}/${providers.length} 个来源`};
   mount.innerHTML=`<button type="button" class="fbtn" data-srcfilter-toggle
       aria-expanded="false" aria-haspopup="menu" aria-controls="follow-source-menu"
       aria-label="${esc(label())}" title="${esc(label())}">
-      ${icon('list-filter')}</button>
+      ${icon('list-filter')}<span data-srcfilter-label>${esc(label())}</span></button>
     <div class="fsrcmenu" id="follow-source-menu" role="menu" data-srcfilter-menu hidden>${providers.map(provider=>
       `<label><input type="checkbox" data-srcfilter="${esc(provider)}"${fsrcUnchecked.has(provider)?'':' checked'}>
         <span>${esc(provider)}</span></label>`).join('')}</div>`;
@@ -2799,6 +2838,7 @@ function renderFollowSrcFilter(mount){
     input.checked?fsrcUnchecked.delete(input.dataset.srcfilter)
       :fsrcUnchecked.add(input.dataset.srcfilter);
     toggle.setAttribute('aria-label',label());toggle.title=label();
+    toggle.querySelector('[data-srcfilter-label]').textContent=label();
     document.querySelectorAll('.fpickitem').forEach(item=>{
       item.hidden=fsrcUnchecked.has(item.dataset.provider||'')})});
 }
@@ -2851,10 +2891,11 @@ function renderFollowPicks(results){
         return !row||!row.hidden;});
     if(!picked.length)return;
     const state=box.querySelector('[data-pick-state]');
-    addButton.disabled=true;
+    if(addButton.getAttribute('aria-busy')==='true')return;
+    addButton.setAttribute('aria-busy','true');
     let done=0;const failures=[];
     for(const input of picked){
-      state.textContent=`添加中… ${++done}/${picked.length}`;
+      state.innerHTML=`${spinnerHtml('添加中')}<span>添加中… ${++done}/${picked.length}</span>`;
       try{
         await api('/api/follow/source',{method:'POST',body:JSON.stringify(
           {action:'add',url:input.value,label:input.dataset.label,
@@ -2866,7 +2907,7 @@ function renderFollowPicks(results){
     }
     if(failures.length){
       state.textContent=failures.join('；');
-      addButton.disabled=false;
+      addButton.removeAttribute('aria-busy');
       return;
     }
     await openFollowManage(false);
@@ -4841,9 +4882,9 @@ async function refreshAll(automatic=false){
 /* 没有前台定时器：页面不会在你看着的时候自己重排。换排序是加载时结算的，
    「后台每 N 分钟换一次」的效果由种子的时间窗实现（见 persistedSeed）。 */
 $('#refresh').onclick=async()=>{const b=$('#refresh');
-  if(b.classList.contains('busy'))return;
-  b.classList.add('busy');
-  try{await refreshAll()}finally{b.classList.remove('busy')}};
+  if(b.getAttribute('aria-busy')==='true')return;
+  const old=b.innerHTML;b.setAttribute('aria-busy','true');b.innerHTML=spinnerHtml('换一批');
+  try{await refreshAll()}finally{b.removeAttribute('aria-busy');b.innerHTML=old}};
 
 /* ── 审查遮挡 ──
    共享屏幕 / 录屏 / 截图时把全站内容画面盖住。开关在设置面板（安全组），

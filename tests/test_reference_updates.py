@@ -32,7 +32,8 @@ class ReferenceUpdateTests(unittest.TestCase):
              "fiu758-studio-logo-discovery", "rule34-follow-tags-and-collections",
              "f95-masked-gofile-media", "follow-fanbox-gofile-paheal",
              "fanbox-browser-transport", "beeg-profile-layout",
-             "vercel-geist-fieldset-scroller-empty-state"},
+             "vercel-geist-fieldset-scroller-empty-state",
+             "vercel-geist-command-search-loading"},
         )
         self.assertNotEqual(
             sources["vercel-report-design"]["url"],

@@ -150,6 +150,22 @@
         "web/app.js",
         "tests/test_web_ui.py"
       ]
+    },
+    {
+      "id": "vercel-geist-command-search-loading",
+      "name": "Vercel Geist Command Menu、Search Input、Spinner 与 Loading Dots",
+      "url": "https://vercel.com/geist/command-menu",
+      "snapshot": "docs/reference-snapshots/vercel-geist-command-search-loading.md",
+      "checked_on": "2026-08-30",
+      "sha256": "3be4d0f23965c2b0ef5865432d5db37f14f66f9e00dfa97801ec6074f0aab5d9",
+      "role": "设置 Dialog 动效、搜索前缀、用户动作 Spinner、后台 Loading Dots 与无更多历史内容中性反馈的项目级依据。",
+      "consumers": [
+        "web/js/ui-components.js",
+        "web/app.css",
+        "web/app.js",
+        "tests/test_follow_web.py",
+        "tests/test_web_ui.py"
+      ]
     }
   ]
 }

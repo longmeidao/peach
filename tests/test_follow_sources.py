@@ -12,7 +12,7 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
-from peach.follow import FollowSourceError
+from peach.follow import FollowHistoryEnd, FollowSourceError
 from peach.follow_secrets import Credential, CredentialError, CredentialStore
 from peach.follow_sources import (
     USER_AGENT, F95ZoneConnector, FanboxConnector, KemonoConnector,
@@ -365,6 +365,11 @@ class Rule34PahealConnectorTests(unittest.TestCase):
                          "https://r34i.paheal-cdn.net/df/fb/video")
         self.assertFalse(item.title_is_name)
 
+    def test_backfill_404_means_history_is_exhausted(self):
+        connector = Rule34PahealConnector(transport=_transport(status=404))
+        with self.assertRaises(FollowHistoryEnd):
+            connector.fetch("initiala", page=3)
+
 
 class KemonoConnectorTests(unittest.TestCase):
     def test_fetch_normalizes_posts_and_sends_the_documented_accept_header(self):
@@ -577,6 +582,11 @@ class KemonoConnectorTests(unittest.TestCase):
         self.assertTrue(result.not_modified)
         self.assertEqual(result.candidates, ())
 
+    def test_backfill_400_means_history_is_exhausted(self):
+        connector = KemonoConnector(transport=_transport(status=400))
+        with self.assertRaises(FollowHistoryEnd):
+            connector.fetch("fanbox/1", page=2)
+
     def test_malformed_ref_is_rejected_before_any_request(self):
         seen = []
         connector = KemonoConnector(transport=_transport(record=seen))
@@ -607,6 +617,11 @@ class Rule34VideoConnectorTests(unittest.TestCase):
                          ["4542721", "4542713"])
         self.assertEqual(result.candidates[0].duration, 20.0)
         self.assertEqual(result.candidates[1].duration, 433.0)
+
+    def test_empty_backfill_page_means_history_is_exhausted(self):
+        connector = Rule34VideoConnector(transport=_transport(body=b"<html></html>"))
+        with self.assertRaises(FollowHistoryEnd):
+            connector.fetch("lazyprocrastinator", page=4)
 
     def test_data_uri_placeholder_is_not_used_as_a_thumbnail(self):
         first = self._fetch().candidates[0]
@@ -861,6 +876,10 @@ class Rule34XxxConnectorTests(unittest.TestCase):
         result = self._connector(body=b" \r\n").fetch("not-a-real-tag")
         self.assertEqual(result.candidates, ())
         self.assertEqual(result.raw_body, b" \r\n")
+
+    def test_an_empty_backfill_response_means_history_is_exhausted(self):
+        with self.assertRaises(FollowHistoryEnd):
+            self._connector(body=b" \r\n").fetch("lazyprocrastinator", page=4)
 
     def test_the_declared_origin_becomes_a_cross_site_group_key(self):
         # 同一个 fanbox 帖在 source 里有两种写法，必须归一到同一个键——而那串数字

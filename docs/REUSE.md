@@ -84,7 +84,7 @@
 3. 将剩余 status/suggest/ledger 应用逻辑移到 repository/application 端口，再删除旧 CLI 表面。
 4. Peach 不做 token/成本日志扫描器，也不绑定 T3 Code 私有 RPC；使用其界面、CodexBar 和官方实时配额入口。
 5. 「模仿/参考/对齐」不等于允许凭记忆近似。先取得并登记可复现证据；否则标记 `未取得`，不得作为忠实复刻发布。2026-08-17 的 YouTube 详情与 Shorts 动作栏参考已登记在 `docs/HANDOFF.md`，Peach 只复用可测量的层级、尺寸和状态语义。
-6. Web UI 组件优先复用 `web/js/ui-components.js` 和 `.claude/skills/peach-web-ui/SKILL.md` 的语义矩阵。Peach 不引入 Geist React 运行时，只复用已锁定证据中的 Note／Progress／Switch／Tooltip／Collapse／Menu／Fieldset／Scroller／Empty State 语义、ARIA 与版式层级；整页异步重绘复用导航代际隔离，没有消费者的 Vercel 后台筛选器不照搬。
+6. Web UI 组件优先复用 `web/js/ui-components.js` 和 `.claude/skills/peach-web-ui/SKILL.md` 的语义矩阵。Peach 不引入 Geist React 运行时，只复用已锁定证据中的 Note／Progress／Switch／Tooltip／Collapse／Menu／Fieldset／Scroller／Empty State／Search Input／Spinner／Loading Dots 与 Dialog motion 语义、ARIA 和版式层级；整页异步重绘复用导航代际隔离，没有消费者的 Vercel 后台筛选器不照搬。
 
 ## 2026-08-28 自研实现审计
 
