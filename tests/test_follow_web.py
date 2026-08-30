@@ -1457,6 +1457,8 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("source:{src,type:selectedMedia?.media_type||item.media_type||'video/mp4'}")
         self.assertPageContains("function mountPlayerQualityControl(player,video,fallbackHeight=0)")
         self.assertPageContains('aria-label="切换清晰度"')
+        self.assertPageContains("data-player-quality-badge")
+        self.assertPageContains("currentTimeDisplay:true,timeDivider:true")
         self.assertPageContains("levels[index].enabled=selected==='auto'||selected===String(index)")
 
     def test_follow_detail_save_keeps_the_button_after_the_async_request(self):

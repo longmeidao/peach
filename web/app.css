@@ -917,14 +917,39 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vwrap>video[hidden]{display:none}
 .vwrap>.video-js{width:100%;height:auto;max-height:76vh;aspect-ratio:16/9;background:#000}
 .vwrap .video-js .vjs-tech{object-fit:contain}
-.vwrap .video-js .vjs-control-bar{height:3.4em;align-items:center;background:linear-gradient(transparent,rgba(0,0,0,.82))}
-.vwrap .video-js .vjs-control-bar>.vjs-control{align-self:stretch;height:100%}
-.vwrap .video-js .vjs-progress-control{min-width:0}.vwrap .video-js .vjs-time-control{height:100%;font-size:var(--fs-xs);line-height:3.4em}
-.vjs-peach-quality{position:relative;flex:0 0 auto;width:auto!important;min-width:4.8em}
-.vjs-peach-quality>button{width:100%;height:100%;padding:0 .7em;border:0;background:transparent;color:inherit;font:inherit;cursor:pointer}
+/* YouTube 式两排控制层：进度独占上排，播放／音量／时间与右侧功能共用底排基线。
+   控制栏在视频内四周留边，避免把按钮和进度线重新压成贯穿边缘的一条。 */
+.vwrap .video-js .vjs-control-bar{box-sizing:border-box;left:.8em;right:.8em;bottom:.7em;width:auto;height:6.6em;
+  padding:2.8em .7em .5em;display:flex;align-items:flex-end;border-radius:1.4em;
+  background:linear-gradient(180deg,rgba(13,17,22,.2),rgba(13,17,22,.82));backdrop-filter:blur(6px)}
+.vwrap .video-js .vjs-control-bar>.vjs-control:not(.vjs-progress-control):not(.vjs-time-control){align-self:flex-end;height:3em}
+.vwrap .video-js .vjs-progress-control{position:absolute;left:1.2em;right:1.2em;top:.45em;width:auto;height:2.2em;
+  min-width:0;display:flex;align-items:center}
+.vwrap .video-js .vjs-progress-control .vjs-progress-holder{width:100%;margin:0}
+.vwrap .video-js .vjs-custom-control-spacer{display:block;flex:1 1 auto}
+.vwrap .video-js .vjs-time-control{align-self:flex-end;height:30px;padding:0;font-size:var(--fs-xs);line-height:30px;background:rgba(255,255,255,.14)}
+.vwrap .video-js .vjs-current-time{display:flex;margin-left:.35em;padding-left:1em;border-radius:1.6em 0 0 1.6em}
+.vwrap .video-js .vjs-time-divider{display:flex;min-width:auto;padding:0 .25em}
+.vwrap .video-js .vjs-duration{display:flex;padding-right:1em;border-radius:0 1.6em 1.6em 0}
+.vjs-peach-quality{position:relative;flex:0 0 auto;width:4em!important;min-width:4em}
+.vjs-peach-quality>button{position:relative;width:100%;height:100%;padding:0;border:0;background:transparent;color:inherit;cursor:pointer;display:grid;place-items:center}
+.vjs-peach-quality>button svg{width:2.1em;height:2.1em;stroke:currentColor;fill:none;stroke-width:2}
+.vjs-peach-quality [data-player-quality-badge]{position:absolute;right:.15em;top:.05em;min-width:1.7em;height:1.2em;padding:0 .2em;
+  display:grid;place-items:center;border-radius:.2em;background:#f03;color:#fff;font-size:.72em;font-weight:800;line-height:1}
+.vjs-peach-quality [data-player-quality-badge][hidden]{display:none}
 .vjs-peach-quality-menu{position:absolute;right:0;bottom:calc(100% + 8px);min-width:92px;padding:5px;border:1px solid rgba(255,255,255,.2);border-radius:8px;background:rgba(8,10,14,.94);box-shadow:0 10px 30px #0008}
 .vjs-peach-quality-menu[hidden]{display:none}.vjs-peach-quality-menu button{display:block;width:100%;padding:7px 9px;border:0;border-radius:5px;background:transparent;color:#fff;text-align:left;font:inherit;cursor:pointer;white-space:nowrap}
 .vjs-peach-quality-menu button:hover,.vjs-peach-quality-menu button[aria-checked="true"]{background:rgba(255,255,255,.14)}
+@media (max-width:640px){
+  .vwrap .video-js .vjs-control-bar{left:.4em;right:.4em;bottom:.4em;height:6em;padding:2.5em .25em .35em;border-radius:1em}
+  .vwrap .video-js .vjs-progress-control,.vwrap .video-js.vjs-layout-tiny .vjs-progress-control,
+  .vwrap .video-js.vjs-layout-x-small .vjs-progress-control{left:.8em;right:.8em;top:.35em;height:2em;display:flex}
+  .vwrap .video-js .vjs-skip-backward-5,.vwrap .video-js .vjs-skip-backward-10,.vwrap .video-js .vjs-skip-backward-30,
+  .vwrap .video-js .vjs-skip-forward-5,.vwrap .video-js .vjs-skip-forward-10,.vwrap .video-js .vjs-skip-forward-30{display:none}
+  .vwrap .video-js.vjs-layout-small .vjs-current-time,.vwrap .video-js.vjs-layout-small .vjs-duration,
+  .vwrap .video-js.vjs-layout-small .vjs-time-divider{display:flex}
+  .vwrap .video-js .vjs-time-control{font-size:1em}
+}
 .vwrap .video-js.vjs-error .vjs-error-display .vjs-modal-dialog-content{
   display:flex;align-items:center;justify-content:center;padding:56px 24px;text-align:center;overflow-wrap:anywhere}
 .vwrap>.video-js.vjs-fullscreen,.video-js.vjs-fullscreen{width:100%!important;height:100%!important;
