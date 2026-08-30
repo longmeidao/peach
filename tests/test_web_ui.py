@@ -571,6 +571,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('/vendor/videojs/8.23.9/video-js.min.css')
 
     def test_detail_player_controls_use_two_rows_and_offer_real_quality_levels(self):
+        self.assertPageContains(".vwrap .video-js .vjs-big-play-button{left:50%;top:50%;width:3.4em;height:3.4em")
+        self.assertPageContains("border-top:.72em solid transparent;border-bottom:.72em solid transparent;border-left:1.05em solid #fff")
         self.assertPageContains(".vwrap .video-js .vjs-control-bar{box-sizing:border-box;left:.8em;right:.8em;bottom:.7em;width:auto;height:7em")
         self.assertPageContains("border-radius:0;background:transparent;backdrop-filter:none")
         self.assertPageContains(".vwrap .video-js .vjs-control-bar>.vjs-button,")
@@ -595,6 +597,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("['loadstart','loadedmetadata','durationchange','error']")
         self.assertPageContains("const d=it.duration||v.duration||0")
         self.assertPageContains("skipButtons:{backward:appSettings.seekSeconds,forward:appSettings.seekSeconds}")
+
+    def test_player_stats_button_matches_the_round_player_controls(self):
+        self.assertPageContains(".playerstatsbtn{position:absolute;left:11px;top:11px;z-index:8;width:40px;height:40px")
+        self.assertPageContains("border:1px solid rgba(255,255,255,.2);border-radius:50%")
+        self.assertPageContains(".playerstatsbtn:hover{background:rgba(0,0,0,.76)")
 
     def test_player_stats_cover_direct_range_and_future_segmented_streams(self):
         self.assertPageContains('id="playerStatsBtn"')

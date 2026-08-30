@@ -917,6 +917,13 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vwrap>video[hidden]{display:none}
 .vwrap>.video-js{width:100%;height:auto;max-height:76vh;aspect-ratio:16/9;background:#000}
 .vwrap .video-js .vjs-tech{object-fit:contain}
+.vwrap .video-js .vjs-big-play-button{left:50%;top:50%;width:3.4em;height:3.4em;margin:0;
+  transform:translate(-50%,-50%);border:1px solid rgba(255,255,255,.2);border-radius:50%;
+  background:rgba(0,0,0,.58);box-shadow:0 3px 16px #0007;line-height:3.4em}
+.vwrap .video-js .vjs-big-play-button:hover,.vwrap .video-js .vjs-big-play-button:focus{background:rgba(0,0,0,.76)}
+.vwrap .video-js .vjs-big-play-button .vjs-icon-placeholder:before{content:"";left:50%;top:50%;width:0;height:0;
+  border-top:.72em solid transparent;border-bottom:.72em solid transparent;border-left:1.05em solid #fff;
+  transform:translate(-38%,-50%)}
 /* YouTube 式两排控制层：进度独占上排，底排不铺整块面板；按钮和时间各自拥有轮廓。 */
 .vwrap .video-js .vjs-control-bar{box-sizing:border-box;left:.8em;right:.8em;bottom:.7em;width:auto;height:7em;
   padding:2.8em .7em .3em;display:flex;align-items:flex-end;border-radius:0;background:transparent;backdrop-filter:none}
@@ -962,11 +969,12 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
   max-width:none!important;max-height:none!important;aspect-ratio:auto!important}
 .vwrap>.video-js.vjs-fullscreen .vjs-tech,.video-js.vjs-fullscreen .vjs-tech{
   width:100%;height:100%;object-fit:contain}
-.playerstatsbtn{position:absolute;left:11px;top:11px;z-index:8;width:38px;height:38px;padding:0;
-  display:grid;place-items:center;border:1px solid rgba(255,255,255,.22);border-radius:8px;
-  background:rgba(0,0,0,.46);color:#fff;cursor:pointer;backdrop-filter:blur(10px)}
-.playerstatsbtn[hidden]{display:none}.playerstatsbtn:hover,.playerstatsbtn[aria-pressed="true"]{background:rgba(0,149,246,.72)}
-.playerstatsbtn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:2}
+.playerstatsbtn{position:absolute;left:11px;top:11px;z-index:8;width:40px;height:40px;padding:0;
+  display:grid;place-items:center;border:1px solid rgba(255,255,255,.2);border-radius:50%;
+  background:rgba(0,0,0,.56);color:#fff;cursor:pointer;box-shadow:0 1px 5px #0006}
+.playerstatsbtn[hidden]{display:none}.playerstatsbtn:hover{background:rgba(0,0,0,.76);border-color:rgba(255,255,255,.38)}
+.playerstatsbtn[aria-pressed="true"]{background:rgba(0,149,246,.72)}
+.playerstatsbtn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
 .playerstats{position:absolute;left:11px;top:58px;z-index:8;min-width:320px;max-width:min(520px,calc(100% - 22px));
   padding:10px 12px;border:1px solid rgba(255,255,255,.18);border-radius:8px;
   background:rgba(2,4,8,.78);color:#eef3f8;box-shadow:0 12px 28px #0008;
