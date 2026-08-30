@@ -168,6 +168,26 @@ def _read_snapshot(path: Path) -> dict | None:
         return None
 
 
+def _read_settled_error(path: Path) -> MetadataProviderError | None:
+    """复用确定失败，只让临时/可重试错误重新联网。"""
+    try:
+        wrapper = json.loads(path.read_text(encoding="utf-8"))
+        error = wrapper.get("error")
+        if not isinstance(error, dict):
+            return None
+        if bool(error.get("retryable")) or bool(error.get("temporary")):
+            return None
+        return MetadataProviderError(
+            str(error.get("message") or "metadata source error"),
+            kind=str(error.get("kind") or "unknown"),
+            status_code=int(error.get("status_code") or 0),
+            retryable=False,
+            temporary=False,
+        )
+    except (OSError, ValueError, TypeError):
+        return None
+
+
 def _write_snapshot(path: Path, *, code: str, source: str, result: dict | None = None,
                     error: MetadataProviderError | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -365,17 +385,21 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                 snapshot = args.raw_dir / query / f"{source}.json"
                 started = time.perf_counter()
                 payload = None if args.refresh else _read_snapshot(snapshot)
-                reused = payload is not None
+                settled_error = None if args.refresh else _read_settled_error(snapshot)
+                reused = payload is not None or settled_error is not None
                 try:
                     if reused:
                         source_health["snapshot_reused"] += 1
+                        if settled_error is not None:
+                            raise settled_error
                     else:
                         source_health["fetched"] += 1
                         payload = adapter.query(query, source)
                     if not snapshot.is_file() or args.refresh:
                         _write_snapshot(snapshot, code=query, source=source, result=payload)
                 except MetadataProviderError as error:
-                    _write_snapshot(snapshot, code=query, source=source, error=error)
+                    if not reused or args.refresh:
+                        _write_snapshot(snapshot, code=query, source=source, error=error)
                     error_writer.writerow({
                         "code": code, "query": query, "source": source, "kind": error.kind,
                         "status_code": error.status_code, "retryable": int(error.retryable),

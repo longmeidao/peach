@@ -894,7 +894,8 @@ class OperationalScriptTests(unittest.TestCase):
                 "INSERT INTO asset(id,location,path,name,medium,code,size) "
                 "VALUES(?,'local',?,?,'video',?,?)",
                 [(1, "cached.mp4", "cached.mp4", "AAA-001", 2_000),
-                 (2, "fresh.mp4", "fresh.mp4", "BBB-002", 1_000)],
+                 (2, "missing.mp4", "missing.mp4", "BBB-002", 1_500),
+                 (3, "fresh.mp4", "fresh.mp4", "CCC-003", 1_000)],
             )
             connection.commit(); connection.close()
             raw = root / "raw"
@@ -903,20 +904,36 @@ class OperationalScriptTests(unittest.TestCase):
             snapshot.write_text(__import__("json").dumps({
                 "result": {"source": "r18dev", "maker": "Cached Studio"},
             }), encoding="utf-8")
+            missing = raw / "BBB-002" / "r18dev.json"
+            missing.parent.mkdir(parents=True)
+            missing.write_text(__import__("json").dumps({
+                "error": {"kind": "not_found", "message": "status 404",
+                          "status_code": 404, "retryable": False, "temporary": False},
+            }), encoding="utf-8")
 
             class Provider:
+                def __init__(self): self.calls = []
                 def query(self, code, source):
+                    self.calls.append((code, source))
                     return {"source": source, "maker": "Fresh Studio"}
 
+            provider = Provider()
+            errors = root / "errors.csv"
             with mock.patch.object(self.scrape_codes.time, "sleep") as sleep:
                 with redirect_stdout(io.StringIO()):
                     result = self.scrape_codes.main([
                         "--db", str(db), "--out", str(root / "candidates.csv"),
+                        "--errors", str(errors),
                         "--raw-dir", str(raw), "--log-dir", str(root / "logs"),
                         "--delay", "2", "--min-free", "0", "--sources", "r18dev",
-                    ], provider=Provider())
+                    ], provider=provider)
             self.assertEqual(result, 0)
+            self.assertEqual(provider.calls, [("CCC-003", "r18dev")])
             self.assertEqual(sleep.call_count, 1, "本地快照不能消耗来源限流等待")
+            with errors.open(encoding="utf-8-sig", newline="") as handle:
+                error_rows = list(csv.DictReader(handle))
+            self.assertEqual([(row["code"], row["status_code"]) for row in error_rows],
+                             [("BBB-002", "404")])
 
     def test_metadata_health_distinguishes_snapshot_empty_error_and_cooldown(self):
         with tempfile.TemporaryDirectory() as tmp:
