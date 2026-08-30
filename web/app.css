@@ -1201,7 +1201,7 @@ body.settings-open{overflow:hidden}
    vercel-geist-toast.md；量纲沿用本站实测 Geist 的那一套：8px 圆角、
    发丝边、比页面亮一档的表面。warn 态加一圈红边和图标，但失败的原因
    仍以页内持久行为准——toast 只负责提一句。 */
-.toasts{position:fixed;right:16px;bottom:22px;z-index:190;display:grid;gap:8px;
+.toasts{position:fixed;right:16px;bottom:22px;z-index:var(--layer-popover);display:grid;gap:8px;
   justify-items:end;pointer-events:none}
 .toast{pointer-events:auto;display:flex;align-items:flex-start;gap:9px;
   width:min(440px,calc(100vw - 32px));padding:11px 10px 11px 13px;

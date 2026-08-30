@@ -1924,6 +1924,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("reveal.dataset.photoReveal=String(item.id)")
         self.assertPageContains("revealSource(Number(reveal.dataset.photoReveal),status,{toastSuccess:true,button:reveal})")
         self.assertPageContains("toast('已在资源管理器中显示')")
+        self.assertPageContains(".toasts{position:fixed;right:16px;bottom:22px;z-index:var(--layer-popover)")
         self.assertPageContains("button.innerHTML=`${spinnerHtml('正在定位')}<span>${esc(label)}</span>`")
         self.assertPageContains("if(activeLightbox?.detail?.isOpen()){activeLightbox.detail.dismiss(true);return}")
         self.assertPageContains("if(returnFocus&&document.contains(toggle))toggle.focus()")
