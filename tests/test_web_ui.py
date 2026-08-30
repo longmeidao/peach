@@ -821,12 +821,24 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertPageContains(name)
         self.assertPageContains("from './js/ui-components.js'")
         self.assertPageContains("const NOTE_VARIANTS=new Set(['secondary','warning','error','success'])")
+        self.assertPageContains("const symbol=kind==='secondary'?'info':kind==='success'?'check':'alert'")
         self.assertPageContains("const role=kind==='error'?' role=\"alert\"':' role=\"note\"'")
         self.assertPageContains("noteHtml(error.message,{variant:'error',label:'同步失败'})")
         self.assertPageContains("noteHtml(error.message,{variant:'error',label:'扫描失败'})")
         self.assertPageContains("noteHtml(error.message||'分析未取得',{variant:'error',label:'分析未取得'})")
         self.assertPageContains('class="geist-note geist-note-error fcheckreport" role="alert"')
         self.assertPageContains('class="geist-banner fwarn"')
+
+    def test_note_and_info_surfaces_reuse_the_photo_detail_info_icon(self):
+        self.assertPageContains('<symbol id="i-info" viewBox="0 0 24 24">')
+        self.assertPageContains('<div class="runtimegate">${icon(\'info\')}<span>${esc(mirrorText)}</span>')
+        self.assertPageContains('<div class="runtimegate">${icon(\'info\')}<span>${esc(followRuntime.ledger_read_only_message')
+        self.assertPageContains("${icon('info')}<div><p><b>${exhausted.length} 个来源没有更多内容</b>")
+        self.assertPageContains('aria-label="凭据存放位置说明">${icon(\'info\')}</button>')
+        self.assertPageContains('aria-label="图片详情" title="图片详情">${icon(\'info\')}</button>')
+        self.assertPageContains('.runtimegate{display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:12px')
+        self.assertPageContains('.runtimegate>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}')
+        self.assertPageContains('.runtimegate a{grid-column:2/-1}')
 
     def test_project_web_ui_skill_keeps_future_changes_on_shared_primitives(self):
         root = Path(__file__).resolve().parents[1]

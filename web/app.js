@@ -1906,7 +1906,7 @@ async function openReview(push=true){
       :mirror?.error||reviewRuntime.ledger_read_only_message||'';
     const value=row=>row.tags||row.japanese_name||row.path||row.suggested_query||'';
      $('#stats').innerHTML=`<div class="review">
-      ${locked?`<div class="runtimegate"><span>${esc(mirrorText)}</span>${writer
+      ${locked?`<div class="runtimegate">${icon('info')}<span>${esc(mirrorText)}</span>${writer
         ?`<a href="${esc(writer)}">前往写入端复核</a>`:''}</div>`:''}
       <div class="reviewtabs">${Object.entries(REVIEW_LABELS).map(([key,label])=>`<button data-review-tab="${key}" aria-pressed="${key===reviewCategory}">${label} <span class="n mono">${reviewData.counts[key]||0}</span></button>`).join('')}</div>
       <section class="reviewsection"><div class="reviewlist">${rows.length?rows.map(row=>{
@@ -2870,7 +2870,7 @@ function renderFollowManage(credentials){
   const writer=followRuntime?.ledger_writer_origin
     ?new URL('/follow-manage',followRuntime.ledger_writer_origin).href:'';
   $('#stats').innerHTML=`<div class="follow followmanage">
-    ${locked?`<div class="runtimegate"><span>${esc(followRuntime.ledger_read_only_message||'本机当前只能浏览')}</span>${writer
+    ${locked?`<div class="runtimegate">${icon('info')}<span>${esc(followRuntime.ledger_read_only_message||'本机当前只能浏览')}</span>${writer
       ?`<a href="${esc(writer)}">前往写入端管理关注</a>`:''}</div>`:''}
     <div class="fmain">
       <section class="fsec">
