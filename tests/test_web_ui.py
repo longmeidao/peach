@@ -548,10 +548,10 @@ class WebUiSourceTests(unittest.TestCase):
     def test_detail_close_disposes_playback_source(self):
         self.assertPageContains("function disposeStage")
         self.assertPageContains("video.pause();video.removeAttribute('src');video.load();video.remove()")
-        self.assertPageContains(
-            "document.body.classList.remove('detail-open');current=null;activeQueue=null;\n  scheduleStickySurfaces();"
-        )
-        self.assertPageContains("const closeDetail=()=>{const restore=cloneBarsContext(detailReturnBarsContext)")
+        self.assertPageContains("document.body.classList.remove('detail-open');current=null;activeQueue=null")
+        self.assertPageContains("detailOriginAnchor=null;detailOriginAbove=false;detailReturnNeedsRestore=false")
+        self.assertPageContains("scheduleStickySurfaces();")
+        self.assertPageContains("const closeDetail=async()=>{const restore=cloneBarsContext(detailReturnBarsContext)")
         self.assertPageContains("$('#closeStage').onclick=closeDetail")
         self.assertPageContains("function cancelDetailStream()")
         self.assertPageContains("/api/stream-cancel?session=")
@@ -1367,7 +1367,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<div class="mixstack"><div class="pic" style="--card-ratio:${ar}">')
         self.assertPageContains("? coverImage(it,layout)")
         self.assertPageContains('<span class="mixbadge">${icon(\'play\')}Mix</span>')
-        self.assertPageContains("async function openMix(seedId,itemId=seedId,push=true)")
+        self.assertPageContains("async function openMix(seedId,itemId=seedId,push=true,anchor=null)")
         self.assertPageContains("route(`/mix/${seedId}/${itemId}`)")
         self.assertPageContains('class="mixqueue"')
         self.assertPageContains('class="mixitem ${x.id===itemId?\'current\':\'\'}"')
@@ -1398,7 +1398,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("renderedPartGroups.clear()")
         self.assertPageContains("data-part-seed")
         self.assertPageContains('<span class="partbadge">${parts.count} 卷</span>')
-        self.assertPageContains("async function openParts(seedId,itemId=seedId,push=true)")
+        self.assertPageContains("async function openParts(seedId,itemId=seedId,push=true,anchor=null)")
         self.assertPageContains("api('/api/parts?id='+seedId)")
         self.assertPageContains("title:`分卷 · ${group.title}`")
         self.assertPageContains("route(`/parts/${seedId}/${chosen}`)")
@@ -1438,8 +1438,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_entity_collection_posters_and_titles_open_item_details(self):
         self.assertPageContains('class="cardopenhit" data-open')
         self.assertPageContains('<button class="t cardtitle" data-open>')
-        self.assertPageContains("const openCard=id=>onClick?onClick(id):(it?.part_group?openParts")
-        self.assertPageContains("if(e.target.closest('[data-open]')){e.stopPropagation();openCard(+el.dataset.id)")
+        self.assertPageContains("const openCard=(id,anchor=el)=>onClick?onClick(id,anchor):(it?.part_group")
+        self.assertPageContains("if(e.target.closest('[data-open]')){e.stopPropagation();openCard(+el.dataset.id,el)")
         self.assertPageContains(".cardopenhit{position:absolute;inset:0;z-index:3")
         self.assertPageContains("el.querySelectorAll('[data-open]').forEach(opener=>")
         self.assertPageContains("opener.dataset.openWired='1'")
@@ -1461,7 +1461,22 @@ class WebUiSourceTests(unittest.TestCase):
     def test_detail_close_returns_to_the_collection_that_opened_it(self):
         self.assertPageContains("detailReturnPath='/'")
         self.assertPageContains("if(push)detailReturnPath=location.pathname+location.search")
-        self.assertPageContains("if(push)route(detailReturnPath||'/')")
+        self.assertPageContains("const returnPath=detailReturnPath||'/',restoreSurface=detailReturnNeedsRestore")
+        self.assertPageContains("if(restoreSurface)await restoreRoute()")
+
+    def test_direct_detail_restores_the_home_list_and_card_details_open_inline(self):
+        self.assertPageContains("const needsReturnRestore=detailReturnNeedsRestore||(!push&&!returnSurfaceReady)")
+        self.assertPageContains("function placeItemDetail(anchor,above=false)")
+        self.assertPageContains("getComputedStyle(container).display==='grid'")
+        self.assertPageContains("container.insertBefore(stage,above?edge:edge.nextSibling)")
+        self.assertPageContains("anchor.getBoundingClientRect().top+anchor.getBoundingClientRect().height/2>window.innerHeight/2")
+        self.assertPageContains(".grid>.stage{grid-column:1/-1;width:100%;min-width:0}")
+
+    def test_catalog_and_item_detail_loading_reuse_the_spinner_component(self):
+        self.assertPageContains("function renderCatalogLoading(label='正在读取作品')")
+        self.assertPageContains("count.innerHTML=`${spinnerHtml(label)}<span>载入中…</span>`")
+        self.assertPageContains("${spinnerHtml('正在加载详情')}<span>正在加载详情…</span>")
+        self.assertPageContains('class="detailpending" role="status" aria-busy="true"')
 
     def test_entity_profile_uses_logo_links_without_a_redundant_back_row(self):
         self.assertPageContains("const faviconUrl=url=>")
