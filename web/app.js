@@ -391,11 +391,17 @@ function applyAmbientMode(enabled,save=true){
   $('#stage')?.classList.toggle('ambient-on',appSettings.ambientMode);
   document.dispatchEvent(new CustomEvent('peachambientchange',{detail:{enabled:appSettings.ambientMode}}));
 }
+function syncPlayerTheaterButton(button){
+  if(!button)return;
+  const label=appSettings.theaterMode?'默认视图':'影院模式';
+  button.setAttribute('aria-pressed',String(appSettings.theaterMode));button.setAttribute('aria-label',label);
+  button.querySelector('use')?.setAttribute('href',appSettings.theaterMode?'#i-theater-exit':'#i-theater-enter');
+  const tooltip=button.querySelector('.vjs-peach-tooltip');if(tooltip)tooltip.innerHTML=`${label} <kbd>T</kbd>`;
+}
 function applyTheaterMode(enabled,save=true){
   appSettings.theaterMode=!!enabled;if(save)saveSettings();
   const stage=$('#stage');stage?.classList.toggle('theater-mode',appSettings.theaterMode);
-  const button=stage?.querySelector('[data-player-theater]');
-  if(button){button.setAttribute('aria-pressed',String(appSettings.theaterMode));button.setAttribute('aria-label',appSettings.theaterMode?'退出影院模式':'影院模式')}
+  syncPlayerTheaterButton(stage?.querySelector('[data-player-theater]'));
   if(detailPlayer&&!detailPlayer.isDisposed())requestAnimationFrame(()=>detailPlayer.trigger('resize'));
 }
 function mountPlayerAmbient(video){
@@ -493,8 +499,9 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0){
 function mountPlayerTheaterControl(player,settingsRoot){
   const controlBar=player.getChild('controlBar')?.el();if(!controlBar||controlBar.querySelector('[data-player-theater]'))return;
   const root=document.createElement('div');root.className='vjs-peach-theater vjs-control';
-  root.innerHTML=`<button type="button" data-player-theater aria-label="影院模式" aria-keyshortcuts="T" aria-pressed="${appSettings.theaterMode}">${icon('theater-mode')}<span class="vjs-peach-tooltip" role="tooltip">影院模式 <kbd>T</kbd></span></button>`;
+  root.innerHTML=`<button type="button" data-player-theater aria-label="影院模式" aria-keyshortcuts="T" aria-pressed="${appSettings.theaterMode}">${icon(appSettings.theaterMode?'theater-exit':'theater-enter')}<span class="vjs-peach-tooltip" role="tooltip"></span></button>`;
   controlBar.insertBefore(root,settingsRoot.nextSibling);
+  syncPlayerTheaterButton(root.querySelector('button'));
   root.querySelector('button').onclick=event=>{event.stopPropagation();applyTheaterMode(!appSettings.theaterMode)};
 }
 function mountPlayerChromeLayout(player){
@@ -544,19 +551,16 @@ function mountPlayerSeekPreview(player,it,options={}){
   progress.addEventListener('pointermove',move);progress.addEventListener('pointerleave',hide);
   player.on('dispose',()=>{progress.removeEventListener('pointermove',move);progress.removeEventListener('pointerleave',hide)});
 }
-function mountPlayerCenterControls(player,seconds=10){
+function mountPlayerCenterControls(player){
   if(player.el().querySelector('[data-player-center-controls]'))return;
   const root=document.createElement('div');
   root.className='vjs-peach-center-controls';root.dataset.playerCenterControls='';
-  root.innerHTML=`<button type="button" data-center-seek="-${seconds}" aria-label="后退 ${seconds} 秒">${icon('rotate-ccw')}<b>${seconds}</b></button>
-    <button type="button" class="vjs-peach-center-toggle" data-center-toggle aria-label="播放">
+  root.innerHTML=`<button type="button" class="vjs-peach-center-toggle" data-center-toggle aria-label="播放">
       <span class="vjs-peach-center-play" aria-hidden="true"></span>
-      <span class="vjs-peach-center-pause" aria-hidden="true"><i></i><i></i></span></button>
-    <button type="button" data-center-seek="${seconds}" aria-label="前进 ${seconds} 秒">${icon('rotate-cw')}<b>${seconds}</b></button>`;
+      <span class="vjs-peach-center-pause" aria-hidden="true"><i></i><i></i></span></button>`;
   player.el().append(root);
   const toggle=root.querySelector('[data-center-toggle]');
   const sync=()=>{const playing=!player.paused()&&!player.ended();root.dataset.state=playing?'pause':'play';toggle.setAttribute('aria-label',playing?'暂停':'播放')};
-  root.querySelectorAll('[data-center-seek]').forEach(button=>button.onclick=event=>{event.stopPropagation();seekVideoBy(player.el().querySelector('video'),Number(button.dataset.centerSeek))});
   toggle.onclick=event=>{event.stopPropagation();if(player.paused()||player.ended())player.play().catch(()=>{});else player.pause()};
   player.on(['play','pause','ended'],sync);sync();
 }
@@ -636,7 +640,7 @@ function mountDetailPlayer(it,video,autoplay,options={}){
   detailPlayer.ready(()=>{
     enforceDuration();mountPlayerQualityControl(detailPlayer,video,it.height);
     mountPlayerSeekPreview(detailPlayer,it,{thumbnail:!options.source});
-    mountPlayerCenterControls(detailPlayer,appSettings.seekSeconds);
+    mountPlayerCenterControls(detailPlayer);
     if(statsButton)statsButton.hidden=false
   });
   if(statsButton&&statsPanel)statsButton.onclick=()=>{
