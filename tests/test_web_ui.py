@@ -97,12 +97,15 @@ class WebUiSourceTests(unittest.TestCase):
         css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
             encoding="utf-8")
         for selector in (".playlistdialoghead button{", ".photoclose{",
-                         ".mixqueuehead button{", ".closestage{",
-                         ".settingshead button{"):
-            start = css.rindex(selector) if selector == ".closestage{" else css.index(selector)
+                         ".mixqueuehead button{", ".settingshead button{"):
+            start = css.index(selector)
             rule = css[start:css.index("}", start)]
             self.assertIn("var(--control-radius)", rule,
                           f"{selector} 是关闭操作，不是圆形标签")
+        stage_close = css[css.rindex(".closestage{"):]
+        stage_close = stage_close[:stage_close.index("}")]
+        self.assertIn("width:40px;height:40px", stage_close)
+        self.assertIn("border-radius:50%", stage_close)
         self.assertIn(".settingshead button:hover{background:var(--hover);color:var(--ink)}",
                       css)
 
