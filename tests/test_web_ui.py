@@ -769,6 +769,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("/api/taste/refresh")
         self.assertPageContains("/api/taste/source")
         self.assertPageContains("原始 URL、标题与搜索内容不会显示在页面")
+        self.assertPageContains("noteHtml('“不合口味”只记录到具体项目与理由，不自动给标签降权。',{className:'tastefootnote tastenegative'})")
+        self.assertPageContains("noteHtml('原始 URL、标题与搜索内容不会显示在页面，也不会写入 ledger；所有画像均为候选。',{className:'tastefootnote tasteprivacy'})")
         self.assertPageContains("data-taste-window")
         self.assertPageContains("data-taste-remove")
         self.assertPageContains('role="radiogroup" aria-label="口味证据来源"')
@@ -1175,7 +1177,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".insighttable{border-top:0}")
         self.assertPageContains(".insight-layout .managebar{margin-left:auto;margin-right:auto}")
         self.assertPageContains(".insight-layout .managetitle,.insight-layout .pagelede{width:min(1100px,100%)")
-        self.assertPageContains(".tasteprivacy{margin:16px 16px 0")
+        self.assertPageLacks(".tasteprivacy{margin:16px 16px 0")
+        self.assertPageLacks('<p class="tasteprivacy">')
 
     def test_duplicate_and_trash_descriptions_share_one_page_lede(self):
         self.assertPageContains('class="pagelede mono" id="manageLede" hidden')
