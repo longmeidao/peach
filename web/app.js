@@ -625,7 +625,8 @@ function cardHtml(it,cls){
   /* 资料页可能同时收录番号和非番号作品；版式按钮属于页面，但封套比例只施加给
      真实 `is_jav` 卡片，不能把同页的创作者视频也拉成竖封。 */
   const jav=javActive()&&!!it.is_jav,layout=javLayout();
-  const smallJav=jav&&layout==='small';
+  // 小图是页面版式，不是单条资产属性。同一页混入非番号作品时也必须同高。
+  const smallLayout=javActive()&&layout==='small';
   const parts=it.part_group||null;
   const useCover=jav&&layout!=='preview'&&it.has_cover;
   /* 卡片比例。这个值以前算出来就没人用过——`.pic` 一直写死 16/9，于是 JAV 的两种
@@ -673,7 +674,7 @@ function cardHtml(it,cls){
   // 会在普通卡片里折成三行；「第一位 + 等 N 人」仍能说明身份与规模。
   const coStarred=performers.length>1&&!primaryCreator;
   const avatar=coStarred
-    ? `<div class="mavstack">${performers.slice(0,smallJav?2:3)
+    ? `<div class="mavstack">${performers.slice(0,smallLayout?2:3)
         .map((nm,i)=>`<button class="mav entitylink" data-entity-kind="performer" data-entity-name="${esc(nm)}" title="打开${esc(performerLabel(it))}页：${esc(nm)}">${avatarInner(nm,performerRefs[i],REP[nm])}</button>`)
         .join('')}</div>`
     : (()=>{
@@ -699,7 +700,7 @@ function cardHtml(it,cls){
       <button data-seek="-${appSettings.seekSeconds}" title="后退 ${appSettings.seekSeconds} 秒" aria-label="后退 ${appSettings.seekSeconds} 秒">${icon('rotate-ccw')}<b>${appSettings.seekSeconds}</b></button>
       <button data-seek="${appSettings.seekSeconds}" title="前进 ${appSettings.seekSeconds} 秒" aria-label="前进 ${appSettings.seekSeconds} 秒">${icon('rotate-cw')}<b>${appSettings.seekSeconds}</b></button>
       <button data-open title="打开详情" aria-label="打开详情">${icon('maximize')}</button></div>`;
-  return `<article class="card ${parts?'partcard ':''}${smallJav?'jav-small ':''}${cls||''} ${it.disposal==='trash'?'pending-delete':''}" data-id="${it.id}"${parts?` data-part-seed="${parts.seed_id}"`:''}>
+  return `<article class="card ${parts?'partcard ':''}${smallLayout?'jav-small ':''}${cls||''} ${it.disposal==='trash'?'pending-delete':''}" data-id="${it.id}"${parts?` data-part-seed="${parts.seed_id}"`:''}>
     ${parts?'<div class="partstack">':''}<div class="pic" style="--card-ratio:${ar}">${thumb}<button class="cardopenhit" data-open aria-label="打开 ${esc(shownName)}${parts?'分卷':'详情'}"></button>
       <div class="badge mono">${srcBadge(it.location,it.cost)}</div>
       <span class="selectionMark">${icon('check')}</span><span class="deleteMark">${icon('trash')}<b>回收站</b></span>
@@ -960,9 +961,12 @@ const SORTS=[['seed','推荐顺序'],['daily','每日轮换'],['rand','随机'],
              ['new','最近入库'],['played','最近看的']];
 function renderCount(){
   const n=$('#grid').querySelectorAll(':scope > .card[data-id]').length;   // 竖屏条不计入「显示 N」
+  const trash=state.state==='trash';
+  if(trash)paintManageLede(`${total.toLocaleString()} 个符合 · 显示 ${n}`);
+  $('#count').classList.toggle('count-actions-only',trash);
   $('#count').innerHTML=
-    `<span class="mono">${total.toLocaleString()} 个符合 · 显示 ${n}</span>`
-    +(state.state==='trash'
+    (trash?'':`<span class="mono">${total.toLocaleString()} 个符合 · 显示 ${n}</span>`)
+    +(trash
       // 回收站是待清理队列，不是浏览列表：换一批和九种排序在这里没有意义。
       ? (total?`<span class="sorts"><button class="batchaction danger" id="emptyTrash" title="永久删除回收站内容">清空回收站</button></span>`:'')
       : `<span class="sorts">`
@@ -1040,7 +1044,7 @@ async function openStats(push=true,focusResource=false){
   const kv=(k,v,u)=>`<div class="kv"><span>${k}</span><b>${v}${u?`<span class="u">${u}</span>`:''}</b></div>`;
   const metric=(k,v,max)=>`<div class="statmetric">${kv(k,v.toLocaleString(),pct(v,max)+'%')}${progressHtml(`${k}：${v.toLocaleString()} / ${max.toLocaleString()}`,v,max)}</div>`;
   $('#stats').innerHTML=`
-    <div class="statsdashboard"><div class="statshead"></div>
+    <div class="statsdashboard">
     <div class="scards">
       ${card('库存', d.by_loc.map(l=>kv(LOC[l.k]||l.k, l.videos.toLocaleString(), gb(l.bytes))).join('')
         + kv('合计', d.by_loc.reduce((s,l)=>s+l.videos,0).toLocaleString(),
@@ -1389,8 +1393,8 @@ async function openDuplicates(push=true){
 function renderDuplicates(){
   const d=dupData;if(!d)return;
   const groups=d.groups||[];
+  paintManageLede(`${d.total} 组 · ${d.files} 个文件 · 可回收 ${fmtSize(d.reclaimable)}`);
   $('#stats').innerHTML=`<div class="review">
-    <p class="dupsum mono">${d.total} 组 · ${d.files} 个文件 · 可回收 ${fmtSize(d.reclaimable)}</p>
     ${groups.length?`<div class="fsechead dupactions"><h3>操作</h3>
       <button data-dup-all="largest">全部保留最大</button>
       <button data-dup-all="longest">全部保留最长</button>
@@ -3736,6 +3740,11 @@ function paintManageTitle(){
   const entry=MANAGE_SECTIONS.find(([k])=>k===current);
   el.hidden=!entry;
   if(entry)el.textContent=entry[1];
+  paintManageLede();
+}
+function paintManageLede(text=''){
+  const el=$('#manageLede');if(!el)return;
+  el.hidden=!text;el.textContent=text;
 }
 function paintListTitle(){
   const el=$('#listTitle');if(!el)return;
