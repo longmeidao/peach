@@ -1240,6 +1240,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("updateEntityCollection(kind,name,{...filters,sort},true)")
         self.assertPageContains("key==='sort'&&filters[key]==='new'")
         self.assertPageContains(".entitycollectionhead .sorts")
+        self.assertPageContains(".entitycollectionhead{position:sticky;top:var(--topH);z-index:60")
+        self.assertPageContains(
+            ".tagbar.is-stuck,.count.is-stuck,.entitycollectionhead.is-stuck"
+        )
+        self.assertPageContains("['#tagbar','#count','.entitycollectionhead']")
+        self.assertPageContains("scheduleStickySurfaces();")
         # 照片瀑布流没有视频排序语义，切换后直接渲染照片，不复用作品头。
         self.assertPageContains("if(media==='photos'){renderPhotoWall(kind,name,filters,entityPhotos);return}")
 
@@ -1347,7 +1353,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".count{position:sticky;top:calc(var(--topH) + var(--filterH))")
         self.assertPageContains("border-bottom:1px solid transparent;background:transparent")
         self.assertPageContains("background:transparent;border-bottom:1px solid transparent")
-        self.assertPageContains(".tagbar.is-stuck,.count.is-stuck{background:color-mix(in srgb,#020408 84%,transparent)")
+        self.assertPageContains(
+            ".tagbar.is-stuck,.count.is-stuck,.entitycollectionhead.is-stuck"
+            "{background:color-mix(in srgb,#020408 84%,transparent)"
+        )
         self.assertPageContains("background:color-mix(in srgb,#020408 84%,transparent)")
         self.assertPageContains("backdrop-filter:saturate(1.35) blur(16px)")
         self.assertPageContains("function updateStickySurfaces()")

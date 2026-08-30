@@ -3553,6 +3553,7 @@ function renderEntityCollection(kind,name,items,filters,append=false){
     more._observer=new IntersectionObserver(entries=>{if(entries.some(x=>x.isIntersecting))requestMore()},{rootMargin:'320px'});
     more._observer.observe(more);
   }
+  scheduleStickySurfaces();
 }
 async function updateEntityCollection(kind,name,filters,push=true){
   // 标签是作品筛选，点了就回到作品视图：留在照片里既不生效，标签条也会自相矛盾。
@@ -4339,7 +4340,7 @@ $('#edge').addEventListener('mouseenter',()=>{if(Date.now()<drawerSuppressUntil)
 window.__scrolling=false; let scrollT=null;
 let stickyFrame=0;
 function updateStickySurfaces(){
-  ['#tagbar','#count'].forEach(selector=>{
+  ['#tagbar','#count','.entitycollectionhead'].forEach(selector=>{
     const el=$(selector),css=el&&getComputedStyle(el),top=css?parseFloat(css.top):NaN;
     const stuck=!!el&&css.position==='sticky'&&el.offsetParent!==null&&window.scrollY>0&&
       Number.isFinite(top)&&el.getBoundingClientRect().top<=top+1;
