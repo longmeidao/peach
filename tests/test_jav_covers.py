@@ -133,13 +133,16 @@ class BestCoverTests(unittest.TestCase):
         page = (f'<img class="max-h-[28rem] max-w-full" src="{main}">'
                 + "".join(f'<img class="h-40" src="{related}?n={index}">'
                           for index in range(400))).encode()
-        transport = transport_for({
+        base_transport = transport_for({
             "https://www.avbase.net/works/VRKM-711": (200, page),
             main: (200, jpeg(2184, 1365)),
         })
+        def transport(request, timeout, limit):
+            if related in request.url:
+                raise AssertionError("关联作品图片不得进入量尺寸请求")
+            return base_transport(request, timeout, limit)
         winner, size, _ = covers.best_cover(transport, "VRKM-711", 0)
         self.assertEqual((winner.url, size), (main, (2184, 1365)))
-        self.assertFalse(any(related in request.url for request in transport.requests))
 
 
 class SettledMissTests(unittest.TestCase):
