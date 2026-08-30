@@ -1453,13 +1453,16 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_follow_video_uses_the_shared_videojs_player_and_quality_control(self):
         self.assertPageContains('class="video-js vjs-big-play-centered" controls playsinline preload="metadata"')
-        self.assertPageContains("if(followVideo)mountDetailPlayer(item,followVideo,false,{")
+        self.assertPageContains("if(followVideo){const followPlayer=mountDetailPlayer(item,followVideo,false,{")
         self.assertPageContains("source:{src,type:selectedMedia?.media_type||item.media_type||'video/mp4'}")
         self.assertPageContains("function mountPlayerQualityControl(player,video,fallbackHeight=0)")
-        self.assertPageContains('aria-label="切换清晰度"')
+        self.assertPageContains('aria-label="播放器设置"')
         self.assertPageContains("data-player-quality-badge")
         self.assertPageContains("currentTimeDisplay:true,timeDivider:true")
         self.assertPageContains("levels[index].enabled=selected==='auto'||selected===String(index)")
+        self.assertPageContains("const stopFollowAmbient=mountPlayerAmbient(followVideo)")
+        self.assertPageContains("followPlayer?.one?.('dispose',stopFollowAmbient)")
+        self.assertPageContains("mountPlayerTheaterControl(player,root)")
 
     def test_follow_detail_save_keeps_the_button_after_the_async_request(self):
         self.assertPageContains("const button=event.currentTarget;")

@@ -567,7 +567,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".vwrap>video[hidden]{display:none}")
         self.assertPageContains(".gate{aspect-ratio:16/9;width:100%")
         self.assertPageContains(
-            "else if(g)g.onclick=()=>{vv.hidden=false;g.remove();mountDetailPlayer(it,vv,true)"
+            "else if(g)g.onclick=()=>{vv.hidden=false;g.remove();const mounted=mountDetailPlayer(it,vv,true)"
         )
 
     def test_detail_uses_pinned_videojs_and_authoritative_duration(self):
@@ -582,8 +582,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".vwrap .video-js .vjs-control-bar>.vjs-play-control,")
         self.assertPageContains("border:1px solid rgba(255,255,255,.2);border-radius:50%;background:rgba(0,0,0,.56)")
         self.assertPageContains(".vwrap .video-js .vjs-control-bar>.vjs-picture-in-picture-control,")
-        self.assertPageContains("border-radius:2em 0 0 2em")
-        self.assertPageContains("border-radius:0 2em 2em 0")
+        self.assertPageContains(".vwrap .video-js .vjs-control-bar>.vjs-peach-settings,")
+        self.assertPageContains(".vwrap .video-js .vjs-control-bar>.vjs-peach-theater,")
+        self.assertPageContains("border:1px solid rgba(255,255,255,.2);border-radius:50%;margin-inline:.18em")
         self.assertPageContains(".vwrap .video-js .vjs-progress-control{position:absolute;left:1.2em;right:1.2em;top:.45em")
         self.assertPageContains(".vwrap .video-js .vjs-play-progress{background:var(--tungsten)}")
         self.assertPageContains(".vwrap .video-js .vjs-play-progress:before{content:\"\"")
@@ -595,7 +596,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".vwrap .video-js.vjs-layout-small .vjs-current-time")
         self.assertPageContains("currentTimeDisplay:true,timeDivider:true")
         self.assertPageContains("durationDisplay:true,remainingTimeDisplay:false")
-        self.assertPageContains(".vjs-peach-quality [data-player-quality-badge]")
+        self.assertPageContains(".vjs-peach-settings [data-player-quality-badge]")
         self.assertPageContains("${icon('settings')}")
         self.assertPageContains("typeof player.qualityLevels==='function'?player.qualityLevels():null")
         self.assertPageContains("activePixels>=2160?'4K':activePixels>=720?'HD':''")
@@ -635,6 +636,27 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".playerstatsbtn{position:absolute;left:11px;top:11px;z-index:8;width:40px;height:40px")
         self.assertPageContains("border:1px solid rgba(255,255,255,.2);border-radius:50%")
         self.assertPageContains(".playerstatsbtn:hover{background:rgba(0,0,0,.76)")
+        self.assertPageContains(".playernet{box-sizing:border-box;position:absolute;left:58px;top:11px;z-index:8;height:40px;min-height:40px")
+
+    def test_player_settings_match_real_ambient_speed_and_quality_capabilities(self):
+        self.assertPageContains("class=\"vjs-peach-settings-menu\" role=\"menu\" aria-label=\"播放器设置\"")
+        self.assertPageContains('role="menuitemcheckbox" data-player-ambient')
+        self.assertPageContains("<span>氛围模式</span>")
+        self.assertPageContains("<span>播放速度</span>")
+        self.assertPageContains("<span>清晰度</span>")
+        self.assertPageContains("player.playbackRate(Number(button.dataset.playerSpeedOption))")
+        self.assertPageContains("applyAmbientMode(!appSettings.ambientMode)")
+        self.assertPageContains(".vjs-peach-settings-menu{position:absolute;right:-4.5em")
+        self.assertPageLacks("睡眠定时")
+
+    def test_theater_mode_has_button_tooltip_keyboard_and_responsive_layout(self):
+        self.assertPageContains("function mountPlayerTheaterControl(player,settingsRoot)")
+        self.assertPageContains('data-player-theater aria-label="影院模式"')
+        self.assertPageContains("影院模式 <kbd>T</kbd>")
+        self.assertPageContains("if(e.key==='t'||e.key==='T')")
+        self.assertPageContains(".stage.theater-mode .sgrid{grid-template-columns:minmax(0,1fr)}")
+        self.assertPageContains('grid-template-areas:"media" "side" "queue"')
+        self.assertPageContains('id="i-theater-mode"')
 
     def test_player_stats_cover_direct_range_and_future_segmented_streams(self):
         self.assertPageContains('id="playerStatsBtn"')
@@ -1618,6 +1640,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("appSettings.seekSeconds")
         self.assertPageContains("appSettings.searchHistoryLimit")
         self.assertPageContains("appSettings.relatedLimit")
+        self.assertPageContains("appSettings.ambientMode=appSettings.ambientMode!==false")
+        self.assertPageContains("appSettings.theaterMode=appSettings.theaterMode===true")
         self.assertPageContains('id="followScheduleSetting"')
         self.assertPageContains("api('/api/follow/schedule'")
         self.assertPageContains('id="sidebarOrderSetting"')
@@ -1640,7 +1664,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(DIRECT_MANAGE_NAV[k]){openManage(DIRECT_MANAGE_NAV[k]);return}")
         self.assertPageContains(".settingscard{display:flex;flex-direction:column;width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:hidden")
         self.assertPageContains(".settingsscroll{flex:1;min-height:0;overflow-y:auto")
-        self.assertPageLacks('id="ambientSetting"')
+        self.assertPageContains("document.dispatchEvent(new CustomEvent('peachambientchange'")
         self.assertPageContains("color:#f5f7fa;color-scheme:dark")
 
     def test_search_menu_has_local_history_and_recommendations(self):
@@ -1657,6 +1681,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('class="ambientcanvas"')
         self.assertPageContains("requestVideoFrameCallback")
         self.assertPageContains("--video-glow")
+        self.assertPageContains("function mountPlayerAmbient(video)")
+        self.assertPageContains(".stage:not(.ambient-on) .ambientcanvas{display:none}")
         self.assertPageContains("视频 ID / 会话")
         self.assertPageContains("/api/quality-goal")
         self.assertPageContains('id="betterVersion"')

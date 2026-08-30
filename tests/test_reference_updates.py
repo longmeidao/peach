@@ -33,7 +33,8 @@ class ReferenceUpdateTests(unittest.TestCase):
              "f95-masked-gofile-media", "follow-fanbox-gofile-paheal",
              "fanbox-browser-transport", "beeg-profile-layout",
              "vercel-geist-fieldset-scroller-empty-state",
-             "vercel-geist-command-search-loading"},
+             "vercel-geist-command-search-loading",
+             "youtube-player-controls-user-screenshot"},
         )
         self.assertNotEqual(
             sources["vercel-report-design"]["url"],

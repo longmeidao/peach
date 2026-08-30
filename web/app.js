@@ -89,7 +89,7 @@ const ALL_SIDEBAR_KEYS=[...DEFAULT_SIDEBAR_ORDER,...OPTIONAL_SIDEBAR_KEYS];
 const SORTS=[['rating','评分'],['o','高潮计数'],['plays','观看次数'],['long','时长'],
              ['big','体积'],['new','最近入库'],['played','最近看的']];
 const SORT_KEYS=SORTS.map(([key])=>key);
-const DEFAULT_SETTINGS={batchSize:60,defaultSort:'new',hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',sidebarOrder:DEFAULT_SIDEBAR_ORDER};
+const DEFAULT_SETTINGS={batchSize:60,defaultSort:'new',hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',ambientMode:true,theaterMode:false,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
@@ -98,6 +98,8 @@ appSettings.batchSize=allowedSetting(+appSettings.batchSize,[30,60,90],60);
 appSettings.defaultSort=allowedSetting(appSettings.defaultSort,SORT_KEYS,'new');
 appSettings.hoverDelaySeconds=allowedSetting(+appSettings.hoverDelaySeconds,[3,5,8],5);
 appSettings.seekSeconds=allowedSetting(+appSettings.seekSeconds,[5,10,30],10);
+appSettings.ambientMode=appSettings.ambientMode!==false;
+appSettings.theaterMode=appSettings.theaterMode===true;
 appSettings.searchHistoryLimit=allowedSetting(+appSettings.searchHistoryLimit,[5,10,20],10);
 appSettings.relatedLimit=allowedSetting(+appSettings.relatedLimit,[12,20,30],20);
 appSettings.sidebarOrder=[...new Set(Array.isArray(appSettings.sidebarOrder)?appSettings.sidebarOrder:DEFAULT_SIDEBAR_ORDER)].filter(key=>ALL_SIDEBAR_KEYS.includes(key));
@@ -353,18 +355,48 @@ function fmtSpeed(bits){
   const bytes=bits/8;
   return bytes>=1048576?`${(bytes/1048576).toFixed(1)} MB/s`:`${Math.max(1,Math.round(bytes/1024))} KB/s`;
 }
+function applyAmbientMode(enabled,save=true){
+  appSettings.ambientMode=!!enabled;if(save)saveSettings();
+  $('#stage')?.classList.toggle('ambient-on',appSettings.ambientMode);
+  document.dispatchEvent(new CustomEvent('peachambientchange',{detail:{enabled:appSettings.ambientMode}}));
+}
+function applyTheaterMode(enabled,save=true){
+  appSettings.theaterMode=!!enabled;if(save)saveSettings();
+  const stage=$('#stage');stage?.classList.toggle('theater-mode',appSettings.theaterMode);
+  const button=stage?.querySelector('[data-player-theater]');
+  if(button){button.setAttribute('aria-pressed',String(appSettings.theaterMode));button.setAttribute('aria-label',appSettings.theaterMode?'退出影院模式':'影院模式')}
+  if(detailPlayer&&!detailPlayer.isDisposed())requestAnimationFrame(()=>detailPlayer.trigger('resize'));
+}
+function mountPlayerAmbient(video){
+  const stage=$('#stage'),canvas=stage?.querySelector('.ambientcanvas');if(!canvas)return()=>{};
+  const ctx=canvas.getContext('2d',{alpha:false});let stopped=false,last=0,scheduled=false;
+  const clear=()=>{ctx.clearRect(0,0,canvas.width,canvas.height);stage.style.removeProperty('--video-glow')};
+  const schedule=()=>{if(stopped||scheduled||video.paused||!appSettings.ambientMode)return;scheduled=true;
+    if(video.requestVideoFrameCallback)video.requestVideoFrameCallback(t=>paint(t));else requestAnimationFrame(paint)};
+  const paint=now=>{scheduled=false;if(stopped||!appSettings.ambientMode){if(!stopped)clear();return}
+    if(!document.hidden&&!video.paused&&now-last>480){last=now;
+      try{ctx.drawImage(video,0,0,canvas.width,canvas.height);
+        const px=ctx.getImageData(0,0,canvas.width,canvas.height).data;let r=0,g=0,b=0,n=0;
+        for(let i=0;i<px.length;i+=16){r+=px[i];g+=px[i+1];b+=px[i+2];n++}
+        if(n)stage.style.setProperty('--video-glow',`rgb(${Math.round(r/n)} ${Math.round(g/n)} ${Math.round(b/n)})`)
+      }catch(_e){}}
+    schedule()};
+  const onChange=event=>{stage.classList.toggle('ambient-on',event.detail.enabled);if(event.detail.enabled)schedule();else clear()};
+  document.addEventListener('peachambientchange',onChange);video.addEventListener('play',schedule);schedule();
+  return()=>{stopped=true;document.removeEventListener('peachambientchange',onChange);video.removeEventListener('play',schedule);clear()};
+}
 function mountPlayerQualityControl(player,video,fallbackHeight=0){
   const controlBar=player.getChild('controlBar')?.el();
   if(!controlBar||controlBar.querySelector('[data-player-quality]'))return;
   const root=document.createElement('div');
-  root.className='vjs-peach-quality vjs-control';root.dataset.playerQuality='';
-  root.innerHTML=`<button type="button" aria-label="切换清晰度" title="清晰度" aria-expanded="false">
+  root.className='vjs-peach-settings vjs-control';root.dataset.playerQuality='';
+  root.innerHTML=`<button type="button" class="vjs-peach-settings-toggle" aria-label="播放器设置" aria-expanded="false">
     ${icon('settings')}<span data-player-quality-badge hidden></span></button>
-    <div class="vjs-peach-quality-menu" role="menu" aria-label="清晰度" hidden></div>`;
+    <div class="vjs-peach-settings-menu" role="menu" aria-label="播放器设置" hidden></div>`;
   const fullscreen=controlBar.querySelector('.vjs-fullscreen-control');
   controlBar.insertBefore(root,fullscreen||null);
   const toggle=root.querySelector('button'),badge=root.querySelector('[data-player-quality-badge]');
-  const menu=root.querySelector('.vjs-peach-quality-menu');
+  const menu=root.querySelector('.vjs-peach-settings-menu');
   const levels=typeof player.qualityLevels==='function'?player.qualityLevels():null;
   let selected='auto';
   const resolution=(width,height)=>{const values=[Number(width),Number(height)].filter(value=>value>0);return values.length?Math.min(...values):0};
@@ -381,25 +413,57 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0){
     const pixels=resolution(video.videoWidth,video.videoHeight)||Number(fallbackHeight)||0;
     return [{key:'original',label:pixels?`${pixels}p`:'原画',pixels}];
   };
-  const render=()=>{
+  const qualityRows=()=>{
     const options=rows();
     if(!levels?.length)selected='original';
-    menu.innerHTML=options.map(option=>`<button type="button" role="menuitemradio" data-player-quality-option="${esc(option.key)}" aria-checked="${option.key===selected}">${esc(option.label)}</button>`).join('');
     const active=options.find(option=>option.key===selected)||options[0];
     const activePixels=active.pixels||Math.max(0,...options.map(option=>option.pixels||0));
     badge.textContent=activePixels>=2160?'4K':activePixels>=720?'HD':'';badge.hidden=!badge.textContent;
-    toggle.setAttribute('aria-label',`切换清晰度 · ${active.label}`);toggle.title=`清晰度 · ${active.label}`;
+    return {options,active};
+  };
+  const close=()=>{menu.hidden=true;toggle.setAttribute('aria-expanded','false')};
+  const showMain=()=>{
+    const {active}=qualityRows(),speed=Number(player.playbackRate())||1;
+    menu.innerHTML=`<button type="button" class="vjs-peach-menu-row" role="menuitemcheckbox" data-player-ambient aria-checked="${appSettings.ambientMode}">
+      ${icon('monitor-cog')}<span>氛围模式</span><i class="vjs-peach-switch" aria-hidden="true"></i></button>
+      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-speed>${icon('gauge')}<span>播放速度</span><b>${speed===1?'正常':speed+'×'}</b>${icon('chevron-right')}</button>
+      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-quality-view>${icon('sliders-horizontal')}<span>清晰度</span><b>${esc(active.label)}</b>${icon('chevron-right')}</button>`;
+    menu.querySelector('[data-player-ambient]').onclick=()=>{applyAmbientMode(!appSettings.ambientMode);showMain()};
+    menu.querySelector('[data-player-speed]').onclick=showSpeed;
+    menu.querySelector('[data-player-quality-view]').onclick=showQuality;
+  };
+  const showSpeed=()=>{
+    const selectedSpeed=Number(player.playbackRate())||1,speeds=[.25,.5,.75,1,1.25,1.5,1.75,2];
+    menu.innerHTML=`<button type="button" class="vjs-peach-menu-back" data-player-menu-back>${icon('chevron-left')}<span>播放速度</span></button>${speeds.map(speed=>
+      `<button type="button" class="vjs-peach-menu-option" role="menuitemradio" data-player-speed-option="${speed}" aria-checked="${speed===selectedSpeed}">${speed===1?'正常':speed+'×'}<span>${speed===selectedSpeed?icon('check'):''}</span></button>`).join('')}`;
+    menu.querySelector('[data-player-menu-back]').onclick=showMain;
+    menu.querySelectorAll('[data-player-speed-option]').forEach(button=>button.onclick=()=>{player.playbackRate(Number(button.dataset.playerSpeedOption));showMain()});
+  };
+  const showQuality=()=>{
+    const {options}=qualityRows();
+    menu.innerHTML=`<button type="button" class="vjs-peach-menu-back" data-player-menu-back>${icon('chevron-left')}<span>清晰度</span></button>${options.map(option=>
+      `<button type="button" class="vjs-peach-menu-option" role="menuitemradio" data-player-quality-option="${esc(option.key)}" aria-checked="${option.key===selected}">${esc(option.label)}<span>${option.key===selected?icon('check'):''}</span></button>`).join('')}`;
+    menu.querySelector('[data-player-menu-back]').onclick=showMain;
     menu.querySelectorAll('[data-player-quality-option]').forEach(button=>button.onclick=()=>{
       selected=button.dataset.playerQualityOption;
       if(levels?.length)for(let index=0;index<levels.length;index++)levels[index].enabled=selected==='auto'||selected===String(index);
-      render();menu.hidden=true;toggle.setAttribute('aria-expanded','false');
+      showMain();
     });
   };
-  toggle.onclick=()=>{const open=menu.hidden;menu.hidden=!open;toggle.setAttribute('aria-expanded',String(open))};
-  root.addEventListener('keydown',event=>{if(event.key==='Escape'){menu.hidden=true;toggle.setAttribute('aria-expanded','false');toggle.focus()}});
-  video.addEventListener('loadedmetadata',render);
-  levels?.on?.(['addqualitylevel','removequalitylevel'],render);
-  render();
+  toggle.onclick=event=>{event.stopPropagation();const open=menu.hidden;if(open)showMain();menu.hidden=!open;toggle.setAttribute('aria-expanded',String(open))};
+  const outside=event=>{if(!root.contains(event.target))close()};document.addEventListener('pointerdown',outside);
+  root.addEventListener('keydown',event=>{if(event.key==='Escape'){close();toggle.focus()}});
+  video.addEventListener('loadedmetadata',()=>{if(!menu.hidden)showMain();else qualityRows()});
+  levels?.on?.(['addqualitylevel','removequalitylevel'],()=>{if(!menu.hidden)showMain();else qualityRows()});
+  player.on('dispose',()=>document.removeEventListener('pointerdown',outside));qualityRows();
+  mountPlayerTheaterControl(player,root);
+}
+function mountPlayerTheaterControl(player,settingsRoot){
+  const controlBar=player.getChild('controlBar')?.el();if(!controlBar||controlBar.querySelector('[data-player-theater]'))return;
+  const root=document.createElement('div');root.className='vjs-peach-theater vjs-control';
+  root.innerHTML=`<button type="button" data-player-theater aria-label="影院模式" aria-pressed="${appSettings.theaterMode}">${icon('theater-mode')}<span class="vjs-peach-tooltip" role="tooltip">影院模式 <kbd>T</kbd></span></button>`;
+  controlBar.insertBefore(root,settingsRoot.nextSibling);
+  root.querySelector('button').onclick=event=>{event.stopPropagation();applyTheaterMode(!appSettings.theaterMode)};
 }
 function mountPlayerSeekPreview(player,it,options={}){
   const progress=player.getChild('controlBar')?.el()?.querySelector('.vjs-progress-control');
@@ -2112,7 +2176,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   if(followList)followList.before($('#stage'));
   $('#stage').hidden=false;document.body.classList.add('detail-open');
   $('#stage').innerHTML=`<div class="sgrid followdetailgrid${collection||embeddedQueue?' mixgrid':''}">
-    <div class="vwrap followdetailmedia${selectedKind==='image'?' image':''}"><button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${media}${imageControls}</div>
+    <div class="vwrap followdetailmedia${selectedKind==='image'?' image':''}">${selectedKind==='video'?'<canvas class="ambientcanvas" width="32" height="18"></canvas>':''}<button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${media}${imageControls}</div>
     ${embeddedQueue?followEmbeddedQueueHtml(item,selectedMedia.index):(collection?followQueueHtml(collection,item.id):'')}
     <div class="side followdetailside"><div class="sidecontent">
       <div class="followdetailtitle"><div class="stitle">${esc(item.title)}</div>${item.url?`<a class="followorigin" href="${esc(item.url)}" target="_blank" rel="noreferrer noopener" title="打开来源页面" aria-label="打开来源页面">${icon('external-link')}</a>`:''}</div>
@@ -2130,6 +2194,8 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
         ${item.status==='seen'||item.status==='ignored'?`<button data-follow-detail-status="new" aria-label="恢复未看" title="恢复未看">${icon('rotate-ccw')}</button>`:''}</div>
       <span class="fstate" aria-live="polite"></span>
     </div></div></div>`;
+  $('#stage').classList.toggle('ambient-on',selectedKind==='video'&&appSettings.ambientMode);
+  $('#stage').classList.toggle('theater-mode',selectedKind==='video'&&appSettings.theaterMode);
   const closeDetail=async()=>{disposeStage(false);route(followDetailReturnPath||'/follow');await openFollow(false)};
   $('#closeStage').onclick=closeDetail;
   $('#stage').querySelectorAll('[data-follow-queue-close]').forEach(button=>button.onclick=closeDetail);
@@ -2145,10 +2211,10 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     switchImage(imageMedia[next].index);
   });
   const followVideo=$('#stage').querySelector('.followdetailmedia>video');
-  if(followVideo)mountDetailPlayer(item,followVideo,false,{
+  if(followVideo){const followPlayer=mountDetailPlayer(item,followVideo,false,{
     source:{src,type:selectedMedia?.media_type||item.media_type||'video/mp4'},
     checkSourceStatus:false
-  });
+  });const stopFollowAmbient=mountPlayerAmbient(followVideo);followPlayer?.one?.('dispose',stopFollowAmbient);followVideo.addEventListener('emptied',stopFollowAmbient,{once:true})}
   wireDrag($('#stage').querySelector('.mixlist'));
   $('#stage').querySelectorAll('.followdetailtags [data-follow-tag]').forEach(button=>button.onclick=async()=>{
     const tag=button.dataset.followTag;
@@ -4552,6 +4618,8 @@ async function openItem(id,push=true,queueContext=null){
       <button class="obtn" data-kind="o">${icon('sperm')}<span>记一次高潮</span><b class="mono" id="oCount">${it.o_count||0}</b></button>
     </div></div></div>
     ${queueContext?'':`<div class="next"><h3>接着看</h3><div class="nrow" id="nrow">载入中…</div></div>`}`;
+  $('#stage').classList.toggle('ambient-on',appSettings.ambientMode);
+  $('#stage').classList.toggle('theater-mode',appSettings.theaterMode);
 
   const closeDetail=()=>{const restore=cloneBarsContext(detailReturnBarsContext);
     disposeStage(true);detailReturnBarsContext=null;
@@ -4684,16 +4752,6 @@ async function openItem(id,push=true,queueContext=null){
     $('#realBar').style.width=rp.toFixed(1)+'%';
   }
   wireTelemetry(it,vv,{watched:'#watched',mark:'#mark',ratio:'#ratioTxt'});
-  const startAmbient=()=>{const canvas=$('#ambientCanvas');if(!canvas)return()=>{};
-    const ctx=canvas.getContext('2d',{alpha:false});let stopped=false,last=0;
-    const paint=now=>{if(stopped)return;if(!document.hidden&&!vv.paused&&now-last>480){last=now;
-      try{ctx.drawImage(vv,0,0,canvas.width,canvas.height);
-        const px=ctx.getImageData(0,0,canvas.width,canvas.height).data;let r=0,g=0,b=0,n=0;
-        for(let i=0;i<px.length;i+=16){r+=px[i];g+=px[i+1];b+=px[i+2];n++}
-        if(n)$('#stage').style.setProperty('--video-glow',`rgb(${Math.round(r/n)} ${Math.round(g/n)} ${Math.round(b/n)})`)
-      }catch(_e){}}
-      if(vv.requestVideoFrameCallback)vv.requestVideoFrameCallback((t)=>paint(t));else requestAnimationFrame(paint)};
-    vv.addEventListener('play',()=>paint(performance.now()),{once:true});return()=>{stopped=true}};
   let stopAmbient=()=>{};
   const offlineGate=$('#offlineGate');
   if(offlineGate){
@@ -4709,8 +4767,8 @@ async function openItem(id,push=true,queueContext=null){
   else if(onlineGate){
     $('#openSavedFollow').onclick=()=>{followFilter='saved';openFollow()};
   }
-  else if(g)g.onclick=()=>{vv.hidden=false;g.remove();mountDetailPlayer(it,vv,true);stopAmbient=startAmbient()};
-  else{mountDetailPlayer(it,vv,true);stopAmbient=startAmbient()}
+  else if(g)g.onclick=()=>{vv.hidden=false;g.remove();const mounted=mountDetailPlayer(it,vv,true);stopAmbient=mountPlayerAmbient(vv);mounted?.one?.('dispose',stopAmbient)};
+  else{const mounted=mountDetailPlayer(it,vv,true);stopAmbient=mountPlayerAmbient(vv);mounted?.one?.('dispose',stopAmbient)}
   vv.addEventListener('emptied',()=>stopAmbient(),{once:true});
   $('#stage').scrollIntoView({behavior:'auto',block:'start'});
   buildBars();
@@ -5106,6 +5164,9 @@ document.addEventListener('keydown',e=>{
   }
   const video=activeVideo();
   if(video){
+    if(e.key==='t'||e.key==='T'){
+      e.preventDefault();applyTheaterMode(!appSettings.theaterMode);return;
+    }
     if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
       e.preventDefault();
       seekVideoBy(video,appSettings.seekSeconds*(e.key==='ArrowRight'?1:-1));

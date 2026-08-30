@@ -167,6 +167,22 @@
         "tests/test_follow_web.py",
         "tests/test_web_ui.py"
       ]
+    },
+    {
+      "id": "youtube-player-controls-user-screenshot",
+      "name": "YouTube 播放器控件、设置、影院与氛围模式证据",
+      "url": "https://support.google.com/youtube/answer/12827017?hl=en-GB",
+      "snapshot": "docs/reference-snapshots/youtube-player-controls-user-screenshot.md",
+      "checked_on": "2026-08-30",
+      "sha256": "5882f99e6465cd2539b187fa967ab5cdd2f0409247accc437dfe16f1c71ee004",
+      "role": "用户截图锁定播放器控件几何与设置面板；YouTube 官方帮助锁定氛围模式和影院模式语义。",
+      "consumers": [
+        "web/app.css",
+        "web/app.js",
+        "web/index.html",
+        "tests/test_follow_web.py",
+        "tests/test_web_ui.py"
+      ]
     }
   ]
 }
