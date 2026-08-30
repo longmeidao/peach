@@ -1139,50 +1139,83 @@ async function openStats(push=true,focusResource=false){
   const pct=(x,y)=>y?Math.round(x/y*100):0;
   const gb=b=>b>=1099511627776?(b/1099511627776).toFixed(2)+' TB':(b/1073741824).toFixed(1)+' GB';
   const hrs=s=>s>=3600?(s/3600).toFixed(1)+' 小时':Math.round(s/60)+' 分钟';
-  const card=(t,body,size='third')=>`<section class="scard2 statcard-${size}"><header class="statcardhead"><h3>${t}</h3></header><div class="statcardbody">${body}</div></section>`;
+  const totalVideos=d.by_loc.reduce((sum,row)=>sum+row.videos,0);
+  const totalBytes=d.by_loc.reduce((sum,row)=>sum+row.bytes,0);
+  const coverage=pct(d.tag_cov,a.videos);
+  const disk=d.system_disk, diskPct=disk?pct(disk.free,disk.total):0;
   const kv=(k,v,u)=>`<div class="kv"><span>${k}</span><b>${v}${u?`<span class="u">${u}</span>`:''}</b></div>`;
   const metric=(k,v,max)=>`<div class="statmetric">${kv(k,v.toLocaleString(),pct(v,max)+'%')}${progressHtml(`${k}：${v.toLocaleString()} / ${max.toLocaleString()}`,v,max)}</div>`;
+  const metricTab=(key,label,value,detail,selected=false)=>`<button type="button" role="tab" data-stats-metric="${key}"
+    aria-selected="${selected}" aria-controls="stats-detail-${key}" tabindex="${selected?'0':'-1'}">
+    <span>${label}</span><b>${value}</b><small>${detail}</small></button>`;
+  const locationRows=d.by_loc.map(row=>`<div class="insightbarrow"><div><span>${LOC[row.k]||row.k}</span><b>${row.videos.toLocaleString()}</b></div>
+    ${progressHtml(`${LOC[row.k]||row.k}：${row.videos.toLocaleString()} / ${totalVideos.toLocaleString()}`,row.videos,totalVideos)}
+    <small>${gb(row.bytes)} · ${pct(row.videos,totalVideos)}%</small></div>`).join('');
+  const table=(head,rows)=>`<div class="insighttable"><div class="insighttablehead">${head.map(value=>`<span>${value}</span>`).join('')}</div>${rows}</div>`;
+  const tagsTable=table(['内容标签','视频'],d.top_tags.map(t=>`<button type="button" class="insighttablerow" data-k="${esc(t.k)}">
+    <span>${esc(tagLabel(t.k))}</span><b>${t.n.toLocaleString()}</b></button>`).join(''));
+  const recentTable=table(['作品','观看证据'],d.recent.length?d.recent.map(row=>{
+    const real=row.duration?Math.min(row.play_seconds/row.duration,1)*100:0;
+    const reached=(row.max_reached||0)*100;
+    const note=real<reached-25?'快进扫过':(row.o_count?`高潮 ${row.o_count}`:'正常观看');
+    return `<div class="insighttablerow"><span>${esc((row.creator?row.creator+' · ':'')+row.name)}</span>
+      <b>真实 ${real.toFixed(0)}% · 到达 ${reached.toFixed(0)}% · ${note}</b></div>`}).join(''):
+    `<div class="insightempty">${emptyStateHtml('history','还没有观看记录','开始播放后，这里会显示最近的真实观看证据。')}</div>`);
+  const sourceTable=table(['标签来源','覆盖视频'],d.tag_source.map(row=>`<div class="insighttablerow"><span>${esc(row.k)}</span>
+    <b>${row.n.toLocaleString()} 条 · ${row.assets.toLocaleString()} 个视频</b></div>`).join(''));
   $('#stats').innerHTML=`
-    <div class="statsdashboard">
-    <div class="scards">
-      ${card('库存', d.by_loc.map(l=>kv(LOC[l.k]||l.k, l.videos.toLocaleString(), gb(l.bytes))).join('')
-        + kv('合计', d.by_loc.reduce((s,l)=>s+l.videos,0).toLocaleString(),
-             gb(d.by_loc.reduce((s,l)=>s+l.bytes,0))))}
-      ${card('归属进度',
-         metric('有创作者',a.creator,a.videos)
-        +metric('有番号',a.code,a.videos)
-        +metric('有厂牌',a.studio,a.videos))}
-      ${card('加工进度',
-         metric('已抽帧',a.thumb,a.videos)
-        +metric('已探测时长',a.duration,a.videos)
-        +metric('有内容标签',d.tag_cov,a.videos))}
-      ${card('观看',
-         `<div class="big">${cs.played.toLocaleString()}</div><div class="bigsub">看过的片子</div>`
-        +kv('累计观看', hrs(cs.play_seconds))
-        +kv('高潮计数', cs.o_total.toLocaleString())
-        +kv('快进扫过', cs.skimmed.toLocaleString(), '真实观看远低于到达位置')
-        +kv('不合口味', cs.dislike.toLocaleString())
-        +kv('看过了', cs.seen.toLocaleString())
-        +kv('回收站', cs.trash.toLocaleString()),'half')}
-      ${card('标签来源', d.tag_source.map(t=>
-          kv(t.k, t.n.toLocaleString(), t.assets.toLocaleString()+' 个视频')).join(''),'quarter')}
-      ${card('系统盘', d.system_disk
-         ? kv('可用', gb(d.system_disk.free), pct(d.system_disk.free,d.system_disk.total)+'%')
-          +progressHtml(`系统盘可用：${gb(d.system_disk.free)} / ${gb(d.system_disk.total)}`,d.system_disk.free,d.system_disk.total)
-          +`<div class="bigsub">CloudDrive 的块缓存会长在这里，低于 40 GB 抽帧任务会拒绝启动</div>`
-        : '—','quarter')}
-    </div>
-    <section class="scard2 statswide"><header class="statcardhead"><h3>内容标签 Top 30</h3></header>
-      <div class="statcardbody"><div class="tagwall">${d.top_tags.map(t=>
-        `<button class="tg ${t.cat}" data-k="${esc(t.k)}" style="padding:5px 12px;font-size:13px">
-          ${esc(tagLabel(t.k))} <span style="opacity:.6;font-size:11px">${t.n.toLocaleString()}</span></button>`).join('')}</div></div></section>
-    ${d.recent.length?`<section class="scard2 statswide"><header class="statcardhead"><h3>最近看过</h3></header><div class="statcardbody">${d.recent.map(r=>{
-      const real=r.duration?Math.min(r.play_seconds/r.duration,1)*100:0;
-      const mx=(r.max_reached||0)*100;
-      return kv(esc((r.creator?r.creator+' · ':'')+r.name).slice(0,90),
-        `真实看 ${real.toFixed(0)}% / 到达 ${mx.toFixed(0)}%`,
-        real<mx-25?'快进扫过':(r.o_count?`⌀ ${r.o_count}`:''));}).join('')}</div></section>`:''}
-    ${resourceSyncMarkup()}</div>`;
+    <div class="insightpage statsdashboard" data-stats-dashboard>
+      <header class="insighttoolbar"><p>账本当前快照 · ${totalVideos.toLocaleString()} 个视频 · ${gb(totalBytes)}</p></header>
+      <div class="metricstrip" role="tablist" aria-label="统计视图">
+        ${metricTab('inventory','馆藏视频',totalVideos.toLocaleString(),gb(totalBytes),true)}
+        ${metricTab('viewing','看过',cs.played.toLocaleString(),hrs(cs.play_seconds))}
+        ${metricTab('coverage','内容标签',coverage+'%',`${d.tag_cov.toLocaleString()} / ${a.videos.toLocaleString()}`)}
+        ${metricTab('disk','系统盘可用',disk?gb(disk.free):'—',disk?diskPct+'%':'未取得')}
+      </div>
+      <section class="insightdetail">
+        <div id="stats-detail-inventory" role="tabpanel" data-stats-detail="inventory" class="insightdetailbody">
+          <div class="insightcopy"><span>库存</span><h2>${totalVideos.toLocaleString()}</h2><b>个视频</b>
+            <p>按真实挂载位置汇总；体积和视频数使用同一份 ledger 快照。</p></div>
+          <div class="insightvisual">${locationRows}</div></div>
+        <div id="stats-detail-viewing" role="tabpanel" data-stats-detail="viewing" class="insightdetailbody" hidden>
+          <div class="insightcopy"><span>观看</span><h2>${cs.played.toLocaleString()}</h2><b>个作品有播放记录</b>
+            <p>累计 ${hrs(cs.play_seconds)}；真实观看时长与最远到达位置分开统计。</p></div>
+          <div class="insightfacts">${kv('高潮计数',cs.o_total.toLocaleString())}${kv('快进扫过',cs.skimmed.toLocaleString())}
+            ${kv('明确不喜欢',cs.dislike.toLocaleString())}${kv('看过了',cs.seen.toLocaleString())}${kv('回收站',cs.trash.toLocaleString())}</div></div>
+        <div id="stats-detail-coverage" role="tabpanel" data-stats-detail="coverage" class="insightdetailbody" hidden>
+          <div class="insightcopy"><span>内容标签覆盖</span><h2>${coverage}%</h2><b>${d.tag_cov.toLocaleString()} / ${a.videos.toLocaleString()}</b>
+            <p>归属与加工分别保留真实分母，不用装饰性进度替代缺失数据。</p></div>
+          <div class="insightvisual">${metric('有创作者',a.creator,a.videos)}${metric('有番号',a.code,a.videos)}
+            ${metric('有厂牌',a.studio,a.videos)}${metric('已抽帧',a.thumb,a.videos)}${metric('已探测时长',a.duration,a.videos)}</div></div>
+        <div id="stats-detail-disk" role="tabpanel" data-stats-detail="disk" class="insightdetailbody" hidden>
+          <div class="insightcopy"><span>系统盘</span><h2>${disk?gb(disk.free):'—'}</h2><b>${disk?`共 ${gb(disk.total)}`:'容量未取得'}</b>
+            <p>CloudDrive 块缓存位于系统盘；低于 40 GB 时抽帧任务会拒绝启动。</p></div>
+          <div class="insightvisual">${disk?progressHtml(`系统盘可用：${gb(disk.free)} / ${gb(disk.total)}`,disk.free,disk.total):
+            noteHtml('系统盘容量未取得。',{variant:'warning',label:'容量未取得'})}</div></div>
+      </section>
+      <section class="insightpanel">
+        <header><div class="insighttabs" role="tablist" aria-label="统计维度">
+          <button type="button" role="tab" data-stats-tab="tags" aria-selected="true" aria-controls="stats-panel-tags">内容标签</button>
+          <button type="button" role="tab" data-stats-tab="recent" aria-selected="false" aria-controls="stats-panel-recent" tabindex="-1">最近看过</button>
+          <button type="button" role="tab" data-stats-tab="sources" aria-selected="false" aria-controls="stats-panel-sources" tabindex="-1">标签来源</button>
+        </div></header>
+        <div class="insightpanelbody"><div id="stats-panel-tags" role="tabpanel" data-stats-panel="tags">${tagsTable}</div>
+          <div id="stats-panel-recent" role="tabpanel" data-stats-panel="recent" hidden>${recentTable}</div>
+          <div id="stats-panel-sources" role="tabpanel" data-stats-panel="sources" hidden>${sourceTable}</div></div>
+      </section>
+      ${resourceSyncMarkup()}
+    </div>`;
+  const statsRoot=$('#stats');
+  statsRoot.querySelectorAll('[data-stats-metric]').forEach(button=>button.onclick=()=>{
+    statsRoot.querySelectorAll('[data-stats-metric]').forEach(tab=>{
+      const selected=tab===button;tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1});
+    statsRoot.querySelectorAll('[data-stats-detail]').forEach(panel=>panel.hidden=panel.dataset.statsDetail!==button.dataset.statsMetric)
+  });
+  statsRoot.querySelectorAll('[data-stats-tab]').forEach(button=>button.onclick=()=>{
+    statsRoot.querySelectorAll('[data-stats-tab]').forEach(tab=>{
+      const selected=tab===button;tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1});
+    statsRoot.querySelectorAll('[data-stats-panel]').forEach(panel=>panel.hidden=panel.dataset.statsPanel!==button.dataset.statsTab)
+  });
   $('#stats').querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
     closeStats(); toggleTag(b.dataset.k)});
   await wireResourceSync();
@@ -1285,15 +1318,15 @@ function readTasteCache(){
       entry.dashboard&&typeof entry.dashboard==='object'))
   }catch(_error){return new Map()}
 }
-let tasteWindow='all',tasteCache=readTasteCache(),tasteRequest=0;
+let tasteWindow='all',tasteEvidence='browser',tasteDimension={browser:'tags',peach:'tags'};
+let tasteCache=readTasteCache(),tasteRequest=0;
 function tasteCacheSet(window,dashboard){
   tasteCache.set(window,{at:Date.now(),dashboard});
   try{localStorage.setItem(TASTE_CACHE_KEY,JSON.stringify(Object.fromEntries(tasteCache)))}catch(_error){}
 }
 const tasteDate=value=>value?new Date(value).toLocaleDateString('zh-CN'):'—';
 const tasteHours=seconds=>seconds>=3600?(seconds/3600).toFixed(1)+' 小时':Math.round(seconds/60)+' 分钟';
-const tasteRanking=(title,rows,kind,empty='暂无足够证据',panel='tastepanel-half',visual='')=>`<section class="tastepanel ${panel}"><h3>${title}</h3>
-  <div class="tasteranks${kind==='tag'?' tasteranks-tags':''}${visual?' tasteranks-visual':''}">${rows.length?rows.map((row,index)=>{
+const tasteRankRows=(rows,kind,empty='暂无足够证据',visual='')=>rows.length?rows.map((row,index)=>{
     const clickable=kind&&row.peach_items>0;
     const detail=row.web_visits!=null
       ?`${row.web_visits?`浏览 ${row.web_visits}`:''}${row.web_visits&&row.peach_items?' · ':''}${row.peach_items?`Peach ${row.peach_items}`:''}`
@@ -1304,7 +1337,8 @@ const tasteRanking=(title,rows,kind,empty='暂无足够证据',panel='tastepanel
       :visual?`<span class="tasteavatar">${avatarInner(row.name,ref,rep,visual)}</span>`:'';
     return `<${clickable?'button':'div'} class="tasterank${kind==='tag'?' tasterank-tag':''}${visual?' tasterank-visual':''}"${clickable?` data-taste-kind="${kind}" data-taste-name="${esc(row.name)}"`:''}>
       <span class="tastepos mono">${index+1}</span>${media}<span><b>${esc(row.name)}</b><small>${esc(detail)}</small></span>
-      ${clickable?icon('chevron-right'):''}</${clickable?'button':'div'}>`}).join(''):`<p class="empty">${empty}</p>`}</div></section>`;
+      ${clickable?icon('chevron-right'):''}</${clickable?'button':'div'}>`}).join(''):
+  emptyStateHtml('search','暂无足够证据',empty);
 function openTasteSignal(kind,name){
   if(kind==='tag'){
     state={...state,tag:name,tag_match:'all',creator:'',studio:'',q:'',state:'',orient:''};
@@ -1315,6 +1349,7 @@ function openTasteSignal(kind,name){
 function renderTaste(d){
   const s=d.summary||{},coverage=d.coverage||{},rank=d.rankings||{},storage=d.storage||{};
   const summary=(label,value,sub)=>`<div class="tastesummary"><span>${label}</span><b>${value}</b><small>${sub}</small></div>`;
+  const coverageMetric=(label,value,sub,done,total)=>`<div class="tastecovermetric"><span>${label}</span><b>${value}</b><small>${sub}</small>${progressHtml(`${label}：${done} / ${total}`,done,total)}</div>`;
   const sourceRows=(d.sources||[]).map(source=>`<div class="tastesource">
     <span class="tastebrowser">${icon(source.browser==='browserexport'?'upload':'database')}</span>
     <span><b>${esc(source.profile)}</b><small>${esc(source.browser)} · ${esc(source.host)} · ${Number(source.visits||0).toLocaleString()} 条</small></span>
@@ -1322,39 +1357,80 @@ function renderTaste(d){
   const gapRows=(d.gaps||[]).map(row=>({...row,evidence:['浏览记录']}));
   const domainRows=(rank.domains||[]).map(row=>({name:row.name,score:row.visits}));
   const categoryRows=(rank.categories||[]).map(row=>({name:row.name,score:row.score}));
+  const categoryMax=Math.max(1,...categoryRows.map(row=>Number(row.score||0)));
+  const categoryBars=categoryRows.length?categoryRows.map(row=>`<div class="tastebar"><div><span>${esc(row.name)}</span><b>${Number(row.score||0).toLocaleString()}</b></div>
+    ${progressHtml(`${row.name}：${Number(row.score||0).toLocaleString()} / ${categoryMax.toLocaleString()}`,row.score||0,categoryMax)}</div>`).join(''):
+    emptyStateHtml('search','暂无口味维度','采集浏览记录后，这里会显示聚合后的口味证据。');
+  const rankPanel=(source,key,rows,kind='',empty='暂无足够证据',visual='')=>`<div id="taste-${source}-${key}" role="tabpanel"
+    data-taste-dimension-panel="${source}:${key}"${tasteDimension[source]===key?'':' hidden'}>
+    <div class="tasteranks${kind==='tag'?' tasteranks-tags':''}${visual?' tasteranks-visual':''}">${tasteRankRows(rows,kind,empty,visual)}</div></div>`;
+  const sourceTabs=(source,tabs)=>`<div class="insighttabs" role="tablist" aria-label="${source==='browser'?'浏览器':'Peach'} 口味维度">${tabs.map(([key,label])=>
+    `<button type="button" role="tab" data-taste-dimension="${source}:${key}" aria-selected="${tasteDimension[source]===key}"
+      aria-controls="taste-${source}-${key}"${tasteDimension[source]===key?'':' tabindex="-1"'}>${label}</button>`).join('')}</div>`;
   $('#stats').innerHTML=`<div class="tastepage">
-    <header class="tastehead"><div><p>${d.updated_at?`更新于 ${tasteDate(d.updated_at)}`:'尚未采集浏览记录'}</p></div>
+    <header class="tastehead"><div class="insightswitch" role="radiogroup" aria-label="口味证据来源">
+        <label><input type="radio" name="taste-evidence" value="browser"${tasteEvidence==='browser'?' checked':''}><span>浏览器记录</span></label>
+        <label><input type="radio" name="taste-evidence" value="peach"${tasteEvidence==='peach'?' checked':''}><span>Peach 内部</span></label></div>
       <div class="tasteactions"><select data-taste-window aria-label="分析范围">
         <option value="all">全部时间</option><option value="365d">最近一年</option><option value="90d">最近 90 天</option></select>
         <button data-taste-refresh>${icon('refresh-cw')}读取 Peach 主机</button>
         <button data-taste-import>${icon('upload')}导入历史</button><input data-taste-file type="file" hidden></div></header>
     <div class="tastestate" data-taste-state role="status" aria-live="polite"></div>
-    <div class="tastesummaries">
+    <div class="tastesummaries" data-taste-summary="browser"${tasteEvidence==='browser'?'':' hidden'}>
       ${summary('浏览记录',Number(s.history_visits||0).toLocaleString(),`${s.history_sources||0} 个数据源 · ${tasteDate(s.range_start)}—${tasteDate(s.range_end)}`)}
-      ${summary('Peach 看过',Number(s.peach_items||0).toLocaleString(),tasteHours(s.peach_seconds||0))}
-      ${summary('明确反馈',Number(s.liked||0).toLocaleString(),`喜欢 ${s.liked||0} · 不喜欢 ${s.disliked||0}`)}
+      ${summary('口味维度',categoryRows.length.toLocaleString(),categoryRows[0]?.name||'尚无主维度')}
+      ${summary('浏览候选',gapRows.length.toLocaleString(),'只作待复核证据')}
       ${summary('私有导出',Number(storage.exports||0).toLocaleString(),fmtSize(storage.bytes||0))}</div>
-    <section class="tastegroup"><header><div><h2>浏览器记录</h2><p>当前分析主体；只展示聚合后的口味证据。</p></div><span>主</span></header><div class="tastegrid">
-      ${tasteRanking('口味维度',categoryRows,'','','tastepanel-compact')}
-      ${tasteRanking('Tag',rank.browser_tags||[],'tag','','tastepanel-wide')}
-      ${tasteRanking('创作者',rank.browser_creators||[],'creator','','tastepanel-half','creator')}
-      ${tasteRanking('常访问网站',domainRows,'','','tastepanel-half','domain')}
-      ${tasteRanking('浏览候选',gapRows,'','这些词在浏览记录中出现，但 Peach 观看记录还没有对应证据','tastepanel-full')}
-    </div></section>
-    <section class="tastegroup"><header><div><h2>Peach 内部</h2><p>播放、评分与明确反馈只作为独立证据，不反向代表全部浏览口味。</p></div><span>辅</span></header><div class="tastegrid">
-      ${tasteRanking('Tag',rank.peach_tags||[],'tag','','tastepanel-half')}
-      ${tasteRanking('创作者',rank.peach_creators||[],'creator','','tastepanel-half','creator')}
-      ${tasteRanking('女优',rank.peach_performers||rank.performers||[],'performer','','tastepanel-wide','performer')}
-      <section class="tastepanel tastepanel-compact"><h3>数据完整度</h3><div class="tastecoverage">
-        <div><b>${coverage.tagged||0}</b><span>有标签</span><small>${coverage.untagged||0} 项待补</small></div>
-        <div><b>${coverage.identified||0}</b><span>有身份</span><small>${coverage.unidentified||0} 项待补</small></div></div></section>
-    </div><p class="tastenegative">“不合口味”只记录到具体项目与理由，不自动给 Tag 降权。</p></section>
-    <section class="tastepanel tastesources"><header><h3>数据源</h3><p>支持 macOS / Windows 的 Zen、Safari、Firefox、Chrome；这里列出已经采集的设备。</p></header>
-      <div>${sourceRows||'<p class="empty">导入 Google Takeout ZIP、browserexport SQLite / JSON / JSONL，或读取本机浏览器。</p>'}</div></section>
+    <div class="tastesummaries" data-taste-summary="peach"${tasteEvidence==='peach'?'':' hidden'}>
+      ${summary('Peach 看过',Number(s.peach_items||0).toLocaleString(),tasteHours(s.peach_seconds||0))}
+      ${summary('喜欢',Number(s.liked||0).toLocaleString(),'明确正向反馈')}
+      ${summary('不合口味',Number(s.disliked||0).toLocaleString(),'只归于具体项目')}
+      ${summary('有标签',Number(coverage.tagged||0).toLocaleString(),`${coverage.untagged||0} 项待补`)}</div>
+    <section class="tastehero" data-taste-evidence-panel="browser"${tasteEvidence==='browser'?'':' hidden'}>
+      <div class="insightcopy"><span>浏览器画像</span><h2>${Number(s.history_visits||0).toLocaleString()}</h2><b>条聚合访问证据</b>
+        <p>浏览器记录是当前分析主体；页面只展示聚合结果，不展示原始 URL、标题或搜索内容。</p>
+        <small>${d.updated_at?`更新于 ${tasteDate(d.updated_at)}`:'尚未采集浏览记录'}</small></div>
+      <div class="tastebars">${categoryBars}</div></section>
+    <section class="tastehero" data-taste-evidence-panel="peach"${tasteEvidence==='peach'?'':' hidden'}>
+      <div class="insightcopy"><span>Peach 观看</span><h2>${Number(s.peach_items||0).toLocaleString()}</h2><b>个作品有内部行为证据</b>
+        <p>播放、评分与明确反馈保持独立，不反向代表全部浏览口味。</p></div>
+      <div class="insightvisual">
+        ${coverageMetric('有标签',Number(coverage.tagged||0).toLocaleString(),`${coverage.untagged||0} 项待补`,coverage.tagged||0,(coverage.tagged||0)+(coverage.untagged||0))}
+        ${coverageMetric('有身份',Number(coverage.identified||0).toLocaleString(),`${coverage.unidentified||0} 项待补`,coverage.identified||0,(coverage.identified||0)+(coverage.unidentified||0))}
+      </div></section>
+    <section class="insightpanel tasteanalysis" data-taste-evidence-panel="browser"${tasteEvidence==='browser'?'':' hidden'}>
+      <header>${sourceTabs('browser',[['tags','Tag'],['creators','创作者'],['domains','常访问网站'],['gaps','浏览候选']])}</header>
+      <div class="insightpanelbody">
+        ${rankPanel('browser','tags',rank.browser_tags||[],'tag')}
+        ${rankPanel('browser','creators',rank.browser_creators||[],'creator','暂无创作者证据','creator')}
+        ${rankPanel('browser','domains',domainRows,'','暂无网站证据','domain')}
+        ${rankPanel('browser','gaps',gapRows,'','这些词在浏览记录中出现，但 Peach 观看记录还没有对应证据')}
+      </div></section>
+    <section class="insightpanel tasteanalysis" data-taste-evidence-panel="peach"${tasteEvidence==='peach'?'':' hidden'}>
+      <header>${sourceTabs('peach',[['tags','Tag'],['creators','创作者'],['performers','女优']])}</header>
+      <div class="insightpanelbody">
+        ${rankPanel('peach','tags',rank.peach_tags||[],'tag')}
+        ${rankPanel('peach','creators',rank.peach_creators||[],'creator','暂无创作者证据','creator')}
+        ${rankPanel('peach','performers',rank.peach_performers||rank.performers||[],'performer','暂无女优证据','performer')}
+      </div></section>
+    <p class="tastenegative" data-taste-evidence-panel="peach"${tasteEvidence==='peach'?'':' hidden'}>“不合口味”只记录到具体项目与理由，不自动给 Tag 降权。</p>
+    <section class="insightpanel tastesources"><header><div><h3>数据源</h3><p>支持 macOS / Windows 的 Zen、Safari、Firefox、Chrome；这里列出已经采集的设备。</p></div></header>
+      <div class="insightpanelbody"><div>${sourceRows||emptyStateHtml('database','还没有数据源','导入或读取浏览记录后，这里会列出已采集设备。')}</div></div></section>
     <p class="tasteprivacy">原始 URL、标题与搜索内容不会显示在页面，也不会写入 ledger；所有画像均为候选。</p>
   </div>`;
   const root=$('#stats'),stateEl=root.querySelector('[data-taste-state]'),file=root.querySelector('[data-taste-file]');
   root.querySelector('[data-taste-window]').value=d.window||tasteWindow;
+  root.querySelectorAll('input[name="taste-evidence"]').forEach(input=>input.onchange=()=>{
+    tasteEvidence=input.value;
+    root.querySelectorAll('[data-taste-summary]').forEach(panel=>panel.hidden=panel.dataset.tasteSummary!==tasteEvidence);
+    root.querySelectorAll('[data-taste-evidence-panel]').forEach(panel=>panel.hidden=panel.dataset.tasteEvidencePanel!==tasteEvidence)
+  });
+  root.querySelectorAll('[data-taste-dimension]').forEach(button=>button.onclick=()=>{
+    const [source,key]=button.dataset.tasteDimension.split(':');tasteDimension[source]=key;
+    root.querySelectorAll(`[data-taste-dimension^="${source}:"]`).forEach(tab=>{
+      const selected=tab===button;tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1});
+    root.querySelectorAll(`[data-taste-dimension-panel^="${source}:"]`).forEach(panel=>panel.hidden=panel.dataset.tasteDimensionPanel!==button.dataset.tasteDimension)
+  });
   root.querySelector('[data-taste-window]').onchange=e=>{tasteWindow=e.target.value;openTaste(false)};
   root.querySelector('[data-taste-refresh]').onclick=async e=>{const button=e.currentTarget;
     const oldButton=button.innerHTML;
