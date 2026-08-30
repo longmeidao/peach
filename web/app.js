@@ -1685,10 +1685,10 @@ function renderTaste(d){
         ${rankPanel('peach','creators',rank.peach_creators||[],'creator','暂无创作者证据','creator')}
         ${rankPanel('peach','performers',rank.peach_performers||rank.performers||[],'performer','暂无女优证据','performer')}
       </div></section>
-    <p class="tastenegative" data-taste-evidence-panel="peach"${tasteEvidence==='peach'?'':' hidden'}>“不合口味”只记录到具体项目与理由，不自动给标签降权。</p>
+    <div data-taste-evidence-panel="peach"${tasteEvidence==='peach'?'':' hidden'}>${noteHtml('“不合口味”只记录到具体项目与理由，不自动给标签降权。',{className:'tastefootnote tastenegative'})}</div>
     <section class="insightpanel tastesources"><header><div><h3>数据源</h3><p>支持 macOS / Windows 的 Zen、Safari、Firefox、Chrome；这里列出已经采集的设备。</p></div></header>
       <div class="insightpanelbody"><div>${sourceRows||emptyStateHtml('database','还没有数据源','导入或读取浏览记录后，这里会列出已采集设备。')}</div></div></section>
-    <p class="tasteprivacy">原始 URL、标题与搜索内容不会显示在页面，也不会写入 ledger；所有画像均为候选。</p>
+    ${noteHtml('原始 URL、标题与搜索内容不会显示在页面，也不会写入 ledger；所有画像均为候选。',{className:'tastefootnote tasteprivacy'})}
   </div>`;
   const root=$('#stats'),stateEl=root.querySelector('[data-taste-state]'),file=root.querySelector('[data-taste-file]');
   root.querySelector('[data-taste-window]').value=d.window||tasteWindow;

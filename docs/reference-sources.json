@@ -183,6 +183,20 @@
       ]
     },
     {
+      "id": "vercel-notifications-note",
+      "name": "Vercel Notifications 中性说明 Note",
+      "url": "https://vercel.com/sandun-bingshi/~/settings/notifications",
+      "snapshot": "docs/reference-snapshots/vercel-notifications-note.md",
+      "checked_on": "2026-08-30",
+      "sha256": "2876093eb7f3cad9a56af6a5b3e6d42e5aac8761f64de173bb1985822112b021",
+      "role": "口味页底部补充说明的中性 Note 结构依据；持续可见、信息图标在左，无真实动作时不伪造链接。",
+      "consumers": [
+        "web/app.css",
+        "web/app.js",
+        "tests/test_web_ui.py"
+      ]
+    },
+    {
       "id": "youtube-player-controls-user-screenshot",
       "name": "YouTube 播放器控件、设置、影院与氛围模式证据",
       "url": "https://www.youtube.com/watch?v=jNQXAC9IVRw",
