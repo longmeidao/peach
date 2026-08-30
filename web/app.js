@@ -946,8 +946,8 @@ function junkCardHtml(it){
         :`<span class="t junkcardtitle" data-middle-truncate title="${esc(it.name||'')}">${esc(it.name||'未命名资源')}</span>`}
       <div class="s mono"><span class="who">${esc(meta[0])}</span>${it.why?`<span class="why">${esc(it.why)}</span>`:''}<span class="size">${Number(it.size)>0?fmtSize(Number(it.size)):'大小未知'}</span></div>
     </div><footer class="junkactions">
-      <button type="button" data-junk-operation="${decision[0]}">${icon(decision[2])}<span>${decision[1]}</span></button>
-      <button type="button" class="junktrash" data-junk-operation="dispose">${icon('trash')}<span>移入回收站</span></button>
+      <button type="button" data-junk-operation="${decision[0]}" title="${esc(decision[1])}" aria-label="${esc(decision[1])}">${icon(decision[2])}<span>${decision[1]}</span></button>
+      <button type="button" class="junktrash" data-junk-operation="dispose" title="移入回收站" aria-label="移入回收站">${icon('trash')}<span>移入回收站</span></button>
     </footer></div></article>`;
 }
 async function runJunkOperation(id,operation){
