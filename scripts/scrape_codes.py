@@ -417,7 +417,10 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                         "raw_snapshot": str(snapshot),
                     }
                     by_field.setdefault(field, []).append(candidate)
-                if args.delay > 0:
+                # 续跑重建候选时会读取数百个本地快照；它们没有网络请求，不该
+                # 消耗来源限流窗口。只给本次真实 fetch 留间隔，既保持 r18dev
+                # 的长跑节流，也让熔断后的恢复立即越过已完成部分。
+                if args.delay > 0 and not reused:
                     time.sleep(args.delay + random.uniform(0, min(0.4, args.delay / 3)))
             for field, candidates in by_field.items():
                 candidates = sort_candidates(field, candidates, policy)

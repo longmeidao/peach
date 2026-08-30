@@ -884,6 +884,40 @@ class OperationalScriptTests(unittest.TestCase):
                 rows = list(csv.DictReader(handle))
             self.assertEqual({row["query"] for row in rows}, {"BBB-002"})
 
+    def test_javinizer_resume_throttles_only_real_network_queries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "ledger.db"
+            sqlite3.connect(db).close(); upgrade(db, MIGRATIONS)
+            connection = sqlite3.connect(db)
+            connection.executemany(
+                "INSERT INTO asset(id,location,path,name,medium,code,size) "
+                "VALUES(?,'local',?,?,'video',?,?)",
+                [(1, "cached.mp4", "cached.mp4", "AAA-001", 2_000),
+                 (2, "fresh.mp4", "fresh.mp4", "BBB-002", 1_000)],
+            )
+            connection.commit(); connection.close()
+            raw = root / "raw"
+            snapshot = raw / "AAA-001" / "r18dev.json"
+            snapshot.parent.mkdir(parents=True)
+            snapshot.write_text(__import__("json").dumps({
+                "result": {"source": "r18dev", "maker": "Cached Studio"},
+            }), encoding="utf-8")
+
+            class Provider:
+                def query(self, code, source):
+                    return {"source": source, "maker": "Fresh Studio"}
+
+            with mock.patch.object(self.scrape_codes.time, "sleep") as sleep:
+                with redirect_stdout(io.StringIO()):
+                    result = self.scrape_codes.main([
+                        "--db", str(db), "--out", str(root / "candidates.csv"),
+                        "--raw-dir", str(raw), "--log-dir", str(root / "logs"),
+                        "--delay", "2", "--min-free", "0", "--sources", "r18dev",
+                    ], provider=Provider())
+            self.assertEqual(result, 0)
+            self.assertEqual(sleep.call_count, 1, "本地快照不能消耗来源限流等待")
+
     def test_metadata_health_distinguishes_snapshot_empty_error_and_cooldown(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
