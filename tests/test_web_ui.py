@@ -876,6 +876,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('aria-label="图片详情" title="图片详情">${icon(\'info\')}</button>')
         self.assertPageContains('.runtimegate{display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:12px')
         self.assertPageContains('.runtimegate>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}')
+        self.assertPageContains('.geist-note>svg{width:16px;height:16px;margin-top:2px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}')
         self.assertPageContains('.runtimegate a{grid-column:2/-1}')
 
     def test_project_web_ui_skill_keeps_future_changes_on_shared_primitives(self):
