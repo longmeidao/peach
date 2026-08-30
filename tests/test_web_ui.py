@@ -13,6 +13,8 @@ class WebUiSourceTests(unittest.TestCase):
         web = Path(__file__).resolve().parents[1] / "web"
         sources = [web / "index.html", web / "app.css", web / "app.js"]
         sources.extend(sorted((web / "js").glob("*.js")))
+        cls.css = (web / "app.css").read_text(encoding="utf-8")
+        cls.app_js = (web / "app.js").read_text(encoding="utf-8")
         cls.page = chr(10).join(
             path.read_text(encoding="utf-8") for path in sources
         )
@@ -1509,8 +1511,15 @@ class WebUiSourceTests(unittest.TestCase):
                 'class="dupname" data-middle-truncate',
                 'class="mono duppath" data-middle-truncate',
                 '<button data-middle-truncate data-quality-open=',
-                '<b data-middle-truncate></b>'):
+                '<b data-middle-truncate></b>',
+                '<div><b data-middle-truncate title="${esc(asset.name||\'\')}"',
+                '<div><b data-middle-truncate title="${esc(row.asset_name||\'\')}"',
+                '<b data-middle-truncate>${esc(media.name)}</b>',
+                '<b data-middle-truncate>${esc(x.name)}</b>'):
             self.assertPageContains(consumer)
+        self.assertEqual(self.app_js.count("data-middle-truncate"), 8)
+        self.assertEqual(self.app_js.count('class="mixitemtext"'), 3)
+        self.assertEqual(self.app_js.count("data-truncate-end"), 4)
         self.assertPageContains("new Intl.Segmenter(undefined,{granularity:'grapheme'})")
         self.assertPageContains("resizeObserver=new ResizeObserver")
         self.assertPageContains("context.font=style.font||`${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`")
@@ -1518,8 +1527,36 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("element.setAttribute('aria-label',state.full)")
         self.assertPageContains("event.clipboardData.setData('text/plain',state.full)")
         self.assertPageContains("export { initMiddleTruncate, middleTruncateText }")
+        self.assertPageContains("*[data-middle-truncate]{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:clip}")
         self.assertPageContains(".qualityitem h3 button{display:block;width:100%")
         self.assertPageLacks(".qualityitem h3 button{max-width:100%;border:0;background:transparent;padding:0;color:inherit;text-align:left;cursor:pointer;overflow-wrap:anywhere;display:-webkit-box")
+
+    def test_every_end_truncation_selector_is_explicitly_reviewed(self):
+        """新增 CSS 省略必须先决定它是语义文本，还是应改用 MiddleTruncate。"""
+        reviewed_end_selectors = {
+            ".alphatag span:first-of-type", ".av .nm", ".entitylinklabel",
+            ".entitytags button", ".fauthor .fsource.frow>b", ".fauthorhead b",
+            ".fchip", ".frow>b", ".fvkind", ".idname", ".kv>span:first-child",
+            ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
+            ".mixitemtext [data-truncate-end]", ".mixqueuehead h2",
+            ".playerstats dd", ".relatedperson .nm", ".reviewentity b",
+            ".reviewitem h4", ".searchoption span",
+            ".sgrid.mixgrid>.mixqueue .mixqueuehead span", ".sidebarorderlabel>b",
+            ".tagpickitem .pickname", ".tasterank b,.tasterank small",
+            ".tastesource b,.tastesource small", ".tastesummary>small", ".tg",
+            ".tokui .toktitle", "body[data-density=\"dense\"] .card .ctags .tg",
+            "body[data-density=\"dense\"] .card .meta .t",
+        }
+        css_without_comments = re.sub(r"/\*.*?\*/", "", self.css, flags=re.S)
+        actual = set()
+        for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css_without_comments):
+            truncates = re.search(
+                r"text-overflow\s*:\s*ellipsis|-webkit-line-clamp\s*:(?!\s*unset)",
+                body,
+            )
+            if truncates:
+                actual.add(" ".join(selector.split()))
+        self.assertEqual(reviewed_end_selectors, actual)
 
     def test_duplicate_removal_is_reversible(self):
         # 只能进回收站；永久删除仍得从回收站单独执行。
