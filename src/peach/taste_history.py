@@ -559,7 +559,7 @@ def _history_dashboard_evidence(store_path: Path, since: str | None) -> dict[str
     empty = {
         "visits": 0, "sources": [], "range_start": None, "range_end": None,
         "tags": Counter(), "creators": Counter(), "categories": Counter(),
-        "domains": Counter(),
+        "domains": Counter(), "creator_domains": {},
     }
     if not store_path.is_file():
         return empty
@@ -586,6 +586,7 @@ def _history_dashboard_evidence(store_path: Path, since: str | None) -> dict[str
 
         tags: Counter[str] = Counter()
         creators: Counter[str] = Counter()
+        creator_domains: dict[str, Counter[str]] = defaultdict(Counter)
         categories: Counter[str] = Counter()
         domains: Counter[str] = Counter()
         seen: set[tuple[str, int]] = set()
@@ -609,6 +610,9 @@ def _history_dashboard_evidence(store_path: Path, since: str | None) -> dict[str
                 domains[domain] += 1
             tags.update(row_tags)
             creators.update(row_creators)
+            if domain:
+                for creator in row_creators:
+                    creator_domains[creator.casefold().strip()][domain] += 1
             for tag in row_tags:
                 compact = tag.replace(" ", "").replace("_", "")
                 for category, terms in CATEGORY_TERMS.items():
@@ -621,6 +625,7 @@ def _history_dashboard_evidence(store_path: Path, since: str | None) -> dict[str
             "range_end": range_end,
             "tags": tags,
             "creators": creators,
+            "creator_domains": creator_domains,
             "categories": categories,
             "domains": domains,
         }
@@ -787,6 +792,9 @@ def build_taste_dashboard(
     all_tags = [row for row in _rank_combined("tag", history["tags"], peach, limit=1000)
                 if row["name"] not in LENGTH_TAGS]
     all_creators = _rank_combined("creator", history["creators"], peach, limit=1000)
+    for row in all_creators:
+        source_counts = history["creator_domains"].get(str(row["name"]).casefold().strip(), Counter())
+        row["source_domain"] = source_counts.most_common(1)[0][0] if source_counts else None
     all_performers = _rank_combined("performer", Counter(), peach, limit=1000)
     tags, creators, performers = all_tags[:30], all_creators[:30], all_performers[:30]
 

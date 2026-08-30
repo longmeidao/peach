@@ -235,6 +235,7 @@ class TasteHistoryTests(unittest.TestCase):
         self.assertEqual(alice["evidence"], ["浏览记录", "Peach"])
         self.assertEqual(alice["entity_id"], 2)
         self.assertEqual(dashboard["rankings"]["browser_creators"][0]["name"], "Alice")
+        self.assertEqual(dashboard["rankings"]["browser_creators"][0]["source_domain"], "onlyfans.com")
         self.assertEqual(dashboard["rankings"]["peach_creators"][0]["name"], "Alice")
         self.assertEqual(dashboard["rankings"]["peach_performers"][0]["entity_id"], 4)
         browser_tags = {row["name"] for row in dashboard["rankings"]["browser_tags"]}
