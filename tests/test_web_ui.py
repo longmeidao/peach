@@ -576,15 +576,19 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("border-top:.72em solid transparent;border-bottom:.72em solid transparent;border-left:1.05em solid #fff")
         self.assertPageContains(".vwrap .video-js .vjs-control-bar{box-sizing:border-box;left:.8em;right:.8em;bottom:.7em;width:auto;height:7em")
         self.assertPageContains("border-radius:0;background:transparent;backdrop-filter:none")
-        self.assertPageContains(".vwrap .video-js .vjs-control-bar>.vjs-button,")
+        self.assertPageContains(".vwrap .video-js .vjs-control-bar>.vjs-play-control,")
         self.assertPageContains("border:1px solid rgba(255,255,255,.2);border-radius:50%;background:rgba(0,0,0,.56)")
+        self.assertPageContains(".vwrap .video-js .vjs-control-bar>.vjs-picture-in-picture-control,")
+        self.assertPageContains("border-radius:2em 0 0 2em")
+        self.assertPageContains("border-radius:0 2em 2em 0")
         self.assertPageContains(".vwrap .video-js .vjs-progress-control{position:absolute;left:1.2em;right:1.2em;top:.45em")
+        self.assertPageContains(".vwrap .video-js .vjs-play-progress{background:var(--tungsten)}")
+        self.assertPageContains(".vwrap .video-js .vjs-play-progress:before{content:\"\"")
         self.assertPageContains(".vwrap .video-js .vjs-custom-control-spacer{display:block;flex:1 1 auto}")
         self.assertPageContains(".vwrap .video-js .vjs-current-time{display:flex;margin-left:.35em")
         self.assertPageContains(".vwrap .video-js .vjs-duration{display:flex")
         self.assertPageContains("border-radius:0 2em 2em 0")
         self.assertPageContains(".vwrap .video-js.vjs-layout-x-small .vjs-progress-control")
-        self.assertPageContains(".vwrap .video-js .vjs-skip-backward-10")
         self.assertPageContains(".vwrap .video-js.vjs-layout-small .vjs-current-time")
         self.assertPageContains("currentTimeDisplay:true,timeDivider:true")
         self.assertPageContains("durationDisplay:true,remainingTimeDisplay:false")
@@ -597,7 +601,20 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("detailPlayer.duration(expected)")
         self.assertPageContains("['loadstart','loadedmetadata','durationchange','error']")
         self.assertPageContains("const d=it.duration||v.duration||0")
-        self.assertPageContains("skipButtons:{backward:appSettings.seekSeconds,forward:appSettings.seekSeconds}")
+        self.assertPageLacks("skipButtons:{backward:appSettings.seekSeconds,forward:appSettings.seekSeconds}")
+
+    def test_player_seek_preview_reuses_contact_sheet_cells_and_online_falls_back_to_time(self):
+        self.assertPageContains("function mountPlayerSeekPreview(player,it,options={})")
+        self.assertPageContains("preview.dataset.playerSeekPreview='';preview.hidden=true")
+        self.assertPageContains("const nextCell=Math.min(8,Math.floor(ratio*9))")
+        self.assertPageContains("image.src=`/poster?id=${encodeURIComponent(it.id)}&c=${nextCell}`")
+        self.assertPageContains("mountPlayerSeekPreview(detailPlayer,it,{thumbnail:!options.source})")
+        self.assertPageContains(".vjs-peach-seek-preview img{width:240px;aspect-ratio:16/9")
+
+    def test_cards_show_blue_watched_progress_from_play_seconds(self):
+        self.assertPageContains("const watchedRatio=!parts&&Number(it.play_seconds)>0&&Number(it.duration)>0")
+        self.assertPageContains('class="watchprogress" role="progressbar" aria-label="观看进度"')
+        self.assertPageContains(".watchprogress i{display:block;height:100%;background:var(--tungsten)}")
 
     def test_player_stats_button_matches_the_round_player_controls(self):
         self.assertPageContains(".playerstatsbtn{position:absolute;left:11px;top:11px;z-index:8;width:40px;height:40px")

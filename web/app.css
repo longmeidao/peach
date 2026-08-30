@@ -789,6 +789,8 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .scrub{position:absolute;left:0;right:0;bottom:0;height:3px;z-index:2;
   background:color-mix(in srgb,#000 45%,transparent)}
 .scrub i{display:block;height:100%;background:var(--loupe)}
+.watchprogress{position:absolute;left:0;right:0;bottom:0;height:4px;z-index:5;background:rgba(255,255,255,.3)}
+.watchprogress i{display:block;height:100%;background:var(--tungsten)}
 .meta{display:flex;gap:10px;min-width:0}
 .mav{width:38px;height:38px;border-radius:50%;flex:none;overflow:hidden;background:var(--sunk);
   position:relative;margin-top:2px;border:0;padding:0;cursor:pointer;color:inherit}
@@ -943,21 +945,47 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vwrap .video-js .vjs-big-play-button .vjs-icon-placeholder:before{content:"";left:50%;top:50%;width:0;height:0;
   border-top:.72em solid transparent;border-bottom:.72em solid transparent;border-left:1.05em solid #fff;
   transform:translate(-38%,-50%)}
-/* YouTube 式两排控制层：进度独占上排，底排不铺整块面板；按钮和时间各自拥有轮廓。 */
+/* YouTube 式两排控制层：进度独占上排，底排不铺整块面板；播放、音量与时间在左，
+   画中画、清晰度、全屏合成右侧一枚分段胶囊。 */
 .vwrap .video-js .vjs-control-bar{box-sizing:border-box;left:.8em;right:.8em;bottom:.7em;width:auto;height:7em;
   padding:2.8em .7em .3em;display:flex;align-items:flex-end;border-radius:0;background:transparent;backdrop-filter:none}
-.vwrap .video-js .vjs-control-bar>.vjs-button,
-.vwrap .video-js .vjs-volume-panel>.vjs-mute-control,
-.vwrap .video-js .vjs-control-bar>.vjs-peach-quality{align-self:flex-end;width:4em;height:4em;margin:0 .18em;
+.vwrap .video-js .vjs-control-bar>.vjs-play-control,
+.vwrap .video-js .vjs-volume-panel>.vjs-mute-control{align-self:flex-end;width:4em;height:4em;margin:0 .18em;
   border:1px solid rgba(255,255,255,.2);border-radius:50%;background:rgba(0,0,0,.56);box-shadow:0 1px 5px #0006}
 .vwrap .video-js .vjs-control-bar>.vjs-volume-panel{align-self:flex-end;height:4em;margin:0 .18em}
 .vwrap .video-js .vjs-volume-panel>.vjs-mute-control{margin:0}
-.vwrap .video-js .vjs-control-bar>.vjs-button:hover,
-.vwrap .video-js .vjs-volume-panel>.vjs-mute-control:hover,
-.vwrap .video-js .vjs-control-bar>.vjs-peach-quality:hover{background:rgba(0,0,0,.76);border-color:rgba(255,255,255,.38)}
+.vwrap .video-js .vjs-control-bar>.vjs-play-control:hover,
+.vwrap .video-js .vjs-volume-panel>.vjs-mute-control:hover{background:rgba(0,0,0,.76);border-color:rgba(255,255,255,.38)}
+.vwrap .video-js .vjs-control-bar>.vjs-picture-in-picture-control,
+.vwrap .video-js .vjs-control-bar>.vjs-peach-quality,
+.vwrap .video-js .vjs-control-bar>.vjs-fullscreen-control{align-self:flex-end;width:4em;height:4em;margin:0;
+  border:1px solid rgba(255,255,255,.2);border-left:0;border-right:0;border-radius:0;
+  background:rgba(0,0,0,.56);box-shadow:0 1px 5px #0006}
+.vwrap .video-js .vjs-control-bar>.vjs-picture-in-picture-control{border-left:1px solid rgba(255,255,255,.2);border-radius:2em 0 0 2em}
+.vwrap .video-js .vjs-control-bar:not(:has(>.vjs-picture-in-picture-control:not(.vjs-hidden)))>.vjs-peach-quality{
+  border-left:1px solid rgba(255,255,255,.2);border-radius:2em 0 0 2em}
+.vwrap .video-js .vjs-control-bar>.vjs-fullscreen-control{border-right:1px solid rgba(255,255,255,.2);border-radius:0 2em 2em 0}
+.vwrap .video-js .vjs-control-bar>.vjs-picture-in-picture-control:hover,
+.vwrap .video-js .vjs-control-bar>.vjs-peach-quality:hover,
+.vwrap .video-js .vjs-control-bar>.vjs-fullscreen-control:hover{background:rgba(0,0,0,.76)}
 .vwrap .video-js .vjs-progress-control{position:absolute;left:1.2em;right:1.2em;top:.45em;width:auto;height:2.2em;
   min-width:0;display:flex;align-items:center}
-.vwrap .video-js .vjs-progress-control .vjs-progress-holder{width:100%;margin:0}
+.vwrap .video-js .vjs-progress-control .vjs-progress-holder{width:100%;height:.35em;margin:0;border-radius:var(--pill-radius);background:rgba(255,255,255,.28);transition:height .1s ease}
+.vwrap .video-js .vjs-progress-control:hover .vjs-progress-holder{height:.55em}
+.vwrap .video-js .vjs-load-progress{background:rgba(255,255,255,.36)}
+.vwrap .video-js .vjs-load-progress div{background:rgba(255,255,255,.16)}
+.vwrap .video-js .vjs-play-progress{background:var(--tungsten)}
+.vwrap .video-js .vjs-play-progress:before{content:"";position:absolute;right:-.58em;top:50%;width:1.16em;height:1.16em;
+  border-radius:50%;background:var(--tungsten);transform:translateY(-50%);box-shadow:0 1px 4px #0008}
+.vwrap .video-js .vjs-mouse-display .vjs-time-tooltip{display:none}
+.vjs-peach-seek-preview{position:absolute;z-index:4;bottom:calc(100% + 10px);transform:translateX(-50%);
+  display:flex;flex-direction:column;align-items:center;pointer-events:none;color:#fff}
+.vjs-peach-seek-preview[hidden]{display:none}
+.vjs-peach-seek-preview img{width:240px;aspect-ratio:16/9;display:block;object-fit:cover;border:2px solid #fff;
+  border-radius:12px;background:#000;box-shadow:0 8px 24px #0009}
+.vjs-peach-seek-preview img[hidden]{display:none}
+.vjs-peach-seek-preview span{min-width:58px;margin-top:8px;padding:6px 10px;border-radius:var(--pill-radius);
+  background:rgba(0,0,0,.68);font-size:var(--fs-sm);font-weight:700;line-height:1;text-align:center;box-shadow:0 2px 8px #0006}
 .vwrap .video-js .vjs-custom-control-spacer{display:block;flex:1 1 auto}
 .vwrap .video-js .vjs-time-control{align-self:flex-end;height:4em;padding:0;font-size:var(--fs-xs);line-height:4em;background:rgba(0,0,0,.56)}
 .vwrap .video-js .vjs-current-time{display:flex;margin-left:.35em;padding-left:1em;border:1px solid rgba(255,255,255,.2);border-right:0;border-radius:2em 0 0 2em}
@@ -976,11 +1004,10 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
   .vwrap .video-js .vjs-control-bar{left:.4em;right:.4em;bottom:.4em;height:6.6em;padding:2.5em .15em .15em}
   .vwrap .video-js .vjs-progress-control,.vwrap .video-js.vjs-layout-tiny .vjs-progress-control,
   .vwrap .video-js.vjs-layout-x-small .vjs-progress-control{left:.8em;right:.8em;top:.35em;height:2em;display:flex}
-  .vwrap .video-js .vjs-skip-backward-5,.vwrap .video-js .vjs-skip-backward-10,.vwrap .video-js .vjs-skip-backward-30,
-  .vwrap .video-js .vjs-skip-forward-5,.vwrap .video-js .vjs-skip-forward-10,.vwrap .video-js .vjs-skip-forward-30{display:none}
   .vwrap .video-js.vjs-layout-small .vjs-current-time,.vwrap .video-js.vjs-layout-small .vjs-duration,
   .vwrap .video-js.vjs-layout-small .vjs-time-divider{display:flex}
   .vwrap .video-js .vjs-time-control{font-size:1em}
+  .vjs-peach-seek-preview img{width:160px}
 }
 .vwrap .video-js.vjs-error .vjs-error-display .vjs-modal-dialog-content{
   display:flex;align-items:center;justify-content:center;padding:56px 24px;text-align:center;overflow-wrap:anywhere}
