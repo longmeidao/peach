@@ -119,6 +119,15 @@ def _media_kind(item) -> str:
     return "external"
 
 
+def _video_media_type(value: object) -> str:
+    path = urllib.parse.urlsplit(str(value or "")).path.casefold()
+    if path.endswith(".webm"):
+        return "video/webm"
+    if path.endswith(".mov"):
+        return "video/quicktime"
+    return "video/mp4"
+
+
 def _media_items(item) -> list[dict]:
     """给浏览器媒体序号和展示字段；真实上游 URL 仍只留在服务端 metadata。"""
     raw = item.metadata.get("media_items")
@@ -136,6 +145,8 @@ def _media_items(item) -> list[dict]:
             "index": index,
             "name": str(media.get("name") or f"{kind} {index + 1}"),
             "media_kind": kind,
+            "media_type": _video_media_type(media.get("name") or media.get("url"))
+                          if kind == "video" else None,
             "thumb_url": thumb if thumb.startswith("https://") else None,
             "size": media.get("size"),
             "resource_provider": str(media.get("resource_provider") or ""),
@@ -235,6 +246,8 @@ def _item_payload(item) -> dict:
         "media_error": str(item.metadata.get("media_error") or "") or None,
         "has_media": bool(item.media_url) or bool(media_items),
         "media_kind": media_kind,
+        "media_type": _video_media_type(item.media_url)
+                      if media_kind == "video" else None,
         "playable": (bool(item.media_url) or bool(media_items))
                     and media_kind in {"video", "image"}
                     and not bool(item.metadata.get("media_needs_credential")),

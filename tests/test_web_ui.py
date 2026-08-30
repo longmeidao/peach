@@ -551,7 +551,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("keepalive:true")
         self.assertPageContains("dataset.peachStreamCancel=JSON.stringify(result)")
         self.assertPageContains("/api/stream-plan?id=")
-        self.assertPageContains("detailStreamSource(it).then(source=>")
+        self.assertPageContains("const source=()=>options.source?Promise.resolve(options.source):detailStreamSource(it)")
+        self.assertPageContains("source().then(next=>")
         self.assertPageContains("fallbackUsed=false")
         self.assertPageContains("player.src(directDetailSource(it))")
         self.assertPageContains("detailPlayer.dispose()")
@@ -568,7 +569,14 @@ class WebUiSourceTests(unittest.TestCase):
     def test_detail_uses_pinned_videojs_and_authoritative_duration(self):
         self.assertPageContains('/vendor/videojs/8.23.9/video.min.js')
         self.assertPageContains('/vendor/videojs/8.23.9/video-js.min.css')
-        self.assertPageContains("function mountDetailPlayer(it,video,autoplay)")
+
+    def test_detail_player_controls_align_and_offer_real_quality_levels(self):
+        self.assertPageContains(".vwrap .video-js .vjs-control-bar{height:3.4em;align-items:center")
+        self.assertPageContains(".vwrap .video-js .vjs-control-bar>.vjs-control{align-self:stretch;height:100%}")
+        self.assertPageContains(".vwrap .video-js .vjs-time-control{height:100%;font-size:var(--fs-xs);line-height:3.4em}")
+        self.assertPageContains("typeof player.qualityLevels==='function'?player.qualityLevels():null")
+        self.assertPageContains("levels[index].enabled=selected==='auto'||selected===String(index)")
+        self.assertPageContains("function mountDetailPlayer(it,video,autoplay,options={})")
         self.assertPageContains("detailPlayer.duration(expected)")
         self.assertPageContains("['loadstart','loadedmetadata','durationchange','error']")
         self.assertPageContains("const d=it.duration||v.duration||0")
@@ -816,9 +824,17 @@ class WebUiSourceTests(unittest.TestCase):
         于是侧栏内容宽出 1px 就冒一条横向滚动条。详情侧栏是一列竖排内容，
         横向永远不应该滚。
         """
-        block = self.page.split(".side{padding:", 1)[1].split("}", 1)[0]
+        block = self.page.split(".sidecontent{", 1)[1].split("}", 1)[0]
         self.assertIn("overflow-y:auto", block)
         self.assertIn("overflow-x:hidden", block)
+
+    def test_every_detail_side_surface_fills_its_grid_row(self):
+        """详情背景与滚动内容分层，在线占位、图片和合集都不会再露出半截底色。"""
+        self.assertPageContains(".side{min-width:0;min-height:0;align-self:stretch")
+        self.assertPageContains(".sidecontent{box-sizing:border-box;width:100%;height:100%;max-height:76vh")
+        self.assertPageContains('<div class="side"><div class="sidecontent">')
+        self.assertPageContains('<div class="side followdetailside"><div class="sidecontent">')
+        self.assertPageContains(".sidecontent{height:auto;max-height:none}")
 
     def test_state_pages_ask_for_facets_narrowed_to_that_state(self):
         """只改数据层不够：前端不把 state 传上去，顶部三层依旧是全库口径。"""
