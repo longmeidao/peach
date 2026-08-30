@@ -86,13 +86,16 @@ const SETTINGS_KEY='peach.settings.v1';
 const DEFAULT_SIDEBAR_ORDER=['','performers','tags','jav','flagged','playlists','follow','immerse','manage'];
 const OPTIONAL_SIDEBAR_KEYS=['stats','review','ads','dupes','trash','follow-manage','quality'];
 const ALL_SIDEBAR_KEYS=[...DEFAULT_SIDEBAR_ORDER,...OPTIONAL_SIDEBAR_KEYS];
-const DEFAULT_SETTINGS={rotateMinutes:0,batchSize:60,defaultSort:'seed',hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',sidebarOrder:DEFAULT_SIDEBAR_ORDER};
+const SORTS=[['rating','评分'],['o','高潮计数'],['plays','观看次数'],['long','时长'],
+             ['big','体积'],['new','最近入库'],['played','最近看的']];
+const SORT_KEYS=SORTS.map(([key])=>key);
+const DEFAULT_SETTINGS={batchSize:60,defaultSort:'new',hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
-appSettings.rotateMinutes=allowedSetting(+appSettings.rotateMinutes,[-1,0,5,10,30,1440],0);
+delete appSettings.rotateMinutes;
 appSettings.batchSize=allowedSetting(+appSettings.batchSize,[30,60,90],60);
-appSettings.defaultSort=allowedSetting(appSettings.defaultSort,['seed','daily','rand','rating','o','plays','long','big','new','played'],'seed');
+appSettings.defaultSort=allowedSetting(appSettings.defaultSort,SORT_KEYS,'new');
 appSettings.hoverDelaySeconds=allowedSetting(+appSettings.hoverDelaySeconds,[3,5,8],5);
 appSettings.seekSeconds=allowedSetting(+appSettings.seekSeconds,[5,10,30],10);
 appSettings.searchHistoryLimit=allowedSetting(+appSettings.searchHistoryLimit,[5,10,20],10);
@@ -102,7 +105,6 @@ if(!appSettings.sidebarOrder.length)appSettings.sidebarOrder=[...DEFAULT_SIDEBAR
 document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);
 const saveSettings=()=>localStorage.setItem(SETTINGS_KEY,JSON.stringify(appSettings));
 function syncSettingsPanel(){
-  $('#rotateSetting').value=String(appSettings.rotateMinutes);
   $('#batchSizeSetting').value=String(appSettings.batchSize);
   $('#defaultSortSetting').value=appSettings.defaultSort;
   $('#hoverDelaySetting').value=String(appSettings.hoverDelaySeconds);
@@ -144,7 +146,6 @@ $('#settingsPanel').onkeydown=e=>{
   if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}
   else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
 };
-$('#rotateSetting').onchange=e=>{appSettings.rotateMinutes=+e.target.value;saveSettings()};
 $('#batchSizeSetting').onchange=e=>{appSettings.batchSize=+e.target.value||60;saveSettings();if(location.pathname==='/')load(true)};
 $('#defaultSortSetting').onchange=e=>{appSettings.defaultSort=e.target.value;saveSettings();state.sort=appSettings.defaultSort;if(location.pathname==='/')load(true)};
 $('#hoverDelaySetting').onchange=e=>{appSettings.hoverDelaySeconds=+e.target.value||5;document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);saveSettings()};
@@ -220,15 +221,8 @@ const toast=(html,{timeout=6000,warn=false,action=null}={})=>{
   return item;
 };
 
-// sort 默认 daily：同一天进来顺序固定，隔天自动换一批（不是每次刷新都变）
-/* 排序种子。顶部三层（艺人头像 / 厂牌 / 标签）和首页网格共用它，所以它一变，整屏就是
-   新的一批。
-
-   换的频率由设置里的「换一批」决定，默认每次刷新：种子只在页面加载时结算一次，页面不会
-   在你看着的时候自己重排。选了分钟数就是「后台每 N 分钟换一次排序，下次刷新才体现」——
-   同一批在窗口内反复刷新都是同一屏；选「从不」则只有手动点换一批才变。
-
-   种子连同结算时间一起存，否则刷新就退回上一批。 */
+/* 「换一批」是列表栏里的独立动作，不再作为一种排序或自动轮换设置。
+   种子只负责让一次手动换批内部的分页保持稳定。 */
 const SEED_KEY='peach.seed.v2';
 const newSeed=()=>String((Date.now()^(Math.random()*1e9|0))%99991);
 function readSeedRecord(){
@@ -242,21 +236,18 @@ function writeSeedRecord(value){
   return value;
 }
 function persistedSeed(){
-  const minutes=appSettings.rotateMinutes;
   const saved=readSeedRecord();
-  if(!saved)return writeSeedRecord(newSeed());
-  if(minutes<0)return saved.value;                       // 从不：只认手动换一批
-  if(minutes===0)return writeSeedRecord(newSeed());      // 每次刷新
-  return Date.now()-saved.at>=minutes*60000 ? writeSeedRecord(newSeed()) : saved.value;
+  return saved?saved.value:writeSeedRecord(newSeed());
 }
-// 手动「换一批」：立刻换，并重置计时窗口。
+// 手动「换一批」立刻换种子。
 const rollSeed=()=>writeSeedRecord(newSeed());
 const initialParams=new URLSearchParams(location.search);
 const cleanTagFilter=value=>String(value||'').split(',').filter(tag=>tag&&!DURATION_TAGS.has(tag)).join(',');
+const cleanSort=(value,fallback=appSettings.defaultSort)=>SORT_KEYS.includes(value)?value:fallback;
 let state={loc:initialParams.get('loc')||'local,115',creator:initialParams.get('creator')||'',studio:initialParams.get('studio')||'',
   tag:cleanTagFilter(initialParams.get('tag')),len:initialParams.get('len')||'',dur_min:initialParams.get('dur_min')||'',dur_max:initialParams.get('dur_max')||'',
   tag_match:initialParams.get('tag_match')==='any'?'any':'all',orient:initialParams.get('orient')||'',
-  state:ROUTE_STATES[decodeURIComponent(location.pathname)]||initialParams.get('state')||'',sort:initialParams.get('sort')||appSettings.defaultSort,
+  state:ROUTE_STATES[decodeURIComponent(location.pathname)]||initialParams.get('state')||'',sort:cleanSort(initialParams.get('sort')),
   seed:initialParams.get('seed')||persistedSeed(),q:initialParams.get('q')||'',jav:initialParams.get('jav')||'',thumb:'1'};
 const HOME_QUERY_KEYS=['loc','creator','studio','tag','tag_match','len','dur_min','dur_max','orient','sort','q','jav'];
 function homePath(filters=state){
@@ -270,7 +261,7 @@ const ENTITY_FILTER_KEYS=['loc','creator','tag','dur_min','dur_max','orient','so
 const emptyEntityFilters=()=>Object.fromEntries(
   ENTITY_FILTER_KEYS.map(key=>[key,key==='sort'?'new':'']));
 const parseEntityFilters=search=>{const params=new URLSearchParams(search),filters=emptyEntityFilters();
-  ENTITY_FILTER_KEYS.forEach(key=>{filters[key]=params.get(key)||(key==='sort'?'new':'')});return filters};
+  ENTITY_FILTER_KEYS.forEach(key=>{filters[key]=key==='sort'?cleanSort(params.get(key),'new'):(params.get(key)||'')});return filters};
 const entityFilterSearch=filters=>{const params=new URLSearchParams();
   ENTITY_FILTER_KEYS.forEach(key=>{if(filters[key]&&!(key==='sort'&&filters[key]==='new'))params.set(key,filters[key])});
   return params.toString()};
@@ -1011,10 +1002,7 @@ async function buildBars(){
     b.textContent=expanded?'更多':'收起';
     bind();});
 }
-/* 排序放在计数行 —— 顶栏放不下也不该放，这是列表的属性 */
-const SORTS=[['seed','推荐顺序'],['daily','每日轮换'],['rand','随机'],['rating','评分'],
-             ['o','高潮计数'],['plays','观看次数'],['long','时长'],['big','体积'],
-             ['new','最近入库'],['played','最近看的']];
+/* 排序和换批都属于当前列表，放在计数行，不占用全局导航。 */
 function renderCount(){
   const n=$('#grid').querySelectorAll(':scope > .card[data-id]').length;   // 竖屏条不计入「显示 N」
   const trash=state.state==='trash';
@@ -1023,13 +1011,19 @@ function renderCount(){
   $('#count').innerHTML=
     (trash?'':`<span class="mono">${total.toLocaleString()} 个符合 · 显示 ${n}</span>`)
     +(trash
-      // 回收站是待清理队列，不是浏览列表：换一批和九种排序在这里没有意义。
+      // 回收站是待清理队列，不是浏览列表：换一批和排序在这里没有意义。
       ? (total?`<span class="sorts"><button class="batchaction danger" id="emptyTrash" title="永久删除回收站内容">清空回收站</button></span>`:'')
-      : `<span class="sorts">`
-        // 顶栏已有「换一批推荐」（#refresh），排序行不再放同一个动作；
-        // 版式按钮跟排序连成一条。
+      : `<span class="sorts"><button class="batchaction" id="batchAction" type="button"
+          title="换一批" aria-label="换一批">${icon('refresh-cw')}</button>`
+        // JAV 版式紧跟换批动作，和排序连成一条。
         +(javActive()?javLayoutButtons():'')
         +SORTS.map(([k,l])=>`<button data-sort="${k}" aria-pressed="${state.sort===k}">${l}</button>`).join('')+`</span>`);
+  const batch=$('#batchAction');
+  if(batch)batch.onclick=async()=>{
+    if(batch.getAttribute('aria-busy')==='true')return;
+    const old=batch.innerHTML;batch.setAttribute('aria-busy','true');batch.innerHTML=spinnerHtml('换一批');
+    try{await refreshAll()}finally{batch.removeAttribute('aria-busy');batch.innerHTML=old}
+  };
   wireJavLayoutButtons($('#count'));
   if(state.state==='trash')$('#emptyTrash').onclick=async(e)=>{
     if(!confirm('永久删除回收站中的全部文件和账本记录？此操作不可恢复。'))return;
@@ -1044,7 +1038,6 @@ function renderCount(){
   };
   $('#count').querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{
     state.sort=b.dataset.sort;
-    if(state.sort==='seed')state.seed=rollSeed();
     load(true)});
 }
 
@@ -3184,7 +3177,6 @@ function renderEntityCollection(kind,name,items,filters,append=false){
       state.seed=rollSeed();updateEntityCollection(kind,name,{...filters,sort:'seed'},true)};
     section.querySelectorAll('[data-entity-sort]').forEach(button=>button.onclick=()=>{
       const sort=button.dataset.entitySort;
-      if(sort==='seed')state.seed=rollSeed();
       updateEntityCollection(kind,name,{...filters,sort},true)});
   }else{
     entityCollectionPage.items.push(...(items.items||[]));
@@ -3340,16 +3332,22 @@ const SOURCE_HINTS={
   'source not mapped':'本机没有映射这个来源的盘符',
   'file missing':'源文件已经不在了，点右边同步把账本对齐',
   'unsupported platform':'当前服务端系统不支持直接定位文件',
-  'reveal failed':'打开文件管理器失败',
+  'reveal failed':'打开文件管理器失败，请重试',
 };
 const sourceHint=message=>SOURCE_HINTS[message]||message;
 
-async function revealSource(id,status){
+async function revealSource(id,status,{toastSuccess=false,button=null}={}){
+  if(button?.getAttribute('aria-busy')==='true')return;
+  const buttonHtml=button?.innerHTML,label=button?.textContent.trim();
+  if(button){button.disabled=true;button.setAttribute('aria-busy','true');
+    button.innerHTML=`${spinnerHtml('正在定位')}<span>${esc(label)}</span>`}
   status.textContent='正在定位…';
   try{
     await api('/api/reveal',{method:'POST',body:JSON.stringify({id})});
-    status.textContent='已在服务端弹出文件管理器';
+    if(toastSuccess){status.textContent='';toast('已在资源管理器中显示')}
+    else status.textContent='已在服务端弹出文件管理器';
   }catch(e){status.textContent=sourceHint(e.message)}
+  finally{if(button){button.disabled=false;button.removeAttribute('aria-busy');button.innerHTML=buttonHtml}}
 }
 
 async function syncMissing(id,status,done){
@@ -3393,7 +3391,10 @@ const loadSwiper=()=>swiperLoader||(swiperLoader=new Promise((resolve,reject)=>{
   script.onload=()=>resolve(window.Swiper);
   script.onerror=()=>{swiperLoader=null;reject(new Error('swiper unavailable'))};
   document.head.appendChild(script)}));
-const photoLightKeys=e=>{if(e.key==='Escape')closePhotoLightbox()};
+const photoLightKeys=e=>{if(e.key!=='Escape')return;
+  e.preventDefault();e.stopImmediatePropagation();
+  if(activeLightbox?.detail?.isOpen()){activeLightbox.detail.dismiss(true);return}
+  closePhotoLightbox()};
 const ZOOM_MAX=4;
 
 /* 缩放条。Swiper 的 zoom 模块只给 in/out/toggle，没有「缩到这个倍数」的入口，
@@ -3422,11 +3423,11 @@ function wirePhotoZoom(box, main){
 /* 图片详情只展示安全元数据，定位仍只把 asset id 交给服务端。绝不能为了显示路径把
    ledger 的本机绝对路径送进浏览器。 */
 const fmtPhotoSize=raw=>{const size=Number(raw)||0;if(!size)return'大小未知';
-  return size<1024*1024?`${Math.max(1,Math.round(size/1024))} KB`:fmtSize(size)};
+  return (size<1024*1024?`${Math.max(1,Math.round(size/1024))} KB`:fmtSize(size)).replace(' ','\u00a0')};
 function wirePhotoDetail(box,items,index){
   const toggle=box.querySelector('.photodetailtoggle');
   const panel=box.querySelector('.photodetail');
-  const title=panel.querySelector('b');
+  const title=panel.querySelector('h2');
   const meta=panel.querySelector('.photodetailmeta');
   const reveal=panel.querySelector('[data-photo-reveal]');
   const status=panel.querySelector('.srcstate');
@@ -3436,18 +3437,20 @@ function wirePhotoDetail(box,items,index){
     meta.textContent=[LOC[item.location]||item.location||'来源未知',fmtPhotoSize(item.size)].join(' · ');
     reveal.dataset.photoReveal=String(item.id);status.textContent='';
   };
-  const dismiss=()=>{panel.hidden=true;toggle.setAttribute('aria-expanded','false')};
+  const dismiss=returnFocus=>{panel.hidden=true;toggle.setAttribute('aria-expanded','false');
+    if(returnFocus&&document.contains(toggle))toggle.focus()};
   const dismissOutside=target=>{if(panel.hidden||toggle.contains(target)||panel.contains(target))return false;
     dismiss();return true};
-  toggle.onclick=()=>{if(panel.hidden){panel.hidden=false;toggle.setAttribute('aria-expanded','true')}
+  toggle.onclick=()=>{if(panel.hidden){panel.hidden=false;toggle.setAttribute('aria-expanded','true');
+      queueMicrotask(()=>reveal.focus())}
     else dismiss()};
-  reveal.onclick=()=>revealSource(Number(reveal.dataset.photoReveal),status);
+  reveal.onclick=()=>revealSource(Number(reveal.dataset.photoReveal),status,{toastSuccess:true,button:reveal});
   paint(index);return {paint,dismiss,dismissOutside,isOpen:()=>!panel.hidden};
 }
 
 function closePhotoLightbox(){
   if(!activeLightbox)return;
-  document.removeEventListener('keydown',photoLightKeys);
+  document.removeEventListener('keydown',photoLightKeys,true);
   activeLightbox.resize?.disconnect();
   activeLightbox.main.destroy(true,true);activeLightbox.strip.destroy(true,true);
   activeLightbox.box.remove();activeLightbox=null;
@@ -3469,7 +3472,8 @@ async function openPhotoLightbox(index){
       <button class="photonav back" type="button" aria-label="上一张">${icon('chevron-left')}</button>
       <button class="photonav fwd" type="button" aria-label="下一张">${icon('chevron-left')}</button></div>
     <div class="photobar">
-      <button class="photodetailtoggle" type="button" aria-expanded="false"
+      <button class="photodetailtoggle" type="button" aria-expanded="false" aria-controls="photoDetail"
+        aria-haspopup="dialog"
         aria-label="图片详情" title="图片详情">${icon('info')}</button>
       <div class="photocount mono" aria-live="polite">${index+1} / ${items.length}</div>
       <div class="photozoom">
@@ -3477,11 +3481,12 @@ async function openPhotoLightbox(index){
         <input type="range" min="1" max="${ZOOM_MAX}" step="0.1" value="1" aria-label="缩放">
         <button type="button" data-zoom-step="1" aria-label="放大">${icon('plus')}</button>
         <b class="mono">100%</b></div></div>
-    <aside class="photodetail" aria-label="图片详情" hidden>
-      <div class="photodetailcopy"><b data-middle-truncate></b><span class="photodetailmeta"></span></div>
+    <section class="photodetail" id="photoDetail" role="dialog" aria-modal="false"
+      aria-labelledby="photoDetailTitle" hidden>
+      <div class="photodetailcopy"><h2 id="photoDetailTitle" data-middle-truncate></h2><span class="photodetailmeta"></span></div>
       <button type="button" data-photo-reveal="">${icon('folder-open')}<span>在资源管理器中显示</span></button>
       <span class="srcstate" aria-live="polite"></span>
-    </aside>
+    </section>
     <div class="swiper photostrip"><div class="swiper-wrapper">${items.map(item=>
       `<div class="swiper-slide"><img src="/photo-thumb?id=${item.id}" alt="" loading="lazy"></div>`).join('')}</div></div>`;
   document.body.appendChild(box);
@@ -3511,7 +3516,7 @@ async function openPhotoLightbox(index){
   box.addEventListener('click',e=>{
     if(detail.dismissOutside(e.target))return;
     if(e.target===box)closePhotoLightbox()});
-  document.addEventListener('keydown',photoLightKeys);
+  document.addEventListener('keydown',photoLightKeys,true);
 }
 
 async function openEntity(kind,name,push=true,requestedTag){
@@ -3612,7 +3617,7 @@ const EDGE_ICONS=[
   ['playlists','播放列表','list-filter'],
   ['follow','关注','rss'],
   ['immerse','沉浸模式','play'],
-  ['manage','管理','settings'],
+  ['manage','管理','database'],
 ];
 /* 统计、疑似广告、回收站、人工复核默认都收在「管理」下，不主动占用顶层空间；
    用户仍可在设置里把某个具体页面加到顶层。URL 保持原样（/stats、/trash、/review、?state=ads）。
@@ -3952,10 +3957,7 @@ function syncHeaderActions(){
   const catalog=isCatalogPath(path)||path==='/trash';
   const canSelect=catalog||entity||path==='/tags'||path==='/follow';
   const canDensity=catalog||entity||path==='/follow';
-  const canRefresh=isCatalogPath(path)||['/stats','/review','/duplicates','/quality-goals','/playlists'].includes(path);
-  $('#selectMode').hidden=!canSelect;$('#density').hidden=!canDensity;$('#refresh').hidden=!canRefresh;
-  $('#refresh').title=isCatalogPath(path)?'换一批推荐':'刷新当前页面';
-  $('#refresh').setAttribute('aria-label',$('#refresh').title);
+  $('#selectMode').hidden=!canSelect;$('#density').hidden=!canDensity;
   if(!canSelect&&selectMode)setSelectMode(false,true);
 }
 function buildEdge(){
@@ -4175,8 +4177,7 @@ async function loadShorts(requestSeq=loadRequestSeq,surface=surfaceToken(surface
      ||state.state==='ads'||state.state==='trash'){
     $('#shortsSec').hidden=true;$('#grid').querySelector('#shortsInline')?.remove();return}
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
-  /* 排序跟着主列表走，不再写死 sort=new。写死等价于 `id DESC`：换一批换掉了整页网格，
-     竖屏条却永远是同样那 18 条最新的，连每日轮换都不生效。 */
+  /* 排序跟着主列表走，不再写死 sort=new；换一批时竖屏条也要一起换。 */
   p.set('orient','竖屏');p.set('limit',18);p.set('offset',0);
   const d=await api('/api/items?'+p);
   if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
@@ -4942,7 +4943,7 @@ document.addEventListener('keydown',e=>{
   if(!$('#tok').hidden){if(e.key==='ArrowDown')tokNext(1);if(e.key==='ArrowUp')tokNext(-1)}
 });
 
-/* ── ⟳ = 换一批推荐（不是重载页面）──
+/* ── 列表栏 ⟳ = 换一批（不是重载页面）──
    每次点用一个新种子重排，所以「这一批」内部翻页稳定，批与批之间不同。
    不用 RANDOM()：那样翻页会重复和漏掉条目。
    自动刷新只在首页空闲态执行，不打断播放、搜索、选择或其他页面。 */
@@ -4955,11 +4956,10 @@ async function refreshAll(automatic=false){
     if(location.pathname==='/duplicates'){await openDuplicates(false);return}
     if(location.pathname==='/quality-goals'){await openQualityGoals(false);return}
     if(location.pathname==='/playlists'){await openPlaylists(false);return}
-    /* 两个追更页都刻意不参与「换一批」自动刷新：重画要重新取数，而管理页上紧接着的
-       动作是联网检查，自动触发等于替用户决定什么时候去打站点。 */
+    /* 追更页不参与换批：重画要重新取数，联网检查只能由自己的明确按钮触发。 */
     if(location.pathname==='/follow'||location.pathname==='/follow-manage')return;
     await openStats(false);return
-  }      // 统计/复核页只刷新当前表面
+  }
   if(!$('#index').hidden){return}
   state.sort='seed';state.seed=rollSeed();
   // 顶部三层（女优头像、厂牌、标签）此前从不跟着换：它们有 30 秒会话缓存，
@@ -4969,13 +4969,6 @@ async function refreshAll(automatic=false){
   if(!automatic)window.scrollTo({top:0,behavior:'smooth'});
   return true;
 }
-/* 没有前台定时器：页面不会在你看着的时候自己重排。换排序是加载时结算的，
-   「后台每 N 分钟换一次」的效果由种子的时间窗实现（见 persistedSeed）。 */
-$('#refresh').onclick=async()=>{const b=$('#refresh');
-  if(b.getAttribute('aria-busy')==='true')return;
-  const old=b.innerHTML;b.setAttribute('aria-busy','true');b.innerHTML=spinnerHtml('换一批');
-  try{await refreshAll()}finally{b.removeAttribute('aria-busy');b.innerHTML=old}};
-
 /* ── 审查遮挡 ──
    共享屏幕 / 录屏 / 截图时把全站内容画面盖住。开关在设置面板（安全组），
    默认关闭：日常浏览不需要遮挡；只在「用会审查内容的模型做截图或视觉
@@ -5027,7 +5020,7 @@ async function restoreRoute(){
     state={...state,loc:params.get('loc')||'local,115',creator:params.get('creator')||'',studio:params.get('studio')||'',
       tag:cleanTagFilter(params.get('tag')),tag_match:params.get('tag_match')==='any'?'any':'all',len:params.get('len')||'',
       dur_min:params.get('dur_min')||'',dur_max:params.get('dur_max')||'',orient:params.get('orient')||'',
-      state:ROUTE_STATES[path]||params.get('state')||'',sort:params.get('sort')||appSettings.defaultSort,
+      state:ROUTE_STATES[path]||params.get('state')||'',sort:cleanSort(params.get('sort')),
       seed:params.get('seed')||state.seed||persistedSeed(),q:params.get('q')||'',jav:params.get('jav')||''};
     $('#q').value=state.q;buildEdge();buildBars();load(true);return;
   }
