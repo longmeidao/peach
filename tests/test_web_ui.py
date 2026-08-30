@@ -1481,6 +1481,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("anchor.getBoundingClientRect().top+anchor.getBoundingClientRect().height/2>window.innerHeight/2")
         self.assertPageContains(".grid>.stage{grid-column:1/-1;width:100%;min-width:0}")
 
+    def test_inline_detail_stays_below_the_visible_sticky_navigation(self):
+        self.assertPageLacks("body.detail-open .tagbar{position:relative;top:auto;z-index:1}")
+        self.assertPageContains("function itemDetailStickyOffset()")
+        self.assertPageContains("['.top','#tagbar','#count','.entitycollectionhead']")
+        self.assertPageContains("el.compareDocumentPosition(stage)&Node.DOCUMENT_POSITION_FOLLOWING")
+        self.assertPageContains("el.offsetParent===null||css.position!=='sticky'")
+        self.assertPageContains("stage.style.scrollMarginTop=`${itemDetailStickyOffset()+8}px`")
+        self.assertPageContains("buildBars();\n  scrollItemDetailIntoView();")
+
     def test_catalog_and_item_detail_loading_reuse_the_spinner_component(self):
         self.assertPageContains("function renderCatalogLoading(label='正在读取作品')")
         self.assertPageContains("count.innerHTML=`${spinnerHtml(label)}<span>载入中…</span>`")
