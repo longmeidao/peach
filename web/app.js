@@ -430,6 +430,22 @@ function mountPlayerSeekPreview(player,it,options={}){
   progress.addEventListener('pointermove',move);progress.addEventListener('pointerleave',hide);
   player.on('dispose',()=>{progress.removeEventListener('pointermove',move);progress.removeEventListener('pointerleave',hide)});
 }
+function mountPlayerCenterControls(player,seconds=10){
+  if(player.el().querySelector('[data-player-center-controls]'))return;
+  const root=document.createElement('div');
+  root.className='vjs-peach-center-controls';root.dataset.playerCenterControls='';
+  root.innerHTML=`<button type="button" data-center-seek="-${seconds}" aria-label="后退 ${seconds} 秒">${icon('rotate-ccw')}<b>${seconds}</b></button>
+    <button type="button" class="vjs-peach-center-toggle" data-center-toggle aria-label="播放">
+      <span class="vjs-peach-center-play" aria-hidden="true"></span>
+      <span class="vjs-peach-center-pause" aria-hidden="true"><i></i><i></i></span></button>
+    <button type="button" data-center-seek="${seconds}" aria-label="前进 ${seconds} 秒">${icon('rotate-cw')}<b>${seconds}</b></button>`;
+  player.el().append(root);
+  const toggle=root.querySelector('[data-center-toggle]');
+  const sync=()=>{const playing=!player.paused()&&!player.ended();root.dataset.state=playing?'pause':'play';toggle.setAttribute('aria-label',playing?'暂停':'播放')};
+  root.querySelectorAll('[data-center-seek]').forEach(button=>button.onclick=event=>{event.stopPropagation();seekVideoBy(player.el().querySelector('video'),Number(button.dataset.centerSeek))});
+  toggle.onclick=event=>{event.stopPropagation();if(player.paused()||player.ended())player.play().catch(()=>{});else player.pause()};
+  player.on(['play','pause','ended'],sync);sync();
+}
 function mountDetailPlayer(it,video,autoplay,options={}){
   if(detailPlayer)return detailPlayer;
   const statsButton=$('#playerStatsBtn'),statsPanel=$('#playerStats');
@@ -506,6 +522,7 @@ function mountDetailPlayer(it,video,autoplay,options={}){
   detailPlayer.ready(()=>{
     enforceDuration();mountPlayerQualityControl(detailPlayer,video,it.height);
     mountPlayerSeekPreview(detailPlayer,it,{thumbnail:!options.source});
+    mountPlayerCenterControls(detailPlayer,appSettings.seekSeconds);
     if(statsButton)statsButton.hidden=false
   });
   if(statsButton&&statsPanel)statsButton.onclick=()=>{

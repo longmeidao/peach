@@ -611,6 +611,18 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("mountPlayerSeekPreview(detailPlayer,it,{thumbnail:!options.source})")
         self.assertPageContains(".vjs-peach-seek-preview img{width:240px;aspect-ratio:16/9")
 
+    def test_center_player_controls_are_round_and_toggle_play_pause(self):
+        self.assertPageContains("function mountPlayerCenterControls(player,seconds=10)")
+        self.assertPageContains("root.className='vjs-peach-center-controls';root.dataset.playerCenterControls=''")
+        self.assertPageContains('data-center-seek="-${seconds}"')
+        self.assertPageContains('data-center-seek="${seconds}"')
+        self.assertPageContains("toggle.setAttribute('aria-label',playing?'暂停':'播放')")
+        self.assertPageContains("if(player.paused()||player.ended())player.play().catch(()=>{});else player.pause()")
+        self.assertPageContains(".vjs-peach-center-controls button{position:relative;width:4.8em;height:4.8em")
+        self.assertPageContains("border-radius:50%;display:grid;place-items:center")
+        self.assertPageContains('.vjs-peach-center-controls[data-state="pause"] .vjs-peach-center-pause{display:flex}')
+        self.assertPageContains("mountPlayerCenterControls(detailPlayer,appSettings.seekSeconds)")
+
     def test_cards_show_blue_watched_progress_from_play_seconds(self):
         self.assertPageContains("const watchedRatio=!parts&&Number(it.play_seconds)>0&&Number(it.duration)>0")
         self.assertPageContains('class="watchprogress" role="progressbar" aria-label="观看进度"')
