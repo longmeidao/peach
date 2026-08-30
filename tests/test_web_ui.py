@@ -186,21 +186,23 @@ class WebUiSourceTests(unittest.TestCase):
         # 多人合集保留头像提示，但文字只写第一位和总人数，避免名称折成多行。
         self.assertPageContains("const coStarred=performers.length>1&&!primaryCreator")
         self.assertPageContains('<div class="mavstack">')
-        self.assertPageContains("performers.slice(0,smallLayout?2:3)")
+        self.assertPageContains("performers.slice(0,3)")
         self.assertPageContains("data-entity-kind=\"performer\" data-entity-name=\"${esc(nm)}\"")
         self.assertPageContains("data-entity-name=\"${esc(performer)}\"")
         self.assertPageContains("等 ${performerTotal} 人")
         self.assertPageContains(".mavstack .mav+.mav{margin-left:-14px}")
 
-    def test_jav_small_cards_use_three_fixed_rows_for_every_item_on_the_page(self):
-        # 小图是页面版式：混入的非番号作品也必须保持标题、身份、标签三行同高。
-        self.assertPageContains("const smallLayout=javActive()&&layout==='small'")
-        self.assertPageContains("${smallLayout?'jav-small ':''}")
-        self.assertPageContains(".jav-small .mtext{display:grid;grid-template-rows:1.35em 1.35em 30px")
-        self.assertPageContains(".jav-small .meta .t{display:block;max-width:100%;min-height:1.35em;white-space:nowrap;text-overflow:ellipsis;")
-        self.assertPageContains(".jav-small .meta .s{min-height:1.35em;flex-wrap:nowrap;overflow:hidden;white-space:nowrap}")
-        self.assertPageContains(".jav-small .ctags{height:30px;align-items:flex-start;flex-wrap:nowrap;overflow:hidden}")
-        self.assertPageContains(".jav-small .meta .why,.jav-small .meta .watchcount{display:none}")
+    def test_dense_cards_use_three_fixed_rows_without_changing_jav_metadata_height(self):
+        # 顶栏密集模式固定标题、身份、标签三行；JAV 小图和预览图只换图片来源，
+        # 不再给其中一种额外加一行高度。
+        self.assertPageContains('body[data-density="dense"] .grid>.card{padding-top:7px}')
+        self.assertPageContains('body[data-density="dense"] .card .mtext{display:grid;grid-template-rows:1.35em 1.35em 30px;')
+        self.assertPageContains('gap:3px;height:calc(2.7em + 36px);overflow:hidden}')
+        self.assertPageContains('body[data-density="dense"] .card .meta .s{height:1.35em;min-height:0;flex-wrap:nowrap;overflow:hidden;white-space:nowrap}')
+        self.assertPageContains('body[data-density="dense"] .card .ctags{height:30px;align-items:flex-start;flex-wrap:nowrap;overflow:hidden}')
+        self.assertPageContains('body[data-density="dense"] .card .meta .watchcount{display:none}')
+        self.assertPageContains('小图与预览图都是 16:9 横图，只更换图片来源；元数据 DOM 和高度必须完全相同。')
+        self.assertPageLacks("jav-small")
         self.assertPageContains('<span class="watchcount">看过 ${it.play_count}</span>')
 
     def test_every_card_avatar_falls_back_through_the_same_helper(self):
@@ -755,7 +757,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("loadRequestSeq++;listLoading=false;$('#combo').innerHTML=''")
 
     def test_sidebar_add_controls_have_one_explicit_height(self):
-        self.assertPageContains(".sidebaradd .sidebaraddfield{display:grid;grid-template-columns:auto minmax(0,1fr) auto;width:100%;height:42px")
+        self.assertPageContains(".sidebaradd .sidebaraddfield{display:grid;grid-template-columns:auto minmax(0,1fr) auto;width:100%;height:42px;box-sizing:border-box;align-items:center;justify-items:start")
+        self.assertPageContains(".sidebaraddfield svg:last-child{justify-self:end;color:var(--muted)}")
         self.assertPageContains(".sidebaradd>button{height:42px;box-sizing:border-box}")
 
     def test_edge_and_drawer_share_one_navigation_dispatch(self):
@@ -1639,7 +1642,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".entitytags button", ".fauthor .fsource.frow>b", ".fauthorhead b",
             ".fchip", ".folderfoot .fmeta", ".fpickactions [data-pick-state]",
             ".frow>b", ".fvkind", ".idname", ".kv>span:first-child",
-            ".jav-small .meta .t", ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
+            ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
             ".mixitemtext [data-truncate-end]", ".mixqueuehead h2",
             ".playerstats dd", ".relatedperson .nm", ".reviewentity b",
             ".reviewitem h4", ".searchoption span",
