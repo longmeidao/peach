@@ -571,11 +571,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('/vendor/videojs/8.23.9/video-js.min.css')
 
     def test_detail_player_controls_use_two_rows_and_offer_real_quality_levels(self):
-        self.assertPageContains(".vwrap .video-js .vjs-control-bar{box-sizing:border-box;left:.8em;right:.8em;bottom:.7em;width:auto;height:6.6em")
+        self.assertPageContains(".vwrap .video-js .vjs-control-bar{box-sizing:border-box;left:.8em;right:.8em;bottom:.7em;width:auto;height:7em")
+        self.assertPageContains("border-radius:0;background:transparent;backdrop-filter:none")
+        self.assertPageContains(".vwrap .video-js .vjs-control-bar>.vjs-button,")
+        self.assertPageContains("border:1px solid rgba(255,255,255,.2);border-radius:50%;background:rgba(0,0,0,.56)")
         self.assertPageContains(".vwrap .video-js .vjs-progress-control{position:absolute;left:1.2em;right:1.2em;top:.45em")
         self.assertPageContains(".vwrap .video-js .vjs-custom-control-spacer{display:block;flex:1 1 auto}")
         self.assertPageContains(".vwrap .video-js .vjs-current-time{display:flex;margin-left:.35em")
         self.assertPageContains(".vwrap .video-js .vjs-duration{display:flex")
+        self.assertPageContains("border-radius:0 2em 2em 0")
         self.assertPageContains(".vwrap .video-js.vjs-layout-x-small .vjs-progress-control")
         self.assertPageContains(".vwrap .video-js .vjs-skip-backward-10")
         self.assertPageContains(".vwrap .video-js.vjs-layout-small .vjs-current-time")
