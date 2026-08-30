@@ -86,16 +86,23 @@ const SETTINGS_KEY='peach.settings.v1';
 const DEFAULT_SIDEBAR_ORDER=['','performers','tags','jav','flagged','playlists','follow','immerse','manage'];
 const OPTIONAL_SIDEBAR_KEYS=['stats','review','ads','dupes','trash','follow-manage','quality'];
 const ALL_SIDEBAR_KEYS=[...DEFAULT_SIDEBAR_ORDER,...OPTIONAL_SIDEBAR_KEYS];
-const SORTS=[['rating','评分'],['o','高潮计数'],['plays','观看次数'],['long','时长'],
+const SORTS=[['seed','随机'],['rating','评分'],['o','高潮计数'],['plays','观看次数'],['long','时长'],
              ['big','体积'],['new','最近入库'],['played','最近看的']];
 const SORT_KEYS=SORTS.map(([key])=>key);
-const DEFAULT_SETTINGS={batchSize:60,defaultSort:'new',hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',ambientMode:true,theaterMode:false,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
+const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:2,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',ambientMode:true,theaterMode:false,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
 delete appSettings.rotateMinutes;
+/* 上一版移除了随机并把所有人的默认值强制成最近入库。只迁移这一个旧默认，
+   评分、观看次数等用户主动选择继续保留。 */
+let sortDefaultsMigrated=false;
+if((+appSettings.sortDefaultsVersion||0)<2&&appSettings.defaultSort==='new'){
+  appSettings.defaultSort='seed';sortDefaultsMigrated=true
+}
+appSettings.sortDefaultsVersion=2;
 appSettings.batchSize=allowedSetting(+appSettings.batchSize,[30,60,90],60);
-appSettings.defaultSort=allowedSetting(appSettings.defaultSort,SORT_KEYS,'new');
+appSettings.defaultSort=allowedSetting(appSettings.defaultSort,SORT_KEYS,'seed');
 appSettings.hoverDelaySeconds=allowedSetting(+appSettings.hoverDelaySeconds,[3,5,8],5);
 appSettings.seekSeconds=allowedSetting(+appSettings.seekSeconds,[5,10,30],10);
 appSettings.ambientMode=appSettings.ambientMode!==false;
@@ -106,6 +113,7 @@ appSettings.sidebarOrder=[...new Set(Array.isArray(appSettings.sidebarOrder)?app
 if(!appSettings.sidebarOrder.length)appSettings.sidebarOrder=[...DEFAULT_SIDEBAR_ORDER];
 document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);
 const saveSettings=()=>localStorage.setItem(SETTINGS_KEY,JSON.stringify(appSettings));
+if(sortDefaultsMigrated)saveSettings();
 function syncSettingsPanel(){
   $('#batchSizeSetting').value=String(appSettings.batchSize);
   $('#defaultSortSetting').value=appSettings.defaultSort;
@@ -1344,7 +1352,8 @@ function renderCount(){
     }finally{await load(true)}
   };
   $('#count').querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{
-    state.sort=b.dataset.sort;
+    // 再点当前排序就是取消它，回到稳定随机；不能让「最近入库」变成锁死的筛选。
+    state.sort=state.sort===b.dataset.sort?'seed':b.dataset.sort;
     load(true)});
 }
 

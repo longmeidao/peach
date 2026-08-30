@@ -374,17 +374,20 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains(".meta span.who{color:var(--ink-2);cursor:default}")
 
-    def test_shuffle_sorts_are_removed_but_manual_refresh_keeps_stable_batches(self):
-        """换批是列表动作，不再伪装成三种排序或自动轮换设置。"""
+    def test_random_is_the_default_and_manual_refresh_keeps_stable_batches(self):
+        """默认随机使用稳定种子，换批时才生成新种子。"""
         self.assertPageContains("const SEED_KEY='peach.seed.v2';")
         self.assertPageContains("seed:initialParams.get('seed')||persistedSeed()")
-        self.assertPageContains("const SORTS=[['rating','评分'],['o','高潮计数']")
-        for option in ('<option value="seed">', '<option value="daily">',
-                       '<option value="rand">'):
-            self.assertPageLacks(option)
+        self.assertPageContains("const SORTS=[['seed','随机'],['rating','评分']")
+        self.assertPageContains('<option value="seed">随机</option>')
+        for option in ('<option value="daily">', '<option value="rand">'):
+            self.assertPageLacks(option, "不使用会让分页重复的 SQL RANDOM 或重复的每日模式")
         self.assertPageLacks('id="rotateSetting"')
-        self.assertPageContains("defaultSort:'new'")
+        self.assertPageContains("defaultSort:'seed',sortDefaultsVersion:2")
+        self.assertPageContains("appSettings.defaultSort==='new'){")
+        self.assertPageContains("if(sortDefaultsMigrated)saveSettings()")
         self.assertPageContains("const cleanSort=(value,fallback=appSettings.defaultSort)=>")
+        self.assertPageContains("state.sort=state.sort===b.dataset.sort?'seed':b.dataset.sort")
         # 手动换一批仍使用稳定种子，避免分页重复或漏项。
         self.assertPageContains('id="batchAction" type="button"')
         self.assertPageContains("state.sort='seed';state.seed=rollSeed()")
@@ -1719,7 +1722,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("icon('sperm')")
 
     def test_settings_own_useful_experience_preferences(self):
-        self.assertPageContains("const DEFAULT_SETTINGS={batchSize:60,defaultSort:'new'")
+        self.assertPageContains("const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed'")
         self.assertPageContains('id="settingsPanel"')
         self.assertPageLacks('id="rotateSetting"')
         self.assertPageContains("appSettings.hoverDelaySeconds")
