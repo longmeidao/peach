@@ -74,9 +74,10 @@ class BestCoverTests(unittest.TestCase):
 
     def test_largest_candidate_wins_regardless_of_host(self):
         # ABW-232 没有数字版，duga 的 1000x674 才是最优——固定优先级链会选错。
-        page = (b'<img src="https://pics.dmm.co.jp/mono/movie/adult/x/xpl.jpg">'
-                b'<img src="https://pic.duga.jp/unsecure/prestige/6270/noauth/jacket.jpg">'
-                b'<img src="https://image.mgstage.com/images/p/pake.jpg">')
+        main = b'class="max-h-[28rem] max-w-full"'
+        page = (b'<img ' + main + b' src="https://pics.dmm.co.jp/mono/movie/adult/x/xpl.jpg">'
+                b'<img ' + main + b' src="https://pic.duga.jp/unsecure/prestige/6270/noauth/jacket.jpg">'
+                b'<img ' + main + b' src="https://image.mgstage.com/images/p/pake.jpg">')
         transport = transport_for({
             self.avbase: (200, page),
             "https://pics.dmm.co.jp/mono/movie/adult/x/xpl.jpg": (200, jpeg(800, 539)),
@@ -93,15 +94,18 @@ class BestCoverTests(unittest.TestCase):
             "https://awsimgsrc.dmm.co.jp/pics_dig/digital/video/gyan00017/gyan00017pl.jpg":
                 (200, jpeg(2184, 1464)),
             "https://www.avbase.net/works/GYAN-017":
-                (200, b'<img src="https://pic.duga.jp/a/jacket.jpg">'),
+                (200, b'<img class="max-h-[28rem] max-w-full" '
+                       b'src="https://pic.duga.jp/a/jacket.jpg">'),
             "https://pic.duga.jp/a/jacket.jpg": (200, jpeg(1000, 674)),
         })
         winner, size, _ = covers.best_cover(transport, "GYAN-017", 0)
         self.assertEqual((winner.source, size), ("awsimgsrc.dmm.co.jp", (2184, 1464)))
 
     def test_thumbnails_are_never_considered(self):
-        page = (b'<img src="https://pic.duga.jp/a/jacket_thumb.jpg">'
-                b'<img src="https://pic.duga.jp/a/jacket.jpg">')
+        page = (b'<img class="max-h-[28rem] max-w-full" '
+                b'src="https://pic.duga.jp/a/jacket_thumb.jpg">'
+                b'<img class="max-h-[28rem] max-w-full" '
+                b'src="https://pic.duga.jp/a/jacket.jpg">')
         transport = transport_for({
             self.avbase: (200, page),
             "https://pic.duga.jp/a/jacket.jpg": (200, jpeg(1000, 674)),
@@ -112,7 +116,8 @@ class BestCoverTests(unittest.TestCase):
 
     def test_undersized_images_are_rejected(self):
         transport = transport_for({
-            self.avbase: (200, b'<img src="https://pic.duga.jp/a/jacket.jpg">'),
+            self.avbase: (200, b'<img class="max-h-[28rem] max-w-full" '
+                               b'src="https://pic.duga.jp/a/jacket.jpg">'),
             "https://pic.duga.jp/a/jacket.jpg": (200, jpeg(147, 200)),
         })
         with self.assertRaises(covers.Unavailable):
@@ -121,6 +126,20 @@ class BestCoverTests(unittest.TestCase):
     def test_no_candidate_anywhere_is_reported_not_guessed(self):
         with self.assertRaises(covers.Unavailable):
             covers.best_cover(transport_for({}), "NOPE-999", 0)
+
+    def test_related_work_images_never_enter_candidates(self):
+        main = "https://awsimgsrc.dmm.co.jp/pics_dig/digital/video/vrkm00711/vrkm00711pl.jpg"
+        related = "https://pics.dmm.co.jp/digital/video/vrkm01340/vrkm01340jp-1.jpg"
+        page = (f'<img class="max-h-[28rem] max-w-full" src="{main}">'
+                + "".join(f'<img class="h-40" src="{related}?n={index}">'
+                          for index in range(400))).encode()
+        transport = transport_for({
+            "https://www.avbase.net/works/VRKM-711": (200, page),
+            main: (200, jpeg(2184, 1365)),
+        })
+        winner, size, _ = covers.best_cover(transport, "VRKM-711", 0)
+        self.assertEqual((winner.url, size), (main, (2184, 1365)))
+        self.assertFalse(any(related in request.url for request in transport.requests))
 
 
 class SettledMissTests(unittest.TestCase):

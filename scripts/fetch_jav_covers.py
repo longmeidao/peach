@@ -36,6 +36,7 @@ import sqlite3
 import time
 import urllib.parse
 from dataclasses import dataclass
+from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -60,6 +61,7 @@ PROBE_BYTES = 64 * 1024
 #: avbase 页面里混着剧照与缩略图，按文件名排除。
 THUMBNAIL = re.compile(r"(thumb|small|icon|/ts/|-s\d|_s\.)", re.I)
 IMAGE_URL = re.compile(r"https?://[^\"'\\ )]+?\.(?:jpg|jpeg|png|webp)")
+AVBASE_MAIN_CLASSES = frozenset(("max-h-[28rem]", "max-w-full"))
 
 
 @dataclass(frozen=True)
@@ -70,6 +72,26 @@ class Candidate:
 
 class Unavailable(RuntimeError):
     pass
+
+
+class _AvbaseMainCoverParser(HTMLParser):
+    """只读取作品页主封面，拒绝相关推荐、剧照和演员头像。"""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.urls: list[str] = []
+
+    def handle_starttag(self, tag: str,
+                        attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() != "img":
+            return
+        values = dict(attrs)
+        classes = frozenset((values.get("class") or "").split())
+        if not AVBASE_MAIN_CLASSES.issubset(classes):
+            return
+        url = values.get("src") or values.get("data-src")
+        if url and IMAGE_URL.fullmatch(url):
+            self.urls.append(url)
 
 
 def _fetch(transport: HttpTransport, url: str, *, referer: str,
@@ -139,7 +161,7 @@ def content_ids(transport: HttpTransport, code: str) -> list[str]:
 
 
 def avbase_images(transport: HttpTransport, code: str) -> list[Candidate]:
-    """avbase 一次请求给出 duga / pics.dmm / mgstage 三个主机的图。"""
+    """读取 avbase 当前作品的主封面，不扫描整页关联作品图片。"""
     for variant in code_variants(code):
         try:
             page = _fetch(transport, AVBASE_WORK.format(code=urllib.parse.quote(variant)),
@@ -147,9 +169,11 @@ def avbase_images(transport: HttpTransport, code: str) -> list[Candidate]:
                           ).decode("utf-8", "ignore")
         except Unavailable:
             continue
+        parser = _AvbaseMainCoverParser()
+        parser.feed(page)
         found: list[Candidate] = []
         seen: set[str] = set()
-        for url in IMAGE_URL.findall(page):
+        for url in parser.urls:
             if THUMBNAIL.search(url) or url in seen:
                 continue
             seen.add(url)
