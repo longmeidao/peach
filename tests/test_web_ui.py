@@ -1470,22 +1470,27 @@ class WebUiSourceTests(unittest.TestCase):
             if "sans-serif" in line or "monospace" in line:
                 self.assertIn("YaHei", line, f"app.css:{i} 字体栈缺 CJK 兜底：{line.strip()[:90]}")
 
-    def test_taste_dashboard_is_cached_within_the_session(self):
-        """口味仪表按窗口做会话内缓存，进页不再每次等「正在分析…」。
+    def test_taste_dashboard_is_persisted_and_refreshed_without_blocking(self):
+        """口味仪表跨页面刷新复用旧结果，过期更新也不阻塞打开页面。
 
-        口味数据来自浏览器历史聚合，会话里几乎不变；每次切页都打接口只剩
-        等待。命中缓存直接渲染；换窗口、导入、移除数据源和显式「读取」
-        才打接口，并把返回写回缓存。请求带序号：慢响应返回时人已经换到
-        别的窗口或页面，旧数据不能覆盖新渲染。
+        口味数据来自浏览器历史聚合，24 小时内无需重读。过期时仍先显示
+        持久缓存，再后台更新；请求带序号，慢响应不能覆盖别的窗口或页面。
         """
-        self.assertPageContains("let tasteWindow='all',tasteCache=new Map(),tasteRequest=0;")
-        self.assertPageContains("const cached=tasteCache.get(tasteWindow);")
+        self.assertPageContains("const TASTE_CACHE_KEY='peach-taste-dashboard-v2',TASTE_CACHE_FRESH_MS=24*60*60*1000;")
+        self.assertPageContains("let tasteWindow='all',tasteCache=readTasteCache(),tasteRequest=0;")
+        self.assertPageContains("localStorage.getItem(TASTE_CACHE_KEY)")
+        self.assertPageContains("localStorage.setItem(TASTE_CACHE_KEY,JSON.stringify(Object.fromEntries(tasteCache)))")
+        self.assertPageContains("const cachedEntry=tasteCache.get(tasteWindow),cached=cachedEntry?.dashboard;")
+        self.assertPageContains("const cacheFresh=cached&&Date.now()-cachedEntry.at<TASTE_CACHE_FRESH_MS;")
         self.assertPageContains("if(cached)renderTaste(cached);")
-        self.assertPageContains("tasteCache.set(tasteWindow,data);")
-        self.assertPageContains("if(request===tasteRequest&&surfaceCurrent(surface))renderTaste(data)")
+        self.assertPageContains("if(!cacheFresh)")
+        self.assertPageContains("void api('/api/taste?window='+requestedWindow).then(data=>")
+        self.assertPageContains("tasteCacheSet(requestedWindow,data);")
+        self.assertPageContains("if(request===tasteRequest&&tasteWindow===requestedWindow&&surfaceCurrent(surface))renderTaste(data)")
+        self.assertPageContains("if(!cached&&request===tasteRequest&&surfaceCurrent(surface))")
         # 三个写路径都更新缓存，别让缓存变陈旧。
-        self.assertPageContains("tasteCache.set(tasteWindow,result.dashboard);renderTaste(result.dashboard)")
-        self.assertPageContains("tasteWindow='all';tasteCache.set('all',payload.dashboard);renderTaste(payload.dashboard)")
+        self.assertPageContains("tasteCacheSet(tasteWindow,result.dashboard);renderTaste(result.dashboard)")
+        self.assertPageContains("tasteWindow='all';tasteCacheSet('all',payload.dashboard);renderTaste(payload.dashboard)")
 
     def test_no_page_grows_its_own_back_control(self):
         """索引页原本有个返回按钮，现在顶栏入口本身就是返回路径。

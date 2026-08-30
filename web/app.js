@@ -1172,10 +1172,24 @@ async function openResourceSync(push=true){
   await openStats(false,true);
 }
 
-/* 口味仪表按窗口缓存：数据来自浏览器历史的聚合，会话里几乎不变，
-   每次进页都打接口只会让人盯着「正在分析…」。命中缓存直接渲染；
-   换窗口、导入、移除数据源、显式「读取」才真正打接口并更新缓存。 */
-let tasteWindow='all',tasteCache=new Map(),tasteRequest=0;
+/* 口味仪表按窗口持久缓存：刷新页面也先显示上次结果。24 小时内不重读；
+   过期后仍先显示旧结果，再在后台更新。导入、移除数据源和显式「读取」
+   会立即写回缓存。缓存只含页面已经展示的聚合结果，不含原始历史。 */
+const TASTE_CACHE_KEY='peach-taste-dashboard-v2',TASTE_CACHE_FRESH_MS=24*60*60*1000;
+const TASTE_CACHE_WINDOWS=new Set(['all','365d','90d']);
+function readTasteCache(){
+  try{
+    const stored=JSON.parse(localStorage.getItem(TASTE_CACHE_KEY)||'{}');
+    return new Map(Object.entries(stored).filter(([window,entry])=>
+      TASTE_CACHE_WINDOWS.has(window)&&entry&&Number.isFinite(Number(entry.at))&&
+      entry.dashboard&&typeof entry.dashboard==='object'))
+  }catch(_error){return new Map()}
+}
+let tasteWindow='all',tasteCache=readTasteCache(),tasteRequest=0;
+function tasteCacheSet(window,dashboard){
+  tasteCache.set(window,{at:Date.now(),dashboard});
+  try{localStorage.setItem(TASTE_CACHE_KEY,JSON.stringify(Object.fromEntries(tasteCache)))}catch(_error){}
+}
 const tasteDate=value=>value?new Date(value).toLocaleDateString('zh-CN'):'—';
 const tasteHours=seconds=>seconds>=3600?(seconds/3600).toFixed(1)+' 小时':Math.round(seconds/60)+' 分钟';
 const tasteRanking=(title,rows,kind,empty='暂无足够证据',panel='tastepanel-half',visual='')=>`<section class="tastepanel ${panel}"><h3>${title}</h3>
@@ -1248,20 +1262,20 @@ function renderTaste(d){
     button.innerHTML=`${spinnerHtml('正在读取')}<span>读取中…</span>`;
     stateEl.innerHTML=loadingDotsHtml('正在读取 Peach 所在主机的浏览器…');
     try{const result=await api('/api/taste/refresh',{method:'POST',body:JSON.stringify({window:tasteWindow})});
-      tasteCache.set(tasteWindow,result.dashboard);renderTaste(result.dashboard)}
+      tasteCacheSet(tasteWindow,result.dashboard);renderTaste(result.dashboard)}
     catch(error){stateEl.textContent=error.message||'读取失败';button.disabled=false;
       button.removeAttribute('aria-busy');button.innerHTML=oldButton}};
   root.querySelector('[data-taste-import]').onclick=()=>file.click();
   file.onchange=async()=>{const selected=file.files[0];if(!selected)return;stateEl.textContent=`正在导入 ${selected.name}…`;
     try{const response=await fetch('/api/taste/import',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Peach-Filename':encodeURIComponent(selected.name)},body:selected});
       const payload=await response.json().catch(()=>null);if(!response.ok)throw new Error(payload?.error||`导入失败（${response.status}）`);
-      tasteWindow='all';tasteCache.set('all',payload.dashboard);renderTaste(payload.dashboard)}catch(error){stateEl.textContent=error.message||'导入失败'}};
+      tasteWindow='all';tasteCacheSet('all',payload.dashboard);renderTaste(payload.dashboard)}catch(error){stateEl.textContent=error.message||'导入失败'}};
   root.querySelectorAll('[data-taste-kind]').forEach(button=>button.onclick=()=>openTasteSignal(button.dataset.tasteKind,button.dataset.tasteName));
   root.querySelectorAll('[data-taste-remove]').forEach(button=>button.onclick=async()=>{
     if(!confirm('从口味分析中移除这个数据源？原始导出文件会保留。'))return;
     button.disabled=true;stateEl.textContent='正在移除…';
     try{const result=await api('/api/taste/source',{method:'POST',body:JSON.stringify({operation:'remove',source_key:button.dataset.tasteRemove,window:tasteWindow})});
-      tasteCache.set(tasteWindow,result.dashboard);renderTaste(result.dashboard)}
+      tasteCacheSet(tasteWindow,result.dashboard);renderTaste(result.dashboard)}
     catch(error){stateEl.textContent=error.message||'移除失败';button.disabled=false}});
 }
 async function openTaste(push=true){
@@ -1272,21 +1286,24 @@ async function openTaste(push=true){
   const surface=claimSurface('/taste');
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';$('#count').textContent='';
   $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;buildManageBar();
-  const cached=tasteCache.get(tasteWindow);
+  const cachedEntry=tasteCache.get(tasteWindow),cached=cachedEntry?.dashboard;
+  const cacheFresh=cached&&Date.now()-cachedEntry.at<TASTE_CACHE_FRESH_MS;
   if(cached)renderTaste(cached);
   else $('#stats').innerHTML=`<div class="tastepage"><div class="skeletonpanel">
     <span class="skeleton" style="width:38%"></span>
     <span class="skeleton" style="width:100%"></span>
     <span class="skeleton" style="width:100%"></span>
     <span class="skeleton" style="width:72%"></span></div></div>`;
-  if(!cached){
+  if(!cacheFresh){
     const request=++tasteRequest;
-    try{const data=await api('/api/taste?window='+tasteWindow);
-      tasteCache.set(tasteWindow,data);
-      if(request===tasteRequest&&surfaceCurrent(surface))renderTaste(data)}
-    catch(error){
-      if(request===tasteRequest&&surfaceCurrent(surface))$('#stats').innerHTML=
-        `<div class="tastepage">${noteHtml(error.message||'分析未取得',{variant:'error',label:'分析未取得'})}</div>`}
+    const requestedWindow=tasteWindow;
+    void api('/api/taste?window='+requestedWindow).then(data=>{
+      tasteCacheSet(requestedWindow,data);
+      if(request===tasteRequest&&tasteWindow===requestedWindow&&surfaceCurrent(surface))renderTaste(data)
+    }).catch(error=>{
+      if(!cached&&request===tasteRequest&&surfaceCurrent(surface))$('#stats').innerHTML=
+        `<div class="tastepage">${noteHtml(error.message||'分析未取得',{variant:'error',label:'分析未取得'})}</div>`
+    })
   }
   window.scrollTo({top:0,behavior:'smooth'});
 }
