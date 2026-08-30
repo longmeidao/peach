@@ -656,13 +656,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(selectMode)releaseHoverPreviews()")
 
     def test_manage_collects_admin_entries_behind_one_top_level_icon(self):
-        """统计、疑似广告、回收站、人工复核各占一个顶层图标时，侧栏一半是管理入口。
+        """统计、垃圾复核、回收站、人工复核各占一个顶层图标时，侧栏一半是管理入口。
 
         它们合并到「管理」下的二级导航；URL 保持原样，只是多了一条共用导航条。
         """
         self.assertPageContains("['manage','管理','database']")
         self.assertPageContains("const MANAGE_SECTIONS=[")
-        for section in ("'stats','统计'", "'ads','疑似广告'", "'dupes','重复文件'",
+        for section in ("'stats','统计'", "'ads','垃圾复核'", "'dupes','重复文件'",
                         "'quality','高清版'", "'trash','回收站'", "'review','人工复核'",
                         "'taste','口味'"):
             self.assertPageContains(section)
@@ -992,7 +992,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("buildEdge();     // 顶层高亮跟随管理区")
 
     def test_manage_surfaces_hide_the_home_rails(self):
-        """回收站和疑似广告是行政列表，不该顶着首页的人物/厂牌横条。
+        """回收站和垃圾复核是行政列表，不该顶着首页的人物/厂牌横条。
 
         `showHomeSurfaces` 会先把横条恢复出来，所以隐藏必须排在它之后，否则被立刻覆盖。
         """
@@ -1002,15 +1002,32 @@ class WebUiSourceTests(unittest.TestCase):
                         "buildManageBar 必须排在恢复首页横条之后，否则隐藏会被覆盖")
 
     def test_ads_queue_count_does_not_stick_and_disposal_reports_failures(self):
-        """疑似广告是处置队列；计数行不跟随滚动，写入冲突也不能伪装成成功。"""
+        """垃圾复核是处置队列；计数行不跟随滚动，写入冲突也不能伪装成成功。"""
         self.assertPageContains("countRow.classList.toggle('manage-static',staticManageCount)")
         self.assertPageContains("if(staticManageCount)countRow.classList.remove('is-stuck')")
         self.assertPageContains(".count.manage-static{position:relative;top:auto;z-index:1}")
         self.assertPageContains("if(!response.ok){")
         self.assertPageContains("throw new Error(detail||`请求失败（${response.status}）`)")
         self.assertPageContains("catch(error){alert(`操作失败：${error.message||'未知错误'}`)}")
-        self.assertPageContains("wireCards($('#grid'));paintSelection();return")
+        self.assertPageContains("wireCards($('#grid'),openResourceCard);wireResourceCardActions($('#grid'));paintSelection();return")
         self.assertPageContains("b.dataset.kind==='dispose'&&r.disposal==='trash'&&state.state==='ads'")
+
+    def test_junk_review_and_trash_render_every_physical_resource_type(self):
+        """图片、网址快捷方式等不能复用视频播放器，但必须可预览、回收和还原。"""
+        self.assertPageContains("const RESOURCE_MEDIUM_LABEL={image:'图片',audio:'音频',archive:'压缩包',other:'其它文件'}")
+        self.assertPageContains("function resourceCardHtml(it)")
+        self.assertPageContains("String(it.name||'').toLowerCase().endsWith('.url')?'网址快捷方式'")
+        self.assertPageContains('src="/photo-thumb?id=${it.id}"')
+        self.assertPageContains('data-resource-operation="${action}"')
+        self.assertPageContains("await api('/api/batch',{method:'POST',body:JSON.stringify({ids:[+card.dataset.id],operation})})")
+        self.assertPageContains("if(it&&(!it.medium||it.medium==='video'))wireHover(el,it)")
+        self.assertPageContains("state.state==='trash'?d.items.map(resourceCardHtml).join('')")
+        self.assertPageContains("wireCards($('#grid'),state.state==='trash'?openResourceCard:undefined)")
+        self.assertPageContains("if(state.state==='trash')wireResourceCardActions($('#grid'))")
+        self.assertPageContains("const emptyTrash=$('#emptyTrash');")
+        self.assertPageContains("if(emptyTrash)emptyTrash.onclick=async(e)=>{")
+        self.assertPageContains("视频、图片和网址快捷方式都只进入复核，不会直接删除")
+        self.assertPageContains(".resourcecardaction{position:absolute")
 
     def test_search_suggestions_come_from_real_data_in_bulk(self):
         """写死的 6 个词翻两次就重复。顶部聚合只有几十条，也不够；索引接口一次给近千条。"""
@@ -1048,7 +1065,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_ads_icon_matches_the_lucide_stroke_style(self):
         """图标库里没有表示广告的图形，自绘的感叹号必须和其余图标同风格。"""
         self.assertPageContains('<symbol id="i-alert" viewBox="0 0 24 24">')
-        self.assertPageContains("['ads','疑似广告','alert']")
+        self.assertPageContains("['ads','垃圾复核','alert']")
 
     def test_pending_delete_is_visible_without_deleting_media(self):
         self.assertPageContains("it.disposal==='trash'?'pending-delete':''")
@@ -1298,7 +1315,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".sep{flex:none;width:1px;height:19px")
         self.assertPageContains("{k:'later',label:'稍后看'},{k:'flagged',label:'已标记'}")
         self.assertPageLacks("{k:'played',label:'看过'}")
-        self.assertPageLacks("{k:'ads',label:'疑似广告'}")
+        self.assertPageLacks("{k:'ads',label:'垃圾复核'}")
 
     def test_search_placeholder_is_an_actionable_recommendation(self):
         self.assertPageContains("const SEARCH_HINTS=['Prestige','FC2','Sakura Misaki','丝袜','足交','ABW']")
@@ -1661,9 +1678,10 @@ class WebUiSourceTests(unittest.TestCase):
                 '<div><b data-middle-truncate title="${esc(asset.name||\'\')}"',
                 '<div><b data-middle-truncate title="${esc(row.asset_name||\'\')}"',
                 '<b data-middle-truncate>${esc(media.name)}</b>',
-                '<b data-middle-truncate>${esc(x.name)}</b>'):
+                '<b data-middle-truncate>${esc(x.name)}</b>',
+                'class="t resourcecardtitle" data-middle-truncate'):
             self.assertPageContains(consumer)
-        self.assertEqual(self.app_js.count("data-middle-truncate"), 8)
+        self.assertEqual(self.app_js.count("data-middle-truncate"), 9)
         self.assertEqual(self.app_js.count('class="mixitemtext"'), 3)
         self.assertEqual(self.app_js.count("data-truncate-end"), 4)
         self.assertPageContains("new Intl.Segmenter(undefined,{granularity:'grapheme'})")

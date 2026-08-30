@@ -606,7 +606,7 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
 
 /* ── 主区：满屏，大图 ── */
 main{position:relative;z-index:1;padding:14px 16px 90px}
-/* 管理区二级导航：统计 / 疑似广告 / 回收站 / 人工复核 共用一条 */
+/* 管理区二级导航：统计 / 垃圾复核 / 回收站 / 人工复核 共用一条 */
 .managebar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 16px;
   padding:6px;border:1px solid var(--line-soft);border-radius:12px;background:var(--surface);width:max-content;max-width:100%}
 .managebar[hidden]{display:none}
@@ -623,7 +623,7 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
   display:flex;align-items:center;gap:10px;flex-wrap:nowrap;
   background:transparent;border-bottom:1px solid transparent}
 /* 管理区隐藏了 tagbar，count 吸顶若仍按「顶栏+筛选条」留位会悬空一条缝。
-   回收站这类页面直接贴着顶栏吸。manage-static（疑似广告）不吸顶，要压过这条。 */
+   回收站这类页面直接贴着顶栏吸。manage-static（垃圾复核）不吸顶，要压过这条。 */
 .count.no-tagbar{top:var(--topH)}
 .count.manage-static{position:relative;top:auto;z-index:1}
 .count.count-actions-only{position:relative;top:auto;min-height:0;margin:0 0 16px;padding:0;justify-content:flex-end}
@@ -741,6 +741,18 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .previewcounter .ringplay{position:relative;inset:auto;width:14px;height:14px;transform:none;stroke:#fff;fill:none;stroke-width:2;margin-left:1px}
 @keyframes preview-arc{to{stroke-dashoffset:0}}
 .nopic{font-size:var(--fs-xs);letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
+.resourceglyph{display:grid;place-items:center;gap:8px;color:var(--muted);font-size:var(--fs-xs);letter-spacing:.08em}
+.resourceglyph svg{width:32px;height:32px;stroke:currentColor;fill:none;stroke-width:1.5}
+.resourcecardaction{position:absolute;right:10px;bottom:10px;z-index:5;display:inline-flex;align-items:center;gap:6px;
+  min-height:32px;padding:0 10px;border:1px solid rgba(255,255,255,.25);border-radius:var(--control-radius);
+  background:rgba(0,0,0,.64);color:#fff;font:inherit;font-size:var(--fs-xs);cursor:pointer;
+  backdrop-filter:saturate(1.5) blur(10px);-webkit-backdrop-filter:saturate(1.5) blur(10px)}
+.resourcecardaction:hover:not(:disabled){border-color:var(--tungsten);color:var(--tungsten)}
+.resourcecardaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+.resourcecardaction:disabled{cursor:wait;opacity:.72}.resourcecardaction svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
+.resourcekind{display:grid;place-items:center;color:var(--muted);border-radius:var(--control-radius)}
+.resourcekind svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7}
+.resourcecardtitle{cursor:default}
 .badge{position:absolute;top:6px;left:6px;display:flex;gap:4px;z-index:2;align-items:center;
   transition:opacity .15s ease}
 /* 首页流和详情只留来源图标；完整来源与费用通过 title/aria-label 提供。 */

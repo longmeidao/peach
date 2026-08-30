@@ -3,15 +3,22 @@
 样本全部来自 2026-08-15 的真实误判与用户手工标记的真广告：命中推广词本身
 不是证据，要看剥掉推广词后还剩不剩内容。
 """
+import sqlite3
+import tempfile
 import unittest
+from pathlib import Path
 
 from peach.web_contract import (
     PART_MARK,
     PROMO_DOMAIN,
     PROMO_PHRASE,
     REAL_CODE,
+    WebContract,
     promo_residue,
+    q_ads,
+    q_items,
 )
+from test_rm_web import BASE_SCHEMA
 
 
 def promo_hit(name: str) -> bool:
@@ -89,6 +96,79 @@ class AdJudgementTests(unittest.TestCase):
         for name in ("Movie CD2", "feature part1", "作品 分卷", "title-2", "title (3)"):
             with self.subTest(name=name):
                 self.assertIsNotNone(PART_MARK.search(name))
+
+
+class ResourceJunkQueueTests(unittest.TestCase):
+    """物理资源都要经过垃圾判断，类型不能成为免检条件。"""
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.db_path = Path(self.temporary.name) / "ledger.db"
+        connection = sqlite3.connect(self.db_path)
+        connection.executescript(BASE_SCHEMA)
+        connection.close()
+        self.contract = WebContract(self.db_path)
+
+    def add(self, asset_id, location, path, medium, size=1000, duration=None,
+            creator=None, disposal=None):
+        connection = sqlite3.connect(self.db_path)
+        try:
+            connection.execute(
+                "INSERT INTO asset(id,location,path,name,medium,size,duration,creator,disposal) "
+                "VALUES(?,?,?,?,?,?,?,?,?)",
+                (asset_id, location, path, path.rsplit("\\", 1)[-1], medium,
+                 size, duration, creator, disposal),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+    def test_video_image_audio_archive_and_url_shortcut_are_all_judged(self):
+        self.add(1, "115", r"B:\广告\tuu26.com.mp4", "video",
+                 10 * 1024**2, 60)
+        self.add(2, "115", r"B:\番号\CAWD-241\亚博体育hayob9.com.jpg", "image", 28725)
+        self.add(3, "pikpak", r"A:\资源\点击这里.url", "other", 128)
+        self.add(4, "local", r"R:\media\福利群vip0955.com.zip", "archive", 2048)
+        self.add(5, "local", r"R:\media\苍老师强力推荐.mp3", "audio", 4096)
+        # 域名属于作品出处且仍有长内容描述，不是推广垃圾。
+        self.add(
+            6, "115",
+            r"B:\创作者\Dakota Doll - [LegalPorno.com] - [2024] - Breakfast Sex.mp4.jpg",
+            "image", 280000, creator="Dakota Doll",
+        )
+        # online 的 path 本来就是 URL，不是等待清理的物理快捷方式。
+        self.add(7, "online", "https://example.com/post/1.url", "other", 0)
+
+        result = q_ads(self.contract, limit=200)
+
+        self.assertEqual(result["total"], 5)
+        self.assertEqual(
+            {item["medium"] for item in result["items"]},
+            {"video", "image", "audio", "archive", "other"},
+        )
+        by_id = {item["id"]: item for item in result["items"]}
+        self.assertIn("网址快捷方式", by_id[3]["why"])
+        self.assertIn("整个名字都是推广语", by_id[2]["why"])
+        self.assertNotIn(6, by_id)
+        self.assertNotIn(7, by_id)
+        self.assertTrue(all("path" not in item for item in result["items"]))
+
+    def test_non_video_trash_items_remain_visible_and_recoverable(self):
+        self.add(10, "115", r"B:\番号\广告图.jpg", "image", disposal="trash")
+        self.add(11, "115", r"B:\番号\备用网址.url", "other", disposal="trash")
+        self.add(12, "115", r"B:\番号\正片.mp4", "video", 1024, 60)
+
+        result = q_items(self.contract, {
+            "state": "trash", "limit": "60", "thumb": "1",
+            "exclude_vertical": "1", "dur_min": "3600", "jav": "1",
+        })
+
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(
+            {(item["id"], item["medium"]) for item in result["items"]},
+            {(10, "image"), (11, "other")},
+        )
 
 
 if __name__ == "__main__":
