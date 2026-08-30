@@ -123,15 +123,16 @@
     },
     {
       "id": "beeg-profile-layout",
-      "name": "Beeg Reislin 资料页布局证据",
-      "url": "https://beeg.com/Reislin",
+      "name": "Beeg SweetieFox 资料页布局与媒体切换证据",
+      "url": "https://beeg.com/SweetieFox",
       "snapshot": "docs/reference-snapshots/beeg-profile-layout.md",
-      "checked_on": "2026-08-29",
-      "sha256": "fee5f561e2dffcb15cba4be45115d927d37d2957fc23895ccf25809f16fb63da",
-      "role": "女优、厂牌与关注页的信息顺序、头像轨道、标签位置和内容入口参考；合集详情按 Peach 现有详情结构适配。",
+      "checked_on": "2026-08-30",
+      "sha256": "4f3ae0154c3f5d2d9c8c42203557eb4498d98eff1412fdf2209b8e4c5a9ac386",
+      "role": "女优、厂牌与关注页的无标题信息轨道参考；资料页以单个 32px PicsIcon 在标签左侧切换视频与照片，合集详情按 Peach 现有详情结构适配。",
       "consumers": [
         "web/app.css",
         "web/app.js",
+        "web/index.html",
         "tests/test_follow_web.py",
         "tests/test_web_ui.py"
       ]
