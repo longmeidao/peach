@@ -54,7 +54,8 @@ from .taste_history import (
 from .web_follow import (
     q_follow, q_follow_credentials, q_follow_schedule,
     w_follow_check, w_follow_credential, w_follow_resolve, w_follow_schedule,
-    w_follow_author_alias, w_follow_save, w_follow_source, w_follow_status,
+    w_follow_activity, w_follow_author_alias, w_follow_play, w_follow_save,
+    w_follow_source, w_follow_status,
 )
 from .web_activity import (
     DEFAULT_PROFILE_ID,
@@ -1327,8 +1328,48 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="")
         result["categories"] = category_counts
     return result
 
+_STORAGE_LABELS = {
+    "system": "系统盘",
+    "local": "资源盘",
+    "115": "115 网盘",
+    "pikpak": "PikPak 网盘",
+}
+
+
+def _storage_volumes() -> list[dict[str, object]]:
+    """返回当前主机可验证的系统卷、资源盘和网盘容量。"""
+    declarations = [("system", system_volume(), True)] + [
+        (location, translate_ledger_path(root), False)
+        for location, root in LOCATION_ROOT_DECLARATIONS.items()
+    ]
+    volumes: list[dict[str, object]] = []
+    for kind, root, is_system in declarations:
+        mounted = not is_unmapped(root) and (is_system or root_online(root))
+        row: dict[str, object] = {
+            "kind": kind,
+            "label": _STORAGE_LABELS[kind],
+            "root": str(root) if not is_unmapped(root) else None,
+            "online": mounted,
+            "free": None,
+            "used": None,
+            "total": None,
+        }
+        if mounted:
+            try:
+                usage = shutil.disk_usage(root)
+                row.update(
+                    free=usage.free,
+                    used=max(usage.total - usage.free, 0),
+                    total=usage.total,
+                )
+            except OSError:
+                pass
+        volumes.append(row)
+    return volumes
+
+
 def q_stats(contract: WebContract):
-    """统计页：库存 / 归属 / 标签 / 消费 / 磁盘。原来挤在顶栏右上角，信息量太小又碍眼。"""
+    """统计页：库存 / 归属 / 标签 / 本地与在线播放 / 各存储卷。"""
     with contract.read_connection() as c:
         out = {}
         out["by_loc"] = [dict(r) for r in c.execute(
@@ -1367,9 +1408,29 @@ def q_stats(contract: WebContract):
             "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
             "AND performer.normalized_name=lower(trim(t.tag))) "
             "GROUP BY t.tag ORDER BY n DESC LIMIT 30")]
+        tables = {row[0] for row in c.execute(
+            "SELECT name FROM sqlite_schema WHERE type='table'"
+        )}
+        library_played = one("SELECT count(*) FROM asset WHERE play_count>0")
+        library_seconds = one("SELECT COALESCE(sum(play_seconds),0) FROM asset")
+        online_played = 0
+        online_seconds = 0
+        if "follow_playback" in tables:
+            online_played = one(
+                "SELECT count(*) FROM follow_playback fp JOIN follow_item fi "
+                "ON fi.id=fp.follow_item_id WHERE fp.play_count>0 AND (fi.asset_id IS NULL OR "
+                "NOT EXISTS(SELECT 1 FROM asset a WHERE a.id=fi.asset_id AND a.play_count>0))"
+            )
+            online_seconds = one(
+                "SELECT COALESCE(sum(play_seconds),0) FROM follow_playback"
+            )
         out["consumption"] = {
-            "played": one("SELECT count(*) FROM asset WHERE play_count>0"),
-            "play_seconds": one("SELECT COALESCE(sum(play_seconds),0) FROM asset"),
+            "played": library_played + online_played,
+            "library_played": library_played,
+            "online_played": online_played,
+            "play_seconds": library_seconds + online_seconds,
+            "library_play_seconds": library_seconds,
+            "online_play_seconds": online_seconds,
             "o_total": one("SELECT COALESCE(sum(o_count),0) FROM asset"),
             "dislike": one("SELECT count(*) FROM asset WHERE feedback='dislike'"),
             "seen": one("SELECT count(*) FROM asset WHERE feedback='seen'"),
@@ -1377,17 +1438,37 @@ def q_stats(contract: WebContract):
             "skimmed": one("SELECT count(*) FROM asset WHERE duration>0 AND play_seconds>0 "
                            "AND max_reached>0.6 AND play_seconds/duration < max_reached-0.25"),
         }
-        out["recent"] = [dict(r) for r in c.execute(
-            "SELECT id,name,creator,play_seconds,duration,max_reached,leave_ratio,o_count "
-            "FROM asset WHERE last_played IS NOT NULL ORDER BY last_played DESC LIMIT 12")]
-    try:
-        volume = system_volume()
-        du = shutil.disk_usage(volume)
-        out["system_disk"] = {"root": str(volume), "free": du.free, "total": du.total}
-        out["disk_c"] = out["system_disk"]  # 0.6.x 客户端兼容别名
-    except Exception:
-        out["system_disk"] = None
-        out["disk_c"] = None
+        recent = [dict(r, kind="library") for r in c.execute(
+            "SELECT id,name,creator,play_seconds,duration,max_reached,leave_ratio,o_count,"
+            "CAST(last_played AS REAL) last_played FROM asset WHERE last_played IS NOT NULL "
+            "ORDER BY CAST(last_played AS REAL) DESC LIMIT 12")]
+        if "follow_playback" in tables:
+            recent.extend(dict(r, kind="online", leave_ratio=None, o_count=0) for r in c.execute(
+                "SELECT fi.id,fi.title name,fs.label creator,fp.play_seconds,fi.duration,"
+                "fp.max_reached,fp.last_played FROM follow_playback fp "
+                "JOIN follow_item fi ON fi.id=fp.follow_item_id "
+                "JOIN follow_source fs ON fs.id=fi.source_id WHERE fp.last_played IS NOT NULL "
+                "ORDER BY fp.last_played DESC LIMIT 12"
+            ))
+        out["recent"] = sorted(
+            recent, key=lambda row: float(row.get("last_played") or 0), reverse=True,
+        )[:12]
+    out["storage_volumes"] = _storage_volumes()
+    measured = [row for row in out["storage_volumes"] if row["total"] is not None]
+    out["storage_summary"] = {
+        "volumes": len(out["storage_volumes"]),
+        "online": sum(1 for row in out["storage_volumes"] if row["online"]),
+        "measured": len(measured),
+        "free": sum(int(row["free"]) for row in measured),
+        "used": sum(int(row["used"]) for row in measured),
+        "total": sum(int(row["total"]) for row in measured),
+    }
+    system = next((row for row in out["storage_volumes"] if row["kind"] == "system"), None)
+    out["system_disk"] = (
+        {"root": system["root"], "free": system["free"], "total": system["total"]}
+        if system and system["total"] is not None else None
+    )
+    out["disk_c"] = out["system_disk"]  # 0.6.x 客户端兼容别名
     return out
 
 
@@ -1910,6 +1991,8 @@ POST_HANDLERS = {
     "/api/follow/credential": w_follow_credential,
     "/api/follow/status": w_follow_status,
     "/api/follow/save": w_follow_save,
+    "/api/follow/play": w_follow_play,
+    "/api/follow/activity": w_follow_activity,
     "/api/activity": w_activity,
     "/api/play": w_play,
     "/api/feedback": w_feedback,

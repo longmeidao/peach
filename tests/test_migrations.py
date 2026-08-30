@@ -24,7 +24,7 @@ class MigrationTests(unittest.TestCase):
         backup = self.root / "before.db"
         done = upgrade(self.db, MIGRATIONS, backup)
         self.assertEqual([m.version for m in done],
-                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021"])
+                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022"])
         self.assertTrue(backup.exists())
         con = sqlite3.connect(self.db)
         tables = {row[0] for row in con.execute(
@@ -39,9 +39,9 @@ class MigrationTests(unittest.TestCase):
                          "entity_external_ref", "asset_entity", "entity_link",
                          "entity_search_term", "watch_queue", "asset_preference", "asset_quality_goal",
                          "playlist", "playlist_item",
-                         "asset_tag_preference", "asset_search",
+                         "asset_tag_preference", "asset_search", "follow_playback",
                          "schema_migration"} <= tables)
-        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021"])
+        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022"])
         self.assertEqual(upgrade(self.db, MIGRATIONS), [])
         self.assertEqual(plan(self.db, MIGRATIONS)[1], [])
 
@@ -292,7 +292,7 @@ class MigrationTests(unittest.TestCase):
         base_migrations = self.root / "base-migrations"
         base_migrations.mkdir()
         for path in sorted(MIGRATIONS.glob("*.sql")):
-            if not path.name.startswith(("0020_", "0021_")):
+            if not path.name.startswith(("0020_", "0021_", "0022_")):
                 shutil.copyfile(path, base_migrations / path.name)
         sqlite3.connect(self.db).close()
         upgrade(self.db, base_migrations)

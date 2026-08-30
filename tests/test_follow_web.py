@@ -370,6 +370,32 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual(result["items"], items)
         self.assertEqual(self._get(status="seen")["counts"]["seen"], 2)
 
+    def test_direct_online_play_counts_without_saving_an_asset(self):
+        self._seed()
+        item = self._get()["groups"][0]["primary"]["id"]
+
+        started = self._post("/api/follow/play", {"item": item})
+        activity = self._post("/api/follow/activity", {
+            "item": item, "position": 12, "duration": 20, "delta": 10,
+        })
+
+        self.assertEqual(started["status"], "seen")
+        self.assertEqual(activity["play_seconds"], 10)
+        self.assertEqual(activity["max_reached"], 0.6)
+        with self.contract.database.read_connection() as connection:
+            row = dict(connection.execute(
+                "SELECT play_count,play_seconds,max_reached FROM follow_playback "
+                "WHERE follow_item_id=?", (item,),
+            ).fetchone())
+        self.assertEqual(row, {"play_count": 1, "play_seconds": 10.0,
+                               "max_reached": 0.6})
+
+        stats = self._get("/api/stats")
+        self.assertEqual(stats["consumption"]["online_played"], 1)
+        self.assertEqual(stats["consumption"]["played"], 1)
+        self.assertEqual(stats["consumption"]["online_play_seconds"], 10)
+        self.assertEqual(stats["recent"][0]["kind"], "online")
+
     def test_feed_ignores_a_nonsense_limit_instead_of_failing(self):
         self._seed()
         self.assertEqual(len(self._get(limit="nope")["groups"]), 1)
@@ -1453,7 +1479,8 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_follow_video_uses_the_shared_videojs_player_and_quality_control(self):
         self.assertPageContains('class="video-js vjs-big-play-centered" controls playsinline preload="metadata"')
-        self.assertPageContains("if(followVideo){const followPlayer=mountDetailPlayer(item,followVideo,false,{")
+        self.assertPageContains("if(followVideo){")
+        self.assertPageContains("const followPlayer=mountDetailPlayer(item,followVideo,false,{")
         self.assertPageContains("source:{src,type:selectedMedia?.media_type||item.media_type||'video/mp4'}")
         self.assertPageContains("function mountPlayerQualityControl(player,video,fallbackHeight=0)")
         self.assertPageContains('aria-label="播放器设置"')
@@ -1463,6 +1490,9 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("const stopFollowAmbient=mountPlayerAmbient(followVideo)")
         self.assertPageContains("followPlayer?.one?.('dispose',stopFollowAmbient)")
         self.assertPageContains("mountPlayerTheaterControl(player,root)")
+        self.assertPageContains("wireFollowTelemetry(item,followVideo)")
+        self.assertPageContains("api('/api/follow/play'")
+        self.assertPageContains("api('/api/follow/activity'")
 
     def test_follow_detail_save_keeps_the_button_after_the_async_request(self):
         self.assertPageContains("const button=event.currentTarget;")

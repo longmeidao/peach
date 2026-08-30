@@ -1368,27 +1368,30 @@ async function openStats(push=true,focusResource=false){
   const totalVideos=d.by_loc.reduce((sum,row)=>sum+row.videos,0);
   const totalBytes=d.by_loc.reduce((sum,row)=>sum+row.bytes,0);
   const coverage=pct(d.tag_cov,a.videos);
-  const disk=d.system_disk, diskPct=disk?pct(disk.free,disk.total):0;
+  const storage=d.storage_summary||{volumes:0,online:0,measured:0,free:0,used:0,total:0};
   const kv=(k,v,u)=>`<div class="kv"><span>${k}</span><b>${v}${u?`<span class="u">${u}</span>`:''}</b></div>`;
   const metric=(k,v,max)=>`<div class="statmetric">${kv(k,v.toLocaleString(),pct(v,max)+'%')}${progressHtml(`${k}：${v.toLocaleString()} / ${max.toLocaleString()}`,v,max)}</div>`;
   const metricTab=(key,label,value,detail,selected=false)=>`<button type="button" role="tab" data-stats-metric="${key}"
     aria-selected="${selected}" aria-controls="stats-detail-${key}" tabindex="${selected?'0':'-1'}">
     <span>${label}</span><b>${value}</b><small>${detail}</small></button>`;
-  const locationRows=d.by_loc.map(row=>`<div class="insightbarrow"><div><span>${LOC[row.k]||row.k}</span><b>${row.videos.toLocaleString()}</b></div>
-    ${progressHtml(`${LOC[row.k]||row.k}：${row.videos.toLocaleString()} / ${totalVideos.toLocaleString()}`,row.videos,totalVideos)}
-    <small>${gb(row.bytes)} · ${pct(row.videos,totalVideos)}%</small></div>`).join('');
+  const locationRows=d.by_loc.map(row=>{const label=row.k==='online'?'已保存在线':(LOC[row.k]||row.k);return `<div class="insightbarrow"><div><span>${label}</span><b>${row.videos.toLocaleString()}</b></div>
+    ${progressHtml(`${label}：${row.videos.toLocaleString()} / ${totalVideos.toLocaleString()}`,row.videos,totalVideos)}
+    <small>${gb(row.bytes)} · ${pct(row.videos,totalVideos)}%</small></div>`}).join('');
   const table=(head,rows)=>`<div class="insighttable"><div class="insighttablehead">${head.map(value=>`<span>${value}</span>`).join('')}</div>${rows}</div>`;
-  const tagsTable=table(['内容标签','视频'],d.top_tags.map(t=>`<button type="button" class="insighttablerow" data-k="${esc(t.k)}">
-    <span>${esc(tagLabel(t.k))}</span><b>${t.n.toLocaleString()}</b></button>`).join(''));
+  const tagsTable=`<ol class="insightranking">${d.top_tags.map((t,index)=>`<li><button type="button" class="insightrankrow" data-k="${esc(t.k)}">
+    <span class="insightrankpos">${index+1}</span><span>${esc(tagLabel(t.k))}</span><b>${t.n.toLocaleString()}</b></button></li>`).join('')}</ol>`;
   const recentTable=table(['作品','观看证据'],d.recent.length?d.recent.map(row=>{
     const real=row.duration?Math.min(row.play_seconds/row.duration,1)*100:0;
     const reached=(row.max_reached||0)*100;
-    const note=real<reached-25?'快进扫过':(row.o_count?`高潮 ${row.o_count}`:'正常观看');
+    const note=row.kind==='online'?'在线直接观看':(real<reached-25?'快进扫过':(row.o_count?`高潮 ${row.o_count}`:'正常观看'));
     return `<div class="insighttablerow"><span>${esc((row.creator?row.creator+' · ':'')+row.name)}</span>
       <b>真实 ${real.toFixed(0)}% · 到达 ${reached.toFixed(0)}% · ${note}</b></div>`}).join(''):
     `<div class="insightempty">${emptyStateHtml('history','还没有观看记录','开始播放后，这里会显示最近的真实观看证据。')}</div>`);
   const sourceTable=table(['标签来源','覆盖视频'],d.tag_source.map(row=>`<div class="insighttablerow"><span>${esc(row.k)}</span>
     <b>${row.n.toLocaleString()} 条 · ${row.assets.toLocaleString()} 个视频</b></div>`).join(''));
+  const storageTable=`<table class="insightdatatable"><thead><tr><th>位置</th><th>已用</th><th>可用</th><th>使用率</th></tr></thead><tbody>${(d.storage_volumes||[]).map(row=>{
+    const measured=row.total!=null, usedPct=measured?pct(row.used,row.total):0;
+    return `<tr><th scope="row"><span>${esc(row.label)}</span><small>${row.root?esc(row.root):'未映射'}</small></th><td>${measured?gb(row.used):'—'}</td><td>${measured?gb(row.free):'—'}</td><td>${measured?usedPct+'%':(row.online?'容量未取得':'离线')}</td></tr>`}).join('')}</tbody></table>`;
   $('#stats').innerHTML=`
     <div class="insightpage statsdashboard" data-stats-dashboard>
       <header class="insighttoolbar"><p>账本当前快照 · ${totalVideos.toLocaleString()} 个视频 · ${gb(totalBytes)}</p></header>
@@ -1396,7 +1399,7 @@ async function openStats(push=true,focusResource=false){
         ${metricTab('inventory','馆藏视频',totalVideos.toLocaleString(),gb(totalBytes),true)}
         ${metricTab('viewing','看过',cs.played.toLocaleString(),hrs(cs.play_seconds))}
         ${metricTab('coverage','内容标签',coverage+'%',`${d.tag_cov.toLocaleString()} / ${a.videos.toLocaleString()}`)}
-        ${metricTab('disk','系统盘可用',disk?gb(disk.free):'—',disk?diskPct+'%':'未取得')}
+        ${metricTab('storage','使用空间',`${storage.online} 个卷`,storage.measured?`已用 ${gb(storage.used)}`:'容量未取得')}
       </div>
       <section class="insightdetail">
         <div id="stats-detail-inventory" role="tabpanel" data-stats-detail="inventory" class="insightdetailbody">
@@ -1405,19 +1408,19 @@ async function openStats(push=true,focusResource=false){
           <div class="insightvisual">${locationRows}</div></div>
         <div id="stats-detail-viewing" role="tabpanel" data-stats-detail="viewing" class="insightdetailbody" hidden>
           <div class="insightcopy"><span>观看</span><h2>${cs.played.toLocaleString()}</h2><b>个作品有播放记录</b>
-            <p>累计 ${hrs(cs.play_seconds)}；真实观看时长与最远到达位置分开统计。</p></div>
-          <div class="insightfacts">${kv('高潮计数',cs.o_total.toLocaleString())}${kv('快进扫过',cs.skimmed.toLocaleString())}
+            <p>累计 ${hrs(cs.play_seconds)}；馆藏播放与关注页直接在线播放都计入，不要求先保存。</p></div>
+          <div class="insightfacts">${kv('馆藏观看',cs.library_played.toLocaleString())}${kv('在线直接观看',cs.online_played.toLocaleString())}
+            ${kv('高潮计数',cs.o_total.toLocaleString())}${kv('快进扫过',cs.skimmed.toLocaleString())}
             ${kv('明确不喜欢',cs.dislike.toLocaleString())}${kv('看过了',cs.seen.toLocaleString())}${kv('回收站',cs.trash.toLocaleString())}</div></div>
         <div id="stats-detail-coverage" role="tabpanel" data-stats-detail="coverage" class="insightdetailbody" hidden>
           <div class="insightcopy"><span>内容标签覆盖</span><h2>${coverage}%</h2><b>${d.tag_cov.toLocaleString()} / ${a.videos.toLocaleString()}</b>
             <p>归属与加工分别保留真实分母，不用装饰性进度替代缺失数据。</p></div>
           <div class="insightvisual">${metric('有创作者',a.creator,a.videos)}${metric('有番号',a.code,a.videos)}
             ${metric('有厂牌',a.studio,a.videos)}${metric('已抽帧',a.thumb,a.videos)}${metric('已探测时长',a.duration,a.videos)}</div></div>
-        <div id="stats-detail-disk" role="tabpanel" data-stats-detail="disk" class="insightdetailbody" hidden>
-          <div class="insightcopy"><span>系统盘</span><h2>${disk?gb(disk.free):'—'}</h2><b>${disk?`共 ${gb(disk.total)}`:'容量未取得'}</b>
-            <p>CloudDrive 块缓存位于系统盘；低于 40 GB 时抽帧任务会拒绝启动。</p></div>
-          <div class="insightvisual">${disk?progressHtml(`系统盘可用：${gb(disk.free)} / ${gb(disk.total)}`,disk.free,disk.total):
-            noteHtml('系统盘容量未取得。',{variant:'warning',label:'容量未取得'})}</div></div>
+        <div id="stats-detail-storage" role="tabpanel" data-stats-detail="storage" class="insightdetailbody" hidden>
+          <div class="insightcopy"><span>使用空间</span><h2>${storage.measured}</h2><b>个卷已取得容量</b>
+            <p>同时统计系统盘、资源盘、115 与 PikPak；离线或未映射的来源明确保留，不伪造为 0。</p></div>
+          <div class="insightvisual insightstorage">${storageTable}</div></div>
       </section>
       <section class="insightpanel">
         <header><div class="insighttabs" role="tablist" aria-label="统计维度">
@@ -1625,7 +1628,7 @@ function renderTaste(d){
         ${coverageMetric('有身份',Number(coverage.identified||0).toLocaleString(),`${coverage.unidentified||0} 项待补`,coverage.identified||0,(coverage.identified||0)+(coverage.unidentified||0))}
       </div></section>
     <section class="insightpanel tasteanalysis" data-taste-evidence-panel="browser"${tasteEvidence==='browser'?'':' hidden'}>
-      <header>${sourceTabs('browser',[['tags','Tag'],['creators','创作者'],['domains','常访问网站'],['gaps','浏览候选']])}</header>
+      <header>${sourceTabs('browser',[['tags','标签'],['creators','创作者'],['domains','常访问网站'],['gaps','浏览候选']])}</header>
       <div class="insightpanelbody">
         ${rankPanel('browser','tags',rank.browser_tags||[],'tag')}
         ${rankPanel('browser','creators',rank.browser_creators||[],'creator','暂无创作者证据','creator')}
@@ -1633,13 +1636,13 @@ function renderTaste(d){
         ${rankPanel('browser','gaps',gapRows,'','这些词在浏览记录中出现，但 Peach 观看记录还没有对应证据')}
       </div></section>
     <section class="insightpanel tasteanalysis" data-taste-evidence-panel="peach"${tasteEvidence==='peach'?'':' hidden'}>
-      <header>${sourceTabs('peach',[['tags','Tag'],['creators','创作者'],['performers','女优']])}</header>
+      <header>${sourceTabs('peach',[['tags','标签'],['creators','创作者'],['performers','女优']])}</header>
       <div class="insightpanelbody">
         ${rankPanel('peach','tags',rank.peach_tags||[],'tag')}
         ${rankPanel('peach','creators',rank.peach_creators||[],'creator','暂无创作者证据','creator')}
         ${rankPanel('peach','performers',rank.peach_performers||rank.performers||[],'performer','暂无女优证据','performer')}
       </div></section>
-    <p class="tastenegative" data-taste-evidence-panel="peach"${tasteEvidence==='peach'?'':' hidden'}>“不合口味”只记录到具体项目与理由，不自动给 Tag 降权。</p>
+    <p class="tastenegative" data-taste-evidence-panel="peach"${tasteEvidence==='peach'?'':' hidden'}>“不合口味”只记录到具体项目与理由，不自动给标签降权。</p>
     <section class="insightpanel tastesources"><header><div><h3>数据源</h3><p>支持 macOS / Windows 的 Zen、Safari、Firefox、Chrome；这里列出已经采集的设备。</p></div></header>
       <div class="insightpanelbody"><div>${sourceRows||emptyStateHtml('database','还没有数据源','导入或读取浏览记录后，这里会列出已采集设备。')}</div></div></section>
     <p class="tasteprivacy">原始 URL、标题与搜索内容不会显示在页面，也不会写入 ledger；所有画像均为候选。</p>
@@ -2323,10 +2326,16 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     switchImage(imageMedia[next].index);
   });
   const followVideo=$('#stage').querySelector('.followdetailmedia>video');
-  if(followVideo){const followPlayer=mountDetailPlayer(item,followVideo,false,{
-    source:{src,type:selectedMedia?.media_type||item.media_type||'video/mp4'},
-    checkSourceStatus:false
-  });const stopFollowAmbient=mountPlayerAmbient(followVideo);followPlayer?.one?.('dispose',stopFollowAmbient);followVideo.addEventListener('emptied',stopFollowAmbient,{once:true})}
+  if(followVideo){
+    const followPlayer=mountDetailPlayer(item,followVideo,false,{
+      source:{src,type:selectedMedia?.media_type||item.media_type||'video/mp4'},
+      checkSourceStatus:false
+    });
+    const stopFollowAmbient=mountPlayerAmbient(followVideo);
+    followPlayer?.one?.('dispose',stopFollowAmbient);
+    followVideo.addEventListener('emptied',stopFollowAmbient,{once:true});
+    wireFollowTelemetry(item,followVideo);
+  }
   wireDrag($('#stage').querySelector('.mixlist'));
   $('#stage').querySelectorAll('.followdetailtags [data-follow-tag]').forEach(button=>button.onclick=async()=>{
     const tag=button.dataset.followTag;
@@ -4178,6 +4187,7 @@ function buildManageBar(){
 function paintManageTitle(){
   const current=manageSection(),el=$('#manageTitle');
   if(!el)return;
+  document.body.classList.toggle('insight-layout',current==='stats'||current==='taste');
   const entry=MANAGE_SECTIONS.find(([k])=>k===current);
   el.hidden=!entry;
   if(entry)el.textContent=entry[1];
@@ -4918,6 +4928,29 @@ function wireTelemetry(it,v,sel){
   v.onpause=()=>{clearInterval(timer);flush(false)};
   v.onended=()=>{clearInterval(timer);flush(true);if(!$('#tok').hidden)tokNext(1)};
   paint();
+}
+
+function wireFollowTelemetry(item,video){
+  let last=0,acc=0,timer=null,started=false;
+  const flush=ended=>{const duration=Number(item.duration)||video.duration||0;
+    if(!acc&&!ended)return;
+    api('/api/follow/activity',{method:'POST',body:JSON.stringify({
+      item:item.id,position:video.currentTime,duration,delta:acc,ended:!!ended
+    })}).catch(()=>{});
+    acc=0;
+  };
+  video.addEventListener('play',()=>{
+    if(!started){started=true;api('/api/follow/play',{method:'POST',body:JSON.stringify({item:item.id})})
+      .then(result=>{item.status=result.status||item.status}).catch(()=>{})}
+    last=video.currentTime;
+    if(timer)clearInterval(timer);timer=setInterval(()=>flush(false),10000);
+  });
+  video.addEventListener('timeupdate',()=>{
+    const delta=video.currentTime-last;if(delta>0&&delta<2)acc+=delta;last=video.currentTime;
+  });
+  video.addEventListener('pause',()=>{if(timer)clearInterval(timer);timer=null;flush(false)});
+  video.addEventListener('ended',()=>{if(timer)clearInterval(timer);timer=null;flush(true)});
+  video.addEventListener('emptied',()=>{if(timer)clearInterval(timer);timer=null;flush(false)},{once:true});
 }
 
 /* ── 短片全屏 ── */
