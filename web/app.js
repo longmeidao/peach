@@ -21,7 +21,7 @@ import {
   LOC,
 } from './js/core.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
-import { noteHtml, progressHtml } from './js/ui-components.js';
+import { emptyStateHtml, noteHtml, progressHtml, scrollerHtml, wireScrollers } from './js/ui-components.js';
 
 initMiddleTruncate(document);
 
@@ -40,7 +40,13 @@ function paintNav(){
   document.querySelectorAll('.edge button[data-nav],#drawer .dnav button[data-nav]')
     .forEach(b=>b.setAttribute('aria-pressed',String(navOn(b.dataset.nav))));
 }
+let surfaceEpoch=0;
+const surfacePath=()=>decodeURIComponent(location.pathname);
+const surfaceToken=path=>({epoch:surfaceEpoch,path});
+const surfaceCurrent=token=>token.epoch===surfaceEpoch&&surfacePath()===token.path;
+const claimSurface=path=>{surfaceEpoch++;return surfaceToken(path)};
 const route=(path,replace=false)=>{
+  surfaceEpoch++;
   history[replace?'replaceState':'pushState']({},'',path);syncPageTitle(path);
   queueMicrotask(()=>{syncHeaderActions();paintListTitle()});
 };
@@ -170,7 +176,7 @@ const srcBadge=(loc,cost,cls)=>{const label=`${LOC[loc]||loc}${cost==='metered'?
     +(SRCICON[loc]||'')+'</span>'};
 /* 空态用 Vercel 的「icon tile + 标题 + 一句解释」结构。不放假动作按钮：
    能执行的操作仍然留在各页自己的工具栏里，空态只负责解释为什么是空的。 */
-const emptyState=(ic,title,desc)=>`<div class="emptystate"><div class="es-icon">${icon(ic)}</div><h3>${esc(title)}</h3><p>${esc(desc)}</p></div>`;
+const emptyState=emptyStateHtml;
 
 /* Toast：挂在 #toasts（body 直下）而不是 #stats 里——检查完会整页重画，
    页内浮层会被冲掉，这里不会。对齐 Geist 的处方（取证见
@@ -1003,9 +1009,11 @@ function enterManagementSurface(){
 async function openStats(push=true,focusResource=false){
   releaseHoverPreviews();
   if(push)route('/stats');
+  const surface=claimSurface('/stats');
   enterManagementSurface();
   disposeStage(false);
   const d=await api('/api/stats');
+  if(!surfaceCurrent(surface))return;
   $('#stats').hidden=false; $('#index').hidden=true; $('#grid').innerHTML='';buildManageBar();
   $('#count').textContent=''; $('#loadSentinel').hidden=true; $('#shortsSec').hidden=true;
   $('#tiers').style.display='none'; $('#tagbar').style.display='none';
@@ -1241,6 +1249,7 @@ async function openTaste(push=true){
   state={...state,creator:'',studio:'',tag:'',tag_match:'all',len:'',dur_min:'',dur_max:'',orient:'',state:'',q:'',jav:''};
   $('#q').value='';
   if(push)route('/taste');
+  const surface=claimSurface('/taste');
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';$('#count').textContent='';
   $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;buildManageBar();
   const cached=tasteCache.get(tasteWindow);
@@ -1254,9 +1263,9 @@ async function openTaste(push=true){
     const request=++tasteRequest;
     try{const data=await api('/api/taste?window='+tasteWindow);
       tasteCache.set(tasteWindow,data);
-      if(request===tasteRequest&&location.pathname==='/taste')renderTaste(data)}
+      if(request===tasteRequest&&surfaceCurrent(surface))renderTaste(data)}
     catch(error){
-      if(request===tasteRequest)$('#stats').innerHTML=
+      if(request===tasteRequest&&surfaceCurrent(surface))$('#stats').innerHTML=
         `<div class="tastepage">${noteHtml(error.message||'分析未取得',{variant:'error',label:'分析未取得'})}</div>`}
   }
   window.scrollTo({top:0,behavior:'smooth'});
@@ -1314,8 +1323,9 @@ async function removePlaylistItem(queue,assetId,currentId){
 async function openPlaylists(push=true){
   releaseHoverPreviews();disposeStage(false);document.body.classList.remove('entity-open','index-open');
   if(push)route('/playlists');
+  const surface=claimSurface('/playlists');
   const data=await api('/api/playlists');
-  if(location.pathname!=='/playlists')return;
+  if(!surfaceCurrent(surface))return;
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';$('#count').textContent='';
   $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;$('#tiers').style.display='none';$('#tagbar').style.display='none';
   $('#managebar').hidden=true;$('#manageTitle').hidden=true;buildEdge();
@@ -1324,7 +1334,7 @@ async function openPlaylists(push=true){
     return `<article class="playlistcard" data-playlist-card="${list.id}"><button class="playlistcover" data-open-playlist="${list.id}" ${resume?'':'disabled'}>${poster}<span>${list.item_count} 个视频</span></button>
       <div class="playlistmeta"><input data-playlist-name maxlength="80" value="${esc(list.name)}" aria-label="播放列表名称"><small>${list.source_kind==='mix'?'由 Mix 保存':'手动播放列表'}</small></div>
       <div class="playlistactions"><button data-rename-playlist="${list.id}">保存名称</button><button data-open-playlist="${list.id}" ${resume?'':'disabled'}>继续播放</button><button class="danger" data-delete-playlist="${list.id}">删除</button></div></article>`}).join('');
-  $('#stats').innerHTML=`<section class="playlistpage"><header><div><h2>播放列表</h2><p>保存 Mix，按自己的顺序继续播放。</p></div><form class="playlistcreate" id="newPlaylist"><label>新播放列表<input name="name" maxlength="80" placeholder="输入名称" required></label><button type="submit">新建</button><span data-playlist-state></span></form></header><div class="playlistcards">${cards||'<p class="empty">还没有播放列表</p>'}</div></section>`;
+  $('#stats').innerHTML=`<section class="playlistpage"><header><div><h2>播放列表</h2><p>保存 Mix，按自己的顺序继续播放。</p></div><form class="playlistcreate" id="newPlaylist"><label>新播放列表<input name="name" maxlength="80" placeholder="输入名称" required></label><button type="submit">新建</button><span data-playlist-state></span></form></header><div class="playlistcards">${cards||emptyState('list-filter','还没有播放列表','保存 Mix 或新建列表后，会在这里按自己的顺序继续播放。')}</div></section>`;
   $('#newPlaylist').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget;
     try{await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'create',name:new FormData(form).get('name'),asset_ids:[]})});await openPlaylists(false)}
     catch(error){form.querySelector('[data-playlist-state]').textContent=error.message||'新建失败'}};
@@ -1349,12 +1359,14 @@ let dupData=null;
 async function openDuplicates(push=true){
   releaseHoverPreviews();disposeStage(false);document.body.classList.remove('entity-open');
   if(push)route('/duplicates');
+  const surface=claimSurface('/duplicates');
   buildManageBar();
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';$('#count').textContent='';
   $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
   $('#stats').innerHTML='<div class="review"><p class="empty">正在比对…</p></div>';
-  dupData=await api('/api/duplicates?limit=120');
-  if(location.pathname!=='/duplicates')return;
+  const next=await api('/api/duplicates?limit=120');
+  if(!surfaceCurrent(surface))return;
+  dupData=next;
   renderDuplicates();
 }
 function renderDuplicates(){
@@ -1428,18 +1440,22 @@ async function disposeDuplicates(groups,keep,button){
 async function openReview(push=true){
   releaseHoverPreviews();disposeStage(false);document.body.classList.remove('entity-open');
   if(push)route('/review');
+  const surface=claimSurface('/review');
   buildManageBar();
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';$('#count').textContent='';
   $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;$('#tiers').style.display='none';$('#tagbar').style.display='none';
-  reviewRuntime=await api('/healthz');
+  const runtime=await api('/healthz');
+  if(!surfaceCurrent(surface))return;
   /* ADR-0018：确定的那部分先落库再取队列。reader 明知不能写就不要制造一次 409；
      它改为读取 writer 的严格 CA HTTPS 镜像，判定按钮也一起锁住。 */
-  if(!reviewRuntime.ledger_read_only)try{
+  if(!runtime.ledger_read_only)try{
     const auto=await api('/api/review/auto-apply',{method:'POST',body:'{}'});
+    if(!surfaceCurrent(surface))return;
     if(auto&&auto.applied)console.info(`自动落库 ${auto.applied} 条（ADR-0018）`);
   }catch(e){console.info('自动落库未执行：'+e.message)}
-  reviewData=await api('/api/review');
-  if(location.pathname!=='/review')return;
+  const next=await api('/api/review');
+  if(!surfaceCurrent(surface))return;
+  reviewRuntime=runtime;reviewData=next;
   const render=()=>{
     const rows=reviewData.sections[reviewCategory]||[];
     const title=REVIEW_LABELS[reviewCategory];
@@ -1507,14 +1523,17 @@ async function openReview(push=true){
               : `<p class="empty">这 ${esc(row.video_count||'')} 条作品尚未抽帧，暂无预览；批准后仍会按候选写入标签</p>`)
            : reviewCategory==='fc2_similarity'?''
            : (row.preview_url?`<div class="reviewimage"><img src="${esc(row.preview_url)}" alt="" loading="lazy" onerror="this.closest('.reviewimage').remove()"></div>`:'<p class="empty">未取得图片预览</p>');
-         return `<article class="reviewitem" data-review-key="${esc(key)}" data-decision="${esc(decision)}">${
+         const body=`${
            // 实体类卡片的名字已经写在创作者入口里，再画一个 h4 就是同一行字上下两遍。
            subjectKind&&subjectName?'':`<h4>${esc(titleText)}</h4>`}${
            // 账本规范名当标题，抓取来源给的写法（多为罗马音）留作副标题。
            row.source_name?`<p class="reviewalias">来源写法：${esc(row.source_name)}</p>`:''}${
            // 实体类卡片的作品数已经写在创作者入口里，这里再写一遍就是同一个数字两处。
-           subjectKind&&subjectName?'':`<p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>`}${origin}${tags?`<div class="reviewtags">${tags}</div>`:''}${preview}<p>${esc(evidence)}</p><div class="reviewactions"><button class="approve" data-review-status="approved"${canApprove&&!locked?'':' disabled'}>${approveLabel}</button><button class="skip" data-review-status="skipped"${locked?' disabled':''}>跳过</button><button class="reject" data-review-status="rejected"${locked?' disabled':''}>拒绝</button><span class="reviewstate" aria-live="polite"></span></div></article>`}).join(''):emptyState('square-check-big','暂无候选','该分类当前没有待人工复核的项目。')}</div></section></div>`;
+           subjectKind&&subjectName?'':`<p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>`}${origin}${tags?`<div class="reviewtags">${tags}</div>`:''}${preview}<p>${esc(evidence)}</p>`;
+         const actions=`<button class="approve" data-review-status="approved"${canApprove&&!locked?'':' disabled'}>${approveLabel}</button><button class="skip" data-review-status="skipped"${locked?' disabled':''}>跳过</button><button class="reject" data-review-status="rejected"${locked?' disabled':''}>拒绝</button><span class="reviewstate" aria-live="polite"></span>`;
+         return `<fieldset class="reviewitem" data-geist-fieldset data-review-key="${esc(key)}" data-decision="${esc(decision)}"><legend class="sr-only">${esc(titleText)}</legend><div class="geist-fieldset-content">${scrollerHtml(body,{className:'reviewcontent',label:`复核：${titleText}`})}</div><footer class="reviewactions geist-fieldset-footer" data-geist-fieldset-footer>${actions}</footer></fieldset>`}).join(''):emptyState('square-check-big','暂无候选','该分类当前没有待人工复核的项目。')}</div></section></div>`;
      wireReviewAssets($('#stats'));
+    wireScrollers($('#stats'));
     $('#stats').querySelectorAll('[data-review-open-item]').forEach(button=>button.onclick=()=>openItem(+button.dataset.reviewOpenItem));
     // 没有全局委托，每个界面各自接线（见 #stage 的同类处理）。
     $('#stats').querySelectorAll('[data-entity-kind]').forEach(button=>button.onclick=()=>
@@ -1555,11 +1574,13 @@ let qualityData=null;
 async function openQualityGoals(push=true){
   releaseHoverPreviews();disposeStage(false);document.body.classList.remove('entity-open');
   if(push)route('/quality-goals');
+  const surface=claimSurface('/quality-goals');
   buildManageBar();$('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
   $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
   $('#stats').innerHTML='<div class="review"><p class="empty">正在读取…</p></div>';
-  qualityData=await api('/api/quality-goals?limit=200');
-  if(location.pathname!=='/quality-goals')return;
+  const next=await api('/api/quality-goals?limit=200');
+  if(!surfaceCurrent(surface))return;
+  qualityData=next;
   const items=qualityData.items||[];
   $('#stats').innerHTML=`<div class="qualitylist">${items.length?items.map(item=>{
     const preview=item.has_cover?`/cover?code=${encodeURIComponent(item.code||'')}`:`/poster?id=${item.id}&c=4`;
@@ -2079,9 +2100,9 @@ function renderFollow(){
     <div class="followlist${followMediaView==='images'?' followphotowall':''}">${visible.length?visible.map(group=>{
       const source=sourceOf(group),siblings=source&&authorSources.get(source.author_key)||[];
       return followCard(group,siblings)}).join('')
-      :groups.length?'<p class="empty">当前筛选下没有更新</p>'
-      :sources.length?'<p class="empty">没有符合条件的更新</p>'
-      :`<p class="empty">还没有关注任何来源。<button class="flink" data-follow-manage>去添加</button></p>`}</div>
+      :groups.length?emptyState('layout-grid','当前筛选下没有更新','切换媒体类型、作者、来源或标签后再试。')
+      :sources.length?emptyState('rss','没有符合条件的更新','切换状态或来源筛选后再试。')
+      :emptyState('rss','还没有关注任何来源','添加作者或订阅来源后，更新会集中显示在这里。',{actions:'<button class="fbtn primary" data-follow-manage>添加关注</button>'})}</div>
     ${followData.has_more?`<div class="followmore">
       <button class="fbtn" data-follow-more>${icon('refresh-cw')}加载更多</button>
       <span class="fmeta">已显示 ${visible.length.toLocaleString()} 项</span></div>`:''}
@@ -2155,6 +2176,7 @@ async function openFollow(push=true,renderForDetail=false){
   if(push){followMediaView='videos';route('/follow')}
   else if(location.pathname==='/follow')
     followMediaView=new URLSearchParams(location.search).get('media')==='images'?'images':'videos';
+  const surface=claimSurface(renderForDetail?surfacePath():'/follow');
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
   $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
   $('#tiers').style.display='none';$('#tagbar').style.display='none';
@@ -2164,10 +2186,11 @@ async function openFollow(push=true,renderForDetail=false){
     api(followPageUrl(0)),
     api('/api/follow/credentials').catch(()=>({providers:[]})),
   ]);
+  if(!surfaceCurrent(surface))return;
   followData=data;
   followCredentialProviders=new Set((credentials.providers||[])
     .filter(provider=>provider.present).map(provider=>provider.provider));
-  if(location.pathname!=='/follow'&&!renderForDetail)return;
+  if(!surfaceCurrent(surface))return;
   renderFollow();
   if(!renderForDetail)window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -2418,7 +2441,7 @@ function renderFollowManage(credentials){
             · 已保存 ${counts.saved||0} · 已忽略 ${counts.ignored||0}</span>
             <span class="fbulk"><button class="fbtn" data-follow-bulk="seen">全部标记已看</button>
             <button class="fbtn" data-follow-bulk="ignored">全部忽略</button></span></p></div>`:''}`
-          :'<p class="fnote">还没有关注任何来源。</p>'}
+          :emptyState('rss','还没有关注来源','关注来源及其检查状态会显示在这里。',{className:'compact'})}
       </section>
     </div>
     <aside class="faside">
@@ -2448,13 +2471,14 @@ async function openFollowManage(push=true){
   releaseHoverPreviews();disposeStage(false);
   document.body.classList.remove('entity-open','index-open');
   if(push)route('/follow-manage');
+  const surface=claimSurface('/follow-manage');
   buildManageBar();
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
   $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
   $('#stats').innerHTML='<div class="follow"><p class="empty">正在读取…</p></div>';
   const [data,credentials,runtime]=await Promise.all([
     api('/api/follow?limit=1'),api('/api/follow/credentials'),api('/healthz')]);
-  if(location.pathname!=='/follow-manage')return;
+  if(!surfaceCurrent(surface))return;
   followData=data;followRuntime=runtime;
   renderFollowManage(credentials);
   window.scrollTo({top:0,behavior:'smooth'});
@@ -3858,6 +3882,7 @@ $('#scrim').onclick=()=>openDrawer(false);
 /* ── 列表 ── */
 async function load(reset){
   const requestSeq=reset?++loadRequestSeq:loadRequestSeq;
+  const surface=reset?claimSurface(surfacePath()):surfaceToken(surfacePath());
   if(!reset&&listLoading)return;
   if(!reset)listLoading=true;
   try{
@@ -3870,7 +3895,7 @@ async function load(reset){
   countRow.classList.toggle('manage-static',staticManageCount);
   if(staticManageCount)countRow.classList.remove('is-stuck');
   if(state.state==='ads'){
-    if(reset||!adsBatch){const nextAds=await api('/api/ads?limit=200');if(requestSeq!==loadRequestSeq)return;
+    if(reset||!adsBatch){const nextAds=await api('/api/ads?limit=200');if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
       adsBatch=nextAds;cache(adsBatch.items)}
     const batch=adsBatch.items.slice(offset,offset+appSettings.batchSize);
     const html=batch.map(it=>cardHtml(it)).join('');
@@ -3890,13 +3915,15 @@ async function load(reset){
   p.set('limit',appSettings.batchSize); p.set('offset',offset);
   if(!reset)p.set('count','0');
   const d=await api('/api/items?'+p);cache(d.items);
-  if(requestSeq!==loadRequestSeq)return;
+  if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
   if(reset)total=d.total;
   buildManageBar();
   const html=batchWithMix(d.items,isCatalogPath(decodeURIComponent(location.pathname))&&state.state!=='trash');
   if(reset)releaseHoverPreviews($('#grid'));
   if(reset&&state.state==='trash'&&!d.items.length)
-    $('#grid').innerHTML=`<div class="trashempty">${emptyState('trash','回收站是空的','删掉的内容会先到这里；确认不再需要后再清空。')}</div>`;
+    $('#grid').innerHTML=emptyState('trash','回收站是空的','删掉的内容会先到这里；确认不再需要后再清空。');
+  else if(reset&&!d.items.length)
+    $('#grid').innerHTML=emptyState('search','没有符合条件的作品','调整筛选或搜索条件后再试。');
   else if(reset)$('#grid').innerHTML=html;
   else $('#grid').insertAdjacentHTML('beforeend',html);
   renderCount();
@@ -3904,7 +3931,7 @@ async function load(reset){
   wireCards($('#grid'));
   wireMixCards($('#grid'));
   paintSelection();
-  if(reset)loadShorts(requestSeq);
+  if(reset)loadShorts(requestSeq,surface);
   }finally{if(!reset&&requestSeq===loadRequestSeq)listLoading=false}
 }
 const loadObserver=new IntersectionObserver(entries=>{
@@ -4010,7 +4037,7 @@ $('#q').onkeydown=e=>{
 $('#q').addEventListener('focus',()=>{Promise.all([loadSearchHistory(),loadSearchPool()]).then(renderSearchMenu)});
 
 const SHORTS_ROW_OFFSET=2;   // 竖屏条插在第几行之后，0 表示置顶
-async function loadShorts(requestSeq=loadRequestSeq){
+async function loadShorts(requestSeq=loadRequestSeq,surface=surfaceToken(surfacePath())){
   // JAV 模式不插竖屏条：番号发行物本身是横版，竖屏是另一类内容。
   // 主列表的 exclude_vertical 管不到这条——它是独立请求、独立插入的。
   if(!isCatalogPath(decodeURIComponent(location.pathname))||javActive()||state.orient==='竖屏'
@@ -4021,7 +4048,7 @@ async function loadShorts(requestSeq=loadRequestSeq){
      竖屏条却永远是同样那 18 条最新的，连每日轮换都不生效。 */
   p.set('orient','竖屏');p.set('limit',18);p.set('offset',0);
   const d=await api('/api/items?'+p);
-  if(requestSeq!==loadRequestSeq)return;
+  if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
   if(!d.items.length){$('#shortsSec').hidden=true;return}
   cache(d.items);
   releaseHoverPreviews($('#srow'));
@@ -4861,6 +4888,7 @@ function wireAllDrag(){['#tagbar','#srow','#nrow'].forEach(s=>wireDrag($(s)));
   document.querySelectorAll('.tier').forEach(wireDrag)}
 
 async function restoreRoute(){
+  surfaceEpoch++;
   syncPageTitle(location.href);
   const path=decodeURIComponent(location.pathname),parts=path.split('/').filter(Boolean);
   if(isCatalogPath(path)){

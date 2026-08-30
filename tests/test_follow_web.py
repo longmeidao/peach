@@ -1297,13 +1297,14 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("details.fcred{display:block}")
 
     def test_the_add_box_carries_no_standing_how_to_prose(self):
-        # 只有「还没有关注任何来源」是有效信息；操作说明常驻就是噪音。
+        # 空态保留状态和结果去向；操作说明常驻就是噪音。
         page = self.page
         body = page[page.index("function renderFollowManage("):
                     page.index("function wireFollowItems(")]
         self.assertNotIn("要一次加多个就每行一条", body)
         self.assertNotIn("把链接或名字粘进上面的输入框", body)
-        self.assertIn("还没有关注任何来源。</p>", body)
+        self.assertIn("emptyState('rss','还没有关注来源'", body)
+        self.assertIn("关注来源及其检查状态会显示在这里。", body)
 
     def test_the_panel_cites_the_registered_report_design_source(self):
         self.assertPageContains("docs/reference-sources.json")
@@ -1435,7 +1436,8 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_follow_detail_keeps_filter_context_and_clears_initial_loading(self):
         self.assertPageContains("async function openFollow(push=true,renderForDetail=false)")
-        self.assertPageContains("if(location.pathname!=='/follow'&&!renderForDetail)return")
+        self.assertPageContains("const surface=claimSurface(renderForDetail?surfacePath():'/follow')")
+        self.assertPageContains("if(!surfaceCurrent(surface))return")
         self.assertPageContains("await openFollow(false,true);await openFollowDetail(+parts[2],false)")
         self.assertPageContains("const followList=$('#stats').querySelector('.followlist')")
         self.assertPageContains("if(followList)followList.before($('#stage'))")

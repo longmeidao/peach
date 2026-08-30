@@ -20,3 +20,45 @@ export function progressHtml(label,value,max=100){
     aria-valuemin="0" aria-valuemax="${ceiling}" aria-valuenow="${current}"
     style="--progress-value:${percent}%"><i></i></div>`;
 }
+
+/** Geist Empty State: icon tile, title and explanatory copy stay one semantic unit. */
+export function emptyStateHtml(iconName,title,description,{className='',actions=''}={}){
+  return `<div class="emptystate${className?` ${esc(className)}`:''}" data-geist-empty-state role="status">
+    <div class="es-icon" aria-hidden="true">${icon(iconName)}</div>
+    <div class="es-copy"><h3>${esc(title)}</h3><p>${esc(description)}</p></div>
+    ${actions?`<div class="es-actions">${actions}</div>`:''}
+  </div>`;
+}
+
+/** Geist Scroller: one-axis overflow with edge fades as the scroll affordance. */
+export function scrollerHtml(content,{className='',label='可滚动内容',overflow='y'}={}){
+  const axis=new Set(['x','y','both']).has(overflow)?overflow:'y';
+  return `<div class="geist-scroller${className?` ${esc(className)}`:''}" data-geist-scroller>
+    <div class="geist-scroller-overlay" aria-hidden="true"></div>
+    <div class="geist-scroller-container" data-overflow="${axis}" tabindex="0" aria-label="${esc(label)}">${content}</div>
+  </div>`;
+}
+
+function updateScroller(wrapper){
+  const container=wrapper.querySelector(':scope > .geist-scroller-container');
+  const overlay=wrapper.querySelector(':scope > .geist-scroller-overlay');
+  if(!container||!overlay)return;
+  overlay.classList.toggle('can-scroll-top',container.scrollTop>1);
+  overlay.classList.toggle('can-scroll-bottom',container.scrollTop+container.clientHeight<container.scrollHeight-1);
+  overlay.classList.toggle('can-scroll-left',container.scrollLeft>1);
+  overlay.classList.toggle('can-scroll-right',container.scrollLeft+container.clientWidth<container.scrollWidth-1);
+}
+
+/** Wire newly rendered scrollers without duplicating listeners after a rerender. */
+export function wireScrollers(root=document){
+  root.querySelectorAll('[data-geist-scroller]').forEach(wrapper=>{
+    const container=wrapper.querySelector(':scope > .geist-scroller-container');
+    if(!container)return;
+    if(!container.dataset.scrollerWired){
+      container.dataset.scrollerWired='true';
+      container.addEventListener('scroll',()=>updateScroller(wrapper),{passive:true});
+      container.addEventListener('load',()=>updateScroller(wrapper),true);
+    }
+    requestAnimationFrame(()=>updateScroller(wrapper));
+  });
+}

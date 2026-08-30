@@ -710,7 +710,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks('class="prog"')
 
     def test_note_semantics_replace_empty_states_for_persistent_errors(self):
-        self.assertPageContains("import { noteHtml, progressHtml } from './js/ui-components.js'")
+        self.assertPageContains("import { emptyStateHtml, noteHtml, progressHtml, scrollerHtml, wireScrollers } from './js/ui-components.js'")
         self.assertPageContains("const NOTE_VARIANTS=new Set(['secondary','warning','error','success'])")
         self.assertPageContains("const role=kind==='error'?' role=\"alert\"':' role=\"note\"'")
         self.assertPageContains("noteHtml(error.message,{variant:'error',label:'同步失败'})")
@@ -727,6 +727,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("优先扩展 `web/js/ui-components.js`", rules)
         self.assertIn("Progress 必须有真实 `value/max`", rules)
         self.assertIn("Switch 必须共享 radio `name`", rules)
+        self.assertIn("Fieldset", rules)
+        self.assertIn("Scroller", rules)
+        self.assertIn("Empty State", rules)
         agents = (root / "AGENTS.md").read_text(encoding="utf-8")
         self.assertIn(".claude/skills/peach-web-ui/SKILL.md", agents)
 
@@ -877,7 +880,13 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_surface_navigation_clears_stale_panels_and_ignores_late_responses(self):
         """跨页面请求返回较慢时，旧统计/复核响应不能覆盖当前页面。"""
-        self.assertPageContains("if(location.pathname!=='/review')return")
+        self.assertPageContains("const claimSurface=path=>{surfaceEpoch++;return surfaceToken(path)}")
+        self.assertPageContains("const surfaceCurrent=token=>token.epoch===surfaceEpoch&&surfacePath()===token.path")
+        self.assertPageContains("const surface=reset?claimSurface(surfacePath()):surfaceToken(surfacePath())")
+        self.assertPageContains("if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return")
+        self.assertPageContains("const surface=claimSurface('/review')")
+        self.assertPageContains("if(!surfaceCurrent(surface))return")
+        self.assertPageContains("async function restoreRoute(){\n  surfaceEpoch++")
         self.assertPageContains("if(requestSeq!==indexRequestSeq||location.pathname!=='/'+kind)return")
         self.assertPageContains("decodeURIComponent(location.pathname)!==decodeURIComponent(expectedPath)")
         index = self.page.split("async function openIndex", 1)[1].split("const d=await api", 1)[0]
@@ -892,6 +901,35 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".reviewasset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr))")
         self.assertPageContains(".reviewasset.picked{opacity:1;outline:2px solid var(--tungsten)")
         self.assertPageContains('.reviewitem[data-decision="approved"]::before{background:var(--keep)}')
+
+    def test_review_cards_use_equal_height_fieldsets_and_one_shared_scroller(self):
+        self.assertPageContains('class="reviewitem" data-geist-fieldset')
+        self.assertPageContains('class="geist-fieldset-content">${scrollerHtml(body')
+        self.assertPageContains('class="reviewactions geist-fieldset-footer" data-geist-fieldset-footer')
+        self.assertPageContains('.review{--review-fieldset-height:440px')
+        self.assertPageContains('height:var(--review-fieldset-height);margin:0;padding:0')
+        self.assertPageContains('.reviewitem>.geist-fieldset-content{flex:1;min-height:0;padding:20px}')
+        self.assertPageContains('min-height:56px;margin:0;padding:12px 12px 12px 20px')
+        self.assertPageContains('.reviewactions button{box-sizing:border-box;height:32px')
+        self.assertPageContains('.reviewstate:empty{display:none}')
+        self.assertPageContains('export function scrollerHtml(content')
+        self.assertPageContains("wireScrollers($('#stats'))")
+        self.assertPageLacks('max-height:268px;overflow-y:auto')
+
+    def test_empty_states_keep_title_description_and_spacing_together(self):
+        self.assertPageContains('export function emptyStateHtml(iconName,title,description')
+        self.assertPageContains('data-geist-empty-state role="status"')
+        self.assertPageContains('class="es-copy"><h3>${esc(title)}</h3><p>${esc(description)}</p>')
+        self.assertPageContains('.emptystate{grid-column:1/-1;display:grid;justify-items:center;align-content:center;gap:8px')
+        self.assertPageContains('.emptystate .es-copy{display:grid;justify-items:center;gap:8px}')
+        self.assertPageContains('.playlistpage>header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:16px}')
+        self.assertPageContains('.followfilters{position:relative;top:auto;z-index:1;height:auto;min-height:58px;margin:0 0 16px')
+        self.assertPageContains("emptyState('trash','回收站是空的','删掉的内容会先到这里；确认不再需要后再清空。')")
+        self.assertPageContains("emptyState('search','没有符合条件的作品','调整筛选或搜索条件后再试。')")
+        self.assertPageLacks('class="trashempty"')
+
+    def test_follow_fieldset_headers_share_one_control_height(self):
+        self.assertPageContains('.fsechead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;box-sizing:border-box;min-height:56px')
 
     def test_top_level_highlight_is_exclusive_and_covers_index_pages(self):
         """首页原来只看 state.state，进管理区和索引页时它仍然亮着，两个入口同时高亮。"""
@@ -931,7 +969,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_admin_surfaces_fill_wide_screens(self):
         """统计和复核是信息密集的行政界面，宽屏下居中会浪费两侧空间。"""
         self.assertPageContains(".stats{padding:8px 0 42px}")
-        self.assertPageContains(".review{padding:8px 0 42px}")
+        self.assertPageContains(".review{--review-fieldset-height:440px;padding:8px 0 42px}")
         self.assertPageLacks("max-width:1440px")
         self.assertPageContains("card('系统盘', d.system_disk")
 
@@ -1100,7 +1138,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("data-queue-item")
         self.assertPageContains("if(!queueContext)api('/api/related?id='")
         self.assertPageContains("async function openPlaylists(push=true)")
-        self.assertPageContains("if(location.pathname!=='/playlists')return")
+        self.assertPageContains("const surface=claimSurface('/playlists')")
         self.assertPageContains("async function openPlaylist(playlistId,itemId=null,push=true)")
         self.assertPageContains("route(`/playlists/${playlistId}/${chosen}`)")
         self.assertPageContains("action:'progress'")
@@ -1420,7 +1458,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const cached=tasteCache.get(tasteWindow);")
         self.assertPageContains("if(cached)renderTaste(cached);")
         self.assertPageContains("tasteCache.set(tasteWindow,data);")
-        self.assertPageContains("if(request===tasteRequest&&location.pathname==='/taste')renderTaste(data)")
+        self.assertPageContains("if(request===tasteRequest&&surfaceCurrent(surface))renderTaste(data)")
         # 三个写路径都更新缓存，别让缓存变陈旧。
         self.assertPageContains("tasteCache.set(tasteWindow,result.dashboard);renderTaste(result.dashboard)")
         self.assertPageContains("tasteWindow='all';tasteCache.set('all',payload.dashboard);renderTaste(payload.dashboard)")
@@ -1627,7 +1665,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("reviewCategory==='fc2_similarity'?''")
 
     def test_reader_review_uses_the_writer_mirror_without_offering_fake_writes(self):
-        self.assertPageContains("reviewRuntime=await api('/healthz')")
+        self.assertPageContains("const runtime=await api('/healthz')")
+        self.assertPageContains("reviewRuntime=runtime;reviewData=next")
         self.assertPageContains("正在显示写入端的实时复核队列")
         self.assertPageContains("前往写入端复核")
         self.assertPageContains("canApprove&&!locked")
