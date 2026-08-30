@@ -1512,11 +1512,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("stage.style.scrollMarginTop=`${itemDetailStickyOffset()+8}px`")
         self.assertPageContains("buildBars();\n  scrollItemDetailIntoView();")
 
-    def test_catalog_and_item_detail_loading_reuse_the_spinner_component(self):
+    def test_catalog_loading_reuses_the_spinner_without_flashing_an_item_placeholder(self):
         self.assertPageContains("function renderCatalogLoading(label='正在读取作品')")
         self.assertPageContains("count.innerHTML=`${spinnerHtml(label)}<span>载入中…</span>`")
-        self.assertPageContains("${spinnerHtml('正在加载详情')}<span>正在加载详情…</span>")
-        self.assertPageContains('class="detailpending" role="status" aria-busy="true"')
+        self.assertPageLacks("function showItemDetailLoading(anchor,above)")
+        self.assertPageLacks("detailpending")
+        self.assertPageLacks("showItemDetailLoading(origin,above)")
 
     def test_entity_profile_uses_logo_links_without_a_redundant_back_row(self):
         self.assertPageContains("const faviconUrl=url=>")
