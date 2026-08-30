@@ -783,6 +783,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("rank.peach_performers||rank.performers||[]")
         self.assertPageContains("visual==='domain'")
         self.assertPageContains("avatarInner(row.name,ref,rep,visual)")
+        self.assertPageContains("visual==='creator'&&!ref&&!rep&&sourceDomain")
+        self.assertPageContains('title="来源：${esc(sourceDomain)}"')
         self.assertPageContains("'simpcity.cr':'https://simpcity.cr/data/assets/logo/favicon.png'")
         self.assertPageContains("'hanime1.me':'https://vdownload.hembed.com/image/icon/tab_logo.png")
         self.assertPageContains("'kemono.cr':'https://kemono.cr/assets/favicon-CPB6l7kH.ico'")
@@ -800,11 +802,16 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("grid-template-columns:32px minmax(0,1fr) 18px")
         self.assertPageContains(".tasterank-visual{grid-template-columns:32px 30px minmax(0,1fr) 18px}")
         self.assertPageContains(".tasterank>svg{justify-self:end")
-        self.assertPageContains("border-right:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft);border-radius:0")
-        self.assertPageContains(".tasterank-tag{min-height:54px;padding:8px 10px;border:1px solid var(--line-soft);border-radius:var(--control-radius)")
-        self.assertPageContains(".tasterank:is(button):hover{background:var(--overlay-5)}")
+        self.assertPageContains(".tasteranks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}")
+        self.assertPageContains("padding:9px 12px;border:1px solid var(--line-soft);border-radius:var(--control-radius);background:var(--overlay-5)")
+        self.assertPageContains(".tasterank-tag{min-height:54px;padding:8px 10px}")
+        self.assertPageContains(".tasterank:is(button):hover{border-color:var(--border-15);background:var(--hover)}")
         self.assertPageLacks("box-shadow:inset 3px 0 var(--tungsten)")
         self.assertPageContains(".tastesources .insightpanelbody>div{display:grid;grid-template-columns:repeat(3")
+        self.assertPageContains(".tastesources>header{min-height:0;padding-block:14px}")
+        self.assertPageContains(".tastesources .insightpanelbody{padding:16px}")
+        self.assertPageContains(".tastesource{display:grid;grid-template-columns:34px minmax(0,1fr) 34px;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line-soft);border-radius:var(--control-radius);background:var(--overlay-5)}")
+        self.assertPageContains(".insighttablerow:last-child{border-bottom:0}")
 
     def test_stats_use_analytics_panels_and_real_determinate_progress(self):
         self.assertPageContains('class="metricstrip" role="tablist" aria-label="统计视图"')
@@ -1165,7 +1172,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".insighttable{border-top:0}")
         self.assertPageContains(".insight-layout .managebar{margin-left:auto;margin-right:auto}")
         self.assertPageContains(".insight-layout .managetitle,.insight-layout .pagelede{width:min(1100px,100%)")
-        self.assertPageContains(".tasteprivacy{margin:12px 16px 0")
+        self.assertPageContains(".tasteprivacy{margin:16px 16px 0")
 
     def test_duplicate_and_trash_descriptions_share_one_page_lede(self):
         self.assertPageContains('class="pagelede mono" id="manageLede" hidden')
@@ -1679,7 +1686,7 @@ class WebUiSourceTests(unittest.TestCase):
         口味数据来自浏览器历史聚合，24 小时内无需重读。过期时仍先显示
         持久缓存，再后台更新；请求带序号，慢响应不能覆盖别的窗口或页面。
         """
-        self.assertPageContains("const TASTE_CACHE_KEY='peach-taste-dashboard-v2',TASTE_CACHE_FRESH_MS=24*60*60*1000;")
+        self.assertPageContains("const TASTE_CACHE_KEY='peach-taste-dashboard-v3',TASTE_CACHE_FRESH_MS=24*60*60*1000;")
         self.assertPageContains("let tasteWindow='all',tasteEvidence='browser',tasteDimension={browser:'tags',peach:'tags'};")
         self.assertPageContains("let tasteCache=readTasteCache(),tasteRequest=0;")
         self.assertPageContains("localStorage.getItem(TASTE_CACHE_KEY)")

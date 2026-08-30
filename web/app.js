@@ -1568,7 +1568,7 @@ async function openResourceSync(push=true){
 /* 口味仪表按窗口持久缓存：刷新页面也先显示上次结果。24 小时内不重读；
    过期后仍先显示旧结果，再在后台更新。导入、移除数据源和显式「读取」
    会立即写回缓存。缓存只含页面已经展示的聚合结果，不含原始历史。 */
-const TASTE_CACHE_KEY='peach-taste-dashboard-v2',TASTE_CACHE_FRESH_MS=24*60*60*1000;
+const TASTE_CACHE_KEY='peach-taste-dashboard-v3',TASTE_CACHE_FRESH_MS=24*60*60*1000;
 const TASTE_CACHE_WINDOWS=new Set(['all','365d','90d']);
 function readTasteCache(){
   try{
@@ -1592,8 +1592,11 @@ const tasteRankRows=(rows,kind,empty='暂无足够证据',visual='')=>rows.lengt
       ?`${row.web_visits?`浏览 ${row.web_visits}`:''}${row.web_visits&&row.peach_items?' · ':''}${row.peach_items?`Peach ${row.peach_items}`:''}`
       :`${Number(row.score||row.visits||0).toLocaleString()}`;
     const ref=row.entity_id?{id:row.entity_id}:null,rep=row.representative_asset_id||null;
+    const sourceDomain=String(row.source_domain||'');
     const media=visual==='domain'
       ?`<span class="tasteavatar tastesite"><span class="ini">${esc(row.name.slice(0,1).toUpperCase())}</span><img src="${esc(faviconUrl('https://'+row.name))}" data-fallback="${esc(faviconFallbackUrl(row.name))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="const f=this.dataset.fallback;if(f){delete this.dataset.fallback;this.src=f}else this.remove()"></span>`
+      :visual==='creator'&&!ref&&!rep&&sourceDomain
+        ?`<span class="tasteavatar tastesite" title="来源：${esc(sourceDomain)}"><span class="ini">${esc(row.name.slice(0,1).toUpperCase())}</span><img src="${esc(faviconUrl('https://'+sourceDomain))}" data-fallback="${esc(faviconFallbackUrl(sourceDomain))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="const f=this.dataset.fallback;if(f){delete this.dataset.fallback;this.src=f}else this.remove()"></span>`
       :visual?`<span class="tasteavatar">${avatarInner(row.name,ref,rep,visual)}</span>`:'';
     return `<${clickable?'button':'div'} class="tasterank${kind==='tag'?' tasterank-tag':''}${visual?' tasterank-visual':''}"${clickable?` data-taste-kind="${kind}" data-taste-name="${esc(row.name)}"`:''}>
       <span class="tastepos mono">${index+1}</span>${media}<span><b>${esc(row.name)}</b><small>${esc(detail)}</small></span>
