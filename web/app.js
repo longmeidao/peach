@@ -536,7 +536,7 @@ $('#followBatchAll').onclick=()=>{visibleFollowIds().forEach(id=>followSelected.
 $('#batchbar').querySelectorAll('[data-batch]').forEach(button=>button.onclick=async()=>{
   const labels={like:'喜欢',seen:'标为看过',later:'加入稍后看',dispose:'加入回收站',restore:'还原',delete:'彻底删除'};
   const operation=button.dataset.batch,ids=[...selected];if(!ids.length)return;
-  if(!confirm(`确认对 ${ids.length} 个作品执行“${labels[operation]}”？\n${operation==='delete'?'此操作会永久删除文件和账本记录，不可恢复。':'回收站中的文件仍保留，可从回收站入口永久清除。'}`))return;
+  if(!confirm(`确认对 ${ids.length} 个资源执行“${labels[operation]}”？\n${operation==='delete'?'此操作会永久删除文件和账本记录，不可恢复。':'回收站中的文件仍保留，可从回收站入口永久清除。'}`))return;
   button.disabled=true;
   try{const r=await api('/api/batch',{method:'POST',body:JSON.stringify({ids,operation})});
     if(r.blocked&&r.blocked.length)alert(`已永久删除 ${r.purged} 个；${r.blocked.length} 个删不掉，仍留在回收站：\n`
@@ -760,6 +760,55 @@ function cardHtml(it,cls){
         <span class="flags">${fl}</span></div>
       ${tgs?`<div class="ctags">${tgs}</div>`:''}</div></div></article>`;
 }
+const RESOURCE_MEDIUM_LABEL={image:'图片',audio:'音频',archive:'压缩包',other:'其它文件'};
+function resourceCardHtml(it){
+  if(!it.medium||it.medium==='video')return cardHtml(it);
+  const image=it.medium==='image'&&it.location!=='online';
+  const label=(String(it.name||'').toLowerCase().endsWith('.url')?'网址快捷方式'
+    :RESOURCE_MEDIUM_LABEL[it.medium]||'其它文件');
+  const glyph=image?'pics':label==='网址快捷方式'?'globe':'hard-drive';
+  const action=it.disposal==='trash'?'restore':'dispose';
+  const actionLabel=action==='restore'?'还原':'移入回收站';
+  return `<article class="card resourcecard ${it.disposal==='trash'?'pending-delete':''}" data-id="${it.id}" data-medium="${esc(it.medium||'other')}">
+    <div class="pic" style="--card-ratio:16/9"><span class="resourceglyph">${icon(glyph)}<b>${esc(label)}</b></span>
+      ${image?`<img class="poster" src="/photo-thumb?id=${it.id}" alt="" loading="lazy" onerror="this.remove()">`:''}
+      <div class="badge mono">${srcBadge(it.location,it.cost)}</div>
+      <span class="selectionMark">${icon('check')}</span><span class="deleteMark">${icon('trash')}<b>回收站</b></span>
+      <button class="resourcecardaction" type="button" data-resource-operation="${action}" aria-label="${actionLabel} ${esc(it.name||'')}" title="${actionLabel}">${icon(action==='restore'?'rotate-ccw':'trash')}<span>${actionLabel}</span></button></div>
+    <div class="meta"><span class="mav resourcekind" aria-hidden="true">${icon(glyph)}</span><div class="mtext">
+      <span class="t resourcecardtitle" data-middle-truncate title="${esc(it.name||'')}">${esc(it.name||'未命名资源')}</span>
+      <div class="s mono"><span class="who">${esc(label)}</span>${it.why?`<span class="why">${esc(it.why)}</span>`:''}<span class="size">${Number(it.size)>0?fmtSize(Number(it.size)):'大小未知'}</span></div>
+    </div></div></article>`;
+}
+function openResourceCard(id){
+  const item=CACHE[id];
+  if(!item||!item.medium||item.medium==='video'){openItem(id);return}
+  if(item.medium==='image'&&item.location!=='online'){
+    window.open('/photo?id='+id,'_blank','noopener');return
+  }
+  toggleSelection(id);
+}
+function wireResourceCardActions(root){
+  root.querySelectorAll('[data-resource-operation]').forEach(button=>{
+    if(button.dataset.wired)return;button.dataset.wired='1';
+    button.onclick=async event=>{
+      event.preventDefault();event.stopPropagation();
+      const card=button.closest('[data-id]'),operation=button.dataset.resourceOperation;
+      if(!card)return;
+      button.disabled=true;button.setAttribute('aria-busy','true');
+      button.innerHTML=`${spinnerHtml(operation==='restore'?'正在还原':'正在移入回收站')}<span>${operation==='restore'?'正在还原':'正在处理'}</span>`;
+      try{
+        await api('/api/batch',{method:'POST',body:JSON.stringify({ids:[+card.dataset.id],operation})});
+        await load(true);
+      }catch(error){
+        alert(`操作失败：${error.message||'未知错误'}`);
+        button.disabled=false;button.removeAttribute('aria-busy');
+        const label=operation==='restore'?'还原':'移入回收站';
+        button.innerHTML=`${icon(operation==='restore'?'rotate-ccw':'trash')}<span>${label}</span>`;
+      }
+    };
+  });
+}
 function mixLabel(it){
   const performer=(it.performers||[])[0];
   return (it.is_jav&&performer?performer:it.creator)||performer||it.studio||it.code||tagLabel((it.tags||[])[0])||'为你推荐';
@@ -832,7 +881,7 @@ function wireCards(root,onClick,onTag){
       opener.dataset.openWired='1';
       opener.onclick=e=>{e.stopPropagation();if(selectMode||e.shiftKey||e.ctrlKey||e.metaKey){e.preventDefault();toggleSelection(it.id,e.shiftKey);return}openCard(+el.dataset.id)};
     });
-    if(it)wireHover(el,it);
+    if(it&&(!it.medium||it.medium==='video'))wireHover(el,it);
   });
 }
 
@@ -1025,7 +1074,8 @@ function renderCount(){
     try{await refreshAll()}finally{batch.removeAttribute('aria-busy');batch.innerHTML=old}
   };
   wireJavLayoutButtons($('#count'));
-  if(state.state==='trash')$('#emptyTrash').onclick=async(e)=>{
+  const emptyTrash=$('#emptyTrash');
+  if(emptyTrash)emptyTrash.onclick=async(e)=>{
     if(!confirm('永久删除回收站中的全部文件和账本记录？此操作不可恢复。'))return;
     e.currentTarget.disabled=true;
     try{
@@ -3619,7 +3669,7 @@ const EDGE_ICONS=[
   ['immerse','沉浸模式','play'],
   ['manage','管理','database'],
 ];
-/* 统计、疑似广告、回收站、人工复核默认都收在「管理」下，不主动占用顶层空间；
+/* 统计、垃圾复核、回收站、人工复核默认都收在「管理」下，不主动占用顶层空间；
    用户仍可在设置里把某个具体页面加到顶层。URL 保持原样（/stats、/trash、/review、?state=ads）。
    顺序按做事顺序分成两段：先是库里已有的东西——看现状、复核新进来的候选、
    清广告与重复、落到回收站；再是要往外拿的——关注和高清版都是「还想要什么」，
@@ -3628,7 +3678,7 @@ const MANAGE_SECTIONS=[
   ['stats','统计','chart'],
   ['taste','口味','heart'],
   ['review','人工复核','square-check-big'],
-  ['ads','疑似广告','alert'],
+  ['ads','垃圾复核','alert'],
   ['dupes','重复文件','hard-drive'],
   ['trash','回收站','trash'],
   ['follow','关注','rss'],
@@ -3818,7 +3868,7 @@ function buildManageBar(){
   toggle.onkeydown=event=>{if(event.key==='Escape'){bar.classList.remove('is-open');toggle.setAttribute('aria-expanded','false');toggle.focus()}};
   bar.querySelectorAll('[data-manage]').forEach(b=>b.onclick=()=>openManage(b.dataset.manage));
 }
-/* 管理区四个分页共用同一个标题元素。回收站和疑似广告走首页网格路径，
+/* 管理区四个分页共用同一个标题元素。回收站和垃圾复核走首页网格路径，
    本来就没有标题层；统计/复核/重复各自内嵌 h2 又导致字号不一致。 */
 function paintManageTitle(){
   const current=manageSection(),el=$('#manageTitle');
@@ -4023,7 +4073,7 @@ async function load(reset){
   showHomeSurfaces();
   if(reset){offset=0;renderedPartGroups.clear()}
   renderCombo();
-  // 疑似广告是逐项处置队列，计数只是当前队列说明，不是需要跟随浏览的排序工具。
+  // 垃圾复核是逐项处置队列，计数只是当前队列说明，不是需要跟随浏览的排序工具。
   const countRow=$('#count'),staticManageCount=state.state==='ads';
   countRow.classList.toggle('manage-static',staticManageCount);
   if(staticManageCount)countRow.classList.remove('is-stuck');
@@ -4031,12 +4081,12 @@ async function load(reset){
     if(reset||!adsBatch){const nextAds=await api('/api/ads?limit=200');if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
       adsBatch=nextAds;cache(adsBatch.items)}
     const batch=adsBatch.items.slice(offset,offset+appSettings.batchSize);
-    const html=batch.map(it=>cardHtml(it)).join('');
+    const html=batch.map(resourceCardHtml).join('');
     if(reset)releaseHoverPreviews($('#grid'));
     if(reset)$('#grid').innerHTML=html;else $('#grid').insertAdjacentHTML('beforeend',html);
-    $('#count').innerHTML=`疑似广告 ${adsBatch.total} 个 · 当前载入 ${$('#grid').children.length} 个 · 标记后统一复核，不会直接删除`;
+    $('#count').innerHTML=`垃圾候选 ${adsBatch.total} 个 · 当前载入 ${$('#grid').children.length} 个 · 视频、图片和网址快捷方式都只进入复核，不会直接删除`;
     $('#loadSentinel').hidden=$('#grid').children.length>=adsBatch.items.length;
-    $('#shortsSec').hidden=true;wireCards($('#grid'));paintSelection();return;
+    $('#shortsSec').hidden=true;wireCards($('#grid'),openResourceCard);wireResourceCardActions($('#grid'));paintSelection();return;
   }
   adsBatch=null;
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
@@ -4051,7 +4101,8 @@ async function load(reset){
   if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
   if(reset)total=d.total;
   buildManageBar();
-  const html=batchWithMix(d.items,isCatalogPath(decodeURIComponent(location.pathname))&&state.state!=='trash');
+  const html=state.state==='trash'?d.items.map(resourceCardHtml).join('')
+    :batchWithMix(d.items,isCatalogPath(decodeURIComponent(location.pathname))&&state.state!=='trash');
   if(reset)releaseHoverPreviews($('#grid'));
   if(reset&&state.state==='trash'&&!d.items.length)
     $('#grid').innerHTML=emptyState('trash','回收站是空的','删掉的内容会先到这里；确认不再需要后再清空。');
@@ -4061,7 +4112,8 @@ async function load(reset){
   else $('#grid').insertAdjacentHTML('beforeend',html);
   renderCount();
   $('#loadSentinel').hidden=reset?d.items.length>=total:!d.has_more;
-  wireCards($('#grid'));
+  wireCards($('#grid'),state.state==='trash'?openResourceCard:undefined);
+  if(state.state==='trash')wireResourceCardActions($('#grid'));
   wireMixCards($('#grid'));
   paintSelection();
   if(reset)loadShorts(requestSeq,surface);

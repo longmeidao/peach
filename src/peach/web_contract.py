@@ -17,7 +17,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Callable, Sequence
 from urllib.parse import quote, urlsplit
 
@@ -301,8 +301,11 @@ class WebContract:
 # ────────────────────────────── 查询 ──────────────────────────────
 
 def q_items(contract: WebContract, args):
-    where, par = ["a.medium='video'"], []
-    if args.get("state") == "trash":
+    trash = args.get("state") == "trash"
+    # 普通馆藏仍是视频表面；回收站必须展示所有文件类型，否则从垃圾复核移入的
+    # 图片、网址快捷方式等会变成不可见、不可恢复，只能被「清空回收站」直接删掉。
+    where, par = ([] if trash else ["a.medium='video'"]), []
+    if trash:
         where.append("a.disposal='trash'")
     else:
         where.append("(a.disposal IS NULL OR a.disposal <> 'trash')")
@@ -348,17 +351,19 @@ def q_items(contract: WebContract, args):
             for tag in tags:
                 where.append(tag_clause)
                 par.extend((tag, tag, tag))
-    if args.get("len"):
+    # 回收站是跨类型恢复入口。首页遗留的「只看有缩略图」、时长、画幅和 JAV
+    # 条件只对视频成立，带进这里会再次把图片、网址快捷方式等资源藏起来。
+    if not trash and args.get("len"):
         where.append("a.ctx_length = ?"); par.append(args["len"])
-    if args.get("dur_min"):
+    if not trash and args.get("dur_min"):
         where.append("a.duration >= ?"); par.append(max(0, float(args["dur_min"])))
-    if args.get("dur_max"):
+    if not trash and args.get("dur_max"):
         where.append("a.duration <= ?"); par.append(max(0, float(args["dur_max"])))
-    if args.get("orient"):
+    if not trash and args.get("orient"):
         where.append("a.ctx_orient = ?"); par.append(args["orient"])
-    elif args.get("exclude_vertical") == "1":
+    elif not trash and args.get("exclude_vertical") == "1":
         where.append("(a.ctx_orient IS NULL OR a.ctx_orient <> '竖屏')")
-    if args.get("jav") == "1":
+    if not trash and args.get("jav") == "1":
         # 只有番号形态还不够：JI-103 这类 creator clip 没有任何发行证据。
         where.append(JAV_ASSET_PREDICATE)
     if args.get("q"):
@@ -387,7 +392,7 @@ def q_items(contract: WebContract, args):
     state = state_predicate(str(args.get("state") or ""))
     if state:
         where.append(state)
-    if args.get("thumb") == "1":
+    if not trash and args.get("thumb") == "1":
         # 已保存的关注条目只登记在线资产，不下载媒体或生成本地缩略图。
         # 它仍然是可筛选的真实资产；若沿用首页的缩略图门槛，来源 facet 会显示
         # 「在线 1」，点进去却永远是 0 条。
@@ -417,7 +422,7 @@ def q_items(contract: WebContract, args):
     off = int(args.get("offset", 0))
     include_total = args.get("count", "1") != "0"
     fetch_limit = lim if include_total else lim + 1
-    sql = ("SELECT a.id,a.location,a.path,a.name,a.creator,a.studio,a.code,a.release_date,a.size,"
+    sql = ("SELECT a.id,a.location,a.path,a.name,a.medium,a.creator,a.studio,a.code,a.release_date,a.size,"
            "a.duration,a.width,a.height,a.ctx_length,a.ctx_orient,a.snapshot_path,"
            "a.play_count,a.leave_ratio,a.feedback,a.disposal,a.rating,a.o_count,"
            "a.play_seconds,a.max_reached,a.seek_count,"
@@ -790,6 +795,7 @@ AD_DOMAIN = re.compile(
     r"\b[0-9a-z][-0-9a-z]{1,20}\.(?:cc|xyz|com|net|la|me|top|vip|club|app|cn|pw|tv|gg)\b", re.I)
 AD_DIRPACK = re.compile(
     r"[0-9a-z][-0-9a-z]{1,20}\.[a-z]{2,10}[ \-_]+\[?[A-Za-z]{2,6}-?\d{2,5}", re.I)
+INTERNET_SHORTCUT_SUFFIXES = frozenset({".url"})
 
 
 def promo_residue(name: str) -> int:
@@ -806,7 +812,7 @@ def promo_residue(name: str) -> int:
 
 
 def q_ads(contract: WebContract, limit=200, offset=0):
-    """疑似广告复核队列 —— **不自动删**，只排队让人看接触印相确认。
+    """疑似垃圾复核队列 —— **不自动删**，只排队让人看证据确认。
 
     没有可靠的单一判据（试过「同番号短版」会误伤 CD2/part1 分卷，
     试过「同名扩散」会误伤 001.mp4 这类通用名的真文件）。
@@ -814,14 +820,18 @@ def q_ads(contract: WebContract, limit=200, offset=0):
 
     2026-08-15 按用户标记的 21 条真广告重新标定：命中推广词本身不算证据，
     要看**剥掉推广词后还剩不剩内容**。三类实测误判据此排除：剧情里的「微信」、
-    开头是盗版站域名但正文是真实描述、以及把创作者账号当成番号去比时长。"""
+    开头是盗版站域名但正文是真实描述、以及把创作者账号当成番号去比时长。
+
+    物理资源的类型不能成为免检条件。视频保留时长、体积和同番号长版证据；图片、
+    音频、压缩包和其它文件走共用的推广名／推广目录证据；Windows ``.url`` 是网址
+    快捷方式，在媒体目录中直接进入人工复核。在线资产不是待清理的物理文件，排除。"""
     with contract.read_connection() as c:
         rows = c.execute(
-            "SELECT id,location,name,creator,code,size,duration,width,height,snapshot_path,"
+            "SELECT id,location,name,medium,creator,code,size,duration,width,height,snapshot_path,"
             "feedback,disposal,play_count,leave_ratio,o_count,studio,ctx_orient,path "
-            "FROM asset WHERE medium='video' AND size < 500*1024*1024 "
-            "AND duration IS NOT NULL AND duration BETWEEN 15 AND 1200 "
-            "AND (disposal IS NULL)").fetchall()
+            "FROM asset WHERE location IN ('local','115','pikpak') AND disposal IS NULL "
+            "AND (COALESCE(medium,'other')<>'video' OR (size < 500*1024*1024 "
+            "AND duration IS NOT NULL AND duration BETWEEN 15 AND 1200))").fetchall()
         # 同番号是否存在明显更长的版本；只在 code 是真番号时才有意义。
         longer = {r[0]: r[1] for r in c.execute(
             "SELECT code, max(duration) FROM asset WHERE medium='video' AND code IS NOT NULL "
@@ -830,16 +840,24 @@ def q_ads(contract: WebContract, limit=200, offset=0):
     for r in rows:
         d = dict(r)
         s, why = 0, []
-        nm = os.path.splitext(d["name"])[0]
+        name = d.get("name") or PureWindowsPath(d.get("path") or "").name
+        resource_path = PureWindowsPath(d.get("path") or name)
+        name_path = PureWindowsPath(name)
+        nm = name_path.stem
+        suffix = name_path.suffix.casefold()
         residue = promo_residue(nm)
         promo = bool(PROMO_PHRASE.search(nm) or PROMO_DOMAIN.search(nm))
+        if suffix in INTERNET_SHORTCUT_SUFFIXES:
+            s += 60; why.append("网址快捷方式")
         # 目录维度的证据：广告包的文件名往往干净（`极道世界.mp4`），唯一线索在旧导入器
         # 从目录名投影出来的创作者位或路径里。creator 位本身是推广站域名时，它就不再是
         # 「有归属所以是正片」的证据，下面两处对 creator 的信任都必须先排除这种情况。
         owner = d.get("creator") or ""
         owner_is_promo = bool(AD_DOMAIN.search(owner))
         real_owner = bool(owner) and not owner_is_promo
-        folder = os.path.dirname(d.get("path") or "")
+        # ledger 路径在两个平台都是 Windows 形态；PureWindowsPath 才能让 macOS reader
+        # 也识别反斜杠目录，os.path.dirname 在 macOS 会把整条路径当成文件名。
+        folder = str(resource_path.parent)
         if promo and residue < 6:
             # 名字剥完只剩广告本身，这是最硬的信号。
             s += 60; why.append("整个名字都是推广语")
@@ -849,17 +867,18 @@ def q_ads(contract: WebContract, limit=200, offset=0):
             s += 50; why.append("创作者位是推广站域名")
         elif AD_DIRPACK.search(folder):
             s += 45; why.append("目录是「域名+番号」的推广打包")
-        code = (d["code"] or "").strip()
-        mx = longer.get(code)
-        if mx and REAL_CODE.match(code) and d["duration"] < mx * 0.2 \
-                and not PART_MARK.search(nm):
-            # 分卷已排除，真番号下不到两成时长基本就是片段/预告，单独即可入队复核。
-            # 用户标记的 `反抗不如享受.mp4`（ABW-220，244 秒）正好卡在旧的 35 分门外。
-            s += 40; why.append(f"同番号有 {mx/60:.0f} 分完整版")
-        if d["duration"] < 240:
-            s += 15; why.append("不足 4 分钟")
-        if (d["size"] or 0) < 120 * 1024**2:
-            s += 10; why.append("小于 120 MB")
+        if d.get("medium") == "video":
+            code = (d["code"] or "").strip()
+            mx = longer.get(code)
+            if mx and REAL_CODE.match(code) and d["duration"] < mx * 0.2 \
+                    and not PART_MARK.search(nm):
+                # 分卷已排除，真番号下不到两成时长基本就是片段/预告，单独即可入队复核。
+                # 用户标记的 `反抗不如享受.mp4`（ABW-220，244 秒）正好卡在旧的 35 分门外。
+                s += 40; why.append(f"同番号有 {mx/60:.0f} 分完整版")
+            if d["duration"] < 240:
+                s += 15; why.append("不足 4 分钟")
+            if (d["size"] or 0) < 120 * 1024**2:
+                s += 10; why.append("小于 120 MB")
         # 有真实创作者归属、且名字剥完仍有实质描述的，是被打了水印的正片，不是广告。
         if real_owner and residue >= 14:
             s -= 45
@@ -872,7 +891,8 @@ def q_ads(contract: WebContract, limit=200, offset=0):
             out.append(d)
     out.sort(key=lambda x: (-x["score"], -(x["size"] or 0)))
     items = out[offset:offset + limit]
-    attach_card_performers(contract, items)
+    attach_card_performers(
+        contract, [item for item in items if item.get("medium") == "video"])
     return {"total": len(out), "items": items}
 
 def q_related(contract: WebContract, aid, limit=24):
