@@ -603,6 +603,7 @@ function cardHtml(it,cls){
   /* 资料页可能同时收录番号和非番号作品；版式按钮属于页面，但封套比例只施加给
      真实 `is_jav` 卡片，不能把同页的创作者视频也拉成竖封。 */
   const jav=javActive()&&!!it.is_jav,layout=javLayout();
+  const smallJav=jav&&layout==='small';
   const parts=it.part_group||null;
   const useCover=jav&&layout!=='preview'&&it.has_cover;
   /* 卡片比例。这个值以前算出来就没人用过——`.pic` 一直写死 16/9，于是 JAV 的两种
@@ -650,7 +651,7 @@ function cardHtml(it,cls){
   // 会在普通卡片里折成三行；「第一位 + 等 N 人」仍能说明身份与规模。
   const coStarred=performers.length>1&&!primaryCreator;
   const avatar=coStarred
-    ? `<div class="mavstack">${performers.slice(0,3)
+    ? `<div class="mavstack">${performers.slice(0,smallJav?2:3)
         .map((nm,i)=>`<button class="mav entitylink" data-entity-kind="performer" data-entity-name="${esc(nm)}" title="打开${esc(performerLabel(it))}页：${esc(nm)}">${avatarInner(nm,performerRefs[i],REP[nm])}</button>`)
         .join('')}</div>`
     : (()=>{
@@ -676,7 +677,7 @@ function cardHtml(it,cls){
       <button data-seek="-${appSettings.seekSeconds}" title="后退 ${appSettings.seekSeconds} 秒" aria-label="后退 ${appSettings.seekSeconds} 秒">${icon('rotate-ccw')}<b>${appSettings.seekSeconds}</b></button>
       <button data-seek="${appSettings.seekSeconds}" title="前进 ${appSettings.seekSeconds} 秒" aria-label="前进 ${appSettings.seekSeconds} 秒">${icon('rotate-cw')}<b>${appSettings.seekSeconds}</b></button>
       <button data-open title="打开详情" aria-label="打开详情">${icon('maximize')}</button></div>`;
-  return `<article class="card ${parts?'partcard ':''}${cls||''} ${it.disposal==='trash'?'pending-delete':''}" data-id="${it.id}"${parts?` data-part-seed="${parts.seed_id}"`:''}>
+  return `<article class="card ${parts?'partcard ':''}${smallJav?'jav-small ':''}${cls||''} ${it.disposal==='trash'?'pending-delete':''}" data-id="${it.id}"${parts?` data-part-seed="${parts.seed_id}"`:''}>
     ${parts?'<div class="partstack">':''}<div class="pic" style="--card-ratio:${ar}">${thumb}<button class="cardopenhit" data-open aria-label="打开 ${esc(shownName)}${parts?'分卷':'详情'}"></button>
       <div class="badge mono">${srcBadge(it.location,it.cost)}</div>
       <span class="selectionMark">${icon('check')}</span><span class="deleteMark">${icon('trash')}<b>回收站</b></span>
@@ -685,7 +686,7 @@ function cardHtml(it,cls){
       <div class="s mono">${whoHtml}
         ${it.why?`<span class="why">${esc(it.why)}</span>`:''}
         <span class="size">${sizeText}</span>
-        ${it.play_count?`<span>看过 ${it.play_count}</span>`:''}
+        ${it.play_count?`<span class="watchcount">看过 ${it.play_count}</span>`:''}
         <span class="flags">${fl}</span></div>
       ${tgs?`<div class="ctags">${tgs}</div>`:''}</div></div></article>`;
 }

@@ -178,12 +178,20 @@ class WebUiSourceTests(unittest.TestCase):
         # 多人合集保留头像提示，但文字只写第一位和总人数，避免名称折成多行。
         self.assertPageContains("const coStarred=performers.length>1&&!primaryCreator")
         self.assertPageContains('<div class="mavstack">')
-        self.assertPageContains("performers.slice(0,3)")
+        self.assertPageContains("performers.slice(0,smallJav?2:3)")
         self.assertPageContains("data-entity-kind=\"performer\" data-entity-name=\"${esc(nm)}\"")
         self.assertPageContains("data-entity-name=\"${esc(performer)}\"")
         self.assertPageContains("等 ${performerTotal} 人")
-        self.assertPageLacks("performers.slice(0,2).map")
         self.assertPageContains(".mavstack .mav+.mav{margin-left:-14px}")
+
+    def test_jav_small_cards_limit_cast_and_hide_secondary_metadata(self):
+        # 小图用来扫整张封套：只留两张头像、单行标题和身份，详情仍保留完整资料。
+        self.assertPageContains("const smallJav=jav&&layout==='small'")
+        self.assertPageContains("${smallJav?'jav-small ':''}")
+        self.assertPageContains(".jav-small .meta .t{display:block;max-width:100%;min-height:1.35em;white-space:nowrap;text-overflow:ellipsis;")
+        self.assertPageContains(".jav-small .meta .s{flex-wrap:nowrap;overflow:hidden}")
+        self.assertPageContains(".jav-small .meta .why,.jav-small .meta .size,.jav-small .meta .watchcount,.jav-small .ctags{display:none}")
+        self.assertPageContains('<span class="watchcount">看过 ${it.play_count}</span>')
 
     def test_every_card_avatar_falls_back_through_the_same_helper(self):
         # kind 参数化后，创作者复核卡片也能走同一个兜底链；默认仍是 performer，
@@ -1537,7 +1545,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".alphatag span:first-of-type", ".av .nm", ".entitylinklabel",
             ".entitytags button", ".fauthor .fsource.frow>b", ".fauthorhead b",
             ".fchip", ".frow>b", ".fvkind", ".idname", ".kv>span:first-child",
-            ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
+            ".jav-small .meta .t", ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
             ".mixitemtext [data-truncate-end]", ".mixqueuehead h2",
             ".playerstats dd", ".relatedperson .nm", ".reviewentity b",
             ".reviewitem h4", ".searchoption span",
