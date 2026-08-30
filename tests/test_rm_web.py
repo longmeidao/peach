@@ -166,6 +166,8 @@ class WebDataTests(unittest.TestCase):
             {"id": 11, "name": "Canonical Alice"},
         ])
         self.assertEqual(result["items"][0]["tags"], ["足交"])
+        self.assertIn("play_seconds", result["items"][0])
+        self.assertIn("duration", result["items"][0])
         self.assertNotIn("Canonical Alice", [tag["k"] for tag in rm_web.q_item(self.contract, 1)["tags"]])
         self.assertNotIn("Canonical Alice", [tag["k"] for tag in rm_web.q_facets(self.contract)["tags"]])
         self.assertNotIn("Canonical Alice", [tag["k"] for tag in rm_web.q_index(self.contract, "tags")["items"]])

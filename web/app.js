@@ -401,6 +401,51 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0){
   levels?.on?.(['addqualitylevel','removequalitylevel'],render);
   render();
 }
+function mountPlayerSeekPreview(player,it,options={}){
+  const progress=player.getChild('controlBar')?.el()?.querySelector('.vjs-progress-control');
+  if(!progress||progress.querySelector('[data-player-seek-preview]'))return;
+  const hasThumbnail=options.thumbnail!==false;
+  const preview=document.createElement('div');
+  preview.className='vjs-peach-seek-preview';preview.dataset.playerSeekPreview='';preview.hidden=true;
+  preview.innerHTML=`${hasThumbnail?'<img alt="" hidden>':''}<span class="mono">0:00</span>`;
+  progress.append(preview);
+  const image=preview.querySelector('img'),label=preview.querySelector('span');
+  let cell=-1;
+  const move=event=>{
+    if(event.pointerType==='touch')return;
+    const duration=Number(player.duration())||Number(it.duration)||0;
+    if(!duration)return;
+    const rect=progress.getBoundingClientRect();
+    const ratio=Math.min(1,Math.max(0,(event.clientX-rect.left)/rect.width));
+    const width=image?Math.min(240,Math.max(160,rect.width*.28)):76;
+    const x=Math.min(rect.width-width/2,Math.max(width/2,event.clientX-rect.left));
+    preview.style.left=`${x}px`;preview.hidden=false;label.textContent=fmtClock(duration*ratio);
+    if(image){
+      const nextCell=Math.min(8,Math.floor(ratio*9));
+      if(nextCell!==cell){cell=nextCell;image.hidden=false;image.src=`/poster?id=${encodeURIComponent(it.id)}&c=${nextCell}`}
+    }
+  };
+  const hide=()=>{preview.hidden=true};
+  if(image)image.onerror=()=>{image.hidden=true};
+  progress.addEventListener('pointermove',move);progress.addEventListener('pointerleave',hide);
+  player.on('dispose',()=>{progress.removeEventListener('pointermove',move);progress.removeEventListener('pointerleave',hide)});
+}
+function mountPlayerCenterControls(player,seconds=10){
+  if(player.el().querySelector('[data-player-center-controls]'))return;
+  const root=document.createElement('div');
+  root.className='vjs-peach-center-controls';root.dataset.playerCenterControls='';
+  root.innerHTML=`<button type="button" data-center-seek="-${seconds}" aria-label="后退 ${seconds} 秒">${icon('rotate-ccw')}<b>${seconds}</b></button>
+    <button type="button" class="vjs-peach-center-toggle" data-center-toggle aria-label="播放">
+      <span class="vjs-peach-center-play" aria-hidden="true"></span>
+      <span class="vjs-peach-center-pause" aria-hidden="true"><i></i><i></i></span></button>
+    <button type="button" data-center-seek="${seconds}" aria-label="前进 ${seconds} 秒">${icon('rotate-cw')}<b>${seconds}</b></button>`;
+  player.el().append(root);
+  const toggle=root.querySelector('[data-center-toggle]');
+  const sync=()=>{const playing=!player.paused()&&!player.ended();root.dataset.state=playing?'pause':'play';toggle.setAttribute('aria-label',playing?'暂停':'播放')};
+  root.querySelectorAll('[data-center-seek]').forEach(button=>button.onclick=event=>{event.stopPropagation();seekVideoBy(player.el().querySelector('video'),Number(button.dataset.centerSeek))});
+  toggle.onclick=event=>{event.stopPropagation();if(player.paused()||player.ended())player.play().catch(()=>{});else player.pause()};
+  player.on(['play','pause','ended'],sync);sync();
+}
 function mountDetailPlayer(it,video,autoplay,options={}){
   if(detailPlayer)return detailPlayer;
   const statsButton=$('#playerStatsBtn'),statsPanel=$('#playerStats');
@@ -413,7 +458,6 @@ function mountDetailPlayer(it,video,autoplay,options={}){
   detailPlayer=globalThis.videojs(video,{
     controls:true,preload:'metadata',language:'zh-CN',responsive:true,
     controlBar:{
-      skipButtons:{backward:appSettings.seekSeconds,forward:appSettings.seekSeconds},
       pictureInPictureToggle:true,currentTimeDisplay:true,timeDivider:true,
       durationDisplay:true,remainingTimeDisplay:false
     }
@@ -477,6 +521,8 @@ function mountDetailPlayer(it,video,autoplay,options={}){
   });
   detailPlayer.ready(()=>{
     enforceDuration();mountPlayerQualityControl(detailPlayer,video,it.height);
+    mountPlayerSeekPreview(detailPlayer,it,{thumbnail:!options.source});
+    mountPlayerCenterControls(detailPlayer,appSettings.seekSeconds);
     if(statsButton)statsButton.hidden=false
   });
   if(statsButton&&statsPanel)statsButton.onclick=()=>{
@@ -694,7 +740,6 @@ function cardHtml(it,cls){
     : (it.has_thumb
       ? `<img class="poster" src="/poster?id=${it.id}&c=4" alt="" loading="lazy">`
       : `<span class="nopic">无预览</span>`);
-  const tr=it.leave_ratio!=null?`<div class="scrub"><i style="width:${Math.round(it.leave_ratio*100)}%"></i></div>`:'';
   const fl=[it.feedback==='dislike'&&'dislike',it.feedback==='seen'&&'seen',
             it.disposal==='trash'&&'dispose',it.watch_later&&'later']
             .filter(Boolean).map(c=>`<i class="${c}"></i>`).join('');
@@ -714,6 +759,11 @@ function cardHtml(it,cls){
   const shownName=parts?.title||it.name;
   const shownSize=parts?.total_size??it.size;
   const shownDuration=parts?.total_duration??it.duration;
+  const watchedRatio=!parts&&Number(it.play_seconds)>0&&Number(it.duration)>0
+    ? Math.min(Number(it.play_seconds)/Number(it.duration),1):0;
+  const tr=watchedRatio>0
+    ? `<div class="watchprogress" role="progressbar" aria-label="观看进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(watchedRatio*100)}"><i style="width:${(watchedRatio*100).toFixed(1)}%"></i></div>`
+    : (it.leave_ratio!=null?`<div class="scrub"><i style="width:${Math.round(it.leave_ratio*100)}%"></i></div>`:'');
   const sizeText=Number(shownSize)>0?fmtSize(Number(shownSize)):'大小未知';
   const tgs=(it.tags||[]).slice(0,3).map(x=>`<span class="tg general" data-tag="${esc(x)}">${esc(tagLabel(x))}</span>`).join('');
   // 共演作品用头像提示多人，但文字只保留第一位，再给总人数。两个长名字加元数据
