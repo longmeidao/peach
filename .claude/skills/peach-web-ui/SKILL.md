@@ -11,7 +11,7 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 
 1. 读取相关页面、`web/js/ui-components.js`、`web/app.css` 与 `tests/test_web_ui.py`，先找现成控件、token 和行为。
 2. 外部产品被称为参考时同时执行 `peach-reference-evidence`；没有当前可复现证据就写 `未取得`，不补动画、间距或交互猜测。
-3. 新控件先检查 `docs/reference-snapshots/vercel-geist-controls-measured.md`、`vercel-geist-semantics-measured.md` 与 `vercel-geist-note-progress-switch-analytics.md`。
+3. 新控件先检查 `docs/reference-snapshots/vercel-geist-controls-measured.md`、`vercel-geist-semantics-measured.md`、`vercel-geist-note-progress-switch-analytics.md` 与 `vercel-geist-command-search-loading.md`。
 
 ## 组件选择
 
@@ -22,10 +22,13 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 | 短暂操作回执 | Toast | 持久 Note |
 | 销毁确认 | Modal／现有 confirm | Toast |
 | 已知总量的进行状态 | Progress | 装饰性蓝条 |
-| 未知总量短等待 | Spinner／Loading Dots | 假百分比 |
+| 用户触发动作等待结果 | Spinner | 旋转原操作图标、Loading Dots |
+| 后台任务仍在推进 | Loading Dots | Spinner、假百分比 |
 | 2–3 个互斥视图 | Switch（radio） | Toggle |
 | 布尔开关 | Toggle | Switch |
 | 无布局高度变化的菜单 | Menu／Listbox，无动画 | Collapse 动画 |
+| 带搜索语义的输入 | Search Input（搜索图标前缀；搜索中原位换 Spinner） | 无图标裸输入 |
+| 全屏命令／设置覆盖层 | 有锁定证据的 Dialog motion | 把同一动画套给普通菜单 |
 | 展开正文或分组 | Collapse | 自造 easing |
 | 一组输入／候选及其底部动作 | Fieldset | 自造卡片 Footer |
 | 固定高度区域中的溢出内容 | Scroller | 页面级滚动或嵌套滚动区 |
@@ -39,6 +42,8 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 - Progress 必须有真实 `value/max`、可见单位与 `aria-valuemin/max/now`；分隔线放在完整指标（含进度条）之后。
 - Switch 必须共享 radio `name`、初始一个 `checked`、键盘可用；布尔状态继续使用 Toggle。
 - 菜单每项包含与入口相同的图标和文字，菜单内部滚动、`overscroll-behavior:contain`，不得把浏览器页面撑出滚动条。
+- Spinner 只反馈用户直接触发的动作，触发器声明 `aria-busy` 且等待时保持可聚焦；未知时长的后台抓取使用 Loading Dots。两者都必须保留可读状态文字并尊重 reduced motion。
+- 分页末尾、空页和“没有更多内容”是中性终止状态，用可关闭 Note；只有需要恢复或处理的故障才能进入红色 error Note。
 - 弹层标题栏与滚动正文分层：标题分隔线属于卡片全宽，滚动条只属于正文。
 - 没有直接证据不得新增动效；参考产品无动画的菜单保持无动画。
 - Fieldset 的正文统一 20px 内边距，Footer 最小 56px、上／右／下 12px、左 20px；同组卡片必须同高，变化内容只放一个纵向 Scroller。

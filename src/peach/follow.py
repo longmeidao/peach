@@ -24,6 +24,10 @@ class FollowSourceError(RuntimeError):
     pass
 
 
+class FollowHistoryEnd(FollowSourceError):
+    """A valid backfill response that means there are no older items."""
+
+
 def plain_text(value: str | None) -> str | None:
     """把站点返回的 HTML 片段压成一行纯文本。"""
     if not value:

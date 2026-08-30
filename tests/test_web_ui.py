@@ -113,9 +113,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("document.body.classList.add('settings-open')")
         self.assertPageContains("document.body.classList.remove('settings-open')")
 
+    def test_settings_dialog_uses_the_evidenced_command_menu_motion(self):
+        self.assertPageContains("animation:settings-dialog-in .35s cubic-bezier(.4,0,.2,1) both")
+        self.assertPageContains("translate3d(0,-40px,0);opacity:0")
+        self.assertPageContains("panel.classList.add('closing')")
+        self.assertPageContains("prefers-reduced-motion: reduce")
+
     def test_settings_titlebar_owns_the_full_width_above_its_scroll_container(self):
         self.assertPageContains(".settingsscroll{flex:1;min-height:0;overflow-y:auto;padding:0 20px 20px")
-        self.assertPageContains("scrollbar-gutter:stable;overscroll-behavior:contain")
+        self.assertPageContains("scrollbar-gutter:stable both-edges;overscroll-behavior:contain")
         self.assertPageContains(".settingshead{z-index:2;display:flex")
         self.assertPageContains("border-bottom:1px solid var(--line-soft);background:var(--frost-panel)")
         self.assertPageContains('<div class="settingscard">\n    <div class="settingshead">')
@@ -710,7 +716,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks('class="prog"')
 
     def test_note_semantics_replace_empty_states_for_persistent_errors(self):
-        self.assertPageContains("import { emptyStateHtml, noteHtml, progressHtml, scrollerHtml, wireScrollers } from './js/ui-components.js'")
+        for name in ("emptyStateHtml", "loadingDotsHtml", "noteHtml", "progressHtml",
+                     "scrollerHtml", "spinnerHtml", "wireScrollers"):
+            self.assertPageContains(name)
+        self.assertPageContains("from './js/ui-components.js'")
         self.assertPageContains("const NOTE_VARIANTS=new Set(['secondary','warning','error','success'])")
         self.assertPageContains("const role=kind==='error'?' role=\"alert\"':' role=\"note\"'")
         self.assertPageContains("noteHtml(error.message,{variant:'error',label:'同步失败'})")
@@ -1399,12 +1408,12 @@ class WebUiSourceTests(unittest.TestCase):
         # fwarn 提供 dismiss（会话内记忆），关闭钮样式与 toast 关闭钮同量纲。
         self.assertPageContains("data-fwarn-dismiss")
         self.assertPageContains("sessionStorage.setItem('peach-fwarn-dismissed','1')")
-        self.assertPageContains(".fwarn .wclose{flex:none;width:24px;height:24px;margin-left:auto;padding:0;border:0;")
+        self.assertPageContains(".fwarn .wclose,.fcheckreport .wclose{flex:none;width:24px;height:24px;margin-left:auto;padding:0;border:0;")
         # 报告条：danger 语义（红发丝边 + 微红底），不再是左侧粗条。
         self.assertPageContains("background:color-mix(in srgb,var(--drop) 7%,transparent);\n  border:1px solid color-mix(in srgb,var(--drop) 30%,transparent);")
         self.assertPageLacks("border-left:2px solid var(--drop)")
         # 来源行状态徽章（ok 绿 tint / 失败红 tint / 未检查灰）。
-        self.assertPageContains('<span class="sbadge ${badge}" title="${esc(state)}"><i aria-hidden="true"></i></span>')
+        self.assertPageContains('<span class="sbadge ${badge}" title="${esc(stateTitle)}"><i aria-hidden="true"></i>')
         self.assertPageContains(".sbadge i{width:6px;height:6px;border-radius:50%;background:var(--muted);flex:none}")
         self.assertPageContains(".sbadge.ok i{background:var(--success)}")
         self.assertPageContains(".sbadge.error i{background:var(--drop)}")
@@ -1616,7 +1625,8 @@ class WebUiSourceTests(unittest.TestCase):
         reviewed_end_selectors = {
             ".alphatag span:first-of-type", ".av .nm", ".entitylinklabel",
             ".entitytags button", ".fauthor .fsource.frow>b", ".fauthorhead b",
-            ".fchip", ".frow>b", ".fvkind", ".idname", ".kv>span:first-child",
+            ".fchip", ".folderfoot .fmeta", ".fpickactions [data-pick-state]",
+            ".frow>b", ".fvkind", ".idname", ".kv>span:first-child",
             ".jav-small .meta .t", ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
             ".mixitemtext [data-truncate-end]", ".mixqueuehead h2",
             ".playerstats dd", ".relatedperson .nm", ".reviewentity b",
@@ -1939,7 +1949,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".resourcesources article+article{border-left:1px solid var(--line-soft)}")
         self.assertPageContains(".resourceapplyrow .resourcesyncok{color:var(--success)}")
         self.assertPageContains("border-radius:var(--control-radius)")
-        self.assertPageContains("animation:peach-spin .8s linear infinite")
+        self.assertPageContains("@keyframes geist-spinner-opacity")
         sections = self.page.split("const MANAGE_SECTIONS=[", 1)[1].split("];", 1)[0]
         self.assertNotIn("'resources'", sections)
 

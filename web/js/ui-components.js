@@ -21,6 +21,20 @@ export function progressHtml(label,value,max=100){
     style="--progress-value:${percent}%"><i></i></div>`;
 }
 
+/** Geist Spinner: immediate feedback for a user-triggered action. */
+export function spinnerHtml(label='加载中'){
+  const bars=Array.from({length:10},(_,index)=>
+    `<i aria-hidden="true" style="--spinner-angle:${index*36}deg;--spinner-delay:${index*100-900}ms"></i>`).join('');
+  return `<span class="geist-spinner" role="status" aria-label="${esc(label)}">${bars}</span>`;
+}
+
+/** Geist Loading Dots: indeterminate work continuing in the background. */
+export function loadingDotsHtml(label='正在处理', {className=''}={}){
+  return `<span class="geist-loading${className?` ${esc(className)}`:''}" role="status">
+    <span class="geist-loading-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span>${esc(label)}</span></span>`;
+}
+
 /** Geist Empty State: icon tile, title and explanatory copy stay one semantic unit. */
 export function emptyStateHtml(iconName,title,description,{className='',actions=''}={}){
   return `<div class="emptystate${className?` ${esc(className)}`:''}" data-geist-empty-state role="status">

@@ -14,7 +14,7 @@ import urllib.parse
 from datetime import datetime, timezone
 
 from . import follow_providers
-from .follow import FollowSourceError
+from .follow import FollowHistoryEnd, FollowSourceError
 from .follow_discovery import discover
 from .follow_secrets import CredentialError, CredentialStore
 from .follow_sources import (
@@ -516,6 +516,7 @@ def _official_avatar_url(provider: str, ref: str) -> str | None:
 
 
 def _source_payload(row, aliases: dict[str, str] | None = None) -> dict:
+    history_exhausted = _legacy_history_end(row)
     return {
         "id": row["id"],
         "provider": row["provider"],
@@ -535,9 +536,23 @@ def _source_payload(row, aliases: dict[str, str] | None = None) -> dict:
         # 否则用户点一次只看到列表变长一点，不知道自己走到第几页。
         "backfill_page": row["backfill_page"],
         "last_checked_at": row["last_checked_at"],
-        "last_status": row["last_status"],
-        "last_error": row["last_error"],
+        "last_status": "not_modified" if history_exhausted else row["last_status"],
+        "last_error": None if history_exhausted else row["last_error"],
+        "history_exhausted": history_exhausted,
     }
+
+
+def _legacy_history_end(row) -> bool:
+    """Normalize terminal backfill responses recorded as errors by older builds."""
+    if int(row["backfill_page"] or 0) <= 0 or row["last_status"] != "error":
+        return False
+    provider = str(row["provider"] or "")
+    message = str(row["last_error"] or "").casefold()
+    if provider in {"kemono", "coomer", "pawchive"}:
+        return message in {f"{provider} 返回 http 400", f"{provider} 返回 http 404"}
+    if provider == "rule34paheal":
+        return message == "rule34paheal 返回 http 404"
+    return False
 
 
 def q_follow(contract, args) -> dict:
@@ -727,6 +742,17 @@ def _run_follow_check(contract, body) -> dict:
             connector = build_connector(provider, **connector_kwargs)
             fetch = connector.fetch(ref, etag=row["etag"],
                                     last_modified=row["last_modified"], page=page)
+        except FollowHistoryEnd:
+            with contract.database.write_transaction() as connection:
+                _store(contract, connection).record_history_end(row["id"], moment)
+            results.append({
+                "source": row["id"], "provider": provider,
+                "provider_label": PROVIDER_LABELS.get(provider, provider),
+                "ref": ref, "label": row["label"], "ok": True,
+                "page": page, "older": older, "exhausted": True,
+                "message": "没有更多历史内容",
+            })
+            continue
         except CredentialError as error:
             results.append(_failure(contract, row, error, moment, "unauthorized"))
             continue

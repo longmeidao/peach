@@ -15,6 +15,7 @@ from pathlib import Path
 from unittest import mock
 
 from peach import web_follow
+from peach.follow import FollowHistoryEnd
 from peach.follow import FollowSourceError
 from peach.follow_discovery import Discovery, ExternalSearch
 from peach.follow_secrets import CredentialError
@@ -150,6 +151,29 @@ class FollowContractTests(unittest.TestCase):
         source = next(row for row in self._get()["sources"]
                       if row["provider"] == "f95zone")
         self.assertFalse(source["can_backfill"])
+
+    def test_history_end_is_a_neutral_success_and_does_not_advance_cursor(self):
+        source_id = self._seed()
+
+        class _Ended:
+            provider, semantics = "rule34video", "work"
+
+            def fetch(self, ref, *, etag=None, last_modified=None, page=0):
+                raise FollowHistoryEnd("没有更多历史内容")
+
+        with mock.patch.object(web_follow, "build_connector", return_value=_Ended()):
+            result = self._post("/api/follow/check", {"older": True})
+        row = result["results"][0]
+        self.assertTrue(row["ok"])
+        self.assertTrue(row["exhausted"])
+        self.assertEqual(row["message"], "没有更多历史内容")
+        with self.contract.database.read_connection() as connection:
+            state = dict(connection.execute(
+                "SELECT backfill_page,last_status,last_error FROM follow_source WHERE id=?",
+                (source_id,)).fetchone())
+        self.assertEqual(state["backfill_page"], 0)
+        self.assertEqual(state["last_status"], "not_modified")
+        self.assertIsNone(state["last_error"])
 
     def test_feed_groups_variants_under_one_card(self):
         self._seed()
@@ -1167,15 +1191,16 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn("height:38px", add_button[:add_button.index("}")])
 
     def test_source_filter_uses_the_project_toolbar_layout_without_menu_motion(self):
-        # Vercel Projects：搜索占剩余宽度，筛选是方形图标按钮，主操作在右；
+        # Vercel Projects：搜索占剩余宽度，筛选带明确标签，主操作在右；
         # 菜单没有展开动画，并在自己的视口内滚动。
         self.assertPageContains(
-            ".faddform{display:grid;grid-template-columns:minmax(0,1fr) 38px auto;gap:8px")
+            ".faddform{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px")
         self.assertPageContains(
-            ".faddform .fsrcfilter .fbtn{width:38px;height:38px;min-height:38px;padding:0}")
+            ".faddform .fsrcfilter .fbtn{width:auto;height:38px;min-height:38px;padding:0 11px}")
         self.assertPageContains('aria-expanded="false" aria-haspopup="menu"')
         self.assertPageContains('aria-label="${esc(label())}" title="${esc(label())}"')
-        self.assertPageLacks("data-srcfilter-label")
+        self.assertPageContains("data-srcfilter-label")
+        self.assertPageContains("'全部来源'")
         menu = self.page[self.page.index(".fsrcmenu{"):]
         menu = menu[:menu.index("}")]
         self.assertIn("position:fixed", menu)
@@ -1638,7 +1663,8 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("followCheckReport=result;")
         self.assertPageContains("${followCheckReport?followCheckFailNote(followCheckReport):''}")
         for needle in ("新增 <b>", "更新 <b>", "个来源没有更新", "没有任何更新",
-                       "个失败", "fcheckfail"):
+                       "个失败", "fcheckfail", "没有更多历史内容",
+                       "data-follow-report-dismiss"):
             self.assertPageContains(needle)
         # 失败要说清是哪个站，不能让用户去猜 `rule34xxx` 是什么。
         self.assertPageContains("row.provider_label||row.provider")
@@ -1708,10 +1734,11 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains(".followresources a:hover")
         self.assertPageContains("text-decoration:none")
 
-    def test_follow_check_icons_spin_and_known_copy_says_followed(self):
-        # 转圈动画全站只有一套：busy 挂在按钮上，图标自己转（peach-spin）。
-        self.assertPageContains("@keyframes peach-spin")
-        self.assertPageContains("button.busy>svg{animation:peach-spin .8s linear infinite}")
+    def test_loading_semantics_and_known_copy_says_followed(self):
+        self.assertPageContains("@keyframes geist-spinner-opacity")
+        self.assertPageContains("@keyframes geist-loading-dot")
+        self.assertPageContains("spinnerHtml('查找中')")
+        self.assertPageContains("loadingDotsHtml('抓取中…')")
         self.assertPageContains("c.known?'已经关注':c.evidence")
         self.assertPageLacks("已经在追")
 

@@ -254,6 +254,14 @@ class FollowStore:
             "UPDATE follow_source SET last_checked_at=?, last_status=?, last_error=?,"
             " updated_at=? WHERE id=?", (stamp, status, message[:500], stamp, source_id))
 
+    def record_history_end(self, source_id: int,
+                           moment: datetime | None = None) -> None:
+        """Record a successful terminal backfill without advancing its cursor."""
+        stamp = _now_text(moment)
+        self._connect().execute(
+            "UPDATE follow_source SET last_checked_at=?, last_status='not_modified',"
+            " last_error=NULL, updated_at=? WHERE id=?", (stamp, stamp, source_id))
+
     def _persist_evidence(self, fetch: SourceFetch,
                           moment: datetime | None) -> tuple[str | None, str | None]:
         """存原始响应。存不下来不算检查失败。

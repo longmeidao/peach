@@ -21,7 +21,9 @@ from bs4 import BeautifulSoup
 
 from .fanbox import FanboxContentError, normalize_fanbox_post
 from . import follow_providers
-from .follow import DEFAULT_MAX_BYTES, FollowSourceError, plain_text, stable_id
+from .follow import (
+    DEFAULT_MAX_BYTES, FollowHistoryEnd, FollowSourceError, plain_text, stable_id,
+)
 from .follow_secrets import Credential, CredentialError
 from .follow_gofile import GofileExpander
 from .http import CurlCffiTransport, HttpRequest, HttpResponse, HttpTransport, HttpxTransport
@@ -392,6 +394,7 @@ class _BaseConnector:
                  last_modified: str | None = None, page: int = 0,
                  headers: Mapping[str, str] | None = None,
                  request_url: str | None = None,
+                 history_end_statuses: tuple[int, ...] = (),
                  ) -> tuple[dict[str, object], HttpResponse | None]:
         """每个连接器 fetch 开头都一样的那段：条件请求 → 304 短路 → 状态检查。
 
@@ -415,6 +418,8 @@ class _BaseConnector:
         }
         if response.status == 304:
             return common, None
+        if page and response.status in history_end_statuses:
+            raise FollowHistoryEnd("没有更多历史内容")
         self._check_status(response)
         return common, response
 
@@ -496,7 +501,8 @@ class KemonoConnector(_BaseConnector):
             # 实测这个接口一页固定 50 条，往回翻用 `?o=` 偏移。
             url = f"{url}?o={page * self.PAGE_SIZE}"
         common, response = self._request(url, ref=ref, etag=etag,
-                                         last_modified=last_modified, page=page)
+                                         last_modified=last_modified, page=page,
+                                         history_end_statuses=(400, 404))
         if response is None:
             return SourceFetch(not_modified=True, **common)
         payload = self.parse_json(response)
@@ -504,6 +510,8 @@ class KemonoConnector(_BaseConnector):
         posts = payload.get("posts", []) if isinstance(payload, dict) else payload
         if not isinstance(posts, list):
             raise FollowSourceError(f"{self.provider} 的帖子列表格式不符")
+        if page and not posts:
+            raise FollowHistoryEnd("没有更多历史内容")
         kept, skipped, probed = [], 0, 0
         for post in posts[: self.max_items]:
             if not isinstance(post, dict):
@@ -664,7 +672,8 @@ class Rule34VideoConnector(_BaseConnector):
                    f"&sort_by=post_date&from={page + 1:02d}")
         common, response = self._request(url, ref=slug, etag=etag,
                                          last_modified=last_modified, page=page,
-                                         headers={"Accept": "text/html"})
+                                         headers={"Accept": "text/html"},
+                                         history_end_statuses=(404,))
         if response is None:
             return SourceFetch(not_modified=True, **common)
         soup = BeautifulSoup(response.body, "html.parser")
@@ -680,6 +689,8 @@ class Rule34VideoConnector(_BaseConnector):
             if len(listed) >= self.max_items:
                 break
         if not listed:
+            if page:
+                raise FollowHistoryEnd("没有更多历史内容")
             raise FollowSourceError(
                 "rule34video 创作者页没有解析出任何作品：页面结构可能已变，"
                 "或该 slug 不存在")
@@ -865,6 +876,8 @@ class Rule34XxxConnector(_BaseConnector):
             for post in posts[: self.max_items]
             if isinstance(post, dict)
         )
+        if page and not candidates:
+            raise FollowHistoryEnd("没有更多历史内容")
         return SourceFetch(candidates=candidates, raw_body=response.body, **common)
 
     #: 拼可读标签时跳过的词：作者手柄、媒体类型和评级，留下的才是内容。
@@ -952,7 +965,8 @@ class Rule34PahealConnector(_BaseConnector):
         url = f"https://rule34.paheal.net/post/list/{encoded}/{page_number}"
         common, response = self._request(url, ref=tag, etag=etag,
                                          last_modified=last_modified, page=page,
-                                         headers={"Accept": "text/html"})
+                                         headers={"Accept": "text/html"},
+                                         history_end_statuses=(404,))
         if response is None:
             return SourceFetch(not_modified=True, **common)
         soup = BeautifulSoup(response.body, "html.parser")
@@ -993,6 +1007,8 @@ class Rule34PahealConnector(_BaseConnector):
                        "tag_types": {value: "general" for value in tag_values}},
             ))
         if not candidates:
+            if page:
+                raise FollowHistoryEnd("没有更多历史内容")
             raise FollowSourceError("rule34.paheal 标签页没有解析出任何作品")
         return SourceFetch(candidates=tuple(candidates), probed=len(candidates),
                            raw_body=response.body, **common)
