@@ -3208,8 +3208,7 @@ async function updateEntityCollection(kind,name,filters,push=true){
   const seq=++entityRequestSeq;
   const items=await fetchEntityItems(kind,name,filters);
   if(seq!==entityRequestSeq)return;
-  entityVideoCount=items.total||0;
-  renderMediaTabs(kind,name,filters);
+  renderEntityMediaToggle(kind,name,filters);
   $('#index').querySelectorAll('[data-entity-tag]').forEach(b=>
     b.setAttribute('aria-pressed',String(b.dataset.entityTag===filters.tag)));
   renderEntityCollection(kind,name,items,filters)
@@ -3227,31 +3226,30 @@ const parseMediaView=search=>{const params=new URLSearchParams(search),set=param
 const entityViewSearch=(filters,view)=>{const params=new URLSearchParams(entityFilterSearch(filters));
   if(view&&view.media==='photos'){params.set('media','photos');if(view.set)params.set('set',String(view.set))}
   return params.toString()};
-let entityPhotos=null,entityMediaView=emptyMediaView(),entityVideoCount=0,photoWallItems=[];
+let entityPhotos=null,entityMediaView=emptyMediaView(),photoWallItems=[];
 const routeEntityView=(kind,name,view)=>{
   const filters=barsContext.type==='entity'?barsContext.filters:emptyEntityFilters();
   const search=entityViewSearch(filters,view);
   route(entityPath(kind,name)+(search?'?'+search:''))};
 const photoTotalOf=()=>entityPhotos&&!entityPhotos.error?(entityPhotos.total||0):0;
 
-function renderMediaTabs(kind,name,filters){
-  const tabs=$('#index').querySelector('.mediatabs');if(!tabs)return;
+function renderEntityMediaToggle(kind,name,filters){
+  const button=$('#index').querySelector('[data-media-toggle]');if(!button)return;
   const photos=photoTotalOf();
-  tabs.hidden=!photos;
-  if(!photos){tabs.innerHTML='';return}
-  const tab=(media,label,glyph,count)=>`<button data-media="${media}"
-      aria-pressed="${(entityMediaView.media==='photos')===(media==='photos')}">${icon(glyph)}<span>${label}</span>
-      <b class="mono">${count.toLocaleString()}</b></button>`;
-  tabs.innerHTML=tab('videos','视频','play',entityVideoCount)+tab('photos','照片','layout-grid',photos);
-  tabs.querySelectorAll('[data-media]').forEach(b=>
-    b.onclick=()=>switchEntityMedia(kind,name,filters,b.dataset.media));
+  button.hidden=!photos;
+  if(!photos)return;
+  const selected=entityMediaView.media==='photos';
+  const label=selected?'切换到视频':'切换到照片';
+  button.setAttribute('aria-pressed',String(selected));
+  button.setAttribute('aria-label',label);button.title=label;
+  button.onclick=()=>switchEntityMedia(kind,name,filters,selected?'videos':'photos');
 }
 
 async function switchEntityMedia(kind,name,filters,media){
   if((entityMediaView.media==='photos')===(media==='photos')&&!entityMediaView.set)return;
   entityMediaView=media==='photos'?{media:'photos',set:0}:emptyMediaView();
   routeEntityView(kind,name,entityMediaView);
-  renderMediaTabs(kind,name,filters);
+  renderEntityMediaToggle(kind,name,filters);
   if(media==='photos'){renderPhotoWall(kind,name,filters,entityPhotos);return}
   const seq=++entityRequestSeq;
   const items=await fetchEntityItems(kind,name,filters);
@@ -3265,7 +3263,7 @@ async function openPhotoSet(kind,name,filters,setId,push=true){
   if(seq!==entityRequestSeq||data.error)return;
   entityMediaView={media:'photos',set:setId};
   if(push)routeEntityView(kind,name,entityMediaView);
-  renderMediaTabs(kind,name,filters);
+  renderEntityMediaToggle(kind,name,filters);
   renderPhotoWall(kind,name,filters,data);
 }
 
@@ -3554,6 +3552,11 @@ async function openEntity(kind,name,push=true,requestedTag){
       <span class="ring"><span>${esc(x.k.slice(0,1))}</span><img src="/entity-image?kind=performer&id=${x.id}" alt="" loading="lazy"
         onerror="${x.rep?`if(!this.dataset.f){this.dataset.f='1';this.src='/avatar?id=${x.rep}'}else{this.remove()}`:`this.remove()`}"></span>
       <span class="nm">${esc(x.k)}</span><small>${x.n.toLocaleString()} 部</small></button>`).join('');
+  const photoCount=photos&&!photos.error?(photos.total||0):0;
+  const mediaSelected=entityMediaView.media==='photos';
+  const mediaLabel=mediaSelected?'切换到视频':'切换到照片';
+  const mediaToggle=photoCount?`<button class="entitymediatoggle" type="button" data-media-toggle
+      aria-pressed="${mediaSelected}" aria-label="${mediaLabel}" title="${mediaLabel}">${icon('pics')}</button>`:'';
   $('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;
   $('#index').innerHTML=`<div class="entityhero"><div class="entityportrait ${kind==='performer'||kind==='creator'?'':'square'}">${image}<span>${esc(name.slice(0,1))}</span></div>
       <div><h2>${esc(d.canonical_name)}</h2>
@@ -3561,11 +3564,10 @@ async function openEntity(kind,name,push=true,requestedTag){
         ${d.summary?`<div class="entitysummary">${esc(d.summary)}</div>`:''}
         ${links?`<div class="entitylinks">${links}</div>`:''}
         ${terms?`<div class="entityterms">馆藏检索词 · ${terms}</div>`:''}</div></div>
-    ${(tags||related)?`<div class="entitymeta">
-      ${related?`<section><h3>关联艺人</h3><div class="relatedpeople">${related}</div></section>`:''}
-      ${tags?`<section><h3>相关标签</h3><div class="entitytags">${tags}</div></section>`:''}
+    ${(tags||related||mediaToggle)?`<div class="entitymeta">
+      ${related?`<section aria-label="同台艺人"><div class="relatedpeople">${related}</div></section>`:''}
+      ${(tags||mediaToggle)?`<section aria-label="媒体与标签"><div class="entitytags">${mediaToggle}${tags}</div></section>`:''}
     </div>`:''}
-    <div class="mediatabs" hidden></div>
     <div class="entitysection"></div>`;
   $('#index').querySelectorAll('[data-entity-tag]').forEach(b=>b.onclick=()=>{
     const next=b.dataset.entityTag===entityTag?'':b.dataset.entityTag;
@@ -3577,9 +3579,8 @@ async function openEntity(kind,name,push=true,requestedTag){
   $('#index').querySelectorAll('[data-related-performer]').forEach(b=>b.onclick=()=>
     openEntity('performer',b.dataset.relatedPerformer));
   entityPhotos=photos&&!photos.error?photos:null;
-  entityVideoCount=items.total||0;
   if(entityMediaView.media==='photos'&&!photoTotalOf())entityMediaView=emptyMediaView();
-  renderMediaTabs(kind,name,filters);
+  renderEntityMediaToggle(kind,name,filters);
   if(entityMediaView.media!=='photos')renderEntityCollection(kind,name,items,filters);
   else if(entityMediaView.set)await openPhotoSet(kind,name,filters,entityMediaView.set,false);
   else renderPhotoWall(kind,name,filters,entityPhotos);

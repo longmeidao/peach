@@ -1079,10 +1079,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("data-related-performer")
         profile = self.page[self.page.index("async function openEntity("):]
         self.assertLess(profile.index("<div class=\"entityhero\">"),
-                        profile.index("关联艺人"))
-        self.assertLess(profile.index("关联艺人"), profile.index("相关标签"))
-        self.assertLess(profile.index("相关标签"),
-                        profile.index("<div class=\"mediatabs\" hidden>"))
+                        profile.index('class="relatedpeople"'))
+        self.assertLess(profile.index('class="relatedpeople"'),
+                        profile.index('class="entitytags"'))
+        self.assertNotIn("关联艺人", profile)
+        self.assertNotIn("相关标签", profile)
 
     def test_every_home_navigation_restores_the_shared_facets(self):
         self.assertPageContains("function showHomeSurfaces()")
@@ -1725,12 +1726,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks('id="iClose"', "顶栏入口本身就是返回路径")
         self.assertPageLacks("$('#iClose').onclick")
 
-    def test_photo_tab_only_appears_when_the_entity_really_has_images(self):
-        self.assertPageContains('<div class="mediatabs" hidden></div>')
-        self.assertPageContains("tabs.hidden=!photos")
-        self.assertPageContains("tab('photos','照片','layout-grid',photos)")
-        self.assertPageContains("tab('videos','视频','play',entityVideoCount)")
-        self.assertPageContains(".mediatabs[hidden]{display:none}")
+    def test_beeg_photo_toggle_precedes_tags_and_only_appears_with_images(self):
+        self.assertPageContains('id="i-pics" viewBox="0 0 16 16" fill="currentColor" stroke="none"')
+        self.assertPageContains('class="entitymediatoggle" type="button" data-media-toggle')
+        self.assertPageContains("const mediaToggle=photoCount?")
+        self.assertPageContains('<div class="entitytags">${mediaToggle}${tags}</div>')
+        self.assertPageContains("button.hidden=!photos")
+        self.assertPageContains("selected?'videos':'photos'")
+        self.assertPageContains(".entitytags .entitymediatoggle{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px")
+        self.assertPageLacks('<div class="mediatabs" hidden></div>')
 
     def test_photo_wall_uses_cached_thumbnails_and_only_the_lightbox_reads_originals(self):
         # 瀑布流铺原图等于一屏付几十兆 PikPak 流量；缩略图由服务端缓存一次。

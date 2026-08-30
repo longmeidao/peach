@@ -347,11 +347,15 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
   stroke-width:1.8}.entitylinkicon img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#fff}
 .entitylinklabel{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.entitylinkarrow{color:var(--muted);flex:none}
 .entityterms{margin-top:13px;color:var(--muted);font-size:var(--fs-xs)}.entityterms code{color:var(--ink-2);margin-right:8px}
-.entitymeta{display:grid;gap:22px;margin:0 0 28px;min-width:0}.entitymeta section{min-width:0}.entitymeta h3,.entitysection h3{font-size:var(--fs-sm);letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
-.entitytags{display:flex;flex-wrap:wrap;gap:7px}.entitytags button{height:34px;padding:0 14px;border-radius:var(--pill-radius);
+.entitymeta{display:grid;gap:22px;margin:0 0 28px;min-width:0}.entitymeta section{min-width:0}.entitysection h3{font-size:var(--fs-sm);letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
+.entitytags{display:flex;align-items:center;flex-wrap:wrap;gap:7px}.entitytags button{height:34px;padding:0 14px;border-radius:var(--pill-radius);
   border:1px solid var(--border-15);background:transparent;color:var(--ink-2);cursor:pointer;max-width:100%;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .entitytags button:hover{background:var(--overlay-5);color:var(--ink)}.entitytags button[aria-pressed="true"]{background:var(--ink-2);border-color:var(--ink-2);color:var(--ground)}.entitytags small{color:var(--muted);margin-left:4px}
+.entitytags .entitymediatoggle{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;padding:0;
+  border:0;background:transparent;color:var(--muted)}.entitytags .entitymediatoggle svg{width:16px;height:16px;
+  fill:currentColor;stroke:none}.entitytags .entitymediatoggle:hover{background:var(--overlay-5);color:var(--ink)}
+.entitytags .entitymediatoggle[aria-pressed="true"]{border-color:transparent;background:var(--ink-2);color:var(--ground)}
 .relatedpeople{display:flex;gap:14px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
 .relatedpeople::-webkit-scrollbar{display:none}.relatedperson{flex:0 0 78px;border:0;background:transparent;color:inherit;
   padding:0;cursor:pointer;text-align:center}.relatedperson .ring{display:grid;place-items:center;width:64px;height:64px;
@@ -362,7 +366,7 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
 .entitysection{min-width:0;max-width:100%}.entitysection h3{font-size:var(--fs-sm);letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
 .entitycollectionhead{display:flex;align-items:center;gap:10px;margin:0 0 12px;min-width:0}
 .entitycollectionhead h3{margin:0;flex:0 0 auto}.entitycollectionhead .javlayout{display:inline-flex;gap:2px}
-/* 视频 / 照片切换。只有该实体真有图片时才出现，没有图片的资料页保持原样。 */
+/* 关注页的视频 / 图片切换；实体页按 Beeg 把单一图片按钮放进标签行。 */
 .mediatabs{display:flex;gap:8px;margin:0 0 18px;border-bottom:1px solid var(--line-soft)}
 .mediatabs[hidden]{display:none}
 .mediatabs button{display:flex;align-items:center;gap:7px;border:0;background:transparent;color:var(--muted);
