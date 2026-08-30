@@ -739,7 +739,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             "/stream?id=1", headers={**headers, "Range": "bytes=99-"}
         )
         self.assertEqual(invalid.status_code, 416)
-        self.assertEqual(invalid.headers["content-range"], "*/10")
+        self.assertEqual(invalid.headers["content-range"], "bytes */10")
 
         head = await self.client.head("/stream?id=1", headers=headers)
         self.assertEqual(head.status_code, 200)
