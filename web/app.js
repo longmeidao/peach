@@ -21,6 +21,7 @@ import {
   LOC,
 } from './js/core.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
+import { noteHtml, progressHtml } from './js/ui-components.js';
 
 initMiddleTruncate(document);
 
@@ -1012,23 +1013,23 @@ async function openStats(push=true,focusResource=false){
   const pct=(x,y)=>y?Math.round(x/y*100):0;
   const gb=b=>b>=1099511627776?(b/1099511627776).toFixed(2)+' TB':(b/1073741824).toFixed(1)+' GB';
   const hrs=s=>s>=3600?(s/3600).toFixed(1)+' 小时':Math.round(s/60)+' 分钟';
-  const bar=(x,y)=>`<div class="prog"><i style="width:${pct(x,y)}%"></i></div>`;
-  const card=(t,body,size='third')=>`<div class="scard2 statcard-${size}"><h3>${t}</h3>${body}</div>`;
+  const card=(t,body,size='third')=>`<section class="scard2 statcard-${size}"><header class="statcardhead"><h3>${t}</h3></header><div class="statcardbody">${body}</div></section>`;
   const kv=(k,v,u)=>`<div class="kv"><span>${k}</span><b>${v}${u?`<span class="u">${u}</span>`:''}</b></div>`;
+  const metric=(k,v,max)=>`<div class="statmetric">${kv(k,v.toLocaleString(),pct(v,max)+'%')}${progressHtml(`${k}：${v.toLocaleString()} / ${max.toLocaleString()}`,v,max)}</div>`;
   $('#stats').innerHTML=`
-    <div class="statshead"></div>
+    <div class="statsdashboard"><div class="statshead"></div>
     <div class="scards">
       ${card('库存', d.by_loc.map(l=>kv(LOC[l.k]||l.k, l.videos.toLocaleString(), gb(l.bytes))).join('')
         + kv('合计', d.by_loc.reduce((s,l)=>s+l.videos,0).toLocaleString(),
              gb(d.by_loc.reduce((s,l)=>s+l.bytes,0))))}
       ${card('归属进度',
-         kv('有创作者', a.creator.toLocaleString(), pct(a.creator,a.videos)+'%')+bar(a.creator,a.videos)
-        +kv('有番号', a.code.toLocaleString(), pct(a.code,a.videos)+'%')+bar(a.code,a.videos)
-        +kv('有厂牌', a.studio.toLocaleString(), pct(a.studio,a.videos)+'%')+bar(a.studio,a.videos))}
+         metric('有创作者',a.creator,a.videos)
+        +metric('有番号',a.code,a.videos)
+        +metric('有厂牌',a.studio,a.videos))}
       ${card('加工进度',
-         kv('已抽帧', a.thumb.toLocaleString(), pct(a.thumb,a.videos)+'%')+bar(a.thumb,a.videos)
-        +kv('已探测时长', a.duration.toLocaleString(), pct(a.duration,a.videos)+'%')+bar(a.duration,a.videos)
-        +kv('有内容标签', d.tag_cov.toLocaleString(), pct(d.tag_cov,a.videos)+'%')+bar(d.tag_cov,a.videos))}
+         metric('已抽帧',a.thumb,a.videos)
+        +metric('已探测时长',a.duration,a.videos)
+        +metric('有内容标签',d.tag_cov,a.videos))}
       ${card('观看',
          `<div class="big">${cs.played.toLocaleString()}</div><div class="bigsub">看过的片子</div>`
         +kv('累计观看', hrs(cs.play_seconds))
@@ -1040,22 +1041,22 @@ async function openStats(push=true,focusResource=false){
       ${card('标签来源', d.tag_source.map(t=>
           kv(t.k, t.n.toLocaleString(), t.assets.toLocaleString()+' 个视频')).join(''),'quarter')}
       ${card('系统盘', d.system_disk
-        ? kv('可用', gb(d.system_disk.free), pct(d.system_disk.free,d.system_disk.total)+'%')
-          +bar(d.system_disk.free,d.system_disk.total)
+         ? kv('可用', gb(d.system_disk.free), pct(d.system_disk.free,d.system_disk.total)+'%')
+          +progressHtml(`系统盘可用：${gb(d.system_disk.free)} / ${gb(d.system_disk.total)}`,d.system_disk.free,d.system_disk.total)
           +`<div class="bigsub">CloudDrive 的块缓存会长在这里，低于 40 GB 抽帧任务会拒绝启动</div>`
         : '—','quarter')}
     </div>
-    <div class="scard2 statswide"><h3>内容标签 Top 30</h3>
-      <div class="tagwall">${d.top_tags.map(t=>
+    <section class="scard2 statswide"><header class="statcardhead"><h3>内容标签 Top 30</h3></header>
+      <div class="statcardbody"><div class="tagwall">${d.top_tags.map(t=>
         `<button class="tg ${t.cat}" data-k="${esc(t.k)}" style="padding:5px 12px;font-size:13px">
-          ${esc(tagLabel(t.k))} <span style="opacity:.6;font-size:11px">${t.n.toLocaleString()}</span></button>`).join('')}</div></div>
-    ${d.recent.length?`<div class="scard2 statswide"><h3>最近看过</h3>${d.recent.map(r=>{
+          ${esc(tagLabel(t.k))} <span style="opacity:.6;font-size:11px">${t.n.toLocaleString()}</span></button>`).join('')}</div></div></section>
+    ${d.recent.length?`<section class="scard2 statswide"><header class="statcardhead"><h3>最近看过</h3></header><div class="statcardbody">${d.recent.map(r=>{
       const real=r.duration?Math.min(r.play_seconds/r.duration,1)*100:0;
       const mx=(r.max_reached||0)*100;
       return kv(esc((r.creator?r.creator+' · ':'')+r.name).slice(0,90),
         `真实看 ${real.toFixed(0)}% / 到达 ${mx.toFixed(0)}%`,
-        real<mx-25?'快进扫过':(r.o_count?`⌀ ${r.o_count}`:''));}).join('')}</div>`:''}
-    ${resourceSyncMarkup()}`;
+        real<mx-25?'快进扫过':(r.o_count?`⌀ ${r.o_count}`:''));}).join('')}</div></section>`:''}
+    ${resourceSyncMarkup()}</div>`;
   $('#stats').querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
     closeStats(); toggleTag(b.dataset.k)});
   await wireResourceSync();
@@ -1113,7 +1114,7 @@ async function wireResourceSync(){
       }catch(error){
         button.disabled=false;button.classList.remove('busy');
         button.innerHTML=`${icon('refresh-cw')}<span>重试同步</span>`;
-        result.insertAdjacentHTML('beforeend',`<p class="resourceerror">${esc(error.message)}</p>`)}
+        result.insertAdjacentHTML('beforeend',noteHtml(error.message,{variant:'error',label:'同步失败'}))}
     });
   };
   const followScan=async payload=>{
@@ -1131,7 +1132,7 @@ async function wireResourceSync(){
       if(!active())return;
       render(payload);
     }
-    catch(error){result.innerHTML=`<p class="resourceerror">扫描失败：${esc(error.message)}</p>`}
+    catch(error){result.innerHTML=noteHtml(error.message,{variant:'error',label:'扫描失败'})}
     finally{setBusy(false,true)}
   };
   scan.onclick=()=>followScan(null);
@@ -1256,7 +1257,7 @@ async function openTaste(push=true){
       if(request===tasteRequest&&location.pathname==='/taste')renderTaste(data)}
     catch(error){
       if(request===tasteRequest)$('#stats').innerHTML=
-        `<div class="tastepage"><p class="empty">${esc(error.message||'分析未取得')}</p></div>`}
+        `<div class="tastepage">${noteHtml(error.message||'分析未取得',{variant:'error',label:'分析未取得'})}</div>`}
   }
   window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -1984,7 +1985,7 @@ function followCheckFailNote(report){
   const failed=rows.filter(r=>!r.ok);
   const evidence=rows.filter(r=>r.evidence_error);
   if(!failed.length&&!evidence.length)return '';
-  return `<div class="fcheckreport" role="status">${icon('alert')}<div>
+  return `<div class="geist-note geist-note-error fcheckreport" role="alert">${icon('alert')}<div>
     <p><b>${failed.length} 个来源检查失败</b></p>
     ${failed.map(row=>`<p class="fcheckfail">${esc([row.provider_label||row.provider,row.ref]
       .filter(Boolean).join(' '))}${row.provider?'：':''}${esc(row.error||'未说明原因')}</p>`).join('')}
@@ -2074,7 +2075,7 @@ function renderFollow(){
       <button data-follow-media="images" aria-pressed="${followMediaView==='images'}">${icon('layout-grid')}<span>图片</span><b class="mono">${mediaCounts.images.toLocaleString()}</b></button>
     </div>`:''}
     ${broken.length&&!sessionStorage.getItem('peach-fwarn-dismissed')
-      ?`<p class="fwarn">${icon('alert')}<span>${broken.length} 个来源上次检查失败，去<button class="flink" data-follow-manage>管理关注</button>看原因。</span><button class="wclose" data-fwarn-dismiss title="本次会话不再显示" aria-label="关闭提醒">${icon('x')}</button></p>`:''}
+      ?`<p class="geist-banner fwarn">${icon('alert')}<span>${broken.length} 个来源上次检查失败，去<button class="flink" data-follow-manage>管理关注</button>看原因。</span><button class="wclose" data-fwarn-dismiss title="本次会话不再显示" aria-label="关闭提醒">${icon('x')}</button></p>`:''}
     <div class="followlist${followMediaView==='images'?' followphotowall':''}">${visible.length?visible.map(group=>{
       const source=sourceOf(group),siblings=source&&authorSources.get(source.author_key)||[];
       return followCard(group,siblings)}).join('')
@@ -3557,17 +3558,38 @@ function renderSidebarOrderSetting(){
       <button data-sidebar-key="${esc(key)}" data-sidebar-move="-1" aria-label="上移 ${esc(label)}" title="上移"${index===0?' disabled':''}>${icon('chevron-up')}</button>
       <button data-sidebar-key="${esc(key)}" data-sidebar-move="1" aria-label="下移 ${esc(label)}" title="下移"${index===visible.length-1?' disabled':''}>${icon('chevron-down')}</button>
       <button data-sidebar-key="${esc(key)}" data-sidebar-hide aria-label="隐藏 ${esc(label)}" title="隐藏"${visible.length===1?' disabled':''}>${icon('eye-off')}</button></span></div>`).join('');
-  const options=available.map(([key,label])=>`<option value="${esc(key===''?'__home__':key)}">${esc(label)}</option>`).join('');
-  /* 添加控件带 prefix 图标（Geist 按钮的 prefix 模式）：图标跟当前选中的
-     入口走，换选项即换图标。native option 画不了图标，只能挂在 select 左侧。 */
-  const addIconOf=value=>{const item=NAV_CATALOG.find(([k])=>(k===''?'__home__':k)===value);
-    return item?item[2]:'plus'};
   const firstValue=available.length?(available[0][0]===''?'__home__':available[0][0]):'';
-  root.innerHTML=rows+`<div class="sidebaradd"><span class="sidebaraddfield"><i data-add-icon aria-hidden="true">${icon(addIconOf(firstValue))}</i><select data-sidebar-add-select aria-label="选择要添加的页面"${available.length?'':' disabled'}>${options||'<option>全部页面都已显示</option>'}</select></span>
+  root.innerHTML=rows+`<div class="sidebaradd"><div class="sidebaraddpicker">
+      <button type="button" class="sidebaraddfield" data-sidebar-add-trigger aria-haspopup="listbox" aria-expanded="false"${available.length?'':' disabled'}>
+        ${available.length?`${icon(available[0][2])}<span data-sidebar-add-label>${esc(available[0][1])}</span>${icon('chevron-down')}`:`${icon('check')}<span>全部页面都已显示</span>`}
+      </button>
+      ${available.length?`<div class="sidebaraddmenu" data-sidebar-add-menu role="listbox" aria-label="选择要添加的页面" hidden>${available.map(([key,label,ic],index)=>
+        `<button type="button" role="option" data-sidebar-add-option="${esc(key===''?'__home__':key)}" aria-selected="${index===0}" tabindex="${index===0?'0':'-1'}">${icon(ic)}<span>${esc(label)}</span></button>`).join('')}</div>`:''}
+    </div>
     <button data-sidebar-add${available.length?'':' disabled'}>${icon('plus')}<span>添加</span></button></div>`;
-  root.querySelectorAll('[data-sidebar-add-select]').forEach(select=>select.onchange=()=>{
-    const slot=root.querySelector('[data-add-icon]');
-    if(slot)slot.innerHTML=icon(addIconOf(select.value));
+  let selectedAddKey=firstValue;
+  const addTrigger=root.querySelector('[data-sidebar-add-trigger]'),addMenu=root.querySelector('[data-sidebar-add-menu]');
+  const closeAddMenu=()=>{if(!addMenu)return;addMenu.hidden=true;addTrigger.setAttribute('aria-expanded','false')};
+  addTrigger?.addEventListener('click',()=>{
+    if(!addMenu)return;const opening=addMenu.hidden;addMenu.hidden=!opening;addTrigger.setAttribute('aria-expanded',String(opening));
+    if(opening)addMenu.querySelector('[aria-selected="true"]')?.focus();
+  });
+  addMenu?.querySelectorAll('[data-sidebar-add-option]').forEach(option=>{
+    option.onclick=()=>{
+      selectedAddKey=option.dataset.sidebarAddOption;
+      addMenu.querySelectorAll('[role="option"]').forEach(item=>{item.setAttribute('aria-selected',String(item===option));item.tabIndex=item===option?0:-1});
+      const item=NAV_CATALOG.find(([key])=>(key===''?'__home__':key)===selectedAddKey);
+      if(item)addTrigger.innerHTML=`${icon(item[2])}<span data-sidebar-add-label>${esc(item[1])}</span>${icon('chevron-down')}`;
+      closeAddMenu();addTrigger.focus();
+    };
+    option.onkeydown=e=>{
+      if(e.key==='Escape'){e.preventDefault();closeAddMenu();addTrigger.focus();return}
+      const all=[...addMenu.querySelectorAll('[role="option"]')],at=all.indexOf(option);
+      if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();all[(at+(e.key==='ArrowDown'?1:-1)+all.length)%all.length].focus()}
+    };
+  });
+  root.querySelector('.sidebaraddpicker')?.addEventListener('focusout',e=>{
+    if(!e.currentTarget.contains(e.relatedTarget))closeAddMenu();
   });
   root.querySelectorAll('[data-sidebar-move]').forEach(button=>button.onclick=()=>{
     const from=appSettings.sidebarOrder.indexOf(button.dataset.sidebarKey),to=from+(+button.dataset.sidebarMove);
@@ -3581,7 +3603,7 @@ function renderSidebarOrderSetting(){
     saveSidebarSetting();
   });
   root.querySelector('[data-sidebar-add]')?.addEventListener('click',()=>{
-    const raw=root.querySelector('[data-sidebar-add-select]')?.value,key=raw==='__home__'?'':raw;
+    const key=selectedAddKey==='__home__'?'':selectedAddKey;
     if(key===undefined||appSettings.sidebarOrder.includes(key)||!ALL_SIDEBAR_KEYS.includes(key))return;
     appSettings.sidebarOrder=[...appSettings.sidebarOrder,key];saveSidebarSetting();
   });
@@ -3685,11 +3707,11 @@ function javLayout(){
   const raw=JAV_LAYOUT_ALIASES[appSettings.javLayout]||appSettings.javLayout;
   return allowedSetting(raw,JAV_LAYOUTS.map(([k])=>k),'big');
 }
-const javLayoutButtons=()=>`<span class="javlayout">`+JAV_LAYOUTS.map(([k,label,ic])=>
-  `<button data-jav-layout="${k}" aria-pressed="${k===javLayout()}" title="${esc(label)}"
-    aria-label="${esc(label)}">${icon(ic)}</button>`).join('')+`</span>`;
+const javLayoutButtons=()=>`<fieldset class="javlayout"><legend class="sr-only">JAV 卡片版式</legend>`+JAV_LAYOUTS.map(([k,label,ic])=>
+  `<label title="${esc(label)}"><input type="radio" name="jav-layout" value="${k}" data-jav-layout
+    ${k===javLayout()?'checked':''}><span aria-hidden="true">${icon(ic)}</span><span class="sr-only">${esc(label)}</span></label>`).join('')+`</fieldset>`;
 const wireJavLayoutButtons=root=>root?.querySelectorAll('[data-jav-layout]').forEach(b=>
-  b.onclick=()=>setJavLayout(b.dataset.javLayout));
+  b.onchange=()=>{if(b.checked)setJavLayout(b.value)});
 function setJavLayout(value){
   appSettings.javLayout=value;
   saveSettings();

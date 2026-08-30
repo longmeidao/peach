@@ -48,6 +48,7 @@
   --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --success:#5FB95F; --ambient-opacity:1;}
 
 *,*::before,*::after{box-sizing:border-box}
+.sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 html{color-scheme:light;scroll-padding-top:calc(var(--topH) + 8px)}
 @media (prefers-color-scheme:dark){html:not([data-theme="light"]){color-scheme:dark}}
 html[data-theme="dark"]{color-scheme:dark}
@@ -236,19 +237,15 @@ button.busy>svg{animation:peach-spin .8s linear infinite}
 .tastesources{padding-bottom:8px}.tastesources>header{display:flex;justify-content:space-between;align-items:baseline;gap:16px}.tastesources>div{display:grid;grid-auto-flow:row;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--line-soft);border-left:1px solid var(--line-soft)}.tastesource{display:grid;grid-template-columns:34px minmax(0,1fr) 34px;align-items:center;gap:10px;padding:10px 12px;border-right:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}.tastebrowser{width:32px;height:32px;border-radius:9px;background:var(--overlay-5);display:grid;place-items:center;color:var(--tungsten)}.tastebrowser svg,.tastesource>button svg{width:17px;height:17px;stroke:currentColor;fill:none}.tastesource b,.tastesource small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tastesource small{color:var(--muted);font-size:var(--fs-xs);margin-top:2px}.tastesource>button{width:32px;height:32px;border:0;border-radius:8px;background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer}.tastesource>button:hover{background:var(--hover);color:var(--drop)}.tasteprivacy{margin:12px 2px 0;color:var(--muted);font-size:var(--fs-xs)}
 @media(max-width:1050px){.tastesummaries{grid-template-columns:repeat(2,minmax(0,1fr))}.tastepanel-wide,.tastepanel-half,.tastepanel-compact{grid-column:span 6}.tastepanel-wide .tasteranks,.tastepanel-half .tasteranks,.tastepanel-compact .tasteranks,.tastepanel-full .tasteranks{grid-template-columns:repeat(2,minmax(0,1fr))}.tastesources>div{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:640px){.tastehead{display:block}.tastehead>div:first-child{margin-bottom:8px}.tasteactions{display:grid;grid-template-columns:1fr 1fr}.tasteactions select{grid-column:1/-1}.tasteactions button{justify-content:center}.tastesummaries{grid-template-columns:minmax(0,1fr)}.tastegrid{grid-template-columns:minmax(0,1fr)}.tastepanel-wide,.tastepanel-half,.tastepanel-compact,.tastepanel-full{grid-column:1}.tastepanel-wide .tasteranks,.tastepanel-half .tasteranks,.tastepanel-compact .tasteranks,.tastepanel-full .tasteranks,.tastesources>div{grid-template-columns:minmax(0,1fr)}.tastegroup>header{align-items:flex-start}.tastesource{grid-template-columns:32px minmax(0,1fr) 32px}.tastesources>header{display:block}.tastesources>header p{margin:-5px 0 9px}.tastesummary>b{font-size:var(--fs-xl)}}
-.scards{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px;margin-bottom:18px}.statcard-third{grid-column:span 4}.statcard-half{grid-column:span 6}.statcard-quarter{grid-column:span 3}.statswide{margin-bottom:18px}
-.scard2{background:color-mix(in srgb,var(--surface) 82%,transparent);border:1px solid var(--line-soft);
-  border-radius:14px;padding:18px;box-shadow:0 14px 36px -30px #000}
-.scard2 h3{margin:0 0 11px;font-size:var(--fs-xs);letter-spacing:.14em;color:var(--muted);
-  text-transform:uppercase;font-weight:600}
-.kv{display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;
-  border-bottom:1px solid var(--line-soft);font-size:var(--fs-sm)}
-.kv:last-child{border-bottom:0}
+.statsdashboard{display:grid;gap:18px}.scards{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px}.statcard-third{grid-column:span 4}.statcard-half{grid-column:span 6}.statcard-quarter{grid-column:span 3}
+.scard2{overflow:hidden;background:var(--surface);border:1px solid var(--line-soft);border-radius:12px}
+.statcardhead{display:flex;align-items:center;min-height:48px;padding:0 16px;border-bottom:1px solid var(--line-soft)}
+.scard2 h3{margin:0;font-size:var(--fs-md);color:var(--ink);font-weight:600}
+.statcardbody{padding:12px 16px 16px}.kv{display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;font-size:var(--fs-sm)}
 .kv>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:10px}
 .kv b{font-variant-numeric:tabular-nums;font-weight:600;min-width:0;max-width:62%;text-align:right;overflow-wrap:anywhere}
 .kv .u{color:var(--muted);font-size:var(--fs-xs);margin-left:5px}
-.prog{height:6px;background:var(--sunk);border-radius:var(--pill-radius);overflow:hidden;margin-top:9px}
-.prog i{display:block;height:100%;background:var(--tungsten);border-radius:var(--pill-radius)}
+.statmetric{padding:3px 0 12px;border-bottom:1px solid var(--line-soft)}.statmetric:last-child{padding-bottom:0;border-bottom:0}.geist-progress{height:8px;margin-top:7px;overflow:hidden;border-radius:var(--pill-radius);background:var(--sunk)}.geist-progress i{display:block;width:var(--progress-value);height:100%;border-radius:inherit;background:var(--tungsten)}
 .big{font-size:var(--fs-3xl);font-weight:600;font-variant-numeric:tabular-nums;line-height:1.1}
 .bigsub{color:var(--muted);font-size:var(--fs-xs);margin-top:3px}
 @media(max-width:1050px){.statcard-third,.statcard-half,.statcard-quarter{grid-column:span 6}}
@@ -354,7 +351,7 @@ button.busy>svg{animation:peach-spin .8s linear infinite}
 .relatedperson:hover .ring{box-shadow:0 0 0 1px var(--border-15)}
 .entitysection{min-width:0;max-width:100%}.entitysection h3{font-size:var(--fs-sm);letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
 .entitycollectionhead{display:flex;align-items:center;gap:10px;margin:0 0 12px;min-width:0}
-.entitycollectionhead h3{margin:0;flex:0 0 auto}.entitycollectionhead .javlayout{display:inline-flex;gap:6px}
+.entitycollectionhead h3{margin:0;flex:0 0 auto}.entitycollectionhead .javlayout{display:inline-flex;gap:2px}
 /* 视频 / 照片切换。只有该实体真有图片时才出现，没有图片的资料页保持原样。 */
 .mediatabs{display:flex;gap:8px;margin:0 0 18px;border-bottom:1px solid var(--line-soft)}
 .mediatabs[hidden]{display:none}
@@ -1024,9 +1021,9 @@ body.settings-open{overflow:hidden}
 /* 模态层次对齐 Geist dialog：scrim 压暗 + 轻毛玻璃。42% 黑在暗色主题下几乎
    看不出遮挡关系，暗色下加深到 62%。 */
 .settingspanel{backdrop-filter:blur(5px)}
-.settingscard{width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:hidden;
+.settingscard{display:flex;flex-direction:column;width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:hidden;
   border:1px solid var(--border-15);border-radius:var(--floating-radius);background:var(--frost-panel);box-shadow:0 2px 4px #0004,0 30px 90px -30px #000;
-  backdrop-filter:saturate(1.7) blur(24px)}.settingsscroll{max-height:inherit;overflow-y:auto;padding:0 20px 20px;scrollbar-gutter:stable both-edges;border-radius:inherit;overscroll-behavior:contain;scroll-padding-top:76px}.settingshead{position:sticky;z-index:2;top:0;display:flex;align-items:center;justify-content:space-between;margin:0 -20px;padding:20px 20px 16px;border-bottom:1px solid var(--line-soft);background:var(--frost-panel);backdrop-filter:saturate(1.7) blur(24px)}
+  backdrop-filter:saturate(1.7) blur(24px)}.settingsscroll{flex:1;min-height:0;overflow-y:auto;padding:0 20px 20px;scrollbar-gutter:stable;overscroll-behavior:contain}.settingshead{z-index:2;display:flex;align-items:center;justify-content:space-between;flex:none;padding:20px 20px 16px;border-bottom:1px solid var(--line-soft);background:var(--frost-panel);backdrop-filter:saturate(1.7) blur(24px)}
 /* 暗色命中要跟随主题机制：app 不写 data-theme，暗色来自 prefers-color-scheme；
    data-theme="dark" 分支给将来手动切主题留位，两条保持同值。
    主题覆盖放在基础规则后面——`.settingscard{` 的子串查找以首条为准。 */
@@ -1056,14 +1053,8 @@ body.settings-open{overflow:hidden}
 #censorSetting:checked::after{left:17px}
 #censorSetting:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .sidebarsetting{display:grid;gap:12px;padding:0}.sidebarsetting>span b,.sidebarsetting>span small{display:block}.sidebarsetting>span small{margin-top:3px;color:var(--muted);line-height:1.45}.sidebarorder{display:grid;gap:6px}.sidebarorderrow{position:relative;display:flex;align-items:center;justify-content:space-between;min-height:48px;padding:5px 6px;border:1px solid var(--line-soft);border-radius:9px;background:var(--overlay-3);cursor:grab}.sidebarorderrow:active{cursor:grabbing}.sidebarorderrow.dragging{opacity:.42}.sidebarorderrow.drop-before::before,.sidebarorderrow.drop-after::after{content:'';position:absolute;z-index:2;left:7px;right:7px;height:2px;border-radius:2px;background:var(--tungsten)}.sidebarorderrow.drop-before::before{top:-5px}.sidebarorderrow.drop-after::after{bottom:-5px}.sidebarorderrow>span{display:flex;align-items:center;gap:8px}.sidebarorderrow svg{width:18px;height:18px;stroke:currentColor;fill:none}.sidebarorderlabel{min-width:0}.sidebarorderlabel>b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sidebardrag{display:grid;place-items:center;width:24px;color:var(--muted)}.sidebardrag svg{width:20px;height:20px}.sidebarorderactions{flex:none}.sidebarorderrow button,.sidebaradd button{display:grid;place-items:center;min-width:34px;height:34px;border:0;border-radius:7px;background:transparent;color:var(--muted);cursor:pointer}.sidebarorderrow button:hover:not(:disabled),.sidebaradd button:hover:not(:disabled){background:var(--hover);color:var(--ink)}.sidebarorderrow button:disabled,.sidebaradd button:disabled{opacity:.25;cursor:default}.sidebaradd{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:5px}
-.sidebaraddfield{position:relative;display:grid}
-.sidebaraddfield>i{position:absolute;left:11px;top:50%;translate:0 -50%;width:16px;height:16px;
-  color:var(--muted);pointer-events:none;display:grid;place-items:center}
-.sidebaraddfield>i svg{width:16px;height:16px;stroke:currentColor;fill:none;
-  stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.sidebaradd .sidebaraddfield select{padding-left:34px}.sidebaradd select{min-width:0;border:1px solid var(--line);border-radius:8px;background:#181a1d;color:#f5f7fa;color-scheme:dark;padding:9px 34px 9px 11px;font:inherit;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;background-size:16px 16px}.sidebaradd button{grid-template-columns:auto auto;gap:6px;padding:0 11px;border:1px solid var(--line);color:var(--ink-2)}.sidebaradd svg{width:17px;height:17px;stroke:currentColor;fill:none}
-.sidebaradd select,.sidebaradd button{height:42px;box-sizing:border-box}.sidebaradd select{padding-top:0;padding-bottom:0}
-@media(max-width:600px){.settingsscroll{padding:0 17px 17px}.settingshead{padding-top:17px}.settingrow{grid-template-columns:1fr;gap:9px}.settingrow select{width:100%;min-width:0}.settingrow input[type=checkbox]{justify-self:start}}
+.sidebaraddpicker{position:relative;min-width:0}.sidebaradd .sidebaraddfield{display:grid;grid-template-columns:auto minmax(0,1fr) auto;width:100%;height:42px;box-sizing:border-box;align-items:center;gap:9px;padding:0 11px;border:1px solid var(--line);border-radius:8px;background:#181a1d;color:#f5f7fa;text-align:left;font:inherit}.sidebaraddfield svg:last-child{color:var(--muted)}.sidebaraddmenu{position:absolute;z-index:4;left:0;right:0;bottom:calc(100% + 6px);max-height:min(312px,48vh);overflow:auto;overscroll-behavior:contain;padding:6px;border:1px solid var(--border-15);border-radius:10px;background:#181a1d;box-shadow:0 16px 44px -20px #000}.sidebaraddmenu[hidden]{display:none}.sidebaradd .sidebaraddmenu button{grid-template-columns:auto minmax(0,1fr);width:100%;height:38px;justify-content:start;gap:9px;padding:0 8px;border:0;text-align:left}.sidebaraddmenu button[aria-selected="true"]{background:var(--hover);color:var(--ink)}.sidebaradd button{grid-template-columns:auto auto;gap:6px;padding:0 11px;border:1px solid var(--line);color:var(--ink-2)}.sidebaradd svg{width:17px;height:17px;stroke:currentColor;fill:none}
+.sidebaradd>button{height:42px;box-sizing:border-box}@media(max-width:600px){.settingsscroll{padding:0 17px 17px}.settingshead{padding:17px 17px 14px}.settingrow{grid-template-columns:1fr;gap:9px}.settingrow select{width:100%;min-width:0}.settingrow input[type=checkbox]{justify-self:start}}
 
 /* ── Toast：Geist 的非阻塞回执 ──
    右下角浮层，自动消失，hover 暂停计时，右上角关闭。挂在 body 直下
@@ -1385,13 +1376,8 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .javbar{display:flex;align-items:center;gap:8px;padding:0 0 10px;flex-wrap:wrap}
 .javbar[hidden]{display:none}
 .javhint{color:var(--muted);font-size:var(--fs-xs);margin-right:4px}
-.javbar button,.javlayout button{width:34px;height:30px;display:inline-grid;place-items:center;
-  border-radius:var(--control-radius);border:1px solid var(--overlay-10);background:transparent;
-  color:var(--ink-2);cursor:pointer;padding:0}
-.javbar button svg,.javlayout button svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8}
-.javbar button:hover,.javlayout button:hover{background:var(--hover);color:var(--ink)}
-.javbar button[aria-pressed="true"],.javlayout button[aria-pressed="true"]{background:var(--tungsten-soft);color:var(--tungsten);
-  border-color:color-mix(in srgb,var(--tungsten) 45%,transparent)}
+.javbar button{width:34px;height:30px;display:inline-grid;place-items:center;border-radius:var(--control-radius);border:1px solid var(--overlay-10);background:transparent;color:var(--ink-2);cursor:pointer;padding:0}.javbar button svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8}.javbar button:hover{background:var(--hover);color:var(--ink)}.javbar button[aria-pressed="true"]{background:var(--tungsten-soft);color:var(--tungsten);border-color:color-mix(in srgb,var(--tungsten) 45%,transparent)}
+.javlayout{min-width:0;margin:0;padding:3px;border:1px solid var(--line-soft);border-radius:8px;background:var(--overlay-5)}.javlayout label{position:relative;display:inline-grid;width:34px;height:28px;place-items:center;border-radius:6px;color:var(--muted);cursor:pointer}.javlayout input{position:absolute;inline-size:1px;block-size:1px;opacity:0}.javlayout label:hover{color:var(--ink)}.javlayout label:has(input:checked){background:var(--surface);color:var(--tungsten);box-shadow:0 1px 2px #0005}.javlayout label:has(input:focus-visible){outline:2px solid var(--tungsten);outline-offset:2px}.javlayout svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8}
 /* 取景：正封模式下，整张封套要把镜头推到右半边；本身就是竖版正封的则整张用。
    判据是图片自己的宽高比，由 onload 写进 data-frame。 */
 .poster.cover{width:100%;height:100%;object-fit:cover;display:block}
@@ -1404,11 +1390,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 
 /* 版式按钮嵌在排序行里，必须比 `.sorts button` 更具体，否则那条规则的内边距和
    行高会把图标顶偏。图标按钮不设左右内边距，靠 grid 居中。 */
-.sorts .javlayout{display:inline-flex;gap:6px;margin:0 6px}
-.sorts .javlayout button{width:34px;height:30px;padding:0;display:inline-grid;
-  place-items:center;line-height:0}
-.sorts .javlayout button svg{width:17px;height:17px;stroke:currentColor;fill:none;
-  stroke-width:1.8;display:block}
+.sorts .javlayout{display:inline-flex;gap:2px;margin:0 6px}.sorts .javlayout label{line-height:0}.sorts .javlayout svg{display:block}
 
 /* ── 脱盘模式 ────────────────────────────────────────────────────────────────
    来源盘不在时只置灰该来源的筛选，其余来源照常。数量仍然显示：账本是本机真相，
@@ -1573,9 +1555,13 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fnote code{font-size:var(--fs-xs)}
 [data-follow-add-state]{color:var(--ink-2)}
 
+/* Geist Note：只装紧邻字段、卡片或分区的持久上下文。页面级问题继续用
+   .geist-banner，瞬时回执继续用 toast，销毁确认继续用 dialog/confirm。 */
+.geist-note{display:grid;grid-template-columns:16px minmax(0,1fr);align-items:start;gap:9px;margin:10px 0;padding:11px 12px;border:1px solid var(--line-soft);border-radius:8px;background:var(--overlay-5);color:var(--ink-2);font-size:var(--fs-sm);line-height:1.55}.geist-note>svg{width:16px;height:16px;margin-top:2px;stroke:currentColor;fill:none}.geist-note>p{margin:0}.geist-note>p b{margin-right:7px;color:var(--ink)}.geist-note-secondary{color:var(--muted)}.geist-note-warning{border-color:color-mix(in srgb,var(--meter) 32%,transparent);background:color-mix(in srgb,var(--meter) 7%,transparent)}.geist-note-error{border-color:color-mix(in srgb,var(--drop) 30%,transparent);background:color-mix(in srgb,var(--drop) 7%,transparent)}.geist-note-error>svg{color:var(--drop)}.geist-note-success{border-color:color-mix(in srgb,var(--success) 30%,transparent);background:color-mix(in srgb,var(--success) 7%,transparent)}.geist-note-success>svg{color:var(--success)}
+
 /* 检查结果的页内持久行（.fwarn 是上次检查的存量失败，.fcheckreport 是这次
    检查的失败明细）。Geist 的 toast 处方：失败不能只发 toast——那是转身就丢的
-   通知；原因和恢复入口必须留在页面上。左侧红条让「没有更新」和「检查失败」
+   通知；原因和恢复入口必须留在页面上。红色发丝边让「没有更新」和「检查失败」
    不用读文字就能分辨。成功的摘要不再落在这里，整条交给 toast。 */
 .fcheckreport,.fwarn{display:flex;align-items:flex-start;gap:8px;margin:10px 0 14px;
   padding:10px 12px;border-radius:var(--control-radius);

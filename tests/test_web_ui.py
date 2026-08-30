@@ -113,11 +113,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("document.body.classList.add('settings-open')")
         self.assertPageContains("document.body.classList.remove('settings-open')")
 
-    def test_settings_titlebar_stays_visible_inside_its_scroll_container(self):
-        self.assertPageContains(".settingsscroll{max-height:inherit;overflow-y:auto;padding:0 20px 20px")
-        self.assertPageContains("overscroll-behavior:contain;scroll-padding-top:76px")
-        self.assertPageContains(".settingshead{position:sticky;z-index:2;top:0")
+    def test_settings_titlebar_owns_the_full_width_above_its_scroll_container(self):
+        self.assertPageContains(".settingsscroll{flex:1;min-height:0;overflow-y:auto;padding:0 20px 20px")
+        self.assertPageContains("scrollbar-gutter:stable;overscroll-behavior:contain")
+        self.assertPageContains(".settingshead{z-index:2;display:flex")
         self.assertPageContains("border-bottom:1px solid var(--line-soft);background:var(--frost-panel)")
+        self.assertPageContains('<div class="settingscard">\n    <div class="settingshead">')
+        self.assertPageContains('</div>\n    <div class="settingsscroll">')
         self.assertPageContains("@media(max-width:600px){.settingsscroll{padding:0 17px 17px}")
 
     def test_studio_metadata_is_not_compiled_as_inline_javascript(self):
@@ -693,12 +695,40 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("box-shadow:inset 3px 0 var(--tungsten)")
         self.assertPageContains(".tastesources>div{display:grid;grid-auto-flow:row;grid-template-columns:repeat(3")
 
-    def test_stats_and_taste_use_density_aware_bento_without_forcing_work_queues(self):
+    def test_stats_use_analytics_panels_and_real_determinate_progress(self):
         self.assertPageContains(".scards{display:grid;grid-template-columns:repeat(12")
         self.assertPageContains(".statcard-third{grid-column:span 4}")
         self.assertPageContains(".statcard-half{grid-column:span 6}")
         self.assertPageContains(".statcard-quarter{grid-column:span 3}")
         self.assertPageContains("const card=(t,body,size='third')")
+        self.assertPageContains('class="statcardhead"><h3>${t}</h3>')
+        self.assertPageContains('class="statcardbody">${body}</div>')
+        self.assertPageContains('role="progressbar" aria-label="${esc(label)}"')
+        self.assertPageContains('aria-valuemin="0" aria-valuemax="${ceiling}" aria-valuenow="${current}"')
+        self.assertPageContains(".statmetric{padding:3px 0 12px;border-bottom:1px solid var(--line-soft)}")
+        self.assertPageContains("${progressHtml(`${k}：${v.toLocaleString()} / ${max.toLocaleString()}`,v,max)}")
+        self.assertPageLacks('class="prog"')
+
+    def test_note_semantics_replace_empty_states_for_persistent_errors(self):
+        self.assertPageContains("import { noteHtml, progressHtml } from './js/ui-components.js'")
+        self.assertPageContains("const NOTE_VARIANTS=new Set(['secondary','warning','error','success'])")
+        self.assertPageContains("const role=kind==='error'?' role=\"alert\"':' role=\"note\"'")
+        self.assertPageContains("noteHtml(error.message,{variant:'error',label:'同步失败'})")
+        self.assertPageContains("noteHtml(error.message,{variant:'error',label:'扫描失败'})")
+        self.assertPageContains("noteHtml(error.message||'分析未取得',{variant:'error',label:'分析未取得'})")
+        self.assertPageContains('class="geist-note geist-note-error fcheckreport" role="alert"')
+        self.assertPageContains('class="geist-banner fwarn"')
+
+    def test_project_web_ui_skill_keeps_future_changes_on_shared_primitives(self):
+        root = Path(__file__).resolve().parents[1]
+        skill = root / ".claude" / "skills" / "peach-web-ui" / "SKILL.md"
+        self.assertTrue(skill.is_file())
+        rules = skill.read_text(encoding="utf-8")
+        self.assertIn("优先扩展 `web/js/ui-components.js`", rules)
+        self.assertIn("Progress 必须有真实 `value/max`", rules)
+        self.assertIn("Switch 必须共享 radio `name`", rules)
+        agents = (root / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertIn(".claude/skills/peach-web-ui/SKILL.md", agents)
 
     def test_taste_drilldown_and_legacy_duration_tags_never_leak_filter_state(self):
         self.assertPageContains("const cleanTagFilter=value=>")
@@ -709,7 +739,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("loadRequestSeq++;listLoading=false;$('#combo').innerHTML=''")
 
     def test_sidebar_add_controls_have_one_explicit_height(self):
-        self.assertPageContains(".sidebaradd select,.sidebaradd button{height:42px;box-sizing:border-box}")
+        self.assertPageContains(".sidebaradd .sidebaraddfield{display:grid;grid-template-columns:auto minmax(0,1fr) auto;width:100%;height:42px")
+        self.assertPageContains(".sidebaradd>button{height:42px;box-sizing:border-box}")
 
     def test_edge_and_drawer_share_one_navigation_dispatch(self):
         """窄栏和抽屉各写一份分支时，抽屉那份漏了追更和播放列表。
@@ -1342,9 +1373,11 @@ class WebUiSourceTests(unittest.TestCase):
         # 清空回收站：danger 语义色。
         self.assertPageContains('class="batchaction danger" id="emptyTrash"')
         self.assertPageContains(".count .sorts .batchaction.danger{background:var(--drop);border-color:var(--drop);color:#fff;font-weight:500}")
-        # Geist 按钮的 prefix 模式：侧栏「添加」控件带选中入口的图标，换选项换图标。
-        self.assertPageContains("class=\"sidebaraddfield\"><i data-add-icon")
-        self.assertPageContains("if(slot)slot.innerHTML=icon(addIconOf(select.value))")
+        # Geist 菜单：触发器和每个选项都有入口图标，菜单内部滚动且不加猜测动画。
+        self.assertPageContains('data-sidebar-add-trigger aria-haspopup="listbox" aria-expanded="false"')
+        self.assertPageContains('role="option" data-sidebar-add-option=')
+        self.assertPageContains(".sidebaraddmenu{position:absolute;z-index:4;left:0;right:0;bottom:calc(100% + 6px);max-height:min(312px,48vh);overflow:auto;overscroll-behavior:contain")
+        self.assertPageContains("if(e.key==='Escape'){e.preventDefault();closeAddMenu();addTrigger.focus();return}")
         # 设置分组用框体隔开（用户回执）：每组建卡，分隔线顶格到卡边，
         # 标题字号与行内边距对齐 Vercel 后台设置卡。
         self.assertPageContains(".settinggroup{margin:16px 0 0;border:1px solid var(--line-soft);border-radius:12px;")
@@ -1436,11 +1469,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("wireNavigationDrag($('#drawer').querySelector('.dnav'))")
         self.assertPageContains('data-nav="${k}" draggable="true"')
         self.assertPageContains("data-sidebar-hide")
-        self.assertPageContains("data-sidebar-add-select")
+        self.assertPageContains("data-sidebar-add-option")
+        self.assertPageLacks("data-sidebar-add-select")
         self.assertPageContains("const OPTIONAL_SIDEBAR_KEYS=['stats','review','ads','dupes','trash','follow-manage','quality']")
         self.assertPageContains("if(DIRECT_MANAGE_NAV[k]){openManage(DIRECT_MANAGE_NAV[k]);return}")
-        self.assertPageContains(".settingscard{width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:hidden")
-        self.assertPageContains(".settingsscroll{max-height:inherit;overflow-y:auto")
+        self.assertPageContains(".settingscard{display:flex;flex-direction:column;width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:hidden")
+        self.assertPageContains(".settingsscroll{flex:1;min-height:0;overflow-y:auto")
         self.assertPageLacks('id="ambientSetting"')
         self.assertPageContains("color:#f5f7fa;color-scheme:dark")
 
@@ -1633,7 +1667,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("${javActive()?javLayoutButtons():''}")
         self.assertPageContains("wireJavLayoutButtons(section)")
         self.assertPageContains("renderEntityCollection(kind,name,{...entityCollectionPage,items:[...entityCollectionPage.items]}")
-        self.assertPageContains(".entitycollectionhead .javlayout{display:inline-flex;gap:6px}")
+        self.assertPageContains('<fieldset class="javlayout"><legend class="sr-only">JAV 卡片版式</legend>')
+        self.assertPageContains('type="radio" name="jav-layout" value="${k}" data-jav-layout')
+        self.assertPageContains("${k===javLayout()?'checked':''}")
+        self.assertPageContains("b.onchange=()=>{if(b.checked)setJavLayout(b.value)}")
+        self.assertPageContains(".javlayout label:has(input:checked){background:var(--surface);color:var(--tungsten)")
         self.assertPageContains("let entityRequestSeq=0,entityJavLayout=false")
         self.assertPageContains("(items.items||[]).some(item=>item.is_jav)")
         self.assertPageContains("return state.jav==='1'||entityJavLayout")
