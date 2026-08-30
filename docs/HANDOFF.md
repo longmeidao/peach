@@ -124,7 +124,7 @@ Gofile token 是另一份本机可选凭据，只进 Gofile 请求头，不进 U
 ## 数据安全
 
 - 真实 ledger 是当前写入者本机 `peach-data/database/ledger.db`，WAL 模式。正常浏览会合法写入播放/行为字段；平台绝对路径以 `docs/STATUS.md` 为准。
-- 测试必须使用临时 SQLite、媒体和全部缓存根，不得写真实 ledger 或 generated。可重建缓存的删除边界由当前数据库路径拥有：生产 `database/ledger.db` 只可清理同一 `peach-data` 下的缓存，临时数据库只可清理其临时目录子树，边界外一律跳过；FastAPI 测试须显式传入 snapshots、posters、photo-thumbs、transcodes、stream-segments、asset avatars 与 covers。2026-08-28 的漏配曾在清空回收站测试中删除真实 243 张 JAV 封面。`generated/cover-fetch-log.csv` 是来源、尺寸和结果证据，不能随图片清理；图片丢失时先用 `scripts/fetch_jav_covers.py --restore-successes` 按成功记录的原 URL 恢复，重新验证图片、宽度和原尺寸并原子替换，失败保留为失败，不写 ledger，也不拿缩略图冒充封面。
+- 测试必须使用临时 SQLite、媒体和全部缓存根，不得写真实 ledger 或 generated。可重建缓存的删除边界由当前数据库路径拥有：生产 `database/ledger.db` 只可清理同一 `peach-data` 下的缓存，临时数据库只可清理其临时目录子树，边界外一律跳过；FastAPI 测试须显式传入 snapshots、posters、photo-thumbs、transcodes、stream-segments、按 asset 生成的头像与 covers。2026-08-28 的漏配曾在清空回收站测试中删除真实 243 张 JAV 封面。`generated/cover-fetch-log.csv` 是来源、尺寸和结果证据，不能随图片清理；图片丢失时先用 `scripts/fetch_jav_covers.py --restore-successes` 按成功记录的原 URL 恢复，重新验证图片、宽度和原尺寸并原子替换，失败保留为失败，不写 ledger，也不拿缩略图冒充封面。AVBase 作品页混有数百张关联作品、剧照和演员头像，封面候选必须限定在当前作品主封面节点，禁止对整页图片 URL 逐张量尺寸。
 - 真实迁移前依次执行 SQLite 备份、asset/tag 计数、`PRAGMA integrity_check`、迁移版本检查、服务 smoke test。
 - 已应用与待应用迁移以 `docs/STATUS.md` 和实际 `migrate status` 为准，不在长期上下文复制会过期的版本清单。
 - `0007` 曾在应用后、提交前被改写注释/格式，导致校验和漂移。本次用迁移前备份重放当前 `0007`，对 298 条受影响资产与生产结果逐条对比，差异为 0 后才校正 `schema_migration` 校验和，然后正常应用 `0008`、`0009`。已应用迁移文件从此不得修改，任何后续变更必须新增版本。
