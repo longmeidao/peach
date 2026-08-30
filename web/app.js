@@ -527,14 +527,14 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0){
   };
   const showSpeed=()=>{
     const selectedSpeed=Number(player.playbackRate())||1,speeds=[.25,.5,.75,1,1.25,1.5,1.75,2];
-    menu.innerHTML=`<button type="button" class="vjs-peach-menu-back" data-player-menu-back>${icon('chevron-left')}<span>播放速度</span></button>${speeds.map(speed=>
+    menu.innerHTML=`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="返回上一个菜单">${icon('chevron-left')}</button><strong>播放速度</strong></div>${speeds.map(speed=>
       `<button type="button" class="vjs-peach-menu-option" role="menuitemradio" data-player-speed-option="${speed}" aria-checked="${speed===selectedSpeed}">${speed===1?'正常':speed+'×'}<span>${speed===selectedSpeed?icon('check'):''}</span></button>`).join('')}`;
     menu.querySelector('[data-player-menu-back]').onclick=showMain;
     menu.querySelectorAll('[data-player-speed-option]').forEach(button=>button.onclick=()=>{player.playbackRate(Number(button.dataset.playerSpeedOption));showMain()});
   };
   const showQuality=()=>{
     const {options}=qualityRows();
-    menu.innerHTML=`<button type="button" class="vjs-peach-menu-back" data-player-menu-back>${icon('chevron-left')}<span>清晰度</span></button>${options.map(option=>
+    menu.innerHTML=`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="返回上一个菜单">${icon('chevron-left')}</button><strong>清晰度</strong></div>${options.map(option=>
       `<button type="button" class="vjs-peach-menu-option" role="menuitemradio" data-player-quality-option="${esc(option.key)}" aria-checked="${option.key===selected}">${esc(option.label)}<span>${option.key===selected?icon('check'):''}</span></button>`).join('')}`;
     menu.querySelector('[data-player-menu-back]').onclick=showMain;
     menu.querySelectorAll('[data-player-quality-option]').forEach(button=>button.onclick=()=>{
@@ -564,11 +564,39 @@ function mountPlayerChromeLayout(player){
   const controlBar=player.getChild('controlBar')?.el();if(!controlBar||controlBar.querySelector('.vjs-peach-right-controls'))return;
   const play=controlBar.querySelector(':scope>.vjs-play-control');
   if(play&&!play.querySelector(':scope>.vjs-peach-hover'))play.insertAdjacentHTML('beforeend','<span class="vjs-peach-hover" aria-hidden="true"></span>');
+  const explicitIcon=(button,name)=>{
+    if(!button)return null;
+    button.dataset.peachExplicitIcon='';
+    button.insertAdjacentHTML('beforeend',icon(name,'vjs-peach-control-icon'));
+    return button.querySelector(':scope>.vjs-peach-control-icon use');
+  };
+  const volume=controlBar.querySelector(':scope>.vjs-volume-panel');
+  const mute=volume?.querySelector(':scope>.vjs-mute-control'),muteUse=explicitIcon(mute,'player-volume');
+  const syncVolumeIcon=()=>muteUse?.setAttribute('href',player.muted()||player.volume()===0?'#i-player-volume-muted':'#i-player-volume');
+  player.on('volumechange',syncVolumeIcon);syncVolumeIcon();
+  const time=document.createElement('button');let remaining=false;
+  time.type='button';time.className='vjs-peach-time vjs-control';time.dataset.playerTime='';
+  const syncTime=()=>{
+    const current=Math.max(0,Number(player.currentTime())||0),duration=Math.max(0,Number(player.duration())||0);
+    const shown=remaining?`-${fmtClock(Math.max(0,duration-current))}`:fmtClock(current);
+    time.textContent=`${shown} / ${fmtClock(duration)}`;
+    time.dataset.remaining=String(remaining);
+    time.setAttribute('aria-label',remaining?`剩余 ${fmtClock(Math.max(0,duration-current))}，总时长 ${fmtClock(duration)}；点击显示已播放时间`:`已播放 ${fmtClock(current)}，总时长 ${fmtClock(duration)}；点击显示剩余时间`);
+  };
+  time.onclick=event=>{event.stopPropagation();remaining=!remaining;syncTime()};
+  player.on(['timeupdate','durationchange','loadedmetadata'],syncTime);syncTime();
+  if(volume)volume.insertAdjacentElement('afterend',time);else controlBar.append(time);
+  const pip=controlBar.querySelector(':scope>.vjs-picture-in-picture-control');
+  explicitIcon(pip,'player-pip');
+  const fullscreen=controlBar.querySelector(':scope>.vjs-fullscreen-control');
+  const fullscreenUse=explicitIcon(fullscreen,'player-fullscreen-enter');
+  const syncFullscreenIcon=()=>fullscreenUse?.setAttribute('href',player.isFullscreen()?'#i-player-fullscreen-exit':'#i-player-fullscreen-enter');
+  player.on('fullscreenchange',syncFullscreenIcon);syncFullscreenIcon();
   const controls=[
-    controlBar.querySelector(':scope>.vjs-picture-in-picture-control'),
+    pip,
     controlBar.querySelector(':scope>.vjs-peach-settings'),
     controlBar.querySelector(':scope>.vjs-peach-theater'),
-    controlBar.querySelector(':scope>.vjs-fullscreen-control'),
+    fullscreen,
   ].filter(Boolean);
   if(!controls.length)return;
   const group=document.createElement('div');group.className='vjs-peach-right-controls';group.setAttribute('aria-label','播放器视图控制');
