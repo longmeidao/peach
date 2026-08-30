@@ -3814,12 +3814,13 @@ async function syncMissing(id,status,done){
   }catch(e){status.textContent=sourceHint(e.message)}
 }
 
-/* 两个按钮 + 一行状态。状态用 aria-live，屏幕阅读器和肉眼看到的是同一句。 */
-const sourceTools=id=>`<div class="srctools">
+/* 两个动作在照片详情里和作品标题旁复用；状态位置由各自表面决定。 */
+const sourceToolButtons=id=>`
     <button type="button" data-reveal="${id}" title="在文件管理器里打开源文件所在目录"
       aria-label="定位源文件">${icon('folder-open')}</button>
     <button type="button" data-sync="${id}" title="核对该目录：磁盘上已删除的，移入 Peach 回收站"
-      aria-label="同步删除">${icon('refresh-cw')}</button>
+      aria-label="同步删除">${icon('refresh-cw')}</button>`;
+const sourceTools=id=>`<div class="srctools">${sourceToolButtons(id)}
     <span class="srcstate" aria-live="polite"></span></div>`;
 
 function wireSourceTools(root,done){
@@ -4814,12 +4815,14 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
        :`<video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="metadata"></video>`}
     </div>${queueContext?queueHtml(queueContext,it.id):''}
     <div class="side"><div class="sidecontent">
-      <div class="stitle">${esc(it.name)}</div>
-      ${it.location==='online'?'':sourceTools(it.id)}
-      <div class="smeta mono">${srcBadge(it.location,it.cost,'srcbig')}
-        <span style="align-self:center">${it.width||'?'}×${it.height||'?'}</span>
-        <span style="align-self:center">${fmtSize(it.size||0)}</span>
-        ${it.release_date?`<span style="align-self:center">发行 ${esc(it.release_date)}</span>`:''}</div>
+      <div class="detailtitle">${srcBadge(it.location,it.cost,'srcbig')}
+        <div class="stitle">${esc(it.name)}</div>
+        ${it.location==='online'?'':`<div class="srctools detailtitletools">${sourceToolButtons(it.id)}</div>`}</div>
+      ${it.location==='online'?'':`<span class="srcstate detailtitlestate" aria-live="polite"></span>`}
+      <div class="smeta mono">
+        <span class="detailmetaitem">${icon('monitor')}<span>${it.width||'?'}×${it.height||'?'}</span></span>
+        <span class="detailmetaitem">${icon('hard-drive')}<span>${fmtSize(it.size||0)}</span></span>
+        ${it.release_date?`<span class="detailmetaitem">${icon('calendar')}<span>${esc(it.release_date)}</span></span>`:''}</div>
       <div class="detailidentity">${identityRows||`<div class="identityrow"><span></span><span class="ilabel">归属</span><span>${esc(who)}</span></div>`}</div>
       <div class="stags" id="detailTags"></div>
       <div class="trace"><div class="lab mono"><span>离开位置</span><span id="ratioTxt">0%</span></div>
