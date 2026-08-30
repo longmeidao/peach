@@ -1500,6 +1500,7 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertPageContains(consumer)
         self.assertPageContains("new Intl.Segmenter(undefined,{granularity:'grapheme'})")
         self.assertPageContains("resizeObserver=new ResizeObserver")
+        self.assertPageContains("context.font=style.font||`${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`")
         self.assertPageContains("const ELLIPSIS='…'")
         self.assertPageContains("element.setAttribute('aria-label',state.full)")
         self.assertPageContains("event.clipboardData.setData('text/plain',state.full)")
