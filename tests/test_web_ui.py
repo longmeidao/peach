@@ -716,6 +716,12 @@ class WebUiSourceTests(unittest.TestCase):
         # 分支只能存在一处；再出现第二份就是下一次漂移。
         self.assertEqual(self.page.count("if(k==='immerse'){openTok();return}"), 1)
 
+    def test_online_assets_use_rss_and_open_the_saved_follow_surface(self):
+        self.assertPageContains("online:icon('rss')")
+        self.assertPageLacks("online:icon('globe')")
+        self.assertPageContains('id="onlineGate"')
+        self.assertPageContains("$('#openSavedFollow').onclick=()=>{followFilter='saved';openFollow()}")
+
     def test_scrim_never_covers_the_drawer_it_dims(self):
         """遮罩铺满全屏。它排在抽屉之上时，抽屉里每一下点击都落在遮罩上，
         而遮罩的 onclick 是「收起抽屉」——表现就是能弹出、什么都点不到、一点就关。
@@ -895,6 +901,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 两份副本正是当初把追更入口漏在抽屉里的原因。
         self.assertEqual(self.page.count("function navTo(k){"), 1,
                          "导航分支只能留一份 navTo")
+        self.assertPageContains("if(k==='')state.jav='';")
         self.assertPageContains("state.state=k}\n  route(homePath());")
 
     def test_ads_icon_matches_the_lucide_stroke_style(self):

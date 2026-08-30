@@ -520,6 +520,22 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             {"k": "横屏", "n": 1},
         ])
 
+    async def test_saved_online_asset_survives_the_default_thumbnail_filter(self):
+        connection = sqlite3.connect(self.db)
+        connection.execute(
+            "INSERT INTO asset(id,location,path,name,medium,first_seen) "
+            "VALUES(2,'online','https://example.test/post/2','Saved online post','video','2026-08-30')"
+        )
+        connection.commit(); connection.close()
+
+        listed = await self.client.get(
+            "/api/items?t=secret&loc=online&thumb=1&limit=10"
+        )
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual(listed.json()["total"], 1)
+        self.assertEqual(listed.json()["items"][0]["location"], "online")
+        self.assertFalse(listed.json()["items"][0]["has_thumb"])
+
     async def test_multipart_api_keeps_assets_separate_but_returns_an_ordered_queue(self):
         connection = sqlite3.connect(self.db)
         connection.executemany(
