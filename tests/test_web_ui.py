@@ -1484,9 +1484,28 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("all:'零个文件'")
 
     def test_duplicate_rows_show_the_full_path_without_losing_source_and_size(self):
-        self.assertPageContains('class="mono duppath" title="${esc(f.path||\'\')}"')
+        self.assertPageContains('class="mono duppath" data-middle-truncate title="${esc(f.path||\'\')}"')
         self.assertPageContains("${esc(f.path||'')}")
         self.assertPageContains('.duppath{grid-column:2/-1;min-width:0;overflow:hidden')
+
+    def test_resource_identifiers_use_geist_middle_truncation(self):
+        """文件名和路径保留首尾；标题、说明仍按语义使用末尾省略。"""
+        self.assertPageContains("import { initMiddleTruncate } from './js/middle-truncate.js'")
+        self.assertPageContains("initMiddleTruncate(document)")
+        for consumer in (
+                'class="dupname" data-middle-truncate',
+                'class="mono duppath" data-middle-truncate',
+                '<button data-middle-truncate data-quality-open=',
+                '<b data-middle-truncate></b>'):
+            self.assertPageContains(consumer)
+        self.assertPageContains("new Intl.Segmenter(undefined,{granularity:'grapheme'})")
+        self.assertPageContains("resizeObserver=new ResizeObserver")
+        self.assertPageContains("const ELLIPSIS='…'")
+        self.assertPageContains("element.setAttribute('aria-label',state.full)")
+        self.assertPageContains("event.clipboardData.setData('text/plain',state.full)")
+        self.assertPageContains("export { initMiddleTruncate, middleTruncateText }")
+        self.assertPageContains(".qualityitem h3 button{display:block;width:100%")
+        self.assertPageLacks(".qualityitem h3 button{max-width:100%;border:0;background:transparent;padding:0;color:inherit;text-align:left;cursor:pointer;overflow-wrap:anywhere;display:-webkit-box")
 
     def test_duplicate_removal_is_reversible(self):
         # 只能进回收站；永久删除仍得从回收站单独执行。
