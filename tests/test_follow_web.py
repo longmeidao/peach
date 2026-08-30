@@ -262,6 +262,8 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual([media["media_kind"] for media in item["media_items"]],
                          ["video", "image"])
         self.assertEqual(item["media_items"][0]["name"], "one.mp4")
+        self.assertEqual(item["media_items"][0]["media_type"], "video/mp4")
+        self.assertIsNone(item["media_items"][1]["media_type"])
         self.assertNotIn("url", item["media_items"][0])
         self.assertNotIn("store1.gofile.io/download", json.dumps(item))
 
@@ -311,6 +313,7 @@ class FollowContractTests(unittest.TestCase):
             extra={"media_kind": "video"},
         ),), provider="rule34xxx", ref="artist")
         item = self._get()["groups"][0]["primary"]
+        self.assertEqual(item["media_type"], "video/mp4")
         self.assertEqual(
             item["thumb_url"],
             "https://api-cdn.rule34.xxx/images/42/"
@@ -1448,6 +1451,21 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("route(followDetailReturnPath||'/follow')")
         self.assertPageContains(".followitem a{text-decoration:none}")
 
+    def test_follow_video_uses_the_shared_videojs_player_and_quality_control(self):
+        self.assertPageContains('class="video-js vjs-big-play-centered" controls playsinline preload="metadata"')
+        self.assertPageContains("if(followVideo)mountDetailPlayer(item,followVideo,false,{")
+        self.assertPageContains("source:{src,type:selectedMedia?.media_type||item.media_type||'video/mp4'}")
+        self.assertPageContains("function mountPlayerQualityControl(player,video,fallbackHeight=0)")
+        self.assertPageContains('aria-label="切换清晰度"')
+        self.assertPageContains("levels[index].enabled=selected==='auto'||selected===String(index)")
+
+    def test_follow_detail_save_keeps_the_button_after_the_async_request(self):
+        self.assertPageContains("const button=event.currentTarget;")
+        self.assertPageContains("write(button,'/api/follow/save',{item:item.id},()=>{")
+        self.assertPageContains("button.innerHTML=icon('check')")
+        self.assertPageContains("button.setAttribute('aria-label','已保存')")
+        self.assertPageLacks("event.currentTarget.innerHTML=icon('check')")
+
     def test_follow_image_collections_use_buttons_dots_and_arrow_keys(self):
         self.assertPageContains('class="followimagearrow prev"')
         self.assertPageContains('class="followimagedots" role="group"')
@@ -1787,7 +1805,7 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_mix_and_follow_queues_stay_below_media_with_details_on_the_right(self):
         self.assertPageContains('grid-template-areas:"media side" "queue queue"')
         self.assertPageContains('.sgrid.mixgrid>.vwrap{grid-area:media}')
-        self.assertPageContains('.sgrid.mixgrid>.side{grid-area:side;align-self:stretch;max-height:none;background:var(--detail-surface)}')
+        self.assertPageContains('.sgrid.mixgrid>.side{grid-area:side;background:var(--detail-surface)}')
         self.assertPageContains('.sgrid.mixgrid>.mixqueue{grid-area:queue;max-height:360px')
         self.assertPageContains('grid-template-areas:"media" "side" "queue"')
         self.assertPageContains('background:var(--detail-surface)')

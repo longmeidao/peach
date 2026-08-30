@@ -362,12 +362,56 @@ function fmtSpeed(bits){
   const bytes=bits/8;
   return bytes>=1048576?`${(bytes/1048576).toFixed(1)} MB/s`:`${Math.max(1,Math.round(bytes/1024))} KB/s`;
 }
-function mountDetailPlayer(it,video,autoplay){
+function mountPlayerQualityControl(player,video,fallbackHeight=0){
+  const controlBar=player.getChild('controlBar')?.el();
+  if(!controlBar||controlBar.querySelector('[data-player-quality]'))return;
+  const root=document.createElement('div');
+  root.className='vjs-peach-quality vjs-control';root.dataset.playerQuality='';
+  root.innerHTML='<button type="button" aria-label="切换清晰度" title="清晰度" aria-expanded="false"><span data-player-quality-label>原画</span></button><div class="vjs-peach-quality-menu" role="menu" aria-label="清晰度" hidden></div>';
+  const fullscreen=controlBar.querySelector('.vjs-fullscreen-control');
+  controlBar.insertBefore(root,fullscreen||null);
+  const toggle=root.querySelector('button'),label=root.querySelector('[data-player-quality-label]');
+  const menu=root.querySelector('.vjs-peach-quality-menu');
+  const levels=typeof player.qualityLevels==='function'?player.qualityLevels():null;
+  let selected='auto';
+  const resolution=(width,height)=>{const values=[Number(width),Number(height)].filter(value=>value>0);return values.length?Math.min(...values):0};
+  const rows=()=>{
+    const result=[];
+    if(levels?.length){
+      result.push({key:'auto',label:'自动'});
+      for(let index=0;index<levels.length;index++){
+        const level=levels[index],pixels=resolution(level.width,level.height);
+        result.push({key:String(index),label:pixels?`${pixels}p`:(level.id||`线路 ${index+1}`)});
+      }
+      return result;
+    }
+    const pixels=resolution(video.videoWidth,video.videoHeight)||Number(fallbackHeight)||0;
+    return [{key:'original',label:pixels?`${pixels}p`:'原画'}];
+  };
+  const render=()=>{
+    const options=rows();
+    if(!levels?.length)selected='original';
+    menu.innerHTML=options.map(option=>`<button type="button" role="menuitemradio" data-player-quality-option="${esc(option.key)}" aria-checked="${option.key===selected}">${esc(option.label)}</button>`).join('');
+    const active=options.find(option=>option.key===selected)||options[0];label.textContent=active.label;
+    menu.querySelectorAll('[data-player-quality-option]').forEach(button=>button.onclick=()=>{
+      selected=button.dataset.playerQualityOption;
+      if(levels?.length)for(let index=0;index<levels.length;index++)levels[index].enabled=selected==='auto'||selected===String(index);
+      render();menu.hidden=true;toggle.setAttribute('aria-expanded','false');
+    });
+  };
+  toggle.onclick=()=>{const open=menu.hidden;menu.hidden=!open;toggle.setAttribute('aria-expanded',String(open))};
+  root.addEventListener('keydown',event=>{if(event.key==='Escape'){menu.hidden=true;toggle.setAttribute('aria-expanded','false');toggle.focus()}});
+  video.addEventListener('loadedmetadata',render);
+  levels?.on?.(['addqualitylevel','removequalitylevel'],render);
+  render();
+}
+function mountDetailPlayer(it,video,autoplay,options={}){
   if(detailPlayer)return detailPlayer;
   const statsButton=$('#playerStatsBtn'),statsPanel=$('#playerStats');
+  const source=()=>options.source?Promise.resolve(options.source):detailStreamSource(it);
   if(!globalThis.videojs){
     video.controls=true;
-    detailStreamSource(it).then(source=>{video.src=source.src;if(autoplay)video.play().catch(()=>{})}).catch(()=>{});
+    source().then(next=>{video.src=next.src;if(autoplay)video.play().catch(()=>{})}).catch(()=>{});
     return null;
   }
   detailPlayer=globalThis.videojs(video,{
@@ -425,18 +469,22 @@ function mountDetailPlayer(it,video,autoplay){
       return;
     }
     // 播到一半掉盘时 video 元素只报通用错误；来源状态才分得清脱盘和文件损坏。
+    if(options.checkSourceStatus===false)return;
     loadSourceStatus().then(status=>{
       if(status[it.location]!==false||player.isDisposed())return;
       player.error({code:2,message:`脱盘模式 · ${offlineReason(it.location)}`});
     });
   });
-  detailPlayer.ready(()=>{enforceDuration();if(statsButton)statsButton.hidden=false});
+  detailPlayer.ready(()=>{
+    enforceDuration();mountPlayerQualityControl(detailPlayer,video,it.height);
+    if(statsButton)statsButton.hidden=false
+  });
   if(statsButton&&statsPanel)statsButton.onclick=()=>{
     const open=statsPanel.hidden;statsPanel.hidden=!open;statsButton.setAttribute('aria-pressed',String(open));
     if(open){updateStats();if(detailStatsTimer)clearInterval(detailStatsTimer);detailStatsTimer=setInterval(updateStats,1000)}
     else if(detailStatsTimer){clearInterval(detailStatsTimer);detailStatsTimer=null}
   };
-  detailStreamSource(it).then(source=>{
+  source().then(source=>{
     if(!detailPlayer||detailPlayer!==player||player.isDisposed())return;
     segmentedSource=String(source.type||'').includes('mpegurl');
     player.src(source);
@@ -1867,7 +1915,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   const src=item.playable?`/follow-stream?id=${item.id}${selectedMedia?`&media=${selectedMedia.index}`:''}`:'';
   const selectedKind=selectedMedia?.media_kind||item.media_kind;
   const media=item.playable&&selectedKind==='video'
-    ?`<video controls playsinline preload="metadata" src="${src}"></video>`
+    ?`<video class="video-js vjs-big-play-centered" controls playsinline preload="metadata"></video>`
     :item.playable&&selectedKind==='image'
       ?`<img class="followdetailposter" src="${src}" alt="${esc(item.title)}">`
       :item.thumb_url
@@ -1888,7 +1936,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   $('#stage').innerHTML=`<div class="sgrid followdetailgrid${collection||embeddedQueue?' mixgrid':''}">
     <div class="vwrap followdetailmedia${selectedKind==='image'?' image':''}"><button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${media}${imageControls}</div>
     ${embeddedQueue?followEmbeddedQueueHtml(item,selectedMedia.index):(collection?followQueueHtml(collection,item.id):'')}
-    <div class="side followdetailside">
+    <div class="side followdetailside"><div class="sidecontent">
       <div class="followdetailtitle"><div class="stitle">${esc(item.title)}</div>${item.url?`<a class="followorigin" href="${esc(item.url)}" target="_blank" rel="noreferrer noopener" title="打开来源页面" aria-label="打开来源页面">${icon('external-link')}</a>`:''}</div>
       <div class="followdetailidentity"><span class="mav fsourceavatar">${followAuthorAvatar(authorSources)}</span>
         <div><b>${esc(author)}</b>${postedBy?`<span>发布者 ${esc(postedBy)}</span>`:''}</div></div>
@@ -1903,7 +1951,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
         <button class="dislike" data-follow-detail-status="ignored" aria-label="忽略" title="忽略" aria-pressed="${item.status==='ignored'}">${icon('eye-off')}</button>
         ${item.status==='seen'||item.status==='ignored'?`<button data-follow-detail-status="new" aria-label="恢复未看" title="恢复未看">${icon('rotate-ccw')}</button>`:''}</div>
       <span class="fstate" aria-live="polite"></span>
-    </div></div>`;
+    </div></div></div>`;
   const closeDetail=async()=>{disposeStage(false);route(followDetailReturnPath||'/follow');await openFollow(false)};
   $('#closeStage').onclick=closeDetail;
   $('#stage').querySelectorAll('[data-follow-queue-close]').forEach(button=>button.onclick=closeDetail);
@@ -1918,6 +1966,11 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     const next=(imagePosition+(+button.dataset.followImageStep)+imageMedia.length)%imageMedia.length;
     switchImage(imageMedia[next].index);
   });
+  const followVideo=$('#stage').querySelector('.followdetailmedia>video');
+  if(followVideo)mountDetailPlayer(item,followVideo,false,{
+    source:{src,type:selectedMedia?.media_type||item.media_type||'video/mp4'},
+    checkSourceStatus:false
+  });
   wireDrag($('#stage').querySelector('.mixlist'));
   $('#stage').querySelectorAll('.followdetailtags [data-follow-tag]').forEach(button=>button.onclick=async()=>{
     const tag=button.dataset.followTag;
@@ -1929,9 +1982,11 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     try{await api(path,{method:'POST',body:JSON.stringify(body)});done();state.textContent='已更新'}
     catch(error){button.disabled=false;state.textContent=error.message||'操作失败'}
   };
-  $('#stage').querySelector('[data-follow-detail-save]')?.addEventListener('click',event=>
-    write(event.currentTarget,'/api/follow/save',{item:item.id},()=>{
-      item.status='saved';event.currentTarget.innerHTML=icon('check');event.currentTarget.title='已保存'}));
+  $('#stage').querySelector('[data-follow-detail-save]')?.addEventListener('click',event=>{
+    const button=event.currentTarget;
+    write(button,'/api/follow/save',{item:item.id},()=>{
+      item.status='saved';button.innerHTML=icon('check');button.title='已保存';button.setAttribute('aria-label','已保存')});
+  });
   $('#stage').querySelectorAll('[data-follow-detail-status]').forEach(button=>button.onclick=()=>
     write(button,'/api/follow/status',{item:item.id,to:button.dataset.followDetailStatus},()=>{
       item.status=button.dataset.followDetailStatus;
@@ -4277,7 +4332,7 @@ async function openItem(id,push=true,queueContext=null){
         <video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="none" hidden></video>`
        :`<video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="metadata"></video>`}
     </div>${queueContext?queueHtml(queueContext,it.id):''}
-    <div class="side">
+    <div class="side"><div class="sidecontent">
       <div class="stitle">${esc(it.name)}</div>
       ${it.location==='online'?'':sourceTools(it.id)}
       <div class="smeta mono">${srcBadge(it.location,it.cost,'srcbig')}
@@ -4306,7 +4361,7 @@ async function openItem(id,push=true,queueContext=null){
           <button class="savepreference" id="savePreference" title="保存喜爱理由" aria-label="保存喜爱理由">${icon('check')}</button></div>
       </div>
       <button class="obtn" data-kind="o">${icon('sperm')}<span>记一次高潮</span><b class="mono" id="oCount">${it.o_count||0}</b></button>
-    </div></div>
+    </div></div></div>
     ${queueContext?'':`<div class="next"><h3>接着看</h3><div class="nrow" id="nrow">载入中…</div></div>`}`;
 
   const closeDetail=()=>{const restore=cloneBarsContext(detailReturnBarsContext);
