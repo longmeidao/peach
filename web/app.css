@@ -1171,6 +1171,8 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .sidecontent{box-sizing:border-box;width:100%;height:100%;max-height:76vh;padding:18px;display:flex;gap:0;
   flex-direction:column;overflow-y:auto;overflow-x:hidden}
 .stitle{font-size:var(--fs-lg);line-height:1.4;word-break:break-all;margin-bottom:8px}
+.detailtitle{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:start;gap:8px;margin-bottom:10px}
+.detailtitle>.srcbig{margin-top:2px}.detailtitle .stitle{min-width:0;margin:0}
 /* 源文件管理：定位 + 目录对账。图标必须显式写 stroke/fill，Lucide 是描边路径，
    缺了就被按默认 fill:black 画成黑块（详见 .photonav 那一段的同类修复）。 */
 .srctools{display:flex;align-items:center;gap:6px;margin:0 0 10px;flex-wrap:wrap}
@@ -1181,9 +1183,13 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .srctools button:hover{border-color:var(--tungsten);color:var(--ink)}
 .srctools button:disabled{opacity:.45;cursor:default}
 .srcstate{font-size:var(--fs-xs);color:var(--muted);min-width:0;flex:1 1 100%}
+.detailtitletools{margin:0;flex-wrap:nowrap}.detailtitlestate{display:block;margin:-4px 0 10px}
+.detailtitlestate:empty{display:none}
 .photohead .srctools{margin:0 0 0 auto}
 .photohead .srcstate{flex:none}
 .smeta{display:flex;gap:9px;flex-wrap:wrap;color:var(--muted);margin-bottom:18px}
+.detailmetaitem{display:inline-flex;align-items:center;gap:5px}.detailmetaitem svg{width:15px;height:15px;
+  flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .stags{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:0 0 18px}
 .detailtag{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:var(--tag-radius);
   background:color-mix(in srgb,var(--surface) 82%,var(--ground));overflow:hidden;min-height:30px}

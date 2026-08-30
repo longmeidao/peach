@@ -1832,8 +1832,19 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('data-review-open-item="${row.asset_id}"')
         self.assertPageContains("openItem(+button.dataset.reviewOpenItem)")
 
-    def test_jav_release_date_is_visible_in_detail(self):
-        self.assertPageContains("发行 ${esc(it.release_date)}")
+    def test_detail_title_keeps_source_and_file_actions_inline(self):
+        self.assertPageContains('<div class="detailtitle">${srcBadge(it.location,it.cost,\'srcbig\')}')
+        self.assertPageContains('<div class="stitle">${esc(it.name)}</div>')
+        self.assertPageContains('<div class="srctools detailtitletools">${sourceToolButtons(it.id)}</div>')
+        self.assertPageContains(".detailtitle{display:grid;grid-template-columns:auto minmax(0,1fr) auto")
+
+    def test_detail_metadata_uses_icons_instead_of_release_copy(self):
+        self.assertPageContains('<span class="detailmetaitem">${icon(\'monitor\')}')
+        self.assertPageContains('<span class="detailmetaitem">${icon(\'hard-drive\')}')
+        self.assertPageContains('<span class="detailmetaitem">${icon(\'calendar\')}')
+        self.assertPageContains('id="i-monitor"')
+        self.assertPageContains('id="i-calendar"')
+        self.assertPageLacks("发行 ${esc(it.release_date)}")
 
     def test_duplicates_page_is_a_management_section(self):
         self.assertPageContains("['dupes','重复文件','hard-drive']")
@@ -2210,7 +2221,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('data-reveal="${id}"')
         self.assertPageContains('data-sync="${id}"')
         # 在线资产是 URL，没有本地文件可定位。
-        self.assertPageContains("it.location==='online'?'':sourceTools(it.id)")
+        self.assertPageContains("it.location==='online'?'':`<div class=\"srctools detailtitletools\">${sourceToolButtons(it.id)}</div>`")
 
     def test_resource_sync_is_embedded_in_stats_and_keeps_offline_sources_safe(self):
         self.assertPageContains("${resourceSyncMarkup()}")
