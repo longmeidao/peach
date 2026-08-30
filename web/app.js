@@ -244,8 +244,9 @@ function persistedSeed(){
 // 手动「换一批」立刻换种子。
 const rollSeed=()=>writeSeedRecord(newSeed());
 const initialParams=new URLSearchParams(location.search);
-const JUNK_KIND_OPTIONS=[['','全部'],['video','视频'],['image','图片'],['archive','压缩包'],
-  ['audio','音频'],['url','网址'],['other','其它']];
+const JUNK_KIND_OPTIONS=[['','全部','layout-grid'],['video','视频','play'],['image','图片','pics'],
+  ['archive','压缩包','folder-open'],['audio','音频','volume-2'],['url','网址','globe'],
+  ['other','其它','hard-drive']];
 const cleanJunkKind=value=>JUNK_KIND_OPTIONS.some(([key])=>key===value)?value:'';
 let junkKind=cleanJunkKind(initialParams.get('type')||'');
 let junkView=initialParams.get('view')==='dismissed'?'dismissed':'pending';
@@ -615,20 +616,27 @@ function mountDetailPlayer(it,video,autoplay,options={}){
 }
 const selected=new Set(),followSelected=new Set();
 let selectMode=false,lastSelectedId=null,followLastSelectedId=null,selectSurface='';
+const currentSelectSurface=()=>location.pathname==='/follow'?'follow':location.pathname==='/junk-files'?'junk':'catalog';
 function paintSelection(){
   document.querySelectorAll('.card[data-id]').forEach(card=>card.classList.toggle('selected',selected.has(+card.dataset.id)));
   document.querySelectorAll('.followitem[data-follow-item]').forEach(card=>
     card.classList.toggle('selected',followSelected.has(+card.dataset.followItem)));
-  const followPage=location.pathname==='/follow',picked=followPage?followSelected:selected;
+  const followPage=location.pathname==='/follow',junkPage=location.pathname==='/junk-files';
+  const picked=followPage?followSelected:selected;
   $('#batchbar').hidden=!picked.size;$('#batchCount').textContent=`已选 ${picked.size} 项`;
-  $('#batchbar').querySelectorAll('[data-batch]').forEach(button=>button.hidden=followPage);
+  $('#batchbar').querySelectorAll('[data-batch]').forEach(button=>button.hidden=followPage||junkPage);
   $('#batchbar').querySelectorAll('[data-follow-batch],[data-follow-control]').forEach(button=>button.hidden=!followPage);
-  $('#batchbar').querySelectorAll('[data-trash-only]').forEach(button=>button.hidden=followPage||state.state!=='trash');
-  $('#batchbar').querySelectorAll('[data-batch="like"],[data-batch="seen"],[data-batch="later"],[data-batch="dispose"]').forEach(button=>button.hidden=followPage||state.state==='trash');
+  $('#batchbar').querySelectorAll('[data-trash-only]').forEach(button=>button.hidden=followPage||junkPage||state.state!=='trash');
+  $('#batchbar').querySelectorAll('[data-batch="like"],[data-batch="seen"],[data-batch="later"],[data-batch="dispose"]').forEach(button=>button.hidden=followPage||junkPage||state.state==='trash');
+  $('#batchbar').querySelectorAll('[data-junk-batch]').forEach(button=>{
+    const operation=button.dataset.junkBatch;
+    button.hidden=!junkPage||(operation==='dismiss-junk'&&junkView==='dismissed')
+      ||(operation==='reconsider-junk'&&junkView!=='dismissed');
+  });
   paintTagIndexSelection();
 }
 function setSelectMode(on,clear=false){
-  if(on&&!selectMode)selectSurface=location.pathname==='/follow'?'follow':'catalog';
+  if(on&&!selectMode)selectSurface=currentSelectSurface();
   selectMode=!!on;if(!selectMode)selectSurface='';document.body.classList.toggle('select-mode',selectMode);
   if(selectMode)releaseHoverPreviews();
   $('#selectMode').setAttribute('aria-pressed',selectMode);if(clear){selected.clear();followSelected.clear();selectedIndexTags.clear();lastSelectedId=null;followLastSelectedId=null}paintSelection()}
@@ -676,6 +684,18 @@ $('#batchbar').querySelectorAll('[data-follow-batch]').forEach(button=>button.on
     await api(path,{method:'POST',body:JSON.stringify(body)});
     setSelectMode(false,true);await openFollow(false);
   }catch(error){alert(`操作失败：${error.message||'未知错误'}`)}
+  finally{button.disabled=false;paintSelection()}
+});
+$('#batchbar').querySelectorAll('[data-junk-batch]').forEach(button=>button.onclick=async()=>{
+  const operation=button.dataset.junkBatch,ids=[...selected];if(!ids.length)return;
+  const labels={'dismiss-junk':'不是垃圾','reconsider-junk':'重新判断',dispose:'移入回收站'};
+  if(!confirm(`确认把 ${ids.length} 个垃圾文件候选“${labels[operation]}”？`))return;
+  button.disabled=true;
+  try{
+    await api('/api/batch',{method:'POST',body:JSON.stringify({ids,operation})});
+    setSelectMode(false,true);adsBatch=null;await load(true);
+    toast(`已批量${labels[operation]}：${ids.length} 项`);
+  }catch(error){toast(`批量操作失败：${error.message||'未知错误'}`,{warn:true})}
   finally{button.disabled=false;paintSelection()}
 });
 
@@ -905,8 +925,8 @@ function resourceCardHtml(it){
     </div></div></article>`;
 }
 const JUNK_KIND_META={
-  video:['视频','play'],image:['图片','pics'],archive:['压缩包','hard-drive'],
-  audio:['音频','hard-drive'],url:['网址快捷方式','globe'],other:['其它文件','hard-drive'],
+  video:['视频','play'],image:['图片','pics'],archive:['压缩包','folder-open'],
+  audio:['音频','volume-2'],url:['网址快捷方式','globe'],other:['其它文件','hard-drive'],
 };
 function junkCardHtml(it){
   const kind=it.junk_kind||'other',meta=JUNK_KIND_META[kind]||JUNK_KIND_META.other;
@@ -920,7 +940,7 @@ function junkCardHtml(it){
   const canOpen=kind==='video'||kind==='image';
   return `<article class="card junkcard" data-id="${it.id}" data-junk-kind="${esc(kind)}">
     <div class="pic" style="--card-ratio:16/9"><span class="resourceglyph">${icon(meta[1])}<b>${esc(meta[0])}</b></span>${preview}
-      <div class="badge mono">${srcBadge(it.location,it.cost)}</div></div>
+      <div class="badge mono">${srcBadge(it.location,it.cost)}</div><span class="selectionMark">${icon('check')}</span></div>
     <div class="junkbody"><div class="junkmeta">
       ${canOpen?`<button class="t junkcardtitle" type="button" data-junk-open data-middle-truncate title="${esc(it.name||'')}">${esc(it.name||'未命名资源')}</button>`
         :`<span class="t junkcardtitle" data-middle-truncate title="${esc(it.name||'')}">${esc(it.name||'未命名资源')}</span>`}
@@ -937,11 +957,22 @@ async function runJunkOperation(id,operation){
 function wireJunkCards(root){
   root.querySelectorAll('.junkcard').forEach(card=>{
     const id=+card.dataset.id,item=CACHE[id];
-    card.querySelector('[data-junk-open]')?.addEventListener('click',()=>{
+    card.onclick=event=>{
+      if(event.target.closest('[data-junk-operation]'))return;
+      if(selectMode||event.shiftKey||event.ctrlKey||event.metaKey){
+        event.preventDefault();event.stopPropagation();toggleSelection(id,event.shiftKey);
+      }
+    };
+    card.querySelector('[data-junk-open]')?.addEventListener('click',event=>{
+      event.stopPropagation();
+      if(selectMode||event.shiftKey||event.ctrlKey||event.metaKey){
+        event.preventDefault();toggleSelection(id,event.shiftKey);return
+      }
       if(item?.junk_kind==='image')window.open('/photo?id='+id,'_blank','noopener');
       else openItem(id);
     });
-    card.querySelectorAll('[data-junk-operation]').forEach(button=>button.onclick=async()=>{
+    card.querySelectorAll('[data-junk-operation]').forEach(button=>button.onclick=async event=>{
+      event.preventDefault();event.stopPropagation();
       const operation=button.dataset.junkOperation;
       button.disabled=true;button.setAttribute('aria-busy','true');
       try{
@@ -959,17 +990,18 @@ function wireJunkCards(root){
 }
 function renderJunkNavigation(data){
   const countFor=key=>key?Number(data.counts?.[key]||0):Number(data.all_total||0);
-  const categoryLinks=JUNK_KIND_OPTIONS.map(([key,label])=>{
+  const categoryLinks=JUNK_KIND_OPTIONS.map(([key,label,glyph])=>{
     const current=key===junkKind;
-    return `<a href="${junkPath(key,junkView)}" data-junk-kind-link="${esc(key)}"${current?' aria-current="page"':''}>${esc(label)} <span>${countFor(key).toLocaleString()}</span></a>`;
+    return `<a href="${junkPath(key,junkView)}" data-junk-kind-link="${esc(key)}"${current?' aria-current="page"':''}>${icon(glyph)}${esc(label)} <span>${countFor(key).toLocaleString()}</span></a>`;
   }).join('');
   $('#count').innerHTML=`<div class="junksummary" aria-live="polite">显示 ${Number(data.total||0).toLocaleString()} 个</div>
     <nav class="junkfilters" aria-label="垃圾文件分类">${categoryLinks}<i aria-hidden="true"></i>
-      <a href="${junkPath('',junkView==='dismissed'?'pending':'dismissed')}" data-junk-view-link="${junkView==='dismissed'?'pending':'dismissed'}"${junkView==='dismissed'?' aria-current="page"':''}>${junkView==='dismissed'?'返回待判断':'已排除'} <span>${Number(data.dismissed_total||0).toLocaleString()}</span></a>
+      <a href="${junkPath('',junkView==='dismissed'?'pending':'dismissed')}" data-junk-view-link="${junkView==='dismissed'?'pending':'dismissed'}"${junkView==='dismissed'?' aria-current="page"':''}>${icon(junkView==='dismissed'?'rotate-ccw':'eye-off')}${junkView==='dismissed'?'返回待判断':'已排除'} <span>${Number(data.dismissed_total||0).toLocaleString()}</span></a>
     </nav>`;
   $('#count').querySelectorAll('[data-junk-kind-link],[data-junk-view-link]').forEach(link=>link.onclick=event=>{
     if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
     event.preventDefault();
+    if(selectMode)setSelectMode(false,true);
     if(link.hasAttribute('data-junk-kind-link'))junkKind=cleanJunkKind(link.dataset.junkKindLink||'');
     if(link.dataset.junkViewLink)junkView=link.dataset.junkViewLink;
     adsBatch=null;route(junkPath());load(true);
@@ -4273,10 +4305,10 @@ function navTo(k){
 }
 function syncHeaderActions(){
   const path=decodeURIComponent(location.pathname),parts=path.split('/').filter(Boolean);
-  if(selectMode&&selectSurface!==(path==='/follow'?'follow':'catalog'))
+  if(selectMode&&selectSurface!==currentSelectSurface())
     setSelectMode(false,true);
   const entity=parts.length>1&&Object.prototype.hasOwnProperty.call(ROUTE_ENTITIES,parts[0]);
-  const catalog=(isCatalogPath(path)&&path!=='/junk-files')||path==='/trash';
+  const catalog=isCatalogPath(path)||path==='/trash';
   const canSelect=catalog||entity||path==='/tags'||path==='/follow';
   const canDensity=catalog||entity||path==='/follow';
   $('#selectMode').hidden=!canSelect;$('#density').hidden=!canDensity;
@@ -4361,7 +4393,7 @@ async function load(reset){
     else if(reset)$('#grid').innerHTML=html;else $('#grid').insertAdjacentHTML('beforeend',html);
     renderJunkNavigation(adsBatch);
     $('#loadSentinel').hidden=$('#grid').children.length>=adsBatch.items.length;
-    $('#shortsSec').hidden=true;wireJunkCards($('#grid'));return;
+    $('#shortsSec').hidden=true;wireJunkCards($('#grid'));paintSelection();return;
   }
   adsBatch=null;
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
