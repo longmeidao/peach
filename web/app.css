@@ -365,7 +365,7 @@ body.entity-open .index{overflow-x:visible}
   stroke-width:1.8}.entitylinkicon img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#fff}
 .entitylinklabel{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.entitylinkarrow{color:var(--muted);flex:none}
 .entityterms{margin-top:13px;color:var(--muted);font-size:var(--fs-xs)}.entityterms code{color:var(--ink-2);margin-right:8px}
-.entitymeta{display:grid;gap:22px;margin:0 0 28px;min-width:0}.entitymeta section{min-width:0}.entitysection h3{font-size:var(--fs-sm);letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
+.entitymeta{display:grid;gap:22px;margin:0 0 6px;min-width:0}.entitymeta section{min-width:0}.entitysection h3{font-size:var(--fs-sm);letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
 .entitytagbar{position:sticky;top:var(--topH);z-index:61;display:flex;align-items:center;
   height:var(--filterH);margin:0 -16px;padding:9px 16px;background:transparent;
   border-bottom:1px solid transparent}
