@@ -84,7 +84,8 @@ CANDIDATE_FIELDS = (
     "provenance_path", "policy_version", "verdict", "avatar_url", "evidence",
 )
 HEALTH_FIELDS = (
-    "source", "profile", "policy_version", "index_cache_reused", "index_fetched",
+    "source", "profile", "policy_version", "index_cache_reused", "index_cache_stale",
+    "index_fetched",
     "attempted", "snapshot_reused", "fetched", "succeeded", "no_match",
     "rejected", "duplicates", "errors", "bytes_fetched", "elapsed_ms",
     "last_error_kind", "last_error_status", "last_error_message",
@@ -133,7 +134,8 @@ class SourceHealth:
         self.row: dict[str, object] = {
             "source": "gfriends", "profile": "external_fallback",
             "policy_version": POLICY_VERSION,
-            "index_cache_reused": 0, "index_fetched": 0, "attempted": 0,
+            "index_cache_reused": 0, "index_cache_stale": 0, "index_fetched": 0,
+            "attempted": 0,
             "snapshot_reused": 0, "fetched": 0, "succeeded": 0,
             "no_match": 0, "rejected": 0, "duplicates": 0, "errors": 0,
             "bytes_fetched": 0, "elapsed_ms": 0,
@@ -184,17 +186,38 @@ def load_gfriends(transport: HttpTransport) -> dict[str, list[tuple[str, str]]]:
     return parse_gfriends(response.body)
 
 
+#: 索引缓存的保鲜期。Gfriends 是持续增补的图库，而这份缓存原本永不过期——只要文件在
+#: 就一直复用，于是快照那天没收录的人会被判成 `no_match`，此后每次重跑都照抄同一个
+#: 结论，再也不会被重新审视。实测：2026-08-25 的缓存里没有「釈アリス」，当天之后
+#: Gfriends 加了她（两份索引正好差这一条），但本地怎么跑都还是找不到。
+#:
+#: 一天是个折中：图库按天更新，而这个脚本是长跑批处理，不该每次启动都拉 6 MB。
+INDEX_MAX_AGE_SECONDS = 24 * 3600
+
+
+def _index_cache_age(cache_path: Path) -> float | None:
+    try:
+        return max(0.0, time.time() - cache_path.stat().st_mtime)
+    except OSError:
+        return None
+
+
 def load_gfriends_cached(
     transport: HttpTransport, cache_dir: Path, refresh: bool, health: SourceHealth,
 ) -> dict[str, list[tuple[str, str]]]:
     cache_path = cache_dir / "gfriends-filetree.json"
-    if not refresh and cache_path.is_file():
+    age = _index_cache_age(cache_path)
+    stale = age is None or age > INDEX_MAX_AGE_SECONDS
+    if not refresh and not stale and cache_path.is_file():
         try:
             index = parse_gfriends(cache_path.read_bytes())
             health.add("index_cache_reused")
             return index
         except (OSError, KeyError, TypeError, ValueError):
             health.error("invalid_index_cache", message=str(cache_path))
+    if stale and cache_path.is_file():
+        # 记下来：过期而去重取，和「本来就没有缓存」是两回事，健康报告要分得开。
+        health.add("index_cache_stale")
     try:
         response = transport(
             HttpRequest("GET", GFRIENDS_RAW + "Filetree.json",
