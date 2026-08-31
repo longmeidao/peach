@@ -13,8 +13,16 @@ r"""按番号抓官方封套：把所有候选量一遍，留像素最多的那�
     低清  pics.dmm.co.jp/mono/movie/adult/<cid>/<cid>pl.jpg            800x539
     高清  awsimgsrc.dmm.co.jp/pics_dig/digital/video/<cid>/<cid>pl.jpg 2184x1464
 
-候选来自两处：`awsimgsrc` 按 `content_id` 构造（r18.dev 提供 cid），以及 avbase 的
-作品页——它一次请求就同时给出 duga、pics.dmm、mgstage 三个主机的图。
+候选不是固定优先级，而是汇总后量像素：
+
+- 已保存的 Javinizer-Go 原始证据，离线复用 cover URL 与 content_id；
+- r18.dev 官方 DMM jacket（本地没有成功快照时才联网补）；
+- DMM 新旧 awsimgsrc CDN 的 digital/video、digital/amateur、mono/movie 路径；
+- 有 Prestige 厂牌证据时，直连 Prestige API 与 MGS EnlargeImage；
+- 上轮成功日志里的原 URL，保住已经发现但当前无法重新检索的 DUGA 等官方图。
+
+AVBase 已返回 Cloudflare 验证页，不再进入批量流程，也不尝试绕过。DUGA 批量搜索 API
+需要代理店应用 ID，未配置前只复用成功日志中已经取得的精确图片 URL。
 
 两条番号改写规则，都由实测得出：
 
@@ -44,7 +52,7 @@ from urllib.parse import urlparse
 import httpx
 from PIL import Image, UnidentifiedImageError
 
-from peach.config import COVER_DIR, DATABASE_PATH, GENERATED_DIR
+from peach.config import COVER_DIR, DATABASE_PATH, GENERATED_DIR, SOURCES_DIR
 from peach.http import HttpRequest, HttpTransport, HttpxTransport
 from peach.jobs import DiskGuard, JobPolicyError
 from peach.platform import system_volume
@@ -52,9 +60,17 @@ from peach.web_contract import is_jav_code
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
-AWS_HIRES = "https://awsimgsrc.dmm.co.jp/pics_dig/digital/video/{cid}/{cid}pl.jpg"
-AVBASE_WORK = "https://www.avbase.net/works/{code}"
+AWS_LEGACY_DIGITAL = (
+    "https://awsimgsrc.dmm.co.jp/pics_dig/digital/video/{cid}/{cid}pl.jpg"
+)
+AWS_MODERN = "https://awsimgsrc.dmm.com/dig/{kind}/{cid}/{cid}pl.jpg"
+AWS_LEGACY = "https://awsimgsrc.dmm.co.jp/pics_dig/{kind}/{cid}/{cid}pl.jpg"
 R18_DETAIL = "https://r18.dev/videos/vod/movies/detail/-/dvd_id={code}/json"
+MGS_DETAIL = "https://www.mgstage.com/product/product_detail/{code}/"
+PRESTIGE_SEARCH = "https://www.prestige-av.com/api/search"
+PRESTIGE_PRODUCT = "https://www.prestige-av.com/api/product/{uuid}"
+PRESTIGE_MEDIA = "https://www.prestige-av.com/api/media/{path}"
+DEFAULT_METADATA_ROOT = SOURCES_DIR / "metadata" / "javinizer-go"
 
 #: 低于这个宽度的是缩略图或占位图，不当封套。实测最低的正片封套是 800 宽。
 MIN_WIDTH = 700
@@ -63,25 +79,31 @@ PROBE_BYTES = 64 * 1024
 # 瞬时 TLS EOF / 连接重置不能落成“官方没有封面”。按项目外网退避规则重试，
 # 只有 2/4/6/8 秒四次重试全部失败后，才把网络异常交给逐条日志记录。
 NETWORK_RETRY_DELAYS = (2, 4, 6, 8)
-#: avbase 页面里混着剧照与缩略图，按文件名排除。
+#: 页面与上游证据里可能混着剧照与缩略图，按文件名排除。
 THUMBNAIL = re.compile(r"(thumb|small|icon|/ts/|-s\d|_s\.)", re.I)
 IMAGE_URL = re.compile(r"https?://[^\"'\\ )]+?\.(?:jpg|jpeg|png|webp)")
-AVBASE_MAIN_CLASSES = frozenset(("max-h-[28rem]", "max-w-full"))
 
 
 @dataclass(frozen=True)
 class Candidate:
     source: str
     url: str
-    referer: str = "https://www.avbase.net/"
+    referer: str = "https://www.dmm.co.jp/"
+
+
+@dataclass(frozen=True)
+class MetadataEvidence:
+    candidates: tuple[Candidate, ...] = ()
+    makers: frozenset[str] = frozenset()
+    sources: frozenset[str] = frozenset()
 
 
 class Unavailable(RuntimeError):
     pass
 
 
-class _AvbaseMainCoverParser(HTMLParser):
-    """只读取作品页主封面，拒绝相关推荐、剧照和演员头像。"""
+class _MGSDetailParser(HTMLParser):
+    """只读取 MGS 的放大图链接；列表缩略图和剧照不进入候选。"""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -89,21 +111,30 @@ class _AvbaseMainCoverParser(HTMLParser):
 
     def handle_starttag(self, tag: str,
                         attrs: list[tuple[str, str | None]]) -> None:
-        if tag.lower() != "img":
-            return
         values = dict(attrs)
-        classes = frozenset((values.get("class") or "").split())
-        if not AVBASE_MAIN_CLASSES.issubset(classes):
-            return
-        url = values.get("src") or values.get("data-src")
-        if url and IMAGE_URL.fullmatch(url):
+        url = None
+        if tag.lower() == "a" and values.get("id") == "EnlargeImage":
+            url = values.get("href")
+        elif tag.lower() == "a" and "link_magnify" in (values.get("class") or "").split():
+            url = values.get("href")
+        elif tag.lower() == "img" and any(
+                token in (values.get("src") or "").lower()
+                for token in ("jacket", "cover")):
+            url = values.get("src") or values.get("data-src")
+            if url:
+                url = url.replace("ps.", "pl.", 1)
+        if url and (IMAGE_URL.fullmatch(url)
+                    or re.search(r"\.(?:jpg|jpeg|png|webp)(?:\?.*)?$", url, re.I)):
             self.urls.append(url)
 
 
 def _fetch(transport: HttpTransport, url: str, *, referer: str,
-           limit: int, ranged: bool = False) -> bytes:
+           limit: int, ranged: bool = False,
+           extra_headers: dict[str, str] | None = None) -> bytes:
     headers = {"User-Agent": UA, "Referer": referer,
                "Accept-Language": "ja,en;q=0.9"}
+    if extra_headers:
+        headers.update(extra_headers)
     if ranged:
         headers["Range"] = f"bytes=0-{PROBE_BYTES - 1}"
     request = HttpRequest("GET", url, headers)
@@ -158,6 +189,111 @@ def cid_variants(content_id: str) -> list[str]:
     return [c for c in out if not (c in seen or seen.add(c))]
 
 
+def _referer_for(url: str) -> str:
+    host = urlparse(url).netloc.lower()
+    if "mgstage.com" in host:
+        return "https://www.mgstage.com/"
+    if "prestige-av.com" in host:
+        return "https://www.prestige-av.com/"
+    if "duga.jp" in host:
+        return "https://duga.jp/"
+    return "https://www.dmm.co.jp/"
+
+
+def candidate_for(url: str) -> Candidate:
+    return Candidate(urlparse(url).netloc.lower(), url, _referer_for(url))
+
+
+def _unique_candidates(candidates: list[Candidate]) -> list[Candidate]:
+    seen: set[str] = set()
+    return [candidate for candidate in candidates
+            if candidate.url and not (candidate.url in seen or seen.add(candidate.url))]
+
+
+def dmm_cdn_images(url: str) -> list[Candidate]:
+    """按 Javinizer-Go 当前已验证映射生成 DMM 新旧 CDN 候选。
+
+    主机名和路径不能当清晰度：同一 CID 的 legacy、modern、原始 URL 都要量尺寸。
+    """
+    clean = (url or "").split("?", 1)[0]
+    parsed = urlparse(clean)
+    match = re.search(
+        r"/(?:pics_dig/|dig/)?(?P<kind>digital/(?:video|amateur)|mono/movie)"
+        r"(?:/adult)?/(?P<cid>[^/]+)/",
+        parsed.path,
+        re.I,
+    )
+    candidates = [candidate_for(clean)] if IMAGE_URL.fullmatch(clean) else []
+    if not match:
+        return candidates
+    kind = match.group("kind").lower()
+    cid = match.group("cid").lower()
+    candidates.extend([
+        candidate_for(AWS_MODERN.format(kind=kind, cid=cid)),
+        candidate_for(AWS_LEGACY.format(kind=kind, cid=cid)),
+    ])
+    return _unique_candidates(candidates)
+
+
+def content_id_images(content_id: str) -> list[Candidate]:
+    candidates: list[Candidate] = []
+    for cid in cid_variants(content_id):
+        candidates.extend([
+            candidate_for(AWS_MODERN.format(kind="digital/video", cid=cid)),
+            candidate_for(AWS_LEGACY_DIGITAL.format(cid=cid)),
+        ])
+    return _unique_candidates(candidates)
+
+
+def cached_metadata(metadata_root: Path | None, code: str) -> MetadataEvidence:
+    """复用已落盘的 Javinizer 原始快照，不把网络缓存伪装成实时查询。"""
+    if metadata_root is None:
+        return MetadataEvidence()
+    candidates: list[Candidate] = []
+    makers: set[str] = set()
+    sources: set[str] = set()
+    for variant in code_variants(code):
+        folder = metadata_root / variant
+        if not folder.is_dir():
+            continue
+        for path in sorted(folder.glob("*.json")):
+            try:
+                wrapper = json.loads(path.read_text(encoding="utf-8-sig"))
+            except (OSError, ValueError):
+                continue
+            result = wrapper.get("result")
+            if not isinstance(result, dict):
+                continue
+            source = str(result.get("source") or wrapper.get("source") or path.stem)
+            sources.add(source.lower())
+            for value in (result.get("maker"), result.get("label")):
+                if isinstance(value, str) and value.strip():
+                    makers.add(value.strip().lower())
+            cover_url = result.get("cover_url")
+            if isinstance(cover_url, str) and IMAGE_URL.fullmatch(cover_url.strip()):
+                candidates.extend(dmm_cdn_images(cover_url.strip()))
+            candidates.extend(content_id_images(str(result.get("content_id") or "")))
+    return MetadataEvidence(
+        tuple(_unique_candidates(candidates)), frozenset(makers), frozenset(sources),
+    )
+
+
+def logged_success_candidate(rows: list[dict], code: str) -> Candidate | None:
+    """复用历史精确 URL；DUGA 等不再可检索时仍能参与同尺寸比较。"""
+    for row in reversed(rows):
+        if (normalise_code(str(row.get("code") or "")) == code
+                and row.get("result") == "取得"
+                and isinstance(row.get("url"), str)
+                and IMAGE_URL.fullmatch(str(row["url"]))):
+            return candidate_for(str(row["url"]))
+    return None
+
+
+def _is_prestige(evidence: MetadataEvidence) -> bool:
+    return any("prestige" in value or "プレステージ" in value
+               for value in evidence.makers)
+
+
 def r18_images(transport: HttpTransport, code: str) -> list[Candidate]:
     """读取 r18 返回的官方封套，并保留旧数字版高清 URL 探测。
 
@@ -172,7 +308,7 @@ def r18_images(transport: HttpTransport, code: str) -> list[Candidate]:
                 transport, R18_DETAIL.format(code=urllib.parse.quote(variant)),
                 referer="https://r18.dev/", limit=2 * 1024 * 1024,
             ).decode("utf-8", "ignore"))
-        except (Unavailable, ValueError):
+        except (Unavailable, ValueError, httpx.TransportError):
             continue
         found: list[Candidate] = []
         jacket = ((payload.get("images") or {}).get("jacket_image") or {})
@@ -180,39 +316,89 @@ def r18_images(transport: HttpTransport, code: str) -> list[Candidate]:
             for raw_url in jacket.values():
                 url = raw_url.strip() if isinstance(raw_url, str) else ""
                 if url and IMAGE_URL.fullmatch(url) and not THUMBNAIL.search(url):
-                    found.append(Candidate(urlparse(url).netloc, url, "https://r18.dev/"))
+                    found.extend(dmm_cdn_images(url))
         cid = str(payload.get("content_id") or "")
-        found.extend(
-            Candidate(urlparse(AWS_HIRES).netloc, AWS_HIRES.format(cid=value),
-                      "https://r18.dev/")
-            for value in cid_variants(cid)
-        )
-        seen: set[str] = set()
-        return [candidate for candidate in found
-                if not (candidate.url in seen or seen.add(candidate.url))]
+        found.extend(content_id_images(cid))
+        return _unique_candidates(found)
     return []
 
 
-def avbase_images(transport: HttpTransport, code: str) -> list[Candidate]:
-    """读取 avbase 当前作品的主封面，不扫描整页关联作品图片。"""
+def mgstage_images(transport: HttpTransport, code: str) -> list[Candidate]:
+    """直取 MGS 商品页 EnlargeImage；年龄确认只用公开 cookie，不绕挑战。"""
     for variant in code_variants(code):
         try:
-            page = _fetch(transport, AVBASE_WORK.format(code=urllib.parse.quote(variant)),
-                          referer="https://www.avbase.net/", limit=4 * 1024 * 1024,
-                          ).decode("utf-8", "ignore")
-        except Unavailable:
+            page = _fetch(
+                transport,
+                MGS_DETAIL.format(code=urllib.parse.quote(variant)),
+                referer="https://www.mgstage.com/",
+                limit=4 * 1024 * 1024,
+                extra_headers={"Cookie": "adc=1"},
+            ).decode("utf-8", "ignore")
+        except (Unavailable, httpx.TransportError):
             continue
-        parser = _AvbaseMainCoverParser()
+        parser = _MGSDetailParser()
         parser.feed(page)
         found: list[Candidate] = []
-        seen: set[str] = set()
         for url in parser.urls:
-            if THUMBNAIL.search(url) or url in seen:
+            absolute = urllib.parse.urljoin("https://www.mgstage.com/", url)
+            if THUMBNAIL.search(absolute):
                 continue
-            seen.add(url)
-            found.append(Candidate(urlparse(url).netloc, url))
+            found.append(candidate_for(absolute))
         if found:
-            return found
+            return _unique_candidates(found)
+    return []
+
+
+def prestige_images(transport: HttpTransport, code: str) -> list[Candidate]:
+    """按 MDCX 固定 revision 的公开 API 模型直取 Prestige packageImage。"""
+    query = urllib.parse.urlencode({
+        "isEnabledQuery": "true",
+        "searchText": code,
+        "isEnableAggregation": "false",
+        "release": "false",
+        "reservation": "false",
+        "soldOut": "false",
+        "from": 0,
+        "aggregationTermsSize": 0,
+        "size": 20,
+    })
+    try:
+        payload = json.loads(_fetch(
+            transport, f"{PRESTIGE_SEARCH}?{query}",
+            referer="https://www.prestige-av.com/", limit=4 * 1024 * 1024,
+        ).decode("utf-8", "ignore"))
+    except (Unavailable, ValueError, httpx.TransportError):
+        return []
+    hits = (((payload.get("hits") or {}).get("hits")) or [])
+    exact: list[str] = []
+    fallback: list[str] = []
+    for hit in hits:
+        source = hit.get("_source") if isinstance(hit, dict) else None
+        if not isinstance(source, dict):
+            continue
+        item_id = normalise_code(str(source.get("deliveryItemId") or ""))
+        uuid = str(source.get("productUuid") or "").strip()
+        if not uuid:
+            continue
+        if item_id == normalise_code(code):
+            exact.append(uuid)
+        elif str(source.get("deliveryItemId") or "").upper().endswith(code.upper()):
+            fallback.append(uuid)
+    uuids = list(dict.fromkeys(exact or fallback))
+    for uuid in uuids:
+        try:
+            product = json.loads(_fetch(
+                transport, PRESTIGE_PRODUCT.format(uuid=urllib.parse.quote(uuid)),
+                referer="https://www.prestige-av.com/", limit=4 * 1024 * 1024,
+            ).decode("utf-8", "ignore"))
+        except (Unavailable, ValueError, httpx.TransportError):
+            continue
+        package = product.get("packageImage") or {}
+        path = package.get("path") if isinstance(package, dict) else ""
+        if isinstance(path, str) and path.strip():
+            url = PRESTIGE_MEDIA.format(path=path.strip().lstrip("/"))
+            if IMAGE_URL.fullmatch(url):
+                return [candidate_for(url)]
     return []
 
 
@@ -222,13 +408,29 @@ def probe_size(transport: HttpTransport, candidate: Candidate) -> tuple[int, int
     return Image.open(io.BytesIO(head)).size
 
 
-def best_cover(transport: HttpTransport, code: str, delay: float
+def best_cover(transport: HttpTransport, code: str, delay: float, *,
+               metadata_root: Path | None = None,
+               prior_candidates: tuple[Candidate, ...] = (),
                ) -> tuple[Candidate, tuple[int, int], bytes]:
-    # 来源一律记主机名。构造的和 avbase 发现的常是同一个主机，记成两个名字会让
-    # 覆盖率统计凭空多出一个「渠道」。
-    candidates = r18_images(transport, code)
-    time.sleep(delay)
-    candidates += avbase_images(transport, code)
+    # 来源一律记主机名。缓存、构造路径和官方页常指向同一个主机，记成多个名字
+    # 会让覆盖率统计凭空多出「渠道」。
+    evidence = cached_metadata(metadata_root, code)
+    candidates = list(prior_candidates) + list(evidence.candidates)
+    # 有成功快照时不重复打 r18；失败快照不算证据，仍允许联网刷新。
+    if "r18dev" not in evidence.sources:
+        candidates += r18_images(transport, code)
+        time.sleep(delay)
+    # MGS 与 Prestige 都是 Prestige 集团的官方供给面。只在本地厂牌证据命中时
+    # 查询，避免把全库 960 个番号无差别打到两个站点。
+    if _is_prestige(evidence) or "mgstage" in evidence.sources:
+        candidates += mgstage_images(transport, code)
+        time.sleep(delay)
+        candidates += prestige_images(transport, code)
+        time.sleep(delay)
+    candidates = _unique_candidates([
+        candidate for candidate in candidates
+        if not THUMBNAIL.search(candidate.url)
+    ])
     if not candidates:
         raise Unavailable("所有渠道都没有候选")
 
@@ -236,7 +438,7 @@ def best_cover(transport: HttpTransport, code: str, delay: float
     for candidate in candidates:
         try:
             width, height = probe_size(transport, candidate)
-        except (Unavailable, UnidentifiedImageError, OSError):
+        except (Unavailable, UnidentifiedImageError, OSError, httpx.TransportError):
             continue
         finally:
             time.sleep(delay)
@@ -245,10 +447,14 @@ def best_cover(transport: HttpTransport, code: str, delay: float
     if not measured:
         raise Unavailable("候选都不是可用封套")
 
-    _, winner, size = max(measured, key=lambda item: item[0])
-    data = _fetch(transport, winner.url, referer=winner.referer,
-                  limit=16 * 1024 * 1024)
-    return winner, size, data
+    for _pixels, winner, size in sorted(measured, key=lambda item: item[0], reverse=True):
+        try:
+            data = _fetch(transport, winner.url, referer=winner.referer,
+                          limit=16 * 1024 * 1024)
+        except (Unavailable, httpx.TransportError):
+            continue
+        return winner, size, data
+    raise Unavailable("可用候选完整下载都失败")
 
 
 FIELDS = ("code", "result", "source", "width", "height", "kb", "url", "note")
@@ -310,7 +516,7 @@ def restore_logged_successes(transport: HttpTransport, log: Path, root: Path,
             continue
         temporary = target.with_suffix(".restore.tmp")
         try:
-            data = _fetch(transport, str(row["url"]), referer="https://www.avbase.net/",
+            data = _fetch(transport, str(row["url"]), referer=_referer_for(str(row["url"])),
                           limit=16 * 1024 * 1024)
             with Image.open(io.BytesIO(data)) as image:
                 size = image.size
@@ -380,12 +586,58 @@ def pending(database: Path, root: Path, only_shaped: bool,
     return result
 
 
+def audit_state(database: Path, root: Path, log: Path) -> dict[str, object]:
+    """只读盘点当前 JAV 封面；用于批次前后使用同一统计口径。"""
+    connection = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True)
+    try:
+        raw_codes = [str(row[0]) for row in connection.execute(
+            "SELECT DISTINCT code FROM asset WHERE medium='video' "
+            "AND code IS NOT NULL AND code<>''"
+        )]
+    finally:
+        connection.close()
+    codes = {
+        normalise_code(code) for code in raw_codes
+        if is_jav_code(code) and not code.upper().startswith("FC2")
+    }
+    dimensions: dict[str, tuple[int, int]] = {}
+    invalid: list[str] = []
+    for path in sorted(root.glob("*.jpg")) if root.is_dir() else []:
+        try:
+            with Image.open(path) as image:
+                dimensions[path.stem] = image.size
+        except (UnidentifiedImageError, OSError):
+            invalid.append(path.name)
+    widths = {
+        "le_800": sum(width <= 800 for width, _height in dimensions.values()),
+        "801_999": sum(801 <= width <= 999 for width, _height in dimensions.values()),
+        "1000_1199": sum(1000 <= width <= 1199
+                         for width, _height in dimensions.values()),
+        "ge_1200": sum(width >= 1200 for width, _height in dimensions.values()),
+    }
+    rows = logged_rows(log)
+    return {
+        "jav_codes": len(codes),
+        "decoded_covers": len(dimensions),
+        "missing": len(codes - set(dimensions)),
+        "invalid": invalid,
+        "width_buckets": widths,
+        "log_successes": sum(row.get("result") == "取得" for row in rows),
+        "log_misses": sum(row.get("result") == "未取得" for row in rows),
+        "settled_misses": len(settled_misses(log)),
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="按番号抓最高清的官方封套")
     parser.add_argument("--db", type=Path, default=DATABASE_PATH)
     parser.add_argument("--out", type=Path, default=COVER_DIR)
     parser.add_argument("--log", type=Path,
                         default=GENERATED_DIR / "cover-fetch-log.csv")
+    parser.add_argument(
+        "--metadata-root", type=Path, default=DEFAULT_METADATA_ROOT,
+        help="Javinizer-Go 原始快照目录；先离线复用成功证据，再补联网来源",
+    )
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--delay", type=float, default=1.5)
     parser.add_argument("--min-free", type=float, default=40.0,
@@ -403,6 +655,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="升级模式只重探不超过此宽度的已有封套；0 表示全部")
     parser.add_argument("--all-codes", action="store_true",
                         help="连 FC2/日期番号一起试；默认只跑片商与素人形态")
+    parser.add_argument("--audit", action="store_true",
+                        help="只读输出封面数量、缺失、损坏和尺寸分布，不联网不写文件")
     return parser
 
 
@@ -432,6 +686,10 @@ def _replace_log_row(rows: list[dict], code: str, replacement: dict) -> None:
 
 
 def run(args: argparse.Namespace) -> int:
+    if args.audit:
+        print(json.dumps(audit_state(args.db, args.out, args.log),
+                         ensure_ascii=False, indent=2))
+        return 0
     if args.upgrade_max_width < 0:
         print("[stop] --upgrade-max-width 不能小于 0")
         return 2
@@ -489,9 +747,10 @@ def run(args: argparse.Namespace) -> int:
     transport = HttpxTransport()
     # 日志是整份重写：这轮只跑 pikpak 或只跑 --limit 时，未选中的旧记录也必须保留；
     # 只删除本轮会重新生成的番号。否则一次来源小批次就会抹掉其他来源的复核证据。
+    previous_rows = logged_rows(args.log)
     rows: list[dict] = [
         {field: row.get(field, "") for field in FIELDS}
-        for row in logged_rows(args.log)
+        for row in previous_rows
         if args.upgrade_existing
         or str(row.get("code") or "").strip() not in selected
     ]
@@ -506,7 +765,12 @@ def run(args: argparse.Namespace) -> int:
                 print(f"[stop] {exc}", flush=True)
                 break
             try:
-                winner, (width, height), data = best_cover(transport, code, args.delay)
+                previous = logged_success_candidate(previous_rows, code)
+                prior = (previous,) if previous is not None else ()
+                winner, (width, height), data = best_cover(
+                    transport, code, args.delay,
+                    metadata_root=args.metadata_root, prior_candidates=prior,
+                )
             # 网络异常必须按条吞掉。一次 SSL 抖动
             # （httpx.ConnectError: UNEXPECTED_EOF_WHILE_READING）此前直接打死了
             # 整个三小时的任务，而且死得很安静——日志停在半路，看起来像跑完了。
