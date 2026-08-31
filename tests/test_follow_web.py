@@ -455,6 +455,43 @@ class FollowContractTests(unittest.TestCase):
             '"public, max-age=31536000, immutable"', ''),
             "只有 /vendor/ 那条可以 immutable")
 
+    def test_archive_file_urls_get_the_data_prefix_and_the_right_host(self):
+        """原始文件和缩略图走不同主机与路径，三站规则还不一样。
+
+        2026-08-30 实测（取证见 docs/reference-snapshots/kemono-archive-media-host.md）：
+        旧代码拼的是 `https://<主域><path>`，少了 `/data` 前缀——三站的原始文件都取不到，
+        不只是 pawchive。pawchive 主域对 /data 也直接 404，必须点名 file. 子域；
+        kemono/coomer 走主域让站点自己 302 到当前的 nX 节点（编号会变，不写死）。
+        """
+        from peach.follow_sources import archive_file_url
+
+        self.assertEqual(
+            archive_file_url("pawchive", "https://pawchive.pw/b7/d5/x.mp4"),
+            "https://file.pawchive.pw/data/b7/d5/x.mp4")
+        self.assertEqual(
+            archive_file_url("kemono", "https://kemono.cr/7e/6b/y.jpg"),
+            "https://kemono.cr/data/7e/6b/y.jpg")
+        self.assertEqual(
+            archive_file_url("coomer", "https://coomer.st/aa/bb/z.jpg"),
+            "https://coomer.st/data/aa/bb/z.jpg")
+        # 已经带 /data 的不再叠加
+        self.assertEqual(
+            archive_file_url("pawchive", "https://pawchive.pw/data/b7/d5/x.mp4"),
+            "https://file.pawchive.pw/data/b7/d5/x.mp4")
+        # 别的站点原样返回
+        self.assertEqual(
+            archive_file_url("rule34video", "https://rule34video.com/a.mp4"),
+            "https://rule34video.com/a.mp4")
+
+    def test_archive_file_subdomains_stay_inside_the_host_allowlist(self):
+        """改写后的主机仍要过播放代理的白名单，安全边界不许因此放宽。"""
+        from peach.follow_stream import _allowed
+
+        self.assertTrue(_allowed("pawchive", "https://file.pawchive.pw/data/a.mp4"))
+        self.assertTrue(_allowed("kemono", "https://n1.kemono.cr/data/a.jpg"))
+        self.assertFalse(_allowed("pawchive", "https://evil.test/data/a.mp4"))
+        self.assertFalse(_allowed("pawchive", "http://file.pawchive.pw/data/a.mp4"))
+
     def test_archive_thumbnails_use_the_img_subdomain(self):
         """归档站静态资源走 img. 子域，主域取不到。
 

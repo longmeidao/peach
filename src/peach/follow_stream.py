@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Callable, Mapping
 
 from . import follow_providers
-from .follow_sources import USER_AGENT, f95_attachment_media_items
+from .follow_sources import USER_AGENT, archive_file_url, f95_attachment_media_items
 from .follow_secrets import Credential
 from .follow_store import FollowItemRow
 from .http import HttpRequest, HttpTransport
@@ -101,9 +101,13 @@ class FollowMediaResolver:
                 return ResolvedFollowMedia(url, item.url)
             raise FollowMediaUnavailable("媒体来源不受支持")
         if item.provider != "rule34video":
-            if not item.media_url or not _allowed(item.provider, item.media_url):
+            # 归档站的存量行按旧规则拼过 URL（少 /data 前缀、主机也不对），
+            # 在这里修回可取的形式；`_allowed` 按后缀匹配，file./n1. 这些子域
+            # 仍在原站的白名单内，安全边界没有放宽。
+            media_url = archive_file_url(item.provider, str(item.media_url or ""))
+            if not media_url or not _allowed(item.provider, media_url):
                 raise FollowMediaUnavailable("来源媒体地址不可用")
-            return ResolvedFollowMedia(item.media_url, item.url)
+            return ResolvedFollowMedia(media_url, item.url)
 
         with self._lock:
             cached = self._cache.get(item.id)

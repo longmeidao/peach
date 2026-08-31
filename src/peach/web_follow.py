@@ -177,6 +177,8 @@ def _archive_media_host(provider: str, url: str) -> str:
     return url.replace(f"https://{host}/", f"https://img.{host}/", 1)
 
 
+
+
 def _thumb_url(item) -> str | None:
     # rule34.xxx 的历史行存的是 250px preview。官方 dapi 的 sample_url 与它使用
     # 同一 bucket/hash；2026-08-28 对生产历史行实测推导后为 1920x1080。
