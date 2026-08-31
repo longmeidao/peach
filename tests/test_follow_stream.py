@@ -77,6 +77,21 @@ class FollowMediaResolverTests(unittest.TestCase):
                          "https://attachments.f95zone.to/2026/08/one.jpg")
         self.assertEqual(target.referer, item.url)
 
+    def test_f95_attachment_stays_available_while_other_links_need_a_session(self):
+        item = SimpleNamespace(
+            id=14, provider="f95zone", url="https://f95zone.to/threads/1/post-14",
+            media_url="https://f95zone.to/masked/gofile.io/1/locked",
+            metadata={"media_needs_credential": True, "attachments": [
+                "https://attachments.f95zone.to/2026/08/one.jpg",
+            ]},
+        )
+        resolver = FollowMediaResolver(lambda *_args: None).with_credential_loader(
+            lambda provider: Credential(provider, {"cookie": "xf_session=saved"}))
+        target = resolver.resolve(item, 0)
+        self.assertEqual(target.url,
+                         "https://attachments.f95zone.to/2026/08/one.jpg")
+        self.assertEqual(target.headers, {"Cookie": "xf_session=saved"})
+
     def test_gofile_media_keeps_the_token_in_the_proxy_header(self):
         item = SimpleNamespace(
             id=12, provider="fanbox", url="https://creator.fanbox.cc/posts/12",

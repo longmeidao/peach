@@ -158,6 +158,26 @@ class FollowStore:
             "SELECT alias FROM entity_alias WHERE entity_id=?", (entity_id,))]
         return tuple(dict.fromkeys(name for name in names if name))
 
+    def source_needs_media_reparse(self, source_id: int) -> bool:
+        """Whether saved credentials could unlock stale media metadata.
+
+        This is deliberately derived from candidate metadata rather than a new
+        truth field.  A successful unconditional refresh replaces the metadata
+        and naturally clears the condition.
+        """
+        rows = self._connect().execute(
+            "SELECT metadata_json FROM follow_item WHERE source_id=?",
+            (source_id,),
+        ).fetchall()
+        for row in rows:
+            try:
+                metadata = json.loads(row[0] or "{}")
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if isinstance(metadata, dict) and metadata.get("media_needs_credential"):
+                return True
+        return False
+
     # ---- 抓取结果落地 ---------------------------------------------------
 
     def record(self, source_id: int, fetch: SourceFetch, *,

@@ -94,8 +94,6 @@ class FollowMediaResolver:
         """解析可播地址。`height` 指定清晰度，只有 rule34video 有多档可选；
         要的那档不存在就退回默认（最高档），不报错——签名 URL 会过期，
         为一次选档失败中断播放不值得。"""
-        if item.metadata.get("media_needs_credential"):
-            raise FollowMediaUnavailable("媒体需要来源登录会话")
         media_items = item.metadata.get("media_items")
         if (not isinstance(media_items, list) or not media_items) \
                 and item.provider == "f95zone":
@@ -126,8 +124,16 @@ class FollowMediaResolver:
             if resource_provider == "f95zone":
                 if not _allowed_resource(url, ("attachments.f95zone.to",)):
                     raise FollowMediaUnavailable("F95 返回了不受信任的图片地址")
-                return ResolvedFollowMedia(url, item.url)
+                loader = getattr(self, "_credential_loader", None)
+                credential = loader("f95zone") if loader else None
+                cookie = str(credential.values.get("cookie") or "") if credential else ""
+                if item.metadata.get("media_needs_credential") and not cookie:
+                    raise FollowMediaUnavailable("F95 附件需要登录会话")
+                return ResolvedFollowMedia(
+                    url, item.url, {"Cookie": cookie} if cookie else None)
             raise FollowMediaUnavailable("媒体来源不受支持")
+        if item.metadata.get("media_needs_credential"):
+            raise FollowMediaUnavailable("媒体需要来源登录会话")
         if item.provider != "rule34video":
             # 归档站的存量行按旧规则拼过 URL（少 /data 前缀、主机也不对），
             # 在这里修回可取的形式；`_allowed` 按后缀匹配，file./n1. 这些子域

@@ -198,6 +198,8 @@ def _media_items(item) -> list[dict]:
             "thumb_url": thumb if thumb.startswith("https://") else None,
             "size": media.get("size"),
             "resource_provider": str(media.get("resource_provider") or ""),
+            "resource_group": str(media.get("resource_group") or "") or None,
+            "resource_group_label": str(media.get("resource_group_label") or "") or None,
         })
     return result
 
@@ -283,7 +285,7 @@ def _excluded_item(item) -> bool:
             and not _f95_has_resource(item.media_url, item.metadata))
 
 
-def _item_payload(item) -> dict:
+def _item_payload(item, credential_providers: frozenset[str] = frozenset()) -> dict:
     tags = _item_tags(item)
     detail_tags = _item_all_tags(item)
     media_kind = _media_kind(item)
@@ -295,6 +297,11 @@ def _item_payload(item) -> dict:
         "\n".join(str(value) for value in recorded_links)
         if isinstance(recorded_links, list) else ""
     )
+    needs_credential = bool(item.metadata.get("media_needs_credential"))
+    credential_ready = not needs_credential or item.provider in credential_providers
+    playable = (media_kind in {"video", "image"}
+                and ((bool(media_items) and credential_ready)
+                     or (bool(item.media_url) and not needs_credential)))
     return {
         "id": item.id,
         "provider": item.provider,
@@ -318,15 +325,15 @@ def _item_payload(item) -> dict:
         "variant_label": item.variant_label,
         "status": item.status,
         "asset_id": item.asset_id,
-        "media_needs_credential": bool(item.metadata.get("media_needs_credential")),
+        "media_needs_credential": needs_credential,
         "media_error": str(item.metadata.get("media_error") or "") or None,
         "has_media": bool(item.media_url) or bool(media_items),
         "media_kind": media_kind,
         "media_type": _video_media_type(item.media_url)
                       if media_kind == "video" else None,
-        "playable": (bool(item.media_url) or bool(media_items))
-                    and media_kind in {"video", "image"}
-                    and not bool(item.metadata.get("media_needs_credential")),
+        # 可直接读取的附件与仍需会话解析的外链可以同时存在。后者不能把
+        # 前者整体锁死；详情继续复用同一条 /follow-stream 媒体代理路径。
+        "playable": playable,
         "media_items": media_items,
         # 只投影连接器已验证过的文件页域名；原始媒体 URL 仍不进入 feed。
         "resource_urls": safe_resource_urls,
@@ -336,12 +343,15 @@ def _item_payload(item) -> dict:
     }
 
 
-def _group_payload(group: ReleaseGroup) -> dict:
+def _group_payload(group: ReleaseGroup,
+                   credential_providers: frozenset[str] = frozenset()) -> dict:
     return {
         "release_key": group.release_key,
-        "primary": _item_payload(group.primary),
-        "variants": [_item_payload(item) for item in group.variants],
-        "duplicates": [_item_payload(item) for item in group.duplicates],
+        "primary": _item_payload(group.primary, credential_providers),
+        "variants": [_item_payload(item, credential_providers)
+                     for item in group.variants],
+        "duplicates": [_item_payload(item, credential_providers)
+                       for item in group.duplicates],
         "providers": list(group.providers),
         "has_wip": group.has_wip,
         "is_release": group.is_release,
@@ -733,6 +743,11 @@ def q_follow(contract, args) -> dict:
     wanted_tags = tuple(value for value in
                         (part.strip() for part in str(args.get("tag") or "").split(","))
                         if value)
+    credential_store = _credential_store(contract)
+    credential_providers = frozenset(
+        provider for provider in CREDENTIAL_GUIDE
+        if credential_store.load(provider) is not None
+    )
     with contract.database.read_connection() as connection:
         store = _store(contract, connection)
         source_rows = store.sources()
@@ -771,7 +786,8 @@ def q_follow(contract, args) -> dict:
             page = [item for item in counted if not statuses or item.status in statuses]
             has_more = len(page) > offset + limit
             items = tuple(page[offset:offset + limit])
-        groups = [_group_payload(group) for group in store.group(items)]
+        groups = [_group_payload(group, credential_providers)
+                  for group in store.group(items)]
         facets = _follow_facets(store, everything, by_source, alias_map)
         # counts 与列表同源。以前它是一句全库 SQL，再逐条减掉被隐藏的 rule34video
         # 和无资源的 f95zone——同一套排除规则维护了两份，而且它完全不看作者、来源和
@@ -944,9 +960,15 @@ def _run_follow_check(contract, body) -> dict:
     credentials = _credential_store(contract)
     results: list[dict] = []
     with contract.database.read_connection() as connection:
-        rows = [dict(row) for row in _store(contract, connection).sources(enabled_only=True)
+        store = _store(contract, connection)
+        rows = [dict(row) for row in store.sources(enabled_only=True)
                 if (source_id is None or row["id"] == source_id)
                 and (not older or row["provider"] in _BACKFILL_PROVIDERS)]
+        for row in rows:
+            row["force_media_reparse"] = (
+                not older and credentials.load(row["provider"]) is not None
+                and store.source_needs_media_reparse(row["id"])
+            )
     for row in rows:
         moment = datetime.now(timezone.utc)
         provider, ref = row["provider"], row["ref"]
@@ -957,8 +979,15 @@ def _run_follow_check(contract, body) -> dict:
             if gofile_credential is not None:
                 connector_kwargs["gofile_credential"] = gofile_credential
             connector = build_connector(provider, **connector_kwargs)
-            fetch = connector.fetch(ref, etag=row["etag"],
-                                    last_modified=row["last_modified"], page=page)
+            # 凭据已经存在但旧候选仍标着 needs_credential 时，条件请求的 304
+            # 会让旧解析结果永久不变。显式检查应无条件重取一次，让凭据真正生效。
+            fetch = connector.fetch(
+                ref,
+                etag=None if row["force_media_reparse"] else row["etag"],
+                last_modified=(None if row["force_media_reparse"]
+                               else row["last_modified"]),
+                page=page,
+            )
         except FollowHistoryEnd:
             with contract.database.write_transaction() as connection:
                 _store(contract, connection).record_history_end(row["id"], moment)

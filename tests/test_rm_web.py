@@ -486,6 +486,16 @@ class WebDataTests(unittest.TestCase):
         )["feedback"])
         self.assertEqual(self.row()["disposal"], "trash")
 
+    def test_orgasm_receipt_can_be_undone_without_crossing_zero(self):
+        added = rm_web.w_feedback(self.contract, {"id": 1, "kind": "o"})
+        self.assertEqual(added["o_count"], 1)
+        undone = rm_web.w_feedback(self.contract, {"id": 1, "kind": "o-undo"})
+        self.assertEqual(undone["o_count"], 0)
+        self.assertEqual(
+            rm_web.w_feedback(self.contract, {"id": 1, "kind": "o-undo"})["o_count"],
+            0,
+        )
+
     def test_flagged_means_positive_marks_not_disposal_or_negative_feedback(self):
         rm_web.w_feedback(self.contract, {"id": 1, "kind": "dislike"})
         rm_web.w_feedback(self.contract, {"id": 1, "kind": "dispose"})

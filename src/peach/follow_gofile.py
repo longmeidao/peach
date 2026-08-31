@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import re
 import urllib.parse
+from typing import Mapping
 
 import httpx
 
@@ -30,6 +31,9 @@ from .http import HttpRequest, HttpResponse, HttpTransport
 USER_AGENT = "Peach/0.2 (+local self-hosted follow reader)"
 
 _FOLDER_PATH = re.compile(r"/d/([A-Za-z0-9_-]+)")
+_LABELED_FOLDER = re.compile(
+    r"gofile\s*\(([^)]+)\)\s*[-:：]?\s*https://(?:[^/]+\.)?gofile\.io/d/"
+    r"([A-Za-z0-9_-]+)", re.IGNORECASE)
 
 
 def folder_ids(links: list[str]) -> list[str]:
@@ -47,6 +51,12 @@ def folder_ids(links: list[str]) -> list[str]:
     return list(dict.fromkeys(found))
 
 
+def folder_labels(text: str | None) -> dict[str, str]:
+    """Read optional human labels next to FANBOX Gofile links."""
+    return {folder: label.strip() for label, folder in _LABELED_FOLDER.findall(text or "")
+            if label.strip()}
+
+
 class GofileExpander:
     """用用户自己的 API token 把 Gofile 文件夹展开成媒体条目。"""
 
@@ -61,7 +71,9 @@ class GofileExpander:
         self.max_bytes = max_bytes
         self.max_items = max_items
 
-    def expand(self, links: list[str]) -> tuple[dict[str, object], ...]:
+    def expand(self, links: list[str], *,
+               labels: Mapping[str, str] | None = None,
+               ) -> tuple[dict[str, object], ...]:
         folders = folder_ids(links)
         if not folders or self.credential is None:
             return ()
@@ -70,7 +82,8 @@ class GofileExpander:
         seen: set[str] = set()
         for folder in folders:
             payload = self._contents(folder, token)
-            self._collect(payload, items, seen)
+            self._collect(payload, items, seen, folder,
+                          str((labels or {}).get(folder) or ""))
         return tuple(items)
 
     def _contents(self, folder: str, token: str) -> dict:
@@ -110,7 +123,8 @@ class GofileExpander:
             raise FollowSourceError("Gofile 响应超出大小上限")
         return response
 
-    def _collect(self, payload: dict, items: list, seen: set) -> None:
+    def _collect(self, payload: dict, items: list, seen: set,
+                 folder: str, label: str) -> None:
         stack = [payload.get("data")]
         while stack and len(items) < self.max_items:
             node = stack.pop()
@@ -138,4 +152,6 @@ class GofileExpander:
                 "media_kind": kind,
                 "size": node.get("size"),
                 "resource_provider": "gofile",
+                "resource_group": f"gofile:{folder}",
+                "resource_group_label": label or f"Gofile · {folder}",
             })

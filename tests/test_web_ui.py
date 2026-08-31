@@ -273,6 +273,18 @@ class WebUiSourceTests(unittest.TestCase):
     def test_detail_feedback_toolbar_never_shrinks_into_a_line(self):
         self.assertPageContains("width:max-content;overflow:hidden;flex:none")
 
+    def test_mutating_detail_actions_share_terminal_toasts_and_undo(self):
+        self.assertPageContains("const actionReceipt=(message,{undo=null,timeout=undo?8000:6000}={})")
+        self.assertPageContains("action:undo?{label:'撤销'")
+        self.assertPageContains("if(kind==='o')await postFeedback('o-undo')")
+        self.assertPageContains("actionReceipt(messages[kind],{undo:async()=>")
+        self.assertPageContains("actionReceipt(r.watch_later?'已加入稍后看':'已移出稍后看'")
+        self.assertPageContains("actionReceipt(r.better_version?'已标记寻找更好版本':'已取消寻找更好版本'")
+        self.assertPageContains("actionReceipt(`已删除标签「${tagLabel(tag)}」`,{undo:async()=>")
+        self.assertPageContains("actionReceipt(r.liked?'已保存喜欢偏好':'已取消喜欢'")
+        self.assertPageContains("if(later){e.stopPropagation();setActionBusy(later)")
+        self.assertPageContains("if(kind==='o')await post('o-undo')")
+
     def test_detail_like_reason_is_an_icon_disclosure_without_idle_explanation(self):
         self.assertPageContains('id="preferenceToggle" aria-label="喜爱理由"')
         self.assertPageContains('id="preferencePanel" hidden')
@@ -280,9 +292,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('placeholder="为什么喜欢？"')
         self.assertPageContains('class="geist-button primary savepreference"')
         self.assertPageContains('aria-label="提交喜爱理由"><span>提交</span></button>')
-        self.assertPageContains("btn.setAttribute('aria-busy','true')")
+        self.assertPageContains("setActionBusy(btn)")
         self.assertPageContains("spinnerHtml('正在提交喜爱理由')")
-        self.assertPageContains("btn.removeAttribute('aria-busy');btn.innerHTML='<span>提交</span>'")
+        self.assertPageContains("setActionBusy(btn,false);btn.innerHTML='<span>提交</span>'")
         self.assertPageContains('.geist-button.primary{border-color:var(--ink);background:var(--ink);color:var(--ground)}')
         self.assertPageContains('.preference-foot>span{margin-right:auto')
         self.assertPageLacks('aria-label="保存喜爱理由">${icon(\'check\')}</button>')
@@ -939,7 +951,8 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_note_semantics_replace_empty_states_for_persistent_errors(self):
         for name in ("emptyStateHtml", "loadingDotsHtml", "mediaViewButtonsHtml", "noteHtml", "progressHtml",
-                     "scrollerHtml", "skeletonHtml", "spinnerHtml", "wireScrollers"):
+                     "scrollerHtml", "setActionBusy", "skeletonHtml", "spinnerHtml",
+                     "wireBusyActions", "wireScrollers"):
             self.assertPageContains(name)
         self.assertPageContains("from './js/ui-components.js'")
         self.assertPageContains("const NOTE_VARIANTS=new Set(['secondary','warning','error','success'])")
@@ -1213,10 +1226,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".count.manage-static{position:relative;top:auto;z-index:1}")
         self.assertPageContains("if(!response.ok){")
         self.assertPageContains("throw new Error(detail||`请求失败（${response.status}）`)")
-        self.assertPageContains("catch(error){alert(`操作失败：${error.message||'未知错误'}`)}")
+        self.assertPageContains("catch(error){actionFailure('批量操作',error)}")
         self.assertPageContains("wireJunkCards($('#grid'));paintSelection();return")
-        self.assertPageContains("toast(`操作失败：${esc(error.message||'未知错误')}`,{warn:true})")
-        self.assertPageContains("b.dataset.kind==='dispose'&&r.disposal==='trash'&&state.state==='ads'")
+        self.assertPageContains("actionFailure('操作',error)")
+        self.assertPageContains("kind==='dispose'&&r.disposal==='trash'&&state.state==='ads'")
 
     def test_junk_review_and_trash_render_every_physical_resource_type(self):
         """图片、网址快捷方式等不能复用视频播放器，但必须可预览、回收和还原。"""
@@ -1225,7 +1238,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("String(it.name||'').toLowerCase().endsWith('.url')?'网址快捷方式'")
         self.assertPageContains('src="/photo-thumb?id=${it.id}"')
         self.assertPageContains('data-resource-operation="${action}"')
-        self.assertPageContains("await api('/api/batch',{method:'POST',body:JSON.stringify({ids:[+card.dataset.id],operation})})")
+        self.assertPageContains("await api('/api/batch',{method:'POST',body:JSON.stringify({ids:[id],operation})})")
         self.assertPageContains("if(it&&(!it.medium||it.medium==='video'))wireHover(el,it)")
         self.assertPageContains("state.state==='trash'?d.items.map(resourceCardHtml).join('')")
         self.assertPageContains("wireCards($('#grid'),state.state==='trash'?openResourceCard:undefined)")
@@ -1252,6 +1265,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("wireJunkCards($('#grid'));paintSelection()")
         self.assertPageContains("data-junk-batch=\"dismiss-junk\"")
         self.assertPageContains("data-junk-batch=\"reconsider-junk\"")
+
+    def test_resource_and_source_mutations_use_terminal_toasts_with_safe_undo(self):
+        self.assertPageContains("actionReceipt(operation==='restore'?'已还原':'已移入回收站',{undo:async()=>")
+        self.assertPageContains("actionReceipt(`已添加 ${picked.length} 个关注来源`)")
+        self.assertPageContains("actionReceipt(saving?'已保存到账本':(labels[to]||'已更新关注状态')")
+        self.assertPageContains("actionReceipt(`已把 ${r.removed} 项移入回收站`,{undo:ids.length?async()=>")
         self.assertPageContains("data-junk-batch=\"dispose\"")
         self.assertPageContains(".batchbar:has([data-junk-batch]:not([hidden]))")
         self.assertPageContains("#batchbar[hidden]{display:none}")
@@ -1655,6 +1674,25 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("function showItemDetailLoading(anchor,above)")
         self.assertPageLacks("detailpending")
         self.assertPageLacks("showItemDetailLoading(origin,above)")
+
+    def test_loading_actions_are_inert_and_dimmed_without_losing_focus(self):
+        """用户触发的等待态统一走 Geist loading button，而不是各页自造半套状态。"""
+        self.assertPageContains("control.setAttribute('aria-busy','true')")
+        self.assertPageContains("control.setAttribute('aria-disabled','true')")
+        self.assertPageContains("control.removeAttribute('aria-disabled')")
+        self.assertPageContains("wireBusyActions(document)")
+        self.assertPageContains("event.stopImmediatePropagation()")
+        self.assertPageContains('button[aria-busy="true"],[role="button"][aria-busy="true"]{')
+        self.assertPageContains("cursor:wait!important;opacity:.55!important;filter:saturate(.35)")
+        self.assertNotRegex(
+            self.app_js,
+            r"disabled\s*=\s*true;[^\n]{0,100}(?:setAttribute\('aria-busy'|setActionBusy)",
+            "请求中的按钮必须保持可聚焦，不能再把 native disabled 和 busy 混用",
+        )
+        self.assertPageContains("setActionBusy(batch)")
+        self.assertPageContains("setActionBusy(scan,busy)")
+        self.assertPageContains("setActionBusy(addButton)")
+        self.assertPageContains("setActionBusy(btn)")
 
     def test_follow_separator_uses_the_same_border_token_as_tags(self):
         self.assertPageContains(".pill{flex:none;height:var(--filterItemH);padding:0 20px;border:1px solid var(--border-15)")
@@ -2664,12 +2702,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("status.textContent='';toast('已在资源管理器中显示')")
         self.assertPageContains("if(reveal)reveal.onclick=()=>revealSource(Number(reveal.dataset.reveal),status,{button:reveal})")
         reveal_source = self.page.split("async function revealSource", 1)[1].split("async function syncMissing", 1)[0]
-        self.assertIn("button.setAttribute('aria-busy','true')", reveal_source)
+        self.assertIn("setActionBusy(button)", reveal_source)
         self.assertIn("status.textContent=''", reveal_source)
         self.assertNotIn("status.textContent='正在定位…'", reveal_source,
                          "请求等待态必须留在按钮内，不能撑开详情内容流")
         self.assertNotIn("button.disabled", reveal_source,
-                         "等待按钮应保持可聚焦，并由 aria-busy 阻止重复请求")
+                         "等待按钮应保持可聚焦，并由共享 busy 状态阻止重复请求")
         self.assertPageContains("api('/api/purge-missing',{method:'POST',body:JSON.stringify({id})})")
         self.assertPageContains('data-reveal="${id}"')
         self.assertPageContains('data-sync="${id}"')
