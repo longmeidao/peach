@@ -2102,9 +2102,14 @@ async function openReview(push=true){
             改成纯展示，几何对齐上面的「打开原视频」块。
             radio 保留但不可见：提交路径读的就是 `[name^="metadata-"]:checked`，
             删掉它会让批准退化成「必须选择一个来源值」的报错，而不是少一个圈。 */
-         const candidateBody=candidate=>`<b>${esc(candidate.source)}${candidate.official?' · 官方优先':''}</b>`
+         const evidenceLabels={title:'标题',original_title:'原标题',runtime:'来源时长',director:'导演',label:'Label',poster_url:'海报',cover_url:'封面',screenshot_urls:'截图',trailer_url:'预告片'};
+         const candidateEvidence=candidate=>{
+           const rows=Object.entries(candidate.catalog_evidence||{}).filter(([,item])=>item&&item.display_value);
+           return rows.length?`<dl class="metadataevidence">${rows.map(([field,item])=>`<div><dt>${esc(evidenceLabels[field]||field)}</dt><dd>${esc(item.display_value)}</dd>${(item.warnings||[]).map(warning=>`<small>${esc(warning)}</small>`).join('')}</div>`).join('')}</dl>`:''};
+         const candidateBody=candidate=>`<b>${esc(candidate.source)}${candidate.official?' · 官方优先':''}${candidate.content_id||candidate.provider_id?` · ID ${esc(candidate.content_id||candidate.provider_id)}`:''}</b>`
            +`<span>${esc(candidate.display_value||'')}</span>`
-           +(candidate.warnings||[]).map(warning=>`<i>${esc(warning)}</i>`).join('');
+           +(candidate.warnings||[]).map(warning=>`<i>${esc(warning)}</i>`).join('')
+           +candidateEvidence(candidate);
          const preview=metadata
            ? (candidates.length===1
              ? `<div class="metadatasole"><input type="radio" name="metadata-${esc(key)}" value="${esc(candidates[0].candidate_key)}" checked>

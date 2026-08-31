@@ -782,6 +782,13 @@ class OperationalScriptTests(unittest.TestCase):
                     self.calls.append((code, source))
                     return {
                         "source": source, "source_url": "https://r18.dev/example",
+                        "id": "ABC-001", "content_id": "abc00001",
+                        "title": "Catalog title", "original_title": "原标题",
+                        "runtime": 121, "director": "Director A", "label": "Label A",
+                        "poster_url": "https://img.example/poster.jpg",
+                        "cover_url": "https://img.example/cover.jpg",
+                        "screenshot_urls": ["https://img.example/1.jpg"],
+                        "trailer_url": "https://video.example/trailer.m3u8",
                         "maker": "Studio A" if source == "r18dev" else "Studio B",
                         "series": "Series A", "release_date": "2020-09-13T00:00:00Z",
                         "actresses": [{"dmm_id": 7, "japanese_name": "木村さん 木村さん"}],
@@ -807,6 +814,13 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertEqual({candidate["source"] for candidate in candidates}, {"r18dev", "javbus"})
             self.assertEqual(candidates[0]["display_value"], "木村さん")
             self.assertIn("已规范化", candidates[0]["warnings"][0])
+            self.assertEqual(candidates[0]["provider_id"], "ABC-001")
+            self.assertEqual(candidates[0]["content_id"], "abc00001")
+            self.assertEqual(candidates[0]["catalog_evidence"]["label"]["value"], "Label A")
+            self.assertEqual(
+                candidates[0]["catalog_evidence"]["screenshot_urls"]["value"],
+                ["https://img.example/1.jpg"],
+            )
             release = next(row for row in rows if row["field"] == "release_date")
             self.assertEqual(__import__("json").loads(release["candidates_json"])[0]["value"],
                              "2020-09-13")
@@ -817,7 +831,7 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertTrue(tag_candidates[0]["official"])
             self.assertEqual(tag_candidates[0]["profile"], "custom")
             self.assertEqual(tag_candidates[0]["policy_version"],
-                             "metadata-source-policy-v1")
+                             "metadata-source-policy-v2")
             self.assertEqual(tag_candidates[0]["field_rank"], 9)
             self.assertEqual(tag_candidates[0]["source_kind"], "official_mirror")
             self.assertTrue(all(row["source_profile"] == "custom" for row in rows))
@@ -833,6 +847,8 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertEqual(health_rows["r18dev"]["fetched"], "1")
             self.assertEqual(health_rows["r18dev"]["succeeded"], "1")
             self.assertEqual(health_rows["r18dev"]["release_date"], "1")
+            self.assertEqual(health_rows["r18dev"]["title"], "1")
+            self.assertEqual(health_rows["r18dev"]["trailer_url"], "1")
 
             connection = sqlite3.connect(db)
             asset = connection.execute(

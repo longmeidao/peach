@@ -620,6 +620,7 @@ def _apply_metadata_candidate(connection, group: dict, candidate: dict, now: str
         raise ValueError("字段候选置信度越界")
     metadata = {
         "provider": "javinizer-go", "source": source, "source_url": candidate.get("source_url"),
+        "provider_id": candidate.get("provider_id"), "content_id": candidate.get("content_id"),
         "raw_snapshot": candidate.get("raw_snapshot"), "review_item": group["item_key"],
         "candidate_key": candidate_key,
     }

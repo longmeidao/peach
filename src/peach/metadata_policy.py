@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Iterable, Mapping, Sequence
 
 
-POLICY_VERSION = "metadata-source-policy-v1"
+POLICY_VERSION = "metadata-source-policy-v2"
 PEACH_FIELDS = ("performers", "studio", "series", "release_date", "tags")
 REGISTERED_SOURCES = (
     "r18dev", "libredmm", "dmm", "javlibrary", "javdb", "javbus", "jav321",

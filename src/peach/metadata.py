@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Callable
+from urllib.parse import urlsplit
 
 from .config import STATE_DIR, TOOLS_DIR
 from .entities import (
@@ -23,6 +24,11 @@ from .entities import (
 
 JAVINIZER_GO_VERSION = "1.5.1"
 _SAFE_CODE = re.compile(r"^(?:FC2-PPV-\d{5,}|\d{3}[A-Z]{2,6}-\d{2,5}|[A-Z]{2,8}-\d{2,5}|\d{6}-\d{2,4})$")
+CATALOG_EVIDENCE_FIELDS = (
+    "title", "original_title", "runtime", "director", "label",
+    "poster_url", "cover_url", "screenshot_urls", "trailer_url",
+)
+MAX_EVIDENCE_URLS = 24
 
 
 class MetadataProviderError(RuntimeError):
@@ -212,6 +218,111 @@ def japanese_view(payload: dict) -> dict:
         if str(translation.get("language") or "").lower().startswith("ja"):
             return translation
     return {}
+
+
+def _normalized_text(raw: object) -> str:
+    return " ".join(str(raw or "").split())
+
+
+def _text_evidence(raw: object) -> dict | None:
+    value = _normalized_text(raw)
+    if not value:
+        return None
+    return {"value": value, "display_value": value, "warnings": []}
+
+
+def _runtime_evidence(raw: object) -> dict | None:
+    if isinstance(raw, bool) or raw is None:
+        return None
+    try:
+        minutes = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if not 0 < minutes <= 24 * 60:
+        return None
+    value: int | float = int(minutes) if minutes.is_integer() else round(minutes, 2)
+    return {"value": value, "display_value": f"{value:g} 分钟", "warnings": []}
+
+
+def _safe_evidence_url(raw: object) -> str:
+    value = str(raw or "").strip()
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return ""
+    if (parsed.scheme not in {"http", "https"} or not parsed.hostname
+            or parsed.username is not None or parsed.password is not None):
+        return ""
+    return value
+
+
+def _url_evidence(raw: object, label: str) -> dict | None:
+    value = _safe_evidence_url(raw)
+    if not value:
+        return None
+    host = urlsplit(value).hostname or "外部来源"
+    return {"value": value, "display_value": f"{label}（{host}）", "warnings": []}
+
+
+def _url_list_evidence(raw: object, label: str) -> dict | None:
+    if not isinstance(raw, list):
+        return None
+    values = list(dict.fromkeys(
+        value for value in (_safe_evidence_url(item) for item in raw) if value
+    ))
+    if not values:
+        return None
+    warnings = []
+    if len(values) > MAX_EVIDENCE_URLS:
+        warnings.append(
+            f"来源返回 {len(values)} 个链接；候选只保留前 {MAX_EVIDENCE_URLS} 个，完整值仍在原始快照"
+        )
+        values = values[:MAX_EVIDENCE_URLS]
+    hosts = list(dict.fromkeys(urlsplit(value).hostname or "外部来源" for value in values))
+    host_label = "、".join(hosts[:2]) + (" 等" if len(hosts) > 2 else "")
+    return {
+        "value": values,
+        "display_value": f"{len(values)} {label}（{host_label}）",
+        "warnings": warnings,
+    }
+
+
+def extract_catalog_evidence(payload: dict) -> dict[str, dict]:
+    """Preserve source-only catalog fields without mapping them to ledger truth.
+
+    MetaTube's richer movie DTO is used as a fixed-revision checklist. These
+    values stay attached to the source candidate: ``label`` is not silently
+    folded into Peach ``studio``; catalog runtime never overrides probed media
+    duration; remote media URLs are evidence only and are not downloaded here.
+    """
+    japanese = japanese_view(payload)
+    out: dict[str, dict] = {}
+    text_fields = {
+        "title": japanese.get("title") or payload.get("title"),
+        "original_title": payload.get("original_title"),
+        "director": japanese.get("director") or payload.get("director"),
+        "label": japanese.get("label") or payload.get("label"),
+    }
+    for field, raw in text_fields.items():
+        evidence = _text_evidence(raw)
+        if evidence is not None:
+            out[field] = evidence
+    if (out.get("original_title", {}).get("value")
+            == out.get("title", {}).get("value")):
+        out.pop("original_title", None)
+    runtime = _runtime_evidence(payload.get("runtime"))
+    if runtime is not None:
+        out["runtime"] = runtime
+    for field, label in {
+        "poster_url": "海报", "cover_url": "封面", "trailer_url": "预告片",
+    }.items():
+        evidence = _url_evidence(payload.get(field), label)
+        if evidence is not None:
+            out[field] = evidence
+    screenshots = _url_list_evidence(payload.get("screenshot_urls"), "张截图")
+    if screenshots is not None:
+        out["screenshot_urls"] = screenshots
+    return out
 
 
 def extract_peach_fields(payload: dict, category_map: dict[str, str]) -> dict[str, dict]:

@@ -5,9 +5,11 @@ import unittest
 from pathlib import Path
 
 from peach.metadata import (
+    CATALOG_EVIDENCE_FIELDS,
     JavinizerGoProvider,
     MetadataProviderError,
     collapse_repeated_phrase,
+    extract_catalog_evidence,
     extract_peach_fields,
     validate_provider_code,
 )
@@ -103,6 +105,42 @@ class MetadataProviderTests(unittest.TestCase):
         }, {})
         self.assertEqual(fields["series"]["value"], "FALENO Compilation")
         self.assertEqual(fields["studio"]["value"], "FALENO")
+
+    def test_rich_catalog_fields_stay_source_evidence(self):
+        evidence = extract_catalog_evidence({
+            "title": "English title", "original_title": "原标题", "runtime": "121",
+            "director": "Director A", "label": "Label A",
+            "poster_url": "https://img.example/poster.jpg",
+            "cover_url": "https://img.example/cover.jpg",
+            "screenshot_urls": [
+                "https://img.example/1.jpg", "https://img.example/1.jpg",
+                "file:///private/2.jpg", "https://img.example/2.jpg",
+            ],
+            "trailer_url": "https://video.example/trailer.m3u8",
+            "translations": [{
+                "language": "ja", "title": "日本語タイトル", "label": "日本レーベル",
+            }],
+        })
+        self.assertEqual(set(evidence), set(CATALOG_EVIDENCE_FIELDS))
+        self.assertEqual(evidence["title"]["value"], "日本語タイトル")
+        self.assertEqual(evidence["original_title"]["value"], "原标题")
+        self.assertEqual(evidence["runtime"]["value"], 121)
+        self.assertEqual(evidence["label"]["value"], "日本レーベル")
+        self.assertEqual(evidence["screenshot_urls"]["value"], [
+            "https://img.example/1.jpg", "https://img.example/2.jpg",
+        ])
+        self.assertIn("2 张截图", evidence["screenshot_urls"]["display_value"])
+
+    def test_catalog_evidence_rejects_credentialed_and_non_http_urls(self):
+        evidence = extract_catalog_evidence({
+            "title": "Same", "original_title": "Same", "runtime": 0,
+            "poster_url": "https://user:secret@example.test/poster.jpg",
+            "cover_url": "R:/covers/ABC-001.jpg",
+            "trailer_url": "javascript:alert(1)",
+        })
+        self.assertEqual(evidence, {"title": {
+            "value": "Same", "display_value": "Same", "warnings": [],
+        }})
 
 
 if __name__ == "__main__":

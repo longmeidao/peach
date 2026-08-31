@@ -358,8 +358,13 @@ class ReviewQueueTests(unittest.TestCase):
         candidate = {
             "candidate_key": "ABC-001:performers:r18dev:abc", "source": "r18dev",
             "source_url": "https://r18.dev/example", "confidence": 0.9,
+            "provider_id": "ABC-001", "content_id": "abc00001",
             "value": [{"name": "木村さん", "external_id": "7", "thumb_url": ""}],
             "display_value": "木村さん", "warnings": [], "raw_snapshot": "/evidence.json",
+            "catalog_evidence": {
+                "title": {"value": "来源标题", "display_value": "来源标题", "warnings": []},
+                "label": {"value": "Label A", "display_value": "Label A", "warnings": []},
+            },
         }
         self.write_metadata_candidates([{
             "item_key": "ABC-001:performers", "code": "ABC-001", "query": "ABC-001",
@@ -369,6 +374,9 @@ class ReviewQueueTests(unittest.TestCase):
         }])
         queue = rm_review.q_review(self.contract)["sections"]["metadata_fields"]
         self.assertEqual(queue[0]["candidates"][0]["display_value"], "木村さん")
+        self.assertEqual(
+            queue[0]["candidates"][0]["catalog_evidence"]["label"]["value"], "Label A",
+        )
         result = rm_review.w_review_decision(self.contract, {
             "category": "metadata_fields", "item_key": "ABC-001:performers",
             "candidate_key": candidate["candidate_key"], "status": "approved",
@@ -376,6 +384,7 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual(result["applied_assets"], 1)
         con = sqlite3.connect(self.db_path)
         self.assertEqual(con.execute("SELECT creator FROM asset WHERE id=1").fetchone()[0], "Folder Creator")
+        self.assertEqual(con.execute("SELECT name FROM asset WHERE id=1").fetchone()[0], "1.mp4")
         self.assertEqual(con.execute(
             "SELECT e.kind,e.canonical_name,ae.role FROM asset_entity ae "
             "JOIN entity e ON e.id=ae.entity_id WHERE ae.asset_id=1 AND ae.role='performer'"
