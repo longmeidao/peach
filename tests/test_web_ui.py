@@ -1482,7 +1482,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("async function getBarsData(context=barsContext)")
         self.assertPageContains("Date.now()-barsDataAt<30000")
         self.assertPageLacks("p.set('limit','120')")
-        self.assertPageContains("more._observer=new IntersectionObserver")
+        # 观察器收进了共用的 wireLoadMore（见 test_infinite_scroll_is_wired_through_one_helper）；
+        # 这里要保证的是实体合集确实接上了它，而不是自己又写一套。
+        self.assertPageContains("wireLoadMore(more,requestMore);")
         self.assertPageContains("more.hidden=!entityCollectionPage.has_more")
 
     def test_mix_and_persistent_playlists_share_the_routed_side_queue(self):
@@ -2228,6 +2230,25 @@ class WebUiSourceTests(unittest.TestCase):
                           name + " 没有走「离开目录」，筛选芯片会留在新页面上")
             self.assertIn("showManagementBody(", body,
                           name + " 自己铺页面主体，多半又抄漏了一行")
+
+    def test_infinite_scroll_is_wired_through_one_helper(self):
+        """「载入更多」的观察器只许有一份实现。
+
+        它此前抄了三份：关注流、实体合集、照片墙。已经开始漂——后两份有 `hidden`
+        判断，关注那份没有。藏起来的按钮观察它没有意义，漏掉只是浪费一个观察器，
+        但下一次抄漏的可能就不是这一行。
+
+        重画会换掉按钮节点，所以 disconnect 不能省：旧观察器还盯着已脱离文档的节点，
+        既不会触发也不会被回收。
+        """
+        body = self._js_function("wireLoadMore")
+        self.assertIn("button._observer?.disconnect();", body, "重画后必须先断开旧观察器")
+        self.assertIn("if(button.hidden)return;", body, "藏起来的按钮不该被观察")
+        self.assertIn("rootMargin:'320px'", body)
+        self.assertEqual(self.page.count("new IntersectionObserver"), 2,
+                         "观察器只允许存在两处：wireLoadMore 与首页自己的 loadObserver")
+        self.assertEqual(self.page.count("wireLoadMore("), 4,
+                         "1 处定义加 3 处调用；对不上就是又有人自己写了一套")
 
     def test_the_page_takeover_block_exists_in_exactly_one_place(self):
         """六行显隐只允许存在一份。再出现第二份就是下一次抄漏的起点。"""

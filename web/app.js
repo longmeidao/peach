@@ -1575,6 +1575,26 @@ let adsBatch=null,loadRequestSeq=0,listLoading=false;
    之前跑（`loadRequestSeq++` 要抢在在途的目录请求之前作废它），而主体有的入口在取数
    前铺（配 `placeholder` 给反馈），有的在取数后铺（数据快时不闪一下骨架）。
    两个都要调，由 `test_every_full_page_view_enters_through_the_shared_helpers` 兜住。 */
+/* 「载入更多」按钮观察自己：滚到它进视口就自动续取，按钮只是兜底（观察器不可用、
+   或用户用键盘跳到底部）。这么做是因为「未看 3036」和「已显示 152」是两个口径，
+   用户不必先看懂它们，一直往下滚就是了。
+
+   这段此前抄了三份：关注流、实体合集、照片墙。已经开始漂——后两份有 `hidden` 判断，
+   关注那份没有。藏起来的按钮观察它没有意义（它永远不会进视口），漏掉只是浪费一个
+   观察器，但下一次抄漏的可能就不是这一行了。
+
+   重画会换掉按钮节点，所以每次都要先 disconnect：旧观察器还盯着已经脱离文档的节点，
+   既不会触发也不会被回收。 */
+function wireLoadMore(button, load){
+  if(!button)return;
+  button.onclick=()=>load();
+  button._observer?.disconnect();
+  if(button.hidden)return;
+  button._observer=new IntersectionObserver(
+    entries=>{if(entries.some(entry=>entry.isIntersecting))load()},
+    {rootMargin:'320px'});
+  button._observer.observe(button);
+}
 function showManagementBody({manage=true,placeholder=''}={}){
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
   $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
@@ -2928,18 +2948,8 @@ function renderFollow(){
         (counts[followFilter]||0).toLocaleString()} 项</span></span>`:''}
       ${sources.some(source=>source.can_backfill)?`<span class="followpageaction"><button class="fbtn" data-follow-older>${icon('history')}抓更早的一页</button>
         <span class="fmeta">${esc(followBackfillState(sources))}</span></span>`:''}</div>`:''}</div>`;
-  /* 滚到底自动续取，按钮只是兜底（观察器不可用、或用户用键盘跳到底部）。
-     照搬实体合集那套：按钮观察自己，进视口就触发——用户不必先看懂
-     「未看 3036」和「已显示 152」是两个口径，一直往下滚就是了。 */
   const more=$('#stats').querySelector('[data-follow-more]');
-  if(more){
-    more.onclick=()=>loadMoreFollow(more);
-    more._observer?.disconnect();
-    more._observer=new IntersectionObserver(
-      entries=>{if(entries.some(x=>x.isIntersecting))loadMoreFollow(more)},
-      {rootMargin:'320px'});
-    more._observer.observe(more);
-  }
+  wireLoadMore(more,()=>loadMoreFollow(more));
   wireFollowItems();
   wireFollowOlder();
   wireDrag($('#stats').querySelector('.followauthors'));
@@ -3968,12 +3978,7 @@ function renderEntityCollection(kind,name,items,filters,append=false){
       if(seq===entityRequestSeq&&$('#index').dataset.entityKind===kind&&$('#index').dataset.entityName===name)
         renderEntityCollection(kind,name,next,filters,true)}
     finally{if(seq===entityRequestSeq)more.disabled=false}};
-  more.onclick=requestMore;
-  more._observer?.disconnect();
-  if(!more.hidden){
-    more._observer=new IntersectionObserver(entries=>{if(entries.some(x=>x.isIntersecting))requestMore()},{rootMargin:'320px'});
-    more._observer.observe(more);
-  }
+  wireLoadMore(more,requestMore);
   scheduleStickySurfaces();
 }
 async function updateEntityCollection(kind,name,filters,push=true){
@@ -4088,12 +4093,7 @@ function renderPhotoWall(kind,name,filters,data,append=false){
       if(seq===entityRequestSeq&&!next.error&&$('#index').dataset.entityName===name)
         renderPhotoWall(kind,name,filters,next,true)}
     finally{if(seq===entityRequestSeq)more.disabled=false}};
-  more.onclick=requestMore;
-  more._observer?.disconnect();
-  if(!more.hidden){
-    more._observer=new IntersectionObserver(entries=>{if(entries.some(x=>x.isIntersecting))requestMore()},{rootMargin:'320px'});
-    more._observer.observe(more);
-  }
+  wireLoadMore(more,requestMore);
 }
 
 /* ── 源文件管理 ───────────────────────────────────────────────────────────────
