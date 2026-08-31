@@ -332,6 +332,20 @@ class FollowContractTests(unittest.TestCase):
         self.assertNotIn("url", item["media_items"][0])
         self.assertNotIn("store1.gofile.io/download", json.dumps(item))
 
+    def test_online_image_details_have_safe_display_metadata(self):
+        """灯箱需要来源和标题，但不得因此把远端媒体 URL 投影到 JSON。"""
+        self._seed(candidates=(FollowCandidate(
+            provider="rule34xxx", external_id="image-info", title="Source image",
+            url="https://rule34.xxx/index.php?page=post&s=view&id=1",
+            media_url="https://api-cdn.rule34.xxx/images/1/source.jpeg",
+            extra={"media_kind": "image"}),), provider="rule34xxx", ref="artist")
+        item = self._get()["groups"][0]["primary"]
+        self.assertEqual(item["provider_label"], "Rule34.xxx")
+        self.assertEqual(item["title"], "Source image")
+        self.assertEqual(item["media_kind"], "image")
+        self.assertTrue(item["playable"])
+        self.assertNotIn("media_url", item)
+
     def test_f95_discussion_and_inline_memes_are_hidden(self):
         self._seed(candidates=(
             FollowCandidate(
@@ -2278,14 +2292,15 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("const followSlides=imageMedia.length")
         self.assertPageContains("src:`/follow-stream?id=${item.id}&media=${image.index}`")
 
-    def test_online_images_hide_the_local_only_detail_panel(self):
-        """在线图没有本机路径、大小和位置。
-
-        面板里那个「在资源管理器中显示」对它无从谈起——留着按钮点下去只会失败，
-        显示一堆「未知」也不比收起来诚实。
-        """
-        self.assertPageContains("if(!asset){toggle.hidden=true;dismiss();return}",
-                                "在线图仍会显示只对本地资产成立的详情面板")
+    def test_online_images_show_image_info_without_the_local_reveal_action(self):
+        """在线图保留图片信息入口，但不显示只对本地文件成立的资源管理器动作。"""
+        self.assertPageContains("source:followMediaSourceLabel(image,item)")
+        self.assertPageContains("const resolution=image?.naturalWidth&&image?.naturalHeight")
+        self.assertPageContains("reveal.hidden=!asset")
+        self.assertPageContains("const target=reveal.hidden?title:reveal;target.focus()")
+        self.assertPageContains(".photodetail>button[hidden]{display:none}")
+        self.assertPageLacks("if(!asset){toggle.hidden=true;dismiss();return}",
+                             "在线图片的整个信息入口仍被隐藏")
 
 
 
