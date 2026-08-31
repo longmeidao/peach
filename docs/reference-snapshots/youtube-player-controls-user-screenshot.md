@@ -121,9 +121,11 @@
   25%–75% 不透明且放大到 1.33，100% 恢复尺寸并淡出。
 - 全屏不是继承父容器的 `100%`；播放器要固定到视口四边并使用 `100vw × 100vh`，视频 tech 同样
   覆盖视口后以 `contain` 保留完整画面。
-- 用户随后明确要求切到 Chrome DevTools；本机 Chrome 已安装，但 Chrome 配置目录、浏览器扩展和
-  Native Host 均未取得，因此 Chrome/CDP 验收标为「未取得」。本轮精确值来自已锁定同版本官方
-  `www-player.css` 和此前实际 YouTube 页面 DOM／计算样式，不把 Chrome 验收写成成功。
+- 用户随后明确要求切到 Chrome DevTools。首次扩展发现返回不可用；用户要求复核后，同一 Chrome
+  扩展成功连接并同时加载实际 YouTube 与 Peach 页面，证明“未安装”判断错误。随后 Playwright
+  evaluate、`DOM.getDocument` 和全新标签三条读取路径均在 20–60 秒超时并重置控制会话，故本轮新增
+  Chrome computed style 仍标为「未取得」。精确值来自已锁定同版本官方 `www-player.css` 和此前实际
+  YouTube 页面 DOM／计算样式，不把仅加载成功写成 DevTools 样式验收成功。
 
 ## 可复用证据
 
