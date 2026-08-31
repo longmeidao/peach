@@ -490,6 +490,14 @@ class KemonoConnector(_BaseConnector):
 
     semantics = "work"
     HOSTS = {"kemono": "kemono.cr", "coomer": "coomer.st", "pawchive": "pawchive.pw"}
+    #: 原始文件的主机。2026-08-30 实测（取证见
+    #: `docs/reference-snapshots/kemono-archive-media-host.md`）三站行为并不一致：
+    #: kemono/coomer 的主域对 `/data/<path>` 回 302，分别指向 `n1.` 和 `n4.` 节点——
+    #: 编号会变，所以走主域让站点自己路由，不写死；pawchive 主域对 `/data` 直接 404，
+    #: 必须点名 `file.` 子域。
+    #: 路径也要带 `/data` 前缀：以前拼的是 `https://<host><path>`，少了这一段，
+    #: 三站都取不到原始文件。
+    FILE_HOSTS = {"pawchive": "file.pawchive.pw"}
     _SERVICE_RE = re.compile(r"^[a-z0-9_\-]{1,32}$")
     _USER_RE = re.compile(r"^[A-Za-z0-9_\-.]{1,64}$")
 
@@ -663,7 +671,8 @@ class KemonoConnector(_BaseConnector):
             external_id=post_id or stable_id(title, str(post.get("published"))),
             title=title,
             url=page,
-            media_url=f"https://{self.host}{media}" if media else None,
+            media_url=(f"https://{self.FILE_HOSTS.get(self.provider, self.host)}"
+                       f"/data{media}") if media else None,
             thumb_url=self._thumb_url(preview),
             published_at=_iso_from_text(post.get("published")),
             author=None,
@@ -675,6 +684,31 @@ class KemonoConnector(_BaseConnector):
                    "edited": post.get("edited"),
                    "attachment_count": len(attachments)},
         )
+
+
+
+def archive_file_url(provider: str, url: str) -> str:
+    """把归档站的**原始文件** URL 修成能取到的形式。
+
+    存量行是按旧规则拼的 `https://<主域><path>`——既少了 `/data` 前缀，主机也不对，
+    所以详情里的视频一直取不到。2026-08-30 实测：
+
+        pawchive.pw/<path>              404
+        pawchive.pw/data/<path>         404   ← 主域对 /data 也不重定向
+        file.pawchive.pw/data/<path>    206 video/mp4，支持 Range
+        kemono.cr/data/<path>           302 → n1.kemono.cr
+        coomer.st/data/<path>           302 → n4.coomer.st
+
+    kemono/coomer 走主域让站点自己路由（nX 的编号会变，写死会过期）；
+    pawchive 必须点名 `file.` 子域。缩略图仍走 `img.`，见 `_archive_media_host`。
+    """
+    host = KemonoConnector.HOSTS.get(provider)
+    if not host or not url.startswith(f"https://{host}/"):
+        return url
+    path = url[len(f"https://{host}") :]
+    if not path.startswith("/data/"):
+        path = "/data" + path
+    return f"https://{KemonoConnector.FILE_HOSTS.get(provider, host)}{path}"
 
 
 class Rule34VideoConnector(_BaseConnector):

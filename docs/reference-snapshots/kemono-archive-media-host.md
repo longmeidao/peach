@@ -28,20 +28,40 @@
 `follow_sources.py` 里原来那条注释记的是 2026-08-27 主域回 200 `image/jpeg`——
 站点行为在这三天里变了。**这类"当前哪个主机能取到"的结论必须带日期，并且会过期。**
 
-## 未取得
+## 原始文件（非缩略图）
 
-pawchive 的**原始媒体**（`media_url`，非缩略图）正确形式未取得。已测且全部 404：
+缩略图和原始文件走**不同的主机与路径**，而且三站规则并不一致。真实 URL 不是猜出来的：
+pawchive 的帖子页是服务端渲染的，`<source src>` 里就写着；kemono 是 SPA 外壳，
+但它的主域会用 302 告诉你当前节点。**别再逐个试子域了，问站点自己。**
 
-    pawchive.pw/<path>
-    pawchive.pw/data/<path>
-    img.pawchive.pw/<path>
-    img.pawchive.pw/data/<path>
+| 请求 | 结果 |
+| --- | --- |
+| `pawchive.pw/<path>`（旧代码拼的） | 404 |
+| `pawchive.pw/data/<path>` | 404，主域对 /data 也不重定向 |
+| `file.pawchive.pw/data/<path>` | **206** video/mp4，支持 Range |
+| `kemono.cr/data/<path>` | 302 → `n1.kemono.cr/data/<path>` |
+| `coomer.st/data/<path>` | 302 → `n4.coomer.st/data/<path>` |
 
-只有 `img.pawchive.pw/thumbnail/data/<path>` 可用，那是缩略图路径。原始文件可能需要
-从帖子页另取链接，或者需要会话。**没有猜测代入**：详情里的媒体在拿到确证之前仍会失败，
-不用缩略图冒充原图。
+两处结论：
 
-## 复核方式
+1. **路径要带 `/data` 前缀。**旧代码拼的是 `https://<主域><path>`，少了这一段，
+   三站的原始文件都取不到——不只是 pawchive。
+2. **主机分两种处理。**kemono/coomer 走主域让站点自己 302（`nX` 的编号会变，
+   写死会过期）；pawchive 主域对 `/data` 直接 404，必须点名 `file.` 子域。
+
+`follow_stream._allowed` 按后缀匹配原站域名，`file.` / `n1.` 这些子域天然在白名单内，
+安全边界没有放宽。
+
+## 连通性：kemono 的文件节点未取得
+
+`n1.kemono.cr` 在本机网络下连不上（curl 返回 000），而同站的 `img.kemono.cr` 正常
+200。所以这不是 URL 规则问题，是那个节点在本网络不可达。
+
+`HttpxTransport` 用的是默认 `httpx.Client()`：`trust_env=True` 会读 `HTTPS_PROXY`，
+`follow_redirects=True` 会跟随 302。**要走代理不必改代码**，给服务进程设环境变量即可。
+是否要为归档站配代理是网络决策，留给用户。
+
+## 复核方式## 复核方式
 
 ```bash
 curl -s -o /dev/null -w "%{http_code} %{content_type} %{size_download}\n" \

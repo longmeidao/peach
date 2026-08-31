@@ -393,7 +393,8 @@ class KemonoConnectorTests(unittest.TestCase):
         # 交付文件取非图片的那个：夹具里 file 是 a.png、附件是 a.zip，压缩包才是正片。
         # 按 file.path 优先会把整条判成图片——pawchive 上作者用 gif 当预览、mp4 放附件，
         # 正是这条路径让两个 1080p 正片消失（2026-08-30 取证）。
-        self.assertEqual(first.media_url, "https://kemono.cr/1c/fa/1cfae7.zip")
+        # /data 前缀是必需的：少了它三站的原始文件都是 404（2026-08-30 取证）。
+        self.assertEqual(first.media_url, "https://kemono.cr/data/1c/fa/1cfae7.zip")
         self.assertEqual(first.extra["attachment_count"], 1)
         # post id 就是原平台的 post id，和别的站点从 source 归一出的键同一个命名空间。
         self.assertEqual(first.group_hint, "fanbox:11406814")
@@ -422,7 +423,7 @@ class KemonoConnectorTests(unittest.TestCase):
         result = KemonoConnector(
             transport=_transport(body=json.dumps(posts).encode())).fetch("fanbox/1")
         candidate = result.candidates[0]
-        self.assertEqual(candidate.media_url, "https://kemono.cr/video/release.mp4")
+        self.assertEqual(candidate.media_url, "https://kemono.cr/data/video/release.mp4")
         self.assertEqual(candidate.thumb_url,
                          "https://img.kemono.cr/thumbnail/data/cover/release.webp")
 
