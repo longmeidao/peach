@@ -95,6 +95,45 @@ class VerdictTests(unittest.TestCase):
             self.assertEqual(verdict, "weak", studio)
             self.assertIn("成人站", note)
 
+    def test_a_derived_domain_on_an_adult_site_counts_even_when_the_title_uses_kana(self):
+        """日站普遍把品牌名写成假名，拿拉丁名比标题对整整一类真站都会失败。
+
+        实测：`honnaka.jp` 的标题是「年齢チェック | 全作品、本物中出しのAVメーカー
+        【本中】公式サイト」，`muku.tv` 是「【無垢】」，`tameikegoro.jp` 是「【TAMEIKE】」。
+        这是系统性漏判，不是个别情况。此时两个独立信号同样成立：域名由厂牌名按固定规则
+        推出（不是人喂的），且这一页确实是成人站。
+        """
+        title = "年齢チェック | 全作品、本物中出しのAVメーカー【本中】公式サイト"
+        verdict, note = self.module.site_verdict(
+            "Hon Naka", 200, page(title), title, "https://honnaka.jp/", derived=True)
+        self.assertEqual(verdict, "ok")
+        self.assertIn("假名", note)
+
+    def test_a_derived_domain_that_is_not_an_adult_site_is_still_refused(self):
+        """`bazooka.com`、`madonna.com` 的域名同样推得出来。
+
+        把它们和上面那条区分开的正是成人语境这一条；少了它，这条新规则会把每个
+        「同名公司」都当成官网确认掉——比原来更糟。
+        """
+        title = "Bazooka Bass Tubes"
+        verdict, _ = self.module.site_verdict(
+            "BAZOOKA", 200, page(title, "car audio subwoofers. "), title,
+            "https://bazooka.com/", derived=True)
+        self.assertEqual(verdict, "weak")
+
+    def test_a_seeded_url_does_not_get_the_derived_domain_signal(self):
+        """人喂进来的地址不能借「域名由厂牌名推出」这条的力。
+
+        那条信号的价值在于域名是独立推出来的；种子是人给的，混在一起就等于自证。
+        """
+        title = "年齢チェック | マニアック フェチのAVメーカー【ダスッ！】公式サイト"
+        seeded, _ = self.module.site_verdict(
+            "Das", 200, page(title), title, "https://dasdas.jp/", derived=False)
+        found, _ = self.module.site_verdict(
+            "Das", 200, page(title), title, "https://dasdas.jp/", derived=True)
+        self.assertNotEqual(seeded, "ok", "种子不该借域名推导这条信号确认")
+        self.assertEqual(found, "ok", "同一页面若域名是推出来的才算两个独立信号")
+
     def test_a_western_studio_page_still_counts_as_adult(self):
         """判据不能只认日文，否则西方厂牌会被一律打成待复核。"""
         title = "BLACKED - The Best Adult Video Site"

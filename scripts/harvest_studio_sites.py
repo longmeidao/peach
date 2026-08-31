@@ -135,7 +135,7 @@ def page_title(body: bytes) -> str:
 
 
 def site_verdict(name: str, status: int, body: bytes, title: str,
-                 url: str = "") -> tuple[str, str]:
+                 url: str = "", derived: bool = False) -> tuple[str, str]:
     """这一页认不认自己是这个厂牌。
 
     四道都必须过：HTTP 200、不是空壳、不是停放页、标题里出现厂牌名且不只是域名回显。
@@ -171,6 +171,16 @@ def site_verdict(name: str, status: int, body: bytes, title: str,
         # 同名的无关公司到这里为止和真站没有任何可区分之处，所以只能交给人看，
         # 不能算已确认——一条错的官网会被下游当成社媒 handle 的来源。
         return "weak", f"标题有厂牌名但页面不像成人站；需人工确认（{title[:40]}）"
+    # 日站普遍把品牌名写成假名：`本中`、`無垢`、`ダスッ`、`グローリークエスト`。拿账本里的
+    # 拉丁名去比标题，对这一整类真站必然对不上——`honnaka.jp` 的标题是
+    # 「年齢チェック | 全作品、本物中出しのAVメーカー【本中】公式サイト」。这是系统性漏判，
+    # 不是个别情况。
+    #
+    # 这时两个独立信号同样成立：域名是由厂牌名按固定规则推出来的（不是人喂的），
+    # 且这一页确实是成人站。`bazooka.com`、`madonna.com` 恰好卡在第二条上——
+    # 域名同样推得出，但它们不是成人站。
+    if derived and adult:
+        return "ok", "域名由厂牌名推出，且页面是成人站（标题用假名写品牌名）"
     if token in normalise(text[:20000]):
         return "weak", "标题未自述，但正文出现厂牌名；需人工看图确认"
     return "未取得", f"标题与正文都没有厂牌名（标题：{title[:40] or '无'}）"
@@ -262,7 +272,10 @@ def run(args) -> int:
         row = {field: "" for field in FIELDS}
         row.update(record)
         row["verdict"], row["note"] = "未取得", "没有可推导的候选域名"
-        for url in seeds.get(name, []) + candidate_urls(name):
+        # 人工喂的种子和规则推出来的候选走同一条验证，但要分得清哪个是哪个：
+        # 「域名由厂牌名推出」只有在域名真的是推出来的时候才算一个独立信号。
+        derived_urls = candidate_urls(name)
+        for url in seeds.get(name, []) + derived_urls:
             wait = args.interval - (time.monotonic() - last)
             if wait > 0:
                 time.sleep(wait)
@@ -274,7 +287,8 @@ def run(args) -> int:
                            note=f"取不到：{type(exc).__name__}")
                 continue
             title = page_title(body)
-            verdict, note = site_verdict(name, status, body, title, final)
+            verdict, note = site_verdict(name, status, body, title, final,
+                                         derived=url in derived_urls)
             row.update(candidate_url=url, final_url=final, status=status,
                        bytes=len(body), sha256=hashlib.sha256(body).hexdigest(),
                        title=title, verdict=verdict, note=note)
