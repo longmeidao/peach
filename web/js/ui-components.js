@@ -35,6 +35,23 @@ export function loadingDotsHtml(label='正在处理', {className=''}={}){
     <span>${esc(label)}</span></span>`;
 }
 
+/** Shared video/image view buttons for entity profiles and the follow feed. */
+export function mediaViewButtonsHtml({
+  active='videos',videoValue='videos',imageValue='images',videoLabel='视频',imageLabel='图片',
+  videoCount=null,imageCount=null,className='',
+}={}){
+  const control=(value,label,count,symbol,kind)=>{
+    const text=count===null||count===undefined
+      ?label:`${label} ${Math.max(0,Number(count)||0).toLocaleString()}`;
+    return `<button class="mediaviewbutton" type="button" data-media-view="${esc(value)}"
+      data-media-icon="${kind}" aria-pressed="${active===value}" aria-label="${esc(text)}"
+      title="${esc(text)}">${icon(symbol)}</button>`;
+  };
+  return `<div class="mediaviewbuttons${className?` ${esc(className)}`:''}" role="group" aria-label="媒体类型">
+    ${control(videoValue,videoLabel,videoCount,'play','video')}
+    ${control(imageValue,imageLabel,imageCount,'pics','image')}</div>`;
+}
+
 /** Geist Empty State: icon tile, title and explanatory copy stay one semantic unit. */
 export function emptyStateHtml(iconName,title,description,{className='',actions=''}={}){
   return `<div class="emptystate${className?` ${esc(className)}`:''}" data-geist-empty-state role="status">

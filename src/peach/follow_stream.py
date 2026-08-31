@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Callable, Mapping
 
 from . import follow_providers
-from .follow_sources import USER_AGENT
+from .follow_sources import USER_AGENT, f95_attachment_media_items
 from .follow_secrets import Credential
 from .follow_store import FollowItemRow
 from .http import HttpRequest, HttpTransport
@@ -69,6 +69,9 @@ class FollowMediaResolver:
         if item.metadata.get("media_needs_credential"):
             raise FollowMediaUnavailable("媒体需要来源登录会话")
         media_items = item.metadata.get("media_items")
+        if (not isinstance(media_items, list) or not media_items) \
+                and item.provider == "f95zone":
+            media_items = f95_attachment_media_items(item.metadata)
         if isinstance(media_items, list) and media_items:
             index = 0 if media_index is None else media_index
             if index < 0 or index >= len(media_items):
@@ -91,6 +94,10 @@ class FollowMediaResolver:
             if resource_provider == "fanbox":
                 if not _allowed_resource(url, ("fanbox.cc",)):
                     raise FollowMediaUnavailable("FANBOX 返回了不受信任的图片地址")
+                return ResolvedFollowMedia(url, item.url)
+            if resource_provider == "f95zone":
+                if not _allowed_resource(url, ("attachments.f95zone.to",)):
+                    raise FollowMediaUnavailable("F95 返回了不受信任的图片地址")
                 return ResolvedFollowMedia(url, item.url)
             raise FollowMediaUnavailable("媒体来源不受支持")
         if item.provider != "rule34video":

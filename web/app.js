@@ -22,7 +22,7 @@ import {
 } from './js/core.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import {
-  emptyStateHtml, loadingDotsHtml, noteHtml, progressHtml, scrollerHtml,
+  emptyStateHtml, loadingDotsHtml, mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml,
   spinnerHtml, wireScrollers,
 } from './js/ui-components.js';
 
@@ -2195,7 +2195,7 @@ async function openQualityGoals(push=true){
    - `/follow-manage`（管理区）是**管**：加来源、检查更新、移除来源、看凭据状态，
      以及对内容做批量标记。
    联网只发生在管理页点「检查更新」的那一刻——看的那一页不联网。 */
-let followData=null,followRuntime=null,followFilter='new',followBusy=false;
+let followData=null,followRuntime=null,followFilter='new',followBusy=false,followManageSort='checked';
 /* 来源筛选：fsrcProviders 记录见过的全部来源（默认全选），
    fsrcUnchecked 只记被取消勾选的——新来源自动进入「全选」。 */
 const fsrcProviders=new Set(),fsrcUnchecked=new Set();
@@ -2297,15 +2297,15 @@ function followVideoItems(group){
     item.playable&&item.media_kind==='video');
 }
 
-/* 关注条目和资料页的作品不是同一种 DTO，但媒体 Tab 的语义相同：一个卡片只要
-   含对应媒体就进入对应视图。旧的外部文件页没有可判定图片类型，继续留在默认的
-   视频视图，避免加 Tab 后把原本可见的待解析更新悄悄藏掉。 */
+/* 关注条目和资料页的作品不是同一种 DTO，但媒体切换的语义相同：一个卡片只要
+   含对应媒体就进入对应视图。external 只说明有外部文件页，不能再冒充视频；
+   没有可验证媒体类型的旧行不进入任一媒体视图。 */
 function followItemMediaKinds(item){
   const kinds=new Set();
   const embedded=item.media_items||[];
   if(embedded.length)embedded.forEach(media=>{
     if(media.media_kind==='image'||media.media_kind==='video')kinds.add(media.media_kind)});
-  else kinds.add(item.media_kind==='image'?'image':'video');
+  else if(item.media_kind==='image'||item.media_kind==='video')kinds.add(item.media_kind);
   return kinds;
 }
 const followMediaKinds=group=>{
@@ -2639,6 +2639,16 @@ function followCheckFailNote(report){
 
 /* ── 看的那一页 ── */
 let followAuthor='',followProvider='',followTags=new Set(),followMediaView='videos',followGroupByItemId=new Map(),followItemsById=new Map(),followDetailReturnPath='/follow';
+function followViewPath(){
+  const params=new URLSearchParams();
+  if(followAuthor)params.set('author',followAuthor);
+  if(followMediaView==='images')params.set('media','images');
+  const search=params.toString();return '/follow'+(search?'?'+search:'');
+}
+function followMediaControl(counts){
+  if(!counts.images)return '';
+  return mediaViewButtonsHtml({active:followMediaView,videoCount:counts.videos,imageCount:counts.images});
+}
 function groupTagType(groups,tag){
   for(const group of groups){
     const type=group.primary&&group.primary.tag_types&&group.primary.tag_types[tag];
@@ -2690,8 +2700,10 @@ function renderFollow(){
   const mediaCounts={videos:0,images:0};
   filtered.forEach(group=>followMediaKinds(group).forEach(kind=>
     mediaCounts[kind==='image'?'images':'videos']++));
+  const requestedMediaView=followMediaView;
   if(followMediaView==='images'&&!mediaCounts.images)followMediaView='videos';
   if(followMediaView==='videos'&&!mediaCounts.videos&&mediaCounts.images)followMediaView='images';
+  if(requestedMediaView!==followMediaView&&location.pathname==='/follow')route(followViewPath(),true);
   const wantedKind=followMediaView==='images'?'image':'video';
   const visible=filtered.filter(group=>followMediaKinds(group).has(wantedKind));
   const providerPills=[...providers].map(([key,label])=>
@@ -2705,7 +2717,7 @@ function renderFollow(){
       `<button class="av" data-follow-author="${esc(key)}" aria-pressed="${key===followAuthor}">
         <span class="ring">${followAuthorAvatar(author.sources)}</span><span class="nm">${esc(author.name)}</span></button>`
       ).join('')}</div>`:''}
-    <div class="tagbar followfilters" aria-label="关注筛选">${FOLLOW_FILTERS.map(([key,label])=>
+    <div class="tagbar followfilters" aria-label="关注筛选">${followMediaControl(mediaCounts)}${FOLLOW_FILTERS.map(([key,label])=>
       `<button class="pill" data-follow-filter="${key}" aria-pressed="${key===followFilter}">${label}${
         ` <span class="n mono">${key?counts[key]||0:allCount}</span>`}</button>`).join('')}
       ${providerPills?`<span class="sep" aria-hidden="true"></span>${providerPills}`:''}
@@ -2713,10 +2725,6 @@ function renderFollow(){
         topTags.map(([key,label,n])=>
           `<button class="pill r34-${esc(groupTagType(groups,key))}" data-follow-tag="${esc(key)}" aria-pressed="${followTags.has(key)}">${
             esc(label)}${n?` <span class="n mono">${n}</span>`:''}</button>`).join(''):''}</div>
-    ${mediaCounts.images?`<div class="mediatabs followmediatabs" aria-label="关注媒体类型">
-      <button data-follow-media="videos" aria-pressed="${followMediaView==='videos'}">${icon('play')}<span>视频</span><b class="mono">${mediaCounts.videos.toLocaleString()}</b></button>
-      <button data-follow-media="images" aria-pressed="${followMediaView==='images'}">${icon('layout-grid')}<span>图片</span><b class="mono">${mediaCounts.images.toLocaleString()}</b></button>
-    </div>`:''}
     ${broken.length&&!sessionStorage.getItem('peach-fwarn-dismissed')
       ?`<p class="geist-banner fwarn">${icon('alert')}<span>${broken.length} 个来源上次检查失败，去<button class="flink" data-follow-manage>管理关注</button>看原因。</span><button class="wclose" data-fwarn-dismiss title="本次会话不再显示" aria-label="关闭提醒">${icon('x')}</button></p>`:''}
     <div class="followlist${followMediaView==='images'?' followphotowall':''}">${visible.length?visible.map(group=>{
@@ -2725,12 +2733,11 @@ function renderFollow(){
       :groups.length?emptyState('layout-grid','当前筛选下没有更新','切换媒体类型、作者、来源或标签后再试。')
       :sources.length?emptyState('rss','没有符合条件的更新','切换状态或来源筛选后再试。')
       :emptyState('rss','还没有关注任何来源','添加作者或订阅来源后，更新会集中显示在这里。',{actions:'<button class="fbtn primary" data-follow-manage>添加关注</button>'})}</div>
-    ${followData.has_more?`<div class="followmore">
-      <button class="fbtn" data-follow-more>${icon('refresh-cw')}加载更多</button>
-      <span class="fmeta">已显示 ${visible.length.toLocaleString()} 项</span></div>`:''}
-    ${sources.some(source=>source.can_backfill)?`<div class="folderfoot">
-      <button class="fbtn" data-follow-older>${icon('refresh-cw')}抓更早的一页</button>
-      <span class="fmeta">${esc(followBackfillState(sources))}</span></div>`:''}</div>`;
+    ${followData.has_more||sources.some(source=>source.can_backfill)?`<div class="followpagination">
+      ${followData.has_more?`<span class="followpageaction"><button class="fbtn" data-follow-more>${icon('plus')}加载更多</button>
+        <span class="fmeta">已显示 ${visible.length.toLocaleString()} 项</span></span>`:''}
+      ${sources.some(source=>source.can_backfill)?`<span class="followpageaction"><button class="fbtn" data-follow-older>${icon('history')}抓更早的一页</button>
+        <span class="fmeta">${esc(followBackfillState(sources))}</span></span>`:''}</div>`:''}</div>`;
   const more=$('#stats').querySelector('[data-follow-more]');
   if(more)more.onclick=()=>loadMoreFollow(more);
   wireFollowItems();
@@ -2740,11 +2747,12 @@ function renderFollow(){
   paintSelection();
   $('#stats').querySelectorAll('[data-follow-filter]').forEach(button=>button.onclick=()=>{
     followFilter=button.dataset.followFilter;openFollow(false)});
-  $('#stats').querySelectorAll('[data-follow-media]').forEach(button=>button.onclick=()=>{
-    followMediaView=button.dataset.followMedia;
-    route('/follow'+(followMediaView==='images'?'?media=images':''));renderFollow()});
+  $('#stats').querySelectorAll('.followfilters [data-media-view]').forEach(button=>button.onclick=()=>{
+    followMediaView=button.dataset.mediaView;
+    route(followViewPath());renderFollow()});
   $('#stats').querySelectorAll('[data-follow-author]').forEach(button=>button.onclick=()=>{
-    followAuthor=followAuthor===button.dataset.followAuthor?'':button.dataset.followAuthor;renderFollow()});
+    followAuthor=followAuthor===button.dataset.followAuthor?'':button.dataset.followAuthor;
+    route(followViewPath());renderFollow()});
   $('#stats').querySelectorAll('[data-follow-provider]').forEach(button=>button.onclick=()=>{
     followProvider=followProvider===button.dataset.followProvider?'':button.dataset.followProvider;renderFollow()});
   $('#stats').querySelectorAll('[data-follow-tag]').forEach(button=>button.onclick=()=>{
@@ -2795,9 +2803,12 @@ function wireFollowOlder(){
 async function openFollow(push=true,renderForDetail=false){
   releaseHoverPreviews();disposeStage(false);
   document.body.classList.remove('entity-open','index-open');
-  if(push){followMediaView='videos';route('/follow')}
-  else if(location.pathname==='/follow')
-    followMediaView=new URLSearchParams(location.search).get('media')==='images'?'images':'videos';
+  if(push){followAuthor='';followMediaView='videos';route('/follow')}
+  else if(location.pathname==='/follow'){
+    const params=new URLSearchParams(location.search);
+    followAuthor=params.get('author')||'';
+    followMediaView=params.get('media')==='images'?'images':'videos';
+  }
   const surface=claimSurface(renderForDetail?surfacePath():'/follow');
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
   $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
@@ -2832,7 +2843,14 @@ function followAuthorGroups(sources){
     if(!byKey.has(key)){byKey.set(key,[]);order.push(key)}
     byKey.get(key).push(source);
   });
-  return order.map(key=>byKey.get(key));
+  const groups=order.map(key=>byKey.get(key));
+  const name=group=>followAuthorName(group);
+  const checked=group=>Math.max(...group.map(source=>Date.parse(source.last_checked_at||'')||0));
+  return groups.sort((a,b)=>{
+    if(followManageSort==='name')return name(a).localeCompare(name(b),'zh-CN',{numeric:true});
+    if(followManageSort==='sources')return b.length-a.length||name(a).localeCompare(name(b),'zh-CN',{numeric:true});
+    return checked(b)-checked(a)||name(a).localeCompare(name(b),'zh-CN',{numeric:true});
+  });
 }
 
 /* 这些地址来自各站实际声明的图标；内容哈希变更或站点拒绝外链时退回纯文字。 */
@@ -3056,6 +3074,11 @@ function renderFollowManage(credentials){
         <div class="fsechead"><h3>关注列表</h3>
           <span class="fmeta">${sources.length} 个来源${
             counts.new?` · <b>${counts.new}</b> 条未看`:''}</span>
+          <label class="fmanagesort"><span>排序</span><select data-follow-sort aria-label="关注列表排序">
+            <option value="checked"${followManageSort==='checked'?' selected':''}>最近检查</option>
+            <option value="name"${followManageSort==='name'?' selected':''}>作者名称</option>
+            <option value="sources"${followManageSort==='sources'?' selected':''}>来源数量</option>
+          </select></label>
           <button class="fbtn" data-follow-check=""${sources.length?'':' disabled'}>${
             icon('refresh-cw')}检查全部</button>
           <button class="fbtn" data-follow-view>${icon('rss')}去看更新</button></div>
@@ -3096,7 +3119,11 @@ function renderFollowManage(credentials){
 async function openFollowManage(push=true){
   releaseHoverPreviews();disposeStage(false);
   document.body.classList.remove('entity-open','index-open');
-  if(push)route('/follow-manage');
+  if(push){followManageSort='checked';route('/follow-manage')}
+  else if(location.pathname==='/follow-manage'){
+    const requested=new URLSearchParams(location.search).get('sort');
+    followManageSort=['checked','name','sources'].includes(requested)?requested:'checked';
+  }
   const surface=claimSurface('/follow-manage');
   buildManageBar();
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
@@ -3142,6 +3169,12 @@ function wireFollowItems(){
 
 function wireFollowManage(){
   const root=$('#stats'),form=root.querySelector('#followAdd');
+  const sort=root.querySelector('[data-follow-sort]');
+  if(sort)sort.onchange=()=>{
+    followManageSort=sort.value;
+    route('/follow-manage'+(followManageSort==='checked'?'':'?sort='+encodeURIComponent(followManageSort)));
+    openFollowManage(false);
+  };
   renderFollowSrcFilter(root.querySelector('#followSrcFilter'));
   const tooltipTrigger=root.querySelector('[data-fdesc-tooltip]');
   const tooltip=root.querySelector('#follow-credential-tooltip');
@@ -3752,15 +3785,15 @@ const routeEntityView=(kind,name,view)=>{
 const photoTotalOf=()=>entityPhotos&&!entityPhotos.error?(entityPhotos.total||0):0;
 
 function renderEntityMediaToggle(kind,name,filters){
-  const button=$('#index').querySelector('[data-media-toggle]');if(!button)return;
+  const controls=$('#index').querySelector('.entitymediaview');if(!controls)return;
   const photos=photoTotalOf();
-  button.hidden=!photos;
+  controls.hidden=!photos;
   if(!photos)return;
-  const selected=entityMediaView.media==='photos';
-  const label=selected?'切换到视频':'切换到照片';
-  button.setAttribute('aria-pressed',String(selected));
-  button.setAttribute('aria-label',label);button.title=label;
-  button.onclick=()=>switchEntityMedia(kind,name,filters,selected?'videos':'photos');
+  controls.querySelectorAll('[data-media-view]').forEach(button=>{
+    const media=button.dataset.mediaView;
+    button.setAttribute('aria-pressed',String(entityMediaView.media===media));
+    button.onclick=()=>switchEntityMedia(kind,name,filters,media);
+  });
 }
 
 async function switchEntityMedia(kind,name,filters,media){
@@ -4086,9 +4119,9 @@ async function openEntity(kind,name,push=true,requestedTag){
       <span class="nm">${esc(x.k)}</span><small>${x.n.toLocaleString()} 部</small></button>`).join('');
   const photoCount=photos&&!photos.error?(photos.total||0):0;
   const mediaSelected=entityMediaView.media==='photos';
-  const mediaLabel=mediaSelected?'切换到视频':'切换到照片';
-  const mediaToggle=photoCount?`<button class="entitymediatoggle" type="button" data-media-toggle
-      aria-pressed="${mediaSelected}" aria-label="${mediaLabel}" title="${mediaLabel}">${icon('pics')}</button>`:'';
+  const mediaToggle=photoCount?mediaViewButtonsHtml({active:mediaSelected?'photos':'videos',
+    imageValue:'photos',imageLabel:'照片',videoCount:d.asset_count,imageCount:photoCount,
+    className:'entitymediaview'}):'';
   $('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;
   $('#index').innerHTML=`<div class="entityhero"><div class="entityportrait ${kind==='performer'||kind==='creator'?'':'square'}">${image}<span>${esc(name.slice(0,1))}</span></div>
       <div><h2>${esc(d.canonical_name)}</h2>

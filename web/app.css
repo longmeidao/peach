@@ -9,7 +9,7 @@
   --ink:#14161A; --ink-2:#454B55; --muted:#767C87;
   --tungsten:#0095F6; --tungsten-soft:#DCEEFD;
   --loupe:#127A72; --keep:#2E7D32; --meter:#B26A10; --drop:#C0392B; --success:#2E7D32;
-  --tile:336px; --topH:56px; --filterH:58px; --sortH:53px; --railW:72px;
+  --tile:336px; --topH:56px; --filterH:58px; --filterItemH:40px; --sortH:53px; --railW:72px;
   /* 圆角也是有词汇的，不是随手挑一个数。
      --pill:整圆，只给真正的胶囊——标签、筛选令牌、滚动条和进度条这类连续的条。
      --control-radius:控件（按钮、分段器），实测 Geist 的 6px。
@@ -191,7 +191,7 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
   border-bottom:1px solid transparent;background:transparent;
   display:flex;gap:7px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;align-items:center}
 .tagbar::-webkit-scrollbar{display:none}
-.pill{flex:none;height:40px;padding:0 20px;border:1px solid var(--border-15);
+.pill{flex:none;height:var(--filterItemH);padding:0 20px;border:1px solid var(--border-15);
   border-radius:var(--pill-radius);background:transparent;display:inline-flex;align-items:center;justify-content:center;
   color:var(--ink-2);cursor:pointer;font-size:var(--fs-lg);white-space:nowrap;text-decoration:none}
 .pill:hover{border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink);background:var(--overlay-5)}
@@ -373,10 +373,13 @@ body.entity-open .index{overflow-x:visible}
   overscroll-behavior-inline:contain}.entitytagbar .entitytags::-webkit-scrollbar{display:none}
 .entitytags{display:flex;align-items:center;flex-wrap:wrap;gap:7px}.entitytags .pill{flex:none}
 .entitytags small{color:var(--muted);margin-left:4px}
-.entitytags .entitymediatoggle{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;padding:0;
-  border:0;background:transparent;color:var(--muted)}.entitytags .entitymediatoggle svg{width:16px;height:16px;
-  fill:currentColor;stroke:none}.entitytags .entitymediatoggle:hover{background:var(--overlay-5);color:var(--ink)}
-.entitytags .entitymediatoggle[aria-pressed="true"]{border-color:transparent;background:var(--ink-2);color:var(--ground)}
+.mediaviewbuttons{display:inline-flex;align-items:center;gap:2px;flex:none}
+.mediaviewbuttons .mediaviewbutton{display:grid;place-items:center;flex:0 0 var(--filterItemH);width:var(--filterItemH);height:var(--filterItemH);padding:0;
+  border:0;border-radius:50%;background:transparent;color:var(--muted);cursor:pointer}
+.mediaviewbuttons .mediaviewbutton svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
+.mediaviewbuttons .mediaviewbutton[data-media-icon="image"] svg{fill:currentColor;stroke:none}
+.mediaviewbuttons .mediaviewbutton:hover{background:var(--overlay-5);color:var(--ink)}
+.mediaviewbuttons .mediaviewbutton[aria-pressed="true"]{border-color:transparent;background:var(--ink-2);color:var(--ground)}
 .relatedpeople{display:flex;gap:14px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
 .relatedpeople::-webkit-scrollbar{display:none}.relatedperson{flex:0 0 78px;border:0;background:transparent;color:inherit;
   padding:0;cursor:pointer;text-align:center}.relatedperson .ring{display:grid;place-items:center;width:64px;height:64px;
@@ -390,7 +393,7 @@ body.entity-open .index{overflow-x:visible}
   background:transparent;border-bottom:1px solid transparent}
 .entitytagbar+.entitysection .entitycollectionhead{top:calc(var(--topH) + var(--filterH))}
 .entitycollectionhead h3{margin:0;flex:0 0 auto}.entitycollectionhead .javlayout{display:inline-flex;gap:2px}
-/* 关注页的视频 / 图片切换；实体页按 Beeg 把单一图片按钮放进标签行。 */
+/* 关注页与实体页共用视频 / 图片圆形切换按钮。 */
 .mediatabs{display:flex;gap:8px;margin:0 0 18px;border-bottom:1px solid var(--line-soft)}
 .mediatabs[hidden]{display:none}
 .mediatabs button{display:flex;align-items:center;gap:7px;border:0;background:transparent;color:var(--muted);
@@ -1724,7 +1727,6 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .follow{padding:4px 0 42px}
 .followhead{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}
 .followhead .pagetitle{margin:0}
-.followmediatabs{margin:2px 0 18px}
 .follow .fcheck{font-weight:600}
 .follow .fcheck svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
 .followauthors{padding:3px 0 10px;margin:0 0 2px;overscroll-behavior-inline:contain}
@@ -1847,6 +1849,10 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .dupactions.fsechead button:hover{border-color:var(--tungsten);color:var(--tungsten)}
 .fsechead h3{margin:0;font-size:var(--fs-md);font-weight:600;letter-spacing:.01em}
 .fsechead .fmeta{flex:1 1 auto}
+.fmanagesort{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:var(--fs-xs)}
+.fmanagesort select{height:32px;padding:0 28px 0 10px;border:1px solid var(--border-15);border-radius:var(--control-radius);
+  background:var(--surface);color:var(--ink-2);font:inherit;font-size:var(--fs-sm);color-scheme:dark;cursor:pointer}
+.fmanagesort select:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .fmeta{font-size:var(--fs-xs);color:var(--muted)}
 .fmeta b{color:var(--ink);font-variant-numeric:tabular-nums}
 .fmeta.warn{color:var(--drop)}
@@ -1944,7 +1950,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fsearchprefix>svg{width:16px;height:16px;stroke:currentColor;fill:none}
 .faddform textarea{width:100%;flex:1 1 auto;min-width:0;height:38px;min-height:38px;max-height:220px;
   box-sizing:border-box;border:1px solid var(--border-15);border-radius:6px;
-  background:var(--ground);color:var(--ink);padding:5px 12px 5px 38px;font-size:var(--fs-md);font-family:inherit;
+  background:var(--ground);color:var(--ink);padding:8px 12px 8px 38px;font-size:var(--fs-md);font-family:inherit;
   line-height:20px;resize:none;overflow-y:auto;overflow-x:hidden;transition:border-color .12s ease}
 .faddform .fbtn{height:38px;min-height:38px}
 .faddform textarea::placeholder{color:var(--muted)}
@@ -2137,15 +2143,13 @@ details.fcred{display:block}
 .fpickactions [data-pick-state]{display:flex;align-items:center;min-width:0;overflow:hidden;
   white-space:nowrap;text-overflow:ellipsis;font-size:var(--fs-xs);color:var(--muted)}
 
-/* 关注页底部的「往回抓」。放在列表末尾而不是顶部：它的语义是「这些之外还有更早的」，
-   顶部会让人以为是刷新。 */
-.folderfoot{display:flex;align-items:center;gap:12px;min-width:0;white-space:nowrap;margin:18px 0 0;
-  padding-top:14px;border-top:1px solid var(--line-soft)}
-/* 「加载更多」和「抓更早的一页」是两件事：前者翻本地已有的条目，
-   后者去站点上要更早的。版式共用一套，语义不同不合并。 */
-.followmore{display:flex;align-items:center;gap:12px;margin:18px 0 0;
-  padding-top:14px;border-top:1px solid var(--line-soft)}
-.folderfoot .fmeta{min-width:0;margin-left:0;overflow:hidden;text-overflow:ellipsis}
+/* 关注页底部：两个翻页动作同属列表末尾，放在一条底栏；
+   按钮仍保留各自的本地加载 / 站点抓取语义。 */
+.followpagination{display:flex;align-items:center;gap:14px 24px;min-width:0;margin:18px 0 0;
+  padding-top:14px;border-top:1px solid var(--line-soft);white-space:nowrap;overflow-x:auto;scrollbar-width:thin}
+.followpageaction{display:inline-flex;align-items:center;gap:12px;min-width:0;flex:none}
+.followpageaction .fmeta{min-width:0;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:640px){.followpagination{align-items:flex-start;flex-wrap:wrap;white-space:normal}.followpageaction{width:100%}}
 
 /* 资源标识统一由 MiddleTruncate 计算可见文本。星号让本规则与「类 + 元素」的末尾省略
    选择器同权重，并凭源码顺序覆盖，避免两套省略同时生效。 */

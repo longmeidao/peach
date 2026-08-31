@@ -793,7 +793,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("--pill-radius:999px")
         self.assertPageContains("--tag-radius:var(--pill-radius)")
         self.assertPageContains("border-radius:var(--tag-radius)")
-        self.assertPageContains("height:40px;padding:0 20px")
+        self.assertPageContains("--filterItemH:40px")
+        self.assertPageContains("height:var(--filterItemH);padding:0 20px")
         self.assertPageContains("overflow-x:auto;overflow-y:hidden")
 
     def test_multiselect_has_explicit_mode_range_and_toggle_controls(self):
@@ -922,7 +923,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks('class="prog"')
 
     def test_note_semantics_replace_empty_states_for_persistent_errors(self):
-        for name in ("emptyStateHtml", "loadingDotsHtml", "noteHtml", "progressHtml",
+        for name in ("emptyStateHtml", "loadingDotsHtml", "mediaViewButtonsHtml", "noteHtml", "progressHtml",
                      "scrollerHtml", "spinnerHtml", "wireScrollers"):
             self.assertPageContains(name)
         self.assertPageContains("from './js/ui-components.js'")
@@ -2015,7 +2016,7 @@ class WebUiSourceTests(unittest.TestCase):
         reviewed_end_selectors = {
             ".alphatag span:first-of-type", ".av .nm", ".entitylinklabel",
             ".fauthor .fsource.frow>b", ".fauthorhead b",
-            ".fchip", ".folderfoot .fmeta", ".fpickactions [data-pick-state]",
+            ".fchip", ".followpageaction .fmeta", ".fpickactions [data-pick-state]",
             ".frow>b", ".fvkind", ".idname", ".kv>span:first-child",
             ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
             ".mixitemtext [data-truncate-end]", ".mixqueuehead h2",
@@ -2080,14 +2081,20 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks('id="iClose"', "顶栏入口本身就是返回路径")
         self.assertPageLacks("$('#iClose').onclick")
 
-    def test_beeg_photo_toggle_precedes_tags_and_only_appears_with_images(self):
+    def test_entity_and_follow_pages_share_round_video_image_buttons(self):
         self.assertPageContains('id="i-pics" viewBox="0 0 16 16" fill="currentColor" stroke="none"')
-        self.assertPageContains('class="entitymediatoggle" type="button" data-media-toggle')
-        self.assertPageContains("const mediaToggle=photoCount?")
+        self.assertPageContains('export function mediaViewButtonsHtml({')
+        self.assertPageContains('class="mediaviewbutton" type="button" data-media-view="${esc(value)}"')
+        self.assertPageContains("const mediaToggle=photoCount?mediaViewButtonsHtml({active:mediaSelected?'photos':'videos'")
+        self.assertPageContains("imageValue:'photos',imageLabel:'照片',videoCount:d.asset_count,imageCount:photoCount")
         self.assertPageContains('<section class="entitytagbar" aria-label="媒体与标签"><div class="entitytags">${mediaToggle}${tags}</div></section>')
-        self.assertPageContains("button.hidden=!photos")
-        self.assertPageContains("selected?'videos':'photos'")
-        self.assertPageContains(".entitytags .entitymediatoggle{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px")
+        self.assertPageContains("controls.hidden=!photos")
+        self.assertPageContains("button.dataset.mediaView")
+        self.assertPageContains(".mediaviewbuttons .mediaviewbutton{display:grid;place-items:center;flex:0 0 var(--filterItemH);width:var(--filterItemH);height:var(--filterItemH);padding:0;")
+        self.assertPageContains(".mediaviewbuttons .mediaviewbutton svg{width:20px;height:20px")
+        self.assertPageContains("border:0;border-radius:50%;background:transparent")
+        self.assertPageLacks(".entitytags .entitymediatoggle")
+        self.assertPageLacks(".followmediaicons .entitymediatoggle")
         self.assertPageLacks('<div class="mediatabs" hidden></div>')
 
     def test_photo_wall_uses_cached_thumbnails_and_only_the_lightbox_reads_originals(self):

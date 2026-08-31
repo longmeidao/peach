@@ -19,7 +19,7 @@ from .follow_discovery import discover
 from .follow_secrets import CredentialError, CredentialStore
 from .follow_sources import (
     CONNECTORS, KemonoConnector, build_connector, canonical_source_ref,
-    parse_source_url, resource_links,
+    f95_attachment_media_items, parse_source_url, resource_links,
 )
 from .follow_store import FollowStore, ReleaseGroup
 from .taste_history import read_creator_candidates
@@ -131,8 +131,8 @@ def _video_media_type(value: object) -> str:
 def _media_items(item) -> list[dict]:
     """给浏览器媒体序号和展示字段；真实上游 URL 仍只留在服务端 metadata。"""
     raw = item.metadata.get("media_items")
-    if not isinstance(raw, list):
-        return []
+    if not isinstance(raw, list) or not raw:
+        raw = f95_attachment_media_items(item.metadata) if item.provider == "f95zone" else []
     result = []
     for index, media in enumerate(raw):
         if not isinstance(media, dict):
