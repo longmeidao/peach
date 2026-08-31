@@ -467,10 +467,16 @@ body.photolight-open{overflow:hidden}
 .photozoom button:hover{background:rgba(255,255,255,.22)}
 
 .fcollapse{overflow:hidden;transition:height .2s ease-in-out}
-/* Geist Skeleton：面板加载时先给形状，内容到了再替换。 */
-.skeletonpanel{display:grid;gap:12px;padding:16px}
+/* Geist Skeleton：整页／大区块等待内容结构时先占住稳定区域。 */
+.skeletonpanel{min-height:240px;padding:16px}
+.skeletonpanel>div{display:grid;gap:12px}
 .skeleton{display:block;height:18px;border-radius:6px;background:var(--hover);
   animation:skeleton-pulse 1.4s ease-in-out infinite}
+.skeleton-cards>div{grid-template-columns:repeat(auto-fill,minmax(min(260px,100%),1fr));gap:14px}
+.skeletoncard{display:grid;gap:10px;min-width:0}
+.skeletoncard i,.skeletoncard b,.skeletoncard em{display:block;border-radius:6px;background:var(--hover);
+  animation:skeleton-pulse 1.4s ease-in-out infinite}
+.skeletoncard i{aspect-ratio:16/9}.skeletoncard b{width:72%;height:18px}.skeletoncard em{width:46%;height:14px}
 @keyframes skeleton-pulse{0%,100%{opacity:.55}50%{opacity:1}}
 /* 缩放滑杆：原生 accent-color 的轨道太粗，自绘成与时长双滑块同一套 4px 细轨。
    底色是视频上的白色，所以这一套固定用白色而不是主题色。 */
@@ -1515,9 +1521,6 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   border-radius:24px;background:rgba(0,0,0,.58);color:#fff;backdrop-filter:blur(12px);pointer-events:none;
   font:var(--fs-xs)/1 "Cascadia Mono",monospace;white-space:nowrap}
 .tokloading[hidden]{display:none}
-.tokspinner{width:17px;height:17px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;
-  animation:tok-spin .75s linear infinite}
-@keyframes tok-spin{to{transform:rotate(360deg)}}
 .tokui{position:absolute;left:20px;bottom:20px;width:min(520px,calc(50% - 28.125vh - 36px));
   padding:0;color:#f1f1f1;pointer-events:none}
 .tok.tok-wide .tokui{width:min(500px,calc(36vw - 56px))}
@@ -1741,7 +1744,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   padding:9px 0 8px;border-bottom-color:transparent;scrollbar-width:none;overscroll-behavior-inline:contain;
   touch-action:pan-x}
 .followfilters::-webkit-scrollbar{display:none}
-.followfilters .sep{flex:none;width:1px;height:24px;background:var(--line-soft);margin:0 3px}
+.followfilters .sep{flex:none;width:1px;height:24px;background:var(--border-15);margin:0 3px}
 .followfilters .pill .n{margin-left:5px;color:inherit}
 .followfilters .sourcepill{width:40px;padding:0}
 .followfilters .sourcepill .ficon{width:21px;height:21px;margin:0}

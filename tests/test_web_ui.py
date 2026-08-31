@@ -794,7 +794,8 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_immerse_mode_has_loading_state_and_full_viewport_cover(self):
         self.assertPageContains('id="tokLoader"')
-        self.assertPageContains('class="tokspinner"')
+        self.assertPageContains("$('#tokLoader').insertAdjacentHTML('afterbegin',spinnerHtml('媒体加载中'))")
+        self.assertPageLacks('class="tokspinner"')
         self.assertPageContains("function setTokLoading(on,label='加载中…',it=null)")
         self.assertPageContains("function waitTokReady(video,timeout=15000)")
         self.assertPageContains("width:100%;height:100%;left:50%;transform:translateX(-50%);object-fit:cover")
@@ -944,7 +945,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_note_semantics_replace_empty_states_for_persistent_errors(self):
         for name in ("emptyStateHtml", "loadingDotsHtml", "mediaViewButtonsHtml", "noteHtml", "progressHtml",
-                     "scrollerHtml", "spinnerHtml", "wireScrollers"):
+                     "scrollerHtml", "skeletonHtml", "spinnerHtml", "wireScrollers"):
             self.assertPageContains(name)
         self.assertPageContains("from './js/ui-components.js'")
         self.assertPageContains("const NOTE_VARIANTS=new Set(['secondary','warning','error','success'])")
@@ -978,6 +979,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("Switch 必须共享 radio `name`", rules)
         self.assertIn("Fieldset", rules)
         self.assertIn("Scroller", rules)
+        self.assertIn("整页或大区块首次等待内容结构", rules)
+        self.assertIn("同一次页面进入只呈现一段等待态", rules)
         self.assertIn("Empty State", rules)
         agents = (root / "AGENTS.md").read_text(encoding="utf-8")
         self.assertIn(".claude/skills/peach-web-ui/SKILL.md", agents)
@@ -1621,12 +1624,23 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("stage.style.scrollMarginTop=`${itemDetailStickyOffset()+8}px`")
         self.assertPageContains("buildBars();\n  scrollItemDetailIntoView();")
 
-    def test_catalog_loading_reuses_the_spinner_without_flashing_an_item_placeholder(self):
+    def test_page_loading_uses_one_structural_skeleton_phase(self):
         self.assertPageContains("function renderCatalogLoading(label='正在读取作品')")
-        self.assertPageContains("count.innerHTML=`${spinnerHtml(label)}<span>载入中…</span>`")
+        self.assertPageContains("$('#grid').innerHTML=pageSkeletonHtml(label,{cards:true,className:'catalog-skeleton'})")
+        self.assertPageContains("function renderInitialSurfaceLoading()")
+        self.assertPageContains("placeholder:`<div class=\"follow\">${pageSkeletonHtml('正在读取关注内容',{cards:true})}</div>`")
+        self.assertPageContains("showManagementBody({placeholder:pageSkeletonHtml('正在读取统计')})")
+        self.assertPageContains("showIndexLoading(people?'正在读取作者':'正在读取标签')")
+        self.assertPageContains("$('#loadSentinel').innerHTML=loadingDotsHtml('继续载入中…')")
+        self.assertPageContains("pageSkeletonHtml('正在读取推荐',{cards:true,className:'related-skeleton'})")
+        self.assertPageLacks("count.innerHTML=`${spinnerHtml(label)}<span>载入中…</span>`")
         self.assertPageLacks("function showItemDetailLoading(anchor,above)")
         self.assertPageLacks("detailpending")
         self.assertPageLacks("showItemDetailLoading(origin,above)")
+
+    def test_follow_separator_uses_the_same_border_token_as_tags(self):
+        self.assertPageContains(".pill{flex:none;height:var(--filterItemH);padding:0 20px;border:1px solid var(--border-15)")
+        self.assertPageContains(".followfilters .sep{flex:none;width:1px;height:24px;background:var(--border-15)")
 
     def test_entity_profile_uses_logo_links_without_a_redundant_back_row(self):
         self.assertPageContains("const faviconUrl=url=>")

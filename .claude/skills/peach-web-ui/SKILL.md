@@ -5,7 +5,7 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 
 # Peach Web UI 复用门槛
 
-最后复核：2026-08-30
+最后复核：2026-08-31
 
 ## 开工顺序
 
@@ -24,6 +24,7 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 | 已知总量的进行状态 | Progress | 装饰性蓝条 |
 | 用户触发动作等待结果 | Spinner | 旋转原操作图标、Loading Dots |
 | 后台任务仍在推进 | Loading Dots | Spinner、假百分比 |
+| 整页或大区块首次等待内容结构 | Skeleton | Spinner、Loading Dots |
 | 2–3 个互斥视图 | Switch（radio） | Toggle |
 | 布尔开关 | Toggle | Switch |
 | 无布局高度变化的菜单 | Menu／Listbox，无动画 | Collapse 动画 |
@@ -42,7 +43,8 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 - Progress 必须有真实 `value/max`、可见单位与 `aria-valuemin/max/now`；分隔线放在完整指标（含进度条）之后。
 - Switch 必须共享 radio `name`、初始一个 `checked`、键盘可用；布尔状态继续使用 Toggle。
 - 菜单每项包含与入口相同的图标和文字，菜单内部滚动、`overscroll-behavior:contain`，不得把浏览器页面撑出滚动条。
-- Spinner 只反馈用户直接触发的动作，触发器声明 `aria-busy` 且等待时保持可聚焦；未知时长的后台抓取使用 Loading Dots。两者都必须保留可读状态文字并尊重 reduced motion。
+- Spinner 只反馈用户直接触发的动作，触发器声明 `aria-busy` 且等待时保持可聚焦；未知时长的后台抓取使用 Loading Dots。整页或大区块首次取数使用 Skeleton 预留最终结构。三者都必须保留可读状态文字并尊重 reduced motion。
+- 同一次页面进入只呈现一段等待态；深链启动与页面取数复用同一个 Skeleton，禁止 Spinner 再切换成 Loading Dots 或 Skeleton。
 - 分页末尾、空页和“没有更多内容”是中性终止状态，用可关闭 Note；只有需要恢复或处理的故障才能进入红色 error Note。
 - 弹层标题栏与滚动正文分层：标题分隔线属于卡片全宽，滚动条只属于正文。
 - 没有直接证据不得新增动效；参考产品无动画的菜单保持无动画。
