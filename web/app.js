@@ -511,25 +511,25 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0){
   const close=()=>{menu.hidden=true;toggle.setAttribute('aria-expanded','false')};
   const showMain=()=>{
     const {active}=qualityRows(),speed=Number(player.playbackRate())||1;
-    menu.innerHTML=`<button type="button" class="vjs-peach-menu-row" role="menuitemcheckbox" data-player-ambient aria-checked="${appSettings.ambientMode}">
+    menu.innerHTML=`<div class="vjs-peach-panel-menu"><button type="button" class="vjs-peach-menu-row" role="menuitemcheckbox" data-player-ambient aria-checked="${appSettings.ambientMode}">
       ${icon('player-ambient')}<span>氛围模式</span><i class="vjs-peach-switch" aria-hidden="true"></i></button>
-      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-speed>${icon('player-speed')}<span>播放速度</span><b>${speed===1?'正常':speed+'×'}</b>${icon('chevron-right')}</button>
-      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-quality-view>${icon('player-quality')}<span>清晰度</span><b>${esc(active.label)}</b>${icon('chevron-right')}</button>`;
+      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-speed>${icon('player-speed')}<span>播放速度</span><b>${speed===1?'正常':speed+'×'}</b>${icon('player-menu-next')}</button>
+      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-quality-view>${icon('player-quality')}<span>清晰度</span><b>${esc(active.label)}</b>${icon('player-menu-next')}</button></div>`;
     menu.querySelector('[data-player-ambient]').onclick=()=>{applyAmbientMode(!appSettings.ambientMode);showMain()};
     menu.querySelector('[data-player-speed]').onclick=showSpeed;
     menu.querySelector('[data-player-quality-view]').onclick=showQuality;
   };
   const showSpeed=()=>{
     const selectedSpeed=Number(player.playbackRate())||1,speeds=[.25,.5,.75,1,1.25,1.5,1.75,2];
-    menu.innerHTML=`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="返回上一个菜单">${icon('chevron-left')}</button><strong>播放速度</strong></div>${speeds.map(speed=>
-      `<button type="button" class="vjs-peach-menu-option" role="menuitemradio" data-player-speed-option="${speed}" aria-checked="${speed===selectedSpeed}">${speed===1?'正常':speed+'×'}<span>${speed===selectedSpeed?icon('check'):''}</span></button>`).join('')}`;
+    menu.innerHTML=`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="返回上一个菜单">${icon('player-menu-back')}</button><strong>播放速度</strong></div><div class="vjs-peach-panel-menu">${speeds.map(speed=>
+      `<button type="button" class="vjs-peach-menu-option" role="menuitemradio" data-player-speed-option="${speed}" aria-checked="${speed===selectedSpeed}"><span class="vjs-peach-option-check">${speed===selectedSpeed?icon('check'):''}</span><span class="vjs-peach-option-label">${speed===1?'正常':speed+'×'}</span></button>`).join('')}</div>`;
     menu.querySelector('[data-player-menu-back]').onclick=showMain;
     menu.querySelectorAll('[data-player-speed-option]').forEach(button=>button.onclick=()=>{player.playbackRate(Number(button.dataset.playerSpeedOption));showMain()});
   };
   const showQuality=()=>{
     const {options}=qualityRows();
-    menu.innerHTML=`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="返回上一个菜单">${icon('chevron-left')}</button><strong>清晰度</strong></div>${options.map(option=>
-      `<button type="button" class="vjs-peach-menu-option" role="menuitemradio" data-player-quality-option="${esc(option.key)}" aria-checked="${option.key===selected}">${esc(option.label)}<span>${option.key===selected?icon('check'):''}</span></button>`).join('')}`;
+    menu.innerHTML=`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="返回上一个菜单">${icon('player-menu-back')}</button><strong>清晰度</strong></div><div class="vjs-peach-panel-menu">${options.map(option=>
+      `<button type="button" class="vjs-peach-menu-option" role="menuitemradio" data-player-quality-option="${esc(option.key)}" aria-checked="${option.key===selected}"><span class="vjs-peach-option-check">${option.key===selected?icon('check'):''}</span><span class="vjs-peach-option-label">${esc(option.label)}</span></button>`).join('')}</div>`;
     menu.querySelector('[data-player-menu-back]').onclick=showMain;
     menu.querySelectorAll('[data-player-quality-option]').forEach(button=>button.onclick=()=>{
       selected=button.dataset.playerQualityOption;
@@ -639,16 +639,21 @@ function mountPlayerCenterControls(player){
   if(player.el().querySelector('[data-player-center-controls]'))return;
   const root=document.createElement('div');
   root.className='vjs-peach-center-controls';root.dataset.playerCenterControls='';
-  root.innerHTML=`<button type="button" class="vjs-peach-center-toggle" data-center-toggle aria-label="播放">
-      <span class="vjs-peach-center-play" aria-hidden="true"></span>
-      <span class="vjs-peach-center-pause" aria-hidden="true"><i></i><i></i></span></button>`;
-  player.el().append(root);
-  const toggle=root.querySelector('[data-center-toggle]');
-  const sync=()=>{const playing=!player.paused()&&!player.ended();root.dataset.state=playing?'pause':'play';toggle.setAttribute('aria-label',playing?'暂停':'播放')};
+  root.setAttribute('aria-hidden','true');
+  root.innerHTML=`<span class="vjs-peach-center-bezel"><svg class="vjs-peach-center-play" aria-hidden="true"><use href="#i-player-bezel-play"></use></svg><svg class="vjs-peach-center-pause" aria-hidden="true"><use href="#i-player-bezel-pause"></use></svg></span>`;
+  const playerRoot=player.el();playerRoot.append(root);
+  const spinner=playerRoot.querySelector('.vjs-loading-spinner');
+  if(spinner)spinner.innerHTML='<span class="vjs-peach-spinner-container"><span class="vjs-peach-spinner-rotator"><span class="vjs-peach-spinner-left"><span class="vjs-peach-spinner-circle"></span></span><span class="vjs-peach-spinner-right"><span class="vjs-peach-spinner-circle"></span></span></span></span>';
+  let gesture=false,gestureTimer=0;
+  const sync=()=>{const playing=!player.paused()&&!player.ended();root.dataset.state=playing?'pause':'play'};
   const feedback=()=>{root.classList.remove('is-feedback');void root.offsetWidth;root.classList.add('is-feedback')};
-  toggle.onclick=event=>{event.stopPropagation();feedback();if(player.paused()||player.ended())player.play().catch(()=>{});else player.pause()};
-  toggle.addEventListener('animationend',()=>root.classList.remove('is-feedback'));
-  player.on(['play','pause','ended'],sync);sync();
+  const arm=()=>{gesture=true;clearTimeout(gestureTimer);gestureTimer=setTimeout(()=>{gesture=false},600)};
+  const onKey=event=>{if(event.key===' '||event.key.toLowerCase()==='k')arm()};
+  const onState=()=>{sync();if(gesture){gesture=false;clearTimeout(gestureTimer);feedback()}};
+  const hideFeedback=()=>root.classList.remove('is-feedback');
+  playerRoot.addEventListener('pointerdown',arm,true);playerRoot.addEventListener('keydown',onKey,true);
+  root.addEventListener('animationend',hideFeedback);
+  player.on(['play','pause','ended'],onState);player.on(['waiting','seeking'],hideFeedback);player.on('dispose',()=>{clearTimeout(gestureTimer);playerRoot.removeEventListener('pointerdown',arm,true);playerRoot.removeEventListener('keydown',onKey,true)});sync();
 }
 function mountDetailPlayer(it,video,autoplay,options={}){
   if(detailPlayer)return detailPlayer;
