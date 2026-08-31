@@ -4115,14 +4115,14 @@ const sourceHint=message=>SOURCE_HINTS[message]||message;
 async function revealSource(id,status,{button=null}={}){
   if(button?.getAttribute('aria-busy')==='true')return;
   const buttonHtml=button?.innerHTML,label=button?.textContent.trim();
-  if(button){button.disabled=true;button.setAttribute('aria-busy','true');
-    button.innerHTML=`${spinnerHtml('正在定位')}<span>${esc(label)}</span>`}
-  status.textContent='正在定位…';
+  if(button){button.setAttribute('aria-busy','true');
+    button.innerHTML=`${spinnerHtml('正在定位')}${label?`<span>${esc(label)}</span>`:''}`}
+  status.textContent='';
   try{
     await api('/api/reveal',{method:'POST',body:JSON.stringify({id})});
     status.textContent='';toast('已在资源管理器中显示');
   }catch(e){status.textContent=sourceHint(e.message)}
-  finally{if(button){button.disabled=false;button.removeAttribute('aria-busy');button.innerHTML=buttonHtml}}
+  finally{if(button){button.removeAttribute('aria-busy');button.innerHTML=buttonHtml}}
 }
 
 async function syncMissing(id,status,done){
@@ -4151,7 +4151,7 @@ function wireSourceTools(root,done){
   if(!status)return;
   const reveal=root.querySelector('[data-reveal]');
   const sync=root.querySelector('[data-sync]');
-  if(reveal)reveal.onclick=()=>revealSource(Number(reveal.dataset.reveal),status);
+  if(reveal)reveal.onclick=()=>revealSource(Number(reveal.dataset.reveal),status,{button:reveal});
   if(sync)sync.onclick=()=>syncMissing(Number(sync.dataset.sync),status,done);
 }
 

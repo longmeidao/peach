@@ -2426,7 +2426,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("已在服务端弹出文件管理器",
                              "定位成功是短暂回执，不能在详情内容流里留下状态行")
         self.assertPageContains(".toasts{position:fixed;right:16px;bottom:22px;z-index:var(--layer-popover)")
-        self.assertPageContains("button.innerHTML=`${spinnerHtml('正在定位')}<span>${esc(label)}</span>`")
+        self.assertPageContains(
+            "button.innerHTML=`${spinnerHtml('正在定位')}${label?`<span>${esc(label)}</span>`:''}`")
         self.assertPageContains("if(activeLightbox?.detail?.isOpen()){activeLightbox.detail.dismiss(true);return}")
         self.assertPageContains("if(returnFocus&&document.contains(toggle))toggle.focus()")
         self.assertPageContains("queueMicrotask(()=>reveal.focus())")
@@ -2553,7 +2554,14 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains("api('/api/reveal',{method:'POST',body:JSON.stringify({id})})")
         self.assertPageContains("status.textContent='';toast('已在资源管理器中显示')")
-        self.assertPageContains("if(reveal)reveal.onclick=()=>revealSource(Number(reveal.dataset.reveal),status)")
+        self.assertPageContains("if(reveal)reveal.onclick=()=>revealSource(Number(reveal.dataset.reveal),status,{button:reveal})")
+        reveal_source = self.page.split("async function revealSource", 1)[1].split("async function syncMissing", 1)[0]
+        self.assertIn("button.setAttribute('aria-busy','true')", reveal_source)
+        self.assertIn("status.textContent=''", reveal_source)
+        self.assertNotIn("status.textContent='正在定位…'", reveal_source,
+                         "请求等待态必须留在按钮内，不能撑开详情内容流")
+        self.assertNotIn("button.disabled", reveal_source,
+                         "等待按钮应保持可聚焦，并由 aria-busy 阻止重复请求")
         self.assertPageContains("api('/api/purge-missing',{method:'POST',body:JSON.stringify({id})})")
         self.assertPageContains('data-reveal="${id}"')
         self.assertPageContains('data-sync="${id}"')
