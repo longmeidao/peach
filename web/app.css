@@ -1336,10 +1336,8 @@ body.settings-open{overflow:hidden}
 :root[data-theme="dark"] .settingscard{box-shadow:0 24px 64px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.07)}
 .settingshead h2{margin:0;font-size:var(--fs-xl)}.settingshead button{border:0;background:transparent;color:var(--muted);width:34px;height:34px;border-radius:var(--control-radius);cursor:pointer;display:grid;place-items:center;transition:background-color .12s ease,color .12s ease}.settingshead button:hover{background:var(--hover);color:var(--ink)}
 .settingshead svg{width:20px;height:20px;stroke:currentColor;fill:none}.settingrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:14px 0 14px;border-top:1px solid var(--line-soft)}
-.settingrow:first-of-type{border-top:0}.settingrow b{display:block;font-size:var(--fs-md)}.settingrow small{display:block;color:var(--muted);margin-top:3px;line-height:1.45}/* 箭头自绘。原来留了 34px 右内边距却不画箭头，交给系统控件自己画：Safari 把箭头画在
-   内边距**里侧**，于是离右边框差着一大截，和桌面 Chromium 的样子也对不上。
-   `appearance:none` 关掉系统绘制，用背景图贴住右边框。 */
-.settingrow select{min-width:148px;border:1px solid var(--line);border-radius:var(--control-radius);background:#181a1d;color:#f5f7fa;color-scheme:dark;padding:9px 34px 9px 11px;font:inherit;font-size:var(--fs-md);appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;background-size:16px 16px}.settingrow select:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.settingrow select option{background:#181a1d;color:#f5f7fa}.settingrow input[type=checkbox]{width:20px;height:20px;accent-color:var(--tungsten)}
+.settingrow:first-of-type{border-top:0}.settingrow b{display:block;font-size:var(--fs-md)}.settingrow small{display:block;color:var(--muted);margin-top:3px;line-height:1.45}
+.settingrow select{min-width:148px;border:1px solid var(--line);border-radius:var(--control-radius);background:#181a1d;color:#f5f7fa;color-scheme:dark;padding:9px 11px;font:inherit;font-size:var(--fs-md)}.settingrow select:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.settingrow select option{background:#181a1d;color:#f5f7fa}.settingrow input[type=checkbox]{width:20px;height:20px;accent-color:var(--tungsten)}
 .settinggroup{margin:16px 0 0;border:1px solid var(--line-soft);border-radius:12px;
   background:var(--surface);padding:0 16px 12px}
 .settinggroup>h3{margin:0;padding:14px 0 10px;font-size:var(--fs-lg);font-weight:600;color:var(--ink)}
@@ -1853,9 +1851,14 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fsechead h3{margin:0;font-size:var(--fs-md);font-weight:600;letter-spacing:.01em}
 .fsechead .fmeta{flex:1 1 auto}
 .fmanagesort{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:var(--fs-xs)}
-.fmanagesort select{height:32px;padding:0 28px 0 10px;border:1px solid var(--border-15);border-radius:var(--control-radius);
+.fmanagesort select{height:32px;padding:0 10px;border:1px solid var(--border-15);border-radius:var(--control-radius);
   background:var(--surface);color:var(--ink-2);font:inherit;font-size:var(--fs-sm);color-scheme:dark;cursor:pointer}
 .fmanagesort select:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+/* 全站原生下拉共用同一个自绘箭头。SVG 笔画自身有 4px 透明边，背景右移 6px 后，
+   可见笔画到右边框正好与文字到左边框同为 10px。 */
+.settingrow select,.tasteactions select,.fmanagesort select{padding-left:10px;padding-right:32px;appearance:none;-webkit-appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 6px center;background-size:16px 16px}
 .fmeta{font-size:var(--fs-xs);color:var(--muted)}
 .fmeta b{color:var(--ink);font-variant-numeric:tabular-nums}
 .fmeta.warn{color:var(--drop)}
@@ -1965,7 +1968,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
    容器和每一项都要显式 min-width:0 才会真的收缩。 */
 .frows{display:grid;min-width:0}
 .frows>*{min-width:0}
-.fsources{grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:0 22px}
+.fsources{grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px 22px;align-items:start}
 .frow{display:flex;align-items:center;gap:12px;padding:9px 0;flex-wrap:wrap;
   border-bottom:1px solid var(--border-10)}
 .frows>.frow:last-child{border-bottom:0}
@@ -1979,17 +1982,22 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fsourcelink:hover{text-decoration:underline;color:var(--tungsten)}
 
 /* 作者分组。同一个人在几个站上是几条来源、一个人，所以头像和名字只出现一次，
-   下面才是各站那几行。分组之间用发丝线隔开，不套框——按 vercel-report-design，
-   卡片套卡片和用边框补救层级都是要拒绝的。
+   下面才是各站那几行。作者卡固定为可完整显示四条普通来源的高度；更多来源在卡内滚动，
+   避免同一网格行被来源最多的作者拉出大块空白。
 
    这段必须排在 `.frow` 之后：测试用 `index('.frow{')` 取那条规则的正文，
    放前面的话选择器里的同名片段会被先匹配到，取回来的是这里的规则。 */
-.fauthor{border-top:0}
+.fauthor{box-sizing:border-box;height:280px;padding:8px 12px;border:1px solid var(--border-10);
+  border-radius:var(--control-radius);background:var(--surface);display:grid;grid-template-rows:auto minmax(0,1fr)}
 .fauthorhead{display:flex;align-items:center;gap:9px;padding:10px 0 6px}
 .fauthorhead b{font-size:var(--fs-md);min-width:0;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
 .fauthorhead .fmeta{margin-left:auto;flex:none}
 .fauthorhead .fmeta.warn{margin-left:0}
+.fauthorsources{min-height:0}
+.fauthorsources .geist-scroller-container{padding-right:12px;scrollbar-width:thin}
+.fauthorsources .geist-scroller-container::-webkit-scrollbar{display:block}
+.fauthorsources .fsource:last-child{border-bottom:0}
 .fauthor .fsource.frow{padding-left:0px;display:grid;
   grid-template-columns:22px minmax(0,1fr) auto auto auto auto;gap:10px;flex-wrap:nowrap}
 .fauthor .fsource.frow>b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

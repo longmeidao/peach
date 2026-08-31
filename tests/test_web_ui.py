@@ -418,14 +418,16 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(initialParams.get('loc'))return;")
         self.assertPageContains("dropOfflineFromDefaultLoc();")
 
-    def test_select_arrow_is_drawn_by_us_and_hugs_the_border(self):
-        """箭头必须自绘。
+    def test_select_arrow_is_drawn_once_with_balanced_right_spacing(self):
+        """全站下拉箭头必须共用自绘样式，并和右边框保留稳定间距。
 
         原来留了 34px 右内边距却不画箭头、交给系统控件：Safari 把箭头画在内边距里侧，
         离右边框差一大截，和桌面 Chromium 的样子也对不上。
         """
+        self.assertPageContains(".settingrow select,.tasteactions select,.fmanagesort select{")
+        self.assertPageContains("padding-left:10px;padding-right:32px;appearance:none;-webkit-appearance:none")
         self.assertPageContains("appearance:none;-webkit-appearance:none")
-        self.assertPageContains("background-position:right 10px center")
+        self.assertPageContains("background-position:right 6px center")
 
     def test_settings_panel_fits_the_visible_viewport_on_ios(self):
         """iOS 上 `vh` 算的是不减地址栏的「大视口」。
