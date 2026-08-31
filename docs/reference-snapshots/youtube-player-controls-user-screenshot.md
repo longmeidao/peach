@@ -60,6 +60,15 @@
   `06c71239b969d3e15cb2fd36ca453dfc52d4f4518869b5459eb4b2018a03fcab`、
   `41c8b2dda5d79044361960f249fa4dd702784da690cc1ca113e299464502c49e`、
   `d2fe79b33c72950951310a7224262c9b0d4a5ede5779cfe890cdc2ffcdba8914`
+- 第十一轮用户标注的 loading／中央反馈重合、音量重叠、三枚设置图标、行尾箭头、清晰度子层和
+  YouTube 子层缩进参考共 7 张，SHA-256
+  `e38d78d48e90f23cc772c5a5bbf3612626f8d5e115f1fcbee493613e2e344d8e`、
+  `be33b4623f3f22a19bce255e4ebb8d2674be672605041c19f4259bc7d3a2aead`、
+  `00904ac28cff16350135143d3ec4b7c913fbb7ac21efd33a32617bb62af83260`、
+  `00ed60c1bfed5fc84c363e6f0e3743280bcdaa88804f7ddad6c263a1b064552d`、
+  `55ff69e21df05c36b6c09647170d5039a9e9cc71b0d13c21102d5136aa82e776`、
+  `12bd9bbb9775b027c44302adb1872c33f0c8f6e5d3365125df10fdb56b18dc4e`、
+  `e9b009dc847f90e917b859d9e7ee458e42cce408680ba971982d1488c9ba0830`。
 - YouTube 官方氛围模式说明：<https://support.google.com/youtube/answer/12827017?hl=en-GB>，
   2026-08-30 复核；说明颜色取自视频并扩散到屏幕背景，深色主题默认开启，设置开关对所有视频生效。
 - YouTube 官方播放器大小说明：<https://support.google.com/youtube/answer/6052392?hl=en>，
@@ -127,6 +136,30 @@
   Chrome computed style 仍标为「未取得」。精确值来自已锁定同版本官方 `www-player.css` 和此前实际
   YouTube 页面 DOM／计算样式，不把仅加载成功写成 DevTools 样式验收成功。
 
+### 第十一轮当前源码纠偏
+
+- 2026-08-31 重新访问实际视频 <https://www.youtube.com/watch?v=mPV-oMZwSW4>；页面当前仍引用
+  `e937390a` 的 `www-player.css`，SHA-256 仍为
+  `24cb353f7db6c8025eaf8648aa1f941cddfac84342d06ed4fb9def4523328bb3`，同时引用
+  <https://www.youtube.com/s/player/e937390a/player_ias.vflset/zh_HK/base.js>，SHA-256
+  `88d946f3db89b2d71e52554318b6520c2c518e07cc9827c7c942b042ac65cdc1`。
+- `base.js` 的 `FsY` 直接给出 loading 的左右半圆 DOM；CSS 锁定 64 px、6 px 圆环，线性旋转
+  `1.5682352941176s`、缓动旋转 `5332ms`、左右半圆各 `1333ms`。Peach 复用 Video.js 的
+  `vjs-waiting`／`vjs-seeking` 状态，仅把内部结构和动画换成该来源值；中央播放／暂停改为用户手势后的
+  1 秒 bezel 反馈，初始不渲染可见按钮，waiting／seeking 时强制隐藏，所以两层不能重叠。
+- 同一 `base.js` 的 modern 分支直接给出环境模式、播放速度、画质三枚 24×24 SVG path，以及
+  36×36 播放／暂停 bezel path；Peach 本轮原样登记为本地 symbol，不再使用近似 Lucide 画法。
+- 官方设置行仍是 48 px；图标格左 8／右 24 px，内容右 8 px，行尾箭头使用 18 px、白色 70% 的
+  modern path。radio 子层标签左 padding 35 px，勾选图位于左 10 px；标题栏为 57 px，48 px
+  返回容器与 32 px 箭头。Peach 因此把选中勾移到左列、删掉清晰度右侧伪尾标，并给主层箭头独立
+  32 px 网格列，避免越出圆角悬停面。
+- 官方横向音量的 40 px 紧凑态展开公式为 `40 + 52 + 3 + 16 = 111 px`；滑轨高 2 px、12 px
+  圆点垂直居中。Peach 清除 Video.js 原生 `vjs-icon-placeholder` 本体并用同一网格公式布局，不能再靠
+  `18.5px` margin 猜垂直位置。
+- Chrome 扩展能枚举现有 YouTube／Peach 标签；两次接管实际 YouTube 标签均在 30 秒超时并重置连接，
+  所以本轮 Chrome DOM／计算样式与改后截图验收仍是「未取得」。以上新增值均来自该实际页面当次引用并
+  通过 SHA-256 锁定的官方 CSS／JS，不把连接成功或截图目测当源码证据。
+
 ## 可复用证据
 
 | 项 | 截图证据 | Peach 实现 |
@@ -138,8 +171,8 @@
 | 进度状态 | 细轨道、品牌色已播段和圆点；卡片缩略图底边显示已观看段 | Peach 把红色替换为 `--tungsten` 蓝，卡片按 `play_seconds / duration` 绘制同色进度 |
 | 拖动提示 | 指针时刻上方显示时间；精确拖动时可带缩略图 | 本地媒体复用九宫格接触表近似对应时刻，在线媒体只显示时间，不伪造逐帧预览 |
 | 清晰度 | 齿轮图标带 `HD` 状态标记，实际选项在菜单内 | 齿轮显示 `HD`／`4K`，菜单继续只列媒体真实分辨率 |
-| 中央播放 | 半透明黑色圆形底、居中的白色三角 | 覆盖 Video.js 默认矩形按钮，使用 78 px 圆形底与 CSS 白色三角 |
-| 中央反馈 | 用户补充中央不只播放，还要暂停；第八轮明确删除左右快退／快进 | 单个深色圆钮按播放状态切换三角与双竖线并播放 1 秒反馈动画；键盘跳转保留 |
+| 中央播放 | 首次 loading 不与播放键重合；点击后才出现播放／暂停反馈 | 初始只由 Video.js waiting 状态显示 64 px 官方结构 spinner；用户手势触发状态变化后才显示 78 px bezel |
+| 中央反馈 | 用户补充中央不只播放，还要暂停；第八轮明确删除左右快退／快进 | 按状态切换官方 36×36 SVG path 并播放 1 秒反馈动画；键盘跳转保留 |
 | 左上工具 | 用户要求与播放器按钮统一 | 播放统计键使用相同的 40 px 无描边圆钮、底色和悬停反馈 |
 | 左上状态 | Peach 对照图中统计圆钮约 80px 高，加载速度约 75px 高 | CSS 固定两者为相同 40px 逻辑高度、相同 `top:11px` 和 `box-sizing:border-box` |
 | 设置面板 | 圆角半透明浮层，主层展示氛围模式、播放速度、清晰度；子层选择实际值 | Peach 复用现有清晰度等级和 Video.js `playbackRate`，加入同层氛围开关与返回式子菜单；不画没有实现的睡眠定时 |
