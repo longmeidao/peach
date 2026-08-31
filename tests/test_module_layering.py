@@ -18,7 +18,11 @@ import peach
 SOURCE_ROOT = pathlib.Path(peach.__file__).parent
 
 #: web 层自己。层内互相依赖是正常的。
-WEB_MODULES = {"web_contract", "web_follow", "web_activity", "web_playlists"}
+#:
+#: 按文件名推导而不是手写清单：这里原本写死四个，而拆分出 `web_review`、
+#: `web_resource_sync`、`web_settings` 之后没人回来更新，那三个模块此后一直不设防。
+#: 守规则的东西自己先漂了，是这条门槛最容易出的故障。
+WEB_MODULES = {path.stem for path in SOURCE_ROOT.glob("web_*.py")}
 
 #: 应用层组装点：把 web 层挂上 FastAPI 是它的职责，方向是对的。
 COMPOSITION_ROOTS = {"api"}
@@ -91,6 +95,15 @@ class SharedRuleTests(unittest.TestCase):
 
 
 class LayeringTests(unittest.TestCase):
+    def test_the_web_layer_is_actually_discovered(self):
+        """推导出来的 web 层不能是空的。
+
+        改成按文件名推导之后，清单不会再漂；但万一命名约定变了，glob 会安静地返回
+        空集，上面那条断言就永远成立——门槛还在，只是不再拦任何东西。
+        """
+        self.assertGreaterEqual(len(WEB_MODULES), 4, "没发现 web 层，门槛已空转")
+        self.assertIn("web_contract", WEB_MODULES)
+
     def test_only_web_modules_and_the_composition_root_import_the_web_layer(self):
         offenders = []
         for path in sorted(SOURCE_ROOT.glob("*.py")):
