@@ -1020,6 +1020,7 @@ function cardHtml(it,cls){
      真实 `is_jav` 卡片，不能把同页的创作者视频也拉成竖封。 */
   const jav=javActive()&&!!it.is_jav,layout=javLayout();
   const parts=it.part_group||null;
+  const editions=it.edition_group||null;
   const useCover=jav&&layout!=='preview'&&it.has_cover;
   /* 卡片比例。这个值以前算出来就没人用过——`.pic` 一直写死 16/9，于是 JAV 的两种
      版式看起来一模一样。现在写进 `--card-ratio`，由 CSS 消费。 */
@@ -1103,7 +1104,7 @@ function cardHtml(it,cls){
     ${parts?'<div class="partstack">':''}<div class="pic" style="--card-ratio:${ar}">${thumb}<button class="cardopenhit" data-open aria-label="打开 ${esc(shownName)}${parts?'分卷':'详情'}"></button>
       <div class="badge mono">${srcBadge(it.location,it.cost)}</div>
       <span class="selectionMark">${icon('check')}</span><span class="deleteMark">${icon('trash')}<b>回收站</b></span>
-      ${parts?`<span class="partbadge">${parts.count} 卷</span>`:''}<span class="dur mono">${fmtDur(shownDuration)}</span>${tr}${tools}</div>${parts?'</div>':''}
+      ${parts?`<span class="partbadge">${parts.count} 卷</span>`:''}${editions?`<span class="partbadge editionbadge" title="${esc(editions.editions.join(' · '))}">${editions.count} 个版本</span>`:''}<span class="dur mono">${fmtDur(shownDuration)}</span>${tr}${tools}</div>${parts?'</div>':''}
     <div class="meta">${avatar}<div class="mtext"><button class="t cardtitle" data-open>${shownTitle}</button>
       <div class="s mono">${whoHtml}
         ${it.why?`<span class="why">${esc(it.why)}</span>`:''}
@@ -1266,6 +1267,9 @@ function mixCardHtml(it){
       <b>Mix · ${esc(label)}</b><span>${esc(javDisplayName(it))}及相似作品</span></div></div></article>`;
 }
 let renderedPartGroups=new Set();
+/* 版次组和分卷组各自折叠。分卷是「一部片被切成几段」，版次是「同一部片的几个来源」
+   ——有码、中字、无码。它们能同时出现在一个番号上，所以两套 key 分开记，不共用。 */
+let renderedEditionGroups=new Set();
 function collapseMultipartItems(items){
   return items.filter(it=>{
     const key=it.part_group?.key;
@@ -1274,8 +1278,16 @@ function collapseMultipartItems(items){
     renderedPartGroups.add(key);return true;
   });
 }
+function collapseEditionGroups(items){
+  return items.filter(it=>{
+    const key=it.edition_group?.key;
+    if(!key)return true;
+    if(renderedEditionGroups.has(key))return false;
+    renderedEditionGroups.add(key);return true;
+  });
+}
 function batchWithMix(items,enabled=true){
-  const visible=collapseMultipartItems(items);
+  const visible=collapseEditionGroups(collapseMultipartItems(items));
   const cards=visible.map(it=>cardHtml(it));
   if(!enabled)return cards.join('');
   const seed=visible.find(it=>it.creator||(it.performers||[]).length||it.studio)||visible[0];
@@ -1293,7 +1305,10 @@ function wireCards(root,onClick,onTag){
     if(el.dataset.wired)return; el.dataset.wired='1';
     const it=CACHE[el.dataset.id];
     const openCard=(id,anchor=el)=>onClick?onClick(id,anchor):(it?.part_group
-      ?openParts(it.part_group.seed_id,id,true,anchor):openItem(id,true,null,anchor));
+      ?openParts(it.part_group.seed_id,id,true,anchor)
+      :it?.edition_group
+        ?openEditions(it.edition_group.seed_id,id,true,anchor)
+        :openItem(id,true,null,anchor));
     el.onclick=e=>{
       const seek=e.target.closest('[data-seek]');
       if(seek){e.stopPropagation();const v=el.querySelector('video.hv');
@@ -3966,7 +3981,7 @@ function renderEntityCollection(kind,name,items,filters,append=false){
   const entityTag=filters.tag||'';
   const section=$('#index').querySelector('.entitysection');if(!section)return;
   if(!append){
-    renderedPartGroups.clear();
+    renderedPartGroups.clear();renderedEditionGroups.clear();
     entityCollectionPage={items:[...(items.items||[])],total:items.total||0,
       has_more:items.has_more==null?(items.items||[]).length<(items.total||0):!!items.has_more};
     section.innerHTML=`<div class="entitycollectionhead"><h3></h3><span class="sorts">
@@ -4832,7 +4847,7 @@ async function load(reset){
   if(reset){barsContext={type:'home',filters:state};detailReturnBarsContext=null;disposeStage(false);
     renderCatalogLoading(state.state==='ads'?'正在读取资源':'正在读取作品')}
   showHomeSurfaces();
-  if(reset){offset=0;renderedPartGroups.clear()}
+  if(reset){offset=0;renderedPartGroups.clear();renderedEditionGroups.clear()}
   renderCombo();
   // 垃圾文件是逐项处置队列，计数只是当前队列说明，不是需要跟随浏览的排序工具。
   const countRow=$('#count'),staticManageCount=state.state==='ads';
@@ -5040,6 +5055,21 @@ async function openMix(seedId,itemId=seedId,push=true,anchor=null){
   const mix=previous||await buildMix(seedId);
   await openItem(itemId,false,mix,anchor);
   if(push)route(`/mix/${seedId}/${itemId}`);
+}
+/* 版次视图复用分卷的队列：两者都是「一个番号下的几个可播条目」，差别只在标题和
+   每条的副标题。另写一套只会让队列的键盘、续播和返回路径各演化一份。 */
+async function openEditions(seedId,itemId=seedId,push=true,anchor=null){
+  const previous=activeQueue?.kind==='editions'&&activeQueue.seedId===seedId?activeQueue:null;
+  if(push&&!previous)detailReturnPath=location.pathname+location.search;
+  let queue=previous;
+  if(!queue){
+    const group=await api('/api/editions?id='+seedId);
+    if(group.error){await openItem(itemId,true);return}
+    queue={kind:'editions',seedId,title:`版本 · ${group.title}`,items:group.items};cache(queue.items);
+  }
+  const chosen=queue.items.some(item=>item.id===itemId)?itemId:queue.items[0].id;
+  await openItem(chosen,false,queue,anchor);
+  if(push)route(`/editions/${seedId}/${chosen}`);
 }
 async function openParts(seedId,itemId=seedId,push=true,anchor=null){
   const previous=activeQueue?.kind==='parts'&&activeQueue.seedId===seedId?activeQueue:null;
@@ -5899,6 +5929,7 @@ async function restoreRoute(){
   if(parts[0]==='playlists'&&/^\d+$/.test(parts[1]||'')&&/^\d+$/.test(parts[2]||'')){await openPlaylist(+parts[1],+parts[2],false);return}
   if(parts[0]==='mix'&&/^\d+$/.test(parts[1]||'')&&/^\d+$/.test(parts[2]||'')){await openMix(+parts[1],+parts[2],false);return}
   if(parts[0]==='parts'&&/^\d+$/.test(parts[1]||'')&&/^\d+$/.test(parts[2]||'')){await openParts(+parts[1],+parts[2],false);return}
+  if(parts[0]==='editions'&&/^\d+$/.test(parts[1]||'')&&/^\d+$/.test(parts[2]||'')){await openEditions(+parts[1],+parts[2],false);return}
   if(parts[0]==='item'&&/^\d+$/.test(parts[1]||'')){await openItem(+parts[1],false);return}
   if(parts[0]==='follow'&&parts[1]==='item'&&/^\d+$/.test(parts[2]||'')){
     await openFollow(false,true);await openFollowDetail(+parts[2],false);return}
