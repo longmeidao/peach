@@ -419,6 +419,21 @@ class OperationalScriptTests(unittest.TestCase):
                 self.rehome_unknown._remove_empty_tree(root)
             self.assertFalse(root.exists())
 
+    def test_rehome_unknown_jav_accepts_cloud_drive_removing_an_empty_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "target"
+            target.mkdir()
+            original_iterdir = Path.iterdir
+
+            def cloud_drive_iterdir(path):
+                if path == target and path.exists():
+                    path.rmdir()
+                    raise FileNotFoundError(path)
+                return original_iterdir(path)
+
+            with mock.patch.object(Path, "iterdir", cloud_drive_iterdir):
+                self.assertEqual(self.rehome_unknown._direct_children(target), {})
+
     def test_media_batch_scripts_are_import_safe_and_keep_context_rules(self):
         self.assertEqual(self.probe.context_fields(1920, 1080, 180), ("速食", "横屏", "2K"))
         with tempfile.TemporaryDirectory() as tmp:
