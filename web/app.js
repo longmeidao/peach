@@ -2293,11 +2293,37 @@ function followWhen(item){
 }
 
 const followTagType=(item,tag)=>item.tag_types&&item.tag_types[tag]||'general';
-/* 卡片上只留有身份的标签：作者、角色、作品、来源属性。
-   general 是内容描述（footjob、standing sex、from behind 这类），三个一排占满卡片
-   底部，却几乎不用来找东西——按用户要求不在卡片上展示。筛选条里仍然保留：
-   那里是主动去筛，和卡片被动堆一排不是一回事。 */
-const followCardTags=item=>(item.tags||[]).filter(tag=>followTagType(item,tag)!=='general');
+/* 卡片上只留「玩法」这一类：体位、动作、视角。
+
+   题材不留——`copyright`（Final Fantasy、Genshin Impact）和 `artist` 整类都是，
+   看卡片时已经知道自己在看谁的什么作品了。
+
+   麻烦在于站点把三种东西都塞进了 `general`：真正的玩法（straight、male pov）、
+   技术标记（animated、loop、blender、sound）、以及又一份题材（Final_Fantasy_VII、
+   InitialA）。所以只按标签类型过滤不够，还要按两条判据再筛一遍。 */
+//: booru 的角色消歧写法 `角色 (作品)`。这类标签的 tag_types 常常也是 general，
+//: 靠类型分不出来，但括号后缀是站点约定，认得出。
+const FOLLOW_TAG_TOPICAL=/\([^)]+\)\s*$/;
+//: 计数与技术标记：说的是「这条素材怎么做的」，不是「里面发生了什么」。
+const FOLLOW_TAG_NOISE=/^(?:\d+\s*(?:boy|girl|futa)s?|solo|animated|loop|no\s*sound|sound|blender|3d|2d|cgi|hd|highres|absurdres|video|webm|mp4|vertical\s*video|horizontal\s*video)$/i;
+//: 把 `Final_Fantasy_(series)` 与 copyright 里的 `Final Fantasy` 归一到同一个键，
+//: 好把混进 general 的那份题材也认出来。
+const followTagKey=tag=>String(tag).toLowerCase()
+  .replace(/\([^)]*\)/g,'').replace(/[_\s-]+/g,'').trim();
+const followCardTags=item=>{
+  const tags=item.tags||[];
+  // 题材集合：非 general 的那些标签本身，用来反查混进 general 的同名项。
+  const topical=new Set(tags.filter(tag=>followTagType(item,tag)!=='general')
+    .map(followTagKey).filter(Boolean));
+  return tags.filter(tag=>{
+    if(followTagType(item,tag)!=='general')return false;
+    if(FOLLOW_TAG_NOISE.test(String(tag).trim()))return false;
+    if(FOLLOW_TAG_TOPICAL.test(String(tag)))return false;
+    const key=followTagKey(tag);
+    // 与某个题材同名，或本身就是题材的子条目（Final_Fantasy_VII ⊂ finalfantasy）
+    return !!key&&![...topical].some(t=>key===t||key.startsWith(t)||t.startsWith(key));
+  });
+};
 const followTagChip=(item,tag,kind='span')=>`<${kind} class="tg r34-${
   esc(followTagType(item,tag))}" data-follow-tag="${esc(tag)}">${esc(tagLabel(tag))}</${kind}>`;
 

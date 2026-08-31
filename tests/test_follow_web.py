@@ -426,13 +426,15 @@ class FollowContractTests(unittest.TestCase):
         找东西。筛选条里仍然保留——主动去筛和被动堆一排不是一回事。
         """
         page = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
-        self.assertIn(
-            "const followCardTags=item=>(item.tags||[])"
-            ".filter(tag=>followTagType(item,tag)!=='general');", page)
+        # 只留玩法：题材（copyright/artist）整类不上卡片
+        self.assertIn("if(followTagType(item,tag)!=='general')return false;", page)
+        # 站点把三种东西都塞进 general，所以还要按两条判据再筛
+        self.assertIn("FOLLOW_TAG_NOISE", page, "技术标记与计数要滤掉")
+        self.assertIn("FOLLOW_TAG_TOPICAL", page, "booru 的「角色 (作品)」写法要滤掉")
         self.assertIn("const tags=followCardTags(item).slice(0,3)", page,
                       "卡片必须走过滤后的标签")
         self.assertIn("data-follow-tag=\"${esc(key)}\"", page,
-                      "筛选条仍要能按标签筛，包括 general")
+                      "筛选条仍要能按标签筛，包括被卡片滤掉的那些")
 
     def test_generated_media_is_cached_for_a_month_not_a_day(self):
         """按 id 取的生成物内容不会变，一天太短。
@@ -442,7 +444,10 @@ class FollowContractTests(unittest.TestCase):
         """
         from peach import api
 
-        self.assertEqual(api.MEDIA_CACHE_SECONDS, 30 * 24 * 3600)
+        self.assertEqual(api.MEDIA_CACHE_SECONDS, 365 * 24 * 3600)
+        # 头像单独短一档：id 不变但人会换头像。
+        self.assertEqual(api.AVATAR_CACHE_SECONDS, 30 * 24 * 3600)
+        self.assertLess(api.AVATAR_CACHE_SECONDS, api.MEDIA_CACHE_SECONDS)
         source = (ROOT / "src" / "peach" / "api.py").read_text(encoding="utf-8")
         self.assertNotIn('max-age=86400', source,
                          "媒体端点不该再写死一天")
