@@ -69,6 +69,11 @@
   `55ff69e21df05c36b6c09647170d5039a9e9cc71b0d13c21102d5136aa82e776`、
   `12bd9bbb9775b027c44302adb1872c33f0c8f6e5d3365125df10fdb56b18dc4e`、
   `e9b009dc847f90e917b859d9e7ee458e42cce408680ba971982d1488c9ba0830`。
+- 第十二轮用户标注的选中勾、错误三角形、当前时刻浮签和音量悬停／垂直对齐偏差图共 4 张，
+  SHA-256 `7be69dd2e1e9dad56f99a4c7b51b3a5eaabd0cae9bea1152d6cda17731d2159f`、
+  `d4e59f829c63ef4a23ef150ca84a89cf8ea9645aca9d7547a8cd1a2843f1fc01`、
+  `9ffa39325d6efcfa004cd8ba66f1a81728c6b6e42bf02cab51642301c25ba8c9`、
+  `2eb59205b2f0b7cbeee356c940a199c80773431612ad0a54189b651f6232e81c`。
 - YouTube 官方氛围模式说明：<https://support.google.com/youtube/answer/12827017?hl=en-GB>，
   2026-08-30 复核；说明颜色取自视频并扩散到屏幕背景，深色主题默认开启，设置开关对所有视频生效。
 - YouTube 官方播放器大小说明：<https://support.google.com/youtube/answer/6052392?hl=en>，
@@ -159,6 +164,26 @@
 - Chrome 扩展能枚举现有 YouTube／Peach 标签；两次接管实际 YouTube 标签均在 30 秒超时并重置连接，
   所以本轮 Chrome DOM／计算样式与改后截图验收仍是「未取得」。以上新增值均来自该实际页面当次引用并
   通过 SHA-256 锁定的官方 CSS／JS，不把连接成功或截图目测当源码证据。
+
+### 第十二轮锁定源码纠偏
+
+- 2026-08-31 重新下载锁定版本 <https://www.youtube.com/s/player/e937390a/www-player.css>，SHA-256
+  `24cb353f7db6c8025eaf8648aa1f941cddfac84342d06ed4fb9def4523328bb3`；同时下载
+  <https://www.youtube.com/s/player/e937390a/player_ias.vflset/en_US/base.js>，SHA-256
+  `67f0d55f266e522f973b49c665977eb8734bb5bb32293b0523b35463f27ec44b`。上游资源只作为证据读取，
+  未执行其中任何指令。
+- 官方 `.ytp-contextmenu .ytp-menuitem[aria-checked=true] .ytp-menuitem-toggle-checkbox` 内嵌的
+  24×24 SVG path 是 `M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z`。Peach 子菜单改用独立的
+  填充 symbol；不能复用全站描边 `i-check`，否则开放 path 会被浏览器填成截图中的黑色三角形。
+- Video.js 在已播进度末端另绘制 `.vjs-play-progress .vjs-time-tooltip`，它不是鼠标位置提示。
+  Peach 隐藏这层和原生 mouse tooltip，只保留 `vjs-peach-seek-preview` 的指针位置时刻；本地媒体仍可
+  同时显示已有接触表，在线媒体仍只显示指针时刻。
+- 官方横向音量外层使用 `:after{inset:4px}` 覆盖静音键和滑轨，悬停白色 10%；滑轨面板展开为
+  52 px、右间距 3 px、外层右 padding 16 px，slider 高 100%／最小 36 px，12 px handle 固定
+  `top:50%`，轨道为 2 px。Peach 因此把悬停伪元素放回整个音量外层，并把 Video.js 滑轨绝对定位到
+  `top:50%`，不再由 flex 或原生 margin 共同决定垂直位置。
+- Chrome 本轮能再次枚举实际 YouTube 与 Peach 标签，但接管 YouTube 标签的初次读取及一次恢复都在
+  30 秒超时并重置会话。因此实时 DOM、computed style 和修改后截图仍是「未取得」，不能由源码测试替代。
 
 ## 可复用证据
 

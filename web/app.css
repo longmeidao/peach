@@ -1062,37 +1062,36 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
   background:transparent;transition:background .2s cubic-bezier(.05,0,0,1)}
 .vwrap .video-js .vjs-control-bar>.vjs-play-control:hover>.vjs-peach-hover,
 .vwrap .video-js .vjs-control-bar>.vjs-play-control:focus-visible>.vjs-peach-hover,
-.vwrap .video-js .vjs-control-bar>.vjs-volume-panel:hover>.vjs-peach-hover,
-.vwrap .video-js .vjs-control-bar>.vjs-volume-panel:focus-within>.vjs-peach-hover,
 .vjs-peach-right-controls>.vjs-control:hover>.vjs-peach-hover,
 .vjs-peach-right-controls>.vjs-control:focus-within>.vjs-peach-hover{background:rgba(255,255,255,.1)}
 .vwrap .video-js .vjs-control-bar>.vjs-play-control:active>.vjs-peach-hover,
-.vwrap .video-js .vjs-control-bar>.vjs-volume-panel:active>.vjs-peach-hover,
 .vjs-peach-right-controls>.vjs-control:active>.vjs-peach-hover{background:rgba(255,255,255,.2)}
 .vwrap .video-js .vjs-control-bar>.vjs-play-control .vjs-icon-placeholder,
 .vwrap .video-js .vjs-peach-right-controls button,.vjs-peach-settings>button,.vjs-peach-theater>button{position:relative;z-index:1}
 .vwrap .video-js .vjs-control-bar>.vjs-volume-panel{box-sizing:border-box;position:relative;align-self:flex-end;flex:0 0 40px;width:40px;height:40px!important;
   margin:0 0 8px 12px;padding:0;border:0;border-radius:28px;background:rgba(0,0,0,.3);box-shadow:none;
   display:grid;grid-template-columns:40px 0;column-gap:0;align-items:center;isolation:isolate;overflow:visible;transition:width .2s cubic-bezier(.05,0,0,1),flex-basis .2s cubic-bezier(.05,0,0,1),padding-right .2s cubic-bezier(.05,0,0,1)}
+.vwrap .video-js .vjs-control-bar>.vjs-volume-panel:after{content:"";position:absolute;z-index:0;inset:4px;border-radius:28px;background:transparent;pointer-events:none;transition:background .2s cubic-bezier(.05,0,0,1)}
+.vwrap .video-js .vjs-control-bar>.vjs-volume-panel:hover:after,
+.vwrap .video-js .vjs-control-bar>.vjs-volume-panel:focus-within:after,
+.vwrap .video-js .vjs-control-bar>.vjs-volume-panel.vjs-hover:after,
+.vwrap .video-js .vjs-control-bar>.vjs-volume-panel.vjs-slider-active:after{background:rgba(255,255,255,.1)}
+.vwrap .video-js .vjs-control-bar>.vjs-volume-panel:active:after{background:rgba(255,255,255,.2)}
 .vwrap .video-js .vjs-control-bar>.vjs-volume-panel:hover,
 .vwrap .video-js .vjs-control-bar>.vjs-volume-panel:focus-within,
 .vwrap .video-js .vjs-control-bar>.vjs-volume-panel.vjs-hover,
 .vwrap .video-js .vjs-control-bar>.vjs-volume-panel.vjs-slider-active{flex-basis:111px;width:111px;grid-template-columns:40px 52px;column-gap:3px;padding-right:16px;background:rgba(0,0,0,.3)}
 .stage.theater-mode .vwrap .video-js .vjs-control-bar>.vjs-volume-panel,
-.stage.theater-mode .vwrap .video-js .vjs-control-bar>.vjs-volume-panel:hover,
-.stage.theater-mode .vwrap .video-js .vjs-control-bar>.vjs-volume-panel:focus-within,
-.video-js.vjs-fullscreen .vjs-control-bar>.vjs-volume-panel,
-.video-js.vjs-fullscreen .vjs-control-bar>.vjs-volume-panel:hover,
-.video-js.vjs-fullscreen .vjs-control-bar>.vjs-volume-panel:focus-within{background:rgba(0,0,0,.3)!important;
+.video-js.vjs-fullscreen .vjs-control-bar>.vjs-volume-panel{background:rgba(0,0,0,.3)!important;
   backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
-.vwrap .video-js .vjs-volume-panel>.vjs-mute-control{box-sizing:border-box;position:relative!important;left:0!important;top:0!important;flex:0 0 40px;width:40px!important;min-width:40px;height:40px!important;margin:0!important;padding:0!important;border:0;background:transparent;transform:none!important}
+.vwrap .video-js .vjs-volume-panel>.vjs-mute-control{box-sizing:border-box;z-index:1;position:relative!important;left:0!important;top:0!important;align-self:center;flex:0 0 40px;width:40px!important;min-width:40px;height:40px!important;margin:0!important;padding:0!important;border:0;background:transparent;transform:none!important}
 .vwrap .video-js .vjs-volume-panel>.vjs-mute-control>.vjs-peach-control-icon{width:18px;height:18px}
-.vwrap .video-js .vjs-volume-panel>.vjs-volume-control.vjs-volume-horizontal{position:relative!important;left:0!important;top:0!important;display:flex!important;align-items:center;align-self:stretch;flex:0 0 52px;width:52px;height:40px;margin:0;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .1s cubic-bezier(0,0,.2,1)}
+.vwrap .video-js .vjs-volume-panel>.vjs-volume-control.vjs-volume-horizontal{box-sizing:border-box;z-index:1;position:relative!important;left:0!important;top:0!important;display:block!important;align-self:center;flex:0 0 52px;width:52px!important;min-width:52px;height:40px!important;min-height:36px;margin:0!important;padding:0!important;overflow:visible;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .1s cubic-bezier(0,0,.2,1)}
 .vwrap .video-js .vjs-volume-panel:hover>.vjs-volume-control.vjs-volume-horizontal,
 .vwrap .video-js .vjs-volume-panel:focus-within>.vjs-volume-control.vjs-volume-horizontal,
 .vwrap .video-js .vjs-volume-panel.vjs-hover>.vjs-volume-control.vjs-volume-horizontal,
 .vwrap .video-js .vjs-volume-panel.vjs-slider-active>.vjs-volume-control.vjs-volume-horizontal{opacity:1;visibility:visible;pointer-events:auto;transition-delay:.08s}
-.vwrap .video-js .vjs-volume-panel .vjs-volume-bar.vjs-slider-horizontal{box-sizing:border-box;position:relative;width:52px;height:2px;margin:0;background:rgba(255,255,255,.3)}
+.vwrap .video-js .vjs-volume-panel .vjs-volume-bar.vjs-slider-horizontal{box-sizing:border-box;position:absolute!important;left:0!important;right:auto!important;top:50%!important;width:52px!important;height:2px!important;margin:0!important;background:rgba(255,255,255,.3);transform:translateY(-50%)}
 .vwrap .video-js .vjs-volume-panel .vjs-volume-level{height:2px;background:#fff}
 .vwrap .video-js .vjs-volume-panel .vjs-volume-level:before{top:50%;right:-6px;width:12px;height:12px;margin:0;font-size:0;border-radius:50%;background:#fff;transform:translateY(-50%)}
 .vjs-peach-right-controls{box-sizing:border-box;position:relative;align-self:flex-end;flex:0 0 auto;height:40px;margin:0 0 8px;
@@ -1115,7 +1114,8 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vwrap .video-js .vjs-play-progress:before{content:"";position:absolute;right:-6px;top:50%;width:12px;height:12px;
   border-radius:50%;background:var(--tungsten);transform:translateY(-50%) scale(0);box-shadow:none;transition:transform .2s cubic-bezier(.05,0,0,1)}
 .vwrap .video-js .vjs-progress-control:hover .vjs-play-progress:before,.vwrap .video-js .vjs-progress-control:focus-within .vjs-play-progress:before{transform:translateY(-50%) scale(1.67)}
-.vwrap .video-js .vjs-mouse-display .vjs-time-tooltip{display:none}
+.vwrap .video-js .vjs-mouse-display .vjs-time-tooltip,
+.vwrap .video-js .vjs-play-progress .vjs-time-tooltip{display:none!important}
 .vjs-peach-seek-preview{position:absolute;z-index:4;bottom:calc(100% + 10px);transform:translateX(-50%);
   display:flex;flex-direction:column;align-items:center;pointer-events:none;color:#fff}
 .vjs-peach-seek-preview[hidden]{display:none}
@@ -1161,7 +1161,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vjs-peach-panel-header strong{font-size:var(--fs-md);line-height:18.2px;font-weight:500;color:#eee}
 .vjs-peach-panel-menu{padding:8px}
 .video-js .vjs-peach-menu-option{display:grid;grid-template-columns:35px minmax(0,1fr);align-items:center;padding:0 20px 0 0!important;text-align:left;font-size:var(--fs-md)!important;line-height:18.2px}
-.vjs-peach-option-check{width:35px;height:18px;display:grid;place-items:center}.vjs-peach-option-check svg{width:18px;height:18px;display:block}
+.vjs-peach-option-check{width:35px;height:24px;display:grid;place-items:center}.vjs-peach-option-check svg{width:24px;height:24px;display:block;fill:currentColor;stroke:none}
 .vjs-peach-option-label{min-width:0}
 .vjs-peach-tooltip{position:absolute;right:50%;bottom:calc(100% + 1em);transform:translateX(50%);display:none;align-items:center;gap:.45em;padding:.65em .85em;border-radius:.75em;background:rgba(40,40,40,.88);box-shadow:0 4px 14px #0007;white-space:nowrap;font-size:1.25em;font-weight:600;pointer-events:none}
 .vjs-peach-tooltip kbd{display:inline-grid;place-items:center;min-width:1.55em;height:1.55em;border:1px solid rgba(255,255,255,.42);border-radius:.35em;font:inherit}
