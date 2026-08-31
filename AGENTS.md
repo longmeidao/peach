@@ -48,6 +48,7 @@
 | 迁移、`--apply`、实体合并、批量删除等真实 ledger 写入 | `.claude/skills/peach-ledger-write/SKILL.md` |
 | 改完界面、API、契约或文案后声明影响面 | `.claude/skills/peach-surfaces/SKILL.md` |
 | 长跑批处理、刮削、限流、磁盘与流量预算 | `.claude/skills/peach-batch-jobs/SKILL.md` |
+| JAV 封面、高清封面、缺封面、封面刮削、重探与来源比较 | `.claude/skills/peach-jav-cover-workflow/SKILL.md` |
 | 模仿、参考或对齐外部产品的界面与行为 | `.claude/skills/peach-reference-evidence/SKILL.md` |
 | 新增、修改或复核页面、控件、提示、数据面板与响应式布局 | `.claude/skills/peach-web-ui/SKILL.md` |
 | 在 macOS 上开工、改路径解析或挂载判定、git status 与 diff 不一致 | `.claude/skills/peach-cross-platform/SKILL.md` |

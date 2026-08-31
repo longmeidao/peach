@@ -1,6 +1,7 @@
 import csv
 import importlib.util
 import io
+import json
 import sqlite3
 import sys
 import tempfile
@@ -117,39 +118,134 @@ class ContentIdTests(unittest.TestCase):
     def test_empty_content_id_yields_nothing(self):
         self.assertEqual(covers.cid_variants(""), [])
 
+    def test_dmm_urls_expand_to_modern_and_legacy_cdn_routes(self):
+        original = "https://pics.dmm.co.jp/mono/movie/adult/118abw232/118abw232pl.jpg"
+        urls = {candidate.url for candidate in covers.dmm_cdn_images(original)}
+        self.assertIn(
+            "https://awsimgsrc.dmm.com/dig/mono/movie/118abw232/118abw232pl.jpg",
+            urls,
+        )
+        self.assertIn(
+            "https://awsimgsrc.dmm.co.jp/pics_dig/mono/movie/118abw232/118abw232pl.jpg",
+            urls,
+        )
+
+
+class OfficialSourceTests(unittest.TestCase):
+    def test_cached_javinizer_cover_and_content_id_are_reused_offline(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            folder = root / "ABW-232"
+            folder.mkdir()
+            (folder / "r18dev.json").write_text(json.dumps({
+                "source": "r18dev",
+                "result": {
+                    "source": "r18dev",
+                    "content_id": "118abw232",
+                    "maker": "Prestige",
+                    "cover_url": (
+                        "https://pics.dmm.co.jp/mono/movie/adult/118abw232/"
+                        "118abw232pl.jpg"
+                    ),
+                },
+            }), encoding="utf-8")
+
+            evidence = covers.cached_metadata(root, "ABW-232")
+
+        self.assertIn("r18dev", evidence.sources)
+        self.assertTrue(covers._is_prestige(evidence))
+        self.assertIn(
+            "https://awsimgsrc.dmm.com/dig/mono/movie/118abw232/118abw232pl.jpg",
+            {candidate.url for candidate in evidence.candidates},
+        )
+
+    def test_mgstage_uses_only_the_enlarge_image(self):
+        page = (b'<img src="https://image.mgstage.com/related_thumb.jpg">'
+                b'<a id="EnlargeImage" '
+                b'href="https://image.mgstage.com/images/prestige/abw/232/'
+                b'pb_e_abw-232.jpg">open</a>')
+        detail = "https://www.mgstage.com/product/product_detail/ABW-232/"
+        candidates = covers.mgstage_images(
+            transport_for({detail: (200, page)}), "ABW-232",
+        )
+        self.assertEqual(
+            [candidate.url for candidate in candidates],
+            ["https://image.mgstage.com/images/prestige/abw/232/pb_e_abw-232.jpg"],
+        )
+
+    def test_prestige_api_selects_exact_code_and_package_image(self):
+        query = covers.urllib.parse.urlencode({
+            "isEnabledQuery": "true", "searchText": "ABW-232",
+            "isEnableAggregation": "false", "release": "false",
+            "reservation": "false", "soldOut": "false", "from": 0,
+            "aggregationTermsSize": 0, "size": 20,
+        })
+        search = f"{covers.PRESTIGE_SEARCH}?{query}"
+        product = covers.PRESTIGE_PRODUCT.format(uuid="exact-uuid")
+        image = "https://www.prestige-av.com/api/media/a/b/package.jpg"
+        candidates = covers.prestige_images(transport_for({
+            search: (200, json.dumps({"hits": {"hits": [
+                {"_source": {"deliveryItemId": "GOOEABW-232",
+                              "productUuid": "goods-uuid"}},
+                {"_source": {"deliveryItemId": "ABW-232",
+                              "productUuid": "exact-uuid"}},
+            ]}}).encode()),
+            product: (200, b'{"packageImage":{"path":"a/b/package.jpg"}}'),
+        }), "ABW-232")
+        self.assertEqual([candidate.url for candidate in candidates], [image])
+
+    def test_standard_flow_never_requests_blocked_avbase(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            folder = root / "DASS-468"
+            folder.mkdir()
+            url = "https://awsimgsrc.dmm.com/dig/digital/video/dass00468/dass00468pl.jpg"
+            (folder / "r18dev.json").write_text(json.dumps({
+                "source": "r18dev",
+                "result": {"source": "r18dev", "cover_url": url},
+            }), encoding="utf-8")
+
+            def transport(request, timeout, limit):
+                self.assertNotIn("avbase", request.url)
+                return _Response(200, jpeg(2184, 1468)) if request.url == url else _Response(404, b"")
+
+            winner, size, _ = covers.best_cover(
+                transport, "DASS-468", 0, metadata_root=root,
+            )
+
+        self.assertEqual((winner.url, size), (url, (2184, 1468)))
+
 
 class BestCoverTests(unittest.TestCase):
-    def setUp(self):
-        self.avbase = "https://www.avbase.net/works/ABW-232"
-
     def test_largest_candidate_wins_regardless_of_host(self):
         # ABW-232 没有数字版，duga 的 1000x674 才是最优——固定优先级链会选错。
-        main = b'class="max-h-[28rem] max-w-full"'
-        page = (b'<img ' + main + b' src="https://pics.dmm.co.jp/mono/movie/adult/x/xpl.jpg">'
-                b'<img ' + main + b' src="https://pic.duga.jp/unsecure/prestige/6270/noauth/jacket.jpg">'
-                b'<img ' + main + b' src="https://image.mgstage.com/images/p/pake.jpg">')
+        dmm = "https://pics.dmm.co.jp/mono/movie/adult/x/xpl.jpg"
+        duga = "https://pic.duga.jp/unsecure/prestige/6270/noauth/jacket.jpg"
+        mgs = "https://image.mgstage.com/images/p/pake.jpg"
         transport = transport_for({
-            self.avbase: (200, page),
-            "https://pics.dmm.co.jp/mono/movie/adult/x/xpl.jpg": (200, jpeg(800, 539)),
-            "https://pic.duga.jp/unsecure/prestige/6270/noauth/jacket.jpg": (200, jpeg(1000, 674)),
-            "https://image.mgstage.com/images/p/pake.jpg": (200, jpeg(840, 563)),
+            dmm: (200, jpeg(800, 539)),
+            duga: (200, jpeg(1000, 674)),
+            mgs: (200, jpeg(840, 563)),
         })
-        winner, size, _ = covers.best_cover(transport, "ABW-232", 0)
+        winner, size, _ = covers.best_cover(
+            transport, "ABW-232", 0,
+            prior_candidates=tuple(map(covers.candidate_for, (dmm, duga, mgs))),
+        )
         self.assertEqual((winner.source, size), ("pic.duga.jp", (1000, 674)))
 
     def test_constructed_hires_url_beats_the_aggregator(self):
         transport = transport_for({
             "https://r18.dev/videos/vod/movies/detail/-/dvd_id=GYAN-017/json":
                 (200, b'{"content_id":"gyan00017"}'),
-            "https://awsimgsrc.dmm.co.jp/pics_dig/digital/video/gyan00017/gyan00017pl.jpg":
+            "https://awsimgsrc.dmm.com/dig/digital/video/gyan00017/gyan00017pl.jpg":
                 (200, jpeg(2184, 1464)),
-            "https://www.avbase.net/works/GYAN-017":
-                (200, b'<img class="max-h-[28rem] max-w-full" '
-                       b'src="https://pic.duga.jp/a/jacket.jpg">'),
             "https://pic.duga.jp/a/jacket.jpg": (200, jpeg(1000, 674)),
         })
-        winner, size, _ = covers.best_cover(transport, "GYAN-017", 0)
-        self.assertEqual((winner.source, size), ("awsimgsrc.dmm.co.jp", (2184, 1464)))
+        winner, size, _ = covers.best_cover(
+            transport, "GYAN-017", 0,
+            prior_candidates=(covers.candidate_for("https://pic.duga.jp/a/jacket.jpg"),),
+        )
+        self.assertEqual((winner.source, size), ("awsimgsrc.dmm.com", (2184, 1464)))
 
     def test_official_jacket_url_is_used_when_content_id_is_not_a_digital_path(self):
         official = "https://pics.dmm.co.jp/mono/movie/adult/118abw232/118abw232pl.jpg"
@@ -165,26 +261,47 @@ class BestCoverTests(unittest.TestCase):
         self.assertEqual((winner.url, size), (official, (800, 539)))
 
     def test_thumbnails_are_never_considered(self):
-        page = (b'<img class="max-h-[28rem] max-w-full" '
-                b'src="https://pic.duga.jp/a/jacket_thumb.jpg">'
-                b'<img class="max-h-[28rem] max-w-full" '
-                b'src="https://pic.duga.jp/a/jacket.jpg">')
+        thumb = "https://pic.duga.jp/a/jacket_thumb.jpg"
+        cover = "https://pic.duga.jp/a/jacket.jpg"
         transport = transport_for({
-            self.avbase: (200, page),
-            "https://pic.duga.jp/a/jacket.jpg": (200, jpeg(1000, 674)),
-            "https://pic.duga.jp/a/jacket_thumb.jpg": (200, jpeg(3000, 2000)),
+            cover: (200, jpeg(1000, 674)),
+            thumb: (200, jpeg(3000, 2000)),
         })
-        winner, size, _ = covers.best_cover(transport, "ABW-232", 0)
+        winner, size, _ = covers.best_cover(
+            transport, "ABW-232", 0,
+            prior_candidates=tuple(map(covers.candidate_for, (thumb, cover))),
+        )
         self.assertEqual(size, (1000, 674), "缩略图即使更大也不能入选")
 
     def test_undersized_images_are_rejected(self):
+        url = "https://pic.duga.jp/a/jacket.jpg"
         transport = transport_for({
-            self.avbase: (200, b'<img class="max-h-[28rem] max-w-full" '
-                               b'src="https://pic.duga.jp/a/jacket.jpg">'),
-            "https://pic.duga.jp/a/jacket.jpg": (200, jpeg(147, 200)),
+            url: (200, jpeg(147, 200)),
         })
         with self.assertRaises(covers.Unavailable):
-            covers.best_cover(transport, "ABW-232", 0)
+            covers.best_cover(
+                transport, "ABW-232", 0,
+                prior_candidates=(covers.candidate_for(url),),
+            )
+
+    def test_full_download_failure_falls_back_to_the_next_measured_cover(self):
+        high = "https://one.example/high.jpg"
+        low = "https://two.example/low.jpg"
+
+        def transport(request, timeout, limit):
+            if "Range" in request.headers:
+                return _Response(200, jpeg(1200, 800) if request.url == high
+                                 else jpeg(1000, 674))
+            if request.url == high:
+                return _Response(503, b"")
+            return _Response(200, jpeg(1000, 674))
+
+        winner, size, _data = covers.best_cover(
+            transport, "ABW-232", 0,
+            prior_candidates=tuple(map(covers.candidate_for, (high, low))),
+        )
+
+        self.assertEqual((winner.url, size), (low, (1000, 674)))
 
     def test_no_candidate_anywhere_is_reported_not_guessed(self):
         with self.assertRaises(covers.Unavailable):
@@ -193,18 +310,17 @@ class BestCoverTests(unittest.TestCase):
     def test_related_work_images_never_enter_candidates(self):
         main = "https://awsimgsrc.dmm.co.jp/pics_dig/digital/video/vrkm00711/vrkm00711pl.jpg"
         related = "https://pics.dmm.co.jp/digital/video/vrkm01340/vrkm01340jp-1.jpg"
-        page = (f'<img class="max-h-[28rem] max-w-full" src="{main}">'
-                + "".join(f'<img class="h-40" src="{related}?n={index}">'
-                          for index in range(400))).encode()
         base_transport = transport_for({
-            "https://www.avbase.net/works/VRKM-711": (200, page),
             main: (200, jpeg(2184, 1365)),
         })
         def transport(request, timeout, limit):
             if related in request.url:
                 raise AssertionError("关联作品图片不得进入量尺寸请求")
             return base_transport(request, timeout, limit)
-        winner, size, _ = covers.best_cover(transport, "VRKM-711", 0)
+        winner, size, _ = covers.best_cover(
+            transport, "VRKM-711", 0,
+            prior_candidates=(covers.candidate_for(main),),
+        )
         self.assertEqual((winner.url, size), (main, (2184, 1365)))
 
 
@@ -359,6 +475,38 @@ class PendingCoverTests(unittest.TestCase):
                 ["ABW-232"],
             )
 
+    def test_audit_uses_the_same_jav_shape_and_size_buckets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            database = root / "ledger.db"
+            output = root / "covers"
+            log = root / "cover-fetch-log.csv"
+            output.mkdir()
+            connection = sqlite3.connect(database)
+            connection.execute(
+                "CREATE TABLE asset(code TEXT, medium TEXT, location TEXT)"
+            )
+            connection.executemany(
+                "INSERT INTO asset(code,medium,location) VALUES(?,?,?)",
+                [("ABW-232", "video", "115"), ("DASS-468", "video", "115"),
+                 ("FC2-PPV-1234567", "video", "115"),
+                 ("RAIKUN325", "video", "115")],
+            )
+            connection.commit()
+            connection.close()
+            (output / "ABW-232.jpg").write_bytes(jpeg(800, 539))
+            with log.open("w", encoding="utf-8-sig", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=covers.FIELDS)
+                writer.writeheader()
+                writer.writerow({"code": "ABW-232", "result": "取得"})
+
+            report = covers.audit_state(database, output, log)
+
+        self.assertEqual(report["jav_codes"], 2)
+        self.assertEqual(report["decoded_covers"], 1)
+        self.assertEqual(report["missing"], 1)
+        self.assertEqual(report["width_buckets"]["le_800"], 1)
+
 
 class UpgradeExistingTests(unittest.TestCase):
     def test_only_a_larger_candidate_replaces_the_cover_and_success_log(self):
@@ -388,7 +536,7 @@ class UpgradeExistingTests(unittest.TestCase):
                 writer.writerow({"code": "BBB-002", "result": "取得",
                                  "source": "old-b", "width": 800, "height": 539})
 
-            def fetched(_transport, code, _delay):
+            def fetched(_transport, code, _delay, **_kwargs):
                 if code == "AAA-001":
                     return (covers.Candidate("new-a", "https://new/a.jpg"),
                             (1000, 674), jpeg(1000, 674))
