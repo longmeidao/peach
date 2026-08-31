@@ -278,15 +278,27 @@ def cached_metadata(metadata_root: Path | None, code: str) -> MetadataEvidence:
     )
 
 
-def logged_success_candidate(rows: list[dict], code: str) -> Candidate | None:
-    """复用历史精确 URL；DUGA 等不再可检索时仍能参与同尺寸比较。"""
+def logged_success_evidence(
+        rows: list[dict], code: str,
+        ) -> tuple[Candidate, tuple[int, int]] | None:
+    """复用历史精确 URL 与已量尺寸；DUGA 等无需重复探同一张图。"""
     for row in reversed(rows):
         if (normalise_code(str(row.get("code") or "")) == code
                 and row.get("result") == "取得"
                 and isinstance(row.get("url"), str)
                 and IMAGE_URL.fullmatch(str(row["url"]))):
-            return candidate_for(str(row["url"]))
+            try:
+                size = (int(row.get("width") or 0), int(row.get("height") or 0))
+            except (TypeError, ValueError):
+                size = (0, 0)
+            return candidate_for(str(row["url"])), size
     return None
+
+
+def logged_success_candidate(rows: list[dict], code: str) -> Candidate | None:
+    """兼容只需要历史 URL 的调用方。"""
+    evidence = logged_success_evidence(rows, code)
+    return evidence[0] if evidence is not None else None
 
 
 def _is_prestige(evidence: MetadataEvidence) -> bool:
@@ -417,6 +429,8 @@ def probe_size(transport: HttpTransport, candidate: Candidate) -> tuple[int, int
 def best_cover(transport: HttpTransport, code: str, delay: float, *,
                metadata_root: Path | None = None,
                prior_candidates: tuple[Candidate, ...] = (),
+               known_sizes: dict[str, tuple[int, int]] | None = None,
+               minimum_pixels: int = 0,
                ) -> tuple[Candidate, tuple[int, int], bytes]:
     # 来源一律记主机名。缓存、构造路径和官方页常指向同一个主机，记成多个名字
     # 会让覆盖率统计凭空多出「渠道」。
@@ -438,6 +452,15 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
         candidate for candidate in candidates
         if not THUMBNAIL.search(candidate.url)
     ])
+    # 升级模式已在成功日志中量过的精确 URL，若像素不大于当前本地图，就不再
+    # 发 Range 请求。其他 URL 和尺寸未知的候选仍完整探测，不改变择优语义。
+    known_sizes = known_sizes or {}
+    candidates = [
+        candidate for candidate in candidates
+        if candidate.url not in known_sizes
+        or known_sizes[candidate.url][0] * known_sizes[candidate.url][1]
+        > minimum_pixels
+    ]
     if not candidates:
         raise Unavailable("所有渠道都没有候选")
 
@@ -772,11 +795,23 @@ def run(args: argparse.Namespace) -> int:
                 print(f"[stop] {exc}", flush=True)
                 break
             try:
-                previous = logged_success_candidate(previous_rows, code)
-                prior = (previous,) if previous is not None else ()
+                target = args.out / f"{code}.jpg"
+                current_size = (0, 0)
+                if args.upgrade_existing:
+                    try:
+                        with Image.open(target) as image:
+                            current_size = image.size
+                    except (UnidentifiedImageError, OSError):
+                        pass
+                previous = logged_success_evidence(previous_rows, code)
+                prior = (previous[0],) if previous is not None else ()
+                known_sizes = ({previous[0].url: previous[1]}
+                               if previous is not None else {})
                 winner, (width, height), data = best_cover(
                     transport, code, args.delay,
                     metadata_root=args.metadata_root, prior_candidates=prior,
+                    known_sizes=known_sizes,
+                    minimum_pixels=current_size[0] * current_size[1],
                 )
             # 网络异常必须按条吞掉。一次 SSL 抖动
             # （httpx.ConnectError: UNEXPECTED_EOF_WHILE_READING）此前直接打死了
@@ -797,14 +832,6 @@ def run(args: argparse.Namespace) -> int:
                     print(f"[{index}/{len(todo)}] 未取得 {code}："
                           f"{type(exc).__name__} {exc}", flush=True)
             else:
-                target = args.out / f"{code}.jpg"
-                current_size = (0, 0)
-                if args.upgrade_existing:
-                    try:
-                        with Image.open(target) as image:
-                            current_size = image.size
-                    except (UnidentifiedImageError, OSError):
-                        pass
                 if (args.upgrade_existing
                         and width * height <= current_size[0] * current_size[1]):
                     stats["kept"] += 1
