@@ -80,6 +80,37 @@ class FetchRetryTests(unittest.TestCase):
         self.assertIs(actual, transport)
 
 
+class HostLimitedTransportTests(unittest.TestCase):
+    def test_each_host_has_an_independent_request_clock(self):
+        now = [0.0]
+        waits = []
+        requested = []
+
+        def clock():
+            return now[0]
+
+        def sleep(seconds):
+            waits.append(seconds)
+            now[0] += seconds
+
+        def inner(request, timeout, limit):
+            requested.append(request.url)
+            return _Response(200, b"ok")
+
+        transport = covers.HostLimitedTransport(
+            inner, 1.5, clock=clock, sleeper=sleep,
+        )
+        transport(covers.HttpRequest("GET", "https://a.example/1", {}), 30, 10)
+        now[0] = 0.2
+        transport(covers.HttpRequest("GET", "https://b.example/1", {}), 30, 10)
+        transport(covers.HttpRequest("GET", "https://a.example/2", {}), 30, 10)
+
+        self.assertEqual(requested, [
+            "https://a.example/1", "https://b.example/1", "https://a.example/2",
+        ])
+        self.assertEqual(waits, [1.3])
+
+
 def transport_for(pages):
     """pages: URL -> (status, bytes)。未列出的 URL 返回 404。"""
     def call(request, timeout, limit):

@@ -102,6 +102,35 @@ class Unavailable(RuntimeError):
     pass
 
 
+class HostLimitedTransport:
+    """把请求间隔按主机分别计算；不同官方站点互不阻塞。"""
+
+    def __init__(self, inner: HttpxTransport, interval: float, *,
+                 clock=time.monotonic, sleeper=time.sleep) -> None:
+        self.inner = inner
+        self.interval = max(0.0, interval)
+        self.clock = clock
+        self.sleeper = sleeper
+        self.next_request: dict[str, float] = {}
+
+    def __call__(self, request: HttpRequest, timeout: float, limit: int):
+        host = urlparse(request.url).netloc.lower()
+        now = self.clock()
+        wait = self.next_request.get(host, now) - now
+        if wait > 0:
+            self.sleeper(wait)
+            now = self.clock()
+        self.next_request[host] = now + self.interval
+        return self.inner(request, timeout, limit)
+
+    def renew(self) -> None:
+        self.inner.close()
+        self.inner = HttpxTransport()
+
+    def close(self) -> None:
+        self.inner.close()
+
+
 class _MGSDetailParser(HTMLParser):
     """只读取 MGS 的放大图链接；列表缩略图和剧照不进入候选。"""
 
@@ -699,10 +728,13 @@ def _write_log(path: Path, rows: list[dict]) -> None:
         writer.writerows(rows)
 
 
-def _renew_transport_after_error(transport: HttpxTransport,
-                                 error: Exception) -> HttpxTransport:
+def _renew_transport_after_error(transport: HttpTransport,
+                                 error: Exception) -> HttpTransport:
     """永久 transport 失败后丢弃连接池，避免后续番号连续 PoolTimeout。"""
     if not isinstance(error, httpx.TransportError):
+        return transport
+    if isinstance(transport, HostLimitedTransport):
+        transport.renew()
         return transport
     transport.close()
     return HttpxTransport()
@@ -774,7 +806,7 @@ def run(args: argparse.Namespace) -> int:
         print(f"待抓番号 {len(todo)} 个（已落盘的跳过，"
               f"上轮确认没有的跳过 {len(skipped)} 个，--retry-misses 可重试）")
 
-    transport = HttpxTransport()
+    transport = HostLimitedTransport(HttpxTransport(), args.delay)
     # 日志是整份重写：这轮只跑 pikpak 或只跑 --limit 时，未选中的旧记录也必须保留；
     # 只删除本轮会重新生成的番号。否则一次来源小批次就会抹掉其他来源的复核证据。
     previous_rows = logged_rows(args.log)
@@ -808,7 +840,7 @@ def run(args: argparse.Namespace) -> int:
                 known_sizes = ({previous[0].url: previous[1]}
                                if previous is not None else {})
                 winner, (width, height), data = best_cover(
-                    transport, code, args.delay,
+                    transport, code, 0,
                     metadata_root=args.metadata_root, prior_candidates=prior,
                     known_sizes=known_sizes,
                     minimum_pixels=current_size[0] * current_size[1],
