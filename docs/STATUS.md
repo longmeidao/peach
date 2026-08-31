@@ -161,9 +161,9 @@ undefine
 <!-- job-status:start -->
 
 <!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->
-<!-- generated 2026-08-31T13:30+08:00 -->
+<!-- generated 2026-08-31T14:19+08:00 -->
 
-- 最近自动交接：`claude` / `SessionEnd` / `other`，2026-08-31T13:30:30+08:00。
+- 最近自动交接：`claude` / `SessionEnd` / `other`，2026-08-31T14:19:43+08:00。
 - 资产 75499 条，其中视频 22508 条。
 - 待抽帧（可抽 / 缺时长待 probe / 合计）：
   - `local`：3 / 1 / 4
