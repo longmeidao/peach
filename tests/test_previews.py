@@ -80,44 +80,32 @@ class ParallelGenerationTests(unittest.TestCase):
                 return
         raise AssertionError("找不到落在不同锁片上的两个资产 id")
 
-    def test_two_assets_do_not_queue_behind_each_other(self):
-        # 分工按 asset id 定死，不看谁先到：LEFT 占住自己那把锁不放，
-        # RIGHT 必须能在这期间跑完自己的生成。锁真的分片了 RIGHT 才进得来。
-        holder_inside, other_done = threading.Event(), threading.Event()
-        release_holder = threading.Event()
-        timeout = 15
+    def test_two_assets_can_hold_their_locks_at_the_same_time(self):
+        """不同资产的锁必须能被同时持有——这就是分片的全部意义。
 
-        def fake_run(command):
-            target = Path(command[-1]).name
-            if target.startswith(f"{self.LEFT}_"):
-                holder_inside.set()
-                release_holder.wait(timeout)
-            else:
-                other_done.set()
-            Path(command[-1]).write_bytes(b"jpg")
+        这条断言换过三版。前两版都跑真线程去证明"并行发生了"：第一版用 Barrier
+        双向等待，满载时两边一起超时；第二版靠 `Event.is_set()` 判断谁先到，那不是
+        原子的；第三版按 asset id 静态分工，单独跑 8/8 通过，全量满载下仍然翻车。
 
-        done = []
-        with mock.patch.object(PreviewService, "_run", staticmethod(fake_run)):
-            workers = [
-                threading.Thread(
-                    target=lambda a=asset: done.append(self.service.poster(a)),
-                    daemon=True)
-                for asset in (self.LEFT, self.RIGHT)
-            ]
-            for worker in workers:
-                worker.start()
-            self.assertTrue(holder_inside.wait(timeout), "占锁的那个生成没有开始")
-            entered = other_done.wait(timeout)
-            release_holder.set()
-            for worker in workers:
-                worker.join(timeout)
+        每一版失败的都不是被测代码，而是"在满载机器上观测两个线程真的重叠了"这件事
+        本身——那是调度器说了算的。而反复假红比没有这条测试更糟：它会训练人忽略红色。
 
-        self.assertTrue(
-            entered,
-            "另一个资产在这一个持锁期间进不来——生成锁又变回全局串行了",
-        )
-        self.assertEqual(len(done), 2, "两个生成都要完成")
-        self.assertTrue(all(path.is_file() for path in done))
+        要证明的东西其实不需要并发：分片锁的贡献是"不同目标映射到不同的锁对象"，
+        锁本身能不能同时持有是 threading 的语义，标准库负责。所以直接对锁对象断言。
+        真正的互斥语义由下面那条"同一资产只生成一次"覆盖，它不依赖并行时序。
+        """
+        left = previews._generate_lock(Path(f"posters/{self.LEFT}_4.jpg"))
+        right = previews._generate_lock(Path(f"posters/{self.RIGHT}_4.jpg"))
+        self.assertIsNot(left, right, "不同目标必须落在不同锁片上")
+        self.assertTrue(left.acquire(blocking=False))
+        try:
+            self.assertTrue(
+                right.acquire(blocking=False),
+                "一把锁被占住时另一把仍应可得——否则又退回全局串行",
+            )
+            right.release()
+        finally:
+            left.release()
 
     def test_the_same_asset_is_generated_only_once(self):
         """同一个资产并发请求两次，只跑一次 ffmpeg：持锁后要再看一眼文件在不在。"""
