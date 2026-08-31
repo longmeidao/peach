@@ -1126,6 +1126,11 @@ class JavModeAndCoverTests(unittest.TestCase):
     def test_jav_mode_keeps_only_real_code_shapes(self):
         self.assertEqual(self.ids({"jav": "1"}), [1, 2, 3, 4])
 
+    def test_jav_dto_keeps_the_raw_filename_for_file_operations(self):
+        row = rm_web.q_item(self.contract, 1)
+        self.assertTrue(row["is_jav"])
+        self.assertEqual((row["code"], row["name"]), ("ABW-232", "a.mp4"))
+
     def test_release_sort_orders_official_dates_descending_and_missing_last(self):
         rows = rm_web.q_items(
             self.contract, {"jav": "1", "sort": "release", "limit": "20"},

@@ -93,6 +93,7 @@ Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检�
 4. Peach 不做 token/成本日志扫描器，也不绑定 T3 Code 私有 RPC；使用其界面、CodexBar 和官方实时配额入口。
 5. 「模仿/参考/对齐」不等于允许凭记忆近似。先取得并登记可复现证据；否则标记 `未取得`，不得作为忠实复刻发布。2026-08-17 的 YouTube 详情与 Shorts 动作栏参考已登记在 `docs/HANDOFF.md`，Peach 只复用可测量的层级、尺寸和状态语义。
 6. Web UI 组件优先复用 `web/js/ui-components.js` 和 `.claude/skills/peach-web-ui/SKILL.md` 的语义矩阵。Peach 不引入 Geist React 运行时，只复用已锁定证据中的 Note／Progress／Switch／Tooltip／Collapse／Menu／Fieldset／Scroller／Empty State／Search Input／Spinner／Loading Dots 与 Dialog motion 语义、ARIA 和版式层级；整页异步重绘复用导航代际隔离，没有消费者的 Vercel 后台筛选器不照搬。
+7. JAV 封面继续复用 r18.dev 官方 DMM jacket URL、DMM 数字版原图和已发现的 DUGA／MGS 原图，不引入新的站点解析器。2026-08-31 真实 POC 中 DMM 数字版仍返回 2184 px，DUGA 的 `ABW-232` 原图仍返回 1000×674，但 AVBase 作品页变为 Cloudflare 验证页；不得绕过质询。DUGA 官方 Web API 能按关键词返回作品数据库，需代理店应用 ID、显示所定信用标识且限 60 秒 60 次；未配置这些前不接入。现有抓取器保留 Range 量尺寸、像素最大者胜出和仅更大才原子升级的 Peach 策略，不新增依赖、不改 ledger。
 
 ## 2026-08-28 自研实现审计
 

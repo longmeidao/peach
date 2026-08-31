@@ -337,7 +337,8 @@ def restore_logged_successes(transport: HttpTransport, log: Path, root: Path,
 
 
 def pending(database: Path, root: Path, only_shaped: bool,
-            location: str | None = None) -> list[str]:
+            location: str | None = None, *, existing: bool = False,
+            max_width: int = 0) -> list[str]:
     connection = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True)
     try:
         location_sql = " AND location=?" if location else ""
@@ -362,7 +363,19 @@ def pending(database: Path, root: Path, only_shaped: bool,
         if only_shaped and str(code).upper().startswith("FC2"):
             continue
         key = normalise_code(str(code))
-        if not (root / f"{key}.jpg").is_file():
+        target = root / f"{key}.jpg"
+        if existing:
+            if not target.is_file():
+                continue
+            try:
+                with Image.open(target) as image:
+                    width = image.size[0]
+            except (UnidentifiedImageError, OSError):
+                width = 0
+            if max_width and width > max_width:
+                continue
+            result.append(key)
+        elif not target.is_file():
             result.append(key)
     return result
 
@@ -384,6 +397,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="连上轮确认没有封套的番号也重探一遍")
     parser.add_argument("--restore-successes", action="store_true",
                         help="只按成功日志中的原 URL 恢复缺失封套，不重新探测来源")
+    parser.add_argument("--upgrade-existing", action="store_true",
+                        help="重探已有封套；只有候选像素更多时才原子替换")
+    parser.add_argument("--upgrade-max-width", type=int, default=0,
+                        help="升级模式只重探不超过此宽度的已有封套；0 表示全部")
     parser.add_argument("--all-codes", action="store_true",
                         help="连 FC2/日期番号一起试；默认只跑片商与素人形态")
     return parser
@@ -407,7 +424,26 @@ def _renew_transport_after_error(transport: HttpxTransport,
     return HttpxTransport()
 
 
+def _replace_log_row(rows: list[dict], code: str, replacement: dict) -> None:
+    """一个番号只保留一条最新成功证据，不扰动其他番号。"""
+    rows[:] = [row for row in rows
+               if str(row.get("code") or "").strip() != code]
+    rows.append({field: replacement.get(field, "") for field in FIELDS})
+
+
 def run(args: argparse.Namespace) -> int:
+    if args.upgrade_max_width < 0:
+        print("[stop] --upgrade-max-width 不能小于 0")
+        return 2
+    if args.upgrade_max_width and not args.upgrade_existing:
+        print("[stop] --upgrade-max-width 只能与 --upgrade-existing 一起使用")
+        return 2
+    if args.upgrade_existing and args.retry_misses:
+        print("[stop] --upgrade-existing 与 --retry-misses 不能同时使用")
+        return 2
+    if args.restore_successes and args.upgrade_existing:
+        print("[stop] --restore-successes 与 --upgrade-existing 不能同时使用")
+        return 2
     args.out.mkdir(parents=True, exist_ok=True)
     guard = DiskGuard(system_volume(), args.min_free, args.disk_check_secs)
     try:
@@ -431,16 +467,24 @@ def run(args: argparse.Namespace) -> int:
               f"已存在 {result['skipped']}，失败 {len(result['failed'])} → {args.out}")
         return 2 if result["failed"] else 0
 
-    todo = pending(args.db, args.out, not args.all_codes, args.location)
+    todo = pending(
+        args.db, args.out, not args.all_codes, args.location,
+        existing=args.upgrade_existing, max_width=args.upgrade_max_width,
+    )
     skipped = set()
-    if not args.retry_misses:
+    if not args.upgrade_existing and not args.retry_misses:
         skipped = settled_misses(args.log) & set(todo)
         todo = [code for code in todo if code not in skipped]
     if args.limit:
         todo = todo[:args.limit]
     selected = set(todo)
-    print(f"待抓番号 {len(todo)} 个（已落盘的跳过，"
-          f"上轮确认没有的跳过 {len(skipped)} 个，--retry-misses 可重试）")
+    if args.upgrade_existing:
+        width_note = (f"，当前宽度不超过 {args.upgrade_max_width}"
+                      if args.upgrade_max_width else "")
+        print(f"待重探已有封套 {len(todo)} 个{width_note}；只在像素更多时替换")
+    else:
+        print(f"待抓番号 {len(todo)} 个（已落盘的跳过，"
+              f"上轮确认没有的跳过 {len(skipped)} 个，--retry-misses 可重试）")
 
     transport = HttpxTransport()
     # 日志是整份重写：这轮只跑 pikpak 或只跑 --limit 时，未选中的旧记录也必须保留；
@@ -448,9 +492,10 @@ def run(args: argparse.Namespace) -> int:
     rows: list[dict] = [
         {field: row.get(field, "") for field in FIELDS}
         for row in logged_rows(args.log)
-        if str(row.get("code") or "").strip() not in selected
+        if args.upgrade_existing
+        or str(row.get("code") or "").strip() not in selected
     ]
-    stats = {"ok": 0, "miss": 0}
+    stats = {"ok": 0, "miss": 0, "kept": 0}
     stopped: JobPolicyError | None = None
     try:
         for index, code in enumerate(todo, 1):
@@ -471,22 +516,48 @@ def run(args: argparse.Namespace) -> int:
             except Exception as exc:
                 transport = _renew_transport_after_error(transport, exc)
                 stats["miss"] += 1
-                rows.append({"code": code, "result": "未取得", "source": "",
-                             "width": "", "height": "", "kb": "", "url": "",
-                             "note": f"{type(exc).__name__}: {exc}"[:80]})
-                print(f"[{index}/{len(todo)}] 未取得 {code}：{type(exc).__name__} {exc}",
-                      flush=True)
+                if args.upgrade_existing:
+                    print(f"[{index}/{len(todo)}] 保留 {code}：重探失败 "
+                          f"{type(exc).__name__} {exc}", flush=True)
+                else:
+                    rows.append({"code": code, "result": "未取得", "source": "",
+                                 "width": "", "height": "", "kb": "", "url": "",
+                                 "note": f"{type(exc).__name__}: {exc}"[:80]})
+                    print(f"[{index}/{len(todo)}] 未取得 {code}："
+                          f"{type(exc).__name__} {exc}", flush=True)
             else:
                 target = args.out / f"{code}.jpg"
-                temporary = target.with_suffix(".tmp")
-                temporary.write_bytes(data)
-                temporary.replace(target)
-                stats["ok"] += 1
-                rows.append({"code": code, "result": "取得", "source": winner.source,
-                             "width": width, "height": height, "kb": len(data) // 1024,
-                             "url": winner.url, "note": ""})
-                print(f"[{index}/{len(todo)}] {code}  {width}x{height} "
-                      f"{len(data)//1024} KB  <- {winner.source}", flush=True)
+                current_size = (0, 0)
+                if args.upgrade_existing:
+                    try:
+                        with Image.open(target) as image:
+                            current_size = image.size
+                    except (UnidentifiedImageError, OSError):
+                        pass
+                if (args.upgrade_existing
+                        and width * height <= current_size[0] * current_size[1]):
+                    stats["kept"] += 1
+                    print(f"[{index}/{len(todo)}] 保留 {code}  "
+                          f"{current_size[0]}x{current_size[1]} >= {width}x{height}",
+                          flush=True)
+                else:
+                    temporary = target.with_suffix(".tmp")
+                    temporary.write_bytes(data)
+                    try:
+                        temporary.replace(target)
+                    finally:
+                        temporary.unlink(missing_ok=True)
+                    stats["ok"] += 1
+                    row = {"code": code, "result": "取得", "source": winner.source,
+                           "width": width, "height": height, "kb": len(data) // 1024,
+                           "url": winner.url, "note": ""}
+                    if args.upgrade_existing:
+                        _replace_log_row(rows, code, row)
+                    else:
+                        rows.append(row)
+                    verb = "升级" if args.upgrade_existing else "取得"
+                    print(f"[{index}/{len(todo)}] {verb} {code}  {width}x{height} "
+                          f"{len(data)//1024} KB  <- {winner.source}", flush=True)
             # 落空的行也要落盘。原来这句只在取得分支里，连续落空时 CSV 整段不动；
             # 被强杀时 finally 也来不及跑，那一串判定就白做了——而「查不到」恰恰
             # 是最贵的一类：每条都要把所有候选源挨个探完才能确定。
@@ -495,7 +566,11 @@ def run(args: argparse.Namespace) -> int:
         transport.close()
         _write_log(args.log, rows)
 
-    print(f"\n取得 {stats['ok']}，未取得 {stats['miss']} → {args.out}")
+    if args.upgrade_existing:
+        print(f"\n升级 {stats['ok']}，保留 {stats['kept']}，"
+              f"重探失败但保留原图 {stats['miss']} → {args.out}")
+    else:
+        print(f"\n取得 {stats['ok']}，未取得 {stats['miss']} → {args.out}")
     print(f"逐条记录 → {args.log}")
     return stopped.exit_code if stopped is not None else 0
 
