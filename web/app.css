@@ -278,6 +278,8 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
 @media(max-width:640px){.insightranking{grid-template-columns:minmax(0,1fr)}.insightstorage{padding:0}}
 /* 索引页：全部创作者 / 全部标签 */
 .index{padding:4px 0 20px;min-width:0;max-width:100%;overflow-x:clip}
+/* 实体吸顶栏用负边距把分隔线铺到 main 左右边缘；默认的横向裁剪会把这 16 px 截掉。 */
+body.entity-open .index{overflow-x:visible}
 .index .ihead{display:flex;align-items:center;gap:12px;margin-bottom:14px}
 .index .ihead h2{margin:0}
 .index .ihead .isearch{margin-left:auto}
@@ -364,6 +366,11 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
 .entitylinklabel{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.entitylinkarrow{color:var(--muted);flex:none}
 .entityterms{margin-top:13px;color:var(--muted);font-size:var(--fs-xs)}.entityterms code{color:var(--ink-2);margin-right:8px}
 .entitymeta{display:grid;gap:22px;margin:0 0 28px;min-width:0}.entitymeta section{min-width:0}.entitysection h3{font-size:var(--fs-sm);letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
+.entitytagbar{position:sticky;top:var(--topH);z-index:61;display:flex;align-items:center;
+  min-height:var(--filterH);margin:0 -16px;padding:11px 16px;background:transparent;
+  border-bottom:1px solid transparent}
+.entitytagbar .entitytags{min-width:0;flex:1 1 auto;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
+  overscroll-behavior-inline:contain}.entitytagbar .entitytags::-webkit-scrollbar{display:none}
 .entitytags{display:flex;align-items:center;flex-wrap:wrap;gap:7px}.entitytags button{height:34px;padding:0 14px;border-radius:var(--pill-radius);
   border:1px solid var(--border-15);background:transparent;color:var(--ink-2);cursor:pointer;max-width:100%;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -383,6 +390,7 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
 .entitycollectionhead{position:sticky;top:var(--topH);z-index:60;display:flex;align-items:center;gap:10px;
   min-height:var(--sortH);margin:0 -16px 12px;padding:8px 16px;min-width:0;
   background:transparent;border-bottom:1px solid transparent}
+.entitytagbar+.entitysection .entitycollectionhead{top:calc(var(--topH) + var(--filterH))}
 .entitycollectionhead h3{margin:0;flex:0 0 auto}.entitycollectionhead .javlayout{display:inline-flex;gap:2px}
 /* 关注页的视频 / 图片切换；实体页按 Beeg 把单一图片按钮放进标签行。 */
 .mediatabs{display:flex;gap:8px;margin:0 0 18px;border-bottom:1px solid var(--line-soft)}
@@ -650,8 +658,8 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 .count.count-actions-only:empty{display:none}
 .resourcesync{scroll-margin-top:calc(var(--topH) + 18px);display:grid;gap:16px}.resourcesync>h2{margin:0;font-size:var(--fs-xl)}
 .resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--line-soft);border-radius:12px;background:var(--surface)}.resourcesyncbody{padding:24px}.resourcesyncbody h3{margin:0 0 8px;font-size:var(--fs-lg)}.resourcesyncbody p{max-width:760px;margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.55}.resourcesyncfooter,.resourceapplyrow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 16px;border-top:1px solid var(--line-soft);background:var(--overlay-5)}.resourcesyncfooter p,.resourceapplyrow>p{margin:0;color:var(--muted);font-size:var(--fs-xs);line-height:1.5}.resourceaction{box-sizing:border-box;height:36px;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:none;font:inherit;font-size:var(--fs-sm);font-weight:550;cursor:pointer;transition:background-color .12s,border-color .12s,color .12s}.resourceaction:hover:not(:disabled){background:var(--hover);border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink)}.resourceaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.resourceaction:disabled{cursor:default;opacity:.68}.resourceaction svg{width:16px;height:16px;stroke:currentColor;fill:none}#resourceSyncResult:empty{display:none}.resourcescanning,.resourceerror{margin:0;padding:14px 16px;border:1px solid var(--line-soft);border-radius:var(--control-radius);color:var(--muted)}.resourceerror{color:var(--drop)}.resourcesources{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.resourcesources article{display:grid;gap:4px;min-width:0;padding:16px}.resourcesources article+article{border-left:1px solid var(--line-soft)}.resourcesourcetitle{display:flex;align-items:center;justify-content:space-between;gap:12px}.resourcesourcetitle span{font-size:var(--fs-xs)}.resourcesources .online{color:var(--success)}.resourcesources .offline{color:var(--drop)}.resourcesources strong{margin-top:10px;font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcesources small,.resourcecache small{color:var(--muted)}.resourcecache{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-top:1px solid var(--line-soft);background:var(--overlay-5)}.resourcecache>div{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:4px 16px;padding:16px}.resourcecache>div+div{border-left:1px solid var(--line-soft)}.resourcecache b{font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcecache span{font-weight:650}.resourcecache small{grid-column:1/-1}.resourceapplyrow .resourcesyncok{color:var(--success)}.resourcedanger{color:var(--drop)}.resourcedanger:hover:not(:disabled){border-color:color-mix(in srgb,var(--drop) 42%,transparent);background:color-mix(in srgb,var(--drop) 8%,transparent);color:var(--drop)}.resourcesyncok{margin:0;color:var(--success)}
-.tagbar,.count,.entitycollectionhead{transition:background-color .16s ease,border-color .16s ease}
-.tagbar.is-stuck,.count.is-stuck,.entitycollectionhead.is-stuck{background:color-mix(in srgb,#080A0D 84%,transparent);
+.tagbar,.count,.entitytagbar,.entitycollectionhead{transition:background-color .16s ease,border-color .16s ease}
+.tagbar.is-stuck,.count.is-stuck,.entitytagbar.is-stuck,.entitycollectionhead.is-stuck{background:color-mix(in srgb,#080A0D 84%,transparent);
   border-bottom-color:var(--line-soft);backdrop-filter:saturate(1.35) blur(16px);
   -webkit-backdrop-filter:saturate(1.35) blur(16px)}
 .count:empty{display:none}

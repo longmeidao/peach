@@ -393,7 +393,7 @@ function placeItemDetail(anchor,above=false){
 
 function itemDetailStickyOffset(){
   const stage=$('#stage');
-  return ['.top','#tagbar','#count','.entitycollectionhead'].reduce((bottom,selector)=>{
+  return ['.top','#tagbar','#count','.entitytagbar','.entitycollectionhead'].reduce((bottom,selector)=>{
     const el=$(selector),css=el&&getComputedStyle(el);
     const beforeStage=!!el&&(el.compareDocumentPosition(stage)&Node.DOCUMENT_POSITION_FOLLOWING);
     if(!beforeStage||el.offsetParent===null||css.position!=='sticky')return bottom;
@@ -4079,10 +4079,8 @@ async function openEntity(kind,name,push=true,requestedTag){
         ${d.summary?`<div class="entitysummary">${esc(d.summary)}</div>`:''}
         ${links?`<div class="entitylinks">${links}</div>`:''}
         ${terms?`<div class="entityterms">馆藏检索词 · ${terms}</div>`:''}</div></div>
-    ${(tags||related||mediaToggle)?`<div class="entitymeta">
-      ${related?`<section aria-label="同台艺人"><div class="relatedpeople">${related}</div></section>`:''}
-      ${(tags||mediaToggle)?`<section aria-label="媒体与标签"><div class="entitytags">${mediaToggle}${tags}</div></section>`:''}
-    </div>`:''}
+    ${related?`<div class="entitymeta"><section aria-label="同台艺人"><div class="relatedpeople">${related}</div></section></div>`:''}
+    ${(tags||mediaToggle)?`<section class="entitytagbar" aria-label="媒体与标签"><div class="entitytags">${mediaToggle}${tags}</div></section>`:''}
     <div class="entitysection"></div>`;
   $('#index').querySelectorAll('[data-entity-tag]').forEach(b=>b.onclick=()=>{
     const next=b.dataset.entityTag===entityTag?'':b.dataset.entityTag;
@@ -4491,7 +4489,7 @@ $('#edge').addEventListener('mouseenter',()=>{if(Date.now()<drawerSuppressUntil)
 window.__scrolling=false; let scrollT=null;
 let stickyFrame=0;
 function updateStickySurfaces(){
-  ['#tagbar','#count','.entitycollectionhead'].forEach(selector=>{
+  ['#tagbar','#count','.entitytagbar','.entitycollectionhead'].forEach(selector=>{
     const el=$(selector),css=el&&getComputedStyle(el),top=css?parseFloat(css.top):NaN;
     const stuck=!!el&&css.position==='sticky'&&el.offsetParent!==null&&window.scrollY>0&&
       Number.isFinite(top)&&el.getBoundingClientRect().top<=top+1;
