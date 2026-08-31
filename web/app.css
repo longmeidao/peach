@@ -517,6 +517,7 @@ body.photolight-open{overflow:hidden}
 .photodetail>button{justify-self:start;height:32px;display:flex;align-items:center;gap:7px;border:1px solid rgba(255,255,255,.18);
   border-radius:var(--control-radius);padding:0 10px;background:transparent;color:#fff;cursor:pointer}
 .photodetail>button:hover{background:rgba(255,255,255,.12)}
+.photodetail>button[hidden]{display:none}
 .photodetail>button:disabled{cursor:default;opacity:.68}
 .photodetail>button svg{width:16px;height:16px;display:block;stroke:currentColor;fill:none;stroke-width:2}
 .photodetail .srcstate{color:rgba(255,255,255,.62)}

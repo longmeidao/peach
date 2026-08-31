@@ -2566,6 +2566,12 @@ function followResourceLabel(url){
   }catch{return '外部文件页'}
 }
 
+function followMediaSourceLabel(media,item){
+  const provider=media?.resource_provider;
+  return ({gofile:'Gofile',pixeldrain:'Pixeldrain',mega:'MEGA',mediafire:'MediaFire',
+    google_drive:'Google Drive'})[provider]||item.provider_label||item.provider||'在线图片';
+}
+
 function followResourceLinks(item){
   const links=item.resource_urls||[];
   if(!links.length)return '';
@@ -2751,13 +2757,16 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
      一条帖子的所有图，不用退出去再点下一张。取不到正片就退而用缩略图——看小图
      总比点了没反应强。 */
   const followSlides=imageMedia.length
-    ?imageMedia.map(image=>({follow:true,
+    ?imageMedia.map((image,index)=>({follow:true,
       src:`/follow-stream?id=${item.id}&media=${image.index}`,
       thumb:image.thumb_url||item.thumb_url||`/follow-stream?id=${item.id}&media=${image.index}`,
-      name:item.title}))
+      name:image.name||item.title,source:followMediaSourceLabel(image,item),size:image.size,
+      position:index+1,total:imageMedia.length}))
     :selectedKind==='image'&&src
-      ?[{follow:true,src,thumb:item.thumb_url||src,name:item.title}]
-      :item.thumb_url?[{follow:true,src:item.thumb_url,thumb:item.thumb_url,name:item.title}]:[];
+      ?[{follow:true,src,thumb:item.thumb_url||src,name:item.title,
+        source:followMediaSourceLabel(selectedMedia,item),size:selectedMedia?.size,position:1,total:1}]
+      :item.thumb_url?[{follow:true,src:item.thumb_url,thumb:item.thumb_url,name:item.title,
+        source:item.provider_label||item.provider||'在线图片',position:1,total:1}]:[];
   const poster=$('#stage').querySelector('.followdetailposter');
   if(poster&&followSlides.length){
     poster.classList.add('zoomable');
@@ -4294,11 +4303,11 @@ function wireSourceTools(root,done){
 /* 灯箱按需加载 Swiper：大图轮播、底部缩略图条和键盘左右键都是它自带的模块，
    没必要自己写一遍；但它只有看照片时才用得上，不该进首屏。 */
 let swiperLoader=null,activeLightbox=null;
-/* 灯箱既服务本地照片墙，也服务关注页的在线图集。两边唯一的差别是图从哪来，
-   以及有没有本机文件可揭示——在线图没有 ledger 记录，「在资源管理器中显示」
-   对它没有意义。所以先把每一项归一化成 slide，`asset` 为空就收起详情面板。 */
+/* 灯箱既服务本地照片墙，也服务关注页的在线图集。两边共用信息面板，但动作不同：
+   本地图可按 asset id 定位源文件；在线图只展示来源、序号、尺寸和可取得的大小。 */
 const photoSlide=item=>item.follow
-  ?{src:item.src,thumb:item.thumb||item.src,name:item.name||'',asset:null}
+  ?{src:item.src,thumb:item.thumb||item.src,name:item.name||'',asset:null,
+    source:item.source||'在线图片',size:item.size,position:item.position,total:item.total}
   :{src:`/photo?id=${item.id}`,thumb:`/photo-thumb?id=${item.id}`,name:item.name||'',asset:item};
 const loadSwiper=()=>swiperLoader||(swiperLoader=new Promise((resolve,reject)=>{
   const style=document.createElement('link');
@@ -4349,23 +4358,36 @@ function wirePhotoDetail(box,items,index){
   const meta=panel.querySelector('.photodetailmeta');
   const reveal=panel.querySelector('[data-photo-reveal]');
   const status=panel.querySelector('.srcstate');
+  const images=[...box.querySelectorAll('.photomain img')];
+  let painted=index;
   const paint=at=>{
-    const asset=items[at]?.asset;
-    // 在线图没有本机路径、大小和位置可显示，整个面板收起比显示一堆「未知」诚实。
-    if(!asset){toggle.hidden=true;dismiss();return}
+    const item=items[at];if(!item)return;
+    const asset=item.asset,image=images[at];painted=at;
     toggle.hidden=false;
-    title.textContent=asset.name||'未命名图片';
-    meta.textContent=[LOC[asset.location]||asset.location||'来源未知',fmtPhotoSize(asset.size)].join(' · ');
-    reveal.dataset.photoReveal=String(asset.id);status.textContent='';
+    title.textContent=(asset?.name||item.name)||'未命名图片';
+    const resolution=image?.naturalWidth&&image?.naturalHeight
+      ?`${image.naturalWidth} × ${image.naturalHeight}`:'';
+    const sequence=!asset&&item.total>1?`第 ${item.position} / ${item.total} 张`:'';
+    meta.textContent=asset
+      ?[LOC[asset.location]||asset.location||'来源未知',fmtPhotoSize(asset.size)].join(' · ')
+      :[item.source||'在线图片',sequence,resolution,item.size?fmtPhotoSize(item.size):'']
+        .filter(Boolean).join(' · ');
+    reveal.hidden=!asset;
+    if(asset)reveal.dataset.photoReveal=String(asset.id);
+    else reveal.removeAttribute('data-photo-reveal');
+    status.textContent='';
+    if(!asset&&image&&!image.complete)image.addEventListener('load',()=>{
+      if(painted===at)paint(at)},{once:true});
   };
   const dismiss=returnFocus=>{panel.hidden=true;toggle.setAttribute('aria-expanded','false');
     if(returnFocus&&document.contains(toggle))toggle.focus()};
   const dismissOutside=target=>{if(panel.hidden||toggle.contains(target)||panel.contains(target))return false;
     dismiss();return true};
   toggle.onclick=()=>{if(panel.hidden){panel.hidden=false;toggle.setAttribute('aria-expanded','true');
-      queueMicrotask(()=>reveal.focus())}
+      queueMicrotask(()=>{const target=reveal.hidden?title:reveal;target.focus()})}
     else dismiss()};
-  reveal.onclick=()=>revealSource(Number(reveal.dataset.photoReveal),status,{button:reveal});
+  reveal.onclick=()=>{if(reveal.dataset.photoReveal)
+    revealSource(Number(reveal.dataset.photoReveal),status,{button:reveal})};
   paint(index);return {paint,dismiss,dismissOutside,isOpen:()=>!panel.hidden};
 }
 
@@ -4404,7 +4426,7 @@ async function openPhotoLightbox(index,source=null){
         <b class="mono">100%</b></div></div>
     <section class="photodetail" id="photoDetail" role="dialog" aria-modal="false"
       aria-labelledby="photoDetailTitle" hidden>
-      <div class="photodetailcopy"><h2 id="photoDetailTitle" data-middle-truncate></h2><span class="photodetailmeta"></span></div>
+      <div class="photodetailcopy"><h2 id="photoDetailTitle" data-middle-truncate tabindex="-1"></h2><span class="photodetailmeta"></span></div>
       <button type="button" data-photo-reveal="">${icon('folder-open')}<span>在资源管理器中显示</span></button>
       <span class="srcstate" aria-live="polite"></span>
     </section>
