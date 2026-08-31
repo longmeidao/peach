@@ -51,6 +51,7 @@ from peach.avatar_provider import (
     mark_duplicate_candidates,
     provenance_now,
 )
+from peach.catalog_rules import is_jav_code
 from peach.config import DATABASE_PATH, GENERATED_DIR
 from peach.http import HttpRequest, HttpTransport, HttpxTransport
 from peach.review_csv import read_rows, write_rows
@@ -351,8 +352,24 @@ def load_performers(connection: sqlite3.Connection) -> list[dict]:
             jp = ""
         records[entity_id] = {
             "entity_id": entity_id, "canonical": canonical or "",
-            "aliases": [], "jp": jp,
+            "aliases": [], "jp": jp, "jav": True, "known_works": 0,
         }
+    # 作品里有一个 JAV 番号就算 JAV。判据复用 catalog_rules.is_jav_code，不自己认番号
+    # 形态——番号识别在别处已经统一过一次，这里再写一套只会两边漂。
+    #
+    # 「看不见作品」和「看得见但没有一个是 JAV」是两回事：前者是未知，后者才是证据。
+    # 默认按未知处理（照查不误），只有拿到反面证据才跳过；把未知也当成非 JAV，
+    # 任何一次取数疏漏都会静默地把人整批排除掉。
+    for entity_id, total, codes in connection.execute(
+            "SELECT ae.entity_id, count(*), group_concat(DISTINCT a.code) "
+            "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
+            "WHERE a.medium='video' GROUP BY ae.entity_id"):
+        record = records.get(entity_id)
+        if record is None:
+            continue
+        record["known_works"] = int(total or 0)
+        record["jav"] = (not total) or any(
+            is_jav_code(code) for code in str(codes or "").split(",") if code)
     for entity_id, alias in connection.execute(
             "SELECT entity_id, alias FROM entity_alias ORDER BY alias"):
         record = records.get(entity_id)
@@ -382,14 +399,42 @@ def lookup_chain(record: dict) -> list[tuple[str, str]]:
 
 def missing_targets(connection: sqlite3.Connection, avatar_dir: Path,
                     limit: int) -> list[dict]:
-    """只选缺 performer-<id>.img 的 performer；有作品多者优先。"""
+    """只选缺 performer-<id>.img 的 **JAV** performer；有作品多者优先。
+
+    Gfriends 是 JAV 图库，拿非 JAV 的人去查必然落空。实测 567 位有作品的 performer 里
+    26 位不是 JAV，缺头像的 72 位里有 19 位属于此类（`桉X`、`古河君`、`Cola酱` 这些
+    中文素人创作者）。查它们不只是白费 19 次往返——更糟的是它们混进 `no_match`，把真正
+    的 JAV 缺口盖住，让人以为图库覆盖比实际差。
+
+    跳过不等于忽略：它们照样进审计表，只是判定写成 `skipped_not_jav`，说明「这个人需要
+    另一个来源」而不是「这个人查不到」。悄悄丢掉才是最糟的处理。
+    """
     counts = {entity_id: n for entity_id, n in connection.execute(
         "SELECT entity_id, count(*) FROM asset_entity GROUP BY entity_id")}
     targets = [record for record in load_performers(connection)
-               if not (avatar_dir / f"performer-{record['entity_id']}.img").exists()]
+               if record.get("jav")
+               and not (avatar_dir / f"performer-{record['entity_id']}.img").exists()]
     targets.sort(key=lambda record: (-counts.get(record["entity_id"], 0),
                                      record["entity_id"]))
     return targets[:limit] if limit else targets
+
+
+def skipped_targets(connection: sqlite3.Connection, avatar_dir: Path) -> list[dict]:
+    """缺头像但不走 JAV 图库的人。它们要出现在审计表里，不能凭空消失。"""
+    return [record for record in load_performers(connection)
+            if not record.get("jav")
+            and not (avatar_dir / f"performer-{record['entity_id']}.img").exists()]
+
+
+def audit_skipped(record: dict) -> dict:
+    row = {field: "" for field in FIELDS}
+    row["section"] = "missing"
+    row["entity_id"] = record["entity_id"]
+    row["current_name"] = record["canonical"]
+    row["policy_version"] = POLICY_VERSION
+    row["verdict"] = "skipped_not_jav"
+    row["note"] = "作品里没有 JAV 番号；Gfriends 是 JAV 图库，需要另一个来源"
+    return row
 
 
 def audit_missing(
@@ -658,9 +703,14 @@ def run(args: argparse.Namespace, transport: HttpTransport | None = None) -> int
             targets = targets[:args.limit]
 
         # 孤立审计纯本地、确定性：每轮全量重算，替换旧轮的 orphan 行。
-        rows = [row for row in rows if row.get("section") != "orphan"]
+        rows = [row for row in rows if row.get("section") != "orphan"
+                and row.get("verdict") != "skipped_not_jav"]
         orphan_rows = audit_orphans(connection, args.avatars)
-        print(f"缺口待审 {len(targets)} 位；孤立头像 {len(orphan_rows)} 个", flush=True)
+        # 非 JAV 的人不查 JAV 图库，但要在表里留一行说明原因——悄悄消失最糟。
+        skipped_rows = [audit_skipped(record)
+                        for record in skipped_targets(connection, args.avatars)]
+        print(f"缺口待审 {len(targets)} 位；非 JAV 跳过 {len(skipped_rows)} 位；"
+              f"孤立头像 {len(orphan_rows)} 个", flush=True)
 
         guard = threading.Lock()
         finished = 0
@@ -675,7 +725,7 @@ def run(args: argparse.Namespace, transport: HttpTransport | None = None) -> int
                     finished += 1
                     # 边跑边落盘：断电或断网不该丢掉已完成的部分。
                     if finished % 20 == 0:
-                        partial = [*rows, *orphan_rows]
+                        partial = [*rows, *orphan_rows, *skipped_rows]
                         mark_duplicate_candidates(partial, installed_hashes)
                         write_csv(args.out, partial)
                         write_candidates(args.candidates, partial)
@@ -683,6 +733,7 @@ def run(args: argparse.Namespace, transport: HttpTransport | None = None) -> int
                         ok = sum(1 for r in rows if r.get("verdict") == "ok")
                         print(f"  {finished}/{len(targets)} 已判定，命中 {ok}", flush=True)
         rows.extend(orphan_rows)
+        rows.extend(skipped_rows)
         mark_duplicate_candidates(rows, installed_hashes)
         duplicates = sum(1 for row in rows if row.get("verdict") == "duplicate")
         if duplicates:
