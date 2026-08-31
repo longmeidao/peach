@@ -10,7 +10,7 @@ import tempfile
 import zipfile
 import math
 from collections import Counter, defaultdict
-from contextlib import closing
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, timezone
 from html.parser import HTMLParser
@@ -229,18 +229,31 @@ def _prepare_store(db: sqlite3.Connection) -> None:
     )
 
 
+@contextmanager
+def _open_history_store(store_path: Path, host: str | None):
+    """打开私有历史库，并备好三个入口都要的东西：主机名、目录、时间戳。
+
+    这段前导此前在 refresh_history、refresh_takeout_history 和导入入口里各写了一份。
+    它们共享的不只是形状：`_prepare_store` 漏掉一次，写入就会撞上不存在的表；而
+    `host` 参与 source_key，三处算法必须一致，否则同一台机器的历史会被记成两个来源。
+
+    浏览历史只进这个私有库，不进 ledger——单独一个入口也让这条边界只需要守一处。
+    """
+    resolved = host or socket.gethostname()
+    store_path.parent.mkdir(parents=True, exist_ok=True)
+    with closing(sqlite3.connect(store_path)) as store:
+        _prepare_store(store)
+        yield store, resolved, datetime.now(UTC).isoformat()
+
+
 def refresh_history(
     sources: list[HistorySource],
     store_path: Path,
     *,
     host: str | None = None,
 ) -> list[dict[str, object]]:
-    host = host or socket.gethostname()
-    store_path.parent.mkdir(parents=True, exist_ok=True)
-    now = datetime.now(UTC).isoformat()
     results: list[dict[str, object]] = []
-    with closing(sqlite3.connect(store_path)) as store:
-        _prepare_store(store)
+    with _open_history_store(store_path, host) as (store, host, now):
         for source in sources:
             with tempfile.TemporaryDirectory(prefix="peach-history-") as temp_dir:
                 snapshot = Path(temp_dir) / "history.sqlite"
@@ -419,12 +432,8 @@ def refresh_takeout_history(
     *,
     host: str | None = None,
 ) -> list[dict[str, object]]:
-    host = host or socket.gethostname()
-    store_path.parent.mkdir(parents=True, exist_ok=True)
-    now = datetime.now(UTC).isoformat()
     results: list[dict[str, object]] = []
-    with closing(sqlite3.connect(store_path)) as store:
-        _prepare_store(store)
+    with _open_history_store(store_path, host) as (store, host, now):
         existing = Counter(
             _event_fingerprint(url, visited_at)
             for visited_at, url in store.execute(
@@ -482,12 +491,8 @@ def refresh_export_history(
     Raw exports stay in the private sources directory.  Only normalized visits enter the
     private history store; no URL or title is copied to the Peach ledger.
     """
-    host = host or socket.gethostname()
-    store_path.parent.mkdir(parents=True, exist_ok=True)
-    now = datetime.now(UTC).isoformat()
     results: list[dict[str, object]] = []
-    with closing(sqlite3.connect(store_path)) as store:
-        _prepare_store(store)
+    with _open_history_store(store_path, host) as (store, host, now):
         for export_path in exports:
             visits = _read_visits(export_path)
             source = HistorySource("browserexport", export_path.name, export_path)

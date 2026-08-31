@@ -7,8 +7,10 @@ import zipfile
 from contextlib import closing
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
+import pathlib
 from urllib.parse import quote
 
+from peach import taste_history
 from peach.taste_history import (
     HistorySource,
     analyze_history,
@@ -120,6 +122,20 @@ class TasteHistoryTests(unittest.TestCase):
             path.touch()
         sources = discover_history_sources(home=self.root, platform_name="macos")
         self.assertEqual([source.browser for source in sources], ["chrome", "firefox", "safari", "zen"])
+
+    def test_the_history_store_has_one_entry_point(self):
+        """打开私有历史库的前导只许有一份。
+
+        它此前在三个入口里各写了一份。共享的不只是形状：`_prepare_store` 漏掉一次，
+        写入就撞上不存在的表；而 host 参与 source_key，三处算法必须一致，否则同一台
+        机器的历史会被记成两个来源。
+
+        `remove_history_source` 刻意不走它——库不存在时那条路径要返回 0，而不是顺手
+        把库建出来。
+        """
+        source = pathlib.Path(taste_history.__file__).read_text(encoding="utf-8")
+        self.assertEqual(source.count("store_path.parent.mkdir(parents=True, exist_ok=True)"), 1,
+                         "又有入口自己写了前导，请改用 _open_history_store")
 
     def test_refresh_is_incremental_and_report_omits_urls_and_titles(self):
         firefox = self.root / "firefox" / "places.sqlite"
