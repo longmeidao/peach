@@ -52,12 +52,14 @@ function paintNav(){
 }
 let surfaceEpoch=0;
 const surfacePath=()=>decodeURIComponent(location.pathname);
+let lastRoutePath=surfacePath();
 const surfaceToken=path=>({epoch:surfaceEpoch,path});
 const surfaceCurrent=token=>token.epoch===surfaceEpoch&&surfacePath()===token.path;
 const claimSurface=path=>{surfaceEpoch++;return surfaceToken(path)};
 const route=(path,replace=false)=>{
   surfaceEpoch++;
   history[replace?'replaceState':'pushState']({},'',path);syncPageTitle(path);
+  lastRoutePath=decodeURIComponent(new URL(path,location.href).pathname);
   queueMicrotask(()=>{syncHeaderActions();paintListTitle()});
 };
 
@@ -239,26 +241,10 @@ const toast=(html,{timeout=6000,warn=false,action=null}={})=>{
   return item;
 };
 
-/* 「换一批」是列表栏里的独立动作，不再作为一种排序或自动轮换设置。
-   种子只负责让一次手动换批内部的分页保持稳定。 */
-const SEED_KEY='peach.seed.v2';
+/* 随机排序每次进入首页都换种子；同一次访问继续复用该种子，保证筛选和分页
+   不会重复或漏项。「换一批」仍可在当前访问里主动生成下一批。 */
 const newSeed=()=>String((Date.now()^(Math.random()*1e9|0))%99991);
-function readSeedRecord(){
-  try{
-    const raw=JSON.parse(localStorage.getItem(SEED_KEY)||'null');
-    return raw&&raw.value?{value:String(raw.value),at:+raw.at||0}:null;
-  }catch(_e){return null}
-}
-function writeSeedRecord(value){
-  try{localStorage.setItem(SEED_KEY,JSON.stringify({value,at:Date.now()}))}catch(_e){}
-  return value;
-}
-function persistedSeed(){
-  const saved=readSeedRecord();
-  return saved?saved.value:writeSeedRecord(newSeed());
-}
-// 手动「换一批」立刻换种子。
-const rollSeed=()=>writeSeedRecord(newSeed());
+const rollSeed=()=>newSeed();
 const initialParams=new URLSearchParams(location.search);
 const JUNK_KIND_OPTIONS=[['','全部','layout-grid'],['video','视频','play'],['image','图片','pics'],
   ['archive','压缩包','folder-open'],['audio','音频','volume-2'],['url','网址','globe'],
@@ -277,7 +263,7 @@ let state={loc:initialParams.get('loc')||'local,115',creator:initialParams.get('
   tag:cleanTagFilter(initialParams.get('tag')),len:initialParams.get('len')||'',dur_min:initialParams.get('dur_min')||'',dur_max:initialParams.get('dur_max')||'',
   tag_match:initialParams.get('tag_match')==='any'?'any':'all',orient:initialParams.get('orient')||'',
   state:ROUTE_STATES[decodeURIComponent(location.pathname)]||initialParams.get('state')||'',sort:cleanSort(initialParams.get('sort')),
-  seed:initialParams.get('seed')||persistedSeed(),q:initialParams.get('q')||'',jav:initialParams.get('jav')||'',thumb:'1'};
+  seed:initialParams.get('seed')||rollSeed(),q:initialParams.get('q')||'',jav:initialParams.get('jav')||'',thumb:'1'};
 const HOME_QUERY_KEYS=['loc','creator','studio','tag','tag_match','len','dur_min','dur_max','orient','sort','q','jav'];
 function homePath(filters=state){
   const path=STATE_ROUTES[filters.state]||'/';
@@ -291,7 +277,8 @@ function homePath(filters=state){
    浏览范围，继续保留；其余分类、搜索和排序恢复首页默认值。 */
 function resetHomeState(){
   state={loc:state.loc,creator:'',studio:'',tag:'',tag_match:'all',len:'',dur_min:'',dur_max:'',
-    orient:'',state:'',sort:appSettings.defaultSort,seed:persistedSeed(),q:'',jav:'',thumb:'1'};
+    orient:'',state:'',sort:appSettings.defaultSort,seed:rollSeed(),q:'',jav:'',thumb:'1'};
+  barsDataCache=null;barsDataPromise=null;
 }
 function openHome(scroll=false){
   resetHomeState();route('/');$('#q').value='';disposeStage(false);showHomeSurfaces();
@@ -5613,11 +5600,14 @@ async function restoreRoute(){
   surfaceEpoch++;
   syncPageTitle(location.href);
   const path=decodeURIComponent(location.pathname),parts=path.split('/').filter(Boolean);
+  const previousPath=lastRoutePath;lastRoutePath=path;
   if(path==='/'&&new URLSearchParams(location.search).get('state')==='ads'){
     route(junkPath(),true);await restoreRoute();return;
   }
   if(isCatalogPath(path)){
     const params=new URLSearchParams(location.search);
+    const enteringHome=path==='/'&&previousPath!=='/';
+    if(enteringHome){barsDataCache=null;barsDataPromise=null}
     if(path==='/junk-files'){
       junkKind=cleanJunkKind(params.get('type')||'');
       junkView=params.get('view')==='dismissed'?'dismissed':'pending';
@@ -5626,7 +5616,7 @@ async function restoreRoute(){
       tag:cleanTagFilter(params.get('tag')),tag_match:params.get('tag_match')==='any'?'any':'all',len:params.get('len')||'',
       dur_min:params.get('dur_min')||'',dur_max:params.get('dur_max')||'',orient:params.get('orient')||'',
       state:ROUTE_STATES[path]||params.get('state')||'',sort:cleanSort(params.get('sort')),
-      seed:params.get('seed')||state.seed||persistedSeed(),q:params.get('q')||'',jav:params.get('jav')||''};
+      seed:params.get('seed')||(enteringHome?rollSeed():state.seed||rollSeed()),q:params.get('q')||'',jav:params.get('jav')||''};
     $('#q').value=state.q;buildEdge();buildBars();load(true);return;
   }
   if(path==='/trash'){

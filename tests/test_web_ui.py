@@ -382,10 +382,15 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains(".meta span.who{color:var(--ink-2);cursor:default}")
 
-    def test_random_is_the_default_and_manual_refresh_keeps_stable_batches(self):
-        """默认随机使用稳定种子，换批时才生成新种子。"""
-        self.assertPageContains("const SEED_KEY='peach.seed.v2';")
-        self.assertPageContains("seed:initialParams.get('seed')||persistedSeed()")
+    def test_random_is_the_default_and_each_home_visit_gets_a_fresh_batch(self):
+        """每次进入首页换种子，同一次访问的分页继续稳定。"""
+        self.assertPageLacks("const SEED_KEY='peach.seed.v2';")
+        self.assertPageLacks("localStorage.getItem(SEED_KEY)")
+        self.assertPageContains("seed:initialParams.get('seed')||rollSeed()")
+        self.assertPageContains("sort:appSettings.defaultSort,seed:rollSeed(),q:''")
+        self.assertPageContains("const previousPath=lastRoutePath;lastRoutePath=path;")
+        self.assertPageContains("const enteringHome=path==='/'&&previousPath!=='/';")
+        self.assertPageContains("enteringHome?rollSeed():state.seed||rollSeed()")
         self.assertPageContains("const SORTS=[['seed','随机'],['rating','评分']")
         self.assertPageContains('<option value="seed">随机</option>')
         for option in ('<option value="daily">', '<option value="rand">'):
@@ -1741,6 +1746,8 @@ class WebUiSourceTests(unittest.TestCase):
         # 顶栏不出现独立开关，开关在设置面板「安全」组。
         self.assertPageLacks('id="censorBtn"')
         self.assertPageContains('<input type="checkbox" id="censorSetting">')
+        self.assertPageContains('<span><b>审查遮挡</b></span><input type="checkbox" id="censorSetting">')
+        self.assertPageLacks('共享屏幕或截图前开启，遮住全站封面与预览图。')
         # 默认关闭：localStorage 记 '1' 才开，没动过的会话一律不遮。
         self.assertPageContains("applyCensor(localStorage.getItem(CENSOR_KEY)==='1')")
         # 全站按元素类型盖：内容 img / video / videojs 海报层一个不落。
