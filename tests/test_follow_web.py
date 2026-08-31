@@ -419,22 +419,16 @@ class FollowContractTests(unittest.TestCase):
         self._seed()
         self.assertEqual(len(self._get(limit="nope")["groups"]), 1)
 
-    def test_cards_drop_generic_tags_but_filters_keep_them(self):
-        """卡片只留有身份的标签，general 那类内容描述不上卡片。
-
-        footjob / standing sex / from behind 这种三个一排占满卡片底部，却几乎不用来
-        找东西。筛选条里仍然保留——主动去筛和被动堆一排不是一回事。
-        """
+    def test_all_follow_surfaces_share_the_content_tag_projection(self):
+        """卡片、详情、筛选条与标签页不能各自保留一套噪声判定。"""
         page = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
-        # 只留玩法：题材（copyright/artist）整类不上卡片
-        self.assertIn("if(followTagType(item,tag)!=='general')return false;", page)
-        # 站点把三种东西都塞进 general，所以还要按两条判据再筛
-        self.assertIn("FOLLOW_TAG_NOISE", page, "技术标记与计数要滤掉")
-        self.assertIn("FOLLOW_TAG_TOPICAL", page, "booru 的「角色 (作品)」写法要滤掉")
+        self.assertIn("const followCardTags=item=>item.tags||[]", page)
         self.assertIn("const tags=followCardTags(item).slice(0,3)", page,
                       "卡片必须走过滤后的标签")
         self.assertIn("data-follow-tag=\"${esc(key)}\"", page,
-                      "筛选条仍要能按标签筛，包括被卡片滤掉的那些")
+                      "筛选条必须直接消费服务端投影")
+        self.assertNotIn("FOLLOW_TAG_NOISE", page)
+        self.assertNotIn("FOLLOW_TAG_TOPICAL", page)
 
     def test_generated_media_is_cached_for_a_month_not_a_day(self):
         """按 id 取的生成物内容不会变，一天太短。
@@ -1656,8 +1650,9 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('class="tagbar followfilters"')
         self.assertPageContains('class="pill sourcepill" data-follow-provider=')
         self.assertPageLacks("内容标签目前由 ${")
-        self.assertPageContains("const rankedTags=[...tagCounts].sort((a,b)=>b[1]-a[1])")
-        self.assertPageContains("const topTagRows=rankedTags.slice(0,20)")
+        self.assertPageContains("const randomizedAuthors=followRandomOrder([...authors],row=>row[0])")
+        self.assertPageContains("const topTagRows=followRandomOrder([...tagCounts],row=>row[0]).slice(0,20)")
+        self.assertPageContains("if(push)followDiscoverySeed=Math.floor(Math.random()*0xffffffff)")
         self.assertPageContains("topTagRows.push([tag,tagCounts.get(tag)])")
 
     def test_follow_tags_are_multi_select_and_use_rule34_property_colours(self):
@@ -1707,9 +1702,16 @@ class FollowWebSourceTests(unittest.TestCase):
         # 第四个参数是来源自己给的清晰度表：rule34video 把每档写成独立 mp4 字段，
         # videojs 的 qualityLevels 只认 HLS/DASH 的自适应轨道，看不到它们。
         self.assertPageContains(
-            "function mountPlayerQualityControl(player,video,fallbackHeight=0,sourceQualities=null)")
-        self.assertPageContains("qualities:followQualities",
-                                "关注详情要把查到的档位传给播放器")
+            "function mountPlayerQualityControl(player,video,fallbackHeight=0,initialSourceQualities=null)")
+        self.assertPageContains("const qualitiesPromise=api(`/follow-qualities?id=${encodeURIComponent(item.id)}`)")
+        self.assertPageContains("qualitiesPromise",
+                                "关注详情要异步补上来源档位")
+        detail = self.page.split("async function openFollowDetail", 1)[1].split(
+            "function renderFollow", 1)[0]
+        self.assertNotIn("await api(`/follow-qualities", detail,
+                         "清晰度回源不能挡住默认视频挂载")
+        self.assertLess(detail.index("const followPlayer=mountDetailPlayer"),
+                        detail.index("wireFollowTelemetry"))
         self.assertPageContains('aria-label="播放器设置"')
         self.assertPageContains("data-player-quality-badge")
         self.assertPageContains("currentTimeDisplay:true,timeDivider:true")
@@ -1858,17 +1860,28 @@ class FollowWebSourceTests(unittest.TestCase):
             def __init__(self, metadata):
                 self.metadata = metadata
 
-        tags = web_follow._item_tags(
-            _Item({"tag": "lazyprocrastinator",
-                   "tags": "lazyprocrastinator 1girls animated sound lazyprocrastinator"}))
+        tags = web_follow._item_tags(_Item({
+            "tag": "lazyprocrastinator",
+            "tags": "lazyprocrastinator 1girls animated sound riding lazyprocrastinator",
+        }))
         # 作者手柄本身不算标签：按作者筛已经有专门的筛选条，重复出现没有信息量。
-        self.assertEqual(tags, ["1girls"])
+        self.assertEqual(tags, ["riding"])
         video_tags = web_follow._item_tags(_Item({
             "tags": ["deep throat", "3D", "3d_animation", "breast squeeze"],
             "categories": ["2D", "Final Fantasy"],
         }))
-        self.assertEqual(video_tags,
-                         ["deep throat", "breast squeeze", "Final Fantasy"])
+        self.assertEqual(video_tags, ["deep throat", "breast squeeze"])
+        screenshot_tags = web_follow._item_tags(_Item({
+            "tags": "beach dead_or_alive 16:9 2026 female 1boy 1girls breasts "
+                    "final_fantasy male ass pov blowjob",
+        }))
+        self.assertEqual(screenshot_tags, ["pov", "blowjob"])
+        typed = web_follow._item_tags(_Item({
+            "tags": ["artist name", "some character", "some series", "handjob"],
+            "tag_types": {"artist name": "Artist", "some character": "character",
+                          "some series": "copyright", "handjob": "general"},
+        }))
+        self.assertEqual(typed, ["handjob"])
         self.assertEqual(web_follow._item_tags(_Item({})), [])
         self.assertEqual(web_follow._item_tags(_Item({"tags": "   "})), [])
         # rule34.xxx 旧行存的是 HTML 转义形态；出口归一后与反转义的新写法
@@ -2101,9 +2114,14 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_follow_management_list_has_routed_sorting(self):
         self.assertPageContains('data-follow-sort aria-label="关注列表排序"')
         self.assertPageContains('<option value="checked"')
+        self.assertPageContains('<option value="added"')
         self.assertPageContains('<option value="name"')
         self.assertPageContains('<option value="sources"')
-        self.assertPageContains("followManageSort=['checked','name','sources'].includes(requested)?requested:'checked'")
+        self.assertPageContains("followManageSort=['checked','added','name','sources'].includes(requested)?requested:'checked'")
+        self.assertPageContains("const added=group=>Math.max(...group.map(source=>Date.parse(source.created_at||'')||0))")
+        self.assertPageContains("if(followManageSort==='added')return added(b)-added(a)")
+        backend = (ROOT / "src" / "peach" / "web_follow.py").read_text(encoding="utf-8")
+        self.assertIn('"created_at": row["created_at"]', backend)
         self.assertPageContains("return groups.sort((a,b)=>{")
 
     def test_mix_and_follow_queues_stay_below_media_with_details_on_the_right(self):

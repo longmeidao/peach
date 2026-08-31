@@ -23,17 +23,41 @@ import {
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import {
   emptyStateHtml, loadingDotsHtml, mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml,
-  spinnerHtml, wireScrollers,
+  skeletonHtml, spinnerHtml, wireScrollers,
 } from './js/ui-components.js';
 
 initMiddleTruncate(document);
 
+const pageSkeletonHtml=(label,{cards=false,className=''}={})=>
+  skeletonHtml(label,{variant:cards?'cards':'panel',className});
+$('#loadSentinel').innerHTML=loadingDotsHtml('继续载入中…');
+$('#tokLoader').insertAdjacentHTML('afterbegin',spinnerHtml('媒体加载中'));
 function renderCatalogLoading(label='正在读取作品'){
   const count=$('#count');
   count.setAttribute('aria-busy','true');
-  count.innerHTML=`${spinnerHtml(label)}<span>载入中…</span>`;
+  count.textContent=label;
+  $('#grid').innerHTML=pageSkeletonHtml(label,{cards:true,className:'catalog-skeleton'});
 }
-renderCatalogLoading();
+/* 深链启动前先占住目标表面。后续路由仍画同一种 Skeleton，因此不会先出现首页
+   Spinner、再切成目标页 Loading Dots。 */
+function renderInitialSurfaceLoading(){
+  const path=decodeURIComponent(location.pathname);
+  const management=new Set(['/stats','/taste','/review','/duplicates','/quality-goals',
+    '/playlists','/resource-sync','/follow','/follow-manage']);
+  if(management.has(path)||path.startsWith('/follow/item/')){
+    const stats=$('#stats');stats.hidden=false;$('#grid').innerHTML='';
+    stats.innerHTML=pageSkeletonHtml('正在读取页面',{cards:path.startsWith('/follow')});
+    return;
+  }
+  if(path==='/performers'||path==='/creators'||path==='/tags'||
+      /^\/(?:performers|creators|studios)\//.test(path)){
+    $('#index').hidden=false;$('#grid').innerHTML='';
+    $('#index').innerHTML=pageSkeletonHtml('正在读取页面',{cards:true});
+    return;
+  }
+  renderCatalogLoading();
+}
+renderInitialSurfaceLoading();
 
 const JAV_MEDIA_SUFFIX=/\.(?:mp4|mkv|avi|wmv|mov|m4v|webm|ts|m2ts|mts|mpg|mpeg|flv|rm|rmvb|iso)$/i;
 const javDisplayName=(it,value=it?.name)=>{
@@ -490,7 +514,7 @@ function mountPlayerAmbient(video){
 /* `sourceQualities` 是来源自己给的清晰度表（[{height,label}]，从高到低）。
    rule34video 把每档写成独立字段，videojs 的 qualityLevels 看不到它们——那套只认
    HLS/DASH 的自适应轨道，而这里是四个各自独立的 mp4。所以由调用方查好再传进来。 */
-function mountPlayerQualityControl(player,video,fallbackHeight=0,sourceQualities=null){
+function mountPlayerQualityControl(player,video,fallbackHeight=0,initialSourceQualities=null){
   const controlBar=player.getChild('controlBar')?.el();
   if(!controlBar||controlBar.querySelector('[data-player-quality]'))return;
   const root=document.createElement('div');
@@ -503,6 +527,7 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0,sourceQualities
   const toggle=root.querySelector('button'),badge=root.querySelector('[data-player-quality-badge]');
   const menu=root.querySelector('.vjs-peach-settings-menu');
   const levels=typeof player.qualityLevels==='function'?player.qualityLevels():null;
+  let sourceQualities=initialSourceQualities;
   let selected='auto';
   const resolution=(width,height)=>{const values=[Number(width),Number(height)].filter(value=>value>0);return values.length?Math.min(...values):0};
   const rows=()=>{
@@ -579,6 +604,7 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0,sourceQualities
   player.on('dispose',()=>document.removeEventListener('pointerdown',outside));qualityRows();
   mountPlayerTheaterControl(player,root);
   mountPlayerChromeLayout(player);
+  return next=>{sourceQualities=next?.length?next:null;if(!menu.hidden)showMain();else qualityRows()};
 }
 function mountPlayerTheaterControl(player,settingsRoot){
   const controlBar=player.getChild('controlBar')?.el();if(!controlBar||controlBar.querySelector('[data-player-theater]'))return;
@@ -771,7 +797,11 @@ function mountDetailPlayer(it,video,autoplay,options={}){
     });
   });
   detailPlayer.ready(()=>{
-    enforceDuration();mountPlayerQualityControl(detailPlayer,video,it.height,options.qualities);
+    enforceDuration();
+    const updateQualities=mountPlayerQualityControl(detailPlayer,video,it.height,options.qualities);
+    options.qualitiesPromise?.then(next=>{
+      if(detailPlayer===player&&!player.isDisposed())updateQualities?.(next)
+    }).catch(()=>{});
     mountPlayerSeekPreview(detailPlayer,it,{thumbnail:!options.source});
     mountPlayerCenterControls(detailPlayer);
     if(statsButton)statsButton.hidden=false
@@ -1602,6 +1632,11 @@ function showManagementBody({manage=true,placeholder=''}={}){
   else{$('#managebar').hidden=true;$('#manageTitle').hidden=true;buildEdge()}
   if(placeholder)$('#stats').innerHTML=placeholder;
 }
+function showIndexLoading(label){
+  $('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';
+  $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
+  $('#index').innerHTML=pageSkeletonHtml(label,{cards:true});
+}
 function enterManagementSurface(){
   // A catalog request started before browser Back must not repaint filters over
   // the management page after it resolves.
@@ -1615,6 +1650,7 @@ async function openStats(push=true,focusResource=false){
   const surface=claimSurface('/stats');
   enterManagementSurface();
   disposeStage(false);
+  showManagementBody({placeholder:pageSkeletonHtml('正在读取统计')});
   const d=await api('/api/stats');
   if(!surfaceCurrent(surface))return;
   showManagementBody();
@@ -1733,7 +1769,7 @@ async function wireResourceSync(){
   const active=()=>location.pathname==='/stats'&&!$('#stats').hidden&&document.body.contains(result);
   const setBusy=(busy,done=false)=>{
     scan.disabled=busy;scan.setAttribute('aria-busy',String(busy));
-    scan.innerHTML=`${busy?spinnerHtml('扫描中'):icon('refresh-cw')}<span>${busy?'扫描中':done?'重新扫描':'扫描差异'}</span>`;
+    scan.innerHTML=`${icon('refresh-cw')}<span>${busy?'扫描中':done?'重新扫描':'扫描差异'}</span>`;
   };
   const render=payload=>{
     const sources=payload.sources||[];
@@ -1925,7 +1961,7 @@ function renderTaste(d){
     const oldButton=button.innerHTML;
     button.disabled=true;button.setAttribute('aria-busy','true');
     button.innerHTML=`${spinnerHtml('正在读取')}<span>读取中…</span>`;
-    stateEl.innerHTML=loadingDotsHtml('正在读取 Peach 所在主机的浏览器…');
+    stateEl.textContent='';
     try{const result=await api('/api/taste/refresh',{method:'POST',body:JSON.stringify({window:tasteWindow})});
       tasteCacheSet(tasteWindow,result.dashboard);renderTaste(result.dashboard)}
     catch(error){stateEl.textContent=error.message||'读取失败';button.disabled=false;
@@ -1953,11 +1989,7 @@ async function openTaste(push=true){
   const cachedEntry=tasteCache.get(tasteWindow),cached=cachedEntry?.dashboard;
   const cacheFresh=cached&&Date.now()-cachedEntry.at<TASTE_CACHE_FRESH_MS;
   if(cached)renderTaste(cached);
-  else $('#stats').innerHTML=`<div class="tastepage"><div class="skeletonpanel">
-    <span class="skeleton" style="width:38%"></span>
-    <span class="skeleton" style="width:100%"></span>
-    <span class="skeleton" style="width:100%"></span>
-    <span class="skeleton" style="width:72%"></span></div></div>`;
+  else $('#stats').innerHTML=`<div class="tastepage">${pageSkeletonHtml('正在读取口味分析')}</div>`;
   if(!cacheFresh){
     const request=++tasteRequest;
     const requestedWindow=tasteWindow;
@@ -2025,6 +2057,7 @@ async function openPlaylists(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/playlists');
   const surface=claimSurface('/playlists');
+  showManagementBody({manage:false,placeholder:pageSkeletonHtml('正在读取播放列表',{cards:true})});
   const data=await api('/api/playlists');
   if(!surfaceCurrent(surface))return;
   showManagementBody({manage:false});
@@ -2059,7 +2092,7 @@ async function openDuplicates(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/duplicates');
   const surface=claimSurface('/duplicates');
-  showManagementBody({placeholder:`<div class="review"><p class="empty">${loadingDotsHtml('正在比对')}</p></div>`});
+  showManagementBody({placeholder:pageSkeletonHtml('正在比对重复内容',{cards:true})});
   const next=await api('/api/duplicates?limit=120');
   if(!surfaceCurrent(surface))return;
   dupData=next;
@@ -2137,7 +2170,7 @@ async function openReview(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/review');
   const surface=claimSurface('/review');
-  showManagementBody();
+  showManagementBody({placeholder:pageSkeletonHtml('正在读取复核队列',{cards:true})});
   const runtime=await api('/healthz');
   if(!surfaceCurrent(surface))return;
   /* ADR-0018：确定的那部分先落库再取队列。reader 明知不能写就不要制造一次 409；
@@ -2274,7 +2307,7 @@ async function openQualityGoals(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/quality-goals');
   const surface=claimSurface('/quality-goals');
-  showManagementBody({placeholder:`<div class="review"><p class="empty">${loadingDotsHtml('正在读取')}</p></div>`});
+  showManagementBody({placeholder:pageSkeletonHtml('正在读取高清版目标',{cards:true})});
   const next=await api('/api/quality-goals?limit=200');
   if(!surfaceCurrent(surface))return;
   qualityData=next;
@@ -2299,6 +2332,14 @@ async function openQualityGoals(push=true){
      以及对内容做批量标记。
    联网只发生在管理页点「检查更新」的那一刻——看的那一页不联网。 */
 let followData=null,followRuntime=null,followFilter='new',followBusy=false,followManageSort='checked';
+let followDiscoverySeed=Math.floor(Math.random()*0xffffffff);
+const followDiscoveryRank=value=>{
+  let hash=(2166136261^followDiscoverySeed)>>>0;
+  for(const char of String(value)){hash^=char.codePointAt(0);hash=Math.imul(hash,16777619)>>>0}
+  return hash;
+};
+const followRandomOrder=(rows,key)=>[...rows].sort((a,b)=>
+  followDiscoveryRank(key(a))-followDiscoveryRank(key(b))||String(key(a)).localeCompare(String(key(b))));
 /* 来源筛选：fsrcProviders 记录见过的全部来源（默认全选），
    fsrcUnchecked 只记被取消勾选的——新来源自动进入「全选」。 */
 const fsrcProviders=new Set(),fsrcUnchecked=new Set();
@@ -2379,37 +2420,9 @@ function followWhen(item){
 }
 
 const followTagType=(item,tag)=>item.tag_types&&item.tag_types[tag]||'general';
-/* 卡片上只留「玩法」这一类：体位、动作、视角。
-
-   题材不留——`copyright`（Final Fantasy、Genshin Impact）和 `artist` 整类都是，
-   看卡片时已经知道自己在看谁的什么作品了。
-
-   麻烦在于站点把三种东西都塞进了 `general`：真正的玩法（straight、male pov）、
-   技术标记（animated、loop、blender、sound）、以及又一份题材（Final_Fantasy_VII、
-   InitialA）。所以只按标签类型过滤不够，还要按两条判据再筛一遍。 */
-//: booru 的角色消歧写法 `角色 (作品)`。这类标签的 tag_types 常常也是 general，
-//: 靠类型分不出来，但括号后缀是站点约定，认得出。
-const FOLLOW_TAG_TOPICAL=/\([^)]+\)\s*$/;
-//: 计数与技术标记：说的是「这条素材怎么做的」，不是「里面发生了什么」。
-const FOLLOW_TAG_NOISE=/^(?:\d+\s*(?:boy|girl|futa)s?|solo|animated|loop|no\s*sound|sound|blender|3d|2d|cgi|hd|highres|absurdres|video|webm|mp4|vertical\s*video|horizontal\s*video)$/i;
-//: 把 `Final_Fantasy_(series)` 与 copyright 里的 `Final Fantasy` 归一到同一个键，
-//: 好把混进 general 的那份题材也认出来。
-const followTagKey=tag=>String(tag).toLowerCase()
-  .replace(/\([^)]*\)/g,'').replace(/[_\s-]+/g,'').trim();
-const followCardTags=item=>{
-  const tags=item.tags||[];
-  // 题材集合：非 general 的那些标签本身，用来反查混进 general 的同名项。
-  const topical=new Set(tags.filter(tag=>followTagType(item,tag)!=='general')
-    .map(followTagKey).filter(Boolean));
-  return tags.filter(tag=>{
-    if(followTagType(item,tag)!=='general')return false;
-    if(FOLLOW_TAG_NOISE.test(String(tag).trim()))return false;
-    if(FOLLOW_TAG_TOPICAL.test(String(tag)))return false;
-    const key=followTagKey(tag);
-    // 与某个题材同名，或本身就是题材的子条目（Final_Fantasy_VII ⊂ finalfantasy）
-    return !!key&&![...topical].some(t=>key===t||key.startsWith(t)||t.startsWith(key));
-  });
-};
+/* 卡片、详情、筛选条和在线标签页都只消费服务端的内容标签投影。过滤只维护一份，
+   原始来源标签仍完整留在 metadata。 */
+const followCardTags=item=>item.tags||[];
 const followTagChip=(item,tag,kind='span')=>`<${kind} class="tg r34-${
   esc(followTagType(item,tag))}" data-follow-tag="${esc(tag)}">${esc(tagLabel(tag))}</${kind}>`;
 
@@ -2666,17 +2679,14 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   }
   const followVideo=$('#stage').querySelector('.followdetailmedia>video');
   if(followVideo){
-    /* 清晰度单独问一次：解析要抓来源详情页，列表一次几百条不可能逐条解析，
-       所以只在用户真的展开某个条目时问。取不到就当只有原画，不挡播放。 */
-    let followQualities=null;
-    try{
-      const answer=await api(`/follow-qualities?id=${encodeURIComponent(item.id)}`);
-      followQualities=answer?.qualities?.length?answer.qualities:null;
-    }catch(_e){}
+    /* 清晰度解析与默认片源并行。它需要回源抓详情，不能挡住播放器挂载；否则来源慢
+       一点，详情里就会先留下一个没有 src 的空视频框。 */
+    const qualitiesPromise=api(`/follow-qualities?id=${encodeURIComponent(item.id)}`)
+      .then(answer=>answer?.qualities?.length?answer.qualities:null).catch(()=>null);
     const followPlayer=mountDetailPlayer(item,followVideo,false,{
       source:{src,type:selectedMedia?.media_type||item.media_type||'video/mp4'},
       checkSourceStatus:false,
-      qualities:followQualities
+      qualitiesPromise
     });
     const stopFollowAmbient=mountPlayerAmbient(followVideo);
     followPlayer?.one?.('dispose',stopFollowAmbient);
@@ -2895,8 +2905,8 @@ function renderFollow(){
   const authors=new Map([...authorSources].filter(([key])=>activeAuthors.has(key)).map(([key,list])=>[key,{
     name:followAuthorName(list),sources:list,
   }]));
-  const rankedTags=[...tagCounts].sort((a,b)=>b[1]-a[1]);
-  const topTagRows=rankedTags.slice(0,20);
+  const randomizedAuthors=followRandomOrder([...authors],row=>row[0]);
+  const topTagRows=followRandomOrder([...tagCounts],row=>row[0]).slice(0,20);
   followTags.forEach(tag=>{
     if(tagCounts.has(tag)&&!topTagRows.some(([key])=>key===tag))
       topTagRows.push([tag,tagCounts.get(tag)]);
@@ -2922,7 +2932,7 @@ function renderFollow(){
   $('#stats').innerHTML=`<div class="follow">
     <div class="followhead"><h2 class="disp pagetitle">关注</h2>
       <button class="fbtn primary fcheck" data-follow-manage>${icon('settings')}管理关注</button></div>
-    ${authors.size?`<div class="tier followauthors" aria-label="按作者筛选">${[...authors].map(([key,author])=>
+    ${authors.size?`<div class="tier followauthors" aria-label="按作者筛选">${randomizedAuthors.map(([key,author])=>
       `<button class="av" data-follow-author="${esc(key)}" aria-pressed="${key===followAuthor}">
         <span class="ring">${followAuthorAvatar(author.sources)}</span><span class="nm">${esc(author.name)}</span></button>`
       ).join('')}</div>`:''}
@@ -3021,11 +3031,12 @@ async function openFollow(push=true,renderForDetail=false){
   /* 从窄栏点进来（push）是「重新进入」，回到干净的 /follow；其余情况一律照 URL
      推导。筛选状态不再靠这里逐个手写重置——漏一个就会像 provider、tag、status
      以前那样一直按着，而它们还决定服务端取哪些条目，等于取错数据。 */
+  if(push)followDiscoverySeed=Math.floor(Math.random()*0xffffffff);
   if(push)route('/follow');
   if(location.pathname==='/follow')readFollowView();
   const surface=claimSurface(renderForDetail?surfacePath():'/follow');
   showManagementBody({manage:false,
-    placeholder:`<div class="follow"><p class="empty">${loadingDotsHtml('正在读取')}</p></div>`});
+    placeholder:`<div class="follow">${pageSkeletonHtml('正在读取关注内容',{cards:true})}</div>`});
   const [data,credentials]=await Promise.all([
     api(followPageUrl(0)),
     api('/api/follow/credentials').catch(()=>({providers:[]})),
@@ -3057,9 +3068,11 @@ function followAuthorGroups(sources){
   const groups=order.map(key=>byKey.get(key));
   const name=group=>followAuthorName(group);
   const checked=group=>Math.max(...group.map(source=>Date.parse(source.last_checked_at||'')||0));
+  const added=group=>Math.max(...group.map(source=>Date.parse(source.created_at||'')||0));
   return groups.sort((a,b)=>{
     if(followManageSort==='name')return name(a).localeCompare(name(b),'zh-CN',{numeric:true});
     if(followManageSort==='sources')return b.length-a.length||name(a).localeCompare(name(b),'zh-CN',{numeric:true});
+    if(followManageSort==='added')return added(b)-added(a)||name(a).localeCompare(name(b),'zh-CN',{numeric:true});
     return checked(b)-checked(a)||name(a).localeCompare(name(b),'zh-CN',{numeric:true});
   });
 }
@@ -3289,6 +3302,7 @@ function renderFollowManage(credentials){
             counts.new?` · <b>${counts.new}</b> 条未看`:''}</span>
           <label class="fmanagesort"><span>排序</span><select data-follow-sort aria-label="关注列表排序">
             <option value="checked"${followManageSort==='checked'?' selected':''}>最近检查</option>
+            <option value="added"${followManageSort==='added'?' selected':''}>添加时间</option>
             <option value="name"${followManageSort==='name'?' selected':''}>作者名称</option>
             <option value="sources"${followManageSort==='sources'?' selected':''}>来源数量</option>
           </select></label>
@@ -3334,10 +3348,10 @@ async function openFollowManage(push=true){
   if(push){followManageSort='checked';route('/follow-manage')}
   else if(location.pathname==='/follow-manage'){
     const requested=new URLSearchParams(location.search).get('sort');
-    followManageSort=['checked','name','sources'].includes(requested)?requested:'checked';
+    followManageSort=['checked','added','name','sources'].includes(requested)?requested:'checked';
   }
   const surface=claimSurface('/follow-manage');
-  showManagementBody({placeholder:`<div class="follow"><p class="empty">${loadingDotsHtml('正在读取')}</p></div>`});
+  showManagementBody({placeholder:`<div class="follow">${pageSkeletonHtml('正在读取关注管理',{cards:true})}</div>`});
   const [data,credentials,runtime]=await Promise.all([
     api('/api/follow?limit=1'),api('/api/follow/credentials'),api('/healthz')]);
   if(!surfaceCurrent(surface))return;
@@ -3835,6 +3849,7 @@ async function openIndex(kind,q,push=true){
   // 写在前面等于自己加完自己删。
   document.body.classList.add('index-open');
   disposeStage(false);
+  showIndexLoading(people?'正在读取作者':'正在读取标签');
   /* 在线标签走关注页那套统计，形状与 /api/index 一致，所以分页、搜索和「载入更多」
      这三处现成的机制换个地址就能用。 */
   const indexApi=offset=>onlineTags
@@ -4318,6 +4333,8 @@ async function openEntity(kind,name,push=true,requestedTag){
   barsContext={type:'entity',kind,name,filters};
   showHomeSurfaces();
   disposeStage(false);
+  document.body.classList.add('entity-open');
+  showIndexLoading('正在读取资料');
   detailReturnBarsContext=null;
   entityJavLayout=false;
   const seq=++entityRequestSeq;
@@ -5179,7 +5196,8 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
       </div>
       <button class="obtn" data-kind="o">${icon('sperm')}<span>记一次高潮</span><b class="mono" id="oCount">${it.o_count||0}</b></button>
     </div></div></div>
-    ${queueContext?'':`<div class="next"><h3>接着看</h3><div class="nrow" id="nrow">载入中…</div></div>`}`;
+    ${queueContext?'':`<div class="next"><h3>接着看</h3><div class="nrow" id="nrow">${
+      pageSkeletonHtml('正在读取推荐',{cards:true,className:'related-skeleton'})}</div></div>`}`;
   $('#stage').classList.toggle('ambient-on',appSettings.ambientMode);
   $('#stage').classList.toggle('theater-mode',appSettings.theaterMode);
 

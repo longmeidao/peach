@@ -56,6 +56,29 @@ LOW_VALUE_FOLLOW_TAGS = frozenset({
     "no sound", "audio", "loop", "webm", "mp4",
 })
 
+# 关注页的标签是「里面发生了什么」，不是人物计数、身体部位、画幅、年份、软件或
+# 作品题材。原始 metadata 仍完整保留；这里只收窄卡片、详情、筛选条与在线标签页
+# 共用的可见投影。Rule34.xxx 不提供 tag type，所以截图里这些漏项还需要形态判据。
+NON_CONTENT_FOLLOW_TAG_TYPES = frozenset({
+    "artist", "character", "copyright", "metadata",
+})
+_NON_CONTENT_FOLLOW_TAG_RE = re.compile(
+    r"^(?:"
+    r"(?:19|20)\d{2}|\d{1,2}:\d{1,2}|"
+    r"\d+[_\s-]*(?:boy|girl|futa)s?|female|male|male/female|female_only|"
+    r"(?:light[-_\s]?skinned[_\s-]?)?(?:female|male)|human|"
+    r"(?:nude|naked)(?:[_\s-](?:female|male))?|"
+    r"(?:(?:large|big|medium|small|bouncing)[_\s-])?"
+    r"(?:breasts?|ass|pussy|penis|vagina|nipples?|areolae)|"
+    r"(?:blonde|black|white|long|short)[_\s-](?:hair|female)|"
+    r"(?:blue|green|brown)[_\s-]eyes|light[_\s-]skin|"
+    r"(?:shorter|longer)[_\s-]than[_\s-]\d+[_\s-]seconds|short[_\s-]video|"
+    r"beach|initial[_\s-]?a|square[_\s-]?enix|"
+    r"final[_\s-]?fantasy(?:[_\s-].*)?|dead[_\s-]?or[_\s-]?alive(?:[_\s-].*)?"
+    r")$", re.I,
+)
+_TOPICAL_FOLLOW_TAG_RE = re.compile(r"\([^)]+\)\s*$")
+
 _IMAGE_MEDIA_RE = re.compile(r"\.(?:avif|gif|jpe?g|png|webp)(?:$|[?#])", re.I)
 _VIDEO_MEDIA_RE = re.compile(r"\.(?:m4v|mov|mp4|og[gv]|webm)(?:/)?(?:$|[?#])", re.I)
 _RULE34XXX_PREVIEW_RE = re.compile(
@@ -87,10 +110,20 @@ def _item_tags(item) -> list[str]:
         values.extend(str(value).strip() for value in categories if str(value).strip())
     values = [html.unescape(value) for value in values]
     subject = html.unescape(str(item.metadata.get("tag") or "")).casefold()
+    category_keys = {
+        html.unescape(str(value)).casefold()
+        for value in categories or []
+    } if isinstance(categories, list) else set()
+    recorded_types = item.metadata.get("tag_types")
+    recorded_types = recorded_types if isinstance(recorded_types, dict) else {}
     seen, tags = set(), []
     for tag in values:
         key = tag.casefold()
-        if key == subject or key in seen or key in LOW_VALUE_FOLLOW_TAGS:
+        tag_type = str(recorded_types.get(tag) or recorded_types.get(key) or "general").casefold()
+        if (key == subject or key in seen or key in LOW_VALUE_FOLLOW_TAGS
+                or key in category_keys or tag_type in NON_CONTENT_FOLLOW_TAG_TYPES
+                or _NON_CONTENT_FOLLOW_TAG_RE.fullmatch(tag.strip())
+                or _TOPICAL_FOLLOW_TAG_RE.search(tag)):
             continue
         seen.add(key)
         tags.append(tag)
@@ -579,6 +612,7 @@ def _source_payload(row, aliases: dict[str, str] | None = None) -> dict:
         # 往回抓到哪一页了（0 起，0 = 只抓过第一页）。界面据此说清进度，
         # 否则用户点一次只看到列表变长一点，不知道自己走到第几页。
         "backfill_page": row["backfill_page"],
+        "created_at": row["created_at"],
         "last_checked_at": row["last_checked_at"],
         "last_status": "not_modified" if history_exhausted else row["last_status"],
         "last_error": None if history_exhausted else row["last_error"],
