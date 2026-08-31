@@ -1,0 +1,222 @@
+"""为厂牌找出官网，并留下足以复核的证据。
+
+这是 `find_studio_socials.py` 缺的输入端：那个脚本能从官网穿过 18+ 年龄门取到社交
+handle，但它要求先有一份 `studio,site` 的表，而账本里 114 个有作品的厂牌一个官网都没有。
+
+**猜域名不是证据，验证才是。** 候选域名由厂牌名按固定规则推出来（`MOODYZ` → `moodyz.com`），
+这一步只负责提出假设；能不能采信取决于取回的页面自己认不认这个身份——标题里必须出现厂牌名。
+`moodyz.com` 若是抢注页，标题只会是域名或「域名出售」，过不了这一关。规则化推域名的好处是
+可复现：换个人跑同样的输入得到同样的候选，而不是凭记忆写一张表。
+
+推不出来的（`无码厂标`、`Fetish Box / Mousouzoku` 这类）通过 `--seeds` 单独喂，
+让人工查到的地址和自动推出来的走同一条验证，而不是绕过验证直接采信。
+"""
+from __future__ import annotations
+
+import argparse
+import re
+import sqlite3
+import sys
+import time
+from pathlib import Path
+from urllib.parse import urlsplit
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from peach.config import STATE_DIR   # noqa: E402
+from peach.http import HttpRequest, HttpxTransport   # noqa: E402
+from peach.jobs import job_main   # noqa: E402
+from peach.review_csv import read_rows, write_rows   # noqa: E402
+
+USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/128.0 Safari/537.36")
+TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.S | re.I)
+# 抢注页与停放页的自述。它们同样会 200，也同样会在标题里回显域名，
+# 只有这些词能把它们和真站区分开。
+PARKED = re.compile(
+    r"domain (?:is )?for sale|buy this domain|parked (?:free )?at|このドメイン(?:は|を)"
+    r"|ドメイン(?:の)?販売|sedo\.com|afternic|godaddy\.com/domain|hugedomains",
+    re.I)
+# 空壳页也会 200。真站首页（含年龄门）实测都在 10 KB 以上，取一半做下限。
+MIN_BODY = 5000
+FIELDS = ("entity_id", "studio", "assets", "candidate_url", "final_url", "status",
+          "bytes", "sha256", "title", "verdict", "note")
+
+
+def normalise(text: str) -> str:
+    """只留 ASCII 字母数字。
+
+    厂牌名和网页标题的分隔符、括号、全角字符、日文注音全都对不齐（`Idea Pocket` 对
+    `【IDEAPOCKET (アイデアポケット）】公式サイト`），逐字比必然失败。剥到只剩字母数字
+    之后两边才可比，而这一步不会把不同厂牌压成同一个串——`moodyz` 和 `madonna` 剥完仍然不同。
+    """
+    return re.sub(r"[^0-9a-z]", "", text.lower())
+
+
+def slugs(name: str) -> list[str]:
+    """厂牌名 → 候选域名主体，长的在前。"""
+    words = [w for w in re.split(r"[^0-9A-Za-z]+", name) if w]
+    if not words:
+        return []
+    joined = "".join(words).lower()
+    hyphened = "-".join(words).lower()
+    out = [joined]
+    if hyphened != joined:
+        out.append(hyphened)
+    return out
+
+
+def candidate_urls(name: str) -> list[str]:
+    """按 JAV 厂牌官网的实际域名习惯排序：`.com` 最常见，其次 `.jp`、`-av`、`.tv`。"""
+    urls: list[str] = []
+    for slug in slugs(name):
+        for host in (f"{slug}.com", f"{slug}.jp", f"{slug}-av.com", f"{slug}.tv"):
+            for prefix in ("https://www.", "https://"):
+                url = f"{prefix}{host}/"
+                if url not in urls:
+                    urls.append(url)
+    return urls
+
+
+def decode(body: bytes) -> str:
+    """按日站的实际编码分布解码。
+
+    UTF-8 之外仍有相当一部分老厂牌站是 Shift_JIS。用 `errors="replace"` 硬解只会把标题
+    变成一串 U+FFFD——那不会报错，只会让「标题里没有厂牌名」这条判定误杀掉真官网。
+    所以先试 UTF-8，出现替换字符再按 cp932、euc-jp 依次重试，取替换字符最少的那个。
+    """
+    best, best_bad = "", None
+    for encoding in ("utf-8", "cp932", "euc-jp"):
+        try:
+            text = body.decode(encoding)
+        except (UnicodeDecodeError, LookupError):
+            continue
+        bad = text.count("�")
+        if bad == 0:
+            return text
+        if best_bad is None or bad < best_bad:
+            best, best_bad = text, bad
+    return best or body.decode("utf-8", "replace")
+
+
+def page_title(body: bytes) -> str:
+    match = TITLE.search(decode(body))
+    if not match:
+        return ""
+    text = re.sub(r"<[^>]+>", " ", match.group(1))
+    return re.sub(r"\s+", " ", text).strip()[:120]
+
+
+def site_verdict(name: str, status: int, body: bytes, title: str) -> tuple[str, str]:
+    """这一页认不认自己是这个厂牌。
+
+    三道都必须过：HTTP 200、页面不是停放页、标题里出现厂牌名。缺任何一道都写成
+    未取得而不是「大概是」——一个错的官网会被下游当成社媒 handle 的来源，
+    把别人的账号安到这个厂牌头上。
+    """
+    if status != 200:
+        return "未取得", f"HTTP {status}"
+    if len(body) < MIN_BODY:
+        return "未取得", f"页面只有 {len(body)} 字节，疑似空壳"
+    text = decode(body)
+    if PARKED.search(text[:20000]):
+        return "未取得", "停放页或域名出售页"
+    token = normalise(name)
+    if token and token in normalise(title):
+        return "ok", "标题自述厂牌名"
+    if token and token in normalise(text[:20000]):
+        return "weak", "标题未自述，但正文出现厂牌名；需人工看图确认"
+    return "未取得", f"标题与正文都没有厂牌名（标题：{title[:40] or '无'}）"
+
+
+def load_studios(connection: sqlite3.Connection, minimum: int) -> list[dict]:
+    return [{"entity_id": row[0], "studio": row[1], "assets": row[2]}
+            for row in connection.execute(
+                "SELECT e.id,e.canonical_name,count(DISTINCT ae.asset_id) n "
+                "FROM entity e JOIN asset_entity ae ON ae.entity_id=e.id "
+                "JOIN asset a ON a.id=ae.asset_id "
+                "WHERE e.kind='studio' AND a.medium='video' "
+                "GROUP BY e.id HAVING n>=? ORDER BY n DESC", (minimum,))]
+
+
+def probe(http, url: str, timeout: float) -> tuple[int, bytes, str]:
+    response = http(HttpRequest("GET", url, {"User-Agent": USER_AGENT}), timeout, 4 << 20)
+    return response.status, response.body, response.url or url
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--database", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--seeds", type=Path, help="人工查到的 studio,site 表，优先于推导域名")
+    parser.add_argument("--min-assets", type=int, default=3)
+    parser.add_argument("--interval", type=float, default=1.2)
+    parser.add_argument("--timeout", type=float, default=20.0)
+    parser.add_argument("--limit", type=int, default=0)
+    # `job_main` 直接读 args.lock，没有这一行会在拿锁时才 AttributeError。
+    parser.add_argument("--lock", type=Path, default=STATE_DIR / ".studio-sites.lock")
+    return parser
+
+
+def run(args) -> int:
+    import hashlib
+
+    connection = sqlite3.connect(f"file:{args.database}?mode=ro", uri=True)
+    try:
+        studios = load_studios(connection, args.min_assets)
+    finally:
+        connection.close()
+    if args.limit:
+        studios = studios[:args.limit]
+
+    seeds: dict[str, list[str]] = {}
+    if args.seeds:
+        for row in read_rows(args.seeds):
+            site = (row.get("site") or "").strip()
+            if site:
+                seeds.setdefault((row.get("studio") or "").strip(), []).append(site)
+
+    results: list[dict[str, object]] = []
+    http = HttpxTransport()
+    last = 0.0
+    try:
+        for record in studios:
+            name = record["studio"]
+            row = {field: "" for field in FIELDS}
+            row.update(record)
+            row["verdict"], row["note"] = "未取得", "没有可推导的候选域名"
+            for url in seeds.get(name, []) + candidate_urls(name):
+                wait = args.interval - (time.monotonic() - last)
+                if wait > 0:
+                    time.sleep(wait)
+                last = time.monotonic()
+                try:
+                    status, body, final = probe(http, url, args.timeout)
+                except Exception as exc:
+                    row.update(candidate_url=url, verdict="未取得",
+                               note=f"取不到：{type(exc).__name__}")
+                    continue
+                title = page_title(body)
+                verdict, note = site_verdict(name, status, body, title)
+                row.update(candidate_url=url, final_url=final, status=status,
+                           bytes=len(body), sha256=hashlib.sha256(body).hexdigest(),
+                           title=title, verdict=verdict, note=note)
+                if verdict in {"ok", "weak"}:
+                    break
+            results.append(row)
+            print(f"{name[:22]:<22} {row['verdict']:<6} {str(row['final_url'])[:38]:<38} "
+                  f"{str(row['title'])[:34]}")
+
+    finally:
+        http.close()
+
+    write_rows(args.output, FIELDS, results)
+    counts: dict[str, int] = {}
+    for row in results:
+        counts[str(row["verdict"])] = counts.get(str(row["verdict"]), 0) + 1
+    print({"total": len(results), **counts, "output": str(args.output)})
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(job_main(build_parser, run))
