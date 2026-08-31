@@ -237,6 +237,39 @@ class OfficialSourceTests(unittest.TestCase):
 
 
 class BestCoverTests(unittest.TestCase):
+    def test_known_same_size_url_is_not_probed_during_upgrade(self):
+        known = "https://pics.dmm.co.jp/mono/movie/adult/x/xpl.jpg"
+        larger = "https://awsimgsrc.dmm.com/dig/mono/movie/x/xpl.jpg"
+
+        def transport(request, timeout, limit):
+            if request.url == known:
+                raise AssertionError("成功日志已证明同尺寸，不应重复请求")
+            if request.url == larger:
+                return _Response(200, jpeg(1200, 808))
+            return _Response(404, b"")
+
+        winner, size, _ = covers.best_cover(
+            transport, "ABW-232", 0,
+            prior_candidates=tuple(map(covers.candidate_for, (known, larger))),
+            known_sizes={known: (800, 539)},
+            minimum_pixels=800 * 539,
+        )
+
+        self.assertEqual((winner.url, size), (larger, (1200, 808)))
+
+    def test_known_larger_url_is_still_probed(self):
+        known = "https://pic.duga.jp/a/jacket.jpg"
+        transport = transport_for({known: (200, jpeg(1000, 674))})
+
+        winner, size, _ = covers.best_cover(
+            transport, "ABW-232", 0,
+            prior_candidates=(covers.candidate_for(known),),
+            known_sizes={known: (1000, 674)},
+            minimum_pixels=800 * 539,
+        )
+
+        self.assertEqual((winner.url, size), (known, (1000, 674)))
+
     def test_largest_candidate_wins_regardless_of_host(self):
         # ABW-232 没有数字版，duga 的 1000x674 才是最优——固定优先级链会选错。
         dmm = "https://pics.dmm.co.jp/mono/movie/adult/x/xpl.jpg"
