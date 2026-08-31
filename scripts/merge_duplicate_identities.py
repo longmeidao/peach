@@ -49,7 +49,6 @@ creator** 的实体，`(kind, normalized_name)` 唯一约束拦不住它：`小�
 from __future__ import annotations
 
 import argparse
-import csv
 import re
 import sqlite3
 from collections import Counter
@@ -63,6 +62,7 @@ from peach.entities import (
     normalize_entity_name,
 )
 from peach.migrations import sqlite_backup
+from peach.review_csv import write_rows
 
 
 #: 真实发行元数据的来源标记。只有这些能把一条断言判成「这是女优，不是上传者」。
@@ -600,10 +600,7 @@ def write_projection_csv(path: Path, rows: list[dict[str, object]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fields = ["bad_name", "collapsed_name", "action", "target_id", "target_name",
               "flat_assets", "actor_tags", "aliases", "canonical_entities", "evidence"]
-    with path.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields)
-        writer.writeheader()
-        writer.writerows(rows)
+    write_rows(path, fields, rows)
 
 
 def write_csv(path: Path, rows: list[dict[str, object]]) -> None:
@@ -611,10 +608,7 @@ def write_csv(path: Path, rows: list[dict[str, object]]) -> None:
     fields = ["normalized_name", "match_evidence", "keep_kind", "keep_name", "keep_id", "keep_links",
               "drop_kind", "drop_name", "drop_id", "drop_links",
               "keep_sources", "drop_sources", "evidence"]
-    with path.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields)
-        writer.writeheader()
-        writer.writerows(rows)
+    write_rows(path, fields, rows)
 
 
 def counts_of(connection: sqlite3.Connection) -> dict[str, int]:

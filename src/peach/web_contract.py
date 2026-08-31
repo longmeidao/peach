@@ -6,7 +6,6 @@ feedback functions; schema changes belong to the migration runner.
 from __future__ import annotations
 
 import os
-import csv
 import hashlib
 import json
 import random

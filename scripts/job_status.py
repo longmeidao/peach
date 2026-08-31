@@ -19,7 +19,6 @@ r"""
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import os
 import sqlite3
@@ -33,6 +32,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from peach.config import DATABASE_PATH, GENERATED_DIR
+from peach.review_csv import read_rows
 
 DOC = PROJECT_ROOT / "docs" / "STATUS.md"
 STATE = Path(r"R:\peach-data\state\agent-handoff.json")
@@ -132,8 +132,7 @@ def collect(db_path: Path, generated: Path, state_path: Path | None = None) -> l
         if not path.is_file():
             lines.append(f"| `{name}` | — | 未生成 | {desc} |")
             continue
-        with path.open(encoding="utf-8-sig", newline="") as handle:
-            rows = sum(1 for _ in csv.DictReader(handle))
+        rows = len(read_rows(path))
         # mtime 本来就是本地时间，显式 astimezone 是为了和上面两处同一个时钟，
         # 列宽放不下偏移量，所以时区写在表头里。
         stamp = datetime.fromtimestamp(path.stat().st_mtime).astimezone().strftime("%m-%d %H:%M")

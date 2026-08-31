@@ -9,8 +9,6 @@ fc2-comment-harvest、fc2-candidate-log 和 ledger；输出候选与健康 CSV�
 from __future__ import annotations
 
 import argparse
-import csv
-import os
 import sqlite3
 import time
 import urllib.parse
@@ -19,6 +17,7 @@ from pathlib import Path
 
 from peach.config import DATABASE_PATH, GENERATED_DIR
 from peach.fc2_similarity import POLICY_VERSION, build_candidates, fc2_video_id
+from peach.review_csv import read_rows, write_rows
 
 
 CANDIDATE_FIELDS = (
@@ -66,8 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def read_csv(path: Path) -> list[dict]:
-    with path.open(encoding="utf-8-sig", newline="") as handle:
-        return list(csv.DictReader(handle))
+    return read_rows(path)
 
 
 def harvest_index(rows: list[dict]) -> dict[str, dict]:
@@ -100,18 +98,7 @@ def load_assets(database: Path) -> list[dict]:
 
 
 def atomic_csv(path: Path, fields: tuple[str, ...], rows: list[dict]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    try:
-        with temporary.open("w", encoding="utf-8-sig", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=fields)
-            writer.writeheader()
-            for row in rows:
-                writer.writerow({field: row.get(field, "") for field in fields})
-        os.replace(temporary, path)
-    except BaseException:
-        temporary.unlink(missing_ok=True)
-        raise
+    write_rows(path, fields, rows, atomic=True, fill_missing=True)
 
 
 def run(args: argparse.Namespace) -> int:

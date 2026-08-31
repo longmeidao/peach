@@ -37,7 +37,6 @@ AVBase 已返回 Cloudflare 验证页，不再进入批量流程，也不尝试�
 from __future__ import annotations
 
 import argparse
-import csv
 import io
 import json
 import re
@@ -52,6 +51,7 @@ from urllib.parse import urlparse
 import httpx
 from PIL import Image, UnidentifiedImageError
 
+from peach.review_csv import ENCODING, read_rows, write_rows
 from peach.config import COVER_DIR, DATABASE_PATH, GENERATED_DIR, SOURCES_DIR
 from peach.http import HttpRequest, HttpTransport, HttpxTransport
 from peach.jobs import DiskGuard, JobPolicyError
@@ -274,7 +274,7 @@ def cached_metadata(metadata_root: Path | None, code: str) -> MetadataEvidence:
             continue
         for path in sorted(folder.glob("*.json")):
             try:
-                wrapper = json.loads(path.read_text(encoding="utf-8-sig"))
+                wrapper = json.loads(path.read_text(encoding=ENCODING))
             except (OSError, ValueError):
                 continue
             result = wrapper.get("result")
@@ -536,8 +536,7 @@ def carried_rows(log: Path, keep: set[str]) -> list[dict]:
 def logged_rows(log: Path) -> list[dict]:
     if not log.is_file():
         return []
-    with log.open(encoding="utf-8-sig", newline="") as handle:
-        return list(csv.DictReader(handle))
+    return read_rows(log)
 
 
 def restore_logged_successes(transport: HttpTransport, log: Path, root: Path,
@@ -708,11 +707,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _write_log(path: Path, rows: list[dict]) -> None:
     """每条都落盘：这个任务要跑三四个小时，只在结束时写等于全程看不见进度。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=FIELDS)
-        writer.writeheader()
-        writer.writerows(rows)
+    write_rows(path, FIELDS, rows)
 
 
 def _renew_transport_after_error(transport: HttpTransport,

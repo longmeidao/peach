@@ -35,7 +35,6 @@ CSV、以及原始评论 JSONL。留原文是因为下面这些正则一定会�
 from __future__ import annotations
 
 import argparse
-import csv
 import http.cookiejar
 import json
 import re
@@ -45,6 +44,7 @@ from pathlib import Path
 
 import httpx
 
+from peach.review_csv import write_rows
 from peach.config import DATABASE_PATH, GENERATED_DIR
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -298,11 +298,7 @@ def pending(database: Path, limit: int) -> list[tuple[str, str]]:
 
 
 def _write_csv(path: Path, fields: tuple[str, ...], rows: list[dict]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields)
-        writer.writeheader()
-        writer.writerows(rows)
+    write_rows(path, fields, rows)
 
 
 def build_parser() -> argparse.ArgumentParser:

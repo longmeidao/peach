@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import re
 import sqlite3
 from pathlib import Path
 
 from peach.config import DATABASE_PATH, GENERATED_DIR
+from peach.review_csv import write_rows
 
 
 def safe_name(name: str) -> str:
@@ -55,9 +55,7 @@ def main() -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     fields = ("status", "studio", "assets", "cache_path", "has_provenance",
               "suggested_query", "source_url", "review", "notes")
-    with args.output.open("w", encoding="utf-8-sig", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=fields)
-        writer.writeheader(); writer.writerows(findings)
+    write_rows(args.output, fields, findings)
     cached = sum(row["status"] == "cached" for row in findings)
     print(f"studios={len(findings)} cached={cached} missing={len(findings)-cached} output={args.output}")
     return 0

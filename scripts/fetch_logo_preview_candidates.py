@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import sys
 import time
 from pathlib import Path
@@ -19,6 +18,7 @@ import httpx
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach.images import REJECT, classify, measure_image_size   # noqa: E402
+from peach.review_csv import read_rows, write_rows
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -31,8 +31,7 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=20.0)
     args = parser.parse_args()
 
-    with args.input.open(encoding="utf-8-sig", newline="") as handle:
-        rows = list(csv.DictReader(handle))
+    rows = read_rows(args.input)
 
     results: list[dict[str, object]] = []
     with httpx.Client(
@@ -73,12 +72,9 @@ def main() -> int:
 
     # 合格的排前面，同为合格时越接近正方形越靠前；复核页第一眼看到的就是最合适的。
     results.sort(key=lambda item: (not item["accepted"], item["aspect"] or 99))
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    with args.output.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(
-            handle, fieldnames=("key", "url", "width", "height", "aspect", "verdict", "accepted", "reason"))
-        writer.writeheader()
-        writer.writerows(results)
+    write_rows(args.output,
+               ("key", "url", "width", "height", "aspect", "verdict", "accepted", "reason"),
+               results)
     accepted = sum(1 for item in results if item["accepted"])
     print({"total": len(results), "accepted": accepted, "output": str(args.output)})
     return 0

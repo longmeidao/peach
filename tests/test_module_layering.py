@@ -76,6 +76,30 @@ class SharedRuleTests(unittest.TestCase):
             "番号归一化又被抄了一份，请改 import catalog_rules.normalise_code_key",
         )
 
+    def test_the_review_csv_encoding_is_declared_once(self):
+        """复核 CSV 的编码只许在一处写死。
+
+        AGENTS.md 把 CSV 定为「复核产物」：可机读、可重放。它的编码因此不是风格问题——
+        `utf-8-sig` 的 BOM 决定 Excel 打开时中文是不是乱码，`newline=""` 决定 Windows
+        下行间会不会多出空行。两条都属于「写的时候一切正常、几天后有人真去开那份表才
+        发现坏了」，靠人眼复查拦不住。
+
+        这两条此前在 46 个读写点各写一遍，而且已经开始藏：有两处把参数顺序写成
+        `"w", newline="", encoding="utf-8-sig"`，按规范顺序 grep 根本扫不到。所以这里
+        断言的是字面量本身只出现一次，而不是某个固定写法。
+        """
+        offenders = []
+        for path in _python_sources():
+            if path.name == "review_csv.py":
+                continue
+            if '"utf-8-sig"' in path.read_text(encoding="utf-8"):
+                offenders.append(path.name)
+        self.assertEqual(
+            offenders, [],
+            "编码不要再写一遍：用 peach.review_csv 的 read_rows/write_rows，"
+            "确实只能自己开文件的（流式写）就用它的 ENCODING 常量",
+        )
+
     def test_batch_scripts_share_one_cli_tail(self):
         """批处理脚本的 main() 收尾只许有一份。
 

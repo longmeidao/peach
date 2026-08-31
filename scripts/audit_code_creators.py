@@ -26,12 +26,12 @@ r"""番号目录被投影成创作者的清理器。
 from __future__ import annotations
 
 import argparse
-import csv
 import re
 import sqlite3
 from collections import Counter
 from pathlib import Path
 
+from peach.review_csv import write_rows
 from peach.config import DATABASE_PATH, GENERATED_DIR
 from peach.migrations import sqlite_backup
 
@@ -226,11 +226,7 @@ def run(args: argparse.Namespace) -> int:
               f"补 code {counts['codes']} 条、清扁平字段 {counts['flat']} 条")
     connection.close()
 
-    args.review_csv.parent.mkdir(parents=True, exist_ok=True)
-    with args.review_csv.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=FIELDS)
-        writer.writeheader()
-        writer.writerows(rows)
+    write_rows(args.review_csv, FIELDS, rows)
     print(f"复核 CSV → {args.review_csv}")
     if not args.apply:
         print("这是预览：未写 ledger。确认后再加 --apply --backup。")

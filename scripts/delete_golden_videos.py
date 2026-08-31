@@ -1,11 +1,12 @@
 """Delete the explicitly identified golden videos with a ledger audit trail."""
 from __future__ import annotations
 
-import csv
 import datetime
 import os
 import sqlite3
 from pathlib import Path
+
+from peach.review_csv import write_rows
 
 
 DATABASE = Path(r"R:\peach-data\database\ledger.db")
@@ -49,10 +50,7 @@ def main() -> int:
     if not all(item["deleted"] for item in report_rows):
         raise RuntimeError("one or more media files remain")
 
-    with report.open("w", newline="", encoding="utf-8-sig") as handle:
-        writer = csv.DictWriter(handle, fieldnames=report_rows[0].keys())
-        writer.writeheader()
-        writer.writerows(report_rows)
+    write_rows(report, report_rows[0].keys(), report_rows)
 
     marks = ",".join("?" * len(IDS))
     try:

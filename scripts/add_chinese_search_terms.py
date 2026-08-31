@@ -20,11 +20,11 @@ r"""给日文汉字身份补简体中文检索词。
 from __future__ import annotations
 
 import argparse
-import csv
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+from peach.review_csv import write_rows
 from peach.config import DATABASE_PATH, GENERATED_DIR
 from peach.migrations import sqlite_backup
 
@@ -136,11 +136,7 @@ def run(args: argparse.Namespace) -> int:
         print(f"已写入检索词 {written} 条（FTS 由 0004 的触发器同步重建）")
     connection.close()
 
-    args.review_csv.parent.mkdir(parents=True, exist_ok=True)
-    with args.review_csv.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=FIELDS)
-        writer.writeheader()
-        writer.writerows(rows)
+    write_rows(args.review_csv, FIELDS, rows)
     print(f"复核 CSV → {args.review_csv}")
     if not args.apply:
         print("这是预览：未写 ledger。确认后再加 --apply --backup。")

@@ -15,7 +15,6 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import os
 import re
 import sys
 import time
@@ -34,6 +33,7 @@ from peach.logo_provider import (  # noqa: E402
     provenance_now,
 )
 from peach.config import GENERATED_DIR  # noqa: E402
+from peach.review_csv import read_rows, write_rows
 
 RESOLVER = "https://unavatar.io/{platform}/{handle}?json"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Peach/0.6"
@@ -63,12 +63,11 @@ def guess_handle(studio: str) -> str:
 def load_handles(path: Path | None) -> dict[str, str]:
     if path is None:
         return {}
-    with path.open(encoding="utf-8-sig", newline="") as handle:
-        return {
-            (row.get("studio") or "").strip(): (row.get("handle") or "").strip()
-            for row in csv.DictReader(handle)
-            if (row.get("studio") or "").strip()
-        }
+    return {
+        (row.get("studio") or "").strip(): (row.get("handle") or "").strip()
+        for row in read_rows(path)
+        if (row.get("studio") or "").strip()
+    }
 
 
 def resolve(http, platform: str, handle: str, timeout: float) -> str:
@@ -104,17 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _atomic_csv(path: Path, fields: tuple[str, ...], rows: list[dict]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    try:
-        with temporary.open("w", encoding="utf-8-sig", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=fields)
-            writer.writeheader()
-            writer.writerows({field: row.get(field, "") for field in fields} for row in rows)
-        os.replace(temporary, path)
-    except BaseException:
-        temporary.unlink(missing_ok=True)
-        raise
+    write_rows(path, fields, rows, atomic=True, fill_missing=True)
 
 
 def main(argv: list[str] | None = None, *, transport=None) -> int:
@@ -124,9 +113,8 @@ def main(argv: list[str] | None = None, *, transport=None) -> int:
     if args.health is None:
         args.health = args.output.with_name(args.output.stem + "-health.csv")
 
-    with args.input.open(encoding="utf-8-sig", newline="") as handle:
-        studios = [(row.get("studio") or "").strip()
-                   for row in csv.DictReader(handle) if (row.get("studio") or "").strip()]
+    studios = [(row.get("studio") or "").strip()
+               for row in read_rows(args.input) if (row.get("studio") or "").strip()]
     if args.limit:
         studios = studios[: args.limit]
     mapping = load_handles(args.handles)

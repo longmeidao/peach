@@ -37,6 +37,7 @@ from peach.metadata_policy import (
     sort_candidates,
 )
 from peach.platform import system_volume
+from peach.review_csv import ENCODING, write_rows
 
 
 _logf = None
@@ -234,7 +235,7 @@ def build_parser() -> argparse.ArgumentParser:
 def _requested_codes(path: Path) -> list[str]:
     requested: list[str] = []
     seen: set[str] = set()
-    for raw in path.read_text(encoding="utf-8-sig").splitlines():
+    for raw in path.read_text(encoding=ENCODING).splitlines():
         value = raw.split("#", 1)[0].strip()
         if not value:
             continue
@@ -286,14 +287,7 @@ def _health_rows(policy: MetadataPolicy) -> dict[str, dict[str, object]]:
 
 
 def _write_health(path: Path, rows: dict[str, dict[str, object]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    with temporary.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=HEALTH_FIELDS)
-        writer.writeheader()
-        for source in rows:
-            writer.writerow(rows[source])
-    os.replace(temporary, path)
+    write_rows(path, HEALTH_FIELDS, rows.values(), atomic=True)
 
 
 def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None = None) -> int:
@@ -352,8 +346,10 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
     blocked_sources: set[str] = set()
     groups_written = errors_written = 0
     stopped: JobPolicyError | None = None
-    with output.open("w", encoding="utf-8-sig", newline="") as candidate_handle, \
-            errors_path.open("w", encoding="utf-8-sig", newline="") as error_handle:
+    # 流式写：两个文件同时开着，行在长循环里边跑边落盘，中途还有 guard.check()
+    # 打断点。write_rows 收的是完整行集合，改用它等于「跑完才落盘」，被打断就全丢。
+    with output.open("w", encoding=ENCODING, newline="") as candidate_handle, \
+            errors_path.open("w", encoding=ENCODING, newline="") as error_handle:
         candidate_writer = csv.DictWriter(candidate_handle, fieldnames=FIELDS)
         error_writer = csv.DictWriter(error_handle, fieldnames=ERROR_FIELDS)
         candidate_writer.writeheader(); error_writer.writeheader()

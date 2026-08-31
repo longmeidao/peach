@@ -21,10 +21,10 @@ r"""去掉本地媒体根下多余的一层分类目录。
 from __future__ import annotations
 
 import argparse
-import csv
 import sqlite3
 from pathlib import Path, PureWindowsPath
 
+from peach.review_csv import write_rows
 from peach.config import DATABASE_PATH, GENERATED_DIR
 from peach.migrations import sqlite_backup
 from peach.platform import translate_ledger_path
@@ -86,11 +86,7 @@ def rollback_moves(done: list[tuple[Path, Path]]) -> None:
 
 
 def write_csv(path: Path, rows: list[dict[str, str]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["id", "old_path", "new_path"])
-        writer.writeheader()
-        writer.writerows(rows)
+    write_rows(path, ["id", "old_path", "new_path"], rows)
 
 
 def build_parser() -> argparse.ArgumentParser:

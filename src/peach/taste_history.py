@@ -23,6 +23,7 @@ from browserexport.browsers.firefox import Firefox
 from browserexport.browsers.safari import Safari
 
 from .catalog_rules import LENGTH_TAGS
+from .review_csv import read_rows, write_rows
 
 
 @dataclass(frozen=True)
@@ -862,8 +863,7 @@ def read_creator_candidates(output_dir: Path, limit: int = 200) -> list[dict]:
         return []
     rows: list[dict] = []
     try:
-        with files[-1].open("r", encoding="utf-8-sig", newline="") as handle:
-            for row in csv.DictReader(handle):
+        for row in read_rows(files[-1]):
                 name = (row.get("candidate") or "").strip()
                 if not name:
                     continue
@@ -1026,24 +1026,22 @@ def _write_candidates(
     urls: dict[str, set[str]],
     sources: dict[str, set[str]],
 ) -> None:
-    with path.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(
-            handle,
-            fieldnames=["candidate", "kind", "visits", "distinct_urls", "source_count", "sources", "status"],
-        )
-        writer.writeheader()
-        for candidate, count in visits.most_common():
-            writer.writerow(
-                {
-                    "candidate": candidate,
-                    "kind": kind,
-                    "visits": count,
-                    "distinct_urls": len(urls[candidate]),
-                    "source_count": len(sources[candidate]),
-                    "sources": " | ".join(sorted(sources[candidate])),
-                    "status": "candidate",
-                }
-            )
+    write_rows(
+        path,
+        ["candidate", "kind", "visits", "distinct_urls", "source_count", "sources", "status"],
+        (
+            {
+                "candidate": candidate,
+                "kind": kind,
+                "visits": count,
+                "distinct_urls": len(urls[candidate]),
+                "source_count": len(sources[candidate]),
+                "sources": " | ".join(sorted(sources[candidate])),
+                "status": "candidate",
+            }
+            for candidate, count in visits.most_common()
+        ),
+    )
 
 
 def _append_ranking(lines: list[str], title: str, values: Counter[str], limit: int = 30) -> None:

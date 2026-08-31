@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import hashlib
 import json
 import os
@@ -16,6 +15,7 @@ from pathlib import Path
 
 from peach.config import GENERATED_DIR
 from peach.images import MAX_ASPECT, measure_image_size, pad_to_square
+from peach.review_csv import write_rows
 
 
 FIELDS = (
@@ -94,13 +94,7 @@ def normalize(root: Path, *, apply: bool = False,
 
 
 def _write_report(path: Path, rows: list[dict[str, object]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    staging = path.with_suffix(path.suffix + ".tmp")
-    with staging.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=FIELDS)
-        writer.writeheader()
-        writer.writerows(rows)
-    os.replace(staging, path)
+    write_rows(path, FIELDS, rows, atomic=True)
 
 
 def build_parser() -> argparse.ArgumentParser:
