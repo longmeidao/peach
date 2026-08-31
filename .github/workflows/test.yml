@@ -9,6 +9,17 @@ on:
 permissions:
   contents: read
 
+# Windows runner 的 stdout 默认按本机 ANSI（cp1252）编码，而项目里的脚本和错误
+# 消息大量是中文——`print(f"首尾帧审计失败：{error}")` 在 runner 上直接抛
+# UnicodeEncodeError，15 个脚本类用例因此全红，本地却全绿。
+#
+# `tests/test_subprocess_encoding.py` 已经把这条口径写死过一次：「由 Peach 控制的
+# 子进程还必须用 PYTHONIOENCODING=utf-8 固定输出端」。CI 缺的正是这一层——那条
+# 测试管的是源码里怎么调 subprocess，管不到 runner 自己的 stdout。
+env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
+
 jobs:
   python:
     name: ${{ matrix.os }} / Python ${{ matrix.python }}
