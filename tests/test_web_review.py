@@ -150,6 +150,28 @@ class ReviewQueueTests(unittest.TestCase):
             rm_review.latest_candidate_file("metadata_fields", self.candidates), newer,
         )
 
+    def test_fc2_metadata_partition_joins_the_latest_jav_queue(self):
+        fields = ["item_key", "code", "query", "field", "field_label", "current_value",
+                  "candidates_json", "source_count", "source_profile", "policy_version",
+                  "status", "size_gb", "videos", "fetched_at"]
+        common = {"current_value": "", "candidates_json": "[]", "source_count": "1",
+                  "source_profile": "test", "policy_version": "test", "status": "candidate",
+                  "size_gb": "1", "videos": "1", "fetched_at": "now"}
+        self._csv("metadata-field-candidates-20260822.csv", fields, [{
+            **common, "item_key": "ABC-001:title", "code": "ABC-001",
+            "query": "ABC-001", "field": "title", "field_label": "标题",
+        }])
+        self._csv("fc2-metadata-field-candidates.csv", fields, [{
+            **common, "item_key": "FC2-PPV-3701252:title", "code": "FC2-PPV-3701252",
+            "query": "FC2-PPV-3701252", "field": "title", "field_label": "标题",
+        }])
+        rows, source, skipped = rm_review.read_candidates("metadata_fields", self.candidates)
+        self.assertEqual({row["item_key"] for row in rows},
+                         {"ABC-001:title", "FC2-PPV-3701252:title"})
+        self.assertIn("metadata-field-candidates-20260822.csv", source)
+        self.assertIn("fc2-metadata-field-candidates.csv", source)
+        self.assertEqual(skipped, 0)
+
     def _release_row(self, key, code, source="r18dev", current="", n=1):
         return {"item_key": key, "field": "release_date", "current": current,
                 "candidates": ["2015-02-20"][:n], "code": code, "source": source}

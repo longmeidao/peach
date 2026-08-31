@@ -63,7 +63,7 @@ HEALTH_FIELDS = [
 # Javinizer r18dev genre -> Peach's reviewed content taxonomy. Unknown source values
 # remain in the raw snapshot instead of becoming unreviewable free-form tags.
 CATEGORY_MAP = {
-    "Foot Fetish": "足系", "Legs": "美腿", "Pantyhose": "丝袜", "Stockings": "丝袜",
+    "Foot Fetish": "美腿", "Legs": "美腿", "Pantyhose": "丝袜", "Stockings": "丝袜",
     "Creampie": "中出内射", "Squirting": "潮吹", "Blowjob": "口交", "Deep Throat": "深喉",
     "Facial": "颜射", "Cum Swallowing": "吞精", "Handjob": "手交",
     "Big Tits": "乳系", "Beautiful Tits": "乳系", "Small Tits": "贫乳", "Titty Fuck": "乳交",
@@ -78,7 +78,7 @@ CATEGORY_MAP = {
     "Outdoor": "户外露出", "Car Sex": "车震", "Ass Lover": "美臀", "Butt": "美臀",
     "Glasses": "眼镜", "Virtual Reality": "VR", "POV": "主观视角", "Restraint": "调教",
     "Incest": "近亲", "Cheating Wife": "绿帽NTR", "4K": "4K",
-    "Digital Mosaic": "有码", "Cowgirl": "骑乘",
+    "Digital Mosaic": "有码", "Cowgirl": "骑乘", "Shaved Pussy": "白虎",
 }
 
 

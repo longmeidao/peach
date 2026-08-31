@@ -3928,7 +3928,7 @@ const TAG_CATEGORIES=[['all','全部'],['meta','影片属性'],['relationship','
   ['position','性交体位'],['general','其他内容']];
 const TAG_DISPLAY_NAMES={'1080P':'1080p','60fps':'60FPS','AI去码':'AI解码',
   '淫语ASMR':'ASMR','JK制服':'JK','OL制服':'OL','眼镜':'眼镜娘','情趣内衣':'性感内衣',
-  '口罩遮脸':'口罩','强制剧情':'强制','足交':'脚交','骑乘':'骑乘位',
+  '口罩遮脸':'口罩','强制剧情':'强制','足系':'美腿','足交':'脚交','骑乘':'骑乘位',
   '后入':'背后位','3P多人':'3P','双洞齐插':'双洞齐下','毒龙':'毒龙钻'};
 const tagLabel=tag=>TAG_DISPLAY_NAMES[tag]||tag;
 const selectedIndexTags=new Set();
@@ -5254,7 +5254,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
       data-entity-name="${esc(item.name)}" title="${esc(item.name)}"${hide?' hidden data-castoverflow':''}>${content}</button>`;
   };
   const idGroup=(label,kind,list,extra='')=>list.length
-    ? `<section class="idgroup"><h5 class="idlabel">${label}</h5>
+    ? `<section class="idgroup idgroup-${kind}"><h5 class="idlabel">${label}</h5>
         <div class="idrow">${list.map((item,i)=>idCell(kind,item,i)).join('')}${extra}</div></section>`
     : '';
   const seriesCell=item=>{const content=`${icon('tags')}<span>${esc(item.name)}</span>`;

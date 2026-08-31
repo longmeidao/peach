@@ -71,6 +71,7 @@ PRESTIGE_SEARCH = "https://www.prestige-av.com/api/search"
 PRESTIGE_PRODUCT = "https://www.prestige-av.com/api/product/{uuid}"
 PRESTIGE_MEDIA = "https://www.prestige-av.com/api/media/{path}"
 DEFAULT_METADATA_ROOT = SOURCES_DIR / "metadata" / "javinizer-go"
+DEFAULT_FC2_METADATA_LOG = GENERATED_DIR / "fc2-candidate-log.csv"
 
 #: 低于这个宽度的是缩略图或占位图，不当封套。实测最低的正片封套是 800 宽。
 MIN_WIDTH = 700
@@ -81,6 +82,7 @@ PROBE_BYTES = 64 * 1024
 NETWORK_RETRY_DELAYS = (2, 4, 6, 8)
 #: 页面与上游证据里可能混着剧照与缩略图，按文件名排除。
 THUMBNAIL = re.compile(r"(thumb|small|icon|/ts/|-s\d|_s\.)", re.I)
+FC2_HIRES = re.compile(r"https://contents-thumbnail\d*\.fc2\.com/w(?:7\d\d|[89]\d\d|\d{4,})/", re.I)
 IMAGE_URL = re.compile(r"https?://[^\"'\\ )]+?\.(?:jpg|jpeg|png|webp)")
 
 
@@ -218,6 +220,20 @@ def _referer_for(url: str) -> str:
 
 def candidate_for(url: str) -> Candidate:
     return Candidate(urlparse(url).netloc.lower(), url, _referer_for(url))
+
+
+def fc2_cover_candidates(path: Path | None) -> dict[str, Candidate]:
+    """Reuse FC2CMADB article evidence, upgrading its listing thumb to measured w1200."""
+    if path is None or not path.is_file():
+        return {}
+    found = {}
+    for row in read_rows(path):
+        url = re.sub(r"(/w)\d+(/)", r"\g<1>1200\2", str(row.get("cover_url") or ""), count=1)
+        code = normalise_code_key(str(row.get("code") or ""))
+        if (row.get("result") == "取得" and not row.get("is_collection")
+                and code.startswith("FC2-PPV-") and IMAGE_URL.fullmatch(url)):
+            found[code] = Candidate(urlparse(url).netloc.lower(), url, "https://fc2cmadb.com/")
+    return found
 
 
 def _unique_candidates(candidates: list[Candidate]) -> list[Candidate]:
@@ -452,21 +468,22 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
     # 会让覆盖率统计凭空多出「渠道」。
     evidence = cached_metadata(metadata_root, code)
     candidates = list(prior_candidates) + list(evidence.candidates)
+    is_fc2 = code.upper().startswith("FC2-PPV-")
     # 有成功快照时不重复打 r18；失败快照不算证据，仍允许联网刷新。
-    if "r18dev" not in evidence.sources:
+    if not is_fc2 and "r18dev" not in evidence.sources:
         candidates += r18_images(transport, code)
         time.sleep(delay)
     # MGS 与 Prestige 都是 Prestige 集团的官方供给面。只在本地厂牌证据命中时
     # 查询，避免把全库 960 个番号无差别打到两个站点。
-    if _is_prestige(evidence):
+    if not is_fc2 and _is_prestige(evidence):
         candidates += prestige_group_images(transport, code)
         time.sleep(delay)
-    elif "mgstage" in evidence.sources:
+    elif not is_fc2 and "mgstage" in evidence.sources:
         candidates += mgstage_images(transport, code)
         time.sleep(delay)
     candidates = _unique_candidates([
         candidate for candidate in candidates
-        if not THUMBNAIL.search(candidate.url)
+        if not THUMBNAIL.search(candidate.url) or FC2_HIRES.match(candidate.url)
     ])
     # 升级模式已在成功日志中量过的精确 URL，若像素不大于当前本地图，就不再
     # 发 Range 请求。其他 URL 和尺寸未知的候选仍完整探测，不改变择优语义。
@@ -589,7 +606,7 @@ def restore_logged_successes(transport: HttpTransport, log: Path, root: Path,
 
 def pending(database: Path, root: Path, only_shaped: bool,
             location: str | None = None, *, existing: bool = False,
-            max_width: int = 0) -> list[str]:
+            max_width: int = 0, fc2_only: bool = False) -> list[str]:
     connection = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True)
     try:
         location_sql = " AND location=?" if location else ""
@@ -604,6 +621,8 @@ def pending(database: Path, root: Path, only_shaped: bool,
         connection.close()
     result = []
     for code, _count in rows:
+        if fc2_only and not str(code).upper().startswith("FC2"):
+            continue
         # 判形态必须看原值。`normalise_code_key` 会补上分隔符，把 `RAIKUN325`
         # （myfans 账号名，241 个文件）改写成 `RAIKUN-325` 并通过形态检查，
         # 于是队列里全是查不到的账号名。判据与 web_contract 共用一份实现。
@@ -683,7 +702,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--metadata-root", type=Path, default=DEFAULT_METADATA_ROOT,
         help="Javinizer-Go 原始快照目录；先离线复用成功证据，再补联网来源",
     )
+    parser.add_argument("--fc2-metadata-log", type=Path, default=DEFAULT_FC2_METADATA_LOG,
+                        help="fc2cmadb 文章封面证据，只对 --fc2-only 生效")
     parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--code", help="只处理一个已归一化番号，用于定点重试")
     parser.add_argument("--delay", type=float, default=1.5)
     parser.add_argument("--min-free", type=float, default=40.0,
                         help="系统盘最低可用 GiB；运行中每隔一段时间复查")
@@ -700,6 +722,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="升级模式只重探不超过此宽度的已有封套；0 表示全部")
     parser.add_argument("--all-codes", action="store_true",
                         help="连 FC2/日期番号一起试；默认只跑片商与素人形态")
+    parser.add_argument("--fc2-only", action="store_true",
+                        help="只用 fc2cmadb 已存证据抓 FC2 官方 CDN 封面")
     parser.add_argument("--audit", action="store_true",
                         help="只读输出封面数量、缺失、损坏和尺寸分布，不联网不写文件")
     return parser
@@ -746,6 +770,9 @@ def run(args: argparse.Namespace) -> int:
     if args.restore_successes and args.upgrade_existing:
         print("[stop] --restore-successes 与 --upgrade-existing 不能同时使用")
         return 2
+    if args.fc2_only and args.all_codes:
+        print("[stop] --fc2-only 与 --all-codes 不能同时使用")
+        return 2
     args.out.mkdir(parents=True, exist_ok=True)
     guard = DiskGuard(system_volume(), args.min_free, args.disk_check_secs)
     try:
@@ -770,9 +797,13 @@ def run(args: argparse.Namespace) -> int:
         return 2 if result["failed"] else 0
 
     todo = pending(
-        args.db, args.out, not args.all_codes, args.location,
+        args.db, args.out, not args.all_codes and not args.fc2_only, args.location,
         existing=args.upgrade_existing, max_width=args.upgrade_max_width,
+        fc2_only=args.fc2_only,
     )
+    if args.code:
+        wanted = normalise_code_key(args.code)
+        todo = [code for code in todo if code == wanted]
     skipped = set()
     if not args.upgrade_existing and not args.retry_misses:
         skipped = settled_misses(args.log) & set(todo)
@@ -792,6 +823,7 @@ def run(args: argparse.Namespace) -> int:
     # 日志是整份重写：这轮只跑 pikpak 或只跑 --limit 时，未选中的旧记录也必须保留；
     # 只删除本轮会重新生成的番号。否则一次来源小批次就会抹掉其他来源的复核证据。
     previous_rows = logged_rows(args.log)
+    fc2_candidates = fc2_cover_candidates(args.fc2_metadata_log) if args.fc2_only else {}
     rows: list[dict] = [
         {field: row.get(field, "") for field in FIELDS}
         for row in previous_rows
@@ -818,7 +850,9 @@ def run(args: argparse.Namespace) -> int:
                     except (UnidentifiedImageError, OSError):
                         pass
                 previous = logged_success_evidence(previous_rows, code)
-                prior = (previous[0],) if previous is not None else ()
+                prior = tuple(candidate for candidate in (
+                    fc2_candidates.get(code), previous[0] if previous is not None else None,
+                ) if candidate is not None)
                 known_sizes = ({previous[0].url: previous[1]}
                                if previous is not None else {})
                 winner, (width, height), data = best_cover(

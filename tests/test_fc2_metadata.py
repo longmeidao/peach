@@ -2,17 +2,24 @@
 """fc2cmadb 评论解析。样本取自 3312576 等页面上的真实评论。"""
 from __future__ import annotations
 
+import json
+import sqlite3
+import tempfile
 import unittest
+from pathlib import Path
 
 from scripts.fetch_fc2_metadata import (
     backfill,
     collection_parts,
     harvest,
     harvest_rows,
+    high_resolution_cover_url,
+    metadata_candidate_rows,
     page_comments,
     parse_equivalences,
     parse_performers,
     summarise,
+    translated_tags,
 )
 
 #: 站上评论是 CRLF 换行，样本照原样保留。
@@ -119,6 +126,11 @@ class SummariseTest(unittest.TestCase):
         self.assertEqual(row["is_collection"], "")
         self.assertEqual(row["cover_url"], "https://example.invalid/c.png")
 
+    def test_upgrades_fc2_listing_thumbnail_to_the_measured_1200px_rendition(self):
+        url = "https://contents-thumbnail2.fc2.com/w276/storage.example/cover.jpg"
+        self.assertEqual(high_resolution_cover_url(url),
+                         "https://contents-thumbnail2.fc2.com/w1200/storage.example/cover.jpg")
+
     def test_ranks_performers_by_how_many_comments_name_them(self):
         props = self._props([{"id": 1, "body": "2355314　真夏"},
                              {"id": 2, "body": "2355314　真夏"},
@@ -126,6 +138,46 @@ class SummariseTest(unittest.TestCase):
         row = summarise("2355314", props)
         self.assertEqual(row["performers"], "真夏 ひかり")
         self.assertEqual(row["performer_votes"], "真夏:2 ひかり:1")
+
+
+class MetadataCandidateTest(unittest.TestCase):
+    def test_translates_only_reviewed_fc2_tags_and_deduplicates_synonyms(self):
+        self.assertEqual(
+            translated_tags("素人 フェラ フェラチオ 口内発射 未知"),
+            ["素人", "口交", "口爆"],
+        )
+
+    def test_article_title_tags_and_cover_evidence_enter_the_unified_review_shape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            database = root / "ledger.db"
+            connection = sqlite3.connect(database)
+            connection.executescript("""
+                CREATE TABLE asset(
+                  id INTEGER PRIMARY KEY,medium TEXT,code TEXT,size INTEGER,
+                  catalog_title TEXT,disposal TEXT
+                );
+                CREATE TABLE asset_tag(asset_id INTEGER,tag TEXT);
+                INSERT INTO asset VALUES(1,'video','FC2-PPV-3701252',1500000000,NULL,NULL);
+            """)
+            connection.commit(); connection.close()
+            source = root / "fc2-candidate-log.csv"
+            rows = metadata_candidate_rows([{
+                "code": "FC2 3701252", "video_id": "3701252", "result": "取得",
+                "title": "作品标题", "tags": "素人 フェラ 口内発射",
+                "duration": "46:44", "cover_url": "https://example.invalid/cover.jpg",
+            }], database, raw_snapshot=source, fetched_at="2026-08-19T00:00:00Z")
+            self.assertEqual({row["field"] for row in rows}, {"title", "tags"})
+            title = next(row for row in rows if row["field"] == "title")
+            candidate = json.loads(title["candidates_json"])[0]
+            self.assertEqual(candidate["provider"], "fc2cmadb")
+            self.assertEqual(candidate["source"], "fc2")
+            self.assertTrue(candidate["official"])
+            self.assertEqual(candidate["catalog_evidence"]["cover_url"]["value"],
+                             "https://example.invalid/cover.jpg")
+            tag_row = next(row for row in rows if row["field"] == "tags")
+            tags = json.loads(tag_row["candidates_json"])[0]
+            self.assertEqual(tags["value"], ["素人", "口交", "口爆"])
 
 
 class HarvestTest(unittest.TestCase):

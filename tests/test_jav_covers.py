@@ -165,6 +165,36 @@ class ContentIdTests(unittest.TestCase):
 
 
 class OfficialSourceTests(unittest.TestCase):
+    def test_fc2_archive_cover_is_upgraded_to_the_measured_hires_rendition(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "fc2-candidate-log.csv"
+            with path.open("w", encoding="utf-8-sig", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=[
+                    "code", "result", "is_collection", "cover_url",
+                ])
+                writer.writeheader()
+                writer.writerow({
+                    "code": "FC2 3701252", "result": "取得", "is_collection": "",
+                    "cover_url": "https://contents-thumbnail2.fc2.com/w276/x/cover.jpg",
+                })
+            candidate = covers.fc2_cover_candidates(path)["FC2-PPV-3701252"]
+        self.assertEqual(candidate.url,
+                         "https://contents-thumbnail2.fc2.com/w1200/x/cover.jpg")
+        self.assertEqual(candidate.referer, "https://fc2cmadb.com/")
+
+    def test_fc2_hires_candidate_skips_unrelated_jav_discovery(self):
+        url = "https://contents-thumbnail2.fc2.com/w1200/x/cover.jpg"
+        candidate = covers.Candidate("contents-thumbnail2.fc2.com", url,
+                                     "https://fc2cmadb.com/")
+        with patch.object(covers, "r18_images") as r18:
+            winner, size, _body = covers.best_cover(
+                transport_for({url: (200, jpeg(1200, 1361))}), "FC2-PPV-3701252", 0,
+                prior_candidates=(candidate,),
+            )
+        r18.assert_not_called()
+        self.assertEqual(winner, candidate)
+        self.assertEqual(size, (1200, 1361))
+
     def test_cached_javinizer_cover_and_content_id_are_reused_offline(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -512,6 +542,22 @@ class RestoreLoggedSuccessTests(unittest.TestCase):
 
 
 class PendingCoverTests(unittest.TestCase):
+    def test_fc2_only_queue_excludes_every_other_code_shape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            database = root / "ledger.db"
+            connection = sqlite3.connect(database)
+            connection.execute("CREATE TABLE asset(code TEXT, medium TEXT, location TEXT)")
+            connection.executemany(
+                "INSERT INTO asset(code,medium,location) VALUES(?, 'video', '115')",
+                [("ABW-232",), ("FC2-PPV-3701252",), ("RAIKUN325",)],
+            )
+            connection.commit(); connection.close()
+            self.assertEqual(
+                covers.pending(database, root / "covers", False, fc2_only=True),
+                ["FC2-PPV-3701252"],
+            )
+
     def test_queue_can_be_scoped_to_pikpak(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
