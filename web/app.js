@@ -2736,11 +2736,22 @@ function renderFollow(){
       :emptyState('rss','还没有关注任何来源','添加作者或订阅来源后，更新会集中显示在这里。',{actions:'<button class="fbtn primary" data-follow-manage>添加关注</button>'})}</div>
     ${followData.has_more||sources.some(source=>source.can_backfill)?`<div class="followpagination">
       ${followData.has_more?`<span class="followpageaction"><button class="fbtn" data-follow-more>${icon('refresh-cw')}加载更多</button>
-        <span class="fmeta">已显示 ${visible.length.toLocaleString()} 项</span></span>`:''}
+        <span class="fmeta">已显示 ${visible.length.toLocaleString()} / ${
+        (counts[followFilter]||0).toLocaleString()} 项</span></span>`:''}
       ${sources.some(source=>source.can_backfill)?`<span class="followpageaction"><button class="fbtn" data-follow-older>${icon('history')}抓更早的一页</button>
         <span class="fmeta">${esc(followBackfillState(sources))}</span></span>`:''}</div>`:''}</div>`;
+  /* 滚到底自动续取，按钮只是兜底（观察器不可用、或用户用键盘跳到底部）。
+     照搬实体合集那套：按钮观察自己，进视口就触发——用户不必先看懂
+     「未看 3036」和「已显示 152」是两个口径，一直往下滚就是了。 */
   const more=$('#stats').querySelector('[data-follow-more]');
-  if(more)more.onclick=()=>loadMoreFollow(more);
+  if(more){
+    more.onclick=()=>loadMoreFollow(more);
+    more._observer?.disconnect();
+    more._observer=new IntersectionObserver(
+      entries=>{if(entries.some(x=>x.isIntersecting))loadMoreFollow(more)},
+      {rootMargin:'320px'});
+    more._observer.observe(more);
+  }
   wireFollowItems();
   wireFollowOlder();
   wireDrag($('#stats').querySelector('.followauthors'));

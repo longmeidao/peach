@@ -34,8 +34,13 @@ class ParallelGenerationTests(unittest.TestCase):
     """两个资产的预览生成必须能同时进行。
 
     改成分片锁之前这里是一把模块级全局锁：任何一个资产在生成，其他资产全排队，
-    而 `avatar()` 持锁要连跑 6 次 ffmpeg（每次 20 秒上限）。用 Barrier 断言并行——
-    一旦退回串行，第一个线程会在 Barrier 上等到超时，测试直接失败。
+    而 `avatar()` 持锁要连跑 6 次 ffmpeg（每次 20 秒上限）。
+
+    断言方式换过两版，都栽在同一件事上——不要让"谁先到"决定分工：
+    第一版用 Barrier 双向等待，满载时两边一起超时；第二版用
+    `if not first_inside.is_set()` 判断谁是第一个，但那不是原子的，两个线程可能
+    同时判成第一个、双双挂起等待放行，于是第二个信号永远不来。这次按 asset id
+    静态分工：LEFT 负责占住锁，RIGHT 负责证明它能在此期间进来，没有竞态可言。
     """
 
     def setUp(self):
@@ -76,19 +81,19 @@ class ParallelGenerationTests(unittest.TestCase):
         raise AssertionError("找不到落在不同锁片上的两个资产 id")
 
     def test_two_assets_do_not_queue_behind_each_other(self):
-        # 不用 Barrier 双向等待：全量跑的时候机器是满载的，双向等待里任何一边被调度
-        # 器延迟都会让两边一起超时，失败信息还看不出是并发坏了还是机器慢。
-        # 改成单向信号——A 进去后挂住，B 必须能在这期间进来，然后才放 A 走。
-        first_inside, second_inside = threading.Event(), threading.Event()
-        release_first = threading.Event()
+        # 分工按 asset id 定死，不看谁先到：LEFT 占住自己那把锁不放，
+        # RIGHT 必须能在这期间跑完自己的生成。锁真的分片了 RIGHT 才进得来。
+        holder_inside, other_done = threading.Event(), threading.Event()
+        release_holder = threading.Event()
         timeout = 15
 
         def fake_run(command):
-            if not first_inside.is_set():
-                first_inside.set()
-                release_first.wait(timeout)
+            target = Path(command[-1]).name
+            if target.startswith(f"{self.LEFT}_"):
+                holder_inside.set()
+                release_holder.wait(timeout)
             else:
-                second_inside.set()
+                other_done.set()
             Path(command[-1]).write_bytes(b"jpg")
 
         done = []
@@ -101,15 +106,15 @@ class ParallelGenerationTests(unittest.TestCase):
             ]
             for worker in workers:
                 worker.start()
-            self.assertTrue(first_inside.wait(timeout), "第一个生成没有开始")
-            entered = second_inside.wait(timeout)
-            release_first.set()
+            self.assertTrue(holder_inside.wait(timeout), "占锁的那个生成没有开始")
+            entered = other_done.wait(timeout)
+            release_holder.set()
             for worker in workers:
                 worker.join(timeout)
 
         self.assertTrue(
             entered,
-            "第二个资产在第一个持锁期间进不来——生成锁又变回全局串行了",
+            "另一个资产在这一个持锁期间进不来——生成锁又变回全局串行了",
         )
         self.assertEqual(len(done), 2, "两个生成都要完成")
         self.assertTrue(all(path.is_file() for path in done))
