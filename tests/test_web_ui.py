@@ -173,6 +173,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_reviewed_tag_labels_do_not_add_machine_translated_suffixes(self):
         self.assertPageLacks("'深喉':'深喉咙'")
+        self.assertPageContains("'足系':'美腿'")
         self.assertPageContains('const tagLabel=tag=>TAG_DISPLAY_NAMES[tag]||tag;')
 
     def test_entity_routes_are_semantic_and_not_model_shaped(self):
@@ -243,6 +244,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_detail_identity_groups_by_kind_with_the_label_on_top(self):
         # 逐行一个名字在共演作品上会把整个侧栏撑满，左侧还重复一列标签。
         self.assertPageContains("const idGroup=(label,kind,list,extra='')=>list.length")
+        self.assertPageContains('<section class="idgroup idgroup-${kind}">')
         self.assertPageContains('<h5 class="idlabel">${label}</h5>')
         self.assertPageContains(".idrow{display:flex;flex-wrap:wrap")
         self.assertPageContains('<div class="identityprimary">${primaryIdentity}</div>')
@@ -2333,10 +2335,14 @@ class WebUiSourceTests(unittest.TestCase):
         # 省略号仍然要有：名字长了得截断，只是不能连下伸部一起裁掉。
         self.assertIn("text-overflow:ellipsis", rule)
         self.assertIn("text-align:left", rule, "文字和头像共用左边缘")
+        self.assertPageContains(".idgroup-performer .idname{text-align:center}")
+        self.assertPageContains(".idgroup-performer .idcell{align-items:center}")
 
     def test_the_group_label_lines_up_with_the_avatar_below_it(self):
         """组标题、图标和名字都贴详情内容区左边缘。"""
         self.assertPageContains(".idgroup{--id-cell:62px;--id-face:46px}")
+        self.assertPageContains(".idgroup-performer{--id-cell:58px}")
+        self.assertPageContains(".idgroup-performer .idrow{gap:10px}")
         self.assertPageContains(".idlabel{margin:0 0 7px")
         self.assertPageContains("align-items:flex-start;gap:5px;width:var(--id-cell,62px)")
         self.assertPageContains("width:var(--id-cell,62px)")
@@ -2344,6 +2350,9 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_detail_source_icon_starts_at_the_content_edge(self):
         self.assertPageContains(".detailtitle>.srcbig{place-items:start;width:17px;margin-top:2px}")
+
+    def test_official_tag_marker_uses_regular_weight(self):
+        self.assertPageContains(".detailtag .tagfilter small{margin-left:5px;color:var(--accent);font-size:var(--fs-xs);font-weight:400}")
     def test_editions_collapse_into_one_card_with_a_version_badge(self):
         """同番号的几个版次合成一张卡，角标写清有几个版本。"""
         self.assertPageContains("function collapseEditionGroups(items){")

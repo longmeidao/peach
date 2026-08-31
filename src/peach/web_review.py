@@ -62,6 +62,9 @@ CANDIDATE_PREFIX = {
     "fc2_similarity": "fc2-similarity-candidate-",
     "video_endcards": "video-endcard-candidate-",
 }
+ADDITIONAL_CANDIDATE_FILES = {
+    "metadata_fields": ("fc2-metadata-field-candidates.csv",),
+}
 # 每类候选的稳定主键列。缺这一列的行直接跳过并计数，绝不退化成行号——
 # 行号会在 CSV 重排后把历史决定悄悄挪到别的条目上。
 CANDIDATE_KEY = {
@@ -124,19 +127,27 @@ def latest_candidate_file(category: str, root: Path | None = None) -> Path | Non
 def read_candidates(category: str, root: Path | None = None) -> tuple[list[dict], str | None, int]:
     """读取最新一批候选，返回（有稳定主键的行, 文件名, 被跳过的行数）。"""
     path = latest_candidate_file(category, root)
-    if path is None or not path.is_file():
+    base = root or GENERATED_DIR
+    paths = ([path] if path is not None and path.is_file() else []) + [
+        base / name for name in ADDITIONAL_CANDIDATE_FILES.get(category, ())
+        if (base / name).is_file() and (path is None or base / name != path)
+    ]
+    if not paths:
         return [], None, 0
     key_column = CANDIDATE_KEY[category]
-    raw = read_rows(path)
-    rows, skipped = [], 0
-    for row in raw:
-        key = str(row.get(key_column) or "").strip()
-        if not key:
-            skipped += 1
-            continue
-        row["item_key"] = key
-        rows.append(row)
-    return rows, path.name, skipped
+    rows, skipped, seen = [], 0, set()
+    for candidate_path in paths:
+        for row in read_rows(candidate_path):
+            key = str(row.get(key_column) or "").strip()
+            if not key:
+                skipped += 1
+                continue
+            if key in seen:
+                continue
+            seen.add(key)
+            row["item_key"] = key
+            rows.append(row)
+    return rows, "; ".join(candidate_path.name for candidate_path in paths), skipped
 
 
 def _creator_entity_ids(connection, creators: list[str]) -> dict[str, int]:
@@ -622,7 +633,8 @@ def _apply_metadata_candidate(connection, group: dict, candidate: dict, now: str
     if not 0 <= confidence <= 1:
         raise ValueError("字段候选置信度越界")
     metadata = {
-        "provider": "javinizer-go", "source": source, "source_url": candidate.get("source_url"),
+        "provider": candidate.get("provider") or "javinizer-go", "source": source,
+        "source_url": candidate.get("source_url"),
         "provider_id": candidate.get("provider_id"), "content_id": candidate.get("content_id"),
         "raw_snapshot": candidate.get("raw_snapshot"), "review_item": group["item_key"],
         "candidate_key": candidate_key,

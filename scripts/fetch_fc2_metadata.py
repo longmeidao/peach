@@ -35,6 +35,7 @@ CSV、以及原始评论 JSONL。留原文是因为下面这些正则一定会�
 from __future__ import annotations
 
 import argparse
+import hashlib
 import http.cookiejar
 import json
 import re
@@ -44,12 +45,14 @@ from pathlib import Path
 
 import httpx
 
-from peach.review_csv import write_rows
+from peach.catalog_rules import normalise_code_key
+from peach.review_csv import read_rows, write_rows
 from peach.config import DATABASE_PATH, GENERATED_DIR
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 ARTICLE_URL = "https://fc2cmadb.com/articles/{video_id}"
+FC2_COVER_WIDTH = 1200
 #: Inertia 把整个 props 树放在这个 script 标签里，正文 HTML 反而是空壳。
 PAGE_JSON = re.compile(r'type="application/json">(\{.*?\})</script>', re.S)
 #: FC2 的 video_id 是 6-8 位纯数字，短于这个长度的多半是楼层号或年份。
@@ -66,6 +69,37 @@ ARTICLE_LINK = re.compile(r"https?://[\w.]*fc2(?:ppvdb|cmadb)\.com/articles/(\d{
 FULLWIDTH = str.maketrans("＝－＿０１２３４５６７８９", "=-_0123456789")
 #: 判定合集所需的最少分片映射数。一两条可能只是同一段内容的重复投稿。
 COLLECTION_MIN_PARTS = 3
+
+# fc2cmadb 保留的是 FC2 商品页标签原文。只有能无歧义投影到 Peach
+# 现有词表的值才进入复核候选；其余仍留在原始 FC2 CSV 里，不猜翻译。
+FC2_TAG_MAP = {
+    "中出し": "中出内射", "生ハメ": "中出内射", "素人": "素人",
+    "無修正": "无码", "フェラ": "口交", "フェラチオ": "口交", "口交": "口交",
+    "blowjob": "口交", "Oral": "口交", "口内発射": "口爆", "口内射精": "口爆",
+    "スレンダー": "苗条", "アナル": "肛交", "美乳": "美乳", "巨乳": "巨乳",
+    "可愛い": "高颜值", "かわいい": "高颜值", "美女": "高颜值",
+    "美人": "高颜值", "美少女": "高颜值", "パイパン": "白虎",
+    "顔出し": "露脸", "制服": "制服", "コスプレ": "角色扮演",
+    "露出": "户外露出", "野外露出": "户外露出", "女子大生": "学生",
+    "大学生": "学生", "JD": "学生", "女子校生": "学生", "美尻": "美臀",
+    "お尻": "美臀", "手コキ": "手交", "車内": "车内", "野外": "户外",
+    "3P": "3P多人", "騎乗位": "骑乘", "美脚": "美腿", "人妻": "人妻",
+    "バック": "后入", "潮吹き": "潮吹", "ごっくん": "吞精", "オナニー": "自慰",
+    "流出": "泄密流出", "調教": "调教", "爆乳": "爆乳", "NTR": "绿帽NTR",
+    "痴女": "痴女", "熟女": "熟女", "パイズリ": "乳交",
+}
+
+METADATA_POLICY_VERSION = "fc2cmadb-article-v1"
+METADATA_FIELDS = (
+    "item_key", "code", "query", "field", "field_label", "current_value",
+    "candidates_json", "source_count", "source_profile", "policy_version",
+    "status", "size_gb", "videos", "fetched_at",
+)
+
+
+def high_resolution_cover_url(url: str) -> str:
+    """Use FC2's measured 1200px CDN rendition instead of the 276px listing thumb."""
+    return re.sub(r"(/w)\d+(/)", rf"\g<1>{FC2_COVER_WIDTH}\2", str(url or ""), count=1)
 
 
 def load_cookies(path: Path) -> http.cookiejar.MozillaCookieJar:
@@ -205,7 +239,9 @@ def summarise(video_id: str, props: dict) -> dict:
         "collection_parts": str(len(parts)) if is_collection else "",
         "equivalents": " ".join(aliases),
         # 合集封面套给每个分片会让 21 个不同内容显示同一张图，所以留空。
-        "cover_url": "" if is_collection else (article.get("image_url") or ""),
+        "cover_url": "" if is_collection else high_resolution_cover_url(
+            article.get("image_url") or ""
+        ),
         "note": (f"合集，{len(parts)} 个分片各自独立，封面不下发" if is_collection
                  else ("FC2 官方页已下架" if article.get("not_found") else "")),
     }
@@ -278,6 +314,88 @@ FIELDS = ("code", "video_id", "result", "title", "release_date", "duration",
           "equivalents", "cover_url", "note")
 
 
+def _candidate_key(code: str, field: str, value: object) -> str:
+    canonical = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(f"{code}\0{field}\0fc2\0{canonical}".encode()).hexdigest()[:20]
+    return f"{code}:{field}:fc2:{digest}"
+
+
+def translated_tags(raw: str) -> list[str]:
+    """Conservatively project archived FC2 labels into Peach's reviewed taxonomy."""
+    return list(dict.fromkeys(
+        FC2_TAG_MAP[tag] for tag in str(raw or "").split() if tag in FC2_TAG_MAP
+    ))
+
+
+def metadata_candidate_rows(rows: list[dict], database: Path, *, raw_snapshot: Path,
+                            fetched_at: str) -> list[dict]:
+    """Turn archived article facts into the normal review queue without writing ledger."""
+    connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
+    connection.row_factory = sqlite3.Row
+    output = []
+    try:
+        for row in rows:
+            if row.get("result") != "取得":
+                continue
+            code = normalise_code_key(str(row.get("code") or ""))
+            assets = connection.execute(
+                "SELECT id,size,catalog_title FROM asset WHERE medium='video' "
+                "AND upper(trim(code))=upper(?) AND (disposal IS NULL OR disposal<>'trash')",
+                (code,),
+            ).fetchall()
+            if not assets:
+                continue
+            current_tags = sorted({str(item[0]).strip() for item in connection.execute(
+                "SELECT DISTINCT t.tag FROM asset a JOIN asset_tag t ON t.asset_id=a.id "
+                "WHERE a.medium='video' AND upper(trim(a.code))=upper(?) "
+                "AND t.tag IS NOT NULL AND trim(t.tag)<>''",
+                (code,),
+            )})
+            source_url = ARTICLE_URL.format(video_id=row.get("video_id") or "")
+            evidence = {}
+            for field, value in (
+                ("runtime", row.get("duration")),
+                ("cover_url", high_resolution_cover_url(row.get("cover_url") or "")),
+            ):
+                if value:
+                    evidence[field] = {"value": value, "display_value": str(value), "warnings": []}
+            warnings = ["FC2CMADB 归档镜像，需人工复核"]
+            values = []
+            title = " ".join(str(row.get("title") or "").split())
+            if title:
+                values.append(("title", "标题", title, title,
+                               next((str(item["catalog_title"] or "").strip()
+                                     for item in assets if item["catalog_title"]), "")))
+            tags = translated_tags(str(row.get("tags") or ""))
+            if tags:
+                values.append(("tags", "内容标签", tags, "、".join(tags),
+                               "、".join(current_tags)))
+            for field, label, value, display_value, current in values:
+                candidate = {
+                    "candidate_key": _candidate_key(code, field, value),
+                    "provider": "fc2cmadb", "source": "fc2", "source_url": source_url,
+                    "confidence": 0.8, "profile": "fc2", "policy_version": METADATA_POLICY_VERSION,
+                    "field_rank": 1, "source_kind": "official_mirror", "official": True,
+                    "provider_id": str(row.get("video_id") or ""),
+                    "content_id": str(row.get("video_id") or ""),
+                    "value": value, "display_value": display_value, "warnings": warnings,
+                    "catalog_evidence": evidence, "raw_snapshot": str(raw_snapshot),
+                }
+                output.append({
+                    "item_key": f"{code}:{field}", "code": code, "query": code,
+                    "field": field, "field_label": label, "current_value": current,
+                    "candidates_json": json.dumps([candidate], ensure_ascii=False,
+                                                   separators=(",", ":")),
+                    "source_count": 1, "source_profile": "fc2",
+                    "policy_version": METADATA_POLICY_VERSION, "status": "candidate",
+                    "size_gb": round(sum(int(item["size"] or 0) for item in assets) / 1e9, 2),
+                    "videos": len(assets), "fetched_at": fetched_at,
+                })
+    finally:
+        connection.close()
+    return output
+
+
 def pending(database: Path, limit: int) -> list[tuple[str, str]]:
     """库里的 FC2 资产，按 (code, video_id) 去重。"""
     connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
@@ -304,7 +422,7 @@ def _write_csv(path: Path, fields: tuple[str, ...], rows: list[dict]) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=DATABASE_PATH)
-    parser.add_argument("--cookies", type=Path, required=True,
+    parser.add_argument("--cookies", type=Path,
                         help="Netscape 格式 cookie 文件，放沙盒，别入仓")
     parser.add_argument("--log", type=Path,
                         default=GENERATED_DIR / "fc2-candidate-log.csv")
@@ -314,12 +432,28 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--raw", type=Path,
                         default=GENERATED_DIR / "fc2-comments-raw.jsonl",
                         help="原始评论存档；解析规则以后改了不必重爬")
+    parser.add_argument("--metadata-log", type=Path,
+                        default=GENERATED_DIR / "fc2-metadata-field-candidates.csv",
+                        help="标题与标签的统一元数据复核候选")
+    parser.add_argument("--rebuild-metadata-only", action="store_true",
+                        help="不联网，只用既有 --log 重建元数据候选")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--delay", type=float, default=2.0)
     return parser
 
 
 def run(args: argparse.Namespace) -> int:
+    if args.rebuild_metadata_only:
+        rows = read_rows(args.log)
+        fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(args.log.stat().st_mtime))
+        candidates = metadata_candidate_rows(
+            rows, args.db, raw_snapshot=args.log, fetched_at=fetched_at,
+        )
+        _write_csv(args.metadata_log, METADATA_FIELDS, candidates)
+        print(f"完成：{len(candidates)} 个 FC2 元数据字段候选 -> {args.metadata_log}")
+        return 0
+    if args.cookies is None:
+        raise SystemExit("联网抓取必须传 --cookies；离线重建请用 --rebuild-metadata-only")
     todo = pending(args.db, args.limit)
     owned = {video_id for _, video_id in todo}
     jar = load_cookies(args.cookies)
@@ -359,6 +493,10 @@ def run(args: argparse.Namespace) -> int:
             # 每条都落盘：上次抓取死在半路时进度全丢，重来一遍是三小时。
             _write_csv(args.log, FIELDS, backfill(rows, collected))
             _write_csv(args.harvest, HARVEST_FIELDS, harvest_rows(collected, owned))
+            _write_csv(args.metadata_log, METADATA_FIELDS, metadata_candidate_rows(
+                backfill(rows, collected), args.db, raw_snapshot=args.log,
+                fetched_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            ))
             time.sleep(args.delay)
     raw_log.close()
     extra = sum(1 for vid in collected if vid not in owned)

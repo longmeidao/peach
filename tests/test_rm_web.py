@@ -182,24 +182,29 @@ class WebDataTests(unittest.TestCase):
         self.assertNotIn("path", result["items"][0])
         self.assertNotIn("snapshot_path", result["items"][0])
 
-    def test_item_detail_marks_javinizer_official_tags(self):
+    def test_item_detail_marks_javinizer_and_fc2_official_tags(self):
         con = sqlite3.connect(self.db_path)
-        con.execute(
+        con.executemany(
             "INSERT INTO asset_tag(asset_id,tag,confidence,source) "
-            "VALUES(1,'官方标签',0.9,'javinizer:r18dev:tag')"
+            "VALUES(1,?,?,?)",
+            [("官方标签", 0.9, "javinizer:r18dev:tag"),
+             ("FC2 官方标签", 0.8, "javinizer:fc2:tag")],
         )
-        con.execute(
+        con.executemany(
             "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-            "VALUES(991,'tag','官方标签','官方标签')"
+            "VALUES(?,'tag',?,?)",
+            [(991, "官方标签", "官方标签"), (992, "FC2 官方标签", "fc2 官方标签")],
         )
-        con.execute(
+        con.executemany(
             "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
-            "VALUES(1,991,'tag','javinizer:r18dev:tag',0.9)"
+            "VALUES(1,?,'tag',?,?)",
+            [(991, "javinizer:r18dev:tag", 0.9),
+             (992, "javinizer:fc2:tag", 0.8)],
         )
         con.commit(); con.close()
-        tag = next(tag for tag in rm_web.q_item(self.contract, 1)["tags"]
-                   if tag["k"] == "官方标签")
-        self.assertTrue(tag["official"])
+        tags = {tag["k"]: tag for tag in rm_web.q_item(self.contract, 1)["tags"]}
+        self.assertTrue(tags["官方标签"]["official"])
+        self.assertTrue(tags["FC2 官方标签"]["official"])
 
     def test_multiple_tags_support_all_and_broad_any_matching(self):
         strict = rm_web.q_items(

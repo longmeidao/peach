@@ -49,6 +49,8 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(category_map["4K"], "4K")
         self.assertEqual(category_map["Digital Mosaic"], "有码")
         self.assertEqual(category_map["Cowgirl"], "骑乘")
+        self.assertEqual(category_map["Foot Fetish"], "美腿")
+        self.assertEqual(category_map["Shaved Pussy"], "白虎")
         self.assertNotIn("Featured Actress", category_map,
                          "来源营销分类不是内容标签，不能因为官方给了就直接入库")
 

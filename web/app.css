@@ -547,6 +547,8 @@ body.photolight-open{overflow:hidden}
 .idrow{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:flex-start}
 /* 组标题、头像和名字共用左边缘；详情栏里的所有身份信息都从内容区起点对齐。 */
 .idgroup{--id-cell:62px;--id-face:46px}
+.idgroup-performer{--id-cell:58px}
+.idgroup-performer .idrow{gap:10px}
 .idcell{display:flex;flex-direction:column;align-items:flex-start;gap:5px;width:var(--id-cell,62px);
   border:0;background:transparent;color:inherit;padding:0;cursor:pointer}
 .idcell[hidden]{display:none}
@@ -560,6 +562,8 @@ body.photolight-open{overflow:hidden}
    截省略号，于是「Prestige」的 g 尾巴被切掉——用户实测看到的就是这个。 */
 .idname{font-size:var(--fs-xs);line-height:1.5;text-align:left;width:100%;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
+.idgroup-performer .idcell{align-items:center}
+.idgroup-performer .idname{text-align:center}
 .idcell:not(.entitylink){cursor:default}
 .idcell.entitylink:hover .idface{box-shadow:0 0 0 2px var(--tungsten)}
 .idcell.entitylink:hover .idname{color:var(--ink)}
@@ -1283,7 +1287,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
   background:color-mix(in srgb,var(--surface) 82%,var(--ground));overflow:hidden;min-height:30px}
 .detailtag button{border:0;background:transparent;color:var(--ink-2);cursor:pointer;height:28px}
 .detailtag .tagfilter{padding:3px 5px 3px 11px}.detailtag .tagremove{width:28px;padding:0;display:grid;place-items:center;color:var(--muted)}
-.detailtag .tagfilter small{margin-left:5px;color:var(--accent);font-size:var(--fs-xs);font-weight:600}
+.detailtag .tagfilter small{margin-left:5px;color:var(--accent);font-size:var(--fs-xs);font-weight:400}
 .detailtag.official{border-color:color-mix(in srgb,var(--accent) 42%,var(--line));background:color-mix(in srgb,var(--accent) 7%,transparent)}
 .detailtag .tagremove:hover{color:var(--drop);background:color-mix(in srgb,var(--drop) 12%,transparent)}
 .detailtag svg,.tagplus svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
