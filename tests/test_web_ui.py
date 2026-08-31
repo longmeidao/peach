@@ -1572,6 +1572,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("section.querySelector('h3').textContent=`视频 ·")
         self.assertPageLacks("的馆藏作品 ·")
 
+    def test_jav_titles_hide_media_suffix_and_emphasize_the_code(self):
+        self.assertPageContains("const JAV_MEDIA_SUFFIX=/\\.(?:mp4|mkv|avi|wmv|mov|m4v|webm")
+        self.assertPageContains("return it?.is_jav?name.replace(JAV_MEDIA_SUFFIX,''):name")
+        self.assertPageContains('return `<strong class="javcode">${esc(code)}</strong>')
+        self.assertPageContains('<button class="t cardtitle" data-open>${shownTitle}</button>')
+        self.assertPageContains('<div class="stitle">${javTitleHtml(it)}</div>')
+        self.assertPageContains("$('#tokTitle').textContent=javDisplayName(it)")
+        self.assertPageContains("<b data-middle-truncate>${esc(javDisplayName(x))}</b>")
+
     def test_remote_hover_previews_do_not_stream_full_media(self):
         self.assertPageContains("if(it.location!=='local')")
         self.assertPageContains("el.dataset.hoverMode=it.location==='local'?'video':'frames'")
@@ -1966,7 +1975,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_detail_title_keeps_source_and_file_actions_inline(self):
         self.assertPageContains('<div class="detailtitle">${srcBadge(it.location,it.cost,\'srcbig\')}')
-        self.assertPageContains('<div class="stitle">${esc(it.name)}</div>')
+        self.assertPageContains('<div class="stitle">${javTitleHtml(it)}</div>')
         self.assertPageContains('<div class="srctools detailtitletools">${sourceToolButtons(it.id)}</div>')
         self.assertPageContains(".detailtitle{display:grid;grid-template-columns:auto minmax(0,1fr) auto")
 
@@ -2014,8 +2023,8 @@ class WebUiSourceTests(unittest.TestCase):
                 'id="photoDetailTitle" data-middle-truncate',
                 '<div><b data-middle-truncate title="${esc(asset.name||\'\')}"',
                 '<div><b data-middle-truncate title="${esc(row.asset_name||\'\')}"',
-                '<b data-middle-truncate>${esc(media.name)}</b>',
-                '<b data-middle-truncate>${esc(x.name)}</b>',
+                '<b data-middle-truncate>${esc(javDisplayName(media))}</b>',
+                '<b data-middle-truncate>${esc(javDisplayName(x))}</b>',
                 'class="t resourcecardtitle" data-middle-truncate',
                 'class="t junkcardtitle" type="button" data-junk-open data-middle-truncate',
                 'class="t junkcardtitle" data-middle-truncate'):

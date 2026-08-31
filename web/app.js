@@ -35,6 +35,25 @@ function renderCatalogLoading(label='正在读取作品'){
 }
 renderCatalogLoading();
 
+const JAV_MEDIA_SUFFIX=/\.(?:mp4|mkv|avi|wmv|mov|m4v|webm|ts|m2ts|mts|mpg|mpeg|flv|rm|rmvb|iso)$/i;
+const javDisplayName=(it,value=it?.name)=>{
+  const name=String(value||'').trim();
+  return it?.is_jav?name.replace(JAV_MEDIA_SUFFIX,''):name;
+};
+function javTitleParts(it,value=it?.name){
+  const name=javDisplayName(it,value),code=String(it?.code||'').trim().toUpperCase();
+  if(!it?.is_jav||!code)return {code:'',title:name};
+  const upper=name.toUpperCase(),hasPrefix=upper===code
+    ||(upper.startsWith(code)&&/^[\s._-]/.test(name.slice(code.length)));
+  const title=(hasPrefix?name.slice(code.length):name).replace(/^[\s._-]+/,'').trim();
+  return {code,title};
+}
+function javTitleHtml(it,value=it?.name){
+  const {code,title}=javTitleParts(it,value);
+  if(!code)return esc(title);
+  return `<strong class="javcode">${esc(code)}</strong>${title?` <span>${esc(title)}</span>`:''}`;
+}
+
 /* 路由同时把页面表面写进 body[data-surface]：限宽等按表面生效的版式
    （管理页不全宽）靠它切换，不用每个渲染函数自己记得加类。
    调用方有传 path 也有传 href 的，这里统一归一成 pathname。 */
@@ -979,7 +998,9 @@ function cardHtml(it,cls){
       :(it.code?{kind:'',name:it.code}
         :(it.studio?{kind:'studio',name:it.studio}:{kind:'',name:'未归属'})));
   const who=identity.name,whoKind=identity.kind;
-  const shownName=parts?.title||it.name;
+  const rawShownName=parts?.title||it.name;
+  const shownName=javDisplayName(it,rawShownName);
+  const shownTitle=javTitleHtml(it,rawShownName);
   const shownSize=parts?.total_size??it.size;
   const shownDuration=parts?.total_duration??it.duration;
   const watchedRatio=!parts&&Number(it.play_seconds)>0&&Number(it.duration)>0
@@ -1025,7 +1046,7 @@ function cardHtml(it,cls){
       <div class="badge mono">${srcBadge(it.location,it.cost)}</div>
       <span class="selectionMark">${icon('check')}</span><span class="deleteMark">${icon('trash')}<b>回收站</b></span>
       ${parts?`<span class="partbadge">${parts.count} 卷</span>`:''}<span class="dur mono">${fmtDur(shownDuration)}</span>${tr}${tools}</div>${parts?'</div>':''}
-    <div class="meta">${avatar}<div class="mtext"><button class="t cardtitle" data-open>${esc(shownName)}</button>
+    <div class="meta">${avatar}<div class="mtext"><button class="t cardtitle" data-open>${shownTitle}</button>
       <div class="s mono">${whoHtml}
         ${it.why?`<span class="why">${esc(it.why)}</span>`:''}
         <span class="size">${sizeText}</span>
@@ -1184,7 +1205,7 @@ function mixCardHtml(it){
     <div class="mixstack"><div class="pic" style="--card-ratio:${ar}">${thumb}<button class="cardopenhit" data-open-mix aria-label="打开 Mix · ${esc(label)}"></button>
       <span class="mixbadge">${icon('play')}Mix</span></div></div>
     <div class="mixmeta"><span class="mixglyph">${icon('play')}</span><div class="mixcopy">
-      <b>Mix · ${esc(label)}</b><span>${esc(it.name)}及相似作品</span></div></div></article>`;
+      <b>Mix · ${esc(label)}</b><span>${esc(javDisplayName(it))}及相似作品</span></div></div></article>`;
 }
 let renderedPartGroups=new Set();
 function collapseMultipartItems(items){
@@ -2180,9 +2201,10 @@ async function openQualityGoals(push=true){
   const items=qualityData.items||[];
   $('#stats').innerHTML=`<div class="qualitylist">${items.length?items.map(item=>{
     const preview=item.has_cover?`/cover?code=${encodeURIComponent(item.code||'')}`:`/poster?id=${item.id}&c=4`;
-    return `<article class="qualityitem"><button class="qualitycover" data-quality-open="${item.id}" aria-label="打开 ${esc(item.name)}">
+    const shownName=javDisplayName(item);
+    return `<article class="qualityitem"><button class="qualitycover" data-quality-open="${item.id}" aria-label="打开 ${esc(shownName)}">
         <img src="${preview}" alt="" loading="lazy" onerror="this.remove()"></button>
-      <div><h3><button data-middle-truncate data-quality-open="${item.id}">${esc(item.name)}</button></h3>
+      <div><h3><button data-middle-truncate data-quality-open="${item.id}">${javTitleHtml(item)}</button></h3>
         <p class="mono">${srcBadge(item.location,item.cost)}<span>${esc(LOC[item.location]||item.location)}</span><span>${fmtDur(item.duration)}</span><span>${fmtSize(item.size||0)}</span></p>
         ${item.reason?`<p>${esc(item.reason)}</p>`:''}</div></article>`}).join(''):emptyState('sparkles','没有标记中的高清版目标','现有版本都已满足条件，或还没有加入追踪。')}</div>`;
   $('#stats').querySelectorAll('[data-quality-open]').forEach(button=>button.onclick=()=>openItem(+button.dataset.qualityOpen));
@@ -2380,7 +2402,7 @@ function followEmbeddedQueueHtml(item,mediaIndex){
         ?`<img src="${esc(media.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
         :`<span class="fnothumb">${sourceIcon(media.resource_provider||item.provider)}</span>`;
       return `<div class="mixrow"><button class="mixitem ${media.index===mediaIndex?'current':''}" data-follow-media-item="${media.index}" data-media-kind="${media.media_kind}" aria-current="${media.index===mediaIndex?'true':'false'}">
-        <span class="mixitempic">${thumb}</span><span class="mixitemtext"><b data-middle-truncate>${esc(media.name)}</b><span data-truncate-end>${media.media_kind==='image'?'图片':'视频'}</span></span></button></div>`;
+        <span class="mixitempic">${thumb}</span><span class="mixitemtext"><b data-middle-truncate>${esc(javDisplayName(media))}</b><span data-truncate-end>${media.media_kind==='image'?'图片':'视频'}</span></span></button></div>`;
     }).join('')}</div></aside>`;
 }
 
@@ -4785,7 +4807,7 @@ function queueHtml(queue,itemId){
       const thumb=x.has_thumb?`<img src="/poster?id=${x.id}&c=4" alt="" loading="lazy">`:'';
       const edit=queue.kind==='playlist'?`<span class="queueedit"><button data-queue-up="${index}" aria-label="上移" ${index===0?'disabled':''}>↑</button><button data-queue-down="${index}" aria-label="下移" ${index===queue.items.length-1?'disabled':''}>↓</button><button data-queue-remove="${x.id}" aria-label="移出播放列表">${icon('x')}</button></span>`:'';
       return `<div class="mixrow"><button class="mixitem ${x.id===itemId?'current':''}" data-queue-item="${x.id}" aria-current="${x.id===itemId?'true':'false'}">
-        <span class="mixitempic">${thumb}<i class="dur mono">${fmtDur(x.duration)}</i></span><span class="mixitemtext"><b data-middle-truncate>${esc(x.name)}</b><span data-truncate-end>${queue.kind==='parts'?`第 ${esc(x.part_label)} 卷`:esc(mixLabel(x))}</span></span></button>${edit}</div>`;
+        <span class="mixitempic">${thumb}<i class="dur mono">${fmtDur(x.duration)}</i></span><span class="mixitemtext"><b data-middle-truncate>${esc(javDisplayName(x))}</b><span data-truncate-end>${queue.kind==='parts'?`第 ${esc(x.part_label)} 卷`:esc(mixLabel(x))}</span></span></button>${edit}</div>`;
     }).join('')}</div></aside>`;
 }
 async function buildMix(seedId){
@@ -4930,7 +4952,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
     </div>${queueContext?queueHtml(queueContext,it.id):''}
     <div class="side"><div class="sidecontent">
       <div class="detailtitle">${srcBadge(it.location,it.cost,'srcbig')}
-        <div class="stitle">${esc(it.name)}</div>
+        <div class="stitle">${javTitleHtml(it)}</div>
         ${it.location==='online'?'':`<div class="srctools detailtitletools">${sourceToolButtons(it.id)}</div>`}</div>
       ${it.location==='online'?'':`<span class="srcstate detailtitlestate" aria-live="polite"></span>`}
       <div class="smeta mono">
@@ -5302,7 +5324,7 @@ async function tokShow(dir){
       url.search=query.toString();history.replaceState({},'',url.pathname+(url.search||''));
     }
     v.play().catch(()=>{});
-    $('#tokTitle').textContent=it.name;
+    $('#tokTitle').textContent=javDisplayName(it);
     // 标题进详情页。沉浸模式里只看得到文件名，想看标签、相关推荐或改东西
     // 都得先退出再去列表里把它找回来。路径和旁边的创作者链接一致：先关，再开。
     $('#tokTitle').onclick=()=>{const id=it.id;$('#tokClose').click();openItem(id)};

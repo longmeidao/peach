@@ -334,6 +334,84 @@ class PendingCoverTests(unittest.TestCase):
                 ["ABW-232"],
             )
 
+    def test_upgrade_queue_contains_only_existing_covers_within_width_limit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            database = root / "ledger.db"
+            connection = sqlite3.connect(database)
+            connection.execute(
+                "CREATE TABLE asset(code TEXT, medium TEXT, location TEXT)"
+            )
+            connection.executemany(
+                "INSERT INTO asset(code,medium,location) VALUES(?,?,?)",
+                [("ABW-232", "video", "115"), ("DASS-468", "video", "115"),
+                 ("PPT-018", "video", "115")],
+            )
+            connection.commit()
+            connection.close()
+            output = root / "covers"
+            output.mkdir()
+            (output / "ABW-232.jpg").write_bytes(jpeg(800, 539))
+            (output / "DASS-468.jpg").write_bytes(jpeg(2184, 1468))
+
+            self.assertEqual(
+                covers.pending(database, output, True, existing=True, max_width=800),
+                ["ABW-232"],
+            )
+
+
+class UpgradeExistingTests(unittest.TestCase):
+    def test_only_a_larger_candidate_replaces_the_cover_and_success_log(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            database = root / "ledger.db"
+            output = root / "covers"
+            log = root / "cover-fetch-log.csv"
+            output.mkdir()
+            connection = sqlite3.connect(database)
+            connection.execute(
+                "CREATE TABLE asset(code TEXT, medium TEXT, location TEXT)"
+            )
+            connection.executemany(
+                "INSERT INTO asset(code,medium,location) VALUES(?,?,?)",
+                [("AAA-001", "video", "115"), ("BBB-002", "video", "115")],
+            )
+            connection.commit()
+            connection.close()
+            (output / "AAA-001.jpg").write_bytes(jpeg(800, 539))
+            (output / "BBB-002.jpg").write_bytes(jpeg(800, 539))
+            with log.open("w", encoding="utf-8-sig", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=covers.FIELDS)
+                writer.writeheader()
+                writer.writerow({"code": "AAA-001", "result": "取得",
+                                 "source": "old-a", "width": 800, "height": 539})
+                writer.writerow({"code": "BBB-002", "result": "取得",
+                                 "source": "old-b", "width": 800, "height": 539})
+
+            def fetched(_transport, code, _delay):
+                if code == "AAA-001":
+                    return (covers.Candidate("new-a", "https://new/a.jpg"),
+                            (1000, 674), jpeg(1000, 674))
+                return (covers.Candidate("new-b", "https://new/b.jpg"),
+                        (700, 470), jpeg(700, 470))
+
+            args = covers.build_parser().parse_args([
+                "--db", str(database), "--out", str(output), "--log", str(log),
+                "--upgrade-existing", "--delay", "0", "--min-free", "0",
+            ])
+            transport = unittest.mock.Mock()
+            with patch.object(covers, "HttpxTransport", return_value=transport), \
+                    patch.object(covers, "best_cover", side_effect=fetched), \
+                    patch.object(covers, "system_volume", return_value=root), \
+                    patch.object(covers.DiskGuard, "check", return_value=100.0):
+                self.assertEqual(covers.run(args), 0)
+
+            self.assertEqual(Image.open(output / "AAA-001.jpg").size, (1000, 674))
+            self.assertEqual(Image.open(output / "BBB-002.jpg").size, (800, 539))
+            rows = {row["code"]: row for row in covers.logged_rows(log)}
+            self.assertEqual(rows["AAA-001"]["source"], "new-a")
+            self.assertEqual(rows["BBB-002"]["source"], "old-b")
+
 
 if __name__ == "__main__":
     unittest.main()
