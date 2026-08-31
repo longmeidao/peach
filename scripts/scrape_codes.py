@@ -19,6 +19,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from peach.catalog_rules import normalise_code_key
 from peach.config import DATABASE_PATH, GENERATED_DIR, LOG_DIR, SOURCES_DIR, STATE_DIR
 from peach.jobs import DiskGuard, JobPolicyError
 from peach.metadata import (
@@ -100,19 +101,6 @@ def close_log() -> None:
     if _logf is not None:
         _logf.close()
         _logf = None
-
-
-def normalise(code: str) -> str:
-    """Normalize only the movie-code spellings Peach explicitly accepts."""
-    value = str(code or "").upper().replace("_", "-").replace(" ", "-").strip()
-    if value.startswith("FC2"):
-        digits = re.search(r"(\d{5,})", value)
-        return f"FC2-PPV-{digits.group(1)}" if digits else value
-    shape = re.match(r"^(\d{3})?([A-Z]+)-?(\d+)$", value)
-    if not shape:
-        return value
-    digits = str(int(shape.group(3))).zfill(3)
-    return f"{shape.group(1) or ''}{shape.group(2)}-{digits}"
 
 
 def _is_explicit_code(code: str) -> bool:
@@ -250,7 +238,7 @@ def _requested_codes(path: Path) -> list[str]:
         value = raw.split("#", 1)[0].strip()
         if not value:
             continue
-        query = normalise(value)
+        query = normalise_code_key(value)
         if query not in seen:
             seen.add(query)
             requested.append(query)
@@ -263,7 +251,7 @@ def _select_requested_codes(
     requested = _requested_codes(path)
     available: dict[str, tuple[str, float, int]] = {}
     for code, size_gb, videos in codes:
-        query = normalise(code)
+        query = normalise_code_key(code)
         previous = available.get(query)
         if previous is None:
             available[query] = (code, size_gb, videos)
@@ -376,7 +364,7 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                 stopped = error
                 log(f"[stop] {error}")
                 break
-            query = normalise(code)
+            query = normalise_code_key(code)
             by_field: dict[str, list[dict]] = {}
             fetched_at = datetime.now(timezone.utc).isoformat()
             for source in sources:

@@ -37,6 +37,59 @@ def _local_imports(path: pathlib.Path) -> set[str]:
     return names
 
 
+#: 项目根：`src/peach` 的上两级。脚本和源码要一起扫。
+PROJECT_ROOT = SOURCE_ROOT.parent.parent
+
+
+def _python_sources() -> list[pathlib.Path]:
+    return sorted(SOURCE_ROOT.glob("*.py")) + sorted((PROJECT_ROOT / "scripts").glob("*.py"))
+
+
+class SharedRuleTests(unittest.TestCase):
+    """领域规则只许有一份实现。
+
+    番号归一化曾经有三份：`catalog_rules.normalise_code_key`、
+    `scripts/fetch_jav_covers.normalise_code`、`scripts/scrape_codes.normalise`。
+    三份逐字相同，靠一句「与 scrape_codes 同口径」的注释维持一致——注释不是门槛。
+
+    番号既是身份判定也是封面缓存键：三份一旦漂移，同一部片会解析出两个键，
+    封面缓存静默失配，而两边的数都「对」，只是口径不同。
+    """
+
+    #: 归一化实现的指纹。`FC2-PPV-` 的拼装和番号形态的正则，凑齐就是又抄了一份。
+    FINGERPRINTS = ('f"FC2-PPV-', r'([A-Z]+)-?(\d+)$')
+
+    def test_release_code_normalisation_exists_once(self):
+        offenders = []
+        for path in _python_sources():
+            if path.name == "catalog_rules.py":
+                continue
+            text = path.read_text(encoding="utf-8")
+            if all(mark in text for mark in self.FINGERPRINTS):
+                offenders.append(path.name)
+        self.assertEqual(
+            offenders, [],
+            "番号归一化又被抄了一份，请改 import catalog_rules.normalise_code_key",
+        )
+
+    def test_pure_rules_are_imported_from_the_policy_module_not_through_web(self):
+        """纯规则要直接从 `catalog_rules` 取，不要借道 web 层的再导出。
+
+        `web_contract` 把 `is_jav_code` 再导出了一遍，于是脚本写成
+        `from peach.web_contract import is_jav_code`——为一条纯规则拉起整个 web 层，
+        读代码的人还会以为这条规则属于 web。
+        """
+        offenders = []
+        for path in sorted((PROJECT_ROOT / "scripts").glob("*.py")):
+            text = path.read_text(encoding="utf-8")
+            for rule in ("is_jav_code", "normalise_code_key", "LENGTH_TAGS"):
+                if f"from peach.web_contract import" in text and rule in text.split(
+                        "from peach.web_contract import", 1)[1].split("\n", 1)[0]:
+                    offenders.append(f"{path.name} → web_contract.{rule}")
+        self.assertEqual(offenders, [],
+                         "纯规则请直接从 peach.catalog_rules 取")
+
+
 class LayeringTests(unittest.TestCase):
     def test_only_web_modules_and_the_composition_root_import_the_web_layer(self):
         offenders = []

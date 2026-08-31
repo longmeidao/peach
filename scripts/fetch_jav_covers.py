@@ -56,7 +56,7 @@ from peach.config import COVER_DIR, DATABASE_PATH, GENERATED_DIR, SOURCES_DIR
 from peach.http import HttpRequest, HttpTransport, HttpxTransport
 from peach.jobs import DiskGuard, JobPolicyError
 from peach.platform import system_volume
-from peach.web_contract import is_jav_code
+from peach.catalog_rules import is_jav_code, normalise_code_key
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
@@ -180,22 +180,9 @@ def _fetch(transport: HttpTransport, url: str, *, referer: str,
     return response.body
 
 
-def normalise_code(code: str) -> str:
-    """`abw232` / `ABW-0232` 一律归一成 `ABW-232`，与 scrape_codes 同口径。"""
-    value = (code or "").upper().replace("_", "-").replace(" ", "-").strip()
-    if value.startswith("FC2"):
-        digits = re.search(r"(\d{5,})", value)
-        return f"FC2-PPV-{digits.group(1)}" if digits else value
-    shape = re.match(r"^(\d{3})?([A-Z]+)-?(\d+)$", value)
-    if not shape:
-        return value
-    prefix = shape.group(1) or ""
-    return f"{prefix}{shape.group(2)}-{int(shape.group(3)):03d}"
-
-
 def code_variants(code: str) -> list[str]:
     """素人系番号带三位厂牌前缀，去掉才查得到：`278GYAN-017` -> `GYAN-017`。"""
-    value = normalise_code(code)
+    value = normalise_code_key(code)
     out = [value]
     stripped = re.sub(r"^\d{3}(?=[A-Z])", "", value)
     if stripped != value:
@@ -312,7 +299,7 @@ def logged_success_evidence(
         ) -> tuple[Candidate, tuple[int, int]] | None:
     """复用历史精确 URL 与已量尺寸；DUGA 等无需重复探同一张图。"""
     for row in reversed(rows):
-        if (normalise_code(str(row.get("code") or "")) == code
+        if (normalise_code_key(str(row.get("code") or "")) == code
                 and row.get("result") == "取得"
                 and isinstance(row.get("url"), str)
                 and IMAGE_URL.fullmatch(str(row["url"]))):
@@ -417,11 +404,11 @@ def prestige_images(transport: HttpTransport, code: str) -> list[Candidate]:
         source = hit.get("_source") if isinstance(hit, dict) else None
         if not isinstance(source, dict):
             continue
-        item_id = normalise_code(str(source.get("deliveryItemId") or ""))
+        item_id = normalise_code_key(str(source.get("deliveryItemId") or ""))
         uuid = str(source.get("productUuid") or "").strip()
         if not uuid:
             continue
-        if item_id == normalise_code(code):
+        if item_id == normalise_code_key(code):
             exact.append(uuid)
         elif str(source.get("deliveryItemId") or "").upper().endswith(code.upper()):
             fallback.append(uuid)
@@ -568,7 +555,7 @@ def restore_logged_successes(transport: HttpTransport, log: Path, root: Path,
     for index, row in enumerate(successes, 1):
         if guard is not None:
             guard.check()
-        code = normalise_code(str(row["code"]))
+        code = normalise_code_key(str(row["code"]))
         target = root / f"{code}.jpg"
         if target.is_file():
             skipped += 1
@@ -618,7 +605,7 @@ def pending(database: Path, root: Path, only_shaped: bool,
         connection.close()
     result = []
     for code, _count in rows:
-        # 判形态必须看原值。`normalise_code` 会补上分隔符，把 `RAIKUN325`
+        # 判形态必须看原值。`normalise_code_key` 会补上分隔符，把 `RAIKUN325`
         # （myfans 账号名，241 个文件）改写成 `RAIKUN-325` 并通过形态检查，
         # 于是队列里全是查不到的账号名。判据与 web_contract 共用一份实现。
         if only_shaped and not is_jav_code(str(code)):
@@ -627,7 +614,7 @@ def pending(database: Path, root: Path, only_shaped: bool,
         # 同一批来源。默认跳过 400 个必然落空的请求；`--all-codes` 仍可强制尝试。
         if only_shaped and str(code).upper().startswith("FC2"):
             continue
-        key = normalise_code(str(code))
+        key = normalise_code_key(str(code))
         target = root / f"{key}.jpg"
         if existing:
             if not target.is_file():
@@ -656,7 +643,7 @@ def audit_state(database: Path, root: Path, log: Path) -> dict[str, object]:
     finally:
         connection.close()
     codes = {
-        normalise_code(code) for code in raw_codes
+        normalise_code_key(code) for code in raw_codes
         if is_jav_code(code) and not code.upper().startswith("FC2")
     }
     dimensions: dict[str, tuple[int, int]] = {}
