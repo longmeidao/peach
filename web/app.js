@@ -22,7 +22,7 @@ import {
 } from './js/core.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import {
-  emptyStateHtml, loadingDotsHtml, noteHtml, progressHtml, scrollerHtml,
+  emptyStateHtml, loadingDotsHtml, mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml,
   spinnerHtml, wireScrollers,
 } from './js/ui-components.js';
 
@@ -2647,11 +2647,7 @@ function followViewPath(){
 }
 function followMediaControl(counts){
   if(!counts.images)return '';
-  return `<div class="followmediaicons" role="group" aria-label="关注媒体类型">
-    <button class="entitymediatoggle" type="button" data-follow-media="videos" aria-pressed="${followMediaView==='videos'}"
-      aria-label="视频 ${counts.videos.toLocaleString()}" title="视频 ${counts.videos.toLocaleString()}">${icon('play')}</button>
-    <button class="entitymediatoggle" type="button" data-follow-media="images" aria-pressed="${followMediaView==='images'}"
-      aria-label="图片 ${counts.images.toLocaleString()}" title="图片 ${counts.images.toLocaleString()}">${icon('pics')}</button></div>`;
+  return mediaViewButtonsHtml({active:followMediaView,videoCount:counts.videos,imageCount:counts.images});
 }
 function groupTagType(groups,tag){
   for(const group of groups){
@@ -2751,8 +2747,8 @@ function renderFollow(){
   paintSelection();
   $('#stats').querySelectorAll('[data-follow-filter]').forEach(button=>button.onclick=()=>{
     followFilter=button.dataset.followFilter;openFollow(false)});
-  $('#stats').querySelectorAll('[data-follow-media]').forEach(button=>button.onclick=()=>{
-    followMediaView=button.dataset.followMedia;
+  $('#stats').querySelectorAll('.followfilters [data-media-view]').forEach(button=>button.onclick=()=>{
+    followMediaView=button.dataset.mediaView;
     route(followViewPath());renderFollow()});
   $('#stats').querySelectorAll('[data-follow-author]').forEach(button=>button.onclick=()=>{
     followAuthor=followAuthor===button.dataset.followAuthor?'':button.dataset.followAuthor;
@@ -3789,15 +3785,15 @@ const routeEntityView=(kind,name,view)=>{
 const photoTotalOf=()=>entityPhotos&&!entityPhotos.error?(entityPhotos.total||0):0;
 
 function renderEntityMediaToggle(kind,name,filters){
-  const button=$('#index').querySelector('[data-media-toggle]');if(!button)return;
+  const controls=$('#index').querySelector('.entitymediaview');if(!controls)return;
   const photos=photoTotalOf();
-  button.hidden=!photos;
+  controls.hidden=!photos;
   if(!photos)return;
-  const selected=entityMediaView.media==='photos';
-  const label=selected?'切换到视频':'切换到照片';
-  button.setAttribute('aria-pressed',String(selected));
-  button.setAttribute('aria-label',label);button.title=label;
-  button.onclick=()=>switchEntityMedia(kind,name,filters,selected?'videos':'photos');
+  controls.querySelectorAll('[data-media-view]').forEach(button=>{
+    const media=button.dataset.mediaView;
+    button.setAttribute('aria-pressed',String(entityMediaView.media===media));
+    button.onclick=()=>switchEntityMedia(kind,name,filters,media);
+  });
 }
 
 async function switchEntityMedia(kind,name,filters,media){
@@ -4123,9 +4119,9 @@ async function openEntity(kind,name,push=true,requestedTag){
       <span class="nm">${esc(x.k)}</span><small>${x.n.toLocaleString()} 部</small></button>`).join('');
   const photoCount=photos&&!photos.error?(photos.total||0):0;
   const mediaSelected=entityMediaView.media==='photos';
-  const mediaLabel=mediaSelected?'切换到视频':'切换到照片';
-  const mediaToggle=photoCount?`<button class="entitymediatoggle" type="button" data-media-toggle
-      aria-pressed="${mediaSelected}" aria-label="${mediaLabel}" title="${mediaLabel}">${icon('pics')}</button>`:'';
+  const mediaToggle=photoCount?mediaViewButtonsHtml({active:mediaSelected?'photos':'videos',
+    imageValue:'photos',imageLabel:'照片',videoCount:d.asset_count,imageCount:photoCount,
+    className:'entitymediaview'}):'';
   $('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;
   $('#index').innerHTML=`<div class="entityhero"><div class="entityportrait ${kind==='performer'||kind==='creator'?'':'square'}">${image}<span>${esc(name.slice(0,1))}</span></div>
       <div><h2>${esc(d.canonical_name)}</h2>

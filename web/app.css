@@ -373,10 +373,13 @@ body.entity-open .index{overflow-x:visible}
   overscroll-behavior-inline:contain}.entitytagbar .entitytags::-webkit-scrollbar{display:none}
 .entitytags{display:flex;align-items:center;flex-wrap:wrap;gap:7px}.entitytags .pill{flex:none}
 .entitytags small{color:var(--muted);margin-left:4px}
-.entitytags .entitymediatoggle{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;padding:0;
-  border:0;background:transparent;color:var(--muted)}.entitytags .entitymediatoggle svg{width:16px;height:16px;
-  fill:currentColor;stroke:none}.entitytags .entitymediatoggle:hover{background:var(--overlay-5);color:var(--ink)}
-.entitytags .entitymediatoggle[aria-pressed="true"]{border-color:transparent;background:var(--ink-2);color:var(--ground)}
+.mediaviewbuttons{display:inline-flex;align-items:center;gap:2px;flex:none}
+.mediaviewbuttons .mediaviewbutton{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;padding:0;
+  border:0;border-radius:50%;background:transparent;color:var(--muted);cursor:pointer}
+.mediaviewbuttons .mediaviewbutton svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
+.mediaviewbuttons .mediaviewbutton[data-media-icon="image"] svg{fill:currentColor;stroke:none}
+.mediaviewbuttons .mediaviewbutton:hover{background:var(--overlay-5);color:var(--ink)}
+.mediaviewbuttons .mediaviewbutton[aria-pressed="true"]{border-color:transparent;background:var(--ink-2);color:var(--ground)}
 .relatedpeople{display:flex;gap:14px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
 .relatedpeople::-webkit-scrollbar{display:none}.relatedperson{flex:0 0 78px;border:0;background:transparent;color:inherit;
   padding:0;cursor:pointer;text-align:center}.relatedperson .ring{display:grid;place-items:center;width:64px;height:64px;
@@ -390,7 +393,7 @@ body.entity-open .index{overflow-x:visible}
   background:transparent;border-bottom:1px solid transparent}
 .entitytagbar+.entitysection .entitycollectionhead{top:calc(var(--topH) + var(--filterH))}
 .entitycollectionhead h3{margin:0;flex:0 0 auto}.entitycollectionhead .javlayout{display:inline-flex;gap:2px}
-/* 关注页的视频 / 图片切换；实体页按 Beeg 把单一图片按钮放进标签行。 */
+/* 关注页与实体页共用视频 / 图片圆形切换按钮。 */
 .mediatabs{display:flex;gap:8px;margin:0 0 18px;border-bottom:1px solid var(--line-soft)}
 .mediatabs[hidden]{display:none}
 .mediatabs button{display:flex;align-items:center;gap:7px;border:0;background:transparent;color:var(--muted);
@@ -1739,13 +1742,6 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .followfilters .pill .n{margin-left:5px;color:inherit}
 .followfilters .sourcepill{width:40px;padding:0}
 .followfilters .sourcepill .ficon{width:21px;height:21px;margin:0}
-.followmediaicons{display:inline-flex;align-items:center;gap:2px;flex:none}
-.followmediaicons .entitymediatoggle{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;padding:0;
-  border:0;border-radius:var(--control-radius);background:transparent;color:var(--muted);cursor:pointer}
-.followmediaicons .entitymediatoggle svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
-.followmediaicons .entitymediatoggle[data-follow-media="images"] svg{fill:currentColor;stroke:none}
-.followmediaicons .entitymediatoggle:hover{background:var(--overlay-5);color:var(--ink)}
-.followmediaicons .entitymediatoggle[aria-pressed="true"]{background:var(--ink-2);color:var(--ground)}
 /* 折叠摘要按 Vercel 设置行的 title + description 结构：标题一行、说明弱化一行，
    尖角指引符与文字之间留出固定间距，不再靠一个空格硬贴。 */
 .fdetails{margin-inline:-16px}
