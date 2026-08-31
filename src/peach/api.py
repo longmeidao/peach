@@ -128,6 +128,13 @@ def _offline_response(exc: MediaOffline) -> JSONResponse:
     return response
 
 
+#: 生成物与外部头像的缓存时长。这些端点按 asset / follow_item id 取图，内容换了
+#: id 也就换了（封面重生成会写新文件、头像换了会解析到新 URL），所以一天太短——
+#: 用户实测「基本不可能变动」。不加 immutable：那会让浏览器连刷新都不再回源，
+#: 万一真要换图就只能等过期。
+MEDIA_CACHE_SECONDS = 30 * 24 * 3600
+
+
 def create_app(
     settings: PeachSettings | None = None,
     sync: LedgerSync | None = None,
@@ -584,7 +591,7 @@ def create_app(
         # 片段现在留在缓存里而不是随响应删除：回放、重连和多设备都会重复请求同一段，
         # 每次重跑 FFmpeg 等于让 CloudDrive 再预取一次块。
         response = FileResponse(path, media_type="video/mp2t")
-        response.headers["Cache-Control"] = "private, max-age=86400"
+        response.headers["Cache-Control"] = f"private, max-age={MEDIA_CACHE_SECONDS}"
         response.headers["X-Peach-HLS-Segment"] = "1"
         return response
 
@@ -599,16 +606,15 @@ def create_app(
     def thumbnail(request: Request, id: int, args: dict[str, str] = Depends(require_auth)):
         path = media_engine.file_for(id, thumbnail=True)
         response = FileResponse(path)
-        response.headers["Cache-Control"] = "public, max-age=86400"
+        response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
         return response
 
     @app.api_route("/photo", methods=["GET", "HEAD"])
     def photo(request: Request, id: int, args: dict[str, str] = Depends(require_auth)):
         """图片资产原图。灯箱看大图用这条，瀑布流一律走 `/photo-thumb`。"""
-        """图片资产原图。灯箱看大图用这条，瀑布流一律走 `/photo-thumb`。"""
         path = media_engine.file_for(id)
         response = FileResponse(path)
-        response.headers["Cache-Control"] = "public, max-age=86400"
+        response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
         return response
 
     @app.api_route("/photo-thumb", methods=["GET", "HEAD"])
@@ -619,7 +625,7 @@ def create_app(
         except PreviewUnavailable:
             return JSONResponse({"error": "unavailable"}, status_code=404)
         response = FileResponse(path, media_type="image/jpeg")
-        response.headers["Cache-Control"] = "public, max-age=86400"
+        response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
         return response
 
     @app.api_route("/poster", methods=["GET", "HEAD"])
@@ -629,23 +635,21 @@ def create_app(
         except PreviewUnavailable:
             return JSONResponse({"error": "unavailable"}, status_code=404)
         response = FileResponse(path, media_type="image/jpeg")
-        response.headers["Cache-Control"] = "public, max-age=86400"
+        response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
         return response
 
     @app.api_route("/cover", methods=["GET", "HEAD"])
     def cover(request: Request, code: str = "", args: dict[str, str] = Depends(require_auth)):
         """官方封套原图。存原图不裁：4:3 与 16:9 两种版式在界面上按比例取景。"""
-        """官方封套原图。存原图不裁：4:3 与 16:9 两种版式在界面上按比例取景。"""
         path = contract.cover_path(code)
         if path is None:
             return JSONResponse({"error": "no cover"}, status_code=404)
         response = FileResponse(path, media_type="image/jpeg")
-        response.headers["Cache-Control"] = "public, max-age=86400"
+        response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
         return response
 
     @app.api_route("/endcard-frame", methods=["GET", "HEAD"])
     def endcard_frame(request: Request, id: int, name: str, args: dict[str, str] = Depends(require_auth)):
-        """Serve only generated OCR evidence frames, never a client-provided path."""
         """Serve only generated OCR evidence frames, never a client-provided path."""
         if (id <= 0 or not name.endswith(".png") or "/" in name or "\\" in name
                 or name.startswith(".")):
@@ -655,7 +659,7 @@ def create_app(
         if path.parent != root or not path.is_file():
             return JSONResponse({"error": "no frame"}, status_code=404)
         response = FileResponse(path, media_type="image/png")
-        response.headers["Cache-Control"] = "private, max-age=86400"
+        response.headers["Cache-Control"] = f"private, max-age={MEDIA_CACHE_SECONDS}"
         return response
 
     @app.api_route("/avatar", methods=["GET", "HEAD"])
@@ -665,24 +669,22 @@ def create_app(
         except PreviewUnavailable:
             return JSONResponse({"error": "unavailable"}, status_code=404)
         response = FileResponse(path, media_type="image/jpeg")
-        response.headers["Cache-Control"] = "public, max-age=86400"
+        response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
         return response
 
     @app.api_route("/follow-avatar", methods=["GET", "HEAD"])
     def follow_avatar(request: Request, service: str, id: str, args: dict[str, str] = Depends(require_auth)):
-        """Resolve an official creator avatar, then let the image CDN serve it."""
         """Resolve an official creator avatar, then let the image CDN serve it."""
         try:
             target = resolve_official_avatar(service, id)
         except (OSError, FollowSourceError):
             return JSONResponse({"error": "unavailable"}, status_code=404)
         response = RedirectResponse(target, status_code=307)
-        response.headers["Cache-Control"] = "private, max-age=86400"
+        response.headers["Cache-Control"] = f"private, max-age={MEDIA_CACHE_SECONDS}"
         return response
 
     @app.api_route("/follow-stream", methods=["GET", "HEAD"])
     def follow_stream(request: Request, id: int, media: int | None = None, args: dict[str, str] = Depends(require_auth)):
-        """Play a remote follow candidate through Peach without exposing its upstream URL."""
         """Play a remote follow candidate through Peach without exposing its upstream URL."""
         with database.read_connection() as connection:
             item = FollowStore(lambda: connection).item(id)
@@ -736,7 +738,6 @@ def create_app(
     @app.api_route("/follow-cover", methods=["GET", "HEAD"])
     def follow_cover(request: Request, id: int, args: dict[str, str] = Depends(require_auth)):
         """Return a cached clear still for a follow video; keep its URL server-side."""
-        """Return a cached clear still for a follow video; keep its URL server-side."""
         with database.read_connection() as connection:
             item = FollowStore(lambda: connection).item(id)
         if item is None:
@@ -750,7 +751,7 @@ def create_app(
                 return RedirectResponse(str(item.thumb_url), status_code=307)
             return JSONResponse({"error": "follow cover unavailable"}, status_code=404)
         response = FileResponse(path, media_type="image/jpeg")
-        response.headers["Cache-Control"] = "public, max-age=86400"
+        response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
         return response
 
     @app.api_route("/logo", methods=["GET", "HEAD"])
@@ -807,7 +808,7 @@ def create_app(
         except PreviewUnavailable:
             return JSONResponse({"error": "unavailable"}, status_code=404)
         response = FileResponse(path, media_type=content_type)
-        response.headers["Cache-Control"] = "public, max-age=86400"
+        response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
         return response
 
     @app.get("/api/providers")
@@ -816,7 +817,6 @@ def create_app(
 
     @app.get("/api/sources")
     def source_health(request: Request, args: dict[str, str] = Depends(require_auth)):
-        """无副作用的来源可达性。前端据此把脱盘来源的筛选置灰。"""
         """无副作用的来源可达性。前端据此把脱盘来源的筛选置灰。"""
         rows = _source_status()
         return {

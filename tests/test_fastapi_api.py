@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 HAS_DEPS = all(importlib.util.find_spec(name) for name in ("fastapi", "httpx"))
 if HAS_DEPS:
     import httpx
+    from peach import api as api_module
     from peach.api import create_app
     from peach.config import PeachSettings
 
@@ -869,7 +870,8 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(denied.status_code, 401)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"clear-jpeg")
-        self.assertEqual(response.headers["cache-control"], "public, max-age=86400")
+        self.assertEqual(response.headers["cache-control"],
+                         f"public, max-age={api_module.MEDIA_CACHE_SECONDS}")
         cover.fail = True
         fallback = await self.client.get(
             "/follow-cover?id=7&t=secret", follow_redirects=False)
@@ -1004,7 +1006,8 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
                          (b"poster", b"avatar", b"logo", b"snapshot"))
         self.assertEqual(logo.headers["content-type"], "image/png")
         self.assertEqual(logo.headers["cache-control"], "public, no-cache")
-        self.assertEqual(poster.headers["cache-control"], "public, max-age=86400")
+        self.assertEqual(poster.headers["cache-control"],
+                         f"public, max-age={api_module.MEDIA_CACHE_SECONDS}")
 
     async def test_endcard_frame_is_authenticated_and_confined_to_evidence_root(self):
         denied = await self.client.get(

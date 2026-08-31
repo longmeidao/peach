@@ -419,6 +419,37 @@ class FollowContractTests(unittest.TestCase):
         self._seed()
         self.assertEqual(len(self._get(limit="nope")["groups"]), 1)
 
+    def test_cards_drop_generic_tags_but_filters_keep_them(self):
+        """卡片只留有身份的标签，general 那类内容描述不上卡片。
+
+        footjob / standing sex / from behind 这种三个一排占满卡片底部，却几乎不用来
+        找东西。筛选条里仍然保留——主动去筛和被动堆一排不是一回事。
+        """
+        page = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        self.assertIn(
+            "const followCardTags=item=>(item.tags||[])"
+            ".filter(tag=>followTagType(item,tag)!=='general');", page)
+        self.assertIn("const tags=followCardTags(item).slice(0,3)", page,
+                      "卡片必须走过滤后的标签")
+        self.assertIn("data-follow-tag=\"${esc(key)}\"", page,
+                      "筛选条仍要能按标签筛，包括 general")
+
+    def test_generated_media_is_cached_for_a_month_not_a_day(self):
+        """按 id 取的生成物内容不会变，一天太短。
+
+        换了图 id 也就换了：封面重生成写的是新文件、头像换了会解析到新 URL。
+        不加 immutable——那会让浏览器连刷新都不回源。
+        """
+        from peach import api
+
+        self.assertEqual(api.MEDIA_CACHE_SECONDS, 30 * 24 * 3600)
+        source = (ROOT / "src" / "peach" / "api.py").read_text(encoding="utf-8")
+        self.assertNotIn('max-age=86400', source,
+                         "媒体端点不该再写死一天")
+        self.assertNotIn('immutable"', source.replace(
+            '"public, max-age=31536000, immutable"', ''),
+            "只有 /vendor/ 那条可以 immutable")
+
     def test_archive_thumbnails_use_the_img_subdomain(self):
         """归档站静态资源走 img. 子域，主域取不到。
 
