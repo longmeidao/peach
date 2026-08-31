@@ -2293,6 +2293,11 @@ function followWhen(item){
 }
 
 const followTagType=(item,tag)=>item.tag_types&&item.tag_types[tag]||'general';
+/* 卡片上只留有身份的标签：作者、角色、作品、来源属性。
+   general 是内容描述（footjob、standing sex、from behind 这类），三个一排占满卡片
+   底部，却几乎不用来找东西——按用户要求不在卡片上展示。筛选条里仍然保留：
+   那里是主动去筛，和卡片被动堆一排不是一回事。 */
+const followCardTags=item=>(item.tags||[]).filter(tag=>followTagType(item,tag)!=='general');
 const followTagChip=(item,tag,kind='span')=>`<${kind} class="tg r34-${
   esc(followTagType(item,tag))}" data-follow-tag="${esc(tag)}">${esc(tagLabel(tag))}</${kind}>`;
 
@@ -2593,7 +2598,7 @@ function followCard(group,authorSources=[]){
     :embedded.length&&embedded.some(media=>media.media_kind==='image')?'媒体':'视频';
   const mixTarget=embedded.length>1?item.id:videos[0]?.id;
   const badges=followBadges(group);
-  const tags=(item.tags||[]).slice(0,3).map(tag=>followTagChip(item,tag)).join('');
+  const tags=followCardTags(item).slice(0,3).map(tag=>followTagChip(item,tag)).join('');
   const open=`<button class="cardopenhit" data-follow-detail="${item.id}" aria-label="打开 ${esc(item.title)} 详情"></button>`;
   return `<article class="card followitem${isMix?' collection':''}${imageView?' imagecard':''}" data-follow-item="${item.id}" data-status="${esc(item.status)}">
     <div class="${isMix?'mixstack ':''}followvisual"><div class="pic">
