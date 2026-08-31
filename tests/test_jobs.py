@@ -12,6 +12,7 @@ from peach.jobs import (
     MeteredSourceDenied,
     PidFileLock,
     SourceAccessPolicy,
+    job_main,
     require_free_space,
 )
 
@@ -102,3 +103,58 @@ class JobPolicyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class JobMainTests(unittest.TestCase):
+    """长跑批处理的统一入口收尾。
+
+    这段此前在四个脚本里各写了一份。前三份逐字相同；第四份只把异常变量从 `exc`
+    改名成 `error`——一个标识符的差别就能让逐字扫描漏掉它，所以指望「看一眼就发现
+    重复」是不成立的。
+    """
+
+    def _parser(self, lock: Path):
+        import argparse
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--lock", type=Path, default=lock)
+        return parser
+
+    def test_returns_the_policy_exit_code_instead_of_raising(self):
+        """批处理是无人值守跑的，被读的是退出码，不是栈。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            lock = Path(tmp) / "job.lock"
+
+            def run(_args):
+                raise DiskSpaceDenied("盘满了")
+
+            with patch("builtins.print") as printed:
+                code = job_main(lambda: self._parser(lock), run, [])
+            self.assertEqual(code, DiskSpaceDenied.exit_code)
+            self.assertIn("[stop]", " ".join(str(c) for c in printed.call_args_list))
+
+    def test_already_running_is_not_a_failure(self):
+        """`JobAlreadyRunning.exit_code` 是 0：另一份还在跑不算这次失败。
+
+        散成四份手抄时，谁把它当异常向上抛或改成非零，都不会有测试拦住。
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            lock = Path(tmp) / "job.lock"
+            with PidFileLock(lock):
+                with patch("builtins.print"):
+                    code = job_main(lambda: self._parser(lock),
+                                    lambda _args: self.fail("锁没拿住就不该跑 run"), [])
+            self.assertEqual(code, 0)
+
+    def test_the_lock_wraps_the_whole_run(self):
+        """pid 锁必须包住整个 run，而不是只包住入口。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            lock = Path(tmp) / "job.lock"
+            seen = []
+
+            def run(_args):
+                seen.append(lock.exists())
+                return 7
+
+            self.assertEqual(job_main(lambda: self._parser(lock), run, []), 7)
+            self.assertEqual(seen, [True], "run 执行期间锁文件必须还在")
+            self.assertFalse(lock.exists(), "退出后锁要释放")

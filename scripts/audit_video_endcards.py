@@ -28,6 +28,7 @@ from peach.jobs import (
     PidFileLock,
     SourceAccessPolicy,
     require_free_space,
+    job_main,
 )
 from peach.media import resolve_case_insensitive
 from peach.platform import system_volume
@@ -358,13 +359,7 @@ def run(
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
-    try:
-        with PidFileLock(args.lock):
-            return run(args)
-    except JobPolicyError as error:
-        print(f"[stop] {error}")
-        return error.exit_code
+    return job_main(build_parser, run, argv)
 
 
 if __name__ == "__main__":

@@ -76,6 +76,18 @@ class SharedRuleTests(unittest.TestCase):
             "番号归一化又被抄了一份，请改 import catalog_rules.normalise_code_key",
         )
 
+    def test_batch_scripts_share_one_cli_tail(self):
+        """批处理脚本的 main() 收尾只许有一份。
+
+        它此前抄了四份。共用的不只是形状，还有「pid 锁必须包住整个 run」和「策略
+        异常交出自己的退出码而不是抛栈」这两条约定；散成四份，下一个脚本照抄时漏掉
+        锁或吞掉退出码都不会有人发现。
+        """
+        offenders = [path.name for path in sorted((PROJECT_ROOT / "scripts").glob("*.py"))
+                     if "with PidFileLock(args.lock):" in path.read_text(encoding="utf-8")]
+        self.assertEqual(offenders, [],
+                         "又有脚本自己写了 main() 收尾，请改调 peach.jobs.job_main")
+
     def test_pure_rules_are_imported_from_the_policy_module_not_through_web(self):
         """纯规则要直接从 `catalog_rules` 取，不要借道 web 层的再导出。
 
