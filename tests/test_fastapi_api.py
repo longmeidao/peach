@@ -791,6 +791,58 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(head.content, b"")
         self.assertEqual(head.headers["content-length"], "10")
 
+    async def test_follow_qualities_lists_every_tier_the_source_offers(self):
+        """档位数量由来源决定，不由我们写死。
+
+        取证时那条给四档，实测线上另有五档（多一个 2160）的条目——所以解析用的是
+        `video_alt_url` 加任意编号，而不是固定认三个 alt 字段。这里就用五档兜住：
+        少认一档等于用户白白播低清。2160 按站点自己的写法叫 4K，不叫 2160p。
+        """
+        connection = sqlite3.connect(self.db)
+        connection.executescript((ROOT / "migrations" / "0018_online_follow.sql").read_text(
+            encoding="utf-8"))
+        connection.execute(
+            "INSERT INTO follow_source(id,provider,ref,label,url,semantics,created_at,updated_at)"
+            " VALUES(2,'rule34video','r34/1','Creator','https://rule34video.com/u','work','x','x')"
+        )
+        connection.execute(
+            "INSERT INTO follow_item(id,source_id,external_id,title,url,media_url,release_key,"
+            "first_seen_at,last_seen_at) VALUES(9,2,'9','Remote',"
+            "'https://rule34video.com/video/9/x/','https://rule34video.com/get_file/9.mp4/',"
+            "'remote','x','x')"
+        )
+        connection.commit()
+        connection.close()
+
+        page = ("<script>"
+                "video_url: 'https://rule34video.com/get_file/9_360.mp4/?v=t0';"
+                "video_alt_url: 'https://rule34video.com/get_file/9_480p.mp4/?v=t1';"
+                "video_alt_url2: 'https://rule34video.com/get_file/9_720p.mp4/?v=t2';"
+                "video_alt_url3: 'https://rule34video.com/get_file/9_1080p.mp4/?v=t3';"
+                "video_alt_url4: 'https://rule34video.com/get_file/9_2160p.mp4/?v=t4';"
+                "</script>").encode("utf-8")
+
+        def upstream(request):
+            return httpx.Response(200, stream=httpx.ByteStream(page), request=request,
+                                  headers={"content-type": "text/html"})
+
+        original = self.app.state.http_transport.client
+        fake = httpx.Client(transport=httpx.MockTransport(upstream), follow_redirects=True)
+        self.app.state.http_transport.client = fake
+        try:
+            response = await self.client.get("/follow-qualities?id=9&t=secret")
+        finally:
+            self.app.state.http_transport.client = original
+            fake.close()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["qualities"], [
+            {"height": 2160, "label": "4K"},
+            {"height": 1080, "label": "1080p"},
+            {"height": 720, "label": "720p"},
+            {"height": 480, "label": "480p"},
+            {"height": 360, "label": "360p"},
+        ])
+
     async def test_follow_stream_proxies_range_without_exposing_the_upstream_url(self):
         connection = sqlite3.connect(self.db)
         connection.executescript((ROOT / "migrations" / "0018_online_follow.sql").read_text(

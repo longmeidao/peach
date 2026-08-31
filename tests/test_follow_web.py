@@ -1613,7 +1613,12 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("if(followVideo){")
         self.assertPageContains("const followPlayer=mountDetailPlayer(item,followVideo,false,{")
         self.assertPageContains("source:{src,type:selectedMedia?.media_type||item.media_type||'video/mp4'}")
-        self.assertPageContains("function mountPlayerQualityControl(player,video,fallbackHeight=0)")
+        # 第四个参数是来源自己给的清晰度表：rule34video 把每档写成独立 mp4 字段，
+        # videojs 的 qualityLevels 只认 HLS/DASH 的自适应轨道，看不到它们。
+        self.assertPageContains(
+            "function mountPlayerQualityControl(player,video,fallbackHeight=0,sourceQualities=null)")
+        self.assertPageContains("qualities:followQualities",
+                                "关注详情要把查到的档位传给播放器")
         self.assertPageContains('aria-label="播放器设置"')
         self.assertPageContains("data-player-quality-badge")
         self.assertPageContains("currentTimeDisplay:true,timeDivider:true")

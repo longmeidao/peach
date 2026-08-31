@@ -684,15 +684,45 @@ def create_app(
         response.headers["Cache-Control"] = f"private, max-age={AVATAR_CACHE_SECONDS}"
         return response
 
+    @app.api_route("/follow-qualities", methods=["GET"])
+    def follow_qualities(id: int, args: dict[str, str] = Depends(require_auth)):
+        """这条关注视频有哪些清晰度可选。
+
+        单独一个端点而不是塞进 /api/follow：解析要抓一次来源详情页，列表一次几百条，
+        逐条解析等于几百个外部请求。这里只在用户展开某个条目、播放器要画菜单时问一次，
+        解析结果本身在 resolver 里有缓存。
+
+        只有 rule34video 给多档（video_url 加 video_alt_url{,2,3}）；其余来源返回空表，
+        播放器据此只显示「原画」。取不到不是错误——签名 URL 会过期、来源也可能改版，
+        那时照常播默认档就行。
+        """
+        with database.read_connection() as connection:
+            item = FollowStore(lambda: connection).item(id)
+        if item is None:
+            return JSONResponse({"error": "no such follow item"}, status_code=404)
+        try:
+            resolved = follow_media_resolver.resolve(item)
+        except FollowMediaUnavailable:
+            return {"qualities": []}
+        # 档位数量不写死：正则匹配 video_url 与任意编号的 video_alt_urlN，
+        # 站点给几档就是几档（实测同一作者下有 4 档也有 5 档的条目）。
+        # 2160 按站点自己的写法叫 4K，不叫 2160p。
+        return {"qualities": [
+            {"height": height, "label": "4K" if height >= 2160 else f"{height}p"}
+            for height, _ in resolved.qualities if height
+        ]}
+
     @app.api_route("/follow-stream", methods=["GET", "HEAD"])
-    def follow_stream(request: Request, id: int, media: int | None = None, args: dict[str, str] = Depends(require_auth)):
+    def follow_stream(request: Request, id: int, media: int | None = None,
+                      quality: int | None = None,
+                      args: dict[str, str] = Depends(require_auth)):
         """Play a remote follow candidate through Peach without exposing its upstream URL."""
         with database.read_connection() as connection:
             item = FollowStore(lambda: connection).item(id)
         if item is None:
             return JSONResponse({"error": "no such follow item"}, status_code=404)
         try:
-            target = follow_media_resolver.resolve(item, media)
+            target = follow_media_resolver.resolve(item, media, quality)
             headers = {
                 "User-Agent": "Peach/0.2",
                 "Accept": request.headers.get("accept", "*/*"),
