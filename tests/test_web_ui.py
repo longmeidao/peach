@@ -1335,6 +1335,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("body.entity-open #tiers,body.entity-open #tagbar,")
         self.assertPageContains('src="/logo?studio=${encodeURIComponent(d.canonical_name)}"')
         self.assertPageContains('class="entitytags"')
+        self.assertPageContains('class="pill" data-entity-tag=')
         self.assertPageContains('class="relatedpeople"')
         self.assertPageContains("data-related-performer")
         profile = self.page[self.page.index("async function openEntity("):]
@@ -1380,6 +1381,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("key==='sort'&&filters[key]==='new'")
         self.assertPageContains(".entitycollectionhead .sorts")
         self.assertPageContains(".entitytagbar{position:sticky;top:var(--topH);z-index:61")
+        self.assertPageContains("height:var(--filterH);margin:0 -16px;padding:9px 16px")
+        self.assertPageContains(".entitytags .pill{flex:none}")
+        self.assertPageLacks(".entitytags button{height:34px")
         self.assertPageContains(
             ".entitytagbar+.entitysection .entitycollectionhead{top:calc(var(--topH) + var(--filterH))}"
         )
@@ -1998,7 +2002,7 @@ class WebUiSourceTests(unittest.TestCase):
         """新增 CSS 省略必须先决定它是语义文本，还是应改用 MiddleTruncate。"""
         reviewed_end_selectors = {
             ".alphatag span:first-of-type", ".av .nm", ".entitylinklabel",
-            ".entitytags button", ".fauthor .fsource.frow>b", ".fauthorhead b",
+            ".fauthor .fsource.frow>b", ".fauthorhead b",
             ".fchip", ".folderfoot .fmeta", ".fpickactions [data-pick-state]",
             ".frow>b", ".fvkind", ".idname", ".kv>span:first-child",
             ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
