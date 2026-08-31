@@ -400,6 +400,7 @@ def q_items(contract: WebContract, args):
         where.append("(a.snapshot_path IS NOT NULL OR a.location = 'online')")
 
     order = {"new": "a.first_seen DESC, a.id DESC",
+             "release": "a.release_date DESC, a.first_seen DESC, a.id DESC",
              "big": "a.size DESC",
              "short": "a.duration ASC",
              "long": "a.duration DESC",

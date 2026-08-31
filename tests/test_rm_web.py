@@ -1112,6 +1112,10 @@ class JavModeAndCoverTests(unittest.TestCase):
              (7, r"R:\g.mp4", "g.mp4", None, None, None),
              (8, r"R:\h.mp4", "JI-103 Jioh.mp4", "JI-103", "MIB", None)],
         )
+        con.executemany(
+            "UPDATE asset SET release_date=? WHERE id=?",
+            [("2022-05-13", 1), ("2024-02-01", 2), (None, 3), ("2023-09-08", 4)],
+        )
         con.commit(); con.close()
         self.contract = rm_web.WebContract(Path(self.db_path), cover_root=self.covers)
 
@@ -1121,6 +1125,12 @@ class JavModeAndCoverTests(unittest.TestCase):
 
     def test_jav_mode_keeps_only_real_code_shapes(self):
         self.assertEqual(self.ids({"jav": "1"}), [1, 2, 3, 4])
+
+    def test_release_sort_orders_official_dates_descending_and_missing_last(self):
+        rows = rm_web.q_items(
+            self.contract, {"jav": "1", "sort": "release", "limit": "20"},
+        )["items"]
+        self.assertEqual([row["id"] for row in rows], [2, 4, 1, 3])
 
     def test_uploader_handles_in_the_code_column_are_excluded(self):
         # `RAIKUN325` 是 myfans 账号名、`HHD800` 是站点水印，都不是番号。

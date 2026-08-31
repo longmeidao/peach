@@ -95,7 +95,8 @@ const OPTIONAL_SIDEBAR_KEYS=['stats','review','ads','dupes','trash','follow-mana
 const ALL_SIDEBAR_KEYS=[...DEFAULT_SIDEBAR_ORDER,...OPTIONAL_SIDEBAR_KEYS];
 const SORTS=[['seed','随机'],['rating','评分'],['o','高潮计数'],['plays','观看次数'],['long','时长'],
              ['big','体积'],['new','最近入库'],['played','最近看的']];
-const SORT_KEYS=SORTS.map(([key])=>key);
+const JAV_RELEASE_SORT=['release','发行时间'];
+const SORT_KEYS=[...SORTS,JAV_RELEASE_SORT].map(([key])=>key);
 const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:2,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',ambientMode:true,theaterMode:false,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
@@ -1423,7 +1424,7 @@ function renderCount(){
           title="换一批" aria-label="换一批">${icon('refresh-cw')}</button>`
         // JAV 版式紧跟换批动作，和排序连成一条。
         +(javActive()?javLayoutButtons():'')
-        +SORTS.map(([k,l])=>`<button data-sort="${k}" aria-pressed="${state.sort===k}">${l}</button>`).join('')+`</span>`);
+        +sortOptions().map(([k,l])=>`<button data-sort="${k}" aria-pressed="${state.sort===k}">${l}</button>`).join('')+`</span>`);
   const batch=$('#batchAction');
   if(batch)batch.onclick=async()=>{
     if(batch.getAttribute('aria-busy')==='true')return;
@@ -3665,7 +3666,7 @@ function renderEntityCollection(kind,name,items,filters,append=false){
     section.innerHTML=`<div class="entitycollectionhead"><h3></h3><span class="sorts">
       <button class="batchaction entitybatch" type="button" title="换一批" aria-label="换一批">${icon('refresh-cw')}</button>
       ${javActive()?javLayoutButtons():''}
-      ${SORTS.map(([key,label])=>`<button type="button" data-entity-sort="${key}"
+      ${sortOptions().map(([key,label])=>`<button type="button" data-entity-sort="${key}"
         aria-pressed="${(filters.sort||'new')===key}">${label}</button>`).join('')}</span></div>
       <div class="grid"></div><button class="entitymore" type="button">载入更多</button>`;
     section.dataset.total=String(items.total||0);
@@ -4364,6 +4365,9 @@ function javActive(){
     return state.jav==='1'||entityJavLayout;
   return false;
 }
+/* 发行时间只对有正式发行证据的番号列表有意义。普通馆藏继续使用入库时间，
+   避免把大量空日期的创作者作品挂上一个看似可用、实际无值的排序。 */
+const sortOptions=()=>javActive()?[JAV_RELEASE_SORT,...SORTS]:SORTS;
 function javLayout(){
   const raw=JAV_LAYOUT_ALIASES[appSettings.javLayout]||appSettings.javLayout;
   return allowedSetting(raw,JAV_LAYOUTS.map(([k])=>k),'big');
@@ -4391,6 +4395,7 @@ function paintJavBar(){
 }
 function toggleJavMode(){
   state.jav=state.jav==='1'?'':'1';
+  if(state.jav!=='1'&&state.sort==='release')state.sort='seed';
   state.state='';state.orient='';
   route(state.jav==='1'?'/?jav=1':'/');
   showHomeSurfaces();buildEdge();buildBars();load(true);
