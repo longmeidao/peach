@@ -101,6 +101,19 @@ class BestCoverTests(unittest.TestCase):
         winner, size, _ = covers.best_cover(transport, "GYAN-017", 0)
         self.assertEqual((winner.source, size), ("awsimgsrc.dmm.co.jp", (2184, 1464)))
 
+    def test_official_jacket_url_is_used_when_content_id_is_not_a_digital_path(self):
+        official = "https://pics.dmm.co.jp/mono/movie/adult/118abw232/118abw232pl.jpg"
+        transport = transport_for({
+            "https://r18.dev/videos/vod/movies/detail/-/dvd_id=ABW-232/json":
+                (200, ('{"content_id":"118abw232","images":{"jacket_image":'
+                       '{"large":" ","large2":"' + official + '"}}}').encode()),
+            official: (200, jpeg(800, 539)),
+        })
+
+        winner, size, _ = covers.best_cover(transport, "ABW-232", 0)
+
+        self.assertEqual((winner.url, size), (official, (800, 539)))
+
     def test_thumbnails_are_never_considered(self):
         page = (b'<img class="max-h-[28rem] max-w-full" '
                 b'src="https://pic.duga.jp/a/jacket_thumb.jpg">'

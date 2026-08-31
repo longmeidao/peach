@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 import csv
 import io
+import json
 import re
 import sqlite3
 import time
@@ -68,6 +69,7 @@ AVBASE_MAIN_CLASSES = frozenset(("max-h-[28rem]", "max-w-full"))
 class Candidate:
     source: str
     url: str
+    referer: str = "https://www.avbase.net/"
 
 
 class Unavailable(RuntimeError):
@@ -144,19 +146,38 @@ def cid_variants(content_id: str) -> list[str]:
     return [c for c in out if not (c in seen or seen.add(c))]
 
 
-def content_ids(transport: HttpTransport, code: str) -> list[str]:
+def r18_images(transport: HttpTransport, code: str) -> list[Candidate]:
+    """读取 r18 返回的官方封套，并保留旧数字版高清 URL 探测。
+
+    `content_id` 不是稳定的数字版路径。Prestige 的 ABW 系列会返回
+    `118abw232`，对应 `pics.dmm.co.jp/mono/.../118abw232pl.jpg`；把它补零后
+    拼到 `awsimgsrc.../digital/video` 只会得到 404。r18 已在
+    `images.jacket_image` 给出官方原图 URL，必须优先把这个证据加入候选。
+    """
     for variant in code_variants(code):
         try:
-            import json
             payload = json.loads(_fetch(
                 transport, R18_DETAIL.format(code=urllib.parse.quote(variant)),
                 referer="https://r18.dev/", limit=2 * 1024 * 1024,
             ).decode("utf-8", "ignore"))
         except (Unavailable, ValueError):
             continue
-        cid = payload.get("content_id") or ""
-        if cid:
-            return cid_variants(cid)
+        found: list[Candidate] = []
+        jacket = ((payload.get("images") or {}).get("jacket_image") or {})
+        if isinstance(jacket, dict):
+            for raw_url in jacket.values():
+                url = raw_url.strip() if isinstance(raw_url, str) else ""
+                if url and IMAGE_URL.fullmatch(url) and not THUMBNAIL.search(url):
+                    found.append(Candidate(urlparse(url).netloc, url, "https://r18.dev/"))
+        cid = str(payload.get("content_id") or "")
+        found.extend(
+            Candidate(urlparse(AWS_HIRES).netloc, AWS_HIRES.format(cid=value),
+                      "https://r18.dev/")
+            for value in cid_variants(cid)
+        )
+        seen: set[str] = set()
+        return [candidate for candidate in found
+                if not (candidate.url in seen or seen.add(candidate.url))]
     return []
 
 
@@ -184,7 +205,7 @@ def avbase_images(transport: HttpTransport, code: str) -> list[Candidate]:
 
 
 def probe_size(transport: HttpTransport, candidate: Candidate) -> tuple[int, int]:
-    head = _fetch(transport, candidate.url, referer="https://www.avbase.net/",
+    head = _fetch(transport, candidate.url, referer=candidate.referer,
                   limit=PROBE_BYTES * 2, ranged=True)
     return Image.open(io.BytesIO(head)).size
 
@@ -193,10 +214,7 @@ def best_cover(transport: HttpTransport, code: str, delay: float
                ) -> tuple[Candidate, tuple[int, int], bytes]:
     # 来源一律记主机名。构造的和 avbase 发现的常是同一个主机，记成两个名字会让
     # 覆盖率统计凭空多出一个「渠道」。
-    candidates: list[Candidate] = [
-        Candidate(urlparse(AWS_HIRES).netloc, AWS_HIRES.format(cid=cid))
-        for cid in content_ids(transport, code)
-    ]
+    candidates = r18_images(transport, code)
     time.sleep(delay)
     candidates += avbase_images(transport, code)
     if not candidates:
@@ -216,7 +234,7 @@ def best_cover(transport: HttpTransport, code: str, delay: float
         raise Unavailable("候选都不是可用封套")
 
     _, winner, size = max(measured, key=lambda item: item[0])
-    data = _fetch(transport, winner.url, referer="https://www.avbase.net/",
+    data = _fetch(transport, winner.url, referer=winner.referer,
                   limit=16 * 1024 * 1024)
     return winner, size, data
 
