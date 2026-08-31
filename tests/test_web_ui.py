@@ -1325,6 +1325,8 @@ class WebUiSourceTests(unittest.TestCase):
                         profile.index('class="relatedpeople"'))
         self.assertLess(profile.index('class="relatedpeople"'),
                         profile.index('class="entitytags"'))
+        self.assertPageContains('class="entitytagbar" aria-label="媒体与标签"')
+        self.assertPageContains("body.entity-open .index{overflow-x:visible}")
         self.assertNotIn("关联艺人", profile)
         self.assertNotIn("相关标签", profile)
 
@@ -1360,11 +1362,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("updateEntityCollection(kind,name,{...filters,sort},true)")
         self.assertPageContains("key==='sort'&&filters[key]==='new'")
         self.assertPageContains(".entitycollectionhead .sorts")
+        self.assertPageContains(".entitytagbar{position:sticky;top:var(--topH);z-index:61")
+        self.assertPageContains(
+            ".entitytagbar+.entitysection .entitycollectionhead{top:calc(var(--topH) + var(--filterH))}"
+        )
         self.assertPageContains(".entitycollectionhead{position:sticky;top:var(--topH);z-index:60")
         self.assertPageContains(
-            ".tagbar.is-stuck,.count.is-stuck,.entitycollectionhead.is-stuck"
+            ".tagbar.is-stuck,.count.is-stuck,.entitytagbar.is-stuck,.entitycollectionhead.is-stuck"
         )
-        self.assertPageContains("['#tagbar','#count','.entitycollectionhead']")
+        self.assertPageContains("['#tagbar','#count','.entitytagbar','.entitycollectionhead']")
         self.assertPageContains("scheduleStickySurfaces();")
         # 照片瀑布流没有视频排序语义，切换后直接渲染照片，不复用作品头。
         self.assertPageContains("if(media==='photos'){renderPhotoWall(kind,name,filters,entityPhotos);return}")
@@ -1474,7 +1480,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("border-bottom:1px solid transparent;background:transparent")
         self.assertPageContains("background:transparent;border-bottom:1px solid transparent")
         self.assertPageContains(
-            ".tagbar.is-stuck,.count.is-stuck,.entitycollectionhead.is-stuck"
+            ".tagbar.is-stuck,.count.is-stuck,.entitytagbar.is-stuck,.entitycollectionhead.is-stuck"
             "{background:color-mix(in srgb,#080A0D 84%,transparent)"
         )
         self.assertPageContains("background:color-mix(in srgb,#080A0D 84%,transparent)")
@@ -1534,7 +1540,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_inline_detail_stays_below_the_visible_sticky_navigation(self):
         self.assertPageLacks("body.detail-open .tagbar{position:relative;top:auto;z-index:1}")
         self.assertPageContains("function itemDetailStickyOffset()")
-        self.assertPageContains("['.top','#tagbar','#count','.entitycollectionhead']")
+        self.assertPageContains("['.top','#tagbar','#count','.entitytagbar','.entitycollectionhead']")
         self.assertPageContains("el.compareDocumentPosition(stage)&Node.DOCUMENT_POSITION_FOLLOWING")
         self.assertPageContains("el.offsetParent===null||css.position!=='sticky'")
         self.assertPageContains("stage.style.scrollMarginTop=`${itemDetailStickyOffset()+8}px`")
@@ -2037,7 +2043,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('id="i-pics" viewBox="0 0 16 16" fill="currentColor" stroke="none"')
         self.assertPageContains('class="entitymediatoggle" type="button" data-media-toggle')
         self.assertPageContains("const mediaToggle=photoCount?")
-        self.assertPageContains('<div class="entitytags">${mediaToggle}${tags}</div>')
+        self.assertPageContains('<section class="entitytagbar" aria-label="媒体与标签"><div class="entitytags">${mediaToggle}${tags}</div></section>')
         self.assertPageContains("button.hidden=!photos")
         self.assertPageContains("selected?'videos':'photos'")
         self.assertPageContains(".entitytags .entitymediatoggle{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px")
