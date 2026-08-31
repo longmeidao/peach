@@ -76,6 +76,10 @@ def w_feedback(contract: ActivityContract, body):
             connection.execute(
                 "UPDATE asset SET o_count=COALESCE(o_count,0)+1 WHERE id=?", (aid,),
             )
+        elif kind == "o-undo":
+            connection.execute(
+                "UPDATE asset SET o_count=MAX(COALESCE(o_count,0)-1,0) WHERE id=?", (aid,),
+            )
         elif kind == "rate":
             connection.execute(
                 "UPDATE asset SET rating=? WHERE id=?", (int(body.get("value", 0)), aid),

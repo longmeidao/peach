@@ -28,6 +28,35 @@ export function spinnerHtml(label='加载中'){
   return `<span class="geist-spinner" role="status" aria-label="${esc(label)}">${bars}</span>`;
 }
 
+/**
+ * Geist loading action: visually unavailable and inert without using native
+ * `disabled`, so the trigger keeps keyboard focus while its request is running.
+ */
+export function setActionBusy(control,busy=true){
+  if(!control)return;
+  if(busy){
+    control.setAttribute('aria-busy','true');
+    control.setAttribute('aria-disabled','true');
+  }else{
+    control.removeAttribute('aria-busy');
+    control.removeAttribute('aria-disabled');
+  }
+}
+
+const busyActionRoots=new WeakSet();
+
+/** Block repeat pointer and keyboard activation for every shared busy action. */
+export function wireBusyActions(root=document){
+  if(busyActionRoots.has(root))return;
+  busyActionRoots.add(root);
+  root.addEventListener('click',event=>{
+    const control=event.target.closest?.('button[aria-busy="true"],[role="button"][aria-busy="true"]');
+    if(!control||!root.contains(control))return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  },true);
+}
+
 /** Geist Loading Dots: indeterminate work continuing in the background. */
 export function loadingDotsHtml(label='正在处理', {className=''}={}){
   return `<span class="geist-loading${className?` ${esc(className)}`:''}" role="status">

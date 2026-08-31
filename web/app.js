@@ -2,10 +2,11 @@ import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STAT
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import {
   emptyStateHtml, loadingDotsHtml, mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml,
-  skeletonHtml, spinnerHtml, wireScrollers,
+  setActionBusy, skeletonHtml, spinnerHtml, wireBusyActions, wireScrollers,
 } from './js/ui-components.js';
 
 initMiddleTruncate(document);
+wireBusyActions(document);
 
 const pageSkeletonHtml=(label,{cards=false,className='',variant=''}={})=>
   skeletonHtml(label,{variant:variant||(cards?'cards':'panel'),className});
@@ -282,6 +283,19 @@ const toast=(html,{timeout=6000,warn=false,action=null}={})=>{
   while(root.children.length>4)root.lastElementChild.remove();
   return item;
 };
+
+/* 所有可逆写操作共用同一种回执：只在请求真正完成后报过去时结果，撤销入口
+   保留 8 秒。撤销本身也是一次真实写入，失败时另报一条短错误，不能把本地 UI
+   偷偷改回去假装成功。不可逆或不适合撤销的操作仍用同一函数，但不传 undo。 */
+const actionReceipt=(message,{undo=null,timeout=undo?8000:6000}={})=>toast(esc(message),{
+  timeout,
+  action:undo?{label:'撤销',run:async()=>{
+    try{await undo();toast('已撤销')}
+    catch(error){toast(`撤销失败：${esc(error.message||'请重试')}`,{warn:true})}
+  }}:null,
+});
+const actionFailure=(message,error)=>toast(
+  `${esc(message)}失败：${esc(error?.message||'请重试')}`,{warn:true});
 
 /* 随机排序每次进入首页都换种子；同一次访问继续复用该种子，保证筛选和分页
    不会重复或漏项。「换一批」仍可在当前访问里主动生成下一批。 */
@@ -875,8 +889,13 @@ $('#batchbar').querySelectorAll('[data-batch]').forEach(button=>button.onclick=a
   try{const r=await api('/api/batch',{method:'POST',body:JSON.stringify({ids,operation})});
     if(r.blocked&&r.blocked.length)alert(`已永久删除 ${r.purged} 个；${r.blocked.length} 个删不掉，仍留在回收站：\n`
       +r.blocked.slice(0,5).map(x=>`${x.path}（${x.reason}）`).join('\n'));
-    setSelectMode(false,true);await reloadCurrentSurface()}
-  catch(error){alert(`操作失败：${error.message||'未知错误'}`)}
+    setSelectMode(false,true);await reloadCurrentSurface();
+    const inverse=operation==='dispose'?'restore':operation==='restore'?'dispose':null;
+    actionReceipt(`已${labels[operation]} ${ids.length} 项`,{undo:inverse?async()=>{
+      await api('/api/batch',{method:'POST',body:JSON.stringify({ids,operation:inverse})});
+      await reloadCurrentSurface();
+    }:null})}
+  catch(error){actionFailure('批量操作',error)}
   finally{button.disabled=false;paintSelection()}
 });
 $('#batchbar').querySelectorAll('[data-follow-batch]').forEach(button=>button.onclick=async()=>{
@@ -888,8 +907,8 @@ $('#batchbar').querySelectorAll('[data-follow-batch]').forEach(button=>button.on
     const path=action==='save'?'/api/follow/save':'/api/follow/status';
     const body=action==='save'?{items}:{items,to:action};
     await api(path,{method:'POST',body:JSON.stringify(body)});
-    setSelectMode(false,true);await openFollow(false);
-  }catch(error){alert(`操作失败：${error.message||'未知错误'}`)}
+    setSelectMode(false,true);await openFollow(false);actionReceipt(`已${labels[action]} ${items.length} 项`);
+  }catch(error){actionFailure('批量操作',error)}
   finally{button.disabled=false;paintSelection()}
 });
 $('#batchbar').querySelectorAll('[data-junk-batch]').forEach(button=>button.onclick=async()=>{
@@ -900,8 +919,13 @@ $('#batchbar').querySelectorAll('[data-junk-batch]').forEach(button=>button.oncl
   try{
     await api('/api/batch',{method:'POST',body:JSON.stringify({ids,operation})});
     setSelectMode(false,true);adsBatch=null;await load(true);
-    toast(`已批量${labels[operation]}：${ids.length} 项`);
-  }catch(error){toast(`批量操作失败：${error.message||'未知错误'}`,{warn:true})}
+    const inverse=operation==='dispose'?'restore':operation==='dismiss-junk'?'reconsider-junk':
+      operation==='reconsider-junk'?'dismiss-junk':null;
+    actionReceipt(`已批量${labels[operation]}：${ids.length} 项`,{undo:inverse?async()=>{
+      await api('/api/batch',{method:'POST',body:JSON.stringify({ids,operation:inverse})});
+      await load(true);
+    }:null});
+  }catch(error){actionFailure('批量操作',error)}
   finally{button.disabled=false;paintSelection()}
 });
 
@@ -1183,16 +1207,16 @@ function wireJunkCards(root){
     card.querySelectorAll('[data-junk-operation]').forEach(button=>button.onclick=async event=>{
       event.preventDefault();event.stopPropagation();
       const operation=button.dataset.junkOperation;
-      button.disabled=true;button.setAttribute('aria-busy','true');
+      setActionBusy(button);
       try{
         await runJunkOperation(id,operation);
         const disposed=operation==='dispose',reconsidered=operation==='reconsider-junk';
-        toast(disposed?'已移入回收站':reconsidered?'已重新加入垃圾判断':'已标记为不是垃圾',{
-          action:{label:'撤销',run:()=>runJunkOperation(id,disposed?'restore':reconsidered?'dismiss-junk':'reconsider-junk')},
+        actionReceipt(disposed?'已移入回收站':reconsidered?'已重新加入垃圾判断':'已标记为不是垃圾',{
+          undo:()=>runJunkOperation(id,disposed?'restore':reconsidered?'dismiss-junk':'reconsider-junk'),
         });
       }catch(error){
-        toast(`操作失败：${esc(error.message||'未知错误')}`,{warn:true});
-        button.disabled=false;button.removeAttribute('aria-busy');
+        actionFailure('操作',error);
+        setActionBusy(button,false);
       }
     });
   });
@@ -1232,14 +1256,20 @@ function wireResourceCardActions(root){
       event.preventDefault();event.stopPropagation();
       const card=button.closest('[data-id]'),operation=button.dataset.resourceOperation;
       if(!card)return;
-      button.disabled=true;button.setAttribute('aria-busy','true');
+      setActionBusy(button);
       button.innerHTML=`${spinnerHtml(operation==='restore'?'正在还原':'正在移入回收站')}<span>${operation==='restore'?'正在还原':'正在处理'}</span>`;
       try{
-        await api('/api/batch',{method:'POST',body:JSON.stringify({ids:[+card.dataset.id],operation})});
+        const id=+card.dataset.id;
+        await api('/api/batch',{method:'POST',body:JSON.stringify({ids:[id],operation})});
         await load(true);
+        const inverse=operation==='restore'?'dispose':'restore';
+        actionReceipt(operation==='restore'?'已还原':'已移入回收站',{undo:async()=>{
+          await api('/api/batch',{method:'POST',body:JSON.stringify({ids:[id],operation:inverse})});
+          await load(true);
+        }});
       }catch(error){
-        alert(`操作失败：${error.message||'未知错误'}`);
-        button.disabled=false;button.removeAttribute('aria-busy');
+        actionFailure('操作',error);
+        setActionBusy(button,false);
         const label=operation==='restore'?'还原':'移入回收站';
         button.innerHTML=`${icon(operation==='restore'?'rotate-ccw':'trash')}<span>${label}</span>`;
       }
@@ -1315,9 +1345,15 @@ function wireCards(root,onClick,onTag){
         if(v&&Number.isFinite(v.duration)){if(v._hop){clearInterval(v._hop);v._hop=null}
           v.currentTime=Math.max(0,Math.min(v.duration,v.currentTime+(+seek.dataset.seek)))}return}
       const later=e.target.closest('[data-later]');
-      if(later){e.stopPropagation();api('/api/watch-later',{method:'POST',body:JSON.stringify({id:it.id})})
+      if(later){e.stopPropagation();setActionBusy(later);api('/api/watch-later',{method:'POST',body:JSON.stringify({id:it.id})})
         .then(r=>{it.watch_later=r.watch_later;later.setAttribute('aria-pressed',r.watch_later);
-          later.innerHTML=r.watch_later?icon('check'):icon('bookmark-plus')});return}
+          later.innerHTML=r.watch_later?icon('check'):icon('bookmark-plus');
+          actionReceipt(r.watch_later?'已加入稍后看':'已移出稍后看',{undo:async()=>{
+            const restored=await api('/api/watch-later',{method:'POST',body:JSON.stringify({id:it.id})});
+            it.watch_later=restored.watch_later;if(!later.isConnected)return;
+            later.setAttribute('aria-pressed',restored.watch_later);
+            later.innerHTML=restored.watch_later?icon('check'):icon('bookmark-plus');
+          }})}).catch(error=>actionFailure('更新稍后看',error)).finally(()=>setActionBusy(later,false));return}
       if(selectMode||e.shiftKey||e.ctrlKey||e.metaKey){e.preventDefault();e.stopPropagation();toggleSelection(it.id,e.shiftKey);return}
       if(e.target.closest('[data-open]')){e.stopPropagation();openCard(+el.dataset.id,el);return}
       const ent=e.target.closest('[data-entity-kind]');
@@ -1561,8 +1597,8 @@ function renderCount(){
   const batch=$('#batchAction');
   if(batch)batch.onclick=async()=>{
     if(batch.getAttribute('aria-busy')==='true')return;
-    const old=batch.innerHTML;batch.setAttribute('aria-busy','true');batch.innerHTML=spinnerHtml('换一批');
-    try{await refreshAll()}finally{batch.removeAttribute('aria-busy');batch.innerHTML=old}
+    const old=batch.innerHTML;setActionBusy(batch);batch.innerHTML=spinnerHtml('换一批');
+    try{await refreshAll()}finally{setActionBusy(batch,false);batch.innerHTML=old}
   };
   wireJavLayoutButtons($('#count'));
   const emptyTrash=$('#emptyTrash');
@@ -1575,6 +1611,8 @@ function renderCount(){
          否则用户看到条目还在会以为清空又没生效。 */
       if(r.blocked&&r.blocked.length)alert(`已永久删除 ${r.purged} 个；${r.blocked.length} 个删不掉，仍留在回收站：\n`
         +r.blocked.slice(0,5).map(x=>`${x.path}（${x.reason}）`).join('\n'));
+      actionReceipt(`已永久删除 ${r.purged} 项`);
+    }catch(error){actionFailure('清空回收站',error);
     }finally{await load(true)}
   };
   $('#count').querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{
@@ -1776,7 +1814,7 @@ function resourceSyncMarkup(){
     <div class="resourcesyncbox"><div class="resourcesyncbody"><h3>网盘与账本</h3>
       <p>核对已挂载网盘与账本。网盘上已删除的条目先进入回收站；只清理没有在用的预览与播放缓存。</p></div>
       <div class="resourcesyncfooter"><p>离线来源会整库跳过。候选 CSV、来源证据、女优头像和厂牌 Logo 不会删除。</p>
-      <button class="resourceaction" type="button" id="resourceScan" aria-busy="false">${icon('refresh-cw')}<span>扫描差异</span></button></div></div>
+      <button class="resourceaction" type="button" id="resourceScan">${icon('refresh-cw')}<span>扫描差异</span></button></div></div>
     <div id="resourceSyncResult" aria-live="polite"></div></section>`;
 }
 async function wireResourceSync(){
@@ -1784,7 +1822,7 @@ async function wireResourceSync(){
   if(!scan||!result)return;
   const active=()=>location.pathname==='/stats'&&!$('#stats').hidden&&document.body.contains(result);
   const setBusy=(busy,done=false)=>{
-    scan.disabled=busy;scan.setAttribute('aria-busy',String(busy));
+    setActionBusy(scan,busy);
     scan.innerHTML=`${icon('refresh-cw')}<span>${busy?'扫描中':done?'重新扫描':'扫描差异'}</span>`;
   };
   const render=payload=>{
@@ -1802,13 +1840,13 @@ async function wireResourceSync(){
     $('#resourceApply')?.addEventListener('click',async event=>{
       const button=event.currentTarget;
       if(!confirm(`把 ${payload.missing||0} 项移入回收站，并清理 ${cache.files||0} 个可重建缓存？`))return;
-      button.disabled=true;button.setAttribute('aria-busy','true');
+      setActionBusy(button);
       button.innerHTML=`${spinnerHtml('正在应用')}<span>正在重新核对并应用…</span>`;
       try{
         const applied=await api('/api/resource-sync/apply',{method:'POST',body:JSON.stringify({confirm:true,clean_cache:true,scan_id:payload.scan_id||''})});
         result.innerHTML=`<p class="resourcesyncok">已把 ${applied.moved_to_trash.toLocaleString()} 项移入回收站，清理 ${applied.cache_removed.toLocaleString()} 个缓存，释放 ${fmtSize(applied.bytes_reclaimed||0)}。</p>`;
       }catch(error){
-        button.disabled=false;button.removeAttribute('aria-busy');
+        setActionBusy(button,false);
         button.innerHTML=`${icon('refresh-cw')}<span>重试同步</span>`;
         result.insertAdjacentHTML('beforeend',noteHtml(error.message,{variant:'error',label:'同步失败'}))}
     });
@@ -1975,24 +2013,25 @@ function renderTaste(d){
   root.querySelector('[data-taste-window]').onchange=e=>{tasteWindow=e.target.value;openTaste(false)};
   root.querySelector('[data-taste-refresh]').onclick=async e=>{const button=e.currentTarget;
     const oldButton=button.innerHTML;
-    button.disabled=true;button.setAttribute('aria-busy','true');
+    setActionBusy(button);
     button.innerHTML=`${spinnerHtml('正在读取')}<span>读取中…</span>`;
     stateEl.textContent='';
     try{const result=await api('/api/taste/refresh',{method:'POST',body:JSON.stringify({window:tasteWindow})});
-      tasteCacheSet(tasteWindow,result.dashboard);renderTaste(result.dashboard)}
-    catch(error){stateEl.textContent=error.message||'读取失败';button.disabled=false;
-      button.removeAttribute('aria-busy');button.innerHTML=oldButton}};
+      tasteCacheSet(tasteWindow,result.dashboard);renderTaste(result.dashboard);actionReceipt('已更新口味分析')}
+    catch(error){stateEl.textContent=error.message||'读取失败';setActionBusy(button,false);
+      button.innerHTML=oldButton}};
   root.querySelector('[data-taste-import]').onclick=()=>file.click();
   file.onchange=async()=>{const selected=file.files[0];if(!selected)return;stateEl.textContent=`正在导入 ${selected.name}…`;
     try{const response=await fetch('/api/taste/import',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Peach-Filename':encodeURIComponent(selected.name)},body:selected});
       const payload=await response.json().catch(()=>null);if(!response.ok)throw new Error(payload?.error||`导入失败（${response.status}）`);
-      tasteWindow='all';tasteCacheSet('all',payload.dashboard);renderTaste(payload.dashboard)}catch(error){stateEl.textContent=error.message||'导入失败'}};
+      tasteWindow='all';tasteCacheSet('all',payload.dashboard);renderTaste(payload.dashboard);actionReceipt('已导入口味数据')}
+    catch(error){stateEl.textContent=error.message||'导入失败';actionFailure('导入口味数据',error)}};
   root.querySelectorAll('[data-taste-kind]').forEach(button=>button.onclick=()=>openTasteSignal(button.dataset.tasteKind,button.dataset.tasteName));
   root.querySelectorAll('[data-taste-remove]').forEach(button=>button.onclick=async()=>{
     if(!confirm('从口味分析中移除这个数据源？原始导出文件会保留。'))return;
     button.disabled=true;stateEl.textContent='正在移除…';
     try{const result=await api('/api/taste/source',{method:'POST',body:JSON.stringify({operation:'remove',source_key:button.dataset.tasteRemove,window:tasteWindow})});
-      tasteCacheSet(tasteWindow,result.dashboard);renderTaste(result.dashboard)}
+      tasteCacheSet(tasteWindow,result.dashboard);renderTaste(result.dashboard);actionReceipt('已移除口味数据源')}
     catch(error){stateEl.textContent=error.message||'移除失败';button.disabled=false}});
 }
 async function openTaste(push=true){
@@ -2038,7 +2077,7 @@ async function saveMixAsPlaylist(mix){
   dialog.querySelector('form').onsubmit=async event=>{event.preventDefault();
     const form=event.currentTarget,stateEl=form.querySelector('[data-playlist-state]');
     try{const result=await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'create',name:new FormData(form).get('name'),asset_ids:mix.items.map(item=>item.id),source_kind:'mix',source_seed_asset_id:mix.seedId})});
-      dialog.close();await openPlaylist(result.playlist.id,result.playlist.current_asset_id,true)
+      dialog.close();actionReceipt('已保存为播放列表');await openPlaylist(result.playlist.id,result.playlist.current_asset_id,true)
     }catch(error){stateEl.textContent=error.message||'保存失败'}
   };
   dialog.querySelector('input').select();
@@ -2050,7 +2089,7 @@ async function openAddToPlaylist(item){
       <label>新播放列表<input name="name" maxlength="80" placeholder="输入名称" required></label><button type="submit">新建并加入</button><span data-playlist-state></span></form>
     <div class="playlistpicklist">${rows||'<p class="empty">还没有播放列表</p>'}</div>`});
   const finish=async body=>{const stateEl=dialog.querySelector('[data-playlist-state]');
-    try{await api('/api/playlist',{method:'POST',body:JSON.stringify(body)});dialog.close()}
+    try{await api('/api/playlist',{method:'POST',body:JSON.stringify(body)});dialog.close();actionReceipt('已加入播放列表')}
     catch(error){stateEl.textContent=error.message||'加入失败'}};
   dialog.querySelector('form').onsubmit=event=>{event.preventDefault();finish({action:'create',name:new FormData(event.currentTarget).get('name'),asset_ids:[item.id]})};
   dialog.querySelectorAll('[data-add-playlist]').forEach(button=>button.onclick=()=>finish({action:'add',id:+button.dataset.addPlaylist,asset_ids:[item.id]}));
@@ -2060,14 +2099,14 @@ async function movePlaylistItem(queue,index,delta,currentId){
   const target=index+delta;if(target<0||target>=queue.items.length)return;
   const ids=queue.items.map(item=>item.id);[ids[index],ids[target]]=[ids[target],ids[index]];
   await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'reorder',id:queue.playlistId,asset_ids:ids})});
-  await openPlaylist(queue.playlistId,currentId,false);
+  await openPlaylist(queue.playlistId,currentId,false);actionReceipt('已调整播放顺序');
 }
 async function removePlaylistItem(queue,assetId,currentId){
   if(queue?.kind!=='playlist'||!confirm('从播放列表移出这个视频？'))return;
   const result=await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'remove',id:queue.playlistId,asset_id:assetId})});
   if(!result.playlist.items.length){await openPlaylists(true);return}
   const next=result.playlist.items.some(item=>item.id===currentId)?currentId:result.playlist.current_asset_id;
-  await openPlaylist(queue.playlistId,next,false);
+  await openPlaylist(queue.playlistId,next,false);actionReceipt('已移出播放列表');
 }
 async function openPlaylists(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
@@ -2084,15 +2123,17 @@ async function openPlaylists(push=true){
       <div class="playlistactions"><button data-rename-playlist="${list.id}">保存名称</button><button data-open-playlist="${list.id}" ${resume?'':'disabled'}>继续播放</button><button class="danger" data-delete-playlist="${list.id}">删除</button></div></article>`}).join('');
   $('#stats').innerHTML=`<section class="playlistpage"><header><div><h2>播放列表</h2><p>保存 Mix，按自己的顺序继续播放。</p></div><form class="playlistcreate" id="newPlaylist"><label>新播放列表<input name="name" maxlength="80" placeholder="输入名称" required></label><button type="submit">新建</button><span data-playlist-state></span></form></header><div class="playlistcards">${cards||emptyState('list-filter','还没有播放列表','保存 Mix 或新建列表后，会在这里按自己的顺序继续播放。')}</div></section>`;
   $('#newPlaylist').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget;
-    try{await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'create',name:new FormData(form).get('name'),asset_ids:[]})});await openPlaylists(false)}
+    try{await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'create',name:new FormData(form).get('name'),asset_ids:[]})});await openPlaylists(false);actionReceipt('已新建播放列表')}
     catch(error){form.querySelector('[data-playlist-state]').textContent=error.message||'新建失败'}};
   $('#stats').querySelectorAll('[data-open-playlist]').forEach(button=>button.onclick=()=>{
     const list=data.items.find(item=>item.id===+button.dataset.openPlaylist),resume=list?.current_asset_id||list?.preview_asset_id;
     if(resume)openPlaylist(list.id,resume,true)});
   $('#stats').querySelectorAll('[data-rename-playlist]').forEach(button=>button.onclick=async()=>{const card=button.closest('[data-playlist-card]'),input=card.querySelector('[data-playlist-name]');
-    await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'rename',id:+button.dataset.renamePlaylist,name:input.value})});await openPlaylists(false)});
+    try{await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'rename',id:+button.dataset.renamePlaylist,name:input.value})});await openPlaylists(false);actionReceipt('已重命名播放列表')}
+    catch(error){actionFailure('重命名播放列表',error)}});
   $('#stats').querySelectorAll('[data-delete-playlist]').forEach(button=>button.onclick=async()=>{if(!confirm('删除这个播放列表？视频本身不会删除。'))return;
-    await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'delete',id:+button.dataset.deletePlaylist})});await openPlaylists(false)});
+    try{await api('/api/playlist',{method:'POST',body:JSON.stringify({action:'delete',id:+button.dataset.deletePlaylist})});await openPlaylists(false);actionReceipt('已删除播放列表')}
+    catch(error){actionFailure('删除播放列表',error)}});
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
@@ -2306,6 +2347,8 @@ async function openReview(push=true){
           if(index>=0)rows.splice(index,1);
           reviewData.counts[reviewCategory]=Math.max(0,(reviewData.counts[reviewCategory]||1)-1);
           render();
+          actionReceipt(button.dataset.reviewStatus==='approved'?'已通过候选':
+            button.dataset.reviewStatus==='rejected'?'已拒绝候选':'已跳过候选');
           return;
         }
         if(state)state.textContent=result.error||'服务端拒绝了这次判定';
@@ -2397,7 +2440,7 @@ async function loadMoreFollow(button){
   if(!followData||followBusy)return;
   followBusy=true;
   const oldButton=button?.innerHTML;
-  if(button){button.setAttribute('aria-busy','true');button.innerHTML=`${spinnerHtml('加载更多')}<span>加载中…</span>`}
+  if(button){setActionBusy(button);button.innerHTML=`${spinnerHtml('加载更多')}<span>加载中…</span>`}
   try{
     const next=await api(followPageUrl((followData.offset||0)+FOLLOW_PAGE));
     followData={...next,
@@ -2405,7 +2448,7 @@ async function loadMoreFollow(button){
       // counts 一直是全库口径，用新的那份即可；offset/has_more 跟着最新一页走。
       sources:next.sources||followData.sources};
     renderFollow();
-  }finally{followBusy=false;if(button){button.removeAttribute('aria-busy');button.innerHTML=oldButton}}
+  }finally{followBusy=false;if(button){setActionBusy(button,false);button.innerHTML=oldButton}}
 }
 let followCredentialProviders=new Set();
 /* 上一次检查的结果。检查完页面会整页重画，如果不把结果留在这里，用户看到的就只是
@@ -2461,10 +2504,20 @@ function followCollectionItems(group){
     if(!item||seen.has(item.id))return false;seen.add(item.id);return true});
 }
 
+function followCollectionItemsNewest(group){
+  return followCollectionItems(group).sort((a,b)=>{
+    const byTime=(Date.parse(b.published_at||'')||0)-(Date.parse(a.published_at||'')||0);
+    return byTime||(+b.id||0)-(+a.id||0);
+  });
+}
+
+const followGroupedMediaOwner=group=>followCollectionItems(group).find(item=>
+  (item.media_items||[]).some(media=>media.resource_group));
+
 // F95 的「8 条动态」可能只有一个网盘页，也可能一条实际视频都没有。Mix 是播放
 // 语义，只能由已解析、可在 Peach 内播放的视频触发，不能拿回复数或外链数冒充。
 function followVideoItems(group){
-  return followCollectionItems(group).filter(item=>
+  return followCollectionItemsNewest(group).filter(item=>
     item.playable&&item.media_kind==='video');
 }
 
@@ -2487,14 +2540,18 @@ const followMediaKinds=group=>{
 };
 const followItemForMedia=(group,view=followMediaView)=>{
   const wanted=view==='images'?'image':'video';
-  return followCollectionItems(group).find(item=>followItemMediaKinds(item).has(wanted))||group.primary;
+  return followCollectionItemsNewest(group).find(item=>followItemMediaKinds(item).has(wanted))||group.primary;
 };
 
 function followMediaNote(item){
   if(item.media_error)return `媒体未取得：${item.media_error}`;
   if(item.media_needs_credential)return followCredentialProviders.has(item.provider)
-    ?'已保存 F95 登录会话，等待下次检查重新解析资源'
-    :'媒体链接需要 F95 登录会话解析';
+    ?(item.playable
+      ?'已显示可读取附件；F95 登录会话已保存，受保护资源会在下次检查重新解析'
+      :'F95 登录会话已保存；这条旧记录的受保护资源会在下次检查重新解析')
+    :(item.playable
+      ?'已显示可读取附件；其他资源需要 F95 登录会话解析'
+      :'媒体链接需要 F95 登录会话解析');
   if(item.has_media&&!item.playable&&item.media_kind==='external')return item.resource_urls?.length
     ?`已取得 ${item.resource_urls.length} 个外部文件页；视频列表未取得`
     :'外部文件页未取得；视频列表未取得';
@@ -2529,6 +2586,8 @@ function followCollectionCopy(group,item,mark=''){
 }
 
 function followQueueHtml(group,itemId){
+  const groupedOwner=followGroupedMediaOwner(group);
+  if(groupedOwner)return followEmbeddedQueueHtml(groupedOwner,null);
   const items=followVideoItems(group);
   return `<aside class="mixqueue followqueue" data-queue-kind="collection"><div class="mixqueuehead"><div><h2>视频合集</h2><span>${esc(group.primary.title||'未命名合集')} · ${items.length} 个视频</span></div><div class="mixqueueactions">
     <button data-follow-queue-close title="关闭" aria-label="关闭">${icon('x')}</button></div></div><div class="mixlist">${items.map(item=>{
@@ -2544,14 +2603,22 @@ function followQueueHtml(group,itemId){
 
 function followEmbeddedQueueHtml(item,mediaIndex){
   const items=item.media_items||[];
-  return `<aside class="mixqueue followqueue" data-queue-kind="media"><div class="mixqueuehead"><div><h2>多媒体</h2><span>${esc(item.title||'未命名内容')} · ${items.length} 个媒体</span></div><div class="mixqueueactions">
-    <button data-follow-queue-close title="关闭" aria-label="关闭">${icon('x')}</button></div></div><div class="mixlist">${items.map(media=>{
+  const groups=[];
+  items.forEach(media=>{
+    const key=media.resource_group||'ungrouped';
+    let group=groups.find(row=>row.key===key);
+    if(!group){group={key,label:media.resource_group_label||'',items:[]};groups.push(group)}
+    group.items.push(media);
+  });
+  const rows=groups.map(group=>`${group.label?`<h3 class="mixgrouplabel">${esc(group.label)} <span>${group.items.length}</span></h3>`:''}${group.items.map(media=>{
       const thumb=media.thumb_url
         ?`<img src="${esc(media.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
         :`<span class="fnothumb">${sourceIcon(media.resource_provider||item.provider)}</span>`;
-      return `<div class="mixrow"><button class="mixitem ${media.index===mediaIndex?'current':''}" data-follow-media-item="${media.index}" data-media-kind="${media.media_kind}" aria-current="${media.index===mediaIndex?'true':'false'}">
+      return `<div class="mixrow"><button class="mixitem ${media.index===mediaIndex?'current':''}" data-follow-media-owner="${item.id}" data-follow-media-item="${media.index}" data-media-kind="${media.media_kind}" aria-current="${media.index===mediaIndex?'true':'false'}">
         <span class="mixitempic">${thumb}</span><span class="mixitemtext"><b data-middle-truncate>${esc(javDisplayName(media))}</b><span data-truncate-end>${media.media_kind==='image'?'图片':'视频'}</span></span></button></div>`;
-    }).join('')}</div></aside>`;
+    }).join('')}`).join('');
+  return `<aside class="mixqueue followqueue" data-queue-kind="media"><div class="mixqueuehead"><div><h2>多媒体</h2><span>${esc(item.title||'未命名内容')} · ${items.length} 个媒体</span></div><div class="mixqueueactions">
+    <button data-follow-queue-close title="关闭" aria-label="关闭">${icon('x')}</button></div></div><div class="mixlist">${rows}</div></aside>`;
 }
 
 /* 重建条目索引。`merge` 时只往里加，不清空已有的。
@@ -2671,7 +2738,8 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   $('#stage').querySelectorAll('[data-follow-queue-item]').forEach(button=>button.onclick=()=>
     openFollowDetail(+button.dataset.followQueueItem,true));
   $('#stage').querySelectorAll('[data-follow-media-item]').forEach(button=>button.onclick=()=>
-    openFollowDetail(item.id,false,+button.dataset.followMediaItem,true));
+    openFollowDetail(+(button.dataset.followMediaOwner||item.id),false,
+      +button.dataset.followMediaItem,true));
   const switchImage=index=>openFollowDetail(item.id,false,+index,true);
   $('#stage').querySelectorAll('[data-follow-image-item]').forEach(button=>button.onclick=()=>
     switchImage(button.dataset.followImageItem));
@@ -2717,21 +2785,32 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     if(followTags.has(tag))followTags.delete(tag);else followTags.add(tag);
     await closeDetail();
   });
-  const write=async(button,path,body,done)=>{
-    const state=$('#stage').querySelector('.fstate');button.disabled=true;
-    try{await api(path,{method:'POST',body:JSON.stringify(body)});done();state.textContent='已更新'}
-    catch(error){button.disabled=false;state.textContent=error.message||'操作失败'}
+  const write=async(button,path,body,done,{message='已更新',undo=null}={})=>{
+    const state=$('#stage').querySelector('.fstate');setActionBusy(button);
+    try{await api(path,{method:'POST',body:JSON.stringify(body)});done();state.textContent='';
+      actionReceipt(message,{undo})}
+    catch(error){state.textContent=error.message||'操作失败';actionFailure('更新关注状态',error)}
+    finally{setActionBusy(button,false)}
   };
   $('#stage').querySelector('[data-follow-detail-save]')?.addEventListener('click',event=>{
     const button=event.currentTarget;
     write(button,'/api/follow/save',{item:item.id},()=>{
-      item.status='saved';button.innerHTML=icon('check');button.title='已保存';button.setAttribute('aria-label','已保存')});
+      item.status='saved';button.innerHTML=icon('check');button.title='已保存';button.setAttribute('aria-label','已保存')},
+    {message:'已保存到账本'});
   });
-  $('#stage').querySelectorAll('[data-follow-detail-status]').forEach(button=>button.onclick=()=>
-    write(button,'/api/follow/status',{item:item.id,to:button.dataset.followDetailStatus},()=>{
-      item.status=button.dataset.followDetailStatus;
+  $('#stage').querySelectorAll('[data-follow-detail-status]').forEach(button=>button.onclick=()=>{
+    const before=item.status,to=button.dataset.followDetailStatus;
+    write(button,'/api/follow/status',{item:item.id,to},()=>{
+      item.status=to;
       $('#stage').querySelectorAll('[data-follow-detail-status]').forEach(control=>
-        control.setAttribute('aria-pressed',String(control.dataset.followDetailStatus===item.status)))}));
+        control.setAttribute('aria-pressed',String(control.dataset.followDetailStatus===item.status)))},
+    {message:to==='seen'?'已标记看过':'已更新关注状态',undo:before!=='saved'?async()=>{
+      await api('/api/follow/status',{method:'POST',body:JSON.stringify({item:item.id,to:before})});
+      item.status=before;
+      $('#stage').querySelectorAll('[data-follow-detail-status]').forEach(control=>
+        control.setAttribute('aria-pressed',String(control.dataset.followDetailStatus===before)));
+    }:null});
+  });
   alignFollowImageControls();
   // 滚到舞台本身，不是页面头部——就近展开的意义就在于视线不被拽走。
   // 复用首页那套 sticky 偏移，标题不会被吸顶的筛选条盖住。
@@ -2774,11 +2853,13 @@ function followCard(group,authorSources=[]){
     ? `<img src="${esc(thumbUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
     : `<span class="fnothumb">${esc(item.provider_label)}</span>`;
   const videos=followMediaView==='videos'?followVideoItems(group):[],embedded=item.media_items||[];
-  const isMix=embedded.length>1||videos.length>1;
-  const mixCount=embedded.length>1?embedded.length:videos.length;
+  const groupedOwner=followMediaView==='videos'?followGroupedMediaOwner(group):null;
+  const groupedVideos=(groupedOwner?.media_items||[]).filter(media=>media.media_kind==='video');
+  const isMix=embedded.length>1||groupedVideos.length>1||videos.length>1;
+  const mixCount=embedded.length>1?embedded.length:(groupedVideos.length||videos.length);
   const mixKind=embedded.length&&embedded.every(media=>media.media_kind==='image')?'图片'
     :embedded.length&&embedded.some(media=>media.media_kind==='image')?'媒体':'视频';
-  const mixTarget=embedded.length>1?item.id:videos[0]?.id;
+  const mixTarget=embedded.length>1?item.id:(videos[0]?.id||item.id);
   const badges=followBadges(group);
   const tags=followCardTags(item).slice(0,3).map(tag=>followTagChip(item,tag)).join('');
   const open=`<button class="cardopenhit" data-follow-detail="${item.id}" aria-label="打开 ${esc(item.title)} 详情"></button>`;
@@ -2890,7 +2971,7 @@ function readFollowView(){
   followMediaView=params.get('media')==='images'?'images':'videos';
 }
 function followMediaControl(counts){
-  if(!counts.images)return '';
+  if(!counts.images&&followMediaView!=='images')return '';
   return mediaViewButtonsHtml({active:followMediaView,videoCount:counts.videos,imageCount:counts.images});
 }
 function groupTagType(groups,tag){
@@ -2937,10 +3018,6 @@ function renderFollow(){
   const mediaCounts={videos:0,images:0};
   groups.forEach(group=>followMediaKinds(group).forEach(kind=>
     mediaCounts[kind==='image'?'images':'videos']++));
-  const requestedMediaView=followMediaView;
-  if(followMediaView==='images'&&!mediaCounts.images)followMediaView='videos';
-  if(followMediaView==='videos'&&!mediaCounts.videos&&mediaCounts.images)followMediaView='images';
-  if(requestedMediaView!==followMediaView&&location.pathname==='/follow')route(followViewPath(),true);
   const wantedKind=followMediaView==='images'?'image':'video';
   const visible=groups.filter(group=>followMediaKinds(group).has(wantedKind));
   const providerPills=[...providers].map(([key,label])=>
@@ -3029,8 +3106,8 @@ function wireFollowOlder(){
   if(!button)return;
   button.onclick=async()=>{
     if(followBusy)return;
-    followBusy=true;button.setAttribute('aria-busy','true');
-    button.innerHTML=loadingDotsHtml('抓取中…');
+    followBusy=true;setActionBusy(button);
+    button.innerHTML=`${spinnerHtml('抓取中')}<span>抓取中…</span>`;
     try{
       followCheckReport=await api('/api/follow/check',
         {method:'POST',body:JSON.stringify({older:true})});
@@ -3040,7 +3117,7 @@ function wireFollowOlder(){
       followCheckReport={results:[{ok:false,error:error.message}]};
       followCheckToast(followCheckReport);
       await openFollow(false);
-    }finally{followBusy=false;button.removeAttribute('aria-busy')}
+    }finally{followBusy=false;setActionBusy(button,false)}
   };
 }
 
@@ -3512,7 +3589,7 @@ function wireFollowManage(){
       .map(line=>line.trim()).filter(Boolean);
     if(!lines.length)return;
     const byName=lines.some(line=>!line.includes('/'));
-    form.dataset.busy='true';button.setAttribute('aria-busy','true');
+    form.dataset.busy='true';setActionBusy(button);
     if(prefix)prefix.innerHTML=spinnerHtml('查找中');
     // 索引下载的提醒只在真按名字查时出现；常驻成一句说明就是噪音。
     state.textContent=byName?'查找中…（首次按名字查要下载创作者索引，可能几十秒）':'识别中…';
@@ -3522,7 +3599,7 @@ function wireFollowManage(){
       state.textContent='';if(box){box.value='';box.style.height='auto'}
       renderFollowPicks(result.results||[]);
     }catch(error){state.textContent=error.message||'查找失败'}
-    finally{form.dataset.busy='false';button.removeAttribute('aria-busy');
+    finally{form.dataset.busy='false';setActionBusy(button,false);
       if(prefix)prefix.innerHTML=icon('search')}
   };
   root.querySelectorAll('[data-follow-remove]').forEach(button=>button.onclick=async()=>{
@@ -3531,23 +3608,27 @@ function wireFollowManage(){
     try{
       await api('/api/follow/source',{method:'POST',
         body:JSON.stringify({action:'remove',id:+button.dataset.followRemove})});
-      await openFollowManage(false);
-    }catch(error){button.disabled=false;alert(error.message)}
+      await openFollowManage(false);actionReceipt('已取消关注来源');
+    }catch(error){button.disabled=false;actionFailure('取消关注来源',error)}
   });
   root.querySelectorAll('[data-follow-enabled]').forEach(control=>control.onchange=async()=>{
     const enabled=control.checked;control.disabled=true;
     try{
       await api('/api/follow/source',{method:'POST',body:JSON.stringify(
         {action:'enabled',id:Number(control.dataset.followEnabled),enabled})});
-      await openFollowManage(false);
-    }catch(error){control.checked=!enabled;control.disabled=false;alert(error.message)}
+      await openFollowManage(false);actionReceipt(enabled?'已启用关注来源':'已暂停关注来源',{undo:async()=>{
+        await api('/api/follow/source',{method:'POST',body:JSON.stringify(
+          {action:'enabled',id:Number(control.dataset.followEnabled),enabled:!enabled})});
+        await openFollowManage(false);
+      }});
+    }catch(error){control.checked=!enabled;control.disabled=false;actionFailure('更新关注来源',error)}
   });
   root.querySelectorAll('[data-follow-check]').forEach(button=>button.onclick=async()=>{
     if(followBusy)return;
     followBusy=true;const oldTitle=button.title;
     const oldAria=button.getAttribute('aria-label');
     const oldButton=button.innerHTML;
-    button.setAttribute('aria-busy','true');button.title='检查中…';
+    setActionBusy(button);button.title='检查中…';
     button.setAttribute('aria-label','检查中…');
     button.innerHTML=`${spinnerHtml('检查中')}${button.matches('.frowicon')?'':'<span>检查中…</span>'}`;
     try{
@@ -3569,7 +3650,7 @@ function wireFollowManage(){
        if(box)box.outerHTML=note;
       else $('#stats').querySelector('.fsec')?.insertAdjacentHTML('afterbegin',note);
     }
-    finally{followBusy=false;button.removeAttribute('aria-busy');button.innerHTML=oldButton;
+    finally{followBusy=false;setActionBusy(button,false);button.innerHTML=oldButton;
       button.title=oldTitle;if(oldAria===null)button.removeAttribute('aria-label');
       else button.setAttribute('aria-label',oldAria)}
   });
@@ -3578,8 +3659,11 @@ function wireFollowManage(){
     try{
       await api('/api/follow/author-alias',{method:'POST',body:JSON.stringify(
         {action:'add',canonical,alias})});
-      await openFollowManage(false);
-    }catch(error){button.disabled=false;alert(error.message)}
+      await openFollowManage(false);actionReceipt('已合并作者别名',{undo:async()=>{
+        await api('/api/follow/author-alias',{method:'POST',body:JSON.stringify({action:'remove',alias})});
+        await openFollowManage(false);
+      }});
+    }catch(error){button.disabled=false;actionFailure('合并作者别名',error)}
   };
   root.querySelectorAll('[data-follow-alias-add]').forEach(button=>button.onclick=()=>
     saveAuthorAlias(button.dataset.canonical,button.dataset.alias,button));
@@ -3596,8 +3680,8 @@ function wireFollowManage(){
     try{
       await api('/api/follow/author-alias',{method:'POST',body:JSON.stringify(
         {action:'remove',alias})});
-      await openFollowManage(false);
-    }catch(error){button.disabled=false;alert(error.message)}
+      await openFollowManage(false);actionReceipt('已移除作者别名');
+    }catch(error){button.disabled=false;actionFailure('移除作者别名',error)}
   });
   root.querySelectorAll('[data-follow-guess]').forEach(chip=>chip.onclick=()=>{
     if(!form)return;
@@ -3618,7 +3702,7 @@ function wireFollowManage(){
       await api('/api/follow/credential',{method:'POST',body:JSON.stringify(
         {provider:form.dataset.credForm,values})});
       // 值不回显：清掉输入框，重画之后只看得到字段名。
-      form.reset();await openFollowManage(false);
+      form.reset();await openFollowManage(false);actionReceipt('已保存来源凭据');
     }catch(error){state.textContent=error.message||'保存失败';button.disabled=false}
   });
   root.querySelectorAll('[data-cred-clear]').forEach(button=>button.onclick=async()=>{
@@ -3630,8 +3714,8 @@ function wireFollowManage(){
       const done=await api('/api/follow/credential',{method:'POST',body:JSON.stringify(
         {provider:button.dataset.credClear,values:{}})});
       if(done.note)alert(done.note);
-      await openFollowManage(false);
-    }catch(error){button.disabled=false;alert(error.message)}
+      await openFollowManage(false);actionReceipt('已清除来源凭据');
+    }catch(error){button.disabled=false;actionFailure('清除来源凭据',error)}
   });
   root.querySelectorAll('[data-follow-bulk]').forEach(button=>button.onclick=async()=>{
     const to=button.dataset.followBulk;
@@ -3644,8 +3728,8 @@ function wireFollowManage(){
       for(const id of ids){
         await api('/api/follow/status',{method:'POST',body:JSON.stringify({item:id,to})});
       }
-      await openFollowManage(false);
-    }catch(error){button.disabled=false;alert(error.message)}
+      await openFollowManage(false);actionReceipt(`已批量标记 ${ids.length} 项`);
+    }catch(error){button.disabled=false;actionFailure('批量更新关注状态',error)}
   });
   root.querySelectorAll('[data-follow-view]').forEach(button=>
     button.onclick=()=>openFollow());
@@ -3762,7 +3846,7 @@ function renderFollowPicks(results){
     if(!picked.length)return;
     const state=box.querySelector('[data-pick-state]');
     if(addButton.getAttribute('aria-busy')==='true')return;
-    addButton.setAttribute('aria-busy','true');
+    setActionBusy(addButton);
     let done=0;const failures=[];
     for(const input of picked){
       state.innerHTML=`${spinnerHtml('添加中')}<span>添加中… ${++done}/${picked.length}</span>`;
@@ -3777,23 +3861,33 @@ function renderFollowPicks(results){
     }
     if(failures.length){
       state.textContent=failures.join('；');
-      addButton.removeAttribute('aria-busy');
+      setActionBusy(addButton,false);
       return;
     }
     await openFollowManage(false);
+    actionReceipt(`已添加 ${picked.length} 个关注来源`);
   };
 }
 
 async function followWrite(button,path,body){
   const card=button.closest('.followitem'),state=card?.querySelector('.fstate');
-  button.disabled=true;
+  const before=card?.dataset.status||'new';
+  setActionBusy(button);
   try{
     await api(path,{method:'POST',body:JSON.stringify(body)});
     await openFollow(false);
+    const saving=path==='/api/follow/save',to=body.to;
+    const labels={new:'已恢复未看',seen:'已标记已看',ignored:'已忽略'};
+    actionReceipt(saving?'已保存到账本':(labels[to]||'已更新关注状态'),{undo:!saving&&before!=='saved'?async()=>{
+      await api('/api/follow/status',{method:'POST',body:JSON.stringify({item:body.item,to:before})});
+      await openFollow(false);
+    }:null});
   }catch(e){
-    button.disabled=false;
     // 只读端（reader）写入必然 409，那是正常状态；照实显示比静默失败好。
-    if(state)state.textContent=e.message;else alert(e.message);
+    if(state)state.textContent=e.message;
+    actionFailure(path==='/api/follow/save'?'保存到账本':'更新关注状态',e);
+  }finally{
+    setActionBusy(button,false);
   }
 }
 function wireReviewAssets(root){
@@ -4150,14 +4244,14 @@ const sourceHint=message=>SOURCE_HINTS[message]||message;
 async function revealSource(id,status,{button=null}={}){
   if(button?.getAttribute('aria-busy')==='true')return;
   const buttonHtml=button?.innerHTML,label=button?.textContent.trim();
-  if(button){button.setAttribute('aria-busy','true');
+  if(button){setActionBusy(button);
     button.innerHTML=`${spinnerHtml('正在定位')}${label?`<span>${esc(label)}</span>`:''}`}
   status.textContent='';
   try{
     await api('/api/reveal',{method:'POST',body:JSON.stringify({id})});
     status.textContent='';toast('已在资源管理器中显示');
   }catch(e){status.textContent=sourceHint(e.message)}
-  finally{if(button){button.removeAttribute('aria-busy');button.innerHTML=buttonHtml}}
+  finally{if(button){setActionBusy(button,false);button.innerHTML=buttonHtml}}
 }
 
 async function syncMissing(id,status,done){
@@ -4168,8 +4262,15 @@ async function syncMissing(id,status,done){
     status.textContent=r.removed
       ? `已把 ${r.removed} 项移入回收站（核对 ${r.checked} 项）`
       : `目录内 ${r.checked} 项都还在，无需改动`;
-    if(r.removed&&done)done(r);
-  }catch(e){status.textContent=sourceHint(e.message)}
+    if(r.removed){
+      const ids=(r.items||[]).map(item=>item.id);
+      if(done)done(r);
+      actionReceipt(`已把 ${r.removed} 项移入回收站`,{undo:ids.length?async()=>{
+        await api('/api/batch',{method:'POST',body:JSON.stringify({ids,operation:'restore'})});
+        if(done)done({removed:0,restored:ids.length});
+      }:null});
+    }else actionReceipt('目录核对完成，无需改动');
+  }catch(e){status.textContent=sourceHint(e.message);actionFailure('核对目录',e)}
 }
 
 /* 两个动作在照片详情里和作品标题旁复用；状态位置由各自表面决定。 */
@@ -5263,18 +5364,40 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   const g=$('#gate');
   const onlineGate=$('#onlineGate');
   $('#addPlaylist').onclick=()=>openAddToPlaylist(it);
+  const paintDetailFeedback=result=>{
+    Object.assign(it,{feedback:result.feedback,disposal:result.disposal,o_count:result.o_count});
+    const stage=$('#stage');if(!stage)return;
+    stage.querySelector('.dislike')?.setAttribute('aria-pressed',result.feedback==='dislike');
+    stage.querySelector('.seen')?.setAttribute('aria-pressed',result.feedback==='seen');
+    stage.querySelector('.dispose')?.setAttribute('aria-pressed',result.disposal==='trash');
+    if($('#oCount'))$('#oCount').textContent=result.o_count||0;
+  };
+  const postFeedback=async kind=>{
+    const result=await api('/api/feedback',{method:'POST',body:JSON.stringify({id:it.id,kind})});
+    paintDetailFeedback(result);return result;
+  };
   $('#stage').querySelectorAll('[data-kind]').forEach(b=>b.onclick=async()=>{
+    const kind=b.dataset.kind;
+    const before={feedback:it.feedback||null,disposal:it.disposal||null,o_count:it.o_count||0};
+    setActionBusy(b);
     try{
-      const r=await api('/api/feedback',{method:'POST',body:JSON.stringify({id:it.id,kind:b.dataset.kind})});
-      Object.assign(it,{feedback:r.feedback,disposal:r.disposal,o_count:r.o_count});
-      $('#stage').querySelector('.dislike').setAttribute('aria-pressed',r.feedback==='dislike');
-      $('#stage').querySelector('.seen').setAttribute('aria-pressed',r.feedback==='seen');
-      $('#stage').querySelector('.dispose').setAttribute('aria-pressed',r.disposal==='trash');
-      $('#oCount').textContent=r.o_count||0;
-      if(b.dataset.kind==='dispose'&&r.disposal==='trash'&&state.state==='ads'){
+      const r=await postFeedback(kind);
+      const messages={dislike:r.feedback==='dislike'?'已标记不合口味':'已取消不合口味',
+        seen:r.feedback==='seen'?'已标记看过':'已取消看过',
+        dispose:r.disposal==='trash'?'已移入回收站':'已移出回收站',o:'已记录一次高潮'};
+      actionReceipt(messages[kind],{undo:async()=>{
+        if(kind==='o')await postFeedback('o-undo');
+        else if(kind==='dispose')await postFeedback('dispose');
+        else{
+          if(r.feedback)await postFeedback(r.feedback);
+          if(before.feedback)await postFeedback(before.feedback);
+        }
+        if(state.state==='ads')await load(true);
+      }});
+      if(kind==='dispose'&&r.disposal==='trash'&&state.state==='ads'){
         disposeStage(true);await load(true);
       }
-    }catch(error){alert(`操作失败：${error.message||'未知错误'}`)}
+    }catch(error){actionFailure('操作',error)}finally{setActionBusy(b,false)}
   });
   const renderDetailTags=()=>{
     const wrap=$('#detailTags');if(!wrap)return;
@@ -5289,17 +5412,28 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
       commitContextFilter(filters=>{filters.tag=s.dataset.tag});
       window.scrollTo({top:0,behavior:'smooth'})});
     wrap.querySelectorAll('[data-remove-tag]').forEach(b=>b.onclick=async()=>{
-      b.disabled=true;const tag=b.dataset.removeTag;
-      const r=await api('/api/item-tag',{method:'POST',body:JSON.stringify({id:it.id,operation:'remove',tag})});
-      if(r.ok){it.tags=(it.tags||[]).filter(x=>foldName(x.k)!==foldName(tag));renderDetailTags()}else b.disabled=false});
+      const tag=b.dataset.removeTag;setActionBusy(b);
+      try{const r=await api('/api/item-tag',{method:'POST',body:JSON.stringify({id:it.id,operation:'remove',tag})});
+        if(!r.ok)throw new Error('标签未删除');
+        const old=(it.tags||[]).find(x=>foldName(x.k)===foldName(tag))||{k:tag,cat:'general'};
+        it.tags=(it.tags||[]).filter(x=>foldName(x.k)!==foldName(tag));renderDetailTags();
+        actionReceipt(`已删除标签「${tagLabel(tag)}」`,{undo:async()=>{
+          await api('/api/item-tag',{method:'POST',body:JSON.stringify({id:it.id,operation:'add',tag})});
+          if(!(it.tags||[]).some(x=>foldName(x.k)===foldName(tag)))it.tags.push(old);
+          renderDetailTags();
+        }});
+      }catch(error){actionFailure('删除标签',error)}finally{setActionBusy(b,false)}});
     const addTag=async tag=>{tag=tag.trim();if(!tag)return;
-      const r=await api('/api/item-tag',{method:'POST',body:JSON.stringify({id:it.id,operation:'add',tag})});
+      try{const r=await api('/api/item-tag',{method:'POST',body:JSON.stringify({id:it.id,operation:'add',tag})});
       if(r.ok){
         if(!it.tags.some(x=>foldName(x.k)===foldName(tag)))it.tags.push({k:tag,cat:'general'});
         try{const old=JSON.parse(localStorage.getItem('peach.recentTags')||'[]').filter(x=>foldName(x)!==foldName(tag));
           localStorage.setItem('peach.recentTags',JSON.stringify([tag,...old].slice(0,12)))}catch(_e){}
-        renderDetailTags()
-      }
+        renderDetailTags();actionReceipt(`已添加标签「${tagLabel(tag)}」`,{undo:async()=>{
+          await api('/api/item-tag',{method:'POST',body:JSON.stringify({id:it.id,operation:'remove',tag})});
+          it.tags=(it.tags||[]).filter(x=>foldName(x.k)!==foldName(tag));renderDetailTags();
+        }})
+      }}catch(error){actionFailure('添加标签',error)}
     };
     const plus=$('#tagPlus'),picker=$('#tagPicker'),search=$('#tagPickSearch'),body=$('#tagPickBody');
     let outsideHandler=null,activeIndex=-1;
@@ -5335,33 +5469,51 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   renderDetailTags();
   $('#stage').querySelectorAll('[data-entity-kind]').forEach(b=>b.onclick=()=>
     openEntity(b.dataset.entityKind,b.dataset.entityName));
-  $('#stageLater').onclick=async()=>{const r=await api('/api/watch-later',{method:'POST',
-    body:JSON.stringify({id:it.id})});it.watch_later=r.watch_later;
-    $('#stageLater').setAttribute('aria-pressed',r.watch_later);
-    $('#stageLater').innerHTML=r.watch_later?icon('check'):icon('bookmark-plus')};
+  const paintLater=value=>{it.watch_later=value;const button=$('#stageLater');if(!button)return;
+    button.setAttribute('aria-pressed',value);button.innerHTML=value?icon('check'):icon('bookmark-plus')};
+  $('#stageLater').onclick=async()=>{const button=$('#stageLater');setActionBusy(button);
+    try{const r=await api('/api/watch-later',{method:'POST',body:JSON.stringify({id:it.id})});
+      paintLater(r.watch_later);actionReceipt(r.watch_later?'已加入稍后看':'已移出稍后看',{undo:async()=>{
+        const restored=await api('/api/watch-later',{method:'POST',body:JSON.stringify({id:it.id})});
+        paintLater(restored.watch_later);
+      }});
+    }catch(error){actionFailure('更新稍后看',error)}finally{setActionBusy(button,false)}};
   $('#betterVersion').onclick=async()=>{const b=$('#betterVersion'),wanted=b.getAttribute('aria-pressed')!=='true';
-    const r=await api('/api/quality-goal',{method:'POST',body:JSON.stringify({id:it.id,wanted})});
-    it.better_version=r.better_version;it.better_version_reason=r.better_version_reason;
-    b.setAttribute('aria-pressed',String(r.better_version));b.title=r.better_version?(r.better_version_reason||'已标记寻找更好版本'):'寻找高清、无水印或完整版'};
+    const before={wanted:!!it.better_version,reason:it.better_version_reason||''};setActionBusy(b);
+    const paintQuality=r=>{it.better_version=r.better_version;it.better_version_reason=r.better_version_reason;
+      if(!$('#betterVersion'))return;$('#betterVersion').setAttribute('aria-pressed',String(r.better_version));
+      $('#betterVersion').title=r.better_version?(r.better_version_reason||'已标记寻找更好版本'):'寻找高清、无水印或完整版'};
+    try{const r=await api('/api/quality-goal',{method:'POST',body:JSON.stringify({id:it.id,wanted})});paintQuality(r);
+      actionReceipt(r.better_version?'已标记寻找更好版本':'已取消寻找更好版本',{undo:async()=>{
+        const restored=await api('/api/quality-goal',{method:'POST',body:JSON.stringify({id:it.id,wanted:before.wanted,reason:before.reason})});paintQuality(restored);
+      }});
+    }catch(error){actionFailure('更新版本需求',error)}finally{setActionBusy(b,false)}};
   const preferenceToggle=$('#preferenceToggle'),preferencePanel=$('#preferencePanel');
   preferenceToggle.onclick=()=>{const open=preferencePanel.hidden;preferencePanel.hidden=!open;
     preferenceToggle.setAttribute('aria-expanded',String(open));if(open)$('#likeReason').focus()};
-  const savePreference=async()=>{
+  const savePreference=async(options={})=>{
     const btn=$('#savePreference'),like=$('#likeBtn'),stateText=$('#preferenceState');
-    btn.disabled=true;btn.setAttribute('aria-busy','true');
+    const before={liked:!!it.liked,reason:it.like_reason||''};
+    setActionBusy(btn);
     btn.innerHTML=`${spinnerHtml('正在提交喜爱理由')}<span>提交中…</span>`;stateText.textContent='保存中…';
     const reason=$('#likeReason').value;
-    const liked=like.getAttribute('aria-pressed')==='true'||reason.trim().length>0;
+    const liked=options.liked??(like.getAttribute('aria-pressed')==='true'||reason.trim().length>0);
+    const paintPreference=r=>{it.liked=r.liked;it.like_reason=r.like_reason;
+      if(!$('#likeBtn'))return;$('#likeBtn').setAttribute('aria-pressed',r.liked);
+      $('#likeBtn').setAttribute('aria-label',r.liked?'取消喜欢':'喜欢');
+      $('#preferenceToggle').dataset.hasReason=String(!!r.like_reason);
+      $('#likeReason').value=r.like_reason||''};
     try{const r=await api('/api/preference',{method:'POST',body:JSON.stringify({id:it.id,liked,reason})});
-      it.liked=r.liked;it.like_reason=r.like_reason;
-      like.setAttribute('aria-pressed',r.liked);like.setAttribute('aria-label',r.liked?'取消喜欢':'喜欢');
-      preferenceToggle.dataset.hasReason=String(!!r.like_reason);
+      paintPreference(r);
       stateText.textContent='已保存';setTimeout(()=>{if(stateText.textContent==='已保存')stateText.textContent=''},1400);
-    }catch(e){stateText.textContent='保存失败 · 请重试'}finally{
-      btn.disabled=false;btn.removeAttribute('aria-busy');btn.innerHTML='<span>提交</span>'}
+      actionReceipt(r.liked?'已保存喜欢偏好':'已取消喜欢',{undo:async()=>{
+        const restored=await api('/api/preference',{method:'POST',body:JSON.stringify({id:it.id,...before})});
+        paintPreference(restored);
+      }});
+    }catch(e){stateText.textContent='保存失败 · 请重试';actionFailure('保存喜欢偏好',e)}finally{
+      setActionBusy(btn,false);btn.innerHTML='<span>提交</span>'}
   };
-  $('#likeBtn').onclick=async()=>{const b=$('#likeBtn');
-    b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')!=='true');await savePreference()};
+  $('#likeBtn').onclick=()=>savePreference({liked:$('#likeBtn').getAttribute('aria-pressed')!=='true'});
   $('#savePreference').onclick=savePreference;
   const vv=$('#vid');
   vv.addEventListener('play',()=>{if(!$('#stage').dataset.c){$('#stage').dataset.c='1';
@@ -5763,13 +5915,25 @@ $('#tok').addEventListener('touchcancel',()=>{
   tokTouch=null;$('#tokBar').classList.remove('scrubbing');
 },{passive:true});
 [['#tokDislike','dislike'],['#tokSeen','seen'],['#tokO','o']].forEach(([s,kind])=>{
-  $(s).onclick=async()=>{const it=tokList[tokIdx];
-    const r=await api('/api/feedback',{method:'POST',body:JSON.stringify({id:it.id,kind})});
-    $('#tokDislike').setAttribute('aria-pressed',r.feedback==='dislike');
-    $('#tokSeen').setAttribute('aria-pressed',r.feedback==='seen');
-    $('#tokSeenLabel').textContent=r.feedback==='seen'?'已看':'看过';
-    $('#tokOn').textContent=r.o_count||0;
-    if(kind==='dislike'&&r.feedback==='dislike')setTimeout(()=>tokNext(1),260)}});
+  $(s).onclick=async()=>{const it=tokList[tokIdx],button=$(s),before=it.feedback||null;
+    const paint=r=>{Object.assign(it,{feedback:r.feedback,o_count:r.o_count});
+      if(tokList[tokIdx]?.id!==it.id)return;
+      $('#tokDislike').setAttribute('aria-pressed',r.feedback==='dislike');
+      $('#tokSeen').setAttribute('aria-pressed',r.feedback==='seen');
+      $('#tokSeenLabel').textContent=r.feedback==='seen'?'已看':'看过';
+      $('#tokOn').textContent=r.o_count||0};
+    const post=async value=>{const r=await api('/api/feedback',{method:'POST',
+      body:JSON.stringify({id:it.id,kind:value})});paint(r);return r};
+    setActionBusy(button);
+    try{const r=await post(kind);
+      actionReceipt(kind==='o'?'已记录一次高潮':r.feedback===kind?
+        (kind==='seen'?'已标记看过':'已标记不合口味'):
+        (kind==='seen'?'已取消看过':'已取消不合口味'),{undo:async()=>{
+          if(kind==='o')await post('o-undo');
+          else{if(r.feedback)await post(r.feedback);if(before)await post(before)}
+        }});
+      if(kind==='dislike'&&r.feedback==='dislike')setTimeout(()=>tokNext(1),260)
+    }catch(error){actionFailure('更新反馈',error)}finally{setActionBusy(button,false)}}});
 
 /* 当前该响应播放快捷键的 video：沉浸模式优先，其次详情播放器，都没开就返回 null。
    直接操作原生元素而不是 Video.js 实例——沉浸模式没有 Video.js，而详情播放器读的

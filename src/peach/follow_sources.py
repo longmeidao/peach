@@ -25,7 +25,7 @@ from .follow import (
     DEFAULT_MAX_BYTES, FollowHistoryEnd, FollowSourceError, plain_text, stable_id,
 )
 from .follow_secrets import Credential, CredentialError
-from .follow_gofile import GofileExpander
+from .follow_gofile import GofileExpander, folder_labels
 from .http import CurlCffiTransport, HttpRequest, HttpResponse, HttpTransport, HttpxTransport
 
 
@@ -467,7 +467,7 @@ class _BaseConnector:
         self._check_status(response)
         return self.parse_json(response)
 
-    def _gofile_media(self, links: list[str]) -> tuple[dict[str, object], ...]:
+    def _gofile_media(self, links: list[str], *, labels=None) -> tuple[dict[str, object], ...]:
         """把帖子里的 Gofile 链接展开成媒体条目；实现见 `follow_gofile`。
 
         留一个薄委托而不是让连接器直接构造展开器：调用点（f95zone / fanbox）不必知道
@@ -476,7 +476,7 @@ class _BaseConnector:
         return GofileExpander(
             self.transport, credential=self.gofile_credential,
             timeout=self.timeout, max_bytes=self.max_bytes, max_items=self.max_items,
-        ).expand(links)
+        ).expand(links, labels=labels)
 
 
 class KemonoConnector(_BaseConnector):
@@ -1468,7 +1468,8 @@ class FanboxConnector(_BaseConnector):
             probed += 1
             links = detail["links"]
             direct_media = detail["media_items"]
-            gofile_media = self._gofile_media(links)
+            gofile_media = self._gofile_media(
+                links, labels=folder_labels(str(detail.get("summary") or "")))
             media_items = tuple(direct_media) + gofile_media
             candidates.append(FollowCandidate(
                 provider=self.provider,

@@ -94,6 +94,11 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
 .geist-button:hover:not(:disabled){border-color:var(--ink-2);background:var(--hover)}
 .geist-button:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .geist-button:disabled{cursor:default;opacity:.55}
+/* Vercel/Geist loading actions look unavailable and reject repeat activation,
+   but remain focusable; JS pairs this with aria-disabled instead of disabled. */
+button[aria-busy="true"],[role="button"][aria-busy="true"]{
+  cursor:wait!important;opacity:.55!important;filter:saturate(.35)
+}
 .geist-button.primary{border-color:var(--ink);background:var(--ink);color:var(--ground)}
 .geist-button.primary:hover:not(:disabled){border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));
   background:color-mix(in srgb,var(--ink) 88%,var(--ground))}
@@ -1417,6 +1422,10 @@ body.settings-open{overflow:hidden}
 .toast .tclose:hover{background:var(--hover);color:var(--ink)}
 .toast .tclose svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
 .toast.leaving{opacity:0;transform:translateY(4px);transition:opacity .15s ease,transform .15s ease}
+.mixgrouplabel{display:flex;align-items:center;gap:8px;margin:12px 10px 6px;color:var(--ink);
+  font-size:var(--fs-xs);font-weight:600}
+.mixgrouplabel:first-child{margin-top:4px}
+.mixgrouplabel span{color:var(--muted);font-variant-numeric:tabular-nums;font-weight:400}
 
 /* ── 审查遮挡 ──
    共享屏幕 / 录屏 / 截图时的全站内容遮蔽，设置项（#censorSetting）+ body.censor，

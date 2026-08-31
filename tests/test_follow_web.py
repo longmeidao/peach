@@ -248,12 +248,17 @@ class FollowContractTests(unittest.TestCase):
         self.assertNotIn("media_url", item)
 
     def test_legacy_f95_image_attachments_are_projected_without_a_ledger_write(self):
+        secrets = self.root / "secrets" / "follow"
+        secrets.mkdir(parents=True)
+        (secrets / "f95zone.json").write_text(
+            '{"cookie": "xf_session=saved"}', encoding="utf-8")
         self._seed(candidates=(FollowCandidate(
             provider="f95zone", external_id="21435167", title="Image set",
             url="https://f95zone.to/threads/160190/post-21435167",
             media_url="https://pixeldrain.com/l/verified",
             thumb_url="https://attachments.f95zone.to/2026/08/one.jpg",
             extra={"links": ["https://pixeldrain.com/l/verified"],
+                   "media_needs_credential": True,
                    "attachments": [
                        "https://attachments.f95zone.to/2026/08/one.jpg",
                        "https://attachments.f95zone.to/2026/08/two.png",
@@ -264,7 +269,39 @@ class FollowContractTests(unittest.TestCase):
                          ["image", "image"])
         self.assertEqual(item["media_kind"], "image")
         self.assertTrue(item["playable"])
+        self.assertTrue(item["media_needs_credential"])
         self.assertTrue(all("url" not in media for media in item["media_items"]))
+
+    def test_saved_f95_session_forces_one_reparse_instead_of_accepting_304(self):
+        source_id = self._seed(candidates=(FollowCandidate(
+            provider="f95zone", external_id="21435168", title="Image set",
+            url="https://f95zone.to/threads/160190/post-21435168",
+            extra={"media_needs_credential": True},
+        ),), provider="f95zone", ref="160190", semantics="release")
+        secrets = self.root / "secrets" / "follow"
+        secrets.mkdir(parents=True)
+        (secrets / "f95zone.json").write_text(
+            '{"cookie": "xf_session=saved"}', encoding="utf-8")
+        with self.contract.database.write_transaction() as connection:
+            connection.execute(
+                "UPDATE follow_source SET etag='old',last_modified='yesterday' WHERE id=?",
+                (source_id,),
+            )
+        conditional = []
+
+        class _Recorder:
+            def fetch(self, ref, *, etag=None, last_modified=None, page=0):
+                conditional.append((etag, last_modified, page))
+                return SourceFetch(
+                    provider="f95zone", ref=ref,
+                    request_url="https://f95zone.to/threads/160190/latest",
+                    semantics="release", candidates=(), raw_body=b"<html/>")
+
+        with mock.patch.object(web_follow, "build_connector", return_value=_Recorder()):
+            result = self._post("/api/follow/check", {"source": source_id})
+
+        self.assertTrue(result["results"][0]["ok"])
+        self.assertEqual(conditional, [(None, None, 0)])
 
     def test_media_collections_expose_only_safe_display_fields_and_indices(self):
         self._seed(candidates=(FollowCandidate(
@@ -274,7 +311,9 @@ class FollowContractTests(unittest.TestCase):
                 {"id": "one", "name": "one.mp4", "media_kind": "video",
                  "url": "https://store1.gofile.io/download/one.mp4",
                  "thumb_url": "https://store1.gofile.io/one.jpg",
-                 "resource_provider": "gofile"},
+                 "resource_provider": "gofile",
+                 "resource_group": "gofile:OS2Qz9",
+                 "resource_group_label": "Poll"},
                 {"id": "two", "name": "two.jpg", "media_kind": "image",
                  "url": "https://store1.gofile.io/download/two.jpg",
                  "resource_provider": "gofile"},
@@ -287,6 +326,8 @@ class FollowContractTests(unittest.TestCase):
                          ["video", "image"])
         self.assertEqual(item["media_items"][0]["name"], "one.mp4")
         self.assertEqual(item["media_items"][0]["media_type"], "video/mp4")
+        self.assertEqual(item["media_items"][0]["resource_group"], "gofile:OS2Qz9")
+        self.assertEqual(item["media_items"][0]["resource_group_label"], "Poll")
         self.assertIsNone(item["media_items"][1]["media_type"])
         self.assertNotIn("url", item["media_items"][0])
         self.assertNotIn("store1.gofile.io/download", json.dumps(item))
@@ -1701,6 +1742,13 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("route(followDetailReturnPath||'/follow')")
         self.assertPageContains(".followitem a{text-decoration:none}")
 
+    def test_one_fanbox_collection_keeps_its_gofile_folder_sections(self):
+        self.assertPageContains("const followGroupedMediaOwner=group=>")
+        self.assertPageContains("(item.media_items||[]).some(media=>media.resource_group)")
+        self.assertPageContains("const key=media.resource_group||'ungrouped'")
+        self.assertPageContains('class="mixgrouplabel"')
+        self.assertPageContains('data-follow-media-owner="${item.id}"')
+
     def test_follow_video_uses_the_shared_videojs_player_and_quality_control(self):
         self.assertPageContains('class="video-js vjs-big-play-centered" controls playsinline preload="metadata"')
         self.assertPageContains("if(followVideo){")
@@ -2064,7 +2112,8 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_credential_dependent_media_is_called_out(self):
         self.assertPageContains("媒体链接需要 F95 登录会话解析")
-        self.assertPageContains("已保存 F95 登录会话，等待下次检查重新解析资源")
+        self.assertPageContains("已显示可读取附件；F95 登录会话已保存")
+        self.assertPageContains("这条旧记录的受保护资源会在下次检查重新解析")
         self.assertPageContains("followCredentialProviders=new Set")
         self.assertPageContains("api('/api/follow/credentials').catch")
         self.assertPageContains("个外部文件页；视频列表未取得")
@@ -2082,7 +2131,8 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("@keyframes geist-spinner-opacity")
         self.assertPageContains("@keyframes geist-loading-dot")
         self.assertPageContains("spinnerHtml('查找中')")
-        self.assertPageContains("loadingDotsHtml('抓取中…')")
+        self.assertPageContains("spinnerHtml('抓取中')")
+        self.assertPageContains("setActionBusy(button);button.title='检查中…'")
         self.assertPageContains("c.known?'已经关注':c.evidence")
         self.assertPageLacks("已经在追")
 
@@ -2092,6 +2142,9 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_follow_cards_reuse_home_cards_hover_actions_and_mix_stacks(self):
         self.assertPageContains("function followVideoItems(group)")
+        self.assertPageContains("function followCollectionItemsNewest(group)")
+        self.assertPageContains("Date.parse(b.published_at||'')")
+        self.assertPageContains("followCollectionItemsNewest(group).filter")
         self.assertPageContains("item.playable&&item.media_kind==='video'")
         self.assertPageContains('class="card followitem${isMix?\' collection\':\'\'}${imageView?\' imagecard\':\'\'}"')
         self.assertPageContains("isMix?'mixstack '")
@@ -2119,6 +2172,9 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageLacks('data-follow-media=')
         self.assertPageContains("params.set('author',followAuthor)")
         self.assertPageContains("route(followViewPath());renderFollow()")
+        self.assertPageContains("if(!counts.images&&followMediaView!=='images')return ''")
+        self.assertPageLacks("if(followMediaView==='images'&&!mediaCounts.images)followMediaView='videos'")
+        self.assertPageLacks("if(followMediaView==='videos'&&!mediaCounts.videos&&mediaCounts.images)followMediaView='images'")
         self.assertPageContains("const preferredKind=followMediaView==='images'?'image':'video'")
         watch = self.page.split("function renderFollow(){", 1)[1].split(
             "function followBackfillState", 1)[0]
@@ -2142,7 +2198,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageLacks("${icon('plus')}加载更多")
         self.assertPageContains("${icon('history')}抓更早的一页")
         self.assertPageContains("spinnerHtml('加载更多')")
-        self.assertPageContains("loadingDotsHtml('抓取中…')")
+        self.assertPageContains("spinnerHtml('抓取中')")
 
     def test_follow_management_list_has_routed_sorting(self):
         self.assertPageContains('data-follow-sort aria-label="关注列表排序"')

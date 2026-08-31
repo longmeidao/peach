@@ -8,7 +8,7 @@ import json
 import unittest
 
 from peach.follow import FollowSourceError
-from peach.follow_gofile import GofileExpander, folder_ids
+from peach.follow_gofile import GofileExpander, folder_ids, folder_labels
 from peach.follow_secrets import Credential, CredentialError
 from peach.http import HttpResponse
 
@@ -45,6 +45,15 @@ class FolderIdTests(unittest.TestCase):
                 "not a url at all",
             ]),
             ["OS2Qz9"],
+        )
+
+    def test_fanbox_copy_can_name_each_gofile_folder(self):
+        self.assertEqual(
+            folder_labels(
+                "gofile (Mitsuru) - https://gofile.io/d/DCkbZU "
+                "gofile (Poll) - https://gofile.io/d/bFRgRI"
+            ),
+            {"DCkbZU": "Mitsuru", "bFRgRI": "Poll"},
         )
 
 
@@ -96,9 +105,13 @@ class ApiErrorTests(unittest.TestCase):
                 {"status": "error-notPremium"}).encode("utf-8"))
 
     def test_only_playable_files_survive(self):
-        items = self._expand()
+        items = GofileExpander(
+            _transport(), credential=Credential("gofile", {"api_token": "t"}),
+        ).expand(["https://gofile.io/d/OS2Qz9"], labels={"OS2Qz9": "Poll"})
         self.assertEqual([item["media_kind"] for item in items], ["video"])
         self.assertEqual(items[0]["resource_provider"], "gofile")
+        self.assertEqual(items[0]["resource_group"], "gofile:OS2Qz9")
+        self.assertEqual(items[0]["resource_group_label"], "Poll")
         self.assertEqual(items[0]["url"], "https://store1.gofile.io/download/one.mp4")
 
 
