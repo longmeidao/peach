@@ -793,7 +793,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("--pill-radius:999px")
         self.assertPageContains("--tag-radius:var(--pill-radius)")
         self.assertPageContains("border-radius:var(--tag-radius)")
-        self.assertPageContains("height:40px;padding:0 20px")
+        self.assertPageContains("--filterItemH:40px")
+        self.assertPageContains("height:var(--filterItemH);padding:0 20px")
         self.assertPageContains("overflow-x:auto;overflow-y:hidden")
 
     def test_multiselect_has_explicit_mode_range_and_toggle_controls(self):
@@ -2089,7 +2090,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<section class="entitytagbar" aria-label="媒体与标签"><div class="entitytags">${mediaToggle}${tags}</div></section>')
         self.assertPageContains("controls.hidden=!photos")
         self.assertPageContains("button.dataset.mediaView")
-        self.assertPageContains(".mediaviewbuttons .mediaviewbutton{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;padding:0;")
+        self.assertPageContains(".mediaviewbuttons .mediaviewbutton{display:grid;place-items:center;flex:0 0 var(--filterItemH);width:var(--filterItemH);height:var(--filterItemH);padding:0;")
+        self.assertPageContains(".mediaviewbuttons .mediaviewbutton svg{width:20px;height:20px")
         self.assertPageContains("border:0;border-radius:50%;background:transparent")
         self.assertPageLacks(".entitytags .entitymediatoggle")
         self.assertPageLacks(".followmediaicons .entitymediatoggle")
