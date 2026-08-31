@@ -169,16 +169,22 @@ def load_studios(connection: sqlite3.Connection, minimum: int) -> list[dict]:
 
 
 def crawler_client() -> "httpx.Client":
-    """给「每个主机只访问一两次」的作业用的 client，不保留 keepalive。
+    """本作业专用 client。**每个请求新建一个，用完立刻关掉**，见 `probe`。
 
-    共享 `HttpxTransport` 的默认池是给反复访问同几个来源的连接器调的：32 条连接、
-    16 条 keepalive。本脚本要打 56 个厂牌 × 4 个候选、两百多个**互不相同**的主机，
-    而且全部经本机代理走 CONNECT 隧道——每个目标主机各占一条隧道，闲置隧道很快把池占满，
-    后面的请求全部 `PoolTimeout`。实测两轮分别是 49/53 和 44/50 条失败都是它，而不是
-    「这些站不存在」；把这种失败当成结论会得出一半厂牌没有官网的错误结论。
+    共享 `HttpxTransport` 的默认池是给反复访问同几个来源的连接器调的；本脚本要打
+    两百多个**互不相同**的主机，其中大多数根本不存在。实测这种形态下失败的连接会漏掉
+    池槽：下面这段真实序列里，第 4 个请求之后同一个 client 上的一切都 `PoolTimeout`，
+    连第 13 个 `moodyz.com` 这种 0.3 秒就能取到 200 的站也一样。
 
-    `max_keepalive_connections=0` 让每条连接用完即关，池子因此不会被闲置隧道占住。
-    这是本作业的取数形态决定的，不改共享默认值——那会伤到真正需要复用连接的连接器。
+        1 fc2ppv.com    ConnectError     4 fc2ppv.tv  200      13 moodyz.com  PoolTimeout
+        2 fc2ppv.jp     ConnectTimeout   6 fc2-ppv.jp PoolTimeout
+
+    把这种失败当结论，就会得出「一半厂牌没有官网」——前两轮 49/53 和 44/50 条失败
+    全是它。调大或调小池子只决定它第几个请求崩，不解决问题；换成每请求一个新 client
+    后同一段序列 7 成功 9 失败、`PoolTimeout` 为 0，失败全是真实的连接结果。
+
+    代价只是每次多建一个 client，在 0.8 秒的请求间隔下可以忽略。不改共享默认值——
+    那会伤到真正需要复用连接的连接器。
     """
     return httpx.Client(
         follow_redirects=True,
@@ -187,9 +193,14 @@ def crawler_client() -> "httpx.Client":
     )
 
 
-def probe(http, url: str, timeout: float) -> tuple[int, bytes, str]:
-    response = http(HttpRequest("GET", url, {"User-Agent": USER_AGENT}), timeout, 4 << 20)
-    return response.status, response.body, response.url or url
+def probe(url: str, timeout: float) -> tuple[int, bytes, str]:
+    """取一个候选。连接池不跨请求存活，理由见 `crawler_client`。"""
+    http = HttpxTransport(crawler_client())
+    try:
+        response = http(HttpRequest("GET", url, {"User-Agent": USER_AGENT}), timeout, 4 << 20)
+        return response.status, response.body, response.url or url
+    finally:
+        http.close()
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -227,38 +238,33 @@ def run(args) -> int:
                 seeds.setdefault((row.get("studio") or "").strip(), []).append(site)
 
     results: list[dict[str, object]] = []
-    http = HttpxTransport(crawler_client())
     last = 0.0
-    try:
-        for record in studios:
-            name = record["studio"]
-            row = {field: "" for field in FIELDS}
-            row.update(record)
-            row["verdict"], row["note"] = "未取得", "没有可推导的候选域名"
-            for url in seeds.get(name, []) + candidate_urls(name):
-                wait = args.interval - (time.monotonic() - last)
-                if wait > 0:
-                    time.sleep(wait)
-                last = time.monotonic()
-                try:
-                    status, body, final = probe(http, url, args.timeout)
-                except Exception as exc:
-                    row.update(candidate_url=url, verdict="未取得",
-                               note=f"取不到：{type(exc).__name__}")
-                    continue
-                title = page_title(body)
-                verdict, note = site_verdict(name, status, body, title, final)
-                row.update(candidate_url=url, final_url=final, status=status,
-                           bytes=len(body), sha256=hashlib.sha256(body).hexdigest(),
-                           title=title, verdict=verdict, note=note)
-                if verdict in {"ok", "weak"}:
-                    break
-            results.append(row)
-            print(f"{name[:22]:<22} {row['verdict']:<6} {str(row['final_url'])[:38]:<38} "
-                  f"{str(row['title'])[:34]}")
-
-    finally:
-        http.close()
+    for record in studios:
+        name = record["studio"]
+        row = {field: "" for field in FIELDS}
+        row.update(record)
+        row["verdict"], row["note"] = "未取得", "没有可推导的候选域名"
+        for url in seeds.get(name, []) + candidate_urls(name):
+            wait = args.interval - (time.monotonic() - last)
+            if wait > 0:
+                time.sleep(wait)
+            last = time.monotonic()
+            try:
+                status, body, final = probe(url, args.timeout)
+            except Exception as exc:
+                row.update(candidate_url=url, verdict="未取得",
+                           note=f"取不到：{type(exc).__name__}")
+                continue
+            title = page_title(body)
+            verdict, note = site_verdict(name, status, body, title, final)
+            row.update(candidate_url=url, final_url=final, status=status,
+                       bytes=len(body), sha256=hashlib.sha256(body).hexdigest(),
+                       title=title, verdict=verdict, note=note)
+            if verdict in {"ok", "weak"}:
+                break
+        results.append(row)
+        print(f"{name[:22]:<22} {row['verdict']:<6} {str(row['final_url'])[:38]:<38} "
+              f"{str(row['title'])[:34]}")
 
     write_rows(args.output, FIELDS, results)
     counts: dict[str, int] = {}
