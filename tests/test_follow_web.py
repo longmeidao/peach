@@ -1649,7 +1649,15 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("if(!surfaceCurrent(surface))return")
         self.assertPageContains("await openFollow(false,true);await openFollowDetail(+parts[2],false)")
         self.assertPageContains("const followList=$('#stats').querySelector('.followlist')")
-        self.assertPageContains("if(followList)followList.before($('#stage'))")
+        # 就近展开：插在被点击那张卡片所在的一行之后，不是整个列表之前。
+        # 插在列表前等于每次都把视线拽回页面顶部，翻了几屏点开一条尤其明显。
+        self.assertPageContains("last.after($('#stage'))")
+        self.assertPageContains("Math.abs(card.offsetTop-row)<2",
+                                "按行插入，避免把卡片那一行截断")
+        # 列表还没渲染出来时（直达详情链接）仍回退到列表前
+        self.assertPageContains("followList.before($('#stage'))")
+        self.assertPageContains("scrollItemDetailIntoView();",
+                                "滚到舞台本身而不是页面头部")
         self.assertPageContains("if(stage.parentElement!==main)main.insertBefore(stage,combo)")
 
     def test_follow_filters_put_all_first_and_sources_are_icon_only(self):

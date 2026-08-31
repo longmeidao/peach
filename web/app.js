@@ -2499,10 +2499,26 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   const tags=(item.tags||[]).map(tag=>followTagChip(item,tag,'button')).join('');
   const author=followAuthorName(authorSources)||item.author||item.source_label||'作者未取得';
   const postedBy=item.author&&foldName(item.author)!==foldName(author)?item.author:'';
-  // 关注列表的头像与筛选就是详情的上文；舞台放在筛选和卡片网格之间，
-  // 不再占用 main 最顶部、把用户从原来的筛选上下文里切走。
+  /* 舞台就近展开：插在被点击那张卡片所在的一行之后，而不是整个列表之前。
+     插在列表前等于永远回到页面顶部——翻了几屏点开一条，视线要被拽回最上面，
+     关掉后还得再翻回来。首页的详情早就是就近展开的，关注页一直没跟上。
+
+     按行插入而不是紧跟卡片：列表是网格，插在某张卡片正后面会把它那一行截断。
+     行的判定用 offsetTop——同一行的卡片顶边相同。 */
   const followList=$('#stats').querySelector('.followlist');
-  if(followList)followList.before($('#stage'));
+  const clicked=followList&&followList.querySelector(`[data-follow-item="${item.id}"]`);
+  if(clicked){
+    const cards=[...followList.children];
+    const row=clicked.offsetTop;
+    // 同一行里最后一张卡片：它之后就是插入点。
+    let last=clicked;
+    for(const card of cards){
+      if(Math.abs(card.offsetTop-row)<2)last=card;
+    }
+    last.after($('#stage'));
+  }else if(followList){
+    followList.before($('#stage'));
+  }
   $('#stage').hidden=false;document.body.classList.add('detail-open');
   $('#stage').innerHTML=`<div class="sgrid followdetailgrid${collection||embeddedQueue?' mixgrid':''}">
     <div class="vwrap followdetailmedia${selectedKind==='image'?' image':''}">${selectedKind==='video'?'<canvas class="ambientcanvas" width="32" height="18"></canvas>':''}<button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${media}${imageControls}</div>
@@ -2579,7 +2595,9 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
       $('#stage').querySelectorAll('[data-follow-detail-status]').forEach(control=>
         control.setAttribute('aria-pressed',String(control.dataset.followDetailStatus===item.status)))}));
   alignFollowImageControls();
-  ($('#stats').querySelector('.followhead')||$('#stage')).scrollIntoView({block:'start',behavior:'smooth'});
+  // 滚到舞台本身，不是页面头部——就近展开的意义就在于视线不被拽走。
+  // 复用首页那套 sticky 偏移，标题不会被吸顶的筛选条盖住。
+  scrollItemDetailIntoView();
 }
 
 /* object-fit:contain 后图片左右黑边会随图片比例和窗口改变。箭头应位于黑边的视觉中心，
