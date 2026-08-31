@@ -38,7 +38,7 @@
 | 女优姓名对照 | `li-peifeng/Jav-Actors-Mapping` 的固定 revision，仅作私有输入（仓库未声明许可证，不随 Peach 分发） | 精确匹配、冲突复核、别名、来源与真实 ledger 写入 |
 | 女优头像候选 | Gfriends 的 GitHub raw 索引与单张媒体（只作外部 Provider，不克隆图库） | 名字链、质量档位、格式/尺寸/SHA-256 门槛、候选缓存、provenance、健康统计和人工复核 |
 | 厂牌 Logo 候选 | 厂牌官网确认的社交 handle → unavatar URL 解析 → 平台 CDN 单图 | handle 归属、内容缓存、方形归一、精确/感知哈希、provenance、健康统计与变化复核 |
-| JAV 元数据查询 | Javinizer-Go v1.5.1 单来源 JSON CLI（MIT） | 只发送规范番号；Peach 管 source profile、逐字段优先级、原始证据、健康统计、候选复核与批准后的 ledger 投影 |
+| JAV 元数据查询 | Javinizer-Go v1.5.1 单来源 JSON CLI（MIT）；MetaTube SDK `6a5e6128c725187aeaf921d48ed7d9cd9f30671b`（Apache-2.0）只作来源身份与丰富字段模型参考 | 只发送规范番号；Peach 管 source profile、`provider_id`／`content_id`、逐字段优先级、原始证据、丰富目录证据、健康统计、候选复核与批准后的 ledger 投影 |
 | FC2 跨号证据 | 已缓存的 fc2cmadb 评论收获 + Peach ledger 媒体事实 | 稳定 pair、合集/分片保护、hash/时长/尺寸佐证、库外 evidence、健康统计和人工复核；不依赖 FC2-Leak-Detector/JavSP |
 | 媒体探测/转码 | Peach 管理的 FFmpeg/ffprobe | 任务策略和 Media Engine 编排 |
 | HTML5/HLS/DASH 播放 | Video.js 8.24.0 + 内置 VHS（Apache-2.0，本地固定版本） | 流方案、授权、稳定时长、回退顺序和统计面板 |
@@ -56,7 +56,7 @@
 | 生成产物跨机同步 | Syncthing 2.1.x，Windows send-only → Mac receive-only | 目录划分、忽略规则、方向固定与「Mac 不发布正式产物」的边界 |
 | Windows 托盘 | pystray 0.19.5（LGPLv3）、Pillow、Win32 Per-Monitor V2 DPI | Peach 服务归属、后台更新检查、菜单动作、品牌图标 |
 | macOS 菜单栏 | `pyobjc-framework-Cocoa==12.2.2`（MIT）提供 AppKit / PyObjCTools / objc | 附件应用策略、18 pt template 图、服务归属与菜单动作 |
-| 人脸取景 | `opencv-python-headless==5.0.0.93`（Apache-2.0）Haar cascade | 头像／封面离线脚本、最大脸选择、归一化焦点与 sidecar |
+| 人脸取景 | `opencv-python-headless==5.0.0.93`（Apache-2.0）Haar cascade；MetaTube SDK `6a5e6128c725187aeaf921d48ed7d9cd9f30671b` 的主脸聚类只作算法参考 | 头像／封面离线脚本、最大脸选择、归一化焦点与 sidecar；Pigo v1.4.6（MIT）在 512 张真实头像无写入 POC 中检出 488 张、现有 OpenCV 检出 313 张，但 Pigo-only 抽样存在无脸误报且无 Python 部署优势，故不引入；下一轮只 POC 当前 OpenCV YuNet 与多脸主簇，不先替换运行时 |
 | 115 文件清单 | `p115client==0.0.9.6.5.1`（MIT） | 只在显式 SHA-1 对账脚本中安装，Peach 负责 ledger 事务、备份与写入门槛 |
 | 智能体用量/配额 | Provider 官方配额接口；T3 Code/CodexBar 提供本地历史 | 任务路由、脱敏、过期快照标记 |
 | 视频出处/片尾证据 | 现有 FFmpeg 抽帧 + Windows.Media.Ocr WinRT Provider（Windows PowerShell 5.1 固定适配器） | 有界首尾采样、缓存、来源/Full version 分类、健康统计与人工复核 |

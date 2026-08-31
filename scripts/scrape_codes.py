@@ -22,9 +22,11 @@ from pathlib import Path
 from peach.config import DATABASE_PATH, GENERATED_DIR, LOG_DIR, SOURCES_DIR, STATE_DIR
 from peach.jobs import DiskGuard, JobPolicyError
 from peach.metadata import (
+    CATALOG_EVIDENCE_FIELDS,
     JAVINIZER_GO_VERSION,
     JavinizerGoProvider,
     MetadataProviderError,
+    extract_catalog_evidence,
     extract_peach_fields,
 )
 from peach.metadata_policy import (
@@ -50,7 +52,8 @@ ERROR_FIELDS = ["code", "query", "source", "kind", "status_code", "retryable", "
 HEALTH_FIELDS = [
     "source", "profile", "attempted", "snapshot_reused", "fetched", "succeeded",
     "empty", "errors", "retryable_errors", "cooldown_skips", "blocked", "elapsed_ms",
-    *PEACH_FIELDS, "last_error_kind", "last_error_status", "last_error_message",
+    *PEACH_FIELDS, *CATALOG_EVIDENCE_FIELDS,
+    "last_error_kind", "last_error_status", "last_error_message",
 ]
 
 
@@ -289,7 +292,7 @@ def _health_rows(policy: MetadataPolicy) -> dict[str, dict[str, object]]:
         "snapshot_reused": 0, "fetched": 0, "succeeded": 0, "empty": 0,
         "errors": 0, "retryable_errors": 0, "cooldown_skips": 0,
         "blocked": 0, "elapsed_ms": 0,
-        **{field: 0 for field in PEACH_FIELDS},
+        **{field: 0 for field in (*PEACH_FIELDS, *CATALOG_EVIDENCE_FIELDS)},
         "last_error_kind": "", "last_error_status": "", "last_error_message": "",
     } for source in policy.sources}
 
@@ -419,9 +422,12 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                 finally:
                     source_health["elapsed_ms"] += round((time.perf_counter() - started) * 1000)
                 extracted_fields = extract_peach_fields(payload, CATEGORY_MAP)
+                catalog_evidence = extract_catalog_evidence(payload)
                 source_health["succeeded"] += 1
-                if not extracted_fields:
+                if not extracted_fields and not catalog_evidence:
                     source_health["empty"] += 1
+                for field in catalog_evidence:
+                    source_health[field] += 1
                 for field, extracted in extracted_fields.items():
                     source_health[field] += 1
                     source_spec = policy.source(source)
@@ -435,9 +441,12 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                         "field_rank": policy.field_rank(field, source),
                         "source_kind": source_spec.kind,
                         "official": source_spec.official,
+                        "provider_id": str(payload.get("id") or ""),
+                        "content_id": str(payload.get("content_id") or ""),
                         "value": extracted["value"],
                         "display_value": extracted["display_value"],
                         "warnings": extracted["warnings"],
+                        "catalog_evidence": catalog_evidence,
                         "raw_snapshot": str(snapshot),
                     }
                     by_field.setdefault(field, []).append(candidate)
