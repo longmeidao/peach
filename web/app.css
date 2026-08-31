@@ -1798,6 +1798,9 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fauthorhead .ficon{margin-right:2px}
 .followlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
 .followlist.followphotowall{display:block;column-count:5;column-gap:10px}
+/* 图片瀑布流使用多栏布局；详情舞台如果仍占普通栏位，350px 侧栏会把媒体列挤成
+   0px。跨越全部栏位既保留就近展开顺序，也让图片和信息栏拿到列表完整宽度。 */
+.followlist.followphotowall>.stage{column-span:all}
 @media (max-width:1400px){.followlist.followphotowall{column-count:4}}
 @media (max-width:1000px){.followlist.followphotowall{column-count:3}}
 .followitem{min-width:0}.followitem.collection{padding-top:7px}
