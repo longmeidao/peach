@@ -241,6 +241,19 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('"${facePos(d.avatar_focus)}')
         self.assertPageContains("onerror=\"this.removeAttribute('style')")
 
+    def test_entity_link_favicons_do_not_leak_the_page_url_to_the_linked_site(self):
+        # 外链的 favicon 是向对方站点发出的真实请求。锚点上的 rel="noreferrer" 只管
+        # 点击跳转，管不到这个 <img>——不设 referrerpolicy 的话，光是打开一位女优的
+        # 资料页就会把 Peach 的页面地址报给 x.com、事务所站等每一个被链接的站点。
+        # 同页的 taste 行早就是 no-referrer，这里此前漏了；资料页链接从 5 条涨到两百
+        # 多条之后，漏的这一处才真正开始有代价。
+        self.assertPageContains(
+            'class="entityfavicon" src="${esc(faviconUrl(x.url))}"')
+        anchor = self.app_js.index('class="entityfavicon"')
+        self.assertIn('referrerpolicy="no-referrer"',
+                      self.app_js[anchor:anchor + 260],
+                      "资料页外链 favicon 必须带 no-referrer")
+
     def test_detail_identity_groups_by_kind_with_the_label_on_top(self):
         # 逐行一个名字在共演作品上会把整个侧栏撑满，左侧还重复一列标签。
         self.assertPageContains("const idGroup=(label,kind,list,extra='')=>list.length")

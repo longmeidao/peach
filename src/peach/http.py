@@ -22,6 +22,10 @@ class HttpResponse:
     status: int
     headers: Mapping[str, str]
     body: bytes
+    #: 跟完重定向后的最终地址。两个 transport 都开着 follow_redirects，请求 URL
+    #: 因此不等于实际取到的页面；判断「这一页属于谁」必须看最终地址，而不是我们
+    #: 发出去的那个。默认空字符串是为了让既有的三参数构造（多在测试里）保持可用。
+    url: str = ""
 
 
 class HttpTransport(Protocol):
@@ -71,6 +75,7 @@ class HttpxTransport:
                 response.status_code,
                 dict(response.headers),
                 b"".join(chunks),
+                str(response.url),
             )
 
     def close(self) -> None:
@@ -118,6 +123,10 @@ class CurlCffiTransport:
                     response.status_code,
                     dict(response.headers),
                     b"".join(chunks),
+                    # curl_cffi 的响应带 url，但注入的测试替身不一定；取不到就退回请求
+                    # 地址，语义仍然成立（没跟到重定向即最终地址就是请求地址），
+                    # 也不必逼每个替身为一个它不关心的字段长出属性。
+                    str(getattr(response, "url", "") or request.url),
                 )
         except CurlError as exc:
             raise OSError("browser transport request failed") from exc
