@@ -319,7 +319,9 @@ body.entity-open .index{overflow-x:visible}
 .tagselection button:disabled{opacity:.45;cursor:not-allowed}
 .tagfilters .all::before{background:linear-gradient(135deg,#55A7FF,#D783FF)}
 .index-tags .tg,.alphatag{--tag-color:#7A91A8}
-.index-tags .tg.general,.alphatag.general,.tagfilters .general{--tag-color:#55A7FF}
+.index-tags /* 在线标签是另一个种类，不是另一个类别：它标注的是还没入库的在线更新，点了去关注页而不是筛目录。类别配色留给本地那套，在线单独一个色。两个自定义属性都设：.alphatag 读 --tag-color，.tg 的边框和底色读 --r34-tag。 */.tg.online,.alphatag.online{--tag-color:#5AC8D8;--r34-tag:#5AC8D8}
+/* 抽屉里的关注标签沿用同一个青色，让「这是在线那套词表」在两处一致。 */
+.chip.online{border-color:color-mix(in srgb,#5AC8D8 42%,transparent);background:color-mix(in srgb,#5AC8D8 10%,transparent)}.tg.general,.alphatag.general,.tagfilters .general{--tag-color:#55A7FF}
 .index-tags .tg.artist,.alphatag.artist,.tagfilters .artist{--tag-color:#F1A454}
 .index-tags .tg.meta,.alphatag.meta,.tagfilters .meta{--tag-color:#7F909E}
 .index-tags .tg.relationship,.alphatag.relationship,.tagfilters .relationship{--tag-color:#F1A454}

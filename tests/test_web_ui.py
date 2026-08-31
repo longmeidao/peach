@@ -386,7 +386,7 @@ class WebUiSourceTests(unittest.TestCase):
         """每次进入首页换种子，同一次访问的分页继续稳定。"""
         self.assertPageLacks("const SEED_KEY='peach.seed.v2';")
         self.assertPageLacks("localStorage.getItem(SEED_KEY)")
-        self.assertPageContains("seed:initialParams.get('seed')||rollSeed()")
+        self.assertPageContains("seed:initialParam('seed')||rollSeed()")
         self.assertPageContains("sort:appSettings.defaultSort,seed:rollSeed(),q:''")
         self.assertPageContains("const previousPath=lastRoutePath;lastRoutePath=path;")
         self.assertPageContains("const enteringHome=path==='/'&&previousPath!=='/';")
@@ -984,7 +984,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_taste_drilldown_and_legacy_duration_tags_never_leak_filter_state(self):
         self.assertPageContains("const cleanTagFilter=value=>")
-        self.assertPageContains("tag:cleanTagFilter(initialParams.get('tag'))")
+        self.assertPageContains("tag:cleanTagFilter(initialParam('tag'))")
         self.assertPageContains("tag:cleanTagFilter(params.get('tag'))")
         self.assertPageContains("state={...state,creator:'',studio:'',tag:'',tag_match:'all'")
         self.assertPageContains("function enterManagementSurface()")
@@ -1014,7 +1014,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("online:icon('rss')")
         self.assertPageLacks("online:icon('globe')")
         self.assertPageContains('id="onlineGate"')
-        self.assertPageContains("$('#openSavedFollow').onclick=()=>{followFilter='saved';openFollow()}")
+        # 直达「已保存」这一档。筛选现在由 URL 驱动，光设全局会被 openFollow 照
+        # URL 推回未看，所以状态必须先写进 URL 再重取。
+        self.assertPageContains("followFilter='saved';route(followViewPath());openFollow(false)}")
 
     def test_scrim_never_covers_the_drawer_it_dims(self):
         """遮罩铺满全屏。它排在抽屉之上时，抽屉里每一下点击都落在遮罩上，
@@ -2143,6 +2145,65 @@ class WebUiSourceTests(unittest.TestCase):
                                body.find(chr(10) + "function ")) if at > 0]
         return body[:min(stops)] if stops else body
 
+    def test_the_tags_page_separates_the_local_and_online_vocabularies(self):
+        """标签页有两套词表，必须分开。
+
+        本地是 ledger 里的中文标签，在线是关注页那套 booru 英文标签：计数含义
+        （作品数 / 更新数）、类别划分和点击后去哪儿三者都不同，混成一列只会互相
+        说谎。字母表对在线那套正合适——实测 3582 个在线标签全是 ASCII，能分出
+        # 和 A–V；本地全是中文，做字母表只会得到一个「中文」分组。
+        """
+        self.assertPageContains('<button data-tag-scope="local"')
+        self.assertPageContains('<button data-tag-scope="online"')
+        self.assertPageContains("if(tagIndexScope==='online')tagIndexMode='alphabet';",
+                                "切到在线应当直接给出字母表，那才是它的形态")
+        self.assertPageContains("const onlineTags=kind==='tags'&&tagIndexScope==='online';")
+        self.assertPageContains("'/api/follow/tags?limit='+indexLimit+'&offset='+offset")
+        # 类别划分和多选面板都是本地标签的语义，在线那套没有对应物。
+        self.assertPageContains("const filters=kind==='tags'&&!onlineTags?")
+        self.assertPageContains("if(kind==='tags'&&!onlineTags){")
+        self.assertPageContains(".tg.online,.alphatag.online{--tag-color:#5AC8D8")
+
+    def test_an_online_tag_opens_the_follow_page_not_a_catalog_filter(self):
+        """在线标签标注的是还没入库的在线更新，拿去筛目录必然一条不中。"""
+        self.assertPageContains("if(onlineTags){")
+        self.assertPageContains("followTags=new Set([b.dataset.k]);")
+        self.assertPageContains("$('#index').hidden=true;route(followViewPath());openFollow(false);return}")
+
+    def test_the_drawer_lists_follow_tags_without_the_catalog_binding_stealing_them(self):
+        """抽屉里的关注标签必须保住自己的点击处理。
+
+        它们用 chip 的样式，而抽屉底下那句通用绑定在更后面执行：选择器写成 `.chip`
+        就会把它们一并接管，点下去等于按 undefined 筛目录，表现是跳回首页。目录芯片
+        都带 data-key，选择器收窄到它才分得开——这个坑真踩过一次。
+        """
+        self.assertPageContains("$('#drawer').querySelectorAll('.chip[data-key]')",
+                                "通用绑定会连关注标签一起接管")
+        self.assertPageLacks("$('#drawer').querySelectorAll('.chip').forEach")
+        self.assertPageContains("data-follow-drawer-tag=")
+        self.assertPageContains("followTags=new Set([b.dataset.followDrawerTag]);")
+        self.assertPageContains("openDrawer(false);route(followViewPath());openFollow(false)});")
+        self.assertPageContains(".chip.online{")
+
+    def test_catalog_filters_are_only_seeded_from_a_catalog_url(self):
+        """查询参数属于它所在的路由。
+
+        目录的筛选以前无条件从启动 URL 里读，于是 `/follow?tag=blender` 这样的链接
+        会顺手把目录也筛成 blender：顶部画出「blender ✕ 全部清除」——一条目录筛选
+        芯片挂在关注页上，回到首页还发现自己被筛住了。
+
+        关注页的 tag 是 booru 英文标签，目录的 tag 是本地中文标签，两套词表撞在同一
+        个键上，只能靠路由分开。`loc` 不在此列：它是跨页面的来源开关，不是目录筛选。
+        """
+        self.assertPageContains("const initialParam=key=>initialCatalogUrl?initialParams.get(key):null;")
+        self.assertPageContains("isCatalogPath(path)||path==='/trash'")
+        seeded = self.page[self.page.index("let state={"):self.page.index("const HOME_QUERY_KEYS")]
+        for key in ("creator", "studio", "tag", "orient", "sort", "q", "jav"):
+            self.assertIn("initialParam('" + key + "')", seeded,
+                          key + " 仍在无条件读启动 URL，别的路由会顺手把目录筛住")
+        self.assertNotIn("initialParams.get('tag')", seeded,
+                         "tag 是关注页和目录共用的键，必须走按路由的闸门")
+
     def test_every_full_page_view_clears_the_catalog_chrome_through_one_helper(self):
         """整页视图必须走同一个清理函数，不许各自手抄一份。
 
@@ -2166,16 +2227,38 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertEqual(self.page.count("$('#tagbar').style.display='none'"), 2,
                          "又有地方手抄了清理逻辑，请改调 enterManagementSurface()")
 
-    def test_leaving_and_returning_to_follow_starts_from_a_clean_filter_state(self):
-        """关注页的筛选是模块级可变全局，重新进入必须回到默认。
+    def test_the_follow_url_is_the_only_source_of_truth_for_its_filters(self):
+        """关注页的五个筛选必须能在 URL 和界面之间原样往返。
 
-        以前只有 author 和 media 进了 URL，provider、tag、status 哪儿都没重置：
-        离开再回来筛选条上还按着，而它们现在还决定服务端取哪些条目，等于取错数据。
+        以前只有 author 和 media 在 URL 里，provider、tag、status 只活在模块级全局：
+        离开再回来还按着（谁都不重置它们），刷新就丢，也没法从别处链到一个筛好的
+        视图——而标签页要能点一个在线标签直接进「关注 · 这个标签」。
+
+        重置也因此不再是一串手写赋值：进入时照 URL 推导，漏一个就体现为往返对不上，
+        而不是像从前那样安静地留着上一次的筛选。
         """
+        writer = self._js_function("followViewPath")
+        reader = self._js_function("readFollowView")
+        for key in ("author", "provider", "tag", "status", "media"):
+            self.assertIn("'" + key + "'", writer,
+                          "followViewPath 没把 " + key + " 写进 URL")
+            self.assertIn("'" + key + "'", reader,
+                          "readFollowView 没从 URL 读回 " + key)
+        # 「全部」是真实的空值，空串在 URL 里和「没写」分不开，所以写成 all。
+        self.assertIn("params.set('status',followFilter||'all')", writer)
+        self.assertIn("status==='all'?'':status", reader)
+
+    def test_entering_follow_afresh_derives_state_from_the_url(self):
         entry = self._js_function("openFollow")
-        for reset in ("followAuthor=''", "followProvider=''", "followTags=new Set()",
-                      "followFilter='new'", "followMediaView='videos'"):
-            self.assertIn(reset, entry, "重新进入关注页没有重置 " + reset)
+        self.assertIn("if(push)route('/follow');", entry,
+                      "从窄栏点进来应当回到干净的 /follow")
+        self.assertIn("readFollowView()", entry,
+                      "进入关注页没有照 URL 推导筛选状态")
+
+    def test_follow_filter_buttons_write_the_url_before_refetching(self):
+        """先写 URL 再重取。反过来的话 openFollow 会照旧 URL 把状态推回去。"""
+        self.assertPageContains(
+            "const applyFollowView=()=>{route(followViewPath());openFollow(false)};")
 
     def test_photo_wall_uses_cached_thumbnails_and_only_the_lightbox_reads_originals(self):
         # 瀑布流铺原图等于一屏付几十兆 PikPak 流量；缩略图由服务端缓存一次。

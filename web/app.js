@@ -278,11 +278,20 @@ function junkPath(kind=junkKind,view=junkView){
 }
 const cleanTagFilter=value=>String(value||'').split(',').filter(tag=>tag&&!DURATION_TAGS.has(tag)).join(',');
 const cleanSort=(value,fallback=appSettings.defaultSort)=>SORT_KEYS.includes(value)?value:fallback;
-let state={loc:initialParams.get('loc')||'local,115',creator:initialParams.get('creator')||'',studio:initialParams.get('studio')||'',
-  tag:cleanTagFilter(initialParams.get('tag')),len:initialParams.get('len')||'',dur_min:initialParams.get('dur_min')||'',dur_max:initialParams.get('dur_max')||'',
-  tag_match:initialParams.get('tag_match')==='any'?'any':'all',orient:initialParams.get('orient')||'',
-  state:ROUTE_STATES[decodeURIComponent(location.pathname)]||initialParams.get('state')||'',sort:cleanSort(initialParams.get('sort')),
-  seed:initialParams.get('seed')||rollSeed(),q:initialParams.get('q')||'',jav:initialParams.get('jav')||'',thumb:'1'};
+/* 查询参数属于它所在的路由，所以目录的筛选只从目录 URL 里读。
+
+   以前这里无条件读启动 URL：`/follow?tag=blender` 会顺手把目录也筛成 blender，
+   于是顶部画出「blender ✕ 全部清除」——一条目录筛选芯片挂在关注页上，回到首页
+   还发现自己被筛住了。关注页的 `tag` 和目录的 `tag` 是两套词表（一个是 booru
+   英文标签，一个是本地中文标签），撞在同一个键上只能靠路由分开。 */
+const initialCatalogUrl=(path=>isCatalogPath(path)||path==='/trash')(
+  decodeURIComponent(location.pathname));
+const initialParam=key=>initialCatalogUrl?initialParams.get(key):null;
+let state={loc:initialParams.get('loc')||'local,115',creator:initialParam('creator')||'',studio:initialParam('studio')||'',
+  tag:cleanTagFilter(initialParam('tag')),len:initialParam('len')||'',dur_min:initialParam('dur_min')||'',dur_max:initialParam('dur_max')||'',
+  tag_match:initialParam('tag_match')==='any'?'any':'all',orient:initialParam('orient')||'',
+  state:ROUTE_STATES[decodeURIComponent(location.pathname)]||initialParam('state')||'',sort:cleanSort(initialParam('sort')),
+  seed:initialParam('seed')||rollSeed(),q:initialParam('q')||'',jav:initialParam('jav')||'',thumb:'1'};
 const HOME_QUERY_KEYS=['loc','creator','studio','tag','tag_match','len','dur_min','dur_max','orient','sort','q','jav'];
 function homePath(filters=state){
   const path=STATE_ROUTES[filters.state]||'/';
@@ -1329,12 +1338,25 @@ function commitContextFilter(mutate){
   }
   mutate(state);route(homePath());buildBars();load(true)
 }
+/* 关注标签和目录标签是两套词表：一个来自关注库的在线更新，一个来自 ledger 里已入库
+   的作品，连计数的含义都不同，所以单独取一份。缓存窗口与 getBarsData 对齐——抽屉每
+   次导航都重建，不该每次都问一遍。取不到就当没有，抽屉少一节，不挡其余筛选。 */
+let followTagCache=null,followTagCacheAt=0;
+const followTagFacet=async()=>{
+  if(followTagCache&&Date.now()-followTagCacheAt<30000)return followTagCache;
+  try{
+    const data=await api('/api/follow/tags?limit=30');
+    followTagCache=data.items||[];followTagCacheAt=Date.now();
+  }catch(_e){followTagCache=followTagCache||[]}
+  return followTagCache;
+};
 async function buildBars(){
   const requestSeq=++barsRequestSeq;
   const context=barsContext,filterState=activeFilterState();
   // 两个聚合查询互不依赖。冷启动各需约 1 秒，串行会让手机首屏白等；
   // 并行取回后再一次性绘制顶部与抽屉。
-  const [facetData,tops]=await getBarsData(context);
+  const [[facetData,tops],followTagRows]=await Promise.all([
+    getBarsData(context),followTagFacet()]);
   if(requestSeq!==barsRequestSeq)return;
   if(context.type==='home')facets=facetData;
   // 详情抽屉继续只展示当前作品的真实标签；作品没有内容标签时，顶部发现栏
@@ -1424,13 +1446,26 @@ async function buildBars(){
     +sec('画幅',chips(facetData.orientations,'orient'),'','meta')
     +sec('创作者',chips(scopedCreators,'creator',false,26),scopedCreators.length>26?'<button data-more="creator">更多</button>':'','artist')
     +sec('内容标签',chips(facetData.tags,'tag',false,30),facetData.tags.length>30?'<button data-more="tag">更多</button>':'','general')
-    +sec('影片属性',chips(facetData.tech,'tag',false,16),'','meta');
+    +sec('影片属性',chips(facetData.tech,'tag',false,16),'','meta')
+    /* 单独一节而不是并进「内容标签」：这些标签指向还没入库的在线更新，混在一起
+       点下去会得到一屏空结果。它们也不能走 chips——那套拼的是目录筛选。 */
+    +sec('关注标签',followTagRows.length?`<div class="chips">`+followTagRows.map(row=>
+      `<button class="chip online" data-follow-drawer-tag="${esc(row.k)}">${esc(row.k)}<span class="n">${row.n.toLocaleString()}</span></button>`
+      ).join('')+`</div>`:'','','online');
   const dc=$('#drawerClose'); if(dc)dc.onclick=()=>openDrawer(false);
   $('#drawer').querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{
     openIndex(b.dataset.page); closeDrawerAfterNav()});
   $('#drawer').querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navTo(b.dataset.nav));
+  $('#drawer').querySelectorAll('[data-follow-drawer-tag]').forEach(b=>b.onclick=()=>{
+    // 关注标签只在关注页成立，直接过去；它不是目录筛选，不能走 commitContextFilter。
+    followAuthor='';followProvider='';followMediaView='videos';followFilter='new';
+    followTags=new Set([b.dataset.followDrawerTag]);
+    openDrawer(false);route(followViewPath());openFollow(false)});
   wireNavigationDrag($('#drawer').querySelector('.dnav'));
-  const bind=()=>$('#drawer').querySelectorAll('.chip').forEach(b=>b.onclick=()=>{
+  /* 只认目录筛选自己的芯片。选择器写成 `.chip` 会把关注标签也扫进来——它同样
+     用 chip 的样式，但没有 data-key，被这里接管后点下去等于按 undefined 筛目录，
+     表现是跳回首页。这段在下面才执行，覆盖的正是关注标签自己的处理。 */
+  const bind=()=>$('#drawer').querySelectorAll('.chip[data-key]').forEach(b=>b.onclick=()=>{
     const k=b.dataset.key,v=b.dataset.val;
     commitContextFilter(filters=>{
       if(b.dataset.multi==='1'){const cur=(filters[k]||'').split(',').filter(Boolean);
@@ -2773,11 +2808,31 @@ function followCheckFailNote(report){
 
 /* ── 看的那一页 ── */
 let followAuthor='',followProvider='',followTags=new Set(),followMediaView='videos',followGroupByItemId=new Map(),followItemsById=new Map(),followDetailReturnPath='/follow';
+/* URL 是关注页筛选的唯一真相源。
+
+   以前只有 author 和 media 在这里，provider、tag、status 只活在模块级全局里：
+   离开再回来还按着（谁都不重置它们），刷新就丢，也没法从别处链到一个筛好的视图。
+   标签页要能点一个在线标签直接进「关注 · 这个标签」，就必须走 URL。
+
+   `status` 的默认值是「未看」，所以缺省即未看；「全部」是个真实的空值，写成
+   `all` 而不是空串——空串在 URL 里和「没写」分不开。 */
 function followViewPath(){
   const params=new URLSearchParams();
   if(followAuthor)params.set('author',followAuthor);
+  if(followProvider)params.set('provider',followProvider);
+  if(followTags.size)params.set('tag',[...followTags].join(','));
+  if(followFilter!=='new')params.set('status',followFilter||'all');
   if(followMediaView==='images')params.set('media','images');
   const search=params.toString();return '/follow'+(search?'?'+search:'');
+}
+function readFollowView(){
+  const params=new URLSearchParams(location.search);
+  followAuthor=params.get('author')||'';
+  followProvider=params.get('provider')||'';
+  followTags=new Set((params.get('tag')||'').split(',').filter(Boolean));
+  const status=params.get('status');
+  followFilter=status===null?'new':(status==='all'?'':status);
+  followMediaView=params.get('media')==='images'?'images':'videos';
 }
 function followMediaControl(counts){
   if(!counts.images)return '';
@@ -2883,21 +2938,25 @@ function renderFollow(){
   wireDrag($('#stats').querySelector('.followauthors'));
   wireDrag($('#stats').querySelector('.followfilters'));
   paintSelection();
+  /* 一律先把新状态写进 URL 再重取：openFollow 现在照 URL 推导，不先写就会被
+     推回旧值。前进后退也因此天然可用。 */
+  const applyFollowView=()=>{route(followViewPath());openFollow(false)};
   $('#stats').querySelectorAll('[data-follow-filter]').forEach(button=>button.onclick=()=>{
-    followFilter=button.dataset.followFilter;openFollow(false)});
+    followFilter=button.dataset.followFilter;applyFollowView()});
   $('#stats').querySelectorAll('.followfilters [data-media-view]').forEach(button=>button.onclick=()=>{
+    // 媒体类型是纯前端的分组，不影响服务端取哪些条目，所以只重画不重取。
     followMediaView=button.dataset.mediaView;
     route(followViewPath());renderFollow()});
   $('#stats').querySelectorAll('[data-follow-author]').forEach(button=>button.onclick=()=>{
     followAuthor=followAuthor===button.dataset.followAuthor?'':button.dataset.followAuthor;
-    route(followViewPath());openFollow(false)});
+    applyFollowView()});
   $('#stats').querySelectorAll('[data-follow-provider]').forEach(button=>button.onclick=()=>{
     followProvider=followProvider===button.dataset.followProvider?'':button.dataset.followProvider;
-    openFollow(false)});
+    applyFollowView()});
   $('#stats').querySelectorAll('[data-follow-tag]').forEach(button=>button.onclick=()=>{
     const tag=button.dataset.followTag;
     if(followTags.has(tag))followTags.delete(tag);else followTags.add(tag);
-    openFollow(false)});
+    applyFollowView()});
   $('#stats').querySelectorAll('[data-follow-manage]').forEach(button=>
     button.onclick=()=>openFollowManage());
   $('#stats').querySelectorAll('[data-fwarn-dismiss]').forEach(button=>button.onclick=()=>{
@@ -2942,16 +3001,11 @@ function wireFollowOlder(){
 
 async function openFollow(push=true,renderForDetail=false){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
-  /* 重新进入关注页要回到干净状态。这几个筛选是模块级的可变全局，只有 author 和
-     media 进了 URL，provider、tag、status 从前哪儿都没重置——离开再回来还按着，
-     筛选条上是按下的样子，现在它们还决定服务端取什么，等于取错数据。 */
-  if(push){followAuthor='';followMediaView='videos';followProvider='';
-    followTags=new Set();followFilter='new';route('/follow')}
-  else if(location.pathname==='/follow'){
-    const params=new URLSearchParams(location.search);
-    followAuthor=params.get('author')||'';
-    followMediaView=params.get('media')==='images'?'images':'videos';
-  }
+  /* 从窄栏点进来（push）是「重新进入」，回到干净的 /follow；其余情况一律照 URL
+     推导。筛选状态不再靠这里逐个手写重置——漏一个就会像 provider、tag、status
+     以前那样一直按着，而它们还决定服务端取哪些条目，等于取错数据。 */
+  if(push)route('/follow');
+  if(location.pathname==='/follow')readFollowView();
   const surface=claimSurface(renderForDetail?surfacePath():'/follow');
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
   $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
@@ -3725,7 +3779,11 @@ function wireReviewAssets(root){
 }
 
 /* ── 全部艺人 / 创作者 / 标签索引页 ── */
-let tagIndexMode='alphabet',tagIndexCategory='all',indexRequestSeq=0;
+/* 标签页有两套词表：本地是 ledger 里的中文标签，在线是关注页那套 booru 英文标签。
+   计数含义（作品数 / 更新数）、类别划分和点击后去哪儿三者都不同，混在一列只会
+   互相说谎，所以用范围切换分开。字母表对在线那套正合适——实测 3582 个标签全是
+   ASCII；本地全是中文，做字母表只会得到一个「中文」分组。 */
+let tagIndexMode='alphabet',tagIndexCategory='all',tagIndexScope='local',indexRequestSeq=0;
 const TAG_CATEGORIES=[['all','全部'],['meta','影片属性'],['relationship','人物关系'],
   ['role','角色设定'],['appearance','外貌身材'],['scene','情境场所'],['story','故事剧情'],
   ['position','性交体位'],['general','其他内容']];
@@ -3755,18 +3813,24 @@ async function openIndex(kind,q,push=true){
   const entityKind=kind==='performers'?'performer':'creator';
   const indexLimit=people?120:180;
   const indexQuery=new URLSearchParams();if(q)indexQuery.set('q',q);
+  const onlineTags=kind==='tags'&&tagIndexScope==='online';
   if(kind==='tags'){
     indexQuery.set('view',tagIndexMode);
-    if(tagIndexCategory!=='all')indexQuery.set('category',tagIndexCategory)}
+    if(onlineTags)indexQuery.set('scope','online');
+    if(!onlineTags&&tagIndexCategory!=='all')indexQuery.set('category',tagIndexCategory)}
   if(push)route('/'+kind+(indexQuery.size?'?'+indexQuery:''),!!q);
   showHomeSurfaces();
   // 必须在 showHomeSurfaces 之后加：它会清掉这两个类并恢复顶部横条，
   // 写在前面等于自己加完自己删。
   document.body.classList.add('index-open');
   disposeStage(false);
-  const indexApi=offset=>'/api/index?kind='+kind+'&limit='+indexLimit+'&offset='+offset+
-    (q?'&q='+encodeURIComponent(q):'')+
-    (kind==='tags'&&tagIndexCategory!=='all'?'&category='+encodeURIComponent(tagIndexCategory):'');
+  /* 在线标签走关注页那套统计，形状与 /api/index 一致，所以分页、搜索和「载入更多」
+     这三处现成的机制换个地址就能用。 */
+  const indexApi=offset=>onlineTags
+    ?'/api/follow/tags?limit='+indexLimit+'&offset='+offset+(q?'&q='+encodeURIComponent(q):'')
+    :'/api/index?kind='+kind+'&limit='+indexLimit+'&offset='+offset+
+      (q?'&q='+encodeURIComponent(q):'')+
+      (kind==='tags'&&tagIndexCategory!=='all'?'&category='+encodeURIComponent(tagIndexCategory):'');
   const d=await api(indexApi(0));
   if(requestSeq!==indexRequestSeq||location.pathname!=='/'+kind)return;
   $('#index').hidden=false;buildEdge(); $('#grid').innerHTML=''; $('#count').textContent='';
@@ -3780,17 +3844,19 @@ async function openIndex(kind,q,push=true){
       (groups[key]||(groups[key]=[])).push(x)});
     return Object.entries(groups).sort(([a],[b])=>a.localeCompare(b,'zh-CN')).map(([letter,items])=>
       `<section class="alphagroup"><h3>${letter}</h3><div class="alphalist">${items.map(x=>
-        `<button class="alphatag ${x.cat||'general'}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"><span>${esc(tagLabel(x.k))}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')}</div></section>`).join('')};
+        `<button class="alphatag ${onlineTags?'online':(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"><span>${esc(tagLabel(x.k))}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')}</div></section>`).join('')};
   const peopleHtml=items=>items.map(x=>`<button class="icell" data-k="${esc(x.k)}" data-kind="${entityKind}">
         <span class="ring">${avatarInner(x.k,
           kind==='performers'&&x.entity_id?{id:x.entity_id}:null, x.rep)}</span>
         <span class="nm">${esc(x.k)}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('');
-  const tagHtml=items=>tagIndexMode==='alphabet'?`<div class="alphabet">${tagGroups(items)}</div>`:`<div class="tagwall index-tags">`+items.map(x=>`<button class="tg ${x.cat||'general'}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"
+  const tagHtml=items=>tagIndexMode==='alphabet'?`<div class="alphabet">${tagGroups(items)}</div>`:`<div class="tagwall index-tags">`+items.map(x=>`<button class="tg ${onlineTags?'online':(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"
         style="padding:5px 12px;font-size:13px">${esc(tagLabel(x.k))}
         <span style="opacity:.6;font-size:11px">${x.n.toLocaleString()}</span></button>`).join('')+`</div>`;
   const body=people?`<div class="igrid">${peopleHtml(d.items)}</div>`:tagHtml(tagItems);
   const visibleTagCategories=TAG_CATEGORIES.filter(([key])=>key==='all'||Number(d.categories?.[key]||0)>0);
-  const filters=kind==='tags'?`<div class="tagfilters" aria-label="标签类型">${visibleTagCategories.map(([key,label])=>
+  /* 类别划分（影片属性、人物关系……）是本地标签的语义，在线那套 booru 标签没有
+     对应划分；多选面板拼的是目录筛选，对在线标签也不成立。两者都只在本地范围出现。 */
+  const filters=kind==='tags'&&!onlineTags?`<div class="tagfilters" aria-label="标签类型">${visibleTagCategories.map(([key,label])=>
     `<button class="${key}" data-tag-category="${key}" aria-pressed="${tagIndexCategory===key}">${label}</button>`).join('')}</div>
     <div class="tagselection" data-tag-selection hidden>
       <label><input type="checkbox" data-tag-match-any ${tagIndexMatch==='any'?'checked':''}><span><b>广泛匹配</b><small>开启后匹配任一所选标签；关闭后必须同时包含全部标签。</small></span></label>
@@ -3801,20 +3867,34 @@ async function openIndex(kind,q,push=true){
   $('#index').innerHTML=`<div class="ihead">
       <h2 class="disp">${title}</h2>
       <span class="mono" id="indexCount" style="color:var(--muted)">${tagItems.length}${d.has_more?'+':''} 项</span>
-      ${kind==='tags'?`<div class="tagmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">字母表</button></div>`:''}
+      ${kind==='tags'?`<div class="tagmodes"><button data-tag-scope="local" aria-pressed="${!onlineTags}">本地</button><button data-tag-scope="online" aria-pressed="${onlineTags}">在线</button></div>
+      <div class="tagmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">字母表</button></div>`:''}
       <div class="isearch"><input id="iq" placeholder="过滤…" value="${esc(q||'')}"></div>
     </div>${filters}<div id="indexBody">${body}</div><button class="indexmore" id="indexMore" type="button" ${d.has_more?'':'hidden'}>载入更多</button>`;
   let it2; $('#iq').oninput=e=>{clearTimeout(it2);it2=setTimeout(()=>openIndex(kind,e.target.value.trim(),true),300)};
+  $('#index').querySelectorAll('[data-tag-scope]').forEach(b=>b.onclick=()=>{
+    if(tagIndexScope===b.dataset.tagScope)return;
+    tagIndexScope=b.dataset.tagScope;
+    // 在线标签全是英文，字母表才是它的形态；切过去时顺手换上，不必用户再点一次。
+    if(tagIndexScope==='online')tagIndexMode='alphabet';
+    selectedIndexTags.clear();
+    openIndex('tags',$('#iq').value.trim(),true)});
   $('#index').querySelectorAll('[data-tag-view]').forEach(b=>b.onclick=()=>{
     tagIndexMode=b.dataset.tagView;openIndex('tags',$('#iq').value.trim(),true)});
   $('#index').querySelectorAll('[data-tag-category]').forEach(b=>b.onclick=()=>{
     tagIndexCategory=b.dataset.tagCategory;openIndex('tags',$('#iq').value.trim(),true)});
   const wireIndexEntries=root=>root.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
     if(people){openEntity(b.dataset.kind,b.dataset.k);return}
+    /* 在线标签只在关注页有意义——它标注的是还没入库的在线更新，拿去筛目录必然
+       一条不中。所以直接进「关注 · 这个标签」，并且绕过多选：多选拼的是目录筛选。 */
+    if(onlineTags){
+      followAuthor='';followProvider='';followMediaView='videos';followFilter='new';
+      followTags=new Set([b.dataset.k]);
+      $('#index').hidden=true;route(followViewPath());openFollow(false);return}
     if(selectMode){const key=b.dataset.k;selectedIndexTags.has(key)?selectedIndexTags.delete(key):selectedIndexTags.add(key);paintTagIndexSelection();return}
     $('#index').hidden=true;state={...state,state:'',tag:b.dataset.k,tag_match:'all'};route(homePath());buildBars();load(true)});
   wireIndexEntries($('#indexBody'));
-  if(kind==='tags'){
+  if(kind==='tags'&&!onlineTags){
     const panel=$('#index').querySelector('[data-tag-selection]');
     panel.querySelector('[data-tag-match-any]').onchange=e=>{tagIndexMatch=e.target.checked?'any':'all'};
     panel.querySelector('[data-tag-clear]').onclick=()=>{selectedIndexTags.clear();paintTagIndexSelection()};
@@ -5252,7 +5332,11 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
     };
   }
   else if(onlineGate){
-    $('#openSavedFollow').onclick=()=>{followFilter='saved';openFollow()};
+    /* 直接进「已保存」这一档。openFollow(true) 会 route 回干净的 /follow 再照 URL
+       推导，所以状态要先写进 URL，光设全局会被推回未看。 */
+    $('#openSavedFollow').onclick=()=>{
+      followAuthor='';followProvider='';followTags=new Set();followMediaView='videos';
+      followFilter='saved';route(followViewPath());openFollow(false)};
   }
   else if(g)g.onclick=()=>{vv.hidden=false;g.remove();const mounted=mountDetailPlayer(it,vv,true);stopAmbient=mountPlayerAmbient(vv);mounted?.one?.('dispose',stopAmbient)};
   else{const mounted=mountDetailPlayer(it,vv,true);stopAmbient=mountPlayerAmbient(vv);mounted?.one?.('dispose',stopAmbient)}
@@ -5797,6 +5881,7 @@ async function restoreRoute(){
   if(path==='/performers'||path==='/creators'||path==='/tags'){
     const params=new URLSearchParams(location.search);
     if(path==='/tags'){
+      tagIndexScope=params.get('scope')==='online'?'online':'local';
       tagIndexMode=params.get('view')==='cloud'?'cloud':'alphabet';
       const category=params.get('category')||'all';
       tagIndexCategory=TAG_CATEGORIES.some(([key])=>key===category)?category:'all'}

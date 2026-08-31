@@ -52,7 +52,7 @@ from .taste_history import (
     write_manifest,
 )
 from .web_follow import (
-    q_follow, q_follow_credentials, q_follow_schedule,
+    q_follow, q_follow_credentials, q_follow_schedule, q_follow_tags,
     w_follow_check, w_follow_credential, w_follow_resolve, w_follow_schedule,
     w_follow_activity, w_follow_author_alias, w_follow_play, w_follow_save,
     w_follow_source, w_follow_status,
@@ -1961,6 +1961,7 @@ GET_HANDLERS = {
     "/api/settings": q_settings,
     "/api/follow": q_follow,
     "/api/follow/credentials": q_follow_credentials,
+    "/api/follow/tags": q_follow_tags,
     "/api/follow/schedule": q_follow_schedule,
     "/api/items": q_items,
     "/api/item": _get_item,
