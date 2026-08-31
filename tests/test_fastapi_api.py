@@ -549,6 +549,21 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             {"k": "横屏", "n": 1},
         ])
 
+    async def test_global_facets_supply_recommendations_for_an_untagged_detail(self):
+        connection = sqlite3.connect(self.db)
+        connection.execute(
+            "INSERT INTO asset(id,location,path,name,medium,first_seen) "
+            "VALUES(2,'online','https://example.test/untagged','Untagged','video','2026-08-31')"
+        )
+        connection.commit(); connection.close()
+
+        scoped = await self.client.get("/api/facets?t=secret&id=2")
+        recommended = await self.client.get("/api/facets?t=secret")
+        self.assertEqual(scoped.status_code, 200)
+        self.assertEqual(scoped.json()["tags"], [])
+        self.assertEqual(recommended.status_code, 200)
+        self.assertIn({"k": "Tag A", "n": 1, "cat": "general"}, recommended.json()["tags"])
+
     async def test_saved_online_asset_survives_the_default_thumbnail_filter(self):
         connection = sqlite3.connect(self.db)
         connection.execute(
