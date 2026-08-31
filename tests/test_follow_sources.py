@@ -78,6 +78,14 @@ RULE34VIDEO_DETAIL_HTML = b"""<html><body>
 <script>video_url: 'https://rule34video.com/get_file/51/aa/4542721.mp4/?v-acctoken=test'</script>
 </body></html>"""
 
+RULE34XXX_DETAIL_HTML = b"""<html><body><ul id="tag-sidebar">
+<li class="tag-type-metadata tag"><a href="index.php?page=wiki&amp;s=list&amp;search=3d">?</a><a href="index.php?page=post&amp;s=list&amp;tags=3d">3d</a></li>
+<li class="tag-type-metadata tag"><a href="index.php?page=wiki&amp;s=list&amp;search=blender">?</a><a href="index.php?page=post&amp;s=list&amp;tags=blender">blender</a></li>
+<li class="tag-type-metadata tag"><a href="index.php?page=wiki&amp;s=list&amp;search=3d_model">?</a><a href="index.php?page=post&amp;s=list&amp;tags=3d_model">3d model</a></li>
+<li class="tag-type-artist tag"><a href="index.php?page=post&amp;s=list&amp;tags=lazyprocrastinator">lazyprocrastinator</a></li>
+<li class="tag-type-general tag"><a href="index.php?page=post&amp;s=list&amp;tags=reverse_cowgirl_position">reverse cowgirl position</a></li>
+</ul></body></html>"""
+
 F95_HTML = b"""<html><head><title>Collection - Video - Lazy | F95zone</title></head><body>
 <h1 class="p-title-value"><span class="label">Collection</span><span class="label">Video</span>
 Lazy Procrastinator Collection [2026-06-28] [LazyProcrastinator/LazyProcrast]</h1>
@@ -870,6 +878,26 @@ class Rule34XxxConnectorTests(unittest.TestCase):
         self.assertIn("api_key=sekret", seen[0].url)
         self.assertNotIn("api_key", result.request_url)
         self.assertNotIn("sekret", result.request_url)
+
+    def test_post_page_taxonomy_is_recorded_without_guessing_from_tag_words(self):
+        seen = []
+        def transport(request, timeout, max_bytes):
+            seen.append(request)
+            body = RULE34XXX_JSON if request.url.startswith("https://api.rule34.xxx/") \
+                else RULE34XXX_DETAIL_HTML
+            return HttpResponse(200, {}, body)
+
+        result = Rule34XxxConnector(
+            transport=transport, max_items=1,
+            credential=Credential("rule34xxx", {"user_id": "42", "api_key": "sekret"}),
+        ).fetch("lazyprocrastinator")
+        types = result.candidates[0].extra["tag_types"]
+        self.assertEqual(types["3d"], "metadata")
+        self.assertEqual(types["blender"], "metadata")
+        self.assertEqual(types["3d_model"], "metadata")
+        self.assertEqual(types["lazyprocrastinator"], "artist")
+        self.assertEqual(types["reverse_cowgirl_position"], "general")
+        self.assertNotIn("api_key", seen[1].url)
 
     def test_missing_credential_fails_before_the_request(self):
         seen = []

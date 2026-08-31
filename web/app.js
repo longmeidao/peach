@@ -7,14 +7,17 @@ import {
 
 initMiddleTruncate(document);
 
-const pageSkeletonHtml=(label,{cards=false,className=''}={})=>
-  skeletonHtml(label,{variant:cards?'cards':'panel',className});
+const pageSkeletonHtml=(label,{cards=false,className='',variant=''}={})=>
+  skeletonHtml(label,{variant:variant||(cards?'cards':'panel'),className});
+const followSkeletonHtml=(label='正在读取关注内容')=>`<div class="follow">
+  <div class="followhead"><h2 class="pagetitle">关注</h2></div>
+  ${pageSkeletonHtml(label,{cards:true,className:'follow-content-skeleton'})}</div>`;
 $('#loadSentinel').innerHTML=loadingDotsHtml('继续载入中…');
 $('#tokLoader').insertAdjacentHTML('afterbegin',spinnerHtml('媒体加载中'));
 function renderCatalogLoading(label='正在读取作品'){
   const count=$('#count');
   count.setAttribute('aria-busy','true');
-  count.textContent=label;
+  count.textContent='';count.setAttribute('aria-label',label);
   $('#grid').innerHTML=pageSkeletonHtml(label,{cards:true,className:'catalog-skeleton'});
 }
 /* 深链启动前先占住目标表面。后续路由仍画同一种 Skeleton，因此不会先出现首页
@@ -25,7 +28,9 @@ function renderInitialSurfaceLoading(){
     '/playlists','/resource-sync','/follow','/follow-manage']);
   if(management.has(path)||path.startsWith('/follow/item/')){
     const stats=$('#stats');stats.hidden=false;$('#grid').innerHTML='';
-    stats.innerHTML=pageSkeletonHtml('正在读取页面',{cards:path.startsWith('/follow')});
+    stats.innerHTML=path.startsWith('/follow')
+      ?followSkeletonHtml('正在读取关注内容')
+      :pageSkeletonHtml('正在读取页面');
     return;
   }
   if(path==='/performers'||path==='/creators'||path==='/tags'||
@@ -1630,7 +1635,8 @@ async function openStats(push=true,focusResource=false){
   const surface=claimSurface('/stats');
   enterManagementSurface();
   disposeStage(false);
-  showManagementBody({placeholder:pageSkeletonHtml('正在读取统计')});
+  showManagementBody({placeholder:`<div class="insightpage">${
+    pageSkeletonHtml('正在读取统计',{variant:'dashboard'})}</div>`});
   const d=await api('/api/stats');
   if(!surfaceCurrent(surface))return;
   showManagementBody();
@@ -2399,7 +2405,7 @@ function followWhen(item){
   return text;
 }
 
-const followTagType=(item,tag)=>item.tag_types&&item.tag_types[tag]||'general';
+const followTagType=(item,tag)=>item.tag_types&&item.tag_types[tag]||'unknown';
 /* 卡片、详情、筛选条和在线标签页都只消费服务端的内容标签投影。过滤只维护一份，
    原始来源标签仍完整留在 metadata。 */
 const followCardTags=item=>item.tags||[];
@@ -2575,7 +2581,9 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     <button class="followimagearrow next" data-follow-image-step="1" aria-label="下一张图片" title="下一张">${icon('chevron-right')}</button>
     <div class="followimagedots" role="group" aria-label="${imageMedia.length} 张图片">${imageMedia.map((image,index)=>`<button data-follow-image-item="${image.index}" aria-current="${index===imagePosition}" aria-label="第 ${index+1} 张，共 ${imageMedia.length} 张" title="第 ${index+1} 张"></button>`).join('')}</div>`:'';
   const badges=followBadges({primary:item,variants:[],duplicates:[],has_wip:item.variant_kind==='wip'});
-  const tags=(item.tags||[]).map(tag=>followTagChip(item,tag,'button')).join('');
+  // 卡片只消费 general 内容投影；详情保留来源记录的全部类型，并按类型着色。
+  const tags=(item.detail_tags||item.tags||[])
+    .map(tag=>followTagChip(item,tag,'button')).join('');
   const author=followAuthorName(authorSources)||item.author||item.source_label||'作者未取得';
   const postedBy=item.author&&foldName(item.author)!==foldName(author)?item.author:'';
   /* 舞台就近展开：插在被点击那张卡片所在的一行之后，而不是整个列表之前。
@@ -3016,7 +3024,7 @@ async function openFollow(push=true,renderForDetail=false){
   if(location.pathname==='/follow')readFollowView();
   const surface=claimSurface(renderForDetail?surfacePath():'/follow');
   showManagementBody({manage:false,
-    placeholder:`<div class="follow">${pageSkeletonHtml('正在读取关注内容',{cards:true})}</div>`});
+    placeholder:followSkeletonHtml('正在读取关注内容')});
   const [data,credentials]=await Promise.all([
     api(followPageUrl(0)),
     api('/api/follow/credentials').catch(()=>({providers:[]})),
@@ -3105,20 +3113,22 @@ function followAuthorAvatar(group){
    更像作者自己写的名字。 */
 function followAuthorName(group){
   if(!group.length)return '';
+  const clean=value=>String(value||'')
+    .replace(/\s*[·|]\s*[A-Za-z0-9_-]+\s*$/,'')
+    .replace(/\s+collections?\s*$/i,'').trim();
   const entity=group.find(source=>source.entity_name);
   if(entity)return entity.entity_name;
   const aliasGroup=(followData.author_aliases||[]).find(
     item=>`name:${item.canonical_key}`===group[0]?.author_key);
-  if(aliasGroup)return aliasGroup.canonical_name;
+  if(aliasGroup)return clean(aliasGroup.canonical_name);
   // 官方主页来源不只优先提供头像，也优先提供作者写法；否则 F95 的线程标题
   // `Lazy Procrastinator Collection` 会因为大写字母更多而抢成分组标题。
   const official=group.find(source=>source.official_avatar_url);
   if(official){
-    const officialName=String(official.label||'')
-      .replace(/\s*[·|]\s*[A-Za-z0-9_-]+\s*$/,'').trim();
+    const officialName=clean(official.label);
     if(officialName)return officialName;
   }
-  const names=group.map(source=>String(source.label||'').replace(/\s*[·|]\s*[A-Za-z0-9_-]+\s*$/,''))
+  const names=group.map(source=>clean(source.label))
     .filter(Boolean);
   if(!names.length)return group[0].label||group[0].ref||'';
   const caps=text=>(text.match(/[A-Z]/g)||[]).length;

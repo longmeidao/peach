@@ -37,9 +37,13 @@ export function loadingDotsHtml(label='正在处理', {className=''}={}){
 
 /** Geist Skeleton: reserve a large content region while its structure is loading. */
 export function skeletonHtml(label='正在读取内容',{className='',variant='panel'}={}){
-  const kind=new Set(['panel','cards']).has(variant)?variant:'panel';
+  const kind=new Set(['panel','cards','dashboard']).has(variant)?variant:'panel';
   const body=kind==='cards'
     ?Array.from({length:6},()=>`<span class="skeletoncard"><i></i><b></b><em></em></span>`).join('')
+    :kind==='dashboard'
+      ?`<span class="skeletondashhero"><i></i><b></b></span>
+        <span class="skeletondashpanel"><i></i><b></b><em></em></span>
+        <span class="skeletondashpanel"><i></i><b></b><em></em></span>`
     :`<span class="skeleton" style="width:38%"></span>
       <span class="skeleton" style="width:100%"></span>
       <span class="skeleton" style="width:100%"></span>
