@@ -1348,6 +1348,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("关联艺人", profile)
         self.assertNotIn("相关标签", profile)
 
+    def test_entity_people_and_tags_match_home_vertical_rhythm(self):
+        # 首页末层按钮到标签为 18.5px；人物行保留 4px 滚动留白后只需 6px 外边距。
+        self.assertPageContains(".entitymeta{display:grid;gap:22px;margin:0 0 6px;min-width:0}")
+        self.assertPageContains(".relatedpeople{display:flex;gap:14px;overflow-x:auto;padding-bottom:4px")
+        self.assertPageContains("height:var(--filterH);margin:0 -16px;padding:9px 16px")
+
     def test_every_home_navigation_restores_the_shared_facets(self):
         self.assertPageContains("function showHomeSurfaces()")
         self.assertPageContains("$('#tiers').style.display='';$('#tagbar').style.display=''")
