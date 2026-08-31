@@ -2204,6 +2204,38 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("initialParams.get('tag')", seeded,
                          "tag 是关注页和目录共用的键，必须走按路由的闸门")
 
+    #: 会整页接管的视图。新增一个整页视图时把它加进来——两个共用入口都要走。
+    FULL_PAGE_VIEWS = ("openStats", "openTaste", "openPlaylists", "openDuplicates",
+                       "openReview", "openQualityGoals", "openFollow", "openFollowManage")
+
+    def test_every_full_page_view_enters_through_the_shared_helpers(self):
+        """进入一个整页视图分两步，两步都必须走共用函数。
+
+        `enterManagementSurface()` 是「离开目录」：收掉筛选芯片、隐藏分层与标签条，
+        并 `loadRequestSeq++` 作废在途的目录请求。`showManagementBody()` 是「铺开新
+        页面」：显隐那六个容器，再按 `manage` 决定顶部是管理条还是窄栏。
+
+        两个不合并是因为时机真的不同——前者必须抢在任何 await 之前，后者有的入口在
+        取数前铺（配 placeholder 给反馈）、有的在取数后铺（数据快时不闪骨架）。正因
+        为分成两个，才容易只调一个，所以这里逐个视图断言两个都在。
+
+        这段显隐此前在八个入口里各抄一份，抄漏 combo 就是用户报的那个 bug：在 /tags
+        点一个标签再进关注页，标题上面还挂着「白虎 ✕ 全部清除」。
+        """
+        for name in self.FULL_PAGE_VIEWS:
+            body = self._js_function(name)
+            self.assertIn("enterManagementSurface()", body,
+                          name + " 没有走「离开目录」，筛选芯片会留在新页面上")
+            self.assertIn("showManagementBody(", body,
+                          name + " 自己铺页面主体，多半又抄漏了一行")
+
+    def test_the_page_takeover_block_exists_in_exactly_one_place(self):
+        """六行显隐只允许存在一份。再出现第二份就是下一次抄漏的起点。"""
+        self.assertEqual(self.page.count("$('#stats').hidden=false"), 1,
+                         "又有人手抄了接管块，请改调 showManagementBody()")
+        self.assertEqual(self.page.count("$('#managebar').hidden=true"), 1,
+                         "隐藏管理条的分支也只能有一处，它是 showManagementBody 的 manage:false")
+
     def test_every_full_page_view_clears_the_catalog_chrome_through_one_helper(self):
         """整页视图必须走同一个清理函数，不许各自手抄一份。
 

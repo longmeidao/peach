@@ -1564,6 +1564,24 @@ function renderCombo(){
 
 /* ── 统计与管理 ── */
 let adsBatch=null,loadRequestSeq=0,listLoading=false;
+/* 整页视图接管页面主体。
+
+   这段六行的显隐此前在八个入口里各抄了一份，每份还带着随手的小差异：空格、顺序、
+   是 `buildManageBar()` 还是隐藏管理条再 `buildEdge()`。抄一次就多一次漏行的机会——
+   关注、播放列表、复核三个页面漏掉筛选芯片，就是从抄 `enterManagementSurface` 抄漏
+   开始的，那次漏的是「离开目录」这一半，这里是「铺开新页面」的另一半。
+
+   两个函数不合并，是因为调用时机真的不同：`enterManagementSurface` 必须在任何 await
+   之前跑（`loadRequestSeq++` 要抢在在途的目录请求之前作废它），而主体有的入口在取数
+   前铺（配 `placeholder` 给反馈），有的在取数后铺（数据快时不闪一下骨架）。
+   两个都要调，由 `test_every_full_page_view_enters_through_the_shared_helpers` 兜住。 */
+function showManagementBody({manage=true,placeholder=''}={}){
+  $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
+  $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
+  if(manage)buildManageBar();
+  else{$('#managebar').hidden=true;$('#manageTitle').hidden=true;buildEdge()}
+  if(placeholder)$('#stats').innerHTML=placeholder;
+}
 function enterManagementSurface(){
   // A catalog request started before browser Back must not repaint filters over
   // the management page after it resolves.
@@ -1579,8 +1597,7 @@ async function openStats(push=true,focusResource=false){
   disposeStage(false);
   const d=await api('/api/stats');
   if(!surfaceCurrent(surface))return;
-  $('#stats').hidden=false; $('#index').hidden=true; $('#grid').innerHTML='';buildManageBar();
-  $('#count').textContent=''; $('#loadSentinel').hidden=true; $('#shortsSec').hidden=true;
+  showManagementBody();
   const a=d.attribution, cs=d.consumption;
   const pct=(x,y)=>y?Math.round(x/y*100):0;
   const gb=b=>b>=1099511627776?(b/1099511627776).toFixed(2)+' TB':(b/1073741824).toFixed(1)+' GB';
@@ -1912,8 +1929,7 @@ async function openTaste(push=true){
   $('#q').value='';
   if(push)route('/taste');
   const surface=claimSurface('/taste');
-  $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';$('#count').textContent='';
-  $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;buildManageBar();
+  showManagementBody();
   const cachedEntry=tasteCache.get(tasteWindow),cached=cachedEntry?.dashboard;
   const cacheFresh=cached&&Date.now()-cachedEntry.at<TASTE_CACHE_FRESH_MS;
   if(cached)renderTaste(cached);
@@ -1991,9 +2007,7 @@ async function openPlaylists(push=true){
   const surface=claimSurface('/playlists');
   const data=await api('/api/playlists');
   if(!surfaceCurrent(surface))return;
-  $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';$('#count').textContent='';
-  $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
-  $('#managebar').hidden=true;$('#manageTitle').hidden=true;buildEdge();
+  showManagementBody({manage:false});
   const cards=(data.items||[]).map(list=>{const resume=list.current_asset_id||list.preview_asset_id;
     const poster=list.preview_asset_id?`<img src="/poster?id=${list.preview_asset_id}&c=4" alt="" loading="lazy" onerror="this.remove()">`:'';
     return `<article class="playlistcard" data-playlist-card="${list.id}"><button class="playlistcover" data-open-playlist="${list.id}" ${resume?'':'disabled'}>${poster}<span>${list.item_count} 个视频</span></button>
@@ -2022,13 +2036,10 @@ let dupData=null;
    合集、分卷和混入的广告都会共用一个 code，只按番号做「保留最大」会删掉内容。
    批量一律走 dispose 进回收站，可逆；永久删除仍只能从回收站单独执行。 */
 async function openDuplicates(push=true){
-  releaseHoverPreviews();disposeStage(false);document.body.classList.remove('entity-open');
+  releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/duplicates');
   const surface=claimSurface('/duplicates');
-  buildManageBar();
-  $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';$('#count').textContent='';
-  $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
-  $('#stats').innerHTML=`<div class="review"><p class="empty">${loadingDotsHtml('正在比对')}</p></div>`;
+  showManagementBody({placeholder:`<div class="review"><p class="empty">${loadingDotsHtml('正在比对')}</p></div>`});
   const next=await api('/api/duplicates?limit=120');
   if(!surfaceCurrent(surface))return;
   dupData=next;
@@ -2106,9 +2117,7 @@ async function openReview(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/review');
   const surface=claimSurface('/review');
-  buildManageBar();
-  $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';$('#count').textContent='';
-  $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
+  showManagementBody();
   const runtime=await api('/healthz');
   if(!surfaceCurrent(surface))return;
   /* ADR-0018：确定的那部分先落库再取队列。reader 明知不能写就不要制造一次 409；
@@ -2242,12 +2251,10 @@ async function openReview(push=true){
 
 let qualityData=null;
 async function openQualityGoals(push=true){
-  releaseHoverPreviews();disposeStage(false);document.body.classList.remove('entity-open');
+  releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/quality-goals');
   const surface=claimSurface('/quality-goals');
-  buildManageBar();$('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
-  $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
-  $('#stats').innerHTML=`<div class="review"><p class="empty">${loadingDotsHtml('正在读取')}</p></div>`;
+  showManagementBody({placeholder:`<div class="review"><p class="empty">${loadingDotsHtml('正在读取')}</p></div>`});
   const next=await api('/api/quality-goals?limit=200');
   if(!surfaceCurrent(surface))return;
   qualityData=next;
@@ -3007,10 +3014,8 @@ async function openFollow(push=true,renderForDetail=false){
   if(push)route('/follow');
   if(location.pathname==='/follow')readFollowView();
   const surface=claimSurface(renderForDetail?surfacePath():'/follow');
-  $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
-  $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
-  $('#managebar').hidden=true;$('#manageTitle').hidden=true;buildEdge();
-  $('#stats').innerHTML=`<div class="follow"><p class="empty">${loadingDotsHtml('正在读取')}</p></div>`;
+  showManagementBody({manage:false,
+    placeholder:`<div class="follow"><p class="empty">${loadingDotsHtml('正在读取')}</p></div>`});
   const [data,credentials]=await Promise.all([
     api(followPageUrl(0)),
     api('/api/follow/credentials').catch(()=>({providers:[]})),
@@ -3315,18 +3320,14 @@ function renderFollowManage(credentials){
 
 
 async function openFollowManage(push=true){
-  releaseHoverPreviews();disposeStage(false);
-  document.body.classList.remove('entity-open','index-open');
+  releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push){followManageSort='checked';route('/follow-manage')}
   else if(location.pathname==='/follow-manage'){
     const requested=new URLSearchParams(location.search).get('sort');
     followManageSort=['checked','name','sources'].includes(requested)?requested:'checked';
   }
   const surface=claimSurface('/follow-manage');
-  buildManageBar();
-  $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
-  $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
-  $('#stats').innerHTML=`<div class="follow"><p class="empty">${loadingDotsHtml('正在读取')}</p></div>`;
+  showManagementBody({placeholder:`<div class="follow"><p class="empty">${loadingDotsHtml('正在读取')}</p></div>`});
   const [data,credentials,runtime]=await Promise.all([
     api('/api/follow?limit=1'),api('/api/follow/credentials'),api('/healthz')]);
   if(!surfaceCurrent(surface))return;
