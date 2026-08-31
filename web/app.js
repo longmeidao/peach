@@ -4112,7 +4112,7 @@ const SOURCE_HINTS={
 };
 const sourceHint=message=>SOURCE_HINTS[message]||message;
 
-async function revealSource(id,status,{toastSuccess=false,button=null}={}){
+async function revealSource(id,status,{button=null}={}){
   if(button?.getAttribute('aria-busy')==='true')return;
   const buttonHtml=button?.innerHTML,label=button?.textContent.trim();
   if(button){button.disabled=true;button.setAttribute('aria-busy','true');
@@ -4120,8 +4120,7 @@ async function revealSource(id,status,{toastSuccess=false,button=null}={}){
   status.textContent='正在定位…';
   try{
     await api('/api/reveal',{method:'POST',body:JSON.stringify({id})});
-    if(toastSuccess){status.textContent='';toast('已在资源管理器中显示')}
-    else status.textContent='已在服务端弹出文件管理器';
+    status.textContent='';toast('已在资源管理器中显示');
   }catch(e){status.textContent=sourceHint(e.message)}
   finally{if(button){button.disabled=false;button.removeAttribute('aria-busy');button.innerHTML=buttonHtml}}
 }
@@ -4230,7 +4229,7 @@ function wirePhotoDetail(box,items,index){
   toggle.onclick=()=>{if(panel.hidden){panel.hidden=false;toggle.setAttribute('aria-expanded','true');
       queueMicrotask(()=>reveal.focus())}
     else dismiss()};
-  reveal.onclick=()=>revealSource(Number(reveal.dataset.photoReveal),status,{toastSuccess:true,button:reveal});
+  reveal.onclick=()=>revealSource(Number(reveal.dataset.photoReveal),status,{button:reveal});
   paint(index);return {paint,dismiss,dismissOutside,isOpen:()=>!panel.hidden};
 }
 

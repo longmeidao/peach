@@ -2421,8 +2421,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("LOC[asset.location]||asset.location||'来源未知'")
         self.assertPageContains("size<1024*1024?`${Math.max(1,Math.round(size/1024))} KB`")
         self.assertPageContains("reveal.dataset.photoReveal=String(asset.id)")
-        self.assertPageContains("revealSource(Number(reveal.dataset.photoReveal),status,{toastSuccess:true,button:reveal})")
+        self.assertPageContains("revealSource(Number(reveal.dataset.photoReveal),status,{button:reveal})")
         self.assertPageContains("toast('已在资源管理器中显示')")
+        self.assertPageLacks("已在服务端弹出文件管理器",
+                             "定位成功是短暂回执，不能在详情内容流里留下状态行")
         self.assertPageContains(".toasts{position:fixed;right:16px;bottom:22px;z-index:var(--layer-popover)")
         self.assertPageContains("button.innerHTML=`${spinnerHtml('正在定位')}<span>${esc(label)}</span>`")
         self.assertPageContains("if(activeLightbox?.detail?.isOpen()){activeLightbox.detail.dismiss(true);return}")
@@ -2550,6 +2552,8 @@ class WebUiSourceTests(unittest.TestCase):
         路径传进来，否则等于开了一个「任意路径」的接口。
         """
         self.assertPageContains("api('/api/reveal',{method:'POST',body:JSON.stringify({id})})")
+        self.assertPageContains("status.textContent='';toast('已在资源管理器中显示')")
+        self.assertPageContains("if(reveal)reveal.onclick=()=>revealSource(Number(reveal.dataset.reveal),status)")
         self.assertPageContains("api('/api/purge-missing',{method:'POST',body:JSON.stringify({id})})")
         self.assertPageContains('data-reveal="${id}"')
         self.assertPageContains('data-sync="${id}"')
