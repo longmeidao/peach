@@ -64,7 +64,14 @@ def payload(obj) -> FakeResponse:
 
 
 def make_ledger(path: Path, entities: list[dict], aliases: list[tuple[int, str]],
-                asset_links: list[int] | None = None):
+                asset_links: list[int] | None = None,
+                codes: dict[int, str] | None = None):
+    """`codes` 给某个 performer 的作品指定番号；不给就按 JAV 处理。
+
+    真实账本里 performer 是通过 `asset` 认出「是不是 JAV」的，而这个助手原本只建
+    `asset_entity` 不建 `asset`——取像脚本一旦按作品判断来源，测试就整片报
+    `no such table: asset`。补上这张表是让测试和真实 schema 对齐，不是为了迁就实现。
+    """
     connection = sqlite3.connect(path)
     connection.execute("CREATE TABLE entity(id INTEGER PRIMARY KEY, kind TEXT,"
                        " canonical_name TEXT, normalized_name TEXT, metadata_json TEXT)")
@@ -74,6 +81,7 @@ def make_ledger(path: Path, entities: list[dict], aliases: list[tuple[int, str]]
     for link in asset_links or []:
         counts[link] = counts.get(link, 0) + 1
     connection.execute("CREATE TABLE asset_entity(asset_id INTEGER, entity_id INTEGER)")
+    connection.execute("CREATE TABLE asset(id INTEGER PRIMARY KEY, medium TEXT, code TEXT)")
     for entity in entities:
         connection.execute(
             "INSERT INTO entity(id, kind, canonical_name, normalized_name, metadata_json)"
@@ -87,8 +95,11 @@ def make_ledger(path: Path, entities: list[dict], aliases: list[tuple[int, str]]
             (entity_id, alias, alias.lower(), "test"))
     for entity_id, count in counts.items():
         for index in range(count):
-            connection.execute("INSERT INTO asset_entity VALUES(?,?)",
-                               (entity_id * 100 + index, entity_id))
+            asset_id = entity_id * 100 + index
+            connection.execute("INSERT INTO asset_entity VALUES(?,?)", (asset_id, entity_id))
+            connection.execute("INSERT INTO asset(id, medium, code) VALUES(?,?,?)",
+                               (asset_id, "video",
+                                (codes or {}).get(entity_id, "ABW-001")))
     connection.commit()
     connection.close()
 
@@ -290,6 +301,64 @@ class PerformerPortraitAuditTests(unittest.TestCase):
         self.assertEqual(health["snapshot_reused"], "1")
         self.assertEqual(health["fetched"], "0")
         self.assertEqual(health["succeeded"], "1")
+
+    def _performers(self, db):
+        module = self.module
+        connection = module.open_readonly(db)
+        try:
+            return {record["entity_id"]: record
+                    for record in module.load_performers(connection)}
+        finally:
+            connection.close()
+
+    def test_a_performer_with_no_jav_release_is_not_sent_to_a_jav_library(self):
+        """Gfriends 是 JAV 图库，拿非 JAV 的人去查必然落空。
+
+        实测 567 位有作品的 performer 里 26 位不是 JAV，缺头像的 72 位里 19 位属于此类
+        （中文素人创作者）。查它们不只是白费往返——更糟的是它们混进 no_match，把真正
+        的 JAV 缺口盖住，让人以为图库覆盖比实际差。
+        """
+        db = self.tmp / "ledger.db"
+        make_ledger(db,
+                    [{"id": 1, "canonical": "立花美涼", "metadata": {}},
+                     {"id": 2, "canonical": "Cola酱", "metadata": {}}],
+                    aliases=[], asset_links=[1, 2],
+                    codes={2: ""})          # 2 号的作品没有番号：非 JAV 的反面证据
+        records = self._performers(db)
+        self.assertTrue(records[1]["jav"])
+        self.assertFalse(records[2]["jav"])
+        targets = self.module.missing_targets(
+            self.module.open_readonly(db), self.tmp / "avatars", 0)
+        self.assertEqual([t["entity_id"] for t in targets], [1])
+
+    def test_a_skipped_performer_still_appears_in_the_audit_table(self):
+        """跳过不等于忽略。
+
+        悄悄丢掉最糟：复核的人看不到这个人，只会以为她根本不缺头像。所以照样出一行，
+        判定写成 skipped_not_jav，说明「需要另一个来源」而不是「查不到」。
+        """
+        db = self.tmp / "ledger.db"
+        make_ledger(db, [{"id": 2, "canonical": "Cola酱", "metadata": {}}],
+                    aliases=[], asset_links=[2], codes={2: ""})
+        skipped = self.module.skipped_targets(
+            self.module.open_readonly(db), self.tmp / "avatars")
+        self.assertEqual([record["entity_id"] for record in skipped], [2])
+        row = self.module.audit_skipped(skipped[0])
+        self.assertEqual(row["verdict"], "skipped_not_jav")
+        self.assertEqual(row["section"], "missing")
+        self.assertIn("JAV", row["note"])
+
+    def test_a_performer_with_no_visible_works_is_still_looked_up(self):
+        """看不见作品是未知，不是反面证据。
+
+        把未知也当成非 JAV，任何一次取数疏漏都会静默地把人整批排除掉——而那种失效
+        不会报错，只会让缺口悄悄变小。
+        """
+        db = self.tmp / "ledger.db"
+        make_ledger(db, [{"id": 3, "canonical": "查无作品", "metadata": {}}], aliases=[])
+        records = self._performers(db)
+        self.assertTrue(records[3]["jav"], "没有作品证据时应当照查，不该跳过")
+        self.assertEqual(records[3]["known_works"], 0)
 
     def test_a_stale_index_cache_is_refetched_instead_of_reused_forever(self):
         """索引缓存要有保鲜期，否则「找不到」这个结论会被永久固化。
