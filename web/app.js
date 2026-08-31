@@ -576,8 +576,17 @@ function mountPlayerChromeLayout(player){
   explicitIcon(pip,'player-pip');
   const fullscreen=controlBar.querySelector(':scope>.vjs-fullscreen-control');
   const fullscreenUse=explicitIcon(fullscreen,'player-fullscreen-enter');
-  const syncFullscreenIcon=()=>fullscreenUse?.setAttribute('href',player.isFullscreen()?'#i-player-fullscreen-exit':'#i-player-fullscreen-enter');
-  player.on('fullscreenchange',syncFullscreenIcon);syncFullscreenIcon();
+  /* CSS 的 `.vjs-fullscreen` 只能覆盖 Video.js 已经同步状态类的路径。实际浏览器还可能
+     走 full-window 回退，或者先触发 fullscreenchange、下一帧才完成 class 更新。把播放器
+     自己的 `isFullscreen()` 结果登记到 DOM，画面填充不再依赖某一个实现细节类名。 */
+  const syncFullscreenState=()=>{
+    const active=!!player.isFullscreen();
+    player.el().toggleAttribute('data-peach-fullscreen',active);
+    fullscreenUse?.setAttribute('href',active?'#i-player-fullscreen-exit':'#i-player-fullscreen-enter');
+    requestAnimationFrame(()=>player.trigger('resize'));
+  };
+  player.on(['fullscreenchange','enterFullWindow','exitFullWindow'],syncFullscreenState);
+  syncFullscreenState();
   const controls=[
     pip,
     controlBar.querySelector(':scope>.vjs-peach-settings'),

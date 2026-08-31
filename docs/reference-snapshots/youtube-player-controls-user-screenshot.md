@@ -204,12 +204,22 @@
 
 ### 第十四轮全屏画面填充纠偏
 
-- 用户补充说明问题不是 Fullscreen API 是否进入，而是 4:3 等非视口比例片源在全屏继续使用
-  `object-fit:contain`，因此播放器与控制栏虽已覆盖视口，实际画面仍留下大块黑边。
+- 当时把问题归因成全屏继续使用 `object-fit:contain`；CSS 已部署且静态资源哈希一致，但修改后画面
+  没有取得，用户随后实测确认没有生效。这条根因判断因此撤回，不能再把 CSS 命中当作事实。
 - 普通详情页继续使用 `contain`，确保浏览时不裁内容；只有 Video.js 的全屏状态改用 `cover`，让画面覆盖
   `100vw × 100vh`。这是用户明确要求的 Peach 差异：非等比例片源会裁掉少量上下或左右边缘，以换取
   全屏无外部黑边，不把它写成 YouTube 默认行为。
 - 修改后浏览器画面仍需在真实非 16:9 片源上复核；页面源测试不能替代视觉验收。
+
+### 第十五轮全屏运行态兜底
+
+- 用户当前复测的本地片源 `1275` 经只读 `ffprobe` 确认为 1920×1080、SAR 1:1；连续 8 秒
+  `cropdetect` 都返回完整 1920×1080，排除了画面黑边已经编码进这个片源。
+- Chrome 能打开并截图真实 `/item/1275`，但自动化点击、DOM 和 CDP 读取连续超时；直接调用按钮的
+  Playwright 点击没有 Fullscreen API 所需的真实用户激活，因此不能把页面滚动后的截图冒充全屏验收。
+- 全屏填充改为双重状态源：继续接受 Video.js 的 `.vjs-fullscreen`／原生 `:fullscreen`，同时监听播放器
+  `fullscreenchange`、`enterFullWindow`、`exitFullWindow`，把 `isFullscreen()` 同步到
+  `data-peach-fullscreen`；CSS 还覆盖 `body.vjs-full-window` 回退。这样不再把类名同步时序当成唯一入口。
 
 ## 可复用证据
 
