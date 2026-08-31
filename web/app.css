@@ -1188,9 +1188,9 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 }
 .vwrap .video-js.vjs-error .vjs-error-display .vjs-modal-dialog-content{
   display:flex;align-items:center;justify-content:center;padding:56px 24px;text-align:center;overflow-wrap:anywhere}
-.vwrap>.video-js.vjs-fullscreen,.video-js.vjs-fullscreen,.video-js[data-peach-fullscreen],body.vjs-full-window .video-js,.video-js:fullscreen,.video-js:-webkit-full-screen{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;padding:0!important;
+.vwrap :is(.vwrap>.video-js.vjs-fullscreen,.video-js.vjs-fullscreen,.video-js[data-peach-fullscreen],body.vjs-full-window .video-js,.video-js:fullscreen,.video-js:-webkit-full-screen,.video-js:-moz-full-screen,.vwrap:fullscreen>.video-js,.vwrap:-webkit-full-screen>.video-js,.vwrap:-moz-full-screen>.video-js){position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;padding:0!important;
   max-width:none!important;max-height:none!important;aspect-ratio:auto!important;z-index:10000!important}
-.vwrap>.video-js.vjs-fullscreen .vjs-tech,.video-js.vjs-fullscreen .vjs-tech,.video-js[data-peach-fullscreen] .vjs-tech,body.vjs-full-window .video-js .vjs-tech,.video-js:fullscreen .vjs-tech,.video-js:-webkit-full-screen .vjs-tech{
+.vwrap :is(.vwrap>.video-js.vjs-fullscreen,.video-js.vjs-fullscreen,.video-js[data-peach-fullscreen],body.vjs-full-window .video-js,.video-js:fullscreen,.video-js:-webkit-full-screen,.video-js:-moz-full-screen,.vwrap:fullscreen>.video-js,.vwrap:-webkit-full-screen>.video-js,.vwrap:-moz-full-screen>.video-js) .vjs-tech{
   position:absolute!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;object-fit:cover!important}
 .playerstatsbtn{position:absolute;left:11px;top:11px;z-index:8;width:40px;height:40px;padding:0;
   display:grid;place-items:center;border:0;border-radius:50%;

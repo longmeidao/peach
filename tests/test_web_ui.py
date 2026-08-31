@@ -774,8 +774,11 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_fullscreen_uses_the_entire_player_and_reports_loading_speed(self):
         self.assertPageContains(".vwrap>.video-js.vjs-fullscreen")
+        self.assertPageContains(".vwrap :is(.vwrap>.video-js.vjs-fullscreen")
         self.assertPageContains(".video-js[data-peach-fullscreen],body.vjs-full-window .video-js")
-        self.assertPageContains(".video-js[data-peach-fullscreen] .vjs-tech,body.vjs-full-window .video-js .vjs-tech")
+        self.assertPageContains(".video-js:-webkit-full-screen,.video-js:-moz-full-screen")
+        self.assertPageContains(".vwrap:fullscreen>.video-js,.vwrap:-webkit-full-screen>.video-js,.vwrap:-moz-full-screen>.video-js")
+        self.assertPageContains(") .vjs-tech{")
         self.assertPageContains("position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;padding:0!important")
         self.assertPageContains("position:absolute!important;inset:0!important;width:100vw!important;height:100vh!important")
         self.assertPageContains("max-height:none!important")

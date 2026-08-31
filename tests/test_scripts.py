@@ -234,6 +234,16 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(by_id[3]["new"], "FC2-PPV-3098987.mp4")
         self.assertEqual(by_id[3]["new_code"], "FC2-PPV-3098987")
 
+    def test_filename_cleanup_joins_paths_by_the_ledger_path_shape(self):
+        self.assertEqual(
+            self.clean_names._join(r"B:\番号\ABW-234", "ABW-234.mp4"),
+            r"B:\番号\ABW-234\ABW-234.mp4",
+        )
+        self.assertEqual(
+            self.clean_names._join("/tmp/peach", "ABW-234.mp4"),
+            "/tmp/peach/ABW-234.mp4",
+        )
+
     def test_filename_cleanup_apply_renames_files_updates_ledger_and_validates_backup(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

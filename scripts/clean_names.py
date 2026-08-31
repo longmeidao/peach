@@ -22,6 +22,7 @@ import argparse
 from datetime import datetime
 import ntpath
 import os
+import posixpath
 import re
 import sqlite3
 import time
@@ -208,10 +209,23 @@ def _numbered_name(name: str, occupied: set[str]) -> tuple[str, bool]:
         index += 1
 
 
+def _path_ops(path: str):
+    """按 ledger 路径本身选择 Windows／POSIX 语义，而不是按运行主机选择。"""
+    return ntpath if ntpath.splitdrive(path)[0] or "\\" in path else posixpath
+
+
+def _dirname(path: str) -> str:
+    return _path_ops(path).dirname(path)
+
+
+def _join(directory: str, name: str) -> str:
+    return _path_ops(directory).join(directory, name)
+
+
 def build_plan(rows: list[tuple]) -> list[dict]:
     taken: dict[str, set[str]] = {}
     for _aid, _location, path, name, _code in rows:
-        taken.setdefault(ntpath.dirname(path).lower(), set()).add(str(name).lower())
+        taken.setdefault(_dirname(path).lower(), set()).add(str(name).lower())
 
     plan: list[dict] = []
     for aid, location, path, name, code in rows:
@@ -219,7 +233,7 @@ def build_plan(rows: list[tuple]) -> list[dict]:
         proposed = propose(str(name), str(code or ""))
         if proposed == name and canonical == str(code or ""):
             continue
-        directory = ntpath.dirname(path)
+        directory = _dirname(path)
         occupied = taken[directory.lower()]
         occupied.discard(str(name).lower())
         target, suffixed = _numbered_name(proposed, occupied)
@@ -281,8 +295,8 @@ def run(args_ns: argparse.Namespace) -> int:
         log(f"数据库备份 → {backup}")
         ok = fail = gone = 0
         for item in ready:
-            src = ntpath.join(item["dir"], item["old"])
-            dst = ntpath.join(item["dir"], item["new"])
+            src = _join(item["dir"], item["old"])
+            dst = _join(item["dir"], item["new"])
             rename_needed = src != dst
             if rename_needed and not os.path.exists(src):
                 item["status"] = "missing"
