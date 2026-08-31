@@ -35,11 +35,12 @@
 | HTML 适配器 | Beautiful Soup 或 selectolax | 来源专用选择器和来源记录 |
 | 位图 | Pillow | 头像/Logo 质量和来源策略 |
 | 搜索 | SQLite FTS5 | 索引字段、排序、profile 感知筛选 |
+| 相关推荐 | OpenAver `dca4c0c368ea0c2db9cf15e48977de2fc75e7077` 的 Tag IDF + 系列／片商／出演者规则只作固定算法参考（MIT） | 独立实现规范实体评分、MMR 多样性、稳定 seed、解释原因与负反馈边界；不复制上游 UI／源码 |
 | 女优姓名对照 | `li-peifeng/Jav-Actors-Mapping` 的固定 revision，仅作私有输入（仓库未声明许可证，不随 Peach 分发） | 精确匹配、冲突复核、别名、来源与真实 ledger 写入 |
 | 女优头像候选 | Gfriends 的 GitHub raw 索引与单张媒体（只作外部 Provider，不克隆图库） | 名字链、质量档位、格式/尺寸/SHA-256 门槛、候选缓存、provenance、健康统计和人工复核 |
 | 厂牌 Logo 候选 | 厂牌官网确认的社交 handle → unavatar URL 解析 → 平台 CDN 单图 | handle 归属、内容缓存、方形归一、精确/感知哈希、provenance、健康统计与变化复核 |
 | JAV 元数据查询 | Javinizer-Go v1.5.1 单来源 JSON CLI（MIT）；MetaTube SDK `6a5e6128c725187aeaf921d48ed7d9cd9f30671b`（Apache-2.0）只作来源身份与丰富字段模型参考 | 只发送规范番号；Peach 管 source profile、`provider_id`／`content_id`、逐字段优先级、原始证据、丰富目录证据、健康统计、候选复核与批准后的 ledger 投影 |
-| FC2 跨号证据 | 已缓存的 fc2cmadb 评论收获 + Peach ledger 媒体事实 | 稳定 pair、合集/分片保护、hash/时长/尺寸佐证、库外 evidence、健康统计和人工复核；不依赖 FC2-Leak-Detector/JavSP |
+| FC2 跨号证据 | 已缓存的 fc2cmadb 评论收获 + Peach ledger 媒体事实 | 2026-08-31 登录态实测旧文章仍提供 Inertia `article` 与 `comments`；稳定 pair、合集/分片保护、hash/时长/尺寸佐证、库外 evidence、健康统计和人工复核；不依赖 FC2-Leak-Detector/JavSP |
 | 媒体探测/转码 | Peach 管理的 FFmpeg/ffprobe | 任务策略和 Media Engine 编排 |
 | HTML5/HLS/DASH 播放 | Video.js 8.24.0 + 内置 VHS（Apache-2.0，本地固定版本） | 流方案、授权、稳定时长、回退顺序和统计面板 |
 | 播放器设置与影院布局 | Video.js 8.24.0 的 `playbackRate`、既有 QualityLevel、原生 tooltip 与控制栏插槽；YouTube `e937390a` 实际 DOM／CSS／JS 提供可复现的几何、状态、动画和图形证据 | Peach 在现有 DOM 上组合氛围模式、播放速度、真实清晰度和影院模式，并复用 59 px 两排控制栏、40→111 px 横向音量、4→6 px 进度动画、右侧共享胶囊、整行悬停的 274 px 设置菜单和视口级全屏；普通视图 `contain` 保全片源，全屏按用户明确要求改用 `cover` 铺满视口，接受非等比例片源的边缘裁切。全屏命中同时使用 Video.js／原生类和 `isFullscreen()` 同步的 `data-peach-fullscreen`，并覆盖 `body.vjs-full-window` 回退，不能再靠单个 CSS 类推断运行态；标准、WebKit、Gecko 等浏览器专用伪类必须放进 forgiving `:is(...)` 或拆成独立规则，不能在普通 selector list 混写后让某浏览器因未知伪类废掉整组声明。用户要求精准图形的设置项、radio 选中勾、菜单箭头、中央 bezel 与 loading 只 vendoring 当前锁定版本的 SVG path／spinner 结构，音量 hover 与滑轨中心沿用上游外层伪元素和 50% 几何，tooltip 仅补 Peach 两排控制栏需要的显式层级与越界可见；不复制播放器控制逻辑、不迁移到 Video.js 10 Menu，也不引入重复现有质量选择的插件 |
@@ -80,7 +81,7 @@ Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检�
 | `rm-trafficwatch.py` | `scripts/traffic_watch.py` | 只停止任务拥有的进程树 |
 | `rm-sha1.py` | `scripts/sync_sha1_115.py` | 复用 Provider 哈希，不盲目重算网盘媒体 |
 | `import_performer_portraits.py`（原 `agent/claude/performer-portraits`） | `scripts/audit_performer_portraits.py` + `scripts/localize_performer_names.py` | 一次性导入已执行完并记在 STATUS；后继只产 CSV，不写头像文件 |
-| `normalize_code_suffix.py`（原 `agent/claude/code-suffix`） | `web_contract.is_jav_code` + `scripts/audit_code_creators.py` | 226 条后缀已落库；形态判据收敛成一份实现 |
+| `normalize_code_suffix.py`（原 `agent/claude/code-suffix`） | `catalog_rules.jav_display_metadata` + `scripts/audit_jav_display.py` + `scripts/audit_code_creators.py` | 紧凑番号只随发行证据恢复；版本后缀投影为徽章，原始文件身份不丢失；全库审计只读 |
 | `dedupe_performer_creator.py`（原 `agent/claude/dedupe-identity`） | `scripts/merge_duplicate_identities.py` | 后继的判据已扩到跨 kind、同 kind 与真子集三轮，旧脚本判据更窄 |
 
 ## 当前替换队列

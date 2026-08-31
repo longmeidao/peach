@@ -211,6 +211,26 @@
         "tests/test_follow_web.py",
         "tests/test_web_ui.py"
       ]
+    },
+    {
+      "id": "openaver-related-ranking",
+      "name": "OpenAver 相似探索算法证据",
+      "url": "https://github.com/slive777/OpenAver",
+      "snapshot": "docs/reference-snapshots/openaver-related-ranking.md",
+      "checked_on": "2026-08-31",
+      "sha256": "43bba6cccf989409e5a7c71fd9304cc5df19974df547984d24f1f097cef4144a",
+      "git": {
+        "repository": "https://github.com/slive777/OpenAver.git",
+        "ref": "refs/heads/main",
+        "revision": "dca4c0c368ea0c2db9cf15e48977de2fc75e7077"
+      },
+      "role": "相关推荐使用 Tag IDF 与结构化共同点的固定算法参考；Peach 独立增加 MMR、多样性和稳定破同分。",
+      "consumers": [
+        "src/peach/related.py",
+        "src/peach/web_contract.py",
+        "scripts/audit_related_ranker.py",
+        "tests/test_related.py"
+      ]
     }
   ]
 }

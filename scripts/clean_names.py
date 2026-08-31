@@ -70,18 +70,23 @@ RE_PREFIX = re.compile(
 # 尾部域名：紧贴扩展名之前
 RE_SUFFIX = re.compile(
     rf"[-_@\s]+(?:www\.)?[0-9A-Za-z][-0-9A-Za-z]{{2,25}}\.{TLD}\s*(?=\.[A-Za-z0-9]{{2,4}}$)", re.I)
+# 番号后直接黏着的方括号域名：`CJOD-158[fuckbe.com].mp4` 没有分隔符，
+# 旧 `RE_SUFFIX` 刻意要求空格／横线，因而漏掉。只删完整括号域名，不碰普通标题括号。
+RE_BRACKET_DOMAIN = re.compile(
+    rf"[\[【(（]\s*(?:www\.)?[0-9A-Za-z][-0-9A-Za-z]{{1,30}}\.{TLD}\s*[\]】)）]", re.I)
 # 中文推广尾巴（域名已被上面吃掉后剩下的宣传语）
 RE_ADCOPY = re.compile(
     r"[-_\s]*(?:全网最火爆成人游戏|成人手游|最新地址|开车地址|每日更新|无码破解|"
     r"免费看片|请记住本站|更多资源|中文成人网站?)[^.]*(?=\.[A-Za-z0-9]{2,4}$)")
 
 
-def _normalise_code_in_name(name: str, code: str | None) -> str:
+def _normalise_code_in_name(name: str, code: str | None,
+                            allow_compact_code: bool = False) -> str:
     """只替换 ledger 已确认的番号片段，不从文件名重新猜番号。"""
-    if not is_jav_code(code):
-        return name
     canonical = normalise_code_key(code)
-    if not canonical:
+    if not is_jav_code(code) and not (
+        allow_compact_code and is_jav_code(canonical)
+    ):
         return name
     if canonical.startswith("FC2-PPV-"):
         digits = canonical.rsplit("-", 1)[-1]
@@ -108,16 +113,18 @@ def _normalise_code_in_name(name: str, code: str | None) -> str:
     return pattern.sub(canonical, name, count=1)
 
 
-def propose(name: str, code: str | None = None) -> str:
+def propose(name: str, code: str | None = None,
+            allow_compact_code: bool = False) -> str:
     """返回净化后的文件名；无需改动则原样返回。"""
     stem, dot, ext = name.rpartition(".")
     if not dot or not stem:           # 没有扩展名、或形如 ".mp4" 的空主干，都不碰
         return name
 
     new = RE_PREFIX.sub("", name, count=1)
+    new = RE_BRACKET_DOMAIN.sub("", new)
     new = RE_SUFFIX.sub("", new)
     new = RE_ADCOPY.sub("", new)
-    new = _normalise_code_in_name(new, code)
+    new = _normalise_code_in_name(new, code, allow_compact_code)
 
     # 同类双后缀 .mp4.mp4（.mp4.jpg 这种缩略图命名不算）
     dbl = re.search(r"\.([A-Za-z0-9]{2,4})\.([A-Za-z0-9]{2,4})$", new)
@@ -220,13 +227,18 @@ def _join(directory: str, name: str) -> str:
 
 def build_plan(rows: list[tuple]) -> list[dict]:
     taken: dict[str, set[str]] = {}
-    for _aid, _location, path, name, _code in rows:
+    for _aid, _location, path, name, _code, *_evidence in rows:
         taken.setdefault(_dirname(path).lower(), set()).add(str(name).lower())
 
     plan: list[dict] = []
-    for aid, location, path, name, code in rows:
-        canonical = normalise_code_key(code) if is_jav_code(code) else str(code or "")
-        proposed = propose(str(name), str(code or ""))
+    for aid, location, path, name, code, *evidence in rows:
+        allow_compact = bool(evidence and evidence[0])
+        normalized = normalise_code_key(code)
+        canonical = (
+            normalized if is_jav_code(code)
+            or (allow_compact and is_jav_code(normalized)) else str(code or "")
+        )
+        proposed = propose(str(name), str(code or ""), allow_compact)
         if proposed == name and canonical == str(code or ""):
             continue
         directory = _dirname(path)
@@ -272,8 +284,24 @@ def run(args_ns: argparse.Namespace) -> int:
     if args_ns.location:
         where += " AND location = ?"
         sql_args.append(args_ns.location)
+    asset_columns = {row[1] for row in conn.execute("PRAGMA table_info(asset)")}
+    evidence_terms = []
+    if "studio" in asset_columns:
+        evidence_terms.append("COALESCE(trim(studio),'')<>''")
+    if "release_date" in asset_columns:
+        evidence_terms.append("COALESCE(trim(release_date),'')<>''")
+    tables = {row[0] for row in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    )}
+    if {"asset_entity", "entity"}.issubset(tables):
+        evidence_terms.append(
+            "EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "WHERE ae.asset_id=asset.id AND e.kind IN ('performer','studio','series'))"
+        )
+    release_evidence = " OR ".join(evidence_terms) or "0"
     rows = conn.execute(
-        f"SELECT id, location, path, name, code FROM asset {where}", sql_args,
+        f"SELECT id,location,path,name,code,CASE WHEN {release_evidence} "
+        f"THEN 1 ELSE 0 END FROM asset {where}", sql_args,
     ).fetchall()
     log(f"扫描 {len(rows)} 条" + (f"（location={args_ns.location}）" if args_ns.location else ""))
 

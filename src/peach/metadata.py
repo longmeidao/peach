@@ -326,8 +326,12 @@ def extract_catalog_evidence(payload: dict) -> dict[str, dict]:
 
 
 def extract_peach_fields(payload: dict, category_map: dict[str, str]) -> dict[str, dict]:
-    """Map raw provider data to the Peach truth fields supported by P0."""
+    """Map raw provider data to reviewable Peach truth-field candidates."""
     out: dict[str, dict] = {}
+    catalog = extract_catalog_evidence(payload)
+    for field in ("title", "original_title"):
+        if field in catalog:
+            out[field] = dict(catalog[field])
     performers, warnings = normalized_performers(payload.get("actresses"))
     if performers:
         out["performers"] = {

@@ -60,6 +60,22 @@ _CODE_STUDIO = re.compile(r"^[A-Z]{2,8}-\d{2,5}$")
 _CODE_AMATEUR = re.compile(r"^\d{3}[A-Z]{2,6}-\d{2,5}$")
 _CODE_FC2 = re.compile(r"^FC2-PPV-\d{5,}$")
 _CODE_DATE = re.compile(r"^\d{6}-\d{2,4}$")
+_MEDIA_EXTENSION = re.compile(
+    r"\.(?:mp4|mkv|avi|wmv|mov|m4v|webm|ts|m2ts|mts|mpg|mpeg|flv|rm|rmvb|iso)$",
+    re.I,
+)
+_PROMO_DOMAIN = re.compile(
+    r"(?:www\.)?[a-z0-9][a-z0-9-]{1,30}\."
+    r"(?:com|net|la|xyz|cc|me|top|vip|club|info|org|tv|app|co|pw|gg|cn)",
+    re.I,
+)
+_BRACKETED_PROMO_DOMAIN = re.compile(
+    r"[\[【(（]\s*" + _PROMO_DOMAIN.pattern + r"\s*[\]】)）]", re.I,
+)
+_EDITION_TAIL = re.compile(
+    r"(?:[-_.\s]+(?:c|ch|sub|uc|u|uncen(?:sored)?|uncensored|中字|中文字幕|无码|无码破解|破解))+$",
+    re.I,
+)
 
 DUPLICATE_TOLERANCE = 0.005
 DUPLICATE_FLOOR_SECONDS = 15.0
@@ -107,9 +123,12 @@ def is_jav_asset(code: str | None, studio: str | None = None,
     date ties them to a published JAV release. FC2 IDs are an explicit release
     system and do not need those projections.
     """
-    if not is_jav_code(code):
+    # 历史 ledger 里有 PBD390、IPVR00296 这类缺连字符但带片商／出演者证据的真发行物。
+    # 裸 `RAIKUN325` 仍不能单凭形态升级；只有规范化后像番号且同时有发行证据才接受。
+    normalized = normalise_code_key(code)
+    if not is_jav_code(code) and not is_jav_code(normalized):
         return False
-    value = (code or "").upper().strip()
+    value = normalized.upper().strip()
     if value.startswith("FC2"):
         return True
     return bool(
@@ -117,6 +136,89 @@ def is_jav_asset(code: str | None, studio: str | None = None,
         or str(release_date or "").strip()
         or {"performer", "studio", "series"}.intersection(entity_kinds)
     )
+
+
+def _jav_code_pattern(code: str | None) -> str:
+    """Return one regex fragment matching compact and separated forms of a canonical code."""
+    canonical = normalise_code_key(code)
+    fc2 = re.fullmatch(r"FC2-PPV-(\d+)", canonical)
+    if fc2:
+        return rf"FC2(?:[-_ ]?PPV)?[-_ ]*0*{re.escape(fc2.group(1))}"
+    amateur = re.fullmatch(r"(\d{3})?([A-Z]+)-(\d+)", canonical)
+    if amateur:
+        prefix, letters, digits = amateur.groups()
+        return (
+            rf"{re.escape(prefix or '')}{re.escape(letters)}"
+            rf"[-_ ]*0*{re.escape(str(int(digits)))}"
+        )
+    dated = re.fullmatch(r"(\d{6})-(\d{2,4})", canonical)
+    if dated:
+        return rf"{re.escape(dated.group(1))}[-_ ]*{re.escape(dated.group(2))}"
+    return ""
+
+
+def jav_edition_badges(name: str | None, code: str | None,
+                       tags: tuple[str, ...] | list[str] = ()) -> list[str]:
+    """Project filename/tag evidence into compact edition badges beside the code."""
+    text = _MEDIA_EXTENSION.sub("", str(name or ""))
+    tag_set = {str(tag).strip().casefold() for tag in tags if str(tag).strip()}
+    code_pattern = _jav_code_pattern(code)
+    after_code = (
+        re.search(rf"(?:^|[^A-Z0-9]){code_pattern}([^A-Z0-9].*)?$", text, re.I)
+        if code_pattern else None
+    )
+    suffix = after_code.group(1) if after_code and after_code.group(1) else ""
+    cracked = (
+        bool(re.search(r"无码\s*破解|無碼\s*破解|AI\s*去码|"
+                       r"(?:^|[-_.\s\[])破解(?:$|[-_.\s\]])", text, re.I))
+        or "ai去码" in tag_set or "无码破解" in tag_set
+    )
+    uncensored = (
+        cracked
+        or "无码" in tag_set
+        or bool(re.search(r"(?:^|[-_.\s\[])"
+                          r"(?:uc|u|uncen(?:sored)?|uncensored|无码|無碼)"
+                          r"(?:$|[-_.\s\]])", suffix, re.I))
+    )
+    subtitled = (
+        bool({"中文字幕", "内嵌字幕", "外挂字幕", "中字"}.intersection(tag_set))
+        or bool(re.search(r"(?:^|[-_.\s\[])(?:c|ch|sub|中字|中文字幕)"
+                          r"(?:$|[-_.\s\]])", suffix, re.I))
+    )
+    badges = []
+    if subtitled:
+        badges.append("中字")
+    if cracked:
+        badges.append("无码破解")
+    elif uncensored:
+        badges.append("无码")
+    return badges
+
+
+def jav_fallback_title(name: str | None, code: str | None) -> str:
+    """Clean a filename-derived JAV title without changing the stored filename."""
+    text = _MEDIA_EXTENSION.sub("", str(name or "").strip())
+    text = _BRACKETED_PROMO_DOMAIN.sub(" ", text)
+    text = _PROMO_DOMAIN.sub(" ", text)
+    code_pattern = _jav_code_pattern(code)
+    if code_pattern:
+        repeated = re.compile(rf"^[\s._\-—]*(?:{code_pattern})(?=$|[\s._\-—\[])", re.I)
+        while repeated.search(text):
+            text = repeated.sub("", text, count=1)
+    text = _EDITION_TAIL.sub("", text)
+    text = re.sub(r"[\[\]【】()（）]+", " ", text)
+    text = re.sub(r"[._]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip(" -_—")
+
+
+def jav_display_metadata(name: str | None, code: str | None,
+                         tags: tuple[str, ...] | list[str] = ()) -> dict[str, object]:
+    """Safe display projection; raw name/code remain untouched for file operations."""
+    return {
+        "display_code": normalise_code_key(code),
+        "display_title": jav_fallback_title(name, code),
+        "edition_badges": jav_edition_badges(name, code, tags),
+    }
 
 
 def face_focus(ratio: float, cx: float, cy: float) -> dict | None:

@@ -27,6 +27,7 @@ BASE_SCHEMA = """
 CREATE TABLE asset(
   id INTEGER PRIMARY KEY, location TEXT NOT NULL, path TEXT NOT NULL, name TEXT,
   medium TEXT, size INTEGER, creator TEXT, studio TEXT, series TEXT, code TEXT, release_date TEXT,
+  catalog_title TEXT, original_title TEXT,
   duration REAL, width INTEGER, height INTEGER, ctx_length TEXT, ctx_orient TEXT,
   ctx_quality TEXT, play_count INTEGER DEFAULT 0, last_played TEXT, rating INTEGER,
   o_count INTEGER, watch_ratio REAL, stash_scene_id INTEGER, snapshot_path TEXT, first_seen TEXT,
@@ -166,12 +167,24 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         )
         con.execute("INSERT INTO asset_tag(asset_id,tag,source) VALUES(1,'Tag A','test')")
         con.execute(
+            "INSERT INTO asset_tag(asset_id,tag,source) "
+            "VALUES(1,'官方标签','javinizer:r18dev:tag')"
+        )
+        con.execute(
             "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
             "VALUES(1,'tag','Tag A','tag a')"
         )
         con.execute(
             "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
             "VALUES(1,1,'tag','test',1.0)"
+        )
+        con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
+            "VALUES(2002,'tag','官方标签','官方标签')"
+        )
+        con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+            "VALUES(1,2002,'tag','javinizer:r18dev:tag',0.9)"
         )
         con.commit()
         con.close()
@@ -629,6 +642,21 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         detail = await self.client.get("/api/item?t=secret&id=1")
         self.assertTrue(detail.json()["liked"])
         self.assertEqual(detail.json()["like_reason"], "镜头自然")
+
+    async def test_item_detail_exposes_official_title_and_official_tag_marker(self):
+        connection = sqlite3.connect(self.db)
+        connection.execute(
+            "UPDATE asset SET catalog_title='正式作品标题',original_title='原标题',"
+            "studio='Prestige',code='ABW-232' WHERE id=1"
+        )
+        connection.commit(); connection.close()
+        detail = (await self.client.get("/api/item?t=secret&id=1")).json()
+        self.assertEqual(detail["catalog_title"], "正式作品标题")
+        self.assertEqual(detail["original_title"], "原标题")
+        self.assertEqual(detail["display_code"], "ABW-232")
+        self.assertIn("edition_badges", detail)
+        official = next(tag for tag in detail["tags"] if tag["k"] == "官方标签")
+        self.assertTrue(official["official"])
 
     async def test_provider_health_is_authenticated_and_secret_free(self):
         denied = await self.client.get("/api/providers")

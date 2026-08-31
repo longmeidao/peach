@@ -68,7 +68,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
   其余上游黑话词（兜底、落盘、闭环、链路）一律改写成具体机制。
 
 ## 参考产品证据登记
-具体快照、URL、版本、SHA 与 Peach 差异统一登记在 `docs/reference-sources.json` 和 `docs/reference-snapshots/`；获取、失效复核与接受更新的流程见 `.claude/skills/peach-reference-evidence/SKILL.md`。本文件不再复制会随上游变化的测量值。
+具体快照、URL、版本、SHA 与 Peach 差异统一登记在 `docs/reference-sources.json` 和 `docs/reference-snapshots/`；获取、失效复核与接受更新的流程见 `.claude/skills/peach-reference-evidence/SKILL.md`。本文件不再复制会随上游变化的测量值。OpenAver 相似探索固定 revision `dca4c0c368ea0c2db9cf15e48977de2fc75e7077` 只作算法参考：Peach 复用 Tag IDF 与结构化共同点方向，独立增加 MMR 和稳定 seed，不复制上游界面或源码；证据与只读 POC 见 `openaver-related-ranking.md`。
 **Vercel Geist Grid（2026-08-28）**：官方页 `https://vercel.com/geist/grid` 的实时 DOM 使用资源类
 `grid-module__AMTIxG__grid`；网格引导线由父级统一拥有，单元透明、0 圆角，示例按阅读顺序逐行排列，
 并明确要求各断点可预测重排、可点击单元独立显示 focus。Peach 复用共享边线与 3／2／1 列重排，
@@ -107,7 +107,7 @@ Gofile token 是另一份本机可选凭据，只进 Gofile 请求头，不进 U
 - 头像门槛按长短边分别判定（长边 ≥500 且短边 ≥300）。竖构图人像宽度天然小，套用为方图设的「短边 ≥512」会拒掉 `0-Hand-Storage`(334×501)、`8-GRAPHIS`(360×508) 这些最优来源。Gfriends 只按 `Filetree.json` 和单张 raw 媒体作为外部 Provider 使用，不克隆约 700 MB 图库、不把图片放进 Git。`audit_performer_portraits.py` 把合格图放入候选专用内容寻址缓存，每条另存 provider、名字命中档、上游 ID/URL、尺寸、MIME、SHA-256 与 policy version；与当前头像或同批其他实体字节完全相同的图只留审计证据，不进入 `/review`。每批另写来源健康 CSV；脚本没有写 ledger 或安装 `generated/avatars` 的路径。
 - 可用来源实测（2026-08-15）：r18.dev、av-wiki.net、javdb.com、Gfriends 可用；javlibrary、missav、xslist 被 Cloudflare 拦，njav 有验证墙，jav321 无独立女优字段。被 Cloudflare 拦的站一律放弃，不绕过机器人检测。
 - 番号目录被投影成创作者时，判据只能是文件级证据，不能是名字形态。`HD-abp-758`、`pppd-937ch`、`banbi_555`、`AH18` 四者形态相同，真相完全不同：前两个是发行目录（`HD-` 是画质、`-CH` 是中文字幕版，都会让番号提取放弃），第三个是 myfans 账号，第四个是 pixiv 画师。唯一可靠的区分是「目录内的媒体文件名是否解析出同一个番号」——账号目录里放的是作品标题，天然不命中；pixiv 行的 `path` 是 URL，先按这一点排除。`scripts/audit_code_creators.py` 就是这条判据的实现，存疑一律留复核 CSV。
-- 画质前缀（`HD`/`FHD`/`4K`/`1080P`）和版本后缀（`-C`/`-CH`/`-UC`/`-SUB`）不是番号的一部分。番号提取器必须先剥这两层再匹配，否则 `code` 留空、目录名顶替身份，两个错误一起发生。
+- 画质前缀（`HD`/`FHD`/`4K`/`1080P`）和版本后缀（`-C`/`-CH`/`-UC`/`-SUB`）不是番号的一部分。番号提取器必须先剥这两层再匹配，否则 `code` 留空、目录名顶替身份，两个错误一起发生。界面保留这层版本语义，但不再显示原后缀：`C`／`CH`／`SUB` 投影为框选“中字”，`U`／`UC`／`Uncen` 为“无码”，明确破解／`AI去码` 为“无码破解”；原始 `name`／`code` 继续留给文件操作。缺连字符的紧凑 code 只有同时具备片商、发行日或 performer／studio／series 实体证据才恢复，账号形态不能仅凭字符串升级。
 - **创作者是频道主，不是出镜者**；文件名里的 `@账号` 多数是蹭流量的引流号。可建创作者的只有`RT_@X - 正文…`（X 是转推原作者）、`女主@X`（明确标注的出镜者）和正文里的中文名；末尾成串裸 `@A @B @C` 是互推、`📷：@X` 是摄影师，都不建。据此删过 8 个假创作者（`KawasawaSen`、`ToBulma`、`Xiaoxiaofoer`、`MitsumeDoji`、`ToukaYuan`、`jiaoshiwb`、`yohuo001`、`yszl_0107`）。
 - **转载渠道水印不是创作者水印**。已确认属于电报群与盗版站的：`@FLshe11`、`@SFJT68`、`@hmfl8`、`@zupi8888`、`52ywy.com`、`5snn.com`、`9P3456.com`。目录名同样可能是伪装，已证实的有`梦比优斯奥特曼（日配）`→MyElla、`宇宙英雄奥特曼`→RecklessDome、`电化学_金属腐蚀…`→梅麻呂3D，判定优先级是画面水印 > 作品名联网反查 > 文件名文本。
 - 打创作者级标签前必须先验证这个 creator 是不是聚合目录。按 ledger 路径的下级目录分布判断：`Myfans` 下含至少 4 位不同创作者，`RiaKurumi` 是女优而非创作者且作品分属 cospuri／fellatiojapan／spermmania 三个厂牌。给聚合目录打统一风格标签就是 `asce` 事故的重演。

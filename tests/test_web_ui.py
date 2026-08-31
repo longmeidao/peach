@@ -1449,6 +1449,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const coStarred=performers.length>1&&!primaryCreator")
         self.assertPageContains("return (it.is_jav&&performer?performer:it.creator)||performer")
 
+    def test_jav_detail_prefers_official_title_and_labels_official_tags(self):
+        self.assertPageContains("it?.catalog_title||it?.original_title")
+        self.assertPageContains("t.official?' official':''")
+        self.assertPageContains("<small>官方</small>")
+        self.assertPageContains(".detailtag.official{")
+
     def test_drawer_filters_follow_entity_and_detail_context(self):
         # 实体页 facets 必须按当前实体取数；详情页则按单个作品取数，不能继续复用首页全库。
         self.assertPageContains("facetParams.set('scope_kind',context.kind)")
@@ -1590,7 +1596,15 @@ class WebUiSourceTests(unittest.TestCase):
     def test_jav_titles_hide_media_suffix_and_emphasize_the_code(self):
         self.assertPageContains("const JAV_MEDIA_SUFFIX=/\\.(?:mp4|mkv|avi|wmv|mov|m4v|webm")
         self.assertPageContains("return it?.is_jav?name.replace(JAV_MEDIA_SUFFIX,''):name")
-        self.assertPageContains('return `<strong class="javcode">${esc(code)}</strong>')
+        self.assertPageContains("it?.display_code||code")
+        self.assertPageContains("hasOwnProperty.call(it||{},'display_title')")
+        self.assertPageContains("?String(it.display_title||'').trim():filenameTitle")
+        self.assertPageContains('return `<span class="javidentity"><strong class="javcode">${esc(code)}</strong>')
+        self.assertPageContains('class="javedition ${label===\'中字\'?\'subtitle\'')
+        self.assertPageContains("['中字','无码','无码破解'].includes(label)")
+        self.assertPageContains(".javedition.subtitle{color:var(--tungsten)}")
+        self.assertPageContains(".javedition.uncensored{color:var(--meter)}")
+        self.assertPageContains(".javedition.cracked{color:var(--drop)}")
         self.assertPageContains('<button class="t cardtitle" data-open>${shownTitle}</button>')
         self.assertPageContains('<div class="stitle">${javTitleHtml(it)}</div>')
         self.assertPageContains("$('#tokTitle').textContent=javDisplayName(it)")

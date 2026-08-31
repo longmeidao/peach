@@ -76,6 +76,7 @@ from .catalog_rules import (
     face_focus,
     is_jav_asset,
     is_jav_code,
+    jav_display_metadata,
     normalise_code_key,
     ordered_multipart_items,
     part_marker,
@@ -99,6 +100,15 @@ COST = {"local": "free", "115": "free", "pikpak": "metered", "online": "metered"
 #: 但 BEST 合集实测有 41 位，全量下发会把列表响应撑大，所以截断并同时给出总数，
 #: 由界面显示「等 N 人」。详情页走 q_item，不受这个上限影响。
 CARD_PERFORMERS = 6
+
+
+def attach_jav_display_fields(row: dict, tags=(), entity_kinds=()) -> None:
+    """Add one canonical display projection while retaining raw file identity fields."""
+    row["is_jav"] = is_jav_asset(
+        row.get("code"), row.get("studio"), row.get("release_date"), entity_kinds,
+    )
+    if row["is_jav"]:
+        row.update(jav_display_metadata(row.get("name"), row.get("code"), tags))
 
 FAVICON = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#0B0B0D"/><defs><linearGradient id="pg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF9A76"/><stop offset="1" stop-color="#F2557B"/></linearGradient></defs><path d="M16 28c-5.7 0-9.7-3.6-9.7-8.6 0-4.3 2.8-7.6 6.5-7.6 1.4 0 2.4.5 3.2 1.1.8-.6 1.8-1.1 3.2-1.1 3.7 0 6.5 3.3 6.5 7.6C25.7 24.4 21.7 28 16 28z" fill="url(#pg)"/><path d="M16 13.4V27" stroke="#0B0B0D" stroke-width="1.1" opacity=".3" stroke-linecap="round"/><path d="M17.1 11.7c.6-2.8 2.8-4.6 5.6-4.8-.2 2.8-2.2 4.7-5.6 4.8z" fill="#5FB95F"/><path d="M16 11.9c0-1.9.5-3.4 1.5-4.5" stroke="#8A5A3B" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>')
 
@@ -403,7 +413,8 @@ def q_items(contract: WebContract, args):
             # 只比 canonical_name 会让「凉森」搜不到 `涼森れむ`——trigram 要求三字
             # 起步，两字查询永远落在这条分支上，补检索词也救不了。
             where.append(
-                "(a.name LIKE ? OR a.code LIKE ? OR EXISTS("
+                "(a.name LIKE ? OR a.catalog_title LIKE ? OR a.original_title LIKE ? "
+                "OR a.code LIKE ? OR EXISTS("
                 "SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
                 "WHERE ae.asset_id=a.id AND e.kind IN ('creator','performer','studio') "
                 "AND (e.canonical_name LIKE ? "
@@ -413,7 +424,7 @@ def q_items(contract: WebContract, args):
                 "AND st.term LIKE ?))))"
             )
             pattern = f"%{query}%"
-            par += [pattern] * 5
+            par += [pattern] * 7
     state = state_predicate(str(args.get("state") or ""))
     if state:
         where.append(state)
@@ -448,7 +459,8 @@ def q_items(contract: WebContract, args):
     off = int(args.get("offset", 0))
     include_total = args.get("count", "1") != "0"
     fetch_limit = lim if include_total else lim + 1
-    sql = ("SELECT a.id,a.location,a.path,a.name,a.medium,a.creator,a.studio,a.code,a.release_date,a.size,"
+    sql = ("SELECT a.id,a.location,a.path,a.name,a.catalog_title,a.original_title,a.medium,"
+           "a.creator,a.studio,a.code,a.release_date,a.size,"
            "a.duration,a.width,a.height,a.ctx_length,a.ctx_orient,a.snapshot_path,"
            "a.play_count,a.leave_ratio,a.feedback,a.disposal,a.rating,a.o_count,"
            "a.play_seconds,a.max_reached,a.seek_count,"
@@ -501,11 +513,8 @@ def q_items(contract: WebContract, args):
         r["cost"] = COST.get(r["location"], "metered")
         r["has_thumb"] = contract.has_snapshot(r["snapshot_path"])
         r["has_cover"] = contract.has_cover(r.get("code"))
-        # 卡片上的出镜者称谓要和详情页同一口径：番号形态加发行证据才叫 JAV。
-        r["is_jav"] = is_jav_asset(
-            r.get("code"), r.get("studio"), r.get("release_date"),
-            r.pop("_entity_kinds", ()),
-        )
+        # 卡片上的出镜者称谓、规范番号、版本徽章与详情页使用同一份投影。
+        attach_jav_display_fields(r, r.get("tags", ()), r.pop("_entity_kinds", ()))
         if r["has_cover"]:
             r["cover_frame"] = contract.cover_frame(r.get("code"))
         r.pop("snapshot_path", None)
@@ -727,7 +736,8 @@ def q_item(contract: WebContract, aid):
        既显示错条目，又反复拉计费流量。教训：按 id 取就按 id 取。"""
     with contract.read_connection() as c:
         r = c.execute(
-            "SELECT id,location,path,name,creator,studio,code,release_date,size,duration,width,height,"
+            "SELECT id,location,path,name,catalog_title,original_title,creator,studio,code,"
+            "release_date,size,duration,width,height,"
             "ctx_length,ctx_orient,snapshot_path,play_count,leave_ratio,feedback,disposal,"
             "rating,o_count,play_seconds,max_reached,seek_count,"
             "COALESCE((SELECT p.liked FROM asset_preference p WHERE p.asset_id=asset.id "
@@ -743,11 +753,11 @@ def q_item(contract: WebContract, aid):
         if not r:
             return {"error": "not found"}
         d = dict(r)
-        legacy = [x[0] for x in c.execute(
-            "SELECT t.tag FROM asset_tag t WHERE t.asset_id=? AND "
+        legacy_rows = list(c.execute(
+            "SELECT t.tag,t.source FROM asset_tag t WHERE t.asset_id=? AND "
             + tag_not_hidden("t.asset_id", "peach_normalize(t.tag)")
             + " ORDER BY t.tag", (aid,),
-        )]
+        ))
         canonical = list(c.execute(
             "SELECT DISTINCT e.id,e.kind,e.canonical_name FROM asset_entity ae "
             "JOIN entity e ON e.id=ae.entity_id WHERE ae.asset_id=? "
@@ -756,6 +766,15 @@ def q_item(contract: WebContract, aid):
             + tag_not_hidden("ae.asset_id", "e.normalized_name") + ") "
             "ORDER BY e.kind,e.canonical_name", (aid,),
         ))
+    legacy = [row[0] for row in legacy_rows]
+    official_tag_names = {
+        normalize_entity_name(tag)
+        for tag, source in legacy_rows
+        if str(source or "").startswith("javinizer:")
+        and str(source or "").endswith(":tag")
+        and SOURCE_SPECS.get(str(source).split(":", 2)[1], None)
+        and SOURCE_SPECS[str(source).split(":", 2)[1]].official
+    }
     canonical_tags = [name for _, kind, name in canonical if kind == "tag"]
     canonical_performers = [name for _, kind, name in canonical if kind == "performer"]
     canonical_creators = {
@@ -771,7 +790,14 @@ def q_item(contract: WebContract, aid):
     tags = [tag for tag in (canonical_tags or [
         tag for tag in legacy if not tag.startswith("演员:")
     ]) if normalize_entity_name(tag) not in performer_names]
-    d["tags"] = [{"k": tag, "cat": tag_cat(tag)} for tag in tags if tag not in LENGTH_TAGS]
+    d["tags"] = [
+        {
+            "k": tag,
+            "cat": tag_cat(tag),
+            "official": normalize_entity_name(tag) in official_tag_names,
+        }
+        for tag in tags if tag not in LENGTH_TAGS
+    ]
     d["performers"] = performers
     d["entities"] = {
         kind: [name for _, item_kind, name in canonical if item_kind == kind]
@@ -789,8 +815,8 @@ def q_item(contract: WebContract, aid):
     d["cost"] = COST.get(d["location"], "metered")
     d["has_thumb"] = contract.has_snapshot(d["snapshot_path"])
     # 「女优」是番号发行物的行业称谓；creator clip 即使长得像番号也仍是普通内容。
-    d["is_jav"] = is_jav_asset(
-        d.get("code"), d.get("studio"), d.get("release_date"),
+    attach_jav_display_fields(
+        d, [tag["k"] for tag in d["tags"]],
         [kind for kind, values in d["entities"].items() if values],
     )
     d.pop("snapshot_path", None); d.pop("path", None)
@@ -952,66 +978,85 @@ def q_ads(contract: WebContract, limit=200, offset=0, kind="", status="pending")
     }
 
 def q_related(contract: WebContract, aid, limit=24):
-    """接着看 —— 把口味接近的串成播放列表。
-    优先级：同创作者 > 共享标签最多 > 同厂牌。全部排除已标记不合口味的。"""
+    """接着看：IDF 抑制泛标签，MMR 避免近重复连续占满列表。"""
+    from peach.related import rank_related
+
     with contract.read_connection() as c:
-        r = c.execute("SELECT id FROM asset WHERE id=?", (aid,)).fetchone()
-        if not r:
+        source_row = c.execute(
+            "SELECT id,duration,release_date FROM asset WHERE id=?", (aid,),
+        ).fetchone()
+        if not source_row:
             return {"items": []}
-        entity_ids = {}
-        for kind in ("creator", "tag", "studio"):
-            entity_ids[kind] = [x[0] for x in c.execute(
-                "SELECT DISTINCT ae.entity_id FROM asset_entity ae "
-                "JOIN entity e ON e.id=ae.entity_id "
-                "WHERE ae.asset_id=? AND e.kind=?", (aid, kind),
-            )]
-        picked, seen = [], {aid}
-
-        def take(sql, par, why):
-            for row in c.execute(sql, par):
-                d = dict(row)
-                if d["id"] in seen or len(picked) >= limit:
-                    continue
-                seen.add(d["id"]); d["why"] = why; picked.append(d)
-
-        COLS = ("id,location,name,creator,studio,code,size,duration,width,height,"
+        source_entities = list(c.execute(
+            "SELECT DISTINCT ae.entity_id,e.kind FROM asset_entity ae "
+            "JOIN entity e ON e.id=ae.entity_id WHERE ae.asset_id=? "
+            "AND e.kind IN ('creator','performer','series','studio','tag')", (aid,),
+        ))
+        if not source_entities:
+            return {"items": []}
+        COLS = ("id,location,name,catalog_title,original_title,creator,studio,code,size,duration,width,height,"
                 "ctx_orient,snapshot_path,play_count,leave_ratio,feedback,disposal,o_count")
-        base = (f"SELECT {COLS} FROM asset a WHERE a.medium='video' AND a.id<>? "
-                "AND (a.feedback IS NULL OR a.feedback<>'dislike') AND a.disposal IS NULL")
-        creators = entity_ids["creator"]
-        if creators:
-            qm = ",".join("?" * len(creators))
-            take(base + f" AND EXISTS (SELECT 1 FROM asset_entity ae WHERE ae.asset_id=a.id "
-                 f"AND ae.entity_id IN ({qm})) "
-                 "ORDER BY (a.play_count IS NULL OR a.play_count=0) DESC, random() LIMIT ?",
-                 tuple([aid] + creators + [limit]), "同创作者")
-        tags = entity_ids["tag"]
-        if tags and len(picked) < limit:
-            qm = ",".join("?" * len(tags))
-            take(f"SELECT {COLS} FROM asset a WHERE a.medium='video' AND a.id<>? "
-                 f"AND (a.feedback IS NULL OR a.feedback<>'dislike') AND a.disposal IS NULL "
-                 f"AND (SELECT count(DISTINCT ae.entity_id) FROM asset_entity ae "
-                 f"WHERE ae.asset_id=a.id AND ae.entity_id IN ({qm})) >= "
-                 f"{max(1, min(2, len(tags)))} "
-                 "ORDER BY (a.play_count IS NULL OR a.play_count=0) DESC, random() LIMIT ?",
-                 tuple([aid] + tags + [limit]), "标签接近")
-        studios = entity_ids["studio"]
-        if studios and len(picked) < limit:
-            qm = ",".join("?" * len(studios))
-            take(base + f" AND EXISTS (SELECT 1 FROM asset_entity ae WHERE ae.asset_id=a.id "
-                 f"AND ae.entity_id IN ({qm})) ORDER BY random() LIMIT ?",
-                 tuple([aid] + studios + [limit]), "同厂牌")
+        source_entity_ids = [row[0] for row in source_entities]
+        source_marks = ",".join("?" * len(source_entity_ids))
+        candidate_rows = [dict(row) for row in c.execute(
+            f"SELECT {COLS},a.release_date FROM asset a JOIN asset_entity shared "
+            "ON shared.asset_id=a.id WHERE a.medium='video' AND a.id<>? "
+            "AND (a.feedback IS NULL OR a.feedback<>'dislike') AND a.disposal IS NULL "
+            f"AND shared.entity_id IN ({source_marks}) GROUP BY a.id "
+            "ORDER BY count(DISTINCT shared.entity_id) DESC,a.id LIMIT 4000",
+            (aid, *source_entity_ids),
+        )]
+        ids = [aid, *(row["id"] for row in candidate_rows)]
+        entities = {asset_id: {} for asset_id in ids}
+        for offset in range(0, len(ids), 800):
+            batch = ids[offset:offset + 800]
+            qm = ",".join("?" * len(batch))
+            for asset_id, entity_id, kind in c.execute(
+                "SELECT ae.asset_id,ae.entity_id,e.kind FROM asset_entity ae "
+                "JOIN entity e ON e.id=ae.entity_id "
+                f"WHERE ae.asset_id IN ({qm}) AND e.kind IN "
+                "('creator','performer','series','studio','tag')", tuple(batch),
+            ):
+                entities[asset_id].setdefault(kind, set()).add(entity_id)
+
+        def rank_row(row):
+            release_date = row.get("release_date") or ""
+            return {
+                **row, "entities": entities[row["id"]],
+                "year": int(release_date[:4]) if release_date[:4].isdigit() else None,
+            }
+
+        source = rank_row(dict(source_row))
+        picked = rank_related(source, (rank_row(row) for row in candidate_rows), limit,
+                              seed=f"related:{aid}")
+        for row in picked:
+            row["_entity_kinds"] = tuple(row["entities"])
+            row.pop("entities", None)
+            row.pop("year", None)
     attach_card_performers(contract, picked)
+    related_tags: dict[int, list[str]] = {}
+    if picked:
+        related_ids = [row["id"] for row in picked]
+        marks = ",".join("?" * len(related_ids))
+        for asset_id, tag in con_tags(contract, related_ids, marks):
+            related_tags.setdefault(asset_id, []).append(tag)
     for d in picked:
         d["cost"] = COST.get(d["location"], "metered")
         d["has_thumb"] = contract.has_snapshot(d["snapshot_path"])
+        d["has_cover"] = contract.has_cover(d.get("code"))
+        attach_jav_display_fields(
+            d, related_tags.get(d["id"], ()), d.pop("_entity_kinds", ()),
+        )
+        if d["has_cover"]:
+            d["cover_frame"] = contract.cover_frame(d.get("code"))
+        d.pop("release_date", None)
         d.pop("snapshot_path", None)
     return {"items": picked[:limit]}
 
-#: JAV 语境下的资产过滤片段。番号形态必须再有发行证据；否则 JI-103 这类
-#: creator clip 会混入 JAV。FC2 本身就是明确的发行 ID，单独保留。
+#: JAV 语境下的资产过滤片段。历史缺连字符编号先规范化，但仍必须再有发行证据；
+#: 否则 RAIKUN325 这类账号和 JI-103 creator clip 会混入。FC2 单独保留。
 JAV_ASSET_PREDICATE = (
-    "a.code IS NOT NULL AND a.code<>'' AND is_jav_code(a.code) AND ("
+    "a.code IS NOT NULL AND a.code<>'' AND is_jav_code(normalise_code_key(a.code)) AND ("
     "upper(trim(a.code)) LIKE 'FC2%' OR COALESCE(trim(a.studio),'')<>'' "
     "OR COALESCE(trim(a.release_date),'')<>'' OR EXISTS("
     "SELECT 1 FROM asset_entity jav_ae JOIN entity jav_e ON jav_e.id=jav_ae.entity_id "

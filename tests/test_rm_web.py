@@ -20,6 +20,8 @@ CREATE TABLE asset(
   location TEXT NOT NULL,
   path TEXT NOT NULL,
   name TEXT,
+  catalog_title TEXT,
+  original_title TEXT,
   medium TEXT,
   size INTEGER,
   hash TEXT,
@@ -179,6 +181,25 @@ class WebDataTests(unittest.TestCase):
         self.assertNotIn("Canonical Alice", [tag["k"] for tag in rm_web.q_stats(self.contract)["top_tags"]])
         self.assertNotIn("path", result["items"][0])
         self.assertNotIn("snapshot_path", result["items"][0])
+
+    def test_item_detail_marks_javinizer_official_tags(self):
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO asset_tag(asset_id,tag,confidence,source) "
+            "VALUES(1,'官方标签',0.9,'javinizer:r18dev:tag')"
+        )
+        con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
+            "VALUES(991,'tag','官方标签','官方标签')"
+        )
+        con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+            "VALUES(1,991,'tag','javinizer:r18dev:tag',0.9)"
+        )
+        con.commit(); con.close()
+        tag = next(tag for tag in rm_web.q_item(self.contract, 1)["tags"]
+                   if tag["k"] == "官方标签")
+        self.assertTrue(tag["official"])
 
     def test_multiple_tags_support_all_and_broad_any_matching(self):
         strict = rm_web.q_items(
@@ -850,7 +871,7 @@ class WebDataTests(unittest.TestCase):
 
         related = rm_web.q_related(self.contract, 1, 10)
         self.assertEqual(related["items"][0]["id"], 2)
-        self.assertEqual(related["items"][0]["why"], "同创作者")
+        self.assertEqual(related["items"][0]["why"], "同创作者 · 同厂牌")
         self.assertEqual(related["items"][0]["performer_entities"], [])
 
         reverse_related = rm_web.q_related(self.contract, 2, 10)
@@ -1170,6 +1191,52 @@ class JavModeAndCoverTests(unittest.TestCase):
         row = rm_web.q_item(self.contract, 1)
         self.assertTrue(row["is_jav"])
         self.assertEqual((row["code"], row["name"]), ("ABW-232", "a.mp4"))
+
+    def test_jav_dto_exposes_catalog_titles(self):
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "UPDATE asset SET catalog_title='正式作品标题',original_title='原标题' WHERE id=1"
+        )
+        con.commit(); con.close()
+        row = rm_web.q_item(self.contract, 1)
+        self.assertEqual(row["catalog_title"], "正式作品标题")
+        self.assertEqual(row["original_title"], "原标题")
+
+    def test_compact_code_with_release_evidence_gets_canonical_display_fields(self):
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO asset(id,location,path,name,medium,code,studio,duration,first_seen) "
+            "VALUES(9,'local',?,'PBD00390.mp4','video','PBD390','PREMIUM',100,'2026-08-18')",
+            (r"R:\PBD00390.mp4",),
+        )
+        con.commit(); con.close()
+        row = rm_web.q_item(self.contract, 9)
+        self.assertTrue(row["is_jav"])
+        self.assertEqual(row["display_code"], "PBD-390")
+        self.assertEqual(row["display_title"], "")
+        self.assertEqual(row["edition_badges"], [])
+        self.assertEqual((row["code"], row["name"]), ("PBD390", "PBD00390.mp4"))
+        self.assertIn(9, self.ids({"jav": "1"}))
+
+    def test_filename_suffixes_become_edition_badges_not_title_text(self):
+        subtitled = rm_web.jav_display_metadata("CJOD-175-C.mp4", "CJOD-175")
+        advertised = rm_web.jav_display_metadata(
+            "CJOD-158 CJOD-158[fuckbe.com].mp4", "CJOD-158",
+        )
+        uncensored = rm_web.jav_display_metadata(
+            "ABP614.Hinata.Mio.Uncen.mp4", "ABP614",
+        )
+        cracked = rm_web.jav_display_metadata(
+            "MIDE-950.mp4", "MIDE-950", ["AI去码"],
+        )
+        self.assertEqual(subtitled, {
+            "display_code": "CJOD-175", "display_title": "",
+            "edition_badges": ["中字"],
+        })
+        self.assertEqual(advertised["display_title"], "")
+        self.assertEqual(uncensored["display_title"], "Hinata Mio")
+        self.assertEqual(uncensored["edition_badges"], ["无码"])
+        self.assertEqual(cracked["edition_badges"], ["无码破解"])
 
     def test_release_sort_orders_official_dates_descending_and_missing_last(self):
         rows = rm_web.q_items(

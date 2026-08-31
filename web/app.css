@@ -900,6 +900,13 @@ body[data-density="dense"] .junkcard .junkactions button span{display:none}
 .meta .t{font-size:var(--fs-md);line-height:1.35;min-height:2.7em;overflow:hidden;display:-webkit-box;
   -webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-all}
 .meta .cardtitle{width:100%;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}
+.javidentity{display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;white-space:nowrap}
+.javcode{font-weight:750;letter-spacing:.01em}.javtitle{font-weight:400}
+.javedition{display:inline-flex;align-items:center;min-height:18px;padding:0 5px;border:1px solid currentColor;
+  border-radius:3px;font-size:var(--fs-xs);line-height:16px;font-weight:650;letter-spacing:0;vertical-align:1px}
+.javedition.subtitle{color:var(--tungsten)}
+.javedition.uncensored{color:var(--meter)}
+.javedition.cracked{color:var(--drop)}
 .meta .s{display:flex;gap:8px;color:var(--muted);align-items:center;flex-wrap:wrap}
 .meta .who{color:var(--tungsten);min-width:0;max-width:100%;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 /* 没有实体链接的归属只是一段文字：番号、「未归属」这类值没有资料页可去。
@@ -1277,6 +1284,8 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
   background:color-mix(in srgb,var(--surface) 82%,var(--ground));overflow:hidden;min-height:30px}
 .detailtag button{border:0;background:transparent;color:var(--ink-2);cursor:pointer;height:28px}
 .detailtag .tagfilter{padding:3px 5px 3px 11px}.detailtag .tagremove{width:28px;padding:0;display:grid;place-items:center;color:var(--muted)}
+.detailtag .tagfilter small{margin-left:5px;color:var(--accent);font-size:var(--fs-xs);font-weight:600}
+.detailtag.official{border-color:color-mix(in srgb,var(--accent) 42%,var(--line));background:color-mix(in srgb,var(--accent) 7%,transparent)}
 .detailtag .tagremove:hover{color:var(--drop);background:color-mix(in srgb,var(--drop) 12%,transparent)}
 .detailtag svg,.tagplus svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
 .tagplus{width:30px;height:30px;border:1px dashed var(--line);border-radius:50%;display:grid;place-items:center;

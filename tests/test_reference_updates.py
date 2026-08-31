@@ -36,7 +36,8 @@ class ReferenceUpdateTests(unittest.TestCase):
              "vercel-geist-fieldset-scroller-empty-state",
              "vercel-geist-command-search-loading",
              "vercel-notifications-note",
-             "youtube-player-controls-user-screenshot"},
+             "youtube-player-controls-user-screenshot",
+             "openaver-related-ranking"},
         )
         self.assertNotEqual(
             sources["vercel-report-design"]["url"],
