@@ -511,9 +511,9 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0){
   const showMain=()=>{
     const {active}=qualityRows(),speed=Number(player.playbackRate())||1;
     menu.innerHTML=`<button type="button" class="vjs-peach-menu-row" role="menuitemcheckbox" data-player-ambient aria-checked="${appSettings.ambientMode}">
-      ${icon('monitor-cog')}<span>氛围模式</span><i class="vjs-peach-switch" aria-hidden="true"></i></button>
-      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-speed>${icon('gauge')}<span>播放速度</span><b>${speed===1?'正常':speed+'×'}</b>${icon('chevron-right')}</button>
-      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-quality-view>${icon('sliders-horizontal')}<span>清晰度</span><b>${esc(active.label)}</b>${icon('chevron-right')}</button>`;
+      ${icon('player-ambient')}<span>氛围模式</span><i class="vjs-peach-switch" aria-hidden="true"></i></button>
+      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-speed>${icon('player-speed')}<span>播放速度</span><b>${speed===1?'正常':speed+'×'}</b>${icon('chevron-right')}</button>
+      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-quality-view>${icon('player-quality')}<span>清晰度</span><b>${esc(active.label)}</b>${icon('chevron-right')}</button>`;
     menu.querySelector('[data-player-ambient]').onclick=()=>{applyAmbientMode(!appSettings.ambientMode);showMain()};
     menu.querySelector('[data-player-speed]').onclick=showSpeed;
     menu.querySelector('[data-player-quality-view]').onclick=showQuality;
@@ -563,16 +563,22 @@ function mountPlayerChromeLayout(player){
     button.insertAdjacentHTML('beforeend',icon(name,'vjs-peach-control-icon'));
     return button.querySelector(':scope>.vjs-peach-control-icon use');
   };
+  const playUse=explicitIcon(play,'player-play');
+  const syncPlayIcon=()=>playUse?.setAttribute('href',player.paused()||player.ended()?'#i-player-play':'#i-player-pause');
+  player.on(['play','pause','ended'],syncPlayIcon);syncPlayIcon();
   const volume=controlBar.querySelector(':scope>.vjs-volume-panel');
+  if(volume&&!volume.querySelector(':scope>.vjs-peach-hover'))volume.insertAdjacentHTML('afterbegin','<span class="vjs-peach-hover" aria-hidden="true"></span>');
   const mute=volume?.querySelector(':scope>.vjs-mute-control'),muteUse=explicitIcon(mute,'player-volume');
   const syncVolumeIcon=()=>muteUse?.setAttribute('href',player.muted()||player.volume()===0?'#i-player-volume-muted':'#i-player-volume');
   player.on('volumechange',syncVolumeIcon);syncVolumeIcon();
   const time=document.createElement('button');let remaining=false;
   time.type='button';time.className='vjs-peach-time vjs-control';time.dataset.playerTime='';
+  time.innerHTML='<span class="vjs-peach-time-text"></span>';
+  const timeText=time.querySelector('.vjs-peach-time-text');
   const syncTime=()=>{
     const current=Math.max(0,Number(player.currentTime())||0),duration=Math.max(0,Number(player.duration())||0);
     const shown=remaining?`-${fmtClock(Math.max(0,duration-current))}`:fmtClock(current);
-    time.textContent=`${shown} / ${fmtClock(duration)}`;
+    timeText.textContent=`${shown} / ${fmtClock(duration)}`;
     time.dataset.remaining=String(remaining);
     time.setAttribute('aria-label',remaining?`剩余 ${fmtClock(Math.max(0,duration-current))}，总时长 ${fmtClock(duration)}；点击显示已播放时间`:`已播放 ${fmtClock(current)}，总时长 ${fmtClock(duration)}；点击显示剩余时间`);
   };
@@ -638,7 +644,9 @@ function mountPlayerCenterControls(player){
   player.el().append(root);
   const toggle=root.querySelector('[data-center-toggle]');
   const sync=()=>{const playing=!player.paused()&&!player.ended();root.dataset.state=playing?'pause':'play';toggle.setAttribute('aria-label',playing?'暂停':'播放')};
-  toggle.onclick=event=>{event.stopPropagation();if(player.paused()||player.ended())player.play().catch(()=>{});else player.pause()};
+  const feedback=()=>{root.classList.remove('is-feedback');void root.offsetWidth;root.classList.add('is-feedback')};
+  toggle.onclick=event=>{event.stopPropagation();feedback();if(player.paused()||player.ended())player.play().catch(()=>{});else player.pause()};
+  toggle.addEventListener('animationend',()=>root.classList.remove('is-feedback'));
   player.on(['play','pause','ended'],sync);sync();
 }
 function mountDetailPlayer(it,video,autoplay,options={}){
