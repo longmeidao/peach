@@ -525,18 +525,25 @@ body.photolight-open{overflow:hidden}
 .identityprimary{display:flex;flex-wrap:wrap;gap:14px 26px;align-items:flex-start}
 .identityprimary>.idgroup{width:max-content;max-width:100%}
 .idgroup{min-width:0}
-.idlabel{margin:0 0 7px;font-size:var(--fs-xs);font-weight:400;color:var(--muted);letter-spacing:.04em}
+.idlabel{margin:0 0 7px calc((var(--id-cell,62px) - var(--id-face,46px)) / 2);
+  font-size:var(--fs-xs);font-weight:400;color:var(--muted);letter-spacing:.04em}
 .idrow{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:flex-start}
-.idcell{display:flex;flex-direction:column;align-items:center;gap:5px;width:62px;
+/* 格子宽和头像宽写成变量，是因为下面两处要用它们的差：头像在格子里居中，于是它的左
+   边缘比格子右移 (cell-face)/2；组标题要和头像对齐就得同样缩进。写成 calc 而不是抄一个
+   8px，改任一尺寸时对齐关系自己跟着走。 */
+.idgroup{--id-cell:62px;--id-face:46px}
+.idcell{display:flex;flex-direction:column;align-items:center;gap:5px;width:var(--id-cell,62px);
   border:0;background:transparent;color:inherit;padding:0;cursor:pointer}
 .idcell[hidden]{display:none}
-.idface{position:relative;width:46px;height:46px;border-radius:50%;overflow:hidden;
+.idface{position:relative;width:var(--id-face,46px);height:var(--id-face,46px);border-radius:50%;overflow:hidden;
   background:var(--sunk);color:var(--muted);display:grid;place-items:center;font-size:var(--fs-md)}
 .idcell.logo .idface{border-radius:8px;background:#fff;color:#555}
 .idface img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .idcell.logo .idface img{object-fit:contain;padding:3px}
 .idface svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2}
-.idname{font-size:var(--fs-xs);line-height:1.25;text-align:center;width:100%;
+/* 行高必须容得下下伸部。1.25 在 12px 下只有 15px 行框，而这里同时开着 overflow:hidden
+   截省略号，于是「Prestige」的 g 尾巴被切掉——用户实测看到的就是这个。 */
+.idname{font-size:var(--fs-xs);line-height:1.5;text-align:center;width:100%;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
 .idcell:not(.entitylink){cursor:default}
 .idcell.entitylink:hover .idface{box-shadow:0 0 0 2px var(--tungsten)}

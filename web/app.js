@@ -1,25 +1,4 @@
-import {
-  $,
-  icon,
-  api,
-  pageTitle,
-  STATE_ROUTES,
-  ROUTE_STATES,
-  STATE_LABELS,
-  isCatalogPath,
-  ENTITY_ROUTES,
-  ROUTE_ENTITIES,
-  entityPath,
-  esc,
-  SITE_FAVICONS,
-  faviconUrl,
-  faviconFallbackUrl,
-  foldName,
-  fmtDur,
-  fmtClock,
-  fmtSize,
-  LOC,
-} from './js/core.js';
+import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, entityPath, esc, faviconFallbackUrl, faviconUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, pageTitle, realDuration} from './js/core.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import {
   emptyStateHtml, loadingDotsHtml, mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml,
@@ -686,7 +665,7 @@ function mountPlayerSeekPreview(player,it,options={}){
   let cell=-1;
   const move=event=>{
     if(event.pointerType==='touch')return;
-    const duration=Number(player.duration())||Number(it.duration)||0;
+    const duration=realDuration(player.duration())||realDuration(it.duration);
     if(!duration)return;
     const rect=progress.getBoundingClientRect();
     const ratio=Math.min(1,Math.max(0,(event.clientX-rect.left)/rect.width));
@@ -739,7 +718,8 @@ function mountDetailPlayer(it,video,autoplay,options={}){
       durationDisplay:true,remainingTimeDisplay:false
     }
   });
-  const expected=Number(it.duration)||0;
+  // 非正时长一律当未知：强行 player.duration(-1) 会被 Video.js 转成 Infinity 并标成直播。
+  const expected=realDuration(it.duration);
   let correcting=false;
   const enforceDuration=()=>{
     if(!expected||correcting||!detailPlayer||detailPlayer.isDisposed())return;
@@ -2521,7 +2501,7 @@ function followQueueHtml(group,itemId){
         ?`<img src="${esc(item.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
         :`<span class="fnothumb">${sourceIcon(item.provider)}</span>`;
       return `<div class="mixrow"><button class="mixitem ${item.id===itemId?'current':''}" data-follow-queue-item="${item.id}" aria-current="${item.id===itemId?'true':'false'}">
-        <span class="mixitempic">${thumb}${item.duration?`<i class="dur mono">${fmtDur(item.duration)}</i>`:''}</span>
+        <span class="mixitempic">${thumb}${realDuration(item.duration)?`<i class="dur mono">${fmtDur(item.duration)}</i>`:''}</span>
         <span class="mixitemtext"><b data-truncate-end>${esc(copy.title)}</b><span data-truncate-end><i class="fvkind ${esc(item.variant_kind||'')}">${esc(copy.label)}</i>${followWhen(item)}</span></span></button></div>`;
     }).join('')}</div></aside>`;
 }
@@ -2626,7 +2606,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
       <div class="followdetailtitle"><div class="stitle">${esc(item.title)}</div>${item.url?`<a class="followorigin" href="${esc(item.url)}" target="_blank" rel="noreferrer noopener" title="打开来源页面" aria-label="打开来源页面">${icon('external-link')}</a>`:''}</div>
       <div class="followdetailidentity"><span class="mav fsourceavatar">${followAuthorAvatar(authorSources)}</span>
         <div><b>${esc(author)}</b>${postedBy?`<span>发布者 ${esc(postedBy)}</span>`:''}</div></div>
-      <div class="smeta mono"><span>${followWhen(item)}</span>${item.duration?`<span>${fmtDur(item.duration)}</span>`:''}${badges?`<span class="fbadges">${badges}</span>`:''}</div>
+      <div class="smeta mono"><span>${followWhen(item)}</span>${realDuration(item.duration)?`<span>${fmtDur(item.duration)}</span>`:''}${badges?`<span class="fbadges">${badges}</span>`:''}</div>
       ${item.summary?`<p class="followdetailsummary">${esc(item.summary)}</p>`:''}
       ${tags?`<div class="stags followdetailtags">${tags}</div>`:''}
       ${followMediaNote(item)?`<p class="fnote followmedianote">${esc(followMediaNote(item))}</p>`:''}
@@ -2768,7 +2748,7 @@ function followCard(group,authorSources=[]){
     <div class="${isMix?'mixstack ':''}followvisual"><div class="pic">
       ${open}${thumb}
       <span class="badge" title="${esc(item.provider_label)}" aria-label="来源：${esc(item.provider_label)}">${sourceIcon(item.provider)}</span>
-      <span class="selectionMark">${icon('check')}</span>${item.duration?`<span class="dur mono">${fmtDur(item.duration)}</span>`:''}
+      <span class="selectionMark">${icon('check')}</span>${realDuration(item.duration)?`<span class="dur mono">${fmtDur(item.duration)}</span>`:''}
       ${isMix?`<button class="mixbadge" data-follow-collection="${mixTarget}">${icon('play')}${mixCount} 个${mixKind}</button>`:''}
       <div class="factions">
         <button data-follow-save="${item.id}" title="${item.status==='saved'?'已保存':'保存到账本'}" aria-label="${item.status==='saved'?'已保存':'保存到账本'}"${item.status==='saved'?' disabled':''}>${item.status==='saved'?icon('check'):icon('bookmark-plus')}</button>
@@ -5331,8 +5311,8 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   const vv=$('#vid');
   vv.addEventListener('play',()=>{if(!$('#stage').dataset.c){$('#stage').dataset.c='1';
     api('/api/play',{method:'POST',body:JSON.stringify({id:it.id})})}});
-  if(it.play_seconds&&it.duration){
-    const rp=Math.min(it.play_seconds/it.duration,1)*100;
+  if(it.play_seconds&&realDuration(it.duration)){
+    const rp=Math.min(it.play_seconds/realDuration(it.duration),1)*100;
     $('#realTxt').textContent=rp.toFixed(0)+'%';
     $('#realBar').style.width=rp.toFixed(1)+'%';
   }
@@ -5371,12 +5351,15 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
 function wireTelemetry(it,v,sel){
   if(!v)return; let last=0,acc=0,timer=null,seeks=0;
   v.addEventListener('seeking',()=>{seeks++});
-  const paint=()=>{const d=it.duration||v.duration||0;if(!d)return;
+  /* 同一个 -1 哨兵：`it.duration||v.duration||0` 对 -1 求值仍是 -1，通过了真值判断，
+     于是 currentTime/-1 得到负比例，面板上就是「离开位置 -3320%」。后端 w_activity 有
+     `dur > 0` 守卫，脏比例不会进账本；坏的只是显示。 */
+  const paint=()=>{const d=realDuration(it.duration)||realDuration(v.duration);if(!d)return;
     const r=Math.min(v.currentTime/d,1);
     const w=sel.watched&&$(sel.watched),m=sel.mark&&$(sel.mark),t=sel.ratio&&$(sel.ratio);
     if(w)w.style.width=(r*100).toFixed(1)+'%'; if(m)m.style.left=(r*100).toFixed(1)+'%';
     if(t)t.textContent=(r*100).toFixed(0)+'%'};
-  const flush=e=>{const d=it.duration||v.duration||0;if(!acc&&!e&&!seeks)return;
+  const flush=e=>{const d=realDuration(it.duration)||realDuration(v.duration);if(!acc&&!e&&!seeks)return;
     api('/api/activity',{method:'POST',body:JSON.stringify(
       {id:it.id,position:v.currentTime,duration:d,delta:acc,ended:!!e,seeks})})
       .then(r=>{ // 回填面板的真实观看率
@@ -5395,7 +5378,7 @@ function wireTelemetry(it,v,sel){
 
 function wireFollowTelemetry(item,video){
   let last=0,acc=0,timer=null,started=false;
-  const flush=ended=>{const duration=Number(item.duration)||video.duration||0;
+  const flush=ended=>{const duration=realDuration(item.duration)||realDuration(video.duration);
     if(!acc&&!ended)return;
     api('/api/follow/activity',{method:'POST',body:JSON.stringify({
       item:item.id,position:video.currentTime,duration,delta:acc,ended:!!ended
@@ -5568,12 +5551,12 @@ async function tokShow(dir){
     // 进度条
     const bar=$('#tokBar'), prog=$('#tokProg');
     v.ontimeupdate=null;
-    const upd=()=>{const d=v.duration||it.duration||0;
+    const upd=()=>{const d=realDuration(v.duration)||realDuration(it.duration);
       if(d)prog.style.width=(v.currentTime/d*100).toFixed(2)+'%'};
     v.addEventListener('timeupdate',upd);
     // 拖动而不只是点。pointer 一套同时盖鼠标和触控，捕获指针后手滑出进度条
     // 也不会断。拖动中只画进度，松手才 seek——每帧都 seek 会让远程源一直重新缓冲。
-    tokWireScrub(bar,prog,v,()=>v.duration||it.duration||0);
+    tokWireScrub(bar,prog,v,()=>realDuration(v.duration)||realDuration(it.duration));
     $('#tokDislike').setAttribute('aria-pressed',full.feedback==='dislike');
     $('#tokSeen').setAttribute('aria-pressed',full.feedback==='seen');
     $('#tokSeenLabel').textContent=full.feedback==='seen'?'已看':'看过';

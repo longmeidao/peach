@@ -652,7 +652,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("function mountDetailPlayer(it,video,autoplay,options={})")
         self.assertPageContains("detailPlayer.duration(expected)")
         self.assertPageContains("['loadstart','loadedmetadata','durationchange','error']")
-        self.assertPageContains("const d=it.duration||v.duration||0")
+        # 仍然是「先账本、后媒体元素」的回退，只是两边都先过 realDuration：
+        # 账本里的 -1 是探测硬失败的哨兵，裸真值判断挡不住它。
+        self.assertPageContains(
+            "const d=realDuration(it.duration)||realDuration(v.duration)")
         self.assertPageLacks("skipButtons:{backward:appSettings.seekSeconds,forward:appSettings.seekSeconds}")
 
     def test_player_seek_preview_reuses_contact_sheet_cells_and_online_falls_back_to_time(self):
@@ -2263,6 +2266,67 @@ class WebUiSourceTests(unittest.TestCase):
                          "观察器只允许存在两处：wireLoadMore 与首页自己的 loadObserver")
         self.assertEqual(self.page.count("wireLoadMore("), 4,
                          "1 处定义加 3 处调用；对不上就是又有人自己写了一套")
+
+    def test_the_identity_name_leaves_room_for_descenders(self):
+        """身份格子里的名字不能被行框切掉下伸部。
+
+        用户实测：厂牌「Prestige」的 g 尾巴被切掉。`.idname` 的 line-height 是 1.25，
+        12px 字号下只有 15px 行框，而这一格同时开着 `overflow:hidden` 做省略号——
+        拉丁字母的下伸部就落在框外被裁掉了。中文看不出来，所以一直没人发现。
+        """
+        rule = self.page.split(".idname{", 1)[1].split("}", 1)[0]
+        self.assertIn("line-height:1.5", rule, "行高要容得下下伸部")
+        self.assertNotIn("line-height:1.25", rule)
+        # 省略号仍然要有：名字长了得截断，只是不能连下伸部一起裁掉。
+        self.assertIn("text-overflow:ellipsis", rule)
+        self.assertIn("text-align:center", rule, "文字保持居中")
+
+    def test_the_group_label_lines_up_with_the_avatar_below_it(self):
+        """组标题要和它下面那张图的左边缘对齐。
+
+        头像在格子里居中，于是它的左边缘比格子右移 (cell-face)/2。标题原本贴着格子左边，
+        看起来就和图错开一截。缩进量由两个尺寸算出来而不是抄一个 8px——改任一尺寸时
+        对齐关系自己跟着走，不用有人记得回来改第二处。
+        """
+        self.assertPageContains(".idgroup{--id-cell:62px;--id-face:46px}")
+        self.assertPageContains(
+            "margin:0 0 7px calc((var(--id-cell,62px) - var(--id-face,46px)) / 2)")
+        self.assertPageContains("width:var(--id-cell,62px)")
+        self.assertPageContains("width:var(--id-face,46px);height:var(--id-face,46px)")
+
+    def test_a_failed_probe_never_turns_a_local_video_into_a_live_stream(self):
+        """账本里的 `-1` 是探测硬失败的哨兵，不是时长。
+
+        用户实测 /item/86287（ABF-234-UN.mp4，duration=-1）：播放器顶上标着「直播」，
+        总时长显示 `0:NaN`。链条是——`Number(it.duration)||0` 对 -1 求值仍是 -1，通过了
+        真值判断，于是 enforceDuration 强行 `player.duration(-1)`；而 Video.js 的 setter
+        写着 `parseFloat(e)<0 ? Infinity : e`，随后 `=== Infinity` 就 `addClass("vjs-live")`。
+        一部本地影片因此被当成直播流。
+
+        全库有 1440 个视频资产 duration<=0（其中 1101 个正好是 -1），都会走到这条路上。
+        """
+        self.assertPageContains(
+            "const realDuration=value=>{const n=Number(value);return Number.isFinite(n)&&n>0?n:0};",
+            "判据必须是「有限且大于零」，不是「非空」")
+        self.assertPageContains("const expected=realDuration(it.duration);",
+                                "播放器仍在拿未经判定的时长，负数会被 Video.js 转成直播")
+        self.assertPageLacks("const expected=Number(it.duration)||0;")
+
+    def test_an_unknown_duration_renders_as_unknown_not_as_negative_clock(self):
+        """`fmtDur(-1)` 曾经算出 `0:-1`——用户在卡片上看到过。
+
+        `!s` 挡得住 0 和 NaN，挡不住负数：h=0、m=0、x=-1，拼出来就是 `0:-1`。
+        """
+        self.assertPageContains("const fmtDur=s=>{s=realDuration(s);if(!s)return'—';")
+
+    def test_duration_has_one_definition_of_real(self):
+        """「什么算真时长」只许有一处说了算。
+
+        散在各处的 `it.duration?` 和 `Number(it.duration)||0` 都挡不住 -1；漏一处，
+        那个表面就会渲染出负时钟，或者把影片标成直播。
+        """
+        self.assertEqual(self.page.count("const realDuration="), 1)
+        self.assertPageLacks("Number(player.duration())||Number(it.duration)||0")
 
     def test_the_page_takeover_block_exists_in_exactly_one_place(self):
         """六行显隐只允许存在一份。再出现第二份就是下一次抄漏的起点。"""

@@ -43,7 +43,17 @@ const faviconUrl=url=>{try{const parsed=new URL(url),host=parsed.hostname.replac
   return SITE_FAVICONS[host]||new URL('/favicon.ico',parsed).href}catch{return ''}};
 const faviconFallbackUrl=domain=>`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`;
 const foldName=s=>String(s??'').normalize('NFKC').trim().toLocaleLowerCase();
-const fmtDur=s=>{if(!s)return'—';s=Math.round(s);const h=s/3600|0,m=(s%3600)/60|0,x=s%60;
+/* 什么才算一个真时长——只有这一处说了算。
+
+   账本里 `-1` 是 probe 的「硬失败」哨兵（见 scripts/probe.py：抽帧的 duration>2 门槛
+   会让失败条目永远卡住，所以硬失败写成 -1），它不是时长。而 `!s` 这种真值判断挡不住
+   负数：`fmtDur(-1)` 会算出 `0:-1`，喂进播放器更糟——Video.js 的 duration() setter 里写着
+   `parseFloat(e)<0 ? Infinity : e`，随后 `=== Infinity` 就 `addClass("vjs-live")`，
+   于是一部本地影片被标成「直播」，总时长显示 NaN。
+
+   所以判据是「有限且大于零」，不是「非空」。 */
+const realDuration=value=>{const n=Number(value);return Number.isFinite(n)&&n>0?n:0};
+const fmtDur=s=>{s=realDuration(s);if(!s)return'—';s=Math.round(s);const h=s/3600|0,m=(s%3600)/60|0,x=s%60;
   return h?`${h}:${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')}`:`${m}:${String(x).padStart(2,'0')}`};
 const fmtClock=s=>{s=Math.max(0,Math.floor(Number(s)||0));const h=s/3600|0,m=(s%3600)/60|0,x=s%60;
   return h?`${h}:${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')}`:`${m}:${String(x).padStart(2,'0')}`};
@@ -52,6 +62,7 @@ const LOC={local:'本地','115':'115',pikpak:'PikPak',online:'在线'};
 
 export {
   $,
+  realDuration,
   icon,
   api,
   pageTitle,
