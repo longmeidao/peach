@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import call, patch
 
 from PIL import Image
 
@@ -27,6 +28,31 @@ class _Response:
     def __init__(self, status, body):
         self.status = status
         self.body = body
+
+
+class FetchRetryTests(unittest.TestCase):
+    def test_transient_transport_errors_use_the_project_backoff_window(self):
+        attempts = 0
+
+        def transport(request, timeout, limit):
+            nonlocal attempts
+            attempts += 1
+            if attempts < 5:
+                raise covers.httpx.ConnectError("temporary TLS EOF")
+            return _Response(200, b"ok")
+
+        with patch.object(covers.time, "sleep") as sleep:
+            body = covers._fetch(
+                transport, "https://example.test/cover.jpg",
+                referer="https://example.test/", limit=100,
+            )
+
+        self.assertEqual(body, b"ok")
+        self.assertEqual(attempts, 5)
+        self.assertEqual(
+            sleep.call_args_list,
+            [call(2), call(4), call(6), call(8)],
+        )
 
 
 def transport_for(pages):

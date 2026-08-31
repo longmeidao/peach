@@ -41,6 +41,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlparse
 
+import httpx
 from PIL import Image, UnidentifiedImageError
 
 from peach.config import COVER_DIR, DATABASE_PATH, GENERATED_DIR
@@ -59,6 +60,9 @@ R18_DETAIL = "https://r18.dev/videos/vod/movies/detail/-/dvd_id={code}/json"
 MIN_WIDTH = 700
 #: 量尺寸只需要 JPEG 头部，别把整张 1 MB 的图拉下来。
 PROBE_BYTES = 64 * 1024
+# 瞬时 TLS EOF / 连接重置不能落成“官方没有封面”。按项目外网退避规则重试，
+# 只有 2/4/6/8 秒四次重试全部失败后，才把网络异常交给逐条日志记录。
+NETWORK_RETRY_DELAYS = (2, 4, 6, 8)
 #: avbase 页面里混着剧照与缩略图，按文件名排除。
 THUMBNAIL = re.compile(r"(thumb|small|icon|/ts/|-s\d|_s\.)", re.I)
 IMAGE_URL = re.compile(r"https?://[^\"'\\ )]+?\.(?:jpg|jpeg|png|webp)")
@@ -102,7 +106,15 @@ def _fetch(transport: HttpTransport, url: str, *, referer: str,
                "Accept-Language": "ja,en;q=0.9"}
     if ranged:
         headers["Range"] = f"bytes=0-{PROBE_BYTES - 1}"
-    response = transport(HttpRequest("GET", url, headers), 30, limit)
+    request = HttpRequest("GET", url, headers)
+    for attempt in range(len(NETWORK_RETRY_DELAYS) + 1):
+        try:
+            response = transport(request, 30, limit)
+            break
+        except httpx.TransportError:
+            if attempt == len(NETWORK_RETRY_DELAYS):
+                raise
+            time.sleep(NETWORK_RETRY_DELAYS[attempt])
     if response.status not in (200, 206):
         raise Unavailable(f"HTTP {response.status}")
     return response.body
