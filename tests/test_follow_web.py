@@ -1839,25 +1839,29 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('data-follow-queue-item="${item.id}"')
         self.assertPageContains("openFollowDetail(+button.dataset.followCollection)")
 
-    def test_follow_reuses_entity_media_buttons_and_offers_the_vercel_switch_variant(self):
+    def test_follow_reuses_entity_media_buttons_at_the_far_left_without_separator(self):
         self.assertPageContains("const followMediaKinds=group=>")
         self.assertPageContains("function followItemMediaKinds(item)")
         self.assertPageContains("const item=followItemForMedia(group)")
         self.assertPageContains('class="followmediaicons"')
         self.assertPageContains('class="entitymediatoggle" type="button" data-follow-media="videos"')
-        self.assertPageContains('class="insightswitch followmediaswitch" role="radiogroup"')
         self.assertPageContains('data-follow-media="videos"')
         self.assertPageContains('data-follow-media="images"')
-        self.assertPageContains("followMediaUi=FOLLOW_MEDIA_UIS.has(params.get('media-ui'))")
+        self.assertPageLacks('class="insightswitch followmediaswitch"')
+        self.assertPageLacks("params.set('media-ui','switch')")
         self.assertPageContains("params.set('author',followAuthor)")
         self.assertPageContains("route(followViewPath());renderFollow()")
         self.assertPageContains("const preferredKind=followMediaView==='images'?'image':'video'")
         watch = self.page.split("function renderFollow(){", 1)[1].split(
             "function followBackfillState", 1)[0]
-        self.assertLess(watch.index('class="tier followauthors"'),
-                        watch.index('followMediaControl(mediaCounts)'))
-        self.assertLess(watch.index('class="tagbar followfilters"'),
-                        watch.index('followMediaControl(mediaCounts)'))
+        self.assertIn(
+            'class="tagbar followfilters" aria-label="关注筛选">${followMediaControl(mediaCounts)}${FOLLOW_FILTERS.map',
+            watch,
+        )
+        self.assertNotIn(
+            '<span class="sep" aria-hidden="true"></span>${followMediaControl(mediaCounts)}',
+            watch,
+        )
         self.assertPageContains("followMediaView==='images'?' followphotowall':''")
         self.assertPageContains(".followlist.followphotowall{display:block;column-count:5")
         self.assertPageContains(".followitem.imagecard .followvisual .pic>img{position:relative")

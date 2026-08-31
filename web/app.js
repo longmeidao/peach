@@ -2638,20 +2638,15 @@ function followCheckFailNote(report){
 }
 
 /* ── 看的那一页 ── */
-let followAuthor='',followProvider='',followTags=new Set(),followMediaView='videos',followMediaUi='buttons',followGroupByItemId=new Map(),followItemsById=new Map(),followDetailReturnPath='/follow';
-const FOLLOW_MEDIA_UIS=new Set(['buttons','switch']);
+let followAuthor='',followProvider='',followTags=new Set(),followMediaView='videos',followGroupByItemId=new Map(),followItemsById=new Map(),followDetailReturnPath='/follow';
 function followViewPath(){
   const params=new URLSearchParams();
   if(followAuthor)params.set('author',followAuthor);
   if(followMediaView==='images')params.set('media','images');
-  if(followMediaUi==='switch')params.set('media-ui','switch');
   const search=params.toString();return '/follow'+(search?'?'+search:'');
 }
 function followMediaControl(counts){
   if(!counts.images)return '';
-  if(followMediaUi==='switch')return `<div class="insightswitch followmediaswitch" role="radiogroup" aria-label="关注媒体类型">
-    <label><input type="radio" name="follow-media" data-follow-media="videos"${followMediaView==='videos'?' checked':''}><span>${icon('play')}视频 <b class="mono">${counts.videos.toLocaleString()}</b></span></label>
-    <label><input type="radio" name="follow-media" data-follow-media="images"${followMediaView==='images'?' checked':''}><span>${icon('pics')}图片 <b class="mono">${counts.images.toLocaleString()}</b></span></label></div>`;
   return `<div class="followmediaicons" role="group" aria-label="关注媒体类型">
     <button class="entitymediatoggle" type="button" data-follow-media="videos" aria-pressed="${followMediaView==='videos'}"
       aria-label="视频 ${counts.videos.toLocaleString()}" title="视频 ${counts.videos.toLocaleString()}">${icon('play')}</button>
@@ -2726,10 +2721,9 @@ function renderFollow(){
       `<button class="av" data-follow-author="${esc(key)}" aria-pressed="${key===followAuthor}">
         <span class="ring">${followAuthorAvatar(author.sources)}</span><span class="nm">${esc(author.name)}</span></button>`
       ).join('')}</div>`:''}
-    <div class="tagbar followfilters" aria-label="关注筛选">${FOLLOW_FILTERS.map(([key,label])=>
+    <div class="tagbar followfilters" aria-label="关注筛选">${followMediaControl(mediaCounts)}${FOLLOW_FILTERS.map(([key,label])=>
       `<button class="pill" data-follow-filter="${key}" aria-pressed="${key===followFilter}">${label}${
         ` <span class="n mono">${key?counts[key]||0:allCount}</span>`}</button>`).join('')}
-      ${mediaCounts.images?`<span class="sep" aria-hidden="true"></span>${followMediaControl(mediaCounts)}`:''}
       ${providerPills?`<span class="sep" aria-hidden="true"></span>${providerPills}`:''}
       ${topTags.length?`<span class="sep" aria-hidden="true"></span>`+
         topTags.map(([key,label,n])=>
@@ -2813,12 +2807,11 @@ function wireFollowOlder(){
 async function openFollow(push=true,renderForDetail=false){
   releaseHoverPreviews();disposeStage(false);
   document.body.classList.remove('entity-open','index-open');
-  if(push){followAuthor='';followMediaView='videos';followMediaUi='buttons';route('/follow')}
+  if(push){followAuthor='';followMediaView='videos';route('/follow')}
   else if(location.pathname==='/follow'){
     const params=new URLSearchParams(location.search);
     followAuthor=params.get('author')||'';
     followMediaView=params.get('media')==='images'?'images':'videos';
-    followMediaUi=FOLLOW_MEDIA_UIS.has(params.get('media-ui'))?params.get('media-ui'):'buttons';
   }
   const surface=claimSurface(renderForDetail?surfacePath():'/follow');
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';

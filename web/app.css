@@ -1746,10 +1746,6 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .followmediaicons .entitymediatoggle[data-follow-media="images"] svg{fill:currentColor;stroke:none}
 .followmediaicons .entitymediatoggle:hover{background:var(--overlay-5);color:var(--ink)}
 .followmediaicons .entitymediatoggle[aria-pressed="true"]{background:var(--ink-2);color:var(--ground)}
-.followmediaswitch{flex:none;padding:2px;border-radius:7px}.followmediaswitch span{height:28px;grid-auto-flow:column;gap:6px;padding:0 10px}
-.followmediaswitch svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
-.followmediaswitch label:last-child svg{fill:currentColor;stroke:none}
-.followmediaswitch b{font-size:var(--fs-xs);font-weight:400;color:inherit}
 /* 折叠摘要按 Vercel 设置行的 title + description 结构：标题一行、说明弱化一行，
    尖角指引符与文字之间留出固定间距，不再靠一个空格硬贴。 */
 .fdetails{margin-inline:-16px}
