@@ -599,6 +599,67 @@ def _legacy_history_end(row) -> bool:
     return False
 
 
+def _follow_facets(store, items, by_source, alias_map) -> dict:
+    """筛选条上能选什么。
+
+    必须按全库算而不是按筛后结果——否则选中一个作者之后，作者栏里就只剩他自己，
+    再也切不回去。标签同理，按分组而不是按条目计数：一条发布的多个变体是同一件
+    作品，标签不该被数三遍。
+    """
+    authors: set[str] = set()
+    providers: set[str] = set()
+    tags: dict[str, int] = {}
+    for group in store.group(items):
+        row = by_source.get(group.primary.source_id)
+        if row is not None:
+            key = author_key(row, alias_map)
+            if key:
+                authors.add(key)
+            providers.add(str(row["provider"] or ""))
+        for tag in _item_tags(group.primary):
+            tags[tag] = tags.get(tag, 0) + 1
+    return {
+        "authors": sorted(authors),
+        "providers": sorted(providers),
+        "tags": sorted(tags.items(), key=lambda pair: (-pair[1], pair[0])),
+    }
+
+
+def q_follow_tags(contract, args) -> dict:
+    """在线标签词表，供标签页和左侧抽屉列出关注页那一套标签。
+
+    单独一个端点而不是从 `/api/follow` 里捞：那个载荷还带着来源、别名建议和一整页
+    条目，抽屉每次重建都拉一遍不合算。计数与关注页筛选条完全同源——共用
+    `_follow_facets`，不是另写一份统计，否则两处迟早对不上。
+
+    返回形状刻意与 `/api/index` 一致（`items` 加 `has_more`）：标签页的分页、搜索
+    和「载入更多」都是现成的，换个地址就能用，不必为在线标签再写一套。
+    """
+    query = str(args.get("q") or "").strip().casefold()
+    try:
+        limit = max(1, min(int(args.get("limit") or 180), 2000))
+    except (TypeError, ValueError):
+        limit = 180
+    try:
+        offset = max(0, int(args.get("offset") or 0))
+    except (TypeError, ValueError):
+        offset = 0
+    with contract.database.read_connection() as connection:
+        store = _store(contract, connection)
+        source_rows = store.sources()
+        alias_map, _aliases = _follow_alias_state(connection)
+        enabled = {int(row["id"]) for row in source_rows if row["enabled"]}
+        by_source = {int(row["id"]): row for row in source_rows}
+        items = tuple(item for item in store.items(limit=_ALL_ITEMS)
+                      if item.source_id in enabled and not _excluded_item(item))
+        facets = _follow_facets(store, items, by_source, alias_map)
+    rows = [{"k": tag, "n": count} for tag, count in facets["tags"]
+            if not query or query in tag.casefold()]
+    return {"kind": "tags", "scope": "online",
+            "items": rows[offset:offset + limit],
+            "has_more": offset + limit < len(rows)}
+
+
 def q_follow(contract, args) -> dict:
     statuses = tuple(
         value for value in str(args.get("status") or "").split(",") if value in _STATUSES
@@ -659,21 +720,7 @@ def q_follow(contract, args) -> dict:
             has_more = len(page) > offset + limit
             items = tuple(page[offset:offset + limit])
         groups = [_group_payload(group) for group in store.group(items)]
-        # 筛选条上能选什么，必须按全库算而不是按筛后结果——否则选中一个作者之后，
-        # 作者栏里就只剩他自己，再也切不回去。标签同理，按分组而不是按条目计数：
-        # 一条发布的多个变体是同一件作品，标签不该被数三遍。
-        facet_authors: set[str] = set()
-        facet_providers: set[str] = set()
-        facet_tags: dict[str, int] = {}
-        for group in store.group(everything):
-            row = by_source.get(group.primary.source_id)
-            if row is not None:
-                key = author_key(row, alias_map)
-                if key:
-                    facet_authors.add(key)
-                facet_providers.add(str(row["provider"] or ""))
-            for tag in _item_tags(group.primary):
-                facet_tags[tag] = facet_tags.get(tag, 0) + 1
+        facets = _follow_facets(store, everything, by_source, alias_map)
         # counts 与列表同源。以前它是一句全库 SQL，再逐条减掉被隐藏的 rule34video
         # 和无资源的 f95zone——同一套排除规则维护了两份，而且它完全不看作者、来源和
         # 标签筛选，于是筛选一换，列表变了、药丸上的数字纹丝不动。现在两边都从
@@ -691,11 +738,7 @@ def q_follow(contract, args) -> dict:
         "suggestions": suggestions,
         "groups": groups,
         "counts": {status: int(counts.get(status, 0)) for status in _STATUSES},
-        "facets": {
-            "authors": sorted(facet_authors),
-            "providers": sorted(facet_providers),
-            "tags": sorted(facet_tags.items(), key=lambda pair: (-pair[1], pair[0])),
-        },
+        "facets": facets,
         # counts 是全库口径，groups 只是这一页——两个数并排显示过，看起来像自相矛盾。
         "offset": offset,
         "limit": limit,

@@ -578,6 +578,36 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual(dict(narrowed["facets"]["tags"]), {"anal": 1, "pov": 1},
                          "标签选项也必须留着，否则换不了标签")
 
+    def test_online_tag_vocabulary_matches_the_follow_filter_bar(self):
+        """标签页列出的在线标签必须和关注页筛选条上的完全一致。
+
+        两处都从 `_follow_facets` 出来，不是各写一份统计——否则标签页说某个标签有
+        12 条，点进关注页只有 9 条，而两个数都「对」，只是口径不同。这类不一致在
+        counts 上已经犯过一次了。
+        """
+        self._seed(candidates=(self._tagged("1", ["anal", "pov"]),
+                               self._tagged("2", ["anal"])))
+        page = self._get("/api/follow/tags")
+        self.assertEqual(page["scope"], "online")
+        self.assertEqual([(row["k"], row["n"]) for row in page["items"]],
+                         [("anal", 2), ("pov", 1)])
+        self.assertEqual([(row["k"], row["n"]) for row in page["items"]],
+                         [tuple(pair) for pair in self._get()["facets"]["tags"]])
+
+    def test_online_tags_page_supports_search_and_paging(self):
+        """形状刻意与 /api/index 一致：标签页的分页和搜索是现成的，换个地址就能用。"""
+        self._seed(candidates=(self._tagged("1", ["anal", "pov"]),
+                               self._tagged("2", ["anal"]),
+                               self._tagged("3", ["blowjob"])))
+        self.assertEqual([row["k"] for row in self._get("/api/follow/tags", q="an")["items"]],
+                         ["anal"])
+        first = self._get("/api/follow/tags", limit=1)
+        self.assertEqual([row["k"] for row in first["items"]], ["anal"])
+        self.assertTrue(first["has_more"])
+        last = self._get("/api/follow/tags", limit=1, offset=2)
+        self.assertEqual([row["k"] for row in last["items"]], ["pov"])
+        self.assertFalse(last["has_more"])
+
     def test_counts_are_whole_library_while_groups_are_one_page(self):
         """计数是全库口径，列表只有一页——界面并排显示这两个数时看起来像自相矛盾。
 
