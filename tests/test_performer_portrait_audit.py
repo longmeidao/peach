@@ -1,4 +1,5 @@
 import csv
+import os
 import importlib.util
 import io
 import json
@@ -289,6 +290,40 @@ class PerformerPortraitAuditTests(unittest.TestCase):
         self.assertEqual(health["snapshot_reused"], "1")
         self.assertEqual(health["fetched"], "0")
         self.assertEqual(health["succeeded"], "1")
+
+    def test_a_stale_index_cache_is_refetched_instead_of_reused_forever(self):
+        """索引缓存要有保鲜期，否则「找不到」这个结论会被永久固化。
+
+        Gfriends 是持续增补的图库，而这份缓存原本只要文件在就一直复用。实测后果：
+        2026-08-25 的快照里没有「釈アリス」，之后 Gfriends 加了她（两份索引正好差这
+        一条），但本地无论重跑多少次都还是 no_match——判定是对的，只是对的是一周前。
+
+        这类失效最难发现：脚本没报错，健康报告一切正常，只是答案停在了过去。
+        """
+        module = self.module
+        db = self.tmp / "ledger.db"
+        make_ledger(db, [{"id": 1, "canonical": "立花美涼", "metadata": {}}], aliases=[])
+        first = FakeTransport({
+            "Filetree.json": payload(GFRIENDS_TREE),
+            "AI-Fix": FakeResponse(200, jpeg_bytes(500, 600)),
+        })
+        self.assertEqual(module.run(self.args(db), transport=first), 0)
+
+        cache = next(self.tmp.rglob("gfriends-filetree.json"))
+        aged = time.time() - module.INDEX_MAX_AGE_SECONDS - 60
+        os.utime(cache, (aged, aged))
+
+        again = FakeTransport({
+            "Filetree.json": payload(GFRIENDS_TREE),
+            "AI-Fix": FakeResponse(200, jpeg_bytes(500, 600)),
+        })
+        self.assertEqual(module.run(self.args(db), transport=again), 0)
+        self.assertTrue(any("Filetree.json" in str(call) for call in again.calls),
+                        "缓存过期后必须重新取索引，而不是照抄旧答案")
+        with self.health.open(encoding="utf-8-sig", newline="") as handle:
+            health = next(csv.DictReader(handle))
+        self.assertEqual(health.get("index_cache_stale"), "1",
+                         "过期重取要和「本来就没缓存」在健康报告里分得开")
 
     def test_exact_duplicate_image_is_evidence_but_not_a_review_candidate(self):
         module = self.module
