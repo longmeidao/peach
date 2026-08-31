@@ -1,11 +1,11 @@
 ---
 name: peach-worktree
-description: 在用户说并行、开工作树、worktree、暂存、提交、ready、集成分支，或任何要写 Peach 代码的任务开始时使用。
+description: 在用户说并行、工作树、暂存、提交、ready、集成、生产重启，或任何要写 Peach 代码的任务开始时使用。
 ---
 
 # 并行 worktree 与提交边界
 
-最后复核：2026-08-27
+最后复核：2026-09-01
 证据来源：`docs/HANDOFF.md`「并行智能体与 Git 工作树」、`README.md`、ADR-0015、ADR-0017。
 
 ## 何时使用
@@ -65,6 +65,7 @@ description: 在用户说并行、开工作树、worktree、暂存、提交、re
   判据不看目录名，只看 `git rev-parse --show-toplevel`；等于 `peach-app` 就是在主检出里。
   实测入口：`git worktree list` 里没有你那一行，就是已经没了。
 - 健康检查端点是 `/healthz`，不是 `/health`。
+- Windows 源码改动生效时，禁止用 Computer Use 操作系统托盘。只用与托盘“重启服务”等价的项目命令；入口必须让现有托盘执行重启，或完整重启托盘并重新取得子服务所有权。直接强杀／另启 `.venv\Scripts\peach.exe` 会让 `_owned` 失真，不算等价；仓库缺少安全命令时先补入口，不能退回托盘 UI。
 - PowerShell 变量必须用任务专属名称，禁止声明 `$HOME`、`$home`、`$CODEX_HOME` 的任何大小写
   变体；`foreach {}` 结果先存入任务专属数组再单独接管道，禁止在闭合花括号后直接写管道。
 - 工作者报 `ready` 前必须 rebase 到当前 `master`。落后十天的分支不要指望协调者去 merge：
@@ -90,4 +91,3 @@ description: 在用户说并行、开工作树、worktree、暂存、提交、re
 `attic/` 不等于可以随便删：`instances/` 常带 100 MB 量级的 ledger 副本，`tools/` 的
 `runtime.json` 会留 token。账本副本、复核产物和取证归档按 AGENTS.md 的保留清单对待，
 删除要单独确认。
-
