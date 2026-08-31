@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS asset(
   size INTEGER, mtime TEXT,
   hash_kind TEXT, hash TEXT,
   creator TEXT, studio TEXT, series TEXT, code TEXT, release_date TEXT,
+  catalog_title TEXT, original_title TEXT,
   duration REAL, width INTEGER, height INTEGER, vcodec TEXT, fps REAL, has_audio INTEGER,
   ctx_length TEXT, ctx_orient TEXT, ctx_quality TEXT, ctx_pace TEXT, ctx_people TEXT,
   play_count INTEGER DEFAULT 0, last_played TEXT, rating INTEGER, o_count INTEGER, watch_ratio REAL,

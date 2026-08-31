@@ -593,7 +593,9 @@ def _approved_entity_name(value: object, kind: str) -> str:
 
 def _apply_metadata_candidate(connection, group: dict, candidate: dict, now: str) -> int:
     field = str(group.get("field") or "").strip()
-    if field not in {"performers", "studio", "series", "release_date", "tags"}:
+    if field not in {
+        "title", "original_title", "performers", "studio", "series", "release_date", "tags",
+    }:
         raise ValueError("该元数据字段没有 Peach 写入映射")
     code = str(group.get("code") or "").strip()
     query = str(group.get("query") or code).strip()
@@ -624,6 +626,18 @@ def _apply_metadata_candidate(connection, group: dict, candidate: dict, now: str
         "candidate_key": candidate_key,
     }
     marks = ",".join("?" * len(asset_ids))
+
+    if field in {"title", "original_title"}:
+        raw_value = str(candidate.get("value") or "")
+        value = " ".join(raw_value.split())
+        if (not value or len(value) > 1000
+                or any(ord(char) < 32 for char in raw_value)):
+            raise ValueError("标题候选为空、过长或含控制字符")
+        column = "catalog_title" if field == "title" else "original_title"
+        connection.execute(
+            f"UPDATE asset SET {column}=? WHERE id IN ({marks})", (value, *asset_ids),
+        )
+        return len(asset_ids)
 
     if field == "release_date":
         value = str(candidate.get("value") or "").strip()

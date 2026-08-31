@@ -44,22 +44,37 @@ function renderInitialSurfaceLoading(){
 renderInitialSurfaceLoading();
 
 const JAV_MEDIA_SUFFIX=/\.(?:mp4|mkv|avi|wmv|mov|m4v|webm|ts|m2ts|mts|mpg|mpeg|flv|rm|rmvb|iso)$/i;
-const javDisplayName=(it,value=it?.name)=>{
+const javFileDisplayName=(it,value=it?.name)=>{
   const name=String(value||'').trim();
   return it?.is_jav?name.replace(JAV_MEDIA_SUFFIX,''):name;
 };
 function javTitleParts(it,value=it?.name){
-  const name=javDisplayName(it,value),code=String(it?.code||'').trim().toUpperCase();
+  const name=javFileDisplayName(it,value),code=String(it?.code||'').trim().toUpperCase();
   if(!it?.is_jav||!code)return {code:'',title:name};
-  const upper=name.toUpperCase(),hasPrefix=upper===code
-    ||(upper.startsWith(code)&&/^[\s._-]/.test(name.slice(code.length)));
-  const title=(hasPrefix?name.slice(code.length):name).replace(/^[\s._-]+/,'').trim();
-  return {code,title};
+  const displayCode=String(it?.display_code||code).trim().toUpperCase();
+  const upper=name.toUpperCase(),hasPrefix=upper===code||upper===displayCode
+    ||(upper.startsWith(code)&&/^[\s._\-[\]]/.test(name.slice(code.length)))
+    ||(upper.startsWith(displayCode)&&/^[\s._\-[\]]/.test(name.slice(displayCode.length)));
+  const prefixLength=upper.startsWith(displayCode)?displayCode.length:code.length;
+  const filenameTitle=(hasPrefix?name.slice(prefixLength):name).replace(/^[\s._-]+/,'').trim();
+  const officialTitle=String(it?.catalog_title||it?.original_title||'').trim();
+  // API 显式返回空 display_title 也是有意义的“清洁后无标题”，不能再回退到脏文件名。
+  const cleanFallback=Object.prototype.hasOwnProperty.call(it||{},'display_title')
+    ?String(it.display_title||'').trim():filenameTitle;
+  const title=officialTitle||cleanFallback;
+  const badges=Array.isArray(it?.edition_badges)?it.edition_badges.filter(
+    label=>['中字','无码','无码破解'].includes(label)):[];
+  return {code:displayCode,title,badges};
 }
+const javDisplayName=(it,value=it?.name)=>{
+  const {code,title,badges=[]}=javTitleParts(it,value);
+  return code?[code,...badges,title].filter(Boolean).join(' '):title;
+};
 function javTitleHtml(it,value=it?.name){
-  const {code,title}=javTitleParts(it,value);
+  const {code,title,badges=[]}=javTitleParts(it,value);
   if(!code)return esc(title);
-  return `<strong class="javcode">${esc(code)}</strong>${title?` <span>${esc(title)}</span>`:''}`;
+  const edition=badges.map(label=>`<small class="javedition ${label==='中字'?'subtitle':label==='无码'?'uncensored':'cracked'}">${esc(label)}</small>`).join('');
+  return `<span class="javidentity"><strong class="javcode">${esc(code)}</strong>${edition}</span>${title?` <span class="javtitle">${esc(title)}</span>`:''}`;
 }
 
 /* 路由同时把页面表面写进 body[data-surface]：限宽等按表面生效的版式
@@ -5234,7 +5249,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   const renderDetailTags=()=>{
     const wrap=$('#detailTags');if(!wrap)return;
     const visible=(it.tags||[]).filter(t=>!DURATION_TAGS.has(t.k)).slice(0,40);
-    wrap.innerHTML=visible.map(t=>`<span class="detailtag"><button class="tagfilter" data-tag="${esc(t.k)}">${esc(tagLabel(t.k))}</button><button class="tagremove" data-remove-tag="${esc(t.k)}" title="从此视频隐藏该标签" aria-label="删除标签 ${esc(tagLabel(t.k))}">${icon('x')}</button></span>`).join('')+
+    wrap.innerHTML=visible.map(t=>`<span class="detailtag${t.official?' official':''}"><button class="tagfilter" data-tag="${esc(t.k)}">${esc(tagLabel(t.k))}${t.official?'<small>官方</small>':''}</button><button class="tagremove" data-remove-tag="${esc(t.k)}" title="从此视频隐藏该标签" aria-label="删除标签 ${esc(tagLabel(t.k))}">${icon('x')}</button></span>`).join('')+
       `<button class="tagplus" id="tagPlus" title="添加标签" aria-label="添加标签" aria-expanded="false">${icon('plus')}</button>
        <div class="tagpicker" id="tagPicker" role="dialog" aria-label="添加标签" hidden>
          <label class="tagpicksearch">${icon('search')}<input id="tagPickSearch" maxlength="80" placeholder="搜索或输入新标签" autocomplete="off"></label>

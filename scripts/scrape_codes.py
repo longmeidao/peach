@@ -42,6 +42,7 @@ from peach.review_csv import ENCODING, write_rows
 
 _logf = None
 FIELD_LABELS = {
+    "title": "标题", "original_title": "原标题",
     "performers": "演员", "studio": "厂牌", "series": "系列",
     "release_date": "发行日期", "tags": "内容标签",
 }
@@ -54,7 +55,7 @@ ERROR_FIELDS = ["code", "query", "source", "kind", "status_code", "retryable", "
 HEALTH_FIELDS = [
     "source", "profile", "attempted", "snapshot_reused", "fetched", "succeeded",
     "empty", "errors", "retryable_errors", "cooldown_skips", "blocked", "elapsed_ms",
-    *PEACH_FIELDS, *CATALOG_EVIDENCE_FIELDS,
+    *dict.fromkeys((*PEACH_FIELDS, *CATALOG_EVIDENCE_FIELDS)),
     "last_error_kind", "last_error_status", "last_error_message",
 ]
 
@@ -122,14 +123,16 @@ def _candidate_key(code: str, field: str, source: str, value: object) -> str:
 
 
 def _current_values(connection: sqlite3.Connection, code: str, field: str) -> list[str]:
-    if field in {"studio", "series", "release_date"}:
-        if field == "release_date" and field not in {
+    title_columns = {"title": "catalog_title", "original_title": "original_title"}
+    column = title_columns.get(field, field)
+    if field in {"title", "original_title", "studio", "series", "release_date"}:
+        if column not in {
             str(row[1]) for row in connection.execute("PRAGMA table_info(asset)")
         }:
             return []
         rows = connection.execute(
-            f"SELECT DISTINCT trim({field}) FROM asset WHERE medium='video' "
-            f"AND upper(trim(code))=upper(?) AND {field} IS NOT NULL AND trim({field})<>''",
+            f"SELECT DISTINCT trim({column}) FROM asset WHERE medium='video' "
+            f"AND upper(trim(code))=upper(?) AND {column} IS NOT NULL AND trim({column})<>''",
             (code,),
         )
     elif field == "performers":
@@ -410,10 +413,9 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                 source_health["succeeded"] += 1
                 if not extracted_fields and not catalog_evidence:
                     source_health["empty"] += 1
-                for field in catalog_evidence:
+                for field in set(catalog_evidence) | set(extracted_fields):
                     source_health[field] += 1
                 for field, extracted in extracted_fields.items():
-                    source_health[field] += 1
                     source_spec = policy.source(source)
                     candidate = {
                         "candidate_key": _candidate_key(query, field, source, extracted["value"]),

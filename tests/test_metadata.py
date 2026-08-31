@@ -97,6 +97,13 @@ class MetadataProviderTests(unittest.TestCase):
         self.assertEqual(fields["series"]["value"], "【プレステージ20周年特別企画】")
         self.assertEqual(fields["studio"]["value"], "プレステージ")
 
+    def test_catalog_titles_become_reviewable_truth_candidates(self):
+        fields = extract_peach_fields({
+            "title": "日本語タイトル", "original_title": "Original Title",
+        }, {})
+        self.assertEqual(fields["title"]["value"], "日本語タイトル")
+        self.assertEqual(fields["original_title"]["value"], "Original Title")
+
     def test_empty_japanese_names_fall_back_to_the_default_view(self):
         fields = extract_peach_fields({
             "maker": "FALENO",

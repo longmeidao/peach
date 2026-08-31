@@ -198,12 +198,15 @@ class OperationalScriptTests(unittest.TestCase):
     def test_filename_cleanup_is_conservative(self):
         propose = self.clean_names.propose
         self.assertEqual(propose("www.98T.la@sample.mp4"), "sample.mp4")
+        self.assertEqual(propose("CJOD-158[fuckbe.com].mp4", "CJOD-158"),
+                         "CJOD-158.mp4")
         self.assertEqual(propose("sample.mp4.mp4"), "sample.mp4")
         self.assertEqual(propose("sample.mp4.jpg"), "sample.mp4.jpg")
         self.assertEqual(propose("(3).mp4"), "(3).mp4")
 
     def test_filename_cleanup_normalises_only_the_confirmed_ledger_code(self):
         propose = self.clean_names.propose
+        self.assertEqual(propose("PBD00390.mp4", "PBD390", True), "PBD-390.mp4")
         self.assertEqual(propose("HD-abp-0758.mp4", "ABP-758"), "HD-ABP-758.mp4")
         self.assertEqual(
             propose("fc2 3098987 sample.mp4", "FC2PPV-3098987"),
@@ -233,6 +236,16 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(by_id[2]["status"], "ready-suffixed")
         self.assertEqual(by_id[3]["new"], "FC2-PPV-3098987.mp4")
         self.assertEqual(by_id[3]["new_code"], "FC2-PPV-3098987")
+
+    def test_filename_cleanup_normalises_compact_code_only_with_release_evidence(self):
+        plan = self.clean_names.build_plan([
+            (1, "115", r"B:\番号\PBD390\PBD00390.mp4",
+             "PBD00390.mp4", "PBD390", 1),
+            (2, "115", r"B:\账号\RAIKUN325\raikun325.mp4",
+             "raikun325.mp4", "RAIKUN325", 0),
+        ])
+        self.assertEqual([(row["id"], row["new"], row["new_code"]) for row in plan],
+                         [(1, "PBD-390.mp4", "PBD-390")])
 
     def test_filename_cleanup_joins_paths_by_the_ledger_path_shape(self):
         self.assertEqual(
@@ -820,7 +833,8 @@ class OperationalScriptTests(unittest.TestCase):
             with output.open(encoding="utf-8-sig") as handle:
                 rows = list(csv.DictReader(handle))
             self.assertEqual({row["field"] for row in rows},
-                             {"performers", "studio", "series", "release_date", "tags"})
+                             {"title", "original_title", "performers", "studio",
+                              "series", "release_date", "tags"})
             performer = next(row for row in rows if row["field"] == "performers")
             candidates = __import__("json").loads(performer["candidates_json"])
             self.assertEqual({candidate["source"] for candidate in candidates}, {"r18dev", "javbus"})
@@ -843,7 +857,7 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertTrue(tag_candidates[0]["official"])
             self.assertEqual(tag_candidates[0]["profile"], "custom")
             self.assertEqual(tag_candidates[0]["policy_version"],
-                             "metadata-source-policy-v2")
+                             "metadata-source-policy-v3")
             self.assertEqual(tag_candidates[0]["field_rank"], 9)
             self.assertEqual(tag_candidates[0]["source_kind"], "official_mirror")
             self.assertTrue(all(row["source_profile"] == "custom" for row in rows))

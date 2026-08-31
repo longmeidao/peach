@@ -23,6 +23,7 @@ from test_rm_web import BASE_SCHEMA
 REVIEW_SCHEMA = """
 CREATE TABLE asset(id INTEGER PRIMARY KEY,location TEXT,path TEXT,name TEXT,medium TEXT,
   duration REAL,creator TEXT,studio TEXT,series TEXT,code TEXT,release_date TEXT,
+  catalog_title TEXT,original_title TEXT,
   snapshot_path TEXT,disposal TEXT);
 CREATE TABLE asset_tag(asset_id INTEGER,tag TEXT,confidence REAL DEFAULT 1.0,source TEXT,
   PRIMARY KEY(asset_id,tag,source));
@@ -451,6 +452,32 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual({row[0] for row in con.execute(
             "SELECT tag FROM asset_tag WHERE asset_id=1 AND source='javinizer:r18dev:tag'"
         )}, {"乳系", "颜射"})
+        con.close()
+
+    def test_metadata_title_approval_writes_catalog_title(self):
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET code='ABC-001' WHERE id=1")
+        con.commit(); con.close()
+        candidate = {
+            "candidate_key": "ABC-001:title:r18dev:abc", "source": "r18dev",
+            "source_url": "https://r18.dev/example", "confidence": 0.9,
+            "value": "正式作品标题", "display_value": "正式作品标题", "warnings": [],
+        }
+        self.write_metadata_candidates([{
+            "item_key": "ABC-001:title", "code": "ABC-001", "query": "ABC-001",
+            "field": "title", "field_label": "标题", "current_value": "",
+            "candidates_json": json.dumps([candidate], ensure_ascii=False), "source_count": "1",
+            "status": "candidate", "size_gb": "1", "videos": "1", "fetched_at": "now",
+        }])
+        result = rm_review.w_review_decision(self.contract, {
+            "category": "metadata_fields", "item_key": "ABC-001:title",
+            "candidate_key": candidate["candidate_key"], "status": "approved",
+        })
+        self.assertEqual(result["applied_assets"], 1)
+        con = sqlite3.connect(self.db_path)
+        self.assertEqual(con.execute(
+            "SELECT catalog_title FROM asset WHERE id=1"
+        ).fetchone()[0], "正式作品标题")
         con.close()
 
     def test_metadata_approval_rejects_repeated_name_even_if_csv_is_tampered(self):

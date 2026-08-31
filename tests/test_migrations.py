@@ -24,7 +24,7 @@ class MigrationTests(unittest.TestCase):
         backup = self.root / "before.db"
         done = upgrade(self.db, MIGRATIONS, backup)
         self.assertEqual([m.version for m in done],
-                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022"])
+                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023"])
         self.assertTrue(backup.exists())
         con = sqlite3.connect(self.db)
         tables = {row[0] for row in con.execute(
@@ -41,7 +41,7 @@ class MigrationTests(unittest.TestCase):
                          "playlist", "playlist_item",
                          "asset_tag_preference", "asset_search", "follow_playback",
                          "schema_migration"} <= tables)
-        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022"])
+        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023"])
         self.assertEqual(upgrade(self.db, MIGRATIONS), [])
         self.assertEqual(plan(self.db, MIGRATIONS)[1], [])
 
@@ -68,7 +68,8 @@ class MigrationTests(unittest.TestCase):
         columns = {row[1] for row in con.execute("PRAGMA table_info(asset)")}
         con.close()
         self.assertTrue({"studio", "feedback", "disposal", "leave_ratio", "play_seconds",
-                         "feedback_at", "seek_count", "max_reached", "release_date"} <= columns)
+                         "feedback_at", "seek_count", "max_reached", "release_date",
+                         "catalog_title", "original_title"} <= columns)
 
     def test_checksum_change_is_rejected(self):
         sqlite3.connect(self.db).close()
@@ -286,6 +287,14 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(connection.execute(
             "SELECT asset_id FROM asset_search WHERE asset_search MATCH ?", ('"Prestige"',)
         ).fetchall(), [])
+        connection.execute(
+            "UPDATE asset SET catalog_title='Official catalog title',"
+            "original_title='Original catalog title' WHERE id=1"
+        )
+        for query in ('"Official catalog"', '"Original catalog"'):
+            self.assertEqual(connection.execute(
+                "SELECT asset_id FROM asset_search WHERE asset_search MATCH ?", (query,)
+            ).fetchall(), [(1,)])
         connection.close()
 
     def test_rule34_source_case_duplicates_merge_without_losing_item_state(self):
