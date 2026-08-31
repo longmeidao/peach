@@ -49,6 +49,17 @@ PARKED = re.compile(
     re.I)
 # 空壳页也会 200。真站首页（含年龄门）实测都在 10 KB 以上，取一半做下限。
 MIN_BODY = 5000
+# 「标题里有厂牌名」证明不了这是**这个**厂牌的站——同名的无关公司照样通过。实测四例：
+# `madonna.com` 是歌手麦当娜、`hunter.com` 是 Hunter Engineering（四轮定位）、
+# `bazooka.com` 是车载音响、`marrion.com` 是一个 Google Sites 页面。它们都 200、
+# 都不是停放页、标题里都有厂牌名。
+#
+# 缺的那一半是「这一页是不是 AV 厂牌站」。这不是补丁：我们要找的就是 AV 厂牌官网，
+# 成人语境本来就是判据的一部分。日站首页普遍带年龄门，这些词因此极稳；同时留下英文
+# 写法，免得把西方厂牌一律打成待复核。
+ADULT = re.compile(
+    r"年齢認証|年齢チェック|AVメーカー|アダルトビデオ|アダルトDVD|18歳未満|成人向"
+    r"|adult video|adult dvd|porn|18\+|over 18", re.I)
 FIELDS = ("entity_id", "studio", "assets", "candidate_url", "final_url", "status",
           "bytes", "sha256", "title", "verdict", "note")
 
@@ -151,9 +162,16 @@ def site_verdict(name: str, status: int, body: bytes, title: str,
     if host and title_token and title_token in normalise(host):
         return "未取得", f"标题只是域名回显，没有自述身份（{title[:40]}）"
     token = normalise(name)
-    if token and token in normalise(title):
-        return "ok", "标题自述厂牌名"
-    if token and token in normalise(text[:20000]):
+    if not token:
+        return "未取得", "厂牌名里没有可比对的字母数字"
+    adult = bool(ADULT.search(text))
+    if token in normalise(title):
+        if adult:
+            return "ok", "标题自述厂牌名，且页面是成人站"
+        # 同名的无关公司到这里为止和真站没有任何可区分之处，所以只能交给人看，
+        # 不能算已确认——一条错的官网会被下游当成社媒 handle 的来源。
+        return "weak", f"标题有厂牌名但页面不像成人站；需人工确认（{title[:40]}）"
+    if token in normalise(text[:20000]):
         return "weak", "标题未自述，但正文出现厂牌名；需人工看图确认"
     return "未取得", f"标题与正文都没有厂牌名（标题：{title[:40] or '无'}）"
 

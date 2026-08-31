@@ -77,6 +77,32 @@ class VerdictTests(unittest.TestCase):
         verdict, _ = self.module.site_verdict("Idea Pocket", 200, page(title), title)
         self.assertEqual(verdict, "ok")
 
+    def test_an_unrelated_company_with_the_same_name_is_not_confirmed(self):
+        """「标题里有厂牌名」证明不了这是**这个**厂牌的站。
+
+        实测四例全都 200、都不是停放页、标题里都有厂牌名：`madonna.com` 是歌手麦当娜
+        （真站 madonna-av.com）、`hunter.com` 是 Hunter Engineering、`bazooka.com`
+        是车载音响。缺的那一半是「这一页是不是 AV 厂牌站」——我们要找的就是 AV 官网，
+        成人语境本来就是判据的一部分，不是补丁。这类只能判 weak 交给人看，不能算已确认：
+        一条错的官网会被下游当成社媒 handle 的来源。
+        """
+        for studio, title in [("MADONNA", "Madonna – Icon Community"),
+                              ("Hunter", "Home | Hunter Engineering Company®"),
+                              ("BAZOOKA", "Bazooka Bass Tubes")]:
+            verdict, note = self.module.site_verdict(
+                studio, 200, page(title, "公司简介与产品目录。"), title,
+                f"https://{studio.lower()}.com/")
+            self.assertEqual(verdict, "weak", studio)
+            self.assertIn("成人站", note)
+
+    def test_a_western_studio_page_still_counts_as_adult(self):
+        """判据不能只认日文，否则西方厂牌会被一律打成待复核。"""
+        title = "BLACKED - The Best Adult Video Site"
+        verdict, _ = self.module.site_verdict(
+            "Blacked", 200, page(title, "adult video content, 18+ only. "), title,
+            "https://blacked.com/")
+        self.assertEqual(verdict, "ok")
+
     def test_a_parked_page_is_rejected_even_though_its_title_echoes_the_name(self):
         """这是猜域名最危险的失败模式。
 
