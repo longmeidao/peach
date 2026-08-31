@@ -1,6 +1,7 @@
 import csv
 import json
 import os
+import pathlib
 import sqlite3
 import tempfile
 import threading
@@ -622,6 +623,44 @@ class WebDataTests(unittest.TestCase):
             1,
         )
         con.close()
+
+    def test_query_side_normalisation_matches_the_write_side(self):
+        """查询侧和写入侧必须用同一份归一化。
+
+        `asset_tag_preference.normalized_tag` 写入时走 Python 的 `strip().casefold()`，
+        而查询侧一度用 SQLite 的 `lower(trim())`。SQLite 的 lower() 只认 ASCII：西里尔
+        字母和罗马数字 Ⅱ 原样放过，两边算出的键就对不上，`NOT EXISTS` 永远成立——
+        用户点了「隐藏」而标签照常显示，没有任何报错。
+
+        这两个例子取自真实账本：6167 个标签里正好这两个会分歧。按今天的数据它们都落在
+        走实体名比对的那条路径上，所以线上没有真的出错；这条测试守的是那个前提别再变。
+        """
+        cyrillic = "УбийцаАкаме"
+        roman = "レキシントンⅡ"
+        with self.contract.database.read_connection() as c:
+            for tag in (cyrillic, roman):
+                with self.subTest(tag=tag):
+                    stored = rm_web.normalize_entity_name(tag)
+                    self.assertEqual(
+                        c.execute("SELECT peach_normalize(?)", (tag,)).fetchone()[0], stored,
+                        "SQL 侧的 peach_normalize 必须和写入侧的 normalize_entity_name 一致")
+                    self.assertNotEqual(
+                        c.execute("SELECT lower(trim(?))", (tag,)).fetchone()[0], stored,
+                        "这两个例子的意义就在于 SQLite 的 lower() 算不出同一个键；"
+                        "若它们哪天一致了，请换成仍会分歧的例子，别让这条测试变成空转")
+
+    def test_the_hidden_tag_rule_has_one_implementation(self):
+        """「标签没被隐藏」的判据只许有一份。
+
+        它此前在五处各写了一份裸 SQL。join 列因查询语境不同是正常的，规则本体不是：
+        漏抄一处，被隐藏的标签就会从那个表面漏回来，而这属于语义契约。
+        """
+        source = pathlib.Path(rm_web.__file__).read_text(encoding="utf-8")
+        self.assertEqual(source.count("FROM asset_tag_preference p "), 1,
+                         "隐藏判据又被抄了一份，请改调 tag_not_hidden()")
+        self.assertEqual(source.count("WHERE performer.kind='performer' "), 1,
+                         "「标签其实是女优名」的判据又被抄了一份，"
+                         "请改调 tag_is_not_a_performer_name()")
 
     def test_item_tag_rolls_back_and_closes_when_the_entity_write_fails(self):
         """加标签是一个事务：实体那步失败时 asset_tag 不能留下半条记录，连接也要关掉。
