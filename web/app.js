@@ -1297,6 +1297,19 @@ async function buildBars(){
   const [facetData,tops]=await getBarsData(context);
   if(requestSeq!==barsRequestSeq)return;
   if(context.type==='home')facets=facetData;
+  // 详情抽屉继续只展示当前作品的真实标签；作品没有内容标签时，顶部发现栏
+  // 回退到返回首页的推荐口径，避免把全库标签伪装成作品元数据。
+  let topTags=facetData.tags||[];
+  if(context.type==='item'&&!topTags.length){
+    const recommendationParams=new URLSearchParams();
+    if(javActive())recommendationParams.set('jav','1');
+    if(detailReturnBarsContext?.type==='home'&&state.state)
+      recommendationParams.set('state',state.state);
+    const recommendationScope=recommendationParams.toString();
+    const recommendationFacets=await api('/api/facets'+(recommendationScope?'?'+recommendationScope:''));
+    if(requestSeq!==barsRequestSeq)return;
+    topTags=recommendationFacets.tags||[]
+  }
 
   // 顶部三层：女优圆头像 / 厂牌 / 内容标签
   tops.performers.forEach(x=>{if(x.rep)REP[x.k]=x.rep});
@@ -1333,7 +1346,7 @@ async function buildBars(){
   $('#tagbar').innerHTML=
     views.map(v=>`<a class="pill" href="${v.k?STATE_ROUTES[v.k]:'/'}" data-state="${v.k}" aria-pressed="${filterState.state===v.k}">${v.label}</a>`).join('')
     +`<span class="sep"></span>`
-    +facetData.tags.slice(0,26).map(t=>
+    +topTags.slice(0,26).map(t=>
       `<button class="pill" data-tag="${esc(t.k)}" aria-pressed="${
         String(filterState.tag||'').split(',').includes(String(t.k))}">${esc(tagLabel(t.k))}</button>`).join('');
   $('#tagbar').querySelectorAll('[data-state]').forEach(b=>b.onclick=e=>{

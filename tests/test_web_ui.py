@@ -1402,6 +1402,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("chips(facetData.orientations,'orient')")
         self.assertPageLacks("chips([{k:'竖屏'},{k:'横屏'}],'orient')")
 
+    def test_untagged_detail_uses_home_tags_only_in_the_top_discovery_bar(self):
+        # 作品没有内容标签时，顶部发现栏回退首页口径；详情抽屉仍使用作品 scoped facets。
+        self.assertPageContains("if(context.type==='item'&&!topTags.length)")
+        self.assertPageContains("const recommendationFacets=await api('/api/facets'")
+        self.assertPageContains("if(requestSeq!==barsRequestSeq)return;\n    topTags=recommendationFacets.tags||[]")
+        self.assertPageContains("+topTags.slice(0,26).map(t=>")
+        self.assertPageContains("+sec('内容标签',chips(facetData.tags,'tag',false,30)")
+
     def test_large_collections_render_in_bounded_batches(self):
         self.assertPageContains("p.set('limit','48')")
         self.assertPageContains("if(offset)p.set('count','0')")
