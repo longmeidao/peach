@@ -612,7 +612,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("group.className='vjs-peach-right-controls'")
         self.assertPageContains("controlBar.querySelector(':scope>.vjs-picture-in-picture-control')")
         self.assertPageContains("controlBar.querySelector(':scope>.vjs-fullscreen-control')")
-        self.assertPageContains(".vwrap .video-js .vjs-progress-control{position:absolute;left:0;right:0;top:0;width:auto;height:6px")
+        self.assertPageContains(".vwrap .video-js .vjs-progress-control{z-index:2;position:absolute;left:0;right:0;top:0;width:auto;height:6px")
         self.assertPageContains(".vwrap .video-js .vjs-play-progress{background:var(--tungsten)}")
         self.assertPageContains(".vwrap .video-js .vjs-play-progress:before{content:\"\"")
         self.assertPageContains("width:100%;height:6px;margin:0;border-radius:0")
@@ -722,6 +722,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".vjs-peach-menu-row>svg{justify-self:start;margin-left:8px;width:24px;height:24px")
         self.assertPageContains(".video-js .vjs-peach-menu-row{display:grid;grid-template-columns:56px minmax(0,1fr) minmax(0,max-content) 32px")
         self.assertPageContains(".vjs-peach-panel-header{box-sizing:border-box;height:57px;padding:8px 0;display:flex;align-items:center;gap:0;border-bottom:1px solid rgba(255,255,255,.2)")
+        self.assertPageContains(".vjs-peach-settings-menu .vjs-peach-panel-header .vjs-peach-menu-back:before{inset:4px}")
         self.assertPageContains(".video-js .vjs-peach-menu-option{display:grid;grid-template-columns:35px minmax(0,1fr)")
         self.assertPageContains('class="vjs-peach-option-check"')
         self.assertPageContains('class="vjs-peach-option-label"')
@@ -744,6 +745,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".vjs-mute-control[data-peach-explicit-icon]>.vjs-icon-placeholder{display:none!important}")
         self.assertPageContains("display:block!important;align-self:center;flex:0 0 52px;width:52px!important")
         self.assertPageContains("top:50%!important;width:52px!important;height:2px!important;margin:0!important")
+        self.assertPageContains(".vjs-control-bar>.vjs-volume-panel{box-sizing:border-box;z-index:3;position:relative")
+        self.assertPageContains(".vjs-volume-panel .vjs-volume-tooltip{z-index:4!important;overflow:visible;white-space:nowrap}")
 
     def test_theater_mode_has_button_tooltip_keyboard_and_responsive_layout(self):
         self.assertPageContains("function mountPlayerTheaterControl(player,settingsRoot)")
