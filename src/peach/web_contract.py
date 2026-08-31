@@ -520,6 +520,7 @@ def q_items(contract: WebContract, args):
         r.pop("snapshot_path", None)
         r.pop("path", None)                     # 路径不外发，串流走 id
     attach_multipart_groups(contract, rows)
+    attach_edition_groups(contract, rows)
     return {"total": cnt, "items": rows, "has_more": has_more}
 
 def con_tags(contract: WebContract, ids, qm):
@@ -653,6 +654,125 @@ def attach_card_performers(contract: WebContract, rows):
         row["performers"] = names.get(row["id"], [])[:CARD_PERFORMERS]
         row["performer_entities"] = refs.get(row["id"], [])[:CARD_PERFORMERS]
         row["performer_total"] = len(names.get(row["id"], []))
+
+
+#: 版次的展示次序：正片在前，处理过的在后。这不是偏好排序，只是要一个稳定的
+#: 锚点——卡片标题取第一个，次序一变卡片就换名字。
+EDITION_ORDER = ("有码", "中字", "无码", "无码破解")
+
+
+def _edition_label(row: dict, tags: tuple[str, ...] = ()) -> str:
+    """这一份是哪个版次。
+
+    判据只有 `jav_display_metadata` 一份。自己按文件名再写一套「像不像无码」的判断，
+    会和卡片上已经显示的徽章各说各话——同一个文件，角标写着无码、分组却当它是正片。
+    """
+    badges = jav_display_metadata(
+        row.get("name"), row.get("code"), tags,
+    ).get("edition_badges") or []
+    return str(badges[0]) if badges else "有码"
+
+
+def _edition_rows(contract: WebContract, codes) -> list[dict]:
+    raw_codes = sorted({str(code) for code in codes if str(code or "").strip()})
+    if not raw_codes:
+        return []
+    placeholders = ",".join("?" * len(raw_codes))
+    with contract.read_connection() as connection:
+        rows = [dict(row) for row in connection.execute(
+            "SELECT id,name,code,size,duration FROM asset "
+            f"WHERE medium='video' AND code IN ({placeholders}) "
+            "AND (disposal IS NULL OR disposal<>'trash')",
+            raw_codes,
+        )]
+        if not rows:
+            return []
+        # 版次判据同时看文件名和标签（`无码` 可能只登记在标签上），所以标签要一起取。
+        marks = ",".join("?" * len(rows))
+        tags: dict[int, list[str]] = {}
+        for row in connection.execute(
+                "SELECT ae.asset_id aid, e.canonical_name name FROM asset_entity ae "
+                "JOIN entity e ON e.id=ae.entity_id "
+                f"WHERE e.kind='tag' AND ae.asset_id IN ({marks})",
+                [row["id"] for row in rows]):
+            tags.setdefault(int(row["aid"]), []).append(str(row["name"]))
+    for row in rows:
+        row["edition"] = _edition_label(row, tuple(tags.get(int(row["id"]), ())))
+    return rows
+
+
+def _edition_groups(contract: WebContract, codes) -> dict[str, list[dict]]:
+    """按番号聚合，只保留版次真的不同的那些。
+
+    同番号多文件不等于多版本：实测 158 个同番号多文件的番号里，84 个是分卷、
+    还有一批是同名重复（`ABP-442.avi` 出现两次、`.MP4` 与 `.mp4` 各一份）。把它们
+    一并当版本，会把「该去重复文件页处理的东西」伪装成「可选的版本」。
+    """
+    candidates: dict[str, list[dict]] = {}
+    for row in _edition_rows(contract, codes):
+        candidates.setdefault(normalise_code_key(row.get("code")), []).append(row)
+    groups: dict[str, list[dict]] = {}
+    for code, items in candidates.items():
+        if len(items) < 2:
+            continue
+        if all(part_marker(str(item.get("name") or "")) for item in items):
+            continue                      # 纯分卷由 attach_multipart_groups 负责
+        if len({item["edition"] for item in items}) < 2:
+            continue                      # 版次相同就是重复文件，不是版本
+        groups[code] = sorted(
+            items,
+            key=lambda item: (EDITION_ORDER.index(item["edition"])
+                              if item["edition"] in EDITION_ORDER else len(EDITION_ORDER),
+                              -int(item.get("size") or 0), int(item["id"])),
+        )
+    return groups
+
+
+def attach_edition_groups(contract: WebContract, rows) -> None:
+    """给列表卡挂上同番号的版次组，不写账本。
+
+    用户实测：`ABF-234` 与 `ABF-234 UN` 是两张并排的卡，`ABF-216` 也是。它们是同一部
+    片的两个版次，占两个格子只是让人多滚一屏，还得自己认哪个是无码。
+    """
+    if not rows:
+        return
+    groups = _edition_groups(contract, [row.get("code") for row in rows])
+    for row in rows:
+        code = normalise_code_key(row.get("code"))
+        group = groups.get(code)
+        if not group or not any(item["id"] == row["id"] for item in group):
+            continue
+        row["edition_group"] = {
+            "key": code,
+            "title": code or str(row.get("code") or "多版本作品"),
+            "count": len(group),
+            "seed_id": group[0]["id"],
+            "item_ids": [item["id"] for item in group],
+            "editions": [item["edition"] for item in group],
+        }
+
+
+def q_editions(contract: WebContract, args):
+    """按版次次序返回同一番号的全部版本。"""
+    asset_id = int(args["id"])
+    with contract.read_connection() as connection:
+        seed = connection.execute(
+            "SELECT id,code FROM asset WHERE id=? AND medium='video' "
+            "AND (disposal IS NULL OR disposal<>'trash')",
+            (asset_id,),
+        ).fetchone()
+    if not seed or not seed["code"]:
+        return {"error": "edition group not found"}
+    code = normalise_code_key(seed["code"])
+    group = _edition_groups(contract, [seed["code"]]).get(code, [])
+    if not group or not any(item["id"] == asset_id for item in group):
+        return {"error": "edition group not found"}
+    items = []
+    for row in group:
+        item = q_item(contract, row["id"])
+        item["edition_label"] = row["edition"]
+        items.append(item)
+    return {"title": code or str(seed["code"]), "count": len(items), "items": items}
 
 
 def _multipart_rows(contract: WebContract, codes) -> list[dict]:
@@ -2025,6 +2145,7 @@ GET_HANDLERS = {
     "/api/items": q_items,
     "/api/item": _get_item,
     "/api/parts": q_parts,
+    "/api/editions": q_editions,
     "/api/entity": q_entity,
     "/api/photos": q_entity_photos,
     "/api/photo-set": q_photo_set,

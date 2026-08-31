@@ -1387,7 +1387,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("$('#tiers').style.display='';$('#tagbar').style.display=''")
         self.assertPageContains("function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}")
         self.assertPageContains("async function load(reset)")
-        self.assertPageContains("showHomeSurfaces();\n  if(reset){offset=0;renderedPartGroups.clear()}")
+        # 版次折叠的集合要和分卷那套一起清，见 test_both_collapse_sets_are_cleared_together。
+        self.assertPageContains(
+            "showHomeSurfaces();\n  if(reset){offset=0;"
+            "renderedPartGroups.clear();renderedEditionGroups.clear()}")
         self.assertPageContains("showHomeSurfaces();disposeStage(false)")
 
     def test_entity_tags_filter_inside_the_current_entity_page(self):
@@ -2303,6 +2306,23 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_detail_source_icon_starts_at_the_content_edge(self):
         self.assertPageContains(".detailtitle>.srcbig{place-items:start;width:17px;margin-top:2px}")
+    def test_editions_collapse_into_one_card_with_a_version_badge(self):
+        """同番号的几个版次合成一张卡，角标写清有几个版本。"""
+        self.assertPageContains("function collapseEditionGroups(items){")
+        self.assertPageContains("const visible=collapseEditionGroups(collapseMultipartItems(items));")
+        self.assertPageContains('${editions.count} 个版本')
+        self.assertPageContains("openEditions(it.edition_group.seed_id,id,true,anchor)")
+        self.assertPageContains("if(parts[0]==='editions'", "刷新或前进后退要能回到同一个版次")
+
+    def test_both_collapse_sets_are_cleared_together(self):
+        """折叠用的集合必须和分卷那套一起清。
+
+        漏掉的话，第一屏之后每次重画都会把版次卡当成「已经渲染过」直接过滤掉——
+        卡片会凭空消失，而且只在翻页或换筛选之后才出现，最难对上原因。
+        """
+        self.assertEqual(self.page.count("renderedEditionGroups.clear()"),
+                         self.page.count("renderedPartGroups.clear()"),
+                         "两套折叠集合的重置点必须一一对应")
 
     def test_a_failed_probe_never_turns_a_local_video_into_a_live_stream(self):
         """账本里的 `-1` 是探测硬失败的哨兵，不是时长。

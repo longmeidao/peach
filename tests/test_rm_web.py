@@ -578,7 +578,7 @@ class WebDataTests(unittest.TestCase):
     def test_contract_handler_registries_are_complete_and_unknown_routes_fail(self):
         self.assertEqual(set(rm_web.GET_HANDLERS), {
             "/api/items", "/api/item", "/api/entity", "/api/photos", "/api/photo-set",
-            "/api/index", "/api/parts", "/api/duplicates", "/api/quality-goals",
+            "/api/index", "/api/parts", "/api/editions", "/api/duplicates", "/api/quality-goals",
             "/api/stats", "/api/tops", "/api/ads", "/api/related", "/api/facets",
             "/api/search-history", "/api/review", "/api/playlists", "/api/playlist",
             "/api/follow", "/api/follow/credentials", "/api/follow/schedule",
@@ -644,6 +644,60 @@ class WebDataTests(unittest.TestCase):
             1,
         )
         con.close()
+
+    def _seed_editions(self, rows):
+        con = sqlite3.connect(self.db_path)
+        for asset_id, name, code in rows:
+            con.execute(
+                "INSERT INTO asset(id,location,path,name,medium,code,size) "
+                "VALUES(?,'local',?,?,'video',?,1)",
+                (asset_id, f"/x/{name}", name, code),
+            )
+        con.commit(); con.close()
+
+    def test_a_censored_and_an_uncensored_release_share_one_card(self):
+        """同一番号的有码与无码是两个版次，不该占两个格子。
+
+        用户实测：`ABF-234` 和 `ABF-234 UN` 并排两张卡，`ABF-216` 也是。全库有 15 个
+        番号是这种情况，除了无码还有中字（`-C`／`CH`／`.Uncen` 各种写法）。
+
+        版次判据只用 `jav_display_metadata`，和卡片上已经显示的徽章同一份——自己按
+        文件名再写一套「像不像无码」，会出现角标写着无码、分组却当它是正片。
+        """
+        # 版次来自标签而不是文件名：实测 `-UN`／`-C`／`.Uncen` 这些后缀单独都认不出来，
+        # 真实那条 ABF-234-UN 能认出是因为它打了 `无码` 标签。所以这里也必须造标签。
+        self._seed_editions([(9001, "ABF-234.mp4", "ABF-234"),
+                             (9002, "ABF-234-UN.mp4", "ABF-234")])
+        con = sqlite3.connect(self.db_path)
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
+                    "VALUES(9100,'tag','无码','无码')")
+        con.execute("INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                    "VALUES(9002,9100,'tag','test',1.0)")
+        con.commit(); con.close()
+        groups = rm_web._edition_groups(self.contract, ["ABF-234"])
+        self.assertEqual(list(groups), ["ABF-234"])
+        self.assertEqual([item["edition"] for item in groups["ABF-234"]], ["有码", "无码"])
+        # 正片在前只是要一个稳定的锚点：次序一变，卡片标题就跟着换。
+        self.assertEqual(groups["ABF-234"][0]["id"], 9001)
+
+    def test_two_copies_of_the_same_edition_are_not_versions(self):
+        """同番号多文件不等于多版本。
+
+        实测 158 个同番号多文件的番号里，84 个是分卷，还有一批是同名重复
+        （`ABP-442.avi` 出现两次、`.MP4` 与 `.mp4` 各一份）。把它们当版本，等于把
+        「该去重复文件页处理的东西」伪装成「可选的版本」。
+        """
+        self._seed_editions([(9011, "ABP-442.avi", "ABP-442"),
+                             (9012, "ABP-442.mp4", "ABP-442")])
+        self.assertEqual(rm_web._edition_groups(self.contract, ["ABP-442"]), {})
+
+    def test_a_multipart_release_is_left_to_the_multipart_grouping(self):
+        self._seed_editions([(9021, "SSIS-100-cd1.mp4", "SSIS-100"),
+                             (9022, "SSIS-100-cd2.mp4", "SSIS-100")])
+        self.assertEqual(rm_web._edition_groups(self.contract, ["SSIS-100"]), {})
+
+    def test_the_editions_endpoint_is_registered(self):
+        self.assertIn("/api/editions", rm_web.GET_HANDLERS)
 
     def test_query_side_normalisation_matches_the_write_side(self):
         """查询侧和写入侧必须用同一份归一化。
