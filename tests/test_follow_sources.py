@@ -390,7 +390,10 @@ class KemonoConnectorTests(unittest.TestCase):
         self.assertEqual(first.published_at, "2026-02-14T21:51:10Z")
         self.assertEqual(first.url,
                          "https://kemono.cr/fanbox/user/30917150/post/11406814")
-        self.assertEqual(first.media_url, "https://kemono.cr/1c/fa/1cfae7.png")
+        # 交付文件取非图片的那个：夹具里 file 是 a.png、附件是 a.zip，压缩包才是正片。
+        # 按 file.path 优先会把整条判成图片——pawchive 上作者用 gif 当预览、mp4 放附件，
+        # 正是这条路径让两个 1080p 正片消失（2026-08-30 取证）。
+        self.assertEqual(first.media_url, "https://kemono.cr/1c/fa/1cfae7.zip")
         self.assertEqual(first.extra["attachment_count"], 1)
         # post id 就是原平台的 post id，和别的站点从 source 归一出的键同一个命名空间。
         self.assertEqual(first.group_hint, "fanbox:11406814")
@@ -398,12 +401,12 @@ class KemonoConnectorTests(unittest.TestCase):
     def test_archive_posts_get_a_cover_thumbnail(self):
         """归档站的卡片以前一律没有封面——不是取不到，是压根没去取。
 
-        2026-08-27 实测 `https://kemono.cr/thumbnail/data<path>` 回 200 `image/jpeg`；
+        2026-08-30 实测缩略图走 `img.` 子域：主域 kemono.cr 回 302、pawchive.pw 回 404；
         去掉 `thumbnail/` 前缀则是 404，所以这个前缀是必需的。
         """
         result = KemonoConnector(transport=_transport(body=KEMONO_POSTS)).fetch("fanbox/1")
         self.assertEqual(result.candidates[0].thumb_url,
-                         "https://kemono.cr/thumbnail/data/1c/fa/1cfae7.png")
+                         "https://img.kemono.cr/thumbnail/data/1c/fa/1cfae7.png")
 
     def test_archive_video_uses_an_image_attachment_as_its_cover(self):
         """主资源是视频/压缩包时，后附的图片仍然是可用封面。"""
@@ -421,7 +424,7 @@ class KemonoConnectorTests(unittest.TestCase):
         candidate = result.candidates[0]
         self.assertEqual(candidate.media_url, "https://kemono.cr/video/release.mp4")
         self.assertEqual(candidate.thumb_url,
-                         "https://kemono.cr/thumbnail/data/cover/release.webp")
+                         "https://img.kemono.cr/thumbnail/data/cover/release.webp")
 
     def test_no_thumbnail_is_offered_for_things_that_have_none(self):
         # 视频和压缩包没有缩略图，给了也是 404——那会让卡片显示一张碎图，
