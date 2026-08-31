@@ -2726,7 +2726,7 @@ function renderFollow(){
       :sources.length?emptyState('rss','没有符合条件的更新','切换状态或来源筛选后再试。')
       :emptyState('rss','还没有关注任何来源','添加作者或订阅来源后，更新会集中显示在这里。',{actions:'<button class="fbtn primary" data-follow-manage>添加关注</button>'})}</div>
     ${followData.has_more||sources.some(source=>source.can_backfill)?`<div class="followpagination">
-      ${followData.has_more?`<span class="followpageaction"><button class="fbtn" data-follow-more>${icon('plus')}加载更多</button>
+      ${followData.has_more?`<span class="followpageaction"><button class="fbtn" data-follow-more>${icon('refresh-cw')}加载更多</button>
         <span class="fmeta">已显示 ${visible.length.toLocaleString()} 项</span></span>`:''}
       ${sources.some(source=>source.can_backfill)?`<span class="followpageaction"><button class="fbtn" data-follow-older>${icon('history')}抓更早的一页</button>
         <span class="fmeta">${esc(followBackfillState(sources))}</span></span>`:''}</div>`:''}</div>`;
@@ -2916,6 +2916,8 @@ function followAuthorName(group){
 function followAuthorBlock(group){
   const name=followAuthorName(group);
   const bad=group.filter(s=>s.last_status==='error'||s.last_status==='unauthorized').length;
+  const sources=scrollerHtml(group.map(followSourceRow).join(''),{
+    className:'fauthorsources',label:`${name} 的关注来源`});
   return `<div class="fauthor${bad?' bad':''}">
     <div class="fauthorhead">${followAuthorAvatar(group)}
       <b>${esc(name)}</b>
@@ -2924,7 +2926,7 @@ function followAuthorBlock(group){
         : sourceIcon(group[0].provider)+esc(group[0].provider_label)}</span>
       ${bad?`<span class="fmeta warn">${bad} 个失败</span>`:''}
     </div>
-    ${group.map(followSourceRow).join('')}</div>`;
+    ${sources}</div>`;
 }
 
 function followSourceRow(source){
@@ -3161,6 +3163,7 @@ function wireFollowItems(){
 
 function wireFollowManage(){
   const root=$('#stats'),form=root.querySelector('#followAdd');
+  wireScrollers(root);
   const sort=root.querySelector('[data-follow-sort]');
   if(sort)sort.onchange=()=>{
     followManageSort=sort.value;

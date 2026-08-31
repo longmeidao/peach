@@ -1173,7 +1173,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('target="_blank" rel="noreferrer noopener"')
         self.assertPageContains("${esc(search.query)}")
 
-    def test_follow_author_groups_use_multiple_columns_and_link_to_the_original_page(self):
+    def test_follow_author_groups_use_fixed_scrolling_cards_and_link_to_the_original_page(self):
         self.assertPageContains('class="frows fsources"')
         grid = self.page[self.page.index(".fsources{"):]
         self.assertIn("repeat(auto-fit,minmax(430px,1fr))", grid[:grid.index("}")])
@@ -1184,8 +1184,15 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('title="打开原来源"')
         self.assertPageContains('rel="noreferrer noopener"')
         author = self.page[self.page.index(".fauthor{"):]
-        self.assertIn("border-top:0", author[:author.index("}")],
-                      "每一栏首个作者上方都不应出现横线")
+        author_rule = author[:author.index("}")]
+        self.assertIn("height:280px", author_rule)
+        self.assertIn("border:1px solid var(--border-10)", author_rule)
+        self.assertIn("grid-template-rows:auto minmax(0,1fr)", author_rule)
+        self.assertPageContains("scrollerHtml(group.map(followSourceRow).join(''),{")
+        self.assertPageContains("className:'fauthorsources',label:`${name} 的关注来源`")
+        self.assertPageContains(".fauthorsources .geist-scroller-container{padding-right:12px;scrollbar-width:thin}")
+        self.assertPageContains(".fauthorsources .geist-scroller-container::-webkit-scrollbar{display:block}")
+        self.assertPageContains("wireScrollers(root)")
 
     def test_source_actions_are_icon_only_and_stay_on_one_row(self):
         row = self.page[self.page.index("function followSourceRow(source)"):]
@@ -1870,7 +1877,8 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("else if(item.media_kind==='image'||item.media_kind==='video')kinds.add(item.media_kind)")
         self.assertPageLacks("else kinds.add(item.media_kind==='image'?'image':'video')")
         self.assertPageContains('class="followpagination"')
-        self.assertPageContains("${icon('plus')}加载更多")
+        self.assertPageContains("${icon('refresh-cw')}加载更多")
+        self.assertPageLacks("${icon('plus')}加载更多")
         self.assertPageContains("${icon('history')}抓更早的一页")
         self.assertPageContains("spinnerHtml('加载更多')")
         self.assertPageContains("loadingDotsHtml('抓取中…')")
