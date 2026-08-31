@@ -111,6 +111,63 @@ def integrate(repo: Path, worker_branch: str, target_branch: str = "master") -> 
     }
 
 
+def prune(repo: Path, target_branch: str = "master", *,
+          apply: bool = False) -> dict[str, object]:
+    """回收分支已并入 target、且工作区干净的隔离工作树。
+
+    这个命令存在的理由：`create` 一直有人用，回收却从来没有入口。2026-08-29 清过一次
+    到 3 个，两天后又长回 74 个、占 868 MB——因为那次是一次性动作，不是常设机制。
+
+    默认只报告不动手。回收不可逆，而「分支已合入」并不等于「工作区里没有东西」：
+    实测就有工作树的分支早已并入 master，里面却躺着一份成形的未提交改动。所以脏的
+    一律拒收并单独列出，交给人看，不给 `--force` 这个口子。
+    """
+    main = _main_worktree(repo)
+    merged = {line.strip().lstrip("+* ") for line in
+              _lines(_git(main, "branch", "--merged", target_branch,
+                          "--format=%(refname:short)"))}
+    merged.discard(target_branch)
+    here = repo.resolve()
+
+    reclaimed: list[str] = []
+    dirty: list[dict[str, str]] = []
+    kept: list[dict[str, str]] = []
+    entry: dict[str, str] = {}
+    entries: list[dict[str, str]] = []
+    for line in _lines(_git(main, "worktree", "list", "--porcelain")):
+        if line.startswith("worktree "):
+            entry = {"path": line[len("worktree "):]}
+            entries.append(entry)
+        elif line.startswith("branch "):
+            entry["branch"] = line[len("branch "):].replace("refs/heads/", "")
+
+    for item in entries:
+        path = Path(item["path"])
+        branch = item.get("branch", "")
+        if path.resolve() == main.resolve() or path.resolve() == here:
+            continue
+        if branch not in merged:
+            kept.append({"path": str(path), "branch": branch, "why": "分支未并入 " + target_branch})
+            continue
+        if _git(main, "-C", str(path), "status", "--porcelain",
+                check=False).stdout.strip():
+            dirty.append({"path": str(path), "branch": branch, "why": "工作区有未提交改动"})
+            continue
+        if apply:
+            _git(main, "worktree", "remove", str(path))
+            _git(main, "branch", "-d", branch, check=False)
+        reclaimed.append(str(path))
+
+    return {
+        "ok": True,
+        "action": "prune",
+        "applied": apply,
+        "reclaimed": sorted(reclaimed),
+        "dirty": dirty,
+        "kept": kept,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Isolated Peach agent worktree coordinator")
     parser.add_argument("--repo", type=Path, default=Path(__file__).resolve().parents[1])
@@ -124,12 +181,18 @@ def main() -> int:
     merge = sub.add_parser("integrate")
     merge.add_argument("--branch", required=True)
     merge.add_argument("--target", default="master")
+    sweep = sub.add_parser("prune")
+    sweep.add_argument("--target", default="master")
+    sweep.add_argument("--apply", action="store_true",
+                       help="真的回收；不给这个参数就只报告")
     args = parser.parse_args()
     try:
         if args.command == "create":
             result = create(args.repo, args.agent, args.task, args.root)
         elif args.command == "ready":
             result = ready(args.repo, args.target)
+        elif args.command == "prune":
+            result = prune(args.repo, args.target, apply=args.apply)
         else:
             result = integrate(args.repo, args.branch, args.target)
     except WorkspaceError as exc:

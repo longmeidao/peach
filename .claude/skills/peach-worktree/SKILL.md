@@ -70,3 +70,24 @@ description: 在用户说并行、开工作树、worktree、暂存、提交、re
 - 工作者报 `ready` 前必须 rebase 到当前 `master`。落后十天的分支不要指望协调者去 merge：
   共享文件上你那一侧是旧的，冲突解错就会把已上线的修复回退掉。2026-08-25 清理时有 7 条
   这样的分支，最后是把各自独有的那几个文件移植到当前 master，而不是 merge 分支本体。
+
+## 回收与顶层归置
+
+工作树用完要回收：`python scripts/agent_worktree.py prune` 列出分支已并入 master 且工作区
+干净的工作树，加 `--apply` 才真的删。以前只有 `create` 有入口，回收全靠人想起来——2026-08-29
+手工清到 3 个，两天后长回 74 个、占 868 MB。脏的一律拒收并单独列出：分支已合入不等于工作区
+里没东西，实测就有工作树的分支早已并入 master、里面却躺着一份成形的未提交改动。
+
+`Desktop\peach` 顶层只放 ADR-0017 定义的四个运行时目录加一个 `attic/`：
+
+    peach-app  peach-data  peach-sync  peach-worktrees  attic
+
+`peach-` 前缀专属那四个，不再新增；别的东西按性质进 `attic/` 的 `builds`／`evidence`／
+`instances`／`tools`／`reviews`，目录名写成 `YYYYMMDD-主题`，顶层不放散落文件。这条规则原本
+只写在 `../attic/README.md`——仓库外、不进 Git、AGENTS.md 也没提，于是在 peach-app 里干活的
+人根本看不到它，清完两天又堆回三个违规目录。现在由 `test_repo_hygiene` 守住。
+
+`attic/` 不等于可以随便删：`instances/` 常带 100 MB 量级的 ledger 副本，`tools/` 的
+`runtime.json` 会留 token。账本副本、复核产物和取证归档按 AGENTS.md 的保留清单对待，
+删除要单独确认。
+

@@ -44,7 +44,7 @@
 
 | 触发条件 | 文件 |
 | --- | --- |
-| 并行任务、创建工作树、暂存与提交、集成分支 | `.claude/skills/peach-worktree/SKILL.md` |
+| 并行任务、创建工作树、暂存与提交、集成分支、回收工作树、顶层目录归置 | `.claude/skills/peach-worktree/SKILL.md` |
 | 迁移、`--apply`、实体合并、批量删除等真实 ledger 写入 | `.claude/skills/peach-ledger-write/SKILL.md` |
 | 改完界面、API、契约或文案后声明影响面 | `.claude/skills/peach-surfaces/SKILL.md` |
 | 长跑批处理、刮削、限流、磁盘与流量预算 | `.claude/skills/peach-batch-jobs/SKILL.md` |
