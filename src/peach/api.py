@@ -128,11 +128,12 @@ def _offline_response(exc: MediaOffline) -> JSONResponse:
     return response
 
 
-#: 生成物与外部头像的缓存时长。这些端点按 asset / follow_item id 取图，内容换了
-#: id 也就换了（封面重生成会写新文件、头像换了会解析到新 URL），所以一天太短——
-#: 用户实测「基本不可能变动」。不加 immutable：那会让浏览器连刷新都不再回源，
-#: 万一真要换图就只能等过期。
-MEDIA_CACHE_SECONDS = 30 * 24 * 3600
+#: 生成物的缓存时长。这些端点按 asset / follow_item id 取图：内容换了 id 也就换了
+#: （封面重生成写的是新文件），所以一年也不嫌长。
+#: 不加 immutable——那会让浏览器连刷新都不再回源，真要换图就只能干等过期。
+MEDIA_CACHE_SECONDS = 365 * 24 * 3600
+#: 头像单独短一档：id 不变但人会换头像，作者换得还挺勤。
+AVATAR_CACHE_SECONDS = 30 * 24 * 3600
 
 
 def create_app(
@@ -669,7 +670,7 @@ def create_app(
         except PreviewUnavailable:
             return JSONResponse({"error": "unavailable"}, status_code=404)
         response = FileResponse(path, media_type="image/jpeg")
-        response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
+        response.headers["Cache-Control"] = f"public, max-age={AVATAR_CACHE_SECONDS}"
         return response
 
     @app.api_route("/follow-avatar", methods=["GET", "HEAD"])
@@ -680,7 +681,7 @@ def create_app(
         except (OSError, FollowSourceError):
             return JSONResponse({"error": "unavailable"}, status_code=404)
         response = RedirectResponse(target, status_code=307)
-        response.headers["Cache-Control"] = f"private, max-age={MEDIA_CACHE_SECONDS}"
+        response.headers["Cache-Control"] = f"private, max-age={AVATAR_CACHE_SECONDS}"
         return response
 
     @app.api_route("/follow-stream", methods=["GET", "HEAD"])
