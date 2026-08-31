@@ -47,7 +47,7 @@ class FollowContractTests(unittest.TestCase):
             follow_shared_root=self.root / "shared")
 
     def _seed(self, candidates=None, provider="rule34video", ref="lazyprocrastinator",
-              semantics="work"):
+              semantics="work", label="LazyProcrastinator"):
         candidates = candidates if candidates is not None else (
             FollowCandidate(provider=provider, external_id="4542713",
                             title="Fiona - Paizuri", duration=20.0,
@@ -63,7 +63,7 @@ class FollowContractTests(unittest.TestCase):
             store = FollowStore(lambda: connection,
                                 sources_root=self.contract.follow_sources_root)
             source_id = store.register(
-                provider=provider, ref=ref, label="LazyProcrastinator",
+                provider=provider, ref=ref, label=label,
                 url=f"https://{provider}.test/{ref}", semantics=semantics, moment=MOMENT)
             store.record(source_id, SourceFetch(
                 provider=provider, ref=ref, request_url=f"https://{provider}.test/{ref}",
@@ -519,6 +519,64 @@ class FollowContractTests(unittest.TestCase):
                          "https://rule34video.com/a.jpg")
         self.assertEqual(_archive_media_host("kemono", "https://example.test/a.jpg"),
                          "https://example.test/a.jpg")
+
+    def _tagged(self, external_id, tags):
+        return FollowCandidate(provider="rule34video", external_id=external_id,
+                               title=f"Clip {external_id}",
+                               url=f"https://rule34video.com/video/{external_id}/x/",
+                               extra={"tags": list(tags)})
+
+    def test_counts_follow_the_active_author_filter(self):
+        """筛掉一个作者，药丸上的数字必须跟着变。
+
+        用户实测：换作者、换来源、换标签，下面的列表变了，状态条上的数字一动不动。
+        原因是两个口径——数字来自一句全库 SQL，列表由浏览器在已加载的几页上筛。
+        作者身份不是库里的列（要经实体绑定和别名映射推导），所以筛选整个搬到服务端，
+        数字和列表从同一份数据出来。
+        """
+        self._seed(ref="a", label="Author A")
+        self._seed(ref="b", label="Author B", candidates=(
+            FollowCandidate(provider="rule34video", external_id="9001", title="B one",
+                            url="https://rule34video.com/video/9001/x/"),))
+        whole = self._get()
+        self.assertEqual(sum(whole["counts"].values()), 3)
+        key = next(source["author_key"] for source in whole["sources"]
+                   if source["ref"] == "b")
+        narrowed = self._get(author=key)
+        self.assertEqual(sum(narrowed["counts"].values()), 1,
+                         "选中一个作者后，数字仍是全库的——这正是用户报的那个 bug")
+        self.assertEqual([group["primary"]["title"] for group in narrowed["groups"]],
+                         ["B one"])
+
+    def test_the_tag_filter_takes_the_intersection_not_the_union(self):
+        """多选标签是「同时具备」，不是「任意一个」。
+
+        并集会把筛选变成越点越多，跟用户的意图正好相反。
+        """
+        self._seed(candidates=(self._tagged("1", ["anal", "pov"]),
+                               self._tagged("2", ["anal"]),
+                               self._tagged("3", ["pov"])))
+        both = self._get(tag="anal,pov")
+        self.assertEqual(sum(both["counts"].values()), 1)
+        self.assertEqual([group["primary"]["external_id"] for group in both["groups"]], ["1"])
+        self.assertEqual(sum(self._get(tag="anal")["counts"].values()), 2)
+
+    def test_filter_options_stay_whole_library_so_the_bar_does_not_collapse(self):
+        """可选项按全库算，不按筛后结果。
+
+        否则选中一个作者之后，服务端只回他的条目，作者栏里就只剩他一个人——
+        用户再也切不回去，只能刷新页面。标签和来源同理。
+        """
+        self._seed(ref="a", label="Author A", candidates=(self._tagged("1", ["anal"]),))
+        self._seed(ref="b", label="Author B", candidates=(self._tagged("2", ["pov"]),))
+        whole = self._get()
+        key = next(source["author_key"] for source in whole["sources"]
+                   if source["ref"] == "b")
+        narrowed = self._get(author=key)
+        self.assertEqual(narrowed["facets"]["authors"], whole["facets"]["authors"],
+                         "选中一个作者后另一个作者从筛选条上消失了")
+        self.assertEqual(dict(narrowed["facets"]["tags"]), {"anal": 1, "pov": 1},
+                         "标签选项也必须留着，否则换不了标签")
 
     def test_counts_are_whole_library_while_groups_are_one_page(self):
         """计数是全库口径，列表只有一页——界面并排显示这两个数时看起来像自相矛盾。
@@ -1560,8 +1618,10 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('onerror="this.remove()"')
 
     def test_follow_watch_filters_use_the_source_identity(self):
-        self.assertPageContains("if(followAuthor&&source.author_key!==followAuthor)return false;")
-        self.assertPageContains("if(followProvider&&source.provider!==followProvider)return false;")
+        # 判定本身搬去了服务端（见 FollowContractTests 里的筛选用例）；页面这一侧要
+        # 保证的是把身份原样交出去，而不是把显示名或来源标签当筛选值送过去。
+        self.assertPageContains("+(followAuthor?`&author=${encodeURIComponent(followAuthor)}`:'')")
+        self.assertPageContains("+(followProvider?`&provider=${encodeURIComponent(followProvider)}`:'')")
         self.assertPageContains('class="tier followauthors"')
         self.assertPageContains('class="tagbar followfilters"')
         self.assertPageContains('class="pill sourcepill" data-follow-provider=')
@@ -1572,7 +1632,8 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_follow_tags_are_multi_select_and_use_rule34_property_colours(self):
         self.assertPageContains("let followAuthor='',followProvider='',followTags=new Set()")
-        self.assertPageContains("![...followTags].every(tag=>")
+        # 取交集的判定在服务端；页面负责把多选的标签一次全交出去。
+        self.assertPageContains("+(followTags.size?`&tag=${encodeURIComponent([...followTags].join(','))}`:'')")
         self.assertPageContains("aria-pressed=\"${followTags.has(key)}\"")
         self.assertPageContains(".r34-artist")
         self.assertPageContains(".r34-character")
@@ -2057,6 +2118,36 @@ class FollowWebSourceTests(unittest.TestCase):
                          self.page.index("}", self.page.index(".follow .fcheck{"))]
         self.assertNotIn("--pill-radius", rule)
         self.assertNotIn("height:40px", rule)
+
+    def test_detail_images_open_the_same_lightbox_as_the_performer_page(self):
+        """关注详情的图要能点开大图，用的必须是同一个灯箱，不是另写一套。
+
+        灯箱原本写死了 `/photo?id=`：那是本地 ledger 资产的取图口，在线图没有
+        asset id，套不进去。所以按 slide 归一化，在线图直接给 URL。
+        """
+        self.assertPageContains("poster.onclick=()=>openPhotoLightbox(Math.max(0,imagePosition),followSlides)",
+                                "详情图片没有接上灯箱")
+        self.assertPageContains("async function openPhotoLightbox(index,source=null)",
+                                "灯箱仍只认自己的照片墙，收不下外部图集")
+        self.assertPageLacks('<img src="/photo?id=${item.id}"',
+                             "灯箱模板仍写死本地取图口")
+        self.assertPageContains(".followdetailposter.zoomable{cursor:zoom-in}",
+                                "可点开的图要有光标提示，否则没人知道能点")
+
+    def test_a_multi_image_post_hands_the_whole_set_to_the_lightbox(self):
+        """一条帖子有多张图时应当能在灯箱里左右翻完，而不是退出去再点下一张。"""
+        self.assertPageContains("const followSlides=imageMedia.length")
+        self.assertPageContains("src:`/follow-stream?id=${item.id}&media=${image.index}`")
+
+    def test_online_images_hide_the_local_only_detail_panel(self):
+        """在线图没有本机路径、大小和位置。
+
+        面板里那个「在资源管理器中显示」对它无从谈起——留着按钮点下去只会失败，
+        显示一堆「未知」也不比收起来诚实。
+        """
+        self.assertPageContains("if(!asset){toggle.hidden=true;dismiss();return}",
+                                "在线图仍会显示只对本地资产成立的详情面板")
+
 
 
 if __name__ == "__main__":

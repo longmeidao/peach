@@ -29,6 +29,10 @@ from .taste_history import read_creator_candidates
 PROVIDER_LABELS = follow_providers.labels()
 
 _STATUSES = ("new", "seen", "saved", "ignored")
+
+#: 关注库整库取回的上限。筛选要在 Python 里做（见 follow 载荷的注释），
+#: 所以这里不是分页，只是别让一个失控的库把内存吃干的护栏。
+_ALL_ITEMS = 100_000
 _BACKFILL_PROVIDERS = follow_providers.backfill_providers()
 _OFFICIAL_IDENTITY_PROVIDERS = follow_providers.official_identity_providers()
 
@@ -611,6 +615,11 @@ def q_follow(contract, args) -> dict:
     source_id = int(source) if str(source or "").isdigit() else None
     requested_item = args.get("item")
     item_id = int(requested_item) if str(requested_item or "").isdigit() else None
+    author = str(args.get("author") or "").strip()
+    provider = str(args.get("provider") or "").strip()
+    wanted_tags = tuple(value for value in
+                        (part.strip() for part in str(args.get("tag") or "").split(","))
+                        if value)
     with contract.database.read_connection() as connection:
         store = _store(contract, connection)
         source_rows = store.sources()
@@ -618,49 +627,61 @@ def q_follow(contract, args) -> dict:
         sources = [_source_payload(row, alias_map) for row in source_rows]
         alias_suggestions = _follow_alias_suggestions(source_rows, alias_map)
         enabled_source_ids = {int(row["id"]) for row in source_rows if row["enabled"]}
+        # 作者、来源和标签都不是库里的列：author_key 要经实体绑定、来源 metadata 和
+        # 别名映射推导，tags 要从条目 metadata JSON 解析再去噪。在 SQL 里重写这两套
+        # 推导等于把同一个语义实现两遍，迟早漂移。所以整库取回来在 Python 里筛——
+        # 实测 3054 条连 metadata 解析一起 15ms，不值得为它另设一套索引。
+        by_source = {int(row["id"]): row for row in source_rows}
+
+        def _matches(item) -> bool:
+            row = by_source.get(item.source_id)
+            if author and (row is None or author_key(row, alias_map) != author):
+                return False
+            if provider and (row is None or str(row["provider"] or "") != provider):
+                return False
+            if wanted_tags:
+                tags = set(_item_tags(item))
+                if not all(tag in tags for tag in wanted_tags):
+                    return False
+            return True
+
+        everything = tuple(item for item in store.items(source_id=source_id, limit=_ALL_ITEMS)
+                           if item.source_id in enabled_source_ids and not _excluded_item(item))
+        counted = tuple(item for item in everything if _matches(item))
         if item_id is not None:
             items = tuple(item for item in store.items_for_item(item_id)
                           if item.source_id in enabled_source_ids and not _excluded_item(item))
             has_more = False   # 直达详情只取这一组，没有下一页
         else:
-            # 多取一条只为判断「还有没有下一页」：过滤和分组都在取回之后做，
-            # 用剩下几条去反推有没有更多会把「这一页恰好全被过滤掉」误判成到底了。
-            page = store.items(statuses=statuses, source_id=source_id,
-                               limit=limit + 1, offset=offset)
-            has_more = len(page) > limit
-            items = tuple(item for item in page[:limit]
-                          if item.source_id in enabled_source_ids and not _excluded_item(item))
+            # 分页在筛选之后：早先是 SQL 先分页、前端再筛，选个冷门作者会看到一页里
+            # 只剩两三条，得反复点「加载更多」才凑出一屏。
+            page = [item for item in counted if not statuses or item.status in statuses]
+            has_more = len(page) > offset + limit
+            items = tuple(page[offset:offset + limit])
         groups = [_group_payload(group) for group in store.group(items)]
-        counts = dict(connection.execute(
-            "SELECT i.status, count(*) FROM follow_item i"
-            " JOIN follow_source s ON s.id=i.source_id"
-            " WHERE s.enabled=1 GROUP BY i.status").fetchall())
-        excluded_marks = ",".join("?" for _ in RULE34VIDEO_EXCLUDED_IDS)
-        excluded_counts = connection.execute(
-            "SELECT i.status, count(*) FROM follow_item i"
-            " JOIN follow_source s ON s.id=i.source_id"
-            f" WHERE s.enabled=1 AND s.provider='rule34video'"
-            f" AND i.external_id IN ({excluded_marks})"
-            " GROUP BY i.status",
-            tuple(RULE34VIDEO_EXCLUDED_IDS),
-        ).fetchall()
-        for status, count in excluded_counts:
-            counts[status] = max(0, int(counts.get(status, 0)) - int(count))
-        f95_excluded_counts: dict[str, int] = {}
-        for row in connection.execute(
-                "SELECT i.status,i.media_url,i.metadata_json FROM follow_item i"
-                " JOIN follow_source s ON s.id=i.source_id"
-                " WHERE s.enabled=1 AND s.provider='f95zone'").fetchall():
-            try:
-                metadata = json.loads(row["metadata_json"] or "{}")
-            except (TypeError, ValueError):
-                metadata = {}
-            if not _f95_has_resource(
-                    row["media_url"], metadata if isinstance(metadata, dict) else {}):
-                status = str(row["status"])
-                f95_excluded_counts[status] = f95_excluded_counts.get(status, 0) + 1
-        for status, count in f95_excluded_counts.items():
-            counts[status] = max(0, int(counts.get(status, 0)) - count)
+        # 筛选条上能选什么，必须按全库算而不是按筛后结果——否则选中一个作者之后，
+        # 作者栏里就只剩他自己，再也切不回去。标签同理，按分组而不是按条目计数：
+        # 一条发布的多个变体是同一件作品，标签不该被数三遍。
+        facet_authors: set[str] = set()
+        facet_providers: set[str] = set()
+        facet_tags: dict[str, int] = {}
+        for group in store.group(everything):
+            row = by_source.get(group.primary.source_id)
+            if row is not None:
+                key = author_key(row, alias_map)
+                if key:
+                    facet_authors.add(key)
+                facet_providers.add(str(row["provider"] or ""))
+            for tag in _item_tags(group.primary):
+                facet_tags[tag] = facet_tags.get(tag, 0) + 1
+        # counts 与列表同源。以前它是一句全库 SQL，再逐条减掉被隐藏的 rule34video
+        # 和无资源的 f95zone——同一套排除规则维护了两份，而且它完全不看作者、来源和
+        # 标签筛选，于是筛选一换，列表变了、药丸上的数字纹丝不动。现在两边都从
+        # `counted` 出发：筛选怎么变，数字就怎么变，扣减逻辑也不必再写第二遍。
+        counts: dict[str, int] = {}
+        for item in counted:
+            status = str(item.status)
+            counts[status] = counts.get(status, 0) + 1
     suggestions = _suggestions(contract, sources)
     return {
         "ok": True,
@@ -670,6 +691,11 @@ def q_follow(contract, args) -> dict:
         "suggestions": suggestions,
         "groups": groups,
         "counts": {status: int(counts.get(status, 0)) for status in _STATUSES},
+        "facets": {
+            "authors": sorted(facet_authors),
+            "providers": sorted(facet_providers),
+            "tags": sorted(facet_tags.items(), key=lambda pair: (-pair[1], pair[0])),
+        },
         # counts 是全库口径，groups 只是这一页——两个数并排显示过，看起来像自相矛盾。
         "offset": offset,
         "limit": limit,

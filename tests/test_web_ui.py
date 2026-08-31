@@ -2132,10 +2132,57 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks(".followmediaicons .entitymediatoggle")
         self.assertPageLacks('<div class="mediatabs" hidden></div>')
 
+    def _js_function(self, name):
+        """截出一个 JS 函数的正文，用于对「这个函数做了什么」下断言。
+
+        按整页源码找子串很容易断在无关的地方；这里只取从函数头到下一个顶层函数
+        之间的部分，断言的对象就是它自己的实现。
+        """
+        body = self.page[self.page.index("function " + name + "("):]
+        stops = [at for at in (body.find(chr(10) + "async function "),
+                               body.find(chr(10) + "function ")) if at > 0]
+        return body[:min(stops)] if stops else body
+
+    def test_every_full_page_view_clears_the_catalog_chrome_through_one_helper(self):
+        """整页视图必须走同一个清理函数，不许各自手抄一份。
+
+        用户实测：在 /tags?view=alphabet 点一个标签（目录被它筛住），再点关注页，
+        关注页标题上面还挂着「白虎 ✕ 全部清除」——那是目录的生效筛选条，跟关注页
+        毫无关系。
+
+        根因不是漏了一行。`enterManagementSurface()` 早就存在而且是对的，但关注、
+        播放列表、复核三个页面各自手抄了它的一部分：抄走了 tiers 和 tagbar，漏掉了
+        combo，也漏掉了 `loadRequestSeq++`——少了后者，一个在途的目录请求返回后
+        还能把筛选条重新画到新页面上。所以这里断言「都调用它」，而不是逐个断言
+        「都记得清 combo」：后者只会在下次有人再抄一份时接着漏。
+        """
+        for name in ("openStats", "openTaste", "openPlaylists", "openReview", "openFollow"):
+            self.assertIn("enterManagementSurface()", self._js_function(name),
+                          name + " 没有走中央清理函数，多半又手抄了一份不完整的")
+        self.assertPageContains("loadRequestSeq++;listLoading=false;$('#combo').innerHTML='';",
+                                "中央清理函数必须同时收掉筛选芯片和在途的目录请求")
+        # 手抄正是这个 bug 的来源。除了清理函数自己，只有目录内部的管理条可以直接动
+        # 这两个元素——它换的是目录自己的形态，而不是切去另一个页面。
+        self.assertEqual(self.page.count("$('#tagbar').style.display='none'"), 2,
+                         "又有地方手抄了清理逻辑，请改调 enterManagementSurface()")
+
+    def test_leaving_and_returning_to_follow_starts_from_a_clean_filter_state(self):
+        """关注页的筛选是模块级可变全局，重新进入必须回到默认。
+
+        以前只有 author 和 media 进了 URL，provider、tag、status 哪儿都没重置：
+        离开再回来筛选条上还按着，而它们现在还决定服务端取哪些条目，等于取错数据。
+        """
+        entry = self._js_function("openFollow")
+        for reset in ("followAuthor=''", "followProvider=''", "followTags=new Set()",
+                      "followFilter='new'", "followMediaView='videos'"):
+            self.assertIn(reset, entry, "重新进入关注页没有重置 " + reset)
+
     def test_photo_wall_uses_cached_thumbnails_and_only_the_lightbox_reads_originals(self):
         # 瀑布流铺原图等于一屏付几十兆 PikPak 流量；缩略图由服务端缓存一次。
         self.assertPageContains('<img src="/photo-thumb?id=${item.id}"')
-        self.assertPageContains('<img src="/photo?id=${item.id}"')
+        # 取图口收进 photoSlide：灯箱现在也服务关注页的在线图，模板不能再写死本地口。
+        self.assertPageContains(
+            ':{src:`/photo?id=${item.id}`,thumb:`/photo-thumb?id=${item.id}`')
         self.assertPageLacks('<img src="/photo?id=${item.id}" class="photocell"')
         self.assertPageContains(".photowall{column-count:5;column-gap:10px}")
         self.assertPageContains("break-inside:avoid")
@@ -2235,9 +2282,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('aria-haspopup="dialog"')
         self.assertPageContains('<section class="photodetail" id="photoDetail" role="dialog" aria-modal="false"')
         self.assertPageContains('aria-labelledby="photoDetailTitle" hidden>')
-        self.assertPageContains("LOC[item.location]||item.location||'来源未知'")
+        self.assertPageContains("LOC[asset.location]||asset.location||'来源未知'")
         self.assertPageContains("size<1024*1024?`${Math.max(1,Math.round(size/1024))} KB`")
-        self.assertPageContains("reveal.dataset.photoReveal=String(item.id)")
+        self.assertPageContains("reveal.dataset.photoReveal=String(asset.id)")
         self.assertPageContains("revealSource(Number(reveal.dataset.photoReveal),status,{toastSuccess:true,button:reveal})")
         self.assertPageContains("toast('已在资源管理器中显示')")
         self.assertPageContains(".toasts{position:fixed;right:16px;bottom:22px;z-index:var(--layer-popover)")
