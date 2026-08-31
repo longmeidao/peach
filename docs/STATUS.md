@@ -1,7 +1,7 @@
 # Peach 当前状态
 undefine
 undefine
-最后核验：2026-08-30
+最后核验：2026-08-31
 
 本文件只保存当前运行态、已核验能力、仍需完成的工作和自动统计。已完成批次、旧测试数字与事故过程由 Git 历史保存，不在这里累积。
 
@@ -20,6 +20,7 @@ undefine
 
 ## 已核验能力
 
+- 2026-08-31 播放器第十三轮按用户截图纠偏：设置子层返回键继续保留 48 px 命中区和 32 px 官方箭头，只把内部悬停／按下圆形收为 40 px，避免越过 57 px 标题栏；音量 tooltip、音量面板和进度条分别锁定为 4／3／2 层，volume bar 允许越界显示，百分比提示不再被蓝色进度线遮挡。变基当前主线后 Windows `catalog` 466 项通过；项目 CA 严格 HTTPS `/healthz` 返回 0.7.13、writer、非只读，生产 CSS 与 `master` 的 SHA-256 同为 `3346BDBF67C1B6E6374879A7C8D85E981E24AEF6C511552C949E116F9D4617BB`，无需重启。本轮没有取得可控浏览器修改后画面，因此最终视觉验收未取得；未写真实 ledger、未替换 EXE。
 - 2026-08-31 播放器第十二轮按 YouTube `e937390a` 锁定源码纠偏：设置子层不再复用全站开放描边 `i-check`，改为官方 context menu 内嵌的 24×24 填充 path，消除选中项黑色三角形；隐藏 Video.js 已播进度末端的当前时刻 tooltip，只保留鼠标位置 `vjs-peach-seek-preview`。音量悬停改由整个外层的 `:after{inset:4px}` 同时覆盖图标和滑轨，52 px 滑轨容器固定为 40 px 高，2 px 轨道绝对定位到 `top:50%`，12 px 圆点随之居中。变基当前主线后 Windows `catalog` 466 项通过；项目 CA 严格 HTTPS `/healthz` 返回 0.7.13、writer、非只读，生产 HTML／CSS／JS 哈希与 `master` 一致，无需重启。Chrome 能枚举 YouTube／Peach 标签，但接管 YouTube 标签和一次恢复均在 30 秒超时，因此修改后的 Chrome DOM、computed style 与最终画面验收未取得。本轮未写真实 ledger、未替换 EXE。
 - 2026-08-31 播放器第十一轮直接复用 YouTube 当前 `e937390a` 官方 `www-player.css` 与 `base.js`：中央播放／暂停改为仅在用户手势后的反馈层，初始加载使用官方 64 px 双半圆旋转器结构和时序；氛围模式、播放速度、清晰度、前进／返回及中央播放／暂停图标使用本版本源码路径。音量按官方 `40 + 52 + 3 + 16 = 111 px` 展开几何重排，2 px 滑轨与 12 px 圆点垂直居中；设置主页改为 48 px 行和独立 32 px 箭头列，子页选项使用 35 px 左缩进、左侧选中标记，不再渲染 1080p 右侧符号。变基当前主线后 Windows `catalog` 465 项通过；项目 CA 严格 HTTPS `/healthz` 返回 0.7.13、writer、非只读，生产 CSS／JS 哈希与 `master` 一致，无需重启。Chrome 能枚举 YouTube／Peach 标签页，但读取页面资源和接管标签页连续超时，因此本轮修改后的 Chrome DOM、computed style 与最终画面验收未取得。本轮未写真实 ledger、未替换 EXE。
 - 2026-08-31 元数据候选保留 MetaTube 模型中 Peach 先前丢弃的目录证据：`provider_id`／`content_id` 与标题、原题、片长、导演、厂牌标签、封面／海报／截图／预告 URL 进入同一来源候选和 `/review`，但不映射真相字段、不下载 URL，来源片长也不覆盖媒体探测值；审批 provenance 同步保留稳定来源身份。Pigo v1.4.6 对 512 张真实头像无写入 POC 检出 488 张，现有 OpenCV Haar 检出 313 张；Pigo-only 抽样出现无脸误报，且其纯 Go 部署优势不适用于 Peach，故不引入依赖，OpenCV 暂留，后续只 POC 当前 YuNet 与 MetaTube 主脸聚类。正式 `metadata` 168 项、最新主线 `catalog` 466 项通过；变基后全量 1318 项中本批相关项全通过、13 项按平台跳过，唯一失败是当时 `master` 已存在的 YouTube 参考快照与登记哈希不一致，本分支未修改这两个文件，未擅自接受外部参考变更。未写真实 ledger、未重建历史候选、未部署或重启生产。
