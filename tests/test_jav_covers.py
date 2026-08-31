@@ -54,6 +54,30 @@ class FetchRetryTests(unittest.TestCase):
             [call(2), call(4), call(6), call(8)],
         )
 
+    def test_exhausted_transport_error_discards_the_poisoned_pool(self):
+        class Transport:
+            closed = False
+
+            def close(self):
+                self.closed = True
+
+        original = Transport()
+        replacement = Transport()
+        with patch.object(covers, "HttpxTransport", return_value=replacement):
+            actual = covers._renew_transport_after_error(
+                original, covers.httpx.PoolTimeout("pool exhausted"),
+            )
+
+        self.assertTrue(original.closed)
+        self.assertIs(actual, replacement)
+
+    def test_confirmed_absence_keeps_the_healthy_pool(self):
+        transport = object()
+        actual = covers._renew_transport_after_error(
+            transport, covers.Unavailable("no candidates"),
+        )
+        self.assertIs(actual, transport)
+
 
 def transport_for(pages):
     """pages: URL -> (status, bytes)。未列出的 URL 返回 404。"""

@@ -398,6 +398,15 @@ def _write_log(path: Path, rows: list[dict]) -> None:
         writer.writerows(rows)
 
 
+def _renew_transport_after_error(transport: HttpxTransport,
+                                 error: Exception) -> HttpxTransport:
+    """永久 transport 失败后丢弃连接池，避免后续番号连续 PoolTimeout。"""
+    if not isinstance(error, httpx.TransportError):
+        return transport
+    transport.close()
+    return HttpxTransport()
+
+
 def run(args: argparse.Namespace) -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     guard = DiskGuard(system_volume(), args.min_free, args.disk_check_secs)
@@ -460,6 +469,7 @@ def run(args: argparse.Namespace) -> int:
             # `Exception` 已涵盖 Unavailable 与网络异常；Ctrl-C 是 BaseException
             # 的另一支，不会被这里吞掉，仍能正常中断。
             except Exception as exc:
+                transport = _renew_transport_after_error(transport, exc)
                 stats["miss"] += 1
                 rows.append({"code": code, "result": "未取得", "source": "",
                              "width": "", "height": "", "kb": "", "url": "",
