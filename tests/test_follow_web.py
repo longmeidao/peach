@@ -2188,6 +2188,8 @@ class FollowWebSourceTests(unittest.TestCase):
         )
         self.assertPageContains("followMediaView==='images'?' followphotowall':''")
         self.assertPageContains(".followlist.followphotowall{display:block;column-count:5")
+        self.assertPageContains(".followlist.followphotowall>.stage{column-span:all}",
+                                "图片瀑布流里的详情必须跨栏，否则媒体列会被侧栏挤成 0px")
         self.assertPageContains(".followitem.imagecard .followvisual .pic>img{position:relative")
 
     def test_external_file_pages_do_not_default_to_video_and_paging_actions_share_one_row(self):
