@@ -6,7 +6,6 @@ feedback functions; schema changes belong to the migration runner.
 from __future__ import annotations
 
 import os
-import csv
 import hashlib
 import json
 import random
@@ -301,6 +300,33 @@ class WebContract:
 
 # ────────────────────────────── 查询 ──────────────────────────────
 
+def tag_is_not_a_performer_name(tag: str) -> str:
+    """「这个标签不是某个女优的名字」的 SQL 判据。
+
+    同名的标签和 performer 身份会互相冒充，所以标签榜要把它们排掉。这条同样写了
+    四份，其中一份拿 `lower(trim(t.tag))` 去比 `performer.normalized_name`——后者
+    是 Python casefold 写进去的，而 SQLite 的 lower() 只认 ASCII，于是西里尔或
+    带罗马数字的名字永远排不掉。列一侧一律走 `peach_normalize()`。
+    """
+    return ("NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
+            f"AND performer.normalized_name={tag})")
+
+
+def tag_not_hidden(asset: str, tag: str) -> str:
+    """「这个标签没有被用户隐藏」的 SQL 判据。
+
+    同一条规则此前在五处各写了一份裸 SQL。join 列和比较列因查询语境不同是正常的，
+    但规则本体（默认档案、hidden=1、按归一化名比对）只该有一份：漏抄一处，被隐藏
+    的标签就会从那个表面漏回来，而这属于语义契约。
+
+    `tag` 传比较用的表达式。列一侧要用 `peach_normalize()`——SQLite 的 lower() 只认
+    ASCII，拿它去比 Python casefold 写进去的值，非 ASCII 标签永远匹配不上。
+    """
+    return ("NOT EXISTS(SELECT 1 FROM asset_tag_preference p "
+            f"WHERE p.asset_id={asset} AND p.profile_id='{DEFAULT_PROFILE_ID}' "
+            f"AND p.hidden=1 AND p.normalized_tag={tag})")
+
+
 def q_items(contract: WebContract, args):
     trash = args.get("state") == "trash"
     # 普通馆藏仍是视频表面；回收站必须展示所有文件类型，否则从垃圾复核移入的
@@ -339,19 +365,17 @@ def q_items(contract: WebContract, args):
             "((EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
             "WHERE ae.asset_id=a.id AND e.kind='tag' AND e.canonical_name=?) OR "
             "EXISTS(SELECT 1 FROM asset_tag t WHERE t.asset_id=a.id AND t.tag=?)) AND "
-            "NOT EXISTS(SELECT 1 FROM asset_tag_preference p WHERE p.asset_id=a.id "
-            f"AND p.profile_id='{DEFAULT_PROFILE_ID}' AND p.hidden=1 "
-            "AND p.normalized_tag=lower(trim(?))))"
+            + tag_not_hidden("a.id", "?") + ")"
         )
         if args.get("tag_match") == "any" and len(tags) > 1:
             where.append("(" + " OR ".join(tag_clause for _ in tags) + ")")
             for tag in tags:
-                par.extend((tag, tag, tag))
+                par.extend((tag, tag, normalize_entity_name(tag)))
         else:
             # 默认保持原有组合语义：逗号分隔的标签必须全部满足。
             for tag in tags:
                 where.append(tag_clause)
-                par.extend((tag, tag, tag))
+                par.extend((tag, tag, normalize_entity_name(tag)))
     # 回收站是跨类型恢复入口。首页遗留的「只看有缩略图」、时长、画幅和 JAV
     # 条件只对视频成立，带进这里会再次把图片、网址快捷方式等资源藏起来。
     if not trash and args.get("len"):
@@ -720,18 +744,16 @@ def q_item(contract: WebContract, aid):
             return {"error": "not found"}
         d = dict(r)
         legacy = [x[0] for x in c.execute(
-            "SELECT t.tag FROM asset_tag t WHERE t.asset_id=? AND NOT EXISTS("
-            "SELECT 1 FROM asset_tag_preference p WHERE p.asset_id=t.asset_id "
-            f"AND p.profile_id='{DEFAULT_PROFILE_ID}' AND p.hidden=1 "
-            "AND p.normalized_tag=lower(trim(t.tag))) ORDER BY t.tag", (aid,),
+            "SELECT t.tag FROM asset_tag t WHERE t.asset_id=? AND "
+            + tag_not_hidden("t.asset_id", "peach_normalize(t.tag)")
+            + " ORDER BY t.tag", (aid,),
         )]
         canonical = list(c.execute(
             "SELECT DISTINCT e.id,e.kind,e.canonical_name FROM asset_entity ae "
             "JOIN entity e ON e.id=ae.entity_id WHERE ae.asset_id=? "
             "AND e.kind IN ('tag','performer','creator','studio','series') "
-            "AND (e.kind<>'tag' OR NOT EXISTS(SELECT 1 FROM asset_tag_preference p "
-            f"WHERE p.asset_id=ae.asset_id AND p.profile_id='{DEFAULT_PROFILE_ID}' AND p.hidden=1 "
-            "AND p.normalized_tag=e.normalized_name)) "
+            "AND (e.kind<>'tag' OR "
+            + tag_not_hidden("ae.asset_id", "e.normalized_name") + ") "
             "ORDER BY e.kind,e.canonical_name", (aid,),
         ))
     canonical_tags = [name for _, kind, name in canonical if kind == "tag"]
@@ -1141,12 +1163,9 @@ def q_entity(contract: WebContract, args):
             "JOIN entity tag ON tag.id=tagged.entity_id "
             "JOIN asset a ON a.id=scope.asset_id "
             "WHERE scope.entity_id=? AND a.medium='video' AND tag.kind='tag' "
-            "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
-            "AND performer.normalized_name=tag.normalized_name) "
+            "AND " + tag_is_not_a_performer_name("tag.normalized_name") + " "
             f"AND tag.canonical_name NOT IN ({','.join('?' for _ in LENGTH_TAGS)}) "
-            "AND NOT EXISTS(SELECT 1 FROM asset_tag_preference p "
-            f" WHERE p.asset_id=scope.asset_id AND p.profile_id='{DEFAULT_PROFILE_ID}' "
-            " AND p.hidden=1 AND p.normalized_tag=tag.normalized_name) "
+            "AND " + tag_not_hidden("scope.asset_id", "tag.normalized_name") + " "
             "GROUP BY tag.id,tag.canonical_name ORDER BY n DESC,tag.canonical_name LIMIT 36",
             (d["id"], *sorted(LENGTH_TAGS)),
         )]
@@ -1308,11 +1327,8 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="")
                    "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
                    "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='tag' "
                    f"AND e.canonical_name NOT IN ({','.join('?' for _ in LENGTH_TAGS)}) "
-                   "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
-                   "AND performer.normalized_name=e.normalized_name) "
-                   "AND NOT EXISTS(SELECT 1 FROM asset_tag_preference p "
-                   f"WHERE p.asset_id=ae.asset_id AND p.profile_id='{DEFAULT_PROFILE_ID}' "
-                   "AND p.hidden=1 AND p.normalized_tag=e.normalized_name) ")
+                   "AND " + tag_is_not_a_performer_name("e.normalized_name") + " "
+                   "AND " + tag_not_hidden("ae.asset_id", "e.normalized_name") + " ")
             par = sorted(LENGTH_TAGS)
             if q: sql += "AND e.canonical_name LIKE ? "; par.append(f"%{q}%")
             sql += "GROUP BY e.id,e.canonical_name ORDER BY n DESC"
@@ -1406,8 +1422,7 @@ def q_stats(contract: WebContract):
             "SELECT t.tag k, count(*) n FROM asset_tag t JOIN asset a ON a.id=t.asset_id "
             "WHERE a.medium='video' AND t.source IN ('name','r18','vision','vision-creator',"
             "'vision_creator','vision_creator_review') "
-            "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
-            "AND performer.normalized_name=lower(trim(t.tag))) "
+            "AND " + tag_is_not_a_performer_name("peach_normalize(t.tag)") + " "
             "GROUP BY t.tag ORDER BY n DESC LIMIT 30")]
         tables = {row[0] for row in c.execute(
             "SELECT name FROM sqlite_schema WHERE type='table'"
@@ -1526,8 +1541,7 @@ def q_facets(
             "SELECT e.canonical_name AS k, count(DISTINCT ae.asset_id) AS n "
             "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
             "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='tag' " + scope +
-            "AND NOT EXISTS(SELECT 1 FROM entity performer WHERE performer.kind='performer' "
-            "AND performer.normalized_name=e.normalized_name) "
+            "AND " + tag_is_not_a_performer_name("e.normalized_name") + " "
             "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 400", scope_params)]
         classified = [
             dict(r, cat=tag_cat(r["k"]))

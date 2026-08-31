@@ -19,7 +19,6 @@ r"""
 from __future__ import annotations
 
 import argparse
-import csv
 import re
 import sqlite3
 from pathlib import Path
@@ -28,6 +27,7 @@ from peach.config import DATABASE_PATH, GENERATED_DIR
 from peach.classification import is_probable_mainstream_release, is_structural_creator
 from peach.entities import upsert_asset_entity
 from peach.migrations import sqlite_backup
+from peach.review_csv import read_rows, write_rows
 
 DB = DATABASE_PATH
 BOARD_DIR = GENERATED_DIR / "boards"
@@ -100,8 +100,7 @@ def export_review(db_path: Path, board_dir: Path, output: Path) -> tuple[int, in
 
     previous: dict[str, dict] = {}
     if output.is_file():
-        with output.open(encoding="utf-8-sig", newline="") as handle:
-            previous = {row["board"]: row for row in csv.DictReader(handle)}
+        previous = {row["board"]: row for row in read_rows(output)}
 
     rows: list[dict] = []
     pending = 0
@@ -133,19 +132,12 @@ def export_review(db_path: Path, board_dir: Path, output: Path) -> tuple[int, in
         pending += row["status"] == "pending"
         rows.append(row)
 
-    output.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output.with_suffix(output.suffix + ".tmp")
-    with temporary.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=REVIEW_FIELDS)
-        writer.writeheader()
-        writer.writerows(rows)
-    temporary.replace(output)
+    write_rows(output, REVIEW_FIELDS, rows, atomic=True)
     return len(rows), pending
 
 
 def apply_review(db_path: Path, review_path: Path, backup: Path) -> tuple[int, int]:
-    with review_path.open(encoding="utf-8-sig", newline="") as handle:
-        approved = [row for row in csv.DictReader(handle) if row.get("status") == "approved"]
+    approved = [row for row in read_rows(review_path) if row.get("status") == "approved"]
     sqlite_backup(db_path, backup)
     connection = sqlite3.connect(db_path, timeout=60)
     connection.execute("PRAGMA busy_timeout=60000")

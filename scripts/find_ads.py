@@ -26,12 +26,12 @@ from __future__ import annotations
 
 import collections
 import argparse
-import csv
 import os
 import re
 import sqlite3
 from pathlib import Path, PureWindowsPath
 
+from peach.review_csv import write_rows
 from peach.config import DATABASE_PATH, GENERATED_DIR
 
 DEFAULT_OUTPUT = GENERATED_DIR / "ad-candidates.csv"
@@ -150,11 +150,7 @@ def find_candidates(db_path: Path | str, min_group: int = 3) -> tuple[list[dict]
 
 def write_candidates(output: Path | str, plan: list[dict]) -> None:
     output = Path(output)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("w", encoding="utf-8-sig", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=FIELDS)
-        writer.writeheader()
-        writer.writerows(plan)
+    write_rows(output, FIELDS, plan)
 
 
 def build_parser() -> argparse.ArgumentParser:

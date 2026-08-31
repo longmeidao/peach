@@ -194,3 +194,22 @@ class PidFileLock:
 
     def __exit__(self, *_exc: object) -> None:
         self.release()
+
+
+def job_main(build_parser, run, argv: list[str] | None = None) -> int:
+    """长跑批处理脚本的统一入口收尾。
+
+    解析参数、拿住 pid 锁、跑 `run(args)`；被磁盘或来源策略拦下时打印一行 `[stop]`
+    并交出策略自己的退出码，而不是抛栈——批处理是无人值守跑的，退出码才是被读的那个。
+
+    这段此前在 creator_boards、probe、sheets 三个脚本里逐字相同地各写了一份。它们
+    共用的不只是形状，还有「pid 锁必须包住整个 run」和「策略异常不算崩溃」这两条
+    约定；散成三份，下一个脚本照抄时漏掉锁或吞掉退出码都不会有人发现。
+    """
+    args = build_parser().parse_args(argv)
+    try:
+        with PidFileLock(args.lock):
+            return run(args)
+    except JobPolicyError as exc:
+        print(f"[stop] {exc}")
+        return exc.exit_code

@@ -764,7 +764,9 @@ class OperationalScriptTests(unittest.TestCase):
             )
 
     def test_code_normalization(self):
-        normalise = self.scrape_codes.normalise
+        # 归一化本体已收进 catalog_rules；脚本只是 import 它，这里验的是脚本用的
+        # 确实是那一份，而不是自己又抄了一个同名函数。
+        normalise = self.scrape_codes.normalise_code_key
         self.assertEqual(normalise("fc2ppv-1234567"), "FC2-PPV-1234567")
         self.assertEqual(normalise("abw123"), "ABW-123")
         self.assertEqual(normalise("ipvr00296"), "IPVR-296")

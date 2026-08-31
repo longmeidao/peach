@@ -6,11 +6,11 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import sqlite3
 from collections import Counter
 from pathlib import Path
 
+from peach.review_csv import write_rows
 from peach.config import DATABASE_PATH
 
 
@@ -84,11 +84,7 @@ def summaries(items: list[dict[str, object]]) -> list[dict[str, object]]:
 
 
 def _write(path: Path, fields: tuple[str, ...], data: list[dict[str, object]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields)
-        writer.writeheader()
-        writer.writerows(data)
+    write_rows(path, fields, data)
 
 
 def main() -> int:

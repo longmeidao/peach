@@ -30,9 +30,7 @@ r"""女优高清头像缺口审计：只产候选与缓存证据，不写 ledger
 from __future__ import annotations
 
 import argparse
-import csv
 import json
-import os
 import re
 import sqlite3
 import threading
@@ -55,6 +53,7 @@ from peach.avatar_provider import (
 )
 from peach.config import DATABASE_PATH, GENERATED_DIR
 from peach.http import HttpRequest, HttpTransport, HttpxTransport
+from peach.review_csv import read_rows, write_rows
 
 GFRIENDS_RAW = "https://raw.githubusercontent.com/gfriends/gfriends/master/"
 # 目录名首字符即质量档位；0 最优，z（DMM 官方小图）最次。
@@ -541,8 +540,7 @@ def read_prior(path: Path) -> tuple[list[dict], set[int]]:
     done: set[int] = set()
     if not path.is_file():
         return kept, done
-    with path.open(encoding="utf-8-sig", newline="") as handle:
-        for old in csv.DictReader(handle):
+    for old in read_rows(path):
             verdict = old.get("verdict")
             cache_complete = bool(old.get("sha256") and old.get("provenance_path"))
             # 旧版 ok 只有远端 URL，没有本地缓存、内容哈希与稳定 provenance；
@@ -557,18 +555,7 @@ def read_prior(path: Path) -> tuple[list[dict], set[int]]:
 
 
 def write_csv(path: Path, rows: list[dict]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    try:
-        with temporary.open("w", encoding="utf-8-sig", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=FIELDS)
-            writer.writeheader()
-            for row in rows:
-                writer.writerow({key: row.get(key, "") for key in FIELDS})
-        os.replace(temporary, path)
-    except BaseException:
-        temporary.unlink(missing_ok=True)
-        raise
+    write_rows(path, FIELDS, rows, atomic=True, fill_missing=True)
 
 
 def candidate_rows(rows: list[dict]) -> list[dict]:
@@ -604,31 +591,11 @@ def candidate_rows(rows: list[dict]) -> list[dict]:
 
 
 def write_candidates(path: Path, rows: list[dict]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    try:
-        with temporary.open("w", encoding="utf-8-sig", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=CANDIDATE_FIELDS)
-            writer.writeheader()
-            writer.writerows(candidate_rows(rows))
-        os.replace(temporary, path)
-    except BaseException:
-        temporary.unlink(missing_ok=True)
-        raise
+    write_rows(path, CANDIDATE_FIELDS, candidate_rows(rows), atomic=True)
 
 
 def write_health(path: Path, health: SourceHealth) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    try:
-        with temporary.open("w", encoding="utf-8-sig", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=HEALTH_FIELDS)
-            writer.writeheader()
-            writer.writerow(health.snapshot())
-        os.replace(temporary, path)
-    except BaseException:
-        temporary.unlink(missing_ok=True)
-        raise
+    write_rows(path, HEALTH_FIELDS, [health.snapshot()], atomic=True)
 
 
 def run(args: argparse.Namespace, transport: HttpTransport | None = None) -> int:

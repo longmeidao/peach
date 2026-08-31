@@ -35,7 +35,6 @@ r"""把 ledger 里的拉丁名 creator 回配到 babepedia 档案，产出候选
 from __future__ import annotations
 
 import argparse
-import csv
 import re
 import sqlite3
 import time
@@ -44,6 +43,7 @@ from pathlib import Path
 
 from peach.config import DATABASE_PATH, GENERATED_DIR
 from peach.http import HttpRequest, HttpTransport, HttpxTransport
+from peach.review_csv import read_rows, write_rows
 
 BASE = "https://www.babepedia.com/babe/"
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -189,9 +189,8 @@ def build_parser() -> argparse.ArgumentParser:
 def load_done(path: Path) -> dict[str, dict]:
     if not path.is_file():
         return {}
-    with path.open(encoding="utf-8-sig", newline="") as handle:
-        return {row["creator"]: row for row in csv.DictReader(handle)
-                if row.get("verdict") != VERDICT_BLOCKED}
+    return {row["creator"]: row for row in read_rows(path)
+            if row.get("verdict") != VERDICT_BLOCKED}
 
 
 def run(args: argparse.Namespace) -> int:
@@ -237,11 +236,7 @@ def run(args: argparse.Namespace) -> int:
 
 
 def _write(path: Path, rows: list[dict]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=FIELDS)
-        writer.writeheader()
-        writer.writerows(rows)
+    write_rows(path, FIELDS, rows)
 
 
 def main(argv: list[str] | None = None) -> int:

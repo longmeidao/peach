@@ -128,11 +128,13 @@ class CodeShapeTests(unittest.TestCase):
         self.assertEqual(covers.code_variants("ABW-232"), ["ABW-232"])
 
     def test_codes_are_normalised_to_three_digits(self):
-        self.assertEqual(covers.normalise_code("abw232"), "ABW-232")
-        self.assertEqual(covers.normalise_code("ABW-0232"), "ABW-232")
+        # 归一化本体收进了 catalog_rules，脚本 import 它；这里验的是脚本用的
+        # 确实是那一份，而不是又抄了一个同名函数。
+        self.assertEqual(covers.normalise_code_key("abw232"), "ABW-232")
+        self.assertEqual(covers.normalise_code_key("ABW-0232"), "ABW-232")
 
     def test_amateur_prefix_survives_normalisation(self):
-        self.assertEqual(covers.normalise_code("278gyan17"), "278GYAN-017")
+        self.assertEqual(covers.normalise_code_key("278gyan17"), "278GYAN-017")
 
 
 class ContentIdTests(unittest.TestCase):

@@ -9,7 +9,6 @@
 """
 from __future__ import annotations
 
-import csv
 import json
 import os
 import re
@@ -29,6 +28,7 @@ from .entities import (
     upsert_asset_entity,
 )
 from .metadata_policy import SOURCE_SPECS
+from .review_csv import read_rows
 
 
 class ReviewContract(Protocol):
@@ -125,8 +125,7 @@ def read_candidates(category: str, root: Path | None = None) -> tuple[list[dict]
     if path is None or not path.is_file():
         return [], None, 0
     key_column = CANDIDATE_KEY[category]
-    with path.open(encoding="utf-8-sig", newline="") as handle:
-        raw = list(csv.DictReader(handle))
+    raw = read_rows(path)
     rows, skipped = [], 0
     for row in raw:
         key = str(row.get(key_column) or "").strip()

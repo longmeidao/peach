@@ -19,6 +19,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from peach.catalog_rules import normalise_code_key
 from peach.config import DATABASE_PATH, GENERATED_DIR, LOG_DIR, SOURCES_DIR, STATE_DIR
 from peach.jobs import DiskGuard, JobPolicyError
 from peach.metadata import (
@@ -36,6 +37,7 @@ from peach.metadata_policy import (
     sort_candidates,
 )
 from peach.platform import system_volume
+from peach.review_csv import ENCODING, write_rows
 
 
 _logf = None
@@ -100,19 +102,6 @@ def close_log() -> None:
     if _logf is not None:
         _logf.close()
         _logf = None
-
-
-def normalise(code: str) -> str:
-    """Normalize only the movie-code spellings Peach explicitly accepts."""
-    value = str(code or "").upper().replace("_", "-").replace(" ", "-").strip()
-    if value.startswith("FC2"):
-        digits = re.search(r"(\d{5,})", value)
-        return f"FC2-PPV-{digits.group(1)}" if digits else value
-    shape = re.match(r"^(\d{3})?([A-Z]+)-?(\d+)$", value)
-    if not shape:
-        return value
-    digits = str(int(shape.group(3))).zfill(3)
-    return f"{shape.group(1) or ''}{shape.group(2)}-{digits}"
 
 
 def _is_explicit_code(code: str) -> bool:
@@ -246,11 +235,11 @@ def build_parser() -> argparse.ArgumentParser:
 def _requested_codes(path: Path) -> list[str]:
     requested: list[str] = []
     seen: set[str] = set()
-    for raw in path.read_text(encoding="utf-8-sig").splitlines():
+    for raw in path.read_text(encoding=ENCODING).splitlines():
         value = raw.split("#", 1)[0].strip()
         if not value:
             continue
-        query = normalise(value)
+        query = normalise_code_key(value)
         if query not in seen:
             seen.add(query)
             requested.append(query)
@@ -263,7 +252,7 @@ def _select_requested_codes(
     requested = _requested_codes(path)
     available: dict[str, tuple[str, float, int]] = {}
     for code, size_gb, videos in codes:
-        query = normalise(code)
+        query = normalise_code_key(code)
         previous = available.get(query)
         if previous is None:
             available[query] = (code, size_gb, videos)
@@ -298,14 +287,7 @@ def _health_rows(policy: MetadataPolicy) -> dict[str, dict[str, object]]:
 
 
 def _write_health(path: Path, rows: dict[str, dict[str, object]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    with temporary.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=HEALTH_FIELDS)
-        writer.writeheader()
-        for source in rows:
-            writer.writerow(rows[source])
-    os.replace(temporary, path)
+    write_rows(path, HEALTH_FIELDS, rows.values(), atomic=True)
 
 
 def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None = None) -> int:
@@ -364,8 +346,10 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
     blocked_sources: set[str] = set()
     groups_written = errors_written = 0
     stopped: JobPolicyError | None = None
-    with output.open("w", encoding="utf-8-sig", newline="") as candidate_handle, \
-            errors_path.open("w", encoding="utf-8-sig", newline="") as error_handle:
+    # 流式写：两个文件同时开着，行在长循环里边跑边落盘，中途还有 guard.check()
+    # 打断点。write_rows 收的是完整行集合，改用它等于「跑完才落盘」，被打断就全丢。
+    with output.open("w", encoding=ENCODING, newline="") as candidate_handle, \
+            errors_path.open("w", encoding=ENCODING, newline="") as error_handle:
         candidate_writer = csv.DictWriter(candidate_handle, fieldnames=FIELDS)
         error_writer = csv.DictWriter(error_handle, fieldnames=ERROR_FIELDS)
         candidate_writer.writeheader(); error_writer.writeheader()
@@ -376,7 +360,7 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                 stopped = error
                 log(f"[stop] {error}")
                 break
-            query = normalise(code)
+            query = normalise_code_key(code)
             by_field: dict[str, list[dict]] = {}
             fetched_at = datetime.now(timezone.utc).isoformat()
             for source in sources:

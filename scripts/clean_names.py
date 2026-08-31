@@ -17,7 +17,6 @@
 """
 from __future__ import annotations
 
-import csv
 import argparse
 from datetime import datetime
 import ntpath
@@ -29,6 +28,7 @@ import time
 import uuid
 from pathlib import Path
 
+from peach.review_csv import write_rows
 from peach.catalog_rules import is_jav_code, normalise_code_key
 from peach.config import DATABASE_PATH, GENERATED_DIR, LOG_DIR
 
@@ -159,11 +159,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def write_plan(path: str | Path, plan: list[dict]) -> None:
     target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    with target.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=FIELDS)
-        writer.writeheader()
-        writer.writerows(plan)
+    write_rows(target, FIELDS, plan)
 
 
 def backup_database(db_path: str | Path, backup_dir: str | Path | None = None) -> Path:

@@ -8,7 +8,6 @@ r"""只读抽取视频首尾帧并生成片尾出处/不完整版候选。
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import os
 import sqlite3
@@ -28,9 +27,11 @@ from peach.jobs import (
     PidFileLock,
     SourceAccessPolicy,
     require_free_space,
+    job_main,
 )
 from peach.media import resolve_case_insensitive
 from peach.platform import system_volume
+from peach.review_csv import write_rows
 
 
 CANDIDATE_FIELDS = (
@@ -207,18 +208,7 @@ def atomic_json(path: Path, payload: dict) -> None:
 
 
 def atomic_csv(path: Path, fields: tuple[str, ...], rows: list[dict]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    try:
-        with temporary.open("w", encoding="utf-8-sig", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=fields)
-            writer.writeheader()
-            for row in rows:
-                writer.writerow({field: row.get(field, "") for field in fields})
-        os.replace(temporary, path)
-    except BaseException:
-        temporary.unlink(missing_ok=True)
-        raise
+    write_rows(path, fields, rows, atomic=True, fill_missing=True)
 
 
 def run(
@@ -358,13 +348,7 @@ def run(
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
-    try:
-        with PidFileLock(args.lock):
-            return run(args)
-    except JobPolicyError as error:
-        print(f"[stop] {error}")
-        return error.exit_code
+    return job_main(build_parser, run, argv)
 
 
 if __name__ == "__main__":

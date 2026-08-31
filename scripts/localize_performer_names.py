@@ -12,7 +12,6 @@ r"""用经维护的中日姓名映射本地化番号体系女优名称。
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import re
 import sqlite3
@@ -25,6 +24,7 @@ from pathlib import Path
 from peach.config import DATABASE_PATH, DATA_ROOT, GENERATED_DIR
 from peach.entities import merge_entity, normalize_entity_name
 from peach.migrations import sqlite_backup
+from peach.review_csv import read_rows, write_rows
 
 
 RELEASE_SOURCES = frozenset({"r18:performer", "javbus:performer"})
@@ -74,8 +74,7 @@ def read_mapping(path: Path) -> list[ActorMapping]:
 def read_identity_review(path: Path | None) -> dict[int, dict[str, str]]:
     if path is None or not path.is_file():
         return {}
-    with path.open(encoding="utf-8-sig", newline="") as handle:
-        return {int(row["entity_id"]): row for row in csv.DictReader(handle)}
+    return {int(row["entity_id"]): row for row in read_rows(path)}
 
 
 def _unique(values: list[int]) -> int | None:
@@ -416,11 +415,7 @@ FIELDS = (
 
 
 def write_csv(path: Path, rows: list[dict[str, object]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=FIELDS)
-        writer.writeheader()
-        writer.writerows({field: row.get(field, "") for field in FIELDS} for row in rows)
+    write_rows(path, FIELDS, rows, fill_missing=True)
 
 
 def counts_of(connection: sqlite3.Connection) -> dict[str, int]:

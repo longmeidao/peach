@@ -10,7 +10,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import re
 import sqlite3
@@ -22,6 +21,7 @@ from peach.config import DATABASE_PATH, GENERATED_DIR
 from peach.entities import merge_entity, normalize_entity_name
 from peach.metadata import collapse_repeated_phrase
 from peach.migrations import sqlite_backup
+from peach.review_csv import read_rows, write_rows
 
 
 SOURCE = "r18dev:series-localization"
@@ -68,8 +68,7 @@ def _snapshot_japanese_series(path: Path) -> str:
 def read_evidence(path: Path) -> dict[str, list[dict[str, str]]]:
     """回读候选及原始快照，返回按规范番号分组的可验证日文系列名。"""
     by_code: dict[str, list[dict[str, str]]] = defaultdict(list)
-    with path.open(encoding="utf-8-sig", newline="") as handle:
-        for row in csv.DictReader(handle):
+    for row in read_rows(path):
             if row.get("field") != "series":
                 continue
             query = _code_key(str(row.get("query") or row.get("code") or ""))
@@ -279,11 +278,7 @@ def apply_rows(
 
 
 def write_csv(path: Path, rows: list[dict[str, object]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=FIELDS)
-        writer.writeheader()
-        writer.writerows({field: row.get(field, "") for field in FIELDS} for row in rows)
+    write_rows(path, FIELDS, rows, fill_missing=True)
 
 
 def counts_of(connection: sqlite3.Connection) -> dict[str, int]:

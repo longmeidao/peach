@@ -10,7 +10,6 @@ AV 厂牌官网普遍先给一个年龄确认页：肯定链接写「はい（�
 from __future__ import annotations
 
 import argparse
-import csv
 import re
 import sys
 import time
@@ -20,6 +19,7 @@ from urllib.parse import urljoin, urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach.http import HttpRequest, HttpxTransport   # noqa: E402
+from peach.review_csv import read_rows, write_rows
 
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Peach/0.6"
 SOCIAL = re.compile(r'https?://(?:www\.)?(twitter\.com|x\.com)/([A-Za-z0-9_]{2,30})', re.I)
@@ -80,8 +80,7 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=25.0)
     args = parser.parse_args()
 
-    with args.input.open(encoding="utf-8-sig", newline="") as handle:
-        rows = [row for row in csv.DictReader(handle) if (row.get("site") or "").strip()]
+    rows = [row for row in read_rows(args.input) if (row.get("site") or "").strip()]
 
     results: list[dict[str, object]] = []
     http = HttpxTransport()
@@ -105,11 +104,7 @@ def main() -> int:
     finally:
         http.close()
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    with args.output.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=("studio", "site", "final_url", "handles", "note"))
-        writer.writeheader()
-        writer.writerows(results)
+    write_rows(args.output, ("studio", "site", "final_url", "handles", "note"), results)
     print({"total": len(results), "with_handles": sum(1 for r in results if r["handles"]),
            "output": str(args.output)})
     return 0

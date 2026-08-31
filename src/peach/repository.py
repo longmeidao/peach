@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .catalog_rules import is_jav_code
+from .entities import normalize_entity_name
 
 
 class LedgerDatabase:
@@ -27,6 +28,11 @@ class LedgerDatabase:
         )
         connection.row_factory = sqlite3.Row
         connection.create_function("is_jav_code", 1, is_jav_code, deterministic=True)
+        # 标签归一化必须两边同一份。SQLite 自带的 lower() 只认 ASCII：西里尔、
+        # 罗马数字 Ⅱ 这类字符它原样放过，而写入时用的是 Python 的 casefold，
+        # 于是「隐藏这个标签」写进去的值和查询时算出的值对不上，隐藏静默失效。
+        connection.create_function(
+            "peach_normalize", 1, normalize_entity_name, deterministic=True)
         return connection
 
     @contextmanager

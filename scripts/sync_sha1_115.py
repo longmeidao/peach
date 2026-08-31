@@ -19,6 +19,8 @@
 import os, sys, json, sqlite3, time
 from collections import defaultdict
 
+from peach.review_csv import ENCODING
+
 DB = r"R:\peach-data\database\ledger.db"
 COOKIE = os.path.expandvars(r"%USERPROFILE%\.115-cookies.txt")
 LOG = r"R:\peach-data\logs\sha1-{}.log".format(time.strftime("%Y%m%d-%H%M%S"))
@@ -96,7 +98,7 @@ if "--dupes" in sys.argv:
         if "auto_create@" in p.lower(): s -= 40
         s -= p.count("\\") * 2
         return s
-    with open(OUT, "w", newline="", encoding="utf-8-sig") as f:
+    with open(OUT, "w", newline="", encoding=ENCODING) as f:
         w = csv.writer(f); w.writerow(["组号", "动作", "大小GB", "路径", "SHA1"])
         for i, (h, items) in enumerate(
                 sorted(dup.items(), key=lambda kv: -kv[1][0][2] * (len(kv[1]) - 1)), 1):

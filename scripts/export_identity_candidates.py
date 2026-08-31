@@ -2,16 +2,9 @@
 from __future__ import annotations
 
 import argparse
-import csv
 from pathlib import Path
 
-
-def write_rows(path: Path, fields: tuple[str, ...], rows: list[dict[str, str]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields)
-        writer.writeheader()
-        writer.writerows(rows)
+from peach.review_csv import read_rows, write_rows
 
 
 def main() -> int:
@@ -21,8 +14,7 @@ def main() -> int:
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
 
-    with args.studio_review.open(encoding="utf-8-sig", newline="") as handle:
-        studios = list(csv.DictReader(handle))
+    studios = read_rows(args.studio_review)
     logo_rows = [
         {
             "studio": row["studio"], "assets": row["assets"], "status": "candidate",
@@ -37,8 +29,7 @@ def main() -> int:
         logo_rows,
     )
 
-    with args.performer_review.open(encoding="utf-8-sig", newline="") as handle:
-        performers = list(csv.DictReader(handle))
+    performers = read_rows(args.performer_review)
     avatar_rows = [
         {
             "entity_id": row["entity_id"], "current_name": row["current_name"],
