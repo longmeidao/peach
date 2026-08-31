@@ -402,6 +402,23 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertTrue((unknown / "ABP-340" / "one" / "ABP-340.mp4").is_file())
             self.assertFalse((root / "番号" / "Prestige" / "ABP-340").exists())
 
+    def test_rehome_unknown_jav_accepts_cloud_drive_removing_an_empty_layer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "code"
+            vanished = root / "release title"
+            vanished.mkdir(parents=True)
+            original_iterdir = Path.iterdir
+
+            def cloud_drive_iterdir(path):
+                if path == vanished and path.exists():
+                    path.rmdir()
+                    raise FileNotFoundError(path)
+                return original_iterdir(path)
+
+            with mock.patch.object(Path, "iterdir", cloud_drive_iterdir):
+                self.rehome_unknown._remove_empty_tree(root)
+            self.assertFalse(root.exists())
+
     def test_media_batch_scripts_are_import_safe_and_keep_context_rules(self):
         self.assertEqual(self.probe.context_fields(1920, 1080, 180), ("速食", "横屏", "2K"))
         with tempfile.TemporaryDirectory() as tmp:
