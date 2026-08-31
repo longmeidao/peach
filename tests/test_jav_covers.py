@@ -194,6 +194,26 @@ class OfficialSourceTests(unittest.TestCase):
         }), "ABW-232")
         self.assertEqual([candidate.url for candidate in candidates], [image])
 
+    def test_prestige_hit_skips_the_smaller_mgstage_fallback(self):
+        official = [covers.candidate_for(
+            "https://www.prestige-av.com/api/media/a/package.jpg"
+        )]
+        with patch.object(covers, "prestige_images", return_value=official), \
+                patch.object(covers, "mgstage_images") as mgstage:
+            actual = covers.prestige_group_images(object(), "ABW-232")
+        self.assertEqual(actual, official)
+        mgstage.assert_not_called()
+
+    def test_prestige_miss_uses_mgstage_as_the_fallback(self):
+        fallback = [covers.candidate_for(
+            "https://image.mgstage.com/images/prestige/abw/232/pb_e_abw-232.jpg"
+        )]
+        with patch.object(covers, "prestige_images", return_value=[]), \
+                patch.object(covers, "mgstage_images", return_value=fallback) as mgstage:
+            actual = covers.prestige_group_images(object(), "ABW-232")
+        self.assertEqual(actual, fallback)
+        mgstage.assert_called_once_with(unittest.mock.ANY, "ABW-232")
+
     def test_standard_flow_never_requests_blocked_avbase(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

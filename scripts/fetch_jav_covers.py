@@ -402,6 +402,12 @@ def prestige_images(transport: HttpTransport, code: str) -> list[Candidate]:
     return []
 
 
+def prestige_group_images(transport: HttpTransport, code: str) -> list[Candidate]:
+    """Prestige 官方 API 命中后不再等待较小的 MGS 图；未命中才回退 MGS。"""
+    official = prestige_images(transport, code)
+    return official if official else mgstage_images(transport, code)
+
+
 def probe_size(transport: HttpTransport, candidate: Candidate) -> tuple[int, int]:
     head = _fetch(transport, candidate.url, referer=candidate.referer,
                   limit=PROBE_BYTES * 2, ranged=True)
@@ -422,10 +428,11 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
         time.sleep(delay)
     # MGS 与 Prestige 都是 Prestige 集团的官方供给面。只在本地厂牌证据命中时
     # 查询，避免把全库 960 个番号无差别打到两个站点。
-    if _is_prestige(evidence) or "mgstage" in evidence.sources:
-        candidates += mgstage_images(transport, code)
+    if _is_prestige(evidence):
+        candidates += prestige_group_images(transport, code)
         time.sleep(delay)
-        candidates += prestige_images(transport, code)
+    elif "mgstage" in evidence.sources:
+        candidates += mgstage_images(transport, code)
         time.sleep(delay)
     candidates = _unique_candidates([
         candidate for candidate in candidates
