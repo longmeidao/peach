@@ -107,6 +107,15 @@ def _path_key(value: str | Path) -> str:
     return os.path.normcase(str(value)).casefold()
 
 
+def _direct_children(path: Path) -> dict[str, Path]:
+    try:
+        return {child.name.casefold(): child for child in path.iterdir()} if path.is_dir() else {}
+    except FileNotFoundError:
+        # CloudDrive 对空目录的清理由另一进程异步完成，is_dir 与
+        # iterdir 之间消失等价于一个空目标，不是计划冲突。
+        return {}
+
+
 def build_plan(
     connection: sqlite3.Connection, *, mappings: list[Mapping],
     physical_unknown_root: Path, ledger_unknown_root: str,
@@ -139,9 +148,7 @@ def build_plan(
                 )
                 continue
             by_leaf[key] = source
-        existing = {
-            child.name.casefold(): child for child in target_dir.iterdir()
-        } if target_dir.is_dir() else {}
+        existing = _direct_children(target_dir)
         for key, source in by_leaf.items():
             target = target_dir / source.name
             if key in existing and _path_key(existing[key]) != _path_key(source):
