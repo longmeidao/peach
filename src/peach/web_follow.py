@@ -154,6 +154,29 @@ def _media_items(item) -> list[dict]:
     return result
 
 
+def _archive_media_host(provider: str, url: str) -> str:
+    """把归档站的静态资源指到 `img.` 子域。
+
+    2026-08-30 实测（见 docs/reference-snapshots/kemono-archive-media-host.md）：
+
+        kemono.cr/thumbnail/data/<path>        302
+        img.kemono.cr/thumbnail/data/<path>    200 image/jpeg 24,050 B
+        pawchive.pw/thumbnail/data/<path>      404
+        img.pawchive.pw/thumbnail/data/<path>  200 image/gif   12,796 B
+
+    kemono 主域只是重定向，浏览器跟随后仍能显示，所以一直没人发现；pawchive 主域
+    直接 404，卡片因此永远是空的（`onerror` 把 img 摘掉，看起来像"没有预览图"）。
+    连接器里那条注释记的是 2026-08-27 主域回 200——站点行为后来变了。
+
+    在读取时改写而不是改 ledger：坏 URL 已经写进两千多行，而这是可推导的投影，
+    不是真相字段。站点再变时也只需要改这一处。
+    """
+    host = KemonoConnector.HOSTS.get(provider)
+    if not host or not url.startswith(f"https://{host}/"):
+        return url
+    return url.replace(f"https://{host}/", f"https://img.{host}/", 1)
+
+
 def _thumb_url(item) -> str | None:
     # rule34.xxx 的历史行存的是 250px preview。官方 dapi 的 sample_url 与它使用
     # 同一 bucket/hash；2026-08-28 对生产历史行实测推导后为 1920x1080。
@@ -171,13 +194,15 @@ def _thumb_url(item) -> str | None:
         if kind == "video":
             return f"/follow-cover?id={item.id}"
     if item.thumb_url:
-        return item.thumb_url
+        return _archive_media_host(item.provider, str(item.thumb_url))
     # 旧的 Kemono/Pawchive 行在封面修复前已入库：media_url 是图片，但 thumb_url
     # 为空。按连接器同一条已验证规则即时推导缩略图，不改 ledger 就能补齐旧卡片。
     if item.provider in KemonoConnector.HOSTS and _IMAGE_MEDIA_RE.search(
             str(item.media_url or "")):
         parsed = urllib.parse.urlsplit(str(item.media_url))
-        return f"https://{KemonoConnector.HOSTS[item.provider]}/thumbnail/data{parsed.path}"
+        return _archive_media_host(
+            item.provider,
+            f"https://{KemonoConnector.HOSTS[item.provider]}/thumbnail/data{parsed.path}")
     return None
 
 

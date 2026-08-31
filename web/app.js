@@ -2301,7 +2301,9 @@ function followBadges(group){
   if(group.has_wip)badges.push('<span class="fbadge wip">WIP</span>');
   if(group.primary.version)badges.push(`<span class="fbadge ver">${esc(group.primary.version)}</span>`);
   if(group.variants.length)badges.push(`<span class="fbadge">${
-    group.is_release?`${group.variants.length+1} 条动态`:`${group.variants.length} 个版本`}</span>`);
+    // 两个分支都含主条目：以前 release 记 +1、work 不记，同一份数据两种口径，
+    // 两个视频的组会显示成「1 个版本」。
+    `${group.variants.length+1} ${group.is_release?'条动态':'个版本'}`}</span>`);
   if(group.duplicates.length)badges.push(`<span class="fbadge dup">另见 ${
     esc([...new Set(group.duplicates.map(d=>d.provider_label))].join('、'))}</span>`);
   return badges.join('');
@@ -2406,9 +2408,14 @@ function followEmbeddedQueueHtml(item,mediaIndex){
     }).join('')}</div></aside>`;
 }
 
-function indexFollowItems(data){
+/* 重建条目索引。`merge` 时只往里加，不清空已有的。
+
+   单条查询（followItemById）以前也走整表重建，于是点一个不在索引里的条目会把索引
+   替换成只剩那一条；再点别的又没有、又替换。列表能翻页之后这条路径被踩得很频繁，
+   表现就是「多点几次详情就打不开了」。 */
+function indexFollowItems(data,{merge=false}={}){
   const groups=data?.groups||[];
-  followItemsById=new Map();followGroupByItemId=new Map();
+  if(!merge){followItemsById=new Map();followGroupByItemId=new Map()}
   groups.forEach(group=>followCollectionItems(group).forEach(item=>{
     followItemsById.set(item.id,item);followGroupByItemId.set(item.id,group)}));
 }
@@ -2417,7 +2424,7 @@ async function followItemById(id){
   if(followItemsById.has(id))return followItemsById.get(id);
   const data=await api(`/api/follow?item=${encodeURIComponent(id)}`);
   if(!followData)followData=data;
-  indexFollowItems(data);
+  indexFollowItems(data,{merge:true});
   return followItemsById.get(id);
 }
 
@@ -2487,7 +2494,14 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     </div></div></div>`;
   $('#stage').classList.toggle('ambient-on',selectedKind==='video'&&appSettings.ambientMode);
   $('#stage').classList.toggle('theater-mode',selectedKind==='video'&&appSettings.theaterMode);
-  const closeDetail=async()=>{disposeStage(false);route(followDetailReturnPath||'/follow');await openFollow(false)};
+  /* 关掉详情只是回到列表，不该重新取一遍。重取要等一个网络往返（慢），而且只会
+     取回第一页——「加载更多」出来的条目会连同索引一起消失，那些卡片的详情随后
+     就打不开了。列表数据还在 followData 里，直接重画。 */
+  const closeDetail=async()=>{
+    disposeStage(false);
+    route(followDetailReturnPath||'/follow');
+    if(followData)renderFollow();else await openFollow(false);
+  };
   $('#closeStage').onclick=closeDetail;
   $('#stage').querySelectorAll('[data-follow-queue-close]').forEach(button=>button.onclick=closeDetail);
   $('#stage').querySelectorAll('[data-follow-queue-item]').forEach(button=>button.onclick=()=>

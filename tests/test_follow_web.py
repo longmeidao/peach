@@ -317,7 +317,7 @@ class FollowContractTests(unittest.TestCase):
         ),), provider="kemono", ref="fanbox/1")
         item = self._get()["groups"][0]["primary"]
         self.assertEqual(
-            item["thumb_url"], "https://kemono.cr/thumbnail/data/ab/cd/image.jpg")
+            item["thumb_url"], "https://img.kemono.cr/thumbnail/data/ab/cd/image.jpg")
         self.assertEqual(item["media_kind"], "image")
         self.assertTrue(item["playable"])
 
@@ -418,6 +418,34 @@ class FollowContractTests(unittest.TestCase):
     def test_feed_ignores_a_nonsense_limit_instead_of_failing(self):
         self._seed()
         self.assertEqual(len(self._get(limit="nope")["groups"]), 1)
+
+    def test_archive_thumbnails_use_the_img_subdomain(self):
+        """归档站静态资源走 img. 子域，主域取不到。
+
+        2026-08-30 实测：kemono.cr 回 302、pawchive.pw 回 404，两者的 img. 子域都回
+        200（取证见 docs/reference-snapshots/kemono-archive-media-host.md）。kemono
+        主域因为是重定向、浏览器跟随后仍能显示，所以只有 pawchive 的卡片一直是空的。
+
+        改写发生在读取时：坏 URL 已经写进两千多行，而这是可推导的投影不是真相字段。
+        """
+        from peach.web_follow import _archive_media_host
+
+        for provider, host in (("kemono", "kemono.cr"), ("pawchive", "pawchive.pw"),
+                               ("coomer", "coomer.st")):
+            self.assertEqual(
+                _archive_media_host(provider, f"https://{host}/thumbnail/data/a/b/c.jpg"),
+                f"https://img.{host}/thumbnail/data/a/b/c.jpg",
+            )
+            # 已经是 img. 的不再叠加
+            self.assertEqual(
+                _archive_media_host(provider, f"https://img.{host}/thumbnail/data/a/b/c.jpg"),
+                f"https://img.{host}/thumbnail/data/a/b/c.jpg",
+            )
+        # 别的站点原样返回，不要顺手改写
+        self.assertEqual(_archive_media_host("rule34video", "https://rule34video.com/a.jpg"),
+                         "https://rule34video.com/a.jpg")
+        self.assertEqual(_archive_media_host("kemono", "https://example.test/a.jpg"),
+                         "https://example.test/a.jpg")
 
     def test_counts_are_whole_library_while_groups_are_one_page(self):
         """计数是全库口径，列表只有一页——界面并排显示这两个数时看起来像自相矛盾。
@@ -1614,7 +1642,17 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("'（仅附件）'")
 
     def test_thread_activity_is_not_called_a_version(self):
-        self.assertPageContains("group.is_release?`${group.variants.length+1} 条动态`")
+        """线程动态叫「条动态」，作品版本叫「个版本」，两者都含主条目。
+
+        计数以前是分开写的：release 记 `variants.length+1`、work 记 `variants.length`。
+        同一份数据两种口径，两个视频的组会显示成「1 个版本」。现在共用一个表达式，
+        只有量词不同。
+        """
+        self.assertPageContains(
+            "`${group.variants.length+1} ${group.is_release?'条动态':'个版本'}`")
+        self.assertPageLacks(
+            "`${group.variants.length} 个版本`",
+            "版本数必须含主条目，否则两个视频显示成 1 个版本")
 
     def test_cross_site_duplicates_are_shown_as_another_source(self):
         self.assertPageContains("另见 ")

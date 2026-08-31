@@ -622,17 +622,20 @@ class KemonoConnector(_BaseConnector):
     def _thumb_url(self, media: str | None) -> str | None:
         """归档站的封面。
 
-        2026-08-27 实测：`https://kemono.cr/thumbnail/data<path>` 与
-        `https://img.kemono.cr/thumbnail/data<path>` 都回 200 `image/jpeg`
-        （同一张 35,387 字节的图）；换成 `/data<path>` 则是 404，所以这个
-        `thumbnail/` 前缀是必需的，不是可选的美化。
+        `thumbnail/` 前缀是必需的，不是可选的美化：换成 `/data<path>` 是 404。
+
+        **主机用 `img.` 子域。**2026-08-30 实测（取证见
+        `docs/reference-snapshots/kemono-archive-media-host.md`）：主域
+        `kemono.cr` 只回 302，`pawchive.pw` 直接 404，两者的 `img.` 子域都回 200。
+        2026-08-27 那次记的是主域回 200——站点行为后来变了，pawchive 的卡片因此
+        一直是空的。
 
         以前这里根本没设 `thumb_url`，归档站的卡片因此一律没有封面——
         不是取不到，是压根没去取。
         """
         if not media or not str(media).lower().endswith(self._THUMBABLE):
             return None
-        return f"https://{self.host}/thumbnail/data{media}"
+        return f"https://img.{self.host}/thumbnail/data{media}"
 
     def _candidate(self, post: dict, service: str, user: str) -> FollowCandidate:
         post_id = str(post.get("id") or "")
@@ -640,13 +643,21 @@ class KemonoConnector(_BaseConnector):
         page = f"https://{self.host}/{service}/user/{user}/post/{post_id}" if post_id else None
         primary = post.get("file") if isinstance(post.get("file"), dict) else {}
         attachments = [a for a in (post.get("attachments") or []) if isinstance(a, dict)]
-        media = primary.get("path") or (attachments[0].get("path") if attachments else None)
+        paths = [primary.get("path"), *(item.get("path") for item in attachments)]
+        # 交付文件优先取**非图片**的那个。作者常把 gif 预览放在 `file` 位、真正的
+        # mp4 放进附件——2026-08-30 实测 pawchive `patreon/user/80149692/post/166107691`：
+        # file 是 TFCLASSIC01.gif，附件里才是两个 1080p mp4。按 `file.path` 优先会把
+        # 整条判成图片，两个正片直接不见，卡片也进不了「视频」那个页签。
+        media = next((path for path in paths
+                      if path and not str(path).lower().endswith(self._THUMBABLE)), None)
+        if media is None:
+            media = primary.get("path") or (attachments[0].get("path") if attachments else None)
         # 正片/压缩包仍是主要资源；封面则要从所有附件里另找第一张图片。
         # 过去把两件事绑在同一个 `media` 上，主文件只要是 mp4/zip，后面明明附了
         # jpg 也会显示「没有预览图」。
-        preview = next((path for path in (
-            primary.get("path"), *(item.get("path") for item in attachments)
-        ) if path and str(path).lower().endswith(self._THUMBABLE)), None)
+        # 封面仍从所有路径里找第一张图片：正片是 mp4 时，那张 gif/jpg 预览就是封面。
+        preview = next((path for path in paths
+                        if path and str(path).lower().endswith(self._THUMBABLE)), None)
         return FollowCandidate(
             provider=self.provider,
             external_id=post_id or stable_id(title, str(post.get("published"))),
