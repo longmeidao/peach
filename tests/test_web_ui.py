@@ -775,6 +775,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;padding:0!important")
         self.assertPageContains("position:absolute!important;inset:0!important;width:100vw!important;height:100vh!important")
         self.assertPageContains("max-height:none!important")
+        self.assertPageContains("max-height:none!important;object-fit:cover!important")
+        self.assertPageContains(".vwrap .video-js .vjs-tech{object-fit:contain}")
         self.assertPageContains('id="playerNet"')
         self.assertPageContains("function streamSpeedBits(id,session='')")
         self.assertPageContains("function fmtSpeed(bits)")
