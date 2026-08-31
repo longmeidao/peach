@@ -1546,7 +1546,6 @@ async function openStats(push=true,focusResource=false){
   if(!surfaceCurrent(surface))return;
   $('#stats').hidden=false; $('#index').hidden=true; $('#grid').innerHTML='';buildManageBar();
   $('#count').textContent=''; $('#loadSentinel').hidden=true; $('#shortsSec').hidden=true;
-  $('#tiers').style.display='none'; $('#tagbar').style.display='none';
   const a=d.attribution, cs=d.consumption;
   const pct=(x,y)=>y?Math.round(x/y*100):0;
   const gb=b=>b>=1099511627776?(b/1099511627776).toFixed(2)+' TB':(b/1073741824).toFixed(1)+' GB';
@@ -1952,13 +1951,13 @@ async function removePlaylistItem(queue,assetId,currentId){
   await openPlaylist(queue.playlistId,next,false);
 }
 async function openPlaylists(push=true){
-  releaseHoverPreviews();disposeStage(false);document.body.classList.remove('entity-open','index-open');
+  releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/playlists');
   const surface=claimSurface('/playlists');
   const data=await api('/api/playlists');
   if(!surfaceCurrent(surface))return;
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';$('#count').textContent='';
-  $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;$('#tiers').style.display='none';$('#tagbar').style.display='none';
+  $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
   $('#managebar').hidden=true;$('#manageTitle').hidden=true;buildEdge();
   const cards=(data.items||[]).map(list=>{const resume=list.current_asset_id||list.preview_asset_id;
     const poster=list.preview_asset_id?`<img src="/poster?id=${list.preview_asset_id}&c=4" alt="" loading="lazy" onerror="this.remove()">`:'';
@@ -2069,12 +2068,12 @@ async function disposeDuplicates(groups,keep,button){
   }finally{button.disabled=false}
 }
 async function openReview(push=true){
-  releaseHoverPreviews();disposeStage(false);document.body.classList.remove('entity-open');
+  releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/review');
   const surface=claimSurface('/review');
   buildManageBar();
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';$('#count').textContent='';
-  $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;$('#tiers').style.display='none';$('#tagbar').style.display='none';
+  $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
   const runtime=await api('/healthz');
   if(!surfaceCurrent(surface))return;
   /* ADR-0018：确定的那部分先落库再取队列。reader 明知不能写就不要制造一次 409；
@@ -2251,9 +2250,15 @@ if(!globalThis.__peachFsrcCloser){
 /* 关注页一次取一屏。counts 是全库口径（「未看 2292」），groups 只有这一页——
    两个数并排显示时看起来像自相矛盾，实际是两个口径，所以列表底部要能继续加载。 */
 const FOLLOW_PAGE=300;
+/* 作者、来源和标签一起交给服务端。以前只有状态走服务端、这三个在浏览器里筛，
+   于是药丸上的数字（全库口径）和列表（筛过的这几页）是两套口径，换个筛选条件
+   数字纹丝不动；而且选个冷门作者，一页 300 条里可能只剩两条，得反复点加载更多。 */
 const followPageUrl=offset=>
   `/api/follow?limit=${FOLLOW_PAGE}&offset=${offset}`
-  +(followFilter?`&status=${followFilter}`:'');
+  +(followFilter?`&status=${followFilter}`:'')
+  +(followAuthor?`&author=${encodeURIComponent(followAuthor)}`:'')
+  +(followProvider?`&provider=${encodeURIComponent(followProvider)}`:'')
+  +(followTags.size?`&tag=${encodeURIComponent([...followTags].join(','))}`:'');
 /* 分组在取回之后做，所以同一个作品可能被这一页的边界切开：
    前 300 条里有它的一个变体，后 300 条里有另一个。按 release_key 合并，
    不然界面上会出现两张长得几乎一样的卡。 */
@@ -2581,6 +2586,22 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     const next=(imagePosition+(+button.dataset.followImageStep)+imageMedia.length)%imageMedia.length;
     switchImage(imageMedia[next].index);
   });
+  /* 详情里点图开大图，跟女优页同一个灯箱。多图时把整组交进去，左右翻页就能看完
+     一条帖子的所有图，不用退出去再点下一张。取不到正片就退而用缩略图——看小图
+     总比点了没反应强。 */
+  const followSlides=imageMedia.length
+    ?imageMedia.map(image=>({follow:true,
+      src:`/follow-stream?id=${item.id}&media=${image.index}`,
+      thumb:image.thumb_url||item.thumb_url||`/follow-stream?id=${item.id}&media=${image.index}`,
+      name:item.title}))
+    :selectedKind==='image'&&src
+      ?[{follow:true,src,thumb:item.thumb_url||src,name:item.title}]
+      :item.thumb_url?[{follow:true,src:item.thumb_url,thumb:item.thumb_url,name:item.title}]:[];
+  const poster=$('#stage').querySelector('.followdetailposter');
+  if(poster&&followSlides.length){
+    poster.classList.add('zoomable');
+    poster.onclick=()=>openPhotoLightbox(Math.max(0,imagePosition),followSlides);
+  }
   const followVideo=$('#stage').querySelector('.followdetailmedia>video');
   if(followVideo){
     /* 清晰度单独问一次：解析要抓来源详情页，列表一次几百条不可能逐条解析，
@@ -2776,18 +2797,18 @@ function renderFollow(){
   const broken=sources.filter(s=>s.last_status==='error'||s.last_status==='unauthorized');
   const byId=new Map(sources.map(source=>[source.id,source]));
   const sourceOf=group=>byId.get(group.primary&&group.primary.source_id);
-  const authorSources=new Map(),activeAuthors=new Set(),providers=new Map(),tagCounts=new Map();
+  /* 筛选条上能选什么来自服务端的全库口径 facets，不是这一页的 groups。按 groups 算
+     的话，选中一个作者之后服务端只回他的条目，作者栏就只剩他一个人，再也切不回去。 */
+  const facets=followData.facets||{};
+  const activeAuthors=new Set(facets.authors||[]);
+  const providerLabels=new Map(sources.map(source=>[source.provider,source.provider_label]));
+  const providers=new Map((facets.providers||[]).map(key=>[key,providerLabels.get(key)||key]));
+  const tagCounts=new Map(facets.tags||[]);
+  const authorSources=new Map();
   sources.forEach(source=>{
     if(!source.author_key)return;
     if(!authorSources.has(source.author_key))authorSources.set(source.author_key,[]);
     authorSources.get(source.author_key).push(source);
-  });
-  groups.forEach(group=>{
-    (group.primary&&group.primary.tags||[]).forEach(tag=>
-      tagCounts.set(tag,(tagCounts.get(tag)||0)+1));
-    const source=sourceOf(group);if(!source)return;
-    if(source.author_key)activeAuthors.add(source.author_key);
-    if(!providers.has(source.provider))providers.set(source.provider,source.provider_label);
   });
   const authors=new Map([...authorSources].filter(([key])=>activeAuthors.has(key)).map(([key,list])=>[key,{
     name:followAuthorName(list),sources:list,
@@ -2802,23 +2823,16 @@ function renderFollow(){
   if(followAuthor&&!authors.has(followAuthor))followAuthor='';
   if(followProvider&&!providers.has(followProvider))followProvider='';
   followTags=new Set([...followTags].filter(tag=>tagCounts.has(tag)));
-  const filtered=groups.filter(group=>{
-    const source=sourceOf(group);
-    if(!source)return !followAuthor&&!followProvider;
-    if(followAuthor&&source.author_key!==followAuthor)return false;
-    if(followProvider&&source.provider!==followProvider)return false;
-    if(followTags.size&&![...followTags].every(tag=>(group.primary&&group.primary.tags||[]).includes(tag)))return false;
-    return true;
-  });
+  // 作者、来源和标签都已在服务端筛过，这里不再筛第二遍——两份同义的判定必然漂移。
   const mediaCounts={videos:0,images:0};
-  filtered.forEach(group=>followMediaKinds(group).forEach(kind=>
+  groups.forEach(group=>followMediaKinds(group).forEach(kind=>
     mediaCounts[kind==='image'?'images':'videos']++));
   const requestedMediaView=followMediaView;
   if(followMediaView==='images'&&!mediaCounts.images)followMediaView='videos';
   if(followMediaView==='videos'&&!mediaCounts.videos&&mediaCounts.images)followMediaView='images';
   if(requestedMediaView!==followMediaView&&location.pathname==='/follow')route(followViewPath(),true);
   const wantedKind=followMediaView==='images'?'image':'video';
-  const visible=filtered.filter(group=>followMediaKinds(group).has(wantedKind));
+  const visible=groups.filter(group=>followMediaKinds(group).has(wantedKind));
   const providerPills=[...providers].map(([key,label])=>
     `<button class="pill sourcepill" data-follow-provider="${esc(key)}" aria-pressed="${key===followProvider}"
       title="${esc(label)}" aria-label="来源：${esc(label)}">${sourceIcon(key)}</button>`).join('');
@@ -2876,12 +2890,14 @@ function renderFollow(){
     route(followViewPath());renderFollow()});
   $('#stats').querySelectorAll('[data-follow-author]').forEach(button=>button.onclick=()=>{
     followAuthor=followAuthor===button.dataset.followAuthor?'':button.dataset.followAuthor;
-    route(followViewPath());renderFollow()});
+    route(followViewPath());openFollow(false)});
   $('#stats').querySelectorAll('[data-follow-provider]').forEach(button=>button.onclick=()=>{
-    followProvider=followProvider===button.dataset.followProvider?'':button.dataset.followProvider;renderFollow()});
+    followProvider=followProvider===button.dataset.followProvider?'':button.dataset.followProvider;
+    openFollow(false)});
   $('#stats').querySelectorAll('[data-follow-tag]').forEach(button=>button.onclick=()=>{
     const tag=button.dataset.followTag;
-    if(followTags.has(tag))followTags.delete(tag);else followTags.add(tag);renderFollow()});
+    if(followTags.has(tag))followTags.delete(tag);else followTags.add(tag);
+    openFollow(false)});
   $('#stats').querySelectorAll('[data-follow-manage]').forEach(button=>
     button.onclick=()=>openFollowManage());
   $('#stats').querySelectorAll('[data-fwarn-dismiss]').forEach(button=>button.onclick=()=>{
@@ -2925,9 +2941,12 @@ function wireFollowOlder(){
 }
 
 async function openFollow(push=true,renderForDetail=false){
-  releaseHoverPreviews();disposeStage(false);
-  document.body.classList.remove('entity-open','index-open');
-  if(push){followAuthor='';followMediaView='videos';route('/follow')}
+  releaseHoverPreviews();disposeStage(false);enterManagementSurface();
+  /* 重新进入关注页要回到干净状态。这几个筛选是模块级的可变全局，只有 author 和
+     media 进了 URL，provider、tag、status 从前哪儿都没重置——离开再回来还按着，
+     筛选条上是按下的样子，现在它们还决定服务端取什么，等于取错数据。 */
+  if(push){followAuthor='';followMediaView='videos';followProvider='';
+    followTags=new Set();followFilter='new';route('/follow')}
   else if(location.pathname==='/follow'){
     const params=new URLSearchParams(location.search);
     followAuthor=params.get('author')||'';
@@ -2936,7 +2955,6 @@ async function openFollow(push=true,renderForDetail=false){
   const surface=claimSurface(renderForDetail?surfacePath():'/follow');
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
   $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
-  $('#tiers').style.display='none';$('#tagbar').style.display='none';
   $('#managebar').hidden=true;$('#manageTitle').hidden=true;buildEdge();
   $('#stats').innerHTML=`<div class="follow"><p class="empty">${loadingDotsHtml('正在读取')}</p></div>`;
   const [data,credentials]=await Promise.all([
@@ -4060,6 +4078,12 @@ function wireSourceTools(root,done){
 /* 灯箱按需加载 Swiper：大图轮播、底部缩略图条和键盘左右键都是它自带的模块，
    没必要自己写一遍；但它只有看照片时才用得上，不该进首屏。 */
 let swiperLoader=null,activeLightbox=null;
+/* 灯箱既服务本地照片墙，也服务关注页的在线图集。两边唯一的差别是图从哪来，
+   以及有没有本机文件可揭示——在线图没有 ledger 记录，「在资源管理器中显示」
+   对它没有意义。所以先把每一项归一化成 slide，`asset` 为空就收起详情面板。 */
+const photoSlide=item=>item.follow
+  ?{src:item.src,thumb:item.thumb||item.src,name:item.name||'',asset:null}
+  :{src:`/photo?id=${item.id}`,thumb:`/photo-thumb?id=${item.id}`,name:item.name||'',asset:item};
 const loadSwiper=()=>swiperLoader||(swiperLoader=new Promise((resolve,reject)=>{
   const style=document.createElement('link');
   style.rel='stylesheet';style.href='/vendor/swiper/14.2.0/swiper-bundle.min.css';
@@ -4110,10 +4134,13 @@ function wirePhotoDetail(box,items,index){
   const reveal=panel.querySelector('[data-photo-reveal]');
   const status=panel.querySelector('.srcstate');
   const paint=at=>{
-    const item=items[at];if(!item)return;
-    title.textContent=item.name||'未命名图片';
-    meta.textContent=[LOC[item.location]||item.location||'来源未知',fmtPhotoSize(item.size)].join(' · ');
-    reveal.dataset.photoReveal=String(item.id);status.textContent='';
+    const asset=items[at]?.asset;
+    // 在线图没有本机路径、大小和位置可显示，整个面板收起比显示一堆「未知」诚实。
+    if(!asset){toggle.hidden=true;dismiss();return}
+    toggle.hidden=false;
+    title.textContent=asset.name||'未命名图片';
+    meta.textContent=[LOC[asset.location]||asset.location||'来源未知',fmtPhotoSize(asset.size)].join(' · ');
+    reveal.dataset.photoReveal=String(asset.id);status.textContent='';
   };
   const dismiss=returnFocus=>{panel.hidden=true;toggle.setAttribute('aria-expanded','false');
     if(returnFocus&&document.contains(toggle))toggle.focus()};
@@ -4134,19 +4161,19 @@ function closePhotoLightbox(){
   activeLightbox.box.remove();activeLightbox=null;
   document.body.classList.remove('photolight-open');
 }
-async function openPhotoLightbox(index){
-  const items=photoWallItems;
+async function openPhotoLightbox(index,source=null){
+  const items=(source||photoWallItems).map(photoSlide);
   if(!items.length||index<0||index>=items.length)return;
   let SwiperCtor;
   try{SwiperCtor=await loadSwiper()}
-  catch(_e){window.open('/photo?id='+items[index].id,'_blank','noopener');return}
+  catch(_e){window.open(items[index].src,'_blank','noopener');return}
   closePhotoLightbox();
   const box=document.createElement('div');
   box.className='photolight';
   box.innerHTML=`<button class="photoclose" type="button" aria-label="关闭">${icon('x')}</button>
     <div class="swiper photomain"><div class="swiper-wrapper">${items.map(item=>
-      `<div class="swiper-slide"><div class="swiper-zoom-container"><img src="/photo?id=${item.id}"
-        alt="${esc(item.name)}" loading="lazy"></div></div>`).join('')}</div>
+      `<div class="swiper-slide"><div class="swiper-zoom-container"><img src="${esc(item.src)}"
+        alt="${esc(item.name)}" loading="lazy" referrerpolicy="no-referrer"></div></div>`).join('')}</div>
       <button class="photonav back" type="button" aria-label="上一张">${icon('chevron-left')}</button>
       <button class="photonav fwd" type="button" aria-label="下一张">${icon('chevron-left')}</button></div>
     <div class="photobar">
@@ -4166,7 +4193,7 @@ async function openPhotoLightbox(index){
       <span class="srcstate" aria-live="polite"></span>
     </section>
     <div class="swiper photostrip"><div class="swiper-wrapper">${items.map(item=>
-      `<div class="swiper-slide"><img src="/photo-thumb?id=${item.id}" alt="" loading="lazy"></div>`).join('')}</div></div>`;
+      `<div class="swiper-slide"><img src="${esc(item.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer"></div></div>`).join('')}</div></div>`;
   document.body.appendChild(box);
   document.body.classList.add('photolight-open');
   const counter=box.querySelector('.photocount');
