@@ -50,18 +50,14 @@ MAX_ITEM_TAGS = 24
 RULE34VIDEO_EXCLUDED_IDS = frozenset({"4533145"})
 
 # 内容筛选不让载体/渲染方式挤掉动作、角色与作品标签。原始 metadata 仍完整保留。
-LOW_VALUE_FOLLOW_TAGS = frozenset({
-    "2d", "3d", "2d_animation", "3d_animation", "animated", "animation",
+LOW_VALUE_GENERAL_TAGS = frozenset({
     "video", "tagme", "sound",
     "no sound", "audio", "loop", "webm", "mp4",
 })
 
-# 关注页的标签是「里面发生了什么」，不是人物计数、身体部位、画幅、年份、软件或
-# 作品题材。原始 metadata 仍完整保留；这里只收窄卡片、详情、筛选条与在线标签页
-# 共用的可见投影。Rule34.xxx 不提供 tag type，所以截图里这些漏项还需要形态判据。
-NON_CONTENT_FOLLOW_TAG_TYPES = frozenset({
-    "artist", "character", "copyright", "metadata",
-})
+# 关注页的标签是「里面发生了什么」，不是人物计数、身体部位、画幅、年份或场景。
+# 来源类型是第一道门槛：只有来源明确标成 general 的标签才会走到这里；形态判据
+# 只负责 general 内部的通用词清理，绝不能拿它猜 artist/metadata 等来源类型。
 _NON_CONTENT_FOLLOW_TAG_RE = re.compile(
     r"^(?:"
     r"(?:19|20)\d{2}|\d{1,2}:\d{1,2}|"
@@ -73,11 +69,9 @@ _NON_CONTENT_FOLLOW_TAG_RE = re.compile(
     r"(?:blonde|black|white|long|short)[_\s-](?:hair|female)|"
     r"(?:blue|green|brown)[_\s-]eyes|light[_\s-]skin|"
     r"(?:shorter|longer)[_\s-]than[_\s-]\d+[_\s-]seconds|short[_\s-]video|"
-    r"beach|initial[_\s-]?a|square[_\s-]?enix|"
-    r"final[_\s-]?fantasy(?:[_\s-].*)?|dead[_\s-]?or[_\s-]?alive(?:[_\s-].*)?"
+    r"beach"
     r")$", re.I,
 )
-_TOPICAL_FOLLOW_TAG_RE = re.compile(r"\([^)]+\)\s*$")
 
 _IMAGE_MEDIA_RE = re.compile(r"\.(?:avif|gif|jpe?g|png|webp)(?:$|[?#])", re.I)
 _VIDEO_MEDIA_RE = re.compile(r"\.(?:m4v|mov|mp4|og[gv]|webm)(?:/)?(?:$|[?#])", re.I)
@@ -86,8 +80,47 @@ _RULE34XXX_PREVIEW_RE = re.compile(
     r"([0-9a-f]{32})\.jpg(?:[?#].*)?$", re.I)
 
 
+def _item_all_tags(item) -> list[str]:
+    """Return every recorded source tag once, preserving source spelling."""
+    raw = item.metadata.get("tags")
+    if isinstance(raw, str):
+        values = raw.split()
+    elif isinstance(raw, list):
+        values = [str(value).strip() for value in raw if str(value).strip()]
+    else:
+        values = []
+    for field in ("categories", "models"):
+        recorded = item.metadata.get(field)
+        if isinstance(recorded, list):
+            values.extend(str(value).strip() for value in recorded if str(value).strip())
+    seen, result = set(), []
+    for value in values:
+        tag = html.unescape(value)
+        key = tag.casefold()
+        if not tag or key in seen:
+            continue
+        seen.add(key)
+        result.append(tag)
+    return result
+
+
+def _recorded_tag_type(item, tag: str) -> str:
+    raw = item.metadata.get("tag_types")
+    if not isinstance(raw, dict):
+        return ""
+    value = raw.get(tag)
+    if value is None:
+        key = tag.casefold()
+        value = next((candidate for name, candidate in raw.items()
+                      if html.unescape(str(name)).casefold() == key), None)
+    tag_type = str(value or "").casefold()
+    return tag_type if tag_type in {
+        "artist", "character", "copyright", "metadata", "general"
+    } else ""
+
+
 def _item_tags(item) -> list[str]:
-    """条目的真实标签。
+    """条目的内容标签。
 
     rule34.xxx 存空格分隔标签；Rule34Video 详情页存保留空格的标签列表和分类列表。
     kemono 系与 f95zone 的列表接口不给标签，所以它们是空列表。
@@ -98,32 +131,15 @@ def _item_tags(item) -> list[str]:
 
     去掉作者手柄本身：按作者筛已经有专门的筛选条，标签里再出现一次没有信息量。
     """
-    raw = item.metadata.get("tags")
-    if isinstance(raw, str):
-        values = raw.split()
-    elif isinstance(raw, list):
-        values = [str(value).strip() for value in raw if str(value).strip()]
-    else:
-        values = []
-    categories = item.metadata.get("categories")
-    if isinstance(categories, list):
-        values.extend(str(value).strip() for value in categories if str(value).strip())
-    values = [html.unescape(value) for value in values]
+    values = _item_all_tags(item)
     subject = html.unescape(str(item.metadata.get("tag") or "")).casefold()
-    category_keys = {
-        html.unescape(str(value)).casefold()
-        for value in categories or []
-    } if isinstance(categories, list) else set()
-    recorded_types = item.metadata.get("tag_types")
-    recorded_types = recorded_types if isinstance(recorded_types, dict) else {}
     seen, tags = set(), []
     for tag in values:
         key = tag.casefold()
-        tag_type = str(recorded_types.get(tag) or recorded_types.get(key) or "general").casefold()
-        if (key == subject or key in seen or key in LOW_VALUE_FOLLOW_TAGS
-                or key in category_keys or tag_type in NON_CONTENT_FOLLOW_TAG_TYPES
-                or _NON_CONTENT_FOLLOW_TAG_RE.fullmatch(tag.strip())
-                or _TOPICAL_FOLLOW_TAG_RE.search(tag)):
+        # 来源没给类型时宁可暂不放进卡片，也不把 unknown 猜成 general。
+        if (_recorded_tag_type(item, tag) != "general"
+                or key == subject or key in seen or key in LOW_VALUE_GENERAL_TAGS
+                or _NON_CONTENT_FOLLOW_TAG_RE.fullmatch(tag.strip())):
             continue
         seen.add(key)
         tags.append(tag)
@@ -133,13 +149,8 @@ def _item_tags(item) -> list[str]:
 
 
 def _item_tag_types(item, tags: list[str]) -> dict[str, str]:
-    raw = item.metadata.get("tag_types")
-    recorded = raw if isinstance(raw, dict) else {}
-    allowed = {"artist", "character", "copyright", "metadata", "general"}
-    return {
-        tag: (str(recorded.get(tag)) if str(recorded.get(tag)) in allowed else "general")
-        for tag in tags
-    }
+    return {tag: tag_type for tag in tags
+            if (tag_type := _recorded_tag_type(item, tag))}
 
 
 def _media_kind(item) -> str:
@@ -274,6 +285,7 @@ def _excluded_item(item) -> bool:
 
 def _item_payload(item) -> dict:
     tags = _item_tags(item)
+    detail_tags = _item_all_tags(item)
     media_kind = _media_kind(item)
     media_items = _media_items(item)
     if media_items:
@@ -319,7 +331,8 @@ def _item_payload(item) -> dict:
         # 只投影连接器已验证过的文件页域名；原始媒体 URL 仍不进入 feed。
         "resource_urls": safe_resource_urls,
         "tags": tags,
-        "tag_types": _item_tag_types(item, tags),
+        "detail_tags": detail_tags,
+        "tag_types": _item_tag_types(item, detail_tags),
     }
 
 
@@ -353,14 +366,17 @@ def _normalized_author_name(value: str, *, provider: str = "") -> str:
     return _AUTHOR_NOISE_RE.sub("", stripped.casefold())
 
 
+def _author_display_text(value: str) -> str:
+    """Remove container/service wording that is not part of an author name."""
+    stripped = _LABEL_SERVICE_RE.sub("", str(value or "").strip())
+    return _F95_TITLE_SUFFIX_RE.sub("", stripped).strip()
+
+
 def _author_display_name(row) -> str:
     """Return the readable author spelling carried by one follow source."""
     if row["entity_id"] and row["entity_name"]:
         return str(row["entity_name"])
-    label = _LABEL_SERVICE_RE.sub("", str(row["label"] or row["ref"] or "").strip())
-    if str(row["provider"] or "") == "f95zone":
-        label = _F95_TITLE_SUFFIX_RE.sub("", label)
-    return label.strip()
+    return _author_display_text(row["label"] or row["ref"] or "")
 
 
 def _source_metadata(row) -> dict:
@@ -410,7 +426,9 @@ def _follow_alias_state(connection) -> tuple[dict[str, str], list[dict]]:
         canonical_key = str(row["canonical_key"])
         group = groups.setdefault(canonical_key, {
             "canonical_key": canonical_key,
-            "canonical_name": str(row["canonical_name"]),
+            # 旧别名记录可能把 F95 的容器标题保存成规范显示名；只修正读投影，
+            # 不在这个只读接口里偷偷改真实表。
+            "canonical_name": _author_display_text(row["canonical_name"]),
             "aliases": [],
         })
         if str(row["alias_key"]) != canonical_key:

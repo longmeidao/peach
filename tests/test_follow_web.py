@@ -217,13 +217,18 @@ class FollowContractTests(unittest.TestCase):
             FollowCandidate(provider="rule34xxx", external_id="18534401",
                             title="barnabas&#039; mother · biting lip",
                             url="https://rule34.xxx/index.php?page=post&s=view&id=18534401",
-                            extra={"tags": "miqo&#039;te y&#039;shtola barnabas&#039;_mother"}),
+                            extra={"tags": "miqo&#039;te y&#039;shtola barnabas&#039;_mother",
+                                   "tag_types": {"miqo&#039;te": "general",
+                                                 "y&#039;shtola": "general",
+                                                 "barnabas&#039;_mother": "general"}}),
         ), provider="rule34xxx", ref="final_fantasy")
         item = self._get()["groups"][0]["primary"]
         self.assertEqual(item["tags"], ["miqo'te", "y'shtola", "barnabas'_mother"])
         self.assertEqual(item["tag_types"],
                          {"miqo'te": "general", "y'shtola": "general",
                           "barnabas'_mother": "general"})
+        self.assertEqual(item["detail_tags"],
+                         ["miqo'te", "y'shtola", "barnabas'_mother"])
         self.assertEqual(item["title"], "barnabas' mother · biting lip")
 
     def test_external_file_pages_are_exposed_without_leaking_raw_media_urls(self):
@@ -518,7 +523,8 @@ class FollowContractTests(unittest.TestCase):
         return FollowCandidate(provider="rule34video", external_id=external_id,
                                title=f"Clip {external_id}",
                                url=f"https://rule34video.com/video/{external_id}/x/",
-                               extra={"tags": list(tags)})
+                               extra={"tags": list(tags),
+                                      "tag_types": {tag: "general" for tag in tags}})
 
     def test_counts_follow_the_active_author_filter(self):
         """筛掉一个作者，药丸上的数字必须跟着变。
@@ -1685,6 +1691,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains(".fnote.followmedianote{margin:18px 0 8px}")
         self.assertPageContains("followAuthorAvatar(authorSources)")
         self.assertPageContains("followTagChip(item,tag,'button')")
+        self.assertPageContains("item.detail_tags||item.tags||[]")
         self.assertPageContains(".followdetailtags .tg{max-width:none")
         self.assertPageContains("const postedBy=item.author&&foldName(item.author)!==foldName(author)")
         self.assertPageContains("openFollowDetail(id);")
@@ -1754,6 +1761,7 @@ class FollowWebSourceTests(unittest.TestCase):
                                 "按行插入，避免把卡片那一行截断")
         # 列表还没渲染出来时（直达详情链接）仍回退到列表前
         self.assertPageContains("followList.before($('#stage'))")
+        self.assertPageContains(".followlist>.stage{grid-column:1/-1;width:100%;min-width:0}")
         self.assertPageContains("scrollItemDetailIntoView();",
                                 "滚到舞台本身而不是页面头部")
         self.assertPageContains("if(stage.parentElement!==main)main.insertBefore(stage,combo)")
@@ -1863,17 +1871,26 @@ class FollowWebSourceTests(unittest.TestCase):
         tags = web_follow._item_tags(_Item({
             "tag": "lazyprocrastinator",
             "tags": "lazyprocrastinator 1girls animated sound riding lazyprocrastinator",
+            "tag_types": {"lazyprocrastinator": "artist", "1girls": "general",
+                          "animated": "metadata", "sound": "general", "riding": "general"},
         }))
         # 作者手柄本身不算标签：按作者筛已经有专门的筛选条，重复出现没有信息量。
         self.assertEqual(tags, ["riding"])
         video_tags = web_follow._item_tags(_Item({
             "tags": ["deep throat", "3D", "3d_animation", "breast squeeze"],
             "categories": ["2D", "Final Fantasy"],
+            "tag_types": {"deep throat": "general", "3D": "metadata",
+                          "3d_animation": "metadata", "breast squeeze": "general",
+                          "2D": "metadata", "Final Fantasy": "copyright"},
         }))
         self.assertEqual(video_tags, ["deep throat", "breast squeeze"])
         screenshot_tags = web_follow._item_tags(_Item({
             "tags": "beach dead_or_alive 16:9 2026 female 1boy 1girls breasts "
-                    "final_fantasy male ass pov blowjob",
+                    "final_fantasy male ass blender 3d 3d_model pov blowjob",
+            "tag_types": {**{tag: "general" for tag in
+                "beach 16:9 2026 female 1boy 1girls breasts male ass pov blowjob".split()},
+                "dead_or_alive": "copyright", "final_fantasy": "copyright",
+                "blender": "metadata", "3d": "metadata", "3d_model": "metadata"},
         }))
         self.assertEqual(screenshot_tags, ["pov", "blowjob"])
         typed = web_follow._item_tags(_Item({
@@ -1886,11 +1903,20 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertEqual(web_follow._item_tags(_Item({"tags": "   "})), [])
         # rule34.xxx 旧行存的是 HTML 转义形态；出口归一后与反转义的新写法
         # 是同一个身份，脏/净并存的重复项也合并成一个。
-        legacy = web_follow._item_tags(
-            _Item({"tags": "miqo&#039;te y&#039;shtola miqo&#039;te"}))
+        legacy = web_follow._item_tags(_Item({
+            "tags": "miqo&#039;te y&#039;shtola miqo&#039;te",
+            "tag_types": {"miqo&#039;te": "general", "y&#039;shtola": "general"},
+        }))
         self.assertEqual(legacy, ["miqo'te", "y'shtola"])
+        # 旧行没有来源类型时不猜成 general；详情仍可显示全部原始标签。
+        untyped = _Item({"tags": "blender reverse_cowgirl_position"})
+        self.assertEqual(web_follow._item_tags(untyped), [])
+        self.assertEqual(web_follow._item_all_tags(untyped),
+                         ["blender", "reverse_cowgirl_position"])
         # 热门帖能带上百个标签，整串发下去会把筛选条撑爆。
-        many = _Item({"tags": " ".join(f"t{n}" for n in range(200))})
+        many_values = [f"t{n}" for n in range(200)]
+        many = _Item({"tags": " ".join(many_values),
+                      "tag_types": {tag: "general" for tag in many_values}})
         self.assertEqual(len(web_follow._item_tags(many)), web_follow.MAX_ITEM_TAGS)
 
     def test_the_author_key_merges_one_person_across_sites(self):
@@ -1929,6 +1955,12 @@ class FollowWebSourceTests(unittest.TestCase):
         )
         # 名字为空时退回来源 id，不能让所有空名字挤成一组。
         self.assertNotEqual(key(label="", id=1), key(label="", id=2))
+
+    def test_collection_is_container_copy_not_part_of_the_author_display_name(self):
+        self.assertEqual(web_follow._author_display_text("Billyhhyb Collection"),
+                         "Billyhhyb")
+        self.assertEqual(web_follow._author_display_text("Billyhhyb · patreon"),
+                         "Billyhhyb")
 
     def test_avatars_only_come_from_providers_that_actually_serve_one(self):
         """头像按 peach-reference-evidence：实测拿得到才给，取不到写「未取得」。
@@ -2015,6 +2047,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("const name=followAuthorName(group);")
         self.assertPageContains("const official=group.find(source=>source.official_avatar_url);")
         self.assertPageContains("if(officialName)return officialName;")
+        self.assertPageContains(".replace(/\\s+collections?\\s*$/i,'').trim()")
         # 取不到图片时回退作者首字母；不能从来源标签切出中文“初”“一”。
         self.assertPageContains("function followAvatarInitial(group)")
         self.assertPageContains('title="没有可用头像"')

@@ -468,7 +468,7 @@ body.photolight-open{overflow:hidden}
 
 .fcollapse{overflow:hidden;transition:height .2s ease-in-out}
 /* Geist Skeleton：整页／大区块等待内容结构时先占住稳定区域。 */
-.skeletonpanel{min-height:240px;padding:16px}
+.skeletonpanel{min-height:240px;padding:0}
 .skeletonpanel>div{display:grid;gap:12px}
 .skeleton{display:block;height:18px;border-radius:6px;background:var(--hover);
   animation:skeleton-pulse 1.4s ease-in-out infinite}
@@ -477,6 +477,18 @@ body.photolight-open{overflow:hidden}
 .skeletoncard i,.skeletoncard b,.skeletoncard em{display:block;border-radius:6px;background:var(--hover);
   animation:skeleton-pulse 1.4s ease-in-out infinite}
 .skeletoncard i{aspect-ratio:16/9}.skeletoncard b{width:72%;height:18px}.skeletoncard em{width:46%;height:14px}
+.grid>.skeletonpanel{grid-column:1/-1;width:100%;min-width:0}
+.skeleton-dashboard>div{gap:16px}
+.skeletondashhero,.skeletondashpanel{display:grid;min-width:0;overflow:hidden;border:1px solid var(--line-soft);
+  border-radius:12px;background:var(--surface)}
+.skeletondashhero{min-height:330px;grid-template-columns:minmax(260px,36%) minmax(0,1fr)}
+.skeletondashhero i,.skeletondashhero b,.skeletondashpanel i,.skeletondashpanel b,.skeletondashpanel em{
+  display:block;background:var(--hover);animation:skeleton-pulse 1.4s ease-in-out infinite}
+.skeletondashhero i{margin:28px 24px;border-radius:7px}.skeletondashhero b{margin:24px;border-radius:7px}
+.skeletondashpanel{grid-template-columns:1fr 1fr;gap:12px;padding:16px}
+.skeletondashpanel i{grid-column:1/-1;width:26%;height:18px;border-radius:6px}
+.skeletondashpanel b,.skeletondashpanel em{height:84px;border-radius:7px}
+@media(max-width:640px){.skeletondashhero{grid-template-columns:minmax(0,1fr)}.skeletondashhero i{min-height:180px}.skeletondashhero b{min-height:220px}.skeletondashpanel{grid-template-columns:1fr}}
 @keyframes skeleton-pulse{0%,100%{opacity:.55}50%{opacity:1}}
 /* 缩放滑杆：原生 accent-color 的轨道太粗，自绘成与时长双滑块同一套 4px 细轨。
    底色是视频上的白色，所以这一套固定用白色而不是主题色。 */
@@ -661,7 +673,7 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
   stroke-linecap:round;stroke-linejoin:round}
 .managebar button:hover{background:var(--hover);color:var(--ink)}
 .managebar button[aria-pressed="true"]{background:var(--tungsten-soft);color:var(--tungsten);font-weight:600}
-.insight-layout .managebar{margin-left:auto;margin-right:auto}
+.managebar{margin-left:auto;margin-right:auto}
 .insight-layout .managetitle,.insight-layout .pagelede{width:min(1100px,100%);margin-left:auto;margin-right:auto}
 .count{position:sticky;top:calc(var(--topH) + var(--filterH));z-index:60;
   min-height:var(--sortH);color:var(--ink-2);margin:0 -16px 16px;padding:8px 16px;
@@ -944,6 +956,7 @@ body[data-density="dense"] .card .meta .watchcount{display:none}
 .stage:not(.ambient-on){background:color-mix(in srgb,var(--surface) 88%,transparent)}
 .stage[hidden]{display:none}
 .grid>.stage{grid-column:1/-1;width:100%;min-width:0}
+.followlist>.stage{grid-column:1/-1;width:100%;min-width:0}
 body.entity-open #tiers,body.entity-open #tagbar,
 body.index-open #tiers,body.index-open #tagbar{display:none}
 .sgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(350px,390px)}
@@ -1796,6 +1809,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .followitem .r34-character,.followdetailtags .r34-character,.followfilters .r34-character{--r34-tag:#68C76F}
 .followitem .r34-copyright,.followdetailtags .r34-copyright,.followfilters .r34-copyright{--r34-tag:#D675D6}
 .followitem .r34-metadata,.followdetailtags .r34-metadata,.followfilters .r34-metadata{--r34-tag:#F5A24A}
+.followdetailtags .r34-unknown{--r34-tag:var(--muted)}
 .followitem .meta .s{min-height:21px}.fbadges{display:flex;flex-wrap:nowrap;gap:5px;min-width:0;overflow:hidden}
 .fbadge{padding:2px 8px;border:1px solid var(--border-15);border-radius:var(--badge-radius);font-size:var(--fs-xs);color:var(--ink-2)}
 .fbadge.wip{border-color:var(--meter);color:var(--meter)}

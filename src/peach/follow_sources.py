@@ -870,6 +870,8 @@ class Rule34VideoConnector(_BaseConnector):
         for category in categories:
             tag_types[category] = (
                 "metadata" if category.casefold() in {"2d", "3d"} else "copyright")
+        for model in models:
+            tag_types[model] = "artist"
         published = _iso_from_text(video.get("uploadDate"))
         return {
             "title": plain_text(video.get("name")),
@@ -945,11 +947,14 @@ class Rule34XxxConnector(_BaseConnector):
         posts = payload.get("post", []) if isinstance(payload, dict) else payload
         if not isinstance(posts, list):
             raise FollowSourceError("rule34xxx 的帖子列表格式不符")
-        candidates = tuple(
-            self._candidate(post, tag)
-            for post in posts[: self.max_items]
-            if isinstance(post, dict)
-        )
+        candidates = []
+        for post in posts[: self.max_items]:
+            if not isinstance(post, dict):
+                continue
+            post_id = str(post.get("id") or "")
+            tag_types = self._detail_tag_types(post_id) if post_id else {}
+            candidates.append(self._candidate(post, tag, tag_types=tag_types))
+        candidates = tuple(candidates)
         if page and not candidates:
             raise FollowHistoryEnd("没有更多历史内容")
         return SourceFetch(candidates=candidates, raw_body=response.body, **common)
@@ -960,7 +965,44 @@ class Rule34XxxConnector(_BaseConnector):
         "tagme", "highres", "absurdres",
     })
 
-    def _candidate(self, post: dict, tag: str) -> FollowCandidate:
+    def _detail_tag_types(self, post_id: str) -> dict[str, str]:
+        """Read rule34.xxx's own tag taxonomy from the public post page.
+
+        The posts DAPI only returns one flat tag string.  The post page is the
+        authoritative surface that marks each tag as general, artist,
+        copyright, character or metadata.  If that optional enrichment is
+        unavailable we keep the post, but we do not guess types from words.
+        """
+        url = ("https://rule34.xxx/index.php?page=post&s=view&id="
+               f"{urllib.parse.quote(post_id)}")
+        try:
+            response = self._get(url, headers={"Accept": "text/html"})
+        except FollowSourceError:
+            return {}
+        if response.status != 200:
+            return {}
+        soup = BeautifulSoup(response.body, "html.parser")
+        allowed = {"general", "artist", "copyright", "character", "metadata"}
+        result: dict[str, str] = {}
+        for row in soup.select("#tag-sidebar li[class*='tag-type-']"):
+            tag_type = next((
+                value.removeprefix("tag-type-") for value in row.get("class", [])
+                if value.startswith("tag-type-")
+            ), "")
+            if tag_type not in allowed:
+                continue
+            link = row.select_one("a[href*='page=post'][href*='tags=']")
+            if link is None:
+                continue
+            query = urllib.parse.parse_qs(
+                urllib.parse.urlsplit(str(link.get("href") or "")).query)
+            name = html.unescape(str((query.get("tags") or [""])[0])).strip()
+            if name:
+                result[name] = tag_type
+        return result
+
+    def _candidate(self, post: dict, tag: str, *,
+                   tag_types: Mapping[str, str] | None = None) -> FollowCandidate:
         post_id = str(post.get("id") or "")
         # dapi 返回的标签是 HTML 转义形态（实测 `miqo&#039;te`）。实体不反转义
         # 就进 metadata，读取层再转一次就成了双重转义，用户看到的就是 `&#039;`
@@ -1005,7 +1047,8 @@ class Rule34XxxConnector(_BaseConnector):
             title_is_name=title_is_name,
             extra={"tag": tag, "tags": tags, "score": post.get("score"),
                    "source": source, "title_from": title_from,
-                   "preview_url": post.get("preview_url")},
+                   "preview_url": post.get("preview_url"),
+                   **({"tag_types": dict(tag_types)} if tag_types else {})},
         )
 
     @classmethod
