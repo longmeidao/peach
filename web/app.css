@@ -206,7 +206,7 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
   background:var(--tungsten-soft);font-size:var(--fs-xs)}
 .combo .cb b{cursor:pointer;opacity:.7;font-weight:400}
 .combo .cb b:hover{opacity:1}
-.combo .clr{min-height:36px;display:inline-flex;align-items:center;padding:0 8px;background:none;border:0;color:var(--muted);cursor:pointer;font-size:var(--fs-xs);text-decoration:underline}
+.combo .clr{min-height:36px;display:inline-flex;align-items:center;padding:0 8px;background:none;border:0;color:var(--muted);cursor:pointer;font-size:var(--fs-xs);text-decoration:none}
 /* 管理页标题下的说明只用这一种字形和间距；不要再让统计容器或吸顶计数栏各画一份。 */
 .pagelede{margin:0 0 16px;color:var(--muted);font-size:var(--fs-sm);line-height:1.5}
 .pagelede[hidden]{display:none}
@@ -216,7 +216,7 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
 .playlistcreate{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}.playlistcreate label{display:grid;gap:5px;color:var(--muted);font-size:var(--fs-xs)}.playlistcreate input,.playlistmeta input{min-width:220px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink);padding:9px 11px;font:inherit}.playlistcreate button,.playlistactions button{border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:9px 12px;cursor:pointer}.playlistcreate button:hover,.playlistactions button:hover{border-color:var(--tungsten);color:var(--ink)}.playlistcreate [data-playlist-state]{flex-basis:100%;color:var(--drop);font-size:var(--fs-xs)}
 .playlistcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.playlistcard{display:grid;grid-template-columns:112px minmax(0,1fr);gap:12px;padding:12px;border:1px solid var(--line-soft);border-radius:12px;background:var(--surface);min-width:0}.playlistcover{position:relative;aspect-ratio:16/10;border:0;border-radius:8px;background:#000;overflow:hidden;padding:0;cursor:pointer}.playlistcover:disabled{cursor:default}.playlistcover img{width:100%;height:100%;object-fit:cover}.playlistcover span{position:absolute;right:5px;bottom:5px;border-radius:5px;background:#000b;color:#fff;padding:3px 6px;font-size:var(--fs-xs)}.playlistmeta{display:grid;align-content:center;gap:6px;min-width:0}.playlistmeta input{min-width:0;width:100%;font-weight:600}.playlistmeta small{color:var(--muted)}.playlistactions{grid-column:1/-1;display:flex;gap:7px;justify-content:flex-end}.playlistactions .danger{color:var(--drop)}
 .playlistdialog{width:min(520px,calc(100vw - 28px));border:1px solid var(--line);border-radius:var(--floating-radius);background:var(--surface);color:var(--ink);padding:0;box-shadow:0 2px 4px #0003,0 24px 80px #000b}.playlistdialog::backdrop{background:#000a;backdrop-filter:blur(5px)}.playlistdialoghead{display:flex;align-items:center;justify-content:space-between;padding:16px 17px;border-bottom:1px solid var(--line-soft)}.playlistdialoghead h2{margin:0;font-size:var(--fs-xl)}.playlistdialoghead button{width:34px;height:34px;border:0;border-radius:var(--control-radius);background:transparent;color:var(--ink);display:grid;place-items:center;cursor:pointer}.playlistdialoghead button:hover{background:var(--hover)}.playlistdialoghead svg{width:19px;height:19px;stroke:currentColor;fill:none}.playlistdialogbody{padding:17px}.playlistpicklist{display:grid;gap:7px;margin-top:16px;max-height:320px;overflow-y:auto;overscroll-behavior:contain}.playlistpickrow{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--border-10);border-radius:var(--control-radius);background:var(--overlay-5);color:var(--ink);padding:11px 12px;text-align:left;cursor:pointer}.playlistpickrow:hover{border-color:var(--tungsten)}.playlistpickrow small{color:var(--muted)}
-.runtimegate{display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:12px;margin:0 0 12px;padding:10px 12px;border:1px solid color-mix(in srgb,var(--meter) 35%,var(--line));border-radius:var(--control-radius);background:color-mix(in srgb,var(--meter) 8%,var(--surface));color:var(--ink);font-size:var(--fs-sm)}.runtimegate>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.runtimegate span{min-width:0}.runtimegate a{color:var(--ink);font-weight:650;text-decoration:none}.runtimegate a:hover{text-decoration:underline}
+.runtimegate{display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:12px;margin:0 0 12px;padding:10px 12px;border:1px solid color-mix(in srgb,var(--meter) 35%,var(--line));border-radius:var(--control-radius);background:color-mix(in srgb,var(--meter) 8%,var(--surface));color:var(--ink);font-size:var(--fs-sm)}.runtimegate>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.runtimegate span{min-width:0}.runtimegate a{color:var(--ink);font-weight:650;text-decoration:none}.runtimegate a:hover{color:var(--tungsten);text-decoration:none}
 .review{--review-fieldset-height:440px;padding:0 0 42px}.reviewhead{display:flex;align-items:baseline;gap:12px;padding:2px 2px 0;margin-bottom:12px}.reviewhead h2{margin:0;font-size:var(--fs-xl)}.reviewtabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:16px;scrollbar-width:none}.reviewtabs::-webkit-scrollbar{display:none}.reviewtabs button{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:7px 14px;cursor:pointer;font-size:var(--fs-sm);white-space:nowrap}.reviewtabs button:hover{border-color:var(--tungsten);color:var(--ink)}.reviewtabs button[aria-pressed="true"]{background:var(--tungsten-soft);border-color:var(--tungsten);color:var(--tungsten);font-weight:600}.reviewtabs .n{color:var(--muted);font-size:var(--fs-xs)}.reviewsection{margin-bottom:20px}.reviewsection h3{margin:0 0 9px;font-size:var(--fs-lg)}.reviewlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}
 /* 判定状态用左侧色条表达：整卡描边在一列里扫过去时反而认不出来 */
 .reviewitem{position:relative;display:flex;flex-direction:column;box-sizing:border-box;height:var(--review-fieldset-height);margin:0;padding:0;min-width:0;overflow:hidden;background:var(--surface);border:1px solid var(--line-soft);border-radius:12px}.reviewitem::before{content:'';position:absolute;z-index:3;left:0;top:0;bottom:0;width:3px;background:transparent}.reviewitem[data-decision="approved"]::before{background:var(--keep)}.reviewitem[data-decision="rejected"]::before{background:var(--drop)}.reviewitem[data-decision="skipped"]::before{background:var(--muted)}.reviewitem[data-decision="rejected"],.reviewitem[data-decision="skipped"]{opacity:.6}.reviewitem h4{margin:0 0 6px;font-size:var(--fs-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reviewitem p{margin:4px 0;color:var(--muted);font-size:var(--fs-xs);line-height:1.55;overflow-wrap:anywhere}
@@ -537,14 +537,12 @@ body.photolight-open{overflow:hidden}
 .identityprimary{display:flex;flex-wrap:wrap;gap:14px 26px;align-items:flex-start}
 .identityprimary>.idgroup{width:max-content;max-width:100%}
 .idgroup{min-width:0}
-.idlabel{margin:0 0 7px calc((var(--id-cell,62px) - var(--id-face,46px)) / 2);
+.idlabel{margin:0 0 7px;
   font-size:var(--fs-xs);font-weight:400;color:var(--muted);letter-spacing:.04em}
 .idrow{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:flex-start}
-/* 格子宽和头像宽写成变量，是因为下面两处要用它们的差：头像在格子里居中，于是它的左
-   边缘比格子右移 (cell-face)/2；组标题要和头像对齐就得同样缩进。写成 calc 而不是抄一个
-   8px，改任一尺寸时对齐关系自己跟着走。 */
+/* 组标题、头像和名字共用左边缘；详情栏里的所有身份信息都从内容区起点对齐。 */
 .idgroup{--id-cell:62px;--id-face:46px}
-.idcell{display:flex;flex-direction:column;align-items:center;gap:5px;width:var(--id-cell,62px);
+.idcell{display:flex;flex-direction:column;align-items:flex-start;gap:5px;width:var(--id-cell,62px);
   border:0;background:transparent;color:inherit;padding:0;cursor:pointer}
 .idcell[hidden]{display:none}
 .idface{position:relative;width:var(--id-face,46px);height:var(--id-face,46px);border-radius:50%;overflow:hidden;
@@ -555,7 +553,7 @@ body.photolight-open{overflow:hidden}
 .idface svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2}
 /* 行高必须容得下下伸部。1.25 在 12px 下只有 15px 行框，而这里同时开着 overflow:hidden
    截省略号，于是「Prestige」的 g 尾巴被切掉——用户实测看到的就是这个。 */
-.idname{font-size:var(--fs-xs);line-height:1.5;text-align:center;width:100%;
+.idname{font-size:var(--fs-xs);line-height:1.5;text-align:left;width:100%;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
 .idcell:not(.entitylink){cursor:default}
 .idcell.entitylink:hover .idface{box-shadow:0 0 0 2px var(--tungsten)}
@@ -630,7 +628,7 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
 .reviewentityface:hover{box-shadow:0 0 0 2px var(--tungsten)}
 .reviewentity>div{min-width:0}
 .reviewentityname{border:0;background:none;padding:0;color:var(--ink);font:inherit;cursor:pointer;text-align:left}
-.reviewentityname:hover{color:var(--tungsten);text-decoration:underline}
+.reviewentityname:hover{color:var(--tungsten);text-decoration:none}
 .reviewentity b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:8px}
 .reviewentity>div button:not(.reviewentityname){display:inline-flex;align-items:center;gap:6px;border:0;border-radius:7px;
   background:var(--hover);padding:6px 9px;color:var(--ink-2);cursor:pointer}
@@ -651,12 +649,8 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
   color:var(--ink-2);cursor:pointer}.indexmore:hover,.entitymore:hover{background:var(--overlay-5);color:var(--ink)}
 .indexmore:disabled,.entitymore:disabled{opacity:.5;cursor:wait}
 .entitylink{border:0;background:none;padding:0;color:var(--tungsten);cursor:pointer;text-decoration:none}
-.entitylink:hover{text-decoration:underline}
-/* 下划线只适合行内文字链接。头像格子是 flex 容器，`.entitylink:hover` 的下划线会
-   横穿整行，连上面的头像都被划上；它们本来就有自己的 hover 反馈——face 描边加
-   名字提亮，卡片头像是描边——不需要再叠一条线。
-   2026-08-19：这条原本写在 `.entitylink:hover` 之前，两者特异度都是 0-2-0，
-   后来者胜，于是下划线照样出现。现在同时靠加类提高特异度和排在后面来压住它。 */
+.entitylink:hover{color:var(--ink);text-decoration:none}
+/* Peach 的可点击身份只用颜色、头像描边和背景反馈，不使用链接下划线。 */
 .idcell.entitylink:hover,.mav.entitylink:hover{text-decoration:none}
 
 /* ── 主区：满屏，大图 ── */
@@ -833,7 +827,7 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .junkmeta .why{overflow-wrap:anywhere}.junkmeta .size{margin-left:auto;white-space:nowrap}
 .junkcardtitle{display:block;width:100%;min-width:0;
   border:0;padding:0;background:transparent;color:var(--ink);font:inherit;font-weight:600;line-height:1.4;text-align:left}
-button.junkcardtitle{cursor:pointer}button.junkcardtitle:hover{text-decoration:underline;text-underline-offset:3px}
+button.junkcardtitle{cursor:pointer}button.junkcardtitle:hover{color:var(--tungsten);text-decoration:none}
 button.junkcardtitle:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px;border-radius:2px}
 .junkactions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:auto;padding:10px 12px;
   border-top:1px solid var(--line-soft);background:var(--overlay-5)}
@@ -1261,7 +1255,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
   flex-direction:column;overflow-y:auto;overflow-x:hidden}
 .stitle{font-size:var(--fs-lg);line-height:1.4;word-break:break-all;margin-bottom:8px}
 .detailtitle{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:start;gap:8px;margin-bottom:10px}
-.detailtitle>.srcbig{margin-top:2px}.detailtitle .stitle{min-width:0;margin:0}
+.detailtitle>.srcbig{place-items:start;width:17px;margin-top:2px}.detailtitle .stitle{min-width:0;margin:0}
 /* 源文件管理：定位 + 目录对账。图标必须显式写 stroke/fill，Lucide 是描边路径，
    缺了就被按默认 fill:black 画成黑块（详见 .photonav 那一段的同类修复）。 */
 .srctools{display:flex;align-items:center;gap:6px;margin:0 0 10px;flex-wrap:wrap}
@@ -1417,7 +1411,7 @@ body.settings-open{overflow:hidden}
 /* 动作是具名的下一步（去看更新），文字按钮跟正文同行；关闭才是 24px 图标位。 */
 .toast .tact{flex:none;align-self:center;border:0;background:none;padding:0;
   color:var(--tungsten);font:inherit;font-size:var(--fs-sm);cursor:pointer}
-.toast .tact:hover{text-decoration:underline}
+.toast .tact:hover{color:var(--ink);text-decoration:none}
 .toast .tclose{flex:none;width:24px;height:24px;padding:0;border:0;border-radius:var(--control-radius);
   background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer}
 .toast .tclose:hover{background:var(--hover);color:var(--ink)}
@@ -1579,7 +1573,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .tokbar.scrubbing::before,.tokbar.scrubbing i{height:9px}
 .tokauthor{display:flex;align-items:center;gap:10px;margin-bottom:12px;font-size:var(--fs-md);line-height:1.2}
 .tokauthor>a{color:#f1f1f1;font-weight:600;text-decoration:none;pointer-events:auto}
-.tokauthor>a:hover{text-decoration:underline}.tokauthor>span{color:#aaa;font-size:var(--fs-sm)}
+.tokauthor>a:hover{color:var(--tungsten);text-decoration:none}.tokauthor>span{color:#aaa;font-size:var(--fs-sm)}
 .tokavatar{position:relative;width:40px;height:40px;flex:none;overflow:hidden;border:0;border-radius:50%;padding:0;
   background:#333;color:#f1f1f1;cursor:pointer;pointer-events:auto}
 .tokavatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
@@ -1590,7 +1584,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .tokui .toktitle{display:block;max-width:100%;margin:0;padding:0;border:0;background:none;
   color:inherit;font:inherit;font-size:var(--fs-xl);font-weight:700;line-height:1.25;text-align:left;cursor:pointer;pointer-events:auto;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tokui .toktitle:hover{text-decoration:underline}
+.tokui .toktitle:hover{color:var(--tungsten);text-decoration:none}
 .tokbtns button[aria-pressed="true"]{background:#f1f1f1;color:#0f0f0f}
 .tokclose{position:absolute;top:15px;right:15px;width:42px;height:42px;background:rgba(0,0,0,.5);color:#EEE;
   border:0;border-radius:50%;padding:0;display:grid;place-items:center;cursor:pointer}.tokclose svg{width:21px;height:21px;stroke:currentColor;fill:none}
@@ -2014,7 +2008,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .frowerr{flex:1 1 100%;margin:2px 0 0;font-size:var(--fs-sm);line-height:1.6;color:var(--drop)}
 .fsource.bad>b{color:var(--drop)}
 .fsourcelink{color:inherit;text-decoration:none}
-.fsourcelink:hover{text-decoration:underline;color:var(--tungsten)}
+.fsourcelink:hover{text-decoration:none;color:var(--tungsten)}
 
 /* 作者分组。同一个人在几个站上是几条来源、一个人，所以头像和名字只出现一次，
    下面才是各站那几行。作者卡固定为可完整显示四条普通来源的高度；更多来源在卡内滚动，
@@ -2062,7 +2056,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
    句中链接（「去管理关注看原因」）多出 10px 就成了断句；确实要与前文
    拉开的场合（空态的一句话）由所在容器给。 */
 .flink{border:0;background:none;padding:0;color:var(--tungsten);font:inherit;cursor:pointer}
-.flink:hover{text-decoration:underline}
+.flink:hover{color:var(--tungsten);text-decoration:none}
 .empty .flink{margin-left:6px}
 /* 猜你喜欢：一行可点的名字，点了直接拿去查。 */
 .fguess{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:12px}

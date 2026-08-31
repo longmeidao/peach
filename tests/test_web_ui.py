@@ -439,20 +439,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("padding-top:max(18px,env(safe-area-inset-top))")
         self.assertPageContains("padding-bottom:max(18px,env(safe-area-inset-bottom))")
 
-    def test_avatar_tiles_do_not_inherit_the_text_link_underline(self):
-        """取消规则必须真的压过 `.entitylink:hover`，不能只是写在文件里。
-
-        原来的断言只查子串在不在。取消规则当时排在被覆盖的规则之前，两者特异度
-        同为 0-2-0，后来者胜，下划线照旧出现，测试却一直是绿的。
-        """
-        cancel = ".idcell.entitylink:hover,.mav.entitylink:hover{text-decoration:none}"
-        underline = ".entitylink:hover{text-decoration:underline}"
-        self.assertPageContains(cancel)
-        # 行内文字身份仍然要保留下划线，别把 entitylink 整条规则删掉。
-        self.assertPageContains(underline)
-        # 取消规则同时靠更高特异度和更靠后的位置压住它；位置这一半在这里守住。
-        if self.page.index(cancel) < self.page.index(underline):
-            self.fail("头像格子的取消规则排在 .entitylink:hover 之前，会被后者覆盖")
+    def test_links_never_use_underlines(self):
+        """Peach 的链接反馈只用颜色、背景或描边，任何表面都不画下划线。"""
+        self.assertPageContains(".entitylink:hover{color:var(--ink);text-decoration:none}")
+        self.assertPageContains(".idcell.entitylink:hover,.mav.entitylink:hover{text-decoration:none}")
+        self.assertPageLacks("text-decoration:underline")
 
     def test_every_identity_cell_can_carry_its_own_portrait(self):
         self.assertPageContains('item.id?`<img src="/entity-image?kind=performer&id=${item.id}"')
@@ -2300,20 +2291,18 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("line-height:1.25", rule)
         # 省略号仍然要有：名字长了得截断，只是不能连下伸部一起裁掉。
         self.assertIn("text-overflow:ellipsis", rule)
-        self.assertIn("text-align:center", rule, "文字保持居中")
+        self.assertIn("text-align:left", rule, "文字和头像共用左边缘")
 
     def test_the_group_label_lines_up_with_the_avatar_below_it(self):
-        """组标题要和它下面那张图的左边缘对齐。
-
-        头像在格子里居中，于是它的左边缘比格子右移 (cell-face)/2。标题原本贴着格子左边，
-        看起来就和图错开一截。缩进量由两个尺寸算出来而不是抄一个 8px——改任一尺寸时
-        对齐关系自己跟着走，不用有人记得回来改第二处。
-        """
+        """组标题、图标和名字都贴详情内容区左边缘。"""
         self.assertPageContains(".idgroup{--id-cell:62px;--id-face:46px}")
-        self.assertPageContains(
-            "margin:0 0 7px calc((var(--id-cell,62px) - var(--id-face,46px)) / 2)")
+        self.assertPageContains(".idlabel{margin:0 0 7px")
+        self.assertPageContains("align-items:flex-start;gap:5px;width:var(--id-cell,62px)")
         self.assertPageContains("width:var(--id-cell,62px)")
         self.assertPageContains("width:var(--id-face,46px);height:var(--id-face,46px)")
+
+    def test_detail_source_icon_starts_at_the_content_edge(self):
+        self.assertPageContains(".detailtitle>.srcbig{place-items:start;width:17px;margin-top:2px}")
 
     def test_a_failed_probe_never_turns_a_local_video_into_a_live_stream(self):
         """账本里的 `-1` 是探测硬失败的哨兵，不是时长。

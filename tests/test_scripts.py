@@ -203,6 +203,19 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(propose("sample.mp4.mp4"), "sample.mp4")
         self.assertEqual(propose("sample.mp4.jpg"), "sample.mp4.jpg")
         self.assertEqual(propose("(3).mp4"), "(3).mp4")
+        self.assertEqual(
+            propose("Dakota Doll - [Beauty-Angels.com] - [2024] Scene.mp4"),
+            "Dakota Doll - [2024] Scene.mp4",
+        )
+        self.assertEqual(
+            propose("❤成人游戏-导航-【688GM.CC】.png"),
+            "❤成人游戏-导航.png",
+        )
+        self.assertEqual(
+            propose("QR CODE--扫一扫.png"),
+            "QR CODE--扫一扫.png",
+            "没有命中清洁规则的原始双横线不能被顺手改写",
+        )
 
     def test_filename_cleanup_normalises_only_the_confirmed_ledger_code(self):
         propose = self.clean_names.propose
