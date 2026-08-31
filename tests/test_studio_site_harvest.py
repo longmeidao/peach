@@ -87,7 +87,8 @@ class VerdictTests(unittest.TestCase):
         title = "moodyz.com - This domain is for sale"
         verdict, note = self.module.site_verdict("MOODYZ", 200, page(title), title)
         self.assertEqual(verdict, "未取得")
-        self.assertIn("停放", note)
+        # 拦在标题还是正文都算数，守的是「被拒绝且理由指向域名出售」。
+        self.assertRegex(note, "出售|停放")
 
     def test_a_generic_domain_whose_title_is_just_its_address_is_rejected(self):
         """停放页规则拦不住这一类：它是个正常的站，只是不属于这个厂牌。
@@ -109,6 +110,32 @@ class VerdictTests(unittest.TestCase):
         verdict, _ = self.module.site_verdict(
             "MOODYZ", 200, page(title), title, "https://moodyz.com/")
         self.assertEqual(verdict, "ok")
+
+    def test_a_parked_title_is_caught_even_when_the_body_keyword_is_far_down(self):
+        """实测漏判：`kawaii.com - domain for sale`。
+
+        关键词确实在正文里，但在第 81683 字节——任何固定的正文扫描窗口都会漏掉它。
+        而它就写在标题里，我此前从来没搜过标题。真站的标题不会说自己在出售，
+        所以标题可以用最宽的判据。
+        """
+        title = "kawaii.com - domain for sale"
+        body = page("无关内容") + b"x" * 90000 + "domain for sale".encode()
+        verdict, note = self.module.site_verdict("kawaii", 200, body, title,
+                                                 "https://www.kawaii.com/")
+        self.assertEqual(verdict, "未取得")
+        self.assertIn("出售", note)
+
+    def test_a_parked_title_with_words_between_is_still_caught(self):
+        """实测漏判：`Attackers - The Domain Name Attackers.com is Now For Sale.`
+
+        逐字匹配「domain for sale」对不上——中间插了域名和 is Now。这正是为什么
+        标题要单独用更松的判据，而不是把正文那套原样套过来。
+        """
+        title = "Attackers - The Domain Name Attackers.com is Now For Sale."
+        verdict, note = self.module.site_verdict("Attackers", 200, page(title), title,
+                                                 "https://attackers.com/")
+        self.assertEqual(verdict, "未取得")
+        self.assertIn("出售", note)
 
     def test_a_short_page_is_rejected(self):
         """空壳页也是 200。真站首页实测都在 10 KB 以上。"""

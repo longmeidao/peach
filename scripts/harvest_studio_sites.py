@@ -23,6 +23,8 @@ from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+import httpx   # noqa: E402
+
 from peach.config import STATE_DIR   # noqa: E402
 from peach.http import HttpRequest, HttpxTransport   # noqa: E402
 from peach.jobs import job_main   # noqa: E402
@@ -33,6 +35,14 @@ USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.S | re.I)
 # 抢注页与停放页的自述。它们同样会 200，也同样会在标题里回显域名，
 # 只有这些词能把它们和真站区分开。
+#
+# 标题单独判，而且判得更松。实测两次漏判都出在这上面：`kawaii.com - domain for sale`
+# 的关键词在正文第 81683 字节，早已超出任何合理的正文扫描窗口，可它就写在标题里；
+# `Attackers - The Domain Name Attackers.com is Now For Sale.` 则是中间插了词，
+# 逐字匹配「domain for sale」全文都对不上。标题只有几十个字符，真站的标题不会说
+# 自己在出售，所以这里可以放心用最宽的判据。
+PARKED_TITLE = re.compile(
+    r"for sale|domain name|buy this domain|このドメイン|ドメイン(?:の)?販売", re.I)
 PARKED = re.compile(
     r"domain (?:is )?for sale|buy this domain|parked (?:free )?at|このドメイン(?:は|を)"
     r"|ドメイン(?:の)?販売|sedo\.com|afternic|godaddy\.com/domain|hugedomains",
@@ -125,8 +135,12 @@ def site_verdict(name: str, status: int, body: bytes, title: str,
         return "未取得", f"HTTP {status}"
     if len(body) < MIN_BODY:
         return "未取得", f"页面只有 {len(body)} 字节，疑似空壳"
+    if PARKED_TITLE.search(title):
+        return "未取得", f"标题自述在出售域名（{title[:44]}）"
     text = decode(body)
-    if PARKED.search(text[:20000]):
+    # 不再截窗口。实测停放页把「domain for sale」写在第 81683 字节，任何固定窗口都会漏；
+    # 整篇扫一遍在这个量级上不值得省。
+    if PARKED.search(text):
         return "未取得", "停放页或域名出售页"
     # 标题不比域名多说任何东西，就等于没有自述身份。实测 `prestige.com` 返回 200、
     # 不是停放页、标题正好是 `prestige.com`——它因此通过了「标题含厂牌名」，被判成
@@ -152,6 +166,25 @@ def load_studios(connection: sqlite3.Connection, minimum: int) -> list[dict]:
                 "JOIN asset a ON a.id=ae.asset_id "
                 "WHERE e.kind='studio' AND a.medium='video' "
                 "GROUP BY e.id HAVING n>=? ORDER BY n DESC", (minimum,))]
+
+
+def crawler_client() -> "httpx.Client":
+    """给「每个主机只访问一两次」的作业用的 client，不保留 keepalive。
+
+    共享 `HttpxTransport` 的默认池是给反复访问同几个来源的连接器调的：32 条连接、
+    16 条 keepalive。本脚本要打 56 个厂牌 × 4 个候选、两百多个**互不相同**的主机，
+    而且全部经本机代理走 CONNECT 隧道——每个目标主机各占一条隧道，闲置隧道很快把池占满，
+    后面的请求全部 `PoolTimeout`。实测两轮分别是 49/53 和 44/50 条失败都是它，而不是
+    「这些站不存在」；把这种失败当成结论会得出一半厂牌没有官网的错误结论。
+
+    `max_keepalive_connections=0` 让每条连接用完即关，池子因此不会被闲置隧道占住。
+    这是本作业的取数形态决定的，不改共享默认值——那会伤到真正需要复用连接的连接器。
+    """
+    return httpx.Client(
+        follow_redirects=True,
+        limits=httpx.Limits(max_connections=4, max_keepalive_connections=0),
+        headers={"User-Agent": USER_AGENT},
+    )
 
 
 def probe(http, url: str, timeout: float) -> tuple[int, bytes, str]:
@@ -194,7 +227,7 @@ def run(args) -> int:
                 seeds.setdefault((row.get("studio") or "").strip(), []).append(site)
 
     results: list[dict[str, object]] = []
-    http = HttpxTransport()
+    http = HttpxTransport(crawler_client())
     last = 0.0
     try:
         for record in studios:
