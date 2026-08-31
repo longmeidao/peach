@@ -121,7 +121,7 @@ def propose(name: str, code: str | None = None,
         return name
 
     new = RE_PREFIX.sub("", name, count=1)
-    new = RE_BRACKET_DOMAIN.sub("", new)
+    new, bracket_domains = RE_BRACKET_DOMAIN.subn("", new)
     new = RE_SUFFIX.sub("", new)
     new = RE_ADCOPY.sub("", new)
     new = _normalise_code_in_name(new, code, allow_compact_code)
@@ -131,8 +131,16 @@ def propose(name: str, code: str | None = None,
     if dbl and dbl.group(1).lower() == dbl.group(2).lower():
         new = new[: dbl.start()] + "." + dbl.group(2)
 
-    # 首尾空白 / 扩展名前的空格和点
-    new = re.sub(r"\s+(?=\.[A-Za-z0-9]{2,4}$)", "", new.strip())
+    # 删除方括号域名后会留下双分隔符或尾分隔符：
+    # `标题 - [site.com] - 年份` 应变成 `标题 - 年份`，而不是 `标题 -  - 年份`。
+    if bracket_domains:
+        new = re.sub(r"[ \t]{2,}", " ", new)
+        new = re.sub(r"(?:\s*-\s*){2,}", " - ", new)
+
+    # 首尾空白 / 扩展名前的空格、点和分隔符
+    new = new.strip()
+    if new != name:
+        new = re.sub(r"[\s._\-—]+(?=\.[A-Za-z0-9]{2,4}$)", "", new)
     new = re.sub(r"^[\s._\-—]+", "", new)
 
     # 净化到只剩扩展名、或只剩 "(1)" 这种序号，说明规则吃过头了，放弃这条
