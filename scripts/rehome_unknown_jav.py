@@ -224,10 +224,18 @@ def _remove_empty_tree(root: Path) -> None:
     directories = sorted((path for path in root.rglob("*") if path.is_dir()),
                          key=lambda path: len(path.parts), reverse=True)
     for directory in directories:
-        if not any(directory.iterdir()):
-            directory.rmdir()
-    if root.is_dir() and not any(root.iterdir()):
-        root.rmdir()
+        try:
+            if not any(directory.iterdir()):
+                directory.rmdir()
+        except FileNotFoundError:
+            # CloudDrive 会在最后一个文件移走后自行收掉某些空目录；
+            # 计划中的旧句柄随即失效，这等价于已完成清理。
+            continue
+    try:
+        if root.is_dir() and not any(root.iterdir()):
+            root.rmdir()
+    except FileNotFoundError:
+        pass
 
 
 def apply_plan(
