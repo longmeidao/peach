@@ -29,12 +29,36 @@ class ResolvedFollowMedia:
     url: str
     referer: str | None = None
     headers: Mapping[str, str] | None = None
+    #: (高度, URL) 从高到低。只有 rule34video 给多档；其余来源留空，
+    #: 播放器据此只显示「原画」。
+    qualities: tuple[tuple[int, str], ...] = ()
 
 
 #: 媒体代理允许的主机，投影自 follow_providers；不在表里的 provider 一律拒绝。
 _PROVIDER_HOSTS = follow_providers.hosts()
-_VIDEO_URL_RE = re.compile(r"\bvideo_url\s*:\s*'([^']+)'", re.IGNORECASE)
+#: rule34video 把每一档清晰度写成独立字段：`video_url` 是最低档，
+#: `video_alt_url`、`video_alt_url2`、`video_alt_url3` 依次更高。
+#: 2026-08-31 实测 video/4564733 给出 360 / 480p / 720p / 1080p 四档；
+#: 只解析 `video_url` 的话永远播最低那一档。
+_VIDEO_URL_RE = re.compile(r"\bvideo(?:_alt)?_url\d*\s*:\s*'([^']+)'", re.IGNORECASE)
+#: 从文件名尾部读分辨率：`4564733_1080p.mp4` → 1080，`4564733_360.mp4` → 360。
+_VIDEO_HEIGHT_RE = re.compile(r"_(\d{3,4})p?\.mp4", re.IGNORECASE)
 
+
+def _video_height(url: str) -> int:
+    matched = _VIDEO_HEIGHT_RE.search(urllib.parse.urlsplit(url).path)
+    return int(matched.group(1)) if matched else 0
+
+
+def _pick_quality(resolved: ResolvedFollowMedia, height: int | None) -> ResolvedFollowMedia:
+    """按高度挑一档。要的那档不在就保持原样（默认是最高档）。"""
+    if not height or not resolved.qualities:
+        return resolved
+    for level, url in resolved.qualities:
+        if level == height:
+            return ResolvedFollowMedia(url, resolved.referer, resolved.headers,
+                                       resolved.qualities)
+    return resolved
 
 def _allowed(provider: str, url: str) -> bool:
     try:
@@ -65,7 +89,11 @@ class FollowMediaResolver:
         self._credential_loader = loader
         return self
 
-    def resolve(self, item: FollowItemRow, media_index: int | None = None) -> ResolvedFollowMedia:
+    def resolve(self, item: FollowItemRow, media_index: int | None = None,
+                height: int | None = None) -> ResolvedFollowMedia:
+        """解析可播地址。`height` 指定清晰度，只有 rule34video 有多档可选；
+        要的那档不存在就退回默认（最高档），不报错——签名 URL 会过期，
+        为一次选档失败中断播放不值得。"""
         if item.metadata.get("media_needs_credential"):
             raise FollowMediaUnavailable("媒体需要来源登录会话")
         media_items = item.metadata.get("media_items")
@@ -112,7 +140,7 @@ class FollowMediaResolver:
         with self._lock:
             cached = self._cache.get(item.id)
             if cached and cached[0] > time.monotonic():
-                return cached[1]
+                return _pick_quality(cached[1], height)
         if not item.url or not _allowed(item.provider, item.url):
             raise FollowMediaUnavailable("Rule34Video 详情地址不可用")
         response = self.transport(
@@ -123,13 +151,20 @@ class FollowMediaResolver:
         if response.status != 200 or len(response.body) > self.max_bytes:
             raise FollowMediaUnavailable("Rule34Video 详情页未取得")
         text = response.body.decode("utf-8", errors="replace")
-        matched = _VIDEO_URL_RE.search(text)
-        if not matched:
+        found: list[str] = []
+        for matched in _VIDEO_URL_RE.finditer(text):
+            candidate = html.unescape(matched.group(1)).replace("\\/", "/")
+            if candidate not in found and _allowed(item.provider, candidate):
+                found.append(candidate)
+        if not found:
             raise FollowMediaUnavailable("Rule34Video 正片地址未取得")
-        target = html.unescape(matched.group(1)).replace("\\/", "/")
-        if not _allowed(item.provider, target):
-            raise FollowMediaUnavailable("Rule34Video 返回了不受信任的媒体地址")
-        resolved = ResolvedFollowMedia(target, item.url)
+        # 高清优先：默认播最高一档，其余作为可选清晰度交给播放器。认不出分辨率的
+        # 排在最后但不丢——签名 URL 每次都变，丢了就没有回退。
+        ordered = sorted(found, key=_video_height, reverse=True)
+        resolved = ResolvedFollowMedia(
+            ordered[0], item.url,
+            qualities=tuple((_video_height(url), url) for url in ordered))
+        resolved = _pick_quality(resolved, height)
         with self._lock:
             self._cache[item.id] = (time.monotonic() + self.ttl, resolved)
         return resolved

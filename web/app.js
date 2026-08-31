@@ -478,7 +478,10 @@ function mountPlayerAmbient(video){
   document.addEventListener('peachambientchange',onChange);video.addEventListener('play',schedule);schedule();
   return()=>{stopped=true;document.removeEventListener('peachambientchange',onChange);video.removeEventListener('play',schedule);clear()};
 }
-function mountPlayerQualityControl(player,video,fallbackHeight=0){
+/* `sourceQualities` 是来源自己给的清晰度表（[{height,label}]，从高到低）。
+   rule34video 把每档写成独立字段，videojs 的 qualityLevels 看不到它们——那套只认
+   HLS/DASH 的自适应轨道，而这里是四个各自独立的 mp4。所以由调用方查好再传进来。 */
+function mountPlayerQualityControl(player,video,fallbackHeight=0,sourceQualities=null){
   const controlBar=player.getChild('controlBar')?.el();
   if(!controlBar||controlBar.querySelector('[data-player-quality]'))return;
   const root=document.createElement('div');
@@ -503,12 +506,15 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0){
       }
       return result;
     }
+    if(sourceQualities?.length){
+      return sourceQualities.map(q=>({key:`h${q.height}`,label:q.label||`${q.height}p`,pixels:q.height}));
+    }
     const pixels=resolution(video.videoWidth,video.videoHeight)||Number(fallbackHeight)||0;
     return [{key:'original',label:pixels?`${pixels}p`:'原画',pixels}];
   };
   const qualityRows=()=>{
     const options=rows();
-    if(!levels?.length)selected='original';
+    if(!levels?.length&&!sourceQualities?.length)selected='original';
     const active=options.find(option=>option.key===selected)||options[0];
     const activePixels=active.pixels||Math.max(0,...options.map(option=>option.pixels||0));
     badge.textContent=activePixels>=2160?'4K':activePixels>=720?'HD':'';badge.hidden=!badge.textContent;
@@ -540,6 +546,19 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0){
     menu.querySelectorAll('[data-player-quality-option]').forEach(button=>button.onclick=()=>{
       selected=button.dataset.playerQualityOption;
       if(levels?.length)for(let index=0;index<levels.length;index++)levels[index].enabled=selected==='auto'||selected===String(index);
+      /* 来源档位是四个各自独立的 mp4，不是同一条流的多个轨道，所以只能换 src。
+         记住当前进度和播放状态再换：换源会重新加载，不接回去就等于从头开始。 */
+      if(sourceQualities?.length&&selected.startsWith('h')){
+        const height=selected.slice(1);
+        const at=player.currentTime()||0,wasPlaying=!player.paused();
+        const next=new URL(player.currentSrc()||video.src,location.origin);
+        next.searchParams.set('quality',height);
+        player.src({src:next.pathname+next.search,type:'video/mp4'});
+        player.one('loadedmetadata',()=>{
+          if(at>0)player.currentTime(at);
+          if(wasPlaying)player.play().catch(()=>{});
+        });
+      }
       showMain();
     });
   };
@@ -743,7 +762,7 @@ function mountDetailPlayer(it,video,autoplay,options={}){
     });
   });
   detailPlayer.ready(()=>{
-    enforceDuration();mountPlayerQualityControl(detailPlayer,video,it.height);
+    enforceDuration();mountPlayerQualityControl(detailPlayer,video,it.height,options.qualities);
     mountPlayerSeekPreview(detailPlayer,it,{thumbnail:!options.source});
     mountPlayerCenterControls(detailPlayer);
     if(statsButton)statsButton.hidden=false
@@ -2564,9 +2583,17 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   });
   const followVideo=$('#stage').querySelector('.followdetailmedia>video');
   if(followVideo){
+    /* 清晰度单独问一次：解析要抓来源详情页，列表一次几百条不可能逐条解析，
+       所以只在用户真的展开某个条目时问。取不到就当只有原画，不挡播放。 */
+    let followQualities=null;
+    try{
+      const answer=await api(`/follow-qualities?id=${encodeURIComponent(item.id)}`);
+      followQualities=answer?.qualities?.length?answer.qualities:null;
+    }catch(_e){}
     const followPlayer=mountDetailPlayer(item,followVideo,false,{
       source:{src,type:selectedMedia?.media_type||item.media_type||'video/mp4'},
-      checkSourceStatus:false
+      checkSourceStatus:false,
+      qualities:followQualities
     });
     const stopFollowAmbient=mountPlayerAmbient(followVideo);
     followPlayer?.one?.('dispose',stopFollowAmbient);
