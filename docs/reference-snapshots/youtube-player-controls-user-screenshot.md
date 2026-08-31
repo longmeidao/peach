@@ -74,6 +74,9 @@
   `d4e59f829c63ef4a23ef150ca84a89cf8ea9645aca9d7547a8cd1a2843f1fc01`、
   `9ffa39325d6efcfa004cd8ba66f1a81728c6b6e42bf02cab51642301c25ba8c9`、
   `2eb59205b2f0b7cbeee356c940a199c80773431612ad0a54189b651f6232e81c`。
+- 第十三轮用户标注的返回键特效越界和音量数值提示被进度线遮挡偏差图共 2 张，SHA-256
+  `06e2e9f680352c1b09bcfab3fa916b976a267897063d7ffd0275bbc50ea613a8`、
+  `7476e78ef7278385e44c744add269c38100e796101edc1fa327302237d9a1152`。
 - YouTube 官方氛围模式说明：<https://support.google.com/youtube/answer/12827017?hl=en-GB>，
   2026-08-30 复核；说明颜色取自视频并扩散到屏幕背景，深色主题默认开启，设置开关对所有视频生效。
 - YouTube 官方播放器大小说明：<https://support.google.com/youtube/answer/6052392?hl=en>，
@@ -184,6 +187,18 @@
   `top:50%`，不再由 flex 或原生 margin 共同决定垂直位置。
 - Chrome 本轮能再次枚举实际 YouTube 与 Peach 标签，但接管 YouTube 标签的初次读取及一次恢复都在
   30 秒超时并重置会话。因此实时 DOM、computed style 和修改后截图仍是「未取得」，不能由源码测试替代。
+
+### 第十三轮层级与命中区纠偏
+
+- 返回键继续保留 48×48 px 点击区域和 32 px 官方箭头，但用户截图证明沿用菜单通用 `inset:0`
+  会让按下圆形越过 57 px 标题栏的可视内容区。Peach 按用户要求仅把伪元素改为 `inset:4px`，得到
+  40 px 内部特效；命中区、焦点和键盘行为不缩小。
+- 本地固定的 Video.js 8.24.0 CSS 规定 `.vjs-volume-tooltip` 为 `top:-3.4em;z-index:1`，而 Peach
+  进度条位于同一控制栏的绝对定位上排。生产截图证明自动绘制顺序会让蓝色进度线压住 tooltip 底边。
+  Peach 为进度层、音量外层和 tooltip 分别锁定 `z-index:2/3/4`，并让 2 px volume bar
+  `overflow:visible`；只改变绘制和裁切，不改变百分比、拖动或音量状态。
+- 本轮没有再次取得可控浏览器 DOM／修改后截图；视觉验收仍待现有生产标签刷新后由用户复核，页面源测试
+  和生产静态资源哈希不能替代该结论。
 
 ## 可复用证据
 
