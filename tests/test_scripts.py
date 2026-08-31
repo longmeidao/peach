@@ -37,6 +37,7 @@ class OperationalScriptTests(unittest.TestCase):
         cls.creator_boards = load_script("creator_boards")
         cls.creator_tags = load_script("creator_tags")
         cls.creator_attributions = load_script("audit_creator_attributions")
+        cls.rehome_unknown = load_script("rehome_unknown_jav")
 
     def test_import_has_no_filesystem_or_log_side_effect(self):
         self.assertIsNone(self.clean_names._logf)
@@ -320,6 +321,86 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertEqual(backup.execute("PRAGMA integrity_check").fetchone()[0], "ok")
             self.assertEqual(backup.execute("SELECT count(*) FROM asset").fetchone()[0], 3)
             backup.close()
+
+    def test_rehome_unknown_jav_flattens_files_and_updates_confirmed_studio(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            unknown = root / "番号" / "_未知厂牌"
+            nested = unknown / "259LUXU-1468" / "release title"
+            nested.mkdir(parents=True)
+            video = nested / "259LUXU-1468.mp4"
+            video.write_bytes(b"video")
+            sidecar = nested / "259LUXU-1468.jpg"
+            sidecar.write_bytes(b"image")
+            db = root / "ledger.db"
+            sqlite3.connect(db).close(); upgrade(db, MIGRATIONS)
+            connection = sqlite3.connect(db)
+            connection.execute(
+                "INSERT INTO asset(id,location,path,name,medium,code) VALUES(?,?,?,?,?,?)",
+                (1, "115", r"B:\番号\_未知厂牌\259LUXU-1468\release title\259LUXU-1468.mp4",
+                 video.name, "video", "259LUXU-1468"),
+            )
+            connection.commit(); connection.close()
+            mappings = root / "mappings.csv"
+            mappings.write_text(
+                "code,studio,source,confidence,evidence_url,note\n"
+                "259LUXU-1468,ラグジュTV,user:studio-review,1.0,https://javdb.com/v/YJ148,user confirmed\n",
+                encoding="utf-8-sig",
+            )
+            backup = root / "ledger.pre-rehome.db"
+            plan = root / "plan.csv"
+
+            result = self.rehome_unknown.main([
+                "--db", str(db), "--mappings", str(mappings),
+                "--physical-unknown-root", str(unknown),
+                "--plan", str(plan), "--apply", "--backup", str(backup),
+            ])
+
+            self.assertEqual(result, 0)
+            target = root / "番号" / "ラグジュTV" / "259LUXU-1468"
+            self.assertEqual((target / video.name).read_bytes(), b"video")
+            self.assertEqual((target / sidecar.name).read_bytes(), b"image")
+            self.assertFalse((unknown / "259LUXU-1468").exists())
+            connection = sqlite3.connect(db)
+            self.assertEqual(connection.execute(
+                "SELECT path,studio FROM asset WHERE id=1"
+            ).fetchone(), (r"B:\番号\ラグジュTV\259LUXU-1468\259LUXU-1468.mp4",
+                           "ラグジュTV"))
+            self.assertEqual(connection.execute(
+                "SELECT e.canonical_name,ae.source FROM asset_entity ae "
+                "JOIN entity e ON e.id=ae.entity_id WHERE ae.asset_id=1 AND ae.role='studio'"
+            ).fetchone(), ("ラグジュTV", "user:studio-review"))
+            self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+            connection.close()
+            self.assertTrue(backup.is_file())
+            self.assertIn(",done", plan.read_text(encoding="utf-8-sig"))
+
+    def test_rehome_unknown_jav_refuses_flattening_name_collisions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            unknown = root / "番号" / "_未知厂牌"
+            for folder in ("one", "two"):
+                nested = unknown / "ABP-340" / folder
+                nested.mkdir(parents=True)
+                (nested / "ABP-340.mp4").write_bytes(folder.encode())
+            db = root / "ledger.db"
+            sqlite3.connect(db).close(); upgrade(db, MIGRATIONS)
+            mappings = root / "mappings.csv"
+            mappings.write_text(
+                "code,studio,source,confidence\n"
+                "ABP-340,Prestige,user:studio-review,1.0\n",
+                encoding="utf-8-sig",
+            )
+
+            result = self.rehome_unknown.main([
+                "--db", str(db), "--mappings", str(mappings),
+                "--physical-unknown-root", str(unknown),
+                "--plan", str(root / "plan.csv"),
+            ])
+
+            self.assertEqual(result, 1)
+            self.assertTrue((unknown / "ABP-340" / "one" / "ABP-340.mp4").is_file())
+            self.assertFalse((root / "番号" / "Prestige" / "ABP-340").exists())
 
     def test_media_batch_scripts_are_import_safe_and_keep_context_rules(self):
         self.assertEqual(self.probe.context_fields(1920, 1080, 180), ("速食", "横屏", "2K"))

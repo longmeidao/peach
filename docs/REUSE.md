@@ -40,6 +40,7 @@
 | 女优头像候选 | Gfriends 的 GitHub raw 索引与单张媒体（只作外部 Provider，不克隆图库） | 名字链、质量档位、格式/尺寸/SHA-256 门槛、候选缓存、provenance、健康统计和人工复核 |
 | 厂牌 Logo 候选 | 厂牌官网确认的社交 handle → unavatar URL 解析 → 平台 CDN 单图 | handle 归属、内容缓存、方形归一、精确/感知哈希、provenance、健康统计与变化复核 |
 | JAV 元数据查询 | Javinizer-Go v1.5.1 单来源 JSON CLI（MIT）；MetaTube SDK `6a5e6128c725187aeaf921d48ed7d9cd9f30671b`（Apache-2.0）只作来源身份与丰富字段模型参考 | 只发送规范番号；Peach 管 source profile、`provider_id`／`content_id`、逐字段优先级、原始证据、丰富目录证据、健康统计、候选复核与批准后的 ledger 投影 |
+| 已确认厂牌的目录归位 | Javinizer-Go v1.5.1 organizer 只作冲突预检、模板化目录和回滚边界参考，不让它持有 Peach ledger | `rehome_unknown_jav.py` 只消费人工确认映射；先出逐文件 CSV，拒绝扁平化重名与厂牌冲突，SQLite 备份后移动文件并同步 Peach 路径／实体 provenance |
 | FC2 跨号证据 | 已缓存的 fc2cmadb 评论收获 + Peach ledger 媒体事实 | 2026-08-31 登录态实测旧文章仍提供 Inertia `article` 与 `comments`；稳定 pair、合集/分片保护、hash/时长/尺寸佐证、库外 evidence、健康统计和人工复核；不依赖 FC2-Leak-Detector/JavSP |
 | 媒体探测/转码 | Peach 管理的 FFmpeg/ffprobe | 任务策略和 Media Engine 编排 |
 | HTML5/HLS/DASH 播放 | Video.js 8.24.0 + 内置 VHS（Apache-2.0，本地固定版本） | 流方案、授权、稳定时长、回退顺序和统计面板 |
