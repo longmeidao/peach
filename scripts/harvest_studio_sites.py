@@ -67,14 +67,20 @@ def slugs(name: str) -> list[str]:
 
 
 def candidate_urls(name: str) -> list[str]:
-    """按 JAV 厂牌官网的实际域名习惯排序：`.com` 最常见，其次 `.jp`、`-av`、`.tv`。"""
+    """按 JAV 厂牌官网的实际域名习惯排序：`.com` 最常见，其次 `.jp`、`-av`、`.tv`。
+
+    不再为每个域名各试一遍 `www.` 前缀。两个 transport 都开着 `follow_redirects`，
+    只用 `www.` 的站会从裸域跳过来；而裸域连不上时 `www.` 基本也连不上，多出来的那一半
+    候选几乎只在**失败**路径上产生开销——首轮实测正是这样：57 个厂牌 × 8 个候选，
+    死域名每个吃掉 connect 与 read 各一份超时，整批跑了三个多小时还没完。
+    候选减半后同一批是分钟级。
+    """
     urls: list[str] = []
     for slug in slugs(name):
         for host in (f"{slug}.com", f"{slug}.jp", f"{slug}-av.com", f"{slug}.tv"):
-            for prefix in ("https://www.", "https://"):
-                url = f"{prefix}{host}/"
-                if url not in urls:
-                    urls.append(url)
+            url = f"https://{host}/"
+            if url not in urls:
+                urls.append(url)
     return urls
 
 
@@ -151,7 +157,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seeds", type=Path, help="人工查到的 studio,site 表，优先于推导域名")
     parser.add_argument("--min-assets", type=int, default=3)
     parser.add_argument("--interval", type=float, default=1.2)
-    parser.add_argument("--timeout", type=float, default=20.0)
+    # httpx 把这个标量同时用作 connect 与 read 超时，死域名因此最多吃两份。首轮用 20
+    # 秒的代价是整批三个多小时；真站实测都在 2 秒内响应，8 秒已经宽裕得多。
+    parser.add_argument("--timeout", type=float, default=8.0)
     parser.add_argument("--limit", type=int, default=0)
     # `job_main` 直接读 args.lock，没有这一行会在拿锁时才 AttributeError。
     parser.add_argument("--lock", type=Path, default=STATE_DIR / ".studio-sites.lock")

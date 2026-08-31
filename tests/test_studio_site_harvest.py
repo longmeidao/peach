@@ -48,8 +48,19 @@ class SlugTests(unittest.TestCase):
     def test_candidate_urls_are_unique_and_prefer_dot_com(self):
         urls = self.module.candidate_urls("MOODYZ")
         self.assertEqual(len(urls), len(set(urls)))
-        self.assertEqual(urls[0], "https://www.moodyz.com/")
+        self.assertEqual(urls[0], "https://moodyz.com/")
         self.assertTrue(any(u.endswith("moodyz.jp/") for u in urls))
+
+    def test_the_www_variant_is_not_a_separate_candidate(self):
+        """多出来的那一半候选几乎只在失败路径上产生开销。
+
+        transport 开着 follow_redirects，只用 `www.` 的站会从裸域跳过来；而裸域连不上时
+        `www.` 基本也连不上。首轮 57 个厂牌 × 8 个候选跑了三个多小时还没完——httpx 把
+        单个标量同时当作 connect 和 read 超时，死域名每个吃掉两份。这条测试守的是那次代价。
+        """
+        urls = self.module.candidate_urls("Wanz Factory")
+        self.assertFalse([url for url in urls if url.startswith("https://www.")])
+        self.assertEqual(len(urls), 8)   # 2 个 slug 写法 × 4 种域名形态
 
 
 class VerdictTests(unittest.TestCase):
