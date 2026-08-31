@@ -89,6 +89,27 @@ class VerdictTests(unittest.TestCase):
         self.assertEqual(verdict, "未取得")
         self.assertIn("停放", note)
 
+    def test_a_generic_domain_whose_title_is_just_its_address_is_rejected(self):
+        """停放页规则拦不住这一类：它是个正常的站，只是不属于这个厂牌。
+
+        实测 `https://www.prestige.com/` 返回 200、不是停放页、标题正好是
+        `prestige.com`，因此通过了「标题含厂牌名」被判成 Prestige 官网——而真站是
+        `prestige-av.com`，`prestige.com` 是另一家公司。判据是：标题若不比域名多说
+        任何东西，就等于没有自述身份。
+        """
+        verdict, note = self.module.site_verdict(
+            "Prestige", 200, page("prestige.com"), "prestige.com",
+            "https://www.prestige.com/")
+        self.assertEqual(verdict, "未取得")
+        self.assertIn("域名回显", note)
+
+    def test_a_real_site_is_not_rejected_by_the_domain_echo_rule(self):
+        """真站的标题远不止域名，这条规则不能误伤它们。"""
+        title = "年齢チェック | 人気知名度NO.1！アダルトビデオ最強のAVメーカー【MOODYZ(ムーディーズ)】公式サイト"
+        verdict, _ = self.module.site_verdict(
+            "MOODYZ", 200, page(title), title, "https://moodyz.com/")
+        self.assertEqual(verdict, "ok")
+
     def test_a_short_page_is_rejected(self):
         """空壳页也是 200。真站首页实测都在 10 KB 以上。"""
         verdict, note = self.module.site_verdict("MOODYZ", 200, b"<title>MOODYZ</title>", "MOODYZ")

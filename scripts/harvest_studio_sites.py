@@ -113,12 +113,13 @@ def page_title(body: bytes) -> str:
     return re.sub(r"\s+", " ", text).strip()[:120]
 
 
-def site_verdict(name: str, status: int, body: bytes, title: str) -> tuple[str, str]:
+def site_verdict(name: str, status: int, body: bytes, title: str,
+                 url: str = "") -> tuple[str, str]:
     """这一页认不认自己是这个厂牌。
 
-    三道都必须过：HTTP 200、页面不是停放页、标题里出现厂牌名。缺任何一道都写成
-    未取得而不是「大概是」——一个错的官网会被下游当成社媒 handle 的来源，
-    把别人的账号安到这个厂牌头上。
+    四道都必须过：HTTP 200、不是空壳、不是停放页、标题里出现厂牌名且不只是域名回显。
+    缺任何一道都写成未取得而不是「大概是」——一个错的官网会被下游当成社媒 handle 的
+    来源，把别人的账号安到这个厂牌头上。
     """
     if status != 200:
         return "未取得", f"HTTP {status}"
@@ -127,6 +128,14 @@ def site_verdict(name: str, status: int, body: bytes, title: str) -> tuple[str, 
     text = decode(body)
     if PARKED.search(text[:20000]):
         return "未取得", "停放页或域名出售页"
+    # 标题不比域名多说任何东西，就等于没有自述身份。实测 `prestige.com` 返回 200、
+    # 不是停放页、标题正好是 `prestige.com`——它因此通过了「标题含厂牌名」，被判成
+    # Prestige 官网，而真站是 `prestige-av.com`，那是另一家公司。停放页规则拦不住它：
+    # 它是个正常的站，只是不属于这个厂牌。
+    host = (urlsplit(url).hostname or "").casefold().removeprefix("www.")
+    title_token = normalise(title)
+    if host and title_token and title_token in normalise(host):
+        return "未取得", f"标题只是域名回显，没有自述身份（{title[:40]}）"
     token = normalise(name)
     if token and token in normalise(title):
         return "ok", "标题自述厂牌名"
@@ -205,7 +214,7 @@ def run(args) -> int:
                                note=f"取不到：{type(exc).__name__}")
                     continue
                 title = page_title(body)
-                verdict, note = site_verdict(name, status, body, title)
+                verdict, note = site_verdict(name, status, body, title, final)
                 row.update(candidate_url=url, final_url=final, status=status,
                            bytes=len(body), sha256=hashlib.sha256(body).hexdigest(),
                            title=title, verdict=verdict, note=note)
