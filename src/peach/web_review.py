@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -36,6 +37,7 @@ class ReviewContract(Protocol):
 
     candidate_root: Path
     logo_root: Path
+    avatar_root: Path
 
     def cache_bust(self) -> None: ...
     def read_connection(self): ...
@@ -752,6 +754,76 @@ def studio_logo_key(studio: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]", "_", studio)[:60]
 
 
+#: 只记决定、不需要落地的类别，以及为什么。写在这里而不是靠人记：
+#: `w_review_decision` 的每个落地分支都是手写的，把类别加进白名单却忘了写分支，
+#: 表现就是「点通过、什么也没发生」——`creator_tags` 和 `studio_logos` 各犯过一次，
+#: `performer_avatars` 是第三次。`test_every_approvable_category_can_land` 守住这条。
+DECISION_ONLY_CATEGORIES = {
+    "western_identity": "身份判断落在 entity 上，由专门的合并流程写，不在复核这一步",
+    "code_creators": "番号与创作者的绑定由 metadata_fields 那条路写",
+    "cover_sources": "封面已在 /cover 缓存里，复核只是确认取得与否",
+    "fc2_markings": "只标注证据状态，不改真相字段",
+    "fc2_similarity": "产出的是跨号候选，合并要另行授权",
+    "video_endcards": "只登记首尾帧证据，不改资产",
+    "media_failure": "只记录失败原因，供下一轮取证",
+}
+
+
+def _install_performer_avatar(contract: ReviewContract, entity_id: str) -> int:
+    """把已批准的女优头像候选装进 `/entity-image` 真正读的目录。
+
+    和 `_install_studio_logo` 同一个毛病、同一种修法：`performer_avatars` 一直只在
+    分类白名单里，没有任何写入分支。审计脚本按设计只把外部图放进内容寻址缓存
+    （「外部图只进入候选专用内容寻址缓存，不写 generated/avatars」），落地要人批准；
+    而批准这一步什么也没做。结果是 18 个已判 ok 的候选——图早就下载好了，最大一张
+    2880×1800——从 2026-08-25 起一直躺在缓存里进不去。
+
+    按 sha256 定位缓存对象，并在装载前重算一遍校验：候选 CSV 的 `cache_path` 只是
+    哈希名，路径可能过期，而内容寻址的意义就在于不必相信路径。
+    """
+    rows = {row["item_key"]: row
+            for row in read_candidates("performer_avatars", contract.candidate_root)[0]}
+    candidate = rows.get(str(entity_id))
+    if candidate is None:
+        raise ValueError("候选不在当前批次，无法批准")
+    if str(candidate.get("verdict") or "").strip() != "ok":
+        raise ValueError("只有质量判定为 ok 的候选可以装载")
+    digest = str(candidate.get("sha256") or "").strip().lower()
+    if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+        raise ValueError("候选没有可用的 SHA-256")
+    objects = (contract.candidate_root / "provider-cache" / "performer-avatars"
+               / "gfriends" / "objects")
+    source = next((item for item in objects.glob(f"{digest}.*") if item.is_file()), None)
+    if source is None:
+        raise ValueError(f"候选图片不在本机缓存：{digest[:12]}")
+    body = source.read_bytes()
+    if hashlib.sha256(body).hexdigest() != digest:
+        raise ValueError("缓存对象与候选记录的哈希不一致，拒绝装载")
+    content_type = str(candidate.get("mime_type") or "").strip() or "image/jpeg"
+    contract.avatar_root.mkdir(parents=True, exist_ok=True)
+    destination = contract.avatar_root / f"performer-{int(entity_id)}.img"
+    # 先写临时文件再原子替换：中途失败不会留下半张图被 `/entity-image` 读到。
+    staging = destination.with_name(f"{destination.name}.{uuid.uuid4().hex}.tmp")
+    staging.write_bytes(body)
+    os.replace(staging, destination)
+    Path(f"{destination}.ct").write_text(content_type, encoding="utf-8")
+    Path(f"{destination}.provenance.json").write_text(json.dumps({
+        "source": "performer avatar review",
+        "provider": candidate.get("provider") or "",
+        "source_url": candidate.get("source_url") or "",
+        "external_id": candidate.get("external_id") or "",
+        "matched_name": candidate.get("matched_name") or "",
+        "name_source": candidate.get("name_source") or "",
+        "sha256": digest,
+        "width": candidate.get("width") or "",
+        "height": candidate.get("height") or "",
+        "policy_version": candidate.get("policy_version") or "",
+        "imported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "purpose": "local performer identity cache",
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    return 1
+
+
 def _install_studio_logo(contract: ReviewContract, studio: str) -> int:
     r"""把已批准的厂牌 logo 候选装进 `/logo` 真正读的目录。
 
@@ -966,5 +1038,7 @@ def w_review_decision(contract: ReviewContract, body):
             applied = len(asset_ids)
         elif category == "studio_logos" and status == "approved":
             applied = _install_studio_logo(contract, item_key)
+        elif category == "performer_avatars" and status == "approved":
+            applied = _install_performer_avatar(contract, item_key)
     contract.cache_bust()   # 标签写完，聚合缓存必须失效，否则 facets 最多 90 秒还是旧数
     return {"ok": True, "category": category, "item_key": item_key, "status": status, "applied_assets": applied}
