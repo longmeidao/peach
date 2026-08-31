@@ -7,6 +7,8 @@ patch 会静默失效——不报错，一路跑到断言才炸。
 import csv
 import json
 import os
+import re
+import pathlib
 import sqlite3
 import tempfile
 import time
@@ -52,6 +54,8 @@ class ReviewQueueTests(unittest.TestCase):
         self.candidates.mkdir()
         self.logo_root = root / "logos"
         self.logo_root.mkdir()
+        self.avatar_root = root / "avatars"
+        self.avatar_root.mkdir()
         self.db_path = str(root / "ledger.db")
         con = sqlite3.connect(self.db_path)
         con.executescript(REVIEW_SCHEMA)
@@ -66,6 +70,7 @@ class ReviewQueueTests(unittest.TestCase):
         con.commit(); con.close()
         self.contract = rm_web.WebContract(
             Path(self.db_path), candidate_root=self.candidates, logo_root=self.logo_root,
+            avatar_root=self.avatar_root,
         )
 
     def tearDown(self):
@@ -783,3 +788,99 @@ class ReviewQueueTests(unittest.TestCase):
         rows = rm_review.q_review(self.contract)["sections"]["code_creators"]
         self.assertEqual(rows[0]["item_key"], "6869")
         self.assertIn("没有同番号文件", rows[0]["reason"])
+
+
+class PerformerAvatarApplyTests(ReviewQueueTests):
+    """批准女优头像候选必须真的把图装上。
+
+    这个缺陷犯到第三次了：`creator_tags` 犯过（留痕说通过、实际没写），
+    `studio_logos` 犯过（只在白名单里、没有写入分支），`performer_avatars` 一模一样。
+    审计脚本按设计只把外部图放进内容寻址缓存，落地要人批准；而批准这一步什么也没做，
+    于是 18 个已判 ok 的候选从 2026-08-25 起一直进不去。
+    """
+
+    FIELDS = ("entity_id", "current_name", "matched_name", "name_source", "provider",
+              "source_url", "external_id", "width", "height", "mime_type", "sha256",
+              "cache_path", "verdict")
+
+    def _seed(self, *, verdict="ok", body=b"\xff\xd8\xff\xdb-fake-jpeg", digest=None):
+        import hashlib
+        real = hashlib.sha256(body).hexdigest()
+        objects = (self.candidates / "provider-cache" / "performer-avatars"
+                   / "gfriends" / "objects")
+        objects.mkdir(parents=True, exist_ok=True)
+        (objects / f"{real}.jpg").write_bytes(body)
+        path = self.candidates / "performer-avatar-candidate-20260901-000000.csv"
+        with path.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=list(self.FIELDS))
+            writer.writeheader()
+            writer.writerow({
+                "entity_id": "1", "current_name": "释爱丽丝", "matched_name": "釈アリス",
+                "name_source": "localization_jp", "provider": "gfriends",
+                "source_url": "https://example.invalid/x.jpg", "external_id": "5-Premium/x.jpg",
+                "width": "648", "height": "800", "mime_type": "image/jpeg",
+                "sha256": digest or real, "cache_path": digest or real, "verdict": verdict,
+            })
+        return real
+
+    def _decide(self, status="approved"):
+        return rm_web.w_review_decision(self.contract, {
+            "category": "performer_avatars", "item_key": "1", "status": status,
+        })
+
+    def test_approving_installs_the_image_where_entity_image_reads_it(self):
+        body = b"\xff\xd8\xff\xdb-fake-jpeg"
+        self._seed(body=body)
+        result = self._decide()
+        self.assertEqual(result["applied_assets"], 1)
+        target = self.avatar_root / "performer-1.img"
+        self.assertTrue(target.is_file(), "批准之后图必须真的装上，而不是只记一笔决定")
+        self.assertEqual(target.read_bytes(), body)
+        self.assertEqual(Path(f"{target}.ct").read_text(encoding="utf-8"), "image/jpeg")
+        prov = json.loads(Path(f"{target}.provenance.json").read_text(encoding="utf-8"))
+        self.assertEqual(prov["matched_name"], "釈アリス")
+        self.assertEqual(prov["name_source"], "localization_jp")
+
+    def test_a_candidate_that_did_not_pass_quality_is_refused(self):
+        self._seed(verdict="rejected")
+        with self.assertRaisesRegex(ValueError, "ok"):
+            self._decide()
+        self.assertFalse((self.avatar_root / "performer-1.img").exists())
+
+    def test_a_hash_that_does_not_match_the_cached_bytes_is_refused(self):
+        """内容寻址的意义就在于不必相信路径。
+
+        候选 CSV 里的 cache_path 只是哈希名，缓存目录可能被别的批次覆写；装载前
+        重算一遍，对不上就拒绝，而不是把一张来历不明的图装成这个人的头像。
+        """
+        self._seed(digest="0" * 64)
+        with self.assertRaisesRegex(ValueError, "缓存"):
+            self._decide()
+        self.assertFalse((self.avatar_root / "performer-1.img").exists())
+
+    def test_rejecting_records_the_decision_without_installing(self):
+        self._seed()
+        result = self._decide(status="rejected")
+        self.assertEqual(result["applied_assets"], 0)
+        self.assertFalse((self.avatar_root / "performer-1.img").exists())
+
+    def test_every_approvable_category_can_land(self):
+        """每个能被批准的类别，要么有落地分支，要么明确声明只记决定。
+
+        `w_review_decision` 的落地分支是一条条手写的，把类别加进白名单却忘了写分支，
+        表现就是「点通过、什么也没发生」——这个组合最糟：留痕说通过、实际没写。
+        已经犯过三次，所以这里不再靠人记。
+        """
+        source = pathlib.Path(rm_review.__file__).read_text(encoding="utf-8")
+        block = source.split("if category not in {", 1)[1].split("}", 1)[0]
+        whitelist = set(re.findall(r'"(\w+)"', block))
+        self.assertGreaterEqual(len(whitelist), 10, "没解析到分类白名单，门槛会空转")
+        lands = set(re.findall(r'elif category == "(\w+)" and status == "approved"', source))
+        lands |= set(re.findall(r'if category == "(\w+)" and status == "approved"', source))
+        declared = set(rm_review.DECISION_ONLY_CATEGORIES)
+        missing = sorted(whitelist - lands - declared)
+        self.assertEqual(
+            missing, [],
+            "这些类别能被批准却既没有落地分支、也没声明只记决定："
+            "补一个 _install_* 分支，或把它写进 DECISION_ONLY_CATEGORIES 并说明原因",
+        )
