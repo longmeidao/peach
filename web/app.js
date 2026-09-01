@@ -2702,18 +2702,11 @@ const followItemForMedia=(group,view=followMediaView)=>{
   return followCollectionItemsNewest(group).find(item=>followItemMediaKinds(item).has(wanted))||group.primary;
 };
 
-function followMediaNote(item){
+function followMediaIssue(item){
   if(item.media_error)return `媒体未取得：${item.media_error}`;
-  if(item.media_needs_credential)return followCredentialProviders.has(item.provider)
-    ?(item.playable
-      ?'已显示可读取附件；F95 登录会话已保存，受保护资源会在下次检查重新解析'
-      :'F95 登录会话已保存；这条旧记录的受保护资源会在下次检查重新解析')
-    :(item.playable
-      ?'已显示可读取附件；其他资源需要 F95 登录会话解析'
-      :'媒体链接需要 F95 登录会话解析');
-  if(item.has_media&&!item.playable&&item.media_kind==='external')return item.resource_urls?.length
-    ?`已取得 ${item.resource_urls.length} 个外部文件页；视频列表未取得`
-    :'外部文件页未取得；视频列表未取得';
+  if(item.media_needs_credential&&!followCredentialProviders.has(item.provider))return item.playable
+    ?'部分媒体未取得：需要 F95 登录会话解析'
+    :'媒体未取得：需要 F95 登录会话解析';
   return '';
 }
 
@@ -2849,6 +2842,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     .map(tag=>followTagChip(item,tag,'button')).join('');
   const author=followAuthorName(authorSources)||item.author||item.source_label||'作者未取得';
   const postedBy=item.author&&foldName(item.author)!==foldName(author)?item.author:'';
+  const mediaIssue=followMediaIssue(item);
   /* 舞台就近展开：插在被点击那张卡片所在的一行之后，而不是整个列表之前。
      插在列表前等于永远回到页面顶部——翻了几屏点开一条，视线要被拽回最上面，
      关掉后还得再翻回来。首页的详情早就是就近展开的，关注页一直没跟上。
@@ -2858,9 +2852,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   const followList=$('#stats').querySelector('.followlist');
   const clicked=followList&&followList.querySelector(`[data-follow-item="${item.id}"]`);
   if(followList?.classList.contains('followphotowall')){
-    /* CSS 多栏按 DOM 顺序先填满一整列，再填下一列；视觉上位于顶部的第 5 张图，
-       DOM 中可能已经排在几十张之后。详情若插回多栏，必然出现在页面很下面。
-       图片详情因此统一放在瀑布流之前，保持当前视口可预测。 */
+    /* 图片墙是稳定网格；详情独立放在墙前，避免成为网格子项并改变所有行的排列。 */
     followList.before($('#stage'));
   }else if(clicked){
     const cards=[...followList.children];
@@ -2885,7 +2877,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
       <div class="smeta mono"><span>${followWhen(item)}</span>${realDuration(item.duration)?`<span>${fmtDur(item.duration)}</span>`:''}${badges?`<span class="fbadges">${badges}</span>`:''}</div>
       ${item.summary?`<p class="followdetailsummary">${esc(item.summary)}</p>`:''}
       ${tags?`<div class="stags followdetailtags">${tags}</div>`:''}
-      ${followMediaNote(item)?`<p class="fnote followmedianote">${esc(followMediaNote(item))}</p>`:''}
+      ${mediaIssue?`<p class="fnote followmediaissue">${esc(mediaIssue)}</p>`:''}
       ${followResourceLinks(item)}
       <div class="fb followdetailactions">
         <button class="later" data-follow-detail-save aria-label="${item.status==='saved'?'已保存':'保存到账本'}" title="${item.status==='saved'?'已保存':'保存到账本'}"${item.status==='saved'?' disabled':''}>${item.status==='saved'?icon('check'):icon('bookmark-plus')}</button>
@@ -3036,6 +3028,7 @@ function followCard(group,authorSources=[]){
   const mixTarget=embedded.length>1?item.id:(videos[0]?.id||item.id);
   const badges=followBadges(group);
   const tags=followCardTags(item).slice(0,3).map(tag=>followTagChip(item,tag)).join('');
+  const mediaIssue=followMediaIssue(item);
   const open=`<button class="cardopenhit" data-follow-detail="${item.id}" aria-label="打开 ${esc(item.title)} 详情"></button>`;
   return `<article class="card followitem${isMix?' collection':''}${imageView?' imagecard':''}" data-follow-item="${item.id}" data-status="${esc(item.status)}">
     <div class="${isMix?'mixstack ':''}followvisual"><div class="pic">
@@ -3052,7 +3045,7 @@ function followCard(group,authorSources=[]){
     <div class="meta"><span class="mav fsourceavatar" title="作者头像">${followAuthorAvatar(authorSources)}</span>
       <div class="mtext"><button class="t cardtitle" data-follow-detail="${item.id}">${esc(item.title)}</button>
         <div class="s mono"><span>${followWhen(item)}</span>${badges?`<span class="fbadges">${badges}</span>`:''}</div>
-        ${tags?`<div class="ctags">${tags}</div>`:''}${followMediaNote(item)?`<span class="fnote">${esc(followMediaNote(item))}</span>`:''}</div></div>
+        ${tags?`<div class="ctags">${tags}</div>`:''}${mediaIssue?`<span class="fnote followmediaissue">${esc(mediaIssue)}</span>`:''}</div></div>
     <span class="fstate" aria-live="polite"></span></article>`;
 }
 

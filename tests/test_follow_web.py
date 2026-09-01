@@ -1764,7 +1764,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('title="打开来源页面" aria-label="打开来源页面"')
         self.assertNotIn('打开来源页面</a>', self.page)
         self.assertPageContains(".followdetailtitle{display:flex;gap:5px")
-        self.assertPageContains(".fnote.followmedianote{margin:18px 0 8px}")
+        self.assertPageContains(".fnote.followmediaissue{margin:18px 0 8px;color:var(--drop)}")
         self.assertPageContains("followAuthorAvatar(authorSources)")
         self.assertPageContains("followTagChip(item,tag,'button')")
         self.assertPageContains("item.detail_tags||item.tags||[]")
@@ -2150,13 +2150,16 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('data-author="${esc(c.author||\'\')}"')
         self.assertPageContains("author:input.dataset.author")
 
-    def test_credential_dependent_media_is_called_out(self):
-        self.assertPageContains("媒体链接需要 F95 登录会话解析")
-        self.assertPageContains("已显示可读取附件；F95 登录会话已保存")
-        self.assertPageContains("这条旧记录的受保护资源会在下次检查重新解析")
+    def test_only_actionable_media_failures_enter_the_information_stream(self):
+        self.assertPageContains("媒体未取得：需要 F95 登录会话解析")
+        self.assertPageContains("部分媒体未取得：需要 F95 登录会话解析")
+        self.assertPageLacks("已显示可读取附件；F95 登录会话已保存")
+        self.assertPageLacks("这条旧记录的受保护资源会在下次检查重新解析")
         self.assertPageContains("followCredentialProviders=new Set")
         self.assertPageContains("api('/api/follow/credentials').catch")
-        self.assertPageContains("个外部文件页；视频列表未取得")
+        self.assertPageLacks("个外部文件页；视频列表未取得")
+        self.assertPageContains("function followMediaIssue(item)")
+        self.assertPageContains('class="fnote followmediaissue"')
         self.assertPageContains("function followResourceLinks(item)")
         self.assertPageContains('class="followresources"')
         self.assertPageContains("${followResourceLinks(item)}")
@@ -2227,11 +2230,15 @@ class FollowWebSourceTests(unittest.TestCase):
             watch,
         )
         self.assertPageContains("followMediaView==='images'?' followphotowall':''")
-        self.assertPageContains(".followlist.followphotowall{display:block;column-count:5")
+        self.assertPageContains(".followlist.followphotowall{grid-template-columns:repeat(5,minmax(0,1fr))")
         self.assertPageLacks(".followlist.followphotowall>.stage{column-span:all}")
         self.assertPageContains("followList?.classList.contains('followphotowall')",
-                                "图片详情必须脱离多栏，否则顶部图片会在很下面展开")
-        self.assertPageContains(".followitem.imagecard .followvisual .pic>img{position:relative")
+                                "图片详情必须脱离图片网格，避免改变所有行的排列")
+        self.assertPageContains(".followitem.imagecard .pic{aspect-ratio:4/3;min-height:0")
+        self.assertPageContains(".followitem.imagecard .followvisual .pic>img{position:absolute")
+        self.assertPageLacks(".followlist.followphotowall{display:block;column-count:5")
+        self.assertPageLacks(".followitem.imagecard .pic{aspect-ratio:auto")
+        self.assertPageLacks(".followitem.imagecard{display:inline-flex;width:100%;margin:0 0 14px;break-inside:avoid}")
 
     def test_external_file_pages_do_not_default_to_video_and_paging_actions_share_one_row(self):
         self.assertPageContains("else if(item.media_kind==='image'||item.media_kind==='video')kinds.add(item.media_kind)")

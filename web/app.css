@@ -1852,14 +1852,14 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   vertical-align:-2px;margin-right:5px}
 .fauthorhead .ficon{margin-right:2px}
 .followlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
-.followlist.followphotowall{display:block;column-count:5;column-gap:10px}
-/* 图片详情放在瀑布流之前，不再作为多栏子项参与列填充。 */
-@media (max-width:1400px){.followlist.followphotowall{column-count:4}}
-@media (max-width:1000px){.followlist.followphotowall{column-count:3}}
+.followlist.followphotowall{grid-template-columns:repeat(5,minmax(0,1fr));gap:14px 10px;align-items:start}
+/* 固定媒体框在懒加载前就占好高度；多栏会随图片天然高度反复重新分栏，造成滚动位移。 */
+@media (max-width:1400px){.followlist.followphotowall{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media (max-width:1000px){.followlist.followphotowall{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .followitem{min-width:0}.followitem.collection{padding-top:7px}
-.followitem.imagecard{display:inline-flex;width:100%;margin:0 0 14px;break-inside:avoid}
-.followitem.imagecard .pic{aspect-ratio:auto;min-height:120px;background:var(--sunk)}
-.followitem.imagecard .followvisual .pic>img{position:relative;inset:auto;width:100%;height:auto;object-fit:cover;background:transparent}
+.followitem.imagecard{display:flex;width:100%;margin:0}
+.followitem.imagecard .pic{aspect-ratio:4/3;min-height:0;background:var(--sunk)}
+.followitem.imagecard .followvisual .pic>img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:var(--sunk)}
 .followitem a{text-decoration:none}.followitem a:hover{text-decoration:none}
 .followitem[data-status="ignored"],.followitem[data-status="seen"]{opacity:.62}
 .followvisual{position:relative;isolation:isolate}.followvisual .pic{z-index:1}
@@ -1904,10 +1904,10 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .followdetailtitle{display:flex;gap:5px;align-items:flex-start;margin-bottom:8px}.followdetailtitle .stitle{width:auto;max-width:calc(100% - 35px);margin:0}.followdetailtitle .followorigin{flex:none;width:30px;height:30px;margin:0;display:grid;place-items:center;border-radius:7px}.followdetailtitle .followorigin:hover{background:var(--hover)}
 .followdetailidentity{display:flex;align-items:center;gap:10px;margin:2px 0 12px}.followdetailidentity .mav{flex:none}.followdetailidentity b,.followdetailidentity span{display:block}.followdetailidentity>div>span{margin-top:3px;color:var(--muted);font-size:var(--fs-xs)}
 .followdetailsummary{margin:0 0 16px;line-height:1.6;color:var(--ink-2);white-space:pre-line}.followdetailtags .tg{max-width:none;overflow:visible;text-overflow:clip;white-space:normal;text-align:left;color:var(--ink-2);font-family:inherit}.followqueue .mixitempic>.fnothumb{position:static;width:100%;height:100%}
-.fnote.followmedianote{margin:18px 0 8px}.followresources{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}.followresources a{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 11px;border:1px solid var(--border-15);border-radius:7px;color:var(--ink-2);text-decoration:none}.followresources a:hover{border-color:var(--tungsten);color:var(--ink);text-decoration:none}.followresources svg{width:15px;height:15px;stroke:currentColor;fill:none}.followdetailactions{margin-top:2px}.followdetailactions button:disabled{opacity:.45;cursor:default}.followorigin{display:inline-flex;align-items:center;gap:7px;width:max-content;margin-top:auto;color:var(--muted);text-decoration:none}.followorigin svg{width:16px;height:16px;stroke:currentColor;fill:none}.followorigin:hover{color:var(--ink);text-decoration:none}
+.fnote.followmediaissue{margin:18px 0 8px;color:var(--drop)}.followresources{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}.followresources a{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 11px;border:1px solid var(--border-15);border-radius:7px;color:var(--ink-2);text-decoration:none}.followresources a:hover{border-color:var(--tungsten);color:var(--ink);text-decoration:none}.followresources svg{width:15px;height:15px;stroke:currentColor;fill:none}.followdetailactions{margin-top:2px}.followdetailactions button:disabled{opacity:.45;cursor:default}.followorigin{display:inline-flex;align-items:center;gap:7px;width:max-content;margin-top:auto;color:var(--muted);text-decoration:none}.followorigin svg{width:16px;height:16px;stroke:currentColor;fill:none}.followorigin:hover{color:var(--ink);text-decoration:none}
 @media (max-width:640px){.followhead{align-items:center}
   .followauthors{margin-right:-12px;padding-top:3px}.followfilters{margin-right:-12px;padding-right:12px}
-  .followlist.followphotowall{column-count:2;column-gap:8px}
+  .followlist.followphotowall{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 8px}
   .followdetailmedia{--follow-image-arrow-inset:10px}.followimagearrow{width:44px;height:44px}.followimagedots{bottom:12px}
 }
 
