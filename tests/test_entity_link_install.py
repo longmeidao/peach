@@ -186,6 +186,22 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(dead[0]["entity"], "MOODYZ")
         self.assertEqual(dead[0]["note"], "HTTP 404")
 
+    def test_only_a_gone_status_counts_as_proof_that_a_link_is_dead(self):
+        """取不到不等于没了，这两件事只有 404／410 能划清。
+
+        实测全库 152 条打不开的链接里，有 26 条属于「取不到」而非「没了」：
+        `linktr.ee` 回 403（Linktree 挡爬虫，浏览器里能正常打开）、`facebook.com`
+        回 400、`x.com/MomotaEmiri` 回 500（X 的临时错误，账号很可能还在）、
+        `diaz-g.com` 直接连接失败。按「非 200 就删」会把这些好链接一起删掉。
+
+        这和取证失败时写 `未取得` 而不是写结论是同一条规矩。
+        """
+        for note in ("HTTP 404", "HTTP 410"):
+            self.assertTrue(self.module.is_gone(note), note)
+        for note in ("HTTP 403", "HTTP 400", "HTTP 500", "HTTP 502",
+                     "取不到：ConnectError", "取不到：ReadTimeout", "可打开"):
+            self.assertFalse(self.module.is_gone(note), note)
+
     def test_the_reachability_gate_does_not_re_probe_rows_already_skipped(self):
         """已经因为别的原因跳过的行不必再请求一次——那是白费一次往返。"""
         planned = self.module.plan(self.connection, [self.row(name="不存在的厂牌")])
