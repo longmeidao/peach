@@ -1401,7 +1401,11 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .fb button{width:44px;height:42px;padding:0;border:0;border-right:1px solid var(--border-10);background:transparent;border-radius:0;
   cursor:pointer;display:grid;place-items:center;color:var(--muted);transition:transform .14s ease,color .14s ease,background .14s ease}
 .fb button svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.fb button:last-child{border-right:0}.fb button:hover{transform:none;background:rgba(255,255,255,.12)}
+.fb button:last-child,.fb .fdownload:last-child{border-right:0}.fb button:hover{transform:none;background:rgba(255,255,255,.12)}
+/* 下载是 `<a download>`，不是按钮：让浏览器自己落盘，不经过 JS。几何与同排按钮一致。 */
+.fb .fdownload{box-sizing:border-box;width:44px;height:42px;display:grid;place-items:center;border-right:1px solid var(--border-10);color:var(--ink-2)}
+.fb .fdownload:hover{background:rgba(255,255,255,.12);color:var(--ink)}
+.fb .fdownload svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .fb .like:hover,.fb .like[aria-pressed="true"]{color:var(--tungsten);background:var(--tungsten-soft)}
 .fb .reason:hover,.fb .reason[aria-expanded="true"],.fb .reason[data-has-reason="true"]{color:#FF669D;background:color-mix(in srgb,#FF669D 12%,transparent)}
 .fb .dislike:hover,.fb .dislike[aria-pressed="true"]{color:var(--drop);background:color-mix(in srgb,var(--drop) 12%,transparent)}
@@ -1924,6 +1928,8 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .followitem .meta .s{min-height:21px}.fbadges{display:flex;flex-wrap:nowrap;gap:5px;min-width:0;overflow:hidden}
 .fbadge{padding:2px 8px;border:1px solid var(--border-15);border-radius:var(--badge-radius);font-size:var(--fs-xs);color:var(--ink-2)}
 .fbadge.wip{border-color:var(--meter);color:var(--meter)}
+/* 「含 WIP」说的是同组里还有一条半成品，这一条本身不是；配色要弱于 WIP 本体。 */
+.fbadge.wip.partial{border-color:var(--border-15);color:var(--muted)}
 .fbadge.ver{border-color:var(--tungsten);color:var(--tungsten)}
 .fbadge.dup{border-style:dashed}
 .fnote{font-size:var(--fs-xs);color:var(--muted)}

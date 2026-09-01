@@ -237,9 +237,16 @@ class FollowStore:
                 "first_seen_at,last_seen_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
                 " ON CONFLICT(source_id,external_id) DO UPDATE SET"
                 "  title=excluded.title, url=excluded.url, media_url=excluded.media_url,"
-                "  thumb_url=excluded.thumb_url, published_at=excluded.published_at,"
-                "  published_precision=excluded.published_precision,"
-                "  version=excluded.version, duration=excluded.duration,"
+                # 详情页取不到不等于这条没有发布时间。paheal 每个候选都要单独打一次
+                # 详情页，被限流时 `_detail` 返回 {}，这里若直接覆盖，就会把上一轮
+                # 已经取到的上传时间和时长抹成 NULL——实测 168 条里 7 条正是这样，
+                # 而 `COALESCE(published_at, first_seen_at)` 会让界面改显示抓取时刻。
+                "  thumb_url=excluded.thumb_url,"
+                "  published_at=COALESCE(excluded.published_at, follow_item.published_at),"
+                "  published_precision=CASE WHEN excluded.published_at IS NOT NULL"
+                "    THEN excluded.published_precision ELSE follow_item.published_precision END,"
+                "  version=excluded.version,"
+                "  duration=COALESCE(excluded.duration, follow_item.duration),"
                 "  release_key=excluded.release_key, variant_kind=excluded.variant_kind,"
                 "  variant_label=excluded.variant_label, group_hint=excluded.group_hint,"
                 "  metadata_json=excluded.metadata_json, last_seen_at=excluded.last_seen_at",

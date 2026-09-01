@@ -394,6 +394,27 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const returnSurfaceReady=hasReturnSurface();")
         self.assertPageLacks("const returnSurfaceReady=$('#grid').children.length>0")
 
+    def test_a_saved_online_asset_plays_where_it_is(self):
+        """保存过的在线资产此前在馆藏详情里只给一道闸：「媒体与原始页面在关注详情中查看」。
+
+        `path` 是来源作品页不假，但能播的那条代理一直都在
+        （`/follow-stream?id=<follow_item>`），保存时写的就是 `follow_item.asset_id`。
+        反查不到关注条目时才拦下来，并说清是什么拦的。
+        """
+        self.assertPageContains("function followStreamSource(it)")
+        self.assertPageContains(
+            "return it.location==='online'&&it.follow_item_id")
+        self.assertPageContains("const proxied=followStreamSource(it);")
+        self.assertPageContains("const onlineGated=online&&!it.follow_item_id;")
+        self.assertPageLacks("这条内容从关注候选保存；媒体与原始页面在关注详情中查看。")
+
+    def test_follow_detail_has_an_explicit_download(self):
+        """下载到本地是显式动作，此前根本没有入口。用 `<a download>` 让浏览器落盘。"""
+        self.assertPageContains('class="fdownload"')
+        self.assertPageContains("download=1")
+        self.assertPageContains('<symbol id="i-download"')
+        self.assertPageContains(".fb .fdownload{box-sizing:border-box;width:44px;height:42px;")
+
     def test_detail_like_reason_is_an_icon_disclosure_without_idle_explanation(self):
         self.assertPageContains('id="preferenceToggle" aria-label="喜爱理由"')
         self.assertPageContains('id="preferencePanel" hidden')

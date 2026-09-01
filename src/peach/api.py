@@ -136,6 +136,28 @@ def _offline_response(exc: MediaOffline) -> JSONResponse:
 #: （封面重生成写的是新文件），所以一年也不嫌长。
 #: 不加 immutable——那会让浏览器连刷新都不再回源，真要换图就只能干等过期。
 MEDIA_CACHE_SECONDS = 365 * 24 * 3600
+
+#: 文件名里不能出现的字符，按 Windows 的最严口径取——落盘的那台多半是它。
+_UNSAFE_FILENAME = re.compile('[\\/:*?"<>|]+|[\x00-\x1f]+')
+
+
+def _attachment_disposition(title: str, url: str) -> str:
+    """按条目标题构造下载文件名，扩展名沿用上游地址的后缀。
+
+    不回传上游地址：主机名和签名同样是不该外露的东西，和 `/follow-stream`
+    整体的边界一致。`filename*` 用 RFC 5987 编码，标题里的中文和日文才落得下来。
+    """
+    stem = _UNSAFE_FILENAME.sub(" ", str(title or "")).strip() or "peach-media"
+    stem = " ".join(stem.split())[:120]
+    suffix = Path(urlsplit(str(url or "")).path).suffix.lower()
+    if not re.fullmatch(r"\.[a-z0-9]{2,5}", suffix):
+        suffix = ".mp4"
+    name = f"{stem}{suffix}"
+    # 标题整条都是中日文时，ascii 回退会只剩空格和标点，浏览器落下来是个没名字的
+    # 文件。回退名必须自己站得住，不能是「把非 ASCII 删掉之后剩下的」。
+    ascii_stem = "".join(ch for ch in stem if ch.isascii() and (ch.isalnum() or ch in " -_[]().")).strip()
+    ascii_name = f"{ascii_stem}{suffix}" if ascii_stem else f"peach-media{suffix}"
+    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name)}"
 #: 头像单独短一档：id 不变但人会换头像，作者换得还挺勤。
 AVATAR_CACHE_SECONDS = 30 * 24 * 3600
 
@@ -714,7 +736,7 @@ def create_app(
 
     @app.api_route("/follow-stream", methods=["GET", "HEAD"])
     def follow_stream(request: Request, id: int, media: int | None = None,
-                      quality: int | None = None,
+                      quality: int | None = None, download: int = 0,
                       args: dict[str, str] = Depends(require_auth)):
         """Play a remote follow candidate through Peach without exposing its upstream URL."""
         with database.read_connection() as connection:
@@ -751,6 +773,11 @@ def create_app(
             if value:
                 forwarded[name] = value
         forwarded["cache-control"] = "no-store"
+        # 下载是显式动作，不是播放的副作用：只有带 `download=1` 才让浏览器落盘。
+        # 文件名从条目标题来，不回传上游地址——上游主机名同样是不该外露的东西。
+        if download:
+            forwarded["content-disposition"] = _attachment_disposition(
+                item.title, target.url)
         if request.method == "HEAD":
             status = upstream.status_code
             upstream.close()

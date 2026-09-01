@@ -129,6 +129,39 @@ class RecordTests(_StoreCase):
         self.assertEqual(refreshed.first_seen_at, item.first_seen_at)
         self.assertNotEqual(refreshed.last_seen_at, item.last_seen_at)
 
+    def test_a_failed_detail_never_erases_a_known_upload_time(self):
+        """paheal 每个候选都要单独打一次详情页，被限流时 `_detail` 返回 {}。
+
+        此前 upsert 无条件覆盖，于是上一轮已经取到的上传时间和时长被抹成 NULL，
+        而 `COALESCE(published_at, first_seen_at)` 会让界面改显示抓取时刻——
+        看着是条完整记录，时间却是错的。实测 168 条 paheal 里 7 条正是这样。
+        """
+        source_id = self._source()
+        self.store.record(source_id, _fetch([_candidate(
+            "1", "A", published_at="2026-08-18T09:03:30Z", duration=44.7)]), moment=MOMENT)
+        first = self.store.items()[0]
+        self.assertEqual(first.published_at, "2026-08-18T09:03:30Z")
+
+        later = MOMENT + timedelta(hours=1)
+        self.store.record(source_id, _fetch([_candidate("1", "A")], raw=b"<html>2</html>"),
+                          moment=later)
+        again = self.store.items()[0]
+        self.assertEqual(again.published_at, "2026-08-18T09:03:30Z")
+        self.assertEqual(again.duration, 44.7)
+        self.assertEqual(again.published_precision, "exact")
+
+    def test_a_later_fetch_with_a_real_time_still_wins(self):
+        """保守只针对「取不到」；来源真的给了新时间就要覆盖，不能变成只写一次。"""
+        source_id = self._source()
+        self.store.record(source_id, _fetch([_candidate("1", "A")]), moment=MOMENT)
+        self.assertIsNone(self.store.items()[0].published_at)
+        self.store.record(source_id, _fetch([_candidate(
+            "1", "A", published_at="2026-08-18T09:03:30Z")], raw=b"<html>2</html>"),
+            moment=MOMENT + timedelta(hours=1))
+        item = self.store.items()[0]
+        self.assertEqual(item.published_at, "2026-08-18T09:03:30Z")
+        self.assertEqual(item.published_precision, "exact")
+
     def test_not_modified_records_the_check_without_touching_items(self):
         source_id = self._source()
         self.store.record(source_id, _fetch([_candidate("1", "A")]), moment=MOMENT)

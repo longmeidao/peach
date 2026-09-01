@@ -11,6 +11,7 @@ from __future__ import annotations
 import html
 import json
 import re
+import time
 import urllib.parse
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
@@ -1166,9 +1167,21 @@ class Rule34PahealConnector(_BaseConnector):
         return SourceFetch(candidates=tuple(candidates), probed=len(candidates),
                            raw_body=response.body, **common)
 
+    #: 详情页取不到就重试的状态码。列表页一页 24 条，每条都要单独打一次详情页，
+    #: 上游按频率挡回来是常态；一次挡回来就当「这条没有上传时间」，得到的是一条
+    #: 看似完整、时间却是抓取时刻的记录——比报错更难发现。
+    _DETAIL_RETRY_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
+    #: 与外网退避规则同一套节奏。
+    _DETAIL_RETRY_DELAYS = (1.0, 2.0, 4.0)
+
     def _detail(self, post_id: str) -> dict[str, object]:
         url = f"https://rule34.paheal.net/post/view/{post_id}"
         response = self._get(url, headers={"Accept": "text/html"})
+        for delay in self._DETAIL_RETRY_DELAYS:
+            if response.status not in self._DETAIL_RETRY_STATUSES:
+                break
+            time.sleep(delay)
+            response = self._get(url, headers={"Accept": "text/html"})
         if response.status != 200:
             return {}
         soup = BeautifulSoup(response.body, "html.parser")

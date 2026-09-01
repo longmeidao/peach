@@ -75,6 +75,21 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertNotIn("Featured Actress", category_map,
                          "来源营销分类不是内容标签，不能因为官方给了就直接入库")
 
+    def test_rule34_tag_type_backfill_reuses_the_connector_and_is_resumable(self):
+        """rule34xxx 的标签类型只在帖子页上，2152 条里当时只有 40 条带着它。
+
+        常规检查只看第一页，补不到历史条目。抓取判据不重写，直接复用连接器的
+        `_detail_tag_types`；备份先做、分批提交，中断一次不至于白跑五十分钟。
+        """
+        source = (ROOT / "scripts" / "backfill_rule34_tag_types.py").read_text(encoding="utf-8")
+        self.assertIn("connector._detail_tag_types(post_id)", source)
+        self.assertIn('if args.apply and not args.backup:', source)
+        self.assertIn("shutil.copy2(database, args.backup)", source)
+        self.assertIn("writer.commit()", source)
+        # 取不到不等于这条没有类型：不写空字典冒充已补，下一轮还要再问。
+        self.assertIn('if not tag_types:', source)
+        self.assertIn('return 0 if before == after else 1', source)
+
     def test_test_entrypoint_enforces_worktree_source_and_unittest(self):
         windows = (ROOT / "scripts" / "test.ps1").read_text(encoding="utf-8")
         self.assertIn("rev-parse --git-common-dir", windows)
