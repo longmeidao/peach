@@ -149,7 +149,7 @@ Gofile token 是另一份本机可选凭据，只进 Gofile 请求头，不进 U
 - 导入运维脚本不得触发文件、网络或数据库副作用。`scrape_codes.py` 默认写可续跑复核 CSV；`clean_names.py` 先预览，`--apply` 前把 SQLite 备份到真实库同目录并校验完整性。文件名只按 ledger 已确认的番号规范化，不从名称重新猜番号；大小写单改走同目录临时名，去广告后撞名使用 `(2)` 起的后缀保留两份媒体。复核候选文件可带主机／用途后缀，`web_review.latest_candidate_file` 必须按实际修改时间取最新批次，不能按文件名字典序。FC2CMADB 的 Inertia 文章存档只作为官方商品页镜像证据：标题与保守翻译后的标签写 `fc2-metadata-field-candidates.csv` 并与最新 JAV 元数据批次一起进入 `/review`，不自动写 ledger；封面把列表 `w276` 换成实测存在的 `w1200`，再走 `fetch_jav_covers.py --fc2-only` 的解码、宽度、磁盘和原子落盘门槛，合集不下发共用封面，失败留逐条日志，不回退视频缩略图。批准官方标签时必须用 `(asset_id, tag)` 冲突更新来源与置信度；`asset_tag` 的唯一约束会让 `INSERT OR IGNORE` 保留旧来源，导致值已存在却不显示“官方”。
 - 切换服务前检查 80、443、8900、9999 端口和实际进程归属。
 - 115/PikPak 播放依赖 CloudDrive 的 `B:`/`A:`；盘符对 Windows token 可见性不同，最终以 Peach 对已知作品的 `/stream` 实测为准。
-- 浏览器不支持的 AVI 等容器由 `TranscodeService` 缓存为 H.264/AAC MP4，再通过同一 Range 端点提供；永不改写原媒体。
+- 浏览器不支持的 AVI、MKV 等容器由 `TranscodeService` 缓存为浏览器兼容 MP4，再通过同一 Range 端点提供，永不改写原媒体。缓存未命中时先用同一会话内可取消、最长 20 秒的 ffprobe 探测：H.264 `yuv420p`/`yuvj420p` 保留视频码流，AAC 同时直接复制，其他音频只转 AAC；需要视频转码的 Windows 输入优先保持 CUDA surfaces 走 `scale_cuda` + H.264 NVENC `p1`，NVDEC 不支持时只把编码留给 NVENC，两条都失败才回退原 `libx264 veryfast`。macOS 不试 CUDA，仍先封装复制再走软件转码。探测和每次尝试都受原 2 槽并发闸门、1 小时总时限和 stream session 取消保护；旧缓存继续有效，原媒体、ledger 和 API 契约不变。
 - 数据库元数据不得插值到 inline JavaScript 事件属性。真实厂牌名中的撇号曾直接造成 Firefox 语法错误。前端 API 包装必须先检查 HTTP 状态再返回 JSON；冲突只读时写端点会返回 `409` 和错误 JSON，把它当普通成功对象会清空选择并重载，用户只会看到条目原样回来。批量处置和详情反馈必须保留当前选择并明确显示失败原因。
 - 验证分开报告：静态/单元/API、桌面浏览器、390×844 手机、生产服务是否已重启。
 
