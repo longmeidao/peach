@@ -75,7 +75,7 @@ class MetadataProviderTests(unittest.TestCase):
             ],
             "maker": "Studio Studio", "series": "Series A",
             "release_date": "2020-09-13T00:00:00Z", "genres": ["Anal"],
-        }, {"Anal": "肛交"})
+        })
         self.assertEqual(fields["performers"]["value"], [
             {"name": "木村さん", "external_id": "7", "thumb_url": ""},
         ])
@@ -93,14 +93,14 @@ class MetadataProviderTests(unittest.TestCase):
                 {"language": "ja", "maker": "プレステージ", "series": "【プレステージ20周年特別企画】"},
             ],
         }
-        fields = extract_peach_fields(payload, {})
+        fields = extract_peach_fields(payload)
         self.assertEqual(fields["series"]["value"], "【プレステージ20周年特別企画】")
         self.assertEqual(fields["studio"]["value"], "プレステージ")
 
     def test_catalog_titles_become_reviewable_truth_candidates(self):
         fields = extract_peach_fields({
             "title": "日本語タイトル", "original_title": "Original Title",
-        }, {})
+        })
         self.assertEqual(fields["title"]["value"], "日本語タイトル")
         self.assertEqual(fields["original_title"]["value"], "Original Title")
 
@@ -109,7 +109,7 @@ class MetadataProviderTests(unittest.TestCase):
             "maker": "FALENO",
             "series": "FALENO Compilation",
             "translations": [{"language": "ja", "maker": "", "series": ""}],
-        }, {})
+        })
         self.assertEqual(fields["series"]["value"], "FALENO Compilation")
         self.assertEqual(fields["studio"]["value"], "FALENO")
 

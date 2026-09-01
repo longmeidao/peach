@@ -15,6 +15,7 @@ from typing import Callable
 from urllib.parse import urlsplit
 
 from .config import STATE_DIR, TOOLS_DIR
+from .genre_taxonomy import map_genres
 from .entities import (
     canonicalize_entity_name,
     collapse_repeated_entity_name,
@@ -321,7 +322,7 @@ def extract_catalog_evidence(payload: dict) -> dict[str, dict]:
     return out
 
 
-def extract_peach_fields(payload: dict, category_map: dict[str, str]) -> dict[str, dict]:
+def extract_peach_fields(payload: dict) -> dict[str, dict]:
     """Map raw provider data to reviewable Peach truth-field candidates."""
     out: dict[str, dict] = {}
     catalog = extract_catalog_evidence(payload)
@@ -354,8 +355,14 @@ def extract_peach_fields(payload: dict, category_map: dict[str, str]) -> dict[st
             "display_value": release_date,
             "warnings": date_warnings,
         }
-    mapped = [category_map[name] for name in payload.get("genres") or [] if name in category_map]
-    mapped = list(dict.fromkeys(mapped))
+    # 未收录的 genre 跟着候选一起进复核队列。丢掉它们等于把「这个来源给了值但
+    # Peach 还没决定怎么归类」伪装成「来源没给标签」，正是官方 tag 长期缺口的成因。
+    mapped, unmapped = map_genres(payload.get("genres") or [])
     if mapped:
-        out["tags"] = {"value": mapped, "display_value": "、".join(mapped), "warnings": []}
+        out["tags"] = {
+            "value": mapped,
+            "display_value": "、".join(mapped),
+            "warnings": ([f"来源还有 {len(unmapped)} 个未收录 genre：" + "、".join(unmapped)]
+                         if unmapped else []),
+        }
     return out

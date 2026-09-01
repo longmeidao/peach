@@ -51,6 +51,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from peach.catalog_rules import normalise_code_key
+from peach.genre_taxonomy import map_genres
 from peach.review_csv import read_rows, write_rows
 from peach.scripting import USER_AGENT, open_readonly
 from peach.config import DATABASE_PATH, GENERATED_DIR
@@ -73,25 +74,6 @@ ARTICLE_LINK = re.compile(r"https?://[\w.]*fc2(?:ppvdb|cmadb)\.com/articles/(\d{
 FULLWIDTH = str.maketrans("＝－＿０１２３４５６７８９", "=-_0123456789")
 #: 判定合集所需的最少分片映射数。一两条可能只是同一段内容的重复投稿。
 COLLECTION_MIN_PARTS = 3
-
-# fc2cmadb 保留的是 FC2 商品页标签原文。只有能无歧义投影到 Peach
-# 现有词表的值才进入复核候选；其余仍留在原始 FC2 CSV 里，不猜翻译。
-FC2_TAG_MAP = {
-    "中出し": "中出内射", "生ハメ": "中出内射", "素人": "素人",
-    "無修正": "无码", "フェラ": "口交", "フェラチオ": "口交", "口交": "口交",
-    "blowjob": "口交", "Oral": "口交", "口内発射": "口爆", "口内射精": "口爆",
-    "スレンダー": "苗条", "アナル": "肛交", "美乳": "美乳", "巨乳": "巨乳",
-    "可愛い": "高颜值", "かわいい": "高颜值", "美女": "高颜值",
-    "美人": "高颜值", "美少女": "高颜值", "パイパン": "白虎",
-    "顔出し": "露脸", "制服": "制服", "コスプレ": "角色扮演",
-    "露出": "户外露出", "野外露出": "户外露出", "女子大生": "学生",
-    "大学生": "学生", "JD": "学生", "女子校生": "学生", "美尻": "美臀",
-    "お尻": "美臀", "手コキ": "手交", "車内": "车内", "野外": "户外",
-    "3P": "3P多人", "騎乗位": "骑乘", "美脚": "美腿", "人妻": "人妻",
-    "バック": "后入", "潮吹き": "潮吹", "ごっくん": "吞精", "オナニー": "自慰",
-    "流出": "泄密流出", "調教": "调教", "爆乳": "爆乳", "NTR": "绿帽NTR",
-    "痴女": "痴女", "熟女": "熟女", "パイズリ": "乳交",
-}
 
 METADATA_POLICY_VERSION = "fc2cmadb-article-v1"
 METADATA_FIELDS = (
@@ -325,10 +307,12 @@ def _candidate_key(code: str, field: str, value: object) -> str:
 
 
 def translated_tags(raw: str) -> list[str]:
-    """Conservatively project archived FC2 labels into Peach's reviewed taxonomy."""
-    return list(dict.fromkeys(
-        FC2_TAG_MAP[tag] for tag in str(raw or "").split() if tag in FC2_TAG_MAP
-    ))
+    """Conservatively project archived FC2 labels into Peach's reviewed taxonomy.
+
+    词表和 JAV 官方来源共用 `peach.genre_taxonomy`：同一个日文标签在 FC2 和
+    dmm/mgstage 上必须投影到同一个 Peach 标签，两份表迟早会漂移。
+    """
+    return map_genres(str(raw or "").split())[0]
 
 
 def metadata_candidate_rows(rows: list[dict], database: Path, *, raw_snapshot: Path,

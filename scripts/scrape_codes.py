@@ -28,6 +28,7 @@ if str(SRC_DIR) not in sys.path:
 from peach.catalog_rules import normalise_code_key
 from peach.scripting import open_readonly
 from peach.config import DATABASE_PATH, GENERATED_DIR, LOG_DIR, SOURCES_DIR, STATE_DIR
+from peach.genre_taxonomy import CONTENT_GENRES, map_genres
 from peach.jobs import DiskGuard, JobPolicyError
 from peach.metadata import (
     CATALOG_EVIDENCE_FIELDS,
@@ -59,74 +60,13 @@ FIELDS = [
     "status", "size_gb", "videos", "fetched_at",
 ]
 ERROR_FIELDS = ["code", "query", "source", "kind", "status_code", "retryable", "message"]
+UNMAPPED_FIELDS = ["genre", "source", "occurrences", "sample_code"]
 HEALTH_FIELDS = [
     "source", "profile", "attempted", "snapshot_reused", "fetched", "succeeded",
     "empty", "errors", "retryable_errors", "cooldown_skips", "blocked", "elapsed_ms",
     *dict.fromkeys((*PEACH_FIELDS, *CATALOG_EVIDENCE_FIELDS)),
     "last_error_kind", "last_error_status", "last_error_message",
 ]
-
-
-# Javinizer 来源类型 -> Peach 已复核的内容分类。来源里没映射到的值留在原始快照里，
-# 不会变成没人复核过的自由文本标签。
-#
-# r18dev 给英文，javbus/javdb 给日文，所以同一张表里两套键并存；两套键不会撞，
-# 值必须落在既有的 Peach 分类词表内——标签是语义契约，不能靠抓取顺手扩词表。
-#
-# 刻意不收的：`独占配信`、`配信専用`、`単体作品`、`企画`、`店長推薦作品`、`超VIP`、
-# `超有名S級女優`、`ベスト・総集編`、`初裏`、`AV女優` 是发行与营销分类，
-# `ハイビジョン`、`フルハイビジョン(FHD)`、`1080p`、`60fps`、`4時間以上作品` 是规格，
-# 都不是内容标签。这与既有的「`Featured Actress` 不入库」是同一条线。
-#
-# 也不收罩杯（`Dカップ`…`Jカップ`）与 `巨大乳輪`：罩杯是身体尺寸不是内容分类，
-# 词表里也没有对应项。2026-09-02 全部缓存快照里罩杯只出现 5 次，其中 G/H 同时带
-# `巨乳`、D/F 什么都不带——五个样本推不出映射规则，来源想说巨乳时会直接写巨乳。
-#
-# 映射一律取来源给出的那一级，禁止升到 `乳系`、`足系` 这类粗桶。
-# `catalog_rules.TAG_SUPERSESSION` 的定义就是「有具体标签时把粗桶删掉」，
-# 把 `巨乳` 映成 `乳系` 是把系统准备丢弃的那个值当成结论，方向反了。
-CATEGORY_MAP = {
-    "Foot Fetish": "美腿", "Legs": "美腿", "Pantyhose": "丝袜", "Stockings": "丝袜",
-    "Creampie": "中出内射", "Squirting": "潮吹", "Blowjob": "口交", "Deep Throat": "深喉",
-    "Facial": "颜射", "Cum Swallowing": "吞精", "Handjob": "手交",
-    "Big Tits": "巨乳", "Beautiful Tits": "美乳", "Small Tits": "贫乳", "Titty Fuck": "乳交",
-    "Slender": "苗条", "Chubby": "丰满", "Beautiful Girl": "高颜值",
-    "Office Lady": "秘书OL", "School Girls": "学生", "Nurse": "护士",
-    "Uniform": "制服", "Cosplay": "角色扮演", "Maid": "女仆", "Swimsuit": "泳装",
-    "Married Woman": "人妻", "Mature Woman": "人妻", "Big Tits Lover": "巨乳",
-    "Threesome / Foursome": "多人", "Orgy": "多人", "Lesbian": "百合",
-    "Anal": "肛交", "Bondage": "调教", "Torture": "调教", "Training": "调教",
-    "Slut": "痴女", "Nymphomaniac": "痴女", "Cuckold": "绿帽NTR", "Voyeur": "偷拍偷窥",
-    "Hidden Camera": "偷拍偷窥", "Amateur": "素人", "Massage": "按摩", "Bath": "浴室",
-    "Outdoor": "户外露出", "Car Sex": "车震", "Ass Lover": "美臀", "Butt": "美臀",
-    "Glasses": "眼镜", "Virtual Reality": "VR", "POV": "主观视角", "Restraint": "调教",
-    "Incest": "近亲", "Cheating Wife": "绿帽NTR", "4K": "4K",
-    "Digital Mosaic": "有码", "Cowgirl": "骑乘", "Shaved Pussy": "白虎",
-    # javbus/javdb 的日文类型词。取自 2026-09-02 那批真实快照里出现过的词表，
-    # 外加几个与上面英文键完全同义、javbus 常用的标准分类。
-    "素人": "素人", "中出し": "中出内射", "潮吹き": "潮吹",
-    "巨乳": "巨乳", "美乳": "美乳", "爆乳": "爆乳",
-    "微乳": "贫乳", "貧乳・微乳": "贫乳", "貧乳": "贫乳",
-    "パイズリ": "乳交", "スレンダー": "苗条", "ぽっちゃり": "丰满",
-    "美脚": "美腿", "脚フェチ": "美腿", "パンスト": "丝袜", "ニーソックス": "丝袜",
-    "尻フェチ": "美臀", "美尻": "美臀", "巨尻": "美臀",
-    "フェラ": "口交", "イラマチオ": "深喉", "手コキ": "手交", "顔射": "颜射",
-    "パイパン": "白虎", "剃毛": "白虎", "痴女": "痴女",
-    "コスプレ": "角色扮演", "制服": "制服", "学生服": "制服",
-    "女子校生": "学生", "女子大生": "学生",
-    "OL": "秘书OL", "キャリアウーマン": "秘书OL",
-    "看護婦": "护士", "ナース": "护士", "メイド": "女仆", "水着": "泳装",
-    "美少女": "高颜值", "美女": "高颜值",
-    "騎乗位": "骑乘", "乱交": "多人", "3P・4P": "多人", "ハーレム": "多人",
-    "レズ": "百合", "アナル": "肛交",
-    "SM": "调教", "拘束": "调教", "調教": "调教",
-    "人妻": "人妻", "熟女": "人妻", "熟女/人妻": "人妻",
-    "寝取り・寝取られ": "绿帽NTR", "不倫": "绿帽NTR",
-    "野外露出": "户外露出", "露出": "户外露出",
-    "盗撮・のぞき": "偷拍偷窥", "マッサージ・リフレ": "按摩", "風呂": "浴室",
-    "カーセックス": "车震", "眼鏡": "眼镜", "近親相姦": "近亲",
-    "主観": "主观视角", "VR": "VR", "デジモ": "有码",
-}
 
 
 def configure_log(log_dir: str | Path) -> None:
@@ -199,7 +139,7 @@ def _current_values(connection: sqlite3.Connection, code: str, field: str) -> li
             (code,),
         )
     else:
-        allowed = sorted(set(CATEGORY_MAP.values()))
+        allowed = sorted(set(CONTENT_GENRES.values()))
         marks = ",".join("?" * len(allowed))
         rows = connection.execute(
             "SELECT DISTINCT t.tag FROM asset a JOIN asset_tag t ON t.asset_id=a.id "
@@ -218,14 +158,24 @@ def _read_snapshot(path: Path) -> dict | None:
         return None
 
 
+#: 只有来源明确答「没有这部片」才算定论。`unknown` 是「这次没问出结果」，
+#: 把它当定论复用过一次真实代价：2026-08-30 前 javinizer config 还没启用
+#: mgstage/libredmm/dlgetchu/aventertainment，那一轮的错误快照全是
+#: `scraper "mgstage" is not enabled`，本机配置问题被冻结成来源判决，之后
+#: 每次续跑都直接跳过，10 个番号再也没被问过。
+SETTLED_ERROR_KINDS = frozenset({"not_found"})
+
+
 def _read_settled_error(path: Path) -> MetadataProviderError | None:
-    """复用确定失败，只让临时/可重试错误重新联网。"""
+    """复用确定失败，只让临时/可重试/结论不明的错误重新联网。"""
     try:
         wrapper = json.loads(path.read_text(encoding="utf-8"))
         error = wrapper.get("error")
         if not isinstance(error, dict):
             return None
         if bool(error.get("retryable")) or bool(error.get("temporary")):
+            return None
+        if str(error.get("kind") or "") not in SETTLED_ERROR_KINDS:
             return None
         return MetadataProviderError(
             str(error.get("message") or "metadata source error"),
@@ -272,10 +222,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", type=Path, default=STATE_DIR / "javinizer-provider" / "config.yaml")
     parser.add_argument("--binary", type=Path)
     source_group = parser.add_mutually_exclusive_group()
-    source_group.add_argument("--profile", choices=("baseline", "censored", "uncensored", "fc2"),
-                              help="explicit Peach source preset; default baseline")
+    source_group.add_argument(
+        "--profile",
+        choices=("baseline", "censored", "uncensored", "fc2", "official-backfill"),
+        help="explicit Peach source preset; default baseline")
     source_group.add_argument("--sources", help="compatible comma-separated Javinizer scraper names")
     parser.add_argument("--health", type=Path, default=None)
+    parser.add_argument("--unmapped", type=Path, default=None,
+                        help="未收录 genre 清单；不写这个文件等于把来源给过的值悄悄丢掉")
     parser.add_argument(
         "--codes-file", type=Path,
         help="只处理文件中列出的番号；每行一个，空行和 # 注释忽略",
@@ -354,6 +308,23 @@ def _select_english_title_codes(connection, codes: list[tuple[str, float, int]])
     return selected
 
 
+def _unmapped_output(output: Path) -> Path:
+    name = output.name.replace("metadata-field-candidates-", "metadata-unmapped-genres-", 1)
+    if name == output.name:
+        name = output.stem + "-unmapped-genres.csv"
+    return output.with_name(name)
+
+
+def _write_unmapped(path: Path, seen: dict[tuple[str, str], list]) -> None:
+    rows = [
+        {"genre": genre, "source": source, "occurrences": count, "sample_code": sample}
+        for (source, genre), (count, sample) in sorted(
+            seen.items(), key=lambda item: (-item[1][0], item[0][0], item[0][1]),
+        )
+    ]
+    write_rows(path, UNMAPPED_FIELDS, rows, atomic=True)
+
+
 def _health_output(output: Path) -> Path:
     name = output.name.replace("metadata-field-candidates-", "metadata-source-health-", 1)
     if name == output.name:
@@ -392,6 +363,7 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
         error_name = output.stem + "-errors.csv"
     errors_path = args.errors or output.with_name(error_name)
     health_path = args.health or _health_output(output)
+    unmapped_path = args.unmapped or _unmapped_output(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     errors_path.parent.mkdir(parents=True, exist_ok=True)
     configure_log(args.log_dir)
@@ -405,6 +377,7 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
     log(f"系统盘可用 {free_gb:.1f} GiB，运行期阈值 {args.min_free:.1f} GiB")
     sources = list(policy.sources)
     health = _health_rows(policy)
+    unmapped_genres: dict[tuple[str, str], list] = {}
     adapter = provider or JavinizerGoProvider.create(args.binary, args.config)
 
     connection = open_readonly(args.db)
@@ -493,8 +466,11 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                     continue
                 finally:
                     source_health["elapsed_ms"] += round((time.perf_counter() - started) * 1000)
-                extracted_fields = extract_peach_fields(payload, CATEGORY_MAP)
+                extracted_fields = extract_peach_fields(payload)
                 catalog_evidence = extract_catalog_evidence(payload)
+                for genre in map_genres(payload.get("genres") or [])[1]:
+                    entry = unmapped_genres.setdefault((source, genre), [0, code])
+                    entry[0] += 1
                 source_health["succeeded"] += 1
                 if not extracted_fields and not catalog_evidence:
                     source_health["empty"] += 1
@@ -542,12 +518,15 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                 groups_written += 1
             candidate_handle.flush()
             _write_health(health_path, health)
+            _write_unmapped(unmapped_path, unmapped_genres)
             if index % 25 == 0:
                 log(f"{index}/{len(codes)}：已落 {groups_written} 个字段组，错误 {errors_written}")
     connection.close()
     _write_health(health_path, health)
+    _write_unmapped(unmapped_path, unmapped_genres)
     log(f"完成：{groups_written} 个字段候选组 → {output}")
     log(f"来源健康 → {health_path}")
+    log(f"未收录 genre {len(unmapped_genres)} 种 → {unmapped_path}")
     if errors_written:
         log(f"来源错误 {errors_written} 条 → {errors_path}")
     close_log()

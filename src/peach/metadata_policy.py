@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Iterable, Mapping, Sequence
 
 
-POLICY_VERSION = "metadata-source-policy-v3"
+POLICY_VERSION = "metadata-source-policy-v4"
 PEACH_FIELDS = (
     "title", "original_title", "performers", "studio", "series", "release_date", "tags",
 )
@@ -47,6 +47,13 @@ PROFILE_SOURCES = {
         "tokyohot", "caribbeancom", "javdb", "javlibrary", "javstash",
     ),
     "fc2": ("fc2",),
+    # 官方与官方镜像的补抓组合，用于 r18dev 落空或只给泛化类别的番号。
+    # 只列 javinizer config 当前启用的 scraper：没启用的来源不会返回「查无此片」，
+    # 而是返回 unknown 错误，一旦落进快照就会被当成确定失败长期复用。
+    "official-backfill": (
+        "mgstage", "dmm", "libredmm", "aventertainment", "dlgetchu",
+        "tokyohot", "caribbeancom",
+    ),
 }
 
 FIELD_SOURCE_ORDER = {
@@ -80,8 +87,12 @@ FIELD_SOURCE_ORDER = {
         "caribbeancom", "dlgetchu", "fc2", "r18dev", "javdb",
         "javlibrary", "javbus", "jav321", "javstash",
     ),
+    # tag 单独把 mgstage 提到 dmm 之前。ABW-220 实测：mgstage 商品页给
+    # 「性教育・中出し・巨乳・スレンダー」等 8 项，dmm 走的 mono/dvd 页和
+    # libredmm 都只给「AV女優・単体作品・サンプル動画」3 项泛化类别，r18dev
+    # 同样只有 3 项。厂牌、系列、日期这些字段仍以 dmm 为准，不跟着改。
     "tags": (
-        "dmm", "libredmm", "mgstage", "tokyohot", "aventertainment",
+        "mgstage", "dmm", "libredmm", "tokyohot", "aventertainment",
         "caribbeancom", "dlgetchu", "fc2", "r18dev", "javstash",
         "javdb", "javlibrary", "javbus", "jav321",
     ),
