@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import sqlite3
 import sys
 import time
@@ -76,6 +75,19 @@ def pending_rows(connection: sqlite3.Connection, limit: int) -> list[dict]:
     return rows
 
 
+def backup_database(source: Path, target: Path) -> None:
+    """用 SQLite 自己的备份 API，不要 `shutil.copy2`。
+
+    账本是 WAL 模式：已提交但尚未 checkpoint 的事务在 `-wal` 里，只复制主库文件
+    会得到一份**少了最近改动**的账本，而它看起来完全正常——恢复时才发现回退了
+    一截。备份 API 会把 WAL 一并合进目标库。
+    """
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with (sqlite3.connect(source.as_uri() + "?mode=ro", uri=True) as reader,
+          sqlite3.connect(target) as writer):
+        reader.backup(writer)
+
+
 def merge_tag_types(metadata: dict, tag_types: dict[str, str]) -> str:
     merged = dict(metadata)
     merged["tag_types"] = dict(tag_types)
@@ -102,7 +114,7 @@ def run(args: argparse.Namespace) -> int:
     if args.apply:
         # 备份先做，批量写入才敢分批落。整轮跑完再一次性写，中断一次就等于白跑
         # 五十分钟——而这一趟本来就是可反复运行的。
-        shutil.copy2(database, args.backup)
+        backup_database(database, args.backup)
         print(f"备份：{args.backup}", flush=True)
         writer = sqlite3.connect(database)
         before = writer.execute("SELECT COUNT(*) FROM follow_item").fetchone()[0]

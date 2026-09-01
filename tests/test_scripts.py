@@ -84,7 +84,10 @@ class OperationalScriptTests(unittest.TestCase):
         source = (ROOT / "scripts" / "backfill_rule34_tag_types.py").read_text(encoding="utf-8")
         self.assertIn("connector._detail_tag_types(post_id)", source)
         self.assertIn('if args.apply and not args.backup:', source)
-        self.assertIn("shutil.copy2(database, args.backup)", source)
+        # WAL 库不能用 `shutil.copy2` 备份：已提交但未 checkpoint 的事务在 `-wal` 里，
+        # 只复制主库会得到一份少了最近改动、却看起来完全正常的账本。
+        self.assertIn("reader.backup(writer)", source)
+        self.assertNotIn("shutil.copy2(database", source)
         self.assertIn("writer.commit()", source)
         # 取不到不等于这条没有类型：不写空字典冒充已补，下一轮还要再问。
         self.assertIn('if not tag_types:', source)
