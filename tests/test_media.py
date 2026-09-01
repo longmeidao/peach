@@ -14,9 +14,13 @@ from peach.repository import MediaAsset
 
 
 class MediaEngineTests(unittest.TestCase):
+    # 临时目录一律先 resolve 再喂给被测代码。媒体解析本身就以 resolve 后的真实路径
+    # 判断是否越过根目录，而 CI runner 的临时目录都是别名：macOS 的 /var 是
+    # /private/var 的软链，Windows runner 的 %TEMP% 是 C:\Users\RUNNER~1 这种 8.3
+    # 短名，展开后是 runneradmin。拿未 resolve 的路径做断言，本机全绿、CI 全红。
     def test_filesystem_backend_enforces_root(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
+            root = Path(tmp).resolve()
             inside = root / "media" / "one.mp4"
             outside = root.parent / "outside.mp4"
             inside.parent.mkdir()
@@ -34,7 +38,7 @@ class MediaEngineTests(unittest.TestCase):
         None，而 `stream_candidates` 本身没有任何调用方。见 ADR-0021。
         """
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
+            root = Path(tmp).resolve()
             media = root / "one.mp4"
             media.write_bytes(b"test")
             repository = unittest.mock.Mock()

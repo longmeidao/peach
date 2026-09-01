@@ -478,6 +478,22 @@ function bufferedAhead(video){
     return Math.max(0,video.buffered.end(i)-at);
   return 0;
 }
+const PLAYER_STATS_HISTORY=24;
+function pushPlayerStat(samples,value){
+  samples.push(Number.isFinite(value)&&value>0?value:0);
+  if(samples.length>PLAYER_STATS_HISTORY)samples.splice(0,samples.length-PLAYER_STATS_HISTORY);
+}
+function playerStatsPlot(samples,kind,ceiling,label){
+  const values=Array(Math.max(0,PLAYER_STATS_HISTORY-samples.length)).fill(null).concat(samples);
+  const top=Math.max(1,ceiling||0);
+  const bars=values.map(value=>{
+    if(value===null)return '<i aria-hidden="true"></i>';
+    const level=value<=0?0:Math.max(.08,Math.min(1,value/top));
+    const state=kind==='buffer'?(value<5?' low':value<15?' mid':' good'):'';
+    return `<i class="active${state}" style="height:${(level*100).toFixed(1)}%" aria-hidden="true"></i>`;
+  }).join('');
+  return `<span class="playerstatsplot ${kind}" role="img" aria-label="${esc(label)}">${bars}</span>`;
+}
 function streamEntries(id,session=''){
   const encoded=session?encodeURIComponent(session):'';
   return performance.getEntriesByType('resource').filter(x=>x.name.includes('/stream')&&
@@ -766,6 +782,8 @@ function mountDetailPlayer(it,video,autoplay,options={}){
   });
   // 非正时长一律当未知：强行 player.duration(-1) 会被 Video.js 转成 Infinity 并标成直播。
   const expected=realDuration(it.duration);
+  const statsHistory={speed:[],activity:[],buffer:[]};
+  let statsBytes=0;
   let correcting=false;
   const enforceDuration=()=>{
     if(!expected||correcting||!detailPlayer||detailPlayer.isDisposed())return;
@@ -782,19 +800,27 @@ function mountDetailPlayer(it,video,autoplay,options={}){
       const bytes=resources.reduce((n,x)=>n+(x.transferSize||x.encodedBodySize||0),0);
       const seconds=resources.reduce((n,x)=>n+(x.duration||0),0)/1000;
       const speed=playerSpeedBits(detailPlayer,it.id,detailStreamSession)||(seconds>0?bytes*8/seconds:0);
+     const activity=Math.max(0,bytes-statsBytes);statsBytes=bytes;
+     const buffer=bufferedAhead(video);
+     pushPlayerStat(statsHistory.speed,speed);
+     pushPlayerStat(statsHistory.activity,activity);
+     pushPlayerStat(statsHistory.buffer,buffer);
      const segmented=String(detailPlayer.currentSource()?.type||'').includes('mpegurl');
      const rows=[
       ['视频 ID / 会话',`${it.id} / ${detailStreamSession.slice(0,8)}`],
       ['视口 / 帧',`${Math.round(rect.width)}×${Math.round(rect.height)} / ${quality?`${quality.totalVideoFrames-quality.droppedVideoFrames} of ${quality.totalVideoFrames}`:'—'}`],
       ['当前 / 最佳分辨率',`${current} / ${it.width||'?'}×${it.height||'?'}`],
        ['编码 / 传输',`${String(it.name||'').split('.').pop()?.toUpperCase()||'—'} / ${segmented?'HLS':'HTTP Range'}`],
-      ['连接速度',speed?`${(speed/1e6).toFixed(1)} Mbps`:'—'],
-      ['网络活动',`${bytes?fmtSize(bytes):'—'} · ${resources.length} 请求`],
-      ['缓冲健康',`${bufferedAhead(video).toFixed(1)} 秒`],
+      ['连接速度',speed?`${(speed/1e6).toFixed(1)} Mbps`:'—',
+        playerStatsPlot(statsHistory.speed,'speed',Math.max(10e6,...statsHistory.speed),`连接速度 ${speed?`${(speed/1e6).toFixed(1)} Mbps`:'暂无数据'}`)],
+      ['网络活动',`${bytes?fmtSize(bytes):'—'} · ${resources.length} 请求`,
+        playerStatsPlot(statsHistory.activity,'activity',Math.max(1,...statsHistory.activity),`最近一秒网络活动 ${activity?fmtSize(activity):'0 B'}`)],
+      ['缓冲健康',`${buffer.toFixed(1)} 秒`,
+        playerStatsPlot(statsHistory.buffer,'buffer',30,`当前可连续播放 ${buffer.toFixed(1)} 秒`)],
       ['播放时间',`${fmtClock(video.currentTime)} / ${fmtClock(expected||detailPlayer.duration())}`],
       ['日期',new Date().toLocaleString()],
     ];
-    statsPanel.innerHTML='<dl>'+rows.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')+'</dl>';
+    statsPanel.innerHTML='<dl>'+rows.map(([k,v,plot])=>`<dt>${esc(k)}</dt><dd${plot?' class="playerstatsmetric"':''}>${plot||''}<span>${esc(v)}</span></dd>`).join('')+'</dl>';
   };
   detailPlayer.on(['loadstart','loadedmetadata','durationchange','error'],enforceDuration);
   const player=detailPlayer;

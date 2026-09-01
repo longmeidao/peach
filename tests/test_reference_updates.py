@@ -37,7 +37,8 @@ class ReferenceUpdateTests(unittest.TestCase):
              "vercel-geist-command-search-loading",
              "vercel-notifications-note",
              "youtube-player-controls-user-screenshot",
-             "openaver-related-ranking"},
+             "openaver-related-ranking",
+             "youtube-stats-buffer-20260829"},
         )
         self.assertNotEqual(
             sources["vercel-report-design"]["url"],
