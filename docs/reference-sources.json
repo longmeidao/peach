@@ -69,7 +69,7 @@
       "url": "https://rule34.xxx/css/desktop.css?46",
       "snapshot": "docs/reference-snapshots/rule34-follow-tags-and-collections.md",
       "checked_on": "2026-09-01",
-      "sha256": "28c61584dbb2218964254f603d27eff0852f1b7b02939c1b782b44c7198d28cc",
+      "sha256": "3761d28313ca7970c31fbb1c56f469adcaf3d762b5205ad32d3c82a4517defa6",
       "role": "关注页标签类型配色、Rule34Video 内容标签补全与超大跨作者合集排除证据。",
       "consumers": [
         "src/peach/follow_sources.py",
