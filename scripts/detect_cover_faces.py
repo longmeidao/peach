@@ -29,7 +29,8 @@ import cv2
 from peach.config import COVER_DIR
 
 #: 长封套的宽高比下限。低于它按竖版正封处理（整张就是正封，没有剧照区）。
-SLEEVE_RATIO = 1.2
+SLEEVE_RATIO_MIN = 1.2
+SLEEVE_RATIO_MAX = 1.65
 #: 长封套上正封的起始横向位置。左边是剧照拼贴，检出必然是假阳性。
 FRONT_START = 0.468
 #: 纵向取景的合理区间。超出这个范围的检出多半不是主体人物。
@@ -53,7 +54,7 @@ def detect(path: Path, cascade) -> dict | None:
     for x, y, w, h in faces:
         cx, cy = (x + w / 2) / width, (y + h / 2) / height
         # 长封套左半边是剧照拼贴，那里的「人脸」不是正封主体。
-        if ratio >= SLEEVE_RATIO and cx < FRONT_START:
+        if SLEEVE_RATIO_MIN <= ratio < SLEEVE_RATIO_MAX and cx < FRONT_START:
             continue
         if not (MIN_Y <= cy <= MAX_Y):
             continue

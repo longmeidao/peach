@@ -288,6 +288,7 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 body.entity-open .index{overflow-x:visible}
 .index .ihead{display:flex;align-items:center;gap:12px;margin-bottom:14px}
 .index .ihead h2{margin:0}
+.indexheading{display:inline-flex;align-items:center;gap:9px}.indexheading svg{width:25px;height:25px;stroke:currentColor;fill:none;stroke-width:1.8}
 .index .ihead .isearch{margin-left:auto}
 .index .isearch{flex:1;max-width:320px;background:var(--sunk);border:1px solid var(--line);
   border-radius:18px;padding:6px 14px}
@@ -305,7 +306,8 @@ body.entity-open .index{overflow-x:visible}
 .icell .n{font-size:var(--fs-xs);color:var(--muted)}
 .tagwall{display:flex;flex-wrap:wrap;gap:7px}
 .tagmodes{display:flex;gap:4px;padding:3px;border:1px solid var(--line-soft);border-radius:10px;background:var(--surface)}
-.tagmodes button{border:0;border-radius:7px;background:transparent;color:var(--muted);padding:6px 10px;cursor:pointer}
+.tagmodes button{border:0;border-radius:7px;background:transparent;color:var(--muted);padding:6px 10px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.tagmodes button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8}
 .tagmodes button[aria-pressed="true"]{background:var(--hover);color:var(--ink)}
 .tagfilters{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 18px}
 .tagfilters button{height:34px;padding:0 13px;border-radius:var(--pill-radius);border:1px solid var(--line-soft);
@@ -324,7 +326,12 @@ body.entity-open .index{overflow-x:visible}
 .tagselection button:disabled{opacity:.45;cursor:not-allowed}
 .tagfilters .all::before{background:linear-gradient(135deg,#55A7FF,#D783FF)}
 .index-tags .tg,.alphatag{--tag-color:#7A91A8}
-.index-tags /* 在线标签是另一个种类，不是另一个类别：它标注的是还没入库的在线更新，点了去关注页而不是筛目录。类别配色留给本地那套，在线单独一个色。两个自定义属性都设：.alphatag 读 --tag-color，.tg 的边框和底色读 --r34-tag。 */.tg.online,.alphatag.online{--tag-color:#5AC8D8;--r34-tag:#5AC8D8}
+.index-tags .tg.r34-general,.alphatag.r34-general,.tagfilters .general{--tag-color:#55A7FF;--r34-tag:#55A7FF}
+.index-tags .tg.r34-artist,.alphatag.r34-artist,.tagfilters .artist{--tag-color:#E36C6C;--r34-tag:#E36C6C}
+.index-tags .tg.r34-character,.alphatag.r34-character,.tagfilters .character{--tag-color:#68C76F;--r34-tag:#68C76F}
+.index-tags .tg.r34-copyright,.alphatag.r34-copyright,.tagfilters .copyright{--tag-color:#D675D6;--r34-tag:#D675D6}
+.index-tags .tg.r34-metadata,.alphatag.r34-metadata,.tagfilters .metadata{--tag-color:#F5A24A;--r34-tag:#F5A24A}
+.index-tags .tg.r34-unknown,.alphatag.r34-unknown{--tag-color:var(--muted);--r34-tag:var(--muted)}
 /* 抽屉里的关注标签沿用同一个青色，让「这是在线那套词表」在两处一致。 */
 .chip.online{border-color:color-mix(in srgb,#5AC8D8 42%,transparent);background:color-mix(in srgb,#5AC8D8 10%,transparent)}.tg.general,.alphatag.general,.tagfilters .general{--tag-color:#55A7FF}
 .index-tags .tg.artist,.alphatag.artist,.tagfilters .artist{--tag-color:#F1A454}
@@ -1296,8 +1303,6 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
   background:color-mix(in srgb,var(--surface) 82%,var(--ground));overflow:hidden;min-height:30px}
 .detailtag button{border:0;background:transparent;color:var(--ink-2);cursor:pointer;height:28px}
 .detailtag .tagfilter{padding:3px 5px 3px 11px}.detailtag .tagremove{width:28px;padding:0;display:grid;place-items:center;color:var(--muted)}
-.detailtag .tagfilter small{margin-left:5px;color:var(--accent);font-size:var(--fs-xs);font-weight:400}
-.detailtag.official{border-color:color-mix(in srgb,var(--accent) 42%,var(--line));background:color-mix(in srgb,var(--accent) 7%,transparent)}
 .detailtag .tagremove:hover{color:var(--drop);background:color-mix(in srgb,var(--drop) 12%,transparent)}
 .detailtag svg,.tagplus svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
 .tagplus{width:30px;height:30px;border:1px dashed var(--line);border-radius:50%;display:grid;place-items:center;
@@ -1824,9 +1829,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fauthorhead .ficon{margin-right:2px}
 .followlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
 .followlist.followphotowall{display:block;column-count:5;column-gap:10px}
-/* 图片瀑布流使用多栏布局；详情舞台如果仍占普通栏位，350px 侧栏会把媒体列挤成
-   0px。跨越全部栏位既保留就近展开顺序，也让图片和信息栏拿到列表完整宽度。 */
-.followlist.followphotowall>.stage{column-span:all}
+/* 图片详情放在瀑布流之前，不再作为多栏子项参与列填充。 */
 @media (max-width:1400px){.followlist.followphotowall{column-count:4}}
 @media (max-width:1000px){.followlist.followphotowall{column-count:3}}
 .followitem{min-width:0}.followitem.collection{padding-top:7px}

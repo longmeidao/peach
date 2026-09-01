@@ -63,7 +63,9 @@ CANDIDATE_PREFIX = {
     "video_endcards": "video-endcard-candidate-",
 }
 ADDITIONAL_CANDIDATE_FILES = {
-    "metadata_fields": ("fc2-metadata-field-candidates.csv",),
+    # 分区文件先于通用批次读取；同一个 item_key 出现时，窄范围的刷新证据应覆盖
+    # 通用批次里的旧候选，而不是被 seen 去重静默吞掉。
+    "metadata_fields": ("japanese-title-candidates.csv", "fc2-metadata-field-candidates.csv"),
 }
 # 每类候选的稳定主键列。缺这一列的行直接跳过并计数，绝不退化成行号——
 # 行号会在 CSV 重排后把历史决定悄悄挪到别的条目上。
@@ -128,10 +130,10 @@ def read_candidates(category: str, root: Path | None = None) -> tuple[list[dict]
     """读取最新一批候选，返回（有稳定主键的行, 文件名, 被跳过的行数）。"""
     path = latest_candidate_file(category, root)
     base = root or GENERATED_DIR
-    paths = ([path] if path is not None and path.is_file() else []) + [
+    paths = [
         base / name for name in ADDITIONAL_CANDIDATE_FILES.get(category, ())
         if (base / name).is_file() and (path is None or base / name != path)
-    ]
+    ] + ([path] if path is not None and path.is_file() else [])
     if not paths:
         return [], None, 0
     key_column = CANDIDATE_KEY[category]

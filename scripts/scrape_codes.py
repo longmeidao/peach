@@ -225,6 +225,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--codes-file", type=Path,
         help="只处理文件中列出的番号；每行一个，空行和 # 注释忽略",
     )
+    parser.add_argument(
+        "--english-title-only", action="store_true",
+        help="只处理已有非空英文标题、但没有日文标题的番号",
+    )
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--delay", type=float, default=1.2)
     parser.add_argument("--min-free", type=float, default=40.0,
@@ -269,6 +273,30 @@ def _select_requested_codes(
         suffix = f" 等 {len(missing)} 个" if len(missing) > 10 else ""
         raise ValueError(f"番号文件含 ledger 中不存在的番号：{preview}{suffix}")
     return [available[query] for query in requested]
+
+
+_JAPANESE_TEXT_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff]")
+_LATIN_TEXT_RE = re.compile(r"[A-Za-z]")
+
+
+def _select_english_title_codes(connection, codes: list[tuple[str, float, int]]) -> list[tuple[str, float, int]]:
+    """Select codes whose recorded titles are Latin-only and have no Japanese alternative."""
+    titles: dict[str, list[str]] = {}
+    for code, catalog_title, original_title in connection.execute(
+        "SELECT code,catalog_title,original_title FROM asset "
+        "WHERE medium='video' AND code IS NOT NULL AND trim(code)<>''"
+    ):
+        key = normalise_code_key(str(code))
+        titles.setdefault(key, []).extend(
+            str(value).strip() for value in (catalog_title, original_title) if str(value or "").strip()
+        )
+    selected = []
+    for row in codes:
+        values = titles.get(normalise_code_key(row[0]), [])
+        if (values and any(_LATIN_TEXT_RE.search(value) for value in values)
+                and not any(_JAPANESE_TEXT_RE.search(value) for value in values)):
+            selected.append(row)
+    return selected
 
 
 def _health_output(output: Path) -> Path:
@@ -342,6 +370,8 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
             codes = _select_requested_codes(codes, args.codes_file)
         except (OSError, UnicodeError, ValueError) as error:
             parser.error(str(error))
+    if args.english_title_only:
+        codes = _select_english_title_codes(connection, codes)
     if args.limit:
         codes = codes[:max(args.limit, 0)]
     log(f"字段候选批次：profile {policy.profile}，番号 {len(codes)}，来源 {','.join(sources)}；只读查询，不写 ledger")
@@ -442,6 +472,8 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                 if args.delay > 0 and not reused:
                     time.sleep(args.delay + random.uniform(0, min(0.4, args.delay / 3)))
             for field, candidates in by_field.items():
+                if args.english_title_only and field != "title":
+                    continue
                 candidates = sort_candidates(field, candidates, policy)
                 candidate_writer.writerow({
                     "item_key": f"{query}:{field}", "code": code, "query": query,

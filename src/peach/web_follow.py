@@ -687,6 +687,31 @@ def _follow_facets(store, items, by_source, alias_map) -> dict:
     }
 
 
+def _follow_tag_index(store, items) -> list[dict]:
+    """按发布组汇总全部已分类来源标签，供在线标签索引使用。"""
+    rows: dict[str, dict] = {}
+    type_rank = {"general": 0, "metadata": 1, "copyright": 2,
+                 "character": 3, "artist": 4}
+    for group in store.group(items):
+        grouped: dict[str, tuple[str, str]] = {}
+        for item in (group.primary, *group.variants, *group.duplicates):
+            for tag in _item_all_tags(item):
+                tag_type = _recorded_tag_type(item, tag)
+                if not tag_type:
+                    continue
+                key = tag.casefold()
+                previous = grouped.get(key)
+                if (previous is None
+                        or type_rank[tag_type] > type_rank[previous[1]]):
+                    grouped[key] = (tag, tag_type)
+        for key, (tag, tag_type) in grouped.items():
+            row = rows.setdefault(key, {"k": tag, "n": 0, "cat": tag_type})
+            row["n"] += 1
+            if type_rank[tag_type] > type_rank[row["cat"]]:
+                row["cat"] = tag_type
+    return sorted(rows.values(), key=lambda row: (-row["n"], row["k"]))
+
+
 def q_follow_tags(contract, args) -> dict:
     """在线标签词表，供标签页和左侧抽屉列出关注页那一套标签。
 
@@ -698,6 +723,10 @@ def q_follow_tags(contract, args) -> dict:
     和「载入更多」都是现成的，换个地址就能用，不必为在线标签再写一套。
     """
     query = str(args.get("q") or "").strip().casefold()
+    include_types = str(args.get("types") or "") == "all"
+    wanted_type = str(args.get("type") or "").casefold()
+    if wanted_type not in {"general", "artist", "character", "copyright", "metadata"}:
+        wanted_type = ""
     try:
         limit = max(1, min(int(args.get("limit") or 180), 2000))
     except (TypeError, ValueError):
@@ -715,11 +744,19 @@ def q_follow_tags(contract, args) -> dict:
         items = tuple(item for item in store.items(limit=_ALL_ITEMS)
                       if item.source_id in enabled and not _excluded_item(item))
         facets = _follow_facets(store, items, by_source, alias_map)
-    rows = [{"k": tag, "n": count} for tag, count in facets["tags"]
-            if not query or query in tag.casefold()]
+        rows = (_follow_tag_index(store, items) if include_types else
+                [{"k": tag, "n": count, "cat": "general"}
+                 for tag, count in facets["tags"]])
+    categories: dict[str, int] = {}
+    for row in rows:
+        categories[row["cat"]] = categories.get(row["cat"], 0) + 1
+    rows = [row for row in rows
+            if (not wanted_type or row["cat"] == wanted_type)
+            and (not query or query in row["k"].casefold())]
     return {"kind": "tags", "scope": "online",
             "items": rows[offset:offset + limit],
-            "has_more": offset + limit < len(rows)}
+            "has_more": offset + limit < len(rows),
+            "categories": categories}
 
 
 def q_follow(contract, args) -> dict:
@@ -768,7 +805,9 @@ def q_follow(contract, args) -> dict:
             if provider and (row is None or str(row["provider"] or "") != provider):
                 return False
             if wanted_tags:
-                tags = set(_item_tags(item))
+                # 在线标签索引包含 artist/character/copyright/metadata；点进去也必须
+                # 能筛到对应更新，而不是只允许卡片上那份 general 投影。
+                tags = set(_item_all_tags(item))
                 if not all(tag in tags for tag in wanted_tags):
                     return False
             return True

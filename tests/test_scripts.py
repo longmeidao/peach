@@ -43,6 +43,27 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertIsNone(self.clean_names._logf)
         self.assertIsNone(self.scrape_codes._logf)
 
+    def test_cover_face_detector_only_treats_dvd_proportions_as_sleeves(self):
+        source = (ROOT / "scripts" / "detect_cover_faces.py").read_text(encoding="utf-8")
+        self.assertIn("SLEEVE_RATIO_MIN = 1.2", source)
+        self.assertIn("SLEEVE_RATIO_MAX = 1.65", source)
+        self.assertIn("SLEEVE_RATIO_MIN <= ratio < SLEEVE_RATIO_MAX", source)
+
+    def test_english_title_batch_excludes_codes_that_already_have_japanese(self):
+        connection = sqlite3.connect(":memory:")
+        connection.execute("CREATE TABLE asset(medium TEXT,code TEXT,catalog_title TEXT,original_title TEXT)")
+        connection.executemany("INSERT INTO asset VALUES('video',?,?,?)", [
+            ("AAA-001", "English title", None),
+            ("BBB-002", "English title", "日本語タイトル"),
+            ("CCC-003", None, None),
+        ])
+        codes = [("AAA-001", 1.0, 1), ("BBB-002", 1.0, 1), ("CCC-003", 1.0, 1)]
+        self.assertEqual(self.scrape_codes._select_english_title_codes(connection, codes),
+                         [("AAA-001", 1.0, 1)])
+        connection.close()
+        source = (ROOT / "scripts" / "scrape_codes.py").read_text(encoding="utf-8")
+        self.assertIn('if args.english_title_only and field != "title":', source)
+
     def test_official_jav_tags_only_enter_the_reviewed_taxonomy(self):
         category_map = self.scrape_codes.CATEGORY_MAP
         self.assertEqual(category_map["Deep Throat"], "深喉")
