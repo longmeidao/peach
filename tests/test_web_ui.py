@@ -2661,6 +2661,17 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("centerThumb(this.activeIndex)")
         self.assertPageContains("centerThumb(index,0)")
         self.assertPageLacks("centeredSlidesBounds:true")
+        # 每一张只闭合自己的 slide；wrapper 必须等 map 完成后再闭合。
+        # 若把 wrapper 的闭合标签写进循环，浏览器会把第二张起移到轨道外，
+        # Swiper 无法切换或居中当前缩略图。
+        self.assertPageContains(
+            '<img src="${esc(item.thumb)}" alt="" loading="lazy" '
+            'referrerpolicy="no-referrer"></div>`).join(\'\')}</div></div>`;'
+        )
+        self.assertPageLacks(
+            '<img src="${esc(item.thumb)}" alt="" loading="lazy" '
+            'referrerpolicy="no-referrer"></div></div>`).join(\'\')}'
+        )
 
     def test_lightbox_photo_detail_reveals_by_asset_id_without_leaking_a_path(self):
         self.assertPageContains('aria-label="图片详情" title="图片详情">${icon(\'info\')}</button>')

@@ -4476,7 +4476,7 @@ async function openPhotoLightbox(index,source=null){
       <span class="srcstate" aria-live="polite"></span>
     </section>
     <div class="swiper photostrip"><div class="swiper-wrapper">${items.map(item=>
-      `<div class="swiper-slide"><img src="${esc(item.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer"></div></div>`).join('')}</div></div>`;
+      `<div class="swiper-slide"><img src="${esc(item.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer"></div>`).join('')}</div></div>`;
   document.body.appendChild(box);
   document.body.classList.add('photolight-open');
   const counter=box.querySelector('.photocount');
