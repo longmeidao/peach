@@ -47,12 +47,14 @@ PROFILE_SOURCES = {
         "tokyohot", "caribbeancom", "javdb", "javlibrary", "javstash",
     ),
     "fc2": ("fc2",),
-    # 官方与官方镜像的补抓组合，用于 r18dev 落空或只给泛化类别的番号。
-    # 只列 javinizer config 当前启用的 scraper：没启用的来源不会返回「查无此片」，
-    # 而是返回 unknown 错误，一旦落进快照就会被当成确定失败长期复用。
+    # 官方与官方镜像的补抓组合，用于 r18dev 落空或只给泛化类别的有码番号。
+    # 两条约束决定了这五个：
+    # 一、只列 javinizer config 当前启用的 scraper。没启用的来源不返回「查无此片」，
+    #     而是返回 unknown 错误，一旦落进快照就会被当成确定失败长期复用。
+    # 二、不含 tokyohot 与 caribbeancom。它们只认无码番号形状，对有码番号是稳定
+    #     404，放进来等于每个番号多两次白跑的网络请求；无码走 `uncensored`。
     "official-backfill": (
         "mgstage", "dmm", "libredmm", "aventertainment", "dlgetchu",
-        "tokyohot", "caribbeancom",
     ),
 }
 

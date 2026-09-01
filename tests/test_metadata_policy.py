@@ -55,6 +55,28 @@ class MetadataPolicyTests(unittest.TestCase):
                 sorted(row["field_rank"] for row in ordered),
             )
 
+    def test_tag_backfill_profile_stays_official_and_reachable(self):
+        # 这个 profile 的成本全在网络往返上。放宽任何一条都要有实测支撑：
+        # 加社区来源等于让未经复核的值排进官方前面；加无码来源等于给每个有码
+        # 番号多两次稳定 404。
+        policy = resolve_policy(profile="official-backfill")
+        self.assertEqual(policy.sources, (
+            "mgstage", "dmm", "libredmm", "aventertainment", "dlgetchu",
+        ))
+        for source in policy.sources:
+            self.assertTrue(policy.source(source).official, source)
+        self.assertNotIn("tokyohot", policy.sources)
+        self.assertNotIn("caribbeancom", policy.sources)
+
+    def test_tags_prefer_mgstage_over_the_dmm_dvd_page(self):
+        # ABW-220 实测：mgstage 给 8 项内容标签，dmm/libredmm/r18dev 都只给
+        # 「AV女優・単体作品・サンプル動画」。厂牌与日期仍以 dmm 为准。
+        policy = resolve_policy(profile="censored")
+        candidates = [{"source": "dmm"}, {"source": "mgstage"}, {"source": "r18dev"}]
+        self.assertEqual(sort_candidates("tags", candidates, policy)[0]["source"], "mgstage")
+        self.assertEqual(sort_candidates("studio", candidates, policy)[0]["source"], "dmm")
+        self.assertEqual(sort_candidates("release_date", candidates, policy)[0]["source"], "dmm")
+
 
 if __name__ == "__main__":
     unittest.main()
