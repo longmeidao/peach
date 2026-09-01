@@ -253,13 +253,15 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 .reviewactions button{box-sizing:border-box;height:32px;border:1px solid var(--border-15);border-radius:8px;background:transparent;color:var(--ink-2);padding:0 12px;font-size:var(--fs-sm);cursor:pointer}.reviewactions button:hover{border-color:var(--tungsten);color:var(--ink)}.reviewactions .approve{background:var(--tungsten);border-color:var(--tungsten);color:#fff;font-weight:600}.reviewactions .approve:hover{background:color-mix(in srgb,var(--tungsten) 82%,#000);color:#fff}.reviewactions .skip{color:var(--meter)}.reviewactions .skip:hover{background:var(--meter);border-color:var(--meter);color:#fff}.reviewactions .reject{color:var(--drop)}.reviewactions .reject:hover{background:var(--drop);border-color:var(--drop);color:#fff}
 .cleanuploading,.junkloading{grid-column:1/-1;min-height:280px;display:grid;place-items:center}
 .cleanupgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;padding:0 0 42px}
-/* 框体的上下两条横条只有一份尺寸口径：52px、竖直居中。三张卡内容高度不同时
-   仍然共用同一行网格，不会一张比一张矮半格。 */
-.geist-fieldset-header,.cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;
-  height:var(--fieldset-bar-h);margin:0;padding:0 16px 0 20px;display:flex;align-items:center;gap:8px}
-.geist-fieldset-header{border-bottom:1px solid var(--border-10)}
-.geist-fieldset-header h3{margin:0;color:var(--ink);font-size:var(--fs-lg);font-weight:600}
-.cleanupfieldset>.geist-fieldset-footer{border-top:1px solid var(--border-10);background:var(--overlay-5)}
+/* Geist Fieldset：全框只有一条线，在底部操作条上方。标题是正文区的第一行，
+   底下不划线（证据：vercel.com/geist/fieldset 的 Multiple Fieldsets 示例）。
+   操作条固定 52px、竖直居中，按钮一律靠右；左侧有说明时说明推到最左。 */
+.geist-fieldset-title{margin:0 0 10px;color:var(--ink);font-size:var(--fs-lg);font-weight:600}
+.cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;height:var(--fieldset-bar-h);
+  margin:0;padding:0 16px 0 20px;display:flex;align-items:center;justify-content:flex-end;gap:8px;
+  border-top:1px solid var(--border-10);background:var(--overlay-5)}
+.geist-fieldset-footer>p,.geist-fieldset-footer>span,
+.resourcesyncfooter>p,.resourceapplyrow>p{margin-right:auto}
 .cleanupfieldset{display:flex;flex-direction:column;min-width:0;min-height:176px;margin:0;padding:0;overflow:hidden;
   border:1px solid var(--line-soft);border-radius:12px;background:var(--surface)}
 .cleanupfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px}.cleanupfieldset strong{display:block;margin-bottom:10px;font-size:var(--fs-xl)}
@@ -752,7 +754,7 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 .count.count-actions-only{position:relative;top:auto;min-height:0;margin:0 0 16px;padding:0;justify-content:flex-end}
 .count.count-actions-only:empty{display:none}
 .resourcesync{scroll-margin-top:calc(var(--topH) + 18px);display:grid;gap:16px}.resourcesync>h2{margin:0;font-size:var(--fs-xl)}
-.resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--line-soft);border-radius:12px;background:var(--surface)}.resourcesyncbody{padding:20px}.resourcesyncbody p{max-width:760px;margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.55}.resourcesyncfooter,.resourceapplyrow{box-sizing:border-box;height:var(--fieldset-bar-h);display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 16px;border-top:1px solid var(--line-soft);background:var(--overlay-5)}.resourcesyncfooter p,.resourceapplyrow>p{margin:0;color:var(--muted);font-size:var(--fs-xs);line-height:1.5}.resourceaction{box-sizing:border-box;height:36px;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:none;font:inherit;font-size:var(--fs-sm);font-weight:550;cursor:pointer;transition:background-color .12s,border-color .12s,color .12s}.resourceaction:hover:not(:disabled){background:var(--hover);border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink)}.resourceaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.resourceaction:disabled{cursor:default;opacity:.68}.resourceaction svg{width:16px;height:16px;stroke:currentColor;fill:none}#resourceSyncResult:empty{display:none}.resourcescanning,.resourceerror{margin:0;padding:14px 16px;border:1px solid var(--line-soft);border-radius:var(--control-radius);color:var(--muted)}.resourceerror{color:var(--drop)}.resourcesources{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.resourcesources article{display:grid;gap:4px;min-width:0;padding:16px}.resourcesources article+article{border-left:1px solid var(--line-soft)}.resourcesourcetitle{display:flex;align-items:center;justify-content:space-between;gap:12px}.resourcesourcetitle span{font-size:var(--fs-xs)}.resourcesources .online{color:var(--success)}.resourcesources .offline{color:var(--drop)}.resourcesources strong{margin-top:10px;font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcesources small,.resourcecache small{color:var(--muted)}/* 这里是一排读数，不是又一个盒子。原先它自带填色和分格线，和下面的操作条同色，
+.resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--line-soft);border-radius:12px;background:var(--surface)}.resourcesyncbody{padding:20px}.resourcesyncbody p{max-width:760px;margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.55}.resourcesyncfooter,.resourceapplyrow{box-sizing:border-box;height:var(--fieldset-bar-h);display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:0 20px;border-top:1px solid var(--line-soft);background:var(--overlay-5)}.resourcesyncfooter p,.resourceapplyrow>p{margin:0;color:var(--muted);font-size:var(--fs-xs);line-height:1.5}.resourceaction{box-sizing:border-box;height:36px;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:none;font:inherit;font-size:var(--fs-sm);font-weight:550;cursor:pointer;transition:background-color .12s,border-color .12s,color .12s}.resourceaction:hover:not(:disabled){background:var(--hover);border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink)}.resourceaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.resourceaction:disabled{cursor:default;opacity:.68}.resourceaction svg{width:16px;height:16px;stroke:currentColor;fill:none}#resourceSyncResult:empty{display:none}.resourcescanning,.resourceerror{margin:0;padding:14px 16px;border:1px solid var(--line-soft);border-radius:var(--control-radius);color:var(--muted)}.resourceerror{color:var(--drop)}.resourcesources{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.resourcesources article{display:grid;gap:4px;min-width:0;padding:16px}.resourcesources article+article{border-left:1px solid var(--line-soft)}.resourcesourcetitle{display:flex;align-items:center;justify-content:space-between;gap:12px}.resourcesourcetitle span{font-size:var(--fs-xs)}.resourcesources .online{color:var(--success)}.resourcesources .offline{color:var(--drop)}.resourcesources strong{margin-top:10px;font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcesources small,.resourcecache small{color:var(--muted)}/* 这里是一排读数，不是又一个盒子。原先它自带填色和分格线，和下面的操作条同色，
    两条带子连在一起看不出边界；框里再套框也是多余的一层。 */
 .resourcecache{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 32px;border-top:1px solid var(--line-soft);padding:16px 20px}.resourcecache>div{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:4px 16px}.resourcecache b{font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcecache span{font-weight:650}.resourcecache small{grid-column:1/-1}.resourceapplyrow .resourcesyncok{color:var(--success)}.resourcedanger{color:var(--drop)}.resourcedanger:hover:not(:disabled){border-color:color-mix(in srgb,var(--drop) 42%,transparent);background:color-mix(in srgb,var(--drop) 8%,transparent);color:var(--drop)}.resourcesyncok{margin:0;color:var(--success)}
 .tagbar,.count,.entitytagbar,.entitycollectionhead{transition:background-color .16s ease,border-color .16s ease}
@@ -2302,7 +2304,12 @@ details.fcred{display:block}
 *[data-middle-truncate]{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:clip}
 /* 链接管理沿用资源同步那套盒子，只加这里独有的两块：概览格和结果表。
    表格必须自己横向滚动——地址列很长，让它撑破 body 会把整页拖成横向可滚。 */
-.linksummary .resourcecache{border-top:0;padding:0}
+.linkstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px 32px;margin-top:16px}
+.linkstats>div,.linkhosts{display:grid;gap:2px;min-width:0}
+.linkstats span,.linkhosts span{color:var(--muted);font-size:var(--fs-xs)}
+.linkstats b{font-size:var(--fs-xl);font-variant-numeric:tabular-nums}
+.linkstats small{color:var(--muted);font-size:var(--fs-xs)}
+.linkhosts{margin-top:16px}.linkhosts b{font-weight:500;font-size:var(--fs-sm);overflow-wrap:anywhere}
 .linksummary .resourcecache b{font-size:var(--fs-lg)}
 .linkgroup{padding:16px;border-top:1px solid var(--line-soft)}.linkgroup:first-child{border-top:0}
 .linkgroup h4{margin:0 0 4px;font-size:var(--fs-md);font-weight:600}

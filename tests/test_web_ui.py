@@ -1025,6 +1025,19 @@ class WebUiSourceTests(unittest.TestCase):
                          "统计页只讲库里现在有多少，不该再挂对齐外部现实的面板")
         self.assertNotIn("resourceSyncMarkup()", stats)
 
+    def test_link_totals_get_one_cell_each_instead_of_one_crammed_line(self):
+        """「社媒 373 · 官网 · 事务所 224」读不出哪个数字属于哪一类。
+
+        类型名自己带间隔点（`官网 · 事务所`），和拼接用的间隔点撞在一起；挤成
+        一行后标签与数字之间也只剩那个点。每类各占一格，类型名改用斜杠。
+        """
+        self.assertPageContains("official:'官网/事务所'")
+        self.assertPageLacks("official:'官网 · 事务所'")
+        self.assertPageContains("const stat=(label,value,note='')=>")
+        self.assertPageContains(".map(([kind,count])=>stat(KINDS[kind]||kind,Number(count).toLocaleString())).join('');")
+        self.assertPageContains(".linkstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))")
+        self.assertPageContains('<div class="linkhosts"><span>最多的站点</span>')
+
     def test_taste_page_combines_private_exports_and_peach_behavior(self):
         self.assertPageContains("if(path==='/taste'){await openTaste(false);return}")
         self.assertPageContains("/api/taste?window=")
@@ -2298,11 +2311,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("async function openDataCleanup(push=true)")
         self.assertPageContains("route('/data-cleanup')")
         self.assertPageContains("api('/api/ads?limit=1'),api('/api/duplicates?limit=1'),api('/api/sources')")
-        # 标题在框体里，不用原生 legend——legend 会在上边框上开个缺口，
+        # 标题是正文区的第一行，不用原生 legend——legend 会在上边框上开个缺口，
         # 三张卡内容高度不同时那道缺口的位置也跟着不齐。
-        for title in ("fieldsetHeader('cleanupJunkTitle','垃圾文件')",
-                      "fieldsetHeader('cleanupDupTitle','重复文件')",
-                      "fieldsetHeader('cleanupEmptyTitle','空文件夹')"):
+        for title in ("fieldsetTitle('cleanupJunkTitle','垃圾文件')",
+                      "fieldsetTitle('cleanupDupTitle','重复文件')",
+                      "fieldsetTitle('cleanupEmptyTitle','空文件夹')"):
             self.assertPageContains(title)
         self.assertPageLacks("<legend>垃圾文件</legend>")
         self.assertPageContains('class="cleanupfieldset" data-geist-fieldset aria-labelledby=')
@@ -2310,12 +2323,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("api('/api/data-cleanup/empty-folders',{method:'POST',body:'{}'})")
         self.assertPageContains("来源根目录不会删除")
         self.assertPageContains(".cleanupfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px}")
-        # 头尾两条横条同一份尺寸口径，文字与按钮竖直居中。
+        # Geist 的 Fieldset 全框只有一条线，在底部操作条上方；标题底下不划线。
         self.assertPageContains("--fieldset-bar-h:52px;")
-        self.assertPageContains(
-            ".geist-fieldset-header,.cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;")
-        self.assertPageContains("height:var(--fieldset-bar-h);margin:0;padding:0 16px 0 20px;"
-                                "display:flex;align-items:center;gap:8px}")
+        self.assertPageContains(".geist-fieldset-title{margin:0 0 10px;")
+        self.assertPageLacks(".geist-fieldset-header")
+        self.assertPageContains(".cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;"
+                                "height:var(--fieldset-bar-h);")
+        # 按钮一律靠右；左边有说明时说明推到最左。
+        self.assertPageContains("justify-content:flex-end;gap:8px;")
+        self.assertPageContains(".resourcesyncfooter>p,.resourceapplyrow>p{margin-right:auto}")
         self.assertPageContains("if(path==='/data-cleanup'){await openDataCleanup(false);return}")
 
     def test_duplicate_batch_keeps_one_per_cluster_not_one_per_code(self):
@@ -2617,6 +2633,22 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('${editions.count} 个版本')
         self.assertPageContains("openEditions(it.edition_group.seed_id,id,true,anchor)")
         self.assertPageContains("if(parts[0]==='editions'", "刷新或前进后退要能回到同一个版次")
+
+    def test_group_collapse_is_a_setting_and_defaults_to_on(self):
+        """合并分卷与版本可以关掉，关掉后同番号的每一卷／每一版各占一张卡。
+
+        折叠是渲染时做的，所以改完必须重取当前列表：不重画的话，之前被跳过的
+        那些卡不会自己冒出来，看上去像开关没生效。
+        """
+        self.assertPageContains("groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};")
+        self.assertPageContains("appSettings.groupCollapse=appSettings.groupCollapse!==false;")
+        self.assertPageContains('<input type="checkbox" id="groupCollapseSetting">')
+        self.assertPageContains("$('#groupCollapseSetting').checked=appSettings.groupCollapse;")
+        self.assertPageContains(
+            "$('#groupCollapseSetting').onchange=e=>{appSettings.groupCollapse=!!e.target.checked;"
+            "saveSettings();reloadCurrentSurface()};")
+        self.assertEqual(self.page.count("if(!appSettings.groupCollapse)return items;"), 2,
+                         "分卷和版次两套折叠都要认这个开关")
 
     def test_both_collapse_sets_are_cleared_together(self):
         """折叠用的集合必须和分卷那套一起清。

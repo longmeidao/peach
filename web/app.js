@@ -1,7 +1,7 @@
 import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, pageTitle, realDuration} from './js/core.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import {
-  emptyStateHtml, fieldsetHeader, loadingDotsHtml, mediaViewButtonsHtml, noteHtml, progressHtml,
+  emptyStateHtml, fieldsetTitle, loadingDotsHtml, mediaViewButtonsHtml, noteHtml, progressHtml,
   scrollerHtml, setActionBusy, skeletonHtml, spinnerHtml, wireBusyActions, wireScrollers,
 } from './js/ui-components.js';
 
@@ -153,7 +153,7 @@ const SORTS=[['seed','随机'],['rating','评分'],['o','高潮计数'],['plays'
              ['big','体积'],['new','最近入库'],['played','最近看的']];
 const JAV_RELEASE_SORT=['release','发行时间'];
 const SORT_KEYS=[...SORTS,JAV_RELEASE_SORT].map(([key])=>key);
-const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:2,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',ambientMode:true,theaterMode:false,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
+const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:2,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',ambientMode:true,theaterMode:false,groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
@@ -171,6 +171,7 @@ appSettings.hoverDelaySeconds=allowedSetting(+appSettings.hoverDelaySeconds,[3,5
 appSettings.seekSeconds=allowedSetting(+appSettings.seekSeconds,[5,10,30],10);
 appSettings.ambientMode=appSettings.ambientMode!==false;
 appSettings.theaterMode=appSettings.theaterMode===true;
+appSettings.groupCollapse=appSettings.groupCollapse!==false;
 appSettings.searchHistoryLimit=allowedSetting(+appSettings.searchHistoryLimit,[5,10,20],10);
 appSettings.relatedLimit=allowedSetting(+appSettings.relatedLimit,[12,20,30],20);
 const sidebarKeyAlias=key=>key==='ads'||key==='dupes'?'data-cleanup':key;
@@ -183,6 +184,7 @@ function syncSettingsPanel(){
   $('#batchSizeSetting').value=String(appSettings.batchSize);
   $('#defaultSortSetting').value=appSettings.defaultSort;
   $('#hoverDelaySetting').value=String(appSettings.hoverDelaySeconds);
+  $('#groupCollapseSetting').checked=appSettings.groupCollapse;
   $('#seekSecondsSetting').value=String(appSettings.seekSeconds);
   $('#searchHistoryLimitSetting').value=String(appSettings.searchHistoryLimit);
   $('#relatedLimitSetting').value=String(appSettings.relatedLimit);
@@ -224,6 +226,9 @@ $('#settingsPanel').onkeydown=e=>{
 $('#batchSizeSetting').onchange=e=>{appSettings.batchSize=+e.target.value||60;saveSettings();if(location.pathname==='/')load(true)};
 $('#defaultSortSetting').onchange=e=>{appSettings.defaultSort=e.target.value;saveSettings();state.sort=appSettings.defaultSort;if(location.pathname==='/')load(true)};
 $('#hoverDelaySetting').onchange=e=>{appSettings.hoverDelaySeconds=+e.target.value||5;document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);saveSettings()};
+/* 关掉后同一番号的每个分卷／版次各占一张卡。改完要重取当前列表：折叠是在渲染
+   时做的，不重画的话已经被跳过的那些卡不会自己冒出来。 */
+$('#groupCollapseSetting').onchange=e=>{appSettings.groupCollapse=!!e.target.checked;saveSettings();reloadCurrentSurface()};
 $('#seekSecondsSetting').onchange=e=>{appSettings.seekSeconds=+e.target.value||10;saveSettings()};
 $('#searchHistoryLimitSetting').onchange=e=>{appSettings.searchHistoryLimit=+e.target.value||10;saveSettings();writeSearchHistory(readSearchHistory())};
 $('#relatedLimitSetting').onchange=e=>{appSettings.relatedLimit=+e.target.value||20;saveSettings()};
@@ -1377,6 +1382,7 @@ let renderedPartGroups=new Set();
    ——有码、中字、无码。它们能同时出现在一个番号上，所以两套 key 分开记，不共用。 */
 let renderedEditionGroups=new Set();
 function collapseMultipartItems(items){
+  if(!appSettings.groupCollapse)return items;
   return items.filter(it=>{
     const key=it.part_group?.key;
     if(!key)return true;
@@ -1385,6 +1391,7 @@ function collapseMultipartItems(items){
   });
 }
 function collapseEditionGroups(items){
+  if(!appSettings.groupCollapse)return items;
   return items.filter(it=>{
     const key=it.edition_group?.key;
     if(!key)return true;
@@ -1953,8 +1960,9 @@ function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
 function linkManagerMarkup(){
   return `<section class="resourcesync" id="link-manager" aria-labelledby="linkManagerTitle">
     <h2 id="linkManagerTitle">链接管理</h2>
-    <div class="resourcesyncbox" data-geist-fieldset>${fieldsetHeader('linkBoxTitle','外链与实体')}
-      <div class="resourcesyncbody geist-fieldset-content"><div id="linkSummary" class="linksummary"></div></div>
+    <div class="resourcesyncbox" data-geist-fieldset>
+      <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('linkBoxTitle','外链与实体')}
+      <div id="linkSummary" class="linksummary"></div></div>
       <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer>
       <button class="resourceaction" type="button" id="linkCheck">${icon('refresh-cw')}<span>检查死链</span></button></div></div>
     <div id="linkCheckResult" aria-live="polite"></div></section>`;
@@ -1963,12 +1971,21 @@ async function wireLinkManager(){
   const button=$('#linkCheck'),result=$('#linkCheckResult'),summary=$('#linkSummary');
   if(!button||!result)return;
   const active=()=>location.pathname==='/data-cleanup'&&!$('#stats').hidden&&document.body.contains(result);
-  const KINDS={official:'官网 · 事务所',social:'社媒',catalog:'资料库',source_reference:'来源记录'};
+  /* `官网 · 事务所` 里的间隔点会和「按类型」那行的分隔点撞在一起，读出来是
+     「社媒 373 · 官网 · 事务所 224」——分不清哪个数字属于哪一类。 */
+  const KINDS={official:'官网/事务所',social:'社媒',catalog:'资料库',source_reference:'来源记录'};
   try{
     const info=await api('/api/links');
-    summary.innerHTML=`<div class="resourcecache"><div><span>链接</span><b>${info.total.toLocaleString()}</b><small>分布在 ${info.entities.toLocaleString()} 个实体上</small></div>
-      <div><span>按类型</span><b>${Object.entries(info.by_kind||{}).map(([k,n])=>`${KINDS[k]||k} ${n}`).join(' · ')||'—'}</b>
-      <small>最多的站点：${(info.top_hosts||[]).slice(0,3).map(([h,n])=>`${esc(h)} ${n}`).join(' · ')||'—'}</small></div></div>`;
+    /* 每一类各占一格。挤成一行时标签和数字之间只剩间隔点，数字归谁全靠猜。 */
+    const stat=(label,value,note='')=>`<div><span>${esc(label)}</span><b>${value}</b>${
+      note?`<small>${note}</small>`:''}</div>`;
+    const kinds=Object.entries(info.by_kind||{})
+      .map(([kind,count])=>stat(KINDS[kind]||kind,Number(count).toLocaleString())).join('');
+    const hosts=(info.top_hosts||[]).slice(0,3).map(([host,count])=>`${esc(host)} ${count}`).join(' · ');
+    summary.innerHTML=`<div class="linkstats">
+      ${stat('链接',info.total.toLocaleString(),`分布在 ${info.entities.toLocaleString()} 个实体上`)}
+      ${kinds}</div>
+      ${hosts?`<div class="linkhosts"><span>最多的站点</span><b>${hosts}</b></div>`:''}`;
   }catch(error){summary.innerHTML=noteHtml(error.message,{variant:'error',label:'读取失败'})}
 
   const row=item=>`<tr><td>${esc(item.entity)}</td><td>${esc(KINDS[item.link_kind]||item.link_kind)}</td>
@@ -2021,8 +2038,9 @@ async function wireLinkManager(){
 function resourceSyncMarkup(){
   return `<section class="resourcesync" id="resource-sync" aria-labelledby="resourceSyncTitle">
     <h2 id="resourceSyncTitle">资源同步</h2>
-    <div class="resourcesyncbox" data-geist-fieldset>${fieldsetHeader('resourceBoxTitle','网盘与账本')}
-      <div class="resourcesyncbody geist-fieldset-content"><p>网盘上已删除的条目进入回收站；只清理没有在用的预览与播放缓存。</p></div>
+    <div class="resourcesyncbox" data-geist-fieldset>
+      <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('resourceBoxTitle','网盘与账本')}
+      <p>网盘上已删除的条目进入回收站；只清理没有在用的预览与播放缓存。</p></div>
       <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer>
       <button class="resourceaction" type="button" id="resourceScan">${icon('refresh-cw')}<span>扫描差异</span></button></div></div>
     <div id="resourceSyncResult" aria-live="polite"></div></section>`;
@@ -2366,25 +2384,25 @@ async function openDataCleanup(push=true){
     `<span class="cleanupsource" data-online="${source.online?'true':'false'}">${esc(LOC[source.location]||source.location)} · ${source.online?'在线':'离线'}</span>`).join('');
   $('#stats').innerHTML=`<div class="cleanupgrid">
     <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupJunkTitle">
-      ${fieldsetHeader('cleanupJunkTitle','垃圾文件')}
-      <div class="geist-fieldset-content"><strong>${Number(junk.pending_total||0).toLocaleString()} 个待判断</strong></div>
+      <div class="geist-fieldset-content">${fieldsetTitle('cleanupJunkTitle','垃圾文件')}
+        <strong>${Number(junk.pending_total||0).toLocaleString()} 个待判断</strong></div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-open="junk">查看垃圾文件</button></footer>
     </section>
     <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupDupTitle">
-      ${fieldsetHeader('cleanupDupTitle','重复文件')}
-      <div class="geist-fieldset-content"><strong>${Number(duplicates.total||0).toLocaleString()} 组 · ${Number(duplicates.files||0).toLocaleString()} 个文件</strong></div>
+      <div class="geist-fieldset-content">${fieldsetTitle('cleanupDupTitle','重复文件')}
+        <strong>${Number(duplicates.total||0).toLocaleString()} 组 · ${Number(duplicates.files||0).toLocaleString()} 个文件</strong></div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-open="duplicates">查看重复文件</button></footer>
     </section>
     <section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset aria-labelledby="cleanupEmptyTitle">
-      ${fieldsetHeader('cleanupEmptyTitle','空文件夹')}
-      <div class="geist-fieldset-content"><p>不会删除来源根目录。</p>
+      <div class="geist-fieldset-content">${fieldsetTitle('cleanupEmptyTitle','空文件夹')}
+        <p>不会删除来源根目录。</p>
         <div class="cleanupsources">${sourceState}</div><p class="cleanupstate" aria-live="polite"></p></div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" class="danger" data-cleanup-empty>${icon('trash')}<span>删除空文件夹</span></button></footer>
     </section>
     ${DATA_MANAGEMENT_ENTRIES.map(([section,title,label])=>`
     <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanup-${section}-title">
-      ${fieldsetHeader(`cleanup-${section}-title`,title)}
-      <div class="geist-fieldset-content"><strong data-cleanup-count="${section}">—</strong></div>
+      <div class="geist-fieldset-content">${fieldsetTitle(`cleanup-${section}-title`,title)}
+        <strong data-cleanup-count="${section}">—</strong></div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-go="${section}">${esc(label)}</button></footer>
     </section>`).join('')}
   </div>
@@ -2786,6 +2804,17 @@ const followTagType=(item,tag)=>item.tag_types&&item.tag_types[tag]||'unknown';
 const followCardTags=item=>item.tags||[];
 const followTagChip=(item,tag,kind='span')=>`<${kind} class="tg r34-${
   esc(followTagType(item,tag))}" data-follow-tag="${esc(tag)}">${esc(tagLabel(tag))}</${kind}>`;
+/* 详情标签按 rule34.xxx 帖子页 `#tag-sidebar` 的类型顺序分组，组内按名升序——
+   证据见 docs/reference-snapshots/rule34-follow-tags-and-collections.md（2026-09-01
+   两个帖子页实测，顺序一致，缺的类型直接跳过不占位）。
+   来源没记类型的排最后并保持中性色：不按词形猜类型是关注标签的既有门槛。 */
+const FOLLOW_TAG_ORDER=['copyright','character','artist','general','metadata'];
+function followDetailTags(item){
+  const tags=item.detail_tags||item.tags||[];
+  const rank=tag=>{const at=FOLLOW_TAG_ORDER.indexOf(followTagType(item,tag));
+    return at<0?FOLLOW_TAG_ORDER.length:at};
+  return [...tags].sort((a,b)=>rank(a)-rank(b)||tagLabel(a).localeCompare(tagLabel(b)));
+}
 
 function followBadges(group){
   const badges=[];
@@ -2981,8 +3010,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     <div class="followimagedots" role="group" aria-label="${imageMedia.length} 张图片">${imageMedia.map((image,index)=>`<button data-follow-image-item="${image.index}" aria-current="${index===imagePosition}" aria-label="第 ${index+1} 张，共 ${imageMedia.length} 张" title="第 ${index+1} 张"></button>`).join('')}</div>`:'';
   const badges=followBadges({primary:item,variants:[],duplicates:[],has_wip:item.variant_kind==='wip'});
   // 卡片只消费 general 内容投影；详情保留来源记录的全部类型，并按类型着色。
-  const tags=(item.detail_tags||item.tags||[])
-    .map(tag=>followTagChip(item,tag,'button')).join('');
+  const tags=followDetailTags(item).map(tag=>followTagChip(item,tag,'button')).join('');
   const author=followAuthorName(authorSources)||item.author||item.source_label||'作者未取得';
   const postedBy=item.author&&foldName(item.author)!==foldName(author)?item.author:'';
   const mediaIssue=followMediaIssue(item);

@@ -68,8 +68,8 @@
       "name": "Rule34 标签类型与 Rule34Video 合集证据",
       "url": "https://rule34.xxx/css/desktop.css?46",
       "snapshot": "docs/reference-snapshots/rule34-follow-tags-and-collections.md",
-      "checked_on": "2026-08-27",
-      "sha256": "011656482c8f503790116da9387c6288b1b37ddba4fc74ce0538beff02a23bdc",
+      "checked_on": "2026-09-01",
+      "sha256": "28c61584dbb2218964254f603d27eff0852f1b7b02939c1b782b44c7198d28cc",
       "role": "关注页标签类型配色、Rule34Video 内容标签补全与超大跨作者合集排除证据。",
       "consumers": [
         "src/peach/follow_sources.py",

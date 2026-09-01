@@ -12,15 +12,14 @@ export function noteHtml(message,{variant='secondary',label='',className=''}={})
 }
 
 /**
- * Geist Fieldset 的标题条。标题放在框体里，不用原生 `<legend>`。
+ * Geist Fieldset 的标题。标题是正文区的第一行，不是独立横条。
  *
- * `<legend>` 会在上边框上开一个缺口，标题看起来骑在线上而不是在框里；三张卡的
- * 内容高度不同时，那道缺口的位置也跟着不齐。改成框内固定 52px 的横条后，
- * 标题条、内容区、底部操作条三段在同一行网格上对齐。
+ * 不用原生 `<legend>`：它会在上边框上开一个缺口，标题看起来骑在线上而不是在
+ * 框里。也不给标题加下边框——Geist 的 Fieldset 全框只有一条线，在底部操作条
+ * 上方（证据：https://vercel.com/geist/fieldset 的 Multiple Fieldsets 示例）。
  */
-export function fieldsetHeader(id,title){
-  return `<header class="geist-fieldset-header" data-geist-fieldset-header>
-    <h3 id="${esc(id)}">${esc(title)}</h3></header>`;
+export function fieldsetTitle(id,title){
+  return `<h3 class="geist-fieldset-title" id="${esc(id)}">${esc(title)}</h3>`;
 }
 
 /** Determinate progress only. Callers supply real units instead of a decorative width. */
