@@ -82,5 +82,6 @@
 - 测试只在当前隔离 worktree 根目录运行，每个平台只有一个入口：Windows `& .\scripts\test.ps1`，macOS/Linux `./scripts/test.sh`。局部改动跑对应功能域；跨域、迁移、共享测试设施、依赖、构建/发布或大面积改动跑默认 `full`。两者自动定位主项目 venv、强制 `PYTHONPATH=<当前 worktree>/src`、核对 `peach.__file__` 后运行 `unittest`；禁止手工拼接 venv 路径或调用 pytest。健康检查只使用 `/healthz`。
 - HTTPS 结论必须使用项目 CA 做严格校验；Schannel、浏览器或取证入口失败时，立即报告原始错误和未取得的验收面，不能改用 HTTP 成功来声称 HTTPS 已通过。
 - UI 标签、身份、反馈状态和搜索推荐属于语义契约。修改时必须同时增加数据层测试和页面源测试，不能只改显示文本；推荐词上线前必须对真实 `/api/items` 验证至少一个命中，说明性后缀不得混入搜索词。
+- 测试里的临时目录一律先 `.resolve()` 再喂给被测代码和断言。CI runner 的临时目录都是别名（macOS `/var` 软链到 `/private/var`，Windows `RUNNER~1` 短名展开成 `runneradmin`），开发机没有这层别名，拿未 resolve 的路径断言只会在 CI 上红。
 - 本仓库最常见的缺陷是「只改了自己测试的那条路径」。收尾前按 `peach-surfaces` 逐项说明每个表面适用还是不适用，不要跳过不适用的项。
 - 入口与技能有行数预算，由 `scripts/check_context_budget.py` 和 `tests/test_context_budget.py` 强制执行。写不下就说明该内容属于 `docs/` 或某个技能，不是往本文件加行。
