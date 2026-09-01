@@ -1,6 +1,7 @@
 import unittest
 
 from peach.metadata_policy import (
+    is_uncensored_code,
     FIELD_SOURCE_ORDER,
     POLICY_VERSION,
     PROFILE_SOURCES,
@@ -77,6 +78,41 @@ class MetadataPolicyTests(unittest.TestCase):
         self.assertEqual(sort_candidates("tags", candidates, policy)[0]["source"], "mgstage")
         self.assertEqual(sort_candidates("studio", candidates, policy)[0]["source"], "dmm")
         self.assertEqual(sort_candidates("release_date", candidates, policy)[0]["source"], "dmm")
+
+    def test_uncensored_codes_are_routed_to_sources_that_carry_them(self):
+        """番号形状就能确定发行面，不必先有元数据证明。
+
+        语料实测 8 个无码番号（carib 2、1pon 4、HEYZO 2），官方 tag 全为 0：
+        它们一直按有码番号去问 mgstage/dmm，那几家根本不发行这些片，
+        「问了都没有」于是被读成「上游没有」。
+        """
+        self.assertTrue(is_uncensored_code("040221-001"))
+        self.assertTrue(is_uncensored_code("HEYZO-1380"))
+        self.assertFalse(is_uncensored_code("ABW-220"))
+        self.assertFalse(is_uncensored_code("259LUXU-1475"))
+        policy = resolve_policy(profile="backfill")
+        self.assertEqual(policy.sources_for_code("040221-001"),
+                         ("caribbeancom", "tokyohot", "javbus"))
+        self.assertEqual(policy.sources_for_code("HEYZO-1380"),
+                         ("caribbeancom", "tokyohot", "javbus"))
+        self.assertEqual(policy.sources_for_code("ABW-220"),
+                         ("mgstage", "dmm", "libredmm", "aventertainment"))
+        # 来源健康表要覆盖两边，所以 sources 是并集。
+        self.assertEqual(set(policy.sources), {
+            "caribbeancom", "tokyohot", "javbus",
+            "mgstage", "dmm", "libredmm", "aventertainment"})
+
+    def test_unrouted_profiles_keep_asking_every_source(self):
+        for profile in ("baseline", "censored", "uncensored", "fc2", "official-backfill"):
+            policy = resolve_policy(profile=profile)
+            self.assertEqual(policy.sources_for_code("ABW-220"), policy.sources, profile)
+
+    def test_javbus_stays_community_so_its_values_need_review(self):
+        # 1Pondo 与 HEYZO 没有官方 adapter，javbus 是唯一问得到的一家；
+        # 它取到的值只能进人工复核，不能走免复核写入。
+        policy = resolve_policy(profile="backfill")
+        self.assertFalse(policy.source("javbus").official)
+        self.assertTrue(policy.source("caribbeancom").official)
 
 
 if __name__ == "__main__":

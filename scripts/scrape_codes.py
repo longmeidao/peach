@@ -242,7 +242,8 @@ def build_parser() -> argparse.ArgumentParser:
     source_group = parser.add_mutually_exclusive_group()
     source_group.add_argument(
         "--profile",
-        choices=("baseline", "censored", "uncensored", "fc2", "official-backfill"),
+        choices=("baseline", "censored", "uncensored", "fc2",
+                 "official-backfill", "backfill"),
         help="explicit Peach source preset; default baseline")
     source_group.add_argument("--sources", help="compatible comma-separated Javinizer scraper names")
     parser.add_argument("--health", type=Path, default=None)
@@ -443,7 +444,9 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
             query = normalise_code_key(code)
             by_field: dict[str, list[dict]] = {}
             fetched_at = datetime.now(timezone.utc).isoformat()
-            for source in sources:
+            # 每个番号问哪几家由 policy 按发行面决定：日期形和 HEYZO 是无码站
+            # 的编号法，拿去问 mgstage/dmm 只会得到「问了都没有」。
+            for source in policy.sources_for_code(query):
                 source_health = health[source]
                 source_health["attempted"] += 1
                 if time.monotonic() < cooldown_until.get(source, 0.0):

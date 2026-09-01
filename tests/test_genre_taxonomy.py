@@ -134,12 +134,28 @@ class GenreTaxonomyTests(unittest.TestCase):
             "MGS限定特典映像", "性教育", "中出し", "巨乳", "スレンダー",
             "単体作品", "フルハイビジョン(FHD)", "プレステージ20周年特別企画",
         ])
-        self.assertEqual(tags, ["中出内射", "巨乳", "苗条"])
-        self.assertEqual(unmapped, ["性教育"], "词表里没有的留给人决定，不猜翻译")
+        # `性教育` 是题材类，用户复核后收进词表，不再算待决。
+        self.assertEqual(tags, ["性教育", "中出内射", "巨乳", "苗条"])
+        self.assertEqual(unmapped, [])
 
     def test_non_content_patterns_stay_narrow(self):
         # 每条形状判据都要说得出它为什么必然是卖法而不是内容。
         self.assertEqual(len(NON_CONTENT_PATTERNS), 5)
+
+    def test_uncensored_source_vocabularies_project_too(self):
+        """caribbeancom 与 javbus 的词表和 dmm/mgstage 不一样，同样要投影。"""
+        carib, carib_left = map_genres([
+            "オリジナル動画", "美乳", "中出し", "パイパン", "オナニー",
+            "手コキ", "69", "クンニ", "初裏", "スレンダー"])
+        self.assertEqual(carib, ["美乳", "中出内射", "白虎", "自慰", "手交", "舔阴", "苗条"])
+        self.assertEqual(carib_left, ["69", "初裏"], "没把握的留给人决定")
+        heyzo, heyzo_left = map_genres([
+            "中出し", "潮吹き", "淫語", "騎乗位", "口内発射", "看護婦", "指マン"])
+        self.assertEqual(heyzo, ["中出内射", "潮吹", "淫语ASMR", "骑乘", "口爆", "护士", "手交"])
+        self.assertEqual(heyzo_left, [])
+        # javbus 会混进画质与演员编成，同样按非内容排除。
+        self.assertTrue(all(is_non_content_genre(v)
+                            for v in ("1080p", "60fps", "AV女優", "超VIP", "オリジナル動画")))
 
 
 if __name__ == "__main__":

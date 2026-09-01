@@ -1,6 +1,7 @@
 """Pure Javinizer-Go source policy owned by Peach."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Iterable, Mapping, Sequence
 
@@ -61,6 +62,36 @@ PROFILE_SOURCES = {
     ),
 }
 
+#: 番号形状就能确定发行面，不必先有元数据证明。日期形（`040221-001`）是无码站的
+#: 编号法，`HEYZO-1380` 同理。语料实测：8 个这种番号——carib 2、1pon 4、HEYZO 2，
+#: 官方 tag 全为 0。它们此前一直按有码番号去问 mgstage/dmm，那几家根本不发行
+#: 这些片，于是「问了都没有」被读成「上游没有」。caribbeancom 实测取得到
+#: `040221-001` 的完整标题、日期和 10 个 genre。
+UNCENSORED_CODE_SHAPES = (
+    re.compile(r"^\d{6}-\d{2,4}$"),
+    re.compile(r"^HEYZO-\d{2,5}$", re.I),
+)
+
+#: 按发行面分流的 profile。`sources` 是并集（来源健康表要覆盖全部），
+#: 每个番号实际问哪几家由 `sources_for_code` 决定。
+ROUTED_PROFILE_SOURCES = {
+    "backfill": {
+        # 1Pondo 与 HEYZO 没有官方 adapter，javdb/javlibrary 在本机被
+        # Cloudflare 与 403 挡住（不绕机器人检测），javbus 是唯一问得到的一家；
+        # 它是 community，取值只能进人工复核，不进免复核写入。
+        "uncensored": ("caribbeancom", "tokyohot", "javbus"),
+        "censored": ("mgstage", "dmm", "libredmm", "aventertainment"),
+    },
+}
+for _name, _routes in ROUTED_PROFILE_SOURCES.items():
+    PROFILE_SOURCES[_name] = tuple(dict.fromkeys(
+        source for group in _routes.values() for source in group))
+
+
+def is_uncensored_code(code: str) -> bool:
+    value = str(code or "").strip()
+    return any(shape.fullmatch(value) for shape in UNCENSORED_CODE_SHAPES)
+
 FIELD_SOURCE_ORDER = {
     "title": (
         "dmm", "libredmm", "r18dev", "mgstage", "aventertainment",
@@ -119,6 +150,14 @@ class MetadataPolicy:
 
     def source(self, name: str) -> SourceSpec:
         return SOURCE_SPECS[name]
+
+    def sources_for_code(self, code: str) -> tuple[str, ...]:
+        """这个番号该问哪几家。未分流的 profile 一律返回全部来源。"""
+        routes = ROUTED_PROFILE_SOURCES.get(self.profile)
+        if not routes:
+            return self.sources
+        group = "uncensored" if is_uncensored_code(code) else "censored"
+        return tuple(source for source in self.sources if source in routes[group])
 
     def allows_code(self, code: str, *, include_fc2: bool = False,
                     explicit_sources: bool = False) -> bool:

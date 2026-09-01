@@ -34,7 +34,7 @@ CONTENT_GENRES: dict[str, str] = {
     "口交": "口交",
     "Deep Throat": "深喉", "Iramatio": "深喉", "イラマチオ": "深喉",
     "ディープスロート": "深喉",
-    "Cunnilingus": "舔阴", "クンニ": "舔阴",
+    "Cunnilingus": "舔阴", "クンニ": "舔阴", "指マン": "手交",
     "Facial": "颜射", "顔射": "颜射", "BUKKAKE": "颜射", "ぶっかけ": "颜射",
     "Bukkake/Facial": "颜射",
     "Oral Cum": "口爆", "口内発射": "口爆", "口内射精": "口爆",
@@ -99,6 +99,7 @@ CONTENT_GENRES: dict[str, str] = {
     "Amateur": "素人", "Amateur Girls": "素人", "素人": "素人",
     "配信専用素人": "素人",
     "Slut": "痴女", "Nymphomaniac": "痴女", "Bitch": "痴女", "痴女": "痴女",
+    "ハード系": "痴女", "淫語": "淫语ASMR",
     "スケベな淫乱淑女": "痴女", "淫乱・ハード系": "痴女",
     "Extreme Ero Woman": "痴女",
     "Married Woman": "人妻", "Young Wife": "人妻", "人妻": "人妻",
@@ -108,8 +109,10 @@ CONTENT_GENRES: dict[str, str] = {
     "Older Sister": "御姐", "お姉さん": "御姐",
     "Office Lady": "秘书OL", "Secretary": "秘书OL", "OL": "秘书OL", "秘書": "秘书OL",
     "School Girls": "学生", "College Girl": "学生", "女子校生": "学生",
+    "ロリ": "萝莉",
     "女子大生": "学生", "大学生": "学生", "JD": "学生",
     "Nurse": "护士", "ナース・看護婦": "护士", "看護婦・ナース": "护士",
+    "看護婦": "护士",
     "Female Teacher": "教师", "女教師": "教师", "教師": "教师",
     "Private Tutor": "老师", "家庭教師": "老师",
     "Stewardess": "空姐", "スチュワーデス": "空姐",
@@ -117,6 +120,7 @@ CONTENT_GENRES: dict[str, str] = {
 
     # —— 场景 ——
     "Outdoor": "户外露出", "露出": "户外露出", "野外・露出": "户外露出",
+    "野外露出": "户外露出",
     "野外": "户外",
     "Car Sex": "车震", "カーセックス": "车震", "車内": "车内",
     "Massage": "按摩", "Massage Parlor": "按摩", "マッサージ": "按摩", "エステ": "按摩",
@@ -137,6 +141,7 @@ CONTENT_GENRES: dict[str, str] = {
     "Reluctant": "强制剧情", "無理矢理": "强制剧情",
     "Drama": "剧情", "ドラマ": "剧情",
     "顔出し": "露脸",
+    "性教育": "性教育",
     "流出": "泄密流出",
 
     # —— 技术属性 ——
@@ -163,6 +168,7 @@ NON_CONTENT_GENRES: frozenset[str] = frozenset({
     "Outlet (store That Sells Seconds, Discontinued Lines, Etc.)",
     "期間限定セール", "セール", "MGS限定特典映像", "特典映像あり",
     "配信専用", "MGSだけのおまけ映像付き", "Top Selling",
+    "オリジナル動画", "超VIP", "1080p", "60fps",
     "Series", "Independent", "AV Open 2014 Heavyweight",
     # 样片与附属物料
     "Sample Video", "Sample Movie", "Photo Gallery", "サンプル動画",

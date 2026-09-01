@@ -1334,6 +1334,47 @@ class JavModeAndCoverTests(unittest.TestCase):
         self.assertEqual(uncensored["edition_badges"], ["无码"])
         self.assertEqual(cracked["edition_badges"], ["无码破解"])
 
+    def test_uncensored_release_names_are_not_shown_as_titles(self):
+        """无码片的文件名由「发行站 + 番号 + 画质/分卷」拼成，一个标题词都没有。
+
+        修之前界面把剥掉番号后的残渣当标题显示：`040221-001 carib-1080p`、
+        `071213-625 1pon-whole1 hd`、`heyzo hd 1380 full`。
+        """
+        for name, code in (
+            ("040221-001-carib-1080p.mp4", "040221-001"),
+            ("051421-001-carib-720p.mp4", "051421-001"),
+            ("071213-625-1pon-whole1_hd.avi", "071213-625"),
+            ("heyzo_hd_1380_full.mp4", "HEYZO-1380"),
+            ("259LUXU-971_1080p.mp4", "259LUXU-971"),
+            ("259LUXU-934.HD.mp4", "259LUXU-934"),
+        ):
+            self.assertEqual(
+                rm_web.jav_display_metadata(name, code)["display_title"], "", name)
+
+    def test_code_is_stripped_even_when_the_release_site_comes_first(self):
+        # `1pon-092415-001-fhd1_(new).mp4`：番号在中间，只认前缀就会整个显示出来。
+        self.assertEqual(
+            rm_web.jav_display_metadata(
+                "1pon-092415-001-fhd1_(new).mp4", "092415-001")["display_title"], "")
+        self.assertEqual(
+            rm_web.jav_display_metadata(
+                "122614_001-1pon-whole1_hd.avi", "122614-947")["display_title"], "")
+
+    def test_real_titles_survive_the_release_noise_filter(self):
+        # 判空判据是「没有中日文、也没有长度 ≥4 的字母词」，真标题不受影响。
+        self.assertEqual(
+            rm_web.jav_display_metadata(
+                "MIN-101 Minah My new companion hard fuck racing girl.mp4",
+                "MIN-101")["display_title"],
+            "Minah My new companion hard fuck racing girl")
+        self.assertEqual(
+            rm_web.jav_display_metadata(
+                "ABP614.Hinata.Mio.Uncen.mp4", "ABP614")["display_title"], "Hinata Mio")
+        self.assertEqual(
+            rm_web.jav_display_metadata(
+                "MIDE-925 痴女に犯される.mp4", "MIDE-925")["display_title"],
+            "痴女に犯される")
+
     def test_release_sort_orders_official_dates_descending_and_missing_last(self):
         rows = rm_web.q_items(
             self.contract, {"jav": "1", "sort": "release", "limit": "20"},

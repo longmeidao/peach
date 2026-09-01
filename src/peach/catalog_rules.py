@@ -53,7 +53,7 @@ SCENE_TAGS = {
 }
 STORY_TAGS = {
     "角色扮演", "反差", "绿帽NTR", "调教", "泄密流出", "NTR绿帽",
-    "剧情演绎", "偷拍偷窥", "出轨", "强制剧情", "剧情", "捆绑", "有剧情",
+    "剧情演绎", "偷拍偷窥", "出轨", "强制剧情", "剧情", "捆绑", "有剧情", "性教育",
     "偷窥", "定制", "百合", "慢热前戏", "榨精",
 }
 POSITION_TAGS = {
@@ -268,6 +268,29 @@ def promo_free_key(name: str | None) -> str:
     return re.sub(r"[\s._\-—]+", "", strip_promo_markers(name)).casefold()
 
 
+#: 无码片的文件名基本由「发行站 + 番号 + 画质/分卷」拼成，一个真标题词都没有：
+#: `040221-001-carib-1080p.mp4`、`071213-625-1pon-whole1_hd.avi`、
+#: `heyzo_hd_1380_full.mp4`。剥掉番号剩下的是发行残渣，不是标题——界面上却当
+#: 标题显示成「040221-001 carib-1080p」。这些站名和画质标记是有限集合，日文
+#: 标题里不会出现，可以按词剥。
+_RELEASE_NOISE = re.compile(
+    r"(?i)(?<![A-Z0-9])(?:"
+    r"carib(?:bean(?:com)?(?:pr)?)?|1pon(?:do)?|10mu(?:sume)?|heyzo|"
+    r"pacopacomama|paco|muramura|tokyo[-_]?hot|xxx[-_]?av|"
+    r"\d{3,4}p|[0-9]?[fu]?hd\d*|sd|4k|2k|whole\d*|part\d*|full|lt|ch\d*"
+    r")(?![A-Z0-9])"
+)
+#: 剥完之后判断剩下的还算不算标题：既没有中日文，也没有一个长度 ≥4 的字母词，
+#: 那就是番号数字和零碎标记，不是名字。`Minah My new companion…` 留得住，
+#: `1pon-092415-001-fhd2 (new)` 剥到只剩 `new` 就该判空。
+_TITLE_CJK = re.compile(r"[぀-ヿ㐀-鿿]")
+_TITLE_WORD = re.compile(r"[A-Za-z]{4,}")
+
+
+def _is_release_residue(text: str) -> bool:
+    return not (_TITLE_CJK.search(text) or _TITLE_WORD.search(text))
+
+
 def jav_fallback_title(name: str | None, code: str | None) -> str:
     """Clean a filename-derived JAV title without changing the stored filename."""
     text = _MEDIA_EXTENSION.sub("", str(name or "").strip())
@@ -278,10 +301,15 @@ def jav_fallback_title(name: str | None, code: str | None) -> str:
         repeated = re.compile(rf"^[\s._\-—]*(?:{code_pattern})(?=$|[\s._\-—\[])", re.I)
         while repeated.search(text):
             text = repeated.sub("", text, count=1)
+        # 番号不总在开头：`1pon-092415-001-fhd1_(new).mp4` 把发行站放在了前面。
+        # 只认前缀，整个番号就会留在「标题」里显示出来。
+        text = re.sub(rf"(?<![A-Z0-9])(?:{code_pattern})(?![A-Z0-9])", " ", text, flags=re.I)
     text = _EDITION_TAIL.sub("", text)
+    text = _RELEASE_NOISE.sub(" ", text)
     text = re.sub(r"[\[\]【】()（）]+", " ", text)
     text = re.sub(r"[._]+", " ", text)
-    return re.sub(r"\s+", " ", text).strip(" -_—")
+    text = re.sub(r"\s+", " ", text).strip(" -_—")
+    return "" if _is_release_residue(text) else text
 
 
 def jav_display_metadata(name: str | None, code: str | None,
