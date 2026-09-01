@@ -231,6 +231,20 @@
         "scripts/audit_related_ranker.py",
         "tests/test_related.py"
       ]
+    },
+    {
+      "id": "youtube-stats-buffer-20260829",
+      "name": "YouTube Stats for Nerds Buffer Graph",
+      "url": "https://www.youtube.com/",
+      "snapshot": "docs/reference-snapshots/youtube-stats-buffer-measured.md",
+      "checked_on": "2026-08-29",
+      "sha256": "e013aba1ecef37c3c911c909d1cd9ad9a46a53214d7f790448181fb3f434d558",
+      "role": "播放统计中的连接速度、网络活动和缓冲健康滚动历史图参考；Peach 保留自己的播放器、色彩与数据口径。时间轴不采用本条，见快照的移植说明。",
+      "consumers": [
+        "web/app.css",
+        "web/app.js",
+        "tests/test_web_ui.py"
+      ]
     }
   ]
 }

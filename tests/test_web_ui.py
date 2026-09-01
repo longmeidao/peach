@@ -856,6 +856,21 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("application/vnd.apple.mpegurl")
         self.assertPageContains("/stream/hls/")
 
+    def test_player_stats_keep_a_rolling_history_instead_of_only_the_latest_value(self):
+        """单个瞬时值看不出卡顿是刚发生还是一直如此，三条指标各留 24 秒采样窗口。"""
+        self.assertPageContains("const PLAYER_STATS_HISTORY=24")
+        self.assertPageContains("function playerStatsPlot(samples,kind,ceiling,label)")
+        self.assertPageContains("pushPlayerStat(statsHistory.buffer,buffer)")
+        self.assertPageContains("playerStatsPlot(statsHistory.buffer,'buffer',30")
+        self.assertPageContains('class="playerstatsmetric"')
+        self.assertPageContains(".playerstatsplot{height:20px")
+        self.assertPageContains(
+            "@media(max-width:600px){.playerstats dd.playerstatsmetric"
+            "{grid-template-columns:96px minmax(0,1fr)}}")
+        # 缓冲健康是唯一有阈值语义的一条：红 / 橙 / 浅绿分别对应 <5 秒、5-15 秒和健康。
+        self.assertPageContains(".playerstatsplot.buffer i.low{background:#e16962}")
+        self.assertPageContains(".playerstatsplot.buffer i.mid{background:#efb55f}")
+
     def test_fullscreen_uses_the_entire_player_and_reports_loading_speed(self):
         self.assertPageContains(".vwrap>.video-js.vjs-fullscreen")
         self.assertPageContains(".vwrap :is(.vwrap>.video-js.vjs-fullscreen")
@@ -2292,7 +2307,8 @@ class WebUiSourceTests(unittest.TestCase):
             ".frow>b", ".fvkind", ".idname", ".kv>span:first-child",
             ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
             ".mixitemtext [data-truncate-end]", ".mixqueuehead h2",
-            ".playerstats dd", ".relatedperson .nm", ".reviewentity b",
+            ".playerstats dd", ".playerstatsmetric>span",
+            ".relatedperson .nm", ".reviewentity b",
             ".reviewitem h4", ".searchoption span",
             ".sgrid.mixgrid>.mixqueue .mixqueuehead span", ".sidebarorderlabel>b",
             ".insightrankrow>span:nth-child(2)", ".insighttablerow span", ".metricstrip small,.tastesummary>small",
