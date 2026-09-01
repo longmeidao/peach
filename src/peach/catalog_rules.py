@@ -120,6 +120,24 @@ def is_jav_code(code: str | None) -> bool:
     )
 
 
+def is_amateur_code(code: str | None) -> bool:
+    """三位数字前缀的素人系番号：`259LUXU-1475`、`300MIUM-1239`。
+
+    这类番号由 MGS 发行，不进 DMM 数字版目录，也查不到 r18.dev 与 Prestige
+    官方 API。判定只看形状：一旦改成「先拿到元数据再判断」，没有元数据的番号
+    就永远轮不到该问的那个来源。
+    """
+    return bool(_CODE_AMATEUR.match((code or "").upper().strip()))
+
+
+def code_letter_stem(code: str | None) -> str:
+    """番号的字母段，用来和 DMM `content_id` 对照：`ABW-232` -> `abw`。"""
+    value = normalise_code_key(code)
+    if not value or value.startswith("FC2"):
+        return ""
+    return re.sub(r"[^A-Z]", "", value.split("-", 1)[0]).lower()
+
+
 def is_jav_asset(code: str | None, studio: str | None = None,
                  release_date: str | None = None,
                  entity_kinds: tuple[str, ...] | list[str] = ()) -> bool:

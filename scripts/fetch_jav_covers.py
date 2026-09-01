@@ -62,7 +62,12 @@ from peach.config import COVER_DIR, DATABASE_PATH, GENERATED_DIR, SOURCES_DIR
 from peach.http import HttpRequest, HttpTransport, HttpxTransport
 from peach.jobs import DiskGuard, JobPolicyError
 from peach.platform import system_volume
-from peach.catalog_rules import is_jav_code, normalise_code_key
+from peach.catalog_rules import (
+    code_letter_stem,
+    is_amateur_code,
+    is_jav_code,
+    normalise_code_key,
+)
 
 AWS_LEGACY_DIGITAL = (
     "https://awsimgsrc.dmm.co.jp/pics_dig/digital/video/{cid}/{cid}pl.jpg"
@@ -337,6 +342,34 @@ def logged_success_candidate(rows: list[dict], code: str) -> Candidate | None:
     return evidence[0] if evidence is not None else None
 
 
+#: DMM 的 content_id 一定带番号字母段：`ABW-232` -> `118abw232`、
+#: `MGT-164` -> `h_1711mgt00164`。
+_DMM_CID = re.compile(
+    r"/(?:pics_dig/|dig/)?(?:digital/(?:video|amateur)|mono/movie)"
+    r"(?:/adult)?/(?P<cid>[^/]+)/",
+    re.I,
+)
+
+
+def is_cross_product_cover(code: str, url: str) -> bool:
+    """这个 URL 指向的是另一部片的封套。
+
+    素人系番号在 avbase 上会连到 DVD 合集：`259LUXU-1475` 的页面主图取到的是
+    `SNG-021` 的封套（`118sng021`）。内容是同一段，封面却不是这部片的——大图
+    模式的人脸定位、番号搜索和「这张图是谁」全都跟着错位。
+
+    avbase 抓取已在 65fd95f 删掉，这批 URL 却靠「复用上一轮成功记录」一路带到
+    今天：复用只看 result 是不是「取得」，不看它和番号是否对得上，于是错误封面
+    再也没有机会被重探。判据落在 URL 上而不是抓取路径上，正是因为下一个引入
+    错图的来源不会用同一个函数。
+    """
+    stem = code_letter_stem(code)
+    match = _DMM_CID.search(urlparse(url or "").path)
+    if not stem or match is None:
+        return False
+    return stem not in match.group("cid").lower()
+
+
 def _is_prestige(evidence: MetadataEvidence) -> bool:
     return any("prestige" in value or "プレステージ" in value
                for value in evidence.makers)
@@ -482,12 +515,15 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
     if not is_fc2 and _is_prestige(evidence):
         candidates += prestige_group_images(transport, code)
         time.sleep(delay)
-    elif not is_fc2 and "mgstage" in evidence.sources:
+    # 素人系番号按形状就能确定发行面是 MGS，不必先有元数据。等元数据的旧写法让
+    # 259LUXU / 300MIUM / 428SUKE 这批番号一次也没问过 MGS——而 MGS 一直有图。
+    elif not is_fc2 and (is_amateur_code(code) or "mgstage" in evidence.sources):
         candidates += mgstage_images(transport, code)
         time.sleep(delay)
     candidates = _unique_candidates([
         candidate for candidate in candidates
-        if not THUMBNAIL.search(candidate.url) or FC2_HIRES.match(candidate.url)
+        if (not THUMBNAIL.search(candidate.url) or FC2_HIRES.match(candidate.url))
+        and not is_cross_product_cover(code, candidate.url)
     ])
     # 升级模式已在成功日志中量过的精确 URL，若像素不大于当前本地图，就不再
     # 发 Range 请求。其他 URL 和尺寸未知的候选仍完整探测，不改变择优语义。
@@ -570,8 +606,11 @@ def restore_logged_successes(transport: HttpTransport, log: Path, root: Path,
     root.mkdir(parents=True, exist_ok=True)
     restored = skipped = 0
     failed: list[dict[str, str]] = []
+    # 恢复不做发现请求，所以它比抓取更容易把历史错图原样搬回本地：跨片封套在这里
+    # 也要挡掉，否则删掉错图重跑恢复只会把同一张再下一次。
     successes = [row for row in logged_rows(log)
-                 if row.get("result") == "取得" and row.get("code") and row.get("url")]
+                 if row.get("result") == "取得" and row.get("code") and row.get("url")
+                 and not is_cross_product_cover(str(row["code"]), str(row["url"]))]
     for index, row in enumerate(successes, 1):
         if guard is not None:
             guard.check()
