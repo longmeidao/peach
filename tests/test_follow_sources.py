@@ -11,7 +11,9 @@ import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
+from peach import follow_sources
 from peach.follow import FollowHistoryEnd, FollowSourceError
 from peach.follow_secrets import Credential, CredentialError, CredentialStore
 from peach.follow_sources import (
@@ -964,6 +966,46 @@ class Rule34XxxConnectorTests(unittest.TestCase):
         self.assertEqual(types["lazyprocrastinator"], "artist")
         self.assertEqual(types["reverse_cowgirl_position"], "general")
         self.assertNotIn("api_key", seen[1].url)
+
+    def test_a_throttled_detail_page_is_retried_not_read_as_no_types(self):
+        """站方公布的是每 60 秒 60 次，而列表页一页 24 条、每条都要单独打一次详情页。
+
+        一次挡回来就返回 {}，落进库里就是「这条没有类型」——和「这条确实没有
+        类型」长得一模一样。实测：回填首轮 400 条里 372 条判成「没有类型」，
+        事后逐条直取，全部 200 且 `#tag-sidebar` 正常。
+        """
+        attempts = []
+
+        def transport(request, timeout, max_bytes):
+            if request.url.startswith("https://api.rule34.xxx/"):
+                return HttpResponse(200, {}, RULE34XXX_JSON)
+            attempts.append(request.url)
+            if len(attempts) < 3:
+                return HttpResponse(503, {}, b"slow down")
+            return HttpResponse(200, {}, RULE34XXX_DETAIL_HTML)
+
+        with patch.object(follow_sources.time, "sleep"):
+            result = Rule34XxxConnector(
+                transport=transport, max_items=1,
+                credential=Credential("rule34xxx", {"user_id": "42", "api_key": "sekret"}),
+            ).fetch("lazyprocrastinator")
+        self.assertEqual(len(attempts), 3, "被挡回来要重试，不能一次就当没有类型")
+        self.assertEqual(result.candidates[0].extra["tag_types"]["lazyprocrastinator"],
+                         "artist")
+
+    def test_a_detail_page_that_stays_unavailable_records_no_types(self):
+        """重试完仍取不到就留空，让下一轮再问；不写空字典冒充已补。"""
+        def transport(request, timeout, max_bytes):
+            if request.url.startswith("https://api.rule34.xxx/"):
+                return HttpResponse(200, {}, RULE34XXX_JSON)
+            return HttpResponse(503, {}, b"slow down")
+
+        with patch.object(follow_sources.time, "sleep"):
+            result = Rule34XxxConnector(
+                transport=transport, max_items=1,
+                credential=Credential("rule34xxx", {"user_id": "42", "api_key": "sekret"}),
+            ).fetch("lazyprocrastinator")
+        self.assertNotIn("tag_types", result.candidates[0].extra)
 
     def test_autocomplete_reports_the_real_tag_spelling_without_credentials(self):
         # 站上写作 `ria-neearts`，手边的手柄是 `Ria_neearts`；补全是唯一能把两者
