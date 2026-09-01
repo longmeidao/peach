@@ -1001,6 +1001,8 @@ class Rule34XxxConnector(_BaseConnector):
         "video", "sound", "animated", "mp4", "webm", "3d", "hd", "60fps",
         "tagme", "highres", "absurdres",
     })
+    #: 详情页取不到时的退避节奏，与外网退避规则同一套。
+    _DETAIL_RETRY_DELAYS = (1.5, 4.0, 9.0)
 
     def _detail_tag_types(self, post_id: str) -> dict[str, str]:
         """Read rule34.xxx's own tag taxonomy from the public post page.
@@ -1012,11 +1014,22 @@ class Rule34XxxConnector(_BaseConnector):
         """
         url = ("https://rule34.xxx/index.php?page=post&s=view&id="
                f"{urllib.parse.quote(post_id)}")
-        try:
-            response = self._get(url, headers={"Accept": "text/html"})
-        except FollowSourceError:
-            return {}
-        if response.status != 200:
+        # 站方公布的口径是每 60 秒 60 次，而列表页一页 24 条、每条都要单独打一次
+        # 详情页，被挡回来是常态。一次挡回来就返回 {}，得到的是「这条没有类型」——
+        # 和「这条确实没有类型」在日志里长得一模一样。实测：回填首轮 400 条里
+        # 372 条判成「没有类型」，事后逐条直取，全部 200 且 `#tag-sidebar` 正常。
+        response = None
+        for delay in (0.0, *self._DETAIL_RETRY_DELAYS):
+            if delay:
+                time.sleep(delay)
+            try:
+                response = self._get(url, headers={"Accept": "text/html"})
+            except FollowSourceError:
+                response = None
+                continue
+            if response.status == 200:
+                break
+        if response is None or response.status != 200:
             return {}
         soup = BeautifulSoup(response.body, "html.parser")
         allowed = {"general", "artist", "copyright", "character", "metadata"}
