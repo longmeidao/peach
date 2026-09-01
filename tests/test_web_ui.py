@@ -2631,6 +2631,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("function collapseEditionGroups(items){")
         self.assertPageContains("const visible=collapseEditionGroups(collapseMultipartItems(items));")
         self.assertPageContains('${editions.count} 个版本')
+        # 叠层纸边是「这张卡代表不止一条」的说法，分卷和版次都成立；只给分卷的话，
+        # 同样被折叠过的版次卡长得和普通卡一模一样。
+        self.assertPageContains("const stacked=parts||editions;")
+        self.assertPageContains("${stacked?'<div class=\"partstack\">':''}")
+        self.assertPageContains("${stacked?'</div>':''}")
         self.assertPageContains("openEditions(it.edition_group.seed_id,id,true,anchor)")
         self.assertPageContains("if(parts[0]==='editions'", "刷新或前进后退要能回到同一个版次")
 

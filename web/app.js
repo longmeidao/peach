@@ -1185,11 +1185,14 @@ function cardHtml(it,cls){
       <button data-seek="${appSettings.seekSeconds}" title="前进 ${appSettings.seekSeconds} 秒" aria-label="前进 ${appSettings.seekSeconds} 秒">${icon('rotate-cw')}<b>${appSettings.seekSeconds}</b></button>
       <button data-open title="打开详情" aria-label="打开详情">${icon('maximize')}</button></div>`;
   /* 小图与预览图都是 16:9 横图，只更换图片来源；元数据 DOM 和高度必须完全相同。 */
-  return `<article class="card ${parts?'partcard ':''}${cls||''} ${it.disposal==='trash'?'pending-delete':''}" data-id="${it.id}"${parts?` data-part-seed="${parts.seed_id}"`:''}>
-    ${parts?'<div class="partstack">':''}<div class="pic" style="--card-ratio:${ar}">${thumb}<button class="cardopenhit" data-open aria-label="打开 ${esc(shownName)}${parts?'分卷':'详情'}"></button>
+  /* 叠层纸边是「这张卡代表不止一条」的视觉说法，分卷和版次都成立。原先只给分卷，
+     于是同样被折叠过的版次卡长得和普通卡一模一样，只有角标能看出来。 */
+  const stacked=parts||editions;
+  return `<article class="card ${stacked?'partcard ':''}${cls||''} ${it.disposal==='trash'?'pending-delete':''}" data-id="${it.id}"${parts?` data-part-seed="${parts.seed_id}"`:''}>
+    ${stacked?'<div class="partstack">':''}<div class="pic" style="--card-ratio:${ar}">${thumb}<button class="cardopenhit" data-open aria-label="打开 ${esc(shownName)}${parts?'分卷':editions?'版本':'详情'}"></button>
       <div class="badge mono">${srcBadge(it.location,it.cost)}</div>
       <span class="selectionMark">${icon('check')}</span><span class="deleteMark">${icon('trash')}<b>回收站</b></span>
-      ${parts?`<span class="partbadge">${parts.count} 卷</span>`:''}${editions?`<span class="partbadge editionbadge" title="${esc(editions.editions.join(' · '))}">${editions.count} 个版本</span>`:''}<span class="dur mono">${fmtDur(shownDuration)}</span>${tr}${tools}</div>${parts?'</div>':''}
+      ${parts?`<span class="partbadge">${parts.count} 卷</span>`:''}${editions?`<span class="partbadge editionbadge" title="${esc(editions.editions.join(' · '))}">${editions.count} 个版本</span>`:''}<span class="dur mono">${fmtDur(shownDuration)}</span>${tr}${tools}</div>${stacked?'</div>':''}
     <div class="meta">${avatar}<div class="mtext"><button class="t cardtitle" data-open>${shownTitle}</button>
       <div class="s mono">${whoHtml}
         ${it.why?`<span class="why">${esc(it.why)}</span>`:''}
