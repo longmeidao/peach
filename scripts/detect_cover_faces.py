@@ -27,6 +27,7 @@ from pathlib import Path
 import cv2
 
 from peach.config import COVER_DIR
+from peach.face_detect import FaceDetector, FaceModelUnavailable
 
 #: 长封套的宽高比下限。低于它按竖版正封处理（整张就是正封，没有剧照区）。
 SLEEVE_RATIO_MIN = 1.2
@@ -37,32 +38,24 @@ FRONT_START = 0.468
 MIN_Y, MAX_Y = 0.05, 0.60
 
 
-def detect(path: Path, cascade) -> dict | None:
+def detect(path: Path, detector: FaceDetector) -> dict | None:
     image = cv2.imread(str(path))
     if image is None:
         return None
     height, width = image.shape[:2]
     ratio = width / height if height else 0
-    grey = cv2.equalizeHist(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY))
-    faces = cascade.detectMultiScale(
-        grey, scaleFactor=1.08, minNeighbors=6,
-        minSize=(max(40, width // 25), max(40, height // 25)))
-    if len(faces) == 0:
+    faces = detector.detect(image)
+    # 长封套左半边是剧照拼贴，那里的脸不是正封主体。这条仍然保留：它挡的不是
+    # 假阳性（YuNet 给的是真脸），而是「拼贴里的另一个人」——按面积取最大在
+    # `ABW-232` 这类图上已经落在右侧正封，但拼贴里偶尔会有更大的一张。
+    if SLEEVE_RATIO_MIN <= ratio < SLEEVE_RATIO_MAX:
+        faces = [face for face in faces if face.cx >= FRONT_START]
+    faces = [face for face in faces if MIN_Y <= face.cy <= MAX_Y]
+    if not faces:
         return {"ratio": round(ratio, 3), "face": None}
-
-    usable = []
-    for x, y, w, h in faces:
-        cx, cy = (x + w / 2) / width, (y + h / 2) / height
-        # 长封套左半边是剧照拼贴，那里的「人脸」不是正封主体。
-        if SLEEVE_RATIO_MIN <= ratio < SLEEVE_RATIO_MAX and cx < FRONT_START:
-            continue
-        if not (MIN_Y <= cy <= MAX_Y):
-            continue
-        usable.append((w * h, cx, cy))
-    if not usable:
-        return {"ratio": round(ratio, 3), "face": None}
-    _, cx, cy = max(usable, key=lambda item: item[0])
-    return {"ratio": round(ratio, 3), "face": {"cx": round(cx, 3), "cy": round(cy, 3)}}
+    best = max(faces, key=lambda face: face.area)
+    return {"ratio": round(ratio, 3),
+            "face": {"cx": best.cx, "cy": best.cy, "score": best.score}}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -74,10 +67,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run(args: argparse.Namespace) -> int:
-    cascade = cv2.CascadeClassifier(
-        cv2.data.haarcascades + "haarcascade_frontalface_alt2.xml")
-    if cascade.empty():
-        raise SystemExit("级联文件不可用：opencv-python-headless 需为 4.x")
+    try:
+        detector = FaceDetector()
+    except FaceModelUnavailable as error:
+        raise SystemExit(str(error))
 
     covers = sorted(args.covers.glob("*.jpg"))
     todo = [p for p in covers
@@ -88,7 +81,7 @@ def run(args: argparse.Namespace) -> int:
 
     stats = {"face": 0, "none": 0, "unreadable": 0}
     for index, path in enumerate(todo, 1):
-        result = detect(path, cascade)
+        result = detect(path, detector)
         if result is None:
             stats["unreadable"] += 1
             print(f"[{index}/{len(todo)}] 读图失败 {path.name}", flush=True)

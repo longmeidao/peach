@@ -20,26 +20,24 @@ from pathlib import Path
 import cv2
 
 from peach.config import GENERATED_DIR
+from peach.face_detect import FaceDetector, FaceModelUnavailable
 from peach.web_contract import face_focus
 
 
-def detect(path: Path, cascade) -> dict | None:
+def detect(path: Path, detector: FaceDetector) -> dict | None:
     image = cv2.imread(str(path))
     if image is None:
         return None
     height, width = image.shape[:2]
     ratio = round(width / height, 3) if height else 0
-    grey = cv2.equalizeHist(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY))
-    faces = cascade.detectMultiScale(
-        grey, scaleFactor=1.08, minNeighbors=6,
-        minSize=(max(40, width // 25), max(40, height // 25)))
+    faces = detector.detect(image)
     record: dict = {"ratio": ratio, "face": None}
-    if len(faces) == 0:
+    if not faces:
         return record
     # 多张脸时取最大的：实体图的主角通常占画面最大，其余是拼贴或背景人物。
-    x, y, w, h = max(faces, key=lambda box: box[2] * box[3])
-    cx, cy = (x + w / 2) / width, (y + h / 2) / height
-    record["face"] = {"cx": round(float(cx), 3), "cy": round(float(cy), 3)}
+    best = faces[0]
+    cx, cy = best.cx, best.cy
+    record["face"] = {"cx": cx, "cy": cy, "score": best.score}
     focus = face_focus(ratio, cx, cy)
     if focus:
         record["focus"] = focus
@@ -56,10 +54,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run(args: argparse.Namespace) -> int:
-    cascade = cv2.CascadeClassifier(
-        cv2.data.haarcascades + "haarcascade_frontalface_alt2.xml")
-    if cascade.empty():
-        raise SystemExit("级联文件不可用：opencv-python-headless 需为 4.x")
+    try:
+        detector = FaceDetector()
+    except FaceModelUnavailable as error:
+        raise SystemExit(str(error))
 
     images = sorted(args.avatars.glob("*.img"))
     todo = [p for p in images
@@ -70,7 +68,7 @@ def run(args: argparse.Namespace) -> int:
 
     stats = {"focus": 0, "face": 0, "none": 0, "unreadable": 0}
     for index, path in enumerate(todo, 1):
-        result = detect(path, cascade)
+        result = detect(path, detector)
         if result is None:
             stats["unreadable"] += 1
             print(f"[{index}/{len(todo)}] 读图失败 {path.name}", flush=True)
