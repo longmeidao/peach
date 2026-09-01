@@ -114,6 +114,21 @@ class MetadataPolicyTests(unittest.TestCase):
         self.assertFalse(policy.source("javbus").official)
         self.assertTrue(policy.source("caribbeancom").official)
 
+    def test_publisher_outranks_the_overseas_reseller(self):
+        """aventertainment 是转售商，不是发行方。
+
+        实测 `071213-625`：它答 2017-12-28（自己的上架日），而番号本身就是
+        发行日 2013-07-12，javbus 与番号一致；`092415-001` 差了 9 个月。
+        标签同理——`040221-001` 它给的是英文页的改写版，caribbeancom 给的是
+        发行方原页。
+        """
+        policy = resolve_policy(profile="censored")
+        candidates = [{"source": "aventertainment"}, {"source": "caribbeancom"}]
+        for field in ("tags", "release_date"):
+            self.assertEqual(
+                sort_candidates(field, candidates, policy)[0]["source"],
+                "caribbeancom", field)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -118,9 +118,13 @@ FIELD_SOURCE_ORDER = {
         "caribbeancom", "tokyohot", "fc2", "javdb", "javlibrary",
         "javbus", "javstash", "jav321", "dlgetchu",
     ),
+    # aventertainment 是面向海外的转售商，不是发行方，它给的是自己的上架日期：
+    # `071213-625` 它答 2017-12-28，而这个番号本身就是发行日 2013-07-12
+    # （javbus 与番号一致）；`092415-001` 同样差了 9 个月。发行方站点排在
+    # 转售商前面，两个字段都要改——只改 tags 会留下一个照样写错日期的路径。
     "release_date": (
-        "dmm", "libredmm", "mgstage", "tokyohot", "aventertainment",
-        "caribbeancom", "dlgetchu", "fc2", "r18dev", "javdb",
+        "dmm", "libredmm", "mgstage", "tokyohot", "caribbeancom",
+        "aventertainment", "dlgetchu", "fc2", "r18dev", "javdb",
         "javlibrary", "javbus", "jav321", "javstash",
     ),
     # tag 单独把 mgstage 提到 dmm 之前。ABW-220 实测：mgstage 商品页给
@@ -128,8 +132,8 @@ FIELD_SOURCE_ORDER = {
     # libredmm 都只给「AV女優・単体作品・サンプル動画」3 项泛化类别，r18dev
     # 同样只有 3 项。厂牌、系列、日期这些字段仍以 dmm 为准，不跟着改。
     "tags": (
-        "mgstage", "dmm", "libredmm", "tokyohot", "aventertainment",
-        "caribbeancom", "dlgetchu", "fc2", "r18dev", "javstash",
+        "mgstage", "dmm", "libredmm", "tokyohot", "caribbeancom",
+        "aventertainment", "dlgetchu", "fc2", "r18dev", "javstash",
         "javdb", "javlibrary", "javbus", "jav321",
     ),
 }
