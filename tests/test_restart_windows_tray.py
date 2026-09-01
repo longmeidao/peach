@@ -20,7 +20,12 @@ SPEC.loader.exec_module(restart_windows_tray)
 class RestartWindowsTrayTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp.name)
+        # restart_tray 第一件事就是 target.resolve()，并由它推出 .venv 里的服务入口。
+        # CI runner 的临时目录是别名（macOS /var 软链到 /private/var，Windows 的
+        # RUNNER~1 短名展开成 runneradmin），不先 resolve 推出来的服务入口就对不上
+        # self.service，services() 返回空、循环空转，最后把 find_windows 的假迭代器
+        # 耗尽成 StopIteration。
+        self.root = Path(self.temp.name).resolve()
         self.target = self.root / "dist" / "Peach" / "Peach.exe"
         self.service = self.root / ".venv" / "Scripts" / "peach.exe"
         self.target.parent.mkdir(parents=True)
