@@ -855,6 +855,7 @@ def create_app(
     @app.api_route("/trash", methods=["GET", "HEAD"])
     @app.api_route("/review", methods=["GET", "HEAD"])
     @app.api_route("/taste", methods=["GET", "HEAD"])
+    @app.api_route("/data-cleanup", methods=["GET", "HEAD"])
     @app.api_route("/duplicates", methods=["GET", "HEAD"])
     @app.api_route("/quality-goals", methods=["GET", "HEAD"])
     @app.api_route("/resource-sync", methods=["GET", "HEAD"])

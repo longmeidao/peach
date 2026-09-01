@@ -246,6 +246,22 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 .reviewstate:empty{display:none}
 .reviewalias{margin:2px 0 0;font-size:var(--fs-xs);color:var(--muted)}
 .reviewactions button{box-sizing:border-box;height:32px;border:1px solid var(--border-15);border-radius:8px;background:transparent;color:var(--ink-2);padding:0 12px;font-size:var(--fs-sm);cursor:pointer}.reviewactions button:hover{border-color:var(--tungsten);color:var(--ink)}.reviewactions .approve{background:var(--tungsten);border-color:var(--tungsten);color:#fff;font-weight:600}.reviewactions .approve:hover{background:color-mix(in srgb,var(--tungsten) 82%,#000);color:#fff}.reviewactions .skip{color:var(--meter)}.reviewactions .skip:hover{background:var(--meter);border-color:var(--meter);color:#fff}.reviewactions .reject{color:var(--drop)}.reviewactions .reject:hover{background:var(--drop);border-color:var(--drop);color:#fff}
+.cleanuploading,.junkloading{grid-column:1/-1;min-height:280px;display:grid;place-items:center}
+.cleanupgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;padding:0 0 42px}
+.cleanupfieldset{display:flex;flex-direction:column;min-width:0;min-height:250px;margin:0;padding:0;overflow:hidden;
+  border:1px solid var(--line-soft);border-radius:12px;background:var(--surface)}
+.cleanupfieldset legend{margin-left:14px;padding:0 6px;color:var(--ink);font-size:var(--fs-lg);font-weight:600}
+.cleanupfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px}.cleanupfieldset strong{display:block;margin-bottom:10px;font-size:var(--fs-xl)}
+.cleanupfieldset p{margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.6}
+.cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;min-height:56px;margin:0;padding:12px 12px 12px 20px;
+  display:flex;align-items:center;gap:8px;border-top:1px solid var(--border-10);background:var(--overlay-5)}
+.cleanupfieldset button{box-sizing:border-box;min-height:32px;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);
+  background:transparent;color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:7px;cursor:pointer}
+.cleanupfieldset button:hover{border-color:var(--tungsten);color:var(--ink);background:var(--hover)}
+.cleanupfieldset button.danger{color:var(--drop)}.cleanupfieldset button svg{width:16px;height:16px;stroke:currentColor;fill:none}
+.cleanupsources{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}.cleanupsource{padding:4px 8px;border:1px solid var(--border-15);
+  border-radius:var(--badge-radius);color:var(--keep);font-size:var(--fs-xs)}.cleanupsource[data-online="false"]{color:var(--muted)}
+.cleanupfieldset .cleanupstate{min-height:20px;margin-top:12px;color:var(--ink-2)}
 .stats h2{margin:0 0 4px;font-size:var(--fs-2xl)}
 .stats .sub{color:var(--muted);margin:0}
 
@@ -883,7 +899,7 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
   border:0;padding:0;background:transparent;color:var(--ink);font:inherit;font-weight:600;line-height:1.4;text-align:left}
 button.junkcardtitle{cursor:pointer}button.junkcardtitle:hover{color:var(--tungsten);text-decoration:none}
 button.junkcardtitle:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px;border-radius:2px}
-.junkactions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:auto;padding:10px 12px;
+.junkactions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:auto;padding:10px 12px;
   border-top:1px solid var(--line-soft);background:var(--overlay-5)}
 .junkactions button{box-sizing:border-box;min-width:0;min-height:36px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:7px;
   border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink-2);
@@ -892,6 +908,7 @@ button.junkcardtitle:focus-visible{outline:2px solid var(--tungsten);outline-off
 .junkactions button:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .junkactions button:disabled{cursor:wait;opacity:.64}.junkactions button svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:2}
 .junkactions .junktrash{color:var(--drop)}.junkactions .junktrash:hover:not(:disabled){border-color:color-mix(in srgb,var(--drop) 46%,transparent);color:var(--drop);background:color-mix(in srgb,var(--drop) 8%,transparent)}
+.junkstate{grid-column:1/-1;color:var(--drop);font-size:var(--fs-xs)}.junkstate:empty{display:none}
 body[data-density="dense"] .junkcard .junkactions button span{display:none}
 .badge{position:absolute;top:6px;left:6px;display:flex;gap:4px;z-index:2;align-items:center;
   transition:opacity .15s ease}
@@ -1692,6 +1709,8 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   .managebar.is-open .managebar-menu{display:grid}
   .runtimegate a{grid-column:2/-1}
   .managebar-menu button{width:100%;min-height:42px;justify-content:flex-start;padding:9px 11px}
+  .cleanupgrid{grid-template-columns:minmax(0,1fr)}
+  .cleanupfieldset{min-height:230px}
   .grid{gap:16px 8px}
   .count{align-items:center;flex-direction:row;gap:10px;padding-block:8px;
     overflow-x:auto;overflow-y:hidden;scrollbar-width:none;overscroll-behavior-inline:contain}

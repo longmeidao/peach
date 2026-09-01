@@ -18,7 +18,7 @@ const api=async(p,o)=>{
 };
 const pageTitle=path=>{
   const url=new URL(path,location.origin),parts=decodeURIComponent(url.pathname).split('/').filter(Boolean);
-  const fixed={stats:'统计',taste:'口味',review:'人工复核',duplicates:'重复文件','quality-goals':'高清版',
+  const fixed={stats:'统计',taste:'口味',review:'人工复核','data-cleanup':'数据清理',duplicates:'重复文件','quality-goals':'高清版',
     follow:'关注','follow-manage':'关注管理',playlists:'播放列表',performers:'女优',studios:'厂牌',
     creators:'创作者',series:'系列',tags:'标签',unseen:'没看过','watch-later':'稍后看',flagged:'已标记',
     immerse:'沉浸模式',mix:'Mix',item:'作品','resource-sync':'统计','junk-files':'垃圾文件'};

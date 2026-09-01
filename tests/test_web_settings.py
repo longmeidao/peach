@@ -61,6 +61,12 @@ class SidebarOrderNormalisationTests(unittest.TestCase):
             ["", "trash", "quality"],
         )
 
+    def test_old_cleanup_entries_collapse_into_the_combined_destination(self):
+        self.assertEqual(
+            normalise_sidebar_order(["", "ads", "dupes", "trash"]),
+            ["", "data-cleanup", "trash"],
+        )
+
 
 class SettingsRoundTripTests(unittest.TestCase):
     def setUp(self):
