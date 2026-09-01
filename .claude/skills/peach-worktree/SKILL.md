@@ -79,6 +79,11 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
 手工清到 3 个，两天后长回 74 个、占 868 MB。脏的一律拒收并单独列出：分支已合入不等于工作区
 里没东西，实测就有工作树的分支早已并入 master、里面却躺着一份成形的未提交改动。
 
+一个工作树失败不影响其它工作树。Windows 上目录句柄常被别的进程占着，`git worktree remove`
+报 Permission denied，而 git 已经把文件删光、注册也摘掉了：这种只按 `residue` 列出来等人清，
+分支照样删；注册还在才进 `failed`，分支保留。2026-09-01 之前是一失败就中止整轮，结果连跑
+5 次才摘完 5 个工作树、分支一条没删。看完 JSON 里的 `residue` 再手工 `rmdir` 那几个空目录。
+
 `Desktop\peach` 顶层只放 ADR-0017 定义的四个运行时目录加一个 `attic/`：
 
     peach-app  peach-data  peach-sync  peach-worktrees  attic

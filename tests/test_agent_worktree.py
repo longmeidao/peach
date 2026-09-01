@@ -2,8 +2,36 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from scripts import agent_worktree
 from scripts.agent_worktree import WorkspaceError, _git, create, integrate, prune, ready
+
+
+class StuckRemoval:
+    """复刻 2026-09-01 Windows 上的实测：目录句柄被别的进程占着，
+    `git worktree remove` 报 Permission denied。
+
+    `residue`：git 已经把文件删光、注册也摘掉了，只剩一个空目录删不掉。
+    `stuck`：注册还在，工作树整个没摘掉。
+    """
+
+    def __init__(self, real, modes: dict[Path, str]):
+        self.real = real
+        self.modes = {path.resolve(): mode for path, mode in modes.items()}
+
+    def __call__(self, repo, *args, **kwargs):
+        mode = None
+        if args[:2] == ("worktree", "remove"):
+            mode = self.modes.get(Path(args[-1]).resolve())
+        if mode is None:
+            return self.real(repo, *args, **kwargs)
+        path = Path(args[-1])
+        if mode == "residue":
+            self.real(repo, *args, check=False)
+            path.mkdir(parents=True, exist_ok=True)
+        return subprocess.CompletedProcess(
+            list(args), 1, "", f"fatal: failed to delete '{path}': Permission denied")
 
 
 def commit(repo: Path, message: str) -> None:
@@ -122,3 +150,38 @@ class PruneTests(AgentWorktreeTests):
         report = prune(self.repo)
         listed = report["reclaimed"] + [row["path"] for row in report["dirty"] + report["kept"]]
         self.assertNotIn(str(self.repo), listed, "主检出不能出现在回收清单里")
+
+    def test_a_directory_that_will_not_delete_still_loses_its_branch(self):
+        """注册已经摘掉、只剩目录删不掉时，分支照删，目录列进 residue 交给人清。
+
+        2026-09-01 实测：连跑 5 次 prune --apply 才把 5 个工作树摘完，5 条分支一条没删，
+        最后是手工 `git branch -d` 收的尾——因为 remove 一失败就抛错中止了整轮。
+        """
+        worker = self._integrated("stuck-handle")
+        with mock.patch.object(agent_worktree, "_git",
+                               StuckRemoval(agent_worktree._git, {worker: "residue"})):
+            report = prune(self.repo, apply=True)
+        self.assertTrue(report["ok"], "一个目录删不掉不该把整轮判成失败")
+        self.assertTrue(worker.is_dir(), "空目录还在原地")
+        self.assertEqual([row["path"] for row in report["residue"]], [str(worker)])
+        self.assertEqual(report["reclaimed"], [])
+        self.assertNotIn("stuck-handle",
+                         _git(self.repo, "branch", "--list", "agent/codex/stuck-handle").stdout,
+                         "注册已经摘掉了，分支就该跟着删")
+
+    def test_one_stuck_worktree_does_not_block_the_others(self):
+        """回收失败只波及它自己，剩下的工作树照常处理，不用人反复重跑。"""
+        stuck = self._integrated("stuck-first")
+        other = self._integrated("second-in-line")
+        with mock.patch.object(agent_worktree, "_git",
+                               StuckRemoval(agent_worktree._git, {stuck: "stuck"})):
+            report = prune(self.repo, apply=True)
+        self.assertEqual(report["reclaimed"], [str(other)])
+        self.assertFalse(other.exists())
+        self.assertNotIn("second-in-line",
+                         _git(self.repo, "branch", "--list", "agent/codex/second-in-line").stdout)
+        self.assertEqual([row["branch"] for row in report["failed"]], ["agent/codex/stuck-first"])
+        self.assertTrue(stuck.is_dir())
+        self.assertIn("stuck-first",
+                      _git(self.repo, "branch", "--list", "agent/codex/stuck-first").stdout,
+                      "注册还在就是没回收成，分支不能删")
