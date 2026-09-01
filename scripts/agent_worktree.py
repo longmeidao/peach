@@ -111,6 +111,40 @@ def integrate(repo: Path, worker_branch: str, target_branch: str = "master") -> 
     }
 
 
+def _worktree_entries(main: Path) -> list[dict[str, str]]:
+    entries: list[dict[str, str]] = []
+    entry: dict[str, str] = {}
+    for line in _lines(_git(main, "worktree", "list", "--porcelain")):
+        if line.startswith("worktree "):
+            entry = {"path": line[len("worktree "):]}
+            entries.append(entry)
+        elif line.startswith("branch "):
+            entry["branch"] = line[len("branch "):].replace("refs/heads/", "")
+    return entries
+
+
+def _reclaim(main: Path, path: Path, branch: str) -> tuple[str, dict[str, str]]:
+    """回收单个工作树，把结果归到 reclaimed / residue / failed 之一。
+
+    2026-09-01 实测：Windows 上 `.claude/worktrees/*` 的目录句柄被别的进程占着，
+    `git worktree remove` 报 Permission denied，而 git 已经把文件删光、注册也摘掉了，
+    只剩一个空目录。这一步以前直接抛错中止整轮，于是分支一条没删、后面的工作树一个没碰，
+    要靠人反复重跑 prune，跑一次才推进一个。所以失败只波及它自己：注册已经摘掉的照常删
+    分支，残留目录单独列出来交给人清；注册还在才算真没回收成。
+    """
+    removal = _git(main, "worktree", "remove", str(path), check=False)
+    why = (removal.stderr or removal.stdout).strip()
+    registered = {Path(item["path"]).resolve() for item in _worktree_entries(main)}
+    if removal.returncode and path.resolve() in registered:
+        return "failed", {"path": str(path), "branch": branch, "why": why}
+    if branch:
+        _git(main, "branch", "-d", branch, check=False)
+    if removal.returncode:
+        return "residue", {"path": str(path), "branch": branch,
+                           "why": "目录残留，待人工清理：" + why}
+    return "reclaimed", {"path": str(path), "branch": branch}
+
+
 def prune(repo: Path, target_branch: str = "master", *,
           apply: bool = False) -> dict[str, object]:
     """回收分支已并入 target、且工作区干净的隔离工作树。
@@ -121,6 +155,9 @@ def prune(repo: Path, target_branch: str = "master", *,
     默认只报告不动手。回收不可逆，而「分支已合入」并不等于「工作区里没有东西」：
     实测就有工作树的分支早已并入 master，里面却躺着一份成形的未提交改动。所以脏的
     一律拒收并单独列出，交给人看，不给 `--force` 这个口子。
+
+    单个工作树回收失败不影响其它工作树：结果分成 reclaimed / residue / failed /
+    dirty / kept 五组，整轮照样 ok。理由见 `_reclaim`。
     """
     main = _main_worktree(repo)
     merged = {line.strip().lstrip("+* ") for line in
@@ -130,18 +167,12 @@ def prune(repo: Path, target_branch: str = "master", *,
     here = repo.resolve()
 
     reclaimed: list[str] = []
+    residue: list[dict[str, str]] = []
+    failed: list[dict[str, str]] = []
     dirty: list[dict[str, str]] = []
     kept: list[dict[str, str]] = []
-    entry: dict[str, str] = {}
-    entries: list[dict[str, str]] = []
-    for line in _lines(_git(main, "worktree", "list", "--porcelain")):
-        if line.startswith("worktree "):
-            entry = {"path": line[len("worktree "):]}
-            entries.append(entry)
-        elif line.startswith("branch "):
-            entry["branch"] = line[len("branch "):].replace("refs/heads/", "")
 
-    for item in entries:
+    for item in _worktree_entries(main):
         path = Path(item["path"])
         branch = item.get("branch", "")
         if path.resolve() == main.resolve() or path.resolve() == here:
@@ -153,16 +184,24 @@ def prune(repo: Path, target_branch: str = "master", *,
                 check=False).stdout.strip():
             dirty.append({"path": str(path), "branch": branch, "why": "工作区有未提交改动"})
             continue
-        if apply:
-            _git(main, "worktree", "remove", str(path))
-            _git(main, "branch", "-d", branch, check=False)
-        reclaimed.append(str(path))
+        if not apply:
+            reclaimed.append(str(path))
+            continue
+        group, record = _reclaim(main, path, branch)
+        if group == "reclaimed":
+            reclaimed.append(str(path))
+        elif group == "residue":
+            residue.append(record)
+        else:
+            failed.append(record)
 
     return {
         "ok": True,
         "action": "prune",
         "applied": apply,
         "reclaimed": sorted(reclaimed),
+        "residue": residue,
+        "failed": failed,
         "dirty": dirty,
         "kept": kept,
     }
