@@ -175,6 +175,14 @@ def _read_snapshot(path: Path, code: str) -> dict | None:
 #: 每次续跑都直接跳过，10 个番号再也没被问过。
 SETTLED_ERROR_KINDS = frozenset({"not_found"})
 
+#: 连续多少次可重试失败才让来源进冷却，以及冷却多久（秒）。
+#: 2026-09-01 的官方 tag 补抓实测：mgstage 在中途超时一次，旧逻辑当场把它
+#: 「本批后续全部跳过」，剩下 122 个番号再也没被问过，dmm 同样丢了 150 个。
+#: 一次超时是抖动不是封禁；真被限流会连续失败，那时再退让也来得及。冷却也
+#: 必须会过期——长批次里一次抖动不该决定后面几百个番号的命运。
+COOLDOWN_AFTER_FAILURES = 3
+COOLDOWN_SECONDS = 300.0
+
 
 def _read_settled_error(path: Path) -> MetadataProviderError | None:
     """复用确定失败，只让临时/可重试/结论不明的错误重新联网。"""
@@ -414,7 +422,8 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
         codes = codes[:max(args.limit, 0)]
     log(f"字段候选批次：profile {policy.profile}，番号 {len(codes)}，来源 {','.join(sources)}；只读查询，不写 ledger")
 
-    blocked_sources: set[str] = set()
+    cooldown_until: dict[str, float] = {}
+    consecutive_failures: dict[str, int] = {}
     groups_written = errors_written = 0
     stopped: JobPolicyError | None = None
     # 流式写：两个文件同时开着，行在长循环里边跑边落盘，中途还有 guard.check()
@@ -437,7 +446,7 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
             for source in sources:
                 source_health = health[source]
                 source_health["attempted"] += 1
-                if source in blocked_sources:
+                if time.monotonic() < cooldown_until.get(source, 0.0):
                     source_health["cooldown_skips"] += 1
                     continue
                 snapshot = args.raw_dir / query / f"{source}.json"
@@ -470,12 +479,19 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                     source_health["last_error_status"] = error.status_code or ""
                     source_health["last_error_message"] = str(error)[:500]
                     if error.retryable or error.status_code in {403, 429, 503}:
-                        blocked_sources.add(source)
-                        source_health["blocked"] = 1
-                        log(f"{source} 暂时不可用，本批后续番号进入来源级冷却：{error}")
+                        consecutive_failures[source] = consecutive_failures.get(source, 0) + 1
+                        if consecutive_failures[source] >= COOLDOWN_AFTER_FAILURES:
+                            cooldown_until[source] = time.monotonic() + COOLDOWN_SECONDS
+                            consecutive_failures[source] = 0
+                            source_health["blocked"] += 1
+                            log(f"{source} 连续 {COOLDOWN_AFTER_FAILURES} 次可重试失败，"
+                                f"冷却 {COOLDOWN_SECONDS:.0f} 秒后自动恢复：{error}")
+                    else:
+                        consecutive_failures[source] = 0
                     continue
                 finally:
                     source_health["elapsed_ms"] += round((time.perf_counter() - started) * 1000)
+                consecutive_failures[source] = 0
                 extracted_fields = extract_peach_fields(payload)
                 catalog_evidence = extract_catalog_evidence(payload)
                 for genre in map_genres(payload.get("genres") or [])[1]:

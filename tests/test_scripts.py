@@ -131,6 +131,72 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertEqual(
                 self.scrape_codes._read_snapshot(path, "ABW-220")["genres"], ["中出し"])
 
+    def test_source_cools_down_only_after_repeated_failures_and_recovers(self):
+        """一次抖动不能决定后面几百个番号的命运。
+
+        2026-09-01 官方 tag 补抓实测：mgstage 中途超时一次，旧逻辑当场把它
+        「本批后续全部跳过」，剩下 122 个番号再也没被问过，dmm 丢了 150 个。
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "ledger.db"
+            sqlite3.connect(db).close(); upgrade(db, MIGRATIONS)
+            connection = sqlite3.connect(db)
+            connection.executemany(
+                "INSERT INTO asset(id,location,path,name,medium,code,size) "
+                "VALUES(?,'local',?,?,'video',?,?)",
+                [(i, f"{i}.mp4", f"{i}.mp4", f"AAA-{i:03d}", 1_000) for i in range(1, 7)],
+            )
+            connection.commit(); connection.close()
+
+            error = self.scrape_codes.MetadataProviderError
+
+            class Flaky:
+                def __init__(self): self.calls = []
+                def query(self, code, source):
+                    self.calls.append(code)
+                    raise error("timeout", kind="unavailable",
+                                retryable=True, temporary=True)
+
+            provider = Flaky()
+            clock = [0.0]
+            health = root / "health.csv"
+            with mock.patch.object(self.scrape_codes.time, "monotonic",
+                                   side_effect=lambda: clock[0]):
+                with redirect_stdout(io.StringIO()):
+                    self.scrape_codes.main([
+                        "--db", str(db), "--out", str(root / "c.csv"),
+                        "--health", str(health), "--raw-dir", str(root / "raw"),
+                        "--log-dir", str(root / "logs"), "--delay", "0",
+                        "--min-free", "0", "--sources", "javbus",
+                    ], provider=provider)
+            # 前三个番号照常尝试，第三次连败才进冷却；时钟不走，剩下三个被跳过。
+            self.assertEqual(len(provider.calls), self.scrape_codes.COOLDOWN_AFTER_FAILURES)
+            with health.open(encoding="utf-8-sig", newline="") as handle:
+                row = next(csv.DictReader(handle))
+            self.assertEqual(row["fetched"], "3")
+            self.assertEqual(row["cooldown_skips"], "3")
+            self.assertEqual(row["blocked"], "1")
+
+            # 冷却会过期：时钟越过窗口后，剩下的番号重新被问。
+            provider = Flaky()
+            clock = [0.0]
+
+            def advancing():
+                clock[0] += self.scrape_codes.COOLDOWN_SECONDS
+                return clock[0]
+
+            with mock.patch.object(self.scrape_codes.time, "monotonic",
+                                   side_effect=advancing):
+                with redirect_stdout(io.StringIO()):
+                    self.scrape_codes.main([
+                        "--db", str(db), "--out", str(root / "c2.csv"),
+                        "--health", str(root / "h2.csv"), "--raw-dir", str(root / "raw2"),
+                        "--log-dir", str(root / "logs"), "--delay", "0",
+                        "--min-free", "0", "--sources", "javbus",
+                    ], provider=provider)
+            self.assertEqual(len(provider.calls), 6, "冷却过期后必须继续问剩下的番号")
+
     def test_only_not_found_counts_as_a_settled_source_verdict(self):
         # 本机 javinizer 没启用某个 scraper 时返回的是 unknown 错误。把它当定论
         # 复用，会让配置问题被冻结成来源判决，续跑再也不问这个番号。
@@ -1306,13 +1372,15 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertEqual(rows["r18dev"]["snapshot_reused"], "1")
             self.assertEqual(rows["r18dev"]["fetched"], "2")
             self.assertEqual(rows["javbus"]["attempted"], "3")
-            self.assertEqual(rows["javbus"]["fetched"], "2")
-            self.assertEqual(rows["javbus"]["succeeded"], "1")
-            self.assertEqual(rows["javbus"]["empty"], "1")
+            # 限流那一条之后的番号照问，所以三条都联了网。
+            self.assertEqual(rows["javbus"]["fetched"], "3")
+            self.assertEqual(rows["javbus"]["succeeded"], "2")
+            self.assertEqual(rows["javbus"]["empty"], "2")
             self.assertEqual(rows["javbus"]["errors"], "1")
             self.assertEqual(rows["javbus"]["retryable_errors"], "1")
-            self.assertEqual(rows["javbus"]["cooldown_skips"], "1")
-            self.assertEqual(rows["javbus"]["blocked"], "1")
+            # 单次可重试失败不再让来源停摆：后面的番号照问。
+            self.assertEqual(rows["javbus"]["cooldown_skips"], "0")
+            self.assertEqual(rows["javbus"]["blocked"], "0")
             self.assertEqual(rows["javbus"]["last_error_status"], "429")
 
             connection = sqlite3.connect(db)
