@@ -86,6 +86,27 @@ RULE34XXX_DETAIL_HTML = b"""<html><body><ul id="tag-sidebar">
 <li class="tag-type-general tag"><a href="index.php?page=post&amp;s=list&amp;tags=reverse_cowgirl_position">reverse cowgirl position</a></li>
 </ul></body></html>"""
 
+# 搜索表单与结果页的结构取自 2026-09-01 对 f95zone.to 的实测：关键词 `Ria_neearts`
+# 在 latest_data.php 的五个分类里全为空，站内搜索命中
+# `/threads/ria-collection-2026-08-03-ria_neearts.146348/`。结果按帖子返回，
+# 所以同一个线程会出现多条。
+F95_SEARCH_FORM = b"""<html><body><form action="/search/search" method="post">
+<input type="hidden" name="_xfToken" value="1756700000,abc" />
+</form></body></html>"""
+
+F95_SEARCH_RESULTS = b"""<html><body><div class="block"><div class="block-container">
+<ol class="block-body">
+<li class="block-row block-row--separated js-inlineModContainer" data-author="LordLegolas">
+<div class="contentRow"><div class="contentRow-main">
+<h3 class="contentRow-title"><a href="/threads/ria-collection-2026-08-03-ria_neearts.146348/"><span class="label label--gray" dir="auto">Collection</span><span class="label-append">&nbsp;</span><span class="label label--blue" dir="auto">Pinup</span><span class="label-append">&nbsp;</span>Ria Collection [2026-08-03] [<em class="textHighlight">Ria_neearts</em>]</a></h3>
+<div class="contentRow-snippet">Overview: Ria_neearts is a 3D artist from Italy.</div>
+</div></div></li>
+<li class="block-row block-row--separated js-inlineModContainer" data-author="LordLegolas">
+<div class="contentRow"><div class="contentRow-main">
+<h3 class="contentRow-title"><a href="/threads/ria-collection-2026-08-03-ria_neearts.146348/post-11223344">Ria Collection [2026-08-03] [Ria_neearts]</a></h3>
+</div></div></li>
+</ol></div></div></body></html>"""
+
 F95_HTML = b"""<html><head><title>Collection - Video - Lazy | F95zone</title></head><body>
 <h1 class="p-title-value"><span class="label">Collection</span><span class="label">Video</span>
 Lazy Procrastinator Collection [2026-06-28] [LazyProcrastinator/LazyProcrast]</h1>
@@ -857,6 +878,51 @@ class F95ZoneConnectorTests(unittest.TestCase):
         with self.assertRaises(FollowSourceError):
             connector.thread_index("movies", "lazy")
 
+    def _search_transport(self, record=None, results=F95_SEARCH_RESULTS):
+        def call(request, timeout, max_bytes):
+            if record is not None:
+                record.append(request)
+            body = results if request.method == "POST" else F95_SEARCH_FORM
+            return HttpResponse(200, {}, body)
+        return call
+
+    def test_forum_search_finds_threads_the_latest_index_never_lists(self):
+        seen = []
+        rows = F95ZoneConnector(
+            transport=self._search_transport(record=seen),
+            credential=Credential("f95zone", {"cookie": "xf_user=1"}),
+        ).search_threads("Ria_neearts")
+        # 同一线程的两条帖子只留一条，标题去掉 `Collection`、`Pinup` 这些前缀标签。
+        self.assertEqual([row["thread_id"] for row in rows], ["146348"])
+        self.assertEqual(rows[0]["title"], "Ria Collection [2026-08-03] [Ria_neearts]")
+
+    def test_forum_search_sends_the_session_token_and_cookie(self):
+        seen = []
+        F95ZoneConnector(
+            transport=self._search_transport(record=seen),
+            credential=Credential("f95zone", {"cookie": "xf_user=1"}),
+        ).search_threads("Ria_neearts")
+        self.assertEqual([request.method for request in seen], ["GET", "POST"])
+        body = seen[1].body.decode()
+        self.assertIn("_xfToken=1756700000%2Cabc", body)
+        self.assertIn("keywords=Ria_neearts", body)
+        self.assertIn("c%5Btitle_only%5D=1", body)
+        self.assertEqual(seen[1].headers["Cookie"], "xf_user=1")
+
+    def test_forum_search_without_a_cookie_says_so_before_requesting(self):
+        seen = []
+        connector = F95ZoneConnector(transport=_transport(record=seen))
+        with self.assertRaises(CredentialError):
+            connector.search_threads("Ria_neearts")
+        self.assertEqual(seen, [])
+
+    def test_a_search_page_without_a_token_is_reported_not_parsed_as_empty(self):
+        connector = F95ZoneConnector(
+            transport=_transport(body=b"<html><body>login</body></html>"),
+            credential=Credential("f95zone", {"cookie": "stale"}))
+        with self.assertRaises(FollowSourceError):
+            connector.search_threads("Ria_neearts")
+
     def test_thread_index_returns_rows(self):
         body = json.dumps({"status": "ok", "msg": {"data": [
             {"thread_id": 50685, "title": "Lazy Procrastinator Collection",
@@ -898,6 +964,24 @@ class Rule34XxxConnectorTests(unittest.TestCase):
         self.assertEqual(types["lazyprocrastinator"], "artist")
         self.assertEqual(types["reverse_cowgirl_position"], "general")
         self.assertNotIn("api_key", seen[1].url)
+
+    def test_autocomplete_reports_the_real_tag_spelling_without_credentials(self):
+        # 站上写作 `ria-neearts`，手边的手柄是 `Ria_neearts`；补全是唯一能把两者
+        # 对上的官方接口，而且不需要 user_id/api_key。
+        body = json.dumps([{"label": "ria-neearts (248)", "value": "ria-neearts"},
+                           {"label": "riahri (156)", "value": "riahri"},
+                           {"label": "no-count", "value": "no-count"}]).encode()
+        seen = []
+        rows = Rule34XxxConnector(
+            transport=_transport(body=body, record=seen)).autocomplete("Ria-neearts")
+        self.assertEqual(rows, (("ria-neearts", 248), ("riahri", 156), ("no-count", 0)))
+        self.assertIn("q=Ria-neearts", seen[0].url)
+        self.assertNotIn("api_key", seen[0].url)
+
+    def test_autocomplete_reports_a_changed_payload_shape(self):
+        connector = Rule34XxxConnector(transport=_transport(body=b'{"tags": []}'))
+        with self.assertRaises(FollowSourceError):
+            connector.autocomplete("ria")
 
     def test_missing_credential_fails_before_the_request(self):
         seen = []

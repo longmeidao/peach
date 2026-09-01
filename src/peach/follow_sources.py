@@ -959,6 +959,42 @@ class Rule34XxxConnector(_BaseConnector):
             raise FollowHistoryEnd("没有更多历史内容")
         return SourceFetch(candidates=candidates, raw_body=response.body, **common)
 
+    #: 自动补全项的形状：`ria-neearts (248)`，括号里是该标签下的帖子数。
+    _AUTOCOMPLETE_COUNT_RE = re.compile(r"\((\d[\d,]*)\)\s*$")
+
+    def autocomplete(self, prefix: str) -> tuple[tuple[str, int], ...]:
+        """按前缀问站方真实存在的标签，返回 `(标签, 帖子数)`。
+
+        标签的写法是站里的既成事实，和手边的手柄常常差一个分隔符：手柄写作
+        `Ria_neearts`，站上是 `ria-neearts`（2026-09-01 实测 248 帖）。逐字拿手柄
+        当标签查，结果永远是零命中。
+
+        这个接口是官方 tag 补全，公开、不需要凭据，返回值自带帖子数，正好当
+        「标签下有作品」的证据。实测匹配的是**字面前缀**且大小写不敏感：`ria`
+        命中 `ria-neearts`，`neea` 和 `rianeearts` 都是空——所以要试的是分隔符的
+        几种写法，不是子串。
+        """
+        term = (prefix or "").strip()
+        if not term:
+            return ()
+        url = ("https://api.rule34.xxx/autocomplete.php?"
+               + urllib.parse.urlencode({"q": term}))
+        response = self._get(url, headers={"Accept": "application/json"})
+        self._check_status(response)
+        payload = self.parse_json(response)
+        if not isinstance(payload, list):
+            raise FollowSourceError("rule34xxx 的标签补全格式不符")
+        rows = []
+        for row in payload:
+            if not isinstance(row, dict):
+                continue
+            tag = str(row.get("value") or "").strip()
+            if not tag:
+                continue
+            matched = self._AUTOCOMPLETE_COUNT_RE.search(str(row.get("label") or ""))
+            rows.append((tag, int(matched.group(1).replace(",", "")) if matched else 0))
+        return tuple(rows)
+
     #: 拼可读标签时跳过的词：作者手柄、媒体类型和评级，留下的才是内容。
     _TITLE_TAG_STOPWORDS = frozenset({
         "video", "sound", "animated", "mp4", "webm", "3d", "hd", "60fps",
@@ -1387,6 +1423,58 @@ class F95ZoneConnector(_BaseConnector):
         payload = self.parse_json(response)
         rows = ((payload or {}).get("msg") or {}).get("data") or []
         return tuple(row for row in rows if isinstance(row, dict))
+
+    #: 搜索结果里线程链接的形状：`/threads/<slug>.<id>/`，后面可能还跟着帖子锚点。
+    _SEARCH_THREAD_RE = re.compile(r"^/threads/(?:[^/]*\.)?(\d+)/")
+    _XF_TOKEN_RE = re.compile(rb'name="_xfToken" value="([^"]+)"')
+
+    def search_threads(self, query: str, *, title_only: bool = True) -> tuple[dict, ...]:
+        """用站内搜索按标题找线程。
+
+        `latest_data.php` 只索引 Latest Updates（游戏、动画、漫画、资产、mod）。
+        艺术家的 Collection 帖发在普通版块，那份索引里根本没有：2026-09-01 实测
+        `Ria_neearts` 在五个分类全为空，站内搜索一次就命中
+        `/threads/ria-collection-2026-08-03-ria_neearts.146348/`。
+
+        **站内搜索必须登录**，无 cookie 时 `/search/` 直接回 403。搜索表单里的
+        `_xfToken` 和会话绑定，所以每次都要先取一遍，不能缓存成常量。
+        """
+        cookie = self.credential.values.get("cookie") if self.credential else None
+        if not cookie:
+            raise CredentialError(
+                "f95zone 站内搜索需要登录 cookie；请把它写进 "
+                "peach-data/secrets/follow/f95zone.json")
+        headers = {"Accept": "text/html", "Cookie": cookie}
+        form = self._get("https://f95zone.to/search/", headers=headers)
+        self._check_status(form)
+        matched = self._XF_TOKEN_RE.search(form.body)
+        if matched is None:
+            raise FollowSourceError("f95zone 搜索表单里没有 _xfToken：cookie 可能已失效")
+        body = urllib.parse.urlencode({
+            "keywords": query, "c[title_only]": "1" if title_only else "0",
+            "order": "relevance", "search_type": "post",
+            "_xfToken": matched.group(1).decode("utf-8", errors="replace"),
+        }).encode()
+        response = self._post(
+            "https://f95zone.to/search/search", body,
+            headers={**headers, "Content-Type": "application/x-www-form-urlencoded",
+                     "Referer": "https://f95zone.to/search/"})
+        self._check_status(response)
+        soup = BeautifulSoup(response.body, "html.parser")
+        rows, seen = [], set()
+        for link in soup.select("h3.contentRow-title a[href]"):
+            found = self._SEARCH_THREAD_RE.match(link.get("href") or "")
+            if found is None or found.group(1) in seen:
+                continue
+            seen.add(found.group(1))
+            # 标题前挂着 `Collection`、`Pinup` 这类前缀标签，和 `_thread_title` 一样摘掉。
+            for label in link.select(".label, .labelLink, .label-append"):
+                label.extract()
+            # 命中的词被 `<em class="textHighlight">` 包着，按分隔符取文本会把
+            # `[Ria_neearts]` 拆成 `[ Ria_neearts ]`——标题要的是原样。
+            rows.append({"thread_id": found.group(1),
+                         "title": plain_text(link.get_text(""))})
+        return tuple(rows)
 
 
 class FanboxConnector(_BaseConnector):

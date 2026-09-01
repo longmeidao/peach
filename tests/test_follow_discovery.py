@@ -7,7 +7,8 @@ from pathlib import Path
 
 from peach.follow import FollowSourceError
 from peach.follow_discovery import (
-    CREATOR_INDEX_TTL_SECONDS, CreatorIndex, discover, search_variants,
+    CREATOR_INDEX_TTL_SECONDS, CreatorIndex, discover, identity_key,
+    search_variants, spelling_variants,
 )
 from peach.follow_secrets import CredentialError
 from peach.http import HttpResponse
@@ -23,6 +24,15 @@ F95_HIT = json.dumps({"status": "ok", "msg": {"data": [
     {"thread_id": 50685, "title": "Lazy Procrastinator Collection",
      "version": "2026-06-28"}]}}).encode()
 F95_MISS = json.dumps({"status": "ok", "msg": {"data": []}}).encode()
+F95_SEARCH_FORM = b"""<html><body><input type="hidden" name="_xfToken" value="1,a" /></body></html>"""
+F95_SEARCH_RESULTS = b"""<html><body><h3 class="contentRow-title">
+<a href="/threads/ria-collection-2026-08-03-ria_neearts.146348/"><span class="label">Collection</span>Ria Collection [2026-08-03] [<em class="textHighlight">Ria_neearts</em>]</a>
+</h3></body></html>"""
+# 2026-09-01 实测：站上的写法是 `ria-neearts`，补全按字面前缀匹配，所以
+# `Ria_neearts` 查出来是空的，`Ria-neearts` 才命中。
+R34_AUTOCOMPLETE_HIT = json.dumps(
+    [{"label": "ria-neearts (248)", "value": "ria-neearts"},
+     {"label": "riahri (156)", "value": "riahri"}]).encode()
 FANBOX_PROFILE = ("<html><meta name='metadata' content='"
                   + json.dumps({"urlContext": {"host": {"creatorId": "lazyprocrast"}}})
                     .replace("'", "&#39;")
@@ -53,6 +63,11 @@ class _DiscoveryCase(unittest.TestCase):
         self.secrets = self.root / "secrets"
         self.state = self.root / "state"
 
+    def _write_credential(self, provider, values):
+        path = self.secrets / "follow" / f"{provider}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(values), encoding="utf-8")
+
     def _discover(self, term, routes, providers=None, calls=None):
         return discover(term, secrets_root=self.secrets, state_root=self.state,
                         transport=_router(routes, calls), providers=providers)
@@ -70,6 +85,18 @@ class SearchVariantTests(unittest.TestCase):
 
     def test_an_underscored_name_is_also_tried_as_words(self):
         self.assertEqual(search_variants("initial_a"), ("initial_a", "initial a"))
+
+    def test_a_handle_is_also_tried_with_the_other_separators(self):
+        # 手柄写作 `Ria_neearts`，rule34.xxx 上的标签是 `ria-neearts`。
+        self.assertEqual(spelling_variants("Ria_neearts"),
+                         ("Ria_neearts", "Ria-neearts", "Rianeearts", "Ria neearts"))
+
+    def test_a_handle_without_separators_has_only_itself(self):
+        self.assertEqual(spelling_variants("lazyprocrastinator"), ("lazyprocrastinator",))
+
+    def test_the_identity_key_ignores_separators_and_case(self):
+        self.assertEqual(identity_key("Ria_neearts"), identity_key("ria-neearts"))
+        self.assertNotEqual(identity_key("Ria_neearts"), identity_key("riahri"))
 
     def test_a_spaced_term_is_left_alone(self):
         self.assertEqual(search_variants("Lazy Procrastinator"), ("Lazy Procrastinator",))
@@ -187,11 +214,48 @@ class DiscoverTests(_DiscoveryCase):
         self.assertEqual([c.provider for c in found.candidates], ["rule34video"])
         self.assertIn("kemono", found.failures)
 
-    def test_missing_rule34xxx_credentials_are_reported_not_raised(self):
-        found = self._discover("LazyProcrastinator", self.ROUTES,
-                               providers=("rule34xxx",))
+    def test_a_handle_finds_the_tag_spelled_differently_on_the_site(self):
+        # 站上是 `ria-neearts`，手边的手柄是 `Ria_neearts`。按手柄逐字查是零命中，
+        # 补全把两种写法对上，登记的是站上的那个写法。
+        routes = {"autocomplete.php?q=Ria_neearts": HttpResponse(200, {}, b"[]"),
+                  "autocomplete.php?q=Ria-neearts": HttpResponse(200, {}, R34_AUTOCOMPLETE_HIT)}
+        found = self._discover("Ria_neearts", routes, providers=("rule34xxx",))
+        self.assertEqual([c.ref for c in found.candidates], ["ria-neearts"])
+        self.assertIn("248", found.candidates[0].evidence)
+        self.assertIn("tags=ria-neearts", found.candidates[0].url)
+
+    def test_the_tag_search_needs_no_credentials_of_its_own(self):
+        routes = {"autocomplete.php": HttpResponse(200, {}, R34_AUTOCOMPLETE_HIT)}
+        found = self._discover("ria-neearts", routes, providers=("rule34xxx",))
+        self.assertEqual([c.ref for c in found.candidates], ["ria-neearts"])
+        self.assertEqual(found.failures, {})
+
+    def test_a_tag_that_merely_starts_with_the_term_is_not_a_hit(self):
+        # 补全按前缀返回，`riahri` 也在结果里。名字不同就不是这个人，不能拿来登记。
+        routes = {"autocomplete.php": HttpResponse(200, {}, R34_AUTOCOMPLETE_HIT)}
+        found = self._discover("ria", routes, providers=("rule34xxx",))
         self.assertEqual(found.candidates, ())
-        self.assertIn("api_key", found.failures["rule34xxx"])
+
+    def test_an_f95_collection_thread_is_found_by_the_forum_search(self):
+        # `latest_data.php` 只索引 Latest Updates，艺术家的 Collection 帖不在里面。
+        self._write_credential("f95zone", {"cookie": "xf_user=1"})
+        routes = {"latest_data.php": HttpResponse(200, {}, F95_MISS),
+                  "/search/search": HttpResponse(200, {}, F95_SEARCH_RESULTS),
+                  "f95zone.to/search/": HttpResponse(200, {}, F95_SEARCH_FORM)}
+        found = self._discover("Ria_neearts", routes, providers=("f95zone",))
+        self.assertEqual([c.ref for c in found.candidates], ["146348"])
+        self.assertEqual(found.candidates[0].label,
+                         "Ria Collection [2026-08-03] [Ria_neearts]")
+        self.assertEqual(found.external_searches, ())
+
+    def test_without_a_cookie_the_forum_search_is_skipped_not_guessed(self):
+        calls = []
+        found = self._discover("Ria_neearts", {"latest_data.php": HttpResponse(200, {}, F95_MISS)},
+                               providers=("f95zone",), calls=calls)
+        self.assertEqual(found.candidates, ())
+        self.assertEqual(found.failures, {})
+        self.assertEqual([search.provider for search in found.external_searches], ["f95zone"])
+        self.assertFalse([url for url in calls if "/search/" in url])
 
     def test_junk_terms_are_refused_before_any_request(self):
         calls = []
