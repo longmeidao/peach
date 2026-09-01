@@ -135,7 +135,8 @@ def page_title(body: bytes) -> str:
 
 
 def site_verdict(name: str, status: int, body: bytes, title: str,
-                 url: str = "", derived: bool = False) -> tuple[str, str]:
+                 url: str = "", derived_hosts: frozenset[str] = frozenset(),
+                 ) -> tuple[str, str]:
     """这一页认不认自己是这个厂牌。
 
     四道都必须过：HTTP 200、不是空壳、不是停放页、标题里出现厂牌名且不只是域名回显。
@@ -179,7 +180,10 @@ def site_verdict(name: str, status: int, body: bytes, title: str,
     # 这时两个独立信号同样成立：域名是由厂牌名按固定规则推出来的（不是人喂的），
     # 且这一页确实是成人站。`bazooka.com`、`madonna.com` 恰好卡在第二条上——
     # 域名同样推得出，但它们不是成人站。
-    if derived and adult:
+    # 判据落在**最终**主机上。实测 `Natural High` 的一个推导域名重定向去了
+    # `linkedin.com/in/fareedkhan`，按请求地址判就成了「域名由厂牌名推出」，
+    # 一个 LinkedIn 个人主页因此被确认成厂牌官网。跳走之后这条证据就不再成立。
+    if host in derived_hosts and adult:
         return "ok", "域名由厂牌名推出，且页面是成人站（标题用假名写品牌名）"
     if token in normalise(text[:20000]):
         return "weak", "标题未自述，但正文出现厂牌名；需人工看图确认"
@@ -275,6 +279,8 @@ def run(args) -> int:
         # 人工喂的种子和规则推出来的候选走同一条验证，但要分得清哪个是哪个：
         # 「域名由厂牌名推出」只有在域名真的是推出来的时候才算一个独立信号。
         derived_urls = candidate_urls(name)
+        derived_hosts = frozenset(
+            (urlsplit(u).hostname or "").casefold().removeprefix("www.") for u in derived_urls)
         for url in seeds.get(name, []) + derived_urls:
             wait = args.interval - (time.monotonic() - last)
             if wait > 0:
@@ -288,7 +294,7 @@ def run(args) -> int:
                 continue
             title = page_title(body)
             verdict, note = site_verdict(name, status, body, title, final,
-                                         derived=url in derived_urls)
+                                         derived_hosts=derived_hosts)
             row.update(candidate_url=url, final_url=final, status=status,
                        bytes=len(body), sha256=hashlib.sha256(body).hexdigest(),
                        title=title, verdict=verdict, note=note)

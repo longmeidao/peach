@@ -105,7 +105,8 @@ class VerdictTests(unittest.TestCase):
         """
         title = "年齢チェック | 全作品、本物中出しのAVメーカー【本中】公式サイト"
         verdict, note = self.module.site_verdict(
-            "Hon Naka", 200, page(title), title, "https://honnaka.jp/", derived=True)
+            "Hon Naka", 200, page(title), title, "https://honnaka.jp/",
+            derived_hosts=frozenset({"honnaka.jp"}))
         self.assertEqual(verdict, "ok")
         self.assertIn("假名", note)
 
@@ -118,7 +119,7 @@ class VerdictTests(unittest.TestCase):
         title = "Bazooka Bass Tubes"
         verdict, _ = self.module.site_verdict(
             "BAZOOKA", 200, page(title, "car audio subwoofers. "), title,
-            "https://bazooka.com/", derived=True)
+            "https://bazooka.com/", derived_hosts=frozenset({"bazooka.com"}))
         self.assertEqual(verdict, "weak")
 
     def test_a_seeded_url_does_not_get_the_derived_domain_signal(self):
@@ -128,11 +129,26 @@ class VerdictTests(unittest.TestCase):
         """
         title = "年齢チェック | マニアック フェチのAVメーカー【ダスッ！】公式サイト"
         seeded, _ = self.module.site_verdict(
-            "Das", 200, page(title), title, "https://dasdas.jp/", derived=False)
+            "Das", 200, page(title), title, "https://dasdas.jp/")
         found, _ = self.module.site_verdict(
-            "Das", 200, page(title), title, "https://dasdas.jp/", derived=True)
+            "Das", 200, page(title), title, "https://dasdas.jp/",
+            derived_hosts=frozenset({"dasdas.jp"}))
         self.assertNotEqual(seeded, "ok", "种子不该借域名推导这条信号确认")
         self.assertEqual(found, "ok", "同一页面若域名是推出来的才算两个独立信号")
+
+    def test_a_derived_domain_that_redirects_elsewhere_loses_the_signal(self):
+        """跳走之后，「域名由厂牌名推出」这条证据就不再对我们落到的那一页成立。
+
+        实测：`Natural High` 的一个推导域名重定向到了 `linkedin.com/in/fareedkhan`。
+        按请求地址判 derived 的话，一个 LinkedIn 个人主页会被确认成厂牌官网。
+        判据必须落在最终主机上。
+        """
+        title = "Fareed Khan - Ericsson | LinkedIn"
+        verdict, _ = self.module.site_verdict(
+            "Natural High", 200, page(title, "adult contacts and 18+ groups. "), title,
+            "https://www.linkedin.com/in/fareedkhan",
+            derived_hosts=frozenset({"naturalhigh.com", "naturalhigh.jp"}))
+        self.assertNotEqual(verdict, "ok")
 
     def test_a_western_studio_page_still_counts_as_adult(self):
         """判据不能只认日文，否则西方厂牌会被一律打成待复核。"""
