@@ -1595,9 +1595,60 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("wireLoadMore(more,requestMore);")
         self.assertPageContains("more.hidden=!entityCollectionPage.has_more")
 
+    def test_mix_card_is_not_seeded_by_the_card_it_sits_next_to(self):
+        """Mix 卡片插在第 8 位，seed 就不能再取本批第一张。
+
+        旧写法是 `visible.find(有署名)`。馆藏里几乎每条都有 creator，那个
+        `find` 实际上恒等于 `visible[0]`，于是 Mix 卡片总是顶着同屏第一张
+        卡片的封面，看起来像渲染错了。它不是内容错（队列仍是 seed + related），
+        错的只是代表图的选取，所以修在选 seed 这一步，不动队列。
+        """
+        self.assertPageContains("const MIX_SLOT=7;")
+        self.assertPageContains("visible.slice(MIX_SLOT+8).find(named)")
+        self.assertPageContains("||visible.slice(MIX_SLOT+1).find(named)")
+        # 都没署名时宁可取末尾一张，也不回到第一张。
+        self.assertPageContains("||visible[visible.length-1];")
+        self.assertPageLacks(
+            "visible.find(it=>it.creator||(it.performers||[]).length||it.studio)")
+
+    def test_mix_card_flips_through_its_own_covers_on_hover(self):
+        """悬浮 Mix 卡片翻动的是这个 Mix 里的封面，不是另做一套装饰动画。
+
+        三件事必须同时成立：翻动的每一张和静止封面走同一个渲染函数（否则
+        一翻就露出取景差别）；启动门槛和悬停预览完全一致，并能被
+        `releaseHoverPreviews` 统一收掉；相关作品只取一次，悬浮预取后点开
+        Mix 不再发第二个请求。
+        """
+        self.assertPageContains('<div class="mixfaces" data-mix-faces hidden></div>')
+        self.assertPageContains(".mixface.on{opacity:1;z-index:2;transform:none}")
+        self.assertPageContains(".mixface.off{opacity:0;z-index:3;transform:translateY(-11%)")
+        self.assertPageContains("function wireMixFlip(el,seedId){")
+        self.assertPageContains("wireMixFlip(el,seedId);")
+        # 翻动的封面必须 eager：它们插进的是一个 hidden 容器，lazy 图没有布局盒
+        # 就不发请求，实测除第一张外四张全部 naturalWidth=0，一翻就是黑屏。
+        self.assertPageContains("${mixFacePoster(x,layout,true)}")
+        self.assertPageContains("const load=eager?'eager':'lazy';")
+        # 能不能画出图只有一个判据，seed 选择和翻动共用。分开写就会翻出
+        # 或选中一张「无预览」：非 JAV 模式下 `has_cover` 并不代表卡片会画封套。
+        self.assertPageContains("function mixHasPicture(it,layout){")
+        self.assertPageContains(".filter(x=>mixHasPicture(x,layout)).slice(0,MIX_FLIP_FACES);")
+        self.assertPageContains("const named=it=>mixHasPicture(it,layout)&&(it.creator")
+        self.assertPageContains("||visible.slice(MIX_SLOT+1).find(it=>mixHasPicture(it,layout))")
+        self.assertPageContains('''loading="${eager?'eager':'lazy'}"''')
+        self.assertPageContains(
+            "if(selectMode||censorOn()||window.__scrolling||reduceMotion())return;")
+        self.assertPageContains(
+            "el.addEventListener('mouseleave',stop);" + chr(10)
+            + "  el._stopHover=stop;")
+        self.assertPageContains("const mixRelatedCache=new Map();")
+        self.assertPageContains(
+            "Promise.all([api('/api/item?id='+seedId),mixRelated(seedId)])")
+        # 队列长度不能被悬浮预取剪短：两边用同一个 limit。
+        self.assertPageContains("api('/api/related?id='+seedId+'&limit=28')")
+
     def test_mix_and_persistent_playlists_share_the_routed_side_queue(self):
         self.assertPageContains('class="card mixcard" data-mix-seed=')
-        self.assertPageContains("cards.splice(7,0,mixCardHtml(seed))")
+        self.assertPageContains("cards.splice(MIX_SLOT,0,mixCardHtml(seed))")
         self.assertPageContains(".mixstack::before,.mixstack::after")
         # Mix 是同一网格里的同级卡片，JAV 大图不能让它单独掉回 16:9；有封面时
         # 也应和普通作品卡共用同一张官方封套，而不是永远显示视频接触表。
@@ -1605,6 +1656,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const ar=jav&&layout==='big'?COVER_FRONT_RATIO:16/9;")
         self.assertPageContains('<div class="mixstack"><div class="pic" style="--card-ratio:${ar}">')
         self.assertPageContains("? coverImage(it,layout)")
+        self.assertPageContains("const thumb=mixFacePoster(it,layout);")
         self.assertPageContains('<span class="mixbadge">${icon(\'play\')}Mix</span>')
         self.assertPageContains("async function openMix(seedId,itemId=seedId,push=true,anchor=null)")
         self.assertPageContains("route(`/mix/${seedId}/${itemId}`)")

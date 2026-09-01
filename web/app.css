@@ -766,6 +766,13 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 .mixstack::before,.partstack::before{inset:0 12px 8px;transform:translateY(-7px);opacity:.54}
 .mixstack::after,.partstack::after{inset:0 6px 4px;transform:translateY(-4px);opacity:.78}
 .mixstack .pic,.partstack .pic{z-index:1}
+/* 悬浮 Mix 卡片时逐张翻走：最上面那张向上抬起、轻转并淡出，下一张随即接管。
+   和静止时的叠层是同一个隐喻，不是另一套动效；滞后动画偏好下根本不启动（JS 侧拦下）。 */
+.mixfaces{position:absolute;inset:0;z-index:2;pointer-events:none;background:#000}   /* 遮住静止封面：不遮的话两张正在交接的时候它会从中间透出来 */
+.mixface{position:absolute;inset:0;opacity:0;transform:scale(.985);transform-origin:50% 88%;
+  transition:transform .46s cubic-bezier(.34,.02,.24,1),opacity .4s ease}
+.mixface.on{opacity:1;z-index:2;transform:none}
+.mixface.off{opacity:0;z-index:3;transform:translateY(-11%) rotate(-3.4deg) scale(.94)}
 .mixbadge{position:absolute;right:9px;bottom:9px;z-index:6;display:flex;align-items:center;gap:6px;
   min-height:28px;padding:4px 9px;border-radius:6px;background:rgba(12,8,8,.72);color:#fff;
   backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);font-size:var(--fs-xs);font-weight:700}
