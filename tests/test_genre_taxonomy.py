@@ -4,6 +4,7 @@ from peach import catalog_rules
 from peach.genre_taxonomy import (
     CONTENT_GENRES,
     NON_CONTENT_GENRES,
+    NON_CONTENT_PATTERNS,
     is_non_content_genre,
     map_genres,
     normalise_genre,
@@ -111,6 +112,34 @@ class GenreTaxonomyTests(unittest.TestCase):
     def test_order_is_first_appearance_and_duplicates_collapse(self):
         tags, _ = map_genres(["巨乳", "Creampie", "Big Tits", "中出し"])
         self.assertEqual(tags, ["巨乳", "中出内射"])
+
+    def test_campaign_names_are_excluded_by_shape_not_by_enumeration(self):
+        """促销企划名逐片起，穷举一轮就过期一轮。
+
+        实测样本：プレステージ20周年特別企画、春のBIGセール、
+        プレステージグループ秋の企画祭り、プレステージ40％オフセール。
+        """
+        for value in ("プレステージ20周年特別企画", "春のBIGセール",
+                      "プレステージグループ秋の企画祭り", "プレステージ40％オフセール",
+                      "BIG Sale Part 2"):
+            self.assertTrue(is_non_content_genre(value), value)
+        self.assertEqual(map_genres(["中出し", "春のBIGセール"]), (["中出内射"], []))
+        # 形状判据不能误伤内容分类。
+        for value in ("中出し", "巨乳", "コスプレ", "痴女"):
+            self.assertFalse(is_non_content_genre(value), value)
+
+    def test_abw_220_reproduces_the_mgs_product_page(self):
+        """本轮的起点样本：r18dev 只给三个泛化类别，MGS 商品页给的是这些。"""
+        tags, unmapped = map_genres([
+            "MGS限定特典映像", "性教育", "中出し", "巨乳", "スレンダー",
+            "単体作品", "フルハイビジョン(FHD)", "プレステージ20周年特別企画",
+        ])
+        self.assertEqual(tags, ["中出内射", "巨乳", "苗条"])
+        self.assertEqual(unmapped, ["性教育"], "词表里没有的留给人决定，不猜翻译")
+
+    def test_non_content_patterns_stay_narrow(self):
+        # 每条形状判据都要说得出它为什么必然是卖法而不是内容。
+        self.assertEqual(len(NON_CONTENT_PATTERNS), 5)
 
 
 if __name__ == "__main__":
