@@ -19,7 +19,11 @@ from pathlib import Path, PurePosixPath
 from typing import Protocol
 from urllib.parse import quote
 
-from .catalog_rules import normalise_code_key
+from .catalog_rules import (
+    collapse_superseded_taste_tags,
+    normalise_code_key,
+    superseded_taste_tags,
+)
 from .config import GENERATED_DIR
 from .entities import (
     canonicalize_entity_name,
@@ -379,8 +383,21 @@ def _performer_identity_keys(connection, names: list[str]) -> frozenset:
     """
     keys = set()
     for name in names:
-        row = resolve_entity(connection, "performer", name)
-        keys.add(row["id"] if row else normalize_entity_name(name))
+        # 官方源偶尔把曾用名写成「现名（旧名）」；整串当然匹配不到实体，但括号
+        # 两边各自都是已登记别名。只在所有命中都指向同一实体时折叠，避免把真正
+        # 的多人或同名冲突吞掉。
+        variants = [name.strip()]
+        match = re.fullmatch(r"\s*([^（(]+?)\s*[（(]([^）)]+)[）)]\s*", name)
+        if match:
+            variants.extend(part.strip() for part in match.groups() if part.strip())
+        resolved = {
+            row["id"] for variant in variants
+            if (row := resolve_entity(connection, "performer", variant))
+        }
+        if resolved:
+            keys.update(resolved)
+        else:
+            keys.add(normalize_entity_name(name))
     return frozenset(keys)
 
 
@@ -731,9 +748,26 @@ def _apply_metadata_candidate(connection, group: dict, candidate: dict, now: str
     raw_tags = candidate.get("value")
     if not isinstance(raw_tags, list):
         raise ValueError("标签候选必须是数组")
-    tags = list(dict.fromkeys(_approved_entity_name(tag, "tag") for tag in raw_tags))
+    tags = collapse_superseded_taste_tags(list(dict.fromkeys(
+        _approved_entity_name(tag, "tag") for tag in raw_tags
+    )))
     if not tags:
         raise ValueError("标签候选为空")
+    obsolete_tags = superseded_taste_tags(tags)
+    if obsolete_tags:
+        obsolete_marks = ",".join("?" * len(obsolete_tags))
+        obsolete_values = sorted(obsolete_tags)
+        connection.execute(
+            f"DELETE FROM asset_tag WHERE asset_id IN ({marks}) "
+            f"AND tag IN ({obsolete_marks})",
+            [*asset_ids, *obsolete_values],
+        )
+        connection.execute(
+            f"DELETE FROM asset_entity WHERE asset_id IN ({marks}) AND role='tag' "
+            f"AND entity_id IN (SELECT id FROM entity WHERE kind='tag' "
+            f"AND canonical_name IN ({obsolete_marks}))",
+            [*asset_ids, *obsolete_values],
+        )
     connection.execute(
         f"DELETE FROM asset_entity WHERE asset_id IN ({marks}) AND role='tag' "
         "AND source LIKE 'javinizer:%'", asset_ids,
