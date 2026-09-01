@@ -53,6 +53,21 @@ Peach 最终可以完全去 Stash，但现在不能直接卸载。Web 主链已�
 
 关闭 Stash 前必须完成：2,551 Scene 全关联；842 Performer、126 Tag、140 Studio 与全部关系、别名、hash 有 external ID/provenance；24,980 视频探测覆盖不回退；10,714 个账本 snapshot 仍可访问；常用和异常 Range、seek、两路并发及不兼容编码转码通过；关键别名/Studio/组合标签/云资产搜索一致；GraphQL 直连与私有二进制依赖归零；关闭和回退均演练。
 
+## 2026-09-01 第五步：adapter 已关闭
+
+第 5 步「同批资产影子对比并关闭 adapter」不需要影子期：复核发现 adapter 从来没有生效过。
+真实账本 `media_binding` 是 0 行，而 `StashAdapter.stream_candidates` 的第一步就是读
+`external_id("stash")`，因此对全部 75499 个资产都返回空；它的唯一调用方
+`MediaEngine.stream_candidates` 又只被测试调用过。2546 个 `asset.stash_scene_id`
+从未迁进 `media_binding`，这是「一次都没生效」的直接原因。
+
+已删除 `StashAdapter` 与只为它存在的 backend 契约层，服务运行期不再连接
+`127.0.0.1:9999`。详见 ADR-0021。数据一律保留：`media_binding` 表、`stash_scene_id`
+列和 `source='stash:*'` 的断言都是溯源。
+
+仍未退役的是两个离线导入脚本（`scripts/ledger.py stash`、`scripts/import_stash_entities.py`），
+它们需要 Stash 进程活着才能跑，对应第 6 步。
+
 ## 许可证
 
 Stash v0.31.1 是 AGPL-3.0。Peach 只通过公开协议调用独立 Stash 进程，不复制其 Go 实现。当前 Peach-managed FFmpeg 是从本机既有构建复制的 GPLv3/x264/x265 shared bundle，完整 `LICENSE.txt` 已保留且仅供此个人实例运行；它不进入 Git，也不能在未处理源码、许可证和通知义务前作为 Peach 安装包分发。

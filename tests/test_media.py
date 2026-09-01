@@ -7,11 +7,10 @@ from unittest.mock import patch
 import peach.media as media_module
 from peach.ffmpeg import FFmpegResolver
 from peach.media import (
-    FilesystemBackend, MediaEngine, StashAdapter, normalized_path, remap_managed_path,
+    FilesystemBackend, MediaEngine, MediaUnavailable, normalized_path, remap_managed_path,
     resolve_case_insensitive,
 )
 from peach.repository import MediaAsset
-from peach.stash import StashClient
 
 
 class MediaEngineTests(unittest.TestCase):
@@ -23,44 +22,25 @@ class MediaEngineTests(unittest.TestCase):
             inside.parent.mkdir()
             inside.write_bytes(b"test")
             backend = FilesystemBackend([root], root / "snapshots")
-            result = backend.stream_candidates(MediaAsset(1, str(inside), None))
-            self.assertEqual(result[0].backend, "filesystem")
-            self.assertEqual(
-                backend.stream_candidates(MediaAsset(2, str(outside), None)), ()
-            )
+            self.assertEqual(backend.file_for(MediaAsset(1, str(inside), None)), inside)
+            with self.assertRaises(MediaUnavailable):
+                backend.file_for(MediaAsset(2, str(outside), None))
 
-    def test_stash_adapter_uses_public_stream_contract(self):
-        client = StashClient()
-        adapter = StashAdapter(client)
-        payload = {"sceneStreams": [
-            {"url": "http://127.0.0.1:9999/scene/42/stream", "mime_type": "video/mp4",
-             "label": "Direct"},
-            {"url": "http://127.0.0.1:9999/scene/42/hls", "mime_type": "application/x-mpegURL",
-             "label": "HLS"},
-        ]}
-        with patch.object(client, "graphql", return_value=payload) as graphql:
-            result = adapter.stream_candidates(
-                MediaAsset(1, None, None, (("stash", "42"),))
-            )
-        self.assertEqual([x.label for x in result], ["Direct", "HLS"])
-        self.assertEqual(graphql.call_args.args[1], {"id": "42"})
+    def test_engine_resolves_through_the_filesystem_only(self):
+        """媒体解析没有第二条来源。
 
-    def test_engine_composes_backends_without_hidden_fallback(self):
+        2026-09-01 关掉 Stash adapter 之前，这里还有一层 backend 契约。它在生产里
+        一次都没有生效过：`media_binding` 表是空的，`external_id("stash")` 永远返回
+        None，而 `stream_candidates` 本身没有任何调用方。见 ADR-0021。
+        """
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             media = root / "one.mp4"
             media.write_bytes(b"test")
-            filesystem = FilesystemBackend([root], root / "snapshots")
-            client = StashClient()
-            stash = StashAdapter(client)
             repository = unittest.mock.Mock()
-            repository.media_asset.return_value = MediaAsset(
-                1, str(media), None, (("stash", "42"),)
-            )
-            with patch.object(client, "graphql", return_value={"sceneStreams": []}):
-                engine = MediaEngine(repository, filesystem, (stash,))
-                result = engine.stream_candidates(1)
-        self.assertEqual([x.backend for x in result], ["filesystem"])
+            repository.media_asset.return_value = MediaAsset(1, str(media), None)
+            engine = MediaEngine(repository, FilesystemBackend([root], root / "snapshots"))
+            self.assertEqual(engine.file_for(1), media)
 
     def test_engine_raises_for_unknown_asset(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -123,14 +103,12 @@ class MediaEngineTests(unittest.TestCase):
             real = root / "ABW-118.MP4"
             real.write_bytes(b"test")
             backend = FilesystemBackend([root], root / "snapshots")
-            result = backend.stream_candidates(MediaAsset(1, str(root / "abw-118.mp4"), None))
-            opened = Path(result[0].uri)
+            opened = backend.file_for(MediaAsset(1, str(root / "abw-118.mp4"), None))
             self.assertTrue(opened.is_file())
             self.assertEqual(opened.name.casefold(), "abw-118.mp4")
             # 完全缺失的名字仍应拒绝
-            self.assertEqual(
-                backend.stream_candidates(MediaAsset(2, str(root / "nope.mp4"), None)), ()
-            )
+            with self.assertRaises(MediaUnavailable):
+                backend.file_for(MediaAsset(2, str(root / "nope.mp4"), None))
 
     def test_batch_path_resolution_translates_ledger_drive_before_case_matching(self):
         """sheets/probe 不经过 FilesystemBackend，也必须先翻译账本盘符。"""
@@ -169,7 +147,7 @@ class MediaEngineTests(unittest.TestCase):
         """
         repository = unittest.mock.Mock()
         repository.media_asset.return_value = MediaAsset(
-            1, r"B:\video\one.mp4", None, (), "115", "one.mp4", 31.5, 100,
+            1, r"B:\video\one.mp4", None, "115", "one.mp4", 31.5, 100,
         )
         engine = MediaEngine(
             repository, FilesystemBackend([Path("B:/")], Path("snapshots")),
@@ -184,13 +162,13 @@ class MediaEngineTests(unittest.TestCase):
         """按需模式不是万能开关：本地来源和时长未知的片源仍然只能走 Range。"""
         repository = unittest.mock.Mock()
         repository.media_asset.return_value = MediaAsset(
-            1, r"R:\video\one.mp4", None, (), "local", "one.mp4", 31.5, 100,
+            1, r"R:\video\one.mp4", None, "local", "one.mp4", 31.5, 100,
         )
         engine = MediaEngine(repository, FilesystemBackend([Path("R:/")], Path("snapshots")))
         self.assertEqual(engine.stream_plan(1, mode="hls").protocol, "range")
 
         repository.media_asset.return_value = MediaAsset(
-            1, r"B:\video\one.mp4", None, (), "115", "one.mp4", None, 100,
+            1, r"B:\video\one.mp4", None, "115", "one.mp4", None, 100,
         )
         engine = MediaEngine(repository, FilesystemBackend([Path("B:/")], Path("snapshots")))
         self.assertEqual(engine.stream_plan(1, mode="hls").protocol, "range")
@@ -198,7 +176,7 @@ class MediaEngineTests(unittest.TestCase):
     def test_local_or_unknown_duration_keeps_range_plan(self):
         repository = unittest.mock.Mock()
         repository.media_asset.return_value = MediaAsset(
-            1, r"R:\video\one.mp4", None, (), "local", "one.mp4", None, 100,
+            1, r"R:\video\one.mp4", None, "local", "one.mp4", None, 100,
         )
         engine = MediaEngine(
             repository, FilesystemBackend([Path("R:/")], Path("snapshots")),

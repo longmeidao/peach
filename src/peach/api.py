@@ -44,7 +44,6 @@ from .media import (
     MediaNotFound,
     MediaOffline,
     MediaUnavailable,
-    StashAdapter,
 )
 from .mdns import create_mdns_publisher
 from .interaction import reveal_path
@@ -63,7 +62,6 @@ from .segments import (
     SegmentUnavailable,
     build_hls_playlist,
 )
-from .stash import StashClient
 from .streaming import CancellableFileResponse, StreamSessionRegistry
 from .sync import LedgerSync
 from .transcodes import TranscodeCancelled, TranscodeService, TranscodeUnavailable
@@ -179,11 +177,7 @@ def create_app(
         settings.snapshot_root,
         settings.legacy_snapshot_roots,
     )
-    media_engine = MediaEngine(
-        repository,
-        filesystem,
-        (StashAdapter(StashClient(transport=http_transport)),),
-    )
+    media_engine = MediaEngine(repository, filesystem)
     preview_service = PreviewService(
         repository, resolver, settings.snapshot_root, settings.poster_root,
         settings.avatar_root, settings.logo_root, settings.legacy_snapshot_roots,

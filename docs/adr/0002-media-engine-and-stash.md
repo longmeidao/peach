@@ -1,6 +1,6 @@
 # ADR-0002：Media Engine 与 Stash 渐进退出
 
-- 状态：Accepted
+- 状态：Accepted（Stash adapter 部分已由 ADR-0021 关闭）
 - 日期：2026-08-14
 
 ## 背景

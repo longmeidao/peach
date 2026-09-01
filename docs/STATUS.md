@@ -15,7 +15,7 @@
 - Windows 真实 ledger 为 `peach-data/database/ledger.db`，已应用到 `0023`，共 24 个迁移且 0 待处理。2026-09-01 迁移前备份为 `database/ledger.pre-migrate-20260901-012434.db`，49 条 JAV 媒体改名前备份为 `database/ledger.pre-jav-filename-normalize-20260901-012519-000799.db`。
 - Mac ledger 已于 2026-08-27 经授权从共享副本显式拉取并恢复 `in-sync`，writer 仍是 Windows。拉取前备份为 `database/ledger.pre-pull-gen32-20260827T062519Z.db`；前后 asset 81554、entity 8182、asset_entity 155541，完整性正常且外键违规为 0，证明原 conflict 仅是 SQLite 物理布局与 marker 漂移。
 - Mac 的 `peach-data/sources` 已迁到内置盘；`archive`、`tools` 仍可指向外置盘。追更证据和浏览记录不再依赖外置盘。
-- Stash 仍监听 `127.0.0.1:9999`，只作可替换适配器。Windows FFmpeg/ffprobe 位于 `peach-data/tools/ffmpeg`，macOS 走 PATH。
+- 服务运行期不再连接 Stash：2026-09-01 关掉 `StashAdapter` 与整层 backend 契约，FastAPI 的媒体解析只有 `FilesystemBackend` 一条路径（ADR-0021）。Stash 进程是否还在 `127.0.0.1:9999` 上跑与 Peach 无关。仅剩 `scripts/ledger.py stash` 与 `scripts/import_stash_entities.py` 两个离线导入脚本在需要时才连它。Windows FFmpeg/ffprobe 位于 `peach-data/tools/ffmpeg`，macOS 走 PATH。
 
 ## 已核验能力
 
@@ -44,7 +44,7 @@
 - 2026-08-31 播放器第十轮按 YouTube `e937390a` 官方 CSS、既有实时 DOM 证据与用户截图纠偏：静音键固定在 40 px 音量容器内，音量／时间改用内缩 4 px 的白色 10% 悬停层；底栏播放／暂停和音量图标具备按下缩放，音量 40→111 px 保留 200 ms 展开。进度轨道由约 4 px 放大到 6 px，蓝色圆点由隐藏放大到约 20 px；设置换为播放器专用图标、整行悬停和严格 40×24／20 px 开关几何；中央 78 px 播放／暂停加入 1 秒放大淡出反馈；全屏固定到视口四边并使用 `100vw × 100vh`。Chrome 扩展复核后确认已安装且能同时加载 YouTube／Peach，首次“未安装”判断已撤回；但 computed style、CDP DOM 根节点和生产页刷新三条路径均超时并重置控制会话，因此本轮新增 Chrome 样式与最终画面验收未取得。Windows `catalog` 462 项通过；项目 CA 严格 HTTPS `/healthz` 返回 0.7.13、writer、非只读，生产 CSS／JS 哈希与 `master` 一致，无需重启。本轮未写真实 ledger、未替换 EXE。
 - 2026-08-30 播放器第九轮按实际 YouTube `e937390a` DevTools 证据与用户截图纠偏：时长恢复 40 px 黑色圆角胶囊，点击可在已播／剩余时间间切换；音量展开背景在普通、影院和全屏三态保持一致；设置主页采用 274 px 面板、48 px 行、56 px 图标列，子页改为 57 px 标题栏和 32 px 白色返回钮。音量、画中画和全屏改用本地 24×24 播放器专用 SVG，并按静音与全屏状态切换。桌面与 390×844 实际 DOM 验收均无横向溢出，影院音量 hover 实测由 40→111 px 且背景、滑轨完整；变基最新主线后 `catalog` 462 项全绿。项目 CA 严格 HTTPS `/healthz` 返回 0.7.13、writer、非只读，生产 HTML／CSS／JS 哈希与 `master` 完全一致，无需重启。本轮未写真实 ledger、未替换 EXE。
 - 2026-08-30 播放器细节再次按实际 YouTube `e937390a` DOM／CSS／JS 和用户第八轮截图纠偏：底部播放／暂停改为独立 CSS 图形并在 40×40 圆钮居中；音量容器允许提示越界，只隐藏滑轨，40→111 px 展开完整；左侧圆钮与右侧 200×40 胶囊按用户亮色视频样本加深为黑色 60%。中央删除左右 10 秒键，只保留桌面 68×68、移动端 56×56 的单个深色播放／暂停圆钮；影院模式使用展开／收回两枚图标，并同步「影院模式／默认视图」和 `T` 提示。桌面实际画面、暂停态、音量展开和影院两态均经 DevTools 验收；390×844 实测中央按钮 1 个、右侧 152×40、画中画隐藏、横向溢出 0。变基最新主线后 `catalog` 457 项全绿；项目 CA 严格 HTTPS `/healthz` 返回 0.7.13、writer、非只读，生产 `app.css`／`app.js` 哈希与 `master` 完全一致，无需重启。本轮未写真实 ledger、未替换 EXE。
-- FastAPI 是唯一 Web server；Ledger 保存资产、规范身份、行为和复核决定。Stash 与 CloudDrive 都经适配层进入，扁平 creator/studio/tag 字段只作兼容投影。
+- FastAPI 是唯一 Web server；Ledger 保存资产、规范身份、行为和复核决定。CloudDrive 经挂载点进入，扁平 creator/studio/tag 字段只作兼容投影；Stash 的适配层已删除，历史断言以 `source='stash:*'` 留在账本里。
 - 本地浏览器支持 MP4/WebM/Ogg；AVI 等由 `TranscodeService` 缓存成 H.264/AAC MP4。远端 MP4 默认走标准 Range，显式 HLS 使用关键帧对齐片段，失败会回退 Range，永不改写原媒体。
 - 首页、详情、实体资料、标签管理、照片、播放列表、统计、口味、复核、回收站、关注管理和关注观看共用同一 SPA 与 JSON 契约；Logo、侧栏「首页」和沉浸模式关闭统一清除分类、搜索与 JAV 筛选，不能出现地址已经回到 `/`、接口仍只请求 JAV 的隐藏状态。首页默认恢复为稳定随机，换批才更换种子；再次点击当前排序会取消该排序并回到随机，设置中的默认排序也提供「随机」。桌面和 390×844 手机均在验收范围内。
 - 2026-08-30 「管理 → 垃圾文件」已有独立 `/junk-files` 路由，并按带图标的视频、图片、压缩包、音频、网址和其它文件分类；所有卡片都直接提供「不是垃圾」与「移入回收站」，视频不复用馆藏标记控件。小图模式的两个卡片操作只显示图标并保留提示，避免按钮文字超框；大图模式保留完整文字。顶栏多选和卡片选择标记在此页可用，批量栏只显示当前视图适用的「不是垃圾／重新判断」与「移入回收站」。「不是垃圾」按 asset 保存为可撤销的复核决定，可在「已排除」中重新判断，不扩散成来源或域名白名单。真实压缩包分类只读实测 6 项，其中 5 个 `Mib19.com*.zip`，桌面与 390×844 手机布局、44px 手机操作按钮、路由空态和控制台均已验收；未点击操作、未写真实 ledger。

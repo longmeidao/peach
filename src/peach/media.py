@@ -1,4 +1,4 @@
-"""Peach 的唯一 Media Engine 与可替换 backend 契约。"""
+"""Peach 的唯一 Media Engine：按 asset id 解析本机与挂载来源的文件。"""
 from __future__ import annotations
 
 import os
@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path, PureWindowsPath
 from time import monotonic
-from typing import Protocol, Sequence
+from typing import Sequence
 
 from .platform import (
     is_unmapped,
@@ -17,7 +17,6 @@ from .platform import (
 )
 from .repository import LedgerRepository, MediaAsset
 from .segments import HLS_SEGMENT_SECONDS
-from .stash import StashClient
 
 
 def normalized_path(path: Path | str) -> Path:
@@ -95,24 +94,6 @@ def remap_managed_path(
 
 
 @dataclass(frozen=True)
-class MediaCapabilities:
-    probe: bool = False
-    preview: bool = False
-    direct_stream: bool = False
-    transcode: bool = False
-    search: bool = False
-
-
-@dataclass(frozen=True)
-class StreamCandidate:
-    backend: str
-    mode: str
-    uri: str
-    mime_type: str | None = None
-    label: str | None = None
-
-
-@dataclass(frozen=True)
 class StreamPlan:
     """协议层播放计划；来源层决定是否值得切到短分片。"""
 
@@ -142,14 +123,6 @@ class MediaOffline(MediaUnavailable):
         self.source = source
 
 
-class MediaBackend(Protocol):
-    name: str
-
-    def capabilities(self) -> MediaCapabilities: ...
-
-    def stream_candidates(self, asset: MediaAsset) -> Sequence[StreamCandidate]: ...
-
-
 class FilesystemBackend:
     """原生文件 backend；路径授权、旧快照映射和存在性检查集中在这里。"""
 
@@ -166,9 +139,6 @@ class FilesystemBackend:
         self.legacy_snapshot_roots = tuple(
             normalized_path(root) for root in legacy_snapshot_roots
         )
-
-    def capabilities(self) -> MediaCapabilities:
-        return MediaCapabilities(probe=True, preview=True, direct_stream=True)
 
     def file_for(self, asset: MediaAsset, thumbnail: bool = False) -> Path:
         raw = asset.snapshot_path if thumbnail else asset.path
@@ -210,68 +180,18 @@ class FilesystemBackend:
             {"root": str(root), "online": root_online(root)} for root in self.allowed_roots
         )
 
-    def stream_candidates(self, asset: MediaAsset) -> Sequence[StreamCandidate]:
-        try:
-            path = self.file_for(asset)
-        except MediaUnavailable:
-            return ()
-        return (StreamCandidate(self.name, "file", str(path)),)
-
-
-class StashAdapter:
-    """公开 GraphQL 协议 adapter；不复制 Stash 的 AGPL 实现。"""
-
-    name = "stash"
-
-    def __init__(self, client: StashClient | None = None):
-        self.client = client or StashClient()
-
-    def capabilities(self) -> MediaCapabilities:
-        return MediaCapabilities(
-            probe=True,
-            preview=True,
-            direct_stream=True,
-            transcode=True,
-            search=True,
-        )
-
-    def stream_candidates(self, asset: MediaAsset) -> Sequence[StreamCandidate]:
-        scene_id = asset.external_id("stash")
-        if not scene_id:
-            return ()
-        payload = self.client.graphql(
-            "query($id:ID!){sceneStreams(id:$id){url mime_type label}}",
-            {"id": scene_id},
-        )
-        streams = payload.get("sceneStreams") or []
-        return tuple(
-            StreamCandidate(
-                self.name,
-                "http",
-                str(item["url"]),
-                item.get("mime_type"),
-                item.get("label"),
-            )
-            for item in streams
-            if item.get("url")
-        )
-
 
 class MediaEngine:
-    """按 asset id 统一解析原生文件与外部媒体 backend。"""
+    """按 asset id 解析媒体文件。
 
-    def __init__(
-        self,
-        repository: LedgerRepository,
-        filesystem: FilesystemBackend,
-        adapters: Sequence[MediaBackend] = (),
-    ):
+    这里曾经是一层 backend 契约，为的是让 Stash 作为可关闭的 adapter 参与解析。
+    2026-09-01 关掉 adapter 时它一并删掉：本机文件是唯一来源，多留一层间接
+    只会让「谁决定了这个路径」变得不好回答。见 ADR-0021。
+    """
+
+    def __init__(self, repository: LedgerRepository, filesystem: FilesystemBackend):
         self.repository = repository
         self.filesystem = filesystem
-        self.backends: tuple[MediaBackend, ...] = (filesystem, *adapters)
-
-    def capabilities(self) -> dict[str, MediaCapabilities]:
-        return {backend.name: backend.capabilities() for backend in self.backends}
 
     def asset(self, asset_id: int) -> MediaAsset:
         asset = self.repository.media_asset(asset_id)
@@ -281,13 +201,6 @@ class MediaEngine:
 
     def file_for(self, asset_id: int, thumbnail: bool = False) -> Path:
         return self.filesystem.file_for(self.asset(asset_id), thumbnail=thumbnail)
-
-    def stream_candidates(self, asset_id: int) -> tuple[StreamCandidate, ...]:
-        asset = self.asset(asset_id)
-        candidates: list[StreamCandidate] = []
-        for backend in self.backends:
-            candidates.extend(backend.stream_candidates(asset))
-        return tuple(candidates)
 
     def stream_plan(self, asset_id: int, *, mode: str = "auto") -> StreamPlan:
         """远端挂载的 MP4 默认走标准 Range；HLS 只在显式要求时给出。见 ADR-0016。
