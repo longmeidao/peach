@@ -456,6 +456,10 @@ def w_purge_missing(contract: ResourceSyncContract, body):
     整条来源 2,552 行都会看起来像被删。所以先做来源级在线判定，整源不在线就
     一行都不碰。CloudDrive 掉线后挂载点目录仍然存在，`root_online` 因此判的是
     「能否列出一个条目」而不是「目录在不在」。
+
+    判缺失和全量扫描共用 `_missing_resource_ids`：整个目录一次列举出结果。逐条
+    `is_file()` 在云挂载上每条都是一次元数据往返——已删除的路径尤其贵，CloudDrive
+    对「不存在」没有负缓存；目录暂时读不了时保留账本行，不当成已删。
     """
     asset_id = int(body["id"])
     with contract.read_connection() as connection:
@@ -477,14 +481,17 @@ def w_purge_missing(contract: ResourceSyncContract, body):
             (location, directory),
         ).fetchall()
 
+    missing_ids, unreadable = _missing_resource_ids(rows)
+    gone = set(missing_ids)
     missing = [
         {"id": row["id"], "name": row["name"]}
         for row in rows
-        if not translate_ledger_path(row["path"]).is_file()
+        if int(row["id"]) in gone
     ]
     if not missing:
         return {"ok": True, "directory": photo_set_title(directory),
-                "checked": len(rows), "removed": 0, "items": []}
+                "checked": len(rows), "removed": 0, "unreadable": unreadable,
+                "items": []}
 
     contract.cache_bust()
     ids = [item["id"] for item in missing]
@@ -497,5 +504,6 @@ def w_purge_missing(contract: ResourceSyncContract, body):
     contract.cache_bust()
     return {
         "ok": True, "directory": photo_set_title(directory),
-        "checked": len(rows), "removed": len(missing), "items": missing,
+        "checked": len(rows), "removed": len(missing), "unreadable": unreadable,
+        "items": missing,
     }

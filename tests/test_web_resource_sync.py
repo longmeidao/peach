@@ -272,3 +272,26 @@ class PurgeMissingTests(unittest.TestCase):
         self.assertEqual(result["removed"], 0)
         self.assertEqual(result["checked"], 3)
         self.assertEqual(self.ids(), [1, 2, 3, 4])
+
+    def test_purge_lists_the_directory_once_instead_of_statting_every_file(self):
+        """逐条 is_file() 在云挂载上每条都是一次往返；已删路径没有负缓存，最贵。"""
+        real_scandir = os.scandir
+        with mock.patch.object(rm_sync, "translate_ledger_path", self._translate), \
+             mock.patch.object(rm_sync, "source_is_online", lambda loc: loc == "115"), \
+             mock.patch.object(rm_sync.os, "scandir", wraps=real_scandir) as scandir:
+            result = rm_sync.w_purge_missing(self.contract, {"id": 1})
+        self.assertEqual(result["removed"], 2)
+        self.assertEqual(scandir.call_count, 1)
+
+    def test_purge_keeps_rows_when_the_directory_cannot_be_read(self):
+        """目录暂时读不了不是「文件被删」：与全量扫描同款语义。
+
+        改动前这里逐条 `is_file()`，读不了会被当成全部缺失、整目录误入回收站。
+        """
+        with mock.patch.object(rm_sync, "translate_ledger_path", self._translate), \
+             mock.patch.object(rm_sync, "source_is_online", lambda loc: loc == "115"), \
+             mock.patch.object(rm_sync.os, "scandir", side_effect=PermissionError("busy")):
+            result = rm_sync.w_purge_missing(self.contract, {"id": 1})
+        self.assertEqual(result["removed"], 0)
+        self.assertEqual(result["unreadable"], 3)
+        self.assertEqual(self.ids(), [1, 2, 3, 4])

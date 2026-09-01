@@ -4524,8 +4524,10 @@ async function syncMissing(id,status,done){
     const r=await api('/api/purge-missing',{method:'POST',body:JSON.stringify({id})});
     if(r.ok===false){status.textContent=sourceHint(r.error);return}
     status.textContent=r.removed
-      ? `已把 ${r.removed} 项移入回收站（核对 ${r.checked} 项）`
-      : `目录内 ${r.checked} 项都还在，无需改动`;
+      ? `已把 ${r.removed} 项移入回收站（核对 ${r.checked} 项${r.unreadable?`，${r.unreadable} 项未能读取`:''}）`
+      : r.unreadable
+        ? `目录有 ${r.unreadable} 项暂时无法读取，本次未改动`
+        : `目录内 ${r.checked} 项都还在，无需改动`;
     if(r.removed){
       const ids=(r.items||[]).map(item=>item.id);
       if(done)done(r);
