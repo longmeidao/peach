@@ -2693,7 +2693,19 @@ class WebUiSourceTests(unittest.TestCase):
             "button.innerHTML=`${spinnerHtml('正在定位')}${label?`<span>${esc(label)}</span>`:''}`")
         self.assertPageContains("if(activeLightbox?.detail?.isOpen()){activeLightbox.detail.dismiss(true);return}")
         self.assertPageContains("if(returnFocus&&document.contains(toggle))toggle.focus()")
-        self.assertPageContains("queueMicrotask(()=>{const target=reveal.hidden?title:reveal;target.focus()})")
+        # 打开详情要把焦点送进面板。reveal 是「在资源管理器中显示」，只对本地资产存在；
+        # 在线图片上它是 hidden 的，焦点这时必须落到标题——对隐藏元素调 focus() 不生效，
+        # 人会被留在 toggle 上。标题为此带 tabindex="-1" 才接得住。三条一起守：分支表达式、
+        # 标题的 tabindex，以及无条件 reveal.focus() 不许回来。bcf112e 改了实现只更新了
+        # tests/test_follow_web.py，这里的旧断言留在原地，master 上因此挂了一段时间。
+        self.assertPageContains(
+            "queueMicrotask(()=>{const target=reveal.hidden?title:reveal;target.focus()})")
+        self.assertPageContains(
+            '<h2 id="photoDetailTitle" data-middle-truncate tabindex="-1">',
+            "标题要接得住焦点，缺 tabindex=-1 时 reveal 隐藏那条路径等于没聚焦")
+        self.assertPageLacks(
+            "queueMicrotask(()=>reveal.focus())",
+            "不能无条件聚焦 reveal：在线图片上它是隐藏的")
         self.assertPageContains("const dismissOutside=target=>{if(panel.hidden||toggle.contains(target)||panel.contains(target))return false")
         self.assertPageContains("if(detail.dismissOutside(e.target))return")
         self.assertPageContains(".photodetail[hidden]{display:none}")
