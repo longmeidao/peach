@@ -2249,8 +2249,15 @@ def _get_taste(contract, args):
     )
 
 
-def _get_review(contract, _args):
-    return contract.cached("review", lambda: q_review(contract))
+def _get_review(contract, args):
+    payload = contract.cached("review", lambda: q_review(contract))
+    # 数据管理页只要一个待复核条数。完整 payload 带着每条候选的全文，实测是
+    # 兆级；卡片上的一个数字不值这趟传输，但计数本身仍来自同一份缓存快照，
+    # 不另立一套口径。
+    if str(args.get("counts") or "") in {"1", "true"}:
+        return {key: payload[key] for key in ("counts", "sources", "skipped_rows")
+                if key in payload}
+    return payload
 
 
 def _post_empty_trash(contract, _body):

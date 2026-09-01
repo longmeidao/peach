@@ -18,6 +18,9 @@
      用户以为可以点。 */
   --pill-radius:999px; --tag-radius:var(--pill-radius);
   --control-radius:6px; --badge-radius:4px; --floating-radius:12px; --tag-pad-y:4px; --tag-pad-x:10px; --ambient-opacity:0; --hover-delay:5s;
+  /* 框体上下两条横条的统一高度。写成变量是因为它同时管数据管理的卡片、链接管理
+     和资源同步：这三处任何一处单独调，页面上就会出现两种「同一种条」。 */
+  --fieldset-bar-h:52px;
   --layer-dialog:1000; --layer-popover:1100; --layer-tooltip:1200;
   --frost-panel:rgba(247,248,250,.92); --frost-light:rgba(255,255,255,.86);
   --overlay-5:rgba(20,22,26,.05);--border-10:rgba(20,22,26,.10);--border-15:rgba(20,22,26,.15);
@@ -47,7 +50,9 @@
 
 *,*::before,*::after{box-sizing:border-box}
 .sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
-html{color-scheme:light;scroll-padding-top:calc(var(--topH) + 8px)}
+/* 滚动条槽位一直留着。设置面板、灯箱和播放器都会给 body 加 overflow:hidden，
+   槽位不预留时滚动条一消失，整页就横向跳一次；关掉再跳回来。 */
+html{color-scheme:light;scroll-padding-top:calc(var(--topH) + 8px);scrollbar-gutter:stable}
 @media (prefers-color-scheme:dark){html:not([data-theme="light"]){color-scheme:dark}}
 html[data-theme="dark"]{color-scheme:dark}
 html,body{margin:0;padding:0}
@@ -248,13 +253,17 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 .reviewactions button{box-sizing:border-box;height:32px;border:1px solid var(--border-15);border-radius:8px;background:transparent;color:var(--ink-2);padding:0 12px;font-size:var(--fs-sm);cursor:pointer}.reviewactions button:hover{border-color:var(--tungsten);color:var(--ink)}.reviewactions .approve{background:var(--tungsten);border-color:var(--tungsten);color:#fff;font-weight:600}.reviewactions .approve:hover{background:color-mix(in srgb,var(--tungsten) 82%,#000);color:#fff}.reviewactions .skip{color:var(--meter)}.reviewactions .skip:hover{background:var(--meter);border-color:var(--meter);color:#fff}.reviewactions .reject{color:var(--drop)}.reviewactions .reject:hover{background:var(--drop);border-color:var(--drop);color:#fff}
 .cleanuploading,.junkloading{grid-column:1/-1;min-height:280px;display:grid;place-items:center}
 .cleanupgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;padding:0 0 42px}
-.cleanupfieldset{display:flex;flex-direction:column;min-width:0;min-height:250px;margin:0;padding:0;overflow:hidden;
+/* 框体的上下两条横条只有一份尺寸口径：52px、竖直居中。三张卡内容高度不同时
+   仍然共用同一行网格，不会一张比一张矮半格。 */
+.geist-fieldset-header,.cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;
+  height:var(--fieldset-bar-h);margin:0;padding:0 16px 0 20px;display:flex;align-items:center;gap:8px}
+.geist-fieldset-header{border-bottom:1px solid var(--border-10)}
+.geist-fieldset-header h3{margin:0;color:var(--ink);font-size:var(--fs-lg);font-weight:600}
+.cleanupfieldset>.geist-fieldset-footer{border-top:1px solid var(--border-10);background:var(--overlay-5)}
+.cleanupfieldset{display:flex;flex-direction:column;min-width:0;min-height:176px;margin:0;padding:0;overflow:hidden;
   border:1px solid var(--line-soft);border-radius:12px;background:var(--surface)}
-.cleanupfieldset legend{margin-left:14px;padding:0 6px;color:var(--ink);font-size:var(--fs-lg);font-weight:600}
 .cleanupfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px}.cleanupfieldset strong{display:block;margin-bottom:10px;font-size:var(--fs-xl)}
 .cleanupfieldset p{margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.6}
-.cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;min-height:56px;margin:0;padding:12px 12px 12px 20px;
-  display:flex;align-items:center;gap:8px;border-top:1px solid var(--border-10);background:var(--overlay-5)}
 .cleanupfieldset button{box-sizing:border-box;min-height:32px;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);
   background:transparent;color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:7px;cursor:pointer}
 .cleanupfieldset button:hover{border-color:var(--tungsten);color:var(--ink);background:var(--hover)}
@@ -743,7 +752,9 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 .count.count-actions-only{position:relative;top:auto;min-height:0;margin:0 0 16px;padding:0;justify-content:flex-end}
 .count.count-actions-only:empty{display:none}
 .resourcesync{scroll-margin-top:calc(var(--topH) + 18px);display:grid;gap:16px}.resourcesync>h2{margin:0;font-size:var(--fs-xl)}
-.resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--line-soft);border-radius:12px;background:var(--surface)}.resourcesyncbody{padding:24px}.resourcesyncbody h3{margin:0 0 8px;font-size:var(--fs-lg)}.resourcesyncbody p{max-width:760px;margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.55}.resourcesyncfooter,.resourceapplyrow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 16px;border-top:1px solid var(--line-soft);background:var(--overlay-5)}.resourcesyncfooter p,.resourceapplyrow>p{margin:0;color:var(--muted);font-size:var(--fs-xs);line-height:1.5}.resourceaction{box-sizing:border-box;height:36px;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:none;font:inherit;font-size:var(--fs-sm);font-weight:550;cursor:pointer;transition:background-color .12s,border-color .12s,color .12s}.resourceaction:hover:not(:disabled){background:var(--hover);border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink)}.resourceaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.resourceaction:disabled{cursor:default;opacity:.68}.resourceaction svg{width:16px;height:16px;stroke:currentColor;fill:none}#resourceSyncResult:empty{display:none}.resourcescanning,.resourceerror{margin:0;padding:14px 16px;border:1px solid var(--line-soft);border-radius:var(--control-radius);color:var(--muted)}.resourceerror{color:var(--drop)}.resourcesources{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.resourcesources article{display:grid;gap:4px;min-width:0;padding:16px}.resourcesources article+article{border-left:1px solid var(--line-soft)}.resourcesourcetitle{display:flex;align-items:center;justify-content:space-between;gap:12px}.resourcesourcetitle span{font-size:var(--fs-xs)}.resourcesources .online{color:var(--success)}.resourcesources .offline{color:var(--drop)}.resourcesources strong{margin-top:10px;font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcesources small,.resourcecache small{color:var(--muted)}.resourcecache{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-top:1px solid var(--line-soft);background:var(--overlay-5)}.resourcecache>div{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:4px 16px;padding:16px}.resourcecache>div+div{border-left:1px solid var(--line-soft)}.resourcecache b{font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcecache span{font-weight:650}.resourcecache small{grid-column:1/-1}.resourceapplyrow .resourcesyncok{color:var(--success)}.resourcedanger{color:var(--drop)}.resourcedanger:hover:not(:disabled){border-color:color-mix(in srgb,var(--drop) 42%,transparent);background:color-mix(in srgb,var(--drop) 8%,transparent);color:var(--drop)}.resourcesyncok{margin:0;color:var(--success)}
+.resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--line-soft);border-radius:12px;background:var(--surface)}.resourcesyncbody{padding:20px}.resourcesyncbody p{max-width:760px;margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.55}.resourcesyncfooter,.resourceapplyrow{box-sizing:border-box;height:var(--fieldset-bar-h);display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 16px;border-top:1px solid var(--line-soft);background:var(--overlay-5)}.resourcesyncfooter p,.resourceapplyrow>p{margin:0;color:var(--muted);font-size:var(--fs-xs);line-height:1.5}.resourceaction{box-sizing:border-box;height:36px;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:none;font:inherit;font-size:var(--fs-sm);font-weight:550;cursor:pointer;transition:background-color .12s,border-color .12s,color .12s}.resourceaction:hover:not(:disabled){background:var(--hover);border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink)}.resourceaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.resourceaction:disabled{cursor:default;opacity:.68}.resourceaction svg{width:16px;height:16px;stroke:currentColor;fill:none}#resourceSyncResult:empty{display:none}.resourcescanning,.resourceerror{margin:0;padding:14px 16px;border:1px solid var(--line-soft);border-radius:var(--control-radius);color:var(--muted)}.resourceerror{color:var(--drop)}.resourcesources{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.resourcesources article{display:grid;gap:4px;min-width:0;padding:16px}.resourcesources article+article{border-left:1px solid var(--line-soft)}.resourcesourcetitle{display:flex;align-items:center;justify-content:space-between;gap:12px}.resourcesourcetitle span{font-size:var(--fs-xs)}.resourcesources .online{color:var(--success)}.resourcesources .offline{color:var(--drop)}.resourcesources strong{margin-top:10px;font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcesources small,.resourcecache small{color:var(--muted)}/* 这里是一排读数，不是又一个盒子。原先它自带填色和分格线，和下面的操作条同色，
+   两条带子连在一起看不出边界；框里再套框也是多余的一层。 */
+.resourcecache{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 32px;border-top:1px solid var(--line-soft);padding:16px 20px}.resourcecache>div{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:4px 16px}.resourcecache b{font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcecache span{font-weight:650}.resourcecache small{grid-column:1/-1}.resourceapplyrow .resourcesyncok{color:var(--success)}.resourcedanger{color:var(--drop)}.resourcedanger:hover:not(:disabled){border-color:color-mix(in srgb,var(--drop) 42%,transparent);background:color-mix(in srgb,var(--drop) 8%,transparent);color:var(--drop)}.resourcesyncok{margin:0;color:var(--success)}
 .tagbar,.count,.entitytagbar,.entitycollectionhead{transition:background-color .16s ease,border-color .16s ease}
 .tagbar.is-stuck,.count.is-stuck,.entitytagbar.is-stuck,.entitycollectionhead.is-stuck{background:color-mix(in srgb,#080A0D 84%,transparent);
   border-bottom-color:var(--line-soft);backdrop-filter:saturate(1.35) blur(16px);
@@ -1471,28 +1482,32 @@ body.settings-open{overflow:hidden}
    vercel-geist-toast.md；量纲沿用本站实测 Geist 的那一套：8px 圆角、
    发丝边、比页面亮一档的表面。warn 态加一圈红边和图标，但失败的原因
    仍以页内持久行为准——toast 只负责提一句。 */
-.toasts{position:fixed;right:16px;bottom:22px;z-index:var(--layer-popover);display:grid;gap:8px;
+/* 行距用每条自己的上外边距，不用容器 gap：收起时高度和外边距一起过渡到 0，
+   栈才收得平顺；gap 是容器的，收不掉。 */
+.toasts{position:fixed;right:16px;bottom:22px;z-index:var(--layer-popover);display:grid;
   justify-items:end;pointer-events:none}
-.toast{pointer-events:auto;display:flex;align-items:flex-start;gap:9px;
-  width:min(440px,calc(100vw - 32px));padding:11px 10px 11px 13px;
+.toast{pointer-events:auto;box-sizing:border-box;display:flex;align-items:center;gap:9px;
+  width:min(440px,calc(100vw - 32px));margin-top:8px;padding:11px 10px 11px 13px;
   border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);
   font-size:var(--fs-sm);line-height:1.6;box-shadow:0 2px 4px #0003,0 24px 80px #000b;
   animation:toast-in .18s ease}
 @keyframes toast-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .toast.warn{border-color:color-mix(in srgb,var(--drop) 38%,var(--line))}
-.toast.warn>svg{width:15px;height:15px;flex:none;margin-top:3px;stroke:var(--drop);fill:none;
+.toast.warn>svg{width:15px;height:15px;flex:none;stroke:var(--drop);fill:none;
   stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .toast p{flex:1;margin:0;min-width:0}
 .toast b{font-variant-numeric:tabular-nums}
 /* 动作是具名的下一步（去看更新），文字按钮跟正文同行；关闭才是 24px 图标位。 */
-.toast .tact{flex:none;align-self:center;border:0;background:none;padding:0;
+.toast .tact{flex:none;border:0;background:none;padding:0;
   color:var(--tungsten);font:inherit;font-size:var(--fs-sm);cursor:pointer}
 .toast .tact:hover{color:var(--ink);text-decoration:none}
+.toast .tact[aria-busy="true"]{color:var(--muted);cursor:default}
 .toast .tclose{flex:none;width:24px;height:24px;padding:0;border:0;border-radius:var(--control-radius);
   background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer}
 .toast .tclose:hover{background:var(--hover);color:var(--ink)}
 .toast .tclose svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
-.toast.leaving{opacity:0;transform:translateY(4px);transition:opacity .15s ease,transform .15s ease}
+.toast.leaving{height:0!important;margin-top:0;padding-block:0;border-block-width:0;opacity:0;overflow:hidden;
+  transition:height .18s ease,margin .18s ease,padding .18s ease,border-width .18s ease,opacity .12s ease}
 .mixgrouplabel{display:flex;align-items:center;gap:8px;margin:12px 10px 6px;color:var(--ink);
   font-size:var(--fs-xs);font-weight:600}
 .mixgrouplabel:first-child{margin-top:4px}
@@ -1717,7 +1732,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   .runtimegate a{grid-column:2/-1}
   .managebar-menu button{width:100%;min-height:42px;justify-content:flex-start;padding:9px 11px}
   .cleanupgrid{grid-template-columns:minmax(0,1fr)}
-  .cleanupfieldset{min-height:230px}
+  .cleanupfieldset{min-height:176px}
   .grid{gap:16px 8px}
   .count{align-items:center;flex-direction:row;gap:10px;padding-block:8px;
     overflow-x:auto;overflow-y:hidden;scrollbar-width:none;overscroll-behavior-inline:contain}
@@ -2287,7 +2302,7 @@ details.fcred{display:block}
 *[data-middle-truncate]{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:clip}
 /* 链接管理沿用资源同步那套盒子，只加这里独有的两块：概览格和结果表。
    表格必须自己横向滚动——地址列很长，让它撑破 body 会把整页拖成横向可滚。 */
-.linksummary{margin-top:18px}.linksummary .resourcecache{border:1px solid var(--line-soft);border-radius:10px;border-top:1px solid var(--line-soft)}
+.linksummary .resourcecache{border-top:0;padding:0}
 .linksummary .resourcecache b{font-size:var(--fs-lg)}
 .linkgroup{padding:16px;border-top:1px solid var(--line-soft)}.linkgroup:first-child{border-top:0}
 .linkgroup h4{margin:0 0 4px;font-size:var(--fs-md);font-weight:600}

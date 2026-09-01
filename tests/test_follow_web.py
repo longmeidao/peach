@@ -2102,7 +2102,7 @@ class FollowWebSourceTests(unittest.TestCase):
         # 回执带一个具名的后续动作：光摆数字会让人去点「…条详情」那半句，
         # 文案里不再留悬空的「详情」，去看更新作为显式按钮接住这个意图。
         self.assertPageContains("action:{label:'去看更新',run:()=>openFollow()}")
-        self.assertPageContains("if(action)item.querySelector('.tact')")
+        self.assertPageContains("if(act)act.onclick=()=>{setActionBusy(act);action.run()};")
         self.assertPageLacks("条详情")
 
     def test_follow_bulk_actions_are_buttons_not_inline_links(self):

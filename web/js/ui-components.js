@@ -11,6 +11,18 @@ export function noteHtml(message,{variant='secondary',label='',className=''}={})
     ${icon(symbol)}<p>${label?`<b>${esc(label)}</b>`:''}<span>${esc(message)}</span></p></div>`;
 }
 
+/**
+ * Geist Fieldset 的标题条。标题放在框体里，不用原生 `<legend>`。
+ *
+ * `<legend>` 会在上边框上开一个缺口，标题看起来骑在线上而不是在框里；三张卡的
+ * 内容高度不同时，那道缺口的位置也跟着不齐。改成框内固定 52px 的横条后，
+ * 标题条、内容区、底部操作条三段在同一行网格上对齐。
+ */
+export function fieldsetHeader(id,title){
+  return `<header class="geist-fieldset-header" data-geist-fieldset-header>
+    <h3 id="${esc(id)}">${esc(title)}</h3></header>`;
+}
+
 /** Determinate progress only. Callers supply real units instead of a decorative width. */
 export function progressHtml(label,value,max=100){
   const ceiling=Math.max(0,Number(max)||0);
