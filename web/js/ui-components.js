@@ -11,6 +11,17 @@ export function noteHtml(message,{variant='secondary',label='',className=''}={})
     ${icon(symbol)}<p>${label?`<b>${esc(label)}</b>`:''}<span>${esc(message)}</span></p></div>`;
 }
 
+/**
+ * Geist Fieldset 的标题。标题是正文区的第一行，不是独立横条。
+ *
+ * 不用原生 `<legend>`：它会在上边框上开一个缺口，标题看起来骑在线上而不是在
+ * 框里。也不给标题加下边框——Geist 的 Fieldset 全框只有一条线，在底部操作条
+ * 上方（证据：https://vercel.com/geist/fieldset 的 Multiple Fieldsets 示例）。
+ */
+export function fieldsetTitle(id,title){
+  return `<h3 class="geist-fieldset-title" id="${esc(id)}">${esc(title)}</h3>`;
+}
+
 /** Determinate progress only. Callers supply real units instead of a decorative width. */
 export function progressHtml(label,value,max=100){
   const ceiling=Math.max(0,Number(max)||0);

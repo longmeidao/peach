@@ -1,8 +1,8 @@
 import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, pageTitle, realDuration} from './js/core.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import {
-  emptyStateHtml, loadingDotsHtml, mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml,
-  setActionBusy, skeletonHtml, spinnerHtml, wireBusyActions, wireScrollers,
+  emptyStateHtml, fieldsetTitle, loadingDotsHtml, mediaViewButtonsHtml, noteHtml, progressHtml,
+  scrollerHtml, setActionBusy, skeletonHtml, spinnerHtml, wireBusyActions, wireScrollers,
 } from './js/ui-components.js';
 
 initMiddleTruncate(document);
@@ -153,7 +153,7 @@ const SORTS=[['seed','随机'],['rating','评分'],['o','高潮计数'],['plays'
              ['big','体积'],['new','最近入库'],['played','最近看的']];
 const JAV_RELEASE_SORT=['release','发行时间'];
 const SORT_KEYS=[...SORTS,JAV_RELEASE_SORT].map(([key])=>key);
-const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:2,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',ambientMode:true,theaterMode:false,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
+const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:2,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',ambientMode:true,theaterMode:false,groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
@@ -171,6 +171,7 @@ appSettings.hoverDelaySeconds=allowedSetting(+appSettings.hoverDelaySeconds,[3,5
 appSettings.seekSeconds=allowedSetting(+appSettings.seekSeconds,[5,10,30],10);
 appSettings.ambientMode=appSettings.ambientMode!==false;
 appSettings.theaterMode=appSettings.theaterMode===true;
+appSettings.groupCollapse=appSettings.groupCollapse!==false;
 appSettings.searchHistoryLimit=allowedSetting(+appSettings.searchHistoryLimit,[5,10,20],10);
 appSettings.relatedLimit=allowedSetting(+appSettings.relatedLimit,[12,20,30],20);
 const sidebarKeyAlias=key=>key==='ads'||key==='dupes'?'data-cleanup':key;
@@ -183,6 +184,7 @@ function syncSettingsPanel(){
   $('#batchSizeSetting').value=String(appSettings.batchSize);
   $('#defaultSortSetting').value=appSettings.defaultSort;
   $('#hoverDelaySetting').value=String(appSettings.hoverDelaySeconds);
+  $('#groupCollapseSetting').checked=appSettings.groupCollapse;
   $('#seekSecondsSetting').value=String(appSettings.seekSeconds);
   $('#searchHistoryLimitSetting').value=String(appSettings.searchHistoryLimit);
   $('#relatedLimitSetting').value=String(appSettings.relatedLimit);
@@ -224,6 +226,9 @@ $('#settingsPanel').onkeydown=e=>{
 $('#batchSizeSetting').onchange=e=>{appSettings.batchSize=+e.target.value||60;saveSettings();if(location.pathname==='/')load(true)};
 $('#defaultSortSetting').onchange=e=>{appSettings.defaultSort=e.target.value;saveSettings();state.sort=appSettings.defaultSort;if(location.pathname==='/')load(true)};
 $('#hoverDelaySetting').onchange=e=>{appSettings.hoverDelaySeconds=+e.target.value||5;document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);saveSettings()};
+/* 关掉后同一番号的每个分卷／版次各占一张卡。改完要重取当前列表：折叠是在渲染
+   时做的，不重画的话已经被跳过的那些卡不会自己冒出来。 */
+$('#groupCollapseSetting').onchange=e=>{appSettings.groupCollapse=!!e.target.checked;saveSettings();reloadCurrentSurface()};
 $('#seekSecondsSetting').onchange=e=>{appSettings.seekSeconds=+e.target.value||10;saveSettings()};
 $('#searchHistoryLimitSetting').onchange=e=>{appSettings.searchHistoryLimit=+e.target.value||10;saveSettings();writeSearchHistory(readSearchHistory())};
 $('#relatedLimitSetting').onchange=e=>{appSettings.relatedLimit=+e.target.value||20;saveSettings()};
@@ -280,15 +285,27 @@ const toast=(html,{timeout=6000,warn=false,action=null}={})=>{
   const root=$('#toasts');
   const item=document.createElement('div');
   item.className='toast'+(warn?' warn':'');
-  item.innerHTML=`${warn?icon('alert'):''}<p>${html}</p>${
-    action?`<button class="tact">${esc(action.label)}</button>`:''
-    }<button class="tclose" title="关闭" aria-label="关闭提示">${icon('x')}</button>`;
+  const paint=(body,alert)=>{
+    item.classList.toggle('warn',!!alert);
+    item.innerHTML=`${alert?icon('alert'):''}<p>${body}</p>${
+      action&&!alert&&body===html?`<button class="tact">${esc(action.label)}</button>`:''
+      }<button class="tclose" title="关闭" aria-label="关闭提示">${icon('x')}</button>`;
+    item.querySelector('.tclose').onclick=close;
+    const act=item.querySelector('.tact');
+    if(act)act.onclick=()=>{setActionBusy(act);action.run()};
+  };
   let timer=null;
-  const close=()=>{clearTimeout(timer);item.classList.add('leaving');
-    setTimeout(()=>item.remove(),160)};
-  item.querySelector('.tclose').onclick=close;
-  if(action)item.querySelector('.tact').onclick=()=>{close();action.run()};
+  /* 收起前先把当前高度写死再过渡到 0。直接 remove() 会让这一格瞬间消失，
+     栈里剩下的 toast 一次跳过来，正是撤销那一下最明显的抖动。 */
+  const close=()=>{clearTimeout(timer);
+    item.style.height=`${item.offsetHeight}px`;item.getBoundingClientRect();
+    item.classList.add('leaving');setTimeout(()=>item.remove(),200)};
   const arm=()=>{if(timeout)timer=setTimeout(close,timeout)};
+  /* 结果就写在同一条 toast 上，不再另发一条。原先是「关掉回执 + 弹出已撤销」，
+     两条在同一个底部对齐的栈里一进一出，看上去就是整块跳了一下。 */
+  item.replaceMessage=(body,{warn:alert=false,timeout:next=4000}={})=>{
+    clearTimeout(timer);paint(body,alert);timeout=next;arm()};
+  paint(html,warn);
   item.addEventListener('mouseenter',()=>clearTimeout(timer));
   item.addEventListener('mouseleave',arm);
   root.prepend(item);arm();
@@ -299,13 +316,17 @@ const toast=(html,{timeout=6000,warn=false,action=null}={})=>{
 /* 所有可逆写操作共用同一种回执：只在请求真正完成后报过去时结果，撤销入口
    保留 8 秒。撤销本身也是一次真实写入，失败时另报一条短错误，不能把本地 UI
    偷偷改回去假装成功。不可逆或不适合撤销的操作仍用同一函数，但不传 undo。 */
-const actionReceipt=(message,{undo=null,timeout=undo?8000:6000}={})=>toast(esc(message),{
-  timeout,
-  action:undo?{label:'撤销',run:async()=>{
-    try{await undo();toast('已撤销')}
-    catch(error){toast(`撤销失败：${esc(error.message||'请重试')}`,{warn:true})}
-  }}:null,
-});
+const actionReceipt=(message,{undo=null,timeout=undo?8000:6000}={})=>{
+  let item=null;
+  item=toast(esc(message),{
+    timeout,
+    action:undo?{label:'撤销',run:async()=>{
+      try{await undo();item.replaceMessage('已撤销')}
+      catch(error){item.replaceMessage(`撤销失败：${esc(error.message||'请重试')}`,{warn:true})}
+    }}:null,
+  });
+  return item;
+};
 const actionFailure=(message,error)=>toast(
   `${esc(message)}失败：${esc(error?.message||'请重试')}`,{warn:true});
 
@@ -1164,11 +1185,14 @@ function cardHtml(it,cls){
       <button data-seek="${appSettings.seekSeconds}" title="前进 ${appSettings.seekSeconds} 秒" aria-label="前进 ${appSettings.seekSeconds} 秒">${icon('rotate-cw')}<b>${appSettings.seekSeconds}</b></button>
       <button data-open title="打开详情" aria-label="打开详情">${icon('maximize')}</button></div>`;
   /* 小图与预览图都是 16:9 横图，只更换图片来源；元数据 DOM 和高度必须完全相同。 */
-  return `<article class="card ${parts?'partcard ':''}${cls||''} ${it.disposal==='trash'?'pending-delete':''}" data-id="${it.id}"${parts?` data-part-seed="${parts.seed_id}"`:''}>
-    ${parts?'<div class="partstack">':''}<div class="pic" style="--card-ratio:${ar}">${thumb}<button class="cardopenhit" data-open aria-label="打开 ${esc(shownName)}${parts?'分卷':'详情'}"></button>
+  /* 叠层纸边是「这张卡代表不止一条」的视觉说法，分卷和版次都成立。原先只给分卷，
+     于是同样被折叠过的版次卡长得和普通卡一模一样，只有角标能看出来。 */
+  const stacked=parts||editions;
+  return `<article class="card ${stacked?'partcard ':''}${cls||''} ${it.disposal==='trash'?'pending-delete':''}" data-id="${it.id}"${parts?` data-part-seed="${parts.seed_id}"`:''}>
+    ${stacked?'<div class="partstack">':''}<div class="pic" style="--card-ratio:${ar}">${thumb}<button class="cardopenhit" data-open aria-label="打开 ${esc(shownName)}${parts?'分卷':editions?'版本':'详情'}"></button>
       <div class="badge mono">${srcBadge(it.location,it.cost)}</div>
       <span class="selectionMark">${icon('check')}</span><span class="deleteMark">${icon('trash')}<b>回收站</b></span>
-      ${parts?`<span class="partbadge">${parts.count} 卷</span>`:''}${editions?`<span class="partbadge editionbadge" title="${esc(editions.editions.join(' · '))}">${editions.count} 个版本</span>`:''}<span class="dur mono">${fmtDur(shownDuration)}</span>${tr}${tools}</div>${parts?'</div>':''}
+      ${parts?`<span class="partbadge">${parts.count} 卷</span>`:''}${editions?`<span class="partbadge editionbadge" title="${esc(editions.editions.join(' · '))}">${editions.count} 个版本</span>`:''}<span class="dur mono">${fmtDur(shownDuration)}</span>${tr}${tools}</div>${stacked?'</div>':''}
     <div class="meta">${avatar}<div class="mtext"><button class="t cardtitle" data-open>${shownTitle}</button>
       <div class="s mono">${whoHtml}
         ${it.why?`<span class="why">${esc(it.why)}</span>`:''}
@@ -1361,6 +1385,7 @@ let renderedPartGroups=new Set();
    ——有码、中字、无码。它们能同时出现在一个番号上，所以两套 key 分开记，不共用。 */
 let renderedEditionGroups=new Set();
 function collapseMultipartItems(items){
+  if(!appSettings.groupCollapse)return items;
   return items.filter(it=>{
     const key=it.part_group?.key;
     if(!key)return true;
@@ -1369,6 +1394,7 @@ function collapseMultipartItems(items){
   });
 }
 function collapseEditionGroups(items){
+  if(!appSettings.groupCollapse)return items;
   return items.filter(it=>{
     const key=it.edition_group?.key;
     if(!key)return true;
@@ -1823,7 +1849,7 @@ function enterManagementSurface(){
   $('#tiers').style.display='none';$('#tagbar').style.display='none';
   document.body.classList.remove('entity-open','index-open');
 }
-async function openStats(push=true,focusResource=false){
+async function openStats(push=true){
   releaseHoverPreviews();
   if(push)route('/stats');
   const surface=claimSurface('/stats');
@@ -1877,22 +1903,22 @@ async function openStats(push=true,focusResource=false){
       <section class="insightdetail">
         <div id="stats-detail-inventory" role="tabpanel" data-stats-detail="inventory" class="insightdetailbody">
           <div class="insightcopy"><span>库存</span><h2>${totalVideos.toLocaleString()}</h2><b>个视频</b>
-            <p>按真实挂载位置汇总；体积和视频数使用同一份 ledger 快照。</p></div>
+            </div>
           <div class="insightvisual">${locationRows}</div></div>
         <div id="stats-detail-viewing" role="tabpanel" data-stats-detail="viewing" class="insightdetailbody" hidden>
           <div class="insightcopy"><span>观看</span><h2>${cs.played.toLocaleString()}</h2><b>个作品有播放记录</b>
-            <p>累计 ${hrs(cs.play_seconds)}；馆藏播放与关注页直接在线播放都计入，不要求先保存。</p></div>
+            <p>累计 ${hrs(cs.play_seconds)}</p></div>
           <div class="insightfacts">${kv('馆藏观看',cs.library_played.toLocaleString())}${kv('在线直接观看',cs.online_played.toLocaleString())}
             ${kv('高潮计数',cs.o_total.toLocaleString())}${kv('快进扫过',cs.skimmed.toLocaleString())}
             ${kv('明确不喜欢',cs.dislike.toLocaleString())}${kv('看过了',cs.seen.toLocaleString())}${kv('回收站',cs.trash.toLocaleString())}</div></div>
         <div id="stats-detail-coverage" role="tabpanel" data-stats-detail="coverage" class="insightdetailbody" hidden>
           <div class="insightcopy"><span>内容标签覆盖</span><h2>${coverage}%</h2><b>${d.tag_cov.toLocaleString()} / ${a.videos.toLocaleString()}</b>
-            <p>归属与加工分别保留真实分母，不用装饰性进度替代缺失数据。</p></div>
+            </div>
           <div class="insightvisual">${metric('有创作者',a.creator,a.videos)}${metric('有番号',a.code,a.videos)}
             ${metric('有厂牌',a.studio,a.videos)}${metric('已抽帧',a.thumb,a.videos)}${metric('已探测时长',a.duration,a.videos)}</div></div>
         <div id="stats-detail-storage" role="tabpanel" data-stats-detail="storage" class="insightdetailbody" hidden>
           <div class="insightcopy"><span>使用空间</span><h2>${storage.measured}</h2><b>个卷已取得容量</b>
-            <p>同时统计系统盘、资源盘、115 与 PikPak；离线或未映射的来源明确保留，不伪造为 0。</p></div>
+            </div>
           <div class="insightvisual insightstorage">${storageTable}</div></div>
       </section>
       <section class="insightpanel">
@@ -1905,8 +1931,6 @@ async function openStats(push=true,focusResource=false){
           <div id="stats-panel-recent" role="tabpanel" data-stats-panel="recent" hidden>${recentTable}</div>
           <div id="stats-panel-sources" role="tabpanel" data-stats-panel="sources" hidden>${sourceTable}</div></div>
       </section>
-      ${linkManagerMarkup()}
-      ${resourceSyncMarkup()}
     </div>`;
   const statsRoot=$('#stats');
   statsRoot.querySelectorAll('[data-stats-metric]').forEach(button=>button.onclick=()=>{
@@ -1921,10 +1945,7 @@ async function openStats(push=true,focusResource=false){
   });
   $('#stats').querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
     closeStats(); toggleTag(b.dataset.k)});
-  await wireLinkManager();
-  await wireResourceSync();
-  if(focusResource)$('#resource-sync')?.scrollIntoView({block:'start'});
-  else window.scrollTo({top:0,behavior:'smooth'});
+  window.scrollTo({top:0,behavior:'smooth'});
 }
 function showHomeSurfaces(){
   // 两个类都要清：只清 entity-open 会让从索引页回首页时顶栏一直空着，
@@ -1942,23 +1963,32 @@ function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
 function linkManagerMarkup(){
   return `<section class="resourcesync" id="link-manager" aria-labelledby="linkManagerTitle">
     <h2 id="linkManagerTitle">链接管理</h2>
-    <div class="resourcesyncbox"><div class="resourcesyncbody"><h3>外链与实体</h3>
-      <p>资料页上的官网、事务所与社媒链接。逐条访问一遍，找出已经打不开的。</p>
+    <div class="resourcesyncbox" data-geist-fieldset>
+      <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('linkBoxTitle','外链与实体')}
       <div id="linkSummary" class="linksummary"></div></div>
-      <div class="resourcesyncfooter"><p>检查只联网、不改账本；七百多条约需几分钟。</p>
+      <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer>
       <button class="resourceaction" type="button" id="linkCheck">${icon('refresh-cw')}<span>检查死链</span></button></div></div>
     <div id="linkCheckResult" aria-live="polite"></div></section>`;
 }
 async function wireLinkManager(){
   const button=$('#linkCheck'),result=$('#linkCheckResult'),summary=$('#linkSummary');
   if(!button||!result)return;
-  const active=()=>location.pathname==='/stats'&&!$('#stats').hidden&&document.body.contains(result);
-  const KINDS={official:'官网 · 事务所',social:'社媒',catalog:'资料库',source_reference:'来源记录'};
+  const active=()=>location.pathname==='/data-cleanup'&&!$('#stats').hidden&&document.body.contains(result);
+  /* `官网 · 事务所` 里的间隔点会和「按类型」那行的分隔点撞在一起，读出来是
+     「社媒 373 · 官网 · 事务所 224」——分不清哪个数字属于哪一类。 */
+  const KINDS={official:'官网/事务所',social:'社媒',catalog:'资料库',source_reference:'来源记录'};
   try{
     const info=await api('/api/links');
-    summary.innerHTML=`<div class="resourcecache"><div><span>链接</span><b>${info.total.toLocaleString()}</b><small>分布在 ${info.entities.toLocaleString()} 个实体上</small></div>
-      <div><span>按类型</span><b>${Object.entries(info.by_kind||{}).map(([k,n])=>`${KINDS[k]||k} ${n}`).join(' · ')||'—'}</b>
-      <small>最多的站点：${(info.top_hosts||[]).slice(0,3).map(([h,n])=>`${esc(h)} ${n}`).join(' · ')||'—'}</small></div></div>`;
+    /* 每一类各占一格。挤成一行时标签和数字之间只剩间隔点，数字归谁全靠猜。 */
+    const stat=(label,value,note='')=>`<div><span>${esc(label)}</span><b>${value}</b>${
+      note?`<small>${note}</small>`:''}</div>`;
+    const kinds=Object.entries(info.by_kind||{})
+      .map(([kind,count])=>stat(KINDS[kind]||kind,Number(count).toLocaleString())).join('');
+    const hosts=(info.top_hosts||[]).slice(0,3).map(([host,count])=>`${esc(host)} ${count}`).join(' · ');
+    summary.innerHTML=`<div class="linkstats">
+      ${stat('链接',info.total.toLocaleString(),`分布在 ${info.entities.toLocaleString()} 个实体上`)}
+      ${kinds}</div>
+      ${hosts?`<div class="linkhosts"><span>最多的站点</span><b>${hosts}</b></div>`:''}`;
   }catch(error){summary.innerHTML=noteHtml(error.message,{variant:'error',label:'读取失败'})}
 
   const row=item=>`<tr><td>${esc(item.entity)}</td><td>${esc(KINDS[item.link_kind]||item.link_kind)}</td>
@@ -2011,16 +2041,17 @@ async function wireLinkManager(){
 function resourceSyncMarkup(){
   return `<section class="resourcesync" id="resource-sync" aria-labelledby="resourceSyncTitle">
     <h2 id="resourceSyncTitle">资源同步</h2>
-    <div class="resourcesyncbox"><div class="resourcesyncbody"><h3>网盘与账本</h3>
-      <p>核对已挂载网盘与账本。网盘上已删除的条目先进入回收站；只清理没有在用的预览与播放缓存。</p></div>
-      <div class="resourcesyncfooter"><p>离线来源会整库跳过。候选 CSV、来源证据、女优头像和厂牌 Logo 不会删除。</p>
+    <div class="resourcesyncbox" data-geist-fieldset>
+      <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('resourceBoxTitle','网盘与账本')}
+      <p>网盘上已删除的条目进入回收站；只清理没有在用的预览与播放缓存。</p></div>
+      <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer>
       <button class="resourceaction" type="button" id="resourceScan">${icon('refresh-cw')}<span>扫描差异</span></button></div></div>
     <div id="resourceSyncResult" aria-live="polite"></div></section>`;
 }
 async function wireResourceSync(){
   const scan=$('#resourceScan'),result=$('#resourceSyncResult');
   if(!scan||!result)return;
-  const active=()=>location.pathname==='/stats'&&!$('#stats').hidden&&document.body.contains(result);
+  const active=()=>location.pathname==='/data-cleanup'&&!$('#stats').hidden&&document.body.contains(result);
   const setBusy=(busy,done=false)=>{
     setActionBusy(scan,busy);
     scan.innerHTML=`${icon('refresh-cw')}<span>${busy?'扫描中':done?'重新扫描':'扫描差异'}</span>`;
@@ -2034,8 +2065,8 @@ async function wireResourceSync(){
       <strong>${source.online?source.missing.toLocaleString():'—'}</strong>
       <small>${source.online?`项已从网盘删除 · 已核对 ${source.checked.toLocaleString()} 项${source.unreadable?` · ${source.unreadable.toLocaleString()} 项暂时无法读取`:''}`:`账本有 ${source.total.toLocaleString()} 项`}</small></article>`).join('')}</div>
       <div class="resourcecache"><div><span>孤立缓存</span><b>${cache.files.toLocaleString()}</b><small>${fmtSize(cache.bytes||0)}</small></div>
-      <div><span>待同步</span><b>${Number(payload.missing||0).toLocaleString()}</b><small>项；应用后进入回收站</small></div></div>
-      <div class="resourceapplyrow">${hasChanges?`<p>确认后才会更改账本；操作可从回收站恢复。</p><button class="resourceaction resourcedanger" type="button" id="resourceApply">同步并清理</button>`:
+      <div><span>待同步</span><b>${Number(payload.missing||0).toLocaleString()} 项</b></div></div>
+      <div class="resourceapplyrow">${hasChanges?`<button class="resourceaction resourcedanger" type="button" id="resourceApply">同步并清理</button>`:
         '<p class="resourcesyncok">账本与已挂载来源一致，没有孤立缓存。</p>'}</div></div>`;
     $('#resourceApply')?.addEventListener('click',async event=>{
       const button=event.currentTarget;
@@ -2072,13 +2103,16 @@ async function wireResourceSync(){
   scan.onclick=()=>followScan(null);
   try{
     const existing=await api('/api/resource-sync/scan',{method:'POST',body:JSON.stringify({background:true,status_only:true})});
-    if(existing.status!=='idle')void followScan(existing);
+    /* 只跟进还在跑的那次。上一轮的完成结果是那一刻的快照，进页面就铺开会被当成
+       现在的账本状态——数字早就不准了，而页面上没有任何东西说它是旧的。 */
+    if(existing.status==='running')void followScan(existing);
   }catch(_error){}
 }
+/* 旧直达 URL 仍然可用，落点跟着面板一起搬到数据管理。 */
 async function openResourceSync(push=true){
-  if(push)route('/stats#resource-sync');
-  else if(location.pathname==='/resource-sync')route('/stats#resource-sync',true);
-  await openStats(false,true);
+  if(push||location.pathname==='/resource-sync')route('/data-cleanup#resource-sync',!push);
+  await openDataCleanup(false);
+  $('#resource-sync')?.scrollIntoView({block:'start'});
 }
 
 /* 口味仪表按窗口持久缓存：刷新页面也先显示上次结果。24 小时内不重读；
@@ -2127,7 +2161,7 @@ function openTasteSignal(kind,name){
 }
 function renderTaste(d){
   const s=d.summary||{},coverage=d.coverage||{},rank=d.rankings||{},storage=d.storage||{};
-  const summary=(label,value,sub)=>`<div class="tastesummary"><span>${label}</span><b>${value}</b><small>${sub}</small></div>`;
+  const summary=(label,value,sub='')=>`<div class="tastesummary"><span>${label}</span><b>${value}</b>${sub?`<small>${sub}</small>`:''}</div>`;
   const coverageMetric=(label,value,sub,done,total)=>`<div class="tastecovermetric"><span>${label}</span><b>${value}</b><small>${sub}</small>${progressHtml(`${label}：${done} / ${total}`,done,total)}</div>`;
   const sourceRows=(d.sources||[]).map(source=>`<div class="tastesource">
     <span class="tastebrowser">${icon(source.browser==='browserexport'?'upload':'database')}</span>
@@ -2158,21 +2192,20 @@ function renderTaste(d){
     <div class="tastesummaries" data-taste-summary="browser"${tasteEvidence==='browser'?'':' hidden'}>
       ${summary('浏览记录',Number(s.history_visits||0).toLocaleString(),`${s.history_sources||0} 个数据源 · ${tasteDate(s.range_start)}—${tasteDate(s.range_end)}`)}
       ${summary('口味维度',categoryRows.length.toLocaleString(),categoryRows[0]?.name||'尚无主维度')}
-      ${summary('浏览候选',gapRows.length.toLocaleString(),'只作待复核证据')}
+      ${summary('浏览候选',gapRows.length.toLocaleString())}
       ${summary('私有导出',Number(storage.exports||0).toLocaleString(),fmtSize(storage.bytes||0))}</div>
     <div class="tastesummaries" data-taste-summary="peach"${tasteEvidence==='peach'?'':' hidden'}>
       ${summary('Peach 看过',Number(s.peach_items||0).toLocaleString(),tasteHours(s.peach_seconds||0))}
-      ${summary('喜欢',Number(s.liked||0).toLocaleString(),'明确正向反馈')}
-      ${summary('不合口味',Number(s.disliked||0).toLocaleString(),'只归于具体项目')}
-      ${summary('有标签',Number(coverage.tagged||0).toLocaleString(),`${coverage.untagged||0} 项待补`)}</div>
+      ${summary('喜欢',Number(s.liked||0).toLocaleString())}
+      ${summary('不合口味',Number(s.disliked||0).toLocaleString())}
+      ${summary('有标签',Number(coverage.tagged||0).toLocaleString())}</div>
     <section class="tastehero" data-taste-evidence-panel="browser"${tasteEvidence==='browser'?'':' hidden'}>
       <div class="insightcopy"><span>浏览器画像</span><h2>${Number(s.history_visits||0).toLocaleString()}</h2><b>条聚合访问证据</b>
-        <p>浏览器记录是当前分析主体；页面只展示聚合结果，不展示原始 URL、标题或搜索内容。</p>
         <small>${d.updated_at?`更新于 ${tasteDate(d.updated_at)}`:'尚未采集浏览记录'}</small></div>
       <div class="tastebars">${categoryBars}</div></section>
     <section class="tastehero" data-taste-evidence-panel="peach"${tasteEvidence==='peach'?'':' hidden'}>
       <div class="insightcopy"><span>Peach 观看</span><h2>${Number(s.peach_items||0).toLocaleString()}</h2><b>个作品有内部行为证据</b>
-        <p>播放、评分与明确反馈保持独立，不反向代表全部浏览口味。</p></div>
+        </div>
       <div class="insightvisual">
         ${coverageMetric('有标签',Number(coverage.tagged||0).toLocaleString(),`${coverage.untagged||0} 项待补`,coverage.tagged||0,(coverage.tagged||0)+(coverage.untagged||0))}
         ${coverageMetric('有身份',Number(coverage.identified||0).toLocaleString(),`${coverage.unidentified||0} 项待补`,coverage.identified||0,(coverage.identified||0)+(coverage.unidentified||0))}
@@ -2192,10 +2225,8 @@ function renderTaste(d){
         ${rankPanel('peach','creators',rank.peach_creators||[],'creator','暂无创作者证据','creator')}
         ${rankPanel('peach','performers',rank.peach_performers||rank.performers||[],'performer','暂无女优证据','performer')}
       </div></section>
-    <div data-taste-evidence-panel="peach"${tasteEvidence==='peach'?'':' hidden'}>${noteHtml('“不合口味”只记录到具体项目与理由，不自动给标签降权。',{className:'tastefootnote tastenegative'})}</div>
-    <section class="insightpanel tastesources"><header><div><h3>数据源</h3><p>支持 macOS / Windows 的 Zen、Safari、Firefox、Chrome；这里列出已经采集的设备。</p></div></header>
+    <section class="insightpanel tastesources"><header><div><h3>数据源</h3></div></header>
       <div class="insightpanelbody"><div>${sourceRows||emptyStateHtml('database','还没有数据源','导入或读取浏览记录后，这里会列出已采集设备。')}</div></div></section>
-    ${noteHtml('原始 URL、标题与搜索内容不会显示在页面，也不会写入 ledger；所有画像均为候选。',{className:'tastefootnote tasteprivacy'})}
   </div>`;
   const root=$('#stats'),stateEl=root.querySelector('[data-taste-state]'),file=root.querySelector('[data-taste-file]');
   root.querySelector('[data-taste-window]').value=d.window||tasteWindow;
@@ -2346,33 +2377,45 @@ async function openDataCleanup(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/data-cleanup');
   const surface=claimSurface('/data-cleanup');
-  showManagementBody({placeholder:`<div class="cleanuploading">${loadingDotsHtml('正在读取数据清理状态…')}</div>`});
+  showManagementBody({placeholder:`<div class="cleanuploading">${loadingDotsHtml('正在读取数据管理状态…')}</div>`});
   const [junk,duplicates,sources]=await Promise.all([
     api('/api/ads?limit=1'),api('/api/duplicates?limit=1'),api('/api/sources'),
   ]);
   if(!surfaceCurrent(surface))return;
-  paintManageLede('垃圾文件、重复文件和空文件夹集中处理');
+  paintManageLede();
   const sourceState=(sources.sources||[]).filter(source=>['local','115','pikpak'].includes(source.location)).map(source=>
     `<span class="cleanupsource" data-online="${source.online?'true':'false'}">${esc(LOC[source.location]||source.location)} · ${source.online?'在线':'离线'}</span>`).join('');
   $('#stats').innerHTML=`<div class="cleanupgrid">
-    <fieldset class="cleanupfieldset" data-geist-fieldset><legend>垃圾文件</legend>
-      <div class="geist-fieldset-content"><strong>${Number(junk.pending_total||0).toLocaleString()} 个待判断</strong>
-        <p>查看推广文件、网址快捷方式和其它物理资源候选；确认后先进入回收站。</p></div>
+    <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupJunkTitle">
+      <div class="geist-fieldset-content">${fieldsetTitle('cleanupJunkTitle','垃圾文件')}
+        <strong>${Number(junk.pending_total||0).toLocaleString()} 个待判断</strong></div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-open="junk">查看垃圾文件</button></footer>
-    </fieldset>
-    <fieldset class="cleanupfieldset" data-geist-fieldset><legend>重复文件</legend>
-      <div class="geist-fieldset-content"><strong>${Number(duplicates.total||0).toLocaleString()} 组 · ${Number(duplicates.files||0).toLocaleString()} 个文件</strong>
-        <p>按番号、分卷与时长证据分组；批量操作仍只把文件移入回收站。</p></div>
+    </section>
+    <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupDupTitle">
+      <div class="geist-fieldset-content">${fieldsetTitle('cleanupDupTitle','重复文件')}
+        <strong>${Number(duplicates.total||0).toLocaleString()} 组 · ${Number(duplicates.files||0).toLocaleString()} 个文件</strong></div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-open="duplicates">查看重复文件</button></footer>
-    </fieldset>
-    <fieldset class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset><legend>空文件夹</legend>
-      <div class="geist-fieldset-content"><p>从已挂载的资源根开始自底向上删除空目录；来源根本身不会删除。</p>
+    </section>
+    <section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset aria-labelledby="cleanupEmptyTitle">
+      <div class="geist-fieldset-content">${fieldsetTitle('cleanupEmptyTitle','空文件夹')}
+        <p>不会删除来源根目录。</p>
         <div class="cleanupsources">${sourceState}</div><p class="cleanupstate" aria-live="polite"></p></div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" class="danger" data-cleanup-empty>${icon('trash')}<span>删除空文件夹</span></button></footer>
-    </fieldset>
-  </div>`;
+    </section>
+    ${DATA_MANAGEMENT_ENTRIES.map(([section,title,label])=>`
+    <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanup-${section}-title">
+      <div class="geist-fieldset-content">${fieldsetTitle(`cleanup-${section}-title`,title)}
+        <strong data-cleanup-count="${section}">—</strong></div>
+      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-go="${section}">${esc(label)}</button></footer>
+    </section>`).join('')}
+  </div>
+  ${linkManagerMarkup()}
+  ${resourceSyncMarkup()}`;
   $('#stats').querySelector('[data-cleanup-open="junk"]').onclick=()=>openManage('ads');
   $('#stats').querySelector('[data-cleanup-open="duplicates"]').onclick=()=>openDuplicates();
+  $('#stats').querySelectorAll('[data-cleanup-go]').forEach(button=>
+    button.onclick=()=>openManage(button.dataset.cleanupGo));
+  paintDataManagementCounts();
   const emptyButton=$('#stats').querySelector('[data-cleanup-empty]');
   emptyButton.onclick=async()=>{
     if(!confirm('删除所有已挂载资源来源中的空文件夹？来源根目录不会删除。'))return;
@@ -2387,6 +2430,38 @@ async function openDataCleanup(push=true){
     }catch(error){status.textContent=error.message||'空文件夹清理失败';actionFailure('空文件夹清理',error)}
     finally{setActionBusy(emptyButton,false);emptyButton.innerHTML=original}
   };
+  await wireLinkManager();
+  await wireResourceSync();
+}
+
+/* 数据管理是「库里已经有的东西怎么收拾」的唯一入口：广告、重复、空目录，
+   加上复核队列、回收站和高清版。它们此前散在管理菜单和统计页两处，
+   统计页因此还挂着两块跟统计无关的面板。 */
+const DATA_MANAGEMENT_ENTRIES=[
+  ['review','人工复核','查看候选'],
+  ['trash','回收站','查看回收站'],
+  ['quality','高清版','查看高清版'],
+];
+/* 计数各自失败各自算：复核接口出错不该把回收站那张卡也变成「—」。 */
+async function paintDataManagementCounts(){
+  const write=(section,text)=>{
+    const el=$('#stats')?.querySelector(`[data-cleanup-count="${section}"]`);
+    if(el)el.textContent=text;
+  };
+  const fill=async(section,load)=>{
+    try{write(section,await load())}catch(_error){write(section,'读取失败')}
+  };
+  await Promise.all([
+    fill('review',async()=>{
+      const data=await api('/api/review?counts=1');
+      const total=Object.values(data.counts||{}).reduce((sum,value)=>sum+(Number(value)||0),0);
+      return `${total.toLocaleString()} 条待复核`;
+    }),
+    fill('trash',async()=>
+      `${Number((await api('/api/items?state=trash&limit=1')).total||0).toLocaleString()} 项在回收站`),
+    fill('quality',async()=>
+      `${Number((await api('/api/quality-goals?limit=1')).total||0).toLocaleString()} 个待升级`),
+  ]);
 }
 
 let dupData=null;
@@ -2732,6 +2807,17 @@ const followTagType=(item,tag)=>item.tag_types&&item.tag_types[tag]||'unknown';
 const followCardTags=item=>item.tags||[];
 const followTagChip=(item,tag,kind='span')=>`<${kind} class="tg r34-${
   esc(followTagType(item,tag))}" data-follow-tag="${esc(tag)}">${esc(tagLabel(tag))}</${kind}>`;
+/* 详情标签按 rule34.xxx 帖子页 `#tag-sidebar` 的类型顺序分组，组内按名升序——
+   证据见 docs/reference-snapshots/rule34-follow-tags-and-collections.md（2026-09-01
+   两个帖子页实测，顺序一致，缺的类型直接跳过不占位）。
+   来源没记类型的排最后并保持中性色：不按词形猜类型是关注标签的既有门槛。 */
+const FOLLOW_TAG_ORDER=['copyright','character','artist','general','metadata'];
+function followDetailTags(item){
+  const tags=item.detail_tags||item.tags||[];
+  const rank=tag=>{const at=FOLLOW_TAG_ORDER.indexOf(followTagType(item,tag));
+    return at<0?FOLLOW_TAG_ORDER.length:at};
+  return [...tags].sort((a,b)=>rank(a)-rank(b)||tagLabel(a).localeCompare(tagLabel(b)));
+}
 
 function followBadges(group){
   const badges=[];
@@ -2927,8 +3013,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     <div class="followimagedots" role="group" aria-label="${imageMedia.length} 张图片">${imageMedia.map((image,index)=>`<button data-follow-image-item="${image.index}" aria-current="${index===imagePosition}" aria-label="第 ${index+1} 张，共 ${imageMedia.length} 张" title="第 ${index+1} 张"></button>`).join('')}</div>`:'';
   const badges=followBadges({primary:item,variants:[],duplicates:[],has_wip:item.variant_kind==='wip'});
   // 卡片只消费 general 内容投影；详情保留来源记录的全部类型，并按类型着色。
-  const tags=(item.detail_tags||item.tags||[])
-    .map(tag=>followTagChip(item,tag,'button')).join('');
+  const tags=followDetailTags(item).map(tag=>followTagChip(item,tag,'button')).join('');
   const author=followAuthorName(authorSources)||item.author||item.source_label||'作者未取得';
   const postedBy=item.author&&foldName(item.author)!==foldName(author)?item.author:'';
   const mediaIssue=followMediaIssue(item);
@@ -4868,20 +4953,22 @@ const EDGE_ICONS=[
   ['immerse','沉浸模式','play'],
   ['manage','管理','database'],
 ];
-/* 统计、数据清理、回收站、人工复核默认都收在「管理」下，不主动占用顶层空间；
-   用户仍可在设置里把某个具体页面加到顶层。每个页面都有可直接打开的 URL。
-   顺序按做事顺序分成两段：先是库里已有的东西——看现状、复核新进来的候选、
-   清广告与重复、落到回收站；再是要往外拿的——关注和高清版都是「还想要什么」，
-   原先把它夹在高清版和回收站中间，两边都不挨着。 */
+/* 每个管理页的身份（标题、图标、可直达的 URL）。用户仍可在设置里把其中任何
+   一个加到顶层侧栏，所以这里保留全部页面，不因为它进了数据管理就删掉。 */
 const MANAGE_SECTIONS=[
   ['stats','统计','chart'],
   ['taste','口味','heart'],
   ['review','人工复核','square-check-big'],
-  ['cleanup','数据清理','hard-drive'],
+  ['cleanup','数据管理','hard-drive'],
   ['trash','回收站','trash'],
   ['follow','关注','rss'],
   ['quality','高清版','sparkles'],
 ];
+/* 管理菜单只留四项。人工复核、回收站、高清版都是「收拾库里已有的东西」，
+   和垃圾文件、重复文件、空文件夹是同一件事的不同步骤，统一从数据管理进；
+   统计页也因此不再挂链接管理和资源同步这两块跟统计无关的面板。 */
+const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow'];
+const manageMenuSections=()=>MANAGE_SECTIONS.filter(([key])=>MANAGE_MENU_SECTIONS.includes(key));
 const OPTIONAL_EDGE_ICONS=MANAGE_SECTIONS.map(([key,label,ic])=>
   key==='follow'?['follow-manage','关注管理',ic]
     :key==='cleanup'?['data-cleanup',label,ic]:[key,label,ic]);
@@ -5060,7 +5147,7 @@ function buildManageBar(){
   bar.classList.remove('is-open');
   bar.innerHTML=`<button class="managebar-toggle" type="button" aria-expanded="false" aria-controls="managebar-menu">
       <span class="managebar-current">${icon(entry[2])}<span>管理 · ${entry[1]}</span></span>${icon('chevron-down')}
-    </button><div class="managebar-menu" id="managebar-menu">${MANAGE_SECTIONS.map(([k,label,ic])=>
+    </button><div class="managebar-menu" id="managebar-menu">${manageMenuSections().map(([k,label,ic])=>
       `<button data-manage="${k}" aria-pressed="${k===current}">${icon(ic)}<span>${label}</span></button>`).join('')}</div>`;
   const toggle=bar.querySelector('.managebar-toggle');
   toggle.onclick=()=>{const open=bar.classList.toggle('is-open');toggle.setAttribute('aria-expanded',String(open))};
@@ -5093,7 +5180,7 @@ function openManage(section='stats'){
   if(section==='taste'){openTaste();return}
   if(section==='review'){openReview();return}
   if(section==='cleanup'){openDataCleanup();return}
-  // 旧直达 URL 继续保留；它们共享同一个「数据清理」导航身份。
+  // 旧直达 URL 继续保留；它们共享同一个「数据管理」导航身份。
   if(section==='dupes'){openDuplicates();return}
   if(section==='quality'){openQualityGoals();return}
   if(section==='follow'){openFollowManage();return}
@@ -5530,13 +5617,22 @@ async function openPlaylist(playlistId,itemId=null,push=true){
   if(push)route(`/playlists/${playlistId}/${chosen}`);
   api('/api/playlist',{method:'POST',body:JSON.stringify({action:'progress',id:playlistId,asset_id:chosen})}).catch(()=>{});
 }
+/* 关掉详情要不要重新装一遍列表，判据是「退回去有没有东西可看」。
+   按 `#grid` 有没有子节点判会误判：直接打开 `/parts/28125/28125` 这类深链时，
+   网格里躺着一个还没被替换掉的加载骨架，它也是子节点。于是关掉播放器后
+   `route('/')` 只改了地址，列表永远停在那张骨架上——首页看起来打不开了。
+   卡片一定带 `data-id`（Mix 带 `data-mix-seed`），骨架没有。 */
+function hasReturnSurface(){
+  return !!$('#grid').querySelector('[data-id],[data-mix-seed]')
+    ||!$('#index').hidden||!$('#stats').hidden;
+}
 async function openItem(id,push=true,queueContext=null,anchor=null){
   releaseHoverPreviews();
   const origin=anchor?.isConnected?anchor:(detailOriginAnchor?.isConnected?detailOriginAnchor:null);
   const above=anchor?.isConnected
     ? anchor.getBoundingClientRect().top+anchor.getBoundingClientRect().height/2>window.innerHeight/2
     : detailOriginAbove;
-  const returnSurfaceReady=$('#grid').children.length>0||!$('#index').hidden||!$('#stats').hidden;
+  const returnSurfaceReady=hasReturnSurface();
   const needsReturnRestore=detailReturnNeedsRestore||(!push&&!returnSurfaceReady);
   const returnBars=barsContext.type==='item'?detailReturnBarsContext:cloneBarsContext(barsContext);
   if(push)detailReturnPath=location.pathname+location.search;

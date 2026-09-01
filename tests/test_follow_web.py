@@ -2102,8 +2102,27 @@ class FollowWebSourceTests(unittest.TestCase):
         # 回执带一个具名的后续动作：光摆数字会让人去点「…条详情」那半句，
         # 文案里不再留悬空的「详情」，去看更新作为显式按钮接住这个意图。
         self.assertPageContains("action:{label:'去看更新',run:()=>openFollow()}")
-        self.assertPageContains("if(action)item.querySelector('.tact')")
+        self.assertPageContains("if(act)act.onclick=()=>{setActionBusy(act);action.run()};")
         self.assertPageLacks("条详情")
+
+    def test_detail_tags_follow_rule34s_own_category_order(self):
+        """详情标签按 rule34.xxx 帖子页 `#tag-sidebar` 的类型顺序分组，不按字母。
+
+        2026-09-01 实测两个帖子页（18622796 / 18622794），`li.tag-type-*` 的出现
+        顺序都是 copyright → character → artist → general → metadata，组内按名升序；
+        缺的类型直接跳过不占位。证据见
+        docs/reference-snapshots/rule34-follow-tags-and-collections.md。
+        """
+        self.assertPageContains(
+            "const FOLLOW_TAG_ORDER=['copyright','character','artist','general','metadata'];")
+        self.assertPageContains("function followDetailTags(item)")
+        self.assertPageContains("return at<0?FOLLOW_TAG_ORDER.length:at};")
+        self.assertPageContains(
+            "return [...tags].sort((a,b)=>rank(a)-rank(b)||tagLabel(a).localeCompare(tagLabel(b)));")
+        self.assertPageContains(
+            "const tags=followDetailTags(item).map(tag=>followTagChip(item,tag,'button')).join('');")
+        # 来源没记类型的排最后、保持中性色：不按词形猜类型是关注标签的既有门槛。
+        self.assertPageContains(".followdetailtags .r34-unknown{--r34-tag:var(--muted)}")
 
     def test_follow_bulk_actions_are_buttons_not_inline_links(self):
         """批量标记已看／全部忽略是 2292 条级别的操作，不能长得像行内文字链接。

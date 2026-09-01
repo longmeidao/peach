@@ -360,6 +360,40 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(later){e.stopPropagation();setActionBusy(later)")
         self.assertPageContains("if(kind==='o')await post('o-undo')")
 
+    def test_undo_reports_back_on_the_same_toast_instead_of_swapping_two(self):
+        """撤销原先是「关掉回执 + 另发一条已撤销」。
+
+        底部对齐的栈里一进一出，剩下那条会整块跳一格；撤销请求快过退场动画时
+        两条还会同时在场。结果写回同一条 toast 就没有这次进出。
+        """
+        self.assertPageContains("item.replaceMessage=(body,{warn:alert=false,timeout:next=4000}={})")
+        self.assertPageContains("try{await undo();item.replaceMessage('已撤销')}")
+        self.assertPageContains("if(act)act.onclick=()=>{setActionBusy(act);action.run()};")
+        self.assertPageLacks("try{await undo();toast('已撤销')}")
+        # 退场先把高度写死再过渡到 0；直接 remove() 会让上面那条瞬间落下来。
+        self.assertPageContains("item.style.height=`${item.offsetHeight}px`;item.getBoundingClientRect();")
+        self.assertPageContains(".toast.leaving{height:0!important;margin-top:0;padding-block:0;")
+        # 行距改成每条自己的上外边距：gap 属于容器，收不进这次过渡。
+        self.assertPageContains(".toast{pointer-events:auto;box-sizing:border-box;display:flex;align-items:center;")
+        self.assertPageLacks(".toasts{position:fixed;right:16px;bottom:22px;z-index:var(--layer-popover);display:grid;gap:8px;")
+
+    def test_scrollbar_gutter_is_reserved_so_overlays_do_not_shift_the_page(self):
+        """设置面板给 body 加 overflow:hidden，滚动条一消失整页就横向跳一次。"""
+        self.assertPageContains("scrollbar-gutter:stable}")
+        self.assertPageContains("body.settings-open{overflow:hidden}")
+
+    def test_closing_a_deep_linked_player_reloads_the_home_feed(self):
+        """直接打开 /parts/28125/28125 后关闭播放器，首页停在骨架上再也不动。
+
+        判据原先是「`#grid` 有没有子节点」，而深链启动时网格里正躺着一个还没被
+        替换掉的加载骨架——它也是子节点，于是「退回去有东西可看」被判成真，
+        `route('/')` 只改了地址栏。卡片一定带 data-id，骨架没有。
+        """
+        self.assertPageContains("function hasReturnSurface()")
+        self.assertPageContains("return !!$('#grid').querySelector('[data-id],[data-mix-seed]')")
+        self.assertPageContains("const returnSurfaceReady=hasReturnSurface();")
+        self.assertPageLacks("const returnSurfaceReady=$('#grid').children.length>0")
+
     def test_detail_like_reason_is_an_icon_disclosure_without_idle_explanation(self):
         self.assertPageContains('id="preferenceToggle" aria-label="喜爱理由"')
         self.assertPageContains('id="preferencePanel" hidden')
@@ -934,7 +968,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains("['manage','管理','database']")
         self.assertPageContains("const MANAGE_SECTIONS=[")
-        for section in ("'stats','统计'", "'cleanup','数据清理'",
+        for section in ("'stats','统计'", "'cleanup','数据管理'",
                         "'quality','高清版'", "'trash','回收站'", "'review','人工复核'",
                         "'taste','口味'"):
             self.assertPageContains(section)
@@ -953,18 +987,56 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertNotIn(gone, edge, f"{gone} 应该已经收进管理，不再是顶层入口")
         self.assertIn("'manage'", edge)
 
-    def test_manage_sections_follow_the_order_work_actually_happens_in(self):
-        """导航条的顺序就是做事顺序：先收拾库里已有的，再看要往外拿什么。
+    def test_manage_menu_only_offers_pages_that_are_not_inside_data_management(self):
+        """人工复核、回收站、高清版都从数据管理进，管理菜单里不再各占一行。
 
-        关注（原「追更来源」）曾夹在高清版和回收站中间，人工复核掉到最末尾，
-        两者都不挨着自己那一组。
+        它们和垃圾文件、重复文件、空文件夹是同一件事的不同步骤。身份注册表仍然
+        保留全部页面：URL 要能直达，用户也仍可把其中任何一个钉到顶层侧栏。
         """
         sections = self.page.split("const MANAGE_SECTIONS=[", 1)[1].split("];", 1)[0]
         order = [line.split("'")[1] for line in sections.splitlines() if line.strip().startswith("['")]
         self.assertEqual(
             order, ["stats", "taste", "review", "cleanup", "trash", "follow", "quality"],
-            "管理导航的顺序是语义契约：现状 → 复核 → 清理 → 回收站 → 往外拿",
+            "身份注册表保留全部管理页，删掉哪一个就等于让它的标题和直达 URL 一起失效",
         )
+        self.assertPageContains(
+            "const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow'];")
+        self.assertPageContains("manageMenuSections().map(([k,label,ic])=>")
+
+    def test_data_management_is_the_single_entry_for_tidying_the_library(self):
+        """复核、回收站、高清版和链接管理、资源同步都归到数据管理这一页。
+
+        资源同步和链接管理此前挂在统计页上——它们改的是账本和外部现实的对齐，
+        跟「库里现在有多少」不是一件事。
+        """
+        self.assertPageContains("const DATA_MANAGEMENT_ENTRIES=[")
+        for entry in ("['review','人工复核'", "['trash','回收站'", "['quality','高清版'"):
+            self.assertPageContains(entry)
+        self.assertPageContains("button.onclick=()=>openManage(button.dataset.cleanupGo)")
+        self.assertPageContains("async function paintDataManagementCounts()")
+        self.assertPageContains("api('/api/review?counts=1')")
+        # 三个计数各自失败各自算：一个接口出错不该把另外两张卡也变成「—」。
+        self.assertPageContains("catch(_error){write(section,'读取失败')}")
+        cleanup = self.page.split("async function openDataCleanup(", 1)[1].split("let dupData=null;", 1)[0]
+        self.assertIn("${linkManagerMarkup()}", cleanup)
+        self.assertIn("${resourceSyncMarkup()}", cleanup)
+        stats = self.page.split("async function openStats(", 1)[1].split("function showHomeSurfaces(", 1)[0]
+        self.assertNotIn("linkManagerMarkup()", stats,
+                         "统计页只讲库里现在有多少，不该再挂对齐外部现实的面板")
+        self.assertNotIn("resourceSyncMarkup()", stats)
+
+    def test_link_totals_get_one_cell_each_instead_of_one_crammed_line(self):
+        """「社媒 373 · 官网 · 事务所 224」读不出哪个数字属于哪一类。
+
+        类型名自己带间隔点（`官网 · 事务所`），和拼接用的间隔点撞在一起；挤成
+        一行后标签与数字之间也只剩那个点。每类各占一格，类型名改用斜杠。
+        """
+        self.assertPageContains("official:'官网/事务所'")
+        self.assertPageLacks("official:'官网 · 事务所'")
+        self.assertPageContains("const stat=(label,value,note='')=>")
+        self.assertPageContains(".map(([kind,count])=>stat(KINDS[kind]||kind,Number(count).toLocaleString())).join('');")
+        self.assertPageContains(".linkstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))")
+        self.assertPageContains('<div class="linkhosts"><span>最多的站点</span>')
 
     def test_taste_page_combines_private_exports_and_peach_behavior(self):
         self.assertPageContains("if(path==='/taste'){await openTaste(false);return}")
@@ -972,9 +1044,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("/api/taste/import")
         self.assertPageContains("/api/taste/refresh")
         self.assertPageContains("/api/taste/source")
-        self.assertPageContains("原始 URL、标题与搜索内容不会显示在页面")
-        self.assertPageContains("noteHtml('“不合口味”只记录到具体项目与理由，不自动给标签降权。',{className:'tastefootnote tastenegative'})")
-        self.assertPageContains("noteHtml('原始 URL、标题与搜索内容不会显示在页面，也不会写入 ledger；所有画像均为候选。',{className:'tastefootnote tasteprivacy'})")
+        # 口径与免责说明整体清退：这些句子解释的是数字怎么算出来的，
+        # 而这个库只有一个用户，他本人就是定这套口径的人。
+        self.assertPageLacks("原始 URL、标题与搜索内容不会显示在页面")
+        self.assertPageLacks("浏览器记录是当前分析主体")
+        self.assertPageLacks("按真实挂载位置汇总")
+        self.assertPageLacks("播放、评分与明确反馈保持独立")
+        self.assertPageLacks("不自动给标签降权")
         self.assertPageContains("data-taste-window")
         self.assertPageContains("data-taste-remove")
         self.assertPageContains('role="radiogroup" aria-label="口味证据来源"')
@@ -987,7 +1063,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('data-taste-dimension="${source}:${key}"')
         self.assertPageContains("sourceTabs('browser',[['tags','标签']")
         self.assertPageContains("sourceTabs('peach',[['tags','标签'],['creators','创作者'],['performers','女优']])")
-        self.assertPageContains("不自动给标签降权")
         self.assertPageContains("rank.browser_tags||[]")
         self.assertPageContains("rank.peach_performers||rank.performers||[]")
         self.assertPageContains("visual==='domain'")
@@ -998,7 +1073,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("'hanime1.me':'https://vdownload.hembed.com/image/icon/tab_logo.png")
         self.assertPageContains("'kemono.cr':'https://kemono.cr/assets/favicon-CPB6l7kH.ico'")
         self.assertPageContains("const faviconFallbackUrl=domain=>`https://www.google.com/s2/favicons")
-        self.assertPageContains("支持 macOS / Windows 的 Zen、Safari、Firefox、Chrome")
         self.assertPageLacks("negative_tags")
         self.assertPageContains(".tastehero{margin-bottom:16px}")
         self.assertPageContains(".tasteranks{display:grid;grid-template-columns:repeat(3")
@@ -1438,7 +1512,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_ads_icon_matches_the_lucide_stroke_style(self):
         """图标库里没有表示广告的图形，自绘的感叹号必须和其余图标同风格。"""
         self.assertPageContains('<symbol id="i-alert" viewBox="0 0 24 24">')
-        self.assertPageContains("['cleanup','数据清理','hard-drive']")
+        self.assertPageContains("['cleanup','数据管理','hard-drive']")
 
     def test_pending_delete_is_visible_without_deleting_media(self):
         self.assertPageContains("it.disposal==='trash'?'pending-delete':''")
@@ -2237,15 +2311,27 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("async function openDataCleanup(push=true)")
         self.assertPageContains("route('/data-cleanup')")
         self.assertPageContains("api('/api/ads?limit=1'),api('/api/duplicates?limit=1'),api('/api/sources')")
-        for legend in ("<legend>垃圾文件</legend>", "<legend>重复文件</legend>",
-                       "<legend>空文件夹</legend>"):
-            self.assertPageContains(legend)
-        self.assertPageContains('class="cleanupfieldset" data-geist-fieldset')
+        # 标题是正文区的第一行，不用原生 legend——legend 会在上边框上开个缺口，
+        # 三张卡内容高度不同时那道缺口的位置也跟着不齐。
+        for title in ("fieldsetTitle('cleanupJunkTitle','垃圾文件')",
+                      "fieldsetTitle('cleanupDupTitle','重复文件')",
+                      "fieldsetTitle('cleanupEmptyTitle','空文件夹')"):
+            self.assertPageContains(title)
+        self.assertPageLacks("<legend>垃圾文件</legend>")
+        self.assertPageContains('class="cleanupfieldset" data-geist-fieldset aria-labelledby=')
         self.assertPageContains('class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset')
         self.assertPageContains("api('/api/data-cleanup/empty-folders',{method:'POST',body:'{}'})")
         self.assertPageContains("来源根目录不会删除")
         self.assertPageContains(".cleanupfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px}")
-        self.assertPageContains("min-height:56px;margin:0;padding:12px 12px 12px 20px")
+        # Geist 的 Fieldset 全框只有一条线，在底部操作条上方；标题底下不划线。
+        self.assertPageContains("--fieldset-bar-h:52px;")
+        self.assertPageContains(".geist-fieldset-title{margin:0 0 10px;")
+        self.assertPageLacks(".geist-fieldset-header")
+        self.assertPageContains(".cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;"
+                                "height:var(--fieldset-bar-h);")
+        # 按钮一律靠右；左边有说明时说明推到最左。
+        self.assertPageContains("justify-content:flex-end;gap:8px;")
+        self.assertPageContains(".resourcesyncfooter>p,.resourceapplyrow>p{margin-right:auto}")
         self.assertPageContains("if(path==='/data-cleanup'){await openDataCleanup(false);return}")
 
     def test_duplicate_batch_keeps_one_per_cluster_not_one_per_code(self):
@@ -2545,8 +2631,29 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("function collapseEditionGroups(items){")
         self.assertPageContains("const visible=collapseEditionGroups(collapseMultipartItems(items));")
         self.assertPageContains('${editions.count} 个版本')
+        # 叠层纸边是「这张卡代表不止一条」的说法，分卷和版次都成立；只给分卷的话，
+        # 同样被折叠过的版次卡长得和普通卡一模一样。
+        self.assertPageContains("const stacked=parts||editions;")
+        self.assertPageContains("${stacked?'<div class=\"partstack\">':''}")
+        self.assertPageContains("${stacked?'</div>':''}")
         self.assertPageContains("openEditions(it.edition_group.seed_id,id,true,anchor)")
         self.assertPageContains("if(parts[0]==='editions'", "刷新或前进后退要能回到同一个版次")
+
+    def test_group_collapse_is_a_setting_and_defaults_to_on(self):
+        """合并分卷与版本可以关掉，关掉后同番号的每一卷／每一版各占一张卡。
+
+        折叠是渲染时做的，所以改完必须重取当前列表：不重画的话，之前被跳过的
+        那些卡不会自己冒出来，看上去像开关没生效。
+        """
+        self.assertPageContains("groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};")
+        self.assertPageContains("appSettings.groupCollapse=appSettings.groupCollapse!==false;")
+        self.assertPageContains('<input type="checkbox" id="groupCollapseSetting">')
+        self.assertPageContains("$('#groupCollapseSetting').checked=appSettings.groupCollapse;")
+        self.assertPageContains(
+            "$('#groupCollapseSetting').onchange=e=>{appSettings.groupCollapse=!!e.target.checked;"
+            "saveSettings();reloadCurrentSurface()};")
+        self.assertEqual(self.page.count("if(!appSettings.groupCollapse)return items;"), 2,
+                         "分卷和版次两套折叠都要认这个开关")
 
     def test_both_collapse_sets_are_cleared_together(self):
         """折叠用的集合必须和分卷那套一起清。
@@ -2963,24 +3070,24 @@ class WebUiSourceTests(unittest.TestCase):
         # 在线资产是 URL，没有本地文件可定位。
         self.assertPageContains("it.location==='online'?'':`<div class=\"srctools detailtitletools\">${sourceToolButtons(it.id)}</div>`")
 
-    def test_resource_sync_is_embedded_in_stats_and_keeps_offline_sources_safe(self):
+    def test_resource_sync_lives_in_data_management_and_keeps_offline_sources_safe(self):
         self.assertPageContains("${resourceSyncMarkup()}")
         self.assertPageContains("if(path==='/resource-sync'){await openResourceSync(false);return}")
-        self.assertPageContains("route('/stats#resource-sync',true)")
+        self.assertPageContains("route('/data-cleanup#resource-sync',!push)")
         self.assertPageContains("api('/api/resource-sync/scan',{method:'POST'")
         self.assertPageContains("api('/api/resource-sync/apply',{method:'POST'")
         self.assertPageContains("source.unreadable")
         self.assertPageContains("background:true,restart:true")
         self.assertPageContains("payload.status==='running'")
-        self.assertPageContains("location.pathname==='/stats'")
+        self.assertPageContains("location.pathname==='/data-cleanup'")
         self.assertPageContains("background:true,status_only:true")
-        self.assertPageContains("void followScan(existing)")
-        self.assertPageContains("离线来源会整库跳过")
+        # 上一轮跑完的结果是那一刻的快照。进页面就铺开会被读成现在的账本状态，
+        # 而页面上没有任何东西说它是旧的。
+        self.assertPageContains("if(existing.status==='running')void followScan(existing);")
         self.assertPageContains("同步并清理")
-        self.assertPageContains('class="resourcesyncfooter"')
+        self.assertPageContains('class="resourcesyncfooter geist-fieldset-footer"')
         self.assertPageContains('class="resourcepanel"')
         self.assertPageContains('class="resourceapplyrow"')
-        self.assertPageContains("候选 CSV、来源证据、女优头像和厂牌 Logo 不会删除")
         self.assertPageContains(".resourceaction{box-sizing:border-box;height:36px")
         self.assertPageContains("@media(max-width:640px){.resourcesync .resourcesyncfooter{align-items:stretch;flex-direction:column")
         self.assertPageContains(".resourcesync .resourcesources{grid-template-columns:1fr}")
