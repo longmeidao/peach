@@ -251,19 +251,38 @@ class WebUiSourceTests(unittest.TestCase):
         # 资料页就会把 Peach 的页面地址报给 x.com、事务所站等每一个被链接的站点。
         # 同页的 taste 行早就是 no-referrer，这里此前漏了；资料页链接从 5 条涨到两百
         # 多条之后，漏的这一处才真正开始有代价。
-        self.assertPageContains(
-            'class="entityfavicon" src="${esc(faviconUrl(x.url))}"')
+        # 现在更进一步：图标由本机 `/link-mark` 提供，浏览器根本不再向对方站点发请求，
+        # 也就无从泄露。referrerpolicy 仍然留着——它守的是这条约束本身。
+        self.assertPageContains('class="entityfavicon" src="${esc(linkMarkUrl(x))}"')
+        self.assertPageLacks('src="${esc(faviconUrl(x.url))}"',
+                             "外链图标不应再直接指向对方站点")
         anchor = self.app_js.index('class="entityfavicon"')
         self.assertIn('referrerpolicy="no-referrer"',
                       self.app_js[anchor:anchor + 260],
                       "资料页外链 favicon 必须带 no-referrer")
 
+    def test_the_link_mark_endpoint_takes_a_link_id_not_a_url(self):
+        # 让前端把地址递给服务端去取，等于开一个任意地址抓取的口子。和 `/follow-stream`
+        # 同一条规矩：服务端只取账本里已有的地址。
+        self.assertPageContains("const linkMarkUrl=link=>`/link-mark?id=")
+        self.assertPageLacks("/link-mark?url=", "外链图标端点不得接受前端给的地址")
+
     def test_social_links_show_only_the_platform_mark_not_the_handle(self):
         # handle 是网址的一部分，写出来只是把 URL 抄一遍：`X @remu19971203` 里真正有
         # 信息量的只有那个 X。图标本身就说明了去哪，名字留给官网那种「点之前看不出是谁」
         # 的链接。纯图标没有可读文字，所以标签必须留给辅助技术，不能整个丢掉。
-        self.assertPageContains("x.link_kind==='social'\n      ? `<span class=\"sr-only\">${esc(x.label)}</span>`")
+        self.assertPageContains('<a class="iconlink" href="${esc(x.url)}"')
+        self.assertPageContains('<span class="sr-only">${esc(x.label)}</span></a>')
         self.assertPageContains('.entitylinks a.iconlink{padding:4px;gap:0;border-radius:50%}')
+
+    def test_a_studio_official_link_shows_its_url_and_no_icon(self):
+        # 厂牌页的头像就是厂牌 logo，旁边再放一枚同品牌的小图标只是把同一个东西说两遍；
+        # 域名本身就是名字，比图标说得清楚。女优页不一样：那里的头像是人，事务所图标
+        # 不构成重复，标签也是事务所名而非域名。
+        self.assertPageContains("if(kind==='studio')")
+        self.assertPageContains('<a class="urllink" href="${esc(x.url)}"')
+        self.assertPageContains("${esc(linkHost(x.url)||x.label)}")
+        self.assertPageContains(".entitylinks a.urllink{padding:4px 14px")
 
     def test_entity_links_have_no_external_arrow(self):
         # `target="_blank"` 已经是外链，箭头只是重复；一排链接里它还会挤掉本就不多的
@@ -2166,9 +2185,12 @@ class WebUiSourceTests(unittest.TestCase):
                 '<b data-middle-truncate>${esc(javDisplayName(x))}</b>',
                 'class="t resourcecardtitle" data-middle-truncate',
                 'class="t junkcardtitle" type="button" data-junk-open data-middle-truncate',
-                'class="t junkcardtitle" data-middle-truncate'):
+                'class="t junkcardtitle" data-middle-truncate',
+                # 死链表里的地址：`/official/talent/X` 与 `/talent/X` 的差别就在尾部，
+                # 尾部省略会把这张表要回答的东西切掉。
+                'rel="noreferrer" data-middle-truncate>${esc(item.url)}</a>'):
             self.assertPageContains(consumer)
-        self.assertEqual(self.app_js.count("data-middle-truncate"), 11)
+        self.assertEqual(self.app_js.count("data-middle-truncate"), 12)
         self.assertEqual(self.app_js.count('class="mixitemtext"'), 3)
         self.assertEqual(self.app_js.count("data-truncate-end"), 4)
         self.assertPageContains("new Intl.Segmenter(undefined,{granularity:'grapheme'})")

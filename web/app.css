@@ -366,7 +366,8 @@ body.entity-open .index{overflow-x:visible}
 .entityportrait:has(img)>span{display:none}
 .entityportrait img{width:100%;height:100%;object-fit:cover;display:block;z-index:1}
 .entityhero>div:last-child{min-width:0;max-width:100%}.entityhero h2{font-size:var(--fs-3xl);font-weight:400;
-  line-height:1.2;letter-spacing:0;margin:0 0 9px;overflow-wrap:anywhere}.entityhero .alias{color:var(--muted);
+  line-height:1.2;letter-spacing:0;margin:0 0 9px;overflow-wrap:anywhere}.entityhero .alias b{color:var(--ink);font-weight:inherit}
+.entityhero .alias{color:var(--muted);
   font-size:var(--fs-md);line-height:1.45;margin-bottom:14px;overflow-wrap:anywhere}
 .entitysummary{font-size:var(--fs-lg);line-height:1.6;max-width:820px;color:var(--ink-2)}
 .entitylinks{display:flex;flex-wrap:wrap;gap:8px;margin-top:17px;max-width:100%}
@@ -386,8 +387,10 @@ body.entity-open .index{overflow-x:visible}
 .entitylinkicon.brand svg{width:15px;height:15px;fill:currentColor;stroke:none}
 /* 纯图标的社媒链接：收成圆形，没有文字就不给文字留位置。 */
 .entitylinks a.iconlink{padding:4px;gap:0;border-radius:50%}
+/* 只有网址的官网链接：没有图标，左内边距不必再给图标留位置。
+   默认那条 `4px 12px 4px 4px` 是按「圆图标 + 文字」调的，直接套用会让文字贴左。 */
+.entitylinks a.urllink{padding:4px 14px;letter-spacing:.02em}
 .entitylinklabel{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.entityterms{margin-top:13px;color:var(--muted);font-size:var(--fs-xs)}.entityterms code{color:var(--ink-2);margin-right:8px}
 .entitymeta{display:grid;gap:22px;margin:0 0 6px;min-width:0}.entitymeta section{min-width:0}.entitysection h3{font-size:var(--fs-sm);letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
 .entitytagbar{position:sticky;top:var(--topH);z-index:61;display:flex;align-items:center;
   height:var(--filterH);margin:0 -16px;padding:9px 16px;background:transparent;
@@ -408,7 +411,7 @@ body.entity-open .index{overflow-x:visible}
   padding:0;cursor:pointer;text-align:center}.relatedperson .ring{display:grid;place-items:center;width:64px;height:64px;
   margin:0 auto 6px;border-radius:50%;overflow:hidden;background:var(--overlay-5);color:var(--muted);position:relative}
 .relatedperson img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.relatedperson .nm{display:block;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-xs)}.relatedperson small{color:var(--muted);font-size:var(--fs-xs)}
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-xs)}
 .relatedperson:hover .ring{box-shadow:0 0 0 1px var(--border-15)}
 .entitysection{min-width:0;max-width:100%}.entitysection h3{font-size:var(--fs-sm);letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
 .entitycollectionhead{position:sticky;top:var(--topH);z-index:60;display:flex;align-items:center;gap:10px;
@@ -1746,7 +1749,6 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   .entityhero .alias{margin-bottom:10px}
   .entitysummary{margin-inline:auto}
   .entityhero .entitylinks{justify-content:center;margin-top:13px}
-  .entityhero .entityterms{text-align:center}
   .stats h2{font-size:var(--fs-xl)}.stats .insightcopy h2{font-size:var(--fs-3xl)}
   /* 窄屏下标题也得一起缩。`/follow` 渲染在 `#stats` 里，上面那条 `.stats h2`
      会只把它打到 23px，而 `#manageTitle` 在 `#stats` 外面，手机上又变成两种大小。 */
@@ -2250,3 +2252,24 @@ details.fcred{display:block}
 /* 资源标识统一由 MiddleTruncate 计算可见文本。星号让本规则与「类 + 元素」的末尾省略
    选择器同权重，并凭源码顺序覆盖，避免两套省略同时生效。 */
 *[data-middle-truncate]{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:clip}
+/* 链接管理沿用资源同步那套盒子，只加这里独有的两块：概览格和结果表。
+   表格必须自己横向滚动——地址列很长，让它撑破 body 会把整页拖成横向可滚。 */
+.linksummary{margin-top:18px}.linksummary .resourcecache{border:1px solid var(--line-soft);border-radius:10px;border-top:1px solid var(--line-soft)}
+.linksummary .resourcecache b{font-size:var(--fs-lg)}
+.linkgroup{padding:16px;border-top:1px solid var(--line-soft)}.linkgroup:first-child{border-top:0}
+.linkgroup h4{margin:0 0 4px;font-size:var(--fs-md);font-weight:600}
+.linkgroup h4 b{margin-left:6px;color:var(--muted);font-weight:inherit;font-variant-numeric:tabular-nums}
+.linkgroup>p{margin:0 0 12px;color:var(--muted);font-size:var(--fs-xs);line-height:1.5}
+.linktablewrap{overflow-x:auto;scrollbar-width:thin}
+.linktable{width:100%;border-collapse:collapse;font-size:var(--fs-xs);white-space:nowrap}
+.linktable th{padding:6px 10px;border-bottom:1px solid var(--line-soft);color:var(--muted);font-weight:600;text-align:left}
+.linktable td{padding:6px 10px;border-bottom:1px solid var(--line-soft);color:var(--ink-2)}
+.linktable tr:last-child td{border-bottom:0}
+.linktable .linknote{color:var(--drop);font-variant-numeric:tabular-nums}
+/* 地址用中间截断而不是尾部省略：这张表要回答「哪一条坏了」，而
+   `/official/talent/X` 与 `/talent/X` 的差别就在尾部，切掉尾部等于切掉答案。 */
+.linktable .linkurl{max-width:360px;overflow:hidden}
+/* 只需要 block：overflow 与 nowrap 由全局的 `*[data-middle-truncate]` 管，
+   但那条规则量不出行内元素的可用宽度。 */
+.linktable .linkurl a{display:block;color:var(--muted);text-decoration:none}
+.linktable .linkurl a:hover{color:var(--ink)}

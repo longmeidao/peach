@@ -87,6 +87,11 @@ from .catalog_rules import (
 from .web_playlists import q_playlist, q_playlists, w_playlist
 from .web_review import q_review, w_review_auto_apply, w_review_decision
 from .web_settings import q_settings, w_settings
+from .web_links import (   # noqa: E402
+    w_links,
+    w_links_check,
+    w_links_prune,
+)
 from .web_resource_sync import (
     clean_resource_orphans,
     source_is_online,
@@ -198,6 +203,9 @@ class WebContract:
         self.resource_scan_lock = threading.Lock()
         self.resource_scan_state: dict | None = None
         self.resource_scan_thread: threading.Thread | None = None
+        self.link_check_lock = threading.Lock()
+        self.link_check_state: dict | None = None
+        self.link_check_thread: threading.Thread | None = None
         self._fts_available: bool | None = None
 
     def cached(self, key, fn):
@@ -1288,7 +1296,7 @@ def q_entity(contract: WebContract, args):
             d["canonical_name"], d["aliases"])
         links = []
         for link in c.execute(
-            "SELECT link_kind,label,url,hostname,is_sensitive,metadata_json "
+            "SELECT id AS link_id,link_kind,label,url,hostname,is_sensitive,metadata_json "
             "FROM entity_link WHERE entity_id=? ORDER BY link_kind,label", (d["id"],),
         ):
             item = dict(link)
@@ -2150,6 +2158,7 @@ GET_HANDLERS = {
     "/api/parts": q_parts,
     "/api/editions": q_editions,
     "/api/entity": q_entity,
+    "/api/links": w_links,
     "/api/photos": q_entity_photos,
     "/api/photo-set": q_photo_set,
     "/api/index": _get_index,
@@ -2192,6 +2201,8 @@ POST_HANDLERS = {
     "/api/taste/source": w_taste_source,
     "/api/trash/empty": _post_empty_trash,
     "/api/purge-missing": w_purge_missing,
+    "/api/links/check": w_links_check,
+    "/api/links/prune": w_links_prune,
     "/api/resource-sync/scan": w_resource_sync_scan,
     "/api/resource-sync/apply": w_resource_sync_apply,
     "/api/review/auto-apply": w_review_auto_apply,
@@ -2206,6 +2217,7 @@ POST_HANDLERS = {
 READ_ONLY_POST_ROUTES = frozenset({
     "/api/follow/resolve", "/api/follow/credential",
     "/api/taste/refresh", "/api/taste/source", "/api/resource-sync/scan",
+    "/api/links/check",
 })
 
 

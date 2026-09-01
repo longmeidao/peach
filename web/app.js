@@ -1,4 +1,4 @@
-import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, pageTitle, realDuration} from './js/core.js';
+import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, pageTitle, realDuration} from './js/core.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import {
   emptyStateHtml, loadingDotsHtml, mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml,
@@ -1786,6 +1786,7 @@ async function openStats(push=true,focusResource=false){
           <div id="stats-panel-recent" role="tabpanel" data-stats-panel="recent" hidden>${recentTable}</div>
           <div id="stats-panel-sources" role="tabpanel" data-stats-panel="sources" hidden>${sourceTable}</div></div>
       </section>
+      ${linkManagerMarkup()}
       ${resourceSyncMarkup()}
     </div>`;
   const statsRoot=$('#stats');
@@ -1801,6 +1802,7 @@ async function openStats(push=true,focusResource=false){
   });
   $('#stats').querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
     closeStats(); toggleTag(b.dataset.k)});
+  await wireLinkManager();
   await wireResourceSync();
   if(focusResource)$('#resource-sync')?.scrollIntoView({block:'start'});
   else window.scrollTo({top:0,behavior:'smooth'});
@@ -1815,6 +1817,78 @@ function showHomeSurfaces(){
 }
 function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
 
+/* 外链是别人服务器上的东西，会在我们不知情的时候烂掉——实测 719 条里 152 条打不开，
+   而它们在资料页上和好链接长得一模一样，只有点下去才知道。所以检查要能随时重跑，
+   不是一次性脚本。放在资源同步上面：两块都是「把库里的记录和外部现实对齐」。 */
+function linkManagerMarkup(){
+  return `<section class="resourcesync" id="link-manager" aria-labelledby="linkManagerTitle">
+    <h2 id="linkManagerTitle">链接管理</h2>
+    <div class="resourcesyncbox"><div class="resourcesyncbody"><h3>外链与实体</h3>
+      <p>资料页上的官网、事务所与社媒链接。逐条访问一遍，找出已经打不开的。</p>
+      <div id="linkSummary" class="linksummary"></div></div>
+      <div class="resourcesyncfooter"><p>检查只联网、不改账本；七百多条约需几分钟。</p>
+      <button class="resourceaction" type="button" id="linkCheck">${icon('refresh-cw')}<span>检查死链</span></button></div></div>
+    <div id="linkCheckResult" aria-live="polite"></div></section>`;
+}
+async function wireLinkManager(){
+  const button=$('#linkCheck'),result=$('#linkCheckResult'),summary=$('#linkSummary');
+  if(!button||!result)return;
+  const active=()=>location.pathname==='/stats'&&!$('#stats').hidden&&document.body.contains(result);
+  const KINDS={official:'官网 · 事务所',social:'社媒',catalog:'资料库',source_reference:'来源记录'};
+  try{
+    const info=await api('/api/links');
+    summary.innerHTML=`<div class="resourcecache"><div><span>链接</span><b>${info.total.toLocaleString()}</b><small>分布在 ${info.entities.toLocaleString()} 个实体上</small></div>
+      <div><span>按类型</span><b>${Object.entries(info.by_kind||{}).map(([k,n])=>`${KINDS[k]||k} ${n}`).join(' · ')||'—'}</b>
+      <small>最多的站点：${(info.top_hosts||[]).slice(0,3).map(([h,n])=>`${esc(h)} ${n}`).join(' · ')||'—'}</small></div></div>`;
+  }catch(error){summary.innerHTML=noteHtml(error.message,{variant:'error',label:'读取失败'})}
+
+  const row=item=>`<tr><td>${esc(item.entity)}</td><td>${esc(KINDS[item.link_kind]||item.link_kind)}</td>
+    <td>${esc(item.label||'')}</td><td class="linknote">${esc(item.note)}</td>
+    <td class="linkurl"><a href="${esc(item.url)}" target="_blank" rel="noreferrer" data-middle-truncate>${esc(item.url)}</a></td></tr>`;
+  const table=(title,items,hint)=>items.length?`<div class="linkgroup"><h4>${esc(title)} <b>${items.length}</b></h4>
+    <p>${esc(hint)}</p><div class="linktablewrap"><table class="linktable"><thead><tr><th>实体</th><th>类型</th><th>标签</th><th>结果</th><th>地址</th></tr></thead><tbody>${items.map(row).join('')}</tbody></table></div></div>`:'';
+
+  const render=payload=>{
+    const running=payload.status==='running';
+    const done=payload.status==='complete';
+    button.innerHTML=`${icon('refresh-cw')}<span>${running?'检查中':done?'重新检查':'检查死链'}</span>`;
+    setActionBusy(button,running);
+    if(payload.status==='idle'){result.innerHTML='';return}
+    if(payload.status==='failed'){result.innerHTML=noteHtml(payload.error||'检查失败',{variant:'error',label:'检查失败'});return}
+    const progress=running?`<p class="resourcescanning">已检查 ${payload.checked.toLocaleString()} / ${(payload.total||0).toLocaleString()} 条…</p>`:'';
+    /* gone 和 unclear 必须分开摆：`linktr.ee` 回 403 是挡爬虫、`x.com` 回 500 是临时错误，
+       链接本身好好的。混成一张表会让人顺手把好链接一起删掉。 */
+    const gone=table('已失效',payload.gone||[],'上游明确回 404／410，页面确实没了。');
+    const unclear=table('取不到',payload.unclear||[],'一次访问没成功，但不等于没了：有的站挡爬虫，有的是临时错误。不会被删除，下次检查会重试。');
+    const apply=(done&&(payload.gone||[]).length)?`<div class="resourceapplyrow"><p>删除前会逐条重验一次；此操作不可撤销。</p>
+      <button class="resourceaction resourcedanger" type="button" id="linkPrune">删除 ${payload.gone.length} 条失效链接</button></div>`:'';
+    const clean=(done&&!(payload.gone||[]).length&&!(payload.unclear||[]).length)?'<p class="resourcesyncok">全部链接都能打开。</p>':'';
+    result.innerHTML=`<div class="resourcepanel">${progress}${gone}${unclear}${apply}${clean}</div>`;
+    $('#linkPrune')?.addEventListener('click',async event=>{
+      const control=event.currentTarget;
+      if(!confirm(`删除 ${payload.gone.length} 条已失效链接？删除前会逐条重验，但删除本身不可撤销。`))return;
+      setActionBusy(control);
+      control.innerHTML=`${spinnerHtml('正在重验')}<span>正在重验并删除…</span>`;
+      try{
+        const out=await api('/api/links/prune',{method:'POST',body:JSON.stringify({confirm:true,check_id:payload.check_id})});
+        result.innerHTML=noteHtml(`已删除 ${out.removed} 条；重验时又能打开的 ${out.recovered} 条已保留。`,{label:'完成'});
+        await wireLinkManager();
+      }catch(error){result.insertAdjacentHTML('beforeend',noteHtml(error.message,{variant:'error',label:'删除失败'}))}
+    });
+  };
+
+  const poll=async()=>{
+    if(!active())return;
+    const payload=await api('/api/links/check',{method:'POST',body:JSON.stringify({status_only:true})});
+    render(payload);
+    if(payload.status==='running')setTimeout(poll,2000);
+  };
+  button.onclick=async()=>{
+    render(await api('/api/links/check',{method:'POST',body:JSON.stringify({restart:true})}));
+    setTimeout(poll,1200);
+  };
+  await poll();
+}
 function resourceSyncMarkup(){
   return `<section class="resourcesync" id="resource-sync" aria-labelledby="resourceSyncTitle">
     <h2 id="resourceSyncTitle">资源同步</h2>
@@ -4560,22 +4634,28 @@ async function openEntity(kind,name,push=true,requestedTag){
   const links=(d.links||[]).map(x=>{
     if(!(x.clickable&&/^https?:\/\//i.test(x.url||'')))
       return `<span class="private" title="私人馆藏来源记录，不直接打开下载页"><span class="entitylinkicon">${icon('globe')}</span><span class="entitylinklabel">来源 · ${esc(x.label||x.hostname||'已记录')}</span></span>`;
-    const brand=brandIcon(x.url);
-    const mark=brand
-      ? `<span class="entitylinkicon brand">${icon(brand)}</span>`
-      : `<span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(faviconUrl(x.url))}" data-studio="${kind==='studio'?esc(d.canonical_name):''}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>`;
-    // 纯图标的链接自己不带可读文字，得把标签留给辅助技术。
-    const body=x.link_kind==='social'
-      ? `<span class="sr-only">${esc(x.label)}</span>`
-      : `<span class="entitylinklabel">${esc(x.label)}</span>`;
-    return `<a class="${x.link_kind==='social'?'iconlink':''}" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}">${mark}${body}</a>`;
+    /* 社媒的 handle 是网址的一部分，写出来只是把 URL 抄一遍——图标本身已经说明了去哪。 */
+    if(x.link_kind==='social'){
+      const brand=brandIcon(x.url);
+      const mark=brand?`<span class="entitylinkicon brand">${icon(brand)}</span>`
+        :`<span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>`;
+      // 纯图标的链接自己不带可读文字，得把标签留给辅助技术。
+      return `<a class="iconlink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}">${mark}<span class="sr-only">${esc(x.label)}</span></a>`;
+    }
+    /* 厂牌页的官网链接不放图标，直接给网址。
+
+       这一页的头像就是厂牌 logo，旁边再放一枚同品牌的小图标只是把同一个东西说两遍；
+       而域名本身就是名字，比图标说得更清楚。女优页不一样：那里的头像是人，事务所
+       图标不构成重复，标签也是事务所名而非域名。 */
+    if(kind==='studio')
+      return `<a class="urllink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinklabel">${esc(linkHost(x.url)||x.label)}</span></a>`;
+    return `<a href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer"></span><span class="entitylinklabel">${esc(x.label)}</span></a>`;
   }).join('');
-  const terms=(d.search_terms||[]).map(x=>`<code>${esc(x.term)}</code>`).join('');
   const tags=(d.tags||[]).map(x=>`<button class="pill" data-entity-tag="${esc(x.k)}" aria-pressed="${entityTag===x.k}">${esc(tagLabel(x.k))}<small>${x.n.toLocaleString()}</small></button>`).join('');
   const related=(d.related_performers||[]).map(x=>`<button class="relatedperson" data-related-performer="${esc(x.k)}">
       <span class="ring"><span>${esc(x.k.slice(0,1))}</span><img src="/entity-image?kind=performer&id=${x.id}" alt="" loading="lazy"
         onerror="${x.rep?`if(!this.dataset.f){this.dataset.f='1';this.src='/avatar?id=${x.rep}'}else{this.remove()}`:`this.remove()`}"></span>
-      <span class="nm">${esc(x.k)}</span><small>${x.n.toLocaleString()} 部</small></button>`).join('');
+      <span class="nm">${esc(x.k)}</span></button>`).join('');
   const photoCount=photos&&!photos.error?(photos.total||0):0;
   const mediaSelected=entityMediaView.media==='photos';
   const mediaToggle=photoCount?mediaViewButtonsHtml({active:mediaSelected?'photos':'videos',
@@ -4584,10 +4664,9 @@ async function openEntity(kind,name,push=true,requestedTag){
   $('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;
   $('#index').innerHTML=`<div class="entityhero"><div class="entityportrait ${kind==='performer'||kind==='creator'?'':'square'}">${image}<span>${esc(name.slice(0,1))}</span></div>
       <div><h2>${esc(d.canonical_name)}</h2>
-        <div class="alias">${(d.display_aliases||[]).length?'别名 · '+d.display_aliases.map(esc).join(' / '):'暂无别名'} · ${d.asset_count.toLocaleString()} 个视频</div>
+        <div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}<b>${d.asset_count.toLocaleString()}</b> 个视频</div>
         ${d.summary?`<div class="entitysummary">${esc(d.summary)}</div>`:''}
-        ${links?`<div class="entitylinks">${links}</div>`:''}
-        ${terms?`<div class="entityterms">馆藏检索词 · ${terms}</div>`:''}</div></div>
+        ${links?`<div class="entitylinks">${links}</div>`:''}</div></div>
     ${related?`<div class="entitymeta"><section aria-label="同台艺人"><div class="relatedpeople">${related}</div></section></div>`:''}
     ${(tags||mediaToggle)?`<section class="entitytagbar" aria-label="媒体与标签"><div class="entitytags">${mediaToggle}${tags}</div></section>`:''}
     <div class="entitysection"></div>`;
