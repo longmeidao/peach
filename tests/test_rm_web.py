@@ -623,7 +623,8 @@ class WebDataTests(unittest.TestCase):
             "/api/activity", "/api/play", "/api/feedback", "/api/watch-later",
             "/api/playlist",
             "/api/preference", "/api/quality-goal", "/api/item-tag", "/api/batch",
-            "/api/search-history", "/api/trash/empty", "/api/review/decision",
+            "/api/search-history", "/api/trash/empty", "/api/data-cleanup/empty-folders",
+            "/api/review/decision",
             "/api/purge-missing", "/api/review/auto-apply",
             "/api/links/check", "/api/links/prune",
             "/api/resource-sync/scan", "/api/resource-sync/apply",
@@ -853,6 +854,55 @@ class WebDataTests(unittest.TestCase):
             "SELECT source_seed_asset_id FROM playlist WHERE id=?", (playlist["id"],),
         ).fetchone()[0])
         con.close()
+
+    def test_permanent_delete_removes_newly_empty_parents_but_keeps_the_source_root(self):
+        source_root = Path(self.tmp.name) / "source"
+        media = source_root / "creator" / "release" / "junk.url"
+        media.parent.mkdir(parents=True)
+        media.write_text("junk", encoding="utf-8")
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET path=?,snapshot_path=NULL WHERE id=1", (str(media),))
+        con.commit(); con.close()
+        rm_web.w_feedback(self.contract, {"id": 1, "kind": "dispose"})
+
+        with mock.patch.object(
+                rm_web, "LOCATION_ROOT_DECLARATIONS", {"local": str(source_root)}):
+            result = rm_web.w_batch(self.contract, {"ids": [1], "operation": "delete"})
+
+        self.assertEqual(result["empty_dirs_removed"], 2)
+        self.assertTrue(source_root.is_dir(), "声明的来源根绝不能随空目录一起删除")
+        self.assertFalse((source_root / "creator").exists())
+
+    def test_empty_folder_cleanup_walks_bottom_up_and_skips_offline_sources(self):
+        source_root = Path(self.tmp.name) / "source"
+        (source_root / "empty" / "nested").mkdir(parents=True)
+        kept = source_root / "kept"
+        kept.mkdir()
+        (kept / "media.mp4").write_bytes(b"keep")
+        offline = Path(self.tmp.name) / "offline"
+
+        with mock.patch.object(rm_web, "LOCATION_ROOT_DECLARATIONS", {
+                "local": str(source_root), "115": str(offline),
+        }):
+            result = rm_web.cleanup_empty_source_directories()
+
+        self.assertEqual(result["removed"], 2)
+        self.assertEqual(result["errors"], 0)
+        self.assertTrue(source_root.is_dir())
+        self.assertTrue((kept / "media.mp4").is_file())
+        self.assertFalse((source_root / "empty").exists())
+        self.assertFalse(result["sources"][1]["online"])
+        self.assertNotIn("root", result["sources"][0], "API 不能泄露物理来源路径")
+
+    def test_empty_folder_cleanup_post_is_registered_as_a_non_ledger_write(self):
+        self.assertIs(
+            rm_web.POST_HANDLERS["/api/data-cleanup/empty-folders"],
+            rm_web.w_cleanup_empty_directories,
+        )
+        self.assertIn(
+            "/api/data-cleanup/empty-folders", rm_web.READ_ONLY_POST_ROUTES,
+            "清理服务端物理目录不写 ledger，不该被 reader 的账本闸门误拦",
+        )
 
     def test_failed_database_commit_restores_quarantined_media(self):
         path = self.stage_media(1, "commit-failure.mp4")

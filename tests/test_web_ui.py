@@ -919,7 +919,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains("['manage','管理','database']")
         self.assertPageContains("const MANAGE_SECTIONS=[")
-        for section in ("'stats','统计'", "'ads','垃圾文件'", "'dupes','重复文件'",
+        for section in ("'stats','统计'", "'cleanup','数据清理'",
                         "'quality','高清版'", "'trash','回收站'", "'review','人工复核'",
                         "'taste','口味'"):
             self.assertPageContains(section)
@@ -947,7 +947,7 @@ class WebUiSourceTests(unittest.TestCase):
         sections = self.page.split("const MANAGE_SECTIONS=[", 1)[1].split("];", 1)[0]
         order = [line.split("'")[1] for line in sections.splitlines() if line.strip().startswith("['")]
         self.assertEqual(
-            order, ["stats", "taste", "review", "ads", "dupes", "trash", "follow", "quality"],
+            order, ["stats", "taste", "review", "cleanup", "trash", "follow", "quality"],
             "管理导航的顺序是语义契约：现状 → 复核 → 清理 → 回收站 → 往外拿",
         )
 
@@ -1309,6 +1309,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("actionFailure('操作',error)")
         self.assertPageContains("kind==='dispose'&&r.disposal==='trash'&&state.state==='ads'")
 
+    def test_junk_empty_state_only_appears_after_the_loading_request_finishes(self):
+        """待判断为空是请求终态；加载期间只能显示 Loading Dots，不能先闪空态。"""
+        branch = self.app_js.split("if(state.state==='ads'){", 1)[1].split("adsBatch=null;", 1)[0]
+        self.assertLess(branch.index("loadingDotsHtml('正在读取垃圾文件…')"),
+                        branch.index("const nextAds=await api('/api/ads?'+junkQuery)"))
+        self.assertLess(branch.index("const nextAds=await api('/api/ads?'+junkQuery)"),
+                        branch.index("emptyState('check'"))
+        self.assertPageContains("$('#loadSentinel').hidden=true")
+
     def test_junk_review_and_trash_render_every_physical_resource_type(self):
         """图片、网址快捷方式等不能复用视频播放器，但必须可预览、回收和还原。"""
         self.assertPageContains("const RESOURCE_MEDIUM_LABEL={image:'图片',audio:'音频',archive:'压缩包',other:'其它文件'}")
@@ -1326,6 +1335,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("function junkCardHtml(it)")
         self.assertPageContains('data-junk-operation="${decision[0]}" title="${esc(decision[1])}" aria-label="${esc(decision[1])}"')
         self.assertPageContains('data-junk-operation="dispose" title="移入回收站" aria-label="移入回收站"')
+        self.assertPageContains('data-junk-reveal title="在资源管理器中显示"')
+        self.assertPageContains("revealSource(id,status,{button:reveal})")
+        self.assertPageContains('<span>打开所在位置</span>')
         self.assertPageContains("['dismiss-junk','不是垃圾','check']")
         self.assertPageContains("<span>移入回收站</span>")
         self.assertPageContains('body[data-density="dense"] .junkcard .junkactions button span{display:none}')
@@ -1411,7 +1423,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_ads_icon_matches_the_lucide_stroke_style(self):
         """图标库里没有表示广告的图形，自绘的感叹号必须和其余图标同风格。"""
         self.assertPageContains('<symbol id="i-alert" viewBox="0 0 24 24">')
-        self.assertPageContains("['ads','垃圾文件','alert']")
+        self.assertPageContains("['cleanup','数据清理','hard-drive']")
 
     def test_pending_delete_is_visible_without_deleting_media(self):
         self.assertPageContains("it.disposal==='trash'?'pending-delete':''")
@@ -2131,7 +2143,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("data-sidebar-hide")
         self.assertPageContains("data-sidebar-add-option")
         self.assertPageLacks("data-sidebar-add-select")
-        self.assertPageContains("const OPTIONAL_SIDEBAR_KEYS=['stats','review','ads','dupes','trash','follow-manage','quality']")
+        self.assertPageContains("const OPTIONAL_SIDEBAR_KEYS=['stats','review','data-cleanup','trash','follow-manage','quality']")
         self.assertPageContains("if(DIRECT_MANAGE_NAV[k]){openManage(DIRECT_MANAGE_NAV[k]);return}")
         self.assertPageContains(".settingscard{display:flex;flex-direction:column;width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:hidden")
         self.assertPageContains(".settingsscroll{flex:1;min-height:0;overflow-y:auto")
@@ -2197,11 +2209,26 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('id="i-calendar"')
         self.assertPageLacks("发行 ${esc(it.release_date)}")
 
-    def test_duplicates_page_is_a_management_section(self):
-        self.assertPageContains("['dupes','重复文件','hard-drive']")
-        self.assertPageContains("if(path==='/duplicates')return 'dupes'")
+    def test_duplicates_page_is_part_of_the_combined_cleanup_section(self):
+        self.assertPageContains("path==='/data-cleanup'||path==='/duplicates'||path==='/junk-files'")
+        self.assertPageContains("if(section==='cleanup'){openDataCleanup();return}")
         self.assertPageContains("if(section==='dupes'){openDuplicates();return}")
         self.assertPageContains("async function openDuplicates(push=true)")
+
+    def test_data_cleanup_groups_junk_duplicates_and_empty_folders_in_fieldsets(self):
+        self.assertPageContains("async function openDataCleanup(push=true)")
+        self.assertPageContains("route('/data-cleanup')")
+        self.assertPageContains("api('/api/ads?limit=1'),api('/api/duplicates?limit=1'),api('/api/sources')")
+        for legend in ("<legend>垃圾文件</legend>", "<legend>重复文件</legend>",
+                       "<legend>空文件夹</legend>"):
+            self.assertPageContains(legend)
+        self.assertPageContains('class="cleanupfieldset" data-geist-fieldset')
+        self.assertPageContains('class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset')
+        self.assertPageContains("api('/api/data-cleanup/empty-folders',{method:'POST',body:'{}'})")
+        self.assertPageContains("来源根目录不会删除")
+        self.assertPageContains(".cleanupfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px}")
+        self.assertPageContains("min-height:56px;margin:0;padding:12px 12px 12px 20px")
+        self.assertPageContains("if(path==='/data-cleanup'){await openDataCleanup(false);return}")
 
     def test_duplicate_batch_keeps_one_per_cluster_not_one_per_code(self):
         # 每组各自选 keeper：合集与分卷已经在数据层拆成不同簇，界面不能再按番号合并。

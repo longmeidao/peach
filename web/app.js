@@ -25,7 +25,13 @@ function renderCatalogLoading(label='正在读取作品'){
    Spinner、再切成目标页 Loading Dots。 */
 function renderInitialSurfaceLoading(){
   const path=decodeURIComponent(location.pathname);
-  const management=new Set(['/stats','/taste','/review','/duplicates','/quality-goals',
+  if(path==='/junk-files'){
+    const count=$('#count');count.setAttribute('aria-busy','true');count.textContent='';
+    $('#grid').innerHTML=`<div class="junkloading">${loadingDotsHtml('正在读取垃圾文件…')}</div>`;
+    $('#loadSentinel').hidden=true;
+    return;
+  }
+  const management=new Set(['/stats','/taste','/review','/data-cleanup','/duplicates','/quality-goals',
     '/playlists','/resource-sync','/follow','/follow-manage']);
   if(management.has(path)||path.startsWith('/follow/item/')){
     const stats=$('#stats');stats.hidden=false;$('#grid').innerHTML='';
@@ -141,7 +147,7 @@ function dropOfflineFromDefaultLoc(){
 const DURATION_TAGS=new Set(['短片-2分内','中片-10分内','长片-30分内','超长片-30分上']);
 const SETTINGS_KEY='peach.settings.v1';
 const DEFAULT_SIDEBAR_ORDER=['','performers','tags','jav','flagged','playlists','follow','immerse','manage'];
-const OPTIONAL_SIDEBAR_KEYS=['stats','review','ads','dupes','trash','follow-manage','quality'];
+const OPTIONAL_SIDEBAR_KEYS=['stats','review','data-cleanup','trash','follow-manage','quality'];
 const ALL_SIDEBAR_KEYS=[...DEFAULT_SIDEBAR_ORDER,...OPTIONAL_SIDEBAR_KEYS];
 const SORTS=[['seed','随机'],['rating','评分'],['o','高潮计数'],['plays','观看次数'],['long','时长'],
              ['big','体积'],['new','最近入库'],['played','最近看的']];
@@ -167,7 +173,8 @@ appSettings.ambientMode=appSettings.ambientMode!==false;
 appSettings.theaterMode=appSettings.theaterMode===true;
 appSettings.searchHistoryLimit=allowedSetting(+appSettings.searchHistoryLimit,[5,10,20],10);
 appSettings.relatedLimit=allowedSetting(+appSettings.relatedLimit,[12,20,30],20);
-appSettings.sidebarOrder=[...new Set(Array.isArray(appSettings.sidebarOrder)?appSettings.sidebarOrder:DEFAULT_SIDEBAR_ORDER)].filter(key=>ALL_SIDEBAR_KEYS.includes(key));
+const sidebarKeyAlias=key=>key==='ads'||key==='dupes'?'data-cleanup':key;
+appSettings.sidebarOrder=[...new Set((Array.isArray(appSettings.sidebarOrder)?appSettings.sidebarOrder:DEFAULT_SIDEBAR_ORDER).map(sidebarKeyAlias))].filter(key=>ALL_SIDEBAR_KEYS.includes(key));
 if(!appSettings.sidebarOrder.length)appSettings.sidebarOrder=[...DEFAULT_SIDEBAR_ORDER];
 document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);
 const saveSettings=()=>localStorage.setItem(SETTINGS_KEY,JSON.stringify(appSettings));
@@ -1186,8 +1193,10 @@ function junkCardHtml(it){
         :`<span class="t junkcardtitle" data-middle-truncate title="${esc(it.name||'')}">${esc(it.name||'未命名资源')}</span>`}
       <div class="s mono"><span class="who">${esc(meta[0])}</span>${it.why?`<span class="why">${esc(it.why)}</span>`:''}<span class="size">${Number(it.size)>0?fmtSize(Number(it.size)):'大小未知'}</span></div>
     </div><footer class="junkactions">
+      <button type="button" data-junk-reveal title="在资源管理器中显示" aria-label="在资源管理器中显示">${icon('folder-open')}<span>打开所在位置</span></button>
       <button type="button" data-junk-operation="${decision[0]}" title="${esc(decision[1])}" aria-label="${esc(decision[1])}">${icon(decision[2])}<span>${decision[1]}</span></button>
       <button type="button" class="junktrash" data-junk-operation="dispose" title="移入回收站" aria-label="移入回收站">${icon('trash')}<span>移入回收站</span></button>
+      <span class="junkstate" aria-live="polite"></span>
     </footer></div></article>`;
 }
 async function runJunkOperation(id,operation){
@@ -1198,7 +1207,7 @@ function wireJunkCards(root){
   root.querySelectorAll('.junkcard').forEach(card=>{
     const id=+card.dataset.id,item=CACHE[id];
     card.onclick=event=>{
-      if(event.target.closest('[data-junk-operation]'))return;
+      if(event.target.closest('[data-junk-operation],[data-junk-reveal]'))return;
       if(selectMode||event.shiftKey||event.ctrlKey||event.metaKey){
         event.preventDefault();event.stopPropagation();toggleSelection(id,event.shiftKey);
       }
@@ -1211,6 +1220,10 @@ function wireJunkCards(root){
       if(item?.junk_kind==='image')window.open('/photo?id='+id,'_blank','noopener');
       else openItem(id,true,null,card);
     });
+    const reveal=card.querySelector('[data-junk-reveal]'),status=card.querySelector('.junkstate');
+    if(reveal)reveal.onclick=event=>{
+      event.preventDefault();event.stopPropagation();revealSource(id,status,{button:reveal});
+    };
     card.querySelectorAll('[data-junk-operation]').forEach(button=>button.onclick=async event=>{
       event.preventDefault();event.stopPropagation();
       const operation=button.dataset.junkOperation;
@@ -2300,6 +2313,54 @@ let reviewData=null,reviewRuntime=null,reviewCategory='metadata_fields';
 /* 主体是实体而不是单条作品的复核分类。值就是实体 kind。 */
 const ENTITY_REVIEW_CATEGORIES={creator_tags:'creator',western_identity:'creator'};
 const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',western_identity:'西方身份回配',code_creators:'番号目录存疑',fc2_markings:'FC2 评论标记',fc2_similarity:'FC2 跨号相似',video_endcards:'片尾/出处证据',media_failure:'媒体失败'};
+
+async function openDataCleanup(push=true){
+  releaseHoverPreviews();disposeStage(false);enterManagementSurface();
+  if(push)route('/data-cleanup');
+  const surface=claimSurface('/data-cleanup');
+  showManagementBody({placeholder:`<div class="cleanuploading">${loadingDotsHtml('正在读取数据清理状态…')}</div>`});
+  const [junk,duplicates,sources]=await Promise.all([
+    api('/api/ads?limit=1'),api('/api/duplicates?limit=1'),api('/api/sources'),
+  ]);
+  if(!surfaceCurrent(surface))return;
+  paintManageLede('垃圾文件、重复文件和空文件夹集中处理');
+  const sourceState=(sources.sources||[]).filter(source=>['local','115','pikpak'].includes(source.location)).map(source=>
+    `<span class="cleanupsource" data-online="${source.online?'true':'false'}">${esc(LOC[source.location]||source.location)} · ${source.online?'在线':'离线'}</span>`).join('');
+  $('#stats').innerHTML=`<div class="cleanupgrid">
+    <fieldset class="cleanupfieldset" data-geist-fieldset><legend>垃圾文件</legend>
+      <div class="geist-fieldset-content"><strong>${Number(junk.pending_total||0).toLocaleString()} 个待判断</strong>
+        <p>查看推广文件、网址快捷方式和其它物理资源候选；确认后先进入回收站。</p></div>
+      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-open="junk">查看垃圾文件</button></footer>
+    </fieldset>
+    <fieldset class="cleanupfieldset" data-geist-fieldset><legend>重复文件</legend>
+      <div class="geist-fieldset-content"><strong>${Number(duplicates.total||0).toLocaleString()} 组 · ${Number(duplicates.files||0).toLocaleString()} 个文件</strong>
+        <p>按番号、分卷与时长证据分组；批量操作仍只把文件移入回收站。</p></div>
+      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-open="duplicates">查看重复文件</button></footer>
+    </fieldset>
+    <fieldset class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset><legend>空文件夹</legend>
+      <div class="geist-fieldset-content"><p>从已挂载的资源根开始自底向上删除空目录；来源根本身不会删除。</p>
+        <div class="cleanupsources">${sourceState}</div><p class="cleanupstate" aria-live="polite"></p></div>
+      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" class="danger" data-cleanup-empty>${icon('trash')}<span>删除空文件夹</span></button></footer>
+    </fieldset>
+  </div>`;
+  $('#stats').querySelector('[data-cleanup-open="junk"]').onclick=()=>openManage('ads');
+  $('#stats').querySelector('[data-cleanup-open="duplicates"]').onclick=()=>openDuplicates();
+  const emptyButton=$('#stats').querySelector('[data-cleanup-empty]');
+  emptyButton.onclick=async()=>{
+    if(!confirm('删除所有已挂载资源来源中的空文件夹？来源根目录不会删除。'))return;
+    const status=$('#stats').querySelector('.cleanupstate'),original=emptyButton.innerHTML;
+    setActionBusy(emptyButton);emptyButton.innerHTML=`${spinnerHtml('正在删除空文件夹')}<span>正在清理</span>`;
+    status.textContent='正在自底向上检查已挂载来源…';
+    try{
+      const result=await api('/api/data-cleanup/empty-folders',{method:'POST',body:'{}'});
+      status.textContent=`已检查 ${Number(result.scanned||0).toLocaleString()} 个目录，删除 ${Number(result.removed||0).toLocaleString()} 个${result.errors?`，${Number(result.errors).toLocaleString()} 个读取或删除失败`:''}。`;
+      if(result.errors)actionFailure('空文件夹清理',new Error(`${result.errors} 个目录处理失败`));
+      else actionReceipt(`已删除 ${Number(result.removed||0).toLocaleString()} 个空文件夹`);
+    }catch(error){status.textContent=error.message||'空文件夹清理失败';actionFailure('空文件夹清理',error)}
+    finally{setActionBusy(emptyButton,false);emptyButton.innerHTML=original}
+  };
+}
+
 let dupData=null;
 /* 重复文件。判据是「同番号 + 时长相近 + 分卷标记一致」，不是同番号即重复——
    合集、分卷和混入的广告都会共用一个 code，只按番号做「保留最大」会删掉内容。
@@ -4777,7 +4838,7 @@ const EDGE_ICONS=[
   ['immerse','沉浸模式','play'],
   ['manage','管理','database'],
 ];
-/* 统计、垃圾文件、回收站、人工复核默认都收在「管理」下，不主动占用顶层空间；
+/* 统计、数据清理、回收站、人工复核默认都收在「管理」下，不主动占用顶层空间；
    用户仍可在设置里把某个具体页面加到顶层。每个页面都有可直接打开的 URL。
    顺序按做事顺序分成两段：先是库里已有的东西——看现状、复核新进来的候选、
    清广告与重复、落到回收站；再是要往外拿的——关注和高清版都是「还想要什么」，
@@ -4786,16 +4847,16 @@ const MANAGE_SECTIONS=[
   ['stats','统计','chart'],
   ['taste','口味','heart'],
   ['review','人工复核','square-check-big'],
-  ['ads','垃圾文件','alert'],
-  ['dupes','重复文件','hard-drive'],
+  ['cleanup','数据清理','hard-drive'],
   ['trash','回收站','trash'],
   ['follow','关注','rss'],
   ['quality','高清版','sparkles'],
 ];
 const OPTIONAL_EDGE_ICONS=MANAGE_SECTIONS.map(([key,label,ic])=>
-  key==='follow'?['follow-manage','关注管理',ic]:[key,label,ic]);
+  key==='follow'?['follow-manage','关注管理',ic]
+    :key==='cleanup'?['data-cleanup',label,ic]:[key,label,ic]);
 const NAV_CATALOG=[...EDGE_ICONS,...OPTIONAL_EDGE_ICONS];
-const DIRECT_MANAGE_NAV={stats:'stats',review:'review',ads:'ads',dupes:'dupes',trash:'trash','follow-manage':'follow',quality:'quality'};
+const DIRECT_MANAGE_NAV={stats:'stats',review:'review','data-cleanup':'cleanup',trash:'trash','follow-manage':'follow',quality:'quality'};
 function orderedEdgeIcons(){
   const byKey=new Map(NAV_CATALOG.map(item=>[item[0],item]));
   return appSettings.sidebarOrder.map(key=>byKey.get(key)).filter(Boolean);
@@ -4948,10 +5009,10 @@ function manageSection(){
   if(path==='/taste')return 'taste';
   if(path==='/review')return 'review';
   if(path==='/trash')return 'trash';
-  if(path==='/duplicates')return 'dupes';
+  if(path==='/data-cleanup'||path==='/duplicates'||path==='/junk-files'||state.state==='ads')return 'cleanup';
   if(path==='/quality-goals')return 'quality';
   if(path==='/follow-manage')return 'follow';
-  return path==='/junk-files'||state.state==='ads'?'ads':'';
+  return '';
 }
 function buildManageBar(){
   const current=manageSection(),bar=$('#managebar');
@@ -5001,6 +5062,8 @@ function openManage(section='stats'){
   if(section==='stats'){openStats();return}
   if(section==='taste'){openTaste();return}
   if(section==='review'){openReview();return}
+  if(section==='cleanup'){openDataCleanup();return}
+  // 旧直达 URL 继续保留；它们共享同一个「数据清理」导航身份。
   if(section==='dupes'){openDuplicates();return}
   if(section==='quality'){openQualityGoals();return}
   if(section==='follow'){openFollowManage();return}
@@ -5193,6 +5256,10 @@ async function load(reset){
   countRow.classList.toggle('junkcount',staticManageCount);
   if(staticManageCount)countRow.classList.remove('is-stuck');
   if(state.state==='ads'){
+    if(reset){
+      $('#grid').innerHTML=`<div class="junkloading">${loadingDotsHtml('正在读取垃圾文件…')}</div>`;
+      $('#loadSentinel').hidden=true;
+    }
     if(reset||!adsBatch){const junkQuery=new URLSearchParams({limit:'200',status:junkView});if(junkKind)junkQuery.set('kind',junkKind);
       const nextAds=await api('/api/ads?'+junkQuery);if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
       adsBatch=nextAds;cache(adsBatch.items)}
@@ -6353,6 +6420,7 @@ async function restoreRoute(){
   if(path==='/stats'){await openStats(false);return}
   if(path==='/taste'){await openTaste(false);return}
   if(path==='/review'){await openReview(false);return}
+  if(path==='/data-cleanup'){await openDataCleanup(false);return}
   if(path==='/duplicates'){await openDuplicates(false);return}
   if(path==='/resource-sync'){await openResourceSync(false);return}
   if(path==='/quality-goals'){await openQualityGoals(false);return}

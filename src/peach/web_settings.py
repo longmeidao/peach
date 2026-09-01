@@ -26,9 +26,10 @@ DEFAULT_SIDEBAR_ORDER = (
 )
 #: 可以加进侧栏、但默认不在的入口。
 OPTIONAL_SIDEBAR_KEYS = (
-    "stats", "review", "ads", "dupes", "trash", "follow-manage", "quality",
+    "stats", "review", "data-cleanup", "trash", "follow-manage", "quality",
 )
 ALL_SIDEBAR_KEYS = frozenset(DEFAULT_SIDEBAR_ORDER) | frozenset(OPTIONAL_SIDEBAR_KEYS)
+SIDEBAR_KEY_ALIASES = {"ads": "data-cleanup", "dupes": "data-cleanup"}
 
 #: 只有这些键跟着账本走。白名单而不是黑名单：将来往设置里加字段的人必须显式表态
 #: 它该不该跨机同步，而不是默认就同步过去。
@@ -52,8 +53,11 @@ def normalise_sidebar_order(raw) -> list[str]:
     if not isinstance(raw, list):
         return list(DEFAULT_SIDEBAR_ORDER)
     seen: list[str] = []
-    for key in raw:
-        if not isinstance(key, str) or key not in ALL_SIDEBAR_KEYS or key in seen:
+    for raw_key in raw:
+        if not isinstance(raw_key, str):
+            continue
+        key = SIDEBAR_KEY_ALIASES.get(raw_key, raw_key)
+        if key not in ALL_SIDEBAR_KEYS or key in seen:
             continue
         seen.append(key)
     return seen or list(DEFAULT_SIDEBAR_ORDER)

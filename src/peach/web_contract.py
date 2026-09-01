@@ -5,9 +5,10 @@ feedback functions; schema changes belong to the migration runner.
 """
 from __future__ import annotations
 
-import os
+import errno
 import hashlib
 import json
+import os
 import random
 import re
 import shutil
@@ -40,6 +41,7 @@ from .platform import (
     root_online,
     system_volume,
     translate_ledger_path,
+    within_root,
 )
 from .repository import LedgerDatabase
 from .taste_history import (
@@ -1799,6 +1801,102 @@ def _restore_staged_media(staged):
             os.replace(quarantine, original)
 
 
+def _online_source_roots() -> dict[str, Path]:
+    """Return only declared physical roots that can be enumerated now."""
+    roots: dict[str, Path] = {}
+    for location, declaration in LOCATION_ROOT_DECLARATIONS.items():
+        root = translate_ledger_path(declaration)
+        if is_unmapped(root) or not root.is_dir() or not root_online(root):
+            continue
+        roots[location] = root
+    return roots
+
+
+def _remove_empty_ancestors(parent: Path, source_roots: Sequence[Path]) -> list[Path]:
+    """Remove empty parents up to, but never including, a declared source root."""
+    source_root = next(
+        (root for root in sorted(source_roots, key=lambda item: len(item.parts), reverse=True)
+         if within_root(parent, root)),
+        None,
+    )
+    if source_root is None:
+        return []
+    removed: list[Path] = []
+    current = parent
+    while current != source_root and within_root(current, source_root):
+        if current.is_symlink():
+            break
+        next_parent = current.parent
+        try:
+            current.rmdir()
+        except FileNotFoundError:
+            # CloudDrive may collapse an empty layer as soon as its last file vanishes.
+            current = next_parent
+            continue
+        except OSError:
+            # Non-empty, offline, or protected directories are a normal stop boundary.
+            break
+        removed.append(current)
+        current = next_parent
+    return removed
+
+
+def cleanup_empty_source_directories() -> dict[str, object]:
+    """Delete empty directories below each online physical source.
+
+    The declared source roots themselves are permanent boundaries and are never removed.
+    ``os.walk(..., topdown=False)`` ensures children are considered before their parents;
+    directory links are not followed or removed.
+    """
+    results: list[dict[str, object]] = []
+    total_scanned = total_removed = total_errors = 0
+    for location, declaration in LOCATION_ROOT_DECLARATIONS.items():
+        root = translate_ledger_path(declaration)
+        mapped = not is_unmapped(root)
+        online = bool(mapped and root.is_dir() and root_online(root))
+        row: dict[str, object] = {
+            "location": location,
+            "mapped": mapped,
+            "online": online,
+            "scanned": 0,
+            "removed": 0,
+            "errors": 0,
+        }
+        if not online:
+            results.append(row)
+            continue
+
+        walk_errors: list[OSError] = []
+        for directory, _subdirectories, _files in os.walk(
+                root, topdown=False, onerror=walk_errors.append, followlinks=False):
+            candidate = Path(directory)
+            if candidate == root or candidate.is_symlink():
+                continue
+            row["scanned"] = int(row["scanned"]) + 1
+            try:
+                candidate.rmdir()
+            except FileNotFoundError:
+                # CloudDrive can remove the same empty directory concurrently.
+                continue
+            except OSError as error:
+                if error.errno not in {errno.ENOTEMPTY, errno.EEXIST}:
+                    row["errors"] = int(row["errors"]) + 1
+            else:
+                row["removed"] = int(row["removed"]) + 1
+        row["errors"] = int(row["errors"]) + len(walk_errors)
+        total_scanned += int(row["scanned"])
+        total_removed += int(row["removed"])
+        total_errors += int(row["errors"])
+        results.append(row)
+    return {
+        "ok": total_errors == 0,
+        "scanned": total_scanned,
+        "removed": total_removed,
+        "errors": total_errors,
+        "sources": results,
+    }
+
+
 def _finish_purge(outcome):
     """Delete committed quarantine files; report any residue for explicit cleanup."""
     cleanup_pending = []
@@ -1814,7 +1912,12 @@ def _finish_purge(outcome):
             snapshot.unlink(missing_ok=True)
         except OSError:
             pass
+    source_roots = tuple(_online_source_roots().values())
+    removed_directories: set[Path] = set()
+    for parent in outcome.pop("_parents"):
+        removed_directories.update(_remove_empty_ancestors(parent, source_roots))
     outcome["cleanup_pending"] = cleanup_pending
+    outcome["empty_dirs_removed"] = len(removed_directories)
     return outcome
 
 
@@ -1825,7 +1928,7 @@ def purge_assets(connection, rows):
     caller restores the quarantined names if commit fails, then permanently removes
     them only after the SQLite transaction has committed.
     """
-    purged, blocked, staged, snapshots = [], [], [], []
+    purged, blocked, staged, snapshots, parents = [], [], [], [], []
     for row in rows:
         media = row["path"]
         if media:
@@ -1846,6 +1949,8 @@ def purge_assets(connection, rows):
         snapshot = row["snapshot_path"]
         if snapshot:
             snapshots.append(Path(snapshot))
+        if media:
+            parents.append(Path(media).parent)
         purged.append(row["id"])
     try:
         if purged:
@@ -1866,7 +1971,7 @@ def purge_assets(connection, rows):
         raise
     return {
         "purged": len(purged), "blocked": blocked,
-        "_staged": staged, "_snapshots": snapshots,
+        "_staged": staged, "_snapshots": snapshots, "_parents": parents,
     }
 
 
@@ -1887,6 +1992,11 @@ def w_empty_trash(contract: WebContract):
     result = {"ok": True, "operation": "empty-trash", **_finish_purge(outcome)}
     result.update(clean_resource_orphans(contract))
     return result
+
+
+def w_cleanup_empty_directories(_contract: WebContract, _body):
+    """Remove empty folders from online physical sources without touching the ledger."""
+    return cleanup_empty_source_directories()
 
 
 
@@ -2200,6 +2310,7 @@ POST_HANDLERS = {
     "/api/taste/refresh": w_taste_refresh,
     "/api/taste/source": w_taste_source,
     "/api/trash/empty": _post_empty_trash,
+    "/api/data-cleanup/empty-folders": w_cleanup_empty_directories,
     "/api/purge-missing": w_purge_missing,
     "/api/links/check": w_links_check,
     "/api/links/prune": w_links_prune,
@@ -2217,7 +2328,7 @@ POST_HANDLERS = {
 READ_ONLY_POST_ROUTES = frozenset({
     "/api/follow/resolve", "/api/follow/credential",
     "/api/taste/refresh", "/api/taste/source", "/api/resource-sync/scan",
-    "/api/links/check",
+    "/api/links/check", "/api/data-cleanup/empty-folders",
 })
 
 
