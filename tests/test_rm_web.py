@@ -330,6 +330,25 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual([row["k"] for row in item["tags"]], ["足交"])
         self.assertEqual(item["stats"]["duration"], 1)
 
+    def test_item_surfaces_hide_broad_taste_tag_when_specific_tag_exists(self):
+        connection = sqlite3.connect(self.db_path)
+        connection.executemany(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(?,?,?,?)",
+            [(60, "tag", "乳系", "乳系"), (61, "tag", "美乳", "美乳")],
+        )
+        connection.executemany(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+            "VALUES(1,?,'tag','test',1.0)", [(60,), (61,)],
+        )
+        connection.commit(); connection.close()
+
+        item = rm_web.q_item(self.contract, 1)
+        self.assertEqual([tag["k"] for tag in item["tags"]], ["美乳", "足交"])
+        listed = rm_web.q_items(
+            self.contract, {"loc": "local", "sort": "new", "limit": "10"},
+        )["items"]
+        self.assertEqual(listed[0]["tags"], ["美乳", "足交"])
+
     def test_facets_and_tops_narrow_to_the_state_the_page_is_showing(self):
         """「已标记」页的顶部三层和筛选面板曾走全库口径。
 

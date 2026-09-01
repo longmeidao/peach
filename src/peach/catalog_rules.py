@@ -33,11 +33,19 @@ ROLE_TAGS = {
     "探花", "男主频道",
 }
 APPEARANCE_TAGS = {
-    "丝袜", "制服", "美臀", "乳系", "露脸", "情趣内衣", "美腿", "高跟",
+    "丝袜", "制服", "美臀", "乳系", "足系", "露脸", "情趣内衣", "美腿", "高跟",
     "眼镜", "洛丽塔", "苗条", "高颜值", "巨乳", "大腿", "白丝", "黑丝",
     "臀部", "泳装", "高跟鞋", "内衣情趣", "美乳", "肉丝", "旗袍汉服",
     "白虎", "双马尾", "婚纱", "裸足", "爆乳", "贫乳", "皮衣皮裙", "体操服",
     "兽耳兽装", "口罩遮脸", "和服浴衣", "瑜伽裤", "兔女郎", "腋", "丰满",
+}
+
+# 文件名／视觉模型早期只会给「乳系」「足系」这种宽泛品味标签；官方元数据一旦
+# 给出更具体的身体特征或行为，宽泛标签就不再增加信息。只做单向取代：没有具体
+# 标签时仍保留宽泛标签，避免把已有检索能力一并抹掉。
+TAG_SUPERSESSION = {
+    "乳系": frozenset({"美乳", "巨乳", "爆乳", "贫乳", "乳交"}),
+    "足系": frozenset({"美腿", "足交", "足底足指", "足部射精", "足控", "舔脚", "裸足"}),
 }
 SCENE_TAGS = {
     "酒店", "浴室", "车震", "办公室", "户外露出", "线下约拍", "探花约炮",
@@ -258,6 +266,21 @@ def tag_cat(tag: str) -> str:
     if tag in POSITION_TAGS:
         return "position"
     return "general"
+
+
+def superseded_taste_tags(tags: list[str] | tuple[str, ...]) -> frozenset[str]:
+    """Return broad taste tags made redundant by more specific tags."""
+    present = {str(tag).strip() for tag in tags if str(tag).strip()}
+    return frozenset(
+        broad for broad, specifics in TAG_SUPERSESSION.items()
+        if specifics.intersection(present)
+    )
+
+
+def collapse_superseded_taste_tags(tags: list[str] | tuple[str, ...]) -> list[str]:
+    """Keep input order while removing only semantically superseded broad tags."""
+    obsolete = superseded_taste_tags(tags)
+    return [tag for tag in tags if tag not in obsolete]
 
 
 def part_marker(name: str) -> str:

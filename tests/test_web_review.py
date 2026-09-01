@@ -288,12 +288,16 @@ class ReviewQueueTests(unittest.TestCase):
                     "VALUES(30,'performer','桃谷绘里香','桃谷绘里香')")
         con.execute("INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,"
                     "confidence) VALUES(30,'桃谷エリカ','桃谷エリカ','r18dev',1.0)")
+        con.execute("INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,"
+                    "confidence) VALUES(30,'桃谷絵里香','桃谷絵里香','r18dev',1.0)")
         con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
                     "VALUES(31,'performer','别人','别人')")
         con.commit(); con.close()
         self.write_metadata_rows([
             {"item_key": "ALIAS", "field": "performers", "current": "桃谷绘里香",
              "candidates": ["桃谷エリカ"]},
+            {"item_key": "PAREN", "field": "performers", "current": "桃谷绘里香",
+             "candidates": ["桃谷エリカ（桃谷絵里香）"]},
             {"item_key": "CAST", "field": "performers", "current": "桃谷绘里香",
              "candidates": ["别人"]},
         ])
@@ -506,6 +510,44 @@ class ReviewQueueTests(unittest.TestCase):
             ("乳系", 0.9, "javinizer:r18dev:tag"),
             ("颜射", 0.9, "javinizer:r18dev:tag"),
         ])
+        con.close()
+
+    def test_specific_official_tag_replaces_broad_taste_tag_everywhere(self):
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET code='ABC-001' WHERE id=1")
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
+                    "VALUES(50,'tag','乳系','乳系')")
+        con.execute("INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                    "VALUES(1,50,'tag','vision_creator',0.6)")
+        con.execute("INSERT INTO asset_tag(asset_id,tag,confidence,source) "
+                    "VALUES(1,'乳系',0.6,'vision_creator')")
+        con.commit(); con.close()
+        candidate = {
+            "candidate_key": "ABC-001:tags:r18dev:specific", "source": "r18dev",
+            "source_url": "https://r18.dev/example", "confidence": 0.9,
+            "value": ["乳系", "美乳", "颜射"], "display_value": "乳系、美乳、颜射",
+            "warnings": [],
+        }
+        self.write_metadata_candidates([{
+            "item_key": "ABC-001:tags", "code": "ABC-001", "query": "ABC-001",
+            "field": "tags", "field_label": "标签", "current_value": "乳系",
+            "candidates_json": json.dumps([candidate], ensure_ascii=False), "source_count": "1",
+            "status": "candidate", "size_gb": "1", "videos": "1", "fetched_at": "now",
+        }])
+
+        result = rm_review.w_review_decision(self.contract, {
+            "category": "metadata_fields", "item_key": "ABC-001:tags",
+            "candidate_key": candidate["candidate_key"], "status": "approved",
+        })
+        self.assertEqual(result["applied_assets"], 1)
+        con = sqlite3.connect(self.db_path)
+        self.assertEqual(con.execute(
+            "SELECT tag FROM asset_tag WHERE asset_id=1 ORDER BY tag"
+        ).fetchall(), [("美乳",), ("颜射",)])
+        self.assertEqual(con.execute(
+            "SELECT e.canonical_name FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+            "WHERE ae.asset_id=1 AND ae.role='tag' ORDER BY e.canonical_name"
+        ).fetchall(), [("美乳",), ("颜射",)])
         con.close()
 
     def test_metadata_title_approval_writes_catalog_title(self):
