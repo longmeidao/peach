@@ -441,39 +441,41 @@ body.entity-open .index{overflow-x:visible}
   border-radius:8px;overflow:hidden;cursor:zoom-in;break-inside:avoid;line-height:0}
 .photocell img{width:100%;height:auto;display:block;background:var(--sunk)}
 .photocell:hover img{filter:brightness(1.06)}
-/* 灯箱：背景压到纯黑，只留大图、翻页和底部缩略图条。 */
-.photolight{position:fixed;inset:0;z-index:200;background:#000;display:grid;
-  grid-template-rows:minmax(0,1fr) auto auto;gap:8px;padding:12px 0 14px}
+/* YouTube Shorts 参考中的 48px tonal 圆钮是媒体表面的共同按钮：无描边、无浏览器
+   默认内边距，24px 图标严格落在中心。关注图集、图片灯箱和沉浸动作列都复用这一层。 */
+.media-circle{box-sizing:border-box;width:48px;height:48px;padding:0;border:0;border-radius:50%;
+  background:rgba(255,255,255,.1);color:#f1f1f1;display:grid;place-items:center;cursor:pointer}
+.media-circle:hover{background:rgba(255,255,255,.18)}
+.media-circle:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px}
+.media-circle svg{display:block;width:24px;height:24px;flex:none;stroke:currentColor;fill:none;
+  stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+/* 灯箱本体只负责固定视口；主图、顶部工具和底部缩略图各自绝对定位。
+   旧三行 grid 会和动态后载的 Swiper 百分比高度形成循环，超宽视口下主图行收成 0，
+   结果就是工具跑到顶部、缩略图贴左、原图按自然尺寸溢出。 */
+.photolight{position:fixed;inset:0;z-index:200;background:#000;display:block;overflow:hidden}
 body.photolight-open{overflow:hidden}
-/* 大图靠 `max-height:100%` 收进这一行，而百分比只在父级高度确定时才算数，
-   所以从 .photomain 到 .swiper-zoom-container 每一层都要显式给高。
-   `min-height:0` 不能省：grid 子项的自动最小尺寸是 min-height:auto，也就是
-   「不得小于内容」。竖图按宽度铺开有两三千像素高，那个下限会直接盖掉
-   height:100%，容器被撑成图片原高，max-height 再按它算就等于没限制——
-   表现就是竖图上下被裁掉。 */
-.photolight .photomain{min-height:0;height:100%;width:100%}
-.photolight .photomain .swiper-slide{height:100%;min-height:0;display:grid;place-items:center}
+/* 主画布始终占满视口，安全内边距为顶部工具、左右翻页和底部缩略图留位；
+   单图没有缩略图条，底部空间会自动还给图片。 */
+.photolight .photomain{position:absolute;inset:0;min-width:0;min-height:0;width:100%;height:100%}
+.photolight .photomain .swiper-wrapper{width:100%;height:100%}
+.photolight .photomain .swiper-slide{width:100%;height:100%;min-width:0;min-height:0;display:grid;place-items:center}
 .photolight .photomain .swiper-zoom-container{width:100%;height:100%;min-height:0;min-width:0;
-  display:grid;place-items:center}
+  box-sizing:border-box;display:grid;place-items:center;padding:64px 72px 24px}
+.photolight.has-strip .photomain .swiper-zoom-container{padding-bottom:104px}
 .photolight .photomain img{max-width:100%;max-height:100%;min-width:0;min-height:0;
   object-fit:contain;display:block}
-.photoclose{position:absolute;top:12px;right:14px;z-index:3;width:38px;height:38px;display:grid;place-items:center;
-  border:0;padding:0;border-radius:var(--control-radius);background:rgba(255,255,255,.12);color:#fff;cursor:pointer}
-.photoclose svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
-.photoclose:hover{background:rgba(255,255,255,.22)}
-.photonav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;width:44px;height:44px;display:grid;
-  place-items:center;border:0;padding:0;border-radius:50%;background:rgba(255,255,255,.12);color:#fff;cursor:pointer}
-.photonav svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.photonav:hover{background:rgba(255,255,255,.22)}
+.photoclose{position:absolute;top:12px;right:14px;z-index:5}
+.photonav{position:absolute;top:50%;transform:translateY(-50%);z-index:4}
 /* 类名用 back/fwd 而不是 prev/next：详情页「接下来」那块用的就是无前缀的 `.next`
    （padding、border-top 和背景色都在里面），同为 0-1-0 特指度且写在后面，会连人带
    样式盖到灯箱按钮上，图标被挤得偏右下。翻页方向只翻图标，不转整个按钮。 */
 .photonav.back{left:14px}.photonav.fwd{right:14px}
 .photonav.fwd svg{transform:rotate(180deg)}
 .photonav.swiper-button-disabled{opacity:.3;pointer-events:none}
-/* 详情、页码和缩放条分占三列；中间列始终是真正的画面中心。 */
-.photobar{position:relative;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;
-  padding:0 14px;min-height:30px}
+/* 详情、页码和缩放条覆盖在顶部；右侧给关闭钮留出 58px，不再参与主图尺寸计算。 */
+.photobar{position:absolute;z-index:4;top:12px;left:14px;right:72px;display:grid;
+  grid-template-columns:1fr auto 1fr;align-items:center;min-height:48px;pointer-events:none}
+.photobar>*{pointer-events:auto}
 .photocount{text-align:center;color:rgba(255,255,255,.72);font-size:var(--fs-xs)}
 .photodetailtoggle{justify-self:start;width:30px;height:30px;display:grid;place-items:center;border:0;padding:0;
   border-radius:50%;background:transparent;color:rgba(255,255,255,.72);cursor:pointer}
@@ -521,7 +523,7 @@ body.photolight-open{overflow:hidden}
 .photozoom input::-moz-range-track{height:4px;border-radius:var(--pill-radius);background:rgba(255,255,255,.28)}
 .photozoom input::-moz-range-thumb{width:14px;height:14px;border:0;border-radius:50%;background:#fff}
 .photozoom b{font-weight:400;font-size:var(--fs-xs);width:38px;text-align:right}
-.photodetail{position:absolute;z-index:4;left:14px;bottom:112px;width:min(360px,calc(100vw - 28px));
+.photodetail{position:absolute;z-index:5;left:14px;top:68px;width:min(360px,calc(100vw - 28px));
   box-sizing:border-box;display:grid;align-items:start;gap:14px;padding:16px;
   border:1px solid rgba(255,255,255,.16);border-radius:var(--floating-radius);background:rgba(18,18,20,.96);
   color:#fff;box-shadow:0 18px 48px rgba(0,0,0,.45),0 2px 8px rgba(0,0,0,.32);backdrop-filter:blur(18px)}
@@ -537,10 +539,8 @@ body.photolight-open{overflow:hidden}
 .photodetail>button svg{width:16px;height:16px;display:block;stroke:currentColor;fill:none;stroke-width:2}
 .photodetail .srcstate{color:rgba(255,255,255,.62)}
 .photodetail .srcstate:empty{display:none}
-@media (max-width:640px){.photozoom input{width:72px}.photozoom b{display:none}
-  .photobar{min-height:44px}.photodetailtoggle{width:44px;height:44px}
-  .photodetail{bottom:96px}.photodetail>button{min-height:44px}}
-.photolight .photostrip{width:100%;height:72px;padding:0 12px}
+.photolight .photostrip{position:absolute;z-index:3;left:72px;right:72px;bottom:14px;width:auto;height:72px;padding:0}
+.photolight:not(.has-strip) .photostrip{display:none}
 .photolight .photostrip .swiper-slide{width:auto;height:72px;opacity:.5;cursor:pointer;border-radius:6px;overflow:hidden}
 .photolight .photostrip .swiper-slide img{height:100%;width:auto;display:block;object-fit:cover}
 .photolight .photostrip .swiper-slide-thumb-active{opacity:1;box-shadow:0 0 0 2px #fff inset}
@@ -548,8 +548,14 @@ body.photolight-open{overflow:hidden}
 @media (max-width:640px){
   .photowall{column-count:2;column-gap:8px}
   .photosets{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:12px}
+  .photozoom input{width:72px}.photozoom b{display:none}
+  .photolight .photomain .swiper-zoom-container{padding:64px 12px 12px}
+  .photolight.has-strip .photomain .swiper-zoom-container{padding-bottom:82px}
+  .photobar{left:12px;right:64px;min-height:44px}.photodetailtoggle{width:44px;height:44px}
+  .photodetail{left:12px;top:64px;width:calc(100vw - 24px)}.photodetail>button{min-height:44px}
+  .photolight .photostrip{left:56px;right:56px;bottom:12px}
   .photolight .photostrip,.photolight .photostrip .swiper-slide{height:56px}
-  .photonav{width:38px;height:38px}.photonav.back{left:8px}.photonav.fwd{right:8px}}
+  .photoclose{top:10px;right:10px}.photonav{width:44px;height:44px}.photonav.back{left:8px}.photonav.fwd{right:8px}}
 /* 显式 display 会盖掉浏览器默认的 [hidden]{display:none}：按钮已经 hidden=true
    却仍然画出来，而 requestMore 首行就是 if(more.hidden)return，于是点了没反应。 */
 /* 身份区按类别分组：标签是组标题，同类横向排开并按需换行。
@@ -1578,14 +1584,10 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   display:flex;flex-direction:column;align-items:center;gap:16px}
 .tokstage.wide .tokbtns{left:auto;right:12px;bottom:18px}
 .tokaction{display:flex;flex-direction:column;align-items:center;gap:6px;color:#f1f1f1}
-.tokbtns button{position:relative;width:48px;height:48px;padding:0;border-radius:50%;border:0;
-  background:rgba(255,255,255,.1);color:#f1f1f1;cursor:pointer;display:grid;place-items:center;
-  transition:transform .14s,background .14s}
+.tokbtns button{position:relative;transition:transform .14s,background .14s}
 .tokbtns button:hover{transform:scale(1.05);border-color:rgba(255,255,255,.5)}
 .tokbtns button:active{transform:scale(.96)}
 .tokbtns button:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px}
-.tokbtns svg{display:block;width:24px;height:24px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;
-  stroke-linecap:round;stroke-linejoin:round}
 .toklabel{font-size:var(--fs-xs);font-weight:500;line-height:1.25;white-space:nowrap}.toklabel b{font:inherit}
 /* 进度条。可见部分只有 4px，但命中区得够高——屏幕最下沿的 4px 是鼠标最难瑞的
    那一条。所以 .tokbar 本体是 20px 的透明热区，轨道和已播部分画在它底部，
@@ -1875,7 +1877,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fstate{flex:1 1 100%;font-size:var(--fs-xs);color:var(--drop)}
 .fvkind{display:inline-block;max-width:120px;margin-right:6px;padding:1px 7px;border-radius:var(--badge-radius);overflow:hidden;text-overflow:ellipsis;vertical-align:-2px;background:var(--overlay-5);color:var(--muted);font-size:var(--fs-xs);font-style:normal}
 .fvkind.wip{color:var(--meter)}.fvkind.alt{color:var(--tungsten)}
-.followdetailmedia{--follow-image-arrow-inset:16px;min-height:min(62vh,640px)}.followdetailmedia.image{min-height:0;background:color-mix(in srgb,var(--video-glow,#15202a) 12%,var(--surface) 88%)}.followdetailposter.zoomable{cursor:zoom-in}.followdetailposter{position:relative;z-index:1;display:block;width:auto;height:auto;max-width:100%;max-height:76vh;object-fit:contain;background:transparent}.followimagearrow{position:absolute;z-index:4;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:46px;height:46px;border:1px solid rgba(255,255,255,.24);border-radius:50%;background:rgba(0,0,0,.56);color:#fff;cursor:pointer;backdrop-filter:blur(10px)}.followimagearrow:hover{background:rgba(255,255,255,.18)}.followimagearrow.prev{left:var(--follow-image-arrow-inset)}.followimagearrow.next{right:var(--follow-image-arrow-inset)}.followimagearrow svg{width:25px;height:25px;stroke:currentColor;fill:none}.followimagedots{position:absolute;z-index:4;left:50%;bottom:18px;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;gap:8px;max-width:calc(100% - 120px);padding:8px 11px;border-radius:14px;background:rgba(0,0,0,.5);overflow:hidden}.followimagedots button{flex:none;width:8px;height:8px;padding:0;border:0;border-radius:50%;background:rgba(255,255,255,.42);cursor:pointer}.followimagedots button[aria-current="true"]{width:20px;border-radius:5px;background:#fff}
+.followdetailmedia{--follow-image-arrow-inset:16px;min-height:min(62vh,640px)}.followdetailmedia.image{min-height:0;background:color-mix(in srgb,var(--video-glow,#15202a) 12%,var(--surface) 88%)}.followdetailposter.zoomable{cursor:zoom-in}.followdetailposter{position:relative;z-index:1;display:block;width:auto;height:auto;max-width:100%;max-height:76vh;object-fit:contain;background:transparent}.followimagearrow{position:absolute;z-index:4;top:50%;transform:translateY(-50%)}.followimagearrow.prev{left:var(--follow-image-arrow-inset)}.followimagearrow.next{right:var(--follow-image-arrow-inset)}.followimagedots{position:absolute;z-index:4;left:50%;bottom:18px;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;gap:8px;max-width:calc(100% - 120px);padding:8px 11px;border-radius:14px;background:rgba(0,0,0,.5);overflow:hidden}.followimagedots button{flex:none;width:8px;height:8px;padding:0;border:0;border-radius:50%;background:rgba(255,255,255,.42);cursor:pointer}.followimagedots button[aria-current="true"]{width:20px;border-radius:5px;background:#fff}
 .followdetailplaceholder{display:grid;place-items:center;gap:10px;color:var(--muted)}.followdetailplaceholder .ficon{width:34px;height:34px;margin:0}
 .followdetailtitle{display:flex;gap:5px;align-items:flex-start;margin-bottom:8px}.followdetailtitle .stitle{width:auto;max-width:calc(100% - 35px);margin:0}.followdetailtitle .followorigin{flex:none;width:30px;height:30px;margin:0;display:grid;place-items:center;border-radius:7px}.followdetailtitle .followorigin:hover{background:var(--hover)}
 .followdetailidentity{display:flex;align-items:center;gap:10px;margin:2px 0 12px}.followdetailidentity .mav{flex:none}.followdetailidentity b,.followdetailidentity span{display:block}.followdetailidentity>div>span{margin-top:3px;color:var(--muted);font-size:var(--fs-xs)}
@@ -1884,7 +1886,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 @media (max-width:640px){.followhead{align-items:center}
   .followauthors{margin-right:-12px;padding-top:3px}.followfilters{margin-right:-12px;padding-right:12px}
   .followlist.followphotowall{column-count:2;column-gap:8px}
-  .followdetailmedia{--follow-image-arrow-inset:10px}.followimagearrow{width:42px;height:42px}.followimagedots{bottom:12px}
+  .followdetailmedia{--follow-image-arrow-inset:10px}.followimagearrow{width:44px;height:44px}.followimagedots{bottom:12px}
 }
 
 /* ── 关注管理页 ──

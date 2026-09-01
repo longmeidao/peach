@@ -1821,7 +1821,8 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageLacks("event.currentTarget.innerHTML=icon('check')")
 
     def test_follow_image_collections_use_buttons_dots_and_arrow_keys(self):
-        self.assertPageContains('class="followimagearrow prev"')
+        self.assertPageContains('class="media-circle followimagearrow prev"')
+        self.assertPageContains('class="media-circle followimagearrow next"')
         self.assertPageContains('class="followimagedots" role="group"')
         self.assertPageContains('data-follow-image-item="${image.index}"')
         self.assertPageContains("imageDots.length&&(e.key==='ArrowLeft'||e.key==='ArrowRight')")
