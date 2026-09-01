@@ -63,6 +63,19 @@ class StashEntityImportTests(unittest.TestCase):
         ).fetchone()[0]
         self.assertIn("Performer summary", metadata)
 
+    def test_social_host_match_lands_on_dot_boundary(self):
+        """后缀匹配必须落在点边界上。
+
+        `"notx.com".endswith("x.com")` 为真，旧写法会把任何以平台名结尾的域名判成 social，
+        写进 entity_link 后在资料页上显示成官方社交账号。
+        """
+        for url in ("https://x.com/alice", "https://mobile.twitter.com/alice",
+                    "https://www.instagram.com/alice"):
+            self.assertEqual(MODULE.link_kind(url), "social", url)
+        for url in ("https://notx.com/alice", "https://faketwitter.com/alice",
+                    "https://example.com/alice"):
+            self.assertEqual(MODULE.link_kind(url), "catalog", url)
+
     def test_reads_png_and_jpeg_dimensions(self):
         png_buffer = io.BytesIO()
         jpeg_buffer = io.BytesIO()

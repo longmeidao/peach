@@ -33,9 +33,21 @@ def normalized(value: str) -> str:
     return " ".join(value.casefold().split())
 
 
+SOCIAL_HOSTS = ("x.com", "twitter.com", "instagram.com", "youtube.com", "tiktok.com")
+
+
+def under(host: str, domains: tuple[str, ...]) -> bool:
+    """host 是否就是这些域名之一或它们的子域。
+
+    直接用 `endswith` 会把 `notx.com` 判成 x.com——后缀匹配必须落在点边界上，
+    否则任何人注册一个以平台名结尾的域名就能让链接在资料页上显示成官方社交账号。
+    """
+    return any(host == domain or host.endswith("." + domain) for domain in domains)
+
+
 def link_kind(url: str) -> str:
     host = (urlsplit(url).hostname or "").casefold()
-    if host.endswith(("x.com", "twitter.com", "instagram.com", "youtube.com", "tiktok.com")):
+    if under(host, SOCIAL_HOSTS):
         return "social"
     return "catalog"
 
