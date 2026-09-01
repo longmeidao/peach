@@ -1668,6 +1668,9 @@ class WebUiSourceTests(unittest.TestCase):
             "el.addEventListener('mouseleave',stop);" + chr(10)
             + "  el._stopHover=stop;")
         self.assertPageContains("const mixRelatedCache=new Map();")
+        # 第一张不能等满一个完整间隔：那会把「鼠标停下到有反应」拉到两秒。
+        self.assertPageContains(
+            "lead=setTimeout(()=>{step();cycle=setInterval(step,MIX_FLIP_MS)},MIX_FLIP_LEAD_MS);")
         self.assertPageContains(
             "Promise.all([api('/api/item?id='+seedId),mixRelated(seedId)])")
         # 队列长度不能被悬浮预取剪短：两边用同一个 limit。
