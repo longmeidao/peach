@@ -84,7 +84,7 @@ Python 运行时与可选工具全部在 `pyproject.toml` 精确固定版本；�
 | `maintenance-115` | 115 SHA-1 对账脚本 |
 
 GitHub Dependabot 每周检查 Python、npm 和 GitHub Actions；每个更新 PR 都运行 Windows/macOS、
-Python 3.12/3.14 正式测试。前端依赖更新后，先安装锁定包：
+Python 3.14 正式测试。前端依赖更新后，先安装锁定包：
 
 ```powershell
 npm ci --ignore-scripts

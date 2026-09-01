@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "peach-app"
 dynamic = ["version"]
 description = "Local-first media library, behavior ledger, and discovery application"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = [
   "APScheduler==3.11.3",
   "beautifulsoup4==4.15.0",
