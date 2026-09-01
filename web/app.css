@@ -441,14 +441,15 @@ body.entity-open .index{overflow-x:visible}
   border-radius:8px;overflow:hidden;cursor:zoom-in;break-inside:avoid;line-height:0}
 .photocell img{width:100%;height:auto;display:block;background:var(--sunk)}
 .photocell:hover img{filter:brightness(1.06)}
-/* YouTube Shorts 参考中的 48px tonal 圆钮是媒体表面的共同按钮：无描边、无浏览器
-   默认内边距，24px 图标严格落在中心。关注图集、图片灯箱和沉浸动作列都复用这一层。 */
+/* 媒体圆钮只共享 48/24 的几何与图标居中；表面色由使用场景决定。 */
 .media-circle{box-sizing:border-box;width:48px;height:48px;padding:0;border:0;border-radius:50%;
   background:rgba(255,255,255,.1);color:#f1f1f1;display:grid;place-items:center;cursor:pointer}
 .media-circle:hover{background:rgba(255,255,255,.18)}
 .media-circle:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px}
 .media-circle svg{display:block;width:24px;height:24px;flex:none;stroke:currentColor;fill:none;
   stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.media-circle.media-overlay{background:rgba(0,0,0,.6);color:#fff;backdrop-filter:blur(16px)}
+.media-circle.media-overlay:hover{background:rgba(0,0,0,.78)}
 /* 灯箱本体只负责固定视口；主图、顶部工具和底部缩略图各自绝对定位。
    旧三行 grid 会和动态后载的 Swiper 百分比高度形成循环，超宽视口下主图行收成 0，
    结果就是工具跑到顶部、缩略图贴左、原图按自然尺寸溢出。 */
@@ -456,12 +457,15 @@ body.entity-open .index{overflow-x:visible}
 body.photolight-open{overflow:hidden}
 /* 主画布始终占满视口，安全内边距为顶部工具、左右翻页和底部缩略图留位；
    单图没有缩略图条，底部空间会自动还给图片。 */
-.photolight .photomain{position:absolute;inset:0;min-width:0;min-height:0;width:100%;height:100%}
-.photolight .photomain .swiper-wrapper{width:100%;height:100%}
-.photolight .photomain .swiper-slide{width:100%;height:100%;min-width:0;min-height:0;display:grid;place-items:center}
+.photolight .photomain{position:absolute;inset:0;min-width:0;min-height:0;width:100%;height:100%;overflow:hidden}
+/* Swiper 的 CSS 和脚本虽会一起等待，仍保留最小结构样式，避免缓存/首载竞态把所有
+   slide 当普通块元素同时画出来。只限定 photomain 的直接子级，不影响底部缩略图。 */
+.photolight .photomain>.swiper-wrapper{display:flex;width:100%;height:100%}
+.photolight .photomain>.swiper-wrapper>.swiper-slide{flex:0 0 100%;width:100%;height:100%;min-width:0;
+  min-height:0;display:grid;place-items:center}
 .photolight .photomain .swiper-zoom-container{width:100%;height:100%;min-height:0;min-width:0;
-  box-sizing:border-box;display:grid;place-items:center;padding:64px 72px 24px}
-.photolight.has-strip .photomain .swiper-zoom-container{padding-bottom:104px}
+  box-sizing:border-box;display:grid;place-items:center;padding:24px 72px 76px}
+.photolight.has-strip .photomain .swiper-zoom-container{padding-bottom:148px}
 .photolight .photomain img{max-width:100%;max-height:100%;min-width:0;min-height:0;
   object-fit:contain;display:block}
 .photoclose{position:absolute;top:12px;right:14px;z-index:5}
@@ -471,22 +475,27 @@ body.photolight-open{overflow:hidden}
    样式盖到灯箱按钮上，图标被挤得偏右下。翻页方向只翻图标，不转整个按钮。 */
 .photonav.back{left:14px}.photonav.fwd{right:14px}
 .photonav.fwd svg{transform:rotate(180deg)}
-.photonav.swiper-button-disabled{opacity:.3;pointer-events:none}
-/* 详情、页码和缩放条覆盖在顶部；右侧给关闭钮留出 58px，不再参与主图尺寸计算。 */
-.photobar{position:absolute;z-index:4;top:12px;left:14px;right:72px;display:grid;
+.photonav.swiper-button-disabled{opacity:0;visibility:hidden;pointer-events:none}
+/* 详情、页码和缩放操作统一落在底部；多图时整体抬到缩略图条上方。 */
+.photobar{position:absolute;z-index:4;bottom:14px;left:14px;right:14px;display:grid;
   grid-template-columns:1fr auto 1fr;align-items:center;min-height:48px;pointer-events:none}
+.photolight.has-strip .photobar{bottom:98px}
 .photobar>*{pointer-events:auto}
-.photocount{text-align:center;color:rgba(255,255,255,.72);font-size:var(--fs-xs)}
-.photodetailtoggle{justify-self:start;width:30px;height:30px;display:grid;place-items:center;border:0;padding:0;
-  border-radius:50%;background:transparent;color:rgba(255,255,255,.72);cursor:pointer}
-.photodetailtoggle:hover,.photodetailtoggle[aria-expanded="true"]{background:rgba(255,255,255,.12);color:#fff}
+.photocount{justify-self:center;padding:7px 11px;border-radius:var(--pill-radius);background:rgba(0,0,0,.6);
+  color:rgba(255,255,255,.82);font-size:var(--fs-xs);backdrop-filter:blur(16px)}
+.photodetailtoggle{justify-self:start;width:40px;height:40px;display:grid;place-items:center;border:0;padding:0;
+  border-radius:50%;background:rgba(0,0,0,.6);color:rgba(255,255,255,.82);cursor:pointer;backdrop-filter:blur(16px)}
+.photodetailtoggle:hover,.photodetailtoggle[aria-expanded="true"]{background:rgba(0,0,0,.78);color:#fff}
 .photodetailtoggle svg{width:20px;height:20px;display:block;stroke:currentColor;fill:none;stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round}
-.photozoom{justify-self:end;display:flex;align-items:center;gap:8px;color:rgba(255,255,255,.72)}
-.photozoom button{width:24px;height:24px;display:grid;place-items:center;border:0;border-radius:50%;
-  padding:0;background:rgba(255,255,255,.12);color:#fff;cursor:pointer}
+.photozoom{justify-self:end;display:flex;align-items:center;gap:7px;padding:4px;border-radius:var(--pill-radius);
+  background:rgba(0,0,0,.6);color:rgba(255,255,255,.82);backdrop-filter:blur(16px)}
+.photozoom button{width:28px;height:28px;display:grid;place-items:center;border:0;border-radius:50%;
+  padding:0;background:transparent;color:#fff;cursor:pointer}
 .photozoom button svg{width:15px;height:15px;display:block;stroke:currentColor;fill:none;stroke-width:2}
 .photozoom button:hover{background:rgba(255,255,255,.22)}
+.photozoom .photoscale{width:30px}
+.photozoom .photooriginal{width:38px;border-radius:var(--control-radius);font-size:var(--fs-xs)}
 
 .fcollapse{overflow:hidden;transition:height .2s ease-in-out}
 /* Geist Skeleton：整页／大区块等待内容结构时先占住稳定区域。 */
@@ -523,7 +532,7 @@ body.photolight-open{overflow:hidden}
 .photozoom input::-moz-range-track{height:4px;border-radius:var(--pill-radius);background:rgba(255,255,255,.28)}
 .photozoom input::-moz-range-thumb{width:14px;height:14px;border:0;border-radius:50%;background:#fff}
 .photozoom b{font-weight:400;font-size:var(--fs-xs);width:38px;text-align:right}
-.photodetail{position:absolute;z-index:5;left:14px;top:68px;width:min(360px,calc(100vw - 28px));
+.photodetail{position:absolute;z-index:5;left:14px;bottom:72px;width:min(360px,calc(100vw - 28px));
   box-sizing:border-box;display:grid;align-items:start;gap:14px;padding:16px;
   border:1px solid rgba(255,255,255,.16);border-radius:var(--floating-radius);background:rgba(18,18,20,.96);
   color:#fff;box-shadow:0 18px 48px rgba(0,0,0,.45),0 2px 8px rgba(0,0,0,.32);backdrop-filter:blur(18px)}
@@ -539,6 +548,7 @@ body.photolight-open{overflow:hidden}
 .photodetail>button svg{width:16px;height:16px;display:block;stroke:currentColor;fill:none;stroke-width:2}
 .photodetail .srcstate{color:rgba(255,255,255,.62)}
 .photodetail .srcstate:empty{display:none}
+.photolight.has-strip .photodetail{bottom:156px}
 .photolight .photostrip{position:absolute;z-index:3;left:72px;right:72px;bottom:14px;width:auto;height:72px;padding:0}
 .photolight:not(.has-strip) .photostrip{display:none}
 .photolight .photostrip .swiper-slide{width:auto;height:72px;opacity:.5;cursor:pointer;border-radius:6px;overflow:hidden}
@@ -549,10 +559,13 @@ body.photolight-open{overflow:hidden}
   .photowall{column-count:2;column-gap:8px}
   .photosets{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:12px}
   .photozoom input{width:72px}.photozoom b{display:none}
-  .photolight .photomain .swiper-zoom-container{padding:64px 12px 12px}
-  .photolight.has-strip .photomain .swiper-zoom-container{padding-bottom:82px}
-  .photobar{left:12px;right:64px;min-height:44px}.photodetailtoggle{width:44px;height:44px}
-  .photodetail{left:12px;top:64px;width:calc(100vw - 24px)}.photodetail>button{min-height:44px}
+  .photolight .photomain .swiper-zoom-container{padding:12px 12px 70px}
+  .photolight.has-strip .photomain .swiper-zoom-container{padding-bottom:136px}
+  .photobar{left:12px;right:12px;bottom:10px;min-height:44px}
+  .photolight.has-strip .photobar{bottom:80px}
+  .photodetailtoggle{width:40px;height:40px}
+  .photodetail{left:12px;bottom:62px;width:calc(100vw - 24px)}
+  .photolight.has-strip .photodetail{bottom:132px}.photodetail>button{min-height:44px}
   .photolight .photostrip{left:56px;right:56px;bottom:12px}
   .photolight .photostrip,.photolight .photostrip .swiper-slide{height:56px}
   .photoclose{top:10px;right:10px}.photonav{width:44px;height:44px}.photonav.back{left:8px}.photonav.fwd{right:8px}}

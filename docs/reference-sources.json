@@ -202,7 +202,7 @@
       "url": "https://www.youtube.com/watch?v=jNQXAC9IVRw",
       "snapshot": "docs/reference-snapshots/youtube-player-controls-user-screenshot.md",
       "checked_on": "2026-09-01",
-      "sha256": "b360608a2728541f8ad7f51bd56ffa90224dd6d8ef895f94f5cac9b72fb3a1eb",
+      "sha256": "d20e01e3796c82c3c16442ce6dbb304f50a4940f5ec0183c356703c9953c7caf",
       "role": "实际 YouTube e937390a DOM、CSS、JS 与用户截图锁定播放器几何、状态和设置面板；官方帮助锁定氛围模式和影院模式语义。",
       "consumers": [
         "web/app.css",
