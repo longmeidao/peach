@@ -28,7 +28,7 @@ CREATE TABLE asset(id INTEGER PRIMARY KEY,location TEXT,path TEXT,name TEXT,medi
   catalog_title TEXT,original_title TEXT,
   snapshot_path TEXT,disposal TEXT);
 CREATE TABLE asset_tag(asset_id INTEGER,tag TEXT,confidence REAL DEFAULT 1.0,source TEXT,
-  PRIMARY KEY(asset_id,tag,source));
+  UNIQUE(asset_id,tag));
 CREATE TABLE entity(id INTEGER PRIMARY KEY,kind TEXT,canonical_name TEXT,normalized_name TEXT,
   metadata_json TEXT DEFAULT '{}',created_at TEXT,updated_at TEXT,UNIQUE(kind,normalized_name));
 CREATE TABLE entity_alias(entity_id INTEGER,alias TEXT,normalized_alias TEXT,source TEXT,
@@ -458,6 +458,10 @@ class ReviewQueueTests(unittest.TestCase):
     def test_metadata_tag_approval_writes_tags_for_detail_consumers(self):
         con = sqlite3.connect(self.db_path)
         con.execute("UPDATE asset SET code='ABC-001' WHERE id=1")
+        con.execute(
+            "INSERT INTO asset_tag(asset_id,tag,confidence,source) "
+            "VALUES(1,'乳系',0.4,'filename')"
+        )
         con.commit(); con.close()
         candidate = {
             "candidate_key": "ABC-001:tags:r18dev:abc", "source": "r18dev",
@@ -476,9 +480,12 @@ class ReviewQueueTests(unittest.TestCase):
         })
         self.assertEqual(result["applied_assets"], 1)
         con = sqlite3.connect(self.db_path)
-        self.assertEqual({row[0] for row in con.execute(
-            "SELECT tag FROM asset_tag WHERE asset_id=1 AND source='javinizer:r18dev:tag'"
-        )}, {"乳系", "颜射"})
+        self.assertEqual(con.execute(
+            "SELECT tag,confidence,source FROM asset_tag WHERE asset_id=1 ORDER BY tag"
+        ).fetchall(), [
+            ("乳系", 0.9, "javinizer:r18dev:tag"),
+            ("颜射", 0.9, "javinizer:r18dev:tag"),
+        ])
         con.close()
 
     def test_metadata_title_approval_writes_catalog_title(self):
