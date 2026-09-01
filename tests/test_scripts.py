@@ -114,6 +114,23 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertNotIn("CATEGORY_MAP", source,
                          "genre 映射只留 peach.genre_taxonomy 一份")
 
+    def test_reused_snapshots_are_re_checked_against_the_queried_code(self):
+        # 「复用上一轮成功记录」只看 result 在不在，就会把当初那次错配一路带下去。
+        import json as _json
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "dlgetchu.json"
+            path.write_text(_json.dumps({"result": {
+                "id": "33938", "content_id": "33938",
+                "source_url": "https://dl.getchu.com/i/item33938",
+                "genres": ["コスプレ一般"],
+            }}), encoding="utf-8")
+            self.assertIsNone(self.scrape_codes._read_snapshot(path, "ABW-220"))
+            path.write_text(_json.dumps({"result": {
+                "content_id": "118abw220", "genres": ["中出し"],
+            }}), encoding="utf-8")
+            self.assertEqual(
+                self.scrape_codes._read_snapshot(path, "ABW-220")["genres"], ["中出し"])
+
     def test_only_not_found_counts_as_a_settled_source_verdict(self):
         # 本机 javinizer 没启用某个 scraper 时返回的是 unknown 错误。把它当定论
         # 复用，会让配置问题被冻结成来源判决，续跑再也不问这个番号。
@@ -1204,8 +1221,9 @@ class OperationalScriptTests(unittest.TestCase):
             raw = root / "raw"
             snapshot = raw / "AAA-001" / "r18dev.json"
             snapshot.parent.mkdir(parents=True)
+            # 真实快照一定带得出番号身份；不带的现在按「对不上」重新联网问。
             snapshot.write_text(__import__("json").dumps({
-                "result": {"source": "r18dev", "maker": "Cached Studio"},
+                "result": {"source": "r18dev", "id": "AAA-001", "maker": "Cached Studio"},
             }), encoding="utf-8")
             missing = raw / "BBB-002" / "r18dev.json"
             missing.parent.mkdir(parents=True)
@@ -1256,7 +1274,7 @@ class OperationalScriptTests(unittest.TestCase):
             snapshot = raw / "ABC-001" / "r18dev.json"
             snapshot.parent.mkdir(parents=True)
             snapshot.write_text(__import__("json").dumps({
-                "result": {"source": "r18dev", "maker": "Studio A"},
+                "result": {"source": "r18dev", "id": "ABC-001", "maker": "Studio A"},
             }), encoding="utf-8")
 
             class HealthProvider:

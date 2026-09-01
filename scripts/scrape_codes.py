@@ -37,6 +37,7 @@ from peach.metadata import (
     MetadataProviderError,
     extract_catalog_evidence,
     extract_peach_fields,
+    identifies_code,
 )
 from peach.metadata_policy import (
     PEACH_FIELDS,
@@ -149,13 +150,22 @@ def _current_values(connection: sqlite3.Connection, code: str, field: str) -> li
     return sorted({str(row[0]).strip() for row in rows if str(row[0] or "").strip()})
 
 
-def _read_snapshot(path: Path) -> dict | None:
+def _read_snapshot(path: Path, code: str) -> dict | None:
+    """复用上一轮的成功记录，但先确认它和这个番号对得上。
+
+    快照是在 `identifies_code` 之前落的盘，里面就有 dl.getchu 拿不相干同人商品
+    当结果的记录。只看「有没有 result」而不看身份，等于把当初那次错配一路复用
+    下去——封面域 2026-09-01 的跨片封套正是这么带到今天的。对不上就当没有快照，
+    重新联网问一次，闸在 provider 那一侧会把它变成 not_found。
+    """
     try:
         wrapper = json.loads(path.read_text(encoding="utf-8"))
         result = wrapper.get("result")
-        return result if isinstance(result, dict) else None
     except (OSError, ValueError, TypeError):
         return None
+    if not isinstance(result, dict) or not identifies_code(code, result):
+        return None
+    return result
 
 
 #: 只有来源明确答「没有这部片」才算定论。`unknown` 是「这次没问出结果」，
@@ -432,7 +442,7 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                     continue
                 snapshot = args.raw_dir / query / f"{source}.json"
                 started = time.perf_counter()
-                payload = None if args.refresh else _read_snapshot(snapshot)
+                payload = None if args.refresh else _read_snapshot(snapshot, query)
                 settled_error = None if args.refresh else _read_settled_error(snapshot)
                 reused = payload is not None or settled_error is not None
                 try:
