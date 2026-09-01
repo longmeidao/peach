@@ -33,8 +33,15 @@ from peach.review_csv import write_rows
 
 FIELDS = ("item_id", "external_id", "url", "result", "tag_types", "note")
 
-#: 同一主机的最小请求间隔。rule34.xxx 公布的口径是每 60 秒 60 次；留一倍余量。
-DEFAULT_DELAY = 1.5
+#: 同一主机的最小请求间隔。rule34.xxx 自己公布的口径是每 60 秒 60 次，也就是
+#: 每次至少 1 秒；留一点余量。首轮按 0.35 秒跑过一次：400 条里 372 条「帖子页
+#: 没有解析出类型」——不是这些帖子没有类型，是被限流挡了，`_detail_tag_types`
+#: 把非 200 吞成了空字典。速度换来的全是白跑的请求。
+DEFAULT_DELAY = 1.1
+#: 连续这么多条取不到就认定是被限流，而不是这一段恰好都没类型。
+MISS_STREAK_LIMIT = 8
+#: 限流后的静默时长，按站方公布的窗口取满一格。
+COOLDOWN_SECONDS = 60.0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -124,6 +131,7 @@ def run(args: argparse.Namespace) -> int:
     pending_updates: list[tuple[str, int]] = []
     written = 0
     fetched = 0
+    miss_streak = 0
 
     def flush() -> None:
         nonlocal written
@@ -152,9 +160,20 @@ def run(args: argparse.Namespace) -> int:
         time.sleep(args.delay)
         if not tag_types:
             # 取不到不等于这条没有类型：留待下一轮，不写空字典冒充已补。
+            miss_streak += 1
             log.append({"item_id": row["id"], "external_id": post_id, "url": row["url"],
                         "result": "未取得", "tag_types": "", "note": "帖子页没有解析出类型"})
+            if miss_streak >= MISS_STREAK_LIMIT:
+                # 连着这么多条都取不到，几乎不可能是内容碰巧都没类型。继续按原速
+                # 跑下去只是把整个队列烧成「未取得」，下一轮还得从头再问一遍。
+                print(f"连续 {miss_streak} 条取不到，按限流处理，静默 "
+                      f"{COOLDOWN_SECONDS:.0f} 秒", flush=True)
+                flush()
+                write_rows(args.out, FIELDS, log, atomic=True)
+                time.sleep(COOLDOWN_SECONDS)
+                miss_streak = 0
             continue
+        miss_streak = 0
         fetched += 1
         row["merged"] = merge_tag_types(row["metadata"], tag_types)
         pending_updates.append((row["merged"], row["id"]))
