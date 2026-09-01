@@ -37,6 +37,32 @@ _TERM_FORBIDDEN_RE = re.compile(r"[/\\?#&<>\"'`\x00-\x1f\x7f]")
 MAX_TERM_LENGTH = 80
 
 
+def identity_key(text: str) -> str:
+    """跨站可比的身份键：只留字母数字并折叠大小写。
+
+    同一个人在各站的写法差的是分隔符——`Ria_neearts`、`ria-neearts`、
+    `RiaNeearts` 是同一个手柄。把分隔符抹掉之后才谈得上「这条命中的是不是他」。
+    """
+    return re.sub(r"[^0-9a-z]+", "", str(text).casefold())
+
+
+def spelling_variants(term: str) -> tuple[str, ...]:
+    """一个手柄在各站可能的几种分隔符写法，原样排在最前。
+
+    这和 `search_variants` 不是一回事：那个是给全文搜索按词切分用的，这个是给
+    「站上的标识符长什么样」用的，连写和连字符都要试。
+    """
+    text = term.strip()
+    parts = [part for part in re.split(r"[\s_.-]+", text) if part]
+    variants = [text]
+    if len(parts) > 1:
+        for joiner in ("_", "-", "", " "):
+            spelling = joiner.join(parts)
+            if spelling not in variants:
+                variants.append(spelling)
+    return tuple(variants)
+
+
 @dataclass(frozen=True)
 class Candidate:
     """一个查到的、可以登记的来源。"""
@@ -180,17 +206,47 @@ def _rule34video_candidates(term: str, transport) -> list[Candidate]:
                       term.strip(), "work", "作者页存在")]
 
 
+def _rule34xxx_tag_url(tag: str) -> str:
+    return ("https://rule34.xxx/index.php?page=post&s=list"
+            f"&tags={urllib.parse.quote(tag)}")
+
+
 def _rule34xxx_candidates(term: str, transport, credential: Credential | None) -> list[Candidate]:
-    if credential is None:
-        raise CredentialError("rule34xxx 需要 user_id 与 api_key 才能查标签")
-    tag = canonical_source_ref("rule34xxx", re.sub(r"\s+", "_", term.strip()))
-    connector = Rule34XxxConnector(transport=transport, credential=credential, max_items=1)
-    result = connector.fetch(tag)
-    if not result.candidates:
+    """按标签补全反查站上真实的写法，再拿写法去登记。
+
+    先前这里把手柄逐字当标签查一遍，写法差一个分隔符就是零命中：`Ria_neearts`
+    什么都查不到，站上写作 `ria-neearts`，248 件作品。补全接口不需要凭据，
+    因此发现阶段也不再需要——凭据仍然是**抓取**这条订阅的前提。
+    """
+    wanted = identity_key(term)
+    if not wanted:
         return []
-    return [Candidate("rule34xxx", tag,
-                      "https://rule34.xxx/index.php?page=post&s=list"
-                      f"&tags={urllib.parse.quote(tag)}",
+    connector = Rule34XxxConnector(transport=transport, credential=credential, max_items=1)
+    picked: list[Candidate] = []
+    seen: set[str] = set()
+    for probe in spelling_variants(term):
+        for tag, count in connector.autocomplete(probe):
+            canonical = canonical_source_ref("rule34xxx", tag)
+            if identity_key(tag) != wanted or canonical in seen:
+                continue
+            seen.add(canonical)
+            picked.append(Candidate(
+                "rule34xxx", canonical, _rule34xxx_tag_url(canonical),
+                canonical.replace("_", " "), "work",
+                f"站内标签 {canonical} 下有 {count} 件作品" if count
+                else f"站内存在标签 {canonical}"))
+            if len(picked) >= MAX_CANDIDATES_PER_SOURCE:
+                return picked
+        if picked:
+            return picked
+    if credential is None:
+        return picked
+    # 补全一次只回十条，热门前缀会把完整写法挤出去。有凭据时再按原样查一次标签，
+    # 这条路径不受那个上限影响。
+    tag = canonical_source_ref("rule34xxx", re.sub(r"\s+", "_", term.strip()))
+    if not connector.fetch(tag).candidates:
+        return picked
+    return [Candidate("rule34xxx", tag, _rule34xxx_tag_url(tag),
                       tag.replace("_", " "), "work", "标签下有作品")]
 
 
@@ -224,8 +280,34 @@ def _f95_external_search(term: str) -> ExternalSearch:
     )
 
 
-def _f95_candidates(term: str, transport) -> list[Candidate]:
-    connector = F95ZoneConnector(transport=transport)
+def _f95_forum_candidates(term: str, connector) -> list[Candidate]:
+    """站内搜索：`latest_data.php` 索引之外的线程。
+
+    那份索引只有 Latest Updates 五个分类，艺术家的 Collection 帖发在普通版块里，
+    怎么搜都不会出现。站内搜索能看到它们，代价是必须带登录 cookie。
+    """
+    picked: list[Candidate] = []
+    seen: set[str] = set()
+    for query in search_variants(term):
+        for row in connector.search_threads(query):
+            thread = str(row.get("thread_id") or "")
+            if not thread or thread in seen:
+                continue
+            seen.add(thread)
+            picked.append(Candidate(
+                "f95zone", thread, f"https://f95zone.to/threads/{thread}/",
+                str(row.get("title") or f"线程 {thread}"), "release",
+                f"站内搜索按标题命中「{query}」"))
+            if len(picked) >= MAX_CANDIDATES_PER_SOURCE:
+                return picked
+        if picked:
+            return picked
+    return picked
+
+
+def _f95_candidates(term: str, transport,
+                    credential: Credential | None = None) -> list[Candidate]:
+    connector = F95ZoneConnector(transport=transport, credential=credential)
     picked: list[Candidate] = []
     if _NUMERIC_RE.match(term):
         response = connector.probe(f"https://f95zone.to/threads/{term}/",
@@ -252,7 +334,10 @@ def _f95_candidates(term: str, transport) -> list[Candidate]:
                     return picked
         if picked:
             return picked
-    return picked
+    if credential is None or not credential.values.get("cookie"):
+        # 没有 cookie 就搜不了站内，别把「查不到」说成「站上没有」——外部搜索入口还在。
+        return picked
+    return _f95_forum_candidates(term, connector)
 
 
 def discover(term: str, *, secrets_root: Path, state_root: Path,
@@ -294,7 +379,8 @@ def discover(term: str, *, secrets_root: Path, state_root: Path,
         run("rule34xxx",
             lambda: _rule34xxx_candidates(text, transport,
                                           credentials.load("rule34xxx")))
-    run("f95zone", lambda: _f95_candidates(text, transport))
+    run("f95zone", lambda: _f95_candidates(text, transport,
+                                           credentials.load("f95zone")))
     if "f95zone" in wanted and not any(row.provider == "f95zone" for row in found):
         external_searches.append(_f95_external_search(text))
     return Discovery(text, tuple(found), failures, tuple(external_searches))
