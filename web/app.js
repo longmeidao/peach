@@ -2688,8 +2688,8 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
       :item.thumb_url
         ?`<img class="followdetailposter" src="${esc(item.thumb_url)}" alt="${esc(item.title)}" referrerpolicy="no-referrer">`
         :`<div class="followdetailplaceholder">${sourceIcon(item.provider)}<span>没有可用预览</span></div>`;
-  const imageControls=imageCarousel?`<button class="media-circle followimagearrow prev" data-follow-image-step="-1" aria-label="上一张图片" title="上一张">${icon('chevron-left')}</button>
-    <button class="media-circle followimagearrow next" data-follow-image-step="1" aria-label="下一张图片" title="下一张">${icon('chevron-right')}</button>
+  const imageControls=imageCarousel?`<button class="media-circle media-overlay followimagearrow prev" data-follow-image-step="-1" aria-label="上一张图片" title="上一张">${icon('chevron-left')}</button>
+    <button class="media-circle media-overlay followimagearrow next" data-follow-image-step="1" aria-label="下一张图片" title="下一张">${icon('chevron-right')}</button>
     <div class="followimagedots" role="group" aria-label="${imageMedia.length} 张图片">${imageMedia.map((image,index)=>`<button data-follow-image-item="${image.index}" aria-current="${index===imagePosition}" aria-label="第 ${index+1} 张，共 ${imageMedia.length} 张" title="第 ${index+1} 张"></button>`).join('')}</div>`:'';
   const badges=followBadges({primary:item,variants:[],duplicates:[],has_wip:item.variant_kind==='wip'});
   // 卡片只消费 general 内容投影；详情保留来源记录的全部类型，并按类型着色。
@@ -4330,42 +4330,63 @@ const photoSlide=item=>item.follow
   ?{src:item.src,thumb:item.thumb||item.src,name:item.name||'',asset:null,
     source:item.source||'在线图片',size:item.size,position:item.position,total:item.total}
   :{src:`/photo?id=${item.id}`,thumb:`/photo-thumb?id=${item.id}`,name:item.name||'',asset:item};
-const loadSwiper=()=>swiperLoader||(swiperLoader=new Promise((resolve,reject)=>{
-  const style=document.createElement('link');
-  style.rel='stylesheet';style.href='/vendor/swiper/14.2.0/swiper-bundle.min.css';
-  document.head.appendChild(style);
-  const script=document.createElement('script');
-  script.src='/vendor/swiper/14.2.0/swiper-bundle.min.js';
-  script.onload=()=>resolve(window.Swiper);
-  script.onerror=()=>{swiperLoader=null;reject(new Error('swiper unavailable'))};
-  document.head.appendChild(script)}));
+const loadSwiper=()=>swiperLoader||(swiperLoader=Promise.all([
+  new Promise((resolve,reject)=>{
+    const href='/vendor/swiper/14.2.0/swiper-bundle.min.css';
+    const existing=document.querySelector(`link[href="${href}"]`);
+    if(existing?.sheet){resolve();return}
+    const style=existing||document.createElement('link');
+    style.rel='stylesheet';style.href=href;
+    style.addEventListener('load',resolve,{once:true});
+    style.addEventListener('error',()=>reject(new Error('swiper styles unavailable')),{once:true});
+    if(!existing)document.head.appendChild(style)}),
+  window.Swiper?Promise.resolve(window.Swiper):new Promise((resolve,reject)=>{
+    const script=document.createElement('script');
+    script.src='/vendor/swiper/14.2.0/swiper-bundle.min.js';
+    script.onload=()=>resolve(window.Swiper);
+    script.onerror=()=>reject(new Error('swiper unavailable'));
+    document.head.appendChild(script)})
+]).then(([,SwiperCtor])=>SwiperCtor).catch(error=>{swiperLoader=null;throw error}));
 const photoLightKeys=e=>{if(e.key!=='Escape')return;
   e.preventDefault();e.stopImmediatePropagation();
   if(activeLightbox?.detail?.isOpen()){activeLightbox.detail.dismiss(true);return}
   closePhotoLightbox()};
-const ZOOM_MAX=4;
+const PHOTO_ZOOM_MIN=10,PHOTO_ZOOM_MAX=400,PHOTO_ZOOM_STEP=10;
 
-/* 缩放条。Swiper 的 zoom 模块只给 in/out/toggle，没有「缩到这个倍数」的入口，
-   但 `zoom.in()` 用的就是 `params.zoom.maxRatio`——先改上限再 in，就等于设定值。
-   双击和触控板捏合仍由模块自己处理，`zoomChange` 负责把滑块同步回来。 */
+/* 缩放条显示相对原图像素的百分比，而不是相对「适应窗口」的变换倍数。
+   因此大图初始可能是 34%，原大小才是 100%；Swiper 14 的 zoom.in(number)
+   能直接接收目标倍数，既可低于 1 也可高于 1。 */
 function wirePhotoZoom(box, main){
   const slider=box.querySelector('.photozoom input');
   const label=box.querySelector('.photozoom b');
-  const show=scale=>{slider.value=scale;label.textContent=Math.round(scale*100)+'%'};
-  const apply=raw=>{
-    const scale=Math.min(ZOOM_MAX,Math.max(1,Math.round(raw*10)/10));
-    show(scale);
-    if(scale<=1){main.zoom.out();return}
-    main.params.zoom.maxRatio=scale;main.zoom.in();
+  let target='fit';
+  const image=()=>main.slides[main.activeIndex]?.querySelector('img');
+  const fitPercent=()=>{
+    const img=image();
+    if(!img?.naturalWidth||!img.naturalHeight)return 100;
+    return Math.min(100,img.offsetWidth/img.naturalWidth*100,img.offsetHeight/img.naturalHeight*100)
   };
+  const show=percent=>{const value=Math.round(percent);slider.value=value;label.textContent=value+'%'};
+  const apply=raw=>{
+    const fit=fitPercent();
+    const percent=raw==='fit'?fit:Math.min(PHOTO_ZOOM_MAX,Math.max(PHOTO_ZOOM_MIN,Number(raw)||fit));
+    target=raw==='fit'?'fit':percent;show(percent);
+    const ratio=percent/fit;
+    if(Math.abs(ratio-1)<.001)main.zoom.out();
+    else main.zoom.in(ratio);
+  };
+  const reset=()=>requestAnimationFrame(()=>apply('fit'));
   slider.oninput=()=>apply(Number(slider.value));
   box.querySelectorAll('[data-zoom-step]').forEach(b=>
-    b.onclick=()=>apply(Number(slider.value)+Number(b.dataset.zoomStep)*0.5));
-  // 翻页会把缩放清回 1，滑块得跟着回位，否则它显示 200% 而图是原始大小。
-  main.on('slideChange',()=>show(1));
-  // `zoomChange` 的第一个参数是 swiper 实例，倍数在第二个；接错了滑块会写进 NaN。
-  main.on('zoomChange',(_swiper,scale)=>show(Math.min(ZOOM_MAX,Math.max(1,scale||1))));
-  return {show};
+    b.onclick=()=>apply(Number(slider.value)+Number(b.dataset.zoomStep)*PHOTO_ZOOM_STEP));
+  box.querySelector('[data-photo-scale="fit"]').onclick=()=>apply('fit');
+  box.querySelector('[data-photo-scale="original"]').onclick=()=>apply(100);
+  main.on('slideChange',reset);
+  main.on('zoomChange',(_swiper,scale)=>{if(scale)show(fitPercent()*scale)});
+  box.querySelectorAll('.photomain img').forEach(img=>{
+    if(!img.complete)img.addEventListener('load',()=>{if(img===image())apply(target)})});
+  reset();
+  return {resize:()=>apply(target)};
 }
 
 /* 图片详情只展示安全元数据，定位仍只把 asset id 交给服务端。绝不能为了显示路径把
@@ -4429,12 +4450,12 @@ async function openPhotoLightbox(index,source=null){
   closePhotoLightbox();
   const box=document.createElement('div');
   box.className='photolight'+(items.length>1?' has-strip':'');
-  box.innerHTML=`<button class="media-circle photoclose" type="button" aria-label="关闭">${icon('x')}</button>
+  box.innerHTML=`<button class="media-circle media-overlay photoclose" type="button" aria-label="关闭">${icon('x')}</button>
     <div class="swiper photomain"><div class="swiper-wrapper">${items.map(item=>
       `<div class="swiper-slide"><div class="swiper-zoom-container"><img src="${esc(item.src)}"
         alt="${esc(item.name)}" loading="lazy" referrerpolicy="no-referrer"></div></div>`).join('')}</div>
-      <button class="media-circle photonav back" type="button" aria-label="上一张">${icon('chevron-left')}</button>
-      <button class="media-circle photonav fwd" type="button" aria-label="下一张">${icon('chevron-left')}</button></div>
+      <button class="media-circle media-overlay photonav back" type="button" aria-label="上一张">${icon('chevron-left')}</button>
+      <button class="media-circle media-overlay photonav fwd" type="button" aria-label="下一张">${icon('chevron-left')}</button></div>
     <div class="photobar">
       <button class="photodetailtoggle" type="button" aria-expanded="false" aria-controls="photoDetail"
         aria-haspopup="dialog"
@@ -4442,9 +4463,12 @@ async function openPhotoLightbox(index,source=null){
       <div class="photocount mono" aria-live="polite">${index+1} / ${items.length}</div>
       <div class="photozoom">
         <button type="button" data-zoom-step="-1" aria-label="缩小">${icon('minus')}</button>
-        <input type="range" min="1" max="${ZOOM_MAX}" step="0.1" value="1" aria-label="缩放">
+        <input type="range" min="${PHOTO_ZOOM_MIN}" max="${PHOTO_ZOOM_MAX}" step="1" value="100" aria-label="缩放">
         <button type="button" data-zoom-step="1" aria-label="放大">${icon('plus')}</button>
-        <b class="mono">100%</b></div></div>
+        <b class="mono">100%</b>
+        <button class="photoscale" type="button" data-photo-scale="fit" aria-label="适应窗口" title="适应窗口">${icon('maximize')}</button>
+        <button class="photoscale photooriginal mono" type="button" data-photo-scale="original" aria-label="原大小" title="原大小">1:1</button>
+      </div></div>
     <section class="photodetail" id="photoDetail" role="dialog" aria-modal="false"
       aria-labelledby="photoDetailTitle" hidden>
       <div class="photodetailcopy"><h2 id="photoDetailTitle" data-middle-truncate tabindex="-1"></h2><span class="photodetailmeta"></span></div>
@@ -4458,21 +4482,24 @@ async function openPhotoLightbox(index,source=null){
   const counter=box.querySelector('.photocount');
   const strip=new SwiperCtor(box.querySelector('.photostrip'),{
     slidesPerView:'auto',spaceBetween:8,freeMode:true,watchSlidesProgress:true,
-    centeredSlides:true,centeredSlidesBounds:true,slideToClickedSlide:true});
+    centeredSlides:true,slideToClickedSlide:true});
+  const centerThumb=(at,speed=200)=>strip.slideTo(at,speed);
   const main=new SwiperCtor(box.querySelector('.photomain'),{
-    initialSlide:index,zoom:{maxRatio:ZOOM_MAX},keyboard:{enabled:true},lazyPreloadPrevNext:1,
+    initialSlide:index,zoom:{minRatio:.01,maxRatio:100},keyboard:{enabled:true},lazyPreloadPrevNext:1,
     // 上下滚也翻页：看图时手在滚轮上，没人愿意为了换一张去够左右键或按钮。
     mousewheel:{enabled:true,forceToAxis:false},
     thumbs:{swiper:strip},
     navigation:{prevEl:box.querySelector('.photonav.back'),nextEl:box.querySelector('.photonav.fwd')},
-    on:{slideChange(){counter.textContent=`${this.activeIndex+1} / ${items.length}`}}});
+    on:{slideChange(){counter.textContent=`${this.activeIndex+1} / ${items.length}`;
+      centerThumb(this.activeIndex)}}});
+  centerThumb(index,0);
   const zoomBar=wirePhotoZoom(box,main);
   const detail=wirePhotoDetail(box,items,index);
   main.on('slideChange',()=>detail.paint(main.activeIndex));
   /* Swiper 只在自己构造的那一刻量一次容器。灯箱是插进已经布好版的页面里的，
      窗口一改大小（或首屏字体、滚动条落定得比构造晚）slide 就停在旧宽度上，
      大图按错误的框缩放，看起来就是「显示不全」。挂个 ResizeObserver 让它重量。 */
-  const resize=new ResizeObserver(()=>{main.update();strip.update()});
+  const resize=new ResizeObserver(()=>{main.update();strip.update();zoomBar.resize()});
   resize.observe(box);
   activeLightbox={box,main,strip,resize,zoomBar,detail};
   box.querySelector('.photoclose').onclick=closePhotoLightbox;

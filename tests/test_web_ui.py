@@ -2569,6 +2569,9 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_photo_lightbox_loads_swiper_lazily_with_thumbs_and_keyboard(self):
         self.assertPageContains("'/vendor/swiper/14.2.0/swiper-bundle.min.js'")
+        self.assertPageContains("swiperLoader=Promise.all([")
+        self.assertPageContains("style.addEventListener('load',resolve,{once:true})")
+        self.assertPageContains("]).then(([,SwiperCtor])=>SwiperCtor)")
         self.assertPageContains("thumbs:{swiper:strip}")
         self.assertPageContains("keyboard:{enabled:true}")
         self.assertPageContains(".photolight{position:fixed;inset:0;z-index:200;background:#000;display:block;overflow:hidden}")
@@ -2581,16 +2584,16 @@ class WebUiSourceTests(unittest.TestCase):
         依赖；否则超宽视口会把主图行收成 0，让原图按自然尺寸贴到左边溢出。
         """
         self.assertPageContains(
-            ".photolight .photomain{position:absolute;inset:0;min-width:0;min-height:0;width:100%;height:100%}")
+            ".photolight .photomain{position:absolute;inset:0;min-width:0;min-height:0;width:100%;height:100%;overflow:hidden}")
         self.assertPageContains(
-            ".photolight .photomain .swiper-wrapper{width:100%;height:100%}")
+            ".photolight .photomain>.swiper-wrapper{display:flex;width:100%;height:100%}")
         self.assertPageContains(
-            ".photolight .photomain .swiper-slide{width:100%;height:100%;min-width:0;min-height:0;")
+            ".photolight .photomain>.swiper-wrapper>.swiper-slide{flex:0 0 100%;width:100%;height:100%;min-width:0;")
         self.assertPageContains(
             ".photolight .photomain .swiper-zoom-container{width:100%;height:100%;"
             "min-height:0;min-width:0;")
-        self.assertPageContains("box-sizing:border-box;display:grid;place-items:center;padding:64px 72px 24px")
-        self.assertPageContains(".photolight.has-strip .photomain .swiper-zoom-container{padding-bottom:104px}")
+        self.assertPageContains("box-sizing:border-box;display:grid;place-items:center;padding:24px 72px 76px")
+        self.assertPageContains(".photolight.has-strip .photomain .swiper-zoom-container{padding-bottom:148px}")
         self.assertPageContains(
             ".photolight .photomain img{max-width:100%;max-height:100%;"
             "min-width:0;min-height:0;")
@@ -2604,8 +2607,8 @@ class WebUiSourceTests(unittest.TestCase):
         两者同为 0-1-0 特指度且 `.next` 写在后面，padding、border-top 和背景色会
         整块盖过来，图标被挤得偏右下——实测偏移 5px/2px。
         """
-        self.assertPageContains('class="media-circle photonav back"')
-        self.assertPageContains('class="media-circle photonav fwd"')
+        self.assertPageContains('class="media-circle media-overlay photonav back"')
+        self.assertPageContains('class="media-circle media-overlay photonav fwd"')
         self.assertPageContains(".photonav.back{left:14px}.photonav.fwd{right:14px}")
         self.assertPageContains(".photonav.fwd svg{transform:rotate(180deg)}")
         self.assertPageLacks('class="photonav prev"')
@@ -2623,29 +2626,41 @@ class WebUiSourceTests(unittest.TestCase):
         ):
             self.assertPageContains(rule)
 
-    def test_photo_navigation_reuses_the_youtube_tonal_media_button(self):
+    def test_photo_navigation_reuses_one_overlay_button_treatment(self):
         self.assertPageContains(
             ".media-circle{box-sizing:border-box;width:48px;height:48px;padding:0;border:0;border-radius:50%;")
-        self.assertPageContains("background:rgba(255,255,255,.1);color:#f1f1f1;display:grid;place-items:center")
-        self.assertPageContains('class="media-circle followimagearrow prev"')
-        self.assertPageContains('class="media-circle followimagearrow next"')
-        self.assertPageContains('class="media-circle photoclose"')
-        self.assertPageContains('class="media-circle photonav back"')
+        self.assertPageContains(".media-circle.media-overlay{background:rgba(0,0,0,.6);color:#fff;backdrop-filter:blur(16px)}")
+        self.assertPageContains('class="media-circle media-overlay followimagearrow prev"')
+        self.assertPageContains('class="media-circle media-overlay followimagearrow next"')
+        self.assertPageContains('class="media-circle media-overlay photoclose"')
+        self.assertPageContains('class="media-circle media-overlay photonav back"')
         self.assertPageContains('class="media-circle" id="tokDislike"')
         self.assertPageContains(".followimagearrow{position:absolute;z-index:4;top:50%;transform:translateY(-50%)}")
+        self.assertPageContains(".photonav.swiper-button-disabled{opacity:0;visibility:hidden;pointer-events:none}")
 
     def test_lightbox_offers_wheel_paging_and_an_explicit_zoom_bar(self):
-        # zoom 模块只有 in/out/toggle，没有「缩到这个倍数」；`in()` 用的就是
-        # maxRatio，所以先改上限再 in 等于设定值。
         self.assertPageContains("mousewheel:{enabled:true,forceToAxis:false}")
-        self.assertPageContains("main.params.zoom.maxRatio=scale;main.zoom.in()")
-        self.assertPageContains('<input type="range" min="1" max="${ZOOM_MAX}"')
+        self.assertPageContains("const PHOTO_ZOOM_MIN=10,PHOTO_ZOOM_MAX=400,PHOTO_ZOOM_STEP=10")
+        self.assertPageContains("return Math.min(100,img.offsetWidth/img.naturalWidth*100,img.offsetHeight/img.naturalHeight*100)")
+        self.assertPageContains("else main.zoom.in(ratio)")
+        self.assertPageContains('<input type="range" min="${PHOTO_ZOOM_MIN}" max="${PHOTO_ZOOM_MAX}"')
         # zoomChange 的第一个参数是 swiper 实例，倍数在第二个；接错了写进 NaN。
         self.assertPageContains("main.on('zoomChange',(_swiper,scale)=>")
+        self.assertPageContains('data-photo-scale="fit" aria-label="适应窗口"')
+        self.assertPageContains('data-photo-scale="original" aria-label="原大小"')
         # 文本字形受字体基线影响，会让圆按钮里的 +/- 肉眼偏上或偏下；SVG 几何才稳定居中。
         self.assertPageContains('data-zoom-step="-1" aria-label="缩小">${icon(\'minus\')}')
         self.assertPageContains('data-zoom-step="1" aria-label="放大">${icon(\'plus\')}')
         self.assertPageContains(".photozoom button svg{width:15px;height:15px;display:block;")
+        self.assertPageContains(".photobar{position:absolute;z-index:4;bottom:14px;")
+        self.assertPageContains(".photolight.has-strip .photobar{bottom:98px}")
+
+    def test_lightbox_centers_the_active_thumbnail(self):
+        self.assertPageContains("centeredSlides:true,slideToClickedSlide:true")
+        self.assertPageContains("const centerThumb=(at,speed=200)=>strip.slideTo(at,speed)")
+        self.assertPageContains("centerThumb(this.activeIndex)")
+        self.assertPageContains("centerThumb(index,0)")
+        self.assertPageLacks("centeredSlidesBounds:true")
 
     def test_lightbox_photo_detail_reveals_by_asset_id_without_leaking_a_path(self):
         self.assertPageContains('aria-label="图片详情" title="图片详情">${icon(\'info\')}</button>')
@@ -2674,8 +2689,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("box-sizing:border-box;display:grid;align-items:start;gap:14px;padding:16px")
         self.assertPageContains(".photodetail .srcstate:empty{display:none}")
         self.assertPageContains(".photodetail>button{min-height:44px}")
-        self.assertPageContains(".photodetailtoggle{width:44px;height:44px}")
-        self.assertPageContains(".photodetailtoggle{justify-self:start;width:30px;height:30px;display:grid;place-items:center")
+        self.assertPageContains(".photodetailtoggle{width:40px;height:40px}")
+        self.assertPageContains(".photodetailtoggle{justify-self:start;width:40px;height:40px;display:grid;place-items:center")
         # Lucide 的 info 圆点是长度 .01 的短线；没有圆头时会缩成几乎不可见的横杠。
         css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
             encoding="utf-8")
@@ -2688,7 +2703,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_lightbox_remeasures_when_the_window_resizes(self):
         # Swiper 只在构造那一刻量一次容器；灯箱是插进已布好版的页面里的，
         # 窗口一改大小 slide 就停在旧宽度，大图按错误的框缩放。
-        self.assertPageContains("new ResizeObserver(()=>{main.update();strip.update()})")
+        self.assertPageContains("new ResizeObserver(()=>{main.update();strip.update();zoomBar.resize()})")
         self.assertPageContains("activeLightbox.resize?.disconnect()")
 
     def test_failed_review_decisions_are_shown_instead_of_silently_swallowed(self):
