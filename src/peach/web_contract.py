@@ -886,6 +886,14 @@ def q_item(contract: WebContract, aid):
         if not r:
             return {"error": "not found"}
         d = dict(r)
+        # 在线资产的 `path` 是来源作品页，不是可播地址；能播的那条代理在
+        # `/follow-stream?id=<follow_item>`。保存时写的是 `follow_item.asset_id`，
+        # 反查一次就能让馆藏详情自己播，不必先跳回关注页。
+        if d.get("location") == "online":
+            row = c.execute(
+                "SELECT id FROM follow_item WHERE asset_id=? ORDER BY id LIMIT 1", (aid,),
+            ).fetchone()
+            d["follow_item_id"] = int(row[0]) if row else None
         legacy_rows = list(c.execute(
             "SELECT t.tag,t.source FROM asset_tag t WHERE t.asset_id=? AND "
             + tag_not_hidden("t.asset_id", "peach_normalize(t.tag)")

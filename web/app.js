@@ -412,7 +412,16 @@ function detailStreamUrl(id){
 function directDetailSource(it){
   return {src:detailStreamUrl(it.id),type:String(it.name||'').toLowerCase().endsWith('.webm')?'video/webm':'video/mp4'};
 }
+/* 在线资产的 `path` 是来源作品页，不是可播地址。能播的那条代理在
+   `/follow-stream?id=<follow_item>`，保存时写了 `follow_item.asset_id`，
+   `/api/item` 反查后回传 `follow_item_id`。 */
+function followStreamSource(it){
+  return it.location==='online'&&it.follow_item_id
+    ?{src:`/follow-stream?id=${it.follow_item_id}`,type:'video/mp4'}:null;
+}
 async function detailStreamSource(it){
+  const proxied=followStreamSource(it);
+  if(proxied)return proxied;
   const direct=directDetailSource(it);
   if(!['115','pikpak'].includes(it.location))return direct;
   try{
@@ -2819,14 +2828,26 @@ function followDetailTags(item){
   return [...tags].sort((a,b)=>rank(a)-rank(b)||tagLabel(a).localeCompare(tagLabel(b)));
 }
 
-function followBadges(group){
+/* 角标上的数和点开后真能看到的条数必须来自同一个集合。
+   实测两处对不上：paheal 一组 9 条里有 1 张图，卡上写「9 个版本」、播放角标写
+   「8 个视频」，点开也是 8 条；`2B Camp [4K]` 更极端——卡上写「2 个版本」，同组
+   另一条不是可播视频，`collection` 因此整个为 null，点开只有 1 条。 */
+function followOpenableItems(group){
+  if(followMediaView==='videos')return followVideoItems(group);
+  return followCollectionItems(group)
+    .filter(item=>followItemMediaKinds(item).has('image'));
+}
+function followBadges(group,openable=null){
   const badges=[];
-  if(group.has_wip)badges.push('<span class="fbadge wip">WIP</span>');
+  const count=(openable||followOpenableItems(group)).length;
+  /* WIP 说的是这一条，不是这一组。`2B Camp [4K]` 判的是 alt，只因为同组还有一条
+     `[WIP]` 就在它头上挂 WIP，读起来就成了「这一条是半成品」。同组有 WIP 仍然要
+     说，但要说成「含」。 */
+  if(group.primary.variant_kind==='wip')badges.push('<span class="fbadge wip">WIP</span>');
+  else if(group.has_wip)badges.push('<span class="fbadge wip partial">含 WIP</span>');
   if(group.primary.version)badges.push(`<span class="fbadge ver">${esc(group.primary.version)}</span>`);
-  if(group.variants.length)badges.push(`<span class="fbadge">${
-    // 两个分支都含主条目：以前 release 记 +1、work 不记，同一份数据两种口径，
-    // 两个视频的组会显示成「1 个版本」。
-    `${group.variants.length+1} ${group.is_release?'条动态':'个版本'}`}</span>`);
+  if(count>1)badges.push(`<span class="fbadge">${
+    `${count} ${group.is_release?'条动态':'个版本'}`}</span>`);
   if(group.duplicates.length)badges.push(`<span class="fbadge dup">另见 ${
     esc([...new Set(group.duplicates.map(d=>d.provider_label))].join('、'))}</span>`);
   return badges.join('');
@@ -3057,7 +3078,9 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
         <button class="later" data-follow-detail-save aria-label="${item.status==='saved'?'已保存':'保存到账本'}" title="${item.status==='saved'?'已保存':'保存到账本'}"${item.status==='saved'?' disabled':''}>${item.status==='saved'?icon('check'):icon('bookmark-plus')}</button>
         <button class="seen" data-follow-detail-status="seen" aria-label="标记已看" title="标记已看" aria-pressed="${item.status==='seen'}">${icon('eye')}</button>
         <button class="dislike" data-follow-detail-status="ignored" aria-label="忽略" title="忽略" aria-pressed="${item.status==='ignored'}">${icon('eye-off')}</button>
-        ${item.status==='seen'||item.status==='ignored'?`<button data-follow-detail-status="new" aria-label="恢复未看" title="恢复未看">${icon('rotate-ccw')}</button>`:''}</div>
+        ${item.status==='seen'||item.status==='ignored'?`<button data-follow-detail-status="new" aria-label="恢复未看" title="恢复未看">${icon('rotate-ccw')}</button>`:''}
+        ${src?`<a class="fdownload" href="${esc(src)}${src.includes('?')?'&':'?'}download=1" download
+          aria-label="下载到本地" title="下载到本地">${icon('download')}</a>`:''}</div>
       <span class="fstate" aria-live="polite"></span>
     </div></div></div>`;
   $('#stage').classList.toggle('ambient-on',selectedKind==='video'&&appSettings.ambientMode);
@@ -5650,6 +5673,8 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   const gated=it.cost==='metered';
   const offline=sourceOffline(it.location);
   const online=it.location==='online';
+  /* 保存过的在线资产照常播；只有反查不到关注条目时才拦下来说明原因。 */
+  const onlineGated=online&&!it.follow_item_id;
   const who=it.creator||it.code||it.studio||'未归属';
   const refs=it.entity_refs||{},studioRef=(refs.studio||[])[0];
   // 共演作品的女优逐行列出，每行带自己的头像；标签只写在第一行，其余留空保持对齐。
@@ -5717,10 +5742,10 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
           <button class="chip" id="offlineRetry" type="button">重新检测</button></div>
         <video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="none"
           hidden style="display:none"></video>`
-       :online?`<div class="gate" id="onlineGate" role="status">
+       :onlineGated?`<div class="gate" id="onlineGate" role="status">
           ${srcBadge(it.location,it.cost,'srcbig')}
           <b style="font-size:14px">在线资产</b>
-          <span style="font-size:12px;color:var(--muted)">这条内容从关注候选保存；媒体与原始页面在关注详情中查看。</span>
+          <span style="font-size:12px;color:var(--muted)">这条没有对应的关注条目，媒体地址无从解析。</span>
           <button class="chip" id="openSavedFollow" type="button">打开已保存关注</button></div>
         <video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="none"
           hidden style="display:none"></video>`

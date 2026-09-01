@@ -950,6 +950,48 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.headers["content-range"], "bytes 2-5/10")
         self.assertNotIn("img.kemono.cr", response.text)
 
+    async def test_follow_stream_only_offers_a_download_when_asked(self):
+        """下载是显式动作，不是播放的副作用。
+
+        文件名从条目标题来，不回传上游地址——上游主机名和签名同样不该外露，
+        这和 `/follow-stream` 整体的边界是同一条。
+        """
+        connection = sqlite3.connect(self.db)
+        connection.executescript((ROOT / "migrations" / "0018_online_follow.sql").read_text(
+            encoding="utf-8"))
+        connection.execute(
+            "INSERT INTO follow_source(id,provider,ref,label,url,semantics,created_at,updated_at)"
+            " VALUES(1,'kemono','fanbox/1','Creator','https://kemono.cr/u','work','x','x')"
+        )
+        connection.execute(
+            "INSERT INTO follow_item(id,source_id,external_id,title,url,media_url,release_key,"
+            "first_seen_at,last_seen_at) VALUES(8,1,'8','2B Camp [4K]','https://kemono.cr/p/8',"
+            "'https://img.kemono.cr/data/8.webm','remote','x','x')"
+        )
+        connection.commit()
+        connection.close()
+
+        def upstream(request):
+            return httpx.Response(
+                200, stream=httpx.ByteStream(b"0123456789"), request=request,
+                headers={"content-type": "video/webm", "content-length": "10"},
+            )
+
+        original = self.app.state.http_transport.client
+        fake = httpx.Client(transport=httpx.MockTransport(upstream), follow_redirects=True)
+        self.app.state.http_transport.client = fake
+        try:
+            played = await self.client.get("/follow-stream?id=8&t=secret")
+            saved = await self.client.get("/follow-stream?id=8&t=secret&download=1")
+        finally:
+            self.app.state.http_transport.client = original
+            fake.close()
+        self.assertNotIn("content-disposition", played.headers)
+        disposition = saved.headers["content-disposition"]
+        self.assertIn("attachment;", disposition)
+        self.assertIn("2B Camp [4K].webm", disposition)
+        self.assertNotIn("img.kemono.cr", disposition)
+
     async def test_follow_cover_serves_cached_frame_and_falls_back_to_source_thumb(self):
         connection = sqlite3.connect(self.db)
         connection.executescript((ROOT / "migrations" / "0018_online_follow.sql").read_text(

@@ -128,6 +128,24 @@ class ClassifyTests(unittest.TestCase):
         self.assertEqual(normalize_handle("Lazy_Procrast!"), "lazyprocrast")
 
 
+    def test_resolution_written_without_the_p_is_still_a_version(self):
+        """`2B Camp [4K]` 与 `2B Camp [1080]` 是同一部片的两个版本。
+
+        `[1080]` 此前留在 release_key 里（`2b camp 1080`），两张卡永远合不到一起，
+        而 `[4K]` 那张的角标写着「2 个版本」，数的是 `[4K]` + `[WIP]`。
+        只认已知分辨率档位：任意三四位数可能是年份或作品序号。
+        """
+        self.assertEqual(classify("2B Camp [4K]").release_key,
+                         classify("2B Camp [1080]").release_key)
+        self.assertEqual(classify("2B Camp [1080]").variant_label, "1080p")
+        self.assertEqual(classify("Yuffie Photoshoot Part 3 [1080]").release_key,
+                         classify("Yuffie Photoshoot Part 3 [4K]").release_key)
+        # 不是分辨率的数字照旧留在键里。
+        self.assertEqual(classify("Sayuri - Cowgirl 2").release_key, "sayuri cowgirl 2")
+        self.assertEqual(classify("Scene [2023]").release_key, "scene 2023")
+        self.assertEqual(classify("Part [1200]").release_key, "part 1200")
+
+
 class GroupDuplicatesTests(unittest.TestCase):
     def test_cross_site_duplicates_fold_onto_one_primary(self):
         video = _Item("4542713", "rule34video", "fiona paizuri", "main", "2026-08-18")

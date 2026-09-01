@@ -1923,11 +1923,12 @@ class FollowWebSourceTests(unittest.TestCase):
         同一份数据两种口径，两个视频的组会显示成「1 个版本」。现在共用一个表达式，
         只有量词不同。
         """
-        self.assertPageContains(
-            "`${group.variants.length+1} ${group.is_release?'条动态':'个版本'}`")
+        self.assertPageContains("`${count} ${group.is_release?'条动态':'个版本'}`")
         self.assertPageLacks(
             "`${group.variants.length} 个版本`",
             "版本数必须含主条目，否则两个视频显示成 1 个版本")
+        # 计数来源换成了「点开真能看到的那一组」，量词的分工不变。
+        self.assertPageContains("const count=(openable||followOpenableItems(group)).length;")
 
     def test_cross_site_duplicates_are_shown_as_another_source(self):
         self.assertPageContains("另见 ")
@@ -2123,6 +2124,31 @@ class FollowWebSourceTests(unittest.TestCase):
             "const tags=followDetailTags(item).map(tag=>followTagChip(item,tag,'button')).join('');")
         # 来源没记类型的排最后、保持中性色：不按词形猜类型是关注标签的既有门槛。
         self.assertPageContains(".followdetailtags .r34-unknown{--r34-tag:var(--muted)}")
+
+    def test_version_badge_counts_what_opening_the_card_actually_shows(self):
+        """角标数和点开后能看到的条数必须来自同一个集合。
+
+        实测两处对不上：paheal 一组 9 条里有 1 张图，卡上写「9 个版本」、播放角标
+        写「8 个视频」；`2B Camp [4K]` 卡上写「2 个版本」，同组另一条不是可播视频，
+        `collection` 因此为 null，点开只有 1 条。
+        """
+        self.assertPageContains("function followOpenableItems(group)")
+        self.assertPageContains("if(followMediaView==='videos')return followVideoItems(group);")
+        self.assertPageContains("const count=(openable||followOpenableItems(group)).length;")
+        self.assertPageContains("if(count>1)badges.push(")
+        self.assertPageLacks("${group.variants.length+1} ${group.is_release?'条动态':'个版本'}")
+
+    def test_wip_badge_describes_this_item_not_its_siblings(self):
+        """`2B Camp [4K]` 判的是 alt，只因为同组还有一条 `[WIP]` 就挂上 WIP。
+
+        `has_wip` 是组属性（`any(item.variant_kind == "wip" for item in self.variants)`），
+        角标却贴在主条目标题旁边，读起来就是「这一条是半成品」。
+        """
+        self.assertPageContains(
+            "if(group.primary.variant_kind==='wip')badges.push('<span class=\"fbadge wip\">WIP</span>');")
+        self.assertPageContains(
+            "else if(group.has_wip)badges.push('<span class=\"fbadge wip partial\">含 WIP</span>');")
+        self.assertPageContains(".fbadge.wip.partial{border-color:var(--border-15);color:var(--muted)}")
 
     def test_follow_bulk_actions_are_buttons_not_inline_links(self):
         """批量标记已看／全部忽略是 2292 条级别的操作，不能长得像行内文字链接。
