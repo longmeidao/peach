@@ -1,4 +1,4 @@
-import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, entityPath, esc, faviconFallbackUrl, faviconUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, pageTitle, realDuration} from './js/core.js';
+import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, pageTitle, realDuration} from './js/core.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import {
   emptyStateHtml, loadingDotsHtml, mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml,
@@ -4502,9 +4502,25 @@ async function openEntity(kind,name,push=true,requestedTag){
        垫底永远回不来。`onerror=null` 只是不再重试，不等于这一环走完了。 */
     : `<img src="/entity-image?kind=${kind}&id=${d.id}" alt="${esc(d.canonical_name)}"${facePos(d.avatar_focus)}
         onerror="this.removeAttribute('style');${d.representative_asset_id?`if(!this.dataset.f){this.dataset.f='1';this.src='/avatar?id=${d.representative_asset_id}'}else{this.remove()}`:`this.remove()`}">`):'';
-  const links=(d.links||[]).map(x=>x.clickable&&/^https?:\/\//i.test(x.url||'')
-    ? `<a href="${esc(x.url)}" target="_blank" rel="noreferrer"><span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(faviconUrl(x.url))}" data-studio="${kind==='studio'?esc(d.canonical_name):''}" alt="" loading="lazy" referrerpolicy="no-referrer"></span><span class="entitylinklabel">${esc(x.label)}</span><span class="entitylinkarrow" aria-hidden="true">↗</span></a>`
-    : `<span class="private" title="私人馆藏来源记录，不直接打开下载页"><span class="entitylinkicon">${icon('globe')}</span><span class="entitylinklabel">来源 · ${esc(x.label||x.hostname||'已记录')}</span></span>`).join('');
+  /* 链接按 beeg 的资料页形态：社媒收成纯图标，官网／事务所保留名字。
+
+     社媒的 handle 是网址的一部分，写出来只是把 URL 抄一遍——`X @remu19971203` 里
+     真正有信息量的只有那个 X。图标本身就说明了去哪，名字留给官网那种「点之前看不出
+     是谁」的链接。外链箭头一并去掉：`target="_blank"` 已经是外链，箭头只是重复，
+     一排链接里还会挤掉本来就不多的横向空间。 */
+  const links=(d.links||[]).map(x=>{
+    if(!(x.clickable&&/^https?:\/\//i.test(x.url||'')))
+      return `<span class="private" title="私人馆藏来源记录，不直接打开下载页"><span class="entitylinkicon">${icon('globe')}</span><span class="entitylinklabel">来源 · ${esc(x.label||x.hostname||'已记录')}</span></span>`;
+    const brand=brandIcon(x.url);
+    const mark=brand
+      ? `<span class="entitylinkicon brand">${icon(brand)}</span>`
+      : `<span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(faviconUrl(x.url))}" data-studio="${kind==='studio'?esc(d.canonical_name):''}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>`;
+    // 纯图标的链接自己不带可读文字，得把标签留给辅助技术。
+    const body=x.link_kind==='social'
+      ? `<span class="sr-only">${esc(x.label)}</span>`
+      : `<span class="entitylinklabel">${esc(x.label)}</span>`;
+    return `<a class="${x.link_kind==='social'?'iconlink':''}" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}">${mark}${body}</a>`;
+  }).join('');
   const terms=(d.search_terms||[]).map(x=>`<code>${esc(x.term)}</code>`).join('');
   const tags=(d.tags||[]).map(x=>`<button class="pill" data-entity-tag="${esc(x.k)}" aria-pressed="${entityTag===x.k}">${esc(tagLabel(x.k))}<small>${x.n.toLocaleString()}</small></button>`).join('');
   const related=(d.related_performers||[]).map(x=>`<button class="relatedperson" data-related-performer="${esc(x.k)}">

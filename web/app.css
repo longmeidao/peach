@@ -370,8 +370,16 @@ body.entity-open .index{overflow-x:visible}
 .entitylinks .private{color:var(--muted);border-style:dashed}
 .entitylinkicon{width:32px;height:32px;border-radius:50%;background:var(--sunk);display:grid;place-items:center;
   overflow:hidden;position:relative;flex:none}.entitylinkicon svg{width:16px;height:16px;stroke:currentColor;fill:none;
-  stroke-width:1.8}.entitylinkicon img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#fff}
-.entitylinklabel{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.entitylinkarrow{color:var(--muted);flex:none}
+  stroke-width:1.8}
+/* favicon 是别人服务器上的位图，取不到时 `onerror` 会把 img 摘掉、露出下面的地球。
+   但白底会让「取到了一张空图」看起来和「圆盘坏了」一模一样——X 的 favicon 正是这种。
+   现在 X 走内联品牌标记不再发请求，其余主机也不再垫白底。 */
+.entitylinkicon img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:var(--sunk)}
+/* 品牌标记是填充字形，不吃上面那套描边。 */
+.entitylinkicon.brand svg{width:15px;height:15px;fill:currentColor;stroke:none}
+/* 纯图标的社媒链接：收成圆形，没有文字就不给文字留位置。 */
+.entitylinks a.iconlink{padding:4px;gap:0;border-radius:50%}
+.entitylinklabel{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .entityterms{margin-top:13px;color:var(--muted);font-size:var(--fs-xs)}.entityterms code{color:var(--ink-2);margin-right:8px}
 .entitymeta{display:grid;gap:22px;margin:0 0 6px;min-width:0}.entitymeta section{min-width:0}.entitysection h3{font-size:var(--fs-sm);letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
 .entitytagbar{position:sticky;top:var(--topH);z-index:61;display:flex;align-items:center;
@@ -1709,8 +1717,16 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
      了流，没有东西再撑开中间，按钮会全部挤在品牌名右侧、右半条留空。
      动作组的第一个按钮吃掉剩余空间，整组回到右边。 */
   #immerseBtn{margin-left:auto}
-  .entityhero{grid-template-columns:92px minmax(0,1fr);gap:14px;padding:8px 0 18px}
-  .entityportrait{width:92px}.entityhero h2{font-size:var(--fs-xl)}
+  /* 窄屏改成单列居中，头像在名字上方——参考 beeg 的资料页。
+     左像右文那套是给宽屏的：手机上 92 px 头像旁边只剩两百多像素，别名和链接被挤成
+     两三行，头像下面又空着一大片。居中之后名字和链接都拿到整行宽度。 */
+  .entityhero{grid-template-columns:minmax(0,1fr);gap:12px;padding:8px 0 18px;justify-items:center;text-align:center}
+  .entityportrait{width:112px}.entityhero h2{font-size:var(--fs-xl)}
+  .entityhero>div:last-child{width:100%}
+  .entityhero .alias{margin-bottom:10px}
+  .entitysummary{margin-inline:auto}
+  .entityhero .entitylinks{justify-content:center;margin-top:13px}
+  .entityhero .entityterms{text-align:center}
   .stats h2{font-size:var(--fs-xl)}.stats .insightcopy h2{font-size:var(--fs-3xl)}
   /* 窄屏下标题也得一起缩。`/follow` 渲染在 `#stats` 里，上面那条 `.stats h2`
      会只把它打到 23px，而 `#manageTitle` 在 `#stats` 外面，手机上又变成两种大小。 */
@@ -1753,7 +1769,12 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 
 /* 版式按钮嵌在排序行里，必须比 `.sorts button` 更具体，否则那条规则的内边距和
    行高会把图标顶偏。图标按钮不设左右内边距，靠 grid 居中。 */
-.sorts .javlayout{display:inline-flex;gap:2px;margin:0 6px}.sorts .javlayout label{line-height:0}.sorts .javlayout svg{display:block}
+/* `flex:none` 是必须的，不是保险。`.sorts` 是不换行的横向滚动条，里面的项默认可收缩，
+   而 `.javlayout` 自己带着 `min-width:0`（fieldset 需要它才不撑破容器）——两条合起来
+   允许它被压到内容宽度以下。窄屏上排序按钮一多，三个 34 px 的版式按钮就会叠在一起，
+   还压住旁边的「发行时间」。`.sorts button` 早就有 `flex:0 0 auto`，但 fieldset 不是
+   button，那条规则选不到它。 */
+.sorts .javlayout{display:inline-flex;gap:2px;margin:0 6px;flex:none}.sorts .javlayout label{line-height:0}.sorts .javlayout svg{display:block}
 
 /* ── 脱盘模式 ────────────────────────────────────────────────────────────────
    来源盘不在时只置灰该来源的筛选，其余来源照常。数量仍然显示：账本是本机真相，
