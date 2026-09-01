@@ -535,6 +535,45 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         ).fetchall(), [("Studio B",)])
         connection.close()
 
+    async def test_metadata_tag_approval_promotes_an_existing_tag_to_official_source(self):
+        connection = sqlite3.connect(self.db)
+        connection.execute("UPDATE asset SET code='ABC-001' WHERE id=1")
+        connection.execute(
+            "INSERT INTO asset_tag(asset_id,tag,confidence,source) "
+            "VALUES(1,'乳系',0.4,'filename')"
+        )
+        connection.commit(); connection.close()
+        candidate = {
+            "candidate_key": "ABC-001:tags:r18dev:abc", "source": "r18dev",
+            "source_url": "https://r18.dev/example", "confidence": 0.9,
+            "value": ["乳系", "颜射"], "display_value": "乳系、颜射", "warnings": [],
+        }
+        fields = ["item_key", "code", "query", "field", "field_label", "current_value",
+                  "candidates_json", "source_count", "status", "size_gb", "videos", "fetched_at"]
+        path = self.candidate_root / "metadata-field-candidates-20260822.csv"
+        with path.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fields)
+            writer.writeheader(); writer.writerow({
+                "item_key": "ABC-001:tags", "code": "ABC-001", "query": "ABC-001",
+                "field": "tags", "field_label": "标签", "current_value": "乳系",
+                "candidates_json": json.dumps([candidate], ensure_ascii=False), "source_count": "1",
+                "status": "candidate", "size_gb": "1", "videos": "1", "fetched_at": "now",
+            })
+        approved = await self.client.post("/api/review/decision?t=secret", json={
+            "category": "metadata_fields", "item_key": "ABC-001:tags",
+            "candidate_key": candidate["candidate_key"], "status": "approved",
+        })
+        self.assertEqual(approved.status_code, 200, approved.text)
+        connection = sqlite3.connect(self.db)
+        self.assertEqual(connection.execute(
+            "SELECT tag,confidence,source FROM asset_tag WHERE asset_id=1 "
+            "AND tag IN ('乳系','颜射') ORDER BY tag"
+        ).fetchall(), [
+            ("乳系", 0.9, "javinizer:r18dev:tag"),
+            ("颜射", 0.9, "javinizer:r18dev:tag"),
+        ])
+        connection.close()
+
     async def test_auth_and_items_contract(self):
         denied = await self.client.get("/api/items")
         self.assertEqual(denied.status_code, 401)
