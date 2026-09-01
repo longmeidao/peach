@@ -49,6 +49,11 @@ const javFileDisplayName=(it,value=it?.name)=>{
   const name=String(value||'').trim();
   return it?.is_jav?name.replace(JAV_MEDIA_SUFFIX,''):name;
 };
+const hasJapaneseText=value=>/[\u3040-\u30ff\u3400-\u9fff]/.test(String(value||''));
+const javPreferredTitle=it=>{
+  const titles=[it?.catalog_title,it?.original_title].map(value=>String(value||'').trim()).filter(Boolean);
+  return titles.find(hasJapaneseText)||titles[0]||'';
+};
 function javTitleParts(it,value=it?.name){
   const name=javFileDisplayName(it,value),code=String(it?.code||'').trim().toUpperCase();
   if(!it?.is_jav||!code)return {code:'',title:name};
@@ -58,7 +63,7 @@ function javTitleParts(it,value=it?.name){
     ||(upper.startsWith(displayCode)&&/^[\s._\-[\]]/.test(name.slice(displayCode.length)));
   const prefixLength=upper.startsWith(displayCode)?displayCode.length:code.length;
   const filenameTitle=(hasPrefix?name.slice(prefixLength):name).replace(/^[\s._-]+/,'').trim();
-  const officialTitle=String(it?.catalog_title||it?.original_title||'').trim();
+  const officialTitle=javPreferredTitle(it);
   // API 显式返回空 display_title 也是有意义的“清洁后无标题”，不能再回退到脏文件名。
   const cleanFallback=Object.prototype.hasOwnProperty.call(it||{},'display_title')
     ?String(it.display_title||'').trim():filenameTitle;
@@ -1020,7 +1025,9 @@ function facePos(f){
 /* 官方封套有两种形态，实测过：整张封套约 1.48（左侧是剧照拼贴，右侧才是正封），
    竖版正封约 0.70（本身就是正封，没有左半边可裁）。所以取景不能写死「取右边」，
    得等图片加载后按它自己的宽高比分流——服务端没存这个比例，也不该为此再存一份。 */
-const COVER_FRAME=`onload="const r=this.naturalWidth/this.naturalHeight;this.dataset.frame=r>1.2?'sleeve':'front'"`;
+/* 常见双页 DVD 封套约 1.45:1；16:9 的横版官方剧照不是封套，不能把它也推到
+   最右半边。上限给扫描留余量，但明确排除 259LUXU-1573 这类 1.78:1 剧照。 */
+const COVER_FRAME=`onload="const r=this.naturalWidth/this.naturalHeight;this.dataset.frame=r>1.2&&r<1.65?'sleeve':'front'"`;
 /* 整张封套里右侧正封占的宽高比。裁切靠的是容器比例而不是 CSS 裁剪：`object-fit:cover`
    只在容器比图片更「竖」时才会横向裁，容器一旦宽过 1.48 就变成纵向裁、整张封套原样
    铺满——这正是「大图」以前只是撑满画布、没取到右侧的原因。 */
@@ -2584,7 +2591,8 @@ function followResourceLinks(item){
    行首则说明它与主条目的关系。 */
 function followCollectionCopy(group,item,mark=''){
   let label=mark;
-  if(!label&&group.is_release)label=localTime(item.published_at).slice(5,10)||'动态';
+  // 发布时间已经由 followWhen 单独显示，不能再伪装成版本/类型标签。
+  if(!label&&group.is_release)label=item.variant_label||item.variant_kind||'';
   if(!label)label=item.variant_kind==='wip'?'WIP':(item.variant_label||item.variant_kind||'视频');
   const body=group.is_release
     ?(item.summary||(item.has_media?'（仅附件）':'（无正文）')):item.title;
@@ -2697,7 +2705,12 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
      行的判定用 offsetTop——同一行的卡片顶边相同。 */
   const followList=$('#stats').querySelector('.followlist');
   const clicked=followList&&followList.querySelector(`[data-follow-item="${item.id}"]`);
-  if(clicked){
+  if(followList?.classList.contains('followphotowall')){
+    /* CSS 多栏按 DOM 顺序先填满一整列，再填下一列；视觉上位于顶部的第 5 张图，
+       DOM 中可能已经排在几十张之后。详情若插回多栏，必然出现在页面很下面。
+       图片详情因此统一放在瀑布流之前，保持当前视口可预测。 */
+    followList.before($('#stage'));
+  }else if(clicked){
     const cards=[...followList.children];
     const row=clicked.offsetTop;
     // 同一行里最后一张卡片：它之后就是插入点。
@@ -3014,15 +3027,17 @@ function renderFollow(){
     name:followAuthorName(list),sources:list,
   }]));
   const randomizedAuthors=followRandomOrder([...authors],row=>row[0]);
+  const allCount=Object.values(counts).reduce((total,count)=>total+(+count||0),0);
   const topTagRows=followRandomOrder([...tagCounts],row=>row[0]).slice(0,20);
   followTags.forEach(tag=>{
-    if(tagCounts.has(tag)&&!topTagRows.some(([key])=>key===tag))
-      topTagRows.push([tag,tagCounts.get(tag)]);
+    if(!topTagRows.some(([key])=>key===tag))
+      topTagRows.push([tag,tagCounts.get(tag)||allCount]);
   });
   const topTags=topTagRows.map(([tag,n])=>[tag,tagLabel(tag),n]);
   if(followAuthor&&!authors.has(followAuthor))followAuthor='';
   if(followProvider&&!providers.has(followProvider))followProvider='';
-  followTags=new Set([...followTags].filter(tag=>tagCounts.has(tag)));
+  // artist/character/copyright/metadata 不进入 general facets，但从在线标签索引点入后
+  // 仍是有效筛选，不能因为顶部筛选条的口径更窄就把它从 URL 和界面删掉。
   // 作者、来源和标签都已在服务端筛过，这里不再筛第二遍——两份同义的判定必然漂移。
   const mediaCounts={videos:0,images:0};
   groups.forEach(group=>followMediaKinds(group).forEach(kind=>
@@ -3032,7 +3047,6 @@ function renderFollow(){
   const providerPills=[...providers].map(([key,label])=>
     `<button class="pill sourcepill" data-follow-provider="${esc(key)}" aria-pressed="${key===followProvider}"
       title="${esc(label)}" aria-label="来源：${esc(label)}">${sourceIcon(key)}</button>`).join('');
-  const allCount=Object.values(counts).reduce((total,count)=>total+(+count||0),0);
   $('#stats').innerHTML=`<div class="follow">
     <div class="followhead"><h2 class="disp pagetitle">关注</h2>
       <button class="fbtn primary fcheck" data-follow-manage>${icon('settings')}管理关注</button></div>
@@ -3935,6 +3949,8 @@ let tagIndexMode='alphabet',tagIndexCategory='all',tagIndexScope='local',indexRe
 const TAG_CATEGORIES=[['all','全部'],['meta','影片属性'],['relationship','人物关系'],
   ['role','角色设定'],['appearance','外貌身材'],['scene','情境场所'],['story','故事剧情'],
   ['position','性交体位'],['general','其他内容']];
+const ONLINE_TAG_CATEGORIES=[['all','全部'],['general','通用'],['artist','作者'],
+  ['character','角色'],['copyright','作品'],['metadata','元数据']];
 const TAG_DISPLAY_NAMES={'1080P':'1080p','60fps':'60FPS','AI去码':'AI解码',
   '淫语ASMR':'ASMR','JK制服':'JK','OL制服':'OL','眼镜':'眼镜娘','情趣内衣':'性感内衣',
   '口罩遮脸':'口罩','强制剧情':'强制','足系':'美腿','足交':'脚交','骑乘':'骑乘位',
@@ -3965,7 +3981,7 @@ async function openIndex(kind,q,push=true){
   if(kind==='tags'){
     indexQuery.set('view',tagIndexMode);
     if(onlineTags)indexQuery.set('scope','online');
-    if(!onlineTags&&tagIndexCategory!=='all')indexQuery.set('category',tagIndexCategory)}
+    if(tagIndexCategory!=='all')indexQuery.set('category',tagIndexCategory)}
   if(push)route('/'+kind+(indexQuery.size?'?'+indexQuery:''),!!q);
   showHomeSurfaces();
   // 必须在 showHomeSurfaces 之后加：它会清掉这两个类并恢复顶部横条，
@@ -3976,7 +3992,9 @@ async function openIndex(kind,q,push=true){
   /* 在线标签走关注页那套统计，形状与 /api/index 一致，所以分页、搜索和「载入更多」
      这三处现成的机制换个地址就能用。 */
   const indexApi=offset=>onlineTags
-    ?'/api/follow/tags?limit='+indexLimit+'&offset='+offset+(q?'&q='+encodeURIComponent(q):'')
+    ?'/api/follow/tags?types=all&limit='+indexLimit+'&offset='+offset+
+      (tagIndexCategory!=='all'?'&type='+encodeURIComponent(tagIndexCategory):'')+
+      (q?'&q='+encodeURIComponent(q):'')
     :'/api/index?kind='+kind+'&limit='+indexLimit+'&offset='+offset+
       (q?'&q='+encodeURIComponent(q):'')+
       (kind==='tags'&&tagIndexCategory!=='all'?'&category='+encodeURIComponent(tagIndexCategory):'');
@@ -3993,31 +4011,33 @@ async function openIndex(kind,q,push=true){
       (groups[key]||(groups[key]=[])).push(x)});
     return Object.entries(groups).sort(([a],[b])=>a.localeCompare(b,'zh-CN')).map(([letter,items])=>
       `<section class="alphagroup"><h3>${letter}</h3><div class="alphalist">${items.map(x=>
-        `<button class="alphatag ${onlineTags?'online':(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"><span>${esc(tagLabel(x.k))}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')}</div></section>`).join('')};
+        `<button class="alphatag ${onlineTags?'r34-'+(x.cat||'unknown'):(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"><span>${esc(tagLabel(x.k))}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')}</div></section>`).join('')};
   const peopleHtml=items=>items.map(x=>`<button class="icell" data-k="${esc(x.k)}" data-kind="${entityKind}">
         <span class="ring">${avatarInner(x.k,
           kind==='performers'&&x.entity_id?{id:x.entity_id}:null, x.rep)}</span>
         <span class="nm">${esc(x.k)}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('');
-  const tagHtml=items=>tagIndexMode==='alphabet'?`<div class="alphabet">${tagGroups(items)}</div>`:`<div class="tagwall index-tags">`+items.map(x=>`<button class="tg ${onlineTags?'online':(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"
+  const tagHtml=items=>tagIndexMode==='alphabet'?`<div class="alphabet">${tagGroups(items)}</div>`:`<div class="tagwall index-tags">`+items.map(x=>`<button class="tg ${onlineTags?'r34-'+(x.cat||'unknown'):(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"
         style="padding:5px 12px;font-size:13px">${esc(tagLabel(x.k))}
         <span style="opacity:.6;font-size:11px">${x.n.toLocaleString()}</span></button>`).join('')+`</div>`;
   const body=people?`<div class="igrid">${peopleHtml(d.items)}</div>`:tagHtml(tagItems);
-  const visibleTagCategories=TAG_CATEGORIES.filter(([key])=>key==='all'||Number(d.categories?.[key]||0)>0);
-  /* 类别划分（影片属性、人物关系……）是本地标签的语义，在线那套 booru 标签没有
-     对应划分；多选面板拼的是目录筛选，对在线标签也不成立。两者都只在本地范围出现。 */
-  const filters=kind==='tags'&&!onlineTags?`<div class="tagfilters" aria-label="标签类型">${visibleTagCategories.map(([key,label])=>
+  const categoryOptions=onlineTags?ONLINE_TAG_CATEGORIES:TAG_CATEGORIES;
+  const visibleTagCategories=categoryOptions.filter(([key])=>key==='all'||Number(d.categories?.[key]||0)>0);
+  const categoryFilters=kind==='tags'?`<div class="tagfilters" aria-label="标签类型">${visibleTagCategories.map(([key,label])=>
     `<button class="${key}" data-tag-category="${key}" aria-pressed="${tagIndexCategory===key}">${label}</button>`).join('')}</div>
+    `:'';
+  /* 多选面板拼的是目录筛选，只在本地范围出现；在线分类来自上游 booru tag_type。 */
+  const filters=categoryFilters+(kind==='tags'&&!onlineTags?`
     <div class="tagselection" data-tag-selection hidden>
       <label><input type="checkbox" data-tag-match-any ${tagIndexMatch==='any'?'checked':''}><span><b>广泛匹配</b><small>开启后匹配任一所选标签；关闭后必须同时包含全部标签。</small></span></label>
       <span class="mono" data-tag-selected>已选 0 个标签</span>
       <button type="button" data-tag-clear>清空</button>
       <button type="button" class="primary" data-tag-apply disabled>显示结果</button>
-    </div>`:'';
+    </div>`:'');
   $('#index').innerHTML=`<div class="ihead">
-      <h2 class="disp">${title}</h2>
+      <h2 class="disp indexheading">${kind==='tags'?icon('tags'):''}${title}</h2>
       <span class="mono" id="indexCount" style="color:var(--muted)">${tagItems.length}${d.has_more?'+':''} 项</span>
-      ${kind==='tags'?`<div class="tagmodes"><button data-tag-scope="local" aria-pressed="${!onlineTags}">本地</button><button data-tag-scope="online" aria-pressed="${onlineTags}">在线</button></div>
-      <div class="tagmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">字母表</button></div>`:''}
+      ${kind==='tags'?`<div class="tagmodes"><button data-tag-scope="local" aria-pressed="${!onlineTags}">${icon('database')}本地</button><button data-tag-scope="online" aria-pressed="${onlineTags}">${icon('globe')}在线</button></div>
+      <div class="tagmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">${icon('tags')}标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">${icon('list-filter')}字母表</button></div>`:''}
       <div class="isearch"><input id="iq" placeholder="过滤…" value="${esc(q||'')}"></div>
     </div>${filters}<div id="indexBody">${body}</div><button class="indexmore" id="indexMore" type="button" ${d.has_more?'':'hidden'}>载入更多</button>`;
   let it2; $('#iq').oninput=e=>{clearTimeout(it2);it2=setTimeout(()=>openIndex(kind,e.target.value.trim(),true),300)};
@@ -4026,6 +4046,7 @@ async function openIndex(kind,q,push=true){
     tagIndexScope=b.dataset.tagScope;
     // 在线标签全是英文，字母表才是它的形态；切过去时顺手换上，不必用户再点一次。
     if(tagIndexScope==='online')tagIndexMode='alphabet';
+    tagIndexCategory='all';
     selectedIndexTags.clear();
     openIndex('tags',$('#iq').value.trim(),true)});
   $('#index').querySelectorAll('[data-tag-view]').forEach(b=>b.onclick=()=>{
@@ -5439,8 +5460,13 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   });
   const renderDetailTags=()=>{
     const wrap=$('#detailTags');if(!wrap)return;
-    const visible=(it.tags||[]).filter(t=>!DURATION_TAGS.has(t.k)).slice(0,40);
-    wrap.innerHTML=visible.map(t=>`<span class="detailtag${t.official?' official':''}"><button class="tagfilter" data-tag="${esc(t.k)}">${esc(tagLabel(t.k))}${t.official?'<small>官方</small>':''}</button><button class="tagremove" data-remove-tag="${esc(t.k)}" title="从此视频隐藏该标签" aria-label="删除标签 ${esc(tagLabel(t.k))}">${icon('x')}</button></span>`).join('')+
+    const byDisplay=new Map();
+    (it.tags||[]).filter(t=>!DURATION_TAGS.has(t.k)).forEach(t=>{
+      const key=foldName(tagLabel(t.k)),previous=byDisplay.get(key);
+      // `足系` 与 `美腿` 的可见名相同；优先保留本身就是规范显示名的那条。
+      if(!previous||foldName(t.k)===key&&foldName(previous.k)!==key)byDisplay.set(key,t)});
+    const visible=[...byDisplay.values()].slice(0,40);
+    wrap.innerHTML=visible.map(t=>`<span class="detailtag"><button class="tagfilter" data-tag="${esc(t.k)}">${esc(tagLabel(t.k))}</button><button class="tagremove" data-remove-tag="${esc(t.k)}" title="从此视频隐藏该标签" aria-label="删除标签 ${esc(tagLabel(t.k))}">${icon('x')}</button></span>`).join('')+
       `<button class="tagplus" id="tagPlus" title="添加标签" aria-label="添加标签" aria-expanded="false">${icon('plus')}</button>
        <div class="tagpicker" id="tagPicker" role="dialog" aria-label="添加标签" hidden>
          <label class="tagpicksearch">${icon('search')}<input id="tagPickSearch" maxlength="80" placeholder="搜索或输入新标签" autocomplete="off"></label>
@@ -6143,7 +6169,8 @@ async function restoreRoute(){
       tagIndexScope=params.get('scope')==='online'?'online':'local';
       tagIndexMode=params.get('view')==='cloud'?'cloud':'alphabet';
       const category=params.get('category')||'all';
-      tagIndexCategory=TAG_CATEGORIES.some(([key])=>key===category)?category:'all'}
+      const categories=tagIndexScope==='online'?ONLINE_TAG_CATEGORIES:TAG_CATEGORIES;
+      tagIndexCategory=categories.some(([key])=>key===category)?category:'all'}
     await openIndex(path.slice(1),params.get('q')||'',false);return}
   if(path==='/stats'){await openStats(false);return}
   if(path==='/taste'){await openTaste(false);return}

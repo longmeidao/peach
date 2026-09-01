@@ -663,6 +663,27 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual([row["k"] for row in last["items"]], ["pov"])
         self.assertFalse(last["has_more"])
 
+    def test_online_tag_index_exposes_recorded_rule34_types_and_filters_them(self):
+        candidate = FollowCandidate(
+            provider="rule34xxx", external_id="typed", title="Typed",
+            url="https://rule34.xxx/index.php?page=post&s=view&id=1",
+            extra={"tags": ["pose", "artist_name", "hero", "series_name", "animated"],
+                   "tag_types": {"pose": "general", "artist_name": "artist",
+                                 "hero": "character", "series_name": "copyright",
+                                 "animated": "metadata"}},
+        )
+        self._seed(candidates=(candidate,), provider="rule34xxx", ref="typed")
+        page = self._get("/api/follow/tags", types="all")
+        self.assertEqual({row["k"]: row["cat"] for row in page["items"]}, {
+            "pose": "general", "artist_name": "artist", "hero": "character",
+            "series_name": "copyright", "animated": "metadata",
+        })
+        artists = self._get("/api/follow/tags", types="all", type="artist")
+        self.assertEqual([(row["k"], row["cat"]) for row in artists["items"]],
+                         [("artist_name", "artist")])
+        self.assertEqual(sum(self._get(tag="artist_name")["counts"].values()), 1,
+                         "在线索引里的非 general 标签点入后必须能筛到原条目")
+
     def test_counts_are_whole_library_while_groups_are_one_page(self):
         """计数是全库口径，列表只有一页——界面并排显示这两个数时看起来像自相矛盾。
 
@@ -1714,7 +1735,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("const randomizedAuthors=followRandomOrder([...authors],row=>row[0])")
         self.assertPageContains("const topTagRows=followRandomOrder([...tagCounts],row=>row[0]).slice(0,20)")
         self.assertPageContains("if(push)followDiscoverySeed=Math.floor(Math.random()*0xffffffff)")
-        self.assertPageContains("topTagRows.push([tag,tagCounts.get(tag)])")
+        self.assertPageContains("topTagRows.push([tag,tagCounts.get(tag)||allCount])")
 
     def test_follow_tags_are_multi_select_and_use_rule34_property_colours(self):
         self.assertPageContains("let followAuthor='',followProvider='',followTags=new Set()")
@@ -1823,6 +1844,7 @@ class FollowWebSourceTests(unittest.TestCase):
                                 "按行插入，避免把卡片那一行截断")
         # 列表还没渲染出来时（直达详情链接）仍回退到列表前
         self.assertPageContains("followList.before($('#stage'))")
+        self.assertPageContains("followList?.classList.contains('followphotowall')")
         self.assertPageContains(".followlist>.stage{grid-column:1/-1;width:100%;min-width:0}")
         self.assertPageContains("scrollItemDetailIntoView();",
                                 "滚到舞台本身而不是页面头部")
@@ -1883,8 +1905,11 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertNotIn("约 ${text}", body)
         self.assertIn("return text", body)
 
-    def test_release_variant_rows_show_when_not_a_meaningless_kind(self):
-        self.assertPageContains("if(!label&&group.is_release)label=localTime(item.published_at).slice(5,10)")
+    def test_release_time_is_not_reused_as_a_variant_label(self):
+        self.assertPageContains("if(!label&&group.is_release)label=item.variant_label||item.variant_kind||''")
+        body = self.page[self.page.index("function followCollectionCopy("):
+                         self.page.index("function followQueueHtml(")]
+        self.assertNotIn("localTime(item.published_at)", body)
 
     def test_release_rows_show_the_reply_body_not_the_thread_title(self):
         self.assertPageContains("const body=group.is_release")
@@ -2202,8 +2227,9 @@ class FollowWebSourceTests(unittest.TestCase):
         )
         self.assertPageContains("followMediaView==='images'?' followphotowall':''")
         self.assertPageContains(".followlist.followphotowall{display:block;column-count:5")
-        self.assertPageContains(".followlist.followphotowall>.stage{column-span:all}",
-                                "图片瀑布流里的详情必须跨栏，否则媒体列会被侧栏挤成 0px")
+        self.assertPageLacks(".followlist.followphotowall>.stage{column-span:all}")
+        self.assertPageContains("followList?.classList.contains('followphotowall')",
+                                "图片详情必须脱离多栏，否则顶部图片会在很下面展开")
         self.assertPageContains(".followitem.imagecard .followvisual .pic>img{position:relative")
 
     def test_external_file_pages_do_not_default_to_video_and_paging_actions_share_one_row(self):

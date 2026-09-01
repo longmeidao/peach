@@ -403,6 +403,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const COVER_FRONT_RATIO=0.7;")
         self.assertPageContains("(jav&&layout==='big'?COVER_FRONT_RATIO:16/9)")
         self.assertPageContains('.poster.cover.front[data-frame="sleeve"]{object-position:100%')
+        self.assertPageContains("r>1.2&&r<1.65?'sleeve':'front'",
+                                "16:9 官方剧照不能当成双页封套裁到最右侧")
         # 判据是 `jav` 不是 `useCover`：缺封面的卡片也要拉长，用 16:9 预览图上下留黑边，
         # 否则一行里高矮混排会把网格撕成锯齿状。
         self.assertPageLacks("useCover&&layout==='big'")
@@ -1514,11 +1516,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const coStarred=performers.length>1&&!primaryCreator")
         self.assertPageContains("return (it.is_jav&&performer?performer:it.creator)||performer")
 
-    def test_jav_detail_prefers_official_title_and_labels_official_tags(self):
-        self.assertPageContains("it?.catalog_title||it?.original_title")
-        self.assertPageContains("t.official?' official':''")
-        self.assertPageContains("<small>官方</small>")
-        self.assertPageContains(".detailtag.official{")
+    def test_jav_detail_prefers_japanese_title_and_keeps_official_tags_visually_neutral(self):
+        self.assertPageContains("const javPreferredTitle=it=>")
+        self.assertPageContains("titles.find(hasJapaneseText)||titles[0]||''")
+        self.assertPageContains('wrap.innerHTML=visible.map(t=>`<span class="detailtag">')
+        self.assertPageLacks("<small>官方</small>")
+        self.assertPageLacks(".detailtag.official{")
+        self.assertPageContains("const byDisplay=new Map()")
+        self.assertPageContains("foldName(t.k)===key&&foldName(previous.k)!==key")
 
     def test_drawer_filters_follow_entity_and_detail_context(self):
         # 实体页 facets 必须按当前实体取数；详情页则按单个作品取数，不能继续复用首页全库。
@@ -1861,9 +1866,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("['story','故事剧情']")
         self.assertPageContains("['position','性交体位']")
         self.assertPageContains("['general','其他内容']")
-        self.assertPageLacks("['copyright','作品']")
+        self.assertPageContains("['copyright','作品']")
         self.assertPageLacks("['artist','人物']")
-        self.assertPageLacks("['character','角色']")
+        self.assertPageContains("['character','角色']")
         self.assertPageContains("key==='all'||Number(d.categories?.[key]||0)>0")
         self.assertPageContains("'1080P':'1080p'")
         self.assertPageContains("'60fps':'60FPS'")
@@ -2282,11 +2287,18 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(tagIndexScope==='online')tagIndexMode='alphabet';",
                                 "切到在线应当直接给出字母表，那才是它的形态")
         self.assertPageContains("const onlineTags=kind==='tags'&&tagIndexScope==='online';")
-        self.assertPageContains("'/api/follow/tags?limit='+indexLimit+'&offset='+offset")
-        # 类别划分和多选面板都是本地标签的语义，在线那套没有对应物。
-        self.assertPageContains("const filters=kind==='tags'&&!onlineTags?")
+        self.assertPageContains("'/api/follow/tags?types=all&limit='+indexLimit+'&offset='+offset")
+        self.assertPageContains("const ONLINE_TAG_CATEGORIES=")
+        self.assertPageContains("onlineTags?'r34-'+(x.cat||'unknown')")
+        self.assertPageContains("const categoryOptions=onlineTags?ONLINE_TAG_CATEGORIES:TAG_CATEGORIES")
+        # 多选面板是本地目录语义；分类栏两套词表都显示。
         self.assertPageContains("if(kind==='tags'&&!onlineTags){")
-        self.assertPageContains(".tg.online,.alphatag.online{--tag-color:#5AC8D8")
+        self.assertPageContains(".alphatag.r34-artist")
+        self.assertPageContains(".alphatag.r34-character")
+        self.assertPageContains(".alphatag.r34-copyright")
+        self.assertPageContains(".alphatag.r34-metadata")
+        self.assertPageContains("indexheading")
+        self.assertPageContains("${icon('database')}本地")
 
     def test_an_online_tag_opens_the_follow_page_not_a_catalog_filter(self):
         """在线标签标注的是还没入库的在线更新，拿去筛目录必然一条不中。"""
@@ -2401,8 +2413,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_detail_source_icon_starts_at_the_content_edge(self):
         self.assertPageContains(".detailtitle>.srcbig{place-items:start;width:17px;margin-top:2px}")
 
-    def test_official_tag_marker_uses_regular_weight(self):
-        self.assertPageContains(".detailtag .tagfilter small{margin-left:5px;color:var(--accent);font-size:var(--fs-xs);font-weight:400}")
+    def test_official_tags_do_not_have_a_visible_marker(self):
+        self.assertPageLacks(".detailtag .tagfilter small{")
     def test_editions_collapse_into_one_card_with_a_version_badge(self):
         """同番号的几个版次合成一张卡，角标写清有几个版本。"""
         self.assertPageContains("function collapseEditionGroups(items){")
@@ -2635,7 +2647,7 @@ class WebUiSourceTests(unittest.TestCase):
             "button.innerHTML=`${spinnerHtml('正在定位')}${label?`<span>${esc(label)}</span>`:''}`")
         self.assertPageContains("if(activeLightbox?.detail?.isOpen()){activeLightbox.detail.dismiss(true);return}")
         self.assertPageContains("if(returnFocus&&document.contains(toggle))toggle.focus()")
-        self.assertPageContains("queueMicrotask(()=>reveal.focus())")
+        self.assertPageContains("queueMicrotask(()=>{const target=reveal.hidden?title:reveal;target.focus()})")
         self.assertPageContains("const dismissOutside=target=>{if(panel.hidden||toggle.contains(target)||panel.contains(target))return false")
         self.assertPageContains("if(detail.dismissOutside(e.target))return")
         self.assertPageContains(".photodetail[hidden]{display:none}")

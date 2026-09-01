@@ -172,6 +172,26 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertIn("fc2-metadata-field-candidates.csv", source)
         self.assertEqual(skipped, 0)
 
+    def test_japanese_title_partition_overrides_the_same_key_from_the_general_batch(self):
+        fields = ["item_key", "code", "query", "field", "current_value",
+                  "candidates_json", "source_count", "source_profile", "policy_version",
+                  "status", "size_gb", "videos", "fetched_at"]
+        common = {"code": "ABP-222", "query": "ABP-222", "field": "title",
+                  "current_value": "English", "source_count": "1", "source_profile": "test",
+                  "policy_version": "test", "status": "candidate", "size_gb": "1",
+                  "videos": "1", "fetched_at": "now"}
+        self._csv("metadata-field-candidates-20260822.csv", fields, [{
+            **common, "item_key": "ABP-222:title", "candidates_json": '[{"value":"English"}]',
+        }])
+        self._csv("japanese-title-candidates.csv", fields, [{
+            **common, "item_key": "ABP-222:title", "candidates_json": '[{"value":"日本語"}]',
+        }])
+        rows, source, skipped = rm_review.read_candidates("metadata_fields", self.candidates)
+        self.assertEqual(len(rows), 1)
+        self.assertIn("日本語", rows[0]["candidates_json"])
+        self.assertIn("japanese-title-candidates.csv", source)
+        self.assertEqual(skipped, 0)
+
     def _release_row(self, key, code, source="r18dev", current="", n=1):
         return {"item_key": key, "field": "release_date", "current": current,
                 "candidates": ["2015-02-20"][:n], "code": code, "source": source}
