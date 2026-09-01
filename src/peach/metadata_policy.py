@@ -1,9 +1,10 @@
 """Pure Javinizer-Go source policy owned by Peach."""
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Iterable, Mapping, Sequence
+
+from .catalog_rules import is_uncensored_code
 
 
 POLICY_VERSION = "metadata-source-policy-v4"
@@ -62,15 +63,12 @@ PROFILE_SOURCES = {
     ),
 }
 
-#: 番号形状就能确定发行面，不必先有元数据证明。日期形（`040221-001`）是无码站的
-#: 编号法，`HEYZO-1380` 同理。语料实测：8 个这种番号——carib 2、1pon 4、HEYZO 2，
-#: 官方 tag 全为 0。它们此前一直按有码番号去问 mgstage/dmm，那几家根本不发行
-#: 这些片，于是「问了都没有」被读成「上游没有」。caribbeancom 实测取得到
-#: `040221-001` 的完整标题、日期和 10 个 genre。
-UNCENSORED_CODE_SHAPES = (
-    re.compile(r"^\d{6}-\d{2,4}$"),
-    re.compile(r"^HEYZO-\d{2,5}$", re.I),
-)
+#: 番号形状就能确定发行面，不必先有元数据证明。判据本身是纯规则，和徽章共用
+#: `catalog_rules.is_uncensored_code` 一份——两处各写一份迟早会漂移。
+#: 语料实测：8 个这种番号——carib 2、1pon 4、HEYZO 2，官方 tag 全为 0。它们此前
+#: 一直按有码番号去问 mgstage/dmm，那几家根本不发行这些片，于是「问了都没有」
+#: 被读成「上游没有」。caribbeancom 实测取得到 `040221-001` 的完整标题、日期
+#: 和 10 个 genre。
 
 #: 按发行面分流的 profile。`sources` 是并集（来源健康表要覆盖全部），
 #: 每个番号实际问哪几家由 `sources_for_code` 决定。
@@ -87,10 +85,6 @@ for _name, _routes in ROUTED_PROFILE_SOURCES.items():
     PROFILE_SOURCES[_name] = tuple(dict.fromkeys(
         source for group in _routes.values() for source in group))
 
-
-def is_uncensored_code(code: str) -> bool:
-    value = str(code or "").strip()
-    return any(shape.fullmatch(value) for shape in UNCENSORED_CODE_SHAPES)
 
 FIELD_SOURCE_ORDER = {
     "title": (

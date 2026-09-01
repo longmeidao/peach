@@ -182,6 +182,39 @@ def _jav_code_pattern(code: str | None) -> str:
     return ""
 
 
+#: 无码厂商自己的编号法：Caribbeancom／1Pondo／10musume／Pacopacomama 用
+#: `MMDDYY-nnn`，HEYZO 用 `HEYZO-1380`。有码厂商不用这两种形状。
+UNCENSORED_CODE_SHAPES = (
+    re.compile(r"^\d{6}-\d{2,4}$"),
+    re.compile(r"^HEYZO-\d{2,5}$", re.I),
+)
+#: 文件名里的发行站标记。番号形状认不出来时（例如 Tokyo-Hot 的 `n1234`），
+#: 这是另一条本机就能核验的证据。
+_UNCENSORED_SITE = re.compile(
+    r"(?i)(?<![A-Z0-9])(?:"
+    r"carib(?:bean(?:com)?(?:pr)?)?|1pon(?:do)?|10mu(?:sume)?|heyzo|"
+    r"pacopacomama|paco|muramura|tokyo[-_]?hot"
+    r")(?![A-Z0-9])"
+)
+#: 版次标记有时和番号粘在一起，中间没有分隔符：`PPPD-937CH.mp4`、`MIDV-751CH.mp4`。
+#: 只认带分隔符的写法，这些文件既拿不到「中字」徽章，番号本身还会被当标题显示。
+_GLUED_EDITION = r"(?:CH|C|SUB|UC|U)"
+
+
+def is_uncensored_code(code: str | None) -> bool:
+    value = str(code or "").strip()
+    return any(shape.fullmatch(value) for shape in UNCENSORED_CODE_SHAPES)
+
+
+def is_uncensored_release(name: str | None, code: str | None) -> bool:
+    """番号形状或文件名里的发行站，两者有一个成立就是无码厂商的片。
+
+    这两条都是本机可核验的证据，不依赖抓取结果——`040221-001` 这类番号在
+    r18.dev 永远 404，等元数据到齐再判，徽章就永远不会出现。
+    """
+    return is_uncensored_code(code) or bool(_UNCENSORED_SITE.search(str(name or "")))
+
+
 def jav_edition_badges(name: str | None, code: str | None,
                        tags: tuple[str, ...] | list[str] = ()) -> list[str]:
     """Project filename/tag evidence into compact edition badges beside the code."""
@@ -189,7 +222,10 @@ def jav_edition_badges(name: str | None, code: str | None,
     tag_set = {str(tag).strip().casefold() for tag in tags if str(tag).strip()}
     code_pattern = _jav_code_pattern(code)
     after_code = (
-        re.search(rf"(?:^|[^A-Z0-9]){code_pattern}([^A-Z0-9].*)?$", text, re.I)
+        re.search(
+            rf"(?:^|[^A-Z0-9]){code_pattern}((?:{_GLUED_EDITION})?(?:[^A-Z0-9].*)?)$",
+            text, re.I,
+        )
         if code_pattern else None
     )
     suffix = after_code.group(1) if after_code and after_code.group(1) else ""
@@ -201,8 +237,13 @@ def jav_edition_badges(name: str | None, code: str | None,
     uncensored = (
         cracked
         or "无码" in tag_set
+        # 无码厂商的片本身就是无码，不需要文件名里另有 `-U`／`Uncen` 标记。
+        or is_uncensored_release(name, code)
+        # `un` 和 `u`／`uc` 是同一个意思。此前它没进这张表，`ABF-158-UN.mp4`
+        # 既拿不到徽章，`UN` 又被当标题显示；现在标题判空了，不认它就等于把
+        # 这条信息整个丢掉。
         or bool(re.search(r"(?:^|[-_.\s\[])"
-                          r"(?:uc|u|uncen(?:sored)?|uncensored|无码|無碼)"
+                          r"(?:uc|un|u|uncen(?:sored)?|uncensored|无码|無碼)"
                           r"(?:$|[-_.\s\]])", suffix, re.I))
     )
     subtitled = (
@@ -298,12 +339,14 @@ def jav_fallback_title(name: str | None, code: str | None) -> str:
     text = _PROMO_DOMAIN.sub(" ", text)
     code_pattern = _jav_code_pattern(code)
     if code_pattern:
-        repeated = re.compile(rf"^[\s._\-—]*(?:{code_pattern})(?=$|[\s._\-—\[])", re.I)
+        repeated = re.compile(
+            rf"^[\s._\-—]*(?:{code_pattern})(?:{_GLUED_EDITION})?(?=$|[\s._\-—\[])", re.I)
         while repeated.search(text):
             text = repeated.sub("", text, count=1)
         # 番号不总在开头：`1pon-092415-001-fhd1_(new).mp4` 把发行站放在了前面。
         # 只认前缀，整个番号就会留在「标题」里显示出来。
-        text = re.sub(rf"(?<![A-Z0-9])(?:{code_pattern})(?![A-Z0-9])", " ", text, flags=re.I)
+        text = re.sub(rf"(?<![A-Z0-9])(?:{code_pattern})(?:{_GLUED_EDITION})?(?![A-Z0-9])",
+                      " ", text, flags=re.I)
     text = _EDITION_TAIL.sub("", text)
     text = _RELEASE_NOISE.sub(" ", text)
     text = re.sub(r"[\[\]【】()（）]+", " ", text)
