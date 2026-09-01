@@ -97,7 +97,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_close_actions_share_geist_control_geometry(self):
         css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
             encoding="utf-8")
-        for selector in (".playlistdialoghead button{", ".photoclose{",
+        for selector in (".playlistdialoghead button{",
                          ".mixqueuehead button{", ".settingshead button{"):
             start = css.index(selector)
             rule = css[start:css.index("}", start)]
@@ -107,6 +107,10 @@ class WebUiSourceTests(unittest.TestCase):
         stage_close = stage_close[:stage_close.index("}")]
         self.assertIn("width:40px;height:40px", stage_close)
         self.assertIn("border-radius:50%", stage_close)
+        media_close = css[css.index(".media-circle{"):]
+        media_close = media_close[:media_close.index("}")]
+        self.assertIn("border-radius:50%", media_close,
+                      "全屏媒体关闭钮属于圆形媒体操作，不沿用普通 Dialog 关闭钮")
         self.assertIn(".settingshead button:hover{background:var(--hover);color:var(--ink)}",
                       css)
 
@@ -588,7 +592,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('.tokstage{position:absolute;left:50%;top:50%;width:min(56.25vh,calc(100vw - 240px));aspect-ratio:9/16')
         self.assertPageContains('.toktrack{position:absolute;inset:0;overflow:hidden;border-radius:12px;background:#000')
         self.assertPageContains('.tokbtns{position:absolute;left:calc(100% + 12px);bottom:8px;width:72px')
-        self.assertPageContains('width:48px;height:48px;padding:0;border-radius:50%;border:0')
+        self.assertPageContains('class="media-circle" id="tokDislike"')
+        self.assertPageContains('.media-circle{box-sizing:border-box;width:48px;height:48px;padding:0;border:0;border-radius:50%;')
         self.assertPageContains('.tokui{position:absolute;left:20px;bottom:20px;width:min(520px,calc(50% - 28.125vh - 36px))')
         self.assertPageContains('<div class="tokauthor"><button type="button" class="tokavatar"')
         self.assertPageContains('<button type="button" class="toktitle" id="tokTitle"></button>')
@@ -2566,27 +2571,32 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("'/vendor/swiper/14.2.0/swiper-bundle.min.js'")
         self.assertPageContains("thumbs:{swiper:strip}")
         self.assertPageContains("keyboard:{enabled:true}")
-        self.assertPageContains(".photolight{position:fixed;inset:0;z-index:200;background:#000")
+        self.assertPageContains(".photolight{position:fixed;inset:0;z-index:200;background:#000;display:block;overflow:hidden}")
         self.assertPageLacks('<script src="/vendor/swiper', "灯箱才用得上，不进首屏")
 
     def test_lightbox_image_is_capped_by_height_not_only_width(self):
         """竖图必须整张收进灯箱，不能上下被裁掉。
 
-        `max-height:100%` 只在祖先高度确定时才算数，而 grid 子项的自动最小尺寸
-        （min-height:auto）是「不得小于内容」：3072x4096 按宽度铺开有 2533px 高，
-        那个下限会盖掉 height:100%，容器被撑成图片原高，max-height 再按它算就等于
-        没限制。所以从 slide 到图片本身每一层都要显式写 min-height:0。
+        主画布使用固定视口的绝对定位，不能再让 grid 行与 Swiper 的百分比高度互相
+        依赖；否则超宽视口会把主图行收成 0，让原图按自然尺寸贴到左边溢出。
         """
         self.assertPageContains(
-            ".photolight .photomain{min-height:0;height:100%;width:100%}")
+            ".photolight .photomain{position:absolute;inset:0;min-width:0;min-height:0;width:100%;height:100%}")
         self.assertPageContains(
-            ".photolight .photomain .swiper-slide{height:100%;min-height:0;")
+            ".photolight .photomain .swiper-wrapper{width:100%;height:100%}")
+        self.assertPageContains(
+            ".photolight .photomain .swiper-slide{width:100%;height:100%;min-width:0;min-height:0;")
         self.assertPageContains(
             ".photolight .photomain .swiper-zoom-container{width:100%;height:100%;"
             "min-height:0;min-width:0;")
+        self.assertPageContains("box-sizing:border-box;display:grid;place-items:center;padding:64px 72px 24px")
+        self.assertPageContains(".photolight.has-strip .photomain .swiper-zoom-container{padding-bottom:104px}")
         self.assertPageContains(
             ".photolight .photomain img{max-width:100%;max-height:100%;"
             "min-width:0;min-height:0;")
+        self.assertPageContains("box.className='photolight'+(items.length>1?' has-strip':'')")
+        self.assertPageContains(".photolight:not(.has-strip) .photostrip{display:none}")
+        self.assertPageContains("e.target===box||e.target.classList.contains('swiper-zoom-container')")
 
     def test_lightbox_nav_classes_avoid_the_generic_next_rule(self):
         """翻页按钮不能叫 `.next`：详情页「接下来」那块用的就是无前缀 `.next`。
@@ -2594,8 +2604,8 @@ class WebUiSourceTests(unittest.TestCase):
         两者同为 0-1-0 特指度且 `.next` 写在后面，padding、border-top 和背景色会
         整块盖过来，图标被挤得偏右下——实测偏移 5px/2px。
         """
-        self.assertPageContains('class="photonav back"')
-        self.assertPageContains('class="photonav fwd"')
+        self.assertPageContains('class="media-circle photonav back"')
+        self.assertPageContains('class="media-circle photonav fwd"')
         self.assertPageContains(".photonav.back{left:14px}.photonav.fwd{right:14px}")
         self.assertPageContains(".photonav.fwd svg{transform:rotate(180deg)}")
         self.assertPageLacks('class="photonav prev"')
@@ -2609,10 +2619,20 @@ class WebUiSourceTests(unittest.TestCase):
         for rule in (
             ".mediatabs button svg{width:16px;height:16px;stroke:currentColor;fill:none",
             ".photoback svg{width:15px;height:15px;stroke:currentColor;fill:none",
-            ".photoclose svg{width:20px;height:20px;stroke:currentColor;fill:none",
-            ".photonav svg{width:24px;height:24px;stroke:currentColor;fill:none",
+            ".media-circle svg{display:block;width:24px;height:24px;flex:none;stroke:currentColor;fill:none",
         ):
             self.assertPageContains(rule)
+
+    def test_photo_navigation_reuses_the_youtube_tonal_media_button(self):
+        self.assertPageContains(
+            ".media-circle{box-sizing:border-box;width:48px;height:48px;padding:0;border:0;border-radius:50%;")
+        self.assertPageContains("background:rgba(255,255,255,.1);color:#f1f1f1;display:grid;place-items:center")
+        self.assertPageContains('class="media-circle followimagearrow prev"')
+        self.assertPageContains('class="media-circle followimagearrow next"')
+        self.assertPageContains('class="media-circle photoclose"')
+        self.assertPageContains('class="media-circle photonav back"')
+        self.assertPageContains('class="media-circle" id="tokDislike"')
+        self.assertPageContains(".followimagearrow{position:absolute;z-index:4;top:50%;transform:translateY(-50%)}")
 
     def test_lightbox_offers_wheel_paging_and_an_explicit_zoom_bar(self):
         # zoom 模块只有 in/out/toggle，没有「缩到这个倍数」；`in()` 用的就是

@@ -2688,8 +2688,8 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
       :item.thumb_url
         ?`<img class="followdetailposter" src="${esc(item.thumb_url)}" alt="${esc(item.title)}" referrerpolicy="no-referrer">`
         :`<div class="followdetailplaceholder">${sourceIcon(item.provider)}<span>没有可用预览</span></div>`;
-  const imageControls=imageCarousel?`<button class="followimagearrow prev" data-follow-image-step="-1" aria-label="上一张图片" title="上一张">${icon('chevron-left')}</button>
-    <button class="followimagearrow next" data-follow-image-step="1" aria-label="下一张图片" title="下一张">${icon('chevron-right')}</button>
+  const imageControls=imageCarousel?`<button class="media-circle followimagearrow prev" data-follow-image-step="-1" aria-label="上一张图片" title="上一张">${icon('chevron-left')}</button>
+    <button class="media-circle followimagearrow next" data-follow-image-step="1" aria-label="下一张图片" title="下一张">${icon('chevron-right')}</button>
     <div class="followimagedots" role="group" aria-label="${imageMedia.length} 张图片">${imageMedia.map((image,index)=>`<button data-follow-image-item="${image.index}" aria-current="${index===imagePosition}" aria-label="第 ${index+1} 张，共 ${imageMedia.length} 张" title="第 ${index+1} 张"></button>`).join('')}</div>`:'';
   const badges=followBadges({primary:item,variants:[],duplicates:[],has_wip:item.variant_kind==='wip'});
   // 卡片只消费 general 内容投影；详情保留来源记录的全部类型，并按类型着色。
@@ -4428,13 +4428,13 @@ async function openPhotoLightbox(index,source=null){
   catch(_e){window.open(items[index].src,'_blank','noopener');return}
   closePhotoLightbox();
   const box=document.createElement('div');
-  box.className='photolight';
-  box.innerHTML=`<button class="photoclose" type="button" aria-label="关闭">${icon('x')}</button>
+  box.className='photolight'+(items.length>1?' has-strip':'');
+  box.innerHTML=`<button class="media-circle photoclose" type="button" aria-label="关闭">${icon('x')}</button>
     <div class="swiper photomain"><div class="swiper-wrapper">${items.map(item=>
       `<div class="swiper-slide"><div class="swiper-zoom-container"><img src="${esc(item.src)}"
         alt="${esc(item.name)}" loading="lazy" referrerpolicy="no-referrer"></div></div>`).join('')}</div>
-      <button class="photonav back" type="button" aria-label="上一张">${icon('chevron-left')}</button>
-      <button class="photonav fwd" type="button" aria-label="下一张">${icon('chevron-left')}</button></div>
+      <button class="media-circle photonav back" type="button" aria-label="上一张">${icon('chevron-left')}</button>
+      <button class="media-circle photonav fwd" type="button" aria-label="下一张">${icon('chevron-left')}</button></div>
     <div class="photobar">
       <button class="photodetailtoggle" type="button" aria-expanded="false" aria-controls="photoDetail"
         aria-haspopup="dialog"
@@ -4476,10 +4476,11 @@ async function openPhotoLightbox(index,source=null){
   resize.observe(box);
   activeLightbox={box,main,strip,resize,zoomBar,detail};
   box.querySelector('.photoclose').onclick=closePhotoLightbox;
-  // 只在背景本身上关闭：点图片、缩略图条和翻页按钮都不该退出。
+  // 主画布铺满视口后，黑色留白属于 zoom 容器而不是最外层；两者都视为背景。
+  // 点图片、缩略图条、工具栏和翻页按钮仍不退出。
   box.addEventListener('click',e=>{
     if(detail.dismissOutside(e.target))return;
-    if(e.target===box)closePhotoLightbox()});
+    if(e.target===box||e.target.classList.contains('swiper-zoom-container'))closePhotoLightbox()});
   document.addEventListener('keydown',photoLightKeys,true);
 }
 
