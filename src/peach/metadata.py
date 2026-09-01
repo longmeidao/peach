@@ -81,6 +81,39 @@ def validate_provider_code(code: str) -> str:
     return value
 
 
+#: 番号在来源返回里的身份证据。`id`、`content_id` 和 `source_url` 至少有一处
+#: 要认得出这个番号，否则拿到的是别的商品。
+IDENTITY_FIELDS = ("id", "content_id", "source_url")
+
+
+def _compact(value: object) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(value or "").lower())
+
+
+def identifies_code(code: str, payload: dict) -> bool:
+    """来源返回的是不是这个番号本身。
+
+    2026-09-01 实测：dl.getchu 对 `ABW-220` 和 `259LUXU-1475` 都返回同一件同人
+    商品 `item33938`（`Gカップ黒髪ぱっつん美少女レイヤー05華仙`）。适配器取的是
+    站内搜索首条命中，站里没有这个番号时它不报「查无此片」，而是把不相干的商品
+    当结果交出来。没有这道闸，那件商品的 genre 会变成三个番号的官方标签。
+
+    真实来源的写法要容得下：DMM 的 `118abw220` 带厂牌数字前缀，r18dev 的
+    `h_086iqqq00026` 对 `IQQQ-026` 多补了零，`259LUXU-1475` 只在 URL 里出现。
+    实测 800 条成功快照里，除 dl.getchu 的 3 条错配外全部命中。
+    """
+    blob = "|".join(_compact(payload.get(field)) for field in IDENTITY_FIELDS)
+    if not blob.strip("|"):
+        return False
+    value = str(code or "").upper()
+    matched = re.fullmatch(r"(?:\d{3,6})?([A-Z]{2,8})-?(\d{2,5})", value)
+    if matched:
+        letters, digits = matched.group(1).lower(), matched.group(2).lstrip("0") or "0"
+        return re.search(rf"{letters}0*{digits}(?!\d)", blob) is not None
+    return _compact(value) in blob
+
+
+
 Runner = Callable[..., subprocess.CompletedProcess[str]]
 
 
@@ -157,6 +190,12 @@ class JavinizerGoProvider:
             raise MetadataProviderError(f"Javinizer-Go 查询失败（exit {completed.returncode}）")
         if str(payload.get("source") or "").strip() != scraper:
             raise MetadataProviderError("Javinizer-Go 返回来源与请求来源不一致")
+        if not identifies_code(query, payload):
+            raise MetadataProviderError(
+                f"{scraper} 返回的商品不是 {query}："
+                f"id={payload.get('id')!r} content_id={payload.get('content_id')!r}",
+                kind="not_found",
+            )
         return payload
 
 

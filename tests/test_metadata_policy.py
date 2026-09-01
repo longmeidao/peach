@@ -61,12 +61,13 @@ class MetadataPolicyTests(unittest.TestCase):
         # 番号多两次稳定 404。
         policy = resolve_policy(profile="official-backfill")
         self.assertEqual(policy.sources, (
-            "mgstage", "dmm", "libredmm", "aventertainment", "dlgetchu",
+            "mgstage", "dmm", "libredmm", "aventertainment",
         ))
         for source in policy.sources:
             self.assertTrue(policy.source(source).official, source)
         self.assertNotIn("tokyohot", policy.sources)
         self.assertNotIn("caribbeancom", policy.sources)
+        self.assertNotIn("dlgetchu", policy.sources)
 
     def test_tags_prefer_mgstage_over_the_dmm_dvd_page(self):
         # ABW-220 实测：mgstage 给 8 项内容标签，dmm/libredmm/r18dev 都只给

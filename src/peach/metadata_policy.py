@@ -53,8 +53,11 @@ PROFILE_SOURCES = {
     #     而是返回 unknown 错误，一旦落进快照就会被当成确定失败长期复用。
     # 二、不含 tokyohot 与 caribbeancom。它们只认无码番号形状，对有码番号是稳定
     #     404，放进来等于每个番号多两次白跑的网络请求；无码走 `uncensored`。
+    # 三、不含 dlgetchu。它是同人商店，对 JAV 番号从来搜不到对应商品，却会把站内
+    #     首条命中当结果返回——`identifies_code` 现在拦得住，但每个番号仍要为一次
+    #     必然作废的往返付钱。
     "official-backfill": (
-        "mgstage", "dmm", "libredmm", "aventertainment", "dlgetchu",
+        "mgstage", "dmm", "libredmm", "aventertainment",
     ),
 }
 
