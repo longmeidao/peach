@@ -1036,7 +1036,7 @@ const COVER_FRONT_RATIO=0.7;
    按各自比例渲染会让竖屏条和竖屏网格高低不齐；比例不同的用 contain 上下留黑边
    （`.poster` 本来就是 contain + 黑底）。 */
 const PORTRAIT_RATIO=9/16;
-function coverImage(it,layout){
+function coverImage(it,layout,eager){
   const src=`/cover?code=${encodeURIComponent(it.code||'')}`;
   // 人脸只做纵向微调：人物在画面里的高低差别很大，写死的纵向位置会把一部分
   // 作品裁掉下巴或留出大片空白。检出率约 48%，取不到就退回固定值。
@@ -1044,7 +1044,7 @@ function coverImage(it,layout){
   const y=cy!=null?`--cover-y:${Math.round(Math.min(0.6,Math.max(0.05,cy))*100)}%`:'';
   // 小图看整张（含剧照拼贴），大图只取右侧正封。
   return `<img class="poster cover ${layout==='small'?'whole':'front'}" src="${src}"
-    alt="" loading="lazy"${y?` style="${y}"`:''} ${COVER_FRAME} onerror="this.remove()">`;
+    alt="" loading="${eager?'eager':'lazy'}"${y?` style="${y}"`:''} ${COVER_FRAME} onerror="this.remove()">`;
 }
 function cardHtml(it,cls){
   /* 资料页可能同时收录番号和非番号作品；版式按钮属于页面，但封套比例只施加给
@@ -1287,18 +1287,32 @@ function mixLabel(it){
   const performer=(it.performers||[])[0];
   return (it.is_jav&&performer?performer:it.creator)||performer||it.studio||it.code||tagLabel((it.tags||[])[0])||'为你推荐';
 }
+/* 这一条真能画出图吗。必须和下面 mixFacePoster 的分支一致：只看 has_cover 会把
+   非 JAV 模式下只有官方封套的条目当成有图，选它做 seed 或翻到它都是一张「无预览」。 */
+function mixHasPicture(it,layout){
+  return !!it&&((javActive()&&!!it.is_jav&&layout!=='preview'&&!!it.has_cover)||!!it.has_thumb);
+}
+/* Mix 卡片的静止封面和悬浮翻动的每一张都走这里：翻进来的那张必须和静止的
+   那张长得一样，否则一翻就露出比例和取景的差别。 */
+function mixFacePoster(it,layout,eager){
+  const jav=javActive()&&!!it.is_jav;
+  const useCover=jav&&layout!=='preview'&&it.has_cover;
+  /* 翻动的那几张必须 eager：它们是悬浮时才插进一个 hidden 容器的，
+     lazy 图在没有布局盒时根本不会发请求，一翻就是黑屏。 */
+  const load=eager?'eager':'lazy';
+  return useCover
+    ? coverImage(it,layout,eager)
+    : (it.has_thumb
+      ? `<img class="poster" src="/poster?id=${it.id}&c=4" alt="" loading="${load}">`
+      : `<span class="nopic">无预览</span>`);
+}
 function mixCardHtml(it){
   const jav=javActive()&&!!it.is_jav,layout=javLayout();
-  const useCover=jav&&layout!=='preview'&&it.has_cover;
   const ar=jav&&layout==='big'?COVER_FRONT_RATIO:16/9;
-  const thumb=useCover
-    ? coverImage(it,layout)
-    : (it.has_thumb
-      ? `<img class="poster" src="/poster?id=${it.id}&c=4" alt="" loading="lazy">`
-      : `<span class="nopic">无预览</span>`);
+  const thumb=mixFacePoster(it,layout);
   const label=mixLabel(it);
   return `<article class="card mixcard" data-mix-seed="${it.id}">
-    <div class="mixstack"><div class="pic" style="--card-ratio:${ar}">${thumb}<button class="cardopenhit" data-open-mix aria-label="打开 Mix · ${esc(label)}"></button>
+    <div class="mixstack"><div class="pic" style="--card-ratio:${ar}">${thumb}<div class="mixfaces" data-mix-faces hidden></div><button class="cardopenhit" data-open-mix aria-label="打开 Mix · ${esc(label)}"></button>
       <span class="mixbadge">${icon('play')}Mix</span></div></div>
     <div class="mixmeta"><span class="mixglyph">${icon('play')}</span><div class="mixcopy">
       <b>Mix · ${esc(label)}</b><span>${esc(javDisplayName(it))}及相似作品</span></div></div></article>`;
@@ -1323,18 +1337,82 @@ function collapseEditionGroups(items){
     renderedEditionGroups.add(key);return true;
   });
 }
+const MIX_SLOT=7;                 // Mix 卡片插在这一位，也就是每批的第 8 张
+/* seed 决定 Mix 的封面和署名。旧写法取「本批第一个有署名的作品」，而几乎
+   每条都有 creator，于是 seed 恒等于第一张卡片：Mix 卡片永远显示它上面几行那张
+   同样的图，看起来像渲染错了。改成从 Mix 位再往下隔一屏开始找：仍然是本批里的
+   一部作品，语义不变，但不会和同屏可见的卡片撞图。 */
+function mixSeed(visible){
+  const layout=javLayout();
+  const named=it=>mixHasPicture(it,layout)&&(it.creator||(it.performers||[]).length||it.studio);
+  return visible.slice(MIX_SLOT+8).find(named)
+    ||visible.slice(MIX_SLOT+1).find(named)
+    ||visible.slice(MIX_SLOT+1).find(it=>mixHasPicture(it,layout))
+    ||visible[visible.length-1];
+}
 function batchWithMix(items,enabled=true){
   const visible=collapseEditionGroups(collapseMultipartItems(items));
   const cards=visible.map(it=>cardHtml(it));
   if(!enabled)return cards.join('');
-  const seed=visible.find(it=>it.creator||(it.performers||[]).length||it.studio)||visible[0];
-  if(seed&&visible.length>=8)cards.splice(7,0,mixCardHtml(seed));
+  const seed=mixSeed(visible);
+  if(seed&&visible.length>=8)cards.splice(MIX_SLOT,0,mixCardHtml(seed));
   return cards.join('');
+}
+/* 相关作品每个 seed 只取一次：悬浮翻动和点开后的队列用的是同一份，
+   悬浮过再点开 Mix 不会再发一次请求。 */
+const mixRelatedCache=new Map();
+function mixRelated(seedId){
+  if(!mixRelatedCache.has(seedId))
+    mixRelatedCache.set(seedId,api('/api/related?id='+seedId+'&limit=28')
+      .then(d=>cache((d.items||[]).filter(x=>x.id!==seedId)))
+      .catch(error=>{mixRelatedCache.delete(seedId);throw error}));
+  return mixRelatedCache.get(seedId);
+}
+const MIX_FLIP_MS=1100;      // 一张停多久再翻走
+const MIX_FLIP_FACES=5;      // 最多预渲染几张，一次悬浮不拉一整批封面
+const reduceMotion=()=>matchMedia('(prefers-reduced-motion:reduce)').matches;
+/* 悬浮 Mix 卡片时把它里面的前几部作品逐张翻走，说明它是一叠相似作品而不是
+   某一个视频。门槛和悬停预览一致：多选、遮挡、滞后动画偏好和滚动中都不启动，
+   离开即停并还原静止封面；`_stopHover` 让 releaseHoverPreviews 能连它一起收掉。 */
+function wireMixFlip(el,seedId){
+  const box=el.querySelector('[data-mix-faces]');if(!box)return;
+  let armed=null,cycle=null,faces=[],index=0,live=false;
+  const stop=()=>{
+    live=false;clearTimeout(armed);armed=null;clearInterval(cycle);cycle=null;
+    box.hidden=true;box.innerHTML='';faces=[];index=0;
+  };
+  const step=()=>{
+    const out=faces[index],next=faces[(index+1)%faces.length];
+    out.classList.remove('on');out.classList.add('off');
+    next.classList.remove('off');next.classList.add('on');
+    // 翻出去的那张得先演完才能卸掉 off，否则会当场弹回原位。
+    setTimeout(()=>{if(out!==next)out.classList.remove('off')},MIX_FLIP_MS-120);
+    index=(index+1)%faces.length;
+  };
+  const start=async()=>{
+    if(selectMode||censorOn()||window.__scrolling||reduceMotion())return;
+    live=true;
+    let related=[];
+    try{related=await mixRelated(seedId)}catch(_e){return}
+    if(!live||selectMode||censorOn())return;
+    const layout=javLayout();
+    const pool=[CACHE[seedId],...related]
+      .filter(x=>mixHasPicture(x,layout)).slice(0,MIX_FLIP_FACES);
+    if(pool.length<2)return;
+    box.innerHTML=pool.map((x,i)=>`<div class="mixface${i?'':' on'}">${mixFacePoster(x,layout,true)}</div>`).join('');
+    faces=[...box.children];index=0;box.hidden=false;
+    cycle=setInterval(step,MIX_FLIP_MS);
+  };
+  el.addEventListener('mouseenter',()=>{clearTimeout(armed);armed=setTimeout(start,340)});
+  el.addEventListener('mouseleave',stop);
+  el._stopHover=stop;
 }
 function wireMixCards(root){
   root.querySelectorAll('[data-mix-seed]').forEach(el=>{
     if(el.dataset.wired)return;el.dataset.wired='1';
-    el.onclick=()=>openMix(+el.dataset.mixSeed,+el.dataset.mixSeed,true,el);
+    const seedId=+el.dataset.mixSeed;
+    el.onclick=()=>openMix(seedId,seedId,true,el);
+    wireMixFlip(el,seedId);
   });
 }
 function wireCards(root,onClick,onTag){
@@ -5312,8 +5390,8 @@ function queueHtml(queue,itemId){
     }).join('')}</div></aside>`;
 }
 async function buildMix(seedId){
-  const [seed,related]=await Promise.all([api('/api/item?id='+seedId),api('/api/related?id='+seedId+'&limit=28')]);
-  const items=[seed,...(related.items||[]).filter(x=>x.id!==seed.id)];cache(items);
+  const [seed,related]=await Promise.all([api('/api/item?id='+seedId),mixRelated(seedId)]);
+  const items=[seed,...related.filter(x=>x.id!==seed.id)];cache(items);
   return {kind:'mix',seedId,title:`Mix · ${mixLabel(seed)}`,items};
 }
 async function openMix(seedId,itemId=seedId,push=true,anchor=null){
