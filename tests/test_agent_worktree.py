@@ -42,7 +42,10 @@ def commit(repo: Path, message: str) -> None:
 class AgentWorktreeTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
+        # 先 resolve：prune 报告的是 git worktree list 给出的真实路径，而 CI runner 的
+        # 临时目录是别名（macOS /var 软链到 /private/var，Windows 的 RUNNER~1 短名展开
+        # 成 runneradmin）。拿未 resolve 的路径去比对，本机全绿、CI 全红。
+        self.root = Path(self.tmp.name).resolve()
         self.repo = self.root / "repo"
         self.repo.mkdir()
         subprocess.run(["git", "init", "-b", "master", str(self.repo)], check=True,
