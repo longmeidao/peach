@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sqlite3
 import sys
 import time
@@ -100,6 +101,10 @@ def plan(connection: sqlite3.Connection, rows: list[dict]) -> list[dict]:
     return planned
 
 
+#: 「这个页面没了」——上游明确这么说了，才算确证。
+GONE_STATUSES = {404, 410}
+
+
 def resolves(url: str, timeout: float = 12.0) -> tuple[bool, str]:
     """这个地址现在还能打开吗。返回（能不能, 说明）。
 
@@ -116,6 +121,23 @@ def resolves(url: str, timeout: float = 12.0) -> tuple[bool, str]:
     if response.status_code != 200:
         return False, f"HTTP {response.status_code}"
     return True, "可打开"
+
+
+def is_gone(note: str) -> bool:
+    """这条「打不开」是不是「页面没了」的确证。
+
+    取不到不等于没了，这两件事只有 404／410 能划清。实测全库 152 条打不开的里面：
+
+        linktr.ee            403   Linktree 挡爬虫，浏览器里能正常打开
+        facebook.com         400   同理
+        x.com/MomotaEmiri    500   X 的临时错误，账号很可能还在
+        diaz-g.com           连接错误    一次探测说明不了什么
+
+    按「非 200 就删」会连这 26 条一起删掉，其中大部分链接本身是好的。5xx、403 和
+    超时要留着下次复查，不是删除的理由——这和取证失败时写 `未取得` 而不是写结论是同一条。
+    """
+    match = re.match(r"HTTP (\d+)$", note)
+    return bool(match) and int(match.group(1)) in GONE_STATUSES
 
 
 def check_links(planned: list[dict], interval: float = 0.4, probe=None) -> None:
@@ -200,11 +222,19 @@ def build_parser() -> argparse.ArgumentParser:
 def prune(connection: sqlite3.Connection, args) -> int:
     """列出并（在 --apply 时）删除库里打不开的链接。"""
     before = connection.execute("SELECT count(*) FROM entity_link").fetchone()[0]
-    dead = dead_links(connection)
-    for item in dead:
+    unreachable = dead_links(connection)
+    gone = [item for item in unreachable if is_gone(item["note"])]
+    unclear = [item for item in unreachable if not is_gone(item["note"])]
+    for item in gone:
         print(f" - {item['entity'][:14]:<14} {item['link_kind']:<8} "
               f"{item['label'][:18]:<18} {item['note']:<14} {item['url'][:52]}")
-    print({"库内链接": before, "打不开": len(dead)})
+    for item in unclear:
+        # 留着不删，但必须看得见——静默保留和静默删除一样，都会让人以为库是干净的。
+        print(f" ? {item['entity'][:14]:<14} {item['link_kind']:<8} "
+              f"{item['label'][:18]:<18} {item['note']:<14} {item['url'][:52]}")
+    print({"库内链接": before, "打不开": len(unreachable),
+           "确证已没了（将删除）": len(gone), "取不到但不算证据（保留待复查）": len(unclear)})
+    dead = gone
     if not args.apply:
         print("dry-run；确认无误后加 --apply --backup <路径>")
         return 0
