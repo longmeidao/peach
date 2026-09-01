@@ -1408,16 +1408,18 @@ function mixRelated(seedId){
   return mixRelatedCache.get(seedId);
 }
 const MIX_FLIP_MS=1100;      // 一张停多久再翻走
-const MIX_FLIP_FACES=5;      // 最多预渲染几张，一次悬浮不拉一整批封面
+const MIX_FLIP_LEAD_MS=420;  // 面板建好到第一次翻动。直接用 1.1 秒间隔等第一张，鼠标停下到有反应要接近两秒
+const MIX_FLIP_FACES=9;      // 最多预渲染几张，一次悬浮不拉一整批封面
 const reduceMotion=()=>matchMedia('(prefers-reduced-motion:reduce)').matches;
 /* 悬浮 Mix 卡片时把它里面的前几部作品逐张翻走，说明它是一叠相似作品而不是
    某一个视频。门槛和悬停预览一致：多选、遮挡、滞后动画偏好和滚动中都不启动，
    离开即停并还原静止封面；`_stopHover` 让 releaseHoverPreviews 能连它一起收掉。 */
 function wireMixFlip(el,seedId){
   const box=el.querySelector('[data-mix-faces]');if(!box)return;
-  let armed=null,cycle=null,faces=[],index=0,live=false;
+  let armed=null,lead=null,cycle=null,faces=[],index=0,live=false;
   const stop=()=>{
-    live=false;clearTimeout(armed);armed=null;clearInterval(cycle);cycle=null;
+    live=false;clearTimeout(armed);armed=null;clearTimeout(lead);lead=null;
+    clearInterval(cycle);cycle=null;
     box.hidden=true;box.innerHTML='';faces=[];index=0;
   };
   const step=()=>{
@@ -1440,7 +1442,7 @@ function wireMixFlip(el,seedId){
     if(pool.length<2)return;
     box.innerHTML=pool.map((x,i)=>`<div class="mixface${i?'':' on'}">${mixFacePoster(x,layout,true)}</div>`).join('');
     faces=[...box.children];index=0;box.hidden=false;
-    cycle=setInterval(step,MIX_FLIP_MS);
+    lead=setTimeout(()=>{step();cycle=setInterval(step,MIX_FLIP_MS)},MIX_FLIP_LEAD_MS);
   };
   el.addEventListener('mouseenter',()=>{clearTimeout(armed);armed=setTimeout(start,340)});
   el.addEventListener('mouseleave',stop);
