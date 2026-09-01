@@ -1,0 +1,138 @@
+"""链接管理契约：取不到不等于没了，删除前必须重验。"""
+import sqlite3
+import sys
+import tempfile
+import threading
+import unittest
+from contextlib import contextmanager
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from peach import web_links   # noqa: E402
+
+SCHEMA = """
+CREATE TABLE entity(id INTEGER PRIMARY KEY, kind TEXT, canonical_name TEXT);
+CREATE TABLE entity_link(
+  id INTEGER PRIMARY KEY, entity_id INTEGER NOT NULL, link_kind TEXT NOT NULL,
+  label TEXT NOT NULL, url TEXT NOT NULL, hostname TEXT);
+"""
+
+
+class FakeContract:
+    def __init__(self, db: Path):
+        self.db_path = db
+        self.link_check_lock = threading.Lock()
+        self.link_check_state = None
+        self.link_check_thread = None
+
+    @contextmanager
+    def _connect(self):
+        connection = sqlite3.connect(self.db_path)
+        connection.row_factory = sqlite3.Row
+        try:
+            yield connection
+            connection.commit()
+        finally:
+            connection.close()
+
+    read_connection = _connect
+    write_connection = _connect
+
+
+class VerdictTests(unittest.TestCase):
+    def test_only_a_gone_status_is_deletable(self):
+        """取不到不等于没了，这两件事只有 404／410 能划清。
+
+        实测反例：`linktr.ee` 回 403（Linktree 挡爬虫，浏览器里能正常打开）、
+        `facebook.com` 回 400、`x.com` 回 500（临时错误，账号还在）、连接失败与超时。
+        把它们并进 gone，删除时就会连好链接一起删。
+        """
+        self.assertEqual(web_links.link_verdict(200, ""), "ok")
+        for status in (404, 410):
+            self.assertEqual(web_links.link_verdict(status, ""), "gone", status)
+        for status in (400, 403, 429, 500, 502, 503):
+            self.assertEqual(web_links.link_verdict(status, ""), "unclear", status)
+        self.assertEqual(web_links.link_verdict(0, "ConnectError"), "unclear")
+
+
+class SummaryTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        db = self.tmp / "ledger.db"
+        connection = sqlite3.connect(db)
+        connection.executescript(SCHEMA)
+        connection.executemany("INSERT INTO entity VALUES(?,?,?)",
+                               [(1, "performer", "凉森玲梦"), (2, "studio", "MOODYZ")])
+        connection.executemany(
+            "INSERT INTO entity_link(entity_id,link_kind,label,url,hostname) VALUES(?,?,?,?,?)",
+            [(1, "social", "X @a", "https://x.com/a", "x.com"),
+             (1, "official", "T-POWERS", "https://www.t-powers.co.jp/talent/x/", "www.t-powers.co.jp"),
+             (2, "official", "官方网站", "https://moodyz.com/", "moodyz.com")])
+        connection.commit()
+        connection.close()
+        self.contract = FakeContract(db)
+
+    def test_the_summary_counts_links_entities_and_hosts(self):
+        """面板一打开就要能回答「库里现在有什么」，所以这一条纯读库、不联网。"""
+        info = web_links.w_links(self.contract)
+        self.assertEqual(info["total"], 3)
+        self.assertEqual(info["entities"], 2)
+        self.assertEqual(info["by_kind"], {"social": 1, "official": 2})
+        self.assertEqual(info["by_entity_kind"], {"performer": 2, "studio": 1})
+        self.assertIn(("moodyz.com", 1), info["top_hosts"])
+
+    def test_prune_refuses_without_a_finished_check(self):
+        """没有检查结果就删除，等于凭空删。"""
+        self.assertFalse(web_links.w_links_prune(self.contract, {"confirm": True})["ok"])
+
+    def test_prune_refuses_a_stale_check_id(self):
+        """拿一份放了半天的清单去删，删的可能是早已改好的链接。"""
+        self.contract.link_check_state = {
+            "check_id": "fresh", "status": "complete", "checked": 3, "total": 3,
+            "gone": [{"id": 1, "entity": "凉森玲梦", "link_kind": "social",
+                      "label": "X @a", "url": "https://x.com/a", "note": "HTTP 404"}],
+            "unclear": [], "error": "",
+        }
+        out = web_links.w_links_prune(self.contract, {"confirm": True, "check_id": "old"})
+        self.assertFalse(out["ok"])
+        self.assertIn("过期", out["error"])
+        self.assertEqual(
+            sqlite3.connect(self.contract.db_path).execute(
+                "SELECT count(*) FROM entity_link").fetchone()[0], 3)
+
+    def test_prune_reverifies_and_keeps_links_that_came_back(self):
+        """删除前逐条重验，这几秒钟换的是「不会因为一次网络抖动删掉好链接」。
+
+        第一条重验仍是 404，删；第二条重验回了 200，保留并计入 recovered。
+        """
+        self.contract.link_check_state = {
+            "check_id": "fresh", "status": "complete", "checked": 3, "total": 3,
+            "gone": [
+                {"id": 1, "entity": "凉森玲梦", "link_kind": "social", "label": "X @a",
+                 "url": "https://x.com/a", "note": "HTTP 404"},
+                {"id": 3, "entity": "MOODYZ", "link_kind": "official", "label": "官方网站",
+                 "url": "https://moodyz.com/", "note": "HTTP 404"},
+            ],
+            "unclear": [], "error": "",
+        }
+        original = web_links._probe
+        web_links._probe = lambda url, timeout=0: (404, "") if "x.com" in url else (200, "")
+        try:
+            out = web_links.w_links_prune(
+                self.contract, {"confirm": True, "check_id": "fresh"})
+        finally:
+            web_links._probe = original
+        self.assertEqual((out["removed"], out["recovered"]), (1, 1))
+        remaining = {row[0] for row in sqlite3.connect(self.contract.db_path).execute(
+            "SELECT url FROM entity_link")}
+        self.assertNotIn("https://x.com/a", remaining)
+        self.assertIn("https://moodyz.com/", remaining)
+
+    def test_prune_requires_confirm(self):
+        """不可逆动作不接受默认参数。"""
+        self.assertFalse(web_links.w_links_prune(self.contract, {})["ok"])
+
+
+if __name__ == "__main__":
+    unittest.main()

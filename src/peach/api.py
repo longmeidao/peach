@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from functools import partial
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, quote, unquote
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import (
@@ -23,7 +23,13 @@ from fastapi.staticfiles import StaticFiles
 from browserexport.common import BrowserexportError
 
 from . import __version__, web_contract, web_follow
-from .config import LOCATION_ROOT_DECLARATIONS, PROJECT_ROOT, PeachSettings
+from . import link_marks
+from .config import (
+    GENERATED_DIR,
+    LOCATION_ROOT_DECLARATIONS,
+    PROJECT_ROOT,
+    PeachSettings,
+)
 from .ffmpeg import FFmpegResolver
 from .follow import FollowSourceError
 from .follow_scheduler import FollowUpdateScheduler
@@ -796,6 +802,43 @@ def create_app(
         # 一整天，浏览器会继续显示旧图；no-cache 会复用本地副本并用 ETag 重验。
         response.headers["Cache-Control"] = "public, no-cache"
         return response
+
+    @app.api_route("/link-mark", methods=["GET", "HEAD"])
+    def link_mark(id: int = 0, args: dict[str, str] = Depends(require_auth)):
+        """资料页外链的圆标：站点 favicon，能上色就上色。
+
+        地址只从账本按链接 id 解析，绝不接受前端递过来的 URL——和 `/follow-stream`
+        同一条规矩，否则这就是一个任意地址抓取的口子。
+        """
+        with database.read_connection() as connection:
+            row = connection.execute(
+                "SELECT url FROM entity_link WHERE id=?", (id,)).fetchone()
+        if row is None:
+            return JSONResponse({"error": "no such link"}, status_code=404)
+
+        root = GENERATED_DIR / "link-marks"
+        cached = link_marks.cached_path(root, row["url"])
+        if cached is None:
+            return JSONResponse({"error": "unavailable"}, status_code=404)
+        if not link_marks.is_fresh(cached):
+            source = urlsplit(row["url"])
+            try:
+                upstream = http_transport.client.get(
+                    f"{source.scheme}://{source.netloc}/favicon.ico",
+                    headers={"User-Agent": "Peach/0.2"}, timeout=8, follow_redirects=True)
+                data = upstream.content if upstream.status_code == 200 else b""
+            except (OSError, httpx.HTTPError):
+                data = b""
+            made = (link_marks.render_mark(data) or link_marks.plain_mark(data)) if data else None
+            if made:
+                root.mkdir(parents=True, exist_ok=True)
+                cached.write_bytes(made)
+            elif not cached.exists():
+                # 取不到就让前端露出下面的地球图标，不要留一个空白圆。
+                return JSONResponse({"error": "unavailable"}, status_code=404)
+        result = FileResponse(cached, media_type="image/png")
+        result.headers["Cache-Control"] = "public, no-cache"
+        return result
 
     @app.api_route("/item/{item_id}", methods=["GET", "HEAD"])
     @app.api_route("/mix/{seed_id}/{mix_item_id}", methods=["GET", "HEAD"])

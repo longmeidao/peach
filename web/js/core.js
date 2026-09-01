@@ -42,7 +42,17 @@ const SITE_FAVICONS={
 const faviconUrl=url=>{try{const parsed=new URL(url),host=parsed.hostname.replace(/^www\./,'');
   return SITE_FAVICONS[host]||new URL('/favicon.ico',parsed).href}catch{return ''}};
 const faviconFallbackUrl=domain=>`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`;
-/* 有品牌标记的主机不取 favicon。
+/* 域名当名字：厂牌页的官网链接直接显示它，比一枚小图标说得清楚。大写跟着 beeg 的
+   资料页写法，`www.` 去掉——它不携带信息，只占宽度。 */
+const linkHost=url=>{try{return new URL(url).hostname.replace(/^www\./,'').toUpperCase()}catch{return ''}};
+/* 服务端处理过的链接图标：单色字形的 favicon 会被做成「品牌色底 + 白色主体」，
+   做不了就把原图按 32 px 转出来。放服务端有三个理由：它要读别人站点的图、要缓存，
+   而且这样浏览器不再直接向对方站点发请求（也就不泄露正在看谁的资料页）。
+
+   传的是链接 id 而不是地址。跟 `/follow-stream` 同一条规矩：服务端只取账本里已有的
+   地址，绝不去取前端递过来的任意 URL——那等于开一个任意地址抓取的口子。 */
+const linkMarkUrl=link=>`/link-mark?id=${encodeURIComponent(link.link_id ?? '')}`;
+/* 有品牌标记的主机连 favicon 都不取。
 
    favicon 是别人服务器上的一张小位图：X 直接挡掉爬取（资料页那个空白白圆就是它），
    取到的也多是 16×16，放进 32 px 的圆里必然糊。内联 SVG 没有这两个问题，还省一次
@@ -88,6 +98,8 @@ export {
   SITE_FAVICONS,
   brandIcon,
   faviconUrl,
+  linkHost,
+  linkMarkUrl,
   faviconFallbackUrl,
   foldName,
   fmtDur,

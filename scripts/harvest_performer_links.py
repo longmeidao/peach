@@ -26,6 +26,7 @@ from urllib.parse import quote, urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach.catalog_rules import is_jav_code   # noqa: E402
+from peach.entities import name_chain   # noqa: E402
 from peach.config import STATE_DIR   # noqa: E402
 from peach.http import HttpRequest, HttpxTransport   # noqa: E402
 from peach.jobs import job_main   # noqa: E402
@@ -47,44 +48,6 @@ FIELDS = ("entity_id", "kind", "name", "link_kind", "label", "url", "evidence",
 
 def search_url(name: str) -> str:
     return SEARCH + quote(name, encoding="utf-8")
-
-
-KANA = re.compile(r"[぀-ゟ゠-ヿ]")
-KANJI = re.compile(r"[一-鿿]")
-
-
-def name_rank(name: str) -> int:
-    """名字对日文站的可用程度，越小越先试。
-
-    账本里 performer 的规范名是简体中文（`凉森玲梦`、`释爱丽丝`），日文站按它一个都搜不到；
-    真正能用的日文写法在 `entity_alias` 里（`涼森れむ`、`釈アリス`）。实测 12 位只有 1 位
-    命中，就是因为直接拿规范名去搜。
-
-    汉字加假名混排的是艺名本身，最可靠；纯假名是读音，能搜到但更容易撞名；纯汉字既可能
-    是日文也可能是简体中文，放在后面；罗马字对日文站基本无效，排最后。
-    """
-    kana, kanji = bool(KANA.search(name)), bool(KANJI.search(name))
-    if kana and kanji:
-        return 0
-    if kana:
-        return 1
-    if kanji:
-        return 2
-    return 3
-
-
-def name_chain(canonical: str, aliases: list[str]) -> list[str]:
-    """去重后按可用程度排序的候选名字，罗马字不进链。
-
-    罗马字留着只会白跑一次往返，并且它落空后混进未取得，看起来像是「这个人查不到」，
-    而实际上是「我们从没用她的日文名查过」。
-    """
-    seen: list[str] = []
-    for name in [canonical, *aliases]:
-        name = (name or "").strip()
-        if name and name not in seen and name_rank(name) < 3:
-            seen.append(name)
-    return sorted(seen, key=name_rank)
 
 
 def actress_id(final_url: str) -> str:

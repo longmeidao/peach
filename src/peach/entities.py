@@ -1,12 +1,55 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from sqlite3 import Connection
 
 
 def normalize_entity_name(name: str) -> str:
     return str(name).strip().casefold()
+
+
+KANA = re.compile(r"[぀-ゟ゠-ヿ]")
+KANJI = re.compile(r"[一-鿿]")
+
+
+def name_rank(name: str) -> int:
+    """这个写法对日文站有多可用，越小越先试。
+
+    账本里 performer 的规范名是简体中文（`凉森玲梦`、`释爱丽丝`），日文站按它一个都
+    搜不到；真正能用的日文写法在 `entity_alias` 里（`涼森れむ`、`釈アリス`）。实测拿
+    规范名直接搜，12 位只命中 1 位；改用日文写法后同样 12 位全中。
+
+    汉字加假名混排的是艺名本身，最可靠；纯假名是读音，能搜到但更容易撞名；纯汉字既可能
+    是日文也可能是简体中文，放在后面；罗马字对日文站基本无效，排最后。
+    """
+    kana, kanji = bool(KANA.search(name)), bool(KANJI.search(name))
+    if kana and kanji:
+        return 0
+    if kana:
+        return 1
+    if kanji:
+        return 2
+    return 3
+
+
+def name_chain(canonical: str, aliases: list[str]) -> list[str]:
+    """去重后按可用程度排序的候选名字，罗马字不进链。
+
+    罗马字留着只会白跑一次往返，并且它落空后混进未取得，看起来像是「这个人查不到」，
+    而实际上是「我们从没用她的日文名查过」。
+
+    放在实体层而不是某个脚本里：`harvest_performer_links` 和 `rediscover_entity_links`
+    都要用它。此前它住在前者、后者靠改 `sys.path` 反向 import——依赖门槛把它算成外部
+    模块是对的，那种导入既依赖 path 顺序，工具也读不懂。
+    """
+    seen: list[str] = []
+    for name in [canonical, *aliases]:
+        name = (name or "").strip()
+        if name and name not in seen and name_rank(name) < 3:
+            seen.append(name)
+    return sorted(seen, key=name_rank)
 
 
 PERSON_ENTITY_KINDS = frozenset({"creator", "performer"})
