@@ -42,6 +42,17 @@ const SITE_FAVICONS={
 const faviconUrl=url=>{try{const parsed=new URL(url),host=parsed.hostname.replace(/^www\./,'');
   return SITE_FAVICONS[host]||new URL('/favicon.ico',parsed).href}catch{return ''}};
 const faviconFallbackUrl=domain=>`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`;
+/* 有品牌标记的主机不取 favicon。
+
+   favicon 是别人服务器上的一张小位图：X 直接挡掉爬取（资料页那个空白白圆就是它），
+   取到的也多是 16×16，放进 32 px 的圆里必然糊。内联 SVG 没有这两个问题，还省一次
+   跨站请求。只覆盖真正占量的主机——416 条社媒链接里 372 条是 x.com／twitter.com；
+   其余继续走 favicon，不为个位数的链接各配一个图标。 */
+const BRAND_ICONS=[[['x.com','twitter.com'],'brand-x']];
+const brandIcon=url=>{try{
+  const host=new URL(url).hostname.replace(/^www\./,'').toLowerCase();
+  return BRAND_ICONS.find(([hosts])=>hosts.some(d=>host===d||host.endsWith('.'+d)))?.[1]||'';
+}catch{return ''}};
 const foldName=s=>String(s??'').normalize('NFKC').trim().toLocaleLowerCase();
 /* 什么才算一个真时长——只有这一处说了算。
 
@@ -75,6 +86,7 @@ export {
   entityPath,
   esc,
   SITE_FAVICONS,
+  brandIcon,
   faviconUrl,
   faviconFallbackUrl,
   foldName,

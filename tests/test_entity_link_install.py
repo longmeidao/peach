@@ -140,9 +140,64 @@ class InstallTests(unittest.TestCase):
             "entity_id,kind,name,link_kind,label,url,evidence\n"
             ",studio,MOODYZ,official,官方网站,https://moodyz.com/,标题自述\n",
             encoding="utf-8-sig")
-        self.assertEqual(self.module.main(["--database", str(self.db), "--input", str(source)]), 0)
+        # `--no-check` 不只是提速：测试不许发网络请求，否则一次断网就变成红灯。
+        self.assertEqual(self.module.main(
+            ["--database", str(self.db), "--input", str(source), "--no-check"]), 0)
         self.assertEqual(
             self.connection.execute("SELECT count(*) FROM entity_link").fetchone()[0], 0)
+
+    def test_a_link_that_does_not_open_never_reaches_the_ledger(self):
+        """这条守的是一次真实事故。
+
+        首批 703 条链接一条都没验就装进了账本，事后逐条测发现 289 条 official 里有
+        107 条打不开（84 个 404、18 个 502），37% 是死的。上游给什么就存什么，等于把
+        minnano-av 几年前的快照当成现在的事实——T-POWERS 改过站，`/official/talent/X`
+        早已 404，而资料页上它看起来和好链接一模一样。
+
+        门槛放在安装器而不是各个采集器里：这里是所有来源进入账本的唯一入口。
+        """
+        planned = self.module.plan(self.connection, [
+            self.row(url="https://dead.example/gone"),
+            self.row(name="Prestige", url="https://alive.example/"),
+        ])
+        self.assertEqual([p["action"] for p in planned], ["insert", "insert"])
+        self.module.check_links(
+            planned, probe=lambda url: (url == "https://alive.example/", "HTTP 404"))
+        self.assertEqual([p["action"] for p in planned], ["skip", "insert"])
+        self.assertIn("打不开", planned[0]["reason"])
+        self.assertIn("404", planned[0]["reason"])
+        self.assertEqual(self.module.install(self.connection, planned, "review.csv"), 1)
+
+    def test_dead_links_already_in_the_ledger_are_found_for_pruning(self):
+        """可达性门槛只挡新写入；库里那 703 条是在门槛存在之前进去的。
+
+        链接还会随时间烂掉——事务所改版、艺人解约、博客注销——所以这条路要留着复用，
+        不是一次性的清理脚本。
+        """
+        for url in ("https://alive.example/", "https://dead.example/gone"):
+            planned = self.module.plan(self.connection, [self.row(url=url)])
+            self.module.install(self.connection, planned, "seed.csv")
+        self.assertEqual(
+            self.connection.execute("SELECT count(*) FROM entity_link").fetchone()[0], 2)
+
+        dead = self.module.dead_links(
+            self.connection, probe=lambda url: (url == "https://alive.example/", "HTTP 404"))
+        self.assertEqual([d["url"] for d in dead], ["https://dead.example/gone"])
+        self.assertEqual(dead[0]["entity"], "MOODYZ")
+        self.assertEqual(dead[0]["note"], "HTTP 404")
+
+    def test_the_reachability_gate_does_not_re_probe_rows_already_skipped(self):
+        """已经因为别的原因跳过的行不必再请求一次——那是白费一次往返。"""
+        planned = self.module.plan(self.connection, [self.row(name="不存在的厂牌")])
+        self.assertEqual(planned[0]["action"], "skip")
+        probed = []
+
+        def probe(url):
+            probed.append(url)
+            return True, ""
+
+        self.module.check_links(planned, probe=probe)
+        self.assertEqual(probed, [])
 
 
 if __name__ == "__main__":

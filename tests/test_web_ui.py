@@ -254,6 +254,43 @@ class WebUiSourceTests(unittest.TestCase):
                       self.app_js[anchor:anchor + 260],
                       "资料页外链 favicon 必须带 no-referrer")
 
+    def test_social_links_show_only_the_platform_mark_not_the_handle(self):
+        # handle 是网址的一部分，写出来只是把 URL 抄一遍：`X @remu19971203` 里真正有
+        # 信息量的只有那个 X。图标本身就说明了去哪，名字留给官网那种「点之前看不出是谁」
+        # 的链接。纯图标没有可读文字，所以标签必须留给辅助技术，不能整个丢掉。
+        self.assertPageContains("x.link_kind==='social'\n      ? `<span class=\"sr-only\">${esc(x.label)}</span>`")
+        self.assertPageContains('.entitylinks a.iconlink{padding:4px;gap:0;border-radius:50%}')
+
+    def test_entity_links_have_no_external_arrow(self):
+        # `target="_blank"` 已经是外链，箭头只是重复；一排链接里它还会挤掉本就不多的
+        # 横向空间。整条 CSS 一并删掉，别留下没人用的类名。
+        self.assertPageLacks('entitylinkarrow', "外链箭头应当已删除")
+        self.assertPageLacks('↗', "外链箭头字符应当已删除")
+
+    def test_x_links_use_an_inline_brand_mark_instead_of_a_fetched_favicon(self):
+        # favicon 是别人服务器上的一张小位图：X 直接挡掉爬取（资料页上那个空白白圆就是
+        # 它），取到的也多是 16×16，放进 32px 的圆里必然糊。416 条社媒链接里 372 条是
+        # x.com／twitter.com，只给它一个内联标记就覆盖了 89%，还省一次跨站请求。
+        self.assertPageContains("const BRAND_ICONS=[[['x.com','twitter.com'],'brand-x']];")
+        self.assertPageContains('<symbol id="i-brand-x"')
+        # 填充字形不吃通用的 stroke:currentColor;fill:none。
+        self.assertPageContains('.entitylinkicon.brand svg{width:15px;height:15px;fill:currentColor;stroke:none}')
+
+    def test_the_entity_hero_is_a_centred_single_column_on_phones(self):
+        # 左像右文那套是给宽屏的：手机上 92px 头像旁边只剩两百多像素，别名和链接被挤成
+        # 两三行，头像下面又空着一大片。按 beeg 的资料页改成单列居中。
+        self.assertPageContains(
+            ".entityhero{grid-template-columns:minmax(0,1fr);gap:12px;padding:8px 0 18px;"
+            "justify-items:center;text-align:center}")
+        self.assertPageContains(".entityhero .entitylinks{justify-content:center")
+
+    def test_the_jav_layout_switch_cannot_be_squeezed_flat_in_the_sort_row(self):
+        # `.sorts` 是不换行的横向滚动条，里面的项默认可收缩，而 `.javlayout` 自己带着
+        # `min-width:0`（fieldset 需要它才不撑破容器）。两条合起来允许它被压到内容宽度
+        # 以下：窄屏上三个 34px 的版式按钮会叠在一起，还压住旁边的「发行时间」。
+        # `.sorts button` 早有 `flex:0 0 auto`，但 fieldset 不是 button，选不到它。
+        self.assertPageContains(".sorts .javlayout{display:inline-flex;gap:2px;margin:0 6px;flex:none}")
+
     def test_detail_identity_groups_by_kind_with_the_label_on_top(self):
         # 逐行一个名字在共演作品上会把整个侧栏撑满，左侧还重复一列标签。
         self.assertPageContains("const idGroup=(label,kind,list,extra='')=>list.length")

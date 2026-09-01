@@ -15,14 +15,19 @@ import argparse
 import json
 import sqlite3
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
+
+import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach.review_csv import read_rows   # noqa: E402
 
+USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/128.0 Safari/537.36")
 LINK_KINDS = {"official", "social", "catalog", "source_reference"}
 FIELDS = ("entity_id", "kind", "name", "link_kind", "label", "url", "evidence")
 
@@ -95,6 +100,68 @@ def plan(connection: sqlite3.Connection, rows: list[dict]) -> list[dict]:
     return planned
 
 
+def resolves(url: str, timeout: float = 12.0) -> tuple[bool, str]:
+    """这个地址现在还能打开吗。返回（能不能, 说明）。
+
+    每个请求新建 client 并立刻关掉：这批地址分布在上百个互不相同的主机上，其中不少
+    连不上，而失败的连接会在共享池里漏掉槽位，几十个请求之后一切都变成 PoolTimeout。
+    """
+    try:
+        with httpx.Client(follow_redirects=True, timeout=timeout,
+                          limits=httpx.Limits(max_connections=4,
+                                              max_keepalive_connections=0)) as client:
+            response = client.get(url, headers={"User-Agent": USER_AGENT})
+    except Exception as exc:
+        return False, f"取不到：{type(exc).__name__}"
+    if response.status_code != 200:
+        return False, f"HTTP {response.status_code}"
+    return True, "可打开"
+
+
+def check_links(planned: list[dict], interval: float = 0.4, probe=None) -> None:
+    """把打不开的地址从写入计划里剔除，就地改写 `planned`。
+
+    这一步是补上一次真实事故的：首批 703 条链接一条都没验就装进了账本，事后逐条测
+    发现 289 条 official 里有 107 条打不开（84 个 404、18 个 502），37% 是死的。
+    上游给什么就存什么，等于把 minnano-av 几年前的快照当成现在的事实——T-POWERS 改过
+    站，`/official/talent/X` 早已 404，而资料页上它看起来和好链接一模一样。
+
+    门槛放在安装器而不是各个采集器里：这里是所有来源进入账本的唯一入口，一道门管住
+    全部，好过给每个采集器各打一个补丁、再漏掉下一个。社媒同样验——实测 X 对真 handle
+    回 200、对不存在的回 404，livedoor 上也确实有已经删掉的博客。
+    """
+    probe = probe or resolves
+    for item in planned:
+        if item["action"] != "insert":
+            continue
+        ok, note = probe(item["url"])
+        if not ok:
+            item.update(action="skip", reason=f"打不开，不写入（{note}）")
+        if probe is resolves:
+            time.sleep(interval)
+
+
+def dead_links(connection: sqlite3.Connection, interval: float = 0.4, probe=None) -> list[dict]:
+    """已经在库里、但现在打不开的链接。
+
+    可达性门槛只挡住新写入；库里那 703 条是在门槛存在之前进去的，得单独清一遍。
+    链接还会随时间烂掉——事务所改版、艺人解约、博客注销——所以这条路要留着复用，
+    不是一次性的清理脚本。
+    """
+    probe = probe or resolves
+    out = []
+    for link_id, entity, kind, label, url in connection.execute(
+            "SELECT l.id, e.canonical_name, l.link_kind, l.label, l.url "
+            "FROM entity_link l JOIN entity e ON e.id=l.entity_id ORDER BY l.id"):
+        ok, note = probe(url)
+        if not ok:
+            out.append({"id": link_id, "entity": entity, "link_kind": kind,
+                        "label": label, "url": url, "note": note})
+        if probe is resolves:
+            time.sleep(interval)
+    return out
+
+
 def install(connection: sqlite3.Connection, planned: list[dict], source: str) -> int:
     now = datetime.now(timezone.utc).isoformat()
     written = 0
@@ -118,11 +185,49 @@ def install(connection: sqlite3.Connection, planned: list[dict], source: str) ->
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database", type=Path, required=True)
-    parser.add_argument("--input", type=Path, required=True,
+    parser.add_argument("--input", type=Path,
                         help=f"复核表，列：{','.join(FIELDS)}")
+    parser.add_argument("--prune-dead", action="store_true",
+                        help="改为清理库里已经打不开的链接，不读 --input")
     parser.add_argument("--apply", action="store_true", help="真正写入；必须同时给 --backup")
+    parser.add_argument("--no-check", action="store_true",
+                        help="跳过「地址能不能打开」的检查。只在离线复核时用——"
+                             "首批 703 条就是没验直接装的，事后发现 37%% 是死链")
     parser.add_argument("--backup", type=Path, help="写入前的 SQLite 备份落点")
     return parser
+
+
+def prune(connection: sqlite3.Connection, args) -> int:
+    """列出并（在 --apply 时）删除库里打不开的链接。"""
+    before = connection.execute("SELECT count(*) FROM entity_link").fetchone()[0]
+    dead = dead_links(connection)
+    for item in dead:
+        print(f" - {item['entity'][:14]:<14} {item['link_kind']:<8} "
+              f"{item['label'][:18]:<18} {item['note']:<14} {item['url'][:52]}")
+    print({"库内链接": before, "打不开": len(dead)})
+    if not args.apply:
+        print("dry-run；确认无误后加 --apply --backup <路径>")
+        return 0
+
+    args.backup.parent.mkdir(parents=True, exist_ok=True)
+    destination = sqlite3.connect(args.backup)
+    with destination:
+        connection.backup(destination)
+    destination.close()
+    print(f"已备份：{args.backup}")
+
+    with connection:
+        connection.executemany("DELETE FROM entity_link WHERE id=?",
+                               [(item["id"],) for item in dead])
+    after = connection.execute("SELECT count(*) FROM entity_link").fetchone()[0]
+    integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
+    orphans = len(connection.execute("PRAGMA foreign_key_check").fetchall())
+    print({"删除前": before, "删除后": after, "差值": before - after,
+           "integrity_check": integrity, "foreign_key_check": orphans})
+    if before - after != len(dead) or integrity != "ok" or orphans:
+        print("[warn] 前后差值、完整性或外键与预期不符，请人工核对")
+        return 1
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -131,12 +236,26 @@ def main(argv: list[str] | None = None) -> int:
         print("[stop] --apply 是真实账本写入，必须同时给 --backup")
         return 2
 
-    rows = read_rows(args.input)
+    if not args.prune_dead and not args.input:
+        print("[stop] 需要 --input（写入复核表）或 --prune-dead（清理死链）")
+        return 2
+
     connection = sqlite3.connect(args.database)
     connection.execute("PRAGMA foreign_keys=ON")
+    if args.prune_dead:
+        try:
+            return prune(connection, args)
+        finally:
+            connection.close()
+
+    rows = read_rows(args.input)
     try:
         before = connection.execute("SELECT count(*) FROM entity_link").fetchone()[0]
         planned = plan(connection, rows)
+        if args.no_check:
+            print("[warn] 已跳过可达性检查：打不开的地址会照样写进账本")
+        else:
+            check_links(planned)
         for item in planned:
             mark = "+" if item["action"] == "insert" else " "
             print(f" {mark} {str(item['studio'])[:18]:<18} {item['link_kind']:<8} "
