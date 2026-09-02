@@ -18,6 +18,10 @@ class WebUiSourceTests(unittest.TestCase):
         cls.page = chr(10).join(
             path.read_text(encoding="utf-8") for path in sources
         )
+        # 「谁用到了这个类名」只能问模板一侧。样式表自己不算——把 app.css 也接进来
+        # 比对，每个选择器都会匹配到它自己的定义。
+        markup = [web / "index.html", web / "app.js", *sorted((web / "js").glob("*.js"))]
+        cls.markup = chr(10).join(path.read_text(encoding="utf-8") for path in markup)
 
     # 页面源断言必须自带有界失败信息。assertIn 失败时会把整个 index.html（约 189 KB）
     # 原样塞进错误消息，一条失败就产出 195 KB 输出；工具管道遇到超大输出会转存成文件，
@@ -139,6 +143,32 @@ class WebUiSourceTests(unittest.TestCase):
         # 下限是 12px：更小的灰字在 vercel-report-design 里被点名为要拒绝的反射。
         self.assertNotIn("--fs-", css.split("--fs-xs")[0][-40:],
                          "刻度必须从 --fs-xs 开始，别在前面塞更小的档")
+
+    def test_every_class_selector_in_the_stylesheet_is_actually_used(self):
+        """样式表里的每个类选择器都要有人用它。
+
+        没人用的规则不会报错，只会一直被读、被改、被当成「现在的样子」来推理。
+        实测一次就清出九组：`.fdetails` 那一整套折叠摘要、`.mediatabs`、
+        `.edge .srcrow`、`.javhint`、`.photosets`、`.meta .whosep`、`.reviewhead`、
+        `.resourceerror`——对应的 JS 早就删了或改了名，样式留在原地。
+
+        两类例外，都必须是「前缀 + 运行时拼出来的一段」，不接受逐个类名的豁免：
+        vendor 在运行时自己加的类（Video.js、Swiper），以及模板里用模板串拼出来的
+        类名（`' cat-'+cat` 这种，源码里不会出现完整的 `cat-artist`）。
+        """
+        # 注释里会写类名当例子，`url()` 里的域名（www.w3.org）会被当成 `.org`。
+        css = re.sub(r"/\*.*?\*/", "", self.css, flags=re.S)
+        css = re.sub(r"url\([^)]*\)", "url()", css)
+        selectors = set(re.findall(r"\.(-?[A-Za-z_][A-Za-z0-9_-]*)", css))
+        vendor = ("vjs-", "swiper-")
+        composed = ("cat-", "r34-", "idgroup-", "geist-note-", "skeleton-")
+        # 前缀豁免要能兑现：拼接那一处必须真的在模板里。
+        for prefix in composed:
+            self.assertIn(prefix, self.markup, f"{prefix} 已经没人拼了，连同规则一起删")
+        unused = sorted(
+            name for name in selectors
+            if name not in self.markup and not name.startswith(vendor + composed))
+        self.assertEqual(unused, [], f"样式表里有没人用的类选择器：{unused}")
 
     def test_pill_shapes_are_reserved_for_things_that_are_actually_tags(self):
         """整圆胶囊有一个来源，普通元信息不许长成标签。
@@ -1870,7 +1900,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('title="${esc(label)}" aria-label="${esc(label)}"')
         self.assertPageContains(".src{display:grid;place-items:center;width:20px;height:20px;padding:0;border:0;background:transparent}")
         self.assertPageContains(".srcbig{display:inline-grid;place-items:center;width:22px;height:22px;padding:0;border:0;background:transparent}")
-        self.assertPageContains(".edge .srcrow button{width:52px;height:44px")
 
     def test_beeg_evidence_driven_surfaces_are_translucent_and_rail_is_continuous(self):
         self.assertPageContains(".brandpill{")
@@ -3372,7 +3401,6 @@ class WebUiSourceTests(unittest.TestCase):
         路径则整个消失（关闭按钮上「没有 x」就是这么来的）。
         """
         for rule in (
-            ".mediatabs button svg{width:16px;height:16px;stroke:currentColor;fill:none",
             ".photoback svg{width:15px;height:15px;stroke:currentColor;fill:none",
             ".media-circle svg{display:block;width:24px;height:24px;flex:none;stroke:currentColor;fill:none",
         ):
