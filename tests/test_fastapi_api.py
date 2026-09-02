@@ -20,6 +20,7 @@ if HAS_DEPS:
     import httpx
     from peach import api as api_module
     from peach.api import create_app
+    from peach.follow_covers import PLACEHOLDER_CONTENT_TYPE
     from peach.config import PeachSettings
 
 
@@ -1036,7 +1037,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("2B Camp [4K].webm", disposition)
         self.assertNotIn("img.kemono.cr", disposition)
 
-    async def test_follow_cover_serves_cached_frame_and_falls_back_to_source_thumb(self):
+    async def test_follow_cover_serves_cached_frame_and_degrades_to_a_placeholder(self):
         connection = sqlite3.connect(self.db)
         connection.executescript((ROOT / "migrations" / "0018_online_follow.sql").read_text(
             encoding="utf-8"))
@@ -1080,9 +1081,13 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         cover.fail = True
         fallback = await self.client.get(
             "/follow-cover?id=7&t=secret", follow_redirects=False)
-        self.assertEqual(fallback.status_code, 307)
-        self.assertEqual(fallback.headers["location"],
-                         "https://r34t.paheal.net/ab/cd/video")
+        # 生成失败回占位图，不再 302 到上游缩略图：这个端点存在的理由就是
+        # 不把上游主机和地址交回浏览器。
+        self.assertEqual(fallback.status_code, 404)
+        self.assertNotIn("location", fallback.headers)
+        self.assertNotIn("paheal", fallback.text)
+        self.assertEqual(fallback.headers["content-type"],
+                         PLACEHOLDER_CONTENT_TYPE)
 
     async def test_stream_session_cancel_is_authenticated_and_tombstoned(self):
         denied = await self.client.post("/api/stream-cancel?session=detail-1")

@@ -117,3 +117,16 @@ class FollowCoverServiceTests(unittest.TestCase):
             with self.subTest(provider=provider, kind=kind):
                 with self.assertRaises(FollowCoverUnavailable):
                     self.service.cover(self._item(provider, kind))
+
+    def test_the_lock_table_stays_bounded_and_keeps_the_locks_in_use(self):
+        """一条一把锁、URL 一变再加一条，原来只增不减：进程活多久它就长多久。"""
+        self.service.MAX_TRACKED_LOCKS = 3
+        held = self.service._lock_for("held")
+        held.acquire()
+        self.addCleanup(held.release)
+        for index in range(20):
+            self.service._lock_for(f"item-{index}")
+        self.assertLessEqual(len(self.service._locks),
+                             self.service.MAX_TRACKED_LOCKS)
+        self.assertIs(self.service._locks.get("held"), held,
+                      "还被持有的锁不能被清掉，否则两个线程会各拿一把锁写同一个文件")
