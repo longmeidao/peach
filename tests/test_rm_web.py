@@ -11,9 +11,15 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest import mock
 
+from peach import web_batch, web_catalog, web_stats
 from peach import web_contract as rm_web
 
 
+# 调用点继续走 `rm_web`（`web_contract` 现在只是再导出层），但 **patch 必须打在真的
+# 那个模块上**：`web_stats.q_stats` 读的是 `web_stats` 自己模块里的 `system_volume`，
+# 打在再导出层上不会有任何效果，而且不会报错——测试会带着假 mock 一路绿。
+# 同一个 `LOCATION_ROOT_DECLARATIONS` 在存储卷一节属于 `web_stats`、在空目录清理
+# 一节属于 `web_batch`，两个都得分别打。
 BASE_SCHEMA = """
 CREATE TABLE asset(
   id INTEGER PRIMARY KEY,
@@ -247,7 +253,7 @@ class WebDataTests(unittest.TestCase):
 
     def test_stats_use_the_platform_system_volume_and_keep_the_old_alias(self):
         usage = type("Usage", (), {"free": 20, "total": 100})
-        with mock.patch.object(rm_web, "system_volume", return_value=Path("X:/")), mock.patch(
+        with mock.patch.object(web_stats, "system_volume", return_value=Path("X:/")), mock.patch(
             "shutil.disk_usage", return_value=usage,
         ):
             stats = rm_web.q_stats(self.contract)
@@ -263,11 +269,11 @@ class WebDataTests(unittest.TestCase):
     def test_stats_report_system_resource_and_cloud_volumes(self):
         usage = type("Usage", (), {"free": 20, "total": 100})
         declarations = {"local": "R:/media", "115": "B:/", "pikpak": "A:/"}
-        with mock.patch.object(rm_web, "LOCATION_ROOT_DECLARATIONS", declarations), \
-                mock.patch.object(rm_web, "system_volume", return_value=Path("X:/")), \
-                mock.patch.object(rm_web, "translate_ledger_path",
+        with mock.patch.object(web_stats, "LOCATION_ROOT_DECLARATIONS", declarations), \
+                mock.patch.object(web_stats, "system_volume", return_value=Path("X:/")), \
+                mock.patch.object(web_stats, "translate_ledger_path",
                                   side_effect=lambda value: Path(value)), \
-                mock.patch.object(rm_web, "root_online", return_value=True), \
+                mock.patch.object(web_stats, "root_online", return_value=True), \
                 mock.patch("shutil.disk_usage", return_value=usage):
             stats = rm_web.q_stats(self.contract)
 
@@ -783,8 +789,13 @@ class WebDataTests(unittest.TestCase):
 
         它此前在五处各写了一份裸 SQL。join 列因查询语境不同是正常的，规则本体不是：
         漏抄一处，被隐藏的标签就会从那个表面漏回来，而这属于语义契约。
+
+        计数扫的是整个 web 层而不是单个文件：实现现在住在 `web_catalog`，再抄一份最可能
+        抄到隔壁的域模块里去，只盯一个文件的话那种抄写正好检不出来。
         """
-        source = pathlib.Path(rm_web.__file__).read_text(encoding="utf-8")
+        web_layer = sorted(pathlib.Path(rm_web.__file__).parent.glob("web_*.py"))
+        self.assertGreaterEqual(len(web_layer), 6, "没找到 web 层模块，glob 口径变了")
+        source = "\n".join(path.read_text(encoding="utf-8") for path in web_layer)
         self.assertEqual(source.count("FROM asset_tag_preference p "), 1,
                          "隐藏判据又被抄了一份，请改调 tag_not_hidden()")
         self.assertEqual(source.count("WHERE performer.kind='performer' "), 1,
@@ -805,7 +816,7 @@ class WebDataTests(unittest.TestCase):
             return connection
 
         with mock.patch.object(self.contract.database, "connect", side_effect=capture):
-            with mock.patch.object(rm_web, "upsert_asset_entity",
+            with mock.patch.object(web_catalog, "upsert_asset_entity",
                                    side_effect=RuntimeError("entity write failed")):
                 with self.assertRaisesRegex(RuntimeError, "entity write failed"):
                     rm_web.w_item_tag(self.contract, {
@@ -884,7 +895,7 @@ class WebDataTests(unittest.TestCase):
         rm_web.w_feedback(self.contract, {"id": 1, "kind": "dispose"})
 
         with mock.patch.object(
-                rm_web, "LOCATION_ROOT_DECLARATIONS", {"local": str(source_root)}):
+                web_batch, "LOCATION_ROOT_DECLARATIONS", {"local": str(source_root)}):
             result = rm_web.w_batch(self.contract, {"ids": [1], "operation": "delete"})
 
         self.assertEqual(result["empty_dirs_removed"], 2)
@@ -899,7 +910,7 @@ class WebDataTests(unittest.TestCase):
         (kept / "media.mp4").write_bytes(b"keep")
         offline = Path(self.tmp.name) / "offline"
 
-        with mock.patch.object(rm_web, "LOCATION_ROOT_DECLARATIONS", {
+        with mock.patch.object(web_batch, "LOCATION_ROOT_DECLARATIONS", {
                 "local": str(source_root), "115": str(offline),
         }):
             result = rm_web.cleanup_empty_source_directories()
