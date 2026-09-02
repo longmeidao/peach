@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from datetime import datetime
 import ntpath
 import os
@@ -27,6 +28,11 @@ import sqlite3
 import time
 import uuid
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 from peach.review_csv import write_rows
 from peach.catalog_rules import is_jav_code, normalise_code_key

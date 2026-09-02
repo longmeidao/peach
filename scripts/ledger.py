@@ -16,6 +16,13 @@ r"""
 默认本地自托管。扫描只读元数据；在线关注同步是正式能力，按来源单独控频和授权。
 """
 import os, sys, csv, json, sqlite3, time
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 from peach.stash import StashClient, StashError
 from peach.entities import canonicalize_entity_name, upsert_asset_entity

@@ -41,9 +41,15 @@ import json
 import re
 import sqlite3
 import time
+import sys
 from pathlib import Path
 
 import httpx
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 from peach.catalog_rules import normalise_code_key
 from peach.review_csv import read_rows, write_rows

@@ -569,6 +569,30 @@ class OperationalScriptTests(unittest.TestCase):
                 f"{path.name} 含非 ASCII 却没有 UTF-8 BOM，PowerShell 5.1 会解析失败",
             )
 
+    def test_every_script_importing_peach_can_run_without_pythonpath(self):
+        """脚本是给人直接敲的，不该要求先设 PYTHONPATH。
+
+        2026-09-02 交给用户的 `flatten_release_dirs.py --apply` 第一行就
+        ModuleNotFoundError：`from peach.catalog_rules import ...` 在裸 python 下
+        找不到 `src`。仓库里 `job_status.py` 等脚本早就带着这段引导，只是没有门槛
+        逼后来的脚本跟上。判据只看「导入 peach 之前有没有把 src 挂进 sys.path」，
+        不规定写法。
+        """
+        missing = []
+        for path in sorted((ROOT / "scripts").glob("*.py")):
+            source = path.read_text(encoding="utf-8")
+            lines = source.splitlines()
+            peach_import = next(
+                (index for index, line in enumerate(lines)
+                 if line.startswith(("from peach.", "import peach"))), -1)
+            if peach_import < 0:
+                continue
+            head = "\n".join(lines[:peach_import])
+            if "sys.path.insert" not in head and "sys.path.append" not in head:
+                missing.append(path.name)
+        self.assertEqual(missing, [],
+                         "这些脚本导入 peach 前没挂 src，裸 python 跑会 ModuleNotFoundError")
+
     def test_logo_candidates_are_squared_by_padding_not_discarded(self):
         """界面按方框渲染。接近方的直接用，长条形补背景填方，只有太小的才丢。"""
         import io

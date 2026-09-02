@@ -17,7 +17,14 @@
     python scripts/sync_sha1_115.py --dupes         # 写入后直接出 SHA1 重复报告
 """
 import os, sys, json, sqlite3, time
+import sys
 from collections import defaultdict
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 from peach.review_csv import ENCODING
 
