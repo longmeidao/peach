@@ -10,6 +10,7 @@ from contextlib import redirect_stdout
 from pathlib import Path, PureWindowsPath
 from unittest import mock
 
+from peach import catalog_rules
 from peach.migrations import upgrade
 from peach.classification import is_probable_mainstream_release, is_structural_creator
 
@@ -87,7 +88,11 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(category_map["パイパン"], "白虎")
         self.assertEqual(category_map["女子校生"], "学生")
         self.assertEqual(category_map["寝取り・寝取られ"], "绿帽NTR")
-        self.assertEqual(category_map["Gカップ"], "乳系")
+        self.assertEqual(category_map["巨乳"], "巨乳")
+        self.assertEqual(category_map["美乳"], "美乳")
+        for measurement in ("Dカップ", "Gカップ", "Jカップ", "巨大乳輪"):
+            self.assertNotIn(measurement, category_map,
+                             f"{measurement} 是身体尺寸，词表里没有对应分类")
         for marketing in ("独占配信", "配信専用", "単体作品", "企画", "店長推薦作品",
                           "ハイビジョン", "フルハイビジョン(FHD)", "1080p", "60fps",
                           "4時間以上作品", "AV女優"):
@@ -95,10 +100,19 @@ class OperationalScriptTests(unittest.TestCase):
                              f"{marketing} 是发行/营销/规格分类，不是内容标签")
         japanese = {key for key in category_map if not key.isascii()}
         self.assertTrue(japanese)
-        self.assertEqual(
-            {category_map[key] for key in japanese} - {
-                category_map[key] for key in category_map if key.isascii()},
-            set(), "日文键不得引入英文键没有的新分类值")
+
+    def test_no_genre_maps_up_into_a_superseded_broad_bucket(self):
+        """来源给了具体标签就照抄，不许升成 `乳系`、`足系` 这种粗桶。
+
+        `TAG_SUPERSESSION` 的定义正是「有具体标签时把粗桶删掉」，所以把
+        javbus 的 `巨乳` 映成 `乳系` 等于写入系统随后要丢弃的那个值。2026-09-02
+        真写进了账本 57 条，连带暴露出更早的 `"Big Tits": "乳系"` 是同一个错。
+        """
+        category_map = self.scrape_codes.CATEGORY_MAP
+        for source, mapped in category_map.items():
+            self.assertNotIn(
+                mapped, catalog_rules.TAG_SUPERSESSION,
+                f"{source} -> {mapped} 升到了粗桶，应映射到来源给出的那一级")
 
     def test_rule34_tag_type_backfill_reuses_the_connector_and_is_resumable(self):
         """rule34xxx 的标签类型只在帖子页上，2152 条里当时只有 40 条带着它。
@@ -554,6 +568,30 @@ class OperationalScriptTests(unittest.TestCase):
                 raw.startswith(b"\xef\xbb\xbf"),
                 f"{path.name} 含非 ASCII 却没有 UTF-8 BOM，PowerShell 5.1 会解析失败",
             )
+
+    def test_every_script_importing_peach_can_run_without_pythonpath(self):
+        """脚本是给人直接敲的，不该要求先设 PYTHONPATH。
+
+        2026-09-02 交给用户的 `flatten_release_dirs.py --apply` 第一行就
+        ModuleNotFoundError：`from peach.catalog_rules import ...` 在裸 python 下
+        找不到 `src`。仓库里 `job_status.py` 等脚本早就带着这段引导，只是没有门槛
+        逼后来的脚本跟上。判据只看「导入 peach 之前有没有把 src 挂进 sys.path」，
+        不规定写法。
+        """
+        missing = []
+        for path in sorted((ROOT / "scripts").glob("*.py")):
+            source = path.read_text(encoding="utf-8")
+            lines = source.splitlines()
+            peach_import = next(
+                (index for index, line in enumerate(lines)
+                 if line.startswith(("from peach.", "import peach"))), -1)
+            if peach_import < 0:
+                continue
+            head = "\n".join(lines[:peach_import])
+            if "sys.path.insert" not in head and "sys.path.append" not in head:
+                missing.append(path.name)
+        self.assertEqual(missing, [],
+                         "这些脚本导入 peach 前没挂 src，裸 python 跑会 ModuleNotFoundError")
 
     def test_logo_candidates_are_squared_by_padding_not_discarded(self):
         """界面按方框渲染。接近方的直接用，长条形补背景填方，只有太小的才丢。"""
@@ -1437,6 +1475,23 @@ class ApplyMetadataTagsTests(unittest.TestCase):
         self.assertEqual([(group["item_key"], candidate["value"]) for group, candidate in selected],
                          [("AAA-001:tags", ["素人"])])
 
+    def test_skipped_codes_stay_in_the_csv_but_do_not_reach_the_ledger(self):
+        """批量放行里总有几条明显不对，跳过它们，但不许从复核产物里抹掉。
+
+        实例：javbus 在 `MY-*` 系列的标题栏放的是「演员名+序号」而不是标题。
+        过滤 CSV 会让这几条从此没人看见；跳过则它们仍在 `/review` 里等人处理。
+        """
+        rows = [
+            {"item_key": "MY-101:title", "code": "MY-101", "field": "title",
+             "status": "candidate",
+             "candidates_json": json.dumps([{"source": "javbus", "value": "最上彩奈1"}])},
+            {"item_key": "TRE-080:title", "code": "TRE-080", "field": "title",
+             "status": "candidate",
+             "candidates_json": json.dumps([{"source": "javbus", "value": "なまなかだし"}])},
+        ]
+        selected = self.apply_tags.plan(rows, "javbus", "title", frozenset({"my-101"}))
+        self.assertEqual([group["item_key"] for group, _ in selected], ["TRE-080:title"])
+
     def test_apply_writes_tags_and_entities_for_the_whole_code(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1482,7 +1537,15 @@ class ApplyMetadataTagsTests(unittest.TestCase):
                 "SELECT count(*) FROM asset_entity WHERE role='tag' "
                 "AND source='javinizer:javbus:tag'").fetchone()[0], 4,
                 "标签实体那一半不能漏")
+            row = connection.execute(
+                "SELECT status,note FROM review_decision "
+                "WHERE category='metadata_fields' AND item_key='TRE-080:tags'").fetchone()
             connection.close()
+            self.assertIsNotNone(row, "写完不登记，这一组会永远挂在 /review 里")
+            self.assertEqual(row[0], "approved")
+            self.assertEqual(json.loads(row[1])["candidate_key"],
+                             "TRE-080:tags:javbus:abc",
+                             "留痕必须带候选身份，_metadata_decision_is_stale 靠它判过期")
 
     def test_dry_run_never_touches_the_database(self):
         with tempfile.TemporaryDirectory() as tmp:

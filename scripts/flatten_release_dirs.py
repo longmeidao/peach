@@ -22,8 +22,17 @@ from __future__ import annotations
 
 import argparse
 import sqlite3
+import sys
 from collections import defaultdict
 from pathlib import Path, PureWindowsPath
+
+# 仓库既有约定（job_status.py 等 8 个脚本同样写法）：脚本直接跑时把 src 挂上，
+# 免得用户必须先设 PYTHONPATH。2026-09-02 就是漏了这段，交出去的命令直接
+# ModuleNotFoundError。
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 from peach.catalog_rules import promo_free_key, strip_promo_markers
 from peach.config import DATABASE_PATH, GENERATED_DIR
