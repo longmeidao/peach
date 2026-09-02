@@ -25,7 +25,7 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from peach.catalog_rules import normalise_code_key
+from peach.catalog_rules import is_jav_code, normalise_code_key
 from peach.scripting import open_readonly
 from peach.config import DATABASE_PATH, GENERATED_DIR, LOG_DIR, SOURCES_DIR, STATE_DIR
 from peach.genre_taxonomy import CONTENT_GENRES, map_genres
@@ -97,19 +97,15 @@ def _is_explicit_code(code: str) -> bool:
     """番号是否明确到可以直接查来源；判的是**规范化之后**的形态。
 
     真正发给 provider 的就是 `normalise_code_key(code)`，而账本里同一个番号常以
-    `HJD2048`、`WX17`、`BANBI_555` 这种缺分隔符的原始写法存着。按原始写法判会把它们
+    `WX17`、`BANBI_555`、`IPVR00296` 这种缺分隔符的原始写法存着。按原始写法判会把它们
     当成不明确整条跳过，`--codes-file` 那一侧却是按规范化键匹配的，于是同一批番号在
     两处结论相反，报成「番号文件含 ledger 中不存在的番号」。2026-09-02 实测漏掉 42 个。
-    `normalise_code_key` 只重排本来就是「字母+数字」形态的值，不会把杂串变成番号。
+
+    形态判定交给 `is_jav_code`，这里不再抄一份正则。抄出来的那份和它逐字相同，于是
+    `HHD800`、`HJD2048` 这些转载站水印域名在 `catalog_rules` 侧被排除之后，这里还会
+    继续把它们发给 provider 查——同一个「什么算番号」有两个答案。
     """
-    value = normalise_code_key(code).upper().strip()
-    if value.startswith("FC2"):
-        return bool(re.search(r"\d{5,}", value))
-    return bool(
-        re.fullmatch(r"[A-Z]{2,8}-\d{2,5}", value)
-        or re.fullmatch(r"\d{3}[A-Z]{2,6}-\d{2,5}", value)
-        or re.fullmatch(r"\d{6}-\d{2,4}", value)
-    )
+    return is_jav_code(normalise_code_key(code))
 
 
 def _candidate_key(code: str, field: str, source: str, value: object) -> str:

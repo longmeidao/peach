@@ -27,6 +27,8 @@
 - 图集就是目录：账本没有图集实体，`/api/photos` 按 `path` 去掉文件名分组、ID 取该目录里最小的资产 ID，同名目录在两个来源下算两个图集。瀑布流只读 `/photo-thumb`（Pillow 缩到 640 宽、每张只回源一次），原图只在灯箱里读；灯箱复用 Swiper 但必须等它的 CSS 和 JS 同时就绪后再构造，否则首次打开会把多张图当普通块元素重叠显示。
 - 人工复核入口固定为 `/review`，候选来自 writer 本机 `generated` 下的 CSV，状态写 `review_decision`；封面抓取的成功、尺寸和缺失是机械状态，不进人工复核。
 - reader 只通过 Peach CA 严格校验的 HTTPS 读 writer 已归一化的 JSON 并原子缓存到本机，先确认目标 `/healthz` 是 `ledger_sync=writer`，writer 离线时只展示上次缓存；reader 永久禁用批准、跳过、拒绝和关注管理的写入，不得为修好空页面而同步整个 `generated`、SQLite/WAL 或放宽写端点白名单。
+- 转载站水印域名不是番号：剥掉 TLD 后与 `IPX219C`、`MEYD911` 同形，`normalise_code_key` 会替它补连字符（`HHD800` → `HHD-800`），JAV 过滤、`display_code` 和 `clean_names` 重命名就全把水印当成作品标识。形态分不开，只有实证名单 `catalog_rules.REPOST_SITE_LABELS` 能分，存压缩形好让 `BEI88` 与 `BEI-088` 同时命中；加条目先用 `scripts/audit_domain_codes.py` 在真实 ledger 上取 `<label>.<tld>` 或 `<label>@` 的路径证据。
+- 「什么算番号」只在 `catalog_rules` 一份，脚本一律 import，同一条排除规则只加在其中一份上等于没加；改 `code` 走 `audit_domain_codes.py --apply --backup`，只写复核过的那份 CSV、按原值 `WHERE` 挡住漂移、存疑档不写，FTS 由 `AFTER UPDATE OF name,code` 触发器重建但要核对真跑过。
 - 日文标题只认官方源会漏掉 DMM 未收录的作品，这类番号用 `--sources javbus` 单独补候选并写进分区文件，不另起通用批次——复核页只读最新一个通用批次，新文件会把上一批未复核的行挤掉。
 
 ## 无摩擦接手

@@ -58,12 +58,12 @@
 
 ## 下一批工作
 
-1. 查清 2026-09-02 那 191 行 `javinizer:%:tag` 的去向（javbus −172、r18dev −19，无可归因的写入者）。先重跑「读计数 → sqlite_backup → 再读计数」确认是否可复现。
-2. 在 `/review` 处理 5 个被跳过的标题偏移值：`MY-101`、`MY-102`、`MY-103`、`MY-104`、`SAR-103`。
-3. 另行授权后执行 `scripts/flatten_release_dirs.py --apply --backup <备份路径>`：296 个目录操作（collapse 167、rename 129）落在 CloudDrive 挂载上，影响账本路径 3374 条。执行前重跑 dry-run，191 条未挂载的会随挂载状态变化。
-4. 另行授权后先备份 ledger，修正 4 组已核实姓名：恢复 `星谷瞳`、`福山美佳`、`平沢すず` 的规范名；从 `かわいゆい` 移除错误的 `河合ゆい` 别名与 r18 外部引用，清退错误头像及 provenance 后重新生成候选；同步 actor tag 与检索投影。
-5. 另行授权后先备份 ledger，再把 `follow_item` 181、184、185 从 `seen` 恢复为 `new`，复核状态计数、完整性与新哈希。
-6. 继续按复用审计依次替换 PID 锁和 Rule34Video 媒体页；每项固定版本/revision、首个消费者和隔离测试同批落地。
+1. 查清 2026-09-02 那 191 行 `javinizer:%:tag` 的去向（javbus −172、r18dev −19，无可归因的写入者）。先重跑「读计数 → sqlite_backup → 再读计数」看是否可复现。
+2. 在 `/review` 处理 5 个被跳过的标题偏移值：`MY-101`～`MY-104`、`SAR-103`。
+3. 另行授权后跑 `scripts/flatten_release_dirs.py --apply --backup <落点>`：296 个目录操作（collapse 167、rename 129）落在 CloudDrive 挂载上，影响账本路径 3374 条。执行前重跑 dry-run，191 条未挂载的随挂载状态变化。
+4. 另行授权后先备份 ledger，修正 4 组已核实姓名：恢复 `星谷瞳`、`福山美佳`、`平沢すず` 的规范名；`かわいゆい` 移除错误的 `河合ゆい` 别名与 r18 外部引用，清退错误头像及 provenance 后重新生成候选；同步 actor tag 与检索投影。
+5. 另行授权后先备份 ledger，把 `follow_item` 181、184、185 从 `seen` 恢复为 `new`，复核状态计数、完整性与新哈希。
+6. 按复用审计依次替换 PID 锁和 Rule34Video 媒体页；每项固定版本/revision、首个消费者和隔离测试同批落地。
 7. 分类剩余 44 个无预览变体：确无图片还是解析遗漏。
 8. 另行确认后在生产关注页检查 LazyProcrastinator FANBOX，把已验证的 6 图、正文与 Gofile `OS2Qz9` 资源页写入关注候选；Gofile token 未配置且账户不是 Premium，21 个视频仍未取得。
 9. 在 `/review` 人工处理 JAV 日文系列名、现有创作者标签、FC2、Javinizer、Logo、头像和媒体失败候选；未经批准不写真相字段。
@@ -73,13 +73,14 @@
 13. Windows writer 运行 PikPak 夜跑前重算 probe/抽帧队列，并按 `peach-batch-jobs` 设置流量与系统盘闸门。
 14. 补做 HLS 首帧、seek、自适应码率与双端视觉验收。
 15. 外置盘挂载后先只读盘点 `R:\Media\<名字>\P\...` 图片规模；扫描写真 ledger，需另行授权。
-16. 重做品味分析页的视觉再决定是否合入：`agent/codex/taste-analysis`（cd3effe）功能可用但版式不过关，重做时以该分支 `taste_history.py` 的分析逻辑为底。
+16. 重做品味分析页的视觉再决定是否合入：`agent/codex/taste-analysis`（cd3effe）功能可用但版式不过关，以该分支 `taste_history.py` 的分析逻辑为底。
 17. 决定 `attic/instances/20260828-taste-preview` 的去留：含 122 MB 账本副本（按真相源快照对待，删除需另行确认）与 153 MB `sources`；28 个预览日志可随时清。
-18. 另行授权后运行 `scripts/normalize_link_hosts.py --database <ledger> --apply --backup <落点>`，把 296 条 twitter 写法收成 x.com（290 改写、6 删除），随后重启托盘并在真实浏览器验收 `/link-mark` 的清晰度与边缘。
-19. 用户复核 `directory-links-<日期>.csv` 后用 `install_entity_links.py` 装入社媒链接；`conflict` 且账本旧号「疑似失效」的行由用户决定换号，随后可对账本现有全部 X 链接跑一遍同样的验活。
+18. 另行授权后跑 `scripts/normalize_link_hosts.py --apply --backup <落点>`，把 296 条 twitter 写法收成 x.com（290 改写、6 删除），随后重启托盘并在真实浏览器验收 `/link-mark` 的清晰度与边缘。
+19. 用户复核 `directory-links-<日期>.csv` 后用 `install_entity_links.py` 装入社媒链接；`conflict` 且账本旧号「疑似失效」的行由用户决定换号，随后可对账本现有全部 X 链接跑同样的验活。
 20. 用户复核 `studio-names-<日期>.csv` 的 26 条厂牌改名后另行授权；3 条不一致按「一个账本名混了两家」处理，5 条 404 未取得，搜索兜底要先有一个能用的搜索出口。
 21. 9 个字标厂牌的官网已查出 8 条（`studio-sites-<日期>.csv`），用户复核后授权 `install_entity_links.py` 装入，再重跑 `scripts/harvest_studio_icons.py`；SOD Create 与 FC2-PPV 各剩一条要用户裁决，判据见 `docs/SOURCING.md`。复核时重点看 `content_aspect` 接近上限的行。
-22. 把 javdatabase 的 idol 页接进社媒／官网候选：183 页缓存里 139 页带 X 链接、138 页带另一个官方站，由番号定位、不需要离线比名。实现复用 `peach.social_links` 的判据与 `install_entity_links.py` 的 `FIELDS`，排掉四个整站广告主机。
+22. 把 javdatabase 的 idol 页接进社媒／官网候选：183 页缓存里 139 页带 X 链接、138 页带另一个官方站，由番号定位、不必离线比名。复用 `peach.social_links` 的判据与 `install_entity_links.py` 的 `FIELDS`，排掉四个整站广告主机。
+23. 人工判 `domain-code-review.csv` 里 `WX17` 那 269 条水印存疑行，脚本不给提案。
 
 ## 批处理进度
 
