@@ -19,6 +19,8 @@
 
 ## 已核验能力
 
+- 2026-09-02 `B:\MVP\MIB\` 的假厂牌已清，刮削补上番号身份校验与两种写法的回退。**清理**（经授权，备份 `database/ledger.pre-mib-cleanup-20260902-203342.db`）：117 条韩国 MIB 内容里被外部 provider 写过的字段全部撤回——清空 20 studio / 16 release_date / 10 catalog_title / 10 series，删 276 条 `asset_entity`、231 条 `asset_tag`、57 条 `review_decision`，清退 34 个只由误判产生的实体；`ワンズファクトリー` 并入 Wanz Factory（5653）作为别名。MIB 目录下仍被判为 JAV 的资产由 24 条降到 0，117 条 asset 行、creator 链接和 23 条文件名标签原样保留，Attackers 19 部、Wanz Factory 23 部真作品未受影响。**成因与门槛**：javbus 一侧是拿番号做关键词搜索取首个命中，搜不到就返回近似的别人（`SA-104 → AVSA-104`、`CHU-101 → CHUC-101`、`AR-301 → STAR-3016`），实测 68 次匹配 58 次番号根本不对；`scrape_codes.py` 现在用 `catalog_rules.same_release_code()` 比对返回的 `id`/`content_id`，不一致就落一条 `identity_mismatch` 错误行而不是候选，原始响应照旧落盘。**两种写法**：`259LUXU-1642` 与 `LUXU-1642` 是同一部作品，来源站各只索引其中一种；`code_query_variants()` 按 `MAKER_NUMBER_PREFIX`（22 个字母段，全部按账本实测登记）在两种写法间回退，评审键仍用账本的规范写法。全量 1726 项通过。目录级排除和 ADR-0018 搜索页来源两条门槛仍未实施，见 `peach-data/review/mib-studio-mismatch-20260902.md`。
+
 - 2026-09-02 分卷识别接受「首卷裸名 + 后续卷 -2/-3」的形态。用户实测 `TRE-080.mp4`／`TRE-080-2.mp4`／`TRE-080-3.mp4`（9163／11255／8530 秒）在首页是三张卡：0.7.5 的分卷规则要求每个文件都带标记，裸名首卷直接判为不是分卷，而当初收窄的理由是裸名可能是整部完整版。现在只在数字标记、标记正好从 2 连续排起、裸名时长落在其他卷的 1.5 倍区间内（`PART_DURATION_SPREAD`）时才把裸名当第 1 卷：完整版至少是各卷之和必然超出上限，几十秒的广告片低于下限，缺时长、两个裸名、字母卷缺 A 都不猜；版次分组改用同一判据让路，卷标按队列位置补「1」。同一部片的元数据也查清了：r18.dev 的 `ja` 翻译块标题为空，DMM 光碟页 `118tre080`／`118tre00080` 均 404（TRE-130 同路径正常），是这一部未收录，不是抓取器坏；javbus 已启用并取得日文标题「なまなかだし BEST vol.02 …」，已作为 `TRE-080:title` 候选写进 `generated/japanese-title-candidates.csv` 分区文件等待 `/review` 批准（没有另起通用批次文件，否则会把 `smbd110` 批次里 3 条待复核挤出复核页）。全库同形态还有 24 个番号只有英文标题、474 个番号没有标题，可用 `scrape_codes.py --sources javbus --english-title-only` 跟进；javbus 的日文 genre 尚未进 `category_map`，不产标签候选。「巨乳」在 `asset_tag` 里仍是 8 月的 `r18` 来源，显示不出「官方」，是 HANDOFF 已记的唯一约束旧来源问题，本轮未改。`[44x.me]tre-080` 这层多余目录没有任何脚本覆盖：`clean_names.py` 只改文件名，`rehome_unknown_jav.py` 只处理 `_未知厂牌`。Windows `catalog` 域 648 项通过；未写真实 ledger，未批准候选，未改媒体文件。
 - 2026-09-02 数据管理页：一次刷新只放一段骨架，每张卡多给一行分项，操作条按 Geist 的窄屏做法收敛。**两段动画**的根因是加载态写了两份——深链启动时 `renderInitialSurfaceLoading` 铺一张通用大布局骨架，路由到位后各页再铺自己那张（数据管理那张还是 Loading Dots）。现在 `MANAGEMENT_PLACEHOLDERS` 是唯一定义，两处都从这里取；`skeletonHtml` 给每张骨架盖一个 `data-skeleton` 身份键，`showManagementBody` 认出屏幕上已经是同一张就不再重画——`innerHTML` 换新节点会把 shimmer 从头放一遍，用户看到的就是同一段动画闪两次。浏览器实测：把开机那张骨架摆回 `#stats` 再走一次路由，新建骨架节点 0 个。顺带修好 `/follow-manage` 深链启动时误用关注骨架。**卡片内容**：垃圾文件按类型分项、回收站补占用体积、复核列前三类，数字全部来自同一份 payload，不为第二行多发请求；`q_items` 把条数和体积放进同一次聚合（新增 `bytes`）。重复文件为 0 时写「没有重复内容」而不是 0 组。三个「· 在线」徽章换成一行来源名——卡片要说的是这次扫哪几个来源。**高度**：删掉 `.cleanupfieldset{min-height:176px}`，那条地板是三列时用来对齐同一行的，单列下只是留白；现在无分项的卡 153px，和「网盘与账本」一致，有分项的 174px。**窄屏操作条**按 375px 实测的 Geist 行为重做（证据登记在 `vercel-geist-fieldset-scroller-empty-state` 的 2026-09-02 追加块）：Geist 在 375px 下操作条仍是一行 `row`／`nowrap`，`min-height:56px` 按说明行数长到 65/85/105px，12 颗按钮宽 70–186px 没有一颗铺满。我们此前 640px 以下把条子竖过来、按钮 `width:100%`，那是自己加的；改成固定高度换 `min-height` + 上下 8px，说明 `min-width:0` 可换行、按钮 `flex:none` 不被压。**按钮底色**按用户指定统一填 `--surface`：条子是 `--overlay-5`，更深的底才分得出来，此前数据管理六颗透明底与同页 `.resourceaction` 是两种按钮。Windows 正式全量 1690 项通过、13 项按平台跳过；渲染在隔离预览实例（127.0.0.1:8900，账本副本、只读）按 420px 与桌面宽两档核对。本轮只改静态 JS／CSS／HTML 与一个只读查询，未新增依赖，未写真实 ledger、候选或媒体，未重启或替换生产入口。
 - 2026-09-02 多版本第二轮收口四处「看着不像一套」。版次队列标题栏原来写「版本 · ABF-216 · 2 个版本」，番号正上方的详情标题已经印着，h2 也写着「版本」，`editions` 队列的副题只留「2 个版本」（别的队列标题带播放列表名、Mix 种子，不砍）。队列行没有头像、和「接着看」并排像两套控件：把卡片的身份推导抽成 `cardIdentity(it,linked)`，卡片与队列共用一份，队列传 `linked=false` 出 `<span>`——整行是一个 `<button>`，再嵌 button 会被浏览器就地拆散。「接着看」216px 窄卡的高度不齐：第三个头像挤掉署名行宽度，元数据折成三四行；现在窄卡只显示两个头像、元数据钉成一行不换行、大小与观看次数不放、推荐理由截尾——第一版用固定两行高加 overflow 裁，行高凑不出整行，「399 MB」露了半截，已改掉。深链冷启动（`/editions/86286/86286`、`/item/N`）详情下方那张「正在读取作品」骨架永远不消失：列表一次请求都没发过，`openItem` 在没有返回面时直接清掉（`clearIdleCatalogLoading`），关详情由既有 `detailReturnNeedsRestore` 补装。顺手修播放器：播放键 hover 高亮层是 40×32 胶囊、不是圆，圆钮的高亮统一成内缩 4px 的同心圆（音量键、时间钮原本就是），左上统计钮、右上关闭钮同样处理；音量键、统计钮、关闭钮的底色 .3 和播放键的 .6 不是一档，统一 .6；video.js 自带 Arial、加载速度徽章与统计面板写死 Cascadia Mono，播放器内文字统一跟页面主字体。托盘已重启（pid 46072）。
@@ -190,18 +192,18 @@
 <!-- job-status:start -->
 
 <!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->
-<!-- generated 2026-09-02T19:55+08:00 -->
+<!-- generated 2026-09-02T22:21+08:00 -->
 
-- 最近自动交接：`claude` / `Stop` / `completed`，2026-09-02T19:55:28+08:00。
+- 最近自动交接：`claude` / `SessionEnd` / `other`，2026-09-02T22:21:10+08:00。
 - 资产 75500 条，其中视频 22509 条。
 - 待抽帧（可抽 / 缺时长待 probe / 合计）：
   - `local`：3 / 1 / 4
   - `115`：10 / 129 / 139
   - `pikpak`：8881 / 1310 / 10191
   PikPak 的策略组已可切 DIRECT：2026-08-15 实测走代理时 9 帧 163 MB / 13.7 秒，走直连时 30.5 MB / 64.2 秒——慢约 4.7 倍但流量少约 5 倍且不占代理预算。全量抽帧仍是 773 GB 量级（代理口径），按创作者采样 88 板直连约 2.7 GB。115 一直走直连，同样动作约 285 MB 一张接触表。
-- 无内容标签视频 6047 条（占视频 27%）。
-- `asset_tag` 来源分布：`vision_creator` 23823、`pixiv_tag` 19753、`name` 17201、`stash` 12858、`javinizer:r18dev:tag` 1985、`performer` 1589、`follow` 1376、`r18:performer` 1122、`javinizer:fc2:tag` 950、`javinizer:mgstage:tag` 791、`javinizer:javbus:tag` 760、`r18` 519、`javinizer:aventertainment:tag` 74、`javbus:performer` 37、`javinizer:r18dev:performer` 33、`javinizer:libredmm:tag` 20、`javinizer:dmm:tag` 13。
-- 番号 1456 个，其中 1201 个有厂牌（82%）。
+- 无内容标签视频 6056 条（占视频 27%）。
+- `asset_tag` 来源分布：`vision_creator` 23823、`pixiv_tag` 19753、`name` 17201、`stash` 12858、`javinizer:r18dev:tag` 1966、`performer` 1589、`follow` 1376、`r18:performer` 1102、`javinizer:fc2:tag` 950、`javinizer:mgstage:tag` 791、`javinizer:javbus:tag` 772、`r18` 490、`javinizer:aventertainment:tag` 74、`javbus:performer` 36、`javinizer:r18dev:performer` 33、`javinizer:libredmm:tag` 20、`javinizer:dmm:tag` 13。
+- 番号 1456 个，其中 1181 个有厂牌（81%）。
 
 | 产物 | 行数 | 生成时间（本地） | 说明 |
 | --- | ---: | --- | --- |

@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest import mock
 
+from peach import catalog_rules
 from peach import web_contract as rm_web
 
 
@@ -1423,6 +1424,47 @@ class JavModeAndCoverTests(unittest.TestCase):
         self.assertEqual(rm_web.normalise_code_key("abw232"), "ABW-232")
         self.assertEqual(rm_web.normalise_code_key("ABW-0232"), "ABW-232")
         self.assertEqual(rm_web.normalise_code_key("278gyan17"), "278GYAN-017")
+
+    def test_maker_prefixed_shape_covers_longer_letter_segments(self):
+        # `\d{3}[A-Z]{2,6}` 漏掉 5 字母以上的字母段；`230ORETD-001` 真实存在于账本。
+        for good in ("259LUXU-1642", "230ORETD-001", "300MIUM-1024", "762FKOS-001"):
+            self.assertTrue(catalog_rules.is_jav_code(good), good)
+
+    def test_query_variants_pair_the_two_writings_of_one_release(self):
+        # 第一个永远是账本的规范写法：评审键不能随回退漂移。
+        self.assertEqual(catalog_rules.code_query_variants("259LUXU-1642"),
+                         ("259LUXU-1642", "LUXU-1642"))
+        self.assertEqual(catalog_rules.code_query_variants("luxu1642"),
+                         ("LUXU-1642", "259LUXU-1642"))
+
+    def test_query_variants_never_invent_a_prefix_for_unregistered_letters(self):
+        # 补前缀要凭空填三位数字，猜错就是拿别人的番号去查。
+        self.assertEqual(catalog_rules.code_query_variants("ABW-232"), ("ABW-232",))
+        self.assertEqual(catalog_rules.code_query_variants("FC2-PPV-1234567"),
+                         ("FC2-PPV-1234567",))
+        self.assertEqual(catalog_rules.code_query_variants(""), ())
+        self.assertEqual(catalog_rules.code_query_variants(None), ())
+
+    def test_release_identity_tolerates_the_benign_writing_differences(self):
+        for left, right in (
+            ("259LUXU-1642", "LUXU-1642"),      # 片商数字前缀
+            ("IQQQ-026", "IQQQ-26"),            # 来源不补零
+            ("SY-101", "h_113sy00101"),         # DMM label 标记 + content_id
+            ("BAZX-123", "7BAZX-123"),          # 发行方数字
+            ("HA-102", "49ha102r"),             # 重制尾字母
+            ("FC2-PPV-1812235", "1812235"),     # FC2 来源只给数字
+            ("040221-001", "040221001"),        # 素人日期号
+        ):
+            self.assertTrue(catalog_rules.same_release_code(left, right), f"{left} vs {right}")
+
+    def test_release_identity_rejects_the_wrong_release(self):
+        # 这些正是 2026-09-02 那批把 MIB 整目录刮错的返回值。
+        for left, right in (
+            ("SA-104", "AVSA-104"), ("CHU-101", "CHUC-101"), ("AR-301", "STAR-3016"),
+            ("SR-101", "SSR-101"), ("259LUXU-164", "259LUXU-1642"),
+            ("ABW-232", ""), ("", "ABW-232"), ("ABW-232", None),
+        ):
+            self.assertFalse(catalog_rules.same_release_code(left, right), f"{left} vs {right}")
 
     def test_cards_report_whether_a_cover_is_on_disk(self):
         (self.covers / "ABW-232.jpg").write_bytes(b"x")

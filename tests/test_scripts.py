@@ -1247,6 +1247,95 @@ class OperationalScriptTests(unittest.TestCase):
                 "SELECT count(*) FROM review_decision").fetchone()[0], 0)
             connection.close()
 
+    def test_scrape_falls_back_to_the_other_writing_of_the_same_code(self):
+        """`LUXU-1642` 与 `259LUXU-1642` 是同一部作品，来源各只索引其中一种。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "ledger.db"
+            sqlite3.connect(db).close(); upgrade(db, MIGRATIONS)
+            connection = sqlite3.connect(db)
+            connection.execute(
+                "INSERT INTO asset(id,location,path,name,medium,code) "
+                "VALUES(1,'local','one.mp4','one.mp4','video','LUXU-1642')")
+            connection.commit(); connection.close()
+
+            self_error = self.scrape_codes.MetadataProviderError
+
+            class PrefixOnlyProvider:
+                def __init__(self): self.calls = []
+                def query(self, code, source):
+                    self.calls.append((code, source))
+                    if code == "LUXU-1642":
+                        raise self_error("status 404", kind="not_found",
+                                         status_code=404, retryable=False, temporary=False)
+                    return {"source": source, "id": "259LUXU-1642", "maker": "Maan Sha"}
+
+            provider = PrefixOnlyProvider()
+            raw = root / "raw"
+            output = root / "candidates.csv"
+            errors = root / "errors.csv"
+            with redirect_stdout(io.StringIO()):
+                result = self.scrape_codes.main([
+                    "--db", str(db), "--out", str(output), "--errors", str(errors),
+                    "--raw-dir", str(raw), "--log-dir", str(root / "logs"),
+                    "--delay", "0", "--min-free", "0", "--sources", "javbus",
+                ], provider=provider)
+            self.assertEqual(result, 0)
+            self.assertEqual(provider.calls,
+                             [("LUXU-1642", "javbus"), ("259LUXU-1642", "javbus")])
+            # 两种写法各自留证据，回退命中的那次不覆盖原写法的失败快照。
+            self.assertTrue((raw / "LUXU-1642" / "javbus.json").is_file())
+            self.assertTrue((raw / "259LUXU-1642" / "javbus.json").is_file())
+            with output.open(encoding="utf-8-sig", newline="") as handle:
+                rows = list(csv.DictReader(handle))
+            studio = next(row for row in rows if row["field"] == "studio")
+            # 评审键仍按账本的规范写法，不随回退漂移。
+            self.assertEqual((studio["query"], studio["item_key"]),
+                             ("LUXU-1642", "LUXU-1642:studio"))
+            with errors.open(encoding="utf-8-sig", newline="") as handle:
+                self.assertEqual(list(csv.DictReader(handle)), [], "回退命中不算失败")
+
+    def test_scrape_rejects_a_source_result_for_a_different_release(self):
+        """javbus 搜不到就返回首个近似命中，2026-09-02 因此刮错了整个 MIB 目录。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "ledger.db"
+            sqlite3.connect(db).close(); upgrade(db, MIGRATIONS)
+            connection = sqlite3.connect(db)
+            connection.executemany(
+                "INSERT INTO asset(id,location,path,name,medium,code) "
+                "VALUES(?,'local',?,?,'video',?)",
+                [(1, "1.mp4", "1.mp4", "SA-104"), (2, "2.mp4", "2.mp4", "IQQQ-026")])
+            connection.commit(); connection.close()
+
+            class LooseSearchProvider:
+                def query(self, code, source):
+                    if code == "SA-104":
+                        return {"source": source, "id": "AVSA-104", "maker": "别人的厂牌"}
+                    return {"source": source, "id": "IQQQ-26", "maker": "Attackers"}
+
+            raw = root / "raw"
+            output = root / "candidates.csv"
+            errors = root / "errors.csv"
+            with redirect_stdout(io.StringIO()):
+                result = self.scrape_codes.main([
+                    "--db", str(db), "--out", str(output), "--errors", str(errors),
+                    "--raw-dir", str(raw), "--log-dir", str(root / "logs"),
+                    "--delay", "0", "--min-free", "0", "--sources", "javbus",
+                ], provider=LooseSearchProvider())
+            self.assertEqual(result, 0)
+            with errors.open(encoding="utf-8-sig", newline="") as handle:
+                error_rows = list(csv.DictReader(handle))
+            self.assertEqual([(row["code"], row["kind"]) for row in error_rows],
+                             [("SA-104", "identity_mismatch")])
+            self.assertIn("AVSA-104", error_rows[0]["message"])
+            with output.open(encoding="utf-8-sig", newline="") as handle:
+                rows = list(csv.DictReader(handle))
+            # 补零差异是良性的，`IQQQ-26` 必须照常收下。
+            self.assertEqual({row["code"] for row in rows}, {"IQQQ-026"})
+            # 原始响应仍然落盘：拒收的是候选，不是证据。
+            self.assertTrue((raw / "SA-104" / "javbus.json").is_file())
+
     def test_creator_tag_review_queue_requires_approval_and_backup(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
