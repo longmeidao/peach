@@ -2318,7 +2318,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('.sgrid.mixgrid>.mixqueue{grid-area:queue;max-height:360px')
         self.assertPageContains('grid-template-areas:"media" "side" "queue"')
         self.assertPageContains('background:var(--detail-surface)')
-        self.assertPageContains("const kindLabel={mix:'Mix',parts:'分卷',playlist:'播放列表'}")
+        self.assertPageContains("const kindLabel={mix:'Mix',parts:'分卷',editions:'版本',playlist:'播放列表'}")
         self.assertPageContains('<h2>视频合集</h2>')
         self.assertPageContains('<h2>多媒体</h2>')
         self.assertPageContains('.sgrid.mixgrid>.mixqueue .mixlist{display:grid;grid-auto-flow:column')

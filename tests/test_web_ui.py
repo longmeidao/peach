@@ -2803,6 +2803,44 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("openEditions(it.edition_group.seed_id,id,true,anchor)")
         self.assertPageContains("if(parts[0]==='editions'", "刷新或前进后退要能回到同一个版次")
 
+    def test_entity_pages_collapse_edition_groups_too(self):
+        """资料页的网格也要折叠版次组。
+
+        只折叠分卷的话，女优页上 `ABF-187` 与 `ABF-187-UN` 仍旧并排两张卡，
+        两张都挂着「2 个版本」角标——角标说已经合过，眼前却是没合的两张。
+        """
+        self.assertPageContains(
+            "collapseEditionGroups(collapseMultipartItems(items.items)).map(it=>cardHtml(it))")
+
+    def test_the_edition_queue_is_labelled_and_clickable(self):
+        """版次队列要认自己这一类：标题、计数、每条的版次徽章和点击都得对上。
+
+        点击原先没有 editions 分支，会掉进播放列表分支，带着 undefined 的
+        playlistId 去请求——点了没反应，控制台也只有一条被吞掉的失败。
+        """
+        self.assertPageContains(
+            "kindLabel={mix:'Mix',parts:'分卷',editions:'版本',playlist:'播放列表'}")
+        self.assertPageContains(":queue.kind==='editions'?`${queue.items.length} 个版本`")
+        self.assertPageContains(
+            ":queueContext.kind==='editions'?openEditions(queueContext.seedId,+b.dataset.queueItem,true)")
+        self.assertPageContains("const edition=queue.kind==='editions'&&x.edition_label")
+        self.assertPageContains(
+            "EDITION_TONE={'中字':'subtitle','无码':'uncensored','无码破解':'cracked','有码':'censored'}")
+        self.assertPageContains(
+            '<span class="mixitemtext"><span class="mixitemhead">${edition}<b data-middle-truncate>')
+        # 徽章和标题同一行，所以标题那一行要自己成为 flex 容器；`<i>` 默认斜体，
+        # 徽章不是强调语气，font-style 必须写死。
+        self.assertPageContains(
+            ".mixitemtext .mixitemhead{display:flex;align-items:center;gap:5px;margin-top:0;color:var(--ink)}")
+        self.assertPageContains(".mixitemtext .mixitemhead b{flex:1;min-width:0}")
+        self.assertPageContains(".mixitemtext .qedition{flex:none;font-style:normal}")
+        self.assertPageContains(".javedition.censored{color:var(--muted)}")
+
+    def test_queue_thumbnails_fall_back_to_the_jav_cover(self):
+        """没抽过帧的条目在队列里退回番号封套，而不是一个纯黑块。"""
+        self.assertPageContains(
+            ':(x.is_jav&&x.code?`<img src="/cover?code=${encodeURIComponent(x.code)}"')
+
     def test_group_collapse_is_a_setting_and_defaults_to_on(self):
         """合并分卷与版本可以关掉，关掉后同番号的每一卷／每一版各占一张卡。
 

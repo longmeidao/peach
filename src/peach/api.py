@@ -864,6 +864,7 @@ def create_app(
     @app.api_route("/item/{item_id}", methods=["GET", "HEAD"])
     @app.api_route("/mix/{seed_id}/{mix_item_id}", methods=["GET", "HEAD"])
     @app.api_route("/parts/{part_seed_id}/{part_item_id}", methods=["GET", "HEAD"])
+    @app.api_route("/editions/{edition_seed_id}/{edition_item_id}", methods=["GET", "HEAD"])
     @app.api_route("/playlists", methods=["GET", "HEAD"])
     @app.api_route("/playlists/{playlist_id}/{playlist_item_id}", methods=["GET", "HEAD"])
     @app.api_route("/performers/{name:path}", methods=["GET", "HEAD"])
@@ -892,6 +893,7 @@ def create_app(
     def client_route(request: Request, item_id: int | None = None,
                      seed_id: int | None = None, mix_item_id: int | None = None,
                      part_seed_id: int | None = None, part_item_id: int | None = None,
+                     edition_seed_id: int | None = None, edition_item_id: int | None = None,
                      playlist_id: int | None = None, playlist_item_id: int | None = None,
                      kind: str | None = None, name: str | None = None,
                      args: dict[str, str] = Depends(require_page_auth)):
