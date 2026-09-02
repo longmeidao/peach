@@ -58,7 +58,7 @@
 | 生成产物跨机同步 | Syncthing 2.1.x，Windows send-only → Mac receive-only | 目录划分、忽略规则、方向固定与「Mac 不发布正式产物」的边界 |
 | Windows 托盘 | pystray 0.19.5（LGPLv3）、Pillow、Win32 Per-Monitor V2 DPI | Peach 服务归属、后台更新检查、菜单动作、品牌图标 |
 | macOS 菜单栏 | `pyobjc-framework-Cocoa==12.2.2`（MIT）提供 AppKit / PyObjCTools / objc | 附件应用策略、18 pt template 图、服务归属与菜单动作 |
-| 人脸取景 | `opencv-python-headless==5.0.0.93`（Apache-2.0）Haar cascade；MetaTube SDK `6a5e6128c725187aeaf921d48ed7d9cd9f30671b` 的主脸聚类只作算法参考 | 头像／封面离线脚本、最大脸选择、归一化焦点与 sidecar；Pigo v1.4.6（MIT）在 512 张真实头像无写入 POC 中检出 488 张、现有 OpenCV 检出 313 张，但 Pigo-only 抽样存在无脸误报且无 Python 部署优势，故不引入；下一轮只 POC 当前 OpenCV YuNet 与多脸主簇，不先替换运行时 |
+| 人脸取景 | `opencv-python-headless==5.0.0.93`（Apache-2.0）的 `cv2.FaceDetectorYN` + opencv_zoo 定版模型 `face_detection_yunet_2023mar.onnx`（sha256 `8f2383e4…52fa4`，232 KB，放 `peach-data/tools/yunet/`，不进 Git）；MetaTube SDK `6a5e6128c725187aeaf921d48ed7d9cd9f30671b` 的主脸聚类只作算法参考 | 头像／封面离线脚本共用 `peach.face_detect`，最大脸选择、归一化焦点与 sidecar。**Haar 级联已不可用**：OpenCV 5 把它移出了 Python wheel（`cv2.CascadeClassifier` 不存在、`cv2/data/` 只剩 `__init__.py`），两个脚本一直抛 AttributeError，954 张封面 0 个 sidecar，取景从未生效。YuNet 同属 OpenCV，不是替代品，换掉的只是检出器这一层：Haar 在 512 张头像上检出 313、46 张封面上检出 24，YuNet 首轮 12 张封面检出 11，且带置信度，不必再靠位置规则丢假阳性。Pigo v1.4.6（MIT）512 张检出 488，但存在无脸误报且无 Python 部署优势，仍不引入。 |
 | 115 文件清单 | `p115client==0.0.9.6.5.1`（MIT） | 只在显式 SHA-1 对账脚本中安装，Peach 负责 ledger 事务、备份与写入门槛 |
 | 智能体用量/配额 | Provider 官方配额接口；T3 Code/CodexBar 提供本地历史 | 任务路由、脱敏、过期快照标记 |
 | 视频出处/片尾证据 | 现有 FFmpeg 抽帧 + Windows.Media.Ocr WinRT Provider（Windows PowerShell 5.1 固定适配器） | 有界首尾采样、缓存、来源/Full version 分类、健康统计与人工复核 |
