@@ -49,6 +49,9 @@ SCOPES: dict[str, tuple[str, ...]] = {
                 "test_repo_hygiene.py",
                 "test_review_csv.py",
                 "test_subprocess_encoding.py", "test_module_layering.py"),
+    # 前端 island 层（ADR-0022）。产物与源码的断言不需要 Node；vitest 那部分在没有
+    # npm 时自己跳过，所以这个域在任何机器上都能跑，`full` 也就自动包含它。
+    "web": ("test_frontend_build.py", "test_web_ui.py"),
 }
 
 SCOPE_TEST_IDS: dict[str, tuple[str, ...]] = {
