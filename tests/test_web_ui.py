@@ -513,10 +513,11 @@ class WebUiSourceTests(unittest.TestCase):
                       self.app_js[anchor:anchor + 260],
                       "资料页外链 favicon 必须带 no-referrer")
 
-    def test_the_link_mark_endpoint_takes_a_link_id_not_a_url(self):
+    def test_no_caller_ever_hands_the_link_mark_endpoint_a_url(self):
         # 让前端把地址递给服务端去取，等于开一个任意地址抓取的口子。和 `/follow-stream`
-        # 同一条规矩：服务端只取账本里已有的地址。
-        self.assertPageContains("const linkMarkUrl=link=>`/link-mark?id=")
+        # 同一条规矩：服务端只取账本里已有的地址。`linkMarkUrl` 自己只吐 id 由
+        # test_web_js.test_the_link_mark_endpoint_only_ever_carries_an_id 验收；
+        # 这里守的是「没人绕过它另写一个带地址的调用」。
         self.assertPageLacks("/link-mark?url=", "外链图标端点不得接受前端给的地址")
 
     def test_social_links_show_only_the_platform_mark_not_the_handle(self):
@@ -546,7 +547,8 @@ class WebUiSourceTests(unittest.TestCase):
         # favicon 是别人服务器上的一张小位图：X 直接挡掉爬取（资料页上那个空白白圆就是
         # 它），取到的也多是 16×16，放进 32px 的圆里必然糊。416 条社媒链接里 372 条是
         # x.com／twitter.com，只给它一个内联标记就覆盖了 89%，还省一次跨站请求。
-        self.assertPageContains("const BRAND_ICONS=[[['x.com','twitter.com'],'brand-x']];")
+        # 哪些主机走内联标记（含子域、且只认后缀边界）由
+        # test_web_js.test_brand_marks_cover_the_host_and_its_subdomains_only 验收。
         self.assertPageContains('<symbol id="i-brand-x"')
         # 填充字形不吃通用的 stroke:currentColor;fill:none。
         self.assertPageContains('.entitylinkicon.brand svg{width:15px;height:15px;fill:currentColor;stroke:none}')
@@ -1544,7 +1546,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("'simpcity.cr':'https://simpcity.cr/data/assets/logo/favicon.png'")
         self.assertPageContains("'hanime1.me':'https://vdownload.hembed.com/image/icon/tab_logo.png")
         self.assertPageContains("'kemono.cr':'https://kemono.cr/assets/favicon-CPB6l7kH.ico'")
-        self.assertPageContains("const faviconFallbackUrl=domain=>`https://www.google.com/s2/favicons")
         self.assertPageLacks("negative_tags")
         self.assertPageContains(".tastehero{margin-bottom:16px}")
         self.assertPageContains(".tasteranks{display:grid;grid-template-columns:repeat(3")
@@ -2482,7 +2483,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".followfilters .sep{flex:none;width:1px;height:24px;background:var(--border-15)")
 
     def test_entity_profile_uses_logo_links_without_a_redundant_back_row(self):
-        self.assertPageContains("const faviconUrl=url=>")
         self.assertPageContains('class="entitylinkicon"')
         self.assertPageContains('class="entitylinklabel"')
         # favicon 取不到就把 <img> 摘掉，露出底下的 globe 图标；这条兜底由

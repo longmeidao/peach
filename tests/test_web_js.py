@@ -258,6 +258,94 @@ class WebJsBehaviourTests(unittest.TestCase):
 
     # ── core 里的格式化 ─────────────────────────────────────────────────────
 
+    # ── 链接与路径 ──────────────────────────────────────────────────────────
+
+    def test_the_link_mark_endpoint_only_ever_carries_an_id(self):
+        # 让前端把地址递给服务端去取，等于开一个任意地址抓取的口子。和
+        # `/follow-stream` 同一条规矩：服务端只认账本里已有的链接 id。
+        results = self.run_js([
+            ["core.js", "linkMarkUrl", [{"link_id": 7}]],
+            # `?? ''` 不是 `|| ''`：id 为 0 是合法的行号，不能被当成空。
+            ["core.js", "linkMarkUrl", [{"link_id": 0}]],
+            ["core.js", "linkMarkUrl", [{}]],
+            # 就算调用方把整条链接连 url 一起递进来，出去的也只有 id。
+            ["core.js", "linkMarkUrl", [{"link_id": 3, "url": "https://x.com/a"}]],
+        ])
+        self.assertEqual(results, ["/link-mark?id=7", "/link-mark?id=0",
+                                   "/link-mark?id=", "/link-mark?id=3"])
+        for url in results:
+            self.assertNotIn("url=", url, "外链图标端点不得接受前端给的地址")
+
+    def test_brand_marks_cover_the_host_and_its_subdomains_only(self):
+        # 416 条社媒链接里 372 条是 x.com／twitter.com，只给它一个内联标记就覆盖
+        # 89%，还省一次跨站请求。其余继续走 favicon，不为个位数的链接各配图标。
+        self.assertJsResults([
+            ("core.js", "brandIcon", ["https://x.com/remu"], "brand-x"),
+            ("core.js", "brandIcon", ["https://www.twitter.com/remu"], "brand-x"),
+            ("core.js", "brandIcon", ["https://mobile.x.com/remu"], "brand-x"),
+            # 只认后缀边界：`notx.com` 不是 `x.com` 的子域。
+            ("core.js", "brandIcon", ["https://notx.com/remu"], ""),
+            ("core.js", "brandIcon", ["https://example.com/a"], ""),
+            # 坏地址返回空串而不是抛异常——资料页的链接来自刮削，什么都可能有。
+            ("core.js", "brandIcon", ["不是网址"], ""),
+            ("core.js", "brandIcon", [None], ""),
+        ])
+
+    def test_link_host_reads_as_a_name_not_as_a_url(self):
+        # 域名当名字：厂牌页的官网链接直接显示它。`www.` 不携带信息，只占宽度。
+        self.assertJsResults([
+            ("core.js", "linkHost", ["https://www.example.com/a?b=1"], "EXAMPLE.COM"),
+            ("core.js", "linkHost", ["https://Sub.Example.co.jp/"], "SUB.EXAMPLE.CO.JP"),
+            ("core.js", "linkHost", ["不是网址"], ""),
+        ])
+
+    def test_favicon_urls_prefer_the_pinned_ones_and_fail_soft(self):
+        self.assertJsResults([
+            # 几个站点的 favicon 路径是固定住的，取不到默认那张。
+            ("core.js", "faviconUrl", ["https://kemono.cr/user/1"],
+             "https://kemono.cr/assets/favicon-CPB6l7kH.ico"),
+            ("core.js", "faviconUrl", ["https://www.kemono.cr/user/1"],
+             "https://kemono.cr/assets/favicon-CPB6l7kH.ico"),
+            ("core.js", "faviconUrl", ["https://example.com/deep/page"],
+             "https://example.com/favicon.ico"),
+            ("core.js", "faviconUrl", ["不是网址"], ""),
+            ("core.js", "faviconFallbackUrl", ["a b.com"],
+             "https://www.google.com/s2/favicons?domain=a%20b.com&sz=64"),
+        ])
+
+    def test_entity_paths_are_semantic_and_survive_slashes_in_names(self):
+        # 女优名字里有斜杠，不编码会把路径切成多段。
+        self.assertJsResults([
+            ("core.js", "entityPath", ["performer", "波多野結衣"],
+             "/performers/%E6%B3%A2%E5%A4%9A%E9%87%8E%E7%B5%90%E8%A1%A3"),
+            ("core.js", "entityPath", ["performer", "A/B"], "/performers/A%2FB"),
+            ("core.js", "entityPath", ["studio", "S1"], "/studios/S1"),
+            ("core.js", "entityPath", ["series", "X"], "/series/X"),
+            # 没登记的种类原样当路径段用，不静默变成 undefined。
+            ("core.js", "entityPath", ["新种类", "X"], "/新种类/X"),
+        ])
+
+    def test_only_the_home_and_state_routes_count_as_catalog(self):
+        # 「这条路径算不算馆藏列表」决定了状态标题、筛选栏和高亮；管理页不算。
+        self.assertJsResults([
+            ("core.js", "isCatalogPath", ["/"], True),
+            ("core.js", "isCatalogPath", ["/unseen"], True),
+            ("core.js", "isCatalogPath", ["/junk-files"], True),
+            ("core.js", "isCatalogPath", ["/stats"], False),
+            ("core.js", "isCatalogPath", ["/trash"], False),
+            # 原型链上的属性名不许算命中——这就是它用 hasOwnProperty 的原因。
+            ("core.js", "isCatalogPath", ["constructor"], False),
+            ("core.js", "isCatalogPath", ["toString"], False),
+        ])
+
+    def test_folded_names_compare_across_width_case_and_padding(self):
+        # 别名比对用它：全角、大小写、首尾空白都不该让同一个名字变成两个。
+        self.assertJsResults([
+            ("core.js", "foldName", ["  Remu  "], "remu"),
+            ("core.js", "foldName", ["ＲＥＭＵ"], "remu"),
+            ("core.js", "foldName", [None], ""),
+        ])
+
     def test_the_minus_one_duration_sentinel_never_becomes_a_duration(self):
         """账本里的 `-1` 是探测硬失败的哨兵，不是时长。
 
