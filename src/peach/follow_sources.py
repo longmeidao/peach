@@ -470,6 +470,16 @@ class _BaseConnector:
         return str(item.thumb_url or "") or None
 
     @classmethod
+    def profile_handle(cls, ref: str) -> str:
+        """这条 ref 里可以当作者别名用的平台手柄，没有就返回空串。
+
+        只有官方渠道才有这种手柄：`fanbox/ffxivinitiala` 里的 `ffxivinitiala`
+        就是作者本人在那个平台的名字。归档站与标签站的 ref 是数字 id 或标签，
+        它们不是名字，学成别名只会造出一个假作者。
+        """
+        return ""
+
+    @classmethod
     def is_history_end_error(cls, message: str) -> bool:
         """一句已经落盘的错误文本，其实是「历史到底」吗？
 
@@ -1602,6 +1612,11 @@ class FanboxConnector(_BaseConnector):
     provider = "fanbox"
     semantics = "work"
     _CREATOR_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+    @classmethod
+    def profile_handle(cls, ref: str) -> str:
+        return str(ref or "").strip()
+
     _IMPERSONATION = "firefox147"
 
     def __init__(self, *, detail_transport: HttpTransport | None = None, **kwargs):
@@ -1752,6 +1767,11 @@ class SubscribeStarConnector(_BaseConnector):
     _SLUG_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 
     @classmethod
+    def profile_handle(cls, ref: str) -> str:
+        # ref 带着站点主机名（`subscribestar.adult/initiala`），手柄只是最后那截。
+        return str(ref or "").strip().rsplit("/", 1)[-1]
+
+    @classmethod
     def _split_ref(cls, ref: str) -> tuple[str, str]:
         host, _, slug = str(ref or "").strip().partition("/")
         if host not in cls.HOSTS or not cls._SLUG_RE.fullmatch(slug):
@@ -1819,6 +1839,14 @@ class PatreonConnector(_BaseConnector):
     semantics = "work"
     _VANITY_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
     _POST_RE = re.compile(r"/posts/(?:[^/?#]*-)?(\d{4,})(?:[/?#]|$)")
+
+    @classmethod
+    def profile_handle(cls, ref: str) -> str:
+        value = str(ref or "").strip().strip("/")
+        if value.startswith("user/") or value.isdigit():
+            # 数字用户 id 页没有短名，`user/12345` 不是作者的名字。
+            return ""
+        return value.rsplit("/", 1)[-1]
 
     def _url(self, ref: str) -> str:
         value = str(ref or "").strip()
@@ -2116,6 +2144,15 @@ def is_history_end_error(provider: str, message: str) -> bool:
     """
     factory = CONNECTORS.get(str(provider or ""))
     return factory is not None and factory.is_history_end_error(message)
+
+
+def official_profile_handle(provider: str, ref: str) -> str:
+    """这条来源的 ref 里那个可信的作者手柄，没有就返回空串。
+
+    分派到该站自己的连接器：ref 的形状是站点知识。
+    """
+    factory = CONNECTORS.get(str(provider or ""))
+    return factory.profile_handle(ref) if factory is not None else ""
 
 
 def build_connector(provider: str, **kwargs) -> FollowConnector:

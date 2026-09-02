@@ -6,16 +6,14 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import sqlite3
-from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import DATABASE_PATH, SECRETS_DIR, SHARED_DATA_ROOT, SOURCES_DIR
 from . import follow_providers
-from .follow import FollowSourceError
-from .follow_secrets import (
-    CREDENTIAL_GUIDE, CredentialError, credential_store_for,
-)
+from .follow_check import plan_check, run_check
+from .follow_secrets import CREDENTIAL_GUIDE, credential_store_for
 from .follow_sources import CONNECTORS, build_connector
 from .follow_store import FollowStore
 
@@ -25,6 +23,9 @@ _SOURCE_URL = follow_providers.source_urls()
 
 #: 这些来源的每个条目是同一作品的一次发布，不是独立作品。
 _RELEASE_PROVIDERS = follow_providers.release_providers()
+
+#: 支持往回翻页的来源，和 Web 那边同一份声明。
+_BACKFILL_PROVIDERS = follow_providers.backfill_providers()
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:
@@ -79,50 +80,52 @@ def _list(args) -> int:
 
 
 def _check(args) -> int:
+    """检查更新。流程与 Web 的 `/api/follow/check` 共用 `follow_check.run_check`。
+
+    共用之前这两处并不等价：命令行没有 `--older` 往回翻页、凭据到位后的强制重取，
+    也不学官方渠道的作者别名。同一句「检查更新」在网页上做的事比在终端里多，
+    而没有任何地方说明这一点。
+    """
     store, connection = _store(args)
     credentials = credential_store_for(args.secrets_root, shared_root=args.shared_root)
+    older = bool(getattr(args, "older", False))
     failures = 0
+
+    @contextlib.contextmanager
+    def writer():
+        # 命令行是一条连接，写完就地提交：一条来源失败不该回滚前面成功的那些。
+        yield store
+        connection.commit()
+
     try:
-        rows = [row for row in store.sources(enabled_only=True)
-                if args.source is None or row["id"] == args.source]
+        rows = plan_check(store, credentials, source_id=args.source, older=older,
+                          force=args.force, backfill_providers=_BACKFILL_PROVIDERS)
         if not rows:
             print("没有需要检查的来源。")
             return 0
         for row in rows:
-            moment = datetime.now(timezone.utc)
-            provider, ref = row["provider"], row["ref"]
-            try:
-                credential = credentials.load(provider)
-                connector = build_connector(
-                    provider, credential=credential,
-                    gofile_credential=credentials.load("gofile"))
-                fetch = connector.fetch(
-                    ref,
-                    etag=None if args.force else row["etag"],
-                    last_modified=None if args.force else row["last_modified"])
-            except CredentialError as error:
-                store.record_error(row["id"], str(error), moment, status="unauthorized")
-                connection.commit()
-                print(f"! {provider}/{ref}：{error}")
+            result = run_check(row, credentials=credentials, writer=writer,
+                               connector_factory=build_connector, older=older)
+            tag = f"{result.provider}/{result.ref}"
+            if not result.ok:
+                print(f"! {tag}：{result.error}")
                 failures += 1
                 continue
-            except FollowSourceError as error:
-                store.record_error(row["id"], str(error), moment)
-                connection.commit()
-                print(f"! {provider}/{ref}：{error}")
-                failures += 1
+            if result.exhausted:
+                print(f"= {tag}：{result.message}")
                 continue
-            outcome = store.record(
-                row["id"], fetch,
-                creator_aliases=store.creator_aliases(row["entity_id"]), moment=moment)
-            connection.commit()
+            outcome = result.outcome
             if outcome.not_modified:
-                print(f"= {provider}/{ref}：无变化")
-            else:
-                print(f"+ {provider}/{ref}：发现 {outcome.discovered}，"
-                      f"新增 {outcome.added}，更新 {outcome.updated}")
-                if outcome.evidence_error:
-                    print(f"  ⚠ {outcome.evidence_error}")
+                print(f"= {tag}：无变化")
+                continue
+            page = f"第 {result.page} 页：" if result.older else ""
+            print(f"+ {tag}：{page}发现 {outcome.discovered}，"
+                  f"新增 {outcome.added}，更新 {outcome.updated}")
+            if outcome.evidence_error:
+                print(f"  ⚠ {outcome.evidence_error}")
+            if result.author_alias_learned:
+                learned = result.author_alias_learned
+                print(f"  · 记下别名 {learned['alias']} → {learned['canonical']}")
     finally:
         connection.close()
     return 1 if failures else 0
@@ -254,6 +257,8 @@ def register(commands) -> None:
     check = actions.add_parser("check", help="显式检查更新（唯一会联网的动作）")
     check.add_argument("--source", type=int, help="只检查这一个来源 id")
     check.add_argument("--force", action="store_true", help="忽略条件请求游标")
+    check.add_argument("--older", action="store_true",
+                       help="往回抓一页历史（只对支持翻页的来源有效）")
     check.set_defaults(handler=_check)
 
     feed = actions.add_parser("feed", help="按作品分组显示追更结果（不联网）")

@@ -12,11 +12,8 @@ from peach.follow_secrets import (
     SYNCABLE_FIELDS,
     credential_store_for,
 )
-from peach.web_follow import (
-    PROVIDER_LABELS,
-    _BACKFILL_PROVIDERS,
-    _OFFICIAL_IDENTITY_PROVIDERS,
-)
+from peach.follow_store import _OFFICIAL_IDENTITY_PROVIDERS
+from peach.web_follow import PROVIDER_LABELS, _BACKFILL_PROVIDERS
 
 
 class ProviderRegistryTests(unittest.TestCase):

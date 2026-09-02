@@ -6,15 +6,16 @@ APScheduler 任务触发。
 """
 from __future__ import annotations
 
+import contextlib
 import html
 import json
 import os
 import re
 import urllib.parse
-from datetime import datetime, timezone
 
 from . import follow_providers
-from .follow import FollowHistoryEnd, FollowSourceError
+from .follow import FollowSourceError
+from .follow_check import plan_check, run_check
 from .follow_discovery import discover
 from .follow_secrets import (
     CREDENTIAL_GUIDE, CredentialError, CredentialStore, credential_store_for,
@@ -24,7 +25,9 @@ from .follow_sources import (
     display_thumb_url, f95_attachment_media_items, is_history_end_error,
     parse_source_url, resource_links,
 )
-from .follow_store import FollowStore, ReleaseGroup
+from .follow_store import (
+    FollowStore, ReleaseGroup, author_display_text, normalized_author_name,
+)
 from .taste_history import read_creator_candidates
 
 
@@ -37,7 +40,6 @@ _STATUSES = ("new", "seen", "saved", "ignored")
 #: 所以这里不是分页，只是别让一个失控的库把内存吃干的护栏。
 _ALL_ITEMS = 100_000
 _BACKFILL_PROVIDERS = follow_providers.backfill_providers()
-_OFFICIAL_IDENTITY_PROVIDERS = follow_providers.official_identity_providers()
 
 
 def _store(contract, connection) -> FollowStore:
@@ -319,34 +321,15 @@ def _group_payload(group: ReleaseGroup,
     }
 
 
-#: 标签里跟在中点后面的服务名。`LazyProcrastinator · fanbox` 和 rule34video 上的
-#: `lazyprocrastinator` 是同一个人，中点后面那截只说明他在哪个平台连载。
-_LABEL_SERVICE_RE = re.compile(r"\s*[·|]\s*[A-Za-z0-9_\-]+\s*$")
-_AUTHOR_NOISE_RE = re.compile(r"[^0-9a-z一-鿿]+")
-_F95_TITLE_SUFFIX_RE = re.compile(r"\s+collections?\s*$", re.IGNORECASE)
-
-
-def _normalized_author_name(value: str, *, provider: str = "") -> str:
-    stripped = _LABEL_SERVICE_RE.sub("", str(value or "").strip())
-    if provider == "f95zone":
-        # F95 thread titles describe a container, not a different author.  The real
-        # data is ``Lazy Procrastinator Collection`` while every author source is
-        # ``LazyProcrastinator``; retaining the generic suffix creates a false group.
-        stripped = _F95_TITLE_SUFFIX_RE.sub("", stripped)
-    return _AUTHOR_NOISE_RE.sub("", stripped.casefold())
-
-
-def _author_display_text(value: str) -> str:
-    """Remove container/service wording that is not part of an author name."""
-    stripped = _LABEL_SERVICE_RE.sub("", str(value or "").strip())
-    return _F95_TITLE_SUFFIX_RE.sub("", stripped).strip()
-
-
 def _author_display_name(row) -> str:
-    """Return the readable author spelling carried by one follow source."""
+    """一条追更来源上那个可读的作者拼写。
+
+    名字怎么算「同一个人」由 `follow_store` 定义（那是别名表的主键口径）；
+    这里只决定「这一行显示哪个字段」。
+    """
     if row["entity_id"] and row["entity_name"]:
         return str(row["entity_name"])
-    return _author_display_text(row["label"] or row["ref"] or "")
+    return author_display_text(row["label"] or row["ref"] or "")
 
 
 def _source_metadata(row) -> dict:
@@ -378,133 +361,11 @@ def author_key(row, aliases: dict[str, str] | None = None) -> str:
         normalized = recorded
     else:
         label = str(row["label"] or row["ref"] or "")
-        normalized = _normalized_author_name(label, provider=str(row["provider"] or ""))
+        normalized = normalized_author_name(label, provider=str(row["provider"] or ""))
     if normalized:
         normalized = (aliases or {}).get(normalized, normalized)
         return f"name:{normalized}"
     return f"source:{row['id']}"
-
-
-def _follow_alias_state(connection) -> tuple[dict[str, str], list[dict]]:
-    rows = connection.execute(
-        "SELECT alias_key,alias_name,canonical_key,canonical_name,source "
-        "FROM follow_author_alias ORDER BY canonical_name,alias_name"
-    ).fetchall()
-    mapping = {str(row["alias_key"]): str(row["canonical_key"]) for row in rows}
-    groups: dict[str, dict] = {}
-    for row in rows:
-        canonical_key = str(row["canonical_key"])
-        group = groups.setdefault(canonical_key, {
-            "canonical_key": canonical_key,
-            # 旧别名记录可能把 F95 的容器标题保存成规范显示名；只修正读投影，
-            # 不在这个只读接口里偷偷改真实表。
-            "canonical_name": _author_display_text(row["canonical_name"]),
-            "aliases": [],
-        })
-        if str(row["alias_key"]) != canonical_key:
-            group["aliases"].append({
-                "key": str(row["alias_key"]),
-                "name": str(row["alias_name"]),
-                "source": str(row["source"]),
-            })
-    return mapping, [group for group in groups.values() if group["aliases"]]
-
-
-def _upsert_follow_author_alias(connection, canonical_name: str, alias_name: str,
-                                *, source: str) -> dict | None:
-    """Persist one alias without letting automatic evidence overwrite a decision.
-
-    Manual confirmation may deliberately regroup an existing alias. Automatic learning is
-    narrower: it only fills a previously unknown platform handle and leaves every existing
-    mapping, especially a manual one, untouched.
-    """
-    canonical_key = _normalized_author_name(canonical_name)
-    alias_key = _normalized_author_name(alias_name)
-    if not canonical_key or not alias_key:
-        raise ValueError("规范作者名和平台别名都不能为空")
-    if canonical_key == alias_key:
-        raise ValueError("这两个名字归一化后相同，不需要维护别名")
-
-    stamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    mapping, _ = _follow_alias_state(connection)
-    canonical_root = mapping.get(canonical_key, canonical_key)
-    alias_root = mapping.get(alias_key, alias_key)
-    if source != "manual":
-        existing = connection.execute(
-            "SELECT 1 FROM follow_author_alias WHERE alias_key=?", (alias_key,)
-        ).fetchone()
-        if existing is not None or alias_root != alias_key:
-            return None
-        canonical_row = connection.execute(
-            "SELECT canonical_name FROM follow_author_alias WHERE canonical_key=? "
-            "ORDER BY CASE WHEN alias_key=canonical_key THEN 0 ELSE 1 END LIMIT 1",
-            (canonical_root,),
-        ).fetchone()
-        if canonical_row is not None:
-            canonical_name = str(canonical_row["canonical_name"])
-    elif canonical_root != alias_root:
-        connection.execute(
-            "UPDATE follow_author_alias SET canonical_key=?,canonical_name=?,updated_at=? "
-            "WHERE canonical_key=?",
-            (canonical_root, canonical_name, stamp, alias_root),
-        )
-
-    conflict = (
-        "DO UPDATE SET canonical_key=excluded.canonical_key,"
-        "canonical_name=excluded.canonical_name,alias_name=excluded.alias_name,"
-        "source=excluded.source,updated_at=excluded.updated_at"
-        if source == "manual" else "DO NOTHING"
-    )
-    sql = (
-        "INSERT INTO follow_author_alias(alias_key,alias_name,canonical_key,"
-        "canonical_name,source,created_at,updated_at) VALUES(?,?,?,?,?,?,?) "
-        f"ON CONFLICT(alias_key) {conflict}"
-    )
-    connection.execute(
-        sql, (canonical_root, canonical_name, canonical_root, canonical_name,
-              source, stamp, stamp),
-    )
-    inserted = connection.execute(
-        sql, (alias_key, alias_name, canonical_root, canonical_name,
-              source, stamp, stamp),
-    ).rowcount
-    if source != "manual" and not inserted:
-        return None
-    return {"canonical": canonical_name, "alias": alias_name, "source": source}
-
-
-def _official_profile_handle(provider: str, ref: str) -> str:
-    if provider == "fanbox":
-        return str(ref or "").strip()
-    if provider == "subscribestar":
-        return str(ref or "").strip().rsplit("/", 1)[-1]
-    if provider == "patreon":
-        value = str(ref or "").strip().strip("/")
-        if value.startswith("user/") or value.isdigit():
-            return ""
-        return value.rsplit("/", 1)[-1]
-    return ""
-
-
-def _learn_official_author_alias(connection, provider: str, ref: str,
-                                  candidates) -> dict | None:
-    """Learn a platform handle only from one unambiguous official profile name."""
-    if provider not in _OFFICIAL_IDENTITY_PROVIDERS:
-        return None
-    authors: dict[str, str] = {}
-    for candidate in candidates:
-        name = str(candidate.author or "").strip()
-        key = _normalized_author_name(name)
-        if key:
-            authors.setdefault(key, name)
-    if len(authors) != 1:
-        return None
-    canonical_key, canonical_name = next(iter(authors.items()))
-    handle = _official_profile_handle(provider, ref)
-    if not handle or _normalized_author_name(handle) == canonical_key:
-        return None
-    return _upsert_follow_author_alias(
-        connection, canonical_name, handle, source=f"official:{provider}")
 
 
 def _follow_alias_suggestions(rows, aliases: dict[str, str]) -> list[dict]:
@@ -698,7 +559,7 @@ def q_follow_tags(contract, args) -> dict:
     with contract.database.read_connection() as connection:
         store = _store(contract, connection)
         source_rows = store.sources()
-        alias_map, _aliases = _follow_alias_state(connection)
+        alias_map, _aliases = store.author_aliases()
         enabled = {int(row["id"]) for row in source_rows if row["enabled"]}
         by_source = {int(row["id"]): row for row in source_rows}
         items = tuple(item for item in store.items(limit=_ALL_ITEMS)
@@ -748,7 +609,7 @@ def q_follow(contract, args) -> dict:
     with contract.database.read_connection() as connection:
         store = _store(contract, connection)
         source_rows = store.sources()
-        alias_map, author_aliases = _follow_alias_state(connection)
+        alias_map, author_aliases = store.author_aliases()
         sources = [_source_payload(row, alias_map) for row in source_rows]
         alias_suggestions = _follow_alias_suggestions(source_rows, alias_map)
         enabled_source_ids = {int(row["id"]) for row in source_rows if row["enabled"]}
@@ -868,60 +729,25 @@ def w_follow_status(contract, body) -> dict:
     return result
 
 
-def _follow_playback_row(connection, item_id: int):
-    row = connection.execute(
-        "SELECT id,status FROM follow_item WHERE id=?", (item_id,),
-    ).fetchone()
-    if row is None:
-        raise ValueError("follow item not found")
-    return row
-
-
 def w_follow_play(contract, body) -> dict:
     """记录一次关注页直接播放；候选无需先保存成 asset。"""
     item_id = int(body["item"])
     contract.cache_bust()
     with contract.database.write_transaction() as connection:
-        row = _follow_playback_row(connection, item_id)
-        stamp = datetime.now(timezone.utc).timestamp()
-        connection.execute(
-            "INSERT INTO follow_playback(follow_item_id,profile_id,play_count,last_played) "
-            "VALUES(?,'local-default',1,?) ON CONFLICT(follow_item_id,profile_id) "
-            "DO UPDATE SET play_count=follow_playback.play_count+1,last_played=excluded.last_played",
-            (item_id, stamp),
-        )
-        if row["status"] == "new":
-            connection.execute(
-                "UPDATE follow_item SET status='seen' WHERE id=?", (item_id,),
-            )
-    return {"ok": True, "item": item_id, "status": "seen" if row["status"] == "new" else row["status"]}
+        status = _store(contract, connection).record_playback(item_id)
+    return {"ok": True, "item": item_id, "status": status}
 
 
 def w_follow_activity(contract, body) -> dict:
     """累计关注页在线播放的真实时长与最远到达位置。"""
     item_id = int(body["item"])
-    position = max(float(body.get("position", 0)), 0)
-    duration = max(float(body.get("duration", 0)), 0)
-    delta = max(float(body.get("delta", 0)), 0)
-    ended = bool(body.get("ended"))
-    ratio = 1.0 if ended else (min(position / duration, 1.0) if duration > 0 else 0.0)
     contract.cache_bust()
     with contract.database.write_transaction() as connection:
-        _follow_playback_row(connection, item_id)
-        stamp = datetime.now(timezone.utc).timestamp()
-        connection.execute(
-            "INSERT INTO follow_playback(follow_item_id,profile_id,play_count,play_seconds,max_reached,last_played) "
-            "VALUES(?,'local-default',1,?,?,?) ON CONFLICT(follow_item_id,profile_id) DO UPDATE SET "
-            "play_seconds=follow_playback.play_seconds+excluded.play_seconds,"
-            "max_reached=max(follow_playback.max_reached,excluded.max_reached),"
-            "last_played=excluded.last_played",
-            (item_id, delta, ratio, stamp),
-        )
-        result = connection.execute(
-            "SELECT play_seconds,max_reached FROM follow_playback "
-            "WHERE follow_item_id=? AND profile_id='local-default'", (item_id,),
-        ).fetchone()
-    return {"ok": True, "item": item_id, **dict(result)}
+        result = _store(contract, connection).record_playback_activity(
+            item_id,
+            position=body.get("position", 0), duration=body.get("duration", 0),
+            delta=body.get("delta", 0), ended=bool(body.get("ended")))
+    return {"ok": True, "item": item_id, **result}
 
 
 def w_follow_save(contract, body) -> dict:
@@ -949,6 +775,52 @@ def w_follow_check(contract, body) -> dict:
         contract.follow_check_lock.release()
 
 
+def _check_writer(contract):
+    """给 `follow_check` 用的写事务工厂：每次写一条来源各自提交。"""
+    @contextlib.contextmanager
+    def writer():
+        with contract.database.write_transaction() as connection:
+            yield _store(contract, connection)
+    return writer
+
+
+def _check_payload(result) -> dict:
+    """把一次检查结果摊成界面用的载荷。
+
+    站名和来源标签按人看得懂的写法给，不让用户去猜 `rule34xxx` 是哪个站。
+    """
+    payload = {
+        "source": result.source_id, "provider": result.provider,
+        "provider_label": PROVIDER_LABELS.get(result.provider, result.provider),
+        "ref": result.ref, "label": result.label, "ok": result.ok,
+        # 这次读的是第几页，以及往回还剩没剩。界面据此说「已经抓到第 N 页」，
+        # 而不是让用户点了一次不知道自己走到哪儿了。
+        "page": result.page, "older": result.older,
+    }
+    if not result.ok:
+        payload.update({"status": result.status, "error": result.error})
+        return payload
+    if result.exhausted:
+        payload.update({"exhausted": True, "message": result.message})
+        return payload
+    fetch, outcome = result.fetch, result.outcome
+    payload.update({
+        "not_modified": outcome.not_modified, "discovered": outcome.discovered,
+        "added": outcome.added, "updated": outcome.updated,
+        # 抓到了但判为「不是 release」而丢掉的条数。丢了多少必须说出来，
+        # 否则用户分不清少的是被过滤掉的还是根本没抓到——这次问「为什么这么少」
+        # 就是因为界面从来没说过这类数字。
+        "skipped": fetch.skipped,
+        "skipped_compilations": fetch.skipped_compilations,
+        # 列表判不出来、额外抓了详情页的条数。这是唯一会放大请求数的路径。
+        "probed": fetch.probed,
+        # 证据没存下来不算检查失败，但界面必须说出来，不能悄悄少一份原始响应。
+        "evidence_error": outcome.evidence_error,
+        "author_alias_learned": result.author_alias_learned,
+    })
+    return payload
+
+
 def _run_follow_check(contract, body) -> dict:
     requested = body.get("source")
     source_id = requested if isinstance(requested, int) else None
@@ -957,81 +829,14 @@ def _run_follow_check(contract, body) -> dict:
     # （rule34video 的作者页一页 24 条，实际 61 页）。用户点一次，往前挪一页。
     older = bool(body.get("older"))
     credentials = _credential_store(contract)
-    results: list[dict] = []
     with contract.database.read_connection() as connection:
-        store = _store(contract, connection)
-        rows = [dict(row) for row in store.sources(enabled_only=True)
-                if (source_id is None or row["id"] == source_id)
-                and (not older or row["provider"] in _BACKFILL_PROVIDERS)]
-        for row in rows:
-            row["force_media_reparse"] = (
-                not older and credentials.load(row["provider"]) is not None
-                and store.source_needs_media_reparse(row["id"])
-            )
-    for row in rows:
-        moment = datetime.now(timezone.utc)
-        provider, ref = row["provider"], row["ref"]
-        page = (row["backfill_page"] + 1) if older else 0
-        try:
-            connector_kwargs = {"credential": credentials.load(provider)}
-            gofile_credential = credentials.load("gofile")
-            if gofile_credential is not None:
-                connector_kwargs["gofile_credential"] = gofile_credential
-            connector = build_connector(provider, **connector_kwargs)
-            # 凭据已经存在但旧候选仍标着 needs_credential 时，条件请求的 304
-            # 会让旧解析结果永久不变。显式检查应无条件重取一次，让凭据真正生效。
-            fetch = connector.fetch(
-                ref,
-                etag=None if row["force_media_reparse"] else row["etag"],
-                last_modified=(None if row["force_media_reparse"]
-                               else row["last_modified"]),
-                page=page,
-            )
-        except FollowHistoryEnd:
-            with contract.database.write_transaction() as connection:
-                _store(contract, connection).record_history_end(row["id"], moment)
-            results.append({
-                "source": row["id"], "provider": provider,
-                "provider_label": PROVIDER_LABELS.get(provider, provider),
-                "ref": ref, "label": row["label"], "ok": True,
-                "page": page, "older": older, "exhausted": True,
-                "message": "没有更多历史内容",
-            })
-            continue
-        except CredentialError as error:
-            results.append(_failure(contract, row, error, moment, "unauthorized"))
-            continue
-        except FollowSourceError as error:
-            results.append(_failure(contract, row, error, moment, "error"))
-            continue
-        with contract.database.write_transaction() as connection:
-            store = _store(contract, connection)
-            outcome = store.record(
-                row["id"], fetch,
-                creator_aliases=store.creator_aliases(row["entity_id"]), moment=moment,
-                page=page)
-            learned_alias = _learn_official_author_alias(
-                connection, provider, ref, fetch.candidates)
-        results.append({
-            "source": row["id"], "provider": provider,
-            "provider_label": PROVIDER_LABELS.get(provider, provider),
-            "ref": ref, "label": row["label"], "ok": True,
-            # 这次读的是第几页，以及往回还剩没剩。界面据此说「已经抓到第 N 页」，
-            # 而不是让用户点了一次不知道自己走到哪儿了。
-            "page": page, "older": older,
-            "not_modified": outcome.not_modified, "discovered": outcome.discovered,
-            "added": outcome.added, "updated": outcome.updated,
-            # 抓到了但判为「不是 release」而丢掉的条数。丢了多少必须说出来，
-            # 否则用户分不清少的是被过滤掉的还是根本没抓到——这次问「为什么这么少」
-            # 就是因为界面从来没说过这类数字。
-            "skipped": fetch.skipped,
-            "skipped_compilations": fetch.skipped_compilations,
-            # 列表判不出来、额外抓了详情页的条数。这是唯一会放大请求数的路径。
-            "probed": fetch.probed,
-            # 证据没存下来不算检查失败，但界面必须说出来，不能悄悄少一份原始响应。
-            "evidence_error": outcome.evidence_error,
-            "author_alias_learned": learned_alias,
-        })
+        rows = plan_check(_store(contract, connection), credentials,
+                          source_id=source_id, older=older,
+                          backfill_providers=_BACKFILL_PROVIDERS)
+    writer = _check_writer(contract)
+    results = [_check_payload(run_check(
+        row, credentials=credentials, writer=writer,
+        connector_factory=build_connector, older=older)) for row in rows]
     return {"ok": True, "checked": len(results), "results": results}
 
 
@@ -1051,17 +856,6 @@ def w_follow_schedule(contract, body) -> dict:
         enabled=body.get("enabled", True),
         interval_minutes=body.get("interval_minutes", 60),
     )
-
-
-def _failure(contract, row, error, moment, status) -> dict:
-    with contract.database.write_transaction() as connection:
-        _store(contract, connection).record_error(
-            row["id"], str(error), moment, status=status)
-    # 界面按人看得懂的站名和来源标签报失败，不让用户去猜 `rule34xxx` 是哪个站。
-    return {"source": row["id"], "provider": row["provider"],
-            "provider_label": PROVIDER_LABELS.get(row["provider"], row["provider"]),
-            "ref": row["ref"], "label": row["label"],
-            "ok": False, "status": status, "error": str(error)}
 
 
 def _resolve_label(contract, parsed, credential) -> str:
@@ -1097,7 +891,7 @@ def w_follow_source(contract, body) -> dict:
         if not isinstance(source_id, int):
             raise ValueError("id must be an integer follow source id")
         with contract.database.write_transaction() as connection:
-            connection.execute("DELETE FROM follow_source WHERE id=?", (source_id,))
+            _store(contract, connection).remove_source(source_id)
         return {"ok": True, "removed": source_id}
     if action == "enabled":
         source_id = body.get("id")
@@ -1120,7 +914,7 @@ def w_follow_source(contract, body) -> dict:
     label = str(body.get("label") or "").strip() or _resolve_label(
         contract, parsed, credential)
     author_hint = str(body.get("author") or "").strip()
-    author_hint = _normalized_author_name(author_hint) if author_hint else ""
+    author_hint = normalized_author_name(author_hint) if author_hint else ""
     metadata = {"author_key": author_hint} if author_hint else None
     with contract.database.write_transaction() as connection:
         source_id = _store(contract, connection).register(
@@ -1148,21 +942,10 @@ def w_follow_author_alias(contract, body) -> dict:
     action = str(body.get("action") or "add")
     if action == "remove":
         alias_name = str(body.get("alias") or "").strip()
-        alias_key = _normalized_author_name(alias_name)
-        if not alias_key:
-            raise ValueError("别名不能为空")
         with contract.database.write_transaction() as connection:
-            row = connection.execute(
-                "SELECT canonical_key FROM follow_author_alias WHERE alias_key=?",
-                (alias_key,),
-            ).fetchone()
-            if row is None:
-                raise ValueError("这个作者别名不存在")
-            if str(row["canonical_key"]) == alias_key:
-                raise ValueError("规范名不能作为别名移除")
-            connection.execute(
-                "DELETE FROM follow_author_alias WHERE alias_key=?", (alias_key,))
-            _, groups = _follow_alias_state(connection)
+            store = _store(contract, connection)
+            store.remove_author_alias(alias_name)
+            _, groups = store.author_aliases()
         return {"ok": True, "removed": alias_name, "author_aliases": groups}
     if action != "add":
         raise ValueError(f"unknown follow author alias action: {action}")
@@ -1170,9 +953,9 @@ def w_follow_author_alias(contract, body) -> dict:
     canonical_name = str(body.get("canonical") or "").strip()
     alias_name = str(body.get("alias") or "").strip()
     with contract.database.write_transaction() as connection:
-        _upsert_follow_author_alias(
-            connection, canonical_name, alias_name, source="manual")
-        _, groups = _follow_alias_state(connection)
+        store = _store(contract, connection)
+        store.upsert_author_alias(canonical_name, alias_name, source="manual")
+        _, groups = store.author_aliases()
     return {"ok": True, "canonical": canonical_name, "alias": alias_name,
             "author_aliases": groups}
 

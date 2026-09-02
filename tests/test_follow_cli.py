@@ -178,6 +178,72 @@ class FollowCliTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("HTTP 503", output)
 
+    def test_check_learns_an_official_author_handle_like_the_web_surface_does(self):
+        """命令行抓完也要学作者别名，否则同一个人还是显示成两个作者。
+
+        以前只有 `/api/follow/check` 学：`peach follow check` 抓 fanbox 那条来源
+        什么都不记，而两处都叫「检查更新」，没有任何地方说明差别在哪。
+        """
+        self._run("add", "--provider", "fanbox", "--ref", "ffxivinitiala")
+        fetch = _fetch(provider="fanbox", ref="ffxivinitiala",
+                       request_url="https://ffxivinitiala.fanbox.cc/",
+                       candidates=(
+                           FollowCandidate(provider="fanbox", external_id="1",
+                                           title="A", author="Initiala"),))
+        with mock.patch.object(follow_cli, "build_connector") as factory:
+            factory.return_value.fetch.return_value = fetch
+            code, output = self._run("check")
+        self.assertEqual(code, 0)
+        self.assertIn("记下别名 ffxivinitiala → Initiala", output)
+        connection = sqlite3.connect(self.db)
+        rows = connection.execute(
+            "SELECT alias_key,canonical_key,source FROM follow_author_alias "
+            "ORDER BY alias_key").fetchall()
+        connection.close()
+        self.assertEqual(rows, [("ffxivinitiala", "initiala", "official:fanbox"),
+                                ("initiala", "initiala", "official:fanbox")])
+
+    def test_check_older_pages_back_only_where_paging_actually_works(self):
+        """`--older` 往回抓一页；官方渠道没有历史分页，不会白打请求。"""
+        self._run("add", "--provider", "kemono", "--ref", "fanbox/1")
+        self._run("add", "--provider", "fanbox", "--ref", "ffxivinitiala")
+        seen = []
+
+        def factory(provider, **kwargs):
+            connector = mock.Mock()
+
+            def fetch(ref, *, etag=None, last_modified=None, page=0):
+                seen.append((provider, page))
+                return _fetch(provider=provider, ref=ref,
+                              request_url=f"https://{provider}.test/{ref}")
+
+            connector.fetch.side_effect = fetch
+            return connector
+
+        with mock.patch.object(follow_cli, "build_connector", factory):
+            code, output = self._run("check", "--older")
+        self.assertEqual(code, 0)
+        self.assertEqual(seen, [("kemono", 1)], "fanbox 不支持往回翻页")
+        self.assertIn("第 1 页", output)
+
+    def test_force_skips_the_conditional_cursors(self):
+        self._add_one()
+        seen = []
+
+        def factory(provider, **kwargs):
+            connector = mock.Mock()
+
+            def fetch(ref, *, etag=None, last_modified=None, page=0):
+                seen.append((etag, last_modified))
+                return _fetch(not_modified=True)
+
+            connector.fetch.side_effect = fetch
+            return connector
+
+        with mock.patch.object(follow_cli, "build_connector", factory):
+            self._run("check", "--force")
+        self.assertEqual(seen, [(None, None)])
+
     def test_check_skips_disabled_sources(self):
         self._run("add", "--provider", "rule34video", "--ref", "lazyprocrastinator")
         connection = sqlite3.connect(self.db)

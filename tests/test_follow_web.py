@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
-from peach import web_follow
+from peach import follow_store, web_follow
 from peach.follow import FollowHistoryEnd
 from peach.follow import FollowSourceError
 from peach.follow_discovery import Discovery, ExternalSearch
@@ -2088,9 +2088,9 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertNotEqual(key(label="", id=1), key(label="", id=2))
 
     def test_collection_is_container_copy_not_part_of_the_author_display_name(self):
-        self.assertEqual(web_follow._author_display_text("Billyhhyb Collection"),
+        self.assertEqual(follow_store.author_display_text("Billyhhyb Collection"),
                          "Billyhhyb")
-        self.assertEqual(web_follow._author_display_text("Billyhhyb · patreon"),
+        self.assertEqual(follow_store.author_display_text("Billyhhyb · patreon"),
                          "Billyhhyb")
 
     def test_avatars_only_come_from_providers_that_actually_serve_one(self):

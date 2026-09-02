@@ -8,7 +8,9 @@ from pathlib import Path
 
 from peach.follow import FollowSourceError
 from peach.follow_sources import FollowCandidate, SourceFetch
-from peach.follow_store import FollowStore, ReleaseGroup
+from peach.follow_store import (
+    FollowStore, ReleaseGroup, author_display_text, normalized_author_name,
+)
 from peach.migrations import discover
 
 
@@ -559,6 +561,130 @@ class ReleaseGroupTests(unittest.TestCase):
         with self.assertRaises(Exception):
             group.release_key = "other"
 
+
+class AuthorIdentityTests(_StoreCase):
+    """作者别名表的写入口径。以前这些 SQL 直接写在 Web 处理函数里。"""
+
+    def test_the_container_suffix_is_not_part_of_the_author_name(self):
+        """F95 的线程标题说的是一个容器，不是另一个作者。
+
+        真实数据是 `Lazy Procrastinator Collection`，而每一条作者来源都是
+        `LazyProcrastinator`；留着这个通用后缀会凭空多出一个分组。
+        """
+        self.assertEqual(
+            normalized_author_name("Lazy Procrastinator Collection",
+                                   provider="f95zone"),
+            normalized_author_name("LazyProcrastinator"))
+        # 只对 F95 成立：别的站上 `Collection` 可能真是名字的一部分。
+        self.assertNotEqual(
+            normalized_author_name("Lazy Procrastinator Collection"),
+            normalized_author_name("LazyProcrastinator"))
+
+    def test_the_service_suffix_only_says_where_they_publish(self):
+        self.assertEqual(normalized_author_name("LazyProcrastinator · fanbox"),
+                         normalized_author_name("lazyprocrastinator"))
+        self.assertEqual(author_display_text("Billyhhyb · patreon"), "Billyhhyb")
+
+    def test_a_manual_alias_maps_both_names_to_one_canonical_key(self):
+        self.store.upsert_author_alias("Initiala", "ffxivinitiala", source="manual",
+                                       moment=MOMENT)
+        mapping, groups = self.store.author_aliases()
+        self.assertEqual(mapping["ffxivinitiala"], "initiala")
+        self.assertEqual(mapping["initiala"], "initiala")
+        self.assertEqual([group["canonical_name"] for group in groups], ["Initiala"])
+        self.assertEqual([alias["name"] for alias in groups[0]["aliases"]],
+                         ["ffxivinitiala"])
+
+    def test_automatic_evidence_never_overwrites_a_decision(self):
+        """人工确认可以有意重新分组；自动证据只填此前未知的手柄。"""
+        self.store.upsert_author_alias("Initiala", "ffxivinitiala", source="manual",
+                                       moment=MOMENT)
+        self.assertIsNone(self.store.upsert_author_alias(
+            "Someone Else", "ffxivinitiala", source="official:fanbox", moment=MOMENT))
+        mapping, _groups = self.store.author_aliases()
+        self.assertEqual(mapping["ffxivinitiala"], "initiala")
+
+    def test_two_names_that_normalize_the_same_are_not_an_alias(self):
+        for canonical, alias in (("Initiala", "initi-ala"), ("", "x"), ("x", "")):
+            with self.assertRaises(ValueError):
+                self.store.upsert_author_alias(canonical, alias, source="manual")
+
+    def test_the_canonical_name_cannot_be_removed_as_an_alias(self):
+        """删规范名会拆散整个组，剩下的别名指向一个不存在的键。"""
+        self.store.upsert_author_alias("Initiala", "ffxivinitiala", source="manual",
+                                       moment=MOMENT)
+        with self.assertRaises(ValueError):
+            self.store.remove_author_alias("Initiala")
+        with self.assertRaises(ValueError):
+            self.store.remove_author_alias("never-registered")
+        with self.assertRaises(ValueError):
+            self.store.remove_author_alias("")
+        self.store.remove_author_alias("ffxivinitiala")
+        self.assertEqual(self.store.author_aliases(), ({"initiala": "initiala"}, []))
+
+    def test_an_official_handle_is_learned_only_from_one_unambiguous_author(self):
+        learned = self.store.learn_official_author_alias(
+            "fanbox", "ffxivinitiala",
+            (_candidate("1", "a", provider="fanbox", author="Initiala"),))
+        self.assertEqual(learned["alias"], "ffxivinitiala")
+        self.assertEqual(learned["source"], "official:fanbox")
+        # 归档站的 ref 是数字 id，不是名字。
+        self.assertIsNone(self.store.learn_official_author_alias(
+            "kemono", "fanbox/30917150",
+            (_candidate("1", "a", provider="kemono", author="Initiala"),)))
+
+
+class SourceRemovalTests(_StoreCase):
+    def test_removing_a_source_takes_it_out_of_the_listing(self):
+        source_id = self._source()
+        other = self._source(provider="rule34xxx", ref="tag")
+        self.store.remove_source(source_id)
+        self.assertEqual([row["id"] for row in self.store.sources()], [other])
+
+
+class PlaybackTests(_StoreCase):
+    def _item(self):
+        source_id = self._source()
+        self.store.record(source_id, _fetch([_candidate("1", "Fiona")]),
+                          moment=MOMENT)
+        return self.store.items()[0].id
+
+    def test_playing_a_new_item_marks_it_seen_once(self):
+        item_id = self._item()
+        self.assertEqual(self.store.record_playback(item_id, MOMENT), "seen")
+        # 已经播过的不再改状态：手动标成 ignored 之后再播不该被拉回 seen。
+        self.store.set_status(item_id, "ignored")
+        self.assertEqual(self.store.record_playback(item_id, MOMENT), "ignored")
+        count = self.connection.execute(
+            "SELECT play_count FROM follow_playback WHERE follow_item_id=?",
+            (item_id,)).fetchone()[0]
+        self.assertEqual(count, 2)
+
+    def test_activity_accumulates_time_and_keeps_the_furthest_point(self):
+        item_id = self._item()
+        first = self.store.record_playback_activity(
+            item_id, position=30, duration=100, delta=30, moment=MOMENT)
+        self.assertEqual(first, {"play_seconds": 30.0, "max_reached": 0.3})
+        # 往回拖再看一遍：时长累加，最远位置不倒退。
+        second = self.store.record_playback_activity(
+            item_id, position=10, duration=100, delta=10, moment=MOMENT)
+        self.assertEqual(second, {"play_seconds": 40.0, "max_reached": 0.3})
+        ended = self.store.record_playback_activity(
+            item_id, position=99, duration=100, delta=1, ended=True, moment=MOMENT)
+        self.assertEqual(ended["max_reached"], 1.0)
+
+    def test_an_unknown_item_is_a_request_error_not_a_storage_failure(self):
+        """调用方把 ValueError 映射成 400；这里不能变成 500。"""
+        for call in (lambda: self.store.record_playback(9999),
+                     lambda: self.store.record_playback_activity(9999)):
+            with self.assertRaises(ValueError):
+                call()
+
+    def test_nonsense_numbers_do_not_reach_the_database(self):
+        item_id = self._item()
+        result = self.store.record_playback_activity(
+            item_id, position=-5, duration=0, delta=-3, moment=MOMENT)
+        self.assertEqual(result, {"play_seconds": 0.0, "max_reached": 0.0})
 
 if __name__ == "__main__":
     unittest.main()

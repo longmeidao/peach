@@ -9,8 +9,9 @@ import unittest
 from peach.follow import FollowSourceError
 from peach.follow_sources import (
     CONNECTORS, KemonoConnector, _BaseConnector, display_thumb_url,
-    is_history_end_error,
+    is_history_end_error, official_profile_handle,
 )
+from peach.follow_store import _OFFICIAL_IDENTITY_PROVIDERS
 from peach.http import HttpResponse
 
 
@@ -304,6 +305,55 @@ class NoPrivateReachIntoConnectorsTests(unittest.TestCase):
             offenders, [],
             "改用 probe()／fetch_json()／parse_json()；缺能力就在基类补公开方法",
         )
+
+
+class ProfileHandleTests(unittest.TestCase):
+    """ref 里哪一截是作者本人的手柄，由各站自己的连接器说。
+
+    这些规则以前写在 `web_follow` 的一串 if/elif 里，而「ref 长什么形状」正是
+    连接器已经在解析、在校验的东西：同一份知识分在两层，改一处就会漂移。
+    """
+
+    def test_an_official_channel_ref_is_the_author_handle(self):
+        cases = {
+            "fanbox": ("ffxivinitiala", "ffxivinitiala"),
+            "subscribestar": ("subscribestar.adult/initiala", "initiala"),
+            "patreon": ("initiala", "initiala"),
+        }
+        for provider, (ref, expected) in cases.items():
+            with self.subTest(provider=provider):
+                self.assertEqual(official_profile_handle(provider, ref), expected)
+
+    def test_a_numeric_patreon_user_page_has_no_handle(self):
+        """`user/12345` 是内部 id，不是名字；学成别名会造出一个假作者。"""
+        for ref in ("user/12345", "12345", "/user/12345/"):
+            self.assertEqual(official_profile_handle("patreon", ref), "")
+
+    def test_archive_and_tag_sites_offer_no_handle_at_all(self):
+        cases = (("kemono", "fanbox/30917150"), ("coomer", "onlyfans/x"),
+                 ("pawchive", "fanbox/1"), ("rule34xxx", "lazyprocrastinator"),
+                 ("rule34video", "lazyprocrastinator"), ("f95zone", "50685"),
+                 ("rule34paheal", "tag"), ("simpcity", "thread"))
+        for provider, ref in cases:
+            with self.subTest(provider=provider):
+                self.assertEqual(official_profile_handle(provider, ref), "")
+
+    def test_every_connector_answers_this_question(self):
+        """基类给了默认值，所以新增站点不会因为漏实现而炸在检查更新的中途。"""
+        for provider, factory in CONNECTORS.items():
+            with self.subTest(provider=provider):
+                self.assertIsInstance(factory.profile_handle("anything"), str)
+        self.assertEqual(official_profile_handle("not-registered", "x"), "")
+
+    def test_only_the_official_identity_providers_actually_return_one(self):
+        """能返回手柄的站必须正好是 `_OFFICIAL_IDENTITY_PROVIDERS` 那一组。
+
+        这两处一旦不一致，就会出现「明明解析出了手柄却永远不学」或者反过来
+        「学了一个不该信的名字」，而两种都不会报错。
+        """
+        answering = {provider for provider in CONNECTORS
+                     if official_profile_handle(provider, "some-name")}
+        self.assertEqual(answering, set(_OFFICIAL_IDENTITY_PROVIDERS))
 
 
 if __name__ == "__main__":

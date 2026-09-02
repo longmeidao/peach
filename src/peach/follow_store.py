@@ -11,13 +11,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import follow_providers
 from .follow import FollowSourceError, write_immutable
-from .follow_sources import FollowCandidate, SourceFetch, canonical_source_ref
+from .follow_sources import (
+    FollowCandidate, SourceFetch, canonical_source_ref, official_profile_handle,
+)
 from .follow_variants import classify, group_duplicates
 
 
@@ -26,6 +30,40 @@ def _now_text(moment: datetime | None = None) -> str:
     if moment.tzinfo is None:
         raise FollowSourceError("追更时间戳必须带时区")
     return moment.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+#: 标签里跟在中点后面的服务名。`LazyProcrastinator · fanbox` 和 rule34video 上的
+#: `lazyprocrastinator` 是同一个人，中点后面那截只说明他在哪个平台连载。
+_LABEL_SERVICE_RE = re.compile(r"\s*[·|]\s*[A-Za-z0-9_\-]+\s*$")
+_AUTHOR_NOISE_RE = re.compile(r"[^0-9a-z一-鿿]+")
+_F95_TITLE_SUFFIX_RE = re.compile(r"\s+collections?\s*$", re.IGNORECASE)
+
+#: 作者显示名与头像可信的官方渠道；归档站只作回退。
+_OFFICIAL_IDENTITY_PROVIDERS = follow_providers.official_identity_providers()
+
+
+def normalized_author_name(value: str, *, provider: str = "") -> str:
+    """作者别名表的身份键。
+
+    去掉「· 服务名」后缀，再去掉大小写、空格、连字符这些不影响身份的噪声。
+    归一化只做到这一步，不做模糊匹配：把两个碰巧相似的名字并成一个人，比让用户
+    自己看到两行严重得多。
+
+    这是**别名表的主键定义**，不是展示逻辑，所以它和别名读写放在同一层。
+    """
+    stripped = _LABEL_SERVICE_RE.sub("", str(value or "").strip())
+    if provider == "f95zone":
+        # F95 的线程标题说的是一个容器而不是另一个作者：真实数据是
+        # `Lazy Procrastinator Collection`，而每一条作者来源都是
+        # `LazyProcrastinator`，留着这个通用后缀会凭空多出一个分组。
+        stripped = _F95_TITLE_SUFFIX_RE.sub("", stripped)
+    return _AUTHOR_NOISE_RE.sub("", stripped.casefold())
+
+
+def author_display_text(value: str) -> str:
+    """去掉不属于作者名的容器与服务名措辞，保留原始拼写。"""
+    stripped = _LABEL_SERVICE_RE.sub("", str(value or "").strip())
+    return _F95_TITLE_SUFFIX_RE.sub("", stripped).strip()
 
 
 @dataclass(frozen=True)
@@ -278,6 +316,14 @@ class FollowStore:
         return RecordOutcome(source_id, len(fetch.candidates), added, updated,
                              evidence_path=evidence, evidence_error=evidence_error)
 
+    def remove_source(self, source_id: int) -> None:
+        """删掉一条来源登记。
+
+        原来是 Web 处理函数里一句裸 DELETE。哪张表、要不要连带清理，属于这一层的
+        知识；把它留在 Web 层意味着换存储结构时得去处理函数里找 SQL。
+        """
+        self._connect().execute("DELETE FROM follow_source WHERE id=?", (source_id,))
+
     def record_error(self, source_id: int, message: str,
                      moment: datetime | None = None, *, status: str = "error") -> None:
         stamp = _now_text(moment)
@@ -448,6 +494,194 @@ class FollowStore:
             raise FollowSourceError("`saved` 只能由 save_asset() 设置")
         self._connect().execute(
             "UPDATE follow_item SET status=? WHERE id=?", (status, item_id))
+
+    # ---- 作者别名 -------------------------------------------------------
+
+    def author_aliases(self) -> tuple[dict[str, str], list[dict]]:
+        """全部跨站作者别名：`别名键 → 规范键` 的映射，以及按规范名分好的组。"""
+        rows = self._connect().execute(
+            "SELECT alias_key,alias_name,canonical_key,canonical_name,source "
+            "FROM follow_author_alias ORDER BY canonical_name,alias_name"
+        ).fetchall()
+        mapping = {str(row["alias_key"]): str(row["canonical_key"]) for row in rows}
+        groups: dict[str, dict] = {}
+        for row in rows:
+            canonical_key = str(row["canonical_key"])
+            group = groups.setdefault(canonical_key, {
+                "canonical_key": canonical_key,
+                # 旧别名记录可能把 F95 的容器标题存成了规范显示名；只修正读投影，
+                # 不在一次读取里偷偷改真实表。
+                "canonical_name": author_display_text(row["canonical_name"]),
+                "aliases": [],
+            })
+            if str(row["alias_key"]) != canonical_key:
+                group["aliases"].append({
+                    "key": str(row["alias_key"]),
+                    "name": str(row["alias_name"]),
+                    "source": str(row["source"]),
+                })
+        return mapping, [group for group in groups.values() if group["aliases"]]
+
+    def upsert_author_alias(self, canonical_name: str, alias_name: str, *,
+                            source: str, moment: datetime | None = None) -> dict | None:
+        """写一条别名，且不让自动证据盖掉人的决定。
+
+        人工确认可以有意重新分组。自动学习窄得多：它只填一个此前未知的平台手柄，
+        任何已有映射（尤其是人工的）都不动。
+        """
+        canonical_key = normalized_author_name(canonical_name)
+        alias_key = normalized_author_name(alias_name)
+        if not canonical_key or not alias_key:
+            raise ValueError("规范作者名和平台别名都不能为空")
+        if canonical_key == alias_key:
+            raise ValueError("这两个名字归一化后相同，不需要维护别名")
+
+        connection = self._connect()
+        stamp = _now_text(moment)
+        mapping, _ = self.author_aliases()
+        canonical_root = mapping.get(canonical_key, canonical_key)
+        alias_root = mapping.get(alias_key, alias_key)
+        if source != "manual":
+            existing = connection.execute(
+                "SELECT 1 FROM follow_author_alias WHERE alias_key=?", (alias_key,)
+            ).fetchone()
+            if existing is not None or alias_root != alias_key:
+                return None
+            canonical_row = connection.execute(
+                "SELECT canonical_name FROM follow_author_alias WHERE canonical_key=? "
+                "ORDER BY CASE WHEN alias_key=canonical_key THEN 0 ELSE 1 END LIMIT 1",
+                (canonical_root,),
+            ).fetchone()
+            if canonical_row is not None:
+                canonical_name = str(canonical_row["canonical_name"])
+        elif canonical_root != alias_root:
+            connection.execute(
+                "UPDATE follow_author_alias SET canonical_key=?,canonical_name=?,"
+                "updated_at=? WHERE canonical_key=?",
+                (canonical_root, canonical_name, stamp, alias_root),
+            )
+
+        conflict = (
+            "DO UPDATE SET canonical_key=excluded.canonical_key,"
+            "canonical_name=excluded.canonical_name,alias_name=excluded.alias_name,"
+            "source=excluded.source,updated_at=excluded.updated_at"
+            if source == "manual" else "DO NOTHING"
+        )
+        sql = (
+            "INSERT INTO follow_author_alias(alias_key,alias_name,canonical_key,"
+            "canonical_name,source,created_at,updated_at) VALUES(?,?,?,?,?,?,?) "
+            f"ON CONFLICT(alias_key) {conflict}"
+        )
+        connection.execute(
+            sql, (canonical_root, canonical_name, canonical_root, canonical_name,
+                  source, stamp, stamp),
+        )
+        inserted = connection.execute(
+            sql, (alias_key, alias_name, canonical_root, canonical_name,
+                  source, stamp, stamp),
+        ).rowcount
+        if source != "manual" and not inserted:
+            return None
+        return {"canonical": canonical_name, "alias": alias_name, "source": source}
+
+    def remove_author_alias(self, alias_name: str) -> None:
+        """删掉一条别名。规范名本身不能当别名删掉，那会拆散整个组。"""
+        alias_key = normalized_author_name(alias_name)
+        if not alias_key:
+            raise ValueError("别名不能为空")
+        connection = self._connect()
+        row = connection.execute(
+            "SELECT canonical_key FROM follow_author_alias WHERE alias_key=?",
+            (alias_key,),
+        ).fetchone()
+        if row is None:
+            raise ValueError("这个作者别名不存在")
+        if str(row["canonical_key"]) == alias_key:
+            raise ValueError("规范名不能作为别名移除")
+        connection.execute(
+            "DELETE FROM follow_author_alias WHERE alias_key=?", (alias_key,))
+
+    def learn_official_author_alias(self, provider: str, ref: str,
+                                    candidates) -> dict | None:
+        """只从一个毫无歧义的官方资料页名字学一个平台手柄。
+
+        判据故意窄：这一次抓取里所有候选的署名归一化后必须只有一个，否则宁可不学。
+        自动证据永远不覆盖已有映射，见 `upsert_author_alias`。
+        """
+        if provider not in _OFFICIAL_IDENTITY_PROVIDERS:
+            return None
+        authors: dict[str, str] = {}
+        for candidate in candidates:
+            name = str(candidate.author or "").strip()
+            key = normalized_author_name(name)
+            if key:
+                authors.setdefault(key, name)
+        if len(authors) != 1:
+            return None
+        canonical_key, canonical_name = next(iter(authors.items()))
+        handle = official_profile_handle(provider, ref)
+        if not handle or normalized_author_name(handle) == canonical_key:
+            return None
+        return self.upsert_author_alias(canonical_name, handle,
+                                        source=f"official:{provider}")
+
+    # ---- 播放记录 -------------------------------------------------------
+
+    def _item_status(self, item_id: int) -> str:
+        row = self._connect().execute(
+            "SELECT status FROM follow_item WHERE id=?", (item_id,)).fetchone()
+        if row is None:
+            # 「你给的 id 不存在」是请求错误，不是存储故障；调用方映射成 400。
+            raise ValueError("follow item not found")
+        return str(row["status"])
+
+    def record_playback(self, item_id: int, moment: datetime | None = None) -> str:
+        """记一次关注页直接播放，返回这条条目之后的状态。
+
+        候选无需先保存成 asset：关注页可以直接播，播过就不再是 `new`。
+        """
+        status = self._item_status(item_id)
+        connection = self._connect()
+        stamp = (moment or datetime.now(timezone.utc)).timestamp()
+        connection.execute(
+            "INSERT INTO follow_playback"
+            "(follow_item_id,profile_id,play_count,last_played) "
+            "VALUES(?,'local-default',1,?) ON CONFLICT(follow_item_id,profile_id) "
+            "DO UPDATE SET play_count=follow_playback.play_count+1,"
+            "last_played=excluded.last_played",
+            (item_id, stamp),
+        )
+        if status != "new":
+            return status
+        connection.execute(
+            "UPDATE follow_item SET status='seen' WHERE id=?", (item_id,))
+        return "seen"
+
+    def record_playback_activity(self, item_id: int, *, position: float = 0.0,
+                                 duration: float = 0.0, delta: float = 0.0,
+                                 ended: bool = False,
+                                 moment: datetime | None = None) -> dict:
+        """累计在线播放的真实时长与最远到达位置。"""
+        self._item_status(item_id)
+        position, duration, delta = (max(float(position), 0), max(float(duration), 0),
+                                     max(float(delta), 0))
+        ratio = 1.0 if ended else (min(position / duration, 1.0) if duration > 0 else 0.0)
+        connection = self._connect()
+        stamp = (moment or datetime.now(timezone.utc)).timestamp()
+        connection.execute(
+            "INSERT INTO follow_playback(follow_item_id,profile_id,play_count,"
+            "play_seconds,max_reached,last_played) "
+            "VALUES(?,'local-default',1,?,?,?) "
+            "ON CONFLICT(follow_item_id,profile_id) DO UPDATE SET "
+            "play_seconds=follow_playback.play_seconds+excluded.play_seconds,"
+            "max_reached=max(follow_playback.max_reached,excluded.max_reached),"
+            "last_played=excluded.last_played",
+            (item_id, delta, ratio, stamp),
+        )
+        return dict(connection.execute(
+            "SELECT play_seconds,max_reached FROM follow_playback "
+            "WHERE follow_item_id=? AND profile_id='local-default'", (item_id,),
+        ).fetchone())
 
     def save_asset(self, item_id: int, *, confirm: bool = False,
                    moment: datetime | None = None) -> int:
