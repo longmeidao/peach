@@ -2,6 +2,57 @@ import re
 import unittest
 from pathlib import Path
 
+_WORD = re.compile(r"[A-Za-z0-9_$]")
+_QUOTES = "'\"`"
+
+
+def code_shape(source: str) -> str:
+    """把 JS 源码压成「和排版无关」的形状。
+
+    页面源断言里最脆的一类不是契约写错了，而是断言把缩进和换行一起写死了：
+    `if(e.key===' '){\\n      e.preventDefault();` 这种一旦有人重排一行就红，
+    红的原因和它想守的东西毫无关系。这里把字符串字面量外面的空白全部规范化——
+    两侧都是标识符字符时留一个空格（保住 `const x`、`await f` 这类必需的间隔），
+    否则删掉（`){ e.` 与 `){e.` 从此等价）。
+
+    字符串和模板字面量原样保留：里面的空白是内容，不是排版。模板字面量里的换行
+    尤其如此，HTML 片段的断言要靠它。扫描器认转义，遇到注释里的单引号或含引号的
+    正则会跟丢，所以 `assertCode` 同时保留原样匹配的通路，跟丢只会让它退回今天的
+    行为，不会把绿的判成红的。
+    """
+    out, index, size = [], 0, len(source)
+    while index < size:
+        char = source[index]
+        if char in _QUOTES:
+            out.append(char)
+            index += 1
+            while index < size:
+                out.append(source[index])
+                if source[index] == "\\":
+                    index += 1
+                    if index < size:
+                        out.append(source[index])
+                        index += 1
+                    continue
+                if source[index] == char:
+                    index += 1
+                    break
+                index += 1
+            continue
+        if char.isspace():
+            end = index
+            while end < size and source[end].isspace():
+                end += 1
+            before = out[-1] if out else ""
+            after = source[end] if end < size else ""
+            if _WORD.match(before) and _WORD.match(after):
+                out.append(" ")
+            index = end
+            continue
+        out.append(char)
+        index += 1
+    return "".join(out)
+
 
 class WebUiSourceTests(unittest.TestCase):
     @classmethod
@@ -18,6 +69,19 @@ class WebUiSourceTests(unittest.TestCase):
         cls.page = chr(10).join(
             path.read_text(encoding="utf-8") for path in sources
         )
+        # 排版无关的那份只算一次：整页四十万字符，按调用逐次重算会把这个文件
+        # 从两秒拖到半分钟。
+        cls.page_shape = code_shape(cls.page)
+        # 「谁用到了这个类名」只能问模板一侧。样式表自己不算——把 app.css 也接进来
+        # 比对，每个选择器都会匹配到它自己的定义。
+        # island（ADR-0022）也是模板一侧：高清版目标页的 DOM 现在由 frontend 里的
+        # Preact 组件产出，样式仍留在 app.css。不把它接进来的话，迁走的那几组类会
+        # 被误判成没人用，然后有人真的把还在生效的样式删掉。
+        markup = [web / "index.html", web / "app.js", *sorted((web / "js").glob("*.js"))]
+        island_src = Path(__file__).resolve().parents[1] / "frontend" / "src"
+        markup.extend(sorted(path for suffix in ("*.ts", "*.tsx")
+                             for path in island_src.rglob(suffix)))
+        cls.markup = chr(10).join(path.read_text(encoding="utf-8") for path in markup)
 
     # 页面源断言必须自带有界失败信息。assertIn 失败时会把整个 index.html（约 189 KB）
     # 原样塞进错误消息，一条失败就产出 195 KB 输出；工具管道遇到超大输出会转存成文件，
@@ -29,6 +93,143 @@ class WebUiSourceTests(unittest.TestCase):
     def assertPageLacks(self, needle: str, message: str = ""):
         if needle in self.page:
             self.fail(f"index.html 不应再出现：{needle!r}" + (f"（{message}）" if message else ""))
+
+    def assertCode(self, needle: str, message: str = ""):
+        """页面源里有这段代码，缩进和换行怎么排都算。
+
+        守的还是同一件事，只是不再把排版一起写死；细节见 `code_shape`。
+        """
+        if needle in self.page:
+            return
+        if code_shape(needle) in self.page_shape:
+            return
+        self.fail(f"index.html 缺少这段代码（已忽略排版）：{needle!r}"
+                  + (f"（{message}）" if message else ""))
+
+    def test_the_format_insensitive_matcher_still_tells_code_from_content(self):
+        """`code_shape` 本身也有逻辑，也得有人守。
+
+        它松的是排版，不是内容：字符串字面量里的空白一个都不许动。放松到把
+        `e.key===' '`（空格键）和 `e.key===''`（空串）看成一回事，这个断言机制就从
+        「少写一点脆」变成「悄悄放过一类缺陷」。
+        """
+        # 缩进、换行、花括号后的空格：随便排。
+        self.assertEqual(code_shape("if(a){\n      b();\n}"), code_shape("if(a){b();}"))
+        self.assertEqual(code_shape("const  x = 1"), code_shape("const x=1"))
+        # 关键字和标识符之间的那个空格是必需的，不许被压掉。
+        self.assertIn(" ", code_shape("const x=1"))
+        self.assertNotEqual(code_shape("const x=1"), code_shape("constx=1"))
+        # 字符串和模板字面量里的空白是内容。
+        self.assertNotEqual(code_shape("e.key===' '"), code_shape("e.key===''"))
+        self.assertNotEqual(code_shape("`<b> </b>`"), code_shape("`<b></b>`"))
+        # 跟丢引号时退回原样匹配，所以这条断言只保证「至少能原样命中」。
+        self.assertPageContains("const $=s=>document.querySelector(s);")
+
+    def route_entry(self, match: str) -> str:
+        """路由表里 `match` 那一条的源码。
+
+        「哪个路径进哪一屏」是用户能感知的契约；它是写成一张表还是写成一条
+        二十五分支的 if 链，是实现细节。这些断言问的是「这条路径在不在、进去的是
+        哪一屏」，所以换派发方式不该让它们变红——真把一条路径弄丢了才该红。
+        """
+        table = self.app_js.split("\nconst ROUTES=[", 1)[1].split("\n];", 1)[0]
+        for entry in re.split(r"\n  (?=\{match:|\.\.\.)", table):
+            if entry.lstrip().startswith("{match:'%s'" % match):
+                return entry
+        listed = ", ".join(re.findall(r"\{match:'([^']+)'", table))
+        self.fail(f"路由表里没有 {match}（表里有：{listed}）")
+
+    def assertRoute(self, match: str, *needles: str):
+        entry = self.route_entry(match)
+        for needle in needles:
+            if needle not in entry:
+                self.fail(f"路由 {match} 这一条缺少：{needle!r}")
+
+    def test_module_level_bindings_are_declared_before_they_are_used(self):
+        """模块级 `let`/`const` 不许在声明行之前被引用。
+
+        `let`/`const` 有 TDZ：声明那一行执行之前读它是 ReferenceError，而不是
+        undefined。前端曾有三十多处「函数写在上面、声明写在下面」，没炸只是因为
+        那些函数恰好都在启动之后才第一次被调用——判据是运行时机，而不是能从代码上
+        看出来的东西。谁把其中任意一个挪进启动路径，症状就是首屏整页空白，
+        而改动本身看不出和它有关。
+
+        修法只有两种：可变状态提到 app.js 顶部的「模块级可变状态」块，纯函数改写成
+        会提升的 `function` 声明（或拆进 `web/js/`）。这里不做作用域分析，所以函数
+        内部同名的局部变量要另起名字——`selectedQuality` 就是为此从 `selected`
+        改过来的。
+        """
+        web = Path(__file__).resolve().parents[1] / "web"
+        for path in [web / "app.js"] + sorted((web / "js").glob("*.js")):
+            offenders = self._bindings_used_before_declaration(
+                path.read_text(encoding="utf-8"))
+            self.assertEqual(offenders, [], f"{path.name} 里这些绑定在声明前被引用：" + "；".join(
+                f"{name} 声明在第 {decl} 行，第 {ref} 行已经在用" for name, decl, ref in offenders))
+
+    @staticmethod
+    def _bindings_used_before_declaration(source: str):
+        """找出「声明行在后、引用行在前」的模块级 `let`/`const`。
+
+        只认顶格（第 0 列）的 `let`/`const`：缩进的都在某个函数或块里，那是局部作用域，
+        不属于这个契约。注释先剥掉——中文注释里提到标识符本来就很常见，不剥的话
+        整条断言会被噪声淹没。
+        """
+        lines = source.split("\n")
+        stripped, in_block = [], False
+        for line in lines:
+            text = line
+            if in_block:
+                if "*/" in text:
+                    text, in_block = text.split("*/", 1)[1], False
+                else:
+                    stripped.append("")
+                    continue
+            while "/*" in text:
+                head, rest = text.split("/*", 1)
+                if "*/" in rest:
+                    text = head + " " + rest.split("*/", 1)[1]
+                else:
+                    text, in_block = head, True
+                    break
+            comment = text.find("//")
+            if comment >= 0 and not text[:comment].endswith(":"):
+                text = text[:comment]
+            stripped.append(text)
+
+        names = []
+        for index, text in enumerate(stripped):
+            head = re.match(r"(?:let|const)\s+(.*)$", text)
+            if not head:
+                continue
+            depth, current, chunks = 0, "", []
+            for char in head.group(1):
+                if char in "([{":
+                    depth += 1
+                elif char in ")]}":
+                    depth -= 1
+                if char == "," and depth == 0:
+                    chunks.append(current)
+                    current = ""
+                else:
+                    current += char
+            chunks.append(current)
+            for chunk in chunks:
+                declared = re.match(r"\s*([A-Za-z_$][\w$]*)", chunk)
+                if declared:
+                    names.append((declared.group(1), index + 1))
+
+        offenders, seen = [], set()
+        for name, line_number in names:
+            if name in seen:
+                continue
+            seen.add(name)
+            # 前面挡掉 `.`（成员访问）和引号（字符串键与字面量），它们不是绑定引用。
+            pattern = re.compile(r"(?<![\w$.'\"])" + re.escape(name) + r"(?![\w$])")
+            for earlier in range(line_number - 1):
+                if pattern.search(stripped[earlier]):
+                    offenders.append((name, line_number, earlier + 1))
+                    break
+        return offenders
 
     def test_every_font_size_comes_from_the_one_type_scale(self):
         """全站只有一套字号刻度，任何写死的像素都要有理由。
@@ -53,6 +254,32 @@ class WebUiSourceTests(unittest.TestCase):
         # 下限是 12px：更小的灰字在 vercel-report-design 里被点名为要拒绝的反射。
         self.assertNotIn("--fs-", css.split("--fs-xs")[0][-40:],
                          "刻度必须从 --fs-xs 开始，别在前面塞更小的档")
+
+    def test_every_class_selector_in_the_stylesheet_is_actually_used(self):
+        """样式表里的每个类选择器都要有人用它。
+
+        没人用的规则不会报错，只会一直被读、被改、被当成「现在的样子」来推理。
+        实测一次就清出九组：`.fdetails` 那一整套折叠摘要、`.mediatabs`、
+        `.edge .srcrow`、`.javhint`、`.photosets`、`.meta .whosep`、`.reviewhead`、
+        `.resourceerror`——对应的 JS 早就删了或改了名，样式留在原地。
+
+        两类例外，都必须是「前缀 + 运行时拼出来的一段」，不接受逐个类名的豁免：
+        vendor 在运行时自己加的类（Video.js、Swiper），以及模板里用模板串拼出来的
+        类名（`' cat-'+cat` 这种，源码里不会出现完整的 `cat-artist`）。
+        """
+        # 注释里会写类名当例子，`url()` 里的域名（www.w3.org）会被当成 `.org`。
+        css = re.sub(r"/\*.*?\*/", "", self.css, flags=re.S)
+        css = re.sub(r"url\([^)]*\)", "url()", css)
+        selectors = set(re.findall(r"\.(-?[A-Za-z_][A-Za-z0-9_-]*)", css))
+        vendor = ("vjs-", "swiper-")
+        composed = ("cat-", "r34-", "idgroup-", "geist-note-", "skeleton-")
+        # 前缀豁免要能兑现：拼接那一处必须真的在模板里。
+        for prefix in composed:
+            self.assertIn(prefix, self.markup, f"{prefix} 已经没人拼了，连同规则一起删")
+        unused = sorted(
+            name for name in selectors
+            if name not in self.markup and not name.startswith(vendor + composed))
+        self.assertEqual(unused, [], f"样式表里有没人用的类选择器：{unused}")
 
     def test_pill_shapes_are_reserved_for_things_that_are_actually_tags(self):
         """整圆胶囊有一个来源，普通元信息不许长成标签。
@@ -132,8 +359,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("scrollbar-gutter:stable both-edges;overscroll-behavior:contain")
         self.assertPageContains(".settingshead{z-index:2;display:flex")
         self.assertPageContains("border-bottom:1px solid var(--line-soft);background:var(--frost-panel)")
-        self.assertPageContains('<div class="settingscard">\n    <div class="settingshead">')
-        self.assertPageContains('</div>\n    <div class="settingsscroll">')
+        self.assertCode('<div class="settingscard">\n    <div class="settingshead">')
+        self.assertCode('</div>\n    <div class="settingsscroll">')
         self.assertPageContains("@media(max-width:600px){.settingsscroll{padding:0 17px 17px}")
 
     def test_studio_metadata_is_not_compiled_as_inline_javascript(self):
@@ -163,9 +390,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('button,a,input,textarea,select,summary{touch-action:manipulation}')
 
     def test_route_titles_and_settings_dialog_manage_focus(self):
-        self.assertPageContains('const pageTitle=path=>{')
-        self.assertPageContains("'follow-manage':'关注管理'")
-        self.assertPageContains("unseen:'没看过','watch-later':'稍后看',flagged:'已标记'")
+        # 标题跟着路由表走：每一屏的标签写在自己那条记录上，不再有第二份
+        # 「路径 → 标题」映射跟路由分支各自演化。
+        self.assertPageContains("const label=routeLabel(ROUTES,decodeURIComponent(url.pathname));")
+        self.assertPageContains("document.title=label?`${label} · Peach`:'Peach · 蜜桃';")
+        self.assertRoute('/follow-manage', "title:'关注管理'")
+        # 目录页四个筛选态的标题就是筛选名本身，和侧栏取同一份 STATE_LABELS。
+        self.assertPageContains("title:STATE_LABELS[key],open:()=>openCatalog(path)")
         self.assertPageContains('syncPageTitle(path);')
         self.assertPageContains('queueMicrotask(()=>{syncHeaderActions();paintListTitle()})')
         self.assertPageContains("queueMicrotask(()=>$('#settingsClose').focus())")
@@ -175,10 +406,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_catalog_state_title_never_leaks_into_other_routes(self):
         self.assertPageContains("!manageSection()&&isCatalogPath(path)?STATE_LABELS[state.state]||'':''")
 
-    def test_reviewed_tag_labels_do_not_add_machine_translated_suffixes(self):
-        self.assertPageLacks("'深喉':'深喉咙'")
-        self.assertPageContains("'足系':'美腿'")
-        self.assertPageContains('const tagLabel=tag=>TAG_DISPLAY_NAMES[tag]||tag;')
+    # 标签显示名（改名而不造词、查不到就原样返回）改成拿真标签跑真函数验收，见
+    # test_web_js.test_tag_labels_only_rename_and_never_invent。
 
     def test_entity_routes_are_semantic_and_not_model_shaped(self):
         self.assertPageLacks("route(`/entity/")
@@ -219,31 +448,54 @@ class WebUiSourceTests(unittest.TestCase):
         # 既有调用点不受影响。
         self.assertPageContains("function avatarInner(name,ref,repId,kind='performer')")
         self.assertPageContains("`/entity-image?kind=${kind}&id=${ref.id}`")
-        self.assertPageContains("this.dataset.f='1';this.src='/avatar?id=${repId}'")
+        # 兜底链声明在模板里，行为归 image-fallback 那条委托监听。
+        self.assertPageContains("imageFallbackAttrs({fallbacks})")
+        self.assertPageContains("`/avatar?id=${repId}`")
 
     def test_avatar_fallback_chains_end_by_removing_the_broken_image(self):
-        """取不到图的 <img> 必须被摘掉，不能只停在 onerror=null。
+        """取不到图的 <img> 必须被摘掉，不能只停在「不再重试」。
 
         留着它有两个后果：`.entityportrait:has(img)>span` 仍然匹配，首字母垫底
         永远回不来；浏览器还会把 alt 当内容画出来——资料页上就是整个艺人名横在
         头像圈里溢出（loliburin 实测 /entity-image 与 /avatar 双 404）。
         """
+        # 卡片头像、资料页大圆框、关联艺人小圆框声明的是同一套兜底数据；
+        # 「候选换完还是失败就收场」这一步由 advanceImageFallback 统一执行。
         for chain in (
-            # 卡片头像、资料页大圆框、关联艺人小圆框三处用的是同一套兜底。
-            "this.dataset.f='1';this.src='/avatar?id=${repId}'}else{this.remove()}",
-            "this.dataset.f='1';this.src='/avatar?id=${d.representative_asset_id}'}"
-            "else{this.remove()}",
-            "this.dataset.f='1';this.src='/avatar?id=${x.rep}'}else{this.remove()}",
+            "`/avatar?id=${repId}`",
+            "`/avatar?id=${d.representative_asset_id}`",
+            "`/avatar?id=${x.rep}`",
         ):
             self.assertPageContains(chain)
+        # 收场动作只有这一处实现，默认就是把 <img> 拿掉。
+        self.assertPageContains("drop = 'self'")
+        self.assertPageContains("image.remove();")
         self.assertPageLacks("this.onerror=null;this.src='/avatar?id=")
+
+    def test_image_fallbacks_are_declarative_data_not_inline_handlers(self):
+        """`<img>` 上不再有内联 `onerror`，回退链改成 `data-*` 声明。
+
+        内联版的 URL 要同时穿过 HTML 属性转义和 JS 字符串两层，错一层不报错、
+        只是这张图从此不再回退；同一条链在 app.js 里还有四种写法。
+        """
+        self.assertPageLacks(' onerror="', "模板里不能再出现内联 onerror 属性")
+        self.assertPageContains("export function wireImageFallbacks(root)")
+        self.assertPageContains("wireImageFallbacks(document.body)")
+        # `error` 不冒泡，只有捕获阶段的监听能接住后代 <img>。
+        self.assertCode("advanceImageFallback(event.target);\n  }, true);")
+        # `data-drop` 是这套机制的开关：没有它的 <img> 一概不动——页面上另有一批
+        # 靠 CSS 或父节点兜底的图（厂牌 `.mk`），把它们删掉反而是错的。
+        self.assertPageContains("if (!image || !image.dataset || !image.dataset.drop) return '';")
+        for attribute in ('data-drop="', "data-fallbacks=", "data-initial=", "data-drop-class="):
+            self.assertPageContains(attribute)
 
     def test_entity_hero_avatar_frames_the_detected_face(self):
         # 资料页圆框按检出的人脸取景；换回落图时必须先摘掉内联 object-position——
         # 回落图是另一张照片，脸不在同一位置。
         self.assertPageContains("function facePos(f)")
         self.assertPageContains('"${facePos(d.avatar_focus)}')
-        self.assertPageContains("onerror=\"this.removeAttribute('style')")
+        self.assertPageContains("imageFallbackAttrs({dropStyle:true,")
+        self.assertPageContains("if ('dropStyle' in image.dataset) image.removeAttribute('style');")
 
     def test_entity_link_favicons_do_not_leak_the_page_url_to_the_linked_site(self):
         # 外链的 favicon 是向对方站点发出的真实请求。锚点上的 rel="noreferrer" 只管
@@ -261,10 +513,11 @@ class WebUiSourceTests(unittest.TestCase):
                       self.app_js[anchor:anchor + 260],
                       "资料页外链 favicon 必须带 no-referrer")
 
-    def test_the_link_mark_endpoint_takes_a_link_id_not_a_url(self):
+    def test_no_caller_ever_hands_the_link_mark_endpoint_a_url(self):
         # 让前端把地址递给服务端去取，等于开一个任意地址抓取的口子。和 `/follow-stream`
-        # 同一条规矩：服务端只取账本里已有的地址。
-        self.assertPageContains("const linkMarkUrl=link=>`/link-mark?id=")
+        # 同一条规矩：服务端只取账本里已有的地址。`linkMarkUrl` 自己只吐 id 由
+        # test_web_js.test_the_link_mark_endpoint_only_ever_carries_an_id 验收；
+        # 这里守的是「没人绕过它另写一个带地址的调用」。
         self.assertPageLacks("/link-mark?url=", "外链图标端点不得接受前端给的地址")
 
     def test_social_links_show_only_the_platform_mark_not_the_handle(self):
@@ -294,7 +547,8 @@ class WebUiSourceTests(unittest.TestCase):
         # favicon 是别人服务器上的一张小位图：X 直接挡掉爬取（资料页上那个空白白圆就是
         # 它），取到的也多是 16×16，放进 32px 的圆里必然糊。416 条社媒链接里 372 条是
         # x.com／twitter.com，只给它一个内联标记就覆盖了 89%，还省一次跨站请求。
-        self.assertPageContains("const BRAND_ICONS=[[['x.com','twitter.com'],'brand-x']];")
+        # 哪些主机走内联标记（含子域、且只认后缀边界）由
+        # test_web_js.test_brand_marks_cover_the_host_and_its_subdomains_only 验收。
         self.assertPageContains('<symbol id="i-brand-x"')
         # 填充字形不吃通用的 stroke:currentColor;fill:none。
         self.assertPageContains('.entitylinkicon.brand svg{width:15px;height:15px;fill:currentColor;stroke:none}')
@@ -360,14 +614,29 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(later){e.stopPropagation();setActionBusy(later)")
         self.assertPageContains("if(kind==='o')await post('o-undo')")
 
+    def test_toast_callers_declare_whether_they_pass_text_or_html(self):
+        """回执里的标签名来自账本，含 `<` 时不能被当成标签插进 DOM。
+
+        `toast()` 以前接裸字符串，「这是文本还是 HTML」靠调用点自己记得转义：
+        actionReceipt 传的是纯文本、followCheckToast 传的是带 `<b>` 的片段，
+        签名上完全一样。现在由调用点显式声明，默认按文本转义。
+        """
+        self.assertPageContains("const toastBody=message=>")
+        self.assertPageContains("'html' in message")
+        self.assertPageContains("esc(message&&typeof message==='object'?(message.text??''):message??'')")
+        # 账本字段一律走 text；只有本地拼出来的计数片段走 html。
+        self.assertPageContains("item=toast({text:message},{")
+        self.assertCode("toast(\n  {text:`${message}失败：${error?.message||'请重试'}`},{warn:true})")
+        self.assertPageContains("toast({html:`检查了 <b>${rows.length}</b> 个来源")
+
     def test_undo_reports_back_on_the_same_toast_instead_of_swapping_two(self):
         """撤销原先是「关掉回执 + 另发一条已撤销」。
 
         底部对齐的栈里一进一出，剩下那条会整块跳一格；撤销请求快过退场动画时
         两条还会同时在场。结果写回同一条 toast 就没有这次进出。
         """
-        self.assertPageContains("item.replaceMessage=(body,{warn:alert=false,timeout:next=4000}={})")
-        self.assertPageContains("try{await undo();item.replaceMessage('已撤销')}")
+        self.assertPageContains("item.replaceMessage=")
+        self.assertPageContains("try{await undo();item.replaceMessage({text:'已撤销'})}")
         self.assertPageContains("if(act)act.onclick=()=>{setActionBusy(act);action.run()};")
         self.assertPageLacks("try{await undo();toast('已撤销')}")
         # 退场先把高度写死再过渡到 0；直接 remove() 会让上面那条瞬间落下来。
@@ -376,6 +645,51 @@ class WebUiSourceTests(unittest.TestCase):
         # 行距改成每条自己的上外边距：gap 属于容器，收不进这次过渡。
         self.assertPageContains(".toast{pointer-events:auto;box-sizing:border-box;display:flex;align-items:center;")
         self.assertPageLacks(".toasts{position:fixed;right:16px;bottom:22px;z-index:var(--layer-popover);display:grid;gap:8px;")
+
+    def test_leaving_a_surface_cancels_the_reads_it_started(self):
+        """以前离开一个表面只是把结果丢掉，请求本身照跑到底。
+
+        切三四页就有三四份读请求同时占着浏览器对同一 host 的 6 条连接，最后停留
+        的那一页反而排在队尾。写操作不带 signal——切页不能撤掉一次真实写入。
+        """
+        self.assertPageContains("surfaceRequests?.abort();")
+        self.assertPageContains("surfaceRequests=new AbortController();")
+        self.assertPageContains("const surfaceToken=path=>({epoch:surfaceEpoch,path,signal:surfaceRequests?.signal})")
+        self.assertPageContains("const surfaceApi=(token,path,options)=>api(path,{...options,signal:token.signal})")
+        # 取消不是失败：abort 只可能来自 claimSurface，而它已经推进了 epoch，
+        # 调用点紧随其后的过期判定会接住它。
+        self.assertPageContains("const isAbort=error=>error?.name==='AbortError'")
+        self.assertPageContains("if(isAbort(error))return null;throw error")
+        self.assertPageContains("if(signal)init.signal=signal")
+        # 用响应体之前必须先过期判定：被取消时 surfaceApi 返回的是 null。
+        load_body = self.page.split("async function load(reset)", 1)[1].split("const loadObserver", 1)[0]
+        guard = load_body.index("if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;\n  cache")
+        self.assertLess(guard, load_body.index("cache(d.items)"))
+
+    def test_bulk_follow_updates_run_with_bounded_concurrency(self):
+        """一千条串行 POST 全靠往返等，界面按住不放；一次全发出去又会挤满连接。"""
+        self.assertPageContains("const mapLimit=async(items,limit,run)=>")
+        self.assertPageContains("const workers=Math.min(Math.max(1,limit),list.length)")
+        # 某一项失败只记下原因，不中断整批。
+        self.assertPageContains("catch(error){results[index]={ok:false,error}}")
+        bulk = self.app_js.split("root.querySelectorAll('[data-follow-bulk]')", 1)[1]
+        bulk = bulk.split("root.querySelectorAll('[data-follow-view]')", 1)[0]
+        self.assertIn("await mapLimit(ids,6,id=>", bulk)
+        # 撤销那两处仍是单条 POST，不该被这条契约波及。
+        self.assertNotIn("for(const id of ids)", bulk)
+        self.assertPageContains("actionFailure(`批量更新 ${failed.length}/${ids.length} 项`")
+
+    def test_immerse_stream_does_not_pretend_to_paginate_a_random_sample(self):
+        """`sort=rand` 在服务端是未加种子的 `RANDOM()`，偏移量在它上面没有意义。
+
+        原先每续取一次就把一个 `tokOffset` 加 60，再传给一个从不使用这个参数的
+        `fetchTok(off)`——读代码的人会以为这条流是翻页来的。
+        """
+        self.assertPageLacks("tokOffset")
+        self.assertPageContains("async function fetchTok()")
+        self.assertPageContains("const more=await fetchTok()")
+        # 去重靠调用点的 seen 集合。
+        self.assertPageContains("const seen=new Set(tokList.map(x=>x.id))")
 
     def test_scrollbar_gutter_is_reserved_so_overlays_do_not_shift_the_page(self):
         """设置面板给 body 加 overflow:hidden，滚动条一消失整页就横向跳一次。"""
@@ -446,7 +760,9 @@ class WebUiSourceTests(unittest.TestCase):
         素人、创作者自制和网红内容里的出镜者是艺人：套上 JAV 称谓既不准确，
         也会和同名的 creator 身份混淆。形态判据只有后端 `is_jav_code` 一份。
         """
-        self.assertPageContains("const performerLabel=it=>it&&it.is_jav?'女优':'艺人';")
+        # 断言的是判据与两个称谓，不是 performerLabel 写成箭头函数还是 function。
+        self.assertPageContains("performerLabel(it)")
+        self.assertPageContains("it&&it.is_jav?'女优':'艺人'")
         self.assertPageContains("const ENTITY_LABELS={performer:'艺人'")
 
     def test_narrow_top_bar_keeps_the_actions_on_the_right(self):
@@ -532,8 +848,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("localStorage.getItem(SEED_KEY)")
         self.assertPageContains("seed:initialParam('seed')||rollSeed()")
         self.assertPageContains("sort:appSettings.defaultSort,seed:rollSeed(),q:''")
-        self.assertPageContains("const previousPath=lastRoutePath;lastRoutePath=path;")
-        self.assertPageContains("const enteringHome=path==='/'&&previousPath!=='/';")
+        # 「从别处回到首页」才换种子，判据是上一屏的路径，所以 lastRoutePath
+        # 必须等这一屏打开之后再更新。
+        self.assertPageContains("const enteringHome=path==='/'&&lastRoutePath!=='/';")
+        self.assertPageContains("}finally{lastRoutePath=path}")
         self.assertPageContains("enteringHome?rollSeed():state.seed||rollSeed()")
         self.assertPageContains("const SORTS=[['seed','随机'],['rating','评分']")
         self.assertPageContains('<option value="seed">随机</option>')
@@ -629,7 +947,7 @@ class WebUiSourceTests(unittest.TestCase):
             "display:flex;align-items:center;justify-content:center;padding:56px 24px;text-align:center")
 
     def test_space_does_not_also_scroll_the_page(self):
-        self.assertPageContains("if(e.key===' '){\n      e.preventDefault();")
+        self.assertCode("if(e.key===' '){\n      e.preventDefault();")
 
     def test_playback_keys_never_steal_keystrokes_from_inputs(self):
         self.assertPageContains("function isTypingTarget(el)")
@@ -643,7 +961,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_search_menu_is_navigable_by_keyboard(self):
         self.assertPageContains("function moveSearchActive(step)")
-        self.assertPageContains("if(e.key==='ArrowDown'||e.key==='ArrowUp'){\n    if(moveSearchActive(")
+        self.assertCode("if(e.key==='ArrowDown'||e.key==='ArrowUp'){\n    if(moveSearchActive(")
         self.assertPageContains("options[searchActive].scrollIntoView({block:'nearest'})")
         self.assertPageContains(".searchoption:hover,.searchoption.active{background:var(--hover)}")
 
@@ -695,6 +1013,51 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("querySelectorAll('#tokIncoming').forEach(video=>disposeTokVideo(video,true))")
         self.assertPageContains("addEventListener('pagehide',()=>{")
         self.assertPageContains("$('#tokTrack').querySelectorAll('video').forEach(cancelTokStream)")
+
+    def test_nothing_a_surface_starts_outlives_the_surface(self):
+        """离开一个表面时，它开的东西必须跟着结束。
+
+        三处实际泄漏。共同点是都不报错：页面越用越慢，而且离开之后还在往后端打请求。
+
+        - 横向拖动行的 `mouseup`：原来每 `wireDrag` 一个元素就往 window 上挂一条，
+          而这些行是 innerHTML 重绘出来的，每次重绘换一批新节点，旧闭包连着已经
+          脱离文档的元素永远不回收。
+        - `wireTelemetry` 的十秒上报：只有 pause/ended 清定时器，而离开详情两者都不
+          发生，于是 setInterval 连着已销毁的 video 一直往 /api/activity 打。
+        - 标签选择器的 document 捕获监听：`stage.innerHTML=''` 只删 DOM，
+          document 上那条监听留着。
+
+        契约不是「写成哪几行」，而是三条出口：全局监听全站唯一、按元素调用的
+        wire* 不往 window/document 上挂无人撤销的监听、舞台销毁跑一张收尾登记表。
+        """
+        app = self.app_js
+        self.assertEqual(app.count("window.addEventListener('mouseup'"), 1,
+                         "松开鼠标结束拖动，全站只需要一条 window 监听")
+        drag = app[app.index("function wireDrag(el){"):]
+        drag = drag[:drag.index("function wireAllDrag")]
+        self.assertNotIn("window.addEventListener", drag,
+                         "wireDrag 按元素调用，在里面挂全局监听就是按元素泄漏")
+        self.assertNotIn("document.addEventListener", drag)
+
+        self.assertPageContains("function onStageDispose(dispose)")
+        self.assertPageContains("function runStageDisposers()")
+        dispose = app[app.index("function disposeStage("):]
+        dispose = dispose[:dispose.index("\nfunction placeItemDetail")]
+        self.assertIn("runStageDisposers();", dispose, "舞台销毁必须跑收尾登记表")
+
+        telemetry = app[app.index("function wireTelemetry(it,v,sel){"):]
+        telemetry = telemetry[:telemetry.index("\nfunction wireFollowTelemetry")]
+        for needle in ("const stopTelemetry=", "'emptied'", "onStageDispose(stopTelemetry)"):
+            self.assertIn(needle, telemetry,
+                          f"详情遥测缺少 {needle}：离开详情后定时器还在上报")
+
+        outside = app[app.index("function bindOutsideClose("):]
+        outside = outside[:outside.index("\nfunction disposeStage(")]
+        self.assertIn("document.addEventListener('pointerdown',handler,true)", outside)
+        self.assertIn("document.removeEventListener('pointerdown',handler,true)", outside)
+        self.assertIn("onStageDispose(detach)", outside,
+                      "浮层没被关掉就离开详情时，要有舞台销毁兜底")
+        self.assertPageContains("detachOutside=bindOutsideClose(plus,picker,closePicker)")
 
     def test_detail_close_disposes_playback_source(self):
         self.assertPageContains("function disposeStage")
@@ -774,7 +1137,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("${icon('settings')}")
         self.assertPageContains("typeof player.qualityLevels==='function'?player.qualityLevels():null")
         self.assertPageContains("activePixels>=2160?'4K':activePixels>=720?'HD':''")
-        self.assertPageContains("levels[index].enabled=selected==='auto'||selected===String(index)")
+        # 「auto 开全部层级，选定某一档只留那一档」是契约；局部变量叫什么不是。
+        self.assertPageContains("levels[index].enabled=selectedQuality==='auto'||selectedQuality===String(index)")
         self.assertPageContains("const syncVolumeIcon=()=>muteUse?.setAttribute('href'")
         self.assertPageLacks("volume.insertAdjacentHTML('afterbegin','<span class=\"vjs-peach-hover\"")
         self.assertPageContains("z-index:1;position:relative!important;left:0!important;top:0!important;align-self:center;flex:0 0 40px")
@@ -1146,7 +1510,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<div class="linkhosts"><span>最多的站点</span>')
 
     def test_taste_page_combines_private_exports_and_peach_behavior(self):
-        self.assertPageContains("if(path==='/taste'){await openTaste(false);return}")
+        self.assertRoute('/taste', "openTaste(push)", "section:'taste'")
         self.assertPageContains("/api/taste?window=")
         self.assertPageContains("/api/taste/import")
         self.assertPageContains("/api/taste/refresh")
@@ -1175,11 +1539,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("visual==='domain'")
         self.assertPageContains("avatarInner(row.name,ref,rep,visual)")
         self.assertPageContains("visual==='creator'&&!ref&&!rep&&sourceDomain")
-        self.assertPageContains('title="来源：${esc(sourceDomain)}"')
+        # 两处站点头像（域名榜、无实体的创作者）共用一个 siteAvatar；来源提示仍是
+        # 「来源：<域名>」，转义在 siteAvatar 里做一次。
+        self.assertPageContains("siteAvatar(row.name,sourceDomain,`来源：${sourceDomain}`)")
+        self.assertPageContains('title?` title="${esc(title)}"`')
         self.assertPageContains("'simpcity.cr':'https://simpcity.cr/data/assets/logo/favicon.png'")
         self.assertPageContains("'hanime1.me':'https://vdownload.hembed.com/image/icon/tab_logo.png")
         self.assertPageContains("'kemono.cr':'https://kemono.cr/assets/favicon-CPB6l7kH.ico'")
-        self.assertPageContains("const faviconFallbackUrl=domain=>`https://www.google.com/s2/favicons")
         self.assertPageLacks("negative_tags")
         self.assertPageContains(".tastehero{margin-bottom:16px}")
         self.assertPageContains(".tasteranks{display:grid;grid-template-columns:repeat(3")
@@ -1288,13 +1654,58 @@ class WebUiSourceTests(unittest.TestCase):
         表现就是抽屉里点「在线追更」没反应，点窄栏同一个图标却能进。
         """
         self.assertPageContains("function navTo(k){")
-        self.assertPageContains("if(k==='follow'){openFollow();return}")
-        self.assertPageContains("if(k==='playlists'){openPlaylists();return}")
+        # 有自己路径的入口一律从路由表进，两边点同一个键必然到同一屏。
+        self.assertPageContains("const target=ROUTES.find(spec=>spec.nav===k&&!STATE_ROUTES[k]);")
+        self.assertRoute('/follow', "nav:'follow'", "openFollow(push)")
+        self.assertRoute('/playlists', "nav:'playlists'", "openPlaylists(push)")
         self.assertPageContains(
             "$('#drawer').querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navTo(b.dataset.nav));")
         self.assertPageContains("e.stopPropagation();navTo(b.dataset.nav)})")
-        # 分支只能存在一处；再出现第二份就是下一次漂移。
-        self.assertEqual(self.page.count("if(k==='immerse'){openTok();return}"), 1)
+        # 派发只能存在一处；再出现第二份就是下一次漂移。
+        self.assertEqual(self.app_js.count("ROUTES.find(spec=>spec.nav===k"), 1,
+                         "导航跳转只能查一次路由表")
+        self.assertEqual(self.app_js.count("function navTo(k){"), 1)
+
+    def test_one_route_table_owns_every_surface_dispatch(self):
+        """「哪个路径进哪一屏」只有一份真相，七处副本不许回来。
+
+        以前 restoreRoute 是一条二十五分支的 if 链，navTo、navOn、openManage、
+        manageSection、reloadCurrentSurface、refreshAll 各自又抄了自己关心的那几条。
+        加一屏要改七处，漏一处的症状还各不相同：URL 能进但侧栏不亮、点进去了但
+        「换一批」把你扔回统计页、批量操作后回到首页而不是刚才那一屏。
+        """
+        for match in ('/', '/trash', '/playlists', '/playlists/:playlist/:item',
+                      '/mix/:seed/:item', '/parts/:seed/:item', '/editions/:seed/:item',
+                      '/item/:id', '/follow/item/:id', '/performers', '/creators', '/tags',
+                      '/stats', '/taste', '/review', '/data-cleanup', '/duplicates',
+                      '/resource-sync', '/quality-goals', '/follow', '/follow-manage',
+                      '/immerse'):
+            self.route_entry(match)
+        # 目录页四态和四种实体页由既有的映射生成：两边各写一份就会出现
+        # 「路由认得、isCatalogPath 不认得」这种半死路径。
+        self.assertPageContains("...Object.entries(STATE_ROUTES).map(([key,path])=>({")
+        self.assertPageContains("...Object.entries(ROUTE_ENTITIES).map(([segment,kind])=>({")
+        # 派发只有一处：匹配到哪条就打开哪条，没匹配上才回首页表面。
+        self.assertPageContains("const hit=matchRoute(ROUTES,path);")
+        self.assertPageContains("if(hit)await hit.route.open(hit.params,false);")
+        self.assertPageContains("else{showHomeSurfaces();disposeStage(false)}")
+        for revived in ("if(path==='/stats')", "if(path==='/taste')", "if(path==='/immerse')",
+                        "if(path==='/follow-manage')", "if(parts[0]==='item'",
+                        "const entityKind=ROUTE_ENTITIES[parts[0]]"):
+            self.assertPageLacks(revived, "路径判定回到了 restoreRoute 的分支链")
+        # 迁移期要能让 frontend/ 里的一屏自己登记，不必回来改这张表（ADR-0022）。
+        self.assertPageContains("const registerRoute=spec=>{ROUTES.push(spec);return spec};")
+        self.assertPageContains("window.peachRegisterRoute=registerRoute;")
+
+    # 「动态段只吃数字、实体名吃掉剩下全部段」原来在这里按源码文本断言，现在
+    # 改成拿真路径跑真的 matchPath，见
+    # test_web_js.test_route_patterns_match_what_the_table_says_and_nothing_else。
+
+    def test_immersive_mode_keeps_the_current_clip_in_the_url(self):
+        """竖划切片也过 route()：刷新之后落回同一条片子，而不是重新抽一批。"""
+        self.assertPageContains("route('/immerse?id='+it.id,true);")
+        self.assertRoute('/immerse', "openTok(immerseStartId(),push)")
+        self.assertPageContains("function immerseStartId(){")
 
     def test_online_assets_use_rss_and_open_the_saved_follow_surface(self):
         self.assertPageContains("online:icon('rss')")
@@ -1426,18 +1837,21 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_surface_navigation_clears_stale_panels_and_ignores_late_responses(self):
         """跨页面请求返回较慢时，旧统计/复核响应不能覆盖当前页面。"""
-        self.assertPageContains("const claimSurface=path=>{surfaceEpoch++;return surfaceToken(path)}")
+        self.assertPageContains("const claimSurface=path=>{")
+        self.assertPageContains("surfaceEpoch++;return surfaceToken(path)}")
         self.assertPageContains("const surfaceCurrent=token=>token.epoch===surfaceEpoch&&surfacePath()===token.path")
         self.assertPageContains("const surface=reset?claimSurface(surfacePath()):surfaceToken(surfacePath())")
         self.assertPageContains("if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return")
         self.assertPageContains("const surface=claimSurface('/review')")
         self.assertPageContains("if(!surfaceCurrent(surface))return")
-        self.assertPageContains("async function restoreRoute(){\n  surfaceEpoch++")
+        self.assertCode("async function restoreRoute(){\n  surfaceEpoch++")
         self.assertPageContains("if(requestSeq!==indexRequestSeq||location.pathname!=='/'+kind)return")
         self.assertPageContains("decodeURIComponent(location.pathname)!==decodeURIComponent(expectedPath)")
         index = self.page.split("async function openIndex", 1)[1].split("const d=await api", 1)[0]
         self.assertIn("showHomeSurfaces();", index)
-        self.assertPageContains("if(!$('#stats').hidden){\n    if(location.pathname==='/review'){await openReview(false);return}")
+        # 「换一批」在管理区的行为写在路由表的 refresh 上，不再每页一条分支。
+        self.assertPageContains("if(hit?.route.refresh==='reopen'){await hit.route.open(hit.params,false);return}")
+        self.assertRoute('/review', "refresh:'reopen'")
 
     def test_immersive_close_restores_the_home_surface(self):
         self.assertPageContains("document.body.style.overflow='';openHome()")
@@ -1479,7 +1893,12 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_top_level_highlight_is_exclusive_and_covers_index_pages(self):
         """首页原来只看 state.state，进管理区和索引页时它仍然亮着，两个入口同时高亮。"""
-        self.assertPageContains("if(k==='performers'||k==='tags')return path==='/'+k")
+        # 高亮由「当前路径匹配到哪条路由」决定，索引页和实体页因此天然分开：
+        # /performers 有 nav，/performers/<名字> 没有，不会两个入口一起亮。
+        self.assertPageContains("const nav=matchRoute(ROUTES,path)?.route.nav||'';")
+        self.assertPageContains("if(nav)return nav===k;")
+        self.assertRoute('/performers', "nav:'performers'")
+        self.assertRoute('/tags', "nav:'tags'")
         self.assertPageContains("if(k==='')return path==='/'&&!manageSection()&&!state.state")
         self.assertPageContains("buildEdge();     // 顶层高亮跟随管理区")
 
@@ -1508,10 +1927,9 @@ class WebUiSourceTests(unittest.TestCase):
     def test_junk_empty_state_only_appears_after_the_loading_request_finishes(self):
         """待判断为空是请求终态；加载期间只能显示 Loading Dots，不能先闪空态。"""
         branch = self.app_js.split("if(state.state==='ads'){", 1)[1].split("adsBatch=null;", 1)[0]
-        self.assertLess(branch.index("loadingDotsHtml('正在读取垃圾文件…')"),
-                        branch.index("const nextAds=await api('/api/ads?'+junkQuery)"))
-        self.assertLess(branch.index("const nextAds=await api('/api/ads?'+junkQuery)"),
-                        branch.index("emptyState('check'"))
+        request = "const nextAds=await surfaceApi(surface,'/api/ads?'+junkQuery)"
+        self.assertLess(branch.index("loadingDotsHtml('正在读取垃圾文件…')"), branch.index(request))
+        self.assertLess(branch.index(request), branch.index("emptyState('check'"))
         self.assertPageContains("$('#loadSentinel').hidden=true")
 
     def test_junk_review_and_trash_render_every_physical_resource_type(self):
@@ -1614,7 +2032,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("$('#brandHome').onclick=e=>{e.preventDefault();openHome(true)};")
         self.assertPageContains("document.body.style.overflow='';openHome()")
         self.assertPageLacks("clearTokTap();route('/');")
-        self.assertPageContains("state.state=k}\n  route(homePath());")
+        self.assertCode("state.state=k}\n  route(homePath());")
 
     def test_ads_icon_matches_the_lucide_stroke_style(self):
         """图标库里没有表示广告的图形，自绘的感叹号必须和其余图标同风格。"""
@@ -1650,12 +2068,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('title="${esc(label)}" aria-label="${esc(label)}"')
         self.assertPageContains(".src{display:grid;place-items:center;width:20px;height:20px;padding:0;border:0;background:transparent}")
         self.assertPageContains(".srcbig{display:inline-grid;place-items:center;width:22px;height:22px;padding:0;border:0;background:transparent}")
-        self.assertPageContains(".edge .srcrow button{width:52px;height:44px")
 
     def test_beeg_evidence_driven_surfaces_are_translucent_and_rail_is_continuous(self):
         self.assertPageContains(".brandpill{")
         self.assertPageContains("background:var(--overlay-5);border:1px solid var(--border-10)")
-        self.assertPageContains("border:1px solid var(--border-15);\n  border-radius:var(--pill-radius);background:transparent")
+        self.assertCode("border:1px solid var(--border-15);\n  border-radius:var(--pill-radius);background:transparent")
         self.assertPageContains("--overlay-5:rgba(245,250,255,.05)")
         self.assertPageContains("--border-15:rgba(245,250,255,.15)")
         # 窄栏原本无边框、与内容区连成一片。用户 2026-08-26 明确要求加分割线：
@@ -1693,7 +2110,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}")
         self.assertPageContains("async function load(reset)")
         # 版次折叠的集合要和分卷那套一起清，见 test_both_collapse_sets_are_cleared_together。
-        self.assertPageContains(
+        self.assertCode(
             "showHomeSurfaces();\n  if(reset){offset=0;"
             "renderedPartGroups.clear();renderedEditionGroups.clear()}")
         self.assertPageContains("showHomeSurfaces();disposeStage(false)")
@@ -1715,7 +2132,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("p.set('sort',filters.sort||'new')")
         self.assertPageContains("if(filters.sort==='seed')p.set('seed',state.seed)")
         self.assertPageContains("const JAV_RELEASE_SORT=['release','发行时间']")
-        self.assertPageContains("const sortOptions=()=>javActive()?[JAV_RELEASE_SORT,...SORTS]:SORTS")
+        self.assertPageContains("javActive()?[JAV_RELEASE_SORT,...SORTS]:SORTS")
         self.assertPageContains("sortOptions().map(([key,label])=>")
         self.assertPageContains("sortOptions().map(([k,l])=>")
         self.assertPageContains("if(state.jav!=='1'&&state.sort==='release')state.sort='seed'")
@@ -1748,9 +2165,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const coStarred=performers.length>1&&!primaryCreator")
         self.assertPageContains("return (it.is_jav&&performer?performer:it.creator)||performer")
 
-    def test_jav_detail_prefers_japanese_title_and_keeps_official_tags_visually_neutral(self):
-        self.assertPageContains("const javPreferredTitle=it=>")
-        self.assertPageContains("titles.find(hasJapaneseText)||titles[0]||''")
+    def test_jav_detail_keeps_official_tags_visually_neutral(self):
+        # 「日文标题优先」这条已经改成拿真输入跑真函数验收，见
+        # test_web_js.test_official_title_prefers_the_japanese_one。
         self.assertPageContains('wrap.innerHTML=visible.map(t=>`<span class="detailtag">')
         self.assertPageLacks("<small>官方</small>")
         self.assertPageLacks(".detailtag.official{")
@@ -1778,7 +2195,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 作品没有内容标签时，顶部发现栏回退首页口径；详情抽屉仍使用作品 scoped facets。
         self.assertPageContains("if(context.type==='item'&&!topTags.length)")
         self.assertPageContains("const recommendationFacets=await api('/api/facets'")
-        self.assertPageContains("if(requestSeq!==barsRequestSeq)return;\n    topTags=recommendationFacets.tags||[]")
+        self.assertCode("if(requestSeq!==barsRequestSeq)return;\n    topTags=recommendationFacets.tags||[]")
         self.assertPageContains("+topTags.slice(0,26).map(t=>")
         self.assertPageContains("+sec('内容标签',chips(facetData.tags,'tag',false,30)")
 
@@ -1842,7 +2259,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".filter(x=>mixHasPicture(x,layout)).slice(0,MIX_FLIP_FACES);")
         self.assertPageContains("const named=it=>mixHasPicture(it,layout)&&(it.creator")
         self.assertPageContains("||visible.slice(MIX_SLOT+1).find(it=>mixHasPicture(it,layout))")
-        self.assertPageContains('''loading="${eager?'eager':'lazy'}"''')
+        self.assertCode('''loading="${eager?'eager':'lazy'}"''')
         self.assertPageContains(
             "if(selectMode||censorOn()||window.__scrolling||reduceMotion())return;")
         self.assertPageContains(
@@ -1891,8 +2308,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 而主列表的 exclude_vertical 管不到这条——它是独立请求、独立插入的。
         self.assertPageContains("!isCatalogPath(decodeURIComponent(location.pathname))||javActive()||state.orient==='竖屏'")
         self.assertPageContains("||state.state==='ads'||state.state==='trash'")
-        self.assertPageContains("route(section==='trash'?'/trash':junkPath())")
-        self.assertPageContains("if(path==='/trash')")
+        self.assertRoute('/trash', "section:'trash'", "openTrash(push)")
         self.assertPageContains("/api/trash/empty")
 
     def test_multipart_releases_use_a_distinct_group_card_and_queue(self):
@@ -1906,7 +2322,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("route(`/parts/${seedId}/${chosen}`)")
         self.assertPageContains("queue.kind==='parts'?`${queue.items.length} 卷`")
         self.assertPageContains("queueContext.kind==='parts'?openParts")
-        self.assertPageContains("if(parts[0]==='parts'")
+        self.assertRoute('/parts/:seed/:item', "openParts(params.seed,params.item,push)")
         self.assertPageContains(".partstack::before,.partstack::after")
         self.assertPageLacks("Mix · ${group.title}")
 
@@ -1951,14 +2367,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("的馆藏作品 ·")
 
     def test_jav_titles_hide_media_suffix_and_emphasize_the_code(self):
-        self.assertPageContains("const JAV_MEDIA_SUFFIX=/\\.(?:mp4|mkv|avi|wmv|mov|m4v|webm")
-        self.assertPageContains("return it?.is_jav?name.replace(JAV_MEDIA_SUFFIX,''):name")
-        self.assertPageContains("it?.display_code||code")
-        self.assertPageContains("hasOwnProperty.call(it||{},'display_title')")
-        self.assertPageContains("?String(it.display_title||'').trim():filenameTitle")
-        self.assertPageContains('return `<span class="javidentity"><strong class="javcode">${esc(code)}</strong>')
-        self.assertPageContains('class="javedition ${label===\'中字\'?\'subtitle\'')
-        self.assertPageContains("['中字','无码','无码破解'].includes(label)")
+        # 「后缀什么时候剥」「display_code 与 display_title 怎么取」「哪三个徽章算数」
+        # 这些算法已经拆进 web/js/jav-title.js，改成拿真输入跑真函数验收，
+        # 见 test_web_js.WebJsBehaviourTests。这里只留页面这一侧的契约：
+        # 徽章的三种配色，以及卡片／详情／沉浸模式确实调了这两个函数。
         self.assertPageContains(".javedition.subtitle{color:var(--tungsten)}")
         self.assertPageContains(".javedition.uncensored{color:var(--meter)}")
         self.assertPageContains(".javedition.cracked{color:var(--drop)}")
@@ -1998,7 +2410,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("el.compareDocumentPosition(stage)&Node.DOCUMENT_POSITION_FOLLOWING")
         self.assertPageContains("el.offsetParent===null||css.position!=='sticky'")
         self.assertPageContains("stage.style.scrollMarginTop=`${itemDetailStickyOffset()+8}px`")
-        self.assertPageContains("buildBars();\n  scrollItemDetailIntoView();")
+        self.assertCode("buildBars();\n  scrollItemDetailIntoView();")
 
     def test_page_loading_uses_one_structural_skeleton_phase(self):
         self.assertPageContains("function renderCatalogLoading(label='正在读取作品')")
@@ -2036,7 +2448,7 @@ class WebUiSourceTests(unittest.TestCase):
         # /resource-sync 只是数据管理页的锚点，启动占位得是数据管理那张。
         self.assertPageContains("'/resource-sync':()=>MANAGEMENT_PLACEHOLDERS['/data-cleanup']()")
         self.assertPageContains("stats.innerHTML=path.startsWith('/follow')&&path!=='/follow-manage'")
-        self.assertPageContains('''data-skeleton="${esc(kind)}${className?`/${esc(className)}`:''}"''')
+        self.assertCode('''data-skeleton="${esc(kind)}${className?`/${esc(className)}`:''}"''')
         self.assertPageContains(
             "const painted=$('#stats').querySelector('[data-skeleton]')?.dataset.skeleton||''")
         self.assertPageContains("if(!next||next!==painted)$('#stats').innerHTML=placeholder")
@@ -2071,10 +2483,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".followfilters .sep{flex:none;width:1px;height:24px;background:var(--border-15)")
 
     def test_entity_profile_uses_logo_links_without_a_redundant_back_row(self):
-        self.assertPageContains("const faviconUrl=url=>")
         self.assertPageContains('class="entitylinkicon"')
         self.assertPageContains('class="entitylinklabel"')
-        self.assertPageContains("img.dataset.studio&&!img.dataset.fallback")
+        # favicon 取不到就把 <img> 摘掉，露出底下的 globe 图标；这条兜底由
+        # image-fallback 的委托监听执行，不再给每个 .entityfavicon 各挂一个监听。
+        self.assertPageContains('class="entityfavicon" src="${esc(linkMarkUrl(x))}')
+        self.assertPageLacks(".entityfavicon').forEach(img=>img.addEventListener('error'")
         self.assertPageLacks('<span class="mono" style="color:var(--muted)">${labels[kind]||kind}资料页</span>')
 
     def test_brand_pill_logo_has_one_centered_size_contract(self):
@@ -2157,8 +2571,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("document.querySelectorAll('#grid > .card[data-id]')")
 
     def test_recycle_bin_has_its_own_route_and_reports_undeletable_files(self):
-        self.assertPageContains("route(section==='trash'?'/trash':junkPath())")
-        self.assertPageContains("if(path==='/trash'){")
+        self.assertRoute('/trash', "section:'trash'", "openTrash(push)")
+        self.assertPageContains("function openTrash(push){")
+        self.assertPageContains("state:'trash',q:''};$('#q').value='';")
         self.assertPageContains("/api/trash/empty")
         self.assertPageContains("r.blocked&&r.blocked.length")
 
@@ -2221,7 +2636,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 默认关闭：localStorage 记 '1' 才开，没动过的会话一律不遮。
         self.assertPageContains("applyCensor(localStorage.getItem(CENSOR_KEY)==='1')")
         # 全站按元素类型盖：内容 img / video / videojs 海报层一个不落。
-        self.assertPageContains("body.censor img,body.censor video,body.censor .vjs-poster{\n  filter:blur(30px) saturate(.3) brightness(.6)}")
+        self.assertCode("body.censor img,body.censor video,body.censor .vjs-poster{\n  filter:blur(30px) saturate(.3) brightness(.6)}")
         # 豁免只给与内容无关的界面小图：品牌标、来源徽章、favicon。
         self.assertPageContains("body.censor .brand .mark,body.censor .src img,body.censor .ficon{filter:none}")
         # 开关变化写回 localStorage 并撤掉正在飞的悬停预览。
@@ -2243,7 +2658,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         # 限宽已回退：整条规则不许再出现（重排导航/标题前是已知的坏版式）。
         self.assertPageLacks("max-width:1004px;margin-inline:auto")
-        self.assertPageContains("document.body.dataset.surface=new URL(path,location.origin).pathname")
+        self.assertPageContains("document.body.dataset.surface=url.pathname")
         # 导航激活态随路由重算：抽屉/窄栏按钮是 buildBars 时一次性画的，
         # 管理页不跑 buildBars，不重算就会停留在上一个页面的按下态。
         self.assertPageContains("paintNav();")
@@ -2257,7 +2672,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("sessionStorage.setItem('peach-fwarn-dismissed','1')")
         self.assertPageContains(".fwarn .wclose,.fcheckreport .wclose{flex:none;width:24px;height:24px;margin-left:auto;padding:0;border:0;")
         # 报告条：danger 语义（红发丝边 + 微红底），不再是左侧粗条。
-        self.assertPageContains("background:color-mix(in srgb,var(--drop) 7%,transparent);\n  border:1px solid color-mix(in srgb,var(--drop) 30%,transparent);")
+        self.assertCode("background:color-mix(in srgb,var(--drop) 7%,transparent);\n  border:1px solid color-mix(in srgb,var(--drop) 30%,transparent);")
         self.assertPageLacks("border-left:2px solid var(--drop)")
         # 来源行状态徽章（ok 绿 tint / 失败红 tint / 未检查灰）。
         self.assertPageContains('<span class="sbadge ${badge}" title="${esc(stateTitle)}"><i aria-hidden="true"></i>')
@@ -2289,7 +2704,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("reviewscrollbtns")
         self.assertPageContains(".settinggroup>h3{margin:0;padding:14px 0 10px;font-size:var(--fs-lg);font-weight:600;color:var(--ink)}")
         self.assertPageContains(".settinggroup .settingrow{margin:0 -16px;padding-left:16px;padding-right:16px}")
-        self.assertPageContains(
+        self.assertCode(
             ".pagetitle,.listtitle,.managetitle,.index .ihead h2,.playlistpage h2{"
             "\n  font-size:var(--fs-3xl);line-height:1.15;letter-spacing:-.01em;font-weight:650}")
         # 全站字体栈必须有 CJK sans 兜底：Bahnschrift/Consolas 都没有中文字形，
@@ -2317,7 +2732,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const cacheFresh=cached&&Date.now()-cachedEntry.at<TASTE_CACHE_FRESH_MS;")
         self.assertPageContains("if(cached)renderTaste(cached);")
         self.assertPageContains("if(!cacheFresh)")
-        self.assertPageContains("void api('/api/taste?window='+requestedWindow).then(data=>")
+        self.assertPageContains("void surfaceApi(surface,'/api/taste?window='+requestedWindow).then(data=>")
         self.assertPageContains("tasteCacheSet(requestedWindow,data);")
         self.assertPageContains("if(request===tasteRequest&&tasteWindow===requestedWindow&&surfaceCurrent(surface))renderTaste(data)")
         self.assertPageContains("if(!cached&&request===tasteRequest&&surfaceCurrent(surface))")
@@ -2402,7 +2817,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_better_version_targets_have_a_management_page(self):
         self.assertPageContains("['quality','高清版','sparkles']")
-        self.assertPageContains("if(path==='/quality-goals')return 'quality'")
+        self.assertRoute('/quality-goals', "section:'quality'", "openQualityGoals(push)")
         self.assertPageContains("async function openQualityGoals(push=true)")
         # 这一页已经迁到 Preact island（ADR-0022）：取数与渲染在 frontend/ 里，遗留层
         # 只剩外壳。所以这里断言的是挂载契约，而不是端点字符串——端点由
@@ -2425,7 +2840,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("candidate.content_id||candidate.provider_id")
         self.assertPageContains(".metadataevidence>div{display:grid;grid-template-columns:68px minmax(0,1fr)")
         self.assertPageContains("/api/review/decision")
-        self.assertPageContains("if(path==='/review')")
+        self.assertRoute('/review', "section:'review'", "openReview(push)")
         self.assertPageContains('class="revieworigin"')
         self.assertPageContains('data-review-open-item="${row.asset_id}"')
         self.assertPageContains("openItem(+button.dataset.reviewOpenItem)")
@@ -2445,15 +2860,20 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("发行 ${esc(it.release_date)}")
 
     def test_duplicates_page_is_part_of_the_combined_cleanup_section(self):
-        self.assertPageContains("path==='/data-cleanup'||path==='/duplicates'||path==='/junk-files'")
-        self.assertPageContains("if(section==='cleanup'){openDataCleanup();return}")
-        self.assertPageContains("if(section==='dupes'){openDuplicates();return}")
+        # 数据管理、重复文件、垃圾文件是同一件事的三步，共用一个管理身份，
+        # 所以进任何一屏管理条都停在「数据管理」上。
+        self.assertRoute('/data-cleanup', "section:'cleanup'")
+        self.assertRoute('/duplicates', "section:'cleanup'", "openDuplicates(push)")
+        self.assertPageContains("return hit?.route.section||(state.state==='ads'?'cleanup':'');")
+        # openManage('cleanup') 该开数据管理本身：靠 /data-cleanup 在表里排在前面。
+        self.assertPageContains("const target=ROUTES.find(spec=>spec.section===section);")
         self.assertPageContains("async function openDuplicates(push=true)")
 
     def test_data_cleanup_groups_junk_duplicates_and_empty_folders_in_fieldsets(self):
         self.assertPageContains("async function openDataCleanup(push=true)")
         self.assertPageContains("route('/data-cleanup')")
-        self.assertPageContains("api('/api/ads?limit=1'),api('/api/duplicates?limit=1'),api('/api/sources')")
+        for path in ("'/api/ads?limit=1'", "'/api/duplicates?limit=1'", "'/api/sources'"):
+            self.assertPageContains(path)
         # 标题是正文区的第一行，不用原生 legend——legend 会在上边框上开个缺口，
         # 三张卡内容高度不同时那道缺口的位置也跟着不齐。
         for title in ("fieldsetTitle('cleanupJunkTitle','垃圾文件')",
@@ -2475,7 +2895,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 按钮一律靠右；左边有说明时说明推到最左。
         self.assertPageContains("justify-content:flex-end;gap:8px;")
         self.assertPageContains(".resourcesyncfooter>p,.resourceapplyrow>p{min-width:0;margin-right:auto}")
-        self.assertPageContains("if(path==='/data-cleanup'){await openDataCleanup(false);return}")
+        self.assertRoute('/data-cleanup', "openDataCleanup(push)")
 
     def test_fieldset_bars_keep_one_row_and_one_button_shape_on_narrow_screens(self):
         """窄屏下操作条仍是一行，按钮按内容宽、填 --surface，不铺满也不换第二种样式。
@@ -2650,7 +3070,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("reviewCategory==='fc2_similarity'?''")
 
     def test_reader_review_uses_the_writer_mirror_without_offering_fake_writes(self):
-        self.assertPageContains("const runtime=await api('/healthz')")
+        self.assertPageContains("const runtime=await surfaceApi(surface,'/healthz')")
         self.assertPageContains("reviewRuntime=runtime;reviewData=next")
         self.assertPageContains("正在显示写入端的实时复核队列")
         self.assertPageContains("前往写入端复核")
@@ -2659,7 +3079,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_index_pages_drop_the_home_filter_bars_and_back_button(self):
         # 艺人/标签索引和资料页一样是「专注看某一类实体」的表面。
-        self.assertPageContains(
+        self.assertCode(
             "body.entity-open #tiers,body.entity-open #tagbar,\nbody.index-open #tiers,body.index-open #tagbar{display:none}")
         self.assertPageLacks('id="iClose"', "顶栏入口本身就是返回路径")
         self.assertPageLacks("$('#iClose').onclick")
@@ -2750,7 +3170,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains("const initialParam=key=>initialCatalogUrl?initialParams.get(key):null;")
         self.assertPageContains("isCatalogPath(path)||path==='/trash'")
-        seeded = self.page[self.page.index("let state={"):self.page.index("const HOME_QUERY_KEYS")]
+        seeded = self.page[self.page.index("state={loc:"):self.page.index("const HOME_QUERY_KEYS")]
         for key in ("creator", "studio", "tag", "orient", "sort", "q", "jav"):
             self.assertIn("initialParam('" + key + "')", seeded,
                           key + " 仍在无条件读启动 URL，别的路由会顺手把目录筛住")
@@ -2843,7 +3263,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("${stacked?'<div class=\"partstack\">':''}")
         self.assertPageContains("${stacked?'</div>':''}")
         self.assertPageContains("openEditions(it.edition_group.seed_id,id,true,anchor)")
-        self.assertPageContains("if(parts[0]==='editions'", "刷新或前进后退要能回到同一个版次")
+        self.assertRoute('/editions/:seed/:item', "openEditions(params.seed,params.item,push)")
 
     def test_entity_pages_collapse_edition_groups_too(self):
         """资料页的网格也要折叠版次组。
@@ -2920,7 +3340,7 @@ class WebUiSourceTests(unittest.TestCase):
         元数据钉成一行：大小和观看次数不放，推荐理由留着截尾。不能拿固定高度
         去裁——行高凑不出整行，第三行会露半截字，用户看到的就是被切掉的「399 MB」。
         """
-        self.assertPageContains(
+        self.assertCode(
             ".ncard .mavstack .mav:nth-child(3),\n"
             ".sgrid.mixgrid>.mixqueue .mavstack .mav:nth-child(3){display:none}")
         self.assertPageContains(
@@ -2966,30 +3386,16 @@ class WebUiSourceTests(unittest.TestCase):
                          self.page.count("renderedPartGroups.clear()"),
                          "两套折叠集合的重置点必须一一对应")
 
-    def test_a_failed_probe_never_turns_a_local_video_into_a_live_stream(self):
-        """账本里的 `-1` 是探测硬失败的哨兵，不是时长。
+    def test_the_player_asks_the_one_duration_judge_instead_of_trusting_the_field(self):
+        """播放器不许自己判「什么算真时长」，要问 realDuration。
 
-        用户实测 /item/86287（ABF-234-UN.mp4，duration=-1）：播放器顶上标着「直播」，
-        总时长显示 `0:NaN`。链条是——`Number(it.duration)||0` 对 -1 求值仍是 -1，通过了
-        真值判断，于是 enforceDuration 强行 `player.duration(-1)`；而 Video.js 的 setter
-        写着 `parseFloat(e)<0 ? Infinity : e`，随后 `=== Infinity` 就 `addClass("vjs-live")`。
-        一部本地影片因此被当成直播流。
-
-        全库有 1440 个视频资产 duration<=0（其中 1101 个正好是 -1），都会走到这条路上。
+        `-1` 是探测硬失败的哨兵；`Number(it.duration)||0` 对它求值仍是 -1，Video.js
+        会把负时长转成 Infinity，然后给本地影片挂上「直播」。判据本身（-1、0、非数字
+        都算 0）已经拿真值验收，见 test_web_js.py；这里守的是调用点。
         """
-        self.assertPageContains(
-            "const realDuration=value=>{const n=Number(value);return Number.isFinite(n)&&n>0?n:0};",
-            "判据必须是「有限且大于零」，不是「非空」")
         self.assertPageContains("const expected=realDuration(it.duration);",
                                 "播放器仍在拿未经判定的时长，负数会被 Video.js 转成直播")
         self.assertPageLacks("const expected=Number(it.duration)||0;")
-
-    def test_an_unknown_duration_renders_as_unknown_not_as_negative_clock(self):
-        """`fmtDur(-1)` 曾经算出 `0:-1`——用户在卡片上看到过。
-
-        `!s` 挡得住 0 和 NaN，挡不住负数：h=0、m=0、x=-1，拼出来就是 `0:-1`。
-        """
-        self.assertPageContains("const fmtDur=s=>{s=realDuration(s);if(!s)return'—';")
 
     def test_duration_has_one_definition_of_real(self):
         """「什么算真时长」只许有一处说了算。
@@ -3148,7 +3554,6 @@ class WebUiSourceTests(unittest.TestCase):
         路径则整个消失（关闭按钮上「没有 x」就是这么来的）。
         """
         for rule in (
-            ".mediatabs button svg{width:16px;height:16px;stroke:currentColor;fill:none",
             ".photoback svg{width:15px;height:15px;stroke:currentColor;fill:none",
             ".media-circle svg{display:block;width:24px;height:24px;flex:none;stroke:currentColor;fill:none",
         ):
@@ -3213,7 +3618,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("size<1024*1024?`${Math.max(1,Math.round(size/1024))} KB`")
         self.assertPageContains("reveal.dataset.photoReveal=String(asset.id)")
         self.assertPageContains("revealSource(Number(reveal.dataset.photoReveal),status,{button:reveal})")
-        self.assertPageContains("toast('已在资源管理器中显示')")
+        self.assertPageContains("toast({text:'已在资源管理器中显示'})")
         self.assertPageLacks("已在服务端弹出文件管理器",
                              "定位成功是短暂回执，不能在详情内容流里留下状态行")
         self.assertPageContains(".toasts{position:fixed;right:16px;bottom:22px;z-index:var(--layer-popover)")
@@ -3356,7 +3761,7 @@ class WebUiSourceTests(unittest.TestCase):
         路径传进来，否则等于开了一个「任意路径」的接口。
         """
         self.assertPageContains("api('/api/reveal',{method:'POST',body:JSON.stringify({id})})")
-        self.assertPageContains("status.textContent='';toast('已在资源管理器中显示')")
+        self.assertPageContains("status.textContent='';toast({text:'已在资源管理器中显示'})")
         self.assertPageContains("if(reveal)reveal.onclick=()=>revealSource(Number(reveal.dataset.reveal),status,{button:reveal})")
         reveal_source = self.page.split("async function revealSource", 1)[1].split("async function syncMissing", 1)[0]
         self.assertIn("setActionBusy(button)", reveal_source)
@@ -3373,7 +3778,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_resource_sync_lives_in_data_management_and_keeps_offline_sources_safe(self):
         self.assertPageContains("${resourceSyncMarkup()}")
-        self.assertPageContains("if(path==='/resource-sync'){await openResourceSync(false);return}")
+        self.assertRoute('/resource-sync', "openResourceSync(push)")
         self.assertPageContains("route('/data-cleanup#resource-sync',!push)")
         self.assertPageContains("api('/api/resource-sync/scan',{method:'POST'")
         self.assertPageContains("api('/api/resource-sync/apply',{method:'POST'")
@@ -3417,7 +3822,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_index_open_is_applied_after_the_surface_reset(self):
         # showHomeSurfaces 会清掉这两个类；写在它前面等于自己加完自己删。
-        self.assertPageContains(
+        self.assertCode(
             "  showHomeSurfaces();\n  // 必须在 showHomeSurfaces 之后加：")
         self.assertPageContains("document.body.classList.remove('entity-open','index-open')")
 

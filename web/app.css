@@ -227,7 +227,7 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 .playlistcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.playlistcard{display:grid;grid-template-columns:112px minmax(0,1fr);gap:12px;padding:12px;border:1px solid var(--line-soft);border-radius:12px;background:var(--surface);min-width:0}.playlistcover{position:relative;aspect-ratio:16/10;border:0;border-radius:8px;background:#000;overflow:hidden;padding:0;cursor:pointer}.playlistcover:disabled{cursor:default}.playlistcover img{width:100%;height:100%;object-fit:cover}.playlistcover span{position:absolute;right:5px;bottom:5px;border-radius:5px;background:#000b;color:#fff;padding:3px 6px;font-size:var(--fs-xs)}.playlistmeta{display:grid;align-content:center;gap:6px;min-width:0}.playlistmeta input{min-width:0;width:100%;font-weight:600}.playlistmeta small{color:var(--muted)}.playlistactions{grid-column:1/-1;display:flex;gap:7px;justify-content:flex-end}.playlistactions .danger{color:var(--drop)}
 .playlistdialog{width:min(520px,calc(100vw - 28px));border:1px solid var(--line);border-radius:var(--floating-radius);background:var(--surface);color:var(--ink);padding:0;box-shadow:0 2px 4px #0003,0 24px 80px #000b}.playlistdialog::backdrop{background:#000a;backdrop-filter:blur(5px)}.playlistdialoghead{display:flex;align-items:center;justify-content:space-between;padding:16px 17px;border-bottom:1px solid var(--line-soft)}.playlistdialoghead h2{margin:0;font-size:var(--fs-xl)}.playlistdialoghead button{width:34px;height:34px;border:0;border-radius:var(--control-radius);background:transparent;color:var(--ink);display:grid;place-items:center;cursor:pointer}.playlistdialoghead button:hover{background:var(--hover)}.playlistdialoghead svg{width:19px;height:19px;stroke:currentColor;fill:none}.playlistdialogbody{padding:17px}.playlistpicklist{display:grid;gap:7px;margin-top:16px;max-height:320px;overflow-y:auto;overscroll-behavior:contain}.playlistpickrow{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--border-10);border-radius:var(--control-radius);background:var(--overlay-5);color:var(--ink);padding:11px 12px;text-align:left;cursor:pointer}.playlistpickrow:hover{border-color:var(--tungsten)}.playlistpickrow small{color:var(--muted)}
 .runtimegate{display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:12px;margin:0 0 12px;padding:10px 12px;border:1px solid color-mix(in srgb,var(--meter) 35%,var(--line));border-radius:var(--control-radius);background:color-mix(in srgb,var(--meter) 8%,var(--surface));color:var(--ink);font-size:var(--fs-sm)}.runtimegate>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.runtimegate span{min-width:0}.runtimegate a{color:var(--ink);font-weight:650;text-decoration:none}.runtimegate a:hover{color:var(--tungsten);text-decoration:none}
-.review{--review-fieldset-height:440px;padding:0 0 42px}.reviewhead{display:flex;align-items:baseline;gap:12px;padding:2px 2px 0;margin-bottom:12px}.reviewhead h2{margin:0;font-size:var(--fs-xl)}.reviewtabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:16px;scrollbar-width:none}.reviewtabs::-webkit-scrollbar{display:none}.reviewtabs button{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:7px 14px;cursor:pointer;font-size:var(--fs-sm);white-space:nowrap}.reviewtabs button:hover{border-color:var(--tungsten);color:var(--ink)}.reviewtabs button[aria-pressed="true"]{background:var(--tungsten-soft);border-color:var(--tungsten);color:var(--tungsten);font-weight:600}.reviewtabs .n{color:var(--muted);font-size:var(--fs-xs)}.reviewsection{margin-bottom:20px}.reviewsection h3{margin:0 0 9px;font-size:var(--fs-lg)}.reviewlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}
+.review{--review-fieldset-height:440px;padding:0 0 42px}.reviewtabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:16px;scrollbar-width:none}.reviewtabs::-webkit-scrollbar{display:none}.reviewtabs button{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:7px 14px;cursor:pointer;font-size:var(--fs-sm);white-space:nowrap}.reviewtabs button:hover{border-color:var(--tungsten);color:var(--ink)}.reviewtabs button[aria-pressed="true"]{background:var(--tungsten-soft);border-color:var(--tungsten);color:var(--tungsten);font-weight:600}.reviewtabs .n{color:var(--muted);font-size:var(--fs-xs)}.reviewsection{margin-bottom:20px}.reviewsection h3{margin:0 0 9px;font-size:var(--fs-lg)}.reviewlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}
 /* 判定状态用左侧色条表达：整卡描边在一列里扫过去时反而认不出来 */
 .reviewitem{position:relative;display:flex;flex-direction:column;box-sizing:border-box;height:var(--review-fieldset-height);margin:0;padding:0;min-width:0;overflow:hidden;background:var(--surface);border:1px solid var(--line-soft);border-radius:12px}.reviewitem::before{content:'';position:absolute;z-index:3;left:0;top:0;bottom:0;width:3px;background:transparent}.reviewitem[data-decision="approved"]::before{background:var(--keep)}.reviewitem[data-decision="rejected"]::before{background:var(--drop)}.reviewitem[data-decision="skipped"]::before{background:var(--muted)}.reviewitem[data-decision="rejected"],.reviewitem[data-decision="skipped"]{opacity:.6}.reviewitem h4{margin:0 0 6px;font-size:var(--fs-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reviewitem p{margin:4px 0;color:var(--muted);font-size:var(--fs-xs);line-height:1.55;overflow-wrap:anywhere}
 .reviewitem>.geist-fieldset-content{flex:1;min-height:0;padding:20px}.reviewcontent{height:100%}
@@ -337,6 +337,7 @@ body.entity-open .index{overflow-x:visible}
 .index .ihead h2{margin:0}
 .indexheading{display:inline-flex;align-items:center;gap:9px}.indexheading svg{width:25px;height:25px;stroke:currentColor;fill:none;stroke-width:1.8}
 .index .ihead .isearch{margin-left:auto}
+#indexCount{color:var(--muted)}
 .index .isearch{flex:1;max-width:320px;background:var(--sunk);border:1px solid var(--line);
   border-radius:18px;padding:6px 14px}
 .index .isearch input{background:none;border:0;outline:none;width:100%}
@@ -389,8 +390,12 @@ body.entity-open .index{overflow-x:visible}
 .index-tags .tg.scene,.alphatag.scene,.tagfilters .scene{--tag-color:#53B8A4}
 .index-tags .tg.story,.alphatag.story,.tagfilters .story{--tag-color:#E19A5B}
 .index-tags .tg.position,.alphatag.position,.tagfilters .position{--tag-color:#D66E8D}
+/* 标签云里的标签比卡片上的大一档：这一页它们是主体，不是附注。这三行原先写在
+   openIndex 的模板里当内联 style，于是同一个控件的外观有两个来源，改一次要
+   两处都记得。 */
 .index .index-tags .tg{border-color:color-mix(in srgb,var(--tag-color) 32%,transparent);color:var(--ink-2);
-  background:color-mix(in srgb,var(--tag-color) 7%,transparent)}
+  background:color-mix(in srgb,var(--tag-color) 7%,transparent);padding:5px 12px;font-size:var(--fs-sm)}
+.index .index-tags .tg .n{opacity:.6;font-size:var(--fs-xs)}
 .index .index-tags .tg:hover{border-color:color-mix(in srgb,var(--tag-color) 62%,transparent);
   background:color-mix(in srgb,var(--tag-color) 13%,transparent)}
 .index .index-tags .tg.selected,.alphatag.selected{outline:2px solid var(--tungsten);outline-offset:1px;
@@ -466,21 +471,12 @@ body.entity-open .index{overflow-x:visible}
   background:transparent;border-bottom:1px solid transparent}
 .entitytagbar+.entitysection .entitycollectionhead{top:calc(var(--topH) + var(--filterH))}
 .entitycollectionhead h3{margin:0;flex:0 0 auto}.entitycollectionhead .javlayout{display:inline-flex;gap:2px}
-/* 关注页与实体页共用视频 / 图片圆形切换按钮。 */
-.mediatabs{display:flex;gap:8px;margin:0 0 18px;border-bottom:1px solid var(--line-soft)}
-.mediatabs[hidden]{display:none}
-.mediatabs button{display:flex;align-items:center;gap:7px;border:0;background:transparent;color:var(--muted);
-  padding:8px 4px 10px;margin-bottom:-1px;border-bottom:2px solid transparent;cursor:pointer;font-size:var(--fs-sm)}
-/* 图标是 Lucide 的描边路径，`stroke:currentColor;fill:none` 少一样就会被浏览器
-   按默认的 fill:black/stroke:none 画成黑块——深色底上等于看不见。 */
-.mediatabs button svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
-.mediatabs button b{font-weight:400;font-size:var(--fs-xs);color:var(--muted)}
-.mediatabs button:hover{color:var(--ink-2)}
-.mediatabs button[aria-pressed="true"]{color:var(--ink);border-bottom-color:var(--tungsten)}
 .photohead{display:flex;align-items:center;gap:10px;margin:0 0 12px}
 .photohead h3{margin:0}
 .photoback{display:flex;align-items:center;gap:4px;height:28px;padding:0 10px 0 6px;border:1px solid var(--line);
   border-radius:var(--control-radius);background:transparent;color:var(--ink-2);font-size:var(--fs-xs);cursor:pointer}
+/* 图标是 Lucide 的描边路径，`stroke:currentColor;fill:none` 少一样就会被浏览器
+   按默认的 fill:black/stroke:none 画成黑块——深色底上等于看不见。 */
 .photoback svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
 .photoback:hover{background:var(--overlay-5);color:var(--ink)}
 /* 瀑布流：账本没有图片宽高，等宽多列流式排版正好不需要比例，也不用等图加载完再算位置。 */
@@ -617,7 +613,6 @@ body.photolight-open{overflow:hidden}
 /* 窄屏断点写在这一段之后：和上面同优先级，写在前面会被原样盖掉。 */
 @media (max-width:640px){
   .photowall{column-count:2;column-gap:8px}
-  .photosets{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:12px}
   .photozoom input{width:72px}.photozoom b{display:none}
   .photolight .photomain .swiper-zoom-container{padding:12px 12px 70px}
   .photolight.has-strip .photomain .swiper-zoom-container{padding-bottom:136px}
@@ -798,7 +793,7 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 .count.count-actions-only{position:relative;top:auto;min-height:0;margin:0 0 16px;padding:0;justify-content:flex-end}
 .count.count-actions-only:empty{display:none}
 .resourcesync{scroll-margin-top:calc(var(--topH) + 18px);display:grid;gap:16px}.resourcesync>h2{margin:0;font-size:var(--fs-xl)}
-.resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--line-soft);border-radius:12px;background:var(--surface)}.resourcesyncbody{padding:20px}.resourcesyncbody p{max-width:760px;margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.55}.resourcesyncfooter,.resourceapplyrow{box-sizing:border-box;min-height:var(--fieldset-bar-h);display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:8px 20px;border-top:1px solid var(--line-soft);background:var(--overlay-5)}.resourcesyncfooter p,.resourceapplyrow>p{margin:0;color:var(--muted);font-size:var(--fs-xs);line-height:1.5}.resourceaction{box-sizing:border-box;height:36px;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:none;font:inherit;font-size:var(--fs-sm);font-weight:550;cursor:pointer;transition:background-color .12s,border-color .12s,color .12s}.resourceaction:hover:not(:disabled){background:var(--hover);border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink)}.resourceaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.resourceaction:disabled{cursor:default;opacity:.68}.resourceaction svg{width:16px;height:16px;stroke:currentColor;fill:none}#resourceSyncResult:empty{display:none}.resourcescanning,.resourceerror{margin:0;padding:14px 16px;border:1px solid var(--line-soft);border-radius:var(--control-radius);color:var(--muted)}.resourceerror{color:var(--drop)}.resourcesources{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.resourcesources article{display:grid;gap:4px;min-width:0;padding:16px}.resourcesources article+article{border-left:1px solid var(--line-soft)}.resourcesourcetitle{display:flex;align-items:center;justify-content:space-between;gap:12px}.resourcesourcetitle span{font-size:var(--fs-xs)}.resourcesources .online{color:var(--success)}.resourcesources .offline{color:var(--drop)}.resourcesources strong{margin-top:10px;font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcesources small,.resourcecache small{color:var(--muted)}/* 这里是一排读数，不是又一个盒子。原先它自带填色和分格线，和下面的操作条同色，
+.resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--line-soft);border-radius:12px;background:var(--surface)}.resourcesyncbody{padding:20px}.resourcesyncbody p{max-width:760px;margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.55}.resourcesyncfooter,.resourceapplyrow{box-sizing:border-box;min-height:var(--fieldset-bar-h);display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:8px 20px;border-top:1px solid var(--line-soft);background:var(--overlay-5)}.resourcesyncfooter p,.resourceapplyrow>p{margin:0;color:var(--muted);font-size:var(--fs-xs);line-height:1.5}.resourceaction{box-sizing:border-box;height:36px;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:none;font:inherit;font-size:var(--fs-sm);font-weight:550;cursor:pointer;transition:background-color .12s,border-color .12s,color .12s}.resourceaction:hover:not(:disabled){background:var(--hover);border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink)}.resourceaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.resourceaction:disabled{cursor:default;opacity:.68}.resourceaction svg{width:16px;height:16px;stroke:currentColor;fill:none}#resourceSyncResult:empty{display:none}.resourcescanning{margin:0;padding:14px 16px;border:1px solid var(--line-soft);border-radius:var(--control-radius);color:var(--muted)}.resourcesources{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.resourcesources article{display:grid;gap:4px;min-width:0;padding:16px}.resourcesources article+article{border-left:1px solid var(--line-soft)}.resourcesourcetitle{display:flex;align-items:center;justify-content:space-between;gap:12px}.resourcesourcetitle span{font-size:var(--fs-xs)}.resourcesources .online{color:var(--success)}.resourcesources .offline{color:var(--drop)}.resourcesources strong{margin-top:10px;font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcesources small,.resourcecache small{color:var(--muted)}/* 这里是一排读数，不是又一个盒子。原先它自带填色和分格线，和下面的操作条同色，
    两条带子连在一起看不出边界；框里再套框也是多余的一层。 */
 .resourcecache{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 32px;border-top:1px solid var(--line-soft);padding:16px 20px}.resourcecache>div{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:4px 16px}.resourcecache b{font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcecache span{font-weight:650}.resourcecache small{grid-column:1/-1}.resourceapplyrow .resourcesyncok{color:var(--success)}.resourcedanger{color:var(--drop)}.resourcedanger:hover:not(:disabled){border-color:color-mix(in srgb,var(--drop) 42%,transparent);background:color-mix(in srgb,var(--drop) 8%,transparent);color:var(--drop)}.resourcesyncok{margin:0;color:var(--success)}
 .tagbar,.count,.entitytagbar,.entitycollectionhead{transition:background-color .16s ease,border-color .16s ease}
@@ -983,14 +978,6 @@ body[data-density="dense"] .junkcard .junkactions button span{display:none}
 .srcbig img,.srcbig svg{width:17px;height:17px;border-radius:4px;object-fit:contain;flex:none}
 .srcbig svg{stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .srcbig.metered{color:var(--meter)}.srcbig.free{color:var(--keep)}
-/* 侧栏来源筛选 */
-.edge .srcrow{margin-top:10px;padding-top:10px;border-top:1px solid var(--line-soft);
-  display:flex;flex-direction:column;gap:4px;align-items:center}
-.edge .srcrow button{width:52px;height:44px;border-radius:12px;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;gap:2px;font-size:var(--fs-xs);color:var(--muted)}
-.edge .srcrow button img,.edge .srcrow button svg{width:17px;height:17px;border-radius:4px;object-fit:contain}
-.edge .srcrow button[aria-pressed="true"]{background:var(--tungsten-soft);color:var(--tungsten)}
-.edge .srcrow button.off{opacity:.34}
 .dur{position:absolute;right:6px;bottom:6px;z-index:2;background:color-mix(in srgb,#000 70%,transparent);
   color:#F2EADF;padding:2px 6px;border-radius:3px;transition:opacity .15s ease}
 @media (hover:hover) and (pointer:fine){
@@ -1016,7 +1003,6 @@ body[data-density="dense"] .junkcard .junkactions button span{display:none}
 .mavstack .mav:nth-child(2){z-index:2}
 .mavstack .mav:nth-child(3){z-index:1}
 .mavstack .mav:hover{z-index:4;box-shadow:0 0 0 2px var(--tungsten)}
-.meta .whosep{color:var(--muted);margin:0 -4px}
 .meta .whomore{color:var(--muted)}
 .mtext{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
 .meta .t{font-size:var(--fs-md);line-height:1.35;min-height:2.7em;overflow:hidden;display:-webkit-box;
@@ -1069,6 +1055,8 @@ body[data-density="dense"] .card .meta .watchcount{display:none}
 /* 短片带 */
 .shorts{margin:30px 0 8px;border-top:1px solid var(--line-soft);padding-top:16px}
 .shorts h2{margin:0 0 11px;font-size:var(--fs-lg);display:flex;align-items:center;gap:10px}
+/* 竖屏计数的灰字。index.html 和 openItem 的内联片段原先各写一份，一模一样。 */
+.shortscount{color:var(--muted);font-size:var(--fs-xs)}
 .shorts h2 button,.shorts-enter{margin-left:auto;min-height:48px;display:inline-flex;align-items:center;gap:7px;
   font-size:var(--fs-xs);background:var(--overlay-5);border:0;border-radius:24px;padding:0 16px;cursor:pointer;
   color:var(--ink);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:background .14s,transform .14s}
@@ -1401,6 +1389,14 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .playernet[hidden]{display:none}
 .gate{aspect-ratio:16/9;width:100%;background:var(--sunk);border:1px dashed var(--meter);
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer}
+/* 占位说明的字号原先写在 openItem 的模板里当内联 style，三处各写一遍、
+   连 `color:var(--muted)` 也抄了三份。 */
+.gate b{font-size:var(--fs-md)}
+.gate span{font-size:var(--fs-xs);color:var(--muted)}
+/* 被门挡住的 <video> 只带 hidden 属性，而 `.video-js{display:block}` 是作者样式，
+   压得住 UA 的 `[hidden]`。原先靠内联 `style="display:none"` 顶住，三个门里
+   只有两个写了——第三个能对只是因为它那一支还没初始化成 `.video-js`。 */
+.vwrap video[hidden]{display:none}
 .closestage{position:absolute;top:11px;right:11px;z-index:9;width:40px;height:40px;
   background:rgba(0,0,0,.6);color:#F0E9DE;
   border:0;border-radius:50%;padding:0;cursor:pointer;box-shadow:none;
@@ -1463,7 +1459,10 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .trace .lab{display:flex;justify-content:space-between;color:var(--muted);margin-bottom:5px}
 .trace .bar{position:relative;height:4px;background:var(--line);border:0;border-radius:2px}
 .trace .bar u{position:absolute;inset:0 auto 0 0;background:color-mix(in srgb,var(--loupe) 26%,transparent);text-decoration:none}
-.trace .bar b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--tungsten);border-radius:1px}
+.trace .bar b{position:absolute;left:0;top:-3px;bottom:-3px;width:2px;background:var(--tungsten);border-radius:1px}
+/* 真实观看那条用另一个色标区分「看过的位置」和「看过多少」。这行原先是模板里的
+   内联 style，等于把一条配色写在 JS 里。 */
+#realBar{background:color-mix(in srgb,var(--keep) 40%,transparent)}
 .trace-real{margin-top:10px}
 .fb{display:flex;align-items:center;gap:0;margin:0 0 12px;padding:0;border:1px solid var(--border-10);border-radius:var(--control-radius);background:var(--overlay-5);width:max-content;overflow:hidden;flex:none}
 .fb button{width:44px;height:42px;padding:0;border:0;border-right:1px solid var(--border-10);background:transparent;border-radius:0;
@@ -1908,7 +1907,6 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
    给它们切「封面」没有意义。 */
 .javbar{display:flex;align-items:center;gap:8px;padding:0 0 10px;flex-wrap:wrap}
 .javbar[hidden]{display:none}
-.javhint{color:var(--muted);font-size:var(--fs-xs);margin-right:4px}
 .javbar button{width:34px;height:30px;display:inline-grid;place-items:center;border-radius:var(--control-radius);border:1px solid var(--overlay-10);background:transparent;color:var(--ink-2);cursor:pointer;padding:0}.javbar button svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8}.javbar button:hover{background:var(--hover);color:var(--ink)}.javbar button[aria-pressed="true"]{background:var(--tungsten-soft);color:var(--tungsten);border-color:color-mix(in srgb,var(--tungsten) 45%,transparent)}
 .javlayout{min-width:0;margin:0;padding:3px;border:1px solid var(--line-soft);border-radius:8px;background:var(--overlay-5)}.javlayout label{position:relative;display:inline-grid;width:34px;height:28px;place-items:center;border-radius:6px;color:var(--muted);cursor:pointer}.javlayout input{position:absolute;inline-size:1px;block-size:1px;opacity:0}.javlayout label:hover{color:var(--ink)}.javlayout label:has(input:checked){background:var(--surface);color:var(--tungsten);box-shadow:0 1px 2px #0005}.javlayout label:has(input:focus-visible){outline:2px solid var(--tungsten);outline-offset:2px}.javlayout svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8}
 /* 取景：正封模式下，整张封套要把镜头推到右半边；本身就是竖版正封的则整张用。
@@ -1960,19 +1958,6 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .followfilters .pill .n{margin-left:5px;color:inherit}
 .followfilters .sourcepill{width:40px;padding:0}
 .followfilters .sourcepill .ficon{width:21px;height:21px;margin:0}
-/* 折叠摘要按 Vercel 设置行的 title + description 结构：标题一行、说明弱化一行，
-   尖角指引符与文字之间留出固定间距，不再靠一个空格硬贴。 */
-.fdetails{margin-inline:-16px}
-.fdetails summary,.fdetails p{padding-inline:16px;margin-inline:0}
-.fdetails summary{border-bottom:1px solid var(--border-10);padding-bottom:8px}
-.fdetails summary{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:9px;row-gap:3px;
-  justify-content:start;cursor:pointer;list-style:none}
-.fdetails summary::-webkit-details-marker{display:none}
-.fdetails summary::before{content:"›";grid-column:1;grid-row:1;display:block;line-height:1.5;transition:transform .12s}
-.fdetails[open] summary::before{transform:rotate(90deg)}
-.fdetails .fsumhead{grid-column:2;grid-row:1;font-size:var(--fs-sm);font-weight:600;color:var(--ink)}
-.fdetails .fsumdesc{grid-column:2;grid-row:2;font-size:var(--fs-xs);line-height:1.5;color:var(--muted)}
-.fdetails p{margin:6px 0 0}
 .ficon{width:14px;height:14px;border-radius:3px;object-fit:contain;
   vertical-align:-2px;margin-right:5px}
 .fauthorhead .ficon{margin-right:2px}
@@ -2331,8 +2316,6 @@ details.fcred{display:block}
   .faliasmanager{margin-left:-13px;margin-right:-13px}
   .faliasmanager>summary{padding:2px 13px}
   .faliasmanager>.fcollapse{padding:4px 13px 14px}
-  .fdetails{margin-inline:-13px}
-  .fdetails summary,.fdetails p{padding-inline:13px}
   .faddform{grid-template-columns:minmax(0,1fr) auto}
   .faddform>.fsearchinput{grid-column:1/-1}
   .faddform>.fbtn.primary{width:100%}
