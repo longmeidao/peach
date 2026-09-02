@@ -157,7 +157,7 @@
       "url": "https://vercel.com/geist/fieldset",
       "snapshot": "docs/reference-snapshots/vercel-geist-fieldset-scroller-empty-state.md",
       "checked_on": "2026-09-02",
-      "sha256": "536c57cb8f014881a677329c4898e7b3ad9d47b257a108786ad4590a3ce0f65f",
+      "sha256": "c9d618dcba39b4349a25994e17a5ff74ab7245425020c64b1117ad154fb7a446",
       "role": "人工复核 Fieldset、固定高度 Scroller、Empty State 结构与快速导航请求隔离的项目级依据。",
       "consumers": [
         "web/js/ui-components.js",

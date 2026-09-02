@@ -1708,6 +1708,64 @@ class DuplicateDetectionTests(unittest.TestCase):
         self.assertEqual(rm_web.ordered_multipart_items(duplicate), [])
         self.assertEqual(rm_web.ordered_multipart_items(gapped), [])
 
+    def test_a_bare_first_part_joins_numbered_parts_when_durations_agree(self):
+        # TRE-080 实测：首卷 `TRE-080.mp4` 没有标记，后两卷是 -2/-3，时长 9163/11255/8530 秒。
+        items = [
+            {"id": 3, "name": "TRE-080-3.mp4", "duration": 8530},
+            {"id": 1, "name": "TRE-080.mp4", "duration": 9163},
+            {"id": 2, "name": "TRE-080-2.mp4", "duration": 11255},
+        ]
+        self.assertEqual([item["id"] for item in rm_web.ordered_multipart_items(items)], [1, 2, 3])
+
+    def test_a_bare_file_only_counts_as_part_one_when_it_cannot_be_the_whole_film(self):
+        parts = [
+            {"id": 2, "name": "TRE-080-2.mp4", "duration": 11255},
+            {"id": 3, "name": "TRE-080-3.mp4", "duration": 8530},
+        ]
+        cases = {
+            "完整版": [{"id": 1, "name": "TRE-080.mp4", "duration": 28900}, *parts],
+            "广告片": [{"id": 1, "name": "TRE-080.mp4", "duration": 78}, *parts],
+            "缺时长": [{"id": 1, "name": "TRE-080.mp4", "duration": None}, *parts],
+            "两个裸名": [{"id": 1, "name": "TRE-080.mp4", "duration": 9163},
+                         {"id": 4, "name": "tre-080.mp4", "duration": 9163}, *parts],
+            "标记不从 2 起": [{"id": 1, "name": "TRE-080.mp4", "duration": 9163}, parts[1]],
+            "字母卷缺 A": [{"id": 1, "name": "OJIE-325.mp4", "duration": 14300},
+                           {"id": 2, "name": "OJIE-325-B.mp4", "duration": 14349},
+                           {"id": 3, "name": "OJIE-325-C.mp4", "duration": 14281}],
+        }
+        for label, items in cases.items():
+            with self.subTest(label):
+                self.assertEqual(rm_web.ordered_multipart_items(items), [])
+
+    def test_a_bare_first_part_gets_one_card_and_a_numbered_queue_not_an_edition_group(self):
+        connection = sqlite3.connect(self.db_path)
+        connection.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,size,studio,code,duration,"
+            "width,height,first_seen) VALUES(?,'115',?,?,'video',?,'Prestige','TRE-080',?,"
+            "1920,1080,'2026-08-13')",
+            [
+                (6, r"B:\TRE-080\TRE-080-2.mp4", "TRE-080-2.mp4", 8_432_234_092, 11255.5),
+                (7, r"B:\TRE-080\TRE-080-3.mp4", "TRE-080-3.mp4", 6_403_519_569, 8530.4),
+                (8, r"B:\TRE-080\TRE-080.mp4", "TRE-080.mp4", 7_105_839_805, 9163.0),
+            ],
+        )
+        connection.commit(); connection.close()
+
+        listed = rm_web.q_items(
+            self.contract, {"q": "TRE-080", "sort": "new", "limit": "10"},
+        )["items"]
+        self.assertEqual(len(listed), 3, "API 仍保留三个真实资产")
+        self.assertEqual({row["part_group"]["count"] for row in listed}, {3})
+        self.assertEqual(listed[0]["part_group"]["seed_id"], 8, "裸名文件是第一卷")
+        self.assertTrue(all("edition_group" not in row for row in listed),
+                        "同一版次的分卷不是多版本")
+        self.assertEqual(rm_web._edition_groups(self.contract, ["TRE-080"]), {})
+
+        parts = rm_web.q_parts(self.contract, {"id": "6"})
+        self.assertEqual([item["name"] for item in parts["items"]],
+                         ["TRE-080.mp4", "TRE-080-2.mp4", "TRE-080-3.mp4"])
+        self.assertEqual([item["part_label"] for item in parts["items"]], ["1", "2", "3"])
+
 
 class TopsRotationTests(unittest.TestCase):
     """顶部三层要跟着「换一批」真的换人，否则刷新后上面纹丝不动。"""
