@@ -165,25 +165,28 @@
 - 管理页 `/taste` 以浏览器记录为主、Peach 内部行为为辅，分区展示各自排序；创作者与女优显示实体头像，常访问网站显示 favicon。宽屏改为按信息密度分配 4／6／8／12 栏且面板按自身高度收口，不再固定等宽双列；返回口味页会清除临时下钻筛选。明确“不合口味”只归于具体项目与理由，不自动给 Tag 降权；模糊时长旧 Tag 从口味结果和前端筛选状态排除。正式 Windows 全量 1142 项通过、13 项按平台跳过；1440×900 实测网站 favicon、创作者／女优头像与非等宽面板正常，390×844 为单列且无横向溢出，Tag 下钻后返回口味再进首页不残留筛选。原始 URL／标题仍不进入页面或 ledger，本轮未改真实 ledger 中的旧实体行，也未重启 80／443 生产服务。
 - `/taste` 的浏览器查询词重新按语义解析：`-gay`、`-ai_generated` 这类排除项整体不计入画像，下划线保留为组合词，`detroit`／`become_human` 归入游戏内容；本机实数复核后仅剩 2 次显式正向 `ai` 页面，`gay`、`generated`、`ai_generated` 均为 0。SimpCity、Hanime1 与 Kemono 优先使用站点实际 favicon，失败才回退通用图标服务。`/taste` 与 `/stats` 使用信息密度 Bento；任务队列继续保留线性列表。管理导航在 760px 以下默认折叠为当前页单行，展开后为两列 8 个入口；390×844 实测收起／展开、当前页高亮及无横向溢出均正常。Mac 的 Safari／Zen／Firefox／Chrome 本机发现已有测试，但当前 Windows 私有历史库只有 LMD-DST 的 7 个 Chrome／Firefox／Zen profile、382782 次访问，不自动跨主机读取。正式 Windows 全量 1154 项通过、13 项按平台跳过。本轮为预览源码，未部署或重启 80／443。
 - `/taste` 排名按 Vercel Geist Grid 的共享引导线重新收敛：普通排行与数据源由父网格统一拥有边线，单元透明、0 圆角，排名按 DOM 阅读顺序逐行排列；桌面紧凑／半宽／宽／满宽面板分别为 1／2／3／4 列，中等视口统一 2 列，窄屏统一 1 列。Tag 保留 6px 小圆角，不再使用全胶囊；hover 只改变 5% 轻底色，取消蓝字、粗左边、阴影和整块圆角浮层。顶部操作继续左对齐，头像、favicon、固定数字列和最右操作列不变。1137px 实测各面板列宽固定、无横向溢出；390×844 下所有排行和数据源均为约 313px 单列，页面宽 380／390。catalog 387 项通过，浏览器控制台 0 个错误。本轮只更新 8900 预览，生产 80／443 未重启。
+- 2026-09-02 纠正类型映射的粗桶错误、按用户当轮授权直接写入日文标题，并补上脚本的 src 引导。用户指出 javbus 给的是 `巨乳`、写进库的却是 `乳系`，他是对的：`catalog_rules.TAG_SUPERSESSION` 定义 `乳系 → {美乳,巨乳,爆乳,贫乳,乳交}`，即「出现具体标签时要删掉的粗桶」，把 `巨乳` 映成 `乳系` 等于写入系统随后准备丢弃的那个值，方向反了；同一个错更早就存在于 `"Big Tits": "乳系"`，只是没人问过。改为一律取来源那一级（巨乳→巨乳、美乳→美乳、爆乳→爆乳，英文侧同步）；罩杯 `Dカップ`…`Jカップ` 与 `巨大乳輪` 整组撤掉——罩杯是身体尺寸不是内容分类，全部缓存快照里只出现 5 次（G/H 带巨乳、D/F 什么都不带），五个样本推不出规则。新门槛是通用不变量：`CATEGORY_MAP` 的任何值都不得是 `TAG_SUPERSESSION` 的键。**已写入真实 ledger**：复用缓存快照重跑 119 个已带 javbus 标签的番号（无新增网络流量），备份 `database/ledger.pre-retag-20260902-2035.db`，`javinizer:javbus:tag` 的 `乳系` 57 → 0，全库 `巨乳` 456 → 489、`美乳` 107 → 133；119 组 772 行与候选文件逐条核对 0 不匹配，`integrity_check` ok、外键违规 0。TRE-080 现为 `巨乳`、`中出内射`。标题按用户「直接通过，除非是特别偏移值」的授权批量写入 `asset.catalog_title`：207 组筛出 5 个偏移值（`MY-101/102/103/104` 的候选是「演员名+序号」、`SAR-103` 是三围加艺名列表，都是 javbus 该栏位放错内容），其余 202 组写入 493 条资产，备份 `ledger.pre-titles-javbus-20260902-2041.db` 与 `ledger.pre-titles-dmm-20260902-2042.db`；`catalog_title` 非空 1490 条、其中 1480 条含日文假名。被跳过的 5 条原样留在 CSV 里继续排队，没有从复核产物里删掉。工具侧补两个洞：批量写入现在按 `/review` 手工批准的同一形状登记 `review_decision`（此前 119 组标签写完仍原样挂在 `/review`），留痕带 `candidate_key` 以便 `_metadata_decision_is_stale` 判过期；新增 `--skip-codes`。另外用户按我给的命令跑 `flatten_release_dirs.py` 直接 `ModuleNotFoundError`：脚本导入 peach 前没挂 `src`，54 个脚本里 34 个都缺，已全部补齐并加测试守住。**一处未解**：`javinizer:%:tag` 行数在 20:17 读到 4593，20:35 的备份却是 4402（javbus −172、r18dev −19）。全库只有 `_apply_metadata_candidate` 会删 `asset_tag`，`scrape_codes.py` 以 `mode=ro` 打开账本，服务日志该时段没有任何会改标签的请求，去向没查出来；当前状态已逐条核对正确，但这条差异未结案。Windows 正式全量 1722 项通过、13 项按平台跳过。
 
 ## 下一批工作
 
-1. 另行授权后先备份 ledger，修正 4 组已核实姓名：恢复 `星谷瞳`、`福山美佳`、`平沢すず` 的规范名；从 `かわいゆい` 移除错误的 `河合ゆい` 别名与 r18 外部引用，清退错误头像及 provenance 后重新生成候选；同步 actor tag/检索投影，并核对受影响行数、`integrity_check`、外键和只读 API。
-2. 另行授权后先备份 ledger，再把 `follow_item` 181、184、185 从 `seen` 恢复为 `new`，复核状态计数、完整性与新哈希。
-3. 继续按复用审计依次替换 PID 锁和 Rule34Video 媒体页；每项固定版本/revision、首个消费者和隔离测试同批落地。
-4. 分类剩余 44 个无预览变体，区分确无图片与来源解析遗漏。
-5. 另行确认后在生产关注页检查 LazyProcrastinator FANBOX，把已验证的 6 图、正文与 Gofile `OS2Qz9` 资源页写入关注候选；Gofile token 当前未配置，且此前验证的账户不是 Premium，21 个视频仍未取得。
-6. 在 `/review` 人工处理本批 JAV 日文系列名、官方标签及现有创作者标签、FC2、Javinizer、Logo、头像和媒体失败候选；未经批准不写真相字段。
-7. 将 Windows writer 的最新副本同步到共享传输点，再让 Mac reader 拉取；同步前后核对迁移版本、计数、完整性与 writer 身份。
-8. 在 Mac Finder 以 `smb://peach-win.local/peach-sync` 连接一次并保存钥匙串记录，再重启菜单栏进程，核对自动挂载、reader 锁定、HTTPS、mDNS 和真实 LAN 客户端。
-9. 在实现下载器前先确定媒体凭据、流量与磁盘预算。
-10. Windows writer 运行 PikPak 夜跑前重算 probe/抽帧队列，并按 `peach-batch-jobs` 设置流量与系统盘闸门。
-11. 继续拆分 `web_contract.py` 的 catalog、stats、activity、review、trash 领域，保持路由和现有契约测试不变。
-12. 补做 HLS 首帧、seek、自适应码率及桌面/手机视觉验收。
-13. 外置盘挂载后先只读盘点 `R:\Media\<名字>\P\...` 图片规模；扫描写真 ledger，需另行授权。
-14. 重做品味分析页的视觉再决定是否合入：`agent/codex/taste-analysis`（cd3effe）功能可用但版式不过关，2026-08-29 集成时按用户判断跳过。重做时以该分支的 `taste_history.py` 分析逻辑为底，版式另出。
-15. 另行授权后执行 `scripts/flatten_release_dirs.py --apply --backup <备份路径>`：296 个目录操作（collapse 167、rename 129）落在 CloudDrive 网络挂载上，影响账本路径 3374 条。执行前重跑一次 dry-run，191 条未挂载的会随挂载状态变化。
-16. 决定 `attic/instances/20260828-taste-preview` 的去留：8900 预览实例的数据根，含 122 MB 账本副本（2026-08-28 18:08 快照）与 153 MB `sources`，`generated` 已空。账本副本按真相源快照对待，删除需另行确认；28 个预览日志（348 KB）可随时清。
+1. 查清 2026-09-02 那 191 行 `javinizer:%:tag` 的去向（javbus −172、r18dev −19，发生在 20:17 与 20:35 之间，无可归因的写入者）。先确认是否可复现：重跑一次同样的「读计数 → sqlite_backup → 再读计数」并在中间只做只读操作。
+2. 在 `/review` 处理被跳过的 5 个标题偏移值：`MY-101`、`MY-102`、`MY-103`、`MY-104`、`SAR-103`。
+3. 另行授权后执行 `scripts/flatten_release_dirs.py --apply --backup <备份路径>`：296 个目录操作（collapse 167、rename 129）落在 CloudDrive 网络挂载上，影响账本路径 3374 条。执行前重跑一次 dry-run，191 条未挂载的会随挂载状态变化。
+4. 另行授权后先备份 ledger，修正 4 组已核实姓名：恢复 `星谷瞳`、`福山美佳`、`平沢すず` 的规范名；从 `かわいゆい` 移除错误的 `河合ゆい` 别名与 r18 外部引用，清退错误头像及 provenance 后重新生成候选；同步 actor tag/检索投影，并核对受影响行数、`integrity_check`、外键和只读 API。
+5. 另行授权后先备份 ledger，再把 `follow_item` 181、184、185 从 `seen` 恢复为 `new`，复核状态计数、完整性与新哈希。
+6. 继续按复用审计依次替换 PID 锁和 Rule34Video 媒体页；每项固定版本/revision、首个消费者和隔离测试同批落地。
+7. 分类剩余 44 个无预览变体，区分确无图片与来源解析遗漏。
+8. 另行确认后在生产关注页检查 LazyProcrastinator FANBOX，把已验证的 6 图、正文与 Gofile `OS2Qz9` 资源页写入关注候选；Gofile token 当前未配置，且此前验证的账户不是 Premium，21 个视频仍未取得。
+9. 在 `/review` 人工处理本批 JAV 日文系列名、官方标签及现有创作者标签、FC2、Javinizer、Logo、头像和媒体失败候选；未经批准不写真相字段。
+10. 将 Windows writer 的最新副本同步到共享传输点，再让 Mac reader 拉取；同步前后核对迁移版本、计数、完整性与 writer 身份。
+11. 在 Mac Finder 以 `smb://peach-win.local/peach-sync` 连接一次并保存钥匙串记录，再重启菜单栏进程，核对自动挂载、reader 锁定、HTTPS、mDNS 和真实 LAN 客户端。
+12. 在实现下载器前先确定媒体凭据、流量与磁盘预算。
+13. Windows writer 运行 PikPak 夜跑前重算 probe/抽帧队列，并按 `peach-batch-jobs` 设置流量与系统盘闸门。
+14. 继续拆分 `web_contract.py` 的 catalog、stats、activity、review、trash 领域，保持路由和现有契约测试不变。
+15. 补做 HLS 首帧、seek、自适应码率及桌面/手机视觉验收。
+16. 外置盘挂载后先只读盘点 `R:\Media\<名字>\P\...` 图片规模；扫描写真 ledger，需另行授权。
+17. 重做品味分析页的视觉再决定是否合入：`agent/codex/taste-analysis`（cd3effe）功能可用但版式不过关，2026-08-29 集成时按用户判断跳过。重做时以该分支的 `taste_history.py` 分析逻辑为底，版式另出。
+18. 决定 `attic/instances/20260828-taste-preview` 的去留：8900 预览实例的数据根，含 122 MB 账本副本（2026-08-28 18:08 快照）与 153 MB `sources`，`generated` 已空。账本副本按真相源快照对待，删除需另行确认；28 个预览日志（348 KB）可随时清。
 
 ## 批处理进度（自动生成）
 
