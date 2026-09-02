@@ -492,6 +492,33 @@ function cancelStreamSession(session){
     document.documentElement.dataset.peachStreamCancel=JSON.stringify(result)
   }).catch(()=>{});
 }
+/* ── 详情舞台的收尾登记 ──────────────────────────────────────────────────────
+   `disposeStage()` 用 `stage.innerHTML=''` 清场，那只删得掉 DOM。挂在
+   document/window 上的监听和 setInterval 不在舞台里，节点没了它们照样活着，
+   并且闭包还攥着已经脱离文档的元素——一次导航泄一份，翻十几个详情就是十几份。
+
+   所以凡是在舞台上开了「舞台之外」的东西，就在这里登记一条撤销。返回值是注销
+   函数：浮层自己先关掉时用它把登记摘掉，别让集合无界地长。 */
+let stageDisposers=new Set();
+function onStageDispose(dispose){stageDisposers.add(dispose);return ()=>stageDisposers.delete(dispose)}
+function runStageDisposers(){
+  const pending=[...stageDisposers];stageDisposers.clear();
+  pending.forEach(dispose=>{try{dispose()}catch(_e){}});
+}
+/* 浮层的「点外面就关」。document 级捕获监听不随浮层 DOM 一起消失，登记与撤销
+   必须成对；关不掉的那一次由舞台销毁兜底。 */
+function bindOutsideClose(anchor,inside,close){
+  const handler=event=>{if(!inside.contains(event.target)&&event.target!==anchor)close()};
+  let unregister=null;
+  const detach=()=>{
+    document.removeEventListener('pointerdown',handler,true);
+    if(unregister){unregister();unregister=null}
+  };
+  // 延一拍再挂：打开浮层的这一次 pointerdown 还在冒泡，立刻挂上会自己把自己关掉。
+  setTimeout(()=>document.addEventListener('pointerdown',handler,true),0);
+  unregister=onStageDispose(detach);
+  return detach;
+}
 function disposeStage(push=false,preserveInlineOrigin=false){
   const stage=$('#stage');
   // 关注详情会把舞台插到头像和筛选条之后。离开详情前先放回 main 的固定槽位，
@@ -506,6 +533,7 @@ function disposeStage(push=false,preserveInlineOrigin=false){
     if(video._hop)clearInterval(video._hop);
     video.pause();video.removeAttribute('src');video.load();video.remove()});
   cancelDetailStream();
+  runStageDisposers();
   stage.innerHTML='';stage.hidden=true;document.body.classList.remove('detail-open');current=null;activeQueue=null;
   if(!preserveInlineOrigin){
     detailOriginAnchor=null;detailOriginAbove=false;detailReturnNeedsRestore=false;
@@ -6027,9 +6055,9 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
       }}catch(error){actionFailure('添加标签',error)}
     };
     const plus=$('#tagPlus'),picker=$('#tagPicker'),search=$('#tagPickSearch'),body=$('#tagPickBody');
-    let outsideHandler=null,activeIndex=-1;
+    let detachOutside=null,activeIndex=-1;
     const closePicker=()=>{picker.hidden=true;plus.setAttribute('aria-expanded','false');
-      if(outsideHandler)document.removeEventListener('pointerdown',outsideHandler,true);outsideHandler=null};
+      if(detachOutside){detachOutside();detachOutside=null}};
     const candidates=()=>{const source=(facets&&facets.tags)||[],byName=new Map(source.map(x=>[foldName(x.k),x]));
       let recent=[];try{recent=JSON.parse(localStorage.getItem('peach.recentTags')||'[]')}catch(_e){}
       return {all:source,recent:recent.map(name=>byName.get(foldName(name))||{k:name,n:0})}};
@@ -6054,8 +6082,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
       if(e.key==='Enter'){e.preventDefault();if(activeIndex>=0&&options[activeIndex])options[activeIndex].click();
         else if(search.value.trim()){closePicker();addTag(search.value.trim())}}};
     plus.onclick=()=>{picker.hidden=false;plus.setAttribute('aria-expanded','true');renderPicker();search.focus();
-      outsideHandler=e=>{if(!picker.contains(e.target)&&e.target!==plus)closePicker()};
-      setTimeout(()=>document.addEventListener('pointerdown',outsideHandler,true),0)};
+      detachOutside=bindOutsideClose(plus,picker,closePicker)};
   };
   renderDetailTags();
   $('#stage').querySelectorAll('[data-entity-kind]').forEach(b=>b.onclick=()=>
@@ -6167,10 +6194,18 @@ function wireTelemetry(it,v,sel){
           const b=$('#realBar'); if(b)b.style.width=rp.toFixed(1)+'%';
         }});
     acc=0;seeks=0};
-  v.onplay=()=>{last=v.currentTime;timer=setInterval(()=>flush(false),10000)};
+  /* 十秒一次的上报只有一个定时器。原来 onplay 每次都新起一个而只有 onpause 清，
+     所以「播放→拖动→播放」这类不经过 pause 的序列会把定时器叠起来；更要紧的是
+     离开详情时既不 pause 也不 ended，setInterval 连着已被销毁的 video 一直跑，
+     每十秒往 /api/activity 打一发。跟 wireFollowTelemetry 对齐：`emptied` 收尾，
+     并向舞台登记一条撤销。 */
+  const stopTelemetry=()=>{if(timer){clearInterval(timer);timer=null}};
+  v.onplay=()=>{last=v.currentTime;stopTelemetry();timer=setInterval(()=>flush(false),10000)};
   v.ontimeupdate=()=>{const dt=v.currentTime-last;if(dt>0&&dt<2)acc+=dt;last=v.currentTime;paint()};
-  v.onpause=()=>{clearInterval(timer);flush(false)};
-  v.onended=()=>{clearInterval(timer);flush(true);if(!$('#tok').hidden)tokNext(1)};
+  v.onpause=()=>{stopTelemetry();flush(false)};
+  v.onended=()=>{stopTelemetry();flush(true);if(!$('#tok').hidden)tokNext(1)};
+  v.addEventListener('emptied',()=>{stopTelemetry();flush(false)},{once:true});
+  onStageDispose(stopTelemetry);
   paint();
 }
 
@@ -6633,15 +6668,23 @@ $('#censorSetting').onchange=e=>{
 };
 
 /* 横向行支持鼠标拖动（三层顶栏、短片带、接着看都没滚动条，只能滚轮/触摸） */
+/* 正在被拖的那一行。松开鼠标全站只需要一个 window 监听。
+   原来是每 wireDrag 一个元素就往 window 上挂一条 mouseup，而这些横向行是
+   innerHTML 重绘出来的：每次重绘都换一批新节点，旧闭包连着已经脱离文档的元素
+   永远不回收。一屏三层顶栏加两条横向带，翻十几页就攒下上百条死监听。 */
+let dragRow=null;
+window.addEventListener('mouseup',()=>{
+  if(!dragRow)return;
+  dragRow.style.cursor='';dragRow=null;
+});
 function wireDrag(el){
   if(!el||el.dataset.drag)return; el.dataset.drag='1';
-  let down=false,sx=0,sl=0,moved=0;
+  let sx=0,sl=0,moved=0;
   el.addEventListener('mousedown',e=>{
-    if(e.button!==0)return; down=true;moved=0;sx=e.pageX;sl=el.scrollLeft;
+    if(e.button!==0)return; dragRow=el;moved=0;sx=e.pageX;sl=el.scrollLeft;
     el.style.cursor='grabbing'});
-  window.addEventListener('mouseup',()=>{if(!down)return;down=false;el.style.cursor=''});
   el.addEventListener('mousemove',e=>{
-    if(!down)return; const dx=e.pageX-sx; moved=Math.max(moved,Math.abs(dx));
+    if(dragRow!==el)return; const dx=e.pageX-sx; moved=Math.max(moved,Math.abs(dx));
     el.scrollLeft=sl-dx; e.preventDefault()});
   // 拖动过就吞掉这次点击，别误触发筛选
   el.addEventListener('click',e=>{if(moved>6){e.stopPropagation();e.preventDefault();moved=0}},true);

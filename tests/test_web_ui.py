@@ -784,6 +784,51 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("addEventListener('pagehide',()=>{")
         self.assertPageContains("$('#tokTrack').querySelectorAll('video').forEach(cancelTokStream)")
 
+    def test_nothing_a_surface_starts_outlives_the_surface(self):
+        """离开一个表面时，它开的东西必须跟着结束。
+
+        三处实际泄漏。共同点是都不报错：页面越用越慢，而且离开之后还在往后端打请求。
+
+        - 横向拖动行的 `mouseup`：原来每 `wireDrag` 一个元素就往 window 上挂一条，
+          而这些行是 innerHTML 重绘出来的，每次重绘换一批新节点，旧闭包连着已经
+          脱离文档的元素永远不回收。
+        - `wireTelemetry` 的十秒上报：只有 pause/ended 清定时器，而离开详情两者都不
+          发生，于是 setInterval 连着已销毁的 video 一直往 /api/activity 打。
+        - 标签选择器的 document 捕获监听：`stage.innerHTML=''` 只删 DOM，
+          document 上那条监听留着。
+
+        契约不是「写成哪几行」，而是三条出口：全局监听全站唯一、按元素调用的
+        wire* 不往 window/document 上挂无人撤销的监听、舞台销毁跑一张收尾登记表。
+        """
+        app = self.app_js
+        self.assertEqual(app.count("window.addEventListener('mouseup'"), 1,
+                         "松开鼠标结束拖动，全站只需要一条 window 监听")
+        drag = app[app.index("function wireDrag(el){"):]
+        drag = drag[:drag.index("function wireAllDrag")]
+        self.assertNotIn("window.addEventListener", drag,
+                         "wireDrag 按元素调用，在里面挂全局监听就是按元素泄漏")
+        self.assertNotIn("document.addEventListener", drag)
+
+        self.assertPageContains("function onStageDispose(dispose)")
+        self.assertPageContains("function runStageDisposers()")
+        dispose = app[app.index("function disposeStage("):]
+        dispose = dispose[:dispose.index("\nfunction placeItemDetail")]
+        self.assertIn("runStageDisposers();", dispose, "舞台销毁必须跑收尾登记表")
+
+        telemetry = app[app.index("function wireTelemetry(it,v,sel){"):]
+        telemetry = telemetry[:telemetry.index("\nfunction wireFollowTelemetry")]
+        for needle in ("const stopTelemetry=", "'emptied'", "onStageDispose(stopTelemetry)"):
+            self.assertIn(needle, telemetry,
+                          f"详情遥测缺少 {needle}：离开详情后定时器还在上报")
+
+        outside = app[app.index("function bindOutsideClose("):]
+        outside = outside[:outside.index("\nfunction disposeStage(")]
+        self.assertIn("document.addEventListener('pointerdown',handler,true)", outside)
+        self.assertIn("document.removeEventListener('pointerdown',handler,true)", outside)
+        self.assertIn("onStageDispose(detach)", outside,
+                      "浮层没被关掉就离开详情时，要有舞台销毁兜底")
+        self.assertPageContains("detachOutside=bindOutsideClose(plus,picker,closePicker)")
+
     def test_detail_close_disposes_playback_source(self):
         self.assertPageContains("function disposeStage")
         self.assertPageContains("video.pause();video.removeAttribute('src');video.load();video.remove()")
