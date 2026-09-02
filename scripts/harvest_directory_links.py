@@ -27,32 +27,26 @@ bstar-pro 的 models.html 有年龄门：同一会话先 `POST age_check=yes`，
 from __future__ import annotations
 
 import argparse
-import hashlib
 import html as html_lib
 import json
 import re
 import sqlite3
 import sys
-import time
 from collections import Counter
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
-import httpx
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach.config import STATE_DIR   # noqa: E402
-from peach.http import HttpRequest, HttpxTransport   # noqa: E402
 from peach.jobs import job_main   # noqa: E402
+from peach.page_cache import HttpStatusError, Site, USER_AGENT   # noqa: E402
 from peach.review_csv import write_rows   # noqa: E402
 from peach.social_links import (   # noqa: E402
     canonical_url, classify, handle, load_performers, name_key, platform, under,
     x_profile_state,
 )
 
-USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-              "(KHTML, like Gecko) Chrome/128.0 Safari/537.36")
 HREF = re.compile(r'href=["\']([^"\']+)["\']')
 TAG = re.compile(r"<[^>]+>")
 FIELDS = ("entity_id", "kind", "name", "link_kind", "label", "url", "evidence",
@@ -81,60 +75,6 @@ BSTAR_GATE = re.compile(r'name=["\']age_check["\']')
 X_PROFILE = "https://x.com/{}"
 #: 对照账号：X 官方号，登出页永远有 og:image。用来区分「账号没了」和「我们被限流」。
 X_CONTROL = "X"
-
-
-# ---------------------------------------------------------------- 取页
-
-class HttpStatusError(RuntimeError):
-    def __init__(self, status: int):
-        super().__init__(f"HTTP {status}")
-        self.status = status
-
-
-class Site:
-    """一个来源的取页器：本地缓存优先，未命中才走网络并按间隔限速。
-
-    缓存按 URL 的 sha1 落在 `STATE_DIR/directory-links/<来源>/`。686 页抓一次要十来分钟，
-    而名字比对规则改一行就得重跑；没有缓存，每次调规则都是一次完整重抓。
-    """
-
-    def __init__(self, cache_dir: Path, interval: float, timeout: float, *,
-                 refresh: bool = False, via_proxy: bool = False, transport=None):
-        self.cache_dir, self.interval, self.timeout, self.refresh = cache_dir, interval, timeout, refresh
-        self.transport = transport or HttpxTransport(
-            httpx.Client(trust_env=via_proxy, follow_redirects=True))
-        self._last = 0.0
-        self.fetched = self.cached = 0
-
-    def request(self, method: str, url: str, body: bytes | None = None,
-                headers: dict[str, str] | None = None) -> str:
-        wait = self.interval - (time.monotonic() - self._last)
-        if wait > 0:
-            time.sleep(wait)
-        self._last = time.monotonic()
-        response = self.transport(
-            HttpRequest(method, url, {"User-Agent": USER_AGENT, **(headers or {})}, body=body),
-            self.timeout, 8 << 20)
-        if response.status != 200:
-            raise HttpStatusError(response.status)
-        return response.body.decode("utf-8", "replace")
-
-    def cache_path(self, url: str) -> Path:
-        return self.cache_dir / (hashlib.sha1(url.encode("utf-8")).hexdigest()[:20] + ".html")
-
-    def get(self, url: str, refresh: bool = False) -> str:
-        path = self.cache_path(url)
-        if not (refresh or self.refresh) and path.exists():
-            self.cached += 1
-            return path.read_text("utf-8")
-        text = self.request("GET", url)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, "utf-8")
-        self.fetched += 1
-        return text
-
-    def close(self) -> None:
-        self.transport.close()
 
 
 # ---------------------------------------------------------------- 解析

@@ -38,6 +38,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                  "test_stash_entity_import.py", "test_migrations.py",
                  "test_entity_link_install.py", "test_studio_site_harvest.py",
                  "test_performer_link_harvest.py", "test_directory_link_harvest.py",
+                 "test_studio_name_localization.py",
                  "test_link_rediscovery.py"),
     "tooling": ("test_scripts.py", "test_agent_worktree.py", "test_dependency_policy.py",
                 "test_restart_windows_tray.py",
