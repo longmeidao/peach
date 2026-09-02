@@ -337,6 +337,7 @@ body.entity-open .index{overflow-x:visible}
 .index .ihead h2{margin:0}
 .indexheading{display:inline-flex;align-items:center;gap:9px}.indexheading svg{width:25px;height:25px;stroke:currentColor;fill:none;stroke-width:1.8}
 .index .ihead .isearch{margin-left:auto}
+#indexCount{color:var(--muted)}
 .index .isearch{flex:1;max-width:320px;background:var(--sunk);border:1px solid var(--line);
   border-radius:18px;padding:6px 14px}
 .index .isearch input{background:none;border:0;outline:none;width:100%}
@@ -389,8 +390,12 @@ body.entity-open .index{overflow-x:visible}
 .index-tags .tg.scene,.alphatag.scene,.tagfilters .scene{--tag-color:#53B8A4}
 .index-tags .tg.story,.alphatag.story,.tagfilters .story{--tag-color:#E19A5B}
 .index-tags .tg.position,.alphatag.position,.tagfilters .position{--tag-color:#D66E8D}
+/* 标签云里的标签比卡片上的大一档：这一页它们是主体，不是附注。这三行原先写在
+   openIndex 的模板里当内联 style，于是同一个控件的外观有两个来源，改一次要
+   两处都记得。 */
 .index .index-tags .tg{border-color:color-mix(in srgb,var(--tag-color) 32%,transparent);color:var(--ink-2);
-  background:color-mix(in srgb,var(--tag-color) 7%,transparent)}
+  background:color-mix(in srgb,var(--tag-color) 7%,transparent);padding:5px 12px;font-size:var(--fs-sm)}
+.index .index-tags .tg .n{opacity:.6;font-size:var(--fs-xs)}
 .index .index-tags .tg:hover{border-color:color-mix(in srgb,var(--tag-color) 62%,transparent);
   background:color-mix(in srgb,var(--tag-color) 13%,transparent)}
 .index .index-tags .tg.selected,.alphatag.selected{outline:2px solid var(--tungsten);outline-offset:1px;
@@ -1069,6 +1074,8 @@ body[data-density="dense"] .card .meta .watchcount{display:none}
 /* 短片带 */
 .shorts{margin:30px 0 8px;border-top:1px solid var(--line-soft);padding-top:16px}
 .shorts h2{margin:0 0 11px;font-size:var(--fs-lg);display:flex;align-items:center;gap:10px}
+/* 竖屏计数的灰字。index.html 和 openItem 的内联片段原先各写一份，一模一样。 */
+.shortscount{color:var(--muted);font-size:var(--fs-xs)}
 .shorts h2 button,.shorts-enter{margin-left:auto;min-height:48px;display:inline-flex;align-items:center;gap:7px;
   font-size:var(--fs-xs);background:var(--overlay-5);border:0;border-radius:24px;padding:0 16px;cursor:pointer;
   color:var(--ink);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:background .14s,transform .14s}
@@ -1401,6 +1408,14 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .playernet[hidden]{display:none}
 .gate{aspect-ratio:16/9;width:100%;background:var(--sunk);border:1px dashed var(--meter);
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer}
+/* 占位说明的字号原先写在 openItem 的模板里当内联 style，三处各写一遍、
+   连 `color:var(--muted)` 也抄了三份。 */
+.gate b{font-size:var(--fs-md)}
+.gate span{font-size:var(--fs-xs);color:var(--muted)}
+/* 被门挡住的 <video> 只带 hidden 属性，而 `.video-js{display:block}` 是作者样式，
+   压得住 UA 的 `[hidden]`。原先靠内联 `style="display:none"` 顶住，三个门里
+   只有两个写了——第三个能对只是因为它那一支还没初始化成 `.video-js`。 */
+.vwrap video[hidden]{display:none}
 .closestage{position:absolute;top:11px;right:11px;z-index:9;width:40px;height:40px;
   background:rgba(0,0,0,.6);color:#F0E9DE;
   border:0;border-radius:50%;padding:0;cursor:pointer;box-shadow:none;
@@ -1463,7 +1478,10 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .trace .lab{display:flex;justify-content:space-between;color:var(--muted);margin-bottom:5px}
 .trace .bar{position:relative;height:4px;background:var(--line);border:0;border-radius:2px}
 .trace .bar u{position:absolute;inset:0 auto 0 0;background:color-mix(in srgb,var(--loupe) 26%,transparent);text-decoration:none}
-.trace .bar b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--tungsten);border-radius:1px}
+.trace .bar b{position:absolute;left:0;top:-3px;bottom:-3px;width:2px;background:var(--tungsten);border-radius:1px}
+/* 真实观看那条用另一个色标区分「看过的位置」和「看过多少」。这行原先是模板里的
+   内联 style，等于把一条配色写在 JS 里。 */
+#realBar{background:color-mix(in srgb,var(--keep) 40%,transparent)}
 .trace-real{margin-top:10px}
 .fb{display:flex;align-items:center;gap:0;margin:0 0 12px;padding:0;border:1px solid var(--border-10);border-radius:var(--control-radius);background:var(--overlay-5);width:max-content;overflow:hidden;flex:none}
 .fb button{width:44px;height:42px;padding:0;border:0;border-right:1px solid var(--border-10);background:transparent;border-radius:0;

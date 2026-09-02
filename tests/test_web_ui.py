@@ -305,31 +305,54 @@ class WebUiSourceTests(unittest.TestCase):
         # 既有调用点不受影响。
         self.assertPageContains("function avatarInner(name,ref,repId,kind='performer')")
         self.assertPageContains("`/entity-image?kind=${kind}&id=${ref.id}`")
-        self.assertPageContains("this.dataset.f='1';this.src='/avatar?id=${repId}'")
+        # 兜底链声明在模板里，行为归 image-fallback 那条委托监听。
+        self.assertPageContains("imageFallbackAttrs({fallbacks})")
+        self.assertPageContains("`/avatar?id=${repId}`")
 
     def test_avatar_fallback_chains_end_by_removing_the_broken_image(self):
-        """取不到图的 <img> 必须被摘掉，不能只停在 onerror=null。
+        """取不到图的 <img> 必须被摘掉，不能只停在「不再重试」。
 
         留着它有两个后果：`.entityportrait:has(img)>span` 仍然匹配，首字母垫底
         永远回不来；浏览器还会把 alt 当内容画出来——资料页上就是整个艺人名横在
         头像圈里溢出（loliburin 实测 /entity-image 与 /avatar 双 404）。
         """
+        # 卡片头像、资料页大圆框、关联艺人小圆框声明的是同一套兜底数据；
+        # 「候选换完还是失败就收场」这一步由 advanceImageFallback 统一执行。
         for chain in (
-            # 卡片头像、资料页大圆框、关联艺人小圆框三处用的是同一套兜底。
-            "this.dataset.f='1';this.src='/avatar?id=${repId}'}else{this.remove()}",
-            "this.dataset.f='1';this.src='/avatar?id=${d.representative_asset_id}'}"
-            "else{this.remove()}",
-            "this.dataset.f='1';this.src='/avatar?id=${x.rep}'}else{this.remove()}",
+            "`/avatar?id=${repId}`",
+            "`/avatar?id=${d.representative_asset_id}`",
+            "`/avatar?id=${x.rep}`",
         ):
             self.assertPageContains(chain)
+        # 收场动作只有这一处实现，默认就是把 <img> 拿掉。
+        self.assertPageContains("drop = 'self'")
+        self.assertPageContains("image.remove();")
         self.assertPageLacks("this.onerror=null;this.src='/avatar?id=")
+
+    def test_image_fallbacks_are_declarative_data_not_inline_handlers(self):
+        """`<img>` 上不再有内联 `onerror`，回退链改成 `data-*` 声明。
+
+        内联版的 URL 要同时穿过 HTML 属性转义和 JS 字符串两层，错一层不报错、
+        只是这张图从此不再回退；同一条链在 app.js 里还有四种写法。
+        """
+        self.assertPageLacks(' onerror="', "模板里不能再出现内联 onerror 属性")
+        self.assertPageContains("export function wireImageFallbacks(root)")
+        self.assertPageContains("wireImageFallbacks(document.body)")
+        # `error` 不冒泡，只有捕获阶段的监听能接住后代 <img>。
+        self.assertPageContains("advanceImageFallback(event.target);\n  }, true);")
+        # `data-drop` 是这套机制的开关：没有它的 <img> 一概不动——页面上另有一批
+        # 靠 CSS 或父节点兜底的图（厂牌 `.mk`），把它们删掉反而是错的。
+        self.assertPageContains("if (!image || !image.dataset || !image.dataset.drop) return '';")
+        for attribute in ('data-drop="', "data-fallbacks=", "data-initial=", "data-drop-class="):
+            self.assertPageContains(attribute)
 
     def test_entity_hero_avatar_frames_the_detected_face(self):
         # 资料页圆框按检出的人脸取景；换回落图时必须先摘掉内联 object-position——
         # 回落图是另一张照片，脸不在同一位置。
         self.assertPageContains("function facePos(f)")
         self.assertPageContains('"${facePos(d.avatar_focus)}')
-        self.assertPageContains("onerror=\"this.removeAttribute('style')")
+        self.assertPageContains("imageFallbackAttrs({dropStyle:true,")
+        self.assertPageContains("if ('dropStyle' in image.dataset) image.removeAttribute('style');")
 
     def test_entity_link_favicons_do_not_leak_the_page_url_to_the_linked_site(self):
         # 外链的 favicon 是向对方站点发出的真实请求。锚点上的 rel="noreferrer" 只管
@@ -446,14 +469,29 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(later){e.stopPropagation();setActionBusy(later)")
         self.assertPageContains("if(kind==='o')await post('o-undo')")
 
+    def test_toast_callers_declare_whether_they_pass_text_or_html(self):
+        """回执里的标签名来自账本，含 `<` 时不能被当成标签插进 DOM。
+
+        `toast()` 以前接裸字符串，「这是文本还是 HTML」靠调用点自己记得转义：
+        actionReceipt 传的是纯文本、followCheckToast 传的是带 `<b>` 的片段，
+        签名上完全一样。现在由调用点显式声明，默认按文本转义。
+        """
+        self.assertPageContains("const toastBody=message=>")
+        self.assertPageContains("'html' in message")
+        self.assertPageContains("esc(message&&typeof message==='object'?(message.text??''):message??'')")
+        # 账本字段一律走 text；只有本地拼出来的计数片段走 html。
+        self.assertPageContains("item=toast({text:message},{")
+        self.assertPageContains("toast(\n  {text:`${message}失败：${error?.message||'请重试'}`},{warn:true})")
+        self.assertPageContains("toast({html:`检查了 <b>${rows.length}</b> 个来源")
+
     def test_undo_reports_back_on_the_same_toast_instead_of_swapping_two(self):
         """撤销原先是「关掉回执 + 另发一条已撤销」。
 
         底部对齐的栈里一进一出，剩下那条会整块跳一格；撤销请求快过退场动画时
         两条还会同时在场。结果写回同一条 toast 就没有这次进出。
         """
-        self.assertPageContains("item.replaceMessage=(body,{warn:alert=false,timeout:next=4000}={})")
-        self.assertPageContains("try{await undo();item.replaceMessage('已撤销')}")
+        self.assertPageContains("item.replaceMessage=")
+        self.assertPageContains("try{await undo();item.replaceMessage({text:'已撤销'})}")
         self.assertPageContains("if(act)act.onclick=()=>{setActionBusy(act);action.run()};")
         self.assertPageLacks("try{await undo();toast('已撤销')}")
         # 退场先把高度写死再过渡到 0；直接 remove() 会让上面那条瞬间落下来。
@@ -1309,7 +1347,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("visual==='domain'")
         self.assertPageContains("avatarInner(row.name,ref,rep,visual)")
         self.assertPageContains("visual==='creator'&&!ref&&!rep&&sourceDomain")
-        self.assertPageContains('title="来源：${esc(sourceDomain)}"')
+        # 两处站点头像（域名榜、无实体的创作者）共用一个 siteAvatar；来源提示仍是
+        # 「来源：<域名>」，转义在 siteAvatar 里做一次。
+        self.assertPageContains("siteAvatar(row.name,sourceDomain,`来源：${sourceDomain}`)")
+        self.assertPageContains('title?` title="${esc(title)}"`')
         self.assertPageContains("'simpcity.cr':'https://simpcity.cr/data/assets/logo/favicon.png'")
         self.assertPageContains("'hanime1.me':'https://vdownload.hembed.com/image/icon/tab_logo.png")
         self.assertPageContains("'kemono.cr':'https://kemono.cr/assets/favicon-CPB6l7kH.ico'")
@@ -2208,7 +2249,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const faviconUrl=url=>")
         self.assertPageContains('class="entitylinkicon"')
         self.assertPageContains('class="entitylinklabel"')
-        self.assertPageContains("img.dataset.studio&&!img.dataset.fallback")
+        # favicon 取不到就把 <img> 摘掉，露出底下的 globe 图标；这条兜底由
+        # image-fallback 的委托监听执行，不再给每个 .entityfavicon 各挂一个监听。
+        self.assertPageContains('class="entityfavicon" src="${esc(linkMarkUrl(x))}')
+        self.assertPageLacks(".entityfavicon').forEach(img=>img.addEventListener('error'")
         self.assertPageLacks('<span class="mono" style="color:var(--muted)">${labels[kind]||kind}资料页</span>')
 
     def test_brand_pill_logo_has_one_centered_size_contract(self):
@@ -3347,7 +3391,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("size<1024*1024?`${Math.max(1,Math.round(size/1024))} KB`")
         self.assertPageContains("reveal.dataset.photoReveal=String(asset.id)")
         self.assertPageContains("revealSource(Number(reveal.dataset.photoReveal),status,{button:reveal})")
-        self.assertPageContains("toast('已在资源管理器中显示')")
+        self.assertPageContains("toast({text:'已在资源管理器中显示'})")
         self.assertPageLacks("已在服务端弹出文件管理器",
                              "定位成功是短暂回执，不能在详情内容流里留下状态行")
         self.assertPageContains(".toasts{position:fixed;right:16px;bottom:22px;z-index:var(--layer-popover)")
@@ -3490,7 +3534,7 @@ class WebUiSourceTests(unittest.TestCase):
         路径传进来，否则等于开了一个「任意路径」的接口。
         """
         self.assertPageContains("api('/api/reveal',{method:'POST',body:JSON.stringify({id})})")
-        self.assertPageContains("status.textContent='';toast('已在资源管理器中显示')")
+        self.assertPageContains("status.textContent='';toast({text:'已在资源管理器中显示'})")
         self.assertPageContains("if(reveal)reveal.onclick=()=>revealSource(Number(reveal.dataset.reveal),status,{button:reveal})")
         reveal_source = self.page.split("async function revealSource", 1)[1].split("async function syncMissing", 1)[0]
         self.assertIn("setActionBusy(button)", reveal_source)

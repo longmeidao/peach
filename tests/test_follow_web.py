@@ -1763,7 +1763,9 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn("kemono.cr/assets/favicon-", icons)
         self.assertIn("pawchive.pw/static/favicon.png", icons)
         self.assertNotIn("kemono.cr/favicon.ico", icons)
-        self.assertPageContains('onerror="this.remove()"')
+        # 取不到图标就把 <img> 摘掉，露出纯文字；收场动作由 image-fallback 的
+        # 委托监听执行，模板里只声明 `data-drop`。
+        self.assertPageContains('data-drop="self"')
 
     def test_follow_watch_filters_use_the_source_identity(self):
         # 判定本身搬去了服务端（见 FollowContractTests 里的筛选用例）；页面这一侧要
@@ -2231,7 +2233,10 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn("followAvatarInitial(group)", avatar)
         self.assertIn("source.avatar_url", avatar)
         self.assertIn("source.official_avatar_url", avatar)
-        self.assertIn("data-fallback", avatar)
+        # 镜像头像是官方头像的下一个候选，声明在 `data-fallbacks` 里；两条都取不到
+        # 才换成首字母垫底。
+        self.assertIn("fallbacks:[fallback]", avatar)
+        self.assertIn("drop:'initial'", avatar)
 
     def test_discovered_sources_keep_the_search_term_as_the_author_identity(self):
         self.assertPageContains('data-author="${esc(c.author||\'\')}"')

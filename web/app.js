@@ -1,4 +1,5 @@
 import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, pageTitle, realDuration} from './js/core.js';
+import { imageFallbackAttrs, wireImageFallbacks } from './js/image-fallback.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import {
@@ -9,6 +10,9 @@ import {
 
 initMiddleTruncate(document);
 wireBusyActions(document);
+/* 图片回退链全站只有这一条监听。`error` 不冒泡，但捕获阶段照样经过祖先，所以
+   挂在 body 上就能接住任何后代 <img>——模板里不再有内联 `onerror`。 */
+wireImageFallbacks(document.body);
 
 /* ── 模块级可变状态 ────────────────────────────────────────────────────────────
    下面这些绑定都被写在它们之前的函数读写，所以声明必须排在文件最前面。
@@ -302,9 +306,9 @@ $('#followScheduleSetting').onchange=async e=>{
 /* 来源图标：品牌使用已缓存的官方资产；通用操作图标统一使用本地 Lucide 子集。 */
 const SRCICON={
   local:icon('hard-drive'),
-  '115':'<img class="source-icon" src="/logo?studio=115&variant=icon" alt="" onerror="this.remove()">',
+  '115':'<img class="source-icon" src="/logo?studio=115&variant=icon" alt="" data-drop="self">',
   // PikPak 官方触屏图标（取证 follow-source-icons-measured.md）；/logo 的生成 logo 不对版。
-  pikpak:'<img class="source-icon" src="https://mypikpak.com/apple-touch-icon.png" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">',
+  pikpak:'<img class="source-icon" src="https://mypikpak.com/apple-touch-icon.png" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">',
   online:icon('rss'),
 };
 const srcBadge=(loc,cost,cls)=>{const label=`${LOC[loc]||loc}${cost==='metered'?' · 计费':''}`;
@@ -321,14 +325,25 @@ const emptyState=emptyStateHtml;
    明确的后续动作（action.label + action.run）：光摆数字会让用户去找
    「哪里能点」，Geist 的做法是给一个具名的下一步。失败这类必须跟进的
    事只发一句短 toast，原因和恢复入口留在页面里的持久行上。 */
-const toast=(html,{timeout=6000,warn=false,action=null}={})=>{
+/* Toast 的正文只接 `{text}`（转义后插入）或 `{html}`（原样插入）。
+
+   以前它接的是一个裸字符串，于是「这是文本还是 HTML」全靠调用点自己记得
+   `esc()`：actionReceipt 传的是已经转义过的串，followCheckToast 传的是带 `<b>`
+   的片段，两者在签名上完全一样。真出问题的是那些内容来自账本的回执——
+   `已删除标签「${tagLabel(tag)}」` 里的标签名是用户或刮削器写进账本的，含 `<`
+   就直接被当成标签插进 DOM。谁是 HTML 由调用点显式声明，不再靠约定。 */
+const toastBody=message=>message&&typeof message==='object'&&'html' in message
+  ? String(message.html)
+  : esc(message&&typeof message==='object'?(message.text??''):message??'');
+const toast=(message,{timeout=6000,warn=false,action=null}={})=>{
   const root=$('#toasts');
   const item=document.createElement('div');
   item.className='toast'+(warn?' warn':'');
+  const initial=toastBody(message);
   const paint=(body,alert)=>{
     item.classList.toggle('warn',!!alert);
     item.innerHTML=`${alert?icon('alert'):''}<p>${body}</p>${
-      action&&!alert&&body===html?`<button class="tact">${esc(action.label)}</button>`:''
+      action&&!alert&&body===initial?`<button class="tact">${esc(action.label)}</button>`:''
       }<button class="tclose" title="关闭" aria-label="关闭提示">${icon('x')}</button>`;
     item.querySelector('.tclose').onclick=close;
     const act=item.querySelector('.tact');
@@ -344,8 +359,8 @@ const toast=(html,{timeout=6000,warn=false,action=null}={})=>{
   /* 结果就写在同一条 toast 上，不再另发一条。原先是「关掉回执 + 弹出已撤销」，
      两条在同一个底部对齐的栈里一进一出，看上去就是整块跳了一下。 */
   item.replaceMessage=(body,{warn:alert=false,timeout:next=4000}={})=>{
-    clearTimeout(timer);paint(body,alert);timeout=next;arm()};
-  paint(html,warn);
+    clearTimeout(timer);paint(toastBody(body),alert);timeout=next;arm()};
+  paint(initial,warn);
   item.addEventListener('mouseenter',()=>clearTimeout(timer));
   item.addEventListener('mouseleave',arm);
   root.prepend(item);arm();
@@ -358,17 +373,17 @@ const toast=(html,{timeout=6000,warn=false,action=null}={})=>{
    偷偷改回去假装成功。不可逆或不适合撤销的操作仍用同一函数，但不传 undo。 */
 const actionReceipt=(message,{undo=null,timeout=undo?8000:6000}={})=>{
   let item=null;
-  item=toast(esc(message),{
+  item=toast({text:message},{
     timeout,
     action:undo?{label:'撤销',run:async()=>{
-      try{await undo();item.replaceMessage('已撤销')}
-      catch(error){item.replaceMessage(`撤销失败：${esc(error.message||'请重试')}`,{warn:true})}
+      try{await undo();item.replaceMessage({text:'已撤销'})}
+      catch(error){item.replaceMessage({text:`撤销失败：${error.message||'请重试'}`},{warn:true})}
     }}:null,
   });
   return item;
 };
 const actionFailure=(message,error)=>toast(
-  `${esc(message)}失败：${esc(error?.message||'请重试')}`,{warn:true});
+  {text:`${message}失败：${error?.message||'请重试'}`},{warn:true});
 
 /* 随机排序每次进入首页都换种子；同一次访问继续复用该种子，保证筛选和分页
    不会重复或漏项。「换一批」仍可在当前访问里主动生成下一批。 */
@@ -1146,17 +1161,15 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseHove
 /* 头像内层：先垫首字母，再叠真实图。规范实体图优先，取不到才回落到旧头像缓存。 */
 function avatarInner(name,ref,repId,kind='performer'){
   const src=ref?`/entity-image?kind=${kind}&id=${ref.id}`:(repId?`/avatar?id=${repId}`:'');
-  // 兜底链最后一环必须是 remove()：留着取不到图的 <img>，`:has(img)` 仍然匹配，
-  // 首字母垫底回不来，浏览器还会把 alt 画出来。onerror=null 只是不再重试。
-  const fallback=ref&&repId
-    ?`if(!this.dataset.f){this.dataset.f='1';this.src='/avatar?id=${repId}'}else{this.remove()}`
-    :`this.remove()`;
+  // 兜底链最后一环必须是把 <img> 拿掉（`data-drop="self"`）：留着取不到图的 <img>，
+  // `:has(img)` 仍然匹配，首字母垫底回不来，浏览器还会把 alt 画出来。
+  const fallbacks=ref&&repId?[`/avatar?id=${repId}`]:[];
   return `<span class="ini">${esc((name||'?').slice(0,1))}</span>`+
-    (src?`<img src="${src}" alt="" loading="lazy" onerror="${fallback}">`:'');
+    (src?`<img src="${src}" alt="" loading="lazy" ${imageFallbackAttrs({fallbacks})}>`:'');
 }
 /* 人脸取景：资料页圆框按检出的人脸中心取景（/api/entity 的 avatar_focus）。
    没检出或没算过返回空串维持几何居中；换回落图时必须撤掉——那是另一张照片，
-   脸不在同一位置，见 entityhero img 的 onerror。 */
+   脸不在同一位置，见 entityhero img 的 `data-drop-style`。 */
 function facePos(f){
   return f&&f.axis==='x'?` style="object-position:${f.pct}% 50%"`
     :f&&f.axis==='y'?` style="object-position:50% ${f.pct}%"`
@@ -1184,7 +1197,7 @@ function coverImage(it,layout,eager){
   const y=cy!=null?`--cover-y:${Math.round(Math.min(0.6,Math.max(0.05,cy))*100)}%`:'';
   // 小图看整张（含剧照拼贴），大图只取右侧正封。
   return `<img class="poster cover ${layout==='small'?'whole':'front'}" src="${src}"
-    alt="" loading="${eager?'eager':'lazy'}"${y?` style="${y}"`:''} ${COVER_FRAME} onerror="this.remove()">`;
+    alt="" loading="${eager?'eager':'lazy'}"${y?` style="${y}"`:''} ${COVER_FRAME} data-drop="self">`;
 }
 /* 卡片署名。版次队列要和「接着看」长得一样，就必须用同一份身份推导——各算各的
    迟早会在同名 creator/performer 那 35 组上分叉，同一条作品在两处指向两个实体。
@@ -1309,7 +1322,7 @@ function resourceCardHtml(it){
   const actionLabel=action==='restore'?'还原':'移入回收站';
   return `<article class="card resourcecard ${it.disposal==='trash'?'pending-delete':''}" data-id="${it.id}" data-medium="${esc(it.medium||'other')}">
     <div class="pic" style="--card-ratio:16/9"><span class="resourceglyph">${icon(glyph)}<b>${esc(label)}</b></span>
-      ${image?`<img class="poster" src="/photo-thumb?id=${it.id}" alt="" loading="lazy" onerror="this.remove()">`:''}
+      ${image?`<img class="poster" src="/photo-thumb?id=${it.id}" alt="" loading="lazy" data-drop="self">`:''}
       <div class="badge mono">${srcBadge(it.location,it.cost)}</div>
       <span class="selectionMark">${icon('check')}</span><span class="deleteMark">${icon('trash')}<b>回收站</b></span>
       <button class="resourcecardaction" type="button" data-resource-operation="${action}" aria-label="${actionLabel} ${esc(it.name||'')}" title="${actionLabel}">${icon(action==='restore'?'rotate-ccw':'trash')}<span>${actionLabel}</span></button></div>
@@ -1325,9 +1338,9 @@ const JUNK_KIND_META={
 function junkCardHtml(it){
   const kind=it.junk_kind||'other',meta=JUNK_KIND_META[kind]||JUNK_KIND_META.other;
   const preview=kind==='video'
-    ? `<img class="poster" src="/thumb?id=${it.id}&c=4" width="640" height="360" alt="" loading="lazy" onerror="this.remove()">`
+    ? `<img class="poster" src="/thumb?id=${it.id}&c=4" width="640" height="360" alt="" loading="lazy" data-drop="self">`
     : kind==='image'
-      ? `<img class="poster" src="/photo-thumb?id=${it.id}" width="640" height="360" alt="" loading="lazy" onerror="this.remove()">`:'';
+      ? `<img class="poster" src="/photo-thumb?id=${it.id}" width="640" height="360" alt="" loading="lazy" data-drop="self">`:'';
   const decision=junkView==='dismissed'
     ? ['reconsider-junk','重新判断','rotate-ccw']
     : ['dismiss-junk','不是垃圾','check'];
@@ -1708,7 +1721,7 @@ async function buildBars(){
   const avHtml=x=>`<button class="av" data-entity-kind="performer" data-entity-name="${esc(x.k)}">
     <span class="ring"><span class="ini">${esc(x.k.slice(0,1))}</span>${x.id
       ? `<img src="/entity-image?kind=performer&id=${x.id}" alt="" loading="lazy"
-           onerror="this.onerror=null;${x.rep?`this.src='/avatar?id=${x.rep}'`:`this.remove()`}">`
+           ${imageFallbackAttrs({fallbacks:x.rep?[`/avatar?id=${x.rep}`]:[]})}>`
       : ''}</span>
     <span class="nm">${esc(x.k)}</span></button>`;
   // 正规厂牌用官网 logo；缺失时只显示首字母，绝不把作品截图冒充厂牌图标。
@@ -2236,6 +2249,14 @@ function tasteCacheSet(window,dashboard){
 }
 const tasteDate=value=>value?new Date(value).toLocaleDateString('zh-CN'):'—';
 const tasteHours=seconds=>seconds>=3600?(seconds/3600).toFixed(1)+' 小时':Math.round(seconds/60)+' 分钟';
+/* 站点头像：先垫首字母，再叠 favicon；站点自己的 favicon 取不到就换 Google 的
+   代理图，两条都取不到才把 <img> 拿掉，露出底下的首字母。 */
+function siteAvatar(name,domain,title=''){
+  return `<span class="tasteavatar tastesite"${title?` title="${esc(title)}"`:''}>`+
+    `<span class="ini">${esc(String(name).slice(0,1).toUpperCase())}</span>`+
+    `<img src="${esc(faviconUrl('https://'+domain))}" alt="" loading="lazy" referrerpolicy="no-referrer" `+
+    `${imageFallbackAttrs({fallbacks:[faviconFallbackUrl(domain)]})}></span>`;
+}
 const tasteRankRows=(rows,kind,empty='暂无足够证据',visual='')=>rows.length?rows.map((row,index)=>{
     const clickable=kind&&row.peach_items>0;
     const detail=row.web_visits!=null
@@ -2244,9 +2265,9 @@ const tasteRankRows=(rows,kind,empty='暂无足够证据',visual='')=>rows.lengt
     const ref=row.entity_id?{id:row.entity_id}:null,rep=row.representative_asset_id||null;
     const sourceDomain=String(row.source_domain||'');
     const media=visual==='domain'
-      ?`<span class="tasteavatar tastesite"><span class="ini">${esc(row.name.slice(0,1).toUpperCase())}</span><img src="${esc(faviconUrl('https://'+row.name))}" data-fallback="${esc(faviconFallbackUrl(row.name))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="const f=this.dataset.fallback;if(f){delete this.dataset.fallback;this.src=f}else this.remove()"></span>`
+      ?siteAvatar(row.name,row.name)
       :visual==='creator'&&!ref&&!rep&&sourceDomain
-        ?`<span class="tasteavatar tastesite" title="来源：${esc(sourceDomain)}"><span class="ini">${esc(row.name.slice(0,1).toUpperCase())}</span><img src="${esc(faviconUrl('https://'+sourceDomain))}" data-fallback="${esc(faviconFallbackUrl(sourceDomain))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="const f=this.dataset.fallback;if(f){delete this.dataset.fallback;this.src=f}else this.remove()"></span>`
+        ?siteAvatar(row.name,sourceDomain,`来源：${sourceDomain}`)
       :visual?`<span class="tasteavatar">${avatarInner(row.name,ref,rep,visual)}</span>`:'';
     return `<${clickable?'button':'div'} class="tasterank${kind==='tag'?' tasterank-tag':''}${visual?' tasterank-visual':''}"${clickable?` data-taste-kind="${kind}" data-taste-name="${esc(row.name)}"`:''}>
       <span class="tastepos mono">${index+1}</span>${media}<span><b>${esc(row.name)}</b><small>${esc(detail)}</small></span>
@@ -2448,7 +2469,7 @@ async function openPlaylists(push=true){
   if(!surfaceCurrent(surface))return;
   showManagementBody({manage:false});
   const cards=(data.items||[]).map(list=>{const resume=list.current_asset_id||list.preview_asset_id;
-    const poster=list.preview_asset_id?`<img src="/poster?id=${list.preview_asset_id}&c=4" alt="" loading="lazy" onerror="this.remove()">`:'';
+    const poster=list.preview_asset_id?`<img src="/poster?id=${list.preview_asset_id}&c=4" alt="" loading="lazy" data-drop="self">`:'';
     return `<article class="playlistcard" data-playlist-card="${list.id}"><button class="playlistcover" data-open-playlist="${list.id}" ${resume?'':'disabled'}>${poster}<span>${list.item_count} 个视频</span></button>
       <div class="playlistmeta"><input data-playlist-name maxlength="80" value="${esc(list.name)}" aria-label="播放列表名称"><small>${list.source_kind==='mix'?'由 Mix 保存':'手动播放列表'}</small></div>
       <div class="playlistactions"><button data-rename-playlist="${list.id}">保存名称</button><button data-open-playlist="${list.id}" ${resume?'':'disabled'}>继续播放</button><button class="danger" data-delete-playlist="${list.id}">删除</button></div></article>`}).join('');
@@ -2726,7 +2747,7 @@ async function openReview(push=true){
          const comparison=row.comparison_assets||[];
          const comparisonOrigin=comparison.length>1?`<div class="reviewcompare">${comparison.map(asset=>`<div class="revieworigin">
              <button class="revieworigincover" data-review-open-item="${asset.id}" aria-label="打开原视频 ${esc(asset.name||'')}">
-               ${asset.preview_url?`<img src="${esc(asset.preview_url)}" alt="" loading="lazy" onerror="this.remove()">`:'<span>无封面</span>'}</button>
+               ${asset.preview_url?`<img src="${esc(asset.preview_url)}" alt="" loading="lazy" data-drop="self">`:'<span>无封面</span>'}</button>
              <div><b data-middle-truncate title="${esc(asset.name||'')}">${esc(asset.code||asset.name||'原视频')}</b>
                <button type="button" data-review-open-item="${asset.id}">${icon('play')}打开原视频</button></div></div>`).join('')}</div>`:'';
          const origin=comparisonOrigin||subjectKind&&subjectName?comparisonOrigin||`<div class="reviewentity">
@@ -2737,7 +2758,7 @@ async function openReview(push=true){
                ${works?`<small class="mono">${works.toLocaleString()} 部作品</small>`:''}</div></div>`
            :row.asset_id?`<div class="revieworigin">
              <button class="revieworigincover" data-review-open-item="${row.asset_id}" aria-label="打开原视频 ${esc(row.asset_name||'')}">
-               ${row.asset_preview_url?`<img src="${esc(row.asset_preview_url)}" alt="" loading="lazy" onerror="this.remove()">`:'<span>无封面</span>'}</button>
+               ${row.asset_preview_url?`<img src="${esc(row.asset_preview_url)}" alt="" loading="lazy" data-drop="self">`:'<span>无封面</span>'}</button>
              <div><b data-middle-truncate title="${esc(row.asset_name||'')}">${esc(row.asset_name||'原视频')}</b>
                <button type="button" data-review-open-item="${row.asset_id}">${icon('play')}打开原视频</button></div></div>`:'';
          /* 只有一个候选时没什么可选的，单选圈只是让人以为还有别的选项。
@@ -2764,7 +2785,7 @@ async function openReview(push=true){
               // 空白一片会被当成界面坏了。真实原因是这些作品还没抽帧，说清楚比留白好。
               : `<p class="empty">这 ${esc(row.video_count||'')} 条作品尚未抽帧，暂无预览；批准后仍会按候选写入标签</p>`)
            : reviewCategory==='fc2_similarity'?''
-           : (row.preview_url?`<div class="reviewimage"><img src="${esc(row.preview_url)}" alt="" loading="lazy" onerror="this.closest('.reviewimage').remove()"></div>`:'<p class="empty">未取得图片预览</p>');
+           : (row.preview_url?`<div class="reviewimage"><img src="${esc(row.preview_url)}" alt="" loading="lazy" data-drop="closest:.reviewimage"></div>`:'<p class="empty">未取得图片预览</p>');
          const body=`${
            // 实体类卡片的名字已经写在创作者入口里，再画一个 h4 就是同一行字上下两遍。
            subjectKind&&subjectName?'':`<h4>${esc(titleText)}</h4>`}${
@@ -3061,7 +3082,7 @@ function followQueueHtml(group,itemId){
     <button data-follow-queue-close title="关闭" aria-label="关闭">${icon('x')}</button></div></div><div class="mixlist">${items.map(item=>{
       const copy=followCollectionCopy(group,item,group.duplicates.includes(item)?item.provider_label:'');
       const thumb=item.thumb_url
-        ?`<img src="${esc(item.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
+        ?`<img src="${esc(item.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`
         :`<span class="fnothumb">${sourceIcon(item.provider)}</span>`;
       return `<div class="mixrow"><button class="mixitem ${item.id===itemId?'current':''}" data-follow-queue-item="${item.id}" aria-current="${item.id===itemId?'true':'false'}">
         <span class="mixitempic">${thumb}${realDuration(item.duration)?`<i class="dur mono">${fmtDur(item.duration)}</i>`:''}</span>
@@ -3080,7 +3101,7 @@ function followEmbeddedQueueHtml(item,mediaIndex){
   });
   const rows=groups.map(group=>`${group.label?`<h3 class="mixgrouplabel">${esc(group.label)} <span>${group.items.length}</span></h3>`:''}${group.items.map(media=>{
       const thumb=media.thumb_url
-        ?`<img src="${esc(media.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
+        ?`<img src="${esc(media.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`
         :`<span class="fnothumb">${sourceIcon(media.resource_provider||item.provider)}</span>`;
       return `<div class="mixrow"><button class="mixitem ${media.index===mediaIndex?'current':''}" data-follow-media-owner="${item.id}" data-follow-media-item="${media.index}" data-media-kind="${media.media_kind}" aria-current="${media.index===mediaIndex?'true':'false'}">
         <span class="mixitempic">${thumb}</span><span class="mixitemtext"><b data-middle-truncate>${esc(javDisplayName(media))}</b><span data-truncate-end>${media.media_kind==='image'?'图片':'视频'}</span></span></button></div>`;
@@ -3326,7 +3347,7 @@ function followCard(group,authorSources=[]){
   const selectedMedia=imageView?(item.media_items||[]).find(media=>media.media_kind==='image'):null;
   const thumbUrl=selectedMedia?.thumb_url||item.thumb_url;
   const thumb=thumbUrl
-    ? `<img src="${esc(thumbUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
+    ? `<img src="${esc(thumbUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`
     : `<span class="fnothumb">${esc(item.provider_label)}</span>`;
   const videos=followMediaView==='videos'?followVideoItems(group):[],embedded=item.media_items||[];
   const groupedOwner=followMediaView==='videos'?followGroupedMediaOwner(group):null;
@@ -3388,9 +3409,11 @@ function followCheckToast(report){
   const {rows,bits}=followCheckBits(report);
   const failed=rows.filter(r=>!r.ok).length;
   const exhausted=rows.filter(r=>r.exhausted).length;
-  toast(`检查了 <b>${rows.length}</b> 个来源：${bits.join(' · ')}`+
+  /* 这一条显式走 `html`：`bits` 由 followCheckBits 用计数拼出来、含 `<b>`，
+     里面全是本地算出来的数字和固定中文，没有账本字段能流进来。 */
+  toast({html:`检查了 <b>${rows.length}</b> 个来源：${bits.join(' · ')}`+
     (exhausted?` · <b>${exhausted} 个没有更多内容</b>`:'')+
-    (failed?` · <b>${failed} 个失败</b>`:''),
+    (failed?` · <b>${failed} 个失败</b>`:'')},
     {warn:!!failed,timeout:failed?8000:6000,
      action:{label:'去看更新',run:()=>openFollow()}});
 }
@@ -3665,7 +3688,7 @@ const SOURCE_ICONS={
 };
 function sourceIcon(provider){return SOURCE_ICONS[provider]
   ? `<img class="ficon" src="${esc(SOURCE_ICONS[provider])}" alt="" loading="lazy"
-       referrerpolicy="no-referrer" onerror="this.remove()">`
+       referrerpolicy="no-referrer" data-drop="self">`
   : ''}
 
 function followAvatarInitial(group){
@@ -3682,11 +3705,9 @@ function followAuthorAvatar(group){
   const src=official?.official_avatar_url||mirror?.avatar_url;
   const fallback=official&&mirror&&mirror.avatar_url!==src?mirror.avatar_url:'';
   const initial=followAvatarInitial(group);
-  if(src)return `<img class="favatar" src="${esc(src)}" alt="" data-initial="${esc(initial)}"
-    ${fallback?`data-fallback="${esc(fallback)}"`:''}
-    loading="lazy" referrerpolicy="no-referrer" onerror="if(!this.dataset.f&&this.dataset.fallback){
-      this.dataset.f='1';this.src=this.dataset.fallback}else{this.replaceWith(
-      Object.assign(document.createElement('span'),{className:'favatar none',textContent:this.dataset.initial}))}">`;
+  if(src)return `<img class="favatar" src="${esc(src)}" alt=""
+    loading="lazy" referrerpolicy="no-referrer" ${imageFallbackAttrs({
+      drop:'initial',dropClass:'favatar none',initial,fallbacks:[fallback]})}>`;
   return `<span class="favatar none" title="没有可用头像">${esc(initial)}</span>`;
 }
 
@@ -4470,8 +4491,8 @@ async function openIndex(kind,q,push=true){
           kind==='performers'&&x.entity_id?{id:x.entity_id}:null, x.rep)}</span>
         <span class="nm">${esc(x.k)}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('');
   const tagHtml=items=>tagIndexMode==='alphabet'?`<div class="alphabet">${tagGroups(items)}</div>`:`<div class="tagwall index-tags">`+items.map(x=>`<button class="tg ${onlineTags?'r34-'+(x.cat||'unknown'):(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"
-        style="padding:5px 12px;font-size:13px">${esc(tagLabel(x.k))}
-        <span style="opacity:.6;font-size:11px">${x.n.toLocaleString()}</span></button>`).join('')+`</div>`;
+        >${esc(tagLabel(x.k))}
+        <span class="n">${x.n.toLocaleString()}</span></button>`).join('')+`</div>`;
   const body=people?`<div class="igrid">${peopleHtml(d.items)}</div>`:tagHtml(tagItems);
   const categoryOptions=onlineTags?ONLINE_TAG_CATEGORIES:TAG_CATEGORIES;
   const visibleTagCategories=categoryOptions.filter(([key])=>key==='all'||Number(d.categories?.[key]||0)>0);
@@ -4488,7 +4509,7 @@ async function openIndex(kind,q,push=true){
     </div>`:'');
   $('#index').innerHTML=`<div class="ihead">
       <h2 class="disp indexheading">${kind==='tags'?icon('tags'):''}${title}</h2>
-      <span class="mono" id="indexCount" style="color:var(--muted)">${tagItems.length}${d.has_more?'+':''} 项</span>
+      <span class="mono" id="indexCount">${tagItems.length}${d.has_more?'+':''} 项</span>
       ${kind==='tags'?`<div class="tagmodes"><button data-tag-scope="local" aria-pressed="${!onlineTags}">${icon('database')}本地</button><button data-tag-scope="online" aria-pressed="${onlineTags}">${icon('globe')}在线</button></div>
       <div class="tagmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">${icon('tags')}标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">${icon('list-filter')}字母表</button></div>`:''}
       <div class="isearch"><input id="iq" placeholder="过滤…" value="${esc(q||'')}"></div>
@@ -4664,7 +4685,7 @@ async function openPhotoSet(kind,name,filters,setId,push=true){
 const photoCell=(item,index)=>`<button class="photocell" data-photo-index="${index}" title="${esc(item.name)}">
     <img src="/photo-thumb?id=${item.id}" alt="${esc(item.name)}" loading="lazy"
       decoding="async" fetchpriority="low"
-      onerror="this.closest('.photocell').remove()"></button>`;
+      data-drop="closest:.photocell"></button>`;
 
 function renderPhotoWall(kind,name,filters,data,append=false){
   const section=$('#index').querySelector('.entitysection');if(!section)return;
@@ -4732,7 +4753,7 @@ async function revealSource(id,status,{button=null}={}){
   status.textContent='';
   try{
     await api('/api/reveal',{method:'POST',body:JSON.stringify({id})});
-    status.textContent='';toast('已在资源管理器中显示');
+    status.textContent='';toast({text:'已在资源管理器中显示'});
   }catch(e){status.textContent=sourceHint(e.message)}
   finally{if(button){setActionBusy(button,false);button.innerHTML=buttonHtml}}
 }
@@ -5000,12 +5021,14 @@ async function openEntity(kind,name,push=true,requestedTag){
   $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
   const image=d.id?(kind==='studio'
     ? `<img src="/logo?studio=${encodeURIComponent(d.canonical_name)}&variant=logo" alt="${esc(d.canonical_name)}"
-        onerror="if(!this.dataset.f){this.dataset.f='1';this.src='/entity-image?kind=studio&id=${d.id}'}else{this.remove()}">`
-    /* 兜底链的最后一环必须是 `this.remove()`：留着取不到图的 <img> 会让浏览器
-       画出 alt 文本（整个艺人名横在头像圈里），而 `:has(img)` 仍然匹配，首字母
-       垫底永远回不来。`onerror=null` 只是不再重试，不等于这一环走完了。 */
+        ${imageFallbackAttrs({fallbacks:[`/entity-image?kind=studio&id=${d.id}`]})}>`
+    /* 兜底链的最后一环必须真的把 <img> 拿掉（`data-drop="self"`）：留着取不到图的
+       <img> 会让浏览器画出 alt 文本（整个艺人名横在头像圈里），而 `:has(img)`
+       仍然匹配，首字母垫底永远回不来。
+       `data-drop-style` 撤掉人脸取景：换的是另一张照片，脸不在同一个位置。 */
     : `<img src="/entity-image?kind=${kind}&id=${d.id}" alt="${esc(d.canonical_name)}"${facePos(d.avatar_focus)}
-        onerror="this.removeAttribute('style');${d.representative_asset_id?`if(!this.dataset.f){this.dataset.f='1';this.src='/avatar?id=${d.representative_asset_id}'}else{this.remove()}`:`this.remove()`}">`):'';
+        ${imageFallbackAttrs({dropStyle:true,
+          fallbacks:d.representative_asset_id?[`/avatar?id=${d.representative_asset_id}`]:[]})}>`):'';
   /* 链接按 beeg 的资料页形态：社媒收成纯图标，官网／事务所保留名字。
 
      社媒的 handle 是网址的一部分，写出来只是把 URL 抄一遍——`X @remu19971203` 里
@@ -5019,7 +5042,7 @@ async function openEntity(kind,name,push=true,requestedTag){
     if(x.link_kind==='social'){
       const brand=brandIcon(x.url);
       const mark=brand?`<span class="entitylinkicon brand">${icon(brand)}</span>`
-        :`<span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>`;
+        :`<span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self"></span>`;
       // 纯图标的链接自己不带可读文字，得把标签留给辅助技术。
       return `<a class="iconlink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}">${mark}<span class="sr-only">${esc(x.label)}</span></a>`;
     }
@@ -5030,12 +5053,12 @@ async function openEntity(kind,name,push=true,requestedTag){
        图标不构成重复，标签也是事务所名而非域名。 */
     if(kind==='studio')
       return `<a class="urllink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinklabel">${esc(linkHost(x.url)||x.label)}</span></a>`;
-    return `<a href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer"></span><span class="entitylinklabel">${esc(x.label)}</span></a>`;
+    return `<a href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self"></span><span class="entitylinklabel">${esc(x.label)}</span></a>`;
   }).join('');
   const tags=(d.tags||[]).map(x=>`<button class="pill" data-entity-tag="${esc(x.k)}" aria-pressed="${entityTag===x.k}">${esc(tagLabel(x.k))}<small>${x.n.toLocaleString()}</small></button>`).join('');
   const related=(d.related_performers||[]).map(x=>`<button class="relatedperson" data-related-performer="${esc(x.k)}">
       <span class="ring"><span>${esc(x.k.slice(0,1))}</span><img src="/entity-image?kind=performer&id=${x.id}" alt="" loading="lazy"
-        onerror="${x.rep?`if(!this.dataset.f){this.dataset.f='1';this.src='/avatar?id=${x.rep}'}else{this.remove()}`:`this.remove()`}"></span>
+        ${imageFallbackAttrs({fallbacks:x.rep?[`/avatar?id=${x.rep}`]:[]})}></span>
       <span class="nm">${esc(x.k)}</span></button>`).join('');
   const photoCount=photos&&!photos.error?(photos.total||0):0;
   const mediaSelected=entityMediaView.media==='photos';
@@ -5055,9 +5078,6 @@ async function openEntity(kind,name,push=true,requestedTag){
     const next=b.dataset.entityTag===entityTag?'':b.dataset.entityTag;
     const nextFilters={...filters,tag:next};barsContext={type:'entity',kind,name,filters:nextFilters};
     buildBars();updateEntityCollection(kind,name,nextFilters,true)});
-  $('#index').querySelectorAll('.entityfavicon').forEach(img=>img.addEventListener('error',()=>{
-    if(img.dataset.studio&&!img.dataset.fallback){img.dataset.fallback='1';img.src='/logo?studio='+encodeURIComponent(img.dataset.studio)+'&variant=icon'}
-    else img.remove()}));
   $('#index').querySelectorAll('[data-related-performer]').forEach(b=>b.onclick=()=>
     openEntity('performer',b.dataset.relatedPerformer));
   entityPhotos=photos&&!photos.error?photos:null;
@@ -5702,7 +5722,7 @@ async function loadShorts(requestSeq=loadRequestSeq,surface=surfaceToken(surface
   const columns=Math.max(1,getComputedStyle(grid).gridTemplateColumns.split(' ').length);
   const cards=[...grid.children].filter(x=>x.matches('.card[data-id]'));
   const anchor=cards[Math.min(cards.length,columns*SHORTS_ROW_OFFSET)]||null;
-   const inline=`<section class="shorts-inline" id="shortsInline"><h2 class="disp">竖屏 <span class="mono" style="color:var(--muted);font-size:11px">${d.total.toLocaleString()} 个</span><button class="shorts-enter" type="button">${icon('play')}<span>进入沉浸模式</span></button></h2><div class="srow">${d.items.map(it=>cardHtml(it,'scard')).join('')}</div></section>`;
+   const inline=`<section class="shorts-inline" id="shortsInline"><h2 class="disp">竖屏 <span class="mono shortscount">${d.total.toLocaleString()} 个</span><button class="shorts-enter" type="button">${icon('play')}<span>进入沉浸模式</span></button></h2><div class="srow">${d.items.map(it=>cardHtml(it,'scard')).join('')}</div></section>`;
   if(anchor)anchor.insertAdjacentHTML('beforebegin',inline); else grid.insertAdjacentHTML('beforeend',inline);
   const section=grid.querySelector('#shortsInline');
   section.querySelector('.shorts-enter').onclick=()=>openTok();
@@ -5729,7 +5749,7 @@ function queueHtml(queue,itemId){
       /* 没抽过帧就退回番号封套。版次组里常有一份刚入库、还没抽帧的无码，
          只认 `has_thumb` 会让它在队列里是个纯黑块，而同一条在列表卡上是有封面的。 */
       const thumb=x.has_thumb?`<img src="/poster?id=${x.id}&c=4" alt="" loading="lazy">`
-        :(x.is_jav&&x.code?`<img src="/cover?code=${encodeURIComponent(x.code)}" alt="" loading="lazy" onerror="this.remove()">`:'');
+        :(x.is_jav&&x.code?`<img src="/cover?code=${encodeURIComponent(x.code)}" alt="" loading="lazy" data-drop="self">`:'');
       const edition=queue.kind==='editions'&&x.edition_label
         ?`<i class="qedition javedition ${EDITION_TONE[x.edition_label]||'censored'}">${esc(x.edition_label)}</i>`:'';
       const edit=queue.kind==='playlist'?`<span class="queueedit"><button data-queue-up="${index}" aria-label="上移" ${index===0?'disabled':''}>↑</button><button data-queue-down="${index}" aria-label="下移" ${index===queue.items.length-1?'disabled':''}>↓</button><button data-queue-remove="${x.id}" aria-label="移出播放列表">${icon('x')}</button></span>`:'';
@@ -5855,9 +5875,9 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   const CAST_SHOWN=8;
   const castOverflow=Math.max(0,castList.length-CAST_SHOWN);
   const idFace=(kind,item)=>kind==='performer'
-    ? `<span>${esc(item.name.slice(0,1))}</span>${item.id?`<img src="/entity-image?kind=performer&id=${item.id}" alt="" loading="lazy" onerror="this.remove()">`:''}`
+    ? `<span>${esc(item.name.slice(0,1))}</span>${item.id?`<img src="/entity-image?kind=performer&id=${item.id}" alt="" loading="lazy" data-drop="self">`:''}`
     : kind==='studio'
-      ? `<span>${esc(item.name.slice(0,2))}</span><img src="/logo?studio=${encodeURIComponent(item.name)}&variant=icon" alt="" loading="lazy" onerror="this.remove()">`
+      ? `<span>${esc(item.name.slice(0,2))}</span><img src="/logo?studio=${encodeURIComponent(item.name)}&variant=icon" alt="" loading="lazy" data-drop="self">`
       : `<span>${esc(item.name.slice(0,1))}</span>`;
   const idCell=(kind,item,index)=>{
     const hide=kind==='performer'&&index>=CAST_SHOWN;
@@ -5895,21 +5915,19 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
        <div class="playerstats" id="playerStats" role="status" hidden></div>
       ${offline?`<div class="gate offline" id="offlineGate" role="status">
           ${srcBadge(it.location,it.cost,'srcbig')}
-          <b style="font-size:14px">脱盘模式</b>
-          <span style="font-size:12px;color:var(--muted)">${esc(offlineReason(it.location))}</span>
+          <b>脱盘模式</b>
+          <span>${esc(offlineReason(it.location))}</span>
           <button class="chip" id="offlineRetry" type="button">重新检测</button></div>
-        <video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="none"
-          hidden style="display:none"></video>`
+        <video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="none" hidden></video>`
        :onlineGated?`<div class="gate" id="onlineGate" role="status">
           ${srcBadge(it.location,it.cost,'srcbig')}
-          <b style="font-size:14px">在线资产</b>
-          <span style="font-size:12px;color:var(--muted)">这条没有对应的关注条目，媒体地址无从解析。</span>
+          <b>在线资产</b>
+          <span>这条没有对应的关注条目，媒体地址无从解析。</span>
           <button class="chip" id="openSavedFollow" type="button">打开已保存关注</button></div>
-        <video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="none"
-          hidden style="display:none"></video>`
+        <video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="none" hidden></video>`
        :gated?`<div class="gate" id="gate">
           ${srcBadge(it.location,it.cost,'srcbig')}
-          <span style="font-size:12px;color:var(--muted)">点此开始拉流 · ${fmtSize(it.size||0)}</span></div>
+          <span>点此开始拉流 · ${fmtSize(it.size||0)}</span></div>
         <video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="none" hidden></video>`
        :`<video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="metadata"></video>`}
     </div>${queueContext?queueHtml(queueContext,it.id):''}
@@ -5925,9 +5943,9 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
       <div class="detailidentity">${identityRows||`<div class="identityrow"><span></span><span class="ilabel">归属</span><span>${esc(who)}</span></div>`}</div>
       <div class="stags" id="detailTags"></div>
       <div class="trace"><div class="lab mono"><span>离开位置</span><span id="ratioTxt">0%</span></div>
-        <div class="bar"><u id="watched"></u><b id="mark" style="left:0"></b></div>
+        <div class="bar"><u id="watched"></u><b id="mark"></b></div>
         <div class="lab mono trace-real"><span>真实观看</span><span id="realTxt">0%</span></div>
-        <div class="bar"><u id="realBar" style="background:color-mix(in srgb,var(--keep) 40%,transparent)"></u></div>
+        <div class="bar"><u id="realBar"></u></div>
       </div>
       <div class="fb">
         <button class="like" id="likeBtn" aria-label="${it.liked?'取消喜欢':'喜欢'}" title="喜欢 · 记录口味偏好" aria-pressed="${!!it.liked}">${icon('thumbs-up')}</button>
