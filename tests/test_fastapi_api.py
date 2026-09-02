@@ -102,6 +102,23 @@ def minimal_mp4(*, timescale: int, sample_delta: int, samples: int, keyframe_eve
             + _box(b"mdat", bytes(64)))
 
 
+class MediaCacheHeaderTests(unittest.TestCase):
+    """生成物的缓存时长只许在一处写死。
+
+    这条断言原本扫的是 `api.py`：媒体路由都在那里，写死一天的 `max-age=86400`
+    也就都在那里。路由拆到 `routes_media.py` 之后，扫 `api.py` 会永远绿——
+    它已经一条媒体路由都没有了。门槛跟着实现走，不跟着文件名走。
+    """
+
+    def test_no_media_endpoint_hardcodes_a_day(self):
+        source = (ROOT / "src" / "peach" / "routes_media.py").read_text(encoding="utf-8")
+        self.assertIn("MEDIA_CACHE_SECONDS", source, "媒体路由不在这个文件里了，门槛已空转")
+        self.assertNotIn("max-age=86400", source, "媒体端点不该再写死一天")
+        # `immutable` 只许出现在 /vendor/ 那条中间件里，它留在 api.py。这里不查
+        # 字面量：常量上方那段注释正是在解释「为什么不加 immutable」。
+        self.assertNotIn('"public, max-age=31536000, immutable"', source)
+
+
 @unittest.skipUnless(HAS_DEPS, "FastAPI/httpx 尚未安装")
 class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -320,7 +337,9 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
     async def test_follow_avatar_redirects_only_after_the_official_resolver(self):
         denied = await self.client.get("/follow-avatar?service=fanbox&id=30917150")
         self.assertEqual(denied.status_code, 401)
-        with patch("peach.api.resolve_official_avatar",
+        # patch 打在真正 import 它的模块上。`/follow-avatar` 现在住在 routes_media，
+        # 打在 `peach.api` 上会静默失效——那个名字已经不在那里了。
+        with patch("peach.routes_media.resolve_official_avatar",
                    return_value="https://pixiv.pximg.net/icon.jpeg") as resolver:
             response = await self.client.get(
                 "/follow-avatar?t=secret&service=fanbox&id=30917150")
@@ -680,10 +699,10 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_unexpected_contract_errors_are_logged_but_not_exposed(self):
         with patch(
-            "peach.api.web_contract.dispatch_api_get",
+            "peach.routes_api.web_contract.dispatch_api_get",
             side_effect=RuntimeError("private C:\\ledger.db detail"),
         ):
-            with self.assertLogs("peach.api", level="ERROR") as captured:
+            with self.assertLogs("peach.routes_api", level="ERROR") as captured:
                 response = await self.client.get("/api/items?t=secret")
         self.assertEqual(response.status_code, 500)
         self.assertEqual(response.json(), {"error": "internal server error"})
@@ -1275,7 +1294,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
     async def test_photo_detail_reveal_resolves_the_asset_id_on_the_server(self):
         source = self._seed_photo()
         headers = {"X-Token": "secret"}
-        with patch("peach.api.reveal_path", return_value=True) as reveal:
+        with patch("peach.routes_api.reveal_path", return_value=True) as reveal:
             response = await self.client.post(
                 "/api/reveal", headers=headers,
                 json={"id": 9, "path": "C:/client-must-not-control-this"},

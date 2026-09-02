@@ -46,6 +46,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                 "test_restart_windows_tray.py",
                 "test_versioning.py",
                 "test_windows_update.py", "test_certs.py", "test_config.py",
+                "test_fsutil.py",
                 "test_job_status.py", "test_jobs.py", "test_reference_updates.py",
                 "test_repo_hygiene.py",
                 "test_review_csv.py",

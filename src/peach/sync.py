@@ -32,6 +32,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .fsutil import atomic_write_text
 from .platform import root_online
 
 
@@ -146,11 +147,7 @@ def write_marker(db_path: Path, marker: Marker, *, with_digest: bool = True) -> 
             digest=digest_database(db_path) if with_digest else "",
             wal_size=wal_payload_size(db_path),
         )
-    target = marker_path(db_path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_name(target.name + ".tmp")
-    temporary.write_text(marker.as_json(), encoding="utf-8")
-    os.replace(temporary, target)
+    atomic_write_text(marker_path(db_path), marker.as_json())
     return marker
 
 
@@ -412,11 +409,6 @@ class LedgerSync:
                      with_digest=False)
         write_marker(self.local, Marker(generation, self.device, stamp, 0, 0))
 
-    # ── 生命周期 ────────────────────────────────────────────────────────────
-    def startup(self) -> SyncPlan:
-        """兼容旧调用：启动只观察，不再复制。"""
-        return self.observe()
-
     def observe(self) -> SyncPlan:
         """只读刷新当前角色与同步状态，不碰 DB 或 marker。"""
         decision = plan(self.local, self.shared)
@@ -480,11 +472,3 @@ class LedgerSync:
             return "conflict"
         self.status = decision.action
         return decision.action
-
-    def start(self) -> None:
-        """服务生命周期不再启动跨机同步线程。"""
-        return None
-
-    def stop(self) -> None:
-        """没有后台同步线程，服务退出也不写任何共享状态。"""
-        return None

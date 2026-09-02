@@ -1,9 +1,14 @@
-"""Peach 批处理任务共享的安全与成本策略。"""
+"""Peach 批处理任务共享的安全与成本策略，以及服务内后台任务的状态机。"""
 from __future__ import annotations
 
+import copy
 import shutil
 import os
+import threading
 import time
+import uuid
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -194,6 +199,106 @@ class PidFileLock:
 
     def __exit__(self, *_exc: object) -> None:
         self.release()
+
+
+class BackgroundJob:
+    """服务里一次「点一下、后台跑、前端轮询」的任务：锁、状态和线程都在这里。
+
+    死链检查和资源对账各写了一份逐字相同的这个形状：一把锁、一个带 uuid 的状态字典、
+    `status_only` 与 `restart` 两个开关、一个 daemon 线程，以及一个把异常翻成
+    `status="failed"` 的 except。共用的不只是形状，还有三条容易漏的约定：
+
+    1. **状态里必须带任务 id，而且每次改状态前都要核对**。轮询期间用户可以按
+       `restart` 顶掉在跑的那一轮；被顶掉的线程如果还继续写状态，前端看到的就是
+       新一轮的 id 配旧一轮的进度。
+    2. **后台异常必须变成可轮询的状态**。只写日志的话，界面会永远停在「进行中」。
+    3. **`thread.start()` 不能在锁里**。
+
+    `snapshot()` 返回深拷贝：域模块的公开投影（挑字段、`[dict(x) for x in ...]`）
+    因此可以在锁外安全地算，不必让每个域都自己记得「投影要在锁里做」。状态只装
+    JSON 形态的数据，拷贝很便宜。
+    """
+
+    def __init__(self, name: str, *, id_key: str = "job_id"):
+        #: 线程名，出现在崩溃栈和进程视图里，所以取和端点一致的名字。
+        self.name = name
+        #: 状态字典里存任务 id 的键名。域模块的公开投影直接下发它，所以沿用各域原有的
+        #: 名字（`check_id`／`scan_id`）而不是统一改名——那是前端契约。
+        self.id_key = id_key
+        self.lock = threading.Lock()
+        self.state: dict | None = None
+        self.thread: threading.Thread | None = None
+
+    def snapshot(self) -> dict | None:
+        """当前状态的深拷贝；一次都没跑过返回 None。"""
+        with self.lock:
+            return copy.deepcopy(self.state) if self.state is not None else None
+
+    def update(self, job_id: str, **fields: object) -> bool:
+        """状态仍属于 `job_id` 时改字段；已经被顶掉就什么都不做并返回 False。"""
+        with self.editing(job_id) as state:
+            if state is None:
+                return False
+            state.update(fields)
+            return True
+
+    @contextmanager
+    def editing(self, job_id: str) -> Iterator[dict | None]:
+        """拿住锁产出仍属于 `job_id` 的状态；被顶掉则产出 None。
+
+        进度是往列表里追加、给计数加一，不都是整字段替换，所以除了 `update` 还要
+        有这个原地改的入口。
+        """
+        with self.lock:
+            state = self.state
+            yield state if state is not None and state[self.id_key] == job_id else None
+
+    def start(self, fn: Callable[[str], None], *, initial: dict | None = None,
+              restart: bool = False) -> dict:
+        """跑一轮，返回启动后（或原有）状态的深拷贝。
+
+        已经在跑，或者已经有结果而调用方没要求 `restart`，都原样返回现状——重复点击
+        不该把一轮跑到一半的检查丢掉。`fn` 收到本轮的任务 id，自己负责把 `status`
+        推到 `complete`：完成时要落什么结果字段是域的事。
+        """
+        thread = None
+        with self.lock:
+            state = self.state
+            if state is None or (restart and state["status"] != "running"):
+                job_id = uuid.uuid4().hex
+                state = {self.id_key: job_id, "status": "running",
+                         "started_at": time.time(), "error": "", **(initial or {})}
+                self.state = state
+                thread = threading.Thread(target=self._run, args=(fn, job_id),
+                                          daemon=True, name=self.name)
+                self.thread = thread
+            snapshot = copy.deepcopy(state)
+        if thread is not None:
+            thread.start()
+        return snapshot
+
+    def stop(self, timeout: float | None = 2.0) -> None:
+        """丢掉状态并等线程收工，用于服务关停。
+
+        线程是 daemon，本来也挡不住进程退出；清状态的意义是让在途的 worker 下一次
+        拿锁时发现自己已被顶掉，从而安静返回，而不是在解释器拆卸期间继续查库、
+        往一个没人读的状态里写进度。等不到就不等——一次外部 HTTP 探测可以是十几秒，
+        关停不该被它拖住。
+        """
+        with self.lock:
+            self.state = None
+            thread = self.thread
+            self.thread = None
+        if thread is not None and thread.is_alive():
+            thread.join(timeout)
+
+    def _run(self, fn: Callable[[str], None], job_id: str) -> None:
+        try:
+            fn(job_id)
+        except Exception as error:   # 后台失败必须变成可轮询的状态，不能只留在日志里
+            self.update(job_id, status="failed",
+                        error=f"{type(error).__name__}: {error}",
+                        completed_at=time.time())
 
 
 def job_main(build_parser, run, argv: list[str] | None = None) -> int:

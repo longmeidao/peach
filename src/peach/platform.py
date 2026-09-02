@@ -124,21 +124,3 @@ def translate_roots(roots) -> tuple[Path, ...]:
     return tuple(path for path in translated if not is_unmapped(path))
 
 
-def media_root_status(roots) -> tuple[dict[str, object], ...]:
-    """每个声明来源的可达性；`/api/index` 靠它决定要不要把本地筛选置灰。"""
-    status: list[dict[str, object]] = []
-    for root in roots:
-        raw = os.fspath(root)
-        path = translate_ledger_path(raw)
-        mapped = not is_unmapped(path)
-        status.append(
-            {
-                "declared": raw,
-                "resolved": str(path) if mapped else None,
-                "mapped": mapped,
-                "online": bool(mapped and path.is_dir()),
-            }
-        )
-    return tuple(status)
-
-

@@ -2,7 +2,6 @@
 import sqlite3
 import sys
 import tempfile
-import threading
 import unittest
 from contextlib import contextmanager
 from pathlib import Path
@@ -10,34 +9,48 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach import web_links   # noqa: E402
+from peach.jobs import BackgroundJob   # noqa: E402
 
-SCHEMA = """
-CREATE TABLE entity(id INTEGER PRIMARY KEY, kind TEXT, canonical_name TEXT);
-CREATE TABLE entity_link(
-  id INTEGER PRIMARY KEY, entity_id INTEGER NOT NULL, link_kind TEXT NOT NULL,
-  label TEXT NOT NULL, url TEXT NOT NULL, hostname TEXT);
-"""
+from support.ledger import fresh_ledger   # noqa: E402
 
 
 class FakeContract:
+    """只提供 `LinkContract` 声明的那几项能力，且读写分开。
+
+    早先这里把 `read_connection` 和 `write_connection` 指向同一个可写函数，于是
+    `w_links_prune` 调了真契约上根本不存在的 `write_connection` 也照样绿——真的
+    `WebContract` 只有 `read_connection` 与 `write_transaction`，线上删链接直接 500。
+    读连接因此按真实实现开成 SQLite 的 `mode=ro`：拿读连接写库会当场报错，而不是
+    悄悄成功。
+    """
+
     def __init__(self, db: Path):
         self.db_path = db
-        self.link_check_lock = threading.Lock()
-        self.link_check_state = None
-        self.link_check_thread = None
+        self.link_check = BackgroundJob("PeachLinkCheckJob", id_key="check_id")
 
     @contextmanager
-    def _connect(self):
+    def read_connection(self):
+        connection = sqlite3.connect(
+            self.db_path.resolve().as_uri() + "?mode=ro", uri=True)
+        connection.row_factory = sqlite3.Row
+        try:
+            yield connection
+        finally:
+            connection.close()
+
+    @contextmanager
+    def write_transaction(self):
         connection = sqlite3.connect(self.db_path)
         connection.row_factory = sqlite3.Row
         try:
             yield connection
+        except BaseException:
+            connection.rollback()
+            raise
+        else:
             connection.commit()
         finally:
             connection.close()
-
-    read_connection = _connect
-    write_connection = _connect
 
 
 class VerdictTests(unittest.TestCase):
@@ -59,13 +72,15 @@ class VerdictTests(unittest.TestCase):
 class SummaryTests(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
-        db = self.tmp / "ledger.db"
+        db = fresh_ledger(self.tmp)
         connection = sqlite3.connect(db)
-        connection.executescript(SCHEMA)
-        connection.executemany("INSERT INTO entity VALUES(?,?,?)",
-                               [(1, "performer", "凉森玲梦"), (2, "studio", "MOODYZ")])
         connection.executemany(
-            "INSERT INTO entity_link(entity_id,link_kind,label,url,hostname) VALUES(?,?,?,?,?)",
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(?,?,?,?,'2026-01-01','2026-01-01')",
+            [(1, "performer", "凉森玲梦", "凉森玲梦"), (2, "studio", "MOODYZ", "moodyz")])
+        connection.executemany(
+            "INSERT INTO entity_link(entity_id,link_kind,label,url,hostname,"
+            "created_at,updated_at) VALUES(?,?,?,?,?,'2026-01-01','2026-01-01')",
             [(1, "social", "X @a", "https://x.com/a", "x.com"),
              (1, "official", "T-POWERS", "https://www.t-powers.co.jp/talent/x/", "www.t-powers.co.jp"),
              (2, "official", "官方网站", "https://moodyz.com/", "moodyz.com")])
@@ -88,7 +103,7 @@ class SummaryTests(unittest.TestCase):
 
     def test_prune_refuses_a_stale_check_id(self):
         """拿一份放了半天的清单去删，删的可能是早已改好的链接。"""
-        self.contract.link_check_state = {
+        self.contract.link_check.state = {
             "check_id": "fresh", "status": "complete", "checked": 3, "total": 3,
             "gone": [{"id": 1, "entity": "凉森玲梦", "link_kind": "social",
                       "label": "X @a", "url": "https://x.com/a", "note": "HTTP 404"}],
@@ -106,7 +121,7 @@ class SummaryTests(unittest.TestCase):
 
         第一条重验仍是 404，删；第二条重验回了 200，保留并计入 recovered。
         """
-        self.contract.link_check_state = {
+        self.contract.link_check.state = {
             "check_id": "fresh", "status": "complete", "checked": 3, "total": 3,
             "gone": [
                 {"id": 1, "entity": "凉森玲梦", "link_kind": "social", "label": "X @a",

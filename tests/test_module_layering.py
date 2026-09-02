@@ -9,10 +9,14 @@ import 一个叫 web 的模块，读代码的人只会得出「分层反了」�
 但名字骗人和结构错了一样难查。改名之后加这条断言，让下一次真反了的时候直接报错。
 """
 import ast
+import importlib
 import pathlib
+import tempfile
+import typing
 import unittest
 
 import peach
+from peach.web_contract import WebContract
 
 
 SOURCE_ROOT = pathlib.Path(peach.__file__).parent
@@ -24,8 +28,14 @@ SOURCE_ROOT = pathlib.Path(peach.__file__).parent
 #: 守规则的东西自己先漂了，是这条门槛最容易出的故障。
 WEB_MODULES = {path.stem for path in SOURCE_ROOT.glob("web_*.py")}
 
-#: 应用层组装点：把 web 层挂上 FastAPI 是它的职责，方向是对的。
-COMPOSITION_ROOTS = {"api"}
+#: FastAPI 适配层：`api` 是组装点，`routes_*` 是它挂上去的路由表。把 web 层接到
+#: HTTP 上是这一层的职责，方向是对的。
+#:
+#: 和 `WEB_MODULES` 同样按文件名推导。`create_app` 拆成 `routes_auth`/`routes_pages`/
+#: `routes_media`/`routes_api` 时这里原本只写着 `api`，再拆一个模块出来就会被判成
+#: 「非 web 模块 import 了 web 层」——门槛报的是假警，改的人只会来把它加进清单。
+ROUTE_MODULES = {path.stem for path in SOURCE_ROOT.glob("routes_*.py")}
+COMPOSITION_ROOTS = {"api"} | ROUTE_MODULES
 
 
 def _local_imports(path: pathlib.Path) -> set[str]:
@@ -130,6 +140,53 @@ class SharedRuleTests(unittest.TestCase):
                          "纯规则请直接从 peach.catalog_rules 取")
 
 
+class ContractConformanceTests(unittest.TestCase):
+    """域模块声明的窄契约，真的 `WebContract` 必须全部满足。
+
+    `Protocol` 在运行期什么都不检查，域模块又只照着自己那份 Protocol 写调用，
+    于是「契约上写了、实现里没有」不会有任何东西报错，一路要等到用户点那个按钮。
+
+    实测事故：`web_links.LinkContract` 声明了 `write_connection`，`WebContract` 只有
+    `write_transaction`，`/api/links/prune` 在线上直接 500；而 `tests/test_web_links.py`
+    的 FakeContract 恰好把两个名字都给了，测试因此全绿。这条门槛就是补那次的窗口。
+    """
+
+    @staticmethod
+    def _declared(protocol) -> set[str]:
+        """一份 Protocol 声明的能力：带注解的属性 + 协议体里定义的方法。"""
+        names = set(typing.get_type_hints(protocol))
+        names.update(name for name, value in vars(protocol).items()
+                     if callable(value) and not name.startswith("_"))
+        return names
+
+    @staticmethod
+    def _web_protocols() -> list[type]:
+        """web 层各模块自己定义的 Protocol，按文件名发现而不是手写清单。"""
+        found: list[type] = []
+        for path in sorted(SOURCE_ROOT.glob("web_*.py")):
+            module = importlib.import_module(f"peach.{path.stem}")
+            for obj in vars(module).values():
+                if (isinstance(obj, type) and getattr(obj, "_is_protocol", False)
+                        and obj.__module__ == module.__name__ and obj not in found):
+                    found.append(obj)
+        return found
+
+    def test_every_web_protocol_is_satisfied_by_the_real_contract(self):
+        protocols = self._web_protocols()
+        self.assertGreaterEqual(len(protocols), 5, "没发现域契约，门槛已空转")
+        with tempfile.TemporaryDirectory() as tmp:
+            # 构造只是赋值路径和建锁，不碰磁盘也不连库；临时目录仅用于坐实这一点。
+            contract = WebContract(pathlib.Path(tmp).resolve() / "ledger.db")
+            missing = [f"{protocol.__name__}.{name}"
+                       for protocol in protocols
+                       for name in sorted(self._declared(protocol))
+                       if not hasattr(contract, name)]
+        self.assertEqual(
+            missing, [],
+            "域契约声明了 WebContract 没有的能力：要么补上实现，要么改契约声明",
+        )
+
+
 class LayeringTests(unittest.TestCase):
     def test_the_web_layer_is_actually_discovered(self):
         """推导出来的 web 层不能是空的。
@@ -139,6 +196,36 @@ class LayeringTests(unittest.TestCase):
         """
         self.assertGreaterEqual(len(WEB_MODULES), 4, "没发现 web 层，门槛已空转")
         self.assertIn("web_contract", WEB_MODULES)
+
+    def test_the_route_layer_is_actually_discovered(self):
+        """`routes_*` 也不能是空的，理由同上：它现在参与放行判定。
+
+        `COMPOSITION_ROOTS` 一旦被 glob 推成只有 `api`，上面那条 web 层门槛会立刻
+        对四个路由模块报假警；反过来，如果有人改名让 glob 全落空，放行集合缩小，
+        门槛会变严而不是变松——但报出来的偏移点是错的，所以这里直接钉住。
+        """
+        self.assertGreaterEqual(len(ROUTE_MODULES), 4, "没发现路由层，放行集合已漂")
+        self.assertIn("routes_api", ROUTE_MODULES)
+
+    def test_nothing_below_the_route_layer_imports_it(self):
+        """路由层是最上面一层：只有 `api` 和它自己的同层模块可以 import `routes_*`。
+
+        方向必须单向。`routes_media` 里放着「取哪个文件、报哪个缓存头」这类 HTTP
+        决策，一旦被 `media`、`previews` 之类的下层 import，FastAPI 就渗进了不需要
+        知道 HTTP 的地方，测试也从此必须先建一个 app 才能跑。
+        """
+        offenders = []
+        for path in sorted(SOURCE_ROOT.glob("*.py")):
+            module = path.stem
+            if module in COMPOSITION_ROOTS:
+                continue
+            for imported in sorted(_local_imports(path)):
+                if imported in ROUTE_MODULES:
+                    offenders.append(f"{module} → {imported}")
+        self.assertEqual(
+            offenders, [],
+            "只有 api 与 routes_* 自己可以依赖路由层：需要共享的东西下沉到领域模块",
+        )
 
     def test_only_web_modules_and_the_composition_root_import_the_web_layer(self):
         offenders = []

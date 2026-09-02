@@ -1,11 +1,14 @@
 import os
 import signal
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from peach.jobs import (
+    BackgroundJob,
     DiskGuard,
     DiskSpaceDenied,
     JobAlreadyRunning,
@@ -158,3 +161,102 @@ class JobMainTests(unittest.TestCase):
             self.assertEqual(job_main(lambda: self._parser(lock), run, []), 7)
             self.assertEqual(seen, [True], "run 执行期间锁文件必须还在")
             self.assertFalse(lock.exists(), "退出后锁要释放")
+
+
+class BackgroundJobTests(unittest.TestCase):
+    """服务里的后台任务状态机。
+
+    死链检查和资源对账原先各写一份，共用的不只是形状，还有几条容易漏的约定：
+    重复点击不许把在跑的那轮丢掉、被顶掉的线程不许再写状态、后台异常必须变成
+    可轮询的 failed。这些都散在两处的话，下一个照抄的人漏哪条都不会有人发现。
+    """
+
+    def _job(self) -> BackgroundJob:
+        return BackgroundJob("PeachTestJob", id_key="check_id")
+
+    def test_a_fresh_job_has_no_state_at_all(self):
+        """没跑过就是 None，而不是一个假装跑过的空状态。"""
+        self.assertIsNone(self._job().snapshot())
+
+    def test_repeated_clicks_do_not_replace_the_round_that_is_running(self):
+        job = self._job()
+        release = threading.Event()
+        started = threading.Event()
+
+        def work(_job_id: str) -> None:
+            started.set()
+            release.wait(5)
+
+        first = job.start(work)
+        started.wait(5)
+        try:
+            again = job.start(work, restart=True)
+            self.assertEqual(again["check_id"], first["check_id"])
+            self.assertEqual(again["status"], "running")
+        finally:
+            release.set()
+        job.stop()
+
+    def test_restart_is_required_to_replace_a_finished_round(self):
+        job = self._job()
+        job.start(lambda job_id: job.update(job_id, status="complete"))
+        for _ in range(500):
+            if job.snapshot()["status"] == "complete":
+                break
+            time.sleep(0.01)
+        done = job.snapshot()
+        self.assertEqual(done["status"], "complete")
+        # 不带 restart 只是查现状：一份跑完的结果不该被一次误点清掉。
+        self.assertEqual(job.start(lambda _id: None)["check_id"], done["check_id"])
+        self.assertNotEqual(
+            job.start(lambda _id: None, restart=True)["check_id"], done["check_id"])
+
+    def test_a_superseded_worker_can_no_longer_touch_the_state(self):
+        """被顶掉的线程还继续写，前端就会看到新一轮的 id 配旧一轮的进度。"""
+        job = self._job()
+        stale = job.start(lambda _id: None, initial={"checked": 0})["check_id"]
+        job.state = {"check_id": "fresh", "status": "running", "checked": 0}
+        self.assertFalse(job.update(stale, checked=99))
+        with job.editing(stale) as state:
+            self.assertIsNone(state)
+        self.assertEqual(job.snapshot()["checked"], 0)
+
+    def test_a_raising_worker_becomes_a_pollable_failure(self):
+        job = self._job()
+
+        def work(_job_id: str) -> None:
+            raise RuntimeError("上游没了")
+
+        job.start(work)
+        for _ in range(500):
+            if job.snapshot()["status"] != "running":
+                break
+            time.sleep(0.01)
+        state = job.snapshot()
+        self.assertEqual(state["status"], "failed")
+        self.assertEqual(state["error"], "RuntimeError: 上游没了")
+        self.assertIn("completed_at", state)
+
+    def test_the_snapshot_is_deep_enough_to_project_outside_the_lock(self):
+        """公开投影在锁外算，所以快照不能和 worker 共享同一个列表对象。"""
+        job = self._job()
+        job.state = {"check_id": "x", "status": "running", "gone": [{"id": 1}]}
+        snapshot = job.snapshot()
+        snapshot["gone"].append({"id": 2})
+        snapshot["gone"][0]["id"] = 9
+        self.assertEqual(job.state["gone"], [{"id": 1}])
+
+    def test_stop_drops_the_state_and_waits_for_the_worker(self):
+        job = self._job()
+        release = threading.Event()
+        finished = threading.Event()
+
+        def work(_job_id: str) -> None:
+            release.wait(5)
+            finished.set()
+
+        job.start(work)
+        release.set()
+        job.stop(timeout=5)
+        self.assertTrue(finished.is_set())
+        self.assertIsNone(job.snapshot())

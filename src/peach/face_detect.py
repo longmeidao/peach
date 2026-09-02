@@ -36,7 +36,6 @@ MODEL_URL = (
     "models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
 )
 MODEL_SHA256 = "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
-MODEL_BYTES = 232589
 MODEL_PATH = TOOLS_DIR / "yunet" / "face_detection_yunet_2023mar.onnx"
 
 #: 低于这个分数的检出不算数。YuNet 会给出置信度，不必再靠「落在左半边就是假阳性」

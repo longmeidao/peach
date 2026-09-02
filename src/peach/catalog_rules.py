@@ -66,7 +66,6 @@ POSITION_TAGS = {
 
 _CODE_STUDIO = re.compile(r"^[A-Z]{2,8}-\d{2,5}$")
 _CODE_AMATEUR = re.compile(r"^\d{3}[A-Z]{2,6}-\d{2,5}$")
-_CODE_FC2 = re.compile(r"^FC2-PPV-\d{5,}$")
 _CODE_DATE = re.compile(r"^\d{6}-\d{2,4}$")
 _MEDIA_EXTENSION = re.compile(
     r"\.(?:mp4|mkv|avi|wmv|mov|m4v|webm|ts|m2ts|mts|mpg|mpeg|flv|rm|rmvb|iso)$",
