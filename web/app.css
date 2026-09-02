@@ -1009,6 +1009,7 @@ body[data-density="dense"] .junkcard .junkactions button span{display:none}
 .javedition.subtitle{color:var(--tungsten)}
 .javedition.uncensored{color:var(--meter)}
 .javedition.cracked{color:var(--drop)}
+.javedition.censored{color:var(--muted)}
 .meta .s{display:flex;gap:8px;color:var(--muted);align-items:center;flex-wrap:wrap}
 .meta .who{color:var(--tungsten);min-width:0;max-width:100%;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 /* 没有实体链接的归属只是一段文字：番号、「未归属」这类值没有资料页可去。
@@ -1097,6 +1098,9 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .mixitem:hover{background:var(--overlay-5)}.mixitem.current{background:color-mix(in srgb,var(--tungsten) 15%,var(--overlay-5))}
 .mixitempic{position:relative;aspect-ratio:16/9;border-radius:4px;overflow:hidden;background:#000}
 .mixitempic img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.mixitempic .dur{right:4px;bottom:3px}
+/* 版次徽章要自己占一行：`.mixitemtext` 的 b/span 都是块级的，徽章跟在标题同一行
+   会被截断规则连带压掉。`width:fit-content` 让它只占文字宽度，不铺满整格。 */
+.mixitemtext .qedition{display:flex;width:fit-content;margin:0 0 4px}
 .mixitemtext{min-width:0}.mixitemtext b,.mixitemtext span{display:block;overflow:hidden;white-space:nowrap}.mixitemtext [data-truncate-end]{text-overflow:ellipsis}
 .mixitemtext b{font-size:var(--fs-xs);line-height:1.4}.mixitemtext span{font-size:var(--fs-xs);color:var(--muted);margin-top:3px}
 .queueedit{display:grid;grid-template-columns:repeat(3,24px);gap:2px;padding-right:5px}.queueedit button{width:24px;height:24px;border:0;border-radius:5px;background:transparent;color:var(--muted);padding:0;display:grid;place-items:center;cursor:pointer}.queueedit button:hover:not(:disabled){background:var(--hover);color:var(--ink)}.queueedit button:disabled{opacity:.25;cursor:default}.queueedit svg{width:14px;height:14px;stroke:currentColor;fill:none}

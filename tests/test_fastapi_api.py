@@ -791,7 +791,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
                      # 前端路由写好了不等于能直接打开：SPA 路径是逐条登记的，
                      # 漏登记时源码断言照样全绿，只有真的请求一次才会露出 404。
                      "/unseen", "/watch-later", "/flagged", "/junk-files",
-                     "/data-cleanup", "/duplicates", "/quality-goals", "/mix/1/2", "/parts/1/2", "/playlists",
+                     "/data-cleanup", "/duplicates", "/quality-goals", "/mix/1/2", "/parts/1/2", "/editions/1/2", "/playlists",
                      "/resource-sync",
                      "/playlists/1/1", "/follow", "/follow-manage",
                      "/follow/item/190"):

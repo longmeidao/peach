@@ -4475,7 +4475,8 @@ function renderEntityCollection(kind,name,items,filters,append=false){
     entityCollectionPage.has_more=!!items.has_more;
   }
   const grid=section.querySelector('.grid');
-  grid.insertAdjacentHTML('beforeend',collapseMultipartItems(items.items).map(it=>cardHtml(it)).join(''));
+  grid.insertAdjacentHTML('beforeend',
+    collapseEditionGroups(collapseMultipartItems(items.items)).map(it=>cardHtml(it)).join(''));
   wireCards(grid,undefined,tag=>updateEntityCollection(
     kind,name,{...filters,tag:tag===entityTag?'':tag},true));
   const more=section.querySelector('.entitymore');
@@ -5609,18 +5610,27 @@ async function loadShorts(requestSeq=loadRequestSeq,surface=surfaceToken(surface
 }
 
 /* ── 就地展开播放 ── */
+/* 版次徽章的配色跟卡片标题上的那套走。多一个 `有码`：卡片上正片不加角标是对的
+   （没角标就是正片），但队列里两条并排时「什么都不写」等于让人自己猜哪条是哪条。 */
+const EDITION_TONE={'中字':'subtitle','无码':'uncensored','无码破解':'cracked','有码':'censored'};
 function queueHtml(queue,itemId){
   const action=queue.kind==='mix'
     ? `<button data-save-mix title="保存为播放列表" aria-label="保存为播放列表">${icon('bookmark-plus')}</button>`
     : queue.kind==='playlist'?`<button data-edit-playlist title="编辑播放列表" aria-label="编辑播放列表">${icon('list-filter')}</button>`:'';
-  const countLabel=queue.kind==='parts'?`${queue.items.length} 卷`:`${queue.items.length} 个视频`;
-  const kindLabel={mix:'Mix',parts:'分卷',playlist:'播放列表'}[queue.kind]||'视频合集';
+  const countLabel=queue.kind==='parts'?`${queue.items.length} 卷`
+    :queue.kind==='editions'?`${queue.items.length} 个版本`:`${queue.items.length} 个视频`;
+  const kindLabel={mix:'Mix',parts:'分卷',editions:'版本',playlist:'播放列表'}[queue.kind]||'视频合集';
   return `<aside class="mixqueue" data-queue-kind="${esc(queue.kind)}"><div class="mixqueuehead"><div><h2>${kindLabel}</h2><span>${esc(queue.title)} · ${countLabel}</span></div><div class="mixqueueactions">${action}
     <button data-queue-close title="关闭" aria-label="关闭">${icon('x')}</button></div></div><div class="mixlist">${queue.items.map((x,index)=>{
-      const thumb=x.has_thumb?`<img src="/poster?id=${x.id}&c=4" alt="" loading="lazy">`:'';
+      /* 没抽过帧就退回番号封套。版次组里常有一份刚入库、还没抽帧的无码，
+         只认 `has_thumb` 会让它在队列里是个纯黑块，而同一条在列表卡上是有封面的。 */
+      const thumb=x.has_thumb?`<img src="/poster?id=${x.id}&c=4" alt="" loading="lazy">`
+        :(x.is_jav&&x.code?`<img src="/cover?code=${encodeURIComponent(x.code)}" alt="" loading="lazy" onerror="this.remove()">`:'');
+      const edition=queue.kind==='editions'&&x.edition_label
+        ?`<i class="qedition javedition ${EDITION_TONE[x.edition_label]||'censored'}">${esc(x.edition_label)}</i>`:'';
       const edit=queue.kind==='playlist'?`<span class="queueedit"><button data-queue-up="${index}" aria-label="上移" ${index===0?'disabled':''}>↑</button><button data-queue-down="${index}" aria-label="下移" ${index===queue.items.length-1?'disabled':''}>↓</button><button data-queue-remove="${x.id}" aria-label="移出播放列表">${icon('x')}</button></span>`:'';
       return `<div class="mixrow"><button class="mixitem ${x.id===itemId?'current':''}" data-queue-item="${x.id}" aria-current="${x.id===itemId?'true':'false'}">
-        <span class="mixitempic">${thumb}<i class="dur mono">${fmtDur(x.duration)}</i></span><span class="mixitemtext"><b data-middle-truncate>${esc(javDisplayName(x))}</b><span data-truncate-end>${queue.kind==='parts'?`第 ${esc(x.part_label)} 卷`:esc(mixLabel(x))}</span></span></button>${edit}</div>`;
+        <span class="mixitempic">${thumb}<i class="dur mono">${fmtDur(x.duration)}</i></span><span class="mixitemtext">${edition}<b data-middle-truncate>${esc(javDisplayName(x))}</b><span data-truncate-end>${queue.kind==='parts'?`第 ${esc(x.part_label)} 卷`:esc(mixLabel(x))}</span></span></button>${edit}</div>`;
     }).join('')}</div></aside>`;
 }
 async function buildMix(seedId){
@@ -5844,6 +5854,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   $('#stage').querySelectorAll('[data-queue-item]').forEach(b=>b.onclick=()=>queueContext.kind==='mix'
     ?openMix(queueContext.seedId,+b.dataset.queueItem,true)
     :queueContext.kind==='parts'?openParts(queueContext.seedId,+b.dataset.queueItem,true)
+    :queueContext.kind==='editions'?openEditions(queueContext.seedId,+b.dataset.queueItem,true)
     :openPlaylist(queueContext.playlistId,+b.dataset.queueItem,true));
   $('#stage').querySelectorAll('[data-save-mix]').forEach(b=>b.onclick=()=>saveMixAsPlaylist(queueContext));
   $('#stage').querySelectorAll('[data-edit-playlist]').forEach(b=>b.onclick=()=>openPlaylists(true));
