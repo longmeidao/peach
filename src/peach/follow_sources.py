@@ -310,6 +310,62 @@ def _exc_summary(exc: Exception, limit: int = 140) -> str:
     return re.sub(r"\s+", " ", text)[:limit]
 
 
+@dataclass(frozen=True)
+class ParsedSource:
+    """从一条粘进来的链接认出来的订阅。"""
+
+    provider: str
+    ref: str
+    url: str
+    label: str
+    semantics: str
+
+    @property
+    def evidence(self) -> str:
+        return "链接直接指明"
+
+
+#: 每个来源的条目语义：`work` 是每条一个独立作品，`release` 是同一作品的历次发布。
+_SEMANTICS = follow_providers.semantics()
+
+#: 站点主机 → 来源键。粘进来的链接靠它认出属于哪个站，不再是一串 if/elif。
+_URL_HOSTS = follow_providers.url_hosts()
+
+_KEMONO_PATH_RE = re.compile(r"^/([a-z0-9_\-]{1,32})/user/([A-Za-z0-9_\-.]{1,64})")
+_R34V_PATH_RE = re.compile(r"^/models/([a-z0-9][a-z0-9_\-]{0,80})")
+_THREAD_PATH_RE = re.compile(r"^/threads/(?:[^/]*?\.)?(\d{1,12})")
+_DIRECT_CREATOR_RE = re.compile(r"^/([A-Za-z0-9_-]{1,80})(?:/|$)")
+_FANBOX_AT_RE = re.compile(r"^/@([A-Za-z0-9_-]{1,64})(?:/|$)")
+_PAHEAL_LIST_RE = re.compile(r"^/post/list/([^/]+)/\d+$")
+
+
+def canonical_source_ref(provider: str, ref: str) -> str:
+    """Return the provider's stable source identity.
+
+    Most provider ids are case-sensitive opaque values.  rule34.xxx tags are not:
+    the API returns the same feed for ``LazyProcrastinator`` and
+    ``lazyprocrastinator``.  Keeping the pasted spelling in the unique key therefore
+    creates duplicate subscriptions when the same author is added in two batches.
+    """
+    value = str(ref or "").strip()
+    return value.casefold() if provider in {"rule34xxx", "rule34paheal"} else value
+
+
+#: 线程 slug 里从这个 token 起就不是作品名了：f95 的惯例是
+#: `<作品名>-<发布日期>-<作者手柄>`，日期之后全是元数据。
+_SLUG_TAIL_RE = re.compile(r"^(?:19|20)\d{2}$|^v?\d+(?:\.\d+)+[a-z]?$")
+
+
+def _slug_label(slug: str) -> str:
+    words = [word for word in re.split(r"[-_]+", slug) if word]
+    kept: list[str] = []
+    for word in words:
+        if kept and _SLUG_TAIL_RE.match(word):
+            break
+        kept.append(word)
+    return " ".join(kept).strip() or re.sub(r"[-_]+", " ", slug).strip() or slug
+
+
 class _BaseConnector:
     provider = ""
     semantics = "work"
@@ -470,6 +526,26 @@ class _BaseConnector:
         return str(item.thumb_url or "") or None
 
     @classmethod
+    def provider_keys(cls) -> tuple[str, ...]:
+        """这个连接器负责哪些来源键。默认就是它自己声明的那一个。
+
+        kemono 系三站共用一套代码，所以由类自己说清楚它服务三个键，而不是在
+        `CONNECTORS` 里把同一个类写三遍——那份重复要和 `HOSTS` 各改一处。
+        """
+        return (cls.provider,) if cls.provider else ()
+
+    @classmethod
+    def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
+                  host: str) -> "ParsedSource":
+        """把一条已经认出属于本站的链接解析成可登记的订阅。
+
+        主机到来源的分派由 `follow_providers.provider_for_host` 做，`host` 已经
+        小写且去掉了 `www.`；这里只管「这个站的 URL 里哪一截是 ref」。纯解析，
+        不联网；认不出就抛 `FollowSourceError` 并说清楚该长什么样。
+        """
+        raise FollowSourceError(f"{cls.provider} 暂不支持从链接登记")
+
+    @classmethod
     def profile_handle(cls, ref: str) -> str:
         """这条 ref 里可以当作者别名用的平台手柄，没有就返回空串。
 
@@ -550,6 +626,23 @@ class KemonoConnector(_BaseConnector):
 
     #: 列表接口一页的条数，2026-08-27 实测为 50（`?o=50` 拿到的是第 51 条起）。
     PAGE_SIZE = 50
+
+    @classmethod
+    def provider_keys(cls) -> tuple[str, ...]:
+        return tuple(cls.HOSTS)
+
+    @classmethod
+    def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
+                  host: str) -> "ParsedSource":
+        matched = _KEMONO_PATH_RE.match(parsed.path or "/")
+        if not matched:
+            raise FollowSourceError(
+                f"{host} 的链接要指向某个创作者，形如 "
+                f"https://{host}/fanbox/user/30917150")
+        service, user = matched.group(1), matched.group(2)
+        return ParsedSource(provider, f"{service}/{user}",
+                            f"https://{host}/{service}/user/{user}",
+                            f"{user} · {service}", "work")
 
     def __init__(self, provider: str = "kemono", *,
                  max_probes: int = DEFAULT_MAX_PROBES, **kwargs):
@@ -807,6 +900,19 @@ class Rule34VideoConnector(_BaseConnector):
     MAX_COLLECTION_MODELS = 20
     DEFAULT_MAX_PROBES = 24
 
+    @classmethod
+    def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
+                  host: str) -> "ParsedSource":
+        matched = _R34V_PATH_RE.match(parsed.path or "/")
+        if not matched:
+            raise FollowSourceError(
+                "rule34video 的链接要指向作者页，形如 "
+                "https://rule34video.com/models/lazyprocrastinator/")
+        slug = matched.group(1)
+        return ParsedSource("rule34video", slug,
+                            f"https://rule34video.com/models/{slug}/",
+                            _slug_label(slug), "work")
+
     def __init__(self, *, max_probes: int = DEFAULT_MAX_PROBES,
                  max_collection_models: int = MAX_COLLECTION_MODELS, **kwargs):
         super().__init__(**kwargs)
@@ -993,6 +1099,20 @@ class Rule34XxxConnector(_BaseConnector):
     _PREVIEW_RE = re.compile(
         r"^https://api-cdn\.rule34\.xxx/thumbnails/(\d+)/thumbnail_"
         r"([0-9a-f]{32})\.jpg(?:[?#].*)?$", re.IGNORECASE)
+
+    @classmethod
+    def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
+                  host: str) -> "ParsedSource":
+        tags = canonical_source_ref(
+            "rule34xxx", urllib.parse.parse_qs(parsed.query).get("tags", [""])[0])
+        if not tags:
+            raise FollowSourceError(
+                "rule34.xxx 的链接要带标签，形如 "
+                "https://rule34.xxx/index.php?page=post&s=list&tags=lazyprocrastinator")
+        return ParsedSource("rule34xxx", tags,
+                            "https://rule34.xxx/index.php?page=post&s=list"
+                            f"&tags={urllib.parse.quote(tags)}",
+                            _slug_label(tags), "work")
 
     @classmethod
     def display_thumb_url(cls, item) -> str | None:
@@ -1213,6 +1333,24 @@ class Rule34PahealConnector(_BaseConnector):
     _DURATION_RE = re.compile(r"\b(\d+(?:\.\d+)?)s\b", re.IGNORECASE)
     _TITLE_STOPWORDS = frozenset({"animated", "blender", "video", "sound", "mp4", "webm"})
 
+    @classmethod
+    def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
+                  host: str) -> "ParsedSource":
+        # 搜索标签既可能在 fragment 里（帖子详情页），也可能在列表页路径里。
+        tag = urllib.parse.parse_qs(parsed.fragment).get("search", [""])[0]
+        if not tag:
+            matched = _PAHEAL_LIST_RE.match(parsed.path or "/")
+            tag = urllib.parse.unquote(matched.group(1)) if matched else ""
+        tag = canonical_source_ref("rule34paheal", tag)
+        if not tag:
+            raise FollowSourceError(
+                "rule34.paheal 的链接要带搜索标签，形如 "
+                "https://rule34.paheal.net/post/view/7428820#search=InitialA")
+        encoded = urllib.parse.quote(tag, safe="()_")
+        return ParsedSource("rule34paheal", tag,
+                            f"https://rule34.paheal.net/post/list/{encoded}/1",
+                            _slug_label(tag), "work")
+
     def __init__(self, *, max_items: int = 24, **kwargs):
         super().__init__(max_items=max_items, **kwargs)
 
@@ -1342,6 +1480,21 @@ class F95ZoneConnector(_BaseConnector):
     _ATTACHMENT_PATH_RE = re.compile(r"^/attachments/\d+/?$", re.IGNORECASE)
     _INLINE_IMAGE_RE = re.compile(
         r"\.(?:avif|bmp|gif|jpe?g|png|webp)(?:$|[?#])", re.IGNORECASE)
+
+    @classmethod
+    def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
+                  host: str) -> "ParsedSource":
+        path = parsed.path or "/"
+        matched = _THREAD_PATH_RE.match(path)
+        if not matched:
+            raise FollowSourceError(
+                "f95zone 的链接要指向一个线程，形如 "
+                "https://f95zone.to/threads/xxx.50685/")
+        thread = matched.group(1)
+        slug = path.split("/threads/", 1)[1].rsplit(".", 1)[0] if "." in path else ""
+        return ParsedSource("f95zone", thread,
+                            f"https://f95zone.to/threads/{thread}/",
+                            _slug_label(slug) or f"线程 {thread}", "release")
 
     def fetch(self, ref: str, *, etag: str | None = None,
               last_modified: str | None = None, page: int = 0) -> SourceFetch:
@@ -1614,6 +1767,21 @@ class FanboxConnector(_BaseConnector):
     _CREATOR_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
     @classmethod
+    def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
+                  host: str) -> "ParsedSource":
+        # 作者主页有两种形状：`creator.fanbox.cc` 子域，和 `fanbox.cc/@creator`。
+        if host.endswith(".fanbox.cc"):
+            creator = host.removesuffix(".fanbox.cc")
+        else:
+            matched = _FANBOX_AT_RE.match(parsed.path or "/")
+            creator = matched.group(1) if matched else ""
+        if not creator:
+            raise FollowSourceError(
+                "FANBOX 的链接要指向创作者主页，形如 https://creator.fanbox.cc/")
+        return ParsedSource("fanbox", creator, f"https://{creator}.fanbox.cc/",
+                            creator, "work")
+
+    @classmethod
     def profile_handle(cls, ref: str) -> str:
         return str(ref or "").strip()
 
@@ -1766,6 +1934,22 @@ class SubscribeStarConnector(_BaseConnector):
     HOSTS = frozenset({"subscribestar.adult", "subscribestar.com"})
     _SLUG_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 
+    #: 这些首段路径是站点自己的功能页，不是创作者。
+    _RESERVED = frozenset({"posts", "search", "login", "signup"})
+
+    @classmethod
+    def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
+                  host: str) -> "ParsedSource":
+        matched = _DIRECT_CREATOR_RE.match(parsed.path or "/")
+        if not matched or matched.group(1) in cls._RESERVED:
+            raise FollowSourceError(
+                "SubscribeStar 的链接要指向创作者主页，形如 "
+                "https://subscribestar.adult/creator")
+        slug = matched.group(1)
+        # ref 带上主机名：`.adult` 与 `.com` 是两个站，同名创作者不一定是一个人。
+        return ParsedSource("subscribestar", f"{host}/{slug}",
+                            f"https://{host}/{slug}", slug, "work")
+
     @classmethod
     def profile_handle(cls, ref: str) -> str:
         # ref 带着站点主机名（`subscribestar.adult/initiala`），手柄只是最后那截。
@@ -1839,6 +2023,28 @@ class PatreonConnector(_BaseConnector):
     semantics = "work"
     _VANITY_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
     _POST_RE = re.compile(r"/posts/(?:[^/?#]*-)?(\d{4,})(?:[/?#]|$)")
+
+    #: 这些首段路径是站点自己的功能页，不是创作者短名。
+    _RESERVED = frozenset({"posts", "join", "login", "signup", "home", "explore"})
+
+    @classmethod
+    def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
+                  host: str) -> "ParsedSource":
+        path = parsed.path or "/"
+        user_id = urllib.parse.parse_qs(parsed.query).get("u", [""])[0]
+        if path.rstrip("/") == "/user" and user_id.isdigit():
+            return ParsedSource("patreon", f"user/{user_id}",
+                                f"https://www.patreon.com/user?u={user_id}",
+                                f"Patreon {user_id}", "work")
+        parts = [part for part in path.split("/") if part]
+        if parts and parts[0] == "cw":
+            parts = parts[1:]
+        if not parts or parts[0].lower() in cls._RESERVED:
+            raise FollowSourceError(
+                "Patreon 的链接要指向创作者主页，形如 https://patreon.com/cw/creator")
+        vanity = parts[0]
+        return ParsedSource("patreon", vanity,
+                            f"https://www.patreon.com/cw/{vanity}", vanity, "work")
 
     @classmethod
     def profile_handle(cls, ref: str) -> str:
@@ -1918,68 +2124,23 @@ class SimpCityConnector(_BaseConnector):
         "simpcity.cr 由 DDoS-Guard 的浏览器质询保护；Peach 不绕机器人验证。"
         "要接入需要你在浏览器里通过质询后提供会话 cookie，或改用其他来源。")
 
+    @classmethod
+    def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
+                  host: str) -> "ParsedSource":
+        # 整站被质询挡着，登记下来也抓不到；当场说原因比留一条死来源好。
+        raise FollowSourceError(cls.blocked_reason)
+
     def fetch(self, ref: str, *, etag: str | None = None,
               last_modified: str | None = None, page: int = 0) -> SourceFetch:
         raise FollowSourceError(self.blocked_reason)
 
 
-@dataclass(frozen=True)
-class ParsedSource:
-    """从一条粘进来的链接认出来的订阅。"""
-
-    provider: str
-    ref: str
-    url: str
-    label: str
-    semantics: str
-
-    @property
-    def evidence(self) -> str:
-        return "链接直接指明"
-
-
-#: 每个来源的条目语义：`work` 是每条一个独立作品，`release` 是同一作品的历次发布。
-_SEMANTICS = follow_providers.semantics()
-
-_KEMONO_HOSTS = {"kemono.cr": "kemono", "coomer.st": "coomer", "pawchive.pw": "pawchive"}
-_KEMONO_PATH_RE = re.compile(r"^/([a-z0-9_\-]{1,32})/user/([A-Za-z0-9_\-.]{1,64})")
-_R34V_PATH_RE = re.compile(r"^/models/([a-z0-9][a-z0-9_\-]{0,80})")
-_THREAD_PATH_RE = re.compile(r"^/threads/(?:[^/]*?\.)?(\d{1,12})")
-_DIRECT_CREATOR_RE = re.compile(r"^/([A-Za-z0-9_-]{1,80})(?:/|$)")
-
-
-def canonical_source_ref(provider: str, ref: str) -> str:
-    """Return the provider's stable source identity.
-
-    Most provider ids are case-sensitive opaque values.  rule34.xxx tags are not:
-    the API returns the same feed for ``LazyProcrastinator`` and
-    ``lazyprocrastinator``.  Keeping the pasted spelling in the unique key therefore
-    creates duplicate subscriptions when the same author is added in two batches.
-    """
-    value = str(ref or "").strip()
-    return value.casefold() if provider in {"rule34xxx", "rule34paheal"} else value
-
-
-#: 线程 slug 里从这个 token 起就不是作品名了：f95 的惯例是
-#: `<作品名>-<发布日期>-<作者手柄>`，日期之后全是元数据。
-_SLUG_TAIL_RE = re.compile(r"^(?:19|20)\d{2}$|^v?\d+(?:\.\d+)+[a-z]?$")
-
-
-def _slug_label(slug: str) -> str:
-    words = [word for word in re.split(r"[-_]+", slug) if word]
-    kept: list[str] = []
-    for word in words:
-        if kept and _SLUG_TAIL_RE.match(word):
-            break
-        kept.append(word)
-    return " ".join(kept).strip() or re.sub(r"[-_]+", " ", slug).strip() or slug
-
-
 def parse_source_url(raw_url: str) -> ParsedSource:
     """把一条来源链接认成可登记的订阅。
 
-    只做纯解析，不联网。认不出来就抛 `FollowSourceError` 并说清楚支持哪些形状——
-    与其静默登记一个永远抓不到东西的来源，不如当场说不认识。
+    只做纯解析，不联网。这里只管链接本身是否合法、以及这个主机属于哪个站；每个站
+    的 URL 形状归它自己的连接器（`parse_url`）。认不出来就抛 `FollowSourceError`
+    并说清楚支持哪些形状——与其静默登记一个永远抓不到东西的来源，不如当场说不认识。
     """
     text = (raw_url or "").strip()
     if not text:
@@ -1994,134 +2155,26 @@ def parse_source_url(raw_url: str) -> ParsedSource:
         raise FollowSourceError("只接受 http(s) 链接")
     if parsed.username is not None or parsed.password is not None:
         raise FollowSourceError("链接里不能带账号密码")
-    host = parsed.hostname.lower()
-    bare = host[4:] if host.startswith("www.") else host
-    path = parsed.path or "/"
+    host = parsed.hostname.lower().removeprefix("www.")
 
-    provider = _KEMONO_HOSTS.get(bare)
-    if provider:
-        matched = _KEMONO_PATH_RE.match(path)
-        if not matched:
-            raise FollowSourceError(
-                f"{bare} 的链接要指向某个创作者，形如 "
-                f"https://{bare}/fanbox/user/30917150")
-        service, user = matched.group(1), matched.group(2)
-        return ParsedSource(provider, f"{service}/{user}",
-                            f"https://{bare}/{service}/user/{user}",
-                            f"{user} · {service}", "work")
+    provider = follow_providers.provider_for_host(host)
+    factory = CONNECTORS.get(provider)
+    if factory is None:
+        raise FollowSourceError(
+            f"不认识 {host}。当前支持 " + "、".join(sorted(_URL_HOSTS)) + "。")
+    return factory.parse_url(provider, parsed, host)
 
-    if bare == "fanbox.cc" or bare.endswith(".fanbox.cc"):
-        if bare.endswith(".fanbox.cc") and bare != "www.fanbox.cc":
-            creator = bare.removesuffix(".fanbox.cc")
-        else:
-            matched = re.match(r"^/@([A-Za-z0-9_-]{1,64})(?:/|$)", path)
-            creator = matched.group(1) if matched else ""
-        if not creator:
-            raise FollowSourceError(
-                "FANBOX 的链接要指向创作者主页，形如 https://creator.fanbox.cc/")
-        return ParsedSource("fanbox", creator, f"https://{creator}.fanbox.cc/",
-                            creator, "work")
 
-    if bare in SubscribeStarConnector.HOSTS:
-        matched = _DIRECT_CREATOR_RE.match(path)
-        if not matched or matched.group(1) in {"posts", "search", "login", "signup"}:
-            raise FollowSourceError(
-                "SubscribeStar 的链接要指向创作者主页，形如 "
-                "https://subscribestar.adult/creator")
-        slug = matched.group(1)
-        return ParsedSource("subscribestar", f"{bare}/{slug}",
-                            f"https://{bare}/{slug}", slug, "work")
-
-    if bare == "patreon.com":
-        user_id = urllib.parse.parse_qs(parsed.query).get("u", [""])[0]
-        if path.rstrip("/") == "/user" and user_id.isdigit():
-            return ParsedSource("patreon", f"user/{user_id}",
-                                f"https://www.patreon.com/user?u={user_id}",
-                                f"Patreon {user_id}", "work")
-        parts = [part for part in path.split("/") if part]
-        if parts and parts[0] == "cw":
-            parts = parts[1:]
-        reserved = {"posts", "join", "login", "signup", "home", "explore"}
-        if not parts or parts[0].lower() in reserved:
-            raise FollowSourceError(
-                "Patreon 的链接要指向创作者主页，形如 https://patreon.com/cw/creator")
-        vanity = parts[0]
-        return ParsedSource("patreon", vanity,
-                            f"https://www.patreon.com/cw/{vanity}", vanity, "work")
-
-    if bare == "rule34video.com":
-        matched = _R34V_PATH_RE.match(path)
-        if not matched:
-            raise FollowSourceError(
-                "rule34video 的链接要指向作者页，形如 "
-                "https://rule34video.com/models/lazyprocrastinator/")
-        slug = matched.group(1)
-        return ParsedSource("rule34video", slug,
-                            f"https://rule34video.com/models/{slug}/",
-                            _slug_label(slug), "work")
-
-    if bare in ("rule34.xxx", "api.rule34.xxx"):
-        tags = canonical_source_ref(
-            "rule34xxx",
-            urllib.parse.parse_qs(parsed.query).get("tags", [""])[0],
-        )
-        if not tags:
-            raise FollowSourceError(
-                "rule34.xxx 的链接要带标签，形如 "
-                "https://rule34.xxx/index.php?page=post&s=list&tags=lazyprocrastinator")
-        return ParsedSource("rule34xxx", tags,
-                            "https://rule34.xxx/index.php?page=post&s=list"
-                            f"&tags={urllib.parse.quote(tags)}",
-                            _slug_label(tags), "work")
-
-    if bare == "rule34.paheal.net":
-        tag = urllib.parse.parse_qs(parsed.fragment).get("search", [""])[0]
-        if not tag:
-            matched = re.match(r"^/post/list/([^/]+)/\d+$", path)
-            tag = urllib.parse.unquote(matched.group(1)) if matched else ""
-        tag = canonical_source_ref("rule34paheal", tag)
-        if not tag:
-            raise FollowSourceError(
-                "rule34.paheal 的链接要带搜索标签，形如 "
-                "https://rule34.paheal.net/post/view/7428820#search=InitialA")
-        encoded = urllib.parse.quote(tag, safe="()_")
-        return ParsedSource("rule34paheal", tag,
-                            f"https://rule34.paheal.net/post/list/{encoded}/1",
-                            _slug_label(tag), "work")
-
-    if bare == "f95zone.to":
-        matched = _THREAD_PATH_RE.match(path)
-        if not matched:
-            raise FollowSourceError(
-                "f95zone 的链接要指向一个线程，形如 "
-                "https://f95zone.to/threads/xxx.50685/")
-        thread = matched.group(1)
-        slug = path.split("/threads/", 1)[1].rsplit(".", 1)[0] if "." in path else ""
-        return ParsedSource("f95zone", thread,
-                            f"https://f95zone.to/threads/{thread}/",
-                            _slug_label(slug) or f"线程 {thread}", "release")
-
-    if bare == "simpcity.cr":
-        raise FollowSourceError(SimpCityConnector.blocked_reason)
-
-    raise FollowSourceError(
-        f"不认识 {bare}。当前支持 FANBOX、Patreon、SubscribeStar，"
-        "kemono.cr、coomer.st、pawchive.pw 的创作者页，rule34video.com 的作者页，"
-        "rule34.xxx 与 rule34.paheal.net 的标签页，以及 f95zone.to 的线程。")
-
+#: 全部站点连接器。来源键由每个类自己声明，所以 kemono 系三站不再在映射里把
+#: 同一个类写三遍——那份重复和 `KemonoConnector.HOSTS` 是同一件事的两份手写。
+_CONNECTOR_CLASSES: tuple[type, ...] = (
+    FanboxConnector, PatreonConnector, SubscribeStarConnector, KemonoConnector,
+    Rule34VideoConnector, Rule34XxxConnector, Rule34PahealConnector,
+    F95ZoneConnector, SimpCityConnector,
+)
 
 CONNECTORS: dict[str, type] = {
-    "fanbox": FanboxConnector,
-    "patreon": PatreonConnector,
-    "subscribestar": SubscribeStarConnector,
-    "kemono": KemonoConnector,
-    "coomer": KemonoConnector,
-    "pawchive": KemonoConnector,
-    "rule34video": Rule34VideoConnector,
-    "rule34xxx": Rule34XxxConnector,
-    "rule34paheal": Rule34PahealConnector,
-    "f95zone": F95ZoneConnector,
-    "simpcity": SimpCityConnector,
+    key: factory for factory in _CONNECTOR_CLASSES for key in factory.provider_keys()
 }
 
 
@@ -2159,6 +2212,7 @@ def build_connector(provider: str, **kwargs) -> FollowConnector:
     factory = CONNECTORS.get(provider)
     if factory is None:
         raise FollowSourceError(f"未知的追更来源：{provider}")
-    if factory is KemonoConnector:
-        return KemonoConnector(provider=provider, **kwargs)
+    # 服务多个来源键的连接器（kemono 系）必须知道自己这次代表哪个站。
+    if len(factory.provider_keys()) > 1:
+        return factory(provider=provider, **kwargs)
     return factory(**kwargs)

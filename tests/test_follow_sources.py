@@ -1270,6 +1270,17 @@ class BuildConnectorTests(unittest.TestCase):
         for provider in ("kemono", "coomer", "pawchive"):
             self.assertEqual(build_connector(provider).provider, provider)
 
+    def test_the_registry_is_derived_from_what_each_class_declares(self):
+        """`CONNECTORS` 不再手写。以前 kemono 系三站要在映射里把同一个类写三遍，
+        和 `KemonoConnector.HOSTS` 是同一件事的两份手写清单。"""
+        self.assertEqual(
+            follow_sources.CONNECTORS,
+            {key: factory for factory in follow_sources._CONNECTOR_CLASSES
+             for key in factory.provider_keys()})
+        self.assertEqual(set(KemonoConnector.provider_keys()),
+                         set(KemonoConnector.HOSTS))
+        self.assertEqual(FanboxConnector.provider_keys(), ("fanbox",))
+
     def test_unknown_provider_is_rejected(self):
         with self.assertRaises(FollowSourceError):
             build_connector("nyaa")
@@ -1279,6 +1290,40 @@ class BuildConnectorTests(unittest.TestCase):
         self.assertIsInstance(build_connector("patreon"), PatreonConnector)
         self.assertIsInstance(build_connector("subscribestar"), SubscribeStarConnector)
         self.assertIsInstance(build_connector("rule34paheal"), Rule34PahealConnector)
+
+
+class ParseUrlDelegationTests(unittest.TestCase):
+    """链接解析的分派边界：主机归 `follow_providers`，形状归各自的连接器。"""
+
+    def test_the_dispatcher_hands_off_to_the_connector_that_owns_the_host(self):
+        with patch.object(Rule34VideoConnector, "parse_url") as parse:
+            parse.return_value = "sentinel"
+            self.assertEqual(
+                parse_source_url("https://www.rule34video.com/models/abc/"),
+                "sentinel")
+        provider, parsed, host = parse.call_args.args
+        self.assertEqual((provider, host), ("rule34video", "rule34video.com"))
+        self.assertEqual(parsed.path, "/models/abc/")
+
+    def test_every_registered_connector_can_parse_its_own_links(self):
+        """漏写 `parse_url` 只会让那个站的链接报「暂不支持」，界面上看不出是漏写。
+
+        simpcity 是有意的例外：整站被质询挡着，它覆盖 `parse_url` 只为把原因原样
+        报出来，所以这里断言它也覆盖了，而不是跳过它。
+        """
+        for provider, factory in follow_sources.CONNECTORS.items():
+            with self.subTest(provider=provider):
+                self.assertIsNot(factory.parse_url.__func__,
+                                 follow_sources._BaseConnector.parse_url.__func__,
+                                 f"{provider} 没有自己的 parse_url")
+
+    def test_an_unrecognised_host_lists_the_hosts_that_are_registered(self):
+        """提示词从登记表来；新增站点不必再回来改这句文案。"""
+        with self.assertRaises(FollowSourceError) as caught:
+            parse_source_url("https://nyaa.si/view/1")
+        message = str(caught.exception)
+        for host in follow_sources._URL_HOSTS:
+            self.assertIn(host, message)
 
 
 class RelativeDateTests(unittest.TestCase):

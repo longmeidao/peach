@@ -12,7 +12,8 @@ from peach.follow_secrets import (
     SYNCABLE_FIELDS,
     credential_store_for,
 )
-from peach.follow_store import _OFFICIAL_IDENTITY_PROVIDERS
+from peach.follow_store import (_OFFICIAL_IDENTITY_PROVIDERS,
+                                _RELEASE_KEY_PER_POST)
 from peach.web_follow import PROVIDER_LABELS, _BACKFILL_PROVIDERS
 
 
@@ -122,6 +123,76 @@ class ProviderRegistryTests(unittest.TestCase):
     def test_semantics_rejects_unknown_values(self):
         with self.assertRaises(ValueError):
             follow_providers.ProviderSpec(key="x", label="X", semantics="whatever")
+
+
+class UrlHostTests(unittest.TestCase):
+    """粘一条链接时「这个主机属于哪个站」的登记与查表。"""
+
+    def test_every_follow_source_declares_at_least_one_url_host(self):
+        """没有 url_hosts 的追更来源永远无法从链接登记，而且不会报错。"""
+        for key, spec in follow_providers.PROVIDERS.items():
+            if spec.source_url:
+                self.assertTrue(spec.url_hosts, f"{key} 缺 url_hosts")
+
+    def test_a_source_url_without_url_hosts_is_refused_at_declaration_time(self):
+        with self.assertRaises(ValueError):
+            follow_providers.ProviderSpec(key="x", label="X",
+                                          source_url="https://x/{ref}")
+
+    def test_no_host_is_claimed_by_two_sources(self):
+        declared = [host for spec in follow_providers.PROVIDERS.values()
+                    for host in spec.url_hosts]
+        self.assertEqual(len(declared), len(set(declared)),
+                         "同一个主机登记两次，解析结果取决于字典顺序")
+
+    def test_url_hosts_are_not_the_media_proxy_allowlist(self):
+        """两张表名字像、含义不同：paheal 的站点主机与媒体主机根本不一样。
+
+        曾经想「复用 hosts 就行」——不行。`hosts` 是媒体代理白名单，放宽它等于
+        放宽能被代理取回的地址；`url_hosts` 只决定一条链接归谁解析。
+        """
+        paheal = follow_providers.PROVIDERS["rule34paheal"]
+        self.assertEqual(paheal.url_hosts, ("rule34.paheal.net",))
+        self.assertIn("paheal-cdn.net", paheal.hosts)
+        self.assertNotIn("rule34.paheal.net", paheal.hosts)
+
+    def test_subdomains_and_www_resolve_to_the_registered_source(self):
+        for host, expected in (
+            ("fanbox.cc", "fanbox"),
+            ("www.fanbox.cc", "fanbox"),
+            ("ffxivinitiala.fanbox.cc", "fanbox"),
+            ("api.rule34.xxx", "rule34xxx"),
+            ("kemono.cr", "kemono"),
+            ("coomer.st", "coomer"),
+            ("SubscribeStar.adult", "subscribestar"),
+        ):
+            self.assertEqual(follow_providers.provider_for_host(host), expected, host)
+
+    def test_the_longest_registered_suffix_wins(self):
+        """`rule34.paheal.net` 比将来可能出现的 `paheal.net` 更具体，必须赢。"""
+        self.assertEqual(follow_providers.provider_for_host("rule34.paheal.net"),
+                         "rule34paheal")
+        self.assertEqual(
+            follow_providers.provider_for_host("cdn.rule34.paheal.net"),
+            "rule34paheal")
+
+    def test_an_unregistered_host_is_empty_not_a_guess(self):
+        for host in ("nyaa.si", "", "notfanbox.cc", "fanbox.cc.evil.example"):
+            self.assertEqual(follow_providers.provider_for_host(host), "", host)
+
+
+class ReleaseKeyPerPostTests(unittest.TestCase):
+    def test_the_rule_is_declared_in_the_registry_not_named_in_the_data_layer(self):
+        """论坛线程每层各自成组，这是来源语义，不是 `follow_store` 里的站点点名。"""
+        self.assertEqual(follow_providers.release_key_per_post(),
+                         frozenset({"f95zone"}))
+        self.assertEqual(_RELEASE_KEY_PER_POST,
+                         follow_providers.release_key_per_post())
+
+    def test_it_only_applies_to_release_semantics(self):
+        """每条各自成组只对「同一作品的历次发布」有意义；work 语义靠标题合并。"""
+        for key in follow_providers.release_key_per_post():
+            self.assertEqual(follow_providers.PROVIDERS[key].semantics, "release")
 
 
 class ExcludedItemTests(unittest.TestCase):

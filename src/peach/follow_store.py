@@ -41,6 +41,10 @@ _F95_TITLE_SUFFIX_RE = re.compile(r"\s+collections?\s*$", re.IGNORECASE)
 #: 作者显示名与头像可信的官方渠道；归档站只作回退。
 _OFFICIAL_IDENTITY_PROVIDERS = follow_providers.official_identity_providers()
 
+#: 每个条目都是一次独立发布的来源。论坛线程的标题只是容器名，同一线程里每个带
+#: 资源的楼层各自成组；这条口径登记在 `follow_providers`，不在这里点名站点。
+_RELEASE_KEY_PER_POST = follow_providers.release_key_per_post()
+
 
 def normalized_author_name(value: str, *, provider: str = "") -> str:
     """作者别名表的身份键。
@@ -241,8 +245,8 @@ class FollowStore:
             verdict = classify(candidate.title, creator_aliases=creator_aliases,
                                version=candidate.version, semantics=fetch.semantics)
             release_key = verdict.release_key
-            if fetch.provider == "f95zone":
-                # F95 的线程标题只是容器名；每个带资源的楼层都是一次独立发布。
+            if fetch.provider in _RELEASE_KEY_PER_POST:
+                # 线程标题只是容器名；每个带资源的楼层都是一次独立发布。
                 # 同一楼层若展开出多个视频，由 media_items 在详情里组成 Mix。
                 release_key = f"{release_key}\u0000{candidate.external_id}"
             elif not candidate.title_is_name:
@@ -456,12 +460,12 @@ class FollowStore:
         """
         # 先按标题判据拆开同站撞车，再按来源自带的关系合并：来源自己声明过的关系
         # 优先，绝不能被标题判据拆散。
-        # 兼容已经落库的旧 F95 行：旧版用线程标题作为 release_key，读时也要按
+        # 兼容已经落库的旧论坛行：旧版用线程标题作为 release_key，读时也要按
         # 楼层拆开，部署后无需改写真实 ledger 就会立即显示成独立条目。
         split_posts = tuple(
             FollowItemRow(**{**item.__dict__,
                              "release_key": f"{item.release_key}\u0000{item.external_id}"})
-            if item.provider == "f95zone"
+            if item.provider in _RELEASE_KEY_PER_POST
             and not item.release_key.endswith(f"\u0000{item.external_id}")
             else item
             for item in items
