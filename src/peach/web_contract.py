@@ -732,8 +732,8 @@ def _edition_groups(contract: WebContract, codes) -> dict[str, list[dict]]:
     for code, items in candidates.items():
         if len(items) < 2:
             continue
-        if all(part_marker(str(item.get("name") or "")) for item in items):
-            continue                      # 纯分卷由 attach_multipart_groups 负责
+        if ordered_multipart_items(items):
+            continue                      # 分卷由 attach_multipart_groups 负责，含裸名首卷
         if len({item["edition"] for item in items}) < 2:
             continue                      # 版次相同就是重复文件，不是版本
         groups[code] = sorted(
@@ -804,7 +804,7 @@ def _multipart_rows(contract: WebContract, codes) -> list[dict]:
             "AND (disposal IS NULL OR disposal<>'trash')",
             raw_codes,
         )]
-    return [row for row in rows if part_marker(str(row.get("name") or ""))]
+    return rows                           # 裸名首卷没有标记，由 ordered_multipart_items 定夺
 
 
 def _multipart_groups(contract: WebContract, codes) -> dict[str, list[dict]]:
@@ -822,10 +822,7 @@ def attach_multipart_groups(contract: WebContract, rows) -> None:
     """Annotate list cards with one derived multipart release, without ledger writes."""
     if not rows:
         return
-    groups = _multipart_groups(
-        contract,
-        [row.get("code") for row in rows if part_marker(str(row.get("name") or ""))],
-    )
+    groups = _multipart_groups(contract, [row.get("code") for row in rows])
     for row in rows:
         code = normalise_code_key(row.get("code"))
         group = groups.get(code)
@@ -858,10 +855,11 @@ def q_parts(contract: WebContract, args):
     if not group or not any(item["id"] == asset_id for item in group):
         return {"error": "multipart release not found"}
     items = []
-    for row in group:
+    for position, row in enumerate(group, 1):
         item = q_item(contract, row["id"])
         marker = part_marker(str(row.get("name") or ""))
-        item["part_label"] = marker.upper() if marker.isalpha() else marker
+        # 裸名首卷没有标记，卷标按队列位置给；有标记时沿用文件名里的写法。
+        item["part_label"] = (marker.upper() if marker.isalpha() else marker) or str(position)
         items.append(item)
     return {"title": code or str(seed["code"]), "count": len(items), "items": items}
 

@@ -289,6 +289,19 @@ def part_marker(name: str) -> str:
     return match.group(1).lower() if match else ""
 
 
+#: 首卷裸名（`TRE-080.mp4`）、后续卷带 `-2`/`-3` 时，裸名那份的时长必须落在其他卷的
+#: 这个倍数之内。完整版至少是各卷之和，必然超出；几十秒的广告片又远低于下限。
+PART_DURATION_SPREAD = 1.5
+
+
+def _bare_first_part_plausible(bare: dict, parts: list[dict]) -> bool:
+    durations = [float(item.get("duration") or 0) for item in [bare, *parts]]
+    if any(value <= 0 for value in durations):
+        return False                      # 没有时长证据就不替裸名下结论
+    own, rest = durations[0], durations[1:]
+    return min(rest) / PART_DURATION_SPREAD <= own <= max(rest) * PART_DURATION_SPREAD
+
+
 def ordered_multipart_items(items: list[dict]) -> list[dict]:
     """Return one unambiguous, contiguous multipart release in playback order.
 
@@ -296,11 +309,19 @@ def ordered_multipart_items(items: list[dict]) -> list[dict]:
     repeated marker means that one part has duplicate encodes, while mixed
     letter/number markers are ambiguous; neither case is safe to collapse into
     one browsing card automatically.
+
+    盗版站常把第一卷留成裸名、后续卷才加 `-2`/`-3`（TRE-080 实测：9163/11255/8530 秒）。
+    裸名也可能是整部完整版，所以只在数字标记、标记正好从 2 连续排起、且裸名时长与
+    其他卷相差不大时，才把它当第 1 卷；字母卷缺 A 时无从判断裸名是不是 A，不猜。
     """
     marked = [(item, part_marker(str(item.get("name") or ""))) for item in items]
-    if len(marked) < 2 or any(not marker for _, marker in marked):
+    if len(marked) < 2:
         return []
-    markers = [marker for _, marker in marked]
+    bare = [item for item, marker in marked if not marker]
+    if len(bare) > 1:
+        return []
+    numbered = [(item, marker) for item, marker in marked if marker]
+    markers = [marker for _, marker in numbered]
     if len(set(markers)) != len(markers):
         return []
     numeric = all(marker.isdigit() for marker in markers)
@@ -308,9 +329,16 @@ def ordered_multipart_items(items: list[dict]) -> list[dict]:
     if not (numeric or alphabetic):
         return []
     positions = [int(marker) if numeric else ord(marker) - ord("a") + 1 for marker in markers]
-    if sorted(positions) != list(range(1, len(positions) + 1)):
+    ordered = list(zip(positions, (item for item, _ in numbered)))
+    if bare:
+        if not numeric or sorted(positions) != list(range(2, len(positions) + 2)):
+            return []
+        if not _bare_first_part_plausible(bare[0], [item for item, _ in numbered]):
+            return []
+        ordered.append((1, bare[0]))
+    elif sorted(positions) != list(range(1, len(positions) + 1)):
         return []
-    return [item for _, item in sorted(zip(positions, (item for item, _ in marked)))]
+    return [item for _, item in sorted(ordered, key=lambda pair: pair[0])]
 
 
 def duration_clusters(items: list[dict]) -> list[list[dict]]:
