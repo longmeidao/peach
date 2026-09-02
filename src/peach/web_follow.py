@@ -1169,6 +1169,16 @@ def w_follow_source(contract, body) -> dict:
     checked = w_follow_check(contract, {"source": source_id})
     outcome = next((row for row in checked["results"]
                     if row["source"] == source_id), None)
+    if outcome is None:
+        # 另一次检查占着锁（多半是自动任务刚好在跑），所以顺带的首次检查没做。
+        # 来源本身已经登记好了，回一个 `checked: null` 会让调用方分不清「查过了
+        # 什么都没有」和「根本没查」。这里明确说出来：已登记，稍后会检查。
+        outcome = {
+            "source": source_id, "provider": parsed.provider,
+            "provider_label": PROVIDER_LABELS.get(parsed.provider, parsed.provider),
+            "ref": parsed.ref, "label": label, "ok": True, "deferred": True,
+            "message": "已登记，另一次检查正在进行，这条稍后再查",
+        }
     return {"ok": True, "source": source_id, "provider": parsed.provider,
             "ref": parsed.ref, "label": label, "checked": outcome}
 

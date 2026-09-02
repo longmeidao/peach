@@ -1192,6 +1192,26 @@ class FollowSourceAddTests(FollowContractTests):
         self.assertEqual(source["last_status"], "unauthorized")
         self.assertIn("user_id", source["last_error"])
 
+    def test_a_busy_check_lock_says_registered_instead_of_staying_silent(self):
+        """自动检查正好占着锁的时候，顺带的首次检查做不了。
+
+        以前这里回 `checked: null`，调用方分不清「查过了什么都没有」和「根本
+        没查」，界面上就是登记完一片空白。现在明说：已登记，稍后再查。
+        """
+        self.contract.follow_check_lock.acquire()
+        self.addCleanup(self.contract.follow_check_lock.release)
+        with mock.patch.object(web_follow, "build_connector") as factory:
+            result = self._post("/api/follow/source", {
+                "action": "add",
+                "url": "https://rule34video.com/models/lazyprocrastinator/"})
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["checked"]["deferred"])
+        self.assertTrue(result["checked"]["ok"])
+        self.assertIn("已登记", result["checked"]["message"])
+        factory.assert_not_called()
+        # 来源本身必须已经落库，稍后的自动检查才有东西可查。
+        self.assertEqual(self._get()["sources"][0]["ref"], "lazyprocrastinator")
+
     def test_an_unknown_host_is_refused_with_the_supported_list(self):
         with self.assertRaises(FollowSourceError) as caught:
             self._post("/api/follow/source",
