@@ -280,7 +280,7 @@ $('#followScheduleSetting').onchange=async e=>{
 /* 来源图标：品牌使用已缓存的官方资产；通用操作图标统一使用本地 Lucide 子集。 */
 const SRCICON={
   local:icon('hard-drive'),
-  '115':'<img class="source-icon" src="/logo?studio=115" alt="" onerror="this.remove()">',
+  '115':'<img class="source-icon" src="/logo?studio=115&variant=icon" alt="" onerror="this.remove()">',
   // PikPak 官方触屏图标（取证 follow-source-icons-measured.md）；/logo 的生成 logo 不对版。
   pikpak:'<img class="source-icon" src="https://mypikpak.com/apple-touch-icon.png" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">',
   online:icon('rss'),
@@ -1657,7 +1657,7 @@ async function buildBars(){
   const bpHtml=x=>{
     const fallback=`${esc(x.k.slice(0,2))}`;
     return `<button class="brandpill" data-entity-kind="studio" data-entity-name="${esc(x.k)}">
-      <span class="mk" data-fallback="${fallback}"><img src="/logo?studio=${encodeURIComponent(x.k)}" alt=""></span>${esc(x.k)}</button>`;
+      <span class="mk" data-fallback="${fallback}"><img src="/logo?studio=${encodeURIComponent(x.k)}&variant=icon" alt=""></span>${esc(x.k)}</button>`;
   };
   // 空的一排仍占 28px，在「已标记」这种窄集合上就是两条什么都没有的空带。
   // 没人就不画那一排，两排都没人就整块收起。
@@ -4957,7 +4957,7 @@ async function openEntity(kind,name,push=true,requestedTag){
   $('#index').hidden=false;$('#grid').innerHTML='';$('#count').textContent='';
   $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
   const image=d.id?(kind==='studio'
-    ? `<img src="/logo?studio=${encodeURIComponent(d.canonical_name)}" alt="${esc(d.canonical_name)}"
+    ? `<img src="/logo?studio=${encodeURIComponent(d.canonical_name)}&variant=logo" alt="${esc(d.canonical_name)}"
         onerror="if(!this.dataset.f){this.dataset.f='1';this.src='/entity-image?kind=studio&id=${d.id}'}else{this.remove()}">`
     /* 兜底链的最后一环必须是 `this.remove()`：留着取不到图的 <img> 会让浏览器
        画出 alt 文本（整个艺人名横在头像圈里），而 `:has(img)` 仍然匹配，首字母
@@ -5014,7 +5014,7 @@ async function openEntity(kind,name,push=true,requestedTag){
     const nextFilters={...filters,tag:next};barsContext={type:'entity',kind,name,filters:nextFilters};
     buildBars();updateEntityCollection(kind,name,nextFilters,true)});
   $('#index').querySelectorAll('.entityfavicon').forEach(img=>img.addEventListener('error',()=>{
-    if(img.dataset.studio&&!img.dataset.fallback){img.dataset.fallback='1';img.src='/logo?studio='+encodeURIComponent(img.dataset.studio)}
+    if(img.dataset.studio&&!img.dataset.fallback){img.dataset.fallback='1';img.src='/logo?studio='+encodeURIComponent(img.dataset.studio)+'&variant=icon'}
     else img.remove()}));
   $('#index').querySelectorAll('[data-related-performer]').forEach(b=>b.onclick=()=>
     openEntity('performer',b.dataset.relatedPerformer));
@@ -5819,7 +5819,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   const idFace=(kind,item)=>kind==='performer'
     ? `<span>${esc(item.name.slice(0,1))}</span>${item.id?`<img src="/entity-image?kind=performer&id=${item.id}" alt="" loading="lazy" onerror="this.remove()">`:''}`
     : kind==='studio'
-      ? `<span>${esc(item.name.slice(0,2))}</span><img src="/logo?studio=${encodeURIComponent(item.name)}" alt="" loading="lazy" onerror="this.remove()">`
+      ? `<span>${esc(item.name.slice(0,2))}</span><img src="/logo?studio=${encodeURIComponent(item.name)}&variant=icon" alt="" loading="lazy" onerror="this.remove()">`
       : `<span>${esc(item.name.slice(0,1))}</span>`;
   const idCell=(kind,item,index)=>{
     const hide=kind==='performer'&&index>=CAST_SHOWN;

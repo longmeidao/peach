@@ -817,9 +817,10 @@ def create_app(
         return response
 
     @app.api_route("/logo", methods=["GET", "HEAD"])
-    def logo(request: Request, studio: str = "", args: dict[str, str] = Depends(require_auth)):
+    def logo(request: Request, studio: str = "", variant: str = "",
+             args: dict[str, str] = Depends(require_auth)):
         try:
-            path, content_type = preview_service.logo(studio)
+            path, content_type = preview_service.logo(studio, variant)
         except PreviewUnavailable:
             return JSONResponse({"error": "unavailable"}, status_code=404)
         response = FileResponse(path, media_type=content_type)

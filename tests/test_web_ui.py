@@ -591,7 +591,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_every_identity_cell_can_carry_its_own_portrait(self):
         self.assertPageContains('item.id?`<img src="/entity-image?kind=performer&id=${item.id}"')
-        self.assertPageContains('<img src="/logo?studio=${encodeURIComponent(item.name)}"')
+        self.assertPageContains('<img src="/logo?studio=${encodeURIComponent(item.name)}&variant=icon"')
 
     def test_large_casts_stay_in_the_dom_behind_one_expander(self):
         # 收起的格子必须留在 DOM 里，展开只是取消 hidden，不重新请求也不丢身份。
@@ -1666,7 +1666,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_entity_profile_hides_home_facets_and_renders_context(self):
         self.assertPageContains("body.entity-open #tiers,body.entity-open #tagbar,")
-        self.assertPageContains('src="/logo?studio=${encodeURIComponent(d.canonical_name)}"')
+        self.assertPageContains('src="/logo?studio=${encodeURIComponent(d.canonical_name)}&variant=logo"')
         self.assertPageContains('class="entitytags"')
         self.assertPageContains('class="pill" data-entity-tag=')
         self.assertPageContains('class="relatedpeople"')
