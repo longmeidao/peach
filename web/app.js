@@ -1,5 +1,6 @@
 import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration} from './js/core.js';
 import { imageFallbackAttrs, wireImageFallbacks } from './js/image-fallback.js';
+import { javDisplayName, javTitleHtml } from './js/jav-title.js';
 import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
@@ -180,45 +181,6 @@ function renderInitialSurfaceLoading(){
   renderCatalogLoading();
 }
 renderInitialSurfaceLoading();
-
-const JAV_MEDIA_SUFFIX=/\.(?:mp4|mkv|avi|wmv|mov|m4v|webm|ts|m2ts|mts|mpg|mpeg|flv|rm|rmvb|iso)$/i;
-const javFileDisplayName=(it,value=it?.name)=>{
-  const name=String(value||'').trim();
-  return it?.is_jav?name.replace(JAV_MEDIA_SUFFIX,''):name;
-};
-const hasJapaneseText=value=>/[\u3040-\u30ff\u3400-\u9fff]/.test(String(value||''));
-const javPreferredTitle=it=>{
-  const titles=[it?.catalog_title,it?.original_title].map(value=>String(value||'').trim()).filter(Boolean);
-  return titles.find(hasJapaneseText)||titles[0]||'';
-};
-function javTitleParts(it,value=it?.name){
-  const name=javFileDisplayName(it,value),code=String(it?.code||'').trim().toUpperCase();
-  if(!it?.is_jav||!code)return {code:'',title:name};
-  const displayCode=String(it?.display_code||code).trim().toUpperCase();
-  const upper=name.toUpperCase(),hasPrefix=upper===code||upper===displayCode
-    ||(upper.startsWith(code)&&/^[\s._\-[\]]/.test(name.slice(code.length)))
-    ||(upper.startsWith(displayCode)&&/^[\s._\-[\]]/.test(name.slice(displayCode.length)));
-  const prefixLength=upper.startsWith(displayCode)?displayCode.length:code.length;
-  const filenameTitle=(hasPrefix?name.slice(prefixLength):name).replace(/^[\s._-]+/,'').trim();
-  const officialTitle=javPreferredTitle(it);
-  // API 显式返回空 display_title 也是有意义的“清洁后无标题”，不能再回退到脏文件名。
-  const cleanFallback=Object.prototype.hasOwnProperty.call(it||{},'display_title')
-    ?String(it.display_title||'').trim():filenameTitle;
-  const title=officialTitle||cleanFallback;
-  const badges=Array.isArray(it?.edition_badges)?it.edition_badges.filter(
-    label=>['中字','无码','无码破解'].includes(label)):[];
-  return {code:displayCode,title,badges};
-}
-const javDisplayName=(it,value=it?.name)=>{
-  const {code,title,badges=[]}=javTitleParts(it,value);
-  return code?[code,...badges,title].filter(Boolean).join(' '):title;
-};
-function javTitleHtml(it,value=it?.name){
-  const {code,title,badges=[]}=javTitleParts(it,value);
-  if(!code)return esc(title);
-  const edition=badges.map(label=>`<small class="javedition ${label==='中字'?'subtitle':label==='无码'?'uncensored':'cracked'}">${esc(label)}</small>`).join('');
-  return `<span class="javidentity"><strong class="javcode">${esc(code)}</strong>${edition}</span>${title?` <span class="javtitle">${esc(title)}</span>`:''}`;
-}
 
 /* 路由同时把页面表面写进 body[data-surface]：限宽等按表面生效的版式
    （管理页不全宽）靠它切换，不用每个渲染函数自己记得加类。
