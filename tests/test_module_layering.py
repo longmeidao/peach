@@ -28,8 +28,14 @@ SOURCE_ROOT = pathlib.Path(peach.__file__).parent
 #: 守规则的东西自己先漂了，是这条门槛最容易出的故障。
 WEB_MODULES = {path.stem for path in SOURCE_ROOT.glob("web_*.py")}
 
-#: 应用层组装点：把 web 层挂上 FastAPI 是它的职责，方向是对的。
-COMPOSITION_ROOTS = {"api"}
+#: FastAPI 适配层：`api` 是组装点，`routes_*` 是它挂上去的路由表。把 web 层接到
+#: HTTP 上是这一层的职责，方向是对的。
+#:
+#: 和 `WEB_MODULES` 同样按文件名推导。`create_app` 拆成 `routes_auth`/`routes_pages`/
+#: `routes_media`/`routes_api` 时这里原本只写着 `api`，再拆一个模块出来就会被判成
+#: 「非 web 模块 import 了 web 层」——门槛报的是假警，改的人只会来把它加进清单。
+ROUTE_MODULES = {path.stem for path in SOURCE_ROOT.glob("routes_*.py")}
+COMPOSITION_ROOTS = {"api"} | ROUTE_MODULES
 
 
 def _local_imports(path: pathlib.Path) -> set[str]:
@@ -190,6 +196,36 @@ class LayeringTests(unittest.TestCase):
         """
         self.assertGreaterEqual(len(WEB_MODULES), 4, "没发现 web 层，门槛已空转")
         self.assertIn("web_contract", WEB_MODULES)
+
+    def test_the_route_layer_is_actually_discovered(self):
+        """`routes_*` 也不能是空的，理由同上：它现在参与放行判定。
+
+        `COMPOSITION_ROOTS` 一旦被 glob 推成只有 `api`，上面那条 web 层门槛会立刻
+        对四个路由模块报假警；反过来，如果有人改名让 glob 全落空，放行集合缩小，
+        门槛会变严而不是变松——但报出来的偏移点是错的，所以这里直接钉住。
+        """
+        self.assertGreaterEqual(len(ROUTE_MODULES), 4, "没发现路由层，放行集合已漂")
+        self.assertIn("routes_api", ROUTE_MODULES)
+
+    def test_nothing_below_the_route_layer_imports_it(self):
+        """路由层是最上面一层：只有 `api` 和它自己的同层模块可以 import `routes_*`。
+
+        方向必须单向。`routes_media` 里放着「取哪个文件、报哪个缓存头」这类 HTTP
+        决策，一旦被 `media`、`previews` 之类的下层 import，FastAPI 就渗进了不需要
+        知道 HTTP 的地方，测试也从此必须先建一个 app 才能跑。
+        """
+        offenders = []
+        for path in sorted(SOURCE_ROOT.glob("*.py")):
+            module = path.stem
+            if module in COMPOSITION_ROOTS:
+                continue
+            for imported in sorted(_local_imports(path)):
+                if imported in ROUTE_MODULES:
+                    offenders.append(f"{module} → {imported}")
+        self.assertEqual(
+            offenders, [],
+            "只有 api 与 routes_* 自己可以依赖路由层：需要共享的东西下沉到领域模块",
+        )
 
     def test_only_web_modules_and_the_composition_root_import_the_web_layer(self):
         offenders = []

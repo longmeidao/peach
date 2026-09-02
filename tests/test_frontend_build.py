@@ -60,8 +60,11 @@ class IslandBundleTests(unittest.TestCase):
                             f"产物 import 的 {name} 在仓库里不存在")
 
     def test_the_route_that_serves_it_is_registered(self):
-        api = (ROOT / "src" / "peach" / "api.py").read_text(encoding="utf-8")
-        self.assertIn('@app.api_route("/dist/{name}"', api)
+        # 扫整个包而不是 `api.py` 一个文件：这条路由现在住在 `routes_pages.py`，
+        # 而它属于哪个模块是内部事，前端只关心它被注册了。
+        registered = [path.name for path in sorted((ROOT / "src" / "peach").glob("*.py"))
+                      if 'api_route("/dist/{name}"' in path.read_text(encoding="utf-8")]
+        self.assertEqual(len(registered), 1, f"/dist 路由注册了 {registered}")
         app_js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
         self.assertIn("await import('/dist/peach-ui.js')", app_js)
 
@@ -153,8 +156,11 @@ class IslandSourceContractTests(unittest.TestCase):
 
     def test_the_endpoint_is_declared_once(self):
         self.assertIn("/api/quality-goals?limit=200", self.source)
-        contract = (ROOT / "src" / "peach" / "web_contract.py").read_text(encoding="utf-8")
-        self.assertIn("quality-goals", contract)
+        # 扫整个 web 层：路由表已经从 `web_contract.py` 搬到 `web_router.py`，
+        # 前者只剩再导出。island 关心的是这条路由存在且只声明一次，不是它在哪个文件。
+        declared = [path.name for path in sorted((ROOT / "src" / "peach").glob("web_*.py"))
+                    if "quality-goals" in path.read_text(encoding="utf-8")]
+        self.assertEqual(len(declared), 1, f"quality-goals 声明在 {declared}")
 
 
 class VitestTests(unittest.TestCase):
