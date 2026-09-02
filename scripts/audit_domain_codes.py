@@ -19,8 +19,10 @@ r"""转载站水印顶替番号的排查器（只读，只出复核 CSV）。
 拿不到直接证据、但同 `code` 的 path 里存在别的域名水印时判 `疑似搬运包标识`，只报
 存疑不给提案：论坛整合包（`WX17`）的标识确实不是番号，但也不一定是域名，得人工看。
 
-本脚本不写库。`code` 是真相字段，改它要按 `.claude/skills/peach-ledger-write/SKILL.md`
-单独授权并先做 SQLite 备份；提案列在 CSV 里等复核。
+默认只读，只出复核 CSV。`code` 是真相字段，改它要按
+`.claude/skills/peach-ledger-write/SKILL.md` 单独授权：`--apply` 必须同时给 `--backup`，
+写入的内容取自**复核过的那份 CSV**而不是当场重新推断，人工在表里改过什么就写什么。
+`存疑` 档一律不自动写。
 """
 from __future__ import annotations
 
@@ -28,17 +30,21 @@ import argparse
 import re
 import sqlite3
 from collections import Counter, defaultdict
+from datetime import datetime
 from pathlib import Path, PureWindowsPath
 
 from peach.catalog_rules import (
     RELEASE_EVIDENCE_KINDS,
     compact_label,
+    is_jav_code,
     is_repost_site_label,
+    normalise_code_key,
     release_code_from_filename,
     release_code_from_text,
 )
 from peach.config import DATABASE_PATH, GENERATED_DIR
-from peach.review_csv import write_rows
+from peach.migrations import sqlite_backup
+from peach.review_csv import read_rows, write_rows
 
 #: 搬运站常用的顶级域，够宽就行——这里只用来确认「这是个域名」，不做归属判断。
 _TLD = (r"com|net|org|la|cc|club|tv|me|xyz|top|vip|info|co|us|pw|ws|to|io"
@@ -54,6 +60,14 @@ _FABRICATED_SEPARATOR = re.compile(r"[A-Za-z]{2,8}\d{2,5}$")
 VERDICT_CODED = "域名顶替-有番号"
 VERDICT_BLANK = "域名顶替-无番号"
 VERDICT_PACK = "疑似搬运包标识"
+
+#: 允许自动写入的证据档。`存疑` 不在其中：论坛整合包的标识确实不是番号，但没有任何
+#: 证据指向某个具体番号，替它下手等于把「人工看过」这一步跳过去。
+APPLICABLE_TIERS = frozenset({"E1", "E2", "E3"})
+
+APPLIED_WRITTEN = "已写入"
+APPLIED_STALE = "跳过-原值已变"
+APPLIED_REJECTED = "跳过-提案不是番号"
 
 FIELDS = ("asset_id", "location", "dir", "name", "current_code", "proposed_code",
           "proposal_from", "verdict", "confidence", "tier", "evidence",
@@ -218,17 +232,81 @@ def _has_release_evidence(group: list[sqlite3.Row]) -> bool:
         for asset in group)
 
 
+def apply_rows(connection: sqlite3.Connection,
+               plan: list[dict[str, str]]) -> list[dict[str, str]]:
+    """按复核过的 CSV 改写 `asset.code`，返回逐条的处置结果。
+
+    两道闸门都不能省：
+
+    - `WHERE COALESCE(code,'')=?` 守住 CSV 里记的原值。出表和写库之间隔着一次人工
+      阅读，期间别的脚本可能已经动过同一行；改不动的整条跳过并报出来，不静默覆盖。
+    - 提案要自己过一遍 `is_jav_code`。人在表里手填是被允许的，但填回一个水印域名就
+      等于绕开了这次修复的全部意义。
+    """
+    outcome: list[dict[str, str]] = []
+    for row in plan:
+        target = str(row.get("proposed_code") or "").strip() or None
+        if target is not None and not is_jav_code(normalise_code_key(target)):
+            outcome.append({**row, "applied": APPLIED_REJECTED})
+            continue
+        connection.execute(
+            "UPDATE asset SET code=? WHERE id=? AND COALESCE(code,'')=?",
+            (target, int(row["asset_id"]), str(row.get("current_code") or "")))
+        changed = connection.execute("SELECT changes()").fetchone()[0]
+        outcome.append({**row,
+                        "applied": APPLIED_WRITTEN if changed else APPLIED_STALE})
+    return outcome
+
+
+def counts(connection: sqlite3.Connection) -> dict[str, int]:
+    """写库前后各取一次的口径，差异要能逐条解释。"""
+    def scalar(sql: str) -> int:
+        return int(connection.execute(sql).fetchone()[0])
+
+    return {
+        "asset": scalar("SELECT COUNT(*) FROM asset"),
+        "有 code": scalar("SELECT COUNT(*) FROM asset WHERE COALESCE(code,'')<>''"),
+        "不同 code": scalar(
+            "SELECT COUNT(DISTINCT code) FROM asset WHERE COALESCE(code,'')<>''"),
+        "asset_search": scalar("SELECT COUNT(*) FROM asset_search"),
+    }
+
+
+def verify(connection: sqlite3.Connection, asset_ids: list[int]) -> dict[str, str]:
+    """写完立刻自检。
+
+    `asset_search.code` 由 `0004`/`0023` 的 `AFTER UPDATE OF name,code` 触发器重建，
+    这里不手动补 FTS，而是核对触发器真的跑过了——搜索索引留着旧的水印，界面上就还能
+    按 `HHD800` 搜出来，那等于没改。
+    """
+    placeholders = ",".join("?" * len(asset_ids)) or "NULL"
+    stale = connection.execute(
+        f"SELECT COUNT(*) FROM asset a LEFT JOIN asset_search s ON s.asset_id=a.id "
+        f"WHERE a.id IN ({placeholders}) "
+        f"AND COALESCE(s.code,'')<>COALESCE(a.code,'')", asset_ids).fetchone()[0]
+    return {
+        "integrity_check": str(
+            connection.execute("PRAGMA integrity_check").fetchone()[0]),
+        "foreign_key_check": str(
+            len(connection.execute("PRAGMA foreign_key_check").fetchall())),
+        "FTS 未同步": str(stale),
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="排查被转载站水印域名顶替的 asset.code（只读）")
+        description="排查被转载站水印域名顶替的 asset.code；默认只读")
     parser.add_argument("--db", type=Path, default=DATABASE_PATH)
-    parser.add_argument("--out", type=Path,
+    parser.add_argument("--review-csv", type=Path,
                         default=GENERATED_DIR / "domain-code-review.csv")
+    parser.add_argument("--apply", action="store_true",
+                        help="按复核过的 CSV 写 ledger；默认只排查")
+    parser.add_argument("--backup", type=Path, help="--apply 必需：写库前的 SQLite 备份")
     return parser
 
 
-def run(args: argparse.Namespace) -> int:
-    # 只读连接：这份排查的产物是 CSV，任何写入都要走单独授权的迁移流程。
+def survey(args: argparse.Namespace) -> int:
+    # 只读连接：这份排查的产物是 CSV，任何写入都要走单独授权的写库流程。
     connection = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
     try:
         rows = collect(connection)
@@ -243,10 +321,59 @@ def run(args: argparse.Namespace) -> int:
         print(f"    {code:12} {count:4} 条  {sample['verdict']}  "
               f"证据 {sample['evidence']!r}  提案 {sample['code_proposals']!r}")
 
-    write_rows(args.out, FIELDS, rows)
-    print(f"复核 CSV → {args.out}")
-    print("这是只读排查：未写 ledger。改 code 需单独授权并先做 SQLite 备份。")
+    write_rows(args.review_csv, FIELDS, rows)
+    print(f"复核 CSV → {args.review_csv}")
     return 0
+
+
+def apply_reviewed(args: argparse.Namespace) -> int:
+    plan = [row for row in read_rows(args.review_csv)
+            if str(row.get("tier") or "") in APPLICABLE_TIERS]
+    if not plan:
+        raise SystemExit(f"{args.review_csv} 里没有可写入的行；存疑档不自动写。")
+
+    sqlite_backup(args.db, args.backup)
+    print(f"已备份 → {args.backup}")
+
+    connection = sqlite3.connect(args.db)
+    try:
+        before = counts(connection)
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            outcome = apply_rows(connection, plan)
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        after = counts(connection)
+        checks = verify(connection, [int(row["asset_id"]) for row in plan])
+    finally:
+        connection.close()
+
+    # 应用过的那份计划单独留档：`--review-csv` 随后会被写成库的新状态，而「这次改了
+    # 哪些行」是事后唯一能对着备份回放的东西。
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    applied_csv = Path(args.review_csv).with_name(
+        f"{Path(args.review_csv).stem}.applied-{stamp}.csv")
+    write_rows(applied_csv, (*FIELDS, "applied"), outcome)
+
+    print("  处置分布：", dict(Counter(str(row["applied"]) for row in outcome)))
+    for key in before:
+        arrow = "" if before[key] == after[key] else f"  ← 变了 {after[key] - before[key]:+d}"
+        print(f"    {key:12} {before[key]} → {after[key]}{arrow}")
+    print("  写后自检：", checks)
+    print(f"应用记录 → {applied_csv}")
+    return survey(args)
+
+
+def run(args: argparse.Namespace) -> int:
+    if args.apply and not args.backup:
+        raise SystemExit("--apply 必须同时给 --backup")
+    if args.apply:
+        return apply_reviewed(args)
+    result = survey(args)
+    print("这是只读排查：未写 ledger。确认 CSV 后再加 --apply --backup。")
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:

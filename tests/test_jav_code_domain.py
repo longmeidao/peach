@@ -29,7 +29,10 @@ from peach.catalog_rules import (
     release_code_from_filename,
     release_code_from_text,
 )
+from peach.migrations import upgrade
+from peach.review_csv import write_rows
 
+MIGRATIONS = Path(__file__).resolve().parents[1] / "migrations"
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "audit_domain_codes.py"
 _spec = importlib.util.spec_from_file_location("audit_domain_codes", SCRIPT)
 audit = importlib.util.module_from_spec(_spec)
@@ -219,12 +222,102 @@ class AuditScriptTests(unittest.TestCase):
         self.assertEqual(row["proposed_code"], "SSIS-071")
         self.assertEqual(row["evidence"], "newsite77.com")
 
-    def test_the_script_has_no_write_path(self):
-        # `code` 是真相字段。这个脚本只出复核 CSV，写库要另走授权和备份。
-        source = SCRIPT.read_text(encoding="utf-8")
-        for forbidden in ("UPDATE ", "DELETE ", "INSERT ", "--apply", "commit("):
-            self.assertNotIn(forbidden, source, forbidden)
-        self.assertIn("mode=ro", source)
+
+class ApplyTests(unittest.TestCase):
+    """写库这一侧。
+
+    用真实迁移建库，不用精简 schema：这次改的是 `asset.code`，而 `asset_search.code`
+    是靠 `0004`/`0023` 的触发器跟着走的。拿一张没有触发器的表测，等于把「搜索索引里
+    还留着旧水印」这个最容易漏的表面从测试里删掉。
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name).resolve()
+        self.db = self.root / "ledger.db"
+        sqlite3.connect(self.db).close()
+        upgrade(self.db, MIGRATIONS)
+        self.review = self.root / "review.csv"
+
+    def _asset(self, asset_id, path, code):
+        connection = sqlite3.connect(self.db)
+        connection.execute(
+            "INSERT INTO asset(id,location,path,name,medium,code) "
+            "VALUES(?,'local',?,?,'video',?)",
+            (asset_id, path, path.rsplit("\\", 1)[-1], code))
+        connection.commit()
+        connection.close()
+
+    def _plan(self, *rows):
+        write_rows(self.review, (*audit.FIELDS, "applied"), rows, fill_missing=True)
+
+    def _run(self, *extra):
+        return audit.run(audit.build_parser().parse_args(
+            ["--db", str(self.db), "--review-csv", str(self.review), *extra]))
+
+    def _codes(self):
+        connection = sqlite3.connect(self.db)
+        try:
+            return {row[0]: (row[1], row[2]) for row in connection.execute(
+                "SELECT a.id,a.code,s.code FROM asset a "
+                "LEFT JOIN asset_search s ON s.asset_id=a.id")}
+        finally:
+            connection.close()
+
+    def test_apply_without_a_backup_refuses_to_start(self):
+        # `code` 是真相字段，和迁移同级：没有备份就没有回退路径。
+        self._asset(1, r"B:\x\HHD800\hhd800.com@ABW-132.mp4", "HHD800")
+        self._plan({"asset_id": "1", "current_code": "HHD800",
+                    "proposed_code": "ABW-132", "tier": "E1"})
+        with self.assertRaises(SystemExit):
+            self._run("--apply")
+        self.assertEqual(self._codes()[1][0], "HHD800")
+
+    def test_the_reviewed_rows_are_written_and_the_index_follows(self):
+        self._asset(1, r"B:\x\HHD800\hhd800.com@ABW-132.mp4", "HHD800")
+        self._asset(2, r"B:\x\BEI88\bei88@sis001@合集.mp4", "BEI88")
+        self._plan(
+            {"asset_id": "1", "current_code": "HHD800",
+             "proposed_code": "ABW-132", "tier": "E1"},
+            {"asset_id": "2", "current_code": "BEI88",
+             "proposed_code": "", "tier": "E1"})
+        self.assertEqual(self._run("--apply", "--backup", str(self.root / "b.db")), 0)
+        codes = self._codes()
+        self.assertEqual(codes[1], ("ABW-132", "ABW-132"))
+        self.assertEqual(codes[2], (None, ""))
+        self.assertTrue((self.root / "b.db").exists())
+
+    def test_a_pack_row_is_never_written(self):
+        # `存疑` 的 269 条论坛整合包要人工看过再定，不能跟着这一批一起改。
+        self._asset(3, r"B:\x\WX17\[mtfdz.club]WX17.3\a.rar", "WX17")
+        self._plan({"asset_id": "3", "current_code": "WX17",
+                    "proposed_code": "", "tier": "存疑"})
+        with self.assertRaises(SystemExit):
+            self._run("--apply", "--backup", str(self.root / "b.db"))
+        self.assertEqual(self._codes()[3][0], "WX17")
+
+    def test_a_row_edited_since_the_review_is_skipped_not_overwritten(self):
+        # 出表和写库之间隔着一次人工阅读，期间别的脚本可能已经改过同一行。
+        self._asset(4, r"B:\x\HHD800\hhd800.com@ABW-132.mp4", "SSIS-070")
+        self._plan({"asset_id": "4", "current_code": "HHD800",
+                    "proposed_code": "ABW-132", "tier": "E1"})
+        self._run("--apply", "--backup", str(self.root / "b.db"))
+        self.assertEqual(self._codes()[4][0], "SSIS-070")
+
+    def test_a_watermark_typed_into_the_csv_is_refused(self):
+        # 表是给人改的，但手填回一个域名就绕开了这次修复的全部意义。
+        self._asset(5, r"B:\x\HHD800\hhd800.com@ABW-132.mp4", "HHD800")
+        self._plan({"asset_id": "5", "current_code": "HHD800",
+                    "proposed_code": "hhd800.com", "tier": "E1"})
+        self._run("--apply", "--backup", str(self.root / "b.db"))
+        self.assertEqual(self._codes()[5][0], "HHD800")
+
+    def test_the_default_run_leaves_the_ledger_alone(self):
+        self._asset(6, r"B:\x\HHD800\hhd800.com@ABW-132.mp4", "HHD800")
+        self.assertEqual(self._run(), 0)
+        self.assertEqual(self._codes()[6][0], "HHD800")
+        self.assertIn("mode=ro", SCRIPT.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
