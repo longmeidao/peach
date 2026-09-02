@@ -1451,6 +1451,23 @@ class ApplyMetadataTagsTests(unittest.TestCase):
         self.assertEqual([(group["item_key"], candidate["value"]) for group, candidate in selected],
                          [("AAA-001:tags", ["素人"])])
 
+    def test_skipped_codes_stay_in_the_csv_but_do_not_reach_the_ledger(self):
+        """批量放行里总有几条明显不对，跳过它们，但不许从复核产物里抹掉。
+
+        实例：javbus 在 `MY-*` 系列的标题栏放的是「演员名+序号」而不是标题。
+        过滤 CSV 会让这几条从此没人看见；跳过则它们仍在 `/review` 里等人处理。
+        """
+        rows = [
+            {"item_key": "MY-101:title", "code": "MY-101", "field": "title",
+             "status": "candidate",
+             "candidates_json": json.dumps([{"source": "javbus", "value": "最上彩奈1"}])},
+            {"item_key": "TRE-080:title", "code": "TRE-080", "field": "title",
+             "status": "candidate",
+             "candidates_json": json.dumps([{"source": "javbus", "value": "なまなかだし"}])},
+        ]
+        selected = self.apply_tags.plan(rows, "javbus", "title", frozenset({"my-101"}))
+        self.assertEqual([group["item_key"] for group, _ in selected], ["TRE-080:title"])
+
     def test_apply_writes_tags_and_entities_for_the_whole_code(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1496,7 +1513,15 @@ class ApplyMetadataTagsTests(unittest.TestCase):
                 "SELECT count(*) FROM asset_entity WHERE role='tag' "
                 "AND source='javinizer:javbus:tag'").fetchone()[0], 4,
                 "标签实体那一半不能漏")
+            row = connection.execute(
+                "SELECT status,note FROM review_decision "
+                "WHERE category='metadata_fields' AND item_key='TRE-080:tags'").fetchone()
             connection.close()
+            self.assertIsNotNone(row, "写完不登记，这一组会永远挂在 /review 里")
+            self.assertEqual(row[0], "approved")
+            self.assertEqual(json.loads(row[1])["candidate_key"],
+                             "TRE-080:tags:javbus:abc",
+                             "留痕必须带候选身份，_metadata_decision_is_stale 靠它判过期")
 
     def test_dry_run_never_touches_the_database(self):
         with tempfile.TemporaryDirectory() as tmp:
