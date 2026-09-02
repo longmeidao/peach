@@ -1,3 +1,4 @@
+import argparse
 import csv
 import importlib.util
 import io
@@ -8,9 +9,10 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path, PureWindowsPath
+from types import SimpleNamespace
 from unittest import mock
 
-from peach import catalog_rules
+from peach import catalog_rules, scripting
 from peach.migrations import upgrade
 from peach.classification import is_probable_mainstream_release, is_structural_creator
 
@@ -1563,6 +1565,150 @@ class ApplyMetadataTagsTests(unittest.TestCase):
             with redirect_stdout(io.StringIO()):
                 self.assertEqual(self.apply_tags.run(args), 0)
             self.assertFalse((root / "missing.db").exists(), "空跑不该建库")
+
+
+class ScriptingConventionTests(unittest.TestCase):
+    """`peach.scripting` 收口的那几条约定，按行为而不是按源码字符串验收。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name).resolve()
+        self.addCleanup(self.tmp.cleanup)
+        self.db = self.root / "ledger.db"
+        connection = sqlite3.connect(self.db)
+        connection.executescript(
+            "CREATE TABLE asset(id INTEGER PRIMARY KEY);"
+            "CREATE TABLE entity(id INTEGER PRIMARY KEY, kind TEXT);"
+            "CREATE TABLE asset_entity(asset_id INTEGER, entity_id INTEGER);"
+            "CREATE TABLE entity_alias(entity_id INTEGER, alias TEXT);"
+            "CREATE TABLE asset_tag(asset_id INTEGER, tag TEXT);"
+        )
+        connection.execute("INSERT INTO asset(id) VALUES(1)")
+        connection.executemany("INSERT INTO entity(id,kind) VALUES(?,?)",
+                               [(1, "creator"), (2, "performer"), (3, "performer")])
+        connection.commit()
+        connection.close()
+
+    def _args(self, **overrides):
+        values = {"db": self.db, "apply": False, "backup": None}
+        values.update(overrides)
+        return SimpleNamespace(**values)
+
+    def test_readonly_connection_cannot_write_the_ledger(self):
+        connection = scripting.open_readonly(self.db)
+        self.addCleanup(connection.close)
+        with self.assertRaises(sqlite3.OperationalError):
+            connection.execute("INSERT INTO asset(id) VALUES(2)")
+
+    def test_readonly_uri_survives_a_hash_in_the_directory_name(self):
+        awkward = self.root / "a#b"
+        awkward.mkdir()
+        target = awkward / "ledger.db"
+        sqlite3.connect(target).close()
+        connection = scripting.open_readonly(target)
+        self.addCleanup(connection.close)
+        self.assertEqual(connection.execute("SELECT 1").fetchone()[0], 1)
+
+    def test_dry_run_gets_a_read_only_connection_and_writes_no_backup(self):
+        backup = self.root / "unused.db"
+        connection = scripting.open_for_write(self._args(backup=backup))
+        self.addCleanup(connection.close)
+        with self.assertRaises(sqlite3.OperationalError):
+            connection.execute("INSERT INTO asset(id) VALUES(2)")
+        self.assertFalse(backup.exists(), "dry-run 不该产生备份")
+
+    def test_apply_without_backup_is_refused_with_the_single_house_wording(self):
+        with self.assertRaises(SystemExit) as caught:
+            scripting.open_for_write(self._args(apply=True))
+        self.assertEqual(str(caught.exception), "--apply 必须同时给 --backup")
+
+    def test_apply_backup_keeps_transactions_that_are_still_only_in_the_wal(self):
+        """WAL 里已提交未 checkpoint 的事务必须进备份；文件复制会把它们丢掉。"""
+        writer = sqlite3.connect(self.db)
+        writer.execute("PRAGMA journal_mode=WAL")
+        writer.execute("INSERT INTO asset(id) VALUES(99)")
+        writer.commit()
+        self.addCleanup(writer.close)
+
+        backup = self.root / "backup.db"
+        connection = scripting.open_for_write(self._args(apply=True, backup=backup))
+        self.addCleanup(connection.close)
+        connection.execute("INSERT INTO asset(id) VALUES(100)")
+        connection.commit()
+
+        saved = sqlite3.connect(backup)
+        self.addCleanup(saved.close)
+        ids = {row[0] for row in saved.execute("SELECT id FROM asset")}
+        self.assertIn(99, ids, "WAL 中的已提交事务丢了")
+        self.assertNotIn(100, ids, "备份必须是写入之前的状态")
+
+    def test_counts_of_reports_the_shared_base_plus_the_callers_own_measures(self):
+        connection = scripting.open_readonly(self.db)
+        self.addCleanup(connection.close)
+        counts = scripting.counts_of(connection, {
+            "performer": "SELECT count(*) FROM entity WHERE kind='performer'",
+            "asset_tag": "SELECT count(*) FROM asset_tag",
+        })
+        self.assertEqual(counts, {"asset": 1, "entity": 3, "asset_entity": 0,
+                                  "entity_alias": 0, "performer": 2, "asset_tag": 0})
+
+    def test_ledger_write_args_are_exactly_db_apply_backup(self):
+        parser = scripting.add_ledger_write_args(argparse.ArgumentParser())
+        parsed = parser.parse_args(["--db", str(self.db), "--apply",
+                                    "--backup", str(self.root / "b.db")])
+        self.assertEqual((parsed.db, parsed.apply, parsed.backup),
+                         (self.db, True, self.root / "b.db"))
+        self.assertFalse(parser.parse_args([]).apply)
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["--database", str(self.db)])
+
+    def test_rate_limiter_waits_the_remainder_rather_than_the_full_interval(self):
+        now = [100.0]
+        slept: list[float] = []
+
+        def sleeper(seconds):
+            slept.append(seconds)
+            now[0] += seconds
+
+        limiter = scripting.RateLimiter(2.0, clock=lambda: now[0], sleeper=sleeper)
+        limiter.wait()
+        self.assertEqual(slept, [], "第一次不该等")
+        now[0] += 1.5                        # 本地处理已经花了 1.5 秒
+        limiter.wait()
+        self.assertEqual(slept, [0.5], "只该补齐差额，不是又睡满一个间隔")
+        now[0] += 5.0
+        limiter.wait()
+        self.assertEqual(slept, [0.5], "间隔已过就不再等")
+
+    def test_zero_interval_rate_limiter_never_sleeps(self):
+        slept: list[float] = []
+        limiter = scripting.RateLimiter(0, sleeper=slept.append)
+        limiter.wait()
+        limiter.wait()
+        self.assertEqual(slept, [])
+
+    def test_host_limiter_matches_on_dot_boundaries_not_substrings(self):
+        now = [0.0]
+        slept: list[float] = []
+
+        def sleeper(seconds):
+            slept.append(seconds)
+            now[0] += seconds
+
+        limiter = scripting.HostLimiter({"x.com": 2.0}, clock=lambda: now[0],
+                                        sleeper=sleeper)
+        limiter.wait("https://netflix.com/a")
+        limiter.wait("https://netflix.com/b")
+        self.assertEqual(slept, [], "netflix.com 不是 x.com 的子域，不该被限速")
+        limiter.wait("https://mobile.x.com/a")
+        limiter.wait("https://www.x.com/b")
+        self.assertEqual(slept, [2.0], "同一主机的第二次请求必须等一个间隔")
+
+    def test_host_under_rejects_a_domain_that_merely_ends_with_the_key(self):
+        self.assertTrue(scripting.host_under("x.com", ("x.com",)))
+        self.assertTrue(scripting.host_under("mobile.X.com", ("x.com",)))
+        self.assertFalse(scripting.host_under("notx.com", ("x.com",)))
+        self.assertFalse(scripting.host_under("", ("x.com",)))
 
 
 if __name__ == "__main__":
