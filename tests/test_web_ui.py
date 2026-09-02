@@ -30,6 +30,92 @@ class WebUiSourceTests(unittest.TestCase):
         if needle in self.page:
             self.fail(f"index.html 不应再出现：{needle!r}" + (f"（{message}）" if message else ""))
 
+    def test_module_level_bindings_are_declared_before_they_are_used(self):
+        """模块级 `let`/`const` 不许在声明行之前被引用。
+
+        `let`/`const` 有 TDZ：声明那一行执行之前读它是 ReferenceError，而不是
+        undefined。前端曾有三十多处「函数写在上面、声明写在下面」，没炸只是因为
+        那些函数恰好都在启动之后才第一次被调用——判据是运行时机，而不是能从代码上
+        看出来的东西。谁把其中任意一个挪进启动路径，症状就是首屏整页空白，
+        而改动本身看不出和它有关。
+
+        修法只有两种：可变状态提到 app.js 顶部的「模块级可变状态」块，纯函数改写成
+        会提升的 `function` 声明（或拆进 `web/js/`）。这里不做作用域分析，所以函数
+        内部同名的局部变量要另起名字——`selectedQuality` 就是为此从 `selected`
+        改过来的。
+        """
+        web = Path(__file__).resolve().parents[1] / "web"
+        for path in [web / "app.js"] + sorted((web / "js").glob("*.js")):
+            offenders = self._bindings_used_before_declaration(
+                path.read_text(encoding="utf-8"))
+            self.assertEqual(offenders, [], f"{path.name} 里这些绑定在声明前被引用：" + "；".join(
+                f"{name} 声明在第 {decl} 行，第 {ref} 行已经在用" for name, decl, ref in offenders))
+
+    @staticmethod
+    def _bindings_used_before_declaration(source: str):
+        """找出「声明行在后、引用行在前」的模块级 `let`/`const`。
+
+        只认顶格（第 0 列）的 `let`/`const`：缩进的都在某个函数或块里，那是局部作用域，
+        不属于这个契约。注释先剥掉——中文注释里提到标识符本来就很常见，不剥的话
+        整条断言会被噪声淹没。
+        """
+        lines = source.split("\n")
+        stripped, in_block = [], False
+        for line in lines:
+            text = line
+            if in_block:
+                if "*/" in text:
+                    text, in_block = text.split("*/", 1)[1], False
+                else:
+                    stripped.append("")
+                    continue
+            while "/*" in text:
+                head, rest = text.split("/*", 1)
+                if "*/" in rest:
+                    text = head + " " + rest.split("*/", 1)[1]
+                else:
+                    text, in_block = head, True
+                    break
+            comment = text.find("//")
+            if comment >= 0 and not text[:comment].endswith(":"):
+                text = text[:comment]
+            stripped.append(text)
+
+        names = []
+        for index, text in enumerate(stripped):
+            head = re.match(r"(?:let|const)\s+(.*)$", text)
+            if not head:
+                continue
+            depth, current, chunks = 0, "", []
+            for char in head.group(1):
+                if char in "([{":
+                    depth += 1
+                elif char in ")]}":
+                    depth -= 1
+                if char == "," and depth == 0:
+                    chunks.append(current)
+                    current = ""
+                else:
+                    current += char
+            chunks.append(current)
+            for chunk in chunks:
+                declared = re.match(r"\s*([A-Za-z_$][\w$]*)", chunk)
+                if declared:
+                    names.append((declared.group(1), index + 1))
+
+        offenders, seen = [], set()
+        for name, line_number in names:
+            if name in seen:
+                continue
+            seen.add(name)
+            # 前面挡掉 `.`（成员访问）和引号（字符串键与字面量），它们不是绑定引用。
+            pattern = re.compile(r"(?<![\w$.'\"])" + re.escape(name) + r"(?![\w$])")
+            for earlier in range(line_number - 1):
+                if pattern.search(stripped[earlier]):
+                    offenders.append((name, line_number, earlier + 1))
+                    break
+        return offenders
+
     def test_every_font_size_comes_from_the_one_type_scale(self):
         """全站只有一套字号刻度，任何写死的像素都要有理由。
 
@@ -446,7 +532,9 @@ class WebUiSourceTests(unittest.TestCase):
         素人、创作者自制和网红内容里的出镜者是艺人：套上 JAV 称谓既不准确，
         也会和同名的 creator 身份混淆。形态判据只有后端 `is_jav_code` 一份。
         """
-        self.assertPageContains("const performerLabel=it=>it&&it.is_jav?'女优':'艺人';")
+        # 断言的是判据与两个称谓，不是 performerLabel 写成箭头函数还是 function。
+        self.assertPageContains("performerLabel(it)")
+        self.assertPageContains("it&&it.is_jav?'女优':'艺人'")
         self.assertPageContains("const ENTITY_LABELS={performer:'艺人'")
 
     def test_narrow_top_bar_keeps_the_actions_on_the_right(self):
@@ -774,7 +862,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("${icon('settings')}")
         self.assertPageContains("typeof player.qualityLevels==='function'?player.qualityLevels():null")
         self.assertPageContains("activePixels>=2160?'4K':activePixels>=720?'HD':''")
-        self.assertPageContains("levels[index].enabled=selected==='auto'||selected===String(index)")
+        # 「auto 开全部层级，选定某一档只留那一档」是契约；局部变量叫什么不是。
+        self.assertPageContains("levels[index].enabled=selectedQuality==='auto'||selectedQuality===String(index)")
         self.assertPageContains("const syncVolumeIcon=()=>muteUse?.setAttribute('href'")
         self.assertPageLacks("volume.insertAdjacentHTML('afterbegin','<span class=\"vjs-peach-hover\"")
         self.assertPageContains("z-index:1;position:relative!important;left:0!important;top:0!important;align-self:center;flex:0 0 40px")
@@ -1715,7 +1804,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("p.set('sort',filters.sort||'new')")
         self.assertPageContains("if(filters.sort==='seed')p.set('seed',state.seed)")
         self.assertPageContains("const JAV_RELEASE_SORT=['release','发行时间']")
-        self.assertPageContains("const sortOptions=()=>javActive()?[JAV_RELEASE_SORT,...SORTS]:SORTS")
+        self.assertPageContains("javActive()?[JAV_RELEASE_SORT,...SORTS]:SORTS")
         self.assertPageContains("sortOptions().map(([key,label])=>")
         self.assertPageContains("sortOptions().map(([k,l])=>")
         self.assertPageContains("if(state.jav!=='1'&&state.sort==='release')state.sort='seed'")
@@ -2750,7 +2839,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains("const initialParam=key=>initialCatalogUrl?initialParams.get(key):null;")
         self.assertPageContains("isCatalogPath(path)||path==='/trash'")
-        seeded = self.page[self.page.index("let state={"):self.page.index("const HOME_QUERY_KEYS")]
+        seeded = self.page[self.page.index("state={loc:"):self.page.index("const HOME_QUERY_KEYS")]
         for key in ("creator", "studio", "tag", "orient", "sort", "q", "jav"):
             self.assertIn("initialParam('" + key + "')", seeded,
                           key + " 仍在无条件读启动 URL，别的路由会顺手把目录筛住")

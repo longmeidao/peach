@@ -1847,7 +1847,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('aria-label="播放器设置"')
         self.assertPageContains("data-player-quality-badge")
         self.assertPageContains("currentTimeDisplay:true,timeDivider:true")
-        self.assertPageContains("levels[index].enabled=selected==='auto'||selected===String(index)")
+        self.assertPageContains("levels[index].enabled=selectedQuality==='auto'||selectedQuality===String(index)")
         self.assertPageContains("const stopFollowAmbient=mountPlayerAmbient(followVideo)")
         self.assertPageContains("followPlayer?.one?.('dispose',stopFollowAmbient)")
         self.assertPageContains("mountPlayerTheaterControl(player,root)")
