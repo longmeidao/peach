@@ -1,12 +1,13 @@
 import csv
 import importlib.util
 import io
+import json
 import sqlite3
 import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from unittest import mock
 
 from peach.migrations import upgrade
@@ -74,6 +75,30 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(category_map["Shaved Pussy"], "白虎")
         self.assertNotIn("Featured Actress", category_map,
                          "来源营销分类不是内容标签，不能因为官方给了就直接入库")
+
+    def test_javbus_japanese_genres_map_into_the_same_taxonomy(self):
+        """javbus/javdb 给日文类型词，r18dev 给英文；两套键共用一张表、一套值。
+
+        值必须落在既有分类词表内——标签是语义契约，不能靠抓取顺手扩词表。发行、
+        营销与规格分类一概不收，和既有的「`Featured Actress` 不入库」是同一条线。
+        """
+        category_map = self.scrape_codes.CATEGORY_MAP
+        self.assertEqual(category_map["中出し"], "中出内射")
+        self.assertEqual(category_map["パイパン"], "白虎")
+        self.assertEqual(category_map["女子校生"], "学生")
+        self.assertEqual(category_map["寝取り・寝取られ"], "绿帽NTR")
+        self.assertEqual(category_map["Gカップ"], "乳系")
+        for marketing in ("独占配信", "配信専用", "単体作品", "企画", "店長推薦作品",
+                          "ハイビジョン", "フルハイビジョン(FHD)", "1080p", "60fps",
+                          "4時間以上作品", "AV女優"):
+            self.assertNotIn(marketing, category_map,
+                             f"{marketing} 是发行/营销/规格分类，不是内容标签")
+        japanese = {key for key in category_map if not key.isascii()}
+        self.assertTrue(japanese)
+        self.assertEqual(
+            {category_map[key] for key in japanese} - {
+                category_map[key] for key in category_map if key.isascii()},
+            set(), "日文键不得引入英文键没有的新分类值")
 
     def test_rule34_tag_type_backfill_reuses_the_connector_and_is_resumable(self):
         """rule34xxx 的标签类型只在帖子页上，2152 条里当时只有 40 条带着它。
@@ -943,6 +968,18 @@ class OperationalScriptTests(unittest.TestCase):
                 "9 帧都应在首次失败后用色彩覆盖重试",
             )
 
+    def test_explicit_code_judges_the_normalised_shape(self):
+        """账本里 `HJD2048` 这种缺分隔符的写法必须和 `--codes-file` 那侧结论一致。
+
+        两处一个按原始写法判、一个按规范化键匹配时，同一批番号会被报成
+        「番号文件含 ledger 中不存在的番号」，2026-09-02 实测漏掉 42 个。
+        """
+        explicit = self.scrape_codes._is_explicit_code
+        for code in ("HJD2048", "WX17", "ABW-123", "ipvr00296", "fc2ppv-1234567"):
+            self.assertTrue(explicit(code), code)
+        for code in ("", "合集", "未知厂牌", "4K", "FC2-1234"):
+            self.assertFalse(explicit(code), code)
+
     def test_code_normalization(self):
         # 归一化本体已收进 catalog_rules；脚本只是 import 它，这里验的是脚本用的
         # 确实是那一份，而不是自己又抄了一个同名函数。
@@ -1264,6 +1301,205 @@ class OperationalScriptTests(unittest.TestCase):
                 "WHERE ae.asset_id=1 AND e.kind='tag' AND e.canonical_name='素人'"
             ).fetchone()[0], "vision_creator")
             connection.close()
+
+
+class FlattenReleaseDirTests(unittest.TestCase):
+    """冗余发行物目录层与目录名广告标记。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.flatten = load_script("flatten_release_dirs")
+
+    def _ledger(self, root: Path, paths: list[str]) -> sqlite3.Connection:
+        db = root / "ledger.db"
+        sqlite3.connect(db).close()
+        upgrade(db, MIGRATIONS)
+        connection = sqlite3.connect(db)
+        for index, path in enumerate(paths, 1):
+            connection.execute(
+                "INSERT INTO asset(id,location,path,name,medium) VALUES(?,'115',?,?,'video')",
+                (index, path, PureWindowsPath(path).name))
+        connection.commit()
+        return connection
+
+    def _resolver(self, root: Path):
+        return lambda ledger: root.joinpath(*PureWindowsPath(str(ledger)).parts[1:])
+
+    def test_collapse_needs_a_redundant_name_not_just_a_lone_child(self):
+        """`古川结爱合集` 底下只有一个 `FC2-PPV-…` 也是有意义的一层，不能合。
+
+        真实数据里「父目录只有一个子目录」有 747 处，绝大多数不是冗余层；只按
+        「独子」判会把合集目录整片摊平。
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            connection = self._ledger(Path(tmp), [
+                r"B:\日本\Prestige\TRE-080\[44x.me]tre-080\TRE-080.mp4",
+                r"B:\日本\Prestige\TRE-080\[44x.me]tre-080\TRE-080-2.mp4",
+                r"B:\合集\古川结爱合集\FC2-PPV-1234567\one.mp4",
+            ])
+            plan = self.flatten.plan_operations(connection)
+            connection.close()
+            collapses = [row["ledger_dir"] for row in plan if row["kind"] == "collapse"]
+            self.assertEqual(collapses, [r"B:\日本\Prestige\TRE-080\[44x.me]tre-080"])
+            renames = {row["ledger_dir"] for row in plan if row["kind"] == "rename"}
+            self.assertNotIn(r"B:\日本\Prestige\TRE-080\[44x.me]tre-080", renames,
+                             "已经被合掉的目录不该再排一次改名")
+
+    def test_collapse_refuses_when_the_parent_holds_something_the_ledger_never_saw(self):
+        """账本只记文件，不记字幕、封面和空目录；不核真实目录就会把它们留在原地。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            inner = root / "日本" / "TRE-080" / "[44x.me]tre-080"
+            inner.mkdir(parents=True)
+            (inner / "TRE-080.mp4").write_text("x", encoding="utf-8")
+            operation = {"kind": "collapse",
+                         "ledger_dir": r"B:\日本\TRE-080\[44x.me]tre-080",
+                         "target_dir": r"B:\日本\TRE-080"}
+            resolve = self._resolver(root)
+            self.assertEqual(self.flatten.verify(operation, resolve), "ok")
+            (inner.parent / "cover.jpg").write_text("x", encoding="utf-8")
+            self.assertTrue(self.flatten.verify(operation, resolve).startswith("跳过：父目录还有"))
+
+    def test_apply_moves_files_up_then_rewrites_the_ledger(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            inner = root / "日本" / "TRE-080" / "[44x.me]tre-080"
+            inner.mkdir(parents=True)
+            (inner / "TRE-080.mp4").write_text("x", encoding="utf-8")
+            connection = self._ledger(root, [r"B:\日本\TRE-080\[44x.me]tre-080\TRE-080.mp4"])
+            operation = {"kind": "collapse",
+                         "ledger_dir": r"B:\日本\TRE-080\[44x.me]tre-080",
+                         "target_dir": r"B:\日本\TRE-080"}
+            rows = self.flatten.plan_paths(connection, [operation])
+            self.assertEqual(rows, [{"id": "1",
+                                     "old_path": r"B:\日本\TRE-080\[44x.me]tre-080\TRE-080.mp4",
+                                     "new_path": r"B:\日本\TRE-080\TRE-080.mp4"}])
+            done = self.flatten.apply_operation(operation, self._resolver(root))
+            self.assertTrue((root / "日本" / "TRE-080" / "TRE-080.mp4").is_file())
+            self.assertFalse(inner.exists())
+            self.flatten.rollback(done)
+            self.assertTrue((inner / "TRE-080.mp4").is_file())
+            connection.close()
+
+    def test_ad_stripping_only_touches_the_head_and_tail(self):
+        """欧美片名里的 `[Vixen.com]` 是厂牌，不是广告；删中间那段等于丢真信息。"""
+        from peach.catalog_rules import strip_promo_markers
+        self.assertEqual(strip_promo_markers("[44x.me]tre-080"), "tre-080")
+        self.assertEqual(strip_promo_markers("MattieDoll - pornhub.com"), "MattieDoll")
+        self.assertEqual(strip_promo_markers("[98t.tv][98t.tv]ABW-251"), "ABW-251",
+                         "叠了两层广告要剥到不动为止")
+        for keep in (
+            "Hazel Moore - [FootFetishDaily.com] - Hardcore (18.10.19) -",
+            # 整串都符合「标签+.com」，按通用形态删前缀会连番号一起吃掉、只剩 mp4
+            "ABP-762-fuckbe.com.mp4",
+            "(12P+5V_1.28G) [12P-5V-1.28GB]",
+            "@9ririsuamano",
+            "TRE-080",
+        ):
+            self.assertEqual(strip_promo_markers(keep), keep)
+
+    def test_rename_only_strips_the_ad_marker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            connection = self._ledger(Path(tmp), [
+                r"B:\日本\[44x.me]桃子作品集\one.mp4",
+            ])
+            plan = self.flatten.plan_operations(connection)
+            connection.close()
+            renames = [row for row in plan if row["kind"] == "rename"]
+            self.assertEqual([(row["ledger_dir"], row["target_dir"]) for row in renames],
+                             [(r"B:\日本\[44x.me]桃子作品集", r"B:\日本\桃子作品集")])
+
+
+class ApplyMetadataTagsTests(unittest.TestCase):
+    """直接写标签这条路必须走 `/review` 批准时的同一份写入映射。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.apply_tags = load_script("apply_metadata_tags")
+
+    def test_it_reuses_the_review_write_mapping_instead_of_its_own_sql(self):
+        """自己拼 INSERT 会漏掉删旧行、规范化标签名和 asset_entity 那一半。"""
+        source = (ROOT / "scripts" / "apply_metadata_tags.py").read_text(encoding="utf-8")
+        self.assertIn("from peach.web_review import _apply_metadata_candidate", source)
+        self.assertNotIn("INSERT INTO asset_tag", source)
+
+    def test_only_the_requested_source_and_field_are_written(self):
+        rows = [
+            {"item_key": "AAA-001:tags", "field": "tags", "status": "candidate",
+             "candidates_json": json.dumps([{"source": "javbus", "value": ["素人"]},
+                                            {"source": "javdb", "value": ["人妻"]}])},
+            {"item_key": "AAA-001:title", "field": "title", "status": "candidate",
+             "candidates_json": json.dumps([{"source": "javbus", "value": "タイトル"}])},
+            {"item_key": "BBB-002:tags", "field": "tags", "status": "applied",
+             "candidates_json": json.dumps([{"source": "javbus", "value": ["白虎"]}])},
+        ]
+        selected = self.apply_tags.plan(rows, "javbus", "tags")
+        self.assertEqual([(group["item_key"], candidate["value"]) for group, candidate in selected],
+                         [("AAA-001:tags", ["素人"])])
+
+    def test_apply_writes_tags_and_entities_for_the_whole_code(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "ledger.db"
+            sqlite3.connect(db).close()
+            upgrade(db, MIGRATIONS)
+            connection = sqlite3.connect(db)
+            connection.executemany(
+                "INSERT INTO asset(id,location,path,name,medium,code) VALUES(?,'115',?,?,'video','TRE-080')",
+                [(1, r"B:\TRE-080.mp4", "TRE-080.mp4"),
+                 (2, r"B:\TRE-080-2.mp4", "TRE-080-2.mp4")])
+            connection.commit()
+            connection.close()
+
+            candidates = root / "metadata-field-candidates-test.csv"
+            candidate = {
+                "candidate_key": "TRE-080:tags:javbus:abc", "source": "javbus",
+                "confidence": 0.75, "provider": "javinizer-go",
+                "source_url": "https://www.javbus.com/ja/TRE-080",
+                "provider_id": "TRE-080", "content_id": "TRE-080",
+                "raw_snapshot": "javbus.json", "value": ["中出内射", "素人"],
+            }
+            with candidates.open("w", encoding="utf-8-sig", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=[
+                    "item_key", "code", "query", "field", "status", "candidates_json"])
+                writer.writeheader()
+                writer.writerow({
+                    "item_key": "TRE-080:tags", "code": "TRE-080", "query": "TRE-080",
+                    "field": "tags", "status": "candidate",
+                    "candidates_json": json.dumps([candidate], ensure_ascii=False)})
+
+            args = self.apply_tags.build_parser().parse_args(
+                [str(candidates), "--db", str(db), "--apply", "--backup", str(root / "backup.db")])
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(self.apply_tags.run(args), 0)
+            self.assertTrue((root / "backup.db").is_file())
+
+            connection = sqlite3.connect(db)
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM asset_tag WHERE source='javinizer:javbus:tag'"
+            ).fetchone()[0], 4, "两条资产各写两个标签")
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM asset_entity WHERE role='tag' "
+                "AND source='javinizer:javbus:tag'").fetchone()[0], 4,
+                "标签实体那一半不能漏")
+            connection.close()
+
+    def test_dry_run_never_touches_the_database(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            candidates = root / "candidates.csv"
+            with candidates.open("w", encoding="utf-8-sig", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=["item_key", "field", "status",
+                                                            "candidates_json"])
+                writer.writeheader()
+                writer.writerow({"item_key": "A:tags", "field": "tags", "status": "candidate",
+                                 "candidates_json": json.dumps([{"source": "javbus",
+                                                                 "value": ["素人"]}])})
+            args = self.apply_tags.build_parser().parse_args(
+                [str(candidates), "--db", str(root / "missing.db")])
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(self.apply_tags.run(args), 0)
+            self.assertFalse((root / "missing.db").exists(), "空跑不该建库")
 
 
 if __name__ == "__main__":

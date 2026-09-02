@@ -403,6 +403,53 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual([row["studio"] for row in rows], ["Changed"])
         self.assertEqual(rows[0]["decision"], "pending")
 
+    def _decide_with_note(self, item_key, note):
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO review_decision(category,item_key,status,note,updated_at) "
+            "VALUES('metadata_fields',?,'approved',?,'old')", (item_key, note))
+        con.commit(); con.close()
+
+    def test_an_approval_of_a_vanished_candidate_reopens_the_field(self):
+        """`item_key` 不带候选身份，旧批准不得盖住后来抓到的新来源值。
+
+        实测：TRE-080 的标题在 2026-09-01 对着 r18dev 的空日文标题批过一次，
+        之后 javbus 抓到真标题，队列里却一条也看不见。
+        """
+        self.write_metadata_rows([{
+            "item_key": "ABC-001:title", "code": "ABC-001", "field": "title",
+            "current": "English Title", "candidates": ["日本語タイトル"], "source": "javbus",
+        }])
+        self._decide_with_note(
+            "ABC-001:title",
+            '{"candidate_key":"ABC-001:title:r18dev:gone","source":"r18dev","user_note":""}')
+
+        rows = rm_review.q_review(self.contract)["sections"]["metadata_fields"]
+        self.assertEqual([row["item_key"] for row in rows], ["ABC-001:title"])
+        self.assertEqual(rows[0]["decision"], "pending")
+
+    def test_an_approval_still_pointing_at_a_live_candidate_stays_decided(self):
+        self.write_metadata_rows([{
+            "item_key": "ABC-001:title", "code": "ABC-001", "field": "title",
+            "current": "English Title", "candidates": ["日本語タイトル"], "source": "javbus",
+        }])
+        self._decide_with_note(
+            "ABC-001:title",
+            '{"candidate_key":"ABC-001:title:0","source":"javbus","user_note":""}')
+
+        # 判过的行不占队列，所以「仍然算已判」的观测形态就是它不在队列里。
+        self.assertEqual(self.queue_keys("metadata_fields"), [])
+
+    def test_a_free_text_note_is_left_alone_rather_than_guessed_at(self):
+        """早期留痕是自由文本，读不出指向哪个候选就别把用户批过的翻出来。"""
+        self.write_metadata_rows([{
+            "item_key": "ABC-001:title", "code": "ABC-001", "field": "title",
+            "current": "English Title", "candidates": ["日本語タイトル"], "source": "javbus",
+        }])
+        self._decide_with_note("ABC-001:title", "手工核过，就用这个")
+
+        self.assertEqual(self.queue_keys("metadata_fields"), [])
+
     def test_metadata_field_approval_uses_selected_candidate_and_never_writes_creator(self):
         con = sqlite3.connect(self.db_path)
         con.execute("UPDATE asset SET code='ABC-001',creator='Folder Creator' WHERE id=1")
