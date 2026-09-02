@@ -33,6 +33,7 @@ from peach.logo_provider import (  # noqa: E402
     provenance_now,
 )
 from peach.config import GENERATED_DIR  # noqa: E402
+from peach.social_links import twimg_tiers  # noqa: E402
 from peach.review_csv import read_rows, write_rows
 
 RESOLVER = "https://unavatar.io/{platform}/{handle}?json"
@@ -68,6 +69,22 @@ def load_handles(path: Path | None) -> dict[str, str]:
         for row in read_rows(path)
         if (row.get("studio") or "").strip()
     }
+
+
+def download(http, urls: list[str], timeout: float) -> tuple[bytes, str]:
+    """按顺序试地址，第一个回 200 的就用；返回 (字节, 实际用的地址)。
+
+    原图地址不是每个账号都在（旧头像有过只留缩略图的），取不到就退回带尺寸后缀的那一份，
+    而不是让整个厂牌变成取图失败。
+    """
+    last = ""
+    for candidate in dict.fromkeys(urls):
+        response = http(HttpRequest("GET", candidate, {"User-Agent": USER_AGENT}),
+                        timeout, 8 << 20)
+        if response.status == 200 and response.body:
+            return response.body, candidate
+        last = f"HTTP {response.status}"
+    raise RuntimeError(last or "没有可用的头像地址")
 
 
 def resolve(http, platform: str, handle: str, timeout: float) -> str:
@@ -171,15 +188,16 @@ def main(argv: list[str] | None = None, *, transport=None) -> int:
                     record["content_state"] = "empty"
                     rows.append(record)
                     continue
+                tiers = twimg_tiers(url)
+                url = tiers[0]
                 record["resolved_url"] = url
                 health["resolved"] += 1
                 payload = None if args.refresh else cache.lookup(url)
                 if payload is not None:
                     health["snapshot_reused"] += 1
                 else:
-                    image = http(HttpRequest("GET", url, {"User-Agent": USER_AGENT}),
-                                 args.timeout, 8 << 20)
-                    payload = image.body
+                    payload, url = download(http, tiers, args.timeout)
+                    record["resolved_url"] = url
                     health["fetched"] += 1
                     health["bytes_fetched"] += len(payload)
                 source_raster = inspect_logo(payload)

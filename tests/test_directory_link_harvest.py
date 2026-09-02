@@ -144,6 +144,29 @@ class SharedJudgementTests(unittest.TestCase):
         self.assertEqual(social_links.name_key("Yua　Mikami"), social_links.name_key("yua mikami"))
         self.assertEqual(social_links.name_key("三上 悠亜"), social_links.name_key("三上悠亜"))
 
+    def test_twimg_tiers_puts_the_upload_original_first(self):
+        """unavatar 一律给 `_200x200`，而原图常常更大——`セレブの友` 实测 242×242。
+
+        `_400x400` 不是「有这么大」的证据：原图更小时它返回的仍是原图，所以档位表
+        必须从无后缀的原图开始往下退，不能拿后缀当尺寸。
+        """
+        self.assertEqual(
+            social_links.twimg_tiers(
+                "https://pbs.twimg.com/profile_images/562462783950700545/PL-RGriK_200x200.jpeg"),
+            ["https://pbs.twimg.com/profile_images/562462783950700545/PL-RGriK.jpeg",
+             "https://pbs.twimg.com/profile_images/562462783950700545/PL-RGriK_400x400.jpeg",
+             "https://pbs.twimg.com/profile_images/562462783950700545/PL-RGriK_200x200.jpeg"])
+
+    def test_twimg_tiers_strips_every_named_tier_too(self):
+        self.assertEqual(
+            social_links.twimg_tiers("https://pbs.twimg.com/profile_images/1/a_normal.jpg")[0],
+            "https://pbs.twimg.com/profile_images/1/a.jpg")
+
+    def test_other_hosts_are_returned_untouched(self):
+        """别的 CDN 没有这套档位约定，`logo_200x200.png` 就是文件名本身。"""
+        self.assertEqual(social_links.twimg_tiers("https://cdn.example.com/logo_200x200.png"),
+                         ["https://cdn.example.com/logo_200x200.png"])
+
     def test_x_state_needs_a_profile_image_to_count_as_alive(self):
         """封停页也有 og 标签，只是 og:image 是 X 的图标不是 profile_images。
 

@@ -144,6 +144,29 @@ def meta_content(body: str, prop: str) -> str:
     return ""
 
 
+#: pbs.twimg.com 头像文件名里的档位后缀。
+TWIMG_TIER = re.compile(r"_(?:normal|bigger|mini|x96|\d+x\d+)$")
+TWIMG_TIERS = ("", "_400x400", "_200x200")
+
+
+def twimg_tiers(url: str) -> list[str]:
+    """一个 pbs.twimg.com 头像地址 → 从原图到缩略图的候选档位，按优先级排列。
+
+    无后缀的那一份是上传原图，也就是最大档，但 X 不保证它一直在（旧头像有过只剩
+    缩略图的），所以按档位往下退。`_400x400` 不能当成「有这么大」的证据：原图比它
+    小的时候，这个地址返回的仍是原图——`セレブの友` 就是 242×242。
+
+    非 twimg 地址原样返回单元素列表，调用方不必分情况处理。
+    """
+    if "pbs.twimg.com/profile_images/" not in url:
+        return [url]
+    stem, _, extension = url.rpartition(".")
+    if not stem or "/" in extension:
+        return [url]
+    stem = TWIMG_TIER.sub("", stem)
+    return [f"{stem}{tier}.{extension}" for tier in TWIMG_TIERS]
+
+
 def x_profile_state(body: str) -> tuple[str, str]:
     """X 登出页 HTML → (状态, 显示名)。状态取 alive / gone / unknown 三值。
 

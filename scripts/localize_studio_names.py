@@ -99,22 +99,30 @@ def studios(connection: sqlite3.Connection, minimum: int) -> list[sqlite3.Row]:
     ).fetchall()
 
 
-def codes_for(connection: sqlite3.Connection, studio: str, wanted: int) -> list[str]:
-    """给一个厂牌挑几个番号，每个前缀只留一个——同前缀的两页必然同一家，证明不了什么。"""
+def code_groups(connection: sqlite3.Connection, studio: str, wanted: int,
+                depth: int = 3) -> list[list[str]]:
+    """给一个厂牌挑几组番号：一个前缀一组，最多 `wanted` 组，组内最多 `depth` 个。
+
+    只有跨前缀才算互相印证——同前缀的两页必然出自同一家，证明不了什么。组内的第二、
+    第三个番号不参与印证，只用来顶替 404：番号页不存在是那一页的事，不代表这家查不到。
+    """
     rows = connection.execute(
         "SELECT code, COUNT(*) n FROM asset WHERE studio = ? AND code IS NOT NULL AND code <> ''"
         " GROUP BY code ORDER BY n DESC, code",
         (studio,),
     ).fetchall()
-    picked: dict[str, str] = {}
+    groups: dict[str, list[str]] = {}
     for row in rows:
         match = JAV_CODE.match(str(row["code"]).strip())
         if not match:
             continue
-        picked.setdefault(match.group(1).upper(), match.group(0).upper())
-        if len(picked) >= wanted:
-            break
-    return list(picked.values())
+        prefix = match.group(1).upper()
+        if prefix not in groups and len(groups) >= wanted:
+            continue
+        bucket = groups.setdefault(prefix, [])
+        if len(bucket) < depth:
+            bucket.append(match.group(0).upper())
+    return list(groups.values())
 
 
 def maker_of(page: str) -> str:
@@ -122,23 +130,26 @@ def maker_of(page: str) -> str:
     return match.group(1).strip() if match else ""
 
 
-def inspect(site: Site, codes: list[str]) -> tuple[list[str], list[str], list[str]]:
-    """取每个番号页的製作商。返回 (製作商, 用到的番号页 URL, 失败说明)。"""
-    makers, urls, notes = [], [], []
-    for code in codes:
-        url = JAVBUS.format(code)
-        try:
-            page = site.get(url)
-        except (HttpStatusError, OSError, ValueError) as exc:
-            notes.append(f"{code}: {type(exc).__name__}: {exc}")
-            continue
-        urls.append(url)
-        maker = maker_of(page)
-        if maker:
+def inspect(site: Site, groups: list[list[str]]) -> tuple[list[str], list[str], list[str], list[str]]:
+    """每组取到一个製作商就停。返回 (製作商, 证据页 URL, 实际打过的番号, 失败说明)。"""
+    makers, urls, tried, notes = [], [], [], []
+    for group in groups:
+        for code in group:
+            url = JAVBUS.format(code)
+            tried.append(code)
+            try:
+                page = site.get(url)
+            except (HttpStatusError, OSError, ValueError) as exc:
+                notes.append(f"{code}: {type(exc).__name__}: {exc}")
+                continue
+            maker = maker_of(page)
+            if not maker:
+                notes.append(f"{code}: 页面无製作商字段")
+                continue
+            urls.append(url)
             makers.append(maker)
-        else:
-            notes.append(f"{code}: 页面无製作商字段")
-    return makers, urls, notes
+            break
+    return makers, urls, tried, notes
 
 
 # ---------------------------------------------------------------- 入口
@@ -149,6 +160,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--min-assets", type=int, default=1)
     parser.add_argument("--codes", type=int, default=2, help="每个厂牌最多查几个不同前缀的番号")
+    parser.add_argument("--depth", type=int, default=3, help="同前缀最多试几个番号（只为顶替 404）")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--interval", type=float, default=1.5)
     parser.add_argument("--timeout", type=float, default=25.0)
@@ -175,19 +187,19 @@ def run(args: argparse.Namespace, site: Site | None = None) -> int:
             if shape(name) != "拉丁":
                 stats[KEEP_JP] += 1
                 continue
-            codes = codes_for(connection, name, args.codes)
-            if not codes:
+            groups = code_groups(connection, name, args.codes, args.depth)
+            if not groups:
                 # Blacked、Tushy、FC2-PPV 这些压根不走番号体系，回查无从谈起。
                 # 写「未取得」等于把「不适用」伪装成取证失败。
-                makers, urls, notes = [], [], []
+                makers, urls, tried, notes = [], [], [], []
                 verdict, proposed, evidence = SKIP, "", "账本里没有 JAV 番号，不走番号体系"
             else:
-                makers, urls, notes = inspect(site, codes)
+                makers, urls, tried, notes = inspect(site, groups)
                 verdict, proposed, evidence = decide(name, makers)
             stats[verdict] += 1
             rows.append({
                 "entity_id": entity["id"], "studio": name, "assets": entity["assets"],
-                "codes": " ".join(codes), "source_url": " ".join(urls),
+                "codes": " ".join(tried), "source_url": " ".join(urls),
                 "maker": "／".join(dict.fromkeys(makers)), "shape": shape(name),
                 "verdict": verdict, "proposed": proposed,
                 "evidence": "；".join([evidence, *notes]),

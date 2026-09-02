@@ -136,18 +136,30 @@ class CodePickTests(unittest.TestCase):
             self.connection.execute(
                 "INSERT INTO asset (studio, code) VALUES (?,?)", (studio, code))
 
-    def test_one_code_per_prefix_and_most_common_first(self):
+    def test_one_group_per_prefix_and_most_common_first(self):
         self.add("Celeb no Tomo", ["CEMD-801", "CEMD-802", "CEMD-802", "CEAD-726", "CEAD-726"])
-        picked = MODULE.codes_for(self.connection, "Celeb no Tomo", 3)
-        self.assertEqual(sorted(picked), ["CEAD-726", "CEMD-802"])
+        groups = MODULE.code_groups(self.connection, "Celeb no Tomo", 3)
+        self.assertEqual(sorted(group[0] for group in groups), ["CEAD-726", "CEMD-802"])
+
+    def test_siblings_of_the_same_prefix_stay_as_fallbacks(self):
+        # 同前缀不参与印证，但番号页 404 时要有下一个可试。
+        self.add("Kichu", ["CHU-101", "CHU-102", "CHU-103", "CHU-201"])
+        groups = MODULE.code_groups(self.connection, "Kichu", 2, depth=3)
+        by_prefix = {group[0].split("-")[0]: group for group in groups}
+        self.assertEqual(by_prefix["CHU"], ["CHU-101", "CHU-102", "CHU-103"])
+
+    def test_depth_caps_the_fallbacks_per_prefix(self):
+        self.add("Kichu", ["CHU-101", "CHU-102", "CHU-103"])
+        self.assertEqual(MODULE.code_groups(self.connection, "Kichu", 2, depth=2),
+                         [["CHU-101", "CHU-102"]])
 
     def test_non_jav_codes_are_skipped(self):
         self.add("HEYZO", ["heyzo_hd_1234", "", "HEY-022"])
-        self.assertEqual(MODULE.codes_for(self.connection, "HEYZO", 2), ["HEY-022"])
+        self.assertEqual(MODULE.code_groups(self.connection, "HEYZO", 2), [["HEY-022"]])
 
     def test_wanted_caps_the_number_of_prefixes(self):
         self.add("Prestige", ["ABF-246", "ABW-100", "ABP-340", "DIC-001"])
-        self.assertEqual(len(MODULE.codes_for(self.connection, "Prestige", 2)), 2)
+        self.assertEqual(len(MODULE.code_groups(self.connection, "Prestige", 2)), 2)
 
     def test_studios_are_ordered_by_asset_count_and_respect_the_minimum(self):
         self.add("Big", ["AAA-001", "AAA-002"])
@@ -174,7 +186,7 @@ class RunTests(unittest.TestCase):
             "CREATE TABLE asset (id INTEGER PRIMARY KEY, studio TEXT, code TEXT);"
         )
         for studio, codes in (("Celeb no Tomo", ["CEAD-726", "CEMD-801"]),
-                              ("MOODYZ", ["MIAA-092"]),
+                              ("MOODYZ", ["MIAA-092", "MIAA-093"]),
                               ("本中", ["HMN-001"]),
                               ("Hyoko", ["HYK-001"]),
                               ("Fetish Box", ["FBX-001"]),
@@ -189,7 +201,8 @@ class RunTests(unittest.TestCase):
         self.site = FakeSite({
             "https://www.javbus.com/CEAD-726": javbus_page("セレブの友"),
             "https://www.javbus.com/CEMD-801": javbus_page("セレブの友"),
-            "https://www.javbus.com/MIAA-092": javbus_page("ムーディーズ"),
+            # MIAA-092 故意缺页：同前缀的下一个番号要能顶上。
+            "https://www.javbus.com/MIAA-093": javbus_page("ムーディーズ"),
             "https://www.javbus.com/HYK-001": AGE_GATE,
             "https://www.javbus.com/FBX-001": javbus_page("FetishBox"),
         }, error=MODULE.HttpStatusError)
@@ -197,7 +210,8 @@ class RunTests(unittest.TestCase):
     def rows(self):
         output = self.tmp / "studio-names.csv"
         args = argparse.Namespace(database=self.database, output=output, min_assets=1,
-                                  codes=2, limit=0, interval=0, timeout=5, refresh=False,
+                                  codes=2, depth=3, limit=0, interval=0, timeout=5,
+                                  refresh=False,
                                   cache_dir=self.tmp / "cache")
         self.assertEqual(MODULE.run(args, site=self.site), 0)
         return {row["studio"]: row for row in read_rows(output)}
@@ -208,6 +222,9 @@ class RunTests(unittest.TestCase):
         self.assertEqual(rows["Celeb no Tomo"]["proposed"], "セレブの友")
         self.assertEqual(rows["MOODYZ"]["verdict"], MODULE.KEEP_KATAKANA)
         self.assertEqual(rows["MOODYZ"]["proposed"], "")
+        # 头一个番号 404 不算「这家查不到」，同前缀的下一个顶上后仍有结论。
+        self.assertEqual(rows["MOODYZ"]["source_url"], "https://www.javbus.com/MIAA-093")
+        self.assertIn("https://www.javbus.com/MIAA-092", self.site.asked)
         self.assertEqual(rows["Hyoko"]["verdict"], MODULE.UNKNOWN)
         self.assertEqual(rows["Fetish Box"]["verdict"], MODULE.KEEP_LATIN)
 
@@ -231,7 +248,8 @@ class RunTests(unittest.TestCase):
     def test_renames_sort_before_keeps(self):
         output = self.tmp / "studio-names.csv"
         args = argparse.Namespace(database=self.database, output=output, min_assets=1,
-                                  codes=2, limit=0, interval=0, timeout=5, refresh=False,
+                                  codes=2, depth=3, limit=0, interval=0, timeout=5,
+                                  refresh=False,
                                   cache_dir=self.tmp / "cache")
         MODULE.run(args, site=self.site)
         verdicts = [row["verdict"] for row in read_rows(output)]
