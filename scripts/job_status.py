@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-批处理进度同步 —— 从账本和产物反推当前状态，写进 docs/STATUS.md 的受管区块。
+批处理进度同步 —— 从账本和产物反推当前状态，写进 peach-data/state/job-status.md。
 
 为什么需要它：项目里没有任何 hook、git hook 或计划任务会更新文档，全靠接手的
 人记得写。2026-08-14 已经因此出过两次事：一次视觉打标的结论只留在对话里没落库
@@ -10,11 +10,13 @@ r"""
 
 所以这里的数字一律现算，不接受任何人工传入的"我记得是多少"。
 
-只改写 STATUS.md 中两个标记之间的内容，标记外的正文不碰 —— 那部分由协调方维护。
+产物落在 `peach-data/state/`，不进 Git：这个区块每次 hook 都会重算，写进被跟踪的
+docs/STATUS.md 只会让工作区永远是 modified 状态，逼每个智能体先分辨「这行改动是我的
+还是 hook 的」。STATUS.md 里只留一行指针。
 
 用法:
     python scripts/job_status.py            # 打印，不改文件
-    python scripts/job_status.py --write    # 写回 docs/STATUS.md
+    python scripts/job_status.py --write    # 写回 peach-data/state/job-status.md
 """
 from __future__ import annotations
 
@@ -31,11 +33,13 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from peach.config import DATABASE_PATH, GENERATED_DIR
+from peach.config import DATABASE_PATH, GENERATED_DIR, STATE_DIR
 from peach.review_csv import read_rows
 
-DOC = PROJECT_ROOT / "docs" / "STATUS.md"
-STATE = Path(r"R:\peach-data\state\agent-handoff.json")
+# 两个路径都从 peach.config 推出来：2026 年上半年数据根从 `R:\peach-data` 搬到内置盘，
+# 这里写死的 `R:` 路径跟着失效了大半年，hook 每次都静默记不上交接事件。
+DOC = STATE_DIR / "job-status.md"
+STATE = STATE_DIR / "agent-handoff.json"
 START = "<!-- job-status:start -->"
 END = "<!-- job-status:end -->"
 
@@ -150,14 +154,15 @@ def _atomic_write(path: Path, text: str) -> None:
 
 
 def write_back(doc: Path, block: list[str]) -> str:
-    text = doc.read_text(encoding="utf-8")
+    text = doc.read_text(encoding="utf-8") if doc.is_file() else ""
     body = "\n".join(block)
     if START in text and END in text:
         head, _, rest = text.partition(START)
         _, _, tail = rest.partition(END)
         _atomic_write(doc, head + body + tail)
         return "替换了已有区块"
-    _atomic_write(doc, text.rstrip() + "\n\n## 批处理进度（自动生成）\n\n" + body + "\n")
+    head = text.rstrip() + "\n\n" if text.strip() else "# 批处理进度（自动生成）\n\n"
+    _atomic_write(doc, head + body + "\n")
     return "新建了区块"
 
 
@@ -176,7 +181,7 @@ def record_hook_event(state_path: Path, payload: dict[str, object]) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="把批处理进度同步进 STATUS.md")
+    parser = argparse.ArgumentParser(description="把批处理进度同步进 peach-data/state/job-status.md")
     parser.add_argument("--write", action="store_true")
     parser.add_argument("--db", type=Path, default=DATABASE_PATH)
     parser.add_argument("--generated", type=Path, default=GENERATED_DIR)

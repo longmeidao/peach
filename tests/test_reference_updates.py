@@ -45,6 +45,27 @@ class ReferenceUpdateTests(unittest.TestCase):
             sources["vercel-web-interface-guidelines"]["url"],
         )
 
+    def test_every_snapshot_file_is_registered_or_says_why_it_is_not(self):
+        """快照目录里不许有身份不明的文件。
+
+        登记表的契约是「快照文件 + 可重抓 URL」。React 渲染的规格页、用户截图和「哪个主机
+        还能取到图」这类实测给不出可哈希的上游快照，本来就不该登记。但目录里「不该登记」和
+        「忘了登记」长得一模一样，所以未登记的必须在正文里自己说明理由。
+        """
+        registry = self.checker.load_registry(ROOT / "docs" / "reference-sources.json")
+        registered = {source["snapshot"] for source in registry["sources"]}
+        undeclared = []
+        for path in sorted((ROOT / "docs" / "reference-snapshots").glob("*.md")):
+            rel = path.relative_to(ROOT).as_posix()
+            if rel in registered:
+                continue
+            if "reference-sources.json" not in path.read_text(encoding="utf-8"):
+                undeclared.append(rel)
+        self.assertEqual(
+            undeclared, [],
+            "这些快照既没登记进 docs/reference-sources.json，也没写明为什么不登记",
+        )
+
     def test_changed_markdown_is_reported_without_mutating_the_snapshot(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

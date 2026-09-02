@@ -3,6 +3,8 @@
 ## 取得方式与锁定值
 
 - 官方页：<https://vercel.com/geist/note>、<https://vercel.com/geist/progress>、<https://vercel.com/geist/switch>。
+- **不登记进 `docs/reference-sources.json`**：下面锁的是当次 HTML 的 SHA-256 和登录态截图，
+  仓库里没有可比对的上游快照文件；登记表要求的是「快照文件 + 可重抓 URL」这一对。
 - Windows Schannel 路径反复返回凭据错误，本次固定使用仓库外已有的 OpenSSL curl 入口 `C:\Users\longm\.local\bin\curl-ossl.cmd`，请求头为 `Accept: text/html,application/xhtml+xml` 与 `User-Agent: Mozilla/5.0`。
 - 页面 HTML SHA-256：Note `18FF709BAE3813D8153DE2631793280614B1290941E4BD11D67026EC17E2B5FC`；Progress `2DD846E2EC4A8ADF7D3FD1F5C6CE4ACCEA95E29D71881DF8AC6F6874290AD744`；Switch `075696BCEEB320D2267179AA86E1B037D7607C977DA7B1E6B93366A9990EF6A5`。
 - 登录态 Analytics：<https://vercel.com/sandun-bingshi/lmd-gg/analytics>，由 Codex 内置浏览器读取

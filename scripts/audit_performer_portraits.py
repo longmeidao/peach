@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 r"""女优高清头像缺口审计：只产候选与缓存证据，不写 ledger、不安装头像。
 
-交接背景（docs/OX-WINDOWS-JAV.md 第 4 节）：ledger 已完成中文规范名本地化，
+背景（尚未完成的写入侧见 docs/PRODUCT_BACKLOG.md）：ledger 已完成中文规范名本地化，
 界面请求 `generated/avatars/performer-<entity_id>.img`，缺文件时回落到视频抽帧。
 本脚本回答两件事：
 
