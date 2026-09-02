@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import re
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -19,6 +18,7 @@ from peach.catalog_rules import (
     jav_display_metadata,
 )
 from peach.config import DATABASE_PATH, GENERATED_DIR
+from peach.scripting import open_readonly
 from peach.review_csv import write_rows
 
 
@@ -34,8 +34,7 @@ DOMAIN = re.compile(
 
 
 def audit(database: Path) -> list[dict[str, object]]:
-    connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
-    connection.row_factory = sqlite3.Row
+    connection = open_readonly(database)
     try:
         rows = connection.execute(
             "SELECT a.id,a.name,a.code,a.studio,a.release_date,"

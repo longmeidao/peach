@@ -1,3 +1,4 @@
+import argparse
 import csv
 import importlib.util
 import io
@@ -8,9 +9,10 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path, PureWindowsPath
+from types import SimpleNamespace
 from unittest import mock
 
-from peach import catalog_rules
+from peach import catalog_rules, scripting
 from peach.migrations import upgrade
 from peach.classification import is_probable_mainstream_release, is_structural_creator
 
@@ -20,10 +22,22 @@ MIGRATIONS = ROOT / "migrations"
 
 
 def load_script(name: str):
+    """按路径加载 `scripts/<name>.py`。
+
+    执行前先登记进 `sys.modules`：`@dataclass` 处理注解时要按 `cls.__module__` 回查
+    模块，没登记就拿到 `None`，报出来的是 `'NoneType' object has no attribute
+    '__dict__'`——和脚本本身毫无关系。前缀不用 `test_`，否则加载 `agent_worktree`
+    会把真正的 tests/test_agent_worktree.py 从 `sys.modules` 里顶掉。
+    """
     path = ROOT / "scripts" / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(f"test_{name}", path)
+    spec = importlib.util.spec_from_file_location(f"peach_script_{name}", path)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(spec.name, None)
+        raise
     return module
 
 
@@ -40,6 +54,31 @@ class OperationalScriptTests(unittest.TestCase):
         cls.creator_tags = load_script("creator_tags")
         cls.creator_attributions = load_script("audit_creator_attributions")
         cls.rehome_unknown = load_script("rehome_unknown_jav")
+
+    def tmp_ledger(self) -> Path:
+        """一份只含 rule34xxx 追更条目的临时账本：一条已有类型、一条还没有。
+
+        临时目录先 `.resolve()`：CI runner 的临时目录都是别名（macOS `/var` 软链到
+        `/private/var`，Windows `RUNNER~1` 展开成 `runneradmin`），不 resolve 的路径
+        喂给被测代码只会在 CI 上红。
+        """
+        root = Path(tempfile.mkdtemp()).resolve()
+        database = root / "ledger.db"
+        connection = sqlite3.connect(database)
+        connection.executescript(
+            "CREATE TABLE follow_source(id INTEGER PRIMARY KEY, provider TEXT);"
+            "CREATE TABLE follow_item(id INTEGER PRIMARY KEY, source_id INTEGER,"
+            " external_id TEXT, url TEXT, metadata_json TEXT);")
+        connection.execute("INSERT INTO follow_source VALUES(1,'rule34xxx')")
+        connection.executemany(
+            "INSERT INTO follow_item VALUES(?,1,?,?,?)",
+            [(1, "18622796", "https://rule34.xxx/index.php?id=18622796",
+              json.dumps({"tag_types": {"nier": "copyright"}})),
+             (2, "18622794", "https://rule34.xxx/index.php?id=18622794",
+              json.dumps({"tag_types": {}}))])
+        connection.commit()
+        connection.close()
+        return database
 
     def test_import_has_no_filesystem_or_log_side_effect(self):
         self.assertIsNone(self.clean_names._logf)
@@ -120,17 +159,31 @@ class OperationalScriptTests(unittest.TestCase):
         常规检查只看第一页，补不到历史条目。抓取判据不重写，直接复用连接器的
         `_detail_tag_types`；备份先做、分批提交，中断一次不至于白跑五十分钟。
         """
-        source = (ROOT / "scripts" / "backfill_rule34_tag_types.py").read_text(encoding="utf-8")
-        self.assertIn("connector._detail_tag_types(post_id)", source)
-        self.assertIn('if args.apply and not args.backup:', source)
-        # WAL 库不能用 `shutil.copy2` 备份：已提交但未 checkpoint 的事务在 `-wal` 里，
-        # 只复制主库会得到一份少了最近改动、却看起来完全正常的账本。
-        self.assertIn("reader.backup(writer)", source)
-        self.assertNotIn("shutil.copy2(database", source)
-        self.assertIn("writer.commit()", source)
-        # 取不到不等于这条没有类型：不写空字典冒充已补，下一轮还要再问。
-        self.assertIn('if not tag_types:', source)
-        self.assertIn('return 0 if before == after else 1', source)
+        backfill = load_script("backfill_rule34_tag_types")
+        # 连接与备份走共享的 `open_for_write`／`open_readonly`，WAL 正确性由
+        # `scripting` 那条回归测试守住；这里只钉「用的是那一份」。以前这条断言读的是
+        # 源码里有没有 `reader.backup(writer)` 这串字符，脚本改成调用共享实现就红了
+        # ——而行为恰恰是变好了。
+        self.assertIs(backfill.open_for_write, scripting.open_for_write)
+        self.assertIs(backfill.open_readonly, scripting.open_readonly)
+        self.assertEqual(backfill.BACKUP_REQUIRED, scripting.BACKUP_REQUIRED)
+
+        # 缺 `--backup` 的 `--apply` 在读输入之前就停，返回 2 且一行都不写。
+        database = self.tmp_ledger()
+        args = backfill.build_parser().parse_args(
+            ["--db", str(database), "--apply"])
+        self.assertEqual(backfill.run(args), 2)
+
+        # `--limit` 之外的两条判据也用真实数据钉住：已经有 tag_types 的条目不再排队，
+        # 取不到的条目不写空字典冒充已补（下一轮还要再问）。
+        connection = sqlite3.connect(database)
+        self.addCleanup(connection.close)
+        connection.row_factory = sqlite3.Row
+        pending = backfill.pending_rows(connection, 0)
+        self.assertEqual([row["external_id"] for row in pending], ["18622794"])
+        self.assertEqual(
+            json.loads(backfill.merge_tag_types({"tags": "a b"}, {"a": "artist"})),
+            {"tags": "a b", "tag_types": {"a": "artist"}})
 
     def test_test_entrypoint_enforces_worktree_source_and_unittest(self):
         windows = (ROOT / "scripts" / "test.ps1").read_text(encoding="utf-8")
@@ -376,9 +429,11 @@ class OperationalScriptTests(unittest.TestCase):
             )
             connection.commit(); connection.close()
 
+            backup_path = root / "ledger.pre-clean-names.db"
             result = self.clean_names.main([
                 "--db", str(db), "--out", str(root / "plan.csv"),
-                "--log-dir", str(root / "logs"), "--apply",
+                "--log-dir", str(root / "logs"),
+                "--apply", "--backup", str(backup_path),
             ])
 
             self.assertEqual(result, 0)
@@ -395,9 +450,7 @@ class OperationalScriptTests(unittest.TestCase):
                 (2, "ABW-234 (2).mp4", "ABW-234"),
                 (3, "MIDE-950-C.mp4", "MIDE-950"),
             ])
-            backups = list(root.glob("ledger.pre-jav-filename-normalize-*.db"))
-            self.assertEqual(len(backups), 1)
-            backup = sqlite3.connect(backups[0])
+            backup = sqlite3.connect(backup_path)
             self.assertEqual(backup.execute("PRAGMA integrity_check").fetchone()[0], "ok")
             self.assertEqual(backup.execute("SELECT count(*) FROM asset").fetchone()[0], 3)
             backup.close()
@@ -1563,6 +1616,186 @@ class ApplyMetadataTagsTests(unittest.TestCase):
             with redirect_stdout(io.StringIO()):
                 self.assertEqual(self.apply_tags.run(args), 0)
             self.assertFalse((root / "missing.db").exists(), "空跑不该建库")
+
+
+class ScriptingConventionTests(unittest.TestCase):
+    """`peach.scripting` 收口的那几条约定，按行为而不是按源码字符串验收。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name).resolve()
+        self.addCleanup(self.tmp.cleanup)
+        self.db = self.root / "ledger.db"
+        connection = sqlite3.connect(self.db)
+        connection.executescript(
+            "CREATE TABLE asset(id INTEGER PRIMARY KEY);"
+            "CREATE TABLE entity(id INTEGER PRIMARY KEY, kind TEXT);"
+            "CREATE TABLE asset_entity(asset_id INTEGER, entity_id INTEGER);"
+            "CREATE TABLE entity_alias(entity_id INTEGER, alias TEXT);"
+            "CREATE TABLE asset_tag(asset_id INTEGER, tag TEXT);"
+        )
+        connection.execute("INSERT INTO asset(id) VALUES(1)")
+        connection.executemany("INSERT INTO entity(id,kind) VALUES(?,?)",
+                               [(1, "creator"), (2, "performer"), (3, "performer")])
+        connection.commit()
+        connection.close()
+
+    def _args(self, **overrides):
+        values = {"db": self.db, "apply": False, "backup": None}
+        values.update(overrides)
+        return SimpleNamespace(**values)
+
+    def test_readonly_connection_cannot_write_the_ledger(self):
+        connection = scripting.open_readonly(self.db)
+        self.addCleanup(connection.close)
+        with self.assertRaises(sqlite3.OperationalError):
+            connection.execute("INSERT INTO asset(id) VALUES(2)")
+
+    def test_readonly_uri_survives_a_hash_in_the_directory_name(self):
+        awkward = self.root / "a#b"
+        awkward.mkdir()
+        target = awkward / "ledger.db"
+        sqlite3.connect(target).close()
+        connection = scripting.open_readonly(target)
+        self.addCleanup(connection.close)
+        self.assertEqual(connection.execute("SELECT 1").fetchone()[0], 1)
+
+    def test_dry_run_gets_a_read_only_connection_and_writes_no_backup(self):
+        backup = self.root / "unused.db"
+        connection = scripting.open_for_write(self._args(backup=backup))
+        self.addCleanup(connection.close)
+        with self.assertRaises(sqlite3.OperationalError):
+            connection.execute("INSERT INTO asset(id) VALUES(2)")
+        self.assertFalse(backup.exists(), "dry-run 不该产生备份")
+
+    def test_apply_without_backup_is_refused_with_the_single_house_wording(self):
+        with self.assertRaises(SystemExit) as caught:
+            scripting.open_for_write(self._args(apply=True))
+        self.assertEqual(str(caught.exception), "--apply 必须同时给 --backup")
+
+    def test_apply_backup_keeps_transactions_that_are_still_only_in_the_wal(self):
+        """WAL 里已提交未 checkpoint 的事务必须进备份；文件复制会把它们丢掉。"""
+        writer = sqlite3.connect(self.db)
+        writer.execute("PRAGMA journal_mode=WAL")
+        writer.execute("INSERT INTO asset(id) VALUES(99)")
+        writer.commit()
+        self.addCleanup(writer.close)
+
+        backup = self.root / "backup.db"
+        connection = scripting.open_for_write(self._args(apply=True, backup=backup))
+        self.addCleanup(connection.close)
+        connection.execute("INSERT INTO asset(id) VALUES(100)")
+        connection.commit()
+
+        saved = sqlite3.connect(backup)
+        self.addCleanup(saved.close)
+        ids = {row[0] for row in saved.execute("SELECT id FROM asset")}
+        self.assertIn(99, ids, "WAL 中的已提交事务丢了")
+        self.assertNotIn(100, ids, "备份必须是写入之前的状态")
+
+    def test_counts_of_reports_the_shared_base_plus_the_callers_own_measures(self):
+        connection = scripting.open_readonly(self.db)
+        self.addCleanup(connection.close)
+        counts = scripting.counts_of(connection, {
+            "performer": "SELECT count(*) FROM entity WHERE kind='performer'",
+            "asset_tag": "SELECT count(*) FROM asset_tag",
+        })
+        self.assertEqual(counts, {"asset": 1, "entity": 3, "asset_entity": 0,
+                                  "entity_alias": 0, "performer": 2, "asset_tag": 0})
+
+    def test_ledger_write_args_are_exactly_db_apply_backup(self):
+        parser = scripting.add_ledger_write_args(argparse.ArgumentParser())
+        parsed = parser.parse_args(["--db", str(self.db), "--apply",
+                                    "--backup", str(self.root / "b.db")])
+        self.assertEqual((parsed.db, parsed.apply, parsed.backup),
+                         (self.db, True, self.root / "b.db"))
+        self.assertFalse(parser.parse_args([]).apply)
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["--database", str(self.db)])
+
+    #: 会真写 ledger、已经收口到本模块的脚本。
+    LEDGER_WRITERS = (
+        "backfill_rule34_tag_types",
+        "clean_names",
+        "install_entity_links",
+        "localize_performer_names",
+        "localize_series_names",
+        "merge_duplicate_identities",
+    )
+
+    def test_every_ledger_writer_takes_the_same_three_write_arguments(self):
+        """写入脚本的参数名只有一套。
+
+        曾经并存 `--database`（必填）和 `--backup-dir`（目录）。名字不同的同义参数会让
+        「上次那条命令」在另一个脚本上直接报错，而报错只说缺参数——不说改成什么。
+        """
+        for name in self.LEDGER_WRITERS:
+            with self.subTest(script=name):
+                parser = load_script(name).build_parser()
+                dests = {action.dest for action in parser._actions}
+                self.assertLessEqual({"db", "apply", "backup"}, dests)
+                self.assertNotIn("database", dests)
+                self.assertNotIn("backup_dir", dests)
+
+    def test_every_ledger_writer_opens_the_ledger_through_this_module(self):
+        """连接、备份、拒绝三件事只有一处实现。
+
+        判据落在「用的是不是同一个函数」上，而不是源码里出现过哪个字符串：脚本各自
+        `sqlite3.connect` 时，dry-run 拿到的是可写连接，「这一趟绝不写库」只是靠读代码
+        维持的约定。
+        """
+        for name in self.LEDGER_WRITERS:
+            with self.subTest(script=name):
+                module = load_script(name)
+                self.assertIs(module.open_for_write, scripting.open_for_write)
+
+    def test_rate_limiter_waits_the_remainder_rather_than_the_full_interval(self):
+        now = [100.0]
+        slept: list[float] = []
+
+        def sleeper(seconds):
+            slept.append(seconds)
+            now[0] += seconds
+
+        limiter = scripting.RateLimiter(2.0, clock=lambda: now[0], sleeper=sleeper)
+        limiter.wait()
+        self.assertEqual(slept, [], "第一次不该等")
+        now[0] += 1.5                        # 本地处理已经花了 1.5 秒
+        limiter.wait()
+        self.assertEqual(slept, [0.5], "只该补齐差额，不是又睡满一个间隔")
+        now[0] += 5.0
+        limiter.wait()
+        self.assertEqual(slept, [0.5], "间隔已过就不再等")
+
+    def test_zero_interval_rate_limiter_never_sleeps(self):
+        slept: list[float] = []
+        limiter = scripting.RateLimiter(0, sleeper=slept.append)
+        limiter.wait()
+        limiter.wait()
+        self.assertEqual(slept, [])
+
+    def test_host_limiter_matches_on_dot_boundaries_not_substrings(self):
+        now = [0.0]
+        slept: list[float] = []
+
+        def sleeper(seconds):
+            slept.append(seconds)
+            now[0] += seconds
+
+        limiter = scripting.HostLimiter({"x.com": 2.0}, clock=lambda: now[0],
+                                        sleeper=sleeper)
+        limiter.wait("https://netflix.com/a")
+        limiter.wait("https://netflix.com/b")
+        self.assertEqual(slept, [], "netflix.com 不是 x.com 的子域，不该被限速")
+        limiter.wait("https://mobile.x.com/a")
+        limiter.wait("https://www.x.com/b")
+        self.assertEqual(slept, [2.0], "同一主机的第二次请求必须等一个间隔")
+
+    def test_host_under_rejects_a_domain_that_merely_ends_with_the_key(self):
+        self.assertTrue(scripting.host_under("x.com", ("x.com",)))
+        self.assertTrue(scripting.host_under("mobile.X.com", ("x.com",)))
+        self.assertFalse(scripting.host_under("notx.com", ("x.com",)))
+        self.assertFalse(scripting.host_under("", ("x.com",)))
 
 
 if __name__ == "__main__":

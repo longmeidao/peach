@@ -15,7 +15,10 @@ from .config import (
 )
 from .follow_cli import register as register_follow
 from .migrations import plan, upgrade
+from .scripting import open_readonly
 from .sync import LedgerSync, device_id
+from .sync import plan as sync_plan
+from .sync import writer_device
 
 
 DEFAULT_DB = DATABASE_PATH
@@ -103,6 +106,84 @@ def _migrate(args: argparse.Namespace) -> int:
     return 0
 
 
+#: 「加工进度」的分母：能落到本机的视频。在线资产没有文件，探测和接触表对它们
+#: 不适用，混进分母只会让每一行的百分比永远到不了 100。
+_PROCESSED_SCOPE = "medium='video' AND location!='online'"
+_PROCESSED_MEASURES = (
+    ("有时长 (ffprobe)", "duration IS NOT NULL"),
+    ("有接触表", "snapshot_path IS NOT NULL"),
+    ("有哈希", "hash IS NOT NULL"),
+    ("有创作者归属", "creator IS NOT NULL AND creator!=''"),
+    ("有消费记录", "play_count>0 OR rating IS NOT NULL"),
+)
+
+
+def _status(args: argparse.Namespace) -> int:
+    """一屏看完账本、迁移和同步状态。只读，随时可跑。
+
+    这里刻意不报后台任务：进程名和日志 mtime 都不是存活判据（长跑批处理各自持有
+    pid 锁与进度文件），`scripts/job_status.py` 才是那件事的正式表面。
+    """
+    if not args.db.is_file():
+        print(f"账本不存在：{args.db}")
+        return 4
+    connection = open_readonly(args.db)
+    try:
+        one = lambda sql: connection.execute(sql).fetchone()[0]      # noqa: E731
+        print(f"账本 {args.db}")
+        for location, count, size in connection.execute(
+                "SELECT location,COUNT(*),COALESCE(SUM(size),0) FROM asset "
+                "GROUP BY 1 ORDER BY 3 DESC"):
+            print(f"  {location or '?':<10}{count:>9,} 条{size / 1024 ** 4:>10.2f} TB")
+        print(f"  {'合计':<10}{one('SELECT COUNT(*) FROM asset'):>9,} 条"
+              f"{one('SELECT COALESCE(SUM(size),0) FROM asset') / 1024 ** 4:>10.2f} TB")
+
+        print("\n  媒介构成：")
+        for medium, count, size in connection.execute(
+                "SELECT medium,COUNT(*),COALESCE(SUM(size),0) FROM asset "
+                "GROUP BY 1 ORDER BY 2 DESC"):
+            print(f"    {medium or '?':<14}{count:>8,}{size / 1024 ** 3:>11.1f} GB")
+
+        total = one(f"SELECT COUNT(*) FROM asset WHERE {_PROCESSED_SCOPE}")
+        print(f"\n  加工进度（本机视频 {total:,} 条）：")
+        for label, condition in _PROCESSED_MEASURES:
+            done = one(f"SELECT COUNT(*) FROM asset WHERE {_PROCESSED_SCOPE} "
+                       f"AND ({condition})")
+            percent = done / total * 100 if total else 0.0
+            print(f"    {label:<18}{done:>8,} / {total:,}  {percent:5.1f}%  "
+                  f"{'█' * int(percent / 4)}")
+
+        print("\n  情境层：")
+        for column, label in (("ctx_length", "时长档"), ("ctx_orient", "屏向"),
+                              ("ctx_quality", "画质")):
+            rows = connection.execute(
+                f"SELECT {column},COUNT(*) FROM asset WHERE {column} IS NOT NULL "
+                "GROUP BY 1 ORDER BY 2 DESC").fetchall()
+            if rows:
+                print(f"    {label:<8}"
+                      + "  ".join(f"{key}={value:,}" for key, value in rows))
+    finally:
+        connection.close()
+
+    all_migrations, pending = plan(args.db, MIGRATIONS_DIR)
+    print(f"\n  迁移：共 {len(all_migrations)} 个，待应用 {len(pending)} 个")
+    for migration in pending:
+        print(f"    PENDING {migration.version} {migration.name}")
+
+    decision = sync_plan(args.db, args.shared_db)
+    owner = writer_device(args.db, args.shared_db)
+    # 只读取已有的 device-id，不像 `device_id()` 那样在缺失时顺手生成一个：
+    # 状态命令生成标识会让「这一代是谁写的」多出一个从没写过库的名字。
+    local_device = ""
+    try:
+        local_device = (STATE_DIR / "device-id").read_text(encoding="utf-8").strip()
+    except OSError:
+        pass
+    whose = "本机" if owner and owner == local_device else (owner or "未确定")
+    print(f"  同步：{decision.action} · {decision.reason}；写入端 {whose}")
+    return 0
+
+
 def _ledger_sync(args: argparse.Namespace) -> int:
     sync = LedgerSync(args.db, args.shared_db, device_id(STATE_DIR), interval=0)
     decision = sync.take_ownership() if args.take_ownership else sync.synchronize_now()
@@ -145,6 +226,11 @@ def build_parser() -> argparse.ArgumentParser:
     migrate.add_argument("--yes", action="store_true")
     migrate.set_defaults(handler=_migrate)
 
+    status = commands.add_parser("status", help="read-only ledger, migration and sync state")
+    status.add_argument("--db", type=Path, default=DEFAULT_DB)
+    status.add_argument("--shared-db", type=Path, default=SHARED_DATABASE_PATH)
+    status.set_defaults(handler=_status)
+
     ledger_sync = commands.add_parser("ledger-sync", help="synchronize the local ledger now")
     ledger_sync.add_argument("--db", type=Path, default=DEFAULT_DB)
     ledger_sync.add_argument("--shared-db", type=Path, default=SHARED_DATABASE_PATH)
@@ -154,6 +240,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     register_follow(commands)
     return parser
+
+
+def subcommands() -> frozenset[str]:
+    """`peach` 现有的子命令名。
+
+    打包入口靠它决定「第一个参数是子命令还是托盘参数」。这个集合必须从 parser 现算，
+    不能在别处抄一份常量：抄过一次，结果是 `follow` 和 `ledger-sync` 在 EXE 里一直
+    不可达，而且不报错——参数被当成托盘参数吞掉了。
+
+    `_subparsers` 是 argparse 私有属性，argparse 没有公开的「列出子命令」接口；私有
+    访问只留在这一处。
+    """
+    names: set[str] = set()
+    container = build_parser()._subparsers
+    for action in getattr(container, "_group_actions", ()):
+        names.update(getattr(action, "choices", ()) or ())
+    return frozenset(names)
 
 
 def main(argv: list[str] | None = None) -> int:

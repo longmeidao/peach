@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import argparse
-import sqlite3
 import sys
 from collections import Counter
 from pathlib import Path
@@ -17,6 +16,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from peach.review_csv import write_rows
+from peach.scripting import open_readonly
 from peach.config import DATABASE_PATH
 
 
@@ -55,8 +55,7 @@ def classify(path: str, creator: str) -> tuple[str, str, str, str, str, str]:
 
 
 def rows(database: Path) -> list[dict[str, object]]:
-    connection = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True)
-    connection.row_factory = sqlite3.Row
+    connection = open_readonly(database)
     result: list[dict[str, object]] = []
     query = """
       SELECT a.id AS asset_id,a.medium,a.location,a.path,e.canonical_name AS creator,

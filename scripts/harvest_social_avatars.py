@@ -43,7 +43,6 @@ import os
 import re
 import sqlite3
 import sys
-import threading
 import time
 import urllib.parse
 import uuid
@@ -60,10 +59,11 @@ from peach.avatar_provider import (   # noqa: E402
 from peach.config import DATABASE_PATH, GENERATED_DIR, STATE_DIR   # noqa: E402
 from peach.http import HttpRequest, HttpTransport, HttpxTransport   # noqa: E402
 from peach.review_csv import read_rows, write_rows   # noqa: E402
+from peach.scripting import (   # noqa: E402
+    USER_AGENT, HostLimiter, host_under, hostname_of, open_readonly,
+)
 from peach.social_links import twimg_tiers   # noqa: E402
 
-BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-              "(KHTML, like Gecko) Chrome/125.0 Safari/537.36")
 
 X_HOSTS = ("x.com", "twitter.com", "mobile.twitter.com")
 AGGREGATOR_HOSTS = ("lit.link", "linktr.ee", "allmylinks.com", "twpf.jp")
@@ -133,44 +133,12 @@ CANDIDATE_FIELDS = (
 )
 
 
-def under(host: str, domains: tuple[str, ...]) -> bool:
-    """host 是否就是这些域名之一或其子域；后缀匹配必须落在点边界上。"""
-    return any(host == domain or host.endswith("." + domain) for domain in domains)
-
-
-def hostname(url: str) -> str:
-    return (urllib.parse.urlsplit(url).hostname or "").casefold().removeprefix("www.")
-
-
-class HostLimiter:
-    """按主机限速。键匹配必须落在点边界上——`"x.com" in "netflix.com"` 是真的，
-    子串匹配会把无关主机按 X 的节拍限速；方向上只是慢，但错了就是错了。"""
-
-    def __init__(self, intervals: dict[str, float]):
-        self._intervals = intervals
-        self._locks = {host: threading.Lock() for host in intervals}
-        self._next = {host: 0.0 for host in intervals}
-
-    def wait(self, url: str) -> None:
-        host = hostname(url)
-        key = next((h for h in self._intervals if under(host, (h,))), None)
-        if key is None:
-            return
-        with self._locks[key]:
-            now = time.monotonic()
-            delay = self._next[key] - now
-            if delay > 0:
-                time.sleep(delay)
-                now = time.monotonic()
-            self._next[key] = now + self._intervals[key]
-
-
 def fetch(http: HttpTransport, url: str, timeout: float, limiter: HostLimiter,
           accept: str = "text/html,application/xhtml+xml,*/*;q=0.8"):
     """取一次；网络层异常降级为 None，单个来源的 TLS 抖动不拖垮整批。"""
     limiter.wait(url)
     try:
-        return http(HttpRequest("GET", url, {"User-Agent": BROWSER_UA, "Accept": accept}),
+        return http(HttpRequest("GET", url, {"User-Agent": USER_AGENT, "Accept": accept}),
                     timeout, 16 * 1024 * 1024)
     except Exception:
         return None
@@ -220,20 +188,20 @@ def identity_match(names: list[str], text: str) -> str:
 
 def classify(url: str) -> tuple[str, str]:
     """(link_kind, label)。label 要让人在资料页上不点就知道去的是什么。"""
-    host = hostname(url)
-    if under(host, X_HOSTS):
+    host = hostname_of(url)
+    if host_under(host, X_HOSTS):
         handle = urllib.parse.urlsplit(url).path.strip("/").split("?")[0]
         return "social", (f"X @{handle}" if handle and HANDLE.match(handle) else "X")
     for hosts, platform in SOCIAL_LABELS.items():
-        if under(host, hosts):
+        if host_under(host, hosts):
             handle = urllib.parse.urlsplit(url).path.strip("/").lstrip("@")
             return "social", (f"{platform} @{handle}" if handle else platform)
-    if under(host, AGGREGATOR_HOSTS):
+    if host_under(host, AGGREGATOR_HOSTS):
         return "social", f"链接集（{host}）"
-    if under(host, BLOG_HOSTS):
+    if host_under(host, BLOG_HOSTS):
         return "social", "博客"
     for hosts, label in CATALOG_LABELS.items():
-        if under(host, hosts):
+        if host_under(host, hosts):
             return "catalog", label
     return "official", "官方网站"
 
@@ -245,19 +213,19 @@ def profile_shaped(url: str) -> bool:
     平台而不是这个人。X 域内只认「单段 handle 形」路径——X 的页脚与帮助页全是
     单段或两段真锚点，靠枚举保留字加单段约束一起拦；youtu.be 没有个人主页形态。
     """
-    host = hostname(url)
+    host = hostname_of(url)
     path = urllib.parse.urlsplit(url).path
-    if under(host, X_HOSTS):
+    if host_under(host, X_HOSTS):
         segments = path.strip("/").split("/")
         return (len(segments) == 1 and HANDLE.match(segments[0])
                 and segments[0].lower() not in X_RESERVED)
-    if under(host, ("instagram.com",)):
+    if host_under(host, ("instagram.com",)):
         return not re.search(r"^/(p|reel|reels|explore|stories)(\b|/)", path)
-    if under(host, ("youtube.com",)):
+    if host_under(host, ("youtube.com",)):
         return path.startswith(("/@", "/channel/", "/c/", "/user/"))
-    if under(host, ("youtu.be",)):
+    if host_under(host, ("youtu.be",)):
         return False
-    if under(host, ("tiktok.com",)):
+    if host_under(host, ("tiktok.com",)):
         return path.startswith("/@")
     return True
 
@@ -317,11 +285,11 @@ def parse_link_page(url: str, body: str) -> dict:
         og = OG_IMAGE.search(body)
         if og:
             icon = html_mod.unescape(og.group(1))
-    self_host = hostname(url)
+    self_host = hostname_of(url)
     anchors: list[str] = []
     for href in ANCHOR_HREF.findall(body):
         href = html_mod.unescape(href).strip()
-        if href.startswith("http") and hostname(href) != self_host:
+        if href.startswith("http") and hostname_of(href) != self_host:
             anchors.append(href)
     return {"title": title, "icon": icon, "anchors": anchors}
 
@@ -465,7 +433,7 @@ def harvest_entity(record: dict, http: HttpTransport, limiter: HostLimiter,
     # 集链页：X 简介里给的入口。闸门用集链页自己的标题/正文再验一遍——
     # 就算 X 一跳过了，聚合页也可能被别人注册同 handle 抢走。
     aggregator_urls = [link["url"] for link in links
-                       if under(hostname(link["url"]), AGGREGATOR_HOSTS)]
+                       if host_under(hostname_of(link["url"]), AGGREGATOR_HOSTS)]
     for agg_url in list(dict.fromkeys(u.rstrip("/") for u in aggregator_urls))[:3]:
         response = fetch(http, agg_url, timeout, limiter)
         if response is None or response.status != 200:
@@ -484,9 +452,9 @@ def harvest_entity(record: dict, http: HttpTransport, limiter: HostLimiter,
             if kind == "official":
                 # 集链页上的不明外链不进 official——那是给事务所这类已核实来源的；
                 # 用主机名当标签让人一眼看清它其实是什么。
-                kind, label = "social", hostname(href)
+                kind, label = "social", hostname_of(href)
             links.append({"link_kind": kind, "label": label, "url": href,
-                          "evidence": (f"{hostname(agg_url)} 页面锚点"
+                          "evidence": (f"{hostname_of(agg_url)} 页面锚点"
                                        + (f"，标题「{page['title'][:40]}」"
                                           if page["title"] else "")),
                           "gated": bool(agg_identity)})
@@ -498,12 +466,12 @@ def harvest_entity(record: dict, http: HttpTransport, limiter: HostLimiter,
                 candidates.append({
                     "provider": "social-web", "source_kind": "official_profile",
                     "source_url": page["icon"],
-                    "external_id": hostname(agg_url),
+                    "external_id": hostname_of(agg_url),
                     "width": inspected.width, "height": inspected.height,
                     "mime_type": inspected.mime_type, "sha256": inspected.sha256,
                     "object_path": object_path,
                     "matched": agg_identity, "name_source": "social_identity_gate",
-                    "evidence": f"{hostname(agg_url)} 头像 "
+                    "evidence": f"{hostname_of(agg_url)} 头像 "
                                 f"{inspected.width}×{inspected.height}",
                 })
 
@@ -609,7 +577,7 @@ def merge_prior_pending(db_path: Path, new_path: Path, rows: list[dict]) -> None
     """
     decided: set[str] = set()
     try:
-        connection = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
+        connection = open_readonly(db_path)
         decided = {str(row[0]) for row in connection.execute(
             "SELECT item_key FROM review_decision WHERE category='performer_avatars'")}
         connection.close()
@@ -662,7 +630,7 @@ def run(args) -> int:
         "x.com": 2.0, "pbs.twimg.com": 0.3, "lit.link": 1.5,
         "babepedia.com": 3.0, "linktr.ee": 2.0,
     })
-    connection = sqlite3.connect(f"file:{args.db.as_posix()}?mode=ro", uri=True)
+    connection = open_readonly(args.db)
     http = HttpxTransport()
     caches = {
         "social": AvatarCandidateCache(args.cache_root / "social"),

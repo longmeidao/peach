@@ -61,15 +61,12 @@ from peach.catalog_rules import is_jav_code
 from peach.config import DATABASE_PATH, GENERATED_DIR
 from peach.http import HttpRequest, HttpTransport, HttpxTransport
 from peach.review_csv import read_rows, write_rows
+from peach.scripting import HostLimiter, USER_AGENT, open_readonly
 
 GFRIENDS_RAW = "https://raw.githubusercontent.com/gfriends/gfriends/master/"
 # 目录名首字符即质量档位；0 最优，z（DMM 官方小图）最次。
 QUALITY_ORDER = "0123456789abcdefghijklmnopqrstuvwxyz"
 AVATAR_FILE_RE = re.compile(r"^performer-(\d+)\.img$")
-BROWSER_UA = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/125.0 Safari/537.36"
-)
 _LIMITER: "HostLimiter | None" = None
 
 FIELDS = (
@@ -269,34 +266,6 @@ def quality_key(category: str, filename: str) -> tuple[int, str, str]:
     return (rank if rank >= 0 else len(QUALITY_ORDER), category, filename)
 
 
-class HostLimiter:
-    """按主机分别限速：每个主机一把锁、一个下次可发时刻。"""
-
-    def __init__(self, intervals: dict[str, float]):
-        self._intervals = intervals
-        self._locks = {host: threading.Lock() for host in intervals}
-        self._next: dict[str, float] = {host: 0.0 for host in intervals}
-
-    def _key(self, url: str) -> str | None:
-        hostname = urllib.parse.urlsplit(url).hostname or ""
-        for host in self._intervals:
-            if host in hostname:
-                return host
-        return None
-
-    def wait(self, url: str) -> None:
-        key = self._key(url)
-        if key is None:
-            return
-        with self._locks[key]:
-            now = time.monotonic()
-            delay = self._next[key] - now
-            if delay > 0:
-                time.sleep(delay)
-                now = time.monotonic()
-            self._next[key] = now + self._intervals[key]
-
-
 def fetch(transport: HttpTransport, url: str, accept: str,
           timeout: float = 30, max_bytes: int = 4 * 1024 * 1024):
     """联网取一次；任何网络层异常都降级为 None，不让单条 TLS 抖动打断整批。"""
@@ -305,7 +274,7 @@ def fetch(transport: HttpTransport, url: str, accept: str,
         active.wait(url)
     try:
         return transport(
-            HttpRequest("GET", url, {"Accept": accept, "User-Agent": BROWSER_UA}),
+            HttpRequest("GET", url, {"Accept": accept, "User-Agent": USER_AGENT}),
             timeout, max_bytes)
     except Exception:
         return None
@@ -336,12 +305,6 @@ def normalized(value: str) -> str:
 
 
 # ---------------------------------------------------------------- ledger（只读）
-
-
-def open_readonly(db_path: Path) -> sqlite3.Connection:
-    # mode=ro 让「绝不写库」成为数据库层的硬保证，而不只是约定。
-    uri = "file:" + urllib.parse.quote(db_path.resolve().as_posix()) + "?mode=ro"
-    return sqlite3.connect(uri, uri=True)
 
 
 def load_performers(connection: sqlite3.Connection) -> list[dict]:

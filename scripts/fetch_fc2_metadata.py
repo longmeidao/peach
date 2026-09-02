@@ -39,7 +39,6 @@ import hashlib
 import http.cookiejar
 import json
 import re
-import sqlite3
 import time
 import sys
 from pathlib import Path
@@ -53,10 +52,9 @@ if str(SRC_DIR) not in sys.path:
 
 from peach.catalog_rules import normalise_code_key
 from peach.review_csv import read_rows, write_rows
+from peach.scripting import USER_AGENT, open_readonly
 from peach.config import DATABASE_PATH, GENERATED_DIR
 
-UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-      "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 ARTICLE_URL = "https://fc2cmadb.com/articles/{video_id}"
 FC2_COVER_WIDTH = 1200
 #: Inertia 把整个 props 树放在这个 script 标签里，正文 HTML 反而是空壳。
@@ -336,8 +334,7 @@ def translated_tags(raw: str) -> list[str]:
 def metadata_candidate_rows(rows: list[dict], database: Path, *, raw_snapshot: Path,
                             fetched_at: str) -> list[dict]:
     """Turn archived article facts into the normal review queue without writing ledger."""
-    connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
-    connection.row_factory = sqlite3.Row
+    connection = open_readonly(database)
     output = []
     try:
         for row in rows:
@@ -404,7 +401,7 @@ def metadata_candidate_rows(rows: list[dict], database: Path, *, raw_snapshot: P
 
 def pending(database: Path, limit: int) -> list[tuple[str, str]]:
     """库里的 FC2 资产，按 (code, video_id) 去重。"""
-    connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
+    connection = open_readonly(database)
     try:
         rows = connection.execute(
             "SELECT DISTINCT code FROM asset "
@@ -419,10 +416,6 @@ def pending(database: Path, limit: int) -> list[tuple[str, str]]:
             seen.setdefault(match.group(0), code)
     ordered = [(code, video_id) for video_id, code in seen.items()]
     return ordered[:limit] if limit else ordered
-
-
-def _write_csv(path: Path, fields: tuple[str, ...], rows: list[dict]) -> None:
-    write_rows(path, fields, rows)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -455,7 +448,7 @@ def run(args: argparse.Namespace) -> int:
         candidates = metadata_candidate_rows(
             rows, args.db, raw_snapshot=args.log, fetched_at=fetched_at,
         )
-        _write_csv(args.metadata_log, METADATA_FIELDS, candidates)
+        write_rows(args.metadata_log, METADATA_FIELDS, candidates)
         print(f"完成：{len(candidates)} 个 FC2 元数据字段候选 -> {args.metadata_log}")
         return 0
     if args.cookies is None:
@@ -469,7 +462,7 @@ def run(args: argparse.Namespace) -> int:
     args.raw.parent.mkdir(parents=True, exist_ok=True)
     raw_log = args.raw.open("w", encoding="utf-8")
     print(f"待抓 {len(todo)} 个 FC2 作品", flush=True)
-    with httpx.Client(cookies=jar, headers={"User-Agent": UA},
+    with httpx.Client(cookies=jar, headers={"User-Agent": USER_AGENT},
                       follow_redirects=True) as client:
         for index, (code, video_id) in enumerate(todo, 1):
             try:
@@ -497,9 +490,9 @@ def run(args: argparse.Namespace) -> int:
                 mark = "合集" if data["is_collection"] else (data["performers"] or "无演员标记")
                 print(f"[{index}/{len(todo)}] 取得 {code} {mark}", flush=True)
             # 每条都落盘：上次抓取死在半路时进度全丢，重来一遍是三小时。
-            _write_csv(args.log, FIELDS, backfill(rows, collected))
-            _write_csv(args.harvest, HARVEST_FIELDS, harvest_rows(collected, owned))
-            _write_csv(args.metadata_log, METADATA_FIELDS, metadata_candidate_rows(
+            write_rows(args.log, FIELDS, backfill(rows, collected))
+            write_rows(args.harvest, HARVEST_FIELDS, harvest_rows(collected, owned))
+            write_rows(args.metadata_log, METADATA_FIELDS, metadata_candidate_rows(
                 backfill(rows, collected), args.db, raw_snapshot=args.log,
                 fetched_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             ))

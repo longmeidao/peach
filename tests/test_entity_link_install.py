@@ -127,7 +127,7 @@ class InstallTests(unittest.TestCase):
 
     def test_apply_without_backup_refuses_and_writes_nothing(self):
         """真实账本写入必须带备份；缺备份要在读输入之前就停。"""
-        code = self.module.main(["--database", str(self.db), "--input", str(self.tmp / "x.csv"),
+        code = self.module.main(["--db", str(self.db), "--input", str(self.tmp / "x.csv"),
                                  "--apply"])
         self.assertEqual(code, 2)
         self.assertEqual(
@@ -141,7 +141,7 @@ class InstallTests(unittest.TestCase):
             encoding="utf-8-sig")
         # `--no-check` 不只是提速：测试不许发网络请求，否则一次断网就变成红灯。
         self.assertEqual(self.module.main(
-            ["--database", str(self.db), "--input", str(source), "--no-check"]), 0)
+            ["--db", str(self.db), "--input", str(source), "--no-check"]), 0)
         self.assertEqual(
             self.connection.execute("SELECT count(*) FROM entity_link").fetchone()[0], 0)
 

@@ -23,11 +23,11 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from peach.config import DATABASE_PATH, GENERATED_DIR
+from peach.config import GENERATED_DIR
 from peach.entities import merge_entity, normalize_entity_name
 from peach.metadata import collapse_repeated_phrase
-from peach.migrations import sqlite_backup
 from peach.review_csv import read_rows, write_rows
+from peach.scripting import add_ledger_write_args, counts_of, open_for_write, verify_after_write
 
 
 SOURCE = "r18dev:series-localization"
@@ -287,39 +287,29 @@ def write_csv(path: Path, rows: list[dict[str, object]]) -> None:
     write_rows(path, FIELDS, rows, fill_missing=True)
 
 
-def counts_of(connection: sqlite3.Connection) -> dict[str, int]:
-    return {
-        "asset": connection.execute("SELECT count(*) FROM asset").fetchone()[0],
-        "entity": connection.execute("SELECT count(*) FROM entity").fetchone()[0],
-        "series": connection.execute(
-            "SELECT count(*) FROM entity WHERE kind='series'").fetchone()[0],
-        "latin_series": connection.execute(
-            "SELECT count(*) FROM entity WHERE kind='series' "
-            "AND canonical_name GLOB '*[A-Za-z]*'").fetchone()[0],
-        "asset_entity": connection.execute("SELECT count(*) FROM asset_entity").fetchone()[0],
-        "entity_alias": connection.execute("SELECT count(*) FROM entity_alias").fetchone()[0],
-    }
+#: 本脚本自己关心的口径；基础计数由 `scripting.counts_of` 给。
+EXTRA_COUNTS = {
+    "series": "SELECT count(*) FROM entity WHERE kind='series'",
+    "latin_series": "SELECT count(*) FROM entity WHERE kind='series' "
+                    "AND canonical_name GLOB '*[A-Za-z]*'",
+}
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="用官方日文证据本地化系列规范名")
-    parser.add_argument("--db", type=Path, default=DATABASE_PATH)
+    add_ledger_write_args(parser)
     parser.add_argument("--candidates", type=Path, required=True)
     parser.add_argument("--revision", required=True)
     parser.add_argument(
         "--audit-csv", type=Path,
         default=GENERATED_DIR / "series-name-localization.csv",
     )
-    parser.add_argument("--apply", action="store_true")
-    parser.add_argument("--backup", type=Path, help="--apply 必需")
     return parser
 
 
 def run(args: argparse.Namespace) -> int:
-    if args.apply and not args.backup:
-        raise SystemExit("--apply 必须同时给 --backup")
     evidence = read_evidence(args.candidates)
-    connection = sqlite3.connect(args.db)
+    connection = open_for_write(args)
     connection.execute("PRAGMA foreign_keys=ON")
     try:
         rows = collect(connection, evidence, args.revision)
@@ -330,18 +320,16 @@ def run(args: argparse.Namespace) -> int:
             print("  未写 ledger（加 --apply --backup 才写）")
             return 0
 
-        before = counts_of(connection)
-        sqlite_backup(args.db, args.backup)
         print(f"  已备份到 {args.backup}")
+        before = counts_of(connection, EXTRA_COUNTS)
         with connection:
             changed = apply_rows(connection, rows, args.revision)
-        after = counts_of(connection)
-        integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
-        foreign_keys = connection.execute("PRAGMA foreign_key_check").fetchall()
+        after = counts_of(connection, EXTRA_COUNTS)
+        integrity, foreign_keys = verify_after_write(connection)
         print("  写入结果：", changed)
         for key in before:
             print(f"    {key}: {before[key]} -> {after[key]}")
-        print(f"  integrity_check={integrity}；foreign_key_check={len(foreign_keys)}")
+        print(f"  integrity_check={integrity}；foreign_key_check={foreign_keys}")
         return 1 if integrity != "ok" or foreign_keys else 0
     finally:
         connection.close()
