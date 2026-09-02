@@ -25,6 +25,18 @@
 - 推理 Provider 与 Agent Provider 的能力契约；
 - 任务归属、进度、取消、成本和证据规则。
 
+下面这些是基础设施而不是产品行为，所以要单独记下被拒绝的候选和不可替代约束，免得下一轮又从「这看起来该有现成库」开始。
+
+| 自研实现 | 被拒绝的候选 | 不可替代约束 |
+|---|---|---|
+| `mp4index.py` 有界 MP4 关键帧索引 | PyAV、`pymp4`、Bento4 | PyAV 需要 demux，`pymp4` 依赖旧 Construct，Bento4 是额外二进制；都不能证明在云盘文件上保留「只读 moov/stss/stts、避免整片流量」的约束。 |
+| `certs.py` 固定项目 CA 与短期叶证书（编码继续调用 OpenSSL） | mkcert、cryptography | mkcert 会接管本机 CA 安装/私钥，不能保持跨设备固定项目 CA；cryptography 只替换证书编码且增加原生依赖，不能删除 Peach 的 Apple 398 天与 CA 生命周期策略。 |
+| `migrations.py` SQLite 迁移 | Alembic | Alembic 会引入 SQLAlchemy/Mako/greenlet；现有范围只需顺序 SQL、校验和、备份与 PyInstaller 资源定位，没有 ORM 消费者。 |
+| Gofile API 直接 HTTP | 社区 wrapper | 官方没有维护中的 Python SDK；社区 wrapper 只是薄封装，不能绕过 Premium `contents` 权限，也不能减少 Peach 的 Bearer 隔离与媒体规范化。 |
+| `netwatch.py`、streaming/segments、sync、versioning/Windows update | 通用替代实现 | 分别是无 PyObjC 的系统通知、FFmpeg/Starlette 上的会话策略、单 writer ledger 规则和 Git/PyInstaller 更新契约；通用替代会保留同量 policy 或扩大依赖。 |
+
+保留自研不是永久豁免：约束改变或候选实现更新时重新跑 POC，不因本表结论跳过外部检索。
+
 ## 必须复用的成熟实现
 
 | 能力 | 复用实现 | Peach 负责 |
@@ -64,6 +76,11 @@
 | 智能体用量/配额 | Provider 官方配额接口；T3 Code/CodexBar 提供本地历史 | 任务路由、脱敏、过期快照标记 |
 | 视频出处/片尾证据 | 现有 FFmpeg 抽帧 + Windows.Media.Ocr WinRT Provider（Windows PowerShell 5.1 固定适配器） | 有界首尾采样、缓存、来源/Full version 分类、健康统计与人工复核 |
 | 参考产品行为 | 当前线上交互 + 有版本的公开 DOM/CSS/JS；取不到源码时用精确截图测量 | 证据登记、无障碍、Peach 差异、回归检查 |
+| 浏览器历史解析 | `browserexport==0.4.4`（已替换 `taste_history.py` 自写的 Chrome/Firefox/Zen/Safari SQLite 解析） | Python 3.14 依赖解析通过；POC 在本机 7 个 Chrome/Firefox/Zen profile 上与 Peach 逐库计数完全一致，macOS 的 Safari／Zen／Firefox／Chrome 路径发现有独立测试。首个消费者是 `/taste` 的本机读取与导出导入；Peach 保留 SQLite backup、Takeout、私有原始存储、域名分析和 candidate 生成，并在 Windows 自己关闭只读连接以避开依赖的文件句柄滞留。跨主机同步不由该依赖提供，仍须显式导出、传输和按来源去重合并。 |
+| 批处理进程锁 | `portalocker==4.3.0` 的 `PidFileLock`，**仍是候选，尚未替换 `jobs.PidFileLock`** | Python 3.14 解析通过，现成覆盖 PID 写入、锁持有者、原子替换、陈旧文件与释放清理。Peach 只保留任务归属和错误文案映射。替换落地前不得声明依赖已进入生产。 |
+| Rule34Video 媒体页解析 | `yt-dlp==2026.8.19`（已部分替换自写解析） | 对真实视频 4533145 无写入提取成功，取得 4 个格式、31 个标签、缩略图与时间。Peach 仍负责作者分页、合集/超多 model 排除、来源分组和跨站去重。 |
+| Rule34.xxx / Paheal 高清封面 | 固定参考 gallery-dl `86047cf67a12bdb6ff1085774f8ad9fc347e8da9`（GPL-2.0，只作协议行为证据，不引入运行时）；运行时复用现有 FFmpeg | booru URL 明确支持 `sample_url`/`preview_url`/`file_url` 回退，Paheal 抽取器只取得原始 `file_url`。真实 POC 中 Rule34.xxx 历史 preview 为 250×141、同哈希 sample 为 1920×1080；Paheal 页面只有低清 poster/og:image，原视频可生成 1280×720 JPEG。视频缩略图工具 ffmpegthumbnailer 默认取 10% 位置，Peach 不再引入 GPL 运行时；直接复用 FFmpeg `blackframe` 导出的 `lavfi.blackframe.pblack`，在开头 30 秒选第一张黑色像素低于 98% 的帧，并用版本化缓存键淘汰旧黑帧。Peach 继续负责 URL 白名单、同源代理、按需双并发抽帧、缓存与低清失败回退，不新增依赖、不改 ledger。 |
+| FANBOX 正文解析 | PixivUtil2 `v20251112` / `e537e96` 的公开正文模型（BSD-2-Clause，只复用数据模型，不引入整套下载器） | Peach 的独立规范化 DTO 已覆盖 image/text/file/article/video/entry、`fileMap`、`embedMap`、`urlEmbedMap` 和旧 HTML 正文，并保留正文顺序、稳定去重、可播放媒体与文件页边界；许可证依据写在实现头部。PixivUtil2 是完整下载器而非可嵌入解析库，因此不引入整套依赖；传输继续固定 `curl_cffi==0.16.2`。真实公开帖 12228983 只读 POC 得到 article、6 图和 Gofile `OS2Qz9`。 |
 
 依赖的第一个消费者及其隔离测试必须在同一改动落地，否则不引入依赖。
 Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检查；固定前端文件由
@@ -77,9 +94,10 @@ Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检�
 | `rm-javlookup.py` | `scripts/scrape_codes.py` | 扩展来源适配器，不再分叉刮削器 |
 | `rm-probe.py` | `scripts/probe.py` | 可复用策略移入 `src/peach`，保留续跑语义 |
 | `rm-sheets.py` | `scripts/sheets.py` | 共用 FFmpeg/任务原语，不再新建抽帧管线 |
-| `rm-ledger.py` | `scripts/ledger.py` + repository/migrations | 新产品读取进入 repository，不放回旧 CLI |
-| `rm-status.py` | `scripts/status.py` | 状态命令只读 |
-| `rm-suggest.py` | `scripts/suggest.py` | 排序逻辑逐步移到应用端口后 |
+| `rm-ledger.py` | `scripts/ledger.py`（扫描摄取，兼 ADR-0021 留存的 stash 导入入口） + repository/migrations | 新产品读取进入 repository，不放回旧 CLI |
+| `rm-status.py`、`scripts/status.py` | `peach status`（`src/peach/cli.py`） | 状态命令只读，并且只有一个入口：打包入口转发全部子命令，不再单独发一个脚本 |
+| `rm-suggest.py`、`scripts/suggest.py` + `moods.json` | `scripts/taste_history.py` + 馆藏页筛选 | 排序与心情筛选留在应用端口，不放回旧 CLI |
+| 各写库脚本私有的 `--database`／`--backup-dir`、自写 backup 与只读连接 | `src/peach/scripting.py`（`open_readonly`、`add_ledger_write_args`、`open_for_write`、`counts_of`、`verify_after_write`、`USER_AGENT`、`RateLimiter`） | 真实写入的参数只有 `--db`／`--apply`／`--backup` 一套；`--apply` 必须同时给 `--backup`，备份走 `peach.migrations.sqlite_backup`，脚本不再各写一份 |
 | `rm-trafficwatch.py` | `scripts/traffic_watch.py` | 只停止任务拥有的进程树 |
 | `rm-sha1.py` | `scripts/sync_sha1_115.py` | 复用 Provider 哈希，不盲目重算网盘媒体 |
 | `import_performer_portraits.py`（原 `agent/claude/performer-portraits`） | `scripts/audit_performer_portraits.py` + `scripts/localize_performer_names.py` | 一次性导入已执行完并记在 STATUS；后继只产 CSV，不写头像文件 |
@@ -92,7 +110,7 @@ Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检�
 
 1. Video.js 已接管详情播放；`MediaEngine.stream_plan` 已让 115/PikPak 原生 MP4 使用 HLS 临时短片段，仍需补自适应码率、多路清单和生产验收。CloudDrive 的虚拟盘固定块预取仍属于来源层成本。
 2. Javinizer-Go 已接管番号元数据查询适配；来源扩展只加入 Peach policy 白名单/profile 与健康统计，优先启用其现有 scraper，不在 Peach 分叉站点解析器。
-3. 将剩余 status/suggest/ledger 应用逻辑移到 repository/application 端口，再删除旧 CLI 表面。
+3. `status.py` 已并入 `peach status`，`suggest.py` 已由 `taste_history.py` 与馆藏页取代。剩余的是 `ledger.py`：读取逻辑继续移到 repository/application 端口，摄取入口本身按 ADR-0021 保留。它和 `sync_sha1_115.py` 目前都还没有备份闸门（`tests/test_script_policy.py` 的例外表已记账）。
 4. Peach 不做 token/成本日志扫描器，也不绑定 T3 Code 私有 RPC；使用其界面、CodexBar 和官方实时配额入口。
 5. 「模仿/参考/对齐」不等于允许凭记忆近似。先取得并登记可复现证据；否则标记 `未取得`，不得作为忠实复刻发布。2026-08-17 的 YouTube 详情与 Shorts 动作栏参考已登记在 `docs/HANDOFF.md`，Peach 只复用可测量的层级、尺寸和状态语义。
 6. Web UI 组件优先复用 `web/js/ui-components.js` 和 `.claude/skills/peach-web-ui/SKILL.md` 的语义矩阵。Peach 不引入 Geist React 运行时，只复用已锁定证据中的 Note／Progress／Switch／Tooltip／Collapse／Menu／Fieldset／Scroller／Empty State／Search Input／Spinner／Loading Dots 与 Dialog motion 语义、ARIA 和版式层级；整页异步重绘复用导航代际隔离，没有消费者的 Vercel 后台筛选器不照搬。
@@ -106,23 +124,3 @@ Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检�
    只复用成功日志的精确 URL。MDC-NG 公共仓库只证明 Amazon 日本渠道存在，后端匹配逻辑未公开，故只留
    POC 候选。该流程不新增依赖、不写 ledger，操作步骤见 `peach-jav-cover-workflow`。
 
-## 2026-08-28 自研实现审计
-
-本轮覆盖追更来源、浏览器历史、批处理锁、MP4 索引、证书、迁移、网络监听、流媒体、同步与更新。
-以下是候选判断，不等于依赖已经进入生产；替换仍须按上面的同批闭环执行。
-
-| 当前能力 | 判断 | 已验证证据与 Peach 边界 |
-|---|---|---|
-| `taste_history.py` 自写 Chrome/Firefox/Zen/Safari SQLite 解析 | **已替换为 `browserexport==0.4.4`** | Python 3.14 依赖解析通过；审计 POC 在本机 7 个 Chrome/Firefox/Zen profile 上与 Peach 逐库计数完全一致，macOS 的 Safari／Zen／Firefox／Chrome 路径发现有独立测试。首个消费者是 `/taste` 的本机读取与导出导入；Peach 保留 SQLite backup、Takeout、私有原始存储、域名分析和 candidate 生成，并在 Windows 自己关闭只读连接以避开依赖的文件句柄滞留。跨主机同步不由该依赖提供，仍须显式导出、传输和按来源去重合并。 |
-| `jobs.PidFileLock` | **优先替换为 `portalocker==4.3.0` 的 `PidFileLock`** | Python 3.14 解析通过，现成覆盖 PID 写入、锁持有者、原子替换、陈旧文件与释放清理。Peach 只保留任务归属和错误文案映射。 |
-| Rule34Video 媒体页解析 | **部分替换为 `yt-dlp==2026.8.19`** | 对真实视频 4533145 无写入提取成功，取得 4 个格式、31 个标签、缩略图与时间。Peach 仍负责作者分页、合集/超多 model 排除、来源分组和跨站去重。 |
-| Rule34.xxx / Paheal 高清封面 | **固定参考 gallery-dl `86047cf67a12bdb6ff1085774f8ad9fc347e8da9`，运行时复用现有 FFmpeg** | gallery-dl（GPL-2.0）只作协议行为证据，不引入或复制为运行时：booru URL 明确支持 `sample_url`/`preview_url`/`file_url` 回退，Paheal 抽取器只取得原始 `file_url`。真实 POC 中 Rule34.xxx 历史 preview 为 250×141、同哈希 sample 为 1920×1080；Paheal 页面只有低清 poster/og:image，原视频可生成 1280×720 JPEG。视频缩略图工具 ffmpegthumbnailer 默认取 10% 位置，Peach 不再引入 GPL 运行时；直接复用 FFmpeg `blackframe` 导出的 `lavfi.blackframe.pblack`，在开头 30 秒选第一张黑色像素低于 98% 的帧，并用版本化缓存键淘汰旧黑帧。Peach 继续负责 URL 白名单、同源代理、按需双并发抽帧、缓存与低清失败回退，不新增依赖、不改 ledger。 |
-| FANBOX 正文解析 | **已采用 PixivUtil2 `v20251112` / `e537e96` 的公开正文模型** | Peach 的独立规范化 DTO 已覆盖 image/text/file/article/video/entry、`fileMap`、`embedMap`、`urlEmbedMap` 和旧 HTML 正文，并保留正文顺序、稳定去重、可播放媒体与文件页边界；BSD-2-Clause 依据写在实现头部。PixivUtil2 是完整下载器而非可嵌入解析库，因此不引入整套依赖；传输继续固定 `curl_cffi==0.16.2`。真实公开帖 12228983 只读 POC 得到 article、6 图和 Gofile `OS2Qz9`。 |
-| `mp4index.py` 有界 MP4 关键帧索引 | **保留自研** | PyAV 需要 demux，`pymp4` 依赖旧 Construct，Bento4 是额外二进制；都不能证明在云盘文件上保留“只读 moov/stss/stts、避免整片流量”的约束。 |
-| `certs.py` 固定项目 CA 与短期叶证书 | **保留自研 policy，继续调用 OpenSSL** | mkcert 会接管本机 CA 安装/私钥，不能保持跨设备固定项目 CA；cryptography 只替换证书编码且增加原生依赖，不能删除 Peach 的 Apple 398 天与 CA 生命周期策略。 |
-| `migrations.py` SQLite 迁移 | **保留自研** | Alembic 会引入 SQLAlchemy/Mako/greenlet；现有范围只需顺序 SQL、校验和、备份与 PyInstaller 资源定位，没有 ORM 消费者。 |
-| Gofile API | **保留直接 HTTP** | 官方没有维护中的 Python SDK；社区 wrapper 只是薄封装，不能绕过 Premium `contents` 权限，也不能减少 Peach 的 Bearer 隔离与媒体规范化。 |
-| `netwatch.py`、streaming/segments、sync、versioning/Windows update | **保留现有边界** | 分别是无 PyObjC 的系统通知、FFmpeg/Starlette 上的会话策略、单 writer ledger 规则和 Git/PyInstaller 更新契约；通用替代会保留同量 policy 或扩大依赖。 |
-
-FANBOX 与浏览器历史替换已完成；PID 锁和 Rule34Video 依次进入替换实施。其余保留项在约束改变或候选实现更新时
-重新跑 POC，不因本表结论永久豁免外部检索。
