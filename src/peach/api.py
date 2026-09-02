@@ -23,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from browserexport.common import BrowserexportError
 
 from . import __version__, web_contract, web_follow
-from . import link_marks
+from . import link_marks, site_icons
 from .config import (
     GENERATED_DIR,
     LOCATION_ROOT_DECLARATIONS,
@@ -160,6 +160,10 @@ def _attachment_disposition(title: str, url: str) -> str:
     return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name)}"
 #: 头像单独短一档：id 不变但人会换头像，作者换得还挺勤。
 AVATAR_CACHE_SECONDS = 30 * 24 * 3600
+#: 取图标时报浏览器 UA。CDN 上的图标资产（p-smith、static.cdninstagram）对
+#: 机器人 UA 会直接 403，而这只是一次公开静态文件请求，没有伪装成用户的意思。
+ICON_USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/128.0 Safari/537.36")
 
 
 def create_app(
@@ -826,10 +830,11 @@ def create_app(
 
     @app.api_route("/link-mark", methods=["GET", "HEAD"])
     def link_mark(id: int = 0, args: dict[str, str] = Depends(require_auth)):
-        """资料页外链的圆标：站点 favicon，能上色就上色。
+        """资料页外链的圆标：站点自己最好的那份图标资产，能上色就上色。
 
         地址只从账本按链接 id 解析，绝不接受前端递过来的 URL——和 `/follow-stream`
-        同一条规矩，否则这就是一个任意地址抓取的口子。
+        同一条规矩，否则这就是一个任意地址抓取的口子。取哪一份交给 `site_icons`：
+        先读首页声明的 apple-touch-icon / SVG / manifest，都没有才落到 favicon.ico。
         """
         with database.read_connection() as connection:
             row = connection.execute(
@@ -842,15 +847,20 @@ def create_app(
         if cached is None:
             return JSONResponse({"error": "unavailable"}, status_code=404)
         if not link_marks.is_fresh(cached):
-            source = urlsplit(row["url"])
-            try:
-                upstream = http_transport.client.get(
-                    f"{source.scheme}://{source.netloc}/favicon.ico",
-                    headers={"User-Agent": "Peach/0.2"}, timeout=8, follow_redirects=True)
-                data = upstream.content if upstream.status_code == 200 else b""
-            except (OSError, httpx.HTTPError):
-                data = b""
-            made = (link_marks.render_mark(data) or link_marks.plain_mark(data)) if data else None
+            def fetch(target: str):
+                try:
+                    upstream = http_transport.client.get(
+                        target, headers={"User-Agent": ICON_USER_AGENT},
+                        timeout=8, follow_redirects=True)
+                except (OSError, httpx.HTTPError):
+                    return None
+                if upstream.status_code != 200 or not upstream.content:
+                    return None
+                return upstream.content, upstream.headers.get("content-type", "")
+
+            # 两条通道都不适用时退回原样缩图：糊一点也好过露出地球图标。
+            made = site_icons.best_mark(row["url"], fetch, link_marks.render_mark,
+                                        fallback=link_marks.plain_mark)
             if made:
                 root.mkdir(parents=True, exist_ok=True)
                 cached.write_bytes(made)
