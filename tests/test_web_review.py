@@ -19,29 +19,7 @@ from unittest import mock
 from peach import web_contract as rm_web
 from peach import web_review as rm_review
 
-from test_rm_web import BASE_SCHEMA
-
-
-REVIEW_SCHEMA = """
-CREATE TABLE asset(id INTEGER PRIMARY KEY,location TEXT,path TEXT,name TEXT,medium TEXT,
-  duration REAL,creator TEXT,studio TEXT,series TEXT,code TEXT,release_date TEXT,
-  catalog_title TEXT,original_title TEXT,
-  snapshot_path TEXT,disposal TEXT);
-CREATE TABLE asset_tag(asset_id INTEGER,tag TEXT,confidence REAL DEFAULT 1.0,source TEXT,
-  UNIQUE(asset_id,tag));
-CREATE TABLE entity(id INTEGER PRIMARY KEY,kind TEXT,canonical_name TEXT,normalized_name TEXT,
-  metadata_json TEXT DEFAULT '{}',created_at TEXT,updated_at TEXT,UNIQUE(kind,normalized_name));
-CREATE TABLE entity_alias(entity_id INTEGER,alias TEXT,normalized_alias TEXT,source TEXT,
-  confidence REAL DEFAULT 1.0);
-CREATE TABLE asset_entity(asset_id INTEGER,entity_id INTEGER,role TEXT,source TEXT,
-  confidence REAL,metadata_json TEXT,first_seen_at TEXT,last_seen_at TEXT,
-  UNIQUE(asset_id,entity_id,role,source));
-CREATE TABLE entity_external_ref(entity_id INTEGER,provider TEXT,external_kind TEXT,external_id TEXT,
-  metadata_json TEXT DEFAULT '{}',last_synced_at TEXT,
-  PRIMARY KEY(provider,external_kind,external_id),UNIQUE(entity_id,provider,external_kind));
-CREATE TABLE review_decision(category TEXT,item_key TEXT,status TEXT,reviewer TEXT DEFAULT 'local-default',
-  note TEXT DEFAULT '',updated_at TEXT,PRIMARY KEY(category,item_key));
-"""
+from support.ledger import fresh_ledger
 
 
 class ReviewQueueTests(unittest.TestCase):
@@ -56,11 +34,10 @@ class ReviewQueueTests(unittest.TestCase):
         self.logo_root.mkdir()
         self.avatar_root = root / "avatars"
         self.avatar_root.mkdir()
-        self.db_path = str(root / "ledger.db")
+        self.db_path = str(fresh_ledger(root))
         con = sqlite3.connect(self.db_path)
-        con.executescript(REVIEW_SCHEMA)
-        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-                    "VALUES(1,'creator','ukiru','ukiru')")
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(1,'creator','ukiru','ukiru','2026-01-01','2026-01-01')")
         for asset_id in (1, 2, 3):
             con.execute("INSERT INTO asset(id,location,path,name,medium,snapshot_path) "
                         "VALUES(?,'local',?,?,'video','s.jpg')",
@@ -284,14 +261,14 @@ class ReviewQueueTests(unittest.TestCase):
         规范名倒退成别名。真正要看的是换人，不是换写法。
         """
         con = sqlite3.connect(self.db_path)
-        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-                    "VALUES(30,'performer','桃谷绘里香','桃谷绘里香')")
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(30,'performer','桃谷绘里香','桃谷绘里香','2026-01-01','2026-01-01')")
         con.execute("INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,"
                     "confidence) VALUES(30,'桃谷エリカ','桃谷エリカ','r18dev',1.0)")
         con.execute("INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,"
                     "confidence) VALUES(30,'桃谷絵里香','桃谷絵里香','r18dev',1.0)")
-        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-                    "VALUES(31,'performer','别人','别人')")
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(31,'performer','别人','别人','2026-01-01','2026-01-01')")
         con.commit(); con.close()
         self.write_metadata_rows([
             {"item_key": "ALIAS", "field": "performers", "current": "桃谷绘里香",
@@ -307,8 +284,8 @@ class ReviewQueueTests(unittest.TestCase):
     def test_performer_avatar_rows_show_the_ledger_name_not_the_scraped_romaji(self):
         """候选 CSV 给的是罗马音，账本早就有更好的名字，罗马音本身也已是别名。"""
         con = sqlite3.connect(self.db_path)
-        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-                    "VALUES(40,'performer','释爱丽丝','释爱丽丝')")
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(40,'performer','释爱丽丝','释爱丽丝','2026-01-01','2026-01-01')")
         con.commit(); con.close()
         path = self.candidates / "performer-avatar-candidate-20260818.csv"
         with path.open("w", encoding="utf-8-sig", newline="") as handle:
@@ -562,8 +539,8 @@ class ReviewQueueTests(unittest.TestCase):
     def test_specific_official_tag_replaces_broad_taste_tag_everywhere(self):
         con = sqlite3.connect(self.db_path)
         con.execute("UPDATE asset SET code='ABC-001' WHERE id=1")
-        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-                    "VALUES(50,'tag','乳系','乳系')")
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(50,'tag','乳系','乳系','2026-01-01','2026-01-01')")
         con.execute("INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
                     "VALUES(1,50,'tag','vision_creator',0.6)")
         con.execute("INSERT INTO asset_tag(asset_id,tag,confidence,source) "
@@ -951,8 +928,8 @@ class PerformerAvatarApplyTests(ReviewQueueTests):
         con = sqlite3.connect(self.db_path)
         # 基建的 entity 1 留给 creator_tags 用例；头像落盘另立 performer 9。
         # 名字不能与父类用例插入的「释爱丽丝」撞 UNIQUE(kind, normalized_name)。
-        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-                    "VALUES(9,'performer','示例女优','示例女优')")
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(9,'performer','示例女优','示例女优','2026-01-01','2026-01-01')")
         con.commit(); con.close()
 
     def _seed(self, *, verdict="ok", body=b"\xff\xd8\xff\xdb-fake-jpeg", digest=None,
@@ -1003,8 +980,8 @@ class PerformerAvatarApplyTests(ReviewQueueTests):
         依旧是视频抽帧兜底。
         """
         con = sqlite3.connect(self.db_path)
-        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-                    "VALUES(2,'creator','SexySaffron','sexysaffron')")
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(2,'creator','SexySaffron','sexysaffron','2026-01-01','2026-01-01')")
         con.commit(); con.close()
         body = b"\xff\xd8\xff\xdb-other-jpeg"
         self._seed(body=body, entity_id="2", provider_dir="babepedia")

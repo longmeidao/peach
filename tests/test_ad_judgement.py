@@ -19,7 +19,7 @@ from peach.web_contract import (
     q_items,
     w_batch,
 )
-from test_rm_web import BASE_SCHEMA
+from support.ledger import fresh_ledger
 
 
 def promo_hit(name: str) -> bool:
@@ -105,10 +105,7 @@ class ResourceJunkQueueTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.db_path = Path(self.temporary.name) / "ledger.db"
-        connection = sqlite3.connect(self.db_path)
-        connection.executescript(BASE_SCHEMA)
-        connection.close()
+        self.db_path = fresh_ledger(self.temporary.name)
         self.contract = WebContract(self.db_path)
 
     def add(self, asset_id, location, path, medium, size=1000, duration=None,

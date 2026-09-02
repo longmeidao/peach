@@ -16,7 +16,7 @@ from unittest import mock
 from peach import web_contract as rm_web
 from peach import web_resource_sync as rm_sync
 
-from test_rm_web import BASE_SCHEMA
+from support.ledger import fresh_ledger
 
 
 class PurgeMissingTests(unittest.TestCase):
@@ -31,9 +31,8 @@ class PurgeMissingTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
-        self.db_path = str(self.root / "ledger.db")
+        self.db_path = str(fresh_ledger(self.root))
         con = sqlite3.connect(self.db_path)
-        con.executescript(BASE_SCHEMA)
         sep = chr(92)
         rows = [
             (1, "115", self.LEDGER_DIR + sep + "001.jpg", "001.jpg"),
@@ -48,8 +47,8 @@ class PurgeMissingTests(unittest.TestCase):
         con.executemany("INSERT INTO asset_tag(asset_id,tag,source) VALUES(?,?,'t')",
                         [(2, "标签"), (4, "标签")])
         con.executemany(
-            "INSERT INTO asset_preference(profile_id,asset_id,liked,reason) "
-            "VALUES('default',?,1,'')", [(2,), (4,)])
+            "INSERT INTO asset_preference(profile_id,asset_id,liked,reason,updated_at) "
+            "VALUES('default',?,1,'','2026-01-01')", [(2,), (4,)])
         con.commit()
         con.close()
         self.contract = rm_web.WebContract(Path(self.db_path))

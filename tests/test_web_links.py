@@ -11,12 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from peach import web_links   # noqa: E402
 from peach.jobs import BackgroundJob   # noqa: E402
 
-SCHEMA = """
-CREATE TABLE entity(id INTEGER PRIMARY KEY, kind TEXT, canonical_name TEXT);
-CREATE TABLE entity_link(
-  id INTEGER PRIMARY KEY, entity_id INTEGER NOT NULL, link_kind TEXT NOT NULL,
-  label TEXT NOT NULL, url TEXT NOT NULL, hostname TEXT);
-"""
+from support.ledger import fresh_ledger   # noqa: E402
 
 
 class FakeContract:
@@ -77,13 +72,15 @@ class VerdictTests(unittest.TestCase):
 class SummaryTests(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
-        db = self.tmp / "ledger.db"
+        db = fresh_ledger(self.tmp)
         connection = sqlite3.connect(db)
-        connection.executescript(SCHEMA)
-        connection.executemany("INSERT INTO entity VALUES(?,?,?)",
-                               [(1, "performer", "凉森玲梦"), (2, "studio", "MOODYZ")])
         connection.executemany(
-            "INSERT INTO entity_link(entity_id,link_kind,label,url,hostname) VALUES(?,?,?,?,?)",
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(?,?,?,?,'2026-01-01','2026-01-01')",
+            [(1, "performer", "凉森玲梦", "凉森玲梦"), (2, "studio", "MOODYZ", "moodyz")])
+        connection.executemany(
+            "INSERT INTO entity_link(entity_id,link_kind,label,url,hostname,"
+            "created_at,updated_at) VALUES(?,?,?,?,?,'2026-01-01','2026-01-01')",
             [(1, "social", "X @a", "https://x.com/a", "x.com"),
              (1, "official", "T-POWERS", "https://www.t-powers.co.jp/talent/x/", "www.t-powers.co.jp"),
              (2, "official", "官方网站", "https://moodyz.com/", "moodyz.com")])

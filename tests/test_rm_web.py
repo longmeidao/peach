@@ -13,6 +13,7 @@ from unittest import mock
 
 from peach import web_batch, web_catalog, web_stats
 from peach import web_contract as rm_web
+from support.ledger import fresh_ledger
 
 
 # 调用点继续走 `rm_web`（`web_contract` 现在只是再导出层），但 **patch 必须打在真的
@@ -20,96 +21,13 @@ from peach import web_contract as rm_web
 # 打在再导出层上不会有任何效果，而且不会报错——测试会带着假 mock 一路绿。
 # 同一个 `LOCATION_ROOT_DECLARATIONS` 在存储卷一节属于 `web_stats`、在空目录清理
 # 一节属于 `web_batch`，两个都得分别打。
-BASE_SCHEMA = """
-CREATE TABLE asset(
-  id INTEGER PRIMARY KEY,
-  location TEXT NOT NULL,
-  path TEXT NOT NULL,
-  name TEXT,
-  catalog_title TEXT,
-  original_title TEXT,
-  medium TEXT,
-  size INTEGER,
-  hash TEXT,
-  creator TEXT,
-  studio TEXT,
-  series TEXT,
-  code TEXT,
-  release_date TEXT,
-  duration REAL,
-  width INTEGER,
-  height INTEGER,
-  ctx_length TEXT,
-  ctx_orient TEXT,
-  ctx_quality TEXT,
-  play_count INTEGER DEFAULT 0,
-  last_played TEXT,
-  rating INTEGER,
-  o_count INTEGER,
-  snapshot_path TEXT,
-  first_seen TEXT,
-  feedback TEXT,
-  disposal TEXT,
-  leave_ratio REAL,
-  play_seconds REAL,
-  feedback_at REAL,
-  seek_count INTEGER,
-  max_reached REAL,
-  UNIQUE(location, path)
-);
-CREATE TABLE asset_tag(
-  asset_id INTEGER,
-  tag TEXT,
-  confidence REAL DEFAULT 1.0,
-  source TEXT,
-  UNIQUE(asset_id, tag)
-);
-CREATE TABLE entity(
-  id INTEGER PRIMARY KEY, kind TEXT, canonical_name TEXT, normalized_name TEXT,
-  metadata_json TEXT DEFAULT '{}', created_at TEXT, updated_at TEXT,
-  UNIQUE(kind,normalized_name)
-);
-CREATE TABLE asset_entity(
-  asset_id INTEGER, entity_id INTEGER, role TEXT, source TEXT, confidence REAL,
-  metadata_json TEXT DEFAULT '{}', first_seen_at TEXT, last_seen_at TEXT,
-  UNIQUE(asset_id,entity_id,role,source)
-);
-CREATE TABLE entity_alias(entity_id INTEGER,alias TEXT,normalized_alias TEXT,source TEXT,confidence REAL);
-CREATE TABLE entity_external_ref(entity_id INTEGER,provider TEXT,external_kind TEXT,external_id TEXT,
-  metadata_json TEXT DEFAULT '{}',last_synced_at TEXT);
-CREATE TABLE entity_link(id INTEGER PRIMARY KEY,entity_id INTEGER,link_kind TEXT,label TEXT,url TEXT,
-  hostname TEXT,is_sensitive INTEGER DEFAULT 0,metadata_json TEXT DEFAULT '{}',created_at TEXT,updated_at TEXT);
-CREATE TABLE entity_search_term(entity_id INTEGER,term TEXT,purpose TEXT,source TEXT,created_at TEXT);
-CREATE TABLE watch_queue(profile_id TEXT,asset_id INTEGER,added_at TEXT,source TEXT,
-  PRIMARY KEY(profile_id,asset_id));
-CREATE TABLE playlist(
-  id INTEGER PRIMARY KEY,profile_id TEXT,name TEXT,source_kind TEXT,
-  source_seed_asset_id INTEGER,current_asset_id INTEGER,created_at TEXT,updated_at TEXT);
-CREATE TABLE playlist_item(
-  playlist_id INTEGER,asset_id INTEGER,position INTEGER,added_at TEXT,
-  PRIMARY KEY(playlist_id,asset_id),UNIQUE(playlist_id,position));
-CREATE TABLE asset_preference(profile_id TEXT,asset_id INTEGER,liked INTEGER,reason TEXT,
-  source TEXT,updated_at TEXT,PRIMARY KEY(profile_id,asset_id));
-CREATE TABLE asset_quality_goal(profile_id TEXT,asset_id INTEGER,wanted INTEGER,reason TEXT,
-  updated_at TEXT,PRIMARY KEY(profile_id,asset_id));
-CREATE TABLE asset_tag_preference(profile_id TEXT,asset_id INTEGER,normalized_tag TEXT,
-  hidden INTEGER,updated_at TEXT,PRIMARY KEY(profile_id,asset_id,normalized_tag));
-CREATE TABLE media_binding(asset_id INTEGER,backend TEXT,external_id TEXT,metadata_json TEXT,
-  last_synced_at TEXT,PRIMARY KEY(asset_id,backend));
-CREATE TABLE activity_event(id INTEGER PRIMARY KEY,asset_id INTEGER,kind TEXT,created_at TEXT);
-CREATE TABLE review_decision(
-  category TEXT,item_key TEXT,status TEXT,note TEXT,updated_at TEXT,
-  PRIMARY KEY(category,item_key)
-);
-"""
 
 
 class WebDataTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.db_path = str(Path(self.tmp.name) / "ledger.db")
+        self.db_path = str(fresh_ledger(self.tmp.name))
         con = sqlite3.connect(self.db_path)
-        con.executescript(BASE_SCHEMA)
         con.executemany(
             """INSERT INTO asset(
                  id,location,path,name,medium,size,creator,studio,code,duration,
@@ -130,7 +48,8 @@ class WebDataTests(unittest.TestCase):
              (1, "Canonical Alice", "vision"), (2, "竖屏", "probe")],
         )
         con.executemany(
-            "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(?,?,?,?)",
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(?,?,?,?,'2026-01-01','2026-01-01')",
             [(10, "tag", "足交", "足交"),
              (11, "performer", "Canonical Alice", "canonical alice"),
              (12, "creator", "Canonical Creator", "canonical creator"),
@@ -197,8 +116,8 @@ class WebDataTests(unittest.TestCase):
              ("FC2 官方标签", 0.8, "javinizer:fc2:tag")],
         )
         con.executemany(
-            "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-            "VALUES(?,'tag',?,?)",
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(?,'tag',?,?,'2026-01-01','2026-01-01')",
             [(991, "官方标签", "官方标签"), (992, "FC2 官方标签", "fc2 官方标签")],
         )
         con.executemany(
@@ -339,7 +258,8 @@ class WebDataTests(unittest.TestCase):
     def test_item_surfaces_hide_broad_taste_tag_when_specific_tag_exists(self):
         connection = sqlite3.connect(self.db_path)
         connection.executemany(
-            "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(?,?,?,?)",
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(?,?,?,?,'2026-01-01','2026-01-01')",
             [(60, "tag", "乳系", "乳系"), (61, "tag", "美乳", "美乳")],
         )
         connection.executemany(
@@ -416,14 +336,16 @@ class WebDataTests(unittest.TestCase):
     def test_legacy_length_tags_are_hidden_in_favor_of_numeric_minutes(self):
         con = sqlite3.connect(self.db_path)
         con.execute(
-            "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(14,'tag','短片-2分内','短片-2分内')"
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(14,'tag','短片-2分内','短片-2分内','2026-01-01','2026-01-01')"
         )
         con.execute(
             "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
             "VALUES(1,14,'tag','test',1.0)"
         )
         con.execute(
-            "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(15,'tag','测试分页标签','测试分页标签')"
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(15,'tag','测试分页标签','测试分页标签','2026-01-01','2026-01-01')"
         )
         con.execute(
             "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
@@ -446,7 +368,8 @@ class WebDataTests(unittest.TestCase):
         connection = sqlite3.connect(self.db_path)
         for entity_id, tag in enumerate(("2K", "有码", "无码"), start=201):
             connection.execute(
-                "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(?, 'tag', ?, ?)",
+                "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                "VALUES(?, 'tag', ?, ?,'2026-01-01','2026-01-01')",
                 (entity_id, tag, tag.lower()),
             )
             connection.execute(
@@ -477,7 +400,8 @@ class WebDataTests(unittest.TestCase):
         )
         for entity_id, tag, _label in tagged:
             connection.execute(
-                "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(?, 'tag', ?, ?)",
+                "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                "VALUES(?, 'tag', ?, ?,'2026-01-01','2026-01-01')",
                 (entity_id, tag, tag.lower()),
             )
             connection.execute(
@@ -729,8 +653,8 @@ class WebDataTests(unittest.TestCase):
         self._seed_editions([(9001, "ABF-234.mp4", "ABF-234"),
                              (9002, "ABF-234-UN.mp4", "ABF-234")])
         con = sqlite3.connect(self.db_path)
-        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-                    "VALUES(9100,'tag','无码','无码')")
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(9100,'tag','无码','无码','2026-01-01','2026-01-01')")
         con.execute("INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
                     "VALUES(9002,9100,'tag','test',1.0)")
         con.commit(); con.close()
@@ -1052,8 +976,8 @@ class WebDataTests(unittest.TestCase):
         for offset, name in enumerate(names):
             entity_id = start_id + offset
             con.execute(
-                "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-                "VALUES(?,'performer',?,?)", (entity_id, name, name.casefold()))
+                "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                "VALUES(?,'performer',?,?,'2026-01-01','2026-01-01')", (entity_id, name, name.casefold()))
             con.execute(
                 "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
                 "VALUES(?,?,'performer','test',1.0)", (asset_id, entity_id))
@@ -1128,17 +1052,20 @@ class WebDataTests(unittest.TestCase):
             "INSERT INTO entity_alias VALUES(11,'Alice','alice','test',1.0)"
         )
         con.execute(
-            "INSERT INTO entity_link(entity_id,link_kind,label,url,hostname,is_sensitive) "
-            "VALUES(11,'official','Official','https://example.com/alice','example.com',0),"
-            "(11,'source_reference','Private source','https://source.invalid/a','source.invalid',1)"
+            "INSERT INTO entity_link(entity_id,link_kind,label,url,hostname,is_sensitive,"
+            "created_at,updated_at) "
+            "VALUES(11,'official','Official','https://example.com/alice','example.com',0,"
+            "'2026-01-01','2026-01-01'),"
+            "(11,'source_reference','Private source','https://source.invalid/a',"
+            "'source.invalid',1,'2026-01-01','2026-01-01')"
         )
         con.execute(
-            "INSERT INTO entity_search_term(entity_id,term,purpose,source) "
-            "VALUES(11,'Alice code','source_lookup','user')"
+            "INSERT INTO entity_search_term(entity_id,term,purpose,source,created_at) "
+            "VALUES(11,'Alice code','source_lookup','user','2026-01-01')"
         )
         con.execute(
-            "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-            "VALUES(15,'performer','Related Bob','related bob')"
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(15,'performer','Related Bob','related bob','2026-01-01','2026-01-01')"
         )
         con.execute(
             "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
@@ -1168,8 +1095,8 @@ class WebDataTests(unittest.TestCase):
     def test_entity_name_prefers_canonical_and_only_displays_local_aliases(self):
         con = sqlite3.connect(self.db_path)
         con.executemany(
-            "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-            "VALUES(?,'performer',?,?)",
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(?,'performer',?,?,'2026-01-01','2026-01-01')",
             [(16, "飯岡かなこ", "飯岡かなこ"),
              (17, "森泽佳奈", "森泽佳奈"),
              (18, "释爱丽丝", "释爱丽丝")],
@@ -1266,16 +1193,15 @@ class ChineseSearchTermTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.db_path = str(Path(self.tmp.name) / "ledger.db")
+        self.db_path = str(fresh_ledger(self.tmp.name))
         con = sqlite3.connect(self.db_path)
-        con.executescript(BASE_SCHEMA)
         con.execute(
             "INSERT INTO asset(id,location,path,name,medium,duration,first_seen) "
             "VALUES(1,'local',?,'ABW-232.mp4','video',100,'2026-08-18')",
             (r"R:\Media\ABW-232.mp4",))
         con.execute(
-            "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-            "VALUES(11,'performer','涼森れむ','涼森れむ')")
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(11,'performer','涼森れむ','涼森れむ','2026-01-01','2026-01-01')")
         con.execute(
             "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
             "VALUES(1,11,'performer','test',1.0)")
@@ -1287,9 +1213,12 @@ class ChineseSearchTermTests(unittest.TestCase):
                 rm_web.q_items(self.contract, {"q": query, "limit": "10"})["items"]]
 
     def _add_term(self, term):
+        # purpose 只有 'discovery' 和 'source_lookup' 两个合法值（0002 的 CHECK）。
+        # 这里此前写的是 'search'，真实账本里根本存不下这一行。
         con = sqlite3.connect(self.db_path)
-        con.execute("INSERT INTO entity_search_term(entity_id,term,purpose,source) "
-                    "VALUES(11,?,'search','hanzi-simplified')", (term,))
+        con.execute("INSERT INTO entity_search_term(entity_id,term,purpose,source,"
+                    "created_at) "
+                    "VALUES(11,?,'discovery','hanzi-simplified','2026-01-01')", (term,))
         con.commit(); con.close()
 
     def test_simplified_query_misses_before_a_term_exists(self):
@@ -1325,9 +1254,8 @@ class JavModeAndCoverTests(unittest.TestCase):
         root = Path(self.tmp.name)
         self.covers = root / "covers"
         self.covers.mkdir()
-        self.db_path = str(root / "ledger.db")
+        self.db_path = str(fresh_ledger(root))
         con = sqlite3.connect(self.db_path)
-        con.executescript(BASE_SCHEMA)
         # 前四条是真番号的四种形态；JI-103 虽像番号，但只有 creator、没有发行证据。
         con.executemany(
             "INSERT INTO asset(id,location,path,name,medium,code,creator,studio,duration,first_seen) "
@@ -1565,12 +1493,11 @@ class DuplicateDetectionTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.db_path = str(Path(self.tmp.name) / "ledger.db")
+        self.db_path = str(fresh_ledger(self.tmp.name))
         self.con = sqlite3.connect(self.db_path)
         # 后进先出：这条要在临时目录清理之后注册，才会先关连接。Windows 上没关
         # 的 SQLite 句柄会让 TemporaryDirectory 删不掉文件。
         self.addCleanup(self.con.close)
-        self.con.executescript(BASE_SCHEMA)
         self.next_id = 1
         self.contract = rm_web.WebContract(Path(self.db_path))
 
@@ -1784,14 +1711,13 @@ class TopsRotationTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.db_path = str(Path(self.tmp.name) / "ledger.db")
+        self.db_path = str(fresh_ledger(self.tmp.name))
         con = sqlite3.connect(self.db_path)
         self.addCleanup(con.close)
-        con.executescript(BASE_SCHEMA)
         # 候选池要大于展示位，抽样才有意义（TOPS_POOL_FACTOR 倍）。
         for index in range(40):
-            con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-                        "VALUES(?,'performer',?,?)",
+            con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                        "VALUES(?,'performer',?,?,'2026-01-01','2026-01-01')",
                         (100 + index, f"P{index:02d}", f"p{index:02d}"))
             for copy in range(40 - index):          # 让数量各不相同，排序稳定
                 asset_id = index * 100 + copy
@@ -1834,13 +1760,12 @@ class PhotoSetTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.db_path = str(Path(self.tmp.name) / "ledger.db")
+        self.db_path = str(fresh_ledger(self.tmp.name))
         self.con = sqlite3.connect(self.db_path)
         self.addCleanup(self.con.close)
-        self.con.executescript(BASE_SCHEMA)
         self.con.execute(
-            "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-            "VALUES(1,'creator','桃子','桃子')")
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(1,'creator','桃子','桃子','2026-01-01','2026-01-01')")
         self.con.execute(
             "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,confidence) "
             "VALUES(1,'taozi','taozi','stash:performer',0.9)")
