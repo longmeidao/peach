@@ -29,9 +29,13 @@ from . import link_marks, site_icons
 from .config import GENERATED_DIR
 from .follow import FollowSourceError
 from .follow_avatar import resolve_official_avatar
-from .follow_covers import FollowCoverUnavailable
+from .follow_covers import (
+    PLACEHOLDER_CONTENT_TYPE, PLACEHOLDER_IMAGE, FollowCoverUnavailable,
+)
 from .follow_store import FollowStore
-from .follow_stream import FollowMediaUnavailable
+from .follow_stream import (
+    FollowMediaUnavailable, FollowProxyError, open_upstream, proxy_response_headers,
+)
 from .media import MediaUnavailable
 from .previews import PreviewUnavailable
 from .routes_auth import require_auth
@@ -309,11 +313,22 @@ def avatar(request: Request, id: int, args: dict[str, str] = Depends(require_aut
 
 @router.api_route("/follow-avatar", methods=["GET", "HEAD"])
 def follow_avatar(request: Request, service: str, id: str, args: dict[str, str] = Depends(require_auth)):
-    """Resolve an official creator avatar, then let the image CDN serve it."""
+    """Resolve an official creator avatar, then let the image CDN serve it.
+
+    这个端点只出现在 `<img src>` 里，所以取不到时回的是占位图而不是 JSON：
+    错误正文对 `<img>` 毫无意义，只会留下一个碎图。状态码仍然是 404，
+    前端与缓存据此知道这次没取到。
+
+    成功路径仍然 307 到 CDN：`resolve_official_avatar` 只认 pixiv.pximg.net
+    这一个固定主机，地址不带签名也不带凭据，交给浏览器不泄露任何东西；
+    改成回源代理反而要为每个头像多打一次上游，还丢掉 CDN 缓存。
+    """
     try:
         target = resolve_official_avatar(service, id)
     except (OSError, FollowSourceError):
-        return JSONResponse({"error": "unavailable"}, status_code=404)
+        return Response(PLACEHOLDER_IMAGE, status_code=404,
+                        media_type=PLACEHOLDER_CONTENT_TYPE,
+                        headers={"cache-control": "no-store"})
     response = RedirectResponse(target, status_code=307)
     response.headers["Cache-Control"] = f"private, max-age={AVATAR_CACHE_SECONDS}"
     return response
@@ -361,34 +376,22 @@ def follow_stream(request: Request, id: int, media: int | None = None,
         return JSONResponse({"error": "no such follow item"}, status_code=404)
     try:
         target = state.follow_media_resolver.resolve(item, media, quality)
-        headers = {
-            "User-Agent": "Peach/0.2",
-            "Accept": request.headers.get("accept", "*/*"),
-            "Accept-Encoding": "identity",
-        }
-        if target.referer:
-            headers["Referer"] = target.referer
-        headers.update(target.headers or {})
-        for name in ("range", "if-range"):
-            if request.headers.get(name):
-                headers[name.title()] = request.headers[name]
-        upstream_request = state.http_transport.client.build_request(
-            request.method, target.url, headers=headers,
-        )
-        upstream = state.http_transport.client.send(upstream_request, stream=True)
+        # 跟重定向、逐跳过白名单、非 2xx 一律不转发，都在 follow_stream 里；
+        # 这里只负责把 Peach 的请求接到那个流上。
+        upstream = open_upstream(state.http_transport.client, request.method, target,
+                                 incoming=request.headers)
     except FollowMediaUnavailable as error:
         return JSONResponse({"error": str(error)}, status_code=404)
+    except FollowProxyError as error:
+        # 上游的状态码与正文不转发：403 页面、限流提示、错误 JSON 交给播放器
+        # 没有用处，还会把上游主机和提示语抄给浏览器。对外统一是 502。
+        LOGGER.warning("follow media proxy refused for item %s: %s", id, error)
+        return JSONResponse({"error": "follow media unavailable"}, status_code=502)
     except (OSError, httpx.HTTPError):
         LOGGER.exception("follow media proxy failed for item %s", id)
         return JSONResponse({"error": "follow media unavailable"}, status_code=502)
 
-    forwarded = {}
-    for name in ("accept-ranges", "content-length", "content-range", "content-type",
-                 "etag", "last-modified"):
-        value = upstream.headers.get(name)
-        if value:
-            forwarded[name] = value
-    forwarded["cache-control"] = "no-store"
+    forwarded = proxy_response_headers(upstream.headers)
     # 下载是显式动作，不是播放的副作用：只有带 `download=1` 才让浏览器落盘。
     # 文件名从条目标题来，不回传上游地址——上游主机名同样是不该外露的东西。
     if download:
@@ -421,11 +424,12 @@ def follow_cover(request: Request, id: int, args: dict[str, str] = Depends(requi
     try:
         path = state.follow_cover_service.cover(item)
     except FollowCoverUnavailable:
-        # Paheal itself only has this low-resolution fallback. A temporary FFmpeg or
-        # network failure should degrade to the old cover instead of leaving a hole.
-        if str(item.thumb_url or "").startswith("https://"):
-            return RedirectResponse(str(item.thumb_url), status_code=307)
-        return JSONResponse({"error": "follow cover unavailable"}, status_code=404)
+        # 以前这里 302 到 `item.thumb_url`，等于把上游主机和地址交回浏览器——
+        # 而这个端点存在的全部理由就是不让它外露。FFmpeg 或网络的临时失败改回
+        # 占位图：状态码 404，界面上是一块中性的占位，而不是碎图，也不是上游。
+        return Response(PLACEHOLDER_IMAGE, status_code=404,
+                        media_type=PLACEHOLDER_CONTENT_TYPE,
+                        headers={"cache-control": "no-store"})
     response = FileResponse(path, media_type="image/jpeg")
     response.headers["Cache-Control"] = f"public, max-age={MEDIA_CACHE_SECONDS}"
     return response

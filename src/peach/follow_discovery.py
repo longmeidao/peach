@@ -17,10 +17,10 @@ from pathlib import Path
 
 from .follow import FollowSourceError
 from .follow_avatar import resolve_official_profile
-from .follow_secrets import Credential, CredentialError, CredentialStore
+from .follow_secrets import Credential, CredentialError, credential_store_for
 from .follow_sources import (
-    DEFAULT_MAX_ITEMS, USER_AGENT, F95ZoneConnector, KemonoConnector,
-    Rule34VideoConnector, Rule34XxxConnector, _BaseConnector, canonical_source_ref,
+    F95ZoneConnector, KemonoConnector, Rule34VideoConnector, Rule34XxxConnector,
+    canonical_source_ref,
 )
 
 #: 创作者索引的缓存有效期。索引是几 MB 的整站清单，不该每次发现都重下一遍。
@@ -341,7 +341,8 @@ def _f95_candidates(term: str, transport,
 
 
 def discover(term: str, *, secrets_root: Path, state_root: Path,
-             transport=None, providers: tuple[str, ...] | None = None) -> Discovery:
+             shared_root: Path | None = None, transport=None,
+             providers: tuple[str, ...] | None = None) -> Discovery:
     """把一个裸 id 或名字拿去各来源问一遍。
 
     只回**查到的**结果，每个都带上「为什么认为它命中」。查不到就是查不到，
@@ -355,7 +356,7 @@ def discover(term: str, *, secrets_root: Path, state_root: Path,
     if _TERM_FORBIDDEN_RE.search(text):
         raise FollowSourceError("名字或 id 里不能包含 / \\ ? # & < > 引号或控制字符")
 
-    credentials = CredentialStore(secrets_root)
+    credentials = credential_store_for(secrets_root, shared_root=shared_root)
     index = CreatorIndex(state_root, transport=transport)
     wanted = providers or ("kemono", "coomer", "pawchive", "fanbox", "rule34video",
                            "rule34xxx", "f95zone")

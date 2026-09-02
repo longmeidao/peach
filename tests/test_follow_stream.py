@@ -1,7 +1,13 @@
 import unittest
 from types import SimpleNamespace
 
-from peach.follow_stream import FollowMediaResolver, FollowMediaUnavailable
+import httpx
+
+from peach.follow_stream import (
+    MAX_PROXY_REDIRECTS, FollowMediaResolver, FollowMediaUnavailable,
+    FollowProxyError, ResolvedFollowMedia, open_upstream, proxy_request_headers,
+    proxy_response_headers,
+)
 from peach.follow_secrets import Credential
 from peach.http import HttpResponse
 
@@ -106,9 +112,20 @@ class FollowMediaResolverTests(unittest.TestCase):
         self.assertEqual(target.headers, {"Authorization": "Bearer secret"})
         self.assertNotIn("secret", target.url)
 
+    def test_the_resolution_cache_stays_bounded(self):
+        """只有 rule34video 会进这个缓存，一次列表几百条；只按 TTL 过期的话，
+        进程活多久它就长多久。"""
+        def transport(request, timeout, max_bytes):
+            return HttpResponse(200, {}, b"<script>video_url: "
+                                b"'https://rule34video.com/get_file/1_720p.mp4/'</script>")
 
-if __name__ == "__main__":
-    unittest.main()
+        resolver = FollowMediaResolver(transport, max_cache_entries=2)
+        for identifier in range(6):
+            resolver.resolve(SimpleNamespace(
+                id=identifier, provider="rule34video",
+                url=f"https://rule34video.com/video/{identifier}/x/",
+                media_url=None, metadata={}))
+        self.assertEqual(len(resolver._cache), 2)
 
 
 class Rule34VideoQualityTests(unittest.TestCase):
@@ -168,3 +185,114 @@ class Rule34VideoQualityTests(unittest.TestCase):
         resolved = self._resolver(body=b"").resolve(item)
         self.assertEqual(resolved.qualities, (),
                          "只有 rule34video 给多档，其余来源只显示原画")
+
+
+class ProxyUpstreamTests(unittest.TestCase):
+    """`/follow-stream` 的代理边界：跟哪些跳、转发哪些头、什么时候干脆不转发。
+
+    生产用的那个 client 开着 `follow_redirects=True`，所以这里的替身也开着：
+    要证明的正是「按跳自己判」而不是「靠 client 的默认值」。
+    """
+
+    def _client(self, handler):
+        client = httpx.Client(transport=httpx.MockTransport(handler),
+                              follow_redirects=True)
+        self.addCleanup(client.close)
+        return client
+
+    def test_a_redirect_out_of_the_whitelist_never_carries_the_credential(self):
+        """上游只要回一个指向别处的 Location，httpx 就会把 Cookie 一路带过去。"""
+        seen = []
+
+        def handler(request):
+            seen.append(request)
+            return httpx.Response(302, request=request, headers={
+                "location": "https://collector.example/steal.jpg"})
+
+        target = ResolvedFollowMedia(
+            "https://attachments.f95zone.to/2026/08/one.jpg",
+            "https://f95zone.to/threads/1/post-1",
+            {"Cookie": "xf_session=fixture"},
+            allowed_hosts=("attachments.f95zone.to",))
+        with self.assertRaises(FollowProxyError):
+            open_upstream(self._client(handler), "GET", target, incoming={})
+        self.assertEqual([str(request.url) for request in seen],
+                         ["https://attachments.f95zone.to/2026/08/one.jpg"],
+                         "出界的那一跳一次都不能发出去")
+        self.assertEqual(seen[0].headers["cookie"], "xf_session=fixture",
+                         "第一跳确实带着会话，所以拦住的是真的泄露")
+
+    def test_a_redirect_inside_the_source_domain_is_still_followed(self):
+        """归档站主域会 302 到取文件的节点（实测 kemono → n1.），必须跟得上。"""
+
+        def handler(request):
+            if request.url.host == "kemono.cr":
+                return httpx.Response(302, request=request, headers={
+                    "location": "https://n1.kemono.cr/data/7.mp4"})
+            return httpx.Response(200, request=request,
+                                  stream=httpx.ByteStream(b"frames"),
+                                  headers={"content-type": "video/mp4"})
+
+        target = ResolvedFollowMedia("https://kemono.cr/data/7.mp4",
+                                     allowed_hosts=("kemono.cr",))
+        upstream = open_upstream(self._client(handler), "GET", target, incoming={})
+        self.addCleanup(upstream.close)
+        self.assertEqual(upstream.read(), b"frames")
+
+    def test_an_upstream_error_page_is_refused_instead_of_forwarded(self):
+        """403 页面、限流提示、错误 JSON 转发给播放器没有用处，只会把上游的
+        主机名和提示语抄给浏览器。"""
+
+        def handler(request):
+            return httpx.Response(403, request=request,
+                                  content=b"<html>blocked by upstream shield</html>")
+
+        target = ResolvedFollowMedia("https://kemono.cr/data/7.mp4",
+                                     allowed_hosts=("kemono.cr",))
+        with self.assertRaises(FollowProxyError) as raised:
+            open_upstream(self._client(handler), "GET", target, incoming={})
+        self.assertIn("403", str(raised.exception))
+        self.assertNotIn("shield", str(raised.exception))
+
+    def test_a_redirect_loop_is_bounded(self):
+        seen = []
+
+        def handler(request):
+            seen.append(request)
+            return httpx.Response(302, request=request, headers={
+                "location": "https://kemono.cr/data/next.mp4"})
+
+        target = ResolvedFollowMedia("https://kemono.cr/data/7.mp4",
+                                     allowed_hosts=("kemono.cr",))
+        with self.assertRaises(FollowProxyError):
+            open_upstream(self._client(handler), "GET", target, incoming={})
+        self.assertEqual(len(seen), MAX_PROXY_REDIRECTS + 1)
+
+    def test_media_without_a_whitelist_is_not_proxied_at_all(self):
+        target = ResolvedFollowMedia("https://kemono.cr/data/7.mp4")
+        with self.assertRaises(FollowProxyError):
+            open_upstream(
+                self._client(lambda request: self.fail("不该发出请求")),
+                "GET", target, incoming={})
+
+    def test_only_range_headers_come_in_and_only_media_headers_go_back(self):
+        target = ResolvedFollowMedia(
+            "https://kemono.cr/data/7.mp4", "https://kemono.cr/post/7",
+            {"Cookie": "source_session=fixture"}, allowed_hosts=("kemono.cr",))
+        headers = proxy_request_headers(target, {
+            "range": "bytes=0-1", "accept": "video/*",
+            # 浏览器发给 Peach 的凭据不能跟着请求送到上游去。
+            "cookie": "peach=token", "authorization": "Bearer peach",
+        })
+        self.assertEqual(headers["Range"], "bytes=0-1")
+        self.assertEqual(headers["Accept"], "video/*")
+        self.assertEqual(headers["Referer"], "https://kemono.cr/post/7")
+        self.assertEqual(headers["Cookie"], "source_session=fixture")
+        self.assertNotIn("Authorization", headers)
+        forwarded = proxy_response_headers({
+            "content-type": "video/mp4", "content-length": "10",
+            "set-cookie": "upstream=1", "server": "nginx",
+        })
+        self.assertEqual(forwarded, {"content-type": "video/mp4",
+                                     "content-length": "10",
+                                     "cache-control": "no-store"})
