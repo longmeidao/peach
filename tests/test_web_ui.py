@@ -2404,7 +2404,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("['quality','高清版','sparkles']")
         self.assertPageContains("if(path==='/quality-goals')return 'quality'")
         self.assertPageContains("async function openQualityGoals(push=true)")
-        self.assertPageContains("/api/quality-goals?limit=200")
+        # 这一页已经迁到 Preact island（ADR-0022）：取数与渲染在 frontend/ 里，遗留层
+        # 只剩外壳。所以这里断言的是挂载契约，而不是端点字符串——端点由
+        # frontend/test/quality-goals.test.tsx 与 web_contract 的路由测试各自守着。
+        self.assertPageContains("const ui=await import('/dist/peach-ui.js')")
+        self.assertPageContains(
+            "await ui.mountIsland('quality-goals',$('#stats'),props,"
+            "{isCurrent:()=>surfaceCurrent(surface)})")
+        self.assertPageContains("const props={openItem,javTitleHtml,javDisplayName,srcBadge}")
+        self.assertPageLacks("data-quality-open")
 
     def test_review_page_is_a_separate_management_layer(self):
         self.assertPageContains("route('/review')")
@@ -2556,7 +2564,6 @@ class WebUiSourceTests(unittest.TestCase):
         for consumer in (
                 'class="dupname" data-middle-truncate',
                 'class="mono duppath" data-middle-truncate',
-                '<button data-middle-truncate data-quality-open=',
                 'id="photoDetailTitle" data-middle-truncate',
                 '<div><b data-middle-truncate title="${esc(asset.name||\'\')}"',
                 '<div><b data-middle-truncate title="${esc(row.asset_name||\'\')}"',
@@ -2569,7 +2576,9 @@ class WebUiSourceTests(unittest.TestCase):
                 # 尾部省略会把这张表要回答的东西切掉。
                 'rel="noreferrer" data-middle-truncate>${esc(item.url)}</a>'):
             self.assertPageContains(consumer)
-        self.assertEqual(self.app_js.count("data-middle-truncate"), 12)
+        # 11 而不是 12：高清版目标页的标题按钮搬进了 island，那一处由
+        # tests/test_frontend_build.py 断言。
+        self.assertEqual(self.app_js.count("data-middle-truncate"), 11)
         self.assertEqual(self.app_js.count('class="mixitemtext"'), 3)
         self.assertEqual(self.app_js.count("data-truncate-end"), 4)
         self.assertPageContains("new Intl.Segmenter(undefined,{granularity:'grapheme'})")
