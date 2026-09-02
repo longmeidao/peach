@@ -63,7 +63,7 @@
 
 - 真实迁移前依次执行 SQLite 备份、asset/tag 计数、`PRAGMA integrity_check`、迁移版本检查、服务 smoke test；已应用与待应用迁移以 `docs/STATUS.md` 和实际 `migrate status` 为准。
 - 已应用的迁移文件不得修改，任何后续变更必须新增版本：`0007` 曾在应用后被改写格式导致校验和漂移，只能用迁移前备份重放、逐条比对差异为 0 后才校正 `schema_migration`。
-- 导入运维脚本不得触发文件、网络或数据库副作用；`scrape_codes.py` 默认写可续跑复核 CSV，`clean_names.py` 先预览，`--apply` 前把 SQLite 备份到真实库同目录并校验完整性。
+- 导入运维脚本不得触发文件、网络或数据库副作用；`scrape_codes.py` 默认写可续跑复核 CSV，`clean_names.py` 先预览，`--apply` 必须同时给出 `--backup <路径>`，备份落盘后当场校验完整性（`peach.scripting.open_for_write`）。
 - 文件名只按 ledger 已确认的番号规范化，不从名称重新猜番号；大小写单改走同目录临时名，去广告后撞名用 `(2)` 起的后缀保留两份媒体。
 - `generated/cover-fetch-log.csv` 是来源、尺寸和结果证据，不随图片清理；图片丢失时用 `scripts/fetch_jav_covers.py --restore-successes` 按成功记录的原 URL 恢复并原子替换，失败保留为失败，不拿缩略图冒充封面。
 - 封面候选必须限定在当前作品的主封面节点：作品页混有数百张关联作品、剧照和演员头像，禁止对整页图片 URL 逐张量尺寸。

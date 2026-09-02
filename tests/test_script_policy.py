@@ -25,12 +25,7 @@ DATA_ROOT_LITERAL = re.compile(r"R:[\\/]peach-data|[\\/]Users[\\/]longm", re.I)
 PATH_AUTHORITIES = {"config.py", "platform.py"}
 
 #: 门槛（b）的例外，逐个写清理由。
-DATA_ROOT_ALLOWLIST = {
-    # 协调者的 job-status 受管文件，不属于本轮所有权范围。它的 `STATE` 仍指向旧数据
-    # 根 `R:\peach-data\state\`，应该改成 `peach.config.STATE_DIR`；在改动落地之前
-    # 先在这里记账，不用「先把门槛关掉」的方式绕过。
-    "job_status.py",
-}
+DATA_ROOT_ALLOWLIST: set[str] = set()
 
 DML = re.compile(r"\b(INSERT|UPDATE|DELETE|REPLACE)\b", re.I)
 DML_CLAUSE = re.compile(r"\b(INTO|FROM|SET)\b", re.I)
