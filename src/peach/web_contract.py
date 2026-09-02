@@ -15,10 +15,9 @@ import shutil
 import threading
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
-from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Callable, Sequence
+from pathlib import Path, PureWindowsPath
+from typing import Sequence
 from urllib.parse import quote, urlsplit
 
 from .config import (

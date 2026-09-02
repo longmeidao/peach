@@ -236,8 +236,6 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        if sync is not None:
-            sync.start()
         follow_scheduler.start()
         if mdns is not None:
             try:
@@ -254,8 +252,6 @@ def create_app(
             contract.stop_background_jobs()
             if mdns is not None:
                 await asyncio.to_thread(mdns.stop)
-            if sync is not None:
-                await asyncio.to_thread(sync.stop)
             http_transport.close()
             hls_plan_executor.shutdown(wait=False, cancel_futures=True)
 

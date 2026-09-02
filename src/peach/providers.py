@@ -7,7 +7,7 @@ import threading
 import time
 from dataclasses import asdict, dataclass
 from enum import Enum
-from typing import Callable, Protocol
+from typing import Callable
 
 import httpx
 
@@ -173,20 +173,3 @@ def default_registry(
         note="Personal-local experimental adapter; Peach never reads Claude credentials.",
     ))
     return registry
-
-
-class InferenceProvider(Protocol):
-    name: str
-
-    def health(self) -> dict: ...
-    def list_models(self) -> list[dict]: ...
-    def complete(self, request: dict) -> dict: ...
-
-
-class AgentProvider(Protocol):
-    name: str
-
-    def health(self) -> dict: ...
-    def start(self, request: dict) -> dict: ...
-    def resume(self, thread_id: str, request: dict) -> dict: ...
-    def cancel(self, thread_id: str) -> None: ...

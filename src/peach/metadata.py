@@ -166,10 +166,6 @@ def collapse_repeated_phrase(value: str) -> tuple[str, bool]:
     return cleaned, cleaned != original
 
 
-def safe_entity_name(value: str) -> str:
-    return canonicalize_entity_name("performer", value)
-
-
 def normalized_performers(raw: object) -> tuple[list[dict], list[str]]:
     performers: list[dict] = []
     warnings: list[str] = []
