@@ -1987,6 +1987,34 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("detailpending")
         self.assertPageLacks("showItemDetailLoading(origin,above)")
 
+    def test_every_management_surface_paints_the_same_skeleton_on_boot_and_on_route(self):
+        """整页刷新只能出现一段加载动画，不是先大布局骨架、再各页自己的加载态。
+
+        深链启动和路由到位后各写各的占位时，`/data-cleanup` 刷新会先闪一张通用
+        骨架、再换成 Loading Dots。占位只留一份定义、两处都从这里取；骨架带
+        `data-skeleton` 身份，showManagementBody 认出屏幕上已经是同一张就不重画
+        ——重画会换掉节点，shimmer 从头再放一遍，看上去就是同一段动画闪两次。
+        """
+        self.assertPageContains("const MANAGEMENT_PLACEHOLDERS={")
+        self.assertPageContains("const managementPlaceholder=path=>")
+        for path in ("'/stats'", "'/taste'", "'/data-cleanup'", "'/duplicates'",
+                     "'/review'", "'/quality-goals'", "'/playlists'", "'/follow-manage'"):
+            self.assertPageContains(f"  {path}:()=>", "占位没有收进唯一那份定义")
+            self.assertPageContains(f"managementPlaceholder({path})", "路由没有取那份定义")
+        # /resource-sync 只是数据管理页的锚点，启动占位得是数据管理那张。
+        self.assertPageContains("'/resource-sync':()=>MANAGEMENT_PLACEHOLDERS['/data-cleanup']()")
+        self.assertPageContains("stats.innerHTML=path.startsWith('/follow')&&path!=='/follow-manage'")
+        self.assertPageContains('''data-skeleton="${esc(kind)}${className?`/${esc(className)}`:''}"''')
+        self.assertPageContains(
+            "const painted=$('#stats').querySelector('[data-skeleton]')?.dataset.skeleton||''")
+        self.assertPageContains("if(!next||next!==painted)$('#stats').innerHTML=placeholder")
+        # 数据管理曾经是这一条：骨架之后再盖一层 Loading Dots，那就是第二段动画。
+        self.assertPageLacks("loadingDotsHtml('正在读取数据管理状态…')")
+        self.assertPageLacks(".cleanuploading")
+        # 数据管理是一列 fieldset，骨架不能是三列海报网格。
+        self.assertPageContains(".cleanup-skeleton>div{grid-template-columns:minmax(0,1fr);gap:16px}")
+        self.assertPageContains(".cleanup-skeleton .skeletoncard em{width:100%;height:var(--fieldset-bar-h)")
+
     def test_loading_actions_are_inert_and_dimmed_without_losing_focus(self):
         """用户触发的等待态统一走 Geist loading button，而不是各页自造半套状态。"""
         self.assertPageContains("control.setAttribute('aria-busy','true')")
@@ -2403,11 +2431,72 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".geist-fieldset-title{margin:0 0 10px;")
         self.assertPageLacks(".geist-fieldset-header")
         self.assertPageContains(".cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;"
-                                "height:var(--fieldset-bar-h);")
+                                "min-height:var(--fieldset-bar-h);")
         # 按钮一律靠右；左边有说明时说明推到最左。
         self.assertPageContains("justify-content:flex-end;gap:8px;")
-        self.assertPageContains(".resourcesyncfooter>p,.resourceapplyrow>p{margin-right:auto}")
+        self.assertPageContains(".resourcesyncfooter>p,.resourceapplyrow>p{min-width:0;margin-right:auto}")
         self.assertPageContains("if(path==='/data-cleanup'){await openDataCleanup(false);return}")
+
+    def test_fieldset_bars_keep_one_row_and_one_button_shape_on_narrow_screens(self):
+        """窄屏下操作条仍是一行，按钮按内容宽、填 --surface，不铺满也不换第二种样式。
+
+        证据：`docs/reference-snapshots/vercel-geist-fieldset-scroller-empty-state.md`
+        的 2026-09-02 追加块——375px 视口下 Geist 的 Fieldset footer 仍是
+        `flex-direction:row`、`nowrap`，min-height 56px 按说明行数长到 65/85/105px，
+        12 颗按钮宽 70–186px，没有一颗铺满。原先 640px 以下把条子竖过来、按钮
+        `width:100%`，那是我们自己加的，不是 Geist 的做法。
+
+        底色同理：条子是 `--overlay-5`，按钮填比它更深的 `--surface` 才分得出来。
+        数据管理那六颗此前是透明底，和同一页「网盘与账本」的 `.resourceaction`
+        并排时是两种按钮。
+        """
+        self.assertPageContains(".cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;"
+                                "min-height:var(--fieldset-bar-h);")
+        self.assertPageContains("padding:8px 16px 8px 20px;")
+        self.assertPageContains(".resourcesyncfooter,.resourceapplyrow{box-sizing:border-box;"
+                                "min-height:var(--fieldset-bar-h);")
+        # 说明能被压窄并换行，按钮不参与压缩。
+        self.assertPageContains(".resourcesyncfooter>p,.resourceapplyrow>p{min-width:0;margin-right:auto}")
+        self.assertPageContains(".cleanupfieldset button{box-sizing:border-box;flex:none;min-height:32px;")
+        self.assertPageContains("background:var(--surface);color:var(--ink-2);display:inline-flex;")
+        self.assertPageContains(".cleanupfieldset button:hover{background:var(--hover);"
+                                "border-color:var(--ink-2);color:var(--ink)}")
+        self.assertPageLacks(".resourcesyncfooter button{width:100%;justify-content:center}")
+        self.assertPageLacks(".resourcesync .resourcesyncfooter{align-items:stretch;flex-direction:column}")
+        self.assertPageLacks(".resourcesync .resourceapplyrow{align-items:stretch;flex-direction:column}")
+        self.assertPageLacks(".resourcesync #resourceApply{width:100%}")
+
+    def test_each_cleanup_card_shows_the_breakdown_already_in_its_payload(self):
+        """每张卡在主数字下再给一行分项，用的是同一份 payload 里已有的数字。
+
+        卡片只有一个总数时，一列 fieldset 里剩下的全是空白；分项本来就在
+        `/api/ads` 的 counts、`/api/duplicates` 的 reclaimable 和 `/api/review?counts=1`
+        里，不必为第二行多发请求。空的分项行整行不占位——没有分项的卡不该
+        比别人多留一段白。
+        """
+        cleanup = self.page.split("async function openDataCleanup(", 1)[1].split(
+            "let dupData=null;", 1)[0]
+        self.assertIn("JUNK_KIND_OPTIONS.filter(([key])=>key&&Number(junkCounts[key])>0)", cleanup,
+                      "垃圾文件没有按类型给分项")
+        self.assertIn("已忽略 ${Number(junk.dismissed_total).toLocaleString()}", cleanup)
+        self.assertIn("可回收 ${fmtSize(duplicates.reclaimable||0)}", cleanup)
+        self.assertIn("'没有重复内容'", cleanup, "0 组时别写成「0 组 · 0 个文件」")
+        self.assertIn('<p class="cleanupmeta" data-cleanup-meta="${section}">', cleanup)
+        counts = self.page.split("async function paintDataManagementCounts()", 1)[1].split(
+            "let dupData=null;", 1)[0]
+        self.assertIn("REVIEW_LABELS[key]||key", counts, "人工复核的分项得是分类名")
+        self.assertIn("`其余 ${rest.toLocaleString()}`", counts)
+        self.assertIn("`占用 ${fmtSize(data.bytes||0)}`", counts, "回收站要说清空能腾出多少")
+        self.assertPageContains(".cleanupmeta:empty{display:none}")
+        # 三个「· 在线」徽章换成一行来源名：在线与否是资源同步那块的读数，
+        # 在空文件夹卡上只有离线时才改变结论。
+        self.assertPageLacks("class=\"cleanupsource\"")
+        self.assertPageLacks(".cleanupsources{")
+        self.assertIn("`${offline.map(sourceName).join(' · ')} 离线`", cleanup)
+        self.assertIn("<strong>${online.length.toLocaleString()} 个来源可扫描</strong>", cleanup)
+        # 单列布局里高度由内容决定，和同页「网盘与账本」一致；三列时的对齐地板
+        # 到了单列只剩下把每张卡撑出一段空白。
+        self.assertPageLacks("min-height:176px")
 
     def test_duplicate_batch_keeps_one_per_cluster_not_one_per_code(self):
         # 每组各自选 keeper：合集与分卷已经在数据层拆成不同簇，界面不能再按番号合并。
@@ -3164,8 +3253,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('class="resourcepanel"')
         self.assertPageContains('class="resourceapplyrow"')
         self.assertPageContains(".resourceaction{box-sizing:border-box;height:36px")
-        self.assertPageContains("@media(max-width:640px){.resourcesync .resourcesyncfooter{align-items:stretch;flex-direction:column")
-        self.assertPageContains(".resourcesync .resourcesources{grid-template-columns:1fr}")
+        self.assertPageContains("@media(max-width:640px){.resourcesync .resourcesources{grid-template-columns:1fr}")
         self.assertPageContains(".resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--line-soft);border-radius:12px")
         self.assertPageContains(".resourcesources article+article{border-left:1px solid var(--line-soft)}")
         self.assertPageContains(".resourceapplyrow .resourcesyncok{color:var(--success)}")

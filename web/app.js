@@ -22,8 +22,25 @@ function renderCatalogLoading(label='正在读取作品'){
   count.textContent='';count.setAttribute('aria-label',label);
   $('#grid').innerHTML=pageSkeletonHtml(label,{cards:true,className:'catalog-skeleton'});
 }
-/* 深链启动前先占住目标表面。后续路由仍画同一种 Skeleton，因此不会先出现首页
-   Spinner、再切成目标页 Loading Dots。 */
+/* 每个管理表面的加载态只有一份定义，深链启动和路由到位后都从这里取。
+   两处各写各的时，整页刷新会连播两段动画：先一张通用大布局骨架，再各页自己的
+   加载态（数据管理那张还是 Loading Dots）。取同一份，键就相同，
+   showManagementBody 认出是同一张后不再重画。 */
+const MANAGEMENT_PLACEHOLDERS={
+  '/stats':()=>`<div class="insightpage">${pageSkeletonHtml('正在读取统计',{variant:'dashboard'})}</div>`,
+  '/taste':()=>`<div class="tastepage">${pageSkeletonHtml('正在读取口味分析')}</div>`,
+  '/data-cleanup':()=>`<div class="cleanuppage">${
+    pageSkeletonHtml('正在读取数据管理状态',{cards:true,className:'cleanup-skeleton'})}</div>`,
+  // /resource-sync 只是数据管理页上的一个锚点，启动时占位也该是数据管理那张。
+  '/resource-sync':()=>MANAGEMENT_PLACEHOLDERS['/data-cleanup'](),
+  '/duplicates':()=>pageSkeletonHtml('正在比对重复内容',{cards:true}),
+  '/review':()=>pageSkeletonHtml('正在读取复核队列',{cards:true}),
+  '/quality-goals':()=>pageSkeletonHtml('正在读取高清版目标',{cards:true}),
+  '/playlists':()=>pageSkeletonHtml('正在读取播放列表',{cards:true}),
+  '/follow-manage':()=>`<div class="follow">${pageSkeletonHtml('正在读取关注管理',{cards:true})}</div>`,
+};
+const managementPlaceholder=path=>
+  (MANAGEMENT_PLACEHOLDERS[path]||(()=>pageSkeletonHtml('正在读取页面')))();
 function renderInitialSurfaceLoading(){
   const path=decodeURIComponent(location.pathname);
   if(path==='/junk-files'){
@@ -36,9 +53,9 @@ function renderInitialSurfaceLoading(){
     '/playlists','/resource-sync','/follow','/follow-manage']);
   if(management.has(path)||path.startsWith('/follow/item/')){
     const stats=$('#stats');stats.hidden=false;$('#grid').innerHTML='';
-    stats.innerHTML=path.startsWith('/follow')
+    stats.innerHTML=path.startsWith('/follow')&&path!=='/follow-manage'
       ?followSkeletonHtml('正在读取关注内容')
-      :pageSkeletonHtml('正在读取页面');
+      :managementPlaceholder(path);
     return;
   }
   if(path==='/performers'||path==='/creators'||path==='/tags'||
@@ -1840,12 +1857,18 @@ function wireLoadMore(button, load){
     {rootMargin:'320px'});
   button._observer.observe(button);
 }
+const skeletonKeyOf=html=>String(html).match(/data-skeleton="([^"]*)"/)?.[1]||'';
 function showManagementBody({manage=true,placeholder=''}={}){
   $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
   $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
   if(manage)buildManageBar();
   else{$('#managebar').hidden=true;$('#manageTitle').hidden=true;buildEdge()}
-  if(placeholder)$('#stats').innerHTML=placeholder;
+  if(!placeholder)return;
+  /* 屏幕上已经是同一张骨架就别重画：innerHTML 换新节点会把 shimmer 从头放一遍，
+     整页刷新看到的就是同一段动画闪两次。 */
+  const painted=$('#stats').querySelector('[data-skeleton]')?.dataset.skeleton||'';
+  const next=skeletonKeyOf(placeholder);
+  if(!next||next!==painted)$('#stats').innerHTML=placeholder;
 }
 function showIndexLoading(label){
   $('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';
@@ -1865,8 +1888,7 @@ async function openStats(push=true){
   const surface=claimSurface('/stats');
   enterManagementSurface();
   disposeStage(false);
-  showManagementBody({placeholder:`<div class="insightpage">${
-    pageSkeletonHtml('正在读取统计',{variant:'dashboard'})}</div>`});
+  showManagementBody({placeholder:managementPlaceholder('/stats')});
   const d=await api('/api/stats');
   if(!surfaceCurrent(surface))return;
   showManagementBody();
@@ -2285,7 +2307,7 @@ async function openTaste(push=true){
   const cachedEntry=tasteCache.get(tasteWindow),cached=cachedEntry?.dashboard;
   const cacheFresh=cached&&Date.now()-cachedEntry.at<TASTE_CACHE_FRESH_MS;
   if(cached)renderTaste(cached);
-  else $('#stats').innerHTML=`<div class="tastepage">${pageSkeletonHtml('正在读取口味分析')}</div>`;
+  else showManagementBody({placeholder:managementPlaceholder('/taste')});
   if(!cacheFresh){
     const request=++tasteRequest;
     const requestedWindow=tasteWindow;
@@ -2353,7 +2375,7 @@ async function openPlaylists(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/playlists');
   const surface=claimSurface('/playlists');
-  showManagementBody({manage:false,placeholder:pageSkeletonHtml('正在读取播放列表',{cards:true})});
+  showManagementBody({manage:false,placeholder:managementPlaceholder('/playlists')});
   const data=await api('/api/playlists');
   if(!surfaceCurrent(surface))return;
   showManagementBody({manage:false});
@@ -2387,35 +2409,49 @@ async function openDataCleanup(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/data-cleanup');
   const surface=claimSurface('/data-cleanup');
-  showManagementBody({placeholder:`<div class="cleanuploading">${loadingDotsHtml('正在读取数据管理状态…')}</div>`});
+  showManagementBody({placeholder:managementPlaceholder('/data-cleanup')});
   const [junk,duplicates,sources]=await Promise.all([
     api('/api/ads?limit=1'),api('/api/duplicates?limit=1'),api('/api/sources'),
   ]);
   if(!surfaceCurrent(surface))return;
   paintManageLede();
-  const sourceState=(sources.sources||[]).filter(source=>['local','115','pikpak'].includes(source.location)).map(source=>
-    `<span class="cleanupsource" data-online="${source.online?'true':'false'}">${esc(LOC[source.location]||source.location)} · ${source.online?'在线':'离线'}</span>`).join('');
+  /* 三个「· 在线」徽章换成一行来源名：卡片要说的是这次会扫哪几个来源，
+     来源在线与否是资源同步那一块的读数，在这里只有离线时才改变结论。 */
+  const scanSources=(sources.sources||[]).filter(source=>['local','115','pikpak'].includes(source.location));
+  const sourceName=source=>esc(LOC[source.location]||source.location);
+  const online=scanSources.filter(source=>source.online),offline=scanSources.filter(source=>!source.online);
+  const sourceLine=[online.map(sourceName).join(' · '),
+    offline.length?`${offline.map(sourceName).join(' · ')} 离线`:''].filter(Boolean).join(' · ');
+  const junkCounts=junk.counts||{};
+  const junkBreakdown=[...JUNK_KIND_OPTIONS.filter(([key])=>key&&Number(junkCounts[key])>0)
+    .map(([key,label])=>`${esc(label)} ${Number(junkCounts[key]).toLocaleString()}`),
+    ...(Number(junk.dismissed_total)>0?[`已忽略 ${Number(junk.dismissed_total).toLocaleString()}`]:[])].join(' · ');
   $('#stats').innerHTML=`<div class="cleanuppage"><div class="cleanupgrid">
     <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupJunkTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupJunkTitle','垃圾文件')}
-        <strong>${Number(junk.pending_total||0).toLocaleString()} 个待判断</strong></div>
+        <strong>${Number(junk.pending_total||0).toLocaleString()} 个待判断</strong>
+        <p class="cleanupmeta">${junkBreakdown}</p></div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-open="junk">查看垃圾文件</button></footer>
     </section>
     <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupDupTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupDupTitle','重复文件')}
-        <strong>${Number(duplicates.total||0).toLocaleString()} 组 · ${Number(duplicates.files||0).toLocaleString()} 个文件</strong></div>
+        <strong>${Number(duplicates.total||0)
+          ?`${Number(duplicates.total).toLocaleString()} 组 · ${Number(duplicates.files||0).toLocaleString()} 个文件`
+          :'没有重复内容'}</strong>
+        <p class="cleanupmeta">${Number(duplicates.total||0)?`可回收 ${fmtSize(duplicates.reclaimable||0)}`:''}</p></div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-open="duplicates">查看重复文件</button></footer>
     </section>
     <section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset aria-labelledby="cleanupEmptyTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupEmptyTitle','空文件夹')}
-        <p>不会删除来源根目录。</p>
-        <div class="cleanupsources">${sourceState}</div><p class="cleanupstate" aria-live="polite"></p></div>
+        <strong>${online.length.toLocaleString()} 个来源可扫描</strong>
+        <p class="cleanupmeta">${sourceLine}</p><p class="cleanupstate" aria-live="polite"></p></div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" class="danger" data-cleanup-empty>${icon('trash')}<span>删除空文件夹</span></button></footer>
     </section>
     ${DATA_MANAGEMENT_ENTRIES.map(([section,title,label])=>`
     <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanup-${section}-title">
       <div class="geist-fieldset-content">${fieldsetTitle(`cleanup-${section}-title`,title)}
-        <strong data-cleanup-count="${section}">—</strong></div>
+        <strong data-cleanup-count="${section}">—</strong>
+        <p class="cleanupmeta" data-cleanup-meta="${section}"></p></div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" data-cleanup-go="${section}">${esc(label)}</button></footer>
     </section>`).join('')}
   </div>
@@ -2452,25 +2488,40 @@ const DATA_MANAGEMENT_ENTRIES=[
   ['trash','回收站','查看回收站'],
   ['quality','高清版','查看高清版'],
 ];
-/* 计数各自失败各自算：复核接口出错不该把回收站那张卡也变成「—」。 */
+/* 计数各自失败各自算：复核接口出错不该把回收站那张卡也变成「—」。
+   第二行是同一份 payload 里已经有的分项，不额外发请求。 */
 async function paintDataManagementCounts(){
-  const write=(section,text)=>{
-    const el=$('#stats')?.querySelector(`[data-cleanup-count="${section}"]`);
-    if(el)el.textContent=text;
+  const write=(section,text,meta='')=>{
+    const root=$('#stats');
+    const count=root?.querySelector(`[data-cleanup-count="${section}"]`);
+    if(count)count.textContent=text;
+    const line=root?.querySelector(`[data-cleanup-meta="${section}"]`);
+    if(line)line.textContent=meta;
   };
   const fill=async(section,load)=>{
-    try{write(section,await load())}catch(_error){write(section,'读取失败')}
+    try{const [text,meta='']=await load();write(section,text,meta)}
+    catch(_error){write(section,'读取失败')}
   };
   await Promise.all([
     fill('review',async()=>{
       const data=await api('/api/review?counts=1');
-      const total=Object.values(data.counts||{}).reduce((sum,value)=>sum+(Number(value)||0),0);
-      return `${total.toLocaleString()} 条待复核`;
+      const counts=Object.entries(data.counts||{})
+        .map(([key,value])=>[REVIEW_LABELS[key]||key,Number(value)||0])
+        .filter(([,value])=>value>0).sort((a,b)=>b[1]-a[1]);
+      const total=counts.reduce((sum,[,value])=>sum+value,0);
+      // 只列前三类，剩下的合成一项：卡片是入口，不是复核队列本身。
+      const top=counts.slice(0,3).map(([label,value])=>`${label} ${value.toLocaleString()}`);
+      const rest=counts.slice(3).reduce((sum,[,value])=>sum+value,0);
+      if(rest)top.push(`其余 ${rest.toLocaleString()}`);
+      return [`${total.toLocaleString()} 条待复核`,top.join(' · ')];
     }),
-    fill('trash',async()=>
-      `${Number((await api('/api/items?state=trash&limit=1')).total||0).toLocaleString()} 项在回收站`),
+    fill('trash',async()=>{
+      const data=await api('/api/items?state=trash&limit=1');
+      const total=Number(data.total||0);
+      return [`${total.toLocaleString()} 项在回收站`,total?`占用 ${fmtSize(data.bytes||0)}`:''];
+    }),
     fill('quality',async()=>
-      `${Number((await api('/api/quality-goals?limit=1')).total||0).toLocaleString()} 个待升级`),
+      [`${Number((await api('/api/quality-goals?limit=1')).total||0).toLocaleString()} 个待升级`]),
   ]);
 }
 
@@ -2482,7 +2533,7 @@ async function openDuplicates(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/duplicates');
   const surface=claimSurface('/duplicates');
-  showManagementBody({placeholder:pageSkeletonHtml('正在比对重复内容',{cards:true})});
+  showManagementBody({placeholder:managementPlaceholder('/duplicates')});
   const next=await api('/api/duplicates?limit=120');
   if(!surfaceCurrent(surface))return;
   dupData=next;
@@ -2560,7 +2611,7 @@ async function openReview(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/review');
   const surface=claimSurface('/review');
-  showManagementBody({placeholder:pageSkeletonHtml('正在读取复核队列',{cards:true})});
+  showManagementBody({placeholder:managementPlaceholder('/review')});
   const runtime=await api('/healthz');
   if(!surfaceCurrent(surface))return;
   /* ADR-0018：确定的那部分先落库再取队列。reader 明知不能写就不要制造一次 409；
@@ -2699,7 +2750,7 @@ async function openQualityGoals(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/quality-goals');
   const surface=claimSurface('/quality-goals');
-  showManagementBody({placeholder:pageSkeletonHtml('正在读取高清版目标',{cards:true})});
+  showManagementBody({placeholder:managementPlaceholder('/quality-goals')});
   const next=await api('/api/quality-goals?limit=200');
   if(!surfaceCurrent(surface))return;
   qualityData=next;
@@ -3815,7 +3866,7 @@ async function openFollowManage(push=true){
     followManageSort=['checked','added','name','sources'].includes(requested)?requested:'checked';
   }
   const surface=claimSurface('/follow-manage');
-  showManagementBody({placeholder:`<div class="follow">${pageSkeletonHtml('正在读取关注管理',{cards:true})}</div>`});
+  showManagementBody({placeholder:managementPlaceholder('/follow-manage')});
   const [data,credentials,runtime]=await Promise.all([
     api('/api/follow?limit=1'),api('/api/follow/credentials'),api('/healthz')]);
   if(!surfaceCurrent(surface))return;

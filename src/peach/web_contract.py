@@ -482,8 +482,12 @@ def q_items(contract: WebContract, args):
         rows = [dict(r) for r in c.execute(sql, par + [fetch_limit, off])]
         has_more = len(rows) > lim if not include_total else None
         rows = rows[:lim]
-        cnt = (c.execute("SELECT count(*) FROM asset a WHERE " + " AND ".join(where), par).fetchone()[0]
-               if include_total else None)
+        # 条数和体积同一次聚合出来：回收站卡片要说的是「清空能腾出多少」，
+        # 为它单独再发一次请求只是把同一条 WHERE 又跑一遍。
+        cnt, total_bytes = (
+            c.execute("SELECT count(*),COALESCE(sum(a.size),0) FROM asset a WHERE "
+                      + " AND ".join(where), par).fetchone()
+            if include_total else (None, None))
     # 卡片要显示出镜者和高权重标签，不能只有番号 —— 一次批量取，别 N+1
     if rows:
         ids = [r["id"] for r in rows]
@@ -534,7 +538,7 @@ def q_items(contract: WebContract, args):
         r.pop("path", None)                     # 路径不外发，串流走 id
     attach_multipart_groups(contract, rows)
     attach_edition_groups(contract, rows)
-    return {"total": cnt, "items": rows, "has_more": has_more}
+    return {"total": cnt, "bytes": total_bytes, "items": rows, "has_more": has_more}
 
 def con_tags(contract: WebContract, ids, qm):
     with contract.read_connection() as c:
