@@ -480,6 +480,25 @@ def create_app(
         response.headers["Cache-Control"] = "no-store"
         return response
 
+    @app.api_route("/dist/{name}", methods=["GET", "HEAD"])
+    def app_bundle(name: str, args: dict[str, str] = Depends(require_asset_auth)):
+        """`frontend/` 构建出来的 island 产物（ADR-0022）。口令与缓存口径同 `/js/`。
+
+        产物提交进 Git 且文件名不带内容哈希，所以 `app.js` 能直接
+        `await import('/dist/peach-ui.js')`；缓存仍由 no-store 兜住。
+        名字判据和 `/js/` 逐字一致，只多认一个 `.css`：产物名不带内容哈希，也就不需要
+        名字里再有点，`peach-ui.js.map` 这类附带文件跟着一起落在 404。
+        """
+        if not re.fullmatch(r"[a-z0-9_-]+\.(?:js|css)", name):
+            return PlainTextResponse("bad bundle name", status_code=404)
+        path = settings.page_path.parent / "dist" / name
+        if not path.is_file():
+            return PlainTextResponse("missing", status_code=404)
+        media = "text/css" if name.endswith(".css") else "text/javascript"
+        response = FileResponse(path, media_type=f"{media}; charset=utf-8")
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
     @app.api_route("/favicon.svg", methods=["GET", "HEAD"])
     def favicon():
         response = Response(web_contract.FAVICON, media_type="image/svg+xml")

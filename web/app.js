@@ -2756,26 +2756,19 @@ async function openReview(push=true){
   render();window.scrollTo({top:0,behavior:'smooth'});
 }
 
-let qualityData=null;
+/* ── island 挂载点（ADR-0022）──
+   高清版目标页已经迁到 Preact。遗留层只留外壳：铺骨架、把自己独有的助手交出去，
+   取数与渲染都在 /dist/peach-ui.js 里。产物不带内容哈希，所以路径可以写死。
+   换页判据仍归遗留层：`isCurrent` 让 island 在用户走开后不要把数据画上来。 */
 async function openQualityGoals(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/quality-goals');
   const surface=claimSurface('/quality-goals');
   showManagementBody({placeholder:managementPlaceholder('/quality-goals')});
-  const next=await api('/api/quality-goals?limit=200');
-  if(!surfaceCurrent(surface))return;
-  qualityData=next;
-  const items=qualityData.items||[];
-  $('#stats').innerHTML=`<div class="qualitylist">${items.length?items.map(item=>{
-    const preview=item.has_cover?`/cover?code=${encodeURIComponent(item.code||'')}`:`/poster?id=${item.id}&c=4`;
-    const shownName=javDisplayName(item);
-    return `<article class="qualityitem"><button class="qualitycover" data-quality-open="${item.id}" aria-label="打开 ${esc(shownName)}">
-        <img src="${preview}" alt="" loading="lazy" onerror="this.remove()"></button>
-      <div><h3><button data-middle-truncate data-quality-open="${item.id}">${javTitleHtml(item)}</button></h3>
-        <p class="mono">${srcBadge(item.location,item.cost)}<span>${esc(LOC[item.location]||item.location)}</span><span>${fmtDur(item.duration)}</span><span>${fmtSize(item.size||0)}</span></p>
-        ${item.reason?`<p>${esc(item.reason)}</p>`:''}</div></article>`}).join(''):emptyState('sparkles','没有标记中的高清版目标','现有版本都已满足条件，或还没有加入追踪。')}</div>`;
-  $('#stats').querySelectorAll('[data-quality-open]').forEach(button=>button.onclick=()=>openItem(+button.dataset.qualityOpen));
-  window.scrollTo({top:0,behavior:'smooth'});
+  const ui=await import('/dist/peach-ui.js');
+  const props={openItem,javTitleHtml,javDisplayName,srcBadge};
+  await ui.mountIsland('quality-goals',$('#stats'),props,{isCurrent:()=>surfaceCurrent(surface)});
+  if(surfaceCurrent(surface))window.scrollTo({top:0,behavior:'smooth'});
 }
 
 /* ── 在线追更 ──

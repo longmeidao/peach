@@ -156,6 +156,11 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         # 前端已拆成 ES module，`/js/{name}` 从页面同级的 js/ 取文件。
         (self.root / "js").mkdir()
         (self.root / "js" / "core.js").write_text("export const ok = 1;", encoding="utf-8")
+        # island 产物（ADR-0022）：构建结果提交进 Git，运行时由 `/dist/{name}` 提供。
+        (self.root / "dist").mkdir()
+        (self.root / "dist" / "peach-ui.js").write_text(
+            "export const mountIsland = () => {};", encoding="utf-8")
+        (self.root / "dist" / "peach-ui.css").write_text(".island{}", encoding="utf-8")
         con = sqlite3.connect(self.db)
         con.executescript(BASE_SCHEMA)
         con.execute(
@@ -290,6 +295,26 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_front_end_modules_need_the_same_token_as_the_page(self):
         unauthorized = await self.client.get("/js/core.js")
+        self.assertEqual(unauthorized.status_code, 401)
+
+    async def test_island_bundle_is_served_with_the_same_guards_as_the_modules(self):
+        """`/dist/{name}` 提供 `frontend/` 的构建产物（ADR-0022）。
+
+        产物文件名不带内容哈希，`app.js` 直接 `import('/dist/peach-ui.js')`，所以这条
+        路由的口令、缓存与名字校验必须和 `/js/` 完全一致，不能因为「是构建产物」放宽。
+        """
+        for name, media in (("peach-ui.js", "text/javascript"), ("peach-ui.css", "text/css")):
+            served = await self.client.get(f"/dist/{name}?t=secret")
+            self.assertEqual(served.status_code, 200, name)
+            self.assertTrue(served.headers["content-type"].startswith(media), name)
+            self.assertEqual(served.headers["cache-control"], "no-store", name)
+
+        for escape in ("..%2f..%2fapp.js", "..%5c..%5csecrets.json", "sub%2fpeach-ui.js",
+                       "..%2fapp.js", "peach-ui.js.map", "peach-ui.mjs", "Peach-UI.js"):
+            denied = await self.client.get(f"/dist/{escape}?t=secret")
+            self.assertEqual(denied.status_code, 404, f"{escape} 不该被提供")
+
+        unauthorized = await self.client.get("/dist/peach-ui.js")
         self.assertEqual(unauthorized.status_code, 401)
 
     async def test_follow_avatar_redirects_only_after_the_official_resolver(self):

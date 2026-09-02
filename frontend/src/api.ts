@@ -1,0 +1,47 @@
+/* island 层唯一的取数入口。
+ *
+ * 和遗留层 `web/js/core.js` 的 `api()` 保持同一套失败语义（先读 JSON，再按
+ * `message`／`detail`／`error` 取人能看的原因），但多两件事：返回类型由调用方声明，
+ * 请求带 `AbortSignal`。第二件是 island 必需的——页面在取数途中被换掉时，
+ * 迟到的响应不能再往新页面上写东西。 */
+
+/** 服务端明确回了非 2xx。`status` 留给调用方区分 401／409／404 这类需要不同处置的情况。 */
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
+const reasonOf = (payload: unknown): string => {
+  if (!payload || typeof payload !== 'object') return '';
+  const body = payload as Record<string, unknown>;
+  for (const key of ['message', 'detail', 'error']) {
+    const value = body[key];
+    if (typeof value === 'string' && value) return value;
+  }
+  return '';
+};
+
+/** GET 一个 `/api/...` 契约端点。`signal` 中止时抛出 `AbortError`，调用方据此放弃写 DOM。 */
+export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(path, {
+    headers: { Accept: 'application/json' },
+    // 页面口令是 httponly cookie，取数必须带上；跨源请求不在此列。
+    credentials: 'same-origin',
+    ...(signal ? { signal } : {}),
+  });
+  let payload: unknown = null;
+  try {
+    payload = await response.json();
+  } catch {
+    // 失败响应不一定是 JSON（例如 401 的登录页），下面用状态码兜底。
+  }
+  if (!response.ok) {
+    throw new ApiError(reasonOf(payload) || `请求失败（${response.status}）`, response.status);
+  }
+  return payload as T;
+}
