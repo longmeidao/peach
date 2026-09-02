@@ -9,7 +9,7 @@ Peach 是逻辑前后端分离、部署仍为一个进程的 FastAPI 模块化�
 1. **Ledger**：资产、行为、来源和知识的唯一真相源。SQLite 适合当前单用户规模。硬盘上的那份是权威副本，两台机器各持本地工作副本，由 `peach.sync` 做单写者复制：拉取、回写、冲突转只读，**不做多主合并**。
 2. **API / 应用层**：FastAPI 承载页面、JSON、媒体响应和写入边界。
 3. **平台层**：`peach.platform` 是账本路径与本机挂载点之间唯一的翻译层。账本只用 Windows 盘符记录路径，读取时按 `PEACH_DRIVE_MAP` 翻译到本机挂载点；没有挂载点的盘符落到不可达根，对应来源整体按脱盘处理。CloudDrive 在 Windows 是盘符、在 macOS 是 macFUSE 挂载点，差异全部收敛在这里。
-4. **Media Engine**：FastAPI 只持有一个 `MediaEngine`。本地文件是原生后端；Stash 是公开协议适配器，再按扫描、元数据、预览、流媒体逐项替换。挂载网盘的已知时长原生 MP4 由 `stream-plan` 选择按时间生成的 HLS 片段，其他情况回退标准 Range。
+4. **Media Engine**：FastAPI 只持有一个 `MediaEngine`，本地文件与挂载网盘都是原生后端；Stash 适配层已删除（ADR-0021）。远端 MP4 默认走标准 Range，`stream-plan` 只在显式开启时给出按时间生成的 HLS 片段（ADR-0016：HEVC-in-TS 会静默黑屏，所以 HLS 是例外而不是默认）。
 5. **Web**：当前是无构建步骤的单页，保持移动端优先；不做 React 重写。
 6. **AI Provider**：`InferenceProvider` 与 `AgentProvider` 分离。AI 只产出带来源和置信度的候选。
 7. **Profile**：默认单用户，数据模型预留 user/profile，不引入完整账号体系。
@@ -22,7 +22,6 @@ Peach 是逻辑前后端分离、部署仍为一个进程的 FastAPI 模块化�
 ```text
 本地/网盘/在线来源 -> 索引/探测 -> ledger.db
                                   -> FastAPI -> Web/播放器
-Stash ---------------- Media 适配器 --^
 AI/外部元数据 -> 经复核的候选 -> ledger
 ```
 
@@ -33,7 +32,7 @@ AI/外部元数据 -> 经复核的候选 -> ledger
 - 抓取或保存 ChatGPT/Claude OAuth token
 - 将 Stash 私有目录或 GPL 构建作为 Peach 的稳定打包依赖
 
-关键取舍见 `docs/adr/`；Stash 的代码级证据见 `docs/STASH.md`。
+关键取舍见 `docs/adr/`；Stash 现在只剩两个离线导入脚本，边界见 `docs/STASH.md`。
 复用/自研边界及旧脚本继任关系见 `docs/REUSE.md`。
 
 ## 运行数据目录

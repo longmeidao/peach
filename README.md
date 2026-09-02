@@ -10,12 +10,12 @@ Peach 适合在 Windows 与 macOS 两台个人设备上运行。当前运行状�
 - 播放本地与网盘媒体；不兼容容器生成可删除的转码缓存，不改写原文件。
 - 保存稍后看、喜欢理由、观看状态、自动 Mix 和持久播放列表。
 - 通过 `/review` 复核外部元数据、身份、图片和媒体失败候选。
-- 从 Kemono 系、Rule34Video、Rule34.xxx 和 F95zone 发现更新；SimpCity 的机器人验证不会被绕过。
+- 从 FANBOX、SubscribeStar、Patreon 官方渠道，Kemono/Pawchive/Coomer 归档站，Rule34Video、Rule34.xxx、Rule34 Paheal 和 F95zone 发现更新；SimpCity 的机器人验证不会被绕过。
 - 在 Windows writer 与 macOS reader 之间显式复制 ledger；发生分叉时转只读，不自动合并。
 
 ## 数据边界
 
-Ledger 是资产、身份、行为和复核决定的真相源。Stash、CloudDrive、在线站点和 AI 都是适配器或候选来源，不能直接改写真相字段。
+Ledger 是资产、身份、行为和复核决定的真相源。CloudDrive、在线站点和 AI 都是适配器或候选来源，不能直接改写真相字段。
 
 | 内容 | 位置或规则 |
 | --- | --- |
