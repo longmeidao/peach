@@ -32,6 +32,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .fsutil import atomic_write_text
 from .platform import root_online
 
 
@@ -146,11 +147,7 @@ def write_marker(db_path: Path, marker: Marker, *, with_digest: bool = True) -> 
             digest=digest_database(db_path) if with_digest else "",
             wal_size=wal_payload_size(db_path),
         )
-    target = marker_path(db_path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_name(target.name + ".tmp")
-    temporary.write_text(marker.as_json(), encoding="utf-8")
-    os.replace(temporary, target)
+    atomic_write_text(marker_path(db_path), marker.as_json())
     return marker
 
 

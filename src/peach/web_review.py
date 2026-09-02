@@ -11,10 +11,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import time
-import uuid
 from pathlib import Path, PurePosixPath
 from typing import Protocol
 from urllib.parse import quote
@@ -32,6 +30,7 @@ from .entities import (
     resolve_entity,
     upsert_asset_entity,
 )
+from .fsutil import atomic_write_bytes
 from .metadata_policy import SOURCE_SPECS
 from .review_csv import read_rows
 
@@ -892,10 +891,8 @@ def _install_performer_avatar(contract: ReviewContract, entity_id: str) -> int:
     kind = (kind_row[0] if kind_row and kind_row[0] in {"performer", "creator"}
             else "performer")
     destination = contract.avatar_root / f"{kind}-{int(entity_id)}.img"
-    # 先写临时文件再原子替换：中途失败不会留下半张图被 `/entity-image` 读到。
-    staging = destination.with_name(f"{destination.name}.{uuid.uuid4().hex}.tmp")
-    staging.write_bytes(body)
-    os.replace(staging, destination)
+    # 原子替换：中途失败不会留下半张图被 `/entity-image` 读到。
+    atomic_write_bytes(destination, body)
     Path(f"{destination}.ct").write_text(content_type, encoding="utf-8")
     Path(f"{destination}.provenance.json").write_text(json.dumps({
         "source": "performer avatar review",
@@ -944,10 +941,8 @@ def _install_studio_logo(contract: ReviewContract, studio: str) -> int:
         raise ValueError(f"不支持的图片格式：{source.suffix}")
     contract.logo_root.mkdir(parents=True, exist_ok=True)
     destination = contract.logo_root / f"{key}.img"
-    # 先写临时文件再原子替换：中途失败不会留下半张图被 `/logo` 读到。
-    staging = destination.with_name(f"{destination.name}.{uuid.uuid4().hex}.tmp")
-    staging.write_bytes(source.read_bytes())
-    os.replace(staging, destination)
+    # 原子替换：中途失败不会留下半张图被 `/logo` 读到。
+    atomic_write_bytes(destination, source.read_bytes())
     Path(f"{destination}.ct").write_text(content_type, encoding="utf-8")
     Path(f"{destination}.provenance.json").write_text(json.dumps({
         "source": "studio logo review",

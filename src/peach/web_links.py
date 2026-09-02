@@ -13,14 +13,14 @@
 from __future__ import annotations
 
 import re
-import threading
 import time
-import uuid
 from pathlib import Path
 from typing import Protocol
 from urllib.parse import urlsplit
 
 import httpx
+
+from .jobs import BackgroundJob
 
 USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
               "(KHTML, like Gecko) Chrome/128.0 Safari/537.36")
@@ -34,9 +34,7 @@ class LinkContract(Protocol):
     """链接管理需要契约提供的能力；比整个 WebContract 小得多。"""
 
     db_path: Path
-    link_check_lock: threading.Lock
-    link_check_state: dict | None
-    link_check_thread: threading.Thread | None
+    link_check: BackgroundJob
 
     def read_connection(self): ...
 
@@ -114,76 +112,52 @@ def _check_public(state: dict) -> dict:
 
 
 def _run_link_check(contract: LinkContract, check_id: str) -> None:
-    try:
-        with contract.read_connection() as connection:
-            rows = [dict(row) for row in connection.execute(
-                "SELECT l.id, l.link_kind, l.label, l.url, e.canonical_name AS entity "
-                "FROM entity_link l JOIN entity e ON e.id=l.entity_id ORDER BY l.id")]
-        with contract.link_check_lock:
-            state = contract.link_check_state
-            if state is None or state["check_id"] != check_id:
-                return
-            state["total"] = len(rows)
-        for row in rows:
-            status, note = _probe(row["url"])
-            verdict = link_verdict(status, note)
-            with contract.link_check_lock:
-                state = contract.link_check_state
-                if state is None or state["check_id"] != check_id:
-                    return   # 被新的检查顶掉了，安静收工
-                state["checked"] += 1
-                if verdict != "ok":
-                    state["gone" if verdict == "gone" else "unclear"].append({
-                        "id": row["id"], "entity": row["entity"],
-                        "link_kind": row["link_kind"], "label": row["label"],
-                        "url": row["url"],
-                        "note": f"HTTP {status}" if status else f"取不到：{note}",
-                    })
-            time.sleep(CHECK_INTERVAL)
-        with contract.link_check_lock:
-            state = contract.link_check_state
-            if state is not None and state["check_id"] == check_id:
-                state.update(status="complete", completed_at=time.time())
-    except Exception as error:   # 后台失败必须变成可轮询的状态，不能只留在日志里
-        with contract.link_check_lock:
-            state = contract.link_check_state
-            if state is not None and state["check_id"] == check_id:
-                state.update(status="failed", error=f"{type(error).__name__}: {error}",
-                             completed_at=time.time())
+    """逐条联网重验。异常由 `BackgroundJob` 翻成 `failed` 状态，这里不再自己接。"""
+    job = contract.link_check
+    with contract.read_connection() as connection:
+        rows = [dict(row) for row in connection.execute(
+            "SELECT l.id, l.link_kind, l.label, l.url, e.canonical_name AS entity "
+            "FROM entity_link l JOIN entity e ON e.id=l.entity_id ORDER BY l.id")]
+    with job.editing(check_id) as state:
+        if state is None:
+            return
+        state["total"] = len(rows)
+    for row in rows:
+        status, note = _probe(row["url"])
+        verdict = link_verdict(status, note)
+        with job.editing(check_id) as state:
+            if state is None:
+                return   # 被新的检查顶掉了，安静收工
+            state["checked"] += 1
+            if verdict != "ok":
+                state["gone" if verdict == "gone" else "unclear"].append({
+                    "id": row["id"], "entity": row["entity"],
+                    "link_kind": row["link_kind"], "label": row["label"],
+                    "url": row["url"],
+                    "note": f"HTTP {status}" if status else f"取不到：{note}",
+                })
+        time.sleep(CHECK_INTERVAL)
+    job.update(check_id, status="complete", completed_at=time.time())
 
 
 def w_links_check(contract: LinkContract, body=None):
     """开始（或查询）一次死链检查。
 
     七百多条链接逐条联网要好几分钟，同步请求必然超时，所以和资源对账走同一套：
-    后台线程 + 可轮询状态。
+    `BackgroundJob` 的后台线程 + 可轮询状态。
     """
     body = body or {}
     if body.get("status_only") is True:
-        with contract.link_check_lock:
-            state = contract.link_check_state
-            if state is None:
-                return {"ok": True, "status": "idle", "check_id": "", "checked": 0,
-                        "total": 0, "gone": [], "unclear": []}
-            return _check_public(state)
-
-    thread = None
-    with contract.link_check_lock:
-        state = contract.link_check_state
-        if state is not None and state["status"] == "running":
-            return _check_public(state)
-        if state is not None and body.get("restart") is not True:
-            return _check_public(state)
-        check_id = uuid.uuid4().hex
-        state = {"check_id": check_id, "status": "running", "checked": 0, "total": 0,
-                 "gone": [], "unclear": [], "started_at": time.time(), "error": ""}
-        contract.link_check_state = state
-        thread = threading.Thread(target=_run_link_check, args=(contract, check_id),
-                                  daemon=True, name="PeachLinkCheckJob")
-        contract.link_check_thread = thread
-        response = _check_public(state)
-    thread.start()
-    return response
+        state = contract.link_check.snapshot()
+        if state is None:
+            return {"ok": True, "status": "idle", "check_id": "", "checked": 0,
+                    "total": 0, "gone": [], "unclear": []}
+        return _check_public(state)
+    return _check_public(contract.link_check.start(
+        lambda check_id: _run_link_check(contract, check_id),
+        initial={"checked": 0, "total": 0, "gone": [], "unclear": []},
+        restart=body.get("restart") is True,
+    ))
 
 
 def w_links_prune(contract: LinkContract, body):
@@ -195,13 +169,12 @@ def w_links_prune(contract: LinkContract, body):
     body = body or {}
     if body.get("confirm") is not True:
         return {"ok": False, "error": "需要 confirm"}
-    with contract.link_check_lock:
-        state = contract.link_check_state
-        if state is None or state["status"] != "complete":
-            return {"ok": False, "error": "没有已完成的检查结果"}
-        if body.get("check_id") != state["check_id"]:
-            return {"ok": False, "error": "检查结果已过期，请重新检查"}
-        planned = [dict(item) for item in state["gone"]]
+    state = contract.link_check.snapshot()
+    if state is None or state["status"] != "complete":
+        return {"ok": False, "error": "没有已完成的检查结果"}
+    if body.get("check_id") != state["check_id"]:
+        return {"ok": False, "error": "检查结果已过期，请重新检查"}
+    planned = [dict(item) for item in state["gone"]]
 
     confirmed, recovered = [], []
     for item in planned:
@@ -215,9 +188,8 @@ def w_links_prune(contract: LinkContract, body):
             for item in confirmed:
                 removed += connection.execute(
                     "DELETE FROM entity_link WHERE id=?", (item["id"],)).rowcount
-    with contract.link_check_lock:
-        state = contract.link_check_state
-        if state is not None and state["check_id"] == body.get("check_id"):
+    with contract.link_check.editing(body.get("check_id")) as state:
+        if state is not None:
             state["gone"] = []
     return {"ok": True, "removed": removed, "recovered": len(recovered),
             "entities": len({item["entity"] for item in confirmed})}

@@ -249,6 +249,9 @@ def create_app(
             yield
         finally:
             follow_scheduler.stop()
+            # 死链检查和资源对账的后台线程是 daemon，本来挡不住进程退出；这里显式收
+            # 一下，免得在途的那一轮在解释器拆卸期间还继续查库、往没人读的状态里写。
+            contract.stop_background_jobs()
             if mdns is not None:
                 await asyncio.to_thread(mdns.stop)
             if sync is not None:

@@ -34,6 +34,7 @@ from .entities import (
     resolve_entity,
     upsert_asset_entity,
 )
+from .jobs import BackgroundJob
 from .media import remap_managed_path
 from .metadata_policy import SOURCE_SPECS
 from .platform import (
@@ -202,12 +203,10 @@ class WebContract:
         self.cache_generation = 0
         self.follow_check_lock = threading.Lock()
         self.follow_scheduler = None
-        self.resource_scan_lock = threading.Lock()
-        self.resource_scan_state: dict | None = None
-        self.resource_scan_thread: threading.Thread | None = None
-        self.link_check_lock = threading.Lock()
-        self.link_check_state: dict | None = None
-        self.link_check_thread: threading.Thread | None = None
+        # 两块后台任务的锁、状态和线程都归 BackgroundJob 管，契约上只留这两个字段。
+        # 任务 id 的键名沿用各自原有的名字：它随公开投影下发，是前端契约。
+        self.resource_scan = BackgroundJob("PeachResourceScanJob", id_key="scan_id")
+        self.link_check = BackgroundJob("PeachLinkCheckJob", id_key="check_id")
         self._fts_available: bool | None = None
 
     def cached(self, key, fn):
@@ -234,6 +233,14 @@ class WebContract:
                 # 宁可下次重算，也不要把一份已经旧了的数据当新的用。
                 self.cache[key] = (now, value)
         return value
+
+    def stop_background_jobs(self) -> None:
+        """服务关停时丢掉后台任务状态并等线程收工。
+
+        谁在跑归契约自己知道，`api` 的 lifespan 不该再列一遍任务清单。
+        """
+        self.resource_scan.stop()
+        self.link_check.stop()
 
     def cache_bust(self):
         with self.cache_lock:

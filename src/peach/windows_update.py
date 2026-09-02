@@ -10,6 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
+from .fsutil import atomic_write_text
+
 
 WINDOWS_TRAY_INPUTS = (
     "src/peach/",
@@ -76,16 +78,10 @@ class WindowsUpdateInstaller:
         self.log_path = self.log_dir / "windows-source-sync.log"
 
     def mark_pending(self, commit: str, changed_paths: tuple[str, ...]) -> None:
-        self.pending_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.pending_path.with_suffix(".tmp")
-        temporary.write_text(
-            json.dumps(
-                {"commit": commit, "changed_paths": list(changed_paths)},
-                ensure_ascii=False, indent=2,
-            ),
-            encoding="utf-8",
-        )
-        os.replace(temporary, self.pending_path)
+        atomic_write_text(self.pending_path, json.dumps(
+            {"commit": commit, "changed_paths": list(changed_paths)},
+            ensure_ascii=False, indent=2,
+        ))
 
     def pending(self) -> PendingWindowsUpdate | None:
         try:

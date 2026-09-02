@@ -2,7 +2,6 @@
 import sqlite3
 import sys
 import tempfile
-import threading
 import unittest
 from contextlib import contextmanager
 from pathlib import Path
@@ -10,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach import web_links   # noqa: E402
+from peach.jobs import BackgroundJob   # noqa: E402
 
 SCHEMA = """
 CREATE TABLE entity(id INTEGER PRIMARY KEY, kind TEXT, canonical_name TEXT);
@@ -31,9 +31,7 @@ class FakeContract:
 
     def __init__(self, db: Path):
         self.db_path = db
-        self.link_check_lock = threading.Lock()
-        self.link_check_state = None
-        self.link_check_thread = None
+        self.link_check = BackgroundJob("PeachLinkCheckJob", id_key="check_id")
 
     @contextmanager
     def read_connection(self):
@@ -108,7 +106,7 @@ class SummaryTests(unittest.TestCase):
 
     def test_prune_refuses_a_stale_check_id(self):
         """拿一份放了半天的清单去删，删的可能是早已改好的链接。"""
-        self.contract.link_check_state = {
+        self.contract.link_check.state = {
             "check_id": "fresh", "status": "complete", "checked": 3, "total": 3,
             "gone": [{"id": 1, "entity": "凉森玲梦", "link_kind": "social",
                       "label": "X @a", "url": "https://x.com/a", "note": "HTTP 404"}],
@@ -126,7 +124,7 @@ class SummaryTests(unittest.TestCase):
 
         第一条重验仍是 404，删；第二条重验回了 200，保留并计入 recovered。
         """
-        self.contract.link_check_state = {
+        self.contract.link_check.state = {
             "check_id": "fresh", "status": "complete", "checked": 3, "total": 3,
             "gone": [
                 {"id": 1, "entity": "凉森玲梦", "link_kind": "social", "label": "X @a",

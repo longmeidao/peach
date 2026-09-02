@@ -9,17 +9,17 @@ from __future__ import annotations
 import ipaddress
 import json
 import logging
-import os
 import ssl
 import subprocess
 import sys
-import tempfile
 import time
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 from urllib.request import HTTPSHandler, ProxyHandler, Request, build_opener
+
+from .fsutil import atomic_write_text
 
 
 MAX_REVIEW_BYTES = 8 * 1024 * 1024
@@ -236,25 +236,10 @@ class ReviewMirror:
         return result
 
     def _write_cache(self, payload: dict, fetched_at: str) -> None:
-        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-        body = json.dumps(
+        # 只给自己读：这份缓存里是复核队列的完整内容，不该跟着数据目录的默认权限走。
+        atomic_write_text(self.cache_path, json.dumps(
             {"fetched_at": fetched_at, "payload": payload}, ensure_ascii=False,
-        )
-        temporary: Path | None = None
-        try:
-            with tempfile.NamedTemporaryFile(
-                mode="w", encoding="utf-8", dir=self.cache_path.parent,
-                prefix=self.cache_path.name + ".", suffix=".tmp", delete=False,
-            ) as handle:
-                handle.write(body)
-                temporary = Path(handle.name)
-            if os.name != "nt":
-                temporary.chmod(0o600)
-            os.replace(temporary, self.cache_path)
-            temporary = None
-        finally:
-            if temporary is not None:
-                temporary.unlink(missing_ok=True)
+        ), mode=0o600)
 
     def _read_cache(self) -> dict | None:
         try:
