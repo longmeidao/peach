@@ -1103,6 +1103,13 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .mixitemtext .mixitemhead{display:flex;align-items:center;gap:5px;margin-top:0;color:var(--ink)}
 .mixitemtext .mixitemhead b{flex:1;min-width:0}
 .mixitemtext .qedition{flex:none;font-style:normal}
+/* 队列行的署名层照抄卡片的 `.meta`：横向队列和「接着看」并排出现在同一屏，
+   一边有头像一边没有，看着就是两套控件。头像在这里不可点（整行是一个 button，
+   里面不能再嵌 button），所以也不给 hover 提示。 */
+.mixitemmeta{display:flex;gap:10px;min-width:0;align-items:center}
+.mixitemmeta .mav{cursor:inherit}
+.mixitemmeta .mav:hover{box-shadow:none}
+.mixitemmeta .mavstack .mav{box-shadow:0 0 0 2px var(--ground)}
 .mixitemtext{min-width:0}.mixitemtext b,.mixitemtext span{display:block;overflow:hidden;white-space:nowrap}.mixitemtext [data-truncate-end]{text-overflow:ellipsis}
 .mixitemtext b{font-size:var(--fs-xs);line-height:1.4}.mixitemtext span{font-size:var(--fs-xs);color:var(--muted);margin-top:3px}
 .queueedit{display:grid;grid-template-columns:repeat(3,24px);gap:2px;padding-right:5px}.queueedit button{width:24px;height:24px;border:0;border-radius:5px;background:transparent;color:var(--muted);padding:0;display:grid;place-items:center;cursor:pointer}.queueedit button:hover:not(:disabled){background:var(--hover);color:var(--ink)}.queueedit button:disabled{opacity:.25;cursor:default}.queueedit svg{width:14px;height:14px;stroke:currentColor;fill:none}
@@ -1119,7 +1126,9 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .sgrid.mixgrid>.mixqueue .mixitem:hover,.sgrid.mixgrid>.mixqueue .mixitem.current{background:transparent}
 .sgrid.mixgrid>.mixqueue .mixitempic{width:100%;border:1px solid transparent}
 .sgrid.mixgrid>.mixqueue .mixitem.current .mixitempic{border-color:var(--tungsten);box-shadow:0 0 0 1px var(--tungsten)}
-.sgrid.mixgrid>.mixqueue .mixitemtext{width:100%;padding:0 2px}
+.sgrid.mixgrid>.mixqueue .mixitemmeta{width:100%;padding:0 2px;align-items:flex-start}
+.sgrid.mixgrid>.mixqueue .mixitemmeta .mav,.sgrid.mixgrid>.mixqueue .mixitemmeta .mavstack{margin-top:2px}
+.sgrid.mixgrid>.mixqueue .mixitemtext{flex:1;min-width:0}
 .sgrid.mixgrid>.mixqueue .mixitemtext b{font-size:var(--fs-sm)}
 .sgrid.mixgrid>.mixqueue .mixitem[data-media-kind="image"] .mixitempic img{object-fit:cover}
 .sgrid.mixgrid>.mixqueue .queueedit{position:absolute;z-index:3;right:5px;top:5px;padding:3px;border-radius:7px;background:rgba(0,0,0,.62)}
@@ -1184,6 +1193,8 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 @keyframes peach-spinner-left-spin{0%{transform:rotate(130deg)}50%{transform:rotate(-5deg)}to{transform:rotate(130deg)}}
 @keyframes peach-spinner-right-spin{0%{transform:rotate(-130deg)}50%{transform:rotate(5deg)}to{transform:rotate(-130deg)}}
 /* YouTube `e937390a` 实测控制层：59px 控制栏、40px 左钮、右侧共享胶囊和 6px 进度命中区。 */
+/* video.js 自带 Arial；播放器里的时间、菜单、加载速度都跟页面主字体走，不另起一套。 */
+.vwrap .video-js{font-family:inherit}
 .vwrap .video-js .vjs-control-bar{box-sizing:border-box;left:12px;right:12px;bottom:8px;width:auto;height:59px;
   padding:3px 0 0;display:flex;align-items:flex-end;border-radius:0;background:transparent;backdrop-filter:none}
 .vwrap .video-js .vjs-control-bar>.vjs-play-control{position:relative;align-self:flex-end;flex:0 0 40px;width:40px;height:40px;margin:0 0 8px;
@@ -1207,6 +1218,10 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vwrap .video-js [data-peach-explicit-icon]:active>.vjs-peach-control-icon{transform:translate(-50%,-50%) scale(.9)}
 .vjs-peach-hover{position:absolute;z-index:0;left:0;top:4px;width:100%;height:32px;border-radius:40px;pointer-events:none;
   background:transparent;transition:background .2s cubic-bezier(.05,0,0,1)}
+/* 40px 的圆形播放键里再铺一层 40×32 的胶囊，hover 时亮起来的是个两头圆的方块，
+   和键本身的圆形对不上。圆键的高亮层统一是内缩 4px 的同心圆——音量键、时间钮的
+   `:after{inset:4px}` 早就是这个样子，播放键、左上统计钮、右上关闭钮跟着走同一套。 */
+.vwrap .video-js .vjs-control-bar>.vjs-play-control>.vjs-peach-hover{inset:4px;width:auto;height:auto;border-radius:50%}
 .vwrap .video-js .vjs-control-bar>.vjs-play-control:hover>.vjs-peach-hover,
 .vwrap .video-js .vjs-control-bar>.vjs-play-control:focus-visible>.vjs-peach-hover,
 .vjs-peach-right-controls>.vjs-control:hover>.vjs-peach-hover,
@@ -1215,8 +1230,10 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vjs-peach-right-controls>.vjs-control:active>.vjs-peach-hover{background:rgba(255,255,255,.2)}
 .vwrap .video-js .vjs-control-bar>.vjs-play-control .vjs-icon-placeholder,
 .vwrap .video-js .vjs-peach-right-controls button,.vjs-peach-settings>button,.vjs-peach-theater>button{position:relative;z-index:1}
+/* 音量键和左边的播放键、右边的胶囊同一排，底色必须同一档 .6；之前是 .3，
+   一排三个黑底就它一个发灰。 */
 .vwrap .video-js .vjs-control-bar>.vjs-volume-panel{box-sizing:border-box;z-index:3;position:relative;align-self:flex-end;flex:0 0 40px;width:40px;height:40px!important;
-  margin:0 0 8px 12px;padding:0;border:0;border-radius:28px;background:rgba(0,0,0,.3);box-shadow:none;
+  margin:0 0 8px 12px;padding:0;border:0;border-radius:28px;background:rgba(0,0,0,.6);box-shadow:none;
   display:grid;grid-template-columns:40px 0;column-gap:0;align-items:center;isolation:isolate;overflow:visible;transition:width .2s cubic-bezier(.05,0,0,1),flex-basis .2s cubic-bezier(.05,0,0,1),padding-right .2s cubic-bezier(.05,0,0,1)}
 .vwrap .video-js .vjs-control-bar>.vjs-volume-panel:after{content:"";position:absolute;z-index:0;inset:4px;border-radius:28px;background:transparent;pointer-events:none;transition:background .2s cubic-bezier(.05,0,0,1)}
 .vwrap .video-js .vjs-control-bar>.vjs-volume-panel:hover:after,
@@ -1227,9 +1244,9 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vwrap .video-js .vjs-control-bar>.vjs-volume-panel:hover,
 .vwrap .video-js .vjs-control-bar>.vjs-volume-panel:focus-within,
 .vwrap .video-js .vjs-control-bar>.vjs-volume-panel.vjs-hover,
-.vwrap .video-js .vjs-control-bar>.vjs-volume-panel.vjs-slider-active{flex-basis:111px;width:111px;grid-template-columns:40px 52px;column-gap:3px;padding-right:16px;background:rgba(0,0,0,.3)}
+.vwrap .video-js .vjs-control-bar>.vjs-volume-panel.vjs-slider-active{flex-basis:111px;width:111px;grid-template-columns:40px 52px;column-gap:3px;padding-right:16px;background:rgba(0,0,0,.6)}
 .stage.theater-mode .vwrap .video-js .vjs-control-bar>.vjs-volume-panel,
-.video-js.vjs-fullscreen .vjs-control-bar>.vjs-volume-panel{background:rgba(0,0,0,.3)!important;
+.video-js.vjs-fullscreen .vjs-control-bar>.vjs-volume-panel{background:rgba(0,0,0,.6)!important;
   backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
 .vwrap .video-js .vjs-volume-panel>.vjs-mute-control{box-sizing:border-box;z-index:1;position:relative!important;left:0!important;top:0!important;align-self:center;flex:0 0 40px;width:40px!important;min-width:40px;height:40px!important;margin:0!important;padding:0!important;border:0;background:transparent;transform:none!important}
 .vwrap .video-js .vjs-volume-panel>.vjs-mute-control>.vjs-peach-control-icon{width:18px;height:18px}
@@ -1276,7 +1293,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vwrap .video-js .vjs-time-control{display:none!important}
 .vwrap .video-js .vjs-peach-time{box-sizing:border-box;align-self:flex-end;flex:0 0 auto;width:auto;height:40px;margin:0 0 8px 12px;
   padding:0 16px;border:0;border-radius:28px;background:rgba(0,0,0,.6);color:#fff;cursor:pointer;
-  position:relative;isolation:isolate;overflow:hidden;font:400 var(--fs-md)/40px Arial,sans-serif;font-variant-numeric:tabular-nums;white-space:nowrap;text-shadow:0 0 1px rgba(0,0,0,.8)}
+  position:relative;isolation:isolate;overflow:hidden;font-weight:400;font-size:var(--fs-md);line-height:40px;font-family:inherit;font-variant-numeric:tabular-nums;white-space:nowrap;text-shadow:0 0 1px rgba(0,0,0,.8)}
 .vwrap .video-js .vjs-peach-time:after{content:"";position:absolute;z-index:0;inset:4px;border-radius:28px;background:transparent;transition:background .2s cubic-bezier(.05,0,0,1)}
 .vwrap .video-js .vjs-peach-time:hover:after,.vwrap .video-js .vjs-peach-time:focus-visible:after{background:rgba(255,255,255,.1)}
 .vwrap .video-js .vjs-peach-time:active:after{background:rgba(255,255,255,.2)}
@@ -1289,7 +1306,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vjs-peach-settings [data-player-quality-badge][hidden]{display:none}
 .vjs-peach-settings-menu{box-sizing:border-box;position:absolute;z-index:2300;right:-100px;bottom:52px;width:min(274px,calc(100vw - 28px));max-height:min(420px,calc(100vh - 130px));overflow:auto;
   padding:0;border:0;border-radius:12px;background:rgba(0,0,0,.6);box-shadow:none;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
-  color:#fff;text-shadow:0 0 1px rgba(0,0,0,.8);font:400 var(--fs-md)/1.3 Arial,sans-serif}
+  color:#fff;text-shadow:0 0 1px rgba(0,0,0,.8);font-weight:400;font-size:var(--fs-md);line-height:1.3;font-family:inherit}
 .vjs-peach-settings-menu[hidden]{display:none}
 .vjs-peach-settings-menu button{box-sizing:border-box;position:relative;isolation:isolate;overflow:hidden;width:100%;min-height:48px;padding:0;border:0;border-radius:8px;background:transparent;color:#fff;font:inherit;cursor:pointer}
 .vjs-peach-settings-menu button:before{content:"";position:absolute;z-index:0;inset:0;border-radius:inherit;background:transparent;pointer-events:none;transition:background .1s cubic-bezier(.05,0,0,1)}
@@ -1337,15 +1354,18 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
   position:absolute!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;object-fit:cover!important}
 .playerstatsbtn{position:absolute;left:11px;top:11px;z-index:8;width:40px;height:40px;padding:0;
   display:grid;place-items:center;border:0;border-radius:50%;
-  background:rgba(0,0,0,.3);color:#fff;cursor:pointer;box-shadow:none}
-.playerstatsbtn[hidden]{display:none}.playerstatsbtn:hover,.playerstatsbtn:focus-visible{background:rgba(255,255,255,.1);outline:0}
-.playerstatsbtn:active{background:rgba(255,255,255,.2)}
+  background:rgba(0,0,0,.6);color:#fff;cursor:pointer;box-shadow:none;isolation:isolate;overflow:hidden}
+.playerstatsbtn[hidden]{display:none}
+.playerstatsbtn:after,.closestage:after{content:"";position:absolute;z-index:0;inset:4px;border-radius:50%;background:transparent;pointer-events:none;transition:background .2s cubic-bezier(.05,0,0,1)}
+.playerstatsbtn:hover:after,.playerstatsbtn:focus-visible:after,.closestage:hover:after,.closestage:focus-visible:after{background:rgba(255,255,255,.1)}
+.playerstatsbtn:active:after,.closestage:active:after{background:rgba(255,255,255,.2)}
+.playerstatsbtn:focus-visible,.closestage:focus-visible{outline:0}
 .playerstatsbtn[aria-pressed="true"]{color:var(--tungsten)}
-.playerstatsbtn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;filter:drop-shadow(0 0 1px rgba(0,0,0,.8))}
+.playerstatsbtn svg{position:relative;z-index:1;width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;filter:drop-shadow(0 0 1px rgba(0,0,0,.8))}
 .playerstats{position:absolute;left:11px;top:58px;z-index:8;min-width:320px;max-width:min(520px,calc(100% - 22px));
   padding:10px 12px;border:1px solid rgba(255,255,255,.18);border-radius:8px;
   background:rgba(2,4,8,.78);color:#eef3f8;box-shadow:0 12px 28px #0008;
-  backdrop-filter:saturate(1.25) blur(14px);font:var(--fs-xs)/1.5 "Cascadia Mono",monospace}
+  backdrop-filter:saturate(1.25) blur(14px);font-size:var(--fs-xs);line-height:1.5;font-family:inherit}
 .playerstats dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:1px 12px;margin:0}.playerstats dt{text-align:right;font-weight:700}.playerstats dd{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .playerstats dd.playerstatsmetric{display:grid;grid-template-columns:166px minmax(0,1fr);gap:9px;align-items:center;overflow:visible}
 .playerstatsmetric>span{overflow:hidden;text-overflow:ellipsis}
@@ -1357,17 +1377,15 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 @media(max-width:600px){.playerstats dd.playerstatsmetric{grid-template-columns:96px minmax(0,1fr)}}
 .playernet{box-sizing:border-box;position:absolute;left:58px;top:11px;z-index:8;height:40px;min-height:40px;padding:0 11px;
   display:flex;align-items:center;border:0;border-radius:12px;
-  background:rgba(0,0,0,.6);color:#fff;box-shadow:none;backdrop-filter:blur(16px);font:var(--fs-xs)/1 "Cascadia Mono",monospace}
+  background:rgba(0,0,0,.6);color:#fff;box-shadow:none;backdrop-filter:blur(16px);font-size:var(--fs-xs);line-height:1;font-family:inherit}
 .playernet[hidden]{display:none}
 .gate{aspect-ratio:16/9;width:100%;background:var(--sunk);border:1px dashed var(--meter);
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer}
 .closestage{position:absolute;top:11px;right:11px;z-index:9;width:40px;height:40px;
-  background:rgba(0,0,0,.3);color:#F0E9DE;
+  background:rgba(0,0,0,.6);color:#F0E9DE;
   border:0;border-radius:50%;padding:0;cursor:pointer;box-shadow:none;
-  display:grid;place-items:center}
-.closestage:hover,.closestage:focus-visible{background:rgba(255,255,255,.1);outline:0}
-.closestage:active{background:rgba(255,255,255,.2)}
-.closestage svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;filter:drop-shadow(0 0 1px rgba(0,0,0,.8))}
+  display:grid;place-items:center;isolation:isolate;overflow:hidden}
+.closestage svg{position:relative;z-index:1;width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;filter:drop-shadow(0 0 1px rgba(0,0,0,.8))}
 .side{min-width:0;min-height:0;align-self:stretch;border-left:1px solid var(--line-soft);overflow:hidden;
   background:color-mix(in srgb,var(--video-glow,#15202a) 12%,var(--surface) 88%);backdrop-filter:blur(18px)}
 /* 背景属于整列，滚动属于内容。两者不能放在同一层，否则 76vh 会把在线占位、
@@ -1461,6 +1479,17 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .nrow{display:flex;gap:11px;overflow-x:auto;padding-bottom:6px}
 .ncard{flex:none;width:216px;cursor:pointer}
 .ncard .why{color:var(--loupe)}
+/* 216px 的窄卡上，第三个头像挤掉的正好是署名那一行的宽度，元数据于是折成三到四行，
+   整条横向带被最高的一张顶起来、矮的下面全是空。窄卡只放两个头像，元数据钉成一行不换行：
+   大小和观看次数干脆不放，推荐理由留着截尾——那才是这条带存在的理由。
+   不能用固定高度加 overflow 去裁：`.s` 的行高和 gap 凑不出整行，第三行会露半截字。 */
+.ncard .mavstack .mav:nth-child(3),
+.sgrid.mixgrid>.mixqueue .mavstack .mav:nth-child(3){display:none}
+.ncard .meta .s{flex-wrap:nowrap;overflow:hidden}
+.ncard .meta .who{flex:0 1 auto;max-width:55%}
+.ncard .meta .whomore{flex:none;white-space:nowrap}
+.ncard .meta .why{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ncard .meta .size,.ncard .meta .watchcount{display:none}
 
 /* 内边距吃掉刘海和底部横条：iOS 上 `inset:0` 会一直铺到状态栏和 Home 指示条底下。 */
 body.settings-open{overflow:hidden}

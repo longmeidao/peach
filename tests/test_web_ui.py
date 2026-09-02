@@ -833,7 +833,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_player_stats_button_matches_the_round_player_controls(self):
         self.assertPageContains(".playerstatsbtn{position:absolute;left:11px;top:11px;z-index:8;width:40px;height:40px")
         self.assertPageContains("display:grid;place-items:center;border:0;border-radius:50%")
-        self.assertPageContains(".playerstatsbtn[hidden]{display:none}.playerstatsbtn:hover,.playerstatsbtn:focus-visible{background:rgba(255,255,255,.1)")
+        self.assertPageContains(".playerstatsbtn:after,.closestage:after{content:\"\";position:absolute;z-index:0;inset:4px;border-radius:50%")
+        self.assertPageContains(".playerstatsbtn:hover:after,.playerstatsbtn:focus-visible:after,.closestage:hover:after,.closestage:focus-visible:after{background:rgba(255,255,255,.1)}")
         self.assertPageContains(".playernet{box-sizing:border-box;position:absolute;left:58px;top:11px;z-index:8;height:40px;min-height:40px")
         self.assertPageContains("display:flex;align-items:center;border:0;border-radius:12px")
 
@@ -876,10 +877,41 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".vjs-peach-settings-menu button:before{content:\"\";position:absolute;z-index:0;inset:0")
         self.assertPageLacks("睡眠定时")
 
+    def test_player_play_hover_is_round_and_volume_matches_the_other_controls(self):
+        """播放键是 40px 的圆，hover 高亮层却是 40×32 的胶囊，亮起来是个两头圆的方块。
+
+        圆键的高亮统一是内缩 4px 的同心圆（音量键、时间钮已是），播放键、左上统计钮、
+        右上关闭钮跟着走；统计钮和关闭钮的底色 .3、音量键的 .3 都和播放键的 .6 不是一档。
+        """
+        self.assertPageContains(
+            ".vjs-control-bar>.vjs-play-control>.vjs-peach-hover{inset:4px;width:auto;height:auto;border-radius:50%}")
+        for selector in (".playerstatsbtn{", ".closestage{"):
+            start = self.css.rindex(selector)
+            rule = self.css[start:self.css.index("}", start)]
+            self.assertIn("background:rgba(0,0,0,.6)", rule, f"{selector} 和同屏的播放键不是一档黑")
+            self.assertIn("isolation:isolate;overflow:hidden", rule)
+        self.assertPageLacks(".playerstatsbtn:hover,.playerstatsbtn:focus-visible{background:rgba(255,255,255,.1)")
+        self.assertPageLacks(".closestage:hover,.closestage:focus-visible{background:rgba(255,255,255,.1)")
+        self.assertPageContains(
+            "margin:0 0 8px 12px;padding:0;border:0;border-radius:28px;background:rgba(0,0,0,.6);box-shadow:none;")
+        self.assertPageContains(
+            "grid-template-columns:40px 52px;column-gap:3px;padding-right:16px;background:rgba(0,0,0,.6)}")
+        self.assertPageLacks(".vjs-volume-panel{background:rgba(0,0,0,.3)!important")
+
+    def test_player_text_uses_the_page_font_not_video_js_arial(self):
+        """video.js 自带 Arial，加载速度徽章还写死了 Cascadia Mono：一个播放器里三种字。"""
+        self.assertPageContains(".vwrap .video-js{font-family:inherit}")
+        self.assertPageContains("font-weight:400;font-size:var(--fs-md);line-height:40px;font-family:inherit;")
+        self.assertPageContains("font-weight:400;font-size:var(--fs-md);line-height:1.3;font-family:inherit}")
+        self.assertPageContains("font-size:var(--fs-xs);line-height:1;font-family:inherit}")
+        self.assertPageContains("font-size:var(--fs-xs);line-height:1.5;font-family:inherit}")
+        self.assertPageLacks('"Cascadia Mono",monospace}')
+        self.assertPageLacks("Arial,sans-serif")
+
     def test_player_volume_background_survives_theater_and_fullscreen(self):
         self.assertPageContains(".stage.theater-mode .vwrap .video-js .vjs-control-bar>.vjs-volume-panel")
         self.assertPageContains(".video-js.vjs-fullscreen .vjs-control-bar>.vjs-volume-panel")
-        self.assertPageContains("background:rgba(0,0,0,.3)!important")
+        self.assertPageContains("background:rgba(0,0,0,.6)!important")
         self.assertPageContains("grid-template-columns:40px 52px;column-gap:3px;padding-right:16px")
         self.assertPageContains(".vjs-control-bar>.vjs-volume-panel:after{content:\"\";position:absolute;z-index:0;inset:4px")
         self.assertPageContains(".vjs-control-bar>.vjs-volume-panel.vjs-slider-active:after{background:rgba(255,255,255,.1)}")
@@ -2471,6 +2503,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".frow>b", ".fvkind", ".idname", ".kv>span:first-child",
             ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
             ".mixitemtext [data-truncate-end]", ".mixqueuehead h2",
+            ".ncard .meta .why",
             ".playerstats dd", ".playerstatsmetric>span",
             ".relatedperson .nm", ".reviewentity b",
             ".reviewitem h4", ".searchoption span",
@@ -2751,6 +2784,63 @@ class WebUiSourceTests(unittest.TestCase):
         """没抽过帧的条目在队列里退回番号封套，而不是一个纯黑块。"""
         self.assertPageContains(
             ':(x.is_jav&&x.code?`<img src="/cover?code=${encodeURIComponent(x.code)}"')
+
+    def test_the_edition_queue_head_only_states_the_count(self):
+        """标题栏已经写着「版本」，番号又印在正上方的详情标题里，说明只留数量。
+
+        别的队列标题带真信息（播放列表名、Mix 种子），不能跟着一起砍。
+        """
+        self.assertPageContains(
+            "const summary=queue.kind==='editions'?countLabel:`${esc(queue.title)} · ${countLabel}`")
+        self.assertPageContains("<h2>${kindLabel}</h2><span>${summary}</span>")
+
+    def test_queue_rows_carry_the_same_signature_block_as_the_cards(self):
+        """队列行和「接着看」并排出现在同一屏，署名层必须是同一套 DOM。
+
+        身份推导也必须共用：各算各的迟早会在同名 creator/performer 上分叉，
+        同一条作品在两处指向两个实体。队列整行是一个 <button>，所以头像层
+        必须走不可点分支——嵌套 <button> 会被浏览器就地拆散。
+        """
+        self.assertPageContains("function cardIdentity(it,linked=true)")
+        self.assertPageContains("const {avatar,whoHtml}=cardIdentity(it);")
+        self.assertPageContains(
+            '<span class="mixitemmeta">${cardIdentity(x,false).avatar}<span class="mixitemtext">')
+        self.assertPageContains(
+            "? `<button class=\"${cls} entitylink\" ${attrs}>${inner}</button>`")
+        self.assertPageContains(": `<span class=\"${cls}\">${inner}</span>`")
+        self.assertPageContains(
+            ".mixitemmeta{display:flex;gap:10px;min-width:0;align-items:center}")
+        self.assertPageContains(".mixitemmeta .mav:hover{box-shadow:none}")
+        self.assertPageContains(
+            ".sgrid.mixgrid>.mixqueue .mixitemmeta{width:100%;padding:0 2px;align-items:flex-start}")
+        self.assertPageContains(".sgrid.mixgrid>.mixqueue .mixitemtext{flex:1;min-width:0}")
+
+    def test_narrow_cards_drop_the_third_avatar_and_keep_the_meta_on_one_line(self):
+        """216px 的窄卡上第三个头像挤掉的正是署名那一行，元数据会折成三四行。
+
+        横向带的高度由最高的一张决定，于是矮的下面全是空。窄卡只放两个头像，
+        元数据钉成一行：大小和观看次数不放，推荐理由留着截尾。不能拿固定高度
+        去裁——行高凑不出整行，第三行会露半截字，用户看到的就是被切掉的「399 MB」。
+        """
+        self.assertPageContains(
+            ".ncard .mavstack .mav:nth-child(3),\n"
+            ".sgrid.mixgrid>.mixqueue .mavstack .mav:nth-child(3){display:none}")
+        self.assertPageContains(
+            ".ncard .meta .s{flex-wrap:nowrap;overflow:hidden}")
+        self.assertPageContains(
+            ".ncard .meta .why{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}")
+        self.assertPageContains(".ncard .meta .size,.ncard .meta .watchcount{display:none}")
+        self.assertPageLacks(".ncard .meta .s{line-height:1.45;height:")
+
+    def test_a_cold_deep_link_clears_the_catalog_skeleton(self):
+        """深链冷启动时列表一次请求都没发过，那张「正在读取作品」会永远停在详情下方。
+
+        它和 `hasReturnSurface` 是同一张骨架的两半：那边负责关掉详情后补装列表，
+        这边负责在详情打开期间不谎报「正在读取」。
+        """
+        self.assertPageContains("function clearIdleCatalogLoading()")
+        self.assertPageContains("if(!grid.querySelector('.catalog-skeleton'))return;")
+        self.assertPageContains("if(!returnSurfaceReady)clearIdleCatalogLoading();")
 
     def test_group_collapse_is_a_setting_and_defaults_to_on(self):
         """合并分卷与版本可以关掉，关掉后同番号的每一卷／每一版各占一张卡。
