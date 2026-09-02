@@ -20,6 +20,15 @@ CREATE TABLE entity_link(
 
 
 class FakeContract:
+    """只提供 `LinkContract` 声明的那几项能力，且读写分开。
+
+    早先这里把 `read_connection` 和 `write_connection` 指向同一个可写函数，于是
+    `w_links_prune` 调了真契约上根本不存在的 `write_connection` 也照样绿——真的
+    `WebContract` 只有 `read_connection` 与 `write_transaction`，线上删链接直接 500。
+    读连接因此按真实实现开成 SQLite 的 `mode=ro`：拿读连接写库会当场报错，而不是
+    悄悄成功。
+    """
+
     def __init__(self, db: Path):
         self.db_path = db
         self.link_check_lock = threading.Lock()
@@ -27,17 +36,28 @@ class FakeContract:
         self.link_check_thread = None
 
     @contextmanager
-    def _connect(self):
+    def read_connection(self):
+        connection = sqlite3.connect(
+            self.db_path.resolve().as_uri() + "?mode=ro", uri=True)
+        connection.row_factory = sqlite3.Row
+        try:
+            yield connection
+        finally:
+            connection.close()
+
+    @contextmanager
+    def write_transaction(self):
         connection = sqlite3.connect(self.db_path)
         connection.row_factory = sqlite3.Row
         try:
             yield connection
+        except BaseException:
+            connection.rollback()
+            raise
+        else:
             connection.commit()
         finally:
             connection.close()
-
-    read_connection = _connect
-    write_connection = _connect
 
 
 class VerdictTests(unittest.TestCase):

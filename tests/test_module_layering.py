@@ -9,10 +9,14 @@ import 一个叫 web 的模块，读代码的人只会得出「分层反了」�
 但名字骗人和结构错了一样难查。改名之后加这条断言，让下一次真反了的时候直接报错。
 """
 import ast
+import importlib
 import pathlib
+import tempfile
+import typing
 import unittest
 
 import peach
+from peach.web_contract import WebContract
 
 
 SOURCE_ROOT = pathlib.Path(peach.__file__).parent
@@ -128,6 +132,53 @@ class SharedRuleTests(unittest.TestCase):
                     offenders.append(f"{path.name} → web_contract.{rule}")
         self.assertEqual(offenders, [],
                          "纯规则请直接从 peach.catalog_rules 取")
+
+
+class ContractConformanceTests(unittest.TestCase):
+    """域模块声明的窄契约，真的 `WebContract` 必须全部满足。
+
+    `Protocol` 在运行期什么都不检查，域模块又只照着自己那份 Protocol 写调用，
+    于是「契约上写了、实现里没有」不会有任何东西报错，一路要等到用户点那个按钮。
+
+    实测事故：`web_links.LinkContract` 声明了 `write_connection`，`WebContract` 只有
+    `write_transaction`，`/api/links/prune` 在线上直接 500；而 `tests/test_web_links.py`
+    的 FakeContract 恰好把两个名字都给了，测试因此全绿。这条门槛就是补那次的窗口。
+    """
+
+    @staticmethod
+    def _declared(protocol) -> set[str]:
+        """一份 Protocol 声明的能力：带注解的属性 + 协议体里定义的方法。"""
+        names = set(typing.get_type_hints(protocol))
+        names.update(name for name, value in vars(protocol).items()
+                     if callable(value) and not name.startswith("_"))
+        return names
+
+    @staticmethod
+    def _web_protocols() -> list[type]:
+        """web 层各模块自己定义的 Protocol，按文件名发现而不是手写清单。"""
+        found: list[type] = []
+        for path in sorted(SOURCE_ROOT.glob("web_*.py")):
+            module = importlib.import_module(f"peach.{path.stem}")
+            for obj in vars(module).values():
+                if (isinstance(obj, type) and getattr(obj, "_is_protocol", False)
+                        and obj.__module__ == module.__name__ and obj not in found):
+                    found.append(obj)
+        return found
+
+    def test_every_web_protocol_is_satisfied_by_the_real_contract(self):
+        protocols = self._web_protocols()
+        self.assertGreaterEqual(len(protocols), 5, "没发现域契约，门槛已空转")
+        with tempfile.TemporaryDirectory() as tmp:
+            # 构造只是赋值路径和建锁，不碰磁盘也不连库；临时目录仅用于坐实这一点。
+            contract = WebContract(pathlib.Path(tmp).resolve() / "ledger.db")
+            missing = [f"{protocol.__name__}.{name}"
+                       for protocol in protocols
+                       for name in sorted(self._declared(protocol))
+                       if not hasattr(contract, name)]
+        self.assertEqual(
+            missing, [],
+            "域契约声明了 WebContract 没有的能力：要么补上实现，要么改契约声明",
+        )
 
 
 class LayeringTests(unittest.TestCase):

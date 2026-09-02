@@ -40,7 +40,7 @@ class LinkContract(Protocol):
 
     def read_connection(self): ...
 
-    def write_connection(self): ...
+    def write_transaction(self): ...
 
 
 def _probe(url: str, timeout: float = CHECK_TIMEOUT) -> tuple[int, str]:
@@ -210,10 +210,11 @@ def w_links_prune(contract: LinkContract, body):
 
     removed = 0
     if confirmed:
-        with contract.write_connection() as connection:
+        # 整批删除走同一个写事务：要么这一次判定的 gone 全部落库，要么一条都不落。
+        with contract.write_transaction() as connection:
             for item in confirmed:
-                connection.execute("DELETE FROM entity_link WHERE id=?", (item["id"],))
-                removed += connection.execute("SELECT changes()").fetchone()[0]
+                removed += connection.execute(
+                    "DELETE FROM entity_link WHERE id=?", (item["id"],)).rowcount
     with contract.link_check_lock:
         state = contract.link_check_state
         if state is not None and state["check_id"] == body.get("check_id"):
