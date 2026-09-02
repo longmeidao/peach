@@ -70,6 +70,8 @@
 快照、URL、版本、SHA、未取得面与 Peach 的有意差异统一登记在 `docs/reference-sources.json` 和
 `docs/reference-snapshots/`，每份快照自带「Peach 采用与差异」一节；获取、失效复核与接受更新的流程见
 `.claude/skills/peach-reference-evidence/SKILL.md`。本文件不复制会随上游变化的测量值，只登记哪件事看哪份快照。
+登记表的契约是「快照文件 + 可重抓 URL」，所以 React 渲染的规格页、用户截图和「哪个主机还能取到图」这类实测不进登记表，
+但必须在快照正文里写明为什么不进——`tests/test_reference_updates.py` 会拒绝既没登记也没说明的快照。
 
 - 相关推荐算法：`openaver-related-ranking`，固定 revision，只参考 Tag IDF 与结构化共同点，MMR 和稳定破同分是 Peach 自加，不复制上游界面或源码。
 - 网格、控件半径、语义 token 与中间省略：`vercel-geist-grid`、`vercel-geist-controls-measured`、`vercel-geist-middle-truncate`；中间省略只用于路径、URL、ID、SHA 这类首尾都有信息的值，必须显式 `data-middle-truncate`，标题、说明、人名和标签保留末尾省略。
