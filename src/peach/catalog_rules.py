@@ -203,6 +203,54 @@ def jav_edition_badges(name: str | None, code: str | None,
     return badges
 
 
+#: 头尾的裸域名不允许标签里带连字符：`ABP-762-fuckbe.com` 整串都符合「标签+.com」，
+#: 按通用形态删前缀会把番号一起吃掉，只剩 `mp4`。带方括号那种由括号定界，不受此限。
+_BARE_PROMO = r"(?:www\.)?[a-z0-9]{2,31}\.(?:com|net|la|xyz|cc|me|top|vip|club|info|org|tv|app|co|pw|gg|cn)"
+_PROMO_PREFIX = re.compile(
+    r"^(?:[\[【(（]\s*(?:" + _PROMO_DOMAIN.pattern + r")\s*[\]】)）]|(?:"
+    + _BARE_PROMO + r"))[-_@.\s]*", re.I)
+_PROMO_SUFFIX = re.compile(
+    r"[-_@.\s]*(?:[\[【(（]\s*(?:" + _PROMO_DOMAIN.pattern + r")\s*[\]】)）]|(?:"
+    + _BARE_PROMO + r"))$", re.I)
+
+
+def strip_promo_markers(name: str | None) -> str:
+    """摘掉名字**头尾**的推广域名标记，其余部分一个字都不动。
+
+    只认头尾，不认名字中间。第一版删任意位置的带括号域名，结果把
+    `Hazel Moore - [FootFetishDaily.com] - Hardcore` 里的厂牌删了——欧美片的
+    `[Vixen.com]`、`[StraplessDildo.com]` 是厂牌名，不是广告，删掉是丢真信息。
+    真正的广告标记全在头或尾：`[44x.me]tre-080`、`MattieDoll - pornhub.com`。
+
+    同样刻意不做的事：不压缩多余空格、不合并空括号。第一版做了，把
+    `(12P+5V_1.28G) [12P-5V-1.28GB]` 改成 `(12P+5V_1.28G12P-5V-1.28GB]`，
+    把没有广告的 `狗链  兔尾` 也改了。
+
+    头尾各剥到不动为止，`[98t.tv][98t.tv]ABW-251` 这种叠了两层的才能剥干净。
+    """
+    original = str(name or "")
+    text = original
+    while True:
+        stripped = _PROMO_SUFFIX.sub("", _PROMO_PREFIX.sub("", text, count=1), count=1)
+        if stripped == text:
+            break
+        text = stripped
+    if text == original:
+        # 没摘掉任何广告就原样返回：末尾那次 strip 会把 `@9ririsuamano` 这种
+        # 本来就带前缀符号的账号名改掉，而它不是广告。
+        return original
+    return text.strip(" ._-—@")
+
+
+def promo_free_key(name: str | None) -> str:
+    r"""摘广告后再抹掉大小写与分隔符，用来判断两个目录名是不是同一个名字。
+
+    实测的冗余层是 `TRE-080\[44x.me]tre-080`：大小写不同、还挂着广告前缀，
+    直接比字符串会漏掉。分隔符也一起抹掉，`TRE080` 与 `TRE-080` 才算同名。
+    """
+    return re.sub(r"[\s._\-—]+", "", strip_promo_markers(name)).casefold()
+
+
 def jav_fallback_title(name: str | None, code: str | None) -> str:
     """Clean a filename-derived JAV title without changing the stored filename."""
     text = _MEDIA_EXTENSION.sub("", str(name or "").strip())

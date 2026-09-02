@@ -286,6 +286,32 @@ def _attach_review_asset_context(connection, rows: list[dict]) -> None:
         ]
 
 
+def _metadata_decision_is_stale(decision: dict, row: dict) -> bool:
+    """旧批准是否已经不指向这一组里的任何一个现存候选。
+
+    `metadata_fields` 的 `item_key` 是 `<番号>:<字段>`，不带候选身份。于是
+    2026-09-01 对 r18dev「空日文标题」的一条 approved，会把之后 javbus 抓到的
+    真标题一并盖住：队列里看不见这条，页面上还是英文标题。实测 TRE-080 就是
+    这样卡住的，同批还有 24 个番号。判据与 `studio_logos` 的「上游内容变了就
+    清掉旧判定」是同一条线，只是这里的「变了」体现为候选身份换了一个。
+
+    只在能读出旧批准指向哪个候选时才判过期。note 不是 JSON（早期的自由文本
+    留痕）就保守放过——宁可漏一条，也不要把用户已经批过的东西重新翻出来。
+    """
+    try:
+        note = json.loads(str(decision.get("note") or ""))
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(note, dict):
+        return False
+    approved_key = str(note.get("candidate_key") or "").strip()
+    if not approved_key:
+        return False
+    keys = {str(candidate.get("candidate_key") or "").strip()
+            for candidate in row.get("candidates") or []}
+    return bool(keys) and approved_key not in keys
+
+
 def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], str | None, int]:
     rows, source, skipped = read_candidates(category, contract.candidate_root)
     rows = [row for row in rows if _needs_review(category, row)]
@@ -328,6 +354,9 @@ def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], s
         decision = decisions.get(row["item_key"], {})
         if category == "studio_logos" and row.get("content_state") == "changed":
             # 同一厂牌上游头像变化是新的事实；旧批次 approved 不得把变化静默藏掉。
+            decision = {}
+        if (category == "metadata_fields" and decision.get("status") == "approved"
+                and _metadata_decision_is_stale(decision, row)):
             decision = {}
         row["decision"] = decision.get("status", "pending")
         row["decision_note"] = decision.get("note", "")
