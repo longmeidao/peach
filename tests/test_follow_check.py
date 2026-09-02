@@ -87,6 +87,41 @@ class _CheckCase(unittest.TestCase):
                          moment=MOMENT, **kwargs)
 
 
+class SecondPhaseHandoffTests(_CheckCase):
+    def test_the_skip_set_reaches_the_connector(self):
+        """算出来的跳过集合要真的传给连接器，否则第二阶段照样按条目数付请求。"""
+        built = []
+
+        def factory(provider, **kwargs):
+            built.append(kwargs)
+            return _Connector(_fetch(provider="rule34paheal", ref="initiala"))
+
+        source_id = self._register(provider="rule34paheal", ref="initiala",
+                                   url="https://rule34.paheal.net/post/list/initiala/1")
+        row = dict(self._row(source_id))
+        row["force_media_reparse"] = False
+        row["enrich_skip"] = frozenset({"7428820"})
+        run_check(row, credentials=_Credentials(), writer=self.writer,
+                  connector_factory=factory, moment=MOMENT)
+        self.assertEqual(built[0]["enrich_skip"], frozenset({"7428820"}))
+
+    def test_an_empty_skip_set_is_not_passed_at_all(self):
+        """空集合不传：连接器的构造签名不该被一个恒为空的参数占着。"""
+        built = []
+
+        def factory(provider, **kwargs):
+            built.append(kwargs)
+            return _Connector(_fetch())
+
+        source_id = self._register()
+        row = dict(self._row(source_id))
+        row["force_media_reparse"] = False
+        row["enrich_skip"] = frozenset()
+        run_check(row, credentials=_Credentials(), writer=self.writer,
+                  connector_factory=factory, moment=MOMENT)
+        self.assertNotIn("enrich_skip", built[0])
+
+
 class PlanCheckTests(_CheckCase):
     def test_only_enabled_sources_are_planned(self):
         first = self._register()
@@ -135,6 +170,44 @@ class PlanCheckTests(_CheckCase):
         planned = plan_check(self.store, _Credentials({"rule34xxx"}), older=True,
                              backfill_providers=frozenset({"rule34xxx"}))
         self.assertFalse(planned[0]["force_media_reparse"])
+
+    def test_details_already_taken_are_left_out_of_the_second_phase(self):
+        """补齐过的条目不再打详情页。判据按来源各自声明的那一处算。"""
+        source_id = self._register(provider="rule34paheal", ref="initiala",
+                                   url="https://rule34.paheal.net/post/list/initiala/1")
+        self.store.record(source_id, _fetch(
+            provider="rule34paheal", ref="initiala", candidates=(
+                FollowCandidate(provider="rule34paheal", external_id="1", title="a",
+                                published_at="2026-08-26T15:21:00Z"),
+                FollowCandidate(provider="rule34paheal", external_id="2", title="b",
+                                partial=True),)),
+            moment=MOMENT)
+        planned = plan_check(self.store, _Credentials())
+        self.assertEqual(planned[0]["enrich_skip"], frozenset({"1"}))
+
+    def test_a_source_without_a_second_phase_never_computes_a_skip_set(self):
+        """kemono 的探测是收录判定，在列表阶段做；那里没有可跳过的第二阶段。"""
+        source_id = self._register(provider="kemono", ref="fanbox/1",
+                                   url="https://kemono.cr/fanbox/user/1")
+        self.store.record(source_id, _fetch(
+            provider="kemono", ref="fanbox/1", candidates=(
+                FollowCandidate(provider="kemono", external_id="1", title="a",
+                                published_at="2026-08-26T15:21:00Z"),)),
+            moment=MOMENT)
+        self.assertEqual(plan_check(self.store, _Credentials())[0]["enrich_skip"],
+                         frozenset())
+
+    def test_a_forced_check_asks_for_every_detail_again(self):
+        """`--force` 正是把上一轮没取到的细节补回来的时机，不能跳过任何一条。"""
+        source_id = self._register(provider="rule34paheal", ref="initiala",
+                                   url="https://rule34.paheal.net/post/list/initiala/1")
+        self.store.record(source_id, _fetch(
+            provider="rule34paheal", ref="initiala", candidates=(
+                FollowCandidate(provider="rule34paheal", external_id="1", title="a",
+                                published_at="2026-08-26T15:21:00Z"),)),
+            moment=MOMENT)
+        planned = plan_check(self.store, _Credentials(), force=True)
+        self.assertEqual(planned[0]["enrich_skip"], frozenset())
 
     def test_force_applies_to_every_source(self):
         """命令行的 `--force` 是无条件的，不依赖任何 needs_credential 痕迹。"""

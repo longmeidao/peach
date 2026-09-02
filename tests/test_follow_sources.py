@@ -300,7 +300,36 @@ class OfficialConnectorTests(unittest.TestCase):
         result = FanboxConnector(transport=_routed(route)).fetch("ffxivinitiala")
         self.assertEqual(len(result.candidates), 1)
         self.assertIn("HTTP 403", result.candidates[0].extra["media_error"])
-        self.assertEqual(result.candidates[0].extra["media_items"], ())
+        # 不写空清单：`partial` 行落库走 `json_patch`，补丁里的 null 是「删掉这个
+        # 键」，一篇临时被挡就会把上一轮取到的媒体清单抹掉。
+        self.assertNotIn("media_items", result.candidates[0].extra)
+        self.assertTrue(result.candidates[0].partial,
+                        "详情没取到就不算补齐，下一轮还要再问一次")
+
+    def test_fanbox_asks_post_info_only_for_posts_it_has_not_read_yet(self):
+        """已经补齐过的帖子不再打一次 post.info。
+
+        一页 10 条、每条一次详情，是这条来源里唯一会随条目数增长的请求。列表页的
+        304 只在**整页没变**时省下它们；新增一条就会连带把另外九条重新问一遍。
+        """
+        seen = []
+
+        def route(request):
+            seen.append(request.url)
+            return HttpResponse(200, {}, FANBOX_DETAIL_JSON
+                                if "post.info" in request.url else FANBOX_JSON)
+
+        result = FanboxConnector(transport=_routed(route),
+                                 enrich_skip={"12489354"}).fetch("ffxivinitiala")
+        self.assertEqual([url for url in seen if "post.info" in url], [])
+        self.assertEqual(result.probed, 0)
+        item = result.candidates[0]
+        self.assertTrue(item.partial, "跳过第二阶段的条目必须标 partial")
+        self.assertNotIn("media_items", item.extra,
+                         "详情才知道的键不能带着 null 进补丁，那会把库里的媒体删掉")
+        # 列表本来就给得出的那几项仍然在：候选不是空壳。
+        self.assertEqual(item.url, "https://ffxivinitiala.fanbox.cc/posts/12489354")
+        self.assertEqual(item.published_at, "2026-08-26T14:34:51Z")
 
     def test_fanbox_general_error_is_reported_instead_of_as_bad_json_shape(self):
         def route(request):
@@ -400,6 +429,69 @@ class Rule34PahealConnectorTests(unittest.TestCase):
         connector = Rule34PahealConnector(transport=_transport(status=404))
         with self.assertRaises(FollowHistoryEnd):
             connector.fetch("initiala", page=3)
+
+    def test_a_throttled_detail_page_is_retried_without_really_waiting(self):
+        """列表一页 24 条、每条一次详情页，被按频率挡回来是常态。
+
+        退避真的 sleep 会让这条测试等满 7 秒，于是它一直没被写；没有测试的结果是
+        「挡回来一次就当这条没有上传时间」这种缺陷只能在生产数据里发现。
+        """
+        attempts, waits = [], []
+
+        def route(request):
+            if "/post/view/" not in request.url:
+                return HttpResponse(200, {}, PAHEAL_LIST_HTML)
+            attempts.append(request.url)
+            if len(attempts) < 3:
+                return HttpResponse(429, {}, b"slow down")
+            return HttpResponse(200, {}, PAHEAL_DETAIL_HTML)
+
+        result = Rule34PahealConnector(transport=_routed(route),
+                                       sleeper=waits.append).fetch("initiala")
+        self.assertEqual(len(attempts), 3)
+        self.assertEqual(waits, [1.0, 2.0], "退避节奏是声明的那三档，按需取用")
+        item = result.candidates[0]
+        self.assertEqual(item.published_at, "2026-08-26T15:21:00Z")
+        self.assertFalse(item.partial)
+
+    def test_a_detail_page_that_stays_blocked_leaves_the_row_partial(self):
+        """取不到就保持列表视图。落库时 partial 行不动上一轮取到的时间与时长。"""
+        waits = []
+
+        def route(request):
+            if "/post/view/" not in request.url:
+                return HttpResponse(200, {}, PAHEAL_LIST_HTML)
+            return HttpResponse(503, {}, b"nope")
+
+        result = Rule34PahealConnector(transport=_routed(route),
+                                       sleeper=waits.append).fetch("initiala")
+        item = result.candidates[0]
+        self.assertTrue(item.partial)
+        self.assertIsNone(item.published_at)
+        self.assertIsNone(item.duration)
+        # 列表页本来就给得出的那几项仍然在：候选不是空壳。
+        self.assertEqual(item.external_id, "7428820")
+        self.assertEqual(item.media_url, "https://r34i.paheal-cdn.net/df/fb/video")
+        self.assertEqual(item.group_hint, "rule34paheal:post:7428820")
+        self.assertEqual(waits, [1.0, 2.0, 4.0])
+
+    def test_details_already_taken_cost_no_request_at_all(self):
+        """第二阶段只打新条目。这是唯一会让请求数随条目数增长的路径。"""
+        seen = []
+
+        def route(request):
+            seen.append(request.url)
+            return HttpResponse(200, {}, PAHEAL_DETAIL_HTML
+                                if "/post/view/" in request.url else PAHEAL_LIST_HTML)
+
+        result = Rule34PahealConnector(transport=_routed(route),
+                                       enrich_skip={"7428820"}).fetch("initiala")
+        self.assertEqual(len(seen), 1, "库里已经补齐过的条目不该再打一次详情页")
+        self.assertEqual(result.probed, 0)
+        item = result.candidates[0]
+        self.assertTrue(item.partial, "跳过第二阶段的条目必须标 partial")
+        self.assertNotIn("source", item.extra,
+                         "详情才知道的键不能带着 null 进补丁，那会把库里的出处删掉")
 
 
 class KemonoConnectorTests(unittest.TestCase):
@@ -994,12 +1086,14 @@ class Rule34XxxConnectorTests(unittest.TestCase):
                 return HttpResponse(503, {}, b"slow down")
             return HttpResponse(200, {}, RULE34XXX_DETAIL_HTML)
 
-        with patch.object(follow_sources.time, "sleep"):
-            result = Rule34XxxConnector(
-                transport=transport, max_items=1,
-                credential=Credential("rule34xxx", {"user_id": "42", "api_key": "sekret"}),
-            ).fetch("lazyprocrastinator")
+        waits = []
+        result = Rule34XxxConnector(
+            transport=transport, max_items=1, sleeper=waits.append,
+            credential=Credential("rule34xxx", {"user_id": "42", "api_key": "sekret"}),
+        ).fetch("lazyprocrastinator")
         self.assertEqual(len(attempts), 3, "被挡回来要重试，不能一次就当没有类型")
+        # 退避节奏本身也是行为：注入假 sleeper 才能断言它，而且测试不会真的等 5.5 秒。
+        self.assertEqual(waits, [1.5, 4.0])
         self.assertEqual(result.candidates[0].extra["tag_types"]["lazyprocrastinator"],
                          "artist")
 
@@ -1010,12 +1104,15 @@ class Rule34XxxConnectorTests(unittest.TestCase):
                 return HttpResponse(200, {}, RULE34XXX_JSON)
             return HttpResponse(503, {}, b"slow down")
 
-        with patch.object(follow_sources.time, "sleep"):
-            result = Rule34XxxConnector(
-                transport=transport, max_items=1,
-                credential=Credential("rule34xxx", {"user_id": "42", "api_key": "sekret"}),
-            ).fetch("lazyprocrastinator")
+        waits = []
+        result = Rule34XxxConnector(
+            transport=transport, max_items=1, sleeper=waits.append,
+            credential=Credential("rule34xxx", {"user_id": "42", "api_key": "sekret"}),
+        ).fetch("lazyprocrastinator")
         self.assertNotIn("tag_types", result.candidates[0].extra)
+        self.assertTrue(result.candidates[0].partial,
+                        "详情没取到就得留着 partial，否则落库会把上一轮的分类抹掉")
+        self.assertEqual(waits, [1.5, 4.0, 9.0], "退避走完声明的三档才算取不到")
 
     def test_autocomplete_reports_the_real_tag_spelling_without_credentials(self):
         # 站上写作 `ria-neearts`，手边的手柄是 `Ria_neearts`；补全是唯一能把两者
@@ -1387,6 +1484,90 @@ class CredentialStoreTests(unittest.TestCase):
         for bad in ("../ledger", "a/b", ".hidden"):
             with self.assertRaises(CredentialError):
                 self.store.path_for(bad)
+
+class EnrichPhaseTests(unittest.TestCase):
+    """第二阶段的共用机制：额度、跳过集合与「补齐判据」的登记。
+
+    详情页是每条一次请求，列表页是一整页一次。所以第二阶段必须有额度，而且
+    补齐过的条目不再问——否则一个作者的来源每次检查都要按条目数付请求。
+    """
+
+    def _rule34xxx(self, seen, **kwargs):
+        def transport(request, timeout, max_bytes):
+            seen.append(request.url)
+            if request.url.startswith("https://api.rule34.xxx/index.php"):
+                return HttpResponse(200, {}, RULE34XXX_JSON)
+            return HttpResponse(200, {}, RULE34XXX_DETAIL_HTML)
+
+        return Rule34XxxConnector(
+            transport=transport, max_items=4,
+            credential=Credential("rule34xxx", {"user_id": "42", "api_key": "sekret"}),
+            **kwargs)
+
+    def test_the_budget_bounds_how_many_details_one_check_can_cost(self):
+        seen = []
+        result = self._rule34xxx(seen, enrich_budget=2).fetch("lazyprocrastinator")
+        self.assertEqual(len(result.candidates), 4)
+        self.assertEqual(result.probed, 2)
+        details = [url for url in seen if "s=view" in url]
+        self.assertEqual(len(details), 2, "额度是请求数的上限，不是建议值")
+        self.assertEqual([item.partial for item in result.candidates],
+                         [False, False, True, True],
+                         "额度用完之后的条目仍然入库，只是标着 partial")
+
+    def test_a_zero_budget_means_the_list_phase_alone(self):
+        seen = []
+        result = self._rule34xxx(seen, enrich_budget=0).fetch("lazyprocrastinator")
+        self.assertEqual(seen, [url for url in seen if "s=view" not in url])
+        self.assertEqual(result.probed, 0)
+        self.assertTrue(all(item.partial for item in result.candidates))
+
+    def test_the_skip_set_is_spent_on_the_condition_not_on_the_budget(self):
+        """跳过的条目不占额度：额度是为「还没补齐的那几条」留的。"""
+        seen = []
+        result = self._rule34xxx(
+            seen, enrich_budget=2, enrich_skip={"18534395", "18534396"},
+        ).fetch("lazyprocrastinator")
+        details = sorted(url.rsplit("id=", 1)[1] for url in seen if "s=view" in url)
+        self.assertEqual(details, ["18534397", "18534398"])
+        self.assertEqual([item.partial for item in result.candidates],
+                         [True, True, False, False])
+
+    def test_every_declared_mark_has_a_ledger_predicate(self):
+        """连接器声明「补齐之后哪一处会有值」，判据的 SQL 在 store 里。
+
+        两处必须对得上：声明一个 store 不认识的键，第二阶段会在 `plan_check` 里
+        直接抛错，而那是每次检查都会走的路径。
+        """
+        from peach.follow_store import _ENRICHED_PREDICATES
+        for provider, factory in sorted(follow_sources.CONNECTORS.items()):
+            mark = factory.ENRICHED_MARK
+            with self.subTest(provider=provider):
+                self.assertEqual(bool(mark), bool(factory.DEFAULT_ENRICH_BUDGET),
+                                 "有额度就得有判据，有判据就得有额度")
+                if mark:
+                    self.assertIn(mark, _ENRICHED_PREDICATES)
+
+    def test_the_mark_of_an_unknown_provider_is_empty_not_an_error(self):
+        self.assertEqual(follow_sources.enrichment_mark("nope"), "")
+        self.assertEqual(follow_sources.enrichment_mark(""), "")
+        self.assertEqual(follow_sources.enrichment_mark("kemono"), "",
+                         "kemono 的探测是收录判定，在列表阶段做，不是第二阶段")
+        self.assertEqual(follow_sources.enrichment_mark("rule34xxx"), "tag_types")
+
+    def test_rule34xxx_is_not_marked_by_a_time_the_list_already_gave(self):
+        """rule34xxx 的上传时间来自列表的 `change`，第一次落库就有值。
+
+        拿 `published_at` 当它的补齐判据，等于宣布「所有条目都已补齐」，上一轮被
+        限流挡掉的分类就永远补不回来了。
+        """
+        self.assertNotEqual(Rule34XxxConnector.ENRICHED_MARK, "published_at")
+        listed = Rule34XxxConnector(
+            transport=_transport(body=RULE34XXX_JSON), enrich_budget=0,
+            credential=Credential("rule34xxx", {"user_id": "42", "api_key": "sekret"}),
+        ).fetch("lazyprocrastinator").candidates
+        self.assertTrue(all(item.published_at for item in listed))
+        self.assertTrue(all("tag_types" not in item.extra for item in listed))
 
 
 if __name__ == "__main__":

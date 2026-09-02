@@ -685,6 +685,110 @@ class PlaybackTests(_StoreCase):
         result = self.store.record_playback_activity(
             item_id, position=-5, duration=0, delta=-3, moment=MOMENT)
         self.assertEqual(result, {"play_seconds": 0.0, "max_reached": 0.0})
+class PartialCandidateTests(_StoreCase):
+    """`partial=True` 的候选（跳过了第二阶段）落库时不能抹掉已有的细节。
+
+    upsert 原本整块替换 metadata、media_url、thumb_url 和 group_hint。第二阶段
+    一旦按「已补齐」跳过，同一条再落一次就会把上一轮取到的细节清成空——而清空之后
+    「详情本来就没有」和「这次没去问」在数据里长得一模一样。
+    """
+
+    def _both(self):
+        source_id = self._source(provider="rule34paheal", ref="initiala")
+        full = FollowCandidate(
+            provider="rule34paheal", external_id="7428820", title="Tifa",
+            url="https://rule34.paheal.net/post/view/7428820",
+            media_url="https://r34i.paheal-cdn.net/df/fb/video",
+            thumb_url="https://r34t.paheal.net/df/fb/poster",
+            published_at="2026-08-26T15:21:00Z", duration=28.4, author="VHSephi",
+            group_hint="subscribestar:2639932",
+            extra={"tag": "initiala", "source": "https://subscribestar.adult/posts/2639932",
+                   "tag_types": {"tifa_lockhart": "general"}})
+        partial = FollowCandidate(
+            provider="rule34paheal", external_id="7428820", title="Tifa Lockhart",
+            url="https://rule34.paheal.net/post/view/7428820",
+            media_url="https://r34i.paheal-cdn.net/df/fb/listing",
+            thumb_url="https://r34t.paheal.net/df/fb/thumb",
+            group_hint="rule34paheal:post:7428820", partial=True,
+            extra={"tag": "initiala", "media_kind": "video",
+                   "tag_types": {"amina": "general"}})
+        return source_id, full, partial
+
+    def _item(self, source_id):
+        return self.store.items(source_id=source_id)[0]
+
+    def _record(self, source_id, candidate):
+        self.store.record(source_id, _fetch([candidate], provider="rule34paheal",
+                                            ref="initiala"), moment=MOMENT)
+
+    def test_a_partial_row_keeps_every_detail_only_column(self):
+        source_id, full, partial = self._both()
+        self._record(source_id, full)
+        self._record(source_id, partial)
+        row = self._item(source_id)
+        self.assertEqual(row.published_at, "2026-08-26T15:21:00Z")
+        self.assertEqual(row.duration, 28.4)
+        self.assertEqual(row.media_url, "https://r34i.paheal-cdn.net/df/fb/video")
+        self.assertEqual(row.thumb_url, "https://r34t.paheal.net/df/fb/poster")
+        self.assertEqual(row.group_hint, "subscribestar:2639932")
+        # 列表本来就权威的那几列照常更新。
+        self.assertEqual(row.title, "Tifa Lockhart")
+
+    def test_a_partial_row_merges_metadata_instead_of_replacing_it(self):
+        source_id, full, partial = self._both()
+        self._record(source_id, full)
+        self._record(source_id, partial)
+        metadata = self._item(source_id).metadata
+        self.assertEqual(metadata["source"], "https://subscribestar.adult/posts/2639932",
+                         "详情给出的出处不在这次的补丁里，就该原样留着")
+        self.assertEqual(metadata["media_kind"], "video")
+        self.assertEqual(metadata["tag_types"],
+                         {"tifa_lockhart": "general", "amina": "general"})
+
+    def test_a_complete_row_still_replaces_what_it_carries(self):
+        """第二阶段成功时是完整视图，该覆盖就覆盖——否则改正过的细节写不进去。"""
+        source_id, full, partial = self._both()
+        self._record(source_id, partial)
+        self._record(source_id, full)
+        row = self._item(source_id)
+        self.assertEqual(row.thumb_url, "https://r34t.paheal.net/df/fb/poster")
+        self.assertEqual(row.group_hint, "subscribestar:2639932")
+        self.assertEqual(row.metadata["tag_types"], {"tifa_lockhart": "general"})
+
+
+class EnrichedMarkTests(_StoreCase):
+    """「这一行不必再打详情页」怎么从 ledger 里读出来。"""
+
+    def test_the_paheal_mark_is_a_published_time_the_detail_page_gave(self):
+        source_id = self._source(provider="rule34paheal", ref="initiala")
+        self.store.record(source_id, _fetch([
+            FollowCandidate(provider="rule34paheal", external_id="1", title="a",
+                            published_at="2026-08-26T15:21:00Z"),
+            FollowCandidate(provider="rule34paheal", external_id="2", title="b",
+                            partial=True),
+        ], provider="rule34paheal", ref="initiala"), moment=MOMENT)
+        self.assertEqual(self.store.enriched_external_ids(source_id, "published_at"),
+                         frozenset({"1"}))
+
+    def test_the_rule34xxx_mark_is_the_taxonomy_only_the_detail_page_gives(self):
+        source_id = self._source(provider="rule34xxx", ref="tag")
+        self.store.record(source_id, _fetch([
+            FollowCandidate(provider="rule34xxx", external_id="1", title="a",
+                            published_at="2026-08-26T15:21:00Z",
+                            extra={"tag_types": {"tifa": "general"}}),
+            # 上传时间来自列表，详情页这次被挡回来了：这一条还没补齐。
+            FollowCandidate(provider="rule34xxx", external_id="2", title="b",
+                            published_at="2026-08-26T15:20:00Z", partial=True,
+                            extra={"tag": "tag"}),
+        ], provider="rule34xxx", ref="tag"), moment=MOMENT)
+        self.assertEqual(self.store.enriched_external_ids(source_id, "tag_types"),
+                         frozenset({"1"}))
+
+    def test_an_unregistered_mark_is_refused_not_silently_matched(self):
+        source_id = self._source()
+        with self.assertRaises(ValueError):
+            self.store.enriched_external_ids(source_id, "whatever")
+
 
 if __name__ == "__main__":
     unittest.main()

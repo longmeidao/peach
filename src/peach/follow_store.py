@@ -45,6 +45,46 @@ _OFFICIAL_IDENTITY_PROVIDERS = follow_providers.official_identity_providers()
 #: 资源的楼层各自成组；这条口径登记在 `follow_providers`，不在这里点名站点。
 _RELEASE_KEY_PER_POST = follow_providers.release_key_per_post()
 
+#: 完整候选（列表 + 详情都取到了）更新已有行时用的 SET 子句。
+_FULL_UPDATE = (
+    "  title=excluded.title, url=excluded.url, media_url=excluded.media_url,"
+    # 详情页取不到不等于这条没有发布时间。paheal 每个候选都要单独打一次
+    # 详情页，被限流时 `_detail` 返回 {}，这里若直接覆盖，就会把上一轮
+    # 已经取到的上传时间和时长抹成 NULL——实测 168 条里 7 条正是这样，
+    # 而 `COALESCE(published_at, first_seen_at)` 会让界面改显示抓取时刻。
+    "  thumb_url=excluded.thumb_url,"
+    "  published_at=COALESCE(excluded.published_at, follow_item.published_at),"
+    "  published_precision=CASE WHEN excluded.published_at IS NOT NULL"
+    "    THEN excluded.published_precision ELSE follow_item.published_precision END,"
+    "  version=excluded.version,"
+    "  duration=COALESCE(excluded.duration, follow_item.duration),"
+    "  release_key=excluded.release_key, variant_kind=excluded.variant_kind,"
+    "  variant_label=excluded.variant_label, group_hint=excluded.group_hint,"
+    "  metadata_json=excluded.metadata_json, last_seen_at=excluded.last_seen_at"
+)
+
+#: `partial=True` 的候选（只有列表视图、详情这次没取）更新已有行时用的 SET 子句。
+#: 列表本来就权威的那几列照常更新；详情才能给出的 media_url、thumb_url、
+#: published_at、duration、group_hint 一概不动，metadata 用 `json_patch` 并进去而
+#: 不是整块替换——否则跳过第二阶段就等于把上一轮取到的细节抹掉，而抹掉之后
+#: 「详情本来就没有」和「这次没去问」在数据里长得一模一样。
+_PARTIAL_UPDATE = (
+    "  title=excluded.title, url=excluded.url, version=excluded.version,"
+    "  release_key=excluded.release_key, variant_kind=excluded.variant_kind,"
+    "  variant_label=excluded.variant_label,"
+    "  metadata_json=json_patch(follow_item.metadata_json, excluded.metadata_json),"
+    "  last_seen_at=excluded.last_seen_at"
+)
+
+#: 「第二阶段已经补齐过这一行」在 ledger 上怎么看出来。键就是连接器声明的
+#: `ENRICHED_MARK`，值是判据。写死成一张表而不是拼 SQL：判据是封闭词表，
+#: 由 `tests/test_follow_sources.py` 反过来核对每个连接器声明的键都在这里。
+_ENRICHED_PREDICATES = {
+    "published_at": "published_at IS NOT NULL AND published_at<>''",
+    "tag_types": "json_extract(metadata_json,'$.tag_types') IS NOT NULL",
+    "post_type": "json_extract(metadata_json,'$.post_type') IS NOT NULL",
+}
+
 
 def normalized_author_name(value: str, *, provider: str = "") -> str:
     """作者别名表的身份键。
@@ -282,22 +322,9 @@ class FollowStore:
                 "variant_kind,variant_label,group_hint,evidence_path,metadata_json,"
                 "first_seen_at,last_seen_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
                 " ON CONFLICT(source_id,external_id) DO UPDATE SET"
-                "  title=excluded.title, url=excluded.url, media_url=excluded.media_url,"
-                # 详情页取不到不等于这条没有发布时间。paheal 每个候选都要单独打一次
-                # 详情页，被限流时 `_detail` 返回 {}，这里若直接覆盖，就会把上一轮
-                # 已经取到的上传时间和时长抹成 NULL——实测 168 条里 7 条正是这样，
-                # 而 `COALESCE(published_at, first_seen_at)` 会让界面改显示抓取时刻。
-                "  thumb_url=excluded.thumb_url,"
-                "  published_at=COALESCE(excluded.published_at, follow_item.published_at),"
-                "  published_precision=CASE WHEN excluded.published_at IS NOT NULL"
-                "    THEN excluded.published_precision ELSE follow_item.published_precision END,"
-                "  version=excluded.version,"
-                "  duration=COALESCE(excluded.duration, follow_item.duration),"
-                "  release_key=excluded.release_key, variant_kind=excluded.variant_kind,"
-                "  variant_label=excluded.variant_label, group_hint=excluded.group_hint,"
-                "  metadata_json=excluded.metadata_json, last_seen_at=excluded.last_seen_at",
-                # status、asset_id 与 first_seen_at 刻意不在 SET 里：用户处理过的条目
-                # 不因为再次抓到就退回 new，首见时间也不该被重写。
+                # status、asset_id 与 first_seen_at 刻意不在两个 SET 里：用户处理过的
+                # 条目不因为再次抓到就退回 new，首见时间也不该被重写。
+                + (_PARTIAL_UPDATE if candidate.partial else _FULL_UPDATE),
                 values,
             )
             if existed:
@@ -319,6 +346,22 @@ class FollowStore:
                 (fetch.etag, fetch.last_modified, stamp, stamp, source_id))
         return RecordOutcome(source_id, len(fetch.candidates), added, updated,
                              evidence_path=evidence, evidence_error=evidence_error)
+
+    def enriched_external_ids(self, source_id: int, mark: str) -> frozenset[str]:
+        """这条来源里细节已经补齐、不必再打详情页的条目 id。
+
+        `mark` 由连接器声明（`ENRICHED_MARK`），判据在 `_ENRICHED_PREDICATES`：
+        SQL 属于这一层，「补齐之后哪一处会有值」属于连接器。补齐过的不再问——
+        详情页是唯一会让请求数随条目数增长的路径。判据不成立的行下次会再试一次，
+        所以上一轮被限流挡掉的细节能补回来，不必等用户强制重取。
+        """
+        predicate = _ENRICHED_PREDICATES.get(str(mark or ""))
+        if predicate is None:
+            raise ValueError(f"未登记的补齐判据：{mark!r}")
+        rows = self._connect().execute(
+            "SELECT external_id FROM follow_item WHERE source_id=?"
+            f" AND {predicate}", (source_id,))
+        return frozenset(str(row[0]) for row in rows)
 
     def remove_source(self, source_id: int) -> None:
         """删掉一条来源登记。

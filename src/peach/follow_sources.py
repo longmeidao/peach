@@ -15,7 +15,7 @@ import time
 import urllib.parse
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
-from typing import Mapping, Protocol
+from typing import Callable, Iterable, Mapping, Protocol
 
 import httpx
 from bs4 import BeautifulSoup
@@ -139,6 +139,10 @@ class FollowCandidate:
     #: 那种「标题」不能参与按标题分组，否则同一作者的两个作品会因标签相似被并掉。
     title_is_name: bool = True
     extra: Mapping[str, object] = field(default_factory=dict)
+    #: 这一条只有列表阶段的视图，详情没有取（额度用完、库里已经补齐过，或者详情页
+    #: 这次被挡回来）。落库时它**不得覆盖**已有的细节：详情给出的上传时间、时长、
+    #: 媒体地址和 metadata 要原样留着，只更新列表本来就权威的那几列。
+    partial: bool = False
 
 
 @dataclass(frozen=True)
@@ -375,17 +379,37 @@ class _BaseConnector:
     #: `_request` 时传参，因为 `is_history_end_error` 要用同一份声明去认旧行。
     HISTORY_END_STATUSES: tuple[int, ...] = ()
 
+    #: 一次抓取最多为补全细节额外打几次详情页。0 表示这个站没有第二阶段。
+    #: 列表页一次请求给一整页，详情页是每条一次——它是唯一会让请求数随条目数增长
+    #: 的路径，所以必须有额度，不能由页面长度决定。
+    DEFAULT_ENRICH_BUDGET = 0
+    #: 第二阶段成功之后，ledger 行上哪一处会有值。空串 = 没有第二阶段。
+    #: 调用方拿它算「这条不必再问详情」，判据本身登记在 `follow_store`。
+    #: **不能一律用 `published_at`**：rule34xxx 的上传时间来自列表的 `change`，
+    #: 第一次落库就有值，拿它当判据会让详情失败的行永远补不回来。
+    ENRICHED_MARK = ""
+
     def __init__(self, *, timeout: float = 15.0, max_bytes: int = DEFAULT_MAX_BYTES,
                  max_items: int = DEFAULT_MAX_ITEMS,
                  transport: HttpTransport | None = None,
                  credential: Credential | None = None,
-                 gofile_credential: Credential | None = None):
+                 gofile_credential: Credential | None = None,
+                 enrich_skip: Iterable[str] = (),
+                 enrich_budget: int | None = None,
+                 sleeper: Callable[[float], None] = time.sleep):
         self.timeout = timeout
         self.max_bytes = max_bytes
         self.max_items = max_items
         self.transport = transport or HttpxTransport()
         self.credential = credential
         self.gofile_credential = gofile_credential
+        #: 细节已经补齐过的站内 id，第二阶段直接跳过。由调用方按 ledger 现状算出。
+        self.enrich_skip = frozenset(str(value) for value in enrich_skip)
+        self.enrich_budget = (self.DEFAULT_ENRICH_BUDGET if enrich_budget is None
+                              else max(0, int(enrich_budget)))
+        #: 退避时怎么等。默认真的睡；测试注入一个记账用的假实现，好让退避节奏
+        #: 可断言又不真的把测试拖成几十秒。
+        self.sleeper = sleeper
 
     def _headers(self) -> dict[str, str]:
         return {"User-Agent": USER_AGENT}
@@ -524,6 +548,37 @@ class _BaseConnector:
         规则取不到的站点才在子类里覆盖——那份实测属于连接器，不属于 Web 层。
         """
         return str(item.thumb_url or "") or None
+
+    def enrich(self, candidates: Iterable[FollowCandidate], *,
+               budget: int | None = None,
+               skip: Iterable[str] | None = None) -> tuple[
+                   tuple[FollowCandidate, ...], int]:
+        """第二阶段：为列表页给不出的细节逐条打详情页。返回补全后的候选和打了几次。
+
+        只打真正需要的条：库里已经补齐过的跳过（`skip`），额度用完的也跳过。跳过的
+        条目保持 `partial=True`，落库时不会把上一轮取到的细节覆盖成空。
+
+        细节缺失的旧行怎么补回来：显式检查带 `--force` 时调用方给出空 `skip`，
+        于是整页重新走第二阶段——这是有界的一次性修复，不是每次检查都付的成本。
+        """
+        limit = self.enrich_budget if budget is None else max(0, int(budget))
+        skipped = self.enrich_skip if skip is None else frozenset(
+            str(value) for value in skip)
+        if not limit:
+            return tuple(candidates), 0
+        spent = 0
+        result: list[FollowCandidate] = []
+        for candidate in candidates:
+            if spent >= limit or str(candidate.external_id) in skipped:
+                result.append(candidate)
+                continue
+            spent += 1
+            result.append(self._enrich_one(candidate))
+        return tuple(result), spent
+
+    def _enrich_one(self, candidate: FollowCandidate) -> FollowCandidate:
+        """补全一条候选。取不到就原样返回（仍是 `partial`），不猜、不写死。"""
+        return candidate
 
     @classmethod
     def provider_keys(cls) -> tuple[str, ...]:
@@ -1093,6 +1148,10 @@ class Rule34XxxConnector(_BaseConnector):
 
     provider = "rule34xxx"
     semantics = "work"
+    #: 一页 24 条时整页都能补上；额度存在是为了页面变长时请求数不跟着长。
+    DEFAULT_ENRICH_BUDGET = 24
+    #: 详情页给的就是标签分类，所以补齐过的行 metadata 里一定有 `tag_types`。
+    ENRICHED_MARK = "tag_types"
     _TAG_RE = re.compile(r"^[^\s&?#]{1,100}$")
     #: 历史行存的是 250px 的 preview。官方 dapi 的 `sample_url` 与它用同一
     #: bucket/hash；2026-08-28 对生产历史行实测推导，结果是 1920x1080。
@@ -1160,17 +1219,23 @@ class Rule34XxxConnector(_BaseConnector):
         posts = payload.get("post", []) if isinstance(payload, dict) else payload
         if not isinstance(posts, list):
             raise FollowSourceError("rule34xxx 的帖子列表格式不符")
-        candidates = []
-        for post in posts[: self.max_items]:
-            if not isinstance(post, dict):
-                continue
-            post_id = str(post.get("id") or "")
-            tag_types = self._detail_tag_types(post_id) if post_id else {}
-            candidates.append(self._candidate(post, tag, tag_types=tag_types))
-        candidates = tuple(candidates)
+        listed = [self._candidate(post, tag) for post in posts[: self.max_items]
+                  if isinstance(post, dict)]
+        # 第二阶段：标签分类只有帖子详情页给，列表的 dapi 只给一串扁平标签。
+        candidates, probed = self.enrich(listed)
         if page and not candidates:
             raise FollowHistoryEnd("没有更多历史内容")
-        return SourceFetch(candidates=candidates, raw_body=response.body, **common)
+        return SourceFetch(candidates=candidates, probed=probed,
+                           raw_body=response.body, **common)
+
+    def _enrich_one(self, candidate: FollowCandidate) -> FollowCandidate:
+        tag_types = self._detail_tag_types(str(candidate.external_id))
+        if not tag_types:
+            # 详情页这次没给出分类。保持 partial：上一轮取到的分类还在库里，
+            # 覆盖成空会让「这条没有分类」和「这次没问到」在数据里长得一样。
+            return candidate
+        return replace(candidate, partial=False,
+                       extra={**candidate.extra, "tag_types": tag_types})
 
     #: 自动补全项的形状：`ria-neearts (248)`，括号里是该标签下的帖子数。
     _AUTOCOMPLETE_COUNT_RE = re.compile(r"\((\d[\d,]*)\)\s*$")
@@ -1233,7 +1298,7 @@ class Rule34XxxConnector(_BaseConnector):
         response = None
         for delay in (0.0, *self._DETAIL_RETRY_DELAYS):
             if delay:
-                time.sleep(delay)
+                self.sleeper(delay)
             try:
                 response = self._get(url, headers={"Accept": "text/html"})
             except FollowSourceError:
@@ -1263,8 +1328,7 @@ class Rule34XxxConnector(_BaseConnector):
                 result[name] = tag_type
         return result
 
-    def _candidate(self, post: dict, tag: str, *,
-                   tag_types: Mapping[str, str] | None = None) -> FollowCandidate:
+    def _candidate(self, post: dict, tag: str) -> FollowCandidate:
         post_id = str(post.get("id") or "")
         # dapi 返回的标签是 HTML 转义形态（实测 `miqo&#039;te`）。实体不反转义
         # 就进 metadata，读取层再转一次就成了双重转义，用户看到的就是 `&#039;`
@@ -1307,10 +1371,11 @@ class Rule34XxxConnector(_BaseConnector):
             published_at=_iso_from_epoch(post.get("change")),
             group_hint=hint,
             title_is_name=title_is_name,
+            # 列表视图：标签分类要等第二阶段的详情页。
+            partial=True,
             extra={"tag": tag, "tags": tags, "score": post.get("score"),
                    "source": source, "title_from": title_from,
-                   "preview_url": post.get("preview_url"),
-                   **({"tag_types": dict(tag_types)} if tag_types else {})},
+                   "preview_url": post.get("preview_url")},
         )
 
     @classmethod
@@ -1329,6 +1394,10 @@ class Rule34PahealConnector(_BaseConnector):
     semantics = "work"
     #: 往回翻到尽头时标签页回 404。
     HISTORY_END_STATUSES = (404,)
+    #: 一页 24 条，整页都能补上；额度存在是为了页面变长时请求数不跟着长。
+    DEFAULT_ENRICH_BUDGET = 24
+    #: 上传时间只有详情页给（列表的缩略图属性里没有），所以它就是补齐的判据。
+    ENRICHED_MARK = "published_at"
     _TAG_RE = re.compile(r"^[^/?#]{1,100}$")
     _DURATION_RE = re.compile(r"\b(\d+(?:\.\d+)?)s\b", re.IGNORECASE)
     _TITLE_STOPWORDS = frozenset({"animated", "blender", "video", "sound", "mp4", "webm"})
@@ -1368,48 +1437,75 @@ class Rule34PahealConnector(_BaseConnector):
         if response is None:
             return SourceFetch(not_modified=True, **common)
         soup = BeautifulSoup(response.body, "html.parser")
-        candidates = []
+        listed = []
         for thumb in soup.select(".shm-image-list .shm-thumb[data-post-id]")[:self.max_items]:
             post_id = str(thumb.get("data-post-id") or "")
             if not post_id.isdigit():
                 continue
-            tags = str(thumb.get("data-tags") or "")
-            extension = str(thumb.get("data-ext") or "").casefold()
-            link = thumb.select_one("a.shm-thumb-link[href]")
-            file_link = thumb.select_one("a[href*='paheal-cdn.net'], a[href*='r34i.paheal']")
-            image = thumb.select_one("img[src]")
-            detail = self._detail(post_id)
-            tag_values = detail.get("tags") or tags.split()
-            title = self._tag_label(tag_values, tag) or f"Paheal 帖子 {post_id}"
-            media_url = str(detail.get("media_url") or
-                            (file_link.get("href") if file_link else "")) or None
-            candidates.append(FollowCandidate(
-                provider=self.provider,
-                external_id=post_id,
-                title=title,
-                url=urllib.parse.urljoin("https://rule34.paheal.net",
-                                         str(link.get("href") if link else f"/post/view/{post_id}")),
-                media_url=media_url,
-                thumb_url=str(detail.get("thumb_url") or
-                              (image.get("src") if image else "")) or None,
-                published_at=detail.get("published_at"),
-                duration=detail.get("duration"),
-                author=detail.get("author"),
-                group_hint=origin_group_key(detail.get("source")) or
-                           f"{self.provider}:post:{post_id}",
-                title_is_name=False,
-                extra={"tag": tag, "tags": " ".join(tag_values),
-                       "source": detail.get("source"), "title_from": "tags",
-                       "media_kind": "video" if extension in {"mp4", "webm", "mov"}
-                                     else "image",
-                       "tag_types": {value: "general" for value in tag_values}},
-            ))
+            listed.append(self._listed(thumb, post_id, tag))
+        # 第二阶段：上传时间、时长、上传者和原始出处都只有帖子详情页给。
+        candidates, probed = self.enrich(listed)
         if not candidates:
             if page:
                 raise FollowHistoryEnd("没有更多历史内容")
             raise FollowSourceError("rule34.paheal 标签页没有解析出任何作品")
-        return SourceFetch(candidates=tuple(candidates), probed=len(candidates),
+        return SourceFetch(candidates=candidates, probed=probed,
                            raw_body=response.body, **common)
+
+    def _listed(self, thumb, post_id: str, tag: str) -> FollowCandidate:
+        """只用列表页缩略图上的属性造一条候选。不联网。
+
+        `extra` 里刻意**不放**详情才知道的键（`source`）：`partial` 行落库走
+        `json_patch`，而补丁里的 null 是「删掉这个键」，写进去就会把上一轮取到的
+        出处抹掉。
+        """
+        tags = str(thumb.get("data-tags") or "").split()
+        extension = str(thumb.get("data-ext") or "").casefold()
+        link = thumb.select_one("a.shm-thumb-link[href]")
+        file_link = thumb.select_one("a[href*='paheal-cdn.net'], a[href*='r34i.paheal']")
+        image = thumb.select_one("img[src]")
+        return FollowCandidate(
+            provider=self.provider,
+            external_id=post_id,
+            title=self._tag_label(tags, tag) or f"Paheal 帖子 {post_id}",
+            url=urllib.parse.urljoin(
+                "https://rule34.paheal.net",
+                str(link.get("href") if link else f"/post/view/{post_id}")),
+            media_url=str(file_link.get("href")) if file_link else None,
+            thumb_url=str(image.get("src")) if image else None,
+            group_hint=f"{self.provider}:post:{post_id}",
+            title_is_name=False,
+            partial=True,
+            extra={"tag": tag, "tags": " ".join(tags), "title_from": "tags",
+                   "media_kind": "video" if extension in {"mp4", "webm", "mov"}
+                                 else "image",
+                   "tag_types": {value: "general" for value in tags}},
+        )
+
+    def _enrich_one(self, candidate: FollowCandidate) -> FollowCandidate:
+        detail = self._detail(str(candidate.external_id))
+        if not detail:
+            # 详情页这次没拿到。保持 partial：上一轮取到的上传时间和时长留在库里，
+            # 覆盖成空会让「站上就没写」和「这次没问到」在数据里长得一样。
+            return candidate
+        subject = str(candidate.extra.get("tag") or "")
+        tag_values = (list(detail.get("tags") or ())
+                      or str(candidate.extra.get("tags") or "").split())
+        return replace(
+            candidate,
+            partial=False,
+            title=self._tag_label(tag_values, subject) or candidate.title,
+            media_url=str(detail.get("media_url") or "") or candidate.media_url,
+            thumb_url=str(detail.get("thumb_url") or "") or candidate.thumb_url,
+            published_at=detail.get("published_at"),
+            duration=detail.get("duration"),
+            author=detail.get("author"),
+            group_hint=(origin_group_key(detail.get("source"))
+                        or candidate.group_hint),
+            extra={**candidate.extra, "tags": " ".join(tag_values),
+                   "source": detail.get("source"),
+                   "tag_types": {value: "general" for value in tag_values}},
+        )
 
     #: 详情页取不到就重试的状态码。列表页一页 24 条，每条都要单独打一次详情页，
     #: 上游按频率挡回来是常态；一次挡回来就当「这条没有上传时间」，得到的是一条
@@ -1424,7 +1520,7 @@ class Rule34PahealConnector(_BaseConnector):
         for delay in self._DETAIL_RETRY_DELAYS:
             if response.status not in self._DETAIL_RETRY_STATUSES:
                 break
-            time.sleep(delay)
+            self.sleeper(delay)
             response = self._get(url, headers={"Accept": "text/html"})
         if response.status != 200:
             return {}
@@ -1764,6 +1860,11 @@ class FanboxConnector(_BaseConnector):
 
     provider = "fanbox"
     semantics = "work"
+    #: 2026-08-27 实测公开接口单页 10 条，整页都能补上。
+    DEFAULT_ENRICH_BUDGET = 10
+    #: 正文类型只有 post.info 给。详情被 Cloudflare 挡回来时它是 null，所以拿它
+    #: 当判据能让那一行下一轮再试一次，而不是当成「已经补齐」。
+    ENRICHED_MARK = "post_type"
     _CREATOR_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
     @classmethod
@@ -1831,57 +1932,76 @@ class FanboxConnector(_BaseConnector):
         posts = ((payload or {}).get("body") or {}).get("posts")
         if not isinstance(posts, list):
             raise FollowSourceError("fanbox 返回的帖子列表格式不符")
-        candidates, skipped, probed = [], 0, 0
+        listed, skipped = [], 0
         for post in posts[:self.max_items]:
             if not isinstance(post, dict) or not str(post.get("id") or "").isdigit():
                 continue
             if post.get("isRestricted") or int(post.get("feeRequired") or 0) > 0:
                 skipped += 1
                 continue
-            post_id = str(post["id"])
-            cover = post.get("cover") if isinstance(post.get("cover"), dict) else {}
-            user = post.get("user") if isinstance(post.get("user"), dict) else {}
-            try:
-                detail = self._post_detail(post_id, creator)
-            except FollowSourceError as error:
-                # FANBOX 会把单篇 post.info 临时换成 Cloudflare 验证页。
-                # 列表本身仍是可信的公开更新；保留卡片并明确标记媒体未取得，
-                # 不能让一篇详情失败拖垮整个作者来源。
-                detail = {"summary": "", "links": [], "media_items": (),
-                          "post_type": None, "image_count": 0,
-                          "video_count": 0, "file_count": 0,
-                          "error": str(error)}
-            probed += 1
-            links = detail["links"]
-            direct_media = detail["media_items"]
-            gofile_media = self._gofile_media(
-                links, labels=folder_labels(str(detail.get("summary") or "")))
-            media_items = tuple(direct_media) + gofile_media
-            candidates.append(FollowCandidate(
-                provider=self.provider,
-                external_id=post_id,
-                title=plain_text(str(post.get("title") or "")) or f"FANBOX 帖子 {post_id}",
-                url=f"https://{creator}.fanbox.cc/posts/{post_id}",
-                thumb_url=(str(direct_media[0].get("thumb_url")
-                               or direct_media[0].get("url"))
-                           if direct_media else
-                           str(cover.get("url")) if cover.get("url") else None),
-                published_at=_iso_from_text(post.get("publishedDatetime")),
-                author=plain_text(str(user.get("name") or "")),
-                summary=detail["summary"] or plain_text(str(post.get("excerpt") or "")),
-                group_hint=f"fanbox:{post_id}",
-                extra={"fee_required": 0, "official": True, "links": links,
-                       "media_items": media_items,
-                       "media_error": detail.get("error"),
-                       "post_type": detail.get("post_type"),
-                       "image_count": detail.get("image_count", 0),
-                       "video_count": detail.get("video_count", 0),
-                       "file_count": detail.get("file_count", 0),
-                       "gofile_video_count": sum(
-                           item.get("media_kind") == "video" for item in gofile_media)},
-            ))
-        return SourceFetch(candidates=tuple(candidates), skipped=skipped,
+            listed.append(self._listed(post, creator))
+        # 第二阶段：正文外链、按正文顺序排列的多图和正文类型都只有 post.info 给。
+        candidates, probed = self.enrich(listed)
+        return SourceFetch(candidates=candidates, skipped=skipped,
                            probed=probed, raw_body=response.body, **common)
+
+    def _listed(self, post: dict, creator: str) -> FollowCandidate:
+        """只用 post.listCreator 给的字段造一条候选。不联网。
+
+        `extra` 里刻意**不放**详情才知道的键：`partial` 行落库走 `json_patch`，
+        而补丁里的 null 是「删掉这个键」，写进去就会把上一轮取到的媒体清单抹掉。
+        """
+        post_id = str(post["id"])
+        cover = post.get("cover") if isinstance(post.get("cover"), dict) else {}
+        user = post.get("user") if isinstance(post.get("user"), dict) else {}
+        return FollowCandidate(
+            provider=self.provider,
+            external_id=post_id,
+            title=plain_text(str(post.get("title") or "")) or f"FANBOX 帖子 {post_id}",
+            url=f"https://{creator}.fanbox.cc/posts/{post_id}",
+            thumb_url=str(cover.get("url")) if cover.get("url") else None,
+            published_at=_iso_from_text(post.get("publishedDatetime")),
+            author=plain_text(str(user.get("name") or "")),
+            summary=plain_text(str(post.get("excerpt") or "")),
+            group_hint=f"fanbox:{post_id}",
+            partial=True,
+            extra={"fee_required": 0, "official": True},
+        )
+
+    def _enrich_one(self, candidate: FollowCandidate) -> FollowCandidate:
+        # 创作者 id 从候选自己的地址推回来，不额外存进 metadata：那是同一个事实
+        # 的第二份副本，而 `url` 本来就是 `https://<creator>.fanbox.cc/posts/<id>`。
+        host = str(urllib.parse.urlsplit(str(candidate.url or "")).hostname or "")
+        try:
+            detail = self._post_detail(str(candidate.external_id), host.split(".")[0])
+        except FollowSourceError as error:
+            # FANBOX 会把单篇 post.info 临时换成 Cloudflare 验证页。列表本身仍是
+            # 可信的公开更新：保留卡片、标明媒体未取得，并留着 `partial` 让下一轮
+            # 再试——不能让一篇详情失败拖垮整个作者来源，也不能就此当作已补齐。
+            return replace(candidate, extra={**candidate.extra,
+                                             "media_error": str(error)})
+        links = detail["links"]
+        direct_media = detail["media_items"]
+        gofile_media = self._gofile_media(
+            links, labels=folder_labels(str(detail.get("summary") or "")))
+        media_items = tuple(direct_media) + gofile_media
+        return replace(
+            candidate,
+            partial=False,
+            # 正文里的首图比列表封面准：封面是作者选的展示图，不一定是这篇的内容。
+            thumb_url=(str(direct_media[0].get("thumb_url")
+                           or direct_media[0].get("url"))
+                       if direct_media else candidate.thumb_url),
+            summary=detail["summary"] or candidate.summary,
+            extra={**candidate.extra, "links": links, "media_items": media_items,
+                   "media_error": None,
+                   "post_type": detail.get("post_type"),
+                   "image_count": detail.get("image_count", 0),
+                   "video_count": detail.get("video_count", 0),
+                   "file_count": detail.get("file_count", 0),
+                   "gofile_video_count": sum(
+                       item.get("media_kind") == "video" for item in gofile_media)},
+        )
 
     def _post_detail(self, post_id: str, creator: str) -> dict[str, object]:
         """公开详情补全正文外链和按正文顺序排列的多图。"""
@@ -2197,6 +2317,15 @@ def is_history_end_error(provider: str, message: str) -> bool:
     """
     factory = CONNECTORS.get(str(provider or ""))
     return factory is not None and factory.is_history_end_error(message)
+
+
+def enrichment_mark(provider: str) -> str:
+    """这个来源第二阶段补齐之后 ledger 上哪一处会有值；没有第二阶段就是空串。
+
+    调用方用它决定要不要去 ledger 里算跳过集合，以及按哪一列算。
+    """
+    factory = CONNECTORS.get(str(provider or ""))
+    return str(getattr(factory, "ENRICHED_MARK", "") or "") if factory else ""
 
 
 def official_profile_handle(provider: str, ref: str) -> str:

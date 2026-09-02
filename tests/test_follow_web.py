@@ -132,7 +132,7 @@ class FollowContractTests(unittest.TestCase):
                                    semantics="work", candidates=(), raw_body=b"<html/>")
 
         original = web_follow.build_connector
-        web_follow.build_connector = lambda provider, credential=None: _Recorder()
+        web_follow.build_connector = lambda provider, **kwargs: _Recorder()
         self.addCleanup(setattr, web_follow, "build_connector", original)
 
         self._post("/api/follow/check", {})

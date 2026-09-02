@@ -15,7 +15,7 @@ from typing import Mapping
 
 from .follow import FollowHistoryEnd, FollowSourceError
 from .follow_secrets import CredentialError
-from .follow_sources import SourceFetch
+from .follow_sources import SourceFetch, enrichment_mark
 from .follow_store import RecordOutcome
 
 
@@ -62,10 +62,17 @@ def plan_check(store, credentials, *, source_id: int | None = None,
             not older and credentials.load(row["provider"]) is not None
             and store.source_needs_media_reparse(row["id"])
         )
+        # 第二阶段跳过谁：细节已经补齐的条目。强制重取时不跳过任何一条——
+        # 那正是把上一轮没取到的细节补回来的时机。
+        mark = enrichment_mark(row["provider"])
+        row["enrich_skip"] = (
+            frozenset() if row["force_media_reparse"] or not mark
+            else store.enriched_external_ids(row["id"], mark))
     return rows
 
 
-def build_connector_for(provider: str, credentials, connector_factory):
+def build_connector_for(provider: str, credentials, connector_factory, *,
+                        enrich_skip: frozenset[str] = frozenset()):
     """按凭据仓库里现有的凭据造一个连接器。
 
     `connector_factory` 由调用方传进来（各自模块里的 `build_connector`），不在这里
@@ -75,6 +82,8 @@ def build_connector_for(provider: str, credentials, connector_factory):
     gofile_credential = credentials.load("gofile")
     if gofile_credential is not None:
         kwargs["gofile_credential"] = gofile_credential
+    if enrich_skip:
+        kwargs["enrich_skip"] = enrich_skip
     return connector_factory(provider, **kwargs)
 
 
@@ -93,7 +102,9 @@ def run_check(row: Mapping, *, credentials, writer, connector_factory,
             "label": str(row["label"] or ""), "page": page, "older": older}
     force = bool(row.get("force_media_reparse"))
     try:
-        connector = build_connector_for(provider, credentials, connector_factory)
+        connector = build_connector_for(
+            provider, credentials, connector_factory,
+            enrich_skip=frozenset(row.get("enrich_skip") or ()))
         fetch = connector.fetch(
             ref,
             etag=None if force else row["etag"],
