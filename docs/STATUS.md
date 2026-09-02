@@ -76,8 +76,8 @@
 17. 决定 `attic/instances/20260828-taste-preview` 的去留：含 122 MB 账本副本（按真相源快照对待，删除需另行确认）与 153 MB `sources`；28 个预览日志可随时清。
 18. 另行授权后运行 `scripts/normalize_link_hosts.py --database <ledger> --apply --backup <落点>`，把 296 条 twitter 写法收成 x.com（290 改写、6 删除），随后重启托盘并在真实浏览器验收 `/link-mark` 的清晰度与边缘。
 19. 用户复核 `directory-links-<日期>.csv` 后用 `install_entity_links.py` 装入社媒链接；`conflict` 且账本旧号「疑似失效」的行由用户决定换号，随后可对账本现有全部 X 链接跑一遍同样的验活。
-20. 用户复核 `studio-names-<日期>.csv` 的 26 条厂牌改名后另行授权（要同时动 `entity.canonical_name` 与 `asset.studio`）；3 条不一致按「一个账本名混了两家」处理，5 条 404 未取得，搜索兜底要先有一个能用的搜索出口。
-21. 剩下 9 个字标厂牌账本里连 `official` 链接都没有，要先补上官网再重跑 `scripts/harvest_studio_icons.py`；FC2-PPV 判为「只有小图标」，下一步是另找更大的资产。复核 `studio-icons-<日期>.csv` 时重点看 `content_aspect` 接近上限的行。
+20. 用户复核 `studio-names-<日期>.csv` 的 26 条厂牌改名后另行授权；3 条不一致按「一个账本名混了两家」处理，5 条 404 未取得，搜索兜底要先有一个能用的搜索出口。
+21. 9 个字标厂牌的官网已查出 8 条（`studio-sites-<日期>.csv`），用户复核后授权 `install_entity_links.py` 装入，再重跑 `scripts/harvest_studio_icons.py`；SOD Create 与 FC2-PPV 各剩一条要用户裁决，判据见 `docs/SOURCING.md`。复核时重点看 `content_aspect` 接近上限的行。
 22. 把 javdatabase 的 idol 页接进社媒／官网候选：183 页缓存里 139 页带 X 链接、138 页带另一个官方站，由番号定位、不需要离线比名。实现复用 `peach.social_links` 的判据与 `install_entity_links.py` 的 `FIELDS`，排掉四个整站广告主机。
 
 ## 批处理进度

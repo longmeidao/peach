@@ -129,7 +129,25 @@
   链接指向站外（实测 `dasdas.jp`、`muku.tv` 的「いいえ」都指向 dmm.com），肯定链接「はい（入室する）」
   指向站内，两者的 href 看不出区别。实现见 `scripts/find_studio_socials.py`，
   `test_age_gate_is_crossed_by_the_affirmative_link_only` 守这条线。
-
+- 猜域名找官网的每一道拒绝判据都要能说出「谁是它的反例」，而拒绝判据本身也会误伤真站。
+  `scripts/harvest_studio_sites.py` 现在拦停放页（`kawaii.com - domain for sale`，关键词在正文第
+  81683 字节却写在标题里）、拦自述不可用的页（`bangbus.com`、`monstersofcock.com` 回 200、82 KB、
+  正文成人词齐全，标题只有 `Site Unavailable`，而「域名由厂牌名推出 + 是成人站」那条替代路径会把它们
+  确认成官网，所以 `BROKEN_TITLE` 必须拦在停放页判据之后）、拦标题只回显域名的通用站（`prestige.com`
+  标题就是 `prestige.com`，真站是 `prestige-av.com`）。最后这条的判据必须是「标题原样印着域名，且除
+  域名之外什么都没说」，不能拿 normalise 后的标题去比 normalise 后的主机：`www.naturalhigh.co.jp` 的
+  标题 `NATURAL HIGH（ナチュラルハイ）` normalise 成 `naturalhigh`，必然是 `naturalhighcojp` 的一
+  部分——域名由厂牌名推出来时这两者永远互相包含，那样写会把整类真站判成回显。
+- 判成「没有官网」之前先分清是站点的回答还是链路的抖动，并且把每次尝试的理由都留下。
+  `www.naturalhigh.co.jp` 第一次 `ReadTimeout`、同一地址随后 200 且标题正是厂牌名；一次抖动写成
+  `未取得`，下游会把这个空结论当成事实。`probe` 因此只对传输层异常按 `page_cache.Site` 的口径重试
+  （`retries=2, backoff=2.0`），HTTP 状态码是站点的回答，不重试。同理，`未取得` 的行不能只留最后一次
+  尝试的理由——`SOD Create` 曾只剩一句 `取不到：ConnectError`，而真正有信息的那次
+  （`www.sod.co.jp` → 200、标题 `SOFT ON DEMAND`）已被覆盖，人看到复核件时无从判断；现在候选判词按
+  顺序拼成证据链写进 `note`，只有确认的行才留单条理由。
+- 作品数少的厂牌不等于不用补链接。`--min-assets` 是为全量扫描定的阈值，账本里 BangBus、BangBros18
+  各只有 1 部视频，OPPAI、MonstersOfCock 各 2 部，它们照样出现在厂牌页那个 160px 大位上。要定点补时走
+  `--only <canonical_name>...`：指名就不看作品数，名字对不上直接失败而不是静默跳过。
 ## 站点圆标与图标合成
 
 - 外链圆标取站点自己声明的那一份，不是根目录猜到的第一份。顺序是首页
