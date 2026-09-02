@@ -1127,6 +1127,51 @@ function coverImage(it,layout,eager){
   return `<img class="poster cover ${layout==='small'?'whole':'front'}" src="${src}"
     alt="" loading="${eager?'eager':'lazy'}"${y?` style="${y}"`:''} ${COVER_FRAME} onerror="this.remove()">`;
 }
+/* 卡片署名。版次队列要和「接着看」长得一样，就必须用同一份身份推导——各算各的
+   迟早会在同名 creator/performer 那 35 组上分叉，同一条作品在两处指向两个实体。
+   `linked=false` 给队列用：整行本身就是一个 <button>，里面再嵌 <button> 会被
+   浏览器就地拆散，头像和标题会被甩到行外面去。 */
+function cardIdentity(it,linked=true){
+  const link=(cls,attrs,inner)=>linked
+    ? `<button class="${cls} entitylink" ${attrs}>${inner}</button>`
+    : `<span class="${cls}">${inner}</span>`;
+  const performers=it.performers||[];
+  const performerRefs=it.performer_entities||[];
+  const performerTotal=it.performer_total||performers.length;
+  const performer=performers[0]||'';
+  const performerRef=performerRefs[0];
+  // 番号旧投影常把女优罗马字同时塞进 `asset.creator`。规范 performer 实体已经
+  // 本地化时，不能再让旧扁平字段抢走卡片署名和链接；非番号创作者作品仍优先 creator。
+  const primaryCreator=it.is_jav&&performer?'':it.creator;
+  const identity=primaryCreator?{kind:'creator',name:primaryCreator}
+    :(performer?{kind:'performer',name:performer}
+      :(it.code?{kind:'',name:it.code}
+        :(it.studio?{kind:'studio',name:it.studio}:{kind:'',name:'未归属'})));
+  const who=identity.name,whoKind=identity.kind;
+  // 共演作品用头像提示多人，但文字只保留第一位，再给总人数。两个长名字加元数据
+  // 会在普通卡片里折成三行；「第一位 + 等 N 人」仍能说明身份与规模。
+  const coStarred=performers.length>1&&!primaryCreator;
+  const avatar=coStarred
+    ? `<div class="mavstack">${performers.slice(0,3)
+        .map((nm,i)=>link('mav',`data-entity-kind="performer" data-entity-name="${esc(nm)}" title="打开${esc(performerLabel(it))}页：${esc(nm)}"`,avatarInner(nm,performerRefs[i],REP[nm])))
+        .join('')}</div>`
+    : (()=>{
+        /* 头像和名字必须落到同一个身份。原来头像先看 performer、名字先看 creator，
+           碰上同名的 creator/performer 重复实体（账本里有 35 组）就会一个跳
+           `/performers/x`、另一个跳 `/creators/x`，同一张卡上两个入口去两个地方。 */
+        const avatarKind=identity.kind||(performer?'performer':(primaryCreator?'creator':(it.studio?'studio':'')));
+        const avatarName=identity.kind?identity.name:(performer||primaryCreator||it.studio||who);
+        const inner=avatarInner(avatarName,performerRef,REP[avatarName]||REP[it.creator]||REP[it.studio]);
+        return avatarKind
+          ? link('mav',`data-entity-kind="${avatarKind}" data-entity-name="${esc(avatarName)}" title="打开${avatarKind==='performer'?esc(performerLabel(it)):'资料'}页"`,inner)
+          : `<span class="mav">${inner}</span>`;
+      })();
+  const whoHtml=coStarred
+    ? link('who',`data-entity-kind="performer" data-entity-name="${esc(performer)}"`,esc(performer))
+      +`<span class="whomore">等 ${performerTotal} 人</span>`
+    : (whoKind?link('who',`data-entity-kind="${whoKind}" data-entity-name="${esc(who)}"`,esc(who)):`<span class="who">${esc(who)}</span>`);
+  return {avatar,whoHtml};
+}
 function cardHtml(it,cls){
   /* 资料页可能同时收录番号和非番号作品；版式按钮属于页面，但封套比例只施加给
      真实 `is_jav` 卡片，不能把同页的创作者视频也拉成竖封。 */
@@ -1156,19 +1201,7 @@ function cardHtml(it,cls){
   const fl=[it.feedback==='dislike'&&'dislike',it.feedback==='seen'&&'seen',
             it.disposal==='trash'&&'dispose',it.watch_later&&'later']
             .filter(Boolean).map(c=>`<i class="${c}"></i>`).join('');
-  const performers=it.performers||[];
-  const performerRefs=it.performer_entities||[];
-  const performerTotal=it.performer_total||performers.length;
-  const performer=performers[0]||'';
-  const performerRef=performerRefs[0];
-  // 番号旧投影常把女优罗马字同时塞进 `asset.creator`。规范 performer 实体已经
-  // 本地化时，不能再让旧扁平字段抢走卡片署名和链接；非番号创作者作品仍优先 creator。
-  const primaryCreator=it.is_jav&&performer?'':it.creator;
-  const identity=primaryCreator?{kind:'creator',name:primaryCreator}
-    :(performer?{kind:'performer',name:performer}
-      :(it.code?{kind:'',name:it.code}
-        :(it.studio?{kind:'studio',name:it.studio}:{kind:'',name:'未归属'})));
-  const who=identity.name,whoKind=identity.kind;
+  const {avatar,whoHtml}=cardIdentity(it);
   const rawShownName=parts?.title||it.name;
   const shownName=javDisplayName(it,rawShownName);
   const shownTitle=javTitleHtml(it,rawShownName);
@@ -1181,28 +1214,6 @@ function cardHtml(it,cls){
     : (it.leave_ratio!=null?`<div class="scrub"><i style="width:${Math.round(it.leave_ratio*100)}%"></i></div>`:'');
   const sizeText=Number(shownSize)>0?fmtSize(Number(shownSize)):'大小未知';
   const tgs=(it.tags||[]).slice(0,3).map(x=>`<span class="tg general" data-tag="${esc(x)}">${esc(tagLabel(x))}</span>`).join('');
-  // 共演作品用头像提示多人，但文字只保留第一位，再给总人数。两个长名字加元数据
-  // 会在普通卡片里折成三行；「第一位 + 等 N 人」仍能说明身份与规模。
-  const coStarred=performers.length>1&&!primaryCreator;
-  const avatar=coStarred
-    ? `<div class="mavstack">${performers.slice(0,3)
-        .map((nm,i)=>`<button class="mav entitylink" data-entity-kind="performer" data-entity-name="${esc(nm)}" title="打开${esc(performerLabel(it))}页：${esc(nm)}">${avatarInner(nm,performerRefs[i],REP[nm])}</button>`)
-        .join('')}</div>`
-    : (()=>{
-        /* 头像和名字必须落到同一个身份。原来头像先看 performer、名字先看 creator，
-           碰上同名的 creator/performer 重复实体（账本里有 35 组）就会一个跳
-           `/performers/x`、另一个跳 `/creators/x`，同一张卡上两个入口去两个地方。 */
-        const avatarKind=identity.kind||(performer?'performer':(primaryCreator?'creator':(it.studio?'studio':'')));
-        const avatarName=identity.kind?identity.name:(performer||primaryCreator||it.studio||who);
-        const inner=avatarInner(avatarName,performerRef,REP[avatarName]||REP[it.creator]||REP[it.studio]);
-        return avatarKind
-          ? `<button class="mav entitylink" data-entity-kind="${avatarKind}" data-entity-name="${esc(avatarName)}" title="打开${avatarKind==='performer'?esc(performerLabel(it)):'资料'}页">${inner}</button>`
-          : `<span class="mav">${inner}</span>`;
-      })();
-  const whoHtml=coStarred
-    ? `<button class="who entitylink" data-entity-kind="performer" data-entity-name="${esc(performer)}">${esc(performer)}</button>`
-      +`<span class="whomore">等 ${performerTotal} 人</span>`
-    : (whoKind?`<button class="who entitylink" data-entity-kind="${whoKind}" data-entity-name="${esc(who)}">${esc(who)}</button>`:`<span class="who">${esc(who)}</span>`);
   const tools=`<button class="previewcounter" data-open title="打开预览" aria-label="打开预览">
       <svg viewBox="-18 -18 36 36"><circle r="17"></circle><circle r="17"></circle></svg>${icon('play','ringplay')}</button>
     <div class="hovertools later-tools"><button class="laterbtn" data-later aria-pressed="${!!it.watch_later}" title="稍后看" aria-label="稍后看">
@@ -5671,7 +5682,11 @@ function queueHtml(queue,itemId){
   const countLabel=queue.kind==='parts'?`${queue.items.length} 卷`
     :queue.kind==='editions'?`${queue.items.length} 个版本`:`${queue.items.length} 个视频`;
   const kindLabel={mix:'Mix',parts:'分卷',editions:'版本',playlist:'播放列表'}[queue.kind]||'视频合集';
-  return `<aside class="mixqueue" data-queue-kind="${esc(queue.kind)}"><div class="mixqueuehead"><div><h2>${kindLabel}</h2><span>${esc(queue.title)} · ${countLabel}</span></div><div class="mixqueueactions">${action}
+  /* 版次队列的标题是「版本 · 番号」，而番号就印在正上方的详情标题里，标题栏又已经
+     写着「版本」——三处说同一件事。这里只留数量。别的队列标题带真信息（播放列表名、
+     Mix 种子），不能一起砍。 */
+  const summary=queue.kind==='editions'?countLabel:`${esc(queue.title)} · ${countLabel}`;
+  return `<aside class="mixqueue" data-queue-kind="${esc(queue.kind)}"><div class="mixqueuehead"><div><h2>${kindLabel}</h2><span>${summary}</span></div><div class="mixqueueactions">${action}
     <button data-queue-close title="关闭" aria-label="关闭">${icon('x')}</button></div></div><div class="mixlist">${queue.items.map((x,index)=>{
       /* 没抽过帧就退回番号封套。版次组里常有一份刚入库、还没抽帧的无码，
          只认 `has_thumb` 会让它在队列里是个纯黑块，而同一条在列表卡上是有封面的。 */
@@ -5681,7 +5696,7 @@ function queueHtml(queue,itemId){
         ?`<i class="qedition javedition ${EDITION_TONE[x.edition_label]||'censored'}">${esc(x.edition_label)}</i>`:'';
       const edit=queue.kind==='playlist'?`<span class="queueedit"><button data-queue-up="${index}" aria-label="上移" ${index===0?'disabled':''}>↑</button><button data-queue-down="${index}" aria-label="下移" ${index===queue.items.length-1?'disabled':''}>↓</button><button data-queue-remove="${x.id}" aria-label="移出播放列表">${icon('x')}</button></span>`:'';
       return `<div class="mixrow"><button class="mixitem ${x.id===itemId?'current':''}" data-queue-item="${x.id}" aria-current="${x.id===itemId?'true':'false'}">
-        <span class="mixitempic">${thumb}<i class="dur mono">${fmtDur(x.duration)}</i></span><span class="mixitemtext"><span class="mixitemhead">${edition}<b data-middle-truncate>${esc(javDisplayName(x))}</b></span><span data-truncate-end>${queue.kind==='parts'?`第 ${esc(x.part_label)} 卷`:esc(mixLabel(x))}</span></span></button>${edit}</div>`;
+        <span class="mixitempic">${thumb}<i class="dur mono">${fmtDur(x.duration)}</i></span><span class="mixitemmeta">${cardIdentity(x,false).avatar}<span class="mixitemtext"><span class="mixitemhead">${edition}<b data-middle-truncate>${esc(javDisplayName(x))}</b></span><span data-truncate-end>${queue.kind==='parts'?`第 ${esc(x.part_label)} 卷`:esc(mixLabel(x))}</span></span></span></button>${edit}</div>`;
     }).join('')}</div></aside>`;
 }
 async function buildMix(seedId){
@@ -5744,6 +5759,15 @@ function hasReturnSurface(){
   return !!$('#grid').querySelector('[data-id],[data-mix-seed]')
     ||!$('#index').hidden||!$('#stats').hidden;
 }
+/* 同一张骨架的另一半问题：深链冷启动时列表一次请求都没发过，`renderInitialSurfaceLoading`
+   占位的那张「正在读取作品」就永远停在详情下方——写着在读，其实没有任何请求在跑。
+   关掉详情时 `detailReturnNeedsRestore` 会补装列表，所以这里直接清掉即可。 */
+function clearIdleCatalogLoading(){
+  const grid=$('#grid');
+  if(!grid.querySelector('.catalog-skeleton'))return;
+  grid.innerHTML='';
+  const count=$('#count');count.removeAttribute('aria-busy');count.removeAttribute('aria-label');
+}
 async function openItem(id,push=true,queueContext=null,anchor=null){
   releaseHoverPreviews();
   const origin=anchor?.isConnected?anchor:(detailOriginAnchor?.isConnected?detailOriginAnchor:null);
@@ -5752,6 +5776,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
     : detailOriginAbove;
   const returnSurfaceReady=hasReturnSurface();
   const needsReturnRestore=detailReturnNeedsRestore||(!push&&!returnSurfaceReady);
+  if(!returnSurfaceReady)clearIdleCatalogLoading();
   const returnBars=barsContext.type==='item'?detailReturnBarsContext:cloneBarsContext(barsContext);
   if(push)detailReturnPath=location.pathname+location.search;
   disposeStage(false,true);
