@@ -105,7 +105,10 @@ export function skeletonHtml(label='正在读取内容',{className='',variant='p
       <span class="skeleton" style="width:100%"></span>
       <span class="skeleton" style="width:100%"></span>
       <span class="skeleton" style="width:72%"></span>`;
+  /* data-skeleton 是这张骨架的身份。深链启动先画一张、路由到位后各页再画一张，
+     整页刷新就会连闪两段动画；调用方拿这个键判断「已经是同一张了」，跳过重画。 */
   return `<div class="skeletonpanel skeleton-${kind}${className?` ${esc(className)}`:''}"
+    data-skeleton="${esc(kind)}${className?`/${esc(className)}`:''}"
     role="status" aria-label="${esc(label)}"><span class="sr-only">${esc(label)}</span>
     <div aria-hidden="true">${body}</div></div>`;
 }

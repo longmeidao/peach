@@ -251,7 +251,7 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 .reviewstate:empty{display:none}
 .reviewalias{margin:2px 0 0;font-size:var(--fs-xs);color:var(--muted)}
 .reviewactions button{box-sizing:border-box;height:32px;border:1px solid var(--border-15);border-radius:8px;background:transparent;color:var(--ink-2);padding:0 12px;font-size:var(--fs-sm);cursor:pointer}.reviewactions button:hover{border-color:var(--tungsten);color:var(--ink)}.reviewactions .approve{background:var(--tungsten);border-color:var(--tungsten);color:#fff;font-weight:600}.reviewactions .approve:hover{background:color-mix(in srgb,var(--tungsten) 82%,#000);color:#fff}.reviewactions .skip{color:var(--meter)}.reviewactions .skip:hover{background:var(--meter);border-color:var(--meter);color:#fff}.reviewactions .reject{color:var(--drop)}.reviewactions .reject:hover{background:var(--drop);border-color:var(--drop);color:#fff}
-.cleanuploading,.junkloading{grid-column:1/-1;min-height:280px;display:grid;place-items:center}
+.junkloading{grid-column:1/-1;min-height:280px;display:grid;place-items:center}
 /* 数据管理整页收进一条窄列（vercel.com/geist/fieldset 实测示例块宽 812px），
    fieldset 一行一个，不再拼三列。 */
 .cleanuppage{width:min(812px,100%);margin:0 auto}
@@ -261,28 +261,38 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
    操作条固定 52px、竖直居中，按钮一律靠右；左侧有说明时说明推到最左。
    字阶照 Geist 示例实测：标题 20px/600、说明 14px/400——标题必须压过正文。 */
 .geist-fieldset-title{margin:0 0 10px;color:var(--ink);font-size:var(--fs-xl);font-weight:600}
-.cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;height:var(--fieldset-bar-h);
-  margin:0;padding:0 16px 0 20px;display:flex;align-items:center;justify-content:flex-end;gap:8px;
+.cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;min-height:var(--fieldset-bar-h);
+  margin:0;padding:8px 16px 8px 20px;display:flex;align-items:center;justify-content:flex-end;gap:8px;
   border-top:1px solid var(--border-10);background:var(--overlay-5)}
+/* 说明可以换行、按钮不能被压扁：窄屏下操作条仍是一行，说明占剩下的宽度，
+   条子按内容长高（证据：vercel.com/geist/fieldset 在 375px 下操作条仍是
+   flex-direction:row、nowrap，min-height 56px 实测长到 65/85/105px，
+   按钮保持 70–186px 的内容宽度，没有一个铺满）。 */
 .geist-fieldset-footer>p,.geist-fieldset-footer>span,
-.resourcesyncfooter>p,.resourceapplyrow>p{margin-right:auto}
-.cleanupfieldset{display:flex;flex-direction:column;min-width:0;min-height:176px;margin:0;padding:0;overflow:hidden;
+.resourcesyncfooter>p,.resourceapplyrow>p{min-width:0;margin-right:auto}
+/* 没有 min-height：卡片高度由内容决定，和同页的「网盘与账本」一致。三列时那条
+   176px 地板是用来对齐同一行的，改成单列后它只是把每张卡都撑出一段空白。 */
+.cleanupfieldset{display:flex;flex-direction:column;min-width:0;margin:0;padding:0;overflow:hidden;
   border:1px solid var(--line-soft);border-radius:12px;background:var(--surface)}
-.cleanupfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px}.cleanupfieldset strong{display:block;margin-bottom:10px;font-size:var(--fs-md);font-weight:500;color:var(--ink-2)}
+.cleanupfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px}.cleanupfieldset strong{display:block;font-size:var(--fs-md);font-weight:500;color:var(--ink-2)}
 .cleanupfieldset p{margin:0;color:var(--muted);font-size:var(--fs-md);line-height:1.45}
-/* 数据管理 fieldset 上的按钮与关注页 .fbtn 同一套白边语言：hover 只提亮描边
-   和文字，不出蓝色；危险按钮 hover 沿用 fquiet 的红线做法。 */
-.cleanupfieldset button{box-sizing:border-box;min-height:32px;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);
-  background:transparent;color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;
+/* 主数字下面那行分项。空着时整行不占位——没有分项的卡不该比别人多一段留白。 */
+.cleanupmeta{margin-top:6px;font-size:var(--fs-sm)}
+.cleanupmeta:empty{display:none}
+/* 操作条上的按钮一律填 --surface：条子本身是 --overlay-5，比它更深的底才让按钮
+   从条子上分出来。原先数据管理这几个是透明底，只有一圈描边，和「网盘与账本」
+   那颗同处一页却是两种按钮。hover 只提亮底色、描边和文字，不出蓝色；
+   危险按钮 hover 沿用 fquiet 的红线做法。 */
+.cleanupfieldset button{box-sizing:border-box;flex:none;min-height:32px;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);
+  background:var(--surface);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;
   transition:border-color .12s ease,color .12s ease,background-color .12s ease,scale .1s ease}
-.cleanupfieldset button:hover{border-color:var(--ink-2);color:var(--ink)}
+.cleanupfieldset button:hover{background:var(--hover);border-color:var(--ink-2);color:var(--ink)}
 .cleanupfieldset button:active{scale:.96}
 .cleanupfieldset button.danger{color:var(--drop)}
 .cleanupfieldset button.danger:hover{border-color:var(--drop);color:var(--drop)}
 .cleanupfieldset button svg{width:16px;height:16px;stroke:currentColor;fill:none}
-.cleanupsources{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}.cleanupsource{padding:4px 8px;border:1px solid var(--border-15);
-  border-radius:var(--badge-radius);color:var(--keep);font-size:var(--fs-xs)}.cleanupsource[data-online="false"]{color:var(--muted)}
-.cleanupfieldset .cleanupstate{min-height:20px;margin-top:12px;color:var(--ink-2)}
+.cleanupfieldset .cleanupstate{margin-top:8px;font-size:var(--fs-sm);color:var(--ink-2)}
+.cleanupfieldset .cleanupstate:empty{display:none}
 .stats h2{margin:0 0 4px;font-size:var(--fs-2xl)}
 .stats .sub{color:var(--muted);margin:0}
 
@@ -549,6 +559,16 @@ body.photolight-open{overflow:hidden}
   animation:skeleton-pulse 1.4s ease-in-out infinite}
 .skeletoncard i{aspect-ratio:16/9}.skeletoncard b{width:72%;height:18px}.skeletoncard em{width:46%;height:14px}
 .grid>.skeletonpanel{grid-column:1/-1;width:100%;min-width:0}
+/* 数据管理是一列 fieldset，不是海报网格：骨架照 fieldset 的轮廓排，
+   否则整页刷新先看到三列 16:9 占位，加载完又整个换成一列长条。
+   底部那条是操作条的位置，不参与呼吸——它是框体，不是待填的内容。 */
+.cleanup-skeleton>div{grid-template-columns:minmax(0,1fr);gap:16px}
+.cleanup-skeleton .skeletoncard{gap:0;overflow:hidden;border:1px solid var(--line-soft);
+  border-radius:12px;background:var(--surface)}
+.cleanup-skeleton .skeletoncard i{aspect-ratio:auto;width:38%;height:20px;margin:20px 20px 0}
+.cleanup-skeleton .skeletoncard b{width:26%;height:16px;margin:12px 20px 20px}
+.cleanup-skeleton .skeletoncard em{width:100%;height:var(--fieldset-bar-h);margin:0;
+  border-radius:0;border-top:1px solid var(--border-10);background:var(--overlay-5);animation:none}
 .skeleton-dashboard>div{gap:16px}
 .skeletondashhero,.skeletondashpanel{display:grid;min-width:0;overflow:hidden;border:1px solid var(--line-soft);
   border-radius:12px;background:var(--surface)}
@@ -725,7 +745,7 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
 .revieworigin>div button{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:7px;background:var(--hover);padding:6px 9px;color:var(--ink-2);cursor:pointer}
 .revieworigin>div button:hover{color:var(--tungsten)}.revieworigin>div button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
 @media(max-width:640px){.qualitylist{grid-template-columns:1fr}.qualityitem{grid-template-columns:110px minmax(0,1fr)}.qualitycover{width:110px}.reviewcompare{grid-template-columns:1fr}.revieworigin{grid-template-columns:110px minmax(0,1fr)}.revieworigincover{width:110px}}
-@media(max-width:640px){.resourcesync .resourcesyncfooter{align-items:stretch;flex-direction:column}.resourcesyncfooter button{width:100%;justify-content:center}.resourcesync .resourcesources{grid-template-columns:1fr}.resourcesync .resourcesources article+article{border-left:0;border-top:1px solid var(--line-soft)}.resourcesync .resourcecache{grid-template-columns:1fr}.resourcesync .resourcecache>div+div{border-left:0;border-top:1px solid var(--line-soft)}.resourcesync .resourceapplyrow{align-items:stretch;flex-direction:column}.resourcesync #resourceApply{width:100%}}
+@media(max-width:640px){.resourcesync .resourcesources{grid-template-columns:1fr}.resourcesync .resourcesources article+article{border-left:0;border-top:1px solid var(--line-soft)}.resourcesync .resourcecache{grid-template-columns:1fr}.resourcesync .resourcecache>div+div{border-left:0;border-top:1px solid var(--line-soft)}}
 
 .indexmore[hidden],.entitymore[hidden]{display:none}
 .indexmore,.entitymore{display:flex;align-items:center;justify-content:center;margin:20px auto 0;min-width:124px;
@@ -778,7 +798,7 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 .count.count-actions-only{position:relative;top:auto;min-height:0;margin:0 0 16px;padding:0;justify-content:flex-end}
 .count.count-actions-only:empty{display:none}
 .resourcesync{scroll-margin-top:calc(var(--topH) + 18px);display:grid;gap:16px}.resourcesync>h2{margin:0;font-size:var(--fs-xl)}
-.resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--line-soft);border-radius:12px;background:var(--surface)}.resourcesyncbody{padding:20px}.resourcesyncbody p{max-width:760px;margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.55}.resourcesyncfooter,.resourceapplyrow{box-sizing:border-box;height:var(--fieldset-bar-h);display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:0 20px;border-top:1px solid var(--line-soft);background:var(--overlay-5)}.resourcesyncfooter p,.resourceapplyrow>p{margin:0;color:var(--muted);font-size:var(--fs-xs);line-height:1.5}.resourceaction{box-sizing:border-box;height:36px;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:none;font:inherit;font-size:var(--fs-sm);font-weight:550;cursor:pointer;transition:background-color .12s,border-color .12s,color .12s}.resourceaction:hover:not(:disabled){background:var(--hover);border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink)}.resourceaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.resourceaction:disabled{cursor:default;opacity:.68}.resourceaction svg{width:16px;height:16px;stroke:currentColor;fill:none}#resourceSyncResult:empty{display:none}.resourcescanning,.resourceerror{margin:0;padding:14px 16px;border:1px solid var(--line-soft);border-radius:var(--control-radius);color:var(--muted)}.resourceerror{color:var(--drop)}.resourcesources{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.resourcesources article{display:grid;gap:4px;min-width:0;padding:16px}.resourcesources article+article{border-left:1px solid var(--line-soft)}.resourcesourcetitle{display:flex;align-items:center;justify-content:space-between;gap:12px}.resourcesourcetitle span{font-size:var(--fs-xs)}.resourcesources .online{color:var(--success)}.resourcesources .offline{color:var(--drop)}.resourcesources strong{margin-top:10px;font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcesources small,.resourcecache small{color:var(--muted)}/* 这里是一排读数，不是又一个盒子。原先它自带填色和分格线，和下面的操作条同色，
+.resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--line-soft);border-radius:12px;background:var(--surface)}.resourcesyncbody{padding:20px}.resourcesyncbody p{max-width:760px;margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.55}.resourcesyncfooter,.resourceapplyrow{box-sizing:border-box;min-height:var(--fieldset-bar-h);display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:8px 20px;border-top:1px solid var(--line-soft);background:var(--overlay-5)}.resourcesyncfooter p,.resourceapplyrow>p{margin:0;color:var(--muted);font-size:var(--fs-xs);line-height:1.5}.resourceaction{box-sizing:border-box;height:36px;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:none;font:inherit;font-size:var(--fs-sm);font-weight:550;cursor:pointer;transition:background-color .12s,border-color .12s,color .12s}.resourceaction:hover:not(:disabled){background:var(--hover);border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink)}.resourceaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.resourceaction:disabled{cursor:default;opacity:.68}.resourceaction svg{width:16px;height:16px;stroke:currentColor;fill:none}#resourceSyncResult:empty{display:none}.resourcescanning,.resourceerror{margin:0;padding:14px 16px;border:1px solid var(--line-soft);border-radius:var(--control-radius);color:var(--muted)}.resourceerror{color:var(--drop)}.resourcesources{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.resourcesources article{display:grid;gap:4px;min-width:0;padding:16px}.resourcesources article+article{border-left:1px solid var(--line-soft)}.resourcesourcetitle{display:flex;align-items:center;justify-content:space-between;gap:12px}.resourcesourcetitle span{font-size:var(--fs-xs)}.resourcesources .online{color:var(--success)}.resourcesources .offline{color:var(--drop)}.resourcesources strong{margin-top:10px;font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcesources small,.resourcecache small{color:var(--muted)}/* 这里是一排读数，不是又一个盒子。原先它自带填色和分格线，和下面的操作条同色，
    两条带子连在一起看不出边界；框里再套框也是多余的一层。 */
 .resourcecache{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 32px;border-top:1px solid var(--line-soft);padding:16px 20px}.resourcecache>div{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:4px 16px}.resourcecache b{font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcecache span{font-weight:650}.resourcecache small{grid-column:1/-1}.resourceapplyrow .resourcesyncok{color:var(--success)}.resourcedanger{color:var(--drop)}.resourcedanger:hover:not(:disabled){border-color:color-mix(in srgb,var(--drop) 42%,transparent);background:color-mix(in srgb,var(--drop) 8%,transparent);color:var(--drop)}.resourcesyncok{margin:0;color:var(--success)}
 .tagbar,.count,.entitytagbar,.entitycollectionhead{transition:background-color .16s ease,border-color .16s ease}
@@ -1797,7 +1817,6 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   .runtimegate a{grid-column:2/-1}
   .managebar-menu button{width:100%;min-height:42px;justify-content:flex-start;padding:9px 11px}
   .cleanupgrid{grid-template-columns:minmax(0,1fr)}
-  .cleanupfieldset{min-height:176px}
   .grid{gap:16px 8px}
   .count{align-items:center;flex-direction:row;gap:10px;padding-block:8px;
     overflow-x:auto;overflow-y:hidden;scrollbar-width:none;overscroll-behavior-inline:contain}

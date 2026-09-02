@@ -386,8 +386,26 @@ class WebDataTests(unittest.TestCase):
             self.contract, {"limit": "1", "offset": "0", "count": "0"},
         )
         self.assertIsNone(result["total"])
+        self.assertIsNone(result["bytes"], "不算总数时也别去扫体积")
         self.assertEqual(len(result["items"]), 1)
         self.assertTrue(result["has_more"])
+
+    def test_item_totals_carry_occupied_bytes_for_the_trash_card(self):
+        """回收站卡片要说的是「清空能腾出多少」，体积跟条数同一次聚合出来。
+
+        为它单独发一次请求只是把同一条 WHERE 再跑一遍；口径也必须跟着筛选走，
+        不能变成整库体积。
+        """
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET disposal='trash' WHERE id IN (2,3)")
+        con.commit()
+        con.close()
+        trash = rm_web.q_items(self.contract, {"state": "trash", "limit": "10"})
+        self.assertEqual(trash["total"], 2)
+        self.assertEqual(trash["bytes"], 210, "回收站里是 200 和 10 两条")
+        live = rm_web.q_items(self.contract, {"limit": "10"})
+        self.assertEqual(live["total"], 1)
+        self.assertEqual(live["bytes"], 100, "体积口径必须跟着同一条筛选走")
 
     def test_legacy_length_tags_are_hidden_in_favor_of_numeric_minutes(self):
         con = sqlite3.connect(self.db_path)
