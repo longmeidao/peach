@@ -164,19 +164,25 @@ class FollowStore:
         This is deliberately derived from candidate metadata rather than a new
         truth field.  A successful unconditional refresh replaces the metadata
         and naturally clears the condition.
+
+        判定交给 SQLite 的 `json_extract`：以前是把这个来源**每一条**候选的
+        `metadata_json` 整串取回 Python 再逐条 `json.loads`，而这里只想知道
+        「有没有任意一条」。回填过的来源单源就有几百到上千行，为一个布尔值把它们
+        全解一遍。
+
+        `json_valid` 的外壳不能省：`json_extract` 遇到非法 JSON 是**报错**，不是
+        返回 NULL，那会把原来 `except json.JSONDecodeError: continue` 的容忍变成
+        整个检查崩掉。写成 `CASE` 而不是并列的 `AND`，因为 SQL 的 `AND` 不保证
+        求值顺序。
         """
-        rows = self._connect().execute(
-            "SELECT metadata_json FROM follow_item WHERE source_id=?",
+        row = self._connect().execute(
+            "SELECT 1 FROM follow_item WHERE source_id=? AND CASE"
+            "   WHEN json_valid(metadata_json)"
+            "   THEN json_extract(metadata_json,'$.media_needs_credential')"
+            "   END = 1 LIMIT 1",
             (source_id,),
-        ).fetchall()
-        for row in rows:
-            try:
-                metadata = json.loads(row[0] or "{}")
-            except (TypeError, json.JSONDecodeError):
-                continue
-            if isinstance(metadata, dict) and metadata.get("media_needs_credential"):
-                return True
-        return False
+        ).fetchone()
+        return row is not None
 
     # ---- 抓取结果落地 ---------------------------------------------------
 
@@ -215,8 +221,6 @@ class FollowStore:
                 precision, verdict.version, candidate.duration, release_key,
                 verdict.variant_kind, verdict.variant_label, candidate.group_hint,
                 evidence,
-                # author 单独并进来：连接器把它放在 DTO 的具名字段上，而不是 extra 里，
-                # 但界面上「哪位用户发的这条动态」是要显示的，落库时得带上。
                 # author 与 summary 单独并进来：连接器把它们放在 DTO 的具名字段上而不是
                 # extra 里，但界面要显示「谁发的、说了什么」——f95 线程里九条回复的标题
                 # 全是线程名，摘要才是那条动态的内容。摘要截断，追更不做全文存档。

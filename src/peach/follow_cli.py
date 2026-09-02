@@ -13,7 +13,9 @@ from pathlib import Path
 from .config import DATABASE_PATH, SECRETS_DIR, SHARED_DATA_ROOT, SOURCES_DIR
 from . import follow_providers
 from .follow import FollowSourceError
-from .follow_secrets import CredentialError, credential_store_for
+from .follow_secrets import (
+    CREDENTIAL_GUIDE, CredentialError, credential_store_for,
+)
 from .follow_sources import CONNECTORS, build_connector
 from .follow_store import FollowStore
 
@@ -192,17 +194,36 @@ def _save(args) -> int:
     return 0
 
 
+#: `CREDENTIAL_GUIDE` 的 requirement 在命令行这边怎么说。照抄那张表的判定，不在
+#: 这里另写一套——原来这段是手写的「f95zone 与 simpcity 的 cookie 只在读登录后内容
+#: 时需要」，而 simpcity 早就被判为 blocked、根本不收 cookie，照着它配是白费功夫。
+_REQUIREMENT_TEXT = {
+    "required": "必须配置",
+    "optional": "可选，配了能多取到内容",
+    "blocked": "站点有机器人验证，配了也不支持",
+    "none": "不需要凭据",
+}
+
+
 def _creds(args) -> int:
     store = credential_store_for(args.secrets_root, shared_root=args.shared_root)
     for provider in sorted(CONNECTORS):
         described = store.describe(provider)
+        requirement = str(CREDENTIAL_GUIDE.get(provider, {}).get("requirement")
+                          or "none")
         state = "已配置" if described["present"] else "未配置"
         fields = ", ".join(described["fields"]) or "—"
         warning = "  ⚠ 权限过宽" if described["world_readable"] else ""
-        print(f"{provider:<12} {state:<8} 字段：{fields}{warning}")
+        note = _REQUIREMENT_TEXT.get(requirement, requirement)
+        # 从共享副本回填的字段单独点名：用户得知道该去哪台机器上撤。
+        if described["shared_fields"]:
+            note += f"；{', '.join(described['shared_fields'])} 来自共享副本"
+        print(f"{provider:<12} {state:<8} 字段：{fields}  {note}{warning}")
     print(f"\n凭据目录：{store.root}")
-    print("rule34xxx 需要 user_id + api_key；f95zone 与 simpcity 的 cookie 只在"
-          "读登录后内容时需要。凭据只留在本机，不进 Git、URL、日志或 ledger。")
+    if store.shared_root is not None:
+        print(f"共享副本：{store.shared_root}（只放声明为可同步的字段）")
+    print("凭据只留在本机，不进 Git、URL、日志或 ledger。"
+          "每个来源要哪些字段、去哪里拿，见网页版的凭据面板。")
     return 0
 
 

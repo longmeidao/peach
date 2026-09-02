@@ -78,6 +78,33 @@ class FollowCliTests(unittest.TestCase):
         line = next(row for row in output.splitlines() if row.startswith("f95zone"))
         self.assertIn("未配置", line)
 
+    def test_creds_states_each_requirement_from_the_shared_guide(self):
+        """要不要凭据照 `CREDENTIAL_GUIDE` 说，命令行不另写一套说明。
+
+        原来这里手写着「f95zone 与 simpcity 的 cookie 只在读登录后内容时需要」，
+        而 simpcity 早已判为 `blocked`、根本不收 cookie——照那句话配是白费功夫。
+        """
+        _, output = self._run("creds")
+        lines = {row.split()[0]: row for row in output.splitlines() if row.strip()}
+        self.assertIn("必须配置", lines["rule34xxx"])
+        self.assertIn("可选", lines["f95zone"])
+        self.assertIn("不需要凭据", lines["kemono"])
+        self.assertIn("机器人验证", lines["simpcity"])
+        self.assertNotIn("simpcity 的 cookie", output)
+
+    def test_creds_points_at_the_shared_copy_for_a_backfilled_field(self):
+        """从共享副本回填的字段要点名：用户得知道该去哪台机器上撤。"""
+        shared = self.root / "shared" / "secrets" / "follow"
+        shared.mkdir(parents=True)
+        (shared / "rule34xxx.json").write_text(
+            '{"user_id": "42", "api_key": "sekret"}', encoding="utf-8")
+        _, output = self._run("creds")
+        line = next(row for row in output.splitlines()
+                    if row.startswith("rule34xxx"))
+        self.assertIn("来自共享副本", line)
+        self.assertIn(str(self.root / "shared"), output)
+        self.assertNotIn("sekret", output, "凭据值不进任何输出")
+
     def test_add_derives_the_url_and_semantics_per_provider(self):
         code, output = self._run("add", "--provider", "f95zone", "--ref", "50685")
         self.assertEqual(code, 0)

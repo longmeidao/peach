@@ -330,21 +330,21 @@ class _BaseConnector:
     def _headers(self) -> dict[str, str]:
         return {"User-Agent": USER_AGENT}
 
-    def _get(self, url: str, *, headers: Mapping[str, str] | None = None,
-             etag: str | None = None, last_modified: str | None = None,
-             connector_headers: bool = True) -> HttpResponse:
+    def _send(self, method: str, url: str, body: bytes | None, *,
+              headers: Mapping[str, str], base: Mapping[str, str]) -> HttpResponse:
+        """发一次请求。`_get`/`_post` 的共同那半都在这里。
+
+        拦下被拦的站、合并头、把网络异常压成一句话、卡住响应大小——这四件事
+        与方法无关，以前两边各写一份。两份已经开始分岁：`connector_headers=False`
+        只在 GET 那一份里有，而“跳站不带来源站 Cookie”是安全语义，不应该
+        取决于用的是哪个动词。
+        """
         if self.blocked_reason:
             raise FollowSourceError(self.blocked_reason)
-        # 跨站资源 API 不能继承来源站的 Cookie。Gofile 只拿自己的 Bearer token；
-        # FANBOX/F95 的会话不得跟着资源链接发到第三方主机。
-        merged = self._headers() if connector_headers else {"User-Agent": USER_AGENT}
-        merged.update(headers or {})
-        if etag:
-            merged["If-None-Match"] = etag
-        if last_modified:
-            merged["If-Modified-Since"] = last_modified
+        merged = dict(base)
+        merged.update(headers)
         try:
-            response = self.transport(HttpRequest("GET", url, merged),
+            response = self.transport(HttpRequest(method, url, merged, body),
                                       self.timeout, self.max_bytes)
         except (OSError, httpx.HTTPError) as exc:
             raise FollowSourceError(
@@ -353,21 +353,24 @@ class _BaseConnector:
             raise FollowSourceError(f"{self.provider} 响应超出大小上限")
         return response
 
+    def _get(self, url: str, *, headers: Mapping[str, str] | None = None,
+             etag: str | None = None, last_modified: str | None = None,
+             connector_headers: bool = True) -> HttpResponse:
+        conditional = dict(headers or {})
+        if etag:
+            conditional["If-None-Match"] = etag
+        if last_modified:
+            conditional["If-Modified-Since"] = last_modified
+        # 跨站资源 API 不能继承来源站的 Cookie。Gofile 只拿自己的 Bearer token；
+        # FANBOX/F95 的会话不得跟着资源链接发到第三方主机。
+        base = self._headers() if connector_headers else {"User-Agent": USER_AGENT}
+        return self._send("GET", url, None, headers=conditional, base=base)
+
     def _post(self, url: str, body: bytes, *,
-              headers: Mapping[str, str] | None = None) -> HttpResponse:
-        if self.blocked_reason:
-            raise FollowSourceError(self.blocked_reason)
-        merged = self._headers()
-        merged.update(headers or {})
-        try:
-            response = self.transport(HttpRequest("POST", url, merged, body),
-                                      self.timeout, self.max_bytes)
-        except (OSError, httpx.HTTPError) as exc:
-            raise FollowSourceError(
-                f"{self.provider} 请求失败：{_exc_summary(exc)}") from exc
-        if len(response.body) > self.max_bytes:
-            raise FollowSourceError(f"{self.provider} 响应超出大小上限")
-        return response
+              headers: Mapping[str, str] | None = None,
+              connector_headers: bool = True) -> HttpResponse:
+        base = self._headers() if connector_headers else {"User-Agent": USER_AGENT}
+        return self._send("POST", url, body, headers=headers or {}, base=base)
 
     @staticmethod
     def _conditional(response: HttpResponse) -> dict[str, str | None]:

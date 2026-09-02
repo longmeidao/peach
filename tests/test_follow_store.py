@@ -494,6 +494,65 @@ class SaveAssetTests(_StoreCase):
             self.store.save_asset(9999, confirm=True)
 
 
+class MediaReparseTests(_StoreCase):
+    """`source_needs_media_reparse` 的判定口径。
+
+    这个判定现在交给 SQLite 的 `json_extract`：原来是把整个来源的 `metadata_json`
+    全部取回 Python 再逐条 `json.loads`，回填过的来源单源上千行，为一个布尔值全解
+    一遍。换实现就要守住原来的容忍度。
+    """
+
+    def _write_metadata(self, source_id: int, external_id: str, raw) -> None:
+        self.connection.execute(
+            "INSERT INTO follow_item(source_id,external_id,release_key,title,url,"
+            "metadata_json,first_seen_at,last_seen_at) VALUES(?,?,?,?,?,?,?,?)",
+            (source_id, external_id, external_id, external_id,
+             f"https://x.test/{external_id}",
+             raw, "2026-08-25T00:00:00Z", "2026-08-25T00:00:00Z"))
+
+    def test_no_item_needs_a_reparse_on_an_empty_source(self):
+        self.assertFalse(self.store.source_needs_media_reparse(self._source()))
+
+    def test_one_flagged_item_is_enough(self):
+        source_id = self._source()
+        self._write_metadata(source_id, "a", json.dumps({"markers": []}))
+        self._write_metadata(source_id, "b",
+                             json.dumps({"media_needs_credential": True}))
+        self.assertTrue(self.store.source_needs_media_reparse(source_id))
+
+    def test_an_explicit_false_does_not_count(self):
+        source_id = self._source()
+        self._write_metadata(source_id, "a",
+                             json.dumps({"media_needs_credential": False}))
+        self.assertFalse(self.store.source_needs_media_reparse(source_id))
+
+    def test_unparsable_or_odd_shaped_metadata_is_skipped_not_fatal(self):
+        """非法 JSON 只是「这条不知道」，不该让整个检查崩掉。
+
+        `json_extract` 遇到非法 JSON 是报错而不是返回 NULL，所以查询里那层
+        `json_valid` 不能省——原来的 Python 版是 `except JSONDecodeError: continue`。
+        列上是 `NOT NULL DEFAULT '{}'`，所以「没有元数据」落盘的形状是 `{}` 和
+        空字串，不是 NULL；空字串并不是合法 JSON，同样得被 `json_valid` 拦住。
+        """
+        source_id = self._source()
+        self._write_metadata(source_id, "a", "not json at all")
+        self._write_metadata(source_id, "b", "")
+        self._write_metadata(source_id, "c", "[1,2,3]")
+        self._write_metadata(source_id, "d", "{}")
+        self.assertFalse(self.store.source_needs_media_reparse(source_id))
+        self._write_metadata(source_id, "e",
+                             json.dumps({"media_needs_credential": True}))
+        self.assertTrue(self.store.source_needs_media_reparse(source_id))
+
+    def test_the_flag_does_not_leak_across_sources(self):
+        first = self._source()
+        second = self._source(ref="someone-else")
+        self._write_metadata(second, "a",
+                             json.dumps({"media_needs_credential": True}))
+        self.assertFalse(self.store.source_needs_media_reparse(first))
+        self.assertTrue(self.store.source_needs_media_reparse(second))
+
+
 class ReleaseGroupTests(unittest.TestCase):
     def test_group_is_immutable(self):
         group = ReleaseGroup("k", None, (), ())

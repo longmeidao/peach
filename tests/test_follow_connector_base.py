@@ -75,6 +75,65 @@ class SharedRequestSkeletonTests(unittest.TestCase):
             connector._request("https://example.test/a", ref="r")
 
 
+class SharedSendContractTests(unittest.TestCase):
+    """`_get` 与 `_post` 只在动词和请求体上不同，其余规则必须是同一份实现。
+
+    两份复制品已经开始分岔：`connector_headers=False`（跳到第三方主机时不带来源站
+    Cookie）当初只加进了 GET 那一份。那是安全语义，不该取决于用的是哪个动词。
+    """
+
+    class _Blocked(_BaseConnector):
+        provider = "blocked"
+        blocked_reason = "站点有机器人验证"
+
+    def test_both_verbs_refuse_a_blocked_site(self):
+        connector = self._Blocked(transport=_transport())
+        for call in (lambda: connector._get("https://example.test/a"),
+                     lambda: connector._post("https://example.test/a", b"x")):
+            with self.assertRaises(FollowSourceError):
+                call()
+
+    def test_both_verbs_reject_a_body_over_the_size_bound(self):
+        connector = _Probe(transport=_transport(body=b"x" * 40), max_bytes=8)
+        for call in (lambda: connector._get("https://example.test/a"),
+                     lambda: connector._post("https://example.test/a", b"x")):
+            with self.assertRaises(FollowSourceError):
+                call()
+
+    def test_both_verbs_can_drop_the_source_site_headers(self):
+        """跨站请求不带来源站的 Cookie，POST 也一样。"""
+        class _WithCookie(_BaseConnector):
+            provider = "withcookie"
+
+            def _headers(self):
+                return {**super()._headers(), "Cookie": "session=secret"}
+
+        seen = []
+        connector = _WithCookie(transport=_transport(body=b"{}", record=seen))
+        connector._get("https://third.test/a", connector_headers=False)
+        connector._post("https://third.test/a", b"x", connector_headers=False)
+        for request in seen:
+            self.assertNotIn("Cookie", request.headers)
+        connector._post("https://own.test/a", b"x")
+        self.assertEqual(seen[-1].headers.get("Cookie"), "session=secret")
+
+    def test_post_carries_the_body_and_get_does_not(self):
+        seen = []
+        connector = _Probe(transport=_transport(body=b"{}", record=seen))
+        connector._get("https://example.test/a")
+        connector._post("https://example.test/a", b"payload")
+        self.assertEqual([(row.method, row.body) for row in seen],
+                         [("GET", None), ("POST", b"payload")])
+
+    def test_the_conditional_header_still_overrides_an_explicit_one(self):
+        """`etag` 盖掉调用方显式给的同名头，合并顺序与抽取前一致。"""
+        seen = []
+        connector = _Probe(transport=_transport(body=b"{}", record=seen))
+        connector._get("https://example.test/a", headers={"If-None-Match": '"old"'},
+                       etag='"new"')
+        self.assertEqual(seen[0].headers.get("If-None-Match"), '"new"')
+
+
 class PublicProbeApiTests(unittest.TestCase):
     """`follow_discovery` 与 `web_follow` 要的是探测能力，不该去摸私有方法。"""
 

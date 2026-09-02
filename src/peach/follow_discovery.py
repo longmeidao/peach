@@ -19,8 +19,8 @@ from .follow import FollowSourceError
 from .follow_avatar import resolve_official_profile
 from .follow_secrets import Credential, CredentialError, credential_store_for
 from .follow_sources import (
-    DEFAULT_MAX_ITEMS, USER_AGENT, F95ZoneConnector, KemonoConnector,
-    Rule34VideoConnector, Rule34XxxConnector, _BaseConnector, canonical_source_ref,
+    F95ZoneConnector, KemonoConnector, Rule34VideoConnector, Rule34XxxConnector,
+    canonical_source_ref,
 )
 
 #: 创作者索引的缓存有效期。索引是几 MB 的整站清单，不该每次发现都重下一遍。
