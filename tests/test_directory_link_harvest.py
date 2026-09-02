@@ -414,6 +414,44 @@ class CacheTests(unittest.TestCase):
         site.get("https://laoshi.ink/a", refresh=True)
         self.assertEqual(len(calls), 2)
 
+    def flaky_site(self, failures, status=200):
+        """前 `failures` 次抛传输错误，之后成功。"""
+        module = load_module()
+        calls = []
+
+        class Transport:
+            def __call__(self, request, timeout, max_bytes):
+                calls.append(request.url)
+                if len(calls) <= failures:
+                    raise OSError("[SSL: UNEXPECTED_EOF_WHILE_READING]")
+                return type("R", (), {"status": status, "body": b"<p>hi</p>",
+                                      "url": request.url})()
+
+            def close(self):
+                pass
+
+        root = Path(tempfile.mkdtemp()).resolve()
+        return module, calls, module.Site(root, 0, 5, transport=Transport(), backoff=0)
+
+    def test_a_transport_blip_is_retried_instead_of_killing_the_batch(self):
+        """经代理取 javdatabase 约三次里有一次 TLS `UNEXPECTED_EOF`，重试即成。"""
+        _, calls, site = self.flaky_site(1)
+        self.assertEqual(site.get("https://www.javdatabase.com/movies/cemd-517/"), "<p>hi</p>")
+        self.assertEqual((len(calls), site.retried, site.fetched), (2, 1, 1))
+
+    def test_retries_are_bounded_and_the_last_error_surfaces(self):
+        _, calls, site = self.flaky_site(9)
+        with self.assertRaises(OSError):
+            site.get("https://www.javdatabase.com/movies/cemd-517/")
+        self.assertEqual((len(calls), site.retried), (3, 2))
+
+    def test_an_http_status_is_not_retried(self):
+        """404 重试三次仍是 404，白花三倍流量。"""
+        module, calls, site = self.flaky_site(0, status=404)
+        with self.assertRaises(module.HttpStatusError):
+            site.get("https://www.javdatabase.com/movies/300mium-1198/")
+        self.assertEqual((len(calls), site.retried), (1, 0))
+
 
 if __name__ == "__main__":
     unittest.main()

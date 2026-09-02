@@ -37,22 +37,37 @@ class Site:
 
     def __init__(self, cache_dir: Path, interval: float, timeout: float, *,
                  refresh: bool = False, via_proxy: bool = False, transport=None,
-                 cookies: dict[str, str] | None = None):
+                 cookies: dict[str, str] | None = None, retries: int = 2,
+                 backoff: float = 2.0):
         self.cache_dir, self.interval, self.timeout, self.refresh = cache_dir, interval, timeout, refresh
         self.transport = transport or HttpxTransport(
             httpx.Client(trust_env=via_proxy, follow_redirects=True, cookies=cookies or {}))
+        self.retries, self.backoff = max(0, retries), backoff
         self._last = 0.0
-        self.fetched = self.cached = 0
+        self.fetched = self.cached = self.retried = 0
 
     def request(self, method: str, url: str, body: bytes | None = None,
                 headers: dict[str, str] | None = None) -> str:
-        wait = self.interval - (time.monotonic() - self._last)
-        if wait > 0:
-            time.sleep(wait)
-        self._last = time.monotonic()
-        response = self.transport(
-            HttpRequest(method, url, {"User-Agent": USER_AGENT, **(headers or {})}, body=body),
-            self.timeout, 8 << 20)
+        response = None
+        for attempt in range(self.retries + 1):
+            wait = self.interval - (time.monotonic() - self._last)
+            if wait > 0:
+                time.sleep(wait)
+            self._last = time.monotonic()
+            try:
+                response = self.transport(
+                    HttpRequest(method, url, {"User-Agent": USER_AGENT, **(headers or {})},
+                                body=body),
+                    self.timeout, 8 << 20)
+                break
+            except (httpx.HTTPError, OSError):
+                # 经代理取 javdatabase 实测约三次里有一次 TLS `UNEXPECTED_EOF`，重试即成。
+                # 一次抖动打死整批采集是这个项目犯过两回的错，所以退让重试放在取页器里，
+                # 每个脚本不必各写一遍。HTTP 状态码不重试：404 重试三次仍是 404。
+                if attempt == self.retries:
+                    raise
+                self.retried += 1
+                time.sleep(self.backoff * (attempt + 1))
         if response.status != 200:
             raise HttpStatusError(response.status)
         return response.body.decode("utf-8", "replace")
