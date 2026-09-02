@@ -7,6 +7,7 @@
 
 页面密度、控件、提示与响应式的实现门槛见 `.claude/skills/peach-web-ui/SKILL.md`，这里只留代码看不出来的判据。
 
+- 截图与视觉验收的画面保护：审查遮挡（设置面板「安全」组，`#censorSetting`，localStorage `peach-censor`）默认关闭、不在导航栏。只有当本轮截图会交给会审查内容的模型（自动视觉审查或外发工具）时才开启，开完记得关；普通个人浏览一律不遮挡。
 - 卡片实体链接必须由同一个 `{kind,name}` 结构生成，不许先独立选显示名、再按别的字段推断类型；账本 `size` 为空或 0 时显示「大小未知」，不伪装成 `0 MB`。
 - 排除竖屏是首页取景而不是全局过滤器：`exclude_vertical` 进搜索或实体列表会让按名字搜竖屏视频返回 0 结果，`test_only_the_default_home_list_drops_portrait_videos` 守这条线。
 - 竖屏条整行占位并且必须插在行边界上，由 `SHORTS_ROW_OFFSET` 控制插在第几行之后，不额外拉一批视频补上一行余位。

@@ -33,7 +33,7 @@
 
 ## 必读顺序
 
-按序读 `README.md`、`docs/STATUS.md`、`docs/ARCHITECTURE.md`、`docs/REUSE.md`、`docs/HANDOFF.md`；相关 ADR 在 `docs/adr/` 按需选读。
+按序读 `README.md`、`docs/STATUS.md`、`docs/ARCHITECTURE.md`、`docs/REUSE.md`、`docs/HANDOFF.md`；`docs/adr/`、`docs/OPERATIONS.md`（运行与部署命令）和 `docs/SOURCING.md`（身份与来源采集）按需选读。
 
 ## 技能索引
 
@@ -54,34 +54,36 @@
 
 ## 工作规则
 
-- `peach-app` is the only GitHub-synced tree. `peach-data`, `.venv`, build output, worktree directories, media and CloudDrive mounts never enter Git. Windows and macOS both run code/data/worktrees from their internal disks; Windows uses `C:\Users\longm\Desktop\peach`. The external disk is only supposed to supply `R:\media`/`/Volumes/RESOURCES/media`; the macOS tree still symlinks `archive`/`sources`/`tools` onto it, so check `docs/STATUS.md` for the real shape before assuming a path exists. See ADR-0017.
+- `peach-app` is the only GitHub-synced tree. `peach-data`, `.venv`, build output, worktree directories, media and CloudDrive mounts never enter Git. Windows and macOS both run code, data and worktrees from their internal disks; the external disk only supplies media. See ADR-0017, and check `docs/STATUS.md` for the real mount shape before assuming a path exists.
 - Ledger paths are always written in the Windows shape (`R:\Media\...`, `A:\...`, `B:\...`). `src/peach/platform.py` translates them to local mounts at read time; never rewrite the ledger to a POSIX shape, and never write `asset.path` from macOS.
 - `peach-data/database/ledger.db` is the truth store. Tests use temporary databases only. A real migration requires a SQLite backup and before/after count checks; follow `peach-ledger-write` before any real write.
 - The project is an early personal project: aggressively remove obsolete code and compatibility layers when the replacement is tested. Do not preserve dead interfaces merely for history; Git is the archive.
 - Preserve real media, ledger rows, behavior history, credentials, network/firewall state, and unrelated long-running jobs.
 - Inspect `git status` and the active listeners/processes before work. Never claim candidate code is production until the service has actually been switched and checked.
-- Keep the architecture a FastAPI modular monolith with a separate web surface. Do not introduce microservices, PostgreSQL, a React rewrite, or a full multi-account system without a new ADR.
+- Keep the architecture a FastAPI modular monolith with a separate web surface. Do not introduce microservices, PostgreSQL or a full multi-account system without a new ADR.
+- The web surface moves to Vite + TypeScript + Preact islands by strangler migration (ADR-0022): new logic lands in `frontend/`, pages are replaced island by island, and there is no whole-app rewrite. Making the app installable by strangers follows the phases in ADR-0023.
 - Ledger remains the core truth. The Stash adapter layer is deleted (ADR-0021); `src/peach/stash.py` survives only for the two offline import scripts. AI results are candidates with provenance/confidence, not direct truth-field mutations.
-- User-confirmed corpus context: Peach contains consenting adults only. Labels such as `萝莉`、`学生`、`洛丽塔`、`制服`、`泄露` and `流出` are role-play, genre or marketing/source vocabulary, not evidence of age or consent. Do not skip cataloguing solely because those strings occur. If direct file evidence contradicts this corpus-level context, stop and report the specific evidence instead of inferring from a label.
+- User-confirmed corpus context: Peach contains consenting adults only. Labels such as `萝莉`、`学生`、`洛丽塔`、`制服`、`泄露` and `流出` are role-play, genre or marketing/source vocabulary, not evidence of age or consent. Do not skip cataloguing solely because those strings occur. If direct file evidence contradicts this, stop and report that evidence instead of inferring from a label.
 - Do not create dated handoff documents. Update `docs/STATUS.md` for current runtime/next work and `docs/HANDOFF.md` for durable operating knowledge as part of the same change.
 - 新增、恢复或重写实现前必须按 `peach-reuse-first` 依次检查当前树、`docs/REUSE.md`、Git 历史和成熟外部实现，并用真实输入做最小 POC；只有外部方案不满足已验证约束时才自研，并把例外写回复用清单。旧文件名不存在不等于能力缺失。
 - When the user says to imitate, reference or align with another product, obtain current reproducible evidence first and register it per `peach-reference-evidence`. If evidence is unavailable, write `未取得`; do not ship a guessed approximation as a faithful reproduction.
 - Never require the user to relay implementation details between agents. Put current facts in `docs/STATUS.md`, durable rules in `docs/HANDOFF.md`/`docs/REUSE.md`, procedures in a skill, and architecture decisions in an ADR.
-- 截图与视觉验收的画面保护：审查遮挡（设置面板「安全」组，`#censorSetting`，localStorage `peach-censor`）默认关闭、不在导航栏。只有当本轮截图会交给会审查内容的模型（自动视觉审查/外发工具）时才开启；开完记得关。普通个人浏览一律不遮挡。
-- During concurrent code work, the main `peach-app` checkout is integration-only. Each agent works in an isolated Git worktree created by `scripts/agent_worktree.py create` under `peach-worktrees/`, never anywhere else and never in the main checkout; a worker commits its branch and reports it ready, but never merges itself. Before every commit confirm you are still in that worktree — `git rev-parse --show-toplevel` must not be the main checkout. Details in `peach-worktree`.
-- Never use `git add .`, `git add -A`, a directory path, or a glob in an agent checkout. Stage only the exact files owned by the task, then inspect `git diff --cached --name-status`. Implementation and its tests must be committed atomically.
-- Run the relevant functional scope from `README.md` before committing: `scripts/test.ps1` on Windows, `scripts/test.sh` on macOS. Cross-domain, migration, shared-harness, dependency, build/release, or broad changes require `full`; both platform entry contracts must stay green.
-- Reuse existing usage surfaces and protocols. T3 Code/CodexBar cover historical token and API-equivalent cost views; official provider quota endpoints cover live remaining windows. Do not build another session-log cost scanner or depend on T3 Code's private localhost API.
+- 复用既有入口与协议，不自研已有替代（含智能体用量与配额视图）：清单与例外见 `docs/REUSE.md`。截图与视觉验收的画面保护判据见 `docs/HANDOFF.md`。
 
-## 防止重复错误的硬门槛
+## 门槛（由脚本、测试或 hook 拒绝，不是提醒）
 
-- 写命令前先分辨当前 shell，不混用语法：PowerShell 里 `cat`、`ls`、`where` 是别名、没有 `<<` heredoc（多行用 here-string）；Bash 里没有 `Get-ChildItem`。需要 PowerShell 时用 `pwsh`（7.x，本机已装），不回退 `powershell.exe`（5.1），从 Bash 调用加 `-NoProfile`。
-- 引号默认单引号，需要变量展开才用双引号，有歧义写 `${name}`；正则同时含单双引号就拆成多条简单 `rg`。`rg` 不收含 `*` 的路径参数（PowerShell 不展开 glob，Bash 无匹配时原样透传），筛选用 `-g`，退出码 1 是无匹配不是错误。
-- 多行内容写文件用写入工具或脚本落盘，不用 shell heredoc——转义曾毁掉整个测试文件；必须用时定界符加引号（`<<'EOF'`）。
+- **测试入口**：每个平台只有一个，Windows `& .\scripts\test.ps1`，macOS/Linux `./scripts/test.sh`，只在当前隔离 worktree 根目录运行。局部改动跑对应功能域；跨域、迁移、共享测试设施、依赖、构建/发布或大面积改动跑默认 `full`。两者自动定位主项目 venv、强制 `PYTHONPATH=<当前 worktree>/src`、核对 `peach.__file__` 后运行 `unittest`；禁止手工拼接 venv 路径或调用 pytest。健康检查只使用 `/healthz`。
+- **上下文预算**：入口文件与技能有行数、字节数和最长行三重预算，由 `scripts/check_context_budget.py` 与 `tests/test_context_budget.py` 强制。写不下就说明该内容属于 `docs/` 或某个技能，不是往本文件加行。
+- **分层**：新增或删除规则前按 `peach-context-rules` 判层；本文件的技能索引必须与 `.claude/skills/` 一一对应，技能缺 frontmatter、name 不符或缺 `最后复核` 会被拒。
+- **工作树**：并发改代码时主检出只做集成。每个智能体在 `scripts/agent_worktree.py create` 建于 `peach-worktrees/` 的隔离工作树里干活，不在别处、也不在主检出；提交前 `git rev-parse --show-toplevel` 必须不是主检出，工作者只交分支、从不自己合并。细节见 `peach-worktree`。
+- **仓库卫生**：`.claude/worktrees/` 下不得留未在 `git worktree list` 注册的目录（`tests/test_repo_hygiene.py`）。不用 `git add .`、`git add -A`、目录路径或 glob，只暂存本任务拥有的文件再核对 `git diff --cached --name-status`；实现与它的测试原子提交。
+- **依赖策略**：Python 依赖精确固定版本，每个被 import 的外部模块要有声明的归属，前端清单与实际 vendored 路径一致，所有清单都进 Dependabot（`tests/test_dependency_policy.py`）。
+
+## 常犯错误（没有自动拦截，都是真实重犯过的）
+
+- 写命令前先分辨当前 shell，不混用语法：PowerShell 里 `cat`、`ls`、`where` 是别名，Bash 里没有 `Get-ChildItem`；需要 PowerShell 时用 `pwsh`（7.x，本机已装），不回退 `powershell.exe`（5.1），从 Bash 调用加 `-NoProfile`。引号默认单引号，需要变量展开才用双引号，有歧义写 `${name}`；`rg` 不收含 `*` 的路径参数，筛选用 `-g`，退出码 1 是无匹配不是错误。多行内容一律用写入工具或脚本落盘，不用 heredoc——转义曾毁掉整个测试文件。
 - PowerShell 变量必须使用任务专属名称；禁止声明 `$HOME`、`$home`、`$CODEX_HOME` 等系统变量的任何大小写变体。`foreach {}` 的结果先存入任务专属数组，再单独接管道格式化，禁止在闭合花括号后直接写管道。
-- 测试只在当前隔离 worktree 根目录运行，每个平台只有一个入口：Windows `& .\scripts\test.ps1`，macOS/Linux `./scripts/test.sh`。局部改动跑对应功能域；跨域、迁移、共享测试设施、依赖、构建/发布或大面积改动跑默认 `full`。两者自动定位主项目 venv、强制 `PYTHONPATH=<当前 worktree>/src`、核对 `peach.__file__` 后运行 `unittest`；禁止手工拼接 venv 路径或调用 pytest。健康检查只使用 `/healthz`。
 - HTTPS 结论必须使用项目 CA 做严格校验；Schannel、浏览器或取证入口失败时，立即报告原始错误和未取得的验收面，不能改用 HTTP 成功来声称 HTTPS 已通过。
 - UI 标签、身份、反馈状态和搜索推荐属于语义契约。修改时必须同时增加数据层测试和页面源测试，不能只改显示文本；推荐词上线前必须对真实 `/api/items` 验证至少一个命中，说明性后缀不得混入搜索词。
 - 测试里的临时目录一律先 `.resolve()` 再喂给被测代码和断言。CI runner 的临时目录都是别名（macOS `/var` 软链到 `/private/var`，Windows `RUNNER~1` 短名展开成 `runneradmin`），开发机没有这层别名，拿未 resolve 的路径断言只会在 CI 上红。
 - 本仓库最常见的缺陷是「只改了自己测试的那条路径」。收尾前按 `peach-surfaces` 逐项说明每个表面适用还是不适用，不要跳过不适用的项。
-- 入口与技能有行数预算，由 `scripts/check_context_budget.py` 和 `tests/test_context_budget.py` 强制执行。写不下就说明该内容属于 `docs/` 或某个技能，不是往本文件加行。

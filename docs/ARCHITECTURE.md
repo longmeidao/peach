@@ -10,7 +10,7 @@ Peach 是逻辑前后端分离、部署仍为一个进程的 FastAPI 模块化�
 2. **API / 应用层**：FastAPI 承载页面、JSON、媒体响应和写入边界。
 3. **平台层**：`peach.platform` 是账本路径与本机挂载点之间唯一的翻译层。账本只用 Windows 盘符记录路径，读取时按 `PEACH_DRIVE_MAP` 翻译到本机挂载点；没有挂载点的盘符落到不可达根，对应来源整体按脱盘处理。CloudDrive 在 Windows 是盘符、在 macOS 是 macFUSE 挂载点，差异全部收敛在这里。
 4. **Media Engine**：FastAPI 只持有一个 `MediaEngine`，本地文件与挂载网盘都是原生后端；Stash 适配层已删除（ADR-0021）。远端 MP4 默认走标准 Range，`stream-plan` 只在显式开启时给出按时间生成的 HLS 片段（ADR-0016：HEVC-in-TS 会静默黑屏，所以 HLS 是例外而不是默认）。
-5. **Web**：当前是无构建步骤的单页，保持移动端优先；不做 React 重写。
+5. **Web**：单页、移动端优先。按 ADR-0022 从无构建步骤的 `web/` 逐岛迁往 `frontend/` 的 Vite + TypeScript + Preact，构建产物提交进 `web/dist/`；strangler 是唯一路径，不做整站重写。
 6. **AI Provider**：`InferenceProvider` 与 `AgentProvider` 分离。AI 只产出带来源和置信度的候选。
 7. **Profile**：默认单用户，数据模型预留 user/profile，不引入完整账号体系。
 8. **追更来源**：RSS/Atom 等成熟协议先归一化为只读候选；原始证据、复核和 ledger 写入分层。
