@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach.entities import name_chain   # noqa: E402
 from peach.review_csv import write_rows   # noqa: E402
-from peach.scripting import USER_AGENT   # noqa: E402
+from peach.scripting import USER_AGENT, RateLimiter, open_readonly   # noqa: E402
 
 ANCHOR = re.compile(r'<a\s[^>]*href=["\']([^"\']+)["\']([^>]*)>(.*?)</a>', re.S | re.I)
 TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.S | re.I)
@@ -124,6 +124,7 @@ def confirms(html: str, names: list[str]) -> str:
 
 def rediscover(record: dict, interval: float, timeout: float) -> dict:
     """给一条死链找回它现在的地址。就地返回一行复核结果。"""
+    limiter = RateLimiter(interval)
     names = record["chain"]
     row = {field: "" for field in FIELDS}
     row.update(entity_id=record["entity_id"], kind=record["kind"], name=record["name"],
@@ -135,8 +136,8 @@ def rediscover(record: dict, interval: float, timeout: float) -> dict:
 
     seen: set[str] = set()
     for index in index_candidates(record["url"]):
+        limiter.wait()
         status, html, final = fetch(index, timeout)
-        time.sleep(interval)
         if status != 200 or not html:
             continue
         for target, matched in anchors_naming(html, final, names):
@@ -149,8 +150,8 @@ def rediscover(record: dict, interval: float, timeout: float) -> dict:
             if not same_site(target, record["url"]):
                 continue
             seen.add(target)
+            limiter.wait()
             hit_status, hit_html, hit_final = fetch(target, timeout)
-            time.sleep(interval)
             if hit_status != 200:
                 continue
             title = confirms(hit_html, names)
@@ -183,7 +184,7 @@ def load_dead(connection: sqlite3.Connection) -> list[dict]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--database", type=Path, required=True)
+    parser.add_argument("--db", type=Path, required=True, help="账本路径")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--dead-list", type=Path, required=True,
                         help="entity-link-check CSV，只处理其中 status 为 404/410 的行")
@@ -199,7 +200,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     gone = {row["url"] for row in read_rows(args.dead_list)
             if str(row.get("status") or "") in {"404", "410"}}
-    connection = sqlite3.connect(f"file:{args.database}?mode=ro", uri=True)
+    connection = open_readonly(args.db)
     try:
         targets = [record for record in load_dead(connection)
                    if record["url"] in gone]

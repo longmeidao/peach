@@ -60,7 +60,7 @@ from peach.config import DATABASE_PATH, GENERATED_DIR, STATE_DIR   # noqa: E402
 from peach.http import HttpRequest, HttpTransport, HttpxTransport   # noqa: E402
 from peach.review_csv import read_rows, write_rows   # noqa: E402
 from peach.scripting import (   # noqa: E402
-    USER_AGENT, HostLimiter, host_under, hostname_of,
+    USER_AGENT, HostLimiter, host_under, hostname_of, open_readonly,
 )
 from peach.social_links import twimg_tiers   # noqa: E402
 
@@ -577,7 +577,7 @@ def merge_prior_pending(db_path: Path, new_path: Path, rows: list[dict]) -> None
     """
     decided: set[str] = set()
     try:
-        connection = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
+        connection = open_readonly(db_path)
         decided = {str(row[0]) for row in connection.execute(
             "SELECT item_key FROM review_decision WHERE category='performer_avatars'")}
         connection.close()
@@ -630,7 +630,7 @@ def run(args) -> int:
         "x.com": 2.0, "pbs.twimg.com": 0.3, "lit.link": 1.5,
         "babepedia.com": 3.0, "linktr.ee": 2.0,
     })
-    connection = sqlite3.connect(f"file:{args.db.as_posix()}?mode=ro", uri=True)
+    connection = open_readonly(args.db)
     http = HttpxTransport()
     caches = {
         "social": AvatarCandidateCache(args.cache_root / "social"),

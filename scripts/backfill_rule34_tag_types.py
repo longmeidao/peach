@@ -32,9 +32,11 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from peach.config import DATABASE_PATH, GENERATED_DIR
+from peach.config import GENERATED_DIR
 from peach.follow_sources import FollowSourceError, build_connector
+from peach.migrations import sqlite_backup
 from peach.review_csv import write_rows
+from peach.scripting import BACKUP_REQUIRED, add_ledger_write_args, open_readonly
 
 FIELDS = ("item_id", "external_id", "url", "result", "tag_types", "note")
 
@@ -51,13 +53,11 @@ COOLDOWN_SECONDS = 60.0
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="补齐 rule34.xxx 追更条目的标签类型")
-    parser.add_argument("--db", type=Path, default=DATABASE_PATH)
+    add_ledger_write_args(parser)
     parser.add_argument("--out", type=Path,
                         default=GENERATED_DIR / "rule34-tag-type-backfill.csv")
     parser.add_argument("--limit", type=int, default=0, help="只处理前 N 条，0 为全部")
     parser.add_argument("--delay", type=float, default=DEFAULT_DELAY)
-    parser.add_argument("--apply", action="store_true", help="真正写入账本")
-    parser.add_argument("--backup", type=Path, help="写入前的账本备份路径；--apply 必须给")
     return parser
 
 
@@ -87,19 +87,6 @@ def pending_rows(connection: sqlite3.Connection, limit: int) -> list[dict]:
     return rows
 
 
-def backup_database(source: Path, target: Path) -> None:
-    """用 SQLite 自己的备份 API，不要 `shutil.copy2`。
-
-    账本是 WAL 模式：已提交但尚未 checkpoint 的事务在 `-wal` 里，只复制主库文件
-    会得到一份**少了最近改动**的账本，而它看起来完全正常——恢复时才发现回退了
-    一截。备份 API 会把 WAL 一并合进目标库。
-    """
-    target.parent.mkdir(parents=True, exist_ok=True)
-    with (sqlite3.connect(source.as_uri() + "?mode=ro", uri=True) as reader,
-          sqlite3.connect(target) as writer):
-        reader.backup(writer)
-
-
 def merge_tag_types(metadata: dict, tag_types: dict[str, str]) -> str:
     merged = dict(metadata)
     merged["tag_types"] = dict(tag_types)
@@ -108,11 +95,10 @@ def merge_tag_types(metadata: dict, tag_types: dict[str, str]) -> str:
 
 def run(args: argparse.Namespace) -> int:
     if args.apply and not args.backup:
-        print("--apply 必须同时给 --backup", file=sys.stderr)
+        print(BACKUP_REQUIRED, file=sys.stderr)
         return 2
     database = args.db.resolve()
-    with sqlite3.connect(database.as_uri() + "?mode=ro", uri=True) as reader:
-        reader.row_factory = sqlite3.Row
+    with open_readonly(database) as reader:
         rows = pending_rows(reader, args.limit)
         total = reader.execute(
             "SELECT COUNT(*) FROM follow_item i JOIN follow_source s ON s.id=i.source_id"
@@ -126,7 +112,7 @@ def run(args: argparse.Namespace) -> int:
     if args.apply:
         # 备份先做，批量写入才敢分批落。整轮跑完再一次性写，中断一次就等于白跑
         # 五十分钟——而这一趟本来就是可反复运行的。
-        backup_database(database, args.backup)
+        sqlite_backup(database, args.backup)
         print(f"备份：{args.backup}", flush=True)
         writer = sqlite3.connect(database)
         before = writer.execute("SELECT COUNT(*) FROM follow_item").fetchone()[0]

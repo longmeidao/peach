@@ -29,7 +29,7 @@ from peach.config import STATE_DIR   # noqa: E402
 from peach.http import HttpRequest, HttpxTransport   # noqa: E402
 from peach.jobs import job_main   # noqa: E402
 from peach.review_csv import read_rows, write_rows   # noqa: E402
-from peach.scripting import USER_AGENT   # noqa: E402
+from peach.scripting import USER_AGENT, open_readonly   # noqa: E402
 
 TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.S | re.I)
 # 抢注页与停放页的自述。它们同样会 200，也同样会在标题里回显域名，
@@ -236,7 +236,7 @@ def probe(url: str, timeout: float) -> tuple[int, bytes, str]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--database", type=Path, required=True)
+    parser.add_argument("--db", type=Path, required=True, help="账本路径")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seeds", type=Path, help="人工查到的 studio,site 表，优先于推导域名")
     parser.add_argument("--min-assets", type=int, default=3)
@@ -253,7 +253,7 @@ def build_parser() -> argparse.ArgumentParser:
 def run(args) -> int:
     import hashlib
 
-    connection = sqlite3.connect(f"file:{args.database}?mode=ro", uri=True)
+    connection = open_readonly(args.db)
     try:
         studios = load_studios(connection, args.min_assets)
     finally:

@@ -40,7 +40,6 @@ import argparse
 import io
 import json
 import re
-import sqlite3
 import time
 import urllib.parse
 import sys
@@ -58,7 +57,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from peach.review_csv import ENCODING, read_rows, write_rows
-from peach.scripting import USER_AGENT
+from peach.scripting import USER_AGENT, open_readonly
 from peach.config import COVER_DIR, DATABASE_PATH, GENERATED_DIR, SOURCES_DIR
 from peach.http import HttpRequest, HttpTransport, HttpxTransport
 from peach.jobs import DiskGuard, JobPolicyError
@@ -612,7 +611,7 @@ def restore_logged_successes(transport: HttpTransport, log: Path, root: Path,
 def pending(database: Path, root: Path, only_shaped: bool,
             location: str | None = None, *, existing: bool = False,
             max_width: int = 0, fc2_only: bool = False) -> list[str]:
-    connection = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True)
+    connection = open_readonly(database)
     try:
         location_sql = " AND location=?" if location else ""
         parameters: tuple[object, ...] = (location,) if location else ()
@@ -657,7 +656,7 @@ def pending(database: Path, root: Path, only_shaped: bool,
 
 def audit_state(database: Path, root: Path, log: Path) -> dict[str, object]:
     """只读盘点当前 JAV 封面；用于批次前后使用同一统计口径。"""
-    connection = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True)
+    connection = open_readonly(database)
     try:
         raw_codes = [str(row[0]) for row in connection.execute(
             "SELECT DISTINCT code FROM asset WHERE medium='video' "

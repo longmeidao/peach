@@ -20,6 +20,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from peach.config import GENERATED_DIR
+from peach.scripting import BACKUP_REQUIRED
 from peach.images import MAX_ASPECT, measure_image_size, pad_to_square
 from peach.review_csv import write_rows
 
@@ -52,7 +53,7 @@ def normalize(root: Path, *, apply: bool = False,
     root = root.resolve()
     if apply:
         if backup_dir is None:
-            raise ValueError("--apply 必须同时提供 --backup-dir")
+            raise ValueError(BACKUP_REQUIRED)
         backup_dir = backup_dir.resolve()
         if backup_dir == root or root in backup_dir.parents:
             raise ValueError("备份目录必须在 Logo 目录之外")
@@ -107,7 +108,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="把已安装的长条厂牌 Logo 补成方图")
     parser.add_argument("--root", type=Path, default=GENERATED_DIR / "logos")
     parser.add_argument("--apply", action="store_true")
-    parser.add_argument("--backup-dir", type=Path)
+    parser.add_argument("--backup", type=Path,
+                        help="原图备份目录；--apply 必需")
     parser.add_argument("--report", type=Path)
     return parser
 
@@ -115,7 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        rows = normalize(args.root, apply=args.apply, backup_dir=args.backup_dir)
+        rows = normalize(args.root, apply=args.apply, backup_dir=args.backup)
     except (OSError, ValueError) as error:
         print(str(error))
         return 2

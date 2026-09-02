@@ -28,7 +28,6 @@ import collections
 import argparse
 import os
 import re
-import sqlite3
 import sys
 from pathlib import Path, PureWindowsPath
 
@@ -38,6 +37,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from peach.review_csv import write_rows
+from peach.scripting import open_readonly
 from peach.config import DATABASE_PATH, GENERATED_DIR
 
 DEFAULT_OUTPUT = GENERATED_DIR / "ad-candidates.csv"
@@ -100,7 +100,7 @@ FIELDS = ["id", "location", "dir", "name", "size_mb", "duration",
 def find_candidates(db_path: Path | str, min_group: int = 3) -> tuple[list[dict], int]:
     """只读 ledger 并返回复核候选；不写数据库或文件。"""
     db_path = Path(db_path)
-    conn = sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True)
+    conn = open_readonly(db_path)
     rows = conn.execute(
         "SELECT id, location, path, name, size, duration FROM asset "
         "WHERE medium='video'").fetchall()

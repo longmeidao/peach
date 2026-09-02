@@ -13,7 +13,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 from peach import catalog_rules, scripting
-from peach.migrations import upgrade
+from peach.migrations import sqlite_backup, upgrade
 from peach.classification import is_probable_mainstream_release, is_structural_creator
 
 
@@ -42,6 +42,31 @@ class OperationalScriptTests(unittest.TestCase):
         cls.creator_tags = load_script("creator_tags")
         cls.creator_attributions = load_script("audit_creator_attributions")
         cls.rehome_unknown = load_script("rehome_unknown_jav")
+
+    def tmp_ledger(self) -> Path:
+        """一份只含 rule34xxx 追更条目的临时账本：一条已有类型、一条还没有。
+
+        临时目录先 `.resolve()`：CI runner 的临时目录都是别名（macOS `/var` 软链到
+        `/private/var`，Windows `RUNNER~1` 展开成 `runneradmin`），不 resolve 的路径
+        喂给被测代码只会在 CI 上红。
+        """
+        root = Path(tempfile.mkdtemp()).resolve()
+        database = root / "ledger.db"
+        connection = sqlite3.connect(database)
+        connection.executescript(
+            "CREATE TABLE follow_source(id INTEGER PRIMARY KEY, provider TEXT);"
+            "CREATE TABLE follow_item(id INTEGER PRIMARY KEY, source_id INTEGER,"
+            " external_id TEXT, url TEXT, metadata_json TEXT);")
+        connection.execute("INSERT INTO follow_source VALUES(1,'rule34xxx')")
+        connection.executemany(
+            "INSERT INTO follow_item VALUES(?,1,?,?,?)",
+            [(1, "18622796", "https://rule34.xxx/index.php?id=18622796",
+              json.dumps({"tag_types": {"nier": "copyright"}})),
+             (2, "18622794", "https://rule34.xxx/index.php?id=18622794",
+              json.dumps({"tag_types": {}}))])
+        connection.commit()
+        connection.close()
+        return database
 
     def test_import_has_no_filesystem_or_log_side_effect(self):
         self.assertIsNone(self.clean_names._logf)
@@ -122,17 +147,31 @@ class OperationalScriptTests(unittest.TestCase):
         常规检查只看第一页，补不到历史条目。抓取判据不重写，直接复用连接器的
         `_detail_tag_types`；备份先做、分批提交，中断一次不至于白跑五十分钟。
         """
-        source = (ROOT / "scripts" / "backfill_rule34_tag_types.py").read_text(encoding="utf-8")
-        self.assertIn("connector._detail_tag_types(post_id)", source)
-        self.assertIn('if args.apply and not args.backup:', source)
-        # WAL 库不能用 `shutil.copy2` 备份：已提交但未 checkpoint 的事务在 `-wal` 里，
-        # 只复制主库会得到一份少了最近改动、却看起来完全正常的账本。
-        self.assertIn("reader.backup(writer)", source)
-        self.assertNotIn("shutil.copy2(database", source)
-        self.assertIn("writer.commit()", source)
-        # 取不到不等于这条没有类型：不写空字典冒充已补，下一轮还要再问。
-        self.assertIn('if not tag_types:', source)
-        self.assertIn('return 0 if before == after else 1', source)
+        backfill = load_script("backfill_rule34_tag_types")
+        # 备份走共享的 `sqlite_backup`，WAL 正确性由 `scripting` 那条回归测试守住；
+        # 这里只钉「用的是那一份」。以前这条断言读的是源码里有没有
+        # `reader.backup(writer)` 这串字符，脚本改成调用共享实现就红了——而行为
+        # 恰恰是变好了。
+        self.assertIs(backfill.sqlite_backup, sqlite_backup)
+        self.assertIs(backfill.open_readonly, scripting.open_readonly)
+        self.assertEqual(backfill.BACKUP_REQUIRED, scripting.BACKUP_REQUIRED)
+
+        # 缺 `--backup` 的 `--apply` 在读输入之前就停，返回 2 且一行都不写。
+        database = self.tmp_ledger()
+        args = backfill.build_parser().parse_args(
+            ["--db", str(database), "--apply"])
+        self.assertEqual(backfill.run(args), 2)
+
+        # `--limit` 之外的两条判据也用真实数据钉住：已经有 tag_types 的条目不再排队，
+        # 取不到的条目不写空字典冒充已补（下一轮还要再问）。
+        connection = sqlite3.connect(database)
+        self.addCleanup(connection.close)
+        connection.row_factory = sqlite3.Row
+        pending = backfill.pending_rows(connection, 0)
+        self.assertEqual([row["external_id"] for row in pending], ["18622794"])
+        self.assertEqual(
+            json.loads(backfill.merge_tag_types({"tags": "a b"}, {"a": "artist"})),
+            {"tags": "a b", "tag_types": {"a": "artist"}})
 
     def test_test_entrypoint_enforces_worktree_source_and_unittest(self):
         windows = (ROOT / "scripts" / "test.ps1").read_text(encoding="utf-8")

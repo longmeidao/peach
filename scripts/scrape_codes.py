@@ -26,6 +26,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from peach.catalog_rules import normalise_code_key
+from peach.scripting import open_readonly
 from peach.config import DATABASE_PATH, GENERATED_DIR, LOG_DIR, SOURCES_DIR, STATE_DIR
 from peach.jobs import DiskGuard, JobPolicyError
 from peach.metadata import (
@@ -406,7 +407,7 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
     health = _health_rows(policy)
     adapter = provider or JavinizerGoProvider.create(args.binary, args.config)
 
-    connection = sqlite3.connect(args.db.resolve().as_uri() + "?mode=ro", uri=True)
+    connection = open_readonly(args.db)
     codes = [
         (str(row[0]).strip(), float(row[1]), int(row[2]))
         for row in connection.execute(

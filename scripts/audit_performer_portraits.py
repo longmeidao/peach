@@ -61,7 +61,7 @@ from peach.catalog_rules import is_jav_code
 from peach.config import DATABASE_PATH, GENERATED_DIR
 from peach.http import HttpRequest, HttpTransport, HttpxTransport
 from peach.review_csv import read_rows, write_rows
-from peach.scripting import USER_AGENT, HostLimiter
+from peach.scripting import HostLimiter, USER_AGENT, open_readonly
 
 GFRIENDS_RAW = "https://raw.githubusercontent.com/gfriends/gfriends/master/"
 # 目录名首字符即质量档位；0 最优，z（DMM 官方小图）最次。
@@ -305,12 +305,6 @@ def normalized(value: str) -> str:
 
 
 # ---------------------------------------------------------------- ledger（只读）
-
-
-def open_readonly(db_path: Path) -> sqlite3.Connection:
-    # mode=ro 让「绝不写库」成为数据库层的硬保证，而不只是约定。
-    uri = "file:" + urllib.parse.quote(db_path.resolve().as_posix()) + "?mode=ro"
-    return sqlite3.connect(uri, uri=True)
 
 
 def load_performers(connection: sqlite3.Connection) -> list[dict]:

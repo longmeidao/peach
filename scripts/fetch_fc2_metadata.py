@@ -39,7 +39,6 @@ import hashlib
 import http.cookiejar
 import json
 import re
-import sqlite3
 import time
 import sys
 from pathlib import Path
@@ -53,7 +52,7 @@ if str(SRC_DIR) not in sys.path:
 
 from peach.catalog_rules import normalise_code_key
 from peach.review_csv import read_rows, write_rows
-from peach.scripting import USER_AGENT
+from peach.scripting import USER_AGENT, open_readonly
 from peach.config import DATABASE_PATH, GENERATED_DIR
 
 ARTICLE_URL = "https://fc2cmadb.com/articles/{video_id}"
@@ -335,8 +334,7 @@ def translated_tags(raw: str) -> list[str]:
 def metadata_candidate_rows(rows: list[dict], database: Path, *, raw_snapshot: Path,
                             fetched_at: str) -> list[dict]:
     """Turn archived article facts into the normal review queue without writing ledger."""
-    connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
-    connection.row_factory = sqlite3.Row
+    connection = open_readonly(database)
     output = []
     try:
         for row in rows:
@@ -403,7 +401,7 @@ def metadata_candidate_rows(rows: list[dict], database: Path, *, raw_snapshot: P
 
 def pending(database: Path, limit: int) -> list[tuple[str, str]]:
     """库里的 FC2 资产，按 (code, video_id) 去重。"""
-    connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
+    connection = open_readonly(database)
     try:
         rows = connection.execute(
             "SELECT DISTINCT code FROM asset "

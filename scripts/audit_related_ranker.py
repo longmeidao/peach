@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sqlite3
 import time
 import sys
 from pathlib import Path
@@ -15,11 +14,12 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from peach.config import DATABASE_PATH
+from peach.scripting import open_readonly
 from peach.web_contract import WebContract, q_related
 
 
 def seed_ids(database: Path, count: int) -> list[int]:
-    connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
+    connection = open_readonly(database)
     try:
         return [row[0] for row in connection.execute(
             "SELECT a.id FROM asset a JOIN asset_entity ae ON ae.asset_id=a.id "

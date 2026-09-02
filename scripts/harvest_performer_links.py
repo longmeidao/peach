@@ -30,7 +30,7 @@ from peach.entities import name_chain   # noqa: E402,F401  测试从本模块取
 from peach.http import HttpRequest, HttpxTransport   # noqa: E402
 from peach.jobs import job_main   # noqa: E402
 from peach.review_csv import write_rows   # noqa: E402
-from peach.scripting import USER_AGENT   # noqa: E402
+from peach.scripting import USER_AGENT, open_readonly   # noqa: E402
 # 平台判据与选人规则和目录型采集器共用，定义在 peach.social_links；这里只保留 minnano-av 的解析。
 from peach.social_links import classify, load_performers, under   # noqa: E402,F401
 
@@ -102,7 +102,7 @@ def scan(http, name: str, timeout: float) -> tuple[list[dict], str, str, str]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--database", type=Path, required=True)
+    parser.add_argument("--db", type=Path, required=True, help="账本路径")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--min-assets", type=int, default=3)
     parser.add_argument("--limit", type=int, default=0)
@@ -113,7 +113,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run(args) -> int:
-    connection = sqlite3.connect(f"file:{args.database}?mode=ro", uri=True)
+    connection = open_readonly(args.db)
     try:
         performers = load_performers(connection, args.min_assets)
     finally:

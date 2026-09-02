@@ -23,6 +23,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from peach.config import DATABASE_PATH, GENERATED_DIR
+from peach.scripting import open_readonly
 from peach.entities import upsert_asset_entity
 from peach.migrations import sqlite_backup
 from peach.review_csv import ENCODING, write_rows
@@ -262,7 +263,7 @@ def apply_plan(
     _check_database(connection)
     before_assets = connection.execute("SELECT count(*) FROM asset").fetchone()[0]
     sqlite_backup(Path(connection.execute("PRAGMA database_list").fetchone()[2]), backup)
-    saved = sqlite3.connect(f"file:{backup}?mode=ro", uri=True)
+    saved = open_readonly(backup)
     try:
         _check_database(saved)
         if saved.execute("SELECT count(*) FROM asset").fetchone()[0] != before_assets:

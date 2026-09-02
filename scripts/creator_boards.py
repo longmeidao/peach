@@ -8,7 +8,6 @@ import concurrent.futures as futures
 import hashlib
 import random
 import re
-import sqlite3
 import subprocess
 import threading
 import time
@@ -21,6 +20,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from peach.config import DATABASE_PATH, FFMPEG_DIR, GENERATED_DIR, STATE_DIR
+from peach.scripting import open_readonly
 from peach.classification import is_probable_mainstream_release, is_structural_creator
 from peach.ffmpeg import FFmpegResolver
 from peach.jobs import (
@@ -146,10 +146,6 @@ def build_board(ffmpeg: str, ffprobe: str, paths: list[Path], destination: Path)
     return destination.is_file()
 
 
-def _readonly(db_path: Path) -> sqlite3.Connection:
-    return sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True)
-
-
 def _existing_video_boards(output_dir: Path) -> set[str]:
     names = set()
     for path in output_dir.glob("v*_*.jpg"):
@@ -166,7 +162,7 @@ def build_from_videos(args: argparse.Namespace, ffmpeg: str, ffprobe: str) -> in
     )
     frame_cache = args.output_dir / "_frames"
     frame_cache.mkdir(parents=True, exist_ok=True)
-    connection = _readonly(args.db)
+    connection = open_readonly(args.db)
     rows = connection.execute(
         "SELECT creator,path,name,duration FROM asset WHERE medium='video' "
         "AND creator IS NOT NULL AND creator<>'' "
@@ -238,7 +234,7 @@ def build_from_videos(args: argparse.Namespace, ffmpeg: str, ffprobe: str) -> in
 
 
 def build_from_snapshots(args: argparse.Namespace, ffmpeg: str, ffprobe: str) -> int:
-    connection = _readonly(args.db)
+    connection = open_readonly(args.db)
     rows = connection.execute(
         "SELECT creator,name,path,snapshot_path FROM asset WHERE medium='video' "
         "AND creator IS NOT NULL AND creator<>'' AND snapshot_path IS NOT NULL "

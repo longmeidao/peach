@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import argparse
 import re
-import sqlite3
 import time
 import urllib.parse
 import sys
@@ -50,7 +49,7 @@ if str(SRC_DIR) not in sys.path:
 from peach.config import DATABASE_PATH, GENERATED_DIR
 from peach.http import HttpRequest, HttpTransport, HttpxTransport
 from peach.review_csv import read_rows, write_rows
-from peach.scripting import USER_AGENT
+from peach.scripting import USER_AGENT, open_readonly
 
 BASE = "https://www.babepedia.com/babe/"
 
@@ -160,7 +159,7 @@ def resolve(transport: HttpTransport, name: str, delay: float,
 
 
 def candidates(database: Path) -> list[tuple[int, str, int]]:
-    connection = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True)
+    connection = open_readonly(database)
     try:
         rows = connection.execute(
             """SELECT e.id, e.canonical_name,
