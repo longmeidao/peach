@@ -1,4 +1,4 @@
-import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, pageTitle, realDuration} from './js/core.js';
+import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, pageTitle, realDuration} from './js/core.js';
 import { imageFallbackAttrs, wireImageFallbacks } from './js/image-fallback.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
@@ -156,9 +156,23 @@ function paintNav(){
 let surfaceEpoch=0;
 const surfacePath=()=>decodeURIComponent(location.pathname);
 let lastRoutePath=surfacePath();
-const surfaceToken=path=>({epoch:surfaceEpoch,path});
+/* 每个表面自带一个 AbortController。以前离开一个表面只是把结果丢掉（`surfaceCurrent`
+   判过期），请求本身照跑到底：切三四页就有三四份读请求同时占着那 6 条连接，最后
+   停留的那一页反而排在队尾。现在 claimSurface 先作废上一屏的读请求再推进 epoch。
+   只有拿到 token 的读请求会被取消；写操作不带 signal，切页不会撤掉一次真实写入。 */
+let surfaceRequests=null;
+const surfaceToken=path=>({epoch:surfaceEpoch,path,signal:surfaceRequests?.signal});
 const surfaceCurrent=token=>token.epoch===surfaceEpoch&&surfacePath()===token.path;
-const claimSurface=path=>{surfaceEpoch++;return surfaceToken(path)};
+const claimSurface=path=>{
+  surfaceRequests?.abort();
+  surfaceRequests=new AbortController();
+  surfaceEpoch++;return surfaceToken(path)};
+/* 表面级读请求：带上这个表面的 signal，被取消时返回 null 而不是抛错。
+   取消只可能由 claimSurface 触发，而它已经推进了 epoch，所以调用点紧随其后的
+   `surfaceCurrent()` 必然为假、走的还是原来那条过期分支——不用给每个表面套一层
+   try/catch，也不会多出一条没人接的 rejection。 */
+const surfaceApi=(token,path,options)=>api(path,{...options,signal:token.signal})
+  .catch(error=>{if(isAbort(error))return null;throw error});
 const route=(path,replace=false)=>{
   surfaceEpoch++;
   history[replace?'replaceState':'pushState']({},'',path);syncPageTitle(path);
@@ -1970,7 +1984,7 @@ async function openStats(push=true){
   enterManagementSurface();
   disposeStage(false);
   showManagementBody({placeholder:managementPlaceholder('/stats')});
-  const d=await api('/api/stats');
+  const d=await surfaceApi(surface,'/api/stats');
   if(!surfaceCurrent(surface))return;
   showManagementBody();
   const a=d.attribution, cs=d.consumption;
@@ -2400,7 +2414,7 @@ async function openTaste(push=true){
   if(!cacheFresh){
     const request=++tasteRequest;
     const requestedWindow=tasteWindow;
-    void api('/api/taste?window='+requestedWindow).then(data=>{
+    void surfaceApi(surface,'/api/taste?window='+requestedWindow).then(data=>{
       tasteCacheSet(requestedWindow,data);
       if(request===tasteRequest&&tasteWindow===requestedWindow&&surfaceCurrent(surface))renderTaste(data)
     }).catch(error=>{
@@ -2465,7 +2479,7 @@ async function openPlaylists(push=true){
   if(push)route('/playlists');
   const surface=claimSurface('/playlists');
   showManagementBody({manage:false,placeholder:managementPlaceholder('/playlists')});
-  const data=await api('/api/playlists');
+  const data=await surfaceApi(surface,'/api/playlists');
   if(!surfaceCurrent(surface))return;
   showManagementBody({manage:false});
   const cards=(data.items||[]).map(list=>{const resume=list.current_asset_id||list.preview_asset_id;
@@ -2509,7 +2523,8 @@ async function openDataCleanup(push=true){
   const surface=claimSurface('/data-cleanup');
   showManagementBody({placeholder:managementPlaceholder('/data-cleanup')});
   const [junk,duplicates,sources]=await Promise.all([
-    api('/api/ads?limit=1'),api('/api/duplicates?limit=1'),api('/api/sources'),
+    surfaceApi(surface,'/api/ads?limit=1'),surfaceApi(surface,'/api/duplicates?limit=1'),
+    surfaceApi(surface,'/api/sources'),
   ]);
   if(!surfaceCurrent(surface))return;
   paintManageLede();
@@ -2624,7 +2639,7 @@ async function openDuplicates(push=true){
   if(push)route('/duplicates');
   const surface=claimSurface('/duplicates');
   showManagementBody({placeholder:managementPlaceholder('/duplicates')});
-  const next=await api('/api/duplicates?limit=120');
+  const next=await surfaceApi(surface,'/api/duplicates?limit=120');
   if(!surfaceCurrent(surface))return;
   dupData=next;
   renderDuplicates();
@@ -2702,7 +2717,7 @@ async function openReview(push=true){
   if(push)route('/review');
   const surface=claimSurface('/review');
   showManagementBody({placeholder:managementPlaceholder('/review')});
-  const runtime=await api('/healthz');
+  const runtime=await surfaceApi(surface,'/healthz');
   if(!surfaceCurrent(surface))return;
   /* ADR-0018：确定的那部分先落库再取队列。reader 明知不能写就不要制造一次 409；
      它改为读取 writer 的严格 CA HTTPS 镜像，判定按钮也一起锁住。 */
@@ -2711,7 +2726,7 @@ async function openReview(push=true){
     if(!surfaceCurrent(surface))return;
     if(auto&&auto.applied)console.info(`自动落库 ${auto.applied} 条（ADR-0018）`);
   }catch(e){console.info('自动落库未执行：'+e.message)}
-  const next=await api('/api/review');
+  const next=await surfaceApi(surface,'/api/review');
   if(!surfaceCurrent(surface))return;
   reviewRuntime=runtime;reviewData=next;
   const render=()=>{
@@ -3633,8 +3648,8 @@ async function openFollow(push=true,renderForDetail=false){
   showManagementBody({manage:false,
     placeholder:followSkeletonHtml('正在读取关注内容')});
   const [data,credentials]=await Promise.all([
-    api(followPageUrl(0)),
-    api('/api/follow/credentials').catch(()=>({providers:[]})),
+    surfaceApi(surface,followPageUrl(0)),
+    surfaceApi(surface,'/api/follow/credentials').catch(()=>({providers:[]})),
   ]);
   if(!surfaceCurrent(surface))return;
   followData=data;
@@ -3949,7 +3964,8 @@ async function openFollowManage(push=true){
   const surface=claimSurface('/follow-manage');
   showManagementBody({placeholder:managementPlaceholder('/follow-manage')});
   const [data,credentials,runtime]=await Promise.all([
-    api('/api/follow?limit=1'),api('/api/follow/credentials'),api('/healthz')]);
+    surfaceApi(surface,'/api/follow?limit=1'),surfaceApi(surface,'/api/follow/credentials'),
+    surfaceApi(surface,'/healthz')]);
   if(!surfaceCurrent(surface))return;
   followData=data;followRuntime=runtime;
   renderFollowManage(credentials);
@@ -4224,10 +4240,14 @@ function wireFollowManage(){
       const pending=await api('/api/follow?status=new&limit=1000');
       const ids=(pending.groups||[]).flatMap(g=>[g.primary,...g.variants,...g.duplicates])
         .filter(item=>item.status==='new').map(item=>item.id);
-      for(const id of ids){
-        await api('/api/follow/status',{method:'POST',body:JSON.stringify({item:id,to})});
-      }
-      await openFollowManage(false);actionReceipt(`已批量标记 ${ids.length} 项`);
+      /* 一千条串行发是实测的卡点：请求之间的往返全靠等，界面按住不放。
+         这里的每一条都是独立的写入，彼此没有顺序要求，交给有界并发。 */
+      const results=await mapLimit(ids,6,id=>
+        api('/api/follow/status',{method:'POST',body:JSON.stringify({item:id,to})}));
+      const failed=results.filter(result=>!result.ok);
+      await openFollowManage(false);
+      if(failed.length)actionFailure(`批量更新 ${failed.length}/${ids.length} 项`,failed[0].error);
+      else actionReceipt(`已批量标记 ${ids.length} 项`);
     }catch(error){button.disabled=false;actionFailure('批量更新关注状态',error)}
   });
   root.querySelectorAll('[data-follow-view]').forEach(button=>
@@ -5558,7 +5578,8 @@ async function load(reset){
       $('#loadSentinel').hidden=true;
     }
     if(reset||!adsBatch){const junkQuery=new URLSearchParams({limit:'200',status:junkView});if(junkKind)junkQuery.set('kind',junkKind);
-      const nextAds=await api('/api/ads?'+junkQuery);if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
+      const nextAds=await surfaceApi(surface,'/api/ads?'+junkQuery);
+      if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
       adsBatch=nextAds;cache(adsBatch.items)}
     const batch=adsBatch.items.slice(offset,offset+appSettings.batchSize);
     const html=batch.map(junkCardHtml).join('');
@@ -5578,8 +5599,9 @@ async function load(reset){
   if(state.jav==='1')p.set('exclude_vertical','1');
   p.set('limit',appSettings.batchSize); p.set('offset',offset);
   if(!reset)p.set('count','0');
-  const d=await api('/api/items?'+p);cache(d.items);
+  const d=await surfaceApi(surface,'/api/items?'+p);
   if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
+  cache(d.items);
   if(reset)total=d.total;
   buildManageBar();
   const html=state.state==='trash'?d.items.map(resourceCardHtml).join('')
@@ -5710,7 +5732,7 @@ async function loadShorts(requestSeq=loadRequestSeq,surface=surfaceToken(surface
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
   /* 排序跟着主列表走，不再写死 sort=new；换一批时竖屏条也要一起换。 */
   p.set('orient','竖屏');p.set('limit',18);p.set('offset',0);
-  const d=await api('/api/items?'+p);
+  const d=await surfaceApi(surface,'/api/items?'+p);
   if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
   if(!d.items.length){$('#shortsSec').hidden=true;return}
   cache(d.items);
@@ -5843,8 +5865,9 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   activeQueue=queueContext;
   if(push&&!queueContext)route('/item/'+id);
   const detailSurface=surfaceToken(surfacePath());
-  const it=await api('/api/item?id='+id); if(it.error)return;
+  const it=await surfaceApi(detailSurface,'/api/item?id='+id);
   if(!surfaceCurrent(detailSurface))return;
+  if(it.error)return;
   current=it; CACHE[it.id]=it;
   barsContext={type:'item',id:it.id,filters:returnBars?.type==='entity'
     ? {...returnBars.filters}:emptyEntityFilters()};
@@ -6267,8 +6290,11 @@ function disposeTokVideo(video,remove=false){
 }
 /* 沉浸模式 = 滚动刷新的连续流，横屏竖屏都进（不是「短片模式」）。
    队列滚到尾自动续取下一页，形成无限流。 */
-let tokOffset=0, tokLoading=false;
-async function fetchTok(off){
+let tokLoading=false;
+/* 没有 offset 参数：`sort=rand` 在服务端是未加种子的 `RANDOM()`（web_contract.py），
+   每次请求都是一次全新的随机抽样，翻页偏移在它上面没有意义——带上去只会随机跳过
+   若干行。续取靠的是调用点那个 `seen` 集合去重，不是偏移量。 */
+async function fetchTok(){
   const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
   p.delete('orient');                        // 不限画幅
   p.set('sort','rand');                      // ⚠️ 随机，不是顺序播前 60 个
@@ -6340,8 +6366,7 @@ async function openTok(startId,push=true){
   if(push)route('/immerse');
   $('#tok').hidden=false;document.body.style.overflow='hidden';setTokLoading(true,'加载内容…');
   try{
-    tokOffset=0;
-    tokList=await fetchTok(0);
+    tokList=await fetchTok();
     if(startId&&!tokList.some(x=>x.id===startId)){
       const selectedItem=await api('/api/item?id='+startId);
       if(selectedItem.id)tokList=[selectedItem,...tokList.filter(x=>x.id!==startId)];
@@ -6448,8 +6473,8 @@ async function tokNext(d){
   setTokLoading(true,'切换中…',tokList[tokIdx]);
   // 滚到尾部就续取下一页 —— 无限流
   if(tokIdx>=tokList.length-3 && !tokLoading){
-    tokLoading=true; tokOffset+=60;
-    const more=await fetchTok(tokOffset);   // 每次都是新的随机抽样
+    tokLoading=true;
+    const more=await fetchTok();   // 每次都是新的随机抽样
     if(more.length){const seen=new Set(tokList.map(x=>x.id));
       tokList=tokList.concat(more.filter(x=>!seen.has(x.id)))}
     tokLoading=false;

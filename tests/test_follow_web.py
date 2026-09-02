@@ -1435,7 +1435,8 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("data-follow-remove")
 
     def test_reader_management_is_locked_and_points_to_the_writer(self):
-        self.assertPageContains("api('/healthz')")
+        # 读请求带上表面的 signal（surfaceApi），切页时会被取消。
+        self.assertPageContains("surfaceApi(surface,'/healthz')")
         self.assertPageContains("followRuntime?.ledger_read_only")
         self.assertPageContains("前往写入端管理关注")
         self.assertPageContains("#followAdd textarea,#followAdd button")
@@ -2248,7 +2249,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageLacks("已显示可读取附件；F95 登录会话已保存")
         self.assertPageLacks("这条旧记录的受保护资源会在下次检查重新解析")
         self.assertPageContains("followCredentialProviders=new Set")
-        self.assertPageContains("api('/api/follow/credentials').catch")
+        self.assertPageContains("surfaceApi(surface,'/api/follow/credentials').catch")
         self.assertPageLacks("个外部文件页；视频列表未取得")
         self.assertPageContains("function followMediaIssue(item)")
         self.assertPageContains('class="fnote followmediaissue"')

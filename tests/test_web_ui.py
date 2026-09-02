@@ -501,6 +501,51 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".toast{pointer-events:auto;box-sizing:border-box;display:flex;align-items:center;")
         self.assertPageLacks(".toasts{position:fixed;right:16px;bottom:22px;z-index:var(--layer-popover);display:grid;gap:8px;")
 
+    def test_leaving_a_surface_cancels_the_reads_it_started(self):
+        """以前离开一个表面只是把结果丢掉，请求本身照跑到底。
+
+        切三四页就有三四份读请求同时占着浏览器对同一 host 的 6 条连接，最后停留
+        的那一页反而排在队尾。写操作不带 signal——切页不能撤掉一次真实写入。
+        """
+        self.assertPageContains("surfaceRequests?.abort();")
+        self.assertPageContains("surfaceRequests=new AbortController();")
+        self.assertPageContains("const surfaceToken=path=>({epoch:surfaceEpoch,path,signal:surfaceRequests?.signal})")
+        self.assertPageContains("const surfaceApi=(token,path,options)=>api(path,{...options,signal:token.signal})")
+        # 取消不是失败：abort 只可能来自 claimSurface，而它已经推进了 epoch，
+        # 调用点紧随其后的过期判定会接住它。
+        self.assertPageContains("const isAbort=error=>error?.name==='AbortError'")
+        self.assertPageContains("if(isAbort(error))return null;throw error")
+        self.assertPageContains("if(signal)init.signal=signal")
+        # 用响应体之前必须先过期判定：被取消时 surfaceApi 返回的是 null。
+        load_body = self.page.split("async function load(reset)", 1)[1].split("const loadObserver", 1)[0]
+        guard = load_body.index("if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;\n  cache")
+        self.assertLess(guard, load_body.index("cache(d.items)"))
+
+    def test_bulk_follow_updates_run_with_bounded_concurrency(self):
+        """一千条串行 POST 全靠往返等，界面按住不放；一次全发出去又会挤满连接。"""
+        self.assertPageContains("const mapLimit=async(items,limit,run)=>")
+        self.assertPageContains("const workers=Math.min(Math.max(1,limit),list.length)")
+        # 某一项失败只记下原因，不中断整批。
+        self.assertPageContains("catch(error){results[index]={ok:false,error}}")
+        bulk = self.app_js.split("root.querySelectorAll('[data-follow-bulk]')", 1)[1]
+        bulk = bulk.split("root.querySelectorAll('[data-follow-view]')", 1)[0]
+        self.assertIn("await mapLimit(ids,6,id=>", bulk)
+        # 撤销那两处仍是单条 POST，不该被这条契约波及。
+        self.assertNotIn("for(const id of ids)", bulk)
+        self.assertPageContains("actionFailure(`批量更新 ${failed.length}/${ids.length} 项`")
+
+    def test_immerse_stream_does_not_pretend_to_paginate_a_random_sample(self):
+        """`sort=rand` 在服务端是未加种子的 `RANDOM()`，偏移量在它上面没有意义。
+
+        原先每续取一次就把一个 `tokOffset` 加 60，再传给一个从不使用这个参数的
+        `fetchTok(off)`——读代码的人会以为这条流是翻页来的。
+        """
+        self.assertPageLacks("tokOffset")
+        self.assertPageContains("async function fetchTok()")
+        self.assertPageContains("const more=await fetchTok()")
+        # 去重靠调用点的 seen 集合。
+        self.assertPageContains("const seen=new Set(tokList.map(x=>x.id))")
+
     def test_scrollbar_gutter_is_reserved_so_overlays_do_not_shift_the_page(self):
         """设置面板给 body 加 overflow:hidden，滚动条一消失整页就横向跳一次。"""
         self.assertPageContains("scrollbar-gutter:stable}")
@@ -1601,7 +1646,8 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_surface_navigation_clears_stale_panels_and_ignores_late_responses(self):
         """跨页面请求返回较慢时，旧统计/复核响应不能覆盖当前页面。"""
-        self.assertPageContains("const claimSurface=path=>{surfaceEpoch++;return surfaceToken(path)}")
+        self.assertPageContains("const claimSurface=path=>{")
+        self.assertPageContains("surfaceEpoch++;return surfaceToken(path)}")
         self.assertPageContains("const surfaceCurrent=token=>token.epoch===surfaceEpoch&&surfacePath()===token.path")
         self.assertPageContains("const surface=reset?claimSurface(surfacePath()):surfaceToken(surfacePath())")
         self.assertPageContains("if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return")
@@ -1683,10 +1729,9 @@ class WebUiSourceTests(unittest.TestCase):
     def test_junk_empty_state_only_appears_after_the_loading_request_finishes(self):
         """待判断为空是请求终态；加载期间只能显示 Loading Dots，不能先闪空态。"""
         branch = self.app_js.split("if(state.state==='ads'){", 1)[1].split("adsBatch=null;", 1)[0]
-        self.assertLess(branch.index("loadingDotsHtml('正在读取垃圾文件…')"),
-                        branch.index("const nextAds=await api('/api/ads?'+junkQuery)"))
-        self.assertLess(branch.index("const nextAds=await api('/api/ads?'+junkQuery)"),
-                        branch.index("emptyState('check'"))
+        request = "const nextAds=await surfaceApi(surface,'/api/ads?'+junkQuery)"
+        self.assertLess(branch.index("loadingDotsHtml('正在读取垃圾文件…')"), branch.index(request))
+        self.assertLess(branch.index(request), branch.index("emptyState('check'"))
         self.assertPageContains("$('#loadSentinel').hidden=true")
 
     def test_junk_review_and_trash_render_every_physical_resource_type(self):
@@ -2495,7 +2540,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const cacheFresh=cached&&Date.now()-cachedEntry.at<TASTE_CACHE_FRESH_MS;")
         self.assertPageContains("if(cached)renderTaste(cached);")
         self.assertPageContains("if(!cacheFresh)")
-        self.assertPageContains("void api('/api/taste?window='+requestedWindow).then(data=>")
+        self.assertPageContains("void surfaceApi(surface,'/api/taste?window='+requestedWindow).then(data=>")
         self.assertPageContains("tasteCacheSet(requestedWindow,data);")
         self.assertPageContains("if(request===tasteRequest&&tasteWindow===requestedWindow&&surfaceCurrent(surface))renderTaste(data)")
         self.assertPageContains("if(!cached&&request===tasteRequest&&surfaceCurrent(surface))")
@@ -2631,7 +2676,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_data_cleanup_groups_junk_duplicates_and_empty_folders_in_fieldsets(self):
         self.assertPageContains("async function openDataCleanup(push=true)")
         self.assertPageContains("route('/data-cleanup')")
-        self.assertPageContains("api('/api/ads?limit=1'),api('/api/duplicates?limit=1'),api('/api/sources')")
+        for path in ("'/api/ads?limit=1'", "'/api/duplicates?limit=1'", "'/api/sources'"):
+            self.assertPageContains(path)
         # 标题是正文区的第一行，不用原生 legend——legend 会在上边框上开个缺口，
         # 三张卡内容高度不同时那道缺口的位置也跟着不齐。
         for title in ("fieldsetTitle('cleanupJunkTitle','垃圾文件')",
@@ -2828,7 +2874,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("reviewCategory==='fc2_similarity'?''")
 
     def test_reader_review_uses_the_writer_mirror_without_offering_fake_writes(self):
-        self.assertPageContains("const runtime=await api('/healthz')")
+        self.assertPageContains("const runtime=await surfaceApi(surface,'/healthz')")
         self.assertPageContains("reviewRuntime=runtime;reviewData=next")
         self.assertPageContains("正在显示写入端的实时复核队列")
         self.assertPageContains("前往写入端复核")
