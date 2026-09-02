@@ -106,12 +106,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.fail(f"index.html 缺少这段代码（已忽略排版）：{needle!r}"
                   + (f"（{message}）" if message else ""))
 
-    def assertCodeLacks(self, needle: str, message: str = ""):
-        """这段代码不许再出现，换个排版写回来也算。"""
-        if needle in self.page or code_shape(needle) in self.page_shape:
-            self.fail(f"index.html 不应再出现这段代码：{needle!r}"
-                      + (f"（{message}）" if message else ""))
-
     def test_the_format_insensitive_matcher_still_tells_code_from_content(self):
         """`code_shape` 本身也有逻辑，也得有人守。
 
