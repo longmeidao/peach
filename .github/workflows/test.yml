@@ -69,6 +69,32 @@ jobs:
         shell: bash
         run: ./scripts/test.sh
 
+  web-bundle:
+    name: island 产物与前端测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm --prefix frontend ci
+      - run: npm --prefix frontend run typecheck
+      - run: npm --prefix frontend test
+      - run: npm --prefix frontend run build
+      # 产物提交进 Git，因为运行时和打包都没有 Node（ADR-0022）。一旦源码改了却忘了
+      # 重新构建并提交，服务端发出去的就还是旧 island——本地跑测试也看不出来，只有
+      # 在这里比一次才拦得住。
+      #
+      # 先 `git add -N`：光 `git diff` 只看已跟踪的文件，构建新出的产物（某个 island
+      # 开始带自己的 CSS 就会多一份 peach-ui.css）是未跟踪的，那条门槛会直接放过去。
+      - name: 核对 web/dist 与源码一致
+        run: |
+          git add --intent-to-add -- web/dist
+          git diff --exit-code -- web/dist
+      - run: npm --prefix frontend audit --audit-level=high
+
   web-vendor:
     name: 固定前端依赖
     runs-on: ubuntu-latest
