@@ -882,23 +882,38 @@ class ReviewQueueTests(unittest.TestCase):
 
 
 class PerformerAvatarApplyTests(ReviewQueueTests):
-    """批准女优头像候选必须真的把图装上。
+    """批准人物头像候选必须真的把图装上。
 
     这个缺陷犯到第三次了：`creator_tags` 犯过（留痕说通过、实际没写），
     `studio_logos` 犯过（只在白名单里、没有写入分支），`performer_avatars` 一模一样。
     审计脚本按设计只把外部图放进内容寻址缓存，落地要人批准；而批准这一步什么也没做，
     于是 18 个已判 ok 的候选从 2026-08-25 起一直进不去。
+
+    落盘名跟着实体 kind 走（`{kind}-{id}.img`）：`/entity-image` 按 kind 分文件，
+    creator 实体（babepedia 命中的西方网黄）装成 performer-<id>.img 永远读不到。
+    基建的 entity 1 是 creator（creator_tags 测试要用），这里整体拨回 performer，
+    creator 的落盘另用一条独立用例锁住。
     """
 
     FIELDS = ("entity_id", "current_name", "matched_name", "name_source", "provider",
               "source_url", "external_id", "width", "height", "mime_type", "sha256",
               "cache_path", "verdict")
 
-    def _seed(self, *, verdict="ok", body=b"\xff\xd8\xff\xdb-fake-jpeg", digest=None):
+    def setUp(self):
+        super().setUp()
+        con = sqlite3.connect(self.db_path)
+        # 基建的 entity 1 留给 creator_tags 用例；头像落盘另立 performer 9。
+        # 名字不能与父类用例插入的「释爱丽丝」撞 UNIQUE(kind, normalized_name)。
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
+                    "VALUES(9,'performer','示例女优','示例女优')")
+        con.commit(); con.close()
+
+    def _seed(self, *, verdict="ok", body=b"\xff\xd8\xff\xdb-fake-jpeg", digest=None,
+              entity_id="9", provider_dir="gfriends"):
         import hashlib
         real = hashlib.sha256(body).hexdigest()
         objects = (self.candidates / "provider-cache" / "performer-avatars"
-                   / "gfriends" / "objects")
+                   / provider_dir / "objects")
         objects.mkdir(parents=True, exist_ok=True)
         (objects / f"{real}.jpg").write_bytes(body)
         path = self.candidates / "performer-avatar-candidate-20260901-000000.csv"
@@ -906,17 +921,18 @@ class PerformerAvatarApplyTests(ReviewQueueTests):
             writer = csv.DictWriter(handle, fieldnames=list(self.FIELDS))
             writer.writeheader()
             writer.writerow({
-                "entity_id": "1", "current_name": "释爱丽丝", "matched_name": "釈アリス",
-                "name_source": "localization_jp", "provider": "gfriends",
+                "entity_id": entity_id, "current_name": "释爱丽丝",
+                "matched_name": "釈アリス",
+                "name_source": "localization_jp", "provider": provider_dir,
                 "source_url": "https://example.invalid/x.jpg", "external_id": "5-Premium/x.jpg",
                 "width": "648", "height": "800", "mime_type": "image/jpeg",
                 "sha256": digest or real, "cache_path": digest or real, "verdict": verdict,
             })
         return real
 
-    def _decide(self, status="approved"):
+    def _decide(self, status="approved", item_key="9"):
         return rm_web.w_review_decision(self.contract, {
-            "category": "performer_avatars", "item_key": "1", "status": status,
+            "category": "performer_avatars", "item_key": item_key, "status": status,
         })
 
     def test_approving_installs_the_image_where_entity_image_reads_it(self):
@@ -924,7 +940,7 @@ class PerformerAvatarApplyTests(ReviewQueueTests):
         self._seed(body=body)
         result = self._decide()
         self.assertEqual(result["applied_assets"], 1)
-        target = self.avatar_root / "performer-1.img"
+        target = self.avatar_root / "performer-9.img"
         self.assertTrue(target.is_file(), "批准之后图必须真的装上，而不是只记一笔决定")
         self.assertEqual(target.read_bytes(), body)
         self.assertEqual(Path(f"{target}.ct").read_text(encoding="utf-8"), "image/jpeg")
@@ -932,11 +948,29 @@ class PerformerAvatarApplyTests(ReviewQueueTests):
         self.assertEqual(prov["matched_name"], "釈アリス")
         self.assertEqual(prov["name_source"], "localization_jp")
 
+    def test_a_creator_candidate_installs_where_creator_images_are_read(self):
+        """creator 实体的头像必须落成 creator-<id>.img。
+
+        babepedia 命中的西方网黄全是 creator 实体；`/entity-image` 按 kind 分文件，
+        装成 performer-<id>.img 谁也读不到——同样的字节，两份都「装了」，界面上
+        依旧是视频抽帧兜底。
+        """
+        con = sqlite3.connect(self.db_path)
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
+                    "VALUES(2,'creator','SexySaffron','sexysaffron')")
+        con.commit(); con.close()
+        body = b"\xff\xd8\xff\xdb-other-jpeg"
+        self._seed(body=body, entity_id="2", provider_dir="babepedia")
+        result = self._decide(item_key="2")
+        self.assertEqual(result["applied_assets"], 1)
+        self.assertTrue((self.avatar_root / "creator-2.img").is_file())
+        self.assertFalse((self.avatar_root / "performer-2.img").exists())
+
     def test_a_candidate_that_did_not_pass_quality_is_refused(self):
         self._seed(verdict="rejected")
         with self.assertRaisesRegex(ValueError, "ok"):
             self._decide()
-        self.assertFalse((self.avatar_root / "performer-1.img").exists())
+        self.assertFalse((self.avatar_root / "performer-9.img").exists())
 
     def test_a_hash_that_does_not_match_the_cached_bytes_is_refused(self):
         """内容寻址的意义就在于不必相信路径。
@@ -947,13 +981,13 @@ class PerformerAvatarApplyTests(ReviewQueueTests):
         self._seed(digest="0" * 64)
         with self.assertRaisesRegex(ValueError, "缓存"):
             self._decide()
-        self.assertFalse((self.avatar_root / "performer-1.img").exists())
+        self.assertFalse((self.avatar_root / "performer-9.img").exists())
 
     def test_rejecting_records_the_decision_without_installing(self):
         self._seed()
         result = self._decide(status="rejected")
         self.assertEqual(result["applied_assets"], 0)
-        self.assertFalse((self.avatar_root / "performer-1.img").exists())
+        self.assertFalse((self.avatar_root / "performer-9.img").exists())
 
     def test_every_approvable_category_can_land(self):
         """每个能被批准的类别，要么有落地分支，要么明确声明只记决定。

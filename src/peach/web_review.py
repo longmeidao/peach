@@ -820,7 +820,7 @@ DECISION_ONLY_CATEGORIES = {
 
 
 def _install_performer_avatar(contract: ReviewContract, entity_id: str) -> int:
-    """把已批准的女优头像候选装进 `/entity-image` 真正读的目录。
+    """把已批准的人物头像候选装进 `/entity-image` 真正读的目录。
 
     和 `_install_studio_logo` 同一个毛病、同一种修法：`performer_avatars` 一直只在
     分类白名单里，没有任何写入分支。审计脚本按设计只把外部图放进内容寻址缓存
@@ -829,7 +829,13 @@ def _install_performer_avatar(contract: ReviewContract, entity_id: str) -> int:
     2880×1800——从 2026-08-25 起一直躺在缓存里进不去。
 
     按 sha256 定位缓存对象，并在装载前重算一遍校验：候选 CSV 的 `cache_path` 只是
-    哈希名，路径可能过期，而内容寻址的意义就在于不必相信路径。
+    哈希名，路径可能过期，而内容寻址的意义就在于不必相信路径。缓存对象在
+    provider-cache/performer-avatars/<provider>/objects 下按来源分目录——社媒与
+    babepedia 管线（harvest_social_avatars.py）也走同一套缓存，装载按内容找，
+    不绑定任何一个来源目录。
+
+    落盘名跟着实体走（`{kind}-{id}.img`）：`/entity-image` 按 kind 分文件，creator
+    实体（西方网黄，babepedia 命中的正是这批）写成 performer-<id>.img 是永远读不到的。
     """
     rows = {row["item_key"]: row
             for row in read_candidates("performer_avatars", contract.candidate_root)[0]}
@@ -841,9 +847,9 @@ def _install_performer_avatar(contract: ReviewContract, entity_id: str) -> int:
     digest = str(candidate.get("sha256") or "").strip().lower()
     if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
         raise ValueError("候选没有可用的 SHA-256")
-    objects = (contract.candidate_root / "provider-cache" / "performer-avatars"
-               / "gfriends" / "objects")
-    source = next((item for item in objects.glob(f"{digest}.*") if item.is_file()), None)
+    objects_root = contract.candidate_root / "provider-cache" / "performer-avatars"
+    source = next((item for item in objects_root.glob(f"*/objects/{digest}.*")
+                   if item.is_file()), None)
     if source is None:
         raise ValueError(f"候选图片不在本机缓存：{digest[:12]}")
     body = source.read_bytes()
@@ -851,7 +857,12 @@ def _install_performer_avatar(contract: ReviewContract, entity_id: str) -> int:
         raise ValueError("缓存对象与候选记录的哈希不一致，拒绝装载")
     content_type = str(candidate.get("mime_type") or "").strip() or "image/jpeg"
     contract.avatar_root.mkdir(parents=True, exist_ok=True)
-    destination = contract.avatar_root / f"performer-{int(entity_id)}.img"
+    with contract.read_connection() as connection:
+        kind_row = connection.execute(
+            "SELECT kind FROM entity WHERE id=?", (int(entity_id),)).fetchone()
+    kind = (kind_row[0] if kind_row and kind_row[0] in {"performer", "creator"}
+            else "performer")
+    destination = contract.avatar_root / f"{kind}-{int(entity_id)}.img"
     # 先写临时文件再原子替换：中途失败不会留下半张图被 `/entity-image` 读到。
     staging = destination.with_name(f"{destination.name}.{uuid.uuid4().hex}.tmp")
     staging.write_bytes(body)
