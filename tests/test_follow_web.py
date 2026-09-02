@@ -1713,7 +1713,10 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("body.inert=!expanded")
         self.assertPageContains("body.inert=true")
         self.assertPageContains("body.style.height=body.scrollHeight+'px'")
-        self.assertPageContains(".faliasmanager>summary::before")
+        # chevron 是 16px SVG，不是靠字号撑大的 › 字形：本页字阶只有三档，
+        # 图标尺寸混进去就会把「没有随意字号」这条门槛顶穿。
+        self.assertPageContains(".faliasmanager>summary>svg{flex:none;width:16px;height:16px")
+        self.assertPageLacks('.faliasmanager>summary::before{')
         self.assertPageContains("transition:transform .2s ease-in-out")
 
     def test_follow_source_icons_fail_back_to_plain_text(self):

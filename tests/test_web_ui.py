@@ -1046,6 +1046,60 @@ class WebUiSourceTests(unittest.TestCase):
                          "统计页只讲库里现在有多少，不该再挂对齐外部现实的面板")
         self.assertNotIn("resourceSyncMarkup()", stats)
 
+    def test_data_management_subpages_carry_geist_breadcrumbs(self):
+        """数据管理五张卡进的是它的子页，得有回去的路和自己的名字。
+
+        垃圾文件、重复文件此前连 h2 都顶着「数据管理」，和 document.title
+        （pageTitle 早就写了垃圾文件/重复文件）互相矛盾。breadcrumb 照
+        vercel.com/geist/breadcrumbs 实测语义：nav[aria-label=Breadcrumb] > ol > li，
+        当前项 aria-current="true" 渲染纯文本，上一级是 /data-cleanup 的链接；
+        分隔符是每项自带的 chevron，最后一项由 CSS 隐藏。人工复核、回收站、
+        高清版在侧栏保留直达入口，但层级上仍从数据管理进；空文件夹是 hub 上的
+        就地操作，没有独立页面，不在此列。
+        """
+        self.assertPageContains(
+            '<nav class="geist-breadcrumb" id="manageCrumb" aria-label="Breadcrumb" hidden></nav>')
+        self.assertPageContains("export function breadcrumbHtml(items)")
+        self.assertPageContains(
+            'return `<li${item.current?\' aria-current="true"\':\'\'}>${inner}${icon(\'chevron-right\')}</li>`')
+        self.assertPageContains(
+            "el.innerHTML=breadcrumbHtml([{label:'数据管理',href:'/data-cleanup'},{label,current:true}])")
+        pages = self.page.split("const MANAGE_CRUMB_PAGES={", 1)[1].split("};", 1)[0]
+        for path, label in (("/junk-files", "垃圾文件"), ("/duplicates", "重复文件"),
+                            ("/review", "人工复核"), ("/trash", "回收站"),
+                            ("/quality-goals", "高清版")):
+            self.assertIn(f"'{path}':'{label}'", pages, f"{path} 的面包屑层级名")
+        # cleanup 分区的标题按路径再分一层；其余管理页仍用 MANAGE_SECTIONS 的名字。
+        self.assertPageContains(
+            "const pageLabel=current==='cleanup'?MANAGE_CRUMB_PAGES[decodeURIComponent(location.pathname)]:null")
+        self.assertPageContains("function paintManageCrumb()")
+        # CSS：当前页升到 --ink、分隔符钉在 --muted 不跟亮、最后一项隐藏、6px 间距。
+        self.assertPageContains(".geist-breadcrumb ol{display:flex;align-items:center;gap:6px;margin:0;padding:0;list-style:none}")
+        self.assertPageContains(".geist-breadcrumb li[aria-current]{color:var(--ink)}")
+        self.assertPageContains(".geist-breadcrumb li svg{width:16px;height:16px;flex:none;stroke:var(--muted);fill:none")
+        self.assertPageContains(".geist-breadcrumb li:last-child svg{display:none}")
+        self.assertPageContains(
+            ".cleanup-layout .geist-breadcrumb,.cleanup-layout .managetitle,.cleanup-layout .pagelede")
+
+    def test_the_breadcrumb_link_routes_instead_of_reloading_the_page(self):
+        """面包屑那个 `<a href>` 必须自己接路由。
+
+        这个页面没有全局锚点拦截——`web/app.js` 里所有内部导航要么是按钮调
+        `route()`，要么像 `#brandHome` 那样 `<a>` 自带 preventDefault。所以一个
+        只写了 href 的面包屑点下去是整页重载：settings、sources、feed 全部重拉，
+        SPA 的返回表面和已读位置一起丢掉。href 仍要留着，中键和右键菜单靠它。
+        """
+        crumb = self.page.split("function paintManageCrumb()", 1)[1].split(
+            "function paintManageLede", 1)[0]
+        self.assertIn("el.querySelectorAll('a[href]').forEach", crumb,
+                      "面包屑链接没有接管左键")
+        self.assertIn("event.preventDefault();openDataCleanup()", crumb)
+        # 修饰键点击交回浏览器：那是「在新标签页打开」，不该被 SPA 吃掉。
+        self.assertIn("if(event.metaKey||event.ctrlKey||event.shiftKey||event.altKey||event.button)return",
+                      crumb)
+        self.assertIn("href=\"${esc(item.href)}\"", self.page,
+                      "href 仍要渲染出来，中键和右键菜单靠它")
+
     def test_link_totals_get_one_cell_each_instead_of_one_crammed_line(self):
         """「社媒 373 · 官网 · 事务所 224」读不出哪个数字属于哪一类。
 

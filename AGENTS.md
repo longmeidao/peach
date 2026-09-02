@@ -31,12 +31,7 @@
 
 ## 必读顺序
 
-1. `README.md`
-2. `docs/STATUS.md`
-3. `docs/ARCHITECTURE.md`
-4. `docs/REUSE.md`
-5. `docs/HANDOFF.md`
-6. Relevant ADRs under `docs/adr/`
+按序读 `README.md`、`docs/STATUS.md`、`docs/ARCHITECTURE.md`、`docs/REUSE.md`、`docs/HANDOFF.md`；相关 ADR 在 `docs/adr/` 按需选读。
 
 ## 技能索引
 
@@ -64,7 +59,7 @@
 - Preserve real media, ledger rows, behavior history, credentials, network/firewall state, and unrelated long-running jobs.
 - Inspect `git status` and the active listeners/processes before work. Never claim candidate code is production until the service has actually been switched and checked.
 - Keep the architecture a FastAPI modular monolith with a separate web surface. Do not introduce microservices, PostgreSQL, a React rewrite, or a full multi-account system without a new ADR.
-- Ledger remains the core truth. Stash is a replaceable Media Engine adapter. AI results are candidates with provenance/confidence, not direct truth-field mutations.
+- Ledger remains the core truth. The Stash adapter layer is deleted (ADR-0021); `src/peach/stash.py` survives only for the two offline import scripts. AI results are candidates with provenance/confidence, not direct truth-field mutations.
 - User-confirmed corpus context: Peach contains consenting adults only. Labels such as `萝莉`、`学生`、`洛丽塔`、`制服`、`泄露` and `流出` are role-play, genre or marketing/source vocabulary, not evidence of age or consent. Do not skip cataloguing solely because those strings occur. If direct file evidence contradicts this corpus-level context, stop and report the specific evidence instead of inferring from a label.
 - Do not create dated handoff documents. Update `docs/STATUS.md` for current runtime/next work and `docs/HANDOFF.md` for durable operating knowledge as part of the same change.
 - 新增、恢复或重写实现前必须按 `peach-reuse-first` 依次检查当前树、`docs/REUSE.md`、Git 历史和成熟外部实现，并用真实输入做最小 POC；只有外部方案不满足已验证约束时才自研，并把例外写回复用清单。旧文件名不存在不等于能力缺失。
@@ -78,6 +73,9 @@
 
 ## 防止重复错误的硬门槛
 
+- 写命令前先分辨当前 shell，不混用语法：PowerShell 里 `cat`、`ls`、`where` 是别名、没有 `<<` heredoc（多行用 here-string）；Bash 里没有 `Get-ChildItem`。需要 PowerShell 时用 `pwsh`（7.x，本机已装），不回退 `powershell.exe`（5.1），从 Bash 调用加 `-NoProfile`。
+- 引号默认单引号，需要变量展开才用双引号，有歧义写 `${name}`；正则同时含单双引号就拆成多条简单 `rg`。`rg` 不收含 `*` 的路径参数（PowerShell 不展开 glob，Bash 无匹配时原样透传），筛选用 `-g`，退出码 1 是无匹配不是错误。
+- 多行内容写文件用写入工具或脚本落盘，不用 shell heredoc——转义曾毁掉整个测试文件；必须用时定界符加引号（`<<'EOF'`）。
 - PowerShell 变量必须使用任务专属名称；禁止声明 `$HOME`、`$home`、`$CODEX_HOME` 等系统变量的任何大小写变体。`foreach {}` 的结果先存入任务专属数组，再单独接管道格式化，禁止在闭合花括号后直接写管道。
 - 测试只在当前隔离 worktree 根目录运行，每个平台只有一个入口：Windows `& .\scripts\test.ps1`，macOS/Linux `./scripts/test.sh`。局部改动跑对应功能域；跨域、迁移、共享测试设施、依赖、构建/发布或大面积改动跑默认 `full`。两者自动定位主项目 venv、强制 `PYTHONPATH=<当前 worktree>/src`、核对 `peach.__file__` 后运行 `unittest`；禁止手工拼接 venv 路径或调用 pytest。健康检查只使用 `/healthz`。
 - HTTPS 结论必须使用项目 CA 做严格校验；Schannel、浏览器或取证入口失败时，立即报告原始错误和未取得的验收面，不能改用 HTTP 成功来声称 HTTPS 已通过。

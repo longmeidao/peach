@@ -1,8 +1,9 @@
 import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, pageTitle, realDuration} from './js/core.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import {
-  emptyStateHtml, fieldsetTitle, loadingDotsHtml, mediaViewButtonsHtml, noteHtml, progressHtml,
-  scrollerHtml, setActionBusy, skeletonHtml, spinnerHtml, wireBusyActions, wireScrollers,
+  breadcrumbHtml, emptyStateHtml, fieldsetTitle, loadingDotsHtml, mediaViewButtonsHtml, noteHtml,
+  progressHtml, scrollerHtml, setActionBusy, skeletonHtml, spinnerHtml, wireBusyActions,
+  wireScrollers,
 } from './js/ui-components.js';
 
 initMiddleTruncate(document);
@@ -2394,7 +2395,7 @@ async function openDataCleanup(push=true){
   paintManageLede();
   const sourceState=(sources.sources||[]).filter(source=>['local','115','pikpak'].includes(source.location)).map(source=>
     `<span class="cleanupsource" data-online="${source.online?'true':'false'}">${esc(LOC[source.location]||source.location)} · ${source.online?'在线':'离线'}</span>`).join('');
-  $('#stats').innerHTML=`<div class="cleanupgrid">
+  $('#stats').innerHTML=`<div class="cleanuppage"><div class="cleanupgrid">
     <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupJunkTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupJunkTitle','垃圾文件')}
         <strong>${Number(junk.pending_total||0).toLocaleString()} 个待判断</strong></div>
@@ -2419,7 +2420,7 @@ async function openDataCleanup(push=true){
     </section>`).join('')}
   </div>
   ${linkManagerMarkup()}
-  ${resourceSyncMarkup()}`;
+  ${resourceSyncMarkup()}</div>`;
   $('#stats').querySelector('[data-cleanup-open="junk"]').onclick=()=>openManage('ads');
   $('#stats').querySelector('[data-cleanup-open="duplicates"]').onclick=()=>openDuplicates();
   $('#stats').querySelectorAll('[data-cleanup-go]').forEach(button=>
@@ -3666,7 +3667,8 @@ function followAliasManager(groups,suggestions){
         title="移除别名" aria-label="移除别名 ${esc(alias.name)}">${icon('x')}</button></span>`).join('')}</span>
   </div>`).join('');
   return `<details class="faliasmanager"${suggestions.length?' open':''}>
-    <summary>作者别名${suggestions.length?` · 检测到 ${suggestions.length} 组可能重复`:groups.length?` · ${groups.length} 组`:''}</summary>
+    <summary>${icon('chevron-right')}作者别名${suggestions.length?`<span class="faliasbadge">${suggestions.length} 组待合并</span>`
+      :groups.length?`<span class="faliasbadge">${groups.length} 组</span>`:''}</summary>
     ${detected?`<div class="faliassuggestions">${detected}</div>`:''}
     <form class="faliasform" id="followAliasAdd">
       <input name="canonical" required placeholder="规范作者名" aria-label="规范作者名">
@@ -4111,6 +4113,10 @@ function renderFollowSrcFilter(mount){
   if(fsrcOpened){fsrcOpened.setOpen(false);fsrcOpened=null}
   const providers=[...new Set((followData?.sources||[])
     .map(source=>source.provider_label).filter(Boolean))];
+  /* 下拉里的每一行带上该来源的 favicon：label 只是展示名，图标要靠 provider
+     查 SOURCE_ICONS，所以另建一张 label→provider 的映射。 */
+  const providerIcon=new Map((followData?.sources||[]).filter(source=>source.provider&&source.provider_label)
+    .map(source=>[source.provider_label,source.provider]));
   providers.forEach(provider=>{if(!fsrcProviders.has(provider))fsrcProviders.add(provider)});
   if(!providers.length){mount.innerHTML='';return}
   const label=()=>{const n=providers.filter(p=>!fsrcUnchecked.has(p)).length;
@@ -4121,7 +4127,7 @@ function renderFollowSrcFilter(mount){
       ${icon('list-filter')}<span data-srcfilter-label>${esc(label())}</span></button>
     <div class="fsrcmenu" id="follow-source-menu" role="menu" data-srcfilter-menu hidden>${providers.map(provider=>
       `<label><input type="checkbox" data-srcfilter="${esc(provider)}"${fsrcUnchecked.has(provider)?'':' checked'}>
-        <span>${esc(provider)}</span></label>`).join('')}</div>`;
+        ${sourceIcon(providerIcon.get(provider)||'')}<span>${esc(provider)}</span></label>`).join('')}</div>`;
   const toggle=mount.querySelector('[data-srcfilter-toggle]');
   const menu=mount.querySelector('[data-srcfilter-menu]');
   /* Vercel 项目页的 Filter and Sort 菜单没有展开动画。菜单固定在视口内，
@@ -5183,10 +5189,38 @@ function paintManageTitle(){
   const current=manageSection(),el=$('#manageTitle');
   if(!el)return;
   document.body.classList.toggle('insight-layout',current==='stats'||current==='taste');
+  document.body.classList.toggle('cleanup-layout',current==='cleanup');
   const entry=MANAGE_SECTIONS.find(([k])=>k===current);
   el.hidden=!entry;
-  if(entry)el.textContent=entry[1];
+  // 数据管理之下按路径再分一层（MANAGE_CRUMB_PAGES）：垃圾文件/重复文件的
+  // 标题用页面自己的名字，「数据管理」让给 breadcrumb 的上一级。
+  const pageLabel=current==='cleanup'?MANAGE_CRUMB_PAGES[decodeURIComponent(location.pathname)]:null;
+  if(entry)el.textContent=pageLabel||entry[1];
+  paintManageCrumb();
   paintManageLede();
+}
+/* 数据管理五张卡对应的子页（vercel.com/geist/breadcrumbs：有上一级页面的
+   子页才画面包屑）。人工复核、回收站、高清版虽也保留侧栏直达入口，
+   层级上仍从数据管理进；空文件夹是 hub 上的就地操作，没有独立页面。 */
+const MANAGE_CRUMB_PAGES={
+  '/junk-files':'垃圾文件',
+  '/duplicates':'重复文件',
+  '/review':'人工复核',
+  '/trash':'回收站',
+  '/quality-goals':'高清版',
+};
+function paintManageCrumb(){
+  const el=$('#manageCrumb');if(!el)return;
+  const label=MANAGE_CRUMB_PAGES[decodeURIComponent(location.pathname)];
+  el.hidden=!label;
+  if(!label)return;
+  el.innerHTML=breadcrumbHtml([{label:'数据管理',href:'/data-cleanup'},{label,current:true}]);
+  /* href 是给「新标签页打开」和右键菜单用的，普通左键必须走路由：这里没有
+     全局锚点拦截，不接就是整页重载，SPA 的返回表面和已读位置全部丢掉。 */
+  el.querySelectorAll('a[href]').forEach(a=>a.onclick=event=>{
+    if(event.metaKey||event.ctrlKey||event.shiftKey||event.altKey||event.button)return;
+    event.preventDefault();openDataCleanup();
+  });
 }
 function paintManageLede(text=''){
   const el=$('#manageLede');if(!el)return;

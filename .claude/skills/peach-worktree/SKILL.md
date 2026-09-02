@@ -15,27 +15,10 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
 
 ## 流程
 
-1. 协调者在主目录创建隔离工作树：
-
-   ```powershell
-   & .\.venv\Scripts\python.exe scripts\agent_worktree.py create --agent claude --task <task>
-   ```
-
-   它建在 `peach-worktrees/`，Codex 和 Claude 共用这一个目录。**不要用 Claude Code 内置的
-   工作树机制（`.claude/worktrees/`）**：它在分支被集成后会被回收，目录却留在原地。
+1. 协调者在主目录创建隔离工作树：`& .\.venv\Scripts\python.exe scripts\agent_worktree.py create --agent claude --task <task>`。它建在 `peach-worktrees/`，Codex 和 Claude 共用这一个目录。**不要用 Claude Code 内置的工作树机制（`.claude/worktrees/`）**：它在分支被集成后会被回收，目录却留在原地。
 
 2. 工作者只在自己的工作树内编辑。工作树不复制 `.venv`。
-3. 测试在当前工作树根目录运行，每个平台只有一个入口。日常开发先跑本功能域：
-
-   ```powershell
-   & .\scripts\test.ps1 -Scope follow   # Windows 示例
-   ```
-
-   ```bash
-   ./scripts/test.sh follow              # macOS / Linux 示例
-   ```
-
-   可选域为 `follow`、`catalog`、`media`、`sync`、`metadata`、`tooling`；不传参数是 `full`。
+3. 测试在当前工作树根目录运行，每个平台只有一个入口。日常开发先跑本功能域：Windows `& .\scripts\test.ps1 -Scope follow`，macOS/Linux `./scripts/test.sh follow`。可选域为 `follow`、`catalog`、`media`、`sync`、`metadata`、`tooling`；不传参数是 `full`。
    两者契约相同：从 Git common directory 定位主项目 venv，强制 `PYTHONPATH=<当前工作树>/src`，
    核对 `peach.__file__` 后运行标准库 `unittest`。禁止手工拼接 venv 路径或调用 pytest。
    跨多个域、迁移、共享测试设施、依赖、构建/发布或大面积改动必须跑 `full`；局部功能只跑

@@ -252,11 +252,15 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 .reviewalias{margin:2px 0 0;font-size:var(--fs-xs);color:var(--muted)}
 .reviewactions button{box-sizing:border-box;height:32px;border:1px solid var(--border-15);border-radius:8px;background:transparent;color:var(--ink-2);padding:0 12px;font-size:var(--fs-sm);cursor:pointer}.reviewactions button:hover{border-color:var(--tungsten);color:var(--ink)}.reviewactions .approve{background:var(--tungsten);border-color:var(--tungsten);color:#fff;font-weight:600}.reviewactions .approve:hover{background:color-mix(in srgb,var(--tungsten) 82%,#000);color:#fff}.reviewactions .skip{color:var(--meter)}.reviewactions .skip:hover{background:var(--meter);border-color:var(--meter);color:#fff}.reviewactions .reject{color:var(--drop)}.reviewactions .reject:hover{background:var(--drop);border-color:var(--drop);color:#fff}
 .cleanuploading,.junkloading{grid-column:1/-1;min-height:280px;display:grid;place-items:center}
-.cleanupgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;padding:0 0 42px}
+/* 数据管理整页收进一条窄列（vercel.com/geist/fieldset 实测示例块宽 812px），
+   fieldset 一行一个，不再拼三列。 */
+.cleanuppage{width:min(812px,100%);margin:0 auto}
+.cleanupgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;padding:0 0 42px}
 /* Geist Fieldset：全框只有一条线，在底部操作条上方。标题是正文区的第一行，
    底下不划线（证据：vercel.com/geist/fieldset 的 Multiple Fieldsets 示例）。
-   操作条固定 52px、竖直居中，按钮一律靠右；左侧有说明时说明推到最左。 */
-.geist-fieldset-title{margin:0 0 10px;color:var(--ink);font-size:var(--fs-lg);font-weight:600}
+   操作条固定 52px、竖直居中，按钮一律靠右；左侧有说明时说明推到最左。
+   字阶照 Geist 示例实测：标题 20px/600、说明 14px/400——标题必须压过正文。 */
+.geist-fieldset-title{margin:0 0 10px;color:var(--ink);font-size:var(--fs-xl);font-weight:600}
 .cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;height:var(--fieldset-bar-h);
   margin:0;padding:0 16px 0 20px;display:flex;align-items:center;justify-content:flex-end;gap:8px;
   border-top:1px solid var(--border-10);background:var(--overlay-5)}
@@ -264,12 +268,18 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 .resourcesyncfooter>p,.resourceapplyrow>p{margin-right:auto}
 .cleanupfieldset{display:flex;flex-direction:column;min-width:0;min-height:176px;margin:0;padding:0;overflow:hidden;
   border:1px solid var(--line-soft);border-radius:12px;background:var(--surface)}
-.cleanupfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px}.cleanupfieldset strong{display:block;margin-bottom:10px;font-size:var(--fs-xl)}
-.cleanupfieldset p{margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.6}
+.cleanupfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px}.cleanupfieldset strong{display:block;margin-bottom:10px;font-size:var(--fs-md);font-weight:500;color:var(--ink-2)}
+.cleanupfieldset p{margin:0;color:var(--muted);font-size:var(--fs-md);line-height:1.45}
+/* 数据管理 fieldset 上的按钮与关注页 .fbtn 同一套白边语言：hover 只提亮描边
+   和文字，不出蓝色；危险按钮 hover 沿用 fquiet 的红线做法。 */
 .cleanupfieldset button{box-sizing:border-box;min-height:32px;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);
-  background:transparent;color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:7px;cursor:pointer}
-.cleanupfieldset button:hover{border-color:var(--tungsten);color:var(--ink);background:var(--hover)}
-.cleanupfieldset button.danger{color:var(--drop)}.cleanupfieldset button svg{width:16px;height:16px;stroke:currentColor;fill:none}
+  background:transparent;color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;
+  transition:border-color .12s ease,color .12s ease,background-color .12s ease,scale .1s ease}
+.cleanupfieldset button:hover{border-color:var(--ink-2);color:var(--ink)}
+.cleanupfieldset button:active{scale:.96}
+.cleanupfieldset button.danger{color:var(--drop)}
+.cleanupfieldset button.danger:hover{border-color:var(--drop);color:var(--drop)}
+.cleanupfieldset button svg{width:16px;height:16px;stroke:currentColor;fill:none}
 .cleanupsources{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}.cleanupsource{padding:4px 8px;border:1px solid var(--border-15);
   border-radius:var(--badge-radius);color:var(--keep);font-size:var(--fs-xs)}.cleanupsource[data-online="false"]{color:var(--muted)}
 .cleanupfieldset .cleanupstate{min-height:20px;margin-top:12px;color:var(--ink-2)}
@@ -290,8 +300,8 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 .insightdetail,.tastehero{overflow:hidden;border:1px solid var(--line-soft);border-radius:12px;background:var(--ground)}.insightdetailbody,.tastehero{min-height:330px;display:grid;grid-template-columns:minmax(260px,36%) minmax(0,1fr)}
 .insightdetailbody[hidden],[data-stats-panel][hidden],[data-taste-evidence-panel][hidden],[data-taste-summary][hidden],[data-taste-dimension-panel][hidden]{display:none}
 .insightcopy{padding:28px 24px;border-right:1px solid var(--line-soft);display:flex;flex-direction:column;align-items:flex-start}.insightcopy>span{color:var(--muted);font-size:var(--fs-xs)}.insightcopy h2{margin:10px 0 2px;font-size:var(--fs-4xl);line-height:1;font-variant-numeric:tabular-nums}.insightcopy>b{font-size:var(--fs-sm)}.insightcopy p{max-width:38ch;margin:24px 0 0;padding-top:18px;border-top:1px solid var(--line-soft);color:var(--muted);font-size:var(--fs-sm);line-height:1.55}.insightcopy small{margin-top:auto;padding-top:18px;color:var(--muted);font-size:var(--fs-xs)}
-.insightvisual,.insightfacts,.tastebars{min-width:0;padding:24px;align-self:center}.insightfacts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0;border-top:1px solid var(--line-soft);border-left:1px solid var(--line-soft)}
-.insightfacts .kv{min-height:56px;padding:10px 12px;border-right:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}
+.insightvisual,.insightfacts,.tastebars{min-width:0;padding:24px;align-self:center}.insightfacts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0}
+.insightfacts .kv{min-height:56px;padding:10px 12px;border-right:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}.insightfacts .kv:nth-child(odd){border-left:1px solid var(--line-soft)}.insightfacts .kv:nth-child(-n+2){border-top:1px solid var(--line-soft)}.insightfacts:has(.kv:last-child:nth-child(odd))::after{content:"";border-right:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}
 .insightbarrow,.tastebar{padding:8px 0 12px;border-bottom:1px solid var(--line-soft)}.insightbarrow:last-child,.tastebar:last-child{border-bottom:0}.insightbarrow>div:first-child,.tastebar>div:first-child{display:flex;justify-content:space-between;gap:12px;font-size:var(--fs-sm)}.insightbarrow small{display:block;margin-top:5px;color:var(--muted);font-size:var(--fs-xs)}
 .insightpanel{overflow:hidden;border:1px solid var(--line-soft);border-radius:12px;background:var(--surface)}.insightpanel>header{min-height:52px;display:flex;align-items:center;padding:0 16px;border-bottom:1px solid var(--line-soft)}.insightpanel>header h3{margin:0;font-size:var(--fs-md)}.insightpanel>header p{margin:2px 0 0;color:var(--muted);font-size:var(--fs-xs)}.insightpanelbody{min-width:0;padding:14px 16px 16px}
 .insighttabs{min-width:0;display:flex;align-self:stretch;align-items:stretch;gap:24px;overflow-x:auto;overscroll-behavior-x:contain}.insighttabs button{position:relative;flex:none;border:0;background:transparent;color:var(--muted);font:inherit;font-size:var(--fs-sm);cursor:pointer}.insighttabs button:hover,.insighttabs button[aria-selected="true"]{color:var(--ink)}.insighttabs button[aria-selected="true"]:after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--ink)}
@@ -743,6 +753,20 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 .managebar button[aria-pressed="true"]{background:var(--tungsten-soft);color:var(--tungsten);font-weight:600}
 .managebar{margin-left:auto;margin-right:auto}
 .insight-layout .managetitle,.insight-layout .pagelede{width:min(1100px,100%);margin-left:auto;margin-right:auto}
+.cleanup-layout .geist-breadcrumb,.cleanup-layout .managetitle,.cleanup-layout .pagelede{width:min(812px,100%);margin-left:auto;margin-right:auto}
+/* Geist Breadcrumbs（vercel.com/geist/breadcrumbs 实测）：nav > ol > li，
+   上一级与分隔符 --muted、当前页 --ink 且带 aria-current，hover 同样升亮；
+   分隔符是 16px chevron、钉在 --muted 上不随当前项提亮，最后一项隐藏；
+   项与项、字与分隔符都留 6px。 */
+.geist-breadcrumb{margin:0 0 6px}
+.geist-breadcrumb[hidden]{display:none}
+.geist-breadcrumb ol{display:flex;align-items:center;gap:6px;margin:0;padding:0;list-style:none}
+.geist-breadcrumb li{display:flex;align-items:center;gap:6px;font-size:var(--fs-md);line-height:20px;color:var(--muted);transition:color .2s ease}
+.geist-breadcrumb li[aria-current]{color:var(--ink)}
+.geist-breadcrumb a{color:inherit;text-decoration:none}
+.geist-breadcrumb li:not([aria-current]):hover{color:var(--ink)}
+.geist-breadcrumb li svg{width:16px;height:16px;flex:none;stroke:var(--muted);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.geist-breadcrumb li:last-child svg{display:none}
 .count{position:sticky;top:calc(var(--topH) + var(--filterH));z-index:60;
   min-height:var(--sortH);color:var(--ink-2);margin:0 -16px 16px;padding:8px 16px;
   display:flex;align-items:center;gap:10px;flex-wrap:nowrap;
@@ -2181,12 +2205,23 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   transition:border-color .12s ease,color .12s ease,scale .1s ease}
 .fchip:hover{border-color:var(--tungsten);color:var(--ink)}
 .fchip:active{scale:.96}
-.faliasmanager{margin-top:12px;border-top:1px solid var(--line-soft);padding-top:10px}
-.faliasmanager>summary{display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--ink-2);
-  font-weight:600;list-style:none}
+/* 作者别名折叠照 Vercel 项目页 Deployment Settings 行（登录态实测）：卡片内
+   通栏 48px 行——左 chevron、白字标题、蓝色胶囊计数；上下边线通到卡片内壁
+   （负 margin 抵消 .fsec 的 16px 内边距），hover 铺一层底色。 */
+.faliasmanager{margin:12px -16px 0;border-top:1px solid var(--line-soft)}
+.faliasmanager>summary{display:flex;align-items:center;gap:8px;min-height:48px;margin:0;padding:2px 16px;
+  cursor:pointer;color:var(--ink);font-size:var(--fs-md);font-weight:400;list-style:none}
 .faliasmanager>summary::-webkit-details-marker{display:none}
-.faliasmanager>summary::before{content:"›";flex:none;transition:transform .2s ease-in-out}
-.faliasmanager>summary[aria-expanded="true"]::before{transform:rotate(90deg)}
+.faliasmanager>summary:hover{background:var(--hover)}
+/* chevron 用 16px SVG，和面包屑同一份 Geist 证据；此前是 › 字形靠 --fs-lg 撑大，
+   那让一个图标尺寸混进了本页只有三档的字阶。 */
+.faliasmanager>summary>svg{flex:none;width:16px;height:16px;stroke:var(--muted);fill:none;
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s ease-in-out}
+.faliasmanager>summary[aria-expanded="true"]>svg{transform:rotate(90deg)}
+.faliasbadge{display:inline-flex;align-items:center;height:24px;padding:2px 12px;margin-left:2px;
+  border-radius:var(--pill-radius);background:var(--tungsten-soft);color:var(--tungsten);
+  font-size:var(--fs-xs);font-weight:500}
+.faliasmanager>.fcollapse{padding:4px 16px 16px}
 .faliassuggestions,.faliasrows{display:grid;gap:6px;margin-top:10px}
 .faliassuggest,.faliasrow{display:flex;align-items:center;gap:10px;min-width:0}
 .faliassuggest>span,.faliasrow>span{display:flex;align-items:center;gap:7px;min-width:0;flex:1;flex-wrap:wrap}
@@ -2239,6 +2274,9 @@ details.fcred{display:block}
   .fsec{padding:12px 13px 14px}
   .fsechead{margin:-12px -13px 12px;padding:12px 13px}
   .fsecfoot{margin:14px -13px -14px;padding:12px 13px}
+  .faliasmanager{margin-left:-13px;margin-right:-13px}
+  .faliasmanager>summary{padding:2px 13px}
+  .faliasmanager>.fcollapse{padding:4px 13px 14px}
   .fdetails{margin-inline:-13px}
   .fdetails summary,.fdetails p{padding-inline:13px}
   .faddform{grid-template-columns:minmax(0,1fr) auto}

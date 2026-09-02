@@ -22,6 +22,23 @@ export function fieldsetTitle(id,title){
   return `<h3 class="geist-fieldset-title" id="${esc(id)}">${esc(title)}</h3>`;
 }
 
+/**
+ * Geist Breadcrumbs（https://vercel.com/geist/breadcrumbs 实测）的列表本体。
+ * 容器 nav[aria-label="Breadcrumb"] 归页面骨架所有，这里只画 `ol > li`。
+ *
+ * 每项自带一个尾部分隔符，最后一项的由 CSS 隐藏；当前项用
+ * `aria-current="true"`（Geist 语义是 true，不是 "page"）渲染成纯文本，
+ * 其余项必须有 href，渲染成继承颜色的链接。
+ */
+export function breadcrumbHtml(items){
+  const trail=items.map(item=>{
+    const inner=item.href?`<a href="${esc(item.href)}">${esc(item.label)}</a>`
+      :`<span>${esc(item.label)}</span>`;
+    return `<li${item.current?' aria-current="true"':''}>${inner}${icon('chevron-right')}</li>`;
+  }).join('');
+  return `<ol>${trail}</ol>`;
+}
+
 /** Determinate progress only. Callers supply real units instead of a decorative width. */
 export function progressHtml(label,value,max=100){
   const ceiling=Math.max(0,Number(max)||0);

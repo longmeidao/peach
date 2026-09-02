@@ -10,10 +10,8 @@ description: 在 macOS 上开工、改动路径解析或挂载判定、遇到 gi
 
 ## 何时使用
 
-- 当前工作目录在 macOS 上（`~/Desktop/lmd.gg/peach/peach-app`）。
-- 改动涉及 `asset.path` 解析、`allowed_media_roots`、挂载可达性或磁盘闸门。
-- `git status` 显示大量文件被修改，但 `git diff` 是空的。
-- 改动要交回 Windows 那台继续。
+- 当前工作目录在 macOS 上（`~/Desktop/lmd.gg/peach/peach-app`），或改动要交回 Windows 那台继续。
+- 改动涉及 `asset.path` 解析、`allowed_media_roots`、挂载可达性或磁盘闸门；`git status` 显示大量文件被修改，但 `git diff` 是空的。
 
 ## 路径口径
 
@@ -24,11 +22,7 @@ description: 在 macOS 上开工、改动路径解析或挂载判定、遇到 gi
 `src/peach/platform.py` 一处；写回账本的索引脚本仍只在 Windows 上跑，路径口径
 因此保持单一。**禁止从 macOS 写 `asset.path`**。
 
-| 盘符 | Windows | macOS 默认 |
-| --- | --- | --- |
-| `R:` 本地硬盘 | `R:\` | `/Volumes/RESOURCES` |
-| `B:` 115 | `B:\` | `~/Desktop/IMSL/115` |
-| `A:` PikPak | `A:\` | `~/Desktop/IMSL/Pikpak` |
+盘符映射：`R:` 本地硬盘（Windows `R:\`，macOS `/Volumes/RESOURCES`）、`B:` 115（`B:\`，`~/Desktop/IMSL/115`）、`A:` PikPak（`A:\`，`~/Desktop/IMSL/Pikpak`）。
 
 用 `PEACH_DRIVE_MAP=R=/mnt/res,B=/mnt/115` 覆盖；数据目录用 `PEACH_DATA_ROOT`。
 CloudDrive 在 Windows 是盘符、在 macOS 是 macFUSE 挂载点，这层不是可选优化。
@@ -75,9 +69,7 @@ macOS 的 FFmpeg 走 PATH（`brew install ffmpeg`）；Windows 的 FFmpeg bundle
 **不是多主实时同步**——SQLite 没有安全的自动三方合并。见 ADR-0017、`src/peach/sync.py`
 与 README「账本复制」。
 
-- 服务启动只观察世代和写入端，不自动拉取或推送，也没有定时同步。
-- marker 的 `device` 是唯一写入端；另一台只读。复制与「接管 Ledger 写入」只能由托盘显式执行。
-- 两边都动过就转只读报冲突，由人选一边。
+- 服务启动只观察世代和写入端，不自动拉取或推送，也没有定时同步；marker 的 `device` 是唯一写入端、另一台只读，复制与「接管 Ledger 写入」只能由托盘显式执行，两边都动过就转只读报冲突、由人选一边。
 - 同步点不可达时本地仍可运行；媒体盘是否插入与账本同步无关。
 - 复制走 SQLite backup API，**不要复制 `.db` 文件**：WAL 里已提交未 checkpoint 的
   事务会丢，还可能和目标残留的 `-wal` 拼成损坏的库。

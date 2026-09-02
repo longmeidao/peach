@@ -28,13 +28,11 @@
 
 ## 无摩擦接手
 
-- Codex 自动读取项目层级中的 `AGENTS.md`；Claude Code 通过 `CLAUDE.md` 导入同一文件。
+- Codex 自动读取项目层级中的 `AGENTS.md`；Claude Code 通过 `CLAUDE.md` 导入同一文件。技能只有 Claude 侧封装（`.claude/skills/`），Codex 不自动加载，只能靠 `AGENTS.md` 索引表主动读同一份文件，Codex 侧封装的进度写在 `docs/STATUS.md`。
 - 正式测试入口只有 Windows `& .\scripts\test.ps1` 和 macOS/Linux `./scripts/test.sh`；不要另拼测试命令。日常用 `-Scope <域>` / `<域>` 只跑当前功能与公共门槛；跨域、迁移、共享测试设施、依赖、构建/发布或大面积改动跑默认 `full`。
 - 两个智能体使用同一入口、同一必读顺序，不再生成按日期命名的临时交接文档。
 - 新任务以当前机器真实的 `peach-app` 为工作目录，并说：「接手 Peach，按项目入口文件继续 STATUS 中的下一任务。」不得把 Windows 迁移前的 `R:\peach-app` 当跨平台固定路径。
-- 改变运行事实的任务同时更新 `docs/STATUS.md`；长期规则更新本文件、`docs/REUSE.md` 或 ADR；可执行流程写成 `.claude/skills/<name>/SKILL.md`。分层判据见 ADR-0015，步骤见 `peach-context-rules`。
-- 七个技能只有 Claude 侧封装（`.claude/skills/`），Codex 不自动加载，只能靠 `AGENTS.md` 的索引表主动读取同一份文件。Codex 侧封装的做法与验收写在 `docs/STATUS.md` 的下一批工作，本文件不复制第二份。
-- 无论哪个 harness，触发都是概率性的：必须每次成立的规则要由脚本、测试或 hook 强制，不能只写成技能。
+- 改变运行事实的任务同时更新 `docs/STATUS.md`；长期规则更新本文件、`docs/REUSE.md` 或 ADR；可执行流程写成 `.claude/skills/<name>/SKILL.md`。分层判据见 ADR-0015，步骤见 `peach-context-rules`；触发是概率性的，必须每次成立的规则要由脚本、测试或 hook 强制，不能只写成技能。
 - 用户不是消息中转站。结论、进度、待办和证据必须写入共享文档或机器可读产物。
 
 ## 并行智能体与 Git 工作树
@@ -48,8 +46,7 @@
 - 得出结论的同一步必须写入 ledger、CSV 或其他持久产物。
 - 结论被修正时，所有派生产物必须重建；只改说明文字不够。过期删除清单比没有清单更危险。
 - verdict 旁必须保存证据和来源；完成前把声明意图与数据库实际行对账。
-- 历史视觉逐条任务曾在聊天里说「已保存」，但 `asset_tag` 中 `source='vision'` 为 0；根因是根本没有写入步骤，不是模型拒绝。
-- `disposal-candidates.csv` 曾在 `BNST033` 判断修正后未重建，仍把真实 3.2 GB 正片列为待删；这是必须同步所有派生产物的直接证据。
+- 直接证据：视觉逐条任务在聊天里说「已保存」但 `asset_tag` 的 `source='vision'` 为 0——根本没有写入步骤，不是模型拒绝；`disposal-candidates.csv` 在 `BNST033` 修正后未重建，把真实 3.2 GB 正片列为待删。
 
 Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hook，调用 `scripts/job_status.py --write --hook-event`。脚本只记录脱敏生命周期摘要，重新从 ledger/产物计算数字，并原子更新 `docs/STATUS.md` 的 `<!-- job-status -->` 受管区块；不复制 prompt、response 或凭据。强制杀进程/断电无法运行 hook，下次调用会修复计数。Codex 暂无等价项目结束 hook，仍由协调者在同一改动里更新文档；不要用脆弱日志监听器模拟。
 
@@ -57,10 +54,7 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 
 - 全部中文内容（README、`docs/`、ADR、技能正文、界面文案）按用户级技能 tech-doc-style-chinese 写作：
   事实优先、可扫读、不新增原文没有的数字与结论；规则只作用于可见正文，代码、路径、字段和命令原样保留。
-- 来源 https://github.com/Fenng/Tech-Doc-Style-Chinese （MIT），本机已安装到
-  `%USERPROFILE%\.claude\skills\tech-doc-style-chinese`，对应 upstream commit `a6f5b60`（2026-08-07）。
-  Claude 按 description 自动加载；Codex 需自行安装一份到 `$CODEX_HOME/skills/tech-doc-style-chinese`：
-  `npx -y skills add https://github.com/Fenng/tech-doc-style-chinese -a codex -g`，或按同名目录 `git clone`。
+- 来源 https://github.com/Fenng/Tech-Doc-Style-Chinese （MIT），本机装在 `%USERPROFILE%\.claude\skills\tech-doc-style-chinese`（upstream `a6f5b60`，2026-08-07），Claude 按 description 自动加载；Codex 自行安装到 `$CODEX_HOME/skills/tech-doc-style-chinese`：`npx -y skills add https://github.com/Fenng/tech-doc-style-chinese -a codex -g` 或按同名目录 `git clone`。
 - 检查器是该技能目录下的 `scripts/lint_copy_rules.py`，用主项目 venv 跑，参数 `README.md AGENTS.md docs
   .claude\skills`。它只覆盖高频规则，`error` 必须清零，`style` 提示需人工判断，不作为提交门槛。
 - Peach 覆盖上游默认三处：智能体入口文件保留称呼「你」（术语表已定义其含义）；`DOM/CSS/JS` 是证据 <!-- copy-lint-disable-line -->
@@ -69,14 +63,11 @@ Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hoo
 
 ## 参考产品证据登记
 具体快照、URL、版本、SHA 与 Peach 差异统一登记在 `docs/reference-sources.json` 和 `docs/reference-snapshots/`；获取、失效复核与接受更新的流程见 `.claude/skills/peach-reference-evidence/SKILL.md`。本文件不再复制会随上游变化的测量值。OpenAver 相似探索固定 revision `dca4c0c368ea0c2db9cf15e48977de2fc75e7077` 只作算法参考：Peach 复用 Tag IDF 与结构化共同点方向，独立增加 MMR 和稳定 seed，不复制上游界面或源码；证据与只读 POC 见 `openaver-related-ranking.md`。
-**Vercel Geist Grid（2026-08-28）**：官方页 `https://vercel.com/geist/grid` 的实时 DOM 使用资源类
-`grid-module__AMTIxG__grid`；网格引导线由父级统一拥有，单元透明、0 圆角，示例按阅读顺序逐行排列，
-并明确要求各断点可预测重排、可点击单元独立显示 focus。Peach 复用共享边线与 3／2／1 列重排，
-但 Tag 仍保留 6px 小圆角，普通排行不复制演示页的大留白或装饰性引导线。
+**Vercel Geist Grid（2026-08-28）**：Peach 复用父级共享边线与 3／2／1 列断点重排，Tag 保留 6px 小圆角，普通排行不复制演示页的大留白或装饰性引导线；实测 DOM 与断点要求见 `vercel-geist-grid`。
 **Vercel Geist 控件（2026-08-28）**：官方 introduction 页实测普通操作使用 4／6px 圆角、图标操作为 32×32px，圆形留给 emoji 反馈等特殊语义。Peach 的普通操作和关闭按钮因此统一用 `--control-radius:6px`，菜单与 Modal 使用 `--floating-radius:12px`，状态标记使用 `--badge-radius:4px`；Tag 保持胶囊，媒体左右切换与头像保留圆形。全站字号、顶栏、搜索、播放列表、设置、管理、详情、关注与移动端共用这套语义 token；弹层自己的滚动容器必须使用 `overscroll-behavior:contain`，粘性标题栏要设置 `scroll-padding-top`，不能遮住键盘焦点。锁定版本、完整测量和有意差异见 `vercel-geist-controls-measured.md`。**Vercel Geist MiddleTruncate（2026-08-30）**：官方页 <https://vercel.com/geist/middle-truncate> 规定只对文件路径、URL、ID、SHA 等首尾都有信息的值做中间省略；单个 `…` 随容器宽度重算，复制和无障碍名称保留完整原文，外层不得再套 `text-overflow:ellipsis`。Peach 用原生 ES module 适配这套行为，不引入 React；资源标识必须显式使用 `data-middle-truncate`，标题、说明、人名和标签保留末尾省略；页面源门槛登记全部末尾省略选择器，任何新增截断都必须先分类。实时浏览器 DOM/CSS/JS 本轮未取得，通道错误与候选判断见 `vercel-geist-middle-truncate.md`。
 **Vercel Tooltip／Collapse／Context Card／Projects／Analytics／Speed Insights 与 Geist Note／Progress／Switch／Fieldset／Scroller／Empty State（2026-08-30）**：登录态项目页确认搜索占剩余宽度、筛选为方形图标钮、主操作在右，菜单无展开动画且内部滚动；Analytics 与 Speed Insights 都使用「全局筛选或来源 Switch → 横向摘要指标带 → 主详情 → 同层 tablist 数据面板」层级，不把每个维度堆成独立 Bento。Peach 的统计页用真实库存、观看、覆盖和系统盘／资源盘／网盘使用空间复用该层级；口味页以浏览器记录／Peach 内部作为真实证据来源，不伪造体验分或时间图。Tooltip 固定在视口内，来源菜单不得套用 Collapse motion，作者别名才使用 Collapse；短元数据浮层最多一个主动作，Escape 关闭并交还焦点，瞬时成功回执用 Toast，错误恢复留在原位置；Note 只放字段／卡片／分区旁的持久上下文，页面问题用 Banner；Progress 必须有真实 value/max 和 ARIA，Switch 只用于 2–3 个互斥视图，布尔值用 Toggle；Fieldset 同组卡片固定同高，变化正文放单一 Scroller，Footer 保持固定动作区；Empty State 必须把图标、标题、说明和可选动作收在同一组件，且与上方工具条保持统一间距。完整 URL、资源 SHA、浏览器失败与恢复路径和 Peach 差异见 `vercel-geist-semantics-measured.md`、`vercel-geist-note-progress-switch-analytics.md` 与 `vercel-geist-fieldset-scroller-empty-state.md`；实现门槛见 `peach-web-ui`。
 **Vercel Geist Table／Home（2026-08-30）**：同形可比较数据使用语义 `table`，数字列保持 tabular numerals；Peach 因此把系统盘、资源盘、115 与 PikPak 容量放进同一张使用空间表。内容标签是固定 Top 排行和直接筛选，不伪装成可排序数据表，桌面使用保持 DOM 排名顺序的双栏有序列表，手机回到单栏。Vercel Table 的交互 DOM 与计算样式本轮未取得，Home 只确认共享对齐和清晰分区；失败通道、已取得原则与有意差异见 `vercel-geist-table-ranking.md`。
-默认 Note、只读提示和 info 入口统一复用图片详情已有的本地 Lucide 圆圈 `i`，并显式使用 2px 描边与圆端点保证 `i` 的圆点可见，不复制未开放许可的 Geist 私有 SVG。**Vercel Command Menu／Search Input／Spinner／Loading Dots（2026-08-30，Button 于 2026-09-01 复核）**：设置覆盖层使用锁定 Dialog CSS 的 350ms、`cubic-bezier(.4,0,.2,1)` 与 -40px 淡入轨迹，普通菜单仍无动画；Search Input 的搜索图标在查询期间原位换成 Spinner。用户直接触发的检查、加载、保存、应用和分页抓取使用 Spinner，后台扫描进度使用 Loading Dots；等待按钮通过共享 busy 状态变灰并阻止重复触发，但不用原生 `disabled`，以保留焦点和 busy 播报。“没有更多历史内容”是中性、可关闭的 Note，不得登记为红色故障。证据哈希、未取得面与 Peach 差异见 `vercel-geist-command-search-loading.md`。**Vercel Notifications 中性说明 Note（2026-08-30）**：登录态截图确认底部补充说明使用带圆圈信息图标的整行中性表面，存在真实动作时链接紧跟正文；Peach 的口味归因和隐私说明复用 secondary `noteHtml`，没有真实动作时不伪造链接。实时 DOM／CSS 读取在 30 秒后超时，已取得边界、截图哈希和有意差异见 `vercel-notifications-note.md`。
+默认 Note、只读提示和 info 入口统一复用图片详情已有的本地 Lucide 圆圈 `i`，并显式使用 2px 描边与圆端点保证 `i` 的圆点可见，不复制未开放许可的 Geist 私有 SVG。**Vercel Geist Breadcrumbs（2026-09-02）**：`vercel.com/geist/breadcrumbs` 文档页实时 DOM 实测——`nav[aria-label="Breadcrumb"] > ol > li`，14px/20px；普通项 gray-900、当前项 `aria-current="true"` 且升 gray-1000、hover 同升；每项自带 16px chevron 分隔符并钉在 gray-900、最后一项隐藏，项间距与字图间距都是 6px。Peach 在数据管理 hub 的五个子页（垃圾文件、重复文件、人工复核、回收站、高清版）以「数据管理」为父级复用该语义，色值映射到 `--muted`／`--ink`，分隔符用本地 Lucide `chevron-right`；垃圾文件/重复文件的页面 h2 同时改回页面自己的名字。登录态后台 route header 的 breadcrumb 处于水合前隐藏态只作旁证；完整数值与 Peach 差异见 `vercel-geist-breadcrumbs.md`。**Vercel Command Menu／Search Input／Spinner／Loading Dots（2026-08-30，Button 于 2026-09-01 复核）**：设置覆盖层使用锁定 Dialog CSS 的 350ms、`cubic-bezier(.4,0,.2,1)` 与 -40px 淡入轨迹，普通菜单仍无动画；Search Input 的搜索图标在查询期间原位换成 Spinner。用户直接触发的检查、加载、保存、应用和分页抓取使用 Spinner，后台扫描进度使用 Loading Dots；等待按钮通过共享 busy 状态变灰并阻止重复触发，但不用原生 `disabled`，以保留焦点和 busy 播报。“没有更多历史内容”是中性、可关闭的 Note，不得登记为红色故障。证据哈希、未取得面与 Peach 差异见 `vercel-geist-command-search-loading.md`。**Vercel Notifications 中性说明 Note（2026-08-30）**：登录态截图确认底部补充说明使用带圆圈信息图标的整行中性表面，存在真实动作时链接紧跟正文；Peach 的口味归因和隐私说明复用 secondary `noteHtml`，没有真实动作时不伪造链接。实时 DOM／CSS 读取在 30 秒后超时，已取得边界、截图哈希和有意差异见 `vercel-notifications-note.md`。
 **Beeg 资料页（2026-08-30）**：Reislin 与 SweetieFox 页面证据锁定的顺序是头像与名称、简介、外部链接、关联艺人轨道、标签轨道、内容；轨道不另加可见标题。Peach 的女优／厂牌资料页和关注页复用这个阅读顺序；资料页有照片时只显示一个 32×32px `PicsIcon`，放在标签左侧，选中代表照片视图，再点一次回到视频，不保留独立的「视频／照片」文字标签栏。合集详情继续使用普通详情的左媒体、右信息，下方另设 Mix／分卷／播放列表／多视频的横向切换带。锁定样式摘要、哈希、未取得面和主动差异见 `beeg-profile-layout.md`。**JAV 标题（2026-08-31）**：用户截图只锁定“粗体大写番号 + 作品标题、隐藏媒体扩展名”的显示语义；原页面 URL、DOM、字体和间距未取得。Peach 仅在 `is_jav` 项目的卡片、详情、沉浸和集合队列应用，不修改真实文件名，也不在账本只有番号时伪造官方标题。截图哈希与边界见 `jav-title-user-screenshot.md`。
 YouTube Shorts 沉浸页使用用户截图记录 `docs/reference-snapshots/youtube-shorts-immersive-user-screenshot.md`：竖屏复用中央 9:16 舞台和外置动作列，横屏使用在整个视口视觉居中的 16:9 舞台并把动作列收进视频右侧；Peach 保留自己的反馈语义，不复制订阅或社交动作。沉浸视频每次加载都要带独立 `session`，切片、关闭、失败和页面离开时取消旧会话；只清浏览器的 `src` 不足以停止 CloudDrive 预读或 FFmpeg。普通播放器控制栏另使用用户截图、实际 YouTube `e937390a` 播放器 DOM／CSS／JS 和官方帮助记录 `docs/reference-snapshots/youtube-player-controls-user-screenshot.md`：控制栏为透明 59 px 两排结构；左侧播放是 40 px 圆钮，音量从 40 px 展开到 111 px且静音键固定在首个 40 px 内，音量外层用内缩 4 px 的白色 10% 伪元素同时覆盖图标和滑轨，2 px 滑轨固定在 40 px 高容器的 50%；音量 tooltip 必须位于进度层之上且不得被 volume bar 裁切。时间胶囊可切换已播／剩余。右侧画中画／设置／影院／全屏是 48×40 px 单钮共用一个 40 px 高、28 px 圆角深色胶囊。进度轨道按 200 ms 从约 4 px 放大到 6 px，12 px 圆点从隐藏放大到约 20 px；已播段、圆点和卡片观看进度统一使用 Peach 蓝。进度圆点自带的当前时刻 tooltip 必须隐藏，只保留指针位置的 `vjs-peach-seek-preview`。中央的 78 px 深色播放／暂停层只作用户手势后的 1 秒 bezel 反馈，初始不可见，waiting／seeking 时必须让位给按官方 DOM 与四组 keyframes 实现的 64 px loading，不能两层重叠；键盘仍按设置前后跳转，控制栏和中央层都不画 10 秒按钮。本地时刻预览复用九宫格接触表，在线视频只显示时刻。设置浮层按实测 274 px 宽、12 px 圆角、48 px 行高、56 px 图标列和 57 px 子菜单标题栏，只列真实能力；整行悬停覆盖图标、文字、值和箭头，40×24 px 开关的 20 px 圆点保留 2 px 边距。子菜单返回键保留 48 px 命中区和 32 px 箭头，内部悬停／按下圆形仅 40 px，不能越出 57 px 标题栏。环境模式、播放速度、画质、子层箭头和中央 bezel 必须使用已锁定 `e937390a` current modern 分支的原始 SVG path，不再按 Lucide 近似；子层 radio 勾选必须使用锁定版本的 24 px 填充 check path 放在左列、标签从 35 px 开始，不能复用全站描边勾或在选项右侧留下尾标。影院模式用按钮或 `T` 切换为大播放器，展开／收回使用不同图标和「影院模式／默认视图」提示；全屏播放器固定到四个视口边缘并使用 `100vw × 100vh`，普通视图用 `contain` 保全画面，全屏按用户明确要求用 `cover` 铺满视口并接受非等比例片源的边缘裁切。音量、画中画、设置项和全屏继续使用统一的本地 SVG；Peach 不复制没有实际能力的字幕、睡眠定时或自动播放按钮。
 F95 masked 链接与 Gofile 文件列表的凭据边界见 `f95-masked-gofile-media`；Mix 只按已解析且
@@ -115,10 +106,7 @@ Gofile token 是另一份本机可选凭据，只进 Gofile 请求头，不进 U
 
 ## 流量与代理诊断工具
 
-- Windows 上后续所有代理/流量诊断统一优先使用 FlowLens（Mihomo Traffic Monitor），面板地址 `http://127.0.0.1:9091/`。
-- FlowLens API：`/api/v1/connections`、`/api/v1/summary`、`/api/v1/status`。按应用、网址、节点、规则以及 PikPak 检查实时和累计流量，并查看节点延迟。
-- FlowLens 只观测经过 Mihomo 的连接。`DIRECT` 仍然属于经过 Mihomo，会被观测到；完全绕过 Mihomo 的连接必须标注「未观测」，不能推断为零。
-- Windows 不再把 NetLimiter、Proxifier 或依赖网页常驻的 Zashboard 作为默认方案。
+- Windows 代理/流量诊断统一用 FlowLens（Mihomo Traffic Monitor，面板 `http://127.0.0.1:9091/`，API `/api/v1/connections`、`/api/v1/summary`、`/api/v1/status`），按应用、网址、节点、规则与 PikPak 查实时和累计流量及节点延迟；只观测经过 Mihomo 的连接，`DIRECT` 也算被观测，完全绕过 Mihomo 的连接必须标「未观测」，不能推断为零。NetLimiter、Proxifier 和依赖网页常驻的 Zashboard 不再作为 Windows 默认方案。
 - macOS 的流量诊断统一使用 Stash Dashboard。
 
 ## 数据安全
@@ -155,7 +143,7 @@ Gofile token 是另一份本机可选凭据，只进 Gofile 请求头，不进 U
 
 ## 当前架构真相
 
-- Ledger 拥有真相和行为；Stash 是可替换适配器，调用统一经过 `StashClient`，外部 Scene ID 和来源进入 `media_binding`，不新增直接 GraphQL helper 或 Stash 私有 FFmpeg 路径。规范女优/厂牌/标签/创作者进入 `entity`、`entity_external_ref`、`asset_entity`；扁平 `asset_tag` 和 creator/studio 字段只是兼容投影。
+- Ledger 拥有真相和行为；服务运行期媒体解析只有文件系统一条路径，ADR-0021 已删 Stash 适配层（`src/peach/stash.py` 仅剩 `ledger.py stash` 与 `import_stash_entities.py` 两个离线导入脚本使用）。规范女优/厂牌/标签/创作者进入 `entity`、`entity_external_ref`、`asset_entity`；扁平 `asset_tag` 和 creator/studio 字段只是兼容投影。
 - FastAPI 与前端保持单体部署，在线来源和 AI 只通过显式适配器进入；AI runtime 与推理 API 的协议边界见 ADR-0003。
 - 当前页面、路由、交互与性能实现只写 `docs/STATUS.md`，由 API 和 `tests/test_web_ui.py` 守住；本文件不再复制易过期的版本号、像素值和控件清单。
 - `/taste` 只读合并 Peach 行为与本机私有浏览历史，且明确以浏览器记录为主要画像、Peach 内部为辅助证据；两者分别排序，不把“不合口味”自动归因或降权到 Tag。查询词里的负号项整体排除，下划线是组合词边界的一部分，不得把 `-ai_generated` 拆成正向 `generated`；游戏作品名等内容词按实际语义归类。模糊时长旧 Tag 只作兼容识别，禁止进入口味、索引、详情和筛选状态。时间窗使用当前资产的 `last_played` 和浏览访问时间；画像、补标签缺口和排名都只是候选。原始 URL／标题不进入页面或 ledger；上传原件保存在 `sources/taste-history/imports`，移除数据源只清理规范化分析库，不删除原件。浏览器数据库解析固定复用 `browserexport==0.4.4`，运行中浏览器仍先由 Peach 的 SQLite backup API 取得一致快照。macOS 与 Windows 的本机发现能力不等于跨主机同步；跨机数据必须显式导出、传输并按来源去重合并。

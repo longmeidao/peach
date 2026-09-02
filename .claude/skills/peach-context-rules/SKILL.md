@@ -57,9 +57,7 @@ description 会常驻上下文，**技能没被触发时也在消耗预算**。�
 - 正文 ≤ 120 行。超了说明混进了 L2 事实，把事实移回 `docs/`。
 - 在 `AGENTS.md` 的技能索引表加一行触发条件与路径，Codex 靠这张表按需读取。
 
-参考口径：Anthropic 官方 skill authoring 建议正文 < 500 行、`description` ≤ 1024 字符、
-`name` ≤ 64 字符且只用小写字母数字连字符；每个技能的 name+description 常驻上下文约 100 词。
-天花板直接采用官方值（500 行 / 1024 字符），本项目内部预算收紧到 120 行 / 200 字符。
+参考口径：Anthropic 官方 skill authoring 建议正文 < 500 行、`description` ≤ 1024 字符、`name` ≤ 64 字符且只用小写字母数字连字符，每个技能的 name+description 常驻上下文约 100 词；天花板直接采用官方值，本项目内部预算收紧到 120 行 / 200 字符。
 入口文件没有官方值，天花板由本项目定死为 200 行，`AGENTS.md` 内部预算 90 行。
 
 ## 预算只能降不能升
@@ -94,13 +92,7 @@ Codex 完全不自动加载 `.claude/skills`，只能靠 `AGENTS.md` 索引表�
 
 步骤：
 
-1. 运行检查
-
-   ```powershell
-   & .\.venv\Scripts\python.exe scripts\check_context_budget.py
-   ```
-
-   退出码 0 通过，1 有超预算或结构错误，3 只有 `最后复核` 超过 180 天的条目。
+1. 运行 `& .\.venv\Scripts\python.exe scripts\check_context_budget.py`：退出码 0 通过，1 有超预算或结构错误，3 只有 `最后复核` 超过 180 天的条目。
 
 2. 逐条问：这条规则的事故或证据还能指认吗？对应实现还在吗？已经有门槛了吗？
 3. 该删就整段删除，不留「已废弃」注释——Git 是归档。被 ADR 取代的段落只留一行指向 ADR。
