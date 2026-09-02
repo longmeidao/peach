@@ -1,14 +1,19 @@
+import inspect
 import unittest
+from pathlib import Path
 
-from peach import follow_providers
+from peach import follow_cli, follow_discovery, follow_providers, web_follow
 from peach.follow_cli import _RELEASE_PROVIDERS, _SOURCE_URL
 from peach.follow_sources import CONNECTORS, _SEMANTICS
 from peach.follow_stream import _PROVIDER_HOSTS
 from peach.follow_variants import PROVIDER_PRIORITY
-from peach.web_follow import (
+from peach.follow_secrets import (
     CREDENTIAL_GUIDE,
-    PROVIDER_LABELS,
     SYNCABLE_FIELDS,
+    credential_store_for,
+)
+from peach.web_follow import (
+    PROVIDER_LABELS,
     _BACKFILL_PROVIDERS,
     _OFFICIAL_IDENTITY_PROVIDERS,
 )
@@ -90,6 +95,32 @@ class ProviderRegistryTests(unittest.TestCase):
             {provider: tuple(guide.get("syncable", ())) for provider, guide in CREDENTIAL_GUIDE.items()},
             "SYNCABLE_FIELDS 只能从 CREDENTIAL_GUIDE 派生",
         )
+
+    def test_every_layer_builds_its_credential_store_through_one_factory(self):
+        """Web、发现与 CLI 必须拿到同一套共享根与可同步字段声明。
+
+        分头 `CredentialStore(...)` 时只有 Web 那份带上了共享回填，同一份凭据
+        在网页里在、在命令行里「未配置」。这里挡住往回退化。
+        """
+        sources = {
+            name: (Path(inspect.getsourcefile(module)).read_text(encoding="utf-8"))
+            for name, module in (("web_follow", web_follow),
+                                 ("follow_discovery", follow_discovery),
+                                 ("follow_cli", follow_cli))
+        }
+        for name, text in sources.items():
+            with self.subTest(module=name):
+                self.assertNotIn("CredentialStore(", text.replace(
+                    "-> CredentialStore", ""),
+                    f"{name} 必须走 credential_store_for，不要自己构造")
+                self.assertIn("credential_store_for(", text)
+
+    def test_the_factory_carries_the_syncable_declaration(self):
+        store = credential_store_for(Path("secrets"), shared_root=Path("shared"))
+        self.assertEqual(store.syncable_fields, SYNCABLE_FIELDS)
+        self.assertEqual(store.syncable("rule34xxx"), ("user_id", "api_key"))
+        self.assertEqual(store.syncable("f95zone"), ())
+        self.assertEqual(store.shared_root, Path("shared") / "secrets" / "follow")
 
     def test_semantics_rejects_unknown_values(self):
         with self.assertRaises(ValueError):

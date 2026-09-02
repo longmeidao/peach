@@ -10,10 +10,10 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .config import DATABASE_PATH, SECRETS_DIR, SOURCES_DIR
+from .config import DATABASE_PATH, SECRETS_DIR, SHARED_DATA_ROOT, SOURCES_DIR
 from . import follow_providers
 from .follow import FollowSourceError
-from .follow_secrets import CredentialError, CredentialStore
+from .follow_secrets import CredentialError, credential_store_for
 from .follow_sources import CONNECTORS, build_connector
 from .follow_store import FollowStore
 
@@ -78,7 +78,7 @@ def _list(args) -> int:
 
 def _check(args) -> int:
     store, connection = _store(args)
-    credentials = CredentialStore(args.secrets_root)
+    credentials = credential_store_for(args.secrets_root, shared_root=args.shared_root)
     failures = 0
     try:
         rows = [row for row in store.sources(enabled_only=True)
@@ -193,7 +193,7 @@ def _save(args) -> int:
 
 
 def _creds(args) -> int:
-    store = CredentialStore(args.secrets_root)
+    store = credential_store_for(args.secrets_root, shared_root=args.shared_root)
     for provider in sorted(CONNECTORS):
         described = store.describe(provider)
         state = "已配置" if described["present"] else "未配置"
@@ -211,6 +211,9 @@ def register(commands) -> None:
     follow.add_argument("--db", type=Path, default=DATABASE_PATH)
     follow.add_argument("--sources-root", type=Path, default=SOURCES_DIR)
     follow.add_argument("--secrets-root", type=Path, default=SECRETS_DIR)
+    # 共享根让另一台机器上配好的可同步字段（现在只有 rule34.xxx 的 user_id/api_key）
+    # 在命令行这边也能回填。默认和 Web 一致，测试用它指向临时目录。
+    follow.add_argument("--shared-root", type=Path, default=SHARED_DATA_ROOT)
     actions = follow.add_subparsers(dest="follow_command", required=True)
 
     add = actions.add_parser("add", help="登记一个追更来源")

@@ -43,11 +43,40 @@ class FollowCliTests(unittest.TestCase):
         args = self.parser.parse_args([
             "follow", "--db", str(self.db),
             "--sources-root", str(self.root / "sources"),
-            "--secrets-root", str(self.root / "secrets"), *argv])
+            "--secrets-root", str(self.root / "secrets"),
+            "--shared-root", str(self.root / "shared"), *argv])
         buffer = io.StringIO()
         with contextlib.redirect_stdout(buffer):
             code = args.handler(args)
         return code, buffer.getvalue()
+
+    def test_creds_sees_the_shared_copy_like_the_web_surface_does(self):
+        """另一台机器上配好的可同步字段，命令行这边也必须算「已配置」。
+
+        以前只有 Web 那份仓库带上了共享根和可同步字段声明，CLI 直接
+        `CredentialStore(secrets_root)`——同一份 rule34.xxx key 网页里能用、
+        `peach follow check` 却报缺凭据，而错误里根本看不出是这个原因。
+        """
+        shared = self.root / "shared" / "secrets" / "follow"
+        shared.mkdir(parents=True)
+        (shared / "rule34xxx.json").write_text(
+            '{"user_id": "42", "api_key": "sekret"}', encoding="utf-8")
+        code, output = self._run("creds")
+        self.assertEqual(code, 0)
+        line = next(row for row in output.splitlines()
+                    if row.startswith("rule34xxx"))
+        self.assertIn("已配置", line)
+        self.assertIn("api_key", line)
+        self.assertNotIn("sekret", output, "凭据值不进任何输出")
+
+    def test_creds_does_not_take_a_non_syncable_field_from_the_shared_copy(self):
+        """f95zone 的 cookie 绑会话与客户端 IP，声明为不可同步；共享副本里有也不算。"""
+        shared = self.root / "shared" / "secrets" / "follow"
+        shared.mkdir(parents=True)
+        (shared / "f95zone.json").write_text('{"cookie": "xf=1"}', encoding="utf-8")
+        _, output = self._run("creds")
+        line = next(row for row in output.splitlines() if row.startswith("f95zone"))
+        self.assertIn("未配置", line)
 
     def test_add_derives_the_url_and_semantics_per_provider(self):
         code, output = self._run("add", "--provider", "f95zone", "--ref", "50685")
