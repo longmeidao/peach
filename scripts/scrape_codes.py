@@ -70,15 +70,23 @@ HEALTH_FIELDS = [
 # `超有名S級女優`、`ベスト・総集編`、`初裏`、`AV女優` 是发行与营销分类，
 # `ハイビジョン`、`フルハイビジョン(FHD)`、`1080p`、`60fps`、`4時間以上作品` 是规格，
 # 都不是内容标签。这与既有的「`Featured Actress` 不入库」是同一条线。
+#
+# 也不收罩杯（`Dカップ`…`Jカップ`）与 `巨大乳輪`：罩杯是身体尺寸不是内容分类，
+# 词表里也没有对应项。2026-09-02 全部缓存快照里罩杯只出现 5 次，其中 G/H 同时带
+# `巨乳`、D/F 什么都不带——五个样本推不出映射规则，来源想说巨乳时会直接写巨乳。
+#
+# 映射一律取来源给出的那一级，禁止升到 `乳系`、`足系` 这类粗桶。
+# `catalog_rules.TAG_SUPERSESSION` 的定义就是「有具体标签时把粗桶删掉」，
+# 把 `巨乳` 映成 `乳系` 是把系统准备丢弃的那个值当成结论，方向反了。
 CATEGORY_MAP = {
     "Foot Fetish": "美腿", "Legs": "美腿", "Pantyhose": "丝袜", "Stockings": "丝袜",
     "Creampie": "中出内射", "Squirting": "潮吹", "Blowjob": "口交", "Deep Throat": "深喉",
     "Facial": "颜射", "Cum Swallowing": "吞精", "Handjob": "手交",
-    "Big Tits": "乳系", "Beautiful Tits": "乳系", "Small Tits": "贫乳", "Titty Fuck": "乳交",
+    "Big Tits": "巨乳", "Beautiful Tits": "美乳", "Small Tits": "贫乳", "Titty Fuck": "乳交",
     "Slender": "苗条", "Chubby": "丰满", "Beautiful Girl": "高颜值",
     "Office Lady": "秘书OL", "School Girls": "学生", "Nurse": "护士",
     "Uniform": "制服", "Cosplay": "角色扮演", "Maid": "女仆", "Swimsuit": "泳装",
-    "Married Woman": "人妻", "Mature Woman": "人妻", "Big Tits Lover": "乳系",
+    "Married Woman": "人妻", "Mature Woman": "人妻", "Big Tits Lover": "巨乳",
     "Threesome / Foursome": "多人", "Orgy": "多人", "Lesbian": "百合",
     "Anal": "肛交", "Bondage": "调教", "Torture": "调教", "Training": "调教",
     "Slut": "痴女", "Nymphomaniac": "痴女", "Cuckold": "绿帽NTR", "Voyeur": "偷拍偷窥",
@@ -90,10 +98,8 @@ CATEGORY_MAP = {
     # javbus/javdb 的日文类型词。取自 2026-09-02 那批真实快照里出现过的词表，
     # 外加几个与上面英文键完全同义、javbus 常用的标准分类。
     "素人": "素人", "中出し": "中出内射", "潮吹き": "潮吹",
-    "巨乳": "乳系", "美乳": "乳系", "巨大乳輪": "乳系",
-    "Dカップ": "乳系", "Eカップ": "乳系", "Fカップ": "乳系", "Gカップ": "乳系",
-    "Hカップ": "乳系", "Iカップ": "乳系", "Jカップ": "乳系",
-    "微乳": "贫乳", "貧乳・微乳": "贫乳",
+    "巨乳": "巨乳", "美乳": "美乳", "爆乳": "爆乳",
+    "微乳": "贫乳", "貧乳・微乳": "贫乳", "貧乳": "贫乳",
     "パイズリ": "乳交", "スレンダー": "苗条", "ぽっちゃり": "丰满",
     "美脚": "美腿", "脚フェチ": "美腿", "パンスト": "丝袜", "ニーソックス": "丝袜",
     "尻フェチ": "美臀", "美尻": "美臀", "巨尻": "美臀",

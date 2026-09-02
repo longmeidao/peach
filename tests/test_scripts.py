@@ -10,6 +10,7 @@ from contextlib import redirect_stdout
 from pathlib import Path, PureWindowsPath
 from unittest import mock
 
+from peach import catalog_rules
 from peach.migrations import upgrade
 from peach.classification import is_probable_mainstream_release, is_structural_creator
 
@@ -87,7 +88,11 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(category_map["パイパン"], "白虎")
         self.assertEqual(category_map["女子校生"], "学生")
         self.assertEqual(category_map["寝取り・寝取られ"], "绿帽NTR")
-        self.assertEqual(category_map["Gカップ"], "乳系")
+        self.assertEqual(category_map["巨乳"], "巨乳")
+        self.assertEqual(category_map["美乳"], "美乳")
+        for measurement in ("Dカップ", "Gカップ", "Jカップ", "巨大乳輪"):
+            self.assertNotIn(measurement, category_map,
+                             f"{measurement} 是身体尺寸，词表里没有对应分类")
         for marketing in ("独占配信", "配信専用", "単体作品", "企画", "店長推薦作品",
                           "ハイビジョン", "フルハイビジョン(FHD)", "1080p", "60fps",
                           "4時間以上作品", "AV女優"):
@@ -95,10 +100,19 @@ class OperationalScriptTests(unittest.TestCase):
                              f"{marketing} 是发行/营销/规格分类，不是内容标签")
         japanese = {key for key in category_map if not key.isascii()}
         self.assertTrue(japanese)
-        self.assertEqual(
-            {category_map[key] for key in japanese} - {
-                category_map[key] for key in category_map if key.isascii()},
-            set(), "日文键不得引入英文键没有的新分类值")
+
+    def test_no_genre_maps_up_into_a_superseded_broad_bucket(self):
+        """来源给了具体标签就照抄，不许升成 `乳系`、`足系` 这种粗桶。
+
+        `TAG_SUPERSESSION` 的定义正是「有具体标签时把粗桶删掉」，所以把
+        javbus 的 `巨乳` 映成 `乳系` 等于写入系统随后要丢弃的那个值。2026-09-02
+        真写进了账本 57 条，连带暴露出更早的 `"Big Tits": "乳系"` 是同一个错。
+        """
+        category_map = self.scrape_codes.CATEGORY_MAP
+        for source, mapped in category_map.items():
+            self.assertNotIn(
+                mapped, catalog_rules.TAG_SUPERSESSION,
+                f"{source} -> {mapped} 升到了粗桶，应映射到来源给出的那一级")
 
     def test_rule34_tag_type_backfill_reuses_the_connector_and_is_resumable(self):
         """rule34xxx 的标签类型只在帖子页上，2152 条里当时只有 40 条带着它。
