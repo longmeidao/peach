@@ -127,5 +127,20 @@ class ProviderRegistryTests(unittest.TestCase):
             follow_providers.ProviderSpec(key="x", label="X", semantics="whatever")
 
 
+class ExcludedItemTests(unittest.TestCase):
+    def test_hidden_items_are_declared_in_the_registry_not_in_the_web_layer(self):
+        """用户点名要隐藏的既有条目登记在这张表上。
+
+        原来是 `web_follow.RULE34VIDEO_EXCLUDED_IDS` 一个裸常量：那是「这个站有
+        哪些条目要藏」的站点数据，跟标签清理、缩略图这些展示逻辑混在同一个文件里。
+        """
+        excluded = follow_providers.excluded_external_ids()
+        self.assertEqual(excluded, {"rule34video": frozenset({"4533145"})})
+
+    def test_the_web_layer_only_projects_the_registry(self):
+        self.assertEqual(web_follow._EXCLUDED_EXTERNAL_IDS,
+                         follow_providers.excluded_external_ids())
+
+
 if __name__ == "__main__":
     unittest.main()

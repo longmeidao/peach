@@ -36,6 +36,8 @@ class ProviderSpec:
     priority: int = 99
     backfill: bool = False
     official_identity: bool = False
+    #: 用户明确点名要隐藏的既有条目（站内 id）。只影响浏览面，不删 ledger 行。
+    excluded_external_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.semantics not in ("work", "release"):
@@ -66,9 +68,12 @@ PROVIDERS: dict[str, ProviderSpec] = {
         _spec("coomer", "Coomer", source_url="https://coomer.st/{ref}",
               hosts=("coomer.st",), priority=20, backfill=True),
         # 标签／模特站。
+        # `excluded_external_ids` 是用户明确点名的那个既有超大合集。连接器现在按
+        # 详情页署名作者数拦截同类条目；这一条只让已经入库的旧候选立即从浏览面消失。
         _spec("rule34video", "Rule34Video",
               source_url="https://rule34video.com/models/{ref}/",
-              hosts=("rule34video.com",), priority=30, backfill=True),
+              hosts=("rule34video.com",), priority=30, backfill=True,
+              excluded_external_ids=("4533145",)),
         _spec("rule34xxx", "Rule34.xxx",
               source_url="https://rule34.xxx/index.php?page=post&s=list&tags={ref}",
               hosts=("rule34.xxx",), priority=40, backfill=True),
@@ -124,3 +129,9 @@ def backfill_providers() -> frozenset[str]:
 def official_identity_providers() -> frozenset[str]:
     """作者显示名与头像可信的官方渠道；归档站只作回退。"""
     return frozenset(key for key, spec in PROVIDERS.items() if spec.official_identity)
+
+
+def excluded_external_ids() -> dict[str, frozenset[str]]:
+    """按来源列出要从浏览面隐藏的既有条目。没有要隐藏的来源不出现在结果里。"""
+    return {key: frozenset(spec.excluded_external_ids)
+            for key, spec in PROVIDERS.items() if spec.excluded_external_ids}

@@ -546,34 +546,6 @@ class FollowContractTests(unittest.TestCase):
         self.assertFalse(_allowed("pawchive", "https://evil.test/data/a.mp4"))
         self.assertFalse(_allowed("pawchive", "http://file.pawchive.pw/data/a.mp4"))
 
-    def test_archive_thumbnails_use_the_img_subdomain(self):
-        """归档站静态资源走 img. 子域，主域取不到。
-
-        2026-08-30 实测：kemono.cr 回 302、pawchive.pw 回 404，两者的 img. 子域都回
-        200（取证见 docs/reference-snapshots/kemono-archive-media-host.md）。kemono
-        主域因为是重定向、浏览器跟随后仍能显示，所以只有 pawchive 的卡片一直是空的。
-
-        改写发生在读取时：坏 URL 已经写进两千多行，而这是可推导的投影不是真相字段。
-        """
-        from peach.web_follow import _archive_media_host
-
-        for provider, host in (("kemono", "kemono.cr"), ("pawchive", "pawchive.pw"),
-                               ("coomer", "coomer.st")):
-            self.assertEqual(
-                _archive_media_host(provider, f"https://{host}/thumbnail/data/a/b/c.jpg"),
-                f"https://img.{host}/thumbnail/data/a/b/c.jpg",
-            )
-            # 已经是 img. 的不再叠加
-            self.assertEqual(
-                _archive_media_host(provider, f"https://img.{host}/thumbnail/data/a/b/c.jpg"),
-                f"https://img.{host}/thumbnail/data/a/b/c.jpg",
-            )
-        # 别的站点原样返回，不要顺手改写
-        self.assertEqual(_archive_media_host("rule34video", "https://rule34video.com/a.jpg"),
-                         "https://rule34video.com/a.jpg")
-        self.assertEqual(_archive_media_host("kemono", "https://example.test/a.jpg"),
-                         "https://example.test/a.jpg")
-
     def _tagged(self, external_id, tags):
         return FollowCandidate(provider="rule34video", external_id=external_id,
                                title=f"Clip {external_id}",
@@ -1352,6 +1324,53 @@ class FollowSourceAddTests(FollowContractTests):
                      {"canonical": "", "alias": "FFXIVInitialA"}):
             with self.assertRaises(ValueError):
                 self._post("/api/follow/author-alias", body)
+
+
+def _source_row(**kwargs):
+    row = {"id": 7, "provider": "kemono", "ref": "fanbox/1", "label": "L",
+            "url": "https://kemono.cr/fanbox/user/1", "semantics": "work",
+            "enabled": 1, "entity_id": None, "entity_name": None,
+            "backfill_page": 0, "created_at": "2026-08-01T00:00:00Z",
+            "last_checked_at": "2026-08-30T00:00:00Z",
+            "last_status": "ok", "last_error": None}
+    row.update(kwargs)
+    return row
+
+
+class LegacyHistoryEndPayloadTests(unittest.TestCase):
+    """回填到底的来源不能显示成红色错误行。
+
+    `record_history_end` 之前的版本把「往回翻到尽头」记成了 `error`，那些行还在库里。
+    判据现在来自连接器声明的 `HISTORY_END_STATUSES`，不再是 Web 层按站点名硬编码的
+    中文串比较——新增一个可回填来源时没人会想到还要改那一处。
+    """
+
+    def test_a_terminal_backfill_error_is_reported_as_exhausted(self):
+        payload = web_follow._source_payload(_source_row(
+            backfill_page=3, last_status="error", last_error="kemono 返回 HTTP 400"))
+        self.assertTrue(payload["history_exhausted"])
+        self.assertEqual(payload["last_status"], "not_modified")
+        self.assertIsNone(payload["last_error"])
+
+    def test_a_real_failure_stays_a_failure(self):
+        payload = web_follow._source_payload(_source_row(
+            backfill_page=3, last_status="error", last_error="kemono 返回 HTTP 503"))
+        self.assertFalse(payload["history_exhausted"])
+        self.assertEqual(payload["last_status"], "error")
+        self.assertEqual(payload["last_error"], "kemono 返回 HTTP 503")
+
+    def test_the_same_message_on_the_first_page_is_a_real_failure(self):
+        """没往回翻过页就不可能是「翻到尽头」，那是站点真的挂了。"""
+        payload = web_follow._source_payload(_source_row(
+            backfill_page=0, last_status="error", last_error="kemono 返回 HTTP 400"))
+        self.assertFalse(payload["history_exhausted"])
+        self.assertEqual(payload["last_status"], "error")
+
+    def test_a_provider_that_never_pages_back_is_never_exhausted(self):
+        payload = web_follow._source_payload(_source_row(
+            provider="f95zone", ref="50685", backfill_page=3, last_status="error",
+            last_error="f95zone 返回 HTTP 404"))
+        self.assertFalse(payload["history_exhausted"])
 
 
 class FollowWebSourceTests(unittest.TestCase):

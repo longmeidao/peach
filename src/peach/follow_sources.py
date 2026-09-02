@@ -58,7 +58,8 @@ _FILE_HOST_DOMAINS = frozenset({
 })
 
 _LINK_RE = re.compile(r"https?://[^\s\"'<>)\]]+", re.IGNORECASE)
-_F95_IMAGE_RE = re.compile(
+#: URL 看起来指向一张图片。不只 f95 在用：归档站推导旧行缩略图时也要这个判据。
+_IMAGE_URL_RE = re.compile(
     r"\.(?:avif|bmp|gif|jpe?g|png|webp)(?:$|[?#])", re.IGNORECASE)
 
 
@@ -89,7 +90,7 @@ def f95_attachment_media_items(metadata: Mapping[str, object]) -> list[dict[str,
         except ValueError:
             continue
         if (parsed.scheme != "https" or parsed.hostname != "attachments.f95zone.to"
-                or not _F95_IMAGE_RE.search(url)):
+                or not _IMAGE_URL_RE.search(url)):
             continue
         name = urllib.parse.unquote(parsed.path.rsplit("/", 1)[-1]) or f"image-{index + 1}"
         result.append({
@@ -314,6 +315,9 @@ class _BaseConnector:
     semantics = "work"
     #: 站点被机器人验证挡住时的说明；非空表示该连接器不可用。
     blocked_reason = ""
+    #: 往回翻页时代表「没有更早的了」的上游状态码。声明在类上而不是每次调用
+    #: `_request` 时传参，因为 `is_history_end_error` 要用同一份声明去认旧行。
+    HISTORY_END_STATUSES: tuple[int, ...] = ()
 
     def __init__(self, *, timeout: float = 15.0, max_bytes: int = DEFAULT_MAX_BYTES,
                  max_items: int = DEFAULT_MAX_ITEMS,
@@ -427,7 +431,6 @@ class _BaseConnector:
                  last_modified: str | None = None, page: int = 0,
                  headers: Mapping[str, str] | None = None,
                  request_url: str | None = None,
-                 history_end_statuses: tuple[int, ...] = (),
                  ) -> tuple[dict[str, object], HttpResponse | None]:
         """每个连接器 fetch 开头都一样的那段：条件请求 → 304 短路 → 状态检查。
 
@@ -451,10 +454,33 @@ class _BaseConnector:
         }
         if response.status == 304:
             return common, None
-        if page and response.status in history_end_statuses:
+        if page and response.status in self.HISTORY_END_STATUSES:
             raise FollowHistoryEnd("没有更多历史内容")
         self._check_status(response)
         return common, response
+
+    @classmethod
+    def display_thumb_url(cls, item) -> str | None:
+        """一条已入库的条目现在该用哪个缩略图 URL。
+
+        站点的 CDN 规则会变，而错的 URL 已经写进上千行。所以改写发生在读取时而不是
+        改 ledger：这是可推导的投影，不是真相字段。默认照原样用，只有实测证明当前
+        规则取不到的站点才在子类里覆盖——那份实测属于连接器，不属于 Web 层。
+        """
+        return str(item.thumb_url or "") or None
+
+    @classmethod
+    def is_history_end_error(cls, message: str) -> bool:
+        """一句已经落盘的错误文本，其实是「历史到底」吗？
+
+        `record_history_end` 之前的版本把往回翻到尽头记成了 `error`，正文就是
+        `_check_status` 那句 `<provider> 返回 HTTP <status>`。判据只能是本连接器
+        声明的 `HISTORY_END_STATUSES`——原来是在 Web 层照站点名硬编码中文串比较，
+        新增来源时没人会想到还要改那一处。
+        """
+        matched = re.fullmatch(r".+ 返回 HTTP (\d{3})",
+                               str(message or "").strip(), re.IGNORECASE)
+        return bool(matched) and int(matched.group(1)) in cls.HISTORY_END_STATUSES
 
     def probe(self, url: str, *, headers: Mapping[str, str] | None = None) -> HttpResponse:
         """探测一个 URL 是否存在，不检查状态码。
@@ -494,6 +520,8 @@ class KemonoConnector(_BaseConnector):
 
     semantics = "work"
     HOSTS = {"kemono": "kemono.cr", "coomer": "coomer.st", "pawchive": "pawchive.pw"}
+    #: 往回翻页翻到尽头时，kemono 系回 400（越界偏移）或 404（创作者没有更多帖子）。
+    HISTORY_END_STATUSES = (400, 404)
     #: 原始文件的主机。2026-08-30 实测（取证见
     #: `docs/reference-snapshots/kemono-archive-media-host.md`）三站行为并不一致：
     #: kemono/coomer 的主域对 `/data/<path>` 回 302，分别指向 `n1.` 和 `n4.` 节点——
@@ -542,8 +570,7 @@ class KemonoConnector(_BaseConnector):
             # 实测这个接口一页固定 50 条，往回翻用 `?o=` 偏移。
             url = f"{url}?o={page * self.PAGE_SIZE}"
         common, response = self._request(url, ref=ref, etag=etag,
-                                         last_modified=last_modified, page=page,
-                                         history_end_statuses=(400, 404))
+                                         last_modified=last_modified, page=page)
         if response is None:
             return SourceFetch(not_modified=True, **common)
         payload = self.parse_json(response)
@@ -649,6 +676,44 @@ class KemonoConnector(_BaseConnector):
             return None
         return f"https://img.{self.host}/thumbnail/data{media}"
 
+    @classmethod
+    def archive_media_host(cls, provider: str, url: str) -> str:
+        """把归档站的静态资源指到 `img.` 子域。
+
+        2026-08-30 实测（取证见 `docs/reference-snapshots/kemono-archive-media-host.md`）：
+
+            kemono.cr/thumbnail/data/<path>        302
+            img.kemono.cr/thumbnail/data/<path>    200 image/jpeg 24,050 B
+            pawchive.pw/thumbnail/data/<path>      404
+            img.pawchive.pw/thumbnail/data/<path>  200 image/gif   12,796 B
+
+        kemono 主域只是重定向、浏览器跟随后仍能显示，所以一直没人发现；pawchive
+        主域直接 404，卡片因此永远是空的（`onerror` 把 img 摘掉，看起来像「没有
+        预览图」）。2026-08-27 那次记的是主域回 200——站点行为后来变了。
+        """
+        host = cls.HOSTS.get(provider)
+        if not host or not url.startswith(f"https://{host}/"):
+            return url
+        return url.replace(f"https://{host}/", f"https://img.{host}/", 1)
+
+    @classmethod
+    def display_thumb_url(cls, item) -> str | None:
+        if item.thumb_url:
+            return cls.archive_media_host(item.provider, str(item.thumb_url))
+        # 封面修复前入库的旧行：`media_url` 是图片，但 `thumb_url` 是空的。按
+        # `_thumb_url` 同一条已验证规则即时推导，不改 ledger 就能补齐旧卡片。
+        media = str(item.media_url or "")
+        host = cls.HOSTS.get(str(item.provider or ""))
+        if not host or not _IMAGE_URL_RE.search(media):
+            return None
+        # `/data` 前缀是 `archive_file_url` 加的，而 `/thumbnail/data` 里已经有一个。
+        # 库里两种形状都有（那次修复之前拼的没有前缀），拼之前先剥掉，否则新形状的
+        # 行会得到 `/thumbnail/data/data/...` 这种必然 404 的地址。
+        path = urllib.parse.urlsplit(media).path
+        path = path[len("/data"):] if path.startswith("/data/") else path
+        return cls.archive_media_host(
+            item.provider, f"https://{host}/thumbnail/data{path}")
+
     def _candidate(self, post: dict, service: str, user: str) -> FollowCandidate:
         post_id = str(post.get("id") or "")
         title = plain_text(post.get("title")) or "(untitled)"
@@ -704,7 +769,7 @@ def archive_file_url(provider: str, url: str) -> str:
         coomer.st/data/<path>           302 → n4.coomer.st
 
     kemono/coomer 走主域让站点自己路由（nX 的编号会变，写死会过期）；
-    pawchive 必须点名 `file.` 子域。缩略图仍走 `img.`，见 `_archive_media_host`。
+    pawchive 必须点名 `file.` 子域。缩略图仍走 `img.`，见 `archive_media_host`。
     """
     host = KemonoConnector.HOSTS.get(provider)
     if not host or not url.startswith(f"https://{host}/"):
@@ -723,6 +788,8 @@ class Rule34VideoConnector(_BaseConnector):
 
     provider = "rule34video"
     semantics = "work"
+    #: 往回翻到尽头时作者页回 404。
+    HISTORY_END_STATUSES = (404,)
     _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_\-]{0,80}$")
     _VIDEO_RE = re.compile(r"^https://rule34video\.com/video/(\d+)/")
     #: 详情页的署名作者通常只有 1 位；用户给出的超大合集实测有 54 位。20 以上只会
@@ -750,8 +817,7 @@ class Rule34VideoConnector(_BaseConnector):
                    f"&sort_by=post_date&from={page + 1:02d}")
         common, response = self._request(url, ref=slug, etag=etag,
                                          last_modified=last_modified, page=page,
-                                         headers={"Accept": "text/html"},
-                                         history_end_statuses=(404,))
+                                         headers={"Accept": "text/html"})
         if response is None:
             return SourceFetch(not_modified=True, **common)
         soup = BeautifulSoup(response.body, "html.parser")
@@ -912,6 +978,19 @@ class Rule34XxxConnector(_BaseConnector):
     provider = "rule34xxx"
     semantics = "work"
     _TAG_RE = re.compile(r"^[^\s&?#]{1,100}$")
+    #: 历史行存的是 250px 的 preview。官方 dapi 的 `sample_url` 与它用同一
+    #: bucket/hash；2026-08-28 对生产历史行实测推导，结果是 1920x1080。
+    _PREVIEW_RE = re.compile(
+        r"^https://api-cdn\.rule34\.xxx/thumbnails/(\d+)/thumbnail_"
+        r"([0-9a-f]{32})\.jpg(?:[?#].*)?$", re.IGNORECASE)
+
+    @classmethod
+    def display_thumb_url(cls, item) -> str | None:
+        matched = cls._PREVIEW_RE.match(str(item.thumb_url or ""))
+        if matched:
+            return ("https://api-cdn.rule34.xxx/images/"
+                    f"{matched.group(1)}/{matched.group(2)}.jpg")
+        return str(item.thumb_url or "") or None
 
     def fetch(self, ref: str, *, etag: str | None = None,
               last_modified: str | None = None, page: int = 0) -> SourceFetch:
@@ -1118,6 +1197,8 @@ class Rule34PahealConnector(_BaseConnector):
 
     provider = "rule34paheal"
     semantics = "work"
+    #: 往回翻到尽头时标签页回 404。
+    HISTORY_END_STATUSES = (404,)
     _TAG_RE = re.compile(r"^[^/?#]{1,100}$")
     _DURATION_RE = re.compile(r"\b(\d+(?:\.\d+)?)s\b", re.IGNORECASE)
     _TITLE_STOPWORDS = frozenset({"animated", "blender", "video", "sound", "mp4", "webm"})
@@ -1135,8 +1216,7 @@ class Rule34PahealConnector(_BaseConnector):
         url = f"https://rule34.paheal.net/post/list/{encoded}/{page_number}"
         common, response = self._request(url, ref=tag, etag=etag,
                                          last_modified=last_modified, page=page,
-                                         headers={"Accept": "text/html"},
-                                         history_end_statuses=(404,))
+                                         headers={"Accept": "text/html"})
         if response is None:
             return SourceFetch(not_modified=True, **common)
         soup = BeautifulSoup(response.body, "html.parser")
@@ -2015,6 +2095,27 @@ CONNECTORS: dict[str, type] = {
     "f95zone": F95ZoneConnector,
     "simpcity": SimpCityConnector,
 }
+
+
+def display_thumb_url(item) -> str | None:
+    """一条已入库的追更条目现在该用哪个缩略图 URL。
+
+    分派到该站自己的连接器：「这个站的缩略图 URL 长什么样」是站点知识，属于连接器，
+    不属于 Web 层。没登记的 provider 照原样用。
+    """
+    factory = CONNECTORS.get(str(item.provider or ""))
+    if factory is None:
+        return str(item.thumb_url or "") or None
+    return factory.display_thumb_url(item)
+
+
+def is_history_end_error(provider: str, message: str) -> bool:
+    """一句已落盘的错误文本其实是「往回翻到尽头」吗？
+
+    判据是各连接器声明的 `HISTORY_END_STATUSES`，和翻页时现场判定的用同一份声明。
+    """
+    factory = CONNECTORS.get(str(provider or ""))
+    return factory is not None and factory.is_history_end_error(message)
 
 
 def build_connector(provider: str, **kwargs) -> FollowConnector:

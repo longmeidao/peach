@@ -21,7 +21,8 @@ from .follow_secrets import (
 )
 from .follow_sources import (
     CONNECTORS, KemonoConnector, build_connector, canonical_source_ref,
-    f95_attachment_media_items, parse_source_url, resource_links,
+    display_thumb_url, f95_attachment_media_items, is_history_end_error,
+    parse_source_url, resource_links,
 )
 from .follow_store import FollowStore, ReleaseGroup
 from .taste_history import read_creator_candidates
@@ -47,9 +48,8 @@ def _store(contract, connection) -> FollowStore:
 #: rule34.xxx 的热门帖能带上百个标签，整串发下去只会把筛选条撑爆。
 MAX_ITEM_TAGS = 24
 
-# 用户明确点名的既有超大合集。连接器现在会按详情页署名作者数拦截同类条目；这条
-# 只让已经存在的旧候选立即从浏览面隐藏，不删除 ledger 行。
-RULE34VIDEO_EXCLUDED_IDS = frozenset({"4533145"})
+#: 按来源列出要从浏览面隐藏的既有条目，投影自 follow_providers。
+_EXCLUDED_EXTERNAL_IDS = follow_providers.excluded_external_ids()
 
 # 内容筛选不让载体/渲染方式挤掉动作、角色与作品标签。原始 metadata 仍完整保留。
 LOW_VALUE_GENERAL_TAGS = frozenset({
@@ -77,9 +77,6 @@ _NON_CONTENT_FOLLOW_TAG_RE = re.compile(
 
 _IMAGE_MEDIA_RE = re.compile(r"\.(?:avif|gif|jpe?g|png|webp)(?:$|[?#])", re.I)
 _VIDEO_MEDIA_RE = re.compile(r"\.(?:m4v|mov|mp4|og[gv]|webm)(?:/)?(?:$|[?#])", re.I)
-_RULE34XXX_PREVIEW_RE = re.compile(
-    r"^https://api-cdn\.rule34\.xxx/thumbnails/(\d+)/thumbnail_"
-    r"([0-9a-f]{32})\.jpg(?:[?#].*)?$", re.I)
 
 
 def _item_all_tags(item) -> list[str]:
@@ -206,58 +203,20 @@ def _media_items(item) -> list[dict]:
     return result
 
 
-def _archive_media_host(provider: str, url: str) -> str:
-    """把归档站的静态资源指到 `img.` 子域。
-
-    2026-08-30 实测（见 docs/reference-snapshots/kemono-archive-media-host.md）：
-
-        kemono.cr/thumbnail/data/<path>        302
-        img.kemono.cr/thumbnail/data/<path>    200 image/jpeg 24,050 B
-        pawchive.pw/thumbnail/data/<path>      404
-        img.pawchive.pw/thumbnail/data/<path>  200 image/gif   12,796 B
-
-    kemono 主域只是重定向，浏览器跟随后仍能显示，所以一直没人发现；pawchive 主域
-    直接 404，卡片因此永远是空的（`onerror` 把 img 摘掉，看起来像"没有预览图"）。
-    连接器里那条注释记的是 2026-08-27 主域回 200——站点行为后来变了。
-
-    在读取时改写而不是改 ledger：坏 URL 已经写进两千多行，而这是可推导的投影，
-    不是真相字段。站点再变时也只需要改这一处。
-    """
-    host = KemonoConnector.HOSTS.get(provider)
-    if not host or not url.startswith(f"https://{host}/"):
-        return url
-    return url.replace(f"https://{host}/", f"https://img.{host}/", 1)
-
-
-
-
 def _thumb_url(item) -> str | None:
-    # rule34.xxx 的历史行存的是 250px preview。官方 dapi 的 sample_url 与它使用
-    # 同一 bucket/hash；2026-08-28 对生产历史行实测推导后为 1920x1080。
-    if item.provider == "rule34xxx" and item.thumb_url:
-        matched = _RULE34XXX_PREVIEW_RE.match(str(item.thumb_url))
-        if matched:
-            return ("https://api-cdn.rule34.xxx/images/"
-                    f"{matched.group(1)}/{matched.group(2)}.jpg")
-    # Paheal 图片直接经现有同源代理读原图；视频站点没有高清 poster，改由
-    # /follow-cover 抽首帧并缓存。两条路径都不把原始媒体 URL放进公共 JSON。
+    """卡片上用哪个缩略图。
+
+    Paheal 图片直接经现有同源代理读原图；视频站点没有高清 poster，改由
+    /follow-cover 抽首帧并缓存。这两条是 Peach 自己的路由决定，所以留在这一层；
+    其余全是「这个站的缩略图 URL 长什么样」，那是站点知识，实现在各连接器里。
+    """
     if item.provider == "rule34paheal" and item.media_url:
         kind = _media_kind(item)
         if kind == "image":
             return f"/follow-stream?id={item.id}"
         if kind == "video":
             return f"/follow-cover?id={item.id}"
-    if item.thumb_url:
-        return _archive_media_host(item.provider, str(item.thumb_url))
-    # 旧的 Kemono/Pawchive 行在封面修复前已入库：media_url 是图片，但 thumb_url
-    # 为空。按连接器同一条已验证规则即时推导缩略图，不改 ledger 就能补齐旧卡片。
-    if item.provider in KemonoConnector.HOSTS and _IMAGE_MEDIA_RE.search(
-            str(item.media_url or "")):
-        parsed = urllib.parse.urlsplit(str(item.media_url))
-        return _archive_media_host(
-            item.provider,
-            f"https://{KemonoConnector.HOSTS[item.provider]}/thumbnail/data{parsed.path}")
-    return None
+    return display_thumb_url(item)
 
 
 def _f95_has_resource(media_url: str | None, metadata: dict) -> bool:
@@ -278,8 +237,7 @@ def _f95_has_resource(media_url: str | None, metadata: dict) -> bool:
 
 
 def _excluded_item(item) -> bool:
-    if (item.provider == "rule34video"
-            and item.external_id in RULE34VIDEO_EXCLUDED_IDS):
+    if item.external_id in _EXCLUDED_EXTERNAL_IDS.get(item.provider, frozenset()):
         return True
     # 旧版曾把纯讨论和图片表情包写进候选。读取时隐藏，不改 ledger；真正的
     # 文件附件与文件站链接仍保留，下一次检查会按当前证据重新归类。
@@ -651,16 +609,16 @@ def _source_payload(row, aliases: dict[str, str] | None = None) -> dict:
 
 
 def _legacy_history_end(row) -> bool:
-    """Normalize terminal backfill responses recorded as errors by older builds."""
+    """把旧版记成 error 的「往回翻到尽头」认回来。
+
+    判据在连接器那一层：哪些状态码代表「没有更早的了」由各连接器声明，
+    `is_history_end_error` 拿的是同一份声明。这里原来是照站点名硬编码中文串比较，
+    新增一个可回填来源时没人会想到还要改这一处。
+    """
     if int(row["backfill_page"] or 0) <= 0 or row["last_status"] != "error":
         return False
-    provider = str(row["provider"] or "")
-    message = str(row["last_error"] or "").casefold()
-    if provider in {"kemono", "coomer", "pawchive"}:
-        return message in {f"{provider} 返回 http 400", f"{provider} 返回 http 404"}
-    if provider == "rule34paheal":
-        return message == "rule34paheal 返回 http 404"
-    return False
+    return is_history_end_error(str(row["provider"] or ""),
+                                str(row["last_error"] or ""))
 
 
 def _follow_facets(store, items, by_source, alias_map) -> dict:

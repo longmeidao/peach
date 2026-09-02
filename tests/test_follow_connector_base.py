@@ -7,7 +7,10 @@
 import unittest
 
 from peach.follow import FollowSourceError
-from peach.follow_sources import CONNECTORS, KemonoConnector, _BaseConnector
+from peach.follow_sources import (
+    CONNECTORS, KemonoConnector, _BaseConnector, display_thumb_url,
+    is_history_end_error,
+)
 from peach.http import HttpResponse
 
 
@@ -132,6 +135,120 @@ class SharedSendContractTests(unittest.TestCase):
         connector._get("https://example.test/a", headers={"If-None-Match": '"old"'},
                        etag='"new"')
         self.assertEqual(seen[0].headers.get("If-None-Match"), '"new"')
+
+
+class _Item:
+    """已入库的一行里，读取时投影用得到的那几个字段。"""
+
+    def __init__(self, provider, *, thumb_url=None, media_url=None, item_id=1):
+        self.provider = provider
+        self.thumb_url = thumb_url
+        self.media_url = media_url
+        self.id = item_id
+
+
+class DisplayThumbUrlTests(unittest.TestCase):
+    """「这个站的缩略图 URL 长什么样」属于连接器，不属于 Web 层。
+
+    这些规则原来都写在 `web_follow._thumb_url` 里：rule34.xxx 的 preview→sample
+    改写、归档站的 `img.` 子域、归档站旧行的缩略图推导。站点行为变了要改的是站点
+    知识，而 Web 层根本不该知道 `api-cdn.rule34.xxx` 这种主机名。
+    """
+
+    def test_rule34xxx_history_rows_are_upgraded_to_the_sample_bucket(self):
+        """历史行存的是 250px preview；dapi 的 sample 同 bucket/hash，实测 1920x1080。"""
+        thumb = ("https://api-cdn.rule34.xxx/thumbnails/1234/"
+                 "thumbnail_" + "a" * 32 + ".jpg")
+        self.assertEqual(
+            display_thumb_url(_Item("rule34xxx", thumb_url=thumb)),
+            "https://api-cdn.rule34.xxx/images/1234/" + "a" * 32 + ".jpg")
+
+    def test_a_rule34xxx_thumb_in_another_shape_is_left_alone(self):
+        """认不出的形状原样返回，不猜一个 bucket 出来。"""
+        other = "https://api-cdn.rule34.xxx/images/1/x.jpg"
+        self.assertEqual(display_thumb_url(_Item("rule34xxx", thumb_url=other)), other)
+
+    def test_archive_thumbnails_use_the_img_subdomain(self):
+        """2026-08-30 实测：主域 kemono.cr 回 302、pawchive.pw 回 404，img. 都回 200。"""
+        for provider, host in (("kemono", "kemono.cr"), ("pawchive", "pawchive.pw"),
+                               ("coomer", "coomer.st")):
+            recorded = f"https://{host}/thumbnail/data/a/b/c.jpg"
+            fixed = f"https://img.{host}/thumbnail/data/a/b/c.jpg"
+            self.assertEqual(display_thumb_url(_Item(provider, thumb_url=recorded)),
+                             fixed)
+            # 已经是 img. 的不再叠加
+            self.assertEqual(display_thumb_url(_Item(provider, thumb_url=fixed)), fixed)
+
+    def test_an_archive_thumb_on_a_foreign_host_is_not_rewritten(self):
+        self.assertEqual(
+            display_thumb_url(_Item("kemono", thumb_url="https://example.test/a.jpg")),
+            "https://example.test/a.jpg")
+
+    def test_an_archive_row_without_a_thumb_derives_one_from_the_image_media(self):
+        """封面修复前入库的旧行 thumb_url 为空，但 media_url 就是图片本身。
+
+        库里两种 `media_url` 形状都有：那次媒体主机修复之前拼的没有 `/data` 前缀，
+        之后拼的有。`/thumbnail/data` 里已经带了一个 `data`，所以拼之前要剥掉，
+        否则新形状的行会得到 `/thumbnail/data/data/...` 这种必然 404 的地址。
+        """
+        for media in ("https://pawchive.pw/a/b/c.jpg",
+                      "https://file.pawchive.pw/data/a/b/c.jpg"):
+            self.assertEqual(
+                display_thumb_url(_Item("pawchive", media_url=media)),
+                "https://img.pawchive.pw/thumbnail/data/a/b/c.jpg", media)
+
+    def test_a_video_only_archive_row_gets_no_derived_thumb(self):
+        """视频没有可推导的缩略图，给了也是 404——卡片宁可显示干净的占位。"""
+        self.assertIsNone(display_thumb_url(_Item(
+            "kemono", media_url="https://kemono.cr/data/a/b/c.mp4")))
+
+    def test_a_provider_without_a_rule_uses_the_recorded_thumb(self):
+        for provider in ("rule34video", "f95zone", "nyaa"):
+            self.assertEqual(
+                display_thumb_url(_Item(provider, thumb_url="https://x.test/a.jpg")),
+                "https://x.test/a.jpg")
+        self.assertIsNone(display_thumb_url(_Item("rule34video")))
+
+
+class HistoryEndRecognitionTests(unittest.TestCase):
+    """哪些状态码代表「往回翻到尽头」只声明一次，翻页判定和旧行识别共用。
+
+    `record_history_end` 之前的版本把翻到尽头记成了 `error`，正文就是
+    `_check_status` 那句话。旧的识别代码是在 Web 层照站点名硬编码中文串比较，
+    新增一个可回填来源时没人会想到还要改那一处。
+    """
+
+    def test_a_declared_status_is_recognised_and_others_are_not(self):
+        self.assertTrue(is_history_end_error("kemono", "kemono 返回 HTTP 400"))
+        self.assertTrue(is_history_end_error("coomer", "coomer 返回 HTTP 404"))
+        self.assertTrue(is_history_end_error("rule34paheal",
+                                             "rule34paheal 返回 HTTP 404"))
+        self.assertFalse(is_history_end_error("kemono", "kemono 返回 HTTP 500"))
+        self.assertFalse(is_history_end_error("rule34video",
+                                             "rule34video 返回 HTTP 400"))
+
+    def test_a_provider_that_never_pages_back_recognises_nothing(self):
+        for message in ("f95zone 返回 HTTP 404", "f95zone 返回 HTTP 400"):
+            self.assertFalse(is_history_end_error("f95zone", message))
+        self.assertFalse(is_history_end_error("nyaa", "nyaa 返回 HTTP 404"))
+
+    def test_it_matches_the_message_check_status_actually_writes(self):
+        """判据必须对上真正落盘的那句话。
+
+        识别的是 `_check_status` 生成的文本。这两处一旦分家，回填到底的来源会
+        永远显示成红色错误行，而且不会有任何测试变红——所以这里现场生成一次。
+        """
+        connector = KemonoConnector(provider="kemono",
+                                    transport=_transport(status=400))
+        with self.assertRaises(FollowSourceError) as raised:
+            connector._check_status(HttpResponse(400, {}, b""))
+        self.assertTrue(is_history_end_error("kemono", str(raised.exception)),
+                        f"没认出来：{raised.exception}")
+
+    def test_an_unrelated_error_is_not_swallowed(self):
+        for message in ("kemono 请求失败：connect timeout",
+                        "kemono 的帖子列表格式不符", ""):
+            self.assertFalse(is_history_end_error("kemono", message))
 
 
 class PublicProbeApiTests(unittest.TestCase):
