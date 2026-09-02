@@ -751,6 +751,16 @@ class PagingBackTests(unittest.TestCase):
         self.assertNotIn("secret", result.request_url)
         self.assertNotIn("api_key", result.request_url)
 
+    def test_f95zone_reports_the_end_of_history_instead_of_refetching_page_one(self):
+        """`/latest` 只有一页。以前 `page` 被静默丢掉，往回翻会重新抓同一页并
+        报成一次成功检查——用户看到的就是「点了没反应」。"""
+        seen = []
+        with self.assertRaises(FollowHistoryEnd):
+            F95ZoneConnector(
+                transport=_transport(body=F95_HTML, record=seen)).fetch(
+                    "50685", page=1)
+        self.assertEqual(seen, [], "报到底不该再打一次上游")
+
 
 class F95ZoneConnectorTests(unittest.TestCase):
     @staticmethod

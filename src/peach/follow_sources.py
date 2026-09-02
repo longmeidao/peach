@@ -1255,6 +1255,12 @@ class F95ZoneConnector(_BaseConnector):
         thread = (ref or "").strip()
         if not self._THREAD_RE.match(thread):
             raise FollowSourceError(f"f95zone 的 ref 必须是线程 id，收到：{ref!r}")
+        if page:
+            # `/latest` 是站点自己渲染的「最近回复」聚合视图，没有 page-N 变体，
+            # 这个连接器因此只有一页可读。以前这里把 `page` 静默丢掉，往回翻页会
+            # 重新抓同一页、报成一次成功的检查，表现就是「点了没反应」。报到底
+            # 比假装成功好：调用方据此显示历史已尽。
+            raise FollowHistoryEnd("没有更多历史内容")
         url = f"https://f95zone.to/threads/{thread}/latest"
         headers = {"Accept": "text/html"}
         if self.credential and self.credential.values.get("cookie"):
