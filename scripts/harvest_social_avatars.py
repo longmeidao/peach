@@ -60,6 +60,7 @@ from peach.avatar_provider import (   # noqa: E402
 from peach.config import DATABASE_PATH, GENERATED_DIR, STATE_DIR   # noqa: E402
 from peach.http import HttpRequest, HttpTransport, HttpxTransport   # noqa: E402
 from peach.review_csv import read_rows, write_rows   # noqa: E402
+from peach.social_links import twimg_tiers   # noqa: E402
 
 BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
               "(KHTML, like Gecko) Chrome/125.0 Safari/537.36")
@@ -287,10 +288,8 @@ def parse_x_profile(body: str) -> dict:
                     for image_id, stem in PBS_URL.findall(body)}
         if len(stripped) == 1:
             base = "https://pbs.twimg.com/profile_images/" + stripped.pop()
-    avatars: list[str] = []
-    if base:
-        # 原图（无后缀）是上传时的最大档；X 不保证它还在，按档位退。
-        avatars = [base + ".jpg", base + "_400x400.jpg", base + "_200x200.jpg"]
+    # 档位表由 `peach.social_links.twimg_tiers` 给（厂牌 Logo 那条路共用同一份）。
+    avatars: list[str] = twimg_tiers(base + ".jpg") if base else []
     bio_urls: list[str] = []
     for match in BIO_URL.finditer(html_mod.unescape(body)):
         url = "https://" + match.group(1).removeprefix("www.").lower() + match.group(2)

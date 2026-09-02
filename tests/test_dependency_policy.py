@@ -43,6 +43,7 @@ class DependencyPolicyTests(unittest.TestCase):
             "objc": "pyobjc-framework-Cocoa",
             "p115client": "p115client",
             "pystray": "pystray",
+            "resvg_py": "resvg-py",
             "starlette": "starlette",
             "uvicorn": "uvicorn",
             "zeroconf": "zeroconf",

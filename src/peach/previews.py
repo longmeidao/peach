@@ -114,22 +114,34 @@ class PreviewService:
                         path.unlink(missing_ok=True)
         return destination
 
-    def logo(self, studio: str) -> tuple[Path, str]:
+    def logo(self, studio: str, variant: str = "") -> tuple[Path, str]:
+        """厂牌标识；`variant` 只在这个厂牌真的存了两份时才分岔。
+
+        小地方（筛选片、卡片、来源角标）要的是方形小标 `icon`，厂牌页那个 160px
+        大位要的是完整字标 `logo`——和社媒头像同一条判断。但绝大多数厂牌只有一份图：
+        两个变体都回落到 `<safe>.img`，任何位置都照旧显示它。变体文件是新增的
+        `<safe>.icon.img` / `<safe>.logo.img`，没有它们时行为和加这个参数之前一模一样。
+        """
         safe = re.sub(r"[^A-Za-z0-9_-]", "_", studio)[:60]
         if not safe:
             raise PreviewUnavailable("empty studio")
-        candidates = [self.logo_root / f"{safe}.img"]
-        if self.logo_root.is_dir():
-            target = f"{safe}.img".lower()
-            candidates.extend(path for path in self.logo_root.iterdir() if path.name.lower() == target)
-        for path in candidates:
-            if path.is_file():
-                content_type = "image/x-icon"
-                sidecar = Path(str(path) + ".ct")
-                if sidecar.is_file():
-                    detected = sidecar.read_text(encoding="utf-8").strip().split(";")[0]
-                    content_type = detected or content_type
-                return path, content_type
+        names = [f"{safe}.img"]
+        if variant in {"icon", "logo"}:
+            # 认不出的 variant 不报错，按没传处理：页面可能是缓存下来的旧版本，
+            # 为一个拼错的参数把图变成 404 只会让厂牌页平白缺图。
+            names.insert(0, f"{safe}.{variant}.img")
+        listing = list(self.logo_root.iterdir()) if self.logo_root.is_dir() else []
+        for name in names:
+            candidates = [self.logo_root / name]
+            candidates.extend(path for path in listing if path.name.lower() == name.lower())
+            for path in candidates:
+                if path.is_file():
+                    content_type = "image/x-icon"
+                    sidecar = Path(str(path) + ".ct")
+                    if sidecar.is_file():
+                        detected = sidecar.read_text(encoding="utf-8").strip().split(";")[0]
+                        content_type = detected or content_type
+                    return path, content_type
         raise PreviewUnavailable("logo unavailable")
 
     def entity_image(self, kind: str, entity_id: int) -> tuple[Path, str]:
