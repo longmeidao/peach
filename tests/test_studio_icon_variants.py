@@ -123,8 +123,11 @@ class PageSourceTests(unittest.TestCase):
             '/logo?studio=115&variant=icon',
             '/logo?studio=${encodeURIComponent(x.k)}&variant=icon',
             '/logo?studio=${encodeURIComponent(item.name)}&variant=icon',
-            "'/logo?studio='+encodeURIComponent(img.dataset.studio)+'&variant=icon'",
         ):
+            # 原先还有第四处：`.entityfavicon` 的 error 监听里按 `img.dataset.studio`
+            # 换厂牌图标。那个分支取不到——两处生成 `.entityfavicon` 的模板都不写
+            # `data-studio`，条件永远为假。监听整块已随图片回退改成声明式而删除；
+            # 「不许漏 variant」由下面那条按行扫描的断言守，重新加回来也拦得住。
             with self.subTest(snippet=snippet):
                 self.assertIn(snippet, self.source)
 

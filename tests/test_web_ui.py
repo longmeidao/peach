@@ -74,7 +74,13 @@ class WebUiSourceTests(unittest.TestCase):
         cls.page_shape = code_shape(cls.page)
         # 「谁用到了这个类名」只能问模板一侧。样式表自己不算——把 app.css 也接进来
         # 比对，每个选择器都会匹配到它自己的定义。
+        # island（ADR-0022）也是模板一侧：高清版目标页的 DOM 现在由 frontend 里的
+        # Preact 组件产出，样式仍留在 app.css。不把它接进来的话，迁走的那几组类会
+        # 被误判成没人用，然后有人真的把还在生效的样式删掉。
         markup = [web / "index.html", web / "app.js", *sorted((web / "js").glob("*.js"))]
+        island_src = Path(__file__).resolve().parents[1] / "frontend" / "src"
+        markup.extend(sorted(path for suffix in ("*.ts", "*.tsx")
+                             for path in island_src.rglob(suffix)))
         cls.markup = chr(10).join(path.read_text(encoding="utf-8") for path in markup)
 
     # 页面源断言必须自带有界失败信息。assertIn 失败时会把整个 index.html（约 189 KB）
