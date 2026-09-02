@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+
+    "noEmit": true,
+    // 配置文件之间按 Vite 8 的要求带 .ts 后缀互相 import；不产出 JS，所以允许。
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "types": ["vite/client"],
+
+    "paths": {
+      "@peach/legacy/core": ["./src/legacy/core.d.ts"],
+      "@peach/legacy/ui": ["./src/legacy/ui.d.ts"]
+    }
+  },
+  "include": ["src", "test", "vite.config.ts", "vitest.config.ts"]
+}
