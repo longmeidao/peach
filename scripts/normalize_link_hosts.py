@@ -24,31 +24,18 @@ import sqlite3
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
-#: 旧主机 → 现主机。只放**同一家站点改名**的情况，不是通用的域名清洗表。
-#:
-#: twitter.com 与 x.com 是同一个站在 2023 年的改名，路径原样可用（实测 status 永久链接
-#: 也照样解析）。别把「看起来相似的站」放进来：那是两个站，不是一个站的两种写法。
-HOST_ALIASES: dict[str, str] = {
-    "twitter.com": "x.com",
-    "www.twitter.com": "x.com",
-    "mobile.twitter.com": "x.com",
-}
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+# 别名表和改写规则与采集器共用（采集到 twitter.com 也要收成 x.com），定义在 peach.social_links。
+from peach.social_links import HOST_ALIASES, canonical_url   # noqa: E402
 
 
 def target_url(url: str) -> str:
-    """旧主机 → 新主机后的地址；不涉及别名表就返回空串。
-
-    只换 netloc 并把 scheme 提到 https，路径、查询和片段原样保留——handle 大小写在 X 上
-    不敏感，但它是用户当初复核过的写法，没有理由在这里替他改掉。
-    """
-    parts = urlsplit(url.strip())
-    host = (parts.hostname or "").lower()
-    new_host = HOST_ALIASES.get(host)
-    if not new_host:
-        return ""
-    return urlunsplit(("https", new_host, parts.path, parts.query, parts.fragment))
+    """旧主机 → 新主机后的地址；不涉及别名表就返回空串。"""
+    new_url = canonical_url(url)
+    return new_url if new_url != url else ""
 
 
 def plan(connection: sqlite3.Connection) -> list[dict]:
