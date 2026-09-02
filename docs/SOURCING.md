@@ -148,6 +148,16 @@
 - 作品数少的厂牌不等于不用补链接。`--min-assets` 是为全量扫描定的阈值，账本里 BangBus、BangBros18
   各只有 1 部视频，OPPAI、MonstersOfCock 各 2 部，它们照样出现在厂牌页那个 160px 大位上。要定点补时走
   `--only <canonical_name>...`：指名就不看作品数，名字对不上直接失败而不是静默跳过。
+- FC2-PPV 的「只有小图标」已查到底，剩下的是取舍而不是取证：`adult.contents.fc2.com`、
+  `contents.fc2.com`、`fc2.com/en/`、`video.fc2.com` 四个主机声明的都是同一份
+  `static.fc2.com/share/image/favicon.ico`（16×16，内容 14×14／比 1.00，独角兽头才是真正的标识），
+  页面里引用的更大资产全是横向字标（189×68／比 3.05、690×68／比 11.20），本来就属于 `logo` 位。唯一
+  又方又大的是 `id.fc2.com/apple-touch-icon.png`（114×114／比 1.00），两道闸门都过，但它是「独角兽 +
+  FC2 文字」的纵向锁定图，缩到 28px 文字糊成一团，且挂在 FC2 ID 而不是 PPV 市场的主机上——是「过闸门
+  不等于合适」那一类。要用它得给 `site_icons.HOST_OVERRIDES` 加一行并写清理由，不用就让 `icon` 位继续
+  回落到补白字标；`blog.fc2.com`、`live.fc2.com`、`static.fc2.com` 上没有单独的大尺寸独角兽资产
+  （`apple-touch-icon`、`favicon-192`、`icon.png` 全 404）。
+
 ## 站点圆标与图标合成
 
 - 外链圆标取站点自己声明的那一份，不是根目录猜到的第一份。顺序是首页
