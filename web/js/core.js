@@ -43,16 +43,6 @@ const mapLimit=async(items,limit,run)=>{
   await Promise.all(Array.from({length:workers},worker));
   return results;
 };
-const pageTitle=path=>{
-  const url=new URL(path,location.origin),parts=decodeURIComponent(url.pathname).split('/').filter(Boolean);
-  const fixed={stats:'统计',taste:'口味',review:'人工复核','data-cleanup':'数据管理',duplicates:'重复文件','quality-goals':'高清版',
-    follow:'关注','follow-manage':'关注管理',playlists:'播放列表',performers:'女优',studios:'厂牌',
-    creators:'创作者',series:'系列',tags:'标签',unseen:'没看过','watch-later':'稍后看',flagged:'已标记',
-    immerse:'沉浸模式',mix:'Mix',item:'作品','resource-sync':'数据管理','junk-files':'垃圾文件'};
-  const label=parts.length>1&&['performers','studios','creators','series'].includes(parts[0])
-    ? parts.slice(1).join('/') : fixed[parts[0]];
-  return label?`${label} · Peach`:'Peach · 蜜桃';
-};
 const STATE_ROUTES={fresh:'/unseen',later:'/watch-later',flagged:'/flagged',ads:'/junk-files'};
 const ROUTE_STATES=Object.fromEntries(Object.entries(STATE_ROUTES).map(([state,path])=>[path,state]));
 const STATE_LABELS={fresh:'没看过',later:'稍后看',flagged:'已标记',ads:'垃圾文件'};
@@ -115,7 +105,6 @@ export {
   api,
   isAbort,
   mapLimit,
-  pageTitle,
   STATE_ROUTES,
   ROUTE_STATES,
   STATE_LABELS,

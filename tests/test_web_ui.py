@@ -34,6 +34,26 @@ class WebUiSourceTests(unittest.TestCase):
         if needle in self.page:
             self.fail(f"index.html 不应再出现：{needle!r}" + (f"（{message}）" if message else ""))
 
+    def route_entry(self, match: str) -> str:
+        """路由表里 `match` 那一条的源码。
+
+        「哪个路径进哪一屏」是用户能感知的契约；它是写成一张表还是写成一条
+        二十五分支的 if 链，是实现细节。这些断言问的是「这条路径在不在、进去的是
+        哪一屏」，所以换派发方式不该让它们变红——真把一条路径弄丢了才该红。
+        """
+        table = self.app_js.split("\nconst ROUTES=[", 1)[1].split("\n];", 1)[0]
+        for entry in re.split(r"\n  (?=\{match:|\.\.\.)", table):
+            if entry.lstrip().startswith("{match:'%s'" % match):
+                return entry
+        listed = ", ".join(re.findall(r"\{match:'([^']+)'", table))
+        self.fail(f"路由表里没有 {match}（表里有：{listed}）")
+
+    def assertRoute(self, match: str, *needles: str):
+        entry = self.route_entry(match)
+        for needle in needles:
+            if needle not in entry:
+                self.fail(f"路由 {match} 这一条缺少：{needle!r}")
+
     def test_module_level_bindings_are_declared_before_they_are_used(self):
         """模块级 `let`/`const` 不许在声明行之前被引用。
 
@@ -279,9 +299,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('button,a,input,textarea,select,summary{touch-action:manipulation}')
 
     def test_route_titles_and_settings_dialog_manage_focus(self):
-        self.assertPageContains('const pageTitle=path=>{')
-        self.assertPageContains("'follow-manage':'关注管理'")
-        self.assertPageContains("unseen:'没看过','watch-later':'稍后看',flagged:'已标记'")
+        # 标题跟着路由表走：每一屏的标签写在自己那条记录上，不再有第二份
+        # 「路径 → 标题」映射跟路由分支各自演化。
+        self.assertPageContains("const label=routeLabel(ROUTES,decodeURIComponent(url.pathname));")
+        self.assertPageContains("document.title=label?`${label} · Peach`:'Peach · 蜜桃';")
+        self.assertRoute('/follow-manage', "title:'关注管理'")
+        # 目录页四个筛选态的标题就是筛选名本身，和侧栏取同一份 STATE_LABELS。
+        self.assertPageContains("title:STATE_LABELS[key],open:()=>openCatalog(path)")
         self.assertPageContains('syncPageTitle(path);')
         self.assertPageContains('queueMicrotask(()=>{syncHeaderActions();paintListTitle()})')
         self.assertPageContains("queueMicrotask(()=>$('#settingsClose').focus())")
@@ -733,8 +757,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("localStorage.getItem(SEED_KEY)")
         self.assertPageContains("seed:initialParam('seed')||rollSeed()")
         self.assertPageContains("sort:appSettings.defaultSort,seed:rollSeed(),q:''")
-        self.assertPageContains("const previousPath=lastRoutePath;lastRoutePath=path;")
-        self.assertPageContains("const enteringHome=path==='/'&&previousPath!=='/';")
+        # 「从别处回到首页」才换种子，判据是上一屏的路径，所以 lastRoutePath
+        # 必须等这一屏打开之后再更新。
+        self.assertPageContains("const enteringHome=path==='/'&&lastRoutePath!=='/';")
+        self.assertPageContains("}finally{lastRoutePath=path}")
         self.assertPageContains("enteringHome?rollSeed():state.seed||rollSeed()")
         self.assertPageContains("const SORTS=[['seed','随机'],['rating','评分']")
         self.assertPageContains('<option value="seed">随机</option>')
@@ -1393,7 +1419,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<div class="linkhosts"><span>最多的站点</span>')
 
     def test_taste_page_combines_private_exports_and_peach_behavior(self):
-        self.assertPageContains("if(path==='/taste'){await openTaste(false);return}")
+        self.assertRoute('/taste', "openTaste(push)", "section:'taste'")
         self.assertPageContains("/api/taste?window=")
         self.assertPageContains("/api/taste/import")
         self.assertPageContains("/api/taste/refresh")
@@ -1538,13 +1564,66 @@ class WebUiSourceTests(unittest.TestCase):
         表现就是抽屉里点「在线追更」没反应，点窄栏同一个图标却能进。
         """
         self.assertPageContains("function navTo(k){")
-        self.assertPageContains("if(k==='follow'){openFollow();return}")
-        self.assertPageContains("if(k==='playlists'){openPlaylists();return}")
+        # 有自己路径的入口一律从路由表进，两边点同一个键必然到同一屏。
+        self.assertPageContains("const target=ROUTES.find(spec=>spec.nav===k&&!STATE_ROUTES[k]);")
+        self.assertRoute('/follow', "nav:'follow'", "openFollow(push)")
+        self.assertRoute('/playlists', "nav:'playlists'", "openPlaylists(push)")
         self.assertPageContains(
             "$('#drawer').querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navTo(b.dataset.nav));")
         self.assertPageContains("e.stopPropagation();navTo(b.dataset.nav)})")
-        # 分支只能存在一处；再出现第二份就是下一次漂移。
-        self.assertEqual(self.page.count("if(k==='immerse'){openTok();return}"), 1)
+        # 派发只能存在一处；再出现第二份就是下一次漂移。
+        self.assertEqual(self.app_js.count("ROUTES.find(spec=>spec.nav===k"), 1,
+                         "导航跳转只能查一次路由表")
+        self.assertEqual(self.app_js.count("function navTo(k){"), 1)
+
+    def test_one_route_table_owns_every_surface_dispatch(self):
+        """「哪个路径进哪一屏」只有一份真相，七处副本不许回来。
+
+        以前 restoreRoute 是一条二十五分支的 if 链，navTo、navOn、openManage、
+        manageSection、reloadCurrentSurface、refreshAll 各自又抄了自己关心的那几条。
+        加一屏要改七处，漏一处的症状还各不相同：URL 能进但侧栏不亮、点进去了但
+        「换一批」把你扔回统计页、批量操作后回到首页而不是刚才那一屏。
+        """
+        for match in ('/', '/trash', '/playlists', '/playlists/:playlist/:item',
+                      '/mix/:seed/:item', '/parts/:seed/:item', '/editions/:seed/:item',
+                      '/item/:id', '/follow/item/:id', '/performers', '/creators', '/tags',
+                      '/stats', '/taste', '/review', '/data-cleanup', '/duplicates',
+                      '/resource-sync', '/quality-goals', '/follow', '/follow-manage',
+                      '/immerse'):
+            self.route_entry(match)
+        # 目录页四态和四种实体页由既有的映射生成：两边各写一份就会出现
+        # 「路由认得、isCatalogPath 不认得」这种半死路径。
+        self.assertPageContains("...Object.entries(STATE_ROUTES).map(([key,path])=>({")
+        self.assertPageContains("...Object.entries(ROUTE_ENTITIES).map(([segment,kind])=>({")
+        # 派发只有一处：匹配到哪条就打开哪条，没匹配上才回首页表面。
+        self.assertPageContains("const hit=matchRoute(ROUTES,path);")
+        self.assertPageContains("if(hit)await hit.route.open(hit.params,false);")
+        self.assertPageContains("else{showHomeSurfaces();disposeStage(false)}")
+        for revived in ("if(path==='/stats')", "if(path==='/taste')", "if(path==='/immerse')",
+                        "if(path==='/follow-manage')", "if(parts[0]==='item'",
+                        "const entityKind=ROUTE_ENTITIES[parts[0]]"):
+            self.assertPageLacks(revived, "路径判定回到了 restoreRoute 的分支链")
+        # 迁移期要能让 frontend/ 里的一屏自己登记，不必回来改这张表（ADR-0022）。
+        self.assertPageContains("const registerRoute=spec=>{ROUTES.push(spec);return spec};")
+        self.assertPageContains("window.peachRegisterRoute=registerRoute;")
+
+    def test_route_patterns_only_match_numeric_ids(self):
+        """动态段只吃数字，实体名吃掉剩下全部段。
+
+        原来每条动态路由都自己写一遍数字校验，忘写的那条会把 /item/abc 当成
+        合法 id 送进 `+parts[1]`，得到 NaN；实体名里有斜杠，所以那一段必须贪心。
+        """
+        self.assertPageContains(r"if (!/^\d+$/.test(got[i] || '')) return null;")
+        self.assertPageContains("params[name] = Number(got[i]);")
+        self.assertPageContains("const tail = got.slice(i).join('/');")
+        # 匹配失败返回 null，空参数对象仍是真值——路由表里有一堆没有参数的精确路径。
+        self.assertPageContains("return got.length === want.length ? params : null;")
+
+    def test_immersive_mode_keeps_the_current_clip_in_the_url(self):
+        """竖划切片也过 route()：刷新之后落回同一条片子，而不是重新抽一批。"""
+        self.assertPageContains("route('/immerse?id='+it.id,true);")
+        self.assertRoute('/immerse', "openTok(immerseStartId(),push)")
+        self.assertPageContains("function immerseStartId(){")
 
     def test_online_assets_use_rss_and_open_the_saved_follow_surface(self):
         self.assertPageContains("online:icon('rss')")
@@ -1688,7 +1767,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("decodeURIComponent(location.pathname)!==decodeURIComponent(expectedPath)")
         index = self.page.split("async function openIndex", 1)[1].split("const d=await api", 1)[0]
         self.assertIn("showHomeSurfaces();", index)
-        self.assertPageContains("if(!$('#stats').hidden){\n    if(location.pathname==='/review'){await openReview(false);return}")
+        # 「换一批」在管理区的行为写在路由表的 refresh 上，不再每页一条分支。
+        self.assertPageContains("if(hit?.route.refresh==='reopen'){await hit.route.open(hit.params,false);return}")
+        self.assertRoute('/review', "refresh:'reopen'")
 
     def test_immersive_close_restores_the_home_surface(self):
         self.assertPageContains("document.body.style.overflow='';openHome()")
@@ -1730,7 +1811,12 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_top_level_highlight_is_exclusive_and_covers_index_pages(self):
         """首页原来只看 state.state，进管理区和索引页时它仍然亮着，两个入口同时高亮。"""
-        self.assertPageContains("if(k==='performers'||k==='tags')return path==='/'+k")
+        # 高亮由「当前路径匹配到哪条路由」决定，索引页和实体页因此天然分开：
+        # /performers 有 nav，/performers/<名字> 没有，不会两个入口一起亮。
+        self.assertPageContains("const nav=matchRoute(ROUTES,path)?.route.nav||'';")
+        self.assertPageContains("if(nav)return nav===k;")
+        self.assertRoute('/performers', "nav:'performers'")
+        self.assertRoute('/tags', "nav:'tags'")
         self.assertPageContains("if(k==='')return path==='/'&&!manageSection()&&!state.state")
         self.assertPageContains("buildEdge();     // 顶层高亮跟随管理区")
 
@@ -2140,8 +2226,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 而主列表的 exclude_vertical 管不到这条——它是独立请求、独立插入的。
         self.assertPageContains("!isCatalogPath(decodeURIComponent(location.pathname))||javActive()||state.orient==='竖屏'")
         self.assertPageContains("||state.state==='ads'||state.state==='trash'")
-        self.assertPageContains("route(section==='trash'?'/trash':junkPath())")
-        self.assertPageContains("if(path==='/trash')")
+        self.assertRoute('/trash', "section:'trash'", "openTrash(push)")
         self.assertPageContains("/api/trash/empty")
 
     def test_multipart_releases_use_a_distinct_group_card_and_queue(self):
@@ -2155,7 +2240,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("route(`/parts/${seedId}/${chosen}`)")
         self.assertPageContains("queue.kind==='parts'?`${queue.items.length} 卷`")
         self.assertPageContains("queueContext.kind==='parts'?openParts")
-        self.assertPageContains("if(parts[0]==='parts'")
+        self.assertRoute('/parts/:seed/:item', "openParts(params.seed,params.item,push)")
         self.assertPageContains(".partstack::before,.partstack::after")
         self.assertPageLacks("Mix · ${group.title}")
 
@@ -2409,8 +2494,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("document.querySelectorAll('#grid > .card[data-id]')")
 
     def test_recycle_bin_has_its_own_route_and_reports_undeletable_files(self):
-        self.assertPageContains("route(section==='trash'?'/trash':junkPath())")
-        self.assertPageContains("if(path==='/trash'){")
+        self.assertRoute('/trash', "section:'trash'", "openTrash(push)")
+        self.assertPageContains("function openTrash(push){")
+        self.assertPageContains("state:'trash',q:''};$('#q').value='';")
         self.assertPageContains("/api/trash/empty")
         self.assertPageContains("r.blocked&&r.blocked.length")
 
@@ -2495,7 +2581,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         # 限宽已回退：整条规则不许再出现（重排导航/标题前是已知的坏版式）。
         self.assertPageLacks("max-width:1004px;margin-inline:auto")
-        self.assertPageContains("document.body.dataset.surface=new URL(path,location.origin).pathname")
+        self.assertPageContains("document.body.dataset.surface=url.pathname")
         # 导航激活态随路由重算：抽屉/窄栏按钮是 buildBars 时一次性画的，
         # 管理页不跑 buildBars，不重算就会停留在上一个页面的按下态。
         self.assertPageContains("paintNav();")
@@ -2654,7 +2740,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_better_version_targets_have_a_management_page(self):
         self.assertPageContains("['quality','高清版','sparkles']")
-        self.assertPageContains("if(path==='/quality-goals')return 'quality'")
+        self.assertRoute('/quality-goals', "section:'quality'", "openQualityGoals(push)")
         self.assertPageContains("async function openQualityGoals(push=true)")
         # 这一页已经迁到 Preact island（ADR-0022）：取数与渲染在 frontend/ 里，遗留层
         # 只剩外壳。所以这里断言的是挂载契约，而不是端点字符串——端点由
@@ -2677,7 +2763,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("candidate.content_id||candidate.provider_id")
         self.assertPageContains(".metadataevidence>div{display:grid;grid-template-columns:68px minmax(0,1fr)")
         self.assertPageContains("/api/review/decision")
-        self.assertPageContains("if(path==='/review')")
+        self.assertRoute('/review', "section:'review'", "openReview(push)")
         self.assertPageContains('class="revieworigin"')
         self.assertPageContains('data-review-open-item="${row.asset_id}"')
         self.assertPageContains("openItem(+button.dataset.reviewOpenItem)")
@@ -2697,9 +2783,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("发行 ${esc(it.release_date)}")
 
     def test_duplicates_page_is_part_of_the_combined_cleanup_section(self):
-        self.assertPageContains("path==='/data-cleanup'||path==='/duplicates'||path==='/junk-files'")
-        self.assertPageContains("if(section==='cleanup'){openDataCleanup();return}")
-        self.assertPageContains("if(section==='dupes'){openDuplicates();return}")
+        # 数据管理、重复文件、垃圾文件是同一件事的三步，共用一个管理身份，
+        # 所以进任何一屏管理条都停在「数据管理」上。
+        self.assertRoute('/data-cleanup', "section:'cleanup'")
+        self.assertRoute('/duplicates', "section:'cleanup'", "openDuplicates(push)")
+        self.assertPageContains("return hit?.route.section||(state.state==='ads'?'cleanup':'');")
+        # openManage('cleanup') 该开数据管理本身：靠 /data-cleanup 在表里排在前面。
+        self.assertPageContains("const target=ROUTES.find(spec=>spec.section===section);")
         self.assertPageContains("async function openDuplicates(push=true)")
 
     def test_data_cleanup_groups_junk_duplicates_and_empty_folders_in_fieldsets(self):
@@ -2728,7 +2818,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 按钮一律靠右；左边有说明时说明推到最左。
         self.assertPageContains("justify-content:flex-end;gap:8px;")
         self.assertPageContains(".resourcesyncfooter>p,.resourceapplyrow>p{min-width:0;margin-right:auto}")
-        self.assertPageContains("if(path==='/data-cleanup'){await openDataCleanup(false);return}")
+        self.assertRoute('/data-cleanup', "openDataCleanup(push)")
 
     def test_fieldset_bars_keep_one_row_and_one_button_shape_on_narrow_screens(self):
         """窄屏下操作条仍是一行，按钮按内容宽、填 --surface，不铺满也不换第二种样式。
@@ -3096,7 +3186,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("${stacked?'<div class=\"partstack\">':''}")
         self.assertPageContains("${stacked?'</div>':''}")
         self.assertPageContains("openEditions(it.edition_group.seed_id,id,true,anchor)")
-        self.assertPageContains("if(parts[0]==='editions'", "刷新或前进后退要能回到同一个版次")
+        self.assertRoute('/editions/:seed/:item', "openEditions(params.seed,params.item,push)")
 
     def test_entity_pages_collapse_edition_groups_too(self):
         """资料页的网格也要折叠版次组。
@@ -3625,7 +3715,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_resource_sync_lives_in_data_management_and_keeps_offline_sources_safe(self):
         self.assertPageContains("${resourceSyncMarkup()}")
-        self.assertPageContains("if(path==='/resource-sync'){await openResourceSync(false);return}")
+        self.assertRoute('/resource-sync', "openResourceSync(push)")
         self.assertPageContains("route('/data-cleanup#resource-sync',!push)")
         self.assertPageContains("api('/api/resource-sync/scan',{method:'POST'")
         self.assertPageContains("api('/api/resource-sync/apply',{method:'POST'")

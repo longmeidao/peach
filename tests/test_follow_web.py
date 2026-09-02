@@ -1403,23 +1403,28 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertEqual(keys[keys.index("follow") + 1], "immerse",
                          "关注入口应当排在沉浸模式前面")
         self.assertPageContains("['follow','关注','rss']")
-        self.assertPageContains("if(k==='follow'){openFollow();return}")
-        self.assertPageContains("if(k==='follow')return path==='/follow';")
+        # 关注入口的路径、导航键和高亮都在路由表那一条里（web/app.js 的 ROUTES），
+        # 不再是 navTo／navOn 各写一条 `k==='follow'` 分支。
+        self.assertPageContains("{match:'/follow',nav:'follow',title:'关注',refresh:'skip',")
+        self.assertPageContains("open:(params,push)=>openFollow(push),reload:()=>openFollow(false)},")
         # 两个数组现在同名，字面量断言分不出是哪一个：
         # 管理区这一项得在 MANAGE_SECTIONS 里找，否则它被删了测试照样绿。
         manage = self.page[self.page.index("const MANAGE_SECTIONS=["):]
         manage = manage[:manage.index("];")]
         self.assertIn("['follow','关注','rss']", manage)
         self.assertPageContains('<symbol id="i-rss"')
-        self.assertPageContains("if(path==='/follow-manage')return 'follow'")
-        self.assertPageContains("if(section==='follow'){openFollowManage();return}")
+        # 管理区身份同理：`section` 写在路由表上，`openManage('follow')` 按它查表。
+        self.assertPageContains("{match:'/follow-manage',section:'follow',title:'关注管理',refresh:'skip',")
+        self.assertPageContains("open:(params,push)=>openFollowManage(push)},")
 
     def test_follow_routes_restore_on_reload(self):
-        self.assertPageContains("if(path==='/follow'){await openFollow(false);return}")
+        # 恢复只有一个派发点：路径匹配到哪条路由，就打开那一屏。
+        self.assertPageContains("const hit=matchRoute(ROUTES,path);")
+        self.assertPageContains("if(hit)await hit.route.open(hit.params,false);")
+        self.assertPageContains("open:(params,push)=>openFollow(push),reload:()=>openFollow(false)},")
+        self.assertPageContains("open:(params,push)=>openFollowManage(push)},")
         self.assertPageContains(
-            "if(path==='/follow-manage'){await openFollowManage(false);return}")
-        self.assertPageContains(
-            "await openFollow(false,true);await openFollowDetail(+parts[2],false)")
+            "await openFollow(push,true);await openFollowDetail(params.id,push)")
         self.assertPageContains("api(`/api/follow?item=${encodeURIComponent(id)}`)")
         self.assertPageContains(".then(async()=>{buildEdge();wireAllDrag();await restoreRoute();scheduleStickySurfaces()})")
 
@@ -1881,7 +1886,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("async function openFollow(push=true,renderForDetail=false)")
         self.assertPageContains("const surface=claimSurface(renderForDetail?surfacePath():'/follow')")
         self.assertPageContains("if(!surfaceCurrent(surface))return")
-        self.assertPageContains("await openFollow(false,true);await openFollowDetail(+parts[2],false)")
+        self.assertPageContains("await openFollow(push,true);await openFollowDetail(params.id,push)")
         self.assertPageContains("const followList=$('#stats').querySelector('.followlist')")
         # 就近展开：插在被点击那张卡片所在的一行之后，不是整个列表之前。
         # 插在列表前等于每次都把视线拽回页面顶部，翻了几屏点开一条尤其明显。
@@ -1984,9 +1989,11 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_network_check_is_an_explicit_button_not_an_auto_refresh(self):
         self.assertPageContains("data-follow-check")
-        # 「换一批」自动刷新绝不能顺手触发一次联网检查。
-        self.assertPageContains(
-            "if(location.pathname==='/follow'||location.pathname==='/follow-manage')return;")
+        # 「换一批」自动刷新绝不能顺手触发一次联网检查。这件事现在由路由表上的
+        # `refresh:'skip'` 表达：refreshAll 只认这个标记，两个关注页各自带一个。
+        self.assertPageContains("if(hit?.route.refresh==='skip')return;")
+        self.assertPageContains("{match:'/follow',nav:'follow',title:'关注',refresh:'skip',")
+        self.assertPageContains("{match:'/follow-manage',section:'follow',title:'关注管理',refresh:'skip',")
 
     def test_every_entered_state_can_be_left_again(self):
         self.assertPageContains("""item.status==='seen'||item.status==='ignored'""")

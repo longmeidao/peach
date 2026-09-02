@@ -1,5 +1,6 @@
-import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, pageTitle, realDuration} from './js/core.js';
+import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, SITE_FAVICONS, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, faviconFallbackUrl, faviconUrl, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration} from './js/core.js';
 import { imageFallbackAttrs, wireImageFallbacks } from './js/image-fallback.js';
+import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import {
@@ -39,6 +40,87 @@ let edgeT=null;
 /* 搜索下拉里被键盘选中的那一项。列表每次重建都要归零，否则索引会指向已经不存在的行。 */
 let searchActive=-1;
 /* ────────────────────────────────────────────────────────────────────────── */
+
+/* ── 路由表 ───────────────────────────────────────────────────────────────────
+   一屏一条。`match` 的三种写法见 `web/js/routes.js`，其余字段：
+
+   - `open(params,push)`：进入这一屏。`push=false` 表示地址栏已经是它了——首屏
+     恢复、popstate、换一批都是这种，此时不再 `route()`。
+   - `title`：document.title 用的标签，字符串或拿 params 算的函数；不写则用站名。
+   - `nav`：侧栏／抽屉里 `data-nav` 的键，同时决定高亮（`navOn`）和跳转（`navTo`）。
+   - `section`：管理区身份（`manageSection`），也是 `openManage` 的入口键。
+   - `refresh`：列表栏 ⟳「换一批」在这一屏的行为。`reopen` 重开自己；`skip` 不参与
+     ——追更页重画要联网，只能由它自己的按钮触发；不写则回统计页。
+   - `reload`：批量操作后就地重取（`reloadCurrentSurface`）。它和 `open` 的区别是
+     要保留页内已经打好的输入，所以不能拿 `open` 顶替。
+
+   顺序即优先级：先匹配上的赢，所以精确路径写在同前缀的动态路径前面。
+
+   这张表替掉的是同一份知识的七个副本：`restoreRoute` 的分支链，加上 `navTo`、
+   `navOn`、`openManage`、`manageSection`、`reloadCurrentSurface`、`refreshAll`
+   各自抄的那几条。加一屏原来要改七处，漏一处的症状还各不相同：URL 能进但侧栏不亮、
+   点进去了但「换一批」把你扔回统计页、批量操作后回到首页而不是刚才那一屏。 */
+const ROUTES=[
+  /* 目录页：首页和四个筛选态是同一屏，路径只决定初始筛选，所以共用一个 open。
+     四条筛选态直接由 STATE_ROUTES 生成——它同时是 `isCatalogPath` 的判据，
+     两边各写一份就会有「路由认得、目录判定不认得」的半死路径。 */
+  {match:'/',open:()=>openCatalog('/')},
+  ...Object.entries(STATE_ROUTES).map(([key,path])=>({
+    match:path,nav:key,title:STATE_LABELS[key],open:()=>openCatalog(path)})),
+  {match:'/trash',section:'trash',open:(params,push)=>openTrash(push)},
+  {match:'/playlists',nav:'playlists',title:'播放列表',refresh:'reopen',
+    open:(params,push)=>openPlaylists(push)},
+  {match:'/playlists/:playlist/:item',nav:'playlists',title:'播放列表',
+    open:(params,push)=>openPlaylist(params.playlist,params.item,push)},
+  {match:'/mix/:seed/:item',title:'Mix',
+    open:(params,push)=>openMix(params.seed,params.item,push)},
+  {match:'/parts/:seed/:item',open:(params,push)=>openParts(params.seed,params.item,push)},
+  {match:'/editions/:seed/:item',open:(params,push)=>openEditions(params.seed,params.item,push)},
+  {match:'/item/:id',title:'作品',open:(params,push)=>openItem(params.id,push)},
+  /* 追更详情要先把列表铺好：详情页的返回、上一条／下一条都从那份列表来。 */
+  {match:'/follow/item/:id',title:'关注',open:async(params,push)=>{
+    await openFollow(push,true);await openFollowDetail(params.id,push)}},
+  /* 实体资料页。四种实体只有 kind 不同，名字里可能带斜杠，所以吃掉剩下全部段。 */
+  ...Object.entries(ROUTE_ENTITIES).map(([segment,kind])=>({
+    match:`/${segment}/:name*`,title:params=>params.name,
+    open:(params,push)=>openEntity(kind,params.name,push)})),
+  {match:'/performers',nav:'performers',title:'女优',
+    open:(params,push)=>openIndexRoute('performers',push),
+    reload:()=>openIndexRoute('performers',false,indexQuery())},
+  {match:'/creators',title:'创作者',
+    open:(params,push)=>openIndexRoute('creators',push),
+    reload:()=>openIndexRoute('creators',false,indexQuery())},
+  {match:'/tags',nav:'tags',title:'标签',
+    open:(params,push)=>openIndexRoute('tags',push),
+    reload:()=>openIndexRoute('tags',false,indexQuery())},
+  {match:'/stats',section:'stats',title:'统计',open:(params,push)=>openStats(push)},
+  {match:'/taste',section:'taste',title:'口味',refresh:'reopen',
+    open:(params,push)=>openTaste(push)},
+  {match:'/review',section:'review',title:'人工复核',refresh:'reopen',
+    open:(params,push)=>openReview(push)},
+  {match:'/data-cleanup',section:'cleanup',title:'数据管理',
+    open:(params,push)=>openDataCleanup(push)},
+  // 重复文件报数据管理的身份：它是那一屏的下一步，`openManage('cleanup')` 仍
+  // 应该开数据管理本身，靠的是 /data-cleanup 在表里排在前面。
+  {match:'/duplicates',section:'cleanup',title:'重复文件',refresh:'reopen',
+    open:(params,push)=>openDuplicates(push)},
+  // /resource-sync 是数据管理页上的一个锚点，没有自己的管理身份。
+  {match:'/resource-sync',title:'数据管理',open:(params,push)=>openResourceSync(push)},
+  {match:'/quality-goals',section:'quality',title:'高清版',refresh:'reopen',
+    open:(params,push)=>openQualityGoals(push)},
+  {match:'/follow',nav:'follow',title:'关注',refresh:'skip',
+    open:(params,push)=>openFollow(push),reload:()=>openFollow(false)},
+  {match:'/follow-manage',section:'follow',title:'关注管理',refresh:'skip',
+    open:(params,push)=>openFollowManage(push)},
+  {match:'/immerse',nav:'immerse',title:'沉浸模式',
+    open:(params,push)=>openTok(immerseStartId(),push)},
+];
+/* 登记一条新路由。ADR-0022 的迁移是逐屏搬到 `frontend/`：搬走的那一屏在自己的
+   入口里登记，不必回来改这张表。挂在 window 上是因为 app.js 是入口模块，别的
+   bundle 没法 import 它。
+   插在表尾，所以新路由要么是一条新路径，要么比现有条目更具体。 */
+const registerRoute=spec=>{ROUTES.push(spec);return spec};
+window.peachRegisterRoute=registerRoute;
 
 const pageSkeletonHtml=(label,{cards=false,className='',variant=''}={})=>
   skeletonHtml(label,{variant:variant||(cards?'cards':'panel'),className});
@@ -142,8 +224,10 @@ function javTitleHtml(it,value=it?.name){
    （管理页不全宽）靠它切换，不用每个渲染函数自己记得加类。
    调用方有传 path 也有传 href 的，这里统一归一成 pathname。 */
 const syncPageTitle=path=>{
-  document.title=pageTitle(path);
-  document.body.dataset.surface=new URL(path,location.origin).pathname;
+  const url=new URL(path,location.origin);
+  const label=routeLabel(ROUTES,decodeURIComponent(url.pathname));
+  document.title=label?`${label} · Peach`:'Peach · 蜜桃';
+  document.body.dataset.surface=url.pathname;
   paintNav();
 };
 /* 导航激活态必须在每次路由变化时重算：抽屉与窄栏的按钮是 buildBars 时
@@ -5293,16 +5377,12 @@ function renderSidebarOrderSetting(){
     };
   });
 }
+/* 当前在哪个管理区。路由表里的 `section` 是唯一判据；垃圾文件那一屏没有自己的
+   身份，它是数据管理的一部分，`state.state` 才是判据（`/junk-files` 从启动那一刻
+   起 state 就是 `ads`，首页带 `?state=ads` 也一样）。 */
 function manageSection(){
-  const path=decodeURIComponent(location.pathname);
-  if(path==='/stats')return 'stats';
-  if(path==='/taste')return 'taste';
-  if(path==='/review')return 'review';
-  if(path==='/trash')return 'trash';
-  if(path==='/data-cleanup'||path==='/duplicates'||path==='/junk-files'||state.state==='ads')return 'cleanup';
-  if(path==='/quality-goals')return 'quality';
-  if(path==='/follow-manage')return 'follow';
-  return '';
+  const hit=matchRoute(ROUTES,decodeURIComponent(location.pathname));
+  return hit?.route.section||(state.state==='ads'?'cleanup':'');
 }
 function buildManageBar(){
   const current=manageSection(),bar=$('#managebar');
@@ -5376,17 +5456,14 @@ function paintListTitle(){
   const label=!manageSection()&&isCatalogPath(path)?STATE_LABELS[state.state]||'':'';
   el.hidden=!label;if(label)el.textContent=label;
 }
+/* 进某个管理区。入口就是路由表里 `section` 等于它的第一条，所以这里不再有一份
+   「section → 打开哪个函数」的副本。 */
 function openManage(section='stats'){
-  if(section==='stats'){openStats();return}
-  if(section==='taste'){openTaste();return}
-  if(section==='review'){openReview();return}
-  if(section==='cleanup'){openDataCleanup();return}
-  // 旧直达 URL 继续保留；它们共享同一个「数据管理」导航身份。
-  if(section==='dupes'){openDuplicates();return}
-  if(section==='quality'){openQualityGoals();return}
-  if(section==='follow'){openFollowManage();return}
-  state.orient='';state.state=section==='trash'?'trash':'ads';
-  route(section==='trash'?'/trash':junkPath());
+  const target=ROUTES.find(spec=>spec.section===section);
+  if(target){target.open({},true);return}
+  /* 认不出的 section 一律落到垃圾文件：统计页那颗「查看垃圾文件」传的就是 `ads`，
+     而垃圾文件是目录页的一个筛选态，没有自己的 section。 */
+  state.orient='';state.state='ads';route(junkPath());
   showHomeSurfaces();buildEdge();buildBars();load(true);
 }
 /* JAV 模式。只有带番号的作品才有官方封套，所以版式切换只在这个语境里出现——
@@ -5448,32 +5525,28 @@ async function reloadCurrentSurface(){
     await updateEntityCollection(kind,name,parseEntityFilters(location.search),false);
     return;
   }
-  const path=decodeURIComponent(location.pathname);
-  if(path==='/performers'||path==='/creators'||path==='/tags'){
-    await openIndex(path.slice(1),$('#iq')?.value.trim()||'',false);
-    return;
-  }
-  if(path==='/follow'){await openFollow(false);return}
+  const hit=matchRoute(ROUTES,decodeURIComponent(location.pathname));
+  if(hit?.route.reload){await hit.route.reload();return}
   await load(true);
 }
 function navOn(k){
   const path=decodeURIComponent(location.pathname);
+  const nav=matchRoute(ROUTES,path)?.route.nav||'';
   const directSection=DIRECT_MANAGE_NAV[k];
   if(directSection)return manageSection()===directSection;
   if(k==='manage'){
     const current=manageSection();
     return !!current&&!orderedEdgeIcons().some(([key])=>DIRECT_MANAGE_NAV[key]===current);
   }
-  if(k==='performers'||k==='tags')return path==='/'+k;
-  if(k==='immerse')return path==='/immerse';
-  if(k==='playlists')return path==='/playlists'||path.startsWith('/playlists/');
-  if(k==='follow')return path==='/follow';
+  // JAV 和竖屏不是路径，是内存里的筛选开关，所以这两条只能问 state。
   if(k==='jav')return javActive();
   if(k==='shorts')return state.orient==='竖屏';
   // 首页只在真的停在首页列表上时亮：管理区、索引页、实体页都不算，
   // 否则它会和当前所在的入口同时高亮。
   if(k==='')return path==='/'&&!manageSection()&&!state.state&&!javActive()&&state.orient!=='竖屏';
-  if(STATE_ROUTES[k])return path===STATE_ROUTES[k]&&state.orient!=='竖屏';
+  // 目录页的四个筛选态共用一屏，竖屏是压在它们之上的另一层筛选。
+  if(STATE_ROUTES[k])return nav===k&&state.orient!=='竖屏';
+  if(nav)return nav===k;
   return path==='/'&&state.state===k&&state.orient!=='竖屏';
 }
 /* 窄栏与抽屉共用同一套跳转。两边曾各写一份分支，抽屉那份漏了追更和播放列表，
@@ -5481,13 +5554,12 @@ function navOn(k){
 function navTo(k){
   closeDrawerAfterNav();                 // 点了就收起抽屉，且短暂禁止悬停把它立刻弹回
   if(DIRECT_MANAGE_NAV[k]){openManage(DIRECT_MANAGE_NAV[k]);return}
-  if(k==='immerse'){openTok();return}
-  if(k==='playlists'){openPlaylists();return}
-  if(k==='follow'){openFollow();return}
   if(k==='manage'){openManage();return}
   if(k==='jav'){toggleJavMode();return}
   if(k===''){openHome();return}
-  if(k==='performers'||k==='tags'){setSelectMode(false,true);openIndex(k);return}
+  // 有自己路径的入口（追更、播放列表、沉浸模式、索引页）从路由表进。
+  const target=ROUTES.find(spec=>spec.nav===k&&!STATE_ROUTES[k]);
+  if(target){target.open({},true);return}
   if(k==='shorts'){state.orient='竖屏';state.state=''}else{state.orient='';state.state=k}
   route(homePath());
   showHomeSurfaces();
@@ -6378,6 +6450,9 @@ async function openTok(startId,push=true){
 }
 async function tokShow(dir){
   const it=tokList[tokIdx];if(!it||tokSwitching)return;
+  /* 当前这一条也过一遍 route()：竖划十条之后刷新页面，落回来的该是同一条片子，
+     而不是重新抽一批。用 replace——每划一下都往历史里塞一条，后退键就废了。 */
+  route('/immerse?id='+it.id,true);
   tokSwitching=true;setTokLoading(true,dir?'切换中…':'加载中…',it);
   try{
     const full=await api('/api/item?id='+it.id);
@@ -6671,13 +6746,12 @@ async function refreshAll(automatic=false){
   if(automatic&&(document.hidden||!isCatalogPath(decodeURIComponent(location.pathname))||
       !$('#stage').hidden||!$('#tok').hidden||selectMode||selected.size||document.activeElement===$('#q')))return false;
   if(!$('#stats').hidden){
-    if(location.pathname==='/review'){await openReview(false);return}
-    if(location.pathname==='/taste'){await openTaste(false);return}
-    if(location.pathname==='/duplicates'){await openDuplicates(false);return}
-    if(location.pathname==='/quality-goals'){await openQualityGoals(false);return}
-    if(location.pathname==='/playlists'){await openPlaylists(false);return}
-    /* 追更页不参与换批：重画要重新取数，联网检查只能由自己的明确按钮触发。 */
-    if(location.pathname==='/follow'||location.pathname==='/follow-manage')return;
+    /* 管理区的换批行为写在路由表的 `refresh` 上：`reopen` 重开自己，
+       `skip` 不参与（追更页重画要联网，只能由它自己的按钮触发），
+       没写的（统计、数据管理、资源同步）落到统计页。 */
+    const hit=matchRoute(ROUTES,decodeURIComponent(location.pathname));
+    if(hit?.route.refresh==='skip')return;
+    if(hit?.route.refresh==='reopen'){await hit.route.open(hit.params,false);return}
     await openStats(false);return
   }
   if(!$('#index').hidden){return}
@@ -6739,63 +6813,69 @@ function wireDrag(el){
 function wireAllDrag(){['#tagbar','#srow','#nrow'].forEach(s=>wireDrag($(s)));
   document.querySelectorAll('.tier').forEach(wireDrag)}
 
+/* 目录页（首页 + 四个筛选态）：筛选全部从 URL 读，路径只决定初始筛选态。
+   `enteringHome` 判的是「从别处回到首页」：顶部三层有 30 秒会话缓存，不作废的话
+   回到首页看到的还是上一次那批人。判据是 `lastRoutePath`，所以 `restoreRoute`
+   要等派发完再更新它。 */
+function openCatalog(path){
+  const params=new URLSearchParams(location.search);
+  const enteringHome=path==='/'&&lastRoutePath!=='/';
+  if(enteringHome){barsDataCache=null;barsDataPromise=null}
+  if(path==='/junk-files'){
+    junkKind=cleanJunkKind(params.get('type')||'');
+    junkView=params.get('view')==='dismissed'?'dismissed':'pending';
+  }
+  state={...state,loc:params.get('loc')||'local,115',creator:params.get('creator')||'',studio:params.get('studio')||'',
+    tag:cleanTagFilter(params.get('tag')),tag_match:params.get('tag_match')==='any'?'any':'all',len:params.get('len')||'',
+    dur_min:params.get('dur_min')||'',dur_max:params.get('dur_max')||'',orient:params.get('orient')||'',
+    state:ROUTE_STATES[path]||params.get('state')||'',sort:cleanSort(params.get('sort')),
+    seed:params.get('seed')||(enteringHome?rollSeed():state.seed||rollSeed()),q:params.get('q')||'',jav:params.get('jav')||''};
+  $('#q').value=state.q;buildEdge();buildBars();load(true);
+}
+/* 回收站。它和目录页共用同一张网格，只是筛选被钉死成 `trash`。 */
+function openTrash(push){
+  if(push)route('/trash');
+  state={...state,creator:'',studio:'',tag:'',orient:'',state:'trash',q:''};$('#q').value='';
+  showHomeSurfaces();buildEdge();buildBars();load(true);
+}
+/* 索引页（女优／创作者／标签）三条路由共用。
+   `push=true` 是从导航点进来：退出选择模式、不带搜索词从头开始。
+   `push=false` 是地址栏已经在这一屏：视图状态从 URL 读。
+   `q` 显式传入时优先——批量操作后的就地重取要保留搜索框里已经打好的词。 */
+function indexQuery(){return $('#iq')?.value.trim()||''}
+function openIndexRoute(kind,push,q=null){
+  if(push){setSelectMode(false,true);return openIndex(kind)}
+  const params=new URLSearchParams(location.search);
+  if(kind==='tags'){
+    tagIndexScope=params.get('scope')==='online'?'online':'local';
+    tagIndexMode=params.get('view')==='cloud'?'cloud':'alphabet';
+    const category=params.get('category')||'all';
+    const categories=tagIndexScope==='online'?ONLINE_TAG_CATEGORIES:TAG_CATEGORIES;
+    tagIndexCategory=categories.some(([key])=>key===category)?category:'all';
+  }
+  return openIndex(kind,q??(params.get('q')||''),false);
+}
+/* 沉浸模式当前这一条写在 `?id=`（见 tokShow），刷新和后退都该回到同一条片子。 */
+function immerseStartId(){
+  const id=new URLSearchParams(location.search).get('id');
+  return /^\d+$/.test(id||'')?Number(id):undefined;
+}
+
 async function restoreRoute(){
   surfaceEpoch++;
   syncPageTitle(location.href);
-  const path=decodeURIComponent(location.pathname),parts=path.split('/').filter(Boolean);
-  const previousPath=lastRoutePath;lastRoutePath=path;
+  const path=decodeURIComponent(location.pathname);
   if(path==='/'&&new URLSearchParams(location.search).get('state')==='ads'){
     route(junkPath(),true);await restoreRoute();return;
   }
-  if(isCatalogPath(path)){
-    const params=new URLSearchParams(location.search);
-    const enteringHome=path==='/'&&previousPath!=='/';
-    if(enteringHome){barsDataCache=null;barsDataPromise=null}
-    if(path==='/junk-files'){
-      junkKind=cleanJunkKind(params.get('type')||'');
-      junkView=params.get('view')==='dismissed'?'dismissed':'pending';
-    }
-    state={...state,loc:params.get('loc')||'local,115',creator:params.get('creator')||'',studio:params.get('studio')||'',
-      tag:cleanTagFilter(params.get('tag')),tag_match:params.get('tag_match')==='any'?'any':'all',len:params.get('len')||'',
-      dur_min:params.get('dur_min')||'',dur_max:params.get('dur_max')||'',orient:params.get('orient')||'',
-      state:ROUTE_STATES[path]||params.get('state')||'',sort:cleanSort(params.get('sort')),
-      seed:params.get('seed')||(enteringHome?rollSeed():state.seed||rollSeed()),q:params.get('q')||'',jav:params.get('jav')||''};
-    $('#q').value=state.q;buildEdge();buildBars();load(true);return;
-  }
-  if(path==='/trash'){
-    state={...state,creator:'',studio:'',tag:'',orient:'',state:'trash',q:''};$('#q').value='';
-    buildEdge();buildBars();load(true);return;
-  }
-  if(path==='/playlists'){await openPlaylists(false);return}
-  if(parts[0]==='playlists'&&/^\d+$/.test(parts[1]||'')&&/^\d+$/.test(parts[2]||'')){await openPlaylist(+parts[1],+parts[2],false);return}
-  if(parts[0]==='mix'&&/^\d+$/.test(parts[1]||'')&&/^\d+$/.test(parts[2]||'')){await openMix(+parts[1],+parts[2],false);return}
-  if(parts[0]==='parts'&&/^\d+$/.test(parts[1]||'')&&/^\d+$/.test(parts[2]||'')){await openParts(+parts[1],+parts[2],false);return}
-  if(parts[0]==='editions'&&/^\d+$/.test(parts[1]||'')&&/^\d+$/.test(parts[2]||'')){await openEditions(+parts[1],+parts[2],false);return}
-  if(parts[0]==='item'&&/^\d+$/.test(parts[1]||'')){await openItem(+parts[1],false);return}
-  if(parts[0]==='follow'&&parts[1]==='item'&&/^\d+$/.test(parts[2]||'')){
-    await openFollow(false,true);await openFollowDetail(+parts[2],false);return}
-  const entityKind=ROUTE_ENTITIES[parts[0]];
-  if(entityKind&&parts.length>=2){await openEntity(entityKind,parts.slice(1).join('/'),false);return}
-  if(path==='/performers'||path==='/creators'||path==='/tags'){
-    const params=new URLSearchParams(location.search);
-    if(path==='/tags'){
-      tagIndexScope=params.get('scope')==='online'?'online':'local';
-      tagIndexMode=params.get('view')==='cloud'?'cloud':'alphabet';
-      const category=params.get('category')||'all';
-      const categories=tagIndexScope==='online'?ONLINE_TAG_CATEGORIES:TAG_CATEGORIES;
-      tagIndexCategory=categories.some(([key])=>key===category)?category:'all'}
-    await openIndex(path.slice(1),params.get('q')||'',false);return}
-  if(path==='/stats'){await openStats(false);return}
-  if(path==='/taste'){await openTaste(false);return}
-  if(path==='/review'){await openReview(false);return}
-  if(path==='/data-cleanup'){await openDataCleanup(false);return}
-  if(path==='/duplicates'){await openDuplicates(false);return}
-  if(path==='/resource-sync'){await openResourceSync(false);return}
-  if(path==='/quality-goals'){await openQualityGoals(false);return}
-  if(path==='/follow'){await openFollow(false);return}
-  if(path==='/follow-manage'){await openFollowManage(false);return}
-  if(path==='/immerse'){await openTok(undefined,false);return}
-  showHomeSurfaces();disposeStage(false);
+  /* 唯一的派发点：路径匹配哪条路由，就把那一屏打开。`push=false`——地址栏本来
+     就是它，再 `route()` 一次会往历史里塞一条重复记录。
+     `lastRoutePath` 等派发完再更新：目录页要拿它判断是不是刚从别处回到首页。 */
+  const hit=matchRoute(ROUTES,path);
+  try{
+    if(hit)await hit.route.open(hit.params,false);
+    else{showHomeSurfaces();disposeStage(false)}
+  }finally{lastRoutePath=path}
 }
 window.addEventListener('popstate',restoreRoute);
 buildEdge();
