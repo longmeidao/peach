@@ -197,30 +197,6 @@
 19. 另行授权后运行 `scripts/normalize_link_hosts.py --database <ledger> --apply --backup <落点>`，把 296 条 twitter 写法收成 x.com（290 改写、6 删除）；脚本现从 `peach.social_links` 取别名表，要在含该模块的检出里运行。随后集成 `agent/claude/social-links-and-marks`、重启托盘，在真实浏览器验收 `/link-mark` 的清晰度与边缘。用户复核 `peach-data/review/directory-links-20260902.csv` 后用 `install_entity_links.py` 装入；`-review.csv` 里 `conflict` 且账本旧号「疑似失效」的行由用户决定换号。后续可对账本现有全部 X 链接跑一遍同样的验活，把已封停的旧号清出资料页。javdatabase.com、javmodel.com 已确认不带本人社媒、不再作为社媒来源；Instagram↔X 互补待装入后从账本自身补。厂牌名一路：用户复核 `studio-names-20260902.csv` 的 26 条改名后另行授权改名（要同时动 `entity.canonical_name` 与 `asset.studio`），3 条不一致按「一个账本名混了两家」处理；5 条 404 未取得与 `Celeb no Tomo` 的官方社媒（`x.com/webhakusui`，无独立官网）走「厂牌名 + 公式／official」搜索兜底补齐；javdatabase 的日文名接进候选只用于补别名。厂牌头像的 icon／logo 分档机制与第一批 7 张小标已落地（见本批）；剩下 9 个补白字标厂牌（Attackers、SOD Create、kawaii、PREMIUM、OPPAI、Natural High、BangBros18、BangBus、MonstersOfCock）账本里连 `official` 链接都没有，要先按「厂牌名 + 公式／official」补上官网，再重跑 `scripts/harvest_studio_icons.py`；FC2-PPV 判为「只有小图标」（全站只有 16×16），下一步是另找更大的资产而不是放弃。用户复核 `studio-icons-20260902.csv` 时重点看 `content_aspect` 接近 2.2 的行（Fitch 1.84）。
 20. 把 javdatabase 的 idol 页接进社媒／官网候选。名字采集顺手落下 183 页缓存，逐页统计：**139 页（76%）带 X 链接、138 页带另一个官方站**（`t-powers.co.jp` 33、`blog.livedoor.jp` 23、`cmore.jp` 8、`prestige-av.com` 6、`sod.co.jp` 4 等事务所与厂牌名录页）。这比 laoshi.ink／bstar-pro 覆盖更高，而且**由番号定位、不需要离线比名**，是目录型采集之外的第三条路。实现时复用 `peach.social_links` 的判据与 `install_entity_links.py` 的 `FIELDS`，并把四个整站广告主机（`cospuri.com`、`join.virtualrealjapan.com`、`t.javhd-trk.com`、`clear-tv.com`，183 页全都出现）排掉——它们不是任何一个人的链接。
 
-## 批处理进度（自动生成）
+## 批处理进度
 
-<!-- job-status:start -->
-
-<!-- 由 scripts/job_status.py 生成，勿手改；数字现算于账本与产物 -->
-<!-- generated 2026-09-02T23:30+08:00 -->
-
-- 最近自动交接：`claude` / `SessionEnd` / `other`，2026-09-02T23:30:49+08:00。
-- 资产 75500 条，其中视频 22509 条。
-- 待抽帧（可抽 / 缺时长待 probe / 合计）：
-  - `local`：3 / 1 / 4
-  - `115`：10 / 129 / 139
-  - `pikpak`：8881 / 1310 / 10191
-  PikPak 的策略组已可切 DIRECT：2026-08-15 实测走代理时 9 帧 163 MB / 13.7 秒，走直连时 30.5 MB / 64.2 秒——慢约 4.7 倍但流量少约 5 倍且不占代理预算。全量抽帧仍是 773 GB 量级（代理口径），按创作者采样 88 板直连约 2.7 GB。115 一直走直连，同样动作约 285 MB 一张接触表。
-- 无内容标签视频 6056 条（占视频 27%）。
-- `asset_tag` 来源分布：`vision_creator` 23823、`pixiv_tag` 19753、`name` 17201、`stash` 12858、`javinizer:r18dev:tag` 1966、`performer` 1589、`follow` 1376、`r18:performer` 1102、`javinizer:fc2:tag` 950、`javinizer:mgstage:tag` 791、`javinizer:javbus:tag` 772、`r18` 490、`javinizer:aventertainment:tag` 74、`javbus:performer` 36、`javinizer:r18dev:performer` 33、`javinizer:libredmm:tag` 20、`javinizer:dmm:tag` 13。
-- 番号 1481 个，其中 1181 个有厂牌（80%）。
-
-| 产物 | 行数 | 生成时间（本地） | 说明 |
-| --- | ---: | --- | --- |
-| `code-scrape.csv` | 1135 | 08-22 10:39 | 番号刮削结果 |
-| `name-clean.csv` | 0 | 08-30 20:28 | 文件名净化清单 |
-| `ad-candidates.csv` | 82 | 08-14 22:53 | 广告候选（confidence 分级） |
-| `disposal-candidates.csv` | 54 | 08-14 22:53 | 待处置候选（含「保留」判定） |
-| `creator-tags-review.csv` | 86 | 08-15 18:35 | 创作者标签待审 |
-
-<!-- job-status:end -->
+账本与产物的现算数字由 Stop/SessionEnd hook 写进 `peach-data/state/job-status.md`（不进 Git，本机直接看）；手动重算跑 `python scripts/job_status.py`。

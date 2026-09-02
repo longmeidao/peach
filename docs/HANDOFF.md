@@ -63,7 +63,8 @@
 - 结论被修正时，所有派生产物必须重建；只改说明文字不够。过期删除清单比没有清单更危险。
 - verdict 旁必须保存证据和来源；完成前把声明意图与数据库实际行对账。
 - 直接证据：视觉逐条任务在聊天里说「已保存」但 `asset_tag` 的 `source='vision'` 为 0——根本没有写入步骤，不是模型拒绝；`disposal-candidates.csv` 在 `BNST033` 修正后未重建，把真实 3.2 GB 正片列为待删。
-- Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hook，调用 `scripts/job_status.py --write --hook-event`。脚本只记录脱敏生命周期摘要，重新从 ledger/产物计算数字，并原子更新 `docs/STATUS.md` 的 `<!-- job-status -->` 受管区块；不复制 prompt、response 或凭据。强制杀进程/断电无法运行 hook，下次调用会修复计数。Codex 暂无等价项目结束 hook，仍由协调者在同一改动里更新文档；不要用脆弱日志监听器模拟。
+
+Claude 的 `.claude/settings.json` 已配置 Stop、StopFailure、SessionEnd hook，用 `${CLAUDE_PROJECT_DIR}/.venv/Scripts/python.exe` 调 `scripts/job_status.py --write --hook-event`。脚本只记录脱敏生命周期摘要，重新从 ledger/产物计算数字，原子写入 `peach-data/state/job-status.md`（不进 Git，STATUS.md 只留指针）；不复制 prompt、response 或凭据。强制杀进程或断电时 hook 不会运行，下次调用会补上。隔离工作树没有 `.venv`，工作者会话不写这份状态——机器级进度只由主检出的会话记录。
 
 ## 中文文档写作规范
 

@@ -18,17 +18,22 @@ SPEC.loader.exec_module(MODULE)
 
 
 class JobStatusTests(unittest.TestCase):
-    def test_hook_works_without_a_worktree_virtual_environment(self) -> None:
+    def test_hooks_name_an_explicit_interpreter(self) -> None:
+        """hook 不许用裸 `python`。
+
+        这台机器上裸 `python` 曾解析到 Microsoft Store 的 MSIX 别名：路径存在、
+        执行报 FileNotFoundError，而 hook 的失败没人盯着看。写成项目内的
+        `.venv` 解释器，缺了就是缺了，不会解析到另一个 Python。"""
         settings = json.loads(
             (SCRIPT.parents[1] / ".claude" / "settings.json").read_text(encoding="utf-8")
         )
-        commands = [
+        commands = {
             hook["command"]
             for event in settings["hooks"].values()
             for matcher in event
             for hook in matcher["hooks"]
-        ]
-        self.assertEqual(commands, ["python", "python", "python"])
+        }
+        self.assertEqual(commands, {"${CLAUDE_PROJECT_DIR}/.venv/Scripts/python.exe"})
         result = subprocess.run(
             [sys.executable, str(SCRIPT), "--help"],
             cwd=SCRIPT.parents[1],
@@ -82,6 +87,34 @@ class JobStatusTests(unittest.TestCase):
             timedelta(0),
             "存储一律 UTC，这一半不能跟着显示口径走",
         )
+
+    def test_the_generated_block_lands_outside_the_repository(self) -> None:
+        """自动区块写进 peach-data/state/，不写被跟踪的 STATUS.md。
+
+        它每次 hook 都重算，写进 Git 里的文件就等于让工作区永远 modified，
+        每个智能体都得先分辨「这行是我改的还是 hook 改的」；而 `--state` 的
+        默认值曾经写死在 `R:\\peach-data`，数据根搬走后半年没人发现。"""
+        from peach.config import STATE_DIR
+
+        self.assertEqual(MODULE.DOC, STATE_DIR / "job-status.md")
+        self.assertEqual(MODULE.STATE, STATE_DIR / "agent-handoff.json")
+        repo = SCRIPT.parents[1]
+        self.assertNotIn(repo, MODULE.DOC.parents, "自动产物不能落在仓库里")
+        status = (repo / "docs" / "STATUS.md").read_text(encoding="utf-8")
+        self.assertNotIn(MODULE.START, status, "STATUS.md 不再持有受管区块")
+        self.assertIn("peach-data/state/job-status.md", status, "STATUS.md 要留一行指针")
+
+    def test_write_back_creates_the_document_when_it_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            doc = Path(root) / "state" / "job-status.md"
+            self.assertEqual(MODULE.write_back(doc, [MODULE.START, "fresh", MODULE.END]),
+                             "新建了区块")
+            self.assertEqual(MODULE.write_back(doc, [MODULE.START, "again", MODULE.END]),
+                             "替换了已有区块")
+            text = doc.read_text(encoding="utf-8")
+            self.assertTrue(text.startswith("# 批处理进度（自动生成）"), text[:40])
+            self.assertIn("again", text)
+            self.assertNotIn("fresh", text)
 
     def test_write_back_replaces_only_managed_block(self) -> None:
         with tempfile.TemporaryDirectory() as root:
