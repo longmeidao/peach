@@ -26,9 +26,8 @@ import httpx
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach.review_csv import read_rows   # noqa: E402
+from peach.scripting import USER_AGENT   # noqa: E402
 
-USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-              "(KHTML, like Gecko) Chrome/128.0 Safari/537.36")
 LINK_KINDS = {"official", "social", "catalog", "source_reference"}
 FIELDS = ("entity_id", "kind", "name", "link_kind", "label", "url", "evidence")
 

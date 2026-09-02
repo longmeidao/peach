@@ -35,9 +35,9 @@ from peach.logo_provider import (  # noqa: E402
 from peach.config import GENERATED_DIR  # noqa: E402
 from peach.social_links import twimg_tiers  # noqa: E402
 from peach.review_csv import read_rows, write_rows
+from peach.scripting import USER_AGENT
 
 RESOLVER = "https://unavatar.io/{platform}/{handle}?json"
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Peach/0.6"
 FIELDS = (
     "studio", "handle", "platform", "resolver_url", "resolved_url", "width",
     "height", "aspect", "verdict", "saved", "accepted", "confirmation",

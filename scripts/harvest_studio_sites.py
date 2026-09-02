@@ -29,9 +29,8 @@ from peach.config import STATE_DIR   # noqa: E402
 from peach.http import HttpRequest, HttpxTransport   # noqa: E402
 from peach.jobs import job_main   # noqa: E402
 from peach.review_csv import read_rows, write_rows   # noqa: E402
+from peach.scripting import USER_AGENT   # noqa: E402
 
-USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-              "(KHTML, like Gecko) Chrome/128.0 Safari/537.36")
 TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.S | re.I)
 # 抢注页与停放页的自述。它们同样会 200，也同样会在标题里回显域名，
 # 只有这些词能把它们和真站区分开。

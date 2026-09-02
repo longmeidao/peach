@@ -31,9 +31,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach.entities import name_chain   # noqa: E402
 from peach.review_csv import write_rows   # noqa: E402
+from peach.scripting import USER_AGENT   # noqa: E402
 
-USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-              "(KHTML, like Gecko) Chrome/128.0 Safari/537.36")
 ANCHOR = re.compile(r'<a\s[^>]*href=["\']([^"\']+)["\']([^>]*)>(.*?)</a>', re.S | re.I)
 TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.S | re.I)
 FIELDS = ("entity_id", "kind", "name", "link_kind", "label", "url", "evidence",

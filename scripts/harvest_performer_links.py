@@ -30,12 +30,11 @@ from peach.entities import name_chain   # noqa: E402,F401  测试从本模块取
 from peach.http import HttpRequest, HttpxTransport   # noqa: E402
 from peach.jobs import job_main   # noqa: E402
 from peach.review_csv import write_rows   # noqa: E402
+from peach.scripting import USER_AGENT   # noqa: E402
 # 平台判据与选人规则和目录型采集器共用，定义在 peach.social_links；这里只保留 minnano-av 的解析。
 from peach.social_links import classify, load_performers, under   # noqa: E402,F401
 
 SEARCH = "https://www.minnano-av.com/search_result.php?search_scope=actress&search_word="
-USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-              "(KHTML, like Gecko) Chrome/128.0 Safari/537.36")
 ACTRESS_PAGE = re.compile(r"/actress(\d+)\.html")
 FIELD = re.compile(r"<td[^>]*>\s*<span[^>]*>(.*?)</span>(.*?)</td>", re.S)
 HREF = re.compile(r'href=["\']([^"\']+)["\']')

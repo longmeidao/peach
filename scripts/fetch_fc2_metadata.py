@@ -53,10 +53,9 @@ if str(SRC_DIR) not in sys.path:
 
 from peach.catalog_rules import normalise_code_key
 from peach.review_csv import read_rows, write_rows
+from peach.scripting import USER_AGENT
 from peach.config import DATABASE_PATH, GENERATED_DIR
 
-UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-      "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 ARTICLE_URL = "https://fc2cmadb.com/articles/{video_id}"
 FC2_COVER_WIDTH = 1200
 #: Inertia 把整个 props 树放在这个 script 标签里，正文 HTML 反而是空壳。
@@ -469,7 +468,7 @@ def run(args: argparse.Namespace) -> int:
     args.raw.parent.mkdir(parents=True, exist_ok=True)
     raw_log = args.raw.open("w", encoding="utf-8")
     print(f"待抓 {len(todo)} 个 FC2 作品", flush=True)
-    with httpx.Client(cookies=jar, headers={"User-Agent": UA},
+    with httpx.Client(cookies=jar, headers={"User-Agent": USER_AGENT},
                       follow_redirects=True) as client:
         for index, (code, video_id) in enumerate(todo, 1):
             try:

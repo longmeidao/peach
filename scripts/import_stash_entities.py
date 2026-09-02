@@ -27,6 +27,7 @@ if str(SRC_DIR) not in sys.path:
 from peach.config import DATABASE_PATH, GENERATED_DIR
 from peach.http import HttpRequest, HttpTransport, HttpxTransport
 from peach.migrations import sqlite_backup
+from peach.scripting import host_under
 from peach.stash import StashClient
 
 
@@ -42,18 +43,9 @@ def normalized(value: str) -> str:
 SOCIAL_HOSTS = ("x.com", "twitter.com", "instagram.com", "youtube.com", "tiktok.com")
 
 
-def under(host: str, domains: tuple[str, ...]) -> bool:
-    """host 是否就是这些域名之一或它们的子域。
-
-    直接用 `endswith` 会把 `notx.com` 判成 x.com——后缀匹配必须落在点边界上，
-    否则任何人注册一个以平台名结尾的域名就能让链接在资料页上显示成官方社交账号。
-    """
-    return any(host == domain or host.endswith("." + domain) for domain in domains)
-
-
 def link_kind(url: str) -> str:
     host = (urlsplit(url).hostname or "").casefold()
-    if under(host, SOCIAL_HOSTS):
+    if host_under(host, SOCIAL_HOSTS):
         return "social"
     return "catalog"
 

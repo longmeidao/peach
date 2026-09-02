@@ -58,14 +58,13 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from peach.review_csv import ENCODING, read_rows, write_rows
+from peach.scripting import USER_AGENT
 from peach.config import COVER_DIR, DATABASE_PATH, GENERATED_DIR, SOURCES_DIR
 from peach.http import HttpRequest, HttpTransport, HttpxTransport
 from peach.jobs import DiskGuard, JobPolicyError
 from peach.platform import system_volume
 from peach.catalog_rules import is_jav_code, normalise_code_key
 
-UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-      "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 AWS_LEGACY_DIGITAL = (
     "https://awsimgsrc.dmm.co.jp/pics_dig/digital/video/{cid}/{cid}pl.jpg"
 )
@@ -168,7 +167,7 @@ class _MGSDetailParser(HTMLParser):
 def _fetch(transport: HttpTransport, url: str, *, referer: str,
            limit: int, ranged: bool = False,
            extra_headers: dict[str, str] | None = None) -> bytes:
-    headers = {"User-Agent": UA, "Referer": referer,
+    headers = {"User-Agent": USER_AGENT, "Referer": referer,
                "Accept-Language": "ja,en;q=0.9"}
     if extra_headers:
         headers.update(extra_headers)
