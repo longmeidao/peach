@@ -418,10 +418,6 @@ def pending(database: Path, limit: int) -> list[tuple[str, str]]:
     return ordered[:limit] if limit else ordered
 
 
-def _write_csv(path: Path, fields: tuple[str, ...], rows: list[dict]) -> None:
-    write_rows(path, fields, rows)
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=DATABASE_PATH)
@@ -452,7 +448,7 @@ def run(args: argparse.Namespace) -> int:
         candidates = metadata_candidate_rows(
             rows, args.db, raw_snapshot=args.log, fetched_at=fetched_at,
         )
-        _write_csv(args.metadata_log, METADATA_FIELDS, candidates)
+        write_rows(args.metadata_log, METADATA_FIELDS, candidates)
         print(f"完成：{len(candidates)} 个 FC2 元数据字段候选 -> {args.metadata_log}")
         return 0
     if args.cookies is None:
@@ -494,9 +490,9 @@ def run(args: argparse.Namespace) -> int:
                 mark = "合集" if data["is_collection"] else (data["performers"] or "无演员标记")
                 print(f"[{index}/{len(todo)}] 取得 {code} {mark}", flush=True)
             # 每条都落盘：上次抓取死在半路时进度全丢，重来一遍是三小时。
-            _write_csv(args.log, FIELDS, backfill(rows, collected))
-            _write_csv(args.harvest, HARVEST_FIELDS, harvest_rows(collected, owned))
-            _write_csv(args.metadata_log, METADATA_FIELDS, metadata_candidate_rows(
+            write_rows(args.log, FIELDS, backfill(rows, collected))
+            write_rows(args.harvest, HARVEST_FIELDS, harvest_rows(collected, owned))
+            write_rows(args.metadata_log, METADATA_FIELDS, metadata_candidate_rows(
                 backfill(rows, collected), args.db, raw_snapshot=args.log,
                 fetched_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             ))

@@ -13,7 +13,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 from peach import catalog_rules, scripting
-from peach.migrations import sqlite_backup, upgrade
+from peach.migrations import upgrade
 from peach.classification import is_probable_mainstream_release, is_structural_creator
 
 
@@ -22,10 +22,22 @@ MIGRATIONS = ROOT / "migrations"
 
 
 def load_script(name: str):
+    """按路径加载 `scripts/<name>.py`。
+
+    执行前先登记进 `sys.modules`：`@dataclass` 处理注解时要按 `cls.__module__` 回查
+    模块，没登记就拿到 `None`，报出来的是 `'NoneType' object has no attribute
+    '__dict__'`——和脚本本身毫无关系。前缀不用 `test_`，否则加载 `agent_worktree`
+    会把真正的 tests/test_agent_worktree.py 从 `sys.modules` 里顶掉。
+    """
     path = ROOT / "scripts" / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(f"test_{name}", path)
+    spec = importlib.util.spec_from_file_location(f"peach_script_{name}", path)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(spec.name, None)
+        raise
     return module
 
 
@@ -148,11 +160,11 @@ class OperationalScriptTests(unittest.TestCase):
         `_detail_tag_types`；备份先做、分批提交，中断一次不至于白跑五十分钟。
         """
         backfill = load_script("backfill_rule34_tag_types")
-        # 备份走共享的 `sqlite_backup`，WAL 正确性由 `scripting` 那条回归测试守住；
-        # 这里只钉「用的是那一份」。以前这条断言读的是源码里有没有
-        # `reader.backup(writer)` 这串字符，脚本改成调用共享实现就红了——而行为
-        # 恰恰是变好了。
-        self.assertIs(backfill.sqlite_backup, sqlite_backup)
+        # 连接与备份走共享的 `open_for_write`／`open_readonly`，WAL 正确性由
+        # `scripting` 那条回归测试守住；这里只钉「用的是那一份」。以前这条断言读的是
+        # 源码里有没有 `reader.backup(writer)` 这串字符，脚本改成调用共享实现就红了
+        # ——而行为恰恰是变好了。
+        self.assertIs(backfill.open_for_write, scripting.open_for_write)
         self.assertIs(backfill.open_readonly, scripting.open_readonly)
         self.assertEqual(backfill.BACKUP_REQUIRED, scripting.BACKUP_REQUIRED)
 
@@ -417,9 +429,11 @@ class OperationalScriptTests(unittest.TestCase):
             )
             connection.commit(); connection.close()
 
+            backup_path = root / "ledger.pre-clean-names.db"
             result = self.clean_names.main([
                 "--db", str(db), "--out", str(root / "plan.csv"),
-                "--log-dir", str(root / "logs"), "--apply",
+                "--log-dir", str(root / "logs"),
+                "--apply", "--backup", str(backup_path),
             ])
 
             self.assertEqual(result, 0)
@@ -436,9 +450,7 @@ class OperationalScriptTests(unittest.TestCase):
                 (2, "ABW-234 (2).mp4", "ABW-234"),
                 (3, "MIDE-950-C.mp4", "MIDE-950"),
             ])
-            backups = list(root.glob("ledger.pre-jav-filename-normalize-*.db"))
-            self.assertEqual(len(backups), 1)
-            backup = sqlite3.connect(backups[0])
+            backup = sqlite3.connect(backup_path)
             self.assertEqual(backup.execute("PRAGMA integrity_check").fetchone()[0], "ok")
             self.assertEqual(backup.execute("SELECT count(*) FROM asset").fetchone()[0], 3)
             backup.close()
@@ -1700,6 +1712,42 @@ class ScriptingConventionTests(unittest.TestCase):
         self.assertFalse(parser.parse_args([]).apply)
         with self.assertRaises(SystemExit):
             parser.parse_args(["--database", str(self.db)])
+
+    #: 会真写 ledger、已经收口到本模块的脚本。
+    LEDGER_WRITERS = (
+        "backfill_rule34_tag_types",
+        "clean_names",
+        "install_entity_links",
+        "localize_performer_names",
+        "localize_series_names",
+        "merge_duplicate_identities",
+    )
+
+    def test_every_ledger_writer_takes_the_same_three_write_arguments(self):
+        """写入脚本的参数名只有一套。
+
+        曾经并存 `--database`（必填）和 `--backup-dir`（目录）。名字不同的同义参数会让
+        「上次那条命令」在另一个脚本上直接报错，而报错只说缺参数——不说改成什么。
+        """
+        for name in self.LEDGER_WRITERS:
+            with self.subTest(script=name):
+                parser = load_script(name).build_parser()
+                dests = {action.dest for action in parser._actions}
+                self.assertLessEqual({"db", "apply", "backup"}, dests)
+                self.assertNotIn("database", dests)
+                self.assertNotIn("backup_dir", dests)
+
+    def test_every_ledger_writer_opens_the_ledger_through_this_module(self):
+        """连接、备份、拒绝三件事只有一处实现。
+
+        判据落在「用的是不是同一个函数」上，而不是源码里出现过哪个字符串：脚本各自
+        `sqlite3.connect` 时，dry-run 拿到的是可写连接，「这一趟绝不写库」只是靠读代码
+        维持的约定。
+        """
+        for name in self.LEDGER_WRITERS:
+            with self.subTest(script=name):
+                module = load_script(name)
+                self.assertIs(module.open_for_write, scripting.open_for_write)
 
     def test_rate_limiter_waits_the_remainder_rather_than_the_full_interval(self):
         now = [100.0]

@@ -34,9 +34,10 @@ if str(SRC_DIR) not in sys.path:
 
 from peach.config import GENERATED_DIR
 from peach.follow_sources import FollowSourceError, build_connector
-from peach.migrations import sqlite_backup
 from peach.review_csv import write_rows
-from peach.scripting import BACKUP_REQUIRED, add_ledger_write_args, open_readonly
+from peach.scripting import (
+    BACKUP_REQUIRED, add_ledger_write_args, open_for_write, open_readonly,
+)
 
 FIELDS = ("item_id", "external_id", "url", "result", "tag_types", "note")
 
@@ -97,8 +98,7 @@ def run(args: argparse.Namespace) -> int:
     if args.apply and not args.backup:
         print(BACKUP_REQUIRED, file=sys.stderr)
         return 2
-    database = args.db.resolve()
-    with open_readonly(database) as reader:
+    with open_readonly(args.db) as reader:
         rows = pending_rows(reader, args.limit)
         total = reader.execute(
             "SELECT COUNT(*) FROM follow_item i JOIN follow_source s ON s.id=i.source_id"
@@ -111,10 +111,9 @@ def run(args: argparse.Namespace) -> int:
     before = after = 0
     if args.apply:
         # 备份先做，批量写入才敢分批落。整轮跑完再一次性写，中断一次就等于白跑
-        # 五十分钟——而这一趟本来就是可反复运行的。
-        sqlite_backup(database, args.backup)
+        # 五十分钟——而这一趟本来就是可反复运行的。备份由 `open_for_write` 落。
+        writer = open_for_write(args)
         print(f"备份：{args.backup}", flush=True)
-        writer = sqlite3.connect(database)
         before = writer.execute("SELECT COUNT(*) FROM follow_item").fetchone()[0]
 
     connector = build_connector("rule34xxx")
