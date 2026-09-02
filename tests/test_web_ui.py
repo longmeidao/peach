@@ -2737,9 +2737,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const edition=queue.kind==='editions'&&x.edition_label")
         self.assertPageContains(
             "EDITION_TONE={'中字':'subtitle','无码':'uncensored','无码破解':'cracked','有码':'censored'}")
-        self.assertPageContains('<span class="mixitemtext">${edition}<b data-middle-truncate>')
-        # 徽章自己占一行，跟着标题走会被块级截断规则压掉。
-        self.assertPageContains(".mixitemtext .qedition{display:flex;width:fit-content")
+        self.assertPageContains(
+            '<span class="mixitemtext"><span class="mixitemhead">${edition}<b data-middle-truncate>')
+        # 徽章和标题同一行，所以标题那一行要自己成为 flex 容器；`<i>` 默认斜体，
+        # 徽章不是强调语气，font-style 必须写死。
+        self.assertPageContains(
+            ".mixitemtext .mixitemhead{display:flex;align-items:center;gap:5px;margin-top:0;color:var(--ink)}")
+        self.assertPageContains(".mixitemtext .mixitemhead b{flex:1;min-width:0}")
+        self.assertPageContains(".mixitemtext .qedition{flex:none;font-style:normal}")
         self.assertPageContains(".javedition.censored{color:var(--muted)}")
 
     def test_queue_thumbnails_fall_back_to_the_jav_cover(self):
