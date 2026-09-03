@@ -64,15 +64,6 @@ class CopyFinalStateTests(unittest.TestCase):
         # ADR 正文的内容就是决策与被否掉的备选方案，本门槛不适用。
         self.assertFalse(any(path.startswith("docs/adr/") for path in picked))
 
-    def test_temporary_exclusions_name_files_that_exist(self):
-        """排除清单是临时的，由协调者在并行分支合并后删掉。
-
-        列进来的文件被别的工作者持有，本分支不改它们。文件消失时清单要跟着消失，
-        否则它会变成一份没人核对的永久豁免。
-        """
-        for rel in checker.TEMPORARY_EXCLUSIONS:
-            self.assertTrue((ROOT / rel).is_file(), rel)
-
 
 if __name__ == "__main__":
     unittest.main()

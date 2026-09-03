@@ -1,6 +1,6 @@
 """给「只有宽幅字标」和「一张图都没有」的厂牌补标识，出 `icon` 与 `logo` 两个变体。
 
-已安装的厂牌图里有一部分本来是宽条字标，`normalize_studio_logos.py` 的边车记着它们。
+已安装的厂牌图里有一部分源图是宽条字标，`normalize_studio_logos.py` 的边车记着它们。
 补方让这些字标在 160px 的厂牌页大位上好看，但塞进筛选片那种 28px 的小圆里只剩一条糊字，
 所以小位要另找一枚方标。社媒头像早就分 icon / logo 两用，厂牌按同一条判断走。另有一批
 厂牌连一张图都没有（账本里现在是 Hon Naka），它们不在那份名单里，可两个位置一样空着，
@@ -35,7 +35,7 @@ BANGBROS），是错图。两位装的都是方图：页面三处取图位都是
 入口只有这一个，`normalize_studio_logos.py` 是同一条规则对历史文件的回溯。
 
 默认只出复核 CSV 和候选 PNG，不碰已安装的目录。`--install` 才写 `<safe>.icon.img`
-与 `<safe>.logo.img`；`<safe>.img` 只在原本不存在时补写一份，已有的一个字节都不动。
+与 `<safe>.logo.img`；`<safe>.img` 只在尚不存在时补写一份，已有的一个字节都不动。
 """
 from __future__ import annotations
 
@@ -114,7 +114,7 @@ def padded_studios(logo_root: Path) -> dict[str, dict[str, object]]:
     """已安装图里哪些是补白过的字标。
 
     判据是 `normalize_studio_logos.py` 当时留下的边车，不是现在的像素比例——补白之后
-    每一张都是方的，从成品上再也看不出原来是不是条状。
+    每一张都是方的，从成品上再也看不出源图是不是条状。
     """
     found: dict[str, dict[str, object]] = {}
     for sidecar in sorted(logo_root.glob("*.img.normalization.json")):
@@ -449,7 +449,7 @@ def harvest(targets: dict[str, dict[str, str]],
 def install(rows: list[dict[str, object]], logo_root: Path) -> list[str]:
     """把可装的候选落成 `<safe>.icon.img` / `<safe>.logo.img`。
 
-    这两个都是新文件名，不覆盖也不删除现有的 `<safe>.img`。只有原本**没有**
+    这两个都是新文件名，不覆盖也不删除现有的 `<safe>.img`。只有尚**没有**
     `<safe>.img` 的厂牌才补写一份：不带 `variant` 和认不出的 `variant` 都回落到它，
     缺了那些位置仍然 404。
 

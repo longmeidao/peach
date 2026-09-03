@@ -70,17 +70,6 @@ _TEST_NAME_RULES = tuple(
     (re.compile(pattern), message) for pattern, message in TEST_NAME_RULES
 )
 
-#: 临时排除：这些文件正由另一个工作者改，由协调者在合并后删掉本清单。
-TEMPORARY_EXCLUSIONS: frozenset[str] = frozenset({
-    "src/peach/images.py",
-    "scripts/harvest_studio_icons.py",
-    "scripts/normalize_studio_logos.py",
-    "scripts/fetch_studio_avatar_candidates.py",
-    "tests/test_studio_icon_variants.py",
-    "docs/SOURCING.md",
-    "docs/STATUS.md",
-})
-
 #: 词表在这两个文件的正文里必须能被写出来，否则规则无法自我描述。
 SELF_DESCRIBING: frozenset[str] = frozenset({
     "scripts/check_copy_final_state.py",
@@ -191,7 +180,7 @@ def scan_repo(root: Path = ROOT) -> list[Finding]:
     found: list[Finding] = []
     for path in targets(root):
         rel = path.relative_to(root).as_posix()
-        if rel in TEMPORARY_EXCLUSIONS or rel in SELF_DESCRIBING:
+        if rel in SELF_DESCRIBING:
             continue
         source = path.read_text(encoding="utf-8")
         if path.suffix == ".py":

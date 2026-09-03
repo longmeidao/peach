@@ -850,8 +850,8 @@ class WebUiSourceTests(unittest.TestCase):
         """svg 默认是 inline，行盒底下留着基线以下的空档。
 
         `place-items:center` 居中的是行盒不是图形，实测图标偏上 2.7px（26px 高的
-        标签里上留 1.8px、下留 7.2px）。排序行原先靠 `.sorts .javlayout` 上两条一次性
-        修补躲开它，别处用同一个开关就露馅了——改成组件自己出 block。
+        标签里上留 1.8px、下留 7.2px）。靠 `.sorts .javlayout` 上的一次性修补躲开它，别处用同一个开关就露馅，
+        所以组件自己出 block。
         """
         self.assertPageContains(
             ".iconswitch svg{display:block;width:17px;height:17px;")

@@ -146,10 +146,9 @@ class PageSourceTests(unittest.TestCase):
             '/logo?studio=${encodeURIComponent(x.k)}&variant=icon',
             '/logo?studio=${encodeURIComponent(item.name)}&variant=icon',
         ):
-            # 原先还有第四处：`.entityfavicon` 的 error 监听里按 `img.dataset.studio`
-            # 换厂牌图标。那个分支取不到——两处生成 `.entityfavicon` 的模板都不写
-            # `data-studio`，条件永远为假。监听整块已随图片回退改成声明式而删除；
-            # 「不许漏 variant」由下面那条按行扫描的断言守，重新加回来也拦得住。
+            # 小位只有这三处；`.entityfavicon` 的模板不写 `data-studio`，图片回退是
+            # 声明式的，不存在按 `img.dataset.studio` 换图的第四处。「不许漏 variant」
+            # 由下面那条按行扫描的断言守。
             with self.subTest(snippet=snippet):
                 self.assertIn(snippet, self.source)
 
@@ -176,7 +175,7 @@ class PaddedStudioTests(unittest.TestCase):
             json.dumps(payload), encoding="utf-8")
 
     def test_only_padded_files_are_candidates(self):
-        """补白之后每一张都是方的，从像素上再也看不出原来是条状——只能认边车。"""
+        """补白之后每一张都是方的，从像素上再也看不出源图是条状——只能认边车。"""
         self.sidecar("FC2-PPV")
         self.sidecar("Alice_JAPAN", action="keep")
         (self.logos / "S1.img").write_bytes(b"x")
