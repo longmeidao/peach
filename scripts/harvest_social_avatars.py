@@ -27,6 +27,8 @@ r"""社媒存在感扩张：从已核实的 X 账号走到集链页，扩张全�
   X          profile_images 原图（无尺寸后缀），失败退 _400x400 / _200x200
   lit.link   creators/<uuid>/icons/<uuid>.jpe
   babepedia  /pics/<Babe>.jpg —— creator 实体走 babepedia-candidates.csv 的命中行
+  jae        Japan Adult Expo 名录里厂商自己交的人像 —— 走
+             harvest_directory_links.py 产的 jae-performer-links-portraits.csv 命中行
 Instagram 登出页拿不到头像图；TikTok 的 oembed 头像只有百来像素——都只记链接。
 
 身份闸门是链式核验：minnano-av 重定向装进账本 → X 页 og:title 命中名字链 →
@@ -56,7 +58,9 @@ from peach.avatar_provider import (   # noqa: E402
     inspect_avatar,
     provenance_now,
 )
-from peach.config import DATABASE_PATH, GENERATED_DIR, STATE_DIR   # noqa: E402
+from peach.config import (   # noqa: E402
+    DATABASE_PATH, GENERATED_DIR, REVIEW_DIR, STATE_DIR,
+)
 from peach.http import HttpRequest, HttpTransport, HttpxTransport   # noqa: E402
 from peach.review_csv import read_rows, write_rows   # noqa: E402
 from peach.scripting import (   # noqa: E402
@@ -68,6 +72,8 @@ from peach.social_links import twimg_tiers   # noqa: E402
 X_HOSTS = ("x.com", "twitter.com", "mobile.twitter.com")
 AGGREGATOR_HOSTS = ("lit.link", "linktr.ee", "allmylinks.com", "twpf.jp")
 BLOG_HOSTS = ("ameblo.jp", "lineblog.me", "note.com", "livedoor.jp", "hatenablog.com")
+#: 候选的 provider 归到哪个内容寻址缓存。
+PROVIDER_CACHES = {"social-web": "social", "babepedia": "babepedia", "jae": "jae"}
 SOCIAL_LABELS = {
     ("instagram.com",): "Instagram",
     ("threads.net", "threads.com"): "Threads",
@@ -317,15 +323,32 @@ def load_babepedia_rows(path: Path) -> dict[int, dict]:
     return out
 
 
+def load_jae_rows(path: Path) -> dict[int, list[dict]]:
+    """jae 人像候选表 → {entity_id: [行]}，只留唯一命中的。
+
+    2014／2015／2017 三届各有一张，同一个人可能占三行；三张一起进竞选，谁大用谁。
+    """
+    out: dict[int, list[dict]] = {}
+    if not path.is_file():
+        return out
+    for row in read_rows(path):
+        if str(row.get("verdict") or "") != "命中" or not row.get("portrait_url"):
+            continue
+        if str(row.get("entity_id") or "").isdigit():
+            out.setdefault(int(row["entity_id"]), []).append(row)
+    return out
+
+
 def load_targets(connection: sqlite3.Connection, avatar_dir: Path,
                  entities: list[int], force: bool) -> list[dict]:
     """本轮要跑的人：缺头像、且至少有一条可扩张的路径。
 
-    performer 走社媒路线（账本里有 X 链接）；creator 走 babepedia 路线
-    （babepedia-candidates.csv 的命中行）。一个人两条路都有就两条都走——
+    performer 走社媒路线（账本里有 X 链接）与 jae 名录路线（jae 人像候选表的命中行）；
+    creator 走 babepedia 路线（babepedia-candidates.csv 的命中行）。几条路都有就都走——
     头像竞选不看路线，谁的最大最清晰用谁。
     """
     babe = load_babepedia_rows(GENERATED_DIR / "babepedia-candidates.csv")
+    jae = load_jae_rows(REVIEW_DIR / "jae-performer-links-portraits.csv")
     x_links: dict[int, str] = {}
     for entity_id, url in connection.execute(
             "SELECT entity_id, url FROM entity_link WHERE hostname IN "
@@ -352,6 +375,8 @@ def load_targets(connection: sqlite3.Connection, avatar_dir: Path,
             routes["x"] = x_links[entity_id]
         if entity_id in babe:
             routes["babepedia"] = babe[entity_id]
+        if entity_id in jae:
+            routes["jae"] = jae[entity_id]
         if not routes:
             continue
         targets.append({**info, "routes": routes})
@@ -500,6 +525,31 @@ def harvest_entity(record: dict, http: HttpTransport, limiter: HostLimiter,
                              f"回配判定「{babe_row.get('verdict', '')}」"),
             })
 
+    # jae 路线（performer）。名字判定在 harvest_directory_links.py 那一步做完，只收 `命中`
+    # 的行，这里不重新猜人——头像装错人和链接装错人是同一个错误。
+    for jae_row in record["routes"].get("jae") or ():
+        portrait = str(jae_row.get("portrait_url") or "")
+        got = fetch_image(http, portrait, timeout, limiter)
+        if got is None:
+            notes.append(f"jae 名录人像未取得或不是可用图片：{portrait}")
+            continue
+        _, inspected = got
+        object_path = caches["jae"].store(portrait, got[0], inspected)
+        page = str(jae_row.get("page") or "")
+        matched = str(jae_row.get("matched_name") or "")
+        candidates.append({
+            "provider": "jae", "source_kind": "official_directory",
+            "source_url": portrait,
+            "external_id": f"jae:{page.rsplit('/', 1)[-1] or page}",
+            "width": inspected.width, "height": inspected.height,
+            "mime_type": inspected.mime_type, "sha256": inspected.sha256,
+            "object_path": object_path,
+            "matched": matched, "name_source": "jae_directory",
+            "identity_verified": str(jae_row.get("verdict") or "") == "命中",
+            "evidence": (f"jae 名录「{matched}」人像 "
+                         f"{inspected.width}×{inspected.height}，页面 {page}"),
+        })
+
     return {"links": links, "candidates": candidates, "notes": notes}
 
 
@@ -628,13 +678,14 @@ def build_parser() -> argparse.ArgumentParser:
 def run(args) -> int:
     limiter = HostLimiter({
         "x.com": 2.0, "pbs.twimg.com": 0.3, "lit.link": 1.5,
-        "babepedia.com": 3.0, "linktr.ee": 2.0,
+        "babepedia.com": 3.0, "linktr.ee": 2.0, "jae.tokyo": 1.2,
     })
     connection = open_readonly(args.db)
     http = HttpxTransport()
     caches = {
         "social": AvatarCandidateCache(args.cache_root / "social"),
         "babepedia": AvatarCandidateCache(args.cache_root / "babepedia"),
+        "jae": AvatarCandidateCache(args.cache_root / "jae"),
     }
     candidate_rows: list[dict] = []
     install_rows: list[dict] = []
@@ -678,8 +729,7 @@ def run(args) -> int:
 
             winner, runners_up = select_winner(result["candidates"])
             for candidate in ([winner] if winner else []) + runners_up:
-                cache = caches["social" if candidate["provider"] == "social-web"
-                               else "babepedia"]
+                cache = caches[PROVIDER_CACHES[candidate["provider"]]]
                 provenance_path = cache.store_provenance(
                     provenance_for(cache, entity_id, candidate))
                 identity_ok = candidate.get("identity_verified", True) and bool(
