@@ -343,7 +343,7 @@ class WebUiSourceTests(unittest.TestCase):
         `#EDEDED→#ccc`、secondary `#0A0A0A→--ds-gray-200`、ghost 走
         `--ds-gray-alpha-200`，没有任何一条 hover 改 border 或 ring。Peach 此前把边
         提到墨色 28%（`.fbtn` 甚至提到 `--ink-2`，接近 79% 白），一排按钮里被鼠标
-        扫过的那颗看着像是被选中了。28% 现在只留给选中态的边。
+        扫过的那颗看着像是被选中了。墨色 28% 的边现在只剩输入框一处。
         """
         css = re.sub(r"/\*.*?\*/", "", (Path(__file__).resolve().parents[1]
                                         / "web" / "app.css").read_text(encoding="utf-8"),
@@ -366,6 +366,87 @@ class WebUiSourceTests(unittest.TestCase):
                 offenders.append(leaf)
         self.assertEqual(offenders, [],
                          f"这些 hover 在提亮边框，请改成只抬 background：{offenders}")
+
+    # 悬停允许照旧抬填充的四个孤立开关：它们没有并排的同类邻居，鼠标压着的那颗
+    # 就是你正在问的那颗，看不出「按没按」不构成误读。
+    HOVER_FILL_ALLOWED = (
+        ".ib",              # 顶栏图标按钮，八个里只有一个有按下态
+        ".brandpill",       # 顶栏厂牌胶囊，全站一颗
+        ".playerstatsbtn",  # 播放器覆盖层，悬停走 ::after 另一层
+        ".fb .like",        # 这一排彩色反馈按钮的既有约定就是悬停预览按下后的颜色
+        ".tagpickitem",     # 选中由图标换成对勾表达，填充留给悬停与键盘游标
+    )
+
+    STATE_TOKENS = ('[aria-pressed="true"]', '[aria-selected="true"]',
+                    '[aria-current="page"]', '[aria-current="true"]', ".selected")
+
+    def _leaf_rules(self):
+        css = re.sub(r"/\*.*?\*/", "", (Path(__file__).resolve().parents[1]
+                                        / "web" / "app.css").read_text(encoding="utf-8"),
+                     flags=re.S)
+        for match in re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
+            yield match.group(1).strip().split("{")[-1], match.group(2)
+
+    def test_selected_states_carry_no_ring_no_lifted_border_and_no_extra_weight(self):
+        """选中态只有填充，不加边、不加内嵌一圈线、不加字重。
+
+        2026-09-03 用户指出侧栏当前项在 Vercel 里既没有边框线也没有加粗。核对
+        Geist 的类名（`class` 里的 Tailwind 前缀就是规则原文，不受悬停取证的限制）：
+        Switch 分段项 `peer-checked:` 下只有 `text` 与 `bg`，`font-medium` 两态常驻；
+        Tabs secondary 只有 `aria-selected:bg-gray-200` 与 `aria-selected:text-gray-1000`。
+        我们此前那套「无边框补 inset 一圈、带边框提到墨色 28%、还要更强就加字重」
+        是自造的强调阶梯，三个组件里一条都找不到。彩色标签控件的语义色边框不在此列，
+        它换的是色相不是亮度。
+        """
+        offenders = []
+        for leaf, body in self._leaf_rules():
+            if not any(state in leaf for state in self.STATE_TOKENS):
+                continue
+            if ":after" in leaf or ":before" in leaf:
+                continue
+            # 只拦控件上那圈中性发丝线。压在缩略图上的 2px 白框（`.card.selected .pic`）
+            # 是另一回事：媒体画面吃掉 7% 的填充，选中只能靠取景框描边。
+            if "box-shadow:inset 0 0 0 1px var(--border-15)" in body:
+                offenders.append((leaf, "inset 一圈线"))
+            if "color-mix(in srgb,var(--ink) 28%" in body:
+                offenders.append((leaf, "墨色 28% 提边"))
+            if "font-weight" in body:
+                offenders.append((leaf, "字重加档"))
+        self.assertEqual(offenders, [],
+                         f"选中态只留 --hover 底 --ink 字：{offenders}")
+
+    def test_hover_yields_the_fill_to_selection_inside_a_group(self):
+        """一组互斥选项里，填充专属选中，未选中项悬停只提文字色。
+
+        去掉边框与字重之后，`:hover` 和 `[aria-pressed="true"]` 都是 `--hover`，
+        鼠标划过邻居时就分不出哪个是当前项了。Geist 的解法三个组件一致：
+        `hover:text-[var(--ds-gray-1000)]`、`not-disabled:hover:text-gray-1000`——
+        悬停只改文字色，背景留给 checked／aria-selected。这与 Button 的「悬停只抬
+        填充」不冲突：Button 没有选中态，没有需要让位的信号。
+        """
+        selected_bases = set()
+        for leaf, body in self._leaf_rules():
+            if "background:var(--hover)" not in body:
+                continue
+            for part in leaf.split(","):
+                part = part.strip()
+                for state in self.STATE_TOKENS:
+                    if part.endswith(state):
+                        selected_bases.add(part[: -len(state)].strip())
+        self.assertIn(".pill", selected_bases, "基线选择器没被认出来，测试本身失效了")
+        offenders = []
+        for leaf, body in self._leaf_rules():
+            if ":hover" not in leaf or "background:var(--hover)" not in body:
+                continue
+            for part in leaf.split(","):
+                part = part.strip()
+                if not part.endswith(":hover"):
+                    continue
+                base = part[: -len(":hover")].strip()
+                if base in selected_bases and base not in self.HOVER_FILL_ALLOWED:
+                    offenders.append(part)
+        self.assertEqual(sorted(offenders), [],
+                         f"这些控件有选中态，悬停请只提文字色到 --ink：{offenders}")
 
     def test_buttons_do_not_shrink_on_press_and_disable_to_a_solid_gray(self):
         """按下不缩放，禁用是实底灰而不是半透明。
