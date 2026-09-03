@@ -49,11 +49,11 @@ TAG_SUPERSESSION = {
 }
 SCENE_TAGS = {
     "酒店", "浴室", "车震", "办公室", "户外露出", "线下约拍", "探花约炮",
-    "教室学校", "厨房客厅", "户外", "车内",
+    "教室学校", "厨房客厅", "户外", "车内", "按摩",
 }
 STORY_TAGS = {
     "角色扮演", "反差", "绿帽NTR", "调教", "泄密流出", "NTR绿帽",
-    "剧情演绎", "偷拍偷窥", "出轨", "强制剧情", "剧情", "捆绑", "有剧情",
+    "剧情演绎", "偷拍偷窥", "出轨", "强制剧情", "剧情", "捆绑", "有剧情", "性教育",
     "偷窥", "定制", "百合", "慢热前戏", "榨精",
 }
 POSITION_TAGS = {
@@ -120,6 +120,24 @@ def is_jav_code(code: str | None) -> bool:
     )
 
 
+def is_amateur_code(code: str | None) -> bool:
+    """三位数字前缀的素人系番号：`259LUXU-1475`、`300MIUM-1239`。
+
+    这类番号由 MGS 发行，不进 DMM 数字版目录，也查不到 r18.dev 与 Prestige
+    官方 API。判定只看形状：一旦改成「先拿到元数据再判断」，没有元数据的番号
+    就永远轮不到该问的那个来源。
+    """
+    return bool(_CODE_AMATEUR.match((code or "").upper().strip()))
+
+
+def code_letter_stem(code: str | None) -> str:
+    """番号的字母段，用来和 DMM `content_id` 对照：`ABW-232` -> `abw`。"""
+    value = normalise_code_key(code)
+    if not value or value.startswith("FC2"):
+        return ""
+    return re.sub(r"[^A-Z]", "", value.split("-", 1)[0]).lower()
+
+
 def is_jav_asset(code: str | None, studio: str | None = None,
                  release_date: str | None = None,
                  entity_kinds: tuple[str, ...] | list[str] = ()) -> bool:
@@ -164,6 +182,39 @@ def _jav_code_pattern(code: str | None) -> str:
     return ""
 
 
+#: 无码厂商自己的编号法：Caribbeancom／1Pondo／10musume／Pacopacomama 用
+#: `MMDDYY-nnn`，HEYZO 用 `HEYZO-1380`。有码厂商不用这两种形状。
+UNCENSORED_CODE_SHAPES = (
+    re.compile(r"^\d{6}-\d{2,4}$"),
+    re.compile(r"^HEYZO-\d{2,5}$", re.I),
+)
+#: 文件名里的发行站标记。番号形状认不出来时（例如 Tokyo-Hot 的 `n1234`），
+#: 这是另一条本机就能核验的证据。
+_UNCENSORED_SITE = re.compile(
+    r"(?i)(?<![A-Z0-9])(?:"
+    r"carib(?:bean(?:com)?(?:pr)?)?|1pon(?:do)?|10mu(?:sume)?|heyzo|"
+    r"pacopacomama|paco|muramura|tokyo[-_]?hot"
+    r")(?![A-Z0-9])"
+)
+#: 版次标记有时和番号粘在一起，中间没有分隔符：`PPPD-937CH.mp4`、`MIDV-751CH.mp4`。
+#: 只认带分隔符的写法，这些文件既拿不到「中字」徽章，番号本身还会被当标题显示。
+_GLUED_EDITION = r"(?:CH|C|SUB|UC|U)"
+
+
+def is_uncensored_code(code: str | None) -> bool:
+    value = str(code or "").strip()
+    return any(shape.fullmatch(value) for shape in UNCENSORED_CODE_SHAPES)
+
+
+def is_uncensored_release(name: str | None, code: str | None) -> bool:
+    """番号形状或文件名里的发行站，两者有一个成立就是无码厂商的片。
+
+    这两条都是本机可核验的证据，不依赖抓取结果——`040221-001` 这类番号在
+    r18.dev 永远 404，等元数据到齐再判，徽章就永远不会出现。
+    """
+    return is_uncensored_code(code) or bool(_UNCENSORED_SITE.search(str(name or "")))
+
+
 def jav_edition_badges(name: str | None, code: str | None,
                        tags: tuple[str, ...] | list[str] = ()) -> list[str]:
     """Project filename/tag evidence into compact edition badges beside the code."""
@@ -171,7 +222,10 @@ def jav_edition_badges(name: str | None, code: str | None,
     tag_set = {str(tag).strip().casefold() for tag in tags if str(tag).strip()}
     code_pattern = _jav_code_pattern(code)
     after_code = (
-        re.search(rf"(?:^|[^A-Z0-9]){code_pattern}([^A-Z0-9].*)?$", text, re.I)
+        re.search(
+            rf"(?:^|[^A-Z0-9]){code_pattern}((?:{_GLUED_EDITION})?(?:[^A-Z0-9].*)?)$",
+            text, re.I,
+        )
         if code_pattern else None
     )
     suffix = after_code.group(1) if after_code and after_code.group(1) else ""
@@ -183,8 +237,13 @@ def jav_edition_badges(name: str | None, code: str | None,
     uncensored = (
         cracked
         or "无码" in tag_set
+        # 无码厂商的片本身就是无码，不需要文件名里另有 `-U`／`Uncen` 标记。
+        or is_uncensored_release(name, code)
+        # `un` 和 `u`／`uc` 是同一个意思。此前它没进这张表，`ABF-158-UN.mp4`
+        # 既拿不到徽章，`UN` 又被当标题显示；现在标题判空了，不认它就等于把
+        # 这条信息整个丢掉。
         or bool(re.search(r"(?:^|[-_.\s\[])"
-                          r"(?:uc|u|uncen(?:sored)?|uncensored|无码|無碼)"
+                          r"(?:uc|un|u|uncen(?:sored)?|uncensored|无码|無碼)"
                           r"(?:$|[-_.\s\]])", suffix, re.I))
     )
     subtitled = (
@@ -250,6 +309,29 @@ def promo_free_key(name: str | None) -> str:
     return re.sub(r"[\s._\-—]+", "", strip_promo_markers(name)).casefold()
 
 
+#: 无码片的文件名基本由「发行站 + 番号 + 画质/分卷」拼成，一个真标题词都没有：
+#: `040221-001-carib-1080p.mp4`、`071213-625-1pon-whole1_hd.avi`、
+#: `heyzo_hd_1380_full.mp4`。剥掉番号剩下的是发行残渣，不是标题——界面上却当
+#: 标题显示成「040221-001 carib-1080p」。这些站名和画质标记是有限集合，日文
+#: 标题里不会出现，可以按词剥。
+_RELEASE_NOISE = re.compile(
+    r"(?i)(?<![A-Z0-9])(?:"
+    r"carib(?:bean(?:com)?(?:pr)?)?|1pon(?:do)?|10mu(?:sume)?|heyzo|"
+    r"pacopacomama|paco|muramura|tokyo[-_]?hot|xxx[-_]?av|"
+    r"\d{3,4}p|[0-9]?[fu]?hd\d*|sd|4k|2k|whole\d*|part\d*|full|lt|ch\d*"
+    r")(?![A-Z0-9])"
+)
+#: 剥完之后判断剩下的还算不算标题：既没有中日文，也没有一个长度 ≥4 的字母词，
+#: 那就是番号数字和零碎标记，不是名字。`Minah My new companion…` 留得住，
+#: `1pon-092415-001-fhd2 (new)` 剥到只剩 `new` 就该判空。
+_TITLE_CJK = re.compile(r"[぀-ヿ㐀-鿿]")
+_TITLE_WORD = re.compile(r"[A-Za-z]{4,}")
+
+
+def _is_release_residue(text: str) -> bool:
+    return not (_TITLE_CJK.search(text) or _TITLE_WORD.search(text))
+
+
 def jav_fallback_title(name: str | None, code: str | None) -> str:
     """Clean a filename-derived JAV title without changing the stored filename."""
     text = _MEDIA_EXTENSION.sub("", str(name or "").strip())
@@ -257,13 +339,20 @@ def jav_fallback_title(name: str | None, code: str | None) -> str:
     text = _PROMO_DOMAIN.sub(" ", text)
     code_pattern = _jav_code_pattern(code)
     if code_pattern:
-        repeated = re.compile(rf"^[\s._\-—]*(?:{code_pattern})(?=$|[\s._\-—\[])", re.I)
+        repeated = re.compile(
+            rf"^[\s._\-—]*(?:{code_pattern})(?:{_GLUED_EDITION})?(?=$|[\s._\-—\[])", re.I)
         while repeated.search(text):
             text = repeated.sub("", text, count=1)
+        # 番号不总在开头：`1pon-092415-001-fhd1_(new).mp4` 把发行站放在了前面。
+        # 只认前缀，整个番号就会留在「标题」里显示出来。
+        text = re.sub(rf"(?<![A-Z0-9])(?:{code_pattern})(?:{_GLUED_EDITION})?(?![A-Z0-9])",
+                      " ", text, flags=re.I)
     text = _EDITION_TAIL.sub("", text)
+    text = _RELEASE_NOISE.sub(" ", text)
     text = re.sub(r"[\[\]【】()（）]+", " ", text)
     text = re.sub(r"[._]+", " ", text)
-    return re.sub(r"\s+", " ", text).strip(" -_—")
+    text = re.sub(r"\s+", " ", text).strip(" -_—")
+    return "" if _is_release_residue(text) else text
 
 
 def jav_display_metadata(name: str | None, code: str | None,

@@ -1,6 +1,7 @@
 import unittest
 
 from peach.metadata_policy import (
+    is_uncensored_code,
     FIELD_SOURCE_ORDER,
     POLICY_VERSION,
     PROFILE_SOURCES,
@@ -54,6 +55,79 @@ class MetadataPolicyTests(unittest.TestCase):
                 [row["field_rank"] for row in ordered],
                 sorted(row["field_rank"] for row in ordered),
             )
+
+    def test_tag_backfill_profile_stays_official_and_reachable(self):
+        # 这个 profile 的成本全在网络往返上。放宽任何一条都要有实测支撑：
+        # 加社区来源等于让未经复核的值排进官方前面；加无码来源等于给每个有码
+        # 番号多两次稳定 404。
+        policy = resolve_policy(profile="official-backfill")
+        self.assertEqual(policy.sources, (
+            "mgstage", "dmm", "libredmm", "aventertainment",
+        ))
+        for source in policy.sources:
+            self.assertTrue(policy.source(source).official, source)
+        self.assertNotIn("tokyohot", policy.sources)
+        self.assertNotIn("caribbeancom", policy.sources)
+        self.assertNotIn("dlgetchu", policy.sources)
+
+    def test_tags_prefer_mgstage_over_the_dmm_dvd_page(self):
+        # ABW-220 实测：mgstage 给 8 项内容标签，dmm/libredmm/r18dev 都只给
+        # 「AV女優・単体作品・サンプル動画」。厂牌与日期仍以 dmm 为准。
+        policy = resolve_policy(profile="censored")
+        candidates = [{"source": "dmm"}, {"source": "mgstage"}, {"source": "r18dev"}]
+        self.assertEqual(sort_candidates("tags", candidates, policy)[0]["source"], "mgstage")
+        self.assertEqual(sort_candidates("studio", candidates, policy)[0]["source"], "dmm")
+        self.assertEqual(sort_candidates("release_date", candidates, policy)[0]["source"], "dmm")
+
+    def test_uncensored_codes_are_routed_to_sources_that_carry_them(self):
+        """番号形状就能确定发行面，不必先有元数据证明。
+
+        语料实测 8 个无码番号（carib 2、1pon 4、HEYZO 2），官方 tag 全为 0：
+        它们一直按有码番号去问 mgstage/dmm，那几家根本不发行这些片，
+        「问了都没有」于是被读成「上游没有」。
+        """
+        self.assertTrue(is_uncensored_code("040221-001"))
+        self.assertTrue(is_uncensored_code("HEYZO-1380"))
+        self.assertFalse(is_uncensored_code("ABW-220"))
+        self.assertFalse(is_uncensored_code("259LUXU-1475"))
+        policy = resolve_policy(profile="backfill")
+        self.assertEqual(policy.sources_for_code("040221-001"),
+                         ("caribbeancom", "tokyohot", "javbus"))
+        self.assertEqual(policy.sources_for_code("HEYZO-1380"),
+                         ("caribbeancom", "tokyohot", "javbus"))
+        self.assertEqual(policy.sources_for_code("ABW-220"),
+                         ("mgstage", "dmm", "libredmm", "aventertainment"))
+        # 来源健康表要覆盖两边，所以 sources 是并集。
+        self.assertEqual(set(policy.sources), {
+            "caribbeancom", "tokyohot", "javbus",
+            "mgstage", "dmm", "libredmm", "aventertainment"})
+
+    def test_unrouted_profiles_keep_asking_every_source(self):
+        for profile in ("baseline", "censored", "uncensored", "fc2", "official-backfill"):
+            policy = resolve_policy(profile=profile)
+            self.assertEqual(policy.sources_for_code("ABW-220"), policy.sources, profile)
+
+    def test_javbus_stays_community_so_its_values_need_review(self):
+        # 1Pondo 与 HEYZO 没有官方 adapter，javbus 是唯一问得到的一家；
+        # 它取到的值只能进人工复核，不能走免复核写入。
+        policy = resolve_policy(profile="backfill")
+        self.assertFalse(policy.source("javbus").official)
+        self.assertTrue(policy.source("caribbeancom").official)
+
+    def test_publisher_outranks_the_overseas_reseller(self):
+        """aventertainment 是转售商，不是发行方。
+
+        实测 `071213-625`：它答 2017-12-28（自己的上架日），而番号本身就是
+        发行日 2013-07-12，javbus 与番号一致；`092415-001` 差了 9 个月。
+        标签同理——`040221-001` 它给的是英文页的改写版，caribbeancom 给的是
+        发行方原页。
+        """
+        policy = resolve_policy(profile="censored")
+        candidates = [{"source": "aventertainment"}, {"source": "caribbeancom"}]
+        for field in ("tags", "release_date"):
+            self.assertEqual(
+                sort_candidates(field, candidates, policy)[0]["source"],
+                "caribbeancom", field)
 
 
 if __name__ == "__main__":

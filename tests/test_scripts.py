@@ -12,7 +12,7 @@ from pathlib import Path, PureWindowsPath
 from types import SimpleNamespace
 from unittest import mock
 
-from peach import catalog_rules, scripting
+from peach import scripting
 from peach.migrations import upgrade
 from peach.classification import is_probable_mainstream_release, is_structural_creator
 
@@ -105,53 +105,102 @@ class OperationalScriptTests(unittest.TestCase):
         source = (ROOT / "scripts" / "scrape_codes.py").read_text(encoding="utf-8")
         self.assertIn('if args.english_title_only and field != "title":', source)
 
-    def test_official_jav_tags_only_enter_the_reviewed_taxonomy(self):
-        category_map = self.scrape_codes.CATEGORY_MAP
-        self.assertEqual(category_map["Deep Throat"], "深喉")
-        self.assertEqual(category_map["4K"], "4K")
-        self.assertEqual(category_map["Digital Mosaic"], "有码")
-        self.assertEqual(category_map["Cowgirl"], "骑乘")
-        self.assertEqual(category_map["Foot Fetish"], "美腿")
-        self.assertEqual(category_map["Shaved Pussy"], "白虎")
-        self.assertNotIn("Featured Actress", category_map,
-                         "来源营销分类不是内容标签，不能因为官方给了就直接入库")
+    def test_unmapped_genres_are_written_out_instead_of_dropped(self):
+        source = (ROOT / "scripts" / "scrape_codes.py").read_text(encoding="utf-8")
+        # 未收录 genre 必须落盘。只要这条链断了，来源给过的值就会静默消失，
+        # 官方 tag 的缺口下一轮仍然查不出成因。
+        self.assertIn("unmapped_genres.setdefault", source)
+        self.assertIn("_write_unmapped(unmapped_path, unmapped_genres)", source)
+        self.assertNotIn("CATEGORY_MAP", source,
+                         "genre 映射只留 peach.genre_taxonomy 一份")
 
-    def test_javbus_japanese_genres_map_into_the_same_taxonomy(self):
-        """javbus/javdb 给日文类型词，r18dev 给英文；两套键共用一张表、一套值。
+    def test_reused_snapshots_are_re_checked_against_the_queried_code(self):
+        # 「复用上一轮成功记录」只看 result 在不在，就会把当初那次错配一路带下去。
+        import json as _json
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "dlgetchu.json"
+            path.write_text(_json.dumps({"result": {
+                "id": "33938", "content_id": "33938",
+                "source_url": "https://dl.getchu.com/i/item33938",
+                "genres": ["コスプレ一般"],
+            }}), encoding="utf-8")
+            self.assertIsNone(self.scrape_codes._read_snapshot(path, "ABW-220"))
+            path.write_text(_json.dumps({"result": {
+                "content_id": "118abw220", "genres": ["中出し"],
+            }}), encoding="utf-8")
+            self.assertEqual(
+                self.scrape_codes._read_snapshot(path, "ABW-220")["genres"], ["中出し"])
 
-        值必须落在既有分类词表内——标签是语义契约，不能靠抓取顺手扩词表。发行、
-        营销与规格分类一概不收，和既有的「`Featured Actress` 不入库」是同一条线。
+    def test_source_cools_down_only_after_repeated_failures_and_recovers(self):
+        """一次抖动不能决定后面几百个番号的命运。
+
+        2026-09-01 官方 tag 补抓实测：mgstage 中途超时一次，旧逻辑当场把它
+        「本批后续全部跳过」，剩下 122 个番号再也没被问过，dmm 丢了 150 个。
         """
-        category_map = self.scrape_codes.CATEGORY_MAP
-        self.assertEqual(category_map["中出し"], "中出内射")
-        self.assertEqual(category_map["パイパン"], "白虎")
-        self.assertEqual(category_map["女子校生"], "学生")
-        self.assertEqual(category_map["寝取り・寝取られ"], "绿帽NTR")
-        self.assertEqual(category_map["巨乳"], "巨乳")
-        self.assertEqual(category_map["美乳"], "美乳")
-        for measurement in ("Dカップ", "Gカップ", "Jカップ", "巨大乳輪"):
-            self.assertNotIn(measurement, category_map,
-                             f"{measurement} 是身体尺寸，词表里没有对应分类")
-        for marketing in ("独占配信", "配信専用", "単体作品", "企画", "店長推薦作品",
-                          "ハイビジョン", "フルハイビジョン(FHD)", "1080p", "60fps",
-                          "4時間以上作品", "AV女優"):
-            self.assertNotIn(marketing, category_map,
-                             f"{marketing} 是发行/营销/规格分类，不是内容标签")
-        japanese = {key for key in category_map if not key.isascii()}
-        self.assertTrue(japanese)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "ledger.db"
+            sqlite3.connect(db).close(); upgrade(db, MIGRATIONS)
+            connection = sqlite3.connect(db)
+            connection.executemany(
+                "INSERT INTO asset(id,location,path,name,medium,code,size) "
+                "VALUES(?,'local',?,?,'video',?,?)",
+                [(i, f"{i}.mp4", f"{i}.mp4", f"AAA-{i:03d}", 1_000) for i in range(1, 7)],
+            )
+            connection.commit(); connection.close()
 
-    def test_no_genre_maps_up_into_a_superseded_broad_bucket(self):
-        """来源给了具体标签就照抄，不许升成 `乳系`、`足系` 这种粗桶。
+            error = self.scrape_codes.MetadataProviderError
 
-        `TAG_SUPERSESSION` 的定义正是「有具体标签时把粗桶删掉」，所以把
-        javbus 的 `巨乳` 映成 `乳系` 等于写入系统随后要丢弃的那个值。2026-09-02
-        真写进了账本 57 条，连带暴露出更早的 `"Big Tits": "乳系"` 是同一个错。
-        """
-        category_map = self.scrape_codes.CATEGORY_MAP
-        for source, mapped in category_map.items():
-            self.assertNotIn(
-                mapped, catalog_rules.TAG_SUPERSESSION,
-                f"{source} -> {mapped} 升到了粗桶，应映射到来源给出的那一级")
+            class Flaky:
+                def __init__(self): self.calls = []
+                def query(self, code, source):
+                    self.calls.append(code)
+                    raise error("timeout", kind="unavailable",
+                                retryable=True, temporary=True)
+
+            provider = Flaky()
+            clock = [0.0]
+            health = root / "health.csv"
+            with mock.patch.object(self.scrape_codes.time, "monotonic",
+                                   side_effect=lambda: clock[0]):
+                with redirect_stdout(io.StringIO()):
+                    self.scrape_codes.main([
+                        "--db", str(db), "--out", str(root / "c.csv"),
+                        "--health", str(health), "--raw-dir", str(root / "raw"),
+                        "--log-dir", str(root / "logs"), "--delay", "0",
+                        "--min-free", "0", "--sources", "javbus",
+                    ], provider=provider)
+            # 前三个番号照常尝试，第三次连败才进冷却；时钟不走，剩下三个被跳过。
+            self.assertEqual(len(provider.calls), self.scrape_codes.COOLDOWN_AFTER_FAILURES)
+            with health.open(encoding="utf-8-sig", newline="") as handle:
+                row = next(csv.DictReader(handle))
+            self.assertEqual(row["fetched"], "3")
+            self.assertEqual(row["cooldown_skips"], "3")
+            self.assertEqual(row["blocked"], "1")
+
+            # 冷却会过期：时钟越过窗口后，剩下的番号重新被问。
+            provider = Flaky()
+            clock = [0.0]
+
+            def advancing():
+                clock[0] += self.scrape_codes.COOLDOWN_SECONDS
+                return clock[0]
+
+            with mock.patch.object(self.scrape_codes.time, "monotonic",
+                                   side_effect=advancing):
+                with redirect_stdout(io.StringIO()):
+                    self.scrape_codes.main([
+                        "--db", str(db), "--out", str(root / "c2.csv"),
+                        "--health", str(root / "h2.csv"), "--raw-dir", str(root / "raw2"),
+                        "--log-dir", str(root / "logs"), "--delay", "0",
+                        "--min-free", "0", "--sources", "javbus",
+                    ], provider=provider)
+            self.assertEqual(len(provider.calls), 6, "冷却过期后必须继续问剩下的番号")
+
+    def test_only_not_found_counts_as_a_settled_source_verdict(self):
+        # 本机 javinizer 没启用某个 scraper 时返回的是 unknown 错误。把它当定论
+        # 复用，会让配置问题被冻结成来源判决，续跑再也不问这个番号。
+        self.assertEqual(self.scrape_codes.SETTLED_ERROR_KINDS, frozenset({"not_found"}))
 
     def test_rule34_tag_type_backfill_reuses_the_connector_and_is_resumable(self):
         """rule34xxx 的标签类型只在帖子页上，2152 条里当时只有 40 条带着它。
@@ -1152,7 +1201,7 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertTrue(tag_candidates[0]["official"])
             self.assertEqual(tag_candidates[0]["profile"], "custom")
             self.assertEqual(tag_candidates[0]["policy_version"],
-                             "metadata-source-policy-v3")
+                             "metadata-source-policy-v4")
             self.assertEqual(tag_candidates[0]["field_rank"], 9)
             self.assertEqual(tag_candidates[0]["source_kind"], "official_mirror")
             self.assertTrue(all(row["source_profile"] == "custom" for row in rows))
@@ -1238,8 +1287,9 @@ class OperationalScriptTests(unittest.TestCase):
             raw = root / "raw"
             snapshot = raw / "AAA-001" / "r18dev.json"
             snapshot.parent.mkdir(parents=True)
+            # 真实快照一定带得出番号身份；不带的现在按「对不上」重新联网问。
             snapshot.write_text(__import__("json").dumps({
-                "result": {"source": "r18dev", "maker": "Cached Studio"},
+                "result": {"source": "r18dev", "id": "AAA-001", "maker": "Cached Studio"},
             }), encoding="utf-8")
             missing = raw / "BBB-002" / "r18dev.json"
             missing.parent.mkdir(parents=True)
@@ -1290,7 +1340,7 @@ class OperationalScriptTests(unittest.TestCase):
             snapshot = raw / "ABC-001" / "r18dev.json"
             snapshot.parent.mkdir(parents=True)
             snapshot.write_text(__import__("json").dumps({
-                "result": {"source": "r18dev", "maker": "Studio A"},
+                "result": {"source": "r18dev", "id": "ABC-001", "maker": "Studio A"},
             }), encoding="utf-8")
 
             class HealthProvider:
@@ -1322,13 +1372,15 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertEqual(rows["r18dev"]["snapshot_reused"], "1")
             self.assertEqual(rows["r18dev"]["fetched"], "2")
             self.assertEqual(rows["javbus"]["attempted"], "3")
-            self.assertEqual(rows["javbus"]["fetched"], "2")
-            self.assertEqual(rows["javbus"]["succeeded"], "1")
-            self.assertEqual(rows["javbus"]["empty"], "1")
+            # 限流那一条之后的番号照问，所以三条都联了网。
+            self.assertEqual(rows["javbus"]["fetched"], "3")
+            self.assertEqual(rows["javbus"]["succeeded"], "2")
+            self.assertEqual(rows["javbus"]["empty"], "2")
             self.assertEqual(rows["javbus"]["errors"], "1")
             self.assertEqual(rows["javbus"]["retryable_errors"], "1")
-            self.assertEqual(rows["javbus"]["cooldown_skips"], "1")
-            self.assertEqual(rows["javbus"]["blocked"], "1")
+            # 单次可重试失败不再让来源停摆：后面的番号照问。
+            self.assertEqual(rows["javbus"]["cooldown_skips"], "0")
+            self.assertEqual(rows["javbus"]["blocked"], "0")
             self.assertEqual(rows["javbus"]["last_error_status"], "429")
 
             connection = sqlite3.connect(db)

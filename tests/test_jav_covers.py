@@ -299,10 +299,94 @@ class OfficialSourceTests(unittest.TestCase):
         self.assertEqual((winner.url, size), (url, (2184, 1468)))
 
 
+class CrossProductCoverTests(unittest.TestCase):
+    """真实事故：259LUXU-1475 的封面是 SNG-021 的（`118sng021`）。
+
+    错图来自已删除的 avbase 抓取——那个页面上 258/259 系番号的主图是 DVD 合集
+    封套。抓取路径删掉之后错图仍在，因为「复用上一轮成功记录」只看 result 是不是
+    「取得」。全库同一成因的还有 300MIUM、428SUKE 等共 10 条。
+    """
+
+    def test_dmm_content_id_must_carry_the_code_letters(self):
+        self.assertTrue(covers.is_cross_product_cover(
+            "259LUXU-1475",
+            "https://pics.dmm.co.jp/mono/movie/adult/118sng021/118sng021pl.jpg"))
+        self.assertTrue(covers.is_cross_product_cover(
+            "428SUKE-080",
+            "https://awsimgsrc.dmm.co.jp/pics_dig/digital/video/h_1711mgt00164/h_1711mgt00164pl.jpg"))
+
+    def test_matching_content_ids_and_non_dmm_hosts_pass(self):
+        self.assertFalse(covers.is_cross_product_cover(
+            "ABW-232", "https://pics.dmm.co.jp/mono/movie/adult/118abw232/118abw232pl.jpg"))
+        # `MGT-164` -> `h_1711mgt00164`：厂牌数字与补零都不影响字母段。
+        self.assertFalse(covers.is_cross_product_cover(
+            "MGT-164",
+            "https://awsimgsrc.dmm.co.jp/pics_dig/digital/video/h_1711mgt00164/h_1711mgt00164pl.jpg"))
+        # MGS、Prestige、FC2 的路径里没有 content_id，判据不适用，不能顺手拦掉。
+        self.assertFalse(covers.is_cross_product_cover(
+            "259LUXU-1475",
+            "https://image.mgstage.com/images/luxutv/259luxu/1475/pb_e_259luxu-1475.jpg"))
+        self.assertFalse(covers.is_cross_product_cover(
+            "FC2-PPV-3071875",
+            "https://contents-thumbnail2.fc2.com/w1200/storage/x.jpg"))
+
+    def test_a_carried_wrong_cover_no_longer_wins(self):
+        wrong = "https://pics.dmm.co.jp/mono/movie/adult/118sng021/118sng021pl.jpg"
+        right = "https://image.mgstage.com/images/luxutv/259luxu/1475/pb_e_259luxu-1475.jpg"
+        transport = transport_for({wrong: (200, jpeg(1600, 1080)),
+                                   right: (200, jpeg(800, 539))})
+
+        winner, size, _ = covers.best_cover(
+            transport, "259LUXU-1475", 0,
+            prior_candidates=tuple(map(covers.candidate_for, (wrong, right))),
+        )
+
+        # 错图更大也不能赢：择优是在同一部片的候选之间比，不是在图之间比。
+        self.assertEqual((winner.url, size), (right, (800, 539)))
+
+    def test_restore_does_not_bring_a_cross_product_cover_back(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "cover-fetch-log.csv"
+            wrong = "https://pics.dmm.co.jp/mono/movie/adult/118sng021/118sng021pl.jpg"
+            with log.open("w", encoding="utf-8-sig", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=covers.FIELDS)
+                writer.writeheader()
+                writer.writerow({"code": "259LUXU-1475", "result": "取得", "source": "",
+                                 "width": "800", "height": "539", "kb": "155",
+                                 "url": wrong, "note": ""})
+            output = Path(tmp) / "covers"
+
+            result = covers.restore_logged_successes(
+                transport_for({wrong: (200, jpeg(800, 539))}), log, output)
+
+            self.assertEqual(result["logged"], 0)
+            self.assertFalse((output / "259LUXU-1475.jpg").exists())
+
+    def test_amateur_codes_reach_mgs_without_cached_maker_evidence(self):
+        """素人系番号一直没问过 MGS——旧写法要先有元数据证明厂牌是 Prestige。
+
+        而这批番号在 r18.dev 是 404，元数据永远不会出现，于是唯一有图的来源
+        永远轮不到。判据改成番号形状后，MGS 才第一次被问到。
+        """
+        # 2026-09-01 实测的 MGS 商品页标记，原样保留 id 与 class。
+        page = ('<a id="EnlargeImage" class="link_magnify" rel="lightbox" '
+                'href="https://image.mgstage.com/images/luxutv/259luxu/1475/'
+                'pb_e_259luxu-1475.jpg">')
+        detail = "https://www.mgstage.com/product/product_detail/259LUXU-1475/"
+        cover = "https://image.mgstage.com/images/luxutv/259luxu/1475/pb_e_259luxu-1475.jpg"
+        transport = transport_for({detail: (200, page.encode("utf-8")),
+                                   cover: (200, jpeg(800, 539))})
+
+        winner, size, _ = covers.best_cover(transport, "259LUXU-1475", 0)
+
+        self.assertEqual((winner.source, winner.url, size),
+                         ("image.mgstage.com", cover, (800, 539)))
+
+
 class BestCoverTests(unittest.TestCase):
     def test_known_same_size_url_is_not_probed_during_upgrade(self):
-        known = "https://pics.dmm.co.jp/mono/movie/adult/x/xpl.jpg"
-        larger = "https://awsimgsrc.dmm.com/dig/mono/movie/x/xpl.jpg"
+        known = "https://pics.dmm.co.jp/mono/movie/adult/118abw232/118abw232pl.jpg"
+        larger = "https://awsimgsrc.dmm.com/dig/mono/movie/118abw232/118abw232pl.jpg"
 
         def transport(request, timeout, limit):
             if request.url == known:
@@ -335,7 +419,7 @@ class BestCoverTests(unittest.TestCase):
 
     def test_largest_candidate_wins_regardless_of_host(self):
         # ABW-232 没有数字版，duga 的 1000x674 才是最优——固定优先级链会选错。
-        dmm = "https://pics.dmm.co.jp/mono/movie/adult/x/xpl.jpg"
+        dmm = "https://pics.dmm.co.jp/mono/movie/adult/118abw232/118abw232pl.jpg"
         duga = "https://pic.duga.jp/unsecure/prestige/6270/noauth/jacket.jpg"
         mgs = "https://image.mgstage.com/images/p/pake.jpg"
         transport = transport_for({

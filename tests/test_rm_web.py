@@ -1334,6 +1334,84 @@ class JavModeAndCoverTests(unittest.TestCase):
         self.assertEqual(uncensored["edition_badges"], ["无码"])
         self.assertEqual(cracked["edition_badges"], ["无码破解"])
 
+    def test_uncensored_release_names_are_not_shown_as_titles(self):
+        """无码片的文件名由「发行站 + 番号 + 画质/分卷」拼成，一个标题词都没有。
+
+        修之前界面把剥掉番号后的残渣当标题显示：`040221-001 carib-1080p`、
+        `071213-625 1pon-whole1 hd`、`heyzo hd 1380 full`。
+        """
+        for name, code in (
+            ("040221-001-carib-1080p.mp4", "040221-001"),
+            ("051421-001-carib-720p.mp4", "051421-001"),
+            ("071213-625-1pon-whole1_hd.avi", "071213-625"),
+            ("heyzo_hd_1380_full.mp4", "HEYZO-1380"),
+            ("259LUXU-971_1080p.mp4", "259LUXU-971"),
+            ("259LUXU-934.HD.mp4", "259LUXU-934"),
+        ):
+            self.assertEqual(
+                rm_web.jav_display_metadata(name, code)["display_title"], "", name)
+
+    def test_code_is_stripped_even_when_the_release_site_comes_first(self):
+        # `1pon-092415-001-fhd1_(new).mp4`：番号在中间，只认前缀就会整个显示出来。
+        self.assertEqual(
+            rm_web.jav_display_metadata(
+                "1pon-092415-001-fhd1_(new).mp4", "092415-001")["display_title"], "")
+        self.assertEqual(
+            rm_web.jav_display_metadata(
+                "122614_001-1pon-whole1_hd.avi", "122614-947")["display_title"], "")
+
+    def test_real_titles_survive_the_release_noise_filter(self):
+        # 判空判据是「没有中日文、也没有长度 ≥4 的字母词」，真标题不受影响。
+        self.assertEqual(
+            rm_web.jav_display_metadata(
+                "MIN-101 Minah My new companion hard fuck racing girl.mp4",
+                "MIN-101")["display_title"],
+            "Minah My new companion hard fuck racing girl")
+        self.assertEqual(
+            rm_web.jav_display_metadata(
+                "ABP614.Hinata.Mio.Uncen.mp4", "ABP614")["display_title"], "Hinata Mio")
+        self.assertEqual(
+            rm_web.jav_display_metadata(
+                "MIDE-925 痴女に犯される.mp4", "MIDE-925")["display_title"],
+            "痴女に犯される")
+
+    def test_uncensored_studios_get_the_badge_without_a_filename_marker(self):
+        """无码厂商的片本身就是无码，不需要文件名里另有 `-U`／`Uncen`。
+
+        番号形状（`040221-001`、`HEYZO-1380`）和文件名里的发行站都是本机可核验
+        的证据，不依赖抓取——这些番号在 r18.dev 永远 404，等元数据到齐再判，
+        徽章就永远不会出现。全库命中 13 条，全部是 carib/1pon/HEYZO。
+        """
+        for name, code in (
+            ("040221-001-carib-1080p.mp4", "040221-001"),
+            ("1pon-092415-001-fhd1_(new).mp4", "092415-001"),
+            ("heyzo_hd_1380_full.mp4", "HEYZO-1380"),
+            ("122614_001-1pon-whole1_hd.avi", "122614-947"),
+        ):
+            self.assertEqual(
+                rm_web.jav_display_metadata(name, code)["edition_badges"], ["无码"], name)
+        # 有码番号不能因为这条判据凭空拿到徽章。
+        for name, code in (("ABW-220.mp4", "ABW-220"), ("MIDE-925-4K.mp4", "MIDE-925")):
+            self.assertEqual(
+                rm_web.jav_display_metadata(name, code)["edition_badges"], [], name)
+
+    def test_edition_markers_glued_to_the_code_still_count(self):
+        """`PPPD-937CH.mp4` 中间没有分隔符，此前既没徽章、番号还被当标题显示。"""
+        for name, code in (
+            ("PPPD-937CH.mp4", "PPPD-937"), ("MIDV-751CH.mp4", "MIDV-751"),
+            ("MIRD-204CH.mp4", "MIRD-204"),
+        ):
+            row = rm_web.jav_display_metadata(name, code)
+            self.assertEqual(row["display_title"], "", name)
+            self.assertEqual(row["edition_badges"], ["中字"], name)
+        # `-UN` 和 `-U`／`-UC` 是同一个意思；标题判空后不认它就等于丢掉这条信息。
+        self.assertEqual(
+            rm_web.jav_display_metadata("ABF-158-UN.mp4", "ABF-158")["edition_badges"],
+            ["无码"])
+        # 相邻字母不能被当成版次标记吞掉。
+        self.assertEqual(
+            rm_web.jav_display_metadata("ABC-123CHAPTER.mp4", "ABC-123")["edition_badges"], [])
+
     def test_release_sort_orders_official_dates_descending_and_missing_last(self):
         rows = rm_web.q_items(
             self.contract, {"jav": "1", "sort": "release", "limit": "20"},
