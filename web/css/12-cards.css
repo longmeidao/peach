@@ -1,0 +1,360 @@
+/* ── 主区：满屏，大图 ── */
+main{position:relative;z-index:1;padding:14px 16px 90px}
+/* 管理区二级导航：统计 / 垃圾文件 / 回收站 / 人工复核 共用一条 */
+.managebar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 16px;
+  padding:6px;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface);width:max-content;max-width:100%}
+.managebar[hidden]{display:none}
+.managebar .managebar-toggle{display:none}
+.managebar-menu{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.managebar button{display:inline-flex;align-items:center;gap:7px;min-height:40px;border:0;border-radius:var(--control-radius);
+  background:transparent;color:var(--muted);padding:0 14px;cursor:pointer;font-size:var(--fs-sm);white-space:nowrap}
+.managebar button svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round}
+.managebar button:hover{color:var(--ink)}
+.managebar button[aria-pressed="true"]{background:var(--hover);color:var(--ink)}
+.managebar{margin-left:auto;margin-right:auto}
+.insight-layout .managetitle,.insight-layout .pagelede{width:min(1100px,100%);margin-left:auto;margin-right:auto}
+.cleanup-layout .geist-breadcrumb,.cleanup-layout .managetitle,.cleanup-layout .pagelede,
+.follow-manage-layout .managetitle,.follow-manage-layout .pagelede{width:min(812px,100%);margin-left:auto;margin-right:auto}
+/* Geist Breadcrumbs（vercel.com/geist/breadcrumbs 实测）：nav > ol > li，
+   上一级与分隔符 --muted、当前页 --ink 且带 aria-current，hover 同样升亮；
+   分隔符是 16px chevron、钉在 --muted 上不随当前项提亮，最后一项隐藏；
+   项与项、字与分隔符都留 6px。 */
+.geist-breadcrumb{margin:0 0 6px}
+.geist-breadcrumb[hidden]{display:none}
+.geist-breadcrumb ol{display:flex;align-items:center;gap:6px;margin:0;padding:0;list-style:none}
+.geist-breadcrumb li{display:flex;align-items:center;gap:6px;font-size:var(--fs-md);line-height:20px;color:var(--muted);transition:color .2s ease}
+.geist-breadcrumb li[aria-current]{color:var(--ink)}
+.geist-breadcrumb a{color:inherit;text-decoration:none}
+.geist-breadcrumb li:not([aria-current]):hover{color:var(--ink)}
+.geist-breadcrumb li svg{width:16px;height:16px;flex:none;stroke:var(--muted);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.geist-breadcrumb li:last-child svg{display:none}
+.count{position:sticky;top:calc(var(--topH) + var(--filterH));z-index:60;
+  min-height:var(--sortH);color:var(--ink-2);margin:0 -16px 16px;padding:8px 16px;
+  display:flex;align-items:center;gap:10px;flex-wrap:nowrap;
+  background:transparent;border-bottom:1px solid transparent}
+/* 管理区隐藏了 tagbar，count 吸顶若仍按「顶栏+筛选条」留位会悬空一条缝。
+   回收站这类页面直接贴着顶栏吸。manage-static（垃圾复核）不吸顶，要压过这条。 */
+.count.no-tagbar{top:var(--topH)}
+.count.manage-static{position:relative;top:auto;z-index:1}
+.count.count-actions-only{position:relative;top:auto;min-height:0;margin:0 0 16px;padding:0;justify-content:flex-end}
+.count.count-actions-only:empty{display:none}
+.resourcesync{scroll-margin-top:calc(var(--topH) + 18px);display:grid;gap:16px}.resourcesync>h2{margin:0;font-size:var(--fs-xl)}
+.resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface)}.resourcesyncbody{padding:20px}.resourcesyncbody p{max-width:760px;margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.55}.resourcesyncfooter,.resourceapplyrow{box-sizing:border-box;min-height:var(--fieldset-bar-h);display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:8px 20px;border-top:1px solid var(--line-soft);background:var(--overlay-5)}.resourcesyncfooter p,.resourceapplyrow>p{margin:0;color:var(--muted);font-size:var(--fs-xs);line-height:1.5}.resourceaction{box-sizing:border-box;height:36px;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:none;font:inherit;font-size:var(--fs-sm);font-weight:500;cursor:pointer;transition:background-color .12s,border-color .12s,color .12s}.resourceaction:hover:not(:disabled){background:var(--hover);color:var(--ink)}.resourceaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.resourceaction:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}.resourceaction svg{width:16px;height:16px;stroke:currentColor;fill:none}#resourceSyncResult:empty{display:none}.resourcescanning{margin:0;padding:14px 16px;border:1px solid var(--line-soft);border-radius:var(--control-radius);color:var(--muted)}.resourcesources{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.resourcesources article{display:grid;gap:4px;min-width:0;padding:16px}.resourcesources article+article{border-left:1px solid var(--line-soft)}.resourcesourcetitle{display:flex;align-items:center;justify-content:space-between;gap:12px}.resourcesourcetitle span{font-size:var(--fs-xs)}.resourcesources .online{color:var(--success)}.resourcesources .offline{color:var(--drop)}.resourcesources strong{margin-top:10px;font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcesources small,.resourcecache small{color:var(--muted)}/* 这里是一排读数，不是又一个盒子。原先它自带填色和分格线，和下面的操作条同色，
+   两条带子连在一起看不出边界；框里再套框也是多余的一层。 */
+.resourcecache{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 32px;border-top:1px solid var(--line-soft);padding:16px 20px}.resourcecache>div{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:4px 16px}.resourcecache b{font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcecache span{font-weight:600}.resourcecache small{grid-column:1/-1}.resourceapplyrow .resourcesyncok{color:var(--success)}.resourcedanger{color:var(--drop)}.resourcedanger:hover:not(:disabled){background:var(--drop);border-color:var(--drop);color:#fff}.resourcesyncok{margin:0;color:var(--success)}
+.tagbar,.count,.entitytagbar,.entitycollectionhead{transition:background-color .16s ease,border-color .16s ease}
+.tagbar.is-stuck,.count.is-stuck,.entitytagbar.is-stuck,.entitycollectionhead.is-stuck{background:color-mix(in srgb,#080A0D 84%,transparent);
+  border-bottom-color:var(--line-soft);backdrop-filter:saturate(1.35) blur(16px);
+  -webkit-backdrop-filter:saturate(1.35) blur(16px)}
+.count:empty{display:none}
+.count>span:first-child{flex:none}
+/* 计数骨架的宽高定死：跟着真实文本走的话，数字回来那一刻整行会横向弹一下。
+   14px 远低于筛选条按钮的 32px，而 `.count` 有 min-height 兜底，所以换成真数字
+   不改变行高。`视频 · N` 用的是同一枚。 */
+.countskeleton{display:inline-block;width:150px;height:14px;border-radius:var(--control-radius);
+  background:var(--hover);animation:skeleton-pulse 1.4s ease-in-out infinite}
+.entitycollectionhead h3 .countskeleton{width:96px}
+/* 等数据时换批键自己转：它是这一行唯一还在动的东西，其余部分必须保持静止。
+   全局的 prefers-reduced-motion 规则会关掉它。 */
+.count[aria-busy="true"] #batchAction svg,
+body.refreshing #batchAction svg,
+.entitycollectionhead[aria-busy="true"] .entitybatch svg{
+  animation:peach-spinner-linspin .9s linear infinite}
+.count .sorts,.entitycollectionhead .sorts{display:flex;gap:5px;margin-left:auto;flex-wrap:nowrap;
+  overflow-x:auto;scrollbar-width:none;min-width:0}
+.count .sorts::-webkit-scrollbar,.entitycollectionhead .sorts::-webkit-scrollbar{display:none}
+.count .sorts button,.entitycollectionhead .sorts button{min-height:32px;padding:0 11px;display:inline-flex;align-items:center;
+  border:1px solid var(--border-15);border-radius:var(--control-radius);
+  background:transparent;cursor:pointer;font-size:var(--fs-xs);color:var(--muted);
+  flex:0 0 auto;white-space:nowrap}
+.count .sorts button:hover,.entitycollectionhead .sorts button:hover{color:var(--ink)}
+.count .sorts button[aria-pressed="true"],.entitycollectionhead .sorts button[aria-pressed="true"]{background:var(--hover);color:var(--ink)}
+/* 方向箭头只画在选中的那一枚里，跟着它的文字色走。自带 class 而不是选 `button>svg`：
+   同一排里的批量键是 36px 方形图标键，那条规则会给它的图标也加上左边距。 */
+.sortdir{width:14px;height:14px;flex:none;margin-left:5px;stroke:currentColor;fill:none;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round}
+.count .sorts .batchaction,.entitycollectionhead .sorts .batchaction{background:var(--ink);border-color:var(--ink);color:var(--ground);
+  font-weight:600;padding-inline:14px}
+.count .sorts #batchAction,.entitycollectionhead .sorts .entitybatch{width:36px;padding:0;display:inline-grid;place-items:center}
+.count .sorts #batchAction svg,.entitycollectionhead .sorts .entitybatch svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
+.count .sorts .batchaction:hover,.entitycollectionhead .sorts .batchaction:hover{background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
+.shorts-inline{grid-column:1/-1;margin:28px 0 8px;padding-top:0}
+.shorts-inline h2{margin:0 0 10px;font-size:var(--fs-lg);display:flex;align-items:center;gap:10px}
+.shorts-inline h2 button{margin-left:auto;font-size:var(--fs-xs);background:none;border:1px solid var(--line);border-radius:var(--pill-radius);padding:5px 14px;cursor:pointer}
+.shorts-inline .srow{display:flex;gap:13px;overflow-x:auto;padding-bottom:7px}
+.shorts-inline .scard .pic{aspect-ratio:var(--card-ratio,9/16)}
+.card{cursor:pointer;display:flex;flex-direction:column;gap:8px;min-width:0;
+  position:relative;transition:transform .18s ease,filter .18s ease;transform-origin:center}
+/* 叠层往上溢出到行间距里，卡片本体不为它留白。留白的写法（padding-top:7px）会把
+   整张卡压低 7px 并加高 7px，同一行里 Mix、分卷、版次卡的封面和下面的文字就比
+   邻居矮一截；往上堆之后卡片盒和普通卡完全同高，下沿自然平齐。 */
+.mixstack,.partstack{position:relative;isolation:isolate}
+.mixstack::before,.mixstack::after,.partstack::before,.partstack::after{content:"";position:absolute;border-radius:var(--badge-radius);
+  border:1px solid var(--border-15);background:color-mix(in srgb,var(--surface) 84%,var(--video-glow,#15202a));z-index:0}
+.mixstack::before,.partstack::before{inset:0 12px 8px;transform:translateY(-7px);opacity:.54}
+.mixstack::after,.partstack::after{inset:0 6px 4px;transform:translateY(-4px);opacity:.78}
+.mixstack .pic,.partstack .pic{z-index:1}
+/* 悬浮 Mix 卡片时逐张翻走：最上面那张向上抬起、轻转并淡出，下一张随即接管。
+   和静止时的叠层是同一个隐喻，不是另一套动效；滞后动画偏好下根本不启动（JS 侧拦下）。 */
+.mixfaces{position:absolute;inset:0;z-index:2;pointer-events:none;background:#000}   /* 遮住静止封面：不遮的话两张正在交接的时候它会从中间透出来 */
+.mixface{position:absolute;inset:0;opacity:0;transform:scale(.985);transform-origin:50% 88%;
+  transition:transform .46s cubic-bezier(.34,.02,.24,1),opacity .4s ease}
+.mixface.on{opacity:1;z-index:2;transform:none}
+.mixface.off{opacity:0;z-index:3;transform:translateY(-11%) rotate(-3.4deg) scale(.94)}
+.mixbadge{position:absolute;right:9px;bottom:9px;z-index:6;display:flex;align-items:center;gap:6px;
+  min-height:28px;padding:4px 9px;border-radius:var(--control-radius);background:rgba(12,8,8,.72);color:#fff;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);font-size:var(--fs-xs);font-weight:600}
+.mixbadge svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
+.partbadge{position:absolute;right:9px;top:9px;z-index:6;min-height:27px;padding:5px 9px;border-radius:var(--control-radius);
+  background:rgba(12,8,8,.72);color:#fff;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  font-size:var(--fs-xs);font-weight:600}
+.mixcard .mixmeta{display:flex;min-width:0;gap:9px;align-items:flex-start}
+.mixglyph{width:40px;height:40px;flex:none;border-radius:50%;display:grid;place-items:center;
+  color:var(--ink);background:var(--overlay-5);border:1px solid var(--border-10)}
+.mixglyph svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
+.mixcopy{min-width:0}.mixcopy b,.mixcopy span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mixcopy b{font-size:var(--fs-md);line-height:1.45}.mixcopy span{font-size:var(--fs-xs);color:var(--muted);margin-top:2px}
+.selectionMark{display:none;position:absolute;top:10px;right:10px;z-index:8;width:30px;height:30px;border-radius:var(--surface-radius);
+  place-items:center;color:rgba(255,255,255,.72);background:rgba(0,0,0,.34);border:1px solid rgba(255,255,255,.28);
+  backdrop-filter:saturate(1.8) blur(12px);-webkit-backdrop-filter:saturate(1.8) blur(12px)}
+.selectionMark svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
+.card.selected .selectionMark{background:#F5F7FA;color:#090B0F;border-color:#F5F7FA;box-shadow:0 3px 12px #0008}
+.deleteMark{position:absolute;z-index:7;left:10px;bottom:10px;display:none;align-items:center;gap:5px;height:28px;padding:0 9px;
+  border-radius:var(--badge-radius);background:rgba(0,0,0,.58);color:#FFB14A;border:1px solid rgba(255,177,74,.4);
+  backdrop-filter:saturate(1.8) blur(12px);-webkit-backdrop-filter:saturate(1.8) blur(12px);font-size:var(--fs-xs);font-weight:600}
+.deleteMark svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.card.pending-delete .deleteMark{display:flex}
+.card.pending-delete .poster,.card.pending-delete .hv{filter:grayscale(.9) brightness(.54);opacity:.68}
+.card.pending-delete .meta{opacity:.58}
+.card.pending-delete:hover .meta{opacity:.76}
+.pic{position:relative;aspect-ratio:var(--card-ratio,16/9);background:#000;border-radius:var(--badge-radius);
+  overflow:hidden;display:flex;align-items:center;justify-content:center}
+/* 预览图：单格，contain 放进固定 16:9 框 —— 不拉伸、不裁切、不改框体大小 */
+.poster{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;
+  display:block;background:#000}
+.cardopenhit{position:absolute;inset:0;z-index:3;border:0;background:transparent;padding:0;cursor:pointer}
+/* 悬停即播真视频（仅免费源，计费源永远不自动拉流） */
+.hv{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;
+  opacity:0;transition:opacity .2s}
+.hv.on{opacity:1}
+/* 悬停描边画在盖住封面的伪元素上，`border` 和 `outline` 两条路都走不通：`border-box` 下
+   border 会把 `.pic` 的内容盒收窄 1px，里面 `contain` 的封面跟着缩一圈、两侧多露一截黑底，
+   看上去是图片抖了一下；outline 落在 padding box 最外一圈，而铺满 `inset:0` 的封面和悬停
+   视频是定位子元素，会把它盖掉——只剩没封面的卡看得见线，有封面的没有。伪元素排在所有
+   子元素之后，不参与布局，两种卡拿到同一条线。 */
+.card:hover .pic::after{content:"";position:absolute;z-index:6;inset:0;pointer-events:none;
+  border:1px solid color-mix(in srgb,var(--ink) 48%,transparent);border-radius:inherit}
+.select-mode .card{cursor:default}
+.select-mode .cardopenhit,.select-mode .hovertools,.select-mode .previewcounter{pointer-events:none!important}
+.card.selected .pic,.card.selected:hover .pic{box-shadow:inset 0 0 0 2px rgba(245,247,250,.9)}
+@media (hover:hover) and (pointer:fine){
+  .card.longhover{transform:translateY(-7px) scale(1.065);z-index:8;filter:brightness(1.04)}
+}
+.hovertools{position:absolute;z-index:4;display:flex;align-items:center;gap:14px;
+  opacity:0;transition:opacity .15s;pointer-events:none}
+.card.longhover .seektools,.card:hover .later-tools{opacity:1}
+.hovertools.seektools{inset:50% auto auto 50%;transform:translate(-50%,-50%)}
+.hovertools button{pointer-events:none;width:58px;height:58px;border-radius:50%;border:1px solid rgba(255,255,255,.12);
+  background:rgba(0,0,0,.24);color:#fff;backdrop-filter:saturate(180%) blur(12px);
+  -webkit-backdrop-filter:saturate(180%) blur(12px);display:flex;align-items:center;
+  justify-content:center;cursor:pointer;position:relative;transition:transform .15s ease,background .15s ease}
+.hovertools button svg{width:25px;height:25px;stroke:currentColor;fill:none;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round}
+.hovertools button:hover{transform:scale(1.12);background:rgba(0,0,0,.34)}
+/* 居中那三颗是盖在画面上的媒体控件，不是页面控件：三个 58px 的磨砂实心圆压在封面
+   正中，遮住的画面比按钮本身还多，而这一层出现的时候用户正在看的就是画面。改成裸
+   图标——命中区域仍是 58px 的圆，只是不再画出来；描边靠一层投影在浅色画面上保持
+   可读。秒数交给 title／aria-label，图标上不再压一个数字。
+   参考证据见 docs/reference-snapshots/hover-seek-controls-user-screenshot.md。 */
+.hovertools.seektools button{border:0;background:none;backdrop-filter:none;
+  -webkit-backdrop-filter:none;filter:drop-shadow(0 1px 4px rgba(0,0,0,.6))}
+.hovertools.seektools button svg{width:34px;height:34px;stroke-width:1.5}
+.hovertools.seektools button:hover{background:none}
+.hovertools.later-tools{right:12px;bottom:12px}
+.card.longhover .seektools button,.card:hover .later-tools button{pointer-events:auto}
+.hovertools .laterbtn{width:36px;height:36px;padding:0;font-family:inherit}
+.hovertools .laterbtn svg{width:21px;height:21px}.hovertools .laterbtn[aria-pressed="true"]{background:var(--ink);color:var(--ground)}
+.previewcounter{position:absolute;right:12px;top:12px;z-index:4;width:36px;height:36px;border:0;padding:0;
+  border-radius:50%;display:grid;place-items:center;color:#fff;cursor:pointer;opacity:0;pointer-events:none;
+  background:rgba(0,0,0,.24);backdrop-filter:saturate(180%) blur(12px);-webkit-backdrop-filter:saturate(180%) blur(12px);
+  transition:transform .15s ease,opacity .15s}
+.card.previewing .previewcounter{opacity:1;pointer-events:auto}.card.longhover .previewcounter{opacity:0;pointer-events:none}
+.previewcounter:hover{transform:scale(1.2)}.previewcounter>svg{position:absolute;inset:0;width:36px;height:36px;transform:rotate(-90deg)}
+.previewcounter circle{fill:none;stroke-width:2}.previewcounter circle:first-child{stroke:rgba(255,255,255,.18)}
+.previewcounter circle:last-child{stroke:#fff;stroke-linecap:round;stroke-dasharray:106.814;stroke-dashoffset:106.814}
+.card.previewing .previewcounter circle:last-child{animation:preview-arc var(--hover-delay) linear forwards}.card.longhover .previewcounter circle:last-child{animation:none}
+.previewcounter .ringplay{position:relative;inset:auto;width:14px;height:14px;transform:none;stroke:#fff;fill:none;stroke-width:2;margin-left:1px}
+@keyframes preview-arc{to{stroke-dashoffset:0}}
+.nopic{font-size:var(--fs-xs);letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
+.resourceglyph{display:grid;place-items:center;gap:8px;color:var(--muted);font-size:var(--fs-xs);letter-spacing:.08em}
+.resourceglyph svg{width:32px;height:32px;stroke:currentColor;fill:none;stroke-width:1.5}
+.resourcecardaction{position:absolute;right:10px;bottom:10px;z-index:5;display:inline-flex;align-items:center;gap:6px;
+  min-height:32px;padding:0 10px;border:1px solid rgba(255,255,255,.25);border-radius:var(--control-radius);
+  background:rgba(0,0,0,.64);color:#fff;font:inherit;font-size:var(--fs-xs);cursor:pointer;
+  backdrop-filter:saturate(1.5) blur(10px);-webkit-backdrop-filter:saturate(1.5) blur(10px)}
+.resourcecardaction:hover:not(:disabled){background:var(--hover);color:var(--ink)}
+.resourcecardaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+.resourcecardaction:disabled{cursor:wait;opacity:.72}.resourcecardaction svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
+.resourcekind{display:grid;place-items:center;color:var(--muted);border-radius:var(--control-radius)}
+.resourcekind svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7}
+.resourcecardtitle{cursor:default}
+.junkcount{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px}
+.junksummary{flex:none;font-size:var(--fs-sm);color:var(--muted);white-space:nowrap}
+/* 两条分类切换共用一套外观，语义各自不同：复核那条在 10 个互不相同的候选数据集之间切
+   （真 tablist），垃圾文件那条是同一批候选按 type 收窄（落 URL 的筛选链接）。
+   几何仍取 Geist Tabs 的 secondary 变体（vercel.com/geist/tabs 实测 2026-09-03）：高 32px、
+   左右 12px、6px 圆角、13px/400，hover 只换文字色，选中只抬底到 --hover、不动边框。
+   有意偏离一处：上游 secondary 不描边，Peach 描 1px --border-15。上游正文没有
+   「secondary 必须放在容器内」这类条款（未取得），但 Peach 这两条直接坐在页面顶部，
+   下面就是全宽网格，四周没有任何容器边线；不描边时只有选中那一枚有底色，其余几项
+   没有可视边界，看不出是一排可点的控件。取值与排序条同族，两处认得出是同类控件。 */
+.reviewtabs,.junkfilters{display:flex;align-items:center;gap:5px;min-width:0;overflow-x:auto;scrollbar-width:none}
+.reviewtabs::-webkit-scrollbar,.junkfilters::-webkit-scrollbar{display:none}
+.reviewtabs{margin-bottom:16px}
+.reviewtabs button,.junkfilters a{box-sizing:border-box;height:32px;padding:0 12px;flex:none;
+  display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border-15);
+  border-radius:var(--control-radius);background:transparent;color:var(--muted);
+  text-decoration:none;font:inherit;font-size:var(--fs-sm);font-weight:400;
+  white-space:nowrap;cursor:pointer}
+.reviewtabs button:hover,.junkfilters a:hover{color:var(--ink)}
+.reviewtabs button[aria-selected="true"],.junkfilters a[aria-current="page"]{background:var(--hover);color:var(--ink)}
+.reviewtabs button:focus-visible,.junkfilters a:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+.reviewtabs .n,.junkfilters .n{color:var(--muted);font-size:var(--fs-xs);font-variant-numeric:tabular-nums}
+.junkfilters i{width:1px;height:20px;background:var(--line-soft);flex:none;margin:0 6px}
+.junkfilters a>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round}
+.junkcard{cursor:default;gap:0;overflow:hidden;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface);
+  content-visibility:auto;contain-intrinsic-size:auto 360px}
+.junkcard .pic{border:0;border-radius:0}.junkcard:hover .pic{box-shadow:none}
+.junkcard:hover .pic::after{content:none}
+.junkcard .poster{object-fit:contain}.junkbody{display:flex;flex:1;flex-direction:column;min-height:0}
+.select-mode .junkcard .junkactions{pointer-events:none;opacity:.52}
+.junkmeta{display:grid;gap:6px;min-width:0;padding:12px}.junkmeta .s{display:flex;gap:7px;min-width:0;flex-wrap:wrap;
+  color:var(--muted);font-size:var(--fs-xs)}
+.junkmeta .why{overflow-wrap:anywhere}.junkmeta .size{margin-left:auto;white-space:nowrap}
+.junkcardtitle{display:block;width:100%;min-width:0;
+  border:0;padding:0;background:transparent;color:var(--ink);font:inherit;font-weight:600;line-height:1.4;text-align:left}
+button.junkcardtitle{cursor:pointer}button.junkcardtitle:hover{color:var(--ink-2)}
+button.junkcardtitle:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px;border-radius:var(--control-radius)}
+.junkactions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:auto;padding:10px 12px;
+  border-top:1px solid var(--line-soft);background:var(--overlay-5)}
+/* 三个按钮等宽，内容却各自居中：标签 4/4/5 字长短不齐，三个图标就横向参差。
+   靠左起排后，图标到各自左边框是同一段距离，落在一条竖线上。 */
+.junkactions button{box-sizing:border-box;min-width:0;min-height:36px;padding:0 10px;display:inline-flex;align-items:center;justify-content:flex-start;gap:7px;
+  border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink-2);
+  font:inherit;font-size:var(--fs-xs);white-space:nowrap;cursor:pointer}
+.junkactions button:hover:not(:disabled){background:var(--hover);color:var(--ink)}
+.junkactions button:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+.junkactions button:disabled{cursor:wait;opacity:.64}.junkactions button svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:2}
+.junkactions .junktrash{color:var(--drop)}.junkactions .junktrash:hover:not(:disabled){background:var(--drop);border-color:var(--drop);color:#fff}
+.junkstate{grid-column:1/-1;color:var(--drop);font-size:var(--fs-xs)}.junkstate:empty{display:none}
+/* 紧凑密度下只剩图标，靠左会在按钮右侧留出一片空白，此时回到居中。 */
+body[data-density="dense"] .junkcard .junkactions button span{display:none}
+body[data-density="dense"] .junkcard .junkactions button{justify-content:center}
+.badge{position:absolute;top:6px;left:6px;display:flex;gap:4px;z-index:2;align-items:center;
+  transition:opacity .15s ease}
+/* 首页流和详情只留来源图标；完整来源与费用通过 title/aria-label 提供。 */
+.src{display:grid;place-items:center;width:20px;height:20px;padding:0;border:0;background:transparent}
+.src img,.src svg{width:18px;height:18px;border-radius:var(--badge-radius);object-fit:contain;display:block;flex:none}
+/* 线条类来源图标（本地盘 / 在线）没有品牌底色，亮封面上会看不见：
+   垫一层深色方角底（--badge-radius，与圆形实体头像划清界限）。
+   115 / PikPak 的官方位图 logo 自带完整底色，保持裸图不再叠底。 */
+.src:has(svg){width:auto;height:auto;padding:3px;border-radius:var(--badge-radius);background:color-mix(in srgb,#080A0D 62%,transparent)}
+.src.free{color:#CFE8CF}.src.metered{color:#FFD9AE}
+.src svg{stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+/* 详情面板里的来源 */
+.srcbig{display:inline-grid;place-items:center;width:22px;height:22px;padding:0;border:0;background:transparent}
+.srcbig img,.srcbig svg{width:17px;height:17px;border-radius:var(--badge-radius);object-fit:contain;flex:none}
+.srcbig svg{stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.srcbig.metered{color:var(--meter)}.srcbig.free{color:var(--keep)}
+.dur{position:absolute;right:6px;bottom:6px;z-index:2;background:color-mix(in srgb,#000 70%,transparent);
+  color:#F2EADF;padding:2px 6px;border-radius:var(--badge-radius);transition:opacity .15s ease}
+@media (hover:hover) and (pointer:fine){
+  .card:hover .badge,.card:hover .dur{opacity:0}
+}
+.scrub{position:absolute;left:0;right:0;bottom:0;height:3px;z-index:2;
+  background:color-mix(in srgb,#000 45%,transparent)}
+.scrub i{display:block;height:100%;background:var(--loupe)}
+.watchprogress{position:absolute;left:0;right:0;bottom:0;height:4px;z-index:5;background:rgba(255,255,255,.3)}
+.watchprogress i{display:block;height:100%;background:var(--tungsten)}
+.meta{display:flex;gap:10px;min-width:0}
+.mav{width:38px;height:38px;border-radius:50%;flex:none;overflow:hidden;background:var(--sunk);
+  position:relative;margin-top:2px;border:0;padding:0;cursor:pointer;color:inherit}
+.mav:hover{box-shadow:0 0 0 2px var(--ink-2)}
+.mav img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.mav .ini{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:var(--fs-sm);color:var(--muted);font-family:Bahnschrift,"Microsoft YaHei UI","Microsoft YaHei","PingFang SC",sans-serif}
+/* 共演头像叠放：靠左的在上层，hover 时抬到最前，保证每一位都点得到。 */
+.mavstack{display:flex;flex:none;margin-top:2px}
+.mavstack .mav{margin-top:0;box-shadow:0 0 0 2px var(--ground)}
+.mavstack .mav+.mav{margin-left:-14px}
+.mavstack .mav:nth-child(1){z-index:3}
+.mavstack .mav:nth-child(2){z-index:2}
+.mavstack .mav:nth-child(3){z-index:1}
+.mavstack .mav:hover{z-index:4;box-shadow:0 0 0 2px var(--ink-2)}
+.meta .whomore{color:var(--muted)}
+.mtext{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+.meta .t{font-size:var(--fs-md);line-height:1.35;min-height:2.7em;overflow:hidden;display:-webkit-box;
+  -webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-all}
+.meta .cardtitle{width:100%;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}
+.javidentity{display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;white-space:nowrap}
+.javcode{font-weight:600;letter-spacing:.01em}.javtitle{font-weight:400}
+.javedition{display:inline-flex;align-items:center;min-height:18px;padding:0 5px;border:1px solid currentColor;
+  border-radius:var(--badge-radius);font-size:var(--fs-xs);line-height:16px;font-weight:600;letter-spacing:0;vertical-align:1px}
+.javedition.subtitle{color:var(--ink-2)}
+.javedition.uncensored{color:var(--meter)}
+.javedition.cracked{color:var(--drop)}
+.javedition.censored{color:var(--muted)}
+.meta .s{display:flex;gap:8px;color:var(--muted);align-items:center;flex-wrap:wrap}
+.meta .who{color:var(--ink-2);min-width:0;max-width:100%;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+/* 没有实体链接的归属只是一段文字：番号、「未归属」这类值没有资料页可去。
+   染成强调色会让人以为能点，点下去却落到卡片本身、打开的是视频详情。 */
+.meta span.who{color:var(--ink-2);cursor:default}
+.flags{display:flex;gap:3px;margin-left:auto}
+.flags i{width:6px;height:6px;border-radius:0;display:block}
+.flags i.dislike{background:var(--drop)}.flags i.seen{background:var(--muted)}
+.flags i.dispose{background:var(--meter)}
+.flags i.later{background:var(--ink)}
+/* 标签语义分级 */
+.ctags{display:flex;flex-wrap:nowrap;gap:5px;min-width:0;overflow:hidden}
+.tg{padding:var(--tag-pad-y) var(--tag-pad-x);border-radius:var(--tag-radius);font-size:var(--fs-xs);border:1px solid var(--line);
+  line-height:1.45;white-space:nowrap;cursor:pointer;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;max-width:32%;
+  background:color-mix(in srgb,var(--surface) 82%,var(--ground))}
+.tg.general,.tg.artist,.tg.meta,.tg.relationship,.tg.role,.tg.appearance,.tg.scene,.tg.story,.tg.position{color:var(--ink-2);border-color:var(--line)}
+.tg.artist{font-weight:600}
+.tg:hover{color:var(--ink);background:var(--hover)}
+body[data-density="dense"] .card .ctags .tg:nth-child(n+2){display:none}
+body[data-density="dense"] .card .ctags .tg{max-width:132px;overflow:hidden;text-overflow:ellipsis}
+/* 顶栏的密集模式固定为标题、身份、标签三行。缺少标签时第三行仍保留，
+   同一网格不会再被大小、观看次数或长身份撑成四行。分卷卡已有 7px 叠层空间，
+   密集网格的普通卡也保留同一高度，避免每行是否出现分卷卡决定整行高度。 */
+body[data-density="dense"] .grid>.card{padding-top:7px}
+body[data-density="dense"] .card .mtext{display:grid;grid-template-rows:1.35em 1.35em 30px;
+  gap:3px;height:calc(2.7em + 36px);overflow:hidden}
+body[data-density="dense"] .card .meta .t{display:block;max-width:100%;min-height:1.35em;overflow:hidden;
+  -webkit-line-clamp:unset;white-space:nowrap;text-overflow:ellipsis}
+body[data-density="dense"] .card .meta .s{height:1.35em;min-height:0;flex-wrap:nowrap;overflow:hidden;white-space:nowrap}
+body[data-density="dense"] .card .meta .who{flex:0 1 auto}
+body[data-density="dense"] .card .meta .whomore,
+body[data-density="dense"] .card .meta .size{flex:none;white-space:nowrap}
+body[data-density="dense"] .card .ctags{height:30px;align-items:flex-start;flex-wrap:nowrap;overflow:hidden}
+body[data-density="dense"] .card .meta .why,
+body[data-density="dense"] .card .meta .watchcount{display:none}
+
+/* 短片带 */
+.shorts{margin:30px 0 8px;border-top:1px solid var(--line-soft);padding-top:16px}
+.shorts h2{margin:0 0 11px;font-size:var(--fs-lg);display:flex;align-items:center;gap:10px}
+/* 竖屏计数的灰字。index.html 和 openItem 的内联片段原先各写一份，一模一样。 */
+.shortscount{color:var(--muted);font-size:var(--fs-xs)}
+.shorts h2 button,.shorts-enter{margin-left:auto;min-height:48px;display:inline-flex;align-items:center;gap:7px;
+  font-size:var(--fs-xs);background:var(--overlay-5);border:0;border-radius:var(--pill-radius);padding:0 16px;cursor:pointer;
+  color:var(--ink);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:background .14s,transform .14s}
+.shorts h2 button:hover,.shorts-enter:hover{background:color-mix(in srgb,var(--ink) 16%,transparent);transform:translateY(-1px)}
+.shorts h2 button:active,.shorts-enter:active{transform:scale(.97)}
+.shorts h2 button svg,.shorts-enter svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
+.srow{display:flex;gap:13px;overflow-x:auto;padding-bottom:7px}
+.srow .scard{flex:none;width:214px;cursor:pointer}
+

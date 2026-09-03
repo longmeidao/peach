@@ -1,7 +1,7 @@
 /* 「高清版」管理页（`/quality-goals`）。第一个从 `web/app.js` 迁出来的页面。
  *
  * 选它是因为它的边界最干净：一个 GET（`/api/quality-goals`）、一个自己的容器、
- * 没有写入端点、没有轮询，样式在 `web/app.css` 里已经是独立的 `.qualitylist`／
+ * 没有写入端点、没有轮询，样式在 `web/css/11-identity.css` 里已经是独立的 `.qualitylist`／
  * `.qualityitem`。迁移它不需要动别的页面，也不需要动样式。
  *
  * 列表数据不在这个文件里：它是共享状态，住在 `../state/quality-goals`，因为数据管理页

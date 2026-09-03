@@ -1,0 +1,154 @@
+/* 色板：灯箱 / 接触印相。底色带棕不是纯黑，中性灰偏暖向主调靠。
+   钨丝灯琥珀作主调，冷青只给数据，语义色（免费/计费/丢弃）与主调分开。 */
+/* 深色只保留轻微层级，不让输入框、关注管理和数据详情陷进近乎纯黑的第三档。
+   2026-08-30 按实际画面回执，把 ground 从 #020408 抬到 #080A0D；所有使用
+   token 的页面、侧栏、输入与选中面同步生效。 */
+:root{
+  --ground:#FFFFFF; --surface:#F7F8FA; --sunk:#ECEEF2; --hover:#EEF1F5;
+  --line:#D9DDE4; --line-soft:#E8EBF0;
+  --ink:#14161A; --ink-2:#454B55; --muted:#767C87;
+  /* 蓝只给焦点环、链接、进度／数据和 Toggle 开态；按下／选中态与主动作走 --ink／--ink-2 反相，
+     其它选择器引用 --tungsten 由 tests/test_web_ui.py 拒绝。 */
+  --tungsten:#0095F6;
+  --loupe:#127A72; --keep:#2E7D32; --meter:#B26A10; --drop:#C0392B; --success:#2E7D32;
+  --tile:336px; --topH:56px; --filterH:58px; --filterItemH:40px; --sortH:53px; --railW:72px;
+  /* 圆角也是有词汇的，不是随手挑一个数。
+     --pill:整圆，只给真正的胶囊——标签、筛选令牌、滚动条和进度条这类连续的条。
+     --control-radius:控件（按钮、分段器），实测 Geist 的 6px。
+     --badge-radius:状态与元信息标记。把「WIP」「最长」这种普通元信息做成整圆胶囊，
+     是 vercel-report-design 点名要拒绝的反射：它们会跟真标签抢同一种视觉身份，
+     用户以为可以点。
+     --surface-radius:不浮起的内嵌表面——缩略图、行卡片、Note、Toast、分段器外框，介于控件与浮层之间。
+     除这五个 token、50% 和 0 之外不写字面圆角；带边框容器里的头尾条用 calc(… - 1px) 保持同心。
+     字重同理只有 400／500／600 三档：vercel.com/design.md 明说不要自造数字字重，650、700 全部收到 600。 */
+  --pill-radius:999px; --tag-radius:var(--pill-radius);
+  --control-radius:6px; --badge-radius:4px; --floating-radius:12px; --surface-radius:8px; --tag-pad-y:4px; --tag-pad-x:10px; --ambient-opacity:0; --hover-delay:5s;
+  /* 框体上下两条横条的统一高度。写成变量是因为它同时管数据管理的卡片、链接管理
+     和资源同步：这三处任何一处单独调，页面上就会出现两种「同一种条」。 */
+  --fieldset-bar-h:52px;
+  --layer-dialog:1000; --layer-popover:1100; --layer-tooltip:1200;
+  --frost-panel:rgba(247,248,250,.92); --frost-light:rgba(255,255,255,.86);
+  --overlay-5:rgba(20,22,26,.05);--border-10:rgba(20,22,26,.10);--border-15:rgba(20,22,26,.15);
+  /* 字号只有这一套刻度。之前站内散着 22 种字号（9…48px），相邻两档差半像素，
+     既排不出层级也没法复核。收敛成 8 档，下限 12px：更小的灰字在 Vercel 的
+     design.md 里被明确列为要拒绝的生成式设计反射。新增字号前先证明现有 8 档都不合适。 */
+  --fs-xs:12px; --fs-sm:13px; --fs-md:14px; --fs-lg:16px;
+  --fs-xl:20px; --fs-2xl:24px; --fs-3xl:32px; --fs-4xl:48px;
+  --sb:#3A3A40; --sb-hover:#55555E;   /* 336 = 168×2，与目标站的模块单位一致 */
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#080A0D; --surface:#0C0F14; --sunk:#0B0D11; --hover:rgba(255,255,255,.07);
+  --line:#3A3A3D; --line-soft:#2C2C30;
+  --ink:#FFFFFF; --ink-2:#C9CDD4; --muted:#9AA0A8;
+  --tungsten:#0095F6;
+  --frost-panel:rgba(6,9,14,.94); --frost-light:rgba(14,18,24,.90);
+  --overlay-5:rgba(245,250,255,.05);--border-10:rgba(245,250,255,.10);--border-15:rgba(245,250,255,.15);
+  --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --success:#5FB95F; --ambient-opacity:1;}}
+:root[data-theme="dark"]{
+  --ground:#080A0D; --surface:#0C0F14; --sunk:#0B0D11; --hover:rgba(255,255,255,.07);
+  --line:#3A3A3D; --line-soft:#2C2C30;
+  --ink:#FFFFFF; --ink-2:#C9CDD4; --muted:#9AA0A8;
+  --tungsten:#0095F6;
+  --frost-panel:rgba(6,9,14,.94); --frost-light:rgba(14,18,24,.90);
+  --overlay-5:rgba(245,250,255,.05);--border-10:rgba(245,250,255,.10);--border-15:rgba(245,250,255,.15);
+  --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --success:#5FB95F; --ambient-opacity:1;}
+
+*,*::before,*::after{box-sizing:border-box}
+.sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+/* 滚动条槽位一直留着。设置面板、灯箱和播放器都会给 body 加 overflow:hidden，
+   槽位不预留时滚动条一消失，整页就横向跳一次；关掉再跳回来。 */
+html{color-scheme:light;scroll-padding-top:calc(var(--topH) + 8px);scrollbar-gutter:stable}
+@media (prefers-color-scheme:dark){html:not([data-theme="light"]){color-scheme:dark}}
+html[data-theme="dark"]{color-scheme:dark}
+html,body{margin:0;padding:0}
+body{background:var(--ground);color:var(--ink);
+  font-family:Roboto,"Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI","PingFang SC",sans-serif;
+  font-size:var(--fs-md);line-height:1.45;-webkit-font-smoothing:antialiased;
+  font-variant-numeric:tabular-nums}
+/* Beeg 当前实现是 49vh 静态 glow.webp + 向底色消失的遮罩。Peach 不复制
+   许可不明的位图，依据留存像素重建一张确定性的 CSS 光晕。 */
+body::before{content:"";position:absolute;z-index:0;pointer-events:none;top:var(--topH);left:0;right:0;height:49vh;
+  opacity:var(--ambient-opacity);background:
+    linear-gradient(to bottom,rgba(0,0,0,.6),var(--ground)),
+    radial-gradient(ellipse 43% 78% at 42% 34%,rgba(25,169,187,.72),transparent 68%),
+    radial-gradient(ellipse 36% 72% at 30% 6%,rgba(178,125,141,.58),transparent 72%),
+    radial-gradient(ellipse 38% 70% at 76% 18%,rgba(84,66,87,.58),transparent 72%),
+    linear-gradient(105deg,#46506b 0%,#68688b 24%,#274f64 53%,#2e2938 100%);
+  animation:ambient-in .8s ease .5s both}
+@keyframes ambient-in{from{opacity:0}to{opacity:var(--ambient-opacity)}}
+.disp{font-family:Bahnschrift,"Segoe UI Variable Display","Microsoft YaHei UI",sans-serif;
+  font-weight:600;letter-spacing:.02em}
+.mono{font-family:"Cascadia Mono",Consolas,ui-monospace,"Microsoft YaHei UI","PingFang SC",monospace;
+  font-variant-numeric:tabular-nums;font-size:var(--fs-xs)}
+button,input,textarea{font:inherit;color:inherit}
+button,a,input,textarea,select,summary{touch-action:manipulation}
+:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+/* Geist Spinner = 用户触发动作的即时反馈；Loading Dots = 后台任务仍在推进。 */
+@keyframes geist-spinner-opacity{0%{opacity:1}100%{opacity:.15}}
+.geist-spinner{position:relative;display:inline-block;flex:none;width:16px;height:16px;color:currentColor}
+.geist-spinner>i{position:absolute;top:1px;left:7px;width:2px;height:4px;border-radius:var(--pill-radius);
+  background:currentColor;transform-origin:1px 7px;transform:rotate(var(--spinner-angle));
+  animation:geist-spinner-opacity 1s linear var(--spinner-delay) infinite}
+@keyframes geist-loading-dot{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-2px)}}
+.geist-loading{display:inline-flex;align-items:center;min-width:0;gap:8px;color:var(--muted)}
+.geist-loading-dots{display:inline-flex;align-items:center;gap:3px;flex:none}
+.geist-loading-dots>i{width:4px;height:4px;border-radius:50%;background:currentColor;
+  animation:geist-loading-dot 1.2s ease-in-out infinite}
+.geist-loading-dots>i:nth-child(2){animation-delay:.15s}.geist-loading-dots>i:nth-child(3){animation-delay:.3s}
+/* Geist Search Input：搜索图标占前缀位，查找中原位换 Spinner，输入框几何不变。
+   全站带搜索语义的输入共用这一份，各处只加宽度和位置。 */
+.geist-search{position:relative;min-width:0}
+.geist-search-prefix{position:absolute;z-index:1;left:12px;top:11px;
+  display:grid;place-items:center;width:16px;height:16px;color:var(--muted);pointer-events:none}
+.geist-search-prefix>svg{width:16px;height:16px;stroke:currentColor;fill:none}
+.geist-search input[type="search"]{width:100%;min-width:0;height:38px;
+  box-sizing:border-box;border:1px solid var(--border-15);border-radius:var(--control-radius);
+  background:var(--ground);color:var(--ink);padding:0 12px 0 38px;font-size:var(--fs-md);font-family:inherit;
+  line-height:20px;transition:border-color .12s ease}
+.geist-search input[type="search"]::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none}
+.geist-search input[type="search"]::placeholder{color:var(--muted)}
+/* 点进去要立刻看得出焦点在这儿，配方与顶部搜索框的 `.search:focus-within` 同一条。 */
+.geist-search input[type="search"]:focus{outline:0;
+  border-color:color-mix(in srgb,var(--tungsten) 72%,transparent);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--tungsten) 26%,transparent)}
+.geist-search:focus-within .geist-search-prefix{color:var(--ink)}
+.geist-button{box-sizing:border-box;height:32px;padding:0 6px;border:1px solid var(--border-15);
+  border-radius:var(--control-radius);background:transparent;color:var(--ink);display:inline-flex;
+  align-items:center;justify-content:center;gap:6px;font:inherit;font-size:var(--fs-md);font-weight:500;
+  line-height:1;white-space:nowrap;cursor:pointer;
+  transition:background-color .15s ease-in-out,border-color .15s ease-in-out,color .15s ease-in-out}
+.geist-button:hover:not(:disabled){background:var(--hover)}
+.geist-button:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+.geist-button:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
+/* Vercel/Geist loading actions look unavailable and reject repeat activation,
+   but remain focusable; JS pairs this with aria-disabled instead of disabled. */
+button[aria-busy="true"],[role="button"][aria-busy="true"]{
+  cursor:wait!important;opacity:.55!important;filter:saturate(.35)
+}
+.geist-button.primary{border-color:var(--ink);background:var(--ink);color:var(--ground)}
+.geist-button.primary:hover:not(:disabled){border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));
+  background:color-mix(in srgb,var(--ink) 88%,var(--ground))}
+.skiplink{position:fixed;z-index:1000;left:12px;top:8px;transform:translateY(-150%);
+  padding:9px 13px;border-radius:var(--control-radius);background:var(--ink);color:var(--ground);text-decoration:none;
+  transition:transform .12s ease}
+.skiplink:focus-visible{transform:translateY(0)}
+/* 滚动条：全站统一，不用浏览器默认。细、无箭头、无轨道底色，悬停才提亮。 */
+*{scrollbar-width:thin;scrollbar-color:var(--sb) transparent}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent;border:0}
+::-webkit-scrollbar-thumb{background:var(--sb);border-radius:var(--pill-radius);
+  border:2px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:var(--sb-hover);background-clip:content-box}
+::-webkit-scrollbar-corner{background:transparent}
+::-webkit-scrollbar-button{display:none;width:0;height:0}
+/* 横向行不显示滚动条（本来就能拖动/滚轮横滚） */
+.tier,.tagbar,.srow,.nrow{scrollbar-width:none}
+.tier::-webkit-scrollbar,.tagbar::-webkit-scrollbar,
+.srow::-webkit-scrollbar,.nrow::-webkit-scrollbar{display:none}
+/* 横滚容器的 overflow-x:auto 会把计算后的 overflow-y 一起变成 auto，圆头像贴着容器
+   上沿时，:hover 和选中态那圈外扩 box-shadow 就被削平。留 3px 上方余量再用等量负
+   margin 抵掉，位置一点不动。头像圈被遮是同一个缺陷重犯多次，横向头像行统一走这
+   一条，不要再逐处补 padding。`.followauthors` 自带余量，不在此列。 */
+.tier,.relatedpeople{padding-top:3px;margin-top:-3px}
+

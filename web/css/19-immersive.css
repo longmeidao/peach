@@ -1,0 +1,250 @@
+/* ── 沉浸模式 ──
+   桌面采用 YouTube Shorts 的三段式布局：固定 9:16 舞台居中，动作列贴在舞台右侧，
+   作者与标题留在左下角。手机才让舞台重新铺满视口。 */
+.tok{position:fixed;inset:0;z-index:200;background:#0f0f0f;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.tok[hidden]{display:none}
+.tokstage{position:absolute;left:50%;top:50%;width:min(56.25vh,calc(100vw - 240px));aspect-ratio:9/16;
+  transform:translate(-50%,-50%)}
+.tokstage.wide{left:50%;right:auto;width:min(64vw,177.778vh);aspect-ratio:16/9;transform:translate(-50%,-50%)}
+.toktrack{position:absolute;inset:0;overflow:hidden;border-radius:var(--floating-radius);background:#000;
+  box-shadow:0 0 64px rgba(0,0,0,.34);touch-action:manipulation;cursor:pointer}.toktrack video{position:absolute;inset:0;max-height:none;max-width:none;
+  width:100%;height:100%;left:50%;transform:translateX(-50%);object-fit:cover;background:#000;will-change:transform;
+  transition:transform .2s cubic-bezier(.2,.2,.4,.9)}
+/* 片源与视口比例差得多时按原始比例完整显示（留黑边），不裁掉画面。
+   判据在 JS 的 tokFitOne：这里只认结果，不再假设「竖屏才需要 contain」。 */
+.toktrack video.contain{object-fit:contain}
+.tokloading{position:absolute;z-index:12;left:50%;top:50%;transform:translate(-50%,-50%);
+  display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid rgba(255,255,255,.24);
+  border-radius:var(--pill-radius);background:rgba(0,0,0,.58);color:#fff;backdrop-filter:blur(12px);pointer-events:none;
+  font:var(--fs-xs)/1 "Cascadia Mono",monospace;white-space:nowrap}
+.tokloading[hidden]{display:none}
+.tokui{position:absolute;left:20px;bottom:20px;width:min(520px,calc(50% - 28.125vh - 36px));
+  padding:0;color:#f1f1f1;pointer-events:none}
+.tok.tok-wide .tokui{width:min(500px,calc(36vw - 56px))}
+.tokbtns{position:absolute;left:calc(100% + 12px);bottom:8px;width:72px;
+  display:flex;flex-direction:column;align-items:center;gap:16px}
+.tokstage.wide .tokbtns{left:auto;right:12px;bottom:18px}
+.tokaction{display:flex;flex-direction:column;align-items:center;gap:6px;color:#f1f1f1}
+.tokbtns button{position:relative;transition:transform .14s,background .14s}
+.tokbtns button:hover{transform:scale(1.05);border-color:rgba(255,255,255,.5)}
+.tokbtns button:active{transform:scale(.96)}
+.tokbtns button:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px}
+.toklabel{font-size:var(--fs-xs);font-weight:500;line-height:1.25;white-space:nowrap}.toklabel b{font:inherit}
+/* 进度条。可见部分只有 4px，但命中区得够高——屏幕最下沿的 4px 是鼠标最难瑞的
+   那一条。所以 .tokbar 本体是 20px 的透明热区，轨道和已播部分画在它底部，
+   鼠标靠近（或拖动中）才变粗。touch-action:none 是为了让触控拖动不被当成页面滚动。 */
+.tokbar{position:absolute;left:0;right:0;bottom:0;height:20px;z-index:3;
+  cursor:pointer;touch-action:none;display:flex;align-items:flex-end}
+.tokbar::before{content:"";position:absolute;left:0;right:0;bottom:0;height:4px;
+  background:rgba(255,255,255,.16);transition:height .12s}
+.tokbar i{position:relative;display:block;height:4px;width:0;background:var(--tungsten);
+  transition:height .12s}
+.tokbar:hover::before,.tokbar:hover i,
+.tokbar.scrubbing::before,.tokbar.scrubbing i{height:9px}
+.tokauthor{display:flex;align-items:center;gap:10px;margin-bottom:12px;font-size:var(--fs-md);line-height:1.2}
+.tokauthor>a{color:#f1f1f1;font-weight:600;text-decoration:none;pointer-events:auto}
+.tokauthor>a:hover{color:var(--tungsten);text-decoration:none}.tokauthor>span{color:#aaa;font-size:var(--fs-sm)}
+.tokavatar{position:relative;width:40px;height:40px;flex:none;overflow:hidden;border:0;border-radius:50%;padding:0;
+  background:#333;color:#f1f1f1;cursor:pointer;pointer-events:auto}
+.tokavatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.tokavatar .ini{position:absolute;inset:0;display:grid;place-items:center;font-weight:600}
+.tokavatar:hover{box-shadow:0 0 0 2px #f1f1f1}
+/* 标题是进详情页的入口，所以是按钮；但它在画面上就是一行字，
+   不能长成按钮的样子。只在悬停时用下划线提示可点，和旁边的创作者链接一致。 */
+.tokui .toktitle{display:block;max-width:100%;margin:0;padding:0;border:0;background:none;
+  color:inherit;font:inherit;font-size:var(--fs-xl);font-weight:600;line-height:1.25;text-align:left;cursor:pointer;pointer-events:auto;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tokui .toktitle:hover{color:var(--ink-2)}
+.tokbtns button[aria-pressed="true"]{background:#f1f1f1;color:#0f0f0f}
+.tokclose{position:absolute;top:15px;right:15px;width:42px;height:42px;background:rgba(0,0,0,.5);color:#EEE;
+  border:0;border-radius:50%;padding:0;display:grid;place-items:center;cursor:pointer}.tokclose svg{width:21px;height:21px;stroke:currentColor;fill:none}
+.tokhint{display:none}
+
+.loadmore{min-height:42px;margin:18px auto 0;text-align:center;color:var(--muted);padding:12px}
+.empty{color:var(--muted);padding:20px 0;text-align:center}
+/* Geist Scroller：内容只沿指定轴滚动，边缘渐隐负责提示仍有内容。 */
+.geist-scroller{position:relative;min-width:0;min-height:0;overflow:hidden}
+.geist-scroller-container{box-sizing:border-box;width:100%;height:100%;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.geist-scroller-container::-webkit-scrollbar{display:none}
+.geist-scroller-container[data-overflow="y"]{overflow:hidden auto}.geist-scroller-container[data-overflow="x"]{overflow:auto hidden}.geist-scroller-container[data-overflow="both"]{overflow:auto}
+.geist-scroller-overlay{position:absolute;z-index:2;inset:0;pointer-events:none}
+.geist-scroller-overlay::before,.geist-scroller-overlay::after{content:'';position:absolute;left:0;right:0;height:40px;opacity:0;transition:opacity .18s ease}
+.geist-scroller-overlay::before{top:0;background:linear-gradient(to bottom,var(--surface),transparent)}
+.geist-scroller-overlay::after{bottom:0;background:linear-gradient(to top,var(--surface),transparent)}
+.geist-scroller-overlay.can-scroll-top::before,.geist-scroller-overlay.can-scroll-bottom::after{opacity:1}
+/* Geist Empty State：标题和说明是一个组件；外层容器只负责与上方工具条保持 16px。 */
+.emptystate{grid-column:1/-1;display:grid;justify-items:center;align-content:center;gap:8px;box-sizing:border-box;width:100%;min-height:320px;padding:48px 24px;text-align:center;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface)}
+.emptystate.compact{min-height:220px;border:0;background:transparent}
+.emptystate .es-icon{display:grid;place-items:center;box-sizing:border-box;width:54px;height:54px;padding:10px;border-radius:var(--floating-radius);border:1px solid var(--border-15);color:var(--muted);margin-bottom:8px}
+.emptystate .es-icon svg{width:32px;height:32px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.emptystate .es-copy{display:grid;justify-items:center;gap:8px}
+.emptystate h3{margin:0;font-size:var(--fs-md);font-weight:600;color:var(--ink)}
+.emptystate p{margin:0;max-width:340px;font-size:var(--fs-sm);line-height:1.55;color:var(--muted)}
+.emptystate .es-actions{display:flex;justify-content:center;gap:8px;margin-top:8px}
+.batchbar{position:fixed;left:50%;bottom:22px;z-index:180;transform:translateX(-50%);display:flex;align-items:center;gap:7px;
+  padding:9px 11px;border:1px solid var(--line);border-radius:var(--floating-radius);background:var(--surface);
+  box-shadow:0 8px 24px #0005}.batchbar[hidden]{display:none}
+.batchbar span{padding:0 8px;color:var(--ink-2);white-space:nowrap}.batchbar button{border:1px solid var(--line);border-radius:var(--floating-radius);
+  background:var(--surface);color:var(--ink);padding:9px 12px;cursor:pointer}.batchbar button:hover{background:var(--hover);color:var(--ink)}
+.batchbar button svg{width:17px;height:17px;margin-right:6px;vertical-align:-4px;stroke:currentColor;fill:none;stroke-width:2}
+.batchbar .danger{color:var(--drop)}
+
+@media (max-width:1080px){.sgrid,.sgrid.mixgrid{grid-template-columns:minmax(0,1fr)}
+  .sgrid.mixgrid{grid-template-areas:"media" "side" "queue"}
+  .side,.sgrid.mixgrid>.side{grid-column:auto;border-left:0;border-top:1px solid var(--line-soft)}
+  .sidecontent{height:auto;max-height:none}
+  .mixqueue,.sgrid.mixgrid>.mixqueue{max-height:420px;border-left:0;border-top:1px solid var(--line-soft)}}
+@media (max-width:760px){
+  .readout{display:none} .brand .sub{display:none}
+  :root{--tile:168px;--topH:52px;--sortH:60px}
+  /* 管理入口在手机上先收成一行，按需展开为两列。当前页仍有明确上下文，
+     但不会让八个入口挤成三四行、把正文推到屏幕下方。 */
+  .managebar{display:block;width:100%;margin-bottom:14px;padding:0;border:0;background:transparent}
+  .managebar-toggle{display:flex!important;width:100%;min-height:46px;align-items:center;justify-content:space-between;
+    padding:10px 12px!important;border:1px solid var(--line-soft)!important;border-radius:var(--floating-radius)!important;background:var(--surface)!important;color:var(--ink)!important}
+  .managebar-current{display:inline-flex;align-items:center;gap:8px;font-weight:600}
+  .managebar-toggle>svg:last-child{transition:transform .16s ease}
+  .managebar.is-open .managebar-toggle>svg:last-child{transform:rotate(180deg)}
+  .managebar-menu{display:none;margin-top:8px;padding:6px;border:1px solid var(--line-soft);border-radius:var(--floating-radius);
+    background:var(--surface);grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}
+  .managebar.is-open .managebar-menu{display:grid}
+  .runtimegate a{grid-column:2/-1}
+  .managebar-menu button{width:100%;min-height:42px;justify-content:flex-start;padding:9px 11px}
+  .cleanupgrid{grid-template-columns:minmax(0,1fr)}
+  /* 说明行右端的动作在手机上要够手指点：桌面 32px 是 Geist 的控件高度，触摸区按本项目
+     的 44px 命中区来。 */
+  .pagelede-actions .batchaction{height:44px;padding-inline:16px}
+  .grid{gap:16px 8px}
+  .count{align-items:center;flex-direction:row;gap:10px;padding-block:8px;
+    overflow-x:auto;overflow-y:hidden;scrollbar-width:none;overscroll-behavior-inline:contain}
+  .count::-webkit-scrollbar{display:none}
+  .count>span:first-child{line-height:36px;white-space:nowrap}
+  .count .sorts{width:max-content;margin-left:0;flex:0 0 auto;overflow:visible}
+  .count .sorts button{min-height:36px}
+  .count.junkcount{align-items:stretch;flex-direction:column;overflow:visible;padding-block:8px}
+  .junkcount .junksummary{line-height:1.4}.junkfilters{width:100%;padding-bottom:2px}
+  .reviewtabs button,.junkfilters a{height:44px}.junkactions button{min-height:44px;padding-inline:7px}
+  #batchbar[hidden]{display:none}
+  .batchbar:has([data-junk-batch]:not([hidden])){left:12px;right:12px;bottom:12px;width:auto;transform:none;
+    display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;padding:9px 10px}
+  .batchbar:has([data-junk-batch]:not([hidden]))>span{grid-column:1/-1;padding:0;text-align:center}
+  .batchbar:has([data-junk-batch]:not([hidden])) button{display:inline-flex;min-width:0;min-height:44px;
+    align-items:center;justify-content:center;padding:8px 6px;white-space:nowrap;font-size:var(--fs-xs)}
+  .batchbar:has([data-junk-batch]:not([hidden])) button[hidden]{display:none}
+  .batchbar:has([data-junk-batch]:not([hidden])) button svg{margin-right:4px}
+  .entitycollectionhead{align-items:flex-start;flex-direction:column}
+  .entitycollectionhead .sorts{width:100%;margin-left:0;padding-bottom:2px}
+  .entitycollectionhead .sorts button{min-height:36px}
+  .playlistpage>header{align-items:stretch;flex-direction:column}.playlistcreate input{min-width:0;width:100%}.playlistcreate label{flex:1 1 100%}.playlistcard{grid-template-columns:92px minmax(0,1fr)}.playlistactions{justify-content:flex-start;overflow-x:auto}.playlistactions button{white-space:nowrap}
+  .fb{width:100%}.fb button{flex:1 1 0;min-width:38px}
+  /* 关注详情只有三四个动作键，撑满一行就是四个大得离谱的方块。 */
+  .fb.followdetailactions{width:max-content;max-width:100%}
+  .fb.followdetailactions button,.fb.followdetailactions .fdownload{flex:0 0 auto}
+  /* 顶栏在窄屏会被搜索框撑破 —— 搜索收成一个按钮，点了才展开 */
+  .top{gap:4px;padding:0 8px;overflow:hidden}
+  .top:has(.search.open){overflow:visible}
+  .brand h1{font-size:var(--fs-lg)}
+  .ib{width:36px;height:36px}
+  .ib svg{width:19px;height:19px}
+  /* 展开的搜索栏不铺满整条：左边留出返回按钮，和 YouTube 手机版一致——
+     否则进了搜索就没有退出的入口，只能靠失焦或 Esc。 */
+  /* 间距统一到顶栏自己的口径：左右留白 8（`.top` 的 padding），返回键与搜索框之间
+     4（`.top` 的 gap），两者同高 36（`.ib` 的窄屏尺寸），纵向各留 (52-36)/2=8。
+     不用 transform 居中——`.searchmenu` 在窄屏是 position:fixed，祖先一有 transform
+     就会改成相对它定位，下拉栏会整个跑偏。 */
+  .search{position:absolute;left:48px;right:8px;top:8px;height:36px;padding:0 14px;
+    max-width:none;margin:0;display:none;z-index:5;background:var(--surface)}
+  .search.open{display:flex}
+  /* 展开搜索时整条顶栏让位：筛选、品牌和右侧动作全部收起，只留返回箭头和输入框。
+     不收起的话筛选按钮和返回箭头会叠在同一个位置上。 */
+  .top:has(.search.open) #filterBtn,
+  .top:has(.search.open) .brand,
+  .top:has(.search.open) #searchBtn,
+  .top:has(.search.open) #immerseBtn,
+  .top:has(.search.open) #selectMode,
+  .top:has(.search.open) #settingsBtn{display:none!important}
+  .top:has(.search.open) .searchback{display:inline-flex;position:absolute;left:8px;top:8px;z-index:6}
+  .searchmenu{position:fixed;left:8px;right:8px;top:56px;max-height:70vh;overflow:auto}
+  #searchBtn{display:inline-flex!important}
+  /* 移动端不需要密度切换和筛选抽屉按钮挤在一起 */
+  #density{display:none}
+  /* 宽屏靠 `.search{flex:1}` 把动作按钮顶到右边；窄屏搜索框收成绝对定位后脱离
+     了流，没有东西再撑开中间，按钮会全部挤在品牌名右侧、右半条留空。
+     动作组的第一个按钮吃掉剩余空间，整组回到右边。 */
+  #immerseBtn{margin-left:auto}
+  /* 窄屏改成单列居中，头像在名字上方——参考 beeg 的资料页。
+     左像右文那套是给宽屏的：手机上 92 px 头像旁边只剩两百多像素，别名和链接被挤成
+     两三行，头像下面又空着一大片。居中之后名字和链接都拿到整行宽度。 */
+  .entityhero{grid-template-columns:minmax(0,1fr);gap:12px;padding:8px 0 18px;justify-items:center;text-align:center}
+  .entityportrait{width:112px}.entityhero h2{font-size:var(--fs-xl)}
+  .entityhero>div:last-child{width:100%}
+  .entityhero .alias{margin-bottom:10px}
+  .entityhero .entitylinks{justify-content:center;margin-top:13px}
+  .stats h2{font-size:var(--fs-xl)}.stats .insightcopy h2{font-size:var(--fs-3xl)}
+  /* 窄屏下标题也得一起缩。`/follow` 渲染在 `#stats` 里，上面那条 `.stats h2`
+     会只把它打到 23px，而 `#manageTitle` 在 `#stats` 外面，手机上又变成两种大小。 */
+  .pagetitle,.listtitle,.managetitle,.index .ihead h2,.playlistpage h2{font-size:var(--fs-xl)}
+  .kv .u{display:block;margin-left:0;margin-top:2px}
+  .ctags .tg:nth-child(n+3){display:none}
+  .tokstage,.tokstage.wide{inset:0;width:100%;height:100%;aspect-ratio:auto;transform:none}
+  .toktrack{border-radius:0;box-shadow:none}
+  .tokbtns{left:auto;right:max(8px,env(safe-area-inset-right));bottom:92px;width:56px;gap:14px}
+  .tokstage.wide .tokbtns{left:auto;right:max(8px,env(safe-area-inset-right));bottom:92px}
+  .tokui{left:14px;right:82px;bottom:28px;width:auto;padding:0 0 env(safe-area-inset-bottom)}
+  .tok.tok-wide .tokui{width:auto}
+  .tokauthor{margin-bottom:8px}.tokauthor>span{display:none}.tokavatar{width:36px;height:36px}
+  .tokui .toktitle{font-size:var(--fs-md)}
+  .tokclose{top:max(10px,env(safe-area-inset-top));right:max(10px,env(safe-area-inset-right))}
+}
+/* 这个 16px 是 iOS 的阈值，不是刻度里的一档：Safari 对小于 16px 的输入框会自动放大页面。
+   所以它写死，不跟 --fs-lg 走——刻度改一档就把这个防放大保护悄悄破坏掉了。 */
+@media (max-width:760px){input,textarea,select{font-size:16px!important}}
+#searchBtn{display:none}
+.searchback{display:none}
+.reviewimage{width:160px;height:112px;border-radius:var(--surface-radius);overflow:hidden;background:#000;margin:8px 0}.reviewimage img{width:100%;height:100%;object-fit:contain;display:block}
+
+/* JAV 版式条。只在 JAV 语境出现——首页混着创作者作品与素人流出，
+   给它们切「封面」没有意义。 */
+.javbar{display:flex;align-items:center;gap:8px;padding:0 0 10px;flex-wrap:wrap}
+.javbar[hidden]{display:none}
+.javbar button{width:34px;height:30px;display:inline-grid;place-items:center;border-radius:var(--control-radius);border:1px solid var(--overlay-10);background:transparent;color:var(--muted);cursor:pointer;padding:0}.javbar button svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8}.javbar button:hover{color:var(--ink)}.javbar button[aria-pressed="true"]{background:var(--hover);color:var(--ink)}
+.iconswitch{min-width:0;margin:0;padding:3px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--overlay-5)}.iconswitch label{position:relative;display:inline-grid;width:34px;height:28px;place-items:center;border-radius:var(--control-radius);color:var(--muted);cursor:pointer}.iconswitch input{position:absolute;inline-size:1px;block-size:1px;opacity:0}.iconswitch label:hover{color:var(--ink)}.iconswitch label:has(input:checked){background:var(--surface);color:var(--ink);box-shadow:0 1px 2px #0005}.iconswitch label:has(input:focus-visible){outline:2px solid var(--tungsten);outline-offset:2px}.iconswitch svg{display:block;width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8}
+
+/* 共用勾选框：站内此前一半地方用原生 checkbox（只调了 accent-color，未选中态由浏览器
+   自绘、没有悬停反馈），另一半用关注列表自绘的那份，两种画法并排出现。统一成这一份。
+   悬停只抬填充不提边，与按钮同口径。 */
+.pcheck{position:relative;display:grid;place-items:center;width:20px;height:20px;flex:none;cursor:pointer}
+.pcheck input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.pcheck>span{width:18px;height:18px;border:1px solid var(--border-15);border-radius:var(--badge-radius);
+  display:grid;place-items:center;background:var(--ground);color:transparent;transition:.14s ease}
+.pcheck>span svg{display:block;width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2.5}
+.pcheck:hover>span,label:hover>.pcheck>span{background:var(--hover)}
+.pcheck input:checked+span{border-color:var(--ink-2);color:var(--ink)}
+.pcheck input:focus-visible+span{outline:2px solid var(--tungsten);outline-offset:2px}
+.pcheck input:disabled+span{cursor:not-allowed;opacity:.55}
+.pcheck:has(input:disabled){cursor:not-allowed}
+.pcheck:has(input:disabled)>span{background:var(--ground)}
+/* 取景：正封模式下，整张封套要把镜头推到右半边；本身就是竖版正封的则整张用；
+   16:9 官方剧照没有「正封那一块」，只能按人脸取。
+   判据是图片自己的宽高比，由 onload 写进 data-frame。 */
+.poster.cover{width:100%;height:100%;object-fit:cover;display:block}
+/* --cover-x / --cover-y 都由人脸检出写入。哪个轴生效取决于容器和图片谁更竖：
+   `object-fit:cover` 只裁一个轴，另一个轴的锚点是死值。 */
+/* 右侧正封贴着封套右边缘，横向锚点就取最右；容器比例已经把可见窗口收成正封那一块。 */
+.poster.cover.front[data-frame="sleeve"]{object-position:100% var(--cover-y,22%)}
+.poster.cover.front[data-frame="front"]{object-position:50% var(--cover-y,22%)}
+/* 剧照比大图容器宽得多，裁的是横向，所以横向锚点必须跟着人走。没检出时回落
+   居中：那是取不到人脸时唯一站得住的猜测。 */
+.poster.cover.front[data-frame="still"]{object-position:var(--cover-x,50%) var(--cover-y,22%)}
+.poster.cover.whole{object-fit:contain;background:#000;object-position:50% 50%}
+
+
+/* 版式按钮嵌在排序行里，必须比 `.sorts button` 更具体，否则那条规则的内边距和
+   行高会把图标顶偏。图标按钮不设左右内边距，靠 grid 居中。 */
+/* `flex:none` 是必须的，不是保险。`.sorts` 是不换行的横向滚动条，里面的项默认可收缩，
+   而 `.javlayout` 自己带着 `min-width:0`（fieldset 需要它才不撑破容器）——两条合起来
+   允许它被压到内容宽度以下。窄屏上排序按钮一多，三个 34 px 的版式按钮就会叠在一起，
+   还压住旁边的「发行时间」。`.sorts button` 早就有 `flex:0 0 auto`，但 fieldset 不是
+   button，那条规则选不到它。 */
+.sorts .javlayout{display:inline-flex;gap:2px;margin:0 6px;flex:none}
+

@@ -55,17 +55,98 @@ def code_shape(source: str) -> str:
     return "".join(out)
 
 
+def stylesheet_source() -> str:
+    """`web/css/` 的全部分区按层叠顺序拼起来，等于 `/app.css` 交付的那一份。
+
+    样式表按分区拆在 `web/css/` 下、由 `stylesheet_response()` 拼成一份交付，但断言
+    守的仍是整份样式表这一个契约：分区边界只是文件边界，选择器和 token 要跨分区看。
+    目录用 glob 而不是写死清单，再切出新分区时不必回头改这里。
+    """
+    web = Path(__file__).resolve().parents[1] / "web"
+    return "".join(path.read_text(encoding="utf-8")
+                   for path in sorted((web / "css").glob("*.css")))
+
+
+class StylesheetPartitionTests(unittest.TestCase):
+    """样式表分区：清单、层叠顺序，以及每份分区自身必须是完整的 CSS。
+
+    拆分的全部目的是让两处改动落在不同文件上，不改变交付的字节。所以这里守两件事：
+    清单和顺序不许悄悄变，切口不许落在规则或注释中间。
+    """
+
+    #: 层叠顺序就是这个顺序。加分区要同时改这里——glob 出来的新文件会自动进
+    #: `stylesheet_source()`，但插在哪一档决定谁覆盖谁，那是判断而不是发现。
+    PARTITIONS = (
+        "01-base.css", "02-topbar.css", "03-filterbar.css", "04-manage.css",
+        "05-insights.css", "06-index.css", "07-entity.css", "08-photos.css",
+        "09-skeleton.css", "10-photolight.css", "11-identity.css", "12-cards.css",
+        "13-stage.css", "14-player.css", "15-detail.css", "16-settings.css",
+        "17-overlay.css", "18-drawer.css", "19-immersive.css", "20-offdisk.css",
+        "21-online.css", "22-followmanage.css",
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        cls.web = Path(__file__).resolve().parents[1] / "web"
+
+    def test_partitions_are_the_pinned_set_in_cascade_order(self):
+        names = [path.name for path in sorted((self.web / "css").glob("*.css"))]
+        self.assertEqual(tuple(names), self.PARTITIONS)
+        # 两位数前缀不是装饰：文件名排序就是层叠顺序，`stylesheet_response()` 只做
+        # `sorted()`。少了前缀的文件会插到任意位置，样式表照样加载，只是错。
+        for name in names:
+            self.assertRegex(name, r"^\d{2}-[a-z0-9-]+\.css$")
+        self.assertFalse((self.web / "app.css").exists(),
+                         "整份 app.css 已经拆成 web/css/ 下的分区，不该再有这个文件")
+
+    def test_each_partition_closes_its_own_braces_and_comments(self):
+        """切口只许落在花括号深度 0、注释之外。
+
+        规则或 `@media` 被切成两半时，拼起来仍然完全正确——两份分区各自都不是合法
+        CSS，却只有单独看每一份才能发现。注释同理：`/*` 留在上一份、`*/` 落到下一份，
+        中间那份的规则会被后来的编辑当成生效内容去改，实际上整段是注释。
+        """
+        for path in sorted((self.web / "css").glob("*.css")):
+            depth, in_comment = 0, False
+            body = path.read_text(encoding="utf-8")
+            index = 0
+            while index < len(body):
+                if in_comment:
+                    end = body.find("*/", index)
+                    if end < 0:
+                        break
+                    in_comment, index = False, end + 2
+                    continue
+                if body.startswith("/*", index):
+                    in_comment, index = True, index + 2
+                    continue
+                char = body[index]
+                if char == "{":
+                    depth += 1
+                elif char == "}":
+                    depth -= 1
+                    # 先 `}` 再 `{` 的分区最终深度仍是 0，只有逐个字符看才会露出来。
+                    self.assertGreaterEqual(depth, 0, f"{path.name} 多出一个右花括号")
+                index += 1
+            self.assertEqual(depth, 0, f"{path.name} 有没闭合的花括号，切口落在规则中间")
+            self.assertFalse(in_comment, f"{path.name} 有没闭合的注释，切口落在注释中间")
+
+
 class WebUiSourceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        # 页面拆成 index.html + app.css + app.js + web/js 下的 ES module。这些断言
+        # 页面拆成 index.html + web/css 下的样式分区 + app.js + web/js 下的 ES module。这些断言
         # 守的是「Web 表面」这一个契约，不是某个文件，所以把所有源码接起来一起看。
         # 模块目录用 glob 而不是写死清单：再拆出新模块时不必回头改这里。写死的后果
         # 是断言悄悄扫不到新文件——它照样「通过」，但什么也没守住。
         web = Path(__file__).resolve().parents[1] / "web"
-        sources = [web / "index.html", web / "app.css", web / "app.js"]
+        # 顺序照旧（HTML、样式、脚本）：`code_shape` 是一个带引号状态的扫描器，
+        # 把样式挪到脚本之后会改变整页的引号配平，它跟丢的位置也跟着变。
+        sources = [web / "index.html"]
+        sources.extend(sorted((web / "css").glob("*.css")))
+        sources.append(web / "app.js")
         sources.extend(sorted((web / "js").glob("*.js")))
-        cls.css = (web / "app.css").read_text(encoding="utf-8")
+        cls.css = stylesheet_source()
         cls.app_js = (web / "app.js").read_text(encoding="utf-8")
         cls.page = chr(10).join(
             path.read_text(encoding="utf-8") for path in sources
@@ -73,10 +154,10 @@ class WebUiSourceTests(unittest.TestCase):
         # 排版无关的那份只算一次：整页四十万字符，按调用逐次重算会把这个文件
         # 从两秒拖到半分钟。
         cls.page_shape = code_shape(cls.page)
-        # 「谁用到了这个类名」只能问模板一侧。样式表自己不算——把 app.css 也接进来
+        # 「谁用到了这个类名」只能问模板一侧。样式表自己不算——把样式分区也接进来
         # 比对，每个选择器都会匹配到它自己的定义。
         # island（ADR-0022）也是模板一侧：高清版目标页的 DOM 现在由 frontend 里的
-        # Preact 组件产出，样式仍留在 app.css。不把它接进来的话，迁走的那几组类会
+        # Preact 组件产出，样式仍留在 `web/css/`。不把它接进来的话，迁走的那几组类会
         # 被误判成没人用，然后有人真的把还在生效的样式删掉。
         markup = [web / "index.html", web / "app.js", *sorted((web / "js").glob("*.js"))]
         island_src = Path(__file__).resolve().parents[1] / "frontend" / "src"
@@ -235,7 +316,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_every_font_size_comes_from_the_one_type_scale(self):
         """全站只有一套字号刻度，任何写死的像素都要有理由。
 
-        收敛之前 `app.css` 里散着 21 种字号（9…48px），相邻两档常常只差半个像素——
+        收敛之前样式表里散着 21 种字号（9…48px），相邻两档常常只差半个像素——
         既排不出层级，也没法复核「这里为什么是 12.5」。现在一律走 `--fs-*`。
 
         唯一的例外是移动端输入框那条 `16px!important`：那是 iOS 的自动放大阈值，
@@ -243,8 +324,7 @@ class WebUiSourceTests(unittest.TestCase):
         都会悄悄破坏那个保护，而症状（在 iPhone 上聚焦输入框页面猛地放大）
         跟字号改动看不出任何关系。
         """
-        css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
-            encoding="utf-8")
+        css = stylesheet_source()
         literals = re.findall(r"font(?:-size)?:(?:\d+ )?([\d.]+)px", css)
         self.assertEqual(literals, ["16"],
                          f"除 iOS 防放大的 16px 外不该有写死字号，实际 {literals}")
@@ -275,8 +355,7 @@ class WebUiSourceTests(unittest.TestCase):
         收敛前 Peach 有两套强调色：筛选 pill 选中反相成白，其它 40 多处选中／主按钮／悬停
         却是蓝，同一页上「被选中」和「可以按」长得一样。
         """
-        css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
-            encoding="utf-8")
+        css = stylesheet_source()
         self.assertNotIn("--tungsten-soft", css, "蓝色浅底 token 已退役，不得再引入")
         offenders = []
         selected_with_blue = []
@@ -313,8 +392,7 @@ class WebUiSourceTests(unittest.TestCase):
         把控件刷成浅色实底。Peach 此前给所有 `aria-pressed="true"` 上 `--ink-2`
         (#C9CDD4) 底 `--ground` 字，一排筛选里被选中的那颗比主动作还抢眼。
         """
-        css = re.sub(r"/\*.*?\*/", "", (Path(__file__).resolve().parents[1]
-                                        / "web" / "app.css").read_text(encoding="utf-8"),
+        css = re.sub(r"/\*.*?\*/", "", stylesheet_source(),
                      flags=re.S)
         self.assertNotIn("background:var(--ink-2)", css,
                          "--ink-2 是次级文字色，不该当作任何控件的底色")
@@ -345,8 +423,7 @@ class WebUiSourceTests(unittest.TestCase):
         提到墨色 28%（`.fbtn` 甚至提到 `--ink-2`，接近 79% 白），一排按钮里被鼠标
         扫过的那颗看着像是被选中了。墨色 28% 的边现在只剩输入框一处。
         """
-        css = re.sub(r"/\*.*?\*/", "", (Path(__file__).resolve().parents[1]
-                                        / "web" / "app.css").read_text(encoding="utf-8"),
+        css = re.sub(r"/\*.*?\*/", "", stylesheet_source(),
                      flags=re.S)
         offenders = []
         for match in re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
@@ -384,8 +461,7 @@ class WebUiSourceTests(unittest.TestCase):
                     '[aria-current="page"]', '[aria-current="true"]', ".selected")
 
     def _leaf_rules(self):
-        css = re.sub(r"/\*.*?\*/", "", (Path(__file__).resolve().parents[1]
-                                        / "web" / "app.css").read_text(encoding="utf-8"),
+        css = re.sub(r"/\*.*?\*/", "", stylesheet_source(),
                      flags=re.S)
         for match in re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
             yield match.group(1).strip().split("{")[-1], match.group(2)
@@ -495,8 +571,7 @@ class WebUiSourceTests(unittest.TestCase):
         1px `rgb(46,46,46)` 环、`opacity:1`；半透明会让按钮连同它下面的底色一起变淡，
         在深色卡片和浅色卡片上淡出的程度还不一样。
         """
-        css = re.sub(r"/\*.*?\*/", "", (Path(__file__).resolve().parents[1]
-                                        / "web" / "app.css").read_text(encoding="utf-8"),
+        css = re.sub(r"/\*.*?\*/", "", stylesheet_source(),
                      flags=re.S)
         self.assertNotIn("scale:.96", css, "Geist 按下没有缩放，别再加回来")
         disabled = ("{background:var(--surface);border-color:var(--border-15);"
@@ -511,11 +586,10 @@ class WebUiSourceTests(unittest.TestCase):
         """字重只有 400／500／600 三档。
 
         `vercel-report-design`（vercel.com/design.md）明说不要自造数字字重，Geist 本身
-        也只发 regular／medium／semibold。收敛前 `app.css` 里有 550、650、700、750、800
+        也只发 regular／medium／semibold。收敛前样式表里有 550、650、700、750、800
         五种自造值，同一级标题在不同页面粗细不一，却没有任何一处能说出「为什么这里是 650」。
         """
-        css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
-            encoding="utf-8")
+        css = stylesheet_source()
         weights = sorted(set(re.findall(r"font-weight:\s*([^;}]+)", css)))
         self.assertEqual(weights, ["400", "500", "600", "inherit"],
                          f"字重只能是三档之一，实际出现 {weights}")
@@ -523,14 +597,13 @@ class WebUiSourceTests(unittest.TestCase):
     def test_every_border_radius_comes_from_the_radius_vocabulary(self):
         """圆角只有五个语义 token，加上 0 与 50%。
 
-        收敛前 `app.css` 写着 1、2、3、5、7、9、10、11、14、16、18、24、28、40px 等
+        收敛前样式表写着 1、2、3、5、7、9、10、11、14、16、18、24、28、40px 等
         二十来种字面圆角，相邻两档差一像素，谁也说不清 7 和 8 的区别。现在：
         `--badge-radius` 标记、`--control-radius` 控件、`--surface-radius` 不浮起的
         内嵌表面、`--floating-radius` 浮层与卡片、`--pill-radius` 连续的条与胶囊，
         圆形用 50%。嵌在带边框容器里的头尾条用 `calc(token - 1px)` 保持同心。
         """
-        css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
-            encoding="utf-8")
+        css = stylesheet_source()
         css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
         token = (r"(?:0|50%|inherit|var\(--(?:badge|control|surface|floating|pill|tag)-radius\)"
                  r"|calc\(var\(--(?:surface|floating)-radius\) - 1px\))")
@@ -575,8 +648,7 @@ class WebUiSourceTests(unittest.TestCase):
         用户会以为可以点。它们改用 `--badge-radius`；按钮和分段器用 `--control-radius`
         （实测 Geist 的 6px）；只有真正的标签、筛选令牌和连续的条保留 `--pill-radius`。
         """
-        css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
-            encoding="utf-8")
+        css = stylesheet_source()
         self.assertEqual(re.findall(r"border-radius:9{2,}px", css), [],
                          "整圆一律走 --pill-radius，别再写字面值")
         for selector in (".fbadge{", ".fvkind{", ".dupmarks i{"):
@@ -588,8 +660,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_shared_geist_component_tokens_cover_the_whole_shell(self):
         """全站壳层、浮层和普通操作使用同一组语义 token。"""
-        css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
-            encoding="utf-8")
+        css = stylesheet_source()
         self.assertIn("--control-radius:6px; --badge-radius:4px; --floating-radius:12px; --surface-radius:8px", css)
         for selector, token in (
                 (".ib{", "var(--control-radius)"),
@@ -608,8 +679,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotRegex(css, r"transition:\s*all(?:[; }])")
 
     def test_close_actions_share_geist_control_geometry(self):
-        css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
-            encoding="utf-8")
+        css = stylesheet_source()
         for selector in (".playlistdialoghead button{",
                          ".mixqueuehead button{", ".settingshead button{"):
             start = css.index(selector)
@@ -4208,13 +4278,12 @@ class WebUiSourceTests(unittest.TestCase):
             "\n  font-size:var(--fs-3xl);line-height:1.15;letter-spacing:-.01em;font-weight:600}")
         # 全站字体栈必须有 CJK sans 兜底：Bahnschrift/Consolas 都没有中文字形，
         # generic sans-serif/monospace 在中文 Chrome 的默认可能落到宋体。
-        css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
-            encoding="utf-8")
+        css = stylesheet_source()
         for i, line in enumerate(css.splitlines(), 1):
             if "font-family" not in line or "inherit" in line:
                 continue
             if "sans-serif" in line or "monospace" in line:
-                self.assertIn("YaHei", line, f"app.css:{i} 字体栈缺 CJK 兜底：{line.strip()[:90]}")
+                self.assertIn("YaHei", line, f"样式表第 {i} 行字体栈缺 CJK 兜底：{line.strip()[:90]}")
 
     def test_taste_dashboard_is_persisted_and_refreshed_without_blocking(self):
         """口味仪表跨页面刷新复用旧结果，过期更新也不阻塞打开页面。
@@ -5304,8 +5373,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".photodetailtoggle{width:40px;height:40px}")
         self.assertPageContains(".photodetailtoggle{justify-self:start;width:40px;height:40px;display:grid;place-items:center")
         # Lucide 的 info 圆点是长度 .01 的短线；没有圆头时会缩成几乎不可见的横杠。
-        css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
-            encoding="utf-8")
+        css = stylesheet_source()
         start = css.index(".photodetailtoggle svg{")
         rule = css[start:css.index("}", start)]
         self.assertIn("stroke-linecap:round", rule)

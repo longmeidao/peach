@@ -26,6 +26,46 @@ Vite + TypeScript + Preact。迁移方式是 strangler：**遗留路由继续拥
 零传输，更新语义与 `no-store` 等价。只有 `index.html` 用 `no-store`：所有资产
 URL 都从它来，它被缓存住就没人看得到新产物。
 
+## 样式表分区
+
+样式表按界面分区拆在 `web/css/` 下，`/app.css` 把它们按文件名顺序拼成一份交付
+（`src/peach/routes_pages.py` 的 `stylesheet_response()`）。拆分只为让两处改动落在不同
+文件上——一整份两千七百行的样式表，两个分支各改一处几乎必然撞在一起。页面仍然只取
+一份 `/app.css`：不给首屏加二十来个阻塞请求，层叠顺序也不必写进 `index.html`。
+
+两条规则：
+
+- **两位数前缀就是层叠顺序**，`sorted()` 出来的顺序即生效顺序。新增分区要同时改
+  `tests/test_web_ui.py` 里 `StylesheetPartitionTests.PARTITIONS`：插在哪一档决定谁覆盖
+  谁，那是判断，不该由 glob 顺手发现。
+- **切口只许落在花括号深度 0、注释之外**。规则或 `@media` 被切成两半时拼起来仍然完全
+  正确，只有单独看每一份才会发现，所以每份分区自己的花括号和注释必须闭合。
+
+| 分区 | 覆盖 |
+| --- | --- |
+| `01-base.css` | 主题变量、色板、字号、Geist 基元、滚动条 |
+| `02-topbar.css` | 顶栏与顶部三层 |
+| `03-filterbar.css` | 常驻筛选层、combo、页面提要 |
+| `04-manage.css` | 统计页、播单、复核、元数据、数据管理 fieldset |
+| `05-insights.css` | Analytics／Speed Insights 与口味页 |
+| `06-index.css` | 索引页、标签词表、字母表 |
+| `07-entity.css` | 实体资料页头、外链、相关人物 |
+| `08-photos.css` | 照片墙与灯箱主体 |
+| `09-skeleton.css` | Geist Skeleton 与各页骨架变体 |
+| `10-photolight.css` | 灯箱的缩放条、详情、缩略带与窄屏 |
+| `11-identity.css` | 身份组、演员与系列链接、重复项、质量清单、复核对照 |
+| `12-cards.css` | 主区网格与卡片，含悬停预览、密度、短片带 |
+| `13-stage.css` | 就地展开的舞台与 Mix 队列 |
+| `14-player.css` | video.js 定制、播放统计、播放器的脱盘占位 |
+| `15-detail.css` | 详情侧栏、标签选择器、反馈条、相关推荐 |
+| `16-settings.css` | 设置面板 |
+| `17-overlay.css` | Toast 与审查遮挡 |
+| `18-drawer.css` | 筛选抽屉 |
+| `19-immersive.css` | 沉浸模式 |
+| `20-offdisk.css` | 脱盘模式 |
+| `21-online.css` | 在线追更 |
+| `22-followmanage.css` | 关注管理页 |
+
 ## 开发循环
 
 ```bash
@@ -146,7 +186,7 @@ await ui.refreshStore('quality-goals');   // 挂着的那屏自己重画，不�
 6. 按顺序跑 `npm --prefix frontend run typecheck`、`& .\scripts\test.ps1 -Scope web`，
    再 `npm --prefix frontend run build` 并把 `web/dist/` 一起提交。
 
-样式暂时继续用 `web/app.css`：已迁的页面复用原有的类名，产物这一轮不出 `peach-ui.css`。
+样式暂时继续用 `web/css/` 下的分区：已迁的页面复用原有的类名，产物这一轮不出 `peach-ui.css`。
 `/dist/{name}` 已经允许 `.css`，等某个 island 真的需要自己的样式时再开。
 
 ## 依赖清单

@@ -1,0 +1,88 @@
+/* ── 放大播放（就地展开） ── */
+.stage{margin:0 0 22px;border-radius:var(--floating-radius);
+  background:radial-gradient(circle at 28% 24%,color-mix(in srgb,var(--video-glow,#15202a) 40%,transparent),transparent 58%),
+    color-mix(in srgb,var(--surface) 88%,transparent);scroll-margin-top:calc(var(--topH) + 8px);
+  border:1px solid var(--line);overflow:hidden}
+.stage:not(.ambient-on){background:color-mix(in srgb,var(--surface) 88%,transparent)}
+.stage[hidden]{display:none}
+.grid>.stage{grid-column:1/-1;width:100%;min-width:0}
+.followlist>.stage{grid-column:1/-1;width:100%;min-width:0}
+body.entity-open #tiers,body.entity-open #tagbar,
+body.index-open #tiers,body.index-open #tagbar{display:none}
+.sgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(350px,390px)}
+/* Mix、分卷、播放列表和关注合集都保留普通详情的主结构：媒体在左、信息在右；
+   切换队列作为完整的第二行，避免详情栏跨到队列旁边并制造背景断层。 */
+.sgrid.mixgrid{grid-template-columns:minmax(0,1fr) minmax(350px,390px);
+  grid-template-areas:"media side" "queue queue";align-items:start;
+  --detail-surface:color-mix(in srgb,var(--video-glow,#15202a) 12%,var(--surface) 88%)}
+.sgrid.mixgrid>.vwrap{grid-area:media}
+.sgrid.mixgrid>.side{grid-area:side;background:var(--detail-surface)}
+.sgrid.mixgrid>.mixqueue{grid-area:queue;max-height:360px;border-left:0;border-top:1px solid var(--line-soft);
+  background:var(--detail-surface)}
+.sgrid.mixgrid .mixqueueactions [data-queue-close],
+.sgrid.mixgrid .mixqueueactions [data-follow-queue-close]{display:none}
+.mixqueue{min-width:0;max-height:76vh;display:flex;flex-direction:column;border-left:1px solid var(--line-soft);
+  background:color-mix(in srgb,var(--video-glow,#15202a) 10%,var(--surface) 90%)}
+.mixqueuehead{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;
+  min-height:70px;padding:12px 12px 10px 15px;border-bottom:1px solid var(--line-soft)}
+.mixqueuehead h2{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-lg)}
+.mixqueuehead span{display:block;margin-top:3px;color:var(--muted);font-size:var(--fs-xs)}
+.mixqueuehead button{width:36px;height:36px;padding:0;border:0;border-radius:var(--control-radius);background:transparent;
+  color:var(--ink);cursor:pointer;display:grid;place-items:center}.mixqueuehead button:hover{background:var(--hover)}
+.mixqueuehead svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
+.mixqueueactions{display:flex;align-items:center;gap:2px}
+.mixlist{min-height:0;overflow-y:auto;padding:6px}
+.mixrow{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;border-radius:var(--control-radius)}.mixrow:has(.mixitem.current){background:var(--hover)}.mixrow .mixitem.current{background:transparent}
+.mixitem{width:100%;display:grid;grid-template-columns:94px minmax(0,1fr);gap:10px;align-items:center;
+  padding:7px;border:0;border-radius:var(--control-radius);background:transparent;color:var(--ink);text-align:left;cursor:pointer}
+.mixitem:hover{background:var(--overlay-5)}.mixitem.current{background:var(--hover)}
+.mixitempic{position:relative;aspect-ratio:16/9;border-radius:var(--badge-radius);overflow:hidden;background:#000}
+.mixitempic img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.mixitempic .dur{right:4px;bottom:3px}
+/* 徽章和标题同一行。标题那一行因此要自己成为 flex 容器：`.mixitemtext` 的 b/span
+   都是块级的，两者并排只能靠这一层，`min-width:0` 才让中段省略照旧按剩余宽度算。 */
+.mixitemtext .mixitemhead{display:flex;align-items:center;gap:5px;margin-top:0;color:var(--ink)}
+.mixitemtext .mixitemhead b{flex:1;min-width:0}
+.mixitemtext .qedition{flex:none;font-style:normal}
+/* 队列行的署名层照抄卡片的 `.meta`：横向队列和「接着看」并排出现在同一屏，
+   一边有头像一边没有，看着就是两套控件。头像在这里不可点（整行是一个 button，
+   里面不能再嵌 button），所以也不给 hover 提示。 */
+.mixitemmeta{display:flex;gap:10px;min-width:0;align-items:center}
+.mixitemmeta .mav{cursor:inherit}
+.mixitemmeta .mav:hover{box-shadow:none}
+.mixitemmeta .mavstack .mav{box-shadow:0 0 0 2px var(--ground)}
+.mixitemtext{min-width:0}.mixitemtext b,.mixitemtext span{display:block;overflow:hidden;white-space:nowrap}.mixitemtext [data-truncate-end]{text-overflow:ellipsis}
+.mixitemtext b{font-size:var(--fs-xs);line-height:1.4}.mixitemtext span{font-size:var(--fs-xs);color:var(--muted);margin-top:3px}
+.queueedit{display:grid;grid-template-columns:repeat(3,24px);gap:2px;padding-right:5px}.queueedit button{width:24px;height:24px;border:0;border-radius:var(--control-radius);background:transparent;color:var(--muted);padding:0;display:grid;place-items:center;cursor:pointer}.queueedit button:hover:not(:disabled){background:var(--hover);color:var(--ink)}.queueedit button:disabled{opacity:.25;cursor:default}.queueedit svg{width:14px;height:14px;stroke:currentColor;fill:none}
+/* 详情下方的集合不是侧栏列表，而是与「接着看」同语义的横向切换带。
+   Mix、分卷、播放列表、视频合集与多媒体只改变标题和标识，共用同一套卡片尺寸。 */
+.sgrid.mixgrid>.mixqueue{padding:14px 14px 16px;overflow:hidden}
+.sgrid.mixgrid>.mixqueue .mixqueuehead{min-height:0;padding:0 0 11px;border:0}
+.sgrid.mixgrid>.mixqueue .mixqueuehead h2{font-size:var(--fs-sm);letter-spacing:.06em}
+.sgrid.mixgrid>.mixqueue .mixqueuehead span{max-width:72ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sgrid.mixgrid>.mixqueue .mixlist{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(190px,220px);
+  gap:10px;overflow-x:auto;overflow-y:hidden;padding:0 0 3px;overscroll-behavior-inline:contain;scroll-snap-type:x proximity}
+.sgrid.mixgrid>.mixqueue .mixrow{display:block;position:relative;min-width:0;background:transparent;scroll-snap-align:start}
+.sgrid.mixgrid>.mixqueue .mixitem{display:flex;flex-direction:column;align-items:stretch;gap:7px;padding:0}
+.sgrid.mixgrid>.mixqueue .mixitem:hover,.sgrid.mixgrid>.mixqueue .mixitem.current{background:transparent}
+.sgrid.mixgrid>.mixqueue .mixitempic{width:100%;border:1px solid transparent}
+.sgrid.mixgrid>.mixqueue .mixitem.current .mixitempic{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.sgrid.mixgrid>.mixqueue .mixitemmeta{width:100%;padding:0 2px;align-items:flex-start}
+.sgrid.mixgrid>.mixqueue .mixitemmeta .mav,.sgrid.mixgrid>.mixqueue .mixitemmeta .mavstack{margin-top:2px}
+.sgrid.mixgrid>.mixqueue .mixitemtext{flex:1;min-width:0}
+.sgrid.mixgrid>.mixqueue .mixitemtext b{font-size:var(--fs-sm)}
+.sgrid.mixgrid>.mixqueue .mixitem[data-media-kind="image"] .mixitempic img{object-fit:cover}
+.sgrid.mixgrid>.mixqueue .queueedit{position:absolute;z-index:3;right:5px;top:5px;padding:3px;border-radius:var(--control-radius);background:rgba(0,0,0,.62)}
+/* 宽屏时详情栏决定首行高度，脱盘／错误占位也要铺满同一行，不能留下半块空背景。 */
+@media (min-width:1081px){
+  .sgrid.mixgrid>.vwrap{align-self:stretch}
+  .sgrid.mixgrid>.vwrap>.gate{height:100%;aspect-ratio:auto}
+  .stage.theater-mode .sgrid{grid-template-columns:minmax(0,1fr)}
+  .stage.theater-mode .sgrid:not(.mixgrid)>.side{grid-column:1;border-left:0;border-top:1px solid var(--line-soft)}
+  .stage.theater-mode .sgrid.mixgrid{grid-template-areas:"media" "side" "queue"}
+  .stage.theater-mode .sidecontent:is(*){height:auto;max-height:none}
+  .stage.theater-mode .vwrap>.video-js,.stage.theater-mode .vwrap>video{max-height:calc(100vh - var(--topH) - 56px)}
+}
+/* 横向队列把标题和摘要视为一个信息块，保存入口紧跟整个信息块并垂直居中。 */
+.sgrid.mixgrid>.mixqueue .mixqueuehead{grid-template-columns:max-content max-content minmax(0,1fr);gap:5px 8px}
+.sgrid.mixgrid>.mixqueue .mixqueuehead>div:first-child{min-width:0}
+.sgrid.mixgrid>.mixqueue .mixqueueactions{grid-column:2;grid-row:1;align-self:center}

@@ -188,8 +188,13 @@ class PageAssetDeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.app_js.write_text(
             "const peach=1;export default peach;\n" + "// filler\n" * 200,
             encoding="utf-8")
-        (root / "app.css").write_text("body{margin:0}\n" + "/* filler */\n" * 200,
-                                      encoding="utf-8")
+        # `/app.css` 拼的是 `web/css/` 下的分区而不是单个文件，所以这里也铺两份：
+        # 一份足够大让 gzip 生效，第二份用来验「按文件名顺序拼、改哪份都换 ETag」。
+        (root / "css").mkdir()
+        self.css_parts = [root / "css" / "01-base.css", root / "css" / "02-cards.css"]
+        self.css_parts[0].write_text("body{margin:0}\n" + "/* filler */\n" * 200,
+                                     encoding="utf-8")
+        self.css_parts[1].write_text(".card{display:grid}\n", encoding="utf-8")
         page = root / "index.html"
         page.write_text("<!doctype html><title>Peach test</title>", encoding="utf-8")
         (root / "js").mkdir()
@@ -233,6 +238,31 @@ class PageAssetDeliveryTests(unittest.IsolatedAsyncioTestCase):
                 path, headers={"if-none-match": first.headers["etag"]})
             self.assertEqual(again.status_code, 304, path)
             self.assertEqual(again.content, b"", path)
+
+    async def test_app_css_is_its_partitions_joined_in_cascade_order(self):
+        """`/app.css` 是 `web/css/` 分区的顺序拼接，改任何一份都立刻失效。
+
+        拆分只减少改动撞车，交付的字节必须逐字不变；顺序也必须是文件名顺序，
+        层叠顺序错了样式表照样「加载成功」，只是显示是错的。
+        ETag 也必须覆盖到全部分区：只看第一份的 mtime，改后面的分区会命中旧缓存。
+        """
+        first = await self.client.get("/app.css")
+        self.assertEqual(first.status_code, 200)
+        # 按字节比：拼接发生在字节层面，`read_text` 会把 Windows 的 CRLF 归一成 LF，
+        # 拿解码后的文本比等于把「交付的字节是否逐字相同」这件事绕过去。
+        self.assertEqual(
+            first.content,
+            b"".join(part.read_bytes() for part in self.css_parts))
+        self.assertLess(first.text.index("body{margin:0}"),
+                        first.text.index(".card{display:grid}"))
+        etag = first.headers["etag"]
+
+        # 改的是最后一份分区，并且换了字节数：这一条要能在只看单个文件的实现上变红。
+        self.css_parts[-1].write_text(".card{display:flex;gap:2px}\n", encoding="utf-8")
+        updated = await self.client.get("/app.css", headers={"if-none-match": etag})
+        self.assertEqual(updated.status_code, 200)
+        self.assertNotEqual(updated.headers["etag"], etag)
+        self.assertIn(".card{display:flex;gap:2px}", updated.text)
 
     async def test_the_page_itself_stays_no_store(self):
         """资产 URL 全部由 index.html 给出，它自己被缓存住就没人看得到新资产。"""

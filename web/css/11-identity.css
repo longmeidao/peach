@@ -1,0 +1,128 @@
+/* 显式 display 会盖掉浏览器默认的 [hidden]{display:none}：按钮已经 hidden=true
+   却仍然画出来，而 requestMore 首行就是 if(more.hidden)return，于是点了没反应。 */
+/* 身份区按类别分组：标签是组标题，同类横向排开并按需换行。
+   旧版每个名字独占一行、左侧还重复一列标签，共演作品会把整个侧栏撑满。 */
+.detailidentity{display:flex;flex-direction:column;gap:14px;margin:0 0 18px}
+.identityprimary{display:flex;flex-wrap:wrap;gap:14px 26px;align-items:flex-start}
+.identityprimary>.idgroup{width:max-content;max-width:100%}
+.idgroup{min-width:0}
+.idlabel{margin:0 0 7px;
+  font-size:var(--fs-xs);font-weight:400;color:var(--muted);letter-spacing:.04em}
+.idrow{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:flex-start}
+/* 组标题、头像和名字共用左边缘；详情栏里的所有身份信息都从内容区起点对齐。 */
+.idgroup{--id-cell:62px;--id-face:46px}
+.idgroup-performer{--id-cell:58px}
+.idgroup-performer .idrow{gap:10px}
+.idcell{display:flex;flex-direction:column;align-items:flex-start;gap:5px;width:var(--id-cell,62px);
+  border:0;background:transparent;color:inherit;padding:0;cursor:pointer}
+.idcell[hidden]{display:none}
+.idface{position:relative;width:var(--id-face,46px);height:var(--id-face,46px);border-radius:50%;overflow:hidden;
+  background:var(--sunk);color:var(--muted);display:grid;place-items:center;font-size:var(--fs-md)}
+/* `#fff` 与首字母只在取不到图时露出来：厂牌标识文件是自带边距的不透明方图，
+   `.idface img` 那条 cover 铺满整格，不再另给 logo 格加 padding 和 contain。 */
+.idcell.logo .idface{border-radius:var(--surface-radius);background:#fff;color:#555}
+.idface img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.idface svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2}
+/* 行高必须容得下下伸部。1.25 在 12px 下只有 15px 行框，而这里同时开着 overflow:hidden
+   截省略号，于是「Prestige」的 g 尾巴被切掉——用户实测看到的就是这个。 */
+.idname{font-size:var(--fs-xs);line-height:1.5;text-align:left;width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
+.idgroup-performer .idcell{align-items:center}
+.idgroup-performer .idname{text-align:center}
+.idcell:not(.entitylink){cursor:default}
+.idcell.entitylink:hover .idface{box-shadow:0 0 0 2px var(--ink-2)}
+.idcell.entitylink:hover .idname{color:var(--ink)}
+.castmore{align-self:center;height:46px;padding:0 12px;border:1px dashed var(--overlay-10);
+  border-radius:var(--floating-radius);background:transparent;color:var(--ink-2);font-size:var(--fs-xs);cursor:pointer}
+.castmore:hover{background:var(--hover)}
+.seriesrows{display:grid;gap:7px}
+.serieslink,.serieslink.entitylink{display:flex;width:100%;align-items:flex-start;gap:7px;padding:0;border:0;
+  background:transparent;color:var(--ink-2);font-size:var(--fs-sm);line-height:1.4;text-align:left;
+  white-space:normal;overflow-wrap:anywhere;text-decoration:none}
+.serieslink svg{width:16px;height:16px;margin-top:1px;flex:none;stroke:currentColor;fill:none;stroke-width:2}
+button.serieslink{cursor:pointer}.serieslink:not(.entitylink){cursor:default}
+button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
+/* 页面标题只有一套字形。原来管理区 26px、索引页 20px、播放列表 28px，
+   在侧栏里一路点过去就是三种大小；间距由各自的版式决定，字形不再各拍各的。 */
+.pagetitle,.listtitle,.managetitle,.index .ihead h2,.playlistpage h2{
+  font-size:var(--fs-3xl);line-height:1.15;letter-spacing:-.01em;font-weight:600}
+.listtitle,.managetitle,.follow>.pagetitle{margin:0 0 12px}
+.listtitle[hidden],.managetitle[hidden]{display:none}
+.dupactions{display:flex;gap:8px;margin-bottom:16px}
+/* 这两个是会动数据的批量操作（每组只留一个，其余进回收站），必须看着像按钮，
+   不能是一段可点的文字。 */
+.dupactions button,.dupbtns button{height:32px;padding:0 16px;border-radius:var(--control-radius);
+  border:1px solid var(--border-15);background:var(--surface);color:var(--ink);
+  cursor:pointer;font-size:var(--fs-sm);line-height:1}
+.dupactions button:hover,.dupbtns button:hover{background:var(--hover);color:var(--ink)}
+.dupbtns button.danger{color:var(--drop)}.dupbtns button.danger:hover{background:var(--drop);border-color:var(--drop);color:#fff}
+.dupactions button:disabled,.dupbtns button:disabled{opacity:.5;cursor:wait}
+.dupgroup{border:1px solid var(--overlay-10);border-radius:var(--surface-radius);margin-bottom:12px;overflow:hidden}
+.duphead{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--overlay-5);flex-wrap:wrap}
+.duphead .dupbtns{margin-left:auto;display:flex;gap:6px}
+.dupflag{font-size:var(--fs-xs);color:var(--muted);border:1px solid var(--overlay-10);
+  border-radius:var(--badge-radius);padding:2px 8px}
+.dupflag.ok{color:var(--keep);border-color:color-mix(in srgb,var(--keep) 40%,transparent)}
+.duprow{display:grid;grid-template-columns:96px minmax(0,1fr) 44px 84px 84px;gap:10px;
+  align-items:center;padding:7px 12px;border-top:1px solid var(--overlay-5)}
+.duprow .mono{color:var(--muted);font-size:var(--fs-xs)}
+.duppath{grid-column:2/-1;min-width:0;overflow:hidden;white-space:nowrap;
+  padding-top:2px;color:var(--muted)}
+.dupname{min-width:0;overflow:hidden;white-space:nowrap;text-align:left;
+  border:0;background:transparent;color:inherit;cursor:pointer;padding:0}
+.dupname:hover{color:var(--ink-2)}
+.dupmarks{display:flex;gap:4px}
+.dupmarks i{font-style:normal;font-size:var(--fs-xs);padding:1px 6px;border-radius:var(--badge-radius)}
+.dupmarks i.big{background:var(--hover);color:var(--ink-2)}
+.dupmarks i.long{background:color-mix(in srgb,var(--keep) 22%,transparent);color:var(--keep)}
+.qualitylist{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px}
+.qualityitem{display:grid;grid-template-columns:150px minmax(0,1fr);gap:14px;min-width:0;padding:12px;
+  border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface)}
+.qualitycover{width:150px;aspect-ratio:16/10;border:0;border-radius:var(--surface-radius);overflow:hidden;background:#000;padding:0;cursor:pointer}
+.qualitycover img{width:100%;height:100%;object-fit:contain;display:block}
+.qualityitem h3{margin:2px 0 8px;font-size:var(--fs-lg)}
+.qualityitem h3 button{display:block;width:100%;max-width:100%;border:0;background:transparent;padding:0;color:inherit;text-align:left;cursor:pointer;overflow:hidden;white-space:nowrap}
+.qualityitem h3 button:hover{color:var(--ink-2)}.qualityitem p{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0;color:var(--muted)}
+.revieworigin{display:grid;grid-template-columns:132px minmax(0,1fr);gap:10px;align-items:center;margin:10px 0;padding:8px;
+  border-radius:var(--surface-radius);background:var(--overlay-5)}
+.reviewcompare{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:10px 0}
+.reviewcompare .revieworigin{margin:0;min-width:0;grid-template-columns:1fr}
+.reviewcompare .revieworigin>div{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+/* 主体是创作者的候选：顶上给创作者入口，几何与 .revieworigin 保持一致，
+   只是把 16:10 的封面换成圆形头像——两种卡片并排时不该看着像两套设计。 */
+/* 不给底色也不居中：卡片里只有这一个主体，衬底和留白只会把它推离左边缘，
+   和下面的样本网格、证据文字对不齐。 */
+.reviewentity{margin:0 0 14px;padding:0 0 14px;border-bottom:1px solid var(--border-10);display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:center;
+  justify-content:start}
+.reviewentityface{position:relative;width:44px;height:44px;justify-self:start;border:0;padding:0;
+  border-radius:50%;overflow:hidden;background:var(--sunk);color:var(--muted);cursor:pointer;
+  display:grid;place-items:center;font-size:var(--fs-2xl)}
+.reviewentityface img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.reviewentityface:hover{box-shadow:0 0 0 2px var(--ink-2)}
+.reviewentity>div{min-width:0}
+.reviewentityname{border:0;background:none;padding:0;color:var(--ink);font:inherit;cursor:pointer;text-align:left}
+.reviewentityname:hover{color:var(--ink-2)}
+.reviewentity b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:8px}
+.reviewentity>div button:not(.reviewentityname){display:inline-flex;align-items:center;gap:6px;border:0;border-radius:var(--control-radius);
+  background:var(--hover);padding:6px 9px;color:var(--ink-2);cursor:pointer}
+.reviewentity>div button:hover{color:var(--ink-2)}
+.reviewentity>div button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
+.reviewentity small{display:block;margin-top:7px;color:var(--muted);font-size:var(--fs-xs)}
+.revieworigincover{width:132px;aspect-ratio:16/10;border:0;border-radius:var(--surface-radius);overflow:hidden;background:#000;padding:0;cursor:pointer}
+.revieworigincover img{width:100%;height:100%;object-fit:contain;display:block}.revieworigincover span{display:grid;place-items:center;width:100%;height:100%;color:var(--muted)}
+.revieworigin>div{min-width:0}.revieworigin b{display:block;overflow:hidden;white-space:nowrap;margin-bottom:8px}
+.revieworigin>div button{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:var(--control-radius);background:var(--hover);padding:6px 9px;color:var(--ink-2);cursor:pointer}
+.revieworigin>div button:hover{color:var(--ink)}.revieworigin>div button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
+@media(max-width:640px){.qualitylist{grid-template-columns:1fr}.qualityitem{grid-template-columns:110px minmax(0,1fr)}.qualitycover{width:110px}.reviewcompare{grid-template-columns:1fr}.revieworigin{grid-template-columns:110px minmax(0,1fr)}.revieworigincover{width:110px}}
+@media(max-width:640px){.resourcesync .resourcesources{grid-template-columns:1fr}.resourcesync .resourcesources article+article{border-left:0;border-top:1px solid var(--line-soft)}.resourcesync .resourcecache{grid-template-columns:1fr}.resourcesync .resourcecache>div+div{border-left:0;border-top:1px solid var(--line-soft)}}
+
+.indexmore[hidden],.entitymore[hidden]{display:none}
+.indexmore,.entitymore{display:flex;align-items:center;justify-content:center;margin:20px auto 0;min-width:124px;
+  min-height:40px;padding:8px 16px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;
+  color:var(--ink-2);cursor:pointer}.indexmore:hover,.entitymore:hover{background:var(--hover);color:var(--ink)}
+.indexmore:disabled,.entitymore:disabled{opacity:.5;cursor:wait}
+.entitylink{border:0;background:none;padding:0;color:var(--tungsten);cursor:pointer;text-decoration:none}
+.entitylink:hover{color:var(--ink);text-decoration:none}
+/* Peach 的可点击身份只用颜色、头像描边和背景反馈，不使用链接下划线。 */
+.idcell.entitylink:hover,.mav.entitylink:hover{text-decoration:none}
+

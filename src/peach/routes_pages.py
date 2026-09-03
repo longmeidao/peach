@@ -9,9 +9,13 @@
 
 缓存也分两档：`index.html` 是 `no-store`，它是所有资产 URL 的来源；四类资产走
 `asset_response()` 的 ETag 复验，更新语义与 `no-store` 相同但没变时零传输。
+
+`/app.css` 是唯一一个不对应单个文件的资产：样式表按分区拆在 `web/css/` 下，这里
+按文件名顺序拼起来交付，见 `stylesheet_response()`。
 """
 from __future__ import annotations
 
+import hashlib
 import re
 
 from pathlib import Path
@@ -62,7 +66,9 @@ def setup_page() -> str:
 
 
 def asset_response(request: Request, path: Path, media: str) -> Response:
-    """页面资产用 ETag 复验代替 no-store，`/app.js`、`/app.css`、`/js/`、`/dist/` 共用。
+    """页面资产用 ETag 复验代替 no-store，`/app.js`、`/js/`、`/dist/` 共用。
+
+    `/app.css` 拼多份分区，ETag 口径见 `stylesheet_response()`，其余照这里。
 
     `no-store` 让 `app.js`（435KB）加 `app.css`（232KB）每次开页都全量重下；
     `no-cache` 的更新语义完全一样——每次都回源验证，文件一变立刻生效——但没变时
@@ -77,6 +83,45 @@ def asset_response(request: Request, path: Path, media: str) -> Response:
         response: Response = Response(status_code=304)
     else:
         response = FileResponse(path, media_type=f"{media}; charset=utf-8")
+    response.headers["ETag"] = etag
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
+#: 拆分后的样式表分区。层叠顺序就是文件名顺序，所以每份都带两位数前缀；
+#: 名字判据和 `/js/`、`/dist/` 同口径，不接受分隔符。清单由 `tests/test_web_ui.py` 钉住。
+CSS_PART_NAME = re.compile(r"\d{2}-[a-z0-9-]+\.css")
+
+
+def css_parts(web: Path) -> list[Path]:
+    """`web/css/` 下的样式分区，已按层叠顺序排好。"""
+    return sorted(path for path in (web / "css").glob("*.css")
+                  if CSS_PART_NAME.fullmatch(path.name))
+
+
+def stylesheet_response(request: Request, web: Path) -> Response:
+    """`/app.css`：把 `web/css/` 的分区按顺序拼成一份交付。
+
+    样式表拆成分区是为了让改动落在互不重叠的文件上——一整份两千多行的样式表，
+    两个分支各改一处也几乎必然撞在一起。但拆开只是仓库里的事：页面仍然只取一份
+    `/app.css`，不给首屏加二十来个阻塞请求，层叠顺序也不必写进 `index.html`。
+
+    ETag 不能照 `asset_response()` 只看单个文件的 mtime 和字节数，改任何一份分区
+    都要让它失效，所以取全部分区的 (mtime_ns, 字节数) 摘要。仍然不读文件内容。
+    """
+    parts = css_parts(web)
+    if not parts:
+        return PlainTextResponse("missing", status_code=404)
+    stamp = "|".join(
+        f"{path.name}:{stat.st_mtime_ns:x}:{stat.st_size:x}"
+        for path, stat in ((path, path.stat()) for path in parts)
+    )
+    etag = f'"peach-css-{hashlib.sha256(stamp.encode()).hexdigest()[:16]}"'
+    if request.headers.get("if-none-match") == etag:
+        response: Response = Response(status_code=304)
+    else:
+        response = Response(b"".join(path.read_bytes() for path in parts),
+                            media_type="text/css; charset=utf-8")
     response.headers["ETag"] = etag
     response.headers["Cache-Control"] = "no-cache"
     return response
@@ -103,18 +148,20 @@ def index(request: Request, args: dict[str, str] = Depends(require_page_auth)):
 @router.api_route("/app.css", methods=["GET", "HEAD"])
 @router.api_route("/app.js", methods=["GET", "HEAD"])
 def app_asset(request: Request, args: dict[str, str] = Depends(require_asset_auth)):
-    """页面拆出来的样式与入口脚本。和 index.html 同目录，同一套口令。
+    """页面拆出来的样式与入口脚本。样式在 `web/css/`，脚本和 index.html 同目录，同一套口令。
 
     仍然没有构建步骤：`app.js` 现在是 ES module，浏览器原生解析 import，
     拆出来的模块见下面的 `/js/{name}`。页面里没有任何内联事件处理器，
     全部是 `.onclick=` 属性赋值，所以顶层声明不再是全局也不影响绑定。
     """
     name = request.url.path.lstrip("/")
-    path = request.app.state.settings.page_path.parent / name
+    web = request.app.state.settings.page_path.parent
+    if name == "app.css":
+        return stylesheet_response(request, web)
+    path = web / name
     if not path.is_file():
         return PlainTextResponse("missing", status_code=404)
-    media = "text/css" if name.endswith(".css") else "text/javascript"
-    return asset_response(request, path, media)
+    return asset_response(request, path, "text/javascript")
 
 
 @router.api_route("/js/{name}", methods=["GET", "HEAD"])

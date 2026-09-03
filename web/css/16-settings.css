@@ -1,0 +1,54 @@
+/* 内边距吃掉刘海和底部横条：iOS 上 `inset:0` 会一直铺到状态栏和 Home 指示条底下。 */
+body.settings-open{overflow:hidden}
+.settingspanel{position:fixed;z-index:var(--layer-dialog);inset:0;isolation:isolate;display:grid;place-items:center;background:rgba(0,0,0,.42);padding:18px;padding-top:max(18px,env(safe-area-inset-top));padding-bottom:max(18px,env(safe-area-inset-bottom));overscroll-behavior:contain}
+.settingspanel[hidden]{display:none}/* 高度用 dvh 不用 vh。iOS 上 `vh` 算的是「大视口」——不减地址栏，所以按 90vh 撑出来的
+   面板会顶到地址栏和状态栏底下，上半截被遮住。`dvh` 跟着当前可见高度走。
+   vh 那行留作旧浏览器兜底，后一行覆盖前一行。 */
+/* 模态层次对齐 Geist dialog：scrim 压暗 + 轻毛玻璃。42% 黑在暗色主题下几乎
+   看不出遮挡关系，暗色下加深到 62%。 */
+.settingspanel{backdrop-filter:blur(5px)}
+.settingspanel:not([hidden]){animation:settings-backdrop-in .35s cubic-bezier(.4,0,.2,1) both}
+.settingspanel.closing{animation-name:settings-backdrop-out}
+.settingspanel.closing :where(.settingscard){animation-name:settings-dialog-out}
+@keyframes settings-backdrop-in{from{opacity:0}to{opacity:1}}
+@keyframes settings-backdrop-out{from{opacity:1}to{opacity:0}}
+@keyframes settings-dialog-in{from{transform:translate3d(0,-40px,0);opacity:0}to{transform:translate3d(0,0,0);opacity:1}}
+@keyframes settings-dialog-out{from{transform:translate3d(0,0,0);opacity:1}to{transform:translate3d(0,-40px,0);opacity:0}}
+.settingscard{display:flex;flex-direction:column;width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:hidden;animation:settings-dialog-in .35s cubic-bezier(.4,0,.2,1) both;
+  border:1px solid var(--border-15);border-radius:var(--floating-radius);background:var(--frost-panel);box-shadow:0 2px 4px #0004,0 30px 90px -30px #000;
+  backdrop-filter:saturate(1.7) blur(24px)}.settingsscroll{flex:1;min-height:0;overflow-y:auto;padding:0 20px 20px;scrollbar-gutter:stable both-edges;overscroll-behavior:contain}.settingshead{z-index:2;display:flex;align-items:center;justify-content:space-between;flex:none;padding:20px 20px 16px;border-bottom:1px solid var(--line-soft);background:var(--frost-panel);backdrop-filter:saturate(1.7) blur(24px)}
+/* 暗色命中要跟随主题机制：app 不写 data-theme，暗色来自 prefers-color-scheme；
+   data-theme="dark" 分支给将来手动切主题留位，两条保持同值。
+   主题覆盖放在基础规则后面——`.settingscard{` 的子串查找以首条为准。 */
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .settingspanel{background:rgba(2,4,8,.62)}
+  :root:not([data-theme="light"]) .settingscard{box-shadow:0 24px 64px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.07)}}
+:root[data-theme="dark"] .settingspanel{background:rgba(2,4,8,.62)}
+:root[data-theme="dark"] .settingscard{box-shadow:0 24px 64px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.07)}
+.settingshead h2{margin:0;font-size:var(--fs-xl)}.settingshead button{border:0;background:transparent;color:var(--muted);width:34px;height:34px;border-radius:var(--control-radius);cursor:pointer;display:grid;place-items:center;transition:background-color .12s ease,color .12s ease}.settingshead button:hover{background:var(--hover);color:var(--ink)}
+.settingshead svg{width:20px;height:20px;stroke:currentColor;fill:none}.settingrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:14px 0 14px;border-top:1px solid var(--line-soft)}
+.settingrow:first-of-type{border-top:0}.settingrow b{display:block;font-size:var(--fs-md)}.settingrow small{display:block;color:var(--muted);margin-top:3px;line-height:1.45}
+.settingrow select{min-width:148px;border:1px solid var(--line);border-radius:var(--control-radius);background:#181a1d;color:#f5f7fa;color-scheme:dark;padding:9px 11px;font:inherit;font-size:var(--fs-md)}.settingrow select:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.settingrow select option{background:#181a1d;color:#f5f7fa}
+.settinggroup{margin:16px 0 0;border:1px solid var(--line-soft);border-radius:var(--floating-radius);
+  background:var(--surface);padding:0 16px 12px}
+.settinggroup>h3{margin:0;padding:14px 0 10px;font-size:var(--fs-lg);font-weight:600;color:var(--ink)}
+.settinggroup .settingrow{margin:0 -16px;padding-left:16px;padding-right:16px}
+/* 布尔开关用 Geist Toggle 而不是原生复选框（取证 vercel-geist-semantics-measured.md）：
+   中号 36×20 轨道 + 17px 圆点，关 = 灰轨道圆点靠左，开 = 主题蓝圆点靠右；
+   Geist 的「Switch」是分段选择器（radio 语义），布尔开关的正确控件叫 Toggle。 */
+#censorSetting{appearance:none;-webkit-appearance:none;width:36px;height:20px;flex:none;
+  border-radius:var(--pill-radius);background:var(--line);position:relative;cursor:pointer;margin:0;
+  transition:background-color .15s ease}
+#censorSetting::after{content:'';position:absolute;top:1.5px;left:2px;width:17px;height:17px;
+  border-radius:50%;background:rgba(237,237,237,.84);transition:left .15s ease}
+#censorSetting:checked{background:var(--tungsten)}
+#censorSetting:checked::after{left:17px}
+#censorSetting:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+.sidebarsetting{display:grid;gap:12px;padding:0}.sidebarsetting>span b,.sidebarsetting>span small{display:block}.sidebarsetting>span small{margin-top:3px;color:var(--muted);line-height:1.45}.sidebarorder{display:grid;gap:6px}.sidebarorderrow{position:relative;display:flex;align-items:center;justify-content:space-between;min-height:48px;padding:5px 6px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--overlay-3);cursor:grab}.sidebarorderrow:active{cursor:grabbing}.sidebarorderrow.dragging{opacity:.42}.sidebarorderrow.drop-before::before,.sidebarorderrow.drop-after::after{content:'';position:absolute;z-index:2;left:7px;right:7px;height:2px;border-radius:var(--pill-radius);background:var(--ink)}.sidebarorderrow.drop-before::before{top:-5px}.sidebarorderrow.drop-after::after{bottom:-5px}.sidebarorderrow>span{display:flex;align-items:center;gap:8px}.sidebarorderrow svg{width:18px;height:18px;stroke:currentColor;fill:none}.sidebarorderlabel{min-width:0}.sidebarorderlabel>b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sidebardrag{display:grid;place-items:center;width:24px;color:var(--muted)}.sidebardrag svg{width:20px;height:20px}.sidebarorderactions{flex:none}.sidebarorderrow button,.sidebaradd button{display:grid;place-items:center;min-width:34px;height:34px;border:0;border-radius:var(--control-radius);background:transparent;color:var(--muted);cursor:pointer}.sidebarorderrow button:hover:not(:disabled),.sidebaradd button:hover:not(:disabled){background:var(--hover);color:var(--ink)}.sidebarorderrow button:disabled,.sidebaradd button:disabled{opacity:.25;cursor:default}.sidebaradd{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:5px}
+.sidebaraddpicker{position:relative;min-width:0}.sidebaradd .sidebaraddfield{display:grid;grid-template-columns:auto minmax(0,1fr) auto;width:100%;height:42px;box-sizing:border-box;align-items:center;justify-items:start;gap:9px;padding:0 11px;border:1px solid var(--line);border-radius:var(--control-radius);background:#181a1d;color:#f5f7fa;text-align:left;font:inherit}.sidebaraddfield svg:last-child{justify-self:end;color:var(--muted)}.sidebaraddmenu{position:absolute;z-index:4;left:0;right:0;bottom:calc(100% + 6px);max-height:min(312px,48vh);overflow:auto;overscroll-behavior:contain;padding:6px;border:1px solid var(--border-15);border-radius:var(--floating-radius);background:#181a1d;box-shadow:0 16px 44px -20px #000}.sidebaraddmenu[hidden]{display:none}.sidebaradd .sidebaraddmenu button{grid-template-columns:auto minmax(0,1fr);width:100%;height:38px;justify-content:start;gap:9px;padding:0 8px;border:0;text-align:left}.sidebaraddmenu button[aria-selected="true"]{background:var(--hover);color:var(--ink)}.sidebaradd button{grid-template-columns:auto auto;gap:6px;padding:0 11px;border:1px solid var(--line);color:var(--ink-2)}.sidebaradd svg{width:17px;height:17px;stroke:currentColor;fill:none}
+.sidebaradd>button{height:42px;box-sizing:border-box}@media(max-width:600px){.settingsscroll{padding:0 17px 17px}.settingshead{padding:17px 17px 14px}.settingrow{grid-template-columns:1fr;gap:9px}
+  /* 单列是给 select 留的：148px 的下拉配上标题和说明在窄屏挤不下。开关只有 36px，
+     跟标题同一行绰绰有余，跟着换行只是白占一行高度。 */
+  .settingrow:has(input[type="checkbox"]){grid-template-columns:minmax(0,1fr) auto;gap:12px}
+  .settingrow select{width:100%;min-width:0}.settingrow .pcheck{justify-self:start}}
+.sidebaradd .sidebaraddmenu button{justify-items:start}
+
