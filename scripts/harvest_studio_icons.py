@@ -26,6 +26,8 @@ favicon 一律退回。实测七个 JAV 厂牌站，六个的 favicon 内容比�
 **字标可装。** 用户 2026-09-03 定的口径：找不到方形标识时，宽扁字标补白装进 `icon` 位
 也比露出无图强。所以方标一个都没做成、却取回过够大的字标时，用 `images.pad_to_square`
 补成方图装上，判词 `字标补白`，内容比照记——复核时那个数就是「这枚其实是字标」的提示。
+同一枚字标还原样再出一行 `logo`：大位要的本来就是完整字标，让它回落到母品牌的
+`<safe>.img`（BangBus 页顶着 BANGBROS）反而是错图。用户指定的 logo 来源做成时优先。
 
 默认只出复核 CSV 和候选 PNG，不碰已安装的目录。`--install` 才写 `<safe>.icon.img`
 与 `<safe>.logo.img`；`<safe>.img` 只在原本不存在时补写一份，已有的一个字节都不动。
@@ -319,11 +321,15 @@ def _store(candidate_dir: Path, name: str, payload: bytes) -> Path:
 
 
 def icon_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
-             fetch, candidate_dir: Path) -> dict[str, object]:
-    """`icon` 位一行。一个厂牌可能挂多条链接，第一条做成就停。"""
+             fetch, candidate_dir: Path
+             ) -> tuple[dict[str, object], dict[str, object] | None]:
+    """`icon` 位一行。一个厂牌可能挂多条链接，第一条做成就停。
+
+    第二个返回值只在走了字标补白时才有：同一枚字标原样出的 `logo` 行。
+    """
     if not entries:
         return _row(safe, target, None, ICON, SKIP,
-                    evidence="账本里这个厂牌没有 official／catalog 链接")
+                    evidence="账本里这个厂牌没有 official／catalog 链接"), None
     attempts: list[str] = []
     reachable = False
     policy = SquareMark()
@@ -340,7 +346,7 @@ def icon_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
         path = _store(candidate_dir, f"{safe}.png", made)
         return _row(safe, target, entry, ICON, OK, mark_size=policy.size,
                     content_aspect=policy.aspect,
-                    sha256=hashlib.sha256(made).hexdigest(), candidate=str(path))
+                    sha256=hashlib.sha256(made).hexdigest(), candidate=str(path)), None
 
     entry = entries[0]
     tried = "、".join(attempts)
@@ -349,12 +355,21 @@ def icon_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
         # 用户 2026-09-03 的口径：不是 icon 也可以装 icon，尽量不要落入无图。
         side = link_marks.decode(padded)
         path = _store(candidate_dir, f"{safe}.png", padded)
-        return _row(safe, target, entry, ICON, PADDED,
+        icon = _row(safe, target, entry, ICON, PADDED,
                     mark_size=f"{side.size[0]}x{side.size[1]}" if side else "",
                     content_aspect=policy.wordmark_aspect,
                     sha256=hashlib.sha256(padded).hexdigest(), candidate=str(path),
                     evidence=(f"方形标识未取得，装的是字标：{policy.wordmark_size}"
                               f"／内容比 {policy.wordmark_aspect}，补白成方图"))
+        # 大位要的本来就是完整字标。不出这一行，`logo` 位会回落到 `<safe>.img`——
+        # BangBus 的那一份是母品牌 BANGBROS，小位对了大位却挂着别家的牌子。
+        wordmark_path = _store(candidate_dir, f"{safe}.logo.png", policy.wordmark)
+        logo = _row(safe, target, entry, LOGO, OK,
+                    mark_size=policy.wordmark_size, content_aspect=policy.wordmark_aspect,
+                    sha256=hashlib.sha256(policy.wordmark).hexdigest(),
+                    candidate=str(wordmark_path),
+                    evidence="icon 位补白用的同一枚字标，原样装进 logo 位")
+        return icon, logo
     if not reachable:
         verdict, evidence = MISSING, f"试过 {tried}，一份字节都没取回来"
     elif scope.rejected and not policy.reasons:
@@ -368,7 +383,7 @@ def icon_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
         verdict = WORDMARK
         evidence = f"试过 {tried}：" + "、".join(
             policy.reasons + scope.rejected or ["没有候选"])
-    return _row(safe, target, entry, ICON, verdict, evidence=evidence)
+    return _row(safe, target, entry, ICON, verdict, evidence=evidence), None
 
 
 def logo_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
@@ -408,15 +423,22 @@ def logo_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
 def harvest(targets: dict[str, dict[str, str]],
             links: dict[str, list[dict[str, str]]],
             fetch, candidate_dir: Path) -> list[dict[str, object]]:
-    """每个目标厂牌出一行 `icon`，有指定 logo 来源的再多一行 `logo`。"""
+    """每个目标厂牌出一行 `icon`；有指定 logo 来源或走了字标补白的再出 `logo` 行。
+
+    指定来源做成时只有它那一行；它没做成（未取得／太小）那行照记，字标 logo 行
+    跟在后面——复核表不丢失败记录，安装时只有带候选文件的行才落地。
+    """
     rows: list[dict[str, object]] = []
     for safe in sorted(targets):
         target = targets[safe]
         entries = links.get(safe, [])
-        rows.append(icon_row(safe, target, entries, fetch, candidate_dir))
+        icon, wordmark_logo = icon_row(safe, target, entries, fetch, candidate_dir)
+        rows.append(icon)
         logo = logo_row(safe, target, entries, fetch, candidate_dir)
         if logo is not None:
             rows.append(logo)
+        if wordmark_logo is not None and (logo is None or logo["verdict"] != OK):
+            rows.append(wordmark_logo)
     return rows
 
 
