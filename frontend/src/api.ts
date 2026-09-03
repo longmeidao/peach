@@ -26,6 +26,13 @@ const reasonOf = (payload: unknown): string => {
   return '';
 };
 
+/** 把抛出来的东西收敛成一句能显示给人看的原因。
+ *
+ * 一次取数失败会同时落到两处——`mountIsland` 的首屏状态和共享 store 的错误态——
+ * 两边显示的必须是同一句话，否则同一个失败会因为落在哪儿而说法不同。 */
+export const errorMessage = (cause: unknown): string =>
+  cause instanceof Error ? cause.message : String(cause);
+
 /** GET 一个 `/api/...` 契约端点。`signal` 中止时抛出 `AbortError`，调用方据此放弃写 DOM。 */
 export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(path, {

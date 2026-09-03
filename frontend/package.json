@@ -13,6 +13,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@preact/signals": "2.11.1",
     "preact": "10.29.8"
   },
   "devDependencies": {
