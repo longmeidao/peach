@@ -1338,6 +1338,47 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in newest["items"]], [1, 2])
         self.assertEqual([item["id"] for item in biggest["items"]], [2, 1])
 
+    def test_sort_takes_a_direction_and_puts_missing_values_last_either_way(self):
+        """方向是独立参数，升序也把空值排在最后。
+
+        每个可排序列在账本里都可为空。SQLite 的 `ASC` 默认把 NULL 排在最前，
+        照默认写就等于让「时长未取得」的条目霸占「最短的视频」这一屏。
+        """
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO asset(id,location,path,name,medium,size,duration,first_seen) "
+            "VALUES(4,'local',?,'no-duration.mp4','video',50,NULL,'2026-08-11')",
+            (r"R:\Media\no-duration.mp4",),
+        )
+        con.commit(); con.close()
+
+        def ids(**args):
+            return [item["id"] for item in rm_web.q_items(
+                self.contract, {"sort": "dur", "limit": "10", **args})["items"]]
+
+        self.assertEqual(ids(dir="desc"), [2, 1, 4])
+        self.assertEqual(ids(dir="asc"), [1, 2, 4])
+        # 不给方向时按列的默认方向走，与显式 desc 同解。
+        self.assertEqual(ids(), [2, 1, 4])
+
+    def test_legacy_direction_baked_sort_keys_still_resolve(self):
+        """`big`／`short`／`long` 是把方向写进键名的旧键，仍要认得。
+
+        它们存在于地址栏、书签和已保存的默认排序里。认不出来不会报错，
+        只会静默退回另一种排序——用户看到的是「书签点开顺序变了」。
+        """
+        def ids(args):
+            return [item["id"] for item in rm_web.q_items(
+                self.contract, {"limit": "10", **args})["items"]]
+
+        self.assertEqual(ids({"sort": "big"}), ids({"sort": "size", "dir": "desc"}))
+        self.assertEqual(ids({"sort": "long"}), ids({"sort": "dur", "dir": "desc"}))
+        self.assertEqual(ids({"sort": "short"}), ids({"sort": "dur", "dir": "asc"}))
+        # 旧键自带的方向只是缺省值：`dir` 明写了就听 `dir` 的，两者同时出现只可能是
+        # 手改地址，此时新参数说的话更近。
+        self.assertEqual(ids({"sort": "short", "dir": "desc"}),
+                         ids({"sort": "dur", "dir": "desc"}))
+
     def test_persistent_playlist_can_save_mix_reorder_resume_and_edit(self):
         created = rm_web.w_playlist(self.contract, {
             "action": "create", "name": "  Alice Mix  ", "asset_ids": [1, 2, 1],
@@ -1614,6 +1655,13 @@ class JavModeAndCoverTests(unittest.TestCase):
             self.contract, {"jav": "1", "sort": "release", "limit": "20"},
         )["items"]
         self.assertEqual([row["id"] for row in rows], [2, 4, 1, 3])
+
+    def test_release_sort_ascending_keeps_missing_dates_last(self):
+        """翻成升序时缺发行日的条目仍在最后，不是抢占「最早」那一屏。"""
+        rows = rm_web.q_items(
+            self.contract, {"jav": "1", "sort": "release", "dir": "asc", "limit": "20"},
+        )["items"]
+        self.assertEqual([row["id"] for row in rows], [1, 4, 2, 3])
 
     def test_uploader_handles_in_the_code_column_are_excluded(self):
         # `RAIKUN325` 是 myfans 账号名、`HHD800` 是站点水印，都不是番号。

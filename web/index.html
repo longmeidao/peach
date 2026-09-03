@@ -28,6 +28,8 @@
   <symbol id="i-star" viewBox="0 0 24 24"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" /></symbol>
   <symbol id="i-list-filter" viewBox="0 0 24 24"><path d="M2 5h20" /><path d="M6 12h12" /><path d="M9 19h6" /></symbol>
   <symbol id="i-sort" viewBox="0 0 24 24"><path d="m3 16 4 4 4-4" /><path d="M7 20V4" /><path d="M11 4h10" /><path d="M11 8h7" /><path d="M11 12h4" /></symbol>
+  <symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 5v14" /><path d="m19 12-7 7-7-7" /></symbol>
+  <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7" /><path d="M12 19V5" /></symbol>
   <symbol id="i-chart" viewBox="0 0 24 24"><path d="M5 21v-6" /><path d="M12 21V3" /><path d="M19 21V9" /></symbol>
   <symbol id="i-settings" viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" /><circle cx="12" cy="12" r="3" /></symbol>
   <symbol id="i-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2" /><path d="M8 21h8" /><path d="M12 17v4" /></symbol>
@@ -177,7 +179,7 @@
     <div class="settingsscroll">
       <section class="settinggroup"><h3>浏览</h3>
       <label class="settingrow"><span><b>每批作品</b><small>首页每次加载的作品数量。</small></span><select id="batchSizeSetting"><option value="30">30 个</option><option value="60">60 个</option><option value="90">90 个</option></select></label>
-      <label class="settingrow"><span><b>默认排序</b><small>打开首页时使用的排序。</small></span><select id="defaultSortSetting"><option value="seed">随机</option><option value="rating">评分</option><option value="o">高潮计数</option><option value="plays">观看次数</option><option value="long">时长</option><option value="big">体积</option><option value="new">最近入库</option><option value="played">最近看的</option></select></label>
+      <label class="settingrow"><span><b>默认排序</b><small>打开首页时使用的排序。</small></span><select id="defaultSortSetting"><option value="seed">随机</option><option value="rating">评分</option><option value="o">高潮计数</option><option value="plays">观看次数</option><option value="dur">时长</option><option value="size">体积</option><option value="new">入库时间</option><option value="played">观看时间</option></select></label>
       <label class="settingrow"><span><b>悬停放大</b><small>转圈完成后进入放大预览。</small></span><select id="hoverDelaySetting"><option value="3">3 秒</option><option value="5">5 秒</option><option value="8">8 秒</option></select></label>
       <label class="settingrow"><span><b>合并分卷与版本</b><small>同一番号的多个分卷或版次只占一张卡，展示第一个。</small></span><span class="pcheck"><input type="checkbox" id="groupCollapseSetting"><span aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-check"/></svg></span></span></label>
       </section>
