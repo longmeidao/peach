@@ -140,10 +140,40 @@ const followSkeletonHtml=(label='正在读取关注内容')=>`<div class="follow
   ${pageSkeletonHtml(label,{cards:true,className:'follow-content-skeleton'})}</div>`;
 $('#loadSentinel').innerHTML=loadingDotsHtml('继续载入中…');
 $('#tokLoader').insertAdjacentHTML('afterbegin',spinnerHtml('媒体加载中'));
+/* 筛选条只由当前 state 决定，这次加载不会改变它，所以它现在就能画成最终样子。
+   `state` 在启动 URL 解析之后才赋值，冷启动第一张骨架比它早，那一次只画计数骨架。 */
+const countSortsHtml=()=>!state?'':`<span class="sorts"><button class="batchaction" id="batchAction" type="button"
+    title="换一批" aria-label="换一批">${icon('refresh-cw')}</button>`
+  // JAV 版式紧跟换批动作，和排序连成一条。
+  +(javActive()?javLayoutButtons():'')
+  +sortOptions().map(([k,l])=>sortButtonHtml(k,l,state.sort,state.dir,'data-sort')).join('')+`</span>`;
+function wireCountRow(){
+  const batch=$('#batchAction');
+  if(batch)batch.onclick=async()=>{
+    if(batch.getAttribute('aria-busy')==='true')return;
+    const old=batch.innerHTML;setActionBusy(batch);batch.innerHTML=spinnerHtml('换一批');
+    try{await refreshAll()}finally{setActionBusy(batch,false);batch.innerHTML=old}
+  };
+  wireJavLayoutButtons($('#count'));
+  $('#count').querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{
+    const next=nextSortState(b.dataset.sort,state.sort,state.dir);
+    if(!next)return;
+    state.sort=next.sort;state.dir=next.dir;
+    load(true)});
+}
+/* 骨架只盖这次加载真会变的东西，也就是计数那一串数字。筛选条照常画出来并接上事件：
+   连它一起清空的话，点下去的那一枚会在等数据的这段时间里失去高亮，看着像没点上；
+   `.count:empty` 还会让整行折叠，网格跟着往上跳一截。计数骨架宽高固定、行本身有
+   `min-height:var(--sortH)` 兜底，所以数字回来时不发生位移。上方的标签条和已选条件
+   同理不动——它们本来就不随这次请求变。 */
 function renderCatalogLoading(label='正在读取作品'){
   const count=$('#count');
   count.setAttribute('aria-busy','true');
-  count.textContent='';count.setAttribute('aria-label',label);
+  count.setAttribute('aria-label',label);
+  // 回收站的计数挂在说明行上，这一行只剩「清空回收站」，没有会变的数字可占位。
+  count.innerHTML=state&&state.state==='trash'?''
+    :`<span class="mono"><span class="countskeleton"></span></span>`+countSortsHtml();
+  wireCountRow();
   /* 骨架一铺上去就得把底部那颗 Loading Dots 收掉。骨架说的是「等下会出现几张什么
      形状的卡」，dots 说的是「上面已经有内容，还在往下接」；两段同时在场时一屏里
      铺着两种等待动画，而实际只有一次请求在跑。哨兵的可见性由数据落地后的
@@ -2348,24 +2378,12 @@ function renderCount(){
   if(trash)paintManageLede(`${total.toLocaleString()} 个符合 · 显示 ${n}`,
     total?`<button class="batchaction danger" id="emptyTrash" type="button" title="永久删除回收站内容">清空回收站</button>`:'');
   $('#count').classList.toggle('count-actions-only',trash);
-  $('#count').removeAttribute('aria-busy');
+  $('#count').removeAttribute('aria-busy');$('#count').removeAttribute('aria-label');
   $('#count').innerHTML=
     (trash?'':`<span class="mono">${total.toLocaleString()} 个符合 · 显示 ${n}</span>`)
-    +(trash
-      // 回收站是待清理队列，不是浏览列表：换一批和排序在这里没有意义。
-      ? ''
-      : `<span class="sorts"><button class="batchaction" id="batchAction" type="button"
-          title="换一批" aria-label="换一批">${icon('refresh-cw')}</button>`
-        // JAV 版式紧跟换批动作，和排序连成一条。
-        +(javActive()?javLayoutButtons():'')
-        +sortOptions().map(([k,l])=>sortButtonHtml(k,l,state.sort,state.dir,'data-sort')).join('')+`</span>`);
-  const batch=$('#batchAction');
-  if(batch)batch.onclick=async()=>{
-    if(batch.getAttribute('aria-busy')==='true')return;
-    const old=batch.innerHTML;setActionBusy(batch);batch.innerHTML=spinnerHtml('换一批');
-    try{await refreshAll()}finally{setActionBusy(batch,false);batch.innerHTML=old}
-  };
-  wireJavLayoutButtons($('#count'));
+    // 回收站是待清理队列，不是浏览列表：换一批和排序在这里没有意义。
+    +(trash?'':countSortsHtml());
+  wireCountRow();
   const emptyTrash=$('#emptyTrash');
   if(emptyTrash)emptyTrash.onclick=async(e)=>{
     if(!confirm('永久删除回收站中的全部文件和账本记录？此操作不可恢复。'))return;
@@ -2380,11 +2398,6 @@ function renderCount(){
     }catch(error){actionFailure('清空回收站',error);
     }finally{await load(true)}
   };
-  $('#count').querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{
-    const next=nextSortState(b.dataset.sort,state.sort,state.dir);
-    if(!next)return;
-    state.sort=next.sort;state.dir=next.dir;
-    load(true)});
 }
 
 /* ── 组合筛选：多个标签同时生效 ── */
@@ -5202,6 +5215,31 @@ async function fetchEntityItems(kind,name,filters,offset=0){
   const items=await api('/api/items?'+p);cache(items.items);return items
 }
 let entityCollectionPage={items:[],total:0,has_more:false};
+/* 资料页作品集的表头与首页计数行同源：排序条由 filters 决定，`视频 · N` 由响应决定。 */
+const entityCollectionSortsHtml=filters=>`<span class="sorts">
+      <button class="batchaction entitybatch" type="button" title="换一批" aria-label="换一批">${icon('refresh-cw')}</button>
+      ${javActive()?javLayoutButtons():''}
+      ${sortOptions().map(([key,label])=>sortButtonHtml(
+        key,label,filters.sort||'new',filters.dir,'data-entity-sort')).join('')}</span>`;
+function wireEntityCollectionHead(section,kind,name,filters){
+  wireJavLayoutButtons(section);
+  section.querySelector('.entitybatch').onclick=()=>{
+    state.seed=rollSeed();updateEntityCollection(kind,name,{...filters,sort:'seed'},true)};
+  section.querySelectorAll('[data-entity-sort]').forEach(button=>button.onclick=()=>{
+    const next=nextSortState(button.dataset.entitySort,filters.sort||'new',filters.dir);
+    if(next)updateEntityCollection(kind,name,{...filters,...next},true)});
+}
+/* 换列和翻方向此刻就已确定，用不着等一次请求才在界面上生效：先把排序条重画成
+   最终样子，只让会变的 `视频 · N` 换成骨架。标题、标签条和已经铺好的网格不动。 */
+function markEntityCollectionBusy(kind,name,filters){
+  const section=$('#index').querySelector('.entitysection');
+  const head=section&&section.querySelector('.entitycollectionhead');
+  if(!head)return;
+  head.setAttribute('aria-busy','true');
+  head.querySelector('.sorts').outerHTML=entityCollectionSortsHtml(filters);
+  head.querySelector('h3').innerHTML='<span class="countskeleton"></span>';
+  wireEntityCollectionHead(section,kind,name,filters);
+}
 function renderEntityCollection(kind,name,items,filters,append=false){
   const entityTag=filters.tag||'';
   const section=$('#index').querySelector('.entitysection');if(!section)return;
@@ -5209,20 +5247,11 @@ function renderEntityCollection(kind,name,items,filters,append=false){
     renderedPartGroups.clear();renderedEditionGroups.clear();
     entityCollectionPage={items:[...(items.items||[])],total:items.total||0,
       has_more:items.has_more==null?(items.items||[]).length<(items.total||0):!!items.has_more};
-    section.innerHTML=`<div class="entitycollectionhead"><h3></h3><span class="sorts">
-      <button class="batchaction entitybatch" type="button" title="换一批" aria-label="换一批">${icon('refresh-cw')}</button>
-      ${javActive()?javLayoutButtons():''}
-      ${sortOptions().map(([key,label])=>sortButtonHtml(
-        key,label,filters.sort||'new',filters.dir,'data-entity-sort')).join('')}</span></div>
+    section.innerHTML=`<div class="entitycollectionhead"><h3></h3>${entityCollectionSortsHtml(filters)}</div>
       <div class="grid"></div><button class="entitymore" type="button">载入更多</button>`;
     section.dataset.total=String(items.total||0);
     section.querySelector('h3').textContent=`视频 · ${(items.total||0).toLocaleString()}${entityTag?' · '+entityTag:''}`;
-    wireJavLayoutButtons(section);
-    section.querySelector('.entitybatch').onclick=()=>{
-      state.seed=rollSeed();updateEntityCollection(kind,name,{...filters,sort:'seed'},true)};
-    section.querySelectorAll('[data-entity-sort]').forEach(button=>button.onclick=()=>{
-      const next=nextSortState(button.dataset.entitySort,filters.sort||'new',filters.dir);
-      if(next)updateEntityCollection(kind,name,{...filters,...next},true)});
+    wireEntityCollectionHead(section,kind,name,filters);
   }else{
     entityCollectionPage.items.push(...(items.items||[]));
     entityCollectionPage.has_more=!!items.has_more;
@@ -5249,6 +5278,7 @@ async function updateEntityCollection(kind,name,filters,push=true){
   if(push)route(entityPath(kind,name)+(search?'?'+search:''));
   barsContext={type:'entity',kind,name,filters:{...filters}};
   const seq=++entityRequestSeq;
+  markEntityCollectionBusy(kind,name,filters);
   const items=await fetchEntityItems(kind,name,filters);
   if(seq!==entityRequestSeq)return;
   renderEntityMediaToggle(kind,name,filters);

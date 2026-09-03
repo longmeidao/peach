@@ -1494,6 +1494,66 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".insighttablerow b{font-weight:500;color:var(--ink-2);font-variant-numeric:tabular-nums}")
         self.assertPageContains(".insightdatatable td{font-variant-numeric:tabular-nums}")
 
+    def test_loading_state_only_covers_the_count_and_leaves_the_filter_bar_in_place(self):
+        """骨架只盖会变的计数，筛选条照常画成最终样子并接上事件。
+
+        筛选条完全由当前 state 决定，这次请求不会改变它，所以没有可占位的东西：
+        连它一起清空的话，刚点下的那一枚会在等数据的整段时间里失去高亮，看着像
+        没点上；`.count:empty` 还会把整行折叠，网格跟着往上跳一截。
+        """
+        self.assertPageContains("const countSortsHtml=()=>!state?'':")
+        # 加载态与最终态取同一份筛选条，两边不可能画得不一样。
+        self.assertPageContains(
+            "count.innerHTML=state&&state.state==='trash'?''\n"
+            "    :`<span class=\"mono\"><span class=\"countskeleton\"></span></span>`+countSortsHtml();\n"
+            "  wireCountRow();")
+        self.assertPageContains("    +(trash?'':countSortsHtml());\n  wireCountRow();")
+        self.assertPageLacks("count.textContent=''",
+                             "加载态不能清空整行，筛选条要留在原位")
+        # 数据到位后摘掉忙碌标记，屏幕阅读器不再把这一行当成还在读取。
+        self.assertPageContains(
+            "$('#count').removeAttribute('aria-busy');$('#count').removeAttribute('aria-label');")
+
+    def test_the_count_placeholder_and_the_spinning_refresh_key_keep_the_row_height(self):
+        """计数骨架宽高定死，等数据时只有换批键在转，行高不变。
+
+        骨架跟着真实文本走的话，数字回来那一刻整行会横向弹一下；14px 远低于筛选条
+        按钮的 32px，而两条计数行都有 `min-height:var(--sortH)` 兜底，所以换成真
+        数字既不改行高也不产生位移。
+        """
+        self.assertPageContains(
+            ".countskeleton{display:inline-block;width:150px;height:14px;"
+            "border-radius:var(--control-radius);\n"
+            "  background:var(--hover);animation:skeleton-pulse 1.4s ease-in-out infinite}")
+        self.assertPageContains(".entitycollectionhead h3 .countskeleton{width:96px}")
+        self.assertPageContains("  min-height:var(--sortH);color:var(--ink-2);margin:0 -16px 16px;padding:8px 16px;")
+        self.assertPageContains("  min-height:var(--sortH);margin:0 -16px 12px;padding:8px 16px;min-width:0;")
+        # 转动复用既有的转圈关键帧；全局 prefers-reduced-motion 规则会把它关掉。
+        self.assertPageContains(
+            '.count[aria-busy="true"] #batchAction svg,\n'
+            '.entitycollectionhead[aria-busy="true"] .entitybatch svg{\n'
+            "  animation:peach-spinner-linspin .9s linear infinite}")
+        self.assertPageContains("@keyframes peach-spinner-linspin{to{transform:rotate(1turn)}}")
+
+    def test_the_profile_collection_head_switches_sort_before_the_request_returns(self):
+        """资料页表头与首页同规矩：排序条立刻到位，只有 `视频 · N` 换成骨架。
+
+        换列和翻方向在点下的那一刻就已确定，等一次请求才生效等于让选中态迟到一整
+        个网络往返。标题两侧的标签条和已经铺好的网格不属于这次变化，一律不动。
+        """
+        self.assertPageContains(
+            "  markEntityCollectionBusy(kind,name,filters);\n"
+            "  const items=await fetchEntityItems(kind,name,filters);")
+        self.assertPageContains("head.setAttribute('aria-busy','true');")
+        self.assertPageContains("head.querySelector('.sorts').outerHTML=entityCollectionSortsHtml(filters);")
+        self.assertPageContains(
+            "head.querySelector('h3').innerHTML='<span class=\"countskeleton\"></span>';")
+        # 表头只有一份写法和一处接线，重画忙碌态和重画结果不会走岔。
+        self.assertPageContains(
+            'section.innerHTML=`<div class="entitycollectionhead"><h3></h3>'
+            "${entityCollectionSortsHtml(filters)}</div>")
+        self.assertPageContains("    wireEntityCollectionHead(section,kind,name,filters);\n  }else{")
+
     def test_offline_sources_drop_out_of_the_default_filter(self):
         """脱盘的来源要从默认筛选里摘掉。
 
@@ -3741,7 +3801,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_page_loading_uses_one_structural_skeleton_phase(self):
         self.assertPageContains("function renderCatalogLoading(label='正在读取作品')")
         self.assertPageContains("$('#grid').innerHTML=pageSkeletonHtml(label,{cards:true,className:'catalog-skeleton'})")
-        self.assertPageContains("count.textContent='';count.setAttribute('aria-label',label)")
+        self.assertPageContains("count.setAttribute('aria-label',label);")
         self.assertPageContains(".grid>.skeletonpanel{grid-column:1/-1;width:100%;min-width:0}")
         self.assertPageContains("function renderInitialSurfaceLoading()")
         self.assertPageContains("const followSkeletonHtml=(label='正在读取关注内容')")
@@ -4974,7 +5034,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks(".photosetcover{display:block;aspect-ratio:3/4")
 
     def test_jav_entity_pages_render_and_wire_the_same_layout_buttons(self):
-        self.assertPageContains('<div class="entitycollectionhead"><h3></h3><span class="sorts">')
+        self.assertPageContains(
+            'section.innerHTML=`<div class="entitycollectionhead"><h3></h3>')
+        self.assertPageContains('entityCollectionSortsHtml=filters=>`<span class="sorts">')
         self.assertPageContains("${javActive()?javLayoutButtons():''}")
         self.assertPageContains("wireJavLayoutButtons(section)")
         self.assertPageContains("renderEntityCollection(kind,name,{...entityCollectionPage,items:[...entityCollectionPage.items]}")
