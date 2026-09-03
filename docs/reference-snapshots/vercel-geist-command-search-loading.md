@@ -1,5 +1,8 @@
 # Vercel Geist Command Menu、Search Input、Spinner 与 Loading Dots
 
+> 本文是 Peach 的人工取证笔记，不在 `reference-sources.json` 里登记；同 id 来源的上游 Markdown 原文锁定在 `upstream/vercel-geist-command-menu.md`，`accept` 只覆盖那个文件。
+
+
 首次取证日期：2026-08-30；Button 补充复核：2026-09-01。
 
 ## 锁定来源

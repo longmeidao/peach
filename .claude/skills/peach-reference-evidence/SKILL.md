@@ -5,7 +5,7 @@ description: 在用户说模仿、参考、对齐、复刻、照着某个网站�
 
 # 参考产品取证与登记
 
-最后复核：2026-08-26
+最后复核：2026-09-03
 证据来源：`AGENTS.md`、`docs/HANDOFF.md`「参考产品证据登记」「失败报告规则」、ADR-0015。
 
 ## 取证顺序
@@ -19,6 +19,9 @@ description: 在用户说模仿、参考、对齐、复刻、照着某个网站�
 在 `docs/HANDOFF.md`「参考产品证据登记」新增一条，包含：URL、日期、资源版本或 SHA-256、
 复用的具体行为或数值、以及 Peach 主动保留的差异。可变 Markdown 的精确版本统一登记在
 `docs/reference-sources.json`，HANDOFF 只解释用途和 Peach 差异，不复制版本字段。
+登记表的 `snapshot` 只放上游原文，落在 `docs/reference-snapshots/upstream/`；人工取证笔记留在
+`docs/reference-snapshots/` 顶层，正文写明不登记并指向对应 upstream 文件。`accept` 会用线上字节整个覆盖
+`snapshot`，把笔记登记成 snapshot 就等于下一次接受时把笔记删光。
 
 范例格式（现有条目照此写）：
 

@@ -4110,10 +4110,13 @@ function wireFollowManage(){
   root.querySelectorAll('details.faliasmanager').forEach((details,index)=>{
     if(details.querySelector(':scope > .fcollapse'))return;
     const body=document.createElement('div');body.className='fcollapse';
+    /* 内边距放在内层 .fcollapsebody：.fcollapse 自身不带 padding，height 才能
+       真正过渡到 0，否则 border-box 会在 20px 处卡住、收起末尾跳一下。 */
+    const inner=document.createElement('div');inner.className='fcollapsebody';
     [...details.children].forEach(child=>{
       if(child.tagName==='SUMMARY')return;
-      body.appendChild(child)});
-    details.appendChild(body);
+      inner.appendChild(child)});
+    body.appendChild(inner);details.appendChild(body);
     const summary=details.querySelector('summary');
     let expanded=details.open,transitionRun=0;
     body.id=`follow-alias-collapse-${index}`;

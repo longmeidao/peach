@@ -42,6 +42,7 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 - 优先扩展 `web/js/ui-components.js`，不要为同一语义复制一次性 class 和模板。
 - 颜色、字号、圆角、浮层层级只用 `:root` 已有 token；新 token 必须证明现有词汇无法表达。
 - 字重只有 400／500／600 三档，标题也是 600；圆角只用 `--badge-radius`／`--control-radius`／`--surface-radius`／`--floating-radius`／`--pill-radius` 加 `50%` 与 `0`，带边框容器里的头尾条用 `calc(… - 1px)` 保持同心。两者的字面值由 `tests/test_web_ui.py` 拒绝，归属判据见 `:root` 注释。
+- 单色优先：`--tungsten` 只给焦点环、链接、进度／数据与 Toggle 开态。按下／选中用 `--ink-2` 底 `--ground` 字（行与列表项用 `--hover` 底），主动作用 `--ink` 底 `--ground` 字且每屏最多一个，悬停边提亮到墨色 28%，标题悬停下划线不变蓝，计数徽章中性灰。其它选择器引用 `--tungsten` 由 `tests/test_web_ui.py` 拒绝；实测见 `vercel-geist-semantics-measured.md`「选中态与开关色」。
 - `outline:0`／`outline:none` 只允许出现在同一规则给出替代焦点样式的地方（`box-shadow` 或子元素 outline），或输入框由带 `:focus-within` 的容器接管焦点时；reduced motion 由全局 `@media (prefers-reduced-motion:reduce)` 统一关闭，不逐处补。
 - Progress 必须有真实 `value/max`、可见单位与 `aria-valuemin/max/now`；分隔线放在完整指标（含进度条）之后。
 - Switch 必须共享 radio `name`、初始一个 `checked`、键盘可用；布尔状态继续使用 Toggle。

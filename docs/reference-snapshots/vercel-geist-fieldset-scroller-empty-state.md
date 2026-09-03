@@ -1,5 +1,8 @@
 # Vercel Geist Fieldset／Scroller／Empty State 证据
 
+> 本文是 Peach 的人工取证笔记，不在 `reference-sources.json` 里登记；同 id 来源的上游 Markdown 原文锁定在 `upstream/vercel-geist-fieldset.md`，`accept` 只覆盖那个文件。
+
+
 - 取证日期：2026-08-30
 - 官方页面：<https://vercel.com/geist/fieldset>、<https://vercel.com/geist/scroller>、<https://vercel.com/geist/empty-state>
 - 官方 HTML SHA-256：Fieldset `F8EEB7F54882944131CF9D65EF0EC2A04121FFC011285E0B6B9CD07A552671AE`；Scroller `1BFF2EB9B2D0FA05B737043458A7536B1E263176784C592E13E1180A09A13826`；Empty State `5DAC2EB1E7CC748994FAE9A25CCC2AFD6066BBF29CC93715FF5CA1AC73880B9C`
