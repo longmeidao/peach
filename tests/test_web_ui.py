@@ -2884,12 +2884,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".cleanup-skeleton>div{grid-template-columns:minmax(0,1fr);gap:16px}")
         self.assertPageContains(".cleanup-skeleton .skeletoncard em{width:100%;height:var(--fieldset-bar-h)")
 
-    def test_follow_manage_skeleton_matches_its_two_column_sections(self):
+    def test_follow_manage_skeleton_matches_its_single_column_sections(self):
         """关注管理的骨架是三个大区，不是六张 16:9 卡片。
 
         六张卡的网格说的是 feed 那种一屏同质内容（关注更新流、回收站）；关注管理
-        是「添加关注 + 关注列表 + 凭据」两栏三块，六张卡加载完整屏换掉，等于先给
-        了一个假的结构预告。块数因此要可配，并跟着 .followmanage 的断点塌成一列。
+        是「添加关注 + 关注列表 + 凭据」一列三块，六张卡加载完整屏换掉，等于先给
+        了一个假的结构预告。块数因此要可配，宽度也跟着 .followmanage 收到 812px。
         """
         self.assertCode(
             "'/follow-manage':()=>`<div class=\"follow\">${pageSkeletonHtml('正在读取关注管理',")
@@ -2900,13 +2900,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "export function skeletonHtml(label='正在读取内容',{className='',variant='panel',count=6}={})")
         self.assertPageContains("?Array.from({length:Math.max(1,count)},")
-        # 版式：两栏对上 .followmanage 的 `minmax(0,1fr) 320px`，同一个断点塌成一列。
+        # 版式：一列对上 .followmanage，宽度也跟它一样是 812px 居中。
         self.assertPageContains(
-            ".followmanage-skeleton>div{grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}")
-        self.assertPageContains(".followmanage-skeleton .skeletoncard:nth-child(3){grid-area:1/2}")
-        self.assertPageContains(
-            "@media (max-width:1080px){.followmanage-skeleton>div{grid-template-columns:minmax(0,1fr)}")
-        self.assertPageContains(".followmanage-skeleton .skeletoncard:nth-child(n){grid-area:auto}")
+            ".followmanage-skeleton>div{grid-template-columns:minmax(0,1fr);gap:16px;width:min(812px,100%)")
+        self.assertNotIn("grid-area", self.page[self.page.index(".followmanage-skeleton>div{"):
+                                                self.page.index(".followmanage-skeleton .skeletoncard em{")])
+        # 第一块是那一行输入，不是原来带按钮的两行。
+        self.assertPageContains(".followmanage-skeleton .skeletoncard:nth-child(1) b{height:38px}")
         # 头部条是框体不是待填内容：跟 .fsechead 一样 56px，不参与呼吸。
         self.assertPageContains(".followmanage-skeleton .skeletoncard i{aspect-ratio:auto;height:56px")
         self.assertPageContains("border-bottom:1px solid var(--border-10);animation:none}")
