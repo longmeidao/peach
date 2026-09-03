@@ -1556,7 +1556,23 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".playerstatsbtn:after,.closestage:after{content:\"\";position:absolute;z-index:0;inset:4px;border-radius:50%")
         self.assertPageContains(".playerstatsbtn:hover:after,.playerstatsbtn:focus-visible:after,.closestage:hover:after,.closestage:focus-visible:after{background:rgba(255,255,255,.1)}")
         self.assertPageContains(".playernet{box-sizing:border-box;position:absolute;left:58px;top:11px;z-index:8;height:40px;min-height:40px")
-        self.assertPageContains("display:flex;align-items:center;border:0;border-radius:var(--floating-radius)")
+        self.assertPageContains("display:flex;align-items:center;gap:7px;white-space:nowrap;border:0;border-radius:var(--floating-radius)")
+
+    def test_load_rate_badge_reads_as_one_line_with_a_white_gauge(self):
+        """徽标里只剩一个仪表盘图标加一段速率，两者在同一行。
+
+        `white-space` 默认可断，`640 KB/s` 会在这条 flex 行里断成两行，把 40px 的胶囊顶破。
+        图标一侧是本仓库反复出现的那个缺陷：sprite 里的仪表盘是描边图形，容器不声明
+        stroke/fill 就按 SVG 默认的 fill 画成黑色实心块，压在 rgba(0,0,0,.6) 的底上
+        等于没有图标。所以容器规则和图标本身要一起守。
+        """
+        self.assertPageContains(
+            '<symbol id="i-gauge" viewBox="0 0 24 24"><path d="m12 14 4-4" />')
+        self.assertPageContains(
+            ".playernet svg{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;"
+            "stroke-width:2;stroke-linecap:round}")
+        self.assertPageContains("align-items:center;gap:7px;white-space:nowrap;")
+        self.assertPageLacks("${icon('download')}<span class=\"sr-only\">加载速度")
 
     def test_player_settings_match_real_ambient_speed_and_quality_capabilities(self):
         self.assertPageContains("class=\"vjs-peach-settings-menu\" role=\"menu\" aria-label=\"播放器设置\"")
@@ -1694,12 +1710,26 @@ class WebUiSourceTests(unittest.TestCase):
         判据是播放器自己的宽度而不是视口：同一个视口下影院模式和普通视图的播放器宽度
         差一大截，用媒体查询会在影院模式下白折叠、在普通视图下继续超框。
         """
-        self.assertPageContains("player.el().clientWidth<528")
-        self.assertPageContains("player.el().classList.toggle('vjs-peach-xsmall',narrow)")
+        self.assertPageContains("const box=player.el(),narrow=box.clientWidth<528;")
+        self.assertPageContains("box.classList.toggle('vjs-peach-xsmall',narrow)")
         self.assertPageContains("const widthObserver=new ResizeObserver(syncWidthMode)")
         self.assertPageContains("player.on('dispose',()=>widthObserver.disconnect())")
         self.assertPageContains("expand.className='vjs-peach-expand vjs-control'")
         self.assertPageContains("icon('player-menu-next')")
+        # 展开键排在这一簇最左：`prepend` 而不是 append，否则它落在全屏键的右边。
+        self.assertPageContains("group.prepend(expand)")
+        # hover 高亮的规则是 `.vjs-control>.vjs-peach-hover`，高亮层必须是按钮的兄弟节点；
+        # 塞进 <button> 里选择器就不命中，这个键会是整排里唯一没有反馈的那个。
+        self.assertPageContains(
+            '</button><span class="vjs-peach-hover" aria-hidden="true"></span>`;\n'
+            '  group.prepend(expand);')
+        # 窄屏其余键的 svg 缩到 18px，展开键排除在外并单独铺满 32px：那个箭头本来就细，
+        # 跟着缩就几乎看不出是个可点的键。上游给这个按钮的 svg 内边距同样是 0。
+        self.assertPageContains(
+            ".video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control"
+            ":not(.vjs-peach-expand)>button>svg{width:18px;height:18px}")
+        self.assertPageContains(
+            ".video-js.vjs-peach-xsmall .vjs-peach-expand>button>svg{width:32px;height:32px}")
         self.assertPageContains("expandButton.setAttribute('aria-expanded',String(open))")
         self.assertPageContains("syncExpandTooltip(open?'收起控件':'展开控件')")
         self.assertPageContains("if(!narrow)setExpanded(false)")
@@ -1717,6 +1747,69 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".video-js.vjs-peach-right-expanded .vjs-peach-expand>button>svg{transform:rotate(0)}")
         # 视口媒体查询不再另外藏画中画，折叠只有一套判据。
         self.assertPageLacks(".vjs-peach-right-controls>.vjs-picture-in-picture-control{display:none}")
+
+    def test_settings_panel_fades_and_the_submenu_slides(self):
+        """关闭态不能是 display:none——它没有可过渡的中间态，面板只会瞬间消失。
+
+        淡入淡出改由 aria-hidden 驱动 opacity，visibility 延后到淡出结束：面板既退出
+        无障碍树，也不再接命中测试。次级菜单按上游那份 .25s cubic-bezier(.4,0,.2,1)
+        同时推容器高度和推面板，两块面板在同一个容器里错开走。
+        """
+        self.assertPageContains('aria-label="播放器设置" aria-hidden="true"></div>`')
+        self.assertPageLacks(".vjs-peach-settings-menu[hidden]{display:none}")
+        self.assertPageContains(
+            ".vjs-peach-settings-menu{opacity:1;visibility:visible;"
+            "transition:opacity .1s cubic-bezier(0,0,.2,1)}")
+        self.assertPageContains(
+            '.vjs-peach-settings-menu[aria-hidden="true"]{opacity:0;visibility:hidden;'
+            'pointer-events:none;')
+        self.assertPageContains("transition:opacity .1s cubic-bezier(.4,0,1,1),visibility 0s .1s}")
+        self.assertPageContains(
+            ".vjs-peach-settings-menu.vjs-peach-popup-animating{overflow:hidden;"
+            "pointer-events:none;transition:height .25s cubic-bezier(.4,0,.2,1)}")
+        self.assertPageContains(
+            ".vjs-peach-popup-animating .vjs-peach-panel{"
+            "transition:transform .25s cubic-bezier(.4,0,.2,1),opacity .25s cubic-bezier(.4,0,.2,1)}")
+        self.assertPageContains(".vjs-peach-panel-leaving{position:absolute;left:0;top:0;width:100%}")
+        self.assertPageContains(".vjs-peach-panel-animate-back{opacity:0;transform:translateX(-100%)}")
+        self.assertPageContains(".vjs-peach-panel-animate-forward{opacity:0;transform:translateX(100%)}")
+        self.assertPageContains("const isOpen=()=>menu.getAttribute('aria-hidden')!=='true';")
+        self.assertPageContains("const renderPanel=(html,direction)=>{")
+        # 动画期间容器里同时挂着两块面板，事件只能绑在这一次新建的那块上；绑在容器上
+        # 会连正在退场的旧面板一起接命中，返回键点一次退两级。
+        self.assertPageContains("const panel=renderPanel(")
+        self.assertPageContains("panel.querySelector('[data-player-menu-back]').onclick=()=>showMain(-1);")
+        self.assertPageContains("if(panelTimer)clearTimeout(panelTimer)")
+
+    def test_narrow_player_keeps_both_overlays_inside_the_frame(self):
+        """390 宽的视口上 16:9 的播放器只有 200 出头的高，设置面板要 212、统计面板要 256。
+
+        所以先给播放器一个 280px 的最低高度，窄屏改成上下留黑边；再让两个浮层各自
+        按播放器高度收顶，谁都不可能超过播放器本身。窄屏的设置面板还要撤掉
+        `right:-100px`——那个偏移是给设置键右边还有影院键和全屏键时留的位。
+        """
+        self.assertPageContains(
+            ".vwrap>.video-js{width:100%;height:auto;min-height:280px;max-height:76vh;"
+            "aspect-ratio:16/9;background:#000}")
+        self.assertPageContains(".gate{aspect-ratio:16/9;width:100%;min-height:280px")
+        self.assertPageContains(
+            "max-height:calc(100% - 114px);overflow-y:auto;overscroll-behavior:contain;")
+        self.assertPageContains(
+            ".video-js.vjs-peach-xsmall .vjs-peach-settings-menu{right:0;"
+            "width:min(274px,calc(100vw - 48px));")
+        self.assertPageContains("max-height:calc(var(--peach-player-h,420px) - 64px)}")
+        # 面板的定位祖先只有 36px 高，百分比高度到不了播放器，得由布局脚本把高度写上来。
+        self.assertPageContains("box.style.setProperty('--peach-player-h',`${box.clientHeight}px`)")
+
+    def test_narrow_settings_keep_the_toggle_on_the_title_row(self):
+        """窄屏那条单列是给 select 留的：148px 的下拉配上标题和说明挤不下。
+
+        开关只有 36px，跟标题同一行绰绰有余，跟着换行只是白占一行高度。
+        """
+        self.assertPageContains(".settingrow{grid-template-columns:1fr;gap:9px}")
+        self.assertPageContains(
+            '.settingrow:has(input[type="checkbox"])'
+            '{grid-template-columns:minmax(0,1fr) auto;gap:12px}')
 
     def test_media_error_reads_as_a_card_above_the_stats_panel(self):
         """报错文案本来就居中，压住它的是 z-index 8 的统计面板。
@@ -1820,7 +1913,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("function fmtSpeed(bits)")
         self.assertPageContains("const rate=segmented?fmtSpeed(bits):fmtLoadRate(bits,meter.ratio);")
         self.assertPageContains(
-            """netBadge.innerHTML=`${icon('download')}<span class="sr-only">加载速度</span><span>${esc(rate)}</span>`""")
+            """netBadge.innerHTML=`${icon('gauge')}<span class="sr-only">加载速度</span><span>${esc(rate)}</span>`""")
 
     def test_immerse_mode_has_loading_state_and_full_viewport_cover(self):
         self.assertPageContains('id="tokLoader"')

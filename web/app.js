@@ -835,7 +835,7 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0,initialSourceQu
   root.className='vjs-peach-settings vjs-control';root.dataset.playerQuality='';
   root.innerHTML=`<button type="button" class="vjs-peach-settings-toggle" aria-label="播放器设置" aria-expanded="false">
     ${icon('settings')}<span data-player-quality-badge hidden></span></button>
-    <div class="vjs-peach-settings-menu" role="menu" aria-label="播放器设置" hidden></div>`;
+    <div class="vjs-peach-settings-menu" role="menu" aria-label="播放器设置" aria-hidden="true"></div>`;
   const fullscreen=controlBar.querySelector('.vjs-fullscreen-control');
   controlBar.insertBefore(root,fullscreen||null);
   const toggle=root.querySelector('button'),badge=root.querySelector('[data-player-quality-badge]');
@@ -869,30 +869,59 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0,initialSourceQu
     badge.textContent=activePixels>=2160?'4K':activePixels>=720?'HD':'';badge.hidden=!badge.textContent;
     return {options,active};
   };
-  const close=()=>{menu.hidden=true;toggle.setAttribute('aria-expanded','false')};
-  const showMain=()=>{
+  const isOpen=()=>menu.getAttribute('aria-hidden')!=='true';
+  const setOpen=open=>{menu.setAttribute('aria-hidden',String(!open));toggle.setAttribute('aria-expanded',String(open))};
+  const close=()=>setOpen(false);
+  /* 面板之间的切换照 YouTube 播放器 9470c977 的 www-player.css：popup 自己 .25s
+     cubic-bezier(.4,0,.2,1) 改高度，旧面板往来的方向滑出、新面板从去的方向滑入。
+     旧面板必须先脱离布局再滑，否则两块内容会在动画期间把菜单撑成两倍高；高度也得
+     先钉在旧值、下一帧再写新值，同一帧写两次只会直接跳到新值，看不到过渡。 */
+  const PANEL_MS=250;
+  let panelTimer=null;
+  const renderPanel=(html,direction)=>{
+    const current=menu.querySelector('.vjs-peach-panel');
+    const next=document.createElement('div');next.className='vjs-peach-panel';next.innerHTML=html;
+    if(!current||!direction||!isOpen()){menu.replaceChildren(next);menu.style.height='';return next}
+    if(panelTimer){clearTimeout(panelTimer);panelTimer=null}
+    const from=menu.getBoundingClientRect().height;
+    current.classList.add('vjs-peach-panel-leaving');
+    next.classList.add(direction>0?'vjs-peach-panel-animate-forward':'vjs-peach-panel-animate-back');
+    menu.append(next);menu.style.height=`${from}px`;
+    const to=next.scrollHeight;
+    requestAnimationFrame(()=>{
+      menu.classList.add('vjs-peach-popup-animating');menu.style.height=`${to}px`;
+      next.classList.remove('vjs-peach-panel-animate-forward','vjs-peach-panel-animate-back');
+      current.classList.add(direction>0?'vjs-peach-panel-animate-back':'vjs-peach-panel-animate-forward');
+      panelTimer=setTimeout(()=>{
+        panelTimer=null;current.remove();
+        menu.classList.remove('vjs-peach-popup-animating');menu.style.height='';
+      },PANEL_MS);
+    });
+    return next;
+  };
+  const showMain=(direction=0)=>{
     const {active}=qualityRows(),speed=Number(player.playbackRate())||1;
-    menu.innerHTML=`<div class="vjs-peach-panel-menu"><button type="button" class="vjs-peach-menu-row" role="menuitemcheckbox" data-player-ambient aria-checked="${appSettings.ambientMode}">
+    const panel=renderPanel(`<div class="vjs-peach-panel-menu"><button type="button" class="vjs-peach-menu-row" role="menuitemcheckbox" data-player-ambient aria-checked="${appSettings.ambientMode}">
       ${icon('player-ambient')}<span>氛围模式</span><i class="vjs-peach-switch" aria-hidden="true"></i></button>
       <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-speed>${icon('player-speed')}<span>播放速度</span><b>${speed===1?'正常':speed+'×'}</b>${icon('player-menu-next')}</button>
-      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-quality-view>${icon('player-quality')}<span>清晰度</span><b>${esc(active.label)}</b>${icon('player-menu-next')}</button></div>`;
-    menu.querySelector('[data-player-ambient]').onclick=()=>{applyAmbientMode(!appSettings.ambientMode);showMain()};
-    menu.querySelector('[data-player-speed]').onclick=showSpeed;
-    menu.querySelector('[data-player-quality-view]').onclick=showQuality;
+      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-quality-view>${icon('player-quality')}<span>清晰度</span><b>${esc(active.label)}</b>${icon('player-menu-next')}</button></div>`,direction);
+    panel.querySelector('[data-player-ambient]').onclick=()=>{applyAmbientMode(!appSettings.ambientMode);showMain()};
+    panel.querySelector('[data-player-speed]').onclick=()=>showSpeed();
+    panel.querySelector('[data-player-quality-view]').onclick=()=>showQuality();
   };
-  const showSpeed=()=>{
+  const showSpeed=(direction=1)=>{
     const selectedSpeed=Number(player.playbackRate())||1,speeds=[.25,.5,.75,1,1.25,1.5,1.75,2];
-    menu.innerHTML=`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="返回上一个菜单">${icon('player-menu-back')}</button><strong>播放速度</strong></div><div class="vjs-peach-panel-menu">${speeds.map(speed=>
-      `<button type="button" class="vjs-peach-menu-option" role="menuitemradio" data-player-speed-option="${speed}" aria-checked="${speed===selectedSpeed}"><span class="vjs-peach-option-check">${speed===selectedSpeed?icon('player-option-check'):''}</span><span class="vjs-peach-option-label">${speed===1?'正常':speed+'×'}</span></button>`).join('')}</div>`;
-    menu.querySelector('[data-player-menu-back]').onclick=showMain;
-    menu.querySelectorAll('[data-player-speed-option]').forEach(button=>button.onclick=()=>{player.playbackRate(Number(button.dataset.playerSpeedOption));showMain()});
+    const panel=renderPanel(`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="返回上一个菜单">${icon('player-menu-back')}</button><strong>播放速度</strong></div><div class="vjs-peach-panel-menu">${speeds.map(speed=>
+      `<button type="button" class="vjs-peach-menu-option" role="menuitemradio" data-player-speed-option="${speed}" aria-checked="${speed===selectedSpeed}"><span class="vjs-peach-option-check">${speed===selectedSpeed?icon('player-option-check'):''}</span><span class="vjs-peach-option-label">${speed===1?'正常':speed+'×'}</span></button>`).join('')}</div>`,direction);
+    panel.querySelector('[data-player-menu-back]').onclick=()=>showMain(-1);
+    panel.querySelectorAll('[data-player-speed-option]').forEach(button=>button.onclick=()=>{player.playbackRate(Number(button.dataset.playerSpeedOption));showMain(-1)});
   };
-  const showQuality=()=>{
+  const showQuality=(direction=1)=>{
     const {options}=qualityRows();
-    menu.innerHTML=`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="返回上一个菜单">${icon('player-menu-back')}</button><strong>清晰度</strong></div><div class="vjs-peach-panel-menu">${options.map(option=>
-      `<button type="button" class="vjs-peach-menu-option" role="menuitemradio" data-player-quality-option="${esc(option.key)}" aria-checked="${option.key===selectedQuality}"><span class="vjs-peach-option-check">${option.key===selectedQuality?icon('player-option-check'):''}</span><span class="vjs-peach-option-label">${esc(option.label)}</span></button>`).join('')}</div>`;
-    menu.querySelector('[data-player-menu-back]').onclick=showMain;
-    menu.querySelectorAll('[data-player-quality-option]').forEach(button=>button.onclick=()=>{
+    const panel=renderPanel(`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="返回上一个菜单">${icon('player-menu-back')}</button><strong>清晰度</strong></div><div class="vjs-peach-panel-menu">${options.map(option=>
+      `<button type="button" class="vjs-peach-menu-option" role="menuitemradio" data-player-quality-option="${esc(option.key)}" aria-checked="${option.key===selectedQuality}"><span class="vjs-peach-option-check">${option.key===selectedQuality?icon('player-option-check'):''}</span><span class="vjs-peach-option-label">${esc(option.label)}</span></button>`).join('')}</div>`,direction);
+    panel.querySelector('[data-player-menu-back]').onclick=()=>showMain(-1);
+    panel.querySelectorAll('[data-player-quality-option]').forEach(button=>button.onclick=()=>{
       selectedQuality=button.dataset.playerQualityOption;
       if(levels?.length)for(let index=0;index<levels.length;index++)levels[index].enabled=selectedQuality==='auto'||selectedQuality===String(index);
       /* 来源档位是四个各自独立的 mp4，不是同一条流的多个轨道，所以只能换 src。
@@ -908,18 +937,18 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0,initialSourceQu
           if(wasPlaying)player.play().catch(()=>{});
         });
       }
-      showMain();
+      showMain(-1);
     });
   };
-  toggle.onclick=event=>{event.stopPropagation();const open=menu.hidden;if(open)showMain();menu.hidden=!open;toggle.setAttribute('aria-expanded',String(open))};
+  toggle.onclick=event=>{event.stopPropagation();const open=!isOpen();if(open)showMain();setOpen(open)};
   const outside=event=>{if(!root.contains(event.target))close()};document.addEventListener('pointerdown',outside);
   root.addEventListener('keydown',event=>{if(event.key==='Escape'){close();toggle.focus()}});
-  video.addEventListener('loadedmetadata',()=>{if(!menu.hidden)showMain();else qualityRows()});
-  levels?.on?.(['addqualitylevel','removequalitylevel'],()=>{if(!menu.hidden)showMain();else qualityRows()});
-  player.on('dispose',()=>document.removeEventListener('pointerdown',outside));qualityRows();
+  video.addEventListener('loadedmetadata',()=>{if(isOpen())showMain();else qualityRows()});
+  levels?.on?.(['addqualitylevel','removequalitylevel'],()=>{if(isOpen())showMain();else qualityRows()});
+  player.on('dispose',()=>{document.removeEventListener('pointerdown',outside);if(panelTimer)clearTimeout(panelTimer)});qualityRows();
   mountPlayerTheaterControl(player,root);
   mountPlayerChromeLayout(player);
-  return next=>{sourceQualities=next?.length?next:null;if(!menu.hidden)showMain();else qualityRows()};
+  return next=>{sourceQualities=next?.length?next:null;if(isOpen())showMain();else qualityRows()};
 }
 function mountPlayerTheaterControl(player,settingsRoot){
   const controlBar=player.getChild('controlBar')?.el();if(!controlBar||controlBar.querySelector('[data-player-theater]'))return;
@@ -1003,8 +1032,11 @@ function mountPlayerChromeLayout(player){
      ytp-xsmall-width-mode，右侧收成「设置 + 展开」，点开才铺开其余按钮。判据必须是播放器
      自己的宽度，不是视口——同一个视口下影院模式和普通视图的播放器宽度差一大截。 */
   const expand=document.createElement('div');expand.className='vjs-peach-expand vjs-control';
-  expand.innerHTML=`<button type="button" data-player-expand aria-expanded="false">${icon('player-menu-next')}<span class="vjs-peach-hover" aria-hidden="true"></span></button>`;
-  group.append(expand);
+  /* 高亮层要挂在 `.vjs-control` 这一层：亮起来的规则是 `>.vjs-peach-hover`，塞进
+     button 里就差一层，展开键成了这排唯一没有 hover 的按钮。位置在这排左端——
+     这排整体右对齐，展开时新按钮从它右边长出来，箭头指左才对得上要发生的事。 */
+  expand.innerHTML=`<button type="button" data-player-expand aria-expanded="false">${icon('player-menu-next')}</button><span class="vjs-peach-hover" aria-hidden="true"></span>`;
+  group.prepend(expand);
   const expandButton=expand.querySelector('button');
   const syncExpandTooltip=playerControlTooltip(expandButton,'展开控件');
   const setExpanded=open=>{
@@ -1013,8 +1045,10 @@ function mountPlayerChromeLayout(player){
   };
   expandButton.onclick=event=>{event.stopPropagation();setExpanded(!player.el().classList.contains('vjs-peach-right-expanded'))};
   const syncWidthMode=()=>{
-    const narrow=player.el().clientWidth<528;
-    player.el().classList.toggle('vjs-peach-xsmall',narrow);
+    const box=player.el(),narrow=box.clientWidth<528;
+    /* 设置面板要按播放器高度收顶，而它的定位祖先只有 36px 高，百分比取不到播放器。 */
+    box.style.setProperty('--peach-player-h',`${box.clientHeight}px`);
+    box.classList.toggle('vjs-peach-xsmall',narrow);
     if(!narrow)setExpanded(false);
   };
   const widthObserver=new ResizeObserver(syncWidthMode);widthObserver.observe(player.el());
@@ -1176,7 +1210,7 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
     if(!segmented)meter.sample(video);
     const bits=playerSpeedBits(player,it.id,detailStreamSession,segmented?null:meter);
     const rate=segmented?fmtSpeed(bits):fmtLoadRate(bits,meter.ratio);
-    netBadge.innerHTML=`${icon('download')}<span class="sr-only">加载速度</span><span>${esc(rate)}</span>`};
+    netBadge.innerHTML=`${icon('gauge')}<span class="sr-only">加载速度</span><span>${esc(rate)}</span>`};
   const showNet=()=>{if(!netBadge)return;netBadge.hidden=false;updateNet();
     if(detailNetTimer)clearInterval(detailNetTimer);detailNetTimer=setInterval(updateNet,500)};
   const hideNet=()=>{if(!netBadge)return;if(detailNetHideTimer)clearTimeout(detailNetHideTimer);

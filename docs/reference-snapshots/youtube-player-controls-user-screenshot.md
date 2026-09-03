@@ -297,3 +297,40 @@ x=476 对播放器中心 x=476，y=437.5 对 437.5，2026-08-28 那次居中修�
 它盖住了居中那行左侧约 180px。所以本轮改的不是居中：撤掉 Video.js 铺满全画面的渐变，
 把报错做成一张自带底色、`z-index:9` 的紧凑卡片。加载失败时统计面板里的编码、分辨率、
 体积和请求方式正是要看的东西，不能用报错把它整块糊掉。
+
+## 设置面板动画与展开键取证（2026-09-03，第十五轮之后同日）
+
+用户第十六轮要求：设置面板要有渐入渐退、次级菜单要有进入退出动画；窄屏那个展开键排到左侧、
+图标别那么细、也要有和其余按钮一样的 hover。证据仍走 Python 通道取自上表那份
+`www-player.css`（播放器 `9470c977`，542,776 字节，SHA-256
+`96e3e223db36f20082cbc5b5393a6c783c91cd0d52b4d338857e1c2abbc0deeb`），不是同一版本就不能引用下表。
+
+| 项 | 上游原文 | Peach 实现 |
+| --- | --- | --- |
+| 浮层淡入 | `.ytp-popup{transition:opacity .1s cubic-bezier(0,0,.2,1)}` | `.vjs-peach-settings-menu` 同曲线同时长 |
+| 浮层淡出 | `.ytp-popup[aria-hidden=true]{opacity:0;transition:opacity .1s cubic-bezier(.4,0,1,1)}` | 关闭态由 `aria-hidden="true"` 驱动，同曲线 |
+| 面板换层 | `.ytp-popup-animating` 与 `.ytp-popup-animating .ytp-panel` 都是 `all .25s cubic-bezier(.4,0,.2,1)` | 同时长同曲线 |
+| 进出方向 | `.ytp-panel-animate-back{opacity:0;transform:translateX(-100%)}`、`.ytp-panel-animate-forward{opacity:0;transform:translateX(100%)}` | 类名与数值一一对应 |
+| 展开键图标 | `.ytp-xsmall-width-mode.ytp-delhi-modern-icons .ytp-right-controls .ytp-button:not(.ytp-expand-right-bottom-section-button) svg{width:18px;height:18px;padding:7px}`，紧接着 `.ytp-expand-right-bottom-section-button.ytp-button svg{padding:0}` | 窄屏其余键的 svg 缩到 18px，展开键排除在外并铺满 32px |
+
+### Peach 主动保留的差异
+
+- 上游过渡的是 `all`；Peach 只过渡 `height`（容器）与 `transform`/`opacity`（面板）。`all` 会把
+  面板里的 hover 底色、边框和 `visibility` 一并接进这条 .25s 曲线，返回时整块面板要慢半拍才亮。
+- 关闭态不用 `display:none`：那样没有可过渡的中间态。`visibility` 用 `transition:visibility 0s .1s`
+  延后到淡出结束，面板既退出无障碍树也不再接命中测试。
+- 展开键靠左是用户当场的要求。`www-player.css` 只给出显隐、旋转和图标内边距，**没有**任何
+  能推出这一簇按钮排列顺序的规则，`base.js` 里的插入顺序本轮**未取得**；所以这一条按用户要求实现，
+  不声称是对 YouTube 的复刻。
+- hover 高亮沿用 Peach 自己的 `.vjs-peach-hover`（`.vjs-control>.vjs-peach-hover`），因此展开键的
+  高亮层必须是按钮的兄弟节点，不能塞进 `<button>` 里。
+
+### 同轮的两个非参考项
+
+- 加载速度徽标改成仪表盘图标加一行速率，与 YouTube 无关：Peach 自己的浮层，图标取本地
+  sprite 的 `i-gauge`（lucide 描边图形），容器必须声明 `stroke:currentColor;fill:none`，
+  否则按 SVG 默认的 fill 画成黑色实心块。
+- 窄屏两个浮层超框由 Peach 自己的版式决定：390 宽视口上 16:9 的播放器只有 200 出头的高，
+  设置面板要 212、统计面板要 256。播放器给 280px 最低高度改成上下留黑边，两个浮层各自按
+  播放器高度收顶。窄屏设置面板的高度上限走 `--peach-player-h`——面板的定位祖先只有 36px 高，
+  百分比取不到播放器。
