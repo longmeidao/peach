@@ -25,7 +25,8 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from peach.catalog_rules import is_jav_code, normalise_code_key
+from peach.catalog_rules import (code_query_variants, is_jav_code, normalise_code_key,
+                                 same_release_code)
 from peach.scripting import open_readonly
 from peach.config import DATABASE_PATH, GENERATED_DIR, LOG_DIR, SOURCES_DIR, STATE_DIR
 from peach.genre_taxonomy import CONTENT_GENRES, map_genres
@@ -94,7 +95,7 @@ def close_log() -> None:
 
 
 def _is_explicit_code(code: str) -> bool:
-    """番号是否明确到可以直接查来源；判的是**规范化之后**的形态。
+    r"""番号是否明确到可以直接查来源；判的是**规范化之后**的形态。
 
     真正发给 provider 的就是 `normalise_code_key(code)`，而账本里同一个番号常以
     `WX17`、`BANBI_555`、`IPVR00296` 这种缺分隔符的原始写法存着。按原始写法判会把它们
@@ -106,6 +107,56 @@ def _is_explicit_code(code: str) -> bool:
     继续把它们发给 provider 查——同一个「什么算番号」有两个答案。
     """
     return is_jav_code(normalise_code_key(code))
+
+
+def _fetch_source(adapter, *, query: str, source: str, snapshot: Path,
+                  refresh: bool,
+                  health: dict) -> tuple[dict | None, MetadataProviderError | None, bool]:
+    """取一个写法一个来源：优先复用快照，失败也落盘，返回 (payload, error, reused)。
+
+    单独拆出来是因为一个番号要问的写法可能不止一个，而每个写法的快照、限流计数和
+    错误落盘规则完全一样。`JavinizerGoProvider.query` 和 `_read_snapshot` 各自也用
+    `identifies_code` 过一遍，但注入的 provider 不经过那条路，所以身份校验在调用方
+    单独再做一次（`_identity_mismatch`）。
+    """
+    payload = None if refresh else _read_snapshot(snapshot, query)
+    settled = None if refresh else _read_settled_error(snapshot)
+    reused = payload is not None or settled is not None
+    try:
+        if reused:
+            health["snapshot_reused"] += 1
+            if settled is not None:
+                raise settled
+        else:
+            health["fetched"] += 1
+            payload = adapter.query(query, source)
+        if not snapshot.is_file() or refresh:
+            _write_snapshot(snapshot, code=query, source=source, result=payload)
+    except MetadataProviderError as error:
+        if not reused or refresh:
+            _write_snapshot(snapshot, code=query, source=source, error=error)
+        return None, error, reused
+    return payload, None, reused
+
+
+def _identity_mismatch(query: str, payload: dict) -> MetadataProviderError | None:
+    """来源返回的作品不是查的那一部时，拒收而不是当命中。
+
+    javbus 一侧是拿番号做关键词搜索并取首个命中，所以搜不到原番号一定会返回别的
+    东西：`CHU-101 -> CHUC-101`、`SA-104 -> AVSA-104`、`AR-301 -> STAR-3016`。
+    2026-09-02 实测 `B:/MVP/MIB/` 下 68 次匹配有 58 次返回的番号根本不是查询的
+    番号，整目录的厂牌、系列、标题因此全错。
+
+    比对走 `same_release_code`，它容忍片商前缀、补零和重制尾字母这些良性差异；
+    来源没给 id 的不拦——那是缺证据，不是证据相反。
+    """
+    returned = str(payload.get("id") or payload.get("content_id") or "").strip()
+    if not returned or same_release_code(query, returned):
+        return None
+    return MetadataProviderError(
+        f"来源返回的番号 {returned} 不是查询的 {query}",
+        kind="identity_mismatch",
+    )
 
 
 def _candidate_key(code: str, field: str, source: str, value: object) -> str:
@@ -438,6 +489,10 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                 log(f"[stop] {error}")
                 break
             query = normalise_code_key(code)
+            # `259LUXU-1642` 与 `LUXU-1642` 是同一部作品的两种写法，来源站各只索引
+            # 其中一种。账本存哪种就只查哪种，会把「这个站没收录这种写法」误判成
+            # 「这部作品查不到」。第一个永远是账本的规范写法，评审键不随回退漂移。
+            variants = code_query_variants(code) or (query,)
             by_field: dict[str, list[dict]] = {}
             fetched_at = datetime.now(timezone.utc).isoformat()
             # 每个番号问哪几家由 policy 按发行面决定：日期形和 HEYZO 是无码站
@@ -448,24 +503,31 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                 if time.monotonic() < cooldown_until.get(source, 0.0):
                     source_health["cooldown_skips"] += 1
                     continue
-                snapshot = args.raw_dir / query / f"{source}.json"
                 started = time.perf_counter()
-                payload = None if args.refresh else _read_snapshot(snapshot, query)
-                settled_error = None if args.refresh else _read_settled_error(snapshot)
-                reused = payload is not None or settled_error is not None
-                try:
-                    if reused:
-                        source_health["snapshot_reused"] += 1
-                        if settled_error is not None:
-                            raise settled_error
-                    else:
-                        source_health["fetched"] += 1
-                        payload = adapter.query(query, source)
-                    if not snapshot.is_file() or args.refresh:
-                        _write_snapshot(snapshot, code=query, source=source, result=payload)
-                except MetadataProviderError as error:
-                    if not reused or args.refresh:
-                        _write_snapshot(snapshot, code=query, source=source, error=error)
+                snapshot = args.raw_dir / query / f"{source}.json"
+                payload = error = None
+                used_network = False
+                for attempt in variants:
+                    snapshot = args.raw_dir / attempt / f"{source}.json"
+                    payload, error, reused = _fetch_source(
+                        adapter, query=attempt, source=source, snapshot=snapshot,
+                        refresh=args.refresh, health=source_health)
+                    used_network = used_network or not reused
+                    if payload is not None:
+                        error = _identity_mismatch(attempt, payload)
+                        if error is not None:
+                            payload = None
+                    if payload is not None:
+                        if attempt != query:
+                            log(f"{query} 在 {source} 改用 {attempt} 命中")
+                        break
+                    # 限流、封禁和网络抖动与写法无关，换个写法只是再撞一次墙。
+                    if error is not None and (error.retryable
+                                              or error.status_code in {403, 429, 503}):
+                        break
+                source_health["elapsed_ms"] += round((time.perf_counter() - started) * 1000)
+                if payload is None:
+                    error = error or MetadataProviderError("no result", kind="empty")
                     error_writer.writerow({
                         "code": code, "query": query, "source": source, "kind": error.kind,
                         "status_code": error.status_code, "retryable": int(error.retryable),
@@ -487,9 +549,11 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                                 f"冷却 {COOLDOWN_SECONDS:.0f} 秒后自动恢复：{error}")
                     else:
                         consecutive_failures[source] = 0
+                    # 失败那几次也真的发出去了，占的是同一个限流窗口：跳过间隔直接
+                    # 问下一个番号，等于把重试挤在一起，来源只会更快把我们关掉。
+                    if args.delay > 0 and used_network:
+                        time.sleep(args.delay + random.uniform(0, min(0.4, args.delay / 3)))
                     continue
-                finally:
-                    source_health["elapsed_ms"] += round((time.perf_counter() - started) * 1000)
                 consecutive_failures[source] = 0
                 extracted_fields = extract_peach_fields(payload)
                 catalog_evidence = extract_catalog_evidence(payload)
@@ -525,7 +589,7 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                 # 续跑重建候选时会读取数百个本地快照；它们没有网络请求，不该
                 # 消耗来源限流窗口。只给本次真实 fetch 留间隔，既保持 r18dev
                 # 的长跑节流，也让熔断后的恢复立即越过已完成部分。
-                if args.delay > 0 and not reused:
+                if args.delay > 0 and used_network:
                     time.sleep(args.delay + random.uniform(0, min(0.4, args.delay / 3)))
             for field, candidates in by_field.items():
                 if args.english_title_only and field != "title":

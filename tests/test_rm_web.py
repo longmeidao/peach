@@ -11,8 +11,9 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest import mock
 
-from peach import web_batch, web_catalog, web_stats
+from peach import catalog_rules, web_batch, web_catalog, web_stats
 from peach import web_contract as rm_web
+from peach.previews import entity_image_key, logo_key
 from support.ledger import fresh_ledger
 
 
@@ -69,7 +70,15 @@ class WebDataTests(unittest.TestCase):
         )
         con.commit()
         con.close()
-        self.contract = rm_web.WebContract(Path(self.db_path))
+        # 标识目录显式落在临时目录：默认值是本机真实的 generated 树，「这个厂牌有没有
+        # 图」会随本机装了什么而变，测试跟着本机状态摇。
+        self.logos = Path(self.tmp.name).resolve() / "logos"
+        self.logos.mkdir()
+        # 实体图和已裁好的头像同处 `avatar_root`，同样得落在临时目录里。
+        self.avatars = Path(self.tmp.name).resolve() / "avatars"
+        self.avatars.mkdir()
+        self.contract = rm_web.WebContract(
+            Path(self.db_path), avatar_root=self.avatars, logo_root=self.logos)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -95,7 +104,7 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(result["items"][0]["id"], 1)
         self.assertEqual(result["items"][0]["performers"], ["Canonical Alice"])
         self.assertEqual(result["items"][0]["performer_entities"], [
-            {"id": 11, "name": "Canonical Alice"},
+            {"id": 11, "name": "Canonical Alice", "has_image": False},
         ])
         self.assertEqual(result["items"][0]["tags"], ["足交"])
         self.assertIn("play_seconds", result["items"][0])
@@ -155,7 +164,7 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(item["creator"], "Canonical Creator")
         self.assertEqual(item["entities"]["creator"], ["Canonical Creator"])
         self.assertEqual(item["entity_refs"]["creator"], [
-            {"id": 12, "name": "Canonical Creator"},
+            {"id": 12, "name": "Canonical Creator", "has_image": False},
         ])
         self.assertEqual(item["performers"], [])
         self.assertEqual(item["entity_refs"]["performer"], [])
@@ -306,6 +315,191 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(
             [(row["k"], row["n"]) for row in rm_web.q_tops(self.contract, 30)["studios"]],
             [("Canonical Studio", 2)])
+
+    def test_studio_marks_say_up_front_whether_a_logo_is_installed(self):
+        """三处厂牌取图位都要随资料下发「装了没有」。
+
+        缺这个标志，页面只能无条件出 `<img>`、等 `/logo` 回 404 再换成首字母：顶栏
+        一排 30 个厂牌里实测 21 个没有图，而 404 那条响应不可缓存，每次重绘再打一
+        整轮。判据是目录索引，不查库。
+        """
+        def flags():
+            item = rm_web.q_item(self.contract, 1)
+            page = rm_web.q_entity(
+                self.contract, {"kind": "studio", "name": "Canonical Studio"})
+            return {
+                "pill": [row["has_logo"] for row in
+                         rm_web.q_tops(self.contract, 30)["studios"]],
+                "ref": [ref["has_logo"] for ref in item["entity_refs"]["studio"]],
+                # 非规范厂牌只有扁平 `studio` 字段，它的可用性单独一格；漏了这格，
+                # 那条路径会从「本来能取到图」退化成永远只显示首字母。
+                "flat": item["has_studio_logo"],
+                "hero": page["has_logo"],
+            }
+
+        self.assertEqual(
+            flags(), {"pill": [False], "ref": [False], "flat": False, "hero": False},
+            "一张图都没装时三处都必须说没有")
+
+        (self.logos / f"{logo_key('Canonical Studio')}.img").write_bytes(b"x")
+        (self.logos / f"{logo_key('Studio A')}.icon.img").write_bytes(b"x")
+        self.contract.cache_bust()
+        self.assertEqual(
+            flags(), {"pill": [True], "ref": [True], "flat": True, "hero": True},
+            "装上之后三处都必须说有")
+
+    def test_face_slots_say_up_front_whether_an_image_can_be_fetched(self):
+        """四个取图位都要随资料下发「取不取得到」。
+
+        缺这个标志，页面只能无条件出 `<img>`、等 404 再换成首字母：一个作品详情页
+        实测 9 个这样的 404（1 个厂牌实体图、4 个人物实体图、4 个头像），首页手机
+        视口 2 个，而 `/entity-image` 与 `/avatar` 的 404 都不带缓存头，每次重绘再打
+        一整轮。
+
+        两级图的判据不一样，所以分成两个标志：实体图有就是有；头像是按需生成的，
+        「还没裁过但印相还在」仍然取得到，把它一起判成没有就等于把点一下就有的那条
+        路关掉。
+        """
+        def flags():
+            item = rm_web.q_item(self.contract, 1)
+            page = rm_web.q_entity(
+                self.contract, {"kind": "performer", "name": "Canonical Alice"})
+            tops = rm_web.q_tops(self.contract, 30)["performers"]
+            cards = rm_web.q_items(self.contract, {"limit": "5", "offset": "0"})["items"]
+            return {
+                # 顶栏圆头像：实体图与代表作头像各一格。
+                "top_image": [row["has_image"] for row in tops],
+                "top_avatar": [row["has_avatar"] for row in tops],
+                # 卡片署名圈的身份引用（`/api/items`）。
+                "card": [ref["has_image"] for row in cards
+                         for ref in row["performer_entities"]],
+                # 详情页身份格（`/api/item`）。
+                "cell": [ref["has_image"] for ref in item["entity_refs"]["performer"]],
+                # 资料页大位（`/api/entity`）：同样是两级。
+                "hero_image": page["has_image"],
+                "hero_avatar": page["has_avatar"],
+            }
+
+        self.assertEqual(
+            flags(),
+            {"top_image": [False], "top_avatar": [False], "card": [False],
+             "cell": [False], "hero_image": False, "hero_avatar": False},
+            "一张图都没有时四处都必须说没有")
+
+        (self.avatars / f"{entity_image_key('performer', 11)}.img").write_bytes(b"x")
+        snapshot = Path(self.tmp.name).resolve() / "one.jpg"
+        snapshot.write_bytes(b"x")
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET snapshot_path=? WHERE id=1", (str(snapshot),))
+        con.commit()
+        con.close()
+        self.contract.cache_bust()
+        self.assertEqual(
+            flags(),
+            {"top_image": [True], "top_avatar": [True], "card": [True],
+             "cell": [True], "hero_image": True, "hero_avatar": True},
+            "装上实体图、印相也在盘上之后，四处都必须说有")
+
+    def test_a_representative_without_its_snapshot_is_not_an_avatar(self):
+        """账本记着印相路径、盘上却没有那个文件时，`/avatar` 一样取不到。
+
+        `rep` 的选取只看 `snapshot_path IS NOT NULL`，那是账本里的一行字符串；
+        真正决定取不取得到的是文件在不在，判据和卡片角上的 `has_thumb` 同一个。
+        """
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET snapshot_path=? WHERE id=1",
+                    (str(Path(self.tmp.name).resolve() / "gone.jpg"),))
+        con.commit()
+        con.close()
+        self.contract.cache_bust()
+        tops = rm_web.q_tops(self.contract, 30)["performers"]
+        self.assertEqual([row["rep"] for row in tops], [1], "代表作仍会被选出来")
+        self.assertEqual([row["has_avatar"] for row in tops], [False])
+
+    def _install_snapshot(self, asset_id=1):
+        """给一条作品配一份真的印相文件，让它的代表作头像变成取得到。"""
+        snapshot = Path(self.tmp.name).resolve() / f"snapshot-{asset_id}.jpg"
+        snapshot.write_bytes(b"x")
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET snapshot_path=? WHERE id=?", (str(snapshot), asset_id))
+        con.commit()
+        con.close()
+        self.contract.cache_bust()
+
+    def test_index_pages_say_up_front_whether_each_face_can_be_fetched(self):
+        """索引页一屏几十个圆头像，同样得先问过再出图。
+
+        `/performers` 桌面视口滚三屏实测 77 个取图请求里 5 个是 `/entity-image` 的
+        404，而这条响应不带缓存头，每次重绘再打一整轮。
+        """
+        def flags(kind):
+            return [(row["k"], row["has_image"], row["has_avatar"])
+                    for row in rm_web.q_index(self.contract, kind, limit=10)["items"]]
+
+        self.assertEqual(flags("performers"), [("Canonical Alice", False, False)])
+        self.assertEqual(flags("creators"), [("Canonical Creator", False, False)])
+
+        (self.avatars / f"{entity_image_key('performer', 11)}.img").write_bytes(b"x")
+        self._install_snapshot()
+        # kind 是落盘名的一部分：装的是女优那张图，创作者那格照样没有实体图可取，
+        # 只是回落到了同一条作品的代表作头像。判据判错 kind 就在这一行现形。
+        self.assertEqual(flags("performers"), [("Canonical Alice", True, True)])
+        self.assertEqual(flags("creators"), [("Canonical Creator", False, True)])
+
+        (self.avatars / f"{entity_image_key('creator', 12)}.img").write_bytes(b"x")
+        self.contract.cache_bust()
+        self.assertEqual(flags("creators"), [("Canonical Creator", True, True)])
+        # 标签索引页没有脸，不该凭空多出两个标志。
+        self.assertNotIn(
+            "has_image", rm_web.q_index(self.contract, "tags", limit=10)["items"][0])
+
+    def test_taste_rankings_say_up_front_whether_each_face_can_be_fetched(self):
+        """口味榜的创作者和女优两排走同一条两级链，标志也得随榜下发。
+
+        榜行的形状和别处的身份引用不一样（`entity_id`、`representative_asset_id`
+        直接长在行上），但判据是同一对函数，不能因为形状不同就退回无条件出图。
+        """
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET play_count=2,play_seconds=600,last_played=? WHERE id=1",
+                    (1_700_000_200,))
+        con.commit()
+        con.close()
+        # 浏览历史那一侧显式指向不存在的临时路径：默认值是本机真实的采集库，
+        # 榜单会跟着本机装了什么摇。
+        never = Path(self.tmp.name).resolve() / "no-taste-history"
+        contract = rm_web.WebContract(
+            Path(self.db_path), avatar_root=self.avatars, logo_root=self.logos,
+            taste_history_store=never / "history.sqlite",
+            taste_history_import_root=never / "imports",
+            taste_history_manifest=never / "manifest.json")
+
+        def flags():
+            rankings = rm_web.q_taste(contract, {"window": "all"})["rankings"]
+            return {key: [(row["name"], row["has_image"], row["has_avatar"])
+                          for row in rankings[key]]
+                    for key in ("creators", "performers", "peach_creators",
+                                "peach_performers")}
+
+        self.assertEqual(flags(), {
+            "creators": [("Canonical Creator", False, False)],
+            "performers": [("Canonical Alice", False, False)],
+            "peach_creators": [("Canonical Creator", False, False)],
+            "peach_performers": [("Canonical Alice", False, False)],
+        })
+
+        (self.avatars / f"{entity_image_key('performer', 11)}.img").write_bytes(b"x")
+        self._install_snapshot()
+        contract.cache_bust()
+        # 同一批 dict 同时出现在总榜和分源榜里，两处必须给同一个答案。
+        self.assertEqual(flags(), {
+            "creators": [("Canonical Creator", False, True)],
+            "performers": [("Canonical Alice", True, True)],
+            "peach_creators": [("Canonical Creator", False, True)],
+            "peach_performers": [("Canonical Alice", True, True)],
+        })
+        # 标签榜不出脸，不该被顺手挂上两个用不到的标志。
+        tags = rm_web.q_taste(contract, {"window": "all"})["rankings"]["tags"]
+        self.assertNotIn("has_image", tags[0])
 
     def test_items_can_skip_repeated_total_count_on_later_pages(self):
         result = rm_web.q_items(
@@ -502,7 +696,7 @@ class WebDataTests(unittest.TestCase):
         self.assertTrue(item["liked"])
         self.assertEqual(item["like_reason"], "喜欢自然的节奏和镜头")
         self.assertEqual(item["entity_refs"]["performer"], [
-            {"id": 11, "name": "Canonical Alice"},
+            {"id": 11, "name": "Canonical Alice", "has_image": False},
         ])
         self.assertIsNone(self.row()["feedback"])
 
@@ -968,7 +1162,7 @@ class WebDataTests(unittest.TestCase):
 
         reverse_related = rm_web.q_related(self.contract, 2, 10)
         self.assertEqual(reverse_related["items"][0]["performer_entities"], [
-            {"id": 11, "name": "Canonical Alice"},
+            {"id": 11, "name": "Canonical Alice", "has_image": False},
         ])
 
     def _add_performers(self, asset_id, names, start_id=200):
@@ -1444,6 +1638,47 @@ class JavModeAndCoverTests(unittest.TestCase):
         self.assertEqual(rm_web.normalise_code_key("ABW-0232"), "ABW-232")
         self.assertEqual(rm_web.normalise_code_key("278gyan17"), "278GYAN-017")
 
+    def test_maker_prefixed_shape_covers_longer_letter_segments(self):
+        # `\d{3}[A-Z]{2,6}` 漏掉 5 字母以上的字母段；`230ORETD-001` 真实存在于账本。
+        for good in ("259LUXU-1642", "230ORETD-001", "300MIUM-1024", "762FKOS-001"):
+            self.assertTrue(catalog_rules.is_jav_code(good), good)
+
+    def test_query_variants_pair_the_two_writings_of_one_release(self):
+        # 第一个永远是账本的规范写法：评审键不能随回退漂移。
+        self.assertEqual(catalog_rules.code_query_variants("259LUXU-1642"),
+                         ("259LUXU-1642", "LUXU-1642"))
+        self.assertEqual(catalog_rules.code_query_variants("luxu1642"),
+                         ("LUXU-1642", "259LUXU-1642"))
+
+    def test_query_variants_never_invent_a_prefix_for_unregistered_letters(self):
+        # 补前缀要凭空填三位数字，猜错就是拿别人的番号去查。
+        self.assertEqual(catalog_rules.code_query_variants("ABW-232"), ("ABW-232",))
+        self.assertEqual(catalog_rules.code_query_variants("FC2-PPV-1234567"),
+                         ("FC2-PPV-1234567",))
+        self.assertEqual(catalog_rules.code_query_variants(""), ())
+        self.assertEqual(catalog_rules.code_query_variants(None), ())
+
+    def test_release_identity_tolerates_the_benign_writing_differences(self):
+        for left, right in (
+            ("259LUXU-1642", "LUXU-1642"),      # 片商数字前缀
+            ("IQQQ-026", "IQQQ-26"),            # 来源不补零
+            ("SY-101", "h_113sy00101"),         # DMM label 标记 + content_id
+            ("BAZX-123", "7BAZX-123"),          # 发行方数字
+            ("HA-102", "49ha102r"),             # 重制尾字母
+            ("FC2-PPV-1812235", "1812235"),     # FC2 来源只给数字
+            ("040221-001", "040221001"),        # 素人日期号
+        ):
+            self.assertTrue(catalog_rules.same_release_code(left, right), f"{left} vs {right}")
+
+    def test_release_identity_rejects_the_wrong_release(self):
+        # 这些正是 2026-09-02 那批把 MIB 整目录刮错的返回值。
+        for left, right in (
+            ("SA-104", "AVSA-104"), ("CHU-101", "CHUC-101"), ("AR-301", "STAR-3016"),
+            ("SR-101", "SSR-101"), ("259LUXU-164", "259LUXU-1642"),
+            ("ABW-232", ""), ("", "ABW-232"), ("ABW-232", None),
+        ):
+            self.assertFalse(catalog_rules.same_release_code(left, right), f"{left} vs {right}")
+
     def test_cards_report_whether_a_cover_is_on_disk(self):
         (self.covers / "ABW-232.jpg").write_bytes(b"x")
         rows = {row["id"]: row for row in
@@ -1455,18 +1690,31 @@ class JavModeAndCoverTests(unittest.TestCase):
         self.assertIsNone(self.contract.cover_path("ABW-232"))
         self.assertIsNone(self.contract.cover_path(None))
 
-    def test_cover_frame_reads_the_face_sidecar(self):
+    def test_cover_frame_reads_both_axes_out_of_the_face_sidecar(self):
+        """哪个轴生效由容器和图片的宽高比决定，数据层两个都得给出去。
+
+        16:9 官方剧照在大图容器里只会横向裁，横向锚点丢在这一层的话，页面就只能
+        退回写死的 50%，偏在一侧的人物整个落到可见窗口外面。
+        """
         (self.covers / "ABW-232.jpg").write_bytes(b"x")
         (self.covers / "ABW-232.face.json").write_text(
             '{"ratio":1.49,"face":{"cx":0.82,"cy":0.19}}', encoding="utf-8")
-        self.assertEqual(self.contract.cover_frame("ABW-232"), {"cy": 0.19})
+        self.assertEqual(self.contract.cover_frame("ABW-232"),
+                         {"cx": 0.82, "cy": 0.19})
+
+    def test_a_sidecar_with_only_one_axis_keeps_just_that_axis(self):
+        """缺的那个轴不带键，页面各自回落；不能拿另一个轴的值顶替。"""
+        (self.covers / "ABW-232.jpg").write_bytes(b"x")
+        (self.covers / "ABW-232.face.json").write_text(
+            '{"ratio":1.78,"face":{"cx":0.13}}', encoding="utf-8")
+        self.assertEqual(self.contract.cover_frame("ABW-232"), {"cx": 0.13})
 
     def test_a_cover_without_a_sidecar_falls_back_silently(self):
         (self.covers / "ABW-232.jpg").write_bytes(b"x")
         self.assertIsNone(self.contract.cover_frame("ABW-232"))
 
     def test_a_sidecar_reporting_no_face_is_not_a_frame(self):
-        # 检出率约 48%，没检出是常态而不是错误——必须安静回落。
+        # 954 张实测检出 885 张，没检出是少数但确实存在——必须安静回落。
         (self.covers / "ABW-232.jpg").write_bytes(b"x")
         (self.covers / "ABW-232.face.json").write_text(
             '{"ratio":1.49,"face":null}', encoding="utf-8")
@@ -1566,6 +1814,69 @@ class AvatarFocusTests(unittest.TestCase):
         self.assertIsNone(self.contract.avatar_focus("studio", 12))
         self.assertIsNone(self.contract.avatar_focus("creator", 13))
         self.assertIsNone(self.contract.avatar_focus("series", 14))
+
+
+class PeopleIndexFocusTests(unittest.TestCase):
+    """索引页大图版式的取景：与资料页大图同一份 sidecar，只是按行取。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        self.db_path = str(fresh_ledger(str(root)))
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO asset(id,location,path,name,medium,size,snapshot_path,first_seen)"
+            " VALUES(1,'local',?,'one.mp4','video',100,?,'2026-08-14')",
+            (r"R:\Media\one.mp4", r"R:\snap\1.jpg"),
+        )
+        con.executemany(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(?,?,?,?,'2026-01-01','2026-01-01')",
+            [(10, "tag", "足交", "足交"),
+             (11, "performer", "Canonical Alice", "canonical alice"),
+             (12, "creator", "Canonical Creator", "canonical creator")],
+        )
+        con.executemany(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+            " VALUES(?,?,?,?,1.0)",
+            [(1, 10, "tag", "test"),
+             (1, 11, "performer", "test"),
+             (1, 12, "creator", "test")],
+        )
+        con.commit()
+        con.close()
+        self.avatars = root / "avatars"
+        self.avatars.mkdir()
+        self.contract = rm_web.WebContract(Path(self.db_path), avatar_root=self.avatars)
+
+    def test_each_row_carries_the_focus_the_entity_page_would_use(self):
+        (self.avatars / "performer-11.face.json").write_text(
+            '{"focus":{"axis":"y","pct":30}}', encoding="utf-8")
+        row = rm_web.q_index(self.contract, "performers")["items"][0]
+        self.assertEqual(row["k"], "Canonical Alice")
+        # 同一个实体，索引页大图和资料页大图必须取到同一个位置。
+        self.assertEqual(row["avatar_focus"], {"axis": "y", "pct": 30})
+        self.assertEqual(row["avatar_focus"], self.contract.avatar_focus("performer", 11))
+
+    def test_a_row_without_a_sidecar_says_so_instead_of_dropping_the_key(self):
+        # 没算过是常态：键仍然在，页面据此维持几何居中。
+        row = rm_web.q_index(self.contract, "performers")["items"][0]
+        self.assertIsNone(row["avatar_focus"])
+
+    def test_creators_read_their_own_kind_not_the_performer_sidecar(self):
+        (self.avatars / "performer-12.face.json").write_text(
+            '{"focus":{"axis":"x","pct":80}}', encoding="utf-8")
+        (self.avatars / "creator-12.face.json").write_text(
+            '{"focus":{"axis":"y","pct":20}}', encoding="utf-8")
+        row = rm_web.q_index(self.contract, "creators")["items"][0]
+        self.assertEqual(row["k"], "Canonical Creator")
+        self.assertEqual(row["avatar_focus"], {"axis": "y", "pct": 20})
+
+    def test_the_tag_index_has_no_face_to_frame(self):
+        tags = rm_web.q_index(self.contract, "tags")["items"]
+        self.assertEqual([row["k"] for row in tags], ["足交"])
+        self.assertNotIn("avatar_focus", tags[0])
 
 
 class DuplicateDetectionTests(unittest.TestCase):

@@ -253,6 +253,69 @@ class TranscodeServiceTests(unittest.TestCase):
                              "第二个线程应命中缓存或等锁，不得重复转码")
             self.assertEqual(service._locks, {})
 
+    def test_different_assets_do_not_queue_behind_each_other(self):
+        """一个资产占着锁转码时，另一个资产不得在锁上排队。
+
+        照 test_previews 的教训，不靠调度器去证明"两个线程真的并行"：
+        A 进入 ffmpeg 阻塞是事件通知的，那一刻 A 必然持有 asset 101 的锁，
+        此后 B 才开始。若 per-asset 锁退化成一把全局锁，B 永远完不成，
+        断言按超时确定性变红。max_concurrent 显式给 2：本条只管锁粒度，
+        不给全局并发上限留变化空间。
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source_a = root / "a.avi"
+            source_a.write_bytes(b"avi")
+            source_b = root / "b.avi"
+            source_b.write_bytes(b"avi")
+            service = TranscodeService(
+                _Resolver(root / "ffmpeg.exe"), root / "cache", prefer_hardware=False,
+                max_concurrent=2,
+            )
+            inside_a = threading.Event()
+            release_a = threading.Event()
+
+            class _BlockingTranscode:
+                returncode = 0
+
+                def __init__(self, command, **_kwargs):
+                    self.command = command
+
+                def communicate(self, timeout=None):
+                    if Path(self.command[-1]).stem.startswith("101-"):
+                        inside_a.set()
+                        release_a.wait(8)
+                    Path(self.command[-1]).write_bytes(b"mp4")
+                    return b"", b""
+
+            outcome_b: list[tuple[Path, bool]] = []
+            error_b: list[BaseException] = []
+
+            def worker_b():
+                try:
+                    outcome_b.append(service.browser_path(202, source_b))
+                except BaseException as exc:
+                    error_b.append(exc)
+
+            with patch("peach.transcodes.subprocess.Popen",
+                       side_effect=_BlockingTranscode):
+                thread_a = threading.Thread(
+                    target=lambda: service.browser_path(101, source_a))
+                thread_a.start()
+                self.assertTrue(inside_a.wait(8), "A 应先进入转码并持有自己的锁")
+                thread_b = threading.Thread(target=worker_b)
+                thread_b.start()
+                thread_b.join(8)
+                release_a.set()
+                thread_a.join(8)
+
+            self.assertEqual(error_b, [])
+            self.assertTrue(outcome_b and outcome_b[0][1],
+                            "A 持锁期间 B 应当能完成自己的转码")
+            self.assertFalse(thread_b.is_alive(),
+                             "B 不得等 A 的锁——不同资产不应互相排队")
+            self.assertEqual(service._locks, {})
+
     def test_session_cancellation_kills_an_active_transcode(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

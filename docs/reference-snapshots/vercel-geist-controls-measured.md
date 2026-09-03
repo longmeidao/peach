@@ -153,3 +153,26 @@ rule34video / rule34.xxx **未取得**：本机账本里没有这两个站的来
   14,534 字节。
 - Peach 只允许 `service=fanbox` 与数字 user id，固定访问 Pixiv/FANBOX 主机，并校验 API
   返回的 user id 和图片主机；客户端不能提供任意 URL。界面先用官方头像，失败再用归档站。
+
+## Select 的标签位置与危险按钮填色（2026-09-03）
+
+- URL：<https://vercel.com/geist/select>、<https://vercel.com/geist/button>
+- 取证方式：浏览器读渲染后的 DOM 与 `getComputedStyle`，同上不进 `reference-sources.json`。
+
+Select 有两种标明用途的方式，工具行里能用的只有前者：
+
+| 方式 | 实测结构 |
+| --- | --- |
+| prefix 图标 | `<span class="absolute inline-flex pointer-events-none left-3">` 包 16×16 图标，输入区 `pl-10`、`pr-9`；颜色 `--ds-gray-900`，`group-hover` 转 `--geist-foreground` |
+| 文字 Label | `<div class="block text-[13px] text-gray-900 mb-2">`，**块级、排在控件上方** |
+
+行内并排一个文字标签的写法 Geist 没有。官方 Best Practices 另外写明 Label 是简短的
+Title Case 名词，直接作为 `<Select>` 的 prop 传，不是外挂的兄弟节点。
+
+Peach 的关注管理标题行没有控件上方的空间，于是取 prefix 图标那条：`.fmanagesort` 改成
+`position:relative`，图标绝对定位在 `left:9px`（16px 图标，视觉笔画到左边框约 10px，
+与右侧自绘箭头对称），`select` 左内距 31px。无障碍名称只剩 `aria-label="关注列表排序"`。
+
+Button 的 error 变体实测是**实心红填充**：背景 `oklch(0.5801 0.227 25.12)`、文字纯白，
+不是描红边加红字。Peach 的危险按钮静止态仍是安静的描边按钮，只把悬停态统一成
+`--drop` 实底加白字——暗色底上只换描边和文字色的话，两个状态几乎一样亮。

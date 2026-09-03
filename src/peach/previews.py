@@ -18,6 +18,37 @@ class PreviewUnavailable(RuntimeError):
     pass
 
 
+#: 厂牌标识的变体后缀。取图、可用性判定、落盘三处必须认同一套后缀，否则会出现
+#: 「只装了 `<key>.icon.img` 却被判成没有图」这种两边打架的结果。
+LOGO_VARIANTS = ("icon", "logo")
+
+
+def logo_key(studio: str) -> str:
+    """厂牌标识的落盘名。
+
+    `/logo` 取图、复核批准落地（`web_review._install_studio_logo`）和「这个厂牌有没
+    有图」的可用性判定都按这个名字找文件，所以规则只能有一份。各写一遍正则的代价是
+    任何一处收窄字符集或改长度上限，都会变成「装上了却取不到」或「说有图但回 404」。
+    """
+    return re.sub(r"[^A-Za-z0-9_-]", "_", studio)[:60]
+
+
+#: `/entity-image` 认得的实体种类。取图和可用性判定必须认同一份清单：这边多认一种，
+#: 页面就会为一个必然 404 的地址出 `<img>`；少认一种，装好的图从此不显示。
+ENTITY_IMAGE_KINDS = ("performer", "studio", "creator", "series")
+
+
+def entity_image_key(kind: str, entity_id: int) -> str:
+    """实体图的落盘名。
+
+    和 `logo_key` 同一个道理：`/entity-image` 取图、复核批准落地
+    （`web_review._install_performer_avatar`）和「这个实体有没有图」的可用性判定
+    都按这个名字找文件，规则只能有一份。kind 也是名字的一部分——creator 实体写成
+    `performer-<id>.img` 是永远读不到的。
+    """
+    return f"{kind}-{int(entity_id)}"
+
+
 #: 预览生成的分片锁。一把模块级全局锁会让任何一个资产生成海报时，其他资产的
 #: 头像和海报全得排队，而 `avatar()` 持锁要连跑 6 次 ffmpeg（每次 20 秒上限），
 #: 最坏能把所有预览堵上两分钟。
@@ -123,11 +154,11 @@ class PreviewService:
         两个变体都回落到 `<safe>.img`，任何位置都照旧显示它。变体文件是新增的
         `<safe>.icon.img` / `<safe>.logo.img`，没有它们时行为和加这个参数之前一模一样。
         """
-        safe = re.sub(r"[^A-Za-z0-9_-]", "_", studio)[:60]
+        safe = logo_key(studio)
         if not safe:
             raise PreviewUnavailable("empty studio")
         names = [f"{safe}.img"]
-        if variant in {"icon", "logo"}:
+        if variant in LOGO_VARIANTS:
             # 认不出的 variant 不报错，按没传处理：页面可能是缓存下来的旧版本，
             # 为一个拼错的参数把图变成 404 只会让厂牌页平白缺图。
             names.insert(0, f"{safe}.{variant}.img")
@@ -147,9 +178,9 @@ class PreviewService:
 
     def entity_image(self, kind: str, entity_id: int) -> tuple[Path, str]:
         """返回已缓存的高清实体图；抓取与版权溯源由离线导入任务负责。"""
-        if kind not in {"performer", "studio", "creator", "series"}:
+        if kind not in ENTITY_IMAGE_KINDS:
             raise PreviewUnavailable("invalid entity kind")
-        path = self.avatar_root / f"{kind}-{int(entity_id)}.img"
+        path = self.avatar_root / f"{entity_image_key(kind, entity_id)}.img"
         if not path.is_file():
             raise PreviewUnavailable("entity image unavailable")
         content_type = "image/jpeg"

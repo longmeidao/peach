@@ -674,6 +674,75 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('@media (max-width:760px){input,textarea,select{font-size:16px!important}}')
         self.assertPageContains('button,a,input,textarea,select,summary{touch-action:manipulation}')
 
+    def test_search_inputs_share_one_component_with_a_visible_focus_ring(self):
+        """带搜索语义的输入只有一份实现，点进去看得见焦点。
+
+        Geist Search Input 的契约是：搜索图标占前缀位，查找中原位换 Spinner，
+        输入框几何不变。关注页先有了这套，索引页的筛选框却是另一份私有样式——
+        没有前缀图标、没有任何 focus 规则，点进去和没点一个样。
+        """
+        self.assertPageContains("export function searchInputHtml({label,id='',name='',value='',placeholder='',attrs=''}={})")
+        self.assertCode("""const parts=[
+    'type="search"',""")
+        self.assertPageContains('<input ${parts}></div>')
+        self.assertPageContains('<div class="geist-search" data-search-input>')
+        self.assertPageContains(
+            """<span class="geist-search-prefix" data-search-prefix>${icon('search')}</span>""")
+        # 焦点环与顶部搜索框同一个配方，不是第二种蓝。
+        self.assertCode('.geist-search input[type="search"]:focus{outline:0;'
+                        'border-color:color-mix(in srgb,var(--tungsten) 72%,transparent);'
+                        'box-shadow:0 0 0 3px color-mix(in srgb,var(--tungsten) 26%,transparent)}')
+        # 忙态换的是前缀位，输入框自己不动；hook 跟着组件走，不留关注页专属的名字。
+        self.assertPageContains("form.querySelector('[data-search-prefix]')")
+        self.assertPageContains("if(prefix)prefix.innerHTML=spinnerHtml('查找中');")
+        self.assertPageLacks("data-follow-search-prefix")
+        self.assertPageLacks("fsearchprefix")
+        # 两个调用点都走组件；索引页的筛选框不再用 placeholder 当标签。
+        self.assertPageContains("searchInputHtml({id:'iq',label:'过滤'+title,value:q||''})")
+        self.assertPageContains("searchInputHtml({name:'line',label:'来源链接、名字或 id',")
+        self.assertPageLacks('<input id="iq" placeholder="过滤…"')
+        self.assertPageLacks(".isearch")
+
+    def test_filtering_waits_for_the_chinese_ime_to_finish_composing(self):
+        """选字过程中不查询：拿半截拼音去筛选，筛的是「zhon」这种不存在的词。
+
+        `input` 在组字过程中照样发，事件上的 `isComposing` 是唯一可靠的判据；
+        组完由 `compositionend` 接手。回车同理——那一下是定字，不是提交。
+        """
+        self.assertPageContains("iq.oninput=e=>{if(e.isComposing)return;refineIndex()};")
+        self.assertPageContains("iq.oncompositionend=refineIndex;")
+        self.assertPageContains("$('#q').oninput=e=>{if(e.isComposing)return;refreshSearchMenu()};")
+        self.assertPageContains("$('#q').oncompositionend=refreshSearchMenu;")
+        self.assertPageContains("search.oninput=e=>{if(e.isComposing)return;renderPicker()};")
+        self.assertPageContains("search.oncompositionend=renderPicker;")
+        # 顶部搜索和标签选择器的键盘处理在最前面让位给输入法。
+        self.assertPageLacks("$('#q').oninput=()=>{searchActive=-1;")
+        self.assertPageLacks("search.oninput=renderPicker;")
+        self.assertEqual(self.app_js.count("if(e.isComposing)return;"), 5,
+                         "五处：索引筛选、顶部搜索的输入与键盘、标签选择器的输入与键盘")
+        # 只读筛选没有提交按钮，回车必须自己接管：不接就是按了没反应。
+        self.assertPageContains("iq.onkeydown=e=>{if(e.isComposing||e.key!=='Enter')return;")
+        self.assertPageContains(
+            "e.preventDefault();clearTimeout(it2);openIndex(kind,iq.value.trim(),true,true)};")
+
+    def test_a_filter_rerun_keeps_the_input_alive_instead_of_repainting_the_page(self):
+        """重画整屏会把正在打字的那个输入框换掉，光标和未定型的拼音一起丢。
+
+        筛选框重跑不是一次页面进入：既不该铺骨架（同步就能给的控件不进骨架），
+        也不该重画表头。表头里随查询变的只有计数，单独改它。
+        """
+        self.assertPageContains("async function openIndex(kind,q,push=true,refine=false)")
+        self.assertPageContains("if(!refine)showIndexLoading(people?'正在读取作者':'正在读取标签')")
+        self.assertCode("""if(refine&&$('#iq')){
+    $('#indexCount').textContent=countText;
+    $('#indexFilters').innerHTML=filters;
+    $('#indexBody').innerHTML=body;
+    $('#indexMore').hidden=!d.has_more;
+  }else""")
+        # 分类筛选自己有容器，才能不动表头单独换掉。
+        self.assertPageContains('<div id="indexFilters">${filters}</div>')
+        self.assertPageContains("it2=setTimeout(()=>openIndex(kind,iq.value.trim(),true,true),300)")
+
     def test_route_titles_and_settings_dialog_manage_focus(self):
         # 标题跟着路由表走：每一屏的标签写在自己那条记录上，不再有第二份
         # 「路径 → 标题」映射跟路由分支各自演化。
@@ -728,30 +797,95 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("jav-small")
         self.assertPageContains('<span class="watchcount">看过 ${it.play_count}</span>')
 
-    def test_every_card_avatar_falls_back_through_the_same_helper(self):
-        # kind 参数化后，创作者复核卡片也能走同一个兜底链；默认仍是 performer，
+    def test_every_face_slot_builds_its_image_through_one_helper(self):
+        # 顶栏圆头像、卡片署名、共演者、资料页大位共用 entityFaceImg；
+        # `/entity-image` 和 `/avatar` 两个地址只在这一个函数里拼。
+        self.assertPageContains(
+            "function entityFaceImg({kind='performer',id=null,hasImage=false,rep=null,")
+        self.assertPageContains("const useEntity=!!(id&&hasImage);")
+        self.assertPageContains(
+            "const src=useEntity?`/entity-image?kind=${kind}&id=${id}`:(rep?`/avatar?id=${rep}`:'');")
+        # 一环都取不到就一个 `<img>` 都不出，首字母垫底直接露出来。
+        self.assertPageContains("if(!src)return '';")
+        # kind 参数化后，创作者复核卡片也能走同一条链；默认仍是 performer，
         # 既有调用点不受影响。
         self.assertPageContains("function avatarInner(name,ref,repId,kind='performer')")
-        self.assertPageContains("`/entity-image?kind=${kind}&id=${ref.id}`")
         # 兜底链声明在模板里，行为归 image-fallback 那条委托监听。
-        self.assertPageContains("imageFallbackAttrs({fallbacks})")
-        self.assertPageContains("`/avatar?id=${repId}`")
+        self.assertPageContains("const fallbacks=useEntity&&rep?[`/avatar?id=${rep}`]:[];")
+        self.assertPageContains("imageFallbackAttrs({dropStyle:dropStyle&&useEntity,fallbacks})")
 
-    def test_avatar_fallback_chains_end_by_removing_the_broken_image(self):
-        """取不到图的 <img> 必须被摘掉，不能只停在「不再重试」。
+    def test_no_face_image_is_emitted_before_the_server_says_it_can_be_fetched(self):
+        """先问再出图：没有可用性标志兜住的 `/entity-image`／`/avatar` 一处都不许有。
 
-        留着它有两个后果：`.entityportrait:has(img)>span` 仍然匹配，首字母垫底
-        永远回不来；浏览器还会把 alt 当内容画出来——资料页上就是整个艺人名横在
-        头像圈里溢出（loliburin 实测 /entity-image 与 /avatar 双 404）。
+        无条件出图、等 404 再把图摘掉的代价是：一个作品详情页 9 个这样的 404（1 个
+        厂牌实体图、4 个人物实体图、4 个头像），首页手机视口 2 个。两个端点的 404 都
+        不带缓存头，每次重绘再打一整轮。
         """
-        # 卡片头像、资料页大圆框、关联艺人小圆框声明的是同一套兜底数据；
-        # 「候选换完还是失败就收场」这一步由 advanceImageFallback 统一执行。
-        for chain in (
-            "`/avatar?id=${repId}`",
-            "`/avatar?id=${d.representative_asset_id}`",
-            "`/avatar?id=${x.rep}`",
-        ):
-            self.assertPageContains(chain)
+        source = self.page
+        gates = ("hasImage", "has_image", "useEntity", "has_avatar")
+        for url in ("`/entity-image?kind=", "`/avatar?id="):
+            start = 0
+            while True:
+                at = source.find(url, start)
+                if at < 0:
+                    break
+                start = at + 1
+                before = source[max(0, at - 200):at]
+                self.assertTrue(
+                    any(gate in before for gate in gates),
+                    f"{url} 附近没有可用性判据，这是一个必然 404 的 `<img>`：\n"
+                    f"{source[max(0, at - 200):at + 80]}")
+
+    def test_the_remaining_face_slots_carry_the_flag_their_endpoint_sends(self):
+        """索引页、口味榜、复核卡片和沉浸模式署名圈也走「先问过再出图」。
+
+        这几处不自己拼地址，而是把身份引用交给 `avatarInner()`，所以上一条那种
+        「地址附近有没有判据」的扫描扫不到它们：引用里没有 `has_image` 就等于无条件
+        出图。`/performers` 桌面视口滚三屏实测 77 个取图请求里 5 个是这样的 404。
+        """
+        # 缺席按「没图」处理。宽容缺席会让下一个忘了挂标志的端点悄悄退回旧行为，
+        # 而这种退化在页面上看不出来——图照样显示，代价全在 404 里。
+        self.assertPageContains("hasImage:!!(ref&&ref.has_image)")
+        # 索引页（`/api/index`）：实体图看 has_image、代表作头像看 has_avatar，kind
+        # 跟着这一页的身份走——创作者的图写成 `performer-<id>.img` 是读不到的。
+        self.assertPageContains("x.entity_id?{id:x.entity_id,has_image:x.has_image}:null,")
+        self.assertPageContains("x.has_avatar?x.rep:null, entityKind)")
+        # 口味榜（`/api/taste`）：两列直接长在榜行上，判据仍是同一对。
+        self.assertPageContains(
+            "const ref=row.entity_id?{id:row.entity_id,has_image:row.has_image}:null,")
+        self.assertPageContains("rep=row.has_avatar?row.representative_asset_id||null:null;")
+        # 沉浸模式署名圈读 `/api/item` 的 entity_refs，标志随引用一起来；代表作那一侧
+        # 读 REP，入表时已经按 has_avatar 筛过。
+        self.assertPageContains(
+            "const ownerRef=ownerKind?(full.entity_refs?.[ownerKind]?.[0]||null):null;")
+        self.assertPageContains(
+            "tops.performers.forEach(x=>{if(x.rep&&x.has_avatar)REP[x.k]=x.rep});")
+
+    def test_review_face_kinds_agree_between_the_page_and_the_endpoint(self):
+        """复核卡片那张脸的 kind 两边各存一份，必须逐字一致。
+
+        页面按 `ENTITY_REVIEW_CATEGORIES` 拼 `/entity-image?kind=`，服务端按
+        `web_review.ENTITY_REVIEW_KINDS` 判「这个实体有没有图」。一边判成 creator、
+        另一边按 performer 取图，就是标志说有图而请求照样 404：两份表各自都不会报错，
+        页面上看到的只是又一张碎图。
+        """
+        # 这个文件其余断言只读页面源；这一条守的正是页面与服务端的对不上，
+        # 所以必须两边都看。
+        from peach.web_review import ENTITY_REVIEW_KINDS
+
+        declared = re.search(r"const ENTITY_REVIEW_CATEGORIES=\{([^}]*)\}", self.app_js)
+        self.assertIsNotNone(declared, "页面那份表不在了；改名的话服务端也得跟着改")
+        self.assertEqual(dict(re.findall(r"(\w+):'(\w+)'", declared.group(1))),
+                         ENTITY_REVIEW_KINDS)
+
+    def test_face_fallback_chains_end_by_removing_the_broken_image(self):
+        """还是取不到图的 <img> 必须被摘掉，不能只停在「不再重试」。
+
+        标志能挡掉「装都没装」，挡不掉生成本身失败（没有 ffmpeg、六格全黑）那一种，
+        所以兜底链一条都不能撤。留着它有两个后果：`.entityportrait:has(img)>span`
+        仍然匹配，首字母垫底永远回不来；浏览器还会把 alt 当内容画出来——资料页上
+        就是整个艺人名横在头像圈里溢出（loliburin 实测 /entity-image 与 /avatar 双 404）。
+        """
         # 收场动作只有这一处实现，默认就是把 <img> 拿掉。
         self.assertPageContains("drop = 'self'")
         self.assertPageContains("image.remove();")
@@ -778,8 +912,10 @@ class WebUiSourceTests(unittest.TestCase):
         # 资料页圆框按检出的人脸取景；换回落图时必须先摘掉内联 object-position——
         # 回落图是另一张照片，脸不在同一位置。
         self.assertPageContains("function facePos(f)")
-        self.assertPageContains('"${facePos(d.avatar_focus)}')
-        self.assertPageContains("imageFallbackAttrs({dropStyle:true,")
+        self.assertPageContains("style:facePos(d.avatar_focus),dropStyle:true")
+        # 取景是按实体图算出来的，所以内联 style 和 data-drop-style 只贴给第一环。
+        self.assertPageContains("${useEntity?style:''}")
+        self.assertPageContains("imageFallbackAttrs({dropStyle:dropStyle&&useEntity,fallbacks})")
         self.assertPageContains("if ('dropStyle' in image.dataset) image.removeAttribute('style');")
 
     def test_entity_link_favicons_do_not_leak_the_page_url_to_the_linked_site(self):
@@ -1121,13 +1257,55 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const COVER_FRONT_RATIO=0.7;")
         self.assertPageContains("(jav&&layout==='big'?COVER_FRONT_RATIO:16/9)")
         self.assertPageContains('.poster.cover.front[data-frame="sleeve"]{object-position:100%')
-        self.assertPageContains("r>1.2&&r<1.65?'sleeve':'front'",
+        self.assertPageContains("r>=1.65?'still':r>1.2?'sleeve':'front'",
                                 "16:9 官方剧照不能当成双页封套裁到最右侧")
         # 判据是 `jav` 不是 `useCover`：缺封面的卡片也要拉长，用 16:9 预览图上下留黑边，
         # 否则一行里高矮混排会把网格撕成锯齿状。
         self.assertPageLacks("useCover&&layout==='big'")
         # 旧键要继续认，设置存在浏览器里，改名不能让用户的选择静默回落。
         self.assertPageContains("const JAV_LAYOUT_ALIASES={cover:'big',sleeve:'small'};")
+
+    def test_wide_stills_frame_on_the_detected_face_instead_of_dead_centre(self):
+        """16:9 官方剧照在大图容器里只会横向裁，横向锚点必须跟着人走。
+
+        整幅剧照都是画面，没有「正封那一块」可推到右边缘；写死的 50% 只取画面中段，
+        人偏在一侧就整个落到可见窗口外面。纵向锚点在这个容器里根本不生效——容器比
+        所有封面都竖，`object-fit:cover` 裁的是横向那一轴。
+        """
+        self.assertPageContains(
+            '.poster.cover.front[data-frame="still"]{object-position:var(--cover-x,50%)')
+        self.assertPageContains('f.cx!=null?` data-cx="${f.cx}"`')
+        # 没检出的那些居中，不能因为多了一个轴就把它们裁到边上去。
+        self.assertPageContains("--cover-x,50%")
+
+    def test_the_detected_face_lands_in_the_middle_of_the_visible_window(self):
+        """`object-position` 的百分比是两侧对齐比例，不是「这个点落到正中」。
+
+        人脸中心原样当锚点，只保证脸还在画面里：cx=0.81 会算出 81%，脸贴着窗口右缘，
+        图片最右边那一截永远露不出来。可见窗口占图片 w 时，锚点得取
+        (face - w/2) / (1 - w)，这样 0.81 会顶到 100%，右缘才进画面。
+        w 由容器和图片两个比例决定，所以只能在图片加载后算。
+        """
+        self.assertPageContains("(face-visible/2)/(1-visible)")
+        self.assertPageContains("if(face==null||!(visible>0&&visible<1))return;",
+                                "整幅可见的那个轴不裁，锚点在那里是死值")
+        self.assertPageContains("center('--cover-x',coverFace(img,'cx'),car/r);")
+        self.assertPageContains("center('--cover-y',coverFace(img,'cy'),r/car);")
+        # 容器比例只有 `--card-ratio` 知道；按 layout 再算一遍迟早和它分叉。
+        self.assertPageContains("getComputedStyle(img).getPropertyValue('--card-ratio')")
+
+    def test_image_hooks_are_delegated_because_inline_handlers_cannot_see_the_module(self):
+        """内联 `onload="…"` 属性求值在全局作用域里。
+
+        `index.html` 用 `type="module"` 加载 app.js，模块里的函数不在全局作用域，
+        内联属性调它只会每张图报一次 ReferenceError，取景静默退回写死的锚点。
+        `load` 不冒泡，所以只能在 document 上用捕获阶段收口。
+        """
+        self.assertPageContains('<script type="module" src="/app.js"></script>')
+        self.assertPageContains("document.addEventListener('load',event=>{")
+        self.assertPageContains(
+            "if(img instanceof HTMLImageElement&&img.classList.contains('cover'))coverAnchor(img);")
+        self.assertPageLacks('onload="', "模块作用域的函数在内联属性里取不到")
 
     def test_card_avatar_and_name_open_the_same_entity(self):
         """同一张卡上的头像和名字必须指向同一个身份。
@@ -1232,8 +1410,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("text-decoration:underline")
 
     def test_every_identity_cell_can_carry_its_own_portrait(self):
-        self.assertPageContains('item.id?`<img src="/entity-image?kind=performer&id=${item.id}"')
-        self.assertPageContains('<img src="/logo?studio=${encodeURIComponent(item.name)}&variant=icon"')
+        # 人物格走和顶栏圆头像同一个 entityFaceImg；这一格没有代表作头像可退，
+        # 装了实体图才出 `<img>`，否则就是首字母垫底。
+        self.assertPageContains("? `<span>${esc(item.name.slice(0,1))}</span>${entityFaceImg(")
+        self.assertPageContains("{id:item.id,hasImage:item.has_image})}")
+        self.assertPageContains(
+            '${item.has_logo?`<img src="/logo?studio=${encodeURIComponent(item.name)}&variant=icon"')
 
     def test_large_casts_stay_in_the_dom_behind_one_expander(self):
         # 收起的格子必须留在 DOM 里，展开只是取消 hidden，不重新请求也不丢身份。
@@ -1268,10 +1450,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             ".vwrap .video-js.vjs-error .vjs-error-display .vjs-modal-dialog-content{")
         self.assertPageContains(
-            "display:flex;align-items:center;justify-content:center;padding:56px 24px;text-align:center")
+            "display:flex;align-items:center;justify-content:center;text-align:center")
+        self.assertPageContains("transform:translate(-50%,-50%)}")
 
     def test_space_does_not_also_scroll_the_page(self):
-        self.assertCode("if(e.key===' '){\n      e.preventDefault();")
+        self.assertCode("if(e.key===' '||e.key==='k'||e.key==='K'){\n      e.preventDefault();")
 
     def test_playback_keys_never_steal_keystrokes_from_inputs(self):
         self.assertPageContains("function isTypingTarget(el)")
@@ -1292,7 +1475,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_search_active_index_resets_when_the_list_is_rebuilt(self):
         # 列表重建后旧索引会指向不存在的行；输入和重新渲染都必须归零。
         self.assertPageContains("menu.hidden=false;searchActive=-1;")
-        self.assertPageContains("$('#q').oninput=()=>{searchActive=-1;")
+        self.assertPageContains("const refreshSearchMenu=()=>{searchActive=-1;")
 
     def test_enter_uses_the_highlighted_option_before_the_suggestion(self):
         self.assertPageContains("const picked=searchOptions()[searchActive]")
@@ -1438,9 +1621,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".vwrap .video-js .vjs-control-bar{box-sizing:border-box;left:12px;right:12px;bottom:8px;width:auto;height:59px")
         self.assertPageContains("border-radius:0;background:transparent;backdrop-filter:none")
         self.assertPageContains(".vwrap .video-js .vjs-control-bar>.vjs-play-control{position:relative;align-self:flex-end;flex:0 0 40px;width:40px;height:40px")
-        self.assertPageContains("border:0;border-radius:50%;background:rgba(0,0,0,.6);box-shadow:none;overflow:hidden")
-        self.assertPageContains("const playUse=explicitIcon(play,'player-play')")
-        self.assertPageContains("const syncPlayIcon=()=>playUse?.setAttribute('href'")
+        # overflow 要放开：悬停提示挂在按钮里，裁掉溢出就等于把提示裁没。
+        self.assertPageContains("border:0;border-radius:50%;background:rgba(0,0,0,.6);box-shadow:none;overflow:visible")
+        self.assertPageContains("const playIcon=morphIcon(play,'player-play'),playPath=playIcon?.querySelector('path')")
         self.assertPageContains("id=\"i-player-play\"")
         self.assertPageContains("id=\"i-player-pause\"")
         self.assertPageContains(".vjs-peach-right-controls{box-sizing:border-box;position:relative;align-self:flex-end")
@@ -1480,7 +1663,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("activePixels>=2160?'4K':activePixels>=720?'HD':''")
         # 「auto 开全部层级，选定某一档只留那一档」是契约；局部变量叫什么不是。
         self.assertPageContains("levels[index].enabled=selectedQuality==='auto'||selectedQuality===String(index)")
-        self.assertPageContains("const syncVolumeIcon=()=>muteUse?.setAttribute('href'")
+        self.assertPageContains("const mute=volume?.querySelector(':scope>.vjs-mute-control'),muteIcon=morphIcon(mute,'player-volume')")
         self.assertPageLacks("volume.insertAdjacentHTML('afterbegin','<span class=\"vjs-peach-hover\"")
         self.assertPageContains("z-index:1;position:relative!important;left:0!important;top:0!important;align-self:center;flex:0 0 40px")
         self.assertPageContains("const syncFullscreenState=()=>{")
@@ -1541,7 +1724,23 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".playerstatsbtn:after,.closestage:after{content:\"\";position:absolute;z-index:0;inset:4px;border-radius:50%")
         self.assertPageContains(".playerstatsbtn:hover:after,.playerstatsbtn:focus-visible:after,.closestage:hover:after,.closestage:focus-visible:after{background:rgba(255,255,255,.1)}")
         self.assertPageContains(".playernet{box-sizing:border-box;position:absolute;left:58px;top:11px;z-index:8;height:40px;min-height:40px")
-        self.assertPageContains("display:flex;align-items:center;border:0;border-radius:var(--floating-radius)")
+        self.assertPageContains("display:flex;align-items:center;gap:7px;white-space:nowrap;border:0;border-radius:var(--floating-radius)")
+
+    def test_load_rate_badge_reads_as_one_line_with_a_white_gauge(self):
+        """徽标里只剩一个仪表盘图标加一段速率，两者在同一行。
+
+        `white-space` 默认可断，`640 KB/s` 会在这条 flex 行里断成两行，把 40px 的胶囊顶破。
+        图标一侧是本仓库反复出现的那个缺陷：sprite 里的仪表盘是描边图形，容器不声明
+        stroke/fill 就按 SVG 默认的 fill 画成黑色实心块，压在 rgba(0,0,0,.6) 的底上
+        等于没有图标。所以容器规则和图标本身要一起守。
+        """
+        self.assertPageContains(
+            '<symbol id="i-gauge" viewBox="0 0 24 24"><path d="m12 14 4-4" />')
+        self.assertPageContains(
+            ".playernet svg{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;"
+            "stroke-width:2;stroke-linecap:round}")
+        self.assertPageContains("align-items:center;gap:7px;white-space:nowrap;")
+        self.assertPageLacks("${icon('download')}<span class=\"sr-only\">加载速度")
 
     def test_player_settings_match_real_ambient_speed_and_quality_capabilities(self):
         self.assertPageContains("class=\"vjs-peach-settings-menu\" role=\"menu\" aria-label=\"播放器设置\"")
@@ -1549,7 +1748,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("<span>氛围模式</span>")
         self.assertPageContains("<span>播放速度</span>")
         self.assertPageContains("<span>清晰度</span>")
-        self.assertPageContains("player.playbackRate(Number(button.dataset.playerSpeedOption))")
+        self.assertPageContains("setSpeed(Number(button.dataset.playerSpeedOption))")
         self.assertPageContains("applyAmbientMode(!appSettings.ambientMode)")
         self.assertPageContains("${icon('player-ambient')}")
         self.assertPageContains("${icon('player-speed')}")
@@ -1624,12 +1823,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("display:block!important;align-self:center;flex:0 0 52px;width:52px!important")
         self.assertPageContains("top:50%!important;width:52px!important;height:2px!important;margin:0!important")
         self.assertPageContains(".vjs-control-bar>.vjs-volume-panel{box-sizing:border-box;z-index:3;position:relative")
-        self.assertPageContains(".vjs-volume-panel .vjs-volume-tooltip{z-index:4!important;overflow:visible;white-space:nowrap}")
+        self.assertPageContains(".vjs-volume-panel .vjs-volume-tooltip{z-index:5!important;left:50%;right:auto;top:auto")
 
     def test_theater_mode_has_button_tooltip_keyboard_and_responsive_layout(self):
         self.assertPageContains("function mountPlayerTheaterControl(player,settingsRoot)")
-        self.assertPageContains('data-player-theater aria-label="影院模式"')
-        self.assertPageContains('aria-keyshortcuts="T"')
+        self.assertPageContains("data-player-theater aria-pressed=")
+        self.assertPageContains(
+            "theaterButton.peachTooltipSync=playerControlTooltip(theaterButton,'影院模式','T')")
         self.assertPageContains("function syncPlayerTheaterButton(button)")
         self.assertPageContains("appSettings.theaterMode?'默认视图':'影院模式'")
         self.assertPageContains("appSettings.theaterMode?'#i-theater-exit':'#i-theater-enter'")
@@ -1638,6 +1838,341 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('grid-template-areas:"media" "side" "queue"')
         self.assertPageContains('id="i-theater-enter"')
         self.assertPageContains('id="i-theater-exit"')
+
+    def test_control_bar_buttons_share_one_tooltip_with_keyboard_badges(self):
+        """控制条上每个按钮都有提示，样式取自 YouTube delhi-modern，带快捷键徽标。
+
+        播放、静音、时间、画中画、设置、全屏、影院共用同一套提示与快捷键。提示层必须抹掉
+        浏览器原生 title，否则两层提示会一前一后叠着弹。
+        """
+        self.assertPageContains("function playerControlTooltip(button,label,shortcut='')")
+        self.assertPageContains("tip.innerHTML='<span class=\"vjs-peach-tooltip-text\"></span><kbd hidden></kbd>'")
+        self.assertPageContains("if(shortcut)button.setAttribute('aria-keyshortcuts',shortcut)")
+        self.assertPageContains("key.hidden=!shortcut")
+        self.assertPageContains("button.removeAttribute('title')")
+        self.assertPageContains("playerControlTooltip(play,'播放','K')")
+        self.assertPageContains("playerControlTooltip(mute,'静音','M')")
+        self.assertPageContains("playerControlTooltip(time,'显示剩余时间')")
+        self.assertPageContains("playerControlTooltip(pip,'画中画','I')")
+        self.assertPageContains("playerControlTooltip(fullscreen,'全屏','F')")
+        self.assertPageContains("playerControlTooltip(toggle,'设置')")
+        # 快捷键走按钮自己的点击路径，全屏和画中画的兜底逻辑只写一份。
+        self.assertPageContains("function clickPlayerControl(video,selector)")
+        self.assertPageContains("if(e.key===' '||e.key==='k'||e.key==='K')")
+        self.assertPageContains("if(e.key==='m'||e.key==='M'){e.preventDefault();clickPlayerControl(video,'.vjs-mute-control')")
+        self.assertPageContains("if(e.key==='f'||e.key==='F'){e.preventDefault();clickPlayerControl(video,'.vjs-fullscreen-control')")
+        self.assertPageContains("if(e.key==='i'||e.key==='I'){e.preventDefault();clickPlayerControl(video,'.vjs-picture-in-picture-control')")
+        # 提示外观与音量百分比共用一套毛玻璃，音量提示抬到控制条上方。
+        self.assertPageContains(".vjs-peach-tooltip{position:absolute;z-index:5;right:50%;bottom:calc(100% + 12px)")
+        self.assertPageContains("backdrop-filter:blur(16px)")
+        self.assertPageContains(".vjs-peach-tooltip kbd{display:flex;justify-content:center;align-items:center;min-width:11px")
+        self.assertPageContains(".vjs-peach-tooltip kbd[hidden]{display:none}")
+        self.assertPageContains(".vwrap .video-js .vjs-control-bar button:hover>.vjs-peach-tooltip")
+        self.assertPageContains(".vjs-volume-tooltip{z-index:5!important;left:50%;right:auto;top:auto;bottom:calc(100% + 32px)")
+        # 提示要露出控制条，播放键和时间钮不能再靠 overflow 裁。
+        self.assertPageLacks("background:rgba(0,0,0,.6);box-shadow:none;overflow:hidden}")
+
+    def test_narrow_player_collapses_the_right_controls_instead_of_overflowing(self):
+        """播放器窄到 528 以下时右侧只留设置与展开键，点开才铺开其余按钮。
+
+        判据是播放器自己的宽度而不是视口：同一个视口下影院模式和普通视图的播放器宽度
+        差一大截，用媒体查询会在影院模式下白折叠、在普通视图下继续超框。
+        """
+        self.assertPageContains("const box=player.el(),narrow=box.clientWidth<528;")
+        self.assertPageContains("box.classList.toggle('vjs-peach-xsmall',narrow)")
+        self.assertPageContains("const widthObserver=new ResizeObserver(syncWidthMode)")
+        self.assertPageContains("player.on('dispose',()=>widthObserver.disconnect())")
+        self.assertPageContains("expand.className='vjs-peach-expand vjs-control'")
+        self.assertPageContains("icon('player-expand')")
+        # 菜单行那个 `>` 是 24 视框、一个单位粗的细线，铺到展开键的 32px 只有 1.3px；上游
+        # 展开键自带一个 32 视框、两个单位粗的箭头，同样 32px 渲染就是 2px。
+        self.assertPageContains('<symbol id="i-player-expand" viewBox="0 0 32 32"')
+        self.assertPageContains('m12.59 20.34 4.58-4.59-4.58-4.59L14 9.75l6 6-6 6z')
+        # 展开键排在这一簇最左：`prepend` 而不是 append，否则它落在全屏键的右边。
+        self.assertPageContains("group.prepend(expand)")
+        # hover 高亮的规则是 `.vjs-control>.vjs-peach-hover`，高亮层必须是按钮的兄弟节点；
+        # 塞进 <button> 里选择器就不命中，这个键会是整排里唯一没有反馈的那个。
+        self.assertPageContains(
+            '</button><span class="vjs-peach-hover" aria-hidden="true"></span>`;\n'
+            '  group.prepend(expand);')
+        # 窄屏其余键的 svg 缩到 18px，展开键排除在外并单独铺满 32px：跟着缩就几乎看不出
+        # 是个可点的键。上游给这个按钮的 svg 内边距同样是 0。
+        self.assertPageContains(
+            ".video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control"
+            ":not(.vjs-peach-expand)>button>svg{width:18px;height:18px}")
+        # 窄屏这一排的悬停底是 32×32 的正圆，不是撑满 36px 一格的胶囊。
+        self.assertPageContains(
+            ".video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control>.vjs-peach-hover{")
+        self.assertPageContains("left:2px;width:32px;height:32px;border-radius:50%}")
+        self.assertPageContains(
+            ".video-js.vjs-peach-xsmall .vjs-peach-expand>button>svg{width:32px;height:32px}")
+        self.assertPageContains("expandButton.setAttribute('aria-expanded',String(open))")
+        self.assertPageContains("syncExpandTooltip(open?'收起控件':'展开控件')")
+        self.assertPageContains("if(!narrow)setExpanded(false)")
+        self.assertPageContains(
+            ".video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control:not(.vjs-peach-settings):not(.vjs-peach-expand){display:none}")
+        self.assertPageContains(".video-js.vjs-peach-xsmall .vjs-peach-expand{display:block}")
+        # 展开那条要和折叠那条带同样两个 :not()：少两个类就权重不够，点开没反应。
+        self.assertPageContains(
+            ".video-js.vjs-peach-xsmall.vjs-peach-right-expanded .vjs-peach-right-controls>.vjs-control"
+            ":not(.vjs-peach-settings):not(.vjs-peach-expand){display:block}")
+        # 展开后时间显示让出宽度：Peach 的控制条比 YouTube 窄，占着位就又超框。
+        self.assertPageContains(".video-js.vjs-peach-xsmall.vjs-peach-right-expanded .vjs-peach-time{display:none}")
+        self.assertPageContains(".video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control{flex:0 0 36px")
+        self.assertPageContains(".vjs-peach-expand>button>svg{transition:transform .3s cubic-bezier(.05,0,0,1);transform:rotate(180deg)}")
+        self.assertPageContains(".video-js.vjs-peach-right-expanded .vjs-peach-expand>button>svg{transform:rotate(0)}")
+        # 视口媒体查询不再另外藏画中画，折叠只有一套判据。
+        self.assertPageLacks(".vjs-peach-right-controls>.vjs-picture-in-picture-control{display:none}")
+
+    def test_settings_panel_fades_and_the_submenu_slides(self):
+        """关闭态不能是 display:none——它没有可过渡的中间态，面板只会瞬间消失。
+
+        淡入淡出改由 aria-hidden 驱动 opacity，visibility 延后到淡出结束：面板既退出
+        无障碍树，也不再接命中测试。次级菜单按上游那份 .25s cubic-bezier(.4,0,.2,1)
+        同时推容器高度和推面板，两块面板在同一个容器里错开走。
+        """
+        self.assertPageContains('aria-label="播放器设置" aria-hidden="true"></div>`')
+        self.assertPageLacks(".vjs-peach-settings-menu[hidden]{display:none}")
+        self.assertPageContains(
+            ".vjs-peach-settings-menu{opacity:1;visibility:visible;"
+            "transition:opacity .1s cubic-bezier(0,0,.2,1)}")
+        self.assertPageContains(
+            '.vjs-peach-settings-menu[aria-hidden="true"]{opacity:0;visibility:hidden;'
+            'pointer-events:none;')
+        self.assertPageContains("transition:opacity .1s cubic-bezier(.4,0,1,1),visibility 0s .1s}")
+        self.assertPageContains(
+            ".vjs-peach-settings-menu.vjs-peach-popup-animating{overflow:hidden;"
+            "pointer-events:none;transition:height .25s cubic-bezier(.4,0,.2,1)}")
+        self.assertPageContains(
+            ".vjs-peach-popup-animating .vjs-peach-panel{"
+            "transition:transform .25s cubic-bezier(.4,0,.2,1),opacity .25s cubic-bezier(.4,0,.2,1)}")
+        self.assertPageContains(".vjs-peach-panel-leaving{position:absolute;left:0;top:0;width:100%}")
+        self.assertPageContains(".vjs-peach-panel-animate-back{opacity:0;transform:translateX(-100%)}")
+        self.assertPageContains(".vjs-peach-panel-animate-forward{opacity:0;transform:translateX(100%)}")
+        self.assertPageContains("const isOpen=()=>menu.getAttribute('aria-hidden')!=='true';")
+        self.assertPageContains("const renderPanel=(html,direction)=>{")
+        # 动画期间容器里同时挂着两块面板，事件只能绑在这一次新建的那块上；绑在容器上
+        # 会连正在退场的旧面板一起接命中，返回键点一次退两级。
+        self.assertPageContains("const panel=renderPanel(")
+        self.assertPageContains("panel.querySelector('[data-player-menu-back]').onclick=()=>showMain(-1);")
+        self.assertPageContains("if(panelTimer)clearTimeout(panelTimer)")
+
+    def test_narrow_player_keeps_both_overlays_inside_the_frame(self):
+        """390 宽的视口上 16:9 的播放器只有 200 出头的高，设置面板要 212、统计面板要 256。
+
+        所以先给播放器一个 320px 的最低高度，窄屏改成上下留黑边；再让两个浮层各自
+        按播放器高度收顶，谁都不可能超过播放器本身。窄屏的设置面板还要撤掉
+        `right:-100px`——那个偏移是给设置键右边还有影院键和全屏键时留的位。
+        """
+        self.assertPageContains(
+            ".vwrap>.video-js{width:100%;height:auto;min-height:320px;max-height:76vh;"
+            "aspect-ratio:16/9;background:#000}")
+        self.assertPageContains(".gate{aspect-ratio:16/9;width:100%;min-height:320px")
+        self.assertPageContains(
+            "max-height:calc(100% - 114px);overflow-y:auto;overscroll-behavior:contain;")
+        self.assertPageContains(
+            ".video-js.vjs-peach-xsmall .vjs-peach-settings-menu{right:0;"
+            "width:min(274px,calc(100vw - 48px));")
+        self.assertPageContains("max-height:calc(var(--peach-player-h,420px) - 74px)}")
+        # 面板的定位祖先只有 36px 高，百分比高度到不了播放器，得由布局脚本把高度写上来。
+        self.assertPageContains("box.style.setProperty('--peach-player-h',`${box.clientHeight}px`)")
+
+    def test_narrow_settings_panel_fits_the_longest_option_list_without_scrolling(self):
+        """清晰度多到八档，单列要 57+16+8×48=457px，320px 高的播放器只给得出 246px。
+
+        行高压到 44px、排成两列是 57+8+4×44=241px；只让选项多于四条的列表分两列，
+        主面板那三行仍是单列。
+        """
+        self.assertPageContains(".video-js.vjs-peach-xsmall .vjs-peach-panel-menu{padding:4px 8px}")
+        self.assertPageContains(".video-js.vjs-peach-xsmall .vjs-peach-menu-option{min-height:44px}")
+        self.assertPageContains(
+            ".video-js.vjs-peach-xsmall .vjs-peach-panel-menu"
+            ":has(>.vjs-peach-menu-option:nth-child(5)){display:grid;grid-template-columns:1fr 1fr}")
+
+    def test_playback_speed_panel_matches_the_youtube_slider_layout(self):
+        """播放速度是读数加滑条加预设胶囊，照 YouTube delhi-modern 的数值来。
+
+        证据是 player 9470c977 的 www-player.css 与 base.js：内容区 24/16/16 内距，读数
+        居中、下留 24px，滑条一行 gap 16px、加减键 32px 圆各动 0.05，胶囊 53×32、gap 8px，
+        1.0 底下挂一行 14px 行高的说明。滑条两端取播放器支持的最低与最高倍速，步进 0.05。
+        字号、字重和圆角走 Peach 的 token：上游读数那档 18px/900 与说明那档 10px 都不在
+        Peach 的刻度上，胶囊和轨道的圆角大于自身高度的一半，`--pill-radius` 渲染结果相同。
+        第五格 3.0 在上游要 Premium，本机装的 Peach 没有会员分级，那一格照上游留着，
+        只是不画角标；滑条上限跟着抬到 3，不然点 3.0 会被收敛回 2。五格胶囊挤不进
+        274px 的面板，所以胶囊按 53px 起算、放不下就一起收窄。
+        """
+        self.assertPageContains(
+            "const SPEED_RATES=[.25,.5,.75,1,1.25,1.5,1.75,2,3],SPEED_STEP=.05,SPEED_PRESETS=[1,1.25,1.5,2,3];")
+        self.assertPageContains('<output data-player-speed-display></output>')
+        self.assertPageContains(
+            '<input type="range" class="vjs-peach-speed-range" data-player-speed-range '
+            'min="${min}" max="${max}" step="${SPEED_STEP}" aria-label="播放速度">')
+        self.assertPageContains('data-player-speed-step="-1" aria-label="播放速度减 0.05"')
+        self.assertPageContains('data-player-speed-step="1" aria-label="播放速度加 0.05"')
+        self.assertPageContains('<span class="vjs-peach-speed-preset-label">正常</span>')
+        self.assertPageContains("display.textContent=`${speed.toFixed(2)}x`;range.value=String(speed);")
+        # 轨道已过的比例由脚本写成自定义属性，上游同样是自定义属性驱动那条渐变。
+        self.assertPageContains(
+            "range.style.setProperty('--peach-speed-percent',`${(speed-min)/(max-min)*100}%`);")
+        self.assertPageContains(
+            "setSpeed((Number(player.playbackRate())||1)+Number(button.dataset.playerSpeedStep)*SPEED_STEP))")
+        self.assertPageContains(
+            ".vjs-peach-speed-panel{box-sizing:border-box;display:flex;flex-direction:column;padding:24px 16px 16px}")
+        self.assertPageContains("font-size:var(--fs-lg);font-weight:600;line-height:22px;color:#fff}")
+        self.assertPageContains(
+            ".vjs-peach-speed-slider{display:flex;align-items:center;gap:16px;margin-bottom:24px}")
+        self.assertPageContains(".vjs-peach-speed-chips{display:flex;align-items:flex-start;gap:8px}")
+        self.assertPageContains(
+            ".vjs-peach-speed-preset-label{margin-top:4px;font-size:var(--fs-xs);font-weight:400;"
+            "line-height:14px;color:rgba(255,255,255,.7)}")
+        self.assertPageContains(
+            "height:32px;min-height:32px;padding:0;border:0;border-radius:var(--pill-radius);"
+            "background:rgba(255,255,255,.1);")
+        self.assertPageContains(
+            ".vjs-peach-speed-slider .vjs-peach-speed-button{flex:none;width:32px;font-size:var(--fs-2xl)}")
+        self.assertPageContains(
+            ".vjs-peach-speed-chips .vjs-peach-speed-button{flex:0 1 53px;min-width:0;gap:4px;font-size:var(--fs-xs)}")
+        # 设置面板里的按钮统一是 100% 宽、48px 高、`:before` 铺满的高亮层，胶囊得单独退出这套。
+        self.assertPageContains(".vjs-peach-settings-menu .vjs-peach-speed-button:before{content:none}")
+        self.assertPageContains(
+            "background:linear-gradient(to right,#fff 0,#fff var(--peach-speed-percent),"
+            "#909090 var(--peach-speed-percent),#909090 100%)}")
+        self.assertPageContains(
+            ".vjs-peach-speed-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;"
+            "width:16px;height:16px;")
+        # 头 57px 加内容 192px 是 249px，比窄屏给的 246px 高，所以内距和两处间隔都收到 16px。
+        self.assertPageContains(".video-js.vjs-peach-xsmall .vjs-peach-speed-panel{padding:16px}")
+        self.assertPageContains(".video-js.vjs-peach-xsmall .vjs-peach-speed-slider{margin-bottom:16px}")
+
+    def test_play_and_mute_icons_morph_in_place_like_youtube(self):
+        """播放键与静音键的图标在原地形变。
+
+        证据是 player 9470c977 的 base.js：`eST` 把路径的 `d` 拆成数字与分隔符再逐位插值
+        200ms；`jjc` 让音量的两道弧各自缩放 250ms，内弧绕 (18,12)、外弧绕 (22,12)，叉号在
+        缩完那一刻整块换上；`setVolume` 里外弧要音量过半才给 1；两处曲线都是 `qn3`，也就是
+        cubic-bezier(.4,0,.2,1)。上游那对播放/暂停路径是为插值写的，233 个记号里 116 个是
+        数字、命令序列逐位相同，所以直接搬过来。
+        """
+        self.assertPageContains('<symbol id="i-player-play" viewBox="0 0 36 36"')
+        self.assertPageContains('<symbol id="i-player-pause" viewBox="0 0 36 36"')
+        self.assertPageContains('d="M 17 8.6 L 10.89 4.99 C 9.39 4.11 7.5 5.19 7.5 6.93')
+        self.assertPageContains('d="M 18 6 L 9 6 C 8.20 6 7.44 6.31 6.87 6.87')
+        # `<use>` 克隆出来的影子树改不了 `d`，所以这两个键把 sprite 里的 <path> 搬进自己的 svg。
+        self.assertPageContains("svg.setAttribute('class','vjs-peach-control-icon vjs-peach-morph-icon');")
+        self.assertPageContains("svg.innerHTML=symbol.innerHTML;button.append(svg);return svg;")
+        self.assertPageContains('if(playPath)playPath.style.d=`path("${paused?playD:pauseD}")`;')
+        self.assertPageContains(".vjs-peach-morph-icon path{transition:d .2s cubic-bezier(.4,0,.2,1)}")
+        self.assertPageContains(
+            ".vwrap .video-js .vjs-control-bar>.vjs-play-control>.vjs-peach-control-icon{width:26px;height:26px}")
+        self.assertPageContains('<path class="vjs-peach-volume-arc-inner"')
+        self.assertPageContains('<path class="vjs-peach-volume-arc-outer"')
+        self.assertPageContains('<path class="vjs-peach-volume-x"')
+        self.assertPageContains("if(muteX){muteX.setAttribute('class','vjs-peach-volume-x');muteIcon.append(muteX)}")
+        self.assertPageContains(
+            "muteIcon.dataset.silent=String(silent);muteIcon.dataset.loud=String(!silent&&player.volume()>.5)")
+        # 缩放中心写在变换里，所以 transform-origin 必须归零，px 也要等于视框单位。
+        self.assertPageContains("transform-box:view-box;transform-origin:0 0;")
+        self.assertPageContains("transition:transform .25s cubic-bezier(.4,0,.2,1)}")
+        self.assertPageContains(
+            '.vjs-peach-morph-icon[data-silent="true"] .vjs-peach-volume-arc-inner'
+            '{transform:translate(18px,12px) scale(0) translate(-18px,-12px)}')
+        self.assertPageContains(
+            '.vjs-peach-morph-icon[data-loud="false"] .vjs-peach-volume-arc-outer'
+            '{transform:translate(22px,12px) scale(0) translate(-22px,-12px)}')
+        self.assertPageContains(".vjs-peach-morph-icon .vjs-peach-volume-x{opacity:0;transition:opacity 0s linear}")
+        self.assertPageContains(
+            '.vjs-peach-morph-icon[data-silent="true"] .vjs-peach-volume-x'
+            '{opacity:1;transition:opacity 0s linear .25s}')
+        # 图标只有 svg 这一份，CSS 不再另画一套三角与竖条。
+        self.assertPageLacks("border-left:14px solid #fff;transform:translate(-38%,-50%)")
+        self.assertPageLacks(".vjs-play-control .vjs-icon-placeholder:before{left:44%")
+
+    def test_play_and_mute_clicks_flash_a_centered_bezel(self):
+        """点播放键和静音键都在画面中心闪一下当前动作的图标。
+
+        照 player 9470c977 的 `.ytp-delhi-modern .ytp-bezel`：78px 毛玻璃圆、54px 图标，
+        1s cubic-bezier(.05,0,0,1) 走 0→1.33→1 的缩放淡出，窄屏收到 64px 配 48px 图标。
+        """
+        self.assertPageContains(
+            "bezel.className='vjs-peach-bezel';bezel.setAttribute('role','status');bezel.hidden=true;")
+        self.assertPageContains(
+            "bezel.innerHTML=`<span class=\"vjs-peach-bezel-icon\">${icon('player-play')}</span>`;")
+        # 重复点同一个键要重新播一次动画：撤类之后读一次布局强制回流，再挂回去。
+        self.assertPageContains("void bezel.offsetWidth;bezel.classList.add('vjs-peach-bezel-run');")
+        self.assertPageContains("player.el().insertBefore(bezel,controlBar);")
+        self.assertPageContains("flashBezel(paused?'player-play':'player-pause',paused?'播放':'暂停');")
+        self.assertPageContains(
+            "flashBezel(silent?'player-volume':'player-volume-muted',silent?'取消静音':'静音');")
+        # 捕获阶段挂在控制条上，一定早于按钮自己的 Video.js 监听，读到的是切换之前的状态，
+        # 闪出来的正好是这一次做的事；冒泡阶段读到的已经是切换之后，图标会反。
+        self.assertPageContains("    }\n  },true);")
+        self.assertPageContains(
+            ".vjs-peach-bezel{position:absolute;z-index:19;left:50%;top:50%;width:78px;height:78px;"
+            "margin:-39px 0 0 -39px;")
+        # 基础规则是 display:grid，不写这一条 hidden 属性压不住它。
+        self.assertPageContains(".vjs-peach-bezel[hidden]{display:none}")
+        self.assertPageContains(".vjs-peach-bezel-icon{display:grid;place-items:center;width:54px;height:54px}")
+        self.assertPageContains(
+            ".vjs-peach-bezel-run{animation:peach-bezel-fadeout 1s cubic-bezier(.05,0,0,1) 1 normal forwards}")
+        self.assertPageContains(
+            "@keyframes peach-bezel-fadeout{0%{opacity:0}25%,75%{opacity:1;transform:scale(1.33)}"
+            "to{opacity:0;transform:scale(1)}}")
+        self.assertPageContains(
+            ".video-js.vjs-peach-xsmall .vjs-peach-bezel{width:64px;height:64px;margin:-32px 0 0 -32px}")
+        self.assertPageContains(".video-js.vjs-peach-xsmall .vjs-peach-bezel-icon{width:48px;height:48px}")
+
+    def test_opening_one_player_overlay_closes_the_other(self):
+        """设置面板和播放统计都盖在画面上，同时开就互相遮挡，开哪个另一个自己收起。
+
+        两块面板挂在不同作用域里，共享一个 document 事件名比互相持有引用干净。
+        """
+        self.assertPageContains("const PLAYER_PANEL_EVENT='peach-player-panel';")
+        self.assertPageContains(
+            "if(open)document.dispatchEvent(new CustomEvent(PLAYER_PANEL_EVENT,{detail:'settings'}))};")
+        self.assertPageContains(
+            "const closeSettingsForOtherPanel=event=>{if(event.detail!=='settings')close()};")
+        self.assertPageContains(
+            "document.dispatchEvent(new CustomEvent(PLAYER_PANEL_EVENT,{detail:'stats'}));")
+        self.assertPageContains(
+            "const closeStatsForOtherPanel=event=>{if(event.detail!=='stats')closeStats()};")
+        # 两个监听都挂在 document 上，播放器销毁时必须摘掉，否则换条目后旧闭包继续收事件。
+        self.assertPageContains(
+            "document.removeEventListener(PLAYER_PANEL_EVENT,closeSettingsForOtherPanel);")
+        self.assertPageContains(
+            "detailPlayer.on('dispose',()=>document.removeEventListener(PLAYER_PANEL_EVENT,closeStatsForOtherPanel));")
+
+    def test_control_tooltip_is_dark_enough_to_read_as_a_label(self):
+        """按钮提示的底色和播放器其它悬浮件同一档黑。
+
+        rgba(0,0,0,.3) 配 blur(16px) 落在亮画面上只剩一块低对比灰板，悬停时看着像
+        凭空多出来一块阴影而不是一条说明。
+        """
+        for selector in (".vjs-peach-tooltip{", ".vjs-volume-tooltip{"):
+            # 声明外观的那条规则在前，后面同名选择器只切 display，取第一处。
+            start = self.css.index(selector)
+            rule = self.css[start:self.css.index("}", start)]
+            self.assertIn("background:rgba(0,0,0,.6)", rule, f"{selector} 和同屏的悬浮件不是一档黑")
+
+    def test_narrow_settings_keep_the_toggle_on_the_title_row(self):
+        """窄屏那条单列是给 select 留的：148px 的下拉配上标题和说明挤不下。
+
+        开关只有 36px，跟标题同一行绰绰有余，跟着换行只是白占一行高度。
+        """
+        self.assertPageContains(".settingrow{grid-template-columns:1fr;gap:9px}")
+        self.assertPageContains(
+            '.settingrow:has(input[type="checkbox"])'
+            '{grid-template-columns:minmax(0,1fr) auto;gap:12px}')
+
+    def test_media_error_reads_as_a_card_above_the_stats_panel(self):
+        """报错文案本来就居中，压住它的是 z-index 8 的统计面板。
+
+        所以修的不是居中，而是给报错一张自带底色、盖在统计面板上方的卡片；同时撤掉
+        Video.js 铺满全画面的渐变——加载失败时正需要看统计里的编码、体积和请求方式。
+        """
+        self.assertPageContains(".vwrap .video-js.vjs-error .vjs-error-display{background:none}")
+        self.assertPageContains("z-index:9;left:50%;top:50%;width:max-content;max-width:min(560px,calc(100% - 48px))")
+        self.assertPageContains("transform:translate(-50%,-50%)}")
+        self.assertPageContains("background:rgba(2,4,8,.86)")
 
     def test_player_stats_cover_direct_range_and_future_segmented_streams(self):
         self.assertPageContains('id="playerStatsBtn"')
@@ -1728,7 +2263,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('id="playerNet"')
         self.assertPageContains("function streamSpeedBits(id,session='')")
         self.assertPageContains("function fmtSpeed(bits)")
-        self.assertPageContains("加载速度 ${segmented?fmtSpeed(bits):fmtLoadRate(bits,meter.ratio)}")
+        self.assertPageContains("const rate=segmented?fmtSpeed(bits):fmtLoadRate(bits,meter.ratio);")
+        self.assertPageContains(
+            """netBadge.innerHTML=`${icon('gauge')}<span class="sr-only">加载速度</span><span>${esc(rate)}</span>`""")
 
     def test_immerse_mode_has_loading_state_and_full_viewport_cover(self):
         self.assertPageContains('id="tokLoader"')
@@ -2633,6 +3170,18 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".relatedpeople{display:flex;gap:14px;overflow-x:auto;padding-bottom:4px")
         self.assertPageContains("height:var(--filterH);margin:0 -16px;padding:9px 16px")
 
+    def test_horizontal_avatar_rails_leave_room_for_the_hover_ring(self):
+        """圆头像的悬停圈和选中圈是外扩 `box-shadow`，横滚容器会把它削平。
+
+        `overflow-x:auto` 把计算后的 `overflow-y` 一起变成 auto，头像贴着容器上沿
+        时那一圈就被裁掉顶部。留 3px 上方余量再用等量负 margin 抵掉，位置不动。
+        这两行是同一个缺陷重犯过多次的地方，写成一条共用规则。
+        """
+        self.assertPageContains(".tier,.relatedpeople{padding-top:3px;margin-top:-3px}")
+        # `.tier` 后面那条不能再用 padding 简写，否则把上面的余量清回 0。
+        self.assertPageContains("scrollbar-width:none;padding-inline:16px;padding-bottom:8px")
+        self.assertPageLacks("scrollbar-width:none;padding:0 16px 8px")
+
     def test_every_home_navigation_restores_the_shared_facets(self):
         self.assertPageContains("function showHomeSurfaces()")
         self.assertPageContains("$('#tiers').style.display='';$('#tagbar').style.display=''")
@@ -2700,6 +3249,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('wrap.innerHTML=visible.map(t=>`<span class="detailtag">')
         self.assertPageLacks("<small>官方</small>")
         self.assertPageLacks(".detailtag.official{")
+        # 左半边点下去是按这个标签筛选，和右边的删除键一样得有悬停反馈；
+        # 它没有选中态，照孤立按钮的写法抬填充。
+        self.assertPageContains(".detailtag .tagfilter:hover{background:var(--hover);color:var(--ink)}")
         self.assertPageContains("const byDisplay=new Map()")
         self.assertPageContains("foldName(t.k)===key&&foldName(previous.k)!==key")
 
@@ -2922,6 +3474,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".count .sorts{width:max-content;margin-left:0;flex:0 0 auto;overflow:visible}")
         self.assertPageContains("flex:0 0 auto;white-space:nowrap")
         self.assertPageContains(".count .sorts button{min-height:36px}")
+        # 这一行没有滚动条（scrollbar-width:none），不登记拖动就只剩看得见够不着的半个按钮。
+        self.assertPageContains("['#tagbar','#srow','#nrow','#count'].forEach(s=>wireDrag($(s)))")
+        # 同一个元素宽屏不溢出、窄屏才溢出，不判溢出就会在宽屏抢走滚轮和拖动。
+        self.assertPageContains("const scrollable=()=>el.scrollWidth-el.clientWidth>1;")
+        self.assertPageContains("if(e.button!==0||!scrollable())return;")
+        self.assertPageContains("if(scrollable()&&Math.abs(e.deltaY)>Math.abs(e.deltaX))")
 
     def test_entity_collection_posters_and_titles_open_item_details(self):
         self.assertPageContains('class="cardopenhit" data-open')
@@ -2945,7 +3503,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".javedition.uncensored{color:var(--meter)}")
         self.assertPageContains(".javedition.cracked{color:var(--drop)}")
         self.assertPageContains('<button class="t cardtitle" data-open>${shownTitle}</button>')
-        self.assertPageContains('<div class="stitle">${javTitleHtml(it)}</div>')
+        self.assertPageContains('<div class="stitle">${javTitleHtml(it)}')
         self.assertPageContains("$('#tokTitle').textContent=javDisplayName(it)")
         self.assertPageContains("<b data-middle-truncate>${esc(javDisplayName(x))}</b>")
 
@@ -2993,7 +3551,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("placeholder:followSkeletonHtml('正在读取关注内容')")
         self.assertPageContains("pageSkeletonHtml('正在读取统计',{variant:'dashboard'})")
         self.assertPageContains(".skeletondashhero{min-height:330px;grid-template-columns:minmax(260px,36%) minmax(0,1fr)}")
-        self.assertPageContains("showIndexLoading(people?'正在读取作者':'正在读取标签')")
+        self.assertPageContains("if(!refine)showIndexLoading(people?'正在读取作者':'正在读取标签')")
         self.assertPageContains("$('#loadSentinel').innerHTML=loadingDotsHtml('继续载入中…')")
         self.assertPageContains("pageSkeletonHtml('正在读取推荐',{cards:true,className:'related-skeleton'})")
         self.assertPageLacks("count.innerHTML=`${spinnerHtml(label)}<span>载入中…</span>`")
@@ -3108,6 +3666,43 @@ class WebUiSourceTests(unittest.TestCase):
             ".entityportrait img{width:100%;height:100%;object-fit:cover;display:block")
         self.assertPageLacks(".idcell.logo .idface img{")
         self.assertPageLacks('style="width:100%;height:100%;object-fit:contain"')
+
+    def test_no_image_asks_for_a_studio_mark_without_naming_the_studio(self):
+        """`src="/logo"` 这种形态一定取不到图：`/logo` 不带 studio 就是 404。
+
+        它没有别的症状——那个位置只是永远空着，而 DevTools 的 Name 列只显示路径
+        末段，一整排 `logo` 看起来都像裸路径，肉眼分不出真裸的那一个。所以逐处扫
+        `src`：厂牌标识的地址必须带上 studio，也必须带上 variant（哪个位置要哪份图
+        是另一条契约，见 `test_studio_icon_variants`）。
+        """
+        marks = re.findall(r'src="(/logo[^"]*)"', self.page)
+        self.assertTrue(marks, "页面里应当仍有厂牌标识取图位")
+        for url in marks:
+            with self.subTest(url=url):
+                self.assertTrue(
+                    url.startswith("/logo?studio="),
+                    f"厂牌标识取图位没写 studio，这个请求必然 404：{url!r}")
+                self.assertIn("variant=", url, f"缺 variant：{url!r}")
+
+    def test_every_studio_mark_waits_until_the_logo_is_known_to_exist(self):
+        """没装标识就一个 `<img>` 都不输出，不许靠 404 再把图换成首字母。
+
+        三处取图位无条件出图的代价是：首页顶栏一排 30 个厂牌里 21 个是 404，而
+        `/logo` 的 404 那条响应不可缓存，每次重绘再打一整轮。判据 `has_logo` 由
+        `/api/tops`、`/api/item`、`/api/entity` 随身份一起下发，和取图共用
+        `previews.logo_key`。
+
+        `studio=115` 那处例外：它取的是来源角标那份固定资产，不按厂牌名找图。
+        """
+        for match in re.finditer(r'src="/logo\?studio=([^"]*)"', self.page):
+            if match.group(1).startswith("115&"):
+                continue
+            preceding = self.page[max(0, match.start() - 240):match.start()]
+            with self.subTest(url=match.group(0)):
+                self.assertIn(
+                    "has_logo", preceding,
+                    "这处取图位没先问「装了没有」，缺标识时会打一个必然 404 的请求："
+                    f"{match.group(0)!r}")
 
     def test_status_tags_are_separated_and_nonessential_states_are_hidden(self):
         self.assertPageContains(".sep{flex:none;width:1px;height:19px")
@@ -3457,10 +4052,22 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("openItem(+button.dataset.reviewOpenItem)")
 
     def test_detail_title_keeps_source_and_file_actions_inline(self):
-        self.assertPageContains('<div class="detailtitle">${srcBadge(it.location,it.cost,\'srcbig\')}')
-        self.assertPageContains('<div class="stitle">${javTitleHtml(it)}</div>')
-        self.assertPageContains('<div class="srctools detailtitletools">${sourceToolButtons(it.id)}</div>')
-        self.assertPageContains(".detailtitle{display:grid;grid-template-columns:auto minmax(0,1fr) auto")
+        """来源徽标浮左只缩进标题的第一行，定位文件与刷新跟在标题文字末尾。
+
+        三者并排参与弹性布局时，徽标那一列会把标题的每一行都缩进；浮动只缩短第一行的
+        行盒，折行后的第二行顶到内容左边缘。两个动作是行内块，上下各 3px 外边距把它们
+        所在那一行的行盒撑到 32px，26px 的按钮和上下两行文字各留 3px。
+        """
+        self.assertPageContains(
+            '<div class="detailtitle">${srcBadge(it.location,it.cost,\'srcbig\')}\n'
+            '        <div class="stitle">${javTitleHtml(it)}'
+            '${it.location===\'online\'?\'\':`<span class="srctools detailtitletools">'
+            '${sourceToolButtons(it.id)}</span>`}</div></div>')
+        self.assertPageContains(".detailtitle{display:flow-root;margin-bottom:10px}")
+        self.assertPageContains(
+            ".detailtitletools{display:inline-flex;vertical-align:middle;margin:3px 0 3px 8px;flex-wrap:nowrap}")
+        # 徽标那个浮动块整好一行高（28px），所以第二行起是整行宽。
+        self.assertPageContains(".detailtitle .stitle{min-width:0;margin:0;line-height:1.75}")
 
     def test_detail_metadata_uses_icons_instead_of_release_copy(self):
         self.assertPageContains('<span class="detailmetaitem">${icon(\'monitor\')}')
@@ -3629,6 +4236,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".alphatag span:first-of-type", ".av .nm", ".entitylinklabel",
             ".fauthor .fsource.frow>b", ".fauthorhead b",
             ".fchip", ".followpageaction .fmeta", ".fpickactions [data-pick-state]",
+            ".fsechead .fmeta",
             ".frow>b", ".fvkind", ".idname", ".kv>span:first-child",
             ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
             ".mixitemtext [data-truncate-end]", ".mixqueuehead h2",
@@ -3859,7 +4467,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("width:var(--id-face,46px);height:var(--id-face,46px)")
 
     def test_detail_source_icon_starts_at_the_content_edge(self):
-        self.assertPageContains(".detailtitle>.srcbig{place-items:start;width:17px;margin-top:2px}")
+        self.assertPageContains(
+            ".detailtitle>.srcbig{float:left;width:17px;height:28px;margin:0 8px 0 0;place-items:center}")
 
     def test_official_tags_do_not_have_a_visible_marker(self):
         self.assertPageLacks(".detailtag .tagfilter small{")
@@ -4104,6 +4713,45 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertLess(actions, state, "操作条必须在状态行之前")
         self.assertLess(state, tags, "标签必须沉到侧栏最后")
         self.assertPageContains(".followdetailside .followdetailtags{margin:16px 0 0}")
+        # 窄屏通用规则会把 .fb 撑满整行，三四个动作键于是变成四个大得离谱的方块。
+        self.assertPageContains(".fb.followdetailactions{width:max-content;max-width:100%}")
+        self.assertPageContains(".fb.followdetailactions button,.fb.followdetailactions .fdownload{flex:0 0 auto}")
+
+    def test_manage_sort_reads_as_a_select_without_a_loose_text_label(self):
+        """排序框用框内前缀图标标明用途，标题行里不挂一个游离的「排序」二字。
+
+        证据：Geist Select 的 prefix 是绝对定位在框内左侧的 16px 图标（`left-3`，输入区
+        `pl-10`），而它的文字 Label 是块级、排在控件上方（`block ... mb-2`）——行内并排
+        那种写法 Geist 没有。工具行没有上方空间，图标又足够把下拉框和普通按钮区分开。
+        """
+        self.assertPageContains("""<label class="fmanagesort">${icon('sort')}<select data-follow-sort aria-label="关注列表排序">""")
+        self.assertPageContains('id="i-sort"')
+        self.assertPageContains(".fmanagesort{position:relative;display:inline-flex;align-items:center")
+        self.assertPageContains(".fmanagesort>svg{position:absolute;z-index:1;left:9px;width:16px;height:16px")
+        self.assertPageContains(".fmanagesort select{padding-left:31px}")
+        # 无障碍名称只剩 aria-label 一处，去掉标签后它必须留着。
+        self.assertPageContains('aria-label="关注列表排序"')
+        # 标题行里三个可缩项只有说明文字，排序框和动作键都保持完整宽度。
+        self.assertPageContains(".fsechead .fbtn,.fsechead .fmanagesort{flex:none}")
+        # 允许换行的一行里，说明文字必须以基准 0 参与排线，否则先断行再谈缩放。
+        self.assertPageContains(".fsechead .fmeta{flex:1 1 0;min-width:0;overflow:hidden")
+        self.assertPageContains("  .fsechead .fmeta{display:none}")
+
+    def test_destructive_buttons_fill_red_on_hover(self):
+        """危险动作的悬停态一律是 --drop 实底加白字，全站一个写法。
+
+        只描红边、红字的话，静止态和悬停态在暗色底上几乎一样亮，按下去之前看不出这是
+        不可逆动作。Geist 的 error Button 同样是实心红填充（oklch(.5801 .227 25.12) 底、
+        白字），只是它静止态就红，Peach 把红留到悬停。
+        """
+        fill = "background:var(--drop);border-color:var(--drop);color:#fff}"
+        for selector in (".fbtn.fquiet:hover{", ".fcredactions button.fquiet:hover{",
+                         ".cleanupfieldset button.danger:hover{",
+                         ".dupbtns button.danger:hover{", ".resourcedanger:hover:not(:disabled){",
+                         ".junkactions .junktrash:hover:not(:disabled){",
+                         ".playlistactions .danger:hover{",
+                         ".reviewactions .reject:hover{"):
+            self.assertPageContains(selector + fill, f"{selector} 的悬停态要填 --drop")
 
     def test_follow_filter_buttons_write_the_url_before_refetching(self):
         """先写 URL 再重取。反过来的话 openFollow 会照旧 URL 把状态推回去。"""
@@ -4144,6 +4792,52 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("(items.items||[]).some(item=>item.is_jav)")
         self.assertPageContains("return state.jav==='1'||entityJavLayout")
         self.assertPageContains("const jav=javActive()&&!!it.is_jav,layout=javLayout()")
+
+    def test_the_people_index_offers_a_big_and_a_compact_layout(self):
+        """艺人索引页的两个版式，与 JAV 大图同一条思路、同一个控件。"""
+        self.assertPageContains(
+            "const PEOPLE_LAYOUTS=[['big','大图 · 竖幅头像','maximize'],"
+            "['compact','紧凑 · 圆形头像','layout-grid']];")
+        self.assertPageContains(
+            "iconSwitchHtml('people-layout','艺人索引版式',PEOPLE_LAYOUTS,peopleIndexLayout(),")
+        self.assertPageContains("{attr:'data-people-layout'}")
+        # 只有艺人和创作者是头像网格；标签页那一屏没有图可放大。
+        self.assertPageContains("${people?peopleLayoutButtons():''}")
+        self.assertPageContains(
+            "wireIconSwitch($('#index'),'data-people-layout',setPeopleIndexLayout);")
+        self.assertPageContains(
+            '`<div class="igrid" data-layout="${peopleIndexLayout()}">${peopleHtml(d.items)}</div>`')
+        self.assertPageContains("peopleLayout:'big'", "默认与 JAV 版式、密度一致：大图为主")
+
+    def test_the_big_people_layout_only_stretches_the_frame_it_does_not_change_columns(self):
+        # JAV 大图那条规矩：宽度不变、高度拉长。列宽跟着改的话，窄屏会掉成一列。
+        self.assertPageContains(
+            '.igrid[data-layout="big"] .icell .ring{width:100%;height:auto;aspect-ratio:3/4;')
+        self.assertPageContains(".igrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))")
+        self.assertPageLacks('.igrid[data-layout="big"]{grid-template-columns',
+                             "两个版式必须同列宽同列数")
+        self.assertPageLacks('.igrid[data-layout="compact"]',
+                             "紧凑就是基础样式那一屏，不该再写一份")
+
+    def test_switching_the_people_layout_neither_repaints_the_grid_nor_refetches(self):
+        # 版式是纯展示层的事：改容器上的一个属性就够，和关注列表版式同一个做法。
+        self.assertCode(
+            "function setPeopleIndexLayout(value){\n"
+            "  appSettings.peopleLayout=value;\n"
+            "  saveSettings();\n"
+            "  document.querySelectorAll('.igrid')"
+            ".forEach(grid=>{grid.dataset.layout=peopleIndexLayout()});\n"
+            "}")
+
+    def test_the_big_people_layout_frames_the_detected_face(self):
+        # 3:4 竖幅按几何居中会把脸切掉。换算只有 faceOrigin 一份：资料页写进 img 的
+        # style，索引页交给圆框上的 --face——那里的 img 是八处共用的 avatarInner 拼的。
+        self.assertPageContains("function faceOrigin(f){")
+        self.assertCode("  const origin=faceOrigin(f);\n"
+                        "  return origin?` style=\"object-position:${origin}\"`:'';")
+        self.assertPageContains("const face=faceOrigin(x.avatar_focus);")
+        self.assertPageContains('<span class="ring"${face?` style="--face:${face}"`:\'\'}>')
+        self.assertPageContains("object-position:var(--face,50% 50%)}")
 
     def test_photo_lightbox_loads_swiper_lazily_with_thumbs_and_keyboard(self):
         self.assertPageContains("'/vendor/swiper/14.2.0/swiper-bundle.min.js'")
@@ -4333,8 +5027,9 @@ class WebUiSourceTests(unittest.TestCase):
         # 作品数取 video_count（创作者标签）或 videos（西方身份），两批候选列名不同。
         self.assertPageContains("const works=Number(row.video_count||row.videos||0)")
         self.assertPageContains("部作品")
-        # 头像走同一个兜底链，取不到图时回落首字母。
-        self.assertPageContains("row.entity_id?{id:row.entity_id}:null,null,subjectKind)")
+        # 头像走同一条链，装了实体图才出 `<img>`，取不到就是首字母。
+        self.assertPageContains(
+            "row.entity_id?{id:row.entity_id,has_image:row.has_image}:null,null,subjectKind)")
         # 复核页没有全局委托，必须自己接线，否则入口点了没反应。
         self.assertPageContains(
             "$('#stats').querySelectorAll('[data-entity-kind]').forEach(button=>button.onclick=()=>")
@@ -4418,7 +5113,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('data-reveal="${id}"')
         self.assertPageContains('data-sync="${id}"')
         # 在线资产是 URL，没有本地文件可定位。
-        self.assertPageContains("it.location==='online'?'':`<div class=\"srctools detailtitletools\">${sourceToolButtons(it.id)}</div>`")
+        self.assertPageContains("it.location==='online'?'':`<span class=\"srctools detailtitletools\">${sourceToolButtons(it.id)}</span>`")
 
     def test_resource_sync_lives_in_data_management_and_keeps_offline_sources_safe(self):
         self.assertPageContains("${resourceSyncMarkup()}")

@@ -759,6 +759,51 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertIn("写法 Sexy Saffron", row["reason"], "别名跳转必须写明用了哪个写法")
         self.assertEqual(row["preview_url"], "https://x/s.jpg")
 
+    def test_review_rows_say_up_front_whether_the_face_can_be_fetched(self):
+        """复核卡片那张脸和别处一样先问再出图，只是这里没有代表作可退。
+
+        这两类的卡片左边直接按 `entity_id` 取 `/entity-image`；没有标志就只能无条件
+        出图、等 404 再把图摘掉。落盘名带 kind，所以判定必须按 `ENTITY_REVIEW_KINDS`
+        说的那种实体去找，不能凭卡片长得像谁猜。
+        """
+        self._csv("babepedia-candidates.csv",
+                  ["entity_id", "creator", "videos", "verdict", "matched_variant",
+                   "babepedia_name", "token_overlap", "portrait_url"],
+                  [{"entity_id": "1", "creator": "ukiru", "videos": "3", "verdict": "命中",
+                    "matched_variant": "ukiru", "babepedia_name": "Ukiru",
+                    "token_overlap": "1.0", "portrait_url": ""}])
+        self.write_candidates("creator-tags-candidate-20260818.csv", [
+            {"board": "a", "creator": "ukiru", "tags": "x", "status": "candidate"},
+            {"board": "b", "creator": "查无此人", "tags": "y", "status": "candidate"},
+        ])
+
+        def faces(category):
+            rows = rm_review.q_review(self.contract)["sections"][category]
+            return {row["item_key"]: row["has_image"] for row in rows}
+
+        self.assertEqual(faces("creator_tags"), {"a": False, "b": False})
+        self.assertEqual(faces("western_identity"), {"1": False})
+        # 写成 performer 的名字读不到：kind 是落盘名的一部分。
+        (self.avatar_root / "performer-1.img").write_bytes(b"\xff\xd8\xff\xd9")
+        self.contract.cache_bust()
+        self.assertEqual(faces("creator_tags"), {"a": False, "b": False})
+        (self.avatar_root / "creator-1.img").write_bytes(b"\xff\xd8\xff\xd9")
+        self.contract.cache_bust()
+        # 解析到实体 1 的那行有了图，名字对不上账本的那行仍然没有身份、没有图。
+        self.assertEqual(faces("creator_tags"), {"a": True, "b": False})
+        self.assertEqual(faces("western_identity"), {"1": True})
+        # 不在表里的类别没有这个位置，别给它凭空挂一个标志。
+        path = self.candidates / "performer-avatar-candidate-20260818.csv"
+        with path.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.DictWriter(
+                handle, fieldnames=["entity_id", "current_name", "assets", "verdict"])
+            writer.writeheader()
+            writer.writerow({"entity_id": "1", "current_name": "ukiru",
+                             "assets": "3", "verdict": "ok"})
+        rows = rm_review.q_review(self.contract)["sections"]["performer_avatars"]
+        self.assertTrue(rows)
+        self.assertNotIn("has_image", rows[0])
+
     def test_record_only_review_categories_can_be_decided(self):
         result = rm_review.w_review_decision(self.contract, {
             "category": "western_identity", "item_key": "1", "status": "skipped",
