@@ -38,6 +38,35 @@ Peach 要发布到 GitHub 供所有人维护与使用。使用形态不变：每
    - README 改为面向陌生用户：是什么、怎么装、怎么跑、怎么贡献；个人运行态从 STATUS 移出仓库。
    - 第三方依赖许可证核对：FFmpeg 构建、Video.js、前端依赖（ADR-0022）。
 
+## 勘误（2026-09-03，实施第 2、3 阶段时核对）
+
+原文第 2 阶段写的「每个盘符前缀声明为挂载点 ID」和「现有行的重写是一次真实迁移」都不成立，
+因为它把两件事看混了。核对账本后的事实与实际做法：
+
+- `asset.location` **本来就是**挂载点 ID：`local`、`115`、`pikpak`、`online` 四个值，
+  不是盘符。盘符只出现在 `asset.path` 里，而那是 AGENTS.md 的不变量（账本一律 Windows 形态），
+  本来就不该动。**第 2 阶段因此不重写任何账本行，也没有对应迁移**；ADR-0025 不存在。
+- 第 2 阶段真正做的是把「本机挂载点」这一层从盘符改成 location ID：
+  设置文件用 `[media.mounts] <location-id> = <本机路径>` 取代第 1 阶段的
+  `[media] <盘符> = <本机路径>`，`[media.locations]` 继续声明每个 ID 的账本口径根
+  （`local = 'R:\media'`、`115 = 'B:/'`、`pikpak = 'A:/'`）。`peach.platform` 按
+  「声明根前缀 → 本机挂载点」翻译，不再按盘符字母。挂载点的语义是**声明根在本机的落点**，
+  所以 `R:\media\x` 在 macOS 上等于 `<mounts.local>/x`。
+- Windows 上盘符本身就是挂载点，`translate_ledger_path` 原样返回，`[media.mounts]` 整表可空。
+- 第 2 阶段同时补上了写入侧的一致性门槛：`scripts/ledger.py scan <location> <root>` 现在拒绝
+  与 `[media.locations]` 声明根不一致的组合，新导入的行不可能再落到别的来源名下。
+- 诊断用的 `PEACH_DRIVE_MAP` 键空间是盘符，与新方案不兼容，已删除；替代品是同样语法、
+  按 ID 键的 `PEACH_MEDIA_MOUNTS`（`local=/mnt/res,115=/mnt/115`）。
+
+第 3 阶段有一处与原文不同，是刻意的：
+
+- **mDNS 发布不随 `replication.enabled` 一起关**。原文把「不发布 mDNS」列进了关闭清单，
+  但 mDNS 是这台机器自己的局域网入口（ADR-0009），和单写者复制没有关系：单机用户正是
+  靠 `peach.local` 从手机访问自己的库，跟着复制开关一起关掉等于把通用化最想服务的那类
+  用户的访问入口砍了。mDNS 继续由它自己的判据决定：`--no-mdns` 与「只绑回环就不发布」。
+  关闭复制时不装配的是 ledger 同步观察器、SMB 探测与挂载、托盘的两个 Ledger 菜单项，
+  以及追更凭据往共享副本写的那一份。
+
 ## 边界与不变量
 
 - ledger 仍是唯一真相源；AI 与刮削结果仍是候选，不因通用化放宽。

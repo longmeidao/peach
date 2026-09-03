@@ -22,9 +22,11 @@ description: 在 macOS 上开工、改动路径解析或挂载判定、遇到 gi
 `src/peach/platform.py` 一处；写回账本的索引脚本仍只在 Windows 上跑，路径口径
 因此保持单一。**禁止从 macOS 写 `asset.path`**。
 
-盘符映射：`R:` 本地硬盘（Windows `R:\`，macOS `/Volumes/RESOURCES`）、`B:` 115（`B:\`，`~/Desktop/IMSL/115`）、`A:` PikPak（`A:\`，`~/Desktop/IMSL/Pikpak`）。
+来源映射按 `asset.location` 而不是盘符：`local`（声明根 `R:\media`，macOS 挂在
+`/Volumes/RESOURCES/media`）、`115`（`B:/`，`~/Desktop/IMSL/115`）、`pikpak`（`A:/`，
+`~/Desktop/IMSL/Pikpak`）。声明根在设置文件的 `[media.locations]`，本机落点在 `[media.mounts]`。
 
-用 `PEACH_DRIVE_MAP=R=/mnt/res,B=/mnt/115` 覆盖；数据目录用 `PEACH_DATA_ROOT`。
+用 `PEACH_MEDIA_MOUNTS=local=/mnt/res,115=/mnt/115` 覆盖；数据目录用 `PEACH_DATA_ROOT`。
 CloudDrive 在 Windows 是盘符、在 macOS 是 macFUSE 挂载点，这层不是可选优化。
 
 运行目录不跟着媒体盘符走。Windows 根目录是 `C:\Users\longm\Desktop\peach`，macOS 是

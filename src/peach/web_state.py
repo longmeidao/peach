@@ -27,7 +27,7 @@ from .config import (
     DATA_ROOT,
     GENERATED_DIR,
     SECRETS_DIR,
-    SHARED_DATA_ROOT,
+    SHARED_CREDENTIAL_ROOT,
     SOURCES_DIR,
     STATE_DIR,
 )
@@ -86,8 +86,10 @@ class WebContract:
         self.follow_state_root = (Path(follow_state_root)
                                   if follow_state_root is not None else STATE_DIR)
         # 共享副本只承载**声明为可同步**的凭据字段，见 follow_secrets.SYNCABLE_FIELDS。
+        # 复制关掉时 SHARED_CREDENTIAL_ROOT 是 None，凭据只留在本机。
         self.follow_shared_root = (Path(follow_shared_root)
-                                   if follow_shared_root is not None else SHARED_DATA_ROOT)
+                                   if follow_shared_root is not None
+                                   else SHARED_CREDENTIAL_ROOT)
         # 浏览历史口味分析的产出目录，`scripts/taste_history.py --output` 的默认值。
         self.taste_history_root = (Path(taste_history_root)
                                    if taste_history_root is not None

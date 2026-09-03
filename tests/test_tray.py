@@ -25,7 +25,8 @@ from peach.config import SECRETS_DIR
 from peach.tray import (
     AlreadyRunning, PeachTray, ServiceManager, ServiceSpec, SingleInstance,
     apply_macos_template, build_service_specs, create_icon, enable_hidpi,
-    launchd_owns_this_process, restart_tray_process, tray_restart_required,
+    launchd_owns_this_process, ledger_menu_items, restart_tray_process,
+    tray_restart_required,
 )
 from peach.sync import SyncPlan
 from peach.versioning import UpdateResult, VersionSnapshot
@@ -154,7 +155,15 @@ class ServiceStatusTests(unittest.TestCase):
 
     只说「未运行」没法行动：HTTP 和 HTTPS 会因为端口占用、证书过期、pf 转发写错
     等完全不同的原因挂掉，而且服务活着时探测本身也可能被骗（见代理劫持的回归测试）。
+
+    本类里的账本同步用例都以「这台机器开了复制」为前提，所以显式钉住开关；
+    关掉之后的行为由 `ReplicationSwitchTests` 单独验。
     """
+
+    def setUp(self):
+        patcher = patch("peach.tray.REPLICATION_ENABLED", True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def manager(self, health: dict) -> ServiceManager:
         specs = tuple(
@@ -404,6 +413,34 @@ class ServiceStatusTests(unittest.TestCase):
         mount.assert_not_called()
 
 
+class ReplicationSwitchTests(unittest.TestCase):
+    """ADR-0023 第 3 阶段：`replication.enabled = false` 时托盘不装配复制那一层。"""
+
+    def items(self, enabled):
+        with patch("peach.tray.REPLICATION_ENABLED", enabled):
+            return ledger_menu_items(
+                lambda label, action: (label, action), Mock(), Mock())
+
+    def test_menu_items_disappear_when_replication_is_off(self):
+        self.assertEqual(self.items(False), [])
+
+    def test_menu_items_are_assembled_when_replication_is_on(self):
+        labels = [label for label, _ in self.items(True)]
+        self.assertEqual(labels, ["同步 Ledger", "接管 Ledger 写入"])
+
+    def test_sync_ledger_refuses_instead_of_probing_a_share(self):
+        """菜单项没了，但托盘还有别的入口；这条路径会去探一个不存在的共享。"""
+        plan = Mock()
+        mount = Mock()
+        manager = ServiceManager(tuple(), ledger_plan=plan, mount_share=mount)
+        with patch("peach.tray.REPLICATION_ENABLED", False):
+            ok, message = manager.sync_ledger(Path("/venv/peach"))
+        self.assertFalse(ok)
+        self.assertIn("replication.enabled", message)
+        plan.assert_not_called()
+        mount.assert_not_called()
+
+
 class SourceSyncTests(unittest.TestCase):
     """「同步开发进度」这条路径：拉到的代码要真的跑起来，托盘不能自己骗自己。"""
 
@@ -436,13 +473,17 @@ class SourceSyncTests(unittest.TestCase):
             if line.strip().startswith('("') and '",' in line
         ]
         self.assertIn("同步开发进度", labels)
-        self.assertLess(labels.index("同步开发进度"), labels.index("同步 Ledger"))
+        # 两个 Ledger 项由 `ledger_menu_items` 统一给出（复制关掉时为空），
+        # 位置契约因此变成「同步开发进度 紧挨着那次调用之前」。
+        self.assertLess(source.index("同步开发进度"), source.index("ledger_menu_items"))
+        self.assertLess(source.index("ledger_menu_items"), source.index("重启服务"))
         self.assertIn("sync_source", source)
 
     def test_windows_tray_lists_source_sync_next_to_ledger(self):
         source = inspect.getsource(PeachTray.__init__)
         self.assertIn('MenuItem("同步开发进度", self.sync_source)', source)
-        self.assertLess(source.index("同步开发进度"), source.index("同步 Ledger"))
+        self.assertLess(source.index("同步开发进度"), source.index("ledger_menu_items"))
+        self.assertLess(source.index("ledger_menu_items"), source.index("重启服务"))
 
     def test_windows_source_sync_tests_then_restarts_services(self):
         snapshot = VersionSnapshot("0.6.4", "master", "abc12345", False, True, "origin/master")

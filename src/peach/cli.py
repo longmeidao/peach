@@ -11,6 +11,7 @@ from .config import (
     DATABASE_PATH,
     MDNS_NAME,
     MIGRATIONS_DIR,
+    REPLICATION_ENABLED,
     SERVE_HOST,
     SERVE_PORT,
     SETTINGS_ERROR,
@@ -92,7 +93,14 @@ def _build_sync(args: argparse.Namespace, settings: PeachSettings) -> LedgerSync
 
     冲突不自动挑边：两台机器都写过之后没有安全的合并规则，服务照常起但转只读，
     由人选一边（把要保留的那份复制成另一份，或删掉一侧的 `.sync.json` 重新播种）。
+
+    `replication.enabled = false` 时整条链路不装配：不建观察器、不探测共享目录。
+    没有第二台机器就没有「读者」可言，服务按独立写者跑——写接口全开，只读闸门不生效
+    （`sync is None` 时 `/healthz` 的 `ledger_sync` 是 `disabled`，不是 `writer`）。
     """
+    if not REPLICATION_ENABLED:
+        print("账本角色：disabled · replication.enabled = false，按独立写者运行")
+        return None
     sync = LedgerSync(
         settings.db_path, args.shared_db, device_id(STATE_DIR),
         interval=0,
@@ -221,23 +229,46 @@ def _ledger_sync(args: argparse.Namespace) -> int:
     return {"conflict": 2, "offline": 3, "missing": 4}.get(decision.action, 0)
 
 
-def _parse_mounts(raw: list[str] | None) -> dict[str, str]:
-    """`--mount R=/Volumes/Media` 形式的挂载点。键是账本里的路径前缀。"""
+def _parse_mounts(
+    raw: list[str] | None, locations: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """`--mount local=/Volumes/RESOURCES/media` 形式的挂载点。
+
+    键是 `asset.location`（`[media.locations]` 里声明过的来源 ID），不是盘符：
+    打错一个 ID 如果静默收下，那个来源就会安静地进脱盘模式，所以这里直接拒绝。
+    """
+    known = dict(locations or {})
     mounts: dict[str, str] = {}
     for chunk in raw or ():
         key, separator, value = chunk.partition("=")
-        if not separator or not key.strip():
-            raise SystemExit(f"--mount 要写成 前缀=路径，收到：{chunk}")
-        mounts[key.strip().upper()] = value.strip()
+        key = key.strip()
+        if not separator or not key:
+            raise SystemExit(f"--mount 要写成 来源ID=路径，收到：{chunk}")
+        if known and key not in known:
+            raise SystemExit(
+                f"--mount 的来源 ID 未在 [media.locations] 声明：{key}"
+                f"（已知：{'、'.join(sorted(known))}）"
+            )
+        mounts[key] = value.strip()
     return mounts
 
 
-def _resolved_config(data_root: Path | None) -> settings_file.PeachConfig:
-    """按当前环境解析一份配置。`--data-root` 走和运行期同一条发现路径，不另开分支。"""
-    if data_root is None:
-        return settings_file.load_config(strict=False)
-    return settings_file.load_config(
-        environ=dict(os.environ, PEACH_DATA_ROOT=str(data_root)), strict=False)
+def _resolved_config(
+    data_root: Path | None,
+) -> tuple[settings_file.PeachConfig, settings_file.SettingsFileError | None]:
+    """按当前环境解析一份配置，外加「旧文件读不出来」时的原始错误。
+
+    `--data-root` 走和运行期同一条发现路径，不另开分支。读取用 `strict=False`
+    （`init --force` 是坏文件的唯一自救入口），但错误必须留下来：静默退回内建默认
+    再写回去，等于把旧文件里的坐标悄悄抹平。
+    """
+    environ = None if data_root is None else dict(
+        os.environ, PEACH_DATA_ROOT=str(data_root))
+    kwargs = {} if environ is None else {"environ": environ}
+    try:
+        return settings_file.load_config(**kwargs), None
+    except settings_file.SettingsFileError as exc:
+        return settings_file.load_config(**kwargs, strict=False), exc
 
 
 def _init(args: argparse.Namespace) -> int:
@@ -248,11 +279,18 @@ def _init(args: argparse.Namespace) -> int:
     进程看不见的那几项（局域网地址、钥匙串账号名）由命令行显式补，落不下的会在末尾
     逐条列出来，绝不拿猜的值填。
     """
-    config = _resolved_config(args.data_root)
+    config, broken = _resolved_config(args.data_root)
     if config.path.exists() and not args.force:
         print(f"设置文件已存在：{config.path}")
         print("要重新生成就加 --force；它会覆盖这个文件，不动数据。")
         return 3
+    if broken is not None:
+        # 第一阶段的 `[media] R = ...` 在第二阶段是硬错误，于是 `--from-existing` 读到的
+        # 「当前生效配置」其实是内建默认。不说这一句，重写出来的文件会安静地丢掉旧文件
+        # 里的 mDNS 名、writer 地址和 SMB 坐标——那正是这条命令声称要保下来的东西。
+        print(f"注意：{broken}")
+        print("下面这份是按内建默认加环境变量重建的，**没有**继承旧文件里的值。")
+        print("旧文件里自定义过的坐标要在这次命令里用对应参数重新给一遍。")
 
     overrides: dict[str, object] = {
         "host": args.host, "port": args.port, "mdns_name": args.mdns_name,
@@ -263,7 +301,7 @@ def _init(args: argparse.Namespace) -> int:
         "smb_user": args.smb_user,
     }
     mounts = dict(config.mounts)
-    mounts.update(_parse_mounts(args.mount))
+    mounts.update(_parse_mounts(args.mount, config.locations))
     prepared = settings_file.capture_existing(
         config, replication_enabled=args.from_existing,
         overrides=overrides, mounts=mounts,
@@ -318,8 +356,13 @@ def _report_blanks(config: settings_file.PeachConfig) -> None:
         table, _, name = dotted.partition(".")
         if not getattr(getattr(config, table), name):
             blanks.append(f"  {dotted} 留空 → {effect}；要填就重跑并加 {flag}")
-    if not config.mounts:
-        blanks.append("  [media] 为空 → 所有来源按脱盘处理；要填就加 --mount R=<挂载点>")
+    if not config.mounts and os.name != "nt":
+        # Windows 上盘符本身就是挂载点，空表是正常的，提示它只会让人去填没用的值。
+        known = "、".join(sorted(config.locations)) or "local"
+        blanks.append(
+            f"  [media.mounts] 为空 → 所有来源按脱盘处理；"
+            f"要填就加 --mount <来源ID>=<挂载点>（已知来源：{known}）"
+        )
     if blanks:
         print("以下坐标是空的（这不是错误，单机部署本来就该空）：")
         print("\n".join(blanks))
@@ -328,7 +371,7 @@ def _report_blanks(config: settings_file.PeachConfig) -> None:
 def _print_next_steps(config: settings_file.PeachConfig, *, from_existing: bool) -> None:
     print("\n下一步：")
     if from_existing:
-        print("  1. 打开上面那个文件核对一遍，尤其是 [media] 和 [replication]。")
+        print("  1. 打开上面那个文件核对一遍，尤其是 [media.mounts] 和 [replication]。")
         print("  2. 重启服务让它生效。这一步之前，运行行为和现在完全一样。")
         return
     print(f"  1. peach serve --host {config.server.host} --port {config.server.port}")
@@ -354,8 +397,8 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--smb-host", help="共享传输点所在主机")
     init.add_argument("--smb-share", help="共享名")
     init.add_argument("--smb-user", help="挂载共享用的账号")
-    init.add_argument("--mount", action="append", metavar="前缀=路径",
-                      help="账本路径前缀到本机挂载点，可重复")
+    init.add_argument("--mount", action="append", metavar="来源ID=路径",
+                      help="来源（asset.location）的声明根在本机的落点，可重复")
     init.set_defaults(handler=_init)
 
     serve = commands.add_parser("serve", help="run the FastAPI application")

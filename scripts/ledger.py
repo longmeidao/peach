@@ -27,6 +27,7 @@ if str(SRC_DIR) not in sys.path:
 from peach.stash import StashClient, StashError
 from peach.entities import canonicalize_entity_name, upsert_asset_entity
 from peach.config import DATABASE_PATH
+from peach.platform import declared_root, location_of, location_roots
 
 # 账本位置只有 `peach.config` 一处判据。这里原来写死 `R:\peach-data\...`，那是搬到
 # 内置盘之前的数据根：写死的路径不会报「配置过时」，它只会安静地建一个空库。
@@ -160,7 +161,28 @@ def cmd_init():
     print(f"✓ 建库完成 {DB}")
 
 
+def check_scan_target(location, root):
+    """扫描根必须落在这个来源的声明根内，否则拒绝。
+
+    `asset.location` 是挂载点 ID，`[media.locations]` 给出它在账本里的声明根。
+    这两者对不上时写进去的行既翻译不出本机路径、也通不过授权根，而且要等到有人
+    点开那个资产才会发现。ADR-0023 第 2 阶段把这一条从口头约定变成写入侧门槛。
+    """
+    declared = declared_root(location)
+    if declared is None:
+        known = "、".join(sorted(location_roots())) or "（设置文件里一个都没有）"
+        sys.exit(f"✗ 未声明的来源 {location!r}；[media.locations] 里已知：{known}")
+    actual = location_of(root)
+    if actual != location:
+        sys.exit(
+            f"✗ 扫描根与来源对不上：{location} 的声明根是 {declared}，"
+            f"但要扫的是 {root}"
+            + (f"（那是 {actual} 的地盘）" if actual else "（不在任何声明根下）")
+        )
+
+
 def cmd_scan(location, root):
+    check_scan_target(location, root)
     c = conn(); c.executescript(SCHEMA)
     now = time.strftime("%Y-%m-%d %H:%M:%S")
     t0 = time.time(); n = 0; tot = 0

@@ -10,7 +10,7 @@ import contextlib
 import sqlite3
 from pathlib import Path
 
-from .config import DATABASE_PATH, SECRETS_DIR, SHARED_DATA_ROOT, SOURCES_DIR
+from .config import DATABASE_PATH, SECRETS_DIR, SHARED_CREDENTIAL_ROOT, SOURCES_DIR
 from . import follow_providers
 from .follow_check import plan_check, run_check
 from .follow_secrets import CREDENTIAL_GUIDE, credential_store_for
@@ -236,8 +236,9 @@ def register(commands) -> None:
     follow.add_argument("--sources-root", type=Path, default=SOURCES_DIR)
     follow.add_argument("--secrets-root", type=Path, default=SECRETS_DIR)
     # 共享根让另一台机器上配好的可同步字段（现在只有 rule34.xxx 的 user_id/api_key）
-    # 在命令行这边也能回填。默认和 Web 一致，测试用它指向临时目录。
-    follow.add_argument("--shared-root", type=Path, default=SHARED_DATA_ROOT)
+    # 在命令行这边也能回填。默认和 Web 一致（复制关掉时是 None，凭据只留本机），
+    # 测试用它指向临时目录。
+    follow.add_argument("--shared-root", type=Path, default=SHARED_CREDENTIAL_ROOT)
     actions = follow.add_subparsers(dest="follow_command", required=True)
 
     add = actions.add_parser("add", help="登记一个追更来源")

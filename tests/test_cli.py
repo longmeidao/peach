@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import io
 import sqlite3
@@ -124,15 +125,33 @@ class InitCommandTests(unittest.TestCase):
 
     def test_fresh_init_output_is_readable_by_the_settings_layer(self):
         self._init("--mdns-name", "peach-two", "--port", "9443",
-                   "--mount", "r=/mnt/media")
+                   "--mount", "local=/mnt/media")
         loaded = settings_file.load_config(environ={"PEACH_DATA_ROOT": str(self.root)})
         self.assertTrue(loaded.present)
         self.assertTrue(loaded.configured)
         self.assertEqual(loaded.server.mdns_name, "peach-two")
         self.assertEqual(loaded.server.port, 9443)
-        self.assertEqual(loaded.mounts, {"R": "/mnt/media"})
-        # 全新机器不开复制：第三阶段接上开关时单机用户不该突然多出一条同步路径。
+        self.assertEqual(loaded.mounts, {"local": "/mnt/media"})
+        # 全新机器不开复制：单机用户不该凭空多出一条同步路径。
         self.assertFalse(loaded.replication.enabled)
+
+    def test_mount_for_an_undeclared_location_is_refused(self):
+        """打错来源 ID 静默收下，那个来源就会安静地进脱盘模式。"""
+        with self.assertRaises(SystemExit) as caught:
+            self._init("--mount", "locla=/mnt/media")
+        self.assertIn("locla", str(caught.exception))
+        self.assertIn("local", str(caught.exception))
+
+    def test_mount_without_an_equals_sign_is_refused(self):
+        with self.assertRaises(SystemExit) as caught:
+            self._init("--mount", "/mnt/media")
+        self.assertIn("来源ID=路径", str(caught.exception))
+
+    def test_mount_ids_keep_their_case(self):
+        """来源 ID 不是盘符，`local` 不能被改写成 `LOCAL`。"""
+        self.assertEqual(
+            cli._parse_mounts(["local=/mnt/res"], {"local": r"R:\media"}),
+            {"local": "/mnt/res"})
 
     def test_the_new_ledger_is_readable_by_status(self):
         self._init()
@@ -161,10 +180,26 @@ class InitCommandTests(unittest.TestCase):
         self.assertFalse((self.root / "generated").exists())
         self.certs.assert_not_called()
         loaded = settings_file.load_config(environ={"PEACH_DATA_ROOT": str(self.root)})
-        # 现有部署本来就在复制；第三阶段接上开关时它们的行为必须不变。
+        # 现有部署本来就在复制；写一份设置文件不该把它悄悄关掉。
         self.assertTrue(loaded.replication.enabled)
         self.assertEqual(loaded.replication.smb_host, "other.local")
         self.assertEqual(loaded.replication.smb_user, "someone")
+
+    def test_from_existing_says_so_when_the_old_file_is_unreadable(self):
+        """升级路径上最贵的一次静默：第一阶段的 `[media] R = ...` 现在是硬错误。
+
+        `--from-existing` 声称落盘的是「当前生效的配置」，而旧文件读不出来时那份配置
+        其实是内建默认。不说这一句，重写出来的文件会安静地丢掉 mDNS 名和 SMB 坐标。
+        """
+        self.root.mkdir(parents=True)
+        (self.root / "config.toml").write_text(
+            "[media]\nR = '/Volumes/RESOURCES'\n", encoding="utf-8")
+        code, output = self._init("--from-existing", "--force")
+        self.assertEqual(code, 0)
+        self.assertIn("media.mounts", output)      # 原始错误里的升级提示
+        self.assertIn("没有**继承", output)
+        loaded = settings_file.load_config(environ={"PEACH_DATA_ROOT": str(self.root)})
+        self.assertEqual(loaded.mounts, {})
 
     def test_blank_coordinates_are_listed_instead_of_guessed(self):
         _, output = self._init("--from-existing")
@@ -179,6 +214,33 @@ class InitCommandTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(database.read_bytes(), b"not really a database")
         self.assertIn("--from-existing", output)
+
+
+class ReplicationAssemblyTests(unittest.TestCase):
+    """ADR-0023 第 3 阶段：整条复制链路按 `replication.enabled` 装配或完全不装配。"""
+
+    def _build(self, enabled):
+        args = argparse.Namespace(shared_db=Path("/nonexistent/shared.db"))
+        settings = mock.Mock(db_path=Path("/nonexistent/local.db"))
+        output = io.StringIO()
+        with mock.patch.object(cli, "REPLICATION_ENABLED", enabled), \
+                mock.patch.object(cli, "LedgerSync") as ledger_sync, \
+                redirect_stdout(output):
+            sync = cli._build_sync(args, settings)
+        return sync, ledger_sync, output.getvalue()
+
+    def test_replication_off_builds_no_observer_and_probes_nothing(self):
+        """没有第二台机器就没有「读者」：服务按独立写者跑，写接口照常开。"""
+        sync, ledger_sync, output = self._build(False)
+        self.assertIsNone(sync)
+        ledger_sync.assert_not_called()
+        self.assertIn("disabled", output)
+
+    def test_replication_on_keeps_todays_behaviour(self):
+        sync, ledger_sync, _ = self._build(True)
+        ledger_sync.assert_called_once()
+        ledger_sync.return_value.observe.assert_called_once()
+        self.assertIs(sync, ledger_sync.return_value)
 
 
 class BrokenSettingsTests(unittest.TestCase):
