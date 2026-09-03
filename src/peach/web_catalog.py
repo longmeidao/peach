@@ -585,6 +585,12 @@ def q_item(contract: WebContract, aid):
         d["studio"] = d["entities"]["studio"][0]
     d["cost"] = COST.get(d["location"], "metered")
     d["has_thumb"] = contract.has_snapshot(d["snapshot_path"])
+    # 身份格的厂牌位和顶栏小圆片同一条判据：没装标识就不输出 `<img>`。规范厂牌走
+    # `entity_refs`，非规范的那条只有扁平 `studio` 字段，两边都要有标志，否则
+    # 后者会从「本来能取到图」退化成永远首字母。
+    for ref in d["entity_refs"]["studio"]:
+        ref["has_logo"] = contract.has_logo(ref["name"])
+    d["has_studio_logo"] = contract.has_logo(d.get("studio"))
     # 「女优」是番号发行物的行业称谓；creator clip 即使长得像番号也仍是普通内容。
     attach_jav_display_fields(
         d, [tag["k"] for tag in d["tags"]],
@@ -747,6 +753,10 @@ def q_tops(contract: WebContract, n=28, jav=False, seed="", state=""):
         out = {}
         out["performers"] = pick("performer")
         out["studios"] = pick("studio")
+    # 顶栏那排厂牌小圆片据此决定要不要输出 `<img>`：没装标识就直接首字母垫底。
+    # 判定在库连接之外做，它读的是目录索引而不是账本。
+    for studio in out["studios"]:
+        studio["has_logo"] = contract.has_logo(studio["k"])
     return out
 
 

@@ -230,6 +230,17 @@
   的 `img` 统一 `object-fit: cover` 铺满方框，不加 inset、不加 padding、不改 contain：文件已经带够边距，
   页面再补一层就在图自带的底之外多围出一圈框，而三处各自补救的结果必然互相不一致。占位底色
   （`#CFCFCF`、`#fff`、`--overlay-5`）与首字母回落只在取不到图时露出来。
+- **没装标识的厂牌一个 `<img>` 都不输出。** 可用性随资料一起下发：`/api/tops` 的 `studios[].has_logo`、
+  `/api/item` 的 `entity_refs.studio[].has_logo` 与 `has_studio_logo`（非规范厂牌只有扁平 `studio`
+  字段，那格单独一个标志，漏了它那条路径会从「本来能取到图」退化成永远只显示首字母）、`/api/entity`
+  厂牌页的 `has_logo`。判据是 `WebContract.has_logo()`：一次 `os.scandir` 出的目录索引
+  （`logo_index()`，和封面的 `cover_index()` 同一个套路，TTL 90 秒，复核批准 `cache_bust()` 后立刻可见），
+  落盘名统一走 `previews.logo_key`——取图、可用性判定和批准落地只能有一份规则，各写一遍正则的代价是
+  「装上了却取不到」或「说有图但回 404」。旧写法是无条件出图、等 `/logo` 回 404 再由 `image-fallback`
+  换成首字母：首页实测 31 个 `/logo` 请求里 21 个是 404，而 404 那条响应不带缓存头，每次重绘再打一整轮。
+  门槛在 `tests/test_studio_icon_variants.py` 的 `LogoAvailabilityTests`（可用性与取图在同一个目录上
+  必须给同一个答案）和 `tests/test_web_ui.py` 的两条页面源测试（取图位必须带 `studio=` 与 `variant=`，
+  且必须先问过 `has_logo`）。
 - 补方形小标要借 `link_marks` 的内容比闸门，但不能借它的尺寸下限。`MIN_DESIGNED_SIZE=96` 是为
   `/link-mark` 那种 128 px 圆标定的；JAV 厂牌站的 favicon 普遍只有 32×32 或 64×64，直接套 `render_mark`
   会把 HEYZO、Idea Pocket、MOODYZ、Prestige、Wanz Factory、Tameike Goro 六个全退掉，还在复核件上记成

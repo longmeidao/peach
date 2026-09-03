@@ -17,7 +17,9 @@ from types import SimpleNamespace
 
 from PIL import Image
 
-from peach.previews import PreviewService, PreviewUnavailable
+from peach import web_review
+from peach.previews import LOGO_VARIANTS, PreviewService, PreviewUnavailable, logo_key
+from peach.web_state import WebContract
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -127,6 +129,123 @@ class VariantResolutionTests(unittest.TestCase):
         self.write("Idea_Pocket.img")
         icon = self.write(f'{MODULE.safe_name("Idea Pocket")}.icon.img')
         self.assertEqual(self.service.logo("Idea Pocket", "icon")[0], icon)
+
+
+class LogoAvailabilityTests(unittest.TestCase):
+    """「这个厂牌有没有标识」必须和 `/logo` 真正的取图判据逐字一致。
+
+    页面据此决定输出 `<img>` 还是直接首字母垫底。判得松一格就是「说有图但取回
+    404」——那个位置画出一张碎图；紧一格就是「明明装了却永远只显示首字母」。所以
+    两边在同一个目录上对照着测，不各测一半。
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name).resolve()
+        self.logos = root / "logos"
+        self.logos.mkdir(parents=True)
+        self.service = PreviewService(
+            SimpleNamespace(), SimpleNamespace(), root / "snapshots", root / "posters",
+            root / "avatars", self.logos)
+        # 库文件不必存在：可用性判定只扫目录，一个字节都不查库。但 `logo_root` 必须
+        # 显式给临时目录，默认值是本机真实的 generated 树。
+        self.contract = WebContract(root / "ledger.db", logo_root=self.logos)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def write(self, name: str) -> Path:
+        path = self.logos / name
+        path.write_bytes(b"x")
+        return path
+
+    def resolves(self, studio: str, variant: str = "icon") -> bool:
+        try:
+            self.service.logo(studio, variant)
+        except PreviewUnavailable:
+            return False
+        return True
+
+    def assertAgrees(self, studio: str):
+        """可用性判定和取图在同一个目录上给出同一个答案。
+
+        只对页面真会发的两个 variant 成立：三处取图位都带 `variant=`，裸 `/logo`
+        由 `test_web_ui` 那条页面源测试拦住。
+        """
+        available = self.contract.has_logo(studio)
+        for variant in LOGO_VARIANTS:
+            with self.subTest(studio=studio, variant=variant):
+                self.assertEqual(
+                    available, self.resolves(studio, variant),
+                    f"{studio!r}：可用性说 {available}，取图不同意")
+
+    def test_a_studio_with_a_file_is_available_and_one_without_is_not(self):
+        self.write("Fitch.img")
+        self.assertAgrees("Fitch")
+        self.assertAgrees("Nobody")
+
+    def test_the_installed_shape_agrees_on_both_variants(self):
+        """`--install` 落的就是这个形状：底图一份加两个变体，两边都得说有图。"""
+        for name in ("Fitch.img", "Fitch.icon.img", "Fitch.logo.img"):
+            self.write(name)
+        self.assertAgrees("Fitch")
+
+    def test_a_variant_only_studio_still_counts_as_available(self):
+        """只有变体文件、没有底图时仍算有图：那个变体确实取得到。
+
+        另一个变体会落空，但那条路径本来就有兜底（厂牌大位退到实体图，小圆片退到
+        首字母），而 `--install` 总会补上底图，这个形状只可能是手工摆出来的。判成
+        「没有图」反而更糟：装上的那张图从此永远不显示。
+        """
+        self.write("Fitch.icon.img")
+        self.assertTrue(self.contract.has_logo("Fitch"))
+        self.assertTrue(self.resolves("Fitch", "icon"))
+
+    def test_the_key_rule_survives_spaces_and_punctuation(self):
+        """页面上的厂牌名带空格、`&`、`/` 的比不带的多，落盘名全归一成下划线。"""
+        studios = ("V&R PRODUCE", "Kahanshin Tigers /Fetika", "M Girls' Lab")
+        for studio in studios:
+            self.write(f"{logo_key(studio)}.img")
+        for studio in studios:
+            self.assertAgrees(studio)
+
+    def test_availability_is_case_insensitive_like_the_resolver(self):
+        """`logo()` 对大小写不敏感（Windows 与 macOS 的默认文件系统就是这样），
+        索引不能顺手把这层容错丢了。"""
+        self.write("fitch.img")
+        self.assertTrue(self.contract.has_logo("FITCH"))
+        self.assertAgrees("FITCH")
+
+    def test_a_sidecar_or_a_vector_original_is_not_a_logo(self):
+        """`.ct` 边车和留档的 SVG 都不是 `/logo` 会取的文件，不算这个厂牌有图。"""
+        self.write("Fitch.img.ct")
+        self.write("Fitch.svg")
+        self.assertFalse(self.contract.has_logo("Fitch"))
+        self.assertAgrees("Fitch")
+
+    def test_an_empty_studio_name_is_never_available(self):
+        """裸 `/logo`（没有 studio）在服务端也是 404，页面不该发得出来。"""
+        for studio in (None, "", "   "):
+            with self.subTest(studio=studio):
+                self.assertFalse(self.contract.has_logo(studio))
+
+    def test_a_missing_logo_directory_is_an_empty_index(self):
+        """目录还没建（新机器、干净数据目录）时全部退回首字母，不是报错。"""
+        root = Path(self.tmp.name).resolve()
+        contract = WebContract(root / "ledger.db", logo_root=root / "nowhere")
+        self.assertEqual(contract.logo_index(), frozenset())
+        self.assertFalse(contract.has_logo("Fitch"))
+
+    def test_a_newly_installed_logo_shows_up_after_the_review_cache_bust(self):
+        """索引带 TTL，但复核批准会 `cache_bust()`：用户自己装上的图立刻可见。"""
+        self.assertFalse(self.contract.has_logo("Fitch"))
+        self.write("Fitch.img")
+        self.contract.cache_bust()
+        self.assertTrue(self.contract.has_logo("Fitch"))
+
+    def test_the_install_path_and_the_resolver_share_one_key_rule(self):
+        """批准落地写的文件名和取图找的文件名只能有一个实现。"""
+        self.assertIs(web_review.studio_logo_key, logo_key)
 
 
 class PageSourceTests(unittest.TestCase):

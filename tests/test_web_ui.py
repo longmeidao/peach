@@ -3057,6 +3057,43 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks(".idcell.logo .idface img{")
         self.assertPageLacks('style="width:100%;height:100%;object-fit:contain"')
 
+    def test_no_image_asks_for_a_studio_mark_without_naming_the_studio(self):
+        """`src="/logo"` 这种形态一定取不到图：`/logo` 不带 studio 就是 404。
+
+        它没有别的症状——那个位置只是永远空着，而 DevTools 的 Name 列只显示路径
+        末段，一整排 `logo` 看起来都像裸路径，肉眼分不出真裸的那一个。所以逐处扫
+        `src`：厂牌标识的地址必须带上 studio，也必须带上 variant（哪个位置要哪份图
+        是另一条契约，见 `test_studio_icon_variants`）。
+        """
+        marks = re.findall(r'src="(/logo[^"]*)"', self.page)
+        self.assertTrue(marks, "页面里应当仍有厂牌标识取图位")
+        for url in marks:
+            with self.subTest(url=url):
+                self.assertTrue(
+                    url.startswith("/logo?studio="),
+                    f"厂牌标识取图位没写 studio，这个请求必然 404：{url!r}")
+                self.assertIn("variant=", url, f"缺 variant：{url!r}")
+
+    def test_every_studio_mark_waits_until_the_logo_is_known_to_exist(self):
+        """没装标识就一个 `<img>` 都不输出，不许靠 404 再把图换成首字母。
+
+        三处取图位以前都是无条件出图：首页顶栏一排 30 个厂牌，实测 21 个 404，而
+        `/logo` 的 404 那条响应不可缓存，每次重绘再打一整轮。判据 `has_logo` 由
+        `/api/tops`、`/api/item`、`/api/entity` 随身份一起下发，和取图共用
+        `previews.logo_key`。
+
+        `studio=115` 那处例外：它取的是来源角标那份固定资产，不按厂牌名找图。
+        """
+        for match in re.finditer(r'src="/logo\?studio=([^"]*)"', self.page):
+            if match.group(1).startswith("115&"):
+                continue
+            preceding = self.page[max(0, match.start() - 240):match.start()]
+            with self.subTest(url=match.group(0)):
+                self.assertIn(
+                    "has_logo", preceding,
+                    "这处取图位没先问「装了没有」，缺标识时会打一个必然 404 的请求："
+                    f"{match.group(0)!r}")
+
     def test_status_tags_are_separated_and_nonessential_states_are_hidden(self):
         self.assertPageContains(".sep{flex:none;width:1px;height:19px")
         self.assertPageContains("{k:'later',label:'稍后看'},{k:'flagged',label:'已标记'}")

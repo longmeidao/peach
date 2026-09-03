@@ -1829,11 +1829,18 @@ async function buildBars(){
            ${imageFallbackAttrs({fallbacks:x.rep?[`/avatar?id=${x.rep}`]:[]})}>`
       : ''}</span>
     <span class="nm">${esc(x.k)}</span></button>`;
-  // 正规厂牌用官网 logo；缺失时只显示首字母，绝不把作品截图冒充厂牌图标。
+  /* 正规厂牌用官网 logo；缺失时只显示首字母，绝不把作品截图冒充厂牌图标。
+
+     没装标识就一个 `<img>` 都不输出。以前这里无条件出图、靠 `/logo` 回 404 再把
+     图换成首字母：顶栏一排 30 个厂牌，实测 21 个是 404，而 404 那条响应不可缓存，
+     每次重绘再打一整轮。`has_logo` 由 `/api/tops` 下发，判据和取图同一个函数。 */
   const bpHtml=x=>{
     const fallback=`${esc(x.k.slice(0,2))}`;
+    const mark=x.has_logo
+      ? `<img src="/logo?studio=${encodeURIComponent(x.k)}&variant=icon" alt="">`
+      : fallback;
     return `<button class="brandpill" data-entity-kind="studio" data-entity-name="${esc(x.k)}">
-      <span class="mk" data-fallback="${fallback}"><img src="/logo?studio=${encodeURIComponent(x.k)}&variant=icon" alt=""></span>${esc(x.k)}</button>`;
+      <span class="mk" data-fallback="${fallback}">${mark}</span>${esc(x.k)}</button>`;
   };
   // 空的一排仍占 28px，在「已标记」这种窄集合上就是两条什么都没有的空带。
   // 没人就不画那一排，两排都没人就整块收起。
@@ -1844,6 +1851,8 @@ async function buildBars(){
   $('#tiers').hidden=!(perfRow||studioRow);
   $('#tiers').querySelectorAll('[data-entity-kind]').forEach(b=>b.onclick=()=>
     openEntity(b.dataset.entityKind,b.dataset.entityName));
+  // 兜底只剩「装了但读不出来」这一种：文件坏了，或归一漏掉、图小到看不出是什么。
+  // 「没装标识」在 bpHtml 就已经不出图了，走不到这里。
   $('#tiers').querySelectorAll('.mk img').forEach(img=>{
     const fallback=()=>{const box=img.parentNode;if(box)box.textContent=box.dataset.fallback||''};
     img.addEventListener('error',fallback,{once:true});
@@ -5139,8 +5148,13 @@ async function openEntity(kind,name,push=true,requestedTag){
   $('#index').hidden=false;$('#grid').innerHTML='';$('#count').textContent='';
   $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
   const image=d.id?(kind==='studio'
-    ? `<img src="/logo?studio=${encodeURIComponent(d.canonical_name)}&variant=logo" alt="${esc(d.canonical_name)}"
-        ${imageFallbackAttrs({fallbacks:[`/entity-image?kind=studio&id=${d.id}`]})}>`
+    /* 厂牌大位先取标识、取不到才退到实体图。没装标识就直接从实体图起步：那一跳
+       必然 404，`has_logo` 已经把答案随资料一起下发了。 */
+    ? (d.has_logo
+      ? `<img src="/logo?studio=${encodeURIComponent(d.canonical_name)}&variant=logo" alt="${esc(d.canonical_name)}"
+          ${imageFallbackAttrs({fallbacks:[`/entity-image?kind=studio&id=${d.id}`]})}>`
+      : `<img src="/entity-image?kind=studio&id=${d.id}" alt="${esc(d.canonical_name)}"
+          ${imageFallbackAttrs()}>`)
     /* 兜底链的最后一环必须真的把 <img> 拿掉（`data-drop="self"`）：留着取不到图的
        <img> 会让浏览器画出 alt 文本（整个艺人名横在头像圈里），而 `:has(img)`
        仍然匹配，首字母垫底永远回不来。
@@ -5985,7 +5999,10 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   const fresh=name=>{const key=foldName(name);
     if(!name||identitySeen.has(key))return false;identitySeen.add(key);return true};
   const castList=performerRefs.filter(ref=>fresh(ref.name));
-  const studioFallback=studioRef?[]:(it.studio?[{id:null,name:it.studio}]:[]);
+  // 非规范厂牌只有扁平 `studio` 字段，它的标识可用性单独下发在 `has_studio_logo`：
+  // 不接过来，这条路径会从「本来能取到图」退化成永远只显示首字母。
+  const studioFallback=studioRef?[]
+    :(it.studio?[{id:null,name:it.studio,has_logo:it.has_studio_logo}]:[]);
   const studioList=[...(refs.studio||[]),...studioFallback].filter(ref=>fresh(ref.name));
   const creatorList=(refs.creator||[]).filter(ref=>fresh(ref.name));
   const seriesList=(refs.series||[]).filter(ref=>fresh(ref.name));
@@ -5997,7 +6014,8 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   const idFace=(kind,item)=>kind==='performer'
     ? `<span>${esc(item.name.slice(0,1))}</span>${item.id?`<img src="/entity-image?kind=performer&id=${item.id}" alt="" loading="lazy" data-drop="self">`:''}`
     : kind==='studio'
-      ? `<span>${esc(item.name.slice(0,2))}</span><img src="/logo?studio=${encodeURIComponent(item.name)}&variant=icon" alt="" loading="lazy" data-drop="self">`
+      // 和顶栏小圆片同一条判据：没装标识就不出 `<img>`，不再靠 404 把图摘掉。
+      ? `<span>${esc(item.name.slice(0,2))}</span>${item.has_logo?`<img src="/logo?studio=${encodeURIComponent(item.name)}&variant=icon" alt="" loading="lazy" data-drop="self">`:''}`
       : `<span>${esc(item.name.slice(0,1))}</span>`;
   const idCell=(kind,item,index)=>{
     const hide=kind==='performer'&&index>=CAST_SHOWN;

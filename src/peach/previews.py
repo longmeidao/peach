@@ -18,6 +18,21 @@ class PreviewUnavailable(RuntimeError):
     pass
 
 
+#: 厂牌标识的变体后缀。取图、可用性判定、落盘三处必须认同一套后缀，否则会出现
+#: 「只装了 `<key>.icon.img` 却被判成没有图」这种两边打架的结果。
+LOGO_VARIANTS = ("icon", "logo")
+
+
+def logo_key(studio: str) -> str:
+    """厂牌标识的落盘名。
+
+    `/logo` 取图、复核批准落地（`web_review._install_studio_logo`）和「这个厂牌有没
+    有图」的可用性判定都按这个名字找文件，所以规则只能有一份。各写一遍正则的代价是
+    任何一处收窄字符集或改长度上限，都会变成「装上了却取不到」或「说有图但回 404」。
+    """
+    return re.sub(r"[^A-Za-z0-9_-]", "_", studio)[:60]
+
+
 #: 预览生成的分片锁。原来是一把模块级全局锁：任何一个资产在生成海报，其他资产的
 #: 头像和海报全得排队，而 `avatar()` 持锁要连跑 6 次 ffmpeg（每次 20 秒上限），
 #: 最坏能把所有预览堵上两分钟。
@@ -123,11 +138,11 @@ class PreviewService:
         两个变体都回落到 `<safe>.img`，任何位置都照旧显示它。变体文件是新增的
         `<safe>.icon.img` / `<safe>.logo.img`，没有它们时行为和加这个参数之前一模一样。
         """
-        safe = re.sub(r"[^A-Za-z0-9_-]", "_", studio)[:60]
+        safe = logo_key(studio)
         if not safe:
             raise PreviewUnavailable("empty studio")
         names = [f"{safe}.img"]
-        if variant in {"icon", "logo"}:
+        if variant in LOGO_VARIANTS:
             # 认不出的 variant 不报错，按没传处理：页面可能是缓存下来的旧版本，
             # 为一个拼错的参数把图变成 404 只会让厂牌页平白缺图。
             names.insert(0, f"{safe}.{variant}.img")
