@@ -2228,30 +2228,36 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("junkloading")
 
     def test_category_switchers_are_geist_secondary_tabs_not_a_segmented_control(self):
-        """复核分类和垃圾文件分类是同一个控件：Geist Tabs 的 secondary 变体。
+        """复核分类和垃圾文件分类共用一套外观：带描边的 Geist Tabs secondary 几何。
 
         证据：`docs/reference-snapshots/vercel-geist-tabs-secondary-measured.md`，上游正文锁在
         `docs/reference-snapshots/upstream/vercel-geist-tabs.md` 与 `.../vercel-geist-switch.md`。
         分段器（Switch）只承担 2–3 项互斥视图，标签超过两三个字就要换 Tabs；复核分类 10 项、
-        垃圾文件分类 7 项都在界外，所以这两条是 Tabs 不是分段器。secondary 变体实测是无边框
-        pill：高 32px、左右 12px、6px 圆角、13px/400，选中只换底色。原先那套 `--ink-2` 反相加
-        600 字重比规范重了一整级，而且两条各画各的，同一个控件在两页长得不一样。
+        垃圾文件分类 7 项都在界外，所以这两条是 Tabs 不是分段器。几何取 secondary 变体：
+        高 32px、左右 12px、6px 圆角、13px/400，hover 只换文字色，选中只抬底不动边框。
+        描边是记录在案的有意偏离：上游 secondary 不描边，但它没有「必须放在容器内」这类
+        条款（未取得），而 Peach 这两条直接坐在页面顶部、四周没有容器边线，不描边时只有
+        选中那一枚有底色。描边一旦被后来的「对齐规范」顺手删掉，这个判据就没人记得了。
+        描边之后相邻两枚不能再紧贴，否则两条 1px 边粘成一条 2px 的，所以 gap 从 0 抬到 5px。
         """
         self.assertPageContains(
-            ".reviewtabs,.junkfilters{display:flex;align-items:center;gap:0;min-width:0;"
+            ".reviewtabs,.junkfilters{display:flex;align-items:center;gap:5px;min-width:0;"
             "overflow-x:auto;scrollbar-width:none}")
         self.assertCode(
             ".reviewtabs button,.junkfilters a{box-sizing:border-box;height:32px;padding:0 12px;flex:none;"
-            "display:inline-flex;align-items:center;gap:6px;border:0;border-radius:var(--control-radius);"
-            "background:transparent;color:var(--muted);text-decoration:none;font:inherit;"
-            "font-size:var(--fs-sm);font-weight:400;white-space:nowrap;cursor:pointer}")
+            "display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border-15);"
+            "border-radius:var(--control-radius);background:transparent;color:var(--ink-2);"
+            "text-decoration:none;font:inherit;font-size:var(--fs-sm);font-weight:400;"
+            "white-space:nowrap;cursor:pointer}")
         self.assertPageContains(
             '.reviewtabs button[aria-selected="true"],.junkfilters a[aria-current="page"]'
             '{background:var(--hover);color:var(--ink)}')
-        # 反相和边框都得真的消失，否则规范只落在注释里。
+        # 反相底色不能回来；描边只到 --border-15 那一档，不跟着选中态提亮。
         self.assertPageLacks('.reviewtabs button[aria-pressed="true"]{background:var(--ink-2)')
         self.assertPageLacks('.junkfilters a[aria-current="page"]{border-color:var(--ink-2)')
-        # 复核那条没有独立 URL，升级成真 tablist：方向键漫游焦点，tabindex 只留在选中项上。
+        # 外观一样不代表语义一样。复核那条切的是 10 个互不相同的候选数据集，每个分类换掉
+        # 整个面板的数据模型，也没有独立 URL，所以是真 tablist：方向键漫游焦点，tabindex
+        # 只留在选中项上。
         self.assertPageContains('<div class="reviewtabs" role="tablist" aria-label="复核分类">')
         self.assertPageContains('<button role="tab" id="reviewtab-${key}" aria-controls="reviewpanel"')
         self.assertPageContains('aria-selected="${on}" tabindex="${on?' + repr('0') + ':' + repr('-1') + '}"')
@@ -2261,8 +2267,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const step=event.key==='ArrowRight'?1:event.key==='ArrowLeft'?-1:0;")
         self.assertPageContains(
             ":event.key==='Home'?reviewTabs[0]:event.key==='End'?reviewTabs[reviewTabs.length-1]:null;")
-        # 垃圾文件那条仍是链接：规范要求当前项落在 URL 上，可深链、刷新可恢复。
+        # 垃圾文件那条是同一批候选按 type 收窄，数据模型不变，当前项落在 URL 上，所以是
+        # 导航链接而不是 tab。别为了「两条长得一样」把它也套上 tablist：屏幕阅读器会把
+        # 筛选念成「标签页 3 of 7」，键盘上还会多出一层方向键漫游，Ctrl 点开新页也没了。
         self.assertPageContains('<nav class="junkfilters" aria-label="垃圾文件分类">')
+        self.assertPageLacks('class="junkfilters" role="tablist"')
         self.assertPageContains('data-junk-kind-link="${esc(key)}"${current?' + repr(' aria-current="page"'))
         # 计数是徽标不是标题的一部分，为 0 时整枚去掉，两条一个口径。
         self.assertPageContains(
