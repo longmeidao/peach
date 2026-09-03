@@ -24,7 +24,7 @@ LOGO_VARIANTS = ("icon", "logo")
 
 
 def logo_key(studio: str) -> str:
-    """厂牌标识的落盘名。
+    r"""厂牌标识的落盘名。
 
     `/logo` 取图、复核批准落地（`web_review._install_studio_logo`）和「这个厂牌有没
     有图」的可用性判定都按这个名字找文件，所以规则只能有一份。各写一遍正则的代价是
