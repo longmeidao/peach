@@ -1417,6 +1417,58 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .video-js .vjs-peach-menu-option{display:grid;grid-template-columns:35px minmax(0,1fr);align-items:center;padding:0 20px 0 0!important;text-align:left;font-size:var(--fs-md)!important;line-height:18.2px}
 .vjs-peach-option-check{width:35px;height:24px;display:grid;place-items:center}.vjs-peach-option-check svg{width:24px;height:24px;display:block;fill:currentColor;stroke:none}
 .vjs-peach-option-label{min-width:0}
+/* 播放速度面板照 YouTube delhi-modern（player 9470c977 的 www-player.css 与 base.js）：
+   内容区 24px/16px/16px 内距；读数 18px/900/22px 居中、下留 24px；滑条一行 gap 16px、
+   下留 24px，加减键 32px 圆、24px 字，各动 0.05；预设胶囊 53×32、圆角 16、12px 字、gap 8px，
+   底色 rgba(255,255,255,.1)、悬停 .2、按下 .3，过渡 .2s cubic-bezier(.05,0,0,1)；
+   1.0 下面挂一行 14px 行高的说明。滑条轨道 4px 高，已过部分 #fff、余下 #909090，
+   把手 16px 白圆上移 6px；已过比例由脚本写进自定义属性，上游同样是自定义属性驱动。
+   字号、字重和圆角走 Peach 自己的 token：上游读数那档 18px/900 和说明那档 10px 都不在
+   Peach 的字号刻度上，900 也不在 Geist 的三档字重里；胶囊和轨道的圆角本来就大于自身高度的
+   一半，`--pill-radius` 渲染出来与上游那两个字面值一模一样。 */
+.vjs-peach-speed-panel{box-sizing:border-box;display:flex;flex-direction:column;padding:24px 16px 16px}
+.vjs-peach-speed-display{display:flex;justify-content:center;margin-bottom:24px;
+  font-size:var(--fs-lg);font-weight:600;line-height:22px;color:#fff}
+.vjs-peach-speed-slider{display:flex;align-items:center;gap:16px;margin-bottom:24px}
+.vjs-peach-speed-chips{display:flex;align-items:flex-start;gap:8px}
+.vjs-peach-speed-preset{display:flex;flex-direction:column;align-items:center}
+.vjs-peach-speed-preset-label{margin-top:4px;font-size:var(--fs-xs);font-weight:400;line-height:14px;color:rgba(255,255,255,.7)}
+.vjs-peach-settings-menu .vjs-peach-speed-button{display:flex;justify-content:center;align-items:center;
+  height:32px;min-height:32px;padding:0;border:0;border-radius:var(--pill-radius);background:rgba(255,255,255,.1);
+  color:#fff;font-weight:500;line-height:16px;text-align:center;cursor:pointer;
+  transition:background .2s cubic-bezier(.05,0,0,1)}
+.vjs-peach-settings-menu .vjs-peach-speed-button:before{content:none}
+.vjs-peach-settings-menu .vjs-peach-speed-button:hover{background:rgba(255,255,255,.2)}
+.vjs-peach-settings-menu .vjs-peach-speed-button:active{background:rgba(255,255,255,.3)}
+.vjs-peach-speed-slider .vjs-peach-speed-button{flex:none;width:32px;font-size:var(--fs-2xl)}
+.vjs-peach-speed-chips .vjs-peach-speed-button{width:53px;gap:4px;font-size:var(--fs-xs)}
+.vjs-peach-speed-range{--peach-speed-percent:0%;-webkit-appearance:none;appearance:none;flex:1 1 auto;
+  width:100%;min-width:0;height:24px;margin:0;background:transparent;cursor:pointer}
+.vjs-peach-speed-range:focus-visible{outline:0}
+.vjs-peach-speed-range::-webkit-slider-runnable-track{height:4px;border-radius:var(--pill-radius);
+  background:linear-gradient(to right,#fff 0,#fff var(--peach-speed-percent),#909090 var(--peach-speed-percent),#909090 100%)}
+.vjs-peach-speed-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;
+  margin-top:-6px;border-radius:50%;background:#fff}
+.vjs-peach-speed-range::-moz-range-track{height:4px;border-radius:var(--pill-radius);
+  background:linear-gradient(to right,#fff 0,#fff var(--peach-speed-percent),#909090 var(--peach-speed-percent),#909090 100%)}
+.vjs-peach-speed-range::-moz-range-thumb{width:16px;height:16px;border:0;border-radius:50%;background:#fff}
+/* 320px 高的播放器只给面板 246px：内距和两处 24px 间隔都收到 16px 就是 225px。 */
+.video-js.vjs-peach-xsmall .vjs-peach-speed-panel{padding:16px}
+.video-js.vjs-peach-xsmall .vjs-peach-speed-display,
+.video-js.vjs-peach-xsmall .vjs-peach-speed-slider{margin-bottom:16px}
+/* 中心提示照同一份 www-player.css：`.ytp-bezel` 78px 圆、blur(16px)、rgba(0,0,0,.6)，
+   图标 54px；窄屏收到 64px 圆配 48px 图标。动画 1s cubic-bezier(.05,0,0,1) 走
+   0→1.33→1 的缩放淡出，`role="status"` 带这一次的动作名。 */
+.vjs-peach-bezel{position:absolute;z-index:19;left:50%;top:50%;width:78px;height:78px;margin:-39px 0 0 -39px;
+  display:grid;place-items:center;border-radius:50%;background:rgba(0,0,0,.6);
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:#fff;opacity:0;pointer-events:none}
+.vjs-peach-bezel[hidden]{display:none}
+.vjs-peach-bezel-icon{display:grid;place-items:center;width:54px;height:54px}
+.vjs-peach-bezel-icon svg{width:100%;height:100%;display:block;fill:currentColor;stroke:none}
+.vjs-peach-bezel-run{animation:peach-bezel-fadeout 1s cubic-bezier(.05,0,0,1) 1 normal forwards}
+@keyframes peach-bezel-fadeout{0%{opacity:0}25%,75%{opacity:1;transform:scale(1.33)}to{opacity:0;transform:scale(1)}}
+.video-js.vjs-peach-xsmall .vjs-peach-bezel{width:64px;height:64px;margin:-32px 0 0 -32px}
+.video-js.vjs-peach-xsmall .vjs-peach-bezel-icon{width:48px;height:48px}
 /* 悬停提示取自 YouTube delhi-modern（player 9470c977 的 www-player.css）：毛玻璃 blur(16px)、
    8px 圆角（--surface-radius）、5px 9px 内距、13px/15px 500 字重（--fs-sm）、
    text-shadow 0 0 2px #000；快捷键徽标 1px rgba(255,255,255,.3) 边、4px 圆角（--badge-radius）、
@@ -1455,8 +1507,12 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control:not(.vjs-peach-expand)>button>svg{width:18px;height:18px}
 /* 窄屏只有展开键不缩：YouTube 那边其余按钮的 svg 是 18px 加 7px 内边距，
    `.ytp-expand-right-bottom-section-button` 的 svg 内边距是 0，整块 32px 铺满按钮。
-   跟着缩到 18px 的话，这个本来就细的箭头在窄屏上几乎看不出是个可点的键。 */
+   跟着缩到 18px 的话，这个箭头在窄屏上几乎看不出是个可点的键。 */
 .video-js.vjs-peach-xsmall .vjs-peach-expand>button>svg{width:32px;height:32px}
+/* 窄屏的悬停底照 `.ytp-delhi-modern.ytp-xsmall-width-mode .ytp-chrome-bottom .ytp-button:before`：
+   32×32 的正圆。上游按钮本体 32px 配 4px 2px 外边距，正好是这里 40px 行高里 36px 的一格。 */
+.video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control>.vjs-peach-hover{
+  left:2px;width:32px;height:32px;border-radius:50%}
 /* 折叠态里设置键就是这排的右端，`right:-100px` 是给它右边还有影院和全屏时留的位；
    窄屏照原样偏移会把整个面板推到播放器外面。贴住设置键右缘往左铺，高度按播放器
    自己的高度收顶（`--peach-player-h` 由布局脚本写在播放器元素上）。 */
@@ -1540,9 +1596,9 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .sidecontent{box-sizing:border-box;width:100%;height:100%;max-height:76vh;padding:18px;display:flex;gap:0;
   flex-direction:column;overflow-y:auto;overflow-x:hidden}
 .stitle{font-size:var(--fs-lg);line-height:1.4;word-break:break-all;margin-bottom:8px}
-/* 来源徽标和两个文件动作都浮出标题的文字流：徽标浮左只缩进第一行，折行后的第二行顶到
-   内容左边缘；动作浮右占住行末那 66px，右边有空间时不会被挤到下一行。两个浮动块都刚好
-   一行高（28px），所以第二行起是整行宽。行高 1.75 让 26px 的按钮上下各留出空隙。 */
+/* 来源徽标浮左，只缩进标题的第一行，折行后的第二行顶到内容左边缘；浮动块整好一行高
+   （28px），所以第二行起是整行宽。两个文件动作跟在标题文字末尾，26px 的按钮加 3px 上下
+   外边距把所在那一行的行盒撑到 32px，按钮和上下两行文字各留 3px。 */
 .detailtitle{display:flow-root;margin-bottom:10px}
 .detailtitle>.srcbig{float:left;width:17px;height:28px;margin:0 8px 0 0;place-items:center}
 .detailtitle .stitle{min-width:0;margin:0;line-height:1.75}
@@ -1556,7 +1612,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .srctools button:hover{background:var(--hover);color:var(--ink)}
 .srctools button:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
 .srcstate{font-size:var(--fs-xs);color:var(--muted);min-width:0;flex:1 1 100%}
-.detailtitletools{float:right;height:26px;margin:0 0 2px 8px;flex-wrap:nowrap}.detailtitlestate{display:block;margin:-4px 0 10px}
+.detailtitletools{display:inline-flex;vertical-align:middle;margin:3px 0 3px 8px;flex-wrap:nowrap}.detailtitlestate{display:block;margin:-4px 0 10px}
 .detailtitlestate:empty{display:none}
 .photohead .srctools{margin:0 0 0 auto}
 .photohead .srcstate{flex:none}

@@ -915,12 +915,38 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0,initialSourceQu
     panel.querySelector('[data-player-speed]').onclick=()=>showSpeed();
     panel.querySelector('[data-player-quality-view]').onclick=()=>showQuality();
   };
+  /* 播放速度面板照 YouTube delhi-modern（player 9470c977 的 base.js）：滑条两端取播放器
+     支持的最低与最高倍速，步进 0.05，加减键各动 0.05 并按两位小数收敛，读数写成 1.00x。
+     预设胶囊点了就地生效，面板不退回上一级；上游第五个胶囊是 Premium 专属的 3.0 倍，
+     Peach 没有分级，那一格连同角标一起不做。 */
+  const SPEED_RATES=[.25,.5,.75,1,1.25,1.5,1.75,2],SPEED_STEP=.05,SPEED_PRESETS=[1,1.25,1.5,2];
+  const speedLabel=speed=>Number.isInteger(speed)?speed.toFixed(1):String(speed);
   const showSpeed=(direction=1)=>{
-    const selectedSpeed=Number(player.playbackRate())||1,speeds=[.25,.5,.75,1,1.25,1.5,1.75,2];
-    const panel=renderPanel(`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="返回上一个菜单">${icon('player-menu-back')}</button><strong>播放速度</strong></div><div class="vjs-peach-panel-menu">${speeds.map(speed=>
-      `<button type="button" class="vjs-peach-menu-option" role="menuitemradio" data-player-speed-option="${speed}" aria-checked="${speed===selectedSpeed}"><span class="vjs-peach-option-check">${speed===selectedSpeed?icon('player-option-check'):''}</span><span class="vjs-peach-option-label">${speed===1?'正常':speed+'×'}</span></button>`).join('')}</div>`,direction);
+    const min=SPEED_RATES[0],max=SPEED_RATES[SPEED_RATES.length-1];
+    const clampSpeed=value=>Math.min(max,Math.max(min,Number(value.toFixed(2))));
+    const panel=renderPanel(`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="返回上一个菜单">${icon('player-menu-back')}</button><strong>播放速度</strong></div>
+      <div class="vjs-peach-speed-panel"><div class="vjs-peach-speed-display"><output data-player-speed-display></output></div>
+      <div class="vjs-peach-speed-slider"><button type="button" class="vjs-peach-speed-button" data-player-speed-step="-1" aria-label="播放速度减 0.05">−</button>
+      <input type="range" class="vjs-peach-speed-range" data-player-speed-range min="${min}" max="${max}" step="${SPEED_STEP}" aria-label="播放速度">
+      <button type="button" class="vjs-peach-speed-button" data-player-speed-step="1" aria-label="播放速度加 0.05">+</button></div>
+      <div class="vjs-peach-speed-chips">${SPEED_PRESETS.map(speed=>
+        `<span class="vjs-peach-speed-preset"><button type="button" class="vjs-peach-speed-button" data-player-speed-option="${speed}" aria-pressed="false">${speedLabel(speed)}</button>${speed===1?'<span class="vjs-peach-speed-preset-label">正常</span>':''}</span>`).join('')}</div></div>`,direction);
+    const display=panel.querySelector('[data-player-speed-display]'),range=panel.querySelector('[data-player-speed-range]');
+    const syncSpeed=()=>{
+      const speed=clampSpeed(Number(player.playbackRate())||1);
+      display.textContent=`${speed.toFixed(2)}x`;range.value=String(speed);
+      range.style.setProperty('--peach-speed-percent',`${(speed-min)/(max-min)*100}%`);
+      panel.querySelectorAll('[data-player-speed-option]').forEach(button=>
+        button.setAttribute('aria-pressed',String(Number(button.dataset.playerSpeedOption)===speed)));
+    };
+    const setSpeed=speed=>{player.playbackRate(clampSpeed(speed));syncSpeed()};
     panel.querySelector('[data-player-menu-back]').onclick=()=>showMain(-1);
-    panel.querySelectorAll('[data-player-speed-option]').forEach(button=>button.onclick=()=>{player.playbackRate(Number(button.dataset.playerSpeedOption));showMain(-1)});
+    range.oninput=()=>setSpeed(Number(range.value));
+    panel.querySelectorAll('[data-player-speed-step]').forEach(button=>button.onclick=()=>
+      setSpeed((Number(player.playbackRate())||1)+Number(button.dataset.playerSpeedStep)*SPEED_STEP));
+    panel.querySelectorAll('[data-player-speed-option]').forEach(button=>button.onclick=()=>
+      setSpeed(Number(button.dataset.playerSpeedOption)));
+    syncSpeed();
   };
   const showQuality=(direction=1)=>{
     const {options}=qualityRows();
@@ -989,6 +1015,32 @@ function mountPlayerChromeLayout(player){
   const syncVolumeIcon=()=>{const silent=player.muted()||player.volume()===0;
     muteUse?.setAttribute('href',silent?'#i-player-volume-muted':'#i-player-volume');syncMuteTooltip(silent?'取消静音':'静音')};
   player.on('volumechange',syncVolumeIcon);syncVolumeIcon();
+  /* 中心提示照 YouTube delhi-modern（player 9470c977 的 www-player.css 与 base.js）：一块
+     78px 的毛玻璃圆闪一下当前动作的图标，1s 走完 0→1.33→1 的缩放淡出。捕获阶段读的是
+     切换之前的状态，闪出来的正好是这一次做的事：暂停中点播放键闪播放。键盘快捷键走的
+     也是同一个按钮的点击路径，所以只挂控制条这一处。 */
+  const bezel=document.createElement('div');
+  bezel.className='vjs-peach-bezel';bezel.setAttribute('role','status');bezel.hidden=true;
+  bezel.innerHTML=`<span class="vjs-peach-bezel-icon">${icon('player-play')}</span>`;
+  const bezelUse=bezel.querySelector('use');let bezelTimer=null;
+  const flashBezel=(name,label)=>{
+    bezelUse.setAttribute('href',`#i-${name}`);bezel.setAttribute('aria-label',label);
+    bezel.hidden=false;bezel.classList.remove('vjs-peach-bezel-run');
+    void bezel.offsetWidth;bezel.classList.add('vjs-peach-bezel-run');
+    if(bezelTimer)clearTimeout(bezelTimer);
+    bezelTimer=setTimeout(()=>{bezel.hidden=true;bezel.classList.remove('vjs-peach-bezel-run')},1000);
+  };
+  player.el().insertBefore(bezel,controlBar);
+  controlBar.addEventListener('click',event=>{
+    if(event.target.closest('.vjs-play-control')){
+      const paused=player.paused()||player.ended();
+      flashBezel(paused?'player-play':'player-pause',paused?'播放':'暂停');
+    }else if(event.target.closest('.vjs-mute-control')){
+      const silent=player.muted()||player.volume()===0;
+      flashBezel(silent?'player-volume':'player-volume-muted',silent?'取消静音':'静音');
+    }
+  },true);
+  player.on('dispose',()=>{if(bezelTimer)clearTimeout(bezelTimer)});
   const time=document.createElement('button');let remaining=false;
   time.type='button';time.className='vjs-peach-time vjs-control';time.dataset.playerTime='';
   time.innerHTML='<span class="vjs-peach-time-text"></span>';
@@ -1042,8 +1094,10 @@ function mountPlayerChromeLayout(player){
   const expand=document.createElement('div');expand.className='vjs-peach-expand vjs-control';
   /* 高亮层要挂在 `.vjs-control` 这一层：亮起来的规则是 `>.vjs-peach-hover`，塞进
      button 里就差一层，展开键成了这排唯一没有 hover 的按钮。位置在这排左端——
-     这排整体右对齐，展开时新按钮从它右边长出来，箭头指左才对得上要发生的事。 */
-  expand.innerHTML=`<button type="button" data-player-expand aria-expanded="false">${icon('player-menu-next')}</button><span class="vjs-peach-hover" aria-hidden="true"></span>`;
+     这排整体右对齐，展开时新按钮从它右边长出来，箭头指左才对得上要发生的事。箭头用
+     `i-player-expand`：菜单行那个 `>` 是 24 视框、一个单位粗的细线，铺到 32px 只有 1.3px 粗；
+     上游展开键自带一个 32 视框、两个单位粗的箭头，同样 32px 渲染就是 2px。 */
+  expand.innerHTML=`<button type="button" data-player-expand aria-expanded="false">${icon('player-expand')}</button><span class="vjs-peach-hover" aria-hidden="true"></span>`;
   group.prepend(expand);
   const expandButton=expand.querySelector('button');
   const syncExpandTooltip=playerControlTooltip(expandButton,'展开控件');
@@ -6297,8 +6351,8 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
        :`<video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="metadata"></video>`}
     </div>${queueContext?queueHtml(queueContext,it.id):''}
     <div class="side"><div class="sidecontent">
-      <div class="detailtitle">${srcBadge(it.location,it.cost,'srcbig')}${it.location==='online'?'':`<span class="srctools detailtitletools">${sourceToolButtons(it.id)}</span>`}
-        <div class="stitle">${javTitleHtml(it)}</div></div>
+      <div class="detailtitle">${srcBadge(it.location,it.cost,'srcbig')}
+        <div class="stitle">${javTitleHtml(it)}${it.location==='online'?'':`<span class="srctools detailtitletools">${sourceToolButtons(it.id)}</span>`}</div></div>
       ${it.location==='online'?'':`<span class="srcstate detailtitlestate" aria-live="polite"></span>`}
       <div class="smeta mono">
         <span class="detailmetaitem">${icon('monitor')}<span>${it.width||'?'}×${it.height||'?'}</span></span>
