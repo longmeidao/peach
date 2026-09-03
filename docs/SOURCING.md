@@ -27,6 +27,12 @@
 - 判断「账本已经有这个名字」要连罗马字一起看，不能用 `peach.entities.name_chain`。那个链按设计剔掉罗马字
   （拿罗马字去日文站查是白跑），但拿它当「已有」判据会把 `entity_alias` 里明摆着的 `Rin Natsuki` 再报一遍
   新别名。要全量就直接读 `canonical_name` 加 `entity_alias`。
+- 上游名字里的零宽字符在 `canonicalize_entity_name` 一处剥掉，不在各脚本里各修一遍。
+  `str.strip()` 不认它们是空白，`normalized_name` 于是带着一个看不见的字符：界面上和普通名字
+  一模一样，但 `upsert_asset_entity` 按 `normalized_name` 找不到已有实体，同一个人存成两条，
+  按名字搜也一个都搜不到。剥 U+200B／U+200C／U+2060／U+FEFF；**U+200D 不剥**，emoji 的家庭与
+  职业序列靠它连字，剥掉会把创作者名字里的一个字形拆成两三个。账本里的两个存量
+  （performer 7786 的别名、creator 7513 的规范名）已清，备份 `ledger.pre-zero-width-names-20260904.db`。
 
 ## 番号目录、创作者与水印
 

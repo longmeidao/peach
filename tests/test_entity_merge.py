@@ -11,6 +11,7 @@ from peach.entities import (
     canonicalize_entity_name,
     collapse_repeated_entity_name,
     merge_entity,
+    normalize_entity_name,
     upsert_asset_entity,
 )
 from peach.migrations import upgrade
@@ -109,6 +110,37 @@ class EntityMergeTests(unittest.TestCase):
         ).fetchone()[0], 2, "旧名别名不得被重新建成第三个实体")
         self.assertEqual(collapse_repeated_entity_name("A B A B"), "A B")
         self.assertEqual(canonicalize_entity_name("performer", "画像を拡大する"), "")
+
+
+class ZeroWidthNameTests(unittest.TestCase):
+    """规范名里的零宽字符。
+
+    上游译名夹带过两个实例：performer 的 `‌斋藤亚美里` 和 creator 的
+    `比特ビット‌`。界面上和普通名字一模一样，问题全在比对上。
+    """
+
+    def test_a_zero_width_char_does_not_survive_into_the_canonical_name(self):
+        self.assertEqual(canonicalize_entity_name("performer", "‌斋藤亚美里"),
+                         "斋藤亚美里")
+        self.assertEqual(canonicalize_entity_name("creator", "比特ビット‌"),
+                         "比特ビット")
+
+    def test_the_normalised_name_matches_across_the_invisible_difference(self):
+        """`strip()` 不认零宽字符是空白，`normalized_name` 于是带着它。
+
+        后果不是显示出错，是 `upsert_asset_entity` 按 `normalized_name` 找不到已有
+        实体，同一个人存成两条；按名字搜也一个都搜不到。
+        """
+        self.assertEqual(normalize_entity_name("比特ビット‌"),
+                         normalize_entity_name("比特ビット"))
+
+    def test_the_joiner_inside_an_emoji_is_left_alone(self):
+        """U+200D 在 emoji 序列里是连字符，剥掉会把一个字形拆成三个。
+
+        创作者名字里带 emoji 是常事，所以它不在剥除名单里。
+        """
+        self.assertEqual(canonicalize_entity_name("creator", "👨‍👩‍👧"),
+                         "👨‍👩‍👧")
 
 
 if __name__ == "__main__":
