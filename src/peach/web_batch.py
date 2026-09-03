@@ -86,9 +86,18 @@ BUNDLE_DIR_ASSETS = 20
 #: `三国志侵略版-免费18禁手游-扫码安装.png` 剥完仍剩 6 个字的游戏名，单看名字只够
 #: 中间档；但同目录另外 10 个文件挂着一模一样的推广尾巴，谁都不是正片的一部分。
 PROMO_CLUSTER_FILES = 3
-#: 缩略图与封面相对正片的固定尾巴（`MIAD573_02.wmv` ↔ `MIAD573_02_s.jpg`）。
+#: 缩略图与封面相对正片的固定尾巴（`MIAD573_02.wmv` ↔ `MIAD573_02_s.jpg`，
+#: `LXVS006-BD.iso` ↔ `lxvs006pl.jpg`）。`pl`／`ps` 是 JAV 大小海报的通用写法。
 #: 不剥数字：剥了 `MIAD573_02_s` 会退到 `MIAD573`，那已经不是同一条正片。
-SHOT_TAIL = re.compile(r"[-_. ]?(?:s|t|thumb|poster|cover|fanart|big|small)$", re.I)
+SHOT_TAIL = re.compile(r"[-_. ]?(?:s|t|pl|ps|thumb|poster|cover|fanart|big|small)$", re.I)
+#: 正片自己带的画质与载体尾巴，只在配对时剥，用来让海报对上原盘。
+DISC_TAIL = re.compile(r"[-_. ]?(?:bd|bdmv|bdiso|bdrip|dvd|dvdiso|iso|uhd|fhd|hd)$", re.I)
+#: 超过这个体积的文件自己就是内容，不必再看目录名。
+#:
+#: `javme.me_LXVS-006-BD\LXVS006-BD.iso` 是 19.8 GB 的蓝光原盘，却因为住在
+#: 「域名+番号」的目录里被判 45 分。广告不会有大文件：整包插页加起来都不到 10 MB，
+#: 一个上 GB 的文件是资源站给自己的资源改了目录名，不是资源站塞进来的推广。
+CONTENT_BYTES = 1024 ** 3
 INTERNET_SHORTCUT_SUFFIXES = frozenset({".url"})
 JUNK_KINDS = frozenset({"video", "image", "audio", "archive", "url", "other"})
 
@@ -117,16 +126,24 @@ def _folder_index(connection) -> tuple[dict[str, int], dict[str, set[str]]]:
     两条判据都要看候选的邻居而不只是它自己：成套资源看目录规模，封面与截图看
     同目录有没有同名正片。`rsplit` 而不是 `PureWindowsPath`：ledger 路径统统是
     Windows 形态，这里要跑全表七万多行，只取目录名不值得为每行造一个路径对象。
+
+    正片不限于 `medium='video'`：蓝光原盘在账本里是 `other`，它同样是海报要配的那份
+    内容。用体积兜住这一类，不去猜扩展名——`.iso`、`.mds`、`BDMV` 之外还有什么，
+    库里下一份原盘才知道。
     """
     counts: dict[str, int] = {}
     videos: dict[str, set[str]] = {}
-    for path, medium in connection.execute(
-            "SELECT path,medium FROM asset WHERE path IS NOT NULL AND path<>''"):
+    for path, medium, size in connection.execute(
+            "SELECT path,medium,size FROM asset WHERE path IS NOT NULL AND path<>''"):
         folder, _, filename = str(path).rpartition("\\")
         counts[folder] = counts.get(folder, 0) + 1
-        if medium == "video":
+        if medium == "video" or (size or 0) >= CONTENT_BYTES:
             stem = filename.rsplit(".", 1)[0] if "." in filename else filename
-            videos.setdefault(folder, set()).add(stem.casefold())
+            key = stem.casefold()
+            videos.setdefault(folder, set()).add(key)
+            trimmed = DISC_TAIL.sub("", key)
+            if trimmed:
+                videos[folder].add(trimmed)
     return counts, videos
 
 
@@ -153,7 +170,8 @@ def q_ads(contract: WebContract, limit=200, offset=0, kind="", status="pending")
     手游插页靠 `PROMO_FILLER` 与不再补空格的残留计算入队，剩下几个残留仍高的靠
     `PROMO_CLUSTER_FILES`（同目录成群的同类推广名）补齐；同目录资产满
     `BUNDLE_DIR_ASSETS` 的成套资源包不再因整名是域名而入队；文件自己是真番号、
-    或是同目录正片的封面／截图时，`AD_DIRPACK` 的目录证据不成立。
+    自己超过 `CONTENT_BYTES`、或是同目录正片的封面／截图时，`AD_DIRPACK` 的目录
+    证据不成立——蓝光原盘和它的海报都属于这一类。
 
     物理资源的类型不能成为免检条件。视频保留时长、体积和同番号长版证据；图片、
     音频、压缩包和其它文件走共用的推广名／推广目录证据；Windows ``.url`` 是网址
@@ -221,13 +239,15 @@ def q_ads(contract: WebContract, limit=200, offset=0, kind="", status="pending")
         # 成套下载的资源包里，域名是打包渠道给整包起的名，不是插页的自我暴露。
         bundled = folder_assets.get(folder, 0) >= BUNDLE_DIR_ASSETS
         # 目录名带推广站域名只说明「从哪个站下的」，说明不了这个文件是广告。
-        # 图片自己是真番号、或者是同目录正片的封面／截图时，目录证据就不成立。
+        # 文件自己是真番号、自己就有内容级的体积、或者是同目录正片的封面／截图时，
+        # 目录证据就不成立。
         #
-        # 只放图片：广告包里的视频本来就叫 `极道世界.mp4`，它的 code 是旧导入器从
+        # 只放非视频：广告包里的视频本来就叫 `极道世界.mp4`，它的 code 是旧导入器从
         # `bbsxv.xyz-DOCP-324` 目录名投影出来的真番号形状，而它自己就在同目录的正片
         # 名单里——两条豁免对视频都会自动成立，`AD_DIRPACK` 这条判据就没了。
         self_evident = d.get("medium") != "video" and (
             is_jav_code(d.get("code"))
+            or (d.get("size") or 0) >= CONTENT_BYTES
             or has_sibling_original(nm, folder_videos.get(folder, frozenset()))
         )
         if promo and residue < 6 and not bundled:

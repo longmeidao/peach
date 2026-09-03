@@ -10,6 +10,7 @@ from pathlib import Path
 
 from peach.web_contract import (
     BUNDLE_DIR_ASSETS,
+    CONTENT_BYTES,
     PART_MARK,
     PROMO_CLUSTER_FILES,
     PROMO_DOMAIN,
@@ -132,6 +133,19 @@ class AdJudgementTests(unittest.TestCase):
         self.assertTrue(has_sibling_original("BNST-033-cover", {"bnst-033"}))
         self.assertFalse(has_sibling_original("MIAD573_02_s", {"miad573"}))
         self.assertFalse(has_sibling_original("别的广告图", {"miad573_02"}))
+
+    def test_poster_suffix_pairs_with_the_disc_it_belongs_to(self):
+        """`pl`／`ps` 是 JAV 海报的通用写法，`lxvs006pl` 要配上 `LXVS006-BD`。
+
+        配对时剥掉的载体尾巴（`-BD`）在索引一侧完成，这里只验证海报尾巴。
+        """
+        self.assertTrue(has_sibling_original("lxvs006pl", {"lxvs006"}))
+        self.assertTrue(has_sibling_original("lxvs006ps", {"lxvs006"}))
+        self.assertFalse(has_sibling_original("lxvs006pl", {"cawd241"}))
+
+    def test_content_threshold_is_far_above_any_promo_image(self):
+        """插页整包加起来不到 10 MB；判据只要不把这类体积算成内容就够。"""
+        self.assertGreaterEqual(CONTENT_BYTES, 512 * 1024**2)
 
 
 class ResourceJunkQueueTests(unittest.TestCase):
@@ -278,6 +292,22 @@ class ResourceJunkQueueTests(unittest.TestCase):
         result = q_ads(self.contract, limit=200)
 
         self.assertEqual([item["id"] for item in result["items"]], [73])
+
+    def test_bluray_disc_image_and_its_poster_are_not_ads(self):
+        """19.8 GB 的原盘和它的海报都是资源；同目录那个推广 rar 仍然是广告。
+
+        样本是 `B:\\云下载\\javme.me_LXVS-006-BD` 的实际三项。原盘在账本里是
+        `other`、没有 code、也没有时长，光看名字和目录只剩「域名+番号」这一条证据。
+        """
+        pack = r"B:\云下载\javme.me_LXVS-006-BD"
+        self.add(91, "115", rf"{pack}\LXVS006-BD.iso", "other", 19778371584)
+        self.add(92, "115", rf"{pack}\lxvs006pl.jpg", "image", 134351)
+        self.add(93, "115", rf"{pack}\九色腾免费高清五码自拍在线观看不卡。.rar",
+                 "archive", 1362754)
+
+        result = q_ads(self.contract, limit=200)
+
+        self.assertEqual([item["id"] for item in result["items"]], [93])
 
     def test_promo_cluster_needs_more_than_a_couple_of_neighbours(self):
         """两张同类插页不构成成群；`PROMO_CLUSTER_FILES` 是这条判据的下限。"""
