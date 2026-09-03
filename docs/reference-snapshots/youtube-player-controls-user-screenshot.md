@@ -399,7 +399,7 @@ x=476 对播放器中心 x=476，y=437.5 对 437.5，2026-08-28 那次居中修�
 | 路径拆记号 | `t76=/[0-9.-]+\|[^0-9.-]+/g`，`p5O(d)` 把 `d` 拆成数字与分隔符两类记号 | 交给浏览器插值 CSS `d`，分隔符逐位不变、数字逐位插值，与之同构 |
 | 逐位插值 | `c$x(v,q,x)` 遍历记号，数字写成 `Z+(q[y]-Z)*x`，非数字原样拼回 | 同 |
 | 时长与曲线 | `eST(...,200)`，缓动 `qn3=new bh(0,0,.4,0,.2,1,1,1)` | `.vjs-peach-morph-icon path{transition:d .2s cubic-bezier(.4,0,.2,1)}` |
-| 播放／暂停路径 | `viewBox="0 0 36 36"`，两条路径各 233 个记号、其中 116 个数字，命令序列同为 `MLCCLCCLCCLCCZMLCCVCCLCCVLCCZ` | sprite `i-player-play`／`i-player-pause` 用的就是这两条路径 |
+| 播放／暂停路径 | `M2e(v,q)` 里 case 1 是 `dD`（播放）、case 2 是 `JBx`（暂停，两根竖杠）、case 4 是 `ABg`（停止，圆角方块）；`showPlaybackIcon` 里 `H6(this,q,"Pause")` 取 `JBx`、`"Stop playback"` 取 `ABg`。三条都是 `viewBox="0 0 36 36"`、各 233 个记号其中 116 个数字，命令序列同为 `MLCCLCCLCCLCCZMLCCVCCLCCVLCCZ` | sprite `i-player-play`／`i-player-pause` 用的是 `dD` 与 `JBx` |
 | 音量两道弧 | `jjc(q)`：内弧 `translate(18, 12) scale(1-q) translate(-18,-12)`，外弧 `translate(22, 12) scale(B-q) translate(-22, -12)`，由 `YFs(...,250)` 驱动 | `.vjs-peach-volume-arc-inner`／`-outer` 同中心同缩放，`transition:transform .25s` 同曲线 |
 | 外弧的音量档 | `setVolume` 里 `v=X===0?1:v>50?1:0`，静音或零音量按 1 处理再被 `jjc` 收掉 | `data-loud` 认音量过半，`data-silent` 为真时两道弧一起收成 0 |
 | 叉号出现时机 | 缩放跑完才把图标换成带叉号的那张（`q===1` 那一支） | 叉号是同一个 svg 里的第四条路径，`transition:opacity 0s linear .25s` |
@@ -415,3 +415,37 @@ x=476 对播放器中心 x=476，y=437.5 对 437.5，2026-08-28 那次居中修�
 - 五格胶囊按 53px 起算，`min(274px,…)` 的面板放不下五格时一起收窄到 42px。上游那块面板是内容
   宽度，五格 53px 加四个 8px 间隔再加 32px 内距会撑到 329px；Peach 的设置面板宽度是整块共用的，
   只为一个视图改宽会把菜单之间的切换动画一起牵动。
+
+## 暂停键、常驻圆点与静音图标取证（2026-09-04，第十九轮）
+
+用户第十九轮指出三处：左下角暂停键该是两根竖杠、进度条上的圆点该常驻、静音切换的动画和
+图标都不对。证据仍是 player `9470c977` 的 `player_ias.vflset/en_US/base.js`，2,951,684 字节，
+SHA-256 `f75ee405ab74138520caa120ba03e1e0ba5c98e416ac1bd6bf37087dcb351be8`，以及同版
+`www-player.css`，与前几节同一份文件。
+
+| 项 | 上游原文 | Peach 实现 |
+| --- | --- | --- |
+| 暂停键 | `JBx`：`M 12.75 4.5 … Z M 26.25 4.5 … Z`，两根 7.5 宽、24.75 高、圆角 2.25 的竖杠 | sprite `i-player-pause` 用的就是这条 |
+| 停止键 | `ABg`：同结构的圆角方块，`M 18 6 L 9 6 …`，`M2e` 里归 case 4 | 不做：Peach 的控制条没有停止键 |
+| 圆点静止态 | `.ytp-delhi-modern .ytp-scrubber-button{height:12px;width:12px;border-radius:6px}`，静止就是 12px 的圆，只有 `.ytp-hide-scrubber-button` 才 `scale(0)` | 圆点常驻 12px |
+| 圆点悬停态 | `.ytp-progress-bar-container:hover .ytp-scrubber-button{transform:scale(1.67);transition:transform .2s cubic-bezier(.05,0,0,1)}` | 同值同曲线 |
+| 圆点与轨道的关系 | 压扁的是 `.ytp-progress-list`（`scaleY(.667)`，悬停回 `none`），滑块在 `.ytp-scrubber-container` 里，是它的兄弟，不被压 | 圆点是 `.vjs-play-progress:before`，在被压那层里面，所以静止态自带 `scale(1,1.5)` 抵掉纵向压缩 |
+| 静音图标 | `jjc` 走到 `q===1` 时 `v.updateValue("icon",x)` 换掉整个 `<svg>`，换上的那张是单条路径：喇叭外框 + `M4.94 8.4…` 的挖空 + `M21.29 8.29…` 的叉号 | 三条子路径拆成三个 `<path>` 放同一个 svg，靠 `opacity` 在 250ms 那一刻整块换 |
+| 喇叭外框 | 有声那张的 `ytp-svg-volume-animation-speaker` 与静音那张的第一段子路径是同一串数字 | 实心与挖空两条共用这串数字，换的那一刻只有洞出现，轮廓不动 |
+| 叉号 | `M21.29 8.29…`，横跨 x15..23、绕 (19,12)，圆头 | 同一条路径原文 |
+| 切换时机 | 先缩弧再换图标；取消静音先换回图标再放大弧 | `transition:opacity 0s linear .25s` 与无延迟那条各管一个方向 |
+
+### Peach 主动保留的差异
+
+- 上游换的是整个 `<svg>`，Peach 换的是同一个 svg 里的 `opacity`：这两个键的 `d` 要挂 CSS 过渡，
+  换掉 svg 就等于换掉正在过渡的元素，形变会断。挖空与实心共用同一串外框数字，所以视觉结果
+  与换图标一致。
+- 挖空靠上游原文的子路径顺序与绕向（nonzero），没有改成 `fill-rule:evenodd`。
+- 静音那张图标的两道弧不参与：上游那张图标里没有弧，Peach 是把弧缩成 0 再让图标顶上。
+
+### 纠正记录
+
+第十八轮那一行「播放／暂停路径……sprite 用的就是这两条路径」把 `ABg` 当成了暂停：`ABg` 是
+`M2e` 里 case 4 的停止键，画出来是圆角方块，也就是用户截图里那个白方块。暂停是 case 2 的
+`JBx`。三条路径记号结构相同，看数字长度分辨不出来，得读 `M2e` 的 case 与 `showPlaybackIcon`
+传的标签。

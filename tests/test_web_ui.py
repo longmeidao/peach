@@ -1662,6 +1662,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".vwrap .video-js .vjs-play-progress:before{content:\"\"")
         self.assertPageContains("width:100%;height:6px;margin:0;border-radius:0")
         self.assertPageContains("transform:scaleY(.667);transition:transform .2s cubic-bezier(.05,0,0,1)")
+        self.assertPageContains("transform:translateY(-50%) scale(1,1.5);box-shadow:none")
         self.assertPageContains("transform:translateY(-50%) scale(1.67)")
         self.assertPageContains(".vwrap .video-js .vjs-play-progress .vjs-time-tooltip{display:none!important}")
         self.assertPageContains(".vwrap .video-js .vjs-custom-control-spacer{display:block;flex:1 1 auto}")
@@ -2075,15 +2076,18 @@ class WebUiSourceTests(unittest.TestCase):
         """播放键与静音键的图标在原地形变。
 
         证据是 player 9470c977 的 base.js：`eST` 把路径的 `d` 拆成数字与分隔符再逐位插值
-        200ms；`jjc` 让音量的两道弧各自缩放 250ms，内弧绕 (18,12)、外弧绕 (22,12)，叉号在
-        缩完那一刻整块换上；`setVolume` 里外弧要音量过半才给 1；两处曲线都是 `qn3`，也就是
-        cubic-bezier(.4,0,.2,1)。上游那对播放/暂停路径是为插值写的，233 个记号里 116 个是
-        数字、命令序列逐位相同，所以直接搬过来。
+        200ms；`jjc` 让音量的两道弧各自缩放 250ms，内弧绕 (18,12)、外弧绕 (22,12)，走到
+        q===1 时整块换成静音那张图标；`setVolume` 里外弧要音量过半才给 1；两处曲线都是
+        `qn3`，也就是 cubic-bezier(.4,0,.2,1)。播放键那对是 `M2e` 里 case 1 的 `dD` 与 case 2
+        的 `JBx`，暂停是两根竖杠，233 个记号里 116 个是数字、命令序列逐位相同，所以直接
+        搬过来；`ABg`（case 4）是同结构的停止键圆角方块，不是暂停。
         """
         self.assertPageContains('<symbol id="i-player-play" viewBox="0 0 36 36"')
         self.assertPageContains('<symbol id="i-player-pause" viewBox="0 0 36 36"')
         self.assertPageContains('d="M 17 8.6 L 10.89 4.99 C 9.39 4.11 7.5 5.19 7.5 6.93')
-        self.assertPageContains('d="M 18 6 L 9 6 C 8.20 6 7.44 6.31 6.87 6.87')
+        self.assertPageContains('d="M 12.75 4.5 L 9.75 4.5 C 9.15 4.5 8.58 4.73 8.15 5.15')
+        self.assertPageContains('C 22.08 31.26 22.65 31.5 23.25 31.5 L 26.25 31.5')
+        self.assertPageLacks('d="M 18 6 L 9 6 C 8.20 6 7.44 6.31 6.87 6.87')
         # `<use>` 克隆出来的影子树改不了 `d`，所以这两个键把 sprite 里的 <path> 搬进自己的 svg。
         self.assertPageContains("svg.setAttribute('class','vjs-peach-control-icon vjs-peach-morph-icon');")
         self.assertPageContains("svg.innerHTML=symbol.innerHTML;button.append(svg);return svg;")
@@ -2094,7 +2098,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<path class="vjs-peach-volume-arc-inner"')
         self.assertPageContains('<path class="vjs-peach-volume-arc-outer"')
         self.assertPageContains('<path class="vjs-peach-volume-x"')
-        self.assertPageContains("if(muteX){muteX.setAttribute('class','vjs-peach-volume-x');muteIcon.append(muteX)}")
+        self.assertPageContains(
+            "if(muteIcon)spritePaths('player-volume-muted').forEach(path=>muteIcon.append(path.cloneNode(true)));")
+        # 静音那张是挖空的喇叭：外框与实心那条同一串数字，后面接上游的挖空子路径。
+        self.assertPageContains('<path class="vjs-peach-volume-speaker" d="M11.60 2.08L11.48 2.14L3.91 6.68')
+        self.assertPageContains('<path class="vjs-peach-volume-speaker-muted" d="M11.60 2.08L11.48 2.14L3.91 6.68')
+        self.assertPageContains('C11.92 1.98 11.75 2.01 11.60 2.08ZM4.94 8.4V8.40L11 4.76V19.23L4.94 15.6')
+        self.assertPageContains('<path class="vjs-peach-volume-x" d="M21.29 8.29L19 10.58L16.70 8.29')
         self.assertPageContains(
             "muteIcon.dataset.silent=String(silent);muteIcon.dataset.loud=String(!silent&&player.volume()>.5)")
         # 缩放中心写在变换里，所以 transform-origin 必须归零，px 也要等于视框单位。
@@ -2106,8 +2116,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             '.vjs-peach-morph-icon[data-loud="false"] .vjs-peach-volume-arc-outer'
             '{transform:translate(22px,12px) scale(0) translate(-22px,-12px)}')
-        self.assertPageContains(".vjs-peach-morph-icon .vjs-peach-volume-x{opacity:0;transition:opacity 0s linear}")
+        self.assertPageContains(".vjs-peach-morph-icon .vjs-peach-volume-speaker{opacity:1;transition:opacity 0s linear}")
         self.assertPageContains(
+            '.vjs-peach-morph-icon .vjs-peach-volume-speaker-muted,\n'
+            '.vjs-peach-morph-icon .vjs-peach-volume-x{opacity:0;transition:opacity 0s linear}')
+        self.assertPageContains(
+            '.vjs-peach-morph-icon[data-silent="true"] .vjs-peach-volume-speaker'
+            '{opacity:0;transition:opacity 0s linear .25s}')
+        self.assertPageContains(
+            '.vjs-peach-morph-icon[data-silent="true"] .vjs-peach-volume-speaker-muted,\n'
             '.vjs-peach-morph-icon[data-silent="true"] .vjs-peach-volume-x'
             '{opacity:1;transition:opacity 0s linear .25s}')
         # 图标只有 svg 这一份，CSS 不再另画一套三角与竖条。
