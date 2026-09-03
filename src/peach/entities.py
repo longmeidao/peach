@@ -7,7 +7,7 @@ from sqlite3 import Connection
 
 
 def normalize_entity_name(name: str) -> str:
-    return str(name).strip().casefold()
+    return strip_zero_width(name).strip().casefold()
 
 
 KANA = re.compile(r"[぀-ゟ゠-ヿ]")
@@ -73,8 +73,21 @@ def collapse_repeated_entity_name(name: str) -> str:
     return original
 
 
+#: 规范名里要剥掉的零宽字符。上游译名夹带过 `‌斋藤亚美里`（performer）和
+#: `比特ビット‌`（creator）：页面上和普通名字一模一样，但 `strip()` 不认它们不是
+#: 空白，`normalized_name` 也就带着它，于是同一个人在账本里能存成两个实体、按名字搜
+#: 一个都搜不到。U+200D（ZWJ）不在名单里——emoji 的家庭、职业序列靠它连字，剥掉会把
+#: 创作者名字里的一个 emoji 拆成两三个。
+ZERO_WIDTH = str.maketrans({"​": None, "‌": None,
+                            "⁠": None, "﻿": None})
+
+
+def strip_zero_width(name: str) -> str:
+    return str(name or "").translate(ZERO_WIDTH)
+
+
 def canonicalize_entity_name(kind: str, name: str | None) -> str:
-    canonical = str(name or "").strip()
+    canonical = strip_zero_width(name).strip()
     if kind in PERSON_ENTITY_KINDS:
         canonical = collapse_repeated_entity_name(canonical)
         if canonical in INVALID_PERSON_ENTITY_NAMES:

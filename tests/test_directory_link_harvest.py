@@ -168,6 +168,9 @@ X_ALIVE = """<html><head><meta content="瀬戸環奈 (@kanna_seto0510) / X" prop
 X_SUSPENDED = """<html><head><meta property="og:title" content="X"><meta property="og:image"
  content="https://abs.twimg.com/responsive-web/client-web/icon-ios.png"></head></html>"""
 X_SHELL = "<html><head><title>X</title></head><body><div id='react-root'></div></body></html>"
+#: 照 2026-09-04 实测的 `@yu_shinoda` 复刻：活着的账号，显示名自己写明是应援号。
+X_FAN = """<html><head><meta content="篠田ゆう様💝応援アカウント (@yu_shinoda) on X" property="og:title">
+<meta property="og:image" content="https://pbs.twimg.com/profile_images/9/fan_200x200.jpg"></head></html>"""
 
 
 class FakeSite:
@@ -735,6 +738,24 @@ class ProbeTests(unittest.TestCase):
         self.module.probe_rows(rows, {}, site)
         self.assertEqual([row["alive"] for row in rows], ["疑似失效", "未取得"])
         self.assertEqual(len(self.module.installable(rows)), 1)
+
+    def test_a_support_account_is_alive_but_not_this_person(self):
+        """`応援垢`／`応援アカウント` 是粉丝开的号，名录页把它当本人账号挂着。
+
+        验活会说「活」——这个账号确实活着，只是不是这个人的。证据里标一句不够：
+        `installable()` 只看 verdict 和 alive，标注留在证据里照样会装进账本。实测
+        jae 8 条、javdb 3 条这样的链接被当本人账号装了进去。
+        """
+        site = FakeSite({"https://x.com/yu_shinoda": X_FAN, "https://x.com/X": X_ALIVE},
+                        HttpStatusError=self.module.HttpStatusError)
+        rows = [self.module.row(entity_id=2, link_kind="social",
+                                url="https://x.com/yu_shinoda", verdict="ok")]
+        stats = self.module.probe_rows(rows, {}, site)
+        self.assertEqual(rows[0]["verdict"], "应援账号")
+        self.assertEqual(rows[0]["alive"], "活")
+        self.assertIn("応援アカウント", rows[0]["evidence"])
+        self.assertEqual(dict(stats), {"活": 1, "应援账号": 1})
+        self.assertEqual(self.module.installable(rows), [])
 
     def test_without_a_probe_site_every_social_row_is_marked_unverified(self):
         rows = self.rows()

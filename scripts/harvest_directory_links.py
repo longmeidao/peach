@@ -79,6 +79,11 @@ SOURCES = ("laoshi", "bstar", "jae", "javdb")
 #: 直连不通的来源：jae 被对端重置（`WinError 10054`），javdb 直接连接超时。
 PROXY_SOURCES = ("jae", "javdb")
 ALIVE, GONE, UNVERIFIED, UNKNOWN = "活", "疑似失效", "未验", "未取得"
+#: X 的显示名自己写明是应援号（`篠田あゆみ様の応援垢`、`💟応援アカウント`）。名录页把它
+#: 当本人账号挂着，验活也是「活」——这个账号确实活着，只是不是这个人的。名录里 11 条这样的
+#: 链接曾被当本人账号装进账本（jae 8 条、javdb 3 条）。
+FAN_ACCOUNT = re.compile(r"応援|非公式|ファン垢|ファンアカ|fan account", re.I)
+FAN_VERDICT = "应援账号"
 
 LAOSHI = "https://laoshi.ink/"
 LAOSHI_OWN = ("laoshi.ink",)
@@ -792,6 +797,12 @@ def probe_rows(rows: list[dict], existing_handles: dict, site: Site | None) -> C
         stats[state] += 1
         if display:
             item["evidence"] += (f"；X 显示名「{display}」" if state == ALIVE else f"；X 验活：{display}")
+        if state == ALIVE and FAN_ACCOUNT.search(display):
+            # 不能只标一句「疑似」了事：`installable()` 只看 verdict 和 alive，标注留在证据里
+            # 照样会装进账本。降级成自己的判定，队列里就见不到它了。
+            item["verdict"] = FAN_VERDICT
+            stats[FAN_VERDICT] += 1
+            continue
         if item["verdict"] == "conflict":
             olds = [url for (held_name, _), url in existing_handles.get(item["entity_id"], {}).items()
                     if held_name == "X" and handle(url) != handle(item["url"])]
@@ -868,7 +879,7 @@ def run(args) -> int:
             x_site.close()
     print(f"X 验活 {dict(alive)}" if x_site is not None else "本轮未验活")
 
-    order = {"conflict": 0, "ok": 1, "需人工消歧": 2, "已有": 3, "未取得": 4}
+    order = {"conflict": 0, FAN_VERDICT: 1, "ok": 2, "需人工消歧": 3, "已有": 4, "未取得": 5}
     rows.sort(key=lambda item: (order.get(item["verdict"], 9), str(item["name"]), item["url"]))
     review = args.output.with_name(args.output.stem + "-review.csv")
     queue = installable(rows)
