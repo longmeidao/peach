@@ -231,7 +231,9 @@
   （`cache_key` 也按主机），不受这条约束。`HOST_OVERRIDES` 的键因此支持「主机 + 路径前缀」并取最长匹配。
 - **字标补白**（用户 2026-09-03 定的口径：不是 icon 也可以装 icon，尽量不要落入无图）：方标一个都没做成、
   却取回过短边 ≥ `MIN_SHORT_EDGE` 的宽扁字标时，用 `peach.images.pad_to_square` 补成方图装上，判词
-  `字标补白`，`content_aspect` 照记（那个数就是「这枚其实是字标」的提示）。留第一份而不是最大的一份：
+  `字标补白`，`content_aspect` 照记（那个数就是「这枚其实是字标」的提示）。同一枚字标还原样再出一行
+  `logo`（判词 `ok`）装进 `<safe>.logo.img`：大位要的本来就是完整字标，不出这行它会回落到 `<safe>.img`，
+  BangBus 页顶上挂的就成了母品牌 BANGBROS；用户指定的 logo 来源做成时优先。留第一份而不是最大的一份：
   `best_mark` 的遍历顺序已经是「覆盖表 → 声明 → 根路径猜测」。BangBus（298×50／比 6.60）与 BangBros18
   （298×50／比 6.06）走的就是这条，来源是 `bangbros.com/websites` 服务端渲染进 HTML 的 `*_LOGO` 资产
   （注意 `/` 转义）。MonstersOfCock 那一页没有对应的 logo 资产，`site-api.project1service.com/v1/collections`
