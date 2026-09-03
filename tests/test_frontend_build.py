@@ -48,7 +48,9 @@ class IslandBundleTests(unittest.TestCase):
                                 f"{name} 带了内容哈希，app.js 里写死的路径会指向不存在的文件")
 
     def test_bundle_exports_the_mount_contract(self):
-        for symbol in ("mountIsland", "unmountIsland", "islandNames"):
+        # `refreshStore` 是遗留层通知岛「共享数据变了」的入口（ADR-0022 里 signals 的
+        # 那一半）。它不在产物里，`web/app.js` 就只剩整屏重新挂载这一种刷新方式。
+        for symbol in ("mountIsland", "unmountIsland", "islandNames", "refreshStore"):
             self.assertIn(f"as {symbol}", self.bundle, f"产物没有导出 {symbol}")
 
     def test_bundle_keeps_the_legacy_modules_external(self):
@@ -155,12 +157,50 @@ class IslandSourceContractTests(unittest.TestCase):
             self.assertIn(helper, self.source)
 
     def test_the_endpoint_is_declared_once(self):
-        self.assertIn("/api/quality-goals?limit=200", self.source)
+        """端点在前端只能有一个声明处，现在是那份共享 store。
+
+        取数已经从 island 搬进 `frontend/src/state/quality-goals.ts`：`/manage` 的
+        「高清版」卡片读的是同一个真相。所以这里扫整棵 `frontend/src`，而不是钉住
+        某个文件——要拦的是「两个地方各写一遍这条 URL」，不是它住在哪儿。
+        """
+        sources = sorted(path for path in (FRONTEND / "src").rglob("*.ts*"))
+        declared = [path.name for path in sources
+                    if "/api/quality-goals?limit=200" in path.read_text(encoding="utf-8")]
+        self.assertEqual(declared, ["quality-goals.ts"], f"端点声明在 {declared}")
         # 扫整个 web 层：路由表已经从 `web_contract.py` 搬到 `web_router.py`，
         # 前者只剩再导出。island 关心的是这条路由存在且只声明一次，不是它在哪个文件。
-        declared = [path.name for path in sorted((ROOT / "src" / "peach").glob("web_*.py"))
-                    if "quality-goals" in path.read_text(encoding="utf-8")]
-        self.assertEqual(len(declared), 1, f"quality-goals 声明在 {declared}")
+        routed = [path.name for path in sorted((ROOT / "src" / "peach").glob("web_*.py"))
+                  if "quality-goals" in path.read_text(encoding="utf-8")]
+        self.assertEqual(len(routed), 1, f"quality-goals 声明在 {routed}")
+
+
+class SharedStateContractTests(unittest.TestCase):
+    """跨岛共享状态只有一个家（ADR-0022）。
+
+    这两条门槛拦的是同一件事：共享数据长出第二个来源。运行期那一半由 vitest 盯着
+    （`test/state.test.ts` 断言直接赋值会抛 TypeError），这里盯的是源码布局——
+    等到跑起来才发现两个岛各存一份，已经晚了。
+    """
+
+    def setUp(self):
+        self.state = FRONTEND / "src" / "state"
+        self.sources = sorted((FRONTEND / "src").rglob("*.ts*"))
+
+    def test_stores_expose_read_only_views(self):
+        """可写的 signal 不导出：写入只能走 store 自己的函数，「谁改了它」才数得出来。"""
+        for path in sorted(self.state.glob("*.ts")):
+            source = path.read_text(encoding="utf-8")
+            self.assertNotRegex(
+                source, r"export\s+(?:const|let)\s+\w+[^=\n]*=\s*signal\(",
+                f"{path.name} 导出了可写 signal，组件可以绕过写入函数直接赋值")
+
+    def test_signals_only_live_in_the_state_folder(self):
+        """岛自己的临时状态用 hooks。在别处 import signal，就是共享数据有了第二个家。"""
+        outside = [path.name for path in self.sources
+                   if self.state not in path.parents
+                   and "@preact/signals" in path.read_text(encoding="utf-8")]
+        self.assertEqual(outside, [],
+                         f"{outside} 在 state/ 之外用了 signal：共享状态请建 store，局部状态用 hooks")
 
 
 class VitestTests(unittest.TestCase):

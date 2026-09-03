@@ -15,8 +15,16 @@
 import { h, render } from 'preact';
 import type { ComponentType } from 'preact';
 
+import { errorMessage } from './api';
 import { QualityGoals, loadQualityGoals } from './islands/quality-goals';
-import type { QualityGoalsData, QualityGoalsProps } from './islands/quality-goals';
+import type { QualityGoalsProps } from './islands/quality-goals';
+import type { QualityGoalsData } from './state/quality-goals';
+
+/* 跨岛共享状态的入口一起从这里出去。遗留层拿到的是一个 bundle，它有两种用法：
+ * `mountIsland` 挂一屏，`refreshStore` 告诉已经挂着的那屏「数据变了」。
+ * 怎么写一个 store 见 `./state/index.ts` 和 `docs/FRONTEND.md`。 */
+export { refreshStore, storeNames } from './state';
+export type { StoreName } from './state';
 
 /** 首屏取数的结果。`data` 与 `error` 恰有一个成立。 */
 export interface IslandState<D> {
@@ -77,7 +85,7 @@ export async function mountIsland<N extends IslandName>(
     state = { data: await island.load(props, mount.controller.signal), error: '' };
   } catch (cause) {
     if (mount.controller.signal.aborted) return;
-    state = { data: null, error: cause instanceof Error ? cause.message : String(cause) };
+    state = { data: null, error: errorMessage(cause) };
   }
   // 期间被卸载或重新挂载：这一次的结果已经过期，不许往新内容上盖。
   if (mounted.get(el) !== mount) return;

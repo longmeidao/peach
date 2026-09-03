@@ -4,35 +4,20 @@
  * 没有写入端点、没有轮询，样式在 `web/app.css` 里已经是独立的 `.qualitylist`／
  * `.qualityitem`。迁移它不需要动别的页面，也不需要动样式。
  *
+ * 列表数据不在这个文件里：它是共享状态，住在 `../state/quality-goals`，因为数据管理页
+ * 的「高清版」卡片读的是同一个真相（原因见那个文件的开头）。这里只做两件
+ * 事——首屏取数由 `loadQualityGoals` 发起（`mountIsland` 等它落地才画），画的时候读
+ * `qualityGoals` 这个 signal，所以数据之后再变（遗留层写完通知、别处触发刷新）这一屏
+ * 自己就更新了，不用重新挂载。
+ *
  * 遗留层那几个返回 HTML 的助手（番号标题、来源徽标）由 props 传进来，不在这里重写：
  * 它们是全站语义契约的唯一实现，抄一份就会漂。等下一批页面迁移时再把它们提升成
  * TS 组件，那时 props 一起收窄。 */
 import { LOC, fmtDur, fmtSize } from '@peach/legacy/core';
 import { emptyStateHtml, noteHtml } from '@peach/legacy/ui';
 
-import { apiGet } from '../api';
-import type { IslandState } from '../islands';
-
-/** `/api/quality-goals` 的单条目。字段与 `web_contract.q_quality_goals` 对齐。 */
-export interface QualityGoal {
-  id: number;
-  name: string;
-  code: string | null;
-  location: string;
-  size: number | null;
-  duration: number | null;
-  reason: string | null;
-  cost: string;
-  has_thumb: boolean;
-  has_cover: boolean;
-}
-
-export interface QualityGoalsData {
-  total: number;
-  items: QualityGoal[];
-  offset: number;
-  has_more: boolean;
-}
+import { qualityGoals, refreshQualityGoals } from '../state/quality-goals';
+import type { QualityGoal, QualityGoalsData } from '../state/quality-goals';
 
 /** 仍由遗留层提供的能力。全是纯函数或导航，island 不持有它们的状态。 */
 export interface QualityGoalsProps {
@@ -46,23 +31,25 @@ export interface QualityGoalsProps {
   srcBadge(location: string, cost: string): string;
 }
 
-/** 上限沿用遗留层的 200：服务端 `limit` 也钉在 200，再大只会被截。 */
-export const QUALITY_GOALS_URL = '/api/quality-goals?limit=200';
-
+/** 首屏取数。强制重取而不是吃缓存：`/quality-goals` 在路由表里是 `refresh:'reopen'`，
+ *  刷新这一页要的就是新数据。结果写进共享 store，返回值只是给 `mountIsland` 的落地信号。 */
 export const loadQualityGoals = (
   _props: QualityGoalsProps,
   signal: AbortSignal,
-): Promise<QualityGoalsData> => apiGet<QualityGoalsData>(QUALITY_GOALS_URL, signal);
+): Promise<QualityGoalsData> => refreshQualityGoals(signal);
 
 /** 封面优先用番号封面，没有就退回第 4 张海报，两者都取不到时把 img 摘掉。 */
 const previewUrl = (item: QualityGoal): string => item.has_cover
   ? `/cover?code=${encodeURIComponent(item.code ?? '')}`
   : `/poster?id=${item.id}&c=4`;
 
+/** 只接遗留助手，数据从 store 读。`mountIsland` 仍会把 `{data, error}` 传进来——那是所有
+ *  island 共用的首屏契约——由 store 支撑的这一个不看它们：同一份数据两个来源，刷新之后
+ *  就会各说一套。 */
 export function QualityGoals(
-  { data, error, openItem, javTitleHtml, javDisplayName, srcBadge }:
-  QualityGoalsProps & IslandState<QualityGoalsData>,
+  { openItem, javTitleHtml, javDisplayName, srcBadge }: QualityGoalsProps,
 ) {
+  const { data, error } = qualityGoals.value;
   if (error) {
     return (
       <div
