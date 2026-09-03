@@ -869,6 +869,17 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
   -webkit-backdrop-filter:saturate(1.35) blur(16px)}
 .count:empty{display:none}
 .count>span:first-child{flex:none}
+/* 计数骨架的宽高定死：跟着真实文本走的话，数字回来那一刻整行会横向弹一下。
+   14px 远低于筛选条按钮的 32px，而 `.count` 有 min-height 兜底，所以换成真数字
+   不改变行高。`视频 · N` 用的是同一枚。 */
+.countskeleton{display:inline-block;width:150px;height:14px;border-radius:var(--control-radius);
+  background:var(--hover);animation:skeleton-pulse 1.4s ease-in-out infinite}
+.entitycollectionhead h3 .countskeleton{width:96px}
+/* 等数据时换批键自己转：它是这一行唯一还在动的东西，其余部分必须保持静止。
+   全局的 prefers-reduced-motion 规则会关掉它。 */
+.count[aria-busy="true"] #batchAction svg,
+.entitycollectionhead[aria-busy="true"] .entitybatch svg{
+  animation:peach-spinner-linspin .9s linear infinite}
 .count .sorts,.entitycollectionhead .sorts{display:flex;gap:5px;margin-left:auto;flex-wrap:nowrap;
   overflow-x:auto;scrollbar-width:none;min-width:0}
 .count .sorts::-webkit-scrollbar,.entitycollectionhead .sorts::-webkit-scrollbar{display:none}
