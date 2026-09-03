@@ -57,6 +57,28 @@ export function spinnerHtml(label='加载中'){
 }
 
 /**
+ * Geist Search Input: search icon as a prefix, swapped in place for a Spinner
+ * while the query runs, and the input geometry never changes. Read-only queries
+ * carry no submit button, so the accessible name lives in `aria-label` — a
+ * placeholder is not a label, it disappears the moment there is text to read.
+ */
+export function searchInputHtml({label,id='',name='',value='',placeholder='',attrs=''}={}){
+  const parts=[
+    'type="search"',
+    id?`id="${esc(id)}"`:'',
+    name?`name="${esc(name)}"`:'',
+    placeholder?`placeholder="${esc(placeholder)}"`:'',
+    `value="${esc(value)}"`,
+    `aria-label="${esc(label)}"`,
+    'spellcheck="false" autocomplete="off"',
+    attrs,
+  ].filter(Boolean).join(' ');
+  return `<div class="geist-search" data-search-input>
+    <span class="geist-search-prefix" data-search-prefix>${icon('search')}</span>
+    <input ${parts}></div>`;
+}
+
+/**
  * Geist loading action: visually unavailable and inert without using native
  * `disabled`, so the trigger keeps keyboard focus while its request is running.
  */

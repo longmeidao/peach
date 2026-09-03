@@ -96,6 +96,23 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
 .geist-loading-dots>i{width:4px;height:4px;border-radius:50%;background:currentColor;
   animation:geist-loading-dot 1.2s ease-in-out infinite}
 .geist-loading-dots>i:nth-child(2){animation-delay:.15s}.geist-loading-dots>i:nth-child(3){animation-delay:.3s}
+/* Geist Search Input：搜索图标占前缀位，查找中原位换 Spinner，输入框几何不变。
+   全站带搜索语义的输入共用这一份，各处只加宽度和位置。 */
+.geist-search{position:relative;min-width:0}
+.geist-search-prefix{position:absolute;z-index:1;left:12px;top:11px;
+  display:grid;place-items:center;width:16px;height:16px;color:var(--muted);pointer-events:none}
+.geist-search-prefix>svg{width:16px;height:16px;stroke:currentColor;fill:none}
+.geist-search input[type="search"]{width:100%;min-width:0;height:38px;
+  box-sizing:border-box;border:1px solid var(--border-15);border-radius:var(--control-radius);
+  background:var(--ground);color:var(--ink);padding:0 12px 0 38px;font-size:var(--fs-md);font-family:inherit;
+  line-height:20px;transition:border-color .12s ease}
+.geist-search input[type="search"]::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none}
+.geist-search input[type="search"]::placeholder{color:var(--muted)}
+/* 点进去要立刻看得出焦点在这儿，配方与顶部搜索框的 `.search:focus-within` 同一条。 */
+.geist-search input[type="search"]:focus{outline:0;
+  border-color:color-mix(in srgb,var(--tungsten) 72%,transparent);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--tungsten) 26%,transparent)}
+.geist-search:focus-within .geist-search-prefix{color:var(--ink)}
 .geist-button{box-sizing:border-box;height:32px;padding:0 6px;border:1px solid var(--border-15);
   border-radius:var(--control-radius);background:transparent;color:var(--ink);display:inline-flex;
   align-items:center;justify-content:center;gap:6px;font:inherit;font-size:var(--fs-md);font-weight:500;
@@ -129,6 +146,11 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 .tier,.tagbar,.srow,.nrow{scrollbar-width:none}
 .tier::-webkit-scrollbar,.tagbar::-webkit-scrollbar,
 .srow::-webkit-scrollbar,.nrow::-webkit-scrollbar{display:none}
+/* 横滚容器的 overflow-x:auto 会把计算后的 overflow-y 一起变成 auto，圆头像贴着容器
+   上沿时，:hover 和选中态那圈外扩 box-shadow 就被削平。留 3px 上方余量再用等量负
+   margin 抵掉，位置一点不动。头像圈被遮是同一个缺陷重犯多次，横向头像行统一走这
+   一条，不要再逐处补 padding。`.followauthors` 自带余量，不在此列。 */
+.tier,.relatedpeople{padding-top:3px;margin-top:-3px}
 
 /* ── 顶栏：无侧栏，图占主导 ── */
 .top{position:sticky;top:0;z-index:70;display:flex;align-items:center;gap:12px;
@@ -174,7 +196,8 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 .tiers{position:relative;z-index:1;padding:10px 0 8px;
   border-bottom:0;
   background:linear-gradient(180deg,color-mix(in srgb,var(--frost-light) 38%,transparent),transparent)}
-.tier{display:flex;gap:14px;overflow-x:auto;scrollbar-width:none;padding:0 16px 8px;align-items:flex-start}
+/* padding-top 归上面那条头像圈余量的规则管，这里不能用 padding 简写把它清掉。 */
+.tier{display:flex;gap:14px;overflow-x:auto;scrollbar-width:none;padding-inline:16px;padding-bottom:8px;align-items:flex-start}
 .tier::-webkit-scrollbar{display:none}
 .tier:last-child{padding-bottom:2px}
 /* 一层：圆头像 */
@@ -355,11 +378,8 @@ body.entity-open .index{overflow-x:visible}
 .index .ihead{display:flex;align-items:center;gap:12px;margin-bottom:14px}
 .index .ihead h2{margin:0}
 .indexheading{display:inline-flex;align-items:center;gap:9px}.indexheading svg{width:25px;height:25px;stroke:currentColor;fill:none;stroke-width:1.8}
-.index .ihead .isearch{margin-left:auto}
+.index .ihead .geist-search{flex:1;max-width:320px;margin-left:auto}
 #indexCount{color:var(--muted)}
-.index .isearch{flex:1;max-width:320px;background:var(--sunk);border:1px solid var(--line);
-  border-radius:var(--pill-radius);padding:6px 14px}
-.index .isearch input{background:none;border:0;outline:none;width:100%}
 .igrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:16px 10px}
 .icell{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;
   background:none;border:0;color:inherit;padding:8px 4px;border-radius:var(--surface-radius)}
@@ -1225,7 +1245,10 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 /* 计费来源点击前只显示拉流入口。显式 display:block 会覆盖浏览器的 hidden 默认样式，
    让尚未启动的播放器和入口各占一半，所以这里必须让隐藏视频完全退出布局。 */
 .vwrap>video[hidden]{display:none}
-.vwrap>.video-js{width:100%;height:auto;max-height:76vh;aspect-ratio:16/9;background:#000}
+/* 窄屏下 16:9 只剩 200px 出头，设置面板和统计面板都比这高，必然被裁。给播放器一个
+   最低高度，画面按 object-fit:contain 上下补黑边，浮层就有地方站。占位门同用一个值，
+   否则点开的一瞬间整页会往下跳一截。 */
+.vwrap>.video-js{width:100%;height:auto;min-height:320px;max-height:76vh;aspect-ratio:16/9;background:#000}
 .vwrap .video-js .vjs-tech{object-fit:contain}
 .vwrap .video-js .vjs-big-play-button{left:50%;top:50%;width:56px;height:56px;margin:0;
   transform:translate(-50%,-50%);border:0;border-radius:50%;
@@ -1328,7 +1351,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vwrap .video-js .vjs-volume-panel .vjs-volume-level{height:2px;background:#fff}
 .vwrap .video-js .vjs-volume-panel .vjs-volume-level:before{top:50%;right:-6px;width:12px;height:12px;margin:0;font-size:0;border-radius:50%;background:#fff;transform:translateY(-50%)}
 .vwrap .video-js .vjs-volume-panel .vjs-volume-tooltip{z-index:5!important;left:50%;right:auto;top:auto;bottom:calc(100% + 32px);
-  float:none;transform:translateX(-50%);padding:5px 9px;border-radius:var(--surface-radius);background:rgba(0,0,0,.3);
+  float:none;transform:translateX(-50%);padding:5px 9px;border-radius:var(--surface-radius);background:rgba(0,0,0,.6);
   backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:#fff;font-family:inherit;font-size:var(--fs-sm);font-weight:500;
   line-height:15px;text-shadow:0 0 2px #000;overflow:visible;white-space:nowrap}
 .vjs-peach-right-controls{box-sizing:border-box;position:relative;align-self:flex-end;flex:0 0 auto;height:40px;margin:0 0 8px;
@@ -1380,7 +1403,21 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vjs-peach-settings-menu{box-sizing:border-box;position:absolute;z-index:2300;right:-100px;bottom:52px;width:min(274px,calc(100vw - 28px));max-height:min(420px,calc(100vh - 130px));overflow:auto;
   padding:0;border:0;border-radius:var(--floating-radius);background:rgba(0,0,0,.6);box-shadow:none;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
   color:#fff;text-shadow:0 0 1px rgba(0,0,0,.8);font-weight:400;font-size:var(--fs-md);line-height:1.3;font-family:inherit}
-.vjs-peach-settings-menu[hidden]{display:none}
+/* 面板的显隐照 YouTube 播放器 9470c977 的 www-player.css：`.ytp-popup` 淡入 .1s
+   cubic-bezier(0,0,.2,1)，`[aria-hidden=true]` 淡出 .1s cubic-bezier(.4,0,1,1)。
+   所以关闭不能用 display:none——那样没有可过渡的中间态。visibility 延后到淡出结束，
+   面板既退出无障碍树也不再接命中测试。 */
+.vjs-peach-settings-menu{opacity:1;visibility:visible;transition:opacity .1s cubic-bezier(0,0,.2,1)}
+.vjs-peach-settings-menu[aria-hidden="true"]{opacity:0;visibility:hidden;pointer-events:none;
+  transition:opacity .1s cubic-bezier(.4,0,1,1),visibility 0s .1s}
+/* 次级菜单同一份来源：`.ytp-popup-animating` 与其面板都是 .25s cubic-bezier(.4,0,.2,1)，
+   `.ytp-panel-animate-back/forward` 是 translateX(∓100%) 加透明度 0。 */
+.vjs-peach-settings-menu.vjs-peach-popup-animating{overflow:hidden;pointer-events:none;transition:height .25s cubic-bezier(.4,0,.2,1)}
+.vjs-peach-panel{position:relative}
+.vjs-peach-popup-animating .vjs-peach-panel{transition:transform .25s cubic-bezier(.4,0,.2,1),opacity .25s cubic-bezier(.4,0,.2,1)}
+.vjs-peach-panel-leaving{position:absolute;left:0;top:0;width:100%}
+.vjs-peach-panel-animate-back{opacity:0;transform:translateX(-100%)}
+.vjs-peach-panel-animate-forward{opacity:0;transform:translateX(100%)}
 .vjs-peach-settings-menu button{box-sizing:border-box;position:relative;isolation:isolate;overflow:hidden;width:100%;min-height:48px;padding:0;border:0;border-radius:var(--control-radius);background:transparent;color:#fff;font:inherit;cursor:pointer}
 .vjs-peach-settings-menu button:before{content:"";position:absolute;z-index:0;inset:0;border-radius:inherit;background:transparent;pointer-events:none;transition:background .1s cubic-bezier(.05,0,0,1)}
 .vjs-peach-settings-menu button:hover:before,.vjs-peach-settings-menu button:focus-visible:before{background:rgba(255,255,255,.1)}
@@ -1402,12 +1439,66 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .video-js .vjs-peach-menu-option{display:grid;grid-template-columns:35px minmax(0,1fr);align-items:center;padding:0 20px 0 0!important;text-align:left;font-size:var(--fs-md)!important;line-height:18.2px}
 .vjs-peach-option-check{width:35px;height:24px;display:grid;place-items:center}.vjs-peach-option-check svg{width:24px;height:24px;display:block;fill:currentColor;stroke:none}
 .vjs-peach-option-label{min-width:0}
+/* 播放速度面板照 YouTube delhi-modern（player 9470c977 的 www-player.css 与 base.js）：
+   内容区 24px/16px/16px 内距；读数 18px/900/22px 居中、下留 24px；滑条一行 gap 16px、
+   下留 24px，加减键 32px 圆、24px 字，各动 0.05；预设胶囊 53×32、圆角 16、12px 字、gap 8px，
+   底色 rgba(255,255,255,.1)、悬停 .2、按下 .3，过渡 .2s cubic-bezier(.05,0,0,1)；
+   1.0 下面挂一行 14px 行高的说明。滑条轨道 4px 高，已过部分 #fff、余下 #909090，
+   把手 16px 白圆上移 6px；已过比例由脚本写进自定义属性，上游同样是自定义属性驱动。
+   字号、字重和圆角走 Peach 自己的 token：上游读数那档 18px/900 和说明那档 10px 都不在
+   Peach 的字号刻度上，900 也不在 Geist 的三档字重里；胶囊和轨道的圆角本来就大于自身高度的
+   一半，`--pill-radius` 渲染出来与上游那两个字面值一模一样。 */
+.vjs-peach-speed-panel{box-sizing:border-box;display:flex;flex-direction:column;padding:24px 16px 16px}
+.vjs-peach-speed-display{display:flex;justify-content:center;margin-bottom:24px;
+  font-size:var(--fs-lg);font-weight:600;line-height:22px;color:#fff}
+.vjs-peach-speed-slider{display:flex;align-items:center;gap:16px;margin-bottom:24px}
+.vjs-peach-speed-chips{display:flex;align-items:flex-start;gap:8px}
+.vjs-peach-speed-preset{display:flex;flex-direction:column;align-items:center}
+.vjs-peach-speed-preset-label{margin-top:4px;font-size:var(--fs-xs);font-weight:400;line-height:14px;color:rgba(255,255,255,.7)}
+.vjs-peach-settings-menu .vjs-peach-speed-button{display:flex;justify-content:center;align-items:center;
+  height:32px;min-height:32px;padding:0;border:0;border-radius:var(--pill-radius);background:rgba(255,255,255,.1);
+  color:#fff;font-weight:500;line-height:16px;text-align:center;cursor:pointer;
+  transition:background .2s cubic-bezier(.05,0,0,1)}
+.vjs-peach-settings-menu .vjs-peach-speed-button:before{content:none}
+.vjs-peach-settings-menu .vjs-peach-speed-button:hover{background:rgba(255,255,255,.2)}
+.vjs-peach-settings-menu .vjs-peach-speed-button:active{background:rgba(255,255,255,.3)}
+.vjs-peach-speed-slider .vjs-peach-speed-button{flex:none;width:32px;font-size:var(--fs-2xl)}
+.vjs-peach-speed-chips .vjs-peach-speed-button{width:53px;gap:4px;font-size:var(--fs-xs)}
+.vjs-peach-speed-range{--peach-speed-percent:0%;-webkit-appearance:none;appearance:none;flex:1 1 auto;
+  width:100%;min-width:0;height:24px;margin:0;background:transparent;cursor:pointer}
+.vjs-peach-speed-range:focus-visible{outline:0}
+.vjs-peach-speed-range::-webkit-slider-runnable-track{height:4px;border-radius:var(--pill-radius);
+  background:linear-gradient(to right,#fff 0,#fff var(--peach-speed-percent),#909090 var(--peach-speed-percent),#909090 100%)}
+.vjs-peach-speed-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;
+  margin-top:-6px;border-radius:50%;background:#fff}
+.vjs-peach-speed-range::-moz-range-track{height:4px;border-radius:var(--pill-radius);
+  background:linear-gradient(to right,#fff 0,#fff var(--peach-speed-percent),#909090 var(--peach-speed-percent),#909090 100%)}
+.vjs-peach-speed-range::-moz-range-thumb{width:16px;height:16px;border:0;border-radius:50%;background:#fff}
+/* 320px 高的播放器只给面板 246px：内距和两处 24px 间隔都收到 16px 就是 225px。 */
+.video-js.vjs-peach-xsmall .vjs-peach-speed-panel{padding:16px}
+.video-js.vjs-peach-xsmall .vjs-peach-speed-display,
+.video-js.vjs-peach-xsmall .vjs-peach-speed-slider{margin-bottom:16px}
+/* 中心提示照同一份 www-player.css：`.ytp-bezel` 78px 圆、blur(16px)、rgba(0,0,0,.6)，
+   图标 54px；窄屏收到 64px 圆配 48px 图标。动画 1s cubic-bezier(.05,0,0,1) 走
+   0→1.33→1 的缩放淡出，`role="status"` 带这一次的动作名。 */
+.vjs-peach-bezel{position:absolute;z-index:19;left:50%;top:50%;width:78px;height:78px;margin:-39px 0 0 -39px;
+  display:grid;place-items:center;border-radius:50%;background:rgba(0,0,0,.6);
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:#fff;opacity:0;pointer-events:none}
+.vjs-peach-bezel[hidden]{display:none}
+.vjs-peach-bezel-icon{display:grid;place-items:center;width:54px;height:54px}
+.vjs-peach-bezel-icon svg{width:100%;height:100%;display:block;fill:currentColor;stroke:none}
+.vjs-peach-bezel-run{animation:peach-bezel-fadeout 1s cubic-bezier(.05,0,0,1) 1 normal forwards}
+@keyframes peach-bezel-fadeout{0%{opacity:0}25%,75%{opacity:1;transform:scale(1.33)}to{opacity:0;transform:scale(1)}}
+.video-js.vjs-peach-xsmall .vjs-peach-bezel{width:64px;height:64px;margin:-32px 0 0 -32px}
+.video-js.vjs-peach-xsmall .vjs-peach-bezel-icon{width:48px;height:48px}
 /* 悬停提示取自 YouTube delhi-modern（player 9470c977 的 www-player.css）：毛玻璃 blur(16px)、
-   rgba(0,0,0,.3) 底、8px 圆角（--surface-radius）、5px 9px 内距、13px/15px 500 字重（--fs-sm）、
+   8px 圆角（--surface-radius）、5px 9px 内距、13px/15px 500 字重（--fs-sm）、
    text-shadow 0 0 2px #000；快捷键徽标 1px rgba(255,255,255,.3) 边、4px 圆角（--badge-radius）、
-   最小宽 11px、左外边距 4px，空了就收起。控制条上每个按钮共用这一套。 */
+   最小宽 11px、左外边距 4px，空了就收起。控制条上每个按钮共用这一套。
+   底色是 Peach 主动偏离上游的一处：上游 rgba(0,0,0,.3) 加 blur 落在亮画面上只剩一块低对比
+   灰板，悬停时看着像凭空多出来一块阴影。提示和播放器其它悬浮件同档，一律 rgba(0,0,0,.6)。 */
 .vjs-peach-tooltip{position:absolute;z-index:5;right:50%;bottom:calc(100% + 12px);transform:translateX(50%);
-  display:none;align-items:center;padding:5px 9px;border-radius:var(--surface-radius);background:rgba(0,0,0,.3);
+  display:none;align-items:center;padding:5px 9px;border-radius:var(--surface-radius);background:rgba(0,0,0,.6);
   backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:#fff;white-space:nowrap;
   font-size:var(--fs-sm);font-weight:500;line-height:15px;text-shadow:0 0 2px #000;pointer-events:none}
 .vjs-peach-tooltip kbd{display:flex;justify-content:center;align-items:center;min-width:11px;margin-left:4px;padding:0 2px;
@@ -1435,10 +1526,29 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vjs-peach-expand{display:none}
 .video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control{flex:0 0 36px;width:36px!important;min-width:36px}
 .video-js.vjs-peach-xsmall .vjs-peach-right-controls .vjs-peach-control-icon,
-.video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control>button>svg{width:18px;height:18px}
+.video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control:not(.vjs-peach-expand)>button>svg{width:18px;height:18px}
+/* 窄屏只有展开键不缩：YouTube 那边其余按钮的 svg 是 18px 加 7px 内边距，
+   `.ytp-expand-right-bottom-section-button` 的 svg 内边距是 0，整块 32px 铺满按钮。
+   跟着缩到 18px 的话，这个箭头在窄屏上几乎看不出是个可点的键。 */
+.video-js.vjs-peach-xsmall .vjs-peach-expand>button>svg{width:32px;height:32px}
+/* 窄屏的悬停底照 `.ytp-delhi-modern.ytp-xsmall-width-mode .ytp-chrome-bottom .ytp-button:before`：
+   32×32 的正圆。上游按钮本体 32px 配 4px 2px 外边距，正好是这里 40px 行高里 36px 的一格。 */
+.video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control>.vjs-peach-hover{
+  left:2px;width:32px;height:32px;border-radius:50%}
+/* 折叠态里设置键就是这排的右端，`right:-100px` 是给它右边还有影院和全屏时留的位；
+   窄屏照原样偏移会把整个面板推到播放器外面。贴住设置键右缘往左铺，高度按播放器
+   自己的高度收顶（`--peach-player-h` 由布局脚本写在播放器元素上）。 */
+.video-js.vjs-peach-xsmall .vjs-peach-settings-menu{right:0;width:min(274px,calc(100vw - 48px));
+  max-height:calc(var(--peach-player-h,420px) - 74px)}
+/* 面板底边离播放器底边 66px（离设置键 52px 加控制条那 14px），顶上再留 8px，所以收顶取
+   播放器高度减 74px：320px 高的播放器给出 246px。八档播放速度单列要 57+16+8×48=457px，
+   排两列、行高 44px 是 57+8+4×44=241px，最挤的那个面板也不用滚。 */
+.video-js.vjs-peach-xsmall .vjs-peach-panel-menu{padding:4px 8px}
+.video-js.vjs-peach-xsmall .vjs-peach-menu-option{min-height:44px}
+.video-js.vjs-peach-xsmall .vjs-peach-panel-menu:has(>.vjs-peach-menu-option:nth-child(5)){display:grid;grid-template-columns:1fr 1fr}
 .video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control:not(.vjs-peach-settings):not(.vjs-peach-expand){display:none}
 .video-js.vjs-peach-xsmall .vjs-peach-expand{display:block}
-.video-js.vjs-peach-xsmall.vjs-peach-right-expanded .vjs-peach-right-controls>.vjs-control{display:block}
+.video-js.vjs-peach-xsmall.vjs-peach-right-expanded .vjs-peach-right-controls>.vjs-control:not(.vjs-peach-settings):not(.vjs-peach-expand){display:block}
 .video-js.vjs-peach-xsmall.vjs-peach-right-expanded .vjs-peach-time{display:none}
 .vjs-peach-expand>button>svg{transition:transform .3s cubic-bezier(.05,0,0,1);transform:rotate(180deg)}
 .video-js.vjs-peach-right-expanded .vjs-peach-expand>button>svg{transform:rotate(0)}
@@ -1466,7 +1576,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .playerstatsbtn[aria-pressed="true"]{background:var(--hover);color:var(--ink)}
 .playerstatsbtn svg{position:relative;z-index:1;width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;filter:drop-shadow(0 0 1px rgba(0,0,0,.8))}
 .playerstats{position:absolute;left:11px;top:58px;z-index:8;min-width:320px;max-width:min(520px,calc(100% - 22px));
-  padding:10px 12px;border:1px solid rgba(255,255,255,.18);border-radius:var(--surface-radius);
+  max-height:calc(100% - 114px);overflow-y:auto;overscroll-behavior:contain;padding:10px 12px;border:1px solid rgba(255,255,255,.18);border-radius:var(--surface-radius);
   background:rgba(2,4,8,.78);color:#eef3f8;box-shadow:0 12px 28px #0008;
   backdrop-filter:saturate(1.25) blur(14px);font-size:var(--fs-xs);line-height:1.5;font-family:inherit}
 .playerstats dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:1px 12px;margin:0}.playerstats dt{text-align:right;font-weight:600}.playerstats dd{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1479,10 +1589,14 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .playerstats[hidden]{display:none}
 @media(max-width:600px){.playerstats dd.playerstatsmetric{grid-template-columns:96px minmax(0,1fr)}}
 .playernet{box-sizing:border-box;position:absolute;left:58px;top:11px;z-index:8;height:40px;min-height:40px;padding:0 11px;
-  display:flex;align-items:center;border:0;border-radius:var(--floating-radius);
+  display:flex;align-items:center;gap:7px;white-space:nowrap;border:0;border-radius:var(--floating-radius);
   background:rgba(0,0,0,.6);color:#fff;box-shadow:none;backdrop-filter:blur(16px);font-size:var(--fs-xs);line-height:1;font-family:inherit}
+/* 徽标里的图标必须自己声明描边：sprite 里的仪表盘是描边图形，不声明就按 SVG 默认的
+   fill 画成黑色实心块，压在 rgba(0,0,0,.6) 的底上等于没有。速率也要按整体不换行，
+   否则「640 KB/s」会在这条 flex 行里断成两行，把 40px 的胶囊顶破。 */
+.playernet svg{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
 .playernet[hidden]{display:none}
-.gate{aspect-ratio:16/9;width:100%;background:var(--sunk);border:1px dashed var(--meter);
+.gate{aspect-ratio:16/9;width:100%;min-height:320px;background:var(--sunk);border:1px dashed var(--meter);
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer}
 /* 占位说明的字号原先写在 openItem 的模板里当内联 style，三处各写一遍、
    连 `color:var(--muted)` 也抄了三份。 */
@@ -1504,8 +1618,12 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .sidecontent{box-sizing:border-box;width:100%;height:100%;max-height:76vh;padding:18px;display:flex;gap:0;
   flex-direction:column;overflow-y:auto;overflow-x:hidden}
 .stitle{font-size:var(--fs-lg);line-height:1.4;word-break:break-all;margin-bottom:8px}
-.detailtitle{display:flex;align-items:flex-start;gap:8px;margin-bottom:10px}
-.detailtitle>.srcbig{place-items:start;flex:none;width:17px;margin-top:2px}.detailtitle .stitle{min-width:0;margin:0}
+/* 来源徽标浮左，只缩进标题的第一行，折行后的第二行顶到内容左边缘；浮动块整好一行高
+   （28px），所以第二行起是整行宽。两个文件动作跟在标题文字末尾，26px 的按钮加 3px 上下
+   外边距把所在那一行的行盒撑到 32px，按钮和上下两行文字各留 3px。 */
+.detailtitle{display:flow-root;margin-bottom:10px}
+.detailtitle>.srcbig{float:left;width:17px;height:28px;margin:0 8px 0 0;place-items:center}
+.detailtitle .stitle{min-width:0;margin:0;line-height:1.75}
 /* 源文件管理：定位 + 目录对账。图标必须显式写 stroke/fill，Lucide 是描边路径，
    缺了就被按默认 fill:black 画成黑块（详见 .photonav 那一段的同类修复）。 */
 .srctools{display:flex;align-items:center;gap:6px;margin:0 0 10px;flex-wrap:wrap}
@@ -1516,7 +1634,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .srctools button:hover{background:var(--hover);color:var(--ink)}
 .srctools button:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
 .srcstate{font-size:var(--fs-xs);color:var(--muted);min-width:0;flex:1 1 100%}
-.detailtitletools{display:inline-flex;vertical-align:middle;margin:0 0 0 8px;translate:0 -2px;flex-wrap:nowrap}.detailtitlestate{display:block;margin:-4px 0 10px}
+.detailtitletools{display:inline-flex;vertical-align:middle;margin:3px 0 3px 8px;flex-wrap:nowrap}.detailtitlestate{display:block;margin:-4px 0 10px}
 .detailtitlestate:empty{display:none}
 .photohead .srctools{margin:0 0 0 auto}
 .photohead .srcstate{flex:none}
@@ -1528,6 +1646,9 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
   background:color-mix(in srgb,var(--surface) 82%,var(--ground));overflow:hidden;min-height:30px}
 .detailtag button{border:0;background:transparent;color:var(--ink-2);cursor:pointer;height:28px}
 .detailtag .tagfilter{padding:3px 5px 3px 11px}.detailtag .tagremove{width:28px;padding:0;display:grid;place-items:center;color:var(--muted)}
+/* 标签左半边点下去是按这个标签筛选，得和右边的删除键一样有悬停反馈；
+   它没有选中态，照孤立按钮的写法抬填充。 */
+.detailtag .tagfilter:hover{background:var(--hover);color:var(--ink)}
 .detailtag .tagremove:hover{color:var(--drop);background:color-mix(in srgb,var(--drop) 12%,transparent)}
 .detailtag svg,.tagplus svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
 .tagplus{width:30px;height:30px;border:1px dashed var(--line);border-radius:50%;display:grid;place-items:center;
@@ -1652,7 +1773,11 @@ body.settings-open{overflow:hidden}
 #censorSetting:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .sidebarsetting{display:grid;gap:12px;padding:0}.sidebarsetting>span b,.sidebarsetting>span small{display:block}.sidebarsetting>span small{margin-top:3px;color:var(--muted);line-height:1.45}.sidebarorder{display:grid;gap:6px}.sidebarorderrow{position:relative;display:flex;align-items:center;justify-content:space-between;min-height:48px;padding:5px 6px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--overlay-3);cursor:grab}.sidebarorderrow:active{cursor:grabbing}.sidebarorderrow.dragging{opacity:.42}.sidebarorderrow.drop-before::before,.sidebarorderrow.drop-after::after{content:'';position:absolute;z-index:2;left:7px;right:7px;height:2px;border-radius:var(--pill-radius);background:var(--ink)}.sidebarorderrow.drop-before::before{top:-5px}.sidebarorderrow.drop-after::after{bottom:-5px}.sidebarorderrow>span{display:flex;align-items:center;gap:8px}.sidebarorderrow svg{width:18px;height:18px;stroke:currentColor;fill:none}.sidebarorderlabel{min-width:0}.sidebarorderlabel>b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sidebardrag{display:grid;place-items:center;width:24px;color:var(--muted)}.sidebardrag svg{width:20px;height:20px}.sidebarorderactions{flex:none}.sidebarorderrow button,.sidebaradd button{display:grid;place-items:center;min-width:34px;height:34px;border:0;border-radius:var(--control-radius);background:transparent;color:var(--muted);cursor:pointer}.sidebarorderrow button:hover:not(:disabled),.sidebaradd button:hover:not(:disabled){background:var(--hover);color:var(--ink)}.sidebarorderrow button:disabled,.sidebaradd button:disabled{opacity:.25;cursor:default}.sidebaradd{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:5px}
 .sidebaraddpicker{position:relative;min-width:0}.sidebaradd .sidebaraddfield{display:grid;grid-template-columns:auto minmax(0,1fr) auto;width:100%;height:42px;box-sizing:border-box;align-items:center;justify-items:start;gap:9px;padding:0 11px;border:1px solid var(--line);border-radius:var(--control-radius);background:#181a1d;color:#f5f7fa;text-align:left;font:inherit}.sidebaraddfield svg:last-child{justify-self:end;color:var(--muted)}.sidebaraddmenu{position:absolute;z-index:4;left:0;right:0;bottom:calc(100% + 6px);max-height:min(312px,48vh);overflow:auto;overscroll-behavior:contain;padding:6px;border:1px solid var(--border-15);border-radius:var(--floating-radius);background:#181a1d;box-shadow:0 16px 44px -20px #000}.sidebaraddmenu[hidden]{display:none}.sidebaradd .sidebaraddmenu button{grid-template-columns:auto minmax(0,1fr);width:100%;height:38px;justify-content:start;gap:9px;padding:0 8px;border:0;text-align:left}.sidebaraddmenu button[aria-selected="true"]{background:var(--hover);color:var(--ink)}.sidebaradd button{grid-template-columns:auto auto;gap:6px;padding:0 11px;border:1px solid var(--line);color:var(--ink-2)}.sidebaradd svg{width:17px;height:17px;stroke:currentColor;fill:none}
-.sidebaradd>button{height:42px;box-sizing:border-box}@media(max-width:600px){.settingsscroll{padding:0 17px 17px}.settingshead{padding:17px 17px 14px}.settingrow{grid-template-columns:1fr;gap:9px}.settingrow select{width:100%;min-width:0}.settingrow .pcheck{justify-self:start}}
+.sidebaradd>button{height:42px;box-sizing:border-box}@media(max-width:600px){.settingsscroll{padding:0 17px 17px}.settingshead{padding:17px 17px 14px}.settingrow{grid-template-columns:1fr;gap:9px}
+  /* 单列是给 select 留的：148px 的下拉配上标题和说明在窄屏挤不下。开关只有 36px，
+     跟标题同一行绰绰有余，跟着换行只是白占一行高度。 */
+  .settingrow:has(input[type="checkbox"]){grid-template-columns:minmax(0,1fr) auto;gap:12px}
+  .settingrow select{width:100%;min-width:0}.settingrow .pcheck{justify-self:start}}
 .sidebaradd .sidebaraddmenu button{justify-items:start}
 
 /* ── Toast：Geist 的非阻塞回执 ──
@@ -2035,13 +2160,18 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .pcheck input:disabled+span{cursor:not-allowed;opacity:.55}
 .pcheck:has(input:disabled){cursor:not-allowed}
 .pcheck:has(input:disabled)>span{background:var(--ground)}
-/* 取景：正封模式下，整张封套要把镜头推到右半边；本身就是竖版正封的则整张用。
+/* 取景：正封模式下，整张封套要把镜头推到右半边；本身就是竖版正封的则整张用；
+   16:9 官方剧照没有「正封那一块」，只能按人脸取。
    判据是图片自己的宽高比，由 onload 写进 data-frame。 */
 .poster.cover{width:100%;height:100%;object-fit:cover;display:block}
-/* --cover-y 由人脸检出写入；没检出时回落到 22%，那是 46 张实测里的常见位置。 */
+/* --cover-x / --cover-y 都由人脸检出写入。哪个轴生效取决于容器和图片谁更竖：
+   `object-fit:cover` 只裁一个轴，另一个轴的锚点是死值。 */
 /* 右侧正封贴着封套右边缘，横向锚点就取最右；容器比例已经把可见窗口收成正封那一块。 */
 .poster.cover.front[data-frame="sleeve"]{object-position:100% var(--cover-y,22%)}
 .poster.cover.front[data-frame="front"]{object-position:50% var(--cover-y,22%)}
+/* 剧照比大图容器宽得多，裁的是横向，所以横向锚点必须跟着人走。没检出时回落
+   居中：那是取不到人脸时唯一站得住的猜测。 */
+.poster.cover.front[data-frame="still"]{object-position:var(--cover-x,50%) var(--cover-y,22%)}
 .poster.cover.whole{object-fit:contain;background:#000;object-position:50% 50%}
 
 
@@ -2142,7 +2272,11 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .followdetailplaceholder{display:grid;place-items:center;gap:10px;color:var(--muted)}.followdetailplaceholder .ficon{width:34px;height:34px;margin:0}
 .followdetailtitle{display:flex;gap:5px;align-items:flex-start;margin-bottom:8px}.followdetailtitle .stitle{width:auto;max-width:calc(100% - 35px);margin:0}.followdetailtitle .followorigin{flex:none;width:30px;height:30px;margin:0;display:grid;place-items:center;border-radius:var(--control-radius)}.followdetailtitle .followorigin:hover{background:var(--hover)}
 .followdetailidentity{display:flex;align-items:center;gap:10px;margin:2px 0 12px}.followdetailidentity .mav{flex:none}.followdetailidentity b,.followdetailidentity span{display:block}.followdetailidentity>div>span{margin-top:3px;color:var(--muted);font-size:var(--fs-xs)}
-.followdetailsummary{margin:0 0 16px;line-height:1.6;color:var(--ink-2);white-space:pre-line}.followdetailtags .tg{max-width:none;overflow:visible;text-overflow:clip;white-space:normal;text-align:left;color:var(--ink-2);font-family:inherit}.followqueue .mixitempic>.fnothumb{position:static;width:100%;height:100%}
+.followdetailsummary{margin:0 0 16px;line-height:1.6;color:var(--ink-2);white-space:pre-line}.followdetailtags .tg{max-width:none;overflow:visible;text-overflow:clip;white-space:normal;text-align:left;color:var(--ink-2);font-family:inherit}/* 通用 `.tg:hover` 的填充和文字色被上面按类型着色的两条同权重规则压掉了，
+   悬停得按标签自己那个类型色加深，不能回到中性的 `--hover`。 */
+.followdetailtags .tg:hover{border-color:color-mix(in srgb,var(--r34-tag) 68%,transparent);
+  background:color-mix(in srgb,var(--r34-tag) 18%,transparent);color:var(--ink)}
+.followqueue .mixitempic>.fnothumb{position:static;width:100%;height:100%}
 .fnote.followmediaissue{margin:18px 0 8px;color:var(--drop)}.followresources{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}.followresources a{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 11px;border:1px solid var(--border-15);border-radius:var(--control-radius);color:var(--ink-2);text-decoration:none}.followresources a:hover{background:var(--hover);color:var(--ink);text-decoration:none}.followresources svg{width:15px;height:15px;stroke:currentColor;fill:none}.followdetailactions{margin-top:2px}
 /* 标签沉到侧栏最后：来源站的标签动辄几十个，夹在正文和操作之间就得先滚过整片
    标签云才够得着「已看／忽略」。 */
@@ -2297,18 +2431,8 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8}
 
 .faddform{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start}
-.fsearchinput{position:relative;min-width:0}.fsearchprefix{position:absolute;z-index:1;left:12px;top:11px;
-  display:grid;place-items:center;width:16px;height:16px;color:var(--muted);pointer-events:none}
-.fsearchprefix>svg{width:16px;height:16px;stroke:currentColor;fill:none}
-.faddform input[type="search"]{width:100%;min-width:0;height:38px;
-  box-sizing:border-box;border:1px solid var(--border-15);border-radius:var(--control-radius);
-  background:var(--ground);color:var(--ink);padding:0 12px 0 38px;font-size:var(--fs-md);font-family:inherit;
-  line-height:20px;transition:border-color .12s ease}
-.faddform input[type="search"]::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none}
+/* 输入框本体是共用的 `.geist-search`；这里只管它和旁边按钮的高度对齐。 */
 .faddform .fbtn{height:38px;min-height:38px}
-.faddform input[type="search"]::placeholder{color:var(--muted)}
-.faddform input[type="search"]:focus-visible{outline:2px solid var(--tungsten);outline-offset:1px;
-  border-color:var(--tungsten)}
 /* 没有按钮可以变灰，查找中的唯一凭据就是前缀位上的 Spinner——输入框自己必须还能改。 */
 .faddform[aria-busy="true"] input[type="search"]{color:var(--muted)}
 
@@ -2469,7 +2593,7 @@ details.fcred{display:block}
   .faliasmanager{margin-left:-13px;margin-right:-13px;margin-bottom:-14px}
   .faliasmanager>summary{padding:2px 13px}
   .faliasmanager .fcollapsebody{padding:4px 13px 14px}
-  .faddform>.fsearchinput{grid-column:1/-1}
+  .faddform>.geist-search{grid-column:1/-1}
   .faddform>.fsrcfilter{justify-self:start}
   .frow{gap:8px}
   .fsources,.fsources[data-layout="compact"]{grid-template-columns:1fr}
