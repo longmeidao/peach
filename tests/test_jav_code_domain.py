@@ -29,6 +29,7 @@ from peach.catalog_rules import (
     release_code_from_filename,
     release_code_from_text,
 )
+from peach import scripting
 from peach.migrations import upgrade
 from peach.review_csv import write_rows
 
@@ -317,7 +318,12 @@ class ApplyTests(unittest.TestCase):
         self._asset(6, r"B:\x\HHD800\hhd800.com@ABW-132.mp4", "HHD800")
         self.assertEqual(self._run(), 0)
         self.assertEqual(self._codes()[6][0], "HHD800")
-        self.assertIn("mode=ro", SCRIPT.read_text(encoding="utf-8"))
+
+    def test_the_connections_and_the_backup_gate_are_the_shared_ones(self):
+        # 只读连接、`--apply` 缺 `--backup` 的拒绝和写前备份都在 `peach.scripting` 里，
+        # 这里不再自备一份：同一条判据有两份实现时，修好一份不等于修好这件事。
+        self.assertIs(audit.open_readonly, scripting.open_readonly)
+        self.assertIs(audit.open_for_write, scripting.open_for_write)
 
 
 if __name__ == "__main__":

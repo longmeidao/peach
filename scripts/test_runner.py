@@ -21,6 +21,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                 "test_link_marks.py", "test_site_icons.py",
                 "test_studio_icon_variants.py",
                 "test_review_csv.py", "test_related.py",
+                "test_jav_code_domain.py",
                 "test_taste_history.py", "test_web_ui.py", "test_web_js.py",
                 "test_web_resource_sync.py",
                 "test_web_review.py", "test_web_settings.py"),
@@ -51,7 +52,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                 "test_fsutil.py",
                 "test_job_status.py", "test_jobs.py", "test_reference_updates.py",
                 "test_repo_hygiene.py",
-                "test_review_csv.py",
+                "test_review_csv.py", "test_jav_code_domain.py",
                 "test_subprocess_encoding.py", "test_module_layering.py"),
     # 前端 island 层（ADR-0022）。产物与源码的断言不需要 Node；vitest 那部分在没有
     # npm 时自己跳过，所以这个域在任何机器上都能跑，`full` 也就自动包含它。

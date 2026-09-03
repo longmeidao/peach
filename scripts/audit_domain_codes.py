@@ -29,9 +29,15 @@ from __future__ import annotations
 import argparse
 import re
 import sqlite3
+import sys
 from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path, PureWindowsPath
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 from peach.catalog_rules import (
     RELEASE_EVIDENCE_KINDS,
@@ -42,9 +48,15 @@ from peach.catalog_rules import (
     release_code_from_filename,
     release_code_from_text,
 )
-from peach.config import DATABASE_PATH, GENERATED_DIR
-from peach.migrations import sqlite_backup
+from peach.config import GENERATED_DIR
 from peach.review_csv import read_rows, write_rows
+from peach.scripting import (
+    add_ledger_write_args,
+    counts_of,
+    open_for_write,
+    open_readonly,
+    verify_after_write,
+)
 
 #: 搬运站常用的顶级域，够宽就行——这里只用来确认「这是个域名」，不做归属判断。
 _TLD = (r"com|net|org|la|cc|club|tv|me|xyz|top|vip|info|co|us|pw|ws|to|io"
@@ -258,22 +270,16 @@ def apply_rows(connection: sqlite3.Connection,
     return outcome
 
 
-def counts(connection: sqlite3.Connection) -> dict[str, int]:
-    """写库前后各取一次的口径，差异要能逐条解释。"""
-    def scalar(sql: str) -> int:
-        return int(connection.execute(sql).fetchone()[0])
-
-    return {
-        "asset": scalar("SELECT COUNT(*) FROM asset"),
-        "有 code": scalar("SELECT COUNT(*) FROM asset WHERE COALESCE(code,'')<>''"),
-        "不同 code": scalar(
-            "SELECT COUNT(DISTINCT code) FROM asset WHERE COALESCE(code,'')<>''"),
-        "asset_search": scalar("SELECT COUNT(*) FROM asset_search"),
-    }
+#: 本脚本自己关心的计数口径，接在 `scripting.counts_of` 的基础计数后面。
+_CODE_COUNTS = {
+    "有 code": "SELECT COUNT(*) FROM asset WHERE COALESCE(code,'')<>''",
+    "不同 code": "SELECT COUNT(DISTINCT code) FROM asset WHERE COALESCE(code,'')<>''",
+    "asset_search": "SELECT COUNT(*) FROM asset_search",
+}
 
 
 def verify(connection: sqlite3.Connection, asset_ids: list[int]) -> dict[str, str]:
-    """写完立刻自检。
+    """写完立刻自检：共用的两道 PRAGMA，加上本次改动特有的 FTS 核对。
 
     `asset_search.code` 由 `0004`/`0023` 的 `AFTER UPDATE OF name,code` 触发器重建，
     这里不手动补 FTS，而是核对触发器真的跑过了——搜索索引留着旧的水印，界面上就还能
@@ -284,30 +290,25 @@ def verify(connection: sqlite3.Connection, asset_ids: list[int]) -> dict[str, st
         f"SELECT COUNT(*) FROM asset a LEFT JOIN asset_search s ON s.asset_id=a.id "
         f"WHERE a.id IN ({placeholders}) "
         f"AND COALESCE(s.code,'')<>COALESCE(a.code,'')", asset_ids).fetchone()[0]
+    integrity, violations = verify_after_write(connection)
     return {
-        "integrity_check": str(
-            connection.execute("PRAGMA integrity_check").fetchone()[0]),
-        "foreign_key_check": str(
-            len(connection.execute("PRAGMA foreign_key_check").fetchall())),
+        "integrity_check": integrity,
+        "foreign_key_check": str(violations),
         "FTS 未同步": str(stale),
     }
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="排查被转载站水印域名顶替的 asset.code；默认只读")
-    parser.add_argument("--db", type=Path, default=DATABASE_PATH)
+    parser = add_ledger_write_args(argparse.ArgumentParser(
+        description="排查被转载站水印域名顶替的 asset.code；默认只读"))
     parser.add_argument("--review-csv", type=Path,
                         default=GENERATED_DIR / "domain-code-review.csv")
-    parser.add_argument("--apply", action="store_true",
-                        help="按复核过的 CSV 写 ledger；默认只排查")
-    parser.add_argument("--backup", type=Path, help="--apply 必需：写库前的 SQLite 备份")
     return parser
 
 
 def survey(args: argparse.Namespace) -> int:
-    # 只读连接：这份排查的产物是 CSV，任何写入都要走单独授权的写库流程。
-    connection = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
+    # `mode=ro` 连接：这份排查的产物是 CSV，任何写入都要走单独授权的写库流程。
+    connection = open_readonly(args.db)
     try:
         rows = collect(connection)
     finally:
@@ -332,12 +333,12 @@ def apply_reviewed(args: argparse.Namespace) -> int:
     if not plan:
         raise SystemExit(f"{args.review_csv} 里没有可写入的行；存疑档不自动写。")
 
-    sqlite_backup(args.db, args.backup)
+    # 备份、`--backup` 缺失的拒绝和可写连接都在 `open_for_write` 里一次做完，
+    # 备份必定早于任何写入。
+    connection = open_for_write(args)
     print(f"已备份 → {args.backup}")
-
-    connection = sqlite3.connect(args.db)
     try:
-        before = counts(connection)
+        before = counts_of(connection, _CODE_COUNTS)
         connection.execute("BEGIN IMMEDIATE")
         try:
             outcome = apply_rows(connection, plan)
@@ -345,7 +346,7 @@ def apply_reviewed(args: argparse.Namespace) -> int:
         except Exception:
             connection.rollback()
             raise
-        after = counts(connection)
+        after = counts_of(connection, _CODE_COUNTS)
         checks = verify(connection, [int(row["asset_id"]) for row in plan])
     finally:
         connection.close()
@@ -367,8 +368,6 @@ def apply_reviewed(args: argparse.Namespace) -> int:
 
 
 def run(args: argparse.Namespace) -> int:
-    if args.apply and not args.backup:
-        raise SystemExit("--apply 必须同时给 --backup")
     if args.apply:
         return apply_reviewed(args)
     result = survey(args)
