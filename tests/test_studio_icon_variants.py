@@ -55,6 +55,13 @@ def block_png(size, inset=4, color=(210, 30, 30)):
     return buffer.getvalue()
 
 
+# 烤成方图后的边长。`block_png` 的不透明外接框每边比给的尺寸少一个 inset，
+# 烤底再让内容占边长 `PLATE_CONTENT_RATIO`，所以两个数都由常量算出来。
+PLATE_CONTENT_EDGE = 298 - 4 * 2
+PLATE_SIDE = round(PLATE_CONTENT_EDGE / MODULE.images.PLATE_CONTENT_RATIO)
+PLATE_SIZE = f"{PLATE_SIDE}x{PLATE_SIDE}"
+
+
 class VariantResolutionTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -395,7 +402,7 @@ class HarvestTests(unittest.TestCase):
         rows = self.run_harvest(png_bytes())
         self.assertEqual([row["variant"] for row in rows], [MODULE.ICON])
 
-    def test_a_rejected_wordmark_is_padded_and_installed_anyway(self):
+    def test_a_rejected_wordmark_is_baked_into_a_plate_and_installed_anyway(self):
         """用户 2026-09-03 的口径：不是 icon 也可以装 icon，尽量不要落入无图。"""
         original = MODULE.site_icons.best_mark
 
@@ -413,14 +420,15 @@ class HarvestTests(unittest.TestCase):
         self.assertEqual(row["verdict"], MODULE.PADDED)
         self.assertIn(MODULE.PADDED, MODULE.INSTALLABLE)
         with Image.open(io.BytesIO(Path(str(row["candidate"])).read_bytes())) as image:
-            self.assertEqual(image.size, (298, 298), "补白之后必须是方的")
-        self.assertEqual(row["mark_size"], "298x298")
+            self.assertEqual(image.size, (PLATE_SIDE, PLATE_SIDE), "烤出来必须是方的")
+            self.assertNotIn("A", image.getbands(), "装进去的文件必须不透明")
+        self.assertEqual(row["mark_size"], PLATE_SIZE)
         self.assertGreater(float(row["content_aspect"]),
                            MODULE.link_marks.MAX_CONTENT_ASPECT,
                            "内容比照记：那个数就是「这枚其实是字标」的提示")
         self.assertIn("方形标识未取得，装的是字标", row["evidence"])
 
-    def run_padded_harvest(self, targets=None, links=None, fetch=None):
+    def run_wordmark_harvest(self, targets=None, links=None, fetch=None):
         original = MODULE.site_icons.best_mark
 
         def stub(url, fetcher, policy, fallback=None, accept=None):
@@ -436,10 +444,10 @@ class HarvestTests(unittest.TestCase):
         finally:
             MODULE.site_icons.best_mark = original
 
-    def test_the_padded_wordmark_also_fills_the_logo_slot(self):
+    def test_the_wordmark_plate_also_fills_the_logo_slot(self):
         """只装 icon 位，BangBus 页顶上会回落到母品牌的 `BangBus.img`（BANGBROS 字标）：
         小位对了，大位挂着别家的牌子。"""
-        rows = self.run_padded_harvest()
+        rows = self.run_wordmark_harvest()
         self.assertEqual([row["variant"] for row in rows], [MODULE.ICON, MODULE.LOGO])
         logo = rows[1]
         self.assertEqual(logo["verdict"], MODULE.OK)
@@ -451,32 +459,60 @@ class HarvestTests(unittest.TestCase):
         self.assertNotEqual(logo["candidate"], rows[0]["candidate"],
                             "两份候选文件不能互相覆盖")
 
-    def test_the_logo_slot_gets_the_square_not_the_raw_strip(self):
-        """厂牌页大位是 160px 的 `object-fit: cover` 方框，整个 logo 目录 2026-08-28 起
-        统一 pad-to-square；298×50 原样装上去只剩中间两个字母（BangBus 实测只见 NG）。"""
-        rows = self.run_padded_harvest()
+    def test_the_logo_slot_gets_an_opaque_square(self):
+        """厂牌页大位是 160px 的 `object-fit: cover` 方框，宽条装上去只剩中间两个字母。
+
+        两位共用同一份烤好的方图，字节一致才能保证两个位置显示同一枚标识。
+        """
+        rows = self.run_wordmark_harvest()
         logo = rows[1]
         with Image.open(io.BytesIO(Path(str(logo["candidate"])).read_bytes())) as image:
-            self.assertEqual(image.size, (298, 298))
-        self.assertEqual(logo["mark_size"], "298x298")
+            self.assertEqual(image.size, (PLATE_SIDE, PLATE_SIDE))
+            self.assertNotIn("A", image.getbands())
+        self.assertEqual(logo["mark_size"], PLATE_SIZE)
         self.assertEqual(logo["sha256"], rows[0]["sha256"], "与 icon 位同一份字节")
 
     def test_a_wordmark_logo_installs_into_the_logo_file(self):
-        rows = self.run_padded_harvest()
+        rows = self.run_wordmark_harvest()
         logos = self.root / "logos"
         written = MODULE.install(rows, logos)
         self.assertEqual(written, ["Fitch.icon.img", "Fitch.img", "Fitch.logo.img"])
-        with Image.open(logos / "Fitch.logo.img") as image:
-            self.assertEqual(image.size, (298, 298))
+        for name in ("Fitch.logo.img", "Fitch.icon.img", "Fitch.img"):
+            with self.subTest(name=name), Image.open(logos / name) as image:
+                self.assertEqual(image.size, (PLATE_SIDE, PLATE_SIDE))
+                self.assertNotIn("A", image.getbands())
+
+    def test_install_bakes_every_candidate_into_an_opaque_square(self):
+        """装盘的字节过同一个烤底入口，所以 logo 目录里天然没有透明底和长条。
+
+        入口只有这一个，`normalize_studio_logos.py` 是同一条规则对历史文件的回溯。
+        """
+        rows = self.run_wordmark_harvest()
+        logos = self.root / "logos"
+        # 候选换成一枚透明底的方标：过得了内容比闸门，可它还是透明的。
+        transparent = block_png((256, 256), inset=32)
+        candidate = self.candidates / "transparent.png"
+        candidate.write_bytes(transparent)
+        rows[0]["candidate"] = str(candidate)
+        rows[0]["sha256"] = hashlib.sha256(transparent).hexdigest()
+        MODULE.install([rows[0]], logos)
         with Image.open(logos / "Fitch.icon.img") as image:
-            self.assertEqual(image.size, (298, 298))
+            self.assertNotIn("A", image.getbands(), "透明底的方标也要烤上白底")
+            self.assertEqual(image.size[0], image.size[1])
+        provenance = json.loads(
+            (logos / "Fitch.icon.img.provenance.json").read_text(encoding="utf-8"))
+        self.assertEqual(provenance["sha256"], rows[0]["sha256"], "候选自己的哈希")
+        self.assertEqual(
+            provenance["installed_sha256"],
+            hashlib.sha256((logos / "Fitch.icon.img").read_bytes()).hexdigest(),
+            "真正写进目录的那一份另记一列，否则复核时对不上文件")
 
     def test_a_working_designated_logo_source_wins_over_the_wordmark(self):
         targets = {"FC2-PPV": {"original_size": "", "installed": ""}}
         links = {"FC2-PPV": [{"entity_id": 1, "studio": "FC2-PPV",
                               "link_kind": "official", "url": "https://fc2.com/"}]}
         source = MODULE.LOGO_SOURCES_BY_SAFE["FC2-PPV"]
-        rows = self.run_padded_harvest(targets, links, Fetch(pages={source: png_bytes()}))
+        rows = self.run_wordmark_harvest(targets, links, Fetch(pages={source: png_bytes()}))
         logos = [row for row in rows if row["variant"] == MODULE.LOGO]
         self.assertEqual(len(logos), 1, "两行 logo 装进同一个文件，后写的会盖掉先写的")
         self.assertEqual(logos[0]["link_kind"], "logo-source")
@@ -485,7 +521,7 @@ class HarvestTests(unittest.TestCase):
         targets = {"FC2-PPV": {"original_size": "", "installed": ""}}
         links = {"FC2-PPV": [{"entity_id": 1, "studio": "FC2-PPV",
                               "link_kind": "official", "url": "https://fc2.com/"}]}
-        rows = self.run_padded_harvest(targets, links, Fetch(reachable=False))
+        rows = self.run_wordmark_harvest(targets, links, Fetch(reachable=False))
         logos = [row for row in rows if row["variant"] == MODULE.LOGO]
         self.assertEqual([row["verdict"] for row in logos], [MODULE.MISSING, MODULE.OK])
         self.assertEqual(logos[0]["candidate"], "", "失败行没有候选，安装时不会落地")

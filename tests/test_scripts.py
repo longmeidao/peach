@@ -1,5 +1,6 @@
 import argparse
 import csv
+import hashlib
 import importlib.util
 import io
 import json
@@ -729,6 +730,65 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(squared.getpixel((200, 200)), (0, 0, 0, 0))
         self.assertEqual(squared.getpixel((20, 150)), (0, 174, 239, 255))
 
+    def test_a_transparent_mark_is_baked_onto_a_white_plate(self):
+        """带透明像素的独立图标：裁掉透明边，居中放到白色方底上。
+
+        三处取图位都用 `object-fit: cover` 铺满方框，透明底在深色底上会露出下面
+        那一层。边距烤进文件，页面就不必各自补 inset 和 padding。
+        """
+        import io
+
+        from PIL import Image
+
+        from peach.images import MARK, PLATE_CONTENT_RATIO, bake_square, classify_plate
+
+        source = Image.new("RGBA", (400, 100), (0, 0, 0, 0))
+        for x in range(10, 310):
+            for y in range(20, 60):
+                source.putpixel((x, y), (0, 174, 239, 255))
+        buffer = io.BytesIO()
+        source.save(buffer, "PNG")
+        payload = buffer.getvalue()
+
+        self.assertEqual(classify_plate(payload), MARK)
+        baked = bake_square(payload)
+        with Image.open(io.BytesIO(baked)) as plate:
+            self.assertEqual(plate.size[0], plate.size[1], "烤出来必须是方的")
+            self.assertNotIn("A", plate.getbands(), "装进去的文件必须不透明")
+            side = plate.size[0]
+            self.assertAlmostEqual(300 / side, PLATE_CONTENT_RATIO, places=2,
+                                   msg="内容占边长约 76%，四周各留约 12%")
+            self.assertEqual(plate.getpixel((2, 2)), (255, 255, 255), "四周是白底")
+            self.assertEqual(plate.getpixel((side // 2, side // 2)), (0, 174, 239),
+                             "主体居中，像素不缩放")
+
+    def test_an_opaque_plate_keeps_its_own_background(self):
+        """完全不透明的图自带底色，那块底是设计的一部分：方的原样返回，长条补方。"""
+        import io
+
+        from PIL import Image
+
+        from peach.images import TILE, bake_square, classify_plate
+
+        def opaque(size, color):
+            buffer = io.BytesIO()
+            Image.new("RGB", size, color).save(buffer, "PNG")
+            return buffer.getvalue()
+
+        tile = opaque((400, 400), (12, 12, 12))
+        self.assertEqual(classify_plate(tile), TILE)
+        self.assertEqual(bake_square(tile), tile, "已经是不透明方图，一个字节都不动")
+
+        strip = opaque((400, 100), (196, 20, 24))
+        self.assertEqual(classify_plate(strip), TILE)
+        with Image.open(io.BytesIO(bake_square(strip))) as squared:
+            self.assertEqual(squared.size, (400, 400))
+            self.assertEqual(squared.convert("RGB").getpixel((5, 5)), (196, 20, 24),
+                             "补出来的边取原图边缘主色，不刷白")
+
+        self.assertIsNone(classify_plate(b"not an image"))
+        self.assertIsNone(bake_square(b"not an image"))
+
     def test_studio_avatar_candidates_never_guess_a_handle_by_default(self):
         """猜错 handle 会产出一个「看起来很官方」的错误 Logo，和它要取代的搜索猜测同一种失败。"""
         module = load_script("fetch_studio_avatar_candidates")
@@ -748,35 +808,90 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(written[0]["accepted"], "False")
         self.assertIn("未取得", written[0]["reason"])
 
-    def test_installed_long_studio_logos_are_backed_up_then_squared(self):
-        """历史长条图也走方图策略；测试只能写临时目录。"""
+    def test_installed_studio_logos_are_backed_up_then_made_opaque_squares(self):
+        """整个目录归一成不透明方图；测试只能写临时目录。
+
+        `*.img` 全在范围内，`<safe>.icon.img` 与 `<safe>.logo.img` 也算。带透明的
+        烤白底，不透明的长条补方，已经是不透明方图的一个字节都不动。
+        """
         from PIL import Image
 
         module = load_script("normalize_studio_logos")
+
+        def png(image):
+            buffer = io.BytesIO()
+            image.save(buffer, "PNG")
+            return buffer.getvalue()
+
+        mark = Image.new("RGBA", (200, 60), (0, 0, 0, 0))
+        for x in range(20, 180):
+            for y in range(10, 50):
+                mark.putpixel((x, y), (0, 174, 239, 255))
+
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "logos"
             backup = Path(tmp) / "backup"
             root.mkdir()
-            wide = root / "wide.img"
-            buffer = io.BytesIO()
-            Image.new("RGB", (400, 100), "white").save(buffer, "PNG")
-            original = buffer.getvalue()
-            wide.write_bytes(original)
-            Path(f"{wide}.ct").write_text("image/png", encoding="utf-8")
+            originals = {
+                "wide.img": png(Image.new("RGB", (400, 100), (196, 20, 24))),
+                "flat.icon.img": png(Image.new("RGB", (256, 256), (12, 12, 12))),
+                "sign.logo.img": png(mark),
+                "vector.img": b'<svg xmlns="http://www.w3.org/2000/svg"/>',
+            }
+            for name, payload in originals.items():
+                (root / name).write_bytes(payload)
+                Path(f"{root / name}.ct").write_text(
+                    "image/svg+xml" if name == "vector.img" else "image/png",
+                    encoding="utf-8")
 
-            dry = module.normalize(root)
-            self.assertEqual(dry[0]["action"], "would-pad")
-            self.assertEqual(wide.read_bytes(), original, "dry-run 不得改图")
+            dry = {str(row["file"]): row for row in module.normalize(root)}
+            self.assertEqual(dry["wide.img"]["action"], "would-pad")
+            self.assertEqual(dry["wide.img"]["kind"], "tile")
+            self.assertEqual(dry["sign.logo.img"]["action"], "would-bake")
+            self.assertEqual(dry["sign.logo.img"]["kind"], "mark")
+            self.assertEqual(dry["vector.img"]["action"], "vector",
+                             "矢量标识本脚本不栅格化，单列出来而不是记成坏文件")
+            self.assertNotIn("flat.icon.img", dry, "已经是不透明方图，不进复核件")
+            for name, payload in originals.items():
+                self.assertEqual((root / name).read_bytes(), payload, "dry-run 不得改图")
             with self.assertRaises(ValueError):
                 module.normalize(root, apply=True)
 
-            applied = module.normalize(root, apply=True, backup_dir=backup)
-            self.assertEqual(applied[0]["action"], "padded")
-            self.assertEqual((backup / "wide.img").read_bytes(), original)
-            with Image.open(wide) as squared:
+            applied = {str(row["file"]): row for row in
+                       module.normalize(root, apply=True, backup_dir=backup)}
+            self.assertEqual(applied["wide.img"]["action"], "padded")
+            self.assertEqual(applied["sign.logo.img"]["action"], "baked")
+            self.assertEqual((backup / "wide.img").read_bytes(), originals["wide.img"])
+            self.assertFalse((backup / "flat.icon.img").exists(), "没动的文件不备份")
+            self.assertEqual((root / "flat.icon.img").read_bytes(),
+                             originals["flat.icon.img"])
+            self.assertEqual((root / "vector.img").read_bytes(), originals["vector.img"],
+                             "矢量标识原样留着")
+            self.assertFalse(Path(f'{root / "vector.img"}.normalization.json').exists())
+
+            with Image.open(root / "wide.img") as squared:
                 self.assertEqual(squared.size, (400, 400))
-            self.assertEqual(Path(f"{wide}.ct").read_text(encoding="utf-8"), "image/png")
-            self.assertTrue(Path(f"{wide}.normalization.json").is_file())
+            with Image.open(root / "sign.logo.img") as plate:
+                self.assertEqual(plate.size[0], plate.size[1])
+                self.assertNotIn("A", plate.getbands(), "烤过的文件必须不透明")
+
+            for name, action in (("wide.img", "pad-to-square"),
+                                 ("sign.logo.img", "bake-white-plate")):
+                sidecar = json.loads(
+                    Path(f"{root / name}.normalization.json").read_text(encoding="utf-8"))
+                self.assertEqual(sidecar["action"], action)
+                self.assertEqual(sidecar["original_sha256"],
+                                 hashlib.sha256(originals[name]).hexdigest())
+                self.assertEqual(sidecar["normalized_sha256"],
+                                 hashlib.sha256((root / name).read_bytes()).hexdigest())
+                self.assertEqual(sidecar["backup"], str(backup / name))
+                self.assertEqual(Path(f"{root / name}.ct").read_text(encoding="utf-8"),
+                                 "image/png")
+
+            # 重跑不再有动作：产物已经是不透明方图，归一是幂等的。矢量那一行照旧
+            # 每次都在，它是「还没处理」的记录，不是待办完成。
+            self.assertEqual([row["action"] for row in module.normalize(root)],
+                             ["vector"])
 
     def test_frame_retry_is_reserved_for_bad_color_metadata(self):
         """坏色彩元数据才重试。无条件重试会让网盘超时的文件每帧白跑两次 45 秒。"""
