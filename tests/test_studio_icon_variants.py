@@ -321,8 +321,13 @@ class HarvestTargetTests(unittest.TestCase):
         self.links = {"Fitch": [{"url": "https://fitch-av.com/"}],
                       "Hon_Naka": [{"url": "https://honnaka.jp/"}],
                       "S1": [{"url": "https://s1s1s1.com/"}]}
+        # 指定来源那张真表有二十多条，留着会盖住这里每一条判据。要用的测试自己往里放。
+        self.sources = dict(MODULE.LOGO_SOURCES_BY_SAFE)
+        MODULE.LOGO_SOURCES_BY_SAFE.clear()
 
     def tearDown(self):
+        MODULE.LOGO_SOURCES_BY_SAFE.clear()
+        MODULE.LOGO_SOURCES_BY_SAFE.update(self.sources)
         self.tmp.cleanup()
 
     def test_a_studio_with_no_image_at_all_is_included(self):
@@ -343,9 +348,20 @@ class HarvestTargetTests(unittest.TestCase):
                          {"original_size": "", "installed": ""})
 
     def test_a_studio_with_neither_image_nor_link_is_not_a_target(self):
-        """没链接又没图的厂牌进来只会在复核件上多一行「无官网链接」。"""
+        """没链接、没图、也没指定来源的厂牌进来只会在复核件上多一行「无官网链接」。"""
         targets = MODULE.harvest_targets({}, {}, self.logos)
         self.assertEqual(targets, {})
+
+    def test_a_designated_logo_source_is_reason_enough(self):
+        """jae.tokyo 那批在账本里连一条链接都没有，按「有链接」收目标一条都收不到。"""
+        MODULE.LOGO_SOURCES_BY_SAFE["Dogma"] = "http://logos.example/dogma.png"
+        self.assertEqual(MODULE.harvest_targets({}, {}, self.logos),
+                         {"Dogma": {"original_size": "", "installed": ""}})
+
+    def test_a_designated_source_does_not_reopen_a_studio_that_has_its_image(self):
+        """已经装好的一张都不动：这个脚本的入口只补空位。"""
+        MODULE.LOGO_SOURCES_BY_SAFE["Fitch"] = "http://logos.example/fitch.png"
+        self.assertNotIn("Fitch", MODULE.harvest_targets({}, {}, self.logos))
 
 
 class LogoSourceTests(unittest.TestCase):
@@ -371,6 +387,26 @@ class LogoSourceTests(unittest.TestCase):
         pages = {self.url: payload} if payload is not None else {}
         return MODULE.logo_row("Fitch", self.target, self.entries,
                                Fetch(pages, reachable=reachable), self.candidates)
+
+    def test_every_registered_source_is_reachable_by_its_file_name(self):
+        """两张表按同一条命名规则建，键对不上时复核件上的名字会退成一排下划线。"""
+        self.assertEqual(sorted(self.original), sorted(MODULE.LOGO_SOURCE_NAMES))
+        for safe, studio in MODULE.LOGO_SOURCE_NAMES.items():
+            with self.subTest(studio=studio):
+                self.assertEqual(MODULE.safe_name(studio), safe)
+                self.assertIn(studio, MODULE.LOGO_SOURCES)
+
+    def test_the_expo_directory_is_the_source_for_the_studios_with_no_image(self):
+        """用户 2026-09-04 指定 jae.tokyo：名录每届各带一套厂商自己交的 logo。
+
+        2016 那届只有图没有名字，认不出是谁家的，所以表里没有 jae2016。
+        """
+        expo = [url for url in MODULE.LOGO_SOURCES.values() if "jae.tokyo" in url]
+        self.assertEqual(len(expo), 26)
+        self.assertEqual([url for url in expo if "jae2016" in url], [])
+        for url in expo:
+            with self.subTest(url=url):
+                self.assertRegex(url, r"^http://www\.jae\.tokyo/jae201[457]/")
 
     def test_fc2_is_the_registered_logo_source(self):
         """用户 2026-09-03 指定的是 seeklogo 的 429409（600×600 方形锁定图）。
@@ -449,8 +485,8 @@ class HarvestTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_harvest(self, mark, targets=None, links=None, reachable=True):
-        fetch = Fetch(reachable=reachable)
+    def run_harvest(self, mark, targets=None, links=None, reachable=True, fetch=None):
+        fetch = fetch if fetch is not None else Fetch(reachable=reachable)
         original = MODULE.site_icons.best_mark
 
         def stub(url, fetcher, render, fallback=None, accept=None):
@@ -645,6 +681,78 @@ class HarvestTests(unittest.TestCase):
         self.assertEqual(logos[0]["candidate"], "", "失败行没有候选，安装时不会落地")
         self.assertTrue(logos[1]["candidate"])
 
+    def designated_source_harvest(self, studio, payload):
+        """账本里一条链接都没有的厂牌：`best_mark` 根本不会被调，不用替身。"""
+        safe = MODULE.safe_name(studio)
+        url = f"http://logos.example/{safe}.png"
+        original = dict(MODULE.LOGO_SOURCES_BY_SAFE)
+        names = dict(MODULE.LOGO_SOURCE_NAMES)
+        MODULE.LOGO_SOURCES_BY_SAFE[safe] = url
+        MODULE.LOGO_SOURCE_NAMES[safe] = studio
+        try:
+            return MODULE.harvest({safe: {"original_size": "", "installed": ""}}, {},
+                                  Fetch(pages={url: payload}), self.candidates)
+        finally:
+            MODULE.LOGO_SOURCES_BY_SAFE.clear()
+            MODULE.LOGO_SOURCES_BY_SAFE.update(original)
+            MODULE.LOGO_SOURCE_NAMES.clear()
+            MODULE.LOGO_SOURCE_NAMES.update(names)
+
+    def test_a_link_less_studio_takes_its_icon_from_the_designated_logo(self):
+        """小位空着不是因为找不到图，是因为发现流程从官网出发，而它没有官网。
+
+        大位这张是厂牌自己在名录里交的标识资产，比任何 favicon 都准，两位共用它。
+        """
+        rows = self.designated_source_harvest("俺の素人", png_bytes((320, 320)))
+        icon, logo = rows[0], rows[1]
+        self.assertEqual([row["variant"] for row in rows], [MODULE.ICON, MODULE.LOGO])
+        self.assertEqual(icon["verdict"], MODULE.OK, "本来就是方图，一个像素都没动")
+        self.assertEqual(icon["link_kind"], "logo-source")
+        self.assertEqual(icon["url"], logo["url"], "小位记的是取图那一份的地址")
+        self.assertEqual(icon["mark_size"], "320x320")
+        self.assertIn("与 logo 位同一份指定来源", icon["evidence"])
+        stored = Path(str(icon["candidate"])).read_bytes()
+        self.assertEqual(hashlib.sha256(stored).hexdigest(), icon["sha256"])
+        self.assertNotEqual(icon["candidate"], logo["candidate"],
+                            "两份候选文件不能互相覆盖")
+
+    def test_the_review_row_names_the_studio_a_japanese_name_cannot_survive(self):
+        """`俺の素人` 的安全文件名是一排下划线，复核件上照那个反推认不出是谁家的。"""
+        rows = self.designated_source_harvest("俺の素人", png_bytes((320, 320)))
+        self.assertEqual(rows[0]["studio"], "俺の素人")
+        self.assertEqual(rows[0]["safe"], MODULE.safe_name("俺の素人"))
+
+    def test_a_wide_designated_logo_is_padded_for_the_small_slot(self):
+        """名录里 2014 那届是 270×180 的横向字标。补白装上去也比露出无图强。"""
+        rows = self.designated_source_harvest("TEPPAN", png_bytes((270, 180)))
+        icon = rows[0]
+        self.assertEqual(icon["verdict"], MODULE.PADDED)
+        self.assertIn(MODULE.PADDED, MODULE.INSTALLABLE)
+        with Image.open(io.BytesIO(Path(str(icon["candidate"])).read_bytes())) as image:
+            self.assertEqual(image.size[0], image.size[1], "小位装的必须是方图")
+            if "A" in image.getbands():
+                # 名录 2014 那届是整幅不透明的 jpg，补白按边缘主色填，不该留出透明边。
+                self.assertEqual(image.getchannel("A").getextrema(), (255, 255))
+
+    def test_a_designated_source_fills_both_files_for_a_link_less_studio(self):
+        rows = self.designated_source_harvest("Dogma", png_bytes((320, 320)))
+        logos = self.root / "logos"
+        self.assertEqual(MODULE.install(rows, logos),
+                         ["Dogma.icon.img", "Dogma.img", "Dogma.logo.img"])
+
+    def test_a_studio_with_a_working_icon_keeps_it_over_the_designated_logo(self):
+        """官网做出方标时不动小位：那一枚才是这个站自己声明的图标。"""
+        url = "http://logos.example/Fitch.png"
+        original = dict(MODULE.LOGO_SOURCES_BY_SAFE)
+        MODULE.LOGO_SOURCES_BY_SAFE["Fitch"] = url
+        try:
+            rows = self.run_harvest(png_bytes(), fetch=Fetch(pages={url: png_bytes()}))
+        finally:
+            MODULE.LOGO_SOURCES_BY_SAFE.clear()
+            MODULE.LOGO_SOURCES_BY_SAFE.update(original)
+        self.assertEqual(rows[0]["link_kind"], "official")
+        self.assertEqual(rows[0]["verdict"], MODULE.OK)
+
     def test_a_wordmark_too_small_to_pad_is_still_a_wordmark_verdict(self):
         """16 px 高的条状 favicon 补白也救不回来，装上去只是一条糊线。"""
         original = MODULE.site_icons.best_mark
@@ -808,8 +916,13 @@ class RunTests(unittest.TestCase):
              (4, "official", "官方网站", "https://honnaka.jp/")])
         connection.commit()
         connection.close()
+        # 指定来源那张真表指向站外地址，留着这一整套测试就会去联网取图。
+        self.sources = dict(MODULE.LOGO_SOURCES_BY_SAFE)
+        MODULE.LOGO_SOURCES_BY_SAFE.clear()
 
     def tearDown(self):
+        MODULE.LOGO_SOURCES_BY_SAFE.clear()
+        MODULE.LOGO_SOURCES_BY_SAFE.update(self.sources)
         self.tmp.cleanup()
 
     def invoke(self, install=False, marks=None):
