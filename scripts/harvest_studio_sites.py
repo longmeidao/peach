@@ -42,6 +42,14 @@ TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.S | re.I)
 # 自己在出售，所以这里可以放心用最宽的判据。
 PARKED_TITLE = re.compile(
     r"for sale|domain name|buy this domain|このドメイン|ドメイン(?:の)?販売", re.I)
+# 站点自述打不开的标题。实测 `bangbus.com` 与 `monstersofcock.com` 都返回 200、82 KB、
+# 正文里成人词一应俱全，标题却只有 `Site Unavailable`——「域名由厂牌名推出且是成人站」
+# 那条因此把它们判成 ok。一页自己说自己不可用，就不能拿来当官网证据；这类页面还常常
+# 是 CDN 或地区封锁的产物，换个出口再取才有意义，写成 ok 只会把它固化成结论。
+BROKEN_TITLE = re.compile(
+    r"site unavailable|service unavailable|temporarily unavailable|access denied"
+    r"|forbidden|not found|bad gateway|under construction|coming soon"
+    r"|maintenance|メンテナンス|工事中|しばらく(?:お待ち|お待たせ)", re.I)
 PARKED = re.compile(
     r"domain (?:is )?for sale|buy this domain|parked (?:free )?at|このドメイン(?:は|を)"
     r"|ドメイン(?:の)?販売|sedo\.com|afternic|godaddy\.com/domain|hugedomains",
@@ -148,6 +156,8 @@ def site_verdict(name: str, status: int, body: bytes, title: str,
         return "未取得", f"页面只有 {len(body)} 字节，疑似空壳"
     if PARKED_TITLE.search(title):
         return "未取得", f"标题自述在出售域名（{title[:44]}）"
+    if BROKEN_TITLE.search(title):
+        return "未取得", f"站点自述不可用（{title[:44]}）"
     text = decode(body)
     # 不再截窗口。实测停放页把「domain for sale」写在第 81683 字节，任何固定窗口都会漏；
     # 整篇扫一遍在这个量级上不值得省。
@@ -157,9 +167,14 @@ def site_verdict(name: str, status: int, body: bytes, title: str,
     # 不是停放页、标题正好是 `prestige.com`——它因此通过了「标题含厂牌名」，被判成
     # Prestige 官网，而真站是 `prestige-av.com`，那是另一家公司。停放页规则拦不住它：
     # 它是个正常的站，只是不属于这个厂牌。
+    # 判据是「标题原样打印了域名，且除域名之外什么都没说」。上一版拿 normalise 后的标题
+    # 去匹配 normalise 后的主机，把真站一起打掉了：`www.naturalhigh.co.jp` 返回 200、
+    # 标题正是 `NATURAL HIGH（ナチュラルハイ）`，normalise 成 naturalhigh，必然是
+    # naturalhighcojp 的一部分——域名由厂牌名推出来时这两者永远互相包含，这条规则于是
+    # 对整类真站失效。域名回显的真正特征是标题里带着 TLD，品牌名不带。
     host = (urlsplit(url).hostname or "").casefold().removeprefix("www.")
-    title_token = normalise(title)
-    if host and title_token and title_token in normalise(host):
+    printed = title.casefold().strip()
+    if host and host in printed and not re.sub(r"\W|_", "", printed.replace(host, "")):
         return "未取得", f"标题只是域名回显，没有自述身份（{title[:40]}）"
     token = normalise(name)
     if not token:
@@ -199,6 +214,33 @@ def load_studios(connection: sqlite3.Connection, minimum: int) -> list[dict]:
                 "GROUP BY e.id HAVING n>=? ORDER BY n DESC", (minimum,))]
 
 
+def load_named_studios(connection: sqlite3.Connection, names: list[str]) -> list[dict]:
+    """`--only` 指名的厂牌，不看作品数。
+
+    默认路径按作品数筛，是为了不去扫只出现过一两次的厂牌。指名时那条门槛恰好挡住要补的
+    目标：BangBus、BangBros18 各只有 1 部视频，OPPAI、MonstersOfCock 各 2 部，都低于默认的
+    3，因此至今一次都没被扫过。作品数仍然取出来写进复核件，只是不再当门槛。
+
+    名字对不上就直接失败。指名的用法下静悄悄少扫一个，和「扫过但没找到」在复核件上长得
+    一模一样——那正是这个仓库最常见的那类缺陷。
+    """
+    found: list[dict] = []
+    missing: list[str] = []
+    for name in names:
+        row = connection.execute(
+            "SELECT e.id,(SELECT count(DISTINCT ae.asset_id) FROM asset_entity ae "
+            "JOIN asset a ON a.id=ae.asset_id "
+            "WHERE ae.entity_id=e.id AND a.medium='video') "
+            "FROM entity e WHERE e.kind='studio' AND e.canonical_name=?", (name,)).fetchone()
+        if row is None:
+            missing.append(name)
+            continue
+        found.append({"entity_id": row[0], "studio": name, "assets": row[1]})
+    if missing:
+        raise SystemExit(f"账本里没有这些厂牌：{'、'.join(missing)}")
+    return found
+
+
 def crawler_client() -> "httpx.Client":
     """本作业专用 client。**每个请求新建一个，用完立刻关掉**，见 `probe`。
 
@@ -224,14 +266,28 @@ def crawler_client() -> "httpx.Client":
     )
 
 
-def probe(url: str, timeout: float) -> tuple[int, bytes, str]:
-    """取一个候选。连接池不跨请求存活，理由见 `crawler_client`。"""
-    http = HttpxTransport(crawler_client())
-    try:
-        response = http(HttpRequest("GET", url, {"User-Agent": USER_AGENT}), timeout, 4 << 20)
-        return response.status, response.body, response.url or url
-    finally:
-        http.close()
+def probe(url: str, timeout: float, retries: int = 2, backoff: float = 2.0
+          ) -> tuple[int, bytes, str]:
+    """取一个候选。连接池不跨请求存活，理由见 `crawler_client`。
+
+    传输层失败要重试，口径与 `page_cache.Site` 一致（两次、指数退避）。实测
+    `www.naturalhigh.co.jp` 第一次 `ReadTimeout`、随后同一地址 200 且标题正是
+    `NATURAL HIGH（ナチュラルハイ）`——一次抖动就被写成「这家没有官网」，而下游会把
+    这个空结论当成事实。只重试传输层异常：HTTP 状态码是站点的回答，不是抖动。
+    """
+    for attempt in range(retries + 1):
+        http = HttpxTransport(crawler_client())
+        try:
+            response = http(HttpRequest("GET", url, {"User-Agent": USER_AGENT}),
+                            timeout, 4 << 20)
+            return response.status, response.body, response.url or url
+        except Exception:
+            if attempt == retries:
+                raise
+            time.sleep(backoff * (attempt + 1))
+        finally:
+            http.close()
+    raise AssertionError("unreachable")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -240,6 +296,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seeds", type=Path, help="人工查到的 studio,site 表，优先于推导域名")
     parser.add_argument("--min-assets", type=int, default=3)
+    parser.add_argument("--only", nargs="*", default=[],
+                        help="只处理这几个厂牌，按 canonical_name 给；给了就不看作品数")
     parser.add_argument("--interval", type=float, default=1.2)
     # httpx 把这个标量同时用作 connect 与 read 超时，死域名因此最多吃两份。首轮用 20
     # 秒的代价是整批三个多小时；真站实测都在 2 秒内响应，8 秒已经宽裕得多。
@@ -255,7 +313,8 @@ def run(args) -> int:
 
     connection = open_readonly(args.db)
     try:
-        studios = load_studios(connection, args.min_assets)
+        studios = (load_named_studios(connection, args.only) if args.only
+                   else load_studios(connection, args.min_assets))
     finally:
         connection.close()
     if args.limit:
@@ -280,6 +339,12 @@ def run(args) -> int:
         derived_urls = candidate_urls(name)
         derived_hosts = frozenset(
             (urlsplit(u).hostname or "").casefold().removeprefix("www.") for u in derived_urls)
+        # 每个候选的结果都记下来。原来的写法让后一个候选覆盖前一个，一个厂牌试了六个
+        # 地址、复核件上只剩最后那个的理由：`SOD Create` 写着「取不到：ConnectError」，
+        # 而真正值得看的是被它盖掉的 `www.sod.co.jp` —— 200、成人站、标题
+        # `SOFT ON DEMAND（ソフト・オン・デマンド）`。判成未取得可以，但要让人看得见
+        # 是在哪几个地址上未取得。
+        trail: list[str] = []
         for url in seeds.get(name, []) + derived_urls:
             wait = args.interval - (time.monotonic() - last)
             if wait > 0:
@@ -288,17 +353,25 @@ def run(args) -> int:
             try:
                 status, body, final = probe(url, args.timeout)
             except Exception as exc:
-                row.update(candidate_url=url, verdict="未取得",
-                           note=f"取不到：{type(exc).__name__}")
+                trail.append(f"{url} → 取不到：{type(exc).__name__}")
+                if not row["candidate_url"]:
+                    row.update(candidate_url=url, verdict="未取得",
+                               note=f"取不到：{type(exc).__name__}")
                 continue
             title = page_title(body)
             verdict, note = site_verdict(name, status, body, title, final,
                                          derived_hosts=derived_hosts)
-            row.update(candidate_url=url, final_url=final, status=status,
-                       bytes=len(body), sha256=hashlib.sha256(body).hexdigest(),
-                       title=title, verdict=verdict, note=note)
+            trail.append(f"{url} → {verdict}：{note}")
+            # 取回了字节的候选比连不上的更值得留在行里：状态码、标题和 sha256 才是
+            # 人能复核的证据。已经采信过一个 ok/weak 之后不再覆盖。
+            if row["verdict"] not in {"ok", "weak"}:
+                row.update(candidate_url=url, final_url=final, status=status,
+                           bytes=len(body), sha256=hashlib.sha256(body).hexdigest(),
+                           title=title, verdict=verdict, note=note)
             if verdict in {"ok", "weak"}:
                 break
+        if row["verdict"] not in {"ok", "weak"} and len(trail) > 1:
+            row["note"] = "；".join(trail)
         results.append(row)
         print(f"{name[:22]:<22} {row['verdict']:<6} {str(row['final_url'])[:38]:<38} "
               f"{str(row['title'])[:34]}")

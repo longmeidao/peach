@@ -122,6 +122,42 @@ class VerdictTests(unittest.TestCase):
             "https://bazooka.com/", derived_hosts=frozenset({"bazooka.com"}))
         self.assertEqual(verdict, "weak")
 
+    def test_a_page_that_says_it_is_unavailable_is_refused(self):
+        """2026-09-03 实测的假阳性：`bangbus.com` 与 `monstersofcock.com` 都返回 200、
+        82 KB、正文成人词齐全，标题只有 `Site Unavailable`。
+
+        域名确实由厂牌名推出、页面确实是成人站，两个信号都成立，所以旧规则把它们判成 ok，
+        写进账本就是两条错的官网。一页自己说自己打不开，就不能当官网证据。
+        """
+        title = "Site Unavailable"
+        verdict, note = self.module.site_verdict(
+            "BangBus", 200, page(title, "bang bus porn videos. "), title,
+            "https://www.bangbus.com/", derived_hosts=frozenset({"bangbus.com"}))
+        self.assertEqual(verdict, "未取得")
+        self.assertIn("不可用", note)
+
+    def test_a_maintenance_notice_is_refused_too(self):
+        """同一类：日站的维护页也会 200，标题写着メンテナンス。"""
+        title = "メンテナンス中 | AVメーカー"
+        verdict, _ = self.module.site_verdict(
+            "Muku", 200, page(title), title, "https://muku.tv/",
+            derived_hosts=frozenset({"muku.tv"}))
+        self.assertEqual(verdict, "未取得")
+
+    def test_the_unavailable_check_looks_at_the_title_only(self):
+        """反向：这条只判标题，不判正文。
+
+        真站正文里出现 `not found`、`maintenance` 一点也不稀奇——脚本里的报错字符串、
+        埋在页面里的客服说明都会命中。停放页那条已经吃过一次「按正文判会误杀」的教训，
+        这条不重走。
+        """
+        title = "年齢チェック | 凌辱、背徳のAVメーカー【ATTACKERS（アタッカーズ）】公式サイト"
+        body = page(title, "if(!el){console.error('not found')} 年齢認証 メンテナンス予定はこちら。")
+        verdict, _ = self.module.site_verdict(
+            "Attackers", 200, body, title, "https://attackers.net/",
+            derived_hosts=frozenset())
+        self.assertEqual(verdict, "ok")
+
     def test_a_seeded_url_does_not_get_the_derived_domain_signal(self):
         """人喂进来的地址不能借「域名由厂牌名推出」这条的力。
 
@@ -190,6 +226,27 @@ class VerdictTests(unittest.TestCase):
         title = "年齢チェック | 人気知名度NO.1！アダルトビデオ最強のAVメーカー【MOODYZ(ムーディーズ)】公式サイト"
         verdict, _ = self.module.site_verdict(
             "MOODYZ", 200, page(title), title, "https://moodyz.com/")
+        self.assertEqual(verdict, "ok")
+
+    def test_a_title_that_is_only_the_brand_name_is_not_a_domain_echo(self):
+        """实测误伤：`https://www.naturalhigh.co.jp/` 是 Natural High 的真官网。
+
+        它返回 200、成人站、标题正是 `NATURAL HIGH（ナチュラルハイ）`。上一版把标题
+        normalise 成 naturalhigh 后发现它是主机 naturalhighcojp 的一部分，于是判成
+        「域名回显」——可域名本来就是按厂牌名推出来的，这两者必然互相包含，整类真站
+        都会被这条规则打掉。域名回显要求标题原样印着 TLD。
+        """
+        title = "NATURAL HIGH（ナチュラルハイ）"
+        verdict, _ = self.module.site_verdict(
+            "Natural High", 200, page(title, "AVメーカー、18歳未満禁止。"), title,
+            "https://www.naturalhigh.co.jp/")
+        self.assertEqual(verdict, "ok")
+
+    def test_a_title_that_prints_the_domain_plus_a_real_tagline_is_kept(self):
+        """标题里出现域名不等于回显，多说了话就还是自述身份。"""
+        title = "attackers.net｜凌辱、背徳のAVメーカー【ATTACKERS】公式サイト"
+        verdict, _ = self.module.site_verdict(
+            "Attackers", 200, page(title), title, "https://attackers.net/")
         self.assertEqual(verdict, "ok")
 
     def test_a_parked_title_is_caught_even_when_the_body_keyword_is_far_down(self):
@@ -265,29 +322,217 @@ class LoadStudioTests(unittest.TestCase):
     def setUp(self):
         self.module = load_module()
         self.tmp = Path(tempfile.mkdtemp())
+        self.db = self.tmp / "ledger.db"
+        writer = sqlite3.connect(self.db)
+        self.addCleanup(writer.close)
+        writer.execute(
+            "CREATE TABLE entity(id INTEGER PRIMARY KEY, kind TEXT, canonical_name TEXT)")
+        writer.execute("CREATE TABLE asset(id INTEGER PRIMARY KEY, medium TEXT)")
+        writer.execute("CREATE TABLE asset_entity(asset_id INTEGER, entity_id INTEGER)")
+        writer.executemany("INSERT INTO entity VALUES(?,?,?)",
+                           [(1, "studio", "Big"), (2, "studio", "Small"),
+                            (3, "performer", "人"), (4, "studio", "Empty")])
+        for asset_id, entity_id in [(10, 1), (11, 1), (12, 1), (13, 2), (14, 3)]:
+            writer.execute("INSERT OR IGNORE INTO asset VALUES(?,?)", (asset_id, "video"))
+            writer.execute("INSERT INTO asset_entity VALUES(?,?)", (asset_id, entity_id))
+        writer.commit()
+
+    def reader(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(f"file:{self.db}?mode=ro", uri=True)
+        self.addCleanup(connection.close)
+        return connection
 
     def test_studios_are_ordered_by_asset_count_and_filtered_by_minimum(self):
-        db = self.tmp / "ledger.db"
-        c = sqlite3.connect(db)
-        c.execute("CREATE TABLE entity(id INTEGER PRIMARY KEY, kind TEXT, canonical_name TEXT)")
-        c.execute("CREATE TABLE asset(id INTEGER PRIMARY KEY, medium TEXT)")
-        c.execute("CREATE TABLE asset_entity(asset_id INTEGER, entity_id INTEGER)")
-        c.executemany("INSERT INTO entity VALUES(?,?,?)",
-                      [(1, "studio", "Big"), (2, "studio", "Small"), (3, "performer", "人")])
-        for asset_id, entity_id in [(10, 1), (11, 1), (12, 1), (13, 2), (14, 3)]:
-            c.execute("INSERT OR IGNORE INTO asset VALUES(?,?)", (asset_id, "video"))
-            c.execute("INSERT INTO asset_entity VALUES(?,?)", (asset_id, entity_id))
-        c.commit()
+        connection = self.reader()
+        self.assertEqual([r["studio"] for r in self.module.load_studios(connection, 1)],
+                         ["Big", "Small"])
+        self.assertEqual([r["studio"] for r in self.module.load_studios(connection, 3)],
+                         ["Big"])
 
-        connection = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-        try:
-            self.assertEqual([r["studio"] for r in self.module.load_studios(connection, 1)],
-                             ["Big", "Small"])
-            self.assertEqual([r["studio"] for r in self.module.load_studios(connection, 3)],
-                             ["Big"])
-        finally:
-            connection.close()
-            c.close()
+    def test_a_named_studio_is_loaded_even_though_it_is_under_the_minimum(self):
+        """指名就是「不管几部都要这一个」。
+
+        BangBus、BangBros18 各只有 1 部视频，OPPAI、MonstersOfCock 各 2 部，全部低于默认的 3。
+        作品数门槛照旧作用于默认路径，这里只是不再让它挡住指名的目标。
+        """
+        rows = self.module.load_named_studios(self.reader(), ["Small"])
+        self.assertEqual(rows, [{"entity_id": 2, "studio": "Small", "assets": 1}])
+
+    def test_a_named_studio_with_no_video_at_all_still_comes_back(self):
+        """一部视频都没有的厂牌也要能补官网——它的作品可能全是图片，或者刚建实体。
+
+        默认路径用 JOIN 数作品，这种厂牌根本不会出现；指名路径必须把它取出来并记 0，
+        而不是当成「没这个厂牌」。
+        """
+        rows = self.module.load_named_studios(self.reader(), ["Empty"])
+        self.assertEqual(rows, [{"entity_id": 4, "studio": "Empty", "assets": 0}])
+
+    def test_named_studios_keep_the_order_they_were_given(self):
+        """复核件的行序要可预期：给的顺序就是写出来的顺序。"""
+        rows = self.module.load_named_studios(self.reader(), ["Small", "Big"])
+        self.assertEqual([r["studio"] for r in rows], ["Small", "Big"])
+
+    def test_a_name_the_ledger_does_not_have_fails_loudly(self):
+        """拼错的名字必须报错。
+
+        指名用法下静悄悄少扫一个，在复核件上和「扫过但没找到」长得一模一样；
+        一个 typo 会被当成「这家没有官网」的结论。同名的 performer 也不算——
+        只认 `kind='studio'`。
+        """
+        with self.assertRaises(SystemExit) as caught:
+            self.module.load_named_studios(self.reader(), ["Big", "Attackers", "人"])
+        self.assertIn("Attackers", str(caught.exception))
+        self.assertIn("人", str(caught.exception))
+
+
+class ProbeRetryTests(unittest.TestCase):
+    """传输层抖动不是结论。
+
+    实测 `www.naturalhigh.co.jp` 第一次 `ReadTimeout`，同一地址再取就是 200、标题
+    `NATURAL HIGH（ナチュラルハイ）`。没有重试时那一次抖动直接写成「这家没有官网」，
+    而账本里少一条 official 链接，下游的图标采集就整整跳过这个厂牌。
+    """
+
+    def setUp(self):
+        self.module = load_module()
+        self.calls: list[str] = []
+        self.slept: list[float] = []
+        self.module.crawler_client = lambda: None
+        self.module.time = type("clock", (), {
+            "sleep": lambda _self, seconds: self.slept.append(seconds),
+            "monotonic": lambda _self: 0.0,
+        })()
+
+    def transport(self, outcomes):
+        """按 `outcomes` 依次作答：异常就抛，元组就当成一次成功的响应。"""
+        module = self.module
+        results = list(outcomes)
+
+        class Fake:
+            def __init__(self, client):
+                pass
+
+            def __call__(self, request, timeout, limit):
+                answer = results.pop(0)
+                if isinstance(answer, Exception):
+                    raise answer
+                status, body, url = answer
+                return type("response", (), {"status": status, "body": body, "url": url})()
+
+            def close(self):
+                pass
+
+        module.HttpxTransport = Fake
+        return module
+
+    def test_a_transport_blip_is_retried_and_then_succeeds(self):
+        module = self.transport([TimeoutError("read timed out"),
+                                 (200, b"body", "https://www.naturalhigh.co.jp/")])
+        status, body, final = module.probe("http://www.naturalhigh.co.jp/", 8.0, backoff=0.0)
+        self.assertEqual((status, body), (200, b"body"))
+        self.assertEqual(final, "https://www.naturalhigh.co.jp/")
+        self.assertEqual(self.slept, [0.0])
+
+    def test_the_last_failure_is_raised_after_the_retries_run_out(self):
+        """一直连不上就得原样抛出来，让上层把真实异常名写进复核件。"""
+        module = self.transport([TimeoutError("1"), TimeoutError("2"), TimeoutError("3")])
+        with self.assertRaises(TimeoutError):
+            module.probe("https://dead.example/", 8.0, backoff=0.0)
+        self.assertEqual(self.slept, [0.0, 0.0])
+
+    def test_an_http_status_is_not_retried(self):
+        """404 是站点的回答，不是抖动。重试它只会把整批时间翻三倍。"""
+        module = self.transport([(404, b"", "https://x.example/")])
+        self.assertEqual(module.probe("https://x.example/", 8.0)[0], 404)
+        self.assertEqual(self.slept, [])
+
+
+class RunTrailTests(unittest.TestCase):
+    """失败行要看得见是在哪几个地址上失败的。
+
+    原来后一个候选会覆盖前一个：`SOD Create` 试了六个地址，复核件上只剩最后那个的
+    「取不到：ConnectError」，而真正值得看的是被盖掉的 `www.sod.co.jp`——200、成人站、
+    标题 `SOFT ON DEMAND（ソフト・オン・デマンド）`。判未取得可以，看不见理由不行。
+    """
+
+    def setUp(self):
+        self.module = load_module()
+        self.tmp = Path(tempfile.mkdtemp())
+        self.db = self.tmp / "ledger.db"
+        writer = sqlite3.connect(self.db)
+        self.addCleanup(writer.close)
+        writer.execute(
+            "CREATE TABLE entity(id INTEGER PRIMARY KEY, kind TEXT, canonical_name TEXT)")
+        writer.execute("CREATE TABLE asset(id INTEGER PRIMARY KEY, medium TEXT)")
+        writer.execute("CREATE TABLE asset_entity(asset_id INTEGER, entity_id INTEGER)")
+        writer.execute("INSERT INTO entity VALUES(1,'studio','SOD Create')")
+        writer.commit()
+        self.module.time = type("clock", (), {
+            "sleep": lambda _self, seconds: None,
+            "monotonic": lambda _self: 0.0,
+        })()
+
+    def args(self, seeds: Path | None = None):
+        import argparse
+        return argparse.Namespace(
+            db=self.db, output=self.tmp / "out.csv", seeds=seeds,
+            min_assets=3, only=["SOD Create"], interval=0.0, timeout=1.0, limit=0)
+
+    def row(self) -> dict:
+        from peach.review_csv import read_rows
+        rows = read_rows(self.tmp / "out.csv")
+        self.assertEqual(len(rows), 1)
+        return rows[0]
+
+    def probe_map(self, answers: dict):
+        def probe(url, timeout, **kwargs):
+            answer = answers[url]
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+        self.module.probe = probe
+
+    def test_every_candidate_leaves_its_reason_in_the_note(self):
+        seeds = self.tmp / "seeds.csv"
+        seeds.write_text("studio,site\nSOD Create,https://sodcreate.jp/\n"
+                         "SOD Create,https://www.sod.co.jp/\n", encoding="utf-8")
+        title = "SOFT ON DEMAND（ソフト・オン・デマンド）"
+        self.probe_map({
+            "https://sodcreate.jp/": ConnectionError("handshake"),
+            "https://www.sod.co.jp/": (200, page(title), "https://www.sod.co.jp/"),
+            "https://sodcreate.com/": (200, page("SodCreate.com is for sale"),
+                                       "https://www.hugedomains.com/x"),
+            "https://sodcreate-av.com/": ConnectionError("nx"),
+            "https://sodcreate.tv/": ConnectionError("nx"),
+            "https://sod-create.com/": ConnectionError("nx"),
+            "https://sod-create.jp/": ConnectionError("nx"),
+            "https://sod-create-av.com/": ConnectionError("nx"),
+            "https://sod-create.tv/": ConnectionError("nx"),
+        })
+        self.assertEqual(self.module.run(self.args(seeds)), 0)
+        row = self.row()
+        self.assertEqual(row["verdict"], "未取得")
+        self.assertIn("https://sodcreate.jp/ → 取不到：ConnectionError", row["note"])
+        self.assertIn("SOFT ON DEMAND", row["note"])
+        # 行上的 url／标题／sha256 仍归最后一个真取回字节的候选，方便按 sha256 复现；
+        # 「都试过哪些」由 note 承担。
+        self.assertIn("hugedomains", row["final_url"])
+
+    def test_a_confirmed_row_keeps_the_single_reason_not_the_trail(self):
+        """采信了就不再堆一串理由：ok 那一行只该说这一个地址为什么成立。"""
+        seeds = self.tmp / "seeds.csv"
+        seeds.write_text("studio,site\nSOD Create,https://dead.example/\n"
+                         "SOD Create,https://www.sod.co.jp/\n", encoding="utf-8")
+        title = "年齢チェック | AVメーカー【SOD Create】公式サイト"
+        self.probe_map({
+            "https://dead.example/": ConnectionError("nx"),
+            "https://www.sod.co.jp/": (200, page(title), "https://www.sod.co.jp/"),
+        })
+        self.assertEqual(self.module.run(self.args(seeds)), 0)
+        row = self.row()
+        self.assertEqual(row["verdict"], "ok")
+        self.assertEqual(row["final_url"], "https://www.sod.co.jp/")
+        self.assertNotIn("→", row["note"])
 
 
 if __name__ == "__main__":
