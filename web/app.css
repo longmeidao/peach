@@ -878,6 +878,7 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 /* 等数据时换批键自己转：它是这一行唯一还在动的东西，其余部分必须保持静止。
    全局的 prefers-reduced-motion 规则会关掉它。 */
 .count[aria-busy="true"] #batchAction svg,
+body.refreshing #batchAction svg,
 .entitycollectionhead[aria-busy="true"] .entitybatch svg{
   animation:peach-spinner-linspin .9s linear infinite}
 .count .sorts,.entitycollectionhead .sorts{display:flex;gap:5px;margin-left:auto;flex-wrap:nowrap;
