@@ -1609,7 +1609,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("<span>氛围模式</span>")
         self.assertPageContains("<span>播放速度</span>")
         self.assertPageContains("<span>清晰度</span>")
-        self.assertPageContains("player.playbackRate(Number(button.dataset.playerSpeedOption))")
+        self.assertPageContains("setSpeed(Number(button.dataset.playerSpeedOption))")
         self.assertPageContains("applyAmbientMode(!appSettings.ambientMode)")
         self.assertPageContains("${icon('player-ambient')}")
         self.assertPageContains("${icon('player-speed')}")
@@ -1744,7 +1744,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const widthObserver=new ResizeObserver(syncWidthMode)")
         self.assertPageContains("player.on('dispose',()=>widthObserver.disconnect())")
         self.assertPageContains("expand.className='vjs-peach-expand vjs-control'")
-        self.assertPageContains("icon('player-menu-next')")
+        self.assertPageContains("icon('player-expand')")
+        # 菜单行那个 `>` 是 24 视框、一个单位粗的细线，铺到展开键的 32px 只有 1.3px；上游
+        # 展开键自带一个 32 视框、两个单位粗的箭头，同样 32px 渲染就是 2px。
+        self.assertPageContains('<symbol id="i-player-expand" viewBox="0 0 32 32"')
+        self.assertPageContains('m12.59 20.34 4.58-4.59-4.58-4.59L14 9.75l6 6-6 6z')
         # 展开键排在这一簇最左：`prepend` 而不是 append，否则它落在全屏键的右边。
         self.assertPageContains("group.prepend(expand)")
         # hover 高亮的规则是 `.vjs-control>.vjs-peach-hover`，高亮层必须是按钮的兄弟节点；
@@ -1752,11 +1756,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             '</button><span class="vjs-peach-hover" aria-hidden="true"></span>`;\n'
             '  group.prepend(expand);')
-        # 窄屏其余键的 svg 缩到 18px，展开键排除在外并单独铺满 32px：那个箭头本来就细，
-        # 跟着缩就几乎看不出是个可点的键。上游给这个按钮的 svg 内边距同样是 0。
+        # 窄屏其余键的 svg 缩到 18px，展开键排除在外并单独铺满 32px：跟着缩就几乎看不出
+        # 是个可点的键。上游给这个按钮的 svg 内边距同样是 0。
         self.assertPageContains(
             ".video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control"
             ":not(.vjs-peach-expand)>button>svg{width:18px;height:18px}")
+        # 窄屏这一排的悬停底是 32×32 的正圆，不是撑满 36px 一格的胶囊。
+        self.assertPageContains(
+            ".video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control>.vjs-peach-hover{")
+        self.assertPageContains("left:2px;width:32px;height:32px;border-radius:50%}")
         self.assertPageContains(
             ".video-js.vjs-peach-xsmall .vjs-peach-expand>button>svg{width:32px;height:32px}")
         self.assertPageContains("expandButton.setAttribute('aria-expanded',String(open))")
@@ -1830,8 +1838,8 @@ class WebUiSourceTests(unittest.TestCase):
         # 面板的定位祖先只有 36px 高，百分比高度到不了播放器，得由布局脚本把高度写上来。
         self.assertPageContains("box.style.setProperty('--peach-player-h',`${box.clientHeight}px`)")
 
-    def test_narrow_settings_panel_fits_eight_speed_options_without_scrolling(self):
-        """八档播放速度单列要 57+16+8×48=457px，320px 高的播放器只给得出 246px。
+    def test_narrow_settings_panel_fits_the_longest_option_list_without_scrolling(self):
+        """清晰度多到八档，单列要 57+16+8×48=457px，320px 高的播放器只给得出 246px。
 
         行高压到 44px、排成两列是 57+8+4×44=241px；只让选项多于四条的列表分两列，
         主面板那三行仍是单列。
@@ -1841,6 +1849,93 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             ".video-js.vjs-peach-xsmall .vjs-peach-panel-menu"
             ":has(>.vjs-peach-menu-option:nth-child(5)){display:grid;grid-template-columns:1fr 1fr}")
+
+    def test_playback_speed_panel_matches_the_youtube_slider_layout(self):
+        """播放速度是读数加滑条加预设胶囊，照 YouTube delhi-modern 的数值来。
+
+        证据是 player 9470c977 的 www-player.css 与 base.js：内容区 24/16/16 内距，读数
+        居中、下留 24px，滑条一行 gap 16px、加减键 32px 圆各动 0.05，胶囊 53×32、gap 8px，
+        1.0 底下挂一行 14px 行高的说明。滑条两端取播放器支持的最低与最高倍速，步进 0.05。
+        字号、字重和圆角走 Peach 的 token：上游读数那档 18px/900 与说明那档 10px 都不在
+        Peach 的刻度上，胶囊和轨道的圆角大于自身高度的一半，`--pill-radius` 渲染结果相同。
+        上游第五个胶囊是 Premium 专属的 3.0 倍，Peach 没有分级，那一格不做。
+        """
+        self.assertPageContains(
+            "const SPEED_RATES=[.25,.5,.75,1,1.25,1.5,1.75,2],SPEED_STEP=.05,SPEED_PRESETS=[1,1.25,1.5,2];")
+        self.assertPageContains('<output data-player-speed-display></output>')
+        self.assertPageContains(
+            '<input type="range" class="vjs-peach-speed-range" data-player-speed-range '
+            'min="${min}" max="${max}" step="${SPEED_STEP}" aria-label="播放速度">')
+        self.assertPageContains('data-player-speed-step="-1" aria-label="播放速度减 0.05"')
+        self.assertPageContains('data-player-speed-step="1" aria-label="播放速度加 0.05"')
+        self.assertPageContains('<span class="vjs-peach-speed-preset-label">正常</span>')
+        self.assertPageContains("display.textContent=`${speed.toFixed(2)}x`;range.value=String(speed);")
+        # 轨道已过的比例由脚本写成自定义属性，上游同样是自定义属性驱动那条渐变。
+        self.assertPageContains(
+            "range.style.setProperty('--peach-speed-percent',`${(speed-min)/(max-min)*100}%`);")
+        self.assertPageContains(
+            "setSpeed((Number(player.playbackRate())||1)+Number(button.dataset.playerSpeedStep)*SPEED_STEP))")
+        self.assertPageContains(
+            ".vjs-peach-speed-panel{box-sizing:border-box;display:flex;flex-direction:column;padding:24px 16px 16px}")
+        self.assertPageContains("font-size:var(--fs-lg);font-weight:600;line-height:22px;color:#fff}")
+        self.assertPageContains(
+            ".vjs-peach-speed-slider{display:flex;align-items:center;gap:16px;margin-bottom:24px}")
+        self.assertPageContains(".vjs-peach-speed-chips{display:flex;align-items:flex-start;gap:8px}")
+        self.assertPageContains(
+            ".vjs-peach-speed-preset-label{margin-top:4px;font-size:var(--fs-xs);font-weight:400;"
+            "line-height:14px;color:rgba(255,255,255,.7)}")
+        self.assertPageContains(
+            "height:32px;min-height:32px;padding:0;border:0;border-radius:var(--pill-radius);"
+            "background:rgba(255,255,255,.1);")
+        self.assertPageContains(
+            ".vjs-peach-speed-slider .vjs-peach-speed-button{flex:none;width:32px;font-size:var(--fs-2xl)}")
+        self.assertPageContains(
+            ".vjs-peach-speed-chips .vjs-peach-speed-button{width:53px;gap:4px;font-size:var(--fs-xs)}")
+        # 设置面板里的按钮统一是 100% 宽、48px 高、`:before` 铺满的高亮层，胶囊得单独退出这套。
+        self.assertPageContains(".vjs-peach-settings-menu .vjs-peach-speed-button:before{content:none}")
+        self.assertPageContains(
+            "background:linear-gradient(to right,#fff 0,#fff var(--peach-speed-percent),"
+            "#909090 var(--peach-speed-percent),#909090 100%)}")
+        self.assertPageContains(
+            ".vjs-peach-speed-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;"
+            "width:16px;height:16px;")
+        # 头 57px 加内容 192px 是 249px，比窄屏给的 246px 高，所以内距和两处间隔都收到 16px。
+        self.assertPageContains(".video-js.vjs-peach-xsmall .vjs-peach-speed-panel{padding:16px}")
+        self.assertPageContains(".video-js.vjs-peach-xsmall .vjs-peach-speed-slider{margin-bottom:16px}")
+
+    def test_play_and_mute_clicks_flash_a_centered_bezel(self):
+        """点播放键和静音键都在画面中心闪一下当前动作的图标。
+
+        照 player 9470c977 的 `.ytp-delhi-modern .ytp-bezel`：78px 毛玻璃圆、54px 图标，
+        1s cubic-bezier(.05,0,0,1) 走 0→1.33→1 的缩放淡出，窄屏收到 64px 配 48px 图标。
+        """
+        self.assertPageContains(
+            "bezel.className='vjs-peach-bezel';bezel.setAttribute('role','status');bezel.hidden=true;")
+        self.assertPageContains(
+            "bezel.innerHTML=`<span class=\"vjs-peach-bezel-icon\">${icon('player-play')}</span>`;")
+        # 重复点同一个键要重新播一次动画：撤类之后读一次布局强制回流，再挂回去。
+        self.assertPageContains("void bezel.offsetWidth;bezel.classList.add('vjs-peach-bezel-run');")
+        self.assertPageContains("player.el().insertBefore(bezel,controlBar);")
+        self.assertPageContains("flashBezel(paused?'player-play':'player-pause',paused?'播放':'暂停');")
+        self.assertPageContains(
+            "flashBezel(silent?'player-volume':'player-volume-muted',silent?'取消静音':'静音');")
+        # 捕获阶段挂在控制条上，一定早于按钮自己的 Video.js 监听，读到的是切换之前的状态，
+        # 闪出来的正好是这一次做的事；冒泡阶段读到的已经是切换之后，图标会反。
+        self.assertPageContains("    }\n  },true);")
+        self.assertPageContains(
+            ".vjs-peach-bezel{position:absolute;z-index:19;left:50%;top:50%;width:78px;height:78px;"
+            "margin:-39px 0 0 -39px;")
+        # 基础规则是 display:grid，不写这一条 hidden 属性压不住它。
+        self.assertPageContains(".vjs-peach-bezel[hidden]{display:none}")
+        self.assertPageContains(".vjs-peach-bezel-icon{display:grid;place-items:center;width:54px;height:54px}")
+        self.assertPageContains(
+            ".vjs-peach-bezel-run{animation:peach-bezel-fadeout 1s cubic-bezier(.05,0,0,1) 1 normal forwards}")
+        self.assertPageContains(
+            "@keyframes peach-bezel-fadeout{0%{opacity:0}25%,75%{opacity:1;transform:scale(1.33)}"
+            "to{opacity:0;transform:scale(1)}}")
+        self.assertPageContains(
+            ".video-js.vjs-peach-xsmall .vjs-peach-bezel{width:64px;height:64px;margin:-32px 0 0 -32px}")
+        self.assertPageContains(".video-js.vjs-peach-xsmall .vjs-peach-bezel-icon{width:48px;height:48px}")
 
     def test_opening_one_player_overlay_closes_the_other(self):
         """设置面板和播放统计都盖在画面上，同时开就互相遮挡，开哪个另一个自己收起。
@@ -3736,19 +3831,21 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("openItem(+button.dataset.reviewOpenItem)")
 
     def test_detail_title_keeps_source_and_file_actions_inline(self):
-        """来源徽标浮左、定位文件与刷新浮右，两者都浮出标题的文字流。
+        """来源徽标浮左只缩进标题的第一行，定位文件与刷新跟在标题文字末尾。
 
-        三者并排参与弹性布局时，徽标那一列会把标题的每一行都缩进，右端 66px 的动作
-        又在标题占满一行时被整块挤到下一行；浮动只缩短第一行的行盒，动作也留在行末。
+        三者并排参与弹性布局时，徽标那一列会把标题的每一行都缩进；浮动只缩短第一行的
+        行盒，折行后的第二行顶到内容左边缘。两个动作是行内块，上下各 3px 外边距把它们
+        所在那一行的行盒撑到 32px，26px 的按钮和上下两行文字各留 3px。
         """
         self.assertPageContains(
-            '<div class="detailtitle">${srcBadge(it.location,it.cost,\'srcbig\')}'
+            '<div class="detailtitle">${srcBadge(it.location,it.cost,\'srcbig\')}\n'
+            '        <div class="stitle">${javTitleHtml(it)}'
             '${it.location===\'online\'?\'\':`<span class="srctools detailtitletools">'
-            '${sourceToolButtons(it.id)}</span>`}')
-        self.assertPageContains('<div class="stitle">${javTitleHtml(it)}</div></div>')
+            '${sourceToolButtons(it.id)}</span>`}</div></div>')
         self.assertPageContains(".detailtitle{display:flow-root;margin-bottom:10px}")
-        self.assertPageContains(".detailtitletools{float:right;height:26px;margin:0 0 2px 8px;flex-wrap:nowrap}")
-        # 浮动块整好一行高（28px），行高 1.75 既让 26px 的按钮上下留出空隙，也让第二行起整行宽。
+        self.assertPageContains(
+            ".detailtitletools{display:inline-flex;vertical-align:middle;margin:3px 0 3px 8px;flex-wrap:nowrap}")
+        # 徽标那个浮动块整好一行高（28px），所以第二行起是整行宽。
         self.assertPageContains(".detailtitle .stitle{min-width:0;margin:0;line-height:1.75}")
 
     def test_detail_metadata_uses_icons_instead_of_release_copy(self):

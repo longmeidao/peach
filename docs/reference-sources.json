@@ -202,7 +202,7 @@
       "url": "https://www.youtube.com/watch?v=jNQXAC9IVRw",
       "snapshot": "docs/reference-snapshots/youtube-player-controls-user-screenshot.md",
       "checked_on": "2026-09-03",
-      "sha256": "834db03a7fb90622165ab43f0f0b70d0a8789f5e9208e8f4c997ea8c02a5b353",
+      "sha256": "bc624a6c40c33c7f31a66ae866835b46a12e3026cda2311cc3a79f1e5802e7d6",
       "role": "实际 YouTube e937390a DOM、CSS、JS 与用户截图锁定播放器几何、状态和设置面板；官方帮助锁定氛围模式和影院模式语义。；窄屏折叠门槛与统一悬停提示取自播放器 9470c977 的 www-player.css 与 base.js。",
       "consumers": [
         "web/app.css",
