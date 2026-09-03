@@ -68,6 +68,64 @@ BSTAR_MODEL = """<ul class="sns_list">
 <a href="https://x.com/bstar_pro/">事务所</a>
 <a href="/https://www.instagram.com/bstar_pro_">写坏的</a>"""
 
+# 按 2026-09-04 实测的 jae.tokyo 三届名录复刻。三处陷阱都留在样本里：2014 那届开头是
+# 一条填好数据的模板 `<li>`（在注释里），2015 那届资料表里有片商的商品页，2017 那届每页
+# 都是从上一位那页复制来的，上一位的账号整段留在注释里。
+JAE_2014_PAGE = """<section class="sec_list_performers"><ul>
+ <!--
+ <li id="AyamiShunka"><h2>あやみ</h2><p class="alignright">Shunka</p>
+  <img src="images/nophoto.jpg" alt="">
+  <div class="clearfix"><p><span><span class="rc3">リンク</span></span>
+   <span><a href="http://example.com/template">公式</a></span></p></div></li>
+ -->
+ <li id="YuiHatano"><h2>波多野結衣</h2><p class="alignright">Yui Hatano</p>
+  <img src="images/Hatano_Yui.jpg" alt="波多野結衣">
+  <div class="clearfix">
+   <p><span><span class="rc3">所属</span></span><span>MAXING</span></p>
+   <p><span><span class="rc3">リンク</span></span><span>
+     <a href="http://blog.livedoor.jp/hatano_yui/">公式ブログ</a>
+     <a href="https://twitter.com/hatano_yui">ツイッター</a></span></p></div></li>
+ <li id="Nameless"><h2>架空同名</h2><p class="alignright">Nameless</p>
+  <img src="images/nophoto.jpg" alt="架空同名"><div class="clearfix"></div></li>
+</ul></section>"""
+
+JAE_2015_PAGE = """<div id="joyu001" class="off">
+ <img src="images/actress/sod/seto_l.jpg" class="textLeft">
+ <div class="textRightOrange"><div class="nameBackOrange">
+  <h3 class="bigName">瀬戸環奈</h3><h4 class="smallName">Kanna Seto</h4></div>
+  <table><tr><th>おすすめの<br>作品タイトル</th>
+   <td><a href="http://ec.sod.co.jp/detail/index/-_-/iid/STAR-621" target="_blank">作品</a></td>
+  </tr></table>
+  <div class="actLinkOrange">
+   <a href="http://kanna-seto.ameblo.jp/" target="_blank">オフィシャルブログ<span></span></a>
+   <a href="https://twitter.com/kanna_seto0510" target="_blank">ツイッター<span></span></a>
+  </div></div></div>
+<div id="joyu002" class="off">
+ <img src="images/actress/sod/nameless_l.jpg" class="textLeft">
+ <h3 class="bigName">架空同名</h3><h4 class="smallName">Nameless</h4></div>"""
+
+JAE_2017_LIST_PAGE = """<ul>
+ <li><a href="actress/04.html"><img src="images/actress/girls/04.jpg" alt="波多野結衣"></a></li>
+ <li><a href="actress/sonoda_mion.html"><img src="images/actress/girls/03.jpg"></a></li>
+ <li><a href="actress/04.html">重复</a></li>
+ <li><a href="../jae2015/actress.html">上一届</a></li></ul>"""
+
+JAE_2017_PAGE = """<div id="girls_area" class="other_area">
+ <div class="girls_btn"><a href="sonoda_mion.html" class="btn_left pop">◀◀</a></div>
+ <div class="girls_area_left">
+  <a class="group pop" href="../images/actress/girls/04l.jpg" title="波多野結衣">
+   <img src="../images/actress/girls/04m.jpg" alt="波多野結衣"></a></div>
+ <div class="girls_area_right">
+  <div class="name_area"><h2>波多野結衣</h2><p>Yui Hatano</p></div>
+  <ul><li><a href="https://twitter.com/hatano_yui" target="_blank" class="pop">
+    <img src="../images/actress/icon01.png" alt="twitter"></a></li>
+   <!-- <li><a href="http://blog.livedoor.jp/sonoda_mion/" target="_blank" class="pop"></a></li>
+   <li><a href="https://www.instagram.com/kamisaki_shiori/" class="pop"></a></li> -->
+  </ul>
+  <table><tr><th>おすすめの作品タイトル</th>
+   <td><a href="http://www.max-a.co.jp/item.php?item_id=ef33" class="pop">作品</a></td>
+  </tr></table></div></div>"""
+
 X_ALIVE = """<html><head><meta content="瀬戸環奈 (@kanna_seto0510) / X" property="og:title">
 <meta property="og:image" content="https://pbs.twimg.com/profile_images/1/abc_200x200.jpg"></head></html>"""
 X_SUSPENDED = """<html><head><meta property="og:title" content="X"><meta property="og:image"
@@ -237,6 +295,95 @@ class BstarCollectTests(unittest.TestCase):
         self.assertIn("https://s1s1s1.com/actress/detail/849776", links)
 
 
+class JaeCollectTests(unittest.TestCase):
+    """展会名录三届：结构各不相同，注释里的东西一律不算这一页的内容。"""
+
+    def setUp(self):
+        self.module = load_module()
+        self.list_2017 = self.module.JAE + self.module.JAE_2017_LIST
+        # 2014 那届按五十音分页，样本只给「あ行」有人，其余页留空。
+        self.pages = {self.module.JAE + path: "<ul></ul>"
+                      for path in self.module.JAE_2014_LISTS}
+        self.pages.update({
+            self.module.JAE + self.module.JAE_2014_LISTS[0]: JAE_2014_PAGE,
+            self.module.JAE + self.module.JAE_2015_LIST: JAE_2015_PAGE,
+            self.list_2017: JAE_2017_LIST_PAGE,
+            "http://www.jae.tokyo/jae2017/actress/04.html": JAE_2017_PAGE,
+            "http://www.jae.tokyo/jae2017/actress/sonoda_mion.html": "<div></div>"})
+
+    def entries_2014(self):
+        return self.module.jae_2014_entries(
+            JAE_2014_PAGE, self.module.JAE + self.module.JAE_2014_LISTS[0])
+
+    def test_the_commented_out_template_entry_is_not_a_person(self):
+        """2014 那届列表开头是一条填好数据的模板 `<li>`，整段在注释里。"""
+        entries = self.entries_2014()
+        self.assertEqual([entry["anchor"] for entry in entries], ["YuiHatano", "Nameless"])
+        self.assertTrue(all("example.com/template" not in url
+                            for entry in entries for url, _ in entry["links"]))
+
+    def test_an_entry_pairs_both_name_spellings_with_its_own_links_and_portrait(self):
+        entry = self.entries_2014()[0]
+        self.assertEqual(entry["names"], ["波多野結衣", "Yui Hatano"])
+        self.assertEqual(entry["links"], [("http://blog.livedoor.jp/hatano_yui/", "公式ブログ"),
+                                          ("https://twitter.com/hatano_yui", "ツイッター")])
+        self.assertEqual(entry["portrait"],
+                         "http://www.jae.tokyo/jae2014/performer/images/Hatano_Yui.jpg")
+
+    def test_the_placeholder_photo_is_not_a_portrait(self):
+        """没交照片的位置放的是 `nophoto.jpg`，那不是这个人的像。"""
+        self.assertEqual(self.entries_2014()[1]["portrait"], "")
+
+    def test_2015_takes_links_from_the_link_row_and_not_from_the_product_table(self):
+        """同一层的资料表里还有片商的商品页，那不是本人的链接。"""
+        entries = self.module.jae_2015_entries(
+            JAE_2015_PAGE, self.module.JAE + self.module.JAE_2015_LIST)
+        self.assertEqual([entry["anchor"] for entry in entries], ["joyu001", "joyu002"])
+        self.assertEqual(entries[0]["names"], ["瀬戸環奈", "Kanna Seto"])
+        self.assertEqual(entries[0]["links"],
+                         [("http://kanna-seto.ameblo.jp/", "オフィシャルブログ"),
+                          ("https://twitter.com/kanna_seto0510", "ツイッター")])
+        self.assertEqual(entries[1]["links"], [])
+
+    def test_2017_listing_names_each_detail_page_once_and_stays_in_its_own_year(self):
+        pages = self.module.jae_2017_pages(JAE_2017_LIST_PAGE, self.list_2017)
+        self.assertEqual(pages, ["http://www.jae.tokyo/jae2017/actress/04.html",
+                                 "http://www.jae.tokyo/jae2017/actress/sonoda_mion.html"])
+
+    def test_2017_detail_does_not_inherit_the_neighbours_accounts_from_the_comments(self):
+        """每页都是从上一位那页复制来的，上一位的账号整段留在注释里。"""
+        entry = self.module.jae_2017_entry(
+            JAE_2017_PAGE, "http://www.jae.tokyo/jae2017/actress/04.html")
+        self.assertEqual(entry["names"], ["波多野結衣", "Yui Hatano"])
+        self.assertEqual(entry["links"], [("https://twitter.com/hatano_yui", "")])
+        self.assertEqual(entry["portrait"],
+                         "http://www.jae.tokyo/jae2017/images/actress/girls/04l.jpg")
+
+    def test_platform_accounts_and_own_sites_leave_the_collector_on_separate_tracks(self):
+        """平台账号照常走 `links`（要按 handle 判冲突）；博客与本人官网走 `owned`。"""
+        site = FakeSite(self.pages, HttpStatusError=self.module.HttpStatusError)
+        site_links, pages = self.module.collect_jae(site)
+        self.assertEqual(site_links, [])
+        got = {page["page"]: page for page in pages if not page["note"]}
+        entry = got["http://www.jae.tokyo/jae2014/performer/#YuiHatano"]
+        self.assertEqual(entry["links"], ["http://blog.livedoor.jp/hatano_yui/",
+                                          "https://twitter.com/hatano_yui"])
+        self.assertEqual(entry["owned"], [("http://blog.livedoor.jp/hatano_yui/", "公式ブログ")])
+        self.assertEqual(entry["portrait"],
+                         "http://www.jae.tokyo/jae2014/performer/images/Hatano_Yui.jpg")
+
+    def test_a_missing_year_only_leaves_未取得_and_the_others_still_run(self):
+        pages = dict(self.pages)
+        del pages[self.module.JAE + self.module.JAE_2015_LIST]
+        site = FakeSite(pages, HttpStatusError=self.module.HttpStatusError)
+        _, collected = self.module.collect_jae(site)
+        failures = [page for page in collected if page["note"]]
+        self.assertEqual([page["page"] for page in failures],
+                         [self.module.JAE + self.module.JAE_2015_LIST])
+        self.assertTrue(failures[0]["note"].startswith("未取得：HttpStatusError: HTTP 404"))
+        self.assertTrue(any(page["page"].endswith("#YuiHatano") for page in collected))
+
+
 class JudgeTests(unittest.TestCase):
     def setUp(self):
         self.module = load_module()
@@ -321,6 +468,55 @@ class JudgeTests(unittest.TestCase):
         page = self.page("bstar", url, ["瀬戸環奈"], [], official=(url, "Bstar"))
         rows, _ = self.judge([page], urls={2: {url}})
         self.assertEqual([(row["link_kind"], row["verdict"]) for row in rows], [("official", "已有")])
+
+    def test_an_own_site_is_labelled_with_the_words_printed_on_the_page(self):
+        """博客与本人官网没有 handle 可比，只按 URL 判重；标签用资料页上那行文字。"""
+        blog = "http://blog.livedoor.jp/hatano_yui/"
+        home = "http://hatano-yui.jp/"
+        page = self.module.page_record(
+            "jae", "http://www.jae.tokyo/jae2014/performer/#YuiHatano", ["波多野結衣"], [],
+            owned=[(blog, "公式ブログ"), (home, "")])
+        rows, stats = self.judge([page])
+        self.assertEqual([(row["link_kind"], row["label"], row["verdict"]) for row in rows],
+                         [("social", "公式ブログ", "ok"), ("official", "官方网站", "ok")])
+        self.assertIn("资料页写明的本人链接「公式ブログ」", rows[0]["evidence"])
+        self.assertEqual(stats["ok"], 2)
+
+    def test_an_own_site_the_ledger_already_holds_is_已有(self):
+        blog = "http://blog.livedoor.jp/hatano_yui/"
+        page = self.module.page_record("jae", "p", ["波多野結衣"], [], owned=[(blog, "公式ブログ")])
+        rows, _ = self.judge([page], urls={1: {blog}})
+        self.assertEqual([row["verdict"] for row in rows], ["已有"])
+
+
+class PortraitTests(unittest.TestCase):
+    """名录页带的人像走头像候选表，判据与链接同一套。"""
+
+    def setUp(self):
+        self.module = load_module()
+
+    def rows(self, pages):
+        return self.module.portrait_rows(pages, PERFORMERS)
+
+    def test_a_unique_match_becomes_a_candidate_row(self):
+        page = self.module.page_record("jae", "p#YuiHatano", ["波多野結衣", "Yui Hatano"], [],
+                                       portrait="http://www.jae.tokyo/x.jpg")
+        self.assertEqual(self.rows([page]), [{
+            "entity_id": "1", "kind": "performer", "name": "波多野结衣",
+            "matched_name": "波多野結衣", "portrait_url": "http://www.jae.tokyo/x.jpg",
+            "source": "jae", "page": "p#YuiHatano", "verdict": "命中"}])
+
+    def test_a_name_matching_several_performers_yields_no_portrait(self):
+        """头像装错人和链接装错人是同一个错误，判据不能两套。"""
+        page = self.module.page_record("jae", "p", ["架空同名"], [],
+                                       portrait="http://www.jae.tokyo/x.jpg")
+        self.assertEqual(self.rows([page]), [])
+
+    def test_a_page_without_a_portrait_or_a_failed_page_yields_nothing(self):
+        blank = self.module.page_record("jae", "p", ["波多野結衣"], [])
+        broken = self.module.page_record("jae", "q", [], [], portrait="http://x/y.jpg",
+                                         note="未取得：HTTP 404")
+        self.assertEqual(self.rows([blank, broken]), [])
 
 
 class ProbeTests(unittest.TestCase):
