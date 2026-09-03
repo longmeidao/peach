@@ -2567,12 +2567,26 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_follow_management_list_has_routed_sorting(self):
         self.assertPageContains('data-follow-sort aria-label="关注列表排序"')
         self.assertPageContains('<option value="checked"')
+        self.assertPageContains(">检查时间</option>")
         self.assertPageContains('<option value="added"')
         self.assertPageContains('<option value="name"')
         self.assertPageContains('<option value="sources"')
         self.assertPageContains("followManageSort=['checked','added','name','sources'].includes(requested)?requested:'checked'")
         self.assertPageContains("const added=group=>Math.max(...group.map(source=>Date.parse(source.created_at||'')||0))")
-        self.assertPageContains("if(followManageSort==='added')return added(b)-added(a)")
+        self.assertPageContains("if(followManageSort==='added')return flip*(added(b)-added(a))||byName(a,b);")
+        # 每条比较器写的都是该列的默认方向，`flip` 只在方向偏离默认时取反：写成
+        # 「asc 就取反」的话，作者名称默认本来就是正序，一进页面就被翻成倒序。
+        self.assertPageContains(
+            "const flip=followManageDir===(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc')?1:-1;")
+        self.assertPageContains("const FOLLOW_SORT_DEFAULT_DIR={checked:'desc',added:'desc',name:'asc',sources:'desc'};")
+        # 方向键与排序下拉并排，名称播报点下去会得到什么。
+        self.assertPageContains("<button class=\"fbtn fmanagedir\" type=\"button\" data-follow-dir aria-label=\"${")
+        self.assertPageContains("icon(followManageDir==='asc'?'arrow-up':'arrow-down')")
+        self.assertPageContains(".fmanagedir{width:32px;padding:0}")
+        # 方向等于该列默认值时不写进地址，免得挂一个和默认完全一样的参数。
+        self.assertPageContains(
+            "if(followManageDir!==(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc'))params.set('dir',followManageDir);")
+        self.assertPageContains("followManageDir=requestedDir==='asc'||requestedDir==='desc'?requestedDir")
         backend = (ROOT / "src" / "peach" / "web_follow.py").read_text(encoding="utf-8")
         self.assertIn('"created_at": row["created_at"]', backend)
         self.assertPageContains("return groups.sort((a,b)=>{")

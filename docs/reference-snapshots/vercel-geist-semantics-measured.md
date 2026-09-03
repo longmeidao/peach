@@ -205,9 +205,9 @@ error 底 `rgb(217,48,54)` 字 `#fff`；warning 底 `rgb(255,153,10)` 字 `rgb(1
   所以横排选项组那条「填充专属选中、悬停只提文字色」在这里是反的。
 - 当前项确实不加边、不加环、不加字重——上一节这部分结论仍然成立。
 
-Peach 尚未对齐的一处：抽屉 `.dnav button` 的未选中标签仍是 `--ink`，不是 Geist 的 63% 灰，
-所以当前项与悬停项只靠图标色（`--muted` 对 `--ink`）分开。改齐要动整列基态字色，
-留待单独一次处理，别当成已对齐。
+Peach 的两列侧栏导航按上表对齐：`.edge button` 与 `.dnav button` 的未选中字色都是
+`--muted`（63% 灰），当前项是 `--hover` 底 `--ink` 字。抽屉里的图标不再自己声明颜色，
+跟着按钮的 `currentColor` 走，所以图标与标签始终同色、同时变。
 
 ### 纠正记录
 
@@ -224,7 +224,9 @@ Peach 尚未对齐的一处：抽屉 `.dnav button` 的未选中标签仍是 `--
   此前写的两版——先是「统一 `--ink-2` 底 `--ground` 字」（Geist 的 Switch 选中项只是 `#0A0A0A`
   面上抬到 `#1A1A1A`，没有一处是反相白块），再是「无边框补内嵌一圈线、带边框提到墨色 28%、
   还要更强就加字重」（那一整套是自造的强调阶梯，上面三个组件的类名里一条都没有）。
-- 因此**同一排横向互斥选项的未选中项，悬停只提文字色到 `--ink`，不上填充**：`.pill`、`.chip`、
+- 因此**同一排横向互斥选项的未选中项，悬停只提文字色到 `--ink`，不上填充**。这些组的
+  未选中基态一律 `--muted`（对应 Geist 横排选项实测的 `rgb(161,161,161)`）：停在 `--ink-2`
+  时悬停只剩一档可提，肉眼读不出鼠标停在哪一枚。适用于 `.pill`、`.chip`、
   `.reviewtabs button`、`.sorts button`、`.junkfilters a`、`.tagmodes button`、
   `.managebar button`、`.mediaviewbutton`、`.javbar button`。没有选中态的按钮
   （`.fbtn`、`.fchip`）和没有并排邻居的孤立开关（`.ib`、`.brandpill`、`.playerstatsbtn`、

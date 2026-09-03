@@ -36,6 +36,25 @@ COST = {"local": "free", "115": "free", "pikpak": "metered", "online": "metered"
 #: 由界面显示「等 N 人」。详情页走 q_item，不受这个上限影响。
 CARD_PERFORMERS = 6
 
+#: 排序拆成「列 + 方向」两段：`{d}` 由方向填入。方向不进列键，`时长` 才能在同一枚
+#: 控件上翻转，而不是分裂成两个互斥选项，也不会有一个方向在界面上永远点不到。
+#: 每个方向都显式 `NULLS LAST`——升序时 SQLite 默认把 NULL 排在最前，
+#: 「时长最短」会先给出一整屏没有时长的条目。
+SORT_COLUMNS = {
+    "new": "a.first_seen {d} NULLS LAST, a.id {d}",
+    "release": "a.release_date {d} NULLS LAST, a.first_seen {d} NULLS LAST, a.id {d}",
+    "size": "a.size {d} NULLS LAST",
+    "dur": "a.duration {d} NULLS LAST",
+    "played": "a.last_played {d} NULLS LAST",
+    "rating": "a.rating {d} NULLS LAST, a.o_count {d} NULLS LAST",
+    "plays": "a.play_count {d} NULLS LAST, a.last_played {d} NULLS LAST",
+    "o": "a.o_count {d} NULLS LAST",
+}
+
+#: 旧键沿用：地址栏和书签里存着把方向写进键名的值，认不出来它们会落到
+#: `a.id DESC`——那不报错，只是给出一屏顺序看起来合理、其实没按要求排的结果。
+SORT_LEGACY_KEYS = {"big": ("size", "desc"), "short": ("dur", "asc"), "long": ("dur", "desc")}
+
 
 def attach_jav_display_fields(row: dict, tags=(), entity_kinds=()) -> None:
     """Add one canonical display projection while retaining raw file identity fields."""
@@ -170,16 +189,11 @@ def q_items(contract: WebContract, args):
         # 「在线 1」，点进去却永远是 0 条。
         where.append("(a.snapshot_path IS NOT NULL OR a.location = 'online')")
 
-    order = {"new": "a.first_seen DESC, a.id DESC",
-             "release": "a.release_date DESC, a.first_seen DESC, a.id DESC",
-             "big": "a.size DESC",
-             "short": "a.duration ASC",
-             "long": "a.duration DESC",
-             "played": "a.last_played DESC",
-             "rating": "a.rating DESC NULLS LAST, a.o_count DESC NULLS LAST",
-             "plays": "a.play_count DESC NULLS LAST, a.last_played DESC",
-             "o": "a.o_count DESC NULLS LAST",
-             "rand": "RANDOM()"}.get(args.get("sort"), None)
+    requested = str(args.get("sort") or "")
+    sort_key, legacy_dir = SORT_LEGACY_KEYS.get(requested, (requested, ""))
+    direction = "ASC" if (str(args.get("dir") or "").lower() or legacy_dir) == "asc" else "DESC"
+    column = SORT_COLUMNS.get(sort_key)
+    order = column.format(d=direction) if column else ("RANDOM()" if sort_key == "rand" else None)
     if order is None:
         if args.get("sort") == "seed":
             sd = int(args.get("seed") or 1) % 99991 or 7

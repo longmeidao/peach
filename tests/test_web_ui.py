@@ -484,7 +484,8 @@ class WebUiSourceTests(unittest.TestCase):
         # 当前项这一侧必须仍然握着颜色，否则悬停和选中就真的同色了。
         self.assertPageContains('.edge button[aria-pressed="true"]'
                                 "{background:var(--hover);color:var(--ink)}")
-        self.assertPageContains('.dnav button[aria-pressed="true"] svg{color:var(--ink)}')
+        self.assertPageContains('.dnav button[aria-pressed="true"]'
+                                "{background:var(--hover);color:var(--ink)}")
 
     def test_buttons_do_not_shrink_on_press_and_disable_to_a_solid_gray(self):
         """按下不缩放，禁用是实底灰而不是半透明。
@@ -1369,7 +1370,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("const SEED_KEY='peach.seed.v2';")
         self.assertPageLacks("localStorage.getItem(SEED_KEY)")
         self.assertPageContains("seed:initialParam('seed')||rollSeed()")
-        self.assertPageContains("sort:appSettings.defaultSort,seed:rollSeed(),q:''")
+        self.assertPageContains("sort:appSettings.defaultSort,dir:defaultSortDir(appSettings.defaultSort)")
         # 「从别处回到首页」才换种子，判据是上一屏的路径，所以 lastRoutePath
         # 必须等这一屏打开之后再更新。
         self.assertPageContains("const enteringHome=path==='/'&&lastRoutePath!=='/';")
@@ -1380,17 +1381,118 @@ class WebUiSourceTests(unittest.TestCase):
         for option in ('<option value="daily">', '<option value="rand">'):
             self.assertPageLacks(option, "不使用会让分页重复的 SQL RANDOM 或重复的每日模式")
         self.assertPageLacks('id="rotateSetting"')
-        self.assertPageContains("defaultSort:'seed',sortDefaultsVersion:2")
+        self.assertPageContains("defaultSort:'seed',sortDefaultsVersion:3")
         self.assertPageContains("appSettings.defaultSort==='new'){")
         self.assertPageContains("if(sortDefaultsMigrated)saveSettings()")
         self.assertPageContains("const cleanSort=(value,fallback=appSettings.defaultSort)=>")
-        self.assertPageContains("state.sort=state.sort===b.dataset.sort?'seed':b.dataset.sort")
         # 手动换一批仍使用稳定种子，避免分页重复或漏项。
         self.assertPageContains('id="batchAction" type="button"')
-        self.assertPageContains("state.sort='seed';state.seed=rollSeed()")
+        self.assertPageContains("state.sort='seed';state.dir='';state.seed=rollSeed()")
         # 刷新属于列表，不再占顶栏；JAV 共用同一计数/筛选行。
         self.assertPageLacks('id="refresh"')
         self.assertPageContains("+(javActive()?javLayoutButtons():'')")
+
+    def test_sort_splits_into_a_column_and_a_direction_on_the_selected_chip(self):
+        """排序拆成「列 + 方向」：箭头画在选中的那一枚里，再点一次翻方向。
+
+        方向不进列键，`时长` 才能在同一枚控件上翻转，而不是分裂成两个互斥选项、
+        其中一个方向在界面上永远点不到。旧键仍要认得：地址栏和书签里存着
+        `sort=big`、`sort=short`，认不出来不会报错，只会静默换成另一种排序。
+        """
+        self.assertPageContains("['dur','时长']")
+        self.assertPageContains("['new','入库时间'],['played','观看时间']")
+        self.assertPageContains("const SORT_ALIASES={big:['size','desc'],short:['dur','asc'],long:['dur','desc']};")
+        # 方向词按列各自定义：同一个 desc 在时间列上是「从新到旧」，在时长上是「从长到短」。
+        self.assertPageContains("dur:['从长到短','从短到长']")
+        self.assertPageContains("new:['从新到旧','从旧到新'],played:['从近到远','从远到近']")
+        self.assertPageContains("const defaultSortDir=key=>SORT_DIR_WORDS[key]?'desc':'';")
+        self.assertPageContains("function resolveSort(rawSort,rawDir,fallback=appSettings.defaultSort){")
+        # 点未选中项＝换列并用该列默认方向；点选中项＝翻方向；随机没有方向。
+        self.assertPageContains("function nextSortState(key,current,dir){")
+        self.assertPageContains("if(key!==current)return{sort:key,dir:defaultSortDir(key)};")
+        self.assertPageContains("if(!SORT_DIR_WORDS[key])return null;")
+        self.assertPageContains("return{sort:key,dir:dir==='asc'?'desc':'asc'};")
+        self.assertPageContains("const next=nextSortState(b.dataset.sort,state.sort,state.dir);")
+        self.assertPageContains("const next=nextSortState(button.dataset.entitySort,filters.sort||'new',filters.dir);")
+
+    def test_sort_direction_arrow_is_decorative_and_the_name_announces_the_next_state(self):
+        """箭头装饰、aria-pressed 表达当前项、无障碍名称播报下一步。
+
+        2026-09-04 实测 vercel.com/geist/table 的正文原话：可排序表头是 button，
+        方向箭头是装饰性的，按钮向辅助技术播报的是下一个排序状态。`icon()` 自带
+        `aria-hidden`，所以箭头这一侧已经成立；名称必须取翻转后的方向词，
+        照抄当前方向会让读屏用户以为点下去还是这个顺序。
+        """
+        self.assertPageContains(
+            "next?` aria-label=\"按${label}${next.dir?sortDirWord(next.sort,next.dir):''}排序\"`:''")
+        self.assertPageContains("icon(dir==='asc'?'arrow-up':'arrow-down','sortdir')")
+        self.assertPageContains("const followSortLabel=()=>`按${FOLLOW_SORT_LABELS[followManageSort]||'关注列表'}${")
+        # 箭头必须真在 sprite 里，否则选中项渲染出一个空 use，方向就完全看不见。
+        self.assertPageContains('<symbol id="i-arrow-down" viewBox="0 0 24 24">')
+        self.assertPageContains('<symbol id="i-arrow-up" viewBox="0 0 24 24">')
+        # 自带 class 而不是选 `button>svg`：同一排里的批量键是方形图标键，
+        # 那样写会给它的图标也加上左边距，把它顶偏。
+        self.assertPageContains(".sortdir{width:14px;height:14px;flex:none;margin-left:5px;")
+
+    def test_sort_direction_travels_in_the_url_and_the_stored_default(self):
+        """方向进地址栏与设置：等于该列默认值时不写，旧默认值迁移到当前键。"""
+        self.assertPageContains("'orient','sort','dir','q','jav']")
+        self.assertPageContains("!(key==='dir'&&value===defaultSortDir(filters.sort))")
+        self.assertPageContains("&&!(key==='dir'&&filters[key]===defaultSortDir(filters.sort))")
+        self.assertPageContains("if(filters.dir)p.set('dir',filters.dir);")
+        self.assertPageContains("...resolveSort(params.get('sort'),params.get('dir'))")
+        self.assertPageContains("defaultSort:'seed',sortDefaultsVersion:3")
+        self.assertPageContains(
+            "if((+appSettings.sortDefaultsVersion||0)<3&&SORT_ALIASES[appSettings.defaultSort]){")
+        # 设置里的默认排序与排序条同源：列名中性，方向由列自己的默认值决定。
+        self.assertPageContains('<option value="dur">时长</option><option value="size">体积</option>')
+        for legacy in ('<option value="long">', '<option value="big">', '<option value="short">'):
+            self.assertPageLacks(legacy, "默认排序只列中性列名，不列把方向写进键名的值")
+
+    def test_horizontal_choice_groups_start_from_the_muted_base_color(self):
+        """横排互斥选项的未选中基态是 --muted。
+
+        填充专属选中态，所以这些组的悬停只提文字色。基态停在 --ink-2（80% 墨）时
+        悬停只剩一档可提，肉眼读不出鼠标停在哪一枚；Geist 横排选项实测的未选中态
+        是 `rgb(161,161,161)`，也就是 63% 灰，对应 Peach 的 --muted。
+        """
+        for group, rule in (
+            ("顶部标签胶囊 .pill",
+             "color:var(--muted);cursor:pointer;font-size:var(--fs-lg);white-space:nowrap;text-decoration:none}"),
+            ("排序条 .sorts button",
+             "background:transparent;cursor:pointer;font-size:var(--fs-xs);color:var(--muted);"),
+            ("管理页标签 .managebar button",
+             "background:transparent;color:var(--muted);padding:0 14px;cursor:pointer;font-size:var(--fs-sm);"),
+            ("复核页标签与垃圾筛选 .reviewtabs button,.junkfilters a",
+             "border-radius:var(--control-radius);background:transparent;color:var(--muted);"),
+            ("JAV 工具条 .javbar button",
+             "background:transparent;color:var(--muted);cursor:pointer;padding:0}"),
+            ("抽屉导航 .dnav button",
+             "text-align:left;font-size:var(--fs-lg);color:var(--muted)}"),
+        ):
+            self.assertPageContains(rule, f"{group} 的未选中基态必须是 --muted")
+
+    def test_insight_tables_follow_the_bordered_variant_with_the_empty_state_outside(self):
+        """三张表用分隔线变体，空态在表外，数字列数位对齐。
+
+        2026-09-04 实测 vercel.com/geist/table：隔栏异色与分隔线是两个互斥变体
+        （Striped 示例没有行线，Bordered 示例没有行填充），悬停填充是第三个独立
+        开关。Peach 三张表统一走分隔线，所以不叠加隔栏异色；悬停只给可点的行，
+        不可点的行加悬停等于给一个不存在的动作画反馈。
+        """
+        self.assertPageContains(".insighttablerow:last-child{border-bottom:0}")
+        self.assertPageContains(".insighttablerow:is(button):hover{background:var(--overlay-5)}")
+        self.assertPageLacks(".insighttablerow:hover{",
+                             "不可点的行不给悬停填充")
+        self.assertPageLacks(".insighttablerow:nth-child(odd)",
+                             "分隔线变体不叠加隔栏异色")
+        # 空态渲染在表格外面：留一张只有列头的空表等于让人对着两个列名找不存在的行。
+        self.assertPageContains("const table=(head,rows,empty)=>rows?")
+        self.assertPageContains("emptyStateHtml('history','还没有观看记录'")
+        self.assertPageContains("emptyStateHtml('tags','还没有标签来源'")
+        # 数字列 tabular numerals，各行数位对齐才好跨行比较。
+        self.assertPageContains(".insighttablerow b{font-weight:500;color:var(--ink-2);font-variant-numeric:tabular-nums}")
+        self.assertPageContains(".insightdatatable td{font-variant-numeric:tabular-nums}")
 
     def test_offline_sources_drop_out_of_the_default_filter(self):
         """脱盘的来源要从默认筛选里摘掉。
@@ -2962,7 +3064,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode(
             ".reviewtabs button,.junkfilters a{box-sizing:border-box;height:32px;padding:0 12px;flex:none;"
             "display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border-15);"
-            "border-radius:var(--control-radius);background:transparent;color:var(--ink-2);"
+            "border-radius:var(--control-radius);background:transparent;color:var(--muted);"
             "text-decoration:none;font:inherit;font-size:var(--fs-sm);font-weight:400;"
             "white-space:nowrap;cursor:pointer}")
         self.assertPageContains(
@@ -3259,15 +3361,17 @@ class WebUiSourceTests(unittest.TestCase):
     def test_every_entity_video_collection_reuses_applicable_sort_controls(self):
         self.assertPageContains("const ENTITY_LABELS={performer:'艺人',studio:'厂牌',creator:'创作者',series:'系列'}")
         self.assertPageContains('class="batchaction entitybatch"')
-        self.assertPageContains('data-entity-sort="${key}"')
+        self.assertPageContains("filters.sort||'new',filters.dir,'data-entity-sort')")
         self.assertPageContains("p.set('sort',filters.sort||'new')")
         self.assertPageContains("if(filters.sort==='seed')p.set('seed',state.seed)")
         self.assertPageContains("const JAV_RELEASE_SORT=['release','发行时间']")
         self.assertPageContains("javActive()?[JAV_RELEASE_SORT,...SORTS]:SORTS")
         self.assertPageContains("sortOptions().map(([key,label])=>")
         self.assertPageContains("sortOptions().map(([k,l])=>")
-        self.assertPageContains("if(state.jav!=='1'&&state.sort==='release')state.sort='seed'")
-        self.assertPageContains("updateEntityCollection(kind,name,{...filters,sort},true)")
+        self.assertPageContains(
+            "if(state.jav!=='1'&&state.sort==='release'){state.sort='seed';state.dir=''}")
+        self.assertPageContains(
+            "if(next)updateEntityCollection(kind,name,{...filters,...next},true)")
         self.assertPageContains("key==='sort'&&filters[key]==='new'")
         self.assertPageContains(".entitycollectionhead .sorts")
         self.assertPageContains(".entitytagbar{position:sticky;top:var(--topH);z-index:61")

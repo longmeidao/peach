@@ -31,7 +31,17 @@ wireImageFallbacks(document.body);
 let state;
 let barsRequestSeq=0,barsDataCache=null,barsDataAt=0,barsDataPromise=null;
 let adsBatch=null,loadRequestSeq=0,listLoading=false;
-let followData=null,followRuntime=null,followFilter='',followBusy=false,followManageSort='checked';
+let followData=null,followRuntime=null,followFilter='',followBusy=false,
+  followManageSort='checked',followManageDir='desc';
+/* 关注列表四列各自的方向词与默认方向。作者名称是文本列，「从多到少」在它身上
+   不成立，只说正倒。 */
+const FOLLOW_SORT_LABELS={checked:'检查时间',added:'添加时间',name:'作者名称',sources:'来源数量'};
+const FOLLOW_SORT_DIR_WORDS={checked:['从近到远','从远到近'],added:['从近到远','从远到近'],
+  name:['倒序','正序'],sources:['从多到少','从少到多']};
+const FOLLOW_SORT_DEFAULT_DIR={checked:'desc',added:'desc',name:'asc',sources:'desc'};
+/* 同 `sortButtonHtml`：这枚键的无障碍名称说的是点下去会得到什么，所以取反方向的词。 */
+const followSortLabel=()=>`按${FOLLOW_SORT_LABELS[followManageSort]||'关注列表'}${
+  (FOLLOW_SORT_DIR_WORDS[followManageSort]||[])[followManageDir==='asc'?0:1]||''}排序`;
 let followAuthor='',followProvider='',followTags=new Set(),followMediaView='videos',followGroupByItemId=new Map(),followItemsById=new Map(),followDetailReturnPath='/follow';
 const selectedIndexTags=new Set();
 let entityPhotos=null,entityMediaView=emptyMediaView(),photoWallItems=[];
@@ -257,22 +267,35 @@ const SETTINGS_KEY='peach.settings.v1';
 const DEFAULT_SIDEBAR_ORDER=['','performers','tags','jav','flagged','playlists','follow','immerse','manage'];
 const OPTIONAL_SIDEBAR_KEYS=['stats','review','data-cleanup','trash','follow-manage','quality'];
 const ALL_SIDEBAR_KEYS=[...DEFAULT_SIDEBAR_ORDER,...OPTIONAL_SIDEBAR_KEYS];
-const SORTS=[['seed','随机'],['rating','评分'],['o','高潮计数'],['plays','观看次数'],['long','时长'],
-             ['big','体积'],['new','最近入库'],['played','最近看的']];
+const SORTS=[['seed','随机'],['rating','评分'],['o','高潮计数'],['plays','观看次数'],['dur','时长'],
+             ['size','体积'],['new','入库时间'],['played','观看时间']];
 const JAV_RELEASE_SORT=['release','发行时间'];
 const SORT_KEYS=[...SORTS,JAV_RELEASE_SORT].map(([key])=>key);
-const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:2,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',followLayout:'cozy',peopleLayout:'big',ambientMode:true,theaterMode:false,groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
+/* 方向词按列各自定义：同一个 desc 在时间列上是「从新到旧」，在时长上是「从长到短」，
+   写成通用的「降序」等于让界面解释 SQL。数组是 [desc,asc]，在表里就等于这一列可翻转。 */
+const SORT_DIR_WORDS={rating:['从高到低','从低到高'],o:['从多到少','从少到多'],
+  plays:['从多到少','从少到多'],dur:['从长到短','从短到长'],size:['从大到小','从小到大'],
+  new:['从新到旧','从旧到新'],played:['从近到远','从远到近'],release:['从新到旧','从旧到新']};
+/* 旧键沿用：地址栏、书签和设置里存着把方向写进键名的值。方向现在单独由 `dir` 表达，
+   两个时长键收敛成一个 dur；认不出旧键的后果不是报错，是静默换成另一种排序。 */
+const SORT_ALIASES={big:['size','desc'],short:['dur','asc'],long:['dur','desc']};
+const sortDirWord=(key,dir)=>(SORT_DIR_WORDS[key]||[])[dir==='asc'?1:0]||'';
+const defaultSortDir=key=>SORT_DIR_WORDS[key]?'desc':'';
+const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',followLayout:'cozy',peopleLayout:'big',ambientMode:true,theaterMode:false,groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
 delete appSettings.rotateMinutes;
-/* 随机排序已从可选值里去掉，落在它上面的默认值迁移成最近入库。只迁移这一个默认，
-   评分、观看次数等用户主动选择继续保留。 */
+/* 迁移只碰默认值本身：把界面上已经不存在的键换成当前键，用户主动选过的排序不动。
+   不迁移的话 allowedSetting 会把它静默打回随机。 */
 let sortDefaultsMigrated=false;
 if((+appSettings.sortDefaultsVersion||0)<2&&appSettings.defaultSort==='new'){
   appSettings.defaultSort='seed';sortDefaultsMigrated=true
 }
-appSettings.sortDefaultsVersion=2;
+if((+appSettings.sortDefaultsVersion||0)<3&&SORT_ALIASES[appSettings.defaultSort]){
+  appSettings.defaultSort=SORT_ALIASES[appSettings.defaultSort][0];sortDefaultsMigrated=true
+}
+appSettings.sortDefaultsVersion=3;
 appSettings.batchSize=allowedSetting(+appSettings.batchSize,[30,60,90],60);
 appSettings.defaultSort=allowedSetting(appSettings.defaultSort,SORT_KEYS,'seed');
 appSettings.hoverDelaySeconds=allowedSetting(+appSettings.hoverDelaySeconds,[3,5,8],5);
@@ -332,7 +355,7 @@ $('#settingsPanel').onkeydown=e=>{
   else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
 };
 $('#batchSizeSetting').onchange=e=>{appSettings.batchSize=+e.target.value||60;saveSettings();if(location.pathname==='/')load(true)};
-$('#defaultSortSetting').onchange=e=>{appSettings.defaultSort=e.target.value;saveSettings();state.sort=appSettings.defaultSort;if(location.pathname==='/')load(true)};
+$('#defaultSortSetting').onchange=e=>{appSettings.defaultSort=e.target.value;saveSettings();state.sort=appSettings.defaultSort;state.dir=defaultSortDir(state.sort);if(location.pathname==='/')load(true)};
 $('#hoverDelaySetting').onchange=e=>{appSettings.hoverDelaySeconds=+e.target.value||5;document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);saveSettings()};
 /* 关掉后同一番号的每个分卷／版次各占一张卡。改完要重取当前列表：折叠是在渲染
    时做的，不重画的话已经被跳过的那些卡不会自己冒出来。 */
@@ -467,6 +490,13 @@ function junkPath(kind=junkKind,view=junkView){
 }
 const cleanTagFilter=value=>String(value||'').split(',').filter(tag=>tag&&!DURATION_TAGS.has(tag)).join(',');
 const cleanSort=(value,fallback=appSettings.defaultSort)=>SORT_KEYS.includes(value)?value:fallback;
+/* 列和方向一次解出来：旧键自带方向，`dir` 显式写了就听它的，随机没有方向。 */
+function resolveSort(rawSort,rawDir,fallback=appSettings.defaultSort){
+  const alias=SORT_ALIASES[rawSort];
+  const sort=cleanSort(alias?alias[0]:rawSort,fallback);
+  if(!SORT_DIR_WORDS[sort])return{sort,dir:''};
+  return{sort,dir:rawDir==='asc'||rawDir==='desc'?rawDir:(alias?alias[1]:'desc')};
+}
 /* 查询参数属于它所在的路由，所以目录的筛选只从目录 URL 里读。
 
    不能无条件读启动 URL：`/follow?tag=blender` 会顺手把目录也筛成 blender，
@@ -479,7 +509,8 @@ const initialParam=key=>initialCatalogUrl?initialParams.get(key):null;
 state={loc:initialParams.get('loc')||'local,115',creator:initialParam('creator')||'',studio:initialParam('studio')||'',
   tag:cleanTagFilter(initialParam('tag')),len:initialParam('len')||'',dur_min:initialParam('dur_min')||'',dur_max:initialParam('dur_max')||'',
   tag_match:initialParam('tag_match')==='any'?'any':'all',orient:initialParam('orient')||'',
-  state:ROUTE_STATES[decodeURIComponent(location.pathname)]||initialParam('state')||'',sort:cleanSort(initialParam('sort')),
+  state:ROUTE_STATES[decodeURIComponent(location.pathname)]||initialParam('state')||'',
+  ...resolveSort(initialParam('sort'),initialParam('dir')),
   seed:initialParam('seed')||rollSeed(),q:initialParam('q')||'',jav:initialParam('jav')||'',thumb:'1'};
 /* 脱盘的来源要从默认筛选里摘掉，否则首页照样按它筛，出来一屏点开就报脱盘的卡片。
    只动默认值：地址栏里显式写了 `loc=` 就是用户自己选的，不替他改。
@@ -490,11 +521,12 @@ function dropOfflineFromDefaultLoc(){
   const kept=state.loc.split(',').filter(Boolean).filter(k=>sourceOnline[k]!==false);
   if(kept.length&&kept.length!==state.loc.split(',').filter(Boolean).length)state.loc=kept.join(',');
 }
-const HOME_QUERY_KEYS=['loc','creator','studio','tag','tag_match','len','dur_min','dur_max','orient','sort','q','jav'];
+const HOME_QUERY_KEYS=['loc','creator','studio','tag','tag_match','len','dur_min','dur_max','orient','sort','dir','q','jav'];
 function homePath(filters=state){
   const path=STATE_ROUTES[filters.state]||'/';
   const params=new URLSearchParams();
-  HOME_QUERY_KEYS.forEach(key=>{const value=filters[key];if(value&&!(key==='tag_match'&&value==='all'))params.set(key,value)});
+  HOME_QUERY_KEYS.forEach(key=>{const value=filters[key];
+    if(value&&!(key==='tag_match'&&value==='all')&&!(key==='dir'&&value===defaultSortDir(filters.sort)))params.set(key,value)});
   if(!STATE_ROUTES[filters.state]&&filters.state)params.set('state',filters.state);
   return path+(params.size?'?'+params:'');
 }
@@ -503,7 +535,8 @@ function homePath(filters=state){
    浏览范围，继续保留；其余分类、搜索和排序恢复首页默认值。 */
 function resetHomeState(){
   state={loc:state.loc,creator:'',studio:'',tag:'',tag_match:'all',len:'',dur_min:'',dur_max:'',
-    orient:'',state:'',sort:appSettings.defaultSort,seed:rollSeed(),q:'',jav:'',thumb:'1'};
+    orient:'',state:'',sort:appSettings.defaultSort,dir:defaultSortDir(appSettings.defaultSort),
+    seed:rollSeed(),q:'',jav:'',thumb:'1'};
   barsDataCache=null;barsDataPromise=null;
 }
 function openHome(scroll=false){
@@ -511,13 +544,15 @@ function openHome(scroll=false){
   buildEdge();buildBars();load(true);
   if(scroll)window.scrollTo({top:0,behavior:'smooth'});
 }
-const ENTITY_FILTER_KEYS=['loc','creator','tag','dur_min','dur_max','orient','sort'];
+const ENTITY_FILTER_KEYS=['loc','creator','tag','dur_min','dur_max','orient','sort','dir'];
 const emptyEntityFilters=()=>Object.fromEntries(
-  ENTITY_FILTER_KEYS.map(key=>[key,key==='sort'?'new':'']));
+  ENTITY_FILTER_KEYS.map(key=>[key,key==='sort'?'new':key==='dir'?'desc':'']));
 const parseEntityFilters=search=>{const params=new URLSearchParams(search),filters=emptyEntityFilters();
-  ENTITY_FILTER_KEYS.forEach(key=>{filters[key]=key==='sort'?cleanSort(params.get(key),'new'):(params.get(key)||'')});return filters};
+  ENTITY_FILTER_KEYS.forEach(key=>{if(key!=='sort'&&key!=='dir')filters[key]=params.get(key)||''});
+  Object.assign(filters,resolveSort(params.get('sort'),params.get('dir'),'new'));return filters};
 const entityFilterSearch=filters=>{const params=new URLSearchParams();
-  ENTITY_FILTER_KEYS.forEach(key=>{if(filters[key]&&!(key==='sort'&&filters[key]==='new'))params.set(key,filters[key])});
+  ENTITY_FILTER_KEYS.forEach(key=>{if(filters[key]&&!(key==='sort'&&filters[key]==='new')
+    &&!(key==='dir'&&filters[key]===defaultSortDir(filters.sort)))params.set(key,filters[key])});
   return params.toString()};
 let barsContext={type:'home',filters:state},detailReturnBarsContext=null;
 const cloneBarsContext=context=>context&&context.type==='entity'
@@ -2319,7 +2354,7 @@ function renderCount(){
           title="换一批" aria-label="换一批">${icon('refresh-cw')}</button>`
         // JAV 版式紧跟换批动作，和排序连成一条。
         +(javActive()?javLayoutButtons():'')
-        +sortOptions().map(([k,l])=>`<button data-sort="${k}" aria-pressed="${state.sort===k}">${l}</button>`).join('')+`</span>`);
+        +sortOptions().map(([k,l])=>sortButtonHtml(k,l,state.sort,state.dir,'data-sort')).join('')+`</span>`);
   const batch=$('#batchAction');
   if(batch)batch.onclick=async()=>{
     if(batch.getAttribute('aria-busy')==='true')return;
@@ -2342,8 +2377,9 @@ function renderCount(){
     }finally{await load(true)}
   };
   $('#count').querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{
-    // 再点当前排序就是取消它，回到稳定随机；不能让「最近入库」变成锁死的筛选。
-    state.sort=state.sort===b.dataset.sort?'seed':b.dataset.sort;
+    const next=nextSortState(b.dataset.sort,state.sort,state.dir);
+    if(!next)return;
+    state.sort=next.sort;state.dir=next.dir;
     load(true)});
 }
 
@@ -2454,18 +2490,21 @@ async function openStats(push=true){
   const locationRows=d.by_loc.map(row=>{const label=row.k==='online'?'已保存在线':(LOC[row.k]||row.k);return `<div class="insightbarrow"><div><span>${label}</span><b>${row.videos.toLocaleString()}</b></div>
     ${progressHtml(`${label}：${row.videos.toLocaleString()} / ${totalVideos.toLocaleString()}`,row.videos,totalVideos)}
     <small>${gb(row.bytes)} · ${pct(row.videos,totalVideos)}%</small></div>`}).join('');
-  const table=(head,rows)=>`<div class="insighttable"><div class="insighttablehead">${head.map(value=>`<span>${value}</span>`).join('')}</div>${rows}</div>`;
+  /* 一行都没有时整张表不出现，只留 Empty State：Geist Table 的判据是空态渲染在表格
+     外面，留一张只有列头的空表等于让人对着两个列名找不存在的行。 */
+  const table=(head,rows,empty)=>rows?`<div class="insighttable"><div class="insighttablehead">${head.map(value=>`<span>${value}</span>`).join('')}</div>${rows}</div>`:empty;
   const tagsTable=`<ol class="insightranking">${d.top_tags.map((t,index)=>`<li><button type="button" class="insightrankrow" data-k="${esc(t.k)}">
     <span class="insightrankpos">${index+1}</span><span>${esc(tagLabel(t.k))}</span><b>${t.n.toLocaleString()}</b></button></li>`).join('')}</ol>`;
-  const recentTable=table(['作品','观看证据'],d.recent.length?d.recent.map(row=>{
+  const recentTable=table(['作品','观看证据'],d.recent.map(row=>{
     const real=row.duration?Math.min(row.play_seconds/row.duration,1)*100:0;
     const reached=(row.max_reached||0)*100;
     const note=row.kind==='online'?'在线直接观看':(real<reached-25?'快进扫过':(row.o_count?`高潮 ${row.o_count}`:'正常观看'));
     return `<div class="insighttablerow"><span>${esc((row.creator?row.creator+' · ':'')+row.name)}</span>
-      <b>真实 ${real.toFixed(0)}% · 到达 ${reached.toFixed(0)}% · ${note}</b></div>`}).join(''):
+      <b>真实 ${real.toFixed(0)}% · 到达 ${reached.toFixed(0)}% · ${note}</b></div>`}).join(''),
     `<div class="insightempty">${emptyStateHtml('history','还没有观看记录','开始播放后，这里会显示最近的真实观看证据。')}</div>`);
   const sourceTable=table(['标签来源','覆盖视频'],d.tag_source.map(row=>`<div class="insighttablerow"><span>${esc(row.k)}</span>
-    <b>${row.n.toLocaleString()} 条 · ${row.assets.toLocaleString()} 个视频</b></div>`).join(''));
+    <b>${row.n.toLocaleString()} 条 · ${row.assets.toLocaleString()} 个视频</b></div>`).join(''),
+    `<div class="insightempty">${emptyStateHtml('tags','还没有标签来源','刮削或手动打标之后，这里会显示每个来源覆盖了多少视频。')}</div>`);
   const storageTable=`<table class="insightdatatable"><thead><tr><th>位置</th><th>已用</th><th>可用</th><th>使用率</th></tr></thead><tbody>${(d.storage_volumes||[]).map(row=>{
     const measured=row.total!=null, usedPct=measured?pct(row.used,row.total):0;
     return `<tr><th scope="row"><span>${esc(row.label)}</span><small>${row.root?esc(row.root):'未映射'}</small></th><td>${measured?gb(row.used):'—'}</td><td>${measured?gb(row.free):'—'}</td><td>${measured?usedPct+'%':(row.online?'容量未取得':'离线')}</td></tr>`}).join('')}</tbody></table>`;
@@ -4193,11 +4232,17 @@ function followAuthorGroups(sources){
   const name=group=>followAuthorName(group);
   const checked=group=>Math.max(...group.map(source=>Date.parse(source.last_checked_at||'')||0));
   const added=group=>Math.max(...group.map(source=>Date.parse(source.created_at||'')||0));
+  /* 每条比较器写的都是该列的默认方向，`flip` 只在方向偏离默认时取反：写成
+     「asc 就取反」的话，作者名称默认本来就是正序，一进页面就被翻成倒序。
+     同值回退始终按名字正序，不跟着翻——否则「来源数量」里数量相同的那几个人
+     每换一次方向就整段倒序一遍，看着像列表在乱跳。 */
+  const flip=followManageDir===(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc')?1:-1;
+  const byName=(a,b)=>name(a).localeCompare(name(b),'zh-CN',{numeric:true});
   return groups.sort((a,b)=>{
-    if(followManageSort==='name')return name(a).localeCompare(name(b),'zh-CN',{numeric:true});
-    if(followManageSort==='sources')return b.length-a.length||name(a).localeCompare(name(b),'zh-CN',{numeric:true});
-    if(followManageSort==='added')return added(b)-added(a)||name(a).localeCompare(name(b),'zh-CN',{numeric:true});
-    return checked(b)-checked(a)||name(a).localeCompare(name(b),'zh-CN',{numeric:true});
+    if(followManageSort==='name')return flip*byName(a,b);
+    if(followManageSort==='sources')return flip*(b.length-a.length)||byName(a,b);
+    if(followManageSort==='added')return flip*(added(b)-added(a))||byName(a,b);
+    return flip*(checked(b)-checked(a))||byName(a,b);
   });
 }
 
@@ -4444,11 +4489,13 @@ function renderFollowManage(credentials){
           <span class="fmeta">${sources.length} 个来源${
             counts.new?` · <b>${counts.new}</b> 条未看`:''}</span>
           <label class="fmanagesort">${icon('sort')}<select data-follow-sort aria-label="关注列表排序">
-            <option value="checked"${followManageSort==='checked'?' selected':''}>最近检查</option>
+            <option value="checked"${followManageSort==='checked'?' selected':''}>检查时间</option>
             <option value="added"${followManageSort==='added'?' selected':''}>添加时间</option>
             <option value="name"${followManageSort==='name'?' selected':''}>作者名称</option>
             <option value="sources"${followManageSort==='sources'?' selected':''}>来源数量</option>
           </select></label>
+          <button class="fbtn fmanagedir" type="button" data-follow-dir aria-label="${
+            followSortLabel()}">${icon(followManageDir==='asc'?'arrow-up':'arrow-down')}</button>
           ${followLayoutButtons()}
           <button class="fbtn" data-follow-check=""${sources.length?'':' disabled'}>${
             icon('refresh-cw')}检查全部</button>
@@ -4485,12 +4532,25 @@ function renderFollowManage(credentials){
 }
 
 
+/* 排序落在地址栏上，返回同一页还是同一个顺序。方向等于该列默认值时不写进地址，
+   免得地址栏挂一个和默认完全一样的参数。 */
+function routeFollowManageSort(){
+  const params=new URLSearchParams();
+  if(followManageSort!=='checked')params.set('sort',followManageSort);
+  if(followManageDir!==(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc'))params.set('dir',followManageDir);
+  const query=params.toString();
+  route('/follow-manage'+(query?'?'+query:''));
+  openFollowManage(false);
+}
 async function openFollowManage(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
-  if(push){followManageSort='checked';route('/follow-manage')}
+  if(push){followManageSort='checked';followManageDir='desc';route('/follow-manage')}
   else if(location.pathname==='/follow-manage'){
-    const requested=new URLSearchParams(location.search).get('sort');
+    const params=new URLSearchParams(location.search),requested=params.get('sort');
     followManageSort=['checked','added','name','sources'].includes(requested)?requested:'checked';
+    const requestedDir=params.get('dir');
+    followManageDir=requestedDir==='asc'||requestedDir==='desc'?requestedDir
+      :(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc');
   }
   const surface=claimSurface('/follow-manage');
   showManagementBody({placeholder:managementPlaceholder('/follow-manage')});
@@ -4540,8 +4600,13 @@ function wireFollowManage(){
   const sort=root.querySelector('[data-follow-sort]');
   if(sort)sort.onchange=()=>{
     followManageSort=sort.value;
-    route('/follow-manage'+(followManageSort==='checked'?'':'?sort='+encodeURIComponent(followManageSort)));
-    openFollowManage(false);
+    followManageDir=FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc';
+    routeFollowManageSort();
+  };
+  const dir=root.querySelector('[data-follow-dir]');
+  if(dir)dir.onclick=()=>{
+    followManageDir=followManageDir==='asc'?'desc':'asc';
+    routeFollowManageSort();
   };
   wireIconSwitch(root,'data-follow-layout',setFollowListLayout);
   renderFollowSrcFilter(root.querySelector('#followSrcFilter'));
@@ -5124,6 +5189,7 @@ let entityRequestSeq=0,entityJavLayout=false;
 async function fetchEntityItems(kind,name,filters,offset=0){
   const p=new URLSearchParams();p.set(kind,name);p.set('limit','48');p.set('offset',String(offset));
   p.set('sort',filters.sort||'new');
+  if(filters.dir)p.set('dir',filters.dir);
   if(filters.sort==='seed')p.set('seed',state.seed);
   if(offset)p.set('count','0');
   ENTITY_FILTER_KEYS.forEach(key=>{if(filters[key]&&key!==kind&&key!=='sort')p.set(key,filters[key])});
@@ -5142,8 +5208,8 @@ function renderEntityCollection(kind,name,items,filters,append=false){
     section.innerHTML=`<div class="entitycollectionhead"><h3></h3><span class="sorts">
       <button class="batchaction entitybatch" type="button" title="换一批" aria-label="换一批">${icon('refresh-cw')}</button>
       ${javActive()?javLayoutButtons():''}
-      ${sortOptions().map(([key,label])=>`<button type="button" data-entity-sort="${key}"
-        aria-pressed="${(filters.sort||'new')===key}">${label}</button>`).join('')}</span></div>
+      ${sortOptions().map(([key,label])=>sortButtonHtml(
+        key,label,filters.sort||'new',filters.dir,'data-entity-sort')).join('')}</span></div>
       <div class="grid"></div><button class="entitymore" type="button">载入更多</button>`;
     section.dataset.total=String(items.total||0);
     section.querySelector('h3').textContent=`视频 · ${(items.total||0).toLocaleString()}${entityTag?' · '+entityTag:''}`;
@@ -5151,8 +5217,8 @@ function renderEntityCollection(kind,name,items,filters,append=false){
     section.querySelector('.entitybatch').onclick=()=>{
       state.seed=rollSeed();updateEntityCollection(kind,name,{...filters,sort:'seed'},true)};
     section.querySelectorAll('[data-entity-sort]').forEach(button=>button.onclick=()=>{
-      const sort=button.dataset.entitySort;
-      updateEntityCollection(kind,name,{...filters,sort},true)});
+      const next=nextSortState(button.dataset.entitySort,filters.sort||'new',filters.dir);
+      if(next)updateEntityCollection(kind,name,{...filters,...next},true)});
   }else{
     entityCollectionPage.items.push(...(items.items||[]));
     entityCollectionPage.has_more=!!items.has_more;
@@ -5949,6 +6015,25 @@ function javActive(){
 /* 发行时间只对有正式发行证据的番号列表有意义。普通馆藏继续使用入库时间，
    避免把大量空日期的创作者作品挂上一个看似可用、实际无值的排序。 */
 function sortOptions(){return javActive()?[JAV_RELEASE_SORT,...SORTS]:SORTS}
+/* 方向只画在选中的那一枚上：箭头既是当前方向，也是「再点一次能翻」的唯一提示。
+   未选中项不画箭头——那会变成八个方向按钮，其中七个的方向此刻不生效。
+   箭头对辅助技术隐藏（`icon()` 自带 aria-hidden），无障碍名称播报的是「点下去会得到
+   什么」而不是当前状态：Geist Table 的可排序表头就是这么分工的，当前状态由
+   `aria-pressed` 和这枚箭头各自表达，名称留给下一步动作。 */
+function sortButtonHtml(key,label,current,dir,attr){
+  const on=current===key,next=nextSortState(key,current,dir);
+  const word=on?sortDirWord(key,dir):'';
+  return `<button type="button" ${attr}="${key}" aria-pressed="${on}"${
+    next?` aria-label="按${label}${next.dir?sortDirWord(next.sort,next.dir):''}排序"`:''}>${label}${
+    word?icon(dir==='asc'?'arrow-up':'arrow-down','sortdir'):''}</button>`;
+}
+/* 点未选中项＝换列并用该列的默认方向；点选中项＝翻方向。随机没有方向，重复点它
+   什么都不做——换一批是它旁边那枚按钮的事。 */
+function nextSortState(key,current,dir){
+  if(key!==current)return{sort:key,dir:defaultSortDir(key)};
+  if(!SORT_DIR_WORDS[key])return null;
+  return{sort:key,dir:dir==='asc'?'desc':'asc'};
+}
 function javLayout(){
   const raw=JAV_LAYOUT_ALIASES[appSettings.javLayout]||appSettings.javLayout;
   return allowedSetting(raw,JAV_LAYOUTS.map(([k])=>k),'big');
@@ -5976,7 +6061,7 @@ function paintJavBar(){
 }
 function toggleJavMode(){
   state.jav=state.jav==='1'?'':'1';
-  if(state.jav!=='1'&&state.sort==='release')state.sort='seed';
+  if(state.jav!=='1'&&state.sort==='release'){state.sort='seed';state.dir=''}
   state.state='';state.orient='';
   route(state.jav==='1'?'/?jav=1':'/');
   showHomeSurfaces();buildEdge();buildBars();load(true);
@@ -6947,7 +7032,7 @@ async function tokShow(dir){
     }
     if(location.pathname==='/'){
       const url=new URL(location.href),query=new URLSearchParams();
-      for(const key of ['q','loc','creator','studio','tag','len','dur_min','dur_max','orient','state','sort']){
+      for(const key of ['q','loc','creator','studio','tag','len','dur_min','dur_max','orient','state','sort','dir']){
         const value=state[key];if(value&&!(key==='loc'&&value==='local,115')&&!(key==='sort'&&value==='daily'))query.set(key,value)
       }
       url.search=query.toString();history.replaceState({},'',url.pathname+(url.search||''));
@@ -7234,7 +7319,7 @@ async function refreshAll(automatic=false){
     await openStats(false);return
   }
   if(!$('#index').hidden){return}
-  state.sort='seed';state.seed=rollSeed();
+  state.sort='seed';state.dir='';state.seed=rollSeed();
   // 顶部三层（女优头像、厂牌、标签）有 30 秒会话缓存，而 refreshAll 只重载网格：
   // 不清掉这两个缓存，「换一批」之后上面还是同一批人。
   barsDataCache=null;barsDataPromise=null;
@@ -7312,7 +7397,7 @@ function openCatalog(path){
   state={...state,loc:params.get('loc')||'local,115',creator:params.get('creator')||'',studio:params.get('studio')||'',
     tag:cleanTagFilter(params.get('tag')),tag_match:params.get('tag_match')==='any'?'any':'all',len:params.get('len')||'',
     dur_min:params.get('dur_min')||'',dur_max:params.get('dur_max')||'',orient:params.get('orient')||'',
-    state:ROUTE_STATES[path]||params.get('state')||'',sort:cleanSort(params.get('sort')),
+    state:ROUTE_STATES[path]||params.get('state')||'',...resolveSort(params.get('sort'),params.get('dir')),
     seed:params.get('seed')||(enteringHome?rollSeed():state.seed||rollSeed()),q:params.get('q')||'',jav:params.get('jav')||''};
   $('#q').value=state.q;buildEdge();buildBars();load(true);
 }
