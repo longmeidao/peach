@@ -5,7 +5,7 @@ import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import {
-  breadcrumbHtml, emptyStateHtml, fieldsetTitle, iconSwitchHtml, loadingDotsHtml,
+  breadcrumbHtml, checkboxHtml, emptyStateHtml, fieldsetTitle, iconSwitchHtml, loadingDotsHtml,
   mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml, setActionBusy, skeletonHtml,
   spinnerHtml, wireBusyActions, wireCollapse, wireIconSwitch, wireScrollers,
 } from './js/ui-components.js';
@@ -3898,11 +3898,9 @@ function followSourceRow(source){
   const badge=state==='ok'?'ok':bad?'error':'none';
   const stateTitle=source.history_exhausted?'没有更多历史内容':state;
   return `<div class="frow fsource${bad?' bad':''}${source.enabled?'':' disabled'}">
-    <label class="fchannelcheck" title="${source.enabled?'参与检查更新':'暂停检查更新'}">
-      <input type="checkbox" data-follow-enabled="${source.id}" ${source.enabled?'checked':''}
-        aria-label="${source.enabled?'暂停':'启用'} ${esc(source.label)} 的更新检查">
-      <span aria-hidden="true">${icon('check')}</span>
-    </label>
+    <label class="fchannelcheck" title="${source.enabled?'参与检查更新':'暂停检查更新'}">${checkboxHtml(
+      `data-follow-enabled="${source.id}" ${source.enabled?'checked':''}`
+      +` aria-label="${source.enabled?'暂停':'启用'} ${esc(source.label)} 的更新检查"`)}</label>
     <b><a class="fsourcelink" href="${esc(source.url)}" target="_blank"
       rel="noreferrer noopener" title="打开原来源">${esc(source.label)}</a></b>
     <span class="fmeta fprovider">${sourceIcon(source.provider)}${esc(source.provider_label)}</span>
@@ -4379,7 +4377,7 @@ function renderFollowSrcFilter(mount){
       aria-label="${esc(label())}" title="${esc(label())}">
       ${icon('list-filter')}<span data-srcfilter-label>${esc(label())}</span></button>
     <div class="fsrcmenu" id="follow-source-menu" role="menu" data-srcfilter-menu hidden>${providers.map(provider=>
-      `<label><input type="checkbox" data-srcfilter="${esc(provider)}"${fsrcUnchecked.has(provider)?'':' checked'}>
+      `<label>${checkboxHtml(`data-srcfilter="${esc(provider)}"${fsrcUnchecked.has(provider)?'':' checked'}`)}
         ${sourceIcon(providerIcon.get(provider)||'')}<span>${esc(provider)}</span></label>`).join('')}</div>`;
   const toggle=mount.querySelector('[data-srcfilter-toggle]');
   const menu=mount.querySelector('[data-srcfilter-menu]');
@@ -4436,9 +4434,9 @@ function renderFollowPicks(results){
       return `<div class="fpick bad"><b>${esc(row.line)}</b><p>${esc(row.error)}</p></div>`;
     const failures=Object.entries(row.failures||{});
     const items=(row.candidates||[]).map((c,ci)=>`<label class="fpickitem${c.known?' known':''}" data-provider="${esc(c.provider_label||'')}">
-      <input type="checkbox" data-pick="${index}-${ci}" value="${esc(c.url)}"
-        data-author="${esc(c.author||'')}"
-        data-label="${esc(c.label)}"${c.known?' disabled':' checked'}>
+      ${checkboxHtml(`data-pick="${index}-${ci}" value="${esc(c.url)}"`
+        +` data-author="${esc(c.author||'')}"`
+        +` data-label="${esc(c.label)}"${c.known?' disabled':' checked'}`)}
       <span><b>${esc(c.provider_label)}</b> ${esc(c.label)}
         <i>${esc(c.known?'已经关注':c.evidence)}</i></span></label>`).join('');
     const searches=(row.external_searches||[]).map(search=>
@@ -4623,7 +4621,7 @@ async function openIndex(kind,q,push=true){
   /* 多选面板拼的是目录筛选，只在本地范围出现；在线分类来自上游 booru tag_type。 */
   const filters=categoryFilters+(kind==='tags'&&!onlineTags?`
     <div class="tagselection" data-tag-selection hidden>
-      <label><input type="checkbox" data-tag-match-any ${tagIndexMatch==='any'?'checked':''}><span><b>广泛匹配</b><small>开启后匹配任一所选标签；关闭后必须同时包含全部标签。</small></span></label>
+      <label>${checkboxHtml(`data-tag-match-any ${tagIndexMatch==='any'?'checked':''}`)}<span><b>广泛匹配</b><small>开启后匹配任一所选标签；关闭后必须同时包含全部标签。</small></span></label>
       <span class="mono" data-tag-selected>已选 0 个标签</span>
       <button type="button" data-tag-clear>清空</button>
       <button type="button" class="primary" data-tag-apply disabled>显示结果</button>

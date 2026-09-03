@@ -1547,11 +1547,13 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_each_channel_has_a_styled_update_checkbox(self):
         self.assertPageContains('class="fchannelcheck"')
-        self.assertPageContains('type="checkbox" data-follow-enabled=')
+        self.assertPageContains('data-follow-enabled="${source.id}"')
         self.assertPageContains("{action:'enabled',id:Number(control.dataset.followEnabled),enabled}")
-        self.assertPageContains(".fchannelcheck input{position:absolute;width:1px;height:1px;opacity:0")
+        # 框本身归共用的 .pcheck，.fchannelcheck 只剩这一行在行里的摆放。
+        self.assertPageContains(".fchannelcheck{display:grid;place-items:center;align-self:center}")
+        self.assertPageContains(".pcheck input{position:absolute;width:1px;height:1px;opacity:0")
         # Geist Checkbox 选中态实测：框底不变，勾是墨色；不再用蓝底。
-        self.assertPageContains(".fchannelcheck input:checked+span{border-color:var(--ink-2);color:var(--ink)}")
+        self.assertPageContains(".pcheck input:checked+span{border-color:var(--ink-2);color:var(--ink)}")
         self.assertPageContains("${icon('check')}")
 
     def test_official_channel_icons_and_alias_manager_are_visible(self):

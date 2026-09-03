@@ -808,6 +808,45 @@ class WebUiSourceTests(unittest.TestCase):
             "justify-items:center;text-align:center}")
         self.assertPageContains(".entityhero .entitylinks{justify-content:center")
 
+    def test_the_switch_centers_its_icon_instead_of_the_line_box(self):
+        """svg 默认是 inline，行盒底下留着基线以下的空档。
+
+        `place-items:center` 居中的是行盒不是图形，实测图标偏上 2.7px（26px 高的
+        标签里上留 1.8px、下留 7.2px）。排序行原先靠 `.sorts .javlayout` 上两条一次性
+        修补躲开它，别处用同一个开关就露馅了——改成组件自己出 block。
+        """
+        self.assertPageContains(
+            ".iconswitch svg{display:block;width:17px;height:17px;")
+        self.assertPageLacks(".sorts .javlayout label{line-height:0}")
+        self.assertPageLacks(".sorts .javlayout svg{display:block}")
+
+    def test_every_checkbox_is_the_same_drawn_box_with_a_hover(self):
+        """站内此前两种画法并排：原生 checkbox 和关注列表自绘的那份。
+
+        原生的只调得动 `accent-color`（选中色），未选中态由浏览器自绘，没有悬停
+        反馈可言。统一成一份自绘的，悬停只抬填充、不提边，与按钮同口径。
+        """
+        self.assertPageContains("export function checkboxHtml(inputAttrs='')")
+        self.assertPageContains(
+            '<span class="pcheck"><input type="checkbox" ${inputAttrs}>'
+            '<span aria-hidden="true">${icon(\'check\')}</span></span>')
+        self.assertPageContains(".pcheck:hover>span,label:hover>.pcheck>span{background:var(--hover)}")
+        # 悬停不许提边：这条只写 background。
+        rule = self.page[self.page.index(".pcheck:hover>span,"):]
+        self.assertNotIn("border-color", rule[:rule.index("}")])
+        # 五个调用点，一个都不许再留原生 checkbox 的 accent-color。
+        for attrs in ("data-follow-enabled=", "data-srcfilter=", "data-pick=",
+                      "data-tag-match-any", 'id="groupCollapseSetting"'):
+            self.assertPageContains(attrs)
+        # 单选框仍归原生（`.metadatacandidate` 是 radio，不是同一个控件）。
+        self.assertPageLacks(".fsrcmenu input{accent-color")
+        self.assertPageLacks(".fpickitem input{accent-color")
+        self.assertPageLacks(".tagselection input{width:18px")
+        self.assertPageLacks(".settingrow input[type=checkbox]{width:20px")
+        # 停用的候选不该显示成可点。
+        self.assertPageContains(".pcheck:has(input:disabled){cursor:not-allowed}")
+        self.assertPageContains(".pcheck:has(input:disabled)>span{background:var(--ground)}")
+
     def test_the_jav_layout_switch_cannot_be_squeezed_flat_in_the_sort_row(self):
         # `.sorts` 是不换行的横向滚动条，里面的项默认可收缩，而 `.javlayout` 自己带着
         # `min-width:0`（fieldset 需要它才不撑破容器）。两条合起来允许它被压到内容宽度
