@@ -83,7 +83,7 @@
 - 资料页阅读顺序与照片入口：`beeg-profile-layout`；JAV 标题显示语义：`jav-title-user-screenshot`，只在 `is_jav` 项目上应用，不改真实文件名，也不在账本只有番号时伪造官方标题。
 - 播放器控制栏、设置浮层、影院与全屏几何：`youtube-player-controls-user-screenshot`；沉浸页版式：`youtube-shorts-immersive-user-screenshot`；播放统计滚动历史：`youtube-stats-buffer-measured`。Peach 不复制没有实际能力的字幕、睡眠定时或自动播放按钮。
 - 追更与文件站的凭据与解析边界：`f95-masked-gofile-media`、`follow-fanbox-gofile-paheal`、`fanbox-browser-transport`、`rule34-follow-tags-and-collections`；厂牌 Logo 候选发现：`fiu758-studio-logo-discovery`，只作发现来源不作真相源。
-- 通用评审清单与报告型页面版式：`vercel-web-interface-guidelines`、`vercel-report-design`。
+- 通用评审清单与报告型页面版式：`vercel-web-interface-guidelines`、`vercel-report-design`（即 `vercel.com/design.md`）；第三方逆向的 DESIGN.md 不作证据。
 - 默认 Note、只读提示和 info 入口统一复用本地 Lucide 圆圈 `i`，显式使用 2px 描边与圆端点保证圆点可见，不复制未开放许可的 Geist 私有 SVG。
 - 沉浸与详情播放每次加载都带独立 `session`，切片、关闭、失败和页面离开时取消旧会话：只清浏览器的 `src` 不足以停止 CloudDrive 预读或 FFmpeg。Mix 只按已解析且可播放的视频计数，不按回复数或网盘页数计数。
 - FANBOX 正文统一先经过 `peach.fanbox.normalize_fanbox_post`，数据模型固定参考 PixivUtil2 `v20251112` / `e537e96`：只有图片和视频进入可切换媒体，压缩包等文件只留资源链接，重复 URL 按正文首次出现顺序去重。
