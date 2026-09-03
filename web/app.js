@@ -123,8 +123,9 @@ const ROUTES=[
 const registerRoute=spec=>{ROUTES.push(spec);return spec};
 window.peachRegisterRoute=registerRoute;
 
-const pageSkeletonHtml=(label,{cards=false,className='',variant=''}={})=>
-  skeletonHtml(label,{variant:variant||(cards?'cards':'panel'),className});
+const pageSkeletonHtml=(label,{cards=false,className='',variant='',count}={})=>
+  skeletonHtml(label,{variant:variant||(cards?'cards':'panel'),className,
+    ...(count?{count}:{})});
 const followSkeletonHtml=(label='正在读取关注内容')=>`<div class="follow">
   <div class="followhead"><h2 class="pagetitle">关注</h2></div>
   ${pageSkeletonHtml(label,{cards:true,className:'follow-content-skeleton'})}</div>`;
@@ -151,7 +152,10 @@ const MANAGEMENT_PLACEHOLDERS={
   '/review':()=>pageSkeletonHtml('正在读取复核队列',{cards:true}),
   '/quality-goals':()=>pageSkeletonHtml('正在读取高清版目标',{cards:true}),
   '/playlists':()=>pageSkeletonHtml('正在读取播放列表',{cards:true}),
-  '/follow-manage':()=>`<div class="follow">${pageSkeletonHtml('正在读取关注管理',{cards:true})}</div>`,
+  // 关注管理是三个大区（添加关注、关注列表、凭据），不是一屏同质卡片：
+  // 骨架照 .fsec 的轮廓画三块，六张 16:9 占位说的是另一个页面的结构。
+  '/follow-manage':()=>`<div class="follow">${pageSkeletonHtml('正在读取关注管理',
+    {cards:true,count:3,className:'followmanage-skeleton'})}</div>`,
 };
 const managementPlaceholder=path=>
   (MANAGEMENT_PLACEHOLDERS[path]||(()=>pageSkeletonHtml('正在读取页面')))();
@@ -5228,7 +5232,9 @@ const MANAGE_SECTIONS=[
   ['review','人工复核','square-check-big'],
   ['cleanup','数据管理','hard-drive'],
   ['trash','回收站','trash'],
-  ['follow','关注','rss'],
+  // 这一项的页面是 /follow-manage（加来源、看凭据、移除来源），不是关注更新流
+  // `/follow`。两处都叫「关注」时，管理菜单和页标题都在说一个它去不到的地方。
+  ['follow','关注管理','rss'],
   ['quality','高清版','sparkles'],
 ];
 /* 管理菜单只留四项。人工复核、回收站、高清版都是「收拾库里已有的东西」，
@@ -5237,7 +5243,7 @@ const MANAGE_SECTIONS=[
 const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow'];
 const manageMenuSections=()=>MANAGE_SECTIONS.filter(([key])=>MANAGE_MENU_SECTIONS.includes(key));
 const OPTIONAL_EDGE_ICONS=MANAGE_SECTIONS.map(([key,label,ic])=>
-  key==='follow'?['follow-manage','关注管理',ic]
+  key==='follow'?['follow-manage',label,ic]
     :key==='cleanup'?['data-cleanup',label,ic]:[key,label,ic]);
 const NAV_CATALOG=[...EDGE_ICONS,...OPTIONAL_EDGE_ICONS];
 const DIRECT_MANAGE_NAV={stats:'stats',review:'review','data-cleanup':'cleanup',trash:'trash','follow-manage':'follow',quality:'quality'};

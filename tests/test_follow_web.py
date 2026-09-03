@@ -1407,11 +1407,11 @@ class FollowWebSourceTests(unittest.TestCase):
         # 不再是 navTo／navOn 各写一条 `k==='follow'` 分支。
         self.assertPageContains("{match:'/follow',nav:'follow',title:'关注',refresh:'skip',")
         self.assertPageContains("open:(params,push)=>openFollow(push),reload:()=>openFollow(false)},")
-        # 两个数组现在同名，字面量断言分不出是哪一个：
-        # 管理区这一项得在 MANAGE_SECTIONS 里找，否则它被删了测试照样绿。
+        # 管理区这一项得在 MANAGE_SECTIONS 里找，否则它被删了测试照样绿。名字也不再
+        # 跟左栏那条相同：左栏的「关注」是看更新，这里的「关注管理」是 /follow-manage。
         manage = self.page[self.page.index("const MANAGE_SECTIONS=["):]
         manage = manage[:manage.index("];")]
-        self.assertIn("['follow','关注','rss']", manage)
+        self.assertIn("['follow','关注管理','rss']", manage)
         self.assertPageContains('<symbol id="i-rss"')
         # 管理区身份同理：`section` 写在路由表上，`openManage('follow')` 按它查表。
         self.assertPageContains("{match:'/follow-manage',section:'follow',title:'关注管理',refresh:'skip',")
