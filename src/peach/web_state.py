@@ -33,6 +33,9 @@ from .config import (
 )
 from .jobs import BackgroundJob
 from .media import remap_managed_path
+# `previews` 是取图那一侧，不是 web 域处理器：依赖方向仍然只有一个走法。落盘名的
+# 规则必须和 `/logo` 用的是同一个函数，否则可用性判定迟早和取图对不上。
+from .previews import LOGO_VARIANTS, logo_key
 from .repository import LedgerDatabase
 
 
@@ -251,6 +254,48 @@ class WebContract:
         # 索引的键是 casefold 过的：`is_file()` 在 Windows 与 macOS 的默认文件系统上
         # 大小写不敏感，改走索引不能顺手把这层容错丢了。
         return bool(key) and key.casefold() in self.cover_index()
+
+    def logo_index(self) -> frozenset[str]:
+        """厂牌标识目录扫一遍的索引：已装标识的 casefold(落盘名) 集合。
+
+        页面据此决定「输出 `<img>` 还是直接首字母垫底」。以前无从判断，只能每个厂牌
+        都先发一次 `/logo`、靠 404 再把图换掉：首页顶栏一次渲染 30 个厂牌就是 21 个
+        404，而 404 那条响应不可缓存，每次重绘还要再打一遍。
+
+        判据必须和 `PreviewService.logo` 逐字一致——同一个 `logo_key`、同样大小写不
+        敏感、同样把 `.icon` / `.logo` 变体算作这个厂牌有图。松一格就是页面说有图却
+        取回 404（碎图），紧一格就是明明装了却永远只显示首字母。
+
+        代价和 `cover_index()` 一样：刚装上的标识最多一个 TTL 后才出现在页面上；
+        复核批准本来就会 `cache_bust()`，所以用户自己的动作看得到即时效果。
+        """
+        return self.cached("logo-index", self._scan_logo_root)
+
+    def _scan_logo_root(self) -> frozenset[str]:
+        """一次目录扫描收齐已装标识。目录不存在就是空集合，页面全部退回首字母。"""
+        keys: set[str] = set()
+        try:
+            with os.scandir(self.logo_root) as entries:
+                for entry in entries:
+                    name = entry.name.casefold()
+                    # `.ct` 边车和 SVG 原件不是 `/logo` 会取的文件，不算这个厂牌有图。
+                    if not name.endswith(".img") or not entry.is_file():
+                        continue
+                    stem = name[:-len(".img")]
+                    for variant in LOGO_VARIANTS:
+                        if stem.endswith(f".{variant}"):
+                            stem = stem[:-len(variant) - 1]
+                            break
+                    if stem:
+                        keys.add(stem)
+        except OSError:
+            return frozenset()
+        return frozenset(keys)
+
+    def has_logo(self, studio: str | None) -> bool:
+        """这个厂牌是否已装标识。空名字一律为假——`/logo` 也拒绝空 studio。"""
+        key = logo_key(studio or "")
+        return bool(key) and key.casefold() in self.logo_index()
 
     def cover_frame(self, code: str | None) -> dict | None:
         """封面的取景提示：人脸中心。没算过或没检出就返回 None。

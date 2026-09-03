@@ -116,6 +116,10 @@ def q_entity(contract: WebContract, args):
         ):
             related.append(dict(performer))
         d["related_performers"] = related
+    # 厂牌页那个大位先取 `/logo`、取不到才退到实体图。没装标识时直接从实体图起步，
+    # 省掉必然 404 的那一跳；别的实体没有这个位置，标志只对厂牌成立。
+    if kind == "studio":
+        d["has_logo"] = contract.has_logo(d["canonical_name"])
     return d
 
 # ────────────────────────────── 照片 ──────────────────────────────

@@ -13,6 +13,7 @@ from unittest import mock
 
 from peach import web_batch, web_catalog, web_stats
 from peach import web_contract as rm_web
+from peach.previews import logo_key
 from support.ledger import fresh_ledger
 
 
@@ -69,7 +70,11 @@ class WebDataTests(unittest.TestCase):
         )
         con.commit()
         con.close()
-        self.contract = rm_web.WebContract(Path(self.db_path))
+        # 标识目录显式落在临时目录：默认值是本机真实的 generated 树，「这个厂牌有没有
+        # 图」会随本机装了什么而变，测试跟着本机状态摇。
+        self.logos = Path(self.tmp.name).resolve() / "logos"
+        self.logos.mkdir()
+        self.contract = rm_web.WebContract(Path(self.db_path), logo_root=self.logos)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -306,6 +311,38 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(
             [(row["k"], row["n"]) for row in rm_web.q_tops(self.contract, 30)["studios"]],
             [("Canonical Studio", 2)])
+
+    def test_studio_marks_say_up_front_whether_a_logo_is_installed(self):
+        """三处厂牌取图位都要随资料下发「装了没有」。
+
+        缺这个标志，页面只能无条件出 `<img>`、等 `/logo` 回 404 再换成首字母：顶栏
+        一排 30 个厂牌里实测 21 个没有图，而 404 那条响应不可缓存，每次重绘再打一
+        整轮。判据是目录索引，不查库。
+        """
+        def flags():
+            item = rm_web.q_item(self.contract, 1)
+            page = rm_web.q_entity(
+                self.contract, {"kind": "studio", "name": "Canonical Studio"})
+            return {
+                "pill": [row["has_logo"] for row in
+                         rm_web.q_tops(self.contract, 30)["studios"]],
+                "ref": [ref["has_logo"] for ref in item["entity_refs"]["studio"]],
+                # 非规范厂牌只有扁平 `studio` 字段，它的可用性单独一格；漏了这格，
+                # 那条路径会从「本来能取到图」退化成永远只显示首字母。
+                "flat": item["has_studio_logo"],
+                "hero": page["has_logo"],
+            }
+
+        self.assertEqual(
+            flags(), {"pill": [False], "ref": [False], "flat": False, "hero": False},
+            "一张图都没装时三处都必须说没有")
+
+        (self.logos / f"{logo_key('Canonical Studio')}.img").write_bytes(b"x")
+        (self.logos / f"{logo_key('Studio A')}.icon.img").write_bytes(b"x")
+        self.contract.cache_bust()
+        self.assertEqual(
+            flags(), {"pill": [True], "ref": [True], "flat": True, "hero": True},
+            "装上之后三处都必须说有")
 
     def test_items_can_skip_repeated_total_count_on_later_pages(self):
         result = rm_web.q_items(

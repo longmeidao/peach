@@ -32,6 +32,7 @@ from .entities import (
 )
 from .fsutil import atomic_write_bytes
 from .metadata_policy import SOURCE_SPECS
+from .previews import logo_key
 from .review_csv import read_rows
 
 
@@ -827,9 +828,9 @@ LOGO_CONTENT_TYPES = {
 }
 
 
-def studio_logo_key(studio: str) -> str:
-    """和 `PreviewService.logo` 完全一致的落盘名，两边必须同一套规则。"""
-    return re.sub(r"[^A-Za-z0-9_-]", "_", studio)[:60]
+#: 落盘名的规则归 `previews.logo_key`：取图、可用性判定和这里的批准落地必须同一套，
+#: 各留一份正则曾经就是「装上了却取不到」的成因。名字沿用，导出的仍是同一个函数。
+studio_logo_key = logo_key
 
 
 #: 只记决定、不需要落地的类别，以及为什么。写在这里而不是靠人记：
