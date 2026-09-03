@@ -297,6 +297,96 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertEqual(offenders, [],
                          f"这些规则的 --tungsten 不在允许的焦点／链接／进度／Toggle 之列：{offenders}")
 
+    # 选中态允许高对比反相的两处：都压在媒体画面上，画面本身会把 --hover 那层
+    # 7% 白吃掉，读不出按没按。
+    INVERTED_PRESSED_ALLOWED = (
+        ".hovertools .laterbtn",   # 卡片悬停浮层「稍后看」
+        ".tokbtns button",         # 沉浸页右侧竖排动作
+        ".followimagedots button",  # 图集页码点
+    )
+
+    def test_pressed_states_lift_the_fill_instead_of_inverting_to_a_white_slab(self):
+        """选中态是抬一档的面，不是反相白块。
+
+        2026-09-03 实测 Geist：Switch 的选中项只是把 `#0A0A0A` 的容器面抬到
+        `#1A1A1A`，Tabs 是墨色文字加下划线，Checkbox 是墨底白勾——整套里没有一处
+        把控件刷成浅色实底。Peach 此前给所有 `aria-pressed="true"` 上 `--ink-2`
+        (#C9CDD4) 底 `--ground` 字，一排筛选里被选中的那颗比主动作还抢眼。
+        """
+        css = re.sub(r"/\*.*?\*/", "", (Path(__file__).resolve().parents[1]
+                                        / "web" / "app.css").read_text(encoding="utf-8"),
+                     flags=re.S)
+        self.assertNotIn("background:var(--ink-2)", css,
+                         "--ink-2 是次级文字色，不该当作任何控件的底色")
+        offenders = []
+        for match in re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
+            leaf, body = match.group(1).strip().split("{")[-1], match.group(2)
+            if not any(state in leaf for state in (
+                    'aria-pressed="true"', 'aria-selected="true"', "aria-current",
+                    ".selected", ".picked")):
+                continue
+            if "background:var(--ink)" not in body:
+                continue
+            # 伪元素画的是 Tabs 那条 2px 墨色下划线，不是控件的面。
+            if ":after" in leaf or ":before" in leaf:
+                continue
+            if any(allowed in leaf for allowed in self.INVERTED_PRESSED_ALLOWED):
+                continue
+            offenders.append(leaf)
+        self.assertEqual(offenders, [],
+                         f"选中态请改 --hover 底 --ink 字，别刷成浅色实底：{offenders}")
+
+    def test_hover_lifts_the_fill_and_leaves_the_border_alone(self):
+        """悬停只抬填充，不动边框。
+
+        取自 Geist Button 的源规则（站点样式表 `0p9r363b8n-x2.css`）：primary
+        `#EDEDED→#ccc`、secondary `#0A0A0A→--ds-gray-200`、ghost 走
+        `--ds-gray-alpha-200`，没有任何一条 hover 改 border 或 ring。Peach 此前把边
+        提到墨色 28%（`.fbtn` 甚至提到 `--ink-2`，接近 79% 白），一排按钮里被鼠标
+        扫过的那颗看着像是被选中了。28% 现在只留给选中态的边。
+        """
+        css = re.sub(r"/\*.*?\*/", "", (Path(__file__).resolve().parents[1]
+                                        / "web" / "app.css").read_text(encoding="utf-8"),
+                     flags=re.S)
+        offenders = []
+        for match in re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
+            leaf, body = match.group(1).strip().split("{")[-1], match.group(2)
+            if ":hover" not in leaf:
+                continue
+            # 输入框不在此列：Geist Input 的悬停确实提边，靠边框告诉你哪个域可以写。
+            if "search" in leaf or "input" in leaf:
+                continue
+            edge = re.search(r"border-color:([^;}]+)", body)
+            if not edge:
+                continue
+            value = edge.group(1).strip()
+            # 语义色（危险、标签本色）和主动作掉一档不算提边，它们换的是色相不是亮度。
+            if value in ("var(--ink-2)",
+                         "color-mix(in srgb,var(--ink) 28%,transparent)"):
+                offenders.append(leaf)
+        self.assertEqual(offenders, [],
+                         f"这些 hover 在提亮边框，请改成只抬 background：{offenders}")
+
+    def test_buttons_do_not_shrink_on_press_and_disable_to_a_solid_gray(self):
+        """按下不缩放，禁用是实底灰而不是半透明。
+
+        同一次实测：Geist Button 页面上全部按钮的 `transform` 都是 `none`——按下缩放
+        是 Peach 自己加的。禁用则是 `rgb(26,26,26)` 底、`rgb(143,143,143)` 字、
+        1px `rgb(46,46,46)` 环、`opacity:1`；半透明会让按钮连同它下面的底色一起变淡，
+        在深色卡片和浅色卡片上淡出的程度还不一样。
+        """
+        css = re.sub(r"/\*.*?\*/", "", (Path(__file__).resolve().parents[1]
+                                        / "web" / "app.css").read_text(encoding="utf-8"),
+                     flags=re.S)
+        self.assertNotIn("scale:.96", css, "Geist 按下没有缩放，别再加回来")
+        disabled = ("{background:var(--surface);border-color:var(--border-15);"
+                    "color:var(--muted);cursor:default}")
+        for selector in (".geist-button:disabled", ".fbtn:disabled",
+                         ".tagselection button:disabled", ".fpickactions button:disabled",
+                         ".fcredactions button:disabled", ".srctools button:disabled",
+                         ".frowicon:disabled", ".resourceaction:disabled"):
+            self.assertPageContains(selector + disabled)
+
     def test_font_weights_stay_on_the_three_geist_steps(self):
         """字重只有 400／500／600 三档。
 
@@ -3101,7 +3191,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".cleanupfieldset button{box-sizing:border-box;flex:none;min-height:32px;")
         self.assertPageContains("background:var(--surface);color:var(--ink-2);display:inline-flex;")
         self.assertPageContains(".cleanupfieldset button:hover{background:var(--hover);"
-                                "border-color:var(--ink-2);color:var(--ink)}")
+                                "color:var(--ink)}")
         self.assertPageLacks(".resourcesyncfooter button{width:100%;justify-content:center}")
         self.assertPageLacks(".resourcesync .resourcesyncfooter{align-items:stretch;flex-direction:column}")
         self.assertPageLacks(".resourcesync .resourceapplyrow{align-items:stretch;flex-direction:column}")
@@ -3634,9 +3724,10 @@ class WebUiSourceTests(unittest.TestCase):
                           "followViewPath 没把 " + key + " 写进 URL")
             self.assertIn("'" + key + "'", reader,
                           "readFollowView 没从 URL 读回 " + key)
-        # 「全部」是真实的空值，空串在 URL 里和「没写」分不开，所以写成 all。
-        self.assertIn("params.set('status',followFilter||'all')", writer)
-        self.assertIn("status==='all'?'':status", reader)
+        # 「全部」现在是默认视图，缺省即全部，所以它不写进 URL；只有收窄到某个
+        # 状态才落 status。旧链接里的 status=all 仍按全部读回。
+        self.assertIn("if(followFilter)params.set('status',followFilter);", writer)
+        self.assertIn("(status===null||status==='all')?'':status", reader)
 
     def test_entering_follow_afresh_derives_state_from_the_url(self):
         entry = self._js_function("openFollow")
@@ -3644,6 +3735,35 @@ class WebUiSourceTests(unittest.TestCase):
                       "从窄栏点进来应当回到干净的 /follow")
         self.assertIn("readFollowView()", entry,
                       "进入关注页没有照 URL 推导筛选状态")
+
+    def test_follow_opens_on_the_all_view(self):
+        """关注页的默认视图是「全部」，不是「未看」。
+
+        默认「未看」意味着标完最后一条页面就空了，想回看刚才处理过的还得再点一次
+        筛选；「全部」是这一页真正的常态。默认值同时决定 URL 形态：全部是默认，
+        所以缺省即全部，`/follow` 不带 `status`。
+        """
+        self.assertPageContains("followFilter='',followBusy=false")
+        # 「返回关注页」和「回到关注首屏」两处重置也得落在同一个默认上。
+        self.assertEqual(self.page.count(
+            "followMediaView='videos';followFilter='';"), 2,
+            "有重置分支还在把筛选推回旧默认")
+        self.assertPageContains("[['','全部'],['new','未看']")
+
+    def test_follow_detail_puts_the_actions_above_the_tag_cloud(self):
+        """详情侧栏的顺序是正文 → 操作 → 状态 → 标签。
+
+        来源站的标签动辄几十个。标签排在操作之前时，「已看／忽略／保存」被整片标签云
+        推到侧栏底下，每处理一条都要先滚过去。标签是可选的参考信息，操作是每条都要用的。
+        """
+        side = self.page.split('<div class="side followdetailside">', 1)[1].split(
+            "</div></div></div>`;", 1)[0]
+        actions = side.index('class="fb followdetailactions"')
+        state = side.index('class="fstate"')
+        tags = side.index('class="stags followdetailtags"')
+        self.assertLess(actions, state, "操作条必须在状态行之前")
+        self.assertLess(state, tags, "标签必须沉到侧栏最后")
+        self.assertPageContains(".followdetailside .followdetailtags{margin:16px 0 0}")
 
     def test_follow_filter_buttons_write_the_url_before_refetching(self):
         """先写 URL 再重取。反过来的话 openFollow 会照旧 URL 把状态推回去。"""

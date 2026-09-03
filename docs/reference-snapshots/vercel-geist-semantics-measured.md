@@ -126,12 +126,51 @@ Peach 图片灯箱的信息卡据此保持一个“在资源管理器中显示�
 结论：整套 Geist 里只有 Toggle 开态用蓝，Tabs／Switch／Checkbox／主按钮的选中与强调全是墨色
 反相或抬一档的灰面。蓝色的另外两个去处是焦点环与链接。
 
+## Button 全变体与状态（2026-09-03 复测，深色主题）
+
+- URL：<https://vercel.com/geist/button>
+- 取证方式：`getComputedStyle` 遍历页面全部 `<button>` 去重；hover 与 disabled 的规则原文
+  直接 `fetch` 站点样式表 `0p9r363b8n-x2.css` 后按 `}`…`}` 切片取出——手工写
+  `data-hover` 属性并不触发 Geist 的悬停样式，只能读源规则。
+
+| 尺寸 | 高 | 内边距 | 圆角 | 字号 |
+| --- | --- | --- | --- | --- |
+| small | 32px | `0 6px` | 6px | 14px |
+| medium | 36px | `0 10px` | 6px | 14px |
+| large | 40px | `0 14px` | 8px | 16px |
+| rounded（胶囊） | 同上 | `0 12px` | 999px | 同上 |
+
+变体（32px 档实测）：primary 底 `rgb(237,237,237)` 字 `rgb(10,10,10)`；secondary 底
+`rgb(10,10,10)` 字 `rgb(237,237,237)`；tertiary／ghost 透明底 `rgb(237,237,237)` 字；
+error 底 `rgb(217,48,54)` 字 `#fff`；warning 底 `rgb(255,153,10)` 字 `rgb(10,10,10)`。
+全部 500 字重、`border-width:0`——边框是 `box-shadow:0 0 0 1px rgb(46,46,46)` 画的，
+只有 secondary 有，tertiary 的 `box-shadow` 是 `none`。过渡统一
+`.15s cubic-bezier(.4,0,.2,1)`。
+
+三条关键状态规则：
+
+- **悬停只动填充，边框不动**。源规则里没有任何按钮 hover 改 border/ring：
+  primary 走 `--themed-hover-bg` 默认 `#ccc`（`hsl(0,0%,80%)`，即 #EDEDED 掉一档），
+  secondary 走 `--ds-gray-200`（深色下 `#1F1F1F`，即 #0A0A0A 抬一档），
+  ghost 走 `--ds-gray-alpha-200`。
+- **禁用是实底灰，不是半透明**：底 `rgb(26,26,26)`、字 `rgb(143,143,143)`、
+  ring `rgb(46,46,46)`、`opacity:1`、`cursor:not-allowed`。
+- **按下没有缩放**：页面上全部按钮的 `transform` 都是 `none`，Geist 不做 `scale`。
+
 ### Peach 对应（2026-09-03 收敛）
 
-- 按下／选中（`aria-pressed="true"`、`aria-current`、`.selected`、`.current`、`.picked`、`:checked`）统一
-  `--ink-2` 底 `--ground` 字，与筛选 `.pill` 原有反相一致；行与列表项选中用 `--hover` 底 `--ink` 字。
-- 主动作 `--ink` 底 `--ground` 字，悬停 `--ink-2`，与 `.geist-button.primary` 同色；每屏最多一个。
-- 悬停边统一 `color-mix(in srgb,var(--ink) 28%,transparent)`，标题悬停用下划线不变蓝；卡片悬停去掉蓝色发光。
+- 按下／选中（`aria-pressed="true"`、`aria-current`、`.selected`、`.current`、`.picked`、`:checked`）不再反相。
+  无边框控件用 `--hover` 底 `--ink` 字 + `box-shadow:inset 0 0 0 1px var(--border-15)`，
+  带边框控件用 `--hover` 底 `--ink` 字 + 边框提到 `color-mix(in srgb,var(--ink) 28%,transparent)`，
+  需要再强调时加一档字重（500／600）。这条推翻了本文件此前写的「统一 `--ink-2` 底 `--ground` 字」：
+  Geist 的 Switch 选中项只是 `#0A0A0A` 面上抬到 `#1A1A1A`，没有一处是反相白块。
+- 主动作 `--ink` 底 `--ground` 字，悬停 `color-mix(in srgb,var(--ink) 88%,var(--ground))`
+  （对应 Geist 的 #EDEDED→#CCC，同为掉一档而非换色）；每屏最多一个。
+- 悬停统一只抬填充到 `--hover`，边框与文字色不动——同样推翻此前的「悬停边提亮到墨色 28%」，
+  那一档在 Peach 是全站最亮的边，实际效果比 Vercel 重得多。28% 现在只用于选中态的边。
+- 禁用统一 `--surface` 底、`--border-15` 边、`--muted` 字，不用 `opacity`；
+  按下不加 `scale`。Peach 保留 `cursor:default` 而不是 Geist 的 `not-allowed`，
+  与本仓库其余禁用态写法一致。
 - 计数徽章（如作者别名「3 组」）走 gray badge：`--overlay-5` 底、`--border-15` 细边、`--muted` 字、`--control-radius`。
 - 保留蓝：`:focus*`、真正的链接（`.entitylink`／`.flink`／`.fsourcelink`／`.fcred a`／`.tokauthor>a`）、
   进度与数据（progress／watchprogress／range／slider／tokbar／trace）、`#censorSetting:checked`（Toggle）。

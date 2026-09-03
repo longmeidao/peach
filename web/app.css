@@ -100,10 +100,10 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
   border-radius:var(--control-radius);background:transparent;color:var(--ink);display:inline-flex;
   align-items:center;justify-content:center;gap:6px;font:inherit;font-size:var(--fs-md);font-weight:500;
   line-height:1;white-space:nowrap;cursor:pointer;
-  transition:background-color .12s,border-color .12s,color .12s}
-.geist-button:hover:not(:disabled){border-color:var(--ink-2);background:var(--hover)}
+  transition:background-color .15s ease-in-out,border-color .15s ease-in-out,color .15s ease-in-out}
+.geist-button:hover:not(:disabled){background:var(--hover)}
 .geist-button:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
-.geist-button:disabled{cursor:default;opacity:.55}
+.geist-button:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
 /* Vercel/Geist loading actions look unavailable and reject repeat activation,
    but remain focusable; JS pairs this with aria-disabled instead of disabled. */
 button[aria-busy="true"],[role="button"][aria-busy="true"]{
@@ -142,7 +142,7 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 .ib svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round;display:block}
 .ib:hover{color:var(--ink);background:var(--hover)}
-.ib[aria-pressed="true"]{color:var(--ground);background:var(--ink-2)}
+.ib[aria-pressed="true"]{background:var(--hover);color:var(--ink);box-shadow:inset 0 0 0 1px var(--border-15)}
 .brand{display:flex;align-items:center;gap:9px;flex:none;text-decoration:none;color:inherit;height:32px}
 .mark{width:28px;height:28px;flex:none;display:block;object-fit:contain}
 .brand h1{font-family:Bahnschrift,"Segoe UI Variable Display","Microsoft YaHei UI","PingFang SC",sans-serif;font-weight:600;margin:0;font-size:var(--fs-xl);line-height:1;letter-spacing:.08em}
@@ -194,7 +194,7 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
   border-radius:var(--pill-radius);background:var(--overlay-5);border:1px solid var(--border-10);cursor:pointer;
   font-size:var(--fs-md);white-space:nowrap}
 .brandpill:hover{border-color:var(--border-15);background:color-mix(in srgb,var(--overlay-5) 78%,var(--ink) 3%)}
-.brandpill[aria-pressed="true"]{border-color:var(--ink-2);background:var(--ink-2);color:var(--ground)}
+.brandpill[aria-pressed="true"]{background:var(--hover);color:var(--ink);border-color:color-mix(in srgb,var(--ink) 28%,transparent);font-weight:500}
 .brandpill .mk{width:32px;height:32px;border-radius:50%;background:#CFCFCF;flex:none;
   display:flex;align-items:center;justify-content:center;font-size:var(--fs-xs);
   font-family:Bahnschrift,"Microsoft YaHei UI","Microsoft YaHei","PingFang SC",sans-serif;color:var(--ground);overflow:hidden;position:relative}
@@ -209,8 +209,8 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 .pill{flex:none;height:var(--filterItemH);padding:0 20px;border:1px solid var(--border-15);
   border-radius:var(--pill-radius);background:transparent;display:inline-flex;align-items:center;justify-content:center;
   color:var(--ink-2);cursor:pointer;font-size:var(--fs-lg);white-space:nowrap;text-decoration:none}
-.pill:hover{border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink);background:var(--overlay-5)}
-.pill[aria-pressed="true"]{background:var(--ink-2);color:var(--ground);border-color:var(--ink-2)}
+.pill:hover{color:var(--ink);background:var(--hover)}
+.pill[aria-pressed="true"]{background:var(--hover);color:var(--ink);border-color:color-mix(in srgb,var(--ink) 28%,transparent);font-weight:500}
 .pill.act{border-color:var(--ink-2);color:var(--ink)}
 .sep{flex:none;width:1px;height:19px;background:var(--border-15);margin:0 3px}
 
@@ -228,11 +228,11 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 /* 统计页 */
 .stats{padding:0 0 42px}
 .playlistpage{padding:4px 0 42px}.playlistpage>header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:16px}.playlistpage h2{margin:0 0 5px}.playlistpage p{margin:0;color:var(--muted);font-size:var(--fs-sm)}
-.playlistcreate{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}.playlistcreate label{display:grid;gap:5px;color:var(--muted);font-size:var(--fs-xs)}.playlistcreate input,.playlistmeta input{min-width:220px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink);padding:9px 11px;font:inherit}.playlistcreate button,.playlistactions button{border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:9px 12px;cursor:pointer}.playlistcreate button:hover,.playlistactions button:hover{border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink)}.playlistcreate [data-playlist-state]{flex-basis:100%;color:var(--drop);font-size:var(--fs-xs)}
+.playlistcreate{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}.playlistcreate label{display:grid;gap:5px;color:var(--muted);font-size:var(--fs-xs)}.playlistcreate input,.playlistmeta input{min-width:220px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink);padding:9px 11px;font:inherit}.playlistcreate button,.playlistactions button{border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:9px 12px;cursor:pointer}.playlistcreate button:hover,.playlistactions button:hover{background:var(--hover);color:var(--ink)}.playlistcreate [data-playlist-state]{flex-basis:100%;color:var(--drop);font-size:var(--fs-xs)}
 .playlistcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.playlistcard{display:grid;grid-template-columns:112px minmax(0,1fr);gap:12px;padding:12px;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface);min-width:0}.playlistcover{position:relative;aspect-ratio:16/10;border:0;border-radius:var(--surface-radius);background:#000;overflow:hidden;padding:0;cursor:pointer}.playlistcover:disabled{cursor:default}.playlistcover img{width:100%;height:100%;object-fit:cover}.playlistcover span{position:absolute;right:5px;bottom:5px;border-radius:var(--badge-radius);background:#000b;color:#fff;padding:3px 6px;font-size:var(--fs-xs)}.playlistmeta{display:grid;align-content:center;gap:6px;min-width:0}.playlistmeta input{min-width:0;width:100%;font-weight:600}.playlistmeta small{color:var(--muted)}.playlistactions{grid-column:1/-1;display:flex;gap:7px;justify-content:flex-end}.playlistactions .danger{color:var(--drop)}
-.playlistdialog{width:min(520px,calc(100vw - 28px));border:1px solid var(--line);border-radius:var(--floating-radius);background:var(--surface);color:var(--ink);padding:0;box-shadow:0 2px 4px #0003,0 24px 80px #000b}.playlistdialog::backdrop{background:#000a;backdrop-filter:blur(5px)}.playlistdialoghead{display:flex;align-items:center;justify-content:space-between;padding:16px 17px;border-bottom:1px solid var(--line-soft)}.playlistdialoghead h2{margin:0;font-size:var(--fs-xl)}.playlistdialoghead button{width:34px;height:34px;border:0;border-radius:var(--control-radius);background:transparent;color:var(--ink);display:grid;place-items:center;cursor:pointer}.playlistdialoghead button:hover{background:var(--hover)}.playlistdialoghead svg{width:19px;height:19px;stroke:currentColor;fill:none}.playlistdialogbody{padding:17px}.playlistpicklist{display:grid;gap:7px;margin-top:16px;max-height:320px;overflow-y:auto;overscroll-behavior:contain}.playlistpickrow{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--border-10);border-radius:var(--control-radius);background:var(--overlay-5);color:var(--ink);padding:11px 12px;text-align:left;cursor:pointer}.playlistpickrow:hover{border-color:color-mix(in srgb,var(--ink) 28%,transparent)}.playlistpickrow small{color:var(--muted)}
+.playlistdialog{width:min(520px,calc(100vw - 28px));border:1px solid var(--line);border-radius:var(--floating-radius);background:var(--surface);color:var(--ink);padding:0;box-shadow:0 2px 4px #0003,0 24px 80px #000b}.playlistdialog::backdrop{background:#000a;backdrop-filter:blur(5px)}.playlistdialoghead{display:flex;align-items:center;justify-content:space-between;padding:16px 17px;border-bottom:1px solid var(--line-soft)}.playlistdialoghead h2{margin:0;font-size:var(--fs-xl)}.playlistdialoghead button{width:34px;height:34px;border:0;border-radius:var(--control-radius);background:transparent;color:var(--ink);display:grid;place-items:center;cursor:pointer}.playlistdialoghead button:hover{background:var(--hover)}.playlistdialoghead svg{width:19px;height:19px;stroke:currentColor;fill:none}.playlistdialogbody{padding:17px}.playlistpicklist{display:grid;gap:7px;margin-top:16px;max-height:320px;overflow-y:auto;overscroll-behavior:contain}.playlistpickrow{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--border-10);border-radius:var(--control-radius);background:var(--overlay-5);color:var(--ink);padding:11px 12px;text-align:left;cursor:pointer}.playlistpickrow:hover{background:var(--hover)}.playlistpickrow small{color:var(--muted)}
 .runtimegate{display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:12px;margin:0 0 12px;padding:10px 12px;border:1px solid color-mix(in srgb,var(--meter) 35%,var(--line));border-radius:var(--control-radius);background:color-mix(in srgb,var(--meter) 8%,var(--surface));color:var(--ink);font-size:var(--fs-sm)}.runtimegate>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.runtimegate span{min-width:0}.runtimegate a{color:var(--ink);font-weight:600;text-decoration:none}.runtimegate a:hover{color:var(--ink-2)}
-.review{--review-fieldset-height:440px;padding:0 0 42px}.reviewtabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:16px;scrollbar-width:none}.reviewtabs::-webkit-scrollbar{display:none}.reviewtabs button{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:7px 14px;cursor:pointer;font-size:var(--fs-sm);white-space:nowrap}.reviewtabs button:hover{border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink)}.reviewtabs button[aria-pressed="true"]{background:var(--ink-2);border-color:var(--ink-2);color:var(--ground);font-weight:600}.reviewtabs .n{color:var(--muted);font-size:var(--fs-xs)}.reviewsection{margin-bottom:20px}.reviewsection h3{margin:0 0 9px;font-size:var(--fs-lg)}.reviewlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}
+.review{--review-fieldset-height:440px;padding:0 0 42px}.reviewtabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:16px;scrollbar-width:none}.reviewtabs::-webkit-scrollbar{display:none}.reviewtabs button{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:7px 14px;cursor:pointer;font-size:var(--fs-sm);white-space:nowrap}.reviewtabs button:hover{background:var(--hover);color:var(--ink)}.reviewtabs button[aria-pressed="true"]{background:var(--hover);color:var(--ink);border-color:color-mix(in srgb,var(--ink) 28%,transparent);font-weight:600}.reviewtabs .n{color:var(--muted);font-size:var(--fs-xs)}.reviewsection{margin-bottom:20px}.reviewsection h3{margin:0 0 9px;font-size:var(--fs-lg)}.reviewlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}
 /* 判定状态用左侧色条表达：整卡描边在一列里扫过去时反而认不出来 */
 .reviewitem{position:relative;display:flex;flex-direction:column;box-sizing:border-box;height:var(--review-fieldset-height);margin:0;padding:0;min-width:0;overflow:hidden;background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--floating-radius)}.reviewitem::before{content:'';position:absolute;z-index:3;left:0;top:0;bottom:0;width:3px;background:transparent}.reviewitem[data-decision="approved"]::before{background:var(--keep)}.reviewitem[data-decision="rejected"]::before{background:var(--drop)}.reviewitem[data-decision="skipped"]::before{background:var(--muted)}.reviewitem[data-decision="rejected"],.reviewitem[data-decision="skipped"]{opacity:.6}.reviewitem h4{margin:0 0 6px;font-size:var(--fs-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reviewitem p{margin:4px 0;color:var(--muted);font-size:var(--fs-xs);line-height:1.55;overflow-wrap:anywhere}
 .reviewitem>.geist-fieldset-content{flex:1;min-height:0;padding:20px}.reviewcontent{height:100%}
@@ -250,12 +250,12 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 .metadatacandidates{display:grid;gap:7px;margin:10px 0}.metadatacandidate{display:flex;align-items:flex-start;gap:9px;padding:9px 10px;border:1px solid var(--border-10);border-radius:var(--surface-radius);background:var(--overlay-5);cursor:pointer}.metadatacandidate:has(input:checked){border-color:var(--ink-2);background:var(--hover)}.metadatacandidate input{margin-top:3px;accent-color:var(--ink)}.metadatacandidate>span{display:grid;gap:3px;min-width:0}.metadatacandidate b{font-size:var(--fs-xs);color:var(--ink)}.metadatacandidate span span{font-size:var(--fs-sm);line-height:1.45;overflow-wrap:anywhere}.metadatacandidate i{font-size:var(--fs-xs);line-height:1.4;color:var(--meter);font-style:normal}
 .metadataevidence{display:grid;gap:4px;margin:6px 0 0;padding:7px 0 0;border-top:1px solid var(--border-10);font-size:var(--fs-xs)}.metadataevidence>div{display:grid;grid-template-columns:68px minmax(0,1fr);gap:3px 8px;min-width:0}.metadataevidence dt{color:var(--muted)}.metadataevidence dd{min-width:0;margin:0;color:var(--ink-2);overflow-wrap:anywhere}.metadataevidence small{grid-column:2;color:var(--meter);line-height:1.4}
 /* 资产选择用换行网格而不是横向滚动条：一个创作者可能有几十条候选，横拉看不完 */
-.reviewpick{margin:10px 0 4px;border:1px solid var(--border-10);border-radius:var(--surface-radius);background:var(--overlay-5);padding:8px}.reviewpickhead{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:var(--fs-xs);color:var(--muted)}.reviewpickhead button{border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:3px 10px;font-size:var(--fs-xs);cursor:pointer}.reviewpickhead button:hover{border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink)}.reviewpickhead [data-picked-count]{margin-right:auto}.reviewasset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px}.reviewasset{position:relative;aspect-ratio:16/10;border:0;padding:0;border-radius:var(--surface-radius);overflow:hidden;background:#000;cursor:pointer;opacity:.5;transition:opacity .12s ease}.reviewasset img{width:100%;height:100%;object-fit:cover;display:block}.reviewasset .pickmark{position:absolute;top:4px;right:4px;width:19px;height:19px;border-radius:50%;display:none;place-items:center;background:var(--ink);color:var(--ground)}.reviewasset .pickmark svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:3}.reviewasset.picked{opacity:1;outline:2px solid var(--ink);outline-offset:-2px}.reviewasset.picked .pickmark{display:grid}.reviewactions{display:flex;gap:7px;margin-top:12px;align-items:center;flex-wrap:wrap}
+.reviewpick{margin:10px 0 4px;border:1px solid var(--border-10);border-radius:var(--surface-radius);background:var(--overlay-5);padding:8px}.reviewpickhead{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:var(--fs-xs);color:var(--muted)}.reviewpickhead button{border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:3px 10px;font-size:var(--fs-xs);cursor:pointer}.reviewpickhead button:hover{background:var(--hover);color:var(--ink)}.reviewpickhead [data-picked-count]{margin-right:auto}.reviewasset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px}.reviewasset{position:relative;aspect-ratio:16/10;border:0;padding:0;border-radius:var(--surface-radius);overflow:hidden;background:#000;cursor:pointer;opacity:.5;transition:opacity .12s ease}.reviewasset img{width:100%;height:100%;object-fit:cover;display:block}.reviewasset .pickmark{position:absolute;top:4px;right:4px;width:19px;height:19px;border-radius:50%;display:none;place-items:center;background:var(--ink);color:var(--ground)}.reviewasset .pickmark svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:3}.reviewasset.picked{opacity:1;outline:2px solid var(--ink);outline-offset:-2px}.reviewasset.picked .pickmark{display:grid}.reviewactions{display:flex;gap:7px;margin-top:12px;align-items:center;flex-wrap:wrap}
 /* 判定失败必须说出来：原来失败是静默的，按钮还卡在 disabled。 */
 .reviewstate{font-size:var(--fs-xs);color:var(--drop);min-width:0;flex:1 1 100%}
 .reviewstate:empty{display:none}
 .reviewalias{margin:2px 0 0;font-size:var(--fs-xs);color:var(--muted)}
-.reviewactions button{box-sizing:border-box;height:32px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:0 12px;font-size:var(--fs-sm);cursor:pointer}.reviewactions button:hover{border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink)}.reviewactions .approve{background:var(--ink);border-color:var(--ink);color:var(--ground);font-weight:600}.reviewactions .approve:hover{background:var(--ink-2);border-color:var(--ink-2);color:var(--ground)}.reviewactions .skip{color:var(--meter)}.reviewactions .skip:hover{background:var(--meter);border-color:var(--meter);color:#fff}.reviewactions .reject{color:var(--drop)}.reviewactions .reject:hover{background:var(--drop);border-color:var(--drop);color:#fff}
+.reviewactions button{box-sizing:border-box;height:32px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:0 12px;font-size:var(--fs-sm);cursor:pointer}.reviewactions button:hover{background:var(--hover);color:var(--ink)}.reviewactions .approve{background:var(--ink);border-color:var(--ink);color:var(--ground);font-weight:600}.reviewactions .approve:hover{background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}.reviewactions .skip{color:var(--meter)}.reviewactions .skip:hover{background:var(--meter);border-color:var(--meter);color:#fff}.reviewactions .reject{color:var(--drop)}.reviewactions .reject:hover{background:var(--drop);border-color:var(--drop);color:#fff}
 .junkloading{grid-column:1/-1;min-height:280px;display:grid;place-items:center}
 /* 数据管理整页收进一条窄列（vercel.com/geist/fieldset 实测示例块宽 812px），
    fieldset 一行一个，不再拼三列。 */
@@ -290,9 +290,8 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
    危险按钮 hover 沿用 fquiet 的红线做法。 */
 .cleanupfieldset button{box-sizing:border-box;flex:none;min-height:32px;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);
   background:var(--surface);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;
-  transition:border-color .12s ease,color .12s ease,background-color .12s ease,scale .1s ease}
-.cleanupfieldset button:hover{background:var(--hover);border-color:var(--ink-2);color:var(--ink)}
-.cleanupfieldset button:active{scale:.96}
+  transition:border-color .15s ease-in-out,color .15s ease-in-out,background-color .15s ease-in-out}
+.cleanupfieldset button:hover{background:var(--hover);color:var(--ink)}
 .cleanupfieldset button.danger{color:var(--drop)}
 .cleanupfieldset button.danger:hover{border-color:var(--drop);color:var(--drop)}
 .cleanupfieldset button svg{width:16px;height:16px;stroke:currentColor;fill:none}
@@ -306,7 +305,7 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 .insighttoolbar,.tastehead{min-height:40px;display:flex;align-items:center;justify-content:space-between;gap:10px 14px;flex-wrap:wrap}
 .insighttoolbar p{margin:0;color:var(--muted);font-size:var(--fs-xs)}
 .tasteactions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}.tasteactions select,.tasteactions button{height:36px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink);padding:0 11px;font:inherit;font-size:var(--fs-sm)}
-.tasteactions button{display:inline-flex;align-items:center;gap:7px;cursor:pointer}.tasteactions button:hover{border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink)}.tasteactions button:disabled{opacity:.5;cursor:wait}.tasteactions svg{width:16px;height:16px;stroke:currentColor;fill:none}
+.tasteactions button{display:inline-flex;align-items:center;gap:7px;cursor:pointer}.tasteactions button:hover{background:var(--hover);color:var(--ink)}.tasteactions button:disabled{opacity:.5;cursor:wait}.tasteactions svg{width:16px;height:16px;stroke:currentColor;fill:none}
 .insightswitch{display:inline-flex;padding:3px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--surface)}.insightswitch label{cursor:pointer}.insightswitch input{position:absolute;opacity:0;pointer-events:none}.insightswitch span{height:30px;display:grid;place-items:center;padding:0 12px;border-radius:var(--control-radius);color:var(--muted);font-size:var(--fs-sm)}.insightswitch input:checked+span{background:var(--hover);color:var(--ink);font-weight:600}.insightswitch input:focus-visible+span{outline:2px solid var(--tungsten);outline-offset:-2px}
 .metricstrip,.tastesummaries{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(190px,1fr);overflow-x:auto;overscroll-behavior-x:contain;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface);scrollbar-width:thin}
 .metricstrip button,.tastesummary{position:relative;box-sizing:border-box;min-height:96px;min-width:0;display:grid;align-content:center;gap:4px;padding:14px 16px;border:0;border-right:1px solid var(--line-soft);border-radius:0;background:transparent;color:var(--ink);text-align:left}.metricstrip button{cursor:pointer}.metricstrip button:last-child,.tastesummary:last-child{border-right:0}.metricstrip button:hover{background:var(--overlay-5)}.metricstrip button[aria-selected="true"]{background:var(--ground)}.metricstrip button[aria-selected="true"]:after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--ink)}
@@ -375,8 +374,10 @@ body.entity-open .index{overflow-x:visible}
 .tagselection label>span{display:grid;gap:2px}.tagselection label b{font-size:var(--fs-sm)}
 .tagselection label small{color:var(--muted);font-size:var(--fs-xs)}.tagselection input{width:18px;height:18px;accent-color:var(--ink)}
 .tagselection button{height:34px;padding:0 13px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);cursor:pointer}
+.tagselection button:hover:not(:disabled){background:var(--hover);color:var(--ink)}
 .tagselection button.primary{background:var(--ink);border-color:var(--ink);color:var(--ground);font-weight:600}
-.tagselection button:disabled{opacity:.45;cursor:not-allowed}
+.tagselection button.primary:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground))}
+.tagselection button:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
 .tagfilters .all::before{background:linear-gradient(135deg,#55A7FF,#D783FF)}
 .index-tags .tg,.alphatag{--tag-color:#7A91A8}
 .index-tags .tg.r34-general,.alphatag.r34-general,.tagfilters .general{--tag-color:#55A7FF;--r34-tag:#55A7FF}
@@ -403,7 +404,7 @@ body.entity-open .index{overflow-x:visible}
 .index .index-tags .tg .n{opacity:.6;font-size:var(--fs-xs)}
 .index .index-tags .tg:hover{border-color:color-mix(in srgb,var(--tag-color) 62%,transparent);
   background:color-mix(in srgb,var(--tag-color) 13%,transparent)}
-.index .index-tags .tg.selected,.alphatag.selected{background:var(--ink-2);color:var(--ground)}
+.index .index-tags .tg.selected,.alphatag.selected{background:var(--hover);color:var(--ink);border-color:color-mix(in srgb,var(--ink) 28%,transparent);font-weight:500}
 .alphabet{display:grid;gap:22px}.alphagroup{border-top:1px solid var(--line-soft);padding-top:14px}
 .alphagroup:first-child{border-top:0}.alphagroup h3{margin:0 0 10px;font-size:var(--fs-xl);color:var(--ink-2)}
 .alphalist{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:5px 18px}
@@ -460,8 +461,8 @@ body.entity-open .index{overflow-x:visible}
   border:0;border-radius:50%;background:transparent;color:var(--muted);cursor:pointer}
 .mediaviewbuttons .mediaviewbutton svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
 .mediaviewbuttons .mediaviewbutton[data-media-icon="image"] svg{fill:currentColor;stroke:none}
-.mediaviewbuttons .mediaviewbutton:hover{background:var(--overlay-5);color:var(--ink)}
-.mediaviewbuttons .mediaviewbutton[aria-pressed="true"]{border-color:transparent;background:var(--ink-2);color:var(--ground)}
+.mediaviewbuttons .mediaviewbutton:hover{background:var(--hover);color:var(--ink)}
+.mediaviewbuttons .mediaviewbutton[aria-pressed="true"]{background:var(--hover);color:var(--ink);box-shadow:inset 0 0 0 1px var(--border-15)}
 .relatedpeople{display:flex;gap:14px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
 .relatedpeople::-webkit-scrollbar{display:none}.relatedperson{flex:0 0 78px;border:0;background:transparent;color:inherit;
   padding:0;cursor:pointer;text-align:center}.relatedperson .ring{display:grid;place-items:center;width:64px;height:64px;
@@ -702,8 +703,7 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
 .dupactions button,.dupbtns button{height:32px;padding:0 16px;border-radius:var(--control-radius);
   border:1px solid var(--border-15);background:var(--surface);color:var(--ink);
   cursor:pointer;font-size:var(--fs-sm);line-height:1}
-.dupactions button:hover,.dupbtns button:hover{background:var(--hover);border-color:color-mix(in srgb,var(--ink) 28%,transparent);
-  color:var(--ink)}
+.dupactions button:hover,.dupbtns button:hover{background:var(--hover);color:var(--ink)}
 .dupbtns button.danger{color:var(--drop)}.dupbtns button.danger:hover{border-color:var(--drop);background:color-mix(in srgb,var(--drop) 12%,transparent)}
 .dupactions button:disabled,.dupbtns button:disabled{opacity:.5;cursor:wait}
 .dupgroup{border:1px solid var(--overlay-10);border-radius:var(--surface-radius);margin-bottom:12px;overflow:hidden}
@@ -768,7 +768,7 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
 .indexmore[hidden],.entitymore[hidden]{display:none}
 .indexmore,.entitymore{display:flex;align-items:center;justify-content:center;margin:20px auto 0;min-width:124px;
   min-height:40px;padding:8px 16px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;
-  color:var(--ink-2);cursor:pointer}.indexmore:hover,.entitymore:hover{background:var(--overlay-5);color:var(--ink)}
+  color:var(--ink-2);cursor:pointer}.indexmore:hover,.entitymore:hover{background:var(--hover);color:var(--ink)}
 .indexmore:disabled,.entitymore:disabled{opacity:.5;cursor:wait}
 .entitylink{border:0;background:none;padding:0;color:var(--tungsten);cursor:pointer;text-decoration:none}
 .entitylink:hover{color:var(--ink);text-decoration:none}
@@ -788,7 +788,7 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 .managebar button svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round}
 .managebar button:hover{background:var(--hover);color:var(--ink)}
-.managebar button[aria-pressed="true"]{background:var(--ink-2);color:var(--ground);font-weight:600}
+.managebar button[aria-pressed="true"]{background:var(--hover);color:var(--ink);box-shadow:inset 0 0 0 1px var(--border-15);font-weight:600}
 .managebar{margin-left:auto;margin-right:auto}
 .insight-layout .managetitle,.insight-layout .pagelede{width:min(1100px,100%);margin-left:auto;margin-right:auto}
 .cleanup-layout .geist-breadcrumb,.cleanup-layout .managetitle,.cleanup-layout .pagelede{width:min(812px,100%);margin-left:auto;margin-right:auto}
@@ -816,7 +816,7 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 .count.count-actions-only{position:relative;top:auto;min-height:0;margin:0 0 16px;padding:0;justify-content:flex-end}
 .count.count-actions-only:empty{display:none}
 .resourcesync{scroll-margin-top:calc(var(--topH) + 18px);display:grid;gap:16px}.resourcesync>h2{margin:0;font-size:var(--fs-xl)}
-.resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface)}.resourcesyncbody{padding:20px}.resourcesyncbody p{max-width:760px;margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.55}.resourcesyncfooter,.resourceapplyrow{box-sizing:border-box;min-height:var(--fieldset-bar-h);display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:8px 20px;border-top:1px solid var(--line-soft);background:var(--overlay-5)}.resourcesyncfooter p,.resourceapplyrow>p{margin:0;color:var(--muted);font-size:var(--fs-xs);line-height:1.5}.resourceaction{box-sizing:border-box;height:36px;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:none;font:inherit;font-size:var(--fs-sm);font-weight:500;cursor:pointer;transition:background-color .12s,border-color .12s,color .12s}.resourceaction:hover:not(:disabled){background:var(--hover);border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink)}.resourceaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.resourceaction:disabled{cursor:default;opacity:.68}.resourceaction svg{width:16px;height:16px;stroke:currentColor;fill:none}#resourceSyncResult:empty{display:none}.resourcescanning{margin:0;padding:14px 16px;border:1px solid var(--line-soft);border-radius:var(--control-radius);color:var(--muted)}.resourcesources{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.resourcesources article{display:grid;gap:4px;min-width:0;padding:16px}.resourcesources article+article{border-left:1px solid var(--line-soft)}.resourcesourcetitle{display:flex;align-items:center;justify-content:space-between;gap:12px}.resourcesourcetitle span{font-size:var(--fs-xs)}.resourcesources .online{color:var(--success)}.resourcesources .offline{color:var(--drop)}.resourcesources strong{margin-top:10px;font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcesources small,.resourcecache small{color:var(--muted)}/* 这里是一排读数，不是又一个盒子。原先它自带填色和分格线，和下面的操作条同色，
+.resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface)}.resourcesyncbody{padding:20px}.resourcesyncbody p{max-width:760px;margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.55}.resourcesyncfooter,.resourceapplyrow{box-sizing:border-box;min-height:var(--fieldset-bar-h);display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:8px 20px;border-top:1px solid var(--line-soft);background:var(--overlay-5)}.resourcesyncfooter p,.resourceapplyrow>p{margin:0;color:var(--muted);font-size:var(--fs-xs);line-height:1.5}.resourceaction{box-sizing:border-box;height:36px;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:none;font:inherit;font-size:var(--fs-sm);font-weight:500;cursor:pointer;transition:background-color .12s,border-color .12s,color .12s}.resourceaction:hover:not(:disabled){background:var(--hover);color:var(--ink)}.resourceaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.resourceaction:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}.resourceaction svg{width:16px;height:16px;stroke:currentColor;fill:none}#resourceSyncResult:empty{display:none}.resourcescanning{margin:0;padding:14px 16px;border:1px solid var(--line-soft);border-radius:var(--control-radius);color:var(--muted)}.resourcesources{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.resourcesources article{display:grid;gap:4px;min-width:0;padding:16px}.resourcesources article+article{border-left:1px solid var(--line-soft)}.resourcesourcetitle{display:flex;align-items:center;justify-content:space-between;gap:12px}.resourcesourcetitle span{font-size:var(--fs-xs)}.resourcesources .online{color:var(--success)}.resourcesources .offline{color:var(--drop)}.resourcesources strong{margin-top:10px;font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcesources small,.resourcecache small{color:var(--muted)}/* 这里是一排读数，不是又一个盒子。原先它自带填色和分格线，和下面的操作条同色，
    两条带子连在一起看不出边界；框里再套框也是多余的一层。 */
 .resourcecache{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 32px;border-top:1px solid var(--line-soft);padding:16px 20px}.resourcecache>div{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:4px 16px}.resourcecache b{font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcecache span{font-weight:600}.resourcecache small{grid-column:1/-1}.resourceapplyrow .resourcesyncok{color:var(--success)}.resourcedanger{color:var(--drop)}.resourcedanger:hover:not(:disabled){border-color:color-mix(in srgb,var(--drop) 42%,transparent);background:color-mix(in srgb,var(--drop) 8%,transparent);color:var(--drop)}.resourcesyncok{margin:0;color:var(--success)}
 .tagbar,.count,.entitytagbar,.entitycollectionhead{transition:background-color .16s ease,border-color .16s ease}
@@ -832,14 +832,13 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
   border:1px solid var(--border-15);border-radius:var(--control-radius);
   background:transparent;cursor:pointer;font-size:var(--fs-xs);color:var(--ink-2);
   flex:0 0 auto;white-space:nowrap}
-.count .sorts button:hover,.entitycollectionhead .sorts button:hover{border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink)}
-.count .sorts button[aria-pressed="true"],.entitycollectionhead .sorts button[aria-pressed="true"]{background:var(--ink-2);
-  border-color:var(--ink-2);color:var(--ground)}
+.count .sorts button:hover,.entitycollectionhead .sorts button:hover{background:var(--hover);color:var(--ink)}
+.count .sorts button[aria-pressed="true"],.entitycollectionhead .sorts button[aria-pressed="true"]{background:var(--hover);color:var(--ink);border-color:color-mix(in srgb,var(--ink) 28%,transparent)}
 .count .sorts .batchaction,.entitycollectionhead .sorts .batchaction{background:var(--ink);border-color:var(--ink);color:var(--ground);
   font-weight:600;padding-inline:14px}
 .count .sorts #batchAction,.entitycollectionhead .sorts .entitybatch{width:36px;padding:0;display:inline-grid;place-items:center}
 .count .sorts #batchAction svg,.entitycollectionhead .sorts .entitybatch svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
-.count .sorts .batchaction:hover,.entitycollectionhead .sorts .batchaction:hover{background:var(--ink-2);border-color:var(--ink-2);color:var(--ground)}
+.count .sorts .batchaction:hover,.entitycollectionhead .sorts .batchaction:hover{background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
 .count .sorts .batchaction.danger{background:var(--drop);border-color:var(--drop);color:#fff;font-weight:500}
 .count .sorts .batchaction.danger:hover{background:color-mix(in srgb,var(--drop) 82%,#000);border-color:color-mix(in srgb,var(--drop) 82%,#000);color:#fff}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
@@ -945,7 +944,7 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
   min-height:32px;padding:0 10px;border:1px solid rgba(255,255,255,.25);border-radius:var(--control-radius);
   background:rgba(0,0,0,.64);color:#fff;font:inherit;font-size:var(--fs-xs);cursor:pointer;
   backdrop-filter:saturate(1.5) blur(10px);-webkit-backdrop-filter:saturate(1.5) blur(10px)}
-.resourcecardaction:hover:not(:disabled){border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink)}
+.resourcecardaction:hover:not(:disabled){background:var(--hover);color:var(--ink)}
 .resourcecardaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .resourcecardaction:disabled{cursor:wait;opacity:.72}.resourcecardaction svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
 .resourcekind{display:grid;place-items:center;color:var(--muted);border-radius:var(--control-radius)}
@@ -960,9 +959,9 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
   text-decoration:none;font-size:var(--fs-xs);white-space:nowrap}
 .junkfilters a>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;
   stroke-linecap:round;stroke-linejoin:round}
-.junkfilters a:hover{border-color:color-mix(in srgb,var(--ink) 28%,transparent);background:var(--hover);color:var(--ink)}
+.junkfilters a:hover{background:var(--hover);color:var(--ink)}
 .junkfilters a:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
-.junkfilters a[aria-current="page"]{border-color:var(--ink-2);background:var(--ink-2);color:var(--ground)}
+.junkfilters a[aria-current="page"]{background:var(--hover);color:var(--ink);border-color:color-mix(in srgb,var(--ink) 28%,transparent);font-weight:500}
 .junkfilters a span{font-variant-numeric:tabular-nums;color:inherit;opacity:.72}
 .junkcard{cursor:default;gap:0;overflow:hidden;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface);
   content-visibility:auto;contain-intrinsic-size:auto 360px}
@@ -981,7 +980,7 @@ button.junkcardtitle:focus-visible{outline:2px solid var(--tungsten);outline-off
 .junkactions button{box-sizing:border-box;min-width:0;min-height:36px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:7px;
   border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink-2);
   font:inherit;font-size:var(--fs-xs);white-space:nowrap;cursor:pointer}
-.junkactions button:hover:not(:disabled){border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink);background:var(--hover)}
+.junkactions button:hover:not(:disabled){background:var(--hover);color:var(--ink)}
 .junkactions button:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .junkactions button:disabled{cursor:wait;opacity:.64}.junkactions button svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:2}
 .junkactions .junktrash{color:var(--drop)}.junkactions .junktrash:hover:not(:disabled){border-color:color-mix(in srgb,var(--drop) 46%,transparent);color:var(--drop);background:color-mix(in srgb,var(--drop) 8%,transparent)}
@@ -1058,7 +1057,7 @@ body[data-density="dense"] .junkcard .junkactions button span{display:none}
   background:color-mix(in srgb,var(--surface) 82%,var(--ground))}
 .tg.general,.tg.artist,.tg.meta,.tg.relationship,.tg.role,.tg.appearance,.tg.scene,.tg.story,.tg.position{color:var(--ink-2);border-color:var(--line)}
 .tg.artist{font-weight:600}
-.tg:hover{border-color:var(--ink-2);color:var(--ink);background:var(--hover)}
+.tg:hover{color:var(--ink);background:var(--hover)}
 body[data-density="dense"] .card .ctags .tg:nth-child(n+2){display:none}
 body[data-density="dense"] .card .ctags .tg{max-width:132px;overflow:hidden;text-overflow:ellipsis}
 /* 顶栏的密集模式固定为标题、身份、标签三行。缺少标签时第三行仍保留，
@@ -1393,7 +1392,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .playerstatsbtn:hover:after,.playerstatsbtn:focus-visible:after,.closestage:hover:after,.closestage:focus-visible:after{background:rgba(255,255,255,.1)}
 .playerstatsbtn:active:after,.closestage:active:after{background:rgba(255,255,255,.2)}
 .playerstatsbtn:focus-visible,.closestage:focus-visible{outline:0}
-.playerstatsbtn[aria-pressed="true"]{color:var(--ground);background:var(--ink-2)}
+.playerstatsbtn[aria-pressed="true"]{background:var(--hover);color:var(--ink);box-shadow:inset 0 0 0 1px var(--border-15)}
 .playerstatsbtn svg{position:relative;z-index:1;width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;filter:drop-shadow(0 0 1px rgba(0,0,0,.8))}
 .playerstats{position:absolute;left:11px;top:58px;z-index:8;min-width:320px;max-width:min(520px,calc(100% - 22px));
   padding:10px 12px;border:1px solid rgba(255,255,255,.18);border-radius:var(--surface-radius);
@@ -1443,8 +1442,8 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
   border:1px solid var(--line);border-radius:var(--control-radius);background:transparent;color:var(--muted);
   padding:0;cursor:pointer}
 .srctools button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
-.srctools button:hover{border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink)}
-.srctools button:disabled{opacity:.45;cursor:default}
+.srctools button:hover{background:var(--hover);color:var(--ink)}
+.srctools button:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
 .srcstate{font-size:var(--fs-xs);color:var(--muted);min-width:0;flex:1 1 100%}
 .detailtitletools{margin:0;flex-wrap:nowrap}.detailtitlestate{display:block;margin:-4px 0 10px}
 .detailtitlestate:empty{display:none}
@@ -1461,7 +1460,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .detailtag .tagremove:hover{color:var(--drop);background:color-mix(in srgb,var(--drop) 12%,transparent)}
 .detailtag svg,.tagplus svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
 .tagplus{width:30px;height:30px;border:1px dashed var(--line);border-radius:50%;display:grid;place-items:center;
-  background:transparent;color:var(--muted);cursor:pointer}.tagplus:hover{border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink)}
+  background:transparent;color:var(--muted);cursor:pointer}.tagplus:hover{background:var(--hover);color:var(--ink)}
 .tagpicker{position:absolute;z-index:120;left:12px;right:12px;top:calc(100% + 8px);max-height:min(480px,70vh);
   overflow:hidden;border:1px solid color-mix(in srgb,var(--ink) 15%,transparent);border-radius:var(--floating-radius);
   background:var(--frost-panel);box-shadow:0 24px 70px -24px #000;
@@ -1498,7 +1497,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .fb .fdownload{box-sizing:border-box;width:44px;height:42px;display:grid;place-items:center;border-right:1px solid var(--border-10);color:var(--ink-2)}
 .fb .fdownload:hover{background:rgba(255,255,255,.12);color:var(--ink)}
 .fb .fdownload svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.fb .like:hover{color:var(--ink);background:var(--hover)}.fb .like[aria-pressed="true"]{color:var(--ground);background:var(--ink-2)}
+.fb .like:hover{color:var(--ink);background:var(--hover)}.fb .like[aria-pressed="true"]{background:var(--hover);color:var(--ink);box-shadow:inset 0 0 0 1px var(--border-15)}
 .fb .reason:hover,.fb .reason[aria-expanded="true"],.fb .reason[data-has-reason="true"]{color:#FF669D;background:color-mix(in srgb,#FF669D 12%,transparent)}
 .fb .dislike:hover,.fb .dislike[aria-pressed="true"]{color:var(--drop);background:color-mix(in srgb,var(--drop) 12%,transparent)}
 .fb .seen:hover,.fb .seen[aria-pressed="true"]{color:var(--keep);background:color-mix(in srgb,var(--keep) 12%,transparent)}
@@ -1646,7 +1645,7 @@ body.censor .brand .mark,body.censor .src img,body.censor .ficon{filter:none}
 .edge button{width:52px;height:52px;border-radius:var(--control-radius);background:none;border:0;cursor:pointer;
   display:flex;align-items:center;justify-content:center;color:var(--muted);transition:background .12s}
 .edge button:hover{background:var(--hover);color:var(--ink)}
-.edge button[aria-pressed="true"]{background:var(--ink-2);color:var(--ground)}
+.edge button[aria-pressed="true"]{background:var(--hover);color:var(--ink);box-shadow:inset 0 0 0 1px var(--border-15)}
 .edge button.nav-dragging,.dnav button.nav-dragging{opacity:.38}.edge button.nav-drop-before::before,.edge button.nav-drop-after::after,.dnav button.nav-drop-before::before,.dnav button.nav-drop-after::after{content:'';position:absolute;z-index:2;left:7px;right:7px;height:2px;border-radius:var(--pill-radius);background:var(--ink)}.edge button.nav-drop-before::before,.dnav button.nav-drop-before::before{top:-3px}.edge button.nav-drop-after::after,.dnav button.nav-drop-after::after{bottom:-3px}.edge button[data-nav],.dnav button[data-nav]{position:relative}
 .edge svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round}
@@ -1680,10 +1679,10 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .dnav button{display:flex;align-items:center;gap:14px;padding:11px 14px;background:none;
   border:0;border-radius:var(--control-radius);cursor:pointer;text-align:left;font-size:var(--fs-lg);color:var(--ink)}
 .dnav button:hover{background:var(--hover)}
-.dnav button[aria-pressed="true"]{background:var(--ink-2);color:var(--ground);font-weight:600}
+.dnav button[aria-pressed="true"]{background:var(--hover);color:var(--ink);box-shadow:inset 0 0 0 1px var(--border-15);font-weight:600}
 .dnav svg{width:20px;height:20px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;
   stroke-linecap:round;stroke-linejoin:round;color:var(--muted)}
-.dnav button[aria-pressed="true"] svg{color:var(--ground)}
+.dnav button[aria-pressed="true"] svg{color:var(--ink)}
 .drawer .chip{font-size:var(--fs-xs);padding:4px 10px}
 .scrim{position:fixed;inset:0;z-index:95;background:rgba(0,0,0,.42);opacity:0;pointer-events:none;
   transition:opacity .18s}
@@ -1700,8 +1699,8 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .chip>svg{stroke:currentColor;fill:none;stroke-width:1.7}
 .chip{display:inline-flex;align-items:center;gap:6px;padding:var(--tag-pad-y) var(--tag-pad-x);border:1px solid var(--line);
   border-radius:var(--tag-radius);background:transparent;cursor:pointer;font-size:var(--fs-xs)}
-.chip:hover{border-color:color-mix(in srgb,var(--ink) 28%,transparent)}
-.chip[aria-pressed="true"]{background:var(--ink-2);border-color:var(--ink-2);color:var(--ground)}
+.chip:hover{background:var(--hover);color:var(--ink)}
+.chip[aria-pressed="true"]{background:var(--hover);color:var(--ink);border-color:color-mix(in srgb,var(--ink) 28%,transparent);font-weight:500}
 /* 不同类别保留语义色，内容卡片本身维持中性。 */
 .sec.cat-artist  .chip{color:#D2703F;border-color:#D2703F44}
 .sec.cat-artist  .chip[aria-pressed="true"]{background:#D2703F22;border-color:#D2703F}
@@ -1815,7 +1814,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   padding:9px 11px;border:1px solid var(--line);border-radius:var(--floating-radius);background:var(--surface);
   box-shadow:0 8px 24px #0005}.batchbar[hidden]{display:none}
 .batchbar span{padding:0 8px;color:var(--ink-2);white-space:nowrap}.batchbar button{border:1px solid var(--line);border-radius:var(--floating-radius);
-  background:var(--surface);color:var(--ink);padding:9px 12px;cursor:pointer}.batchbar button:hover{border-color:color-mix(in srgb,var(--ink) 28%,transparent)}
+  background:var(--surface);color:var(--ink);padding:9px 12px;cursor:pointer}.batchbar button:hover{background:var(--hover);color:var(--ink)}
 .batchbar button svg{width:17px;height:17px;margin-right:6px;vertical-align:-4px;stroke:currentColor;fill:none;stroke-width:2}
 .batchbar .danger{color:var(--drop)}
 
@@ -1932,7 +1931,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
    给它们切「封面」没有意义。 */
 .javbar{display:flex;align-items:center;gap:8px;padding:0 0 10px;flex-wrap:wrap}
 .javbar[hidden]{display:none}
-.javbar button{width:34px;height:30px;display:inline-grid;place-items:center;border-radius:var(--control-radius);border:1px solid var(--overlay-10);background:transparent;color:var(--ink-2);cursor:pointer;padding:0}.javbar button svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8}.javbar button:hover{background:var(--hover);color:var(--ink)}.javbar button[aria-pressed="true"]{background:var(--ink-2);color:var(--ground);border-color:var(--ink-2)}
+.javbar button{width:34px;height:30px;display:inline-grid;place-items:center;border-radius:var(--control-radius);border:1px solid var(--overlay-10);background:transparent;color:var(--ink-2);cursor:pointer;padding:0}.javbar button svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8}.javbar button:hover{background:var(--hover);color:var(--ink)}.javbar button[aria-pressed="true"]{background:var(--hover);color:var(--ink);border-color:color-mix(in srgb,var(--ink) 28%,transparent)}
 .javlayout{min-width:0;margin:0;padding:3px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--overlay-5)}.javlayout label{position:relative;display:inline-grid;width:34px;height:28px;place-items:center;border-radius:var(--control-radius);color:var(--muted);cursor:pointer}.javlayout input{position:absolute;inline-size:1px;block-size:1px;opacity:0}.javlayout label:hover{color:var(--ink)}.javlayout label:has(input:checked){background:var(--surface);color:var(--ink);box-shadow:0 1px 2px #0005}.javlayout label:has(input:focus-visible){outline:2px solid var(--tungsten);outline-offset:2px}.javlayout svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8}
 /* 取景：正封模式下，整张封套要把镜头推到右半边；本身就是竖版正封的则整张用。
    判据是图片自己的宽高比，由 onload 写进 data-frame。 */
@@ -2042,7 +2041,10 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .followdetailtitle{display:flex;gap:5px;align-items:flex-start;margin-bottom:8px}.followdetailtitle .stitle{width:auto;max-width:calc(100% - 35px);margin:0}.followdetailtitle .followorigin{flex:none;width:30px;height:30px;margin:0;display:grid;place-items:center;border-radius:var(--control-radius)}.followdetailtitle .followorigin:hover{background:var(--hover)}
 .followdetailidentity{display:flex;align-items:center;gap:10px;margin:2px 0 12px}.followdetailidentity .mav{flex:none}.followdetailidentity b,.followdetailidentity span{display:block}.followdetailidentity>div>span{margin-top:3px;color:var(--muted);font-size:var(--fs-xs)}
 .followdetailsummary{margin:0 0 16px;line-height:1.6;color:var(--ink-2);white-space:pre-line}.followdetailtags .tg{max-width:none;overflow:visible;text-overflow:clip;white-space:normal;text-align:left;color:var(--ink-2);font-family:inherit}.followqueue .mixitempic>.fnothumb{position:static;width:100%;height:100%}
-.fnote.followmediaissue{margin:18px 0 8px;color:var(--drop)}.followresources{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}.followresources a{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 11px;border:1px solid var(--border-15);border-radius:var(--control-radius);color:var(--ink-2);text-decoration:none}.followresources a:hover{border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink);text-decoration:none}.followresources svg{width:15px;height:15px;stroke:currentColor;fill:none}.followdetailactions{margin-top:2px}.followdetailactions button:disabled{opacity:.45;cursor:default}.followorigin{display:inline-flex;align-items:center;gap:7px;width:max-content;margin-top:auto;color:var(--muted);text-decoration:none}.followorigin svg{width:16px;height:16px;stroke:currentColor;fill:none}.followorigin:hover{color:var(--ink);text-decoration:none}
+.fnote.followmediaissue{margin:18px 0 8px;color:var(--drop)}.followresources{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}.followresources a{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 11px;border:1px solid var(--border-15);border-radius:var(--control-radius);color:var(--ink-2);text-decoration:none}.followresources a:hover{background:var(--hover);color:var(--ink);text-decoration:none}.followresources svg{width:15px;height:15px;stroke:currentColor;fill:none}.followdetailactions{margin-top:2px}
+/* 标签沉到侧栏最后：来源站的标签动辄几十个，夹在正文和操作之间就得先滚过整片
+   标签云才够得着「已看／忽略」。 */
+.followdetailside .followdetailtags{margin:16px 0 0}.followdetailactions button:disabled{opacity:.45;cursor:default}.followorigin{display:inline-flex;align-items:center;gap:7px;width:max-content;margin-top:auto;color:var(--muted);text-decoration:none}.followorigin svg{width:16px;height:16px;stroke:currentColor;fill:none}.followorigin:hover{color:var(--ink);text-decoration:none}
 @media (max-width:640px){.followhead{align-items:center}
   .followauthors{margin-right:-12px;padding-top:3px}.followfilters{margin-right:-12px;padding-right:12px}
   .followlist.followphotowall{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 8px}
@@ -2079,7 +2081,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   border:1px solid var(--border-10);border-radius:var(--surface-radius)}
 .dupactions.fsechead button{min-height:32px;padding:0 12px;border:1px solid var(--border-15);
   border-radius:var(--control-radius);background:var(--surface);color:var(--ink-2);cursor:pointer;font-size:var(--fs-sm)}
-.dupactions.fsechead button:hover{border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink)}
+.dupactions.fsechead button:hover{background:var(--hover);color:var(--ink)}
 .fsechead h3{margin:0;font-size:var(--fs-md);font-weight:600;letter-spacing:.01em}
 .fsechead .fmeta{flex:1 1 auto}
 .fmanagesort{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:var(--fs-xs)}
@@ -2169,13 +2171,12 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 
 .fbtn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;
   box-sizing:border-box;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);
-  background:transparent;color:var(--ink-2);font-size:var(--fs-md);font-family:inherit;cursor:pointer;
-  white-space:nowrap;transition:border-color .12s ease,color .12s ease,background-color .12s ease,scale .1s ease}
-.fbtn:hover:not(:disabled){border-color:var(--ink-2);color:var(--ink)}
-.fbtn:active:not(:disabled){scale:.96}
-.fbtn:disabled{opacity:.45;cursor:default}
+  background:transparent;color:var(--ink);font-size:var(--fs-md);font-weight:500;font-family:inherit;cursor:pointer;
+  white-space:nowrap;transition:border-color .15s ease-in-out,color .15s ease-in-out,background-color .15s ease-in-out}
+.fbtn:hover:not(:disabled){background:var(--hover)}
+.fbtn:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
 .fbtn.primary{background:var(--ink);border-color:var(--ink);color:var(--ground);font-weight:500}
-.fbtn.primary:hover:not(:disabled){background:var(--ink-2);border-color:var(--ink-2)}
+.fbtn.primary:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground))}
 .fbtn.small{height:26px;padding:0 10px;font-size:var(--fs-sm)}
 .fbtn.fquiet{border-color:transparent;color:var(--muted)}
 .fbtn.fquiet:hover{border-color:var(--drop);color:var(--drop)}
@@ -2244,8 +2245,8 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fsourceactions{display:flex;gap:4px;white-space:nowrap}
 .frowicon{width:32px;height:32px;padding:0;display:grid;place-items:center;flex:none;
   border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--muted);cursor:pointer}
-.frowicon:hover{color:var(--ink);border-color:color-mix(in srgb,var(--ink) 28%,transparent)}
-.frowicon:disabled{cursor:not-allowed;opacity:.42;color:var(--muted);border-color:var(--border-15)}
+.frowicon:hover{background:var(--hover);color:var(--ink)}
+.frowicon:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
 .frowicon.danger:hover{color:var(--drop);border-color:var(--drop)}
 .frowicon svg{width:16px;height:16px;stroke:currentColor;fill:none}
 .fsource.frow>.frowerr{grid-column:1/-1}
@@ -2266,9 +2267,8 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fchip{height:26px;padding:0 11px;border:1px solid var(--border-15);border-radius:var(--control-radius);
   background:transparent;color:var(--ink-2);font:inherit;font-size:var(--fs-sm);cursor:pointer;
   max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  transition:border-color .12s ease,color .12s ease,scale .1s ease}
-.fchip:hover{border-color:color-mix(in srgb,var(--ink) 28%,transparent);color:var(--ink)}
-.fchip:active{scale:.96}
+  transition:border-color .15s ease-in-out,color .15s ease-in-out,background-color .15s ease-in-out}
+.fchip:hover{background:var(--hover);color:var(--ink)}
 /* 作者别名折叠照 Vercel 项目页 Deployment Settings 行（登录态实测）：卡片内
    通栏 48px 行——左 chevron、白字标题、蓝色胶囊计数；上下边线通到卡片内壁
    （负 margin 抵消 .fsec 的 16px 内边距），hover 铺一层底色。 */
@@ -2326,9 +2326,11 @@ details.fcred{display:block}
 .fcredactions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:2px}
 .fcredactions button{height:32px;box-sizing:border-box;padding:0 14px;border-radius:var(--control-radius);
   border:1px solid var(--ink);background:var(--ink);color:var(--ground);font-size:var(--fs-md);
-  font-family:inherit;cursor:pointer;transition:background-color .12s ease,scale .1s ease}
-.fcredactions button:active:not(:disabled){scale:.96}
-.fcredactions button:disabled{opacity:.6;cursor:default}
+  font-family:inherit;cursor:pointer;
+  transition:background-color .15s ease-in-out,border-color .15s ease-in-out,color .15s ease-in-out}
+.fcredactions button:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));
+  border-color:color-mix(in srgb,var(--ink) 88%,var(--ground))}
+.fcredactions button:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
 .fcredactions button.fquiet{background:transparent;border-color:var(--border-15);
   color:var(--muted)}
 .fcredactions button.fquiet:hover{border-color:var(--drop);color:var(--drop)}
@@ -2376,7 +2378,7 @@ details.fcred{display:block}
 .fpick p{margin:2px 0;font-size:var(--fs-xs);color:var(--muted)}
 .fpick.bad p{color:var(--drop)}
 .fpickitem{display:flex;gap:9px;align-items:center;padding:7px 9px;border:1px solid var(--border-10);border-radius:var(--surface-radius);margin-bottom:4px;cursor:pointer;font-size:var(--fs-xs);transition:background-color .12s ease}
-.fpickitem:hover{background:var(--hover);border-color:color-mix(in srgb,var(--ink) 28%,transparent)}
+.fpickitem:hover{background:var(--hover);color:var(--ink)}
 .fpickitem input{accent-color:var(--ink)}
 .fpickitem.known{opacity:.55;cursor:default}
 .fpickitem.known:hover{border-color:var(--border-10)}
@@ -2393,8 +2395,10 @@ details.fcred{display:block}
 .fpickfail{color:var(--drop)!important}
 .fpickactions{display:flex;gap:8px;align-items:center;flex-wrap:nowrap;min-width:0;margin-top:10px}
 .fpickactions button{border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:6px 14px;font-size:var(--fs-xs);cursor:pointer}
+.fpickactions button:hover:not(:disabled){background:var(--hover);color:var(--ink)}
 .fpickactions [data-pick-add]{background:var(--ink);border-color:var(--ink);color:var(--ground);font-weight:600}
-.fpickactions button:disabled{opacity:.6;cursor:default}
+.fpickactions [data-pick-add]:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground))}
+.fpickactions button:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
 .fpickactions [data-pick-state]{display:flex;align-items:center;min-width:0;overflow:hidden;
   white-space:nowrap;text-overflow:ellipsis;font-size:var(--fs-xs);color:var(--muted)}
 
