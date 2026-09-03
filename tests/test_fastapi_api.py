@@ -106,9 +106,9 @@ def minimal_mp4(*, timescale: int, sample_delta: int, samples: int, keyframe_eve
 class MediaCacheHeaderTests(unittest.TestCase):
     """生成物的缓存时长只许在一处写死。
 
-    这条断言原本扫的是 `api.py`：媒体路由都在那里，写死一天的 `max-age=86400`
-    也就都在那里。路由拆到 `routes_media.py` 之后，扫 `api.py` 会永远绿——
-    它已经一条媒体路由都没有了。门槛跟着实现走，不跟着文件名走。
+    这条断言扫的是媒体路由真正所在的模块。钉死扫 `api.py` 的话，媒体路由拆到
+    `routes_media.py` 之后它会永远绿——那里已经一条媒体路由都没有了。门槛跟着
+    实现走，不跟着文件名走。
     """
 
     def test_no_media_endpoint_hardcodes_a_day(self):
@@ -141,7 +141,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.taste_import_root = self.root / "sources" / "taste-history" / "imports"
         self.taste_output_root = self.root / "review" / "taste-history"
         self.taste_manifest = self.root / "state" / "taste-history" / "manifest.json"
-        # 复核候选必须来自临时目录：早先版本直接读真实的 R:\peach-data\generated。
+        # 复核候选必须来自临时目录，不去读真实的 R:\peach-data\generated。
         self.candidate_root = self.root / "generated"
         self.candidate_root.mkdir()
         self.endcard_frame = (

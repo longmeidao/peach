@@ -77,7 +77,7 @@ class RepostLabelTests(unittest.TestCase):
 
 
 class NormalisationTests(unittest.TestCase):
-    def test_watermark_no_longer_gets_a_fabricated_hyphen(self):
+    def test_watermark_codes_keep_their_digits_without_a_hyphen(self):
         self.assertEqual(normalise_code_key("HHD800"), "HHD800")
         self.assertEqual(normalise_code_key("AAVV333"), "AAVV333")
         self.assertEqual(normalise_code_key("BEI88"), "BEI88")

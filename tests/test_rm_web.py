@@ -1081,6 +1081,9 @@ class WebDataTests(unittest.TestCase):
         self.assertTrue(page["links"][0]["clickable"])
         self.assertFalse(page["links"][1]["clickable"])
         self.assertIsNone(page["links"][1]["url"])
+        # 实体契约里没有散文简介字段：资料页只展示可核对的身份、计数与链接。
+        # 自由文本没有来源和置信度，也没有复核入口，不属于真相字段。
+        self.assertNotIn("summary", page)
         self.assertEqual(rm_web.q_items(
             self.contract, {"performer": "Canonical Alice", "limit": "10"},
         )["total"], 1)

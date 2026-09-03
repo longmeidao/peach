@@ -947,7 +947,7 @@ def run(args: argparse.Namespace) -> int:
                     verb = "升级" if args.upgrade_existing else "取得"
                     print(f"[{index}/{len(todo)}] {verb} {code}  {width}x{height} "
                           f"{len(data)//1024} KB  <- {winner.source}", flush=True)
-            # 落空的行也要落盘。原来这句只在取得分支里，连续落空时 CSV 整段不动；
+            # 落空的行也要落盘。这句只放在取得分支里的话，连续落空时 CSV 整段不动；
             # 被强杀时 finally 也来不及跑，那一串判定就白做了——而「查不到」恰恰
             # 是最贵的一类：每条都要把所有候选源挨个探完才能确定。
             _write_log(args.log, rows)

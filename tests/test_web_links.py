@@ -17,7 +17,7 @@ from support.ledger import fresh_ledger   # noqa: E402
 class FakeContract:
     """只提供 `LinkContract` 声明的那几项能力，且读写分开。
 
-    早先这里把 `read_connection` 和 `write_connection` 指向同一个可写函数，于是
+    把 `read_connection` 和 `write_connection` 指向同一个可写函数的话，
     `w_links_prune` 调了真契约上根本不存在的 `write_connection` 也照样绿——真的
     `WebContract` 只有 `read_connection` 与 `write_transaction`，线上删链接直接 500。
     读连接因此按真实实现开成 SQLite 的 `mode=ro`：拿读连接写库会当场报错，而不是

@@ -419,8 +419,8 @@ class _BaseConnector:
         """发一次请求。`_get`/`_post` 的共同那半都在这里。
 
         拦下被拦的站、合并头、把网络异常压成一句话、卡住响应大小——这四件事
-        与方法无关，以前两边各写一份。两份已经开始分岁：`connector_headers=False`
-        只在 GET 那一份里有，而“跳站不带来源站 Cookie”是安全语义，不应该
+        与方法无关，所以只有这一份。GET 与 POST 各写一份必然分岔，而
+        `connector_headers=False` 承载的“跳站不带来源站 Cookie”是安全语义，不应该
         取决于用的是哪个动词。
         """
         if self.blocked_reason:
@@ -616,7 +616,7 @@ class _BaseConnector:
 
         `record_history_end` 之前的版本把往回翻到尽头记成了 `error`，正文就是
         `_check_status` 那句 `<provider> 返回 HTTP <status>`。判据只能是本连接器
-        声明的 `HISTORY_END_STATUSES`——原来是在 Web 层照站点名硬编码中文串比较，
+        声明的 `HISTORY_END_STATUSES`——放在 Web 层照站点名硬编码中文串比较的话，
         新增来源时没人会想到还要改那一处。
         """
         matched = re.fullmatch(r".+ 返回 HTTP (\d{3})",
@@ -668,7 +668,7 @@ class KemonoConnector(_BaseConnector):
     #: kemono/coomer 的主域对 `/data/<path>` 回 302，分别指向 `n1.` 和 `n4.` 节点——
     #: 编号会变，所以走主域让站点自己路由，不写死；pawchive 主域对 `/data` 直接 404，
     #: 必须点名 `file.` 子域。
-    #: 路径也要带 `/data` 前缀：以前拼的是 `https://<host><path>`，少了这一段，
+    #: 路径也要带 `/data` 前缀：拼成 `https://<host><path>` 少了这一段，
     #: 三站都取不到原始文件。
     FILE_HOSTS = {"pawchive": "file.pawchive.pw"}
     _SERVICE_RE = re.compile(r"^[a-z0-9_\-]{1,32}$")
@@ -827,7 +827,7 @@ class KemonoConnector(_BaseConnector):
         2026-08-27 那次记的是主域回 200——站点行为后来变了，pawchive 的卡片因此
         一直是空的。
 
-        以前这里根本没设 `thumb_url`，归档站的卡片因此一律没有封面——
+        这里必须设 `thumb_url`：不设的话归档站的卡片一律没有封面——
         不是取不到，是压根没去取。
         """
         if not media or not str(media).lower().endswith(self._THUMBABLE):
@@ -1599,7 +1599,7 @@ class F95ZoneConnector(_BaseConnector):
             raise FollowSourceError(f"f95zone 的 ref 必须是线程 id，收到：{ref!r}")
         if page:
             # `/latest` 是站点自己渲染的「最近回复」聚合视图，没有 page-N 变体，
-            # 这个连接器因此只有一页可读。以前这里把 `page` 静默丢掉，往回翻页会
+            # 这个连接器因此只有一页可读。`page` 不能静默丢掉：丢了往回翻页会
             # 重新抓同一页、报成一次成功的检查，表现就是「点了没反应」。报到底
             # 比假装成功好：调用方据此显示历史已尽。
             raise FollowHistoryEnd("没有更多历史内容")

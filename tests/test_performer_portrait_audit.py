@@ -68,9 +68,9 @@ def make_ledger(path: Path, entities: list[dict], aliases: list[tuple[int, str]]
                 codes: dict[int, str] | None = None):
     """`codes` 给某个 performer 的作品指定番号；不给就按 JAV 处理。
 
-    真实账本里 performer 是通过 `asset` 认出「是不是 JAV」的，而这个助手原本只建
-    `asset_entity` 不建 `asset`——取像脚本一旦按作品判断来源，测试就整片报
-    `no such table: asset`。补上这张表是让测试和真实 schema 对齐，不是为了迁就实现。
+    真实账本里 performer 是通过 `asset` 认出「是不是 JAV」的，所以这个助手两张表
+    都建。只建 `asset_entity` 的话，取像脚本一旦按作品判断来源，测试就整片报
+    `no such table: asset`。这张表是让测试和真实 schema 对齐，不是为了迁就实现。
     """
     connection = sqlite3.connect(path)
     connection.execute("CREATE TABLE entity(id INTEGER PRIMARY KEY, kind TEXT,"
@@ -363,7 +363,7 @@ class PerformerPortraitAuditTests(unittest.TestCase):
     def test_a_stale_index_cache_is_refetched_instead_of_reused_forever(self):
         """索引缓存要有保鲜期，否则「找不到」这个结论会被永久固化。
 
-        Gfriends 是持续增补的图库，而这份缓存原本只要文件在就一直复用。实测后果：
+        Gfriends 是持续增补的图库，缓存只要文件在就一直复用的话，实测后果是：
         2026-08-25 的快照里没有「釈アリス」，之后 Gfriends 加了她（两份索引正好差这
         一条），但本地无论重跑多少次都还是 no_match——判定是对的，只是对的是一周前。
 
@@ -497,7 +497,7 @@ class PerformerPortraitAuditTests(unittest.TestCase):
         previous = "existing resume data\n"
         self.out.write_text(previous, encoding="utf-8")
         # 原子替换本身收进了 peach.review_csv，patch 目标要跟着代码走；这里仍然验的是
-        # 这个脚本的 write_csv 端到端行为：替换失败时上一版续跑文件必须原样保留。
+        # 这个脚本的 write_csv 端到端行为：替换失败时替换前那份续跑文件必须原样保留。
         with mock.patch("peach.review_csv.os.replace", side_effect=OSError("locked")):
             with self.assertRaisesRegex(OSError, "locked"):
                 self.module.write_csv(self.out, [{"section": "missing"}])

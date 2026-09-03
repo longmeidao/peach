@@ -53,8 +53,8 @@ class FollowCliTests(unittest.TestCase):
     def test_creds_sees_the_shared_copy_like_the_web_surface_does(self):
         """另一台机器上配好的可同步字段，命令行这边也必须算「已配置」。
 
-        以前只有 Web 那份仓库带上了共享根和可同步字段声明，CLI 直接
-        `CredentialStore(secrets_root)`——同一份 rule34.xxx key 网页里能用、
+        只有 Web 那份仓库带上共享根和可同步字段声明、CLI 直接
+        `CredentialStore(secrets_root)` 的话，同一份 rule34.xxx key 网页里能用、
         `peach follow check` 却报缺凭据，而错误里根本看不出是这个原因。
         """
         shared = self.root / "shared" / "secrets" / "follow"
@@ -81,8 +81,8 @@ class FollowCliTests(unittest.TestCase):
     def test_creds_states_each_requirement_from_the_shared_guide(self):
         """要不要凭据照 `CREDENTIAL_GUIDE` 说，命令行不另写一套说明。
 
-        原来这里手写着「f95zone 与 simpcity 的 cookie 只在读登录后内容时需要」，
-        而 simpcity 早已判为 `blocked`、根本不收 cookie——照那句话配是白费功夫。
+        手写一份说明就会漂：写着「f95zone 与 simpcity 的 cookie 只在读登录后内容时
+        需要」，而 simpcity 已判为 `blocked`、根本不收 cookie——照那句话配是白费功夫。
         """
         _, output = self._run("creds")
         lines = {row.split()[0]: row for row in output.splitlines() if row.strip()}
@@ -181,7 +181,7 @@ class FollowCliTests(unittest.TestCase):
     def test_check_learns_an_official_author_handle_like_the_web_surface_does(self):
         """命令行抓完也要学作者别名，否则同一个人还是显示成两个作者。
 
-        以前只有 `/api/follow/check` 学：`peach follow check` 抓 fanbox 那条来源
+        只有 `/api/follow/check` 学的话，`peach follow check` 抓 fanbox 那条来源
         什么都不记，而两处都叫「检查更新」，没有任何地方说明差别在哪。
         """
         self._run("add", "--provider", "fanbox", "--ref", "ffxivinitiala")

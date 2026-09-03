@@ -330,7 +330,7 @@ class CrossProductCoverTests(unittest.TestCase):
             "FC2-PPV-3071875",
             "https://contents-thumbnail2.fc2.com/w1200/storage/x.jpg"))
 
-    def test_a_carried_wrong_cover_no_longer_wins(self):
+    def test_a_carried_wrong_cover_loses_to_the_right_one(self):
         wrong = "https://pics.dmm.co.jp/mono/movie/adult/118sng021/118sng021pl.jpg"
         right = "https://image.mgstage.com/images/luxutv/259luxu/1475/pb_e_259luxu-1475.jpg"
         transport = transport_for({wrong: (200, jpeg(1600, 1080)),

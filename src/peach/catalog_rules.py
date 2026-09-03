@@ -2,10 +2,10 @@
 
 不碰数据库、不碰 HTTP、不依赖任何 Peach 模块，是最底下那层纯策略。
 
-这个文件曾经叫 `web_logic.py`，但里面没有一行是 web 的，而依赖它的四个模块里有
-三个不是 web 层：`repository`（数据层）取 `is_jav_code`，`taste_history` 取
-`LENGTH_TAGS`，`fc2_similarity` 取重复判据。数据层 import 一个叫 web 的模块，
-读代码的人会以为分层反了——反的其实是名字。2026-08-29 改名，内容一行未动。
+文件名必须指着内容说话：这里没有一行是 web 的，而依赖它的四个模块里有三个不在
+web 层——`repository`（数据层）取 `is_jav_code`，`taste_history` 取 `LENGTH_TAGS`，
+`fc2_similarity` 取重复判据。数据层 import 一个叫 web 的模块，读代码的人会以为
+分层反了。
 """
 from __future__ import annotations
 
@@ -388,14 +388,14 @@ _PROMO_SUFFIX = re.compile(
 def strip_promo_markers(name: str | None) -> str:
     """摘掉名字**头尾**的推广域名标记，其余部分一个字都不动。
 
-    只认头尾，不认名字中间。第一版删任意位置的带括号域名，结果把
-    `Hazel Moore - [FootFetishDaily.com] - Hardcore` 里的厂牌删了——欧美片的
+    只认头尾，不认名字中间。删任意位置的带括号域名会把
+    `Hazel Moore - [FootFetishDaily.com] - Hardcore` 里的厂牌一起删掉——欧美片的
     `[Vixen.com]`、`[StraplessDildo.com]` 是厂牌名，不是广告，删掉是丢真信息。
     真正的广告标记全在头或尾：`[44x.me]tre-080`、`MattieDoll - pornhub.com`。
 
-    同样刻意不做的事：不压缩多余空格、不合并空括号。第一版做了，把
-    `(12P+5V_1.28G) [12P-5V-1.28GB]` 改成 `(12P+5V_1.28G12P-5V-1.28GB]`，
-    把没有广告的 `狗链  兔尾` 也改了。
+    同样刻意不做的事：不压缩多余空格、不合并空括号。做了的话，
+    `(12P+5V_1.28G) [12P-5V-1.28GB]` 会变成 `(12P+5V_1.28G12P-5V-1.28GB]`，
+    没有广告的 `狗链  兔尾` 也跟着被改。
 
     头尾各剥到不动为止，`[98t.tv][98t.tv]ABW-251` 这种叠了两层的才能剥干净。
     """
@@ -620,7 +620,7 @@ def dir_expr(alias: str = "a.") -> str:
     """从 `path` 去掉 `name` 和分隔符，剩下的就是所在目录。
 
     表别名做成参数，是因为图集查询用 `a.`、按目录对账时直接查 `asset` 不带别名；
-    早先靠对常量做字符串替换来凑另一种写法，改一次别名就会悄悄失配。
+    靠对常量做字符串替换来凑另一种写法的话，改一次别名就会悄悄失配。
     """
     return (f"substr({alias}path,1,"
             f"length({alias}path)-length({alias}name)-1)")

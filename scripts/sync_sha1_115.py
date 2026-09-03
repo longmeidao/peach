@@ -29,8 +29,8 @@ if str(SRC_DIR) not in sys.path:
 from peach.review_csv import ENCODING
 from peach.config import DATABASE_PATH, LOG_DIR
 
-# 账本与日志位置只有 `peach.config` 一处判据。这里原来写死 `R:\peach-data\...`，那是
-# 搬到内置盘之前的数据根：写死的路径不会报「配置过时」，它只会安静地建一个空库。
+# 账本与日志位置只有 `peach.config` 一处判据，这里不写死 `R:\peach-data\...` 之类的
+# 盘上路径：数据根搬走时写死的路径不会报「配置过时」，它只会安静地建一个空库。
 DB = str(DATABASE_PATH)
 COOKIE = os.path.expandvars(r"%USERPROFILE%\.115-cookies.txt")
 LOG_DIR.mkdir(parents=True, exist_ok=True)

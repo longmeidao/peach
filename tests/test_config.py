@@ -247,8 +247,8 @@ class BadFileTests(unittest.TestCase):
         """语法没错、内容被拒的文件同样得退得下来。
 
         `peach init --force` 是坏文件的唯一自救入口，它走的就是 `strict=False`。
-        合并期的拒绝原来漏在退路之外，于是第一阶段的 `[media] R = ...` 会把自救
-        入口本身打崩——语法完全正确，抛错的是键空间校验。
+        合并期的拒绝漏在退路之外的话，`[media] R = ...` 这种写法会把自救入口
+        本身打崩——语法完全正确，抛错的是键空间校验。
         """
         for text in ("[media]\nR = '/mnt/res'\n",
                      "[media.mounts]\nlocla = '/mnt/res'\n",

@@ -198,8 +198,8 @@ def _save(args) -> int:
 
 
 #: `CREDENTIAL_GUIDE` 的 requirement 在命令行这边怎么说。照抄那张表的判定，不在
-#: 这里另写一套——原来这段是手写的「f95zone 与 simpcity 的 cookie 只在读登录后内容
-#: 时需要」，而 simpcity 早就被判为 blocked、根本不收 cookie，照着它配是白费功夫。
+#: 这里另写一套——手写的那份会漂：一句「f95zone 与 simpcity 的 cookie 只在读登录后
+#: 内容时需要」，而 simpcity 已判为 blocked、根本不收 cookie，照着它配是白费功夫。
 _REQUIREMENT_TEXT = {
     "required": "必须配置",
     "optional": "可选，配了能多取到内容",

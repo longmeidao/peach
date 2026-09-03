@@ -499,9 +499,9 @@ class SaveAssetTests(_StoreCase):
 class MediaReparseTests(_StoreCase):
     """`source_needs_media_reparse` 的判定口径。
 
-    这个判定现在交给 SQLite 的 `json_extract`：原来是把整个来源的 `metadata_json`
-    全部取回 Python 再逐条 `json.loads`，回填过的来源单源上千行，为一个布尔值全解
-    一遍。换实现就要守住原来的容忍度。
+    这个判定交给 SQLite 的 `json_extract`，不把整个来源的 `metadata_json` 取回
+    Python 再逐条 `json.loads`：回填过的来源单源上千行，为一个布尔值全解一遍。
+    下推到 SQL 要守住同样的容忍度。
     """
 
     def _write_metadata(self, source_id: int, external_id: str, raw) -> None:
@@ -532,7 +532,7 @@ class MediaReparseTests(_StoreCase):
         """非法 JSON 只是「这条不知道」，不该让整个检查崩掉。
 
         `json_extract` 遇到非法 JSON 是报错而不是返回 NULL，所以查询里那层
-        `json_valid` 不能省——原来的 Python 版是 `except JSONDecodeError: continue`。
+        `json_valid` 不能省：它顶的是 `except JSONDecodeError: continue` 那一级容忍。
         列上是 `NOT NULL DEFAULT '{}'`，所以「没有元数据」落盘的形状是 `{}` 和
         空字串，不是 NULL；空字串并不是合法 JSON，同样得被 `json_valid` 拦住。
         """
@@ -563,7 +563,7 @@ class ReleaseGroupTests(unittest.TestCase):
 
 
 class AuthorIdentityTests(_StoreCase):
-    """作者别名表的写入口径。以前这些 SQL 直接写在 Web 处理函数里。"""
+    """作者别名表的写入口径。这些 SQL 归存储层，不写在 Web 处理函数里。"""
 
     def test_the_container_suffix_is_not_part_of_the_author_name(self):
         """F95 的线程标题说的是一个容器，不是另一个作者。
@@ -688,8 +688,8 @@ class PlaybackTests(_StoreCase):
 class PartialCandidateTests(_StoreCase):
     """`partial=True` 的候选（跳过了第二阶段）落库时不能抹掉已有的细节。
 
-    upsert 原本整块替换 metadata、media_url、thumb_url 和 group_hint。第二阶段
-    一旦按「已补齐」跳过，同一条再落一次就会把上一轮取到的细节清成空——而清空之后
+    upsert 不整块替换 metadata、media_url、thumb_url 和 group_hint：第二阶段一旦
+    按「已补齐」跳过，同一条再落一次就会把上一轮取到的细节清成空——而清空之后
     「详情本来就没有」和「这次没去问」在数据里长得一模一样。
     """
 

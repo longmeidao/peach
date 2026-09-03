@@ -333,9 +333,9 @@ class ServiceManager:
     def _ledger_shortcut(self, *, take_ownership: bool) -> tuple[bool, str] | None:
         """这次同步会不会真的复制？不会就别停服务。
 
-        原来的做法是无条件停服务、跑一遍 CLI、再启回来。共享盘没挂（`offline`）或者
-        本机压根不是写入端（`conflict`）时，那一停一启换来的只有一次白白的停机和一条
-        「同步失败」通知——实测就是本机的日常状态：`/Volumes/peach-sync` 没挂时，
+        不能无条件停服务、跑一遍 CLI、再启回来。共享盘没挂（`offline`）或者本机压根
+        不是写入端（`conflict`）时，那一停一启换来的只有一次白白的停机和一条
+        「同步失败」通知——而这就是本机的日常状态：`/Volumes/peach-sync` 没挂时，
         点一次「同步 Ledger」网页就断十几秒，然后告诉你盘不可达。
 
         「接管 Ledger 写入」只在共享盘不可达时短路：它要求两侧 `in-sync`，而 `in-sync`

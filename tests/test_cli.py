@@ -1,7 +1,7 @@
 """`peach` 顶层 CLI 的可达性与只读保证。
 
 关注子命令另有 `test_follow_cli.py`；这里管的是 `serve`/`migrate`/`status`/`ledger-sync`
-这一层，以及打包后的 EXE 到底能不能调到它们——曾经调不到，见 `build_app_entry.py`。
+这一层，以及打包后的 EXE 到底能不能调到它们——判据见 `build_app_entry.py`。
 """
 from __future__ import annotations
 
@@ -260,7 +260,7 @@ class BrokenSettingsTests(unittest.TestCase):
 class PackagedEntryTests(unittest.TestCase):
     """打包后的 EXE 必须能调到 `peach.cli` 的每一个子命令。
 
-    原来的判据是硬编码的 `{"serve", "migrate"}`，于是 `follow`、`ledger-sync` 和新增的
+    判据硬编码成 `{"serve", "migrate"}` 的话，`follow`、`ledger-sync` 和后来加的
     `status` 在 EXE 里全部不可达——参数被当成托盘参数吞掉，既不报错也不执行。
     """
 

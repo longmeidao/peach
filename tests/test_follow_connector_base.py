@@ -1,7 +1,7 @@
 """连接器基类共享骨架的隔离测试。
 
-八个连接器的 fetch 开头原本各写一份「条件请求 → 304 短路 → 状态检查」。抽成
-`_BaseConnector._request()` 之后，这些规则只有一处实现，所以也只需要在这里守住；
+「条件请求 → 304 短路 → 状态检查」由 `_BaseConnector._request()` 一处实现，
+八个连接器的 fetch 开头不各写一份，所以这些规则也只需要在这里守住；
 各站的解析差异仍由 `test_follow_sources.py` 覆盖。测试不联网，transport 全部注入。
 """
 import unittest
@@ -151,9 +151,9 @@ class _Item:
 class DisplayThumbUrlTests(unittest.TestCase):
     """「这个站的缩略图 URL 长什么样」属于连接器，不属于 Web 层。
 
-    这些规则原来都写在 `web_follow._thumb_url` 里：rule34.xxx 的 preview→sample
-    改写、归档站的 `img.` 子域、归档站旧行的缩略图推导。站点行为变了要改的是站点
-    知识，而 Web 层根本不该知道 `api-cdn.rule34.xxx` 这种主机名。
+    rule34.xxx 的 preview→sample 改写、归档站的 `img.` 子域、归档站旧行的缩略图
+    推导，都归连接器。站点行为变了要改的是站点知识，而 Web 层根本不该知道
+    `api-cdn.rule34.xxx` 这种主机名。
     """
 
     def test_rule34xxx_history_rows_are_upgraded_to_the_sample_bucket(self):
@@ -310,8 +310,8 @@ class NoPrivateReachIntoConnectorsTests(unittest.TestCase):
 class ProfileHandleTests(unittest.TestCase):
     """ref 里哪一截是作者本人的手柄，由各站自己的连接器说。
 
-    这些规则以前写在 `web_follow` 的一串 if/elif 里，而「ref 长什么形状」正是
-    连接器已经在解析、在校验的东西：同一份知识分在两层，改一处就会漂移。
+    这些规则不写在 `web_follow` 的一串 if/elif 里：「ref 长什么形状」正是连接器
+    已经在解析、在校验的东西，同一份知识分在两层，改一处就会漂移。
     """
 
     def test_an_official_channel_ref_is_the_author_handle(self):

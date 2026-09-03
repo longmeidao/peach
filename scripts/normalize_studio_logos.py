@@ -37,7 +37,7 @@ FIELDS = (
 )
 
 # 边车里记的动作名。`harvest_studio_icons.padded_studios` 按 PAD_ACTION 认「这一张
-# 原来是条状字标」，改名等于把那份名单清空。
+# 的源图是条状字标」，改名等于把那份名单清空。
 BAKE_ACTION = "bake-white-plate"
 PAD_ACTION = "pad-to-square"
 # 矢量标识不进烤底流程，只在复核件上单列。

@@ -39,8 +39,8 @@ KEMONO_POSTS = json.dumps([
      "published": "2026-02-14T21:51:10", "edited": None,
      "file": {"name": "a.png", "path": "/1c/fa/1cfae7.png"},
      "attachments": [{"name": "a.zip", "path": "/1c/fa/1cfae7.zip"}]},
-    # 第二条只有附件、没有正文文件，`media_url` 要能从附件里取到。它原本连附件也没有，
-    # 但那种帖子现在会被判为「不是 release」丢掉，别的断言就都少了一条。
+    # 第二条只有附件、没有正文文件，`media_url` 要能从附件里取到。连附件也没有的帖子
+    # 会被判为「不是 release」丢掉，拿那种形状当固定件会让别的断言都少一条。
     {"id": "11400490", "user": "30917150", "service": "fanbox",
      "title": "Villainous Valentine's Day 6", "published": "2026-02-13T21:30:28",
      "file": {}, "attachments": [{"name": "b.png", "path": "/2f/46/2f468d.png"}]},
@@ -523,7 +523,7 @@ class KemonoConnectorTests(unittest.TestCase):
         self.assertEqual(first.group_hint, "fanbox:11406814")
 
     def test_archive_posts_get_a_cover_thumbnail(self):
-        """归档站的卡片以前一律没有封面——不是取不到，是压根没去取。
+        """归档站的卡片必须带封面：不设 `thumb_url` 不是取不到，是压根没去取。
 
         2026-08-30 实测缩略图走 `img.` 子域：主域 kemono.cr 回 302、pawchive.pw 回 404；
         去掉 `thumbnail/` 前缀则是 404，所以这个前缀是必需的。
@@ -844,7 +844,7 @@ class PagingBackTests(unittest.TestCase):
         self.assertNotIn("api_key", result.request_url)
 
     def test_f95zone_reports_the_end_of_history_instead_of_refetching_page_one(self):
-        """`/latest` 只有一页。以前 `page` 被静默丢掉，往回翻会重新抓同一页并
+        """`/latest` 只有一页。`page` 被静默丢掉的话，往回翻会重新抓同一页并
         报成一次成功检查——用户看到的就是「点了没反应」。"""
         seen = []
         with self.assertRaises(FollowHistoryEnd):
@@ -1368,8 +1368,8 @@ class BuildConnectorTests(unittest.TestCase):
             self.assertEqual(build_connector(provider).provider, provider)
 
     def test_the_registry_is_derived_from_what_each_class_declares(self):
-        """`CONNECTORS` 不再手写。以前 kemono 系三站要在映射里把同一个类写三遍，
-        和 `KemonoConnector.HOSTS` 是同一件事的两份手写清单。"""
+        """`CONNECTORS` 由各类自己的声明推导，不手写。手写的话 kemono 系三站要在
+        映射里把同一个类写三遍，和 `KemonoConnector.HOSTS` 成了同一件事的两份清单。"""
         self.assertEqual(
             follow_sources.CONNECTORS,
             {key: factory for factory in follow_sources._CONNECTOR_CLASSES

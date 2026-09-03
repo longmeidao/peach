@@ -473,8 +473,8 @@ def _legacy_history_end(row) -> bool:
     """把旧版记成 error 的「往回翻到尽头」认回来。
 
     判据在连接器那一层：哪些状态码代表「没有更早的了」由各连接器声明，
-    `is_history_end_error` 拿的是同一份声明。这里原来是照站点名硬编码中文串比较，
-    新增一个可回填来源时没人会想到还要改这一处。
+    `is_history_end_error` 拿的是同一份声明。这里不照站点名硬编码中文串比较：
+    那样新增一个可回填来源时没人会想到还要改这一处。
     """
     if int(row["backfill_page"] or 0) <= 0 or row["last_status"] != "error":
         return False
@@ -641,7 +641,7 @@ def q_follow(contract, args) -> dict:
                           if item.source_id in enabled_source_ids and not _excluded_item(item))
             has_more = False   # 直达详情只取这一组，没有下一页
         else:
-            # 分页在筛选之后：早先是 SQL 先分页、前端再筛，选个冷门作者会看到一页里
+            # 分页在筛选之后：SQL 先分页、前端再筛的话，选个冷门作者会看到一页里
             # 只剩两三条，得反复点「加载更多」才凑出一屏。
             page = [item for item in counted if not statuses or item.status in statuses]
             has_more = len(page) > offset + limit
@@ -649,10 +649,10 @@ def q_follow(contract, args) -> dict:
         groups = [_group_payload(group, credential_providers)
                   for group in store.group(items)]
         facets = _follow_facets(store, everything, by_source, alias_map)
-        # counts 与列表同源。以前它是一句全库 SQL，再逐条减掉被隐藏的 rule34video
-        # 和无资源的 f95zone——同一套排除规则维护了两份，而且它完全不看作者、来源和
-        # 标签筛选，于是筛选一换，列表变了、药丸上的数字纹丝不动。现在两边都从
-        # `counted` 出发：筛选怎么变，数字就怎么变，扣减逻辑也不必再写第二遍。
+        # counts 与列表同源，两边都从 `counted` 出发：筛选怎么变，数字就怎么变，
+        # 扣减逻辑也只写一份。写成一句全库 SQL 再逐条减掉被隐藏的 rule34video 和
+        # 无资源的 f95zone 的话，同一套排除规则要维护两份，而且它不看作者、来源和
+        # 标签筛选，筛选一换就是列表变了、药丸上的数字纹丝不动。
         counts: dict[str, int] = {}
         for item in counted:
             status = str(item.status)

@@ -166,9 +166,9 @@ class JobMainTests(unittest.TestCase):
 class BackgroundJobTests(unittest.TestCase):
     """服务里的后台任务状态机。
 
-    死链检查和资源对账原先各写一份，共用的不只是形状，还有几条容易漏的约定：
+    死链检查和资源对账共用这一份状态机。共用的不只是形状，还有几条容易漏的约定：
     重复点击不许把在跑的那轮丢掉、被顶掉的线程不许再写状态、后台异常必须变成
-    可轮询的 failed。这些都散在两处的话，下一个照抄的人漏哪条都不会有人发现。
+    可轮询的 failed。这些散在两处的话，下一个照抄的人漏哪条都不会有人发现。
     """
 
     def _job(self) -> BackgroundJob:
@@ -211,7 +211,7 @@ class BackgroundJobTests(unittest.TestCase):
         self.assertNotEqual(
             job.start(lambda _id: None, restart=True)["check_id"], done["check_id"])
 
-    def test_a_superseded_worker_can_no_longer_touch_the_state(self):
+    def test_a_superseded_worker_cannot_touch_the_state(self):
         """被顶掉的线程还继续写，前端就会看到新一轮的 id 配旧一轮的进度。"""
         job = self._job()
         stale = job.start(lambda _id: None, initial={"checked": 0})["check_id"]

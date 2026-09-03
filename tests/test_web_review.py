@@ -302,8 +302,8 @@ class ReviewQueueTests(unittest.TestCase):
     def test_decided_rows_leave_the_queue_and_skipped_ones_sink(self):
         """判过的不能一刷新又回来。
 
-        早先 `_review_rows` 原样返回全部候选，只挂一个 `decision`，靠前端在本地
-        splice；于是点「通过」当场消失、刷新全回来（厂牌 logo 上最明显）。
+        `_review_rows` 原样返回全部候选、只挂一个 `decision`、靠前端在本地 splice
+        的话，点「通过」当场消失、刷新全回来（厂牌 logo 上最明显）。
         `跳过` 是「稍后再看」，仍留在队列但排到最后——否则一次跳过等于永久隐藏，
         而界面上没有任何入口能把它找回来。
         """

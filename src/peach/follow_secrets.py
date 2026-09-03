@@ -108,7 +108,7 @@ class CredentialStore:
     def describe(self, provider: str) -> dict[str, object]:
         """只报告存在性与权限，绝不返回凭据值。
 
-        **必须和 `load()` 看同一份事实。** 早先这里只看本机文件，而 `load()` 会从共享
+        **必须和 `load()` 看同一份事实。** 只看本机文件不行：`load()` 会从共享
         副本回填，于是撤销本机那份之后界面报「未配置」、连接器却还拿着共享里那把 key
         在认证。状态和实际用的凭据不一致，比撤不掉更糟——用户会以为已经撤了。
         所以这里也走 `load()` 的合并口径，并额外分出 `shared_fields`：用户得知道
@@ -231,8 +231,8 @@ def credential_store_for(secrets_root: Path, *,
                          shared_root: Path | None = None) -> CredentialStore:
     """构造凭据仓库的唯一入口。
 
-    `shared_root` 与 `syncable_fields` 必须处处一致。以前 Web、发现与 CLI 各自
-    `CredentialStore(...)`，只有 Web 那份带上了共享根和可同步字段声明——表现是
+    `shared_root` 与 `syncable_fields` 必须处处一致。Web、发现与 CLI 各自
+    `CredentialStore(...)` 的话，只有其中一份带上共享根和可同步字段声明——表现是
     在另一台机器上配好的 rule34.xxx key 网页里能用、`peach follow check` 却报
     缺凭据。哪一层都不该自己决定这件事，所以只留这一个构造函数。
     """

@@ -38,8 +38,7 @@ def q_entity(contract: WebContract, args):
             metadata = json.loads(d.pop("metadata_json") or "{}")
         except (TypeError, ValueError):
             metadata = {}
-        d["summary"] = metadata.get("summary") or ""
-        d["metadata"] = {k: v for k, v in metadata.items() if k != "summary"}
+        d["metadata"] = metadata
         d["aliases"] = [r[0] for r in c.execute(
             "SELECT alias FROM entity_alias WHERE entity_id=? ORDER BY confidence DESC,alias",
             (d["id"],),

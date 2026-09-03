@@ -37,7 +37,7 @@
 - `replication.enabled` 决定这台机器做不做单写者复制，默认 `false`。关闭时不建同步
   观察器、不探测也不挂载 SMB、托盘不出两个 Ledger 菜单项、追更凭据不往共享副本写，
   `/healthz` 的 `ledger_sync` 是 `disabled`（不是 `writer`），写接口全开——没有第二台
-  机器就没有「读者」，服务按独立写者跑。开启时行为和以前一字不差。
+  机器就没有「读者」，服务按独立写者跑。开启时上面这些逐项生效。
   `--from-existing` 写 `true`、全新 `init` 写 `false`。
 - 不跑 `--from-existing` 就会掉回内建默认，两台机器上会变的至少有：mDNS 名、macOS 的
   来源挂载表、reader 的 writer 地址与代理、SMB 主机与账号、**复制开关**（默认关）。

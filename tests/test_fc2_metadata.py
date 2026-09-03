@@ -214,7 +214,7 @@ class HarvestTest(unittest.TestCase):
 
 
 class RealWorldShapesTest(unittest.TestCase):
-    """线上抓到的真实写法，都是第一版正则读不出来的。"""
+    """线上抓到的真实写法，照着记忆重画的正则读不出它们。"""
 
     def test_reads_a_full_width_equals_sign(self):
         """日文输入法打出的是 `＝`，只认半角等号会把这类断言整条丢掉。"""

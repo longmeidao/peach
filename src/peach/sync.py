@@ -208,7 +208,7 @@ def local_dirty(db_path: Path, marker: Marker | None) -> bool:
        内容中性的 checkpoint 或备份工具碰一下时间戳都会让只读端被判成脏，
        于是每次同步都退化成要人工选边。这一层用摘要把「碰过」和「写过」分开。
 
-    旧标记没有 `digest`/`wal_size`，那两层自动跳过，行为退回原来的样子。
+    旧标记没有 `digest`/`wal_size`，那两层自动跳过，只按第一层判。
     """
     current = fingerprint(db_path)
     if current is None:

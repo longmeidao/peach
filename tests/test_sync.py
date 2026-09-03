@@ -389,8 +389,8 @@ class LedgerSyncTests(unittest.TestCase):
     def test_the_service_lifecycle_has_no_hook_that_could_push(self):
         """停机不回写靠的是「没有这个钩子」，不是钩子里写了 return None。
 
-        原来 `LedgerSync` 有一对空的 `start`/`stop` 和一个只转发的 `startup`，
-        `api` 的 lifespan 照样一进一出地调用它们——读代码的人得跳进 `sync.py`
+        `LedgerSync` 上留一对空的 `start`/`stop` 和一个只转发的 `startup` 的话，
+        `api` 的 lifespan 会一进一出地调用它们——读代码的人得跳进 `sync.py`
         才能确认那几行什么都不做，而「服务退出会不会把本地改动推上去」正是这个
         模块最不该靠猜的问题。回写只能由托盘/CLI 的 `ledger-sync` 显式触发。
         """

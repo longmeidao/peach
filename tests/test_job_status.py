@@ -93,7 +93,7 @@ class JobStatusTests(unittest.TestCase):
 
         它每次 hook 都重算，写进 Git 里的文件就等于让工作区永远 modified，
         每个智能体都得先分辨「这行是我改的还是 hook 改的」；而 `--state` 的
-        默认值曾经写死在 `R:\\peach-data`，数据根搬走后半年没人发现。"""
+        默认值写死成 `R:\\peach-data` 这类盘上路径时，数据根一搬没人会发现。"""
         from peach.config import STATE_DIR
 
         self.assertEqual(MODULE.DOC, STATE_DIR / "job-status.md")

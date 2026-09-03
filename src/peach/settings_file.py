@@ -114,7 +114,7 @@ class ReplicationSettings:
     `enabled` 默认 False：多数部署只有一台机器，没有第二台就没有单写者复制可言。
     关闭时不装配 ledger 同步观察器、不探测也不挂载 SMB、托盘不出 Ledger 菜单项，
     服务按独立写者跑（`/healthz` 的 `ledger_sync` 为 `disabled`）。现有双机部署由
-    `peach init --from-existing` 写成 true，读到 true 的机器行为和以前一字不差。
+    `peach init --from-existing` 写成 true，读到 true 的机器上面这些逐项生效。
     """
 
     enabled: bool = False
@@ -347,9 +347,8 @@ def load_config(
     --force` 留一条自救路径；否则抛 `SettingsFileError`。
 
     「坏」包括语法读不出来和合并时被拒（未知目录键、`[media]` 下的盘符键之类）。
-    两者都要走同一条退路：`_merge` 的拒绝原来漏在 try 外面，于是自救入口自己
-    也会崩——第一阶段的 `[media] R = ...` 在第二阶段变成硬错误后，那正是最常见的
-    一份坏文件。
+    两者都要走同一条退路：`_merge` 的拒绝漏在 try 外面的话，自救入口自己也会崩——
+    而 `[media] R = ...` 这种被判成硬错误的盘符键，正是最常见的一份坏文件。
     """
     environ = os.environ if environ is None else environ
     data_root, found = discover_data_root(project_root, environ)
