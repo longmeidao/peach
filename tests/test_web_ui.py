@@ -2344,12 +2344,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("wireMixFlip(el,seedId);")
         # 翻动的封面必须 eager：它们插进的是一个 hidden 容器，lazy 图没有布局盒
         # 就不发请求，实测除第一张外四张全部 naturalWidth=0，一翻就是黑屏。
-        self.assertPageContains("${mixFacePoster(x,layout,true)}")
+        self.assertPageContains(".map(x=>mixFacePoster(x,layout,true));")
         self.assertPageContains("const load=eager?'eager':'lazy';")
         # 能不能画出图只有一个判据，seed 选择和翻动共用。分开写就会翻出
         # 或选中一张「无预览」：非 JAV 模式下 `has_cover` 并不代表卡片会画封套。
         self.assertPageContains("function mixHasPicture(it,layout){")
-        self.assertPageContains(".filter(x=>mixHasPicture(x,layout)).slice(0,MIX_FLIP_FACES);")
+        self.assertPageContains(".filter(x=>mixHasPicture(x,layout)).slice(0,MIX_FLIP_FACES)")
         self.assertPageContains("const named=it=>mixHasPicture(it,layout)&&(it.creator")
         self.assertPageContains("||visible.slice(MIX_SLOT+1).find(it=>mixHasPicture(it,layout))")
         self.assertCode('''loading="${eager?'eager':'lazy'}"''')
@@ -2366,6 +2366,47 @@ class WebUiSourceTests(unittest.TestCase):
             "Promise.all([api('/api/item?id='+seedId),mixRelated(seedId)])")
         # 队列长度不能被悬浮预取剪短：两边用同一个 limit。
         self.assertPageContains("api('/api/related?id='+seedId+'&limit=28')")
+
+    def test_stacked_cards_pile_upward_and_keep_the_row_bottom_aligned(self):
+        """Mix、分卷、版次和关注合集的叠层往上溢出，卡片本体不为它留白。
+
+        留白（padding-top）会把整张卡压低并加高，同一行里这几种卡的封面和
+        下面的文字就比邻居矮一截。四种卡共用同一套叠层规则，不各调一份。
+        """
+        self.assertPageLacks(".mixcard,.partcard{padding-top:7px}")
+        self.assertPageLacks(".followitem.collection{padding-top:7px}")
+        self.assertPageContains(
+            ".mixstack::before,.partstack::before{inset:0 12px 8px;transform:translateY(-7px)")
+        self.assertPageContains(
+            ".mixstack::after,.partstack::after{inset:0 6px 4px;transform:translateY(-4px)")
+        # 密集模式给整个网格统一留 7px，那是所有卡片一起下移，不破坏平齐。
+        self.assertPageContains('body[data-density="dense"] .grid>.card{padding-top:7px}')
+
+    def test_follow_collections_flip_through_the_thumbs_they_already_have(self):
+        """关注页的合集卡片和目录页的 Mix 用同一套翻动，不各写一份动效。
+
+        时序、启动门槛和 `_stopHover` 收尾都在 `wireStackFlip` 里；关注页的
+        几张缩略图卡片渲染时就在手上，悬浮不再为动画发一次请求。第一张是
+        静止封面本身，翻起来才不会露出取景差别。
+        """
+        self.assertPageContains("function wireStackFlip(el,loadFaces){")
+        self.assertPageContains("try{pool=await loadFaces()}catch(_e){return}")
+        self.assertPageContains("function wireFollowStackFlip(card){")
+        self.assertPageContains("wireStackFlip(card,async()=>urls.map(url=>")
+        self.assertPageContains(
+            "if(!card.dataset.flipWired){card.dataset.flipWired='1';wireFollowStackFlip(card)}")
+        # 翻的必须是角标数的那一组，否则卡上写「9 个视频」翻的却是别处的图。
+        self.assertPageContains(
+            "const faceSource=embedded.length>1?embedded:"
+            "(groupedVideos.length>1?groupedVideos:videos);")
+        self.assertPageContains("const faceUrls=isMix?[...new Set([thumbUrl,...faceSource")
+        self.assertPageContains(".filter(entry=>!imageView||entry.media_kind==='image')")
+        self.assertPageContains(".map(entry=>entry.thumb_url)].filter(Boolean))].slice(0,MIX_FLIP_FACES):[];")
+        self.assertPageContains(
+            '${faceUrls.length>1?`<div class="mixfaces" '
+            'data-mix-faces="${esc(JSON.stringify(faceUrls))}" hidden></div>`:\'\'}')
+        # 遮住静止封面的底色跟着这张卡自己的底走：图片墙是浅底，视频卡是黑底。
+        self.assertPageContains(".followitem.imagecard .mixfaces{background:var(--sunk)}")
 
     def test_mix_and_persistent_playlists_share_the_routed_side_queue(self):
         self.assertPageContains('class="card mixcard" data-mix-seed=')

@@ -1627,10 +1627,12 @@ const MIX_FLIP_MS=1100;      // 一张停多久再翻走
 const MIX_FLIP_LEAD_MS=420;  // 面板建好到第一次翻动。直接用 1.1 秒间隔等第一张，鼠标停下到有反应要接近两秒
 const MIX_FLIP_FACES=9;      // 最多预渲染几张，一次悬浮不拉一整批封面
 const reduceMotion=()=>matchMedia('(prefers-reduced-motion:reduce)').matches;
-/* 悬浮 Mix 卡片时把它里面的前几部作品逐张翻走，说明它是一叠相似作品而不是
-   某一个视频。门槛和悬停预览一致：多选、遮挡、滞后动画偏好和滚动中都不启动，
-   离开即停并还原静止封面；`_stopHover` 让 releaseHoverPreviews 能连它一起收掉。 */
-function wireMixFlip(el,seedId){
+/* 悬浮一叠卡片时把它里面的前几张逐张翻走，说明它是一叠而不是某一个视频。
+   门槛和悬停预览一致：多选、遮挡、滞后动画偏好和滚动中都不启动，离开即停并
+   还原静止封面；`_stopHover` 让 releaseHoverPreviews 能连它一起收掉。
+   翻哪些由调用方给：目录页的 Mix 现拉相关作品，关注页的合集用卡片自己已有的
+   缩略图，两处共用同一套时序和门槛，不各写一份动效。 */
+function wireStackFlip(el,loadFaces){
   const box=el.querySelector('[data-mix-faces]');if(!box)return;
   let armed=null,lead=null,cycle=null,faces=[],index=0,live=false;
   const stop=()=>{
@@ -1649,20 +1651,35 @@ function wireMixFlip(el,seedId){
   const start=async()=>{
     if(selectMode||censorOn()||window.__scrolling||reduceMotion())return;
     live=true;
-    let related=[];
-    try{related=await mixRelated(seedId)}catch(_e){return}
+    let pool=[];
+    try{pool=await loadFaces()}catch(_e){return}
     if(!live||selectMode||censorOn())return;
-    const layout=javLayout();
-    const pool=[CACHE[seedId],...related]
-      .filter(x=>mixHasPicture(x,layout)).slice(0,MIX_FLIP_FACES);
     if(pool.length<2)return;
-    box.innerHTML=pool.map((x,i)=>`<div class="mixface${i?'':' on'}">${mixFacePoster(x,layout,true)}</div>`).join('');
+    box.innerHTML=pool.map((face,i)=>`<div class="mixface${i?'':' on'}">${face}</div>`).join('');
     faces=[...box.children];index=0;box.hidden=false;
     lead=setTimeout(()=>{step();cycle=setInterval(step,MIX_FLIP_MS)},MIX_FLIP_LEAD_MS);
   };
   el.addEventListener('mouseenter',()=>{clearTimeout(armed);armed=setTimeout(start,340)});
   el.addEventListener('mouseleave',stop);
   el._stopHover=stop;
+}
+function wireMixFlip(el,seedId){
+  wireStackFlip(el,async()=>{
+    const related=await mixRelated(seedId),layout=javLayout();
+    return [CACHE[seedId],...related]
+      .filter(x=>mixHasPicture(x,layout)).slice(0,MIX_FLIP_FACES)
+      .map(x=>mixFacePoster(x,layout,true));
+  });
+}
+/* 关注页的合集翻的是卡片渲染时就写进 DOM 的那几张缩略图：同一组媒体已经在
+   手上，悬浮不该再为动画发一次请求。第一张必须是静止封面本身，否则一翻就
+   露出取景差别。 */
+function wireFollowStackFlip(card){
+  const box=card.querySelector('[data-mix-faces]');if(!box)return;
+  let urls=[];
+  try{urls=JSON.parse(box.dataset.mixFaces||'[]')}catch(_e){return}
+  wireStackFlip(card,async()=>urls.map(url=>
+    `<img class="poster" src="${esc(url)}" alt="" loading="eager" referrerpolicy="no-referrer">`));
 }
 function wireMixCards(root){
   root.querySelectorAll('[data-mix-seed]').forEach(el=>{
@@ -3438,13 +3455,19 @@ function followCard(group,authorSources=[]){
   const mixKind=embedded.length&&embedded.every(media=>media.media_kind==='image')?'图片'
     :embedded.length&&embedded.some(media=>media.media_kind==='image')?'媒体':'视频';
   const mixTarget=embedded.length>1?item.id:(videos[0]?.id||item.id);
+  /* 翻动用的几张必须来自角标数的那一组，否则卡上写「9 个视频」翻的却是别处的图。
+     图片视图里只翻图片：这一叠说的就是这几张图。 */
+  const faceSource=embedded.length>1?embedded:(groupedVideos.length>1?groupedVideos:videos);
+  const faceUrls=isMix?[...new Set([thumbUrl,...faceSource
+    .filter(entry=>!imageView||entry.media_kind==='image')
+    .map(entry=>entry.thumb_url)].filter(Boolean))].slice(0,MIX_FLIP_FACES):[];
   const badges=followBadges(group);
   const tags=followCardTags(item).slice(0,3).map(tag=>followTagChip(item,tag)).join('');
   const mediaIssue=followMediaIssue(item);
   const open=`<button class="cardopenhit" data-follow-detail="${item.id}" aria-label="打开 ${esc(item.title)} 详情"></button>`;
   return `<article class="card followitem${isMix?' collection':''}${imageView?' imagecard':''}" data-follow-item="${item.id}" data-status="${esc(item.status)}">
     <div class="${isMix?'mixstack ':''}followvisual"><div class="pic">
-      ${open}${thumb}
+      ${open}${thumb}${faceUrls.length>1?`<div class="mixfaces" data-mix-faces="${esc(JSON.stringify(faceUrls))}" hidden></div>`:''}
       <span class="badge" title="${esc(item.provider_label)}" aria-label="来源：${esc(item.provider_label)}">${sourceIcon(item.provider)}</span>
       <span class="selectionMark">${icon('check')}</span>${realDuration(item.duration)?`<span class="dur mono">${fmtDur(item.duration)}</span>`:''}
       ${isMix?`<button class="mixbadge" data-follow-collection="${mixTarget}">${icon('play')}${mixCount} 个${mixKind}</button>`:''}
@@ -4053,6 +4076,7 @@ function wireFollowItems(){
     event.stopPropagation();openFollowDetail(+button.dataset.followCollection)});
   root.querySelectorAll('.followitem[data-follow-item]').forEach(card=>{
     const id=+card.dataset.followItem;
+    if(!card.dataset.flipWired){card.dataset.flipWired='1';wireFollowStackFlip(card)}
     card.onclick=event=>{
       if(event.target.closest('[data-follow-status],[data-follow-save],[data-follow-collection],[data-follow-detail],.tg'))return;
       if(selectMode||event.shiftKey||event.ctrlKey||event.metaKey){
