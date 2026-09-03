@@ -26,7 +26,7 @@
 - CloudDrive 经挂载点进入；Stash 历史断言以 `source='stash:*'` 留在账本里。
 - 本地浏览器支持 MP4/WebM/Ogg，AVI 等由 `TranscodeService` 缓存成 H.264/AAC MP4，永不改写原媒体；ffprobe 探测后可直接复制的流不重编码，其余在 Windows 走 CUDA/NVDEC。
 - 远端 MP4 默认走标准 Range，显式开启的 HLS 使用关键帧对齐片段并在失败时回退 Range。
-- 首页、详情、实体资料、标签管理、照片、播放列表、统计、口味、复核、回收站、关注管理和关注观看共用同一 SPA 与 JSON 契约；文本响应全站 gzip，页面资产走 ETag 复验。
+- 首页、详情、实体资料、标签管理、照片、播放列表、统计、口味、复核、回收站、关注管理和关注观看共用同一 SPA 与 JSON 契约，文本 gzip、资产 ETag。
 - Logo、侧栏「首页」和沉浸模式关闭统一清除分类、搜索与 JAV 筛选，首页默认稳定随机、换批才换种子，再点当前排序回到随机。
 - 桌面与 390×844 手机同在验收范围内，手机操作按钮保持 44 px 命中区。
 - 管理区归并为「数据管理」一页，人工复核、回收站、高清版、垃圾文件、重复文件和空文件夹是同一件事的不同步骤，一次刷新只放一段骨架。
@@ -46,7 +46,7 @@
 - 运维脚本共用 `peach.scripting`（只读连接、`--db/--apply/--backup`，apply 强制备份）；AST 门槛拒绝写死数据根和无 `--apply` 的 DML 脚本。
 - 关注检查分两阶段：列表阶段落 partial 行，详情补全按 provider 额度只补新行和未补齐行。
 - 采集脚本的整页 HTML 缓存与限速集中在 `peach.page_cache.Site`，传输错误自己退让重试，HTTP 状态码不重试。
-- `/api/related` 用 Tag IDF 加 MMR 排序并按资产缓存，人脸检出使用 YuNet；搜索使用 FTS5 trigram，短查询回退 LIKE 并覆盖规范名、别名和检索词，搜索历史在 reader 写入被拒时降级到页面内存。
+- `/api/related` 用 Tag IDF 加 MMR 排序并缓存，人脸检出使用 YuNet；搜索使用 FTS5 trigram，短查询回退 LIKE 并覆盖规范名、别名和检索词，搜索历史在 reader 写入被拒时降级到页面内存。
 - 回收站的单项删除和清空共用 `purge_assets()`：先处理媒体文件再提交 ledger，删不掉的文件保留可见状态并回报。
 - 复核页覆盖元数据、创作者标签、Logo、头像、身份、番号目录、FC2 证据和媒体失败；抓取与 AI 结果仍是候选，批准后才写真相字段，元数据候选保留 MetaTube 目录证据且不下载 URL。
 - 外部来源 genre 只在 `peach.genre_taxonomy` 投影，日英来源词共用一套既有词表，非内容分类排除、未收录原文回传登记。
