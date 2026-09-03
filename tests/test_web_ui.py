@@ -2126,12 +2126,73 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("kind==='dispose'&&r.disposal==='trash'&&state.state==='ads'")
 
     def test_junk_empty_state_only_appears_after_the_loading_request_finishes(self):
-        """待判断为空是请求终态；加载期间只能显示 Loading Dots，不能先闪空态。"""
+        """待判断为空是请求终态；加载期间显示的是骨架，不能先闪空态。"""
         branch = self.app_js.split("if(state.state==='ads'){", 1)[1].split("adsBatch=null;", 1)[0]
         request = "const nextAds=await surfaceApi(surface,'/api/ads?'+junkQuery)"
-        self.assertLess(branch.index("loadingDotsHtml('正在读取垃圾文件…')"), branch.index(request))
+        self.assertLess(branch.index("if(reset)$('#loadSentinel').hidden=true;"), branch.index(request))
         self.assertLess(branch.index(request), branch.index("emptyState('check'"))
-        self.assertPageContains("$('#loadSentinel').hidden=true")
+
+    def test_junk_files_wait_on_a_structural_skeleton_not_loading_dots(self):
+        """垃圾文件页等的是一屏同质卡片，不是后台任务的进度。
+
+        `.claude/skills/peach-web-ui/SKILL.md` 的判据：整页或大区块首次等待内容结构用
+        Skeleton，后台任务仍在推进才用 Loading Dots。垃圾文件页的正文就是一格一格的
+        `.junkcard`，跟目录网格同形；这里画 Loading Dots 等于把「等下会出现几张什么形状
+        的卡」换成了「还在跑」。两条进入路径——深链首屏和路由后的 `load(true)`——必须
+        说同一句话，否则整页刷新会连播两段动画：先骨架，再 dots。
+        """
+        self.assertPageContains("renderCatalogLoading('正在读取垃圾文件');")
+        self.assertPageContains("renderCatalogLoading(state.state==='ads'?'正在读取垃圾文件':'正在读取作品')")
+        self.assertPageLacks("loadingDotsHtml('正在读取垃圾文件…')")
+        self.assertPageLacks("junkloading")
+
+    def test_category_switchers_are_geist_secondary_tabs_not_a_segmented_control(self):
+        """复核分类和垃圾文件分类是同一个控件：Geist Tabs 的 secondary 变体。
+
+        证据：`docs/reference-snapshots/vercel-geist-tabs-secondary-measured.md`，上游正文锁在
+        `docs/reference-snapshots/upstream/vercel-geist-tabs.md` 与 `.../vercel-geist-switch.md`。
+        分段器（Switch）只承担 2–3 项互斥视图，标签超过两三个字就要换 Tabs；复核分类 10 项、
+        垃圾文件分类 7 项都在界外，所以这两条是 Tabs 不是分段器。secondary 变体实测是无边框
+        pill：高 32px、左右 12px、6px 圆角、13px/400，选中只换底色。原先那套 `--ink-2` 反相加
+        600 字重比规范重了一整级，而且两条各画各的，同一个控件在两页长得不一样。
+        """
+        self.assertPageContains(
+            ".reviewtabs,.junkfilters{display:flex;align-items:center;gap:0;min-width:0;"
+            "overflow-x:auto;scrollbar-width:none}")
+        self.assertCode(
+            ".reviewtabs button,.junkfilters a{box-sizing:border-box;height:32px;padding:0 12px;flex:none;"
+            "display:inline-flex;align-items:center;gap:6px;border:0;border-radius:var(--control-radius);"
+            "background:transparent;color:var(--muted);text-decoration:none;font:inherit;"
+            "font-size:var(--fs-sm);font-weight:400;white-space:nowrap;cursor:pointer}")
+        self.assertPageContains(
+            '.reviewtabs button[aria-selected="true"],.junkfilters a[aria-current="page"]'
+            '{background:var(--hover);color:var(--ink)}')
+        # 反相和边框都得真的消失，否则规范只落在注释里。
+        self.assertPageLacks('.reviewtabs button[aria-pressed="true"]{background:var(--ink-2)')
+        self.assertPageLacks('.junkfilters a[aria-current="page"]{border-color:var(--ink-2)')
+        # 复核那条没有独立 URL，升级成真 tablist：方向键漫游焦点，tabindex 只留在选中项上。
+        self.assertPageContains('<div class="reviewtabs" role="tablist" aria-label="复核分类">')
+        self.assertPageContains('<button role="tab" id="reviewtab-${key}" aria-controls="reviewpanel"')
+        self.assertPageContains('aria-selected="${on}" tabindex="${on?' + repr('0') + ':' + repr('-1') + '}"')
+        self.assertPageContains('<section class="reviewsection" id="reviewpanel" role="tabpanel" '
+                                'aria-labelledby="reviewtab-${reviewCategory}">')
+        self.assertPageLacks('<button data-review-tab="${key}" aria-pressed=')
+        self.assertPageContains("const step=event.key==='ArrowRight'?1:event.key==='ArrowLeft'?-1:0;")
+        self.assertPageContains(
+            ":event.key==='Home'?reviewTabs[0]:event.key==='End'?reviewTabs[reviewTabs.length-1]:null;")
+        # 垃圾文件那条仍是链接：规范要求当前项落在 URL 上，可深链、刷新可恢复。
+        self.assertPageContains('<nav class="junkfilters" aria-label="垃圾文件分类">')
+        self.assertPageContains('data-junk-kind-link="${esc(key)}"${current?' + repr(' aria-current="page"'))
+        # 计数是徽标不是标题的一部分，为 0 时整枚去掉，两条一个口径。
+        self.assertPageContains(
+            'count?` <span class="n mono">${count.toLocaleString()}</span>`:' + repr(''))
+        self.assertPageContains(
+            'dismissedTotal?` <span class="n mono">${dismissedTotal.toLocaleString()}</span>`:' + repr(''))
+        self.assertPageLacks(" <span>${countFor(key).toLocaleString()}</span>")
+        self.assertPageContains(".reviewtabs .n,.junkfilters .n{color:var(--muted);"
+                                "font-size:var(--fs-xs);font-variant-numeric:tabular-nums}")
+        # 40em 以下要抬高触摸目标；控件现在是定高，min-height 压不动它，两条 tab 一起抬。
+        self.assertPageContains(".reviewtabs button,.junkfilters a{height:44px}")
 
     def test_junk_review_and_trash_render_every_physical_resource_type(self):
         """图片、网址快捷方式等不能复用视频播放器，但必须可预览、回收和还原。"""
@@ -2214,9 +2275,50 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('class="pagelede mono" id="manageLede" hidden')
         self.assertPageContains(".pagelede{margin:0 0 16px;color:var(--muted);font-size:var(--fs-sm);line-height:1.5}")
         self.assertPageContains("paintManageLede(`${d.total} 组 · ${d.files} 个文件 · 可回收 ${fmtSize(d.reclaimable)}`)")
-        self.assertPageContains("if(trash)paintManageLede(`${total.toLocaleString()} 个符合 · 显示 ${n}`)")
+        self.assertPageContains("if(trash)paintManageLede(`${total.toLocaleString()} 个符合 · 显示 ${n}`,")
         self.assertPageContains(".count.count-actions-only:empty{display:none}")
         self.assertPageLacks('class="dupsum mono"')
+
+    def test_empty_trash_shares_the_lede_row_instead_of_taking_one_of_its_own(self):
+        """「清空回收站」和它左边那句计数说的是同一批文件，同属说明行。
+
+        回收站的说明搬进 `#manageLede` 之后，计数栏里就只剩这一个按钮：标题和网格之间
+        因此空出一条只放一个按钮的带子。说明行支持右端动作后两者并成一行。`hidden` 的
+        判据要同时看文本和动作——只看文本的话，总数为 0 时那句说明还在，判据却没变；
+        真正的风险是反过来：有动作没文本时整行被藏掉，按钮跟着消失。
+        """
+        self.assertPageContains("function paintManageLede(text='',actionsHtml='')")
+        self.assertPageContains("el.hidden=!text&&!actionsHtml;")
+        self.assertPageContains("el.classList.toggle('pagelede-actions',!!actionsHtml);")
+        self.assertPageContains("if(actionsHtml)el.insertAdjacentHTML('beforeend',actionsHtml);")
+        lede = self.app_js.split("if(trash)paintManageLede(", 1)[1].split("$('#count')", 1)[0]
+        self.assertIn('class="batchaction danger" id="emptyTrash"', lede,
+                      "清空回收站要挂在说明行上，不是自己占一行")
+        # 计数栏在回收站页只剩空壳，靠 :empty 收掉；按钮不能同时还留在 .sorts 里。
+        sorts = self.app_js.split('<span class="sorts">', 1)[1].split('</span>', 1)[0]
+        self.assertNotIn('id="emptyTrash"', sorts)
+        self.assertPageContains(
+            ".pagelede-actions{display:flex;align-items:center;justify-content:space-between;gap:16px}")
+        self.assertPageContains(
+            ".pagelede-actions .batchaction.danger{background:var(--drop);border-color:var(--drop);color:#fff}")
+        self.assertPageLacks(".count .sorts .batchaction.danger{")
+        # 桌面 32px 是 Geist 的控件高度，手机要回到本项目的 44px 命中区。
+        self.assertPageContains(".pagelede-actions .batchaction{height:44px;padding-inline:16px}")
+
+    def test_only_the_data_cleanup_hub_narrows_its_title_column(self):
+        """812px 窄列是数据管理 hub 自己的正文宽度，不是整个数据管理区的。
+
+        `.cleanuppage` 把 hub 那一页收进 812px，标题和面包屑跟着收才对得齐。但同一个
+        section 底下的垃圾文件、重复文件正文都是全宽网格：跟着收就是宽屏上标题凭空左缩
+        一截，标题左边缘和第一张卡的左边缘对不上。判据必须是路径，不是 section。
+        """
+        self.assertCode("document.body.classList.toggle('cleanup-layout',"
+                        "current==='cleanup'&&decodeURIComponent(location.pathname)==='/data-cleanup')")
+        self.assertPageLacks("document.body.classList.toggle('cleanup-layout',current==='cleanup')")
+        # 窄列本体仍在 hub 上，这两条规则本身不动。
+        self.assertPageContains(".cleanuppage{width:min(812px,100%);margin:0 auto}")
+        self.assertPageContains(
+            ".cleanup-layout .geist-breadcrumb,.cleanup-layout .managetitle,.cleanup-layout .pagelede")
 
     def test_returning_home_from_any_surface_moves_the_highlight(self):
         """Logo、侧栏和沉浸关闭都必须清掉隐藏筛选，不能让 `/` 继续请求 JAV。"""
@@ -2952,7 +3054,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".sbadge.error i{background:var(--drop)}")
         # 清空回收站：danger 语义色。
         self.assertPageContains('class="batchaction danger" id="emptyTrash"')
-        self.assertPageContains(".count .sorts .batchaction.danger{background:var(--drop);border-color:var(--drop);color:#fff;font-weight:500}")
+        self.assertPageContains(".pagelede-actions .batchaction.danger{background:var(--drop);border-color:var(--drop);color:#fff}")
         # Geist 菜单：触发器和每个选项都有入口图标，菜单内部滚动且不加猜测动画。
         self.assertPageContains('data-sidebar-add-trigger aria-haspopup="listbox" aria-expanded="false"')
         self.assertPageContains('role="option" data-sidebar-add-option=')

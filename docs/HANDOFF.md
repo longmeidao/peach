@@ -1,7 +1,7 @@
 # Peach 交接与长期工作约定
 
 本文件只保存跨任务长期有效的事实和工作规则，不记录逐次聊天流水。每条判据只写一句，
-展开的测量值、像素、命令和事故过程放在对应的技能、参考快照、L2 文档、代码注释和测试里。
+展开的测量值、命令和事故过程放在技能、参考快照、L2 文档和测试里。
 
 ## 界面、媒体与复核的既定判据
 
@@ -72,12 +72,12 @@
 快照、URL、版本、SHA、未取得面与 Peach 的有意差异统一登记在 `docs/reference-sources.json` 和
 `docs/reference-snapshots/`，每份快照自带「Peach 采用与差异」一节；获取、失效复核与接受更新的流程见
 `.claude/skills/peach-reference-evidence/SKILL.md`。本文件不复制会随上游变化的测量值，只登记哪件事看哪份快照。
-登记表的契约是「快照文件 + 可重抓 URL」，所以 React 渲染的规格页、用户截图和「哪个主机还能取到图」这类实测不进登记表，
-但必须在快照正文里写明为什么不进——`tests/test_reference_updates.py` 会拒绝既没登记也没说明的快照。
+React 渲染的规格页、用户截图这类给不出可重抓字节的实测不进登记表，但要在快照正文写明理由——`tests/test_reference_updates.py` 会拒绝既没登记也没说明的快照。
 
 - 相关推荐算法：`openaver-related-ranking`，固定 revision，只参考 Tag IDF 与结构化共同点，MMR 和稳定破同分是 Peach 自加，不复制上游界面或源码。
 - 网格、控件半径、语义 token 与中间省略：`vercel-geist-grid`、`vercel-geist-controls-measured`、`vercel-geist-middle-truncate`；中间省略只用于路径、URL、ID、SHA 这类首尾都有信息的值，必须显式 `data-middle-truncate`，标题、说明、人名和标签保留末尾省略。
 - 统计与口味两页的层级，Note／Progress／Switch／Fieldset／Scroller／Empty State 的语义，按钮的尺寸档与三态：`vercel-geist-semantics-measured`、`vercel-geist-note-progress-switch-analytics`、`vercel-geist-fieldset-scroller-empty-state`。
+- 分类切换条属于 Tabs 的 secondary 变体而不是分段器：`vercel-geist-tabs-secondary-measured`。
 - 表格、排行与面包屑：`vercel-geist-table-ranking`、`vercel-geist-breadcrumbs`；同形可比较数据才用语义 `table` 并保持 tabular numerals，内容标签是固定 Top 排行和直接筛选，不伪装成可排序数据表。
 - 设置 Dialog 动效、搜索期 Spinner、后台 Loading Dots 与 busy 按钮：`vercel-geist-command-search-loading`；中性说明 Note：`vercel-notifications-note`；具名动作 Toast：`vercel-geist-toast`。用户直接触发的动作用 Spinner，后台扫描用 Loading Dots，等待按钮经共享 busy 状态变灰但不用原生 `disabled`。
 - 资料页阅读顺序与照片入口：`beeg-profile-layout`；JAV 标题显示语义：`jav-title-user-screenshot`，只在 `is_jav` 项目上应用，不改真实文件名，也不在账本只有番号时伪造官方标题。

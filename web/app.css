@@ -225,6 +225,16 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 /* 管理页标题下的说明只用这一种字形和间距；不要再让统计容器或吸顶计数栏各画一份。 */
 .pagelede{margin:0 0 16px;color:var(--muted);font-size:var(--fs-sm);line-height:1.5}
 .pagelede[hidden]{display:none}
+/* 页面动作挂在说明行右端：它和左边那句说的是同一批文件，自己占一整行时，标题和
+   内容之间会空出一条只放一个按钮的带子。 */
+.pagelede-actions{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.pagelede-actions .batchaction{box-sizing:border-box;min-height:32px;padding:0 14px;flex:none;
+  display:inline-flex;align-items:center;border:1px solid transparent;border-radius:var(--control-radius);
+  background:var(--ink);color:var(--ground);font:inherit;font-size:var(--fs-xs);font-weight:500;cursor:pointer}
+.pagelede-actions .batchaction.danger{background:var(--drop);border-color:var(--drop);color:#fff}
+.pagelede-actions .batchaction.danger:hover{background:color-mix(in srgb,var(--drop) 82%,#000);
+  border-color:color-mix(in srgb,var(--drop) 82%,#000);color:#fff}
+.pagelede-actions .batchaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 /* 统计页 */
 .stats{padding:0 0 42px}
 .playlistpage{padding:4px 0 42px}.playlistpage>header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:16px}.playlistpage h2{margin:0 0 5px}.playlistpage p{margin:0;color:var(--muted);font-size:var(--fs-sm)}
@@ -232,7 +242,7 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 .playlistcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.playlistcard{display:grid;grid-template-columns:112px minmax(0,1fr);gap:12px;padding:12px;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface);min-width:0}.playlistcover{position:relative;aspect-ratio:16/10;border:0;border-radius:var(--surface-radius);background:#000;overflow:hidden;padding:0;cursor:pointer}.playlistcover:disabled{cursor:default}.playlistcover img{width:100%;height:100%;object-fit:cover}.playlistcover span{position:absolute;right:5px;bottom:5px;border-radius:var(--badge-radius);background:#000b;color:#fff;padding:3px 6px;font-size:var(--fs-xs)}.playlistmeta{display:grid;align-content:center;gap:6px;min-width:0}.playlistmeta input{min-width:0;width:100%;font-weight:600}.playlistmeta small{color:var(--muted)}.playlistactions{grid-column:1/-1;display:flex;gap:7px;justify-content:flex-end}.playlistactions .danger{color:var(--drop)}
 .playlistdialog{width:min(520px,calc(100vw - 28px));border:1px solid var(--line);border-radius:var(--floating-radius);background:var(--surface);color:var(--ink);padding:0;box-shadow:0 2px 4px #0003,0 24px 80px #000b}.playlistdialog::backdrop{background:#000a;backdrop-filter:blur(5px)}.playlistdialoghead{display:flex;align-items:center;justify-content:space-between;padding:16px 17px;border-bottom:1px solid var(--line-soft)}.playlistdialoghead h2{margin:0;font-size:var(--fs-xl)}.playlistdialoghead button{width:34px;height:34px;border:0;border-radius:var(--control-radius);background:transparent;color:var(--ink);display:grid;place-items:center;cursor:pointer}.playlistdialoghead button:hover{background:var(--hover)}.playlistdialoghead svg{width:19px;height:19px;stroke:currentColor;fill:none}.playlistdialogbody{padding:17px}.playlistpicklist{display:grid;gap:7px;margin-top:16px;max-height:320px;overflow-y:auto;overscroll-behavior:contain}.playlistpickrow{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--border-10);border-radius:var(--control-radius);background:var(--overlay-5);color:var(--ink);padding:11px 12px;text-align:left;cursor:pointer}.playlistpickrow:hover{background:var(--hover)}.playlistpickrow small{color:var(--muted)}
 .runtimegate{display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:12px;margin:0 0 12px;padding:10px 12px;border:1px solid color-mix(in srgb,var(--meter) 35%,var(--line));border-radius:var(--control-radius);background:color-mix(in srgb,var(--meter) 8%,var(--surface));color:var(--ink);font-size:var(--fs-sm)}.runtimegate>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.runtimegate span{min-width:0}.runtimegate a{color:var(--ink);font-weight:600;text-decoration:none}.runtimegate a:hover{color:var(--ink-2)}
-.review{--review-fieldset-height:440px;padding:0 0 42px}.reviewtabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:16px;scrollbar-width:none}.reviewtabs::-webkit-scrollbar{display:none}.reviewtabs button{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:7px 14px;cursor:pointer;font-size:var(--fs-sm);white-space:nowrap}.reviewtabs button:hover{background:var(--hover);color:var(--ink)}.reviewtabs button[aria-pressed="true"]{background:var(--hover);color:var(--ink);border-color:color-mix(in srgb,var(--ink) 28%,transparent);font-weight:600}.reviewtabs .n{color:var(--muted);font-size:var(--fs-xs)}.reviewsection{margin-bottom:20px}.reviewsection h3{margin:0 0 9px;font-size:var(--fs-lg)}.reviewlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}
+.review{--review-fieldset-height:440px;padding:0 0 42px}.reviewsection{margin-bottom:20px}.reviewsection h3{margin:0 0 9px;font-size:var(--fs-lg)}.reviewlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}
 /* 判定状态用左侧色条表达：整卡描边在一列里扫过去时反而认不出来 */
 .reviewitem{position:relative;display:flex;flex-direction:column;box-sizing:border-box;height:var(--review-fieldset-height);margin:0;padding:0;min-width:0;overflow:hidden;background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--floating-radius)}.reviewitem::before{content:'';position:absolute;z-index:3;left:0;top:0;bottom:0;width:3px;background:transparent}.reviewitem[data-decision="approved"]::before{background:var(--keep)}.reviewitem[data-decision="rejected"]::before{background:var(--drop)}.reviewitem[data-decision="skipped"]::before{background:var(--muted)}.reviewitem[data-decision="rejected"],.reviewitem[data-decision="skipped"]{opacity:.6}.reviewitem h4{margin:0 0 6px;font-size:var(--fs-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reviewitem p{margin:4px 0;color:var(--muted);font-size:var(--fs-xs);line-height:1.55;overflow-wrap:anywhere}
 .reviewitem>.geist-fieldset-content{flex:1;min-height:0;padding:20px}.reviewcontent{height:100%}
@@ -256,7 +266,6 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 .reviewstate:empty{display:none}
 .reviewalias{margin:2px 0 0;font-size:var(--fs-xs);color:var(--muted)}
 .reviewactions button{box-sizing:border-box;height:32px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:0 12px;font-size:var(--fs-sm);cursor:pointer}.reviewactions button:hover{background:var(--hover);color:var(--ink)}.reviewactions .approve{background:var(--ink);border-color:var(--ink);color:var(--ground);font-weight:600}.reviewactions .approve:hover{background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}.reviewactions .skip{color:var(--meter)}.reviewactions .skip:hover{background:var(--meter);border-color:var(--meter);color:#fff}.reviewactions .reject{color:var(--drop)}.reviewactions .reject:hover{background:var(--drop);border-color:var(--drop);color:#fff}
-.junkloading{grid-column:1/-1;min-height:280px;display:grid;place-items:center}
 /* 数据管理整页收进一条窄列（vercel.com/geist/fieldset 实测示例块宽 812px），
    fieldset 一行一个，不再拼三列。 */
 .cleanuppage{width:min(812px,100%);margin:0 auto}
@@ -839,8 +848,6 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 .count .sorts #batchAction,.entitycollectionhead .sorts .entitybatch{width:36px;padding:0;display:inline-grid;place-items:center}
 .count .sorts #batchAction svg,.entitycollectionhead .sorts .entitybatch svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
 .count .sorts .batchaction:hover,.entitycollectionhead .sorts .batchaction:hover{background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground));color:var(--ground)}
-.count .sorts .batchaction.danger{background:var(--drop);border-color:var(--drop);color:#fff;font-weight:500}
-.count .sorts .batchaction.danger:hover{background:color-mix(in srgb,var(--drop) 82%,#000);border-color:color-mix(in srgb,var(--drop) 82%,#000);color:#fff}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
 .shorts-inline{grid-column:1/-1;margin:28px 0 8px;padding-top:0}
 .shorts-inline h2{margin:0 0 10px;font-size:var(--fs-lg);display:flex;align-items:center;gap:10px}
@@ -952,17 +959,25 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .resourcecardtitle{cursor:default}
 .junkcount{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px}
 .junksummary{flex:none;font-size:var(--fs-sm);color:var(--muted);white-space:nowrap}
-.junkfilters{display:flex;align-items:center;gap:6px;min-width:0;overflow-x:auto;scrollbar-width:none}
-.junkfilters::-webkit-scrollbar{display:none}.junkfilters i{width:1px;height:22px;background:var(--line-soft);flex:none;margin:0 3px}
-.junkfilters a{box-sizing:border-box;min-height:34px;padding:0 11px;display:inline-flex;align-items:center;gap:6px;flex:none;
-  border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);
-  text-decoration:none;font-size:var(--fs-xs);white-space:nowrap}
+/* Geist Tabs 的 secondary 变体（vercel.com/geist/tabs 实测 2026-09-03）：无边框的 pill，
+   高 32px、左右 12px、6px 圆角、13px/400；选中只换底（深色实测是 --accents-2 这一级的
+   浅灰，Peach 浅色里对应 --hover）加前景色，未选中只有 --muted 文字，整条不画底线。
+   复核分类 10 项、垃圾文件分类 7 项都越过 Switch「2–3 项互斥选项」的上限，规范落点
+   就是 Tabs 而不是分段器，所以两条共用同一套外观。 */
+.reviewtabs,.junkfilters{display:flex;align-items:center;gap:0;min-width:0;overflow-x:auto;scrollbar-width:none}
+.reviewtabs::-webkit-scrollbar,.junkfilters::-webkit-scrollbar{display:none}
+.reviewtabs{margin-bottom:16px}
+.reviewtabs button,.junkfilters a{box-sizing:border-box;height:32px;padding:0 12px;flex:none;
+  display:inline-flex;align-items:center;gap:6px;border:0;border-radius:var(--control-radius);
+  background:transparent;color:var(--muted);text-decoration:none;font:inherit;font-size:var(--fs-sm);
+  font-weight:400;white-space:nowrap;cursor:pointer}
+.reviewtabs button:hover,.junkfilters a:hover{color:var(--ink)}
+.reviewtabs button[aria-selected="true"],.junkfilters a[aria-current="page"]{background:var(--hover);color:var(--ink)}
+.reviewtabs button:focus-visible,.junkfilters a:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+.reviewtabs .n,.junkfilters .n{color:var(--muted);font-size:var(--fs-xs);font-variant-numeric:tabular-nums}
+.junkfilters i{width:1px;height:20px;background:var(--line-soft);flex:none;margin:0 6px}
 .junkfilters a>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;
   stroke-linecap:round;stroke-linejoin:round}
-.junkfilters a:hover{background:var(--hover);color:var(--ink)}
-.junkfilters a:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
-.junkfilters a[aria-current="page"]{background:var(--hover);color:var(--ink);border-color:color-mix(in srgb,var(--ink) 28%,transparent);font-weight:500}
-.junkfilters a span{font-variant-numeric:tabular-nums;color:inherit;opacity:.72}
 .junkcard{cursor:default;gap:0;overflow:hidden;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface);
   content-visibility:auto;contain-intrinsic-size:auto 360px}
 .junkcard .pic{border:0;border-radius:0}.junkcard:hover .pic{border:0;box-shadow:none}
@@ -1840,6 +1855,9 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   .runtimegate a{grid-column:2/-1}
   .managebar-menu button{width:100%;min-height:42px;justify-content:flex-start;padding:9px 11px}
   .cleanupgrid{grid-template-columns:minmax(0,1fr)}
+  /* 说明行右端的动作在手机上要够手指点：桌面 32px 是 Geist 的控件高度，触摸区按本项目
+     的 44px 命中区来。 */
+  .pagelede-actions .batchaction{height:44px;padding-inline:16px}
   .grid{gap:16px 8px}
   .count{align-items:center;flex-direction:row;gap:10px;padding-block:8px;
     overflow-x:auto;overflow-y:hidden;scrollbar-width:none;overscroll-behavior-inline:contain}
@@ -1849,7 +1867,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   .count .sorts button{min-height:36px}
   .count.junkcount{align-items:stretch;flex-direction:column;overflow:visible;padding-block:8px}
   .junkcount .junksummary{line-height:1.4}.junkfilters{width:100%;padding-bottom:2px}
-  .junkfilters a{min-height:44px}.junkactions button{min-height:44px;padding-inline:7px}
+  .reviewtabs button,.junkfilters a{height:44px}.junkactions button{min-height:44px;padding-inline:7px}
   #batchbar[hidden]{display:none}
   .batchbar:has([data-junk-batch]:not([hidden])){left:12px;right:12px;bottom:12px;width:auto;transform:none;
     display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;padding:9px 10px}

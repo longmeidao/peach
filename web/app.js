@@ -162,8 +162,9 @@ const managementPlaceholder=path=>
 function renderInitialSurfaceLoading(){
   const path=decodeURIComponent(location.pathname);
   if(path==='/junk-files'){
-    const count=$('#count');count.setAttribute('aria-busy','true');count.textContent='';
-    $('#grid').innerHTML=`<div class="junkloading">${loadingDotsHtml('正在读取垃圾文件…')}</div>`;
+    /* 垃圾文件是一屏同质卡片，等的是内容结构不是后台进度：Loading Dots 说的是
+       「还在跑」，这里要说的是「等下会出现几张什么形状的卡」，所以用目录骨架。 */
+    renderCatalogLoading('正在读取垃圾文件');
     $('#loadSentinel').hidden=true;
     return;
   }
@@ -1487,14 +1488,17 @@ function wireJunkCards(root){
 }
 function renderJunkNavigation(data){
   const countFor=key=>key?Number(data.counts?.[key]||0):Number(data.all_total||0);
+  const dismissedTotal=Number(data.dismissed_total||0);
   const categoryLinks=JUNK_KIND_OPTIONS.map(([key,label,glyph])=>{
-    const current=key===junkKind;
-    return `<a href="${junkPath(key,junkView)}" data-junk-kind-link="${esc(key)}"${current?' aria-current="page"':''}>${icon(glyph)}${esc(label)} <span>${countFor(key).toLocaleString()}</span></a>`;
+    const current=key===junkKind,count=countFor(key);
+    /* 同一套 Geist Tabs 徽标口径：计数为 0 时整枚去掉。这一条仍用 <a>，因为分类要落到
+       URL 上——规范里 Tabs 的行为条款本身就要求当前项可深链、可刷新恢复。 */
+    return `<a href="${junkPath(key,junkView)}" data-junk-kind-link="${esc(key)}"${current?' aria-current="page"':''}>${icon(glyph)}${esc(label)}${count?` <span class="n mono">${count.toLocaleString()}</span>`:''}</a>`;
   }).join('');
   $('#count').removeAttribute('aria-busy');
   $('#count').innerHTML=`<div class="junksummary" aria-live="polite">显示 ${Number(data.total||0).toLocaleString()} 个</div>
     <nav class="junkfilters" aria-label="垃圾文件分类">${categoryLinks}<i aria-hidden="true"></i>
-      <a href="${junkPath('',junkView==='dismissed'?'pending':'dismissed')}" data-junk-view-link="${junkView==='dismissed'?'pending':'dismissed'}"${junkView==='dismissed'?' aria-current="page"':''}>${icon(junkView==='dismissed'?'rotate-ccw':'eye-off')}${junkView==='dismissed'?'返回待判断':'已排除'} <span>${Number(data.dismissed_total||0).toLocaleString()}</span></a>
+      <a href="${junkPath('',junkView==='dismissed'?'pending':'dismissed')}" data-junk-view-link="${junkView==='dismissed'?'pending':'dismissed'}"${junkView==='dismissed'?' aria-current="page"':''}>${icon(junkView==='dismissed'?'rotate-ccw':'eye-off')}${junkView==='dismissed'?'返回待判断':'已排除'}${dismissedTotal?` <span class="n mono">${dismissedTotal.toLocaleString()}</span>`:''}</a>
     </nav>`;
   $('#count').querySelectorAll('[data-junk-kind-link],[data-junk-view-link]').forEach(link=>link.onclick=event=>{
     if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
@@ -1943,14 +1947,17 @@ async function buildBars(){
 function renderCount(){
   const n=$('#grid').querySelectorAll(':scope > .card[data-id]').length;   // 竖屏条不计入「显示 N」
   const trash=state.state==='trash';
-  if(trash)paintManageLede(`${total.toLocaleString()} 个符合 · 显示 ${n}`);
+  /* 「清空回收站」和左边的计数说的是同一批文件，挂在说明行右端。它自己占一行时，
+     标题和网格之间会空出一条只放一个按钮的带子。 */
+  if(trash)paintManageLede(`${total.toLocaleString()} 个符合 · 显示 ${n}`,
+    total?`<button class="batchaction danger" id="emptyTrash" type="button" title="永久删除回收站内容">清空回收站</button>`:'');
   $('#count').classList.toggle('count-actions-only',trash);
   $('#count').removeAttribute('aria-busy');
   $('#count').innerHTML=
     (trash?'':`<span class="mono">${total.toLocaleString()} 个符合 · 显示 ${n}</span>`)
     +(trash
       // 回收站是待清理队列，不是浏览列表：换一批和排序在这里没有意义。
-      ? (total?`<span class="sorts"><button class="batchaction danger" id="emptyTrash" title="永久删除回收站内容">清空回收站</button></span>`:'')
+      ? ''
       : `<span class="sorts"><button class="batchaction" id="batchAction" type="button"
           title="换一批" aria-label="换一批">${icon('refresh-cw')}</button>`
         // JAV 版式紧跟换批动作，和排序连成一条。
@@ -2829,8 +2836,15 @@ async function openReview(push=true){
      $('#stats').innerHTML=`<div class="review">
       ${locked?`<div class="runtimegate">${icon('info')}<span>${esc(mirrorText)}</span>${writer
         ?`<a href="${esc(writer)}">前往写入端复核</a>`:''}</div>`:''}
-      <div class="reviewtabs">${Object.entries(REVIEW_LABELS).map(([key,label])=>`<button data-review-tab="${key}" aria-pressed="${key===reviewCategory}">${label} <span class="n mono">${reviewData.counts[key]||0}</span></button>`).join('')}</div>
-      <section class="reviewsection"><div class="reviewlist">${rows.length?rows.map(row=>{
+      <div class="reviewtabs" role="tablist" aria-label="复核分类">${Object.entries(REVIEW_LABELS).map(([key,label])=>{
+        /* Geist Tabs（vercel.com/geist/tabs）：计数走独立徽标，为 0 时整枚去掉，不留一个
+           「0」占位；tabindex 只留在选中项上，方向键负责在同一条里移动焦点。 */
+        const on=key===reviewCategory,count=Number(reviewData.counts[key]||0);
+        return `<button role="tab" id="reviewtab-${key}" aria-controls="reviewpanel" data-review-tab="${key}"
+          aria-selected="${on}" tabindex="${on?'0':'-1'}">${label}${
+          count?` <span class="n mono">${count.toLocaleString()}</span>`:''}</button>`;
+      }).join('')}</div>
+      <section class="reviewsection" id="reviewpanel" role="tabpanel" aria-labelledby="reviewtab-${reviewCategory}"><div class="reviewlist">${rows.length?rows.map(row=>{
         const key=row.item_key,decision=row.decision||'pending';
         const metadata=reviewCategory==='metadata_fields',candidates=row.candidates||[];
         const tags=String(row.tags||'').split('|').filter(Boolean).map(tag=>`<span>${esc(tag)}</span>`).join('');
@@ -2903,7 +2917,19 @@ async function openReview(push=true){
     // 没有全局委托，每个界面各自接线（见 #stage 的同类处理）。
     $('#stats').querySelectorAll('[data-entity-kind]').forEach(button=>button.onclick=()=>
       openEntity(button.dataset.entityKind,button.dataset.entityName));
-    $('#stats').querySelectorAll('[data-review-tab]').forEach(button=>button.onclick=()=>{reviewCategory=button.dataset.reviewTab;render()});
+    /* Geist Tabs 的键盘契约：左右方向键在同一条 tab 里移动焦点，Home/End 到两端；
+       激活仍交给 button 自己的 Enter/Space，不另设快捷键。 */
+    const reviewTabs=[...$('#stats').querySelectorAll('[data-review-tab]')];
+    reviewTabs.forEach((button,index)=>{
+      button.onclick=()=>{reviewCategory=button.dataset.reviewTab;render()};
+      button.onkeydown=event=>{
+        const step=event.key==='ArrowRight'?1:event.key==='ArrowLeft'?-1:0;
+        const target=step?reviewTabs[(index+step+reviewTabs.length)%reviewTabs.length]
+          :event.key==='Home'?reviewTabs[0]:event.key==='End'?reviewTabs[reviewTabs.length-1]:null;
+        if(!target)return;
+        event.preventDefault();target.focus();
+      };
+    });
     $('#stats').querySelectorAll('[data-review-status]').forEach(button=>button.onclick=async()=>{
       const item=button.closest('[data-review-key]'),row=rows.find(x=>String(x.item_key)===item.dataset.reviewKey);button.disabled=true;
        const selectedIds=[...item.querySelectorAll('[data-review-asset][aria-pressed="true"]')].map(cell=>+cell.dataset.reviewAsset);
@@ -5438,7 +5464,9 @@ function paintManageTitle(){
   const current=manageSection(),el=$('#manageTitle');
   if(!el)return;
   document.body.classList.toggle('insight-layout',current==='stats'||current==='taste');
-  document.body.classList.toggle('cleanup-layout',current==='cleanup');
+  /* 812px 居中是数据管理 hub 自己的窄列宽度（.cleanuppage）。它下面的垃圾文件、
+     重复文件正文都是全宽网格，跟着居中就是标题在宽屏上凭空左缩一截、跟内容对不齐。 */
+  document.body.classList.toggle('cleanup-layout',current==='cleanup'&&decodeURIComponent(location.pathname)==='/data-cleanup');
   const entry=MANAGE_SECTIONS.find(([k])=>k===current);
   el.hidden=!entry;
   // 数据管理之下按路径再分一层（MANAGE_CRUMB_PAGES）：垃圾文件/重复文件的
@@ -5461,9 +5489,15 @@ function paintManageCrumb(){
     event.preventDefault();openDataCleanup();
   });
 }
-function paintManageLede(text=''){
+/* 说明行可以在右端挂一个属于本页的动作（回收站的「清空回收站」）。左文右动作是
+   一行，不是两行；没有动作时它仍是一段纯文本。 */
+function paintManageLede(text='',actionsHtml=''){
   const el=$('#manageLede');if(!el)return;
-  el.hidden=!text;el.textContent=text;
+  el.hidden=!text&&!actionsHtml;
+  el.classList.toggle('pagelede-actions',!!actionsHtml);
+  el.innerHTML='';
+  if(text)el.appendChild(Object.assign(document.createElement('span'),{textContent:text}));
+  if(actionsHtml)el.insertAdjacentHTML('beforeend',actionsHtml);
 }
 function paintListTitle(){
   const el=$('#listTitle');if(!el)return;
@@ -5650,7 +5684,7 @@ async function load(reset){
   if(!reset)listLoading=true;
   try{
   if(reset){barsContext={type:'home',filters:state};detailReturnBarsContext=null;disposeStage(false);
-    renderCatalogLoading(state.state==='ads'?'正在读取资源':'正在读取作品')}
+    renderCatalogLoading(state.state==='ads'?'正在读取垃圾文件':'正在读取作品')}
   showHomeSurfaces();
   if(reset){offset=0;renderedPartGroups.clear();renderedEditionGroups.clear()}
   renderCombo();
@@ -5660,10 +5694,9 @@ async function load(reset){
   countRow.classList.toggle('junkcount',staticManageCount);
   if(staticManageCount)countRow.classList.remove('is-stuck');
   if(state.state==='ads'){
-    if(reset){
-      $('#grid').innerHTML=`<div class="junkloading">${loadingDotsHtml('正在读取垃圾文件…')}</div>`;
-      $('#loadSentinel').hidden=true;
-    }
+    // 骨架已经由上面的 reset 分支画好；这里再盖一层 Loading Dots 只会连播两段
+    // 动画，还把「等下出现什么」换成了「还在跑」。
+    if(reset)$('#loadSentinel').hidden=true;
     if(reset||!adsBatch){const junkQuery=new URLSearchParams({limit:'200',status:junkView});if(junkKind)junkQuery.set('kind',junkKind);
       const nextAds=await surfaceApi(surface,'/api/ads?'+junkQuery);
       if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
