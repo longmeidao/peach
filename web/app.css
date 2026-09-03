@@ -992,7 +992,9 @@ button.junkcardtitle{cursor:pointer}button.junkcardtitle:hover{color:var(--ink-2
 button.junkcardtitle:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px;border-radius:var(--control-radius)}
 .junkactions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:auto;padding:10px 12px;
   border-top:1px solid var(--line-soft);background:var(--overlay-5)}
-.junkactions button{box-sizing:border-box;min-width:0;min-height:36px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:7px;
+/* 三个按钮等宽，内容却各自居中：标签 4/4/5 字长短不齐，三个图标就横向参差。
+   靠左起排后，图标到各自左边框是同一段距离，落在一条竖线上。 */
+.junkactions button{box-sizing:border-box;min-width:0;min-height:36px;padding:0 10px;display:inline-flex;align-items:center;justify-content:flex-start;gap:7px;
   border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink-2);
   font:inherit;font-size:var(--fs-xs);white-space:nowrap;cursor:pointer}
 .junkactions button:hover:not(:disabled){background:var(--hover);color:var(--ink)}
@@ -1000,7 +1002,9 @@ button.junkcardtitle:focus-visible{outline:2px solid var(--tungsten);outline-off
 .junkactions button:disabled{cursor:wait;opacity:.64}.junkactions button svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:2}
 .junkactions .junktrash{color:var(--drop)}.junkactions .junktrash:hover:not(:disabled){border-color:color-mix(in srgb,var(--drop) 46%,transparent);color:var(--drop);background:color-mix(in srgb,var(--drop) 8%,transparent)}
 .junkstate{grid-column:1/-1;color:var(--drop);font-size:var(--fs-xs)}.junkstate:empty{display:none}
+/* 紧凑密度下只剩图标，靠左会在按钮右侧留出一片空白，此时回到居中。 */
 body[data-density="dense"] .junkcard .junkactions button span{display:none}
+body[data-density="dense"] .junkcard .junkactions button{justify-content:center}
 .badge{position:absolute;top:6px;left:6px;display:flex;gap:4px;z-index:2;align-items:center;
   transition:opacity .15s ease}
 /* 首页流和详情只留来源图标；完整来源与费用通过 title/aria-label 提供。 */

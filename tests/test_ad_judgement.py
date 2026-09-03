@@ -9,11 +9,14 @@ import unittest
 from pathlib import Path
 
 from peach.web_contract import (
+    BUNDLE_DIR_ASSETS,
     PART_MARK,
+    PROMO_CLUSTER_FILES,
     PROMO_DOMAIN,
     PROMO_PHRASE,
     REAL_CODE,
     WebContract,
+    has_sibling_original,
     promo_residue,
     q_ads,
     q_items,
@@ -98,6 +101,38 @@ class AdJudgementTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertIsNotNone(PART_MARK.search(name))
 
+    def test_game_interstitial_padding_no_longer_counts_as_content(self):
+        """手游插页的残留全是固定套话，2026-09-03 之前它们把分数压到门槛以下。
+
+        `WAAA-415-uncensored-HD` 目录里这批图命中「扫码」，可剥完剩下的是
+        「免费18禁手游」「安装」——一个内容字都没有，却让残留数越算越高。
+        """
+        for name in ("爱姬远征-免费18禁手游-扫码安装",
+                     "天下布魔-免费18禁手游-扫码安装",
+                     "工口.R18-成人遊戲-免费18禁手游-扫码安装",
+                     "工口MH-扫描访问",
+                     "QR CODE--扫一扫"):
+            with self.subTest(name=name):
+                self.assertTrue(promo_hit(name), "应命中推广词")
+                self.assertLess(promo_residue(name), 6,
+                                "剥完只剩游戏名，不该算作实质描述")
+
+    def test_filler_words_alone_are_not_evidence(self):
+        """「免费」「手游」「安装」只降低残留，自己不构成命中。
+
+        真片名里也有这些词（`免费` 尤其常见），拿它们当命中依据就等于按题材删片。
+        """
+        for name in ("免费的午后 上门安装师傅", "手游主播的私拍"):
+            with self.subTest(name=name):
+                self.assertFalse(promo_hit(name))
+
+    def test_shot_tail_only_strips_the_thumbnail_suffix(self):
+        """`MIAD573_02_s` 要退回 `MIAD573_02`，不能退到 `MIAD573`：那是另一条正片。"""
+        self.assertTrue(has_sibling_original("MIAD573_02_s", {"miad573_02"}))
+        self.assertTrue(has_sibling_original("BNST-033-cover", {"bnst-033"}))
+        self.assertFalse(has_sibling_original("MIAD573_02_s", {"miad573"}))
+        self.assertFalse(has_sibling_original("别的广告图", {"miad573_02"}))
+
 
 class ResourceJunkQueueTests(unittest.TestCase):
     """物理资源都要经过垃圾判断，类型不能成为免检条件。"""
@@ -109,14 +144,14 @@ class ResourceJunkQueueTests(unittest.TestCase):
         self.contract = WebContract(self.db_path)
 
     def add(self, asset_id, location, path, medium, size=1000, duration=None,
-            creator=None, disposal=None):
+            creator=None, disposal=None, code=None):
         connection = sqlite3.connect(self.db_path)
         try:
             connection.execute(
-                "INSERT INTO asset(id,location,path,name,medium,size,duration,creator,disposal) "
-                "VALUES(?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO asset(id,location,path,name,medium,size,duration,creator,disposal,code) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?)",
                 (asset_id, location, path, path.rsplit("\\", 1)[-1], medium,
-                 size, duration, creator, disposal),
+                 size, duration, creator, disposal, code),
             )
             connection.commit()
         finally:
@@ -191,6 +226,71 @@ class ResourceJunkQueueTests(unittest.TestCase):
         self.assertEqual(q_ads(self.contract, limit=200)["pending_total"], 3)
         self.assertEqual(q_ads(
             self.contract, limit=200, status="dismissed")["items"], [])
+
+    def test_game_interstitials_in_a_release_directory_all_enter_the_queue(self):
+        """`WAAA-415-uncensored-HD` 那批插页此前一张都没到门槛，只有正片自己入队。"""
+        release = r"B:\番号\Wanz Factory\WAAA-415\WAAA-415-uncensored-HD"
+        titles = ("爱姬远征", "天下布魔", "奇迹少女", "星隕計畫", "樱境物语",
+                  "欲神幻想", "腥空幻想", "工口.R18-成人遊戲", "三国志侵略版")
+        for offset, title in enumerate(titles):
+            self.add(30 + offset, "115",
+                     rf"{release}\{title}-免费18禁手游-扫码安装.jpg", "image", 1024**2)
+        self.add(50, "115", rf"{release}\工口MH-扫描访问.png", "image", 966 * 1024)
+        # 正片本体：体积与时长都在候选范围外，进不了队列，只作为目录里的邻居存在。
+        self.add(51, "115", rf"{release}\WAAA-415-UNCENSORED.mp4", "video",
+                 4 * 1024**3, 8888)
+
+        result = q_ads(self.contract, limit=200)
+
+        self.assertEqual(result["total"], 10)
+        self.assertNotIn(51, {item["id"] for item in result["items"]})
+        by_id = {item["id"]: item for item in result["items"]}
+        # 游戏名有六个字，单看名字只够中间档；同目录另外九个同类推广名补齐证据。
+        self.assertIn("同目录另有 9 个同类推广名", by_id[38]["why"])
+        self.assertIn("整个名字都是推广语", by_id[30]["why"])
+
+    def test_bundled_photo_set_is_a_resource_not_an_ad(self):
+        """域名+序号是打包渠道给整包起的名；几十上百张成套的图是资源。"""
+        gallery = r"A:\创作者\森萝财团 整合用\森萝财团 X-019 肉丝换白丝 [103P1V-1.39GB]"
+        for offset in range(BUNDLE_DIR_ASSETS):
+            self.add(60 + offset, "local", rf"{gallery}\jitumi.pw({offset}).gif",
+                     "image", 5 * 1024**2)
+        # 同样的名字只有一两张挤在别人的番号目录里，那就是插页。
+        self.add(90, "115", r"B:\番号\CAWD-241\jitumi.pw(1).gif", "image", 5 * 1024**2)
+
+        result = q_ads(self.contract, limit=200)
+
+        self.assertEqual([item["id"] for item in result["items"]], [90])
+
+    def test_cover_and_screenshot_outlive_their_promo_directory(self):
+        """目录名带域名只说明从哪个站下的，说明不了目录里的图是广告。"""
+        # 正片本体的体积在候选范围外，这里只作为截图的对照存在。
+        self.add(70, "115", r"B:\云下载\Jav.li_MIAD573_HD\MIAD573_02.wmv", "video",
+                 800 * 1024**2, 3600, creator="Jav.li_MIAD573_HD")
+        self.add(71, "115", r"B:\云下载\Jav.li_MIAD573_HD\MIAD573_02_s.jpg", "image",
+                 40000, creator="Jav.li_MIAD573_HD")
+        self.add(72, "115", r"B:\创作者\BNST033\aaxv.xyz-BNST033\BNST-033(1).jpg",
+                 "image", 40000, code="BNST-033")
+        # 同一个广告包目录里，与番号无关的推广图仍然是广告。
+        self.add(73, "115", r"B:\创作者\BNST033\aaxv.xyz-BNST033\点击进入.jpg",
+                 "image", 40000)
+
+        result = q_ads(self.contract, limit=200)
+
+        self.assertEqual([item["id"] for item in result["items"]], [73])
+
+    def test_promo_cluster_needs_more_than_a_couple_of_neighbours(self):
+        """两张同类插页不构成成群；`PROMO_CLUSTER_FILES` 是这条判据的下限。"""
+        self.assertGreaterEqual(PROMO_CLUSTER_FILES, 3)
+        release = r"B:\番号\Faleno\FSDSS-258\FSDSS-258.HD"
+        for offset in range(PROMO_CLUSTER_FILES - 1):
+            self.add(80 + offset, "115",
+                     rf"{release}\逆王传说 - 入侵女兒國{offset}-免费18禁手游-扫码安装.jpg",
+                     "image", 1024**2)
+
+        result = q_ads(self.contract, limit=200)
+
+        self.assertEqual(result["items"], [])
 
     def test_invalid_junk_filters_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "invalid junk kind"):
