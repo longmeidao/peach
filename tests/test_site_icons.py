@@ -121,26 +121,75 @@ class RankingTests(unittest.TestCase):
     def test_fc2_takes_the_confirmed_off_site_icon_on_every_subdomain(self):
         """FC2 站上只有 16×16 的 favicon，够大的那份是横向字标——不是没找对，是没有。
 
-        用户 2026-09-03 授权用非官网来源补 `icon` 位；这一枚仍是 FC2, Inc. 自己发布的
-        App Store 图标（512×512、只有独角兽标识）。作品链接落在
-        `adult.contents.fc2.com`，覆盖必须跟着子域走，否则等于没配。
+        用户 2026-09-03 直接指定了这一枚（400×400、纯独角兽、没有文字）。作品链接落在
+        `adult.contents.fc2.com`、`contents.fc2.com`，覆盖必须跟着子域走，否则等于没配。
         """
-        for url in ["https://fc2.com/", "https://adult.contents.fc2.com/article/1/",
+        for url in ["https://fc2.com/en/", "https://adult.contents.fc2.com/article/1/",
                     "https://video.fc2.com/"]:
             got = site_icons.overrides_for(url)
             self.assertTrue(got, url)
-            self.assertIn("mzstatic.com", got[0].url)
-            self.assertTrue(got[0].url.endswith("512x512bb.png"), got[0].url)
+            self.assertIn("storage.googleapis.com/datanyze-data", got[0].url)
+            self.assertTrue(got[0].url.endswith(
+                "8ef39cbce34aece41d279b6e8e7dbb77aea3086e.png"), got[0].url)
         ranked = site_icons.rank(
             site_icons.overrides_for("https://adult.contents.fc2.com/")
             + site_icons.link_candidates(
                 '<link rel="shortcut icon" href="//static.fc2.com/share/image/favicon.ico">',
                 "https://adult.contents.fc2.com/"))
-        self.assertIn("mzstatic.com", ranked[0].url)
+        self.assertIn("datanyze-data", ranked[0].url)
+
+    def test_the_app_store_icon_is_no_longer_used(self):
+        """用户否决了那一枚：背景多了胶片图案。留着会在下一次改动里被当成现状抄走。"""
+        for entries in site_icons.HOST_OVERRIDES.values():
+            for url in entries:
+                self.assertNotIn("mzstatic.com", url)
 
     def test_overrides_match_subdomains_of_the_listed_host(self):
         self.assertTrue(site_icons.overrides_for("https://www.av-event.jp/actress/1"))
         self.assertEqual(site_icons.overrides_for("https://example.com/"), [])
+
+    def test_a_path_keyed_override_only_matches_that_path(self):
+        """BangBros 的三个频道共用一个主机。键必须带路径，否则三个频道同一枚图标。"""
+        bus = site_icons.overrides_for("https://bangbros.com/websites/BangBus")
+        eighteen = site_icons.overrides_for("https://bangbros.com/websites/BangBros18")
+        self.assertTrue(bus and eighteen)
+        self.assertNotEqual(bus[0].url, eighteen[0].url)
+        for got in (bus, eighteen):
+            self.assertIn("images-assets-ht.project1content.com", got[0].url)
+        # 页面配置里没有 MonstersOfCock 的 logo 资产，未取得就是未取得，不编一个。
+        self.assertEqual(
+            site_icons.overrides_for("https://bangbros.com/websites/MonstersOfCock"), [])
+        self.assertEqual(site_icons.overrides_for("https://bangbros.com/"), [])
+
+    def test_a_trailing_slash_and_deeper_path_still_match(self):
+        for url in ["https://bangbros.com/websites/BangBus/",
+                    "https://www.bangbros.com/websites/BangBus?page=2",
+                    "https://bangbros.com/websites/BangBus/videos/1"]:
+            with self.subTest(url=url):
+                self.assertTrue(site_icons.overrides_for(url), url)
+
+    def test_the_longest_matching_prefix_wins(self):
+        """主机级条目不许把路径级条目盖掉：那正是同主机坍缩的来源。"""
+        table = dict(site_icons.HOST_OVERRIDES)
+        table["bangbros.com"] = ("https://bangbros.com/favicon.ico",)
+        table["bangbros.com/websites"] = ("https://e.com/generic.png",)
+        original = site_icons.HOST_OVERRIDES
+        site_icons.HOST_OVERRIDES = table
+        try:
+            got = site_icons.overrides_for("https://bangbros.com/websites/BangBus")
+            self.assertIn("6480a83863bd03", got[0].url)
+            self.assertEqual(
+                site_icons.overrides_for("https://bangbros.com/websites/Other")[0].url,
+                "https://e.com/generic.png")
+            self.assertEqual(site_icons.overrides_for("https://bangbros.com/")[0].url,
+                             "https://bangbros.com/favicon.ico")
+        finally:
+            site_icons.HOST_OVERRIDES = original
+
+    def test_a_path_keyed_override_does_not_leak_to_subdomains(self):
+        """带路径的键管的是一条路径，不是一族主机。"""
+        self.assertEqual(
+            site_icons.overrides_for("https://cdn.bangbros.com/websites/BangBus"), [])
 
     def test_the_host_key_ignores_www_and_case(self):
         self.assertEqual(site_icons.host_key("https://WWW.X.com/a"), "x.com")
@@ -177,6 +226,88 @@ class DiscoverTests(unittest.TestCase):
     def test_a_url_without_an_origin_asks_nothing(self):
         self.assertEqual(site_icons.discover("not a url", self.fetcher({})), [])
         self.assertEqual(self.asked, [])
+
+    def test_everything_discovery_finds_is_only_host_scoped(self):
+        """发现流程从 `origin(url)` 出发，路径一丢，结果只能代表主机。
+
+        `bangbros.com/websites/{BangBus,BangBros18,MonstersOfCock}` 三个频道因此拿到
+        逐字相同的候选表——这就是三份结果 sha256 完全一样的来源。
+        """
+        fetch = self.fetcher({
+            "https://network.example": b'<link rel="icon" sizes="16x16" href="/fav16.png">'})
+        found = [site_icons.discover(f"https://network.example/websites/{name}", fetch)
+                 for name in ("ChannelA", "ChannelB", "ChannelC")]
+        self.assertEqual(urls(found[0]), urls(found[1]))
+        self.assertEqual(urls(found[1]), urls(found[2]))
+        self.assertEqual({c.scope for c in found[0]}, {site_icons.HOST_SCOPE})
+
+    def test_an_override_candidate_is_entity_scoped(self):
+        got = site_icons.overrides_for("https://bangbros.com/websites/BangBus")
+        self.assertEqual([c.scope for c in got], [site_icons.ENTITY_SCOPE])
+
+
+def reject_host_scope(candidate, data, content_type=""):
+    """`harvest_studio_icons` 挂的那道守卫，这里用最小实现代表它。"""
+    return candidate.scope == site_icons.ENTITY_SCOPE
+
+
+class SharedHostGuardTests(unittest.TestCase):
+    """同主机的几个频道不能共用一枚 favicon，即使那一枚过了所有闸门。"""
+
+    def fetcher(self, extra=None):
+        pages = {
+            # 频道页只声明 16×16，被 harvest 的 MIN_SHORT_EDGE 退回。
+            "https://bangbros.com": b'<link rel="icon" sizes="16x16" href="/fav16.png">',
+            "https://bangbros.com/fav16.png": b"SMALL",
+            # Aylo 站点模板的通用图标：64×64、内容比 1.00，两道闸门都过。
+            "https://bangbros.com/apple-touch-icon.png": b"TEMPLATE-1",
+            "https://bangbros.com/favicon.ico": b"TEMPLATE-1",
+        }
+        pages.update(extra or {})
+        return lambda url: (pages[url], "") if url in pages else None
+
+    def test_without_the_guard_the_platform_favicon_wins(self):
+        """这是修之前的行为，留着当对照：闸门全过，图也不糊，只是不是这个频道的。"""
+        made = site_icons.best_mark("https://bangbros.com/websites/MonstersOfCock",
+                                    self.fetcher(), lambda data, content_type="": data)
+        self.assertEqual(made, b"SMALL")
+
+    def test_the_guard_refuses_every_host_level_candidate(self):
+        made = site_icons.best_mark("https://bangbros.com/websites/MonstersOfCock",
+                                    self.fetcher(), lambda data, content_type="": data,
+                                    accept=reject_host_scope)
+        self.assertIsNone(made)
+
+    def test_the_guard_never_lets_a_refused_candidate_reach_the_fallback(self):
+        """回落也不许用：那会把整站通用的 favicon 装成这个实体的标识。"""
+        used = []
+        made = site_icons.best_mark(
+            "https://bangbros.com/websites/MonstersOfCock", self.fetcher(),
+            lambda data, content_type="": None,
+            fallback=lambda data, content_type="": used.append(data) or b"PLAIN",
+            accept=reject_host_scope)
+        self.assertIsNone(made)
+        self.assertEqual(used, [])
+
+    def test_an_override_gets_through_the_guard(self):
+        """加了这个频道自己的来源，同一道守卫就该放行。"""
+        override = site_icons.overrides_for("https://bangbros.com/websites/BangBus")[0].url
+        made = site_icons.best_mark(
+            "https://bangbros.com/websites/BangBus",
+            self.fetcher({override: b"CHANNEL-LOGO"}),
+            lambda data, content_type="": data, accept=reject_host_scope)
+        self.assertEqual(made, b"CHANNEL-LOGO")
+
+    def test_the_two_channels_with_overrides_get_different_bytes(self):
+        """根因就是三份结果 sha256 完全相同。两个频道必须拿到各自那一份。"""
+        made = []
+        for name in ("BangBus", "BangBros18"):
+            url = f"https://bangbros.com/websites/{name}"
+            override = site_icons.overrides_for(url)[0].url
+            made.append(site_icons.best_mark(
+                url, self.fetcher({override: f"BYTES:{name}".encode()}),
+                lambda data, content_type="": data, accept=reject_host_scope))
+        self.assertEqual(made, [b"BYTES:BangBus", b"BYTES:BangBros18"])
 
 
 class BestMarkTests(unittest.TestCase):
