@@ -127,7 +127,8 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
   backdrop-filter:saturate(1.8) blur(12px);-webkit-backdrop-filter:saturate(1.8) blur(12px);font-size:var(--fs-xs);font-weight:600}
 .deleteMark svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .card.pending-delete .deleteMark{display:flex}
-.card.pending-delete .poster,.card.pending-delete .hv{filter:grayscale(.9) brightness(.54);opacity:.68}
+.card.pending-delete .poster,.card.pending-delete .hv,
+.card.pending-delete .hvframes{filter:grayscale(.9) brightness(.54);opacity:.68}
 .card.pending-delete .meta{opacity:.58}
 .card.pending-delete:hover .meta{opacity:.76}
 .pic{position:relative;aspect-ratio:var(--card-ratio,16/9);background:#000;border-radius:var(--badge-radius);
@@ -140,6 +141,11 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .hv{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;
   opacity:0;transition:opacity .2s}
 .hv.on{opacity:1}
+/* 远端源的悬停扫视层。几何和 `.hv` 逐字一致：不透明黑底盖掉下面的封面，接触印相
+   的格子在里面 contain。大图版式的容器是 0.7 竖比例，16:9 的格子于是居中、上下留黑。
+   不写 z-index，和 `.hv` 一样靠 DOM 次序压在 `.poster` 之上。 */
+img.hvframes{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;
+  background:#000;display:block}
 /* 悬停描边画在盖住封面的伪元素上，`border` 和 `outline` 两条路都走不通：`border-box` 下
    border 会把 `.pic` 的内容盒收窄 1px，里面 `contain` 的封面跟着缩一圈、两侧多露一截黑底，
    看上去是图片抖了一下；outline 落在 padding box 最外一圈，而铺满 `inset:0` 的封面和悬停

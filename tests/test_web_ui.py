@@ -3859,6 +3859,31 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(reset)releaseHoverPreviews($('#grid'))")
         self.assertPageContains("releaseHoverPreviews($('#srow'))")
 
+    def test_remote_hover_scan_is_an_overlay_so_every_jav_layout_has_it(self):
+        """远端源的扫视图叠一层，不改任何已有 `<img>` 的 src。
+
+        JAV 大图和小图版式里画面就是封面本身（`.poster.cover`），改它的 src 等于把封面
+        当场换掉；按类名把封面排掉又等于这两种版式整个没有悬停预览——连 `.previewing`
+        都不进，快退快进那三颗跟着永远不出现。叠一层对三种版式是同一条路。
+
+        几何和本地视频的 `.hv` 逐字一致：不透明黑底加 contain。大图版式的容器是 0.7
+        竖比例，16:9 的接触印相格子于是居中、上下留黑，这就是那一版式的预览外观。
+        """
+        self.assertPageContains("layer.className='hvframes';layer.alt=''")
+        self.assertPageContains("pic.appendChild(layer)")
+        self.assertPageLacks("pic.querySelector('.poster:not(.cover)')")
+        self.assertPageContains("if(!it.has_thumb)return;")
+        self.assertPageContains("if(layer){layer.remove();layer=null}i=4")
+        # 卡片被重画过时旧元素上的 `_stopHover` 跟着旧 DOM 走了，只靠回调收不到
+        # 留在画面上的扫视图，所以 release 还要按类名兜一遍。
+        self.assertPageContains("root.querySelectorAll('img.hvframes')")
+        css = stylesheet_source()
+        self.assertIn("img.hvframes{position:absolute;inset:0;width:100%;height:100%;"
+                      "object-fit:contain;", css)
+        self.assertIn("background:#000;display:block}", css)
+        # 待删卡片的灰化要连这一层一起，否则悬停时整卡「复活」成正常色。
+        self.assertIn(".card.pending-delete .hvframes{", css)
+
     def test_detail_close_returns_to_the_collection_that_opened_it(self):
         self.assertPageContains("detailReturnPath='/'")
         self.assertPageContains("if(push)detailReturnPath=location.pathname+location.search")

@@ -1555,6 +1555,11 @@ function releaseHoverPreviews(root=document,except=null){
   root.querySelectorAll('video.hv').forEach(v=>{
     if(v.closest('.card')===except)return;
     if(v._hop)clearInterval(v._hop);v.pause();v.removeAttribute('src');v.load();v.remove()});
+  // 远端源那一层和视频同样要兜一遍：卡片被重画过的话，旧元素上的 `_stopHover`
+  // 已经跟着旧 DOM 走了，只靠上面那轮回调收不到它留在画面上的扫视图。
+  root.querySelectorAll('img.hvframes').forEach(im=>{
+    if(im.closest('.card')===except)return;
+    im.removeAttribute('src');im.remove()});
 }
 function wireHover(el,it){
   const pic=el.querySelector('.pic'); if(!pic)return;
@@ -1562,14 +1567,28 @@ function wireHover(el,it){
   let longTimer=null;
   const armLong=()=>{clearTimeout(longTimer);el.classList.add('previewing');longTimer=setTimeout(()=>el.classList.add('longhover'),Math.max(1,appSettings.hoverDelaySeconds)*1000)};
   const clearLong=()=>{clearTimeout(longTimer);el.classList.remove('previewing','longhover')};
-  if(it.location!=='local'){        // 远端源：只换预览图逐格扫视，零网络流量
-    // 只扫接触印相的格子。封面图也带 .poster 类（为了共用尺寸样式），
-    // 不排掉的话 hover 会把它的 src 改写成 /poster?id=，封面当场被换掉。
-    const im=pic.querySelector('.poster:not(.cover)'); if(!im)return;
-    let t=null,i=4;
-    el.addEventListener('mouseenter',()=>{if(selectMode||censorOn())return;armLong();t=setInterval(()=>{
-      i=(i+1)%9; im.src=`/poster?id=${it.id}&c=${i}`},430)});
-    const stop=()=>{clearLong();clearInterval(t);t=null;im.src=`/poster?id=${it.id}&c=4`};
+  if(it.location!=='local'){        // 远端源：只在接触印相的格子间扫视，零网络流量
+    /* 扫视图是叠在画面之上新建的一层，不改任何已有 `<img>` 的 src。JAV 大图和小图
+       版式里画面就是封面本身（`.poster.cover`），改它的 src 等于把封面当场换掉；
+       按类名把封面排掉又等于这两种版式整个没有悬停预览，连 `.longhover` 都不进，
+       快退快进那三颗也跟着永远不出现。叠一层对三种版式是同一条路。
+       这一层用 contain 加黑底：大图版式的容器是 0.7 的竖比例，16:9 的接触印相格子
+       在里面居中、上下留黑，和本地视频的 `.hv` 同一个口径。 */
+    if(!it.has_thumb)return;        // 没有接触印相就没有可扫的格子
+    let t=null,i=4,layer=null;
+    el.addEventListener('mouseenter',()=>{
+      if(selectMode||censorOn())return;armLong();
+      if(!layer){
+        layer=document.createElement('img');
+        layer.className='hvframes';layer.alt='';
+        layer.src=`/poster?id=${it.id}&c=${i}`;
+        pic.appendChild(layer);
+      }
+      clearInterval(t);
+      t=setInterval(()=>{i=(i+1)%9;layer.src=`/poster?id=${it.id}&c=${i}`},430);
+    });
+    const stop=()=>{clearLong();clearInterval(t);t=null;
+      if(layer){layer.remove();layer=null}i=4};
     el._stopHover=stop;el.addEventListener('mouseleave',stop);
     return;
   }
