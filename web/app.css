@@ -971,9 +971,16 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
   justify-content:center;cursor:pointer;position:relative;transition:transform .15s ease,background .15s ease}
 .hovertools button svg{width:25px;height:25px;stroke:currentColor;fill:none;stroke-width:1.8;
   stroke-linecap:round;stroke-linejoin:round}
-.hovertools button b{position:absolute;inset:0;display:grid;place-items:center;
-  font:700 var(--fs-xs)/1 "Cascadia Mono",monospace;padding-top:1px}
 .hovertools button:hover{transform:scale(1.12);background:rgba(0,0,0,.34)}
+/* 居中那三颗是盖在画面上的媒体控件，不是页面控件：三个 58px 的磨砂实心圆压在封面
+   正中，遮住的画面比按钮本身还多，而这一层出现的时候用户正在看的就是画面。改成裸
+   图标——命中区域仍是 58px 的圆，只是不再画出来；描边靠一层投影在浅色画面上保持
+   可读。秒数交给 title／aria-label，图标上不再压一个数字。
+   参考证据见 docs/reference-snapshots/hover-seek-controls-user-screenshot.md。 */
+.hovertools.seektools button{border:0;background:none;backdrop-filter:none;
+  -webkit-backdrop-filter:none;filter:drop-shadow(0 1px 4px rgba(0,0,0,.6))}
+.hovertools.seektools button svg{width:34px;height:34px;stroke-width:1.5}
+.hovertools.seektools button:hover{background:none}
 .hovertools.later-tools{right:12px;bottom:12px}
 .card.longhover .seektools button,.card:hover .later-tools button{pointer-events:auto}
 .hovertools .laterbtn{width:36px;height:36px;padding:0;font-family:inherit}
