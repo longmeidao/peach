@@ -198,8 +198,11 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 .brandpill .mk{width:32px;height:32px;border-radius:50%;background:#CFCFCF;flex:none;
   display:flex;align-items:center;justify-content:center;font-size:var(--fs-xs);
   font-family:Bahnschrift,"Microsoft YaHei UI","Microsoft YaHei","PingFang SC",sans-serif;color:var(--ground);overflow:hidden;position:relative}
-.brandpill .mk img{position:absolute;inset:3px;width:calc(100% - 6px);height:calc(100% - 6px);
-  object-fit:contain;display:block;filter:saturate(.72) brightness(.84);opacity:.9}
+/* 厂牌标识文件本身就是不透明方图（`peach.images.bake_square`），边距烤在图里，
+   所以这里铺满圆片：留 inset 会在图自带的底之外再围出一圈灰。`#CFCFCF` 只是无图
+   时垫在首字母后面的底色。 */
+.brandpill .mk img{position:absolute;inset:0;width:100%;height:100%;
+  object-fit:cover;display:block;filter:saturate(.72) brightness(.84);opacity:.9}
 
 /* ── 常驻筛选层：原位保持透明，只在真正吸顶后加磨砂黑底 ── */
 .tagbar{position:sticky;top:var(--topH);z-index:61;height:var(--filterH);padding:9px 16px;
@@ -427,9 +430,9 @@ body.entity-open .index{overflow-x:visible}
 .entityportrait{width:160px;aspect-ratio:1;border-radius:50%;overflow:hidden;background:var(--overlay-5);
   display:grid;place-items:center;font-size:var(--fs-4xl);color:var(--muted);max-width:100%}
 .entityportrait.square{border-radius:var(--floating-radius)}.entityportrait img,.entityportrait>span{grid-area:1/1}
-/* 首字母只是取不到图时的垫底。Logo 多为 contain 且带透明区，两者叠在同一格里
-   会一起显出来（PREMIUM 的 M 下面透出一个 P）。取图失败时 img 会被 onerror
-   移除，:has 随之不匹配，首字母自动回来——不用再写一段 JS 去同步。 */
+/* 首字母只是取不到图时的垫底，有图就必须让位：两者叠在同一格里会一起显出来。
+   取图失败时 img 会被兜底链移除，:has 随之不匹配，首字母自动回来——不用再写
+   一段 JS 去同步。厂牌标识本身是不透明方图，下面那条 cover 把它铺满整框。 */
 .entityportrait:has(img)>span{display:none}
 .entityportrait img{width:100%;height:100%;object-fit:cover;display:block;z-index:1}
 .entityhero>div:last-child{min-width:0;max-width:100%}.entityhero h2{font-size:var(--fs-3xl);font-weight:400;
@@ -676,9 +679,10 @@ body.photolight-open{overflow:hidden}
 .idcell[hidden]{display:none}
 .idface{position:relative;width:var(--id-face,46px);height:var(--id-face,46px);border-radius:50%;overflow:hidden;
   background:var(--sunk);color:var(--muted);display:grid;place-items:center;font-size:var(--fs-md)}
+/* `#fff` 与首字母只在取不到图时露出来：厂牌标识文件是自带边距的不透明方图，
+   `.idface img` 那条 cover 铺满整格，不再另给 logo 格加 padding 和 contain。 */
 .idcell.logo .idface{border-radius:var(--surface-radius);background:#fff;color:#555}
 .idface img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
-.idcell.logo .idface img{object-fit:contain;padding:3px}
 .idface svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2}
 /* 行高必须容得下下伸部。1.25 在 12px 下只有 15px 行框，而这里同时开着 overflow:hidden
    截省略号，于是「Prestige」的 g 尾巴被切掉——用户实测看到的就是这个。 */
