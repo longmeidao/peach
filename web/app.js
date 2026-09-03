@@ -2746,6 +2746,27 @@ function openTasteSignal(kind,name){
   }
   openEntity(kind,name);
 }
+function tasteAnalysisSection(analysis){
+  if(!analysis||!analysis.headline)return '';
+  const confidence=analysis.confidence||{};
+  const points=(analysis.points||[]).map(point=>`<div class="tasteinsight">
+    <span>${esc(point.label)}</span><b>${esc(point.text)}</b></div>`).join('');
+  //: 探索标签和下一步动作都是「点进去就能做的事」，排成同一列表；
+  //: 前者带 data-taste-kind 走信号面板，后者带 data-taste-route 直接换页。
+  const leads=[...(analysis.explore||[]).map(item=>
+      ({attrs:`data-taste-kind="tag" data-taste-name="${esc(item.tag)}"`,title:item.title,detail:item.detail})),
+    ...(analysis.next_steps||[]).map(item=>
+      ({attrs:`data-taste-route="${esc(item.route)}"`,title:item.title,detail:item.detail}))]
+    .map(lead=>`<button type="button" class="tastelead" ${lead.attrs}>
+      <span><b>${esc(lead.title)}</b><small>${esc(lead.detail)}</small></span>${icon('chevron-right')}</button>`).join('');
+  return `<section class="insightpanel tasteleads">
+      <header><div><h3>口味总结</h3><p>${esc(analysis.headline)}</p></div>
+        <span class="tasteconfidence ${esc(confidence.level||'early')}">${esc(confidence.label||'仍在学习')}</span></header>
+      <div class="insightpanelbody">
+        ${points?`<div class="tasteinsights">${points}</div>`:''}
+        <div class="tasteleadlist">${leads||emptyStateHtml('search','还没有可探索的入口','馆藏里暂时没有对得上浏览信号的标签。')}</div>
+      </div></section>`;
+}
 function renderTaste(d){
   const s=d.summary||{},coverage=d.coverage||{},rank=d.rankings||{},storage=d.storage||{};
   const summary=(label,value,sub='')=>`<div class="tastesummary"><span>${label}</span><b>${value}</b>${sub?`<small>${sub}</small>`:''}</div>`;
@@ -2797,6 +2818,7 @@ function renderTaste(d){
         ${coverageMetric('有标签',Number(coverage.tagged||0).toLocaleString(),`${coverage.untagged||0} 项待补`,coverage.tagged||0,(coverage.tagged||0)+(coverage.untagged||0))}
         ${coverageMetric('有身份',Number(coverage.identified||0).toLocaleString(),`${coverage.unidentified||0} 项待补`,coverage.identified||0,(coverage.identified||0)+(coverage.unidentified||0))}
       </div></section>
+    ${tasteAnalysisSection(d.analysis)}
     <section class="insightpanel tasteanalysis" data-taste-evidence-panel="browser"${tasteEvidence==='browser'?'':' hidden'}>
       <header>${sourceTabs('browser',[['tags','标签'],['creators','创作者'],['domains','常访问网站'],['gaps','浏览候选']])}</header>
       <div class="insightpanelbody">
@@ -2829,6 +2851,10 @@ function renderTaste(d){
     root.querySelectorAll(`[data-taste-dimension-panel^="${source}:"]`).forEach(panel=>panel.hidden=panel.dataset.tasteDimensionPanel!==button.dataset.tasteDimension)
   });
   root.querySelector('[data-taste-window]').onchange=e=>{tasteWindow=e.target.value;openTaste(false)};
+  /* 总结里的下一步动作按路径走，派发仍旧交给 ROUTES：在这里比对一遍路径字符串，
+     就又多出一处会和那张表不一致的知识。 */
+  root.querySelectorAll('[data-taste-route]').forEach(button=>button.onclick=()=>{
+    route(button.dataset.tasteRoute);restoreRoute()});
   root.querySelector('[data-taste-refresh]').onclick=async e=>{const button=e.currentTarget;
     const oldButton=button.innerHTML;
     setActionBusy(button);

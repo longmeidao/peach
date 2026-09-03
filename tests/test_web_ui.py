@@ -2511,6 +2511,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".tastesources .insightpanelbody{padding:16px}")
         self.assertPageContains(".tastesource{display:grid;grid-template-columns:34px minmax(0,1fr) 34px;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line-soft);border-radius:var(--control-radius);background:var(--overlay-5)}")
         self.assertPageContains(".insighttablerow:last-child{border-bottom:0}")
+        self.assertPageContains("tasteAnalysisSection(d.analysis)")
+        self.assertPageContains('<section class="insightpanel tasteleads">')
+        self.assertPageContains("<h3>口味总结</h3>")
+        self.assertPageContains('class="tasteconfidence ${esc(confidence.level')
+        self.assertPageContains('data-taste-route="${esc(item.route)}"')
+        self.assertPageContains("route(button.dataset.tasteRoute);restoreRoute()")
+        self.assertPageContains(".tasteinsights{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px")
+        self.assertPageContains(".tastelead:hover{border-color:var(--border-15);background:var(--hover)}")
+        self.assertPageLacks(".tasteanalysisbody")
 
     def test_stats_use_analytics_panels_and_real_determinate_progress(self):
         self.assertPageContains('class="metricstrip" role="tablist" aria-label="统计视图"')

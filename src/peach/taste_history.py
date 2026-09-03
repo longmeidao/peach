@@ -22,7 +22,7 @@ from browserexport.browsers.chrome import Chrome
 from browserexport.browsers.firefox import Firefox
 from browserexport.browsers.safari import Safari
 
-from .catalog_rules import LENGTH_TAGS
+from .catalog_rules import LENGTH_TAGS, TECH_TAGS
 from .review_csv import read_rows, write_rows
 
 
@@ -74,6 +74,20 @@ CATEGORY_TERMS: dict[str, set[str]] = {
     "ASMR/音声": {"asmr", "audio", "音声"},
     "游戏同人": {"detroit", "detroitbecomehuman", "game", "gamecg", "hgame", "游戏", "同人"},
     "反差/泄密/探花": {"leak", "leaked", "private", "反差", "探花", "泄密", "流出"},
+}
+TASTE_CATEGORY_TAGS: dict[str, tuple[str, ...]] = {
+    "3D/动画": ("3D动画", "游戏同人", "动漫同人"),
+    "口交": ("口交", "深喉"),
+    "制服/角色扮演": ("制服", "角色扮演", "JK制服", "女仆"),
+    "足系": ("足系", "足交", "足底足指", "裸足"),
+    "游戏同人": ("游戏同人", "动漫同人", "日系同人"),
+    "乳系": ("乳系", "巨乳", "美乳"),
+    "马眼/尿道/龟头": ("马眼尿道", "马眼", "龟头责"),
+    "ASMR/音声": ("淫语ASMR",),
+    "反差/泄密/探花": ("反差", "泄密流出", "探花"),
+}
+NON_TASTE_SUMMARY_TAGS = TECH_TAGS | LENGTH_TAGS | {
+    "合集", "中文字幕", "内嵌字幕", "外挂字幕", "AI修复", "AI去码", "60fps",
 }
 TAKEOUT_HISTORY_MEMBER = "Takeout/Chrome/History.json"
 TAKEOUT_ACTIVITY_MEMBERS = (
@@ -778,6 +792,159 @@ def _rank_for_source(
     return selected[:limit]
 
 
+def _tag_inventory(connection: sqlite3.Connection) -> dict[str, int]:
+    """Count usable local tag matches without assuming every test schema is current."""
+    columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(asset)")}
+    clauses = ["e.kind='tag'"]
+    if "medium" in columns:
+        clauses.append("a.medium='video'")
+    if "disposal" in columns:
+        clauses.append("(a.disposal IS NULL OR a.disposal<>'trash')")
+    if "location" in columns:
+        clauses.append("a.location IN ('local','115')")
+    if "snapshot_path" in columns:
+        clauses.append("a.snapshot_path IS NOT NULL")
+    if "ctx_orient" in columns:
+        clauses.append("(a.ctx_orient IS NULL OR a.ctx_orient<>'竖屏')")
+    query = (
+        "SELECT e.canonical_name,count(DISTINCT ae.asset_id) "
+        "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+        "JOIN asset a ON a.id=ae.asset_id WHERE " + " AND ".join(clauses) +
+        " GROUP BY e.id,e.canonical_name"
+    )
+    return {str(name): int(count) for name, count in connection.execute(query)}
+
+
+def _taste_category_scores(rows: list[dict[str, object]]) -> Counter[str]:
+    scores: Counter[str] = Counter()
+    for row in rows:
+        if not float(row.get("peach_score") or 0):
+            continue
+        compact = str(row["name"]).casefold().replace(" ", "").replace("_", "")
+        for category, terms in CATEGORY_TERMS.items():
+            if compact in terms:
+                scores[category] += float(row["peach_score"])
+    return scores
+
+
+def _taste_analysis(
+    history: dict[str, object],
+    peach: dict[str, object],
+    all_tags: list[dict[str, object]],
+    all_creators: list[dict[str, object]],
+    inventory: dict[str, int],
+) -> dict[str, object]:
+    browser_categories = Counter(history["categories"])
+    peach_categories = _taste_category_scores(all_tags)
+    browser_names = [name for name, score in browser_categories.most_common() if score > 0]
+    peach_tags = [
+        row for row in all_tags
+        if float(row["peach_score"]) > 0 and str(row["name"]) not in NON_TASTE_SUMMARY_TAGS
+    ]
+    peach_tags.sort(key=lambda row: (-float(row["peach_score"]), str(row["name"])))
+    peach_names = [str(row["name"]) for row in peach_tags[:5]]
+    shared = [
+        name for name, _score in browser_categories.most_common()
+        if browser_categories[name] >= 3 and peach_categories[name] >= 3
+    ][:3]
+    browser_only = next((name for name in browser_names if peach_categories[name] <= 0), "")
+
+    if browser_names and peach_names:
+        headline = f"浏览兴趣以{browser_names[0]}为主，Peach 中稳定出现{'、'.join(peach_names[:3])}。"
+    elif browser_names:
+        headline = f"浏览兴趣目前以{browser_names[0]}为主，Peach 观看证据仍偏少。"
+    elif peach_names:
+        headline = f"Peach 观看行为目前更集中在{'、'.join(peach_names[:3])}。"
+    else:
+        headline = "证据还不足以形成稳定口味结论。"
+
+    points: list[dict[str, str]] = []
+    if browser_names:
+        points.append({
+            "label": "浏览主线",
+            "text": "、".join(browser_names[:3]),
+        })
+    if peach_names:
+        points.append({
+            "label": "Peach 印证",
+            "text": "、".join(peach_names),
+        })
+    if shared:
+        points.append({
+            "label": "共同信号",
+            "text": "、".join(shared),
+        })
+    elif browser_only:
+        points.append({
+            "label": "待验证",
+            "text": browser_only,
+        })
+
+    visits = int(history["visits"])
+    assets = int(peach["assets"])
+    explicit = int(peach["liked"]) + int(peach["disliked"])
+    if visits >= 1000 and assets >= 50 and explicit >= 10:
+        confidence = ("high", "可信度较高")
+    elif visits >= 1000 and assets >= 20:
+        confidence = ("medium", "可信度中等")
+    else:
+        confidence = ("early", "仍在学习")
+
+    explore: list[dict[str, object]] = []
+    used_tags: set[str] = set()
+    for category, signal in browser_categories.most_common():
+        options = TASTE_CATEGORY_TAGS.get(category, ())
+        tag = next((name for name in options if inventory.get(name, 0) > 0 and name not in used_tags), None)
+        if not tag:
+            continue
+        used_tags.add(tag)
+        corroborated = peach_categories[category] > 0
+        explore.append({
+            "kind": "tag", "tag": tag, "title": f"探索 {tag}",
+            "detail": (
+                f"浏览信号 {int(signal):,} 次 · 馆藏 {inventory[tag]:,} 部 · "
+                + ("已有观看印证" if corroborated else "尚无观看印证")
+            ),
+            "items": inventory[tag], "signal": int(signal), "corroborated": corroborated,
+        })
+        if len(explore) == 3:
+            break
+
+    creator_leads = [
+        row for row in all_creators
+        if int(row["web_visits"]) >= 3 and not int(row["peach_items"])
+    ][:3]
+    next_steps: list[dict[str, object]] = []
+    if creator_leads:
+        next_steps.append({
+            "kind": "follow", "title": "追踪常访创作者",
+            "detail": "、".join(str(row["name"]) for row in creator_leads),
+            "route": "/follow-manage",
+        })
+    if int(peach["coverage"]["untagged"]) or int(peach["coverage"]["unidentified"]):
+        next_steps.append({
+            "kind": "review", "title": "补齐馆藏证据",
+            "detail": (
+                f"{int(peach['coverage']['untagged'])} 项待补 Tag · "
+                f"{int(peach['coverage']['unidentified'])} 项待补身份"
+            ),
+            "route": "/review",
+        })
+    if explicit < 10:
+        next_steps.append({
+            "kind": "feedback", "title": "增加明确反馈",
+            "detail": f"当前喜欢 {int(peach['liked'])} · 不合口味 {int(peach['disliked'])}",
+            "route": "/",
+        })
+    return {
+        "headline": headline,
+        "points": points,
+        "confidence": {"level": confidence[0], "label": confidence[1]},
+        "explore": explore,
+        "next_steps": next_steps,
+    }
+
+
 def build_taste_dashboard(
     history_store: Path,
     ledger_connection: sqlite3.Connection,
@@ -804,6 +971,9 @@ def build_taste_dashboard(
                 category_scores[category] += max(1, round(float(row["peach_score"])))
 
     gaps = [row for row in all_tags if row["web_visits"] >= 2 and not row["peach_items"]][:12]
+    analysis = _taste_analysis(
+        history, peach, all_tags, all_creators, _tag_inventory(ledger_connection),
+    )
     return {
         "summary": {
             "history_visits": history["visits"],
@@ -832,6 +1002,7 @@ def build_taste_dashboard(
         },
         "coverage": peach["coverage"],
         "gaps": gaps,
+        "analysis": analysis,
         "privacy": {
             "raw_history_local_only": True,
             "ledger_unchanged": True,
