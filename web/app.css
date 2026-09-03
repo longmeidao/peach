@@ -1291,14 +1291,6 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
   padding:3px 0 0;display:flex;align-items:flex-end;border-radius:0;background:transparent;backdrop-filter:none}
 .vwrap .video-js .vjs-control-bar>.vjs-play-control{position:relative;align-self:flex-end;flex:0 0 40px;width:40px;height:40px;margin:0 0 8px;
   border:0;border-radius:50%;background:rgba(0,0,0,.6);box-shadow:none;overflow:visible}
-.vwrap .video-js .vjs-control-bar>.vjs-play-control .vjs-icon-placeholder:before,
-.vwrap .video-js .vjs-control-bar>.vjs-play-control .vjs-icon-placeholder:after{content:"";position:absolute;z-index:2;top:50%;background:#fff;filter:drop-shadow(0 0 1px rgba(0,0,0,.8))}
-.vwrap .video-js.vjs-paused .vjs-control-bar>.vjs-play-control .vjs-icon-placeholder:before,
-.vwrap .video-js.vjs-ended .vjs-control-bar>.vjs-play-control .vjs-icon-placeholder:before{left:50%;width:0;height:0;background:transparent;border-top:9px solid transparent;border-bottom:9px solid transparent;border-left:14px solid #fff;transform:translate(-38%,-50%)}
-.vwrap .video-js.vjs-paused .vjs-control-bar>.vjs-play-control .vjs-icon-placeholder:after,
-.vwrap .video-js.vjs-ended .vjs-control-bar>.vjs-play-control .vjs-icon-placeholder:after{display:none}
-.vwrap .video-js.vjs-playing .vjs-control-bar>.vjs-play-control .vjs-icon-placeholder:before{left:44%;width:4px;height:16px;transform:translate(-50%,-50%)}
-.vwrap .video-js.vjs-playing .vjs-control-bar>.vjs-play-control .vjs-icon-placeholder:after{left:56%;width:4px;height:16px;transform:translate(-50%,-50%)}
 .vwrap .video-js .vjs-volume-panel>.vjs-mute-control .vjs-icon-placeholder:before,
 .vwrap .video-js .vjs-peach-right-controls .vjs-icon-placeholder:before{display:grid;place-items:center;width:100%;height:100%;line-height:normal;filter:drop-shadow(0 0 1px rgba(0,0,0,.8))}
 .vwrap .video-js [data-peach-explicit-icon]>.vjs-icon-placeholder:before,
@@ -1308,6 +1300,26 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
   transform:translate(-50%,-50%) scale(1);fill:currentColor;stroke:none;filter:drop-shadow(0 0 1px rgba(0,0,0,.8));pointer-events:none;
   transition:transform .1s cubic-bezier(.05,0,0,1)}
 .vwrap .video-js [data-peach-explicit-icon]:active>.vjs-peach-control-icon{transform:translate(-50%,-50%) scale(.9)}
+/* 上游 delhi-modern 的播放键是 56px 圆里放一个 36px 的图标框（`svg{padding:10px}`），
+   图标本体 26 个单位。Peach 的键是 40px，同比例给 26px 的框，画出来 18.6px。 */
+.vwrap .video-js .vjs-control-bar>.vjs-play-control>.vjs-peach-control-icon{width:26px;height:26px}
+/* 播放↔暂停靠插值同一条路径完成，不是换图：上游那两条路径的记号结构逐位相同（233 个记号、
+   116 个数字，命令序列都是 MLCCLCCLCCLCCZMLCCVCCLCCVLCCZ），所以浏览器插 `d` 得到的中间
+   形状就是上游 `eST` 自己插出来的那些。不支持插值 `d` 的浏览器退回瞬间切换。 */
+.vjs-peach-morph-icon path{transition:d .2s cubic-bezier(.4,0,.2,1)}
+/* 两道弧的缩放中心写在变换里，所以 `transform-origin` 必须归零：默认的 50% 50% 会把中心
+   整体挪一段，弧就不是缩进自己而是斜着飞出去。`transform-box:view-box` 让这里的 px
+   等于视框单位，跟上游 `transform` 属性里的数字对得上。 */
+.vjs-peach-morph-icon .vjs-peach-volume-arc-inner,
+.vjs-peach-morph-icon .vjs-peach-volume-arc-outer{transform-box:view-box;transform-origin:0 0;
+  transition:transform .25s cubic-bezier(.4,0,.2,1)}
+.vjs-peach-morph-icon[data-silent="true"] .vjs-peach-volume-arc-inner{transform:translate(18px,12px) scale(0) translate(-18px,-12px)}
+.vjs-peach-morph-icon[data-silent="true"] .vjs-peach-volume-arc-outer,
+.vjs-peach-morph-icon[data-loud="false"] .vjs-peach-volume-arc-outer{transform:translate(22px,12px) scale(0) translate(-22px,-12px)}
+/* 叉号在弧缩完那一刻整块出现，和上游一样是切换不是淡入：时长 0、延迟 250ms。取消静音走
+   的是没有延迟的那一条，叉号立刻消失、弧再长回来。 */
+.vjs-peach-morph-icon .vjs-peach-volume-x{opacity:0;transition:opacity 0s linear}
+.vjs-peach-morph-icon[data-silent="true"] .vjs-peach-volume-x{opacity:1;transition:opacity 0s linear .25s}
 .vjs-peach-hover{position:absolute;z-index:0;left:0;top:4px;width:100%;height:32px;border-radius:var(--pill-radius);pointer-events:none;
   background:transparent;transition:background .2s cubic-bezier(.05,0,0,1)}
 /* 40px 的圆形播放键里再铺一层 40×32 的胶囊，hover 时亮起来的是个两头圆的方块，
@@ -1463,7 +1475,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vjs-peach-settings-menu .vjs-peach-speed-button:hover{background:rgba(255,255,255,.2)}
 .vjs-peach-settings-menu .vjs-peach-speed-button:active{background:rgba(255,255,255,.3)}
 .vjs-peach-speed-slider .vjs-peach-speed-button{flex:none;width:32px;font-size:var(--fs-2xl)}
-.vjs-peach-speed-chips .vjs-peach-speed-button{width:53px;gap:4px;font-size:var(--fs-xs)}
+.vjs-peach-speed-chips .vjs-peach-speed-button{flex:0 1 53px;min-width:0;gap:4px;font-size:var(--fs-xs)}
 .vjs-peach-speed-range{--peach-speed-percent:0%;-webkit-appearance:none;appearance:none;flex:1 1 auto;
   width:100%;min-width:0;height:24px;margin:0;background:transparent;cursor:pointer}
 .vjs-peach-speed-range:focus-visible{outline:0}
