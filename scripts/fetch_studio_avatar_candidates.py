@@ -23,7 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach.http import HttpRequest, HttpxTransport      # noqa: E402
-from peach.images import PAD, REJECT, classify, measure_image_size, pad_to_square  # noqa: E402
+from peach.images import REJECT, bake_square, classify, measure_image_size  # noqa: E402
 from peach.logo_provider import (  # noqa: E402
     POLICY_VERSION,
     LogoCandidateCache,
@@ -218,13 +218,14 @@ def main(argv: list[str] | None = None, *, transport=None) -> int:
             object_path = cache.store(url, payload, source_raster)
             width, height = source_raster.width, source_raster.height
             verdict, aspect, reason = classify(width, height)
-            if verdict == PAD:
-                # 长条形 Logo 补背景填成正方形，而不是丢掉——界面本来就按方框渲染。
-                padded = pad_to_square(payload)
-                if padded is None:
-                    verdict, reason = REJECT, "补方失败"
+            if verdict != REJECT:
+                # 厂牌标识落盘前一律烤成不透明方图：页面三处取图位都是 cover 的方框。
+                # 已经是不透明方图的原字节返回，长条补背景，带透明的配白底。
+                baked = bake_square(payload)
+                if baked is None:
+                    verdict, reason = REJECT, "烤方图失败"
                 else:
-                    payload = padded
+                    payload = baked
             final_raster = inspect_logo(payload) if verdict != REJECT else None
             saved = ""
             content_state = "rejected"

@@ -210,9 +210,26 @@
 - 厂牌标识按位置分 icon / logo 两份，但只在真的有两份时才分岔。`/logo?studio=X` 的可选 `variant`：
   `icon` 先找 `<safe>.icon.img`、`logo` 先找 `<safe>.logo.img`，都回落到既有的 `<safe>.img`；不带参数与
   加这个参数之前完全一致，认不出的值也按不带处理。页面上小地方（来源角标、筛选片、身份格、卡片徽标）
-  取 `icon`，厂牌页那个 160 px 大位取 `logo`；宽条字标仍按 `peach.images.pad_to_square` 补成方图。
-  129 个厂牌里只有 42 个有图、其中 17 个是 `normalize_studio_logos.py` 补白过的字标，所以绝大多数厂牌
-  两个位置拿到的仍是同一张。
+  取 `icon`，厂牌页那个 160 px 大位取 `logo`。129 个厂牌里只有 42 个有图、其中 17 个由
+  `normalize_studio_logos.py` 补过方，所以绝大多数厂牌两个位置拿到的仍是同一张。
+- **Logo 文件一律是不透明方图，页面三处一律 cover。** 边距和底色烤进文件，页面不再各自补救。
+  唯一入口是 `peach.images.bake_square`，`classify_plate` 给出它据以分流的判定：
+  - `mark`（有透明像素，如 PREMIUM 的全透明底蓝色字标）——按 alpha 外接框裁掉透明边，居中放到**白色
+    不透明**方底上，内容占边长 `PLATE_CONTENT_RATIO`（0.76，四周各留约 12%），像素不缩放，出不透明 PNG。
+  - `tile`（完全不透明，如 M's Video Group 400×400 黑底方块、Natural High 红底、Hon Naka 64×64 青底）——
+    底色是设计的一部分：接近方形的原字节返回，长条按边缘主色补方（`pad_to_square`）。不刷白。
+  写入侧只有两条路径，规则同一条：`harvest_studio_icons.py` 的 `install()` 落盘前烤，
+  `normalize_studio_logos.py` 对历史文件回溯（目录下所有 `*.img`，含 `.icon.img`／`.logo.img`）。
+  两者都幂等——烤出来的产物再跑一次不再有动作。女优头像等照片不走这条路径，不加白边。
+  矢量标识（4 个 `image/svg+xml`：DarkRoomVR、TeamSkeetXReislin、TeenFidelity、VirtualTaboo）不栅格化，
+  复核件上记 `vector` 原样留着——烤底按像素判透明和取外接框，矢量得先定目标尺寸再栅格，那是另一件事。
+  真实目录的 dry-run 实测 27 个待改：26 个 `mark` 待烤白底（Attackers、PREMIUM、MOODYZ、HEYZO、
+  Natural High、BangBus／BangBros18 各三份变体等），`pikpak.img` 116×68 是唯一的不透明长条待补方。
+  已经是不透明方图的（M's Video Group 那类整块 tile）不进复核件。回溯真实目录需另行授权。
+  页面三处取图位（品牌小圆片 `.brandpill .mk`、身份格 `.idface`、厂牌页 160 px 大位 `.entityportrait`）
+  的 `img` 统一 `object-fit: cover` 铺满方框，不加 inset、不加 padding、不改 contain：文件已经带够边距，
+  页面再补一层就在图自带的底之外多围出一圈框，而三处各自补救的结果必然互相不一致。占位底色
+  （`#CFCFCF`、`#fff`、`--overlay-5`）与首字母回落只在取不到图时露出来。
 - 补方形小标要借 `link_marks` 的内容比闸门，但不能借它的尺寸下限。`MIN_DESIGNED_SIZE=96` 是为
   `/link-mark` 那种 128 px 圆标定的；JAV 厂牌站的 favicon 普遍只有 32×32 或 64×64，直接套 `render_mark`
   会把 HEYZO、Idea Pocket、MOODYZ、Prestige、Wanz Factory、Tameike Goro 六个全退掉，还在复核件上记成
@@ -230,11 +247,10 @@
   `平台通用图标`，证据写明取到的是哪个主机的哪一份加 sha256。`/link-mark` 那个位置本来就是按主机的
   （`cache_key` 也按主机），不受这条约束。`HOST_OVERRIDES` 的键因此支持「主机 + 路径前缀」并取最长匹配。
 - **字标补白**（用户 2026-09-03 定的口径：不是 icon 也可以装 icon，尽量不要落入无图）：方标一个都没做成、
-  却取回过短边 ≥ `MIN_SHORT_EDGE` 的宽扁字标时，用 `peach.images.pad_to_square` 补成方图装上，判词
-  `字标补白`，`content_aspect` 照记（那个数就是「这枚其实是字标」的提示）。同一份补白方图再出一行
+  却取回过短边 ≥ `MIN_SHORT_EDGE` 的宽扁字标时，用 `peach.images.bake_square` 烤成方图装上，判词
+  `字标补白`，`content_aspect` 照记（那个数就是「这枚其实是字标」的提示）。同一份方图再出一行
   `logo`（判词 `ok`）装进 `<safe>.logo.img`：不出这行大位会回落到 `<safe>.img`，BangBus 页顶上挂的就成了
-  母品牌 BANGBROS。logo 位装的也是方图而不是原样宽条：厂牌页那个 160px 大位是 `object-fit: cover` 的方框，
-  整个 logo 目录 2026-08-28 起统一 pad-to-square（`*.img.normalization.json`），298×50 原样装上去实测只剩
+  母品牌 BANGBROS。两位装的都是方图：页面三处取图位都是 cover 的方框，298×50 原样装上去实测只剩
   中间的「NG」两个字母。用户指定的 logo 来源做成时优先。留第一份而不是最大的一份：
   `best_mark` 的遍历顺序已经是「覆盖表 → 声明 → 根路径猜测」。BangBus（298×50／比 6.60）与 BangBros18
   （298×50／比 6.06）走的就是这条，来源是 `bangbros.com/websites` 服务端渲染进 HTML 的 `*_LOGO` 资产

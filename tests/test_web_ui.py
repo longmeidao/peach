@@ -2961,11 +2961,23 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks(".entityfavicon').forEach(img=>img.addEventListener('error'")
         self.assertPageLacks('<span class="mono" style="color:var(--muted)">${labels[kind]||kind}资料页</span>')
 
-    def test_brand_pill_logo_has_one_centered_size_contract(self):
-        # The stylesheet centers the logo with an equal 3 px inset. Inline 100%
-        # dimensions used to override that size while leaving the inset active,
-        # shifting the clipped image down and right inside the round mark.
-        self.assertPageContains(".brandpill .mk img{position:absolute;inset:3px;width:calc(100% - 6px);height:calc(100% - 6px);")
+    def test_studio_marks_fill_their_three_frames_with_cover(self):
+        """厂牌标识文件是自带边距的不透明方图，三处取图位都把它铺满方框。
+
+        边距烤在文件里（`peach.images.bake_square`）。页面再补 inset、padding 或
+        换成 contain，就会在图自带的底之外多围出一圈框，三处还会各自不一致。
+        """
+        self.assertPageContains(
+            ".brandpill .mk img{position:absolute;inset:0;width:100%;height:100%;")
+        self.assertPageContains(
+            "object-fit:cover;display:block;filter:saturate(.72) brightness(.84)",
+            "小圆片的去饱和保留，但图必须铺满")
+        self.assertPageContains(
+            ".idface img{position:absolute;inset:0;width:100%;height:100%;"
+            "object-fit:cover;display:block}")
+        self.assertPageContains(
+            ".entityportrait img{width:100%;height:100%;object-fit:cover;display:block")
+        self.assertPageLacks(".idcell.logo .idface img{")
         self.assertPageLacks('style="width:100%;height:100%;object-fit:contain"')
 
     def test_status_tags_are_separated_and_nonessential_states_are_hidden(self):

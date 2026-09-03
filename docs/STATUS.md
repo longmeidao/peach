@@ -78,7 +78,7 @@
 18. 另行授权后跑 `scripts/normalize_link_hosts.py --apply --backup <落点>`，把 296 条 twitter 写法收成 x.com（290 改写、6 删除），随后重启托盘并在真实浏览器验收 `/link-mark` 的清晰度与边缘。
 19. 用户复核 `directory-links-<日期>.csv` 后用 `install_entity_links.py` 装入社媒链接；`conflict` 且账本旧号「疑似失效」的行由用户决定换号，随后可对账本现有全部 X 链接跑同样的验活。
 20. 用户复核 `studio-names-<日期>.csv` 的 26 条厂牌改名后另行授权；3 条不一致按「一个账本名混了两家」处理，5 条 404 未取得，搜索兜底要先有一个能用的搜索出口。
-21. 厂牌 icon／logo 位已按 `studio-icons.csv` 装入（FC2 换源、BangBus／BangBros18 字标补白进两位、Hon Naka 补图）；MonstersOfCock 频道标识未取得，回落母品牌字标。
+21. 厂牌标识规则：logo 文件一律不透明方图（`images.bake_square`），页面三处一律 cover。另行授权后跑 `normalize_studio_logos.py --apply --backup <落点>` 回溯真实目录：27 改、4 个 SVG 不动。
 22. 把 javdatabase 的 idol 页接进社媒／官网候选：183 页缓存里 139 页带 X 链接、138 页带另一个官方站，由番号定位、不必离线比名。复用 `peach.social_links` 的判据与 `install_entity_links.py` 的 `FIELDS`，排掉四个整站广告主机。
 23. 人工判 `domain-code-review.csv` 里 `WX17` 那 269 条水印存疑行，脚本不给提案。
 

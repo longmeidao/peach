@@ -1,9 +1,10 @@
 """给「只有宽幅字标」和「一张图都没有」的厂牌补标识，出 `icon` 与 `logo` 两个变体。
 
-已安装的厂牌图里有一部分本来是宽条字标，被 `normalize_studio_logos.py` 补白成了方图。
-补白让它在 160px 的厂牌页大位上好看，但塞进筛选片那种 28px 的小圆里就只剩一条糊字。
-社媒头像早就分 icon / logo 两用，厂牌该按同一条判断走。另有一批厂牌连一张图都没有
-（账本里现在是 Hon Naka），它们不在补白名单里，可两个位置一样空着，所以也纳进来。
+已安装的厂牌图里有一部分本来是宽条字标，`normalize_studio_logos.py` 的边车记着它们。
+补方让这些字标在 160px 的厂牌页大位上好看，但塞进筛选片那种 28px 的小圆里只剩一条糊字，
+所以小位要另找一枚方标。社媒头像早就分 icon / logo 两用，厂牌按同一条判断走。另有一批
+厂牌连一张图都没有（账本里现在是 Hon Naka），它们不在那份名单里，可两个位置一样空着，
+所以也纳进来。
 
 取哪一份交给 `site_icons`：官网首页声明的 apple-touch-icon / SVG / manifest 优先，
 都没有才落到 `/favicon.ico`。合格与否**不能**直接用 `link_marks.render_mark`：
@@ -23,13 +24,15 @@ favicon 一律退回。实测七个 JAV 厂牌站，六个的 favicon 内容比�
 一律不算数（`site_icons.HOST_SCOPE`），判词 `平台通用图标`。`/link-mark` 那个位置本来
 就是按主机的，不受这条约束。
 
-**字标可装。** 用户 2026-09-03 定的口径：找不到方形标识时，宽扁字标补白装进 `icon` 位
-也比露出无图强。所以方标一个都没做成、却取回过够大的字标时，用 `images.pad_to_square`
-补成方图装上，判词 `字标补白`，内容比照记——复核时那个数就是「这枚其实是字标」的提示。
-同一份补白方图再出一行 `logo`：不出这行大位会回落到母品牌的 `<safe>.img`（BangBus 页
-顶着 BANGBROS），是错图。logo 位也装方图而不是原样宽条，因为厂牌页那个 160px 大位是
-`object-fit: cover` 的方框，整个 logo 目录 2026-08-28 起就统一 pad-to-square 了——298×50
-原样装上去只剩中间两个字母。用户指定的 logo 来源做成时优先。
+**字标可装。** 用户 2026-09-03 定的口径：找不到方形标识时，宽扁字标烤成方图装进 `icon`
+位也比露出无图强。所以方标一个都没做成、却取回过够大的字标时，用 `images.bake_square`
+烤成方图装上，判词 `字标补白`，内容比照记——复核时那个数就是「这枚其实是字标」的提示。
+同一份方图再出一行 `logo`：不出这行大位会回落到母品牌的 `<safe>.img`（BangBus 页顶着
+BANGBROS），是错图。两位装的都是方图：页面三处取图位都是 `object-fit: cover` 的方框，
+宽条装上去只剩中间两个字母。用户指定的 logo 来源做成时优先。
+
+装盘的字节一律过 `images.bake_square`，所以 logo 目录里的文件天然是不透明方图。
+入口只有这一个，`normalize_studio_logos.py` 是同一条规则对历史文件的回溯。
 
 默认只出复核 CSV 和候选 PNG，不碰已安装的目录。`--install` 才写 `<safe>.icon.img`
 与 `<safe>.logo.img`；`<safe>.img` 只在原本不存在时补写一份，已有的一个字节都不动。
@@ -352,26 +355,24 @@ def icon_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
 
     entry = entries[0]
     tried = "、".join(attempts)
-    padded = images.pad_to_square(policy.wordmark) if policy.wordmark else None
-    if padded:
+    plate = images.bake_square(policy.wordmark) if policy.wordmark else None
+    if plate:
         # 用户 2026-09-03 的口径：不是 icon 也可以装 icon，尽量不要落入无图。
-        side = link_marks.decode(padded)
-        path = _store(candidate_dir, f"{safe}.png", padded)
+        side = link_marks.decode(plate)
+        path = _store(candidate_dir, f"{safe}.png", plate)
         icon = _row(safe, target, entry, ICON, PADDED,
                     mark_size=f"{side.size[0]}x{side.size[1]}" if side else "",
                     content_aspect=policy.wordmark_aspect,
-                    sha256=hashlib.sha256(padded).hexdigest(), candidate=str(path),
+                    sha256=hashlib.sha256(plate).hexdigest(), candidate=str(path),
                     evidence=(f"方形标识未取得，装的是字标：{policy.wordmark_size}"
-                              f"／内容比 {policy.wordmark_aspect}，补白成方图"))
+                              f"／内容比 {policy.wordmark_aspect}，烤成方图"))
         # 不出这一行，`logo` 位会回落到 `<safe>.img`——BangBus 的那一份是母品牌
-        # BANGBROS，小位对了大位却挂着别家的牌子。装的仍是方图：大位是 160px 的
-        # `object-fit: cover` 方框，298×50 原样装上去只剩中间两个字母。
-        logo_path = _store(candidate_dir, f"{safe}.logo.png", padded)
+        # BANGBROS，小位对了大位却挂着别家的牌子。
+        logo_path = _store(candidate_dir, f"{safe}.logo.png", plate)
         logo = _row(safe, target, entry, LOGO, OK,
                     mark_size=icon["mark_size"], content_aspect=policy.wordmark_aspect,
                     sha256=icon["sha256"], candidate=str(logo_path),
-                    evidence=(f"与 icon 位同一份补白方图（原字标 {policy.wordmark_size}）；"
-                              "大位是方框，不装原样宽条"))
+                    evidence=(f"与 icon 位同一份方图（原字标 {policy.wordmark_size}）"))
         return icon, logo
     if not reachable:
         verdict, evidence = MISSING, f"试过 {tried}，一份字节都没取回来"
@@ -451,15 +452,22 @@ def install(rows: list[dict[str, object]], logo_root: Path) -> list[str]:
     这两个都是新文件名，不覆盖也不删除现有的 `<safe>.img`。只有原本**没有**
     `<safe>.img` 的厂牌才补写一份：不带 `variant` 和认不出的 `variant` 都回落到它，
     缺了那些位置仍然 404。
+
+    落盘的字节过 `images.bake_square`，装进去的一律是不透明方图。哈希核对针对
+    候选文件本身，`installed_sha256` 记的才是真正写进目录的那一份。
     """
     written: list[str] = []
     logo_root.mkdir(parents=True, exist_ok=True)
     for row in rows:
         if row["verdict"] not in INSTALLABLE or not row["candidate"]:
             continue
-        payload = Path(str(row["candidate"])).read_bytes()
-        if hashlib.sha256(payload).hexdigest() != row["sha256"]:
+        candidate = Path(str(row["candidate"])).read_bytes()
+        if hashlib.sha256(candidate).hexdigest() != row["sha256"]:
             raise ValueError(f'候选文件与复核记录哈希不一致，拒绝安装：{row["safe"]}')
+        payload = images.bake_square(candidate)
+        if payload is None:
+            raise ValueError(f'候选烤不成方图，拒绝安装：{row["safe"]}')
+        installed_sha256 = hashlib.sha256(payload).hexdigest()
         variant = str(row.get("variant") or ICON)
         targets = [logo_root / f'{row["safe"]}.{variant}.img']
         base = logo_root / f'{row["safe"]}.img'
@@ -474,6 +482,7 @@ def install(rows: list[dict[str, object]], logo_root: Path) -> list[str]:
                 "source": "studio icon harvest",
                 "source_url": row["url"],
                 "sha256": row["sha256"],
+                "installed_sha256": installed_sha256,
                 "variant": variant,
                 "verdict": row["verdict"],
                 "installed_beside": f'{row["safe"]}.img',
