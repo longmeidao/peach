@@ -2,8 +2,7 @@
 
 本文件是 Codex 与 Claude 共用的唯一项目入口，只保留「每个任务都必须成立」的边界与索引。
 它不是 README：`README.md` 讲这个项目是什么、怎么跑；本文件讲改动它之前必须先知道什么。
-分层判据、写作规范与清退机制见 `docs/adr/0015-agent-context-layering.md`；新增规则前先按
-`.claude/skills/peach-context-rules/SKILL.md` 判断该写在哪一层，不要默认追加到本文件。
+分层判据、写作规范与清退机制见 `docs/adr/0015-agent-context-layering.md`，不要默认追加到本文件。
 
 面向用户阅读的 README、项目总览、状态、交接、复用清单、待办和 ADR 正文统一使用中文。
 代码标识、命令、协议名、库名和无法准确翻译的专有名词保留英文；不要为了智能体处理方便混写英文叙述。
@@ -75,8 +74,9 @@
 - **测试入口**：每个平台只有一个，Windows `& .\scripts\test.ps1`，macOS/Linux `./scripts/test.sh`，只在当前隔离 worktree 根目录运行。局部改动跑对应功能域；跨域、迁移、共享测试设施、依赖、构建/发布或大面积改动跑默认 `full`。两者自动定位主项目 venv、强制 `PYTHONPATH=<当前 worktree>/src`、核对 `peach.__file__` 后运行 `unittest`；禁止手工拼接 venv 路径或调用 pytest。健康检查只使用 `/healthz`。
 - **上下文预算**：入口文件与技能有行数、字节数和最长行三重预算，由 `scripts/check_context_budget.py` 与 `tests/test_context_budget.py` 强制。写不下就说明该内容属于 `docs/` 或某个技能，不是往本文件加行。
 - **分层**：新增或删除规则前按 `peach-context-rules` 判层；本文件的技能索引必须与 `.claude/skills/` 一一对应，技能缺 frontmatter、name 不符或缺 `最后复核` 会被拒。
-- **工作树**：并发改代码时主检出只做集成。每个智能体在 `scripts/agent_worktree.py create` 建于 `peach-worktrees/` 的隔离工作树里干活，不在别处、也不在主检出；提交前 `git rev-parse --show-toplevel` 必须不是主检出，工作者只交分支、从不自己合并。细节见 `peach-worktree`。
+- **工作树**：并发改代码时主检出只做集成。每个智能体在 `scripts/agent_worktree.py create` 建于 `peach-worktrees/` 的隔离工作树里干活；提交前 `git rev-parse --show-toplevel` 必须不是主检出，工作者只交分支、从不自己合并。细节见 `peach-worktree`。
 - **仓库卫生**：`.claude/worktrees/` 下不得留未在 `git worktree list` 注册的目录（`tests/test_repo_hygiene.py`）。不用 `git add .`、`git add -A`、目录路径或 glob，只暂存本任务拥有的文件再核对 `git diff --cached --name-status`；实现与它的测试原子提交。
+- **文案只写最终状态**：界面字串、注释、docstring、测试名与文档不写改动前后对比，例外逐行加 `copy-lint-disable-line`（`tests/test_copy_final_state.py`）。
 - **依赖策略**：Python 依赖精确固定版本，每个被 import 的外部模块要有声明的归属，前端清单与实际 vendored 路径一致，所有清单都进 Dependabot（`tests/test_dependency_policy.py`）。
 
 ## 常犯错误（没有自动拦截，都是真实重犯过的）

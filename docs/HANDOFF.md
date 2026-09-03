@@ -60,9 +60,10 @@
 
 - 全部中文内容（README、`docs/`、ADR、技能正文、界面文案）按用户级技能 tech-doc-style-chinese 写作：
   事实优先、可扫读、不新增原文没有的数字与结论；规则只作用于可见正文，代码、路径、字段和命令原样保留。
-- 来源 https://github.com/Fenng/Tech-Doc-Style-Chinese （MIT），本机装在用户级 `skills/tech-doc-style-chinese`（upstream `a6f5b60`，2026-08-07），Claude 按 description 自动加载；Codex 自行安装到 `$CODEX_HOME/skills/` 下的同名目录。
-- 检查器是该技能目录下的 `scripts/lint_copy_rules.py`，用主项目 venv 跑，参数 `README.md AGENTS.md docs
-  .claude\skills`。它只覆盖高频规则，`error` 必须清零，`style` 提示需人工判断，不作为提交门槛。
+- 来源 https://github.com/Fenng/Tech-Doc-Style-Chinese （MIT），本机装在用户级 `skills/tech-doc-style-chinese`（upstream `a6f5b60`，2026-08-07）；Codex 自行安装到 `$CODEX_HOME/skills/` 同名目录。
+- 检查器两层：用户级 `scripts/lint_copy_rules.py` 用主项目 venv 跑，参数 `README.md AGENTS.md docs
+  .claude\skills`，`error` 清零、`style` 人工判断，不是门槛；`scripts/check_copy_final_state.py`
+  是门槛，判据与放行标记见 `peach-context-rules`。
 - Peach 覆盖上游默认三处：智能体入口文件保留称呼「你」（术语表已定义其含义）；`DOM/CSS/JS` 是证据 <!-- copy-lint-disable-line -->
   三元组的固定写法，不展开成 JavaScript；`对齐`、`复盘` 是已注册的项目术语与技能触发词，不替换。
   其余上游黑话词（兜底、落盘、闭环、链路）一律改写成具体机制。

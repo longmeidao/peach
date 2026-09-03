@@ -1,0 +1,76 @@
+"""文案只描述最终状态的门槛。判据与放行方式见 `scripts/check_copy_final_state.py`。
+
+写成测试而不是文档里的一条提醒，是因为提醒已经证明拦不住：用户四次要求删掉界面上
+「没必要的说明文字和中间态说明」，四次都有遗漏。遗漏的形态是固定的——被要求去掉
+某个东西之后，交付物里到处留着「（无那个东西）」：标题、注释、说明都在讲被否掉的
+中间状态，而不是只描述最终的成品。
+"""
+from __future__ import annotations
+
+import sys
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+import check_copy_final_state as checker  # noqa: E402
+
+
+class CopyFinalStateTests(unittest.TestCase):
+    def test_no_copy_narrates_a_rejected_or_superseded_state(self):
+        findings = checker.scan_repo(ROOT)
+        self.assertEqual(
+            findings, [],
+            "文案只写最终状态。逐行修掉下列位置，或确认它是真实事故记录后在行尾加"
+            f" {checker.DISABLE_MARKER}：\n"
+            + "\n".join(str(item) for item in findings))
+
+    def test_the_disable_marker_works_line_by_line(self):
+        source = "# 以前这里是另一种做法\n# 以前这里是另一种做法  # copy-lint-disable-line\n"
+        found = checker.scan_python("sample.py", source)
+        self.assertEqual([item.line for item in found], [1])
+
+    def test_python_identifiers_and_values_are_not_prose(self):
+        # 判据落在注释、docstring、字符串字面量和测试函数名上。变量名与下标是被
+        # 执行的值，不是给人读的叙述，扫进来只会把 `source='legacy:asset'` 判成违规。
+        source = "legacy_id = 1\nrow['以前']\n"
+        self.assertEqual(checker.scan_python("sample.py", source), [])
+
+    def test_markdown_code_fences_carry_commands_not_prose(self):
+        source = "正文\n```\ngit log --grep 以前\n```\n以前\n"
+        found = checker.scan_lines("sample.md", source, skip_code_fences=True)
+        self.assertEqual([item.line for item in found], [5])
+
+    def test_every_rule_reports_file_line_and_term(self):
+        found = checker.scan_lines("sample.md", "# 曾经有另一种做法\n",
+                                   skip_code_fences=True)
+        self.assertEqual(len(found), 1)
+        self.assertEqual((found[0].path, found[0].line, found[0].term),
+                         ("sample.md", 1, "曾经"))
+        self.assertIn("sample.md:1", str(found[0]))
+
+    def test_the_scan_covers_every_declared_surface(self):
+        """扫描面写死成 glob 就会漏掉新目录，所以直接核对它收到了哪些文件。"""
+        picked = {path.relative_to(ROOT).as_posix() for path in checker.targets(ROOT)}
+        for required in ("AGENTS.md", "README.md", "docs/HANDOFF.md",
+                         "web/app.js", "web/index.html", "web/js/routes.js",
+                         "src/peach/web_entity.py", "scripts/ledger.py",
+                         "tests/test_web_ui.py",
+                         ".claude/skills/peach-worktree/SKILL.md"):
+            self.assertIn(required, picked)
+        self.assertTrue(any(path.startswith("frontend/src/") for path in picked))
+        # ADR 正文的内容就是决策与被否掉的备选方案，本门槛不适用。
+        self.assertFalse(any(path.startswith("docs/adr/") for path in picked))
+
+    def test_temporary_exclusions_name_files_that_exist(self):
+        """排除清单是临时的，由协调者在并行分支合并后删掉。
+
+        列进来的文件被别的工作者持有，本分支不改它们。文件消失时清单要跟着消失，
+        否则它会变成一份没人核对的永久豁免。
+        """
+        for rel in checker.TEMPORARY_EXCLUSIONS:
+            self.assertTrue((ROOT / rel).is_file(), rel)
+
+
+if __name__ == "__main__":
+    unittest.main()
