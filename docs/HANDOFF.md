@@ -128,11 +128,11 @@
 
 命令、顺序、失败表现和踩过的坑见 `docs/OPERATIONS.md`，这里只留边界。
 
-- Windows 日常入口是当前用户 Startup 里唯一的 `Peach.lnk`，指向项目内打包的托盘 EXE；它不是可移动发行版，服务进程仍由项目 venv 的 `peach.exe` 承担。刷新源码运行态用 `scripts/restart_windows_tray.py`，不点托盘、不强杀后另启。
-- 「同步开发进度」（GitHub）和「同步 Ledger」（SMB 共享）是两条独立通道，任一方不可达都不该拖住另一方；HTTP/HTTPS 服务只观察角色不自动复制，只有确定会复制时才停止自己创建的服务。
-- 「接管 Ledger 写入」只在共享盘不可达时短路，健康端口不归本托盘时拒绝接管；两台机器可以同时跑服务，但同时写入会很快冲突转只读。
+- Windows 日常入口是当前用户 Startup 里唯一的 `Peach.lnk`，指向项目内打包的托盘 EXE；它不是可移动发行版，服务进程仍由项目 venv 的 `peach.exe` 承担。刷新源码运行态走 `scripts/restart_windows_tray.py`。
+- 「同步开发进度」（GitHub）和「同步 Ledger」（SMB 共享）是两条独立通道，任一方不可达都不该拖住另一方；服务只观察角色不自动复制。
+- 两台机器可以同时跑服务，但同时写入会很快冲突转只读；「接管 Ledger 写入」的短路与拒绝条件见 OPERATIONS。
 - `src/peach/__init__.py::__version__` 是版本唯一来源；自动更新只做 `merge --ff-only`，不 stash、不 rebase、不 `--force`，工作区脏或两边分叉就原样报出来交给人——并行工作树和主检出共用同一个对象库。
-- 本机坐标在 `<数据根>/config.toml`（环境变量 > 它 > 内建默认），`src/peach/` 不写死本机字面量或家庭 IP；现有部署各跑一次 `peach init --from-existing`；`replication.enabled` 要到第三阶段才有代码读。
+- 本机坐标在 `<数据根>/config.toml`（环境变量 > 它 > 内建默认），`src/peach/` 不写死本机字面量或家庭 IP；现有部署各跑一次 `peach init --from-existing`。`[media.mounts]` 按 `asset.location` 给本机落点，Windows 上整表为空；`replication.enabled` 默认关，关掉即整条复制链路不装配，`/healthz` 报 `disabled`。
 - `.local` 用本机 CA 而不是 Let's Encrypt，证书与私钥留在本机 `peach-data/secrets` 且按设计不跨机共享；FastAPI 是唯一 Web server，探测本机服务必须绕过系统代理，否则代理会替服务回 503。
 - 网盘目录整理后必须经「管理 → 资源同步」显式对账，不做后台静默删除；源文件缺失的 asset 和垃圾文件候选都只能先进回收站，清空回收站才永久删除账本行。
 - 长任务只停止自己拥有且命令行匹配的 Python/FFmpeg 进程树，禁止全机终止 FFmpeg；转码只写缓存，永不改写原媒体。

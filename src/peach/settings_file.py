@@ -40,16 +40,19 @@ DIRECTORY_KEYS = (
     "database", "generated", "sources", "state", "secrets", "logs", "tools", "review",
 )
 
-#: `asset.location` -> 账本口径的声明根。键是 ledger 里的值，形状仍是 Windows 盘符
-#: （换成挂载点 ID 是 ADR-0023 第二阶段的事），本机落点由 `peach.platform` 翻译。
+#: `asset.location` -> 账本口径的声明根。键是 ledger 里的 `asset.location` 值，它本来
+#: 就是挂载点 ID；值仍是 Windows 盘符形态，因为账本路径的形状是不变量（AGENTS.md）。
+#: 本机落点由 `[media.mounts]` 按同一批 ID 给出，翻译在 `peach.platform`（ADR-0023 勘误）。
 DEFAULT_LOCATION_ROOTS: dict[str, str] = {
     "local": r"R:\media",
     "115": "B:/",
     "pikpak": "A:/",
 }
 
-#: `[media]` 表里这个键是子表 `[media.locations]`，不是一个挂载点。
+#: `[media]` 下只有这两个子表，没有任何标量键。第一阶段的 `[media] R = '...'` 是盘符键，
+#: 键空间和 location ID 不同，静默接受只会让整台机器脱盘，所以要显式报升级提示。
 _LOCATIONS_KEY = "locations"
+_MOUNTS_KEY = "mounts"
 
 
 class SettingsFileError(RuntimeError):
@@ -108,10 +111,10 @@ class ServerSettings:
 class ReplicationSettings:
     """单写者 ledger 复制（ADR-0017、ADR-0020）的坐标。
 
-    `enabled` 是 ADR-0023 第三阶段的开关，**本阶段没有任何运行时代码读它**：第一阶段
-    只把值搬进设置文件，装配逻辑一个字没改，所以现有部署的行为不变。内建默认 False
-    对单机用户成立；现有双机部署由 `peach init --from-existing` 写成 true，等第三阶段
-    真的接上这个开关时，那两台机器读到的仍然是 true。
+    `enabled` 默认 False：多数部署只有一台机器，没有第二台就没有单写者复制可言。
+    关闭时不装配 ledger 同步观察器、不探测也不挂载 SMB、托盘不出 Ledger 菜单项，
+    服务按独立写者跑（`/healthz` 的 `ledger_sync` 为 `disabled`）。现有双机部署由
+    `peach init --from-existing` 写成 true，读到 true 的机器行为和以前一字不差。
     """
 
     enabled: bool = False
@@ -134,7 +137,8 @@ class PeachConfig:
     #: 数据根是被找到的，还是只是一个建议落点。
     data_root_found: bool = False
     directories: dict[str, str] = field(default_factory=dict)
-    #: 账本路径前缀 -> 本机挂载点。Windows 上通常为空：盘符本身就是挂载点。
+    #: `asset.location` -> 本机挂载点，即该来源的声明根落在本机哪个目录。
+    #: Windows 上通常为空：盘符本身就是挂载点，路径不需要翻译。
     mounts: dict[str, str] = field(default_factory=dict)
     locations: dict[str, str] = field(
         default_factory=lambda: dict(DEFAULT_LOCATION_ROOTS))
@@ -239,11 +243,28 @@ def _merge(
         raise _fail(path, "`directories` 里有不认识的键：" + "、".join(unknown))
 
     media = _table(document, "media", path)
-    locations_table = _table(media, _LOCATIONS_KEY, path)
-    mounts = _string_map(
-        {k: v for k, v in media.items() if k != _LOCATIONS_KEY}, path, "media.")
+    stray = sorted(set(media) - {_LOCATIONS_KEY, _MOUNTS_KEY})
+    if stray:
+        # 第一阶段的 `[media] R = '/Volumes/RESOURCES'`。键空间从盘符换成了 location ID，
+        # 把它当未知键忽略等于「所有来源都没挂」——整台机器安静地进脱盘模式。
+        raise _fail(path, (
+            "`[media]` 下不再接受盘符键：" + "、".join(stray)
+            + "。改写成 `[media.mounts] <location-id> = <本机路径>`，"
+            "ID 取 `[media.locations]` 里的键（local / 115 / pikpak），"
+            "路径填该来源的声明根在本机的落点，例如 "
+            "`local = '/mnt/media'`"
+        ))
     locations = dict(DEFAULT_LOCATION_ROOTS)
-    locations.update(_string_map(locations_table, path, "media.locations."))
+    locations.update(
+        _string_map(_table(media, _LOCATIONS_KEY, path), path, "media.locations."))
+    mounts = _string_map(_table(media, _MOUNTS_KEY, path), path, "media.mounts.")
+    unknown_mounts = sorted(set(mounts) - set(locations))
+    if unknown_mounts:
+        # 打错一个 ID 却静默忽略，同样是安静地脱盘。
+        raise _fail(path, (
+            "`[media.mounts]` 里有没在 `[media.locations]` 声明过的来源："
+            + "、".join(unknown_mounts)
+        ))
 
     server_table = _table(document, "server", path)
     fallback = ServerSettings()
@@ -284,8 +305,8 @@ def _merge(
 
 
 #: 环境变量 -> 设置项。这一层永远压过文件，临时覆盖和 CI 都靠它，不用改文件。
-#: `PEACH_DATA_ROOT` 在 `discover_data_root` 里就用掉了；`PEACH_DRIVE_MAP` 由
-#: `peach.platform` 在每次 `drive_map()` 里现读，测试会在运行期改它。
+#: `PEACH_DATA_ROOT` 在 `discover_data_root` 里就用掉了；`PEACH_MEDIA_MOUNTS` 由
+#: `peach.platform` 在每次 `location_mounts()` 里现读，测试会在运行期改它。
 _SERVER_ENV = {
     "PEACH_MDNS_NAME": "mdns_name",
     "PEACH_REVIEW_WRITER_ORIGIN": "review_writer_origin",
@@ -324,6 +345,11 @@ def load_config(
 
     `strict=False` 时坏文件退回内建默认（数据根仍然照发现顺序算），给 `peach init
     --force` 留一条自救路径；否则抛 `SettingsFileError`。
+
+    「坏」包括语法读不出来和合并时被拒（未知目录键、`[media]` 下的盘符键之类）。
+    两者都要走同一条退路：`_merge` 的拒绝原来漏在 try 外面，于是自救入口自己
+    也会崩——第一阶段的 `[media] R = ...` 在第二阶段变成硬错误后，那正是最常见的
+    一份坏文件。
     """
     environ = os.environ if environ is None else environ
     data_root, found = discover_data_root(project_root, environ)
@@ -337,7 +363,13 @@ def load_config(
         except SettingsFileError:
             if strict:
                 raise
-    return _merge(data_root, path, present, found, document, environ)
+    try:
+        return _merge(data_root, path, present, found, document, environ)
+    except SettingsFileError:
+        if strict:
+            raise
+        # 文件内容整份作废，只保留数据根的发现结果和环境变量层。
+        return _merge(data_root, path, False, found, {}, environ)
 
 
 @lru_cache(maxsize=1)
@@ -403,18 +435,19 @@ def render(config: PeachConfig) -> str:
                             for key in DIRECTORY_KEYS if key in config.directories})
     lines += [
         "",
-        "[media]",
-        "# 账本路径前缀 -> 本机挂载点。键在 ADR-0023 第二阶段会换成挂载点 ID，现在仍是盘符。",
-        "# 不写或留空表示本机没有这个来源，对应资产按「脱盘」处理，不报错。",
-        "# Windows 上通常整表为空：盘符本身就是挂载点。",
-    ]
-    lines += _render_pairs(dict(config.mounts))
-    lines += [
-        "",
         "[media.locations]",
         "# asset.location -> 账本口径的声明根。改这里等于改账本口径，通常不要动。",
     ]
     lines += _render_pairs(dict(config.locations))
+    lines += [
+        "",
+        "[media.mounts]",
+        "# asset.location -> 本机挂载点：上面那个声明根落在本机的哪个目录。",
+        "# 例如 local = '/mnt/media' 时，R:\\media\\a.mp4 读作 /mnt/media/a.mp4。",
+        "# 不写或留空表示本机没有这个来源，对应资产按「脱盘」处理，不报错。",
+        "# Windows 上整表为空：盘符本身就是挂载点，路径不需要翻译。",
+    ]
+    lines += _render_pairs(dict(config.mounts))
     lines += [
         "",
         "[server]",
@@ -431,8 +464,8 @@ def render(config: PeachConfig) -> str:
     lines += [
         "",
         "[replication]",
-        "# 单写者 ledger 复制的坐标（ADR-0017）。enabled 由 ADR-0023 第三阶段接上，",
-        "# 本阶段没有运行时代码读它：写在这里只是把值从代码里搬出来，行为不变。",
+        "# 单写者 ledger 复制的坐标（ADR-0017）。enabled = false 时不启动同步观察器、",
+        "# 不探测 SMB、托盘不出 Ledger 菜单项，服务按独立写者跑。只有一台机器就别开。",
         "# shared_root 留空表示 <数据根的上级>/peach-sync；smb_* 留空表示不挂载共享。",
     ]
     lines += _render_pairs({
@@ -466,7 +499,7 @@ def capture_existing(
     钥匙串账号名之类只有本机的人知道的事实）。
 
     `replication_enabled` 默认 True：加了 `--from-existing` 就说明这是一台已经在跑的
-    机器，第三阶段接上开关时它的复制行为必须和现在一致。
+    机器，它的复制行为必须和现在一致，不能因为写了设置文件就静悄悄关掉。
     """
     overrides = {key: value for key, value in (overrides or {}).items()
                  if value is not None and value != ""}

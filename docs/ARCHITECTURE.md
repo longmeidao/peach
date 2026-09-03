@@ -8,7 +8,7 @@ Peach 是逻辑前后端分离、部署仍为一个进程的 FastAPI 模块化�
 
 1. **Ledger**：资产、行为、来源和知识的唯一真相源。SQLite 适合当前单用户规模。硬盘上的那份是权威副本，两台机器各持本地工作副本，由 `peach.sync` 做单写者复制：拉取、回写、冲突转只读，**不做多主合并**。
 2. **API / 应用层**：FastAPI 承载页面、JSON、媒体响应和写入边界。`api.py` 只是组装根，路由按 `routes_auth`、`routes_pages`、`routes_media`、`routes_api` 四个 APIRouter 挂载，`/api/{route}` 由 `web_router` 的 handler 表分派到 `web_catalog`、`web_entity`、`web_stats`、`web_batch`、`web_follow` 等域模块；前端新页面按 ADR-0022 以 Preact island 形式在 `frontend/` 实现，产物经 `/dist/` 提供。
-3. **平台层**：`peach.platform` 是账本路径与本机挂载点之间唯一的翻译层。账本只用 Windows 盘符记录路径，读取时按 `PEACH_DRIVE_MAP` 翻译到本机挂载点；没有挂载点的盘符落到不可达根，对应来源整体按脱盘处理。CloudDrive 在 Windows 是盘符、在 macOS 是 macFUSE 挂载点，差异全部收敛在这里。
+3. **平台层**：`peach.platform` 是账本路径与本机挂载点之间唯一的翻译层。账本只用 Windows 盘符记录路径，读取时按「来源的声明根 → 本机挂载点」翻译（来源即 `asset.location`，两侧由设置文件的 `[media.locations]` 与 `[media.mounts]` 给出，`PEACH_MEDIA_MOUNTS` 可临时覆盖）；没有挂载点的来源落到不可达根，整体按脱盘处理。CloudDrive 在 Windows 是盘符、在 macOS 是 macFUSE 挂载点，差异全部收敛在这里。
 4. **Media Engine**：FastAPI 只持有一个 `MediaEngine`，本地文件与挂载网盘都是原生后端；Stash 适配层已删除（ADR-0021）。远端 MP4 默认走标准 Range，`stream-plan` 只在显式开启时给出按时间生成的 HLS 片段（ADR-0016：HEVC-in-TS 会静默黑屏，所以 HLS 是例外而不是默认）。
 5. **Web**：单页、移动端优先。按 ADR-0022 从无构建步骤的 `web/` 逐岛迁往 `frontend/` 的 Vite + TypeScript + Preact，构建产物提交进 `web/dist/`；strangler 是唯一路径，不做整站重写。
 6. **AI Provider**：`InferenceProvider` 与 `AgentProvider` 分离。AI 只产出带来源和置信度的候选。

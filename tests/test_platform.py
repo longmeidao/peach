@@ -1,18 +1,21 @@
 import os
-import subprocess
 import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from peach import settings_file
 from peach.media import FilesystemBackend, MediaOffline, MediaUnavailable
 from peach.platform import (
+    MOUNTS_ENV,
     UNMAPPED_ROOT,
-    drive_map,
+    declared_root,
     is_unmapped,
     is_windows_path,
+    location_mounts,
+    location_of,
+    resolve_location,
     root_online,
     system_volume,
     translate_ledger_path,
@@ -22,38 +25,118 @@ from peach.platform import (
 from peach.repository import MediaAsset
 
 
-POSIX_ONLY = unittest.skipIf(os.name == "nt", "盘符翻译只在非 Windows 上发生")
+POSIX_ONLY = unittest.skipIf(os.name == "nt", "路径翻译只在非 Windows 上发生")
+
+#: 测试里固定的账本口径声明根，和内建默认一致；不依赖本机 config.toml。
+LOCATIONS = {"local": r"R:\media", "115": "B:/", "pikpak": "A:/"}
 
 
-class DriveTranslationTests(unittest.TestCase):
+def with_media(mounts, locations=None):
+    """把设置层的 `[media.locations]` / `[media.mounts]` 钉死成给定值。"""
+    config = settings_file.load_config(environ={}, strict=False)
+    fixed = replace(
+        config, mounts=dict(mounts),
+        locations=dict(LOCATIONS if locations is None else locations),
+    )
+    return patch.object(settings_file, "active", lambda: fixed)
+
+
+class LocationResolutionTests(unittest.TestCase):
+    """来源判定只看声明根前缀，两个平台上行为一致。"""
+
     def test_windows_path_shape_is_recognised(self):
         self.assertTrue(is_windows_path(r"R:\Media\one.mp4"))
         self.assertTrue(is_windows_path("B:/one.mp4"))
         self.assertFalse(is_windows_path("/Volumes/RESOURCES/media/one.mp4"))
         self.assertFalse(is_windows_path("relative/one.mp4"))
 
-    @POSIX_ONLY
-    def test_ledger_drive_is_mapped_to_the_local_mount(self):
-        with patch.dict("os.environ", {"PEACH_DRIVE_MAP": "R=/mnt/res,B=/mnt/115"}):
+    def test_path_under_a_declared_root_resolves_to_that_location(self):
+        with with_media({}):
             self.assertEqual(
-                translate_ledger_path(r"R:\Media\创作者\one.mp4"),
-                Path("/mnt/res/Media/创作者/one.mp4"),
+                resolve_location(r"R:\media\创作者\one.mp4"),
+                ("local", ("创作者", "one.mp4")),
             )
-            self.assertEqual(translate_ledger_path("B:/x/one.mp4"), Path("/mnt/115/x/one.mp4"))
+            self.assertEqual(resolve_location("B:/x/one.mp4"), ("115", ("x", "one.mp4")))
+
+    def test_declared_root_matching_ignores_case(self):
+        """账本里写 `R:\\Media`、声明根写 `R:\\media`，是同一处，不能判成未声明。"""
+        with with_media({}):
+            self.assertEqual(location_of(r"R:\MEDIA\one.mp4"), "local")
+
+    def test_the_longest_declared_root_wins(self):
+        with with_media({}, {"whole": "R:/", "local": r"R:\media"}):
+            self.assertEqual(resolve_location(r"R:\media\a.mp4"), ("local", ("a.mp4",)))
+            self.assertEqual(
+                resolve_location(r"R:\Resources\a.mp4"), ("whole", ("Resources", "a.mp4")))
+
+    def test_path_outside_every_declared_root_has_no_location(self):
+        with with_media({}):
+            self.assertEqual(resolve_location(r"Z:\secret\one.mp4"), (None, ()))
+            # 同一个盘但不在声明根下：`R:\Resources` 不是 `R:\media`。
+            self.assertIsNone(location_of(r"R:\Resources\Intake\one.mp4"))
+
+    def test_declared_root_is_read_from_the_settings_layer(self):
+        with with_media({}):
+            self.assertEqual(declared_root("local"), r"R:\media")
+            self.assertIsNone(declared_root("online"))
+
+
+class MountSourceTests(unittest.TestCase):
+    """挂载表按来源 ID 取自设置文件；`PEACH_MEDIA_MOUNTS` 仍然压过它。"""
+
+    def test_settings_file_supplies_the_base_mapping(self):
+        with with_media({"local": "/mnt/res"}):
+            with patch.dict("os.environ", {MOUNTS_ENV: ""}):
+                self.assertEqual(location_mounts(), {"local": Path("/mnt/res")})
+
+    def test_environment_still_wins_over_the_settings_file(self):
+        with with_media({"local": "/mnt/res", "115": "/mnt/115"}):
+            with patch.dict("os.environ", {MOUNTS_ENV: "local=/mnt/other"}):
+                self.assertEqual(
+                    location_mounts(),
+                    {"local": Path("/mnt/other"), "115": Path("/mnt/115")})
+
+    def test_a_fresh_machine_has_no_mounts_at_all(self):
+        """内建默认为空：没挂的来源按脱盘处理，绝不猜一个本机路径。"""
+        with with_media({}):
+            with patch.dict("os.environ", {MOUNTS_ENV: ""}):
+                self.assertEqual(location_mounts(), {})
+
+
+class TranslationTests(unittest.TestCase):
+    @POSIX_ONLY
+    def test_declared_root_is_rebased_onto_the_local_mount(self):
+        with with_media({"local": "/mnt/res/media", "115": "/mnt/115"}):
+            with patch.dict("os.environ", {MOUNTS_ENV: ""}):
+                self.assertEqual(
+                    translate_ledger_path(r"R:\media\创作者\one.mp4"),
+                    Path("/mnt/res/media/创作者/one.mp4"),
+                )
+                self.assertEqual(
+                    translate_ledger_path("B:/x/one.mp4"), Path("/mnt/115/x/one.mp4"))
 
     @POSIX_ONLY
-    def test_unmapped_drive_never_becomes_a_relative_path(self):
-        """没有挂载点的盘符必须落到不可达根，否则会被当成当前目录下的同名文件。"""
-        with patch.dict("os.environ", {"PEACH_DRIVE_MAP": "R=/mnt/res"}):
-            path = translate_ledger_path(r"Z:\secret\one.mp4")
+    def test_unmapped_source_never_becomes_a_relative_path(self):
+        """没有挂载点的来源必须落到不可达根，否则会被当成当前目录下的同名文件。"""
+        with with_media({"local": "/mnt/res/media"}):
+            with patch.dict("os.environ", {MOUNTS_ENV: ""}):
+                path = translate_ledger_path(r"Z:\secret\one.mp4")
         self.assertTrue(path.is_absolute())
         self.assertTrue(is_unmapped(path))
         self.assertTrue(str(path).startswith(str(UNMAPPED_ROOT)))
 
     @POSIX_ONLY
+    def test_declared_but_unmounted_source_is_unmapped_too(self):
+        """声明根认得出来、本机没挂，同样是脱盘，不能落回相对路径。"""
+        with with_media({}):
+            with patch.dict("os.environ", {MOUNTS_ENV: ""}):
+                self.assertTrue(is_unmapped(translate_ledger_path(r"R:\media\one.mp4")))
+
+    @POSIX_ONLY
     def test_unmapped_roots_are_dropped_from_authorisation(self):
-        with patch.dict("os.environ", {"PEACH_DRIVE_MAP": "R=/mnt/res,A=,B="}):
-            roots = translate_roots((r"R:\media", "B:/", "A:/"))
+        with with_media({"local": "/mnt/res/media", "pikpak": "", "115": ""}):
+            with patch.dict("os.environ", {MOUNTS_ENV: ""}):
+                roots = translate_roots((r"R:\media", "B:/", "A:/"))
         self.assertEqual(roots, (Path("/mnt/res/media"),))
 
     def test_posix_path_passes_through_untouched(self):
@@ -61,33 +144,6 @@ class DriveTranslationTests(unittest.TestCase):
 
     def test_system_volume_is_the_disk_gate_target(self):
         self.assertEqual(system_volume(), Path("C:/") if os.name == "nt" else Path("/"))
-
-
-class MountSourceTests(unittest.TestCase):
-    """挂载点来自设置文件；`PEACH_DRIVE_MAP` 仍然压过它。"""
-
-    def _with_mounts(self, mounts):
-        config = settings_file.load_config(environ={}, strict=False)
-        return patch.object(settings_file, "active",
-                            lambda: replace(config, mounts=mounts))
-
-    def test_settings_file_supplies_the_base_mapping(self):
-        with self._with_mounts({"r": "/mnt/res"}):
-            with patch.dict("os.environ", {"PEACH_DRIVE_MAP": ""}):
-                # 键大小写不敏感：设置文件里写 `r` 和 `R` 是同一个来源。
-                self.assertEqual(drive_map(), {"R": Path("/mnt/res")})
-
-    def test_environment_still_wins_over_the_settings_file(self):
-        with self._with_mounts({"R": "/mnt/res", "B": "/mnt/115"}):
-            with patch.dict("os.environ", {"PEACH_DRIVE_MAP": "R=/mnt/other"}):
-                self.assertEqual(
-                    drive_map(), {"R": Path("/mnt/other"), "B": Path("/mnt/115")})
-
-    def test_a_fresh_machine_has_no_mounts_at_all(self):
-        """内建默认为空：没挂的来源按脱盘处理，绝不猜一个本机路径。"""
-        with self._with_mounts({}):
-            with patch.dict("os.environ", {"PEACH_DRIVE_MAP": ""}):
-                self.assertEqual(drive_map(), {})
 
 
 class RootBoundaryTests(unittest.TestCase):
@@ -104,10 +160,10 @@ class RootBoundaryTests(unittest.TestCase):
     def test_within_root_survives_case_only_differences_on_insensitive_mounts(self):
         """账本写 `R:\\Media`，授权根是 `.../media`；大小写不敏感的挂载必须仍然放行。"""
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "media"
+            root = Path(tmp).resolve() / "media"
             root.mkdir()
-            shouting = Path(tmp) / "MEDIA" / "one.mp4"
-            insensitive = (Path(tmp) / "MEDIA").is_dir()
+            shouting = Path(tmp).resolve() / "MEDIA" / "one.mp4"
+            insensitive = (Path(tmp).resolve() / "MEDIA").is_dir()
             self.assertEqual(within_root(shouting, root), insensitive)
 
     def test_root_online_needs_a_readable_mount_not_just_a_directory(self):
@@ -118,55 +174,48 @@ class RootBoundaryTests(unittest.TestCase):
 
 
 class OfflineModeTests(unittest.TestCase):
-    """脱盘是来源级判定：一个盘不在，不影响其他盘上的资产。"""
+    """脱盘是来源级判定：一个来源不在，不影响其他来源上的资产。"""
 
     def _backend(self, tmp: Path) -> FilesystemBackend:
         return FilesystemBackend([tmp], tmp / "snapshots")
 
     @POSIX_ONLY
-    def test_asset_on_an_unmapped_drive_reports_offline(self):
+    def test_asset_on_an_unmapped_source_reports_offline(self):
         with tempfile.TemporaryDirectory() as tmp:
-            backend = self._backend(Path(tmp))
-            with patch.dict("os.environ", {"PEACH_DRIVE_MAP": "R=/mnt/res"}):
+            backend = self._backend(Path(tmp).resolve())
+            with with_media({"local": "/mnt/res/media"}):
                 with self.assertRaises(MediaOffline) as caught:
                     backend.file_for(MediaAsset(1, r"Z:\video\one.mp4", None))
         self.assertEqual(caught.exception.source, "Z:")
         self.assertEqual(caught.exception.asset_id, 1)
 
     @POSIX_ONLY
-    def test_asset_on_a_detached_but_mapped_drive_reports_offline(self):
+    def test_asset_on_a_detached_but_mapped_source_reports_offline(self):
         with tempfile.TemporaryDirectory() as tmp:
-            detached = Path(tmp) / "gone"
-            backend = FilesystemBackend([detached], Path(tmp) / "snapshots")
-            with patch.dict("os.environ", {"PEACH_DRIVE_MAP": f"R={detached}"}):
+            detached = Path(tmp).resolve() / "gone"
+            backend = FilesystemBackend([detached], Path(tmp).resolve() / "snapshots")
+            with with_media({"local": str(detached)}):
                 with self.assertRaises(MediaOffline):
-                    backend.file_for(MediaAsset(2, r"R:\video\one.mp4", None))
+                    backend.file_for(MediaAsset(2, r"R:\media\video\one.mp4", None))
 
     @POSIX_ONLY
-    def test_missing_file_on_a_live_drive_is_not_offline(self):
-        """单个文件丢失和整块盘不在必须分开报，否则前端会误显示脱盘模式。"""
+    def test_missing_file_on_a_live_source_is_not_offline(self):
+        """单个文件丢失和整个来源不在必须分开报，否则前端会误显示脱盘模式。"""
         with tempfile.TemporaryDirectory() as tmp:
-            live = Path(tmp)
+            live = Path(tmp).resolve()
             backend = FilesystemBackend([live], live / "snapshots")
-            with patch.dict("os.environ", {"PEACH_DRIVE_MAP": f"R={live}"}):
+            with with_media({"local": str(live)}):
                 with self.assertRaises(MediaUnavailable) as caught:
-                    backend.file_for(MediaAsset(3, r"R:\nope.mp4", None))
+                    backend.file_for(MediaAsset(3, r"R:\media\nope.mp4", None))
         self.assertNotIsInstance(caught.exception, MediaOffline)
 
     def test_source_status_reports_each_root_separately(self):
         with tempfile.TemporaryDirectory() as tmp:
-            live = Path(tmp)
+            live = Path(tmp).resolve()
             dead = live / "gone"
             status = FilesystemBackend([live, dead], live / "snapshots").source_status()
         self.assertEqual([row["online"] for row in status], [True, False])
 
 
-
-
-
 if __name__ == "__main__":
     unittest.main()
-
-
-
-

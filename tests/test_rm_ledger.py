@@ -3,9 +3,11 @@ import io
 import sqlite3
 import tempfile
 import unittest
+from dataclasses import replace
 from types import SimpleNamespace
 from pathlib import Path
 from contextlib import redirect_stdout
+from unittest.mock import patch
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "ledger.py"
@@ -97,6 +99,45 @@ class LedgerSchemaTests(unittest.TestCase):
         self.assertEqual(relations, {("studio", "studio", "stash:studio"),
                                      ("performer", "performer", "stash:performer"),
                                      ("tag", "tag", "stash:tag")})
+
+
+class ScanTargetTests(unittest.TestCase):
+    """写入侧门槛：`scan <location> <root>` 的两个参数必须对得上（ADR-0023 第 2 阶段）。
+
+    location 是挂载点 ID，`[media.locations]` 给出它的账本口径根。对不上时写进去的行
+    既翻译不出本机路径、也通不过授权根，而且要等到有人点开那个资产才会发现。
+    """
+
+    def setUp(self):
+        from peach import settings_file
+
+        config = settings_file.load_config(environ={}, strict=False)
+        fixed = replace(config, locations={"local": r"R:\media", "115": "B:/"})
+        patcher = patch.object(settings_file, "active", lambda: fixed)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_the_declared_root_and_its_subdirectories_are_accepted(self):
+        self.assertIsNone(rm_ledger.check_scan_target("local", r"R:\media"))
+        self.assertIsNone(rm_ledger.check_scan_target("local", r"R:\media\创作者"))
+        self.assertIsNone(rm_ledger.check_scan_target("115", "B:/x"))
+
+    def test_a_root_belonging_to_another_source_is_refused(self):
+        with self.assertRaises(SystemExit) as caught:
+            rm_ledger.check_scan_target("115", r"R:\media\创作者")
+        self.assertIn("115", str(caught.exception))
+        self.assertIn("local", str(caught.exception))
+
+    def test_a_root_outside_every_declared_root_is_refused(self):
+        with self.assertRaises(SystemExit) as caught:
+            rm_ledger.check_scan_target("local", r"R:\Resources\Intake")
+        self.assertIn(r"R:\media", str(caught.exception))
+
+    def test_an_undeclared_source_is_refused_and_lists_the_known_ones(self):
+        with self.assertRaises(SystemExit) as caught:
+            rm_ledger.check_scan_target("nas", "N:/")
+        self.assertIn("nas", str(caught.exception))
+        self.assertIn("local", str(caught.exception))
 
 
 if __name__ == "__main__":

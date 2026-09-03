@@ -11,8 +11,8 @@
   的 `peach-data/`、都没有就是「未配置」。优先级是环境变量 > 设置文件 > 内建默认。
 - 全新机器只跑 `peach init`：建齐 `database`／`generated`／`sources`／`state`／`secrets`／
   `logs`／`tools`／`review` 八个目录、把账本迁到最新 schema、生成本机 CA、写出设置文件，
-  最后打印下一步。可用 `--data-root`／`--host`／`--port`／`--mdns-name`／`--mount R=/mnt/media`
-  预置值；已有账本不会被重建，它会提示改用 `--from-existing`。
+  最后打印下一步。可用 `--data-root`／`--host`／`--port`／`--mdns-name`／
+  `--mount local=/mnt/media` 预置值；已有账本不会被重建，它会提示改用 `--from-existing`。
 - 已经在跑的机器用 `peach init --from-existing`：只写设置文件，不建库、不动 `peach-data/`
   下任何现有文件。它把当前实际生效的配置原样落盘，猜不出来的坐标（局域网 writer 地址、
   SMB 主机与账号）留空并逐条打印出来，用 `--writer-origin`／`--smb-host`／`--smb-user`
@@ -23,13 +23,59 @@
   不会退回内建默认跑出一个假状态；`peach init --force` 仍然可用，是唯一的自救入口。
 - 没有设置文件也不会崩：`peach serve` 照常起，`/healthz` 报 `configured=false`，页面提示
   先跑 `peach init`。
-- `replication.enabled` 是 ADR-0023 第三阶段的开关，本阶段没有任何运行时逻辑读它。
-  `--from-existing` 写 `true`、全新 `init` 写 `false`，为的是第三阶段真的接上开关时，
-  现有两台机器的行为一个字不变，而单机用户不会凭空多出一条同步路径。改这一位现在
-  不产生任何效果，别拿它当「关掉同步」的开关用。
+- `[media.mounts]` 的键是 `asset.location`（`[media.locations]` 声明过的来源 ID），
+  值是该来源的**声明根在本机的落点**：声明 `local = 'R:\media'` 而挂载 `local =
+  '/Volumes/RESOURCES/media'` 时，账本里的 `R:\media\x` 读作 `/Volumes/RESOURCES/media/x`。
+  Windows 上整表为空是正常的，盘符本身就是挂载点。没挂的来源整体按脱盘处理，不报错；
+  打错来源 ID 或写成盘符键都会被设置层直接拒绝，不会静悄悄变成「全部脱盘」。
+  临时诊断用 `PEACH_MEDIA_MOUNTS=local=/mnt/res,115=/mnt/115` 覆盖（旧的
+  `PEACH_DRIVE_MAP` 已删除，键空间不同，别再用）。
+- 第一阶段写下的 `[media] R = '...'` 是盘符键，第二阶段起是硬错误：`serve` 会拒绝启动
+  并直接给出改写成 `[media.mounts]` 的提示。用 `init --from-existing --force` 重写时注意
+  它落盘的是**内建默认加环境变量**，不继承那个读不出来的旧文件——命令会先把这件事打印
+  出来，旧文件里自定义过的 mDNS 名、writer 地址和 SMB 坐标要在同一条命令里重新给一遍。
+- `replication.enabled` 决定这台机器做不做单写者复制，默认 `false`。关闭时不建同步
+  观察器、不探测也不挂载 SMB、托盘不出两个 Ledger 菜单项、追更凭据不往共享副本写，
+  `/healthz` 的 `ledger_sync` 是 `disabled`（不是 `writer`），写接口全开——没有第二台
+  机器就没有「读者」，服务按独立写者跑。开启时行为和以前一字不差。
+  `--from-existing` 写 `true`、全新 `init` 写 `false`。
 - 不跑 `--from-existing` 就会掉回内建默认，两台机器上会变的至少有：mDNS 名、macOS 的
-  盘符映射、reader 的 writer 地址与代理、SMB 主机与账号。数据根、账本路径、Windows 盘符
-  和监听端口不变。
+  来源挂载表、reader 的 writer 地址与代理、SMB 主机与账号、**复制开关**（默认关）。
+  数据根、账本路径、Windows 盘符和监听端口不变。
+
+### 把两台机器切到设置文件（ADR-0023 第 2、3 阶段）
+
+先 Windows（写者）后 macOS（读者）：写者的坐标是读者填 `--writer-origin` 的依据。
+
+Windows（PowerShell，项目根）：
+
+```powershell
+Copy-Item ..\peach-data\config.toml ..\peach-data\config.toml.bak
+& .\.venv\Scripts\peach.exe init --from-existing --force
+Get-Content ..\peach-data\config.toml
+python scripts\restart_windows_tray.py
+```
+
+核对四点：`[media]` 下只有 `locations` 和 `mounts` 两个子表（没有 `R = ...` 这类盘符键）；
+`[media.mounts]` 为空；`[replication] enabled = true`；重启后 `/healthz` 的 `ledger_sync`
+仍是 `writer`（不是 `disabled`），托盘菜单里两个 Ledger 项都在。
+
+macOS（读者，项目根）：
+
+```bash
+cp ../peach-data/config.toml ../peach-data/config.toml.bak 2>/dev/null
+./.venv/bin/peach init --from-existing --force \
+  --mount local=/Volumes/RESOURCES/media \
+  --writer-origin https://<writer>.local --smb-host <writer>.local --smb-user <钥匙串账号>
+launchctl kickstart -k gui/$(id -u)/gg.lmd.peach.tray
+```
+
+核对：随便打开一个本地媒体资产能播（挂载表生效）、`/healthz` 报 `ledger_sync: reader`、
+菜单栏里「同步 Ledger」还在。单机用户跳过 `--mount` 之外的所有参数，并让
+`replication.enabled` 保持 `false`。
+
+回退：把 `config.toml.bak` 改回 `config.toml` 再重启即可——设置文件是唯一改动面，
+账本、媒体和凭据都没有被这次切换碰过。第 2 阶段不重写任何账本行，所以没有数据可回滚。
 
 ## 桌面入口与发布
 

@@ -202,6 +202,38 @@ class BadFileTests(unittest.TestCase):
                 tree.load()
         self.assertIn("databses", str(caught.exception))
 
+    def test_phase_one_drive_letter_keys_are_rejected_with_an_upgrade_hint(self):
+        """第一阶段的 `[media] R = ...` 是盘符键；静默忽略等于整台机器安静地脱盘。"""
+        with TempTree() as tree:
+            tree.write("[media]\nR = '/Volumes/RESOURCES'\n")
+            with self.assertRaises(SettingsFileError) as caught:
+                tree.load()
+        message = str(caught.exception)
+        self.assertIn("R", message)
+        self.assertIn("media.mounts", message)
+
+    def test_mount_for_an_undeclared_location_is_rejected(self):
+        # 打错一个来源 ID 同样是安静地脱盘，只是范围小一点。
+        with TempTree() as tree:
+            tree.write("[media.mounts]\nlocla = '/mnt/res'\n")
+            with self.assertRaises(SettingsFileError) as caught:
+                tree.load()
+        self.assertIn("locla", str(caught.exception))
+
+    def test_mounts_are_keyed_by_location_id(self):
+        with TempTree() as tree:
+            tree.write("[media.mounts]\nlocal = '/mnt/res/media'\n")
+            loaded = tree.load()
+        self.assertEqual(loaded.mounts, {"local": "/mnt/res/media"})
+
+    def test_a_newly_declared_location_can_be_mounted(self):
+        with TempTree() as tree:
+            tree.write(
+                "[media.locations]\nnas = 'N:/'\n[media.mounts]\nnas = '/mnt/nas'\n")
+            loaded = tree.load()
+        self.assertEqual(loaded.locations["nas"], "N:/")
+        self.assertEqual(loaded.mounts, {"nas": "/mnt/nas"})
+
     def test_lenient_load_falls_back_to_builtin_defaults(self):
         """坏文件不能让进程连数据根都不知道——发现顺序不看文件内容。"""
         with TempTree() as tree:
@@ -210,6 +242,27 @@ class BadFileTests(unittest.TestCase):
         self.assertEqual(loaded.data_root, tree.data_root)
         self.assertEqual(loaded.server.port, 8900)
         self.assertFalse(loaded.present)
+
+    def test_lenient_load_also_survives_a_merge_time_rejection(self):
+        """语法没错、内容被拒的文件同样得退得下来。
+
+        `peach init --force` 是坏文件的唯一自救入口，它走的就是 `strict=False`。
+        合并期的拒绝原来漏在退路之外，于是第一阶段的 `[media] R = ...` 会把自救
+        入口本身打崩——语法完全正确，抛错的是键空间校验。
+        """
+        for text in ("[media]\nR = '/mnt/res'\n",
+                     "[media.mounts]\nlocla = '/mnt/res'\n",
+                     "[directories]\ndatabses = 'db'\n"):
+            with self.subTest(text=text):
+                with TempTree() as tree:
+                    tree.write(text)
+                    with self.assertRaises(SettingsFileError):
+                        tree.load()
+                    loaded = tree.load(strict=False)
+                self.assertEqual(loaded.data_root, tree.data_root)
+                self.assertEqual(loaded.server.port, 8900)
+                self.assertEqual(loaded.mounts, {})
+                self.assertFalse(loaded.present)
 
 
 class ConfiguredStateTests(unittest.TestCase):
@@ -238,14 +291,14 @@ class SerialisationTests(unittest.TestCase):
                     "smb_host": "other.local", "smb_user": "someone",
                 },
                 # 反斜杠和 Windows 盘符必须原样活过一次往返：序列化器要是把 `\m`
-                # 当转义处理，账本路径前缀就会变成另一个目录。
-                mounts={"R": r"D:\media", "B": "/mnt/115"},
+                # 当转义处理，挂载点就会变成另一个目录。
+                mounts={"local": r"D:\media", "115": "/mnt/115"},
             )
             settings_file.write(captured)
             reloaded = tree.load()
         self.assertEqual(reloaded.server, captured.server)
         self.assertEqual(reloaded.replication, captured.replication)
-        self.assertEqual(reloaded.mounts, {"R": r"D:\media", "B": "/mnt/115"})
+        self.assertEqual(reloaded.mounts, {"local": r"D:\media", "115": "/mnt/115"})
         self.assertEqual(reloaded.locations, captured.locations)
         self.assertEqual(reloaded.directories, captured.directories)
         self.assertTrue(reloaded.present)

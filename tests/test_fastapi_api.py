@@ -288,6 +288,25 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(body["detail"], "写入端是 mac")
             self.assertIn("只能浏览", body["message"])
 
+    async def test_replication_off_runs_as_a_standalone_writer(self):
+        """`replication.enabled = false` 时没有 sync 对象（ADR-0023 第 3 阶段）。
+
+        `ledger_sync` 必须是明确的 `disabled`，不能冒充 `writer`：复核镜像那一侧
+        正是按这个字段判断对面是不是写入端的。写接口照常开——没有第二台机器就没有
+        「读者」，只读闸门本来就不该生效。
+        """
+        app = create_app(self.settings, None)
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            health = (await client.get("/healthz")).json()
+            self.assertEqual(health["ledger_sync"], "disabled")
+            self.assertFalse(health["ledger_read_only"])
+            allowed = await client.post(
+                "/api/feedback?t=secret", json={"id": 1, "kind": "dispose"},
+            )
+            self.assertNotEqual(allowed.status_code, 409)
+
     async def test_peach_logo_is_served_as_png(self):
         response = await self.client.get("/peach-logo.png")
         self.assertEqual(response.status_code, 200)

@@ -52,9 +52,13 @@ SHARED_DATABASE_PATH: Path = SHARED_DATA_ROOT / "database" / "ledger.db"
 SHARED_SMB_HOST: str = _SETTINGS.replication.smb_host
 SHARED_SMB_SHARE: str = _SETTINGS.smb_share
 SHARED_SMB_USER: str = _SETTINGS.replication.smb_user
-#: ADR-0023 第三阶段的复制开关。**本阶段只是把值读出来，没有任何装配逻辑读它**，
-#: 现有部署的复制行为一个字没改；第三阶段接上时再由它决定默认关不关。
+#: 单写者复制的总开关（ADR-0023 第 3 阶段）。默认 False：多数部署只有一台机器。
+#: 关闭时 `cli._build_sync` 不建观察器、托盘不装配 Ledger 菜单与 SMB 挂载，
+#: 服务按独立写者跑；上面那几个 SHARED_* 坐标仍然解析得出，只是没人用。
 REPLICATION_ENABLED: bool = _SETTINGS.replication.enabled
+#: 追更凭据的共享副本根。复制关掉时是 None——没有第二台机器就没有「共享」，
+#: 再往一个不存在的传输点写凭据只会凭空多一份明文。
+SHARED_CREDENTIAL_ROOT: Path | None = SHARED_DATA_ROOT if REPLICATION_ENABLED else None
 
 # 媒体来源只用账本口径（Windows 盘符）声明一次，本机挂载点由 platform 层翻译。
 # 键是 ledger 的 `asset.location`，脱盘模式按来源逐个判定，不是全局开关。
