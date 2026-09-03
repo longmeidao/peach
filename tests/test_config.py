@@ -5,53 +5,315 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from peach import config
+from peach import config, settings_file
+from peach.settings_file import SettingsFileError
 
 
-class DefaultPathTests(unittest.TestCase):
+class TempTree:
+    """`<tmp>/peach-data` 加一个并列的 `<tmp>/app` 当项目根。
+
+    临时目录一律先 `.resolve()`：CI runner 的临时路径都是别名（macOS `/var` 软链到
+    `/private/var`，Windows 短名 `RUNNER~1` 展开成 `runneradmin`），不 resolve 的路径
+    在开发机上过、在 CI 上红。
+    """
+
+    def __init__(self, with_data_root: bool = True):
+        self._temp = tempfile.TemporaryDirectory()
+        self.root = Path(self._temp.name).resolve()
+        self.project = self.root / "app"
+        self.project.mkdir()
+        self.data_root = self.root / "peach-data"
+        if with_data_root:
+            self.data_root.mkdir()
+
+    def write(self, text: str) -> Path:
+        path = self.data_root / settings_file.SETTINGS_FILENAME
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def load(self, environ: dict[str, str] | None = None, **kwargs):
+        return settings_file.load_config(
+            project_root=self.project, environ=environ or {}, **kwargs)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self._temp.cleanup()
+
+
+class ProjectRootTests(unittest.TestCase):
     def test_project_root_uses_pyinstaller_resource_directory_without_a_src_layer(self):
         # 锚点必须在当前平台上真的是绝对路径。`C:/repo` 在 POSIX 上是**相对**路径，
         # `_project_root` 里的 `.resolve()` 会给它前置 cwd，断言于是只在 Windows 成立。
         root = Path(tempfile.gettempdir()).resolve() / "repo"
-        source = root / "src" / "peach" / "config.py"
-        self.assertEqual(config._project_root(source), root)
+        source = root / "src" / "peach" / "settings_file.py"
+        self.assertEqual(settings_file._project_root(str(source)), root)
         # bundle_root 不经过 resolve，原样构造，两个平台比较结果一致。
         self.assertEqual(
-            config._project_root(source, "C:/bundle/_MEI123"),
+            settings_file._project_root(str(source), "C:/bundle/_MEI123"),
             Path("C:/bundle/_MEI123"),
         )
 
-    def test_windows_runtime_defaults_to_the_desktop_project(self):
-        project = Path.home() / "Desktop" / "peach"
-        self.assertEqual(config._WINDOWS_DATA_ROOT, project / "peach-data")
-        self.assertEqual(config._WINDOWS_SHARED_ROOT, project / "peach-sync")
 
-    def test_macos_shared_copy_is_the_windows_smb_mount(self):
-        self.assertEqual(config._POSIX_SHARED_ROOT, Path("/Volumes/peach-sync"))
+class DataRootDiscoveryTests(unittest.TestCase):
+    def test_environment_variable_wins_over_the_sibling_directory(self):
+        with TempTree() as tree:
+            elsewhere = tree.root / "elsewhere"
+            found = settings_file.discover_data_root(
+                tree.project, {"PEACH_DATA_ROOT": str(elsewhere)})
+            self.assertEqual(found, (elsewhere, True))
 
-    def test_each_platform_has_a_distinct_mdns_name(self):
-        expected = "peach-win" if os.name == "nt" else "peach"
-        self.assertEqual(config.MDNS_NAME, expected)
+    def test_sibling_peach_data_is_found_from_the_project_root(self):
+        with TempTree() as tree:
+            self.assertEqual(
+                settings_file.discover_data_root(tree.project, {}),
+                (tree.data_root, True),
+            )
+
+    def test_nested_checkout_still_finds_the_shared_data_root(self):
+        """隔离工作树和打包产物都比项目根深一层以上，向上找必须仍然命中。"""
+        with TempTree() as tree:
+            nested = tree.root / "worktrees" / "task"
+            nested.mkdir(parents=True)
+            self.assertEqual(
+                settings_file.discover_data_root(nested, {}), (tree.data_root, True))
+
+    def test_missing_data_root_is_an_explicit_unconfigured_state(self):
+        with TempTree(with_data_root=False) as tree:
+            path, found = settings_file.discover_data_root(tree.project, {})
+            self.assertFalse(found)
+            # 找不到也要给出落点：`peach init` 按它建目录，页面按它显示提示。
+            self.assertEqual(path, tree.root / "peach-data")
 
 
-class SharedShareTests(unittest.TestCase):
-    """托盘补挂共享副本要用的坐标。"""
+class DefaultsAreGenericTests(unittest.TestCase):
+    """内建默认必须对一个全新用户成立，不能是某台机器的坐标。"""
 
-    def test_share_host_is_an_mdns_name_not_a_dhcp_address(self):
-        # 家里的 IP 由路由器 DHCP 分配，钉进源码总有失效的一天；主机名走 mDNS
-        # 才能跟着换。Windows 那台的 mDNS 名和 `MDNS_NAME` 用的是同一个常量。
-        self.assertEqual(config.SHARED_SMB_HOST, "peach-win.local")
-        self.assertNotRegex(config.SHARED_SMB_HOST, r"^\d+\.\d+\.\d+\.\d+$")
-        self.assertEqual(config._WINDOWS_MDNS_NAME, "peach-win")
+    def test_fresh_machine_gets_neutral_defaults(self):
+        with TempTree() as tree:
+            loaded = tree.load()
+        self.assertEqual(loaded.server.host, "127.0.0.1")
+        self.assertEqual(loaded.server.port, 8900)
+        self.assertEqual(loaded.server.mdns_name, "peach")
+        self.assertEqual(loaded.server.review_writer_origin, "")
+        self.assertEqual(loaded.server.review_writer_proxy, "")
+        # 一台新机器什么都没挂：所有来源按脱盘处理，不报错也不猜路径。
+        self.assertEqual(loaded.mounts, {})
+        self.assertEqual(loaded.replication.smb_host, "")
+        self.assertEqual(loaded.replication.smb_user, "")
 
-    def test_share_name_matches_the_macos_mount_point(self):
+    def test_replication_defaults_off_for_a_single_machine(self):
+        with TempTree() as tree:
+            self.assertFalse(tree.load().replication.enabled)
+
+    def test_shared_root_defaults_beside_the_data_root(self):
+        with TempTree() as tree:
+            loaded = tree.load()
+            self.assertEqual(loaded.shared_root, tree.root / "peach-sync")
+            self.assertEqual(loaded.smb_share, "peach-sync")
+
+    def test_directories_default_to_their_own_names_under_the_data_root(self):
+        with TempTree() as tree:
+            loaded = tree.load()
+            for key in settings_file.DIRECTORY_KEYS:
+                self.assertEqual(loaded.directory(key), tree.data_root / key)
+
+
+class PriorityTests(unittest.TestCase):
+    """环境变量 > 设置文件 > 内建默认。三层都要有断言，不然改错顺序没人发现。"""
+
+    FILE = """
+[server]
+port = 9100
+mdns_name = 'from-file'
+[replication]
+enabled = true
+smb_host = 'file-host'
+"""
+
+    def test_file_overrides_builtin_defaults(self):
+        with TempTree() as tree:
+            tree.write(self.FILE)
+            loaded = tree.load()
+        self.assertEqual(loaded.server.port, 9100)
+        self.assertEqual(loaded.server.mdns_name, "from-file")
+        self.assertTrue(loaded.replication.enabled)
+        # 文件里没写的项仍然取内建默认，不会因为文件存在就变空。
+        self.assertEqual(loaded.server.host, "127.0.0.1")
+
+    def test_environment_overrides_the_file(self):
+        with TempTree() as tree:
+            tree.write(self.FILE)
+            loaded = tree.load({
+                "PEACH_MDNS_NAME": "from-env",
+                "PEACH_SHARED_SMB_HOST": "env-host",
+            })
+        self.assertEqual(loaded.server.mdns_name, "from-env")
+        self.assertEqual(loaded.replication.smb_host, "env-host")
+        self.assertEqual(loaded.server.port, 9100)
+
+    def test_empty_environment_variable_does_not_blank_the_file_value(self):
+        # 空字符串是「没设」，不是「设成空」：LaunchAgent 里留个空变量很常见。
+        with TempTree() as tree:
+            tree.write(self.FILE)
+            loaded = tree.load({"PEACH_MDNS_NAME": ""})
+        self.assertEqual(loaded.server.mdns_name, "from-file")
+
+    def test_absolute_directory_moves_that_data_out_of_the_data_root(self):
+        with TempTree() as tree:
+            other = tree.root / "elsewhere" / "db"
+            tree.write(f"[directories]\ndatabase = '{other.as_posix()}'\n")
+            loaded = tree.load()
+        self.assertEqual(loaded.directory("database"), other)
+        self.assertEqual(loaded.directory("state"), tree.data_root / "state")
+
+
+class BadFileTests(unittest.TestCase):
+    def test_syntax_error_names_the_file_and_the_line(self):
+        with TempTree() as tree:
+            path = tree.write("[server]\nport = = 3\n")
+            with self.assertRaises(SettingsFileError) as caught:
+                tree.load()
+        message = str(caught.exception)
+        self.assertIn(str(path), message)
+        # tomllib 的消息自带行号；没有行号的报错等于让人在几十行里自己找。
+        self.assertIn("line 2", message)
+
+    def test_wrong_type_names_the_key(self):
+        with TempTree() as tree:
+            tree.write("[server]\nport = 'eight thousand'\n")
+            with self.assertRaises(SettingsFileError) as caught:
+                tree.load()
+        self.assertIn("server.port", str(caught.exception))
+
+    def test_boolean_is_not_accepted_as_a_port(self):
+        with TempTree() as tree:
+            tree.write("[server]\nport = true\n")
+            with self.assertRaises(SettingsFileError):
+                tree.load()
+
+    def test_unknown_directory_key_is_rejected_instead_of_ignored(self):
+        # 打错一个键名却静默忽略，等于那份数据默默落回默认目录。
+        with TempTree() as tree:
+            tree.write("[directories]\ndatabses = 'db'\n")
+            with self.assertRaises(SettingsFileError) as caught:
+                tree.load()
+        self.assertIn("databses", str(caught.exception))
+
+    def test_lenient_load_falls_back_to_builtin_defaults(self):
+        """坏文件不能让进程连数据根都不知道——发现顺序不看文件内容。"""
+        with TempTree() as tree:
+            tree.write("nonsense = =\n")
+            loaded = tree.load(strict=False)
+        self.assertEqual(loaded.data_root, tree.data_root)
+        self.assertEqual(loaded.server.port, 8900)
+        self.assertFalse(loaded.present)
+
+
+class ConfiguredStateTests(unittest.TestCase):
+    def test_existing_data_root_counts_as_configured_without_a_settings_file(self):
+        # 现有部署还没生成过设置文件，但它们的账本在跑，不能被判成「未配置」。
+        with TempTree() as tree:
+            loaded = tree.load()
+        self.assertFalse(loaded.present)
+        self.assertTrue(loaded.configured)
+
+    def test_fresh_clone_is_unconfigured(self):
+        with TempTree(with_data_root=False) as tree:
+            loaded = tree.load()
+        self.assertFalse(loaded.configured)
+        self.assertEqual(loaded.path.name, settings_file.SETTINGS_FILENAME)
+
+
+class SerialisationTests(unittest.TestCase):
+    def test_render_then_load_returns_the_same_values(self):
+        with TempTree() as tree:
+            captured = settings_file.capture_existing(
+                tree.load(),
+                overrides={
+                    "mdns_name": "peach-two", "port": 9443,
+                    "review_writer_origin": "https://10.0.0.5",
+                    "smb_host": "other.local", "smb_user": "someone",
+                },
+                # 反斜杠和 Windows 盘符必须原样活过一次往返：序列化器要是把 `\m`
+                # 当转义处理，账本路径前缀就会变成另一个目录。
+                mounts={"R": r"D:\media", "B": "/mnt/115"},
+            )
+            settings_file.write(captured)
+            reloaded = tree.load()
+        self.assertEqual(reloaded.server, captured.server)
+        self.assertEqual(reloaded.replication, captured.replication)
+        self.assertEqual(reloaded.mounts, {"R": r"D:\media", "B": "/mnt/115"})
+        self.assertEqual(reloaded.locations, captured.locations)
+        self.assertEqual(reloaded.directories, captured.directories)
+        self.assertTrue(reloaded.present)
+
+    def test_values_with_quotes_survive_the_round_trip(self):
+        with TempTree() as tree:
+            captured = settings_file.capture_existing(
+                tree.load(), overrides={"smb_user": "it's me"})
+            settings_file.write(captured)
+            self.assertEqual(tree.load().replication.smb_user, "it's me")
+
+    def test_write_refuses_to_overwrite_without_force(self):
+        with TempTree() as tree:
+            loaded = tree.load()
+            settings_file.write(loaded)
+            with self.assertRaises(SettingsFileError):
+                settings_file.write(loaded)
+            self.assertEqual(settings_file.write(loaded, force=True), loaded.path)
+
+    def test_capture_keeps_existing_deployments_replicating(self):
+        """第三阶段接上开关时，现有双机部署读到的必须还是 true。"""
+        with TempTree() as tree:
+            captured = settings_file.capture_existing(tree.load())
+            self.assertTrue(captured.replication.enabled)
+            # 共享目录和共享名落成显式值，别让人去猜默认规则。
+            self.assertEqual(captured.replication.shared_root,
+                             str(tree.root / "peach-sync"))
+            self.assertEqual(captured.replication.smb_share, "peach-sync")
+
+    def test_fresh_capture_leaves_replication_off(self):
+        with TempTree() as tree:
+            captured = settings_file.capture_existing(
+                tree.load(), replication_enabled=False)
+        self.assertFalse(captured.replication.enabled)
+
+
+class ModuleConstantTests(unittest.TestCase):
+    """`config` 的模块常量被大量 import；名字和相对关系都是契约。"""
+
+    def test_paths_derive_from_the_active_data_root(self):
+        self.assertEqual(config.DATABASE_PATH, config.DATA_ROOT / "database" / "ledger.db")
+        self.assertEqual(config.DATABASE_PATH.parent, config.DATABASE_DIR)
+        self.assertEqual(config.FFMPEG_DIR, config.TOOLS_DIR / "ffmpeg")
+        self.assertEqual(config.COVER_DIR, config.GENERATED_DIR / "covers")
+        # 迁移随代码走，不随数据走。
+        self.assertEqual(config.MIGRATIONS_DIR, config.PROJECT_ROOT / "migrations")
+
+    def test_mdns_hostname_follows_the_configured_name(self):
+        self.assertEqual(config.MDNS_HOSTNAME, f"{config.MDNS_NAME}.local")
+
+    def test_share_name_defaults_to_the_shared_directory_name(self):
         # 挂载点是 `/Volumes/<共享名>`：两者分开写就会挂上一个没人去读的路径。
-        self.assertEqual(config.SHARED_SMB_SHARE, config._POSIX_SHARED_ROOT.name)
+        self.assertEqual(config.SHARED_SMB_SHARE, config.SHARED_DATA_ROOT.name)
 
-    def test_share_user_is_named_because_the_server_refuses_guest(self):
-        self.assertEqual(config.SHARED_SMB_USER, "peachsync")
+    def test_location_declarations_stay_in_ledger_shape(self):
+        # 账本里的 `asset.path` 是 Windows 形态，声明根必须同口径，否则授权全落空。
+        self.assertEqual(set(config.LOCATION_ROOT_DECLARATIONS), {"local", "115", "pikpak"})
+        self.assertEqual(
+            tuple(config.LOCATION_ROOT_DECLARATIONS.values()),
+            config.MEDIA_ROOT_DECLARATIONS,
+        )
 
-    def test_every_share_coordinate_can_be_overridden(self):
+    def test_settings_dataclass_reports_the_configured_state(self):
+        from peach.config import PeachSettings
+
+        self.assertEqual(PeachSettings().configured, config.CONFIGURED)
+
+    def test_share_coordinates_can_be_overridden_without_editing_source(self):
         # 主机名换了、共享改名、账号换一个，都不该要求改源码再发一次版。
         overrides = {
             "PEACH_SHARED_SMB_HOST": "192.168.1.9",
@@ -60,10 +322,16 @@ class SharedShareTests(unittest.TestCase):
         }
         try:
             with patch.dict(os.environ, overrides):
+                settings_file.reset_cache()
                 reloaded = importlib.reload(config)
                 self.assertEqual(reloaded.SHARED_SMB_HOST, "192.168.1.9")
                 self.assertEqual(reloaded.SHARED_SMB_SHARE, "ledger-drop")
                 self.assertEqual(reloaded.SHARED_SMB_USER, "someone")
         finally:
+            settings_file.reset_cache()
             importlib.reload(config)
-        self.assertEqual(config.SHARED_SMB_HOST, "peach-win.local")
+        self.assertNotEqual(config.SHARED_SMB_HOST, "192.168.1.9")
+
+
+if __name__ == "__main__":
+    unittest.main()

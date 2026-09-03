@@ -39,9 +39,9 @@ LOGGER = logging.getLogger(__name__)
 MACOS_PORT = 8900
 #: HTTPS 同理，443 也要 root，所以走 8443。
 MACOS_TLS_PORT = 8443
-#: 单击菜单栏/托盘图标打开本机的固定地址：macOS 是 `peach.local`，Windows 是
-#: `peach-win.local`。macOS 上 80/443 由 pf 转到高位端口
-#:（scripts/setup_macos_port80.sh）。
+#: 单击菜单栏/托盘图标打开本机的固定地址 `<mdns_name>.local`；名字来自设置文件的
+#: `[server].mdns_name`，同一局域网里两台机器必须不同名。macOS 上 80/443 由 pf 转到
+#: 高位端口（scripts/setup_macos_port80.sh）。
 OPEN_URL = f"https://{MDNS_HOSTNAME}/"
 
 #: LaunchAgent 的标签，和 `scripts/install_macos_agent.py` 里那个必须一致。
@@ -57,6 +57,7 @@ TRAY_SOURCES = (
     "src/peach/certs.py",
     "src/peach/netwatch.py",
     "src/peach/config.py",
+    "src/peach/settings_file.py",
     "pyproject.toml",
 )
 

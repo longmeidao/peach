@@ -4,6 +4,33 @@
 这里只放执行时要照着做的细节：命令、顺序、失败表现和踩过的坑。改动运行入口、同步通道、证书或
 删除边界之前先读对应小节；当前运行态的端口、版本与迁移号在 `docs/STATUS.md`。
 
+## 首次运行与设置文件
+
+- 设置文件固定是 `<数据根>/config.toml`。数据根按三步找：环境变量 `PEACH_DATA_ROOT`、
+  项目根同级（含上溯四层，覆盖主检出、`peach-worktrees/<任务>` 和打包后的 `dist/Peach/_internal`）
+  的 `peach-data/`、都没有就是「未配置」。优先级是环境变量 > 设置文件 > 内建默认。
+- 全新机器只跑 `peach init`：建齐 `database`／`generated`／`sources`／`state`／`secrets`／
+  `logs`／`tools`／`review` 八个目录、把账本迁到最新 schema、生成本机 CA、写出设置文件，
+  最后打印下一步。可用 `--data-root`／`--host`／`--port`／`--mdns-name`／`--mount R=/mnt/media`
+  预置值；已有账本不会被重建，它会提示改用 `--from-existing`。
+- 已经在跑的机器用 `peach init --from-existing`：只写设置文件，不建库、不动 `peach-data/`
+  下任何现有文件。它把当前实际生效的配置原样落盘，猜不出来的坐标（局域网 writer 地址、
+  SMB 主机与账号）留空并逐条打印出来，用 `--writer-origin`／`--smb-host`／`--smb-user`
+  等参数在同一条命令里给全，不要事后手改再忘了另一台。
+- 设置文件已存在时 `init` 一律拒绝并返回 3，`--force` 才覆盖。覆盖前自己留一份副本：
+  它是唯一记着本机坐标的文件。
+- 设置文件语法错误时 `serve`／`migrate`／`status` 直接拒绝运行并报出文件路径和出错行，
+  不会退回内建默认跑出一个假状态；`peach init --force` 仍然可用，是唯一的自救入口。
+- 没有设置文件也不会崩：`peach serve` 照常起，`/healthz` 报 `configured=false`，页面提示
+  先跑 `peach init`。
+- `replication.enabled` 是 ADR-0023 第三阶段的开关，本阶段没有任何运行时逻辑读它。
+  `--from-existing` 写 `true`、全新 `init` 写 `false`，为的是第三阶段真的接上开关时，
+  现有两台机器的行为一个字不变，而单机用户不会凭空多出一条同步路径。改这一位现在
+  不产生任何效果，别拿它当「关掉同步」的开关用。
+- 不跑 `--from-existing` 就会掉回内建默认，两台机器上会变的至少有：mDNS 名、macOS 的
+  盘符映射、reader 的 writer 地址与代理、SMB 主机与账号。数据根、账本路径、Windows 盘符
+  和监听端口不变。
+
 ## 桌面入口与发布
 
 - Windows 日常入口是当前用户 Startup 里唯一的 `Peach.lnk`，指向项目内的 `dist\Peach\Peach.exe`。

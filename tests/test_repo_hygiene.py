@@ -5,6 +5,7 @@
 工作树长回 74 个。原因是规则只写在 `../attic/README.md`——仓库外、不进 Git、AGENTS.md
 也没提，在 peach-app 里干活的人根本看不到。约定不是门槛。
 """
+import ast
 import pathlib
 import re
 import subprocess
@@ -124,6 +125,75 @@ class BacklogSelfConsistencyTests(unittest.TestCase):
             self.assertIsNotNone(declared, f"「{heading}」的标题应当带上条数，便于一眼核对")
             self.assertEqual(int(declared.group(1)), actual,
                              f"「{heading}」标题写的条数和实际列出的对不上")
+
+
+#: 只属于某一台机器的字面量。它们要么住在设置文件里，要么由用户在命令行给，
+#: 不能编译进 `src/peach/`——否则第一个陌生用户跑起来就连着别人家的坐标（ADR-0023）。
+#: 文档与技能里的同类字面量是第四阶段的事，这个门槛只管源码。
+PERSONAL_LITERAL = re.compile(
+    r"""(?xi)
+    Desktop[\\/]peach                                # 某一台机器的项目位置
+    | lmd\.gg                                        # macOS 侧的目录名
+    | [\\/]Users[\\/]longm                           # 用户目录
+    | peach-win                                      # Windows 那台的 mDNS 名
+    | peachsync                                      # SMB 账号名
+    | Volumes[\\/](peach-sync|RESOURCES)             # macOS 上的具体挂载点
+    | [\\/]IMSL[\\/]                                 # CloudDrive 挂载目录
+    | \b192\.168\.\d{1,3}\.\d{1,3}                   # 局域网地址
+    | \b10\.\d{1,3}\.\d{1,3}\.\d{1,3}
+    | \b172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}
+    """
+)
+
+
+def _live_strings(path: pathlib.Path) -> list[tuple[int, str]]:
+    """源码里真正会被当值用的字符串常量，去掉文档串。
+
+    文档串和注释留给解释：说明「哪一台机器是 writer」时提到具体名字是有信息量的，
+    把它编译成默认值才是问题。判据因此是 AST 而不是 grep。
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    docstrings = {
+        id(node.body[0].value)
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                             ast.AsyncFunctionDef))
+        and node.body and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant)
+        and isinstance(node.body[0].value.value, str)
+    }
+    return [(node.lineno, node.value) for node in ast.walk(tree)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+            and id(node) not in docstrings]
+
+
+class PersonalLiteralTests(unittest.TestCase):
+    """`src/peach/` 里不许留只对某一台机器成立的默认值。"""
+
+    def test_no_module_hardcodes_a_personal_coordinate(self):
+        source = pathlib.Path(peach.__file__).parent
+        offenders = []
+        for path in sorted(source.rglob("*.py")):
+            offenders += [
+                f"{path.relative_to(source).as_posix()}:{line}：{text[:60]}"
+                for line, text in _live_strings(path)
+                if PERSONAL_LITERAL.search(text)
+            ]
+        self.assertEqual(offenders, [],
+                         "把它搬进 <数据根>/config.toml（peach init --from-existing 会生成），"
+                         "或者做成命令行参数")
+
+    def test_the_guard_catches_the_shape_it_describes(self):
+        """门槛自身也要能被证伪，否则它可能只是一段永远为真的代码。"""
+        for sample in (r"C:\Users\longm\Desktop\peach\peach-data",
+                       "~/Desktop/lmd.gg/peach", "peach-win.local", "peachsync",
+                       "/Volumes/peach-sync", "https://192.168.50.162",
+                       "/Volumes/RESOURCES/media", "/Users/x/Desktop/IMSL/115"):
+            self.assertTrue(PERSONAL_LITERAL.search(sample), sample)
+        for allowed in ("127.0.0.1", "0.0.0.0", "peach.local", "224.0.0.251",
+                        "192.0.2.1", r"R:\media", "peach-data", "peach-sync",
+                        "Chrome/131.0.0.0"):
+            self.assertIsNone(PERSONAL_LITERAL.search(allowed), allowed)
 
 
 class ArchitectureDriftTests(unittest.TestCase):

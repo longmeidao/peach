@@ -1,0 +1,490 @@
+"""设置文件层：数据根的发现，以及 `<数据根>/config.toml` 的读取、合并与写回。
+
+三层优先级固定为 **环境变量 > 设置文件 > 内建默认**，`config.py` 只消费合并结果。
+内建默认必须对一个全新用户成立，所以这里（和 `config.py`）不许出现任何一台具体机器的
+路径、主机名、账号名或局域网地址（ADR-0023 第一阶段）。当前部署的那些值不是删掉了，
+而是搬进设置文件：`peach init --from-existing` 生成它。
+
+数据根的发现刻意**不**依赖设置文件内容——设置文件本身就住在数据根里面：
+
+1. `PEACH_DATA_ROOT` 环境变量；
+2. 从项目根逐级向上，第一个存在的 `<上级目录>/peach-data`。ADR-0017 的顶层布局把
+   `peach-app` 与 `peach-data` 并列，向上找因此同时覆盖三种检出形态：主检出、
+   `peach-worktrees/<task>` 里的隔离工作树，以及打包后落在 `dist/Peach/_internal`
+   的 `_MEIPASS`；
+3. 都没有 → 未配置。此时仍然给出一个落点（`peach init` 会去建它），但 `configured`
+   为 False：服务照常启动，`/healthz` 报 `configured=false`，页面提示去跑 `peach init`。
+
+读用标准库 `tomllib`（Python 3.11+ 只读），写用本模块自带的最小序列化器。设置文件里
+出现的值只有字符串、布尔、整数和字符串表这四种，为这点需求引入 `tomli-w`／`tomlkit`
+不值得——依赖策略要求每个外部模块都精确固定版本并有归属（`docs/REUSE.md`）。
+"""
+from __future__ import annotations
+
+import os
+import sys
+import tomllib
+from dataclasses import dataclass, field, replace
+from functools import lru_cache
+from pathlib import Path
+
+#: 设置文件名。位置固定为数据根下，不做多候选路径搜索。
+SETTINGS_FILENAME = "config.toml"
+DATA_ROOT_ENV = "PEACH_DATA_ROOT"
+#: ADR-0017 的顶层布局里这两个目录名是固定的，不随机器变化。
+DATA_ROOT_DIRNAME = "peach-data"
+SHARED_ROOT_DIRNAME = "peach-sync"
+
+#: 数据根下的子目录键。设置文件里省略某项就取同名目录；写绝对路径可以搬出数据根。
+DIRECTORY_KEYS = (
+    "database", "generated", "sources", "state", "secrets", "logs", "tools", "review",
+)
+
+#: `asset.location` -> 账本口径的声明根。键是 ledger 里的值，形状仍是 Windows 盘符
+#: （换成挂载点 ID 是 ADR-0023 第二阶段的事），本机落点由 `peach.platform` 翻译。
+DEFAULT_LOCATION_ROOTS: dict[str, str] = {
+    "local": r"R:\media",
+    "115": "B:/",
+    "pikpak": "A:/",
+}
+
+#: `[media]` 表里这个键是子表 `[media.locations]`，不是一个挂载点。
+_LOCATIONS_KEY = "locations"
+
+
+class SettingsFileError(RuntimeError):
+    """设置文件存在但读不出来。
+
+    消息必须带文件路径；`tomllib` 的语法错误自带行列号，一并转述。数据根的发现不看
+    文件内容，所以出错后仍然知道账本在哪：调用方退回内建默认并显式拒绝提供服务，
+    而不是拿一份半生不熟的配置去跑。
+    """
+
+
+def _project_root(module_file: str = __file__, bundle_root: str | None = None) -> Path:
+    """源码树保留 `src/` 层；PyInstaller 的资源直接落在 `_MEIPASS`。"""
+    return (Path(bundle_root) if bundle_root is not None
+            else Path(module_file).resolve().parents[2])
+
+
+PROJECT_ROOT = _project_root(bundle_root=getattr(sys, "_MEIPASS", None))
+
+
+#: 向上找几层。四层刚好覆盖最深的那种形态（`peach-app/dist/Peach/_internal` 里的
+#: `_MEIPASS` 要走四层才回到 `peach/`）。不做无界搜索：一路走到磁盘根会撞上碰巧同名的
+#: 目录，而那种「找错数据根」的故障看起来完全像是数据丢了。
+_SEARCH_DEPTH = 4
+
+
+def discover_data_root(
+    project_root: Path = PROJECT_ROOT, environ: dict[str, str] | None = None,
+) -> tuple[Path, bool]:
+    """返回 (数据根, 是否真的找到了)。找不到时第一项是 `peach init` 的默认落点。"""
+    environ = os.environ if environ is None else environ
+    explicit = (environ.get(DATA_ROOT_ENV) or "").strip()
+    if explicit:
+        return Path(explicit), True
+    for parent in project_root.parents[:_SEARCH_DEPTH]:
+        candidate = parent / DATA_ROOT_DIRNAME
+        if candidate.is_dir():
+            return candidate, True
+    return project_root.parent / DATA_ROOT_DIRNAME, False
+
+
+@dataclass(frozen=True)
+class ServerSettings:
+    host: str = "127.0.0.1"
+    port: int = 8900
+    #: 本机发布的 mDNS 名。两台机器同时在线时必须显式改一台，否则互相抢同一个名字。
+    mdns_name: str = "peach"
+    #: reader 复核镜像要读的 writer 源，形如 `https://<地址>`；空串表示本机不做镜像。
+    review_writer_origin: str = ""
+    #: 只对上面那个源生效的 HTTP 代理；空串表示直连。macOS 上 LaunchAgent 的 Python
+    #: 可能拿不到 Local Network 权限，那种机器才需要填。
+    review_writer_proxy: str = ""
+
+
+@dataclass(frozen=True)
+class ReplicationSettings:
+    """单写者 ledger 复制（ADR-0017、ADR-0020）的坐标。
+
+    `enabled` 是 ADR-0023 第三阶段的开关，**本阶段没有任何运行时代码读它**：第一阶段
+    只把值搬进设置文件，装配逻辑一个字没改，所以现有部署的行为不变。内建默认 False
+    对单机用户成立；现有双机部署由 `peach init --from-existing` 写成 true，等第三阶段
+    真的接上这个开关时，那两台机器读到的仍然是 true。
+    """
+
+    enabled: bool = False
+    #: 共享传输点。空串表示取 `<数据根的上级>/peach-sync`。
+    shared_root: str = ""
+    smb_host: str = ""
+    smb_share: str = ""
+    #: 挂载共享用的账号，必须和钥匙串里已有的那条同名；空串表示不预检、不弹认证框。
+    smb_user: str = ""
+
+
+@dataclass(frozen=True)
+class PeachConfig:
+    """一次合并的结果。`config.py` 把它投影成模块常量。"""
+
+    data_root: Path
+    #: 设置文件**应该**在哪。文件不存在时这个值照样有效，`present` 才是存在判据。
+    path: Path
+    present: bool = False
+    #: 数据根是被找到的，还是只是一个建议落点。
+    data_root_found: bool = False
+    directories: dict[str, str] = field(default_factory=dict)
+    #: 账本路径前缀 -> 本机挂载点。Windows 上通常为空：盘符本身就是挂载点。
+    mounts: dict[str, str] = field(default_factory=dict)
+    locations: dict[str, str] = field(
+        default_factory=lambda: dict(DEFAULT_LOCATION_ROOTS))
+    server: ServerSettings = ServerSettings()
+    replication: ReplicationSettings = ReplicationSettings()
+
+    @property
+    def configured(self) -> bool:
+        """有设置文件，或者已经找到数据根，就算配置过。
+
+        单独看设置文件会把所有现有部署判成「未配置」——它们的数据根真实存在、账本也在
+        跑，只是还没生成过 config.toml。反过来，全新克隆两个条件都不成立，页面才应该
+        弹首次运行提示。
+        """
+        return self.present or self.data_root_found
+
+    def directory(self, key: str) -> Path:
+        """数据根下的子目录。相对路径按数据根解析，绝对路径原样使用。"""
+        raw = (self.directories.get(key) or "").strip() or key
+        candidate = Path(raw)
+        return candidate if candidate.is_absolute() else self.data_root / candidate
+
+    @property
+    def shared_root(self) -> Path:
+        raw = self.replication.shared_root.strip()
+        return Path(raw) if raw else self.data_root.parent / SHARED_ROOT_DIRNAME
+
+    @property
+    def smb_share(self) -> str:
+        """共享名默认取共享目录名：两边同名是最不容易配错的形状。"""
+        return self.replication.smb_share or self.shared_root.name
+
+
+# --------------------------------------------------------------------------- 读取
+
+def _fail(path: Path, detail: str) -> SettingsFileError:
+    return SettingsFileError(f"设置文件读不出来：{path}：{detail}")
+
+
+def _read_document(path: Path) -> dict:
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        raise _fail(path, str(exc)) from exc
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise _fail(path, f"不是 UTF-8 编码（{exc}）") from exc
+    try:
+        return tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        # tomllib 的消息自带 `at line N, column M`，直接转述比自己数行可靠。
+        raise _fail(path, f"TOML 语法错误：{exc}") from exc
+
+
+def _table(document: dict, key: str, path: Path) -> dict:
+    value = document.get(key, {})
+    if not isinstance(value, dict):
+        raise _fail(path, f"`{key}` 必须是一个表（[{key}]）")
+    return value
+
+
+def _string(table: dict, key: str, default: str, path: Path, prefix: str) -> str:
+    value = table.get(key, default)
+    if not isinstance(value, str):
+        raise _fail(path, f"`{prefix}{key}` 必须是字符串")
+    return value
+
+
+def _integer(table: dict, key: str, default: int, path: Path, prefix: str) -> int:
+    value = table.get(key, default)
+    # bool 是 int 的子类，端口写成 true 必须报错而不是静默变成 1。
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise _fail(path, f"`{prefix}{key}` 必须是整数")
+    return value
+
+
+def _boolean(table: dict, key: str, default: bool, path: Path, prefix: str) -> bool:
+    value = table.get(key, default)
+    if not isinstance(value, bool):
+        raise _fail(path, f"`{prefix}{key}` 必须是 true 或 false")
+    return value
+
+
+def _string_map(table: dict, path: Path, prefix: str) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for key, value in table.items():
+        if not isinstance(value, str):
+            raise _fail(path, f"`{prefix}{key}` 必须是字符串")
+        result[key] = value
+    return result
+
+
+def _merge(
+    data_root: Path, path: Path, present: bool, found: bool,
+    document: dict, environ: dict[str, str],
+) -> PeachConfig:
+    directories = _string_map(
+        _table(document, "directories", path), path, "directories.")
+    unknown = sorted(set(directories) - set(DIRECTORY_KEYS))
+    if unknown:
+        raise _fail(path, "`directories` 里有不认识的键：" + "、".join(unknown))
+
+    media = _table(document, "media", path)
+    locations_table = _table(media, _LOCATIONS_KEY, path)
+    mounts = _string_map(
+        {k: v for k, v in media.items() if k != _LOCATIONS_KEY}, path, "media.")
+    locations = dict(DEFAULT_LOCATION_ROOTS)
+    locations.update(_string_map(locations_table, path, "media.locations."))
+
+    server_table = _table(document, "server", path)
+    fallback = ServerSettings()
+    server = ServerSettings(
+        host=_string(server_table, "host", fallback.host, path, "server."),
+        port=_integer(server_table, "port", fallback.port, path, "server."),
+        mdns_name=_string(
+            server_table, "mdns_name", fallback.mdns_name, path, "server."),
+        review_writer_origin=_string(
+            server_table, "review_writer_origin", fallback.review_writer_origin,
+            path, "server."),
+        review_writer_proxy=_string(
+            server_table, "review_writer_proxy", fallback.review_writer_proxy,
+            path, "server."),
+    )
+
+    replication_table = _table(document, "replication", path)
+    defaults = ReplicationSettings()
+    replication = ReplicationSettings(
+        enabled=_boolean(
+            replication_table, "enabled", defaults.enabled, path, "replication."),
+        shared_root=_string(
+            replication_table, "shared_root", defaults.shared_root, path, "replication."),
+        smb_host=_string(
+            replication_table, "smb_host", defaults.smb_host, path, "replication."),
+        smb_share=_string(
+            replication_table, "smb_share", defaults.smb_share, path, "replication."),
+        smb_user=_string(
+            replication_table, "smb_user", defaults.smb_user, path, "replication."),
+    )
+
+    config = PeachConfig(
+        data_root=data_root, path=path, present=present, data_root_found=found,
+        directories=directories, mounts=mounts, locations=locations,
+        server=server, replication=replication,
+    )
+    return _apply_environment(config, environ)
+
+
+#: 环境变量 -> 设置项。这一层永远压过文件，临时覆盖和 CI 都靠它，不用改文件。
+#: `PEACH_DATA_ROOT` 在 `discover_data_root` 里就用掉了；`PEACH_DRIVE_MAP` 由
+#: `peach.platform` 在每次 `drive_map()` 里现读，测试会在运行期改它。
+_SERVER_ENV = {
+    "PEACH_MDNS_NAME": "mdns_name",
+    "PEACH_REVIEW_WRITER_ORIGIN": "review_writer_origin",
+    "PEACH_REVIEW_WRITER_PROXY": "review_writer_proxy",
+}
+_REPLICATION_ENV = {
+    "PEACH_SHARED_DATA_ROOT": "shared_root",
+    "PEACH_SHARED_SMB_HOST": "smb_host",
+    "PEACH_SHARED_SMB_SHARE": "smb_share",
+    "PEACH_SHARED_SMB_USER": "smb_user",
+}
+
+
+def _apply_environment(config: PeachConfig, environ: dict[str, str]) -> PeachConfig:
+    server_changes = {
+        field_name: environ[name]
+        for name, field_name in _SERVER_ENV.items() if environ.get(name)
+    }
+    replication_changes = {
+        field_name: environ[name]
+        for name, field_name in _REPLICATION_ENV.items() if environ.get(name)
+    }
+    if server_changes:
+        config = replace(config, server=replace(config.server, **server_changes))
+    if replication_changes:
+        config = replace(
+            config, replication=replace(config.replication, **replication_changes))
+    return config
+
+
+def load_config(
+    project_root: Path = PROJECT_ROOT, environ: dict[str, str] | None = None,
+    *, strict: bool = True,
+) -> PeachConfig:
+    """读一次设置文件并合并三层。
+
+    `strict=False` 时坏文件退回内建默认（数据根仍然照发现顺序算），给 `peach init
+    --force` 留一条自救路径；否则抛 `SettingsFileError`。
+    """
+    environ = os.environ if environ is None else environ
+    data_root, found = discover_data_root(project_root, environ)
+    path = data_root / SETTINGS_FILENAME
+    document: dict = {}
+    present = False
+    if path.is_file():
+        try:
+            document = _read_document(path)
+            present = True
+        except SettingsFileError:
+            if strict:
+                raise
+    return _merge(data_root, path, present, found, document, environ)
+
+
+@lru_cache(maxsize=1)
+def _load_once() -> tuple[PeachConfig, SettingsFileError | None]:
+    try:
+        return load_config(), None
+    except SettingsFileError as exc:
+        return load_config(strict=False), exc
+
+
+def active() -> PeachConfig:
+    """当前生效的设置。文件坏了也返回一份可用的（内建默认），错误留在 `error()`。"""
+    return _load_once()[0]
+
+
+def error() -> SettingsFileError | None:
+    """设置文件坏了时的原始错误。CLI 据此拒绝提供服务，而不是拿默认值糊过去。"""
+    return _load_once()[1]
+
+
+def reset_cache() -> None:
+    """测试换过环境变量或文件之后调用。生产路径只在进程启动时读一次。"""
+    _load_once.cache_clear()
+
+
+# --------------------------------------------------------------------------- 写回
+
+def _render_value(value: object) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    text = str(value)
+    # Windows 路径里全是反斜杠。TOML 的字面量字符串不做转义，比 "R:\\media" 好读得多；
+    # 只有值里本来就带单引号或换行时才退回基本字符串。
+    if "'" not in text and "\n" not in text and "\r" not in text:
+        return f"'{text}'"
+    escaped = (text.replace("\\", "\\\\").replace('"', '\\"')
+               .replace("\n", "\\n").replace("\r", "\\r"))
+    return f'"{escaped}"'
+
+
+def _render_key(key: str) -> str:
+    allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
+    return key if key and set(key) <= allowed else _render_value(key)
+
+
+def _render_pairs(pairs: dict[str, object]) -> list[str]:
+    return [f"{_render_key(key)} = {_render_value(value)}" for key, value in pairs.items()]
+
+
+def render(config: PeachConfig) -> str:
+    """把设置渲染成带注释的 TOML。注释是给人读的，`load_config` 不依赖它们。"""
+    lines = [
+        "# Peach 设置文件。优先级：环境变量 > 本文件 > 内建默认；改完重启服务生效。",
+        "# 本文件住在数据根内部，数据根本身由 PEACH_DATA_ROOT 或项目旁的 peach-data 决定。",
+        f"# 生成入口：peach init（数据根：{config.data_root}）",
+        "",
+        "[directories]",
+        "# 数据根下的子目录，省略即取同名目录；写绝对路径可以把某一类数据搬出数据根。",
+    ]
+    lines += _render_pairs({key: config.directories[key]
+                            for key in DIRECTORY_KEYS if key in config.directories})
+    lines += [
+        "",
+        "[media]",
+        "# 账本路径前缀 -> 本机挂载点。键在 ADR-0023 第二阶段会换成挂载点 ID，现在仍是盘符。",
+        "# 不写或留空表示本机没有这个来源，对应资产按「脱盘」处理，不报错。",
+        "# Windows 上通常整表为空：盘符本身就是挂载点。",
+    ]
+    lines += _render_pairs(dict(config.mounts))
+    lines += [
+        "",
+        "[media.locations]",
+        "# asset.location -> 账本口径的声明根。改这里等于改账本口径，通常不要动。",
+    ]
+    lines += _render_pairs(dict(config.locations))
+    lines += [
+        "",
+        "[server]",
+        "# mdns_name 在局域网里必须唯一：两台机器同名会互相抢占。",
+        "# review_writer_origin 是 reader 复核镜像要读的 writer 源，留空表示本机不做镜像。",
+    ]
+    lines += _render_pairs({
+        "host": config.server.host,
+        "port": config.server.port,
+        "mdns_name": config.server.mdns_name,
+        "review_writer_origin": config.server.review_writer_origin,
+        "review_writer_proxy": config.server.review_writer_proxy,
+    })
+    lines += [
+        "",
+        "[replication]",
+        "# 单写者 ledger 复制的坐标（ADR-0017）。enabled 由 ADR-0023 第三阶段接上，",
+        "# 本阶段没有运行时代码读它：写在这里只是把值从代码里搬出来，行为不变。",
+        "# shared_root 留空表示 <数据根的上级>/peach-sync；smb_* 留空表示不挂载共享。",
+    ]
+    lines += _render_pairs({
+        "enabled": config.replication.enabled,
+        "shared_root": config.replication.shared_root,
+        "smb_host": config.replication.smb_host,
+        "smb_share": config.replication.smb_share,
+        "smb_user": config.replication.smb_user,
+    })
+    return "\n".join(lines) + "\n"
+
+
+def write(config: PeachConfig, *, force: bool = False) -> Path:
+    """把设置写到 `config.path`。已存在且没给 `force` 就拒绝，不悄悄覆盖。"""
+    path = config.path
+    if path.exists() and not force:
+        raise SettingsFileError(f"设置文件已存在，加 --force 才覆盖：{path}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render(config), encoding="utf-8")
+    return path
+
+
+def capture_existing(
+    config: PeachConfig, *, replication_enabled: bool = True,
+    overrides: dict[str, object] | None = None, mounts: dict[str, str] | None = None,
+) -> PeachConfig:
+    """把当前生效的配置整理成一份可写回的设置。
+
+    `--from-existing` 用它：现有部署的坐标散在环境变量、平台默认和运行现场里，先按
+    当前进程实际解析到的值落盘，再让命令行显式补上进程看不见的那几项（局域网地址、
+    钥匙串账号名之类只有本机的人知道的事实）。
+
+    `replication_enabled` 默认 True：加了 `--from-existing` 就说明这是一台已经在跑的
+    机器，第三阶段接上开关时它的复制行为必须和现在一致。
+    """
+    overrides = {key: value for key, value in (overrides or {}).items()
+                 if value is not None and value != ""}
+    server = replace(config.server, **{
+        key: value for key, value in overrides.items()
+        if key in ServerSettings.__dataclass_fields__
+    })
+    replication = replace(config.replication, enabled=replication_enabled, **{
+        key: value for key, value in overrides.items()
+        if key in ReplicationSettings.__dataclass_fields__
+    })
+    # 共享目录和共享名先落成显式值：设置文件是给人读的，留空让人去猜默认规则不合适。
+    if not replication.shared_root:
+        replication = replace(replication, shared_root=str(config.shared_root))
+    if not replication.smb_share:
+        replication = replace(replication, smb_share=config.smb_share)
+    return replace(
+        config, server=server, replication=replication,
+        directories={key: config.directories.get(key, key) for key in DIRECTORY_KEYS},
+        mounts=dict(mounts) if mounts is not None else dict(config.mounts),
+    )

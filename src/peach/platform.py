@@ -17,18 +17,9 @@ import os
 from functools import lru_cache
 from pathlib import Path, PureWindowsPath
 
-LOGGER = logging.getLogger(__name__)
+from . import settings_file
 
-# 盘符 -> 本机挂载点。Windows 上恒为空：盘符本身就是挂载点，不需要任何转换。
-_DEFAULT_DRIVE_MAP: dict[str, str] = (
-    {}
-    if os.name == "nt"
-    else {
-        "R": "/Volumes/RESOURCES",
-        "A": str(Path.home() / "Desktop" / "IMSL" / "Pikpak"),
-        "B": str(Path.home() / "Desktop" / "IMSL" / "115"),
-    }
-)
+LOGGER = logging.getLogger(__name__)
 
 # 未映射盘符的落点。刻意选一个不可能存在的绝对路径，让授权和存在性检查都必然失败。
 UNMAPPED_ROOT = Path("/nonexistent/peach-unmapped-drive")
@@ -48,8 +39,14 @@ def _parse_override(raw: str) -> tuple[tuple[str, str], ...]:
 
 
 def drive_map() -> dict[str, Path]:
-    """当前生效的盘符映射；空值表示显式声明「本机没有这个来源」。"""
-    merged = dict(_DEFAULT_DRIVE_MAP)
+    """当前生效的盘符映射；空值表示显式声明「本机没有这个来源」。
+
+    基础映射来自设置文件的 `[media]` 表（内建默认为空：一台新机器什么都没挂，对应资产
+    按脱盘处理）。`PEACH_DRIVE_MAP` 每次现读而不是缓存进设置层——测试和临时诊断会在
+    运行期改它，缓存住就看不到变化。
+    """
+    merged = {drive.upper(): mount
+              for drive, mount in settings_file.active().mounts.items()}
     merged.update(dict(_parse_override(os.environ.get("PEACH_DRIVE_MAP", ""))))
     return {drive: Path(mount) for drive, mount in merged.items() if mount}
 

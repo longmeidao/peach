@@ -24,10 +24,10 @@
 - Logo 与头像都渲染成方框，候选按实测像素判定，只有 URL 没有实测尺寸不算候选；取源方向、门槛值与站点判据见 `docs/SOURCING.md`。
 - 小圆标与厂牌大 logo 是两个位置、两种资产：圆标取站点自己声明的那一份并过内容外接框闸门，宽扁字标不参加圆标竞选，`/logo` 的 `variant` 只在真有两份时才分岔（细节见 `docs/SOURCING.md`）。
 - 改了圆标的取图规则或合成方式必须同时加 `link_marks.RENDER_VERSION`：缓存保鲜期 30 天，不换键的话代码换了用户看到的仍是旧那张。
-- 图集就是目录：账本没有图集实体，`/api/photos` 按 `path` 去掉文件名分组、ID 取该目录里最小的资产 ID，同名目录在两个来源下算两个图集。瀑布流只读 `/photo-thumb`（Pillow 缩到 640 宽、每张只回源一次），原图只在灯箱里读；灯箱复用 Swiper 但必须等它的 CSS 和 JS 同时就绪后再构造，否则首次打开会把多张图当普通块元素重叠显示。
+- 图集就是目录：账本没有图集实体，`/api/photos` 按 `path` 去掉文件名分组、ID 取该目录里最小的资产 ID，同名目录在两个来源下算两个图集。瀑布流只读 `/photo-thumb`（Pillow 缩到 640 宽、每张回源一次），原图只在灯箱读；灯箱复用 Swiper，必须等其 CSS 与 JS 都就绪再构造，否则首次打开多图会重叠。
 - 人工复核入口固定为 `/review`，候选来自 writer 本机 `generated` 下的 CSV，状态写 `review_decision`；封面抓取的成功、尺寸和缺失是机械状态，不进人工复核。
-- reader 只通过 Peach CA 严格校验的 HTTPS 读 writer 已归一化的 JSON 并原子缓存到本机，先确认目标 `/healthz` 是 `ledger_sync=writer`，writer 离线时只展示上次缓存；reader 永久禁用批准、跳过、拒绝和关注管理的写入，不得为修好空页面而同步整个 `generated`、SQLite/WAL 或放宽写端点白名单。
-- 转载站水印域名不是番号：剥掉 TLD 后与 `IPX219C`、`MEYD911` 同形，`normalise_code_key` 会替它补连字符（`HHD800` → `HHD-800`），JAV 过滤、`display_code` 和 `clean_names` 重命名就全把水印当成作品标识。形态分不开，只有实证名单 `catalog_rules.REPOST_SITE_LABELS` 能分，存压缩形好让 `BEI88` 与 `BEI-088` 同时命中；加条目先用 `scripts/audit_domain_codes.py` 在真实 ledger 上取 `<label>.<tld>` 或 `<label>@` 的路径证据。
+- reader 只通过 Peach CA 严格校验的 HTTPS 读 writer 已归一化的 JSON 并原子缓存到本机，先确认目标 `/healthz` 是 `ledger_sync=writer`，writer 离线只展示上次缓存；reader 永久禁用批准、跳过、拒绝和关注管理的写入，不得为修空页面而同步整个 `generated`、SQLite/WAL 或放宽写端点白名单。
+- 转载站水印域名不是番号：剥掉 TLD 后与 `IPX219C`、`MEYD911` 同形，`normalise_code_key` 会替它补连字符（`HHD800` → `HHD-800`），JAV 过滤、`display_code` 和 `clean_names` 重命名就全把水印当成作品标识。形态分不开，只有实证名单 `catalog_rules.REPOST_SITE_LABELS` 能分，存压缩形让 `BEI88` 与 `BEI-088` 同命中；加条目先用 `scripts/audit_domain_codes.py` 在真实 ledger 取 `<label>.<tld>` 或 `<label>@` 的路径证据。
 - 「什么算番号」只在 `catalog_rules` 一份，脚本一律 import，同一条排除规则只加在其中一份上等于没加；改 `code` 走 `audit_domain_codes.py --apply --backup`，只写复核过的那份 CSV、按原值 `WHERE` 挡住漂移、存疑档不写，FTS 由 `AFTER UPDATE OF name,code` 触发器重建但要核对真跑过。
 - 日文标题只认官方源会漏掉 DMM 未收录的作品，这类番号用 `--sources javbus` 单独补候选并写进分区文件，不另起通用批次——复核页只读最新一个通用批次，新文件会把上一批未复核的行挤掉。
 
@@ -79,7 +79,7 @@
 - 网格、控件半径、语义 token 与中间省略：`vercel-geist-grid`、`vercel-geist-controls-measured`、`vercel-geist-middle-truncate`；中间省略只用于路径、URL、ID、SHA 这类首尾都有信息的值，必须显式 `data-middle-truncate`，标题、说明、人名和标签保留末尾省略。
 - 统计与口味两页的层级，以及 Note／Progress／Switch／Fieldset／Scroller／Empty State 的语义：`vercel-geist-semantics-measured`、`vercel-geist-note-progress-switch-analytics`、`vercel-geist-fieldset-scroller-empty-state`。
 - 表格、排行与面包屑：`vercel-geist-table-ranking`、`vercel-geist-breadcrumbs`；同形可比较数据才用语义 `table` 并保持 tabular numerals，内容标签是固定 Top 排行和直接筛选，不伪装成可排序数据表。
-- 设置 Dialog 动效、搜索期 Spinner、后台 Loading Dots 与 busy 按钮：`vercel-geist-command-search-loading`；中性说明 Note：`vercel-notifications-note`；具名动作 Toast：`vercel-geist-toast`。用户直接触发的动作用 Spinner，后台扫描进度用 Loading Dots，等待按钮通过共享 busy 状态变灰但不用原生 `disabled`，以保留焦点和 busy 播报。
+- 设置 Dialog 动效、搜索期 Spinner、后台 Loading Dots 与 busy 按钮：`vercel-geist-command-search-loading`；中性说明 Note：`vercel-notifications-note`；具名动作 Toast：`vercel-geist-toast`。用户直接触发的动作用 Spinner，后台扫描用 Loading Dots，等待按钮经共享 busy 状态变灰但不用原生 `disabled`，保留焦点和播报。
 - 资料页阅读顺序与照片入口：`beeg-profile-layout`；JAV 标题显示语义：`jav-title-user-screenshot`，只在 `is_jav` 项目上应用，不改真实文件名，也不在账本只有番号时伪造官方标题。
 - 播放器控制栏、设置浮层、影院与全屏几何：`youtube-player-controls-user-screenshot`；沉浸页版式：`youtube-shorts-immersive-user-screenshot`；播放统计滚动历史：`youtube-stats-buffer-measured`。Peach 不复制没有实际能力的字幕、睡眠定时或自动播放按钮。
 - 追更与文件站的凭据与解析边界：`f95-masked-gofile-media`、`follow-fanbox-gofile-paheal`、`fanbox-browser-transport`、`rule34-follow-tags-and-collections`；厂牌 Logo 候选发现：`fiu758-studio-logo-discovery`，只作发现来源不作真相源。
@@ -132,7 +132,7 @@
 - 「同步开发进度」（GitHub）和「同步 Ledger」（SMB 共享）是两条独立通道，任一方不可达都不该拖住另一方；HTTP/HTTPS 服务只观察角色不自动复制，只有确定会复制时才停止自己创建的服务。
 - 「接管 Ledger 写入」只在共享盘不可达时短路，健康端口不归本托盘时拒绝接管；两台机器可以同时跑服务，但同时写入会很快冲突转只读。
 - `src/peach/__init__.py::__version__` 是版本唯一来源；自动更新只做 `merge --ff-only`，不 stash、不 rebase、不 `--force`，工作区脏或两边分叉就原样报出来交给人——并行工作树和主检出共用同一个对象库。
-- 双机广播分工固定：macOS 是 `peach.local`，Windows 是 `peach-win.local`，默认值收敛到 `peach.config.MDNS_NAME`，源码里不钉家庭 IP。
+- 本机坐标在 `<数据根>/config.toml`（环境变量 > 它 > 内建默认），`src/peach/` 不写死本机字面量或家庭 IP；现有部署各跑一次 `peach init --from-existing`；`replication.enabled` 要到第三阶段才有代码读。
 - `.local` 用本机 CA 而不是 Let's Encrypt，证书与私钥留在本机 `peach-data/secrets` 且按设计不跨机共享；FastAPI 是唯一 Web server，探测本机服务必须绕过系统代理，否则代理会替服务回 503。
 - 网盘目录整理后必须经「管理 → 资源同步」显式对账，不做后台静默删除；源文件缺失的 asset 和垃圾文件候选都只能先进回收站，清空回收站才永久删除账本行。
 - 长任务只停止自己拥有且命令行匹配的 Python/FFmpeg 进程树，禁止全机终止 FFmpeg；转码只写缓存，永不改写原媒体。
@@ -147,7 +147,7 @@
 - 当前页面、路由、交互与性能实现只写 `docs/STATUS.md`，由 API 和 `tests/test_web_ui.py` 守住；本文件不复制易过期的版本号、像素值和控件清单。
 - `/taste` 只读合并 Peach 行为与本机私有浏览历史，明确以浏览器记录为主要画像、Peach 内部为辅助证据，两者分别排序，不把「不合口味」自动归因或降权到 Tag。
 - 查询词里的负号项整体排除，下划线是组合词边界的一部分，不得把 `-ai_generated` 拆成正向 `generated`；模糊时长旧 Tag 只作兼容识别，不进入口味、索引、详情和筛选状态。
-- 原始 URL 与标题不进入页面或 ledger；上传原件保存在 `sources/taste-history/imports`，移除数据源只清理规范化分析库，不删原件。浏览器数据库解析固定复用 `browserexport==0.4.4`，运行中浏览器先由 SQLite backup API 取一致快照。本机发现能力不等于跨主机同步，跨机数据必须显式导出、传输并按来源去重合并。
+- 原始 URL 与标题不进入页面或 ledger；上传原件保存在 `sources/taste-history/imports`，移除数据源只清理规范化分析库，不删原件。浏览器数据库解析固定复用 `browserexport==0.4.4`，运行中浏览器先由 SQLite backup API 取一致快照。本机发现不等于跨机同步，跨机数据要显式导出、传输并按来源去重合并。
 - 追更连接器、凭据、变体和跨站归组以 ADR-0019 为准；关注页顶部标签筛选与卡片只用来源明确标记为 `general` 的内容标签，详情页与在线索引保留全部来源标签并按类型着色，未知类型不猜成 `general`。
 - 自动追更固定使用 APScheduler 3.11.3，只在 ledger writer 启动，频率保存在 `peach-data/state/follow-schedule.json`，默认每小时且启动后等待一个完整间隔，不要改成启动即抓；任务保持 `coalesce=True`、`max_instances=1`，与手动检查共用 `WebContract.follow_check_lock`，reader 只显示不可用状态。
 - 账本路径兼容和抽帧失败处理统一见 `.claude/skills/peach-cross-platform/SKILL.md` 与 `.claude/skills/peach-batch-jobs/SKILL.md`。
