@@ -244,10 +244,18 @@
 - **人的那张脸同一条规矩：先问过再出图。** `/entity-image` 与 `/avatar` 由 `WebContract` 的
   `has_entity_image()` / `has_avatar()` 判定，随资料下发为 `has_image` 与 `has_avatar`
   （`/api/tops` 的 `performers[]`／`studios[]`、`/api/items` 与 `/api/item` 的 `entity_refs`、
-  `/api/entity` 的本体与 `related_performers`）。页面只有一处拼这两个地址——`web/app.js` 的
-  `entityFaceImg()`，四个取图位（顶栏圆头像 `.av .ring`、身份格人物位、共演者小圆框、资料页
-  160 px 大位）共用它，两样都取不到就一个 `<img>` 都不出，首字母垫底直接露出来。旧写法一个作品
-  详情页实测 9 个 404（1 个厂牌实体图、4 个人物实体图、4 个头像），首页手机视口 2 个，同样不带缓存头。
+  `/api/entity` 的本体与 `related_performers`、`/api/index` 的人物行、`/api/taste` 的创作者与
+  女优两排、`/api/review` 里 `ENTITY_REVIEW_KINDS` 那两类的候选行）。页面只有一处拼这两个
+  地址——`web/app.js` 的 `entityFaceImg()`，所有取图位（顶栏圆头像 `.av .ring`、身份格人物位、
+  共演者小圆框、资料页 160 px 大位、索引页格子、口味榜行、复核卡片那张脸、沉浸模式署名圈）
+  经 `avatarInner()` 共用它，两样都取不到就一个 `<img>` 都不出，首字母垫底直接露出来。
+  旧写法一个作品详情页实测 9 个 404（1 个厂牌实体图、4 个人物实体图、4 个头像），首页手机视口
+  2 个，`/performers` 滚三屏 5 个，同样不带缓存头。
+  `avatarInner()` 对缺席的 `has_image` 按「没图」处理：宽容缺席只会让下一个忘了挂标志的端点
+  悄悄退回无条件出图，而这种退化在页面上看不出来——图照样显示，代价全在 404 里。
+  端点挂标志用 `web_catalog` 的 `entity_ref()`（身份引用带上 `has_image`）和
+  `attach_avatar_availability()`（一次批量取 `snapshot_path`，不逐行 N+1）；榜行这种
+  `entity_id`／`representative_asset_id` 直接长在行上的形状，判据仍是同一对函数。
   两条判据形状不一样，不能混为一谈：
   - 实体图是纯粹的「在不在」。`avatar_root` 一次 `os.scandir` 出 casefold 索引
     （`avatar_root_index().entity_images`），落盘名统一走 `previews.entity_image_key`，
@@ -257,8 +265,12 @@
     **或** 印相还在盘上（同一个 `has_snapshot`）。把后者也判成没有，等于把「点一下就现裁一张」
     那条路永远关掉。生成中途的 `<id>.<格>.tmp.jpg` 不算数。剩下预测不了的 404 只有生成本身失败
     那一种（没有 ffmpeg、六格全黑），所以 `data-drop="self"` 兜底链一条都不能撤。
+  复核卡片那张脸的 kind 由 `web_review.ENTITY_REVIEW_KINDS` 和页面的 `ENTITY_REVIEW_CATEGORIES`
+  各留一份，必须逐字一致：一边判成 creator、另一边按 performer 取图，就是标志说有图而请求照样
+  404。`tests/test_web_ui.py` 比对这两张表。
   门槛在 `tests/test_previews.py` 的 `EntityImageAvailabilityTests` / `AvatarAvailabilityTests`
-  （同一个临时目录上可用性与取图必须给同一个答案）、`tests/test_rm_web.py` 的四端点标志测试，以及
+  （同一个临时目录上可用性与取图必须给同一个答案）、`tests/test_rm_web.py` 与
+  `tests/test_web_review.py` 的端点标志测试，以及
   `tests/test_web_ui.py` 的 `test_no_face_image_is_emitted_before_the_server_says_it_can_be_fetched`
   （页面源里每一处 `/entity-image`／`/avatar` 附近都得有可用性判据）。
 - 补方形小标要借 `link_marks` 的内容比闸门，但不能借它的尺寸下限。`MIN_DESIGNED_SIZE=96` 是为

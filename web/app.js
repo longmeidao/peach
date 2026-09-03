@@ -1353,11 +1353,12 @@ function entityFaceImg({kind='performer',id=null,hasImage=false,rep=null,
 }
 /* 头像内层：先垫首字母，再叠真实图。
 
-   `has_image` 缺席时按「有图」处理：口味榜、复核卡片和索引页的调用方自己拼 ref，
-   还没有这个标志，读到 undefined 就照旧无条件出图，行为和加标志之前一模一样。 */
+   `has_image` 缺席按「没图」处理，和 entityFaceImg 的默认值一致：每一个调用点的
+   ref 都由服务端带着标志下发（卡片署名、索引页、口味榜、复核卡片、沉浸模式），
+   宽容缺席只会让下一个忘了挂标志的端点悄悄退回「无条件出图、等 404 再摘」。 */
 function avatarInner(name,ref,repId,kind='performer'){
   return `<span class="ini">${esc((name||'?').slice(0,1))}</span>`+
-    entityFaceImg({kind,id:ref&&ref.id,hasImage:!!ref&&ref.has_image!==false,rep:repId});
+    entityFaceImg({kind,id:ref&&ref.id,hasImage:!!(ref&&ref.has_image),rep:repId});
 }
 /* 人脸取景：资料页圆框按检出的人脸中心取景（/api/entity 的 avatar_focus）。
    没检出或没算过返回空串维持几何居中；换回落图时必须撤掉——那是另一张照片，
@@ -2487,7 +2488,9 @@ const tasteRankRows=(rows,kind,empty='暂无足够证据',visual='')=>rows.lengt
     const detail=row.web_visits!=null
       ?`${row.web_visits?`浏览 ${row.web_visits}`:''}${row.web_visits&&row.peach_items?' · ':''}${row.peach_items?`Peach ${row.peach_items}`:''}`
       :`${Number(row.score||row.visits||0).toLocaleString()}`;
-    const ref=row.entity_id?{id:row.entity_id}:null,rep=row.representative_asset_id||null;
+    // 两级图都由 `/api/taste` 说了算：实体图看 `has_image`，代表作头像看 `has_avatar`。
+    const ref=row.entity_id?{id:row.entity_id,has_image:row.has_image}:null,
+      rep=row.has_avatar?row.representative_asset_id||null:null;
     const sourceDomain=String(row.source_domain||'');
     const media=visual==='domain'
       ?siteAvatar(row.name,row.name)
@@ -2986,7 +2989,7 @@ async function openReview(push=true){
          const origin=comparisonOrigin||subjectKind&&subjectName?comparisonOrigin||`<div class="reviewentity">
              <button class="reviewentityface" data-entity-kind="${subjectKind}" data-entity-name="${esc(subjectName)}"
                aria-label="打开创作者页：${esc(subjectName)}">${avatarInner(subjectName,
-                 row.entity_id?{id:row.entity_id}:null,null,subjectKind)}</button>
+                 row.entity_id?{id:row.entity_id,has_image:row.has_image}:null,null,subjectKind)}</button>
              <div><b><button type="button" class="reviewentityname" data-entity-kind="${subjectKind}" data-entity-name="${esc(subjectName)}">${esc(subjectName)}</button></b>
                ${works?`<small class="mono">${works.toLocaleString()} 部作品</small>`:''}</div></div>`
            :row.asset_id?`<div class="revieworigin">
@@ -4735,7 +4738,8 @@ async function openIndex(kind,q,push=true){
         `<button class="alphatag ${onlineTags?'r34-'+(x.cat||'unknown'):(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"><span>${esc(tagLabel(x.k))}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')}</div></section>`).join('')};
   const peopleHtml=items=>items.map(x=>`<button class="icell" data-k="${esc(x.k)}" data-kind="${entityKind}">
         <span class="ring">${avatarInner(x.k,
-          kind==='performers'&&x.entity_id?{id:x.entity_id}:null, x.rep)}</span>
+          x.entity_id?{id:x.entity_id,has_image:x.has_image}:null,
+          x.has_avatar?x.rep:null, entityKind)}</span>
         <span class="nm">${esc(x.k)}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('');
   const tagHtml=items=>tagIndexMode==='alphabet'?`<div class="alphabet">${tagGroups(items)}</div>`:`<div class="tagwall index-tags">`+items.map(x=>`<button class="tg ${onlineTags?'r34-'+(x.cat||'unknown'):(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"
         >${esc(tagLabel(x.k))}

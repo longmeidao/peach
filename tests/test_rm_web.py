@@ -416,6 +416,91 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual([row["rep"] for row in tops], [1], "代表作仍会被选出来")
         self.assertEqual([row["has_avatar"] for row in tops], [False])
 
+    def _install_snapshot(self, asset_id=1):
+        """给一条作品配一份真的印相文件，让它的代表作头像变成取得到。"""
+        snapshot = Path(self.tmp.name).resolve() / f"snapshot-{asset_id}.jpg"
+        snapshot.write_bytes(b"x")
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET snapshot_path=? WHERE id=?", (str(snapshot), asset_id))
+        con.commit()
+        con.close()
+        self.contract.cache_bust()
+
+    def test_index_pages_say_up_front_whether_each_face_can_be_fetched(self):
+        """索引页一屏几十个圆头像，同样得先问过再出图。
+
+        `/performers` 桌面视口滚三屏实测 77 个取图请求里 5 个是 `/entity-image` 的
+        404，而这条响应不带缓存头，每次重绘再打一整轮。
+        """
+        def flags(kind):
+            return [(row["k"], row["has_image"], row["has_avatar"])
+                    for row in rm_web.q_index(self.contract, kind, limit=10)["items"]]
+
+        self.assertEqual(flags("performers"), [("Canonical Alice", False, False)])
+        self.assertEqual(flags("creators"), [("Canonical Creator", False, False)])
+
+        (self.avatars / f"{entity_image_key('performer', 11)}.img").write_bytes(b"x")
+        self._install_snapshot()
+        # kind 是落盘名的一部分：装的是女优那张图，创作者那格照样没有实体图可取，
+        # 只是回落到了同一条作品的代表作头像。判据判错 kind 就在这一行现形。
+        self.assertEqual(flags("performers"), [("Canonical Alice", True, True)])
+        self.assertEqual(flags("creators"), [("Canonical Creator", False, True)])
+
+        (self.avatars / f"{entity_image_key('creator', 12)}.img").write_bytes(b"x")
+        self.contract.cache_bust()
+        self.assertEqual(flags("creators"), [("Canonical Creator", True, True)])
+        # 标签索引页没有脸，不该凭空多出两个标志。
+        self.assertNotIn(
+            "has_image", rm_web.q_index(self.contract, "tags", limit=10)["items"][0])
+
+    def test_taste_rankings_say_up_front_whether_each_face_can_be_fetched(self):
+        """口味榜的创作者和女优两排走同一条两级链，标志也得随榜下发。
+
+        榜行的形状和别处的身份引用不一样（`entity_id`、`representative_asset_id`
+        直接长在行上），但判据是同一对函数，不能因为形状不同就退回无条件出图。
+        """
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET play_count=2,play_seconds=600,last_played=? WHERE id=1",
+                    (1_700_000_200,))
+        con.commit()
+        con.close()
+        # 浏览历史那一侧显式指向不存在的临时路径：默认值是本机真实的采集库，
+        # 榜单会跟着本机装了什么摇。
+        never = Path(self.tmp.name).resolve() / "no-taste-history"
+        contract = rm_web.WebContract(
+            Path(self.db_path), avatar_root=self.avatars, logo_root=self.logos,
+            taste_history_store=never / "history.sqlite",
+            taste_history_import_root=never / "imports",
+            taste_history_manifest=never / "manifest.json")
+
+        def flags():
+            rankings = rm_web.q_taste(contract, {"window": "all"})["rankings"]
+            return {key: [(row["name"], row["has_image"], row["has_avatar"])
+                          for row in rankings[key]]
+                    for key in ("creators", "performers", "peach_creators",
+                                "peach_performers")}
+
+        self.assertEqual(flags(), {
+            "creators": [("Canonical Creator", False, False)],
+            "performers": [("Canonical Alice", False, False)],
+            "peach_creators": [("Canonical Creator", False, False)],
+            "peach_performers": [("Canonical Alice", False, False)],
+        })
+
+        (self.avatars / f"{entity_image_key('performer', 11)}.img").write_bytes(b"x")
+        self._install_snapshot()
+        contract.cache_bust()
+        # 同一批 dict 同时出现在总榜和分源榜里，两处必须给同一个答案。
+        self.assertEqual(flags(), {
+            "creators": [("Canonical Creator", False, True)],
+            "performers": [("Canonical Alice", True, True)],
+            "peach_creators": [("Canonical Creator", False, True)],
+            "peach_performers": [("Canonical Alice", True, True)],
+        })
+        # 标签榜不出脸，不该被顺手挂上两个用不到的标志。
+        tags = rm_web.q_taste(contract, {"window": "all"})["rankings"]["tags"]
+        self.assertNotIn("has_image", tags[0])
+
     def test_items_can_skip_repeated_total_count_on_later_pages(self):
         result = rm_web.q_items(
             self.contract, {"limit": "1", "offset": "0", "count": "0"},

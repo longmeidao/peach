@@ -767,6 +767,48 @@ class WebUiSourceTests(unittest.TestCase):
                     f"{url} 附近没有可用性判据，这是一个必然 404 的 `<img>`：\n"
                     f"{source[max(0, at - 200):at + 80]}")
 
+    def test_the_remaining_face_slots_carry_the_flag_their_endpoint_sends(self):
+        """索引页、口味榜、复核卡片和沉浸模式署名圈也走「先问过再出图」。
+
+        这几处不自己拼地址，而是把身份引用交给 `avatarInner()`，所以上一条那种
+        「地址附近有没有判据」的扫描扫不到它们：引用里没有 `has_image` 就等于无条件
+        出图。`/performers` 桌面视口滚三屏实测 77 个取图请求里 5 个是这样的 404。
+        """
+        # 缺席按「没图」处理。宽容缺席会让下一个忘了挂标志的端点悄悄退回旧行为，
+        # 而这种退化在页面上看不出来——图照样显示，代价全在 404 里。
+        self.assertPageContains("hasImage:!!(ref&&ref.has_image)")
+        # 索引页（`/api/index`）：实体图看 has_image、代表作头像看 has_avatar，kind
+        # 跟着这一页的身份走——创作者的图写成 `performer-<id>.img` 是读不到的。
+        self.assertPageContains("x.entity_id?{id:x.entity_id,has_image:x.has_image}:null,")
+        self.assertPageContains("x.has_avatar?x.rep:null, entityKind)")
+        # 口味榜（`/api/taste`）：两列直接长在榜行上，判据仍是同一对。
+        self.assertPageContains(
+            "const ref=row.entity_id?{id:row.entity_id,has_image:row.has_image}:null,")
+        self.assertPageContains("rep=row.has_avatar?row.representative_asset_id||null:null;")
+        # 沉浸模式署名圈读 `/api/item` 的 entity_refs，标志随引用一起来；代表作那一侧
+        # 读 REP，入表时已经按 has_avatar 筛过。
+        self.assertPageContains(
+            "const ownerRef=ownerKind?(full.entity_refs?.[ownerKind]?.[0]||null):null;")
+        self.assertPageContains(
+            "tops.performers.forEach(x=>{if(x.rep&&x.has_avatar)REP[x.k]=x.rep});")
+
+    def test_review_face_kinds_agree_between_the_page_and_the_endpoint(self):
+        """复核卡片那张脸的 kind 两边各存一份，必须逐字一致。
+
+        页面按 `ENTITY_REVIEW_CATEGORIES` 拼 `/entity-image?kind=`，服务端按
+        `web_review.ENTITY_REVIEW_KINDS` 判「这个实体有没有图」。一边判成 creator、
+        另一边按 performer 取图，就是标志说有图而请求照样 404：两份表各自都不会报错，
+        页面上看到的只是又一张碎图。
+        """
+        # 这个文件其余断言只读页面源；这一条守的正是页面与服务端的对不上，
+        # 所以必须两边都看。
+        from peach.web_review import ENTITY_REVIEW_KINDS
+
+        declared = re.search(r"const ENTITY_REVIEW_CATEGORIES=\{([^}]*)\}", self.app_js)
+        self.assertIsNotNone(declared, "页面那份表不在了；改名的话服务端也得跟着改")
+        self.assertEqual(dict(re.findall(r"(\w+):'(\w+)'", declared.group(1))),
+                         ENTITY_REVIEW_KINDS)
+
     def test_face_fallback_chains_end_by_removing_the_broken_image(self):
         """还是取不到图的 <img> 必须被摘掉，不能只停在「不再重试」。
 
@@ -4399,8 +4441,9 @@ class WebUiSourceTests(unittest.TestCase):
         # 作品数取 video_count（创作者标签）或 videos（西方身份），两批候选列名不同。
         self.assertPageContains("const works=Number(row.video_count||row.videos||0)")
         self.assertPageContains("部作品")
-        # 头像走同一个兜底链，取不到图时回落首字母。
-        self.assertPageContains("row.entity_id?{id:row.entity_id}:null,null,subjectKind)")
+        # 头像走同一条链，装了实体图才出 `<img>`，取不到就是首字母。
+        self.assertPageContains(
+            "row.entity_id?{id:row.entity_id,has_image:row.has_image}:null,null,subjectKind)")
         # 复核页没有全局委托，必须自己接线，否则入口点了没反应。
         self.assertPageContains(
             "$('#stats').querySelectorAll('[data-entity-kind]').forEach(button=>button.onclick=()=>")

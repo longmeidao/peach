@@ -46,6 +46,7 @@ class ReviewContract(Protocol):
     def cache_bust(self) -> None: ...
     def read_connection(self): ...
     def has_cover(self, code: str) -> bool: ...
+    def has_entity_image(self, kind: str, entity_id) -> bool: ...
     def write_transaction(self): ...
 
 
@@ -85,6 +86,12 @@ CANDIDATE_KEY = {
     "fc2_similarity": "pair_key",
     "video_endcards": "candidate_key",
 }
+#: 复核卡片上那张脸属于哪种实体。页面按同一张表决定 `/entity-image` 的 kind
+#: （`app.js` 的 `ENTITY_REVIEW_CATEGORIES`），两边必须逐字一致：这边判成 creator、
+#: 页面按 performer 取图，就是标志说有图而请求照样 404。不在表里的类别没有这个位置。
+ENTITY_REVIEW_KINDS = {"creator_tags": "creator", "western_identity": "creator"}
+
+
 def _needs_review(category: str, row: dict) -> bool:
     """已经有定论的行不该占复核页。
 
@@ -392,6 +399,13 @@ def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], s
             comparison.pop("snapshot_path", None)
         if not row.get("reason"):
             row["reason"] = _review_evidence(category, row)
+    # 卡片左边那张脸和别处的圆头像同一条链，只是这里没有代表作可退：装了实体图才
+    # 出 `<img>`，否则就是首字母垫底，不再靠 404 把图摘掉。判定读的是目录索引，
+    # 所以放在库连接之外。
+    face_kind = ENTITY_REVIEW_KINDS.get(category)
+    if face_kind:
+        for row in rows:
+            row["has_image"] = contract.has_entity_image(face_kind, row.get("entity_id"))
     return _pending_first(rows), source, skipped
 
 

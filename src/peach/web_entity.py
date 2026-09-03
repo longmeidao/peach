@@ -286,6 +286,14 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="")
                 all_rows = [row for row in all_rows if row["cat"] == category]
             rows = all_rows[offset:offset + limit]
             has_more = offset + limit < len(all_rows)
+    if kind in {"creators", "performers"}:
+        # 索引页一屏几十个圆头像，走的是和顶栏那排同一条两级链：规范实体图优先，
+        # 取不到才回落到代表作头像。没有这两个标志就只能无条件出图、等 404 再把图摘掉，
+        # `/performers` 桌面视口滚三屏实测 77 个取图请求里 5 个是这样的 404。
+        # 判定在库连接之外做，它读的是目录索引而不是账本。
+        for row in rows:
+            row["has_image"] = contract.has_entity_image(entity_kind, row.get("entity_id"))
+        attach_avatar_availability(contract, rows)
     result = {"kind": kind, "items": rows, "has_more": has_more}
     if kind == "tags":
         result["categories"] = category_counts
