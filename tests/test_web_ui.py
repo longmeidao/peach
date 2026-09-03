@@ -2011,12 +2011,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('data-player-speed-step="-1" aria-label="播放速度减 0.05"')
         self.assertPageContains('data-player-speed-step="1" aria-label="播放速度加 0.05"')
         self.assertPageContains('<span class="vjs-peach-speed-preset-label">正常</span>')
-        self.assertPageContains("display.textContent=`${speed.toFixed(2)}x`;range.value=String(speed);")
+        # player.playbackRate() 读的是 ratechange 之后才写的缓存，所以面板自己记住这一次的倍速。
+        self.assertPageContains("let rate=clampSpeed(Number(player.playbackRate())||1);")
+        self.assertPageContains("display.textContent=`${rate.toFixed(2)}x`;range.value=String(rate);")
+        self.assertPageContains("const setSpeed=value=>{rate=clampSpeed(value);player.playbackRate(rate);syncSpeed()};")
         # 轨道已过的比例由脚本写成自定义属性，上游同样是自定义属性驱动那条渐变。
         self.assertPageContains(
-            "range.style.setProperty('--peach-speed-percent',`${(speed-min)/(max-min)*100}%`);")
+            "range.style.setProperty('--peach-speed-percent',`${(rate-min)/(max-min)*100}%`);")
         self.assertPageContains(
-            "setSpeed((Number(player.playbackRate())||1)+Number(button.dataset.playerSpeedStep)*SPEED_STEP))")
+            "setSpeed(rate+Number(button.dataset.playerSpeedStep)*SPEED_STEP))")
         self.assertPageContains(
             ".vjs-peach-speed-panel{box-sizing:border-box;display:flex;flex-direction:column;padding:24px 16px 16px}")
         self.assertPageContains("font-size:var(--fs-lg);font-weight:600;line-height:22px;color:#fff}")

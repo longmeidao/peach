@@ -933,18 +933,19 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0,initialSourceQu
       <div class="vjs-peach-speed-chips">${SPEED_PRESETS.map(speed=>
         `<span class="vjs-peach-speed-preset"><button type="button" class="vjs-peach-speed-button" data-player-speed-option="${speed}" aria-pressed="false">${speedLabel(speed)}</button>${speed===1?'<span class="vjs-peach-speed-preset-label">正常</span>':''}</span>`).join('')}</div></div>`,direction);
     const display=panel.querySelector('[data-player-speed-display]'),range=panel.querySelector('[data-player-speed-range]');
+    // player.playbackRate() 读的是 ratechange 之后才写的缓存，面板自己记住这一次的倍速。
+    let rate=clampSpeed(Number(player.playbackRate())||1);
     const syncSpeed=()=>{
-      const speed=clampSpeed(Number(player.playbackRate())||1);
-      display.textContent=`${speed.toFixed(2)}x`;range.value=String(speed);
-      range.style.setProperty('--peach-speed-percent',`${(speed-min)/(max-min)*100}%`);
+      display.textContent=`${rate.toFixed(2)}x`;range.value=String(rate);
+      range.style.setProperty('--peach-speed-percent',`${(rate-min)/(max-min)*100}%`);
       panel.querySelectorAll('[data-player-speed-option]').forEach(button=>
-        button.setAttribute('aria-pressed',String(Number(button.dataset.playerSpeedOption)===speed)));
+        button.setAttribute('aria-pressed',String(Number(button.dataset.playerSpeedOption)===rate)));
     };
-    const setSpeed=speed=>{player.playbackRate(clampSpeed(speed));syncSpeed()};
+    const setSpeed=value=>{rate=clampSpeed(value);player.playbackRate(rate);syncSpeed()};
     panel.querySelector('[data-player-menu-back]').onclick=()=>showMain(-1);
     range.oninput=()=>setSpeed(Number(range.value));
     panel.querySelectorAll('[data-player-speed-step]').forEach(button=>button.onclick=()=>
-      setSpeed((Number(player.playbackRate())||1)+Number(button.dataset.playerSpeedStep)*SPEED_STEP));
+      setSpeed(rate+Number(button.dataset.playerSpeedStep)*SPEED_STEP));
     panel.querySelectorAll('[data-player-speed-option]').forEach(button=>button.onclick=()=>
       setSpeed(Number(button.dataset.playerSpeedOption)));
     syncSpeed();
