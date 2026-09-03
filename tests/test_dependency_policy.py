@@ -80,7 +80,10 @@ class DependencyPolicyTests(unittest.TestCase):
 
         index = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         app = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
-        self.assertIn(f'/vendor/videojs/{versions["video.js"]}/', index)
+        # 首屏只剩 video.js 的样式表，脚本按需加载、版本钉在 app.js 的加载器里，
+        # 所以两侧都要核。只核 index 的话，加载器里写错版本没人会拦。
+        self.assertIn(f'/vendor/videojs/{versions["video.js"]}/video-js.min.css', index)
+        self.assertIn(f'/vendor/videojs/{versions["video.js"]}/video.min.js', app)
         self.assertIn(f"Lucide static {versions['lucide-static']}", index)
         self.assertIn(f"Health Icons {versions['healthicons']}", index)
         self.assertIn(f"/vendor/swiper/{versions['swiper']}/", app)

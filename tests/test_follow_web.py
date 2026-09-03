@@ -1837,7 +1837,7 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_follow_video_uses_the_shared_videojs_player_and_quality_control(self):
         self.assertPageContains('class="video-js vjs-big-play-centered" controls playsinline preload="metadata"')
         self.assertPageContains("if(followVideo){")
-        self.assertPageContains("const followPlayer=mountDetailPlayer(item,followVideo,false,{")
+        self.assertPageContains("const followPlayer=await mountDetailPlayer(item,followVideo,false,{")
         self.assertPageContains("source:{src,type:selectedMedia?.media_type||item.media_type||'video/mp4'}")
         # 第四个参数是来源自己给的清晰度表：rule34video 把每档写成独立 mp4 字段，
         # videojs 的 qualityLevels 只认 HLS/DASH 的自适应轨道，看不到它们。
@@ -1850,7 +1850,7 @@ class FollowWebSourceTests(unittest.TestCase):
             "function renderFollow", 1)[0]
         self.assertNotIn("await api(`/follow-qualities", detail,
                          "清晰度回源不能挡住默认视频挂载")
-        self.assertLess(detail.index("const followPlayer=mountDetailPlayer"),
+        self.assertLess(detail.index("const followPlayer=await mountDetailPlayer"),
                         detail.index("wireFollowTelemetry"))
         self.assertPageContains('aria-label="播放器设置"')
         self.assertPageContains("data-player-quality-badge")

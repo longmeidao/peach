@@ -946,11 +946,31 @@ function mountPlayerCenterControls(player){
   root.addEventListener('animationend',hideFeedback);
   player.on(['play','pause','ended'],onState);player.on(['waiting','seeking'],hideFeedback);player.on('dispose',()=>{clearTimeout(gestureTimer);playerRoot.removeEventListener('pointerdown',arm,true);playerRoot.removeEventListener('keydown',onKey,true)});sync();
 }
-function mountDetailPlayer(it,video,autoplay,options={}){
+/* 播放器按需加载，和灯箱的 Swiper 同一个理由：video.js 676KB，只有真的开始看片才
+   用得上，进首屏就是每次开页都白下一遍。灯箱那边还要等一张样式表，所以它保留自己的
+   Promise.all；这里只有脚本，用下面这个最小加载器。主脚本与语言包有依赖
+   ——`videojs.addLanguage` 得先有 videojs——必须串行，不能 Promise.all。 */
+const loadScript=src=>new Promise((resolve,reject)=>{
+  const script=document.createElement('script');
+  script.src=src;script.onload=resolve;
+  script.onerror=()=>reject(new Error(`script unavailable: ${src}`));
+  document.head.appendChild(script)});
+let videojsLoader=null;
+const ensureVideojs=()=>{
+  if(globalThis.videojs)return Promise.resolve(globalThis.videojs);
+  return videojsLoader||(videojsLoader=loadScript('/vendor/videojs/8.24.0/video.min.js')
+    .then(()=>loadScript('/vendor/videojs/8.24.0/lang/zh-CN.js'))
+    .then(()=>globalThis.videojs)
+    /* 失败要把 loader 清空，否则一次网络抖动之后这一整页都再也挂不上播放器了。 */
+    .catch(error=>{videojsLoader=null;throw error}));
+};
+async function mountDetailPlayer(it,video,autoplay,options={}){
   if(detailPlayer)return detailPlayer;
   const statsButton=$('#playerStatsBtn'),statsPanel=$('#playerStats');
   const source=()=>options.source?Promise.resolve(options.source):detailStreamSource(it);
-  if(!globalThis.videojs){
+  /* 拉不到就退回原生 video，和以前「页面里没有 videojs」是同一个兜底出口。 */
+  try{await ensureVideojs()}
+  catch(_e){
     video.controls=true;
     source().then(next=>{video.src=next.src;if(autoplay)video.play().catch(()=>{})}).catch(()=>{});
     return null;
@@ -3327,7 +3347,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
        一点，详情里就会先留下一个没有 src 的空视频框。 */
     const qualitiesPromise=api(`/follow-qualities?id=${encodeURIComponent(item.id)}`)
       .then(answer=>answer?.qualities?.length?answer.qualities:null).catch(()=>null);
-    const followPlayer=mountDetailPlayer(item,followVideo,false,{
+    const followPlayer=await mountDetailPlayer(item,followVideo,false,{
       source:{src,type:selectedMedia?.media_type||item.media_type||'video/mp4'},
       checkSourceStatus:false,
       qualitiesPromise
@@ -6236,8 +6256,8 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
       followAuthor='';followProvider='';followTags=new Set();followMediaView='videos';
       followFilter='saved';route(followViewPath());openFollow(false)};
   }
-  else if(g)g.onclick=()=>{vv.hidden=false;g.remove();const mounted=mountDetailPlayer(it,vv,true);stopAmbient=mountPlayerAmbient(vv);mounted?.one?.('dispose',stopAmbient)};
-  else{const mounted=mountDetailPlayer(it,vv,true);stopAmbient=mountPlayerAmbient(vv);mounted?.one?.('dispose',stopAmbient)}
+  else if(g)g.onclick=async()=>{vv.hidden=false;g.remove();const mounted=await mountDetailPlayer(it,vv,true);stopAmbient=mountPlayerAmbient(vv);mounted?.one?.('dispose',stopAmbient)};
+  else{const mounted=await mountDetailPlayer(it,vv,true);stopAmbient=mountPlayerAmbient(vv);mounted?.one?.('dispose',stopAmbient)}
   vv.addEventListener('emptied',()=>stopAmbient(),{once:true});
   buildBars();
   scrollItemDetailIntoView();

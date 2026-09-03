@@ -1084,13 +1084,30 @@ class WebUiSourceTests(unittest.TestCase):
         # 会在同一个 flex 容器里各占一半。点击入口后再取消 hidden、移除入口并自动播放。
         self.assertPageContains(".vwrap>video[hidden]{display:none}")
         self.assertPageContains(".gate{aspect-ratio:16/9;width:100%")
-        self.assertPageContains(
-            "else if(g)g.onclick=()=>{vv.hidden=false;g.remove();const mounted=mountDetailPlayer(it,vv,true)"
+        # 挂播放器现在要等 video.js 到位，入口回调因此是 async。
+        self.assertCode(
+            "else if(g)g.onclick=async()=>{vv.hidden=false;g.remove();"
+            "const mounted=await mountDetailPlayer(it,vv,true)"
         )
 
     def test_detail_uses_pinned_videojs_and_authoritative_duration(self):
         self.assertPageContains('/vendor/videojs/8.24.0/video.min.js')
         self.assertPageContains('/vendor/videojs/8.24.0/video-js.min.css')
+
+    def test_the_player_script_is_fetched_on_demand_instead_of_in_the_first_paint(self):
+        """video.js 676KB，只有开始看片才用得上，和 Swiper 同一口径不进首屏。
+
+        语言包必须串在主脚本之后：`videojs.addLanguage` 要求先有 videojs，
+        并行加载会随机丢掉中文界面。
+        """
+        self.assertCode("const ensureVideojs=()=>{")
+        self.assertCode(
+            "videojsLoader=loadScript('/vendor/videojs/8.24.0/video.min.js')"
+            ".then(()=>loadScript('/vendor/videojs/8.24.0/lang/zh-CN.js'))")
+        self.assertPageLacks('<script src="/vendor/videojs',
+                             "播放器脚本才用得上，不进首屏")
+        # 样式表留在首屏：它是 .video-js 的版式来源，等到点开才拉会先闪一帧裸 video。
+        self.assertPageContains('<link rel="stylesheet" href="/vendor/videojs/8.24.0/video-js.min.css">')
 
     def test_detail_player_controls_use_two_rows_and_offer_real_quality_levels(self):
         self.assertPageContains(".vwrap .video-js .vjs-big-play-button{left:50%;top:50%;width:56px;height:56px")
