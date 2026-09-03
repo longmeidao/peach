@@ -367,14 +367,17 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertEqual(offenders, [],
                          f"这些 hover 在提亮边框，请改成只抬 background：{offenders}")
 
-    # 悬停允许照旧抬填充的四个孤立开关：它们没有并排的同类邻居，鼠标压着的那颗
-    # 就是你正在问的那颗，看不出「按没按」不构成误读。
+    # 悬停允许照旧抬填充的两类控件。孤立开关：没有并排的同类邻居，鼠标压着的那颗
+    # 就是你正在问的那颗，看不出「按没按」不构成误读。侧栏导航：Geist 自己就把分工
+    # 反过来写，见 test_sidebar_nav_keeps_the_hover_fill_and_leaves_state_to_the_color。
     HOVER_FILL_ALLOWED = (
         ".ib",              # 顶栏图标按钮，八个里只有一个有按下态
         ".brandpill",       # 顶栏厂牌胶囊，全站一颗
         ".playerstatsbtn",  # 播放器覆盖层，悬停走 ::after 另一层
         ".fb .like",        # 这一排彩色反馈按钮的既有约定就是悬停预览按下后的颜色
         ".tagpickitem",     # 选中由图标换成对勾表达，填充留给悬停与键盘游标
+        ".edge button",     # 窄栏，实测 vercel.com/geist 左栏就是悬停抬填充
+        ".dnav button",     # 抽屉是窄栏的展开态，同一条例外
     )
 
     STATE_TOKENS = ('[aria-pressed="true"]', '[aria-selected="true"]',
@@ -419,10 +422,13 @@ class WebUiSourceTests(unittest.TestCase):
         """一组互斥选项里，填充专属选中，未选中项悬停只提文字色。
 
         去掉边框与字重之后，`:hover` 和 `[aria-pressed="true"]` 都是 `--hover`，
-        鼠标划过邻居时就分不出哪个是当前项了。Geist 的解法三个组件一致：
+        鼠标划过邻居时就分不出哪个是当前项了。Geist 的解法在这三个组件里一致：
         `hover:text-[var(--ds-gray-1000)]`、`not-disabled:hover:text-gray-1000`——
         悬停只改文字色，背景留给 checked／aria-selected。这与 Button 的「悬停只抬
         填充」不冲突：Button 没有选中态，没有需要让位的信号。
+
+        适用面只到「一排横向的选项组」。2026-09-04 实测证明侧栏导航不在此列，Geist
+        自己把分工反过来写，见 HOVER_FILL_ALLOWED 里的两条和下一个测试。
         """
         selected_bases = set()
         for leaf, body in self._leaf_rules():
@@ -447,6 +453,38 @@ class WebUiSourceTests(unittest.TestCase):
                     offenders.append(part)
         self.assertEqual(sorted(offenders), [],
                          f"这些控件有选中态，悬停请只提文字色到 --ink：{offenders}")
+
+    def test_sidebar_nav_keeps_the_hover_fill_and_leaves_state_to_the_color(self):
+        """侧栏窄栏与抽屉的悬停必须抬填充，当前项靠图标色区分。
+
+        2026-09-04 实测 vercel.com/geist 左栏（`aside` 里那 82 条链接，读的是每条
+        链接内层 `span` 的计算值与类名）：
+
+        | 状态 | 背景 | 文字 |
+        | --- | --- | --- |
+        | 未选中 | `rgba(0,0,0,0)` | `rgb(161,161,161)` |
+        | 未选中 + 悬停 | `rgb(26,26,26)`（`hover:bg-gray-100`） | `rgb(161,161,161)` 不动 |
+        | 当前项 | `rgba(255,255,255,.06)`（`bg-gray-alpha-100`，无 hover 类） | `rgb(237,237,237)` |
+
+        分工与横排选项组正好相反：填充表示「鼠标在这儿」，文字色才表示「你在这儿」。
+        两个填充的合成亮度几乎相同（10% 对 9.4%），可见 Geist 并不指望用填充强弱
+        区分二者。纯图标窄栏更需要这条：52px 方块里只有一个描边图标，光靠 --muted
+        到 --ink 的换色近乎看不见，等于窄栏没有悬停反馈。
+
+        这条曾被删过一次（`1367a9a` 把横排选项组的结论推广到了侧栏），所以这里用
+        正向断言锁住，不只依赖 HOVER_FILL_ALLOWED 的豁免。
+        """
+        self.assertPageContains(".edge button:hover{background:var(--hover)}",
+                                "窄栏悬停必须抬填充")
+        self.assertPageContains(".dnav button:hover{background:var(--hover)}",
+                                "抽屉是窄栏的展开态，走同一条")
+        # 悬停不得把图标/文字提到 --ink：那是当前项的信号，抢过来两态就分不开了。
+        self.assertPageLacks(".edge button:hover{color:var(--ink)}")
+        self.assertPageLacks(".dnav button:hover svg{color:var(--ink)}")
+        # 当前项这一侧必须仍然握着颜色，否则悬停和选中就真的同色了。
+        self.assertPageContains('.edge button[aria-pressed="true"]'
+                                "{background:var(--hover);color:var(--ink)}")
+        self.assertPageContains('.dnav button[aria-pressed="true"] svg{color:var(--ink)}')
 
     def test_buttons_do_not_shrink_on_press_and_disable_to_a_solid_gray(self):
         """按下不缩放，禁用是实底灰而不是半透明。
