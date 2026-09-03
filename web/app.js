@@ -665,6 +665,43 @@ function bufferedAhead(video){
     return Math.max(0,video.buffered.end(i)-at);
   return 0;
 }
+function bufferedSeconds(video){
+  let total=0;
+  for(let i=0;i<video.buffered.length;i++)total+=video.buffered.end(i)-video.buffered.start(i);
+  return total;
+}
+/* 渐进下载（HTTP Range）量不到网络：浏览器用一条长连接边下边播，请求在播放期间不结束，
+   resource timing 里就一直不出现新条目。实测本地 MP4 播到 37 秒时仍只有挂载那两条、字节数
+   停在 862 KB，面板于是显示「— · 0 请求」。HLS 是另一回事，每个分片都是一次独立完成的请求，
+   VHS 自己也报 bandwidth，原来那套口径只对它成立。
+   渐进源改看缓冲区推进：每秒新缓冲的秒数 × 平均码率就是字节速率；码率未知（在线关注条目
+   没有 size）就只报推进倍速。缓冲吃满后浏览器停拉，增量归零，此时保留上一次读数而不是跳回
+   0——那不是速度掉了，是没有在下载。 */
+const BUFFER_METER_WINDOW_MS=3000;
+function averageBitrate(size,duration){
+  const bytes=Number(size)||0,seconds=realDuration(duration)||0;
+  return bytes>0&&seconds>0?bytes*8/seconds:0;
+}
+function createBufferMeter(bitrate){
+  const samples=[];let bits=0,ratio=0;
+  return {
+    bitrate:Number(bitrate)||0,
+    get bits(){return bits},
+    get ratio(){return ratio},
+    bytes(video){return this.bitrate>0&&video?bufferedSeconds(video)*this.bitrate/8:0},
+    sample(video){
+      if(!video)return bits;
+      const at=performance.now(),filled=bufferedSeconds(video);
+      /* 面板和角标都关着时没人采样；再打开时两个样本之间隔了几分钟，直接相减会算出天文数字。 */
+      if(samples.length&&at-samples[samples.length-1].at>BUFFER_METER_WINDOW_MS*2)samples.length=0;
+      samples.push({at,filled});
+      while(samples.length>2&&at-samples[0].at>BUFFER_METER_WINDOW_MS)samples.shift();
+      const span=(at-samples[0].at)/1000,gained=filled-samples[0].filled;
+      if(span>=.5&&gained>0){ratio=gained/span;bits=this.bitrate>0?gained*this.bitrate/span:0}
+      return bits;
+    }
+  };
+}
 const PLAYER_STATS_HISTORY=24;
 function pushPlayerStat(samples,value){
   samples.push(Number.isFinite(value)&&value>0?value:0);
@@ -681,6 +718,13 @@ function playerStatsPlot(samples,kind,ceiling,label){
   }).join('');
   return `<span class="playerstatsplot ${kind}" role="img" aria-label="${esc(label)}">${bars}</span>`;
 }
+/* 统计角标、加载速度与面板：作品详情和关注详情共用同一组 id，mountDetailPlayer 直接按 id 取。
+   关注详情以前没有这三个节点，在线视频于是连统计入口都没有。 */
+function playerStatsOverlayHtml(){
+  return `<button class="playerstatsbtn" id="playerStatsBtn" aria-label="播放统计" title="播放统计" aria-pressed="false" hidden>${icon('chart')}</button>
+       <div class="playernet" id="playerNet" role="status" aria-live="polite" hidden></div>
+       <div class="playerstats" id="playerStats" role="status" hidden></div>`;
+}
 function streamEntries(id,session=''){
   const encoded=session?encodeURIComponent(session):'';
   return performance.getEntriesByType('resource').filter(x=>x.name.includes('/stream')&&
@@ -693,15 +737,22 @@ function streamSpeedBits(id,session=''){
   const seconds=entries.reduce((n,x)=>n+(x.duration||0),0)/1000;
   return bytes>0&&seconds>0?bytes*8/seconds:0;
 }
-function playerSpeedBits(player,id,session=''){
+function playerSpeedBits(player,id,session='',meter=null){
   let vhs=null;try{vhs=player?.tech({IWillNotUseThisInPlugins:true})?.vhs?.stats||null}catch(_e){}
   const bandwidth=Number(vhs?.bandwidth)||0;
-  return bandwidth>0?bandwidth:streamSpeedBits(id,session);
+  if(bandwidth>0)return bandwidth;
+  /* 传了 meter 就是渐进源：它的 resource timing 本来就量不到，不能拿别的条目顶上。 */
+  return meter?Number(meter.bits)||0:streamSpeedBits(id,session);
 }
 function fmtSpeed(bits){
   if(!Number.isFinite(bits)||bits<=0)return '加载中…';
   const bytes=bits/8;
   return bytes>=1048576?`${(bytes/1048576).toFixed(1)} MB/s`:`${Math.max(1,Math.round(bytes/1024))} KB/s`;
+}
+/* 码率未知时字节速率无从换算，退回缓冲推进倍速：3 秒里多缓冲了 36 秒就是 12× 实时。 */
+function fmtLoadRate(bits,ratio){
+  if(bits>0)return fmtSpeed(bits);
+  return ratio>0?`${ratio.toFixed(1)}× 实时`:fmtSpeed(0);
 }
 function applyAmbientMode(enabled,save=true){
   appSettings.ambientMode=!!enabled;if(save)saveSettings();
@@ -990,7 +1041,8 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
   // 非正时长一律当未知：强行 player.duration(-1) 会被 Video.js 转成 Infinity 并标成直播。
   const expected=realDuration(it.duration);
   const statsHistory={speed:[],activity:[],buffer:[]};
-  let statsBytes=0;
+  const meter=createBufferMeter(averageBitrate(options.size??it.size,it.duration));
+  let statsLoaded=0;
   let correcting=false;
   const enforceDuration=()=>{
     if(!expected||correcting||!detailPlayer||detailPlayer.isDisposed())return;
@@ -1003,25 +1055,44 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
    if(!statsPanel||statsPanel.hidden||!detailPlayer||detailPlayer.isDisposed())return;
    const quality=video.getVideoPlaybackQuality?video.getVideoPlaybackQuality():null;
      const rect=video.getBoundingClientRect(),current=`${video.videoWidth||it.width||'?'}×${video.videoHeight||it.height||'?'}`;
-      const resources=streamEntries(it.id,detailStreamSession);
+     const segmented=String(detailPlayer.currentSource()?.type||'').includes('mpegurl');
+      const resources=segmented?streamEntries(it.id,detailStreamSession):[];
       const bytes=resources.reduce((n,x)=>n+(x.transferSize||x.encodedBodySize||0),0);
       const seconds=resources.reduce((n,x)=>n+(x.duration||0),0)/1000;
-      const speed=playerSpeedBits(detailPlayer,it.id,detailStreamSession)||(seconds>0?bytes*8/seconds:0);
-     const activity=Math.max(0,bytes-statsBytes);statsBytes=bytes;
+     meter.sample(video);
+      const speed=playerSpeedBits(detailPlayer,it.id,detailStreamSession,segmented?null:meter)
+        ||(seconds>0?bytes*8/seconds:0);
+     const filled=bufferedSeconds(video);
+     /* 分片流按已完成请求的字节累计；渐进源没有这种请求，按缓冲量折算，码率未知时退到秒。 */
+     const loaded=segmented?bytes:(meter.bitrate>0?meter.bytes(video):filled);
+     const activity=Math.max(0,loaded-statsLoaded);statsLoaded=loaded;
      const buffer=bufferedAhead(video);
      pushPlayerStat(statsHistory.speed,speed);
      pushPlayerStat(statsHistory.activity,activity);
      pushPlayerStat(statsHistory.buffer,buffer);
-     const segmented=String(detailPlayer.currentSource()?.type||'').includes('mpegurl');
+     /* 关注条目没有落盘文件名，容器格式只能从片源 MIME 反推；HLS 已经写在传输一侧，不重复。 */
+     const named=String(it.name||'');
+     const container=(named.includes('.')?named.split('.').pop()
+       :segmented?'':String(detailPlayer.currentSource()?.type||'').split('/').pop()).toUpperCase()||'—';
+     const speedText=speed?`${(speed/1e6).toFixed(1)} Mbps`
+       :(!segmented&&meter.ratio>0?`${meter.ratio.toFixed(1)}× 实时`:'—');
+     const byteScale=segmented||meter.bitrate>0;
+     const loadedRow=segmented
+       ?['网络活动',`${bytes?fmtSize(bytes):'—'} · ${resources.length} 请求`,
+         `最近一秒网络活动 ${activity?fmtSize(activity):'0 B'}`]
+       :['已缓冲',byteScale?`${fmtSize(loaded)}${Number(it.size)>0?` / ${fmtSize(Number(it.size))}`:''}`
+           :`${filled.toFixed(0)} 秒`,
+         byteScale?`最近一秒新增 ${activity?fmtSize(activity):'0 B'}`
+           :`最近一秒新增缓冲 ${activity.toFixed(1)} 秒`];
      const rows=[
-      ['视频 ID / 会话',`${it.id} / ${detailStreamSession.slice(0,8)}`],
+      ['视频 ID / 会话',detailStreamSession&&!options.source?`${it.id} / ${detailStreamSession.slice(0,8)}`:`${it.id}`],
       ['视口 / 帧',`${Math.round(rect.width)}×${Math.round(rect.height)} / ${quality?`${quality.totalVideoFrames-quality.droppedVideoFrames} of ${quality.totalVideoFrames}`:'—'}`],
-      ['当前 / 最佳分辨率',`${current} / ${it.width||'?'}×${it.height||'?'}`],
-       ['编码 / 传输',`${String(it.name||'').split('.').pop()?.toUpperCase()||'—'} / ${segmented?'HLS':'HTTP Range'}`],
-      ['连接速度',speed?`${(speed/1e6).toFixed(1)} Mbps`:'—',
-        playerStatsPlot(statsHistory.speed,'speed',Math.max(10e6,...statsHistory.speed),`连接速度 ${speed?`${(speed/1e6).toFixed(1)} Mbps`:'暂无数据'}`)],
-      ['网络活动',`${bytes?fmtSize(bytes):'—'} · ${resources.length} 请求`,
-        playerStatsPlot(statsHistory.activity,'activity',Math.max(1,...statsHistory.activity),`最近一秒网络活动 ${activity?fmtSize(activity):'0 B'}`)],
+      ['当前 / 最佳分辨率',`${current} / ${it.width||video.videoWidth||'?'}×${it.height||video.videoHeight||'?'}`],
+       ['编码 / 传输',`${container} / ${segmented?'HLS':'HTTP Range'}`],
+      ['连接速度',speedText,
+        playerStatsPlot(statsHistory.speed,'speed',Math.max(10e6,...statsHistory.speed),`连接速度 ${speedText==='—'?'暂无数据':speedText}`)],
+      [loadedRow[0],loadedRow[1],
+        playerStatsPlot(statsHistory.activity,'activity',Math.max(1,...statsHistory.activity),loadedRow[2])],
       ['缓冲健康',`${buffer.toFixed(1)} 秒`,
         playerStatsPlot(statsHistory.buffer,'buffer',30,`当前可连续播放 ${buffer.toFixed(1)} 秒`)],
       ['播放时间',`${fmtClock(video.currentTime)} / ${fmtClock(expected||detailPlayer.duration())}`],
@@ -1034,7 +1105,10 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
   let segmentedSource=false,fallbackUsed=false;
   const netBadge=$('#playerNet');
   const updateNet=()=>{if(!netBadge||player.isDisposed())return;
-    netBadge.textContent=`加载速度 ${fmtSpeed(playerSpeedBits(player,it.id,detailStreamSession))}`};
+    const segmented=String(player.currentSource()?.type||'').includes('mpegurl');
+    if(!segmented)meter.sample(video);
+    const bits=playerSpeedBits(player,it.id,detailStreamSession,segmented?null:meter);
+    netBadge.textContent=`加载速度 ${segmented?fmtSpeed(bits):fmtLoadRate(bits,meter.ratio)}`};
   const showNet=()=>{if(!netBadge)return;netBadge.hidden=false;updateNet();
     if(detailNetTimer)clearInterval(detailNetTimer);detailNetTimer=setInterval(updateNet,500)};
   const hideNet=()=>{if(!netBadge)return;if(detailNetHideTimer)clearTimeout(detailNetHideTimer);
@@ -3325,7 +3399,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   }
   $('#stage').hidden=false;document.body.classList.add('detail-open');
   $('#stage').innerHTML=`<div class="sgrid followdetailgrid${collection||embeddedQueue?' mixgrid':''}">
-    <div class="vwrap followdetailmedia${selectedKind==='image'?' image':''}">${selectedKind==='video'?'<canvas class="ambientcanvas" width="32" height="18"></canvas>':''}<button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${media}${imageControls}</div>
+    <div class="vwrap followdetailmedia${selectedKind==='image'?' image':''}">${selectedKind==='video'?'<canvas class="ambientcanvas" width="32" height="18"></canvas>':''}<button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${selectedKind==='video'?playerStatsOverlayHtml():''}${media}${imageControls}</div>
     ${embeddedQueue?followEmbeddedQueueHtml(item,selectedMedia.index):(collection?followQueueHtml(collection,item.id):'')}
     <div class="side followdetailside"><div class="sidecontent">
       <div class="followdetailtitle"><div class="stitle">${esc(item.title)}</div>${item.url?`<a class="followorigin" href="${esc(item.url)}" target="_blank" rel="noreferrer noopener" title="打开来源页面" aria-label="打开来源页面">${icon('external-link')}</a>`:''}</div>
@@ -3397,6 +3471,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     const followPlayer=await mountDetailPlayer(item,followVideo,false,{
       source:{src,type:selectedMedia?.media_type||item.media_type||'video/mp4'},
       checkSourceStatus:false,
+      size:selectedMedia?.size,
       qualitiesPromise
     });
     const stopFollowAmbient=mountPlayerAmbient(followVideo);
@@ -6030,9 +6105,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   $('#stage').hidden=false;document.body.classList.add('detail-open');delete $('#stage').dataset.c;
   $('#stage').innerHTML=`<div class="sgrid ${queueContext?'mixgrid':''}">
     <div class="vwrap"><canvas class="ambientcanvas" id="ambientCanvas" width="32" height="18"></canvas><button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>
-       <button class="playerstatsbtn" id="playerStatsBtn" aria-label="播放统计" title="播放统计" aria-pressed="false" hidden>${icon('chart')}</button>
-       <div class="playernet" id="playerNet" role="status" aria-live="polite" hidden></div>
-       <div class="playerstats" id="playerStats" role="status" hidden></div>
+       ${playerStatsOverlayHtml()}
       ${offline?`<div class="gate offline" id="offlineGate" role="status">
           ${srcBadge(it.location,it.cost,'srcbig')}
           <b>脱盘模式</b>
