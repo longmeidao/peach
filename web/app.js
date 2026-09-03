@@ -32,7 +32,7 @@ wireImageFallbacks(document.body);
 let state;
 let barsRequestSeq=0,barsDataCache=null,barsDataAt=0,barsDataPromise=null;
 let adsBatch=null,loadRequestSeq=0,listLoading=false;
-let followData=null,followRuntime=null,followFilter='new',followBusy=false,followManageSort='checked';
+let followData=null,followRuntime=null,followFilter='',followBusy=false,followManageSort='checked';
 let followAuthor='',followProvider='',followTags=new Set(),followMediaView='videos',followGroupByItemId=new Map(),followItemsById=new Map(),followDetailReturnPath='/follow';
 const selectedIndexTags=new Set();
 let entityPhotos=null,entityMediaView=emptyMediaView(),photoWallItems=[];
@@ -1901,7 +1901,7 @@ async function buildBars(){
   $('#drawer').querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navTo(b.dataset.nav));
   $('#drawer').querySelectorAll('[data-follow-drawer-tag]').forEach(b=>b.onclick=()=>{
     // 关注标签只在关注页成立，直接过去；它不是目录筛选，不能走 commitContextFilter。
-    followAuthor='';followProvider='';followMediaView='videos';followFilter='new';
+    followAuthor='';followProvider='';followMediaView='videos';followFilter='';
     followTags=new Set([b.dataset.followDrawerTag]);
     openDrawer(false);route(followViewPath());openFollow(false)});
   wireNavigationDrag($('#drawer').querySelector('.dnav'));
@@ -3307,7 +3307,6 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
         <div><b>${esc(author)}</b>${postedBy?`<span>发布者 ${esc(postedBy)}</span>`:''}</div></div>
       <div class="smeta mono"><span>${followWhen(item)}</span>${realDuration(item.duration)?`<span>${fmtDur(item.duration)}</span>`:''}${badges?`<span class="fbadges">${badges}</span>`:''}</div>
       ${item.summary?`<p class="followdetailsummary">${esc(item.summary)}</p>`:''}
-      ${tags?`<div class="stags followdetailtags">${tags}</div>`:''}
       ${mediaIssue?`<p class="fnote followmediaissue">${esc(mediaIssue)}</p>`:''}
       ${followResourceLinks(item)}
       <div class="fb followdetailactions">
@@ -3318,6 +3317,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
         ${src?`<a class="fdownload" href="${esc(src)}${src.includes('?')?'&':'?'}download=1" download
           aria-label="下载到本地" title="下载到本地">${icon('download')}</a>`:''}</div>
       <span class="fstate" aria-live="polite"></span>
+      ${tags?`<div class="stags followdetailtags">${tags}</div>`:''}
     </div></div></div>`;
   $('#stage').classList.toggle('ambient-on',selectedKind==='video'&&appSettings.ambientMode);
   $('#stage').classList.toggle('theater-mode',selectedKind==='video'&&appSettings.theaterMode);
@@ -3557,14 +3557,14 @@ function followCheckFailNote(report){
    离开再回来还按着（谁都不重置它们），刷新就丢，也没法从别处链到一个筛好的视图。
    标签页要能点一个在线标签直接进「关注 · 这个标签」，就必须走 URL。
 
-   `status` 的默认值是「未看」，所以缺省即未看；「全部」是个真实的空值，写成
-   `all` 而不是空串——空串在 URL 里和「没写」分不开。 */
+   `status` 的默认值是「全部」，所以缺省即全部，不写这个参数。旧链接里的
+   `status=all` 仍按全部读——那是「全部」还不是默认值时的写法。 */
 function followViewPath(){
   const params=new URLSearchParams();
   if(followAuthor)params.set('author',followAuthor);
   if(followProvider)params.set('provider',followProvider);
   if(followTags.size)params.set('tag',[...followTags].join(','));
-  if(followFilter!=='new')params.set('status',followFilter||'all');
+  if(followFilter)params.set('status',followFilter);
   if(followMediaView==='images')params.set('media','images');
   const search=params.toString();return '/follow'+(search?'?'+search:'');
 }
@@ -3574,7 +3574,7 @@ function readFollowView(){
   followProvider=params.get('provider')||'';
   followTags=new Set((params.get('tag')||'').split(',').filter(Boolean));
   const status=params.get('status');
-  followFilter=status===null?'new':(status==='all'?'':status);
+  followFilter=(status===null||status==='all')?'':status;
   followMediaView=params.get('media')==='images'?'images':'videos';
 }
 function followMediaControl(counts){
@@ -3658,7 +3658,7 @@ function renderFollow(){
     ${followData.has_more||sources.some(source=>source.can_backfill)?`<div class="followpagination">
       ${followData.has_more?`<span class="followpageaction"><button class="fbtn" data-follow-more>${icon('refresh-cw')}加载更多</button>
         <span class="fmeta">已显示 ${visible.length.toLocaleString()} / ${
-        (counts[followFilter]||0).toLocaleString()} 项</span></span>`:''}
+        (followFilter?counts[followFilter]||0:allCount).toLocaleString()} 项</span></span>`:''}
       ${sources.some(source=>source.can_backfill)?`<span class="followpageaction"><button class="fbtn" data-follow-older>${icon('history')}抓更早的一页</button>
         <span class="fmeta">${esc(followBackfillState(sources))}</span></span>`:''}</div>`:''}</div>`;
   const more=$('#stats').querySelector('[data-follow-more]');
@@ -4649,7 +4649,7 @@ async function openIndex(kind,q,push=true){
     /* 在线标签只在关注页有意义——它标注的是还没入库的在线更新，拿去筛目录必然
        一条不中。所以直接进「关注 · 这个标签」，并且绕过多选：多选拼的是目录筛选。 */
     if(onlineTags){
-      followAuthor='';followProvider='';followMediaView='videos';followFilter='new';
+      followAuthor='';followProvider='';followMediaView='videos';followFilter='';
       followTags=new Set([b.dataset.k]);
       $('#index').hidden=true;route(followViewPath());openFollow(false);return}
     if(selectMode){const key=b.dataset.k;selectedIndexTags.has(key)?selectedIndexTags.delete(key):selectedIndexTags.add(key);paintTagIndexSelection();return}
