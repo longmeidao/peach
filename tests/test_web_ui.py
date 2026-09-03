@@ -4274,6 +4274,52 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("return state.jav==='1'||entityJavLayout")
         self.assertPageContains("const jav=javActive()&&!!it.is_jav,layout=javLayout()")
 
+    def test_the_people_index_offers_a_big_and_a_compact_layout(self):
+        """艺人索引页的两个版式，与 JAV 大图同一条思路、同一个控件。"""
+        self.assertPageContains(
+            "const PEOPLE_LAYOUTS=[['big','大图 · 竖幅头像','maximize'],"
+            "['compact','紧凑 · 圆形头像','layout-grid']];")
+        self.assertPageContains(
+            "iconSwitchHtml('people-layout','艺人索引版式',PEOPLE_LAYOUTS,peopleIndexLayout(),")
+        self.assertPageContains("{attr:'data-people-layout'}")
+        # 只有艺人和创作者是头像网格；标签页那一屏没有图可放大。
+        self.assertPageContains("${people?peopleLayoutButtons():''}")
+        self.assertPageContains(
+            "wireIconSwitch($('#index'),'data-people-layout',setPeopleIndexLayout);")
+        self.assertPageContains(
+            '`<div class="igrid" data-layout="${peopleIndexLayout()}">${peopleHtml(d.items)}</div>`')
+        self.assertPageContains("peopleLayout:'big'", "默认与 JAV 版式、密度一致：大图为主")
+
+    def test_the_big_people_layout_only_stretches_the_frame_it_does_not_change_columns(self):
+        # JAV 大图那条规矩：宽度不变、高度拉长。列宽跟着改的话，窄屏会掉成一列。
+        self.assertPageContains(
+            '.igrid[data-layout="big"] .icell .ring{width:100%;height:auto;aspect-ratio:3/4;')
+        self.assertPageContains(".igrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))")
+        self.assertPageLacks('.igrid[data-layout="big"]{grid-template-columns',
+                             "两个版式必须同列宽同列数")
+        self.assertPageLacks('.igrid[data-layout="compact"]',
+                             "紧凑就是基础样式那一屏，不该再写一份")
+
+    def test_switching_the_people_layout_neither_repaints_the_grid_nor_refetches(self):
+        # 版式是纯展示层的事：改容器上的一个属性就够，和关注列表版式同一个做法。
+        self.assertCode(
+            "function setPeopleIndexLayout(value){\n"
+            "  appSettings.peopleLayout=value;\n"
+            "  saveSettings();\n"
+            "  document.querySelectorAll('.igrid')"
+            ".forEach(grid=>{grid.dataset.layout=peopleIndexLayout()});\n"
+            "}")
+
+    def test_the_big_people_layout_frames_the_detected_face(self):
+        # 3:4 竖幅按几何居中会把脸切掉。换算只有 faceOrigin 一份：资料页写进 img 的
+        # style，索引页交给圆框上的 --face——那里的 img 是八处共用的 avatarInner 拼的。
+        self.assertPageContains("function faceOrigin(f){")
+        self.assertCode("  const origin=faceOrigin(f);\n"
+                        "  return origin?` style=\"object-position:${origin}\"`:'';")
+        self.assertPageContains("const face=faceOrigin(x.avatar_focus);")
+        self.assertPageContains('<span class="ring"${face?` style="--face:${face}"`:\'\'}>')
+        self.assertPageContains("object-position:var(--face,50% 50%)}")
+
     def test_photo_lightbox_loads_swiper_lazily_with_thumbs_and_keyboard(self):
         self.assertPageContains("'/vendor/swiper/14.2.0/swiper-bundle.min.js'")
         self.assertPageContains("swiperLoader=Promise.all([")

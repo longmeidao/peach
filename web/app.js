@@ -261,7 +261,7 @@ const SORTS=[['seed','随机'],['rating','评分'],['o','高潮计数'],['plays'
              ['big','体积'],['new','最近入库'],['played','最近看的']];
 const JAV_RELEASE_SORT=['release','发行时间'];
 const SORT_KEYS=[...SORTS,JAV_RELEASE_SORT].map(([key])=>key);
-const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:2,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',followLayout:'cozy',ambientMode:true,theaterMode:false,groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
+const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:2,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',followLayout:'cozy',peopleLayout:'big',ambientMode:true,theaterMode:false,groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
@@ -1397,10 +1397,16 @@ function avatarInner(name,ref,repId,kind='performer'){
 /* 人脸取景：资料页圆框按检出的人脸中心取景（/api/entity 的 avatar_focus）。
    没检出或没算过返回空串维持几何居中；换回落图时必须撤掉——那是另一张照片，
    脸不在同一位置，见 entityhero img 的 `data-drop-style`。 */
-function facePos(f){
-  return f&&f.axis==='x'?` style="object-position:${f.pct}% 50%"`
-    :f&&f.axis==='y'?` style="object-position:50% ${f.pct}%"`
+/* 换算只有这一份。资料页把它写进 img 的 style；索引页大图版式要把它交给圆框上的
+   CSS 变量——那里的 img 由共用的 avatarInner 拼，版式能改的容器只有圆框。 */
+function faceOrigin(f){
+  return f&&f.axis==='x'?`${f.pct}% 50%`
+    :f&&f.axis==='y'?`50% ${f.pct}%`
     :'';
+}
+function facePos(f){
+  const origin=faceOrigin(f);
+  return origin?` style="object-position:${origin}"`:'';
 }
 /* 官方封套有两种形态，实测过：整张封套约 1.48（左侧是剧照拼贴，右侧才是正封），
    竖版正封约 0.70（本身就是正封，没有左半边可裁）。所以取景不能写死「取右边」，
@@ -4714,6 +4720,23 @@ function paintTagIndexSelection(){
   const count=panel.querySelector('[data-tag-selected]');if(count)count.textContent=`已选 ${selectedIndexTags.size} 个标签`;
   const apply=panel.querySelector('[data-tag-apply]');if(apply)apply.disabled=!selectedIndexTags.size;
 }
+/* 艺人索引版式，思路同 JAV 大图：列宽不变、只把图从圆框拉成竖幅，一屏里的人数
+   不变而每张脸更大；紧凑就是圆头像那一屏。控件与 JAV 版式、关注列表版式共用
+   iconSwitchHtml，切换只改容器上的 data-layout——版式是纯展示层的事，不重画列表，
+   也不重新请求。 */
+const PEOPLE_LAYOUTS=[['big','大图 · 竖幅头像','maximize'],['compact','紧凑 · 圆形头像','layout-grid']];
+function peopleIndexLayout(){
+  return allowedSetting(appSettings.peopleLayout,PEOPLE_LAYOUTS.map(([k])=>k),'big');
+}
+function peopleLayoutButtons(){
+  return iconSwitchHtml('people-layout','艺人索引版式',PEOPLE_LAYOUTS,peopleIndexLayout(),
+    {attr:'data-people-layout'});
+}
+function setPeopleIndexLayout(value){
+  appSettings.peopleLayout=value;
+  saveSettings();
+  document.querySelectorAll('.igrid').forEach(grid=>{grid.dataset.layout=peopleIndexLayout()});
+}
 async function openIndex(kind,q,push=true){
   releaseHoverPreviews();
   const requestSeq=++indexRequestSeq;
@@ -4758,14 +4781,18 @@ async function openIndex(kind,q,push=true){
     return Object.entries(groups).sort(([a],[b])=>a.localeCompare(b,'zh-CN')).map(([letter,items])=>
       `<section class="alphagroup"><h3>${letter}</h3><div class="alphalist">${items.map(x=>
         `<button class="alphatag ${onlineTags?'r34-'+(x.cat||'unknown'):(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"><span>${esc(tagLabel(x.k))}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')}</div></section>`).join('')};
-  const peopleHtml=items=>items.map(x=>`<button class="icell" data-k="${esc(x.k)}" data-kind="${entityKind}">
-        <span class="ring">${avatarInner(x.k,
+  /* 取景挂在圆框上而不是 img 上：竖幅裁到 3:4 时几何居中会切掉脸，而 img 由八处
+     共用的 avatarInner 拼，两个版式都只能从容器这一侧改。 */
+  const peopleHtml=items=>items.map(x=>{
+    const face=faceOrigin(x.avatar_focus);
+    return `<button class="icell" data-k="${esc(x.k)}" data-kind="${entityKind}">
+        <span class="ring"${face?` style="--face:${face}"`:''}>${avatarInner(x.k,
           kind==='performers'&&x.entity_id?{id:x.entity_id}:null, x.rep)}</span>
-        <span class="nm">${esc(x.k)}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('');
+        <span class="nm">${esc(x.k)}</span><span class="n">${x.n.toLocaleString()}</span></button>`}).join('');
   const tagHtml=items=>tagIndexMode==='alphabet'?`<div class="alphabet">${tagGroups(items)}</div>`:`<div class="tagwall index-tags">`+items.map(x=>`<button class="tg ${onlineTags?'r34-'+(x.cat||'unknown'):(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"
         >${esc(tagLabel(x.k))}
         <span class="n">${x.n.toLocaleString()}</span></button>`).join('')+`</div>`;
-  const body=people?`<div class="igrid">${peopleHtml(d.items)}</div>`:tagHtml(tagItems);
+  const body=people?`<div class="igrid" data-layout="${peopleIndexLayout()}">${peopleHtml(d.items)}</div>`:tagHtml(tagItems);
   const categoryOptions=onlineTags?ONLINE_TAG_CATEGORIES:TAG_CATEGORIES;
   const visibleTagCategories=categoryOptions.filter(([key])=>key==='all'||Number(d.categories?.[key]||0)>0);
   const categoryFilters=kind==='tags'?`<div class="tagfilters" aria-label="标签类型">${visibleTagCategories.map(([key,label])=>
@@ -4784,9 +4811,11 @@ async function openIndex(kind,q,push=true){
       <span class="mono" id="indexCount">${tagItems.length}${d.has_more?'+':''} 项</span>
       ${kind==='tags'?`<div class="tagmodes"><button data-tag-scope="local" aria-pressed="${!onlineTags}">${icon('database')}本地</button><button data-tag-scope="online" aria-pressed="${onlineTags}">${icon('globe')}在线</button></div>
       <div class="tagmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">${icon('tags')}标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">${icon('list-filter')}字母表</button></div>`:''}
+      ${people?peopleLayoutButtons():''}
       <div class="isearch"><input id="iq" placeholder="过滤…" value="${esc(q||'')}"></div>
     </div>${filters}<div id="indexBody">${body}</div><button class="indexmore" id="indexMore" type="button" ${d.has_more?'':'hidden'}>载入更多</button>`;
   let it2; $('#iq').oninput=e=>{clearTimeout(it2);it2=setTimeout(()=>openIndex(kind,e.target.value.trim(),true),300)};
+  wireIconSwitch($('#index'),'data-people-layout',setPeopleIndexLayout);
   $('#index').querySelectorAll('[data-tag-scope]').forEach(b=>b.onclick=()=>{
     if(tagIndexScope===b.dataset.tagScope)return;
     tagIndexScope=b.dataset.tagScope;
