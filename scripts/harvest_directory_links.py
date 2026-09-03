@@ -24,10 +24,17 @@ profile_images 才算活。Instagram / TikTok / YouTube 登出页给不出可靠
 jae.tokyo 是第三个这样的来源：Japan Adult Expo 的参展女优名录，2014／2015／2017 三届
 各一套厂商自己交的资料，页面上写明本人的博客与官网（`公式ブログ`／`ツイッター`）。
 名录同时带一张人像，所以这个来源多产一份 `<stem>-portraits.csv`，由
-harvest_social_avatars.py 的 jae 路线接着走——头像与链接出自同一批页面、同一次名字判定。
+harvest_social_avatars.py 的名录路线接着走——头像与链接出自同一批页面、同一次名字判定。
 
-laoshi.ink 与 bstar-pro.com 直连（经代理握手失败，站点本身可达）；x.com 与 jae.tokyo 走代理。
-bstar-pro 的 models.html 有年龄门：同一会话先 `POST age_check=yes`，之后的 GET 才给列表。
+javdb.com（用户 2026-09-04 指定）是第四个来源，但它的入口反过来。前三个来源页面数有限、
+能整站翻一遍；javdb 没有可翻的女优名录，`/actors` 只给推荐的几十位，全站演员没有分页入口。
+所以它拿账本每个人的名字链去 `/search?f=actor` 搜——搜索结果的 `title` 一栏就列着这个人在
+站上的全部写法（`三上悠亜, 三上悠亞, 鬼头桃菜`），对得上才点进资料页。资料页给 Twitter 与
+Instagram 按钮和一张 250×250 的圆头像。
+
+laoshi.ink 与 bstar-pro.com 直连（经代理握手失败，站点本身可达）；x.com、jae.tokyo 与
+javdb.com 走代理。bstar-pro 的 models.html 有年龄门：同一会话先 `POST age_check=yes`，
+之后的 GET 才给列表。
 """
 from __future__ import annotations
 
@@ -39,7 +46,7 @@ import sqlite3
 import sys
 from collections import Counter
 from pathlib import Path
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import quote, urljoin, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -68,9 +75,9 @@ FIELDS = ("entity_id", "kind", "name", "link_kind", "label", "url", "evidence",
 #: 人像候选表：喂 harvest_social_avatars.py 的 jae 路线，不直接落盘头像。
 PORTRAIT_FIELDS = ("entity_id", "kind", "name", "matched_name", "portrait_url",
                    "source", "page", "verdict")
-SOURCES = ("laoshi", "bstar", "jae")
-#: 直连被对端重置（`WinError 10054`），这个来源走代理。
-PROXY_SOURCES = ("jae",)
+SOURCES = ("laoshi", "bstar", "jae", "javdb")
+#: 直连不通的来源：jae 被对端重置（`WinError 10054`），javdb 直接连接超时。
+PROXY_SOURCES = ("jae", "javdb")
 ALIVE, GONE, UNVERIFIED, UNKNOWN = "活", "疑似失效", "未验", "未取得"
 
 LAOSHI = "https://laoshi.ink/"
@@ -118,6 +125,27 @@ JAE_P = re.compile(r"<p[^>]*>(.*?)</p>", re.S)
 JAE_ANCHOR = re.compile(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', re.S)
 #: 没交照片的位置放的是占位图，不是这个人的像。
 JAE_PLACEHOLDER = ("nophoto", "noimage", "no_photo", "comingsoon")
+
+JAVDB = "https://javdb.com/"
+#: 图片走独立的静态域；两个都算本站。
+JAVDB_OWN = ("javdb.com", "jdbstatic.com")
+JAVDB_SEARCH = JAVDB + "search?f=actor&q={}"
+#: 搜索结果里的演员卡。`title` 一栏就是这个人在站上的全部写法，不必先点进去。
+JAVDB_BOX = re.compile(r'class="box actor-box">\s*<a href="(/actors/[^"]+)" title="([^"]*)"',
+                       re.S)
+#: 资料页顶部：`actor-section-name` 是主名连它的繁简写法，紧随的 `section-meta` 是旧艺名。
+JAVDB_NAME = re.compile(r'class="actor-section-name">([^<]*)<')
+JAVDB_META = re.compile(r'class="section-meta">([^<]*)<')
+#: 「323 部影片」也在 `section-meta` 里，它不是名字。
+JAVDB_COUNT = re.compile(r"^\d+\s*部影片$")
+#: 圆头像是 span 的背景图；搜索结果里的同名 class 是 `<img src>`，这条只认资料页那个。
+JAVDB_AVATAR = re.compile(r'class="avatar" style="background-image: url\(([^)]+)\)')
+#: 社媒按钮只在这一块里。页面别处的站外链接是广告、姊妹站和 RTA 标签，每页都有一份。
+JAVDB_ADDITION = re.compile(r'class="column section-addition">(.*?)<div class="toolbar"', re.S)
+#: 一部分资料页要登录才给，回的是登入页而不是 401/403。同一位女优在站上常有两条
+#: 记录（有碼那条公开、無碼那条要登录），搜索结果把两条都给出来，所以这不是抓失败。
+#: 不注册账号，记一行未取得。
+JAVDB_LOGIN = re.compile(r"<title>\s*登入\s*\|")
 
 
 X_PROFILE = "https://x.com/{}"
@@ -466,8 +494,94 @@ def collect_jae(site: Site, limit: int = 0) -> tuple[list[str], list[dict]]:
     return [], pages
 
 
+def javdb_names(html: str) -> list[str]:
+    """资料页顶部那几行名字。「323 部影片」同处一个 class，按写法排除。"""
+    names: list[str] = []
+    for text in JAVDB_NAME.findall(html) + JAVDB_META.findall(html):
+        value = clean(text)
+        if value and not JAVDB_COUNT.match(value):
+            names += split_names(value)
+    return dedupe(names)
+
+
+def javdb_links(html: str) -> list[str]:
+    """只取社媒按钮那一块。整页的站外链接里还有广告与姊妹站，每一页都一样。"""
+    block = JAVDB_ADDITION.search(html)
+    return external_links(block.group(1), JAVDB_OWN, JAVDB) if block else []
+
+
+def javdb_portrait(html: str) -> str:
+    found = JAVDB_AVATAR.search(html)
+    return html_lib.unescape(found.group(1)).strip() if found else ""
+
+
+def javdb_hits(html: str, wanted: set[str]) -> list[str]:
+    """搜索结果里名字对得上的资料页。
+
+    搜的是账本里的名字，回来的却不一定是同一个人（javdb 的演员搜索会给近似结果）。
+    卡片的 `title` 一栏已经列出这个人在站上的全部写法，够判是不是同一个人：对不上的
+    不点进去，省一次请求，也不给 judge() 送一页与账本无关的名字。
+
+    对得上的全都返回，不只取第一个。同一个名字在站上真有两位时，两页都进判定——
+    第二页的账号会撞成 `conflict` 落进复核表，而取第一个是默默替用户挑了一位。
+    """
+    out = []
+    for path, title in JAVDB_BOX.findall(html):
+        if wanted & {name_key(name) for name in split_names(clean(title))}:
+            out.append(urljoin(JAVDB, path))
+    return dedupe(out)
+
+
+def collect_javdb(site: Site, limit: int, performers: list[dict]) -> tuple[list[str], list[dict]]:
+    """入口是账本里的名字，不是站上的名录。
+
+    名字链里哪个写法能搜到不一定：账本的规范名多是中文（`立花美凉`），javdb 上是日文原名
+    或繁体（`立花美涼`）。所以逐个写法搜，搜到就停，一个都搜不到时记一行未取得——
+    「搜过，站上没有这个人」和「没搜」是两件事，不写下来下一轮还得再搜一遍。
+    """
+    pages: list[dict] = []
+    for record in take(performers, limit):
+        wanted = {name_key(name) for name in record["chain"]}
+        details: list[str] = []
+        broken = None
+        search = ""
+        for name in record["chain"]:
+            search = JAVDB_SEARCH.format(quote(name))
+            try:
+                html = site.get(search)
+            except Exception as exc:
+                broken = failed("javdb", search, exc)
+                break
+            details = javdb_hits(html, wanted)
+            if details:
+                break
+        if broken is not None:
+            pages.append(broken)
+            continue
+        if not details:
+            pages.append(page_record(
+                "javdb", search, record["chain"], [],
+                note=f"搜过名字链的 {len(record['chain'])} 个写法，javdb 上没有这个人"))
+            continue
+        for detail in details:
+            try:
+                html = site.get(detail)
+            except Exception as exc:
+                pages.append(failed("javdb", detail, exc))
+                continue
+            if JAVDB_LOGIN.search(html):
+                pages.append(page_record("javdb", detail, record["chain"], [],
+                                         note="javdb 这一页要登录才给，不注册账号"))
+                continue
+            pages.append(page_record("javdb", detail, javdb_names(html), javdb_links(html),
+                                     portrait=javdb_portrait(html)))
+    return [], pages
+
+
 COLLECTORS = {"laoshi": collect_laoshi, "bstar": collect_bstar,
               "jae": collect_jae}
+#: 这个来源没有名录可翻，采集器要拿账本的名字当入口，所以多收一个参数。
+NAME_ENTRY = {"javdb": collect_javdb}
 
 
 # ---------------------------------------------------------------- 判定
@@ -527,7 +641,16 @@ def judge(pages: list[dict], site_links: list[str], performers: list[dict],
     for page in pages:
         base = {"kind": "performer", "source": page["source"], "page": page["page"]}
         if page["note"]:
-            rows.append(row(**base, verdict="未取得", evidence=page["note"]))
+            # 按名字进的来源（javdb）搜不到人也是结论，那一行得写明是谁；整站翻的来源
+            # 抓页面失败时手上只有一个 URL，`failed()` 不带名字，这里照旧只记一行。
+            who = {}
+            if page["names"]:
+                matched, used = matched_ids(page["names"], index)
+                if len(matched) == 1:
+                    entity_id = matched.pop()
+                    who = {"entity_id": entity_id, "name": by_id[entity_id]["name"],
+                           "matched_name": "、".join(used)}
+            rows.append(row(**base, **who, verdict="未取得", evidence=page["note"]))
             stats["页面未取得"] += 1
             continue
         matched, used = matched_ids(page["names"], index)
@@ -720,8 +843,10 @@ def run(args) -> int:
     for source in sources:
         site = Site(args.cache_dir / source, args.interval, args.timeout, refresh=args.refresh,
                     via_proxy=source in PROXY_SOURCES)
+        collector = COLLECTORS.get(source)
         try:
-            site_links, pages = COLLECTORS[source](site, args.limit)
+            site_links, pages = (collector(site, args.limit) if collector
+                                 else NAME_ENTRY[source](site, args.limit, performers))
         except Exception as exc:
             print(f"[{source}] 未取得：{type(exc).__name__}: {exc}")
             continue

@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from urllib.parse import quote
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
@@ -125,6 +126,42 @@ JAE_2017_PAGE = """<div id="girls_area" class="other_area">
   <table><tr><th>おすすめの作品タイトル</th>
    <td><a href="http://www.max-a.co.jp/item.php?item_id=ef33" class="pop">作品</a></td>
   </tr></table></div></div>"""
+
+# 按 2026-09-04 实测的 javdb.com 复刻。搜索结果卡片的 `title` 一栏列出这个人在站上的
+# 全部写法；资料页的社媒按钮在 `section-addition` 那一块，别处的站外链接每页都一样。
+JAVDB_SEARCH_PAGE = """<div id="actors" class="actors">
+ <div class="box actor-box"><a href="/actors/Kn01" title="瀬戸環奈, 瀨戶環奈, 濑户环奈">
+  <figure class="image"><img class="avatar" src="https://c0.jdbstatic.com/avatars/kn/Kn01.jpg" />
+  </figure><strong>瀬戸環奈</strong></a></div>
+ <div class="box actor-box"><a href="/actors/Kn02" title="瀬戸環奈">
+  <strong>瀬戸環奈</strong></a></div>
+ <div class="box actor-box"><a href="/actors/Zz99" title="別人さん">
+  <strong>別人さん</strong></a></div>
+</div>"""
+
+JAVDB_EMPTY_SEARCH = """<div id="actors" class="actors"></div>"""
+
+JAVDB_ACTOR_PAGE = """<html><head><title> 瀬戸環奈 | JavDB 成人影片數據庫 </title></head><body>
+<div class="columns is-desktop section-columns">
+ <div class="column actor-avatar"><div class="image">
+  <span class="avatar" style="background-image: url(https://c0.jdbstatic.com/avatars/kn/Kn01.jpg)">
+  </span></div></div>
+ <div class="column section-title"><h2 class="title is-4">
+  <span class="actor-section-name">瀬戸環奈, 瀨戶環奈</span><br />
+  <span class="section-meta">水沢のの</span><br>
+  <span class="section-meta">42 部影片</span></h2></div></div>
+<div class="columns"><div class="column section-addition"><div class="field has-addons">
+ <p class="control"><a class="button is-info" href="/actors/Kn01/collect">收藏</a></p>
+ <p class="control"><a class="button is-info" title="訪問ta的Twitter主頁"
+  href="https://twitter.com/kanna_seto0510"><span>Twitter</span></a></p>
+ <p class="control"><a class="button is-info" title="訪問ta的Instagrm主頁"
+  href="https://instagram.com/kanna_seto0510"><span>Instagram</span></a></p>
+</div></div></div>
+<div class="toolbar"><a href="https://jav.app/">姊妹站</a>
+ <a href="https://www.rtalabel.org">RTA</a></div></body></html>"""
+
+JAVDB_LOGIN_PAGE = """<html><head><title> 登入 | JavDB 成人影片數據庫 </title></head>
+<body><form action="/user_sessions"></form></body></html>"""
 
 X_ALIVE = """<html><head><meta content="瀬戸環奈 (@kanna_seto0510) / X" property="og:title">
 <meta property="og:image" content="https://pbs.twimg.com/profile_images/1/abc_200x200.jpg"></head></html>"""
@@ -390,6 +427,76 @@ class JaeCollectTests(unittest.TestCase):
         self.assertTrue(any(page["page"].endswith("#YuiHatano") for page in collected))
 
 
+class JavdbCollectTests(unittest.TestCase):
+    """入口是账本里的名字：搜索卡片的 `title` 决定要不要点进去。"""
+
+    def setUp(self):
+        self.module = load_module()
+        self.kanna = PERFORMERS[1]
+        self.yui = PERFORMERS[0]
+        self.pages = {
+            self.search("瀬戸環奈"): JAVDB_SEARCH_PAGE,
+            "https://javdb.com/actors/Kn01": JAVDB_ACTOR_PAGE,
+            "https://javdb.com/actors/Kn02": JAVDB_ACTOR_PAGE,
+        }
+
+    def search(self, name):
+        return self.module.JAVDB_SEARCH.format(quote(name))
+
+    def collect(self, pages, performers):
+        site = FakeSite(pages, HttpStatusError=self.module.HttpStatusError)
+        return self.module.collect_javdb(site, 0, performers)[1]
+
+    def test_only_the_cards_whose_names_match_the_ledger_are_opened(self):
+        """搜「瀬戸環奈」也会回别人。卡片的 title 就够判，对不上的不点进去。"""
+        collected = self.collect(self.pages, [self.kanna])
+        self.assertEqual([page["page"] for page in collected],
+                         ["https://javdb.com/actors/Kn01", "https://javdb.com/actors/Kn02"])
+
+    def test_the_actor_page_gives_every_name_the_two_buttons_and_the_avatar(self):
+        page = self.collect(self.pages, [self.kanna])[0]
+        self.assertEqual(page["names"], ["瀬戸環奈", "瀨戶環奈", "水沢のの"],
+                         "「42 部影片」和名字同一个 class，它不是名字")
+        self.assertEqual(page["links"], ["https://twitter.com/kanna_seto0510",
+                                         "https://instagram.com/kanna_seto0510"],
+                         "收藏按钮是站内相对路径，姊妹站与 RTA 在这一块之外")
+        self.assertEqual(page["portrait"], "https://c0.jdbstatic.com/avatars/kn/Kn01.jpg")
+
+    def test_the_login_wall_is_未取得_and_still_says_who_it_was_about(self):
+        """同一位女优在站上常有两条记录，其中一条要登录才给。不注册账号。"""
+        pages = dict(self.pages, **{"https://javdb.com/actors/Kn02": JAVDB_LOGIN_PAGE})
+        walled = self.collect(pages, [self.kanna])[1]
+        self.assertEqual(walled["note"], "javdb 这一页要登录才给，不注册账号")
+        self.assertEqual(walled["names"], self.kanna["chain"],
+                         "登录页上没有名字，是谁得由发起搜索的那条名字链带过来")
+
+    def test_the_whole_name_chain_is_tried_before_giving_up(self):
+        """账本规范名多是中文，站上是日文原名；哪个写法能搜到得试出来。"""
+        pages = {self.search("波多野結衣"): JAVDB_EMPTY_SEARCH,
+                 self.search("波多野结衣"): JAVDB_SEARCH_PAGE.replace(
+                     "瀬戸環奈, 瀨戶環奈, 濑户环奈", "波多野结衣"),
+                 "https://javdb.com/actors/Kn01": JAVDB_ACTOR_PAGE}
+        collected = self.collect(pages, [self.yui])
+        self.assertEqual([page["page"] for page in collected],
+                         ["https://javdb.com/actors/Kn01"])
+
+    def test_searched_and_absent_is_a_row_of_its_own(self):
+        """「搜过、站上没有这个人」和「没搜」是两件事，不写下来下一轮还得再搜一遍。"""
+        pages = {self.search(name): JAVDB_EMPTY_SEARCH for name in self.yui["chain"]}
+        collected = self.collect(pages, [self.yui])
+        self.assertEqual(len(collected), 1)
+        self.assertEqual(collected[0]["note"],
+                         "搜过名字链的 2 个写法，javdb 上没有这个人")
+        self.assertEqual(collected[0]["page"], self.search("波多野结衣"),
+                         "记最后搜的那一次，别记一个没搜过的地址")
+
+    def test_a_search_that_fails_does_not_become_absence(self):
+        collected = self.collect({}, [self.yui])
+        self.assertEqual(len(collected), 1)
+        self.assertTrue(collected[0]["note"].startswith("未取得：HttpStatusError: HTTP 404"))
+        self.assertEqual(collected[0]["names"], [])
+
+
 class JudgeTests(unittest.TestCase):
     def setUp(self):
         self.module = load_module()
@@ -468,6 +575,18 @@ class JudgeTests(unittest.TestCase):
         self.assertEqual([(row["verdict"], row["entity_id"]) for row in rows],
                          [("未取得", 1), ("未取得", "")])
         self.assertEqual((stats["命中但无社媒"], stats["页面未取得"]), (1, 1))
+
+    def test_a_note_that_carries_a_name_chain_says_who_it_was_about(self):
+        """按名字进的来源搜不到人也是结论；只写一个 URL 的话看不出这一行是谁的。"""
+        absent = self.page("javdb", "https://javdb.com/search?f=actor&q=x",
+                           ["波多野結衣", "波多野结衣"], [],
+                           note="搜过名字链的 2 个写法，javdb 上没有这个人")
+        ambiguous = self.page("javdb", "https://javdb.com/search?f=actor&q=y", ["架空同名"], [],
+                              note="搜过名字链的 1 个写法，javdb 上没有这个人")
+        rows, _ = self.judge([absent, ambiguous])
+        self.assertEqual([(row["verdict"], row["entity_id"], row["name"]) for row in rows],
+                         [("未取得", 1, "波多野结衣"), ("未取得", "", "")],
+                         "名字对上不止一位时不认领，和链接一样的判据")
 
     def test_the_official_page_is_已有_when_the_ledger_already_holds_it(self):
         url = "https://bstar-pro.com/model.html?mid=355"
