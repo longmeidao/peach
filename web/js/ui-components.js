@@ -93,10 +93,13 @@ export function loadingDotsHtml(label='正在处理', {className=''}={}){
 }
 
 /** Geist Skeleton: reserve a large content region while its structure is loading. */
-export function skeletonHtml(label='正在读取内容',{className='',variant='panel'}={}){
+/* `count` 只对 cards 生效：块数是骨架说出口的结构预告，六块对上的是海报网格，
+   而行政界面往往只有两三个大区。多画的块加载完就消失，那不是占位是误报。 */
+export function skeletonHtml(label='正在读取内容',{className='',variant='panel',count=6}={}){
   const kind=new Set(['panel','cards','dashboard']).has(variant)?variant:'panel';
   const body=kind==='cards'
-    ?Array.from({length:6},()=>`<span class="skeletoncard"><i></i><b></b><em></em></span>`).join('')
+    ?Array.from({length:Math.max(1,count)},
+      ()=>`<span class="skeletoncard"><i></i><b></b><em></em></span>`).join('')
     :kind==='dashboard'
       ?`<span class="skeletondashhero"><i></i><b></b></span>
         <span class="skeletondashpanel"><i></i><b></b><em></em></span>

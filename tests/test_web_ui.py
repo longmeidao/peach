@@ -1513,6 +1513,24 @@ class WebUiSourceTests(unittest.TestCase):
             "const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow'];")
         self.assertPageContains("manageMenuSections().map(([k,label,ic])=>")
 
+    def test_the_follow_management_section_is_named_after_the_page_it_opens(self):
+        """管理区那一项叫「关注管理」：它开的是 /follow-manage，不是关注更新流。
+
+        叫「关注」时，管理菜单点进去是加来源、看凭据、移除来源那一屏，页标题也
+        写着「关注」——两个不同的页面在界面上共用一个名字。侧栏可选图标本来就
+        已经叫「关注管理」，身份注册表跟它对齐后不再各写一份文案。
+        """
+        sections = self.page.split("const MANAGE_SECTIONS=[", 1)[1].split("];", 1)[0]
+        self.assertIn("['follow','关注管理','rss'],", sections)
+        self.assertNotIn(
+            "['follow','关注','rss'],", sections,
+            "顶层 EDGE_ICONS 里的「关注」是更新流，管理区这一项不能跟它同名")
+        self.assertPageContains("key==='follow'?['follow-manage',label,ic]")
+        self.assertPageLacks("key==='follow'?['follow-manage','关注管理',ic]")
+        # 页标题取的就是这份注册表；关注更新流的 h2 是它自己的，仍叫「关注」。
+        self.assertPageContains("if(entry)el.textContent=pageLabel||entry[1]")
+        self.assertPageContains('<div class="followhead"><h2 class="pagetitle">关注</h2></div>')
+
     def test_data_management_is_the_single_entry_for_tidying_the_library(self):
         """复核、回收站、高清版和链接管理、资源同步都归到数据管理这一页。
 
@@ -2592,6 +2610,35 @@ class WebUiSourceTests(unittest.TestCase):
         # 数据管理是一列 fieldset，骨架不能是三列海报网格。
         self.assertPageContains(".cleanup-skeleton>div{grid-template-columns:minmax(0,1fr);gap:16px}")
         self.assertPageContains(".cleanup-skeleton .skeletoncard em{width:100%;height:var(--fieldset-bar-h)")
+
+    def test_follow_manage_skeleton_matches_its_two_column_sections(self):
+        """关注管理的骨架是三个大区，不是六张 16:9 卡片。
+
+        六张卡的网格说的是 feed 那种一屏同质内容（关注更新流、回收站）；关注管理
+        是「添加关注 + 关注列表 + 凭据」两栏三块，六张卡加载完整屏换掉，等于先给
+        了一个假的结构预告。块数因此要可配，并跟着 .followmanage 的断点塌成一列。
+        """
+        self.assertCode(
+            "'/follow-manage':()=>`<div class=\"follow\">${pageSkeletonHtml('正在读取关注管理',")
+        self.assertPageContains("{cards:true,count:3,className:'followmanage-skeleton'})}</div>`,")
+        self.assertPageContains(
+            "const pageSkeletonHtml=(label,{cards=false,className='',variant='',count}={})=>")
+        self.assertPageContains("skeletonHtml(label,{variant:variant||(cards?'cards':'panel'),className,")
+        self.assertPageContains(
+            "export function skeletonHtml(label='正在读取内容',{className='',variant='panel',count=6}={})")
+        self.assertPageContains("?Array.from({length:Math.max(1,count)},")
+        # 版式：两栏对上 .followmanage 的 `minmax(0,1fr) 320px`，同一个断点塌成一列。
+        self.assertPageContains(
+            ".followmanage-skeleton>div{grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}")
+        self.assertPageContains(".followmanage-skeleton .skeletoncard:nth-child(3){grid-area:1/2}")
+        self.assertPageContains(
+            "@media (max-width:1080px){.followmanage-skeleton>div{grid-template-columns:minmax(0,1fr)}")
+        self.assertPageContains(".followmanage-skeleton .skeletoncard:nth-child(n){grid-area:auto}")
+        # 头部条是框体不是待填内容：跟 .fsechead 一样 56px，不参与呼吸。
+        self.assertPageContains(".followmanage-skeleton .skeletoncard i{aspect-ratio:auto;height:56px")
+        self.assertPageContains("border-bottom:1px solid var(--border-10);animation:none}")
+        # 关注更新流仍是同质卡片流，它那张骨架不受影响。
+        self.assertPageContains("pageSkeletonHtml(label,{cards:true,className:'follow-content-skeleton'})")
 
     def test_loading_actions_are_inert_and_dimmed_without_losing_focus(self):
         """用户触发的等待态统一走 Geist loading button，而不是各页自造半套状态。"""

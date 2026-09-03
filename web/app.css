@@ -569,6 +569,25 @@ body.photolight-open{overflow:hidden}
 .cleanup-skeleton .skeletoncard b{width:26%;height:16px;margin:12px 20px 20px}
 .cleanup-skeleton .skeletoncard em{width:100%;height:var(--fieldset-bar-h);margin:0;
   border-radius:0;border-top:1px solid var(--border-10);background:var(--overlay-5);animation:none}
+/* 关注管理是「左栏两块 + 右栏凭据」的两栏行政界面：骨架照 .fsec 的轮廓画，
+   一块对一块、断点跟着 .followmanage 一起塌成一列。头部条是框体不是待填内容，
+   跟 .fsechead 同高同底色，不参与呼吸。 */
+.followmanage-skeleton>div{grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}
+.followmanage-skeleton .skeletoncard{gap:0;overflow:hidden;border:1px solid var(--border-10);
+  border-radius:var(--surface-radius);background:var(--surface)}
+.followmanage-skeleton .skeletoncard i{aspect-ratio:auto;height:56px;border-radius:0;
+  background:var(--overlay-5);border-bottom:1px solid var(--border-10);animation:none}
+.followmanage-skeleton .skeletoncard b{width:auto;margin:16px 16px 0}
+.followmanage-skeleton .skeletoncard em{width:42%;height:14px;margin:12px 16px 16px}
+.followmanage-skeleton .skeletoncard:nth-child(1){grid-area:1/1}
+.followmanage-skeleton .skeletoncard:nth-child(1) b{height:76px}
+.followmanage-skeleton .skeletoncard:nth-child(2){grid-area:2/1}
+.followmanage-skeleton .skeletoncard:nth-child(2) b{height:300px}
+.followmanage-skeleton .skeletoncard:nth-child(3){grid-area:1/2}
+.followmanage-skeleton .skeletoncard:nth-child(3) b{height:180px}
+/* 塌成一列时要压掉上面那三条显式定位，特异性必须与它们持平，所以仍写 nth-child。 */
+@media (max-width:1080px){.followmanage-skeleton>div{grid-template-columns:minmax(0,1fr)}
+  .followmanage-skeleton .skeletoncard:nth-child(n){grid-area:auto}}
 .skeleton-dashboard>div{gap:16px}
 .skeletondashhero,.skeletondashpanel{display:grid;min-width:0;overflow:hidden;border:1px solid var(--line-soft);
   border-radius:var(--floating-radius);background:var(--surface)}
