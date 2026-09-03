@@ -469,8 +469,8 @@ class JudgeTests(unittest.TestCase):
         rows, _ = self.judge([page], urls={2: {url}})
         self.assertEqual([(row["link_kind"], row["verdict"]) for row in rows], [("official", "已有")])
 
-    def test_an_own_site_is_labelled_with_the_words_printed_on_the_page(self):
-        """博客与本人官网没有 handle 可比，只按 URL 判重；标签用资料页上那行文字。"""
+    def test_an_own_site_is_judged_by_url_and_labelled_like_the_rest_of_the_ledger(self):
+        """博客与本人官网没有 handle 可比，只按 URL 判重；标签统一成账本里那批写法。"""
         blog = "http://blog.livedoor.jp/hatano_yui/"
         home = "http://hatano-yui.jp/"
         page = self.module.page_record(
@@ -478,7 +478,7 @@ class JudgeTests(unittest.TestCase):
             owned=[(blog, "公式ブログ"), (home, "")])
         rows, stats = self.judge([page])
         self.assertEqual([(row["link_kind"], row["label"], row["verdict"]) for row in rows],
-                         [("social", "公式ブログ", "ok"), ("official", "官方网站", "ok")])
+                         [("social", "博客", "ok"), ("official", "官方网站", "ok")])
         self.assertIn("资料页写明的本人链接「公式ブログ」", rows[0]["evidence"])
         self.assertEqual(stats["ok"], 2)
 
@@ -487,6 +487,35 @@ class JudgeTests(unittest.TestCase):
         page = self.module.page_record("jae", "p", ["波多野結衣"], [], owned=[(blog, "公式ブログ")])
         rows, _ = self.judge([page], urls={1: {blog}})
         self.assertEqual([row["verdict"] for row in rows], ["已有"])
+
+
+class OwnedLinkTests(unittest.TestCase):
+    """资料页写明的本人链接：类型与标签。"""
+
+    def setUp(self):
+        self.module = load_module()
+
+    def test_the_words_on_the_page_override_the_host_for_blogs(self):
+        """实测三例：`alicejapan.co.jp` 的子域、`plaza.rakuten.co.jp`、`takasyo.blog.jp`
+        都是女优博客，主机名却都不在 BLOG_HOSTS 里。页面上写着「公式ブログ」。"""
+        for url in ("http://www.me-nana.alicejapan.co.jp/",
+                    "http://plaza.rakuten.co.jp/rinsakuragi/",
+                    "http://takasyo.blog.jp/"):
+            self.assertEqual(self.module.owned_link(url, "公式ブログ"), ("social", "博客"))
+
+    def test_a_generic_line_falls_back_to_the_ledger_wording(self):
+        for shown in ("公式ブログ", "オフィシャルブログ", "ブログ", "Official Blog"):
+            self.assertEqual(self.module.owned_link("http://ameblo.jp/x/", shown)[1], "博客")
+
+    def test_a_blog_that_has_a_name_keeps_it(self):
+        self.assertEqual(self.module.owned_link("http://a.jp/", "公式ブログ「旬の果実」"),
+                         ("social", "博客 旬の果実"))
+        self.assertEqual(self.module.owned_link("http://a.jp/", "ブログ 彩りの散歩道"),
+                         ("social", "博客 彩りの散歩道"))
+
+    def test_a_site_that_is_not_a_blog_keeps_classify_result(self):
+        self.assertEqual(self.module.owned_link("https://eikawa-noa.com/", ""),
+                         ("official", "官方网站"))
 
 
 class PortraitTests(unittest.TestCase):

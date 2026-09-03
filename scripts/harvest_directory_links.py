@@ -55,6 +55,14 @@ from peach.social_links import (   # noqa: E402
 HREF = re.compile(r'href=["\']([^"\']+)["\']')
 TAG = re.compile(r"<[^>]+>")
 COMMENT = re.compile(r"<!--.*?-->", re.S)
+#: 页面上那行链接文字里的「博客」二字，日文写法都在这儿。
+BLOG_WORD = re.compile(r"ブログ|blog", re.I)
+#: 「公式ブログ「旬の果実」」这种把博客名单独括起来的写法。
+BLOG_TITLE = re.compile(r"[「『（(\[]\s*(.+?)\s*[」』）)\]]")
+#: 去掉「公式」「オフィシャル」「ブログ」这些泛称，剩下的才是这个博客自己的名字。
+BLOG_GENERIC = re.compile(
+    r"(?:公式|オフィシャル|official)|(?:ブログ|blog|ホームページ|サイト|website|web\s*site)",
+    re.I)
 FIELDS = ("entity_id", "kind", "name", "link_kind", "label", "url", "evidence",
           "source", "page", "matched_name", "verdict", "alive")
 #: 人像候选表：喂 harvest_social_avatars.py 的 jae 路线，不直接落盘头像。
@@ -236,6 +244,25 @@ def page_record(source: str, url: str, names: list[str], links: list[str], *,
     return {"source": source, "page": url, "names": names, "links": links,
             "official": official, "owned": list(owned or ()), "portrait": portrait,
             "note": note}
+
+
+def owned_link(url: str, shown: str) -> tuple[str, str]:
+    """给资料页写明的本人链接定类型与标签。
+
+    `classify()` 只看主机名，而 `alicejapan.co.jp` 的子域、`plaza.rakuten.co.jp`、
+    `takasyo.blog.jp` 都是女优博客却不在 `BLOG_HOSTS` 里。页面上那行字写着「公式ブログ」，
+    这比主机名更接近事实，所以文字说是博客就按博客算。
+
+    标签照账本里现有那批写「博客」，页面另外点出博客名时（`公式ブログ「旬の果実」`）才带上
+    那个名字——`オフィシャルブログ` 这种泛称原样落进去，同一件东西在界面上会出现三种写法。
+    """
+    link_kind, label = classify(url)
+    if BLOG_WORD.search(shown):
+        link_kind, label = "social", "博客"
+    bracketed = BLOG_TITLE.search(shown)
+    title = bracketed.group(1) if bracketed else BLOG_GENERIC.sub("", shown)
+    title = title.strip(" 　:：-—─・|/")
+    return link_kind, f"{label} {title}" if title else label
 
 
 def failed(source: str, url: str, exc: Exception) -> dict:
@@ -550,15 +577,15 @@ def judge(pages: list[dict], site_links: list[str], performers: list[dict],
                     held[(name, account)] = url
             rows.append(item)
             stats[item["verdict"]] += 1
-        # 博客与本人官网没有 handle 可比，只按 URL 判重；标签用页面上写的那行链接文字。
+        # 博客与本人官网没有 handle 可比，只按 URL 判重；类型与标签由页面上那行文字参与决定。
         for url, shown in page["owned"]:
-            link_kind, fallback = classify(url)
-            item = row(**base, link_kind=link_kind, label=shown or fallback, url=url)
+            link_kind, label = owned_link(url, shown)
+            item = row(**base, link_kind=link_kind, label=label, url=url)
             if url in existing_urls.get(entity_id, set()):
                 item.update(verdict="已有", evidence=f"{where}；账本已有此地址")
             else:
                 item.update(verdict="ok",
-                            evidence=f"{where}；资料页写明的本人链接「{shown or fallback}」")
+                            evidence=f"{where}；资料页写明的本人链接「{shown or label}」")
                 existing_urls.setdefault(entity_id, set()).add(url)
             rows.append(item)
             stats[item["verdict"]] += 1
