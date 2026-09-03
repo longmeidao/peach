@@ -84,6 +84,53 @@ _EDITION_TAIL = re.compile(
     re.I,
 )
 
+#: 转载站与搬运渠道的域名标签（不含 TLD）。
+#:
+#: 这份名单拦的是一次具体误判，不是识别广告。域名剥掉 `.com` 之后就是「字母+数字」，
+#: 和番号同形，于是 `normalise_code_key("HHD800")` 会补出连字符变成 `HHD-800`，
+#: 一个水印域名在作品页、在 `JAV_ASSET_PREDICATE`、在 `clean_names` 的重命名提案里
+#: 全都成了番号。实例 asset 31048：
+#:
+#:     B:\番号\_未知厂牌\HHD800\hhd800.com@ABW-132.mp4\ABW-132.mp4
+#:
+#: 真番号 ABW-132 就在文件名里，`code` 却是 `HHD800`。
+#:
+#: 形态本身分不开——真番号 `IPX219C`、`MEYD911`、`476MLA-179` 同样是字母紧贴数字，
+#: 所以只能靠名单。这里每一条都有本机 ledger 的路径实证（`<label>.<tld>` 或
+#: `<label>@` 水印链），`bei88` 是唯一例外：它只以 `bei88@sis001@…` 的搬运链出现，
+#: 形态与 `www.98t.la@` 同类，但路径里没有 TLD。新增条目前先用
+#: `scripts/audit_domain_codes.py` 在真实 ledger 上取路径证据，并确认它不撞真番号。
+REPOST_SITE_LABELS = frozenset({
+    "18my", "22sht", "7mmtv", "7sht", "91home", "98t", "aavv333", "bbsxv",
+    "bei88", "big2048", "fuckbe", "gc2048", "hhd800", "hjd2048", "huachishe",
+    "javday", "javme", "jitumi", "kfa11", "kfa33", "madoubt", "mtfdz",
+    "nyap2p", "ses23", "supjav", "thz", "thzu", "u3c3", "yy2048",
+})
+
+#: 画质标记落在番号前面，剥掉才露出番号主体（`HD-abp-758` → `abp-758`）。
+_QUALITY_HEAD = re.compile(r"^(?:hd|fhd|sd|uhd|4k|2160p?|1080p?|720p?)[-_. ]+", re.I)
+#: 版本标记：`-C`/`-CH` 是中文字幕版，`-UC` 是无码流出，画质词也可能落在词尾。
+_VERSION_TAIL = re.compile(r"[-_. ]?(?:ch|sub|uc|fhd|4k|hd|c|u)$", re.I)
+#: 一本道、加勒比是「日期+序号」体系，没有字母番号主体。
+_DATE_CODE = re.compile(r"(?<!\d)(\d{6})[-_](\d{3})(?!\d)")
+#: UUID 首段长得像番号（`DCE7230C-730E-…` 会被拆成 `DCE`+`7230`），按整串形态排除。
+_UUID_LIKE = re.compile(
+    r"[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}", re.I)
+#: 目录名和文件名都可能带扩展名，图片也算：缩略图 `BNST033(2).jpg` 与正片同番号。
+_ASSET_EXTENSION = re.compile(
+    r"\.(?:mp4|mkv|avi|wmv|ts|mov|m4v|jpg|jpeg|png|webp)$", re.I)
+#: 文件名尾部的分卷、画质和重复计数；剥掉才能和目录名对齐。
+_FILE_NOISE = re.compile(
+    r"(?:[-_. ]?(?:1080p?|720p?|2160p?|4k|fhd|hd|uc|sub|ch|c|u)"
+    r"|[-_. ]\d{1,2}|\(\d{1,2}\)|[a-z])+$", re.I)
+#: 番号主体：可选的三位素人前缀 + 字母厂牌 + 序号。
+_CODE_BODY = re.compile(r"^(?:\d{3})?[A-Za-z]{2,8}[-_. ]?\d{2,5}$")
+_FC2_ID = re.compile(r"^FC2(?:[-_. ]?PPV)?[-_. ]?(\d{5,})$", re.I)
+
+#: 能证明「这是一次公开发行」的实体类型。`tag` 不在其中：口味标签谁都能挂，
+#: 挂上了不代表这条记录对应某个发行物。
+RELEASE_EVIDENCE_KINDS = frozenset({"performer", "studio", "series"})
+
 DUPLICATE_TOLERANCE = 0.005
 DUPLICATE_FLOOR_SECONDS = 15.0
 _PART_MARKER = re.compile(
@@ -92,11 +139,41 @@ _PART_MARKER = re.compile(
 )
 
 
+def compact_label(value: str | None) -> str:
+    """把一串标识压成「无分隔符、序号不补零」的比较形。
+
+    `BEI88`、`BEI-088`、`bei88` 说的是同一个东西，但 `normalise_code_key` 会把前两个
+    都写成 `BEI-088`。不抹掉补零，名单就只拦得住其中一种写法——而界面显示的、
+    SQL 谓词里比的、脚本重命名用的恰好是补过零的那一种。
+    """
+    text = re.sub(r"[^a-z0-9]", "", str(value or "").lower())
+    shape = re.fullmatch(r"([a-z]+)(\d+)", text)
+    return f"{shape.group(1)}{int(shape.group(2))}" if shape else text
+
+
+def is_repost_site_label(value: str | None) -> bool:
+    """True 表示这串字符是转载站／搬运渠道的水印标识，不是番号。
+
+    两条判据：整串就是一个域名（`hhd800.com` 原样落进 `code` 的情况），或者压成
+    比较形后命中 `REPOST_SITE_LABELS`（域名被剥掉 TLD、只剩标签的情况）。
+    """
+    text = str(value or "").strip()
+    if not text:
+        return False
+    if _PROMO_DOMAIN.fullmatch(text):
+        return True
+    return compact_label(text) in REPOST_SITE_LABELS
+
+
 def normalise_code_key(code: str | None) -> str:
     """Normalize a release code into the stable cover-cache key."""
     value = (code or "").upper().replace("_", "-").replace(" ", "-").strip()
     if not value:
         return ""
+    if is_repost_site_label(value):
+        # 水印域名原样返回：给它补出连字符就等于凭空造了一个番号，
+        # 而作品页显示的 `display_code` 正是这个返回值。
+        return value
     if value.startswith("FC2"):
         digits = re.search(r"(\d{5,})", value)
         return f"FC2-PPV-{digits.group(1)}" if digits else value
@@ -109,7 +186,7 @@ def normalise_code_key(code: str | None) -> str:
 def is_jav_code(code: str | None) -> bool:
     """Recognize only code shapes whose original value keeps its separator."""
     value = (code or "").upper().strip()
-    if not value:
+    if not value or is_repost_site_label(value):
         return False
     if value.startswith("FC2"):
         return bool(re.search(r"\d{5,}", value))
@@ -159,8 +236,44 @@ def is_jav_asset(code: str | None, studio: str | None = None,
     return bool(
         str(studio or "").strip()
         or str(release_date or "").strip()
-        or {"performer", "studio", "series"}.intersection(entity_kinds)
+        or RELEASE_EVIDENCE_KINDS.intersection(entity_kinds)
     )
+
+
+def release_code_from_text(value: str | None) -> str | None:
+    """从一段文字（目录名或文件名主干）里解析出规范番号；解析不出返回 None。
+
+    和 `normalise_code_key` 的分工：那个只归一化「已经确认是番号」的字符串，这个负责
+    判断一段文字里到底有没有番号。归一化仍然交给它，不在这里重写一遍——番号既是身份
+    判定也是封面缓存键，两份实现漂移会让同一部片解析出两个键。
+
+    `HHD800` 这类转载站标签一律返回 None：它形态上完全符合「字母+数字」，只有名单能
+    把它和 `MEYD911` 分开。
+    """
+    text = str(value or "").strip()
+    if not text or _UUID_LIKE.search(text):
+        return None
+    text = _ASSET_EXTENSION.sub("", text)
+    if is_repost_site_label(text):
+        return None
+    fc2 = _FC2_ID.match(text)
+    if fc2:
+        return normalise_code_key(f"FC2-PPV-{fc2.group(1)}")
+    date = _DATE_CODE.search(text)
+    if date:
+        return f"{date.group(1)}-{date.group(2)}"
+    body = _VERSION_TAIL.sub("", _QUALITY_HEAD.sub("", text))
+    if not _CODE_BODY.match(body):
+        return None
+    canonical = normalise_code_key(body)
+    return canonical if is_jav_code(canonical) else None
+
+
+def release_code_from_filename(name: str | None) -> str | None:
+    """文件名带分卷、画质和重复计数，剥掉噪声后再解析。"""
+    stem = _ASSET_EXTENSION.sub("", str(name or "").strip())
+    return release_code_from_text(stem) or release_code_from_text(
+        _FILE_NOISE.sub("", stem))
 
 
 def _jav_code_pattern(code: str | None) -> str:

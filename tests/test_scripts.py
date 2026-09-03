@@ -1109,16 +1109,22 @@ class OperationalScriptTests(unittest.TestCase):
             )
 
     def test_explicit_code_judges_the_normalised_shape(self):
-        """账本里 `HJD2048` 这种缺分隔符的写法必须和 `--codes-file` 那侧结论一致。
+        """账本里 `WX17` 这种缺分隔符的写法必须和 `--codes-file` 那侧结论一致。
 
         两处一个按原始写法判、一个按规范化键匹配时，同一批番号会被报成
         「番号文件含 ledger 中不存在的番号」，2026-09-02 实测漏掉 42 个。
         """
         explicit = self.scrape_codes._is_explicit_code
-        for code in ("HJD2048", "WX17", "ABW-123", "ipvr00296", "fc2ppv-1234567"):
+        for code in ("WX17", "PBD390", "ABW-123", "ipvr00296", "fc2ppv-1234567"):
             self.assertTrue(explicit(code), code)
         for code in ("", "合集", "未知厂牌", "4K", "FC2-1234"):
             self.assertFalse(explicit(code), code)
+
+    def test_repost_site_watermarks_are_never_queued_for_a_provider(self):
+        # `HHD800`、`HJD2048` 是转载站域名剥掉 TLD 后的样子，不是番号。查它们只会
+        # 白跑一轮限流预算，而 provider 的空结果又会被当成「这个番号没元数据」。
+        for code in ("HHD800", "hhd800.com", "HJD2048", "AAVV333", "KFA33", "BEI88"):
+            self.assertFalse(self.scrape_codes._is_explicit_code(code), code)
 
     def test_code_normalization(self):
         # 归一化本体已收进 catalog_rules；脚本只是 import 它，这里验的是脚本用的
