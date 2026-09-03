@@ -269,6 +269,12 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="")
                 all_rows = [row for row in all_rows if row["cat"] == category]
             rows = all_rows[offset:offset + limit]
             has_more = offset + limit < len(all_rows)
+    if kind in {"creators", "performers"}:
+        #: 索引页的大图版式把头像裁成竖幅，几何居中会切掉脸。取景与资料页大图同一份
+        #: sidecar、同一个换算，只是这里按行取；读的是文件，所以放在连接之外。
+        entity_kind = "creator" if kind == "creators" else "performer"
+        for row in rows:
+            row["avatar_focus"] = contract.avatar_focus(entity_kind, row["entity_id"])
     result = {"kind": kind, "items": rows, "has_more": has_more}
     if kind == "tags":
         result["categories"] = category_counts

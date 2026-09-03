@@ -386,11 +386,19 @@ body.entity-open .index{overflow-x:visible}
 .icell:hover{background:var(--hover)}
 .icell .ring{display:block;width:70px;height:70px;border-radius:50%;overflow:hidden;
   background:var(--sunk);position:relative}
-.icell .ring img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.icell .ring img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;
+  object-position:var(--face,50% 50%)}
 .icell .ring .ini{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   font-size:var(--fs-2xl);color:var(--muted);font-family:Bahnschrift,"Microsoft YaHei UI","Microsoft YaHei","PingFang SC",sans-serif}
 .icell .nm{font-size:var(--fs-xs);text-align:center;line-height:1.3;word-break:break-all}
 .icell .n{font-size:var(--fs-xs);color:var(--muted)}
+/* 大图版式照 JAV 大图那条规矩：列宽和列数一个字都不动，只把圆框拉成 3:4 竖幅，
+   于是每屏人数不变、每张脸更大，窄屏也不会突然掉成一列。 */
+.igrid[data-layout="big"] .icell{padding:6px 4px 10px}
+.igrid[data-layout="big"] .icell .ring{width:100%;height:auto;aspect-ratio:3/4;
+  border-radius:var(--surface-radius)}
+.igrid[data-layout="big"] .icell .nm{font-size:var(--fs-sm)}
+.index .ihead .iconswitch{flex:none}
 .tagwall{display:flex;flex-wrap:wrap;gap:7px}
 .tagmodes{display:flex;gap:4px;padding:3px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--surface)}
 .tagmodes button{border:0;border-radius:var(--control-radius);background:transparent;color:var(--muted);padding:6px 10px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}

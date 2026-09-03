@@ -1622,6 +1622,69 @@ class AvatarFocusTests(unittest.TestCase):
         self.assertIsNone(self.contract.avatar_focus("series", 14))
 
 
+class PeopleIndexFocusTests(unittest.TestCase):
+    """索引页大图版式的取景：与资料页大图同一份 sidecar，只是按行取。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        self.db_path = str(fresh_ledger(str(root)))
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO asset(id,location,path,name,medium,size,snapshot_path,first_seen)"
+            " VALUES(1,'local',?,'one.mp4','video',100,?,'2026-08-14')",
+            (r"R:\Media\one.mp4", r"R:\snap\1.jpg"),
+        )
+        con.executemany(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(?,?,?,?,'2026-01-01','2026-01-01')",
+            [(10, "tag", "足交", "足交"),
+             (11, "performer", "Canonical Alice", "canonical alice"),
+             (12, "creator", "Canonical Creator", "canonical creator")],
+        )
+        con.executemany(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+            " VALUES(?,?,?,?,1.0)",
+            [(1, 10, "tag", "test"),
+             (1, 11, "performer", "test"),
+             (1, 12, "creator", "test")],
+        )
+        con.commit()
+        con.close()
+        self.avatars = root / "avatars"
+        self.avatars.mkdir()
+        self.contract = rm_web.WebContract(Path(self.db_path), avatar_root=self.avatars)
+
+    def test_each_row_carries_the_focus_the_entity_page_would_use(self):
+        (self.avatars / "performer-11.face.json").write_text(
+            '{"focus":{"axis":"y","pct":30}}', encoding="utf-8")
+        row = rm_web.q_index(self.contract, "performers")["items"][0]
+        self.assertEqual(row["k"], "Canonical Alice")
+        # 同一个实体，索引页大图和资料页大图必须取到同一个位置。
+        self.assertEqual(row["avatar_focus"], {"axis": "y", "pct": 30})
+        self.assertEqual(row["avatar_focus"], self.contract.avatar_focus("performer", 11))
+
+    def test_a_row_without_a_sidecar_says_so_instead_of_dropping_the_key(self):
+        # 没算过是常态：键仍然在，页面据此维持几何居中。
+        row = rm_web.q_index(self.contract, "performers")["items"][0]
+        self.assertIsNone(row["avatar_focus"])
+
+    def test_creators_read_their_own_kind_not_the_performer_sidecar(self):
+        (self.avatars / "performer-12.face.json").write_text(
+            '{"focus":{"axis":"x","pct":80}}', encoding="utf-8")
+        (self.avatars / "creator-12.face.json").write_text(
+            '{"focus":{"axis":"y","pct":20}}', encoding="utf-8")
+        row = rm_web.q_index(self.contract, "creators")["items"][0]
+        self.assertEqual(row["k"], "Canonical Creator")
+        self.assertEqual(row["avatar_focus"], {"axis": "y", "pct": 20})
+
+    def test_the_tag_index_has_no_face_to_frame(self):
+        tags = rm_web.q_index(self.contract, "tags")["items"]
+        self.assertEqual([row["k"] for row in tags], ["足交"])
+        self.assertNotIn("avatar_focus", tags[0])
+
+
 class DuplicateDetectionTests(unittest.TestCase):
     """同番号不等于重复：合集、分卷和混入的广告都会共用一个 code。"""
 
