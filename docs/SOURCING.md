@@ -332,6 +332,17 @@
   129 个厂牌撞成 12 组，`プレステージ` 与 `ムーディーズ` 同为 `______`、`シロウトTV` 与 `ラグジュTV`
   同为 `____TV`；撞了不报错，后装的那张盖掉先装的，PRESTIGE 的位置就挂上 MOODYZ 的牌子。
   已装的 60 张都是 ASCII 名，键一个都没变。
+- **同一批详情页的官网链接照厂牌自称对回账本，逐条判 kind。** 211 条名录里 125 条带官网，按名字与别名
+  （NFKC 归一、去掉空白与 `・.,'"()[]/&+*!?:-`）对上账本 33 家。目录站与配信平台不是官网：`mgstage.com`、
+  `indies-av.co.jp`、`dmm.co.jp`、`fanza.com` 四个主机，以及路径里带 `/works/list/` 的按厂商筛出来的作品
+  列表，都进 `catalog`——JET映像 那条指向 `mousouzoku-av.com`，而那个域名是妄想族自己的官网。母公司站内的
+  厂牌页（`km-produce.com/l_06_bazooka.php`、`/million/`）算 official，它就是这个厂牌在网上唯一的门面；
+  站内搜索串（`?s=OREA`）、配信站筛选列表（`ppv_advanced.php?`）、周边商品列表（`goods_list.php?`）和
+  配信平台首页（`indies-av.co.jp/`，名录给桃太郎映像出版填的就是它）都不是这家的页面，不装。
+  `entity_link` 的 UNIQUE 按 URL 字面判，`http://www.x.com/` 与 `https://x.com/` 装进去是同一家官网
+  并排两条，所以还要自己按主机去重（Prestige、MOODYZ、Wanz Factory、kawaii、Fitch、OPPAI 六家因此不装）。
+  剩 24 条过 `install_entity_links.py`，逐条探活后实装 20 条：BAZOOKA、DOC、million 三条 404，
+  MARRION 超时，2014／2015 那两届的地址十年后有一部分已经不在了。
 - 判词分档、每一档对应不同的下一步：`ok`、`字标补白`（可装，见上）、`只有小图标`（FC2 全站只有 16×16，
   该去找更大的资产）、`平台通用图标`（见上）、`仍是字标`、`未取得`（一份字节都没取回，`Fetcher` 自己数
   取回几份才判得出来）、`无官网链接`。只有前两档会被 `--install` 落盘。`best_mark` 只回结果不回理由，
