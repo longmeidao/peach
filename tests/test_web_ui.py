@@ -1648,6 +1648,47 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("application/vnd.apple.mpegurl")
         self.assertPageContains("/stream/hls/")
 
+    def test_progressive_sources_measure_the_buffer_instead_of_resource_timing(self):
+        """本地文件和在线关注都是一条长连接边下边播，请求不结束就没有 resource timing 条目。
+
+        实测本地 MP4 播到 37 秒时 performance 里仍只有挂载那两条、字节数停在 862 KB，
+        面板于是长期显示「— · 0 请求」。渐进源改按缓冲推进量折算，只有 HLS 还查条目。
+        """
+        self.assertPageContains("function bufferedSeconds(video)")
+        self.assertPageContains("function createBufferMeter(bitrate)")
+        self.assertPageContains("function averageBitrate(size,duration)")
+        self.assertPageContains("const meter=createBufferMeter(averageBitrate(options.size??it.size,it.duration))")
+        # 分片流才有可用的已完成请求；渐进源查了只会把别的会话的条目算进来。
+        self.assertPageContains("const resources=segmented?streamEntries(it.id,detailStreamSession):[]")
+        self.assertPageContains("playerSpeedBits(detailPlayer,it.id,detailStreamSession,segmented?null:meter)")
+        self.assertPageContains("return meter?Number(meter.bits)||0:streamSpeedBits(id,session)")
+        # 缓冲吃满后浏览器停拉，增量归零，读数保留上一次而不是跳回 0。
+        self.assertPageContains("if(span>=.5&&gained>0){ratio=gained/span;")
+        # 面板和角标都关着时没人采样，重开时的大跨度样本要丢掉。
+        self.assertPageContains("if(samples.length&&at-samples[samples.length-1].at>BUFFER_METER_WINDOW_MS*2)")
+
+    def test_progressive_stats_swap_the_request_counter_for_buffered_bytes(self):
+        """请求数对渐进源恒为 0，换成已缓冲量；码率未知的在线条目退到秒和推进倍速。"""
+        self.assertPageContains("const loaded=segmented?bytes:(meter.bitrate>0?meter.bytes(video):filled)")
+        self.assertPageContains("const byteScale=segmented||meter.bitrate>0")
+        self.assertPageContains("请求`,")
+        self.assertPageContains(":['已缓冲',byteScale?")
+        self.assertPageContains("`${filled.toFixed(0)} 秒`")
+        self.assertPageContains("function fmtLoadRate(bits,ratio)")
+        self.assertPageContains("`${ratio.toFixed(1)}× 实时`")
+        self.assertPageContains(":(!segmented&&meter.ratio>0?`${meter.ratio.toFixed(1)}× 实时`:'—')")
+
+    def test_follow_detail_gets_the_same_player_stats_overlay(self):
+        """关注详情以前没有统计三件套，在线视频连入口都没有；两处共用同一段模板。"""
+        self.assertPageContains("function playerStatsOverlayHtml()")
+        self.assertPageContains("${selectedKind==='video'?playerStatsOverlayHtml():''}")
+        self.assertPageContains("size:selectedMedia?.size,")
+        self.assertEqual(self.page.count('playerstatsbtn" id="playerStatsBtn"'), 1,
+                         "统计三件套只能有一份模板，两个详情页共用")
+        # 关注条目没有落盘文件名，容器格式从片源 MIME 反推，会话号也不该显示成空的。
+        self.assertPageContains("const container=(named.includes('.')?named.split('.').pop()")
+        self.assertPageContains("detailStreamSession&&!options.source?")
+
     def test_player_stats_keep_a_rolling_history_instead_of_only_the_latest_value(self):
         """单个瞬时值看不出卡顿是刚发生还是一直如此，三条指标各留 24 秒采样窗口。"""
         self.assertPageContains("const PLAYER_STATS_HISTORY=24")
@@ -1681,7 +1722,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('id="playerNet"')
         self.assertPageContains("function streamSpeedBits(id,session='')")
         self.assertPageContains("function fmtSpeed(bits)")
-        self.assertPageContains("加载速度 ${fmtSpeed")
+        self.assertPageContains("加载速度 ${segmented?fmtSpeed(bits):fmtLoadRate(bits,meter.ratio)}")
 
     def test_immerse_mode_has_loading_state_and_full_viewport_cover(self):
         self.assertPageContains('id="tokLoader"')
