@@ -196,6 +196,15 @@ export function wireIconSwitch(root,attr,apply){
 }
 
 /**
+ * 共用勾选框。原生 checkbox 在暗色下由浏览器自绘，跟站内别的控件不是同一套语言；
+ * `accent-color` 也只能改选中色，未选中态连悬停反馈都给不了。所以自绘一份，关注
+ * 列表、来源筛选、候选清单、标签匹配和设置项共用它。
+ */
+export function checkboxHtml(inputAttrs=''){
+  return `<span class="pcheck"><input type="checkbox" ${inputAttrs}><span aria-hidden="true">${icon('check')}</span></span>`;
+}
+
+/**
  * Geist Collapse：原生 `<details>` 不过渡高度，所以把 summary 以外的内容包进
  * `.fcollapse`，开合时量 `scrollHeight` 写 inline `height` 让它过渡。
  * （试过 `::details-content`，那条路会吞掉内容，已弃。）
