@@ -211,7 +211,7 @@ class WebContract:
         return path if path.is_file() else None
 
     def cover_index(self) -> dict[str, dict | None]:
-        """封面目录扫一遍的索引：casefold(归一番号) → 取景 `{"cy": …}` 或 None。
+        """封面目录扫一遍的索引：casefold(归一番号) → 取景 `{"cx": …, "cy": …}` 或 None。
 
         卡片列表逐行问「有封面吗」「取景是多少」，一页 60 行就是 120+ 次 stat 加
         读文件；封面目录一次 scandir 就覆盖全部番号，结果走 `cached()` 的 TTL。
@@ -238,13 +238,20 @@ class WebContract:
 
     @staticmethod
     def _cover_focus(sidecar: str) -> dict | None:
-        """sidecar 里的人脸中心。没算过、读不出或没检出都是 None，页面退回固定取景。"""
+        """sidecar 里的人脸中心。没算过、读不出或没检出都是 None，页面退回固定取景。
+
+        两个轴都给出去：哪个轴生效由容器和图片的宽高比决定，不由这里判断。
+        缺哪个键就不带哪个键，前端各自回落，不要拿另一个轴的值顶替。
+        """
         try:
             with open(sidecar, encoding="utf-8") as handle:
                 face = (json.load(handle) or {}).get("face")
         except (OSError, ValueError):
             return None
-        return {"cy": face["cy"]} if isinstance(face, dict) and "cy" in face else None
+        if not isinstance(face, dict):
+            return None
+        focus = {axis: face[axis] for axis in ("cx", "cy") if axis in face}
+        return focus or None
 
     def has_cover(self, code: str | None) -> bool:
         key = normalise_code_key(code)
@@ -253,10 +260,11 @@ class WebContract:
         return bool(key) and key.casefold() in self.cover_index()
 
     def cover_frame(self, code: str | None) -> dict | None:
-        """封面的取景提示：人脸中心。没算过或没检出就返回 None。
+        """封面的取景提示：人脸中心的两个轴。没算过或没检出就返回 None。
 
-        只用来做纵向微调，横向仍由版式决定——横向靠几何规则已经稳定。
-        取不到时前端退回固定取景，不影响显示。
+        双页封套的横向锚点仍由版式决定（正封贴着右边缘，几何规则已经稳定），人脸
+        横向只用在 16:9 官方剧照上——那种图在大图容器里只会横向裁，写死的居中会把
+        偏在一侧的人整个切掉。取不到时前端退回固定取景，不影响显示。
         """
         key = normalise_code_key(code)
         return self.cover_index().get(key.casefold()) if key else None

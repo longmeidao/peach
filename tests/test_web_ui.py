@@ -1121,13 +1121,26 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const COVER_FRONT_RATIO=0.7;")
         self.assertPageContains("(jav&&layout==='big'?COVER_FRONT_RATIO:16/9)")
         self.assertPageContains('.poster.cover.front[data-frame="sleeve"]{object-position:100%')
-        self.assertPageContains("r>1.2&&r<1.65?'sleeve':'front'",
+        self.assertPageContains("r>=1.65?'still':r>1.2?'sleeve':'front'",
                                 "16:9 官方剧照不能当成双页封套裁到最右侧")
         # 判据是 `jav` 不是 `useCover`：缺封面的卡片也要拉长，用 16:9 预览图上下留黑边，
         # 否则一行里高矮混排会把网格撕成锯齿状。
         self.assertPageLacks("useCover&&layout==='big'")
         # 旧键要继续认，设置存在浏览器里，改名不能让用户的选择静默回落。
         self.assertPageContains("const JAV_LAYOUT_ALIASES={cover:'big',sleeve:'small'};")
+
+    def test_wide_stills_frame_on_the_detected_face_instead_of_dead_centre(self):
+        """16:9 官方剧照在大图容器里只会横向裁，横向锚点必须跟着人走。
+
+        整幅剧照都是画面，没有「正封那一块」可推到右边缘；写死的 50% 只取画面中段，
+        人偏在一侧就整个落到可见窗口外面。纵向锚点在这个容器里根本不生效——容器比
+        所有封面都竖，`object-fit:cover` 裁的是横向那一轴。
+        """
+        self.assertPageContains(
+            '.poster.cover.front[data-frame="still"]{object-position:var(--cover-x,50%)')
+        self.assertPageContains("f.cx!=null?`--cover-x:${Math.round(Math.min(1,Math.max(0,f.cx))*100)}%`")
+        # 没检出的那些居中，不能因为多了一个轴就把它们裁到边上去。
+        self.assertPageContains("--cover-x,50%")
 
     def test_card_avatar_and_name_open_the_same_entity(self):
         """同一张卡上的头像和名字必须指向同一个身份。
@@ -2712,6 +2725,18 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".relatedpeople{display:flex;gap:14px;overflow-x:auto;padding-bottom:4px")
         self.assertPageContains("height:var(--filterH);margin:0 -16px;padding:9px 16px")
 
+    def test_horizontal_avatar_rails_leave_room_for_the_hover_ring(self):
+        """圆头像的悬停圈和选中圈是外扩 `box-shadow`，横滚容器会把它削平。
+
+        `overflow-x:auto` 把计算后的 `overflow-y` 一起变成 auto，头像贴着容器上沿
+        时那一圈就被裁掉顶部。留 3px 上方余量再用等量负 margin 抵掉，位置不动。
+        这两行是同一个缺陷重犯过多次的地方，写成一条共用规则。
+        """
+        self.assertPageContains(".tier,.relatedpeople{padding-top:3px;margin-top:-3px}")
+        # `.tier` 后面那条不能再用 padding 简写，否则把上面的余量清回 0。
+        self.assertPageContains("scrollbar-width:none;padding-inline:16px;padding-bottom:8px")
+        self.assertPageLacks("scrollbar-width:none;padding:0 16px 8px")
+
     def test_every_home_navigation_restores_the_shared_facets(self):
         self.assertPageContains("function showHomeSurfaces()")
         self.assertPageContains("$('#tiers').style.display='';$('#tagbar').style.display=''")
@@ -2779,6 +2804,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('wrap.innerHTML=visible.map(t=>`<span class="detailtag">')
         self.assertPageLacks("<small>官方</small>")
         self.assertPageLacks(".detailtag.official{")
+        # 左半边点下去是按这个标签筛选，和右边的删除键一样得有悬停反馈；
+        # 它没有选中态，照孤立按钮的写法抬填充。
+        self.assertPageContains(".detailtag .tagfilter:hover{background:var(--hover);color:var(--ink)}")
         self.assertPageContains("const byDisplay=new Map()")
         self.assertPageContains("foldName(t.k)===key&&foldName(previous.k)!==key")
 
