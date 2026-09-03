@@ -29,7 +29,7 @@ class AtomicWriteTests(unittest.TestCase):
             with atomic_path(target) as temporary:
                 temporary.write_text("new", encoding="utf-8")
                 raise RuntimeError("boom")
-        # 关键断言：读的人只能看到上一版，而不是一半的新版。
+        # 关键断言：读的人只能看到替换前那份，而不是写了一半的新内容。
         self.assertEqual(target.read_text(encoding="utf-8"), "old")
         self.assertEqual(self.leftovers(), [])
 

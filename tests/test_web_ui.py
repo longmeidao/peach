@@ -941,9 +941,9 @@ class WebUiSourceTests(unittest.TestCase):
     def test_toast_callers_declare_whether_they_pass_text_or_html(self):
         """回执里的标签名来自账本，含 `<` 时不能被当成标签插进 DOM。
 
-        `toast()` 以前接裸字符串，「这是文本还是 HTML」靠调用点自己记得转义：
-        actionReceipt 传的是纯文本、followCheckToast 传的是带 `<b>` 的片段，
-        签名上完全一样。现在由调用点显式声明，默认按文本转义。
+        `toast()` 不接裸字符串：那样「这是文本还是 HTML」靠调用点自己记得转义，
+        而 actionReceipt 传的是纯文本、followCheckToast 传的是带 `<b>` 的片段，
+        签名上完全一样。调用点显式声明，默认按文本转义。
         """
         self.assertPageContains("const toastBody=message=>")
         self.assertPageContains("'html' in message")
@@ -954,10 +954,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("toast({html:`检查了 <b>${rows.length}</b> 个来源")
 
     def test_undo_reports_back_on_the_same_toast_instead_of_swapping_two(self):
-        """撤销原先是「关掉回执 + 另发一条已撤销」。
+        """撤销的结果写回同一条 toast，不另发一条。
 
-        底部对齐的栈里一进一出，剩下那条会整块跳一格；撤销请求快过退场动画时
-        两条还会同时在场。结果写回同一条 toast 就没有这次进出。
+        「关掉回执 + 另发一条已撤销」会让底部对齐的栈里一进一出，剩下那条整块跳
+        一格；撤销请求快过退场动画时两条还会同时在场。
         """
         self.assertPageContains("item.replaceMessage=")
         self.assertPageContains("try{await undo();item.replaceMessage({text:'已撤销'})}")
@@ -971,7 +971,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks(".toasts{position:fixed;right:16px;bottom:22px;z-index:var(--layer-popover);display:grid;gap:8px;")
 
     def test_leaving_a_surface_cancels_the_reads_it_started(self):
-        """以前离开一个表面只是把结果丢掉，请求本身照跑到底。
+        """离开一个表面要撤掉它开的读请求，不能只把结果丢掉、让请求跑到底。
 
         切三四页就有三四份读请求同时占着浏览器对同一 host 的 6 条连接，最后停留
         的那一页反而排在队尾。写操作不带 signal——切页不能撤掉一次真实写入。
@@ -1006,8 +1006,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_immerse_stream_does_not_pretend_to_paginate_a_random_sample(self):
         """`sort=rand` 在服务端是未加种子的 `RANDOM()`，偏移量在它上面没有意义。
 
-        原先每续取一次就把一个 `tokOffset` 加 60，再传给一个从不使用这个参数的
-        `fetchTok(off)`——读代码的人会以为这条流是翻页来的。
+        每续取一次把一个 `tokOffset` 加 60、再传给从不使用这个参数的
+        `fetchTok(off)` 的话，读代码的人会以为这条流是翻页来的。
         """
         self.assertPageLacks("tokOffset")
         self.assertPageContains("async function fetchTok()")
@@ -1023,7 +1023,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_closing_a_deep_linked_player_reloads_the_home_feed(self):
         """直接打开 /parts/28125/28125 后关闭播放器，首页停在骨架上再也不动。
 
-        判据原先是「`#grid` 有没有子节点」，而深链启动时网格里正躺着一个还没被
+        判据不能是「`#grid` 有没有子节点」：深链启动时网格里正躺着一个还没被
         替换掉的加载骨架——它也是子节点，于是「退回去有东西可看」被判成真，
         `route('/')` 只改了地址栏。卡片一定带 data-id，骨架没有。
         """
@@ -1132,8 +1132,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_card_avatar_and_name_open_the_same_entity(self):
         """同一张卡上的头像和名字必须指向同一个身份。
 
-        头像原来先看 performer、名字先看 creator，碰上同名的 creator/performer 重复
-        实体（账本里 35 组）就会一个跳 /performers/x、另一个跳 /creators/x。
+        头像先看 performer、名字先看 creator 的话，碰上同名的 creator/performer
+        重复实体（账本里 35 组）就会一个跳 /performers/x、另一个跳 /creators/x。
         """
         self.assertPageContains(
             "const avatarKind=identity.kind||(performer?'performer':"
@@ -1207,7 +1207,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_select_arrow_is_drawn_once_with_balanced_right_spacing(self):
         """全站下拉箭头必须共用自绘样式，并和右边框保留稳定间距。
 
-        原来留了 34px 右内边距却不画箭头、交给系统控件：Safari 把箭头画在内边距里侧，
+        留 34px 右内边距却不画箭头、交给系统控件的话，Safari 把箭头画在内边距里侧，
         离右边框差一大截，和桌面 Chromium 的样子也对不上。
         """
         self.assertPageContains(".settingrow select,.tasteactions select,.fmanagesort select{")
@@ -1343,9 +1343,9 @@ class WebUiSourceTests(unittest.TestCase):
 
         三处实际泄漏。共同点是都不报错：页面越用越慢，而且离开之后还在往后端打请求。
 
-        - 横向拖动行的 `mouseup`：原来每 `wireDrag` 一个元素就往 window 上挂一条，
-          而这些行是 innerHTML 重绘出来的，每次重绘换一批新节点，旧闭包连着已经
-          脱离文档的元素永远不回收。
+        - 横向拖动行的 `mouseup`：每 `wireDrag` 一个元素就往 window 上挂一条的话，
+          麻烦在这些行是 innerHTML 重绘出来的，每次重绘换一批新节点，那些闭包连着
+          已经脱离文档的元素永远不回收。
         - `wireTelemetry` 的十秒上报：只有 pause/ended 清定时器，而离开详情两者都不
           发生，于是 setInterval 连着已销毁的 video 一直往 /api/activity 打。
         - 标签选择器的 document 捕获监听：`stage.innerHTML=''` 只删 DOM，
@@ -2069,8 +2069,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_one_route_table_owns_every_surface_dispatch(self):
         """「哪个路径进哪一屏」只有一份真相，七处副本不许回来。
 
-        以前 restoreRoute 是一条二十五分支的 if 链，navTo、navOn、openManage、
-        manageSection、reloadCurrentSurface、refreshAll 各自又抄了自己关心的那几条。
+        散成七份的话：restoreRoute 一条二十五分支的 if 链，navTo、navOn、openManage、
+        manageSection、reloadCurrentSurface、refreshAll 各自再抄自己关心的那几条。
         加一屏要改七处，漏一处的症状还各不相同：URL 能进但侧栏不亮、点进去了但
         「换一批」把你扔回统计页、批量操作后回到首页而不是刚才那一屏。
         """
@@ -2097,8 +2097,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const registerRoute=spec=>{ROUTES.push(spec);return spec};")
         self.assertPageContains("window.peachRegisterRoute=registerRoute;")
 
-    # 「动态段只吃数字、实体名吃掉剩下全部段」原来在这里按源码文本断言，现在
-    # 改成拿真路径跑真的 matchPath，见
+    # 「动态段只吃数字、实体名吃掉剩下全部段」由真路径跑真的 matchPath 断言，不在
+    # 这里比对源码文本，见
     # test_web_js.test_route_patterns_match_what_the_table_says_and_nothing_else。
 
     def test_immersive_mode_keeps_the_current_clip_in_the_url(self):
@@ -2210,8 +2210,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("{passive:false}")
 
     def test_immersive_title_opens_the_detail_page(self):
-        """沉浸模式里只看得到文件名。想看标签、相关推荐或改东西，
-        原来得先退出再去列表里把它找回来。旁边的创作者一直是可点的，标题不是。
+        """沉浸模式里只看得到文件名，标题要能点进详情页。
+
+        标题不可点的话，想看标签、相关推荐或改东西得先退出再去列表里把它找回来，
+        而旁边的创作者一直是可点的。
         """
         self.assertPageContains('<button type="button" class="toktitle" id="tokTitle">')
         self.assertPageContains(
@@ -2292,7 +2294,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('.fsechead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;box-sizing:border-box;min-height:56px')
 
     def test_top_level_highlight_is_exclusive_and_covers_index_pages(self):
-        """首页原来只看 state.state，进管理区和索引页时它仍然亮着，两个入口同时高亮。"""
+        """首页高亮只看 state.state 的话，进管理区和索引页时它仍然亮着，两个入口一起亮。"""
         # 高亮由「当前路径匹配到哪条路由」决定，索引页和实体页因此天然分开：
         # /performers 有 nav，/performers/<名字> 没有，不会两个入口一起亮。
         self.assertPageContains("const nav=matchRoute(ROUTES,path)?.route.nav||'';")
@@ -2593,8 +2595,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("border:1px solid var(--border-15);\n  border-radius:var(--pill-radius);background:transparent")
         self.assertPageContains("--overlay-5:rgba(245,250,255,.05)")
         self.assertPageContains("--border-15:rgba(245,250,255,.15)")
-        # 窄栏原本无边框、与内容区连成一片。用户 2026-08-26 明确要求加分割线：
-        # 两边背景太接近，看不出左边那一条到哪里为止。其余取证结论不变，只改这一条。
+        # 窄栏要有右分割线（用户 2026-08-26 明确要求）：无边框时两边背景太接近，
+        # 看不出左边那一条到哪里为止。
         self.assertPageContains("border-right:1px solid var(--line-soft)")
         self.assertPageContains("['performers','艺人','user-round']")
         self.assertPageContains("['tags','标签','tags']")
@@ -3014,7 +3016,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "const painted=$('#stats').querySelector('[data-skeleton]')?.dataset.skeleton||''")
         self.assertPageContains("if(!next||next!==painted)$('#stats').innerHTML=placeholder")
-        # 数据管理曾经是这一条：骨架之后再盖一层 Loading Dots，那就是第二段动画。
+        # 数据管理不在骨架之后再盖一层 Loading Dots：那就是第二段动画。
         self.assertPageLacks("loadingDotsHtml('正在读取数据管理状态…')")
         self.assertPageLacks(".cleanuploading")
         # 数据管理是一列 fieldset，骨架不能是三列海报网格。
@@ -3042,7 +3044,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".followmanage-skeleton>div{grid-template-columns:minmax(0,1fr);gap:16px;width:min(812px,100%)")
         self.assertNotIn("grid-area", self.page[self.page.index(".followmanage-skeleton>div{"):
                                                 self.page.index(".followmanage-skeleton .skeletoncard em{")])
-        # 第一块是那一行输入，不是原来带按钮的两行。
+        # 第一块是那一行输入，不是带按钮的两行。
         self.assertPageContains(".followmanage-skeleton .skeletoncard:nth-child(1) b{height:38px}")
         # 头部条是框体不是待填内容：跟 .fsechead 一样 56px，不参与呼吸。
         self.assertPageContains(".followmanage-skeleton .skeletoncard i{aspect-ratio:auto;height:56px")
@@ -3134,9 +3136,9 @@ class WebUiSourceTests(unittest.TestCase):
     def test_every_card_kind_has_one_fixed_ratio(self):
         """三类卡片各自一个固定比例，卡片之间不能高低不齐。
 
-        竖屏曾经按每条视频的实际宽高算，素材从 0.5 到 0.9 都有，竖屏条和竖屏网格
-        因此参差不齐。这段代码写下后一直没生效（`.pic` 写死 16/9），接上
-        `--card-ratio` 才暴露出来。比例不同的用 contain 上下留黑边。
+        竖屏按每条视频的实际宽高算的话，素材从 0.5 到 0.9 都有，竖屏条和竖屏网格
+        因此参差不齐。`.pic` 写死 16/9 时这段代码不生效，接上 `--card-ratio`
+        才起作用。比例不同的用 contain 上下留黑边。
         """
         self.assertPageContains("const PORTRAIT_RATIO=9/16;")
         self.assertPageLacks("Math.min(0.9,Math.max(0.5,it.width/it.height))")
@@ -3344,10 +3346,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("tasteWindow='all';tasteCacheSet('all',payload.dashboard);renderTaste(payload.dashboard)")
 
     def test_no_page_grows_its_own_back_control(self):
-        """索引页原本有个返回按钮，现在顶栏入口本身就是返回路径。
+        """索引页没有自己的返回按钮：顶栏入口本身就是返回路径。
 
-        这条守的是「不要再长回来」，以及别留下没人用的图标与样式——
-        唯一使用者删掉后，`i-arrow-left` symbol 和 `.backbtn` 都成了死代码。
+        这条守的是「不要长出来」，以及别留下没人用的图标与样式——没有使用者的
+        `i-arrow-left` symbol 和 `.backbtn` 就是死代码。
         """
         self.assertPageLacks("${icon('arrow-left')}")
         self.assertPageLacks('id="i-arrow-left"')
@@ -3506,8 +3508,8 @@ class WebUiSourceTests(unittest.TestCase):
         证据：`docs/reference-snapshots/vercel-geist-fieldset-scroller-empty-state.md`
         的 2026-09-02 追加块——375px 视口下 Geist 的 Fieldset footer 仍是
         `flex-direction:row`、`nowrap`，min-height 56px 按说明行数长到 65/85/105px，
-        12 颗按钮宽 70–186px，没有一颗铺满。原先 640px 以下把条子竖过来、按钮
-        `width:100%`，那是我们自己加的，不是 Geist 的做法。
+        12 颗按钮宽 70–186px，没有一颗铺满。640px 以下把条子竖过来、按钮
+        `width:100%` 是我们自己加的，不是 Geist 的做法。
 
         底色同理：条子是 `--overlay-5`，按钮填比它更深的 `--surface` 才分得出来。
         数据管理那六颗此前是透明底，和同一页「网盘与账本」的 `.resourceaction`
@@ -3764,8 +3766,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_catalog_filters_are_only_seeded_from_a_catalog_url(self):
         """查询参数属于它所在的路由。
 
-        目录的筛选以前无条件从启动 URL 里读，于是 `/follow?tag=blender` 这样的链接
-        会顺手把目录也筛成 blender：顶部画出「blender ✕ 全部清除」——一条目录筛选
+        目录的筛选不能无条件从启动 URL 里读：那样 `/follow?tag=blender` 这样的链接
+        会顺手把目录也筛成 blender，顶部画出「blender ✕ 全部清除」——一条目录筛选
         芯片挂在关注页上，回到首页还发现自己被筛住了。
 
         关注页的 tag 是 booru 英文标签，目录的 tag 是本地中文标签，两套词表撞在同一
@@ -3880,7 +3882,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_the_edition_queue_is_labelled_and_clickable(self):
         """版次队列要认自己这一类：标题、计数、每条的版次徽章和点击都得对上。
 
-        点击原先没有 editions 分支，会掉进播放列表分支，带着 undefined 的
+        点击没有 editions 分支的话会掉进播放列表分支，带着 undefined 的
         playlistId 去请求——点了没反应，控制台也只有一条被吞掉的失败。
         """
         self.assertPageContains(
@@ -4042,11 +4044,11 @@ class WebUiSourceTests(unittest.TestCase):
     def test_the_follow_url_is_the_only_source_of_truth_for_its_filters(self):
         """关注页的五个筛选必须能在 URL 和界面之间原样往返。
 
-        以前只有 author 和 media 在 URL 里，provider、tag、status 只活在模块级全局：
+        只把 author 和 media 放进 URL、让 provider、tag、status 活在模块级全局的话：
         离开再回来还按着（谁都不重置它们），刷新就丢，也没法从别处链到一个筛好的
         视图——而标签页要能点一个在线标签直接进「关注 · 这个标签」。
 
-        重置也因此不再是一串手写赋值：进入时照 URL 推导，漏一个就体现为往返对不上，
+        重置也因此不是一串手写赋值：进入时照 URL 推导，漏一个就体现为往返对不上，
         而不是像从前那样安静地留着上一次的筛选。
         """
         writer = self._js_function("followViewPath")
@@ -4301,7 +4303,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_failed_review_decisions_are_shown_instead_of_silently_swallowed(self):
         """「点了没反应」的真身：失败被吞掉，按钮还卡在 disabled。
 
-        `api()` 在任何非 2xx 都 throw，而这个 async onclick 原来没有 catch：
+        `api()` 在任何非 2xx 都 throw，而这个 async onclick 漏掉 catch 的话：
         异常成了 unhandled rejection，`button.disabled=false` 永远到不了，于是
         按钮永久禁用、界面一句话都不给。失败必须说出来并把按钮放开让人重试。
         """

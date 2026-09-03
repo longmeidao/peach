@@ -59,7 +59,7 @@ class FollowUpdateSchedulerTests(unittest.TestCase):
     def test_a_busy_lock_is_a_skip_not_a_failure(self):
         """互斥不是故障：手动检查正在跑的时候，自动这一轮什么也没做。
 
-        以前这里抛异常，界面就把它显示成「上次失败」，还连带触发退避——真正的
+        这里抛异常的话，界面会把它显示成「上次失败」，还连带触发退避——真正的
         失败反而被这种噪声盖住。"""
         with tempfile.TemporaryDirectory() as temporary:
             scheduler = FollowUpdateScheduler(

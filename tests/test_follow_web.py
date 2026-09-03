@@ -872,7 +872,7 @@ class FollowContractTests(unittest.TestCase):
     def test_a_shared_only_credential_reports_present_not_missing(self):
         """`describe()` 和 `load()` 必须看同一份事实。
 
-        早先 `describe()` 只看本机文件、`load()` 会从共享副本回填，于是页面报「未配置」
+        `describe()` 只看本机文件而 `load()` 从共享副本回填的话，页面报「未配置」
         而请求照样带着共享里那把 key 发出去。用户看到的状态和系统实际用的凭据不一致，
         比撤不掉更糟——他会以为已经撤了。
         """
@@ -1167,8 +1167,8 @@ class FollowSourceAddTests(FollowContractTests):
     def test_a_busy_check_lock_says_registered_instead_of_staying_silent(self):
         """自动检查正好占着锁的时候，顺带的首次检查做不了。
 
-        以前这里回 `checked: null`，调用方分不清「查过了什么都没有」和「根本
-        没查」，界面上就是登记完一片空白。现在明说：已登记，稍后再查。
+        这里回 `checked: null` 的话，调用方分不清「查过了什么都没有」和「根本
+        没查」，界面上就是登记完一片空白。所以明说：已登记，稍后再查。
         """
         self.contract.follow_check_lock.acquire()
         self.addCleanup(self.contract.follow_check_lock.release)
@@ -1442,8 +1442,8 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_the_lookup_is_one_line_submitted_by_enter_without_a_button(self):
         """查找不改任何东西，按 Vercel 表单规范就不该配提交按钮。
 
-        规范原话是「输入框获得焦点时，若它是唯一控件，回车即提交」。原来非配按钮
-        不可，是因为字段是 textarea——那里回车按规范要插入换行，回车提交就没法用。
+        规范原话是「输入框获得焦点时，若它是唯一控件，回车即提交」。字段做成
+        textarea 就非配按钮不可——那里回车按规范要插入换行，回车提交没法用。
         多行批量本身也不成立：一个作者就要几十秒，一次粘五行等于把这个等待乘五，
         中途还看不出走到哪一行。所以字段收成单行 search input，回车原生提交。
         """
@@ -1675,9 +1675,9 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_sections_have_a_frame_but_their_rows_do_not(self):
         """反模式是卡片**套**卡片，不是「不要任何容器」。
 
-        上一版把两者混为一谈，做成了没有可读性的裸列表——而同一份文档明确警告过
-        不要因为躲开那些默认套路就做出一个无设计的模板。所以：分区有框，
-        框里的行只用分隔线。
+        把两者混为一谈就会做成没有可读性的裸列表——而同一份文档明确警告过不要
+        因为躲开那些默认套路就做出一个无设计的模板。所以：分区有框，框里的行
+        只用分隔线。
         """
         page = self.page
         section = page[page.index(".fsec{"):]
@@ -2128,9 +2128,9 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_thread_activity_is_not_called_a_version(self):
         """线程动态叫「条动态」，作品版本叫「个版本」，两者都含主条目。
 
-        计数以前是分开写的：release 记 `variants.length+1`、work 记 `variants.length`。
-        同一份数据两种口径，两个视频的组会显示成「1 个版本」。现在共用一个表达式，
-        只有量词不同。
+        两种计数共用一个表达式，只有量词不同。分开写成 release 记
+        `variants.length+1`、work 记 `variants.length` 的话，同一份数据两种口径，
+        两个视频的组会显示成「1 个版本」。
         """
         self.assertPageContains("`${count} ${group.is_release?'条动态':'个版本'}`")
         self.assertPageLacks(
@@ -2568,8 +2568,8 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_detail_images_open_the_same_lightbox_as_the_performer_page(self):
         """关注详情的图要能点开大图，用的必须是同一个灯箱，不是另写一套。
 
-        灯箱原本写死了 `/photo?id=`：那是本地 ledger 资产的取图口，在线图没有
-        asset id，套不进去。所以按 slide 归一化，在线图直接给 URL。
+        灯箱不写死 `/photo?id=`：那是本地 ledger 资产的取图口，在线图没有 asset id，
+        套不进去。所以按 slide 归一化，在线图直接给 URL。
         """
         self.assertPageContains("poster.onclick=()=>openPhotoLightbox(Math.max(0,imagePosition),followSlides)",
                                 "详情图片没有接上灯箱")

@@ -211,9 +211,9 @@ class OperationalScriptTests(unittest.TestCase):
         """
         backfill = load_script("backfill_rule34_tag_types")
         # 连接与备份走共享的 `open_for_write`／`open_readonly`，WAL 正确性由
-        # `scripting` 那条回归测试守住；这里只钉「用的是那一份」。以前这条断言读的是
-        # 源码里有没有 `reader.backup(writer)` 这串字符，脚本改成调用共享实现就红了
-        # ——而行为恰恰是变好了。
+        # `scripting` 那条回归测试守住；这里只钉「用的是那一份」。断言源码里有没有
+        # `reader.backup(writer)` 这串字符的话，脚本一改成调用共享实现就会红——
+        # 而那次行为恰恰是变好了。
         self.assertIs(backfill.open_for_write, scripting.open_for_write)
         self.assertIs(backfill.open_readonly, scripting.open_readonly)
         self.assertEqual(backfill.BACKUP_REQUIRED, scripting.BACKUP_REQUIRED)
@@ -1899,8 +1899,8 @@ class ScriptingConventionTests(unittest.TestCase):
     def test_every_ledger_writer_takes_the_same_three_write_arguments(self):
         """写入脚本的参数名只有一套。
 
-        曾经并存 `--database`（必填）和 `--backup-dir`（目录）。名字不同的同义参数会让
-        「上次那条命令」在另一个脚本上直接报错，而报错只说缺参数——不说改成什么。
+        不收 `--database`（必填）、`--backup-dir`（目录）这类同义写法：名字不同的同义
+        参数会让「上次那条命令」在另一个脚本上直接报错，而报错只说缺参数——不说该写什么。
         """
         for name in self.LEDGER_WRITERS:
             with self.subTest(script=name):

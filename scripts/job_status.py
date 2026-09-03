@@ -96,8 +96,8 @@ def collect(db_path: Path, generated: Path, state_path: Path | None = None) -> l
     videos = one("SELECT count(*) FROM asset WHERE medium='video'")
     lines.append(f"- 资产 {one('SELECT count(*) FROM asset')} 条，其中视频 {videos} 条。")
 
-    # 待抽帧必须报两个数。只报一个必然引起口径之争：曾经"4740"和"10196"被当成
-    # 互相矛盾的数字争过一轮，其实一个是可执行量、一个是原始量，都对。
+    # 待抽帧必须报两个数。只报一个必然引起口径之争：`4740` 和 `10196` 看着互相
+    # 矛盾，其实一个是可执行量、一个是原始量，都对。
     # 没有时长就算不出 seek 点，抽帧脚本处理不了，那些要先补 probe。
     lines.append("- 待抽帧（可抽 / 缺时长待 probe / 合计）：")
     for loc in ("local", "115", "pikpak"):

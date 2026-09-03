@@ -43,7 +43,7 @@ IDOL_LINK = re.compile(r'href="(https://www\.javdatabase\.com/idols/[a-z0-9-]+/)
 H1 = re.compile(r"<h1[^>]*>(.*?)</h1>", re.S)
 #: 资料行的真实写法是 `<b>JP:</b> 涼森れむ <br>` 与
 #: `<b>Alt:</b> Iwatani Shiki, Arina Hashimoto, Mana Kaminogi<br>`（两段都可能缺）。
-#: 标签名必须跳过：第一版按 `JP:\s*([^<-]+)` 写，紧跟的 `</b>` 让它一条都匹配不上，
+#: 标签名必须跳过：按 `JP:\s*([^<-]+)` 写的话，紧跟的 `</b>` 让它一条都匹配不上，
 #: 全站只回罗马字，而正是日文名和旧艺名才是这个来源的价值。
 JP_FIELD = re.compile(r"JP:\s*(?:</[a-z]+>)?\s*([^<]{1,60})")
 ALT_FIELD = re.compile(r"Alt:\s*(?:</[a-z]+>)?\s*([^<]{1,160})")

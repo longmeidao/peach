@@ -113,8 +113,8 @@ class VerdictTests(unittest.TestCase):
     def test_a_derived_domain_that_is_not_an_adult_site_is_still_refused(self):
         """`bazooka.com`、`madonna.com` 的域名同样推得出来。
 
-        把它们和上面那条区分开的正是成人语境这一条；少了它，这条新规则会把每个
-        「同名公司」都当成官网确认掉——比原来更糟。
+        把它们和上面那条区分开的正是成人语境这一条；少了它，这条规则会把每个
+        「同名公司」都当成官网确认掉——比不做这条判定更糟。
         """
         title = "Bazooka Bass Tubes"
         verdict, _ = self.module.site_verdict(
@@ -231,10 +231,10 @@ class VerdictTests(unittest.TestCase):
     def test_a_title_that_is_only_the_brand_name_is_not_a_domain_echo(self):
         """实测误伤：`https://www.naturalhigh.co.jp/` 是 Natural High 的真官网。
 
-        它返回 200、成人站、标题正是 `NATURAL HIGH（ナチュラルハイ）`。上一版把标题
-        normalise 成 naturalhigh 后发现它是主机 naturalhighcojp 的一部分，于是判成
-        「域名回显」——可域名本来就是按厂牌名推出来的，这两者必然互相包含，整类真站
-        都会被这条规则打掉。域名回显要求标题原样印着 TLD。
+        它返回 200、成人站、标题正是 `NATURAL HIGH（ナチュラルハイ）`。把标题
+        normalise 成 naturalhigh 再去比主机 naturalhighcojp 的话，它是主机的一部分、
+        于是判成「域名回显」——可域名本来就是按厂牌名推出来的，这两者必然互相包含，
+        整类真站都会被打掉。所以域名回显要求标题原样印着 TLD。
         """
         title = "NATURAL HIGH（ナチュラルハイ）"
         verdict, _ = self.module.site_verdict(
@@ -562,7 +562,7 @@ class ProbeRetryTests(unittest.TestCase):
 class RunTrailTests(unittest.TestCase):
     """失败行要看得见是在哪几个地址上失败的。
 
-    原来后一个候选会覆盖前一个：`SOD Create` 试了六个地址，复核件上只剩最后那个的
+    后一个候选覆盖前一个的话：`SOD Create` 试了六个地址，复核件上只剩最后那个的
     「取不到：ConnectError」，而真正值得看的是被盖掉的 `www.sod.co.jp`——200、成人站、
     标题 `SOFT ON DEMAND（ソフト・オン・デマンド）`。判未取得可以，看不见理由不行。
 

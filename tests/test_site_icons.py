@@ -138,7 +138,7 @@ class RankingTests(unittest.TestCase):
                 "https://adult.contents.fc2.com/"))
         self.assertIn("datanyze-data", ranked[0].url)
 
-    def test_the_app_store_icon_is_no_longer_used(self):
+    def test_the_app_store_icon_is_not_offered(self):
         """用户否决了那一枚：背景多了胶片图案。留着会在下一次改动里被当成现状抄走。"""
         for entries in site_icons.HOST_OVERRIDES.values():
             for url in entries:

@@ -358,7 +358,7 @@ class ServiceStatusTests(unittest.TestCase):
         manager._run.assert_called_once()
 
     def test_a_share_that_will_not_mount_falls_back_to_the_clear_message(self):
-        """挂不上就回到原来那条消息：菜单栏项不能卡住，服务也不该白停一次。"""
+        """挂不上就回到那条固定消息：菜单栏项不能卡住，服务也不该白停一次。"""
         spec = ServiceSpec("http", "http://127.0.0.1/healthz", ("peach", "serve"), True)
         process = Mock()
         process.poll.return_value = None

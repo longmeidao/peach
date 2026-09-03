@@ -209,9 +209,9 @@ class DuplicateIdentityMergeTests(unittest.TestCase):
 class ContainedAssetSetMergeTests(unittest.TestCase):
     """跨 kind 判据放宽到「真子集」后的回归。
 
-    早先只认作品集合完全相同，`哆米`(7 部) 与目录投影 `哆米 Dolmi24`(6 部) 这种
+    只认作品集合完全相同的话，`哆米`(7 部) 与目录投影 `哆米 Dolmi24`(6 部) 这种
     一侧多出一两部的就永远落在判据外——多出的那几部只被 Stash 认成 performer、
-    没有对应本地目录，是常态而不是反证。放宽后名字那一重证据继续兜底。
+    没有对应本地目录，是常态而不是反证。放宽的部分由名字那一重证据兜底。
     """
 
     def setUp(self):

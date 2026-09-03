@@ -35,8 +35,8 @@ def movie_page(*slugs: str) -> str:
 def idol_page(romaji: str, japanese: str = "", alternate: str = "") -> str:
     """照抄真实 idol 页的资料行写法，标签名和名字之间隔着 `</b>`。
 
-    第一版这里按 `JP: 名字` 写，测试全绿而线上一个日文名都没采到——固定件必须是
-    抓回来的那份 HTML，不是照着记忆重画的。
+    固定件必须是抓回来的那份 HTML，不是照着记忆重画的：按 `JP: 名字` 写的固定件
+    能让测试全绿，而线上一个日文名都采不到。
     """
     facts = ""
     if japanese:

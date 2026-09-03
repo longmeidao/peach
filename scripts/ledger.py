@@ -29,8 +29,8 @@ from peach.entities import canonicalize_entity_name, upsert_asset_entity
 from peach.config import DATABASE_PATH
 from peach.platform import declared_root, location_of, location_roots
 
-# 账本位置只有 `peach.config` 一处判据。这里原来写死 `R:\peach-data\...`，那是搬到
-# 内置盘之前的数据根：写死的路径不会报「配置过时」，它只会安静地建一个空库。
+# 账本位置只有 `peach.config` 一处判据，这里不写死 `R:\peach-data\...` 之类的盘上
+# 路径：数据根搬走时写死的路径不会报「配置过时」，它只会安静地建一个空库。
 DB = str(DATABASE_PATH)
 VIDEO = {".mp4", ".m4v", ".mkv", ".avi", ".wmv", ".mov", ".ts", ".flv", ".rmvb", ".mpg", ".m2ts"}
 IMAGE = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}

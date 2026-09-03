@@ -1,7 +1,7 @@
 """「检查更新」这一段共用流程本身的测试。
 
-以前 Web 与命令行各写一遍，两份不等价：命令行没有往回翻页、没有凭据到位后的强制
-重取、也不学官方渠道的作者别名。这里锁住「同一句检查更新在两处做同样的事」。
+Web 与命令行各写一遍必然不等价：其中一份会漏掉往回翻页、漏掉凭据到位后的强制
+重取、不学官方渠道的作者别名。这里锁住「同一句检查更新在两处做同样的事」。
 """
 import contextlib
 import sqlite3
@@ -143,7 +143,7 @@ class PlanCheckTests(_CheckCase):
         """凭据到位而旧候选还标着 needs_credential 时必须绕过条件请求游标。
 
         否则上游回 304，旧解析结果永久不变——配了凭据却什么都没变，用户没法自己
-        看出原因。这一条以前只有 Web 那份有。
+        看出原因。命令行和 Web 走同一份实现，这一条两处都成立。
         """
         source_id = self._register(provider="rule34xxx", ref="tag",
                                    url="https://rule34.xxx/?tags=tag")
@@ -273,7 +273,7 @@ class RunCheckTests(_CheckCase):
     def test_an_official_profile_handle_is_learned_from_one_unambiguous_author(self):
         """fanbox 的 ref 就是作者本人的手柄，可以直接学成别名。
 
-        这一条以前只在 Web 那份检查里有，`peach follow check` 抓同一条来源不会学，
+        这一条只在 Web 那份检查里成立的话，`peach follow check` 抓同一条来源不会学，
         于是同一个人在命令行抓完之后仍然显示成两个作者。
         """
         source_id = self._register()

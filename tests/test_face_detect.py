@@ -68,7 +68,7 @@ class EnsureModelTests(unittest.TestCase):
 
 
 class DetectorContractTests(unittest.TestCase):
-    def test_scripts_no_longer_reach_for_the_removed_cascade_api(self):
+    def test_scripts_do_not_reach_for_the_removed_cascade_api(self):
         """OpenCV 5 的 wheel 里没有 `CascadeClassifier`，也没有级联 XML。
 
         两个脚本此前一起门都进不去，954 张封面 0 个 sidecar——「人脸取景没生效」

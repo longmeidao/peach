@@ -1,9 +1,9 @@
 """跑真的 JS：`web/js/` 里的纯模块按行为验收，不按源码文本验收。
 
 页面源断言（`test_web_ui.py`）能守住「这段代码还在」，守不住「它算得对」。
-以 JAV 标题为例，以前的断言是
-`self.assertPageContains("return it?.is_jav?name.replace(JAV_MEDIA_SUFFIX,''):name")`——
-把三元表达式的写法一起写死了，改成 `if` 就红，而真把条件写反了它照样绿。
+以 JAV 标题为例，
+`self.assertPageContains("return it?.is_jav?name.replace(JAV_MEDIA_SUFFIX,''):name")`
+这样的断言把三元表达式的写法一起写死，改成 `if` 就红，而真把条件写反了它照样绿。
 
 所以纯模块（不碰 DOM、不读 state、输入输出都是值）改用 Node 直接执行：这里给输入
 和期望，Node 那边 `import` 真模块、调真函数、把结果按 JSON 交回来。契约从此是
@@ -100,8 +100,8 @@ class WebJsBehaviourTests(unittest.TestCase):
             ("routes.js", "matchPath", ["/", "/item/7"], None),
             ("routes.js", "matchPath", ["/stats", "/stats"], {}),
             ("routes.js", "matchPath", ["/stats", "/stats/7"], None),
-            # `:id` 只吃数字，且吃完就得刚好用完。非数字必须落空——以前每条动态路由
-            # 自己写这条正则，漏写的那条会把 `/item/abc` 当合法 id 送进 `+parts[1]`。
+            # `:id` 只吃数字，且吃完就得刚好用完。非数字必须落空——每条动态路由
+            # 自己写这条正则的话，漏写的那条会把 `/item/abc` 当合法 id 送进 `+parts[1]`。
             ("routes.js", "matchPath", ["/item/:id", "/item/42"], {"id": 42}),
             ("routes.js", "matchPath", ["/item/:id", "/item/abc"], None),
             ("routes.js", "matchPath", ["/item/:id", "/item/"], None),
@@ -356,8 +356,8 @@ class WebJsBehaviourTests(unittest.TestCase):
         一部本地影片因此被当成直播流。全库有 1440 个视频资产 duration<=0（其中 1101 个
         正好是 -1）。`fmtDur(-1)` 同样算过 `0:-1`，用户在卡片上看到过。
 
-        所以判据是「有限且大于零」，不是「非空」。这条以前按源码文本断言，现在直接
-        拿 -1 去问函数——把三元换成 if 不该让它红，把条件写反才该红。
+        所以判据是「有限且大于零」，不是「非空」。这条直接拿 -1 去问函数，不比对
+        源码文本——把三元换成 if 不该让它红，把条件写反才该红。
         """
         self.assertJsResults([
             ("core.js", "realDuration", [-1], 0),

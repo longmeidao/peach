@@ -47,7 +47,7 @@ class ProviderRegistryTests(unittest.TestCase):
             self.assertEqual(follow_providers.PROVIDERS[key].semantics, "release")
 
     def test_projections_keep_their_original_shapes(self):
-        """各模块的投影形状不变：调用方仍按原来的类型使用它们。"""
+        """各模块的投影形状固定：调用方按声明的类型使用它们。"""
         self.assertIsInstance(_SOURCE_URL, dict)
         self.assertIsInstance(_PROVIDER_HOSTS, dict)
         self.assertIsInstance(PROVIDER_PRIORITY, dict)
@@ -148,8 +148,8 @@ class UrlHostTests(unittest.TestCase):
     def test_url_hosts_are_not_the_media_proxy_allowlist(self):
         """两张表名字像、含义不同：paheal 的站点主机与媒体主机根本不一样。
 
-        曾经想「复用 hosts 就行」——不行。`hosts` 是媒体代理白名单，放宽它等于
-        放宽能被代理取回的地址；`url_hosts` 只决定一条链接归谁解析。
+        「复用 hosts 就行」不成立：`hosts` 是媒体代理白名单，放宽它等于放宽能被
+        代理取回的地址；`url_hosts` 只决定一条链接归谁解析。
         """
         paheal = follow_providers.PROVIDERS["rule34paheal"]
         self.assertEqual(paheal.url_hosts, ("rule34.paheal.net",))
@@ -199,8 +199,8 @@ class ExcludedItemTests(unittest.TestCase):
     def test_hidden_items_are_declared_in_the_registry_not_in_the_web_layer(self):
         """用户点名要隐藏的既有条目登记在这张表上。
 
-        原来是 `web_follow.RULE34VIDEO_EXCLUDED_IDS` 一个裸常量：那是「这个站有
-        哪些条目要藏」的站点数据，跟标签清理、缩略图这些展示逻辑混在同一个文件里。
+        它不是 Web 层的一个裸常量：「这个站有哪些条目要藏」是站点数据，不该跟
+        标签清理、缩略图这些展示逻辑混在同一个文件里。
         """
         excluded = follow_providers.excluded_external_ids()
         self.assertEqual(excluded, {"rule34video": frozenset({"4533145"})})

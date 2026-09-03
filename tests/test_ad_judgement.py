@@ -102,7 +102,7 @@ class AdJudgementTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertIsNotNone(PART_MARK.search(name))
 
-    def test_game_interstitial_padding_no_longer_counts_as_content(self):
+    def test_game_interstitial_padding_does_not_count_as_content(self):
         """手游插页的残留全是固定套话，2026-09-03 之前它们把分数压到门槛以下。
 
         `WAAA-415-uncensored-HD` 目录里这批图命中「扫码」，可剥完剩下的是

@@ -23,7 +23,7 @@ Vite + TypeScript + Preact。迁移方式是 strangler：**遗留路由继续拥
 产物名字不带内容哈希：引用它的 `web/app.js` 不经过构建，构建时改不了那里的路径。
 缓存由服务端兜住：`/dist/` 与 `/app.js`、`/app.css`、`/js/` 同一档，回
 `Cache-Control: no-cache` 加一个 mtime＋字节数的 ETag——每次都回源问，没变时回 304
-零传输，更新语义和以前的 `no-store` 相同。只有 `index.html` 仍是 `no-store`：所有资产
+零传输，更新语义与 `no-store` 等价。只有 `index.html` 用 `no-store`：所有资产
 URL 都从它来，它被缓存住就没人看得到新产物。
 
 ## 开发循环
@@ -138,9 +138,9 @@ await ui.refreshStore('quality-goals');   // 挂着的那屏自己重画，不�
 3. `frontend/test/<page>.test.tsx`：用假 fetch 断言读数口径、空态、失败态与交互。
    遗留模块在测试里走 `frontend/test/stubs/`（只在 `vitest.config.ts` 里 alias，
    不影响构建）。
-4. `web/app.js`：把原来的渲染函数体换成上面那段挂载块，保留 `enterManagementSurface()`
+4. `web/app.js`：把该页的渲染函数体换成上面那段挂载块，保留 `enterManagementSurface()`
    与 `showManagementBody({placeholder:...})`，删掉只服务它的模块级状态。
-5. `tests/test_web_ui.py`：原来对那段渲染源的断言改成断言挂载契约；搬走的语义契约
+5. `tests/test_web_ui.py`：把对那段渲染源的断言换成断言挂载契约；搬走的语义契约
    （中间省略、空态、标签文案）在 `tests/test_frontend_build.py` 的
    `IslandSourceContractTests` 里补回来，不能让它无声消失。
 6. 按顺序跑 `npm --prefix frontend run typecheck`、`& .\scripts\test.ps1 -Scope web`，
@@ -168,8 +168,7 @@ vendor 到 `web/vendor/` 的四个包（video.js、swiper、lucide-static、heal
 `@preact/signals` 钉在 2.11.1：它对 `preact` 的 peer 要求是 `>= 10.25.0`，和这里的
 10.29.8 对得上；运行时另外带一个 `@preact/signals-core`，是它自己的依赖，由 lockfile
 钉住，不进清单。产物因此从 17.7 kB 涨到 31.5 kB（gzip 6.6 → 10.6 kB）：多出来的是
-`signals` + `signals-core` + `preact/hooks` 三份，最后一份以前不在包里——在这之前
-没有任何一个岛用过 hooks。
+`signals` + `signals-core` + `preact/hooks` 三份，第三份随第一个用 hooks 的岛进入。
 
 没有引入 `@testing-library/preact`：`preact` 的 `render` 加 `querySelector` 已经够用，
 断言的本来就是真实 DOM。

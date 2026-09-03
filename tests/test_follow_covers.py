@@ -119,7 +119,7 @@ class FollowCoverServiceTests(unittest.TestCase):
                     self.service.cover(self._item(provider, kind))
 
     def test_the_lock_table_stays_bounded_and_keeps_the_locks_in_use(self):
-        """一条一把锁、URL 一变再加一条，原来只增不减：进程活多久它就长多久。"""
+        """一条一把锁、URL 一变再加一条：只增不减的话，进程活多久它就长多久。"""
         self.service.MAX_TRACKED_LOCKS = 3
         held = self.service._lock_for("held")
         held.acquire()

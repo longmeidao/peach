@@ -23,16 +23,16 @@ SOURCE_ROOT = pathlib.Path(peach.__file__).parent
 
 #: web 层自己。层内互相依赖是正常的。
 #:
-#: 按文件名推导而不是手写清单：这里原本写死四个，而拆分出 `web_review`、
-#: `web_resource_sync`、`web_settings` 之后没人回来更新，那三个模块此后一直不设防。
+#: 按文件名推导而不是手写清单。写死一份清单的话，拆分出 `web_review`、
+#: `web_resource_sync`、`web_settings` 之后没人回来更新，那三个模块就一直不设防。
 #: 守规则的东西自己先漂了，是这条门槛最容易出的故障。
 WEB_MODULES = {path.stem for path in SOURCE_ROOT.glob("web_*.py")}
 
 #: FastAPI 适配层：`api` 是组装点，`routes_*` 是它挂上去的路由表。把 web 层接到
 #: HTTP 上是这一层的职责，方向是对的。
 #:
-#: 和 `WEB_MODULES` 同样按文件名推导。`create_app` 拆成 `routes_auth`/`routes_pages`/
-#: `routes_media`/`routes_api` 时这里原本只写着 `api`，再拆一个模块出来就会被判成
+#: 和 `WEB_MODULES` 同样按文件名推导。只写着 `api` 的话，`create_app` 拆成
+#: `routes_auth`/`routes_pages`/`routes_media`/`routes_api` 之后再拆一个模块就会被判成
 #: 「非 web 模块 import 了 web 层」——门槛报的是假警，改的人只会来把它加进清单。
 ROUTE_MODULES = {path.stem for path in SOURCE_ROOT.glob("routes_*.py")}
 COMPOSITION_ROOTS = {"api"} | ROUTE_MODULES
@@ -62,9 +62,9 @@ def _python_sources() -> list[pathlib.Path]:
 class SharedRuleTests(unittest.TestCase):
     """领域规则只许有一份实现。
 
-    番号归一化曾经有三份：`catalog_rules.normalise_code_key`、
-    `scripts/fetch_jav_covers.normalise_code`、`scripts/scrape_codes.normalise`。
-    三份逐字相同，靠一句「与 scrape_codes 同口径」的注释维持一致——注释不是门槛。
+    番号归一化最容易长出第二份：`catalog_rules.normalise_code_key`、
+    `scripts/fetch_jav_covers.normalise_code`、`scripts/scrape_codes.normalise`
+    三处逐字相同过，靠一句「与 scrape_codes 同口径」的注释维持一致——注释不是门槛。
 
     番号既是身份判定也是封面缓存键：三份一旦漂移，同一部片会解析出两个键，
     封面缓存静默失配，而两边的数都「对」，只是口径不同。

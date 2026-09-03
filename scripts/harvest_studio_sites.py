@@ -206,8 +206,8 @@ def site_verdict(name: str, status: int, body: bytes, title: str,
     # 不是停放页、标题正好是 `prestige.com`——它因此通过了「标题含厂牌名」，被判成
     # Prestige 官网，而真站是 `prestige-av.com`，那是另一家公司。停放页规则拦不住它：
     # 它是个正常的站，只是不属于这个厂牌。
-    # 判据是「标题原样打印了域名，且除域名之外什么都没说」。上一版拿 normalise 后的标题
-    # 去匹配 normalise 后的主机，把真站一起打掉了：`www.naturalhigh.co.jp` 返回 200、
+    # 判据是「标题原样打印了域名，且除域名之外什么都没说」。拿 normalise 后的标题去匹配
+    # normalise 后的主机会把真站一起打掉：`www.naturalhigh.co.jp` 返回 200、
     # 标题正是 `NATURAL HIGH（ナチュラルハイ）`，normalise 成 naturalhigh，必然是
     # naturalhighcojp 的一部分——域名由厂牌名推出来时这两者永远互相包含，这条规则于是
     # 对整类真站失效。域名回显的真正特征是标题里带着 TLD，品牌名不带。
@@ -393,8 +393,8 @@ def run(args) -> int:
         derived_urls = candidate_urls(name)
         derived_hosts = frozenset(
             (urlsplit(u).hostname or "").casefold().removeprefix("www.") for u in derived_urls)
-        # 每个候选的结果都记下来。原来的写法让后一个候选覆盖前一个，一个厂牌试了六个
-        # 地址、复核件上只剩最后那个的理由：`SOD Create` 写着「取不到：ConnectError」，
+        # 每个候选的结果都记下来。让后一个候选覆盖前一个的话，一个厂牌试了六个地址、
+        # 复核件上只剩最后那个的理由：`SOD Create` 写着「取不到：ConnectError」，
         # 而真正值得看的是被它盖掉的 `www.sod.co.jp` —— 200、成人站、标题
         # `SOFT ON DEMAND（ソフト・オン・デマンド）`。判成未取得可以，但要让人看得见
         # 是在哪几个地址上未取得。
