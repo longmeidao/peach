@@ -3148,6 +3148,15 @@ function localTime(iso){
     +`${pad(when.getHours())}:${pad(when.getMinutes())}`;
 }
 
+/* 版式切换只翻容器上的一个属性、不重画列表，所以「去掉年份」不能靠换一次格式化，
+   得让同一份 DOM 两种显示：年份单独包一层，由 CSS 在紧凑版式里收掉。 */
+function localTimeHtml(iso){
+  const text=localTime(iso);
+  return /^\d{4}-/.test(text)
+    ? `<i class="fyear">${esc(text.slice(0,5))}</i>${esc(text.slice(5))}`
+    : esc(text);
+}
+
 function followWhen(item){
   const raw=item.published_at||'';
   if(!raw)return '时间未取得';
@@ -3988,8 +3997,9 @@ function followSourceRow(source){
       +` aria-label="${source.enabled?'暂停':'启用'} ${esc(source.label)} 的更新检查"`)}</label>
     <b><a class="fsourcelink" href="${esc(source.url)}" target="_blank"
       rel="noreferrer noopener" title="打开原来源">${esc(source.label)}</a></b>
-    <span class="fmeta fprovider">${sourceIcon(source.provider)}${esc(source.provider_label)}</span>
-    <span class="fmeta fchecked">${esc(source.last_checked_at?localTime(source.last_checked_at):'未检查')}</span>
+    <span class="fmeta fprovider" title="${esc(source.provider_label)}">${sourceIcon(source.provider)
+      }<span>${esc(source.provider_label)}</span></span>
+    <span class="fmeta fchecked">${source.last_checked_at?localTimeHtml(source.last_checked_at):'未检查'}</span>
     <span class="sbadge ${badge}" title="${esc(stateTitle)}"><i aria-hidden="true"></i>
       ${source.history_exhausted?'<span>没有更多</span>':''}</span>
     <span class="fsourceactions">

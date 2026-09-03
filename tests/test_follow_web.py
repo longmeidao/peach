@@ -1885,19 +1885,59 @@ class FollowWebSourceTests(unittest.TestCase):
         # 版式是纯展示层的事：改容器上的一个属性就够，不重画列表，也不重新请求。
         self.assertPageContains('<div class="frows fsources" data-layout="${followListLayout()}">')
         self.assertPageContains("node.dataset.layout=followListLayout()")
-        # 紧凑就是一行两个；半幅宽度放不下六列，收掉最不影响判断的「上次检查」。
+        # 紧凑就是一行两个；半幅宽度放不下六列，见 test_compact_rows_keep_the_favicon…。
         self.assertPageContains(
             '.fsources[data-layout="compact"]{grid-template-columns:repeat(2,minmax(0,1fr))}')
-        self.assertPageContains('.fsources[data-layout="compact"] .fsource .fchecked{display:none}')
         # 窄屏两栏塞不下，仍旧回到一栏——媒体查询要连紧凑一起覆盖，否则属性选择器更具体。
         self.assertPageContains('.fsources,.fsources[data-layout="compact"]{grid-template-columns:1fr}')
         # 窄屏两栏不成立，开关一起收起，不留一个按了没反应的控件。
         self.assertPageContains('.fsechead .iconswitch{display:none}')
+        # 属性可能还留着上次在宽屏选的 compact；窄屏是整幅一栏，站名不该再收成图标。
+        self.assertPageContains(
+            '.fsources[data-layout="compact"] .fsource .fprovider:has(.ficon)>span{display:inline}')
+        self.assertPageContains(
+            '.fsources[data-layout="compact"] .fsource .fprovider:has(.ficon) .ficon{margin-right:5px}')
         # 选择要留下来，和 JAV 版式一样存进设置。
         self.assertPageContains("javLayout:'big',followLayout:'cozy'")
         self.assertPageContains("appSettings.followLayout=value")
         self.assertPageContains(
             "allowedSetting(appSettings.followLayout,FOLLOW_LAYOUTS.map(([k])=>k),'cozy')")
+
+    def test_compact_rows_keep_the_favicon_and_a_clock_without_the_year(self):
+        """紧凑半幅腾地方的办法是压缩两列，不是删掉一列。
+
+        来源那格收成一枚 favicon——图标已经指认了站点，站名是重复的；上次检查整列回来，
+        只去掉年份，因为看的是最近有没有检查过，年份是这串里最不影响判断的一段。
+        """
+        # 版式切换只翻容器上的属性、不重画列表，所以两种显示得出自同一份 DOM。
+        self.assertPageContains('<i class="fyear">${esc(text.slice(0,5))}</i>${esc(text.slice(5))}')
+        self.assertPageContains("${source.last_checked_at?localTimeHtml(source.last_checked_at):'未检查'}")
+        self.assertPageContains(
+            '.fsources[data-layout="compact"] .fsource .fchecked .fyear{display:none}')
+        # <i> 是包一层用的，不是排版意图。
+        self.assertPageContains(".fsource .fchecked .fyear{font-style:normal}")
+        # 时间列回来后名字那格只剩 118px，35 条里 11 条被截；列间距收到 8px 换回 10px。
+        self.assertPageContains('.fsources[data-layout="compact"] .fsource.frow{gap:8px}')
+        # 站名收起，但仍在 DOM 里，并且悬停能看到。
+        self.assertPageContains(
+            '<span class="fmeta fprovider" title="${esc(source.provider_label)}">')
+        self.assertPageContains("<span>${esc(source.provider_label)}</span></span>")
+        self.assertPageContains(
+            '.fsources[data-layout="compact"] .fsource .fprovider:has(.ficon)>span{display:none}')
+        # 图标右边那 5px 是给站名留的间距，站名收起后跟着去掉。
+        self.assertPageContains(
+            '.fsources[data-layout="compact"] .fsource .fprovider:has(.ficon) .ficon{margin-right:0}')
+
+    def test_a_source_without_a_favicon_keeps_its_name_in_compact(self):
+        """`:has(.ficon)` 是这条规则的全部要害，不能写成无条件隐藏。
+
+        没登记 favicon 的站 `sourceIcon` 直接返回空串；取得下来但加载失败的那些，
+        全局兜底会按 `data-drop="self"` 把 `<img>` 整个摘掉——两种情况下无条件隐藏
+        站名都会留下一格纯空白。`:has` 在 img 被摘掉后会重新求值。
+        """
+        self.assertPageContains(':has(.ficon)>span{display:none}')
+        self.assertIn('data-drop="self"', self.page)
+        self.assertPageContains("function sourceIcon(provider){return SOURCE_ICONS[provider]")
 
     def test_the_layout_switch_lines_up_with_the_sort_box(self):
         """开关和排序框、按钮同处分区标题行，高度必须是同一档。"""

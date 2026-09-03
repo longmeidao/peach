@@ -2260,10 +2260,14 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .frows{display:grid;min-width:0}
 .frows>*{min-width:0}
 .fsources{grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px 22px;align-items:start}
-/* 紧凑版式：一行两个。半幅宽度放不下来源行的六列，收掉「上次检查」——哪个站、
-   成没成功、能不能点都还在，时间是里面最不影响判断的一列。 */
+/* 紧凑版式：一行两个。半幅宽度放不下来源行的六列，来源收成一枚 favicon，时间去掉
+   年份——看的是最近有没有检查过，年份是其中最不影响判断的一段。取不到图标的站保留
+   站名，否则那一格就空了；`:has` 会跟着图片加载失败后被摘掉的 `<img>` 一起重算。 */
 .fsources[data-layout="compact"]{grid-template-columns:repeat(2,minmax(0,1fr))}
-.fsources[data-layout="compact"] .fsource .fchecked{display:none}
+.fsources[data-layout="compact"] .fsource .fprovider:has(.ficon)>span{display:none}
+.fsources[data-layout="compact"] .fsource .fprovider:has(.ficon) .ficon{margin-right:0}
+.fsources[data-layout="compact"] .fsource .fchecked .fyear{display:none}
+.fsource .fchecked .fyear{font-style:normal}
 .frow{display:flex;align-items:center;gap:12px;padding:9px 0;flex-wrap:wrap;
   border-bottom:1px solid var(--border-10)}
 .frows>.frow:last-child{border-bottom:0}
@@ -2295,6 +2299,8 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fauthorsources .fsource:last-child{border-bottom:0}
 .fauthor .fsource.frow{padding-left:0px;display:grid;
   grid-template-columns:22px minmax(0,1fr) auto auto auto auto;gap:10px;flex-wrap:nowrap}
+/* 时间那列回来后名字只剩 118px，35 条里 11 条被截；列间距收到 8px 换回 10px 给名字。 */
+.fsources[data-layout="compact"] .fsource.frow{gap:8px}
 .fauthor .fsource.frow>b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fsource.disabled{opacity:.62}
 .fchannelcheck{display:grid;place-items:center;align-self:center}
@@ -2409,8 +2415,12 @@ details.fcred{display:block}
   .faddform>.fsrcfilter{justify-self:start}
   .frow{gap:8px}
   .fsources,.fsources[data-layout="compact"]{grid-template-columns:1fr}
-  /* 窄屏放不下两栏，紧凑版式在这里不成立；开关跟着收起，不留一个按了没反应的控件。 */
+  /* 窄屏放不下两栏，紧凑版式在这里不成立；开关跟着收起，不留一个按了没反应的控件。
+     属性也可能还留着上次在宽屏选的 compact，那几条压缩规则一并撤销：这里是整幅一栏，
+     没有理由把站名收成图标。 */
   .fsechead .iconswitch{display:none}
+  .fsources[data-layout="compact"] .fsource .fprovider:has(.ficon)>span{display:inline}
+  .fsources[data-layout="compact"] .fsource .fprovider:has(.ficon) .ficon{margin-right:5px}
   .frow .fmeta:nth-of-type(2){display:none}
   .faliasform{grid-template-columns:1fr}
   .faliasform .fbtn{width:100%}
