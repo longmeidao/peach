@@ -5,9 +5,9 @@ import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import {
-  breadcrumbHtml, emptyStateHtml, fieldsetTitle, loadingDotsHtml, mediaViewButtonsHtml, noteHtml,
-  progressHtml, scrollerHtml, setActionBusy, skeletonHtml, spinnerHtml, wireBusyActions,
-  wireScrollers,
+  breadcrumbHtml, emptyStateHtml, fieldsetTitle, iconSwitchHtml, loadingDotsHtml,
+  mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml, setActionBusy, skeletonHtml,
+  spinnerHtml, wireBusyActions, wireCollapse, wireIconSwitch, wireScrollers,
 } from './js/ui-components.js';
 
 initMiddleTruncate(document);
@@ -262,7 +262,7 @@ const SORTS=[['seed','随机'],['rating','评分'],['o','高潮计数'],['plays'
              ['big','体积'],['new','最近入库'],['played','最近看的']];
 const JAV_RELEASE_SORT=['release','发行时间'];
 const SORT_KEYS=[...SORTS,JAV_RELEASE_SORT].map(([key])=>key);
-const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:2,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',ambientMode:true,theaterMode:false,groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
+const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:2,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',followLayout:'cozy',ambientMode:true,theaterMode:false,groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
@@ -3984,13 +3984,35 @@ function followCredentialRow(row){
       ${row.world_readable?'<p class="fnote warn">文件权限过宽，请在运行 Peach 的 POSIX 主机上收紧为 0600。</p>':''}`;
   // 两个分支必须用同一个状态类，否则「不需要」那几行走 .fmeta、其余走 .fstate，
   // 同一列出现两套样式和两种对齐——用户一眼就看出来了。
-  if(!body)return `<div class="frow fcred none"><b>${esc(row.provider_label)}</b>
+  /* 站点标记跟着来源走：凭据配的就是那个站，来源行已经用同一枚 favicon 指认它。
+     槽位固定 14px，不看里面有没有图：没登记 favicon 的站本来就没有，取不下来的那些
+     还会被 data-drop="self" 整个丢掉——两种情况都会让这一列的名字左边缘参差。 */
+  const mark=`<span class="ficonslot" aria-hidden="true">${sourceIcon(row.provider)}</span>`;
+  if(!body)return `<div class="frow fcred none">${mark}<b>${esc(row.provider_label)}</b>
     <span class="fcstate none">${esc(label)}</span></div>`;
   return `<details class="frow fcred ${esc(kind)}${configured?' ok':''}"${needsAttention?' open':''}>
-    <summary><b>${esc(row.provider_label)}</b>
+    <summary>${mark}<b>${esc(row.provider_label)}</b>
       <span class="fcstate ${configured?'done':esc(kind)}">${esc(configured?'已配置':label)}</span>
       ${row.missing.length?`<span class="fcstate missing">缺 ${esc(row.missing.join('、'))}</span>`:''}
     </summary>${body}</details>`;
+}
+
+/* 关注列表版式。默认一行一个，来源行的六列都在；紧凑是一行两个，半幅宽度放不下
+   六列，收掉「上次检查」——哪个站、成没成功、能不能点都还留着，时间是里面最不
+   影响判断的一列。和 JAV 版式共用 iconSwitchHtml，只是 name 与选项不同。 */
+const FOLLOW_LAYOUTS=[['cozy','舒适 · 一行一个','maximize'],['compact','紧凑 · 一行两个','layout-grid']];
+function followListLayout(){
+  return allowedSetting(appSettings.followLayout,FOLLOW_LAYOUTS.map(([k])=>k),'cozy');
+}
+function followLayoutButtons(){
+  return iconSwitchHtml('follow-layout','关注列表版式',FOLLOW_LAYOUTS,followListLayout(),
+    {attr:'data-follow-layout'});
+}
+function setFollowListLayout(value){
+  appSettings.followLayout=value;
+  saveSettings();
+  // 版式是纯展示层的事：改容器上的一个属性就够，不重画列表，也不重新请求。
+  document.querySelectorAll('.fsources').forEach(node=>{node.dataset.layout=followListLayout()});
 }
 
 /* 版式判据来自 docs/reference-sources.json 的 vercel-report-design：
@@ -4036,12 +4058,13 @@ function renderFollowManage(credentials){
             <option value="name"${followManageSort==='name'?' selected':''}>作者名称</option>
             <option value="sources"${followManageSort==='sources'?' selected':''}>来源数量</option>
           </select></label>
+          ${followLayoutButtons()}
           <button class="fbtn" data-follow-check=""${sources.length?'':' disabled'}>${
             icon('refresh-cw')}检查全部</button>
           <button class="fbtn" data-follow-view>${icon('rss')}去看更新</button></div>
         ${followCheckReport?followCheckFailNote(followCheckReport):''}
         ${broken.length?`<p class="fnote warn">${broken.length} 个来源上次检查失败，原因见对应那一行。</p>`:''}
-        ${sources.length?`<div class="frows fsources">${
+        ${sources.length?`<div class="frows fsources" data-layout="${followListLayout()}">${
           followAuthorGroups(sources).map(followAuthorBlock).join('')}</div>
           ${counts.new?`<div class="fsecfoot"><p class="fnote fbulkrow"><span class="fbulkcounts">未看 ${counts.new} · 已看 ${counts.seen||0}
             · 已保存 ${counts.saved||0} · 已忽略 ${counts.ignored||0}</span>
@@ -4129,6 +4152,7 @@ function wireFollowManage(){
     route('/follow-manage'+(followManageSort==='checked'?'':'?sort='+encodeURIComponent(followManageSort)));
     openFollowManage(false);
   };
+  wireIconSwitch(root,'data-follow-layout',setFollowListLayout);
   renderFollowSrcFilter(root.querySelector('#followSrcFilter'));
   const tooltipTrigger=root.querySelector('[data-fdesc-tooltip]');
   const tooltip=root.querySelector('#follow-credential-tooltip');
@@ -4156,53 +4180,10 @@ function wireFollowManage(){
     tooltipTrigger.addEventListener('keydown',event=>{
       if(event.key==='Escape'){tooltipHovered=false;tooltipFocused=false;hideTooltip();tooltipTrigger.blur()}});
   }
-  /* 作者别名的折叠用 Geist Collapse 机制：内容包 .fcollapse，开合时 JS 量
-     scrollHeight 写 inline height 过渡（原生 details 无过渡；此前试过
-     ::details-content 方案会吞内容，已弃）。凭据行是 flex 行布局不接。 */
-  root.querySelectorAll('details.faliasmanager').forEach((details,index)=>{
-    if(details.querySelector(':scope > .fcollapse'))return;
-    const body=document.createElement('div');body.className='fcollapse';
-    /* 内边距放在内层 .fcollapsebody：.fcollapse 自身不带 padding，height 才能
-       真正过渡到 0，否则 border-box 会在 20px 处卡住、收起末尾跳一下。 */
-    const inner=document.createElement('div');inner.className='fcollapsebody';
-    [...details.children].forEach(child=>{
-      if(child.tagName==='SUMMARY')return;
-      inner.appendChild(child)});
-    body.appendChild(inner);details.appendChild(body);
-    const summary=details.querySelector('summary');
-    let expanded=details.open,transitionRun=0;
-    body.id=`follow-alias-collapse-${index}`;
-    body.inert=!expanded;
-    summary.setAttribute('aria-controls',body.id);
-    summary.setAttribute('aria-expanded',String(expanded));
-    const settle=(run,fn)=>{
-      let done=false,timer;
-      const finish=e=>{
-        if(e&&e.propertyName!=='height')return;
-        if(done)return;done=true;
-        body.removeEventListener('transitionend',finish);clearTimeout(timer);
-        if(run===transitionRun)fn()};
-      body.addEventListener('transitionend',finish);
-      timer=setTimeout(finish,260)};
-    summary.addEventListener('click',e=>{
-      e.preventDefault();
-      expanded=!expanded;const run=++transitionRun;
-      summary.setAttribute('aria-expanded',String(expanded));
-      if(expanded){
-        body.inert=false;
-        const start=details.open?body.getBoundingClientRect().height:0;
-        details.open=true;
-        body.style.height=start+'px';body.getBoundingClientRect();
-        body.style.height=body.scrollHeight+'px';
-        settle(run,()=>{body.style.height='auto'});
-      }else{
-        body.inert=true;
-        body.style.height=body.getBoundingClientRect().height+'px';body.getBoundingClientRect();
-        body.style.height='0px';
-        settle(run,()=>{details.open=false;body.style.height=''});
-      }
-    });
-  });
+  /* 作者别名和凭据行都走 Geist Collapse。凭据行早先是 flex 行布局接不上，
+     `details.fcred` 统一成 block 之后两处用的就是同一份实现了。 */
+  wireCollapse(root,'details.faliasmanager','follow-alias-collapse');
+  wireCollapse(root,'details.fcred','follow-cred-collapse');
   const box=form&&form.querySelector('input[name="line"]');
   /* 回车自己接管，不靠隐式提交：没有提交按钮时浏览器只在「表单里仅有一个文本字段」
      才替你提交，而来源筛选的那串复选框就住在同一个 <form> 里。实测按下去什么也不发生。
@@ -5534,11 +5515,11 @@ function javLayout(){
   const raw=JAV_LAYOUT_ALIASES[appSettings.javLayout]||appSettings.javLayout;
   return allowedSetting(raw,JAV_LAYOUTS.map(([k])=>k),'big');
 }
-function javLayoutButtons(){return `<fieldset class="javlayout"><legend class="sr-only">JAV 卡片版式</legend>`+JAV_LAYOUTS.map(([k,label,ic])=>
-  `<label title="${esc(label)}"><input type="radio" name="jav-layout" value="${k}" data-jav-layout
-    ${k===javLayout()?'checked':''}><span aria-hidden="true">${icon(ic)}</span><span class="sr-only">${esc(label)}</span></label>`).join('')+`</fieldset>`}
-function wireJavLayoutButtons(root){root?.querySelectorAll('[data-jav-layout]').forEach(b=>
-  b.onchange=()=>{if(b.checked)setJavLayout(b.value)})}
+function javLayoutButtons(){
+  return iconSwitchHtml('jav-layout','JAV 卡片版式',JAV_LAYOUTS,javLayout(),
+    {attr:'data-jav-layout',className:'javlayout'});
+}
+function wireJavLayoutButtons(root){wireIconSwitch(root,'data-jav-layout',setJavLayout)}
 function setJavLayout(value){
   appSettings.javLayout=value;
   saveSettings();
