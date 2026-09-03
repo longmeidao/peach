@@ -499,6 +499,55 @@ class JavdbCollectTests(unittest.TestCase):
         self.assertTrue(collected[0]["note"].startswith("未取得：HttpStatusError: HTTP 404"))
         self.assertEqual(collected[0]["names"], [])
 
+    def limited(self, pages, status):
+        """除 `pages` 里的地址外，其它一律回限速状态码。"""
+        module = self.module
+
+        class Limited(FakeSite):
+            def get(self, url, refresh=False):
+                if url in self.pages:
+                    return self.pages[url]
+                self.asked.append(url)
+                raise module.HttpStatusError(status)
+
+        site = Limited(pages, HttpStatusError=module.HttpStatusError)
+        site.asked = []
+        return site
+
+    def test_a_rate_limit_ends_the_source_instead_of_grinding_on(self):
+        """403 之后接着翻只会一位撞一次：`Site.request()` 对状态码不重试，那几分钟只出空行。
+
+        2026-09-04 实测就是这样：封了之后那一轮又跑了好几分钟，一条有用的都没产出。
+        """
+        site = self.limited({}, 403)
+        collected = self.module.collect_javdb(site, 0, PERFORMERS)[1]
+        self.assertEqual(len(collected), 1, "只留撞上限速的那一行，后面几位不再发请求")
+        self.assertEqual(site.asked, [self.search("波多野結衣")],
+                         "同一位的其它名字写法也不试了，限速不是这个写法的问题")
+        self.assertTrue(collected[0]["note"].startswith("未取得：HttpStatusError: HTTP 403"))
+
+    def test_429_and_503_end_it_the_same_way(self):
+        for status in (429, 503):
+            with self.subTest(status=status):
+                site = self.limited({}, status)
+                self.assertEqual(
+                    len(self.module.collect_javdb(site, 0, PERFORMERS)[1]), 1)
+
+    def test_what_was_already_collected_survives_the_abort(self):
+        """收工不是丢掉这一轮：封之前取到的页照样进判定，否则等于白跑。"""
+        site = self.limited(self.pages, 403)
+        collected = self.module.collect_javdb(site, 0, [self.kanna, self.yui])[1]
+        self.assertEqual([page["page"] for page in collected[:2]],
+                         ["https://javdb.com/actors/Kn01", "https://javdb.com/actors/Kn02"])
+        self.assertEqual(len(collected), 3)
+
+    def test_javdb_runs_at_a_quarter_of_the_rate_that_got_us_banned(self):
+        """限速规律写进了常量：封之前峰值每分钟 50 页，自己按四分之一跑。"""
+        floor = self.module.SOURCE_INTERVAL["javdb"]
+        self.assertLessEqual(60 / floor, 50 / 4)
+        self.assertGreater(floor, self.module.build_parser().get_default("interval"),
+                           "`--interval` 的默认值压不过来源自己的下限")
+
 
 class JudgeTests(unittest.TestCase):
     def setUp(self):

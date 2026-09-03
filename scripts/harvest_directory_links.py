@@ -78,6 +78,17 @@ PORTRAIT_FIELDS = ("entity_id", "kind", "name", "matched_name", "portrait_url",
 SOURCES = ("laoshi", "bstar", "jae", "javdb")
 #: 直连不通的来源：jae 被对端重置（`WinError 10054`），javdb 直接连接超时。
 PROXY_SOURCES = ("jae", "javdb")
+#: 压过 `--interval` 的按来源最小间隔（秒）。javdb 按出口 IP 自己封速率，实测
+#: 2026-09-04 那一轮：03:22:01 起 8 分钟取到 124 页，中位间隔 1.23 秒、最快 0.76 秒，
+#: 逐分钟成功数 44 / 15 / 6 / 0 / 0 / 0 / 7 / 50 / 2，之后整站每条路径都回 403，
+#: 页面自称封 3～7 日。它不发 `Retry-After`，也不在封之前先降速或给验证码，所以没有
+#: 能一点点试探的余量；这里取封之前那个峰值速率的四分之一（每分钟 12 页）。
+#: 剩下 476 位女优就这么慢慢跑：重跑时缓存命中不花请求，`--limit` 调大即续，无需断点。
+SOURCE_INTERVAL = {"javdb": 5.0}
+#: 判成限速的状态码。javdb 封 IP 时回的是 403（不是 401，也不带任何说明头），
+#: 429 与 503 是常规写法。碰上就整个来源收工，不接着翻下一位：`Site.request()` 对状态码
+#: 不重试，每位女优的每个名字写法都会立刻再撞一次 403，那一轮实测就是几分钟只产出空行。
+RATE_LIMIT_STATUS = frozenset({403, 429, 503})
 ALIVE, GONE, UNVERIFIED, UNKNOWN = "活", "疑似失效", "未验", "未取得"
 #: X 的显示名自己写明是应援号（`篠田あゆみ様の応援垢`、`💟応援アカウント`）。名录页把它
 #: 当本人账号挂着，验活也是「活」——这个账号确实活着，只是不是这个人的。名录里 11 条这样的
@@ -300,6 +311,11 @@ def owned_link(url: str, shown: str) -> tuple[str, str]:
 
 def failed(source: str, url: str, exc: Exception) -> dict:
     return page_record(source, url, [], [], note=f"未取得：{type(exc).__name__}: {exc}"[:160])
+
+
+def rate_limited(exc: Exception) -> bool:
+    """这个异常是不是「对方在限我速」，而不是这一页本身有问题。"""
+    return isinstance(exc, HttpStatusError) and exc.status in RATE_LIMIT_STATUS
 
 
 def collect_laoshi(site: Site, limit: int = 0) -> tuple[list[str], list[dict]]:
@@ -549,19 +565,22 @@ def collect_javdb(site: Site, limit: int, performers: list[dict]) -> tuple[list[
         wanted = {name_key(name) for name in record["chain"]}
         details: list[str] = []
         broken = None
+        stop = False
         search = ""
         for name in record["chain"]:
             search = JAVDB_SEARCH.format(quote(name))
             try:
                 html = site.get(search)
             except Exception as exc:
-                broken = failed("javdb", search, exc)
+                broken, stop = failed("javdb", search, exc), rate_limited(exc)
                 break
             details = javdb_hits(html, wanted)
             if details:
                 break
         if broken is not None:
             pages.append(broken)
+            if stop:
+                break
             continue
         if not details:
             pages.append(page_record(
@@ -573,6 +592,9 @@ def collect_javdb(site: Site, limit: int, performers: list[dict]) -> tuple[list[
                 html = site.get(detail)
             except Exception as exc:
                 pages.append(failed("javdb", detail, exc))
+                stop = rate_limited(exc)
+                if stop:
+                    break
                 continue
             if JAVDB_LOGIN.search(html):
                 pages.append(page_record("javdb", detail, record["chain"], [],
@@ -580,6 +602,8 @@ def collect_javdb(site: Site, limit: int, performers: list[dict]) -> tuple[list[
                 continue
             pages.append(page_record("javdb", detail, javdb_names(html), javdb_links(html),
                                      portrait=javdb_portrait(html)))
+        if stop:
+            break
     return [], pages
 
 
@@ -852,7 +876,8 @@ def run(args) -> int:
     totals: Counter = Counter()
     sources = SOURCES if args.source == "all" else (args.source,)
     for source in sources:
-        site = Site(args.cache_dir / source, args.interval, args.timeout, refresh=args.refresh,
+        interval = max(args.interval, SOURCE_INTERVAL.get(source, 0.0))
+        site = Site(args.cache_dir / source, interval, args.timeout, refresh=args.refresh,
                     via_proxy=source in PROXY_SOURCES)
         collector = COLLECTORS.get(source)
         try:

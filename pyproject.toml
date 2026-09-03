@@ -33,6 +33,8 @@ build = ["pyinstaller==6.22.2"]
 macos = ["pyobjc-framework-Cocoa==12.2.2; sys_platform == 'darwin'"]
 vision = ["opencv-python-headless==5.0.0.93"]
 maintenance-115 = ["p115client==0.0.9.6.5.1"]
+# 字形表的复核轮子，只有 tests/test_performer_localization.py 用它对账。
+naming = ["opencc==1.4.2"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

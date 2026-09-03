@@ -5,13 +5,18 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import opencc
+
 from peach.migrations import upgrade
 from scripts.localize_performer_names import (
-    KANJI_ALIAS_SOURCE, apply_rows, collect, main, read_identity_review, read_mapping,
-    report_conflicts, simplify_kanji, strip_zero_width,
+    JP_KANJI_TO_SIMPLIFIED, KANJI_ALIAS_SOURCE, apply_rows, collect, main,
+    read_identity_review, read_mapping, report_conflicts, simplify_kanji,
+    strip_zero_width,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+OPENCC_T2S = opencc.OpenCC("t2s")
+OPENCC_JP2T = opencc.OpenCC("jp2t")
 
 
 class PerformerLocalizationTests(unittest.TestCase):
@@ -147,7 +152,7 @@ class PerformerLocalizationTests(unittest.TestCase):
     def test_kanji_simplification_only_touches_names_it_can_finish(self):
         """字形归一只处理纯汉字名；假名和罗马字要的是译名，不是逐字换。"""
         self.assertEqual(simplify_kanji("高山涼音"), "高山凉音")
-        self.assertEqual(simplify_kanji("斎藤満里奈"), "齐藤满里奈")
+        self.assertEqual(simplify_kanji("斎藤満里奈"), "斋藤满里奈")
         self.assertEqual(simplify_kanji("浜崎真緒"), "滨崎真绪")
         # 「々」是叠字符号，展开成前一个字，否则名字还是半个日文。
         self.assertEqual(simplify_kanji("野々宮蘭"), "野野宫兰")
@@ -164,7 +169,7 @@ class PerformerLocalizationTests(unittest.TestCase):
         """映射里没有这个人，字形照样要归一——这一道不需要外部来源。"""
         rows = {int(row["entity_id"]): row for row in collect(
             self.con, [], read_identity_review(self.review), "kanji-only")}
-        self.assertEqual(rows[16]["target_name"], "齐藤满里奈")
+        self.assertEqual(rows[16]["target_name"], "斋藤满里奈")
         self.assertEqual(rows[16]["action"], "localize-kanji")
         self.assertIn("kanji-simplification", rows[16]["resolution"])
         # 账号型 performer 不翻译，但换字形不是翻译：同一个字的两种写法而已。
@@ -174,9 +179,10 @@ class PerformerLocalizationTests(unittest.TestCase):
         self.assertEqual(rows[18]["target_name"], "飯岡かなこ")
 
     def test_upstream_glyph_noise_in_the_canonical_name_is_normalised(self):
-        """`斋` 是 `斋`，`斎` 是 `齐`；零宽字符根本不该出现在名字里。"""
+        """`斎`／`齋` 都是 `斋`，`斉`／`齊` 才是 `齐`；零宽字符根本不该出现在名字里。"""
         self.assertEqual(strip_zero_width("\u200c斋藤亚美里"), "斋藤亚美里")
-        # 换的是名字里实际写的那个字：`齋` 的简体是 `斋`，`斎`／`斉`／`齊` 才是 `齐`。
+        # 换的是名字里实际写的那个字，不按日文一侧的写法去推断中文名写错了。
+        self.assertEqual(simplify_kanji("斎藤満里奈"), "斋藤满里奈")
         self.assertEqual(simplify_kanji("安齋良良"), "安斋良良")
         self.assertEqual(simplify_kanji("斉藤美来"), "齐藤美来")
         rows = {int(row["entity_id"]): row for row in collect(
@@ -195,7 +201,7 @@ class PerformerLocalizationTests(unittest.TestCase):
         apply_rows(self.con, plan, "kanji-only")
         self.con.commit()
         names = dict(self.con.execute("SELECT id,canonical_name FROM entity"))
-        self.assertEqual(names[16], "齐藤满里奈")
+        self.assertEqual(names[16], "斋藤满里奈")
         self.assertEqual(names[17], "野野宫兰")
         self.assertEqual(names[18], "飯岡かなこ")
         aliases = dict(self.con.execute(
@@ -203,14 +209,14 @@ class PerformerLocalizationTests(unittest.TestCase):
         # 旧字形留成别名，否则来源那边再抓一次就又建一个新实体。
         self.assertEqual(aliases["斎藤満里奈"], KANJI_ALIAS_SOURCE)
         tags = dict(self.con.execute("SELECT asset_id,tag FROM asset_tag ORDER BY asset_id"))
-        self.assertEqual(tags[6], "演员:齐藤满里奈")
+        self.assertEqual(tags[6], "演员:斋藤满里奈")
         self.assertEqual(tags[7], "演员:野野宫兰")
 
     def test_simplified_name_colliding_with_an_existing_entity_is_a_conflict(self):
         """换完字形撞上库里已有的同名实体时不猜，交给人合并。"""
         self.con.execute(
             "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
-            "VALUES(19,'performer','齐藤满里奈','齐藤满里奈','t','t')")
+            "VALUES(19,'performer','斋藤满里奈','斋藤满里奈','t','t')")
         self.con.commit()
         rows = {int(row["entity_id"]): row for row in collect(
             self.con, [], read_identity_review(self.review), "kanji-only")}
@@ -232,11 +238,43 @@ class PerformerLocalizationTests(unittest.TestCase):
               "--review-csv", str(out)])
         planned = {row["current_name"]: row for row in csv.DictReader(
             out.open(encoding="utf-8-sig"))}
-        self.assertEqual(planned["斎藤満里奈"]["target_name"], "齐藤满里奈")
+        self.assertEqual(planned["斎藤満里奈"]["target_name"], "斋藤满里奈")
         self.assertEqual(planned["斎藤満里奈"]["revision"], "kanji-only")
         with self.assertRaises(SystemExit):
             main(["--db", str(self.db), "--mapping-xml", str(self.mapping),
                   "--review-csv", str(out)])
+
+
+class KanjiTableAgainstOpenCCTests(unittest.TestCase):
+    """字形表逐字对 opencc 复核，手写的对应关系不作数。
+
+    这张表是手写的，写错一个字就是把人改名成另一个人：`斎` 曾被写成 `齐`，于是
+    `斎藤満里奈` 落成 `齐藤满里奈`（账本实体 8013），而 `斎` 的简体是 `斋`。
+    """
+
+    #: 两步取参考值：`t2s` 只认繁体，日本新字体（`斎`、`嶋`）它原样返回；先用 `jp2t`
+    #: 还原成旧字体再 `t2s`，才能得到简体。反过来先 `jp2t` 会把本来就是繁体的字换错
+    #: （`並` → `竝`、`緒` → `緖`），所以顺序不能颠倒。
+    @staticmethod
+    def reference(ch):
+        direct = OPENCC_T2S.convert(ch)
+        return direct if direct != ch else OPENCC_T2S.convert(OPENCC_JP2T.convert(ch))
+
+    #: opencc 给不出可用简体、由本表自己定的三个字。前两个是简体里确实没有的字形，
+    #: opencc 原样留着（`嶋` → `嶋`、`姫` → `姫`），本库按大陆资料页的写法归到常用字；
+    #: `渋` 的旧字体是 `澁`，`t2s` 不动它，简体实际写 `涩`。
+    CURATED = {"嶋": "岛", "姫": "姬", "渋": "涩"}
+
+    def test_every_mapping_matches_opencc_or_is_a_declared_exception(self):
+        disagree = {ch: (ours, self.reference(ch))
+                    for ch, ours in JP_KANJI_TO_SIMPLIFIED.items()
+                    if self.reference(ch) != ours}
+        self.assertEqual({ch: ours for ch, (ours, _) in disagree.items()}, self.CURATED)
+
+    def test_the_declared_exceptions_are_still_ones_opencc_cannot_do(self):
+        """例外要留在名单里，得是 opencc 真的给不出这个简体，不是我们不想照它写。"""
+        for ch, ours in self.CURATED.items():
+            self.assertNotEqual(self.reference(ch), ours, ch)
 
 
 if __name__ == "__main__":
