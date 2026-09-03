@@ -253,10 +253,136 @@
 | 设置面板 | 圆角半透明浮层，主层展示氛围模式、播放速度、清晰度；子层选择实际值 | Peach 复用现有清晰度等级和 Video.js `playbackRate`，加入同层氛围开关与返回式子菜单；不画没有实现的睡眠定时 |
 | 影院模式 | 独立图标按钮，展开／收回使用不同图标，悬停提示包含 `T` 快捷键 | 两态图标和「影院模式／默认视图」文案随状态同步；按钮、`T` 键和持久设置共用同一状态 |
 | 氛围模式 | 官方说明为视频颜色扩散到背景，深色主题默认开，可在设置中为所有视频关闭 | Peach 原有 32×18 当前帧取色、模糊画布方向一致；补全全局持久开关，并让本地和在线视频共用 |
-| 窄屏 | 截图未提供 | Peach 保留两排结构，隐藏 10 秒按钮以避免横向溢出 |
+| 窄屏 | 播放器源码给出门槛与折叠行为（见下节） | 播放器宽度 < 528 时右侧只留设置键和一个 180° 旋转的展开箭头，点开才铺开其余按钮；判据是播放器自身宽度，不是视口 |
+| 悬停提示 | `www-player.css` 的毛玻璃提示与快捷键徽标 | 控制条上每个按钮共用 `.vjs-peach-tooltip`，播放 `K`、静音 `M`、画中画 `I`、全屏 `F`、影院 `T`；音量百分比抬到控制条上方并同用这套外观 |
 
 ## Peach 主动保留的差异
 
 - 不复制 YouTube 品牌、字幕、睡眠定时和自动播放开关；没有真实能力就不画假按钮。
 - 保留 Video.js、键盘前后跳转、画中画、影院模式、全屏和真实清晰度菜单；控制栏与中央覆盖层都不重复画前后 10 秒按钮。
 - 单一路源只显示实测分辨率或原画；`HD`／`4K` 只是当前媒体等级标记，不伪造可切换线路。
+
+## 窄屏折叠与悬停提示取证（2026-09-03）
+
+用户第九轮指出窄屏下按钮显隐仍与 YouTube 不一致、控制条会超框，并要求把提示统一成
+YouTube 那套（含快捷键）。浏览器面板打不开 youtube.com——文档本身回 200，但每个
+`www.youtube.com/s/*` 资源和 `/favicon.ico` 都是 `net::ERR_BLOCKED_BY_CLIENT`，
+同一面板里 Wikipedia 完整加载，同一台机器上 Python `urllib` 又能取到观看页和播放器资源。
+所以那是浏览器工具自己的客户端拦截，不是网络、代理或 Peach 的问题，也不影响本轮取证：
+证据全部走 Python 通道取自播放器资源本体。
+
+| 项 | 值 |
+| --- | --- |
+| 播放器版本 | `9470c977`（delhi-modern skin） |
+| `www-player.css` | 542,776 字节，SHA-256 `96e3e223db36f20082cbc5b5393a6c783c91cd0d52b4d338857e1c2abbc0deeb` |
+| `base.js` | 2,951,684 字节，SHA-256 `f75ee405ab74138520caa120ba03e1e0ba5c98e416ac1bd6bf37087dcb351be8` |
+| 窄屏门槛 | `base.js` 里 `v.width<528` 打开 `ytp-xsmall-width-mode` |
+| 提示外观 | `rgba(0,0,0,.3)` 底、`blur(16px)` 毛玻璃、8px 圆角、5px 9px 内距、13px/15px 500 字重、`text-shadow:0 0 2px #000` |
+| 快捷键徽标 | 1px `rgba(255,255,255,.3)` 边、4px 圆角、最小宽 11px、左外边距 4px |
+
+### Peach 主动保留的差异
+
+- 展开后 YouTube 用 `visibility:hidden` 把时间显示藏起来、位置照占；Peach 用 `display:none`
+  让出那段宽度。Peach 的控制条比 YouTube 窄，留着空位在 528 以下会重新超框。
+- 门槛用 `ResizeObserver` 观察 `player.el()` 而不是媒体查询：同一个视口下影院模式和
+  普通视图的播放器宽度差一大截，用视口判据会在影院模式下白折叠、在普通视图下继续超框。
+- 提示的圆角与字号取 Peach 自己的 `--surface-radius`（8px）、`--badge-radius`（4px）与
+  `--fs-sm`（13px），数值与 YouTube 一致但走本项目的词汇表。
+
+### 报错文案与统计面板重叠（同轮）
+
+用户报「报错又不是居正中导致重叠」。实测报错文字**本来就是精确居中的**：文字中心
+x=476 对播放器中心 x=476，y=437.5 对 437.5，2026-08-28 那次居中修复（`937f360`）完好。
+压住它的是 `.playerstats`（`left:11px;top:58px;z-index:8`，实测 l=100 r=488 t=245 b=443），
+它盖住了居中那行左侧约 180px。所以本轮改的不是居中：撤掉 Video.js 铺满全画面的渐变，
+把报错做成一张自带底色、`z-index:9` 的紧凑卡片。加载失败时统计面板里的编码、分辨率、
+体积和请求方式正是要看的东西，不能用报错把它整块糊掉。
+
+## 设置面板动画与展开键取证（2026-09-03，第十五轮之后同日）
+
+用户第十六轮要求：设置面板要有渐入渐退、次级菜单要有进入退出动画；窄屏那个展开键排到左侧、
+图标别那么细、也要有和其余按钮一样的 hover。证据仍走 Python 通道取自上表那份
+`www-player.css`（播放器 `9470c977`，542,776 字节，SHA-256
+`96e3e223db36f20082cbc5b5393a6c783c91cd0d52b4d338857e1c2abbc0deeb`），不是同一版本就不能引用下表。
+
+| 项 | 上游原文 | Peach 实现 |
+| --- | --- | --- |
+| 浮层淡入 | `.ytp-popup{transition:opacity .1s cubic-bezier(0,0,.2,1)}` | `.vjs-peach-settings-menu` 同曲线同时长 |
+| 浮层淡出 | `.ytp-popup[aria-hidden=true]{opacity:0;transition:opacity .1s cubic-bezier(.4,0,1,1)}` | 关闭态由 `aria-hidden="true"` 驱动，同曲线 |
+| 面板换层 | `.ytp-popup-animating` 与 `.ytp-popup-animating .ytp-panel` 都是 `all .25s cubic-bezier(.4,0,.2,1)` | 同时长同曲线 |
+| 进出方向 | `.ytp-panel-animate-back{opacity:0;transform:translateX(-100%)}`、`.ytp-panel-animate-forward{opacity:0;transform:translateX(100%)}` | 类名与数值一一对应 |
+| 展开键图标 | `.ytp-xsmall-width-mode.ytp-delhi-modern-icons .ytp-right-controls .ytp-button:not(.ytp-expand-right-bottom-section-button) svg{width:18px;height:18px;padding:7px}`，紧接着 `.ytp-expand-right-bottom-section-button.ytp-button svg{padding:0}` | 窄屏其余键的 svg 缩到 18px，展开键排除在外并铺满 32px |
+
+### Peach 主动保留的差异
+
+- 上游过渡的是 `all`；Peach 只过渡 `height`（容器）与 `transform`/`opacity`（面板）。`all` 会把
+  面板里的 hover 底色、边框和 `visibility` 一并接进这条 .25s 曲线，返回时整块面板要慢半拍才亮。
+- 关闭态不用 `display:none`：那样没有可过渡的中间态。`visibility` 用 `transition:visibility 0s .1s`
+  延后到淡出结束，面板既退出无障碍树也不再接命中测试。
+- 展开键靠左是用户当场的要求。`www-player.css` 只给出显隐、旋转和图标内边距，**没有**任何
+  能推出这一簇按钮排列顺序的规则，`base.js` 里的插入顺序本轮**未取得**；所以这一条按用户要求实现，
+  不声称是对 YouTube 的复刻。
+- hover 高亮沿用 Peach 自己的 `.vjs-peach-hover`（`.vjs-control>.vjs-peach-hover`），因此展开键的
+  高亮层必须是按钮的兄弟节点，不能塞进 `<button>` 里。
+- 悬停提示底色偏离上游：`www-player.css` 的 `.ytp-tooltip` 是 `rgba(0,0,0,.3)` 配 `blur(16px)`，
+  落在 Peach 的亮画面上只剩一块低对比灰板，看着像悬停时凭空多出来一块阴影。Peach 一律
+  `rgba(0,0,0,.6)`，和播放键、音量条、统计钮这些悬浮件同一档黑。
+
+### 同轮的两个非参考项
+
+- 加载速度徽标改成仪表盘图标加一行速率，与 YouTube 无关：Peach 自己的浮层，图标取本地
+  sprite 的 `i-gauge`（lucide 描边图形），容器必须声明 `stroke:currentColor;fill:none`，
+  否则按 SVG 默认的 fill 画成黑色实心块。
+- 窄屏两个浮层超框由 Peach 自己的版式决定：390 宽视口上 16:9 的播放器只有 200 出头的高，
+  设置面板要 212、统计面板要 256。播放器给 320px 最低高度改成上下留黑边，两个浮层各自按
+  播放器高度收顶。窄屏设置面板的高度上限走 `--peach-player-h`——面板的定位祖先只有 36px 高，
+  百分比取不到播放器。收顶取播放器高度减 74px：面板底边离播放器底边 66px（离设置键 52px
+  加控制条 14px），顶上再留 8px，320px 的播放器给出 246px。选项多到八档的列表单列要
+  57+16+8×48=457px，窄屏改成选项多于四条时排两列、行高压到 44px，57+8+4×44=241px。
+
+## 播放速度面板与中心提示取证（2026-09-03，同日第十七轮）
+
+用户第十七轮要求：播放速度的样式照 YouTube 对齐；开关静音要在画面中心显示图标；播放键与
+静音键点击要有和 YouTube 一样的渐变动画；标题行那两个动作紧贴文字末尾、上下别挤在一起。
+证据是同日重取的同一版播放器 `9470c977`：`www-player.css` 542,776 字节，SHA-256
+`96e3e223db36f20082cbc5b5393a6c783c91cd0d52b4d338857e1c2abbc0deeb`（与上一节一致）；
+`player_ias.vflset/en_US/base.js` 2,951,684 字节，SHA-256
+`f75ee405ab74138520caa120ba03e1e0ba5c98e416ac1bd6bf37087dcb351be8`。
+
+| 项 | 上游原文 | Peach 实现 |
+| --- | --- | --- |
+| 面板内容区 | `.ytp-variable-speed-panel-content{display:flex;flex-direction:column;padding:24px 16px 16px}` | `.vjs-peach-speed-panel` 同值 |
+| 倍速读数 | `.ytp-speed-display-container{display:flex;justify-content:center;margin-bottom:24px}`、`.ytp-variable-speed-panel-display{font-size:18px;font-weight:900;line-height:22px}` | `.vjs-peach-speed-display` 居中、下留 24px、行高 22px，字号字重见下方差异 |
+| 滑条一行 | `.ytp-variable-speed-panel-slider-container{display:flex;gap:16px;margin-bottom:24px}`，内含 `.ytp-input-slider{width:100%}` | `.vjs-peach-speed-slider` 同值，滑条 `flex:1 1 auto;width:100%` |
+| 加减键 | `.ytp-variable-speed-panel-slider-container .ytp-variable-speed-panel-button{font-size:24px;width:32px}`；`base.js` 的 `aria-label` 是 `Decrease playback speed 0.05` / `Increase playback speed 0.05`，动作是 `setPlaybackRate(Number((getPlaybackRate()∓.05).toFixed(2)))` | 32px 圆键、24px 字，每次 ±0.05 并按两位小数收敛 |
+| 预设胶囊 | `.ytp-variable-speed-panel-chips{display:flex;gap:8px;align-items:flex-start}`、`.ytp-variable-speed-panel-chips .ytp-variable-speed-panel-button{font-size:12px;width:53px;display:flex;align-items:center;justify-content:center;gap:4px}` | `.vjs-peach-speed-chips` 与 `.vjs-peach-speed-chips .vjs-peach-speed-button` 同值 |
+| 胶囊外观 | `.ytp-variable-speed-panel-button{height:32px;border-radius:16px;background-color:rgba(255,255,255,.1);font-weight:500;line-height:16px;transition:background-color .2s cubic-bezier(.05,0,0,1)}`，`:hover` `.2`、`:active` `.3` | 同高、同底色、同悬停与按下、同曲线 |
+| 1.0 的说明 | `.ytp-variable-speed-panel-preset-button-wrapper{display:flex;flex-direction:column;align-items:center}`、`.ytp-variable-speed-panel-preset-button-label-text{font-size:10px;line-height:14px;margin-top:4px;font-weight:400;color:rgba(255,255,255,.7)}` | `.vjs-peach-speed-preset` 与 `.vjs-peach-speed-preset-label`，写「正常」，行高 14px、字重 400、同色 |
+| 滑条轨道 | `.ytp-input-slider::-webkit-slider-runnable-track{height:4px;border-radius:12px;background:linear-gradient(to right,#fff 0,#fff var(--yt-slider-shape-gradient-percent),#666 …)}`，`.ytp-varispeed-input-slider` 那条把 `#666` 换成 `#909090` | 轨道 4px、同渐变结构，余下部分取倍速专用的 `#909090`，比例走 `--peach-speed-percent` |
+| 滑条把手 | `.ytp-input-slider::-webkit-slider-thumb{background:#fff;width:16px;height:16px;border-radius:8px;margin-top:-6px}` | 同值 |
+| 滑条区间 | `base.js` 里滑条构造成 `(可用倍速[0], 可用倍速[末], .05, 当前倍速)` | 两端取播放器支持的最低与最高倍速（0.25–2），步进 0.05 |
+| 中心提示圆 | `.ytp-delhi-modern .ytp-bezel{left:50%;top:50%;width:78px;height:78px;margin-left:-39px;margin-top:-39px;border-radius:39px;backdrop-filter:blur(16px);background:rgba(0,0,0,.6)}`、`.ytp-bezel{position:absolute;z-index:19;pointer-events:none}` | `.vjs-peach-bezel` 同值，圆角写 50% |
+| 提示图标 | `.ytp-delhi-modern .ytp-bezel-icon{width:54px;height:54px;margin:12px}`；窄屏 `.ytp-delhi-modern.ytp-xsmall-width-mode .ytp-bezel{width:64px;height:64px;…}` 配 `48px` 图标 | `.vjs-peach-bezel-icon` 54px，窄屏 64px 圆配 48px 图标 |
+| 提示动画 | `animation:ytp-delhi-modern-bezel-fadeout 1s cubic-bezier(.05,0,0,1) 1 normal forwards`，关键帧 `0%{opacity:0}25%,75%{opacity:1;transform:scale(1.33)}to{opacity:0;transform:scale(1)}` | `peach-bezel-fadeout` 同曲线同关键帧 |
+| 提示时长 | `base.js` 里 delhi-modern 的隐藏定时是 1000ms（其余皮肤 500ms） | 同为 1000ms |
+| 提示语义 | `<div class="ytp-bezel" role="status" aria-label="{{label}}">` | 同为 `role="status"`，`aria-label` 写这一次的动作名 |
+| 展开键箭头 | 该按钮自带图标：`viewBox="0 0 32 32"`、`width/height:100%`、路径 `m 12.59,20.34 4.58,-4.59 -4.58,-4.59 1.41,-1.41 6,6 -6,6 z`（两个单位粗），配 `svg{padding:0}` | 新增 sprite `i-player-expand`，同视框同路径，窄屏铺满 32px |
+| 窄屏悬停底 | `.ytp-delhi-modern.ytp-xsmall-width-mode .ytp-chrome-bottom .ytp-button:not(.ytp-live-badge):before{border-radius:50%;height:32px;width:32px}`，按钮本体 `32px` 配 `margin:4px 2px` | 窄屏这一排的 `.vjs-peach-hover` 收成 32×32 正圆，落在 40px 行高里 36px 的一格中间 |
+
+### Peach 主动保留的差异
+
+- 预设只有 1.0／1.25／1.5／2.0 四格。上游第五格是 3.0，带 Premium 角标（`.ytp-variable-speed-panel-chips`
+  里那 `gap:4px` 就是给角标留的），Peach 没有会员分级，做出来只是个永远点得动的假角标。
+- 读数、说明、胶囊圆角走 Peach 自己的 token：上游读数那档 `18px/900` 和说明那档 `10px` 都不在
+  Peach 的字号刻度上，`900` 也不在 Geist 的三档字重里，`tests/test_web_ui.py` 的三条词汇表测试
+  直接拒收。胶囊 32px 高、轨道 4px 高，圆角本来就大于自身高度的一半，`--pill-radius`（999px）
+  的渲染结果与上游的 `16px`／`12px` 逐像素相同。
+- 不做 `.ytp-bezel-text`（上游调音量时在画面上方写百分比）。Peach 的音量条上方常驻百分比，
+  再叠一层就是同一个数字出现两处。
+- 中心提示由控制条上的捕获阶段点击触发，认 `.vjs-play-control` 与 `.vjs-mute-control`。上游的
+  bezel 由它自己的动作分发层驱动，**本轮未取得**「点击控制栏按钮是否也闪」的判据；用户明确要求
+  点击要有这个动画，所以按用户要求实现，不声称这一处触发时机是对 YouTube 的复刻。
+- 标题行的定位文件与刷新紧跟标题文字末尾，是用户当场的版式要求，与 YouTube 无关。行内块加
+  上下各 3px 外边距，把它所在那一行的行盒撑到 32px。代价写清楚：最后一行剩余宽度放不下这
+  66px 时，浏览器会把这两个按钮移到下一行开头——「紧贴文字末尾」和「永不单独占一行」在
+  行内流里不可能同时成立。

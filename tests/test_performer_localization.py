@@ -1,4 +1,4 @@
-"""番号体系女优中译：来源匹配、同人合并与兼容标签同步。"""
+"""番号体系女优中译：来源匹配、同人合并、日本字形归一与兼容标签同步。"""
 import csv
 import sqlite3
 import tempfile
@@ -7,7 +7,8 @@ from pathlib import Path
 
 from peach.migrations import upgrade
 from scripts.localize_performer_names import (
-    apply_rows, collect, read_identity_review, read_mapping,
+    KANJI_ALIAS_SOURCE, apply_rows, collect, main, read_identity_review, read_mapping,
+    simplify_kanji,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,7 +25,8 @@ class PerformerLocalizationTests(unittest.TestCase):
             "INSERT INTO asset(id,location,path,name,medium) VALUES(?,'local',?,?,'video')",
             [(1, "/x/1.mp4", "1.mp4"), (2, "/x/2.mp4", "2.mp4"),
              (3, "/x/3.mp4", "3.mp4"), (4, "/x/4.mp4", "4.mp4"),
-             (5, "/x/5.mp4", "5.mp4")])
+             (5, "/x/5.mp4", "5.mp4"), (6, "/x/6.mp4", "6.mp4"),
+             (7, "/x/7.mp4", "7.mp4"), (8, "/x/8.mp4", "8.mp4")])
         self.con.executemany(
             "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
             "VALUES(?,'performer',?,?, 't','t')",
@@ -33,18 +35,24 @@ class PerformerLocalizationTests(unittest.TestCase):
              (12, "吉川蓮", "吉川蓮"),
              (13, "Unknown Roman", "unknown roman"),
              (14, "account_01", "account_01"),
-             (15, "Hitomi Hoshiya", "hitomi hoshiya")])
+             (15, "Hitomi Hoshiya", "hitomi hoshiya"),
+             (16, "斎藤満里奈", "斎藤満里奈"),
+             (17, "野々宮蘭", "野々宮蘭"),
+             (18, "飯岡かなこ", "飯岡かなこ")])
         self.con.executemany(
             "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
             "VALUES(?,?,'performer',?,1.0)",
             [(1, 10, "r18:performer"), (2, 11, "r18:performer"),
              (3, 12, "r18:performer"), (4, 13, "r18:performer"),
-             (4, 14, "performer"), (5, 15, "r18:performer")])
+             (4, 14, "performer"), (5, 15, "r18:performer"),
+             (6, 16, "r18:performer"), (7, 17, "performer"),
+             (8, 18, "r18:performer")])
         self.con.executemany(
             "INSERT INTO asset_tag(asset_id,tag,confidence,source) VALUES(?,?,1.0,'r18:performer')",
             [(1, "演员:Alice Shaku"), (2, "演员:Mio Hayakawa"),
              (3, "演员:吉川蓮"), (4, "演员:Unknown Roman"),
-             (5, "演员:Hitomi Hoshiya")])
+             (5, "演员:Hitomi Hoshiya"), (6, "演员:斎藤満里奈"),
+             (7, "演员:野々宮蘭"), (8, "演员:飯岡かなこ")])
         self.con.execute(
             "INSERT INTO entity_external_ref(entity_id,provider,external_kind,external_id) "
             "VALUES(15,'r18','performer_name','星谷瞳')")
@@ -122,6 +130,77 @@ class PerformerLocalizationTests(unittest.TestCase):
         self.assertEqual(tags[5], "演员:星谷瞳")
         self.assertEqual(counts["merged"], 1)
         self.assertEqual(self.con.execute("PRAGMA foreign_key_check").fetchall(), [])
+
+    def test_kanji_simplification_only_touches_names_it_can_finish(self):
+        """字形归一只处理纯汉字名；假名和罗马字要的是译名，不是逐字换。"""
+        self.assertEqual(simplify_kanji("高山涼音"), "高山凉音")
+        self.assertEqual(simplify_kanji("斎藤満里奈"), "齐藤满里奈")
+        self.assertEqual(simplify_kanji("浜崎真緒"), "滨崎真绪")
+        # 「々」是叠字符号，展开成前一个字，否则名字还是半个日文。
+        self.assertEqual(simplify_kanji("野々宮蘭"), "野野宫兰")
+        # 简体没有对应字形的日本汉字原样留下，中文资料页也是这么写的。
+        self.assertEqual(simplify_kanji("桜咲姫莉"), "樱咲姬莉")
+        self.assertEqual(simplify_kanji("辻井穂香"), "辻井穗香")
+        # 逐字换只会得到半中半日的名字，这类名字留给映射 XML。
+        self.assertEqual(simplify_kanji("飯岡かなこ"), "飯岡かなこ")
+        self.assertEqual(simplify_kanji("Alice Shaku"), "Alice Shaku")
+        # 已经是简体的名字不该被再动一次。
+        self.assertEqual(simplify_kanji("凉森玲梦"), "凉森玲梦")
+
+    def test_collect_simplifies_kanji_without_any_mapping_entry(self):
+        """映射里没有这个人，字形照样要归一——这一道不需要外部来源。"""
+        rows = {int(row["entity_id"]): row for row in collect(
+            self.con, [], read_identity_review(self.review), "kanji-only")}
+        self.assertEqual(rows[16]["target_name"], "齐藤满里奈")
+        self.assertEqual(rows[16]["action"], "localize-kanji")
+        self.assertIn("kanji-simplification", rows[16]["resolution"])
+        # 账号型 performer 不翻译，但换字形不是翻译：同一个字的两种写法而已。
+        self.assertEqual(rows[17]["target_name"], "野野宫兰")
+        self.assertEqual(rows[17]["action"], "localize-kanji")
+        self.assertEqual(rows[18]["action"], "keep-unresolved")
+        self.assertEqual(rows[18]["target_name"], "飯岡かなこ")
+
+    def test_apply_records_kanji_rows_under_their_own_alias_source(self):
+        plan = collect(self.con, [], read_identity_review(self.review), "kanji-only")
+        apply_rows(self.con, plan, "kanji-only")
+        self.con.commit()
+        names = dict(self.con.execute("SELECT id,canonical_name FROM entity"))
+        self.assertEqual(names[16], "齐藤满里奈")
+        self.assertEqual(names[17], "野野宫兰")
+        self.assertEqual(names[18], "飯岡かなこ")
+        aliases = dict(self.con.execute(
+            "SELECT alias,source FROM entity_alias WHERE entity_id=16"))
+        # 旧字形留成别名，否则来源那边再抓一次就又建一个新实体。
+        self.assertEqual(aliases["斎藤満里奈"], KANJI_ALIAS_SOURCE)
+        tags = dict(self.con.execute("SELECT asset_id,tag FROM asset_tag ORDER BY asset_id"))
+        self.assertEqual(tags[6], "演员:齐藤满里奈")
+        self.assertEqual(tags[7], "演员:野野宫兰")
+
+    def test_simplified_name_colliding_with_an_existing_entity_is_a_conflict(self):
+        """换完字形撞上库里已有的同名实体时不猜，交给人合并。"""
+        self.con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(19,'performer','齐藤满里奈','齐藤满里奈','t','t')")
+        self.con.commit()
+        rows = {int(row["entity_id"]): row for row in collect(
+            self.con, [], read_identity_review(self.review), "kanji-only")}
+        self.assertEqual(rows[16]["action"], "conflict")
+        self.assertIn("target-name-conflict", rows[16]["resolution"])
+        with self.assertRaises(RuntimeError):
+            apply_rows(self.con, list(rows.values()), "kanji-only")
+
+    def test_mapping_xml_is_optional_and_its_revision_is_not(self):
+        """那份 XML 不在仓库里，也可能已经不在这台机器上；缺了它字形归一仍要能跑。"""
+        out = Path(self.tmp.name) / "plan.csv"
+        main(["--db", str(self.db), "--identity-review", str(self.review),
+              "--review-csv", str(out)])
+        planned = {row["current_name"]: row for row in csv.DictReader(
+            out.open(encoding="utf-8-sig"))}
+        self.assertEqual(planned["斎藤満里奈"]["target_name"], "齐藤满里奈")
+        self.assertEqual(planned["斎藤満里奈"]["revision"], "kanji-only")
+        with self.assertRaises(SystemExit):
+            main(["--db", str(self.db), "--mapping-xml", str(self.mapping),
+                  "--review-csv", str(out)])
 
 
 if __name__ == "__main__":

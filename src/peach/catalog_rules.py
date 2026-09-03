@@ -65,8 +65,26 @@ POSITION_TAGS = {
 }
 
 _CODE_STUDIO = re.compile(r"^[A-Z]{2,8}-\d{2,5}$")
-_CODE_AMATEUR = re.compile(r"^\d{3}[A-Z]{2,6}-\d{2,5}$")
+_CODE_AMATEUR = re.compile(r"^\d{3}[A-Z]{2,8}-\d{2,5}$")
 _CODE_DATE = re.compile(r"^\d{6}-\d{2,4}$")
+
+#: 字母段 → 片商数字前缀。`259LUXU-1642` 与 `LUXU-1642` 是同一部作品的两种写法：
+#: 前缀标的是 DMM 上的发行方，不属于作品身份，来源站点也只索引其中一种。
+#:
+#: 这张表按账本里实测出现过的字母段登记，不凭记忆扩展。补前缀会改变发给来源的查询，
+#: 猜错就是拿别人的番号去查——这正是 2026-09-02 那批误匹配的成因。新增一行之前先在
+#: 账本里确认该字母段只属于这一个发行方（`\d{3}[A-Z]+` 分组后看数字前缀是否唯一）。
+MAKER_NUMBER_PREFIX = {
+    "ARA": "261", "ENE": "550", "FKOS": "762", "GANA": "200", "GYAN": "278",
+    "HHH": "451", "INST": "413", "JAC": "390", "JNT": "390", "KAI": "308",
+    "KBI": "336", "LUXU": "259", "MAAN": "300", "MFC": "435", "MIUM": "300",
+    "MLA": "476", "NTK": "300", "NTR": "348", "ORETD": "230", "OTIM": "393",
+    "SIMM": "345", "SUKE": "428",
+}
+_CODE_MAKER_PREFIXED = re.compile(r"^(\d{3})([A-Z]{2,8})-(\d{2,5})$")
+#: 来源返回的 id 允许带片商数字前缀、补零和重制尾字母；`h_` 是 DMM 的 label 标记。
+_RELEASE_ID = re.compile(r"^(?:\d{1,4})?([A-Z]{2,8})0*(\d{1,5})[A-Z]?$")
+_DMM_LABEL_PREFIX = re.compile(r"^H_(?=\d)")
 _MEDIA_EXTENSION = re.compile(
     r"\.(?:mp4|mkv|avi|wmv|mov|m4v|webm|ts|m2ts|mts|mpg|mpeg|flv|rm|rmvb|iso)$",
     re.I,
@@ -197,6 +215,74 @@ def is_jav_code(code: str | None) -> bool:
     )
 
 
+def code_query_variants(code: str | None) -> tuple[str, ...]:
+    """按可用程度排序的查询写法，第一个永远是账本的规范写法。
+
+    同一发行方在账本里两种写法都有——`259LUXU-1004` 和 `LUXU-688`、`336KBI-010`
+    和 `KBI-019`，共 6 个字母段 13 个裸写法。来源站点通常只索引一种，拿另一种查会
+    落空。所以先查规范写法，落空再换另一种写法。
+
+    两个方向不对称，是刻意的：**去掉**前缀只是丢掉番号里本来就有的一段，不会凭空
+    编东西；**补上**前缀要填三位数字，只对 `MAKER_NUMBER_PREFIX` 里登记过的字母段做。
+    """
+    primary = normalise_code_key(code)
+    if not primary:
+        return ()
+    if primary.startswith("FC2"):
+        return (primary,)
+    prefixed = _CODE_MAKER_PREFIXED.fullmatch(primary)
+    if prefixed:
+        return (primary, f"{prefixed.group(2)}-{prefixed.group(3)}")
+    bare = _CODE_STUDIO.match(primary)
+    if bare:
+        letters = primary.split("-", 1)[0]
+        prefix = MAKER_NUMBER_PREFIX.get(letters)
+        if prefix:
+            return (primary, f"{prefix}{primary}")
+    return (primary,)
+
+
+def release_identity(code: str | None) -> str:
+    """把番号或来源返回的 id 收敛成可比对的作品身份。
+
+    比对不能用裸字符串相等。全库扫描出的 281 个「不相等」里绝大多数是良性差异，
+    四类各有实例：片商数字前缀（`390JAC-040` / `JAC-040`）、DMM 的 label 前缀
+    （`BAZX-123` / `7BAZX-123`、`h_113sy00101`）、补零（`IQQQ-026` / `IQQQ-26`）、
+    重制尾字母（`49ha102r`）。这些是同一部作品。
+
+    认不出形态的值原样返回，只和自己相等：`20211103_JENNIFERMENDEZ` 这种关键词
+    搜索结果不该和任何番号算成同一部。
+    """
+    raw = _DMM_LABEL_PREFIX.sub("", str(code or "").upper().strip())
+    value = re.sub(r"[\s._\-]+", "", raw)
+    if not value:
+        return ""
+    if value.startswith("FC2"):
+        # 分隔符已经抹掉，取数字要从 `FC2` 之后开始：否则 `FC2-1812235` 会被读成
+        # 一段 `21812235`，和 `FC2-PPV-1812235` 算成两部不同的作品。
+        digits = re.search(r"(\d{5,})", value[3:])
+        return f"FC2-{int(digits.group(1))}" if digits else value
+    dated = re.fullmatch(r"(\d{6})(\d{2,4})", value)
+    if dated:
+        return f"{dated.group(1)}-{dated.group(2)}"
+    shape = _RELEASE_ID.fullmatch(value)
+    if shape:
+        return f"{shape.group(1)}-{int(shape.group(2))}"
+    return value
+
+
+def same_release_code(left: str | None, right: str | None) -> bool:
+    """两个写法是否指同一部作品。空值不算相等——没有证据不是证据。"""
+    first, second = release_identity(left), release_identity(right)
+    if not first or not second:
+        return False
+    if first == second:
+        return True
+    # FC2 的来源 id 是裸数字（`FC2-PPV-1812235` → `1812235`）。裸数字自己不是番号
+    # 形态，所以这条不放进 `release_identity`：只有另一侧确实是 FC2 才按数字比。
+    fc2 = next((value for value in (first, second) if value.startswith("FC2-")), "")
+    other = first if second == fc2 else second
+    return bool(fc2) and other.isdigit() and fc2 == f"FC2-{int(other)}"
 def is_amateur_code(code: str | None) -> bool:
     """三位数字前缀的素人系番号：`259LUXU-1475`、`300MIUM-1239`。
 

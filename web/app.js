@@ -6,8 +6,8 @@ import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import {
   breadcrumbHtml, checkboxHtml, emptyStateHtml, fieldsetTitle, iconSwitchHtml, loadingDotsHtml,
-  mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml, setActionBusy, skeletonHtml,
-  spinnerHtml, wireBusyActions, wireCollapse, wireIconSwitch, wireScrollers,
+  mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml, searchInputHtml, setActionBusy,
+  skeletonHtml, spinnerHtml, wireBusyActions, wireCollapse, wireIconSwitch, wireScrollers,
 } from './js/ui-components.js';
 
 initMiddleTruncate(document);
@@ -261,7 +261,7 @@ const SORTS=[['seed','随机'],['rating','评分'],['o','高潮计数'],['plays'
              ['big','体积'],['new','最近入库'],['played','最近看的']];
 const JAV_RELEASE_SORT=['release','发行时间'];
 const SORT_KEYS=[...SORTS,JAV_RELEASE_SORT].map(([key])=>key);
-const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:2,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',followLayout:'cozy',ambientMode:true,theaterMode:false,groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
+const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:2,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',followLayout:'cozy',peopleLayout:'big',ambientMode:true,theaterMode:false,groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
@@ -718,6 +718,9 @@ function pushPlayerStat(samples,value){
   samples.push(Number.isFinite(value)&&value>0?value:0);
   if(samples.length>PLAYER_STATS_HISTORY)samples.splice(0,samples.length-PLAYER_STATS_HISTORY);
 }
+/* 设置面板和播放统计都盖在画面上，同时开就互相遮挡。开哪个都往 document 广播一次，
+   另一个自己收起：两块面板挂在不同的作用域里，共享一个事件名比互相持有引用干净。 */
+const PLAYER_PANEL_EVENT='peach-player-panel';
 function playerStatsPlot(samples,kind,ceiling,label){
   const values=Array(Math.max(0,PLAYER_STATS_HISTORY-samples.length)).fill(null).concat(samples);
   const top=Math.max(1,ceiling||0);
@@ -770,12 +773,36 @@ function applyAmbientMode(enabled,save=true){
   $('#stage')?.classList.toggle('ambient-on',appSettings.ambientMode);
   document.dispatchEvent(new CustomEvent('peachambientchange',{detail:{enabled:appSettings.ambientMode}}));
 }
+/* 控制条上每个按钮的悬停提示都从这里出：文案 + 快捷键徽标，样式取自 YouTube delhi-modern。
+   同时抹掉浏览器原生 title——两层提示会一前一后弹出来叠在一起。Video.js 每次改 controlText
+   都会把 title 写回去，所以按钮状态同步的地方必须重新调一次返回的 sync。 */
+function playerControlTooltip(button,label,shortcut=''){
+  if(!button)return()=>{};
+  let tip=button.querySelector(':scope>.vjs-peach-tooltip');
+  if(!tip){
+    tip=document.createElement('span');tip.className='vjs-peach-tooltip';tip.setAttribute('role','tooltip');
+    tip.innerHTML='<span class="vjs-peach-tooltip-text"></span><kbd hidden></kbd>';
+    button.append(tip);
+  }
+  const text=tip.querySelector('.vjs-peach-tooltip-text'),key=tip.querySelector('kbd');
+  if(shortcut)button.setAttribute('aria-keyshortcuts',shortcut);
+  const sync=(nextLabel=label,aria='')=>{
+    text.textContent=nextLabel;key.textContent=shortcut;key.hidden=!shortcut;
+    button.setAttribute('aria-label',aria||nextLabel);button.removeAttribute('title');
+  };
+  sync();return sync;
+}
+/* 快捷键复用按钮自己的点击路径：全屏、画中画、静音各有兜底逻辑挂在按钮上，
+   在键盘分支里再实现一遍就会和按钮走岔。 */
+function clickPlayerControl(video,selector){
+  video?.closest('.vwrap')?.querySelector('.vjs-control-bar '+selector)?.click();
+}
 function syncPlayerTheaterButton(button){
   if(!button)return;
   const label=appSettings.theaterMode?'默认视图':'影院模式';
-  button.setAttribute('aria-pressed',String(appSettings.theaterMode));button.setAttribute('aria-label',label);
+  button.setAttribute('aria-pressed',String(appSettings.theaterMode));
   button.querySelector('use')?.setAttribute('href',appSettings.theaterMode?'#i-theater-exit':'#i-theater-enter');
-  const tooltip=button.querySelector('.vjs-peach-tooltip');if(tooltip)tooltip.innerHTML=`${label} <kbd>T</kbd>`;
+  (button.peachTooltipSync||(()=>{}))(label);
 }
 function applyTheaterMode(enabled,save=true){
   appSettings.theaterMode=!!enabled;if(save)saveSettings();
@@ -811,10 +838,11 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0,initialSourceQu
   root.className='vjs-peach-settings vjs-control';root.dataset.playerQuality='';
   root.innerHTML=`<button type="button" class="vjs-peach-settings-toggle" aria-label="播放器设置" aria-expanded="false">
     ${icon('settings')}<span data-player-quality-badge hidden></span></button>
-    <div class="vjs-peach-settings-menu" role="menu" aria-label="播放器设置" hidden></div>`;
+    <div class="vjs-peach-settings-menu" role="menu" aria-label="播放器设置" aria-hidden="true"></div>`;
   const fullscreen=controlBar.querySelector('.vjs-fullscreen-control');
   controlBar.insertBefore(root,fullscreen||null);
   const toggle=root.querySelector('button'),badge=root.querySelector('[data-player-quality-badge]');
+  playerControlTooltip(toggle,'设置');
   const menu=root.querySelector('.vjs-peach-settings-menu');
   const levels=typeof player.qualityLevels==='function'?player.qualityLevels():null;
   let sourceQualities=initialSourceQualities;
@@ -844,30 +872,88 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0,initialSourceQu
     badge.textContent=activePixels>=2160?'4K':activePixels>=720?'HD':'';badge.hidden=!badge.textContent;
     return {options,active};
   };
-  const close=()=>{menu.hidden=true;toggle.setAttribute('aria-expanded','false')};
-  const showMain=()=>{
+  const isOpen=()=>menu.getAttribute('aria-hidden')!=='true';
+  const setOpen=open=>{menu.setAttribute('aria-hidden',String(!open));toggle.setAttribute('aria-expanded',String(open));
+    if(open)document.dispatchEvent(new CustomEvent(PLAYER_PANEL_EVENT,{detail:'settings'}))};
+  const close=()=>setOpen(false);
+  const closeSettingsForOtherPanel=event=>{if(event.detail!=='settings')close()};
+  document.addEventListener(PLAYER_PANEL_EVENT,closeSettingsForOtherPanel);
+  /* 面板之间的切换照 YouTube 播放器 9470c977 的 www-player.css：popup 自己 .25s
+     cubic-bezier(.4,0,.2,1) 改高度，旧面板往来的方向滑出、新面板从去的方向滑入。
+     旧面板必须先脱离布局再滑，否则两块内容会在动画期间把菜单撑成两倍高；高度也得
+     先钉在旧值、下一帧再写新值，同一帧写两次只会直接跳到新值，看不到过渡。 */
+  const PANEL_MS=250;
+  let panelTimer=null;
+  const renderPanel=(html,direction)=>{
+    const current=menu.querySelector('.vjs-peach-panel');
+    const next=document.createElement('div');next.className='vjs-peach-panel';next.innerHTML=html;
+    if(!current||!direction||!isOpen()){menu.replaceChildren(next);menu.style.height='';return next}
+    if(panelTimer){clearTimeout(panelTimer);panelTimer=null}
+    const from=menu.getBoundingClientRect().height;
+    current.classList.add('vjs-peach-panel-leaving');
+    next.classList.add(direction>0?'vjs-peach-panel-animate-forward':'vjs-peach-panel-animate-back');
+    menu.append(next);menu.style.height=`${from}px`;
+    const to=next.scrollHeight;
+    requestAnimationFrame(()=>{
+      menu.classList.add('vjs-peach-popup-animating');menu.style.height=`${to}px`;
+      next.classList.remove('vjs-peach-panel-animate-forward','vjs-peach-panel-animate-back');
+      current.classList.add(direction>0?'vjs-peach-panel-animate-back':'vjs-peach-panel-animate-forward');
+      panelTimer=setTimeout(()=>{
+        panelTimer=null;current.remove();
+        menu.classList.remove('vjs-peach-popup-animating');menu.style.height='';
+      },PANEL_MS);
+    });
+    return next;
+  };
+  const showMain=(direction=0)=>{
     const {active}=qualityRows(),speed=Number(player.playbackRate())||1;
-    menu.innerHTML=`<div class="vjs-peach-panel-menu"><button type="button" class="vjs-peach-menu-row" role="menuitemcheckbox" data-player-ambient aria-checked="${appSettings.ambientMode}">
+    const panel=renderPanel(`<div class="vjs-peach-panel-menu"><button type="button" class="vjs-peach-menu-row" role="menuitemcheckbox" data-player-ambient aria-checked="${appSettings.ambientMode}">
       ${icon('player-ambient')}<span>氛围模式</span><i class="vjs-peach-switch" aria-hidden="true"></i></button>
       <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-speed>${icon('player-speed')}<span>播放速度</span><b>${speed===1?'正常':speed+'×'}</b>${icon('player-menu-next')}</button>
-      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-quality-view>${icon('player-quality')}<span>清晰度</span><b>${esc(active.label)}</b>${icon('player-menu-next')}</button></div>`;
-    menu.querySelector('[data-player-ambient]').onclick=()=>{applyAmbientMode(!appSettings.ambientMode);showMain()};
-    menu.querySelector('[data-player-speed]').onclick=showSpeed;
-    menu.querySelector('[data-player-quality-view]').onclick=showQuality;
+      <button type="button" class="vjs-peach-menu-row" role="menuitem" data-player-quality-view>${icon('player-quality')}<span>清晰度</span><b>${esc(active.label)}</b>${icon('player-menu-next')}</button></div>`,direction);
+    panel.querySelector('[data-player-ambient]').onclick=()=>{applyAmbientMode(!appSettings.ambientMode);showMain()};
+    panel.querySelector('[data-player-speed]').onclick=()=>showSpeed();
+    panel.querySelector('[data-player-quality-view]').onclick=()=>showQuality();
   };
-  const showSpeed=()=>{
-    const selectedSpeed=Number(player.playbackRate())||1,speeds=[.25,.5,.75,1,1.25,1.5,1.75,2];
-    menu.innerHTML=`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="返回上一个菜单">${icon('player-menu-back')}</button><strong>播放速度</strong></div><div class="vjs-peach-panel-menu">${speeds.map(speed=>
-      `<button type="button" class="vjs-peach-menu-option" role="menuitemradio" data-player-speed-option="${speed}" aria-checked="${speed===selectedSpeed}"><span class="vjs-peach-option-check">${speed===selectedSpeed?icon('player-option-check'):''}</span><span class="vjs-peach-option-label">${speed===1?'正常':speed+'×'}</span></button>`).join('')}</div>`;
-    menu.querySelector('[data-player-menu-back]').onclick=showMain;
-    menu.querySelectorAll('[data-player-speed-option]').forEach(button=>button.onclick=()=>{player.playbackRate(Number(button.dataset.playerSpeedOption));showMain()});
+  /* 播放速度面板照 YouTube delhi-modern（player 9470c977 的 base.js）：滑条两端取播放器
+     支持的最低与最高倍速，步进 0.05，加减键各动 0.05 并按两位小数收敛，读数写成 1.00x。
+     预设胶囊点了就地生效，面板不退回上一级；上游第五个胶囊是 Premium 专属的 3.0 倍，
+     Peach 没有分级，那一格连同角标一起不做。 */
+  const SPEED_RATES=[.25,.5,.75,1,1.25,1.5,1.75,2],SPEED_STEP=.05,SPEED_PRESETS=[1,1.25,1.5,2];
+  const speedLabel=speed=>Number.isInteger(speed)?speed.toFixed(1):String(speed);
+  const showSpeed=(direction=1)=>{
+    const min=SPEED_RATES[0],max=SPEED_RATES[SPEED_RATES.length-1];
+    const clampSpeed=value=>Math.min(max,Math.max(min,Number(value.toFixed(2))));
+    const panel=renderPanel(`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="返回上一个菜单">${icon('player-menu-back')}</button><strong>播放速度</strong></div>
+      <div class="vjs-peach-speed-panel"><div class="vjs-peach-speed-display"><output data-player-speed-display></output></div>
+      <div class="vjs-peach-speed-slider"><button type="button" class="vjs-peach-speed-button" data-player-speed-step="-1" aria-label="播放速度减 0.05">−</button>
+      <input type="range" class="vjs-peach-speed-range" data-player-speed-range min="${min}" max="${max}" step="${SPEED_STEP}" aria-label="播放速度">
+      <button type="button" class="vjs-peach-speed-button" data-player-speed-step="1" aria-label="播放速度加 0.05">+</button></div>
+      <div class="vjs-peach-speed-chips">${SPEED_PRESETS.map(speed=>
+        `<span class="vjs-peach-speed-preset"><button type="button" class="vjs-peach-speed-button" data-player-speed-option="${speed}" aria-pressed="false">${speedLabel(speed)}</button>${speed===1?'<span class="vjs-peach-speed-preset-label">正常</span>':''}</span>`).join('')}</div></div>`,direction);
+    const display=panel.querySelector('[data-player-speed-display]'),range=panel.querySelector('[data-player-speed-range]');
+    const syncSpeed=()=>{
+      const speed=clampSpeed(Number(player.playbackRate())||1);
+      display.textContent=`${speed.toFixed(2)}x`;range.value=String(speed);
+      range.style.setProperty('--peach-speed-percent',`${(speed-min)/(max-min)*100}%`);
+      panel.querySelectorAll('[data-player-speed-option]').forEach(button=>
+        button.setAttribute('aria-pressed',String(Number(button.dataset.playerSpeedOption)===speed)));
+    };
+    const setSpeed=speed=>{player.playbackRate(clampSpeed(speed));syncSpeed()};
+    panel.querySelector('[data-player-menu-back]').onclick=()=>showMain(-1);
+    range.oninput=()=>setSpeed(Number(range.value));
+    panel.querySelectorAll('[data-player-speed-step]').forEach(button=>button.onclick=()=>
+      setSpeed((Number(player.playbackRate())||1)+Number(button.dataset.playerSpeedStep)*SPEED_STEP));
+    panel.querySelectorAll('[data-player-speed-option]').forEach(button=>button.onclick=()=>
+      setSpeed(Number(button.dataset.playerSpeedOption)));
+    syncSpeed();
   };
-  const showQuality=()=>{
+  const showQuality=(direction=1)=>{
     const {options}=qualityRows();
-    menu.innerHTML=`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="返回上一个菜单">${icon('player-menu-back')}</button><strong>清晰度</strong></div><div class="vjs-peach-panel-menu">${options.map(option=>
-      `<button type="button" class="vjs-peach-menu-option" role="menuitemradio" data-player-quality-option="${esc(option.key)}" aria-checked="${option.key===selectedQuality}"><span class="vjs-peach-option-check">${option.key===selectedQuality?icon('player-option-check'):''}</span><span class="vjs-peach-option-label">${esc(option.label)}</span></button>`).join('')}</div>`;
-    menu.querySelector('[data-player-menu-back]').onclick=showMain;
-    menu.querySelectorAll('[data-player-quality-option]').forEach(button=>button.onclick=()=>{
+    const panel=renderPanel(`<div class="vjs-peach-panel-header"><button type="button" class="vjs-peach-menu-back" data-player-menu-back aria-label="返回上一个菜单">${icon('player-menu-back')}</button><strong>清晰度</strong></div><div class="vjs-peach-panel-menu">${options.map(option=>
+      `<button type="button" class="vjs-peach-menu-option" role="menuitemradio" data-player-quality-option="${esc(option.key)}" aria-checked="${option.key===selectedQuality}"><span class="vjs-peach-option-check">${option.key===selectedQuality?icon('player-option-check'):''}</span><span class="vjs-peach-option-label">${esc(option.label)}</span></button>`).join('')}</div>`,direction);
+    panel.querySelector('[data-player-menu-back]').onclick=()=>showMain(-1);
+    panel.querySelectorAll('[data-player-quality-option]').forEach(button=>button.onclick=()=>{
       selectedQuality=button.dataset.playerQualityOption;
       if(levels?.length)for(let index=0;index<levels.length;index++)levels[index].enabled=selectedQuality==='auto'||selectedQuality===String(index);
       /* 来源档位是四个各自独立的 mp4，不是同一条流的多个轨道，所以只能换 src。
@@ -883,25 +969,29 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0,initialSourceQu
           if(wasPlaying)player.play().catch(()=>{});
         });
       }
-      showMain();
+      showMain(-1);
     });
   };
-  toggle.onclick=event=>{event.stopPropagation();const open=menu.hidden;if(open)showMain();menu.hidden=!open;toggle.setAttribute('aria-expanded',String(open))};
+  toggle.onclick=event=>{event.stopPropagation();const open=!isOpen();if(open)showMain();setOpen(open)};
   const outside=event=>{if(!root.contains(event.target))close()};document.addEventListener('pointerdown',outside);
   root.addEventListener('keydown',event=>{if(event.key==='Escape'){close();toggle.focus()}});
-  video.addEventListener('loadedmetadata',()=>{if(!menu.hidden)showMain();else qualityRows()});
-  levels?.on?.(['addqualitylevel','removequalitylevel'],()=>{if(!menu.hidden)showMain();else qualityRows()});
-  player.on('dispose',()=>document.removeEventListener('pointerdown',outside));qualityRows();
+  video.addEventListener('loadedmetadata',()=>{if(isOpen())showMain();else qualityRows()});
+  levels?.on?.(['addqualitylevel','removequalitylevel'],()=>{if(isOpen())showMain();else qualityRows()});
+  player.on('dispose',()=>{document.removeEventListener('pointerdown',outside);
+    document.removeEventListener(PLAYER_PANEL_EVENT,closeSettingsForOtherPanel);
+    if(panelTimer)clearTimeout(panelTimer)});qualityRows();
   mountPlayerTheaterControl(player,root);
   mountPlayerChromeLayout(player);
-  return next=>{sourceQualities=next?.length?next:null;if(!menu.hidden)showMain();else qualityRows()};
+  return next=>{sourceQualities=next?.length?next:null;if(isOpen())showMain();else qualityRows()};
 }
 function mountPlayerTheaterControl(player,settingsRoot){
   const controlBar=player.getChild('controlBar')?.el();if(!controlBar||controlBar.querySelector('[data-player-theater]'))return;
   const root=document.createElement('div');root.className='vjs-peach-theater vjs-control';
-  root.innerHTML=`<button type="button" data-player-theater aria-label="影院模式" aria-keyshortcuts="T" aria-pressed="${appSettings.theaterMode}">${icon(appSettings.theaterMode?'theater-exit':'theater-enter')}<span class="vjs-peach-tooltip" role="tooltip"></span></button>`;
+  root.innerHTML=`<button type="button" data-player-theater aria-pressed="${appSettings.theaterMode}">${icon(appSettings.theaterMode?'theater-exit':'theater-enter')}</button>`;
   controlBar.insertBefore(root,settingsRoot.nextSibling);
-  syncPlayerTheaterButton(root.querySelector('button'));
+  const theaterButton=root.querySelector('button');
+  theaterButton.peachTooltipSync=playerControlTooltip(theaterButton,'影院模式','T');
+  syncPlayerTheaterButton(theaterButton);
   root.querySelector('button').onclick=event=>{event.stopPropagation();applyTheaterMode(!appSettings.theaterMode)};
 }
 function mountPlayerChromeLayout(player){
@@ -915,30 +1005,64 @@ function mountPlayerChromeLayout(player){
     return button.querySelector(':scope>.vjs-peach-control-icon use');
   };
   const playUse=explicitIcon(play,'player-play');
-  const syncPlayIcon=()=>playUse?.setAttribute('href',player.paused()||player.ended()?'#i-player-play':'#i-player-pause');
+  const syncPlayTooltip=playerControlTooltip(play,'播放','K');
+  const syncPlayIcon=()=>{const paused=player.paused()||player.ended();
+    playUse?.setAttribute('href',paused?'#i-player-play':'#i-player-pause');syncPlayTooltip(paused?'播放':'暂停')};
   player.on(['play','pause','ended'],syncPlayIcon);syncPlayIcon();
   const volume=controlBar.querySelector(':scope>.vjs-volume-panel');
   const mute=volume?.querySelector(':scope>.vjs-mute-control'),muteUse=explicitIcon(mute,'player-volume');
-  const syncVolumeIcon=()=>muteUse?.setAttribute('href',player.muted()||player.volume()===0?'#i-player-volume-muted':'#i-player-volume');
+  const syncMuteTooltip=playerControlTooltip(mute,'静音','M');
+  const syncVolumeIcon=()=>{const silent=player.muted()||player.volume()===0;
+    muteUse?.setAttribute('href',silent?'#i-player-volume-muted':'#i-player-volume');syncMuteTooltip(silent?'取消静音':'静音')};
   player.on('volumechange',syncVolumeIcon);syncVolumeIcon();
+  /* 中心提示照 YouTube delhi-modern（player 9470c977 的 www-player.css 与 base.js）：一块
+     78px 的毛玻璃圆闪一下当前动作的图标，1s 走完 0→1.33→1 的缩放淡出。捕获阶段读的是
+     切换之前的状态，闪出来的正好是这一次做的事：暂停中点播放键闪播放。键盘快捷键走的
+     也是同一个按钮的点击路径，所以只挂控制条这一处。 */
+  const bezel=document.createElement('div');
+  bezel.className='vjs-peach-bezel';bezel.setAttribute('role','status');bezel.hidden=true;
+  bezel.innerHTML=`<span class="vjs-peach-bezel-icon">${icon('player-play')}</span>`;
+  const bezelUse=bezel.querySelector('use');let bezelTimer=null;
+  const flashBezel=(name,label)=>{
+    bezelUse.setAttribute('href',`#i-${name}`);bezel.setAttribute('aria-label',label);
+    bezel.hidden=false;bezel.classList.remove('vjs-peach-bezel-run');
+    void bezel.offsetWidth;bezel.classList.add('vjs-peach-bezel-run');
+    if(bezelTimer)clearTimeout(bezelTimer);
+    bezelTimer=setTimeout(()=>{bezel.hidden=true;bezel.classList.remove('vjs-peach-bezel-run')},1000);
+  };
+  player.el().insertBefore(bezel,controlBar);
+  controlBar.addEventListener('click',event=>{
+    if(event.target.closest('.vjs-play-control')){
+      const paused=player.paused()||player.ended();
+      flashBezel(paused?'player-play':'player-pause',paused?'播放':'暂停');
+    }else if(event.target.closest('.vjs-mute-control')){
+      const silent=player.muted()||player.volume()===0;
+      flashBezel(silent?'player-volume':'player-volume-muted',silent?'取消静音':'静音');
+    }
+  },true);
+  player.on('dispose',()=>{if(bezelTimer)clearTimeout(bezelTimer)});
   const time=document.createElement('button');let remaining=false;
   time.type='button';time.className='vjs-peach-time vjs-control';time.dataset.playerTime='';
   time.innerHTML='<span class="vjs-peach-time-text"></span>';
   const timeText=time.querySelector('.vjs-peach-time-text');
+  const syncTimeTooltip=playerControlTooltip(time,'显示剩余时间');
   const syncTime=()=>{
     const current=Math.max(0,Number(player.currentTime())||0),duration=Math.max(0,Number(player.duration())||0);
     const shown=remaining?`-${fmtClock(Math.max(0,duration-current))}`:fmtClock(current);
     timeText.textContent=`${shown} / ${fmtClock(duration)}`;
     time.dataset.remaining=String(remaining);
-    time.setAttribute('aria-label',remaining?`剩余 ${fmtClock(Math.max(0,duration-current))}，总时长 ${fmtClock(duration)}；点击显示已播放时间`:`已播放 ${fmtClock(current)}，总时长 ${fmtClock(duration)}；点击显示剩余时间`);
+    syncTimeTooltip(remaining?'显示已播放时间':'显示剩余时间',remaining?`剩余 ${fmtClock(Math.max(0,duration-current))}，总时长 ${fmtClock(duration)}；点击显示已播放时间`:`已播放 ${fmtClock(current)}，总时长 ${fmtClock(duration)}；点击显示剩余时间`);
   };
   time.onclick=event=>{event.stopPropagation();remaining=!remaining;syncTime()};
   player.on(['timeupdate','durationchange','loadedmetadata'],syncTime);syncTime();
   if(volume)volume.insertAdjacentElement('afterend',time);else controlBar.append(time);
   const pip=controlBar.querySelector(':scope>.vjs-picture-in-picture-control');
   explicitIcon(pip,'player-pip');
+  const syncPipTooltip=playerControlTooltip(pip,'画中画','I');
+  player.on(['enterpictureinpicture','leavepictureinpicture'],()=>syncPipTooltip(document.pictureInPictureElement?'退出画中画':'画中画'));
   const fullscreen=controlBar.querySelector(':scope>.vjs-fullscreen-control');
   const fullscreenUse=explicitIcon(fullscreen,'player-fullscreen-enter');
+  const syncFullscreenTooltip=playerControlTooltip(fullscreen,'全屏','F');
   /* CSS 的 `.vjs-fullscreen` 只能覆盖 Video.js 已经同步状态类的路径。实际浏览器还可能
      走 full-window 回退，或者先触发 fullscreenchange、下一帧才完成 class 更新。把播放器
      自己的 `isFullscreen()` 结果登记到 DOM，画面填充不再依赖某一个实现细节类名。 */
@@ -946,6 +1070,7 @@ function mountPlayerChromeLayout(player){
     const active=!!player.isFullscreen();
     player.el().toggleAttribute('data-peach-fullscreen',active);
     fullscreenUse?.setAttribute('href',active?'#i-player-fullscreen-exit':'#i-player-fullscreen-enter');
+    syncFullscreenTooltip(active?'退出全屏':'全屏');
     requestAnimationFrame(()=>player.trigger('resize'));
   };
   player.on(['fullscreenchange','enterFullWindow','exitFullWindow'],syncFullscreenState);
@@ -963,6 +1088,34 @@ function mountPlayerChromeLayout(player){
     control.insertAdjacentHTML('beforeend','<span class="vjs-peach-hover" aria-hidden="true"></span>');
     group.append(control);
   });
+  /* 窄屏折叠照 YouTube 的判据来：base.js 9470c977 里播放器宽度 `v.width<528` 打开
+     ytp-xsmall-width-mode，右侧收成「设置 + 展开」，点开才铺开其余按钮。判据必须是播放器
+     自己的宽度，不是视口——同一个视口下影院模式和普通视图的播放器宽度差一大截。 */
+  const expand=document.createElement('div');expand.className='vjs-peach-expand vjs-control';
+  /* 高亮层要挂在 `.vjs-control` 这一层：亮起来的规则是 `>.vjs-peach-hover`，塞进
+     button 里就差一层，展开键成了这排唯一没有 hover 的按钮。位置在这排左端——
+     这排整体右对齐，展开时新按钮从它右边长出来，箭头指左才对得上要发生的事。箭头用
+     `i-player-expand`：菜单行那个 `>` 是 24 视框、一个单位粗的细线，铺到 32px 只有 1.3px 粗；
+     上游展开键自带一个 32 视框、两个单位粗的箭头，同样 32px 渲染就是 2px。 */
+  expand.innerHTML=`<button type="button" data-player-expand aria-expanded="false">${icon('player-expand')}</button><span class="vjs-peach-hover" aria-hidden="true"></span>`;
+  group.prepend(expand);
+  const expandButton=expand.querySelector('button');
+  const syncExpandTooltip=playerControlTooltip(expandButton,'展开控件');
+  const setExpanded=open=>{
+    player.el().classList.toggle('vjs-peach-right-expanded',open);
+    expandButton.setAttribute('aria-expanded',String(open));syncExpandTooltip(open?'收起控件':'展开控件');
+  };
+  expandButton.onclick=event=>{event.stopPropagation();setExpanded(!player.el().classList.contains('vjs-peach-right-expanded'))};
+  const syncWidthMode=()=>{
+    const box=player.el(),narrow=box.clientWidth<528;
+    /* 设置面板要按播放器高度收顶，而它的定位祖先只有 36px 高，百分比取不到播放器。 */
+    box.style.setProperty('--peach-player-h',`${box.clientHeight}px`);
+    box.classList.toggle('vjs-peach-xsmall',narrow);
+    if(!narrow)setExpanded(false);
+  };
+  const widthObserver=new ResizeObserver(syncWidthMode);widthObserver.observe(player.el());
+  player.on('dispose',()=>widthObserver.disconnect());
+  setExpanded(false);syncWidthMode();
 }
 function mountPlayerSeekPreview(player,it,options={}){
   const progress=player.getChild('controlBar')?.el()?.querySelector('.vjs-progress-control');
@@ -1118,7 +1271,8 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
     const segmented=String(player.currentSource()?.type||'').includes('mpegurl');
     if(!segmented)meter.sample(video);
     const bits=playerSpeedBits(player,it.id,detailStreamSession,segmented?null:meter);
-    netBadge.textContent=`加载速度 ${segmented?fmtSpeed(bits):fmtLoadRate(bits,meter.ratio)}`};
+    const rate=segmented?fmtSpeed(bits):fmtLoadRate(bits,meter.ratio);
+    netBadge.innerHTML=`${icon('gauge')}<span class="sr-only">加载速度</span><span>${esc(rate)}</span>`};
   const showNet=()=>{if(!netBadge)return;netBadge.hidden=false;updateNet();
     if(detailNetTimer)clearInterval(detailNetTimer);detailNetTimer=setInterval(updateNet,500)};
   const hideNet=()=>{if(!netBadge)return;if(detailNetHideTimer)clearTimeout(detailNetHideTimer);
@@ -1149,11 +1303,22 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
     mountPlayerCenterControls(detailPlayer);
     if(statsButton)statsButton.hidden=false
   });
-  if(statsButton&&statsPanel)statsButton.onclick=()=>{
-    const open=statsPanel.hidden;statsPanel.hidden=!open;statsButton.setAttribute('aria-pressed',String(open));
-    if(open){updateStats();if(detailStatsTimer)clearInterval(detailStatsTimer);detailStatsTimer=setInterval(updateStats,1000)}
-    else if(detailStatsTimer){clearInterval(detailStatsTimer);detailStatsTimer=null}
-  };
+  if(statsButton&&statsPanel){
+    const closeStats=()=>{
+      if(statsPanel.hidden)return;
+      statsPanel.hidden=true;statsButton.setAttribute('aria-pressed','false');
+      if(detailStatsTimer){clearInterval(detailStatsTimer);detailStatsTimer=null}
+    };
+    statsButton.onclick=()=>{
+      if(!statsPanel.hidden){closeStats();return}
+      document.dispatchEvent(new CustomEvent(PLAYER_PANEL_EVENT,{detail:'stats'}));
+      statsPanel.hidden=false;statsButton.setAttribute('aria-pressed','true');
+      updateStats();if(detailStatsTimer)clearInterval(detailStatsTimer);detailStatsTimer=setInterval(updateStats,1000);
+    };
+    const closeStatsForOtherPanel=event=>{if(event.detail!=='stats')closeStats()};
+    document.addEventListener(PLAYER_PANEL_EVENT,closeStatsForOtherPanel);
+    detailPlayer.on('dispose',()=>document.removeEventListener(PLAYER_PANEL_EVENT,closeStatsForOtherPanel));
+  }
   source().then(source=>{
     if(!detailPlayer||detailPlayer!==player||player.isDisposed())return;
     segmentedSource=String(source.type||'').includes('mpegurl');
@@ -1363,17 +1528,62 @@ function avatarInner(name,ref,repId,kind='performer'){
 /* 人脸取景：资料页圆框按检出的人脸中心取景（/api/entity 的 avatar_focus）。
    没检出或没算过返回空串维持几何居中；换回落图时必须撤掉——那是另一张照片，
    脸不在同一位置，见 entityhero img 的 `data-drop-style`。 */
-function facePos(f){
-  return f&&f.axis==='x'?` style="object-position:${f.pct}% 50%"`
-    :f&&f.axis==='y'?` style="object-position:50% ${f.pct}%"`
+/* 换算只有这一份。资料页把它写进 img 的 style；索引页大图版式要把它交给圆框上的
+   CSS 变量——那里的 img 由共用的 avatarInner 拼，版式能改的容器只有圆框。 */
+function faceOrigin(f){
+  return f&&f.axis==='x'?`${f.pct}% 50%`
+    :f&&f.axis==='y'?`50% ${f.pct}%`
     :'';
 }
-/* 官方封套有两种形态，实测过：整张封套约 1.48（左侧是剧照拼贴，右侧才是正封），
-   竖版正封约 0.70（本身就是正封，没有左半边可裁）。所以取景不能写死「取右边」，
-   得等图片加载后按它自己的宽高比分流——服务端没存这个比例，也不该为此再存一份。 */
-/* 常见双页 DVD 封套约 1.45:1；16:9 的横版官方剧照不是封套，不能把它也推到
-   最右半边。上限给扫描留余量，但明确排除 259LUXU-1573 这类 1.78:1 剧照。 */
-const COVER_FRAME=`onload="const r=this.naturalWidth/this.naturalHeight;this.dataset.frame=r>1.2&&r<1.65?'sleeve':'front'"`;
+function facePos(f){
+  const origin=faceOrigin(f);
+  return origin?` style="object-position:${origin}"`:'';
+}
+/* 官方封面有三种形态，实测过：整张封套约 1.48（左侧是剧照拼贴，右侧才是正封），
+   竖版正封约 0.70（本身就是正封，没有左半边可裁），16:9 官方剧照约 1.78（整幅
+   都是画面，没有「正封那一块」可推）。所以取景不能写死「取右边」，得等图片加载后
+   按它自己的宽高比分流——服务端没存这个比例，也不该为此再存一份。
+   剧照必须自成一档：把 1.78 归进 front 就会按写死的 50% 取横向中段，人偏在一侧
+   就整个被切掉，而大图容器比所有封面都竖、纵向锚点在那里根本不生效。 */
+function coverAnchor(img){
+  const r=img.naturalWidth/img.naturalHeight;
+  if(!r)return;
+  img.dataset.frame=r>=1.65?'still':r>1.2?'sleeve':'front';
+  /* `object-position` 的百分比说的是「图片上这个点对齐可见窗口的同一个百分比位置」，
+     不是「这个点落到窗口正中」。所以人脸中心原样当锚点只能保证脸还在画面里：0.81
+     那种偏右的脸会贴着窗口右缘，图片右边还剩一截永远露不出来。可见窗口占图片 w 时，
+     让人脸落到正中的锚点是 (face - w/2) / (1 - w)。夹回 0–1 是因为脸离图片边缘不足
+     半个窗口时窗口已经顶到边，再往外推只会把图片外面推进来。 */
+  const car=coverRatio(img);
+  const center=(name,face,visible)=>{
+    // 只给被裁的那个轴算。`object-fit:cover` 一次只裁一个轴，另一个轴整幅可见
+    // （visible>=1），那里的 object-position 是死值，算了也不生效。
+    if(face==null||!(visible>0&&visible<1))return;
+    const pct=Math.min(1,Math.max(0,(face-visible/2)/(1-visible)));
+    img.style.setProperty(name,`${Math.round(pct*100)}%`);
+  };
+  center('--cover-x',coverFace(img,'cx'),car/r);
+  center('--cover-y',coverFace(img,'cy'),r/car);
+}
+/* 容器比例只有 `.pic` 的 `--card-ratio` 知道：竖屏开关、JAV 大图和普通卡片各写一个
+   值，在这里按 layout 重算迟早会和它分叉。自定义属性会继承，直接从图片上读；
+   `aspect-ratio` 允许 `16/9` 这种写法，所以两种形式都得认。 */
+function coverRatio(img){
+  const parts=getComputedStyle(img).getPropertyValue('--card-ratio').trim().split('/').map(Number);
+  const r=parts.length===2?parts[0]/parts[1]:parts[0];
+  return Number.isFinite(r)&&r>0?r:16/9;
+}
+function coverFace(img,axis){
+  const face=parseFloat(img.dataset[axis]);
+  return Number.isFinite(face)?face:null;
+}
+/* 封面是模板字符串拼出来的，没法逐张挂监听；内联 `onload` 属性只能调全局函数，而
+   app.js 以 `type="module"` 加载，取景函数在那里取不到——页面会每张图报一次
+   ReferenceError，封面全部按回落取景。`load` 不冒泡，但捕获阶段照样收得到。 */
+document.addEventListener('load',event=>{
+  const img=event.target;
+  if(img instanceof HTMLImageElement&&img.classList.contains('cover'))coverAnchor(img);
+},true);
 /* 整张封套里右侧正封占的宽高比。裁切靠的是容器比例而不是 CSS 裁剪：`object-fit:cover`
    只在容器比图片更「竖」时才会横向裁；容器一旦宽过 1.48 就变成纵向裁、整张封套原样
    铺满，「大图」于是只撑满画布而取不到右侧。 */
@@ -1384,13 +1594,16 @@ const COVER_FRONT_RATIO=0.7;
 const PORTRAIT_RATIO=9/16;
 function coverImage(it,layout,eager){
   const src=`/cover?code=${encodeURIComponent(it.code||'')}`;
-  // 人脸只做纵向微调：人物在画面里的高低差别很大，写死的纵向位置会把一部分
-  // 作品裁掉下巴或留出大片空白。检出率约 48%，取不到就退回固定值。
-  const cy=it.cover_frame&&it.cover_frame.cy;
-  const y=cy!=null?`--cover-y:${Math.round(Math.min(0.6,Math.max(0.05,cy))*100)}%`:'';
+  // 人脸位置原样交给页面，锚点由 `coverAnchor` 在加载后算：哪个轴被裁、要推多远，
+  // 只有同时拿到图片和容器的比例才知道。人物在画面里的位置差别很大，写死的锚点会把
+  // 一部分作品裁掉下巴或整个切出画外；取不到人脸就退回固定取景。
+  const f=it.cover_frame||{};
+  // 纵向夹在 5%–60%：脸不会长在图片下半截，落在那儿是检出跑偏而不是构图。
+  const face=[f.cx!=null?` data-cx="${f.cx}"`:'',
+    f.cy!=null?` data-cy="${Math.min(0.6,Math.max(0.05,f.cy))}"`:''].join('');
   // 小图看整张（含剧照拼贴），大图只取右侧正封。
   return `<img class="poster cover ${layout==='small'?'whole':'front'}" src="${src}"
-    alt="" loading="${eager?'eager':'lazy'}"${y?` style="${y}"`:''} ${COVER_FRAME} data-drop="self">`;
+    alt="" loading="${eager?'eager':'lazy'}"${face} data-drop="self">`;
 }
 /* 卡片署名。版次队列要和「接着看」长得一样，就必须用同一份身份推导——各算各的
    迟早会在同名 creator/performer 那 35 组上分叉，同一条作品在两处指向两个实体。
@@ -4163,11 +4376,8 @@ function renderFollowManage(credentials){
       <section class="fsec">
         <div class="fsechead"><h3>添加关注</h3></div>
         <form class="faddform" id="followAdd">
-          <div class="fsearchinput" data-follow-search-input>
-            <span class="fsearchprefix" data-follow-search-prefix>${icon('search')}</span>
-            <input type="search" name="line" required spellcheck="false" autocomplete="off"
-              placeholder="粘贴来源链接，或输入作者名、id…"
-              aria-label="来源链接、名字或 id"></div>
+          ${searchInputHtml({name:'line',label:'来源链接、名字或 id',
+            placeholder:'粘贴来源链接，或输入作者名、id…',attrs:'required'})}
           <div class="fsrcfilter" id="followSrcFilter"></div>
         </form>
         <p class="fnote" data-follow-add-state aria-live="polite"></p>
@@ -4181,7 +4391,7 @@ function renderFollowManage(credentials){
         <div class="fsechead"><h3>关注列表</h3>
           <span class="fmeta">${sources.length} 个来源${
             counts.new?` · <b>${counts.new}</b> 条未看`:''}</span>
-          <label class="fmanagesort"><span>排序</span><select data-follow-sort aria-label="关注列表排序">
+          <label class="fmanagesort">${icon('sort')}<select data-follow-sort aria-label="关注列表排序">
             <option value="checked"${followManageSort==='checked'?' selected':''}>最近检查</option>
             <option value="added"${followManageSort==='added'?' selected':''}>添加时间</option>
             <option value="name"${followManageSort==='name'?' selected':''}>作者名称</option>
@@ -4327,7 +4537,7 @@ function wireFollowManage(){
     /* 状态提示在表单外面的说明行里，不能在 form 里找——找不到就是 null，
        第一次赋值直接抛 TypeError，整个提交静默失败。 */
     const state=root.querySelector('[data-follow-add-state]');
-    const prefix=form.querySelector('[data-follow-search-prefix]');
+    const prefix=form.querySelector('[data-search-prefix]');
     const line=String(new FormData(form).get('line')||'').trim();
     if(!line)return;
     const lines=[line];
@@ -4692,7 +4902,25 @@ function paintTagIndexSelection(){
   const count=panel.querySelector('[data-tag-selected]');if(count)count.textContent=`已选 ${selectedIndexTags.size} 个标签`;
   const apply=panel.querySelector('[data-tag-apply]');if(apply)apply.disabled=!selectedIndexTags.size;
 }
-async function openIndex(kind,q,push=true){
+/* 艺人索引版式，思路同 JAV 大图：列宽不变、只把图从圆框拉成竖幅，一屏里的人数
+   不变而每张脸更大；紧凑就是圆头像那一屏。控件与 JAV 版式、关注列表版式共用
+   iconSwitchHtml，切换只改容器上的 data-layout——版式是纯展示层的事，不重画列表，
+   也不重新请求。 */
+const PEOPLE_LAYOUTS=[['big','大图 · 竖幅头像','maximize'],['compact','紧凑 · 圆形头像','layout-grid']];
+function peopleIndexLayout(){
+  return allowedSetting(appSettings.peopleLayout,PEOPLE_LAYOUTS.map(([k])=>k),'big');
+}
+function peopleLayoutButtons(){
+  return iconSwitchHtml('people-layout','艺人索引版式',PEOPLE_LAYOUTS,peopleIndexLayout(),
+    {attr:'data-people-layout'});
+}
+function setPeopleIndexLayout(value){
+  appSettings.peopleLayout=value;
+  saveSettings();
+  document.querySelectorAll('.igrid').forEach(grid=>{grid.dataset.layout=peopleIndexLayout()});
+}
+/* refine=true 表示这一次是筛选框自己重跑，不是一次页面进入：既不铺骨架，也不重画表头。 */
+async function openIndex(kind,q,push=true,refine=false){
   releaseHoverPreviews();
   const requestSeq=++indexRequestSeq;
   document.body.classList.remove('entity-open');
@@ -4712,7 +4940,9 @@ async function openIndex(kind,q,push=true){
   // 写在前面等于自己加完自己删。
   document.body.classList.add('index-open');
   disposeStage(false);
-  showIndexLoading(people?'正在读取作者':'正在读取标签');
+  /* 骨架只盖真正在等的内容区。筛选重跑时页面已经在这儿了，把骨架铺上去会连筛选框
+     一起吃掉——同步就能给出的控件不进骨架，正在打字的那个更不能。 */
+  if(!refine)showIndexLoading(people?'正在读取作者':'正在读取标签');
   /* 在线标签走关注页那套统计，形状与 /api/index 一致，所以分页、搜索和「载入更多」
      这三处现成的机制换个地址就能用。 */
   const indexApi=offset=>onlineTags
@@ -4736,15 +4966,19 @@ async function openIndex(kind,q,push=true){
     return Object.entries(groups).sort(([a],[b])=>a.localeCompare(b,'zh-CN')).map(([letter,items])=>
       `<section class="alphagroup"><h3>${letter}</h3><div class="alphalist">${items.map(x=>
         `<button class="alphatag ${onlineTags?'r34-'+(x.cat||'unknown'):(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"><span>${esc(tagLabel(x.k))}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')}</div></section>`).join('')};
-  const peopleHtml=items=>items.map(x=>`<button class="icell" data-k="${esc(x.k)}" data-kind="${entityKind}">
-        <span class="ring">${avatarInner(x.k,
+  /* 取景挂在圆框上而不是 img 上：竖幅裁到 3:4 时几何居中会切掉脸，而 img 由八处
+     共用的 avatarInner 拼，两个版式都只能从容器这一侧改。 */
+  const peopleHtml=items=>items.map(x=>{
+    const face=faceOrigin(x.avatar_focus);
+    return `<button class="icell" data-k="${esc(x.k)}" data-kind="${entityKind}">
+        <span class="ring"${face?` style="--face:${face}"`:''}>${avatarInner(x.k,
           x.entity_id?{id:x.entity_id,has_image:x.has_image}:null,
           x.has_avatar?x.rep:null, entityKind)}</span>
-        <span class="nm">${esc(x.k)}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('');
+        <span class="nm">${esc(x.k)}</span><span class="n">${x.n.toLocaleString()}</span></button>`}).join('');
   const tagHtml=items=>tagIndexMode==='alphabet'?`<div class="alphabet">${tagGroups(items)}</div>`:`<div class="tagwall index-tags">`+items.map(x=>`<button class="tg ${onlineTags?'r34-'+(x.cat||'unknown'):(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"
         >${esc(tagLabel(x.k))}
         <span class="n">${x.n.toLocaleString()}</span></button>`).join('')+`</div>`;
-  const body=people?`<div class="igrid">${peopleHtml(d.items)}</div>`:tagHtml(tagItems);
+  const body=people?`<div class="igrid" data-layout="${peopleIndexLayout()}">${peopleHtml(d.items)}</div>`:tagHtml(tagItems);
   const categoryOptions=onlineTags?ONLINE_TAG_CATEGORIES:TAG_CATEGORIES;
   const visibleTagCategories=categoryOptions.filter(([key])=>key==='all'||Number(d.categories?.[key]||0)>0);
   const categoryFilters=kind==='tags'?`<div class="tagfilters" aria-label="标签类型">${visibleTagCategories.map(([key,label])=>
@@ -4758,14 +4992,34 @@ async function openIndex(kind,q,push=true){
       <button type="button" data-tag-clear>清空</button>
       <button type="button" class="primary" data-tag-apply disabled>显示结果</button>
     </div>`:'');
-  $('#index').innerHTML=`<div class="ihead">
+  const countText=`${tagItems.length}${d.has_more?'+':''} 项`;
+  /* 筛选重跑不重画表头：输入框是同一个节点，焦点、光标位置和中文输入法正在组的字
+     才不会在 300 ms 后被换掉。表头里随查询变的只有计数一处，单独改它。 */
+  if(refine&&$('#iq')){
+    $('#indexCount').textContent=countText;
+    $('#indexFilters').innerHTML=filters;
+    $('#indexBody').innerHTML=body;
+    $('#indexMore').hidden=!d.has_more;
+  }else $('#index').innerHTML=`<div class="ihead">
       <h2 class="disp indexheading">${kind==='tags'?icon('tags'):''}${title}</h2>
-      <span class="mono" id="indexCount">${tagItems.length}${d.has_more?'+':''} 项</span>
+      <span class="mono" id="indexCount">${countText}</span>
       ${kind==='tags'?`<div class="tagmodes"><button data-tag-scope="local" aria-pressed="${!onlineTags}">${icon('database')}本地</button><button data-tag-scope="online" aria-pressed="${onlineTags}">${icon('globe')}在线</button></div>
       <div class="tagmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">${icon('tags')}标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">${icon('list-filter')}字母表</button></div>`:''}
-      <div class="isearch"><input id="iq" placeholder="过滤…" value="${esc(q||'')}"></div>
-    </div>${filters}<div id="indexBody">${body}</div><button class="indexmore" id="indexMore" type="button" ${d.has_more?'':'hidden'}>载入更多</button>`;
-  let it2; $('#iq').oninput=e=>{clearTimeout(it2);it2=setTimeout(()=>openIndex(kind,e.target.value.trim(),true),300)};
+      ${people?peopleLayoutButtons():''}
+      ${searchInputHtml({id:'iq',label:'过滤'+title,value:q||''})}
+    </div><div id="indexFilters">${filters}</div><div id="indexBody">${body}</div><button class="indexmore" id="indexMore" type="button" ${d.has_more?'':'hidden'}>载入更多</button>`;
+  const iq=$('#iq');let it2;
+  const refineIndex=()=>{clearTimeout(it2);
+    it2=setTimeout(()=>openIndex(kind,iq.value.trim(),true,true),300)};
+  /* 中文输入法在选字过程中一样发 input，事件上的 isComposing 是唯一可靠的判据：
+     拿还没定型的拼音去筛选，筛的是「zhon」这种半截输入。组完字由 compositionend 接手。 */
+  iq.oninput=e=>{if(e.isComposing)return;refineIndex()};
+  iq.oncompositionend=refineIndex;
+  /* 只读筛选不配提交按钮，回车就是「别等那 300 ms，现在就查」。组字过程中的回车
+     是在定字，放过去会拿半截拼音发请求。 */
+  iq.onkeydown=e=>{if(e.isComposing||e.key!=='Enter')return;
+    e.preventDefault();clearTimeout(it2);openIndex(kind,iq.value.trim(),true,true)};
+  wireIconSwitch($('#index'),'data-people-layout',setPeopleIndexLayout);
   $('#index').querySelectorAll('[data-tag-scope]').forEach(b=>b.onclick=()=>{
     if(tagIndexScope===b.dataset.tagScope)return;
     tagIndexScope=b.dataset.tagScope;
@@ -5936,8 +6190,12 @@ function moveSearchActive(step){
   options[searchActive].scrollIntoView({block:'nearest'});
   return true;
 }
-$('#q').oninput=()=>{searchActive=-1;if(!$('#searchMenu').hidden)renderSearchMenu()};
+const refreshSearchMenu=()=>{searchActive=-1;if(!$('#searchMenu').hidden)renderSearchMenu()};
+$('#q').oninput=e=>{if(e.isComposing)return;refreshSearchMenu()};
+$('#q').oncompositionend=refreshSearchMenu;
 $('#q').onkeydown=e=>{
+  /* 组字过程中的方向键在挑候选字、回车在定字，都不是给这个菜单的。 */
+  if(e.isComposing)return;
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){
     if(moveSearchActive(e.key==='ArrowDown'?1:-1))e.preventDefault();
     return;
@@ -6192,8 +6450,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
     </div>${queueContext?queueHtml(queueContext,it.id):''}
     <div class="side"><div class="sidecontent">
       <div class="detailtitle">${srcBadge(it.location,it.cost,'srcbig')}
-        <div class="stitle">${javTitleHtml(it)}</div>
-        ${it.location==='online'?'':`<div class="srctools detailtitletools">${sourceToolButtons(it.id)}</div>`}</div>
+        <div class="stitle">${javTitleHtml(it)}${it.location==='online'?'':`<span class="srctools detailtitletools">${sourceToolButtons(it.id)}</span>`}</div></div>
       ${it.location==='online'?'':`<span class="srcstate detailtitlestate" aria-live="polite"></span>`}
       <div class="smeta mono">
         <span class="detailmetaitem">${icon('monitor')}<span>${it.width||'?'}×${it.height||'?'}</span></span>
@@ -6350,8 +6607,11 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
         ${q&&!exact?`<button class="tagpickitem" data-pick="${esc(search.value.trim())}">${icon('plus')}<span class="pickname">新建“${esc(search.value.trim())}”</span></button>`:''}</div></section>`;
       activeIndex=-1;body.querySelectorAll('[data-pick]').forEach(b=>b.onclick=()=>{
         const selected=b.getAttribute('aria-pressed')==='true',tag=b.dataset.pick;closePicker();if(!selected)addTag(tag)})};
-    search.oninput=renderPicker;
+    search.oninput=e=>{if(e.isComposing)return;renderPicker()};
+    search.oncompositionend=renderPicker;
     search.onkeydown=e=>{const options=[...body.querySelectorAll('[data-pick]')];
+      /* 选字那一下的回车是定字，不是「新建这个标签」——半截拼音会真的建成标签。 */
+      if(e.isComposing)return;
       if(e.key==='Escape'){e.preventDefault();closePicker();plus.focus();return}
       if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();if(!options.length)return;
         activeIndex=(activeIndex+(e.key==='ArrowDown'?1:-1)+options.length)%options.length;
@@ -6892,11 +7152,14 @@ document.addEventListener('keydown',e=>{
       seekVideoBy(video,appSettings.seekSeconds*(e.key==='ArrowRight'?1:-1));
       return;
     }
-    if(e.key===' '){
+    if(e.key===' '||e.key==='k'||e.key==='K'){
       e.preventDefault();          // 不加这句空格会把页面滚下去
       toggleVideoPlayback(video);
       return;
     }
+    if(e.key==='m'||e.key==='M'){e.preventDefault();clickPlayerControl(video,'.vjs-mute-control');return}
+    if(e.key==='f'||e.key==='F'){e.preventDefault();clickPlayerControl(video,'.vjs-fullscreen-control');return}
+    if(e.key==='i'||e.key==='I'){e.preventDefault();clickPlayerControl(video,'.vjs-picture-in-picture-control');return}
   }
   // 沉浸模式：纵向切片、横向快进退，和竖屏短视频的手势方向保持一致。
   if(!$('#tok').hidden){if(e.key==='ArrowDown')tokNext(1);if(e.key==='ArrowUp')tokNext(-1)}
@@ -6961,8 +7224,11 @@ window.addEventListener('mouseup',()=>{
 function wireDrag(el){
   if(!el||el.dataset.drag)return; el.dataset.drag='1';
   let sx=0,sl=0,moved=0;
+  /* 同一个元素在宽屏不溢出、窄屏才溢出（`.count` 就是这样）。不判溢出就会在宽屏
+     把滚轮和拖动从真正在滚的子元素手里抢走。 */
+  const scrollable=()=>el.scrollWidth-el.clientWidth>1;
   el.addEventListener('mousedown',e=>{
-    if(e.button!==0)return; dragRow=el;moved=0;sx=e.pageX;sl=el.scrollLeft;
+    if(e.button!==0||!scrollable())return; dragRow=el;moved=0;sx=e.pageX;sl=el.scrollLeft;
     el.style.cursor='grabbing'});
   el.addEventListener('mousemove',e=>{
     if(dragRow!==el)return; const dx=e.pageX-sx; moved=Math.max(moved,Math.abs(dx));
@@ -6971,10 +7237,12 @@ function wireDrag(el){
   el.addEventListener('click',e=>{if(moved>6){e.stopPropagation();e.preventDefault();moved=0}},true);
   // 滚轮竖向 → 横向
   el.addEventListener('wheel',e=>{
-    if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){el.scrollLeft+=e.deltaY;e.preventDefault()}},
+    if(scrollable()&&Math.abs(e.deltaY)>Math.abs(e.deltaX)){el.scrollLeft+=e.deltaY;e.preventDefault()}},
     {passive:false});
 }
-function wireAllDrag(){['#tagbar','#srow','#nrow'].forEach(s=>wireDrag($(s)));
+/* `#count` 一起登记：窄屏下排序筛选整行由 `.count` 自己横向滚动，而它没有滚动条，
+   不接拖动和滚轮就只剩看得见够不着的半个按钮。 */
+function wireAllDrag(){['#tagbar','#srow','#nrow','#count'].forEach(s=>wireDrag($(s)));
   document.querySelectorAll('.tier').forEach(wireDrag)}
 
 /* 目录页（首页 + 四个筛选态）：筛选全部从 URL 读，路径只决定初始筛选态。
