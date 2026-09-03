@@ -1671,7 +1671,13 @@ body.censor .brand .mark,body.censor .src img,body.censor .ficon{filter:none}
   display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 0}
 .edge button{width:52px;height:52px;border-radius:var(--control-radius);background:none;border:0;cursor:pointer;
   display:flex;align-items:center;justify-content:center;color:var(--muted);transition:background .12s}
-.edge button:hover{color:var(--ink)}
+/* 侧栏导航是「填充让位给选中」的例外，Geist 自己就这么写。2026-09-04 实测
+   vercel.com/geist 的左栏：未选中项 `hover:bg-gray-100`（悬停底 rgb(26,26,26)），
+   文字全程停在 rgb(161,161,161) 不动；当前项 `bg-gray-alpha-100`（合成后亮度
+   和悬停底几乎相同）加文字提到 rgb(237,237,237)，且不带任何 hover 类。
+   也就是分工反过来：填充是「鼠标在这儿」，文字/图标色才是「你在这儿」。
+   纯图标窄栏尤其需要这样——52px 方块里只有一个描边图标，光靠图标换色近乎看不见。 */
+.edge button:hover{background:var(--hover)}
 .edge button[aria-pressed="true"]{background:var(--hover);color:var(--ink)}
 .edge button.nav-dragging,.dnav button.nav-dragging{opacity:.38}.edge button.nav-drop-before::before,.edge button.nav-drop-after::after,.dnav button.nav-drop-before::before,.dnav button.nav-drop-after::after{content:'';position:absolute;z-index:2;left:7px;right:7px;height:2px;border-radius:var(--pill-radius);background:var(--ink)}.edge button.nav-drop-before::before,.dnav button.nav-drop-before::before{top:-3px}.edge button.nav-drop-after::after,.dnav button.nav-drop-after::after{bottom:-3px}.edge button[data-nav],.dnav button[data-nav]{position:relative}
 .edge svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;
@@ -1705,7 +1711,12 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .dnav button{padding-left:12px}
 .dnav button{display:flex;align-items:center;gap:14px;padding:11px 14px;background:none;
   border:0;border-radius:var(--control-radius);cursor:pointer;text-align:left;font-size:var(--fs-lg);color:var(--ink)}
-.dnav button:hover svg{color:var(--ink)}
+/* 抽屉是窄栏的展开态，走同一条例外：悬停抬填充，颜色留给当前项。
+   与 Geist 有一处未对齐：它靠文字色分两态（63% 灰对 93% 白），Peach 的抽屉标签
+   两态都是 --ink，区别只落在图标色上（--muted 对 --ink）。这是本次有意保留的现状，
+   不是取证结论——把未选中标签压到 --muted 才是照 Geist 对齐，但那会改动抽屉整列
+   的基态字色，超出「把悬停填充改回来」这一次的范围。 */
+.dnav button:hover{background:var(--hover)}
 .dnav button[aria-pressed="true"]{background:var(--hover);color:var(--ink)}
 .dnav svg{width:20px;height:20px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;
   stroke-linecap:round;stroke-linejoin:round;color:var(--muted)}

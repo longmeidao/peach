@@ -182,18 +182,54 @@ error 底 `rgb(217,48,54)` 字 `#fff`；warning 底 `rgb(255,153,10)` 字 `rgb(1
 `bg-[--ds-background-100]` + `shadow-[0_0_0_1px_var(--ds-gray-400)]`。它加环是因为选中项
 的底色和容器同色，填充本身分不出来；不是通用做法。
 
-### Peach 对应（2026-09-03 收敛）
+### 侧栏导航是例外：分工反过来（2026-09-04 实测，深色主题）
+
+上一节那张表只取了横排选项组（Switch、Tabs），当时把结论推广到了侧栏，这是错的。
+2026-09-04 在 `https://vercel.com/geist/tabs` 用 1600×900 视口读左栏文档导航
+（`aside` 里那 82 条链接，值取自每条链接内层的 `span`，悬停用真实鼠标移入后再读计算值）：
+
+| 状态 | 背景 | 文字 | 类名 |
+| --- | --- | --- | --- |
+| 未选中 | `rgba(0,0,0,0)` | `rgb(161,161,161)` | `text-gray-900 hover:bg-gray-100` |
+| 未选中 + 悬停 | `rgb(26,26,26)` | `rgb(161,161,161)`（不动） | 同上 |
+| 当前项 | `rgba(255,255,255,.06)` | `rgb(237,237,237)` | `text-gray-1000 bg-gray-alpha-100`，**不带任何 hover 类** |
+
+几何两态相同：`h-10`、`rounded-md`（6px）、`px-3 py-1.5`、`text-copy-14`，字重全程 400，无边框无环。
+
+要点：
+
+- **侧栏的悬停是抬填充的**，而且填充强度和当前项几乎一样：`--ds-gray-100` 是 hsl 10% 的实底，
+  `--ds-gray-alpha-100`（`#ffffff0f`）压在 hsl 4% 的页底上合成约 hsl 9.4%。Geist 显然不打算
+  用填充的强弱区分「鼠标在这儿」和「你在这儿」。
+- **区分二者的是文字色**：63% 灰对 93% 白。悬停不碰文字色，当前项不带 hover 类。
+  所以横排选项组那条「填充专属选中、悬停只提文字色」在这里是反的。
+- 当前项确实不加边、不加环、不加字重——上一节这部分结论仍然成立。
+
+Peach 尚未对齐的一处：抽屉 `.dnav button` 的未选中标签仍是 `--ink`，不是 Geist 的 63% 灰，
+所以当前项与悬停项只靠图标色（`--muted` 对 `--ink`）分开。改齐要动整列基态字色，
+留待单独一次处理，别当成已对齐。
+
+### 纠正记录
+
+`1367a9a`（2026-09-03）把 Switch／Tabs 的取证结论推广成了全站规则，顺手删掉了
+`.edge button:hover` 与 `.dnav button:hover` 的填充。用户 2026-09-04 指出窄栏悬停没反馈，
+并给出 Vercel 后台左栏的截图（Projects 与 Deployments 两行同时带填充）。上表是照此复测的结果：
+证据只覆盖横排选项组，推广到侧栏没有依据。已按上表把两处填充改回，并加正向断言
+`test_sidebar_nav_keeps_the_hover_fill_and_leaves_state_to_the_color` 锁住。
+
+### Peach 对应（2026-09-03 收敛，2026-09-04 修正侧栏一条）
 
 - 按下／选中（`aria-pressed="true"`、`aria-current`、`.selected`、`.current`、`.picked`、`:checked`）
   只有填充：一律 `--hover` 底 `--ink` 字，不加边、不加内嵌一圈线、不加字重。这条推翻了本文件
   此前写的两版——先是「统一 `--ink-2` 底 `--ground` 字」（Geist 的 Switch 选中项只是 `#0A0A0A`
   面上抬到 `#1A1A1A`，没有一处是反相白块），再是「无边框补内嵌一圈线、带边框提到墨色 28%、
   还要更强就加字重」（那一整套是自造的强调阶梯，上面三个组件的类名里一条都没有）。
-- 因此**同一组互斥选项的未选中项，悬停只提文字色到 `--ink`，不上填充**：`.pill`、`.chip`、
-  `.reviewtabs button`、`.sorts button`、`.junkfilters a`、`.tagmodes button`、`.dnav button`、
-  `.edge button`、`.managebar button`、`.mediaviewbutton`、`.javbar button`。没有选中态的按钮
+- 因此**同一排横向互斥选项的未选中项，悬停只提文字色到 `--ink`，不上填充**：`.pill`、`.chip`、
+  `.reviewtabs button`、`.sorts button`、`.junkfilters a`、`.tagmodes button`、
+  `.managebar button`、`.mediaviewbutton`、`.javbar button`。没有选中态的按钮
   （`.fbtn`、`.fchip`）和没有并排邻居的孤立开关（`.ib`、`.brandpill`、`.playerstatsbtn`、
-  `.fb .like`）悬停照旧抬填充。彩色标签类控件（`.tagfilters`、`.index-tags .tg`、`.alphatag`、
+  `.fb .like`）悬停照旧抬填充。**侧栏导航 `.edge button` 与 `.dnav button` 不在这条里**，
+  按上一节的实测走「悬停抬填充、当前项握着颜色」。彩色标签类控件（`.tagfilters`、`.index-tags .tg`、`.alphatag`、
   `.sec.cat-* .chip`）的悬停本来就是标签色 tint，与白色选中底不同色，不受这条影响。
 - 主动作 `--ink` 底 `--ground` 字，悬停 `color-mix(in srgb,var(--ink) 88%,var(--ground))`
   （对应 Geist 的 #EDEDED→#CCC，同为掉一档而非换色）；每屏最多一个。
