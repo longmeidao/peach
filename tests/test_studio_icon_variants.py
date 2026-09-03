@@ -209,6 +209,26 @@ class LogoAvailabilityTests(unittest.TestCase):
         for studio in studios:
             self.assertAgrees(studio)
 
+    def test_two_japanese_studios_do_not_share_one_file(self):
+        """只留 ASCII 时非 ASCII 的每个字都换成一个下划线，落盘名只剩「几个字」。
+
+        账本里 129 个厂牌有 12 组这样撞在一起，`プレステージ` 和 `ムーディーズ` 同为
+        `______`。撞了不报错，后装的盖掉先装的，PRESTIGE 的位置就挂上 MOODYZ 的牌子。
+        """
+        self.write(f"{logo_key('プレステージ')}.img")
+        self.assertTrue(self.contract.has_logo("プレステージ"))
+        self.assertFalse(self.contract.has_logo("ムーディーズ"))
+        self.assertAgrees("ムーディーズ")
+        self.assertNotEqual(logo_key("シロウトTV"), logo_key("ラグジュTV"))
+
+    def test_the_ascii_file_names_already_on_disk_keep_their_key(self):
+        """已经装好的 60 张都是 ASCII 名，改名规则不能让它们从此取不到。"""
+        expected = {"Fitch": "Fitch", "FC2-PPV": "FC2-PPV", "Idea Pocket": "Idea_Pocket",
+                    "S1 NO.1 STYLE": "S1_NO_1_STYLE", "kira*kira": "kira_kira"}
+        for studio, key in expected.items():
+            with self.subTest(studio=studio):
+                self.assertEqual(logo_key(studio), key)
+
     def test_availability_is_case_insensitive_like_the_resolver(self):
         """`logo()` 对大小写不敏感（Windows 与 macOS 的默认文件系统就是这样），
         索引不能顺手把这层容错丢了。"""

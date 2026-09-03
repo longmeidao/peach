@@ -136,7 +136,7 @@ LOGO_SOURCES: dict[str, str] = {
 
 def safe_name(studio: str) -> str:
     """和 `PreviewService.logo` 同一套文件名规则，两边必须一致。"""
-    return re.sub(r"[^A-Za-z0-9_-]", "_", studio)[:60]
+    return re.sub(r"[^\w-]", "_", studio, flags=re.UNICODE)[:60]
 
 
 #: `LOGO_SOURCES` 按文件名归一后的同一张表：目标集是按 safe 归拢的，没有链接的厂牌

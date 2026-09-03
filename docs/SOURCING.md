@@ -310,6 +310,28 @@
   只给照片 avatar/banner，频道页顶部那张 `assets/brand/1151/banners/…jpg` 是 1920×400 的照片横幅不是标识，
   `www.monstersofcock.com` 是同一套 Aylo 壳（favicon 同样是「1」、无 apple-touch-icon），所以它记
   **未取得**、继续回落现有的 `MonstersOfCock.img`，不用推测顶替。
+- **展会名录**（用户 2026-09-04 指定 `jae.tokyo`，Japan Adult Expo 的参展厂牌名录）：2014／2015／2017
+  三届各带一套厂商自己交的 logo，页面结构每届不同——2014 是 `exhibitor/` 里 `<li><a><h2>名字</h2>` 加
+  `images/logo/*.jpg`（270×180，`alt` 不可靠），2015 是 `maker.html` 里 `offMaker` 弹层的
+  `makerLogo`／`makerRightTitle`／`makerLinkBtn`（188×188），2017 是 `maker.html` 的 `alt` 加详情页
+  `makaer/NNN.html` 的 `name_area` 与 `class="pop"` 官网链接（320×320）。2016 那届 `exhibition.html`
+  只有图、HTML 里没有名字，认不出是谁家的，不取。211 条名录条目对上账本 26 家没有任何图的厂牌
+  （名字对不上却是同一家的按厂牌自称对：名录里 `ムーディーズ` 写作 `MOODYZ`、`SODクリエイト` 写作
+  `ソフト・オン・デマンド株式会社`、`Momotaro Eizo` 写作 `桃太郎映像出版`），同一家出现在多届时取像素
+  最多的那一届，逐张在白底上看过认得出是哪家才写进 `LOGO_SOURCES`。
+- **指定 logo 来源自己就是入场理由，小位从大位那张烤。** `harvest_targets()` 收三类：补白过的、有链接
+  但没图的、有指定 logo 来源但没图的。第三类是为这 26 家开的——它们在账本里绝大多数连一条
+  official／catalog 链接都没有，只按前两类收一条都收不到，`site_icons` 的发现流程也走不到它们，
+  两个位置一直空着。`icon_from_logo()` 在小位
+  自己没做成、大位的指定来源做成了时，把同一张过 `bake_square` 装进 `icon` 位。判「补没补白」看源图
+  长宽比与 `images.MAX_ASPECT`（`ok` 恰好等于这一张一个像素都没动过），不看内容比：名录 2014 那届是
+  整幅不透明的 jpg，`content_aspect` 对它一律回 0，分不出方图和长条。复核件的 `studio` 列改从
+  `LOGO_SOURCE_NAMES` 取，没有链接的厂牌拿不到别的名字。
+- **落盘名保留假名与汉字。** `previews.logo_key` 按 `\w` 归一，标点仍然变下划线，长度上限 60 不变。
+  只留 `[A-Za-z0-9_-]` 的话，非 ASCII 的每个字符换一个下划线，名字里只剩「几个字」这一个信息：
+  129 个厂牌撞成 12 组，`プレステージ` 与 `ムーディーズ` 同为 `______`、`シロウトTV` 与 `ラグジュTV`
+  同为 `____TV`；撞了不报错，后装的那张盖掉先装的，PRESTIGE 的位置就挂上 MOODYZ 的牌子。
+  已装的 60 张都是 ASCII 名，键一个都没变。
 - 判词分档、每一档对应不同的下一步：`ok`、`字标补白`（可装，见上）、`只有小图标`（FC2 全站只有 16×16，
   该去找更大的资产）、`平台通用图标`（见上）、`仍是字标`、`未取得`（一份字节都没取回，`Fetcher` 自己数
   取回几份才判得出来）、`无官网链接`。只有前两档会被 `--install` 落盘。`best_mark` 只回结果不回理由，
