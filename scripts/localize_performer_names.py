@@ -437,12 +437,23 @@ def _rewrite_actor_tags(
     return rewritten
 
 
+def report_conflicts(rows: list[dict[str, object]]) -> int:
+    """逐条打出重名冲突：它们靠被人看见来解决，不靠把整批改名扣在门外。"""
+    stuck = [row for row in rows if row["action"] == "conflict"]
+    for row in stuck:
+        print(f"  重名待裁决：{row['entity_id']} {row['current_name']} -> "
+              f"{row['target_name']}（{row['resolution']}）")
+    return len(stuck)
+
+
 def apply_rows(
     connection: sqlite3.Connection, rows: list[dict[str, object]], revision: str,
 ) -> dict[str, int]:
-    if any(row["action"] == "conflict" for row in rows):
-        raise RuntimeError("复核计划仍有 target-name-conflict，拒绝写入")
     counts = Counter()
+    # 重名冲突只挡住它自己那一行：下面的写入循环本来就跳过 conflict，整批拒绝扣住的
+    # 是另外九十条毫无关系的改名——一个等人授权的同人合并不该冻住整轮本地化。跳过的
+    # 行照样计数、照样让退出码非零，不会悄悄消失。
+    counts["conflicts_skipped"] = sum(1 for row in rows if row["action"] == "conflict")
     source = f"{ALIAS_SOURCE_PREFIX}@{revision[:12]}"
     by_id = {int(row["entity_id"]): row for row in rows}
 
@@ -552,7 +563,7 @@ def run(args: argparse.Namespace) -> int:
         print("  动作分布：", dict(Counter(str(row["action"]) for row in rows)))
         if not args.apply:
             print("  未写 ledger（加 --apply --backup 才写）")
-            return 1 if any(row["action"] == "conflict" for row in rows) else 0
+            return 1 if report_conflicts(rows) else 0
 
         print(f"  已备份到 {args.backup}")
         before = counts_of(connection, EXTRA_COUNTS)
@@ -564,7 +575,8 @@ def run(args: argparse.Namespace) -> int:
         for key in before:
             print(f"    {key}: {before[key]} -> {after[key]}")
         print(f"  integrity_check={integrity}；foreign_key_check={foreign_keys}")
-        return 1 if integrity != "ok" or foreign_keys else 0
+        stuck = report_conflicts(rows)
+        return 1 if integrity != "ok" or foreign_keys or stuck else 0
     finally:
         connection.close()
 

@@ -8,7 +8,7 @@ from pathlib import Path
 from peach.migrations import upgrade
 from scripts.localize_performer_names import (
     KANJI_ALIAS_SOURCE, apply_rows, collect, main, read_identity_review, read_mapping,
-    resolve_sai, simplify_kanji, strip_zero_width,
+    report_conflicts, resolve_sai, simplify_kanji, strip_zero_width,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -213,8 +213,14 @@ class PerformerLocalizationTests(unittest.TestCase):
             self.con, [], read_identity_review(self.review), "kanji-only")}
         self.assertEqual(rows[16]["action"], "conflict")
         self.assertIn("target-name-conflict", rows[16]["resolution"])
-        with self.assertRaises(RuntimeError):
-            apply_rows(self.con, list(rows.values()), "kanji-only")
+        # 待裁决的那一行只挡住自己：同一批里其它人的字形照样归一，
+        # 否则库里一处未合并的同人就能无限期冻住全部改名。
+        counts = apply_rows(self.con, list(rows.values()), "kanji-only")
+        self.assertEqual(counts["conflicts_skipped"], 1)
+        names = dict(self.con.execute("SELECT id,canonical_name FROM entity"))
+        self.assertEqual(names[16], "斎藤満里奈")
+        self.assertEqual(names[17], "野野宫兰")
+        self.assertEqual(report_conflicts(list(rows.values())), 1)
 
     def test_mapping_xml_is_optional_and_its_revision_is_not(self):
         """那份 XML 不在仓库里，也可能已经不在这台机器上；缺了它字形归一仍要能跑。"""
