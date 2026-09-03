@@ -2018,6 +2018,12 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("followTagChip(item,tag,'button')")
         self.assertPageContains("item.detail_tags||item.tags||[]")
         self.assertPageContains(".followdetailtags .tg{max-width:none")
+        # 标签是按钮，点下去按这个标签筛选，必须有悬停反馈。通用 `.tg:hover` 的填充和
+        # 文字色被按类型着色那两条同权重规则压掉了，只能按标签自己那个类型色加深一档。
+        self.assertPageContains(
+            ".followdetailtags .tg:hover{border-color:color-mix(in srgb,var(--r34-tag) 68%,transparent)")
+        self.assertPageContains(
+            "background:color-mix(in srgb,var(--r34-tag) 18%,transparent);color:var(--ink)}")
         self.assertPageContains("const postedBy=item.author&&foldName(item.author)!==foldName(author)")
         self.assertPageContains("openFollowDetail(id);")
         self.assertNotIn('class="cardopenhit" href=', self.page)

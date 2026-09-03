@@ -129,6 +129,11 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 .tier,.tagbar,.srow,.nrow{scrollbar-width:none}
 .tier::-webkit-scrollbar,.tagbar::-webkit-scrollbar,
 .srow::-webkit-scrollbar,.nrow::-webkit-scrollbar{display:none}
+/* 横滚容器的 overflow-x:auto 会把计算后的 overflow-y 一起变成 auto，圆头像贴着容器
+   上沿时，:hover 和选中态那圈外扩 box-shadow 就被削平。留 3px 上方余量再用等量负
+   margin 抵掉，位置一点不动。头像圈被遮是同一个缺陷重犯多次，横向头像行统一走这
+   一条，不要再逐处补 padding。`.followauthors` 自带余量，不在此列。 */
+.tier,.relatedpeople{padding-top:3px;margin-top:-3px}
 
 /* ── 顶栏：无侧栏，图占主导 ── */
 .top{position:sticky;top:0;z-index:70;display:flex;align-items:center;gap:12px;
@@ -174,7 +179,8 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 .tiers{position:relative;z-index:1;padding:10px 0 8px;
   border-bottom:0;
   background:linear-gradient(180deg,color-mix(in srgb,var(--frost-light) 38%,transparent),transparent)}
-.tier{display:flex;gap:14px;overflow-x:auto;scrollbar-width:none;padding:0 16px 8px;align-items:flex-start}
+/* padding-top 归上面那条头像圈余量的规则管，这里不能用 padding 简写把它清掉。 */
+.tier{display:flex;gap:14px;overflow-x:auto;scrollbar-width:none;padding-inline:16px;padding-bottom:8px;align-items:flex-start}
 .tier::-webkit-scrollbar{display:none}
 .tier:last-child{padding-bottom:2px}
 /* 一层：圆头像 */
@@ -1520,6 +1526,9 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
   background:color-mix(in srgb,var(--surface) 82%,var(--ground));overflow:hidden;min-height:30px}
 .detailtag button{border:0;background:transparent;color:var(--ink-2);cursor:pointer;height:28px}
 .detailtag .tagfilter{padding:3px 5px 3px 11px}.detailtag .tagremove{width:28px;padding:0;display:grid;place-items:center;color:var(--muted)}
+/* 标签左半边点下去是按这个标签筛选，得和右边的删除键一样有悬停反馈；
+   它没有选中态，照孤立按钮的写法抬填充。 */
+.detailtag .tagfilter:hover{background:var(--hover);color:var(--ink)}
 .detailtag .tagremove:hover{color:var(--drop);background:color-mix(in srgb,var(--drop) 12%,transparent)}
 .detailtag svg,.tagplus svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
 .tagplus{width:30px;height:30px;border:1px dashed var(--line);border-radius:50%;display:grid;place-items:center;
@@ -2027,13 +2036,18 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .pcheck input:disabled+span{cursor:not-allowed;opacity:.55}
 .pcheck:has(input:disabled){cursor:not-allowed}
 .pcheck:has(input:disabled)>span{background:var(--ground)}
-/* 取景：正封模式下，整张封套要把镜头推到右半边；本身就是竖版正封的则整张用。
+/* 取景：正封模式下，整张封套要把镜头推到右半边；本身就是竖版正封的则整张用；
+   16:9 官方剧照没有「正封那一块」，只能按人脸取。
    判据是图片自己的宽高比，由 onload 写进 data-frame。 */
 .poster.cover{width:100%;height:100%;object-fit:cover;display:block}
-/* --cover-y 由人脸检出写入；没检出时回落到 22%，那是 46 张实测里的常见位置。 */
+/* --cover-x / --cover-y 都由人脸检出写入。哪个轴生效取决于容器和图片谁更竖：
+   `object-fit:cover` 只裁一个轴，另一个轴的锚点是死值。 */
 /* 右侧正封贴着封套右边缘，横向锚点就取最右；容器比例已经把可见窗口收成正封那一块。 */
 .poster.cover.front[data-frame="sleeve"]{object-position:100% var(--cover-y,22%)}
 .poster.cover.front[data-frame="front"]{object-position:50% var(--cover-y,22%)}
+/* 剧照比大图容器宽得多，裁的是横向，所以横向锚点必须跟着人走。没检出时回落
+   居中：那是取不到人脸时唯一站得住的猜测。 */
+.poster.cover.front[data-frame="still"]{object-position:var(--cover-x,50%) var(--cover-y,22%)}
 .poster.cover.whole{object-fit:contain;background:#000;object-position:50% 50%}
 
 
@@ -2134,7 +2148,11 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .followdetailplaceholder{display:grid;place-items:center;gap:10px;color:var(--muted)}.followdetailplaceholder .ficon{width:34px;height:34px;margin:0}
 .followdetailtitle{display:flex;gap:5px;align-items:flex-start;margin-bottom:8px}.followdetailtitle .stitle{width:auto;max-width:calc(100% - 35px);margin:0}.followdetailtitle .followorigin{flex:none;width:30px;height:30px;margin:0;display:grid;place-items:center;border-radius:var(--control-radius)}.followdetailtitle .followorigin:hover{background:var(--hover)}
 .followdetailidentity{display:flex;align-items:center;gap:10px;margin:2px 0 12px}.followdetailidentity .mav{flex:none}.followdetailidentity b,.followdetailidentity span{display:block}.followdetailidentity>div>span{margin-top:3px;color:var(--muted);font-size:var(--fs-xs)}
-.followdetailsummary{margin:0 0 16px;line-height:1.6;color:var(--ink-2);white-space:pre-line}.followdetailtags .tg{max-width:none;overflow:visible;text-overflow:clip;white-space:normal;text-align:left;color:var(--ink-2);font-family:inherit}.followqueue .mixitempic>.fnothumb{position:static;width:100%;height:100%}
+.followdetailsummary{margin:0 0 16px;line-height:1.6;color:var(--ink-2);white-space:pre-line}.followdetailtags .tg{max-width:none;overflow:visible;text-overflow:clip;white-space:normal;text-align:left;color:var(--ink-2);font-family:inherit}/* 通用 `.tg:hover` 的填充和文字色被上面按类型着色的两条同权重规则压掉了，
+   悬停得按标签自己那个类型色加深，不能回到中性的 `--hover`。 */
+.followdetailtags .tg:hover{border-color:color-mix(in srgb,var(--r34-tag) 68%,transparent);
+  background:color-mix(in srgb,var(--r34-tag) 18%,transparent);color:var(--ink)}
+.followqueue .mixitempic>.fnothumb{position:static;width:100%;height:100%}
 .fnote.followmediaissue{margin:18px 0 8px;color:var(--drop)}.followresources{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}.followresources a{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 11px;border:1px solid var(--border-15);border-radius:var(--control-radius);color:var(--ink-2);text-decoration:none}.followresources a:hover{background:var(--hover);color:var(--ink);text-decoration:none}.followresources svg{width:15px;height:15px;stroke:currentColor;fill:none}.followdetailactions{margin-top:2px}
 /* 标签沉到侧栏最后：来源站的标签动辄几十个，夹在正文和操作之间就得先滚过整片
    标签云才够得着「已看／忽略」。 */

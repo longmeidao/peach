@@ -1402,12 +1402,14 @@ function facePos(f){
     :f&&f.axis==='y'?` style="object-position:50% ${f.pct}%"`
     :'';
 }
-/* 官方封套有两种形态，实测过：整张封套约 1.48（左侧是剧照拼贴，右侧才是正封），
-   竖版正封约 0.70（本身就是正封，没有左半边可裁）。所以取景不能写死「取右边」，
-   得等图片加载后按它自己的宽高比分流——服务端没存这个比例，也不该为此再存一份。 */
-/* 常见双页 DVD 封套约 1.45:1；16:9 的横版官方剧照不是封套，不能把它也推到
-   最右半边。上限给扫描留余量，但明确排除 259LUXU-1573 这类 1.78:1 剧照。 */
-const COVER_FRAME=`onload="const r=this.naturalWidth/this.naturalHeight;this.dataset.frame=r>1.2&&r<1.65?'sleeve':'front'"`;
+/* 官方封面有三种形态，实测过：整张封套约 1.48（左侧是剧照拼贴，右侧才是正封），
+   竖版正封约 0.70（本身就是正封，没有左半边可裁），16:9 官方剧照约 1.78（整幅
+   都是画面，没有「正封那一块」可推）。所以取景不能写死「取右边」，得等图片加载后
+   按它自己的宽高比分流——服务端没存这个比例，也不该为此再存一份。
+   剧照必须自成一档：把 1.78 归进 front 就会按写死的 50% 取横向中段，人偏在一侧
+   就整个被切掉，而大图容器比所有封面都竖、纵向锚点在那里根本不生效。 */
+const COVER_FRAME=`onload="const r=this.naturalWidth/this.naturalHeight;`
+  +`this.dataset.frame=r>=1.65?'still':r>1.2?'sleeve':'front'"`;
 /* 整张封套里右侧正封占的宽高比。裁切靠的是容器比例而不是 CSS 裁剪：`object-fit:cover`
    只在容器比图片更「竖」时才会横向裁；容器一旦宽过 1.48 就变成纵向裁、整张封套原样
    铺满，「大图」于是只撑满画布而取不到右侧。 */
@@ -1418,13 +1420,18 @@ const COVER_FRONT_RATIO=0.7;
 const PORTRAIT_RATIO=9/16;
 function coverImage(it,layout,eager){
   const src=`/cover?code=${encodeURIComponent(it.code||'')}`;
-  // 人脸只做纵向微调：人物在画面里的高低差别很大，写死的纵向位置会把一部分
-  // 作品裁掉下巴或留出大片空白。检出率约 48%，取不到就退回固定值。
-  const cy=it.cover_frame&&it.cover_frame.cy;
-  const y=cy!=null?`--cover-y:${Math.round(Math.min(0.6,Math.max(0.05,cy))*100)}%`:'';
+  // 两个轴都写出去，哪个生效交给 CSS 按版式挑：纵向给 16:9 容器里的封套用，
+  // 横向给大图容器里的 16:9 剧照用。人物在画面里的位置差别很大，写死的锚点会把
+  // 一部分作品裁掉下巴或整个切出画外；取不到就退回固定值。
+  const f=it.cover_frame||{};
+  // 纵向夹在 5%–60%：再往下就只剩身体，那是检出跑偏而不是构图。横向不夹——
+  // `object-position` 的语义保证锚点落在 0–1 之间时人脸一定还在可见窗口里。
+  const vars=[
+    f.cy!=null?`--cover-y:${Math.round(Math.min(0.6,Math.max(0.05,f.cy))*100)}%`:'',
+    f.cx!=null?`--cover-x:${Math.round(Math.min(1,Math.max(0,f.cx))*100)}%`:''].filter(Boolean).join(';');
   // 小图看整张（含剧照拼贴），大图只取右侧正封。
   return `<img class="poster cover ${layout==='small'?'whole':'front'}" src="${src}"
-    alt="" loading="${eager?'eager':'lazy'}"${y?` style="${y}"`:''} ${COVER_FRAME} data-drop="self">`;
+    alt="" loading="${eager?'eager':'lazy'}"${vars?` style="${vars}"`:''} ${COVER_FRAME} data-drop="self">`;
 }
 /* 卡片署名。版次队列要和「接着看」长得一样，就必须用同一份身份推导——各算各的
    迟早会在同名 creator/performer 那 35 组上分叉，同一条作品在两处指向两个实体。

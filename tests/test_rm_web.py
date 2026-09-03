@@ -1455,18 +1455,31 @@ class JavModeAndCoverTests(unittest.TestCase):
         self.assertIsNone(self.contract.cover_path("ABW-232"))
         self.assertIsNone(self.contract.cover_path(None))
 
-    def test_cover_frame_reads_the_face_sidecar(self):
+    def test_cover_frame_reads_both_axes_out_of_the_face_sidecar(self):
+        """哪个轴生效由容器和图片的宽高比决定，数据层两个都得给出去。
+
+        16:9 官方剧照在大图容器里只会横向裁，横向锚点丢在这一层的话，页面就只能
+        退回写死的 50%，偏在一侧的人物整个落到可见窗口外面。
+        """
         (self.covers / "ABW-232.jpg").write_bytes(b"x")
         (self.covers / "ABW-232.face.json").write_text(
             '{"ratio":1.49,"face":{"cx":0.82,"cy":0.19}}', encoding="utf-8")
-        self.assertEqual(self.contract.cover_frame("ABW-232"), {"cy": 0.19})
+        self.assertEqual(self.contract.cover_frame("ABW-232"),
+                         {"cx": 0.82, "cy": 0.19})
+
+    def test_a_sidecar_with_only_one_axis_keeps_just_that_axis(self):
+        """缺的那个轴不带键，页面各自回落；不能拿另一个轴的值顶替。"""
+        (self.covers / "ABW-232.jpg").write_bytes(b"x")
+        (self.covers / "ABW-232.face.json").write_text(
+            '{"ratio":1.78,"face":{"cx":0.13}}', encoding="utf-8")
+        self.assertEqual(self.contract.cover_frame("ABW-232"), {"cx": 0.13})
 
     def test_a_cover_without_a_sidecar_falls_back_silently(self):
         (self.covers / "ABW-232.jpg").write_bytes(b"x")
         self.assertIsNone(self.contract.cover_frame("ABW-232"))
 
     def test_a_sidecar_reporting_no_face_is_not_a_frame(self):
-        # 检出率约 48%，没检出是常态而不是错误——必须安静回落。
+        # 954 张实测检出 885 张，没检出是少数但确实存在——必须安静回落。
         (self.covers / "ABW-232.jpg").write_bytes(b"x")
         (self.covers / "ABW-232.face.json").write_text(
             '{"ratio":1.49,"face":null}', encoding="utf-8")
