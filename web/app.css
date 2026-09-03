@@ -242,7 +242,7 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 .stats{padding:0 0 42px}
 .playlistpage{padding:4px 0 42px}.playlistpage>header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:16px}.playlistpage h2{margin:0 0 5px}.playlistpage p{margin:0;color:var(--muted);font-size:var(--fs-sm)}
 .playlistcreate{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}.playlistcreate label{display:grid;gap:5px;color:var(--muted);font-size:var(--fs-xs)}.playlistcreate input,.playlistmeta input{min-width:220px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink);padding:9px 11px;font:inherit}.playlistcreate button,.playlistactions button{border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:9px 12px;cursor:pointer}.playlistcreate button:hover,.playlistactions button:hover{background:var(--hover);color:var(--ink)}.playlistcreate [data-playlist-state]{flex-basis:100%;color:var(--drop);font-size:var(--fs-xs)}
-.playlistcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.playlistcard{display:grid;grid-template-columns:112px minmax(0,1fr);gap:12px;padding:12px;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface);min-width:0}.playlistcover{position:relative;aspect-ratio:16/10;border:0;border-radius:var(--surface-radius);background:#000;overflow:hidden;padding:0;cursor:pointer}.playlistcover:disabled{cursor:default}.playlistcover img{width:100%;height:100%;object-fit:cover}.playlistcover span{position:absolute;right:5px;bottom:5px;border-radius:var(--badge-radius);background:#000b;color:#fff;padding:3px 6px;font-size:var(--fs-xs)}.playlistmeta{display:grid;align-content:center;gap:6px;min-width:0}.playlistmeta input{min-width:0;width:100%;font-weight:600}.playlistmeta small{color:var(--muted)}.playlistactions{grid-column:1/-1;display:flex;gap:7px;justify-content:flex-end}.playlistactions .danger{color:var(--drop)}
+.playlistcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.playlistcard{display:grid;grid-template-columns:112px minmax(0,1fr);gap:12px;padding:12px;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface);min-width:0}.playlistcover{position:relative;aspect-ratio:16/10;border:0;border-radius:var(--surface-radius);background:#000;overflow:hidden;padding:0;cursor:pointer}.playlistcover:disabled{cursor:default}.playlistcover img{width:100%;height:100%;object-fit:cover}.playlistcover span{position:absolute;right:5px;bottom:5px;border-radius:var(--badge-radius);background:#000b;color:#fff;padding:3px 6px;font-size:var(--fs-xs)}.playlistmeta{display:grid;align-content:center;gap:6px;min-width:0}.playlistmeta input{min-width:0;width:100%;font-weight:600}.playlistmeta small{color:var(--muted)}.playlistactions{grid-column:1/-1;display:flex;gap:7px;justify-content:flex-end}.playlistactions .danger{color:var(--drop)}.playlistactions .danger:hover{background:var(--drop);border-color:var(--drop);color:#fff}
 .playlistdialog{width:min(520px,calc(100vw - 28px));border:1px solid var(--line);border-radius:var(--floating-radius);background:var(--surface);color:var(--ink);padding:0;box-shadow:0 2px 4px #0003,0 24px 80px #000b}.playlistdialog::backdrop{background:#000a;backdrop-filter:blur(5px)}.playlistdialoghead{display:flex;align-items:center;justify-content:space-between;padding:16px 17px;border-bottom:1px solid var(--line-soft)}.playlistdialoghead h2{margin:0;font-size:var(--fs-xl)}.playlistdialoghead button{width:34px;height:34px;border:0;border-radius:var(--control-radius);background:transparent;color:var(--ink);display:grid;place-items:center;cursor:pointer}.playlistdialoghead button:hover{background:var(--hover)}.playlistdialoghead svg{width:19px;height:19px;stroke:currentColor;fill:none}.playlistdialogbody{padding:17px}.playlistpicklist{display:grid;gap:7px;margin-top:16px;max-height:320px;overflow-y:auto;overscroll-behavior:contain}.playlistpickrow{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--border-10);border-radius:var(--control-radius);background:var(--overlay-5);color:var(--ink);padding:11px 12px;text-align:left;cursor:pointer}.playlistpickrow:hover{background:var(--hover)}.playlistpickrow small{color:var(--muted)}
 .runtimegate{display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:12px;margin:0 0 12px;padding:10px 12px;border:1px solid color-mix(in srgb,var(--meter) 35%,var(--line));border-radius:var(--control-radius);background:color-mix(in srgb,var(--meter) 8%,var(--surface));color:var(--ink);font-size:var(--fs-sm)}.runtimegate>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.runtimegate span{min-width:0}.runtimegate a{color:var(--ink);font-weight:600;text-decoration:none}.runtimegate a:hover{color:var(--ink-2)}
 .review{--review-fieldset-height:440px;padding:0 0 42px}.reviewsection{margin-bottom:20px}.reviewsection h3{margin:0 0 9px;font-size:var(--fs-lg)}.reviewlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}
@@ -297,15 +297,18 @@ button[aria-busy="true"],[role="button"][aria-busy="true"]{
 .cleanupmeta{margin-top:6px;font-size:var(--fs-sm)}
 .cleanupmeta:empty{display:none}
 /* 操作条上的按钮一律填 --surface：条子本身是 --overlay-5，比它更深的底才让按钮
-   从条子上分出来。原先数据管理这几个是透明底，只有一圈描边，和「网盘与账本」
-   那颗同处一页却是两种按钮。hover 只提亮底色、描边和文字，不出蓝色；
-   危险按钮 hover 沿用 fquiet 的红线做法。 */
+   从条子上分出来。条子本身是 --overlay-5，比它更深的底才让按钮从条子上分出来。
+   hover 只提亮底色、描边和文字，不出蓝色。
+
+   危险按钮 hover 一律填 --drop、白字：只描红边、红字的话，静止态和悬停态在暗色底上
+   几乎一样亮，按下去之前看不出这是不可逆动作。Geist 的 error Button 同样是实心红填充
+   （oklch(.5801 .227 25.12) 底、白字），只是它在静止态就红，Peach 把红留到悬停。 */
 .cleanupfieldset button{box-sizing:border-box;flex:none;min-height:32px;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);
   background:var(--surface);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;
   transition:border-color .15s ease-in-out,color .15s ease-in-out,background-color .15s ease-in-out}
 .cleanupfieldset button:hover{background:var(--hover);color:var(--ink)}
 .cleanupfieldset button.danger{color:var(--drop)}
-.cleanupfieldset button.danger:hover{border-color:var(--drop);color:var(--drop)}
+.cleanupfieldset button.danger:hover{background:var(--drop);border-color:var(--drop);color:#fff}
 .cleanupfieldset button svg{width:16px;height:16px;stroke:currentColor;fill:none}
 .cleanupfieldset .cleanupstate{margin-top:8px;font-size:var(--fs-sm);color:var(--ink-2)}
 .cleanupfieldset .cleanupstate:empty{display:none}
@@ -715,7 +718,7 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
   border:1px solid var(--border-15);background:var(--surface);color:var(--ink);
   cursor:pointer;font-size:var(--fs-sm);line-height:1}
 .dupactions button:hover,.dupbtns button:hover{background:var(--hover);color:var(--ink)}
-.dupbtns button.danger{color:var(--drop)}.dupbtns button.danger:hover{border-color:var(--drop);background:color-mix(in srgb,var(--drop) 12%,transparent)}
+.dupbtns button.danger{color:var(--drop)}.dupbtns button.danger:hover{background:var(--drop);border-color:var(--drop);color:#fff}
 .dupactions button:disabled,.dupbtns button:disabled{opacity:.5;cursor:wait}
 .dupgroup{border:1px solid var(--overlay-10);border-radius:var(--surface-radius);margin-bottom:12px;overflow:hidden}
 .duphead{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--overlay-5);flex-wrap:wrap}
@@ -830,7 +833,7 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 .resourcesync{scroll-margin-top:calc(var(--topH) + 18px);display:grid;gap:16px}.resourcesync>h2{margin:0;font-size:var(--fs-xl)}
 .resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--surface)}.resourcesyncbody{padding:20px}.resourcesyncbody p{max-width:760px;margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.55}.resourcesyncfooter,.resourceapplyrow{box-sizing:border-box;min-height:var(--fieldset-bar-h);display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:8px 20px;border-top:1px solid var(--line-soft);background:var(--overlay-5)}.resourcesyncfooter p,.resourceapplyrow>p{margin:0;color:var(--muted);font-size:var(--fs-xs);line-height:1.5}.resourceaction{box-sizing:border-box;height:36px;padding:0 12px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--surface);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:none;font:inherit;font-size:var(--fs-sm);font-weight:500;cursor:pointer;transition:background-color .12s,border-color .12s,color .12s}.resourceaction:hover:not(:disabled){background:var(--hover);color:var(--ink)}.resourceaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.resourceaction:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}.resourceaction svg{width:16px;height:16px;stroke:currentColor;fill:none}#resourceSyncResult:empty{display:none}.resourcescanning{margin:0;padding:14px 16px;border:1px solid var(--line-soft);border-radius:var(--control-radius);color:var(--muted)}.resourcesources{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.resourcesources article{display:grid;gap:4px;min-width:0;padding:16px}.resourcesources article+article{border-left:1px solid var(--line-soft)}.resourcesourcetitle{display:flex;align-items:center;justify-content:space-between;gap:12px}.resourcesourcetitle span{font-size:var(--fs-xs)}.resourcesources .online{color:var(--success)}.resourcesources .offline{color:var(--drop)}.resourcesources strong{margin-top:10px;font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcesources small,.resourcecache small{color:var(--muted)}/* 这里是一排读数，不是又一个盒子。原先它自带填色和分格线，和下面的操作条同色，
    两条带子连在一起看不出边界；框里再套框也是多余的一层。 */
-.resourcecache{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 32px;border-top:1px solid var(--line-soft);padding:16px 20px}.resourcecache>div{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:4px 16px}.resourcecache b{font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcecache span{font-weight:600}.resourcecache small{grid-column:1/-1}.resourceapplyrow .resourcesyncok{color:var(--success)}.resourcedanger{color:var(--drop)}.resourcedanger:hover:not(:disabled){border-color:color-mix(in srgb,var(--drop) 42%,transparent);background:color-mix(in srgb,var(--drop) 8%,transparent);color:var(--drop)}.resourcesyncok{margin:0;color:var(--success)}
+.resourcecache{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 32px;border-top:1px solid var(--line-soft);padding:16px 20px}.resourcecache>div{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:4px 16px}.resourcecache b{font-size:var(--fs-2xl);font-variant-numeric:tabular-nums}.resourcecache span{font-weight:600}.resourcecache small{grid-column:1/-1}.resourceapplyrow .resourcesyncok{color:var(--success)}.resourcedanger{color:var(--drop)}.resourcedanger:hover:not(:disabled){background:var(--drop);border-color:var(--drop);color:#fff}.resourcesyncok{margin:0;color:var(--success)}
 .tagbar,.count,.entitytagbar,.entitycollectionhead{transition:background-color .16s ease,border-color .16s ease}
 .tagbar.is-stuck,.count.is-stuck,.entitytagbar.is-stuck,.entitycollectionhead.is-stuck{background:color-mix(in srgb,#080A0D 84%,transparent);
   border-bottom-color:var(--line-soft);backdrop-filter:saturate(1.35) blur(16px);
@@ -1007,7 +1010,7 @@ button.junkcardtitle:focus-visible{outline:2px solid var(--tungsten);outline-off
 .junkactions button:hover:not(:disabled){background:var(--hover);color:var(--ink)}
 .junkactions button:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .junkactions button:disabled{cursor:wait;opacity:.64}.junkactions button svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:2}
-.junkactions .junktrash{color:var(--drop)}.junkactions .junktrash:hover:not(:disabled){border-color:color-mix(in srgb,var(--drop) 46%,transparent);color:var(--drop);background:color-mix(in srgb,var(--drop) 8%,transparent)}
+.junkactions .junktrash{color:var(--drop)}.junkactions .junktrash:hover:not(:disabled){background:var(--drop);border-color:var(--drop);color:#fff}
 .junkstate{grid-column:1/-1;color:var(--drop);font-size:var(--fs-xs)}.junkstate:empty{display:none}
 /* 紧凑密度下只剩图标，靠左会在按钮右侧留出一片空白，此时回到居中。 */
 body[data-density="dense"] .junkcard .junkactions button span{display:none}
@@ -1256,7 +1259,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vwrap .video-js .vjs-control-bar{box-sizing:border-box;left:12px;right:12px;bottom:8px;width:auto;height:59px;
   padding:3px 0 0;display:flex;align-items:flex-end;border-radius:0;background:transparent;backdrop-filter:none}
 .vwrap .video-js .vjs-control-bar>.vjs-play-control{position:relative;align-self:flex-end;flex:0 0 40px;width:40px;height:40px;margin:0 0 8px;
-  border:0;border-radius:50%;background:rgba(0,0,0,.6);box-shadow:none;overflow:hidden}
+  border:0;border-radius:50%;background:rgba(0,0,0,.6);box-shadow:none;overflow:visible}
 .vwrap .video-js .vjs-control-bar>.vjs-play-control .vjs-icon-placeholder:before,
 .vwrap .video-js .vjs-control-bar>.vjs-play-control .vjs-icon-placeholder:after{content:"";position:absolute;z-index:2;top:50%;background:#fff;filter:drop-shadow(0 0 1px rgba(0,0,0,.8))}
 .vwrap .video-js.vjs-paused .vjs-control-bar>.vjs-play-control .vjs-icon-placeholder:before,
@@ -1316,7 +1319,10 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vwrap .video-js .vjs-volume-panel .vjs-volume-bar.vjs-slider-horizontal{box-sizing:border-box;position:absolute!important;left:0!important;right:auto!important;top:50%!important;width:52px!important;height:2px!important;margin:0!important;overflow:visible!important;background:rgba(255,255,255,.3);transform:translateY(-50%)}
 .vwrap .video-js .vjs-volume-panel .vjs-volume-level{height:2px;background:#fff}
 .vwrap .video-js .vjs-volume-panel .vjs-volume-level:before{top:50%;right:-6px;width:12px;height:12px;margin:0;font-size:0;border-radius:50%;background:#fff;transform:translateY(-50%)}
-.vwrap .video-js .vjs-volume-panel .vjs-volume-tooltip{z-index:4!important;overflow:visible;white-space:nowrap}
+.vwrap .video-js .vjs-volume-panel .vjs-volume-tooltip{z-index:5!important;left:50%;right:auto;top:auto;bottom:calc(100% + 32px);
+  float:none;transform:translateX(-50%);padding:5px 9px;border-radius:var(--surface-radius);background:rgba(0,0,0,.3);
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:#fff;font-family:inherit;font-size:var(--fs-sm);font-weight:500;
+  line-height:15px;text-shadow:0 0 2px #000;overflow:visible;white-space:nowrap}
 .vjs-peach-right-controls{box-sizing:border-box;position:relative;align-self:flex-end;flex:0 0 auto;height:40px;margin:0 0 8px;
   padding:0 4px;display:flex;align-items:center;border:0;border-radius:var(--pill-radius);background:rgba(0,0,0,.6);box-shadow:none;
   overflow:visible;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
@@ -1351,13 +1357,14 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vwrap .video-js .vjs-time-control{display:none!important}
 .vwrap .video-js .vjs-peach-time{box-sizing:border-box;align-self:flex-end;flex:0 0 auto;width:auto;height:40px;margin:0 0 8px 12px;
   padding:0 16px;border:0;border-radius:var(--pill-radius);background:rgba(0,0,0,.6);color:#fff;cursor:pointer;
-  position:relative;isolation:isolate;overflow:hidden;font-weight:400;font-size:var(--fs-md);line-height:40px;font-family:inherit;font-variant-numeric:tabular-nums;white-space:nowrap;text-shadow:0 0 1px rgba(0,0,0,.8)}
+  position:relative;isolation:isolate;overflow:visible;font-weight:400;font-size:var(--fs-md);line-height:40px;font-family:inherit;font-variant-numeric:tabular-nums;white-space:nowrap;text-shadow:0 0 1px rgba(0,0,0,.8)}
 .vwrap .video-js .vjs-peach-time:after{content:"";position:absolute;z-index:0;inset:4px;border-radius:var(--pill-radius);background:transparent;transition:background .2s cubic-bezier(.05,0,0,1)}
 .vwrap .video-js .vjs-peach-time:hover:after,.vwrap .video-js .vjs-peach-time:focus-visible:after{background:rgba(255,255,255,.1)}
 .vwrap .video-js .vjs-peach-time:active:after{background:rgba(255,255,255,.2)}
 .vwrap .video-js .vjs-peach-time:focus-visible{outline:0}.vjs-peach-time-text{position:relative;z-index:1}
-.vjs-peach-settings,.vjs-peach-theater{position:relative;flex:0 0 48px;width:48px!important;min-width:48px}
-.vjs-peach-settings>button,.vjs-peach-theater>button{width:100%;height:100%;padding:0;border:0;background:transparent;color:inherit;cursor:pointer;display:grid;place-items:center}
+.vjs-peach-settings,.vjs-peach-theater,.vjs-peach-expand{position:relative;flex:0 0 48px;width:48px!important;min-width:48px}
+.vjs-peach-settings>button,.vjs-peach-theater>button,.vjs-peach-expand>button{width:100%;height:100%;padding:0;border:0;background:transparent;color:inherit;cursor:pointer;display:grid;place-items:center}
+.vjs-peach-expand>button>svg{width:24px;height:24px;fill:currentColor;stroke:none;filter:drop-shadow(0 0 1px rgba(0,0,0,.8))}
 .vjs-peach-settings>button>svg,.vjs-peach-theater>button>svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;filter:drop-shadow(0 0 1px rgba(0,0,0,.8))}
 .vjs-peach-settings [data-player-quality-badge]{position:absolute;z-index:2;right:4px;top:1px;min-width:17px;height:12px;padding:0 2px;
   display:grid;place-items:center;border-radius:var(--badge-radius);background:#f03;color:#fff;font-size:var(--fs-xs);font-weight:600;line-height:1;transform:scale(.67);transform-origin:top right}
@@ -1387,9 +1394,19 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .video-js .vjs-peach-menu-option{display:grid;grid-template-columns:35px minmax(0,1fr);align-items:center;padding:0 20px 0 0!important;text-align:left;font-size:var(--fs-md)!important;line-height:18.2px}
 .vjs-peach-option-check{width:35px;height:24px;display:grid;place-items:center}.vjs-peach-option-check svg{width:24px;height:24px;display:block;fill:currentColor;stroke:none}
 .vjs-peach-option-label{min-width:0}
-.vjs-peach-tooltip{position:absolute;right:50%;bottom:calc(100% + 1em);transform:translateX(50%);display:none;align-items:center;gap:.45em;padding:.65em .85em;border-radius:var(--control-radius);background:rgba(40,40,40,.88);box-shadow:0 4px 14px #0007;white-space:nowrap;font-size:1.25em;font-weight:600;pointer-events:none}
-.vjs-peach-tooltip kbd{display:inline-grid;place-items:center;min-width:1.55em;height:1.55em;border:1px solid rgba(255,255,255,.42);border-radius:var(--badge-radius);font:inherit}
-.vjs-peach-theater>button:hover .vjs-peach-tooltip,.vjs-peach-theater>button:focus-visible .vjs-peach-tooltip{display:flex}
+/* 悬停提示取自 YouTube delhi-modern（player 9470c977 的 www-player.css）：毛玻璃 blur(16px)、
+   rgba(0,0,0,.3) 底、8px 圆角（--surface-radius）、5px 9px 内距、13px/15px 500 字重（--fs-sm）、
+   text-shadow 0 0 2px #000；快捷键徽标 1px rgba(255,255,255,.3) 边、4px 圆角（--badge-radius）、
+   最小宽 11px、左外边距 4px，空了就收起。控制条上每个按钮共用这一套。 */
+.vjs-peach-tooltip{position:absolute;z-index:5;right:50%;bottom:calc(100% + 12px);transform:translateX(50%);
+  display:none;align-items:center;padding:5px 9px;border-radius:var(--surface-radius);background:rgba(0,0,0,.3);
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:#fff;white-space:nowrap;
+  font-size:var(--fs-sm);font-weight:500;line-height:15px;text-shadow:0 0 2px #000;pointer-events:none}
+.vjs-peach-tooltip kbd{display:flex;justify-content:center;align-items:center;min-width:11px;margin-left:4px;padding:0 2px;
+  border:1px solid rgba(255,255,255,.3);border-radius:var(--badge-radius);color:#fff;font:inherit}
+.vjs-peach-tooltip kbd[hidden]{display:none}
+.vwrap .video-js .vjs-control-bar button:hover>.vjs-peach-tooltip,
+.vwrap .video-js .vjs-control-bar button:focus-visible>.vjs-peach-tooltip{display:flex}
 .vjs-peach-theater>button[aria-pressed="true"]{color:#fff}
 @media (max-width:640px){
   .vwrap .video-js .vjs-control-bar{left:8px;right:8px;bottom:6px;height:59px;padding:3px 0 0}
@@ -1398,14 +1415,34 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
   .vwrap .video-js.vjs-layout-small .vjs-current-time,.vwrap .video-js.vjs-layout-small .vjs-duration,
   .vwrap .video-js.vjs-layout-small .vjs-time-divider{display:flex}
   .vwrap .video-js .vjs-time-control{font-size:var(--fs-xs)}
-  .vjs-peach-right-controls>.vjs-picture-in-picture-control{display:none}
   .vjs-peach-seek-preview img{width:160px}
   .vjs-peach-center-controls,.vjs-peach-center-bezel{width:64px;height:64px}
   .vjs-peach-center-play,.vjs-peach-center-pause{width:48px;height:48px}
   .vjs-peach-settings-menu{right:-100px;width:min(274px,calc(100vw - 16px));border-radius:var(--floating-radius)}
 }
+/* 窄屏梯度照搬 YouTube delhi-modern：base.js 9470c977 里 `v.width<528` 打开 ytp-xsmall-width-mode，
+   右侧只留设置键和展开键，按钮从 48 收到 36、图标 24 收到 18；展开后铺开全部按钮。
+   YouTube 展开时把时间显示改成 visibility:hidden 占着位，Peach 改成 display:none 让出宽度——
+   它的控制条比 YouTube 窄，留着那段空位就又超框了。 */
+.vjs-peach-expand{display:none}
+.video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control{flex:0 0 36px;width:36px!important;min-width:36px}
+.video-js.vjs-peach-xsmall .vjs-peach-right-controls .vjs-peach-control-icon,
+.video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control>button>svg{width:18px;height:18px}
+.video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control:not(.vjs-peach-settings):not(.vjs-peach-expand){display:none}
+.video-js.vjs-peach-xsmall .vjs-peach-expand{display:block}
+.video-js.vjs-peach-xsmall.vjs-peach-right-expanded .vjs-peach-right-controls>.vjs-control{display:block}
+.video-js.vjs-peach-xsmall.vjs-peach-right-expanded .vjs-peach-time{display:none}
+.vjs-peach-expand>button>svg{transition:transform .3s cubic-bezier(.05,0,0,1);transform:rotate(180deg)}
+.video-js.vjs-peach-right-expanded .vjs-peach-expand>button>svg{transform:rotate(0)}
+/* 报错文案本来就居中，压住它的是统计面板（z-index 8）。所以不改居中，改成一张自带底色、
+   盖在统计面板上方的卡片，并撤掉 Video.js 那层铺满全画面的渐变——留着它就等于用报错
+   把统计面板整个糊掉，而加载失败时正需要看统计里的编码和体积。 */
+.vwrap .video-js.vjs-error .vjs-error-display{background:none}
 .vwrap .video-js.vjs-error .vjs-error-display .vjs-modal-dialog-content{
-  display:flex;align-items:center;justify-content:center;padding:56px 24px;text-align:center;overflow-wrap:anywhere}
+  z-index:9;left:50%;top:50%;width:max-content;max-width:min(560px,calc(100% - 48px));height:auto;
+  padding:14px 18px;border-radius:var(--surface-radius);background:rgba(2,4,8,.86);
+  display:flex;align-items:center;justify-content:center;text-align:center;overflow-wrap:anywhere;
+  transform:translate(-50%,-50%)}
 .vwrap :is(.vwrap>.video-js.vjs-fullscreen,.video-js.vjs-fullscreen,.video-js[data-peach-fullscreen],body.vjs-full-window .video-js,.video-js:fullscreen,.video-js:-webkit-full-screen,.video-js:-moz-full-screen,.vwrap:fullscreen>.video-js,.vwrap:-webkit-full-screen>.video-js,.vwrap:-moz-full-screen>.video-js){position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;padding:0!important;
   max-width:none!important;max-height:none!important;aspect-ratio:auto!important;z-index:10000!important}
 .vwrap :is(.vwrap>.video-js.vjs-fullscreen,.video-js.vjs-fullscreen,.video-js[data-peach-fullscreen],body.vjs-full-window .video-js,.video-js:fullscreen,.video-js:-webkit-full-screen,.video-js:-moz-full-screen,.vwrap:fullscreen>.video-js,.vwrap:-webkit-full-screen>.video-js,.vwrap:-moz-full-screen>.video-js) .vjs-tech{
@@ -1459,8 +1496,8 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .sidecontent{box-sizing:border-box;width:100%;height:100%;max-height:76vh;padding:18px;display:flex;gap:0;
   flex-direction:column;overflow-y:auto;overflow-x:hidden}
 .stitle{font-size:var(--fs-lg);line-height:1.4;word-break:break-all;margin-bottom:8px}
-.detailtitle{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:start;gap:8px;margin-bottom:10px}
-.detailtitle>.srcbig{place-items:start;width:17px;margin-top:2px}.detailtitle .stitle{min-width:0;margin:0}
+.detailtitle{display:flex;align-items:flex-start;gap:8px;margin-bottom:10px}
+.detailtitle>.srcbig{place-items:start;flex:none;width:17px;margin-top:2px}.detailtitle .stitle{min-width:0;margin:0}
 /* 源文件管理：定位 + 目录对账。图标必须显式写 stroke/fill，Lucide 是描边路径，
    缺了就被按默认 fill:black 画成黑块（详见 .photonav 那一段的同类修复）。 */
 .srctools{display:flex;align-items:center;gap:6px;margin:0 0 10px;flex-wrap:wrap}
@@ -1471,7 +1508,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .srctools button:hover{background:var(--hover);color:var(--ink)}
 .srctools button:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
 .srcstate{font-size:var(--fs-xs);color:var(--muted);min-width:0;flex:1 1 100%}
-.detailtitletools{margin:0;flex-wrap:nowrap}.detailtitlestate{display:block;margin:-4px 0 10px}
+.detailtitletools{display:inline-flex;vertical-align:middle;margin:0 0 0 8px;translate:0 -2px;flex-wrap:nowrap}.detailtitlestate{display:block;margin:-4px 0 10px}
 .detailtitlestate:empty{display:none}
 .photohead .srctools{margin:0 0 0 auto}
 .photohead .srcstate{flex:none}
@@ -1903,6 +1940,9 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   .entitycollectionhead .sorts button{min-height:36px}
   .playlistpage>header{align-items:stretch;flex-direction:column}.playlistcreate input{min-width:0;width:100%}.playlistcreate label{flex:1 1 100%}.playlistcard{grid-template-columns:92px minmax(0,1fr)}.playlistactions{justify-content:flex-start;overflow-x:auto}.playlistactions button{white-space:nowrap}
   .fb{width:100%}.fb button{flex:1 1 0;min-width:38px}
+  /* 关注详情只有三四个动作键，撑满一行就是四个大得离谱的方块。 */
+  .fb.followdetailactions{width:max-content;max-width:100%}
+  .fb.followdetailactions button,.fb.followdetailactions .fdownload{flex:0 0 auto}
   /* 顶栏在窄屏会被搜索框撑破 —— 搜索收成一个按钮，点了才展开 */
   .top{gap:4px;padding:0 8px;overflow:hidden}
   .top:has(.search.open){overflow:visible}
@@ -2136,8 +2176,16 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   border-radius:var(--control-radius);background:var(--surface);color:var(--ink-2);cursor:pointer;font-size:var(--fs-sm)}
 .dupactions.fsechead button:hover{background:var(--hover);color:var(--ink)}
 .fsechead h3{margin:0;font-size:var(--fs-md);font-weight:600;letter-spacing:.01em}
-.fsechead .fmeta{flex:1 1 auto}
-.fmanagesort{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:var(--fs-xs)}
+/* 说明文字是这一行里唯一可以缩的东西：标题、排序框和动作键都要完整读出来，
+   它自己不设下限的话，宽度一紧就是整行换行。 */
+.fsechead .fmeta{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fsechead .fbtn,.fsechead .fmanagesort{flex:none}
+/* 排序框照 Geist Select 的 prefix 做法：图标压在框内左侧，不在框外挂一个文字标签。
+   Geist 的文字 Label 是块级、排在控件上方（block ... mb-2），行内并排那种写法它没有；
+   而工具行里既没有上方空间，图标又足够把下拉框和普通按钮区分开。 */
+.fmanagesort{position:relative;display:inline-flex;align-items:center;color:var(--muted);font-size:var(--fs-xs)}
+.fmanagesort>svg{position:absolute;z-index:1;left:9px;width:16px;height:16px;stroke:currentColor;fill:none;pointer-events:none}
+.fmanagesort:hover>svg{color:var(--ink-2)}
 /* 版式开关和排序框、按钮同处分区标题行，收到同一个 32px 高度上（fieldset 自带 1px 边框）。 */
 .fsechead .iconswitch{display:inline-flex;gap:2px;flex:none;padding:2px}
 .fsechead .iconswitch label{width:32px;height:26px}
@@ -2146,6 +2194,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fmanagesort select:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 /* 全站原生下拉共用同一个自绘箭头。SVG 笔画自身有 4px 透明边，背景右移 6px 后，
    可见笔画到右边框正好与文字到左边框同为 10px。 */
+.fmanagesort select{padding-left:31px}
 .settingrow select,.tasteactions select,.fmanagesort select{padding-left:10px;padding-right:32px;appearance:none;-webkit-appearance:none;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-repeat:no-repeat;background-position:right 6px center;background-size:16px 16px}
@@ -2235,7 +2284,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fbtn.primary:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 88%,var(--ground));border-color:color-mix(in srgb,var(--ink) 88%,var(--ground))}
 .fbtn.small{height:26px;padding:0 10px;font-size:var(--fs-sm)}
 .fbtn.fquiet{border-color:transparent;color:var(--muted)}
-.fbtn.fquiet:hover{border-color:var(--drop);color:var(--drop)}
+.fbtn.fquiet:hover{background:var(--drop);border-color:var(--drop);color:#fff}
 .fbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8}
 
 .faddform{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start}
@@ -2401,7 +2450,7 @@ details.fcred{display:block}
 .fcredactions button:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
 .fcredactions button.fquiet{background:transparent;border-color:var(--border-15);
   color:var(--muted)}
-.fcredactions button.fquiet:hover{border-color:var(--drop);color:var(--drop)}
+.fcredactions button.fquiet:hover{background:var(--drop);border-color:var(--drop);color:#fff}
 .fcredactions [data-cred-state]{font-size:var(--fs-xs);color:var(--muted)}
 
 @media (max-width:640px){

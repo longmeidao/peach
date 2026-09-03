@@ -1268,10 +1268,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             ".vwrap .video-js.vjs-error .vjs-error-display .vjs-modal-dialog-content{")
         self.assertPageContains(
-            "display:flex;align-items:center;justify-content:center;padding:56px 24px;text-align:center")
+            "display:flex;align-items:center;justify-content:center;text-align:center")
+        self.assertPageContains("transform:translate(-50%,-50%)}")
 
     def test_space_does_not_also_scroll_the_page(self):
-        self.assertCode("if(e.key===' '){\n      e.preventDefault();")
+        self.assertCode("if(e.key===' '||e.key==='k'||e.key==='K'){\n      e.preventDefault();")
 
     def test_playback_keys_never_steal_keystrokes_from_inputs(self):
         self.assertPageContains("function isTypingTarget(el)")
@@ -1438,9 +1439,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".vwrap .video-js .vjs-control-bar{box-sizing:border-box;left:12px;right:12px;bottom:8px;width:auto;height:59px")
         self.assertPageContains("border-radius:0;background:transparent;backdrop-filter:none")
         self.assertPageContains(".vwrap .video-js .vjs-control-bar>.vjs-play-control{position:relative;align-self:flex-end;flex:0 0 40px;width:40px;height:40px")
-        self.assertPageContains("border:0;border-radius:50%;background:rgba(0,0,0,.6);box-shadow:none;overflow:hidden")
+        # overflow 要放开：悬停提示挂在按钮里，裁掉溢出就等于把提示裁没。
+        self.assertPageContains("border:0;border-radius:50%;background:rgba(0,0,0,.6);box-shadow:none;overflow:visible")
         self.assertPageContains("const playUse=explicitIcon(play,'player-play')")
-        self.assertPageContains("const syncPlayIcon=()=>playUse?.setAttribute('href'")
+        self.assertPageContains("playUse?.setAttribute('href',paused?'#i-player-play':'#i-player-pause')")
         self.assertPageContains("id=\"i-player-play\"")
         self.assertPageContains("id=\"i-player-pause\"")
         self.assertPageContains(".vjs-peach-right-controls{box-sizing:border-box;position:relative;align-self:flex-end")
@@ -1480,7 +1482,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("activePixels>=2160?'4K':activePixels>=720?'HD':''")
         # 「auto 开全部层级，选定某一档只留那一档」是契约；局部变量叫什么不是。
         self.assertPageContains("levels[index].enabled=selectedQuality==='auto'||selectedQuality===String(index)")
-        self.assertPageContains("const syncVolumeIcon=()=>muteUse?.setAttribute('href'")
+        self.assertPageContains("muteUse?.setAttribute('href',silent?'#i-player-volume-muted':'#i-player-volume')")
         self.assertPageLacks("volume.insertAdjacentHTML('afterbegin','<span class=\"vjs-peach-hover\"")
         self.assertPageContains("z-index:1;position:relative!important;left:0!important;top:0!important;align-self:center;flex:0 0 40px")
         self.assertPageContains("const syncFullscreenState=()=>{")
@@ -1624,12 +1626,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("display:block!important;align-self:center;flex:0 0 52px;width:52px!important")
         self.assertPageContains("top:50%!important;width:52px!important;height:2px!important;margin:0!important")
         self.assertPageContains(".vjs-control-bar>.vjs-volume-panel{box-sizing:border-box;z-index:3;position:relative")
-        self.assertPageContains(".vjs-volume-panel .vjs-volume-tooltip{z-index:4!important;overflow:visible;white-space:nowrap}")
+        self.assertPageContains(".vjs-volume-panel .vjs-volume-tooltip{z-index:5!important;left:50%;right:auto;top:auto")
 
     def test_theater_mode_has_button_tooltip_keyboard_and_responsive_layout(self):
         self.assertPageContains("function mountPlayerTheaterControl(player,settingsRoot)")
-        self.assertPageContains('data-player-theater aria-label="影院模式"')
-        self.assertPageContains('aria-keyshortcuts="T"')
+        self.assertPageContains("data-player-theater aria-pressed=")
+        self.assertPageContains(
+            "theaterButton.peachTooltipSync=playerControlTooltip(theaterButton,'影院模式','T')")
         self.assertPageContains("function syncPlayerTheaterButton(button)")
         self.assertPageContains("appSettings.theaterMode?'默认视图':'影院模式'")
         self.assertPageContains("appSettings.theaterMode?'#i-theater-exit':'#i-theater-enter'")
@@ -1638,6 +1641,78 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('grid-template-areas:"media" "side" "queue"')
         self.assertPageContains('id="i-theater-enter"')
         self.assertPageContains('id="i-theater-exit"')
+
+    def test_control_bar_buttons_share_one_tooltip_with_keyboard_badges(self):
+        """控制条上每个按钮都有提示，样式取自 YouTube delhi-modern，带快捷键徽标。
+
+        播放、静音、时间、画中画、设置、全屏、影院共用同一套提示与快捷键。提示层必须抹掉
+        浏览器原生 title，否则两层提示会一前一后叠着弹。
+        """
+        self.assertPageContains("function playerControlTooltip(button,label,shortcut='')")
+        self.assertPageContains("tip.innerHTML='<span class=\"vjs-peach-tooltip-text\"></span><kbd hidden></kbd>'")
+        self.assertPageContains("if(shortcut)button.setAttribute('aria-keyshortcuts',shortcut)")
+        self.assertPageContains("key.hidden=!shortcut")
+        self.assertPageContains("button.removeAttribute('title')")
+        self.assertPageContains("playerControlTooltip(play,'播放','K')")
+        self.assertPageContains("playerControlTooltip(mute,'静音','M')")
+        self.assertPageContains("playerControlTooltip(time,'显示剩余时间')")
+        self.assertPageContains("playerControlTooltip(pip,'画中画','I')")
+        self.assertPageContains("playerControlTooltip(fullscreen,'全屏','F')")
+        self.assertPageContains("playerControlTooltip(toggle,'设置')")
+        # 快捷键走按钮自己的点击路径，全屏和画中画的兜底逻辑只写一份。
+        self.assertPageContains("function clickPlayerControl(video,selector)")
+        self.assertPageContains("if(e.key===' '||e.key==='k'||e.key==='K')")
+        self.assertPageContains("if(e.key==='m'||e.key==='M'){e.preventDefault();clickPlayerControl(video,'.vjs-mute-control')")
+        self.assertPageContains("if(e.key==='f'||e.key==='F'){e.preventDefault();clickPlayerControl(video,'.vjs-fullscreen-control')")
+        self.assertPageContains("if(e.key==='i'||e.key==='I'){e.preventDefault();clickPlayerControl(video,'.vjs-picture-in-picture-control')")
+        # 提示外观与音量百分比共用一套毛玻璃，音量提示抬到控制条上方。
+        self.assertPageContains(".vjs-peach-tooltip{position:absolute;z-index:5;right:50%;bottom:calc(100% + 12px)")
+        self.assertPageContains("backdrop-filter:blur(16px)")
+        self.assertPageContains(".vjs-peach-tooltip kbd{display:flex;justify-content:center;align-items:center;min-width:11px")
+        self.assertPageContains(".vjs-peach-tooltip kbd[hidden]{display:none}")
+        self.assertPageContains(".vwrap .video-js .vjs-control-bar button:hover>.vjs-peach-tooltip")
+        self.assertPageContains(".vjs-volume-tooltip{z-index:5!important;left:50%;right:auto;top:auto;bottom:calc(100% + 32px)")
+        # 提示要露出控制条，播放键和时间钮不能再靠 overflow 裁。
+        self.assertPageLacks("background:rgba(0,0,0,.6);box-shadow:none;overflow:hidden}")
+
+    def test_narrow_player_collapses_the_right_controls_instead_of_overflowing(self):
+        """播放器窄到 528 以下时右侧只留设置与展开键，点开才铺开其余按钮。
+
+        判据是播放器自己的宽度而不是视口：同一个视口下影院模式和普通视图的播放器宽度
+        差一大截，用媒体查询会在影院模式下白折叠、在普通视图下继续超框。
+        """
+        self.assertPageContains("player.el().clientWidth<528")
+        self.assertPageContains("player.el().classList.toggle('vjs-peach-xsmall',narrow)")
+        self.assertPageContains("const widthObserver=new ResizeObserver(syncWidthMode)")
+        self.assertPageContains("player.on('dispose',()=>widthObserver.disconnect())")
+        self.assertPageContains("expand.className='vjs-peach-expand vjs-control'")
+        self.assertPageContains("icon('player-menu-next')")
+        self.assertPageContains("expandButton.setAttribute('aria-expanded',String(open))")
+        self.assertPageContains("syncExpandTooltip(open?'收起控件':'展开控件')")
+        self.assertPageContains("if(!narrow)setExpanded(false)")
+        self.assertPageContains(
+            ".video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control:not(.vjs-peach-settings):not(.vjs-peach-expand){display:none}")
+        self.assertPageContains(".video-js.vjs-peach-xsmall .vjs-peach-expand{display:block}")
+        self.assertPageContains(
+            ".video-js.vjs-peach-xsmall.vjs-peach-right-expanded .vjs-peach-right-controls>.vjs-control{display:block}")
+        # 展开后时间显示让出宽度：Peach 的控制条比 YouTube 窄，占着位就又超框。
+        self.assertPageContains(".video-js.vjs-peach-xsmall.vjs-peach-right-expanded .vjs-peach-time{display:none}")
+        self.assertPageContains(".video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control{flex:0 0 36px")
+        self.assertPageContains(".vjs-peach-expand>button>svg{transition:transform .3s cubic-bezier(.05,0,0,1);transform:rotate(180deg)}")
+        self.assertPageContains(".video-js.vjs-peach-right-expanded .vjs-peach-expand>button>svg{transform:rotate(0)}")
+        # 视口媒体查询不再另外藏画中画，折叠只有一套判据。
+        self.assertPageLacks(".vjs-peach-right-controls>.vjs-picture-in-picture-control{display:none}")
+
+    def test_media_error_reads_as_a_card_above_the_stats_panel(self):
+        """报错文案本来就居中，压住它的是 z-index 8 的统计面板。
+
+        所以修的不是居中，而是给报错一张自带底色、盖在统计面板上方的卡片；同时撤掉
+        Video.js 铺满全画面的渐变——加载失败时正需要看统计里的编码、体积和请求方式。
+        """
+        self.assertPageContains(".vwrap .video-js.vjs-error .vjs-error-display{background:none}")
+        self.assertPageContains("z-index:9;left:50%;top:50%;width:max-content;max-width:min(560px,calc(100% - 48px))")
+        self.assertPageContains("transform:translate(-50%,-50%)}")
+        self.assertPageContains("background:rgba(2,4,8,.86)")
 
     def test_player_stats_cover_direct_range_and_future_segmented_streams(self):
         self.assertPageContains('id="playerStatsBtn"')
@@ -1728,7 +1803,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('id="playerNet"')
         self.assertPageContains("function streamSpeedBits(id,session='')")
         self.assertPageContains("function fmtSpeed(bits)")
-        self.assertPageContains("加载速度 ${segmented?fmtSpeed(bits):fmtLoadRate(bits,meter.ratio)}")
+        self.assertPageContains("const rate=segmented?fmtSpeed(bits):fmtLoadRate(bits,meter.ratio);")
+        self.assertPageContains(
+            """netBadge.innerHTML=`${icon('download')}<span class="sr-only">加载速度</span><span>${esc(rate)}</span>`""")
 
     def test_immerse_mode_has_loading_state_and_full_viewport_cover(self):
         self.assertPageContains('id="tokLoader"')
@@ -2922,6 +2999,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".count .sorts{width:max-content;margin-left:0;flex:0 0 auto;overflow:visible}")
         self.assertPageContains("flex:0 0 auto;white-space:nowrap")
         self.assertPageContains(".count .sorts button{min-height:36px}")
+        # 这一行没有滚动条（scrollbar-width:none），不登记拖动就只剩看得见够不着的半个按钮。
+        self.assertPageContains("['#tagbar','#srow','#nrow','#count'].forEach(s=>wireDrag($(s)))")
+        # 同一个元素宽屏不溢出、窄屏才溢出，不判溢出就会在宽屏抢走滚轮和拖动。
+        self.assertPageContains("const scrollable=()=>el.scrollWidth-el.clientWidth>1;")
+        self.assertPageContains("if(e.button!==0||!scrollable())return;")
+        self.assertPageContains("if(scrollable()&&Math.abs(e.deltaY)>Math.abs(e.deltaX))")
 
     def test_entity_collection_posters_and_titles_open_item_details(self):
         self.assertPageContains('class="cardopenhit" data-open')
@@ -2945,7 +3028,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".javedition.uncensored{color:var(--meter)}")
         self.assertPageContains(".javedition.cracked{color:var(--drop)}")
         self.assertPageContains('<button class="t cardtitle" data-open>${shownTitle}</button>')
-        self.assertPageContains('<div class="stitle">${javTitleHtml(it)}</div>')
+        self.assertPageContains('<div class="stitle">${javTitleHtml(it)}')
         self.assertPageContains("$('#tokTitle').textContent=javDisplayName(it)")
         self.assertPageContains("<b data-middle-truncate>${esc(javDisplayName(x))}</b>")
 
@@ -3457,10 +3540,16 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("openItem(+button.dataset.reviewOpenItem)")
 
     def test_detail_title_keeps_source_and_file_actions_inline(self):
+        """定位文件与刷新跟在标题文字后面，不单占一列。
+
+        标题会折行，工具键单占一个网格列时那一列的宽度按最宽的一行留着，标题短的条目
+        右边就空出一大块，而标题长的条目仍被挤成三四行。
+        """
         self.assertPageContains('<div class="detailtitle">${srcBadge(it.location,it.cost,\'srcbig\')}')
-        self.assertPageContains('<div class="stitle">${javTitleHtml(it)}</div>')
-        self.assertPageContains('<div class="srctools detailtitletools">${sourceToolButtons(it.id)}</div>')
-        self.assertPageContains(".detailtitle{display:grid;grid-template-columns:auto minmax(0,1fr) auto")
+        self.assertPageContains('<div class="stitle">${javTitleHtml(it)}')
+        self.assertPageContains('<span class="srctools detailtitletools">${sourceToolButtons(it.id)}</span>')
+        self.assertPageContains(".detailtitle{display:flex;align-items:flex-start;gap:8px")
+        self.assertPageContains(".detailtitletools{display:inline-flex;vertical-align:middle;margin:0 0 0 8px")
 
     def test_detail_metadata_uses_icons_instead_of_release_copy(self):
         self.assertPageContains('<span class="detailmetaitem">${icon(\'monitor\')}')
@@ -3629,6 +3718,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".alphatag span:first-of-type", ".av .nm", ".entitylinklabel",
             ".fauthor .fsource.frow>b", ".fauthorhead b",
             ".fchip", ".followpageaction .fmeta", ".fpickactions [data-pick-state]",
+            ".fsechead .fmeta",
             ".frow>b", ".fvkind", ".idname", ".kv>span:first-child",
             ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
             ".mixitemtext [data-truncate-end]", ".mixqueuehead h2",
@@ -3859,7 +3949,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("width:var(--id-face,46px);height:var(--id-face,46px)")
 
     def test_detail_source_icon_starts_at_the_content_edge(self):
-        self.assertPageContains(".detailtitle>.srcbig{place-items:start;width:17px;margin-top:2px}")
+        self.assertPageContains(".detailtitle>.srcbig{place-items:start;flex:none;width:17px;margin-top:2px}")
 
     def test_official_tags_do_not_have_a_visible_marker(self):
         self.assertPageLacks(".detailtag .tagfilter small{")
@@ -4104,6 +4194,42 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertLess(actions, state, "操作条必须在状态行之前")
         self.assertLess(state, tags, "标签必须沉到侧栏最后")
         self.assertPageContains(".followdetailside .followdetailtags{margin:16px 0 0}")
+        # 窄屏通用规则会把 .fb 撑满整行，三四个动作键于是变成四个大得离谱的方块。
+        self.assertPageContains(".fb.followdetailactions{width:max-content;max-width:100%}")
+        self.assertPageContains(".fb.followdetailactions button,.fb.followdetailactions .fdownload{flex:0 0 auto}")
+
+    def test_manage_sort_reads_as_a_select_without_a_loose_text_label(self):
+        """排序框用框内前缀图标标明用途，标题行里不挂一个游离的「排序」二字。
+
+        证据：Geist Select 的 prefix 是绝对定位在框内左侧的 16px 图标（`left-3`，输入区
+        `pl-10`），而它的文字 Label 是块级、排在控件上方（`block ... mb-2`）——行内并排
+        那种写法 Geist 没有。工具行没有上方空间，图标又足够把下拉框和普通按钮区分开。
+        """
+        self.assertPageContains("""<label class="fmanagesort">${icon('sort')}<select data-follow-sort aria-label="关注列表排序">""")
+        self.assertPageContains('id="i-sort"')
+        self.assertPageContains(".fmanagesort{position:relative;display:inline-flex;align-items:center")
+        self.assertPageContains(".fmanagesort>svg{position:absolute;z-index:1;left:9px;width:16px;height:16px")
+        self.assertPageContains(".fmanagesort select{padding-left:31px}")
+        # 无障碍名称只剩 aria-label 一处，去掉标签后它必须留着。
+        self.assertPageContains('aria-label="关注列表排序"')
+        # 标题行里三个可缩项只有说明文字，排序框和动作键都保持完整宽度。
+        self.assertPageContains(".fsechead .fbtn,.fsechead .fmanagesort{flex:none}")
+
+    def test_destructive_buttons_fill_red_on_hover(self):
+        """危险动作的悬停态一律是 --drop 实底加白字，全站一个写法。
+
+        只描红边、红字的话，静止态和悬停态在暗色底上几乎一样亮，按下去之前看不出这是
+        不可逆动作。Geist 的 error Button 同样是实心红填充（oklch(.5801 .227 25.12) 底、
+        白字），只是它静止态就红，Peach 把红留到悬停。
+        """
+        fill = "background:var(--drop);border-color:var(--drop);color:#fff}"
+        for selector in (".fbtn.fquiet:hover{", ".fcredactions button.fquiet:hover{",
+                         ".cleanupfieldset button.danger:hover{",
+                         ".dupbtns button.danger:hover{", ".resourcedanger:hover:not(:disabled){",
+                         ".junkactions .junktrash:hover:not(:disabled){",
+                         ".playlistactions .danger:hover{",
+                         ".reviewactions .reject:hover{"):
+            self.assertPageContains(selector + fill, f"{selector} 的悬停态要填 --drop")
 
     def test_follow_filter_buttons_write_the_url_before_refetching(self):
         """先写 URL 再重取。反过来的话 openFollow 会照旧 URL 把状态推回去。"""
@@ -4418,7 +4544,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('data-reveal="${id}"')
         self.assertPageContains('data-sync="${id}"')
         # 在线资产是 URL，没有本地文件可定位。
-        self.assertPageContains("it.location==='online'?'':`<div class=\"srctools detailtitletools\">${sourceToolButtons(it.id)}</div>`")
+        self.assertPageContains("it.location==='online'?'':`<span class=\"srctools detailtitletools\">${sourceToolButtons(it.id)}</span>`")
 
     def test_resource_sync_lives_in_data_management_and_keeps_offline_sources_safe(self):
         self.assertPageContains("${resourceSyncMarkup()}")

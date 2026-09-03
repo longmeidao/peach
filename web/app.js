@@ -770,12 +770,36 @@ function applyAmbientMode(enabled,save=true){
   $('#stage')?.classList.toggle('ambient-on',appSettings.ambientMode);
   document.dispatchEvent(new CustomEvent('peachambientchange',{detail:{enabled:appSettings.ambientMode}}));
 }
+/* 控制条上每个按钮的悬停提示都从这里出：文案 + 快捷键徽标，样式取自 YouTube delhi-modern。
+   同时抹掉浏览器原生 title——两层提示会一前一后弹出来叠在一起。Video.js 每次改 controlText
+   都会把 title 写回去，所以按钮状态同步的地方必须重新调一次返回的 sync。 */
+function playerControlTooltip(button,label,shortcut=''){
+  if(!button)return()=>{};
+  let tip=button.querySelector(':scope>.vjs-peach-tooltip');
+  if(!tip){
+    tip=document.createElement('span');tip.className='vjs-peach-tooltip';tip.setAttribute('role','tooltip');
+    tip.innerHTML='<span class="vjs-peach-tooltip-text"></span><kbd hidden></kbd>';
+    button.append(tip);
+  }
+  const text=tip.querySelector('.vjs-peach-tooltip-text'),key=tip.querySelector('kbd');
+  if(shortcut)button.setAttribute('aria-keyshortcuts',shortcut);
+  const sync=(nextLabel=label,aria='')=>{
+    text.textContent=nextLabel;key.textContent=shortcut;key.hidden=!shortcut;
+    button.setAttribute('aria-label',aria||nextLabel);button.removeAttribute('title');
+  };
+  sync();return sync;
+}
+/* 快捷键复用按钮自己的点击路径：全屏、画中画、静音各有兜底逻辑挂在按钮上，
+   在键盘分支里再实现一遍就会和按钮走岔。 */
+function clickPlayerControl(video,selector){
+  video?.closest('.vwrap')?.querySelector('.vjs-control-bar '+selector)?.click();
+}
 function syncPlayerTheaterButton(button){
   if(!button)return;
   const label=appSettings.theaterMode?'默认视图':'影院模式';
-  button.setAttribute('aria-pressed',String(appSettings.theaterMode));button.setAttribute('aria-label',label);
+  button.setAttribute('aria-pressed',String(appSettings.theaterMode));
   button.querySelector('use')?.setAttribute('href',appSettings.theaterMode?'#i-theater-exit':'#i-theater-enter');
-  const tooltip=button.querySelector('.vjs-peach-tooltip');if(tooltip)tooltip.innerHTML=`${label} <kbd>T</kbd>`;
+  (button.peachTooltipSync||(()=>{}))(label);
 }
 function applyTheaterMode(enabled,save=true){
   appSettings.theaterMode=!!enabled;if(save)saveSettings();
@@ -815,6 +839,7 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0,initialSourceQu
   const fullscreen=controlBar.querySelector('.vjs-fullscreen-control');
   controlBar.insertBefore(root,fullscreen||null);
   const toggle=root.querySelector('button'),badge=root.querySelector('[data-player-quality-badge]');
+  playerControlTooltip(toggle,'设置');
   const menu=root.querySelector('.vjs-peach-settings-menu');
   const levels=typeof player.qualityLevels==='function'?player.qualityLevels():null;
   let sourceQualities=initialSourceQualities;
@@ -899,9 +924,11 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0,initialSourceQu
 function mountPlayerTheaterControl(player,settingsRoot){
   const controlBar=player.getChild('controlBar')?.el();if(!controlBar||controlBar.querySelector('[data-player-theater]'))return;
   const root=document.createElement('div');root.className='vjs-peach-theater vjs-control';
-  root.innerHTML=`<button type="button" data-player-theater aria-label="影院模式" aria-keyshortcuts="T" aria-pressed="${appSettings.theaterMode}">${icon(appSettings.theaterMode?'theater-exit':'theater-enter')}<span class="vjs-peach-tooltip" role="tooltip"></span></button>`;
+  root.innerHTML=`<button type="button" data-player-theater aria-pressed="${appSettings.theaterMode}">${icon(appSettings.theaterMode?'theater-exit':'theater-enter')}</button>`;
   controlBar.insertBefore(root,settingsRoot.nextSibling);
-  syncPlayerTheaterButton(root.querySelector('button'));
+  const theaterButton=root.querySelector('button');
+  theaterButton.peachTooltipSync=playerControlTooltip(theaterButton,'影院模式','T');
+  syncPlayerTheaterButton(theaterButton);
   root.querySelector('button').onclick=event=>{event.stopPropagation();applyTheaterMode(!appSettings.theaterMode)};
 }
 function mountPlayerChromeLayout(player){
@@ -915,30 +942,38 @@ function mountPlayerChromeLayout(player){
     return button.querySelector(':scope>.vjs-peach-control-icon use');
   };
   const playUse=explicitIcon(play,'player-play');
-  const syncPlayIcon=()=>playUse?.setAttribute('href',player.paused()||player.ended()?'#i-player-play':'#i-player-pause');
+  const syncPlayTooltip=playerControlTooltip(play,'播放','K');
+  const syncPlayIcon=()=>{const paused=player.paused()||player.ended();
+    playUse?.setAttribute('href',paused?'#i-player-play':'#i-player-pause');syncPlayTooltip(paused?'播放':'暂停')};
   player.on(['play','pause','ended'],syncPlayIcon);syncPlayIcon();
   const volume=controlBar.querySelector(':scope>.vjs-volume-panel');
   const mute=volume?.querySelector(':scope>.vjs-mute-control'),muteUse=explicitIcon(mute,'player-volume');
-  const syncVolumeIcon=()=>muteUse?.setAttribute('href',player.muted()||player.volume()===0?'#i-player-volume-muted':'#i-player-volume');
+  const syncMuteTooltip=playerControlTooltip(mute,'静音','M');
+  const syncVolumeIcon=()=>{const silent=player.muted()||player.volume()===0;
+    muteUse?.setAttribute('href',silent?'#i-player-volume-muted':'#i-player-volume');syncMuteTooltip(silent?'取消静音':'静音')};
   player.on('volumechange',syncVolumeIcon);syncVolumeIcon();
   const time=document.createElement('button');let remaining=false;
   time.type='button';time.className='vjs-peach-time vjs-control';time.dataset.playerTime='';
   time.innerHTML='<span class="vjs-peach-time-text"></span>';
   const timeText=time.querySelector('.vjs-peach-time-text');
+  const syncTimeTooltip=playerControlTooltip(time,'显示剩余时间');
   const syncTime=()=>{
     const current=Math.max(0,Number(player.currentTime())||0),duration=Math.max(0,Number(player.duration())||0);
     const shown=remaining?`-${fmtClock(Math.max(0,duration-current))}`:fmtClock(current);
     timeText.textContent=`${shown} / ${fmtClock(duration)}`;
     time.dataset.remaining=String(remaining);
-    time.setAttribute('aria-label',remaining?`剩余 ${fmtClock(Math.max(0,duration-current))}，总时长 ${fmtClock(duration)}；点击显示已播放时间`:`已播放 ${fmtClock(current)}，总时长 ${fmtClock(duration)}；点击显示剩余时间`);
+    syncTimeTooltip(remaining?'显示已播放时间':'显示剩余时间',remaining?`剩余 ${fmtClock(Math.max(0,duration-current))}，总时长 ${fmtClock(duration)}；点击显示已播放时间`:`已播放 ${fmtClock(current)}，总时长 ${fmtClock(duration)}；点击显示剩余时间`);
   };
   time.onclick=event=>{event.stopPropagation();remaining=!remaining;syncTime()};
   player.on(['timeupdate','durationchange','loadedmetadata'],syncTime);syncTime();
   if(volume)volume.insertAdjacentElement('afterend',time);else controlBar.append(time);
   const pip=controlBar.querySelector(':scope>.vjs-picture-in-picture-control');
   explicitIcon(pip,'player-pip');
+  const syncPipTooltip=playerControlTooltip(pip,'画中画','I');
+  player.on(['enterpictureinpicture','leavepictureinpicture'],()=>syncPipTooltip(document.pictureInPictureElement?'退出画中画':'画中画'));
   const fullscreen=controlBar.querySelector(':scope>.vjs-fullscreen-control');
   const fullscreenUse=explicitIcon(fullscreen,'player-fullscreen-enter');
+  const syncFullscreenTooltip=playerControlTooltip(fullscreen,'全屏','F');
   /* CSS 的 `.vjs-fullscreen` 只能覆盖 Video.js 已经同步状态类的路径。实际浏览器还可能
      走 full-window 回退，或者先触发 fullscreenchange、下一帧才完成 class 更新。把播放器
      自己的 `isFullscreen()` 结果登记到 DOM，画面填充不再依赖某一个实现细节类名。 */
@@ -946,6 +981,7 @@ function mountPlayerChromeLayout(player){
     const active=!!player.isFullscreen();
     player.el().toggleAttribute('data-peach-fullscreen',active);
     fullscreenUse?.setAttribute('href',active?'#i-player-fullscreen-exit':'#i-player-fullscreen-enter');
+    syncFullscreenTooltip(active?'退出全屏':'全屏');
     requestAnimationFrame(()=>player.trigger('resize'));
   };
   player.on(['fullscreenchange','enterFullWindow','exitFullWindow'],syncFullscreenState);
@@ -963,6 +999,27 @@ function mountPlayerChromeLayout(player){
     control.insertAdjacentHTML('beforeend','<span class="vjs-peach-hover" aria-hidden="true"></span>');
     group.append(control);
   });
+  /* 窄屏折叠照 YouTube 的判据来：base.js 9470c977 里播放器宽度 `v.width<528` 打开
+     ytp-xsmall-width-mode，右侧收成「设置 + 展开」，点开才铺开其余按钮。判据必须是播放器
+     自己的宽度，不是视口——同一个视口下影院模式和普通视图的播放器宽度差一大截。 */
+  const expand=document.createElement('div');expand.className='vjs-peach-expand vjs-control';
+  expand.innerHTML=`<button type="button" data-player-expand aria-expanded="false">${icon('player-menu-next')}<span class="vjs-peach-hover" aria-hidden="true"></span></button>`;
+  group.append(expand);
+  const expandButton=expand.querySelector('button');
+  const syncExpandTooltip=playerControlTooltip(expandButton,'展开控件');
+  const setExpanded=open=>{
+    player.el().classList.toggle('vjs-peach-right-expanded',open);
+    expandButton.setAttribute('aria-expanded',String(open));syncExpandTooltip(open?'收起控件':'展开控件');
+  };
+  expandButton.onclick=event=>{event.stopPropagation();setExpanded(!player.el().classList.contains('vjs-peach-right-expanded'))};
+  const syncWidthMode=()=>{
+    const narrow=player.el().clientWidth<528;
+    player.el().classList.toggle('vjs-peach-xsmall',narrow);
+    if(!narrow)setExpanded(false);
+  };
+  const widthObserver=new ResizeObserver(syncWidthMode);widthObserver.observe(player.el());
+  player.on('dispose',()=>widthObserver.disconnect());
+  setExpanded(false);syncWidthMode();
 }
 function mountPlayerSeekPreview(player,it,options={}){
   const progress=player.getChild('controlBar')?.el()?.querySelector('.vjs-progress-control');
@@ -1118,7 +1175,8 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
     const segmented=String(player.currentSource()?.type||'').includes('mpegurl');
     if(!segmented)meter.sample(video);
     const bits=playerSpeedBits(player,it.id,detailStreamSession,segmented?null:meter);
-    netBadge.textContent=`加载速度 ${segmented?fmtSpeed(bits):fmtLoadRate(bits,meter.ratio)}`};
+    const rate=segmented?fmtSpeed(bits):fmtLoadRate(bits,meter.ratio);
+    netBadge.innerHTML=`${icon('download')}<span class="sr-only">加载速度</span><span>${esc(rate)}</span>`};
   const showNet=()=>{if(!netBadge)return;netBadge.hidden=false;updateNet();
     if(detailNetTimer)clearInterval(detailNetTimer);detailNetTimer=setInterval(updateNet,500)};
   const hideNet=()=>{if(!netBadge)return;if(detailNetHideTimer)clearTimeout(detailNetHideTimer);
@@ -4145,7 +4203,7 @@ function renderFollowManage(credentials){
         <div class="fsechead"><h3>关注列表</h3>
           <span class="fmeta">${sources.length} 个来源${
             counts.new?` · <b>${counts.new}</b> 条未看`:''}</span>
-          <label class="fmanagesort"><span>排序</span><select data-follow-sort aria-label="关注列表排序">
+          <label class="fmanagesort">${icon('sort')}<select data-follow-sort aria-label="关注列表排序">
             <option value="checked"${followManageSort==='checked'?' selected':''}>最近检查</option>
             <option value="added"${followManageSort==='added'?' selected':''}>添加时间</option>
             <option value="name"${followManageSort==='name'?' selected':''}>作者名称</option>
@@ -6145,8 +6203,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
     </div>${queueContext?queueHtml(queueContext,it.id):''}
     <div class="side"><div class="sidecontent">
       <div class="detailtitle">${srcBadge(it.location,it.cost,'srcbig')}
-        <div class="stitle">${javTitleHtml(it)}</div>
-        ${it.location==='online'?'':`<div class="srctools detailtitletools">${sourceToolButtons(it.id)}</div>`}</div>
+        <div class="stitle">${javTitleHtml(it)}${it.location==='online'?'':`<span class="srctools detailtitletools">${sourceToolButtons(it.id)}</span>`}</div></div>
       ${it.location==='online'?'':`<span class="srcstate detailtitlestate" aria-live="polite"></span>`}
       <div class="smeta mono">
         <span class="detailmetaitem">${icon('monitor')}<span>${it.width||'?'}×${it.height||'?'}</span></span>
@@ -6845,11 +6902,14 @@ document.addEventListener('keydown',e=>{
       seekVideoBy(video,appSettings.seekSeconds*(e.key==='ArrowRight'?1:-1));
       return;
     }
-    if(e.key===' '){
+    if(e.key===' '||e.key==='k'||e.key==='K'){
       e.preventDefault();          // 不加这句空格会把页面滚下去
       toggleVideoPlayback(video);
       return;
     }
+    if(e.key==='m'||e.key==='M'){e.preventDefault();clickPlayerControl(video,'.vjs-mute-control');return}
+    if(e.key==='f'||e.key==='F'){e.preventDefault();clickPlayerControl(video,'.vjs-fullscreen-control');return}
+    if(e.key==='i'||e.key==='I'){e.preventDefault();clickPlayerControl(video,'.vjs-picture-in-picture-control');return}
   }
   // 沉浸模式：纵向切片、横向快进退，和竖屏短视频的手势方向保持一致。
   if(!$('#tok').hidden){if(e.key==='ArrowDown')tokNext(1);if(e.key==='ArrowUp')tokNext(-1)}
@@ -6914,8 +6974,11 @@ window.addEventListener('mouseup',()=>{
 function wireDrag(el){
   if(!el||el.dataset.drag)return; el.dataset.drag='1';
   let sx=0,sl=0,moved=0;
+  /* 同一个元素在宽屏不溢出、窄屏才溢出（`.count` 就是这样）。不判溢出就会在宽屏
+     把滚轮和拖动从真正在滚的子元素手里抢走。 */
+  const scrollable=()=>el.scrollWidth-el.clientWidth>1;
   el.addEventListener('mousedown',e=>{
-    if(e.button!==0)return; dragRow=el;moved=0;sx=e.pageX;sl=el.scrollLeft;
+    if(e.button!==0||!scrollable())return; dragRow=el;moved=0;sx=e.pageX;sl=el.scrollLeft;
     el.style.cursor='grabbing'});
   el.addEventListener('mousemove',e=>{
     if(dragRow!==el)return; const dx=e.pageX-sx; moved=Math.max(moved,Math.abs(dx));
@@ -6924,10 +6987,12 @@ function wireDrag(el){
   el.addEventListener('click',e=>{if(moved>6){e.stopPropagation();e.preventDefault();moved=0}},true);
   // 滚轮竖向 → 横向
   el.addEventListener('wheel',e=>{
-    if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){el.scrollLeft+=e.deltaY;e.preventDefault()}},
+    if(scrollable()&&Math.abs(e.deltaY)>Math.abs(e.deltaX)){el.scrollLeft+=e.deltaY;e.preventDefault()}},
     {passive:false});
 }
-function wireAllDrag(){['#tagbar','#srow','#nrow'].forEach(s=>wireDrag($(s)));
+/* `#count` 一起登记：窄屏下排序筛选整行由 `.count` 自己横向滚动，而它没有滚动条，
+   不接拖动和滚轮就只剩看得见够不着的半个按钮。 */
+function wireAllDrag(){['#tagbar','#srow','#nrow','#count'].forEach(s=>wireDrag($(s)));
   document.querySelectorAll('.tier').forEach(wireDrag)}
 
 /* 目录页（首页 + 四个筛选态）：筛选全部从 URL 读，路径只决定初始筛选态。
