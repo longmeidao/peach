@@ -245,6 +245,34 @@
         "web/app.js",
         "tests/test_web_ui.py"
       ]
+    },
+    {
+      "id": "vercel-geist-tabs-secondary",
+      "name": "Vercel Geist Tabs 规范与 secondary 变体",
+      "url": "https://vercel.com/geist/tabs",
+      "snapshot": "docs/reference-snapshots/upstream/vercel-geist-tabs.md",
+      "checked_on": "2026-09-03",
+      "sha256": "41d0602d64c6a941e350d01b3c70b86e6a57a3f55d621ba43af26e081b46e347",
+      "role": "分类切换条的组件归属、条数上限、计数徽标与可访问性语义；secondary 变体是 Peach 现有 chip 条的规范原型。",
+      "consumers": [
+        "web/app.css",
+        "web/app.js",
+        "tests/test_web_ui.py"
+      ]
+    },
+    {
+      "id": "vercel-geist-switch-segmented",
+      "name": "Vercel Geist Switch 分段器取舍",
+      "url": "https://vercel.com/geist/switch",
+      "snapshot": "docs/reference-snapshots/upstream/vercel-geist-switch.md",
+      "checked_on": "2026-09-03",
+      "sha256": "20e383d97024c9a0ff7a26fcdcd120a1bc0904bdfb10ffe96a6e03f8dd758849",
+      "role": "判定分段器只用于 2–3 项互斥视图、超过 3 项或长标签改用 Tabs 的分界线。",
+      "consumers": [
+        "web/app.css",
+        "web/app.js",
+        "tests/test_web_ui.py"
+      ]
     }
   ]
 }

@@ -38,6 +38,8 @@ class ReferenceUpdateTests(unittest.TestCase):
              "vercel-notifications-note",
              "youtube-player-controls-user-screenshot",
              "openaver-related-ranking",
+             "vercel-geist-tabs-secondary",
+             "vercel-geist-switch-segmented",
              "youtube-stats-buffer-20260829"},
         )
         self.assertNotEqual(
