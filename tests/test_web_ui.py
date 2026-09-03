@@ -2615,6 +2615,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("body.entity-open .index{overflow-x:visible}")
         self.assertNotIn("关联艺人", profile)
         self.assertNotIn("相关标签", profile)
+        # 资料页只渲染可核对的身份、计数与链接，没有散文简介块，样式表里也不该
+        # 留下对应选择器。
+        self.assertPageLacks("entitysummary")
 
     def test_entity_people_and_tags_match_home_vertical_rhythm(self):
         # 首页末层按钮到标签为 18.5px；人物行保留 4px 滚动留白后只需 6px 外边距。
