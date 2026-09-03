@@ -1552,8 +1552,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".vwrap .video-js .vjs-control-bar>.vjs-play-control{position:relative;align-self:flex-end;flex:0 0 40px;width:40px;height:40px")
         # overflow 要放开：悬停提示挂在按钮里，裁掉溢出就等于把提示裁没。
         self.assertPageContains("border:0;border-radius:50%;background:rgba(0,0,0,.6);box-shadow:none;overflow:visible")
-        self.assertPageContains("const playUse=explicitIcon(play,'player-play')")
-        self.assertPageContains("playUse?.setAttribute('href',paused?'#i-player-play':'#i-player-pause')")
+        self.assertPageContains("const playIcon=morphIcon(play,'player-play'),playPath=playIcon?.querySelector('path')")
         self.assertPageContains("id=\"i-player-play\"")
         self.assertPageContains("id=\"i-player-pause\"")
         self.assertPageContains(".vjs-peach-right-controls{box-sizing:border-box;position:relative;align-self:flex-end")
@@ -1593,7 +1592,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("activePixels>=2160?'4K':activePixels>=720?'HD':''")
         # 「auto 开全部层级，选定某一档只留那一档」是契约；局部变量叫什么不是。
         self.assertPageContains("levels[index].enabled=selectedQuality==='auto'||selectedQuality===String(index)")
-        self.assertPageContains("muteUse?.setAttribute('href',silent?'#i-player-volume-muted':'#i-player-volume')")
+        self.assertPageContains("const mute=volume?.querySelector(':scope>.vjs-mute-control'),muteIcon=morphIcon(mute,'player-volume')")
         self.assertPageLacks("volume.insertAdjacentHTML('afterbegin','<span class=\"vjs-peach-hover\"")
         self.assertPageContains("z-index:1;position:relative!important;left:0!important;top:0!important;align-self:center;flex:0 0 40px")
         self.assertPageContains("const syncFullscreenState=()=>{")
@@ -1927,10 +1926,12 @@ class WebUiSourceTests(unittest.TestCase):
         1.0 底下挂一行 14px 行高的说明。滑条两端取播放器支持的最低与最高倍速，步进 0.05。
         字号、字重和圆角走 Peach 的 token：上游读数那档 18px/900 与说明那档 10px 都不在
         Peach 的刻度上，胶囊和轨道的圆角大于自身高度的一半，`--pill-radius` 渲染结果相同。
-        上游第五个胶囊是 Premium 专属的 3.0 倍，Peach 没有分级，那一格不做。
+        第五格 3.0 在上游要 Premium，本机装的 Peach 没有会员分级，那一格照上游留着，
+        只是不画角标；滑条上限跟着抬到 3，不然点 3.0 会被收敛回 2。五格胶囊挤不进
+        274px 的面板，所以胶囊按 53px 起算、放不下就一起收窄。
         """
         self.assertPageContains(
-            "const SPEED_RATES=[.25,.5,.75,1,1.25,1.5,1.75,2],SPEED_STEP=.05,SPEED_PRESETS=[1,1.25,1.5,2];")
+            "const SPEED_RATES=[.25,.5,.75,1,1.25,1.5,1.75,2,3],SPEED_STEP=.05,SPEED_PRESETS=[1,1.25,1.5,2,3];")
         self.assertPageContains('<output data-player-speed-display></output>')
         self.assertPageContains(
             '<input type="range" class="vjs-peach-speed-range" data-player-speed-range '
@@ -1959,7 +1960,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             ".vjs-peach-speed-slider .vjs-peach-speed-button{flex:none;width:32px;font-size:var(--fs-2xl)}")
         self.assertPageContains(
-            ".vjs-peach-speed-chips .vjs-peach-speed-button{width:53px;gap:4px;font-size:var(--fs-xs)}")
+            ".vjs-peach-speed-chips .vjs-peach-speed-button{flex:0 1 53px;min-width:0;gap:4px;font-size:var(--fs-xs)}")
         # 设置面板里的按钮统一是 100% 宽、48px 高、`:before` 铺满的高亮层，胶囊得单独退出这套。
         self.assertPageContains(".vjs-peach-settings-menu .vjs-peach-speed-button:before{content:none}")
         self.assertPageContains(
@@ -1971,6 +1972,49 @@ class WebUiSourceTests(unittest.TestCase):
         # 头 57px 加内容 192px 是 249px，比窄屏给的 246px 高，所以内距和两处间隔都收到 16px。
         self.assertPageContains(".video-js.vjs-peach-xsmall .vjs-peach-speed-panel{padding:16px}")
         self.assertPageContains(".video-js.vjs-peach-xsmall .vjs-peach-speed-slider{margin-bottom:16px}")
+
+    def test_play_and_mute_icons_morph_in_place_like_youtube(self):
+        """播放键与静音键的图标在原地形变。
+
+        证据是 player 9470c977 的 base.js：`eST` 把路径的 `d` 拆成数字与分隔符再逐位插值
+        200ms；`jjc` 让音量的两道弧各自缩放 250ms，内弧绕 (18,12)、外弧绕 (22,12)，叉号在
+        缩完那一刻整块换上；`setVolume` 里外弧要音量过半才给 1；两处曲线都是 `qn3`，也就是
+        cubic-bezier(.4,0,.2,1)。上游那对播放/暂停路径是为插值写的，233 个记号里 116 个是
+        数字、命令序列逐位相同，所以直接搬过来。
+        """
+        self.assertPageContains('<symbol id="i-player-play" viewBox="0 0 36 36"')
+        self.assertPageContains('<symbol id="i-player-pause" viewBox="0 0 36 36"')
+        self.assertPageContains('d="M 17 8.6 L 10.89 4.99 C 9.39 4.11 7.5 5.19 7.5 6.93')
+        self.assertPageContains('d="M 18 6 L 9 6 C 8.20 6 7.44 6.31 6.87 6.87')
+        # `<use>` 克隆出来的影子树改不了 `d`，所以这两个键把 sprite 里的 <path> 搬进自己的 svg。
+        self.assertPageContains("svg.setAttribute('class','vjs-peach-control-icon vjs-peach-morph-icon');")
+        self.assertPageContains("svg.innerHTML=symbol.innerHTML;button.append(svg);return svg;")
+        self.assertPageContains('if(playPath)playPath.style.d=`path("${paused?playD:pauseD}")`;')
+        self.assertPageContains(".vjs-peach-morph-icon path{transition:d .2s cubic-bezier(.4,0,.2,1)}")
+        self.assertPageContains(
+            ".vwrap .video-js .vjs-control-bar>.vjs-play-control>.vjs-peach-control-icon{width:26px;height:26px}")
+        self.assertPageContains('<path class="vjs-peach-volume-arc-inner"')
+        self.assertPageContains('<path class="vjs-peach-volume-arc-outer"')
+        self.assertPageContains('<path class="vjs-peach-volume-x"')
+        self.assertPageContains("if(muteX){muteX.setAttribute('class','vjs-peach-volume-x');muteIcon.append(muteX)}")
+        self.assertPageContains(
+            "muteIcon.dataset.silent=String(silent);muteIcon.dataset.loud=String(!silent&&player.volume()>.5)")
+        # 缩放中心写在变换里，所以 transform-origin 必须归零，px 也要等于视框单位。
+        self.assertPageContains("transform-box:view-box;transform-origin:0 0;")
+        self.assertPageContains("transition:transform .25s cubic-bezier(.4,0,.2,1)}")
+        self.assertPageContains(
+            '.vjs-peach-morph-icon[data-silent="true"] .vjs-peach-volume-arc-inner'
+            '{transform:translate(18px,12px) scale(0) translate(-18px,-12px)}')
+        self.assertPageContains(
+            '.vjs-peach-morph-icon[data-loud="false"] .vjs-peach-volume-arc-outer'
+            '{transform:translate(22px,12px) scale(0) translate(-22px,-12px)}')
+        self.assertPageContains(".vjs-peach-morph-icon .vjs-peach-volume-x{opacity:0;transition:opacity 0s linear}")
+        self.assertPageContains(
+            '.vjs-peach-morph-icon[data-silent="true"] .vjs-peach-volume-x'
+            '{opacity:1;transition:opacity 0s linear .25s}')
+        # 图标只有 svg 这一份，CSS 不再另画一套三角与竖条。
+        self.assertPageLacks("border-left:14px solid #fff;transform:translate(-38%,-50%)")
+        self.assertPageLacks(".vjs-play-control .vjs-icon-placeholder:before{left:44%")
 
     def test_play_and_mute_clicks_flash_a_centered_bezel(self):
         """点播放键和静音键都在画面中心闪一下当前动作的图标。
