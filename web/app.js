@@ -917,9 +917,10 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0,initialSourceQu
   };
   /* 播放速度面板照 YouTube delhi-modern（player 9470c977 的 base.js）：滑条两端取播放器
      支持的最低与最高倍速，步进 0.05，加减键各动 0.05 并按两位小数收敛，读数写成 1.00x。
-     预设胶囊点了就地生效，面板不退回上一级；上游第五个胶囊是 Premium 专属的 3.0 倍，
-     Peach 没有分级，那一格连同角标一起不做。 */
-  const SPEED_RATES=[.25,.5,.75,1,1.25,1.5,1.75,2],SPEED_STEP=.05,SPEED_PRESETS=[1,1.25,1.5,2];
+     预设胶囊点了就地生效，面板不退回上一级。第五格 3.0 在上游是 Premium 专属，本机装的
+     Peach 没有会员分级这回事，那一格照上游留着，只是不画角标；滑条上限跟着抬到 3，
+     不然点 3.0 会被收敛回 2。 */
+  const SPEED_RATES=[.25,.5,.75,1,1.25,1.5,1.75,2,3],SPEED_STEP=.05,SPEED_PRESETS=[1,1.25,1.5,2,3];
   const speedLabel=speed=>Number.isInteger(speed)?speed.toFixed(1):String(speed);
   const showSpeed=(direction=1)=>{
     const min=SPEED_RATES[0],max=SPEED_RATES[SPEED_RATES.length-1];
@@ -1004,16 +1005,40 @@ function mountPlayerChromeLayout(player){
     button.insertAdjacentHTML('beforeend',icon(name,'vjs-peach-control-icon'));
     return button.querySelector(':scope>.vjs-peach-control-icon use');
   };
-  const playUse=explicitIcon(play,'player-play');
+  /* 播放键和静音键的图标要自己形变，不能整块换掉：`<use>` 克隆出来的是影子树，里面的
+     `d` 改不动，也挂不上过渡。所以这两个键把 sprite 里的 <path> 搬进自己的 svg，图标怎么变
+     由 CSS 说。照 YouTube delhi-modern（player 9470c977 的 base.js）：播放↔暂停是同一条
+     路径逐个数字插值 200ms（上游 `eST` 把 `d` 拆成数字与分隔符再逐位插值），音量的两道弧
+     各自缩放 250ms（上游 `jjc`：内弧绕 (18,12)、外弧绕 (22,12)），两处曲线都是 `qn3`
+     也就是 cubic-bezier(.4,0,.2,1)。 */
+  const morphIcon=(button,name)=>{
+    if(!button)return null;
+    const symbol=document.getElementById(`i-${name}`);if(!symbol)return null;
+    button.dataset.peachExplicitIcon='';
+    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('viewBox',symbol.getAttribute('viewBox'));
+    svg.setAttribute('aria-hidden','true');
+    svg.setAttribute('class','vjs-peach-control-icon vjs-peach-morph-icon');
+    svg.innerHTML=symbol.innerHTML;button.append(svg);return svg;
+  };
+  const spritePath=(name,index=0)=>document.getElementById(`i-${name}`)?.querySelectorAll('path')[index]||null;
+  const playIcon=morphIcon(play,'player-play'),playPath=playIcon?.querySelector('path');
+  const playD=spritePath('player-play')?.getAttribute('d')||'',pauseD=spritePath('player-pause')?.getAttribute('d')||'';
   const syncPlayTooltip=playerControlTooltip(play,'播放','K');
   const syncPlayIcon=()=>{const paused=player.paused()||player.ended();
-    playUse?.setAttribute('href',paused?'#i-player-play':'#i-player-pause');syncPlayTooltip(paused?'播放':'暂停')};
+    if(playPath)playPath.style.d=`path("${paused?playD:pauseD}")`;
+    syncPlayTooltip(paused?'播放':'暂停')};
   player.on(['play','pause','ended'],syncPlayIcon);syncPlayIcon();
   const volume=controlBar.querySelector(':scope>.vjs-volume-panel');
-  const mute=volume?.querySelector(':scope>.vjs-mute-control'),muteUse=explicitIcon(mute,'player-volume');
+  const mute=volume?.querySelector(':scope>.vjs-mute-control'),muteIcon=morphIcon(mute,'player-volume');
+  /* 静音图标不是另一张图：叉号是同一个 svg 里第四条路径，弧缩完了它才出现。 */
+  const muteX=muteIcon?spritePath('player-volume-muted',1)?.cloneNode(true):null;
+  if(muteX){muteX.setAttribute('class','vjs-peach-volume-x');muteIcon.append(muteX)}
   const syncMuteTooltip=playerControlTooltip(mute,'静音','M');
+  /* 外弧跟音量走：上游 `setVolume` 里超过 50 才给 1，否则 0，静音时两道弧一起收掉。 */
   const syncVolumeIcon=()=>{const silent=player.muted()||player.volume()===0;
-    muteUse?.setAttribute('href',silent?'#i-player-volume-muted':'#i-player-volume');syncMuteTooltip(silent?'取消静音':'静音')};
+    if(muteIcon){muteIcon.dataset.silent=String(silent);muteIcon.dataset.loud=String(!silent&&player.volume()>.5)}
+    syncMuteTooltip(silent?'取消静音':'静音')};
   player.on('volumechange',syncVolumeIcon);syncVolumeIcon();
   /* 中心提示照 YouTube delhi-modern（player 9470c977 的 www-player.css 与 base.js）：一块
      78px 的毛玻璃圆闪一下当前动作的图标，1s 走完 0→1.33→1 的缩放淡出。捕获阶段读的是
