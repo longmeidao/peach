@@ -5,7 +5,7 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
 
 # 并行 worktree 与提交边界
 
-最后复核：2026-09-01
+最后复核：2026-09-03
 证据来源：`docs/HANDOFF.md`「并行智能体与 Git 工作树」、`README.md`、ADR-0015、ADR-0017。
 
 ## 何时使用
@@ -66,6 +66,10 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
 报 Permission denied，而 git 已经把文件删光、注册也摘掉了：这种只按 `residue` 列出来等人清，
 分支照样删；注册还在才进 `failed`，分支保留。2026-09-01 之前是一失败就中止整轮，结果连跑
 5 次才摘完 5 个工作树、分支一条没删。看完 JSON 里的 `residue` 再手工 `rmdir` 那几个空目录。
+
+刚建的空工作树和 `git reset --hard master` 过的工作树在 prune 眼里同样是「已并入且干净」，
+会被别人并发跑的 `prune --apply` 一并回收——2026-09-03 一个工作者这样丢过分支，只能凭 reflog
+找回。建完先落一个提交再离开，工作树里不要 reset 到 master。
 
 `Desktop\peach` 顶层只放 ADR-0017 定义的四个运行时目录加一个 `attic/`：
 
