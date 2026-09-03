@@ -132,8 +132,8 @@ def scan_lines(path: str, source: str, *, skip_code_fences: bool) -> list[Findin
 def scan_python(path: str, source: str) -> list[Finding]:
     """注释、docstring、字符串字面量与测试函数名，其余标识符不看。
 
-    按 token 而不是按行，是为了让 `d["summary"]` 这样的下标和 `legacy_id` 这样的
-    变量名不进结果：它们是被执行的值，不是给人读的叙述。
+    按 token 而不是按行，是为了让 `legacy_id` 这样的变量名不进结果：它是被执行的
+    值，不是给人读的叙述。字符串字面量要看——命令行帮助和页面文案也住在里面。
     """
     found: list[Finding] = []
     lines = source.splitlines()

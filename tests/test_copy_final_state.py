@@ -30,11 +30,13 @@ class CopyFinalStateTests(unittest.TestCase):
         found = checker.scan_python("sample.py", source)
         self.assertEqual([item.line for item in found], [1])
 
-    def test_python_identifiers_and_values_are_not_prose(self):
-        # 判据落在注释、docstring、字符串字面量和测试函数名上。变量名与下标是被
-        # 执行的值，不是给人读的叙述，扫进来只会把 `source='legacy:asset'` 判成违规。
-        source = "legacy_id = 1\nrow['以前']\n"
-        self.assertEqual(checker.scan_python("sample.py", source), [])
+    def test_python_identifiers_are_code_and_literals_are_prose(self):
+        # 变量名是被执行的值：`legacy_id` 扫进来，`source='legacy:asset'` 这类取值
+        # 就会被判成违规。字符串字面量相反，命令行帮助和页面文案都从那里出。
+        self.assertEqual(
+            checker.scan_python("sample.py", "legacy_id = 1\nprior_state = 2\n"), [])
+        found = checker.scan_python("sample.py", "HELP = '以前的写法'\n")
+        self.assertEqual([item.line for item in found], [1])
 
     def test_markdown_code_fences_carry_commands_not_prose(self):
         source = "正文\n```\ngit log --grep 以前\n```\n以前\n"
