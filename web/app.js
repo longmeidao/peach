@@ -1022,9 +1022,9 @@ function mountPlayerChromeLayout(player){
     svg.setAttribute('class','vjs-peach-control-icon vjs-peach-morph-icon');
     svg.innerHTML=symbol.innerHTML;button.append(svg);return svg;
   };
-  const spritePath=(name,index=0)=>document.getElementById(`i-${name}`)?.querySelectorAll('path')[index]||null;
+  const spritePaths=name=>[...(document.getElementById(`i-${name}`)?.querySelectorAll('path')||[])];
   const playIcon=morphIcon(play,'player-play'),playPath=playIcon?.querySelector('path');
-  const playD=spritePath('player-play')?.getAttribute('d')||'',pauseD=spritePath('player-pause')?.getAttribute('d')||'';
+  const playD=spritePaths('player-play')[0]?.getAttribute('d')||'',pauseD=spritePaths('player-pause')[0]?.getAttribute('d')||'';
   const syncPlayTooltip=playerControlTooltip(play,'播放','K');
   const syncPlayIcon=()=>{const paused=player.paused()||player.ended();
     if(playPath)playPath.style.d=`path("${paused?playD:pauseD}")`;
@@ -1032,9 +1032,9 @@ function mountPlayerChromeLayout(player){
   player.on(['play','pause','ended'],syncPlayIcon);syncPlayIcon();
   const volume=controlBar.querySelector(':scope>.vjs-volume-panel');
   const mute=volume?.querySelector(':scope>.vjs-mute-control'),muteIcon=morphIcon(mute,'player-volume');
-  /* 静音图标不是另一张图：叉号是同一个 svg 里第四条路径，弧缩完了它才出现。 */
-  const muteX=muteIcon?spritePath('player-volume-muted',1)?.cloneNode(true):null;
-  if(muteX){muteX.setAttribute('class','vjs-peach-volume-x');muteIcon.append(muteX)}
+  /* 静音那张图标搬进同一个 svg：挖空的喇叭和叉号跟实心喇叭、两道弧共处一处，弧缩完了
+     它们才一起顶上，靠 opacity 换而不是换整块 svg。 */
+  if(muteIcon)spritePaths('player-volume-muted').forEach(path=>muteIcon.append(path.cloneNode(true)));
   const syncMuteTooltip=playerControlTooltip(mute,'静音','M');
   /* 外弧跟音量走：上游 `setVolume` 里超过 50 才给 1，否则 0，静音时两道弧一起收掉。 */
   const syncVolumeIcon=()=>{const silent=player.muted()||player.volume()===0;

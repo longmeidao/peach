@@ -1317,9 +1317,15 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vjs-peach-morph-icon[data-silent="true"] .vjs-peach-volume-arc-inner{transform:translate(18px,12px) scale(0) translate(-18px,-12px)}
 .vjs-peach-morph-icon[data-silent="true"] .vjs-peach-volume-arc-outer,
 .vjs-peach-morph-icon[data-loud="false"] .vjs-peach-volume-arc-outer{transform:translate(22px,12px) scale(0) translate(-22px,-12px)}
-/* 叉号在弧缩完那一刻整块出现，和上游一样是切换不是淡入：时长 0、延迟 250ms。取消静音走
-   的是没有延迟的那一条，叉号立刻消失、弧再长回来。 */
+/* 弧缩完那一刻整块换成静音那张图标，和上游 `jjc` 走到 q===1 时替换整个 svg 一样：时长 0、
+   延迟 250ms，实心喇叭让位，挖空的喇叭和叉号顶上。挖空那条的外框与实心那条是同一串数字，
+   所以换的那一刻只有中间的洞出现，轮廓一动不动。取消静音走没有延迟的那一条，洞和叉号
+   立刻消失、弧再长回来。 */
+.vjs-peach-morph-icon .vjs-peach-volume-speaker{opacity:1;transition:opacity 0s linear}
+.vjs-peach-morph-icon .vjs-peach-volume-speaker-muted,
 .vjs-peach-morph-icon .vjs-peach-volume-x{opacity:0;transition:opacity 0s linear}
+.vjs-peach-morph-icon[data-silent="true"] .vjs-peach-volume-speaker{opacity:0;transition:opacity 0s linear .25s}
+.vjs-peach-morph-icon[data-silent="true"] .vjs-peach-volume-speaker-muted,
 .vjs-peach-morph-icon[data-silent="true"] .vjs-peach-volume-x{opacity:1;transition:opacity 0s linear .25s}
 .vjs-peach-hover{position:absolute;z-index:0;left:0;top:4px;width:100%;height:32px;border-radius:var(--pill-radius);pointer-events:none;
   background:transparent;transition:background .2s cubic-bezier(.05,0,0,1)}
@@ -1384,8 +1390,12 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vwrap .video-js .vjs-load-progress{background:rgba(255,255,255,.4)}
 .vwrap .video-js .vjs-load-progress div{background:rgba(255,255,255,.2)}
 .vwrap .video-js .vjs-play-progress{background:var(--tungsten)}
+/* 圆点常驻，只在悬停时长大：上游 `.ytp-delhi-modern .ytp-scrubber-button` 静止就是 12px 的圆，
+   只有 `.ytp-hide-scrubber-button` 才缩成 0。上游的滑块是被压扁那层的兄弟，Peach 的圆点长在
+   `.vjs-play-progress` 里，父层的 `scaleY(.667)` 会连它一起压扁，所以静止时纵向先撑回去；
+   悬停父层回到 1，圆点按上游的 1.67 长大。 */
 .vwrap .video-js .vjs-play-progress:before{content:"";position:absolute;right:-6px;top:50%;width:12px;height:12px;
-  border-radius:50%;background:var(--tungsten);transform:translateY(-50%) scale(0);box-shadow:none;transition:transform .2s cubic-bezier(.05,0,0,1)}
+  border-radius:50%;background:var(--tungsten);transform:translateY(-50%) scale(1,1.5);box-shadow:none;transition:transform .2s cubic-bezier(.05,0,0,1)}
 .vwrap .video-js .vjs-progress-control:hover .vjs-play-progress:before,.vwrap .video-js .vjs-progress-control:focus-within .vjs-play-progress:before{transform:translateY(-50%) scale(1.67)}
 .vwrap .video-js .vjs-mouse-display .vjs-time-tooltip,
 .vwrap .video-js .vjs-play-progress .vjs-time-tooltip{display:none!important}
