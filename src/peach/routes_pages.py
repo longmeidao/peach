@@ -6,10 +6,15 @@
 
 `index` 的 401 走跳登录页，`/app.css`、`/app.js`、`/js/`、`/dist/` 走 PlainText 提示：
 资产被浏览器直接请求，重定向到登录页只会让它把 HTML 当脚本解析。
+
+缓存也分两档：`index.html` 是 `no-store`，它是所有资产 URL 的来源；四类资产走
+`asset_response()` 的 ETag 复验，更新语义与 `no-store` 相同但没变时零传输。
 """
 from __future__ import annotations
 
 import re
+
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse, Response
@@ -19,6 +24,27 @@ from .routes_auth import require_asset_auth, require_page_auth, set_auth_cookie
 from .web_state import FAVICON
 
 router = APIRouter()
+
+
+def asset_response(request: Request, path: Path, media: str) -> Response:
+    """页面资产用 ETag 复验代替 no-store，`/app.js`、`/app.css`、`/js/`、`/dist/` 共用。
+
+    `no-store` 让 `app.js`（435KB）加 `app.css`（232KB）每次开页都全量重下；
+    `no-cache` 的更新语义完全一样——每次都回源验证，文件一变立刻生效——但没变时
+    只回一个 304，零字节传输。代价是一次条件请求的往返。
+
+    ETag 取 mtime_ns 加字节数，不读文件内容：这几个文件都由 Git 检出或 `frontend/`
+    构建产生，改一次就换一次 mtime，不需要为了强校验去算全文哈希。
+    """
+    stat = path.stat()
+    etag = f'"peach-{stat.st_mtime_ns:x}-{stat.st_size:x}"'
+    if request.headers.get("if-none-match") == etag:
+        response: Response = Response(status_code=304)
+    else:
+        response = FileResponse(path, media_type=f"{media}; charset=utf-8")
+    response.headers["ETag"] = etag
+    response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 @router.api_route("/", methods=["GET", "HEAD"])
@@ -50,10 +76,7 @@ def app_asset(request: Request, args: dict[str, str] = Depends(require_asset_aut
     if not path.is_file():
         return PlainTextResponse("missing", status_code=404)
     media = "text/css" if name.endswith(".css") else "text/javascript"
-    response = FileResponse(path, media_type=f"{media}; charset=utf-8")
-    # 页面本体是 no-store，样式与脚本跟着它一起变，不能被旧缓存钉住。
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return asset_response(request, path, media)
 
 
 @router.api_route("/js/{name}", methods=["GET", "HEAD"])
@@ -70,10 +93,7 @@ def app_module(request: Request, name: str,
     path = request.app.state.settings.page_path.parent / "js" / name
     if not path.is_file():
         return PlainTextResponse("missing", status_code=404)
-    response = FileResponse(path, media_type="text/javascript; charset=utf-8")
-    # 和 index.html/app.js 同一口径：页面一变模块就跟着变，不能被旧缓存钉住。
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return asset_response(request, path, "text/javascript")
 
 
 @router.api_route("/dist/{name}", methods=["GET", "HEAD"])
@@ -82,7 +102,8 @@ def app_bundle(request: Request, name: str,
     """`frontend/` 构建出来的 island 产物（ADR-0022）。口令与缓存口径同 `/js/`。
 
     产物提交进 Git 且文件名不带内容哈希，所以 `app.js` 能直接
-    `await import('/dist/peach-ui.js')`；缓存仍由 no-store 兜住。
+    `await import('/dist/peach-ui.js')`；也正因为名字不带哈希，缓存只能靠复验，
+    和 `/js/` 共用 `asset_response` 的 ETag 口径。
     名字判据和 `/js/` 逐字一致，只多认一个 `.css`：产物名不带内容哈希，也就不需要
     名字里再有点，`peach-ui.js.map` 这类附带文件跟着一起落在 404。
     """
@@ -92,9 +113,7 @@ def app_bundle(request: Request, name: str,
     if not path.is_file():
         return PlainTextResponse("missing", status_code=404)
     media = "text/css" if name.endswith(".css") else "text/javascript"
-    response = FileResponse(path, media_type=f"{media}; charset=utf-8")
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return asset_response(request, path, media)
 
 
 @router.api_route("/favicon.svg", methods=["GET", "HEAD"])

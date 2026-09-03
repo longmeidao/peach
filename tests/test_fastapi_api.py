@@ -303,7 +303,9 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         served = await self.client.get("/js/core.js?t=secret")
         self.assertEqual(served.status_code, 200)
         self.assertTrue(served.headers["content-type"].startswith("text/javascript"))
-        self.assertEqual(served.headers["cache-control"], "no-store")
+        # 页面资产走 ETag 复验：更新语义与 no-store 相同（每次都回源问），但没变时
+        # 回 304 零传输。完整契约在 tests/test_web_perf.py，这里只钉住用的是哪一档。
+        self.assertEqual(served.headers["cache-control"], "no-cache")
         self.assertIn("export", served.text, "取回的必须是真的 module")
 
         for escape in ("..%2f..%2fapp.js", "..%5c..%5csecrets.json", "sub%2fmod.js",
@@ -325,7 +327,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             served = await self.client.get(f"/dist/{name}?t=secret")
             self.assertEqual(served.status_code, 200, name)
             self.assertTrue(served.headers["content-type"].startswith(media), name)
-            self.assertEqual(served.headers["cache-control"], "no-store", name)
+            self.assertEqual(served.headers["cache-control"], "no-cache", name)
 
         for escape in ("..%2f..%2fapp.js", "..%5c..%5csecrets.json", "sub%2fpeach-ui.js",
                        "..%2fapp.js", "peach-ui.js.map", "peach-ui.mjs", "Peach-UI.js"):

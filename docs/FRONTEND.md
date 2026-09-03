@@ -20,7 +20,10 @@ Vite + TypeScript + Preact。迁移方式是 strangler：**遗留路由继续拥
 | `web/dist/peach-ui.js` | 构建产物，**进 Git**，由 `/dist/{name}` 提供 |
 
 产物名字不带内容哈希：引用它的 `web/app.js` 不经过构建，构建时改不了那里的路径。
-缓存由服务端的 `Cache-Control: no-store` 兜住，和 `index.html`／`app.js` 同一口径。
+缓存由服务端兜住：`/dist/` 与 `/app.js`、`/app.css`、`/js/` 同一档，回
+`Cache-Control: no-cache` 加一个 mtime＋字节数的 ETag——每次都回源问，没变时回 304
+零传输，更新语义和以前的 `no-store` 相同。只有 `index.html` 仍是 `no-store`：所有资产
+URL 都从它来，它被缓存住就没人看得到新产物。
 
 ## 开发循环
 

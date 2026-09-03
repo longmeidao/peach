@@ -16,7 +16,7 @@
 要排在 `routes_api` 前面。
 
 留在本文件里的只有全应用一份的东西：依赖装配、`lifespan`、异常处理器、`/vendor`
-挂载、响应头中间件和 `/healthz`。
+挂载、响应头与压缩中间件和 `/healthz`。
 """
 import asyncio
 import logging
@@ -28,6 +28,7 @@ from urllib.parse import quote
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES, GZipMiddleware
 
 from . import __version__, web_contract, web_follow
 from . import routes_api, routes_auth, routes_media, routes_pages
@@ -60,6 +61,16 @@ from .transcodes import TranscodeService
 
 
 LOGGER = logging.getLogger(__name__)
+
+#: gzip 不碰的内容类型。Starlette 的默认名单已经排掉 `video/*`、`audio/*` 和各种
+#: 已压缩的图片，这里再补两个它没排、而 Peach 会真的撞上的：
+#: `application/octet-stream` 是通用字节流；`text/plain` 是 `FileResponse` 猜不出
+#: 扩展名时的兜底值，`/stream` 与 `/photo` 都不传 media_type，一个没登记过扩展名的
+#: 媒体文件会以 `text/plain` 出去——压它纯属烧 CPU。Peach 自己有意发的
+#: `text/plain` 只有 "missing" 这类错误提示，本来就在 `minimum_size` 之下。
+COMPRESSION_EXCLUDED_TYPES = (
+    *DEFAULT_EXCLUDED_CONTENT_TYPES, "application/octet-stream", "text/plain",
+)
 
 
 def _offline_response(exc: MediaOffline) -> JSONResponse:
@@ -237,6 +248,17 @@ def create_app(
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
         return response
+
+    # JSON 契约、页面脚本与样式是仅有的几类大文本响应，压下去省的字节最多：
+    # `/api/items` 一页几十 KB，`app.js` 435KB、`app.css` 232KB。
+    # `add_middleware` 是 `insert(0)`，最后加的在最外层，所以压缩看到的是上面
+    # `no_store` 补完 Cache-Control 之后的最终响应头。
+    # 自己写内容类型闸门的 ASGI 中间件是重复劳动：Starlette 这个已经按 Content-Type
+    # 排除、跳过 206 与已编码响应、逐块流式压缩，还会把大块丢到工作线程去压，
+    # 不占事件循环。只需要把它的排除名单补齐（见 COMPRESSION_EXCLUDED_TYPES）。
+    app.add_middleware(
+        GZipMiddleware, exclude_content_types=COMPRESSION_EXCLUDED_TYPES,
+    )
 
     # 健康检查常被 HEAD 探测（`curl -I`、各种 uptime 工具）。本仓库其他公开端点
     # 都显式声明了 GET+HEAD，只有这个漏了，HEAD 会拿到 405。

@@ -7,15 +7,17 @@
 `web_catalog`、`web_entity`、`web_stats`、`web_batch` 全都 import 它，所以它一旦反
 过来 import 其中任何一个，整层立刻循环。判据就是这个文件里不许出现 `from .web_`。
 
-`CACHE_TTL` 归这里是因为只有 `cached()` 一个使用者。内联 favicon 也放这里：它是
+`CACHE_TTL` 归这里是因为使用者只有本文件的 `cached()`／`cached_lru()`。内联 favicon 也放这里：它是
 唯一一个没有磁盘文件的静态资源，而 `api` 一直从契约模块取它，这次只搬位置。
 """
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 
+from collections import OrderedDict
 from pathlib import Path
 from typing import Sequence
 
@@ -105,6 +107,8 @@ class WebContract:
         self.legacy_snapshot_roots = tuple(Path(path) for path in legacy_snapshot_roots)
         self.cache: dict[str, tuple[float, object]] = {}
         self.cache_lock = threading.Lock()
+        #: 按资产取键的读缓存，LRU 限界。键空间不封闭的场景走这里，见 `cached_lru()`。
+        self.keyed_cache: OrderedDict[str, tuple[float, object]] = OrderedDict()
         #: 每次 cache_bust 递增。在途计算据此判断自己出发后缓存是否失效过。
         self.cache_generation = 0
         self.follow_check_lock = threading.Lock()
@@ -140,6 +144,30 @@ class WebContract:
                 self.cache[key] = (now, value)
         return value
 
+    def cached_lru(self, key, fn, *, maxsize: int = 192, ttl: float = CACHE_TTL):
+        """带 TTL 的 LRU 读缓存，给键空间不封闭的场景用（`/api/related` 按资产取键）。
+
+        `cached()` 的字典只在 `cache_bust()` 时清空，所以它的键空间必须封闭——
+        stats、tops 只有几个固定键，放得下；related 的键跟着浏览过的资料页数量走，
+        不限界就是无上限的内存增长。LRU 驱逐之外，TTL 与代次失效的语义和
+        `cached()` 逐字一致，包括「`fn` 在锁外算」和「失效过就丢弃这次结果」。
+        """
+        now = time.time()
+        with self.cache_lock:
+            hit = self.keyed_cache.get(key)
+            if hit and now - hit[0] < ttl:
+                self.keyed_cache.move_to_end(key)
+                return hit[1]
+            generation = self.cache_generation
+        value = fn()
+        with self.cache_lock:
+            if generation == self.cache_generation:
+                self.keyed_cache[key] = (now, value)
+                self.keyed_cache.move_to_end(key)
+                while len(self.keyed_cache) > maxsize:
+                    self.keyed_cache.popitem(last=False)
+        return value
+
     def stop_background_jobs(self) -> None:
         """服务关停时丢掉后台任务状态并等线程收工。
 
@@ -151,6 +179,7 @@ class WebContract:
     def cache_bust(self):
         with self.cache_lock:
             self.cache.clear()
+            self.keyed_cache.clear()
             # 在途计算靠这个数认出「我出发之后缓存失效过」，从而放弃写回。
             self.cache_generation += 1
 
@@ -179,27 +208,56 @@ class WebContract:
         path = self.cover_root / f"{key}.jpg"
         return path if path.is_file() else None
 
+    def cover_index(self) -> dict[str, dict | None]:
+        """封面目录扫一遍的索引：casefold(归一番号) → 取景 `{"cy": …}` 或 None。
+
+        卡片列表逐行问「有封面吗」「取景是多少」，一页 60 行就是 120+ 次 stat 加
+        读文件；封面目录一次 scandir 就覆盖全部番号，结果走 `cached()` 的 TTL。
+        `/cover` 端点仍走 `cover_path()` 直读，取图不受索引影响。
+
+        代价是刚落盘的封面最多一个 TTL 后才出现在卡片徽章上；刮削流程里复核确认
+        本来就会 `cache_bust()`，所以用户自己的动作看得到即时效果。
+        """
+        return self.cached("cover-index", self._scan_cover_root)
+
+    def _scan_cover_root(self) -> dict[str, dict | None]:
+        """一次目录扫描同时收集封面存在性和 sidecar 取景。目录不存在就是空索引。"""
+        scanned: dict[str, dict | None] = {}
+        try:
+            with os.scandir(self.cover_root) as entries:
+                for entry in entries:
+                    if not entry.name.endswith(".jpg"):
+                        continue
+                    scanned[entry.name[:-len(".jpg")].casefold()] = self._cover_focus(
+                        entry.path[:-len(".jpg")] + ".face.json")
+        except OSError:
+            return {}
+        return scanned
+
+    @staticmethod
+    def _cover_focus(sidecar: str) -> dict | None:
+        """sidecar 里的人脸中心。没算过、读不出或没检出都是 None，页面退回固定取景。"""
+        try:
+            with open(sidecar, encoding="utf-8") as handle:
+                face = (json.load(handle) or {}).get("face")
+        except (OSError, ValueError):
+            return None
+        return {"cy": face["cy"]} if isinstance(face, dict) and "cy" in face else None
+
     def has_cover(self, code: str | None) -> bool:
-        return self.cover_path(code) is not None
+        key = normalise_code_key(code)
+        # 索引的键是 casefold 过的：`is_file()` 在 Windows 与 macOS 的默认文件系统上
+        # 大小写不敏感，改走索引不能顺手把这层容错丢了。
+        return bool(key) and key.casefold() in self.cover_index()
 
     def cover_frame(self, code: str | None) -> dict | None:
-        """封面的取景提示：宽高比和人脸中心。没算过或没检出就返回 None。
+        """封面的取景提示：人脸中心。没算过或没检出就返回 None。
 
         只用来做纵向微调，横向仍由版式决定——横向靠几何规则已经稳定。
         取不到时前端退回固定取景，不影响显示。
         """
-        path = self.cover_path(code)
-        if path is None:
-            return None
-        sidecar = path.with_suffix(".face.json")
-        if not sidecar.is_file():
-            return None
-        try:
-            data = json.loads(sidecar.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return None
-        face = data.get("face")
-        return {"cy": face["cy"]} if isinstance(face, dict) and "cy" in face else None
+        key = normalise_code_key(code)
+        return self.cover_index().get(key.casefold()) if key else None
 
     def avatar_focus(self, kind: str, entity_id: int) -> dict | None:
         """实体图的取景提示：人脸中心换算成的 object-position。
