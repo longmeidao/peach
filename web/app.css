@@ -1430,7 +1430,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control>button>svg{width:18px;height:18px}
 .video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control:not(.vjs-peach-settings):not(.vjs-peach-expand){display:none}
 .video-js.vjs-peach-xsmall .vjs-peach-expand{display:block}
-.video-js.vjs-peach-xsmall.vjs-peach-right-expanded .vjs-peach-right-controls>.vjs-control{display:block}
+.video-js.vjs-peach-xsmall.vjs-peach-right-expanded .vjs-peach-right-controls>.vjs-control:not(.vjs-peach-settings):not(.vjs-peach-expand){display:block}
 .video-js.vjs-peach-xsmall.vjs-peach-right-expanded .vjs-peach-time{display:none}
 .vjs-peach-expand>button>svg{transition:transform .3s cubic-bezier(.05,0,0,1);transform:rotate(180deg)}
 .video-js.vjs-peach-right-expanded .vjs-peach-expand>button>svg{transform:rotate(0)}
