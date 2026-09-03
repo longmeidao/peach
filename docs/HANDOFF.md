@@ -112,7 +112,7 @@
 
 ## 流量与代理诊断工具
 
-- Windows 代理与流量诊断统一用 FlowLens（Mihomo Traffic Monitor，面板 `http://127.0.0.1:9091/`，API `/api/v1/connections`、`/api/v1/summary`、`/api/v1/status`）：只观测经过 Mihomo 的连接，`DIRECT` 也算被观测，完全绕过 Mihomo 的连接必须标「未观测」，不能推断为零。NetLimiter、Proxifier 和依赖网页常驻的 Zashboard 不再作为 Windows 默认方案。
+- Windows 代理与流量诊断统一用 FlowLens（面板 `http://127.0.0.1:9091/`，API `/api/v1/connections`、`/summary`、`/status`）：只观测经过 Mihomo 的连接，`DIRECT` 也算被观测，绕过 Mihomo 的连接标「未观测」，不能推断为零。
 - macOS 的流量诊断统一使用 Stash Dashboard。
 
 ## 数据安全
@@ -121,7 +121,7 @@
 - 测试必须使用临时 SQLite、媒体和全部缓存根，不得写真实 ledger 或 `generated`；FastAPI 测试须显式传入 snapshots、posters、photo-thumbs、transcodes、stream-segments、按 asset 生成的头像与 covers。
 - 可重建缓存的删除边界由当前数据库路径拥有，生产库只可清理同一 `peach-data` 下的缓存，边界外一律跳过：一次漏配曾在清空回收站的测试里删掉真实 JAV 封面。
 - 已应用的迁移文件不得修改，任何后续变更必须新增版本；真实迁移与缓存删除的操作序列见 `docs/OPERATIONS.md`。
-- 外键的 `ON DELETE` 是安全网，不是删除路径：运行时连接不开 `PRAGMA foreign_keys`，物理删除仍走 `web_batch.ASSET_REFERENCE_TABLES` 与 `web_playlists` 的显式 DELETE。0024 补的 CASCADE / SET NULL 只约束真开外键的入口（迁移与离线脚本）；`profile.user_id` 故意留 NO ACTION——即时外键下它就是 RESTRICT，而重建 `profile` 会让 `DROP TABLE` 的隐式删除真的级联掉 profile 私有状态。
+- 外键 `ON DELETE` 是安全网不是删除路径：运行时连接不开 `PRAGMA foreign_keys`，物理删除仍走 `ASSET_REFERENCE_TABLES` 与 `web_playlists` 的显式 DELETE；`profile.user_id` 留 NO ACTION，重建 `profile` 会让隐式删除级联掉 profile 私有状态。
 - 外置盘目标只保存 `media`，代码、运行数据、venv 和 worktree 在两台机器各自的内置盘；`peach-data` 不进入仓库，也不整体交给文件同步，分通道边界见 ADR-0017。
 
 ## 运行与部署

@@ -12,7 +12,7 @@
 - macOS 是 reader，代码与相邻的 `peach-data` 都在内置盘；`peach.local` 经 8900/8443 和 pf 提供 80/443，GET 正常、写入端点返回 409。
 - 托盘与菜单栏层的改动不会随服务子进程一起生效，要手动退出菜单栏项后由 `.app` 或 `launchctl kickstart -k` 重启一次。
 - 两端使用不同 mDNS 名和各自本机 CA，私钥与凭据不跨机同步；代码走 Git、账本走单写者复制、图片产物走 Syncthing，三条链路互不兜底。
-- Windows 真实 ledger 为 `peach-data/database/ledger.db`，已应用到 `0023`，`0024`（外键 ON DELETE 与索引）待协调者备份后 apply。
+- Windows 真实 ledger 为 `peach-data/database/ledger.db`，已应用到 `0024`（外键 ON DELETE 与索引），0 待处理。
 - Mac ledger 已授权从共享副本显式拉取并恢复 `in-sync`；`sources` 已迁到内置盘，`archive`、`tools` 仍可指向外置盘。
 - 服务运行期不再连接 Stash，媒体解析只有 `FilesystemBackend` 一条路径（ADR-0021）；只剩两个离线导入脚本在需要时才连它，见 `docs/STASH.md`。
 - 前端按 ADR-0022 以 Preact island 逐岛迁往 `frontend/`（Vite + TypeScript），产物 `web/dist/peach-ui.js` 进 Git、经 `/dist/{name}` 提供，`/quality-goals` 已迁；改前端需 Node 24+，见 `docs/FRONTEND.md`。
