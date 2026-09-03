@@ -59,7 +59,15 @@ MAX_EVER_BYTES = {
 BYTE_BUDGET_CHANGES = {
     "AGENTS.md": [(12 * 1024, "2026-09-03", "初始值")],
     "docs/HANDOFF.md": [(24 * 1024, "2026-09-03", "初始值")],
-    "docs/STATUS.md": [(12 * 1024, "2026-09-03", "初始值")],
+    "docs/STATUS.md": [
+        (12 * 1024, "2026-09-03", "初始值"),
+        # 12 KiB 不是太紧而是太松：定下后的 16 次改动里文件一直贴着 12,204～12,325 字节走，
+        # 两次越线，每次都靠删半句省字节混过去——那是在压缩措辞，不是在清退内容。
+        # 真正的成因是入口文件里装了两条只增不减的流水：待办队列，和与
+        # README/HANDOFF/REUSE/OPERATIONS 重复的能力条目。前者搬进 docs/PRODUCT_BACKLOG.md，
+        # 后者删掉 17 条重复后，文件回到 6.2 KB。
+        (8 * 1024, "2026-09-03", "待办搬进产品待办、重复能力条目清退后只剩 6.2 KB，留够加新事实的余量"),
+    ],
 }
 
 BYTE_BUDGET = {name: changes[-1][0] for name, changes in BYTE_BUDGET_CHANGES.items()}

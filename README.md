@@ -2,7 +2,7 @@
 
 Peach（蜜桃）是单用户、本地优先的个人媒体系统。它统一索引本地磁盘、CloudDrive 和在线关注来源，提供搜索、播放、资料页、播放列表、复核与追更，并把观看行为和人工决定保存到本地 SQLite ledger。
 
-Peach 适合在 Windows 与 macOS 两台个人设备上运行。当前运行状态、待办和验证结果见 [`docs/STATUS.md`](docs/STATUS.md)；开发约束从 [`AGENTS.md`](AGENTS.md) 开始读。
+Peach 适合在 Windows 与 macOS 两台个人设备上运行。当前运行状态与验证结果见 [`docs/STATUS.md`](docs/STATUS.md)，待办见 [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md)；开发约束从 [`AGENTS.md`](AGENTS.md) 开始读。
 
 ## 核心能力
 
@@ -158,7 +158,8 @@ Rule34.xxx 标签身份不区分大小写。跨站来源按规范作者归组，
 ## 文档入口
 
 - [`AGENTS.md`](AGENTS.md)：每次改动都必须遵守的边界和技能索引。
-- [`docs/STATUS.md`](docs/STATUS.md)：当前运行态、验证结果和下一步。
+- [`docs/STATUS.md`](docs/STATUS.md)：当前运行态与验证结果。
+- [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md)：开放需求与待执行的操作。
 - [`docs/HANDOFF.md`](docs/HANDOFF.md)：跨任务长期有效的事实与工作约定。
 - [`docs/REUSE.md`](docs/REUSE.md)：新增或替换实现前的复用清单。
 - [`docs/adr/`](docs/adr/)：架构决定、原因和取舍。
