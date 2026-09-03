@@ -44,8 +44,8 @@ Windows 内置盘环境、共享账本传输点、显式 writer/reader 和生成
 durable artifact 拆分仍待续，见 ADR-0017 与 `docs/STATUS.md`。三条链路各走各的：代码走 Git，
 账本走 Peach 单写者复制，图片产物走 Syncthing 单向同步，互不兜底。
 
-`peach-data` 与代码仓库刻意分离（Windows 为 `C:\Users\longm\Desktop\peach\peach-data`，
-macOS 为 `~/Desktop/lmd.gg/peach/peach-data`，由 `PEACH_DATA_ROOT` 覆盖）：
+`peach-data` 与代码仓库刻意分离（默认取仓库同级的 `peach-data/`，`peach init --data-root`
+可改，环境变量 `PEACH_DATA_ROOT` 覆盖它；本机坐标写在 `<数据根>/config.toml`）：
 
 - `database/`：SQLite 真相库。本地是工作副本，血缘记在同目录的 `ledger.db.sync.json`
 - `generated/`：快照、海报、头像和厂牌 Logo

@@ -2,19 +2,19 @@
 
 最后核验：2026-09-03
 
-本文件按「现在是什么样」写，不按批次累积；已完成批次与事故过程由 Git 历史保存。
+本文件写「现在是什么样」，不按批次累积；已完成批次与事故由 Git 历史保存。
 
 ## 运行态
 
-- Windows 是当前 ledger writer，启动入口为 `dist\Peach\Peach.exe`；代码、`peach-data`、worktree 和共享传输点都在同一个顶层目录下，外置盘只提供 `R:\media`。
+- Windows 是当前 ledger writer，入口 `dist\Peach\Peach.exe`；代码、`peach-data`、worktree 和共享传输点同在一个顶层目录，外置盘只提供 `R:\media`。
 - 托盘必须以普通权限启动：提升权限后的令牌看不到 CloudDrive 的 `A:` / `B:`，会把 PikPak 和 115 误报为脱盘。
 - Windows HTTP 为 `0.0.0.0:80`，HTTPS 为当前 LAN IPv4 的 443，mDNS 名为 `peach-win.local`；线上服务版本 `0.7.13`、`ledger_sync=writer`。
-- macOS 是 reader，代码与相邻的 `peach-data` 都在内置盘；`peach.local` 经 8900/8443 和 pf 提供 80/443，GET 正常、写入端点返回 409。
+- macOS 是 reader，代码与 `peach-data` 都在内置盘；`peach.local` 经 8900/8443 和 pf 提供 80/443，GET 正常、写入端点返回 409。
 - 托盘与菜单栏层的改动不会随服务子进程一起生效，要手动退出菜单栏项后由 `.app` 或 `launchctl kickstart -k` 重启一次。
-- 两端使用不同 mDNS 名和各自本机 CA，私钥与凭据不跨机同步；代码走 Git、账本走单写者复制、图片产物走 Syncthing，三条链路互不兜底。
+- 两端各用本机 CA，私钥与凭据不跨机同步；代码走 Git、账本走单写者复制、图片产物走 Syncthing，三条链路互不兜底。本机坐标在 `<数据根>/config.toml`，两台各跑一次 `peach init`。
 - Windows 真实 ledger 为 `peach-data/database/ledger.db`，已应用到 `0024`（外键 ON DELETE 与索引），0 待处理。
 - Mac ledger 已授权从共享副本显式拉取并恢复 `in-sync`；`sources` 已迁到内置盘，`archive`、`tools` 仍可指向外置盘。
-- 服务运行期不再连接 Stash，媒体解析只有 `FilesystemBackend` 一条路径（ADR-0021）；只剩两个离线导入脚本在需要时才连它，见 `docs/STASH.md`。
+- 服务运行期不连 Stash，媒体解析只有 `FilesystemBackend` 一条路径（ADR-0021）；只剩两个离线导入脚本按需连它，见 `docs/STASH.md`。
 - 前端按 ADR-0022 以 Preact island 逐岛迁往 `frontend/`（Vite + TypeScript），产物 `web/dist/peach-ui.js` 进 Git、经 `/dist/{name}` 提供，`/quality-goals` 已迁；改前端需 Node 24+，见 `docs/FRONTEND.md`。
 - 运行 Python 3.14，`requires-python`、本机 venv 和 GitHub Actions 的两个 job 同口径；Windows FFmpeg/ffprobe 位于 `peach-data/tools/ffmpeg`，macOS 走 PATH。
 

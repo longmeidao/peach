@@ -268,6 +268,8 @@ def create_app(
         ffmpeg = resolver.ffmpeg()
         read_only = bool(sync is not None and sync.read_only)
         return {"ok": True, "service": "peach-api", "version": __version__, "mode": "fastapi",
+                # 这台机器跑过 `peach init` 没有。未配置时服务照常起，只是没有数据。
+                "configured": settings.configured,
                 "db": "available" if settings.db_path.is_file() else "missing",
                 "ffmpeg": ffmpeg.source if ffmpeg else "unavailable",
                 "mdns": mdns.status if mdns is not None else "disabled",

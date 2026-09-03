@@ -2,12 +2,15 @@ import os
 import subprocess
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from peach import settings_file
 from peach.media import FilesystemBackend, MediaOffline, MediaUnavailable
 from peach.platform import (
     UNMAPPED_ROOT,
+    drive_map,
     is_unmapped,
     is_windows_path,
     root_online,
@@ -58,6 +61,33 @@ class DriveTranslationTests(unittest.TestCase):
 
     def test_system_volume_is_the_disk_gate_target(self):
         self.assertEqual(system_volume(), Path("C:/") if os.name == "nt" else Path("/"))
+
+
+class MountSourceTests(unittest.TestCase):
+    """挂载点来自设置文件；`PEACH_DRIVE_MAP` 仍然压过它。"""
+
+    def _with_mounts(self, mounts):
+        config = settings_file.load_config(environ={}, strict=False)
+        return patch.object(settings_file, "active",
+                            lambda: replace(config, mounts=mounts))
+
+    def test_settings_file_supplies_the_base_mapping(self):
+        with self._with_mounts({"r": "/mnt/res"}):
+            with patch.dict("os.environ", {"PEACH_DRIVE_MAP": ""}):
+                # 键大小写不敏感：设置文件里写 `r` 和 `R` 是同一个来源。
+                self.assertEqual(drive_map(), {"R": Path("/mnt/res")})
+
+    def test_environment_still_wins_over_the_settings_file(self):
+        with self._with_mounts({"R": "/mnt/res", "B": "/mnt/115"}):
+            with patch.dict("os.environ", {"PEACH_DRIVE_MAP": "R=/mnt/other"}):
+                self.assertEqual(
+                    drive_map(), {"R": Path("/mnt/other"), "B": Path("/mnt/115")})
+
+    def test_a_fresh_machine_has_no_mounts_at_all(self):
+        """内建默认为空：没挂的来源按脱盘处理，绝不猜一个本机路径。"""
+        with self._with_mounts({}):
+            with patch.dict("os.environ", {"PEACH_DRIVE_MAP": ""}):
+                self.assertEqual(drive_map(), {})
 
 
 class RootBoundaryTests(unittest.TestCase):

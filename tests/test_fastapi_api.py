@@ -1332,5 +1332,69 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(response.status_code, 401, path)
 
 
+@unittest.skipUnless(HAS_DEPS, "fastapi/httpx not installed")
+class UnconfiguredMachineTests(unittest.IsolatedAsyncioTestCase):
+    """还没跑过 `peach init` 的机器：服务照常起，页面告诉人下一步做什么。
+
+    「未配置」是显式状态，不是崩溃：数据目录不存在、数据库不存在、什么来源都没挂，
+    这些都不该让 `serve` 起不来——起不来的服务连提示都没法给。
+    """
+
+    async def asyncSetUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        missing = Path(self.tmp.name).resolve() / "nothing-here"
+        self.settings = PeachSettings(
+            configured=False,
+            db_path=missing / "database" / "ledger.db",
+            page_path=missing / "web" / "index.html",
+            vendor_path=missing / "web" / "vendor",
+            allowed_media_roots=(),
+            snapshot_root=missing / "snapshots",
+            legacy_snapshot_roots=(),
+            poster_root=missing / "posters", avatar_root=missing / "avatars",
+            logo_root=missing / "logos", cover_root=missing / "covers",
+            photo_root=missing / "photos", stream_root=missing / "stream",
+            ffmpeg_root=missing / "ffmpeg", transcode_root=missing / "transcodes",
+            candidate_root=missing, review_mirror_cache=missing / "review.json",
+            taste_history_store=missing / "history.sqlite",
+            taste_history_import_root=missing / "imports",
+            taste_history_output_root=missing / "taste",
+            taste_history_manifest=missing / "manifest.json",
+            follow_state_root=missing / "state",
+        )
+        self.app = create_app(self.settings)
+        self.client = httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=self.app), base_url="http://test")
+        self.addAsyncCleanup(self.client.aclose)
+
+    async def test_health_reports_the_unconfigured_state_instead_of_failing(self):
+        response = await self.client.get("/healthz")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body["ok"])
+        self.assertFalse(body["configured"])
+        self.assertEqual(body["db"], "missing")
+
+    async def test_the_page_tells_the_user_to_run_peach_init(self):
+        response = await self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("text/html", response.headers["content-type"])
+        self.assertIn("peach init", response.text)
+
+    async def test_deep_links_land_on_the_same_prompt(self):
+        # 前端路由全部落到 `index`，未配置时不该只有首页能看。
+        response = await self.client.get("/tags")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("peach init", response.text)
+
+    async def test_a_configured_machine_still_reports_true(self):
+        app = create_app(PeachSettings(configured=True, db_path=self.settings.db_path))
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            self.assertTrue((await client.get("/healthz")).json()["configured"])
+
+
 if __name__ == "__main__":
     unittest.main()

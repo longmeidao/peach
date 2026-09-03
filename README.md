@@ -44,26 +44,26 @@ peach-app/
 
 仓库不保存媒体、数据库、凭据、日志、`.venv`、构建产物或 worktree。
 
-## 开发
+## 安装
 
-Windows 初始化并运行测试：
+三步，不需要事先准备任何目录或配置文件。在仓库根目录执行：
 
 ```powershell
-cd C:\Users\longm\Desktop\peach\peach-app
-& py -3.14 -m venv .venv
-& .\.venv\Scripts\python.exe -m pip install -e .
-& .\scripts\test.ps1
+& py -3.14 -m venv .venv                            # macOS: python3.14 -m venv .venv
+& .\.venv\Scripts\python.exe -m pip install -e .    # macOS: ./.venv/bin/python -m pip install -e ".[macos]"
+& .\.venv\Scripts\peach.exe init                    # macOS: ./.venv/bin/peach init
 ```
 
-macOS 初始化并运行测试：
+`peach init` 建数据根、把账本迁到最新 schema、生成本机 CA，并写出 `<数据根>/config.toml`。
+默认数据根是仓库同级的 `peach-data/`，`--data-root` 可改，环境变量 `PEACH_DATA_ROOT` 覆盖它。
+之后 `peach serve` 就能起服务；监听地址、端口、媒体盘符映射和复制开关都在那个设置文件里改，
+逐项说明见 [`docs/OPERATIONS.md`](docs/OPERATIONS.md)。
 
-```bash
-cd ~/Desktop/lmd.gg/peach/peach-app
-python3.14 -m venv .venv
-./.venv/bin/python -m pip install -e ".[macos]"
-./scripts/test.sh
-```
+没有设置文件也能启动：`/healthz` 报 `configured=false`，页面提示先跑 `peach init`。
 
+## 开发
+
+初始化虚拟环境后运行测试，Windows 用 `& .\scripts\test.ps1`，macOS/Linux 用 `./scripts/test.sh`。
 每个平台只有一个正式测试入口。脚本会定位主项目的虚拟环境、强制加载当前 worktree 的 `src`，并核对实际导入路径。仓库使用标准库 `unittest`，不使用 pytest。
 
 开发时按功能域运行必要测试，例如 Windows 用 `& .\scripts\test.ps1 -Scope follow`，
