@@ -4252,8 +4252,8 @@ function wireFollowManage(){
     tooltipTrigger.addEventListener('keydown',event=>{
       if(event.key==='Escape'){tooltipHovered=false;tooltipFocused=false;hideTooltip();tooltipTrigger.blur()}});
   }
-  /* 作者别名和凭据行都走 Geist Collapse。凭据行早先是 flex 行布局接不上，
-     `details.fcred` 统一成 block 之后两处用的就是同一份实现了。 */
+  /* 作者别名和凭据行都走 Geist Collapse，两处同一份实现。凭据行的 `details.fcred`
+     必须是 block：flex 行布局接不上 Collapse 的高度过渡。 */
   wireCollapse(root,'details.faliasmanager','follow-alias-collapse');
   wireCollapse(root,'details.fcred','follow-cred-collapse');
   const box=form&&form.querySelector('input[name="line"]');

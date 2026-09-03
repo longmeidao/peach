@@ -1843,10 +1843,10 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains(".faliasmanager .fcollapsebody{padding:4px 13px 14px}")
 
     def test_credential_rows_share_the_alias_collapse_motion(self):
-        """凭据行早先是 flex 行布局接不上 Collapse。
+        """凭据行和作者别名共用一份 Collapse 实现。
 
-        `details.fcred` 已经统一成 block，两处就该是同一份实现——展开一段正文这件事
-        不该有第二套开合逻辑。
+        `details.fcred` 是 block 布局才接得上：flex 行布局对不上 Collapse 的高度过渡。
+        展开一段正文这件事不该有第二套开合逻辑。
         """
         self.assertPageContains("export function wireCollapse(root,selector,idPrefix)")
         self.assertPageContains("wireCollapse(root,'details.faliasmanager','follow-alias-collapse')")
