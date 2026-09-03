@@ -15,7 +15,12 @@ from urllib.parse import urlsplit
 
 from .catalog_rules import LENGTH_TAGS, dir_expr, photo_set_title, tag_cat
 from .entities import normalize_entity_name, resolve_entity
-from .web_catalog import COST, tag_is_not_a_performer_name, tag_not_hidden
+from .web_catalog import (
+    COST,
+    attach_avatar_availability,
+    tag_is_not_a_performer_name,
+    tag_not_hidden,
+)
 from .web_state import WebContract
 
 
@@ -116,6 +121,18 @@ def q_entity(contract: WebContract, args):
         ):
             related.append(dict(performer))
         d["related_performers"] = related
+    # 厂牌页那个大位先取 `/logo`、取不到才退到实体图。没装标识时直接从实体图起步，
+    # 省掉必然 404 的那一跳；别的实体没有这个位置，标志只对厂牌成立。
+    if kind == "studio":
+        d["has_logo"] = contract.has_logo(d["canonical_name"])
+    # 大位那条链的后两环同样要随资料下发：实体图取不到就直接从代表作头像起步，两样
+    # 都取不到就一个 `<img>` 都不出。判定在库连接之外做，它读的是目录索引。
+    d["has_image"] = contract.has_entity_image(kind, d["id"])
+    attach_avatar_availability(contract, [d], key="representative_asset_id")
+    # 页脚那排共演者是同一个圆头像，用的也是同一条两级链。
+    for person in d["related_performers"]:
+        person["has_image"] = contract.has_entity_image("performer", person["id"])
+    attach_avatar_availability(contract, d["related_performers"])
     return d
 
 # ────────────────────────────── 照片 ──────────────────────────────
@@ -270,9 +287,16 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="")
             rows = all_rows[offset:offset + limit]
             has_more = offset + limit < len(all_rows)
     if kind in {"creators", "performers"}:
+        entity_kind = "creator" if kind == "creators" else "performer"
+        # 索引页一屏几十个圆头像，走的是和顶栏那排同一条两级链：规范实体图优先，
+        # 取不到才回落到代表作头像。没有这两个标志就只能无条件出图、等 404 再把图摘掉，
+        # `/performers` 桌面视口滚三屏实测 77 个取图请求里 5 个是这样的 404。
+        # 判定在库连接之外做，它读的是目录索引而不是账本。
+        for row in rows:
+            row["has_image"] = contract.has_entity_image(entity_kind, row.get("entity_id"))
+        attach_avatar_availability(contract, rows)
         #: 索引页的大图版式把头像裁成竖幅，几何居中会切掉脸。取景与资料页大图同一份
         #: sidecar、同一个换算，只是这里按行取；读的是文件，所以放在连接之外。
-        entity_kind = "creator" if kind == "creators" else "performer"
         for row in rows:
             row["avatar_focus"] = contract.avatar_focus(entity_kind, row["entity_id"])
     result = {"kind": kind, "items": rows, "has_more": has_more}

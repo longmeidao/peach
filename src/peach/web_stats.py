@@ -27,7 +27,7 @@ from .taste_history import (
     write_manifest,
 )
 from .web_activity import DEFAULT_PROFILE_ID
-from .web_catalog import COST, tag_is_not_a_performer_name
+from .web_catalog import COST, attach_avatar_availability, tag_is_not_a_performer_name
 from .web_state import WebContract
 
 
@@ -50,6 +50,35 @@ def _taste_since(window: str) -> str | None:
     return (datetime.now(UTC) - timedelta(days=days)).isoformat() if days else None
 
 
+#: 口味榜里会出圆头像的两排，以及页面上读得到它们的那几个榜单键。标签榜和网站榜
+#: 不出脸，域名那排出的是站点 favicon，都不在这里。
+TASTE_FACE_RANKINGS = {
+    "creator": ("creators", "browser_creators", "peach_creators"),
+    "performer": ("performers", "peach_performers"),
+}
+
+
+def _attach_taste_face_availability(contract: WebContract, rankings: dict) -> None:
+    """给口味榜的人像行标上「实体图和代表作头像取不取得到」。
+
+    榜行和别处的身份引用形状不一样（`entity_id` 与 `representative_asset_id` 是行
+    自己的列，不是嵌在 `entity_ref` 里），但判据是同一对：`has_entity_image()` 加
+    `has_avatar()`。缺了标志这两排就只能无条件出图、等 404 再把图摘掉。
+
+    同一个 dict 会同时出现在多个榜单里（`peach_creators` 是 `creators` 过滤出来的
+    子集，不是副本），所以按对象身份去重再标一次——否则代表作那次批量查询要按榜单
+    数量重复跑。
+    """
+    for kind, keys in TASTE_FACE_RANKINGS.items():
+        rows = list({id(row): row for key in keys
+                     for row in rankings.get(key) or ()}.values())
+        if not rows:
+            continue
+        for row in rows:
+            row["has_image"] = contract.has_entity_image(kind, row.get("entity_id"))
+        attach_avatar_availability(contract, rows, key="representative_asset_id")
+
+
 def q_taste(contract: WebContract, args=None):
     args = args or {}
     window = str(args.get("window") or "all")
@@ -59,6 +88,8 @@ def q_taste(contract: WebContract, args=None):
             connection,
             since=_taste_since(window),
         )
+    # 取图可用性在库连接之外判：它读的是头像目录的索引，不是账本。
+    _attach_taste_face_availability(contract, payload.get("rankings") or {})
     updated_at = None
     try:
         manifest = json.loads(contract.taste_history_manifest.read_text(encoding="utf-8"))

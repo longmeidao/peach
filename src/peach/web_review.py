@@ -32,6 +32,7 @@ from .entities import (
 )
 from .fsutil import atomic_write_bytes
 from .metadata_policy import SOURCE_SPECS
+from .previews import entity_image_key, logo_key
 from .review_csv import read_rows
 
 
@@ -45,6 +46,7 @@ class ReviewContract(Protocol):
     def cache_bust(self) -> None: ...
     def read_connection(self): ...
     def has_cover(self, code: str) -> bool: ...
+    def has_entity_image(self, kind: str, entity_id) -> bool: ...
     def write_transaction(self): ...
 
 
@@ -84,6 +86,12 @@ CANDIDATE_KEY = {
     "fc2_similarity": "pair_key",
     "video_endcards": "candidate_key",
 }
+#: 复核卡片上那张脸属于哪种实体。页面按同一张表决定 `/entity-image` 的 kind
+#: （`app.js` 的 `ENTITY_REVIEW_CATEGORIES`），两边必须逐字一致：这边判成 creator、
+#: 页面按 performer 取图，就是标志说有图而请求照样 404。不在表里的类别没有这个位置。
+ENTITY_REVIEW_KINDS = {"creator_tags": "creator", "western_identity": "creator"}
+
+
 def _needs_review(category: str, row: dict) -> bool:
     """已经有定论的行不该占复核页。
 
@@ -391,6 +399,13 @@ def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], s
             comparison.pop("snapshot_path", None)
         if not row.get("reason"):
             row["reason"] = _review_evidence(category, row)
+    # 卡片左边那张脸和别处的圆头像同一条链，只是这里没有代表作可退：装了实体图才
+    # 出 `<img>`，否则就是首字母垫底，不再靠 404 把图摘掉。判定读的是目录索引，
+    # 所以放在库连接之外。
+    face_kind = ENTITY_REVIEW_KINDS.get(category)
+    if face_kind:
+        for row in rows:
+            row["has_image"] = contract.has_entity_image(face_kind, row.get("entity_id"))
     return _pending_first(rows), source, skipped
 
 
@@ -827,9 +842,9 @@ LOGO_CONTENT_TYPES = {
 }
 
 
-def studio_logo_key(studio: str) -> str:
-    """和 `PreviewService.logo` 完全一致的落盘名，两边必须同一套规则。"""
-    return re.sub(r"[^A-Za-z0-9_-]", "_", studio)[:60]
+#: 落盘名的规则归 `previews.logo_key`：取图、可用性判定和这里的批准落地必须同一套，
+#: 各留一份正则的代价是「装上了却取不到」。名字沿用，导出的仍是同一个函数。
+studio_logo_key = logo_key
 
 
 #: 只记决定、不需要落地的类别，以及为什么。写在这里而不是靠人记：
@@ -890,7 +905,9 @@ def _install_performer_avatar(contract: ReviewContract, entity_id: str) -> int:
             "SELECT kind FROM entity WHERE id=?", (int(entity_id),)).fetchone()
     kind = (kind_row[0] if kind_row and kind_row[0] in {"performer", "creator"}
             else "performer")
-    destination = contract.avatar_root / f"{kind}-{int(entity_id)}.img"
+    # 落盘名归 `previews.entity_image_key`：取图、可用性判定和这里的批准落地必须
+    # 同一套，各留一份 f-string 迟早变成「装上了却取不到」。
+    destination = contract.avatar_root / f"{entity_image_key(kind, entity_id)}.img"
     # 原子替换：中途失败不会留下半张图被 `/entity-image` 读到。
     atomic_write_bytes(destination, body)
     Path(f"{destination}.ct").write_text(content_type, encoding="utf-8")

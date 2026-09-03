@@ -19,7 +19,7 @@ import time
 
 from collections import OrderedDict
 from pathlib import Path
-from typing import Sequence
+from typing import NamedTuple, Sequence
 
 from .catalog_rules import normalise_code_key
 from .config import (
@@ -33,7 +33,23 @@ from .config import (
 )
 from .jobs import BackgroundJob
 from .media import remap_managed_path
+# `previews` 是取图那一侧，不是 web 域处理器：依赖方向仍然只有一个走法。落盘名的
+# 规则必须和 `/logo` 用的是同一个函数，否则可用性判定迟早和取图对不上。
+from .previews import ENTITY_IMAGE_KINDS, LOGO_VARIANTS, entity_image_key, logo_key
 from .repository import LedgerDatabase
+
+
+class AvatarRootIndex(NamedTuple):
+    """`avatar_root` 一次扫描的产物。两样东西同处一个目录，分开扫就是白扫两遍。
+
+    `entity_images` 是已装实体图的 casefold 落盘名，`generated` 是已经裁好的头像
+    资产 id。两者的判据不一样，故意不合并成一个集合：实体图有就是有、没有就是没有，
+    而头像是按需生成的，「目录里没有」只说明还没裁过。
+    """
+
+    entity_images: frozenset[str]
+    generated: frozenset[int]
+
 
 
 FAVICON = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#0B0B0D"/><defs><linearGradient id="pg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF9A76"/><stop offset="1" stop-color="#F2557B"/></linearGradient></defs><path d="M16 28c-5.7 0-9.7-3.6-9.7-8.6 0-4.3 2.8-7.6 6.5-7.6 1.4 0 2.4.5 3.2 1.1.8-.6 1.8-1.1 3.2-1.1 3.7 0 6.5 3.3 6.5 7.6C25.7 24.4 21.7 28 16 28z" fill="url(#pg)"/><path d="M16 13.4V27" stroke="#0B0B0D" stroke-width="1.1" opacity=".3" stroke-linecap="round"/><path d="M17.1 11.7c.6-2.8 2.8-4.6 5.6-4.8-.2 2.8-2.2 4.7-5.6 4.8z" fill="#5FB95F"/><path d="M16 11.9c0-1.9.5-3.4 1.5-4.5" stroke="#8A5A3B" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>')
@@ -258,6 +274,125 @@ class WebContract:
         # 索引的键是 casefold 过的：`is_file()` 在 Windows 与 macOS 的默认文件系统上
         # 大小写不敏感，改走索引不能顺手把这层容错丢了。
         return bool(key) and key.casefold() in self.cover_index()
+
+    def logo_index(self) -> frozenset[str]:
+        """厂牌标识目录扫一遍的索引：已装标识的 casefold(落盘名) 集合。
+
+        页面据此决定「输出 `<img>` 还是直接首字母垫底」。没有这份索引就只能每个厂牌
+        都先发一次 `/logo`、靠 404 把图换掉：首页顶栏一次渲染 30 个厂牌里 21 个是
+        404，而 404 那条响应不可缓存，每次重绘再打一遍。
+
+        判据必须和 `PreviewService.logo` 逐字一致——同一个 `logo_key`、同样大小写不
+        敏感、同样把 `.icon` / `.logo` 变体算作这个厂牌有图。松一格就是页面说有图却
+        取回 404（碎图），紧一格就是明明装了却永远只显示首字母。
+
+        代价和 `cover_index()` 一样：刚装上的标识最多一个 TTL 后才出现在页面上；
+        复核批准本来就会 `cache_bust()`，所以用户自己的动作看得到即时效果。
+        """
+        return self.cached("logo-index", self._scan_logo_root)
+
+    def _scan_logo_root(self) -> frozenset[str]:
+        """一次目录扫描收齐已装标识。目录不存在就是空集合，页面全部退回首字母。"""
+        keys: set[str] = set()
+        try:
+            with os.scandir(self.logo_root) as entries:
+                for entry in entries:
+                    name = entry.name.casefold()
+                    # `.ct` 边车和 SVG 原件不是 `/logo` 会取的文件，不算这个厂牌有图。
+                    if not name.endswith(".img") or not entry.is_file():
+                        continue
+                    stem = name[:-len(".img")]
+                    for variant in LOGO_VARIANTS:
+                        if stem.endswith(f".{variant}"):
+                            stem = stem[:-len(variant) - 1]
+                            break
+                    if stem:
+                        keys.add(stem)
+        except OSError:
+            return frozenset()
+        return frozenset(keys)
+
+    def has_logo(self, studio: str | None) -> bool:
+        """这个厂牌是否已装标识。空名字一律为假——`/logo` 也拒绝空 studio。"""
+        key = logo_key(studio or "")
+        return bool(key) and key.casefold() in self.logo_index()
+
+    def avatar_root_index(self) -> AvatarRootIndex:
+        """头像目录扫一遍的索引：已装的实体图，加已经裁好的头像。
+
+        页面据此决定「输出 `<img>` 还是直接首字母垫底」。没有这份索引就只能无条件出图、
+        靠 404 把图摘掉：一个作品详情页是 9 个这样的 404（1 个厂牌实体图、4 个人物
+        实体图、4 个头像），而 `/entity-image` 和 `/avatar` 的 404 都不带缓存头，
+        每次重绘再打一整轮。
+
+        实体图和头像同处 `avatar_root`（`{kind}-{id}.img` 与 `{asset_id}.jpg`），
+        所以一次 `os.scandir` 一起收；分成两个缓存键就是同一个目录连扫两遍。
+
+        代价和 `cover_index()`、`logo_index()` 一样：刚装上的实体图最多一个 TTL 后
+        才出现在页面上；复核批准本来就会 `cache_bust()`，所以用户自己的动作看得到
+        即时效果。
+        """
+        return self.cached("avatar-root-index", self._scan_avatar_root)
+
+    def _scan_avatar_root(self) -> AvatarRootIndex:
+        """一次目录扫描同时收齐实体图和已裁头像。目录不存在就是两个空集合。"""
+        entity_images: set[str] = set()
+        generated: set[int] = set()
+        try:
+            with os.scandir(self.avatar_root) as entries:
+                for entry in entries:
+                    name = entry.name.casefold()
+                    if name.endswith(".img"):
+                        # `.ct`、`.provenance.json`、`.face.json` 都是边车，不是
+                        # `/entity-image` 会取的文件，不算这个实体有图。
+                        if entry.is_file():
+                            entity_images.add(name[:-len(".img")])
+                    elif name.endswith(".jpg"):
+                        # 头像按资产 id 落盘。生成中途的 `<id>.<格>.tmp.jpg` 不算数，
+                        # 它随时会被删掉或改名。
+                        stem = name[:-len(".jpg")]
+                        if stem.isdigit() and entry.is_file():
+                            generated.add(int(stem))
+        except OSError:
+            return AvatarRootIndex(frozenset(), frozenset())
+        return AvatarRootIndex(frozenset(entity_images), frozenset(generated))
+
+    def has_entity_image(self, kind: str, entity_id) -> bool:
+        """`/entity-image` 能不能取到这个实体的图。
+
+        判据必须和 `PreviewService.entity_image` 逐字一致——同一份 kind 白名单、同一个
+        `entity_image_key`。松一格就是页面说有图却取回 404（碎图），紧一格就是明明
+        装了却永远只显示首字母。
+
+        索引的键 casefold 过：`is_file()` 在 Windows 与 macOS 的默认文件系统上大小写
+        不敏感，改走索引不能顺手把这层容错丢了。落盘名本来就全小写，这层只兜手工
+        摆进去的文件。
+        """
+        if kind not in ENTITY_IMAGE_KINDS or entity_id is None:
+            return False
+        try:
+            key = entity_image_key(kind, entity_id)
+        except (TypeError, ValueError):
+            return False
+        return key.casefold() in self.avatar_root_index().entity_images
+
+    def has_avatar(self, asset_id, snapshot_path: str | None) -> bool:
+        """`/avatar` 能不能取到这个代表作的头像。
+
+        和实体图不是一回事，判据也不能照抄：`/avatar` 是**按需生成**的，目录里没有
+        那张 jpg 只说明还没人要过，不说明取不到。只要接触印相还在盘上，第一次请求
+        就现裁一张出来。把「还没裁过」也判成没有，等于把点一下就有的头像永远关掉——
+        真缺和没抓过是两回事。
+
+        所以判据是「已经裁好了」或「印相还在，裁得出来」，和 `has_thumb` 同一个
+        `has_snapshot`。剩下的 404 只有生成本身失败那一种（没有 ffmpeg、六格全黑），
+        那要真去跑一遍 ffmpeg 才知道，预测不了；那条兜底链照旧留着兜。
+        """
+        try:
+            key = int(asset_id)
+        except (TypeError, ValueError):
+            return False
+        return key in self.avatar_root_index().generated or self.has_snapshot(snapshot_path)
 
     def cover_frame(self, code: str | None) -> dict | None:
         """封面的取景提示：人脸中心的两个轴。没算过或没检出就返回 None。

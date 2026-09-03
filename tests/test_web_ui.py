@@ -797,30 +797,95 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("jav-small")
         self.assertPageContains('<span class="watchcount">看过 ${it.play_count}</span>')
 
-    def test_every_card_avatar_falls_back_through_the_same_helper(self):
-        # kind 参数化后，创作者复核卡片也能走同一个兜底链；默认仍是 performer，
+    def test_every_face_slot_builds_its_image_through_one_helper(self):
+        # 顶栏圆头像、卡片署名、共演者、资料页大位共用 entityFaceImg；
+        # `/entity-image` 和 `/avatar` 两个地址只在这一个函数里拼。
+        self.assertPageContains(
+            "function entityFaceImg({kind='performer',id=null,hasImage=false,rep=null,")
+        self.assertPageContains("const useEntity=!!(id&&hasImage);")
+        self.assertPageContains(
+            "const src=useEntity?`/entity-image?kind=${kind}&id=${id}`:(rep?`/avatar?id=${rep}`:'');")
+        # 一环都取不到就一个 `<img>` 都不出，首字母垫底直接露出来。
+        self.assertPageContains("if(!src)return '';")
+        # kind 参数化后，创作者复核卡片也能走同一条链；默认仍是 performer，
         # 既有调用点不受影响。
         self.assertPageContains("function avatarInner(name,ref,repId,kind='performer')")
-        self.assertPageContains("`/entity-image?kind=${kind}&id=${ref.id}`")
         # 兜底链声明在模板里，行为归 image-fallback 那条委托监听。
-        self.assertPageContains("imageFallbackAttrs({fallbacks})")
-        self.assertPageContains("`/avatar?id=${repId}`")
+        self.assertPageContains("const fallbacks=useEntity&&rep?[`/avatar?id=${rep}`]:[];")
+        self.assertPageContains("imageFallbackAttrs({dropStyle:dropStyle&&useEntity,fallbacks})")
 
-    def test_avatar_fallback_chains_end_by_removing_the_broken_image(self):
-        """取不到图的 <img> 必须被摘掉，不能只停在「不再重试」。
+    def test_no_face_image_is_emitted_before_the_server_says_it_can_be_fetched(self):
+        """先问再出图：没有可用性标志兜住的 `/entity-image`／`/avatar` 一处都不许有。
 
-        留着它有两个后果：`.entityportrait:has(img)>span` 仍然匹配，首字母垫底
-        永远回不来；浏览器还会把 alt 当内容画出来——资料页上就是整个艺人名横在
-        头像圈里溢出（loliburin 实测 /entity-image 与 /avatar 双 404）。
+        无条件出图、等 404 再把图摘掉的代价是：一个作品详情页 9 个这样的 404（1 个
+        厂牌实体图、4 个人物实体图、4 个头像），首页手机视口 2 个。两个端点的 404 都
+        不带缓存头，每次重绘再打一整轮。
         """
-        # 卡片头像、资料页大圆框、关联艺人小圆框声明的是同一套兜底数据；
-        # 「候选换完还是失败就收场」这一步由 advanceImageFallback 统一执行。
-        for chain in (
-            "`/avatar?id=${repId}`",
-            "`/avatar?id=${d.representative_asset_id}`",
-            "`/avatar?id=${x.rep}`",
-        ):
-            self.assertPageContains(chain)
+        source = self.page
+        gates = ("hasImage", "has_image", "useEntity", "has_avatar")
+        for url in ("`/entity-image?kind=", "`/avatar?id="):
+            start = 0
+            while True:
+                at = source.find(url, start)
+                if at < 0:
+                    break
+                start = at + 1
+                before = source[max(0, at - 200):at]
+                self.assertTrue(
+                    any(gate in before for gate in gates),
+                    f"{url} 附近没有可用性判据，这是一个必然 404 的 `<img>`：\n"
+                    f"{source[max(0, at - 200):at + 80]}")
+
+    def test_the_remaining_face_slots_carry_the_flag_their_endpoint_sends(self):
+        """索引页、口味榜、复核卡片和沉浸模式署名圈也走「先问过再出图」。
+
+        这几处不自己拼地址，而是把身份引用交给 `avatarInner()`，所以上一条那种
+        「地址附近有没有判据」的扫描扫不到它们：引用里没有 `has_image` 就等于无条件
+        出图。`/performers` 桌面视口滚三屏实测 77 个取图请求里 5 个是这样的 404。
+        """
+        # 缺席按「没图」处理。宽容缺席会让下一个忘了挂标志的端点悄悄退回旧行为，
+        # 而这种退化在页面上看不出来——图照样显示，代价全在 404 里。
+        self.assertPageContains("hasImage:!!(ref&&ref.has_image)")
+        # 索引页（`/api/index`）：实体图看 has_image、代表作头像看 has_avatar，kind
+        # 跟着这一页的身份走——创作者的图写成 `performer-<id>.img` 是读不到的。
+        self.assertPageContains("x.entity_id?{id:x.entity_id,has_image:x.has_image}:null,")
+        self.assertPageContains("x.has_avatar?x.rep:null, entityKind)")
+        # 口味榜（`/api/taste`）：两列直接长在榜行上，判据仍是同一对。
+        self.assertPageContains(
+            "const ref=row.entity_id?{id:row.entity_id,has_image:row.has_image}:null,")
+        self.assertPageContains("rep=row.has_avatar?row.representative_asset_id||null:null;")
+        # 沉浸模式署名圈读 `/api/item` 的 entity_refs，标志随引用一起来；代表作那一侧
+        # 读 REP，入表时已经按 has_avatar 筛过。
+        self.assertPageContains(
+            "const ownerRef=ownerKind?(full.entity_refs?.[ownerKind]?.[0]||null):null;")
+        self.assertPageContains(
+            "tops.performers.forEach(x=>{if(x.rep&&x.has_avatar)REP[x.k]=x.rep});")
+
+    def test_review_face_kinds_agree_between_the_page_and_the_endpoint(self):
+        """复核卡片那张脸的 kind 两边各存一份，必须逐字一致。
+
+        页面按 `ENTITY_REVIEW_CATEGORIES` 拼 `/entity-image?kind=`，服务端按
+        `web_review.ENTITY_REVIEW_KINDS` 判「这个实体有没有图」。一边判成 creator、
+        另一边按 performer 取图，就是标志说有图而请求照样 404：两份表各自都不会报错，
+        页面上看到的只是又一张碎图。
+        """
+        # 这个文件其余断言只读页面源；这一条守的正是页面与服务端的对不上，
+        # 所以必须两边都看。
+        from peach.web_review import ENTITY_REVIEW_KINDS
+
+        declared = re.search(r"const ENTITY_REVIEW_CATEGORIES=\{([^}]*)\}", self.app_js)
+        self.assertIsNotNone(declared, "页面那份表不在了；改名的话服务端也得跟着改")
+        self.assertEqual(dict(re.findall(r"(\w+):'(\w+)'", declared.group(1))),
+                         ENTITY_REVIEW_KINDS)
+
+    def test_face_fallback_chains_end_by_removing_the_broken_image(self):
+        """还是取不到图的 <img> 必须被摘掉，不能只停在「不再重试」。
+
+        标志能挡掉「装都没装」，挡不掉生成本身失败（没有 ffmpeg、六格全黑）那一种，
+        所以兜底链一条都不能撤。留着它有两个后果：`.entityportrait:has(img)>span`
+        仍然匹配，首字母垫底永远回不来；浏览器还会把 alt 当内容画出来——资料页上
+        就是整个艺人名横在头像圈里溢出（loliburin 实测 /entity-image 与 /avatar 双 404）。
+        """
         # 收场动作只有这一处实现，默认就是把 <img> 拿掉。
         self.assertPageContains("drop = 'self'")
         self.assertPageContains("image.remove();")
@@ -847,8 +912,10 @@ class WebUiSourceTests(unittest.TestCase):
         # 资料页圆框按检出的人脸取景；换回落图时必须先摘掉内联 object-position——
         # 回落图是另一张照片，脸不在同一位置。
         self.assertPageContains("function facePos(f)")
-        self.assertPageContains('"${facePos(d.avatar_focus)}')
-        self.assertPageContains("imageFallbackAttrs({dropStyle:true,")
+        self.assertPageContains("style:facePos(d.avatar_focus),dropStyle:true")
+        # 取景是按实体图算出来的，所以内联 style 和 data-drop-style 只贴给第一环。
+        self.assertPageContains("${useEntity?style:''}")
+        self.assertPageContains("imageFallbackAttrs({dropStyle:dropStyle&&useEntity,fallbacks})")
         self.assertPageContains("if ('dropStyle' in image.dataset) image.removeAttribute('style');")
 
     def test_entity_link_favicons_do_not_leak_the_page_url_to_the_linked_site(self):
@@ -1343,8 +1410,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("text-decoration:underline")
 
     def test_every_identity_cell_can_carry_its_own_portrait(self):
-        self.assertPageContains('item.id?`<img src="/entity-image?kind=performer&id=${item.id}"')
-        self.assertPageContains('<img src="/logo?studio=${encodeURIComponent(item.name)}&variant=icon"')
+        # 人物格走和顶栏圆头像同一个 entityFaceImg；这一格没有代表作头像可退，
+        # 装了实体图才出 `<img>`，否则就是首字母垫底。
+        self.assertPageContains("? `<span>${esc(item.name.slice(0,1))}</span>${entityFaceImg(")
+        self.assertPageContains("{id:item.id,hasImage:item.has_image})}")
+        self.assertPageContains(
+            '${item.has_logo?`<img src="/logo?studio=${encodeURIComponent(item.name)}&variant=icon"')
 
     def test_large_casts_stay_in_the_dom_behind_one_expander(self):
         # 收起的格子必须留在 DOM 里，展开只是取消 hidden，不重新请求也不丢身份。
@@ -3596,6 +3667,43 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks(".idcell.logo .idface img{")
         self.assertPageLacks('style="width:100%;height:100%;object-fit:contain"')
 
+    def test_no_image_asks_for_a_studio_mark_without_naming_the_studio(self):
+        """`src="/logo"` 这种形态一定取不到图：`/logo` 不带 studio 就是 404。
+
+        它没有别的症状——那个位置只是永远空着，而 DevTools 的 Name 列只显示路径
+        末段，一整排 `logo` 看起来都像裸路径，肉眼分不出真裸的那一个。所以逐处扫
+        `src`：厂牌标识的地址必须带上 studio，也必须带上 variant（哪个位置要哪份图
+        是另一条契约，见 `test_studio_icon_variants`）。
+        """
+        marks = re.findall(r'src="(/logo[^"]*)"', self.page)
+        self.assertTrue(marks, "页面里应当仍有厂牌标识取图位")
+        for url in marks:
+            with self.subTest(url=url):
+                self.assertTrue(
+                    url.startswith("/logo?studio="),
+                    f"厂牌标识取图位没写 studio，这个请求必然 404：{url!r}")
+                self.assertIn("variant=", url, f"缺 variant：{url!r}")
+
+    def test_every_studio_mark_waits_until_the_logo_is_known_to_exist(self):
+        """没装标识就一个 `<img>` 都不输出，不许靠 404 再把图换成首字母。
+
+        三处取图位无条件出图的代价是：首页顶栏一排 30 个厂牌里 21 个是 404，而
+        `/logo` 的 404 那条响应不可缓存，每次重绘再打一整轮。判据 `has_logo` 由
+        `/api/tops`、`/api/item`、`/api/entity` 随身份一起下发，和取图共用
+        `previews.logo_key`。
+
+        `studio=115` 那处例外：它取的是来源角标那份固定资产，不按厂牌名找图。
+        """
+        for match in re.finditer(r'src="/logo\?studio=([^"]*)"', self.page):
+            if match.group(1).startswith("115&"):
+                continue
+            preceding = self.page[max(0, match.start() - 240):match.start()]
+            with self.subTest(url=match.group(0)):
+                self.assertIn(
+                    "has_logo", preceding,
+                    "这处取图位没先问「装了没有」，缺标识时会打一个必然 404 的请求："
+                    f"{match.group(0)!r}")
+
     def test_status_tags_are_separated_and_nonessential_states_are_hidden(self):
         self.assertPageContains(".sep{flex:none;width:1px;height:19px")
         self.assertPageContains("{k:'later',label:'稍后看'},{k:'flagged',label:'已标记'}")
@@ -4919,8 +5027,9 @@ class WebUiSourceTests(unittest.TestCase):
         # 作品数取 video_count（创作者标签）或 videos（西方身份），两批候选列名不同。
         self.assertPageContains("const works=Number(row.video_count||row.videos||0)")
         self.assertPageContains("部作品")
-        # 头像走同一个兜底链，取不到图时回落首字母。
-        self.assertPageContains("row.entity_id?{id:row.entity_id}:null,null,subjectKind)")
+        # 头像走同一条链，装了实体图才出 `<img>`，取不到就是首字母。
+        self.assertPageContains(
+            "row.entity_id?{id:row.entity_id,has_image:row.has_image}:null,null,subjectKind)")
         # 复核页没有全局委托，必须自己接线，否则入口点了没反应。
         self.assertPageContains(
             "$('#stats').querySelectorAll('[data-entity-kind]').forEach(button=>button.onclick=()=>")

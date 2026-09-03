@@ -239,6 +239,49 @@
   的 `img` 统一 `object-fit: cover` 铺满方框，不加 inset、不加 padding、不改 contain：文件已经带够边距，
   页面再补一层就在图自带的底之外多围出一圈框，而三处各自补救的结果必然互相不一致。占位底色
   （`#CFCFCF`、`#fff`、`--overlay-5`）与首字母回落只在取不到图时露出来。
+- **没装标识的厂牌一个 `<img>` 都不输出。** 可用性随资料一起下发：`/api/tops` 的 `studios[].has_logo`、
+  `/api/item` 的 `entity_refs.studio[].has_logo` 与 `has_studio_logo`（非规范厂牌只有扁平 `studio`
+  字段，那格单独一个标志，漏了它那条路径会从「本来能取到图」退化成永远只显示首字母）、`/api/entity`
+  厂牌页的 `has_logo`。判据是 `WebContract.has_logo()`：一次 `os.scandir` 出的目录索引
+  （`logo_index()`，和封面的 `cover_index()` 同一个套路，TTL 90 秒，复核批准 `cache_bust()` 后立刻可见），
+  落盘名统一走 `previews.logo_key`——取图、可用性判定和批准落地只能有一份规则，各写一遍正则的代价是
+  「装上了却取不到」或「说有图但回 404」。旧写法是无条件出图、等 `/logo` 回 404 再由 `image-fallback`
+  换成首字母：首页实测 31 个 `/logo` 请求里 21 个是 404，而 404 那条响应不带缓存头，每次重绘再打一整轮。
+  门槛在 `tests/test_studio_icon_variants.py` 的 `LogoAvailabilityTests`（可用性与取图在同一个目录上
+  必须给同一个答案）和 `tests/test_web_ui.py` 的两条页面源测试（取图位必须带 `studio=` 与 `variant=`，
+  且必须先问过 `has_logo`）。
+- **人的那张脸同一条规矩：先问过再出图。** `/entity-image` 与 `/avatar` 由 `WebContract` 的
+  `has_entity_image()` / `has_avatar()` 判定，随资料下发为 `has_image` 与 `has_avatar`
+  （`/api/tops` 的 `performers[]`／`studios[]`、`/api/items` 与 `/api/item` 的 `entity_refs`、
+  `/api/entity` 的本体与 `related_performers`、`/api/index` 的人物行、`/api/taste` 的创作者与
+  女优两排、`/api/review` 里 `ENTITY_REVIEW_KINDS` 那两类的候选行）。页面只有一处拼这两个
+  地址——`web/app.js` 的 `entityFaceImg()`，所有取图位（顶栏圆头像 `.av .ring`、身份格人物位、
+  共演者小圆框、资料页 160 px 大位、索引页格子、口味榜行、复核卡片那张脸、沉浸模式署名圈）
+  经 `avatarInner()` 共用它，两样都取不到就一个 `<img>` 都不出，首字母垫底直接露出来。
+  旧写法一个作品详情页实测 9 个 404（1 个厂牌实体图、4 个人物实体图、4 个头像），首页手机视口
+  2 个，`/performers` 滚三屏 5 个，同样不带缓存头。
+  `avatarInner()` 对缺席的 `has_image` 按「没图」处理：宽容缺席只会让下一个忘了挂标志的端点
+  悄悄退回无条件出图，而这种退化在页面上看不出来——图照样显示，代价全在 404 里。
+  端点挂标志用 `web_catalog` 的 `entity_ref()`（身份引用带上 `has_image`）和
+  `attach_avatar_availability()`（一次批量取 `snapshot_path`，不逐行 N+1）；榜行这种
+  `entity_id`／`representative_asset_id` 直接长在行上的形状，判据仍是同一对函数。
+  两条判据形状不一样，不能混为一谈：
+  - 实体图是纯粹的「在不在」。`avatar_root` 一次 `os.scandir` 出 casefold 索引
+    （`avatar_root_index().entity_images`），落盘名统一走 `previews.entity_image_key`，
+    kind 是名字的一部分——creator 的图写成 `performer-<id>.img` 是永远读不到的；认得的种类只有
+    `previews.ENTITY_IMAGE_KINDS` 那几种。`.ct`、`.provenance.json`、`.face.json` 是边车，不算图。
+  - 头像是按需生成的，「目录里没有」只说明还没裁过。所以 `has_avatar` = 已经裁好的 `<id>.jpg`
+    **或** 印相还在盘上（同一个 `has_snapshot`）。把后者也判成没有，等于把「点一下就现裁一张」
+    那条路永远关掉。生成中途的 `<id>.<格>.tmp.jpg` 不算数。剩下预测不了的 404 只有生成本身失败
+    那一种（没有 ffmpeg、六格全黑），所以 `data-drop="self"` 兜底链一条都不能撤。
+  复核卡片那张脸的 kind 由 `web_review.ENTITY_REVIEW_KINDS` 和页面的 `ENTITY_REVIEW_CATEGORIES`
+  各留一份，必须逐字一致：一边判成 creator、另一边按 performer 取图，就是标志说有图而请求照样
+  404。`tests/test_web_ui.py` 比对这两张表。
+  门槛在 `tests/test_previews.py` 的 `EntityImageAvailabilityTests` / `AvatarAvailabilityTests`
+  （同一个临时目录上可用性与取图必须给同一个答案）、`tests/test_rm_web.py` 与
+  `tests/test_web_review.py` 的端点标志测试，以及
+  `tests/test_web_ui.py` 的 `test_no_face_image_is_emitted_before_the_server_says_it_can_be_fetched`
+  （页面源里每一处 `/entity-image`／`/avatar` 附近都得有可用性判据）。
 - 补方形小标要借 `link_marks` 的内容比闸门，但不能借它的尺寸下限。`MIN_DESIGNED_SIZE=96` 是为
   `/link-mark` 那种 128 px 圆标定的；JAV 厂牌站的 favicon 普遍只有 32×32 或 64×64，直接套 `render_mark`
   会把 HEYZO、Idea Pocket、MOODYZ、Prestige、Wanz Factory、Tameike Goro 六个全退掉，还在复核件上记成
