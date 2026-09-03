@@ -20,8 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach.http import HttpRequest, HttpxTransport   # noqa: E402
 from peach.review_csv import read_rows, write_rows
+from peach.scripting import USER_AGENT
 
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Peach/0.6"
 SOCIAL = re.compile(r'https?://(?:www\.)?(twitter\.com|x\.com)/([A-Za-z0-9_]{2,30})', re.I)
 # 平台自身的功能路径，不是账号。
 NOT_A_HANDLE = {"share", "intent", "home", "hashtag", "explore", "search", "i", "privacy", "tos"}

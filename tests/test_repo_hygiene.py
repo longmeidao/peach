@@ -5,8 +5,10 @@
 工作树长回 74 个。原因是规则只写在 `../attic/README.md`——仓库外、不进 Git、AGENTS.md
 也没提，在 peach-app 里干活的人根本看不到。约定不是门槛。
 """
+import ast
 import pathlib
 import re
+import subprocess
 import unittest
 
 import peach
@@ -53,6 +55,44 @@ class TopLevelLayoutTests(unittest.TestCase):
                          "顶层不放散落文件：文档进 attic/reviews/，产物进 attic/evidence/")
 
 
+class BuiltInWorktreeTests(unittest.TestCase):
+    """`.claude/worktrees/` 里不许留下未登记的目录。
+
+    Claude Code 内置的工作树在分支被集成后会被回收，目录却留在原地，成了主检出里一份
+    看不出区别的旧副本——在里面跑 git 全部作用于主检出的 master。别的会话此刻可能正
+    合法地占着一个内置工作树，所以判据是「有没有登记」而不是「有没有目录」，登记过的
+    放行，本测试也从不删东西。
+    """
+
+    def _git(self, *args: str) -> str:
+        done = subprocess.run(["git", *args], cwd=REPO, capture_output=True,
+                              text=True, encoding="utf-8", errors="replace", check=False)
+        if done.returncode != 0:
+            self.skipTest(f"git 不可用或不是仓库：{done.stderr.strip()}")
+        return done.stdout
+
+    def test_no_unregistered_directory_lingers_under_claude_worktrees(self):
+        # 主检出才有 `.claude/worktrees/`。`--git-common-dir` 在工作树里指向主检出的
+        # `.git`，在主检出里是相对路径，所以统一按 REPO 解析再取上一级。
+        common = pathlib.Path(self._git("rev-parse", "--git-common-dir").strip())
+        main = (REPO / common).resolve().parent
+        builtin = main / ".claude" / "worktrees"
+        if not builtin.is_dir():
+            return
+        registered = {
+            pathlib.Path(line[len("worktree "):]).resolve()
+            for line in self._git("worktree", "list", "--porcelain").splitlines()
+            if line.startswith("worktree ")
+        }
+        residue = sorted(child.name for child in builtin.iterdir()
+                         if child.is_dir() and child.resolve() not in registered)
+        self.assertEqual(
+            residue, [],
+            f"{builtin} 下有未登记的工作树残留：确认没人在用后手动删除，"
+            "新工作树用 scripts/agent_worktree.py create 建在 peach-worktrees/",
+        )
+
+
 class BacklogSelfConsistencyTests(unittest.TestCase):
     """产品待办自己报的数必须和它列的条目对得上。
 
@@ -85,6 +125,75 @@ class BacklogSelfConsistencyTests(unittest.TestCase):
             self.assertIsNotNone(declared, f"「{heading}」的标题应当带上条数，便于一眼核对")
             self.assertEqual(int(declared.group(1)), actual,
                              f"「{heading}」标题写的条数和实际列出的对不上")
+
+
+#: 只属于某一台机器的字面量。它们要么住在设置文件里，要么由用户在命令行给，
+#: 不能编译进 `src/peach/`——否则第一个陌生用户跑起来就连着别人家的坐标（ADR-0023）。
+#: 文档与技能里的同类字面量是第四阶段的事，这个门槛只管源码。
+PERSONAL_LITERAL = re.compile(
+    r"""(?xi)
+    Desktop[\\/]peach                                # 某一台机器的项目位置
+    | lmd\.gg                                        # macOS 侧的目录名
+    | [\\/]Users[\\/]longm                           # 用户目录
+    | peach-win                                      # Windows 那台的 mDNS 名
+    | peachsync                                      # SMB 账号名
+    | Volumes[\\/](peach-sync|RESOURCES)             # macOS 上的具体挂载点
+    | [\\/]IMSL[\\/]                                 # CloudDrive 挂载目录
+    | \b192\.168\.\d{1,3}\.\d{1,3}                   # 局域网地址
+    | \b10\.\d{1,3}\.\d{1,3}\.\d{1,3}
+    | \b172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}
+    """
+)
+
+
+def _live_strings(path: pathlib.Path) -> list[tuple[int, str]]:
+    """源码里真正会被当值用的字符串常量，去掉文档串。
+
+    文档串和注释留给解释：说明「哪一台机器是 writer」时提到具体名字是有信息量的，
+    把它编译成默认值才是问题。判据因此是 AST 而不是 grep。
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    docstrings = {
+        id(node.body[0].value)
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                             ast.AsyncFunctionDef))
+        and node.body and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant)
+        and isinstance(node.body[0].value.value, str)
+    }
+    return [(node.lineno, node.value) for node in ast.walk(tree)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+            and id(node) not in docstrings]
+
+
+class PersonalLiteralTests(unittest.TestCase):
+    """`src/peach/` 里不许留只对某一台机器成立的默认值。"""
+
+    def test_no_module_hardcodes_a_personal_coordinate(self):
+        source = pathlib.Path(peach.__file__).parent
+        offenders = []
+        for path in sorted(source.rglob("*.py")):
+            offenders += [
+                f"{path.relative_to(source).as_posix()}:{line}：{text[:60]}"
+                for line, text in _live_strings(path)
+                if PERSONAL_LITERAL.search(text)
+            ]
+        self.assertEqual(offenders, [],
+                         "把它搬进 <数据根>/config.toml（peach init --from-existing 会生成），"
+                         "或者做成命令行参数")
+
+    def test_the_guard_catches_the_shape_it_describes(self):
+        """门槛自身也要能被证伪，否则它可能只是一段永远为真的代码。"""
+        for sample in (r"C:\Users\longm\Desktop\peach\peach-data",
+                       "~/Desktop/lmd.gg/peach", "peach-win.local", "peachsync",
+                       "/Volumes/peach-sync", "https://192.168.50.162",
+                       "/Volumes/RESOURCES/media", "/Users/x/Desktop/IMSL/115"):
+            self.assertTrue(PERSONAL_LITERAL.search(sample), sample)
+        for allowed in ("127.0.0.1", "0.0.0.0", "peach.local", "224.0.0.251",
+                        "192.0.2.1", r"R:\media", "peach-data", "peach-sync",
+                        "Chrome/131.0.0.0"):
+            self.assertIsNone(PERSONAL_LITERAL.search(allowed), allowed)
 
 
 class ArchitectureDriftTests(unittest.TestCase):

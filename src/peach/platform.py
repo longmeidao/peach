@@ -1,13 +1,14 @@
-"""账本盘符与本机挂载点之间的受控映射。
+"""账本来源与本机挂载点之间的受控映射。
 
-账本里的 `asset.path` 一律是 Windows 形态的绝对路径：`R:\\Media\\...`（本地硬盘）、
-`A:\\...`（PikPak）、`B:\\...`（115）。2026-08 起同一份账本要在 macOS 上读，而
-CloudDrive 在两个平台的挂载方式完全不同：Windows 是盘符，macOS 是 macFUSE 挂载点。
+账本里的 `asset.path` 一律是 Windows 形态的绝对路径：`R:\\media\\...`（本地硬盘）、
+`A:\\...`（PikPak）、`B:\\...`（115）。这是不变量，不随平台改写。
 
-Peach 不重写账本，只在**读取时**把盘符映射到本机挂载点。写回账本的索引脚本仍然只在
-Windows 上运行，账本因此保持单一路径口径。
+真正会变的是「同一个来源在这台机器上落在哪」。`asset.location` 本来就是挂载点 ID
+（`local` / `115` / `pikpak`），设置文件用 `[media.locations]` 声明每个 ID 的账本口径根，
+用 `[media.mounts]` 声明它在本机的落点，翻译按「声明根前缀 → 本机挂载点」进行
+（ADR-0023 第 2 阶段勘误）。Windows 上盘符本身就是挂载点，路径原样返回。
 
-没有对应挂载点的盘符会被映射到 `UNMAPPED_ROOT` 下，一定通不过 `allowed_media_roots`
+没有挂载点的来源会被映射到 `UNMAPPED_ROOT` 下，一定通不过 `allowed_media_roots`
 授权，于是该来源整体按「脱盘」处理，而不是意外落到当前工作目录下的同名相对路径。
 """
 from __future__ import annotations
@@ -17,41 +18,82 @@ import os
 from functools import lru_cache
 from pathlib import Path, PureWindowsPath
 
+from . import settings_file
+
 LOGGER = logging.getLogger(__name__)
 
-# 盘符 -> 本机挂载点。Windows 上恒为空：盘符本身就是挂载点，不需要任何转换。
-_DEFAULT_DRIVE_MAP: dict[str, str] = (
-    {}
-    if os.name == "nt"
-    else {
-        "R": "/Volumes/RESOURCES",
-        "A": str(Path.home() / "Desktop" / "IMSL" / "Pikpak"),
-        "B": str(Path.home() / "Desktop" / "IMSL" / "115"),
-    }
-)
-
-# 未映射盘符的落点。刻意选一个不可能存在的绝对路径，让授权和存在性检查都必然失败。
+# 未映射来源的落点。刻意选一个不可能存在的绝对路径，让授权和存在性检查都必然失败。
 UNMAPPED_ROOT = Path("/nonexistent/peach-unmapped-drive")
+
+#: 运行期覆盖挂载表的环境变量。键是 location ID，不是盘符。
+MOUNTS_ENV = "PEACH_MEDIA_MOUNTS"
 
 
 @lru_cache(maxsize=8)
 def _parse_override(raw: str) -> tuple[tuple[str, str], ...]:
-    """`PEACH_DRIVE_MAP=R=/Volumes/RESOURCES,B=/Users/me/115` 形式的覆盖。"""
+    """`PEACH_MEDIA_MOUNTS=local=/Volumes/RESOURCES/media,115=/Users/me/115` 形式的覆盖。"""
     pairs: list[tuple[str, str]] = []
     for chunk in raw.split(","):
-        drive, separator, mount = chunk.partition("=")
-        drive = drive.strip()
-        if not separator or len(drive) != 1 or not drive.isalpha():
+        location, separator, mount = chunk.partition("=")
+        location = location.strip()
+        if not separator or not location:
             continue
-        pairs.append((drive.upper(), mount.strip()))
+        pairs.append((location, mount.strip()))
     return tuple(pairs)
 
 
-def drive_map() -> dict[str, Path]:
-    """当前生效的盘符映射；空值表示显式声明「本机没有这个来源」。"""
-    merged = dict(_DEFAULT_DRIVE_MAP)
-    merged.update(dict(_parse_override(os.environ.get("PEACH_DRIVE_MAP", ""))))
-    return {drive: Path(mount) for drive, mount in merged.items() if mount}
+def location_mounts() -> dict[str, Path]:
+    """当前生效的「来源 ID → 本机挂载点」；空值表示显式声明「本机没有这个来源」。
+
+    基础映射来自设置文件的 `[media.mounts]`（内建默认为空：一台新机器什么都没挂，
+    对应资产按脱盘处理）。`MOUNTS_ENV` 每次现读而不是缓存进设置层——测试和临时诊断
+    会在运行期改它，缓存住就看不到变化。
+    """
+    merged = dict(settings_file.active().mounts)
+    merged.update(dict(_parse_override(os.environ.get(MOUNTS_ENV, ""))))
+    return {location: Path(mount) for location, mount in merged.items() if mount}
+
+
+def location_roots() -> dict[str, str]:
+    """来源 ID → 账本口径的声明根，来自 `[media.locations]`。"""
+    return dict(settings_file.active().locations)
+
+
+def declared_root(location: str) -> str | None:
+    """某个来源在账本里的声明根；未声明的来源返回 None。"""
+    return location_roots().get(location)
+
+
+def resolve_location(raw: str | os.PathLike[str]) -> tuple[str | None, tuple[str, ...]]:
+    """账本路径属于哪个来源，以及它在声明根之后的层级。
+
+    翻译和写入侧门槛共用这一段判定，所以它只碰 `PureWindowsPath` 和字符串，
+    在两个平台上行为一致、也都能测。声明根重叠时取最长的那个（`R:\\` 与
+    `R:\\media` 同时声明时，`R:\\media\\x` 归后者）。大小写不敏感由
+    `PureWindowsPath` 负责：账本里写 `R:\\Media`、声明根写 `R:\\media` 是同一处。
+    """
+    text = os.fspath(raw)
+    if not is_windows_path(text):
+        return None, ()
+    candidate = PureWindowsPath(text)
+    best: tuple[int, str] | None = None
+    for location, root in location_roots().items():
+        declared = PureWindowsPath(root)
+        if candidate == declared or candidate.is_relative_to(declared):
+            depth = len(declared.parts)
+            if best is None or depth > best[0]:
+                best = (depth, location)
+    if best is None:
+        return None, ()
+    return best[1], candidate.parts[best[0]:]
+
+
+def location_of(raw: str | os.PathLike[str]) -> str | None:
+    """账本路径属于哪个来源；不在任何声明根下则返回 None。
+
+    写入侧用它拦截「location 和 root 对不上」的导入（`scripts/ledger.py scan`）。
+    """
+    return resolve_location(raw)[0]
 
 
 def root_online(root: Path) -> bool:
@@ -109,36 +151,18 @@ def translate_ledger_path(raw: str | os.PathLike[str]) -> Path:
     text = os.fspath(raw)
     if os.name == "nt" or not is_windows_path(text):
         return Path(text)
+    location, tail = resolve_location(text)
+    if location is not None:
+        mount = location_mounts().get(location)
+        if mount is not None:
+            return mount.joinpath(*tail)
+    # 没声明过的前缀（例如遗留的 `R:\\Resources\\...`）或没挂载的来源：落到不可达根，
+    # 保留盘符和其余层级，方便日志里认出是哪条路径。
     parts = PureWindowsPath(text).parts
-    drive = parts[0][0].upper()
-    rest = parts[1:]
-    root = drive_map().get(drive)
-    if root is None:
-        return UNMAPPED_ROOT.joinpath(drive, *rest)
-    return root.joinpath(*rest)
+    return UNMAPPED_ROOT.joinpath(parts[0][0].upper(), *parts[1:])
 
 
 def translate_roots(roots) -> tuple[Path, ...]:
     """翻译一组授权根，丢掉本机没有挂载的来源。"""
     translated = [translate_ledger_path(root) for root in roots]
     return tuple(path for path in translated if not is_unmapped(path))
-
-
-def media_root_status(roots) -> tuple[dict[str, object], ...]:
-    """每个声明来源的可达性；`/api/index` 靠它决定要不要把本地筛选置灰。"""
-    status: list[dict[str, object]] = []
-    for root in roots:
-        raw = os.fspath(root)
-        path = translate_ledger_path(raw)
-        mapped = not is_unmapped(path)
-        status.append(
-            {
-                "declared": raw,
-                "resolved": str(path) if mapped else None,
-                "mapped": mapped,
-                "online": bool(mapped and path.is_dir()),
-            }
-        )
-    return tuple(status)
-
-

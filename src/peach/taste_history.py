@@ -147,14 +147,6 @@ def _iso_from_unix_microseconds(value: int | float) -> str:
     return datetime.fromtimestamp(float(value) / 1_000_000, UTC).isoformat()
 
 
-def _iso_from_chrome(value: int | float) -> str:
-    return (datetime(1601, 1, 1, tzinfo=UTC) + timedelta(microseconds=float(value))).isoformat()
-
-
-def _iso_from_safari(value: int | float) -> str:
-    return (datetime(2001, 1, 1, tzinfo=UTC) + timedelta(seconds=float(value))).isoformat()
-
-
 def _read_visits(snapshot: Path, _browser: str | None = None) -> list[HistoryVisit]:
     """Use browserexport's maintained schema adapters and keep Peach's private DTO.
 

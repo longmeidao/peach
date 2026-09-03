@@ -17,6 +17,7 @@ dependencies = [
   "pillow==12.3.0",
   "pystray==0.19.5",
   "pydantic==2.13.5",
+  "resvg-py==0.5.0",
   "socksio==1.0.0",
   "starlette==1.6.0",
   "uvicorn==0.52.4",

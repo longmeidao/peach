@@ -11,10 +11,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import time
-import uuid
 from pathlib import Path, PurePosixPath
 from typing import Protocol
 from urllib.parse import quote
@@ -32,6 +30,7 @@ from .entities import (
     resolve_entity,
     upsert_asset_entity,
 )
+from .fsutil import atomic_write_bytes
 from .metadata_policy import SOURCE_SPECS
 from .review_csv import read_rows
 
@@ -530,9 +529,9 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
 def _pending_first(rows: list[dict]) -> list[dict]:
     """判过的不再占复核队列。
 
-    早先这里原样返回全部候选，只给每行挂一个 `decision`，靠前端在本地把判过的
-    行 splice 掉——于是「点通过」当场消失、一刷新全回来（厂牌 logo 上最明显）。
-    队列该由服务端定义，前端只负责画。
+    队列由服务端定义，前端只负责画。原样返回全部候选、只给每行挂一个 `decision`，
+    靠前端在本地把判过的行 splice 掉的话，「点通过」当场消失、一刷新全回来
+    （厂牌 logo 上最明显）。
 
     `approved` / `rejected` 是终局，直接移出；`跳过` 按字面意思是「稍后再看」，
     留在队列里但排到最后，否则一次跳过就等于永久隐藏，而界面上没有任何入口
@@ -892,10 +891,8 @@ def _install_performer_avatar(contract: ReviewContract, entity_id: str) -> int:
     kind = (kind_row[0] if kind_row and kind_row[0] in {"performer", "creator"}
             else "performer")
     destination = contract.avatar_root / f"{kind}-{int(entity_id)}.img"
-    # 先写临时文件再原子替换：中途失败不会留下半张图被 `/entity-image` 读到。
-    staging = destination.with_name(f"{destination.name}.{uuid.uuid4().hex}.tmp")
-    staging.write_bytes(body)
-    os.replace(staging, destination)
+    # 原子替换：中途失败不会留下半张图被 `/entity-image` 读到。
+    atomic_write_bytes(destination, body)
     Path(f"{destination}.ct").write_text(content_type, encoding="utf-8")
     Path(f"{destination}.provenance.json").write_text(json.dumps({
         "source": "performer avatar review",
@@ -917,9 +914,9 @@ def _install_performer_avatar(contract: ReviewContract, entity_id: str) -> int:
 def _install_studio_logo(contract: ReviewContract, studio: str) -> int:
     r"""把已批准的厂牌 logo 候选装进 `/logo` 真正读的目录。
 
-    早先 `studio_logos` 只出现在分类白名单里，没有任何写入分支：点「通过」只往
-    `review_decision` 记一笔，logo 一张也没装上——配合当时「队列不过滤已判项」的
-    毛病，表现就是点完通过、一刷新原样又回来。
+    `studio_logos` 必须有写入分支：只出现在分类白名单里的话，点「通过」只往
+    `review_decision` 记一笔，logo 一张也没装上；配合「队列不过滤已判项」，
+    表现就是点完通过、一刷新又回来。
 
     候选 CSV 的 `saved` 列写的是 `R:\peach-data\...`，那是旧数据根；现在数据在
     `peach-data` 下，按绝对路径找必然落空。所以只取文件名，在当前候选目录里解析。
@@ -944,10 +941,8 @@ def _install_studio_logo(contract: ReviewContract, studio: str) -> int:
         raise ValueError(f"不支持的图片格式：{source.suffix}")
     contract.logo_root.mkdir(parents=True, exist_ok=True)
     destination = contract.logo_root / f"{key}.img"
-    # 先写临时文件再原子替换：中途失败不会留下半张图被 `/logo` 读到。
-    staging = destination.with_name(f"{destination.name}.{uuid.uuid4().hex}.tmp")
-    staging.write_bytes(source.read_bytes())
-    os.replace(staging, destination)
+    # 原子替换：中途失败不会留下半张图被 `/logo` 读到。
+    atomic_write_bytes(destination, source.read_bytes())
     Path(f"{destination}.ct").write_text(content_type, encoding="utf-8")
     Path(f"{destination}.provenance.json").write_text(json.dumps({
         "source": "studio logo review",
@@ -1056,7 +1051,7 @@ def w_review_decision(contract: ReviewContract, body):
                 (provenance_note, category, item_key),
             )
         elif category == "creator_tags" and status == "approved":
-            # 权威值只能来自候选文件本身。早先版本直接采信请求体，于是「批准候选 X」
+            # 权威值只能来自候选文件本身。直接采信请求体的话，「批准候选 X」
             # 可以写入与 X 无关的创作者和标签，而 review_decision 里留痕仍写着 X 通过。
             candidates = {row["item_key"]: row
                           for row in read_candidates(category, contract.candidate_root)[0]}
@@ -1088,8 +1083,8 @@ def w_review_decision(contract: ReviewContract, body):
                     raise ValueError("selected assets are outside the reviewed creator")
                 asset_ids = sorted(selected_ids)
             else:
-                # 没有勾选就是「整条候选通过」。早先版本在这里什么都不写，
-                # 却照样把决定记成 approved——留痕说通过、实际没写是最糟的组合。
+                # 没有勾选就是「整条候选通过」。这里什么都不写却照样把决定记成
+                # approved 的话，留痕说通过、实际没写是最糟的组合。
                 asset_ids = sorted(available_ids)
                 if len(asset_ids) > REVIEW_APPLY_LIMIT:
                     raise ValueError(

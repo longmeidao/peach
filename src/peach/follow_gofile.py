@@ -3,8 +3,8 @@
 Gofile 是第三方文件站，不是追更来源。F95 和 FANBOX 的帖子里可能贴 Gofile 链接，
 但 Gofile 本身跟这两个站没有关系。
 
-这段逻辑原先是 `_BaseConnector` 的一个方法，于是每个连接器——包括根本不碰 Gofile 的
-rule34、kemono、paheal——都继承着它。更要紧的是那里发请求必须记得写
+这段逻辑独立成模块，不挂在 `_BaseConnector` 上：挂上去的话每个连接器——包括根本不碰
+Gofile 的 rule34、kemono、paheal——都继承着它，而且发请求必须记得写
 `connector_headers=False`：漏掉的话，来源站的 Cookie（F95 的会话、FANBOX 的登录态）
 会跟着一起发到 gofile.io。那是个只靠「调用方记得传参」维持的安全约束。
 

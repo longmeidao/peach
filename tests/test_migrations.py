@@ -24,7 +24,7 @@ class MigrationTests(unittest.TestCase):
         backup = self.root / "before.db"
         done = upgrade(self.db, MIGRATIONS, backup)
         self.assertEqual([m.version for m in done],
-                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023"])
+                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024"])
         self.assertTrue(backup.exists())
         con = sqlite3.connect(self.db)
         tables = {row[0] for row in con.execute(
@@ -41,7 +41,7 @@ class MigrationTests(unittest.TestCase):
                          "playlist", "playlist_item",
                          "asset_tag_preference", "asset_search", "follow_playback",
                          "schema_migration"} <= tables)
-        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023"])
+        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024"])
         self.assertEqual(upgrade(self.db, MIGRATIONS), [])
         self.assertEqual(plan(self.db, MIGRATIONS)[1], [])
 
@@ -301,7 +301,8 @@ class MigrationTests(unittest.TestCase):
         base_migrations = self.root / "base-migrations"
         base_migrations.mkdir()
         for path in sorted(MIGRATIONS.glob("*.sql")):
-            if not path.name.startswith(("0020_", "0021_", "0022_")):
+            # 0024 重建 follow_playback，必须与建表的 0022 一起排除。
+            if not path.name.startswith(("0020_", "0021_", "0022_", "0024_")):
                 shutil.copyfile(path, base_migrations / path.name)
         sqlite3.connect(self.db).close()
         upgrade(self.db, base_migrations)
@@ -344,6 +345,273 @@ class MigrationTests(unittest.TestCase):
             ("same", "saved", 1),
             ("upper-only", "seen", None),
         ])
+
+
+FK_SEED_SQL = r"""
+INSERT INTO profile(id,user_id,name,is_default,settings_json,created_at,updated_at)
+VALUES('p2','local','Second',0,'{}','1','1');
+
+INSERT INTO asset(id,location,path,name,medium,disposal) VALUES
+  (1,'local','R:\Media\alpha.mp4','Alpha title.mp4','video',NULL),
+  (2,'local','R:\Media\beta.mp4','Beta title.mp4','video','trash');
+
+INSERT INTO asset_tag(asset_id,tag,confidence,source) VALUES
+  (1,'巨乳',1.0,'name'),(1,'制服',0.8,'vision'),(2,'巨乳',1.0,'r18');
+
+INSERT INTO media_binding(
+  asset_id,backend,external_id,priority,metadata_json,last_synced_at)
+VALUES(1,'stash','101',100,'{}','1');
+
+INSERT INTO activity_event(id,asset_id,profile_id,kind,occurred_at,value_json,source)
+VALUES(1,1,'local-default','play','1','{}','web'),
+      (2,2,'p2','play','2','{}','web');
+
+INSERT INTO asset_tag_preference(profile_id,asset_id,normalized_tag,hidden,updated_at)
+VALUES('local-default',1,'制服',1,'1'),('p2',2,'巨乳',1,'1');
+
+INSERT INTO watch_queue(profile_id,asset_id,added_at,source)
+VALUES('local-default',1,'1','web');
+
+INSERT INTO asset_preference(profile_id,asset_id,liked,updated_at)
+VALUES('p2',1,1,'1');
+
+INSERT INTO asset_quality_goal(profile_id,asset_id,wanted,updated_at)
+VALUES('p2',1,1,'1');
+
+INSERT INTO playlist(id,profile_id,name,source_kind,source_seed_asset_id,
+                     current_asset_id,created_at,updated_at)
+VALUES(1,'local-default','Mix','mix',1,1,'1','1');
+
+INSERT INTO follow_source(
+  id,provider,ref,label,url,semantics,metadata_json,created_at,updated_at)
+VALUES(10,'rule34xxx','someone','someone',
+       'https://rule34.xxx/?tags=someone','work','{}','1','1');
+
+INSERT INTO follow_item(
+  id,source_id,external_id,title,published_precision,release_key,variant_kind,
+  status,asset_id,metadata_json,first_seen_at,last_seen_at)
+VALUES(100,10,'x','X','exact','x','main','new',NULL,'{}','1','1');
+
+INSERT INTO follow_playback(
+  follow_item_id,profile_id,play_count,play_seconds,max_reached,last_played)
+VALUES(100,'local-default',2,10,0.5,1.0),(100,'p2',1,5,0.2,2.0);
+"""
+
+# 0024 声明的删除行为。profile.user_id 是唯一保留 NO ACTION 的外键：即时外键下
+# NO ACTION 已等于 RESTRICT，而重建 profile 会让 DROP TABLE 的隐式 DELETE 真的
+# 级联删掉 profile 私有状态。判据写在 0024 的头部注释里。
+EXPECTED_DELETE_RULES = {
+    ("asset_tag", "asset_id"): ("asset", "CASCADE"),
+    ("media_binding", "asset_id"): ("asset", "CASCADE"),
+    ("activity_event", "asset_id"): ("asset", "CASCADE"),
+    ("activity_event", "profile_id"): ("profile", "SET NULL"),
+    ("asset_tag_preference", "profile_id"): ("profile", "CASCADE"),
+    ("follow_playback", "profile_id"): ("profile", "CASCADE"),
+}
+NO_ACTION_ALLOWED = {("profile", "user_id")}
+
+
+class ForeignKeyDeleteRuleTests(unittest.TestCase):
+    """0024：补齐缺失的 ON DELETE，重建时不丢行、不丢索引与触发器。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        # 用 addCleanup 而不是 tearDown：清理按后进先出跑，连接一定先于临时目录关闭。
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name).resolve()
+        self.db = self.root / "ledger.db"
+
+    def _upgrade_through_0023(self):
+        directory = self.root / "through-0023"
+        directory.mkdir()
+        for path in sorted(MIGRATIONS.glob("*.sql")):
+            if not path.name.startswith("0024_"):
+                shutil.copyfile(path, directory / path.name)
+        sqlite3.connect(self.db).close()
+        upgrade(self.db, directory)
+
+    def _seed(self):
+        connection = sqlite3.connect(self.db)
+        connection.executescript(FK_SEED_SQL)
+        connection.commit()
+        connection.close()
+
+    def _open(self, foreign_keys=False):
+        connection = sqlite3.connect(self.db)
+        connection.isolation_level = None
+        # 断言失败也要先关连接，否则 Windows 上 tearDown 删不掉临时库。
+        self.addCleanup(connection.close)
+        if foreign_keys:
+            connection.execute("PRAGMA foreign_keys=ON")
+        return connection
+
+    @staticmethod
+    def _counts(connection):
+        # asset_search 的影子表另行核对；schema_migration 本次必然 +1。
+        names = [row[0] for row in connection.execute(
+            "SELECT name FROM sqlite_schema WHERE type='table' "
+            "AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'asset_search%' "
+            "AND name<>'schema_migration' ORDER BY name"
+        )]
+        return {name: connection.execute(
+            f'SELECT count(*) FROM "{name}"').fetchone()[0] for name in names}
+
+    @staticmethod
+    def _objects(connection, kind):
+        return {row[0] for row in connection.execute(
+            "SELECT name FROM sqlite_schema WHERE type=? AND sql IS NOT NULL", (kind,)
+        )}
+
+    @staticmethod
+    def _search_rows(connection):
+        return sorted(row[0] for row in connection.execute(
+            "SELECT asset_id FROM asset_search"))
+
+    @staticmethod
+    def _delete_rules(connection):
+        rules = {}
+        tables = [row[0] for row in connection.execute(
+            "SELECT name FROM sqlite_schema WHERE type='table' "
+            "AND name NOT LIKE 'sqlite_%' ORDER BY name"
+        )]
+        for table in tables:
+            for row in connection.execute(f'PRAGMA foreign_key_list("{table}")'):
+                rules[(table, row[3])] = (row[2], row[6])
+        return rules
+
+    def test_upgrade_keeps_rows_indexes_triggers_and_search(self):
+        self._upgrade_through_0023()
+        self._seed()
+        connection = self._open()
+        before_counts = self._counts(connection)
+        before_indexes = self._objects(connection, "index")
+        before_triggers = self._objects(connection, "trigger")
+        before_views = self._objects(connection, "view")
+        before_search = self._search_rows(connection)
+        connection.close()
+        self.assertEqual(before_counts["asset_tag"], 3)
+        self.assertEqual(before_counts["follow_playback"], 2)
+
+        self.assertEqual([m.version for m in upgrade(self.db, MIGRATIONS)], ["0024"])
+
+        connection = self._open()
+        self.assertEqual(self._counts(connection), before_counts)
+        self.assertEqual(self._objects(connection, "trigger"), before_triggers)
+        self.assertEqual(self._objects(connection, "view"), before_views)
+        after_indexes = self._objects(connection, "index")
+        self.assertEqual(before_indexes - after_indexes, set())
+        self.assertEqual(after_indexes - before_indexes,
+                         {"idx_asset_disposal_id", "idx_asset_tag_source_asset"})
+        self.assertEqual(self._search_rows(connection), before_search)
+        self.assertEqual(connection.execute(
+            "SELECT asset_id FROM asset_search WHERE asset_search MATCH ?", ('"Alpha"',)
+        ).fetchall(), [(1,)])
+        self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+        self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+        connection.close()
+
+    def test_every_foreign_key_declares_a_delete_rule(self):
+        self._upgrade_through_0023()
+        upgrade(self.db, MIGRATIONS)
+        connection = self._open()
+        rules = self._delete_rules(connection)
+        connection.close()
+        for key, expected in EXPECTED_DELETE_RULES.items():
+            self.assertEqual(rules.get(key), expected, key)
+        undeclared = {key for key, value in rules.items() if value[1] == "NO ACTION"}
+        self.assertEqual(undeclared, NO_ACTION_ALLOWED)
+
+    def test_deleting_asset_cascades_to_its_dependent_rows(self):
+        self._upgrade_through_0023()
+        self._seed()
+        upgrade(self.db, MIGRATIONS)
+        connection = self._open(foreign_keys=True)
+        connection.execute("DELETE FROM asset WHERE id=1")
+        self.assertEqual(connection.execute(
+            "SELECT asset_id,tag FROM asset_tag ORDER BY asset_id,tag").fetchall(),
+            [(2, "巨乳")])
+        for table in ("media_binding", "watch_queue", "asset_preference",
+                      "asset_quality_goal"):
+            self.assertEqual(connection.execute(
+                f"SELECT count(*) FROM {table} WHERE asset_id=1").fetchone()[0], 0, table)
+        self.assertEqual(connection.execute(
+            "SELECT id FROM activity_event ORDER BY id").fetchall(), [(2,)])
+        self.assertEqual(connection.execute(
+            "SELECT profile_id,asset_id FROM asset_tag_preference").fetchall(),
+            [("p2", 2)])
+        self.assertEqual(connection.execute(
+            "SELECT source_seed_asset_id,current_asset_id FROM playlist").fetchall(),
+            [(None, None)])
+        self.assertEqual(self._search_rows(connection), [2])
+        self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+        connection.close()
+
+    def test_deleting_profile_keeps_activity_history_without_owner(self):
+        self._upgrade_through_0023()
+        self._seed()
+        upgrade(self.db, MIGRATIONS)
+        connection = self._open(foreign_keys=True)
+        connection.execute("DELETE FROM profile WHERE id='p2'")
+        self.assertEqual(connection.execute(
+            "SELECT follow_item_id,profile_id FROM follow_playback").fetchall(),
+            [(100, "local-default")])
+        self.assertEqual(connection.execute(
+            "SELECT profile_id,asset_id FROM asset_tag_preference").fetchall(),
+            [("local-default", 1)])
+        # 行为历史保留，只丢归属。
+        self.assertEqual(connection.execute(
+            "SELECT id,asset_id,profile_id FROM activity_event ORDER BY id").fetchall(),
+            [(1, 1, "local-default"), (2, 2, None)])
+        self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+        connection.close()
+
+    def test_deleting_app_user_with_profiles_is_still_refused(self):
+        self._upgrade_through_0023()
+        self._seed()
+        upgrade(self.db, MIGRATIONS)
+        connection = self._open(foreign_keys=True)
+        with self.assertRaises(sqlite3.IntegrityError):
+            connection.execute("DELETE FROM app_user WHERE id='local'")
+        self.assertEqual(connection.execute(
+            "SELECT count(*) FROM app_user WHERE id='local'").fetchone()[0], 1)
+        connection.close()
+
+    def test_orphan_rows_abort_the_migration_instead_of_being_dropped(self):
+        self._upgrade_through_0023()
+        self._seed()
+        connection = self._open()
+        connection.execute(
+            "INSERT INTO asset_tag(asset_id,tag,confidence,source) "
+            "VALUES(999,'orphan',1.0,'name')")
+        connection.close()
+
+        with self.assertRaises(sqlite3.IntegrityError):
+            upgrade(self.db, MIGRATIONS)
+
+        connection = self._open()
+        self.assertEqual(connection.execute(
+            "SELECT max(version) FROM schema_migration").fetchone()[0], "0023")
+        self.assertEqual(connection.execute(
+            "SELECT count(*) FROM asset_tag WHERE asset_id=999").fetchone()[0], 1)
+        self.assertEqual(connection.execute(
+            "SELECT count(*) FROM asset_tag").fetchone()[0], 4)
+        self.assertEqual(self._delete_rules(connection).get(("asset_tag", "asset_id")),
+                         None)
+        connection.close()
+
+    def test_new_indexes_are_chosen_by_their_justifying_queries(self):
+        self._upgrade_through_0023()
+        self._seed()
+        upgrade(self.db, MIGRATIONS)
+        connection = self._open()
+        trash = " ".join(row[3] for row in connection.execute(
+            "EXPLAIN QUERY PLAN SELECT count(*) FROM asset a WHERE a.disposal='trash'"))
+        self.assertIn("idx_asset_disposal_id", trash)
+        sources = " ".join(row[3] for row in connection.execute(
+            "EXPLAIN QUERY PLAN SELECT source,count(*),count(DISTINCT asset_id) "
+            "FROM asset_tag GROUP BY source ORDER BY count(*) DESC"))
+        self.assertIn("idx_asset_tag_source_asset", sources)
+        connection.close()
 
 
 if __name__ == "__main__":

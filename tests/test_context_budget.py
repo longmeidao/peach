@@ -47,6 +47,8 @@ class ContextBudgetTests(unittest.TestCase):
         self.assertLessEqual(
             self.checker.DESCRIPTION_MAX_CHARS, self.checker.MAX_EVER["description"]
         )
+        for name, budget in self.checker.BYTE_BUDGET.items():
+            self.assertLessEqual(budget, self.checker.MAX_EVER_BYTES[name], name)
 
     def test_raising_a_budget_without_a_reason_is_reported(self):
         original = dict(self.checker.BUDGET_CHANGES)
@@ -77,6 +79,55 @@ class ContextBudgetTests(unittest.TestCase):
             (root / "AGENTS.md").write_text("行\n" * (budget + 1), encoding="utf-8")
             problems = self.checker.check_line_budgets(root)
         self.assertTrue(any("超出预算" in problem for problem in problems), problems)
+
+    def test_raising_a_byte_budget_without_a_reason_is_reported(self):
+        original = dict(self.checker.BYTE_BUDGET_CHANGES)
+        try:
+            self.checker.BYTE_BUDGET_CHANGES = {
+                "AGENTS.md": [(8 * 1024, "2026-09-03", "初始值"), (12 * 1024, "2026-09-04", "")]
+            }
+            problems = self.checker.check_budget_history()
+        finally:
+            self.checker.BYTE_BUDGET_CHANGES = original
+        self.assertTrue(any("字节预算" in problem for problem in problems), problems)
+
+    def test_byte_budget_above_ceiling_is_reported(self):
+        original = dict(self.checker.BYTE_BUDGET_CHANGES)
+        try:
+            self.checker.BYTE_BUDGET_CHANGES = {
+                "AGENTS.md": [(64 * 1024, "2026-09-03", "初始值")]
+            }
+            problems = self.checker.check_budget_history()
+        finally:
+            self.checker.BYTE_BUDGET_CHANGES = original
+        self.assertTrue(any("越过天花板" in problem for problem in problems), problems)
+
+    def test_a_file_within_the_line_budget_can_still_be_over_the_byte_budget(self):
+        """行数合规不代表体积合规：这正是 STATUS.md 155 KB 那次没被拦住的原因。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            budget = self.checker.BYTE_BUDGET["AGENTS.md"]
+            (root / "AGENTS.md").write_text("字" * budget, encoding="utf-8")
+            self.assertEqual(
+                self.checker.check_line_budgets(root),
+                ["docs/HANDOFF.md: 文件缺失"],
+            )
+            problems = self.checker.check_byte_budgets(root)
+        self.assertTrue(
+            any("AGENTS.md" in problem and "字节" in problem for problem in problems),
+            problems,
+        )
+
+    def test_over_long_line_is_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "AGENTS.md").write_text(
+                "短行\n" + "长" * (self.checker.MAX_LINE_CHARS + 1) + "\n",
+                encoding="utf-8",
+            )
+            problems = self.checker.check_line_lengths(root)
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn("第 2 行", problems[0])
 
     def test_skill_frontmatter_and_review_line_are_required(self):
         with tempfile.TemporaryDirectory() as tmp:

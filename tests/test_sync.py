@@ -386,16 +386,17 @@ class LedgerSyncTests(unittest.TestCase):
         self.assertEqual(writer_device(self.local, self.shared), "win")
         self.assertFalse(sync.read_only)
 
-    def test_service_stop_never_pushes_local_changes(self):
-        make_db(self.local, 2)
-        make_db(self.shared, 2)
-        write_marker(self.local, Marker(7, "mac", "", 0, 0))
-        write_marker(self.shared, Marker(7, "mac", "", 0, 0))
-        sync = self.sync("mac")
-        sync.observe()
-        make_db(self.local, 1)
-        sync.stop()
-        self.assertEqual(count(self.shared), 2)
+    def test_the_service_lifecycle_has_no_hook_that_could_push(self):
+        """停机不回写靠的是「没有这个钩子」，不是钩子里写了 return None。
+
+        `LedgerSync` 上留一对空的 `start`/`stop` 和一个只转发的 `startup` 的话，
+        `api` 的 lifespan 会一进一出地调用它们——读代码的人得跳进 `sync.py`
+        才能确认那几行什么都不做，而「服务退出会不会把本地改动推上去」正是这个
+        模块最不该靠猜的问题。回写只能由托盘/CLI 的 `ledger-sync` 显式触发。
+        """
+        for name in ("start", "stop", "startup"):
+            self.assertFalse(hasattr(LedgerSync, name),
+                             f"LedgerSync.{name} 又回来了：回写必须留在显式命令里")
 
 
 if __name__ == "__main__":

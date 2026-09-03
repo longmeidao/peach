@@ -57,6 +57,28 @@ export function spinnerHtml(label='加载中'){
 }
 
 /**
+ * Geist Search Input: search icon as a prefix, swapped in place for a Spinner
+ * while the query runs, and the input geometry never changes. Read-only queries
+ * carry no submit button, so the accessible name lives in `aria-label` — a
+ * placeholder is not a label, it disappears the moment there is text to read.
+ */
+export function searchInputHtml({label,id='',name='',value='',placeholder='',attrs=''}={}){
+  const parts=[
+    'type="search"',
+    id?`id="${esc(id)}"`:'',
+    name?`name="${esc(name)}"`:'',
+    placeholder?`placeholder="${esc(placeholder)}"`:'',
+    `value="${esc(value)}"`,
+    `aria-label="${esc(label)}"`,
+    'spellcheck="false" autocomplete="off"',
+    attrs,
+  ].filter(Boolean).join(' ');
+  return `<div class="geist-search" data-search-input>
+    <span class="geist-search-prefix" data-search-prefix>${icon('search')}</span>
+    <input ${parts}></div>`;
+}
+
+/**
  * Geist loading action: visually unavailable and inert without using native
  * `disabled`, so the trigger keeps keyboard focus while its request is running.
  */
@@ -93,10 +115,13 @@ export function loadingDotsHtml(label='正在处理', {className=''}={}){
 }
 
 /** Geist Skeleton: reserve a large content region while its structure is loading. */
-export function skeletonHtml(label='正在读取内容',{className='',variant='panel'}={}){
+/* `count` 只对 cards 生效：块数是骨架说出口的结构预告，六块对上的是海报网格，
+   而行政界面往往只有两三个大区。多画的块加载完就消失，那不是占位是误报。 */
+export function skeletonHtml(label='正在读取内容',{className='',variant='panel',count=6}={}){
   const kind=new Set(['panel','cards','dashboard']).has(variant)?variant:'panel';
   const body=kind==='cards'
-    ?Array.from({length:6},()=>`<span class="skeletoncard"><i></i><b></b><em></em></span>`).join('')
+    ?Array.from({length:Math.max(1,count)},
+      ()=>`<span class="skeletoncard"><i></i><b></b><em></em></span>`).join('')
     :kind==='dashboard'
       ?`<span class="skeletondashhero"><i></i><b></b></span>
         <span class="skeletondashpanel"><i></i><b></b><em></em></span>
@@ -169,5 +194,91 @@ export function wireScrollers(root=document){
       container.addEventListener('load',()=>updateScroller(wrapper),true);
     }
     requestAnimationFrame(()=>updateScroller(wrapper));
+  });
+}
+
+/**
+ * Geist Switch：2–3 个互斥视图用共享 name 的一组 radio，不用 Toggle。
+ *
+ * JAV 卡片版式和关注列表版式是同一个控件——只有 name、选项和当前值不同，所以模板
+ * 与 `.iconswitch` 样式共用一份；调用方各自的摆放位置仍由自己的类负责。
+ */
+export function iconSwitchHtml(name,legend,options,current,{attr='',className=''}={}){
+  const items=options.map(([value,label,symbol])=>
+    `<label title="${esc(label)}"><input type="radio" name="${esc(name)}" value="${esc(value)}" ${attr}
+      ${value===current?'checked':''}><span aria-hidden="true">${icon(symbol)}</span><span class="sr-only">${esc(label)}</span></label>`).join('');
+  return `<fieldset class="iconswitch${className?` ${esc(className)}`:''}"><legend class="sr-only">${esc(legend)}</legend>${items}</fieldset>`;
+}
+
+/** 把一组 iconSwitchHtml 画出来的 radio 接到 apply(value) 上。 */
+export function wireIconSwitch(root,attr,apply){
+  root?.querySelectorAll(`[${attr}]`).forEach(input=>{
+    input.onchange=()=>{if(input.checked)apply(input.value)};
+  });
+}
+
+/**
+ * 共用勾选框。原生 checkbox 在暗色下由浏览器自绘，跟站内别的控件不是同一套语言；
+ * `accent-color` 也只能改选中色，未选中态连悬停反馈都给不了。所以自绘一份，关注
+ * 列表、来源筛选、候选清单、标签匹配和设置项共用它。
+ */
+export function checkboxHtml(inputAttrs=''){
+  return `<span class="pcheck"><input type="checkbox" ${inputAttrs}><span aria-hidden="true">${icon('check')}</span></span>`;
+}
+
+/**
+ * Geist Collapse：原生 `<details>` 不过渡高度，所以把 summary 以外的内容包进
+ * `.fcollapse`，开合时量 `scrollHeight` 写 inline `height` 让它过渡。
+ * （试过 `::details-content`，那条路会吞掉内容，已弃。）
+ *
+ * 同一个 `details` 只接一次，重绘后原样再调用是安全的。
+ */
+export function wireCollapse(root,selector,idPrefix){
+  root?.querySelectorAll(selector).forEach((details,index)=>{
+    if(details.querySelector(':scope > .fcollapse'))return;
+    const body=document.createElement('div');body.className='fcollapse';
+    /* 内边距放在内层 .fcollapsebody：.fcollapse 自身不带 padding，height 才能真正
+       过渡到 0，否则 border-box 会卡在内边距上、收起末尾跳一下。 */
+    const inner=document.createElement('div');inner.className='fcollapsebody';
+    [...details.children].forEach(child=>{
+      if(child.tagName==='SUMMARY')return;
+      inner.appendChild(child);
+    });
+    body.appendChild(inner);details.appendChild(body);
+    const summary=details.querySelector('summary');
+    let expanded=details.open,transitionRun=0;
+    body.id=`${idPrefix}-${index}`;
+    body.inert=!expanded;
+    summary.setAttribute('aria-controls',body.id);
+    summary.setAttribute('aria-expanded',String(expanded));
+    const settle=(run,fn)=>{
+      let done=false,timer;
+      const finish=e=>{
+        if(e&&e.propertyName!=='height')return;
+        if(done)return;done=true;
+        body.removeEventListener('transitionend',finish);clearTimeout(timer);
+        if(run===transitionRun)fn();
+      };
+      body.addEventListener('transitionend',finish);
+      timer=setTimeout(finish,260);
+    };
+    summary.addEventListener('click',event=>{
+      event.preventDefault();
+      expanded=!expanded;const run=++transitionRun;
+      summary.setAttribute('aria-expanded',String(expanded));
+      if(expanded){
+        body.inert=false;
+        const start=details.open?body.getBoundingClientRect().height:0;
+        details.open=true;
+        body.style.height=start+'px';body.getBoundingClientRect();
+        body.style.height=body.scrollHeight+'px';
+        settle(run,()=>{body.style.height='auto'});
+      }else{
+        body.inert=true;
+        body.style.height=body.getBoundingClientRect().height+'px';body.getBoundingClientRect();
+        body.style.height='0px';
+        settle(run,()=>{details.open=false;body.style.height=''});
+      }
+    });
   });
 }

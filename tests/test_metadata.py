@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from peach.metadata import (
+    identifies_code,
     CATALOG_EVIDENCE_FIELDS,
     JavinizerGoProvider,
     MetadataProviderError,
@@ -75,7 +76,7 @@ class MetadataProviderTests(unittest.TestCase):
             ],
             "maker": "Studio Studio", "series": "Series A",
             "release_date": "2020-09-13T00:00:00Z", "genres": ["Anal"],
-        }, {"Anal": "肛交"})
+        })
         self.assertEqual(fields["performers"]["value"], [
             {"name": "木村さん", "external_id": "7", "thumb_url": ""},
         ])
@@ -93,14 +94,14 @@ class MetadataProviderTests(unittest.TestCase):
                 {"language": "ja", "maker": "プレステージ", "series": "【プレステージ20周年特別企画】"},
             ],
         }
-        fields = extract_peach_fields(payload, {})
+        fields = extract_peach_fields(payload)
         self.assertEqual(fields["series"]["value"], "【プレステージ20周年特別企画】")
         self.assertEqual(fields["studio"]["value"], "プレステージ")
 
     def test_catalog_titles_become_reviewable_truth_candidates(self):
         fields = extract_peach_fields({
             "title": "日本語タイトル", "original_title": "Original Title",
-        }, {})
+        })
         self.assertEqual(fields["title"]["value"], "日本語タイトル")
         self.assertEqual(fields["original_title"]["value"], "Original Title")
 
@@ -109,7 +110,7 @@ class MetadataProviderTests(unittest.TestCase):
             "maker": "FALENO",
             "series": "FALENO Compilation",
             "translations": [{"language": "ja", "maker": "", "series": ""}],
-        }, {})
+        })
         self.assertEqual(fields["series"]["value"], "FALENO Compilation")
         self.assertEqual(fields["studio"]["value"], "FALENO")
 
@@ -148,6 +149,43 @@ class MetadataProviderTests(unittest.TestCase):
         self.assertEqual(evidence, {"title": {
             "value": "Same", "display_value": "Same", "warnings": [],
         }})
+
+class SourceIdentityTests(unittest.TestCase):
+    def test_real_source_id_shapes_are_accepted(self):
+        # DMM 带厂牌数字前缀，r18dev 对 IQQQ-026 会补零，259 系只在 URL 里出现番号。
+        self.assertTrue(identifies_code("ABW-220", {"content_id": "118abw220"}))
+        self.assertTrue(identifies_code("IQQQ-026", {"content_id": "h_086iqqq00026"}))
+        self.assertTrue(identifies_code("MESU-088", {"id": "MESU-88"}))
+        self.assertTrue(identifies_code("259LUXU-1475", {
+            "source_url": "https://www.mgstage.com/product/product_detail/259LUXU-1475/",
+        }))
+
+    def test_unrelated_product_is_rejected_as_not_found(self):
+        # dl.getchu 对 ABW-220 与 259LUXU-1475 都返回同一件同人商品 item33938。
+        payload = {"id": "33938", "content_id": "33938",
+                   "source_url": "https://dl.getchu.com/i/item33938"}
+        self.assertFalse(identifies_code("ABW-220", payload))
+        self.assertFalse(identifies_code("259LUXU-1475", payload))
+        self.assertFalse(identifies_code("ABW-220", {}))
+        # 番号相邻不等于同一部：ABW-2200 不能拿 ABW-220 的结果顶替。
+        self.assertFalse(identifies_code("ABW-2200", {"content_id": "118abw220"}))
+
+    def test_provider_turns_a_mismatched_product_into_not_found(self):
+        def runner(command, **kwargs):
+            if "version" in command:
+                return subprocess.CompletedProcess(command, 0, f"v{JAVINIZER_GO_VERSION}", "")
+            return subprocess.CompletedProcess(command, 0, json.dumps({
+                "source": "dlgetchu", "id": "33938", "content_id": "33938",
+                "source_url": "https://dl.getchu.com/i/item33938",
+                "genres": ["コスプレ一般"],
+            }), "")
+        with tempfile.TemporaryDirectory() as tmp:
+            provider = JavinizerGoProvider(
+                Path("/bin/javinizer"), Path(tmp) / "config.yaml", runner=runner,
+            )
+            with self.assertRaises(MetadataProviderError) as caught:
+                provider.query("ABW-220", "dlgetchu")
+        self.assertEqual(caught.exception.kind, "not_found")
 
 
 if __name__ == "__main__":

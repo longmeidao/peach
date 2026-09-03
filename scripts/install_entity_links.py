@@ -26,9 +26,14 @@ import httpx
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach.review_csv import read_rows   # noqa: E402
+from peach.scripting import (   # noqa: E402
+    BACKUP_REQUIRED,
+    USER_AGENT,
+    add_ledger_write_args,
+    open_for_write,
+    verify_after_write,
+)
 
-USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-              "(KHTML, like Gecko) Chrome/128.0 Safari/537.36")
 LINK_KINDS = {"official", "social", "catalog", "source_reference"}
 FIELDS = ("entity_id", "kind", "name", "link_kind", "label", "url", "evidence")
 
@@ -206,16 +211,14 @@ def install(connection: sqlite3.Connection, planned: list[dict], source: str) ->
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--database", type=Path, required=True)
+    add_ledger_write_args(parser)
     parser.add_argument("--input", type=Path,
                         help=f"复核表，列：{','.join(FIELDS)}")
     parser.add_argument("--prune-dead", action="store_true",
                         help="改为清理库里已经打不开的链接，不读 --input")
-    parser.add_argument("--apply", action="store_true", help="真正写入；必须同时给 --backup")
     parser.add_argument("--no-check", action="store_true",
                         help="跳过「地址能不能打开」的检查。只在离线复核时用——"
                              "首批 703 条就是没验直接装的，事后发现 37%% 是死链")
-    parser.add_argument("--backup", type=Path, help="写入前的 SQLite 备份落点")
     return parser
 
 
@@ -239,19 +242,11 @@ def prune(connection: sqlite3.Connection, args) -> int:
         print("dry-run；确认无误后加 --apply --backup <路径>")
         return 0
 
-    args.backup.parent.mkdir(parents=True, exist_ok=True)
-    destination = sqlite3.connect(args.backup)
-    with destination:
-        connection.backup(destination)
-    destination.close()
-    print(f"已备份：{args.backup}")
-
     with connection:
         connection.executemany("DELETE FROM entity_link WHERE id=?",
                                [(item["id"],) for item in dead])
     after = connection.execute("SELECT count(*) FROM entity_link").fetchone()[0]
-    integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
-    orphans = len(connection.execute("PRAGMA foreign_key_check").fetchall())
+    integrity, orphans = verify_after_write(connection)
     print({"删除前": before, "删除后": after, "差值": before - after,
            "integrity_check": integrity, "foreign_key_check": orphans})
     if before - after != len(dead) or integrity != "ok" or orphans:
@@ -263,14 +258,18 @@ def prune(connection: sqlite3.Connection, args) -> int:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.apply and not args.backup:
-        print("[stop] --apply 是真实账本写入，必须同时给 --backup")
+        print(f"[stop] {BACKUP_REQUIRED}")
         return 2
 
     if not args.prune_dead and not args.input:
         print("[stop] 需要 --input（写入复核表）或 --prune-dead（清理死链）")
         return 2
 
-    connection = sqlite3.connect(args.database)
+    # dry-run 拿到的是 `mode=ro` 连接，`--apply` 拿到的是「备份已经落好」的可写连接。
+    # 备份先于任何写入完成，所以不必再推断「这份备份是写之前还是写之后的」。
+    connection = open_for_write(args)
+    if args.apply:
+        print(f"已备份：{args.backup}")
     connection.execute("PRAGMA foreign_keys=ON")
     if args.prune_dead:
         try:
@@ -297,18 +296,10 @@ def main(argv: list[str] | None = None) -> int:
             print("dry-run；确认无误后加 --apply --backup <路径>")
             return 0
 
-        args.backup.parent.mkdir(parents=True, exist_ok=True)
-        destination = sqlite3.connect(args.backup)
-        with destination:
-            connection.backup(destination)
-        destination.close()
-        print(f"已备份：{args.backup}")
-
         with connection:
             written = install(connection, planned, source=args.input.name)
         after = connection.execute("SELECT count(*) FROM entity_link").fetchone()[0]
-        integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
-        orphans = len(connection.execute("PRAGMA foreign_key_check").fetchall())
+        integrity, orphans = verify_after_write(connection)
         print({"实际写入": written, "写入后 entity_link": after, "差值": after - before,
                "integrity_check": integrity, "foreign_key_check": orphans})
         if after - before != written or integrity != "ok" or orphans:

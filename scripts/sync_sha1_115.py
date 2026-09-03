@@ -17,13 +17,24 @@
     python scripts/sync_sha1_115.py --dupes         # 写入后直接出 SHA1 重复报告
 """
 import os, sys, json, sqlite3, time
+import sys
 from collections import defaultdict
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 from peach.review_csv import ENCODING
+from peach.config import DATABASE_PATH, LOG_DIR
 
-DB = r"R:\peach-data\database\ledger.db"
+# 账本与日志位置只有 `peach.config` 一处判据，这里不写死 `R:\peach-data\...` 之类的
+# 盘上路径：数据根搬走时写死的路径不会报「配置过时」，它只会安静地建一个空库。
+DB = str(DATABASE_PATH)
 COOKIE = os.path.expandvars(r"%USERPROFILE%\.115-cookies.txt")
-LOG = r"R:\peach-data\logs\sha1-{}.log".format(time.strftime("%Y%m%d-%H%M%S"))
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG = str(LOG_DIR / "sha1-{}.log".format(time.strftime("%Y%m%d-%H%M%S")))
 
 try:
     from p115client import P115Client

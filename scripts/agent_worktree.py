@@ -128,9 +128,9 @@ def _reclaim(main: Path, path: Path, branch: str) -> tuple[str, dict[str, str]]:
 
     2026-09-01 实测：Windows 上 `.claude/worktrees/*` 的目录句柄被别的进程占着，
     `git worktree remove` 报 Permission denied，而 git 已经把文件删光、注册也摘掉了，
-    只剩一个空目录。这一步以前直接抛错中止整轮，于是分支一条没删、后面的工作树一个没碰，
-    要靠人反复重跑 prune，跑一次才推进一个。所以失败只波及它自己：注册已经摘掉的照常删
-    分支，残留目录单独列出来交给人清；注册还在才算真没回收成。
+    只剩一个空目录。所以失败只波及它自己：注册已经摘掉的照常删分支，残留目录单独列出来
+    交给人清；注册还在才算真没回收成。这一步抛错中止整轮的话，分支一条没删、后面的工作树
+    一个没碰，要靠人反复重跑 prune，跑一次才推进一个。
     """
     removal = _git(main, "worktree", "remove", str(path), check=False)
     why = (removal.stderr or removal.stdout).strip()

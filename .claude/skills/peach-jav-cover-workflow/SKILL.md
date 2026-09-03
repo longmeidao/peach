@@ -3,8 +3,8 @@ name: peach-jav-cover-workflow
 description: 在用户说 JAV 封面、高清封面、缺封面、封面刮削、重探、来源比较或继续抓取时使用。
 ---
 
-最后复核：2026-08-31
-证据来源：`scripts/fetch_jav_covers.py`、`tests/test_jav_covers.py`、`docs/REUSE.md` 与 ABW-232 官方来源实测。
+最后复核：2026-09-03
+证据来源：`scripts/fetch_jav_covers.py`、`scripts/detect_cover_faces.py`、`tests/test_jav_covers.py`、`docs/REUSE.md` 与 ABW-232 官方来源实测。
 
 # JAV 封面获取流程
 
@@ -47,6 +47,21 @@ description: 在用户说 JAV 封面、高清封面、缺封面、封面刮削�
 - 已有封面只有候选像素面积更大时才写同目录临时文件并原子替换。
 - 单条网络异常写失败并换连接池，任务继续；确认无候选与瞬时失败分开记录。
 - `DiskGuard` 运行期守住系统盘；每条完成后重写可续跑日志。
+
+## 取景 sidecar
+
+新封面落盘后补算人脸，否则页面只能用写死的锚点：
+
+```powershell
+& .\.venv\Scripts\python.exe .\scripts\detect_cover_faces.py
+```
+
+- 已算过的默认跳过，`--redo` 才重算；954 张实测检出 885 张，未检出的页面居中。
+- sidecar 的 `cx` 和 `cy` 都要留着。用哪个轴由容器比例决定：`object-fit:cover`
+  一次只裁一个轴，16:9 官方剧照在大图版式里裁的是横向，纵向锚点在那里不生效。
+- 版式判据（1.2 / 1.65 两个分界）在脚本和 `web/app.js` 的 `coverAnchor` 里各有
+  一份，改一处必须改两处：对不上就会出现「脚本按封套丢掉左半边的脸、页面按剧照
+  用那张脸取景」。
 
 ## 正式批次
 

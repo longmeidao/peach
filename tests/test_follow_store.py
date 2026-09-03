@@ -8,7 +8,9 @@ from pathlib import Path
 
 from peach.follow import FollowSourceError
 from peach.follow_sources import FollowCandidate, SourceFetch
-from peach.follow_store import FollowStore, ReleaseGroup
+from peach.follow_store import (
+    FollowStore, ReleaseGroup, author_display_text, normalized_author_name,
+)
 from peach.migrations import discover
 
 
@@ -494,11 +496,298 @@ class SaveAssetTests(_StoreCase):
             self.store.save_asset(9999, confirm=True)
 
 
+class MediaReparseTests(_StoreCase):
+    """`source_needs_media_reparse` 的判定口径。
+
+    这个判定交给 SQLite 的 `json_extract`，不把整个来源的 `metadata_json` 取回
+    Python 再逐条 `json.loads`：回填过的来源单源上千行，为一个布尔值全解一遍。
+    下推到 SQL 要守住同样的容忍度。
+    """
+
+    def _write_metadata(self, source_id: int, external_id: str, raw) -> None:
+        self.connection.execute(
+            "INSERT INTO follow_item(source_id,external_id,release_key,title,url,"
+            "metadata_json,first_seen_at,last_seen_at) VALUES(?,?,?,?,?,?,?,?)",
+            (source_id, external_id, external_id, external_id,
+             f"https://x.test/{external_id}",
+             raw, "2026-08-25T00:00:00Z", "2026-08-25T00:00:00Z"))
+
+    def test_no_item_needs_a_reparse_on_an_empty_source(self):
+        self.assertFalse(self.store.source_needs_media_reparse(self._source()))
+
+    def test_one_flagged_item_is_enough(self):
+        source_id = self._source()
+        self._write_metadata(source_id, "a", json.dumps({"markers": []}))
+        self._write_metadata(source_id, "b",
+                             json.dumps({"media_needs_credential": True}))
+        self.assertTrue(self.store.source_needs_media_reparse(source_id))
+
+    def test_an_explicit_false_does_not_count(self):
+        source_id = self._source()
+        self._write_metadata(source_id, "a",
+                             json.dumps({"media_needs_credential": False}))
+        self.assertFalse(self.store.source_needs_media_reparse(source_id))
+
+    def test_unparsable_or_odd_shaped_metadata_is_skipped_not_fatal(self):
+        """非法 JSON 只是「这条不知道」，不该让整个检查崩掉。
+
+        `json_extract` 遇到非法 JSON 是报错而不是返回 NULL，所以查询里那层
+        `json_valid` 不能省：它顶的是 `except JSONDecodeError: continue` 那一级容忍。
+        列上是 `NOT NULL DEFAULT '{}'`，所以「没有元数据」落盘的形状是 `{}` 和
+        空字串，不是 NULL；空字串并不是合法 JSON，同样得被 `json_valid` 拦住。
+        """
+        source_id = self._source()
+        self._write_metadata(source_id, "a", "not json at all")
+        self._write_metadata(source_id, "b", "")
+        self._write_metadata(source_id, "c", "[1,2,3]")
+        self._write_metadata(source_id, "d", "{}")
+        self.assertFalse(self.store.source_needs_media_reparse(source_id))
+        self._write_metadata(source_id, "e",
+                             json.dumps({"media_needs_credential": True}))
+        self.assertTrue(self.store.source_needs_media_reparse(source_id))
+
+    def test_the_flag_does_not_leak_across_sources(self):
+        first = self._source()
+        second = self._source(ref="someone-else")
+        self._write_metadata(second, "a",
+                             json.dumps({"media_needs_credential": True}))
+        self.assertFalse(self.store.source_needs_media_reparse(first))
+        self.assertTrue(self.store.source_needs_media_reparse(second))
+
+
 class ReleaseGroupTests(unittest.TestCase):
     def test_group_is_immutable(self):
         group = ReleaseGroup("k", None, (), ())
         with self.assertRaises(Exception):
             group.release_key = "other"
+
+
+class AuthorIdentityTests(_StoreCase):
+    """作者别名表的写入口径。这些 SQL 归存储层，不写在 Web 处理函数里。"""
+
+    def test_the_container_suffix_is_not_part_of_the_author_name(self):
+        """F95 的线程标题说的是一个容器，不是另一个作者。
+
+        真实数据是 `Lazy Procrastinator Collection`，而每一条作者来源都是
+        `LazyProcrastinator`；留着这个通用后缀会凭空多出一个分组。
+        """
+        self.assertEqual(
+            normalized_author_name("Lazy Procrastinator Collection",
+                                   provider="f95zone"),
+            normalized_author_name("LazyProcrastinator"))
+        # 只对 F95 成立：别的站上 `Collection` 可能真是名字的一部分。
+        self.assertNotEqual(
+            normalized_author_name("Lazy Procrastinator Collection"),
+            normalized_author_name("LazyProcrastinator"))
+
+    def test_the_service_suffix_only_says_where_they_publish(self):
+        self.assertEqual(normalized_author_name("LazyProcrastinator · fanbox"),
+                         normalized_author_name("lazyprocrastinator"))
+        self.assertEqual(author_display_text("Billyhhyb · patreon"), "Billyhhyb")
+
+    def test_a_manual_alias_maps_both_names_to_one_canonical_key(self):
+        self.store.upsert_author_alias("Initiala", "ffxivinitiala", source="manual",
+                                       moment=MOMENT)
+        mapping, groups = self.store.author_aliases()
+        self.assertEqual(mapping["ffxivinitiala"], "initiala")
+        self.assertEqual(mapping["initiala"], "initiala")
+        self.assertEqual([group["canonical_name"] for group in groups], ["Initiala"])
+        self.assertEqual([alias["name"] for alias in groups[0]["aliases"]],
+                         ["ffxivinitiala"])
+
+    def test_automatic_evidence_never_overwrites_a_decision(self):
+        """人工确认可以有意重新分组；自动证据只填此前未知的手柄。"""
+        self.store.upsert_author_alias("Initiala", "ffxivinitiala", source="manual",
+                                       moment=MOMENT)
+        self.assertIsNone(self.store.upsert_author_alias(
+            "Someone Else", "ffxivinitiala", source="official:fanbox", moment=MOMENT))
+        mapping, _groups = self.store.author_aliases()
+        self.assertEqual(mapping["ffxivinitiala"], "initiala")
+
+    def test_two_names_that_normalize_the_same_are_not_an_alias(self):
+        for canonical, alias in (("Initiala", "initi-ala"), ("", "x"), ("x", "")):
+            with self.assertRaises(ValueError):
+                self.store.upsert_author_alias(canonical, alias, source="manual")
+
+    def test_the_canonical_name_cannot_be_removed_as_an_alias(self):
+        """删规范名会拆散整个组，剩下的别名指向一个不存在的键。"""
+        self.store.upsert_author_alias("Initiala", "ffxivinitiala", source="manual",
+                                       moment=MOMENT)
+        with self.assertRaises(ValueError):
+            self.store.remove_author_alias("Initiala")
+        with self.assertRaises(ValueError):
+            self.store.remove_author_alias("never-registered")
+        with self.assertRaises(ValueError):
+            self.store.remove_author_alias("")
+        self.store.remove_author_alias("ffxivinitiala")
+        self.assertEqual(self.store.author_aliases(), ({"initiala": "initiala"}, []))
+
+    def test_an_official_handle_is_learned_only_from_one_unambiguous_author(self):
+        learned = self.store.learn_official_author_alias(
+            "fanbox", "ffxivinitiala",
+            (_candidate("1", "a", provider="fanbox", author="Initiala"),))
+        self.assertEqual(learned["alias"], "ffxivinitiala")
+        self.assertEqual(learned["source"], "official:fanbox")
+        # 归档站的 ref 是数字 id，不是名字。
+        self.assertIsNone(self.store.learn_official_author_alias(
+            "kemono", "fanbox/30917150",
+            (_candidate("1", "a", provider="kemono", author="Initiala"),)))
+
+
+class SourceRemovalTests(_StoreCase):
+    def test_removing_a_source_takes_it_out_of_the_listing(self):
+        source_id = self._source()
+        other = self._source(provider="rule34xxx", ref="tag")
+        self.store.remove_source(source_id)
+        self.assertEqual([row["id"] for row in self.store.sources()], [other])
+
+
+class PlaybackTests(_StoreCase):
+    def _item(self):
+        source_id = self._source()
+        self.store.record(source_id, _fetch([_candidate("1", "Fiona")]),
+                          moment=MOMENT)
+        return self.store.items()[0].id
+
+    def test_playing_a_new_item_marks_it_seen_once(self):
+        item_id = self._item()
+        self.assertEqual(self.store.record_playback(item_id, MOMENT), "seen")
+        # 已经播过的不再改状态：手动标成 ignored 之后再播不该被拉回 seen。
+        self.store.set_status(item_id, "ignored")
+        self.assertEqual(self.store.record_playback(item_id, MOMENT), "ignored")
+        count = self.connection.execute(
+            "SELECT play_count FROM follow_playback WHERE follow_item_id=?",
+            (item_id,)).fetchone()[0]
+        self.assertEqual(count, 2)
+
+    def test_activity_accumulates_time_and_keeps_the_furthest_point(self):
+        item_id = self._item()
+        first = self.store.record_playback_activity(
+            item_id, position=30, duration=100, delta=30, moment=MOMENT)
+        self.assertEqual(first, {"play_seconds": 30.0, "max_reached": 0.3})
+        # 往回拖再看一遍：时长累加，最远位置不倒退。
+        second = self.store.record_playback_activity(
+            item_id, position=10, duration=100, delta=10, moment=MOMENT)
+        self.assertEqual(second, {"play_seconds": 40.0, "max_reached": 0.3})
+        ended = self.store.record_playback_activity(
+            item_id, position=99, duration=100, delta=1, ended=True, moment=MOMENT)
+        self.assertEqual(ended["max_reached"], 1.0)
+
+    def test_an_unknown_item_is_a_request_error_not_a_storage_failure(self):
+        """调用方把 ValueError 映射成 400；这里不能变成 500。"""
+        for call in (lambda: self.store.record_playback(9999),
+                     lambda: self.store.record_playback_activity(9999)):
+            with self.assertRaises(ValueError):
+                call()
+
+    def test_nonsense_numbers_do_not_reach_the_database(self):
+        item_id = self._item()
+        result = self.store.record_playback_activity(
+            item_id, position=-5, duration=0, delta=-3, moment=MOMENT)
+        self.assertEqual(result, {"play_seconds": 0.0, "max_reached": 0.0})
+class PartialCandidateTests(_StoreCase):
+    """`partial=True` 的候选（跳过了第二阶段）落库时不能抹掉已有的细节。
+
+    upsert 不整块替换 metadata、media_url、thumb_url 和 group_hint：第二阶段一旦
+    按「已补齐」跳过，同一条再落一次就会把上一轮取到的细节清成空——而清空之后
+    「详情本来就没有」和「这次没去问」在数据里长得一模一样。
+    """
+
+    def _both(self):
+        source_id = self._source(provider="rule34paheal", ref="initiala")
+        full = FollowCandidate(
+            provider="rule34paheal", external_id="7428820", title="Tifa",
+            url="https://rule34.paheal.net/post/view/7428820",
+            media_url="https://r34i.paheal-cdn.net/df/fb/video",
+            thumb_url="https://r34t.paheal.net/df/fb/poster",
+            published_at="2026-08-26T15:21:00Z", duration=28.4, author="VHSephi",
+            group_hint="subscribestar:2639932",
+            extra={"tag": "initiala", "source": "https://subscribestar.adult/posts/2639932",
+                   "tag_types": {"tifa_lockhart": "general"}})
+        partial = FollowCandidate(
+            provider="rule34paheal", external_id="7428820", title="Tifa Lockhart",
+            url="https://rule34.paheal.net/post/view/7428820",
+            media_url="https://r34i.paheal-cdn.net/df/fb/listing",
+            thumb_url="https://r34t.paheal.net/df/fb/thumb",
+            group_hint="rule34paheal:post:7428820", partial=True,
+            extra={"tag": "initiala", "media_kind": "video",
+                   "tag_types": {"amina": "general"}})
+        return source_id, full, partial
+
+    def _item(self, source_id):
+        return self.store.items(source_id=source_id)[0]
+
+    def _record(self, source_id, candidate):
+        self.store.record(source_id, _fetch([candidate], provider="rule34paheal",
+                                            ref="initiala"), moment=MOMENT)
+
+    def test_a_partial_row_keeps_every_detail_only_column(self):
+        source_id, full, partial = self._both()
+        self._record(source_id, full)
+        self._record(source_id, partial)
+        row = self._item(source_id)
+        self.assertEqual(row.published_at, "2026-08-26T15:21:00Z")
+        self.assertEqual(row.duration, 28.4)
+        self.assertEqual(row.media_url, "https://r34i.paheal-cdn.net/df/fb/video")
+        self.assertEqual(row.thumb_url, "https://r34t.paheal.net/df/fb/poster")
+        self.assertEqual(row.group_hint, "subscribestar:2639932")
+        # 列表本来就权威的那几列照常更新。
+        self.assertEqual(row.title, "Tifa Lockhart")
+
+    def test_a_partial_row_merges_metadata_instead_of_replacing_it(self):
+        source_id, full, partial = self._both()
+        self._record(source_id, full)
+        self._record(source_id, partial)
+        metadata = self._item(source_id).metadata
+        self.assertEqual(metadata["source"], "https://subscribestar.adult/posts/2639932",
+                         "详情给出的出处不在这次的补丁里，就该原样留着")
+        self.assertEqual(metadata["media_kind"], "video")
+        self.assertEqual(metadata["tag_types"],
+                         {"tifa_lockhart": "general", "amina": "general"})
+
+    def test_a_complete_row_still_replaces_what_it_carries(self):
+        """第二阶段成功时是完整视图，该覆盖就覆盖——否则改正过的细节写不进去。"""
+        source_id, full, partial = self._both()
+        self._record(source_id, partial)
+        self._record(source_id, full)
+        row = self._item(source_id)
+        self.assertEqual(row.thumb_url, "https://r34t.paheal.net/df/fb/poster")
+        self.assertEqual(row.group_hint, "subscribestar:2639932")
+        self.assertEqual(row.metadata["tag_types"], {"tifa_lockhart": "general"})
+
+
+class EnrichedMarkTests(_StoreCase):
+    """「这一行不必再打详情页」怎么从 ledger 里读出来。"""
+
+    def test_the_paheal_mark_is_a_published_time_the_detail_page_gave(self):
+        source_id = self._source(provider="rule34paheal", ref="initiala")
+        self.store.record(source_id, _fetch([
+            FollowCandidate(provider="rule34paheal", external_id="1", title="a",
+                            published_at="2026-08-26T15:21:00Z"),
+            FollowCandidate(provider="rule34paheal", external_id="2", title="b",
+                            partial=True),
+        ], provider="rule34paheal", ref="initiala"), moment=MOMENT)
+        self.assertEqual(self.store.enriched_external_ids(source_id, "published_at"),
+                         frozenset({"1"}))
+
+    def test_the_rule34xxx_mark_is_the_taxonomy_only_the_detail_page_gives(self):
+        source_id = self._source(provider="rule34xxx", ref="tag")
+        self.store.record(source_id, _fetch([
+            FollowCandidate(provider="rule34xxx", external_id="1", title="a",
+                            published_at="2026-08-26T15:21:00Z",
+                            extra={"tag_types": {"tifa": "general"}}),
+            # 上传时间来自列表，详情页这次被挡回来了：这一条还没补齐。
+            FollowCandidate(provider="rule34xxx", external_id="2", title="b",
+                            published_at="2026-08-26T15:20:00Z", partial=True,
+                            extra={"tag": "tag"}),
+        ], provider="rule34xxx", ref="tag"), moment=MOMENT)
+        self.assertEqual(self.store.enriched_external_ids(source_id, "tag_types"),
+                         frozenset({"1"}))
+
+    def test_an_unregistered_mark_is_refused_not_silently_matched(self):
+        source_id = self._source()
+        with self.assertRaises(ValueError):
+            self.store.enriched_external_ids(source_id, "whatever")
 
 
 if __name__ == "__main__":

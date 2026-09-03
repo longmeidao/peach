@@ -51,18 +51,24 @@ from __future__ import annotations
 import argparse
 import re
 import sqlite3
+import sys
 from collections import Counter
 from pathlib import Path
 
-from peach.config import DATABASE_PATH, GENERATED_DIR
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from peach.config import GENERATED_DIR
 from peach.entities import (
     canonicalize_entity_name,
     collapse_repeated_entity_name,
     merge_entity,
     normalize_entity_name,
 )
-from peach.migrations import sqlite_backup
 from peach.review_csv import write_rows
+from peach.scripting import add_ledger_write_args, counts_of, open_for_write, verify_after_write
 
 
 #: 真实发行元数据的来源标记。只有这些能把一条断言判成「这是女优，不是上传者」。
@@ -105,10 +111,10 @@ def _asset_relation(
 ) -> str | None:
     """两边作品集合的包含关系；没有包含关系就不是同一批文件，返回 None。
 
-    早先只认「完全相同」，于是 `哆米`(7 部) 与 `哆米 Dolmi24`(6 部) 这种一侧多出
-    一两部的目录投影永远落在判据外——多出的那几部恰恰是只被 Stash 认成 performer、
-    没有对应本地目录的作品，属于常态而不是反证。放宽到真子集后，证据强度由名字
-    那一重（别名等于 creator 名，或 creator 名由本名与账号别名拼成）继续兜底，
+    真子集也算包含关系。只认「完全相同」的话，`哆米`(7 部) 与 `哆米 Dolmi24`(6 部)
+    这种一侧多出一两部的目录投影永远落在判据外——多出的那几部恰恰是只被 Stash 认成
+    performer、没有对应本地目录的作品，属于常态而不是反证。放宽的证据强度由名字
+    那一重（别名等于 creator 名，或 creator 名由本名与账号别名拼成）兜底，
     并把包含方向和数量写进复核 CSV，交给人看。
     """
     if not creator_assets or not performer_assets:
@@ -375,7 +381,7 @@ def apply_rows(
 
     扁平字段必须跟着规范关系走（ADR-0005），否则资料页和卡片会各说各话：
 
-    - 保留 creator：被并进来的资产可能原本没有 creator，补上；已有别的值不覆盖。
+    - 保留 creator：被并进来的资产可能没有 creator，补上；已有别的值不覆盖。
     - 保留 creator 且丢弃方也是 creator：扁平字段里写的就是被丢弃的目录名，改写成保留名。
       只填空不改写会留下一个没有实体的名字，详情页的归属兜底和按 creator 的查询都还认它。
     - 保留 performer：creator 实体没了，等值的扁平字段一并清掉。
@@ -597,49 +603,38 @@ def apply_repeated_projections(
 
 
 def write_projection_csv(path: Path, rows: list[dict[str, object]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
     fields = ["bad_name", "collapsed_name", "action", "target_id", "target_name",
               "flat_assets", "actor_tags", "aliases", "canonical_entities", "evidence"]
     write_rows(path, fields, rows)
 
 
 def write_csv(path: Path, rows: list[dict[str, object]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
     fields = ["normalized_name", "match_evidence", "keep_kind", "keep_name", "keep_id", "keep_links",
               "drop_kind", "drop_name", "drop_id", "drop_links",
               "keep_sources", "drop_sources", "evidence"]
     write_rows(path, fields, rows)
 
 
-def counts_of(connection: sqlite3.Connection) -> dict[str, int]:
-    query = {
-        "asset": "SELECT count(*) FROM asset",
-        "entity": "SELECT count(*) FROM entity",
-        "creator_entities": "SELECT count(*) FROM entity WHERE kind='creator'",
-        "performer_entities": "SELECT count(*) FROM entity WHERE kind='performer'",
-        "asset_entity": "SELECT count(*) FROM asset_entity",
-        "asset_tag": "SELECT count(*) FROM asset_tag",
-        "entity_alias": "SELECT count(*) FROM entity_alias",
-    }
-    return {key: connection.execute(sql).fetchone()[0] for key, sql in query.items()}
+#: 本脚本自己关心的口径；基础计数由 `scripting.counts_of` 给。
+EXTRA_COUNTS = {
+    "creator_entities": "SELECT count(*) FROM entity WHERE kind='creator'",
+    "performer_entities": "SELECT count(*) FROM entity WHERE kind='performer'",
+    "asset_tag": "SELECT count(*) FROM asset_tag",
+}
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="合并 creator / performer 的重复身份（跨 kind 同名与同 kind 目录名投影）")
-    parser.add_argument("--db", type=Path, default=DATABASE_PATH)
+    add_ledger_write_args(parser)
     parser.add_argument("--review-csv", type=Path,
                         default=GENERATED_DIR / "duplicate-identity-merge.csv")
     parser.add_argument("--projection-review-csv", type=Path,
                         default=GENERATED_DIR / "repeated-identity-name-repair.csv")
-    parser.add_argument("--apply", action="store_true", help="写 ledger；默认只出 CSV")
-    parser.add_argument("--backup", type=Path, help="--apply 必需：写库前的 SQLite 备份路径")
     return parser
 
 
 def run(args: argparse.Namespace) -> int:
-    if args.apply and not args.backup:
-        raise SystemExit("--apply 必须同时给 --backup")
-    connection = sqlite3.connect(args.db)
+    connection = open_for_write(args)
     try:
         rows = collect(connection)
         projection_rows = collect_repeated_projections(connection)
@@ -655,21 +650,20 @@ def run(args: argparse.Namespace) -> int:
             print("  未写 ledger（加 --apply --backup 才写）")
             return 0
 
-        before = counts_of(connection)
-        sqlite_backup(args.db, args.backup)
         print(f"  已备份到 {args.backup}")
+        before = counts_of(connection, EXTRA_COUNTS)
         with connection:
             moved = apply_rows(connection, rows)
             projections = apply_repeated_projections(connection, projection_rows)
-        after = counts_of(connection)
-        violations = connection.execute("PRAGMA foreign_key_check").fetchall()
+        after = counts_of(connection, EXTRA_COUNTS)
+        _integrity, violations = verify_after_write(connection)
 
         print("  合并结果：", moved)
         print("  重复名称投影：", projections)
         for key in before:
             mark = "" if before[key] == after[key] else "  <-- 变化"
             print(f"    {key}: {before[key]} -> {after[key]}{mark}")
-        print(f"  foreign_key_check 违规 {len(violations)} 条")
+        print(f"  foreign_key_check 违规 {violations} 条")
         return 1 if violations else 0
     finally:
         connection.close()

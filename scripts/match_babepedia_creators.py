@@ -36,18 +36,22 @@ from __future__ import annotations
 
 import argparse
 import re
-import sqlite3
 import time
 import urllib.parse
+import sys
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 from peach.config import DATABASE_PATH, GENERATED_DIR
 from peach.http import HttpRequest, HttpTransport, HttpxTransport
 from peach.review_csv import read_rows, write_rows
+from peach.scripting import USER_AGENT, open_readonly
 
 BASE = "https://www.babepedia.com/babe/"
-UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-      "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 
 #: 档案页标题。`nude` 可有可无——两种写法都是真实档案。
 PROFILE_TITLE = re.compile(
@@ -111,7 +115,7 @@ def fetch_title(transport: HttpTransport, query: str, timeout: int = 30) -> str 
     """返回档案名；查无此人返回 None；被限流抛 RateLimited。"""
     url = BASE + urllib.parse.quote(query)
     response = transport(
-        HttpRequest("GET", url, {"User-Agent": UA, "Accept-Language": "en-US,en;q=0.9"}),
+        HttpRequest("GET", url, {"User-Agent": USER_AGENT, "Accept-Language": "en-US,en;q=0.9"}),
         timeout, 4 * 1024 * 1024,
     )
     body = response.body.decode("utf-8", "ignore")
@@ -155,7 +159,7 @@ def resolve(transport: HttpTransport, name: str, delay: float,
 
 
 def candidates(database: Path) -> list[tuple[int, str, int]]:
-    connection = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True)
+    connection = open_readonly(database)
     try:
         rows = connection.execute(
             """SELECT e.id, e.canonical_name,

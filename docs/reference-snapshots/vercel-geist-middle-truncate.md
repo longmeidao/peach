@@ -6,6 +6,8 @@
 - 未取得原因：内置浏览器加载超时（`js execution timed out; kernel reset`）；
   PowerShell 直连返回 `Authentication failed, see inner exception`；`curl.exe` 返回
   `SEC_E_NO_CREDENTIALS (0x8009030e)`。这些错误只说明本机取证通道失败，不表示页面下线。
+- **不登记进 `docs/reference-sources.json`**：与 `vercel-geist-controls-measured.md` 同一策略，
+  Geist 文档站是 React 渲染，规格拿不到可哈希的上游快照；要复核就按上面的方式重抓一次。
 
 ## 官方页面可确认的行为
 

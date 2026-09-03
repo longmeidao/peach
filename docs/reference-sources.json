@@ -20,9 +20,9 @@
       "id": "vercel-geist-table-ranking",
       "name": "Vercel Geist Table 与首页排行布局证据",
       "url": "https://vercel.com/geist/table",
-      "snapshot": "docs/reference-snapshots/vercel-geist-table-ranking.md",
-      "checked_on": "2026-08-30",
-      "sha256": "b43ee5b96e91a959fe6fa655de316f4438e6ec83fcfbdeae1f8bb7cf6d5d9e15",
+      "snapshot": "docs/reference-snapshots/upstream/vercel-geist-table.md",
+      "checked_on": "2026-09-03",
+      "sha256": "a0476522c5a3cd154866216a20c7c5f388c69db2e8a21c8b756d69103b2ea1dd",
       "role": "统计页使用空间语义表格与标签排行密度的项目级依据；未取得的 Vercel DOM 和像素不作复刻证据。",
       "consumers": [
         "web/app.css",
@@ -155,9 +155,9 @@
       "id": "vercel-geist-fieldset-scroller-empty-state",
       "name": "Vercel Geist Fieldset、Scroller 与 Empty State",
       "url": "https://vercel.com/geist/fieldset",
-      "snapshot": "docs/reference-snapshots/vercel-geist-fieldset-scroller-empty-state.md",
-      "checked_on": "2026-09-02",
-      "sha256": "c9d618dcba39b4349a25994e17a5ff74ab7245425020c64b1117ad154fb7a446",
+      "snapshot": "docs/reference-snapshots/upstream/vercel-geist-fieldset.md",
+      "checked_on": "2026-09-03",
+      "sha256": "50468690366deda685f72207244387493756a87e58c1fc587307de10cd7477e8",
       "role": "人工复核 Fieldset、固定高度 Scroller、Empty State 结构与快速导航请求隔离的项目级依据。",
       "consumers": [
         "web/js/ui-components.js",
@@ -170,9 +170,9 @@
       "id": "vercel-geist-command-search-loading",
       "name": "Vercel Geist Command Menu、Search Input、Spinner 与 Loading Dots",
       "url": "https://vercel.com/geist/command-menu",
-      "snapshot": "docs/reference-snapshots/vercel-geist-command-search-loading.md",
-      "checked_on": "2026-09-01",
-      "sha256": "03d09df900bc83c9d1c29d13b84dca77223f0f13c05f0f436011dd1543d8e2c9",
+      "snapshot": "docs/reference-snapshots/upstream/vercel-geist-command-menu.md",
+      "checked_on": "2026-09-03",
+      "sha256": "028e0fdfe4eabff3e1fafe8fcc84b1263cdb370448f1f2f550b5edd141fb47d1",
       "role": "设置 Dialog 动效、搜索前缀、用户动作 Spinner、等待按钮可聚焦 busy 状态、后台 Loading Dots 与无更多历史内容中性反馈的项目级依据。",
       "consumers": [
         "web/js/ui-components.js",
@@ -201,9 +201,9 @@
       "name": "YouTube 播放器控件、设置、影院与氛围模式证据",
       "url": "https://www.youtube.com/watch?v=jNQXAC9IVRw",
       "snapshot": "docs/reference-snapshots/youtube-player-controls-user-screenshot.md",
-      "checked_on": "2026-09-01",
-      "sha256": "d20e01e3796c82c3c16442ce6dbb304f50a4940f5ec0183c356703c9953c7caf",
-      "role": "实际 YouTube e937390a DOM、CSS、JS 与用户截图锁定播放器几何、状态和设置面板；官方帮助锁定氛围模式和影院模式语义。",
+      "checked_on": "2026-09-03",
+      "sha256": "bc624a6c40c33c7f31a66ae866835b46a12e3026cda2311cc3a79f1e5802e7d6",
+      "role": "实际 YouTube e937390a DOM、CSS、JS 与用户截图锁定播放器几何、状态和设置面板；官方帮助锁定氛围模式和影院模式语义。；窄屏折叠门槛与统一悬停提示取自播放器 9470c977 的 www-player.css 与 base.js。",
       "consumers": [
         "web/app.css",
         "web/app.js",
@@ -240,6 +240,34 @@
       "checked_on": "2026-08-29",
       "sha256": "e013aba1ecef37c3c911c909d1cd9ad9a46a53214d7f790448181fb3f434d558",
       "role": "播放统计中的连接速度、网络活动和缓冲健康滚动历史图参考；Peach 保留自己的播放器、色彩与数据口径。时间轴不采用本条，见快照的移植说明。",
+      "consumers": [
+        "web/app.css",
+        "web/app.js",
+        "tests/test_web_ui.py"
+      ]
+    },
+    {
+      "id": "vercel-geist-tabs-secondary",
+      "name": "Vercel Geist Tabs 规范与 secondary 变体",
+      "url": "https://vercel.com/geist/tabs",
+      "snapshot": "docs/reference-snapshots/upstream/vercel-geist-tabs.md",
+      "checked_on": "2026-09-03",
+      "sha256": "41d0602d64c6a941e350d01b3c70b86e6a57a3f55d621ba43af26e081b46e347",
+      "role": "分类切换条的组件归属、条数上限、计数徽标与可访问性语义；secondary 变体是 Peach 现有 chip 条的规范原型。",
+      "consumers": [
+        "web/app.css",
+        "web/app.js",
+        "tests/test_web_ui.py"
+      ]
+    },
+    {
+      "id": "vercel-geist-switch-segmented",
+      "name": "Vercel Geist Switch 分段器取舍",
+      "url": "https://vercel.com/geist/switch",
+      "snapshot": "docs/reference-snapshots/upstream/vercel-geist-switch.md",
+      "checked_on": "2026-09-03",
+      "sha256": "20e383d97024c9a0ff7a26fcdcd120a1bc0904bdfb10ffe96a6e03f8dd758849",
+      "role": "判定分段器只用于 2–3 项互斥视图、超过 3 项或长标签改用 Tabs 的分界线。",
       "consumers": [
         "web/app.css",
         "web/app.js",

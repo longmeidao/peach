@@ -15,7 +15,7 @@ import time
 import urllib.parse
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
-from typing import Mapping, Protocol
+from typing import Callable, Iterable, Mapping, Protocol
 
 import httpx
 from bs4 import BeautifulSoup
@@ -58,7 +58,8 @@ _FILE_HOST_DOMAINS = frozenset({
 })
 
 _LINK_RE = re.compile(r"https?://[^\s\"'<>)\]]+", re.IGNORECASE)
-_F95_IMAGE_RE = re.compile(
+#: URL 看起来指向一张图片。不只 f95 在用：归档站推导旧行缩略图时也要这个判据。
+_IMAGE_URL_RE = re.compile(
     r"\.(?:avif|bmp|gif|jpe?g|png|webp)(?:$|[?#])", re.IGNORECASE)
 
 
@@ -89,7 +90,7 @@ def f95_attachment_media_items(metadata: Mapping[str, object]) -> list[dict[str,
         except ValueError:
             continue
         if (parsed.scheme != "https" or parsed.hostname != "attachments.f95zone.to"
-                or not _F95_IMAGE_RE.search(url)):
+                or not _IMAGE_URL_RE.search(url)):
             continue
         name = urllib.parse.unquote(parsed.path.rsplit("/", 1)[-1]) or f"image-{index + 1}"
         result.append({
@@ -138,6 +139,10 @@ class FollowCandidate:
     #: 那种「标题」不能参与按标题分组，否则同一作者的两个作品会因标签相似被并掉。
     title_is_name: bool = True
     extra: Mapping[str, object] = field(default_factory=dict)
+    #: 这一条只有列表阶段的视图，详情没有取（额度用完、库里已经补齐过，或者详情页
+    #: 这次被挡回来）。落库时它**不得覆盖**已有的细节：详情给出的上传时间、时长、
+    #: 媒体地址和 metadata 要原样留着，只更新列表本来就权威的那几列。
+    partial: bool = False
 
 
 @dataclass(frozen=True)
@@ -309,42 +314,121 @@ def _exc_summary(exc: Exception, limit: int = 140) -> str:
     return re.sub(r"\s+", " ", text)[:limit]
 
 
+@dataclass(frozen=True)
+class ParsedSource:
+    """从一条粘进来的链接认出来的订阅。"""
+
+    provider: str
+    ref: str
+    url: str
+    label: str
+    semantics: str
+
+    @property
+    def evidence(self) -> str:
+        return "链接直接指明"
+
+
+#: 每个来源的条目语义：`work` 是每条一个独立作品，`release` 是同一作品的历次发布。
+_SEMANTICS = follow_providers.semantics()
+
+#: 站点主机 → 来源键。粘进来的链接靠它认出属于哪个站，不再是一串 if/elif。
+_URL_HOSTS = follow_providers.url_hosts()
+
+_KEMONO_PATH_RE = re.compile(r"^/([a-z0-9_\-]{1,32})/user/([A-Za-z0-9_\-.]{1,64})")
+_R34V_PATH_RE = re.compile(r"^/models/([a-z0-9][a-z0-9_\-]{0,80})")
+_THREAD_PATH_RE = re.compile(r"^/threads/(?:[^/]*?\.)?(\d{1,12})")
+_DIRECT_CREATOR_RE = re.compile(r"^/([A-Za-z0-9_-]{1,80})(?:/|$)")
+_FANBOX_AT_RE = re.compile(r"^/@([A-Za-z0-9_-]{1,64})(?:/|$)")
+_PAHEAL_LIST_RE = re.compile(r"^/post/list/([^/]+)/\d+$")
+
+
+def canonical_source_ref(provider: str, ref: str) -> str:
+    """Return the provider's stable source identity.
+
+    Most provider ids are case-sensitive opaque values.  rule34.xxx tags are not:
+    the API returns the same feed for ``LazyProcrastinator`` and
+    ``lazyprocrastinator``.  Keeping the pasted spelling in the unique key therefore
+    creates duplicate subscriptions when the same author is added in two batches.
+    """
+    value = str(ref or "").strip()
+    return value.casefold() if provider in {"rule34xxx", "rule34paheal"} else value
+
+
+#: 线程 slug 里从这个 token 起就不是作品名了：f95 的惯例是
+#: `<作品名>-<发布日期>-<作者手柄>`，日期之后全是元数据。
+_SLUG_TAIL_RE = re.compile(r"^(?:19|20)\d{2}$|^v?\d+(?:\.\d+)+[a-z]?$")
+
+
+def _slug_label(slug: str) -> str:
+    words = [word for word in re.split(r"[-_]+", slug) if word]
+    kept: list[str] = []
+    for word in words:
+        if kept and _SLUG_TAIL_RE.match(word):
+            break
+        kept.append(word)
+    return " ".join(kept).strip() or re.sub(r"[-_]+", " ", slug).strip() or slug
+
+
 class _BaseConnector:
     provider = ""
     semantics = "work"
     #: 站点被机器人验证挡住时的说明；非空表示该连接器不可用。
     blocked_reason = ""
+    #: 往回翻页时代表「没有更早的了」的上游状态码。声明在类上而不是每次调用
+    #: `_request` 时传参，因为 `is_history_end_error` 要用同一份声明去认旧行。
+    HISTORY_END_STATUSES: tuple[int, ...] = ()
+
+    #: 一次抓取最多为补全细节额外打几次详情页。0 表示这个站没有第二阶段。
+    #: 列表页一次请求给一整页，详情页是每条一次——它是唯一会让请求数随条目数增长
+    #: 的路径，所以必须有额度，不能由页面长度决定。
+    DEFAULT_ENRICH_BUDGET = 0
+    #: 第二阶段成功之后，ledger 行上哪一处会有值。空串 = 没有第二阶段。
+    #: 调用方拿它算「这条不必再问详情」，判据本身登记在 `follow_store`。
+    #: **不能一律用 `published_at`**：rule34xxx 的上传时间来自列表的 `change`，
+    #: 第一次落库就有值，拿它当判据会让详情失败的行永远补不回来。
+    ENRICHED_MARK = ""
 
     def __init__(self, *, timeout: float = 15.0, max_bytes: int = DEFAULT_MAX_BYTES,
                  max_items: int = DEFAULT_MAX_ITEMS,
                  transport: HttpTransport | None = None,
                  credential: Credential | None = None,
-                 gofile_credential: Credential | None = None):
+                 gofile_credential: Credential | None = None,
+                 enrich_skip: Iterable[str] = (),
+                 enrich_budget: int | None = None,
+                 sleeper: Callable[[float], None] = time.sleep):
         self.timeout = timeout
         self.max_bytes = max_bytes
         self.max_items = max_items
         self.transport = transport or HttpxTransport()
         self.credential = credential
         self.gofile_credential = gofile_credential
+        #: 细节已经补齐过的站内 id，第二阶段直接跳过。由调用方按 ledger 现状算出。
+        self.enrich_skip = frozenset(str(value) for value in enrich_skip)
+        self.enrich_budget = (self.DEFAULT_ENRICH_BUDGET if enrich_budget is None
+                              else max(0, int(enrich_budget)))
+        #: 退避时怎么等。默认真的睡；测试注入一个记账用的假实现，好让退避节奏
+        #: 可断言又不真的把测试拖成几十秒。
+        self.sleeper = sleeper
 
     def _headers(self) -> dict[str, str]:
         return {"User-Agent": USER_AGENT}
 
-    def _get(self, url: str, *, headers: Mapping[str, str] | None = None,
-             etag: str | None = None, last_modified: str | None = None,
-             connector_headers: bool = True) -> HttpResponse:
+    def _send(self, method: str, url: str, body: bytes | None, *,
+              headers: Mapping[str, str], base: Mapping[str, str]) -> HttpResponse:
+        """发一次请求。`_get`/`_post` 的共同那半都在这里。
+
+        拦下被拦的站、合并头、把网络异常压成一句话、卡住响应大小——这四件事
+        与方法无关，所以只有这一份。GET 与 POST 各写一份必然分岔，而
+        `connector_headers=False` 承载的“跳站不带来源站 Cookie”是安全语义，不应该
+        取决于用的是哪个动词。
+        """
         if self.blocked_reason:
             raise FollowSourceError(self.blocked_reason)
-        # 跨站资源 API 不能继承来源站的 Cookie。Gofile 只拿自己的 Bearer token；
-        # FANBOX/F95 的会话不得跟着资源链接发到第三方主机。
-        merged = self._headers() if connector_headers else {"User-Agent": USER_AGENT}
-        merged.update(headers or {})
-        if etag:
-            merged["If-None-Match"] = etag
-        if last_modified:
-            merged["If-Modified-Since"] = last_modified
+        merged = dict(base)
+        merged.update(headers)
         try:
-            response = self.transport(HttpRequest("GET", url, merged),
+            response = self.transport(HttpRequest(method, url, merged, body),
                                       self.timeout, self.max_bytes)
         except (OSError, httpx.HTTPError) as exc:
             raise FollowSourceError(
@@ -353,21 +437,24 @@ class _BaseConnector:
             raise FollowSourceError(f"{self.provider} 响应超出大小上限")
         return response
 
+    def _get(self, url: str, *, headers: Mapping[str, str] | None = None,
+             etag: str | None = None, last_modified: str | None = None,
+             connector_headers: bool = True) -> HttpResponse:
+        conditional = dict(headers or {})
+        if etag:
+            conditional["If-None-Match"] = etag
+        if last_modified:
+            conditional["If-Modified-Since"] = last_modified
+        # 跨站资源 API 不能继承来源站的 Cookie。Gofile 只拿自己的 Bearer token；
+        # FANBOX/F95 的会话不得跟着资源链接发到第三方主机。
+        base = self._headers() if connector_headers else {"User-Agent": USER_AGENT}
+        return self._send("GET", url, None, headers=conditional, base=base)
+
     def _post(self, url: str, body: bytes, *,
-              headers: Mapping[str, str] | None = None) -> HttpResponse:
-        if self.blocked_reason:
-            raise FollowSourceError(self.blocked_reason)
-        merged = self._headers()
-        merged.update(headers or {})
-        try:
-            response = self.transport(HttpRequest("POST", url, merged, body),
-                                      self.timeout, self.max_bytes)
-        except (OSError, httpx.HTTPError) as exc:
-            raise FollowSourceError(
-                f"{self.provider} 请求失败：{_exc_summary(exc)}") from exc
-        if len(response.body) > self.max_bytes:
-            raise FollowSourceError(f"{self.provider} 响应超出大小上限")
-        return response
+              headers: Mapping[str, str] | None = None,
+              connector_headers: bool = True) -> HttpResponse:
+        base = self._headers() if connector_headers else {"User-Agent": USER_AGENT}
+        return self._send("POST", url, body, headers=headers or {}, base=base)
 
     @staticmethod
     def _conditional(response: HttpResponse) -> dict[str, str | None]:
@@ -424,7 +511,6 @@ class _BaseConnector:
                  last_modified: str | None = None, page: int = 0,
                  headers: Mapping[str, str] | None = None,
                  request_url: str | None = None,
-                 history_end_statuses: tuple[int, ...] = (),
                  ) -> tuple[dict[str, object], HttpResponse | None]:
         """每个连接器 fetch 开头都一样的那段：条件请求 → 304 短路 → 状态检查。
 
@@ -448,10 +534,94 @@ class _BaseConnector:
         }
         if response.status == 304:
             return common, None
-        if page and response.status in history_end_statuses:
+        if page and response.status in self.HISTORY_END_STATUSES:
             raise FollowHistoryEnd("没有更多历史内容")
         self._check_status(response)
         return common, response
+
+    @classmethod
+    def display_thumb_url(cls, item) -> str | None:
+        """一条已入库的条目现在该用哪个缩略图 URL。
+
+        站点的 CDN 规则会变，而错的 URL 已经写进上千行。所以改写发生在读取时而不是
+        改 ledger：这是可推导的投影，不是真相字段。默认照原样用，只有实测证明当前
+        规则取不到的站点才在子类里覆盖——那份实测属于连接器，不属于 Web 层。
+        """
+        return str(item.thumb_url or "") or None
+
+    def enrich(self, candidates: Iterable[FollowCandidate], *,
+               budget: int | None = None,
+               skip: Iterable[str] | None = None) -> tuple[
+                   tuple[FollowCandidate, ...], int]:
+        """第二阶段：为列表页给不出的细节逐条打详情页。返回补全后的候选和打了几次。
+
+        只打真正需要的条：库里已经补齐过的跳过（`skip`），额度用完的也跳过。跳过的
+        条目保持 `partial=True`，落库时不会把上一轮取到的细节覆盖成空。
+
+        细节缺失的旧行怎么补回来：显式检查带 `--force` 时调用方给出空 `skip`，
+        于是整页重新走第二阶段——这是有界的一次性修复，不是每次检查都付的成本。
+        """
+        limit = self.enrich_budget if budget is None else max(0, int(budget))
+        skipped = self.enrich_skip if skip is None else frozenset(
+            str(value) for value in skip)
+        if not limit:
+            return tuple(candidates), 0
+        spent = 0
+        result: list[FollowCandidate] = []
+        for candidate in candidates:
+            if spent >= limit or str(candidate.external_id) in skipped:
+                result.append(candidate)
+                continue
+            spent += 1
+            result.append(self._enrich_one(candidate))
+        return tuple(result), spent
+
+    def _enrich_one(self, candidate: FollowCandidate) -> FollowCandidate:
+        """补全一条候选。取不到就原样返回（仍是 `partial`），不猜、不写死。"""
+        return candidate
+
+    @classmethod
+    def provider_keys(cls) -> tuple[str, ...]:
+        """这个连接器负责哪些来源键。默认就是它自己声明的那一个。
+
+        kemono 系三站共用一套代码，所以由类自己说清楚它服务三个键，而不是在
+        `CONNECTORS` 里把同一个类写三遍——那份重复要和 `HOSTS` 各改一处。
+        """
+        return (cls.provider,) if cls.provider else ()
+
+    @classmethod
+    def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
+                  host: str) -> "ParsedSource":
+        """把一条已经认出属于本站的链接解析成可登记的订阅。
+
+        主机到来源的分派由 `follow_providers.provider_for_host` 做，`host` 已经
+        小写且去掉了 `www.`；这里只管「这个站的 URL 里哪一截是 ref」。纯解析，
+        不联网；认不出就抛 `FollowSourceError` 并说清楚该长什么样。
+        """
+        raise FollowSourceError(f"{cls.provider} 暂不支持从链接登记")
+
+    @classmethod
+    def profile_handle(cls, ref: str) -> str:
+        """这条 ref 里可以当作者别名用的平台手柄，没有就返回空串。
+
+        只有官方渠道才有这种手柄：`fanbox/ffxivinitiala` 里的 `ffxivinitiala`
+        就是作者本人在那个平台的名字。归档站与标签站的 ref 是数字 id 或标签，
+        它们不是名字，学成别名只会造出一个假作者。
+        """
+        return ""
+
+    @classmethod
+    def is_history_end_error(cls, message: str) -> bool:
+        """一句已经落盘的错误文本，其实是「历史到底」吗？
+
+        `record_history_end` 之前的版本把往回翻到尽头记成了 `error`，正文就是
+        `_check_status` 那句 `<provider> 返回 HTTP <status>`。判据只能是本连接器
+        声明的 `HISTORY_END_STATUSES`——放在 Web 层照站点名硬编码中文串比较的话，
+        新增来源时没人会想到还要改那一处。
+        """
+        matched = re.fullmatch(r".+ 返回 HTTP (\d{3})",
+                               str(message or "").strip(), re.IGNORECASE)
+        return bool(matched) and int(matched.group(1)) in cls.HISTORY_END_STATUSES
 
     def probe(self, url: str, *, headers: Mapping[str, str] | None = None) -> HttpResponse:
         """探测一个 URL 是否存在，不检查状态码。
@@ -491,12 +661,14 @@ class KemonoConnector(_BaseConnector):
 
     semantics = "work"
     HOSTS = {"kemono": "kemono.cr", "coomer": "coomer.st", "pawchive": "pawchive.pw"}
+    #: 往回翻页翻到尽头时，kemono 系回 400（越界偏移）或 404（创作者没有更多帖子）。
+    HISTORY_END_STATUSES = (400, 404)
     #: 原始文件的主机。2026-08-30 实测（取证见
     #: `docs/reference-snapshots/kemono-archive-media-host.md`）三站行为并不一致：
     #: kemono/coomer 的主域对 `/data/<path>` 回 302，分别指向 `n1.` 和 `n4.` 节点——
     #: 编号会变，所以走主域让站点自己路由，不写死；pawchive 主域对 `/data` 直接 404，
     #: 必须点名 `file.` 子域。
-    #: 路径也要带 `/data` 前缀：以前拼的是 `https://<host><path>`，少了这一段，
+    #: 路径也要带 `/data` 前缀：拼成 `https://<host><path>` 少了这一段，
     #: 三站都取不到原始文件。
     FILE_HOSTS = {"pawchive": "file.pawchive.pw"}
     _SERVICE_RE = re.compile(r"^[a-z0-9_\-]{1,32}$")
@@ -509,6 +681,23 @@ class KemonoConnector(_BaseConnector):
 
     #: 列表接口一页的条数，2026-08-27 实测为 50（`?o=50` 拿到的是第 51 条起）。
     PAGE_SIZE = 50
+
+    @classmethod
+    def provider_keys(cls) -> tuple[str, ...]:
+        return tuple(cls.HOSTS)
+
+    @classmethod
+    def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
+                  host: str) -> "ParsedSource":
+        matched = _KEMONO_PATH_RE.match(parsed.path or "/")
+        if not matched:
+            raise FollowSourceError(
+                f"{host} 的链接要指向某个创作者，形如 "
+                f"https://{host}/fanbox/user/30917150")
+        service, user = matched.group(1), matched.group(2)
+        return ParsedSource(provider, f"{service}/{user}",
+                            f"https://{host}/{service}/user/{user}",
+                            f"{user} · {service}", "work")
 
     def __init__(self, provider: str = "kemono", *,
                  max_probes: int = DEFAULT_MAX_PROBES, **kwargs):
@@ -539,8 +728,7 @@ class KemonoConnector(_BaseConnector):
             # 实测这个接口一页固定 50 条，往回翻用 `?o=` 偏移。
             url = f"{url}?o={page * self.PAGE_SIZE}"
         common, response = self._request(url, ref=ref, etag=etag,
-                                         last_modified=last_modified, page=page,
-                                         history_end_statuses=(400, 404))
+                                         last_modified=last_modified, page=page)
         if response is None:
             return SourceFetch(not_modified=True, **common)
         payload = self.parse_json(response)
@@ -639,12 +827,50 @@ class KemonoConnector(_BaseConnector):
         2026-08-27 那次记的是主域回 200——站点行为后来变了，pawchive 的卡片因此
         一直是空的。
 
-        以前这里根本没设 `thumb_url`，归档站的卡片因此一律没有封面——
+        这里必须设 `thumb_url`：不设的话归档站的卡片一律没有封面——
         不是取不到，是压根没去取。
         """
         if not media or not str(media).lower().endswith(self._THUMBABLE):
             return None
         return f"https://img.{self.host}/thumbnail/data{media}"
+
+    @classmethod
+    def archive_media_host(cls, provider: str, url: str) -> str:
+        """把归档站的静态资源指到 `img.` 子域。
+
+        2026-08-30 实测（取证见 `docs/reference-snapshots/kemono-archive-media-host.md`）：
+
+            kemono.cr/thumbnail/data/<path>        302
+            img.kemono.cr/thumbnail/data/<path>    200 image/jpeg 24,050 B
+            pawchive.pw/thumbnail/data/<path>      404
+            img.pawchive.pw/thumbnail/data/<path>  200 image/gif   12,796 B
+
+        kemono 主域只是重定向、浏览器跟随后仍能显示，所以一直没人发现；pawchive
+        主域直接 404，卡片因此永远是空的（`onerror` 把 img 摘掉，看起来像「没有
+        预览图」）。2026-08-27 那次记的是主域回 200——站点行为后来变了。
+        """
+        host = cls.HOSTS.get(provider)
+        if not host or not url.startswith(f"https://{host}/"):
+            return url
+        return url.replace(f"https://{host}/", f"https://img.{host}/", 1)
+
+    @classmethod
+    def display_thumb_url(cls, item) -> str | None:
+        if item.thumb_url:
+            return cls.archive_media_host(item.provider, str(item.thumb_url))
+        # 封面修复前入库的旧行：`media_url` 是图片，但 `thumb_url` 是空的。按
+        # `_thumb_url` 同一条已验证规则即时推导，不改 ledger 就能补齐旧卡片。
+        media = str(item.media_url or "")
+        host = cls.HOSTS.get(str(item.provider or ""))
+        if not host or not _IMAGE_URL_RE.search(media):
+            return None
+        # `/data` 前缀是 `archive_file_url` 加的，而 `/thumbnail/data` 里已经有一个。
+        # 库里两种形状都有（那次修复之前拼的没有前缀），拼之前先剥掉，否则新形状的
+        # 行会得到 `/thumbnail/data/data/...` 这种必然 404 的地址。
+        path = urllib.parse.urlsplit(media).path
+        path = path[len("/data"):] if path.startswith("/data/") else path
+        return cls.archive_media_host(
+            item.provider, f"https://{host}/thumbnail/data{path}")
 
     def _candidate(self, post: dict, service: str, user: str) -> FollowCandidate:
         post_id = str(post.get("id") or "")
@@ -701,7 +927,7 @@ def archive_file_url(provider: str, url: str) -> str:
         coomer.st/data/<path>           302 → n4.coomer.st
 
     kemono/coomer 走主域让站点自己路由（nX 的编号会变，写死会过期）；
-    pawchive 必须点名 `file.` 子域。缩略图仍走 `img.`，见 `_archive_media_host`。
+    pawchive 必须点名 `file.` 子域。缩略图仍走 `img.`，见 `archive_media_host`。
     """
     host = KemonoConnector.HOSTS.get(provider)
     if not host or not url.startswith(f"https://{host}/"):
@@ -720,12 +946,27 @@ class Rule34VideoConnector(_BaseConnector):
 
     provider = "rule34video"
     semantics = "work"
+    #: 往回翻到尽头时作者页回 404。
+    HISTORY_END_STATUSES = (404,)
     _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_\-]{0,80}$")
     _VIDEO_RE = re.compile(r"^https://rule34video\.com/video/(\d+)/")
     #: 详情页的署名作者通常只有 1 位；用户给出的超大合集实测有 54 位。20 以上只会
     #: 排除这种跨作者打包，不影响普通合作作品。
     MAX_COLLECTION_MODELS = 20
     DEFAULT_MAX_PROBES = 24
+
+    @classmethod
+    def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
+                  host: str) -> "ParsedSource":
+        matched = _R34V_PATH_RE.match(parsed.path or "/")
+        if not matched:
+            raise FollowSourceError(
+                "rule34video 的链接要指向作者页，形如 "
+                "https://rule34video.com/models/lazyprocrastinator/")
+        slug = matched.group(1)
+        return ParsedSource("rule34video", slug,
+                            f"https://rule34video.com/models/{slug}/",
+                            _slug_label(slug), "work")
 
     def __init__(self, *, max_probes: int = DEFAULT_MAX_PROBES,
                  max_collection_models: int = MAX_COLLECTION_MODELS, **kwargs):
@@ -747,8 +988,7 @@ class Rule34VideoConnector(_BaseConnector):
                    f"&sort_by=post_date&from={page + 1:02d}")
         common, response = self._request(url, ref=slug, etag=etag,
                                          last_modified=last_modified, page=page,
-                                         headers={"Accept": "text/html"},
-                                         history_end_statuses=(404,))
+                                         headers={"Accept": "text/html"})
         if response is None:
             return SourceFetch(not_modified=True, **common)
         soup = BeautifulSoup(response.body, "html.parser")
@@ -908,7 +1148,38 @@ class Rule34XxxConnector(_BaseConnector):
 
     provider = "rule34xxx"
     semantics = "work"
+    #: 一页 24 条时整页都能补上；额度存在是为了页面变长时请求数不跟着长。
+    DEFAULT_ENRICH_BUDGET = 24
+    #: 详情页给的就是标签分类，所以补齐过的行 metadata 里一定有 `tag_types`。
+    ENRICHED_MARK = "tag_types"
     _TAG_RE = re.compile(r"^[^\s&?#]{1,100}$")
+    #: 历史行存的是 250px 的 preview。官方 dapi 的 `sample_url` 与它用同一
+    #: bucket/hash；2026-08-28 对生产历史行实测推导，结果是 1920x1080。
+    _PREVIEW_RE = re.compile(
+        r"^https://api-cdn\.rule34\.xxx/thumbnails/(\d+)/thumbnail_"
+        r"([0-9a-f]{32})\.jpg(?:[?#].*)?$", re.IGNORECASE)
+
+    @classmethod
+    def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
+                  host: str) -> "ParsedSource":
+        tags = canonical_source_ref(
+            "rule34xxx", urllib.parse.parse_qs(parsed.query).get("tags", [""])[0])
+        if not tags:
+            raise FollowSourceError(
+                "rule34.xxx 的链接要带标签，形如 "
+                "https://rule34.xxx/index.php?page=post&s=list&tags=lazyprocrastinator")
+        return ParsedSource("rule34xxx", tags,
+                            "https://rule34.xxx/index.php?page=post&s=list"
+                            f"&tags={urllib.parse.quote(tags)}",
+                            _slug_label(tags), "work")
+
+    @classmethod
+    def display_thumb_url(cls, item) -> str | None:
+        matched = cls._PREVIEW_RE.match(str(item.thumb_url or ""))
+        if matched:
+            return ("https://api-cdn.rule34.xxx/images/"
+                    f"{matched.group(1)}/{matched.group(2)}.jpg")
+        return str(item.thumb_url or "") or None
 
     def fetch(self, ref: str, *, etag: str | None = None,
               last_modified: str | None = None, page: int = 0) -> SourceFetch:
@@ -948,17 +1219,23 @@ class Rule34XxxConnector(_BaseConnector):
         posts = payload.get("post", []) if isinstance(payload, dict) else payload
         if not isinstance(posts, list):
             raise FollowSourceError("rule34xxx 的帖子列表格式不符")
-        candidates = []
-        for post in posts[: self.max_items]:
-            if not isinstance(post, dict):
-                continue
-            post_id = str(post.get("id") or "")
-            tag_types = self._detail_tag_types(post_id) if post_id else {}
-            candidates.append(self._candidate(post, tag, tag_types=tag_types))
-        candidates = tuple(candidates)
+        listed = [self._candidate(post, tag) for post in posts[: self.max_items]
+                  if isinstance(post, dict)]
+        # 第二阶段：标签分类只有帖子详情页给，列表的 dapi 只给一串扁平标签。
+        candidates, probed = self.enrich(listed)
         if page and not candidates:
             raise FollowHistoryEnd("没有更多历史内容")
-        return SourceFetch(candidates=candidates, raw_body=response.body, **common)
+        return SourceFetch(candidates=candidates, probed=probed,
+                           raw_body=response.body, **common)
+
+    def _enrich_one(self, candidate: FollowCandidate) -> FollowCandidate:
+        tag_types = self._detail_tag_types(str(candidate.external_id))
+        if not tag_types:
+            # 详情页这次没给出分类。保持 partial：上一轮取到的分类还在库里，
+            # 覆盖成空会让「这条没有分类」和「这次没问到」在数据里长得一样。
+            return candidate
+        return replace(candidate, partial=False,
+                       extra={**candidate.extra, "tag_types": tag_types})
 
     #: 自动补全项的形状：`ria-neearts (248)`，括号里是该标签下的帖子数。
     _AUTOCOMPLETE_COUNT_RE = re.compile(r"\((\d[\d,]*)\)\s*$")
@@ -1021,7 +1298,7 @@ class Rule34XxxConnector(_BaseConnector):
         response = None
         for delay in (0.0, *self._DETAIL_RETRY_DELAYS):
             if delay:
-                time.sleep(delay)
+                self.sleeper(delay)
             try:
                 response = self._get(url, headers={"Accept": "text/html"})
             except FollowSourceError:
@@ -1051,8 +1328,7 @@ class Rule34XxxConnector(_BaseConnector):
                 result[name] = tag_type
         return result
 
-    def _candidate(self, post: dict, tag: str, *,
-                   tag_types: Mapping[str, str] | None = None) -> FollowCandidate:
+    def _candidate(self, post: dict, tag: str) -> FollowCandidate:
         post_id = str(post.get("id") or "")
         # dapi 返回的标签是 HTML 转义形态（实测 `miqo&#039;te`）。实体不反转义
         # 就进 metadata，读取层再转一次就成了双重转义，用户看到的就是 `&#039;`
@@ -1095,10 +1371,11 @@ class Rule34XxxConnector(_BaseConnector):
             published_at=_iso_from_epoch(post.get("change")),
             group_hint=hint,
             title_is_name=title_is_name,
+            # 列表视图：标签分类要等第二阶段的详情页。
+            partial=True,
             extra={"tag": tag, "tags": tags, "score": post.get("score"),
                    "source": source, "title_from": title_from,
-                   "preview_url": post.get("preview_url"),
-                   **({"tag_types": dict(tag_types)} if tag_types else {})},
+                   "preview_url": post.get("preview_url")},
         )
 
     @classmethod
@@ -1115,9 +1392,33 @@ class Rule34PahealConnector(_BaseConnector):
 
     provider = "rule34paheal"
     semantics = "work"
+    #: 往回翻到尽头时标签页回 404。
+    HISTORY_END_STATUSES = (404,)
+    #: 一页 24 条，整页都能补上；额度存在是为了页面变长时请求数不跟着长。
+    DEFAULT_ENRICH_BUDGET = 24
+    #: 上传时间只有详情页给（列表的缩略图属性里没有），所以它就是补齐的判据。
+    ENRICHED_MARK = "published_at"
     _TAG_RE = re.compile(r"^[^/?#]{1,100}$")
     _DURATION_RE = re.compile(r"\b(\d+(?:\.\d+)?)s\b", re.IGNORECASE)
     _TITLE_STOPWORDS = frozenset({"animated", "blender", "video", "sound", "mp4", "webm"})
+
+    @classmethod
+    def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
+                  host: str) -> "ParsedSource":
+        # 搜索标签既可能在 fragment 里（帖子详情页），也可能在列表页路径里。
+        tag = urllib.parse.parse_qs(parsed.fragment).get("search", [""])[0]
+        if not tag:
+            matched = _PAHEAL_LIST_RE.match(parsed.path or "/")
+            tag = urllib.parse.unquote(matched.group(1)) if matched else ""
+        tag = canonical_source_ref("rule34paheal", tag)
+        if not tag:
+            raise FollowSourceError(
+                "rule34.paheal 的链接要带搜索标签，形如 "
+                "https://rule34.paheal.net/post/view/7428820#search=InitialA")
+        encoded = urllib.parse.quote(tag, safe="()_")
+        return ParsedSource("rule34paheal", tag,
+                            f"https://rule34.paheal.net/post/list/{encoded}/1",
+                            _slug_label(tag), "work")
 
     def __init__(self, *, max_items: int = 24, **kwargs):
         super().__init__(max_items=max_items, **kwargs)
@@ -1132,53 +1433,79 @@ class Rule34PahealConnector(_BaseConnector):
         url = f"https://rule34.paheal.net/post/list/{encoded}/{page_number}"
         common, response = self._request(url, ref=tag, etag=etag,
                                          last_modified=last_modified, page=page,
-                                         headers={"Accept": "text/html"},
-                                         history_end_statuses=(404,))
+                                         headers={"Accept": "text/html"})
         if response is None:
             return SourceFetch(not_modified=True, **common)
         soup = BeautifulSoup(response.body, "html.parser")
-        candidates = []
+        listed = []
         for thumb in soup.select(".shm-image-list .shm-thumb[data-post-id]")[:self.max_items]:
             post_id = str(thumb.get("data-post-id") or "")
             if not post_id.isdigit():
                 continue
-            tags = str(thumb.get("data-tags") or "")
-            extension = str(thumb.get("data-ext") or "").casefold()
-            link = thumb.select_one("a.shm-thumb-link[href]")
-            file_link = thumb.select_one("a[href*='paheal-cdn.net'], a[href*='r34i.paheal']")
-            image = thumb.select_one("img[src]")
-            detail = self._detail(post_id)
-            tag_values = detail.get("tags") or tags.split()
-            title = self._tag_label(tag_values, tag) or f"Paheal 帖子 {post_id}"
-            media_url = str(detail.get("media_url") or
-                            (file_link.get("href") if file_link else "")) or None
-            candidates.append(FollowCandidate(
-                provider=self.provider,
-                external_id=post_id,
-                title=title,
-                url=urllib.parse.urljoin("https://rule34.paheal.net",
-                                         str(link.get("href") if link else f"/post/view/{post_id}")),
-                media_url=media_url,
-                thumb_url=str(detail.get("thumb_url") or
-                              (image.get("src") if image else "")) or None,
-                published_at=detail.get("published_at"),
-                duration=detail.get("duration"),
-                author=detail.get("author"),
-                group_hint=origin_group_key(detail.get("source")) or
-                           f"{self.provider}:post:{post_id}",
-                title_is_name=False,
-                extra={"tag": tag, "tags": " ".join(tag_values),
-                       "source": detail.get("source"), "title_from": "tags",
-                       "media_kind": "video" if extension in {"mp4", "webm", "mov"}
-                                     else "image",
-                       "tag_types": {value: "general" for value in tag_values}},
-            ))
+            listed.append(self._listed(thumb, post_id, tag))
+        # 第二阶段：上传时间、时长、上传者和原始出处都只有帖子详情页给。
+        candidates, probed = self.enrich(listed)
         if not candidates:
             if page:
                 raise FollowHistoryEnd("没有更多历史内容")
             raise FollowSourceError("rule34.paheal 标签页没有解析出任何作品")
-        return SourceFetch(candidates=tuple(candidates), probed=len(candidates),
+        return SourceFetch(candidates=candidates, probed=probed,
                            raw_body=response.body, **common)
+
+    def _listed(self, thumb, post_id: str, tag: str) -> FollowCandidate:
+        """只用列表页缩略图上的属性造一条候选。不联网。
+
+        `extra` 里刻意**不放**详情才知道的键（`source`）：`partial` 行落库走
+        `json_patch`，而补丁里的 null 是「删掉这个键」，写进去就会把上一轮取到的
+        出处抹掉。
+        """
+        tags = str(thumb.get("data-tags") or "").split()
+        extension = str(thumb.get("data-ext") or "").casefold()
+        link = thumb.select_one("a.shm-thumb-link[href]")
+        file_link = thumb.select_one("a[href*='paheal-cdn.net'], a[href*='r34i.paheal']")
+        image = thumb.select_one("img[src]")
+        return FollowCandidate(
+            provider=self.provider,
+            external_id=post_id,
+            title=self._tag_label(tags, tag) or f"Paheal 帖子 {post_id}",
+            url=urllib.parse.urljoin(
+                "https://rule34.paheal.net",
+                str(link.get("href") if link else f"/post/view/{post_id}")),
+            media_url=str(file_link.get("href")) if file_link else None,
+            thumb_url=str(image.get("src")) if image else None,
+            group_hint=f"{self.provider}:post:{post_id}",
+            title_is_name=False,
+            partial=True,
+            extra={"tag": tag, "tags": " ".join(tags), "title_from": "tags",
+                   "media_kind": "video" if extension in {"mp4", "webm", "mov"}
+                                 else "image",
+                   "tag_types": {value: "general" for value in tags}},
+        )
+
+    def _enrich_one(self, candidate: FollowCandidate) -> FollowCandidate:
+        detail = self._detail(str(candidate.external_id))
+        if not detail:
+            # 详情页这次没拿到。保持 partial：上一轮取到的上传时间和时长留在库里，
+            # 覆盖成空会让「站上就没写」和「这次没问到」在数据里长得一样。
+            return candidate
+        subject = str(candidate.extra.get("tag") or "")
+        tag_values = (list(detail.get("tags") or ())
+                      or str(candidate.extra.get("tags") or "").split())
+        return replace(
+            candidate,
+            partial=False,
+            title=self._tag_label(tag_values, subject) or candidate.title,
+            media_url=str(detail.get("media_url") or "") or candidate.media_url,
+            thumb_url=str(detail.get("thumb_url") or "") or candidate.thumb_url,
+            published_at=detail.get("published_at"),
+            duration=detail.get("duration"),
+            author=detail.get("author"),
+            group_hint=(origin_group_key(detail.get("source"))
+                        or candidate.group_hint),
+            extra={**candidate.extra, "tags": " ".join(tag_values),
+                   "source": detail.get("source"),
+                   "tag_types": {value: "general" for value in tag_values}},
+        )
 
     #: 详情页取不到就重试的状态码。列表页一页 24 条，每条都要单独打一次详情页，
     #: 上游按频率挡回来是常态；一次挡回来就当「这条没有上传时间」，得到的是一条
@@ -1193,7 +1520,7 @@ class Rule34PahealConnector(_BaseConnector):
         for delay in self._DETAIL_RETRY_DELAYS:
             if response.status not in self._DETAIL_RETRY_STATUSES:
                 break
-            time.sleep(delay)
+            self.sleeper(delay)
             response = self._get(url, headers={"Accept": "text/html"})
         if response.status != 200:
             return {}
@@ -1250,11 +1577,32 @@ class F95ZoneConnector(_BaseConnector):
     _INLINE_IMAGE_RE = re.compile(
         r"\.(?:avif|bmp|gif|jpe?g|png|webp)(?:$|[?#])", re.IGNORECASE)
 
+    @classmethod
+    def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
+                  host: str) -> "ParsedSource":
+        path = parsed.path or "/"
+        matched = _THREAD_PATH_RE.match(path)
+        if not matched:
+            raise FollowSourceError(
+                "f95zone 的链接要指向一个线程，形如 "
+                "https://f95zone.to/threads/xxx.50685/")
+        thread = matched.group(1)
+        slug = path.split("/threads/", 1)[1].rsplit(".", 1)[0] if "." in path else ""
+        return ParsedSource("f95zone", thread,
+                            f"https://f95zone.to/threads/{thread}/",
+                            _slug_label(slug) or f"线程 {thread}", "release")
+
     def fetch(self, ref: str, *, etag: str | None = None,
               last_modified: str | None = None, page: int = 0) -> SourceFetch:
         thread = (ref or "").strip()
         if not self._THREAD_RE.match(thread):
             raise FollowSourceError(f"f95zone 的 ref 必须是线程 id，收到：{ref!r}")
+        if page:
+            # `/latest` 是站点自己渲染的「最近回复」聚合视图，没有 page-N 变体，
+            # 这个连接器因此只有一页可读。`page` 不能静默丢掉：丢了往回翻页会
+            # 重新抓同一页、报成一次成功的检查，表现就是「点了没反应」。报到底
+            # 比假装成功好：调用方据此显示历史已尽。
+            raise FollowHistoryEnd("没有更多历史内容")
         url = f"https://f95zone.to/threads/{thread}/latest"
         headers = {"Accept": "text/html"}
         if self.credential and self.credential.values.get("cookie"):
@@ -1512,7 +1860,32 @@ class FanboxConnector(_BaseConnector):
 
     provider = "fanbox"
     semantics = "work"
+    #: 2026-08-27 实测公开接口单页 10 条，整页都能补上。
+    DEFAULT_ENRICH_BUDGET = 10
+    #: 正文类型只有 post.info 给。详情被 Cloudflare 挡回来时它是 null，所以拿它
+    #: 当判据能让那一行下一轮再试一次，而不是当成「已经补齐」。
+    ENRICHED_MARK = "post_type"
     _CREATOR_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+    @classmethod
+    def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
+                  host: str) -> "ParsedSource":
+        # 作者主页有两种形状：`creator.fanbox.cc` 子域，和 `fanbox.cc/@creator`。
+        if host.endswith(".fanbox.cc"):
+            creator = host.removesuffix(".fanbox.cc")
+        else:
+            matched = _FANBOX_AT_RE.match(parsed.path or "/")
+            creator = matched.group(1) if matched else ""
+        if not creator:
+            raise FollowSourceError(
+                "FANBOX 的链接要指向创作者主页，形如 https://creator.fanbox.cc/")
+        return ParsedSource("fanbox", creator, f"https://{creator}.fanbox.cc/",
+                            creator, "work")
+
+    @classmethod
+    def profile_handle(cls, ref: str) -> str:
+        return str(ref or "").strip()
+
     _IMPERSONATION = "firefox147"
 
     def __init__(self, *, detail_transport: HttpTransport | None = None, **kwargs):
@@ -1559,57 +1932,76 @@ class FanboxConnector(_BaseConnector):
         posts = ((payload or {}).get("body") or {}).get("posts")
         if not isinstance(posts, list):
             raise FollowSourceError("fanbox 返回的帖子列表格式不符")
-        candidates, skipped, probed = [], 0, 0
+        listed, skipped = [], 0
         for post in posts[:self.max_items]:
             if not isinstance(post, dict) or not str(post.get("id") or "").isdigit():
                 continue
             if post.get("isRestricted") or int(post.get("feeRequired") or 0) > 0:
                 skipped += 1
                 continue
-            post_id = str(post["id"])
-            cover = post.get("cover") if isinstance(post.get("cover"), dict) else {}
-            user = post.get("user") if isinstance(post.get("user"), dict) else {}
-            try:
-                detail = self._post_detail(post_id, creator)
-            except FollowSourceError as error:
-                # FANBOX 会把单篇 post.info 临时换成 Cloudflare 验证页。
-                # 列表本身仍是可信的公开更新；保留卡片并明确标记媒体未取得，
-                # 不能让一篇详情失败拖垮整个作者来源。
-                detail = {"summary": "", "links": [], "media_items": (),
-                          "post_type": None, "image_count": 0,
-                          "video_count": 0, "file_count": 0,
-                          "error": str(error)}
-            probed += 1
-            links = detail["links"]
-            direct_media = detail["media_items"]
-            gofile_media = self._gofile_media(
-                links, labels=folder_labels(str(detail.get("summary") or "")))
-            media_items = tuple(direct_media) + gofile_media
-            candidates.append(FollowCandidate(
-                provider=self.provider,
-                external_id=post_id,
-                title=plain_text(str(post.get("title") or "")) or f"FANBOX 帖子 {post_id}",
-                url=f"https://{creator}.fanbox.cc/posts/{post_id}",
-                thumb_url=(str(direct_media[0].get("thumb_url")
-                               or direct_media[0].get("url"))
-                           if direct_media else
-                           str(cover.get("url")) if cover.get("url") else None),
-                published_at=_iso_from_text(post.get("publishedDatetime")),
-                author=plain_text(str(user.get("name") or "")),
-                summary=detail["summary"] or plain_text(str(post.get("excerpt") or "")),
-                group_hint=f"fanbox:{post_id}",
-                extra={"fee_required": 0, "official": True, "links": links,
-                       "media_items": media_items,
-                       "media_error": detail.get("error"),
-                       "post_type": detail.get("post_type"),
-                       "image_count": detail.get("image_count", 0),
-                       "video_count": detail.get("video_count", 0),
-                       "file_count": detail.get("file_count", 0),
-                       "gofile_video_count": sum(
-                           item.get("media_kind") == "video" for item in gofile_media)},
-            ))
-        return SourceFetch(candidates=tuple(candidates), skipped=skipped,
+            listed.append(self._listed(post, creator))
+        # 第二阶段：正文外链、按正文顺序排列的多图和正文类型都只有 post.info 给。
+        candidates, probed = self.enrich(listed)
+        return SourceFetch(candidates=candidates, skipped=skipped,
                            probed=probed, raw_body=response.body, **common)
+
+    def _listed(self, post: dict, creator: str) -> FollowCandidate:
+        """只用 post.listCreator 给的字段造一条候选。不联网。
+
+        `extra` 里刻意**不放**详情才知道的键：`partial` 行落库走 `json_patch`，
+        而补丁里的 null 是「删掉这个键」，写进去就会把上一轮取到的媒体清单抹掉。
+        """
+        post_id = str(post["id"])
+        cover = post.get("cover") if isinstance(post.get("cover"), dict) else {}
+        user = post.get("user") if isinstance(post.get("user"), dict) else {}
+        return FollowCandidate(
+            provider=self.provider,
+            external_id=post_id,
+            title=plain_text(str(post.get("title") or "")) or f"FANBOX 帖子 {post_id}",
+            url=f"https://{creator}.fanbox.cc/posts/{post_id}",
+            thumb_url=str(cover.get("url")) if cover.get("url") else None,
+            published_at=_iso_from_text(post.get("publishedDatetime")),
+            author=plain_text(str(user.get("name") or "")),
+            summary=plain_text(str(post.get("excerpt") or "")),
+            group_hint=f"fanbox:{post_id}",
+            partial=True,
+            extra={"fee_required": 0, "official": True},
+        )
+
+    def _enrich_one(self, candidate: FollowCandidate) -> FollowCandidate:
+        # 创作者 id 从候选自己的地址推回来，不额外存进 metadata：那是同一个事实
+        # 的第二份副本，而 `url` 本来就是 `https://<creator>.fanbox.cc/posts/<id>`。
+        host = str(urllib.parse.urlsplit(str(candidate.url or "")).hostname or "")
+        try:
+            detail = self._post_detail(str(candidate.external_id), host.split(".")[0])
+        except FollowSourceError as error:
+            # FANBOX 会把单篇 post.info 临时换成 Cloudflare 验证页。列表本身仍是
+            # 可信的公开更新：保留卡片、标明媒体未取得，并留着 `partial` 让下一轮
+            # 再试——不能让一篇详情失败拖垮整个作者来源，也不能就此当作已补齐。
+            return replace(candidate, extra={**candidate.extra,
+                                             "media_error": str(error)})
+        links = detail["links"]
+        direct_media = detail["media_items"]
+        gofile_media = self._gofile_media(
+            links, labels=folder_labels(str(detail.get("summary") or "")))
+        media_items = tuple(direct_media) + gofile_media
+        return replace(
+            candidate,
+            partial=False,
+            # 正文里的首图比列表封面准：封面是作者选的展示图，不一定是这篇的内容。
+            thumb_url=(str(direct_media[0].get("thumb_url")
+                           or direct_media[0].get("url"))
+                       if direct_media else candidate.thumb_url),
+            summary=detail["summary"] or candidate.summary,
+            extra={**candidate.extra, "links": links, "media_items": media_items,
+                   "media_error": None,
+                   "post_type": detail.get("post_type"),
+                   "image_count": detail.get("image_count", 0),
+                   "video_count": detail.get("video_count", 0),
+                   "file_count": detail.get("file_count", 0),
+                   "gofile_video_count": sum(
+                       item.get("media_kind") == "video" for item in gofile_media)},
+        )
 
     def _post_detail(self, post_id: str, creator: str) -> dict[str, object]:
         """公开详情补全正文外链和按正文顺序排列的多图。"""
@@ -1661,6 +2053,27 @@ class SubscribeStarConnector(_BaseConnector):
     semantics = "work"
     HOSTS = frozenset({"subscribestar.adult", "subscribestar.com"})
     _SLUG_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
+
+    #: 这些首段路径是站点自己的功能页，不是创作者。
+    _RESERVED = frozenset({"posts", "search", "login", "signup"})
+
+    @classmethod
+    def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
+                  host: str) -> "ParsedSource":
+        matched = _DIRECT_CREATOR_RE.match(parsed.path or "/")
+        if not matched or matched.group(1) in cls._RESERVED:
+            raise FollowSourceError(
+                "SubscribeStar 的链接要指向创作者主页，形如 "
+                "https://subscribestar.adult/creator")
+        slug = matched.group(1)
+        # ref 带上主机名：`.adult` 与 `.com` 是两个站，同名创作者不一定是一个人。
+        return ParsedSource("subscribestar", f"{host}/{slug}",
+                            f"https://{host}/{slug}", slug, "work")
+
+    @classmethod
+    def profile_handle(cls, ref: str) -> str:
+        # ref 带着站点主机名（`subscribestar.adult/initiala`），手柄只是最后那截。
+        return str(ref or "").strip().rsplit("/", 1)[-1]
 
     @classmethod
     def _split_ref(cls, ref: str) -> tuple[str, str]:
@@ -1730,6 +2143,36 @@ class PatreonConnector(_BaseConnector):
     semantics = "work"
     _VANITY_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
     _POST_RE = re.compile(r"/posts/(?:[^/?#]*-)?(\d{4,})(?:[/?#]|$)")
+
+    #: 这些首段路径是站点自己的功能页，不是创作者短名。
+    _RESERVED = frozenset({"posts", "join", "login", "signup", "home", "explore"})
+
+    @classmethod
+    def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
+                  host: str) -> "ParsedSource":
+        path = parsed.path or "/"
+        user_id = urllib.parse.parse_qs(parsed.query).get("u", [""])[0]
+        if path.rstrip("/") == "/user" and user_id.isdigit():
+            return ParsedSource("patreon", f"user/{user_id}",
+                                f"https://www.patreon.com/user?u={user_id}",
+                                f"Patreon {user_id}", "work")
+        parts = [part for part in path.split("/") if part]
+        if parts and parts[0] == "cw":
+            parts = parts[1:]
+        if not parts or parts[0].lower() in cls._RESERVED:
+            raise FollowSourceError(
+                "Patreon 的链接要指向创作者主页，形如 https://patreon.com/cw/creator")
+        vanity = parts[0]
+        return ParsedSource("patreon", vanity,
+                            f"https://www.patreon.com/cw/{vanity}", vanity, "work")
+
+    @classmethod
+    def profile_handle(cls, ref: str) -> str:
+        value = str(ref or "").strip().strip("/")
+        if value.startswith("user/") or value.isdigit():
+            # 数字用户 id 页没有短名，`user/12345` 不是作者的名字。
+            return ""
+        return value.rsplit("/", 1)[-1]
 
     def _url(self, ref: str) -> str:
         value = str(ref or "").strip()
@@ -1801,68 +2244,23 @@ class SimpCityConnector(_BaseConnector):
         "simpcity.cr 由 DDoS-Guard 的浏览器质询保护；Peach 不绕机器人验证。"
         "要接入需要你在浏览器里通过质询后提供会话 cookie，或改用其他来源。")
 
+    @classmethod
+    def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
+                  host: str) -> "ParsedSource":
+        # 整站被质询挡着，登记下来也抓不到；当场说原因比留一条死来源好。
+        raise FollowSourceError(cls.blocked_reason)
+
     def fetch(self, ref: str, *, etag: str | None = None,
               last_modified: str | None = None, page: int = 0) -> SourceFetch:
         raise FollowSourceError(self.blocked_reason)
 
 
-@dataclass(frozen=True)
-class ParsedSource:
-    """从一条粘进来的链接认出来的订阅。"""
-
-    provider: str
-    ref: str
-    url: str
-    label: str
-    semantics: str
-
-    @property
-    def evidence(self) -> str:
-        return "链接直接指明"
-
-
-#: 每个来源的条目语义：`work` 是每条一个独立作品，`release` 是同一作品的历次发布。
-_SEMANTICS = follow_providers.semantics()
-
-_KEMONO_HOSTS = {"kemono.cr": "kemono", "coomer.st": "coomer", "pawchive.pw": "pawchive"}
-_KEMONO_PATH_RE = re.compile(r"^/([a-z0-9_\-]{1,32})/user/([A-Za-z0-9_\-.]{1,64})")
-_R34V_PATH_RE = re.compile(r"^/models/([a-z0-9][a-z0-9_\-]{0,80})")
-_THREAD_PATH_RE = re.compile(r"^/threads/(?:[^/]*?\.)?(\d{1,12})")
-_DIRECT_CREATOR_RE = re.compile(r"^/([A-Za-z0-9_-]{1,80})(?:/|$)")
-
-
-def canonical_source_ref(provider: str, ref: str) -> str:
-    """Return the provider's stable source identity.
-
-    Most provider ids are case-sensitive opaque values.  rule34.xxx tags are not:
-    the API returns the same feed for ``LazyProcrastinator`` and
-    ``lazyprocrastinator``.  Keeping the pasted spelling in the unique key therefore
-    creates duplicate subscriptions when the same author is added in two batches.
-    """
-    value = str(ref or "").strip()
-    return value.casefold() if provider in {"rule34xxx", "rule34paheal"} else value
-
-
-#: 线程 slug 里从这个 token 起就不是作品名了：f95 的惯例是
-#: `<作品名>-<发布日期>-<作者手柄>`，日期之后全是元数据。
-_SLUG_TAIL_RE = re.compile(r"^(?:19|20)\d{2}$|^v?\d+(?:\.\d+)+[a-z]?$")
-
-
-def _slug_label(slug: str) -> str:
-    words = [word for word in re.split(r"[-_]+", slug) if word]
-    kept: list[str] = []
-    for word in words:
-        if kept and _SLUG_TAIL_RE.match(word):
-            break
-        kept.append(word)
-    return " ".join(kept).strip() or re.sub(r"[-_]+", " ", slug).strip() or slug
-
-
 def parse_source_url(raw_url: str) -> ParsedSource:
     """把一条来源链接认成可登记的订阅。
 
-    只做纯解析，不联网。认不出来就抛 `FollowSourceError` 并说清楚支持哪些形状——
-    与其静默登记一个永远抓不到东西的来源，不如当场说不认识。
+    只做纯解析，不联网。这里只管链接本身是否合法、以及这个主机属于哪个站；每个站
+    的 URL 形状归它自己的连接器（`parse_url`）。认不出来就抛 `FollowSourceError`
+    并说清楚支持哪些形状——与其静默登记一个永远抓不到东西的来源，不如当场说不认识。
     """
     text = (raw_url or "").strip()
     if not text:
@@ -1877,141 +2275,73 @@ def parse_source_url(raw_url: str) -> ParsedSource:
         raise FollowSourceError("只接受 http(s) 链接")
     if parsed.username is not None or parsed.password is not None:
         raise FollowSourceError("链接里不能带账号密码")
-    host = parsed.hostname.lower()
-    bare = host[4:] if host.startswith("www.") else host
-    path = parsed.path or "/"
+    host = parsed.hostname.lower().removeprefix("www.")
 
-    provider = _KEMONO_HOSTS.get(bare)
-    if provider:
-        matched = _KEMONO_PATH_RE.match(path)
-        if not matched:
-            raise FollowSourceError(
-                f"{bare} 的链接要指向某个创作者，形如 "
-                f"https://{bare}/fanbox/user/30917150")
-        service, user = matched.group(1), matched.group(2)
-        return ParsedSource(provider, f"{service}/{user}",
-                            f"https://{bare}/{service}/user/{user}",
-                            f"{user} · {service}", "work")
+    provider = follow_providers.provider_for_host(host)
+    factory = CONNECTORS.get(provider)
+    if factory is None:
+        raise FollowSourceError(
+            f"不认识 {host}。当前支持 " + "、".join(sorted(_URL_HOSTS)) + "。")
+    return factory.parse_url(provider, parsed, host)
 
-    if bare == "fanbox.cc" or bare.endswith(".fanbox.cc"):
-        if bare.endswith(".fanbox.cc") and bare != "www.fanbox.cc":
-            creator = bare.removesuffix(".fanbox.cc")
-        else:
-            matched = re.match(r"^/@([A-Za-z0-9_-]{1,64})(?:/|$)", path)
-            creator = matched.group(1) if matched else ""
-        if not creator:
-            raise FollowSourceError(
-                "FANBOX 的链接要指向创作者主页，形如 https://creator.fanbox.cc/")
-        return ParsedSource("fanbox", creator, f"https://{creator}.fanbox.cc/",
-                            creator, "work")
 
-    if bare in SubscribeStarConnector.HOSTS:
-        matched = _DIRECT_CREATOR_RE.match(path)
-        if not matched or matched.group(1) in {"posts", "search", "login", "signup"}:
-            raise FollowSourceError(
-                "SubscribeStar 的链接要指向创作者主页，形如 "
-                "https://subscribestar.adult/creator")
-        slug = matched.group(1)
-        return ParsedSource("subscribestar", f"{bare}/{slug}",
-                            f"https://{bare}/{slug}", slug, "work")
-
-    if bare == "patreon.com":
-        user_id = urllib.parse.parse_qs(parsed.query).get("u", [""])[0]
-        if path.rstrip("/") == "/user" and user_id.isdigit():
-            return ParsedSource("patreon", f"user/{user_id}",
-                                f"https://www.patreon.com/user?u={user_id}",
-                                f"Patreon {user_id}", "work")
-        parts = [part for part in path.split("/") if part]
-        if parts and parts[0] == "cw":
-            parts = parts[1:]
-        reserved = {"posts", "join", "login", "signup", "home", "explore"}
-        if not parts or parts[0].lower() in reserved:
-            raise FollowSourceError(
-                "Patreon 的链接要指向创作者主页，形如 https://patreon.com/cw/creator")
-        vanity = parts[0]
-        return ParsedSource("patreon", vanity,
-                            f"https://www.patreon.com/cw/{vanity}", vanity, "work")
-
-    if bare == "rule34video.com":
-        matched = _R34V_PATH_RE.match(path)
-        if not matched:
-            raise FollowSourceError(
-                "rule34video 的链接要指向作者页，形如 "
-                "https://rule34video.com/models/lazyprocrastinator/")
-        slug = matched.group(1)
-        return ParsedSource("rule34video", slug,
-                            f"https://rule34video.com/models/{slug}/",
-                            _slug_label(slug), "work")
-
-    if bare in ("rule34.xxx", "api.rule34.xxx"):
-        tags = canonical_source_ref(
-            "rule34xxx",
-            urllib.parse.parse_qs(parsed.query).get("tags", [""])[0],
-        )
-        if not tags:
-            raise FollowSourceError(
-                "rule34.xxx 的链接要带标签，形如 "
-                "https://rule34.xxx/index.php?page=post&s=list&tags=lazyprocrastinator")
-        return ParsedSource("rule34xxx", tags,
-                            "https://rule34.xxx/index.php?page=post&s=list"
-                            f"&tags={urllib.parse.quote(tags)}",
-                            _slug_label(tags), "work")
-
-    if bare == "rule34.paheal.net":
-        tag = urllib.parse.parse_qs(parsed.fragment).get("search", [""])[0]
-        if not tag:
-            matched = re.match(r"^/post/list/([^/]+)/\d+$", path)
-            tag = urllib.parse.unquote(matched.group(1)) if matched else ""
-        tag = canonical_source_ref("rule34paheal", tag)
-        if not tag:
-            raise FollowSourceError(
-                "rule34.paheal 的链接要带搜索标签，形如 "
-                "https://rule34.paheal.net/post/view/7428820#search=InitialA")
-        encoded = urllib.parse.quote(tag, safe="()_")
-        return ParsedSource("rule34paheal", tag,
-                            f"https://rule34.paheal.net/post/list/{encoded}/1",
-                            _slug_label(tag), "work")
-
-    if bare == "f95zone.to":
-        matched = _THREAD_PATH_RE.match(path)
-        if not matched:
-            raise FollowSourceError(
-                "f95zone 的链接要指向一个线程，形如 "
-                "https://f95zone.to/threads/xxx.50685/")
-        thread = matched.group(1)
-        slug = path.split("/threads/", 1)[1].rsplit(".", 1)[0] if "." in path else ""
-        return ParsedSource("f95zone", thread,
-                            f"https://f95zone.to/threads/{thread}/",
-                            _slug_label(slug) or f"线程 {thread}", "release")
-
-    if bare == "simpcity.cr":
-        raise FollowSourceError(SimpCityConnector.blocked_reason)
-
-    raise FollowSourceError(
-        f"不认识 {bare}。当前支持 FANBOX、Patreon、SubscribeStar，"
-        "kemono.cr、coomer.st、pawchive.pw 的创作者页，rule34video.com 的作者页，"
-        "rule34.xxx 与 rule34.paheal.net 的标签页，以及 f95zone.to 的线程。")
-
+#: 全部站点连接器。来源键由每个类自己声明，所以 kemono 系三站不再在映射里把
+#: 同一个类写三遍——那份重复和 `KemonoConnector.HOSTS` 是同一件事的两份手写。
+_CONNECTOR_CLASSES: tuple[type, ...] = (
+    FanboxConnector, PatreonConnector, SubscribeStarConnector, KemonoConnector,
+    Rule34VideoConnector, Rule34XxxConnector, Rule34PahealConnector,
+    F95ZoneConnector, SimpCityConnector,
+)
 
 CONNECTORS: dict[str, type] = {
-    "fanbox": FanboxConnector,
-    "patreon": PatreonConnector,
-    "subscribestar": SubscribeStarConnector,
-    "kemono": KemonoConnector,
-    "coomer": KemonoConnector,
-    "pawchive": KemonoConnector,
-    "rule34video": Rule34VideoConnector,
-    "rule34xxx": Rule34XxxConnector,
-    "rule34paheal": Rule34PahealConnector,
-    "f95zone": F95ZoneConnector,
-    "simpcity": SimpCityConnector,
+    key: factory for factory in _CONNECTOR_CLASSES for key in factory.provider_keys()
 }
+
+
+def display_thumb_url(item) -> str | None:
+    """一条已入库的追更条目现在该用哪个缩略图 URL。
+
+    分派到该站自己的连接器：「这个站的缩略图 URL 长什么样」是站点知识，属于连接器，
+    不属于 Web 层。没登记的 provider 照原样用。
+    """
+    factory = CONNECTORS.get(str(item.provider or ""))
+    if factory is None:
+        return str(item.thumb_url or "") or None
+    return factory.display_thumb_url(item)
+
+
+def is_history_end_error(provider: str, message: str) -> bool:
+    """一句已落盘的错误文本其实是「往回翻到尽头」吗？
+
+    判据是各连接器声明的 `HISTORY_END_STATUSES`，和翻页时现场判定的用同一份声明。
+    """
+    factory = CONNECTORS.get(str(provider or ""))
+    return factory is not None and factory.is_history_end_error(message)
+
+
+def enrichment_mark(provider: str) -> str:
+    """这个来源第二阶段补齐之后 ledger 上哪一处会有值；没有第二阶段就是空串。
+
+    调用方用它决定要不要去 ledger 里算跳过集合，以及按哪一列算。
+    """
+    factory = CONNECTORS.get(str(provider or ""))
+    return str(getattr(factory, "ENRICHED_MARK", "") or "") if factory else ""
+
+
+def official_profile_handle(provider: str, ref: str) -> str:
+    """这条来源的 ref 里那个可信的作者手柄，没有就返回空串。
+
+    分派到该站自己的连接器：ref 的形状是站点知识。
+    """
+    factory = CONNECTORS.get(str(provider or ""))
+    return factory.profile_handle(ref) if factory is not None else ""
 
 
 def build_connector(provider: str, **kwargs) -> FollowConnector:
     factory = CONNECTORS.get(provider)
     if factory is None:
         raise FollowSourceError(f"未知的追更来源：{provider}")
-    if factory is KemonoConnector:
-        return KemonoConnector(provider=provider, **kwargs)
+    # 服务多个来源键的连接器（kemono 系）必须知道自己这次代表哪个站。
+    if len(factory.provider_keys()) > 1:
+        return factory(provider=provider, **kwargs)
     return factory(**kwargs)

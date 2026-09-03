@@ -5,13 +5,14 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 
 # Peach Web UI 复用门槛
 
-最后复核：2026-09-01
+最后复核：2026-09-04
 
 ## 开工顺序
 
 1. 读取相关页面、`web/js/ui-components.js`、`web/app.css` 与 `tests/test_web_ui.py`，先找现成控件、token 和行为。
 2. 外部产品被称为参考时同时执行 `peach-reference-evidence`；没有当前可复现证据就写 `未取得`，不补动画、间距或交互猜测。
-3. 新控件先检查 `docs/reference-snapshots/vercel-geist-controls-measured.md`、`vercel-geist-semantics-measured.md`、`vercel-geist-note-progress-switch-analytics.md` 与 `vercel-geist-command-search-loading.md`。
+3. 视觉与交互先过 `docs/reference-snapshots/vercel-web-interface-guidelines.md` 的 Focus States、Forms、Animation、Content 四节，以及 `vercel-report-design.md`（即 `vercel.com/design.md`）的「Reject generated-design reflexes」；第三方逆向测量的 DESIGN.md（如 design-bites）不作证据。
+4. 新控件先检查 `docs/reference-snapshots/vercel-geist-controls-measured.md`、`vercel-geist-semantics-measured.md`、`vercel-geist-note-progress-switch-analytics.md` 与 `vercel-geist-command-search-loading.md`。
 
 ## 组件选择
 
@@ -40,14 +41,23 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 
 - 优先扩展 `web/js/ui-components.js`，不要为同一语义复制一次性 class 和模板。
 - 颜色、字号、圆角、浮层层级只用 `:root` 已有 token；新 token 必须证明现有词汇无法表达。
+- 字重只有 400／500／600 三档，标题也是 600；圆角只用 `--badge-radius`／`--control-radius`／`--surface-radius`／`--floating-radius`／`--pill-radius` 加 `50%` 与 `0`，带边框容器里的头尾条用 `calc(… - 1px)` 保持同心。两者的字面值由 `tests/test_web_ui.py` 拒绝，归属判据见 `:root` 注释。
+- 单色优先：`--tungsten` 只给焦点环、链接、进度／数据与 Toggle 开态。主动作用 `--ink` 底 `--ground` 字且每屏最多一个。标题悬停下划线不变蓝，计数徽章中性灰。其它选择器引用 `--tungsten` 由 `tests/test_web_ui.py` 拒绝；实测见 `vercel-geist-semantics-measured.md`「选中态与开关色」「Button 全变体与状态」。
+- 选中态只有填充：一律 `--hover` 底 `--ink` 字，不加边框、不加 `inset` 一圈线、不加字重（Geist Switch／Tabs 的类名里三样都没有）。填充既然专属选中，**同一排横向**互斥选项的未选中项悬停就只提文字色到 `--ink`；没有选中态的按钮和没有并排邻居的孤立开关悬停照旧抬填充。侧栏导航（`.edge`／`.dnav`）分工相反：实测 Geist 左栏是悬停抬填充、当前项握着文字与图标色，别把横排那条推广过去。清单见同一份快照的「选中态与它的悬停」和「侧栏导航是例外」。
+- 按钮悬停只抬填充：次级到 `--hover`，主动作到 `color-mix(in srgb,var(--ink) 88%,var(--ground))`，边框与文字色都不动。禁用走 `--surface` 底、`--border-15` 边、`--muted` 字，不用 `opacity`；按下不加 `scale`。三条都有 Geist Button 源规则佐证。
+- `outline:0`／`outline:none` 只允许出现在同一规则给出替代焦点样式的地方（`box-shadow` 或子元素 outline），或输入框由带 `:focus-within` 的容器接管焦点时；reduced motion 由全局 `@media (prefers-reduced-motion:reduce)` 统一关闭，不逐处补。
 - Progress 必须有真实 `value/max`、可见单位与 `aria-valuemin/max/now`；分隔线放在完整指标（含进度条）之后。
 - Switch 必须共享 radio `name`、初始一个 `checked`、键盘可用；布尔状态继续使用 Toggle。
 - 菜单每项包含与入口相同的图标和文字，菜单内部滚动、`overscroll-behavior:contain`，不得把浏览器页面撑出滚动条。
+- 只读查询（搜索、筛选）不配提交按钮：回车即执行，忙态落在表单自己身上（`form[aria-busy]` 加前缀原位换 Spinner）。有副作用的提交必须有按钮，且回车同样要能提交。表单里除这个输入框外还有别的字段时浏览器不做隐式提交，回车要自己接管 `requestSubmit()` 并跳过 `isComposing`。判据与实测见 `docs/reference-snapshots/vercel-forms-submit-affordance.md`。
 - Spinner 只反馈用户直接触发的动作，触发器统一调用 `setActionBusy()`：写入 `aria-busy=true` 与 `aria-disabled=true`、视觉变灰、拦截重复触发，同时保持可聚焦；请求等待期不得再用原生 `disabled`，它只留给缺输入、无权限等动作确实不可执行的状态。未知时长的后台抓取使用 Loading Dots。整页或大区块首次取数使用 Skeleton 预留最终结构。Spinner／Loading Dots 保留可见状态文字；Skeleton 只保留给辅助技术的状态名，不另画「正在读取」文案。三者都尊重 reduced motion。
 - 用户写操作只在服务端终态成功后调用共享 `actionReceipt()` 发一条过去时 Toast；可由安全逆操作完整恢复的状态提供 8 秒“撤销”，永久删除、凭据、保存到账本等不伪造撤销。仅打开面板／菜单／Dialog 不算操作完成，不发 Toast；失败除短 Toast 外仍在原位置保留原因与重试入口。
 - 同一次页面进入只呈现一段等待态；深链启动与页面取数复用同一个 Skeleton，禁止 Spinner 再切换成 Loading Dots 或 Skeleton。
 - Skeleton 只覆盖真正等待的内容区；静态标题、导航和能同步得到的筛选控件立即显示。骨架必须复用最终容器的宽度、列数与对齐方式：卡片网格横向铺满，居中面板仍居中，不得用一列通用占位替代不同页面结构。
 - 关注来源标签先服从来源记录的类型：只有明确标为 `general` 的标签才能进入卡片、顶部筛选和在线标签页，`artist`／`character`／`copyright`／`metadata` 与未知类型不得靠词形猜成 `general`。通用词清理是第二道门槛，只处理已经确认的 `general`；详情可显示全部来源标签，并按真实类型着色。
+- 危险动作的悬停态一律 `--drop` 实底加白字。只描红边、红字的话，静止态和悬停态在暗色底上几乎一样亮，按下去之前看不出这是不可逆动作；带文字的销毁按钮全站一个写法，纯图标删除键不适用。Geist 的 error Button 同样是实心红填充，只是它静止态就红。实测见 `vercel-geist-controls-measured.md`。
+- 下拉框的用途用框内左侧 16px 前缀图标标明，不在同一行挂一个文字标签：Geist 的文字 Label 是块级、排在控件上方，行内并排那种写法它没有，而工具行没有上方空间。无障碍名称改由 `aria-label` 承担。
+- 播放器控制条的窄屏折叠按播放器自身宽度判定（`ResizeObserver` 观察 `player.el()`），不用媒体查询：同一个视口下影院模式和普通视图的播放器宽度差一大截，用视口判据会在影院模式下白折叠、在普通视图下继续超框。门槛与提示外观见 `youtube-player-controls-user-screenshot.md`。
 - 分页末尾、空页和“没有更多内容”是中性终止状态，用可关闭 Note；只有需要恢复或处理的故障才能进入红色 error Note。
 - 弹层标题栏与滚动正文分层：标题分隔线属于卡片全宽，滚动条只属于正文。
 - 没有直接证据不得新增动效；参考产品无动画的菜单保持无动画。
@@ -62,4 +72,6 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 1. 为语义、DOM、ARIA、复用模块和响应式规则补页面源测试；数据语义变更另补 API／数据层测试。
 2. Windows 只从隔离 worktree 根运行 `& .\scripts\test.ps1`；本轮跨多个页面或改规范时跑默认 `full`。
 3. 在本地预览检查桌面与 390×844：页面宽度不大于视口、弹层不越界、菜单内部滚动、键盘 focus 可见、控制台无错误。
-4. 按 `peach-surfaces` 报告数据层、API、页面、契约、测试与文档各表面；未部署不得称为生产已生效。
+4. 接口字段、sidecar 取值和锚点算术走 Python 严格 HTTPS（项目 CA 加 `ProxyHandler({})`）核对，不进浏览器。浏览器只留给布局后才成立的事实：`getComputedStyle`、真实裁切几何、hover／focus 态和实际像素；用读源码顶替这几样是降精度。
+5. 一轮验收要读的页面状态先列全，再合成一次 `javascript_tool` 调用取回。私有网络主机（`.local` 与 `10.`／`172.16-31.`／`192.168.` 段的局域网 IP 归同一类）在桌面应用里只能逐次授权，站点级放行只给只读工具，点击与执行 JS 拿不到常驻许可，每多发一次调用就多一次弹窗。
+6. 按 `peach-surfaces` 报告数据层、API、页面、契约、测试与文档各表面；未部署不得称为生产已生效。

@@ -16,11 +16,22 @@ r"""
 默认本地自托管。扫描只读元数据；在线关注同步是正式能力，按来源单独控频和授权。
 """
 import os, sys, csv, json, sqlite3, time
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 from peach.stash import StashClient, StashError
 from peach.entities import canonicalize_entity_name, upsert_asset_entity
+from peach.config import DATABASE_PATH
+from peach.platform import declared_root, location_of, location_roots
 
-DB = os.path.expandvars(r"R:\peach-data\database\ledger.db")
+# 账本位置只有 `peach.config` 一处判据，这里不写死 `R:\peach-data\...` 之类的盘上
+# 路径：数据根搬走时写死的路径不会报「配置过时」，它只会安静地建一个空库。
+DB = str(DATABASE_PATH)
 VIDEO = {".mp4", ".m4v", ".mkv", ".avi", ".wmv", ".mov", ".ts", ".flv", ".rmvb", ".mpg", ".m2ts"}
 IMAGE = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
 AUDIO = {".mp3", ".flac", ".wav", ".m4a", ".ogg", ".opus"}
@@ -150,7 +161,28 @@ def cmd_init():
     print(f"✓ 建库完成 {DB}")
 
 
+def check_scan_target(location, root):
+    """扫描根必须落在这个来源的声明根内，否则拒绝。
+
+    `asset.location` 是挂载点 ID，`[media.locations]` 给出它在账本里的声明根。
+    这两者对不上时写进去的行既翻译不出本机路径、也通不过授权根，而且要等到有人
+    点开那个资产才会发现。ADR-0023 第 2 阶段把这一条从口头约定变成写入侧门槛。
+    """
+    declared = declared_root(location)
+    if declared is None:
+        known = "、".join(sorted(location_roots())) or "（设置文件里一个都没有）"
+        sys.exit(f"✗ 未声明的来源 {location!r}；[media.locations] 里已知：{known}")
+    actual = location_of(root)
+    if actual != location:
+        sys.exit(
+            f"✗ 扫描根与来源对不上：{location} 的声明根是 {declared}，"
+            f"但要扫的是 {root}"
+            + (f"（那是 {actual} 的地盘）" if actual else "（不在任何声明根下）")
+        )
+
+
 def cmd_scan(location, root):
+    check_scan_target(location, root)
     c = conn(); c.executescript(SCHEMA)
     now = time.strftime("%Y-%m-%d %H:%M:%S")
     t0 = time.time(); n = 0; tot = 0

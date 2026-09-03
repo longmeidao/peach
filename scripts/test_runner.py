@@ -18,9 +18,12 @@ SCOPES: dict[str, tuple[str, ...]] = {
                 "test_entity_merge.py", "test_fastapi_api.py", "test_migrations.py",
                 "test_review_mirror.py", "test_rm_ledger.py", "test_rm_web.py",
                 "test_entity_link_install.py", "test_web_links.py",
-                "test_link_marks.py",
+                "test_link_marks.py", "test_site_icons.py",
+                "test_studio_icon_variants.py",
                 "test_review_csv.py", "test_related.py",
-                "test_taste_history.py", "test_web_ui.py", "test_web_resource_sync.py",
+                "test_jav_code_domain.py",
+                "test_taste_history.py", "test_web_ui.py", "test_web_js.py",
+                "test_web_perf.py", "test_web_resource_sync.py",
                 "test_web_review.py", "test_web_settings.py"),
     "media": ("test_endcard.py", "test_fastapi_api.py", "test_jobs.py",
               "test_interaction.py", "test_media.py", "test_previews.py",
@@ -29,7 +32,8 @@ SCOPES: dict[str, tuple[str, ...]] = {
     "sync": ("test_sync*.py", "test_platform.py", "test_mount.py", "test_tray.py",
              "test_mdns.py", "test_netwatch.py", "test_certs.py",
              "test_review_mirror.py"),
-    "metadata": ("test_metadata*.py", "test_fc2*.py", "test_babepedia_match.py",
+    "metadata": ("test_metadata*.py", "test_genre_taxonomy.py", "test_fc2*.py",
+                 "test_babepedia_match.py",
                  "test_jav*.py", "test_code_creators.py", "test_logo_provider.py",
                  "test_avatar_provider.py", "test_face_detect.py", "test_performer*.py",
                  "test_social_avatar_harvest.py",
@@ -37,16 +41,28 @@ SCOPES: dict[str, tuple[str, ...]] = {
                  "test_duplicate_identity_merge.py", "test_entity_merge.py",
                  "test_stash_entity_import.py", "test_migrations.py",
                  "test_entity_link_install.py", "test_studio_site_harvest.py",
-                 "test_performer_link_harvest.py",
+                 "test_performer_link_harvest.py", "test_directory_link_harvest.py",
+                 "test_studio_name_localization.py", "test_studio_icon_variants.py",
                  "test_link_rediscovery.py"),
-    "tooling": ("test_scripts.py", "test_agent_worktree.py", "test_dependency_policy.py",
+    "tooling": ("test_scripts.py", "test_cli.py", "test_script_policy.py",
+                "test_agent_worktree.py", "test_dependency_policy.py",
                 "test_restart_windows_tray.py",
                 "test_versioning.py",
                 "test_windows_update.py", "test_certs.py", "test_config.py",
+                "test_fsutil.py",
                 "test_job_status.py", "test_jobs.py", "test_reference_updates.py",
                 "test_repo_hygiene.py",
-                "test_review_csv.py",
-                "test_subprocess_encoding.py", "test_module_layering.py"),
+                "test_review_csv.py", "test_jav_code_domain.py",
+                "test_subprocess_encoding.py", "test_module_layering.py",
+                "test_copy_final_state.py"),
+    # 前端 island 层（ADR-0022）。产物与源码的断言不需要 Node；vitest 那部分在没有
+    # npm 时自己跳过，所以这个域在任何机器上都能跑，`full` 也就自动包含它。
+    # `test_web_perf.py` 两个域都登记：压缩与 ETag 是 API 交付（catalog），
+    # 播放器按需加载的断言读 `web/app.js`（web），改任一侧都该被本域拦住。
+    # `test_copy_final_state.py` 两个域都登记：它扫全树，而界面字串是它最常拦到的
+    # 一面，改 `web/` 的人必须在本域就撞上它。
+    "web": ("test_frontend_build.py", "test_web_ui.py", "test_web_js.py",
+            "test_web_perf.py", "test_copy_final_state.py"),
 }
 
 SCOPE_TEST_IDS: dict[str, tuple[str, ...]] = {

@@ -20,6 +20,7 @@ if HAS_DEPS:
     import httpx
     from peach import api as api_module
     from peach.api import create_app
+    from peach.follow_covers import PLACEHOLDER_CONTENT_TYPE
     from peach.config import PeachSettings
 
 
@@ -102,6 +103,23 @@ def minimal_mp4(*, timescale: int, sample_delta: int, samples: int, keyframe_eve
             + _box(b"mdat", bytes(64)))
 
 
+class MediaCacheHeaderTests(unittest.TestCase):
+    """生成物的缓存时长只许在一处写死。
+
+    这条断言扫的是媒体路由真正所在的模块。钉死扫 `api.py` 的话，媒体路由拆到
+    `routes_media.py` 之后它会永远绿——那里已经一条媒体路由都没有了。门槛跟着
+    实现走，不跟着文件名走。
+    """
+
+    def test_no_media_endpoint_hardcodes_a_day(self):
+        source = (ROOT / "src" / "peach" / "routes_media.py").read_text(encoding="utf-8")
+        self.assertIn("MEDIA_CACHE_SECONDS", source, "媒体路由不在这个文件里了，门槛已空转")
+        self.assertNotIn("max-age=86400", source, "媒体端点不该再写死一天")
+        # `immutable` 只许出现在 /vendor/ 那条中间件里，它留在 api.py。这里不查
+        # 字面量：常量上方那段注释正是在解释「为什么不加 immutable」。
+        self.assertNotIn('"public, max-age=31536000, immutable"', source)
+
+
 @unittest.skipUnless(HAS_DEPS, "FastAPI/httpx 尚未安装")
 class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -123,7 +141,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.taste_import_root = self.root / "sources" / "taste-history" / "imports"
         self.taste_output_root = self.root / "review" / "taste-history"
         self.taste_manifest = self.root / "state" / "taste-history" / "manifest.json"
-        # 复核候选必须来自临时目录：早先版本直接读真实的 R:\peach-data\generated。
+        # 复核候选必须来自临时目录，不去读真实的 R:\peach-data\generated。
         self.candidate_root = self.root / "generated"
         self.candidate_root.mkdir()
         self.endcard_frame = (
@@ -156,6 +174,11 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         # 前端已拆成 ES module，`/js/{name}` 从页面同级的 js/ 取文件。
         (self.root / "js").mkdir()
         (self.root / "js" / "core.js").write_text("export const ok = 1;", encoding="utf-8")
+        # island 产物（ADR-0022）：构建结果提交进 Git，运行时由 `/dist/{name}` 提供。
+        (self.root / "dist").mkdir()
+        (self.root / "dist" / "peach-ui.js").write_text(
+            "export const mountIsland = () => {};", encoding="utf-8")
+        (self.root / "dist" / "peach-ui.css").write_text(".island{}", encoding="utf-8")
         con = sqlite3.connect(self.db)
         con.executescript(BASE_SCHEMA)
         con.execute(
@@ -265,6 +288,25 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(body["detail"], "写入端是 mac")
             self.assertIn("只能浏览", body["message"])
 
+    async def test_replication_off_runs_as_a_standalone_writer(self):
+        """`replication.enabled = false` 时没有 sync 对象（ADR-0023 第 3 阶段）。
+
+        `ledger_sync` 必须是明确的 `disabled`，不能冒充 `writer`：复核镜像那一侧
+        正是按这个字段判断对面是不是写入端的。写接口照常开——没有第二台机器就没有
+        「读者」，只读闸门本来就不该生效。
+        """
+        app = create_app(self.settings, None)
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            health = (await client.get("/healthz")).json()
+            self.assertEqual(health["ledger_sync"], "disabled")
+            self.assertFalse(health["ledger_read_only"])
+            allowed = await client.post(
+                "/api/feedback?t=secret", json={"id": 1, "kind": "dispose"},
+            )
+            self.assertNotEqual(allowed.status_code, 409)
+
     async def test_peach_logo_is_served_as_png(self):
         response = await self.client.get("/peach-logo.png")
         self.assertEqual(response.status_code, 200)
@@ -280,7 +322,9 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         served = await self.client.get("/js/core.js?t=secret")
         self.assertEqual(served.status_code, 200)
         self.assertTrue(served.headers["content-type"].startswith("text/javascript"))
-        self.assertEqual(served.headers["cache-control"], "no-store")
+        # 页面资产走 ETag 复验：更新语义与 no-store 相同（每次都回源问），但没变时
+        # 回 304 零传输。完整契约在 tests/test_web_perf.py，这里只钉住用的是哪一档。
+        self.assertEqual(served.headers["cache-control"], "no-cache")
         self.assertIn("export", served.text, "取回的必须是真的 module")
 
         for escape in ("..%2f..%2fapp.js", "..%5c..%5csecrets.json", "sub%2fmod.js",
@@ -292,10 +336,32 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         unauthorized = await self.client.get("/js/core.js")
         self.assertEqual(unauthorized.status_code, 401)
 
+    async def test_island_bundle_is_served_with_the_same_guards_as_the_modules(self):
+        """`/dist/{name}` 提供 `frontend/` 的构建产物（ADR-0022）。
+
+        产物文件名不带内容哈希，`app.js` 直接 `import('/dist/peach-ui.js')`，所以这条
+        路由的口令、缓存与名字校验必须和 `/js/` 完全一致，不能因为「是构建产物」放宽。
+        """
+        for name, media in (("peach-ui.js", "text/javascript"), ("peach-ui.css", "text/css")):
+            served = await self.client.get(f"/dist/{name}?t=secret")
+            self.assertEqual(served.status_code, 200, name)
+            self.assertTrue(served.headers["content-type"].startswith(media), name)
+            self.assertEqual(served.headers["cache-control"], "no-cache", name)
+
+        for escape in ("..%2f..%2fapp.js", "..%5c..%5csecrets.json", "sub%2fpeach-ui.js",
+                       "..%2fapp.js", "peach-ui.js.map", "peach-ui.mjs", "Peach-UI.js"):
+            denied = await self.client.get(f"/dist/{escape}?t=secret")
+            self.assertEqual(denied.status_code, 404, f"{escape} 不该被提供")
+
+        unauthorized = await self.client.get("/dist/peach-ui.js")
+        self.assertEqual(unauthorized.status_code, 401)
+
     async def test_follow_avatar_redirects_only_after_the_official_resolver(self):
         denied = await self.client.get("/follow-avatar?service=fanbox&id=30917150")
         self.assertEqual(denied.status_code, 401)
-        with patch("peach.api.resolve_official_avatar",
+        # patch 打在真正 import 它的模块上。`/follow-avatar` 现在住在 routes_media，
+        # 打在 `peach.api` 上会静默失效——那个名字已经不在那里了。
+        with patch("peach.routes_media.resolve_official_avatar",
                    return_value="https://pixiv.pximg.net/icon.jpeg") as resolver:
             response = await self.client.get(
                 "/follow-avatar?t=secret&service=fanbox&id=30917150")
@@ -655,10 +721,10 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_unexpected_contract_errors_are_logged_but_not_exposed(self):
         with patch(
-            "peach.api.web_contract.dispatch_api_get",
+            "peach.routes_api.web_contract.dispatch_api_get",
             side_effect=RuntimeError("private C:\\ledger.db detail"),
         ):
-            with self.assertLogs("peach.api", level="ERROR") as captured:
+            with self.assertLogs("peach.routes_api", level="ERROR") as captured:
                 response = await self.client.get("/api/items?t=secret")
         self.assertEqual(response.status_code, 500)
         self.assertEqual(response.json(), {"error": "internal server error"})
@@ -992,7 +1058,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("2B Camp [4K].webm", disposition)
         self.assertNotIn("img.kemono.cr", disposition)
 
-    async def test_follow_cover_serves_cached_frame_and_falls_back_to_source_thumb(self):
+    async def test_follow_cover_serves_cached_frame_and_degrades_to_a_placeholder(self):
         connection = sqlite3.connect(self.db)
         connection.executescript((ROOT / "migrations" / "0018_online_follow.sql").read_text(
             encoding="utf-8"))
@@ -1036,9 +1102,13 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         cover.fail = True
         fallback = await self.client.get(
             "/follow-cover?id=7&t=secret", follow_redirects=False)
-        self.assertEqual(fallback.status_code, 307)
-        self.assertEqual(fallback.headers["location"],
-                         "https://r34t.paheal.net/ab/cd/video")
+        # 生成失败回占位图，不再 302 到上游缩略图：这个端点存在的理由就是
+        # 不把上游主机和地址交回浏览器。
+        self.assertEqual(fallback.status_code, 404)
+        self.assertNotIn("location", fallback.headers)
+        self.assertNotIn("paheal", fallback.text)
+        self.assertEqual(fallback.headers["content-type"],
+                         PLACEHOLDER_CONTENT_TYPE)
 
     async def test_stream_session_cancel_is_authenticated_and_tombstoned(self):
         denied = await self.client.post("/api/stream-cancel?session=detail-1")
@@ -1250,7 +1320,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
     async def test_photo_detail_reveal_resolves_the_asset_id_on_the_server(self):
         source = self._seed_photo()
         headers = {"X-Token": "secret"}
-        with patch("peach.api.reveal_path", return_value=True) as reveal:
+        with patch("peach.routes_api.reveal_path", return_value=True) as reveal:
             response = await self.client.post(
                 "/api/reveal", headers=headers,
                 json={"id": 9, "path": "C:/client-must-not-control-this"},
@@ -1279,6 +1349,70 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         for path in ("/photo?id=9", "/photo-thumb?id=9"):
             response = await self.client.get(path)
             self.assertEqual(response.status_code, 401, path)
+
+
+@unittest.skipUnless(HAS_DEPS, "fastapi/httpx not installed")
+class UnconfiguredMachineTests(unittest.IsolatedAsyncioTestCase):
+    """还没跑过 `peach init` 的机器：服务照常起，页面告诉人下一步做什么。
+
+    「未配置」是显式状态，不是崩溃：数据目录不存在、数据库不存在、什么来源都没挂，
+    这些都不该让 `serve` 起不来——起不来的服务连提示都没法给。
+    """
+
+    async def asyncSetUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        missing = Path(self.tmp.name).resolve() / "nothing-here"
+        self.settings = PeachSettings(
+            configured=False,
+            db_path=missing / "database" / "ledger.db",
+            page_path=missing / "web" / "index.html",
+            vendor_path=missing / "web" / "vendor",
+            allowed_media_roots=(),
+            snapshot_root=missing / "snapshots",
+            legacy_snapshot_roots=(),
+            poster_root=missing / "posters", avatar_root=missing / "avatars",
+            logo_root=missing / "logos", cover_root=missing / "covers",
+            photo_root=missing / "photos", stream_root=missing / "stream",
+            ffmpeg_root=missing / "ffmpeg", transcode_root=missing / "transcodes",
+            candidate_root=missing, review_mirror_cache=missing / "review.json",
+            taste_history_store=missing / "history.sqlite",
+            taste_history_import_root=missing / "imports",
+            taste_history_output_root=missing / "taste",
+            taste_history_manifest=missing / "manifest.json",
+            follow_state_root=missing / "state",
+        )
+        self.app = create_app(self.settings)
+        self.client = httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=self.app), base_url="http://test")
+        self.addAsyncCleanup(self.client.aclose)
+
+    async def test_health_reports_the_unconfigured_state_instead_of_failing(self):
+        response = await self.client.get("/healthz")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body["ok"])
+        self.assertFalse(body["configured"])
+        self.assertEqual(body["db"], "missing")
+
+    async def test_the_page_tells_the_user_to_run_peach_init(self):
+        response = await self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("text/html", response.headers["content-type"])
+        self.assertIn("peach init", response.text)
+
+    async def test_deep_links_land_on_the_same_prompt(self):
+        # 前端路由全部落到 `index`，未配置时不该只有首页能看。
+        response = await self.client.get("/tags")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("peach init", response.text)
+
+    async def test_a_configured_machine_still_reports_true(self):
+        app = create_app(PeachSettings(configured=True, db_path=self.settings.db_path))
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            self.assertTrue((await client.get("/healthz")).json()["configured"])
 
 
 if __name__ == "__main__":

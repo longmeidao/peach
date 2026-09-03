@@ -30,6 +30,8 @@ LOGGER = logging.getLogger(__name__)
 CERT_DAYS = 397
 #: 快到期就提前重签，别等真的过期。
 RENEW_BEFORE_DAYS = 30
+#: 根证书十年有效期。它只在首次运行时生成一次，之后指纹不能变。
+CA_DAYS = 3650
 
 _SAN_DNS = re.compile(r"DNS:([^,\s]+)")
 _SAN_IP = re.compile(r"IP Address:([^,\s]+)")
@@ -149,6 +151,48 @@ def reissue(
         shutil.copy2(work / "peach.key", files.key)
         files.key.chmod(0o600)
     return files.cert
+
+
+def create_local_ca(files: CertificateFiles, days: int = CA_DAYS) -> Path:
+    """建一个本机 CA。**已经有 CA 就原样返回，绝不重建。**
+
+    参数与 `scripts/setup_local_tls.ps1` 里那套保持一致（3072 位、pathlen:0、只用于签发
+    证书）；换掉任何一项都会让已经装过信任的设备需要重新装一遍。
+    """
+    if files.ca_cert.is_file() and files.ca_key.is_file():
+        return files.ca_cert
+    files.ca_cert.parent.mkdir(parents=True, exist_ok=True)
+    _openssl("genrsa", "-out", str(files.ca_key), "3072")
+    files.ca_key.chmod(0o600)
+    _openssl("req", "-x509", "-new", "-sha256", "-key", str(files.ca_key),
+             "-out", str(files.ca_cert), "-days", str(days),
+             "-subj", "/CN=Peach Local CA/O=Peach",
+             "-addext", "basicConstraints=critical,CA:TRUE,pathlen:0",
+             "-addext", "keyUsage=critical,keyCertSign,cRLSign",
+             "-addext", "subjectKeyIdentifier=hash")
+    LOGGER.info("已生成本机 CA：%s", files.ca_cert)
+    return files.ca_cert
+
+
+def bootstrap_certificates(
+    tls_dir: Path, common_name: str, addresses: set[str] = frozenset(),
+    extra_names: set[str] = frozenset(),
+) -> CertificateFiles:
+    """首次运行用：CA 缺就建，服务器证书缺或没覆盖当前地址就签。
+
+    和 `ensure_certificate` 的分工是「谁负责 CA」：日常运行期只重签叶子证书（没有 CA
+    就什么都不做，绝不悄悄换根），只有 `peach init` 允许创建那个 CA。
+    """
+    files = CertificateFiles.under(tls_dir)
+    create_local_ca(files)
+    names = {common_name, "localhost"} | set(extra_names)
+    wanted = {"127.0.0.1"} | {
+        address for address in addresses
+        if address and not ipaddress.ip_address(address).is_loopback
+    }
+    if reissue_reason(files, names, wanted) is not None:
+        reissue(files, common_name, names, wanted)
+    return files
 
 
 def ensure_certificate(

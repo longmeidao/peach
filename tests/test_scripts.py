@@ -1,4 +1,6 @@
+import argparse
 import csv
+import hashlib
 import importlib.util
 import io
 import json
@@ -8,8 +10,10 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path, PureWindowsPath
+from types import SimpleNamespace
 from unittest import mock
 
+from peach import scripting
 from peach.migrations import upgrade
 from peach.classification import is_probable_mainstream_release, is_structural_creator
 
@@ -19,10 +23,22 @@ MIGRATIONS = ROOT / "migrations"
 
 
 def load_script(name: str):
+    """按路径加载 `scripts/<name>.py`。
+
+    执行前先登记进 `sys.modules`：`@dataclass` 处理注解时要按 `cls.__module__` 回查
+    模块，没登记就拿到 `None`，报出来的是 `'NoneType' object has no attribute
+    '__dict__'`——和脚本本身毫无关系。前缀不用 `test_`，否则加载 `agent_worktree`
+    会把真正的 tests/test_agent_worktree.py 从 `sys.modules` 里顶掉。
+    """
     path = ROOT / "scripts" / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(f"test_{name}", path)
+    spec = importlib.util.spec_from_file_location(f"peach_script_{name}", path)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(spec.name, None)
+        raise
     return module
 
 
@@ -39,6 +55,31 @@ class OperationalScriptTests(unittest.TestCase):
         cls.creator_tags = load_script("creator_tags")
         cls.creator_attributions = load_script("audit_creator_attributions")
         cls.rehome_unknown = load_script("rehome_unknown_jav")
+
+    def tmp_ledger(self) -> Path:
+        """一份只含 rule34xxx 追更条目的临时账本：一条已有类型、一条还没有。
+
+        临时目录先 `.resolve()`：CI runner 的临时目录都是别名（macOS `/var` 软链到
+        `/private/var`，Windows `RUNNER~1` 展开成 `runneradmin`），不 resolve 的路径
+        喂给被测代码只会在 CI 上红。
+        """
+        root = Path(tempfile.mkdtemp()).resolve()
+        database = root / "ledger.db"
+        connection = sqlite3.connect(database)
+        connection.executescript(
+            "CREATE TABLE follow_source(id INTEGER PRIMARY KEY, provider TEXT);"
+            "CREATE TABLE follow_item(id INTEGER PRIMARY KEY, source_id INTEGER,"
+            " external_id TEXT, url TEXT, metadata_json TEXT);")
+        connection.execute("INSERT INTO follow_source VALUES(1,'rule34xxx')")
+        connection.executemany(
+            "INSERT INTO follow_item VALUES(?,1,?,?,?)",
+            [(1, "18622796", "https://rule34.xxx/index.php?id=18622796",
+              json.dumps({"tag_types": {"nier": "copyright"}})),
+             (2, "18622794", "https://rule34.xxx/index.php?id=18622794",
+              json.dumps({"tag_types": {}}))])
+        connection.commit()
+        connection.close()
+        return database
 
     def test_import_has_no_filesystem_or_log_side_effect(self):
         self.assertIsNone(self.clean_names._logf)
@@ -65,40 +106,102 @@ class OperationalScriptTests(unittest.TestCase):
         source = (ROOT / "scripts" / "scrape_codes.py").read_text(encoding="utf-8")
         self.assertIn('if args.english_title_only and field != "title":', source)
 
-    def test_official_jav_tags_only_enter_the_reviewed_taxonomy(self):
-        category_map = self.scrape_codes.CATEGORY_MAP
-        self.assertEqual(category_map["Deep Throat"], "深喉")
-        self.assertEqual(category_map["4K"], "4K")
-        self.assertEqual(category_map["Digital Mosaic"], "有码")
-        self.assertEqual(category_map["Cowgirl"], "骑乘")
-        self.assertEqual(category_map["Foot Fetish"], "美腿")
-        self.assertEqual(category_map["Shaved Pussy"], "白虎")
-        self.assertNotIn("Featured Actress", category_map,
-                         "来源营销分类不是内容标签，不能因为官方给了就直接入库")
+    def test_unmapped_genres_are_written_out_instead_of_dropped(self):
+        source = (ROOT / "scripts" / "scrape_codes.py").read_text(encoding="utf-8")
+        # 未收录 genre 必须落盘。只要这条链断了，来源给过的值就会静默消失，
+        # 官方 tag 的缺口下一轮仍然查不出成因。
+        self.assertIn("unmapped_genres.setdefault", source)
+        self.assertIn("_write_unmapped(unmapped_path, unmapped_genres)", source)
+        self.assertNotIn("CATEGORY_MAP", source,
+                         "genre 映射只留 peach.genre_taxonomy 一份")
 
-    def test_javbus_japanese_genres_map_into_the_same_taxonomy(self):
-        """javbus/javdb 给日文类型词，r18dev 给英文；两套键共用一张表、一套值。
+    def test_reused_snapshots_are_re_checked_against_the_queried_code(self):
+        # 「复用上一轮成功记录」只看 result 在不在，就会把当初那次错配一路带下去。
+        import json as _json
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "dlgetchu.json"
+            path.write_text(_json.dumps({"result": {
+                "id": "33938", "content_id": "33938",
+                "source_url": "https://dl.getchu.com/i/item33938",
+                "genres": ["コスプレ一般"],
+            }}), encoding="utf-8")
+            self.assertIsNone(self.scrape_codes._read_snapshot(path, "ABW-220"))
+            path.write_text(_json.dumps({"result": {
+                "content_id": "118abw220", "genres": ["中出し"],
+            }}), encoding="utf-8")
+            self.assertEqual(
+                self.scrape_codes._read_snapshot(path, "ABW-220")["genres"], ["中出し"])
 
-        值必须落在既有分类词表内——标签是语义契约，不能靠抓取顺手扩词表。发行、
-        营销与规格分类一概不收，和既有的「`Featured Actress` 不入库」是同一条线。
+    def test_source_cools_down_only_after_repeated_failures_and_recovers(self):
+        """一次抖动不能决定后面几百个番号的命运。
+
+        2026-09-01 官方 tag 补抓实测：mgstage 中途超时一次，旧逻辑当场把它
+        「本批后续全部跳过」，剩下 122 个番号再也没被问过，dmm 丢了 150 个。
         """
-        category_map = self.scrape_codes.CATEGORY_MAP
-        self.assertEqual(category_map["中出し"], "中出内射")
-        self.assertEqual(category_map["パイパン"], "白虎")
-        self.assertEqual(category_map["女子校生"], "学生")
-        self.assertEqual(category_map["寝取り・寝取られ"], "绿帽NTR")
-        self.assertEqual(category_map["Gカップ"], "乳系")
-        for marketing in ("独占配信", "配信専用", "単体作品", "企画", "店長推薦作品",
-                          "ハイビジョン", "フルハイビジョン(FHD)", "1080p", "60fps",
-                          "4時間以上作品", "AV女優"):
-            self.assertNotIn(marketing, category_map,
-                             f"{marketing} 是发行/营销/规格分类，不是内容标签")
-        japanese = {key for key in category_map if not key.isascii()}
-        self.assertTrue(japanese)
-        self.assertEqual(
-            {category_map[key] for key in japanese} - {
-                category_map[key] for key in category_map if key.isascii()},
-            set(), "日文键不得引入英文键没有的新分类值")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "ledger.db"
+            sqlite3.connect(db).close(); upgrade(db, MIGRATIONS)
+            connection = sqlite3.connect(db)
+            connection.executemany(
+                "INSERT INTO asset(id,location,path,name,medium,code,size) "
+                "VALUES(?,'local',?,?,'video',?,?)",
+                [(i, f"{i}.mp4", f"{i}.mp4", f"AAA-{i:03d}", 1_000) for i in range(1, 7)],
+            )
+            connection.commit(); connection.close()
+
+            error = self.scrape_codes.MetadataProviderError
+
+            class Flaky:
+                def __init__(self): self.calls = []
+                def query(self, code, source):
+                    self.calls.append(code)
+                    raise error("timeout", kind="unavailable",
+                                retryable=True, temporary=True)
+
+            provider = Flaky()
+            clock = [0.0]
+            health = root / "health.csv"
+            with mock.patch.object(self.scrape_codes.time, "monotonic",
+                                   side_effect=lambda: clock[0]):
+                with redirect_stdout(io.StringIO()):
+                    self.scrape_codes.main([
+                        "--db", str(db), "--out", str(root / "c.csv"),
+                        "--health", str(health), "--raw-dir", str(root / "raw"),
+                        "--log-dir", str(root / "logs"), "--delay", "0",
+                        "--min-free", "0", "--sources", "javbus",
+                    ], provider=provider)
+            # 前三个番号照常尝试，第三次连败才进冷却；时钟不走，剩下三个被跳过。
+            self.assertEqual(len(provider.calls), self.scrape_codes.COOLDOWN_AFTER_FAILURES)
+            with health.open(encoding="utf-8-sig", newline="") as handle:
+                row = next(csv.DictReader(handle))
+            self.assertEqual(row["fetched"], "3")
+            self.assertEqual(row["cooldown_skips"], "3")
+            self.assertEqual(row["blocked"], "1")
+
+            # 冷却会过期：时钟越过窗口后，剩下的番号重新被问。
+            provider = Flaky()
+            clock = [0.0]
+
+            def advancing():
+                clock[0] += self.scrape_codes.COOLDOWN_SECONDS
+                return clock[0]
+
+            with mock.patch.object(self.scrape_codes.time, "monotonic",
+                                   side_effect=advancing):
+                with redirect_stdout(io.StringIO()):
+                    self.scrape_codes.main([
+                        "--db", str(db), "--out", str(root / "c2.csv"),
+                        "--health", str(root / "h2.csv"), "--raw-dir", str(root / "raw2"),
+                        "--log-dir", str(root / "logs"), "--delay", "0",
+                        "--min-free", "0", "--sources", "javbus",
+                    ], provider=provider)
+            self.assertEqual(len(provider.calls), 6, "冷却过期后必须继续问剩下的番号")
+
+    def test_only_not_found_counts_as_a_settled_source_verdict(self):
+        # 本机 javinizer 没启用某个 scraper 时返回的是 unknown 错误。把它当定论
+        # 复用，会让配置问题被冻结成来源判决，续跑再也不问这个番号。
+        self.assertEqual(self.scrape_codes.SETTLED_ERROR_KINDS, frozenset({"not_found"}))
 
     def test_rule34_tag_type_backfill_reuses_the_connector_and_is_resumable(self):
         """rule34xxx 的标签类型只在帖子页上，2152 条里当时只有 40 条带着它。
@@ -106,17 +209,31 @@ class OperationalScriptTests(unittest.TestCase):
         常规检查只看第一页，补不到历史条目。抓取判据不重写，直接复用连接器的
         `_detail_tag_types`；备份先做、分批提交，中断一次不至于白跑五十分钟。
         """
-        source = (ROOT / "scripts" / "backfill_rule34_tag_types.py").read_text(encoding="utf-8")
-        self.assertIn("connector._detail_tag_types(post_id)", source)
-        self.assertIn('if args.apply and not args.backup:', source)
-        # WAL 库不能用 `shutil.copy2` 备份：已提交但未 checkpoint 的事务在 `-wal` 里，
-        # 只复制主库会得到一份少了最近改动、却看起来完全正常的账本。
-        self.assertIn("reader.backup(writer)", source)
-        self.assertNotIn("shutil.copy2(database", source)
-        self.assertIn("writer.commit()", source)
-        # 取不到不等于这条没有类型：不写空字典冒充已补，下一轮还要再问。
-        self.assertIn('if not tag_types:', source)
-        self.assertIn('return 0 if before == after else 1', source)
+        backfill = load_script("backfill_rule34_tag_types")
+        # 连接与备份走共享的 `open_for_write`／`open_readonly`，WAL 正确性由
+        # `scripting` 那条回归测试守住；这里只钉「用的是那一份」。断言源码里有没有
+        # `reader.backup(writer)` 这串字符的话，脚本一改成调用共享实现就会红——
+        # 而那次行为恰恰是变好了。
+        self.assertIs(backfill.open_for_write, scripting.open_for_write)
+        self.assertIs(backfill.open_readonly, scripting.open_readonly)
+        self.assertEqual(backfill.BACKUP_REQUIRED, scripting.BACKUP_REQUIRED)
+
+        # 缺 `--backup` 的 `--apply` 在读输入之前就停，返回 2 且一行都不写。
+        database = self.tmp_ledger()
+        args = backfill.build_parser().parse_args(
+            ["--db", str(database), "--apply"])
+        self.assertEqual(backfill.run(args), 2)
+
+        # `--limit` 之外的两条判据也用真实数据钉住：已经有 tag_types 的条目不再排队，
+        # 取不到的条目不写空字典冒充已补（下一轮还要再问）。
+        connection = sqlite3.connect(database)
+        self.addCleanup(connection.close)
+        connection.row_factory = sqlite3.Row
+        pending = backfill.pending_rows(connection, 0)
+        self.assertEqual([row["external_id"] for row in pending], ["18622794"])
+        self.assertEqual(
+            json.loads(backfill.merge_tag_types({"tags": "a b"}, {"a": "artist"})),
+            {"tags": "a b", "tag_types": {"a": "artist"}})
 
     def test_test_entrypoint_enforces_worktree_source_and_unittest(self):
         windows = (ROOT / "scripts" / "test.ps1").read_text(encoding="utf-8")
@@ -362,9 +479,11 @@ class OperationalScriptTests(unittest.TestCase):
             )
             connection.commit(); connection.close()
 
+            backup_path = root / "ledger.pre-clean-names.db"
             result = self.clean_names.main([
                 "--db", str(db), "--out", str(root / "plan.csv"),
-                "--log-dir", str(root / "logs"), "--apply",
+                "--log-dir", str(root / "logs"),
+                "--apply", "--backup", str(backup_path),
             ])
 
             self.assertEqual(result, 0)
@@ -381,9 +500,7 @@ class OperationalScriptTests(unittest.TestCase):
                 (2, "ABW-234 (2).mp4", "ABW-234"),
                 (3, "MIDE-950-C.mp4", "MIDE-950"),
             ])
-            backups = list(root.glob("ledger.pre-jav-filename-normalize-*.db"))
-            self.assertEqual(len(backups), 1)
-            backup = sqlite3.connect(backups[0])
+            backup = sqlite3.connect(backup_path)
             self.assertEqual(backup.execute("PRAGMA integrity_check").fetchone()[0], "ok")
             self.assertEqual(backup.execute("SELECT count(*) FROM asset").fetchone()[0], 3)
             backup.close()
@@ -555,6 +672,30 @@ class OperationalScriptTests(unittest.TestCase):
                 f"{path.name} 含非 ASCII 却没有 UTF-8 BOM，PowerShell 5.1 会解析失败",
             )
 
+    def test_every_script_importing_peach_can_run_without_pythonpath(self):
+        """脚本是给人直接敲的，不该要求先设 PYTHONPATH。
+
+        2026-09-02 交给用户的 `flatten_release_dirs.py --apply` 第一行就
+        ModuleNotFoundError：`from peach.catalog_rules import ...` 在裸 python 下
+        找不到 `src`。仓库里 `job_status.py` 等脚本早就带着这段引导，只是没有门槛
+        逼后来的脚本跟上。判据只看「导入 peach 之前有没有把 src 挂进 sys.path」，
+        不规定写法。
+        """
+        missing = []
+        for path in sorted((ROOT / "scripts").glob("*.py")):
+            source = path.read_text(encoding="utf-8")
+            lines = source.splitlines()
+            peach_import = next(
+                (index for index, line in enumerate(lines)
+                 if line.startswith(("from peach.", "import peach"))), -1)
+            if peach_import < 0:
+                continue
+            head = "\n".join(lines[:peach_import])
+            if "sys.path.insert" not in head and "sys.path.append" not in head:
+                missing.append(path.name)
+        self.assertEqual(missing, [],
+                         "这些脚本导入 peach 前没挂 src，裸 python 跑会 ModuleNotFoundError")
+
     def test_logo_candidates_are_squared_by_padding_not_discarded(self):
         """界面按方框渲染。接近方的直接用，长条形补背景填方，只有太小的才丢。"""
         import io
@@ -589,6 +730,65 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(squared.getpixel((200, 200)), (0, 0, 0, 0))
         self.assertEqual(squared.getpixel((20, 150)), (0, 174, 239, 255))
 
+    def test_a_transparent_mark_is_baked_onto_a_white_plate(self):
+        """带透明像素的独立图标：裁掉透明边，居中放到白色方底上。
+
+        三处取图位都用 `object-fit: cover` 铺满方框，透明底在深色底上会露出下面
+        那一层。边距烤进文件，页面就不必各自补 inset 和 padding。
+        """
+        import io
+
+        from PIL import Image
+
+        from peach.images import MARK, PLATE_CONTENT_RATIO, bake_square, classify_plate
+
+        source = Image.new("RGBA", (400, 100), (0, 0, 0, 0))
+        for x in range(10, 310):
+            for y in range(20, 60):
+                source.putpixel((x, y), (0, 174, 239, 255))
+        buffer = io.BytesIO()
+        source.save(buffer, "PNG")
+        payload = buffer.getvalue()
+
+        self.assertEqual(classify_plate(payload), MARK)
+        baked = bake_square(payload)
+        with Image.open(io.BytesIO(baked)) as plate:
+            self.assertEqual(plate.size[0], plate.size[1], "烤出来必须是方的")
+            self.assertNotIn("A", plate.getbands(), "装进去的文件必须不透明")
+            side = plate.size[0]
+            self.assertAlmostEqual(300 / side, PLATE_CONTENT_RATIO, places=2,
+                                   msg="内容占边长约 76%，四周各留约 12%")
+            self.assertEqual(plate.getpixel((2, 2)), (255, 255, 255), "四周是白底")
+            self.assertEqual(plate.getpixel((side // 2, side // 2)), (0, 174, 239),
+                             "主体居中，像素不缩放")
+
+    def test_an_opaque_plate_keeps_its_own_background(self):
+        """完全不透明的图自带底色，那块底是设计的一部分：方的原样返回，长条补方。"""
+        import io
+
+        from PIL import Image
+
+        from peach.images import TILE, bake_square, classify_plate
+
+        def opaque(size, color):
+            buffer = io.BytesIO()
+            Image.new("RGB", size, color).save(buffer, "PNG")
+            return buffer.getvalue()
+
+        tile = opaque((400, 400), (12, 12, 12))
+        self.assertEqual(classify_plate(tile), TILE)
+        self.assertEqual(bake_square(tile), tile, "已经是不透明方图，一个字节都不动")
+
+        strip = opaque((400, 100), (196, 20, 24))
+        self.assertEqual(classify_plate(strip), TILE)
+        with Image.open(io.BytesIO(bake_square(strip))) as squared:
+            self.assertEqual(squared.size, (400, 400))
+            self.assertEqual(squared.convert("RGB").getpixel((5, 5)), (196, 20, 24),
+                             "补出来的边取原图边缘主色，不刷白")
+
+        self.assertIsNone(classify_plate(b"not an image"))
+        self.assertIsNone(bake_square(b"not an image"))
+
     def test_studio_avatar_candidates_never_guess_a_handle_by_default(self):
         """猜错 handle 会产出一个「看起来很官方」的错误 Logo，和它要取代的搜索猜测同一种失败。"""
         module = load_script("fetch_studio_avatar_candidates")
@@ -608,35 +808,90 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(written[0]["accepted"], "False")
         self.assertIn("未取得", written[0]["reason"])
 
-    def test_installed_long_studio_logos_are_backed_up_then_squared(self):
-        """历史长条图也走方图策略；测试只能写临时目录。"""
+    def test_installed_studio_logos_are_backed_up_then_made_opaque_squares(self):
+        """整个目录归一成不透明方图；测试只能写临时目录。
+
+        `*.img` 全在范围内，`<safe>.icon.img` 与 `<safe>.logo.img` 也算。带透明的
+        烤白底，不透明的长条补方，已经是不透明方图的一个字节都不动。
+        """
         from PIL import Image
 
         module = load_script("normalize_studio_logos")
+
+        def png(image):
+            buffer = io.BytesIO()
+            image.save(buffer, "PNG")
+            return buffer.getvalue()
+
+        mark = Image.new("RGBA", (200, 60), (0, 0, 0, 0))
+        for x in range(20, 180):
+            for y in range(10, 50):
+                mark.putpixel((x, y), (0, 174, 239, 255))
+
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "logos"
             backup = Path(tmp) / "backup"
             root.mkdir()
-            wide = root / "wide.img"
-            buffer = io.BytesIO()
-            Image.new("RGB", (400, 100), "white").save(buffer, "PNG")
-            original = buffer.getvalue()
-            wide.write_bytes(original)
-            Path(f"{wide}.ct").write_text("image/png", encoding="utf-8")
+            originals = {
+                "wide.img": png(Image.new("RGB", (400, 100), (196, 20, 24))),
+                "flat.icon.img": png(Image.new("RGB", (256, 256), (12, 12, 12))),
+                "sign.logo.img": png(mark),
+                "vector.img": b'<svg xmlns="http://www.w3.org/2000/svg"/>',
+            }
+            for name, payload in originals.items():
+                (root / name).write_bytes(payload)
+                Path(f"{root / name}.ct").write_text(
+                    "image/svg+xml" if name == "vector.img" else "image/png",
+                    encoding="utf-8")
 
-            dry = module.normalize(root)
-            self.assertEqual(dry[0]["action"], "would-pad")
-            self.assertEqual(wide.read_bytes(), original, "dry-run 不得改图")
+            dry = {str(row["file"]): row for row in module.normalize(root)}
+            self.assertEqual(dry["wide.img"]["action"], "would-pad")
+            self.assertEqual(dry["wide.img"]["kind"], "tile")
+            self.assertEqual(dry["sign.logo.img"]["action"], "would-bake")
+            self.assertEqual(dry["sign.logo.img"]["kind"], "mark")
+            self.assertEqual(dry["vector.img"]["action"], "vector",
+                             "矢量标识本脚本不栅格化，单列出来而不是记成坏文件")
+            self.assertNotIn("flat.icon.img", dry, "已经是不透明方图，不进复核件")
+            for name, payload in originals.items():
+                self.assertEqual((root / name).read_bytes(), payload, "dry-run 不得改图")
             with self.assertRaises(ValueError):
                 module.normalize(root, apply=True)
 
-            applied = module.normalize(root, apply=True, backup_dir=backup)
-            self.assertEqual(applied[0]["action"], "padded")
-            self.assertEqual((backup / "wide.img").read_bytes(), original)
-            with Image.open(wide) as squared:
+            applied = {str(row["file"]): row for row in
+                       module.normalize(root, apply=True, backup_dir=backup)}
+            self.assertEqual(applied["wide.img"]["action"], "padded")
+            self.assertEqual(applied["sign.logo.img"]["action"], "baked")
+            self.assertEqual((backup / "wide.img").read_bytes(), originals["wide.img"])
+            self.assertFalse((backup / "flat.icon.img").exists(), "没动的文件不备份")
+            self.assertEqual((root / "flat.icon.img").read_bytes(),
+                             originals["flat.icon.img"])
+            self.assertEqual((root / "vector.img").read_bytes(), originals["vector.img"],
+                             "矢量标识原样留着")
+            self.assertFalse(Path(f'{root / "vector.img"}.normalization.json').exists())
+
+            with Image.open(root / "wide.img") as squared:
                 self.assertEqual(squared.size, (400, 400))
-            self.assertEqual(Path(f"{wide}.ct").read_text(encoding="utf-8"), "image/png")
-            self.assertTrue(Path(f"{wide}.normalization.json").is_file())
+            with Image.open(root / "sign.logo.img") as plate:
+                self.assertEqual(plate.size[0], plate.size[1])
+                self.assertNotIn("A", plate.getbands(), "烤过的文件必须不透明")
+
+            for name, action in (("wide.img", "pad-to-square"),
+                                 ("sign.logo.img", "bake-white-plate")):
+                sidecar = json.loads(
+                    Path(f"{root / name}.normalization.json").read_text(encoding="utf-8"))
+                self.assertEqual(sidecar["action"], action)
+                self.assertEqual(sidecar["original_sha256"],
+                                 hashlib.sha256(originals[name]).hexdigest())
+                self.assertEqual(sidecar["normalized_sha256"],
+                                 hashlib.sha256((root / name).read_bytes()).hexdigest())
+                self.assertEqual(sidecar["backup"], str(backup / name))
+                self.assertEqual(Path(f"{root / name}.ct").read_text(encoding="utf-8"),
+                                 "image/png")
+
+            # 重跑不再有动作：产物已经是不透明方图，归一是幂等的。矢量那一行照旧
+            # 每次都在，它是「还没处理」的记录，不是待办完成。
+            self.assertEqual([row["action"] for row in module.normalize(root)],
+                             ["vector"])
 
     def test_frame_retry_is_reserved_for_bad_color_metadata(self):
         """坏色彩元数据才重试。无条件重试会让网盘超时的文件每帧白跑两次 45 秒。"""
@@ -969,16 +1224,22 @@ class OperationalScriptTests(unittest.TestCase):
             )
 
     def test_explicit_code_judges_the_normalised_shape(self):
-        """账本里 `HJD2048` 这种缺分隔符的写法必须和 `--codes-file` 那侧结论一致。
+        """账本里 `WX17` 这种缺分隔符的写法必须和 `--codes-file` 那侧结论一致。
 
         两处一个按原始写法判、一个按规范化键匹配时，同一批番号会被报成
         「番号文件含 ledger 中不存在的番号」，2026-09-02 实测漏掉 42 个。
         """
         explicit = self.scrape_codes._is_explicit_code
-        for code in ("HJD2048", "WX17", "ABW-123", "ipvr00296", "fc2ppv-1234567"):
+        for code in ("WX17", "PBD390", "ABW-123", "ipvr00296", "fc2ppv-1234567"):
             self.assertTrue(explicit(code), code)
         for code in ("", "合集", "未知厂牌", "4K", "FC2-1234"):
             self.assertFalse(explicit(code), code)
+
+    def test_repost_site_watermarks_are_never_queued_for_a_provider(self):
+        # `HHD800`、`HJD2048` 是转载站域名剥掉 TLD 后的样子，不是番号。查它们只会
+        # 白跑一轮限流预算，而 provider 的空结果又会被当成「这个番号没元数据」。
+        for code in ("HHD800", "hhd800.com", "HJD2048", "AAVV333", "KFA33", "BEI88"):
+            self.assertFalse(self.scrape_codes._is_explicit_code(code), code)
 
     def test_code_normalization(self):
         # 归一化本体已收进 catalog_rules；脚本只是 import 它，这里验的是脚本用的
@@ -1061,7 +1322,7 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertTrue(tag_candidates[0]["official"])
             self.assertEqual(tag_candidates[0]["profile"], "custom")
             self.assertEqual(tag_candidates[0]["policy_version"],
-                             "metadata-source-policy-v3")
+                             "metadata-source-policy-v4")
             self.assertEqual(tag_candidates[0]["field_rank"], 9)
             self.assertEqual(tag_candidates[0]["source_kind"], "official_mirror")
             self.assertTrue(all(row["source_profile"] == "custom" for row in rows))
@@ -1147,8 +1408,9 @@ class OperationalScriptTests(unittest.TestCase):
             raw = root / "raw"
             snapshot = raw / "AAA-001" / "r18dev.json"
             snapshot.parent.mkdir(parents=True)
+            # 真实快照一定带得出番号身份；不带的现在按「对不上」重新联网问。
             snapshot.write_text(__import__("json").dumps({
-                "result": {"source": "r18dev", "maker": "Cached Studio"},
+                "result": {"source": "r18dev", "id": "AAA-001", "maker": "Cached Studio"},
             }), encoding="utf-8")
             missing = raw / "BBB-002" / "r18dev.json"
             missing.parent.mkdir(parents=True)
@@ -1199,7 +1461,7 @@ class OperationalScriptTests(unittest.TestCase):
             snapshot = raw / "ABC-001" / "r18dev.json"
             snapshot.parent.mkdir(parents=True)
             snapshot.write_text(__import__("json").dumps({
-                "result": {"source": "r18dev", "maker": "Studio A"},
+                "result": {"source": "r18dev", "id": "ABC-001", "maker": "Studio A"},
             }), encoding="utf-8")
 
             class HealthProvider:
@@ -1231,13 +1493,15 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertEqual(rows["r18dev"]["snapshot_reused"], "1")
             self.assertEqual(rows["r18dev"]["fetched"], "2")
             self.assertEqual(rows["javbus"]["attempted"], "3")
-            self.assertEqual(rows["javbus"]["fetched"], "2")
-            self.assertEqual(rows["javbus"]["succeeded"], "1")
-            self.assertEqual(rows["javbus"]["empty"], "1")
+            # 限流那一条之后的番号照问，所以三条都联了网。
+            self.assertEqual(rows["javbus"]["fetched"], "3")
+            self.assertEqual(rows["javbus"]["succeeded"], "2")
+            self.assertEqual(rows["javbus"]["empty"], "2")
             self.assertEqual(rows["javbus"]["errors"], "1")
             self.assertEqual(rows["javbus"]["retryable_errors"], "1")
-            self.assertEqual(rows["javbus"]["cooldown_skips"], "1")
-            self.assertEqual(rows["javbus"]["blocked"], "1")
+            # 单次可重试失败不再让来源停摆：后面的番号照问。
+            self.assertEqual(rows["javbus"]["cooldown_skips"], "0")
+            self.assertEqual(rows["javbus"]["blocked"], "0")
             self.assertEqual(rows["javbus"]["last_error_status"], "429")
 
             connection = sqlite3.connect(db)
@@ -1526,6 +1790,23 @@ class ApplyMetadataTagsTests(unittest.TestCase):
         self.assertEqual([(group["item_key"], candidate["value"]) for group, candidate in selected],
                          [("AAA-001:tags", ["素人"])])
 
+    def test_skipped_codes_stay_in_the_csv_but_do_not_reach_the_ledger(self):
+        """批量放行里总有几条明显不对，跳过它们，但不许从复核产物里抹掉。
+
+        实例：javbus 在 `MY-*` 系列的标题栏放的是「演员名+序号」而不是标题。
+        过滤 CSV 会让这几条从此没人看见；跳过则它们仍在 `/review` 里等人处理。
+        """
+        rows = [
+            {"item_key": "MY-101:title", "code": "MY-101", "field": "title",
+             "status": "candidate",
+             "candidates_json": json.dumps([{"source": "javbus", "value": "最上彩奈1"}])},
+            {"item_key": "TRE-080:title", "code": "TRE-080", "field": "title",
+             "status": "candidate",
+             "candidates_json": json.dumps([{"source": "javbus", "value": "なまなかだし"}])},
+        ]
+        selected = self.apply_tags.plan(rows, "javbus", "title", frozenset({"my-101"}))
+        self.assertEqual([group["item_key"] for group, _ in selected], ["TRE-080:title"])
+
     def test_apply_writes_tags_and_entities_for_the_whole_code(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1571,7 +1852,15 @@ class ApplyMetadataTagsTests(unittest.TestCase):
                 "SELECT count(*) FROM asset_entity WHERE role='tag' "
                 "AND source='javinizer:javbus:tag'").fetchone()[0], 4,
                 "标签实体那一半不能漏")
+            row = connection.execute(
+                "SELECT status,note FROM review_decision "
+                "WHERE category='metadata_fields' AND item_key='TRE-080:tags'").fetchone()
             connection.close()
+            self.assertIsNotNone(row, "写完不登记，这一组会永远挂在 /review 里")
+            self.assertEqual(row[0], "approved")
+            self.assertEqual(json.loads(row[1])["candidate_key"],
+                             "TRE-080:tags:javbus:abc",
+                             "留痕必须带候选身份，_metadata_decision_is_stale 靠它判过期")
 
     def test_dry_run_never_touches_the_database(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1589,6 +1878,186 @@ class ApplyMetadataTagsTests(unittest.TestCase):
             with redirect_stdout(io.StringIO()):
                 self.assertEqual(self.apply_tags.run(args), 0)
             self.assertFalse((root / "missing.db").exists(), "空跑不该建库")
+
+
+class ScriptingConventionTests(unittest.TestCase):
+    """`peach.scripting` 收口的那几条约定，按行为而不是按源码字符串验收。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name).resolve()
+        self.addCleanup(self.tmp.cleanup)
+        self.db = self.root / "ledger.db"
+        connection = sqlite3.connect(self.db)
+        connection.executescript(
+            "CREATE TABLE asset(id INTEGER PRIMARY KEY);"
+            "CREATE TABLE entity(id INTEGER PRIMARY KEY, kind TEXT);"
+            "CREATE TABLE asset_entity(asset_id INTEGER, entity_id INTEGER);"
+            "CREATE TABLE entity_alias(entity_id INTEGER, alias TEXT);"
+            "CREATE TABLE asset_tag(asset_id INTEGER, tag TEXT);"
+        )
+        connection.execute("INSERT INTO asset(id) VALUES(1)")
+        connection.executemany("INSERT INTO entity(id,kind) VALUES(?,?)",
+                               [(1, "creator"), (2, "performer"), (3, "performer")])
+        connection.commit()
+        connection.close()
+
+    def _args(self, **overrides):
+        values = {"db": self.db, "apply": False, "backup": None}
+        values.update(overrides)
+        return SimpleNamespace(**values)
+
+    def test_readonly_connection_cannot_write_the_ledger(self):
+        connection = scripting.open_readonly(self.db)
+        self.addCleanup(connection.close)
+        with self.assertRaises(sqlite3.OperationalError):
+            connection.execute("INSERT INTO asset(id) VALUES(2)")
+
+    def test_readonly_uri_survives_a_hash_in_the_directory_name(self):
+        awkward = self.root / "a#b"
+        awkward.mkdir()
+        target = awkward / "ledger.db"
+        sqlite3.connect(target).close()
+        connection = scripting.open_readonly(target)
+        self.addCleanup(connection.close)
+        self.assertEqual(connection.execute("SELECT 1").fetchone()[0], 1)
+
+    def test_dry_run_gets_a_read_only_connection_and_writes_no_backup(self):
+        backup = self.root / "unused.db"
+        connection = scripting.open_for_write(self._args(backup=backup))
+        self.addCleanup(connection.close)
+        with self.assertRaises(sqlite3.OperationalError):
+            connection.execute("INSERT INTO asset(id) VALUES(2)")
+        self.assertFalse(backup.exists(), "dry-run 不该产生备份")
+
+    def test_apply_without_backup_is_refused_with_the_single_house_wording(self):
+        with self.assertRaises(SystemExit) as caught:
+            scripting.open_for_write(self._args(apply=True))
+        self.assertEqual(str(caught.exception), "--apply 必须同时给 --backup")
+
+    def test_apply_backup_keeps_transactions_that_are_still_only_in_the_wal(self):
+        """WAL 里已提交未 checkpoint 的事务必须进备份；文件复制会把它们丢掉。"""
+        writer = sqlite3.connect(self.db)
+        writer.execute("PRAGMA journal_mode=WAL")
+        writer.execute("INSERT INTO asset(id) VALUES(99)")
+        writer.commit()
+        self.addCleanup(writer.close)
+
+        backup = self.root / "backup.db"
+        connection = scripting.open_for_write(self._args(apply=True, backup=backup))
+        self.addCleanup(connection.close)
+        connection.execute("INSERT INTO asset(id) VALUES(100)")
+        connection.commit()
+
+        saved = sqlite3.connect(backup)
+        self.addCleanup(saved.close)
+        ids = {row[0] for row in saved.execute("SELECT id FROM asset")}
+        self.assertIn(99, ids, "WAL 中的已提交事务丢了")
+        self.assertNotIn(100, ids, "备份必须是写入之前的状态")
+
+    def test_counts_of_reports_the_shared_base_plus_the_callers_own_measures(self):
+        connection = scripting.open_readonly(self.db)
+        self.addCleanup(connection.close)
+        counts = scripting.counts_of(connection, {
+            "performer": "SELECT count(*) FROM entity WHERE kind='performer'",
+            "asset_tag": "SELECT count(*) FROM asset_tag",
+        })
+        self.assertEqual(counts, {"asset": 1, "entity": 3, "asset_entity": 0,
+                                  "entity_alias": 0, "performer": 2, "asset_tag": 0})
+
+    def test_ledger_write_args_are_exactly_db_apply_backup(self):
+        parser = scripting.add_ledger_write_args(argparse.ArgumentParser())
+        parsed = parser.parse_args(["--db", str(self.db), "--apply",
+                                    "--backup", str(self.root / "b.db")])
+        self.assertEqual((parsed.db, parsed.apply, parsed.backup),
+                         (self.db, True, self.root / "b.db"))
+        self.assertFalse(parser.parse_args([]).apply)
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["--database", str(self.db)])
+
+    #: 会真写 ledger、已经收口到本模块的脚本。
+    LEDGER_WRITERS = (
+        "backfill_rule34_tag_types",
+        "clean_names",
+        "install_entity_links",
+        "localize_performer_names",
+        "localize_series_names",
+        "merge_duplicate_identities",
+    )
+
+    def test_every_ledger_writer_takes_the_same_three_write_arguments(self):
+        """写入脚本的参数名只有一套。
+
+        不收 `--database`（必填）、`--backup-dir`（目录）这类同义写法：名字不同的同义
+        参数会让「上次那条命令」在另一个脚本上直接报错，而报错只说缺参数——不说该写什么。
+        """
+        for name in self.LEDGER_WRITERS:
+            with self.subTest(script=name):
+                parser = load_script(name).build_parser()
+                dests = {action.dest for action in parser._actions}
+                self.assertLessEqual({"db", "apply", "backup"}, dests)
+                self.assertNotIn("database", dests)
+                self.assertNotIn("backup_dir", dests)
+
+    def test_every_ledger_writer_opens_the_ledger_through_this_module(self):
+        """连接、备份、拒绝三件事只有一处实现。
+
+        判据落在「用的是不是同一个函数」上，而不是源码里出现过哪个字符串：脚本各自
+        `sqlite3.connect` 时，dry-run 拿到的是可写连接，「这一趟绝不写库」只是靠读代码
+        维持的约定。
+        """
+        for name in self.LEDGER_WRITERS:
+            with self.subTest(script=name):
+                module = load_script(name)
+                self.assertIs(module.open_for_write, scripting.open_for_write)
+
+    def test_rate_limiter_waits_the_remainder_rather_than_the_full_interval(self):
+        now = [100.0]
+        slept: list[float] = []
+
+        def sleeper(seconds):
+            slept.append(seconds)
+            now[0] += seconds
+
+        limiter = scripting.RateLimiter(2.0, clock=lambda: now[0], sleeper=sleeper)
+        limiter.wait()
+        self.assertEqual(slept, [], "第一次不该等")
+        now[0] += 1.5                        # 本地处理已经花了 1.5 秒
+        limiter.wait()
+        self.assertEqual(slept, [0.5], "只该补齐差额，不是又睡满一个间隔")
+        now[0] += 5.0
+        limiter.wait()
+        self.assertEqual(slept, [0.5], "间隔已过就不再等")
+
+    def test_zero_interval_rate_limiter_never_sleeps(self):
+        slept: list[float] = []
+        limiter = scripting.RateLimiter(0, sleeper=slept.append)
+        limiter.wait()
+        limiter.wait()
+        self.assertEqual(slept, [])
+
+    def test_host_limiter_matches_on_dot_boundaries_not_substrings(self):
+        now = [0.0]
+        slept: list[float] = []
+
+        def sleeper(seconds):
+            slept.append(seconds)
+            now[0] += seconds
+
+        limiter = scripting.HostLimiter({"x.com": 2.0}, clock=lambda: now[0],
+                                        sleeper=sleeper)
+        limiter.wait("https://netflix.com/a")
+        limiter.wait("https://netflix.com/b")
+        self.assertEqual(slept, [], "netflix.com 不是 x.com 的子域，不该被限速")
+        limiter.wait("https://mobile.x.com/a")
+        limiter.wait("https://www.x.com/b")
+        self.assertEqual(slept, [2.0], "同一主机的第二次请求必须等一个间隔")
+
+    def test_host_under_rejects_a_domain_that_merely_ends_with_the_key(self):
+        self.assertTrue(scripting.host_under("x.com", ("x.com",)))
+        self.assertTrue(scripting.host_under("mobile.X.com", ("x.com",)))
+        self.assertFalse(scripting.host_under("notx.com", ("x.com",)))
+        self.assertFalse(scripting.host_under("", ("x.com",)))
 
 
 if __name__ == "__main__":

@@ -19,9 +19,9 @@ from PIL import Image
 
 from .certs import ensure_certificate
 from .config import (
-    DATABASE_PATH, LOG_DIR, MDNS_HOSTNAME, PROJECT_ROOT, SECRETS_DIR,
-    SHARED_DATABASE_PATH, SHARED_SMB_HOST, SHARED_SMB_SHARE, SHARED_SMB_USER,
-    STATE_DIR,
+    DATABASE_PATH, LOG_DIR, MDNS_HOSTNAME, PROJECT_ROOT, REPLICATION_ENABLED,
+    SECRETS_DIR, SHARED_DATABASE_PATH, SHARED_SMB_HOST, SHARED_SMB_SHARE,
+    SHARED_SMB_USER, STATE_DIR,
 )
 from .mdns import lan_ipv4
 from .netwatch import NetworkChangeWatcher
@@ -39,13 +39,28 @@ LOGGER = logging.getLogger(__name__)
 MACOS_PORT = 8900
 #: HTTPS 同理，443 也要 root，所以走 8443。
 MACOS_TLS_PORT = 8443
-#: 单击菜单栏/托盘图标打开本机的固定地址：macOS 是 `peach.local`，Windows 是
-#: `peach-win.local`。macOS 上 80/443 由 pf 转到高位端口
-#:（scripts/setup_macos_port80.sh）。
+#: 单击菜单栏/托盘图标打开本机的固定地址 `<mdns_name>.local`；名字来自设置文件的
+#: `[server].mdns_name`，同一局域网里两台机器必须不同名。macOS 上 80/443 由 pf 转到
+#: 高位端口（scripts/setup_macos_port80.sh）。
 OPEN_URL = f"https://{MDNS_HOSTNAME}/"
 
 #: LaunchAgent 的标签，和 `scripts/install_macos_agent.py` 里那个必须一致。
 LAUNCH_AGENT_LABEL = "gg.lmd.peach.tray"
+
+
+def ledger_menu_items(make_item, sync_ledger, take_ownership) -> list:
+    """两个 Ledger 菜单项；`replication.enabled = false` 时一个都不装配。
+
+    单机部署没有第二份账本，这两项点下去只会去探一个不存在的共享传输点，
+    然后回一句「盘不可达」——那不是状态，是这台机器根本不做复制（ADR-0023 第 3 阶段）。
+    标签在两个平台上共用这一处定义，`make_item` 负责套上各自的菜单项类型。
+    """
+    if not REPLICATION_ENABLED:
+        return []
+    return [
+        make_item("同步 Ledger", sync_ledger),
+        make_item("接管 Ledger 写入", take_ownership),
+    ]
 
 #: 改到这些路径就得重启托盘进程本身。托盘启动那一刻就把它们装进了内存，重启子服务
 #: 追不上——「同步开发进度」之后菜单还是旧的，正是这个原因。
@@ -57,6 +72,7 @@ TRAY_SOURCES = (
     "src/peach/certs.py",
     "src/peach/netwatch.py",
     "src/peach/config.py",
+    "src/peach/settings_file.py",
     "pyproject.toml",
 )
 
@@ -317,9 +333,9 @@ class ServiceManager:
     def _ledger_shortcut(self, *, take_ownership: bool) -> tuple[bool, str] | None:
         """这次同步会不会真的复制？不会就别停服务。
 
-        原来的做法是无条件停服务、跑一遍 CLI、再启回来。共享盘没挂（`offline`）或者
-        本机压根不是写入端（`conflict`）时，那一停一启换来的只有一次白白的停机和一条
-        「同步失败」通知——实测就是本机的日常状态：`/Volumes/peach-sync` 没挂时，
+        不能无条件停服务、跑一遍 CLI、再启回来。共享盘没挂（`offline`）或者本机压根
+        不是写入端（`conflict`）时，那一停一启换来的只有一次白白的停机和一条
+        「同步失败」通知——而这就是本机的日常状态：`/Volumes/peach-sync` 没挂时，
         点一次「同步 Ledger」网页就断十几秒，然后告诉你盘不可达。
 
         「接管 Ledger 写入」只在共享盘不可达时短路：它要求两侧 `in-sync`，而 `in-sync`
@@ -345,7 +361,13 @@ class ServiceManager:
     def sync_ledger(
         self, executable: Path | None = None, *, take_ownership: bool = False,
     ) -> tuple[bool, str]:
-        """停掉本托盘拥有的服务，单次同步后恢复；不碰别的进程拥有的服务。"""
+        """停掉本托盘拥有的服务，单次同步后恢复；不碰别的进程拥有的服务。
+
+        复制关掉时直接拒绝：菜单项本来就不装配，但托盘可以被其他入口调用，
+        而这条路径会去探测一个这台机器根本没有的共享传输点。
+        """
+        if not REPLICATION_ENABLED:
+            return False, "未同步：replication.enabled = false，这台机器不做账本复制"
         shortcut = self._ledger_shortcut(take_ownership=take_ownership)
         if shortcut is not None:
             return shortcut
@@ -576,8 +598,8 @@ class PeachTray:
                 pystray.MenuItem(lambda _item: f"状态：{self.manager.status()}", None, enabled=False),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem("同步开发进度", self.sync_source),
-                pystray.MenuItem("同步 Ledger", self.sync_ledger),
-                pystray.MenuItem("接管 Ledger 写入", self.take_ownership),
+                *ledger_menu_items(
+                    pystray.MenuItem, self.sync_ledger, self.take_ownership),
                 pystray.MenuItem("重启服务", self.restart),
                 pystray.MenuItem("查看日志", self.open_logs),
                 pystray.MenuItem("版本与更新", version_menu),
@@ -885,8 +907,8 @@ def run_macos_menu_bar(manager: "ServiceManager") -> None:
             (f"地址：{OPEN_URL}", None),
             (None, None),
             ("同步开发进度", sync_source),
-            ("同步 Ledger", sync_ledger),
-            ("接管 Ledger 写入", take_ownership),
+            *ledger_menu_items(
+                lambda label, action: (label, action), sync_ledger, take_ownership),
             ("重启服务", restart),
             ("查看日志", lambda: subprocess.run(["open", str(LOG_DIR)], check=False)),
             (lambda: f"版本 {state['snapshot'].package_version}"

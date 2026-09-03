@@ -108,7 +108,7 @@ class CredentialStore:
     def describe(self, provider: str) -> dict[str, object]:
         """只报告存在性与权限，绝不返回凭据值。
 
-        **必须和 `load()` 看同一份事实。** 早先这里只看本机文件，而 `load()` 会从共享
+        **必须和 `load()` 看同一份事实。** 只看本机文件不行：`load()` 会从共享
         副本回填，于是撤销本机那份之后界面报「未配置」、连接器却还拿着共享里那把 key
         在认证。状态和实际用的凭据不一致，比撤不掉更糟——用户会以为已经撤了。
         所以这里也走 `load()` 的合并口径，并额外分出 `shared_fields`：用户得知道
@@ -166,3 +166,75 @@ class CredentialStore:
             return None
         mode = stat.S_IMODE(os.stat(path).st_mode)
         return bool(mode & (stat.S_IRGRP | stat.S_IROTH))
+
+
+#: 每个来源要不要凭据、要哪些字段、去哪里拿。这张表和上面的读取实现放在一起：
+#: 「哪些字段可以跨机同步」是凭据自己的安全语义，散在 Web 层就会出现命令行与
+#: 网页各建一个仓库、同一份凭据在一边在、在另一边显示「未配置」。
+CREDENTIAL_GUIDE: dict[str, dict] = {
+    "fanbox": {
+        "requirement": "optional",
+        "fields": ["cookie"],
+        # FANBOX Cookie 绑定浏览器会话与风控环境，不跨机同步。
+        "syncable": [],
+        "why": "公开列表不需要登录；帖子详情被 FANBOX 验证页拦住时，可用浏览器会话取得正文、多图和外部资源链接。",
+        "where": "https://www.fanbox.cc/",
+        "howto": "登录 FANBOX 后，从一次成功的 api.fanbox.cc/post.info 请求复制整条 Cookie 请求头。",
+    },
+    "gofile": {
+        "requirement": "optional",
+        "fields": ["api_token"],
+        "syncable": [],
+        "why": "用于展开 Gofile 文件页，取得其中的图片和视频列表；Gofile 当前要求 Premium 才能读取 contents API，不配置仍会保留文件页链接。",
+        "where": "https://gofile.io/myprofile",
+        "howto": "登录 Premium Gofile 账户后，在个人资料页复制 API token。",
+    },
+    "kemono": {"requirement": "none"},
+    "coomer": {"requirement": "none"},
+    "pawchive": {"requirement": "none"},
+    "rule34video": {"requirement": "none"},
+    "rule34xxx": {
+        "requirement": "required",
+        "fields": ["user_id", "api_key"],
+        # 账号级、与机器无关，用户明确要求跨机同步。
+        "syncable": ["user_id", "api_key"],
+        "why": "网页版挂了 Cloudflare 验证码，Peach 不绕验证码，只能走官方 API。",
+        "where": "https://rule34.xxx/index.php?page=account&s=options",
+        "howto": "登录后在账号设置页生成 API key，把 user_id 和 api_key 写进凭据文件。",
+    },
+    "f95zone": {
+        "requirement": "optional",
+        "fields": ["cookie"],
+        # cookie 绑会话与客户端 IP，同步到另一台大概率直接失效——不同步。
+        "syncable": [],
+        "why": "发现更新不需要登录；只有取附件和 masked 下载链接才需要会话。",
+        "where": "https://f95zone.to/",
+        "howto": "登录后从浏览器复制整条 Cookie 请求头，写进凭据文件的 cookie 字段。",
+    },
+    "simpcity": {
+        "requirement": "blocked",
+        "why": "站点由 DDoS-Guard 的浏览器质询保护，放行绑客户端 IP 且最短 20 分钟过期，"
+               "撑不起定时追更。Peach 不绕机器人验证。",
+    },
+}
+
+
+#: 哪些字段可以跨机同步，逐 provider 逐字段声明。绝不按字段名猜——今天 `api_key`
+#: 能同步、`cookie` 不能，明天新增一个 `session_token` 就会落到错误的一侧。
+SYNCABLE_FIELDS: dict[str, tuple[str, ...]] = {
+    provider: tuple(guide.get("syncable", ()))
+    for provider, guide in CREDENTIAL_GUIDE.items()
+}
+
+
+def credential_store_for(secrets_root: Path, *,
+                         shared_root: Path | None = None) -> CredentialStore:
+    """构造凭据仓库的唯一入口。
+
+    `shared_root` 与 `syncable_fields` 必须处处一致。Web、发现与 CLI 各自
+    `CredentialStore(...)` 的话，只有其中一份带上共享根和可同步字段声明——表现是
+    在另一台机器上配好的 rule34.xxx key 网页里能用、`peach follow check` 却报
+    缺凭据。哪一层都不该自己决定这件事，所以只留这一个构造函数。
+    """
+    return CredentialStore(secrets_root, shared_root=shared_root,
+                           syncable_fields=SYNCABLE_FIELDS)
