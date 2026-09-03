@@ -5,13 +5,14 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 
 # Peach Web UI 复用门槛
 
-最后复核：2026-09-01
+最后复核：2026-09-03
 
 ## 开工顺序
 
 1. 读取相关页面、`web/js/ui-components.js`、`web/app.css` 与 `tests/test_web_ui.py`，先找现成控件、token 和行为。
 2. 外部产品被称为参考时同时执行 `peach-reference-evidence`；没有当前可复现证据就写 `未取得`，不补动画、间距或交互猜测。
-3. 新控件先检查 `docs/reference-snapshots/vercel-geist-controls-measured.md`、`vercel-geist-semantics-measured.md`、`vercel-geist-note-progress-switch-analytics.md` 与 `vercel-geist-command-search-loading.md`。
+3. 视觉与交互先过 `docs/reference-snapshots/vercel-web-interface-guidelines.md` 的 Focus States、Forms、Animation、Content 四节，以及 `vercel-report-design.md`（即 `vercel.com/design.md`）的「Reject generated-design reflexes」；第三方逆向测量的 DESIGN.md（如 design-bites）不作证据。
+4. 新控件先检查 `docs/reference-snapshots/vercel-geist-controls-measured.md`、`vercel-geist-semantics-measured.md`、`vercel-geist-note-progress-switch-analytics.md` 与 `vercel-geist-command-search-loading.md`。
 
 ## 组件选择
 
@@ -40,6 +41,8 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 
 - 优先扩展 `web/js/ui-components.js`，不要为同一语义复制一次性 class 和模板。
 - 颜色、字号、圆角、浮层层级只用 `:root` 已有 token；新 token 必须证明现有词汇无法表达。
+- 字重只有 400／500／600 三档，标题也是 600；圆角只用 `--badge-radius`／`--control-radius`／`--surface-radius`／`--floating-radius`／`--pill-radius` 加 `50%` 与 `0`，带边框容器里的头尾条用 `calc(… - 1px)` 保持同心。两者的字面值由 `tests/test_web_ui.py` 拒绝，归属判据见 `:root` 注释。
+- `outline:0`／`outline:none` 只允许出现在同一规则给出替代焦点样式的地方（`box-shadow` 或子元素 outline），或输入框由带 `:focus-within` 的容器接管焦点时；reduced motion 由全局 `@media (prefers-reduced-motion:reduce)` 统一关闭，不逐处补。
 - Progress 必须有真实 `value/max`、可见单位与 `aria-valuemin/max/now`；分隔线放在完整指标（含进度条）之后。
 - Switch 必须共享 radio `name`、初始一个 `checked`、键盘可用；布尔状态继续使用 Toggle。
 - 菜单每项包含与入口相同的图标和文字，菜单内部滚动、`overscroll-behavior:contain`，不得把浏览器页面撑出滚动条。

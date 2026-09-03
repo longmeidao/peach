@@ -256,6 +256,40 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("--fs-", css.split("--fs-xs")[0][-40:],
                          "刻度必须从 --fs-xs 开始，别在前面塞更小的档")
 
+    def test_font_weights_stay_on_the_three_geist_steps(self):
+        """字重只有 400／500／600 三档。
+
+        `vercel-report-design`（vercel.com/design.md）明说不要自造数字字重，Geist 本身
+        也只发 regular／medium／semibold。收敛前 `app.css` 里有 550、650、700、750、800
+        五种自造值，同一级标题在不同页面粗细不一，却没有任何一处能说出「为什么这里是 650」。
+        """
+        css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
+            encoding="utf-8")
+        weights = sorted(set(re.findall(r"font-weight:\s*([^;}]+)", css)))
+        self.assertEqual(weights, ["400", "500", "600", "inherit"],
+                         f"字重只能是三档之一，实际出现 {weights}")
+
+    def test_every_border_radius_comes_from_the_radius_vocabulary(self):
+        """圆角只有五个语义 token，加上 0 与 50%。
+
+        收敛前 `app.css` 写着 1、2、3、5、7、9、10、11、14、16、18、24、28、40px 等
+        二十来种字面圆角，相邻两档差一像素，谁也说不清 7 和 8 的区别。现在：
+        `--badge-radius` 标记、`--control-radius` 控件、`--surface-radius` 不浮起的
+        内嵌表面、`--floating-radius` 浮层与卡片、`--pill-radius` 连续的条与胶囊，
+        圆形用 50%。嵌在带边框容器里的头尾条用 `calc(token - 1px)` 保持同心。
+        """
+        css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
+            encoding="utf-8")
+        css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        token = (r"(?:0|50%|inherit|var\(--(?:badge|control|surface|floating|pill|tag)-radius\)"
+                 r"|calc\(var\(--(?:surface|floating)-radius\) - 1px\))")
+        allowed = re.compile(rf"^{token}(?: {token}){{0,3}}(?:!important)?$")
+        offenders = sorted(
+            value.strip() for value in re.findall(r"border-radius:\s*([^;}]+)", css)
+            if not allowed.match(value.strip()))
+        self.assertEqual(offenders, [], f"圆角不在词汇表里：{offenders}")
+        self.assertIn("--surface-radius:8px", css)
+
     def test_every_class_selector_in_the_stylesheet_is_actually_used(self):
         """样式表里的每个类选择器都要有人用它。
 
@@ -305,7 +339,7 @@ class WebUiSourceTests(unittest.TestCase):
         """全站壳层、浮层和普通操作使用同一组语义 token。"""
         css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
             encoding="utf-8")
-        self.assertIn("--control-radius:6px; --badge-radius:4px; --floating-radius:12px", css)
+        self.assertIn("--control-radius:6px; --badge-radius:4px; --floating-radius:12px; --surface-radius:8px", css)
         for selector, token in (
                 (".ib{", "var(--control-radius)"),
                 (".geist-button{", "var(--control-radius)"),
@@ -983,7 +1017,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_immerse_desktop_matches_the_youtube_shorts_layout_hierarchy(self):
         self.assertPageContains('class="tokstage"')
         self.assertPageContains('.tokstage{position:absolute;left:50%;top:50%;width:min(56.25vh,calc(100vw - 240px));aspect-ratio:9/16')
-        self.assertPageContains('.toktrack{position:absolute;inset:0;overflow:hidden;border-radius:12px;background:#000')
+        self.assertPageContains('.toktrack{position:absolute;inset:0;overflow:hidden;border-radius:var(--floating-radius);background:#000')
         self.assertPageContains('.tokbtns{position:absolute;left:calc(100% + 12px);bottom:8px;width:72px')
         self.assertPageContains('class="media-circle" id="tokDislike"')
         self.assertPageContains('.media-circle{box-sizing:border-box;width:48px;height:48px;padding:0;border:0;border-radius:50%;')
@@ -1121,7 +1155,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("id=\"i-player-play\"")
         self.assertPageContains("id=\"i-player-pause\"")
         self.assertPageContains(".vjs-peach-right-controls{box-sizing:border-box;position:relative;align-self:flex-end")
-        self.assertPageContains("padding:0 4px;display:flex;align-items:center;border:0;border-radius:28px;background:rgba(0,0,0,.6);box-shadow:none")
+        self.assertPageContains("padding:0 4px;display:flex;align-items:center;border:0;border-radius:var(--pill-radius);background:rgba(0,0,0,.6);box-shadow:none")
         self.assertPageContains("overflow:visible;transition:width .2s")
         self.assertPageContains("opacity:0;visibility:hidden;pointer-events:none")
         self.assertPageContains("opacity:1;visibility:visible;pointer-events:auto")
@@ -1141,7 +1175,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".vwrap .video-js .vjs-custom-control-spacer{display:block;flex:1 1 auto}")
         self.assertPageContains(".vwrap .video-js .vjs-time-control{display:none!important}")
         self.assertPageContains(".vwrap .video-js .vjs-peach-time{box-sizing:border-box;align-self:flex-end")
-        self.assertPageContains("padding:0 16px;border:0;border-radius:28px;background:rgba(0,0,0,.6)")
+        self.assertPageContains("padding:0 16px;border:0;border-radius:var(--pill-radius);background:rgba(0,0,0,.6)")
         self.assertPageContains("time.type='button';time.className='vjs-peach-time vjs-control';time.dataset.playerTime=''")
         self.assertPageContains("remaining=!remaining;syncTime()")
         self.assertPageContains("time.innerHTML='<span class=\"vjs-peach-time-text\"></span>'")
@@ -1218,7 +1252,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".playerstatsbtn:after,.closestage:after{content:\"\";position:absolute;z-index:0;inset:4px;border-radius:50%")
         self.assertPageContains(".playerstatsbtn:hover:after,.playerstatsbtn:focus-visible:after,.closestage:hover:after,.closestage:focus-visible:after{background:rgba(255,255,255,.1)}")
         self.assertPageContains(".playernet{box-sizing:border-box;position:absolute;left:58px;top:11px;z-index:8;height:40px;min-height:40px")
-        self.assertPageContains("display:flex;align-items:center;border:0;border-radius:12px")
+        self.assertPageContains("display:flex;align-items:center;border:0;border-radius:var(--floating-radius)")
 
     def test_player_settings_match_real_ambient_speed_and_quality_capabilities(self):
         self.assertPageContains("class=\"vjs-peach-settings-menu\" role=\"menu\" aria-label=\"播放器设置\"")
@@ -1240,9 +1274,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z')
         self.assertPageContains("icon('player-option-check')")
         self.assertPageContains(".vjs-peach-settings-menu{box-sizing:border-box;position:absolute;z-index:2300;right:-100px;bottom:52px;width:min(274px")
-        self.assertPageContains("padding:0;border:0;border-radius:12px;background:rgba(0,0,0,.6);box-shadow:none")
+        self.assertPageContains("padding:0;border:0;border-radius:var(--floating-radius);background:rgba(0,0,0,.6);box-shadow:none")
         self.assertPageContains(".vjs-peach-panel-menu{padding:8px}")
-        self.assertPageContains("min-height:48px;padding:0;border:0;border-radius:8px")
+        self.assertPageContains("min-height:48px;padding:0;border:0;border-radius:var(--control-radius)")
         self.assertPageContains(".vjs-peach-menu-row>svg{justify-self:start;margin-left:8px;width:24px;height:24px")
         self.assertPageContains(".video-js .vjs-peach-menu-row{display:grid;grid-template-columns:56px minmax(0,1fr) minmax(0,max-content) 32px")
         self.assertPageContains(".vjs-peach-panel-header{box-sizing:border-box;height:57px;padding:8px 0;display:flex;align-items:center;gap:0;border-bottom:1px solid rgba(255,255,255,.2)")
@@ -1253,7 +1287,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("class=\"vjs-peach-panel-header\"")
         self.assertPageContains('aria-label="返回上一个菜单"')
         self.assertPageContains("color:#eee")
-        self.assertPageContains(".vjs-peach-switch{box-sizing:border-box;display:block;position:relative;width:40px;height:24px;border-radius:12px")
+        self.assertPageContains(".vjs-peach-switch{box-sizing:border-box;display:block;position:relative;width:40px;height:24px;border-radius:var(--floating-radius)")
         self.assertPageContains("background:rgba(0,0,0,.3)")
         self.assertPageContains("background:rgba(255,255,255,.7)")
         self.assertPageContains(".vjs-peach-settings-menu button:before{content:\"\";position:absolute;z-index:0;inset:0")
@@ -1275,7 +1309,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks(".playerstatsbtn:hover,.playerstatsbtn:focus-visible{background:rgba(255,255,255,.1)")
         self.assertPageLacks(".closestage:hover,.closestage:focus-visible{background:rgba(255,255,255,.1)")
         self.assertPageContains(
-            "margin:0 0 8px 12px;padding:0;border:0;border-radius:28px;background:rgba(0,0,0,.6);box-shadow:none;")
+            "margin:0 0 8px 12px;padding:0;border:0;border-radius:var(--pill-radius);background:rgba(0,0,0,.6);box-shadow:none;")
         self.assertPageContains(
             "grid-template-columns:40px 52px;column-gap:3px;padding-right:16px;background:rgba(0,0,0,.6)}")
         self.assertPageLacks(".vjs-volume-panel{background:rgba(0,0,0,.3)!important")
@@ -2707,7 +2741,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(e.key==='Escape'){e.preventDefault();closeAddMenu();addTrigger.focus();return}")
         # 设置分组用框体隔开（用户回执）：每组建卡，分隔线顶格到卡边，
         # 标题字号与行内边距对齐 Vercel 后台设置卡。
-        self.assertPageContains(".settinggroup{margin:16px 0 0;border:1px solid var(--line-soft);border-radius:12px;")
+        self.assertPageContains(".settinggroup{margin:16px 0 0;border:1px solid var(--line-soft);border-radius:var(--floating-radius);")
         # 组卡面与全站卡片同源（--surface 实底），不用白色透明叠加。
         self.assertPageContains("background:var(--surface);padding:0 16px 12px}")
         # 布尔开关是 Geist 中号 Toggle（36×20 轨道 + 17px 圆点），不是原生复选框；
@@ -2724,7 +2758,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".settinggroup .settingrow{margin:0 -16px;padding-left:16px;padding-right:16px}")
         self.assertCode(
             ".pagetitle,.listtitle,.managetitle,.index .ihead h2,.playlistpage h2{"
-            "\n  font-size:var(--fs-3xl);line-height:1.15;letter-spacing:-.01em;font-weight:650}")
+            "\n  font-size:var(--fs-3xl);line-height:1.15;letter-spacing:-.01em;font-weight:600}")
         # 全站字体栈必须有 CJK sans 兜底：Bahnschrift/Consolas 都没有中文字形，
         # generic sans-serif/monospace 在中文 Chrome 的默认可能落到宋体。
         css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
@@ -3814,7 +3848,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('class="resourceapplyrow"')
         self.assertPageContains(".resourceaction{box-sizing:border-box;height:36px")
         self.assertPageContains("@media(max-width:640px){.resourcesync .resourcesources{grid-template-columns:1fr}")
-        self.assertPageContains(".resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--line-soft);border-radius:12px")
+        self.assertPageContains(".resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--line-soft);border-radius:var(--floating-radius)")
         self.assertPageContains(".resourcesources article+article{border-left:1px solid var(--line-soft)}")
         self.assertPageContains(".resourceapplyrow .resourcesyncok{color:var(--success)}")
         self.assertPageContains(".resourcesync{scroll-margin-top:calc(var(--topH) + 18px);display:grid;gap:16px}")
