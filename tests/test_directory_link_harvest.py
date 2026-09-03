@@ -198,6 +198,12 @@ class SharedJudgementTests(unittest.TestCase):
         self.assertEqual(social_links.canonical_url("https://www.instagram.com/a/"),
                          "https://www.instagram.com/a/")
 
+    def test_canonical_url_lowercases_the_host_but_not_the_handle(self):
+        """jae 的页面上就写着 `https://Instagram.com/sakuramanatee/`。"""
+        self.assertEqual(social_links.canonical_url("https://Instagram.com/sakuramanatee/"),
+                         "https://instagram.com/sakuramanatee/")
+        self.assertEqual(social_links.canonical_url("https://X.com/A_b"), "https://x.com/A_b")
+
     def test_name_key_ignores_width_spacing_and_case(self):
         self.assertEqual(social_links.name_key("Yua　Mikami"), social_links.name_key("yua mikami"))
         self.assertEqual(social_links.name_key("三上 悠亜"), social_links.name_key("三上悠亜"))
