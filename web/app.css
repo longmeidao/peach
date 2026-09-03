@@ -959,18 +959,22 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .resourcecardtitle{cursor:default}
 .junkcount{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px}
 .junksummary{flex:none;font-size:var(--fs-sm);color:var(--muted);white-space:nowrap}
-/* Geist Tabs 的 secondary 变体（vercel.com/geist/tabs 实测 2026-09-03）：无边框的 pill，
-   高 32px、左右 12px、6px 圆角、13px/400；选中只换底（深色实测是 --accents-2 这一级的
-   浅灰，Peach 浅色里对应 --hover）加前景色，未选中只有 --muted 文字，整条不画底线。
-   复核分类 10 项、垃圾文件分类 7 项都越过 Switch「2–3 项互斥选项」的上限，规范落点
-   就是 Tabs 而不是分段器，所以两条共用同一套外观。 */
-.reviewtabs,.junkfilters{display:flex;align-items:center;gap:0;min-width:0;overflow-x:auto;scrollbar-width:none}
+/* 两条分类切换共用一套外观，语义各自不同：复核那条在 10 个互不相同的候选数据集之间切
+   （真 tablist），垃圾文件那条是同一批候选按 type 收窄（落 URL 的筛选链接）。
+   几何仍取 Geist Tabs 的 secondary 变体（vercel.com/geist/tabs 实测 2026-09-03）：高 32px、
+   左右 12px、6px 圆角、13px/400，hover 只换文字色，选中只抬底到 --hover、不动边框。
+   有意偏离一处：上游 secondary 不描边，Peach 描 1px --border-15。上游正文没有
+   「secondary 必须放在容器内」这类条款（未取得），但 Peach 这两条直接坐在页面顶部，
+   下面就是全宽网格，四周没有任何容器边线；不描边时只有选中那一枚有底色，其余几项
+   没有可视边界，看不出是一排可点的控件。取值与排序条同族，两处认得出是同类控件。 */
+.reviewtabs,.junkfilters{display:flex;align-items:center;gap:5px;min-width:0;overflow-x:auto;scrollbar-width:none}
 .reviewtabs::-webkit-scrollbar,.junkfilters::-webkit-scrollbar{display:none}
 .reviewtabs{margin-bottom:16px}
 .reviewtabs button,.junkfilters a{box-sizing:border-box;height:32px;padding:0 12px;flex:none;
-  display:inline-flex;align-items:center;gap:6px;border:0;border-radius:var(--control-radius);
-  background:transparent;color:var(--muted);text-decoration:none;font:inherit;font-size:var(--fs-sm);
-  font-weight:400;white-space:nowrap;cursor:pointer}
+  display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border-15);
+  border-radius:var(--control-radius);background:transparent;color:var(--ink-2);
+  text-decoration:none;font:inherit;font-size:var(--fs-sm);font-weight:400;
+  white-space:nowrap;cursor:pointer}
 .reviewtabs button:hover,.junkfilters a:hover{color:var(--ink)}
 .reviewtabs button[aria-selected="true"],.junkfilters a[aria-current="page"]{background:var(--hover);color:var(--ink)}
 .reviewtabs button:focus-visible,.junkfilters a:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
