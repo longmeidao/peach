@@ -241,6 +241,26 @@
   门槛在 `tests/test_studio_icon_variants.py` 的 `LogoAvailabilityTests`（可用性与取图在同一个目录上
   必须给同一个答案）和 `tests/test_web_ui.py` 的两条页面源测试（取图位必须带 `studio=` 与 `variant=`，
   且必须先问过 `has_logo`）。
+- **人的那张脸同一条规矩：先问过再出图。** `/entity-image` 与 `/avatar` 由 `WebContract` 的
+  `has_entity_image()` / `has_avatar()` 判定，随资料下发为 `has_image` 与 `has_avatar`
+  （`/api/tops` 的 `performers[]`／`studios[]`、`/api/items` 与 `/api/item` 的 `entity_refs`、
+  `/api/entity` 的本体与 `related_performers`）。页面只有一处拼这两个地址——`web/app.js` 的
+  `entityFaceImg()`，四个取图位（顶栏圆头像 `.av .ring`、身份格人物位、共演者小圆框、资料页
+  160 px 大位）共用它，两样都取不到就一个 `<img>` 都不出，首字母垫底直接露出来。旧写法一个作品
+  详情页实测 9 个 404（1 个厂牌实体图、4 个人物实体图、4 个头像），首页手机视口 2 个，同样不带缓存头。
+  两条判据形状不一样，不能混为一谈：
+  - 实体图是纯粹的「在不在」。`avatar_root` 一次 `os.scandir` 出 casefold 索引
+    （`avatar_root_index().entity_images`），落盘名统一走 `previews.entity_image_key`，
+    kind 是名字的一部分——creator 的图写成 `performer-<id>.img` 是永远读不到的；认得的种类只有
+    `previews.ENTITY_IMAGE_KINDS` 那几种。`.ct`、`.provenance.json`、`.face.json` 是边车，不算图。
+  - 头像是按需生成的，「目录里没有」只说明还没裁过。所以 `has_avatar` = 已经裁好的 `<id>.jpg`
+    **或** 印相还在盘上（同一个 `has_snapshot`）。把后者也判成没有，等于把「点一下就现裁一张」
+    那条路永远关掉。生成中途的 `<id>.<格>.tmp.jpg` 不算数。剩下预测不了的 404 只有生成本身失败
+    那一种（没有 ffmpeg、六格全黑），所以 `data-drop="self"` 兜底链一条都不能撤。
+  门槛在 `tests/test_previews.py` 的 `EntityImageAvailabilityTests` / `AvatarAvailabilityTests`
+  （同一个临时目录上可用性与取图必须给同一个答案）、`tests/test_rm_web.py` 的四端点标志测试，以及
+  `tests/test_web_ui.py` 的 `test_no_face_image_is_emitted_before_the_server_says_it_can_be_fetched`
+  （页面源里每一处 `/entity-image`／`/avatar` 附近都得有可用性判据）。
 - 补方形小标要借 `link_marks` 的内容比闸门，但不能借它的尺寸下限。`MIN_DESIGNED_SIZE=96` 是为
   `/link-mark` 那种 128 px 圆标定的；JAV 厂牌站的 favicon 普遍只有 32×32 或 64×64，直接套 `render_mark`
   会把 HEYZO、Idea Pocket、MOODYZ、Prestige、Wanz Factory、Tameike Goro 六个全退掉，还在复核件上记成

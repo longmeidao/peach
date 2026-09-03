@@ -32,7 +32,7 @@ from .entities import (
 )
 from .fsutil import atomic_write_bytes
 from .metadata_policy import SOURCE_SPECS
-from .previews import logo_key
+from .previews import entity_image_key, logo_key
 from .review_csv import read_rows
 
 
@@ -829,7 +829,7 @@ LOGO_CONTENT_TYPES = {
 
 
 #: 落盘名的规则归 `previews.logo_key`：取图、可用性判定和这里的批准落地必须同一套，
-#: 各留一份正则曾经就是「装上了却取不到」的成因。名字沿用，导出的仍是同一个函数。
+#: 各留一份正则的代价是「装上了却取不到」。名字沿用，导出的仍是同一个函数。
 studio_logo_key = logo_key
 
 
@@ -891,7 +891,9 @@ def _install_performer_avatar(contract: ReviewContract, entity_id: str) -> int:
             "SELECT kind FROM entity WHERE id=?", (int(entity_id),)).fetchone()
     kind = (kind_row[0] if kind_row and kind_row[0] in {"performer", "creator"}
             else "performer")
-    destination = contract.avatar_root / f"{kind}-{int(entity_id)}.img"
+    # 落盘名归 `previews.entity_image_key`：取图、可用性判定和这里的批准落地必须
+    # 同一套，各留一份 f-string 迟早变成「装上了却取不到」。
+    destination = contract.avatar_root / f"{entity_image_key(kind, entity_id)}.img"
     # 原子替换：中途失败不会留下半张图被 `/entity-image` 读到。
     atomic_write_bytes(destination, body)
     Path(f"{destination}.ct").write_text(content_type, encoding="utf-8")

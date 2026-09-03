@@ -225,7 +225,8 @@ def q_items(contract: WebContract, args):
         for aid, entity_id, kind, name in con_entities(contract, ids, qm):
             emap.setdefault(aid, {}).setdefault(kind, []).append(name)
             if kind == "performer":
-                performer_refs.setdefault(aid, []).append({"id": entity_id, "name": name})
+                performer_refs.setdefault(aid, []).append(
+                    entity_ref(contract, "performer", entity_id, name))
         for r in rows:
             ts = tmap.get(r["id"], [])
             canonical = emap.get(r["id"], {})
@@ -282,6 +283,37 @@ def con_entities(contract: WebContract, ids, qm):
         ).fetchall()
 
 
+def entity_ref(contract: WebContract, kind: str, entity_id, name: str) -> dict:
+    """身份引用：id、名字，加上「实体图取不取得到」。
+
+    卡片头像、详情页身份格和沉浸模式的署名圈都读这一份，所以标志跟着引用走，不由
+    各处自己再问一遍。缺了它，这些位置只能无条件出 `<img>`、等 `/entity-image` 回
+    404 再把图摘掉——一个作品详情页实测就是 5 个这样的 404，而那条响应不带缓存头。
+    """
+    return {"id": entity_id, "name": name,
+            "has_image": contract.has_entity_image(kind, entity_id)}
+
+
+def attach_avatar_availability(contract: WebContract, rows, key="rep",
+                               flag="has_avatar"):
+    """给带代表作 id 的行标上「`/avatar` 取不取得到」。
+
+    判据要看接触印相在不在盘上，一次批量取路径——逐行查库就是 N+1，顶栏一次 30 行。
+    「还没裁过但印相还在」算取得到：`/avatar` 按需生成，把这种也判成没有等于把点一下
+    就有的头像永远关掉。
+    """
+    ids = sorted({int(row[key]) for row in rows if row.get(key)})
+    paths: dict[int, str | None] = {}
+    if ids:
+        marks = ",".join("?" * len(ids))
+        with contract.read_connection() as connection:
+            paths = {row[0]: row[1] for row in connection.execute(
+                f"SELECT id,snapshot_path FROM asset WHERE id IN ({marks})", ids)}
+    for row in rows:
+        rep = row.get(key)
+        row[flag] = bool(rep) and contract.has_avatar(rep, paths.get(int(rep)))
+
+
 def attach_card_performers(contract: WebContract, rows):
     """给各类视频卡片补同一份表演者资料，避免首页/相关/复核卡片各说各话。"""
     if not rows:
@@ -294,7 +326,8 @@ def attach_card_performers(contract: WebContract, rows):
         if kind != "performer":
             continue
         names.setdefault(asset_id, []).append(name)
-        refs.setdefault(asset_id, []).append({"id": entity_id, "name": name})
+        refs.setdefault(asset_id, []).append(
+            entity_ref(contract, "performer", entity_id, name))
     for row in rows:
         row["performers"] = names.get(row["id"], [])[:CARD_PERFORMERS]
         row["performer_entities"] = refs.get(row["id"], [])[:CARD_PERFORMERS]
@@ -575,7 +608,7 @@ def q_item(contract: WebContract, aid):
         for kind in ("creator", "performer", "studio", "series")
     }
     d["entity_refs"] = {
-        kind: [{"id": entity_id, "name": name}
+        kind: [entity_ref(contract, kind, entity_id, name)
                for entity_id, item_kind, name in canonical if item_kind == kind]
         for kind in ("creator", "performer", "studio", "series")
     }
@@ -757,6 +790,13 @@ def q_tops(contract: WebContract, n=28, jav=False, seed="", state=""):
     # 判定在库连接之外做，它读的是目录索引而不是账本。
     for studio in out["studios"]:
         studio["has_logo"] = contract.has_logo(studio["k"])
+    # 女优那排同理，只是它有两级图：规范实体图优先，取不到才回落到代表作头像。
+    # 两级都要标志，否则第一级空着的那些人会各打一个必然 404 的请求再回落。
+    for performer in out["performers"]:
+        performer["has_image"] = contract.has_entity_image("performer", performer["id"])
+    # 厂牌那排自己不出头像，但两排的 `rep` 都会进前端的 REP 表，卡片头像回落时读的
+    # 就是它——所以两排都得判。
+    attach_avatar_availability(contract, out["performers"] + out["studios"])
     return out
 
 

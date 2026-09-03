@@ -15,7 +15,12 @@ from urllib.parse import urlsplit
 
 from .catalog_rules import LENGTH_TAGS, dir_expr, photo_set_title, tag_cat
 from .entities import normalize_entity_name, resolve_entity
-from .web_catalog import COST, tag_is_not_a_performer_name, tag_not_hidden
+from .web_catalog import (
+    COST,
+    attach_avatar_availability,
+    tag_is_not_a_performer_name,
+    tag_not_hidden,
+)
 from .web_state import WebContract
 
 
@@ -120,6 +125,14 @@ def q_entity(contract: WebContract, args):
     # 省掉必然 404 的那一跳；别的实体没有这个位置，标志只对厂牌成立。
     if kind == "studio":
         d["has_logo"] = contract.has_logo(d["canonical_name"])
+    # 大位那条链的后两环同样要随资料下发：实体图取不到就直接从代表作头像起步，两样
+    # 都取不到就一个 `<img>` 都不出。判定在库连接之外做，它读的是目录索引。
+    d["has_image"] = contract.has_entity_image(kind, d["id"])
+    attach_avatar_availability(contract, [d], key="representative_asset_id")
+    # 页脚那排共演者是同一个圆头像，用的也是同一条两级链。
+    for person in d["related_performers"]:
+        person["has_image"] = contract.has_entity_image("performer", person["id"])
+    attach_avatar_availability(contract, d["related_performers"])
     return d
 
 # ────────────────────────────── 照片 ──────────────────────────────

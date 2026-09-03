@@ -1327,14 +1327,37 @@ function wireHover(el,it){
 window.addEventListener('pagehide',()=>releaseHoverPreviews());
 document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseHoverPreviews()});
 
-/* 头像内层：先垫首字母，再叠真实图。规范实体图优先，取不到才回落到旧头像缓存。 */
+/* 实体那张脸：规范实体图优先，取不到退到代表作头像，两样都取不到就一个 `<img>`
+   都不出。四个位置（顶栏圆头像、卡片署名、共演者、资料页大位）共用这一份。
+
+   无条件出图、等 404 再把图摘掉的代价是：一个作品详情页 9 个这样的 404（1 个厂牌
+   实体图、4 个人物实体图、4 个头像），首页手机视口 2 个；`/entity-image` 与
+   `/avatar` 的 404 都不带缓存头，每次重绘再打一整轮。`hasImage` 由 `/api/tops`、
+   `/api/items`、`/api/item`、`/api/entity` 随资料下发，判据和取图同一个函数。
+
+   `rep` 这一侧不带标志：调用方传进来的就该是「取得到的代表作」（顶栏在入 REP 表时
+   已经筛过）。`/avatar` 是按需生成的，还没裁过但印相还在也算取得到——那条点一下就
+   有的路不能一起关掉。
+
+   兜底链最后一环必须真的把 `<img>` 拿掉（`data-drop="self"`）：留着取不到图的
+   `<img>`，`:has(img)` 仍然匹配，首字母垫底回不来，浏览器还会把 alt 画出来。 */
+function entityFaceImg({kind='performer',id=null,hasImage=false,rep=null,
+                        alt='',lazy=true,style='',dropStyle=false}={}){
+  const useEntity=!!(id&&hasImage);
+  const src=useEntity?`/entity-image?kind=${kind}&id=${id}`:(rep?`/avatar?id=${rep}`:'');
+  if(!src)return '';
+  const fallbacks=useEntity&&rep?[`/avatar?id=${rep}`]:[];
+  // 人脸取景是按实体图算出来的，回落图是另一张照片，脸不在同一位置：只贴给第一环。
+  return `<img src="${src}" alt="${alt}"${lazy?' loading="lazy"':''}${useEntity?style:''} `+
+    `${imageFallbackAttrs({dropStyle:dropStyle&&useEntity,fallbacks})}>`;
+}
+/* 头像内层：先垫首字母，再叠真实图。
+
+   `has_image` 缺席时按「有图」处理：口味榜、复核卡片和索引页的调用方自己拼 ref，
+   还没有这个标志，读到 undefined 就照旧无条件出图，行为和加标志之前一模一样。 */
 function avatarInner(name,ref,repId,kind='performer'){
-  const src=ref?`/entity-image?kind=${kind}&id=${ref.id}`:(repId?`/avatar?id=${repId}`:'');
-  // 兜底链最后一环必须是把 <img> 拿掉（`data-drop="self"`）：留着取不到图的 <img>，
-  // `:has(img)` 仍然匹配，首字母垫底回不来，浏览器还会把 alt 画出来。
-  const fallbacks=ref&&repId?[`/avatar?id=${repId}`]:[];
   return `<span class="ini">${esc((name||'?').slice(0,1))}</span>`+
-    (src?`<img src="${src}" alt="" loading="lazy" ${imageFallbackAttrs({fallbacks})}>`:'');
+    entityFaceImg({kind,id:ref&&ref.id,hasImage:!!ref&&ref.has_image!==false,rep:repId});
 }
 /* 人脸取景：资料页圆框按检出的人脸中心取景（/api/entity 的 avatar_focus）。
    没检出或没算过返回空串维持几何居中；换回落图时必须撤掉——那是另一张照片，
@@ -1905,19 +1928,20 @@ async function buildBars(){
   }
 
   // 顶部三层：女优圆头像 / 厂牌 / 内容标签
-  tops.performers.forEach(x=>{if(x.rep)REP[x.k]=x.rep});
-  tops.studios.forEach(x=>{if(x.rep)REP[x.k]=x.rep});
+  /* REP 表只收真能取到头像的代表作：卡片署名圈回落时读的就是它，取不到的进了表
+     就是一个必然 404 的 `<img>`。`has_avatar` 说的是「已经裁好或印相还在」，不是
+     「目录里有没有那张 jpg」——`/avatar` 按需生成，还没抓过的那条路留着。 */
+  tops.performers.forEach(x=>{if(x.rep&&x.has_avatar)REP[x.k]=x.rep});
+  tops.studios.forEach(x=>{if(x.rep&&x.has_avatar)REP[x.k]=x.rep});
   const avHtml=x=>`<button class="av" data-entity-kind="performer" data-entity-name="${esc(x.k)}">
-    <span class="ring"><span class="ini">${esc(x.k.slice(0,1))}</span>${x.id
-      ? `<img src="/entity-image?kind=performer&id=${x.id}" alt="" loading="lazy"
-           ${imageFallbackAttrs({fallbacks:x.rep?[`/avatar?id=${x.rep}`]:[]})}>`
-      : ''}</span>
+    <span class="ring"><span class="ini">${esc(x.k.slice(0,1))}</span>${entityFaceImg(
+      {id:x.id,hasImage:x.has_image,rep:x.has_avatar?x.rep:null})}</span>
     <span class="nm">${esc(x.k)}</span></button>`;
   /* 正规厂牌用官网 logo；缺失时只显示首字母，绝不把作品截图冒充厂牌图标。
 
-     没装标识就一个 `<img>` 都不输出。以前这里无条件出图、靠 `/logo` 回 404 再把
-     图换成首字母：顶栏一排 30 个厂牌，实测 21 个是 404，而 404 那条响应不可缓存，
-     每次重绘再打一整轮。`has_logo` 由 `/api/tops` 下发，判据和取图同一个函数。 */
+     没装标识就一个 `<img>` 都不输出。无条件出图、靠 `/logo` 回 404 换成首字母的
+     代价是：顶栏一排 30 个厂牌里 21 个是 404，而 404 那条响应不可缓存，每次重绘
+     再打一整轮。`has_logo` 由 `/api/tops` 下发，判据和取图同一个函数。 */
   const bpHtml=x=>{
     const fallback=`${esc(x.k.slice(0,2))}`;
     const mark=x.has_logo
@@ -5242,21 +5266,19 @@ async function openEntity(kind,name,push=true,requestedTag){
   document.body.classList.add('entity-open');
   $('#index').hidden=false;$('#grid').innerHTML='';$('#count').textContent='';
   $('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
+  /* 大位这条链每一环都先问过再出图：厂牌是标识→实体图，其余是实体图→代表作头像，
+     一环都取不到就一个 `<img>` 都不出，首字母垫底直接露出来。三个标志
+     （`has_logo`／`has_image`／`has_avatar`）都由 `/api/entity` 随资料下发。 */
   const image=d.id?(kind==='studio'
-    /* 厂牌大位先取标识、取不到才退到实体图。没装标识就直接从实体图起步：那一跳
-       必然 404，`has_logo` 已经把答案随资料一起下发了。 */
     ? (d.has_logo
       ? `<img src="/logo?studio=${encodeURIComponent(d.canonical_name)}&variant=logo" alt="${esc(d.canonical_name)}"
-          ${imageFallbackAttrs({fallbacks:[`/entity-image?kind=studio&id=${d.id}`]})}>`
-      : `<img src="/entity-image?kind=studio&id=${d.id}" alt="${esc(d.canonical_name)}"
-          ${imageFallbackAttrs()}>`)
-    /* 兜底链的最后一环必须真的把 <img> 拿掉（`data-drop="self"`）：留着取不到图的
-       <img> 会让浏览器画出 alt 文本（整个艺人名横在头像圈里），而 `:has(img)`
-       仍然匹配，首字母垫底永远回不来。
-       `data-drop-style` 撤掉人脸取景：换的是另一张照片，脸不在同一个位置。 */
-    : `<img src="/entity-image?kind=${kind}&id=${d.id}" alt="${esc(d.canonical_name)}"${facePos(d.avatar_focus)}
-        ${imageFallbackAttrs({dropStyle:true,
-          fallbacks:d.representative_asset_id?[`/avatar?id=${d.representative_asset_id}`]:[]})}>`):'';
+          ${imageFallbackAttrs({fallbacks:d.has_image?[`/entity-image?kind=studio&id=${d.id}`]:[]})}>`
+      : entityFaceImg({kind:'studio',id:d.id,hasImage:d.has_image,
+                       alt:esc(d.canonical_name),lazy:false}))
+    : entityFaceImg({kind,id:d.id,hasImage:d.has_image,
+                     rep:d.has_avatar?d.representative_asset_id:null,
+                     alt:esc(d.canonical_name),lazy:false,
+                     style:facePos(d.avatar_focus),dropStyle:true})):'';
   /* 链接按 beeg 的资料页形态：社媒收成纯图标，官网／事务所保留名字。
 
      社媒的 handle 是网址的一部分，写出来只是把 URL 抄一遍——`X @remu19971203` 里
@@ -5285,8 +5307,8 @@ async function openEntity(kind,name,push=true,requestedTag){
   }).join('');
   const tags=(d.tags||[]).map(x=>`<button class="pill" data-entity-tag="${esc(x.k)}" aria-pressed="${entityTag===x.k}">${esc(tagLabel(x.k))}<small>${x.n.toLocaleString()}</small></button>`).join('');
   const related=(d.related_performers||[]).map(x=>`<button class="relatedperson" data-related-performer="${esc(x.k)}">
-      <span class="ring"><span>${esc(x.k.slice(0,1))}</span><img src="/entity-image?kind=performer&id=${x.id}" alt="" loading="lazy"
-        ${imageFallbackAttrs({fallbacks:x.rep?[`/avatar?id=${x.rep}`]:[]})}></span>
+      <span class="ring"><span>${esc(x.k.slice(0,1))}</span>${entityFaceImg(
+        {id:x.id,hasImage:x.has_image,rep:x.has_avatar?x.rep:null})}</span>
       <span class="nm">${esc(x.k)}</span></button>`).join('');
   const photoCount=photos&&!photos.error?(photos.total||0):0;
   const mediaSelected=entityMediaView.media==='photos';
@@ -6106,7 +6128,10 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   const CAST_SHOWN=8;
   const castOverflow=Math.max(0,castList.length-CAST_SHOWN);
   const idFace=(kind,item)=>kind==='performer'
-    ? `<span>${esc(item.name.slice(0,1))}</span>${item.id?`<img src="/entity-image?kind=performer&id=${item.id}" alt="" loading="lazy" data-drop="self">`:''}`
+    // 和顶栏圆头像同一条判据：没装实体图就不出 `<img>`。这一格没有代表作头像可退，
+    // 取不到就是首字母垫底。
+    ? `<span>${esc(item.name.slice(0,1))}</span>${entityFaceImg(
+        {id:item.id,hasImage:item.has_image})}`
     : kind==='studio'
       // 和顶栏小圆片同一条判据：没装标识就不出 `<img>`，不再靠 404 把图摘掉。
       ? `<span>${esc(item.name.slice(0,2))}</span>${item.has_logo?`<img src="/logo?studio=${encodeURIComponent(item.name)}&variant=icon" alt="" loading="lazy" data-drop="self">`:''}`

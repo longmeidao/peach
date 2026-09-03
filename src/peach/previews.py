@@ -33,6 +33,22 @@ def logo_key(studio: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]", "_", studio)[:60]
 
 
+#: `/entity-image` 认得的实体种类。取图和可用性判定必须认同一份清单：这边多认一种，
+#: 页面就会为一个必然 404 的地址出 `<img>`；少认一种，装好的图从此不显示。
+ENTITY_IMAGE_KINDS = ("performer", "studio", "creator", "series")
+
+
+def entity_image_key(kind: str, entity_id: int) -> str:
+    """实体图的落盘名。
+
+    和 `logo_key` 同一个道理：`/entity-image` 取图、复核批准落地
+    （`web_review._install_performer_avatar`）和「这个实体有没有图」的可用性判定
+    都按这个名字找文件，规则只能有一份。kind 也是名字的一部分——creator 实体写成
+    `performer-<id>.img` 是永远读不到的。
+    """
+    return f"{kind}-{int(entity_id)}"
+
+
 #: 预览生成的分片锁。一把模块级全局锁会让任何一个资产生成海报时，其他资产的
 #: 头像和海报全得排队，而 `avatar()` 持锁要连跑 6 次 ffmpeg（每次 20 秒上限），
 #: 最坏能把所有预览堵上两分钟。
@@ -162,9 +178,9 @@ class PreviewService:
 
     def entity_image(self, kind: str, entity_id: int) -> tuple[Path, str]:
         """返回已缓存的高清实体图；抓取与版权溯源由离线导入任务负责。"""
-        if kind not in {"performer", "studio", "creator", "series"}:
+        if kind not in ENTITY_IMAGE_KINDS:
             raise PreviewUnavailable("invalid entity kind")
-        path = self.avatar_root / f"{kind}-{int(entity_id)}.img"
+        path = self.avatar_root / f"{entity_image_key(kind, entity_id)}.img"
         if not path.is_file():
             raise PreviewUnavailable("entity image unavailable")
         content_type = "image/jpeg"

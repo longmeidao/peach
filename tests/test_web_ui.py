@@ -728,30 +728,53 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("jav-small")
         self.assertPageContains('<span class="watchcount">看过 ${it.play_count}</span>')
 
-    def test_every_card_avatar_falls_back_through_the_same_helper(self):
-        # kind 参数化后，创作者复核卡片也能走同一个兜底链；默认仍是 performer，
+    def test_every_face_slot_builds_its_image_through_one_helper(self):
+        # 顶栏圆头像、卡片署名、共演者、资料页大位共用 entityFaceImg；
+        # `/entity-image` 和 `/avatar` 两个地址只在这一个函数里拼。
+        self.assertPageContains(
+            "function entityFaceImg({kind='performer',id=null,hasImage=false,rep=null,")
+        self.assertPageContains("const useEntity=!!(id&&hasImage);")
+        self.assertPageContains(
+            "const src=useEntity?`/entity-image?kind=${kind}&id=${id}`:(rep?`/avatar?id=${rep}`:'');")
+        # 一环都取不到就一个 `<img>` 都不出，首字母垫底直接露出来。
+        self.assertPageContains("if(!src)return '';")
+        # kind 参数化后，创作者复核卡片也能走同一条链；默认仍是 performer，
         # 既有调用点不受影响。
         self.assertPageContains("function avatarInner(name,ref,repId,kind='performer')")
-        self.assertPageContains("`/entity-image?kind=${kind}&id=${ref.id}`")
         # 兜底链声明在模板里，行为归 image-fallback 那条委托监听。
-        self.assertPageContains("imageFallbackAttrs({fallbacks})")
-        self.assertPageContains("`/avatar?id=${repId}`")
+        self.assertPageContains("const fallbacks=useEntity&&rep?[`/avatar?id=${rep}`]:[];")
+        self.assertPageContains("imageFallbackAttrs({dropStyle:dropStyle&&useEntity,fallbacks})")
 
-    def test_avatar_fallback_chains_end_by_removing_the_broken_image(self):
-        """取不到图的 <img> 必须被摘掉，不能只停在「不再重试」。
+    def test_no_face_image_is_emitted_before_the_server_says_it_can_be_fetched(self):
+        """先问再出图：没有可用性标志兜住的 `/entity-image`／`/avatar` 一处都不许有。
 
-        留着它有两个后果：`.entityportrait:has(img)>span` 仍然匹配，首字母垫底
-        永远回不来；浏览器还会把 alt 当内容画出来——资料页上就是整个艺人名横在
-        头像圈里溢出（loliburin 实测 /entity-image 与 /avatar 双 404）。
+        无条件出图、等 404 再把图摘掉的代价是：一个作品详情页 9 个这样的 404（1 个
+        厂牌实体图、4 个人物实体图、4 个头像），首页手机视口 2 个。两个端点的 404 都
+        不带缓存头，每次重绘再打一整轮。
         """
-        # 卡片头像、资料页大圆框、关联艺人小圆框声明的是同一套兜底数据；
-        # 「候选换完还是失败就收场」这一步由 advanceImageFallback 统一执行。
-        for chain in (
-            "`/avatar?id=${repId}`",
-            "`/avatar?id=${d.representative_asset_id}`",
-            "`/avatar?id=${x.rep}`",
-        ):
-            self.assertPageContains(chain)
+        source = self.page
+        gates = ("hasImage", "has_image", "useEntity", "has_avatar")
+        for url in ("`/entity-image?kind=", "`/avatar?id="):
+            start = 0
+            while True:
+                at = source.find(url, start)
+                if at < 0:
+                    break
+                start = at + 1
+                before = source[max(0, at - 200):at]
+                self.assertTrue(
+                    any(gate in before for gate in gates),
+                    f"{url} 附近没有可用性判据，这是一个必然 404 的 `<img>`：\n"
+                    f"{source[max(0, at - 200):at + 80]}")
+
+    def test_face_fallback_chains_end_by_removing_the_broken_image(self):
+        """还是取不到图的 <img> 必须被摘掉，不能只停在「不再重试」。
+
+        标志能挡掉「装都没装」，挡不掉生成本身失败（没有 ffmpeg、六格全黑）那一种，
+        所以兜底链一条都不能撤。留着它有两个后果：`.entityportrait:has(img)>span`
+        仍然匹配，首字母垫底永远回不来；浏览器还会把 alt 当内容画出来——资料页上
+        就是整个艺人名横在头像圈里溢出（loliburin 实测 /entity-image 与 /avatar 双 404）。
+        """
         # 收场动作只有这一处实现，默认就是把 <img> 拿掉。
         self.assertPageContains("drop = 'self'")
         self.assertPageContains("image.remove();")
@@ -778,8 +801,10 @@ class WebUiSourceTests(unittest.TestCase):
         # 资料页圆框按检出的人脸取景；换回落图时必须先摘掉内联 object-position——
         # 回落图是另一张照片，脸不在同一位置。
         self.assertPageContains("function facePos(f)")
-        self.assertPageContains('"${facePos(d.avatar_focus)}')
-        self.assertPageContains("imageFallbackAttrs({dropStyle:true,")
+        self.assertPageContains("style:facePos(d.avatar_focus),dropStyle:true")
+        # 取景是按实体图算出来的，所以内联 style 和 data-drop-style 只贴给第一环。
+        self.assertPageContains("${useEntity?style:''}")
+        self.assertPageContains("imageFallbackAttrs({dropStyle:dropStyle&&useEntity,fallbacks})")
         self.assertPageContains("if ('dropStyle' in image.dataset) image.removeAttribute('style');")
 
     def test_entity_link_favicons_do_not_leak_the_page_url_to_the_linked_site(self):
@@ -1232,8 +1257,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("text-decoration:underline")
 
     def test_every_identity_cell_can_carry_its_own_portrait(self):
-        self.assertPageContains('item.id?`<img src="/entity-image?kind=performer&id=${item.id}"')
-        self.assertPageContains('<img src="/logo?studio=${encodeURIComponent(item.name)}&variant=icon"')
+        # 人物格走和顶栏圆头像同一个 entityFaceImg；这一格没有代表作头像可退，
+        # 装了实体图才出 `<img>`，否则就是首字母垫底。
+        self.assertPageContains("? `<span>${esc(item.name.slice(0,1))}</span>${entityFaceImg(")
+        self.assertPageContains("{id:item.id,hasImage:item.has_image})}")
+        self.assertPageContains(
+            '${item.has_logo?`<img src="/logo?studio=${encodeURIComponent(item.name)}&variant=icon"')
 
     def test_large_casts_stay_in_the_dom_behind_one_expander(self):
         # 收起的格子必须留在 DOM 里，展开只是取消 hidden，不重新请求也不丢身份。
@@ -3129,7 +3158,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_every_studio_mark_waits_until_the_logo_is_known_to_exist(self):
         """没装标识就一个 `<img>` 都不输出，不许靠 404 再把图换成首字母。
 
-        三处取图位以前都是无条件出图：首页顶栏一排 30 个厂牌，实测 21 个 404，而
+        三处取图位无条件出图的代价是：首页顶栏一排 30 个厂牌里 21 个是 404，而
         `/logo` 的 404 那条响应不可缓存，每次重绘再打一整轮。判据 `has_logo` 由
         `/api/tops`、`/api/item`、`/api/entity` 随身份一起下发，和取图共用
         `previews.logo_key`。

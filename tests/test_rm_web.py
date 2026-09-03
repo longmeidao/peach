@@ -13,7 +13,7 @@ from unittest import mock
 
 from peach import web_batch, web_catalog, web_stats
 from peach import web_contract as rm_web
-from peach.previews import logo_key
+from peach.previews import entity_image_key, logo_key
 from support.ledger import fresh_ledger
 
 
@@ -74,7 +74,11 @@ class WebDataTests(unittest.TestCase):
         # 图」会随本机装了什么而变，测试跟着本机状态摇。
         self.logos = Path(self.tmp.name).resolve() / "logos"
         self.logos.mkdir()
-        self.contract = rm_web.WebContract(Path(self.db_path), logo_root=self.logos)
+        # 实体图和已裁好的头像同处 `avatar_root`，同样得落在临时目录里。
+        self.avatars = Path(self.tmp.name).resolve() / "avatars"
+        self.avatars.mkdir()
+        self.contract = rm_web.WebContract(
+            Path(self.db_path), avatar_root=self.avatars, logo_root=self.logos)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -100,7 +104,7 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(result["items"][0]["id"], 1)
         self.assertEqual(result["items"][0]["performers"], ["Canonical Alice"])
         self.assertEqual(result["items"][0]["performer_entities"], [
-            {"id": 11, "name": "Canonical Alice"},
+            {"id": 11, "name": "Canonical Alice", "has_image": False},
         ])
         self.assertEqual(result["items"][0]["tags"], ["足交"])
         self.assertIn("play_seconds", result["items"][0])
@@ -160,7 +164,7 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(item["creator"], "Canonical Creator")
         self.assertEqual(item["entities"]["creator"], ["Canonical Creator"])
         self.assertEqual(item["entity_refs"]["creator"], [
-            {"id": 12, "name": "Canonical Creator"},
+            {"id": 12, "name": "Canonical Creator", "has_image": False},
         ])
         self.assertEqual(item["performers"], [])
         self.assertEqual(item["entity_refs"]["performer"], [])
@@ -343,6 +347,74 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(
             flags(), {"pill": [True], "ref": [True], "flat": True, "hero": True},
             "装上之后三处都必须说有")
+
+    def test_face_slots_say_up_front_whether_an_image_can_be_fetched(self):
+        """四个取图位都要随资料下发「取不取得到」。
+
+        缺这个标志，页面只能无条件出 `<img>`、等 404 再换成首字母：一个作品详情页
+        实测 9 个这样的 404（1 个厂牌实体图、4 个人物实体图、4 个头像），首页手机
+        视口 2 个，而 `/entity-image` 与 `/avatar` 的 404 都不带缓存头，每次重绘再打
+        一整轮。
+
+        两级图的判据不一样，所以分成两个标志：实体图有就是有；头像是按需生成的，
+        「还没裁过但印相还在」仍然取得到，把它一起判成没有就等于把点一下就有的那条
+        路关掉。
+        """
+        def flags():
+            item = rm_web.q_item(self.contract, 1)
+            page = rm_web.q_entity(
+                self.contract, {"kind": "performer", "name": "Canonical Alice"})
+            tops = rm_web.q_tops(self.contract, 30)["performers"]
+            cards = rm_web.q_items(self.contract, {"limit": "5", "offset": "0"})["items"]
+            return {
+                # 顶栏圆头像：实体图与代表作头像各一格。
+                "top_image": [row["has_image"] for row in tops],
+                "top_avatar": [row["has_avatar"] for row in tops],
+                # 卡片署名圈的身份引用（`/api/items`）。
+                "card": [ref["has_image"] for row in cards
+                         for ref in row["performer_entities"]],
+                # 详情页身份格（`/api/item`）。
+                "cell": [ref["has_image"] for ref in item["entity_refs"]["performer"]],
+                # 资料页大位（`/api/entity`）：同样是两级。
+                "hero_image": page["has_image"],
+                "hero_avatar": page["has_avatar"],
+            }
+
+        self.assertEqual(
+            flags(),
+            {"top_image": [False], "top_avatar": [False], "card": [False],
+             "cell": [False], "hero_image": False, "hero_avatar": False},
+            "一张图都没有时四处都必须说没有")
+
+        (self.avatars / f"{entity_image_key('performer', 11)}.img").write_bytes(b"x")
+        snapshot = Path(self.tmp.name).resolve() / "one.jpg"
+        snapshot.write_bytes(b"x")
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET snapshot_path=? WHERE id=1", (str(snapshot),))
+        con.commit()
+        con.close()
+        self.contract.cache_bust()
+        self.assertEqual(
+            flags(),
+            {"top_image": [True], "top_avatar": [True], "card": [True],
+             "cell": [True], "hero_image": True, "hero_avatar": True},
+            "装上实体图、印相也在盘上之后，四处都必须说有")
+
+    def test_a_representative_without_its_snapshot_is_not_an_avatar(self):
+        """账本记着印相路径、盘上却没有那个文件时，`/avatar` 一样取不到。
+
+        `rep` 的选取只看 `snapshot_path IS NOT NULL`，那是账本里的一行字符串；
+        真正决定取不取得到的是文件在不在，判据和卡片角上的 `has_thumb` 同一个。
+        """
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET snapshot_path=? WHERE id=1",
+                    (str(Path(self.tmp.name).resolve() / "gone.jpg"),))
+        con.commit()
+        con.close()
+        self.contract.cache_bust()
+        tops = rm_web.q_tops(self.contract, 30)["performers"]
+        self.assertEqual([row["rep"] for row in tops], [1], "代表作仍会被选出来")
+        self.assertEqual([row["has_avatar"] for row in tops], [False])
 
     def test_items_can_skip_repeated_total_count_on_later_pages(self):
         result = rm_web.q_items(
@@ -539,7 +611,7 @@ class WebDataTests(unittest.TestCase):
         self.assertTrue(item["liked"])
         self.assertEqual(item["like_reason"], "喜欢自然的节奏和镜头")
         self.assertEqual(item["entity_refs"]["performer"], [
-            {"id": 11, "name": "Canonical Alice"},
+            {"id": 11, "name": "Canonical Alice", "has_image": False},
         ])
         self.assertIsNone(self.row()["feedback"])
 
@@ -1005,7 +1077,7 @@ class WebDataTests(unittest.TestCase):
 
         reverse_related = rm_web.q_related(self.contract, 2, 10)
         self.assertEqual(reverse_related["items"][0]["performer_entities"], [
-            {"id": 11, "name": "Canonical Alice"},
+            {"id": 11, "name": "Canonical Alice", "has_image": False},
         ])
 
     def _add_performers(self, asset_id, names, start_id=200):
