@@ -1521,7 +1521,8 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('type="checkbox" data-follow-enabled=')
         self.assertPageContains("{action:'enabled',id:Number(control.dataset.followEnabled),enabled}")
         self.assertPageContains(".fchannelcheck input{position:absolute;width:1px;height:1px;opacity:0")
-        self.assertPageContains(".fchannelcheck input:checked+span{")
+        # Geist Checkbox 选中态实测：框底不变，勾是墨色；不再用蓝底。
+        self.assertPageContains(".fchannelcheck input:checked+span{border-color:var(--ink-2);color:var(--ink)}")
         self.assertPageContains("${icon('check')}")
 
     def test_official_channel_icons_and_alias_manager_are_visible(self):
@@ -1763,6 +1764,32 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains(".faliasmanager>summary>svg{flex:none;width:16px;height:16px")
         self.assertPageLacks('.faliasmanager>summary::before{')
         self.assertPageContains("transition:transform .2s ease-in-out")
+        # 内边距放在内层 .fcollapsebody：.fcollapse 自己带 padding 时 border-box 让
+        # height 过渡卡在 20px，收起末尾会跳一下，展开开头也先露出一截空白。
+        self.assertPageContains("inner.className='fcollapsebody'")
+        self.assertPageContains(".faliasmanager .fcollapsebody{padding:4px 16px 16px}")
+        self.assertPageLacks(".faliasmanager>.fcollapse{padding")
+        # 别名行是 Fieldset 的最后一行：负外边距吃掉 .fsec 的底部内边距，收起时底角与
+        # 卡片同心，否则整行下面多出一层 16px 的空带。
+        self.assertPageContains(".faliasmanager{margin:12px -16px -16px;")
+        self.assertPageContains('.faliasmanager>summary[aria-expanded="false"]{border-radius:0 0 calc(var(--surface-radius) - 1px) calc(var(--surface-radius) - 1px)}')
+        self.assertPageContains(".faliasmanager .fcollapsebody{padding:4px 13px 14px}")
+
+    def test_alias_count_badge_is_neutral_metadata(self):
+        """「3 组」只是计数，不是待处理提醒：徽章走 Geist gray badge 的中性灰。
+
+        实测 Geist Badge gray：#1A1A1A 底、#292929 细边、#A1A1A1 字、6px 圆角。此前用
+        蓝底蓝字的 pill，和主按钮同色，读起来像有事要处理。
+        """
+        badge = self.page[self.page.index(".faliasbadge{"):]
+        badge = badge[:badge.index("}")]
+        self.assertIn("border:1px solid var(--border-15)", badge)
+        self.assertIn("border-radius:var(--control-radius)", badge)
+        self.assertIn("background:var(--overlay-5)", badge)
+        self.assertIn("color:var(--muted)", badge)
+        self.assertIn("font-weight:400", badge)
+        self.assertNotIn("tungsten", badge)
+        self.assertNotIn("pill-radius", badge)
 
     def test_follow_source_icons_fail_back_to_plain_text(self):
         icons = self.page.split("const SOURCE_ICONS={", 1)[1].split("};", 1)[0]

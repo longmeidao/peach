@@ -1,5 +1,8 @@
 # Vercel Geist Table 与首页布局证据（2026-08-30）
 
+> 本文是 Peach 的人工取证笔记，不在 `reference-sources.json` 里登记；同 id 来源的上游 Markdown 原文锁定在 `upstream/vercel-geist-table.md`，`accept` 只覆盖那个文件。
+
+
 ## 请求与取得通道
 
 - 目标：`https://vercel.com/geist/table`、`https://vercel.com/home`。

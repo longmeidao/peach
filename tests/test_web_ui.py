@@ -256,6 +256,47 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("--fs-", css.split("--fs-xs")[0][-40:],
                          "刻度必须从 --fs-xs 开始，别在前面塞更小的档")
 
+    # 强调色 --tungsten 的合法去处。选择器只要含其中任一片段，规则体就可以用蓝。
+    TUNGSTEN_ALLOWED_SELECTORS = (
+        ":focus",              # 焦点环：:focus / :focus-visible / :focus-within
+        ".geist-progress", ".watchprogress", ".vjs-play-progress", ".vjs-progress-holder",
+        ".range-fill", "slider-thumb", "range-thumb", ".trace .bar", ".tokbar",  # 进度与数据
+        "#censorSetting:checked",  # Toggle 开态：Geist Toggle 实测轨道 rgb(0,112,243)
+        ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a",  # 真正的链接
+    )
+
+    def test_tungsten_is_reserved_for_focus_links_progress_and_toggle(self):
+        """蓝色只给焦点环、链接、进度／数据和 Toggle 开态，选中态与主动作一律反相墨色。
+
+        `vercel-report-design`（vercel.com/design.md）要求「Design in monochrome」，颜色只在
+        对状态、动作或数据有显著意义时才用，并配非颜色线索。2026-09-03 实测 Geist：Tabs
+        选中是墨色文字加 2px 墨色下划线，Switch 选中是抬起一档的灰面，Checkbox 选中是墨色
+        勾，主按钮是 #EDEDED 底 #0A0A0A 字——都没有蓝；只有 Toggle 开态轨道是 rgb(0,112,243)。
+        收敛前 Peach 有两套强调色：筛选 pill 选中反相成白，其它 40 多处选中／主按钮／悬停
+        却是蓝，同一页上「被选中」和「可以按」长得一样。
+        """
+        css = (Path(__file__).resolve().parents[1] / "web" / "app.css").read_text(
+            encoding="utf-8")
+        self.assertNotIn("--tungsten-soft", css, "蓝色浅底 token 已退役，不得再引入")
+        offenders = []
+        selected_with_blue = []
+        for match in re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
+            selector, body = match.group(1).strip(), match.group(2)
+            if "tungsten" not in body or "--tungsten:" in body:
+                continue
+            leaf = selector.split("{")[-1]  # 去掉 @media 前缀
+            if any(token in leaf for token in self.TUNGSTEN_ALLOWED_SELECTORS):
+                continue
+            offenders.append(leaf)
+            if any(state in leaf for state in (
+                    'aria-pressed="true"', "aria-current", ".selected", ".current",
+                    ".picked", ":checked", ".primary")):
+                selected_with_blue.append(leaf)
+        self.assertEqual(selected_with_blue, [],
+                         f"选中态与主动作不得用蓝，改用 --ink／--ink-2 反相：{selected_with_blue}")
+        self.assertEqual(offenders, [],
+                         f"这些规则的 --tungsten 不在允许的焦点／链接／进度／Toggle 之列：{offenders}")
+
     def test_font_weights_stay_on_the_three_geist_steps(self):
         """字重只有 400／500／600 三档。
 
@@ -1911,7 +1952,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_review_asset_picker_wraps_instead_of_scrolling_sideways(self):
         """一个创作者可能有几十条候选，横向滚动条要一直拉才能看完。"""
         self.assertPageContains(".reviewasset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr))")
-        self.assertPageContains(".reviewasset.picked{opacity:1;outline:2px solid var(--tungsten)")
+        self.assertPageContains(".reviewasset.picked{opacity:1;outline:2px solid var(--ink)")
         self.assertPageContains('.reviewitem[data-decision="approved"]::before{background:var(--keep)}')
 
     def test_review_cards_use_equal_height_fieldsets_and_one_shared_scroller(self):
@@ -2423,7 +2464,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 这些算法已经拆进 web/js/jav-title.js，改成拿真输入跑真函数验收，
         # 见 test_web_js.WebJsBehaviourTests。这里只留页面这一侧的契约：
         # 徽章的三种配色，以及卡片／详情／沉浸模式确实调了这两个函数。
-        self.assertPageContains(".javedition.subtitle{color:var(--tungsten)}")
+        self.assertPageContains(".javedition.subtitle{color:var(--ink-2)}")
         self.assertPageContains(".javedition.uncensored{color:var(--meter)}")
         self.assertPageContains(".javedition.cracked{color:var(--drop)}")
         self.assertPageContains('<button class="t cardtitle" data-open>${shownTitle}</button>')
@@ -2578,7 +2619,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("const whoKind=it.creator?'creator':(it.studio?'studio':'')")
 
     def test_creator_name_is_single_line_and_ellipsized(self):
-        self.assertPageContains('.meta .who{color:var(--tungsten);min-width:0;max-width:100%;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')
+        self.assertPageContains('.meta .who{color:var(--ink-2);min-width:0;max-width:100%;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')
 
     def test_every_card_kind_has_one_fixed_ratio(self):
         """三类卡片各自一个固定比例，卡片之间不能高低不齐。
@@ -3547,7 +3588,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('type="radio" name="jav-layout" value="${k}" data-jav-layout')
         self.assertPageContains("${k===javLayout()?'checked':''}")
         self.assertPageContains("b.onchange=()=>{if(b.checked)setJavLayout(b.value)}")
-        self.assertPageContains(".javlayout label:has(input:checked){background:var(--surface);color:var(--tungsten)")
+        self.assertPageContains(".javlayout label:has(input:checked){background:var(--surface);color:var(--ink)")
         self.assertPageContains("let entityRequestSeq=0,entityJavLayout=false")
         self.assertPageContains("(items.items||[]).some(item=>item.is_jav)")
         self.assertPageContains("return state.jav==='1'||entityJavLayout")

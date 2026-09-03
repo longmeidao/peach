@@ -108,6 +108,36 @@ Peach 图片灯箱的信息卡据此保持一个“在资源管理器中显示�
 并交还焦点。成功回执进入现有 Toast，失败原因保留在卡内。视觉上沿用 Peach 的 12px
 浮层圆角、发丝边与双层阴影，不复制 Vercel 品牌样式。
 
+## 选中态与开关色（2026-09-03 实测，深色主题）
+
+用 Claude_Browser 打开 `vercel.com/geist/*` 的示例块，读 `getComputedStyle` 得到的值。
+取证目的只有一个：Geist 的「被选中」到底用不用蓝。
+
+| 控件 | 页面 | 选中／开态 | 未选中 |
+| --- | --- | --- | --- |
+| Toggle | `/geist/toggle` | 轨道 `rgb(0,112,243)`（蓝），28×14 与 36×20 两档，`background .15s cubic-bezier(0,0,.2,1)` | 轨道 `rgb(46,46,46)` |
+| Tabs | `/geist/tabs` | 文字 `rgb(237,237,237)` + `border-bottom:2px solid rgb(237,237,237)`，字重 400 | 文字 `rgb(161,161,161)` |
+| Checkbox | `/geist/checkbox` | 框底仍是 `rgb(10,10,10)`，勾 `rgb(237,237,237)`；16px，圆角 4px | 框底 `rgb(10,10,10)`，边 `rgb(143,143,143)`；禁用且选中时底 `rgb(135,135,135)` |
+| Switch（分段） | `/geist/switch` | 选中项底 `rgb(26,26,26)`、字 `rgb(237,237,237)`，高 28px | 透明底；容器底 `rgb(10,10,10)`、圆角 6px、内边距 4px、`box-shadow:0 0 0 1px rgba(255,255,255,.14)`、高 36px |
+| Button primary | `/geist/button` | 底 `rgb(237,237,237)`、字 `rgb(10,10,10)`、字重 500 | — |
+| Badge gray | `/geist/badge` | 底 `rgb(26,26,26)`、边 `rgb(41,41,41)`、字 `rgb(161,161,161)`、圆角 6px | — |
+| Collapse | `/geist/collapse` | 触发器是带 `aria-expanded`／`aria-controls` 的 `<button>`；内容关闭时仍在 DOM；文档明写「Animate the open/close transition; jump-cuts make the page feel like it teleported」 | — |
+
+结论：整套 Geist 里只有 Toggle 开态用蓝，Tabs／Switch／Checkbox／主按钮的选中与强调全是墨色
+反相或抬一档的灰面。蓝色的另外两个去处是焦点环与链接。
+
+### Peach 对应（2026-09-03 收敛）
+
+- 按下／选中（`aria-pressed="true"`、`aria-current`、`.selected`、`.current`、`.picked`、`:checked`）统一
+  `--ink-2` 底 `--ground` 字，与筛选 `.pill` 原有反相一致；行与列表项选中用 `--hover` 底 `--ink` 字。
+- 主动作 `--ink` 底 `--ground` 字，悬停 `--ink-2`，与 `.geist-button.primary` 同色；每屏最多一个。
+- 悬停边统一 `color-mix(in srgb,var(--ink) 28%,transparent)`，标题悬停用下划线不变蓝；卡片悬停去掉蓝色发光。
+- 计数徽章（如作者别名「3 组」）走 gray badge：`--overlay-5` 底、`--border-15` 细边、`--muted` 字、`--control-radius`。
+- 保留蓝：`:focus*`、真正的链接（`.entitylink`／`.flink`／`.fsourcelink`／`.fcred a`／`.tokauthor>a`）、
+  进度与数据（progress／watchprogress／range／slider／tokbar／trace）、`#censorSetting:checked`（Toggle）。
+- `--tungsten-soft` 退役。允许清单由 `tests/test_web_ui.py` 的
+  `test_tungsten_is_reserved_for_focus_links_progress_and_toggle` 强制。
+
 ## Peach 对应
 
 - 语义按钮：`.fbtn.danger`（清空回收站等销毁类）、`.fbtn.primary` 保持主推进、
