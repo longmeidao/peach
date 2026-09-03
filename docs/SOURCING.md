@@ -37,6 +37,11 @@
   留给文件操作。缺连字符的紧凑 code 只有同时具备片商、发行日或 performer／studio／series 实体证据才恢复。
 - 创作者是频道主而不是出镜者：文件名里可建创作者的只有 `RT_@X - 正文…`、明确标注的 `女主@X` 和正文里的
   中文名；末尾成串裸 `@A @B @C` 是互推，`📷：@X` 是摄影师，都不建。
+- 发行平台既不是厂牌也不是创作者。FC2、myfans 这类是卖东西的地方，站上有实际卖主（出品者）的那个账号才是
+  creator；平台本身只能当来源／平台实体，链接按 `catalog` 登记，不给它找「厂牌官网」——那条路对它本来就不
+  成立（`harvest_studio_sites.PLATFORM_ENTITIES` 直接判「不适用（发行平台）」，一个请求都不发，也不静默跳过）。
+  账本里有些 FC2 作品标着女优、有些评论里也提到人，那是 **performer** 身份，不能顺手把平台记成创作者：
+  一旦记了，这个平台下所有卖主的作品都会挂到同一个「创作者」名下，和聚合目录打统一标签是同一类事故。
 - 转载渠道水印不是创作者水印，目录名同样可能是伪装；判定优先级是画面水印 > 作品名联网反查 > 文件名文本。
 - 打创作者级标签前必须先按 ledger 路径的下级目录分布验证这个 creator 是不是聚合目录：给聚合目录打统一
   风格标签就是 `asce` 事故的重演。
@@ -145,6 +150,13 @@
   尝试的理由——`SOD Create` 曾只剩一句 `取不到：ConnectError`，而真正有信息的那次
   （`www.sod.co.jp` → 200、标题 `SOFT ON DEMAND`）已被覆盖，人看到复核件时无从判断；现在候选判词按
   顺序拼成证据链写进 `note`，只有确认的行才留单条理由。
+- 页面上没有的信息，判据里补不出来，只能由用户确认。`SOD Create` 的官网就是母公司站
+  `www.sod.co.jp`（200、成人站、标题 `SOFT ON DEMAND（ソフト・オン・デマンド）`），而 `SOD Create`
+  这个串整站不出现——通用判据到此只能判「标题与正文都没有厂牌名」，缺的那条是「这个厂牌属于哪家公司」。
+  放宽通用判据去接住它，等于把 `hunter.com`、`bazooka.com`、`madonna.com` 一起放进来。所以走
+  `harvest_studio_sites.CONFIRMED_SITES`：一行一个厂牌，写清地址与用户确认的日期和理由，它只替掉最后
+  那道「页面得自述厂牌名」，状态码、空壳、停放页／自述不可用、域名回显四道照旧要过——确认的是「这个地址
+  属于这家公司」，不是「这个地址此刻返回什么都算数」。确认地址排在所有推导候选前面，命中就不再走那串死域名。
 - 作品数少的厂牌不等于不用补链接。`--min-assets` 是为全量扫描定的阈值，账本里 BangBus、BangBros18
   各只有 1 部视频，OPPAI、MonstersOfCock 各 2 部，它们照样出现在厂牌页那个 160px 大位上。要定点补时走
   `--only <canonical_name>...`：指名就不看作品数，名字对不上直接失败而不是静默跳过。
@@ -154,9 +166,19 @@
   页面里引用的更大资产全是横向字标（189×68／比 3.05、690×68／比 11.20），本来就属于 `logo` 位。唯一
   又方又大的是 `id.fc2.com/apple-touch-icon.png`（114×114／比 1.00），两道闸门都过，但它是「独角兽 +
   FC2 文字」的纵向锁定图，缩到 28px 文字糊成一团，且挂在 FC2 ID 而不是 PPV 市场的主机上——是「过闸门
-  不等于合适」那一类。要用它得给 `site_icons.HOST_OVERRIDES` 加一行并写清理由，不用就让 `icon` 位继续
-  回落到补白字标；`blog.fc2.com`、`live.fc2.com`、`static.fc2.com` 上没有单独的大尺寸独角兽资产
-  （`apple-touch-icon`、`favicon-192`、`icon.png` 全 404）。
+  不等于合适」那一类。`blog.fc2.com`、`live.fc2.com`、`static.fc2.com` 上也没有单独的大尺寸独角兽资产
+  （`apple-touch-icon`、`favicon-192`、`icon.png` 全 404）。所以这不是「发现流程没找对」，是站上确实没有。
+- 用户 2026-09-03 授权 FC2 的 `icon` 位用非官网来源，判据仍是「只认品牌自己」：取的是 FC2, Inc. 自己发布的
+  iOS 应用「FC2動画」（bundle `com.fc2.fc2video`）商店图标，512×512、内容比 1.00、只有独角兽没有文字，
+  sha256 `ac318e2bf9d461a7f1a963a67e5deed7504cb0c1f75362e5f7186de844c99538`，2026-09-03 实测 35260 B。
+  地址可复现：公开的 iTunes Lookup API（`itunes.apple.com/lookup?id=374259312&entity=software&country=jp`，
+  374259312 是 FC2, inc. 的 artistId）给出同一个 artwork 地址，把 `512x512bb.jpg` 换成 `.png` 就是这一份，
+  已写进 `site_icons.HOST_OVERRIDES` 的 `fc2.com`。没采信的来源与原因：seeklogo 的 2000×662 是横向字标
+  （属 `logo` 位）、Wikimedia 的 `File:FC2_Logo.jpg` 是同名的另一家（Fiction Collective Two）、
+  simpleicons／vectorlogo.zone／iconduck 全 404 或已死、brandfetch 与 clearbit 要凭据或连不上、
+  Google／DuckDuckGo 的 favicon 服务只回 16×16、`unavatar.io` 拿到的三个 FC2 账号头像是鸭子和房子的
+  吉祥物画不是独角兽、Google Play 那几个 FC2 应用图标里独角兽只是角标。个人博客的转手上传一律不用：
+  地址不稳定，也谈不上品牌自己发布。
 
 ## 站点圆标与图标合成
 

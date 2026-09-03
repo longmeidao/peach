@@ -318,6 +318,118 @@ class VerdictTests(unittest.TestCase):
         self.assertEqual(self.module.page_title(body), title)
 
 
+class ConfirmedSiteTests(unittest.TestCase):
+    """用户确认的母公司官网：补一条页面上没有的信息，不是放宽判据。"""
+
+    def setUp(self):
+        self.module = load_module()
+        self.title = "SOFT ON DEMAND（ソフト・オン・デマンド）"
+
+    def test_sod_create_points_at_the_parent_company_site(self):
+        """裁决本身要能被读出来：地址和理由都写在表里，不散在代码逻辑里。"""
+        url, reason = self.module.CONFIRMED_SITES["SOD Create"]
+        self.assertEqual(url, "https://www.sod.co.jp/")
+        self.assertIn("Soft On Demand", reason)
+
+    def test_a_confirmed_site_is_ok_although_the_title_never_says_the_studio_name(self):
+        """这一页 200、是成人站、标题是母公司名——`SOD Create` 这个串它不会有。
+
+        通用判据到此为止只能判「标题与正文都没有厂牌名」，而缺的那条信息
+        （这个厂牌属于哪家公司）本来就不在页面上。
+        """
+        without, note = self.module.site_verdict(
+            "SOD Create", 200, page(self.title), self.title, "https://www.sod.co.jp/")
+        self.assertEqual(without, "未取得")
+        self.assertIn("没有厂牌名", note)
+        verdict, note = self.module.site_verdict(
+            "SOD Create", 200, page(self.title), self.title, "https://www.sod.co.jp/",
+            confirmed=self.module.CONFIRMED_SITES["SOD Create"][1])
+        self.assertEqual(verdict, "ok")
+        self.assertIn("用户", note)
+        self.assertIn("SOFT ON DEMAND", note, "实测标题要留在证据里，才复核得了")
+
+    def test_the_whitelist_does_not_reopen_the_other_gates(self):
+        """确认的是「这个地址属于这家公司」，不是「这个地址返回什么都算」。
+
+        域名过期被抢注、站点在维护，页面照样 200——白名单要是把这几道一起绕过去，
+        一条停放页就会以 ok 进账本，而它比没有链接更糟。
+        """
+        reason = self.module.CONFIRMED_SITES["SOD Create"][1]
+        for title, hint in [("sod.co.jp is for sale | HugeDomains", "出售"),
+                            ("メンテナンス中", "不可用")]:
+            verdict, note = self.module.site_verdict(
+                "SOD Create", 200, page(title), title, "https://www.sod.co.jp/",
+                confirmed=reason)
+            self.assertEqual(verdict, "未取得", title)
+            self.assertIn(hint, note)
+        verdict, _ = self.module.site_verdict(
+            "SOD Create", 503, page(self.title), self.title, "https://www.sod.co.jp/",
+            confirmed=reason)
+        self.assertEqual(verdict, "未取得")
+
+    def test_studios_outside_the_whitelist_are_judged_exactly_as_before(self):
+        """白名单只影响列出来的那几行。少了这条，「加一行确认」就等于放宽了通用判据。"""
+        title = "Bazooka Bass Tubes"
+        verdict, _ = self.module.site_verdict(
+            "BAZOOKA", 200, page(title, "car audio subwoofers. "), title,
+            "https://bazooka.com/", derived_hosts=frozenset({"bazooka.com"}))
+        self.assertEqual(verdict, "weak")
+
+
+class PlatformEntityTests(unittest.TestCase):
+    """发行平台不是厂牌，「厂牌官网」这条路对它们本来就不成立。"""
+
+    def setUp(self):
+        self.module = load_module()
+
+    def test_the_known_platforms_are_recognised_whatever_the_spelling(self):
+        for name in ["FC2-PPV", "fc2 ppv", "FC2", "myfans", "MyFans"]:
+            self.assertTrue(self.module.is_platform(name), name)
+
+    def test_real_studios_are_not_swept_up(self):
+        for name in ["MOODYZ", "Attackers", "SOD Create", "Fitch"]:
+            self.assertFalse(self.module.is_platform(name), name)
+
+
+class PlatformRowTests(unittest.TestCase):
+    """平台要出现在复核件上并说明为什么不适用，不能静默少扫一个。
+
+    少扫一个和「扫过但没找到」在复核件上长得一模一样，人只会读到「FC2-PPV 没有官网」。
+    """
+
+    def setUp(self):
+        self.module = load_module()
+        self.tmp = Path(tempfile.mkdtemp())
+        self.db = self.tmp / "ledger.db"
+        writer = sqlite3.connect(self.db)
+        self.addCleanup(writer.close)
+        writer.execute(
+            "CREATE TABLE entity(id INTEGER PRIMARY KEY, kind TEXT, canonical_name TEXT)")
+        writer.execute("CREATE TABLE asset(id INTEGER PRIMARY KEY, medium TEXT)")
+        writer.execute("CREATE TABLE asset_entity(asset_id INTEGER, entity_id INTEGER)")
+        writer.execute("INSERT INTO entity VALUES(1,'studio','FC2-PPV')")
+        writer.commit()
+
+    def args(self):
+        import argparse
+        return argparse.Namespace(
+            db=self.db, output=self.tmp / "out.csv", seeds=None,
+            min_assets=3, only=["FC2-PPV"], interval=0.0, timeout=1.0, limit=0)
+
+    def test_a_platform_gets_its_own_verdict_without_a_single_request(self):
+        def refuse(*_args, **_kwargs):
+            raise AssertionError("不该为发行平台发出任何请求")
+        self.module.probe = refuse
+        self.assertEqual(self.module.run(self.args()), 0)
+        from peach.review_csv import read_rows
+        rows = read_rows(self.tmp / "out.csv")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["verdict"], self.module.PLATFORM_VERDICT)
+        self.assertIn("发行平台", rows[0]["note"])
+        self.assertEqual(rows[0]["candidate_url"], "",
+                         "一个地址都没试过，就不该在行上留候选")
+
+
 class LoadStudioTests(unittest.TestCase):
     def setUp(self):
         self.module = load_module()
@@ -453,6 +565,94 @@ class RunTrailTests(unittest.TestCase):
     原来后一个候选会覆盖前一个：`SOD Create` 试了六个地址，复核件上只剩最后那个的
     「取不到：ConnectError」，而真正值得看的是被盖掉的 `www.sod.co.jp`——200、成人站、
     标题 `SOFT ON DEMAND（ソフト・オン・デマンド）`。判未取得可以，看不见理由不行。
+
+    现在这条用 `Prestige` 复现同一个形状：`SOD Create` 已进 `CONFIRMED_SITES`，第一个
+    候选就是确认地址且直接采信，走不到「一串候选全失败」这条路了。
+    """
+
+    def setUp(self):
+        self.module = load_module()
+        self.tmp = Path(tempfile.mkdtemp())
+        self.db = self.tmp / "ledger.db"
+        writer = sqlite3.connect(self.db)
+        self.addCleanup(writer.close)
+        writer.execute(
+            "CREATE TABLE entity(id INTEGER PRIMARY KEY, kind TEXT, canonical_name TEXT)")
+        writer.execute("CREATE TABLE asset(id INTEGER PRIMARY KEY, medium TEXT)")
+        writer.execute("CREATE TABLE asset_entity(asset_id INTEGER, entity_id INTEGER)")
+        writer.execute("INSERT INTO entity VALUES(1,'studio','Prestige')")
+        writer.commit()
+        self.module.time = type("clock", (), {
+            "sleep": lambda _self, seconds: None,
+            "monotonic": lambda _self: 0.0,
+        })()
+
+    def args(self, seeds: Path | None = None):
+        import argparse
+        return argparse.Namespace(
+            db=self.db, output=self.tmp / "out.csv", seeds=seeds,
+            min_assets=3, only=["Prestige"], interval=0.0, timeout=1.0, limit=0)
+
+    def row(self) -> dict:
+        from peach.review_csv import read_rows
+        rows = read_rows(self.tmp / "out.csv")
+        self.assertEqual(len(rows), 1)
+        return rows[0]
+
+    def probe_map(self, answers: dict):
+        def probe(url, timeout, **kwargs):
+            answer = answers[url]
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+        self.module.probe = probe
+
+    def test_every_candidate_leaves_its_reason_in_the_note(self):
+        seeds = self.tmp / "seeds.csv"
+        seeds.write_text("studio,site\nPrestige,https://prestige.co.jp/\n"
+                         "Prestige,https://www.prestige-av.jp/\n", encoding="utf-8")
+        title = "プレステージ"
+        self.probe_map({
+            "https://prestige.co.jp/": ConnectionError("handshake"),
+            "https://www.prestige-av.jp/": (200, page(title),
+                                            "https://www.prestige-av.jp/"),
+            "https://prestige.com/": (200, page("Prestige.com is for sale"),
+                                      "https://www.hugedomains.com/x"),
+            "https://prestige.jp/": ConnectionError("nx"),
+            "https://prestige-av.com/": ConnectionError("nx"),
+            "https://prestige.tv/": ConnectionError("nx"),
+        })
+        self.assertEqual(self.module.run(self.args(seeds)), 0)
+        row = self.row()
+        self.assertEqual(row["verdict"], "未取得")
+        self.assertIn("https://prestige.co.jp/ → 取不到：ConnectionError", row["note"])
+        self.assertIn("プレステージ", row["note"])
+        # 行上的 url／标题／sha256 仍归最后一个真取回字节的候选，方便按 sha256 复现；
+        # 「都试过哪些」由 note 承担。
+        self.assertIn("hugedomains", row["final_url"])
+
+    def test_a_confirmed_row_keeps_the_single_reason_not_the_trail(self):
+        """采信了就不再堆一串理由：ok 那一行只该说这一个地址为什么成立。"""
+        seeds = self.tmp / "seeds.csv"
+        seeds.write_text("studio,site\nPrestige,https://dead.example/\n"
+                         "Prestige,https://www.prestige-av.jp/\n", encoding="utf-8")
+        title = "年齢チェック | AVメーカー【PRESTIGE（プレステージ）】公式サイト"
+        self.probe_map({
+            "https://dead.example/": ConnectionError("nx"),
+            "https://www.prestige-av.jp/": (200, page(title),
+                                            "https://www.prestige-av.jp/"),
+        })
+        self.assertEqual(self.module.run(self.args(seeds)), 0)
+        row = self.row()
+        self.assertEqual(row["verdict"], "ok")
+        self.assertEqual(row["final_url"], "https://www.prestige-av.jp/")
+        self.assertNotIn("→", row["note"])
+
+
+class ConfirmedRunTests(unittest.TestCase):
+    """确认过的地址要真的走到 `run()` 里，并且排在所有推导候选前面。
+
+    `SOD Create` 推得出九个地址，八个是死的；确认地址排最前就只发一个请求。
     """
 
     def setUp(self):
@@ -472,67 +672,36 @@ class RunTrailTests(unittest.TestCase):
             "monotonic": lambda _self: 0.0,
         })()
 
-    def args(self, seeds: Path | None = None):
+    def test_the_progress_line_cannot_take_the_batch_down(self):
+        """入口块要把 stdout 换成 UTF-8：进度行里有日文标题，而本机控制台是 GBK。
+
+        证据在 CSV 里（UTF-8），进度行糊掉无所谓；一个 print 把整批掉到一半才是代价。
+        """
+        source = (REPO / "scripts" / "harvest_studio_sites.py").read_text(encoding="utf-8")
+        entry = source.split('if __name__ == "__main__":')[-1]
+        self.assertIn('sys.stdout.reconfigure(encoding="utf-8", errors="replace")', entry)
+
+    def test_the_confirmed_address_is_the_only_one_requested(self):
         import argparse
-        return argparse.Namespace(
-            db=self.db, output=self.tmp / "out.csv", seeds=seeds,
-            min_assets=3, only=["SOD Create"], interval=0.0, timeout=1.0, limit=0)
+        asked: list[str] = []
+        # 真实标题里那个 `・` 在 GBK 控制台上编不出来；`run()` 要打印标题，
+        # 直调时没有入口块那句 `reconfigure`。这条测的是先试哪个地址，不拿它重现编码。
+        title = "SOFT ON DEMAND（ソフトオンデマンド）"
 
-    def row(self) -> dict:
-        from peach.review_csv import read_rows
-        rows = read_rows(self.tmp / "out.csv")
-        self.assertEqual(len(rows), 1)
-        return rows[0]
-
-    def probe_map(self, answers: dict):
         def probe(url, timeout, **kwargs):
-            answer = answers[url]
-            if isinstance(answer, Exception):
-                raise answer
-            return answer
+            asked.append(url)
+            return 200, page(title), url
         self.module.probe = probe
-
-    def test_every_candidate_leaves_its_reason_in_the_note(self):
-        seeds = self.tmp / "seeds.csv"
-        seeds.write_text("studio,site\nSOD Create,https://sodcreate.jp/\n"
-                         "SOD Create,https://www.sod.co.jp/\n", encoding="utf-8")
-        title = "SOFT ON DEMAND（ソフト・オン・デマンド）"
-        self.probe_map({
-            "https://sodcreate.jp/": ConnectionError("handshake"),
-            "https://www.sod.co.jp/": (200, page(title), "https://www.sod.co.jp/"),
-            "https://sodcreate.com/": (200, page("SodCreate.com is for sale"),
-                                       "https://www.hugedomains.com/x"),
-            "https://sodcreate-av.com/": ConnectionError("nx"),
-            "https://sodcreate.tv/": ConnectionError("nx"),
-            "https://sod-create.com/": ConnectionError("nx"),
-            "https://sod-create.jp/": ConnectionError("nx"),
-            "https://sod-create-av.com/": ConnectionError("nx"),
-            "https://sod-create.tv/": ConnectionError("nx"),
-        })
-        self.assertEqual(self.module.run(self.args(seeds)), 0)
-        row = self.row()
-        self.assertEqual(row["verdict"], "未取得")
-        self.assertIn("https://sodcreate.jp/ → 取不到：ConnectionError", row["note"])
-        self.assertIn("SOFT ON DEMAND", row["note"])
-        # 行上的 url／标题／sha256 仍归最后一个真取回字节的候选，方便按 sha256 复现；
-        # 「都试过哪些」由 note 承担。
-        self.assertIn("hugedomains", row["final_url"])
-
-    def test_a_confirmed_row_keeps_the_single_reason_not_the_trail(self):
-        """采信了就不再堆一串理由：ok 那一行只该说这一个地址为什么成立。"""
-        seeds = self.tmp / "seeds.csv"
-        seeds.write_text("studio,site\nSOD Create,https://dead.example/\n"
-                         "SOD Create,https://www.sod.co.jp/\n", encoding="utf-8")
-        title = "年齢チェック | AVメーカー【SOD Create】公式サイト"
-        self.probe_map({
-            "https://dead.example/": ConnectionError("nx"),
-            "https://www.sod.co.jp/": (200, page(title), "https://www.sod.co.jp/"),
-        })
-        self.assertEqual(self.module.run(self.args(seeds)), 0)
-        row = self.row()
+        args = argparse.Namespace(
+            db=self.db, output=self.tmp / "out.csv", seeds=None,
+            min_assets=3, only=["SOD Create"], interval=0.0, timeout=1.0, limit=0)
+        self.assertEqual(self.module.run(args), 0)
+        self.assertEqual(asked, ["https://www.sod.co.jp/"])
+        from peach.review_csv import read_rows
+        row = read_rows(self.tmp / "out.csv")[0]
         self.assertEqual(row["verdict"], "ok")
         self.assertEqual(row["final_url"], "https://www.sod.co.jp/")
-        self.assertNotIn("→", row["note"])
+        self.assertIn("用户", row["note"])
 
 
 if __name__ == "__main__":

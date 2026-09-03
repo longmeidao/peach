@@ -118,6 +118,26 @@ class RankingTests(unittest.TestCase):
                 '<link rel="icon" type="image/svg+xml" href="/dmm.svg">', "https://video.dmm.co.jp/"))
         self.assertEqual(ranked[0].url, "https://p-smith.com/pinned/favicon_r18.ico")
 
+    def test_fc2_takes_the_confirmed_off_site_icon_on_every_subdomain(self):
+        """FC2 站上只有 16×16 的 favicon，够大的那份是横向字标——不是没找对，是没有。
+
+        用户 2026-09-03 授权用非官网来源补 `icon` 位；这一枚仍是 FC2, Inc. 自己发布的
+        App Store 图标（512×512、只有独角兽标识）。作品链接落在
+        `adult.contents.fc2.com`，覆盖必须跟着子域走，否则等于没配。
+        """
+        for url in ["https://fc2.com/", "https://adult.contents.fc2.com/article/1/",
+                    "https://video.fc2.com/"]:
+            got = site_icons.overrides_for(url)
+            self.assertTrue(got, url)
+            self.assertIn("mzstatic.com", got[0].url)
+            self.assertTrue(got[0].url.endswith("512x512bb.png"), got[0].url)
+        ranked = site_icons.rank(
+            site_icons.overrides_for("https://adult.contents.fc2.com/")
+            + site_icons.link_candidates(
+                '<link rel="shortcut icon" href="//static.fc2.com/share/image/favicon.ico">',
+                "https://adult.contents.fc2.com/"))
+        self.assertIn("mzstatic.com", ranked[0].url)
+
     def test_overrides_match_subdomains_of_the_listed_host(self):
         self.assertTrue(site_icons.overrides_for("https://www.av-event.jp/actress/1"))
         self.assertEqual(site_icons.overrides_for("https://example.com/"), [])

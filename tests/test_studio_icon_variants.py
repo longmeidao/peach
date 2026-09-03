@@ -455,22 +455,35 @@ class StudioLinkTests(unittest.TestCase):
             " link_kind TEXT, label TEXT, url TEXT);")
         self.connection.executemany(
             "INSERT INTO entity(id, kind, canonical_name) VALUES(?,?,?)",
-            [(1, "studio", "Idea Pocket"), (2, "studio", "Fitch"), (3, "performer", "某人")])
+            [(1, "studio", "Idea Pocket"), (2, "studio", "Fitch"), (3, "performer", "某人"),
+             (4, "studio", "FC2-PPV")])
         self.connection.executemany(
             "INSERT INTO entity_link(entity_id, link_kind, label, url) VALUES(?,?,?,?)",
             [(1, "official", "官方网站", "https://ideapocket.com/"),
              (1, "social", "X", "https://x.com/ideapocket"),
-             (3, "official", "官方网站", "https://example.com/")])
+             (3, "official", "官方网站", "https://example.com/"),
+             (4, "catalog", "FC2-PPV", "https://adult.contents.fc2.com/")])
 
     def tearDown(self):
         self.connection.close()
 
-    def test_only_official_studio_links_come_back(self):
+    def test_social_links_are_left_out(self):
         """社媒头像是另一条线的产物，混进来会把厂牌小标换成运营的自拍。"""
         links = MODULE.studio_links(self.connection)
-        self.assertEqual(sorted(links), ["Idea_Pocket"])
         self.assertEqual([item["url"] for item in links["Idea_Pocket"]],
                          ["https://ideapocket.com/"])
+        self.assertNotIn("某人", links, "performer 的链接不该进厂牌图标线")
+
+    def test_a_platform_keeps_its_catalog_link_as_an_icon_source(self):
+        """发行平台按 `docs/SOURCING.md` 不登记 official——它不是厂牌，没有厂牌官网。
+
+        可它照样占着筛选片和卡片徽标那几个位置。只认 official 的话，FC2-PPV 会在复核件上
+        记成「无官网链接」，看起来像漏采，其实是查都没查。
+        """
+        links = MODULE.studio_links(self.connection)
+        self.assertEqual(sorted(links), ["FC2-PPV", "Idea_Pocket"])
+        self.assertEqual([item["url"] for item in links["FC2-PPV"]],
+                         ["https://adult.contents.fc2.com/"])
 
     def test_the_key_is_the_installed_file_name(self):
         """归拢键必须是文件名，否则和 `padded_studios` 对不上。"""
