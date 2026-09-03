@@ -95,19 +95,58 @@ MIN_LOGO_SHORT_EDGE = 96
 #: 「FC2」文字、sha256 `6911574c…f1b7`（8916 B，2026-09-03 实测）。同站还有一份
 #: 2000×662 的横向字标，那是字标不装这里。FC2 站上自己的大资产只有 189×68、690×68 两条
 #: 横向字标，缩到 160 px 认不出。
+#:
+#: 剩下 26 条来自 jae.tokyo（Japan Adult Expo 2014／2015／2017 的参展厂牌名录），
+#: 用户 2026-09-04 指定的来源。名录每届各带一套厂商 logo：2017 是 320×320，2015 是
+#: 188×188，2014 是 270×180，同一家出现在多届时取像素最多的那一届。名字对不上却是
+#: 同一家的按厂牌自称收在这里（`ムーディーズ` 的名录条目写作 `MOODYZ`），2016 那届
+#: 只有图没有名字，认不出是谁家的，不取。
+#: 这 26 家在账本里一张图都没有，且绝大多数连一条 official／catalog 链接都没有——
+#: favicon 那条路走不到它们，所以小位也从这一张烤（见 `icon_from_logo`）。
 LOGO_SOURCES: dict[str, str] = {
     "FC2-PPV": "https://images.seeklogo.com/logo-png/42/1/fc2-logo-png_seeklogo-429409.png",
+    "ラグジュTV": "http://www.jae.tokyo/jae2017/images/maker/maker_image/036.png",
+    "BAZOOKA": "http://www.jae.tokyo/jae2017/images/maker/maker_image/009.png",
+    "プレステージ": "http://www.jae.tokyo/jae2017/images/maker/maker_image/023.png",
+    "JET Eizo": "http://www.jae.tokyo/jae2017/images/maker/maker_image/042.png",
+    "ムーディーズ": "http://www.jae.tokyo/jae2017/images/maker/maker_image/054.png",
+    "MARRION": "http://www.jae.tokyo/jae2017/images/maker/maker_image/050.png",
+    "V&R PRODUCE": "http://www.jae.tokyo/jae2014/exhibitor/images/logo/vr_logo.jpg",
+    "エスワン ナンバーワンスタイル": "http://www.jae.tokyo/jae2017/images/maker/maker_image/053.png",
+    "センタービレッジ": "http://www.jae.tokyo/jae2015/images/maker/08_center@vllage.png",
+    "DOC": "http://www.jae.tokyo/jae2017/images/maker/maker_image/025.png",
+    "MAXING": "http://www.jae.tokyo/jae2014/exhibitor/images/logo/MAXING_logo.jpg",
+    "SODクリエイト": "http://www.jae.tokyo/jae2015/images/maker/11_sod.png",
+    "V＆R PRODUCE": "http://www.jae.tokyo/jae2014/exhibitor/images/logo/vr_logo.jpg",
+    "million": "http://www.jae.tokyo/jae2017/images/maker/maker_image/011.png",
+    "Baltan": "http://www.jae.tokyo/jae2014/exhibitor/images/logo/baltan_logo.jpg",
+    "BeFree": "http://www.jae.tokyo/jae2015/images/maker/17_befree.png",
+    "Dogma": "http://www.jae.tokyo/jae2015/images/maker/34_dogma.png",
+    "Momotaro Eizo": "http://www.jae.tokyo/jae2017/images/maker/maker_image/022.png",
+    "Ranmaru": "http://www.jae.tokyo/jae2015/images/maker/21_ran.png",
+    "TEPPAN": "http://www.jae.tokyo/jae2014/exhibitor/images/logo/teppan_logo.jpg",
+    "kira*kira": "http://www.jae.tokyo/jae2014/exhibitor/images/logo/kirakira_logo.jpg",
+    "kira☆kira": "http://www.jae.tokyo/jae2014/exhibitor/images/logo/kirakira_logo.jpg",
+    "ゲッツ！！ボンボン/妄想族": "http://www.jae.tokyo/jae2017/images/maker/maker_image/029.png",
+    "シロウトTV": "http://www.jae.tokyo/jae2017/images/maker/maker_image/034.png",
+    "プレミアム": "http://www.jae.tokyo/jae2015/images/maker/27_premium.png",
+    "俺の素人": "http://www.jae.tokyo/jae2017/images/maker/maker_image/018.png",
 }
 
 
 def safe_name(studio: str) -> str:
     """和 `PreviewService.logo` 同一套文件名规则，两边必须一致。"""
-    return re.sub(r"[^A-Za-z0-9_-]", "_", studio)[:60]
+    return re.sub(r"[^\w-]", "_", studio, flags=re.UNICODE)[:60]
 
 
 #: `LOGO_SOURCES` 按文件名归一后的同一张表：目标集是按 safe 归拢的，没有链接的厂牌
 #: 拿不到 canonical_name，只能按这个键找。
 LOGO_SOURCES_BY_SAFE = {safe_name(name): url for name, url in LOGO_SOURCES.items()}
+
+#: 同一张表的反向索引：安全文件名 → canonical_name。没有链接的厂牌拿不到别的名字，
+#: 复核件上的 `studio` 列只能从这里取；`safe.replace("_", " ")` 对日文名会还原成一排
+#: 下划线，那一列就认不出是谁了。
+LOGO_SOURCE_NAMES = {safe_name(name): name for name in LOGO_SOURCES}
 
 
 def padded_studios(logo_root: Path) -> dict[str, dict[str, object]]:
@@ -133,11 +172,14 @@ def padded_studios(logo_root: Path) -> dict[str, dict[str, object]]:
 def harvest_targets(padded: dict[str, dict[str, object]],
                     links: dict[str, list[dict[str, str]]],
                     logo_root: Path) -> dict[str, dict[str, str]]:
-    """要补标识的厂牌：补白过的 ∪ 有链接但一张图都没有的。
+    """要补标识的厂牌：补白过的 ∪ 一张图都没有、但有链接或有指定 logo 来源的。
 
     后一半不在补白名单里——`normalize_studio_logos.py` 从来没处理过它们，因为没有可处理
     的文件。可它们在页面上占的位置和别人一样，两个变体都是空的（账本里现在是 Hon Naka）。
     只看补白名单等于承认「没图的就一直没图」。
+
+    指定 logo 来源自己就是入场理由。jae.tokyo 那 26 家在账本里没有任何链接，按「有链接」
+    收目标一条都收不到，而这一位的图早就指好了在哪。
     """
     targets: dict[str, dict[str, str]] = {}
     for safe, original in padded.items():
@@ -145,7 +187,7 @@ def harvest_targets(padded: dict[str, dict[str, object]],
         targets[safe] = {
             "original_size": f"{width}x{height}" if width and height else "",
             "installed": f"{safe}.img"}
-    for safe in links:
+    for safe in list(links) + list(LOGO_SOURCES_BY_SAFE):
         if safe in targets or (logo_root / f"{safe}.img").exists():
             continue
         # `original_size` 留空：没有原图，写 `x` 或 `0x0` 会被当成量到的尺寸。
@@ -307,7 +349,8 @@ def shares_its_host(url: str) -> bool:
 def _row(safe: str, target: dict[str, str], entry: dict[str, str] | None,
          variant: str, verdict: str, **extra) -> dict[str, object]:
     row = {"entity_id": entry["entity_id"] if entry else "",
-           "studio": entry["studio"] if entry else safe.replace("_", " "),
+           "studio": (entry["studio"] if entry
+                      else LOGO_SOURCE_NAMES.get(safe, safe.replace("_", " "))),
            "safe": safe, "variant": variant,
            "installed": target["installed"], "original_size": target["original_size"],
            "link_kind": entry["link_kind"] if entry else "",
@@ -424,10 +467,42 @@ def logo_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
                 evidence="用户指定的 logo 来源")
 
 
+def icon_from_logo(safe: str, target: dict[str, str], logo: dict[str, object],
+                   candidate_dir: Path) -> dict[str, object]:
+    """指定 logo 来源做成了、小位却还空着时，小位从同一张烤。
+
+    jae.tokyo 那 26 家在账本里连一条链接都没有，`icon_row` 走不到发现流程，只会记一行
+    「无官网链接」，然后筛选片和卡片徽标继续空着。可大位这张已经是名录里厂牌自己交的
+    标识资产，比任何 favicon 都准。方的直接顶上，宽扁的补白成方图——和字标补白同一条
+    口径，判词也照用 `字标补白`，区别只在源图来自指定来源而不是官网。
+    """
+    payload = images.bake_square(Path(str(logo["candidate"])).read_bytes())
+    image = link_marks.decode(payload) if payload else None
+    if payload is None or image is None:
+        return _row(safe, target, None, ICON, MISSING,
+                    url=str(logo["url"]), link_kind="logo-source",
+                    evidence="指定的 logo 来源烤不成方图")
+    # 判「补没补白」看源图自己的长宽，不看内容比：`images.MAX_ASPECT` 正是 `bake_square`
+    # 「够方就原样返回」的那条线，所以 `ok` 恰好等于这一张一个像素都没动过。名录里的
+    # jpg 是整幅不透明的，内容比对它一律回 0，拿那个数分不出方图和长条。
+    width, height = (int(value) for value in str(logo["mark_size"]).split("x"))
+    wide = max(width, height) / min(width, height) > images.MAX_ASPECT
+    aspect = link_marks.content_aspect(image)
+    path = _store(candidate_dir, f"{safe}.png", payload)
+    return _row(safe, target, None, ICON, PADDED if wide else OK,
+                url=str(logo["url"]), link_kind="logo-source",
+                mark_size=f"{image.size[0]}x{image.size[1]}",
+                content_aspect=f"{aspect:.2f}",
+                sha256=hashlib.sha256(payload).hexdigest(), candidate=str(path),
+                evidence=f'与 logo 位同一份指定来源（{logo["mark_size"]}）烤成方图')
+
+
 def harvest(targets: dict[str, dict[str, str]],
             links: dict[str, list[dict[str, str]]],
             fetch, candidate_dir: Path) -> list[dict[str, object]]:
     """每个目标厂牌出一行 `icon`；有指定 logo 来源或走了字标补白的再出 `logo` 行。
+
+    小位自己没做成、大位的指定来源做成了时，小位从大位那张烤（`icon_from_logo`）。
 
     指定来源做成时只有它那一行；它没做成（未取得／太小）那行照记，字标 logo 行
     跟在后面——复核表不丢失败记录，安装时只有带候选文件的行才落地。
@@ -437,8 +512,11 @@ def harvest(targets: dict[str, dict[str, str]],
         target = targets[safe]
         entries = links.get(safe, [])
         icon, wordmark_logo = icon_row(safe, target, entries, fetch, candidate_dir)
-        rows.append(icon)
         logo = logo_row(safe, target, entries, fetch, candidate_dir)
+        if (logo is not None and logo["verdict"] == OK
+                and icon["verdict"] not in INSTALLABLE):
+            icon = icon_from_logo(safe, target, logo, candidate_dir)
+        rows.append(icon)
         if logo is not None:
             rows.append(logo)
         if wordmark_logo is not None and (logo is None or logo["verdict"] != OK):
