@@ -26,7 +26,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from peach.config import GENERATED_DIR
-from peach.face_detect import FaceDetector, FaceModelUnavailable
+from peach.face_detect import FaceDetector, FaceModelUnavailable, main_face
 from peach.web_contract import face_focus
 
 
@@ -40,8 +40,8 @@ def detect(path: Path, detector: FaceDetector) -> dict | None:
     record: dict = {"ratio": ratio, "face": None}
     if not faces:
         return record
-    # 多张脸时取最大的：实体图的主角通常占画面最大，其余是拼贴或背景人物。
-    best = faces[0]
+    # 多张脸时挑主角：先卡分数再取最大，判据在 peach.face_detect.main_face。
+    best = main_face(faces)
     cx, cy = best.cx, best.cy
     record["face"] = {"cx": cx, "cy": cy, "score": best.score}
     focus = face_focus(ratio, cx, cy)

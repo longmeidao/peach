@@ -46,6 +46,8 @@ DEFAULT_NMS = 0.3
 #: 送进网络前的长边上限。YuNet 是定尺寸输入，超大图先缩再检更快且不掉召回；
 #: 坐标按缩放比还原回原图。
 MAX_SIDE = 1280
+#: 挑主角时，分数落后最好那张这么多的框不参与「取最大」。
+SCORE_MARGIN = 0.1
 
 
 class FaceModelUnavailable(RuntimeError):
@@ -65,6 +67,21 @@ class Face:
     @property
     def area(self) -> float:
         return self.width * self.height
+
+
+def main_face(faces: list[Face], margin: float = SCORE_MARGIN) -> Face | None:
+    """主角那张脸：先按分数筛掉明显不如最好那张的框，再在剩下的里取最大。
+
+    只按面积挑会被「大而勉强」的误检抢走。实测 `performer-8218`（jae 名录的
+    600×1000 人像）：YuNet 给了两个框，脸是 0.202×0.170 分 0.928，另一个大一倍多、
+    罩在胸口，分 0.798——圆头像于是取景在胸口。只按分数挑则会被背景里那张小而清晰的
+    脸抢走。两个都用一次，各挡住对方的失败例。
+    """
+    if not faces:
+        return None
+    best_score = max(face.score for face in faces)
+    strong = [face for face in faces if face.score >= best_score - margin]
+    return max(strong, key=lambda face: face.area)
 
 
 def ensure_model(path: Path | None = None, *, allow_download: bool = True) -> Path:
