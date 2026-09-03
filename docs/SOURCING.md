@@ -63,8 +63,9 @@
 - `audit_performer_portraits.py` 把合格图放进候选专用的内容寻址缓存，每条另存 provider、名字命中档、
   上游 ID/URL、尺寸、MIME、SHA-256 与 policy version；与当前头像字节相同的只留审计证据，不进 `/review`，
   脚本没有写 ledger 的路径。
-- 可用来源实测结论：r18.dev、av-wiki.net、javdb.com、Gfriends 可用；javlibrary、missav、xslist 被
+- 可用来源实测结论：r18.dev、av-wiki.net、Gfriends 可用；javlibrary、missav、xslist 被
   Cloudflare 拦，njav 有验证墙，jav321 无独立女优字段。被 Cloudflare 拦的站一律放弃，不绕过机器人检测。
+  javdb.com 抓得到，但它自己按出口 IP 封速率（2026-09-04 封 3～7 日），只能小批量慢跑，见下文。
   Gfriends 只按 `Filetree.json` 和单张 raw 媒体当外部 Provider 用，不克隆图库、不把图片放进 Git。
 - javdatabase 的入口必须是账本里的番号，不能按名字拼 slug。它一个艺名一页，slug 与人不是一对一：
   `/idols/rin-natsuki/` 打开的是 `Rin Oka` 的资料页；站内搜索也不给 idol 页，只回作品列表。链路固定为
@@ -101,6 +102,51 @@
   直接查标签兜底。f95zone 的 `latest_data.php` 只索引 Latest Updates 的五个分类，艺术家的 Collection 帖
   只有带登录 cookie 的站内搜索看得到（无 cookie 时 `/search/` 返回 403）；没有 cookie 就跳过它并保留
   Google 外链，不把「查不到」写成「站上没有」。
+- **jae.tokyo 的女优名录是第三个来源**（用户 2026-09-04 指定，同一站的厂牌名录见下一节）。三届的资料页
+  各不相同：2014 是 `jae2014/actress/NNN.html`，社媒和博客混在正文的 `<a>` 里；2015 是
+  `jae2015/actress.html` 的 `offActress` 弹层，`actressLinkBtn` 一个按钮一条链接；2017 是
+  `jae2017/actress/NNN.html`，人像在 `img_area`、链接在 `link_area`。391 页跑一遍，命中账本 145 人。
+- **`jae2014/*` 直连会被重置**（`WinError 10054`），所以 jae 进了 `PROXY_SOURCES`；另两届直连能通，但同
+  一个来源不分届走两套出口没有意义。
+- **注释里的链接不算这个人的。** AIKA 那页 2017 的 HTML 注释里躺着 園田みおん 的博客和 神咲詩織 的
+  Instagram——上一届的模板被复制过来注掉了。按 `<a>` 硬取会把三个人的账号装到一个人头上，解析前先剥注释。
+- **页面写明是博客的就按博客算，不看主机名。** `classify()` 只认 `BLOG_HOSTS`，而
+  `alicejapan.co.jp` 的子域、`plaza.rakuten.co.jp`、`takasyo.blog.jp` 都是本人博客却不在名单里；页面上
+  那行「公式ブログ」比主机名更接近事实。标签照账本里现有那 23 条写「博客」，页面另外点出博客名时
+  （`公式ブログ「旬の果実」`）才带上那个名字，`オフィシャルブログ` 这类泛称原样落进去会让同一件东西在
+  界面上出现三种写法（`harvest_directory_links.owned_link`）。
+- **主机名一律小写。** jae 的资料页上写着 `https://Instagram.com/…`，`entity_link` 的 UNIQUE 只认字面，
+  照抄进去就是同一个账号的第二条记录（`social_links.canonical_url`）。路径和 handle 不动——X 的 handle
+  大小写不敏感，但那是用户当初复核过的写法。
+- 装入结果：队列 68 条，逐条验活后装上 53 条（`entity_link` 646 → 699，备份
+  `ledger.pre-jae-performer-links-20260904.db`，`integrity_check ok`），15 条死链跳过。另有 10 条
+  `conflict`（账本里同平台是另一个 handle：三田杏、初美沙希×2、加藤桃香、园田美樱、岬奈奈美、新有菜、
+  明里䌷、神ユキ、纱仓真菜）和 1 条「需人工消歧」留在 `-review.csv` 里等人核。
+- **名录人像进的是头像竞赛，不是另一条装入路径。** `-portraits.csv` 由
+  `harvest_social_avatars.py` 的 `jae` 路线读走，和 X、babepedia 的候选在同一套内容寻址缓存里按
+  短边排名比大小；jae 的 600×1000 竖版人像稳赢 X 的 240×240，145 条人像里 5 人产生候选、装上 4 张
+  （其余早已有头像，`load_targets` 不收）。竖版全身宣传照的取景交给人脸 sidecar，见 REUSE.md「人脸取景」。
+
+- **javdb.com 是按名字进的来源，不是能翻的名录。** 站上没有可枚举的女优列表，入口是账本里的名字：
+  逐个写法搜 `search?f=actor&q=`，结果卡片的 `title` 一栏就是这个人在站上的全部写法，不点进去就能判
+  身份。名字链要整条搜完再放弃——账本的规范名多是简体（`三上悠亚`），javdb 上是 `三上悠亜`／`三上悠亞`，
+  `name_key()` 不做简繁转换，只搜规范名一个都搜不到（`harvest_directory_links.collect_javdb`）。
+- **同名两条记录不取第一个。** 同一位女优在站上常有「有碼」「無碼」两条，搜索结果把两条都给出来；
+  两页都进判定，撞上的账号会落成 `conflict` 进复核表。取第一个是默默替用户挑了一位。
+- **一部分资料页要登录，回的是登入页而不是 401。** 不注册账号，那一页记一行「未取得」并写明是谁——
+  「搜过、站上没有这个人」「搜到了但要登录」「没搜」是三件事，不分开写下一轮还得重搜一遍。
+- **社媒按钮只在 `section-addition` 那一块里。** 整页别处的站外链接是广告、姊妹站和 RTA 标签，
+  每一页都有一份完全相同的。
+- 60 位的实测结果：`已有` 20、`ok` 18（验活后装上 17 条，`entity_link` 699 → 716，备份
+  `ledger.pre-javdb-performer-links-20260904.db`，`integrity_check ok`）、`命中但无社媒` 18、
+  `未取得` 26、`conflict` 5、`需人工消歧` 1。Instagram 是这个来源的主要增量，jae 那轮几乎全是 X 和博客。
+- **跑到第 60 位时出口 IP 被站方封了 3～7 日**（`403`，页面写「基於你的異常行為」并建议换节点）。
+  换节点就是绕机器人检测，按本文既有口径放弃，剩下 476 位不再抓。已取的 123 页留在
+  `state/directory-links/javdb/`，判定可离线重放（实测 `网络 0 / 缓存 123`）；封禁期过后接着跑即可，
+  `--interval` 要往上调。
+- **javdb 的圆头像 250×250，进不了头像竞赛。** 44 条人像候选里只有 1 人（立花美凉）账本里还没有头像，
+  250×250 也过不了自动线（正方需 ≥400）。为这一条把 `jae` 路线泛化成通用人像路线不值当，
+  `harvest_social_avatars.py` 暂不接这个来源。
 
 ## 厂牌名与厂牌标识
 
@@ -332,6 +378,17 @@
   129 个厂牌撞成 12 组，`プレステージ` 与 `ムーディーズ` 同为 `______`、`シロウトTV` 与 `ラグジュTV`
   同为 `____TV`；撞了不报错，后装的那张盖掉先装的，PRESTIGE 的位置就挂上 MOODYZ 的牌子。
   已装的 60 张都是 ASCII 名，键一个都没变。
+- **同一批详情页的官网链接照厂牌自称对回账本，逐条判 kind。** 211 条名录里 125 条带官网，按名字与别名
+  （NFKC 归一、去掉空白与 `・.,'"()[]/&+*!?:-`）对上账本 33 家。目录站与配信平台不是官网：`mgstage.com`、
+  `indies-av.co.jp`、`dmm.co.jp`、`fanza.com` 四个主机，以及路径里带 `/works/list/` 的按厂商筛出来的作品
+  列表，都进 `catalog`——JET映像 那条指向 `mousouzoku-av.com`，而那个域名是妄想族自己的官网。母公司站内的
+  厂牌页（`km-produce.com/l_06_bazooka.php`、`/million/`）算 official，它就是这个厂牌在网上唯一的门面；
+  站内搜索串（`?s=OREA`）、配信站筛选列表（`ppv_advanced.php?`）、周边商品列表（`goods_list.php?`）和
+  配信平台首页（`indies-av.co.jp/`，名录给桃太郎映像出版填的就是它）都不是这家的页面，不装。
+  `entity_link` 的 UNIQUE 按 URL 字面判，`http://www.x.com/` 与 `https://x.com/` 装进去是同一家官网
+  并排两条，所以还要自己按主机去重（Prestige、MOODYZ、Wanz Factory、kawaii、Fitch、OPPAI 六家因此不装）。
+  剩 24 条过 `install_entity_links.py`，逐条探活后实装 20 条：BAZOOKA、DOC、million 三条 404，
+  MARRION 超时，2014／2015 那两届的地址十年后有一部分已经不在了。
 - 判词分档、每一档对应不同的下一步：`ok`、`字标补白`（可装，见上）、`只有小图标`（FC2 全站只有 16×16，
   该去找更大的资产）、`平台通用图标`（见上）、`仍是字标`、`未取得`（一份字节都没取回，`Fetcher` 自己数
   取回几份才判得出来）、`无官网链接`。只有前两档会被 `--install` 落盘。`best_mark` 只回结果不回理由，

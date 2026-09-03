@@ -88,5 +88,34 @@ class DetectorContractTests(unittest.TestCase):
         self.assertIsInstance(detector, face_detect.FaceDetector)
 
 
+class MainFaceTests(unittest.TestCase):
+    """挑主角那张脸：分数先卡一道，再在剩下的里取最大。"""
+
+    @staticmethod
+    def face(cx, cy, width, height, score):
+        return face_detect.Face(cx=cx, cy=cy, width=width, height=height, score=score)
+
+    def test_a_big_but_weak_box_loses_to_the_real_face(self):
+        """实测 `performer-8218`：大出一倍多的那个框罩在胸口，分只有 0.798。
+
+        只按面积挑，圆头像就取景在胸口——脸在画面上四分之一处。
+        """
+        chest = self.face(0.389, 0.482, 0.427, 0.313, 0.798)
+        head = self.face(0.389, 0.262, 0.202, 0.170, 0.928)
+        self.assertEqual(face_detect.main_face([chest, head]), head)
+
+    def test_a_small_sharp_bystander_does_not_beat_the_subject(self):
+        """实测 `performer-8540`：右上角还检出一个 0.066×0.052 的小框。
+
+        分数相当时仍按面积挑，否则背景里那张小而清晰的脸会抢走取景。
+        """
+        subject = self.face(0.608, 0.207, 0.215, 0.152, 0.930)
+        bystander = self.face(0.694, 0.050, 0.066, 0.052, 0.925)
+        self.assertEqual(face_detect.main_face([subject, bystander]), subject)
+
+    def test_no_face_is_no_face(self):
+        self.assertIsNone(face_detect.main_face([]))
+
+
 if __name__ == "__main__":
     unittest.main()

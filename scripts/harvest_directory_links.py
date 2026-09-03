@@ -21,8 +21,20 @@ profile_images 才算活。Instagram / TikTok / YouTube 登出页给不出可靠
 输出两份 CSV：`<output>` 只含可装的 ok 行，直接喂 install_entity_links.py；
 `<stem>-review.csv` 含全部判定，是复核产物。
 
-laoshi.ink 与 bstar-pro.com 直连（经代理握手失败，站点本身可达）；x.com 走代理。
-bstar-pro 的 models.html 有年龄门：同一会话先 `POST age_check=yes`，之后的 GET 才给列表。
+jae.tokyo 是第三个这样的来源：Japan Adult Expo 的参展女优名录，2014／2015／2017 三届
+各一套厂商自己交的资料，页面上写明本人的博客与官网（`公式ブログ`／`ツイッター`）。
+名录同时带一张人像，所以这个来源多产一份 `<stem>-portraits.csv`，由
+harvest_social_avatars.py 的名录路线接着走——头像与链接出自同一批页面、同一次名字判定。
+
+javdb.com（用户 2026-09-04 指定）是第四个来源，但它的入口反过来。前三个来源页面数有限、
+能整站翻一遍；javdb 没有可翻的女优名录，`/actors` 只给推荐的几十位，全站演员没有分页入口。
+所以它拿账本每个人的名字链去 `/search?f=actor` 搜——搜索结果的 `title` 一栏就列着这个人在
+站上的全部写法（`三上悠亜, 三上悠亞, 鬼头桃菜`），对得上才点进资料页。资料页给 Twitter 与
+Instagram 按钮和一张 250×250 的圆头像。
+
+laoshi.ink 与 bstar-pro.com 直连（经代理握手失败，站点本身可达）；x.com、jae.tokyo 与
+javdb.com 走代理。bstar-pro 的 models.html 有年龄门：同一会话先 `POST age_check=yes`，
+之后的 GET 才给列表。
 """
 from __future__ import annotations
 
@@ -34,7 +46,7 @@ import sqlite3
 import sys
 from collections import Counter
 from pathlib import Path
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import quote, urljoin, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -49,9 +61,23 @@ from peach.social_links import (   # noqa: E402
 
 HREF = re.compile(r'href=["\']([^"\']+)["\']')
 TAG = re.compile(r"<[^>]+>")
+COMMENT = re.compile(r"<!--.*?-->", re.S)
+#: 页面上那行链接文字里的「博客」二字，日文写法都在这儿。
+BLOG_WORD = re.compile(r"ブログ|blog", re.I)
+#: 「公式ブログ「旬の果実」」这种把博客名单独括起来的写法。
+BLOG_TITLE = re.compile(r"[「『（(\[]\s*(.+?)\s*[」』）)\]]")
+#: 去掉「公式」「オフィシャル」「ブログ」这些泛称，剩下的才是这个博客自己的名字。
+BLOG_GENERIC = re.compile(
+    r"(?:公式|オフィシャル|official)|(?:ブログ|blog|ホームページ|サイト|website|web\s*site)",
+    re.I)
 FIELDS = ("entity_id", "kind", "name", "link_kind", "label", "url", "evidence",
           "source", "page", "matched_name", "verdict", "alive")
-SOURCES = ("laoshi", "bstar")
+#: 人像候选表：喂 harvest_social_avatars.py 的 jae 路线，不直接落盘头像。
+PORTRAIT_FIELDS = ("entity_id", "kind", "name", "matched_name", "portrait_url",
+                   "source", "page", "verdict")
+SOURCES = ("laoshi", "bstar", "jae", "javdb")
+#: 直连不通的来源：jae 被对端重置（`WinError 10054`），javdb 直接连接超时。
+PROXY_SOURCES = ("jae", "javdb")
 ALIVE, GONE, UNVERIFIED, UNKNOWN = "活", "疑似失效", "未验", "未取得"
 
 LAOSHI = "https://laoshi.ink/"
@@ -71,6 +97,56 @@ BSTAR_ENTRY = re.compile(r'<a href="(model\.html\?mid=\d+)"[^>]*>(.*?)</a>', re.
 BSTAR_ALT = re.compile(r'alt="([^"]*)"')
 BSTAR_SPAN = re.compile(r"<span[^>]*>(.*?)</span>", re.S)
 BSTAR_GATE = re.compile(r'name=["\']age_check["\']')
+
+JAE = "http://www.jae.tokyo/"
+JAE_OWN = ("jae.tokyo",)
+#: 三届的女优名录，每届结构都不一样。2016 那届 `actress.html` 只剩导航，页面上没有人。
+JAE_2014_LISTS = ("jae2014/performer/",) + tuple(
+    f"jae2014/performer/index_{row}.html"
+    for row in ("k", "s", "t", "n", "h", "m", "y", "r"))
+JAE_2015_LIST = "jae2015/actress.html"
+JAE_2017_LIST = "jae2017/actress.html"
+JAE_2017_DETAIL = re.compile(r'href="(actress/[\w-]+\.html)"')
+JAE_2014_ENTRY = re.compile(r'<li id="([^"]+)">(.*?)</li>', re.S)
+JAE_2014_ROMAJI = re.compile(r'<p class="alignright">(.*?)</p>', re.S)
+JAE_2014_IMG = re.compile(r'<img src="(images/[^"]+)"')
+#: 每个女优是一个 `class="off"` 的隐藏层，下一个同类 div 或文末就是它的边界。
+JAE_2015_ENTRY = re.compile(
+    r'<div id="([^"]+)" class="off">(.*?)(?=<div id="[^"]+" class="off">|\Z)', re.S)
+JAE_2015_LINKS = re.compile(r'<div class="actLink[^"]*">(.*?)</div>', re.S)
+JAE_2015_IMG = re.compile(r'<img src="([^"]+)" class="textLeft"')
+JAE_2017_NAME = re.compile(r'<div class="name_area">(.*?)</div>', re.S)
+JAE_2017_LINKS = re.compile(r'<div class="girls_area_right">.*?<ul>(.*?)</ul>', re.S)
+JAE_2017_IMG = re.compile(r'<a class="group pop" href="([^"]+)"')
+JAE_H2 = re.compile(r"<h2[^>]*>(.*?)</h2>", re.S)
+JAE_H3 = re.compile(r"<h3[^>]*>(.*?)</h3>", re.S)
+JAE_H4 = re.compile(r"<h4[^>]*>(.*?)</h4>", re.S)
+JAE_P = re.compile(r"<p[^>]*>(.*?)</p>", re.S)
+JAE_ANCHOR = re.compile(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', re.S)
+#: 没交照片的位置放的是占位图，不是这个人的像。
+JAE_PLACEHOLDER = ("nophoto", "noimage", "no_photo", "comingsoon")
+
+JAVDB = "https://javdb.com/"
+#: 图片走独立的静态域；两个都算本站。
+JAVDB_OWN = ("javdb.com", "jdbstatic.com")
+JAVDB_SEARCH = JAVDB + "search?f=actor&q={}"
+#: 搜索结果里的演员卡。`title` 一栏就是这个人在站上的全部写法，不必先点进去。
+JAVDB_BOX = re.compile(r'class="box actor-box">\s*<a href="(/actors/[^"]+)" title="([^"]*)"',
+                       re.S)
+#: 资料页顶部：`actor-section-name` 是主名连它的繁简写法，紧随的 `section-meta` 是旧艺名。
+JAVDB_NAME = re.compile(r'class="actor-section-name">([^<]*)<')
+JAVDB_META = re.compile(r'class="section-meta">([^<]*)<')
+#: 「323 部影片」也在 `section-meta` 里，它不是名字。
+JAVDB_COUNT = re.compile(r"^\d+\s*部影片$")
+#: 圆头像是 span 的背景图；搜索结果里的同名 class 是 `<img src>`，这条只认资料页那个。
+JAVDB_AVATAR = re.compile(r'class="avatar" style="background-image: url\(([^)]+)\)')
+#: 社媒按钮只在这一块里。页面别处的站外链接是广告、姊妹站和 RTA 标签，每页都有一份。
+JAVDB_ADDITION = re.compile(r'class="column section-addition">(.*?)<div class="toolbar"', re.S)
+#: 一部分资料页要登录才给，回的是登入页而不是 401/403。同一位女优在站上常有两条
+#: 记录（有碼那条公开、無碼那条要登录），搜索结果把两条都给出来，所以这不是抓失败。
+#: 不注册账号，记一行未取得。
+JAVDB_LOGIN = re.compile(r"<title>\s*登入\s*\|")
+
 
 X_PROFILE = "https://x.com/{}"
 #: 对照账号：X 官方号，登出页永远有 og:image。用来区分「账号没了」和「我们被限流」。
@@ -189,9 +265,32 @@ def bstar_listing(html: str) -> list[tuple[str, list[str]]]:
 # ---------------------------------------------------------------- 采集
 
 def page_record(source: str, url: str, names: list[str], links: list[str], *,
-                official: tuple[str, str] | None = None, note: str = "") -> dict:
+                official: tuple[str, str] | None = None,
+                owned: list[tuple[str, str]] | None = None,
+                portrait: str = "", note: str = "") -> dict:
+    """`links` 走平台账号那一路；`owned` 是资料页写明的本人博客与官网，带页面上的链接文字。"""
     return {"source": source, "page": url, "names": names, "links": links,
-            "official": official, "note": note}
+            "official": official, "owned": list(owned or ()), "portrait": portrait,
+            "note": note}
+
+
+def owned_link(url: str, shown: str) -> tuple[str, str]:
+    """给资料页写明的本人链接定类型与标签。
+
+    `classify()` 只看主机名，而 `alicejapan.co.jp` 的子域、`plaza.rakuten.co.jp`、
+    `takasyo.blog.jp` 都是女优博客却不在 `BLOG_HOSTS` 里。页面上那行字写着「公式ブログ」，
+    这比主机名更接近事实，所以文字说是博客就按博客算。
+
+    标签照账本里现有那批写「博客」，页面另外点出博客名时（`公式ブログ「旬の果実」`）才带上
+    那个名字——`オフィシャルブログ` 这种泛称原样落进去，同一件东西在界面上会出现三种写法。
+    """
+    link_kind, label = classify(url)
+    if BLOG_WORD.search(shown):
+        link_kind, label = "social", "博客"
+    bracketed = BLOG_TITLE.search(shown)
+    title = bracketed.group(1) if bracketed else BLOG_GENERIC.sub("", shown)
+    title = title.strip(" 　:：-—─・|/")
+    return link_kind, f"{label} {title}" if title else label
 
 
 def failed(source: str, url: str, exc: Exception) -> dict:
@@ -247,7 +346,242 @@ def collect_bstar(site: Site, limit: int = 0) -> tuple[list[str], list[dict]]:
     return site_links, pages
 
 
-COLLECTORS = {"laoshi": collect_laoshi, "bstar": collect_bstar}
+def strip_comments(html: str) -> str:
+    """注释里的东西不属于这一页。
+
+    jae 的女优页是同一份模板复制出来的，上一位的资料整段留在注释里：2017 那届
+    `actress/04.html` 是 AIKA，注释里躺着 `blog.livedoor.jp/sonoda_mion/` 和
+    `instagram.com/kamisaki_shiori/`——不先去注释，AIKA 名下会装上另外两个人的账号。
+    2014 那届的 `<li id="AyamiShunka">` 是填好数据的模板样例，同样在注释里。
+    """
+    return COMMENT.sub(" ", html)
+
+
+def jae_anchors(fragment: str, base: str) -> list[tuple[str, str]]:
+    """片段里的站外链接 → [(URL, 链接文字)]。文字取页面上写的那行（`公式ブログ`）。"""
+    out: dict[str, str] = {}
+    for href, inner in JAE_ANCHOR.findall(fragment):
+        url = urljoin(base, html_lib.unescape(href).strip())
+        parts = urlsplit(url)
+        if parts.scheme not in {"http", "https"} or not parts.hostname:
+            continue
+        if under(parts.hostname.casefold(), JAE_OWN):
+            continue
+        out.setdefault(url, clean(inner))
+    return list(out.items())
+
+
+def jae_portrait(src: str, base: str) -> str:
+    if not src or any(mark in src.casefold() for mark in JAE_PLACEHOLDER):
+        return ""
+    return urljoin(base, html_lib.unescape(src).strip())
+
+
+def jae_entry(anchor: str, names: list[str], links: list[tuple[str, str]],
+              portrait: str) -> dict:
+    return {"anchor": anchor, "names": dedupe(names), "links": links,
+            "portrait": portrait}
+
+
+def jae_2014_entries(html: str, base: str) -> list[dict]:
+    """`<li id="…">` 一位一条：`h2` 是日文名，`alignright` 是罗马字，资料表末尾是本人的站。"""
+    out = []
+    for anchor, block in JAE_2014_ENTRY.findall(strip_comments(html)):
+        names = [clean(text) for text in JAE_H2.findall(block)]
+        names += [clean(text) for text in JAE_2014_ROMAJI.findall(block)]
+        image = JAE_2014_IMG.search(block)
+        out.append(jae_entry(anchor, names, jae_anchors(block, base),
+                             jae_portrait(image.group(1) if image else "", base)))
+    return out
+
+
+def jae_2015_entries(html: str, base: str) -> list[dict]:
+    """`class="off"` 的隐藏层一位一条：`bigName` 日文名、`smallName` 罗马字。
+
+    链接只取 `actLink*` 那一格。同一层的资料表里还有一条「おすすめの作品タイトル」，
+    那是片商的商品页（`ec.sod.co.jp/detail/…`），不是本人的链接。
+    """
+    out = []
+    for anchor, block in JAE_2015_ENTRY.findall(strip_comments(html)):
+        names = [clean(text) for text in JAE_H3.findall(block)]
+        names += [clean(text) for text in JAE_H4.findall(block)]
+        links: list[tuple[str, str]] = []
+        for fragment in JAE_2015_LINKS.findall(block):
+            links += jae_anchors(fragment, base)
+        image = JAE_2015_IMG.search(block)
+        out.append(jae_entry(anchor, names, links,
+                             jae_portrait(image.group(1) if image else "", base)))
+    return out
+
+
+def jae_2017_pages(html: str, base: str) -> list[str]:
+    """名录页 → 详情页 URL。详情页文件名有的是编号有的是罗马字，一律照写。"""
+    return sorted({urljoin(base, href) for href in JAE_2017_DETAIL.findall(html)})
+
+
+def jae_2017_entry(html: str, url: str) -> dict:
+    """详情页一位一条：`name_area` 给名字，`girls_area_right` 的图标列表给账号。
+
+    人像取 `class="group pop"` 那个大图，不取旁边 `m.jpg` 的缩略图。
+    """
+    body = strip_comments(html)
+    area = JAE_2017_NAME.search(body)
+    names: list[str] = []
+    if area:
+        names = [clean(text) for text in JAE_H2.findall(area.group(1))]
+        names += [clean(text) for text in JAE_P.findall(area.group(1))]
+    links: list[tuple[str, str]] = []
+    for fragment in JAE_2017_LINKS.findall(body):
+        links += jae_anchors(fragment, url)
+    image = JAE_2017_IMG.search(body)
+    return jae_entry(url.rsplit("/", 1)[-1], names, links,
+                     jae_portrait(image.group(1) if image else "", url))
+
+
+def take(items: list, limit: int) -> list:
+    return items[:limit] if limit else items
+
+
+def collect_jae(site: Site, limit: int = 0) -> tuple[list[str], list[dict]]:
+    """展会名录三届。名录页上没有女优的账号，站方链接一栏为空。
+
+    链接文字（`公式ブログ`／`ツイッター`）当标签；平台账号照常走 `links`，
+    博客与本人官网走 `owned`。人像同批带出，判定与链接同一次。
+    """
+    pages: list[dict] = []
+    entries: list[tuple[str, dict]] = []
+
+    for path in JAE_2014_LISTS:
+        url = JAE + path
+        try:
+            html = site.get(url)
+        except Exception as exc:
+            pages.append(failed("jae", url, exc))
+            continue
+        entries += [(f"{url}#{entry['anchor']}", entry)
+                    for entry in take(jae_2014_entries(html, url), limit)]
+
+    url = JAE + JAE_2015_LIST
+    try:
+        html = site.get(url)
+    except Exception as exc:
+        pages.append(failed("jae", url, exc))
+    else:
+        entries += [(f"{url}#{entry['anchor']}", entry)
+                    for entry in take(jae_2015_entries(html, url), limit)]
+
+    url = JAE + JAE_2017_LIST
+    detail_urls: list[str] = []
+    try:
+        listing = site.get(url)
+    except Exception as exc:
+        pages.append(failed("jae", url, exc))
+    else:
+        detail_urls = take(jae_2017_pages(listing, url), limit)
+    for detail in detail_urls:
+        try:
+            html = site.get(detail)
+        except Exception as exc:
+            pages.append(failed("jae", detail, exc))
+            continue
+        entries.append((detail, jae_2017_entry(html, detail)))
+
+    for page_url, entry in entries:
+        owned = [(url, label) for url, label in entry["links"] if not platform(url)]
+        pages.append(page_record("jae", page_url, entry["names"],
+                                 [url for url, _ in entry["links"]],
+                                 owned=owned, portrait=entry["portrait"]))
+    return [], pages
+
+
+def javdb_names(html: str) -> list[str]:
+    """资料页顶部那几行名字。「323 部影片」同处一个 class，按写法排除。"""
+    names: list[str] = []
+    for text in JAVDB_NAME.findall(html) + JAVDB_META.findall(html):
+        value = clean(text)
+        if value and not JAVDB_COUNT.match(value):
+            names += split_names(value)
+    return dedupe(names)
+
+
+def javdb_links(html: str) -> list[str]:
+    """只取社媒按钮那一块。整页的站外链接里还有广告与姊妹站，每一页都一样。"""
+    block = JAVDB_ADDITION.search(html)
+    return external_links(block.group(1), JAVDB_OWN, JAVDB) if block else []
+
+
+def javdb_portrait(html: str) -> str:
+    found = JAVDB_AVATAR.search(html)
+    return html_lib.unescape(found.group(1)).strip() if found else ""
+
+
+def javdb_hits(html: str, wanted: set[str]) -> list[str]:
+    """搜索结果里名字对得上的资料页。
+
+    搜的是账本里的名字，回来的却不一定是同一个人（javdb 的演员搜索会给近似结果）。
+    卡片的 `title` 一栏已经列出这个人在站上的全部写法，够判是不是同一个人：对不上的
+    不点进去，省一次请求，也不给 judge() 送一页与账本无关的名字。
+
+    对得上的全都返回，不只取第一个。同一个名字在站上真有两位时，两页都进判定——
+    第二页的账号会撞成 `conflict` 落进复核表，而取第一个是默默替用户挑了一位。
+    """
+    out = []
+    for path, title in JAVDB_BOX.findall(html):
+        if wanted & {name_key(name) for name in split_names(clean(title))}:
+            out.append(urljoin(JAVDB, path))
+    return dedupe(out)
+
+
+def collect_javdb(site: Site, limit: int, performers: list[dict]) -> tuple[list[str], list[dict]]:
+    """入口是账本里的名字，不是站上的名录。
+
+    名字链里哪个写法能搜到不一定：账本的规范名多是中文（`立花美凉`），javdb 上是日文原名
+    或繁体（`立花美涼`）。所以逐个写法搜，搜到就停，一个都搜不到时记一行未取得——
+    「搜过，站上没有这个人」和「没搜」是两件事，不写下来下一轮还得再搜一遍。
+    """
+    pages: list[dict] = []
+    for record in take(performers, limit):
+        wanted = {name_key(name) for name in record["chain"]}
+        details: list[str] = []
+        broken = None
+        search = ""
+        for name in record["chain"]:
+            search = JAVDB_SEARCH.format(quote(name))
+            try:
+                html = site.get(search)
+            except Exception as exc:
+                broken = failed("javdb", search, exc)
+                break
+            details = javdb_hits(html, wanted)
+            if details:
+                break
+        if broken is not None:
+            pages.append(broken)
+            continue
+        if not details:
+            pages.append(page_record(
+                "javdb", search, record["chain"], [],
+                note=f"搜过名字链的 {len(record['chain'])} 个写法，javdb 上没有这个人"))
+            continue
+        for detail in details:
+            try:
+                html = site.get(detail)
+            except Exception as exc:
+                pages.append(failed("javdb", detail, exc))
+                continue
+            if JAVDB_LOGIN.search(html):
+                pages.append(page_record("javdb", detail, record["chain"], [],
+                                         note="javdb 这一页要登录才给，不注册账号"))
+                continue
+            pages.append(page_record("javdb", detail, javdb_names(html), javdb_links(html),
+                                     portrait=javdb_portrait(html)))
+    return [], pages
+
+
+COLLECTORS = {"laoshi": collect_laoshi, "bstar": collect_bstar,
+              "jae": collect_jae}
+#: 这个来源没有名录可翻，采集器要拿账本的名字当入口，所以多收一个参数。
+NAME_ENTRY = {"javdb": collect_javdb}
 
 
 # ---------------------------------------------------------------- 判定
@@ -266,6 +600,18 @@ def index_names(performers: list[dict]) -> dict[str, set[int]]:
             if key:
                 index.setdefault(key, set()).add(record["entity_id"])
     return index
+
+
+def matched_ids(names: list[str], index: dict[str, set[int]]) -> tuple[set[int], list[str]]:
+    """页面上的名字 → （命中的 entity_id, 真正对上的那几个名字）。"""
+    matched: set[int] = set()
+    used: list[str] = []
+    for name in names:
+        ids = index.get(name_key(name))
+        if ids:
+            matched |= ids
+            used.append(name)
+    return matched, used
 
 
 def load_existing(connection: sqlite3.Connection) -> tuple[dict, dict]:
@@ -295,16 +641,19 @@ def judge(pages: list[dict], site_links: list[str], performers: list[dict],
     for page in pages:
         base = {"kind": "performer", "source": page["source"], "page": page["page"]}
         if page["note"]:
-            rows.append(row(**base, verdict="未取得", evidence=page["note"]))
+            # 按名字进的来源（javdb）搜不到人也是结论，那一行得写明是谁；整站翻的来源
+            # 抓页面失败时手上只有一个 URL，`failed()` 不带名字，这里照旧只记一行。
+            who = {}
+            if page["names"]:
+                matched, used = matched_ids(page["names"], index)
+                if len(matched) == 1:
+                    entity_id = matched.pop()
+                    who = {"entity_id": entity_id, "name": by_id[entity_id]["name"],
+                           "matched_name": "、".join(used)}
+            rows.append(row(**base, **who, verdict="未取得", evidence=page["note"]))
             stats["页面未取得"] += 1
             continue
-        matched: set[int] = set()
-        used: list[str] = []
-        for name in page["names"]:
-            ids = index.get(name_key(name))
-            if ids:
-                matched |= ids
-                used.append(name)
+        matched, used = matched_ids(page["names"], index)
         socials = []
         seen: set[tuple[str, str]] = set()
         for url in page["links"]:
@@ -330,7 +679,7 @@ def judge(pages: list[dict], site_links: list[str], performers: list[dict],
         record = by_id[entity_id]
         base.update(entity_id=entity_id, name=record["name"], matched_name=matched_name)
         where = f"{page['source']} {page['page']}；页面名「{matched_name}」对上账本「{record['name']}」"
-        if not socials and not page["official"]:
+        if not socials and not page["official"] and not page["owned"]:
             rows.append(row(**base, verdict="未取得", evidence=f"{where}；页面上没有社交链接"))
             stats["命中但无社媒"] += 1
             continue
@@ -351,6 +700,18 @@ def judge(pages: list[dict], site_links: list[str], performers: list[dict],
                     held[(name, account)] = url
             rows.append(item)
             stats[item["verdict"]] += 1
+        # 博客与本人官网没有 handle 可比，只按 URL 判重；类型与标签由页面上那行文字参与决定。
+        for url, shown in page["owned"]:
+            link_kind, label = owned_link(url, shown)
+            item = row(**base, link_kind=link_kind, label=label, url=url)
+            if url in existing_urls.get(entity_id, set()):
+                item.update(verdict="已有", evidence=f"{where}；账本已有此地址")
+            else:
+                item.update(verdict="ok",
+                            evidence=f"{where}；资料页写明的本人链接「{shown or label}」")
+                existing_urls.setdefault(entity_id, set()).add(url)
+            rows.append(item)
+            stats[item["verdict"]] += 1
         if page["official"]:
             url, label = page["official"]
             if url in existing_urls.get(entity_id, set()):
@@ -363,6 +724,29 @@ def judge(pages: list[dict], site_links: list[str], performers: list[dict],
                 existing_urls.setdefault(entity_id, set()).add(url)
                 stats["ok"] += 1
     return rows, stats
+
+
+def portrait_rows(pages: list[dict], performers: list[dict]) -> list[dict]:
+    """名录页上的人像 → 头像候选行，喂 harvest_social_avatars.py 的 jae 路线。
+
+    与链接队列同一批页面、同一次名字判定：唯一命中才出行，对上多位的不出——
+    头像装错人和链接装错人是同一个错误，判据不能两套。
+    """
+    by_id = {record["entity_id"]: record for record in performers}
+    index = index_names(performers)
+    out: list[dict] = []
+    for page in pages:
+        if page["note"] or not page["portrait"]:
+            continue
+        matched, used = matched_ids(page["names"], index)
+        if len(matched) != 1:
+            continue
+        entity_id = next(iter(matched))
+        out.append({"entity_id": str(entity_id), "kind": "performer",
+                    "name": by_id[entity_id]["name"], "matched_name": "、".join(used),
+                    "portrait_url": page["portrait"], "source": page["source"],
+                    "page": page["page"], "verdict": "命中"})
+    return out
 
 
 # ---------------------------------------------------------------- 验活
@@ -453,12 +837,16 @@ def run(args) -> int:
     print(f"账本可比对 performer {len(performers)} 位")
 
     rows: list[dict] = []
+    portraits: list[dict] = []
     totals: Counter = Counter()
     sources = SOURCES if args.source == "all" else (args.source,)
     for source in sources:
-        site = Site(args.cache_dir / source, args.interval, args.timeout, refresh=args.refresh)
+        site = Site(args.cache_dir / source, args.interval, args.timeout, refresh=args.refresh,
+                    via_proxy=source in PROXY_SOURCES)
+        collector = COLLECTORS.get(source)
         try:
-            site_links, pages = COLLECTORS[source](site, args.limit)
+            site_links, pages = (collector(site, args.limit) if collector
+                                 else NAME_ENTRY[source](site, args.limit, performers))
         except Exception as exc:
             print(f"[{source}] 未取得：{type(exc).__name__}: {exc}")
             continue
@@ -466,6 +854,7 @@ def run(args) -> int:
             site.close()
         source_rows, stats = judge(pages, site_links, performers, existing_handles, existing_urls)
         rows += source_rows
+        portraits += portrait_rows(pages, performers)
         totals.update(stats)
         print(f"[{source}] 页面 {len(pages)}，网络 {site.fetched} / 缓存 {site.cached}，"
               f"站方账号 {len(site_links)} 条已剔除，{dict(stats)}")
@@ -485,8 +874,13 @@ def run(args) -> int:
     queue = installable(rows)
     write_rows(args.output, FIELDS, queue)
     write_rows(review, FIELDS, rows)
-    print({"安装队列": len(queue), "复核行": len(rows), **totals,
-           "output": str(args.output), "review": str(review)})
+    result = {"安装队列": len(queue), "复核行": len(rows), **totals,
+              "output": str(args.output), "review": str(review)}
+    if portraits:
+        portrait_path = args.output.with_name(args.output.stem + "-portraits.csv")
+        write_rows(portrait_path, PORTRAIT_FIELDS, portraits)
+        result.update({"人像候选": len(portraits), "portraits": str(portrait_path)})
+    print(result)
     return 0
 
 

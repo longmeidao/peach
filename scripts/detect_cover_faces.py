@@ -33,7 +33,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from peach.config import COVER_DIR
-from peach.face_detect import FaceDetector, FaceModelUnavailable
+from peach.face_detect import FaceDetector, FaceModelUnavailable, main_face
 
 #: 长封套的宽高比下限。低于它按竖版正封处理（整张就是正封，没有剧照区）。
 SLEEVE_RATIO_MIN = 1.2
@@ -61,7 +61,7 @@ def detect(path: Path, detector: FaceDetector) -> dict | None:
     faces = [face for face in faces if MIN_Y <= face.cy <= MAX_Y]
     if not faces:
         return {"ratio": round(ratio, 3), "face": None}
-    best = max(faces, key=lambda face: face.area)
+    best = main_face(faces)
     return {"ratio": round(ratio, 3),
             "face": {"cx": best.cx, "cy": best.cy, "score": best.score}}
 

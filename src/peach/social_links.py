@@ -60,16 +60,22 @@ def host_of(url: str) -> str:
 
 
 def canonical_url(url: str) -> str:
-    """改过名的站点换成现主机；不涉及别名表就原样返回。
+    """改过名的站点换成现主机，主机名一律小写；其余原样返回。
+
+    主机名本来就大小写不敏感，而 jae 的资料页上写着 `https://Instagram.com/…`：照抄进去
+    就是同一个账号的第二条记录，`entity_link` 的 UNIQUE 只认字面。
 
     只换 netloc 并把 scheme 提到 https，路径、查询和片段原样保留——handle 大小写在 X 上
     不敏感，但它是用户当初复核过的写法，没有理由在这里替他改掉。
     """
     parts = urlsplit(url.strip())
     new_host = HOST_ALIASES.get((parts.hostname or "").lower())
-    if not new_host:
+    if new_host:
+        return urlunsplit(("https", new_host, parts.path, parts.query, parts.fragment))
+    if parts.netloc == parts.netloc.lower():
         return url
-    return urlunsplit(("https", new_host, parts.path, parts.query, parts.fragment))
+    return urlunsplit((parts.scheme, parts.netloc.lower(), parts.path, parts.query,
+                       parts.fragment))
 
 
 def platform(url: str) -> str:

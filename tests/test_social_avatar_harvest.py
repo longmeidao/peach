@@ -207,8 +207,10 @@ class HarvestTests(unittest.TestCase):
         self.caches = {
             "social": self.module.AvatarCandidateCache(self.cache_root / "social"),
             "babepedia": self.module.AvatarCandidateCache(self.cache_root / "babepedia"),
+            "jae": self.module.AvatarCandidateCache(self.cache_root / "jae"),
         }
-        self.limiter = self.module.HostLimiter({"x.com": 0.0, "lit.link": 0.0})
+        self.limiter = self.module.HostLimiter({"x.com": 0.0, "lit.link": 0.0,
+                                                "jae.tokyo": 0.0})
 
     @staticmethod
     def record(routes):
@@ -274,13 +276,46 @@ class HarvestTests(unittest.TestCase):
         winner, _ = self.module.select_winner(result["candidates"])
         self.assertEqual(winner.get("matched"), "", "名字没过闸，头像不得标已核实")
 
+    def test_the_jae_route_takes_every_year_the_directory_listed_her(self):
+        """三届各一张，一起进竞选；身份沿用名录那一步的判定，这里不重新猜人。"""
+        big = jpeg(600, 900, color=(10, 90, 10))
+        rows = [
+            {"portrait_url": "http://www.jae.tokyo/jae2015/images/a.jpg",
+             "page": "http://www.jae.tokyo/jae2015/actress.html#joyu038",
+             "matched_name": "釈アリス", "verdict": "命中"},
+            {"portrait_url": "http://www.jae.tokyo/jae2017/images/b.jpg",
+             "page": "http://www.jae.tokyo/jae2017/actress/12.html",
+             "matched_name": "釈アリス", "verdict": "命中"},
+        ]
+        http = FakeHttp({rows[0]["portrait_url"]: (200, jpeg(200, 300)),
+                         rows[1]["portrait_url"]: (200, big)})
+        result = self.module.harvest_entity(self.record({"jae": rows}), http,
+                                            self.limiter, 5.0, self.caches)
+        self.assertEqual([c["provider"] for c in result["candidates"]], ["jae", "jae"])
+        winner, runners_up = self.module.select_winner(result["candidates"])
+        self.assertEqual(winner["sha256"], hashlib.sha256(big).hexdigest())
+        self.assertEqual(len(runners_up), 1)
+        self.assertTrue(winner["identity_verified"])
+        self.assertEqual(winner["matched"], "釈アリス")
+        self.assertEqual(winner["external_id"], "jae:12.html")
+        self.assertIn("jae2017/actress/12.html", winner["evidence"])
+
+    def test_a_jae_portrait_that_does_not_load_only_leaves_a_note(self):
+        rows = [{"portrait_url": "http://www.jae.tokyo/jae2014/images/gone.jpg",
+                 "page": "http://www.jae.tokyo/jae2014/performer/", "verdict": "命中"}]
+        result = self.module.harvest_entity(self.record({"jae": rows}), FakeHttp({}),
+                                            self.limiter, 5.0, self.caches)
+        self.assertEqual(result["candidates"], [])
+        self.assertTrue(any("jae 名录人像未取得" in note for note in result["notes"]))
+
 
 class TargetTests(unittest.TestCase):
     def setUp(self):
         self.module = load_module()
         self.tmp = Path(tempfile.mkdtemp())
-        # 测试里绝不能摸到真实数据根：babepedia 候选表指到临时目录。
+        # 测试里绝不能摸到真实数据根：babepedia 与 jae 候选表都指到临时目录。
         self.module.GENERATED_DIR = self.tmp
+        self.module.REVIEW_DIR = self.tmp
         self.avatars = self.tmp / "avatars"
         self.avatars.mkdir()
 
@@ -327,6 +362,25 @@ class TargetTests(unittest.TestCase):
             self.assertEqual(len(targets), 1)
             self.assertEqual(targets[0]["routes"]["babepedia"]["babepedia_name"],
                              "Saffron Bacchus")
+        finally:
+            connection.close()
+
+    def test_a_performer_rides_the_jae_route_and_keeps_every_year(self):
+        (self.tmp / "jae-performer-links-portraits.csv").write_text(
+            "entity_id,kind,name,matched_name,portrait_url,source,page,verdict\n"
+            "1,performer,释爱丽丝,釈アリス,http://www.jae.tokyo/jae2015/images/a.jpg,"
+            "jae,http://www.jae.tokyo/jae2015/actress.html#joyu038,命中\n"
+            "1,performer,释爱丽丝,釈アリス,http://www.jae.tokyo/jae2017/images/b.jpg,"
+            "jae,http://www.jae.tokyo/jae2017/actress/12.html,命中\n"
+            "2,performer,另一位,,http://www.jae.tokyo/jae2017/images/c.jpg,"
+            "jae,http://www.jae.tokyo/jae2017/actress/13.html,需人工消歧\n",
+            encoding="utf-8-sig")
+        connection = self.ledger([(1, "performer", "释爱丽丝"), (2, "performer", "另一位")])
+        try:
+            targets = self.module.load_targets(connection, self.avatars, [], False)
+            self.assertEqual([t["entity_id"] for t in targets], [1],
+                             "名字没定下来的行不进路线，头像装错人和链接装错人一样严重")
+            self.assertEqual(len(targets[0]["routes"]["jae"]), 2)
         finally:
             connection.close()
 
