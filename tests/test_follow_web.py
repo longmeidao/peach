@@ -1435,16 +1435,45 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_sources_are_added_by_pasting_not_by_a_command(self):
         self.assertPageContains('id="followAdd"')
-        self.assertPageContains('name="lines"')
+        self.assertPageContains('name="line"')
         self.assertPageContains("'/api/follow/source'")
         self.assertPageContains("data-follow-remove")
+
+    def test_the_lookup_is_one_line_submitted_by_enter_without_a_button(self):
+        """查找不改任何东西，按 Vercel 表单规范就不该配提交按钮。
+
+        规范原话是「输入框获得焦点时，若它是唯一控件，回车即提交」。原来非配按钮
+        不可，是因为字段是 textarea——那里回车按规范要插入换行，回车提交就没法用。
+        多行批量本身也不成立：一个作者就要几十秒，一次粘五行等于把这个等待乘五，
+        中途还看不出走到哪一行。所以字段收成单行 search input，回车原生提交。
+        """
+        page = self.page
+        form = page[page.index('<form class="faddform" id="followAdd">'):]
+        form = form[:form.index("</form>")]
+        self.assertIn('<input type="search" name="line" required', form)
+        self.assertNotIn("textarea", form)
+        self.assertNotIn('type="submit"', form)
+        # 忙态没有按钮可以变灰，就落在表单自己身上：前缀图标原位换 Spinner。
+        handler = page[page.index("if(form)form.onsubmit=async event=>{"):]
+        handler = handler[:handler.index("\n  };")]
+        self.assertIn("form.dataset.busy='true';form.setAttribute('aria-busy','true')", handler)
+        self.assertIn("if(prefix)prefix.innerHTML=spinnerHtml('查找中')", handler)
+        self.assertIn("form.removeAttribute('aria-busy')", handler)
+        self.assertNotIn("setActionBusy", handler)
+        # 隐式提交在这个表单上不成立：来源筛选的复选框和输入框住在同一个 <form> 里，
+        # 浏览器只在「仅有一个文本字段」时才替你提交。回车必须自己接管。
+        self.assertPageContains("if(event.key!=='Enter'||event.isComposing)return;")
+        self.assertPageContains("event.preventDefault();form.requestSubmit();")
+        # 单行以后不再有拆行与自增高。
+        self.assertNotIn("box.style.height", page)
+        self.assertIn("const lines=[line];", handler)
 
     def test_reader_management_is_locked_and_points_to_the_writer(self):
         # 读请求带上表面的 signal（surfaceApi），切页时会被取消。
         self.assertPageContains("surfaceApi(surface,'/healthz')")
         self.assertPageContains("followRuntime?.ledger_read_only")
         self.assertPageContains("前往写入端管理关注")
-        self.assertPageContains("#followAdd textarea,#followAdd button")
+        self.assertPageContains("#followAdd input,#followAdd button")
 
     def test_failed_source_adds_stay_visible_instead_of_being_erased_by_reload(self):
         block = self.page[self.page.index("if(addButton)addButton.onclick=async()=>"):
@@ -1533,6 +1562,21 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("followAliasManager(followData.author_aliases,followData.alias_suggestions)")
         self.assertPageContains("'/api/follow/author-alias'")
 
+    def test_a_multi_source_author_head_shows_only_favicons(self):
+        """图标已经说清是哪几个来源，再补一句「N 个来源」就要和它们抢同一行。
+
+        窄卡片里那句话先把图标挤到贴脸，再把作者名压没。数量本来就能数出来，
+        真要确认就读 title。
+        """
+        page = self.page
+        block = page[page.index('return `<div class="fauthor${bad?\' bad\':\'\'}">'):]
+        block = block[:block.index("${sources}")]
+        self.assertIn("? group.map(source=>sourceIcon(source.provider)).join('')", block)
+        self.assertNotIn("个来源`", block)
+        self.assertIn('title="${group.length} 个来源"', block)
+        rule = page[page.index(".fauthorhead .fmeta{"):]
+        self.assertIn("flex:0 1 auto;min-width:0", rule[:rule.index("}")])
+
     def test_already_followed_candidates_are_shown_but_not_selectable(self):
         # 灰掉但仍显示，免得人以为没查到。
         self.assertPageContains("c.known?' known':''")
@@ -1542,18 +1586,16 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("首次按名字查要下载创作者索引，可能几十秒")
 
     def test_the_input_and_its_button_are_the_same_height(self):
-        # 静止时输入框就该和按钮齐平；固定多行的话按钮只有它一小截高。
+        # 输入框和旁边的来源筛选按钮齐平；单行以后没有 min-height 与 resize。
         page = self.page
-        self.assertEqual(page.count(".faddform textarea{"), 1,
+        self.assertEqual(page.count('.faddform input[type="search"]{'), 1,
                          "旧规则留在后面会覆盖新输入框样式")
-        rule = page[page.index(".faddform textarea{"):]
+        rule = page[page.index('.faddform input[type="search"]{'):]
         rule = rule[:rule.index("}")]
         self.assertIn("height:38px", rule)
-        self.assertIn("min-height:38px", rule)
-        # 38px - 2px 边框 - 16px 内边距 = 20px 行高；textarea 会从内容区
-        # 顶部排第一行，留下额外内容高度就会让文字视觉上偏上。
-        self.assertIn("padding:8px 12px 8px 38px", rule)
+        self.assertIn("padding:0 12px 0 38px", rule)
         self.assertIn("line-height:20px", rule)
+        self.assertNotIn("resize:", rule)
         button = page[page.index("\n.fbtn{"):]
         self.assertIn("height:32px", button[:button.index("}")])
         # faddform 里的按钮随输入栏同高（Geist 输入 32px 基线之上的一档）。
@@ -1564,7 +1606,7 @@ class FollowWebSourceTests(unittest.TestCase):
         # Vercel Projects：搜索占剩余宽度，筛选带明确标签，主操作在右；
         # 菜单没有展开动画，并在自己的视口内滚动。
         self.assertPageContains(
-            ".faddform{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px")
+            ".faddform{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px")
         self.assertPageContains(
             ".faddform .fsrcfilter .fbtn{width:auto;height:38px;min-height:38px;padding:0 11px}")
         self.assertPageContains('aria-expanded="false" aria-haspopup="menu"')
@@ -1603,12 +1645,30 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertNotIn("<h3>内容", body)
         self.assertIn("条未看", body)
 
-    def test_the_page_uses_two_columns_so_the_width_is_not_wasted(self):
+    def test_the_page_is_one_narrow_column_with_credentials_inline(self):
+        """侧栏在哪个宽度上都不对：宽屏把凭据推出视线，窄屏又整个塌到最底下。
+
+        三块内容本来就有先后——先添加、再看列表、要配凭据时才往下翻——那就按顺序
+        排成一列，宽度跟数据管理页同样收到 812px，别让一行横跨整个显示器。
+        """
         page = self.page
         rule = page[page.index(".followmanage{"):]
         rule = rule[:rule.index("}")]
-        self.assertIn("grid-template-columns:minmax(0,1fr)", rule)
-        self.assertPageContains(".followmanage>.runtimegate{grid-column:1/-1")
+        self.assertIn("width:min(812px,100%)", rule)
+        self.assertIn("margin-left:auto;margin-right:auto", rule)
+        self.assertNotIn("grid-template-columns", rule)
+        self.assertNotIn("faside", page)
+        self.assertNotIn("@media (max-width:1080px){.followmanage{", page)
+        # 标题与说明跟内容列同宽，否则标题悬空在更宽的位置上。
+        self.assertPageContains(
+            ".follow-manage-layout .managetitle,.follow-manage-layout .pagelede{width:min(812px,100%)")
+        self.assertPageContains(
+            "document.body.classList.toggle('follow-manage-layout',"
+            "decodeURIComponent(location.pathname)==='/follow-manage')")
+        # 凭据现在是主列里的第三块，不再是 aside。
+        body = page[page.index("function renderFollowManage("):
+                    page.index("function wireFollowManage(")]
+        self.assertLess(body.index("<h3>关注列表</h3>"), body.index("<h3>凭据</h3>"))
 
     def test_sections_have_a_frame_but_their_rows_do_not(self):
         """反模式是卡片**套**卡片，不是「不要任何容器」。
@@ -1657,7 +1717,8 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_suggestions_come_from_the_real_library_and_are_clickable(self):
         """「猜你喜欢」取账本里真实存在的创作者，点一下直接拿去查。
 
-        不用 placeholder：占位文字点不了，还占着输入框的语义。
+        推荐不能退化成 placeholder：占位文字点不了。占位文字只负责说清该输入什么
+        格式（Vercel Forms：以省略号收尾、给出示例样式），不许塞进具体创作者名。
         """
         self.assertPageContains("function followSuggestionChips(")
         self.assertPageContains("followData.suggestions")
@@ -1673,7 +1734,11 @@ class FollowWebSourceTests(unittest.TestCase):
         page = self.page
         body = page[page.index("function renderFollowManage("):
                     page.index("function wireFollowItems(")]
-        self.assertNotIn("placeholder=", body, "输入框不再放占位文字")
+        form = body[body.index('<form class="faddform"'):body.index("</form>")]
+        hint = form[form.index("placeholder="):form.index("aria-label=")]
+        self.assertIn("粘贴来源链接，或输入作者名、id…", hint)
+        self.assertNotIn("${", hint, "占位文字不许由数据拼出来——那就是把推荐塞进去了")
+        self.assertEqual(body.count("placeholder="), 1)
 
     def test_every_credential_state_sits_in_the_same_column(self):
         """summary 是 .frow 的 flex 子项，默认不撑满整行——于是有折叠体的那几行

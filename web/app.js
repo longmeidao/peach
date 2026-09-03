@@ -3882,8 +3882,8 @@ function followAuthorBlock(group){
   return `<div class="fauthor${bad?' bad':''}">
     <div class="fauthorhead">${followAuthorAvatar(group)}
       <b>${esc(name)}</b>
-      <span class="fmeta">${group.length>1
-        ? group.map(source=>sourceIcon(source.provider)).join('')+`${group.length} 个来源`
+      <span class="fmeta"${group.length>1?` title="${group.length} 个来源"`:''}>${group.length>1
+        ? group.map(source=>sourceIcon(source.provider)).join('')
         : sourceIcon(group[0].provider)+esc(group[0].provider_label)}</span>
       ${bad?`<span class="fmeta warn">${bad} 个失败</span>`:''}
     </div>
@@ -4014,10 +4014,10 @@ function renderFollowManage(credentials){
         <form class="faddform" id="followAdd">
           <div class="fsearchinput" data-follow-search-input>
             <span class="fsearchprefix" data-follow-search-prefix>${icon('search')}</span>
-            <textarea name="lines" rows="1" required spellcheck="false"
-              aria-label="来源链接、名字或 id"></textarea></div>
+            <input type="search" name="line" required spellcheck="false" autocomplete="off"
+              placeholder="粘贴来源链接，或输入作者名、id…"
+              aria-label="来源链接、名字或 id"></div>
           <div class="fsrcfilter" id="followSrcFilter"></div>
-          <button class="fbtn primary" type="submit">查找</button>
         </form>
         <p class="fnote" data-follow-add-state aria-live="polite"></p>
         <div id="followPicks"></div>
@@ -4049,8 +4049,6 @@ function renderFollowManage(credentials){
             <button class="fbtn" data-follow-bulk="ignored">全部忽略</button></span></p></div>`:''}`
           :emptyState('rss','还没有关注来源','关注来源及其检查状态会显示在这里。',{className:'compact'})}
       </section>
-    </div>
-    <aside class="faside">
       <section class="fsec">
         <div class="fsechead"><h3>凭据</h3>
           ${needCred.length?`<span class="fmeta warn">${needCred.length} 个待配置</span>`:''}</div>
@@ -4061,10 +4059,10 @@ function renderFollowManage(credentials){
           <span>Windows 上不收紧文件权限</span>
           <span class="fdescpop" id="follow-credential-tooltip" role="tooltip" hidden>存放在<b>运行 Peach 的那台机器</b>上，不是浏览器所在机器；不进 Git、URL、日志或 ledger。NTFS 的访问控制走 ACL，<code>chmod</code> 在那里没有效果；POSIX 上建成 0600。</span></p>
       </section>
-    </aside></div>`;
+    </div></div>`;
   wireFollowManage();
   if(locked)$('#stats').querySelectorAll(
-    '#followAdd textarea,#followAdd button,[data-follow-remove],[data-follow-check],'+
+    '#followAdd input,#followAdd button,[data-follow-remove],[data-follow-check],'+
     '[data-follow-enabled],'+
     '[data-follow-bulk],[data-follow-guess],[data-follow-alias-add],'+
     '[data-follow-alias-remove],#followAliasAdd input,#followAliasAdd button,[data-cred-form] input,'+
@@ -4205,39 +4203,38 @@ function wireFollowManage(){
       }
     });
   });
-  const box=form&&form.querySelector('textarea');
-  /* 常见情况是粘一条，多行是例外——所以静止时就一行高，和按钮齐平；
-     真粘了多行才往下长。原来固定三行，按钮只有它 1/3 高，看着就是没对齐。 */
-  if(box){
-    const grow=()=>{box.style.height='auto';
-      box.style.height=Math.min(box.scrollHeight,240)+'px'};
-    box.addEventListener('input',grow);
-    box.addEventListener('paste',()=>setTimeout(grow,0));
-    grow();
-  }
+  const box=form&&form.querySelector('input[name="line"]');
+  /* 回车自己接管，不靠隐式提交：没有提交按钮时浏览器只在「表单里仅有一个文本字段」
+     才替你提交，而来源筛选的那串复选框就住在同一个 <form> 里。实测按下去什么也不发生。
+     isComposing 是给中文输入法的——选字那一下的回车不是提交。 */
+  if(box)box.addEventListener('keydown',event=>{
+    if(event.key!=='Enter'||event.isComposing)return;
+    event.preventDefault();form.requestSubmit();
+  });
   if(form)form.onsubmit=async event=>{
     event.preventDefault();
     if(form.dataset.busy==='true')return;
     /* 状态提示在表单外面的说明行里，不能在 form 里找——找不到就是 null，
        第一次赋值直接抛 TypeError，整个提交静默失败。 */
     const state=root.querySelector('[data-follow-add-state]');
-    const button=form.querySelector('button[type="submit"]');
     const prefix=form.querySelector('[data-follow-search-prefix]');
-    const lines=String(new FormData(form).get('lines')||'').split('\n')
-      .map(line=>line.trim()).filter(Boolean);
-    if(!lines.length)return;
-    const byName=lines.some(line=>!line.includes('/'));
-    form.dataset.busy='true';setActionBusy(button);
+    const line=String(new FormData(form).get('line')||'').trim();
+    if(!line)return;
+    const lines=[line];
+    const byName=!line.includes('/');
+    /* 没有提交按钮可以变灰，忙态就落在输入框自己身上：前缀图标原位换 Spinner，
+       aria-busy 播报给辅助技术，重复回车由 dataset.busy 挡住。 */
+    form.dataset.busy='true';form.setAttribute('aria-busy','true');
     if(prefix)prefix.innerHTML=spinnerHtml('查找中');
     // 索引下载的提醒只在真按名字查时出现；常驻成一句说明就是噪音。
     state.textContent=byName?'查找中…（首次按名字查要下载创作者索引，可能几十秒）':'识别中…';
     try{
       const result=await api('/api/follow/resolve',{method:'POST',
         body:JSON.stringify({lines})});
-      state.textContent='';if(box){box.value='';box.style.height='auto'}
+      state.textContent='';if(box)box.value='';
       renderFollowPicks(result.results||[]);
     }catch(error){state.textContent=error.message||'查找失败'}
-    finally{form.dataset.busy='false';setActionBusy(button,false);
+    finally{form.dataset.busy='false';form.removeAttribute('aria-busy');
       if(prefix)prefix.innerHTML=icon('search')}
   };
   root.querySelectorAll('[data-follow-remove]').forEach(button=>button.onclick=async()=>{
@@ -5467,6 +5464,7 @@ function paintManageTitle(){
   /* 812px 居中是数据管理 hub 自己的窄列宽度（.cleanuppage）。它下面的垃圾文件、
      重复文件正文都是全宽网格，跟着居中就是标题在宽屏上凭空左缩一截、跟内容对不齐。 */
   document.body.classList.toggle('cleanup-layout',current==='cleanup'&&decodeURIComponent(location.pathname)==='/data-cleanup');
+  document.body.classList.toggle('follow-manage-layout',decodeURIComponent(location.pathname)==='/follow-manage');
   const entry=MANAGE_SECTIONS.find(([k])=>k===current);
   el.hidden=!entry;
   // 数据管理之下按路径再分一层（MANAGE_CRUMB_PAGES）：垃圾文件/重复文件的
