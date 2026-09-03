@@ -70,6 +70,42 @@ ADULT = re.compile(
 FIELDS = ("entity_id", "studio", "assets", "candidate_url", "final_url", "status",
           "bytes", "sha256", "title", "verdict", "note")
 
+#: 用户当场确认的母公司官网。**这不是放宽通用判据，是补一条页面上没有的信息。**
+#:
+#: `SOD Create` 是 Soft On Demand 的厂牌。母公司官网 `www.sod.co.jp` 实测 200、是成人站，
+#: 标题却是 `SOFT ON DEMAND（ソフト・オン・デマンド）`——标题和正文里都不会出现
+#: `SOD Create` 这个串，所以「标题自述厂牌名」和「正文提到厂牌名」两条都不成立，通用
+#: 判据只能判未取得。缺的那一条是「这个厂牌属于哪家公司」，它本来就不在页面上，只有人知道。
+#:
+#: 因此走显式白名单，不去放宽通用判据：把「标题没有厂牌名也算」松开，`hunter.com`
+#: （四轮定位）、`bazooka.com`（车载音响）、`madonna.com`（歌手）那一整类同名站会跟着
+#: 一起被确认成官网。白名单只影响列出来的这几行，每行写清谁确认的、为什么通用路径不成立。
+CONFIRMED_SITES: dict[str, tuple[str, str]] = {
+    "SOD Create": (
+        "https://www.sod.co.jp/",
+        "用户 2026-09-03 确认：SOD Create 是 Soft On Demand 的厂牌，"
+        "sod.co.jp 是母公司官网",
+    ),
+}
+
+#: 发行平台不是厂牌，「厂牌官网」这条路对它们本来就不成立。
+#:
+#: 用户判据（见 `docs/SOURCING.md`）：FC2-PPV、myfans 这类是把别人的作品卖出去的平台；
+#: 页面上有实际卖主（seller／出品者）的那个账号才是 creator，账本里已标注或评论里提到的
+#: 女优属于 performer。所以拿 `fc2ppv.com` 这类推导域名去试，试出什么都不能写成 official：
+#: 要么是抢注页，要么是平台入口，两者都不是「这个厂牌的官网」。
+#:
+#: 判词单列而不是静默跳过：少扫一个和「扫过但没找到」在复核件上长得一模一样，
+#: 那正是这个仓库最常见的那类缺陷。名字按 `normalise` 比，写法差异（`FC2-PPV`／`FC2 PPV`）
+#: 不影响命中。
+PLATFORM_ENTITIES = frozenset({"fc2ppv", "fc2", "myfans"})
+PLATFORM_VERDICT = "不适用（发行平台）"
+
+
+def is_platform(name: str) -> bool:
+    """这个账本名是发行平台而不是厂牌吗。"""
+    return normalise(name) in PLATFORM_ENTITIES
+
 
 def normalise(text: str) -> str:
     """只留 ASCII 字母数字。
@@ -143,12 +179,15 @@ def page_title(body: bytes) -> str:
 
 def site_verdict(name: str, status: int, body: bytes, title: str,
                  url: str = "", derived_hosts: frozenset[str] = frozenset(),
-                 ) -> tuple[str, str]:
+                 confirmed: str = "") -> tuple[str, str]:
     """这一页认不认自己是这个厂牌。
 
     四道都必须过：HTTP 200、不是空壳、不是停放页、标题里出现厂牌名且不只是域名回显。
     缺任何一道都写成未取得而不是「大概是」——一个错的官网会被下游当成社媒 handle 的
     来源，把别人的账号安到这个厂牌头上。
+
+    `confirmed` 是 `CONFIRMED_SITES` 里那句理由：它只替掉最后一道「页面得自述厂牌名」，
+    前面几道照旧要过。
     """
     if status != 200:
         return "未取得", f"HTTP {status}"
@@ -176,6 +215,12 @@ def site_verdict(name: str, status: int, body: bytes, title: str,
     printed = title.casefold().strip()
     if host and host in printed and not re.sub(r"\W|_", "", printed.replace(host, "")):
         return "未取得", f"标题只是域名回显，没有自述身份（{title[:40]}）"
+    # 用户确认的母公司官网。上面四道（状态码、空壳、停放页／自述不可用、域名回显）照旧
+    # 要过：确认的是「这个地址属于这家公司」，不是「这个地址此刻返回的任何东西都算数」。
+    # 白名单换掉的只有「页面得自述厂牌名」这一条——`SOD Create` 这个串本来就不会出现在
+    # 母公司官网上，那条信息不在页面里。
+    if confirmed:
+        return "ok", f"{confirmed}；实测标题：{title[:40] or '无'}"
     token = normalise(name)
     if not token:
         return "未取得", "厂牌名里没有可比对的字母数字"
@@ -334,6 +379,15 @@ def run(args) -> int:
         row = {field: "" for field in FIELDS}
         row.update(record)
         row["verdict"], row["note"] = "未取得", "没有可推导的候选域名"
+        if is_platform(name):
+            # 一个请求都不发：这不是「查不到」，是这条路对发行平台本来就不成立。
+            row["verdict"], row["note"] = PLATFORM_VERDICT, (
+                "发行平台不是厂牌，没有「厂牌官网」可查；链接按平台登记，"
+                "有实际卖主的账号才是 creator（docs/SOURCING.md）")
+            results.append(row)
+            print(f"{name[:22]:<22} {row['verdict']:<6}")
+            continue
+        confirmed = CONFIRMED_SITES.get(name)
         # 人工喂的种子和规则推出来的候选走同一条验证，但要分得清哪个是哪个：
         # 「域名由厂牌名推出」只有在域名真的是推出来的时候才算一个独立信号。
         derived_urls = candidate_urls(name)
@@ -345,7 +399,8 @@ def run(args) -> int:
         # `SOFT ON DEMAND（ソフト・オン・デマンド）`。判成未取得可以，但要让人看得见
         # 是在哪几个地址上未取得。
         trail: list[str] = []
-        for url in seeds.get(name, []) + derived_urls:
+        # 确认过的地址排在最前：它是这家的答案，先试它就不必再把一串死域名走一遍。
+        for url in ([confirmed[0]] if confirmed else []) + seeds.get(name, []) + derived_urls:
             wait = args.interval - (time.monotonic() - last)
             if wait > 0:
                 time.sleep(wait)
@@ -359,8 +414,9 @@ def run(args) -> int:
                                note=f"取不到：{type(exc).__name__}")
                 continue
             title = page_title(body)
-            verdict, note = site_verdict(name, status, body, title, final,
-                                         derived_hosts=derived_hosts)
+            verdict, note = site_verdict(
+                name, status, body, title, final, derived_hosts=derived_hosts,
+                confirmed=confirmed[1] if confirmed and url == confirmed[0] else "")
             trail.append(f"{url} → {verdict}：{note}")
             # 取回了字节的候选比连不上的更值得留在行里：状态码、标题和 sha256 才是
             # 人能复核的证据。已经采信过一个 ok/weak 之后不再覆盖。
@@ -385,4 +441,7 @@ def run(args) -> int:
 
 
 if __name__ == "__main__":
+    # 进度行里有日文标题，`ソフト・オン・デマンド` 的 `・` 在 GBK 控制台上编不出来，
+    # 一个 print 就能把整批跑掀掉。证据在 CSV（UTF-8）里，进度行糊掉无所谓。
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     raise SystemExit(job_main(build_parser, run))

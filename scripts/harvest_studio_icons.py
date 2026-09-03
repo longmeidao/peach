@@ -81,13 +81,22 @@ def padded_studios(logo_root: Path) -> dict[str, dict[str, object]]:
     return found
 
 
+#: 能拿来找图标的链接类型。`social` 不在内：那是另一条线的头像，混进来会把厂牌小标
+#: 换成运营的自拍。`catalog` 在内，因为发行平台（FC2-PPV、myfans 这类）按
+#: `docs/SOURCING.md` 的判据不登记 official——它们不是厂牌，没有厂牌官网——可它们照样
+#: 占着筛选片和卡片徽标那几个位置，需要一枚图标。只认 official 的话，这些实体会在复核件上
+#: 记成「无官网链接」，看起来像是漏采，其实是查都没查。
+ICON_LINK_KINDS = ("official", "catalog")
+
+
 def studio_links(connection: sqlite3.Connection) -> dict[str, list[dict[str, str]]]:
-    """按 safe 文件名归拢厂牌的官网链接；社媒不算，那是另一条线的头像。"""
+    """按 safe 文件名归拢厂牌的站点链接；社媒不算，那是另一条线的头像。"""
+    placeholders = ",".join("?" * len(ICON_LINK_KINDS))
     rows = connection.execute(
         "SELECT e.id, e.canonical_name, l.link_kind, l.url"
         " FROM entity e JOIN entity_link l ON l.entity_id = e.id"
-        " WHERE e.kind = 'studio' AND l.link_kind = 'official'"
-        " ORDER BY e.canonical_name, l.id").fetchall()
+        f" WHERE e.kind = 'studio' AND l.link_kind IN ({placeholders})"
+        " ORDER BY e.canonical_name, l.id", ICON_LINK_KINDS).fetchall()
     grouped: dict[str, list[dict[str, str]]] = {}
     for row in rows:
         grouped.setdefault(safe_name(row["canonical_name"]), []).append(
@@ -191,7 +200,8 @@ def harvest(padded: dict[str, dict[str, object]],
                          "installed": f"{safe}.img", "original_size": size, "link_kind": "",
                          "url": "", "verdict": SKIP, "mark_size": "", "content_aspect": "",
                          "sha256": "",
-                         "candidate": "", "evidence": "账本里这个厂牌没有 official 链接"})
+                         "candidate": "",
+                         "evidence": "账本里这个厂牌没有 official／catalog 链接"})
             continue
         attempts: list[str] = []
         reachable = False

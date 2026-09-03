@@ -195,6 +195,23 @@ HOST_OVERRIDES: dict[str, tuple[str, ...]] = {
     # 会被内容比例闸门挡下，留给 `/logo` 的大位。
     "video.dmm.co.jp": ("https://p-smith.com/pinned/favicon_r18.ico",),
     "dmm.co.jp": ("https://p-smith.com/pinned/favicon_r18.ico",),
+    # FC2 全站声明的图标只有 `static.fc2.com/share/image/favicon.ico`（16×16，独角兽头
+    # 是真正的标识），页面里引用的更大资产全是横向字标（189×68、690×68），那属于
+    # `/logo` 的大位；`blog`／`live`／`static` 上的 `apple-touch-icon`、`favicon-192`、
+    # `icon.png` 全 404。所以这里不是「发现流程没找对」，是站上确实没有够大的那一份。
+    #
+    # 用户 2026-09-03 授权用非官网来源补 `icon` 位。这一枚仍是 FC2, Inc. 自己发布的：
+    # iOS 应用「FC2動画」（bundle `com.fc2.fc2video`）的商店图标，512×512、内容比 1.00、
+    # 只有独角兽标识没有文字。地址可复现——公开的 iTunes Lookup API
+    # （`itunes.apple.com/lookup?id=374259312&entity=software&country=jp`）给出同一个
+    # artwork 地址，把 `512x512bb.jpg` 换成 `.png` 就是这一条。
+    # 不用 `id.fc2.com/apple-touch-icon.png`：它 114×114，且是「独角兽 + FC2 文字」的
+    # 纵向锁定图，缩到 28 px 文字糊成一团。
+    "fc2.com": (
+        "https://is1-ssl.mzstatic.com/image/thumb/Purple122/v4/4e/e6/b6/"
+        "4ee6b67c-e974-f795-433e-28def5bca596/"
+        "AppIcon-1x_U007emarketing-5-85-220.png/512x512bb.png",
+    ),
 }
 
 
