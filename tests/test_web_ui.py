@@ -4214,6 +4214,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('aria-label="关注列表排序"')
         # 标题行里三个可缩项只有说明文字，排序框和动作键都保持完整宽度。
         self.assertPageContains(".fsechead .fbtn,.fsechead .fmanagesort{flex:none}")
+        # 允许换行的一行里，说明文字必须以基准 0 参与排线，否则先断行再谈缩放。
+        self.assertPageContains(".fsechead .fmeta{flex:1 1 0;min-width:0;overflow:hidden")
+        self.assertPageContains("  .fsechead .fmeta{display:none}")
 
     def test_destructive_buttons_fill_red_on_hover(self):
         """危险动作的悬停态一律是 --drop 实底加白字，全站一个写法。

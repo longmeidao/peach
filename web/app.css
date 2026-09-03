@@ -2176,9 +2176,10 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
   border-radius:var(--control-radius);background:var(--surface);color:var(--ink-2);cursor:pointer;font-size:var(--fs-sm)}
 .dupactions.fsechead button:hover{background:var(--hover);color:var(--ink)}
 .fsechead h3{margin:0;font-size:var(--fs-md);font-weight:600;letter-spacing:.01em}
-/* 说明文字是这一行里唯一可以缩的东西：标题、排序框和动作键都要完整读出来，
-   它自己不设下限的话，宽度一紧就是整行换行。 */
-.fsechead .fmeta{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 说明文字是这一行里唯一可以缩的东西：标题、排序框和动作键都要完整读出来。
+   基准取 0 而不是 auto：这一行允许换行，按内容宽度参与排线的话它会先把整行挤断，
+   缩放根本轮不到发生。基准 0 让它先占 0 再吃剩下的宽度，末尾省略。 */
+.fsechead .fmeta{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fsechead .fbtn,.fsechead .fmanagesort{flex:none}
 /* 排序框照 Geist Select 的 prefix 做法：图标压在框内左侧，不在框外挂一个文字标签。
    Geist 的文字 Label 是块级、排在控件上方（block ... mb-2），行内并排那种写法它没有；
@@ -2468,6 +2469,9 @@ details.fcred{display:block}
      属性也可能还留着上次在宽屏选的 compact，那几条压缩规则一并撤销：这里是整幅一栏，
      没有理由把站名收成图标。 */
   .fsechead .iconswitch{display:none}
+  /* 省略后剩给说明文字的不到 120px，读出来只是「N 个来源 · 」这种半句；
+     未看条数在下面每一行来源上都有，标题行让给排序和两个动作键。 */
+  .fsechead .fmeta{display:none}
   .fsources[data-layout="compact"] .fsource .fprovider:has(.ficon)>span{display:inline}
   .fsources[data-layout="compact"] .fsource .fprovider:has(.ficon) .ficon{margin-right:5px}
   .frow .fmeta:nth-of-type(2){display:none}
