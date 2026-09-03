@@ -63,8 +63,9 @@
 - `audit_performer_portraits.py` 把合格图放进候选专用的内容寻址缓存，每条另存 provider、名字命中档、
   上游 ID/URL、尺寸、MIME、SHA-256 与 policy version；与当前头像字节相同的只留审计证据，不进 `/review`，
   脚本没有写 ledger 的路径。
-- 可用来源实测结论：r18.dev、av-wiki.net、javdb.com、Gfriends 可用；javlibrary、missav、xslist 被
+- 可用来源实测结论：r18.dev、av-wiki.net、Gfriends 可用；javlibrary、missav、xslist 被
   Cloudflare 拦，njav 有验证墙，jav321 无独立女优字段。被 Cloudflare 拦的站一律放弃，不绕过机器人检测。
+  javdb.com 抓得到，但它自己按出口 IP 封速率（2026-09-04 封 3～7 日），只能小批量慢跑，见下文。
   Gfriends 只按 `Filetree.json` 和单张 raw 媒体当外部 Provider 用，不克隆图库、不把图片放进 Git。
 - javdatabase 的入口必须是账本里的番号，不能按名字拼 slug。它一个艺名一页，slug 与人不是一对一：
   `/idols/rin-natsuki/` 打开的是 `Rin Oka` 的资料页；站内搜索也不给 idol 页，只回作品列表。链路固定为
@@ -125,6 +126,27 @@
   `harvest_social_avatars.py` 的 `jae` 路线读走，和 X、babepedia 的候选在同一套内容寻址缓存里按
   短边排名比大小；jae 的 600×1000 竖版人像稳赢 X 的 240×240，145 条人像里 5 人产生候选、装上 4 张
   （其余早已有头像，`load_targets` 不收）。竖版全身宣传照的取景交给人脸 sidecar，见 REUSE.md「人脸取景」。
+
+- **javdb.com 是按名字进的来源，不是能翻的名录。** 站上没有可枚举的女优列表，入口是账本里的名字：
+  逐个写法搜 `search?f=actor&q=`，结果卡片的 `title` 一栏就是这个人在站上的全部写法，不点进去就能判
+  身份。名字链要整条搜完再放弃——账本的规范名多是简体（`三上悠亚`），javdb 上是 `三上悠亜`／`三上悠亞`，
+  `name_key()` 不做简繁转换，只搜规范名一个都搜不到（`harvest_directory_links.collect_javdb`）。
+- **同名两条记录不取第一个。** 同一位女优在站上常有「有碼」「無碼」两条，搜索结果把两条都给出来；
+  两页都进判定，撞上的账号会落成 `conflict` 进复核表。取第一个是默默替用户挑了一位。
+- **一部分资料页要登录，回的是登入页而不是 401。** 不注册账号，那一页记一行「未取得」并写明是谁——
+  「搜过、站上没有这个人」「搜到了但要登录」「没搜」是三件事，不分开写下一轮还得重搜一遍。
+- **社媒按钮只在 `section-addition` 那一块里。** 整页别处的站外链接是广告、姊妹站和 RTA 标签，
+  每一页都有一份完全相同的。
+- 60 位的实测结果：`已有` 20、`ok` 18（验活后装上 17 条，`entity_link` 699 → 716，备份
+  `ledger.pre-javdb-performer-links-20260904.db`，`integrity_check ok`）、`命中但无社媒` 18、
+  `未取得` 26、`conflict` 5、`需人工消歧` 1。Instagram 是这个来源的主要增量，jae 那轮几乎全是 X 和博客。
+- **跑到第 60 位时出口 IP 被站方封了 3～7 日**（`403`，页面写「基於你的異常行為」并建议换节点）。
+  换节点就是绕机器人检测，按本文既有口径放弃，剩下 476 位不再抓。已取的 123 页留在
+  `state/directory-links/javdb/`，判定可离线重放（实测 `网络 0 / 缓存 123`）；封禁期过后接着跑即可，
+  `--interval` 要往上调。
+- **javdb 的圆头像 250×250，进不了头像竞赛。** 44 条人像候选里只有 1 人（立花美凉）账本里还没有头像，
+  250×250 也过不了自动线（正方需 ≥400）。为这一条把 `jae` 路线泛化成通用人像路线不值当，
+  `harvest_social_avatars.py` 暂不接这个来源。
 
 ## 厂牌名与厂牌标识
 
