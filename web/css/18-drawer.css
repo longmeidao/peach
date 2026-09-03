@@ -1,0 +1,102 @@
+/* ── 筛选抽屉（默认收起，不占版面） ── */
+/* 常驻 72 px 窄图标条。外部实现证据和有意差异登记在 docs/HANDOFF.md。 */
+.edge{position:fixed;top:0;bottom:0;left:0;width:var(--railW);z-index:92;
+  padding-top:14px;
+  background:var(--ground);
+  /* 窄栏和内容区背景接近，没有这条线就看不出左边那一条到哪里为止。
+     抽屉展开时它从 left:0 盖住窄栏，线自然跟着消失，那时候分界由抽屉自己的右边框接管。 */
+  border-right:1px solid var(--line-soft);
+  display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 0}
+.edge button{width:52px;height:52px;border-radius:var(--control-radius);background:none;border:0;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;color:var(--muted);transition:background .12s}
+/* 侧栏导航是「填充让位给选中」的例外，Geist 自己就这么写。2026-09-04 实测
+   vercel.com/geist 的左栏：未选中项 `hover:bg-gray-100`（悬停底 rgb(26,26,26)），
+   文字全程停在 rgb(161,161,161) 不动；当前项 `bg-gray-alpha-100`（合成后亮度
+   和悬停底几乎相同）加文字提到 rgb(237,237,237)，且不带任何 hover 类。
+   也就是分工反过来：填充是「鼠标在这儿」，文字/图标色才是「你在这儿」。
+   纯图标窄栏尤其需要这样——52px 方块里只有一个描边图标，光靠图标换色近乎看不见。 */
+.edge button:hover{background:var(--hover)}
+.edge button[aria-pressed="true"]{background:var(--hover);color:var(--ink)}
+.edge button.nav-dragging,.dnav button.nav-dragging{opacity:.38}.edge button.nav-drop-before::before,.edge button.nav-drop-after::after,.dnav button.nav-drop-before::before,.dnav button.nav-drop-after::after{content:'';position:absolute;z-index:2;left:7px;right:7px;height:2px;border-radius:var(--pill-radius);background:var(--ink)}.edge button.nav-drop-before::before,.dnav button.nav-drop-before::before{top:-3px}.edge button.nav-drop-after::after,.dnav button.nav-drop-after::after{bottom:-3px}.edge button[data-nav],.dnav button[data-nav]{position:relative}
+.edge svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round}
+/* 窄栏从 y=0 贯通到底，顶栏只在右侧内容列里。 */
+body{padding-left:var(--railW)}
+@media (max-width:760px){body{padding-left:0}.edge{display:none}}
+/* 抽屉从窄栏右侧开始，不再盖住窄栏。
+   原来它压在窄栏上并把窄栏整个 `pointer-events:none`，于是「悬停展开」变成了
+   「目标从光标底下挪走」：注释声称「图标落在窄栏原来的位置」，实测两边差 10–54px
+   （窄栏行距 52px、抽屉 47px、起点还差 54px），瞄准「在线追更」点下去打开的是「统计」。
+   与其逐像素对齐两套各自会因溢出、滚动、条目增减而漂移的列表，不如让它们不重叠——
+   光标底下的图标就永远不动。 */
+.drawer{position:fixed;top:0;bottom:0;left:0;width:360px;z-index:97;
+  background:linear-gradient(180deg,var(--frost-light),var(--frost-panel));
+  backdrop-filter:saturate(1.8) blur(20px);-webkit-backdrop-filter:saturate(1.8) blur(20px);
+  border-right:1px solid var(--line);padding:16px 12px 60px;
+  overflow-y:auto;overflow-x:hidden;
+  transform:translateX(-100%);transition:transform .2s cubic-bezier(.3,.8,.3,1)}
+.drawer.open{transform:none;box-shadow:18px 0 60px -24px #000}
+/* 窄栏必须压在抽屉之上，否则抽屉一弹出就吃掉窄栏的点击 */
+.edge{z-index:96}
+body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位，抽屉就是它的展开态 */
+/* 遮罩必须低于抽屉，否则每一下点击都落在遮罩上，而遮罩的 onclick 正好是收起抽屉——
+   表现成「能弹出但点哪儿都只是把它收起来」。窄栏此时已 pointer-events:none，
+   所以它夹在 95 和 97 之间不影响任何判断。 */
+.dnav button{padding-left:0}
+/* 图标落在窄栏原来的位置 */
+.dnav svg{width:24px;height:24px;margin:0 15px 0 24px}
+.dnav{display:flex;flex-direction:column;gap:3px;margin-bottom:18px}
+.dnav button{padding-left:12px}
+.dnav button{display:flex;align-items:center;gap:14px;padding:11px 14px;background:none;
+  border:0;border-radius:var(--control-radius);cursor:pointer;text-align:left;font-size:var(--fs-lg);color:var(--muted)}
+/* 抽屉是窄栏的展开态，走同一条例外：悬停抬填充，颜色留给当前项。文字与图标同色，
+   都从按钮继承——Geist 左栏实测是 63% 灰对 93% 白，两态填充亮度几乎一样，
+   分辨「你在这儿」全靠颜色。 */
+.dnav button:hover{background:var(--hover)}
+.dnav button[aria-pressed="true"]{background:var(--hover);color:var(--ink)}
+.dnav svg{width:20px;height:20px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round}
+.drawer .chip{font-size:var(--fs-xs);padding:4px 10px}
+.scrim{position:fixed;inset:0;z-index:95;background:rgba(0,0,0,.42);opacity:0;pointer-events:none;
+  transition:opacity .18s}
+.scrim.on{opacity:1;pointer-events:auto}
+.sec{border-top:1px solid var(--line-soft);padding-top:11px;margin-bottom:13px}
+.sec:first-of-type{border-top:0;padding-top:0}
+.sec > h3{margin:0 0 7px;font-size:var(--fs-xs);letter-spacing:.2em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;display:flex;justify-content:space-between;align-items:center}
+.sec > h3 button{background:none;border:0;cursor:pointer;color:var(--muted);font-size:var(--fs-xs);padding:0}
+.sec > h3 button:hover{color:var(--ink)}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip img,.chip>svg{width:14px;height:14px;border-radius:var(--badge-radius);object-fit:contain;flex:none}
+.source-icon{display:block!important;width:16px!important;height:16px!important;min-width:16px;opacity:1!important;filter:none!important;object-fit:contain}
+.chip>svg{stroke:currentColor;fill:none;stroke-width:1.7}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:var(--tag-pad-y) var(--tag-pad-x);border:1px solid var(--line);
+  border-radius:var(--tag-radius);background:transparent;cursor:pointer;font-size:var(--fs-xs)}
+.chip:hover{color:var(--ink)}
+.chip[aria-pressed="true"]{background:var(--hover);color:var(--ink)}
+/* 不同类别保留语义色，内容卡片本身维持中性。 */
+.sec.cat-artist  .chip{color:#D2703F;border-color:#D2703F44}
+.sec.cat-artist  .chip[aria-pressed="true"]{background:#D2703F22;border-color:#D2703F}
+.sec.cat-general .chip{color:#6C9BD6;border-color:#6C9BD644}
+.sec.cat-general .chip[aria-pressed="true"]{background:#6C9BD622;border-color:#6C9BD6}
+.sec.cat-meta    .chip{color:var(--muted);border-color:var(--line)}
+.sec.cat-meta    .chip[aria-pressed="true"]{background:#FFFFFF14;border-color:var(--ink-2);color:var(--ink)}
+.sec.cat-src     .chip{color:#7FBF7F;border-color:#7FBF7F44}
+.sec.cat-src     .chip[aria-pressed="true"]{background:#7FBF7F22;border-color:#7FBF7F}
+.sec > h3{color:var(--ink-2)}
+.sec.cat-artist > h3{color:#D2703F}
+.sec.cat-general > h3{color:#6C9BD6}
+.sec.cat-src > h3{color:#7FBF7F}
+.chip .n{font-size:var(--fs-xs);color:var(--muted);font-variant-numeric:tabular-nums}
+.cost{width:5px;height:5px;border-radius:50%;flex:none}
+.cost.free{background:var(--keep)} .cost.metered{background:var(--meter)}
+.duration-filter{padding:3px 2px 8px}.duration-readout{display:flex;justify-content:space-between;align-items:center;
+  color:var(--ink-2);font-size:var(--fs-xs);margin-bottom:8px}.duration-readout b{color:var(--ink);font-weight:600}
+.dual-range{position:relative;height:28px;--lo:0%;--hi:100%}.range-base,.range-fill{position:absolute;left:0;right:0;top:12px;height:4px;border-radius:var(--pill-radius);background:var(--line)}
+.range-fill{left:var(--lo);right:calc(100% - var(--hi));background:var(--tungsten)}
+.dual-range input{position:absolute;inset:0;width:100%;height:28px;margin:0;background:none;pointer-events:none;appearance:none;-webkit-appearance:none}
+.dual-range input::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--ink);border:2px solid var(--tungsten);pointer-events:auto;cursor:grab;transition:box-shadow .12s ease}
+.dual-range input:hover::-webkit-slider-thumb{box-shadow:0 0 0 4px var(--hover)}
+.dual-range input:focus-visible::-webkit-slider-thumb{outline:2px solid var(--tungsten);outline-offset:2px}
+.dual-range input::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--ink);border:2px solid var(--tungsten);pointer-events:auto;cursor:grab}
+

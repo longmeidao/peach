@@ -1,0 +1,69 @@
+/* 图标是 Lucide 的描边路径，`stroke:currentColor;fill:none` 少一样就会被浏览器
+   按默认的 fill:black/stroke:none 画成黑块——深色底上等于看不见。 */
+.photoback svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
+.photoback:hover{background:var(--overlay-5);color:var(--ink)}
+/* 瀑布流：账本没有图片宽高，等宽多列流式排版正好不需要比例，也不用等图加载完再算位置。 */
+.photowall{column-count:5;column-gap:10px}
+@media (max-width:1400px){.photowall{column-count:4}}
+@media (max-width:1000px){.photowall{column-count:3}}
+.photocell{display:block;width:100%;border:0;padding:0;margin:0 0 10px;background:transparent;
+  border-radius:var(--surface-radius);overflow:hidden;cursor:zoom-in;break-inside:avoid;line-height:0}
+.photocell img{width:100%;height:auto;display:block;background:var(--sunk)}
+.photocell:hover img{filter:brightness(1.06)}
+/* 媒体圆钮只共享 48/24 的几何与图标居中；表面色由使用场景决定。 */
+.media-circle{box-sizing:border-box;width:48px;height:48px;padding:0;border:0;border-radius:50%;
+  background:rgba(255,255,255,.1);color:#f1f1f1;display:grid;place-items:center;cursor:pointer}
+.media-circle:hover{background:rgba(255,255,255,.18)}
+.media-circle:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px}
+.media-circle svg{display:block;width:24px;height:24px;flex:none;stroke:currentColor;fill:none;
+  stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.media-circle.media-overlay{background:rgba(0,0,0,.6);color:#fff;backdrop-filter:blur(16px)}
+.media-circle.media-overlay:hover{background:rgba(0,0,0,.78)}
+/* 灯箱本体只负责固定视口；主图、顶部工具和底部缩略图各自绝对定位。
+   旧三行 grid 会和动态后载的 Swiper 百分比高度形成循环，超宽视口下主图行收成 0，
+   结果就是工具跑到顶部、缩略图贴左、原图按自然尺寸溢出。 */
+.photolight{position:fixed;inset:0;z-index:200;background:#000;display:block;overflow:hidden}
+body.photolight-open{overflow:hidden}
+/* 主画布始终占满视口，安全内边距为顶部工具、左右翻页和底部缩略图留位；
+   单图没有缩略图条，底部空间会自动还给图片。 */
+.photolight .photomain{position:absolute;inset:0;min-width:0;min-height:0;width:100%;height:100%;overflow:hidden}
+/* Swiper 的 CSS 和脚本虽会一起等待，仍保留最小结构样式，避免缓存/首载竞态把所有
+   slide 当普通块元素同时画出来。只限定 photomain 的直接子级，不影响底部缩略图。 */
+.photolight .photomain>.swiper-wrapper{display:flex;width:100%;height:100%}
+.photolight .photomain>.swiper-wrapper>.swiper-slide{flex:0 0 100%;width:100%;height:100%;min-width:0;
+  min-height:0;display:grid;place-items:center}
+.photolight .photomain .swiper-zoom-container{width:100%;height:100%;min-height:0;min-width:0;
+  box-sizing:border-box;display:grid;place-items:center;padding:24px 72px 76px}
+.photolight.has-strip .photomain .swiper-zoom-container{padding-bottom:148px}
+.photolight .photomain img{max-width:100%;max-height:100%;min-width:0;min-height:0;
+  object-fit:contain;display:block}
+.photoclose{position:absolute;top:12px;right:14px;z-index:5}
+.photonav{position:absolute;top:50%;transform:translateY(-50%);z-index:4}
+/* 类名用 back/fwd 而不是 prev/next：详情页「接下来」那块用的就是无前缀的 `.next`
+   （padding、border-top 和背景色都在里面），同为 0-1-0 特指度且写在后面，会连人带
+   样式盖到灯箱按钮上，图标被挤得偏右下。翻页方向只翻图标，不转整个按钮。 */
+.photonav.back{left:14px}.photonav.fwd{right:14px}
+.photonav.fwd svg{transform:rotate(180deg)}
+.photonav.swiper-button-disabled{opacity:0;visibility:hidden;pointer-events:none}
+/* 详情、页码和缩放操作统一落在底部；多图时整体抬到缩略图条上方。 */
+.photobar{position:absolute;z-index:4;bottom:14px;left:14px;right:14px;display:grid;
+  grid-template-columns:1fr auto 1fr;align-items:center;min-height:48px;pointer-events:none}
+.photolight.has-strip .photobar{bottom:98px}
+.photobar>*{pointer-events:auto}
+.photocount{justify-self:center;padding:7px 11px;border-radius:var(--pill-radius);background:rgba(0,0,0,.6);
+  color:rgba(255,255,255,.82);font-size:var(--fs-xs);backdrop-filter:blur(16px)}
+.photodetailtoggle{justify-self:start;width:40px;height:40px;display:grid;place-items:center;border:0;padding:0;
+  border-radius:50%;background:rgba(0,0,0,.6);color:rgba(255,255,255,.82);cursor:pointer;backdrop-filter:blur(16px)}
+.photodetailtoggle:hover,.photodetailtoggle[aria-expanded="true"]{background:rgba(0,0,0,.78);color:#fff}
+.photodetailtoggle svg{width:20px;height:20px;display:block;stroke:currentColor;fill:none;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round}
+.photozoom{justify-self:end;display:flex;align-items:center;gap:7px;padding:4px;border-radius:var(--pill-radius);
+  background:rgba(0,0,0,.6);color:rgba(255,255,255,.82);backdrop-filter:blur(16px)}
+.photozoom button{width:28px;height:28px;display:grid;place-items:center;border:0;border-radius:50%;
+  padding:0;background:transparent;color:#fff;cursor:pointer}
+.photozoom button svg{width:15px;height:15px;display:block;stroke:currentColor;fill:none;stroke-width:2}
+.photozoom button:hover{background:rgba(255,255,255,.22)}
+.photozoom .photoscale{width:30px}
+.photozoom .photooriginal{width:38px;border-radius:var(--control-radius);font-size:var(--fs-xs)}
+
+.fcollapse{overflow:hidden;transition:height .2s ease-in-out}

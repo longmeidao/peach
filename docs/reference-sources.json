@@ -11,7 +11,7 @@
       "sha256": "2b40b23712e548721ecae7d0672ae9318a83188b9fcd2fb4a7a1b7c147a39903",
       "role": "报告与证据型页面的版式、层级、语言和数据表达参考；Peach 仅复用可迁移原则。",
       "consumers": [
-        "web/app.css",
+        "web/css/",
         "web/app.js",
         "tests/test_follow_web.py"
       ]
@@ -25,7 +25,7 @@
       "sha256": "a0476522c5a3cd154866216a20c7c5f388c69db2e8a21c8b756d69103b2ea1dd",
       "role": "统计页使用空间语义表格与标签排行密度的项目级依据；未取得的 Vercel DOM 和像素不作复刻证据。",
       "consumers": [
-        "web/app.css",
+        "web/css/",
         "web/app.js",
         "tests/test_web_ui.py"
       ]
@@ -45,7 +45,7 @@
       "role": "通用 Web 可访问性、交互、状态、性能和响应式评审清单。",
       "consumers": [
         "web/index.html",
-        "web/app.css",
+        "web/css/",
         "web/app.js",
         "tests/test_web_ui.py"
       ]
@@ -74,7 +74,7 @@
       "consumers": [
         "src/peach/follow_sources.py",
         "src/peach/web_follow.py",
-        "web/app.css",
+        "web/css/",
         "web/app.js",
         "tests/test_follow_sources.py",
         "tests/test_follow_web.py"
@@ -144,7 +144,7 @@
       "sha256": "4f3ae0154c3f5d2d9c8c42203557eb4498d98eff1412fdf2209b8e4c5a9ac386",
       "role": "女优、厂牌与关注页的无标题信息轨道参考；资料页以单个 32px PicsIcon 在标签左侧切换视频与照片，合集详情按 Peach 现有详情结构适配。",
       "consumers": [
-        "web/app.css",
+        "web/css/",
         "web/app.js",
         "web/index.html",
         "tests/test_follow_web.py",
@@ -161,7 +161,7 @@
       "role": "人工复核 Fieldset、固定高度 Scroller、Empty State 结构与快速导航请求隔离的项目级依据。",
       "consumers": [
         "web/js/ui-components.js",
-        "web/app.css",
+        "web/css/",
         "web/app.js",
         "tests/test_web_ui.py"
       ]
@@ -176,7 +176,7 @@
       "role": "设置 Dialog 动效、搜索前缀、用户动作 Spinner、等待按钮可聚焦 busy 状态、后台 Loading Dots 与无更多历史内容中性反馈的项目级依据。",
       "consumers": [
         "web/js/ui-components.js",
-        "web/app.css",
+        "web/css/",
         "web/app.js",
         "tests/test_follow_web.py",
         "tests/test_web_ui.py"
@@ -191,7 +191,7 @@
       "sha256": "3d3c919475d61910fb15d5c5b68272953fc16036338c5e46d2cbde6f6b475348",
       "role": "口味页底部补充说明的中性 Note 结构依据；信息图标使用 2px 圆端描边，无真实动作时不伪造链接。",
       "consumers": [
-        "web/app.css",
+        "web/css/",
         "web/app.js",
         "tests/test_web_ui.py"
       ]
@@ -205,7 +205,7 @@
       "sha256": "1660657fce19bc856ec7b7acd38326ae56d3ed2afae35d654135b5a4b22bbd62",
       "role": "实际 YouTube e937390a DOM、CSS、JS 与用户截图锁定播放器几何、状态和设置面板；官方帮助锁定氛围模式和影院模式语义。；窄屏折叠门槛与统一悬停提示取自播放器 9470c977 的 www-player.css 与 base.js。",
       "consumers": [
-        "web/app.css",
+        "web/css/",
         "web/app.js",
         "web/index.html",
         "tests/test_follow_web.py",
@@ -241,7 +241,7 @@
       "sha256": "e013aba1ecef37c3c911c909d1cd9ad9a46a53214d7f790448181fb3f434d558",
       "role": "播放统计中的连接速度、网络活动和缓冲健康滚动历史图参考；Peach 保留自己的播放器、色彩与数据口径。时间轴不采用本条，见快照的移植说明。",
       "consumers": [
-        "web/app.css",
+        "web/css/",
         "web/app.js",
         "tests/test_web_ui.py"
       ]
@@ -255,7 +255,7 @@
       "sha256": "41d0602d64c6a941e350d01b3c70b86e6a57a3f55d621ba43af26e081b46e347",
       "role": "分类切换条的组件归属、条数上限、计数徽标与可访问性语义；secondary 变体是 Peach 现有 chip 条的规范原型。",
       "consumers": [
-        "web/app.css",
+        "web/css/",
         "web/app.js",
         "tests/test_web_ui.py"
       ]
@@ -269,7 +269,7 @@
       "sha256": "20e383d97024c9a0ff7a26fcdcd120a1bc0904bdfb10ffe96a6e03f8dd758849",
       "role": "判定分段器只用于 2–3 项互斥视图、超过 3 项或长标签改用 Tabs 的分界线。",
       "consumers": [
-        "web/app.css",
+        "web/css/",
         "web/app.js",
         "tests/test_web_ui.py"
       ]

@@ -32,7 +32,7 @@
 ## Peach 复用了什么
 
 检查更新的反馈拆成两条通道（`web/app.js` 的 `followCheckToast` /
-`followCheckFailNote`，样式在 `web/app.css` 的「Toast」「检查结果的页内持久行」）：
+`followCheckFailNote`，样式在 `web/css/17-overlay.css`）：
 
 - 「检查了 N 个来源：新增/更新/回查…」是用户主动动作的回执 → toast，
   右下角、自动消失、hover 暂停、右上角关闭，`aria-live="polite"`。

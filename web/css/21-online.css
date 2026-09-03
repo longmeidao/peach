@@ -1,0 +1,92 @@
+/* ── 在线追更 ── */
+.follow{padding:4px 0 42px}
+.followhead{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}
+.followhead .pagetitle{margin:0}
+.follow .fcheck{font-weight:600}
+.follow .fcheck svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
+.followauthors{padding:3px 0 10px;margin:0 0 2px;overscroll-behavior-inline:contain}
+.followauthors .av{width:76px}
+.followauthors .av[aria-pressed="true"] .ring{box-shadow:0 0 0 2px var(--ink)}
+.followauthors .favatar{width:64px;height:64px;border-radius:50%;outline:0}
+.followauthors .favatar.none{font-size:var(--fs-lg);background:var(--overlay-5)}
+.followfilters{position:relative;top:auto;z-index:1;height:auto;min-height:58px;margin:0 0 16px;
+  padding:9px 0 8px;border-bottom-color:transparent;scrollbar-width:none;overscroll-behavior-inline:contain;
+  touch-action:pan-x}
+.followfilters::-webkit-scrollbar{display:none}
+.followfilters .sep{flex:none;width:1px;height:24px;background:var(--border-15);margin:0 3px}
+.followfilters .pill .n{margin-left:5px;color:inherit}
+.followfilters .sourcepill{width:40px;padding:0}
+.followfilters .sourcepill .ficon{width:21px;height:21px;margin:0}
+.ficon{width:14px;height:14px;border-radius:var(--badge-radius);object-fit:contain;
+  vertical-align:-2px;margin-right:5px}
+.fauthorhead .ficon{margin-right:2px}
+.followlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
+.followlist.followphotowall{grid-template-columns:repeat(5,minmax(0,1fr));gap:14px 10px;align-items:start}
+/* 固定媒体框在懒加载前就占好高度；多栏会随图片天然高度反复重新分栏，造成滚动位移。 */
+@media (max-width:1400px){.followlist.followphotowall{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media (max-width:1000px){.followlist.followphotowall{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.followitem{min-width:0}
+.followitem.imagecard{display:flex;width:100%;margin:0}
+.followitem.imagecard .pic{aspect-ratio:4/3;min-height:0;background:var(--sunk)}
+.followitem.imagecard .followvisual .pic>img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:var(--sunk)}
+/* 翻动面板遮住静止封面，底色要跟着这张卡自己的底走：图片墙是浅底，视频卡是黑底。 */
+.followitem.imagecard .mixfaces{background:var(--sunk)}
+.followitem a{text-decoration:none}.followitem a:hover{text-decoration:none}
+.followitem[data-status="ignored"],.followitem[data-status="seen"]{opacity:.62}
+.followvisual{position:relative;isolation:isolate}.followvisual .pic{z-index:1}
+.followvisual .pic>img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;background:#000}
+.fnothumb{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:var(--fs-xs)}
+.followitem .badge .ficon{width:18px;height:18px;margin:0}
+.fsourceavatar{display:grid;place-items:center;cursor:default;background:var(--overlay-5);border:1px solid var(--line-soft)}
+.fsourceavatar:hover{box-shadow:none}.fsourceavatar .favatar{position:absolute;inset:0;width:100%;height:100%;border-radius:50%;outline:0;object-fit:cover}
+.fsourceavatar .favatar.none{display:grid;place-items:center;font-size:var(--fs-sm);color:var(--muted)}
+.followitem .cardtitle{display:block;width:100%;border:0;background:transparent;color:inherit;padding:0;text-align:left;font-family:inherit;cursor:pointer;text-decoration:none}
+.followitem .tg,.followdetailtags .tg{--r34-tag:#55A7FF;border-color:color-mix(in srgb,var(--r34-tag) 42%,transparent);background:color-mix(in srgb,var(--r34-tag) 10%,transparent)}
+.followfilters .pill[class*="r34-"]{--r34-tag:#55A7FF}
+.followfilters .pill[class*="r34-"][aria-pressed="true"]{border-color:color-mix(in srgb,var(--r34-tag) 72%,transparent);background:color-mix(in srgb,var(--r34-tag) 22%,transparent);color:var(--ink)}
+.followitem .r34-artist,.followdetailtags .r34-artist,.followfilters .r34-artist{--r34-tag:#E36C6C}
+.followitem .r34-character,.followdetailtags .r34-character,.followfilters .r34-character{--r34-tag:#68C76F}
+.followitem .r34-copyright,.followdetailtags .r34-copyright,.followfilters .r34-copyright{--r34-tag:#D675D6}
+.followitem .r34-metadata,.followdetailtags .r34-metadata,.followfilters .r34-metadata{--r34-tag:#F5A24A}
+.followdetailtags .r34-unknown{--r34-tag:var(--muted)}
+.followitem .meta .s{min-height:21px}.fbadges{display:flex;flex-wrap:nowrap;gap:5px;min-width:0;overflow:hidden}
+.fbadge{padding:2px 8px;border:1px solid var(--border-15);border-radius:var(--badge-radius);font-size:var(--fs-xs);color:var(--ink-2)}
+.fbadge.wip{border-color:var(--meter);color:var(--meter)}
+/* 「含 WIP」说的是同组里还有一条半成品，这一条本身不是；配色要弱于 WIP 本体。 */
+.fbadge.wip.partial{border-color:var(--border-15);color:var(--muted)}
+.fbadge.dup{border-style:dashed}
+.fnote{font-size:var(--fs-xs);color:var(--muted)}
+.followitem .mixbadge{border:0;cursor:pointer;font:inherit}
+.factions{position:absolute;right:10px;top:10px;z-index:7;display:flex;gap:6px;align-items:center;
+  opacity:0;pointer-events:none;transition:opacity .15s ease}
+.factions button{width:36px;height:36px;border:1px solid rgba(255,255,255,.16);border-radius:50%;padding:0;
+  display:grid;place-items:center;background:rgba(0,0,0,.48);color:#fff;cursor:pointer;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.factions button svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2}
+.factions button:hover:not(:disabled){background:rgba(255,255,255,.18);transform:scale(1.08)}
+.factions button:disabled{opacity:.42;cursor:default}
+@media (hover:hover) and (pointer:fine){.followitem:hover .factions{opacity:1;pointer-events:auto}}
+@media (hover:none),(pointer:coarse){.followitem .factions{opacity:1;pointer-events:auto}}
+.select-mode .followitem a,.select-mode .followitem [data-follow-detail],.select-mode .followitem .factions,.select-mode .followitem .mixbadge{pointer-events:none!important}
+.fstate{flex:1 1 100%;font-size:var(--fs-xs);color:var(--drop)}
+.fvkind{display:inline-block;max-width:120px;margin-right:6px;padding:1px 7px;border-radius:var(--badge-radius);overflow:hidden;text-overflow:ellipsis;vertical-align:-2px;background:var(--overlay-5);color:var(--muted);font-size:var(--fs-xs);font-style:normal}
+.fvkind.wip{color:var(--meter)}.fvkind.alt{color:var(--ink-2)}
+.followdetailmedia{--follow-image-arrow-inset:16px;min-height:min(62vh,640px)}.followdetailmedia.image{min-height:0;background:color-mix(in srgb,var(--video-glow,#15202a) 12%,var(--surface) 88%)}.followdetailposter.zoomable{cursor:zoom-in}.followdetailposter{position:relative;z-index:1;display:block;width:auto;height:auto;max-width:100%;max-height:76vh;object-fit:contain;background:transparent}.followimagearrow{position:absolute;z-index:4;top:50%;transform:translateY(-50%)}.followimagearrow.prev{left:var(--follow-image-arrow-inset)}.followimagearrow.next{right:var(--follow-image-arrow-inset)}.followimagedots{position:absolute;z-index:4;left:50%;bottom:18px;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;gap:8px;max-width:calc(100% - 120px);padding:8px 11px;border-radius:var(--pill-radius);background:rgba(0,0,0,.5);overflow:hidden}.followimagedots button{flex:none;width:8px;height:8px;padding:0;border:0;border-radius:50%;background:rgba(255,255,255,.42);cursor:pointer}.followimagedots button[aria-current="true"]{width:20px;border-radius:var(--pill-radius);background:#fff}
+.followdetailplaceholder{display:grid;place-items:center;gap:10px;color:var(--muted)}.followdetailplaceholder .ficon{width:34px;height:34px;margin:0}
+.followdetailtitle{display:flex;gap:5px;align-items:flex-start;margin-bottom:8px}.followdetailtitle .stitle{width:auto;max-width:calc(100% - 35px);margin:0}.followdetailtitle .followorigin{flex:none;width:30px;height:30px;margin:0;display:grid;place-items:center;border-radius:var(--control-radius)}.followdetailtitle .followorigin:hover{background:var(--hover)}
+.followdetailidentity{display:flex;align-items:center;gap:10px;margin:2px 0 12px}.followdetailidentity .mav{flex:none}.followdetailidentity b,.followdetailidentity span{display:block}.followdetailidentity>div>span{margin-top:3px;color:var(--muted);font-size:var(--fs-xs)}
+.followdetailsummary{margin:0 0 16px;line-height:1.6;color:var(--ink-2);white-space:pre-line}.followdetailtags .tg{max-width:none;overflow:visible;text-overflow:clip;white-space:normal;text-align:left;color:var(--ink-2);font-family:inherit}/* 通用 `.tg:hover` 的填充和文字色被上面按类型着色的两条同权重规则压掉了，
+   悬停得按标签自己那个类型色加深，不能回到中性的 `--hover`。 */
+.followdetailtags .tg:hover{border-color:color-mix(in srgb,var(--r34-tag) 68%,transparent);
+  background:color-mix(in srgb,var(--r34-tag) 18%,transparent);color:var(--ink)}
+.followqueue .mixitempic>.fnothumb{position:static;width:100%;height:100%}
+.fnote.followmediaissue{margin:18px 0 8px;color:var(--drop)}.followresources{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}.followresources a{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 11px;border:1px solid var(--border-15);border-radius:var(--control-radius);color:var(--ink-2);text-decoration:none}.followresources a:hover{background:var(--hover);color:var(--ink);text-decoration:none}.followresources svg{width:15px;height:15px;stroke:currentColor;fill:none}.followdetailactions{margin-top:2px}
+/* 标签沉到侧栏最后：来源站的标签动辄几十个，夹在正文和操作之间就得先滚过整片
+   标签云才够得着「已看／忽略」。 */
+.followdetailside .followdetailtags{margin:16px 0 0}.followdetailactions button:disabled{opacity:.45;cursor:default}.followorigin{display:inline-flex;align-items:center;gap:7px;width:max-content;margin-top:auto;color:var(--muted);text-decoration:none}.followorigin svg{width:16px;height:16px;stroke:currentColor;fill:none}.followorigin:hover{color:var(--ink);text-decoration:none}
+@media (max-width:640px){.followhead{align-items:center}
+  .followauthors{margin-right:-12px;padding-top:3px}.followfilters{margin-right:-12px;padding-right:12px}
+  .followlist.followphotowall{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 8px}
+  .followdetailmedia{--follow-image-arrow-inset:10px}.followimagearrow{width:44px;height:44px}.followimagedots{bottom:12px}
+}
+

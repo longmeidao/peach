@@ -1,0 +1,50 @@
+/* Geist Skeleton：整页／大区块等待内容结构时先占住稳定区域。 */
+.skeletonpanel{min-height:240px;padding:0}
+.skeletonpanel>div{display:grid;gap:12px}
+.skeleton{display:block;height:18px;border-radius:var(--control-radius);background:var(--hover);
+  animation:skeleton-pulse 1.4s ease-in-out infinite}
+.skeleton-cards>div{grid-template-columns:repeat(auto-fill,minmax(min(260px,100%),1fr));gap:14px}
+.skeletoncard{display:grid;gap:10px;min-width:0}
+.skeletoncard i,.skeletoncard b,.skeletoncard em{display:block;border-radius:var(--control-radius);background:var(--hover);
+  animation:skeleton-pulse 1.4s ease-in-out infinite}
+.skeletoncard i{aspect-ratio:16/9}.skeletoncard b{width:72%;height:18px}.skeletoncard em{width:46%;height:14px}
+.grid>.skeletonpanel{grid-column:1/-1;width:100%;min-width:0}
+/* 数据管理是一列 fieldset，不是海报网格：骨架照 fieldset 的轮廓排，
+   否则整页刷新先看到三列 16:9 占位，加载完又整个换成一列长条。
+   底部那条是操作条的位置，不参与呼吸——它是框体，不是待填的内容。 */
+.cleanup-skeleton>div{grid-template-columns:minmax(0,1fr);gap:16px}
+.cleanup-skeleton .skeletoncard{gap:0;overflow:hidden;border:1px solid var(--line-soft);
+  border-radius:var(--floating-radius);background:var(--surface)}
+.cleanup-skeleton .skeletoncard i{aspect-ratio:auto;width:38%;height:20px;margin:20px 20px 0}
+.cleanup-skeleton .skeletoncard b{width:26%;height:16px;margin:12px 20px 20px}
+.cleanup-skeleton .skeletoncard em{width:100%;height:var(--fieldset-bar-h);margin:0;
+  border-radius:0;border-top:1px solid var(--border-10);background:var(--overlay-5);animation:none}
+/* 关注管理是一列三块（添加关注、关注列表、凭据）的行政界面：骨架照 .fsec 的轮廓画，
+   一块对一块、宽度跟着 .followmanage 一起限到 812px。头部条是框体不是待填内容，
+   跟 .fsechead 同高同底色，不参与呼吸。 */
+.followmanage-skeleton>div{grid-template-columns:minmax(0,1fr);gap:16px;width:min(812px,100%);
+  margin-left:auto;margin-right:auto;align-items:start}
+.followmanage-skeleton .skeletoncard{gap:0;overflow:hidden;border:1px solid var(--border-10);
+  border-radius:var(--surface-radius);background:var(--surface)}
+.followmanage-skeleton .skeletoncard i{aspect-ratio:auto;height:56px;border-radius:0;
+  background:var(--overlay-5);border-bottom:1px solid var(--border-10);animation:none}
+.followmanage-skeleton .skeletoncard b{width:auto;margin:16px 16px 0}
+.followmanage-skeleton .skeletoncard em{width:42%;height:14px;margin:12px 16px 16px}
+.followmanage-skeleton .skeletoncard:nth-child(1) b{height:38px}
+.followmanage-skeleton .skeletoncard:nth-child(2) b{height:300px}
+.followmanage-skeleton .skeletoncard:nth-child(3) b{height:180px}
+/* 塌成一列时要压掉上面那三条显式定位，特异性必须与它们持平，所以仍写 nth-child。 */
+@media (max-width:1080px){.followmanage-skeleton>div{grid-template-columns:minmax(0,1fr)}
+  .followmanage-skeleton .skeletoncard:nth-child(n){grid-area:auto}}
+.skeleton-dashboard>div{gap:16px}
+.skeletondashhero,.skeletondashpanel{display:grid;min-width:0;overflow:hidden;border:1px solid var(--line-soft);
+  border-radius:var(--floating-radius);background:var(--surface)}
+.skeletondashhero{min-height:330px;grid-template-columns:minmax(260px,36%) minmax(0,1fr)}
+.skeletondashhero i,.skeletondashhero b,.skeletondashpanel i,.skeletondashpanel b,.skeletondashpanel em{
+  display:block;background:var(--hover);animation:skeleton-pulse 1.4s ease-in-out infinite}
+.skeletondashhero i{margin:28px 24px;border-radius:var(--control-radius)}.skeletondashhero b{margin:24px;border-radius:var(--control-radius)}
+.skeletondashpanel{grid-template-columns:1fr 1fr;gap:12px;padding:16px}
+.skeletondashpanel i{grid-column:1/-1;width:26%;height:18px;border-radius:var(--control-radius)}
+.skeletondashpanel b,.skeletondashpanel em{height:84px;border-radius:var(--control-radius)}
+@media(max-width:640px){.skeletondashhero{grid-template-columns:minmax(0,1fr)}.skeletondashhero i{min-height:180px}.skeletondashhero b{min-height:220px}.skeletondashpanel{grid-template-columns:1fr}}
+@keyframes skeleton-pulse{0%,100%{opacity:.55}50%{opacity:1}}

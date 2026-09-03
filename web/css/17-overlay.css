@@ -1,0 +1,49 @@
+/* ── Toast：Geist 的非阻塞回执 ──
+   右下角浮层，自动消失，hover 暂停计时，右上角关闭。挂在 body 直下
+   （#stats 外），整页重画冲不掉。行为取证见 docs/reference-snapshots/
+   vercel-geist-toast.md；量纲沿用本站实测 Geist 的那一套：8px 圆角、
+   发丝边、比页面亮一档的表面。warn 态加一圈红边和图标，但失败的原因
+   仍以页内持久行为准——toast 只负责提一句。 */
+/* 行距用每条自己的上外边距，不用容器 gap：收起时高度和外边距一起过渡到 0，
+   栈才收得平顺；gap 是容器的，收不掉。 */
+.toasts{position:fixed;right:16px;bottom:22px;z-index:var(--layer-popover);display:grid;
+  justify-items:end;pointer-events:none}
+.toast{pointer-events:auto;box-sizing:border-box;display:flex;align-items:center;gap:9px;
+  width:min(440px,calc(100vw - 32px));margin-top:8px;padding:11px 10px 11px 13px;
+  border:1px solid var(--line);border-radius:var(--surface-radius);background:var(--surface);color:var(--ink);
+  font-size:var(--fs-sm);line-height:1.6;box-shadow:0 2px 4px #0003,0 24px 80px #000b;
+  animation:toast-in .18s ease}
+@keyframes toast-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.toast.warn{border-color:color-mix(in srgb,var(--drop) 38%,var(--line))}
+.toast.warn>svg{width:15px;height:15px;flex:none;stroke:var(--drop);fill:none;
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.toast p{flex:1;margin:0;min-width:0}
+.toast b{font-variant-numeric:tabular-nums}
+/* 动作是具名的下一步（去看更新），文字按钮跟正文同行；关闭才是 24px 图标位。 */
+.toast .tact{flex:none;border:0;background:none;padding:0;
+  color:var(--ink);font:inherit;font-size:var(--fs-sm);cursor:pointer}
+.toast .tact:hover{color:var(--ink-2)}
+.toast .tact[aria-busy="true"]{color:var(--muted);cursor:default}
+.toast .tclose{flex:none;width:24px;height:24px;padding:0;border:0;border-radius:var(--control-radius);
+  background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer}
+.toast .tclose:hover{background:var(--hover);color:var(--ink)}
+.toast .tclose svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+.toast.leaving{height:0!important;margin-top:0;padding-block:0;border-block-width:0;opacity:0;overflow:hidden;
+  transition:height .18s ease,margin .18s ease,padding .18s ease,border-width .18s ease,opacity .12s ease}
+.mixgrouplabel{display:flex;align-items:center;gap:8px;margin:12px 10px 6px;color:var(--ink);
+  font-size:var(--fs-xs);font-weight:600}
+.mixgrouplabel:first-child{margin-top:4px}
+.mixgrouplabel span{color:var(--muted);font-variant-numeric:tabular-nums;font-weight:400}
+
+/* ── 审查遮挡 ──
+   共享屏幕 / 录屏 / 截图时的全站内容遮蔽，设置项（#censorSetting）+ body.censor，
+   默认开启，localStorage 只记用户显式关闭。所有内容图与视频统一重糊 + 重度
+   去饱和 + 压暗——只留深灰块，截图管道的审查没有可识别的画面就不会拦整张图；
+   不挑页面：卡片、悬停预览、灯箱、沉浸模式、关注流（封面、详情海报、图片墙）
+   全在内；videojs 的海报层是 background-image 的 div，单独列出来。只豁免与
+   内容无关的界面小图（品牌标、来源 favicon）。悬停预览由 JS 拦下不再启动
+   ——动起来的画面比静帧更漏。 */
+body.censor img,body.censor video,body.censor .vjs-poster{
+  filter:blur(30px) saturate(.3) brightness(.6)}
+body.censor .brand .mark,body.censor .src img,body.censor .ficon{filter:none}
+

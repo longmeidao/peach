@@ -1,0 +1,47 @@
+/* 缩放滑杆：原生 accent-color 的轨道太粗，自绘成与时长双滑块同一套 4px 细轨。
+   底色是视频上的白色，所以这一套固定用白色而不是主题色。 */
+.photozoom input{-webkit-appearance:none;appearance:none;width:116px;height:20px;background:transparent;cursor:pointer}
+.photozoom input::-webkit-slider-runnable-track{height:4px;border-radius:var(--pill-radius);background:rgba(255,255,255,.28)}
+.photozoom input::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;margin-top:-5px;border:0;border-radius:50%;background:#fff;transition:box-shadow .12s ease}
+.photozoom input:hover::-webkit-slider-thumb{box-shadow:0 0 0 4px rgba(255,255,255,.22)}
+.photozoom input:focus-visible{outline:none}
+.photozoom input:focus-visible::-webkit-slider-thumb{outline:2px solid #fff;outline-offset:2px}
+.photozoom input::-moz-range-track{height:4px;border-radius:var(--pill-radius);background:rgba(255,255,255,.28)}
+.photozoom input::-moz-range-thumb{width:14px;height:14px;border:0;border-radius:50%;background:#fff}
+.photozoom b{font-weight:400;font-size:var(--fs-xs);width:38px;text-align:right}
+.photodetail{position:absolute;z-index:5;left:14px;bottom:72px;width:min(360px,calc(100vw - 28px));
+  box-sizing:border-box;display:grid;align-items:start;gap:14px;padding:16px;
+  border:1px solid rgba(255,255,255,.16);border-radius:var(--floating-radius);background:rgba(18,18,20,.96);
+  color:#fff;box-shadow:0 18px 48px rgba(0,0,0,.45),0 2px 8px rgba(0,0,0,.32);backdrop-filter:blur(18px)}
+.photodetail[hidden]{display:none}
+.photodetailcopy{min-width:0;display:grid;gap:4px}
+.photodetailcopy h2{overflow:hidden;white-space:nowrap;margin:0;font-size:var(--fs-sm)}
+.photodetailmeta{color:rgba(255,255,255,.62);font-size:var(--fs-xs)}
+.photodetail>button{justify-self:start;height:32px;display:flex;align-items:center;gap:7px;border:1px solid rgba(255,255,255,.18);
+  border-radius:var(--control-radius);padding:0 10px;background:transparent;color:#fff;cursor:pointer}
+.photodetail>button:hover{background:rgba(255,255,255,.12)}
+.photodetail>button[hidden]{display:none}
+.photodetail>button:disabled{cursor:default;opacity:.68}
+.photodetail>button svg{width:16px;height:16px;display:block;stroke:currentColor;fill:none;stroke-width:2}
+.photodetail .srcstate{color:rgba(255,255,255,.62)}
+.photodetail .srcstate:empty{display:none}
+.photolight.has-strip .photodetail{bottom:156px}
+.photolight .photostrip{position:absolute;z-index:3;left:72px;right:72px;bottom:14px;width:auto;height:72px;padding:0}
+.photolight:not(.has-strip) .photostrip{display:none}
+.photolight .photostrip .swiper-slide{width:auto;height:72px;opacity:.5;cursor:pointer;border-radius:var(--control-radius);overflow:hidden}
+.photolight .photostrip .swiper-slide img{height:100%;width:auto;display:block;object-fit:cover}
+.photolight .photostrip .swiper-slide-thumb-active{opacity:1;box-shadow:0 0 0 2px #fff inset}
+/* 窄屏断点写在这一段之后：和上面同优先级，写在前面会被原样盖掉。 */
+@media (max-width:640px){
+  .photowall{column-count:2;column-gap:8px}
+  .photozoom input{width:72px}.photozoom b{display:none}
+  .photolight .photomain .swiper-zoom-container{padding:12px 12px 70px}
+  .photolight.has-strip .photomain .swiper-zoom-container{padding-bottom:136px}
+  .photobar{left:12px;right:12px;bottom:10px;min-height:44px}
+  .photolight.has-strip .photobar{bottom:80px}
+  .photodetailtoggle{width:40px;height:40px}
+  .photodetail{left:12px;bottom:62px;width:calc(100vw - 24px)}
+  .photolight.has-strip .photodetail{bottom:132px}.photodetail>button{min-height:44px}
+  .photolight .photostrip{left:56px;right:56px;bottom:12px}
+  .photolight .photostrip,.photolight .photostrip .swiper-slide{height:56px}
+  .photoclose{top:10px;right:10px}.photonav{width:44px;height:44px}.photonav.back{left:8px}.photonav.fwd{right:8px}}
