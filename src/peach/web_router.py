@@ -108,7 +108,17 @@ def _get_ads(contract, args):
 
 
 def _get_related(contract, args):
-    return q_related(contract, int(args["id"]), min(int(args.get("limit", "24")), 60))
+    """相关推荐走 LRU 缓存：打分是纯 Python 对几千个候选做 MMR，一次几百毫秒。
+
+    每打开一次资料页都现算太贵，而结果只读不写；写路径（标签、反馈、播放、复核）
+    本来就调 `cache_bust()`，缓存跟着一起作废。上面几个聚合用的是 `cached()`，
+    这里必须用 `cached_lru()`：键跟着浏览过的资产走，键空间不封闭。
+    键里带上 limit——同一个资产要不同条数就是不同结果。
+    """
+    asset_id = int(args["id"])
+    limit = min(int(args.get("limit", "24")), 60)
+    return contract.cached_lru(
+        f"related:{asset_id}:{limit}", lambda: q_related(contract, asset_id, limit))
 
 
 def _get_facets(contract, args):

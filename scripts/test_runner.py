@@ -23,7 +23,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                 "test_review_csv.py", "test_related.py",
                 "test_jav_code_domain.py",
                 "test_taste_history.py", "test_web_ui.py", "test_web_js.py",
-                "test_web_resource_sync.py",
+                "test_web_perf.py", "test_web_resource_sync.py",
                 "test_web_review.py", "test_web_settings.py"),
     "media": ("test_endcard.py", "test_fastapi_api.py", "test_jobs.py",
               "test_interaction.py", "test_media.py", "test_previews.py",
@@ -56,7 +56,10 @@ SCOPES: dict[str, tuple[str, ...]] = {
                 "test_subprocess_encoding.py", "test_module_layering.py"),
     # 前端 island 层（ADR-0022）。产物与源码的断言不需要 Node；vitest 那部分在没有
     # npm 时自己跳过，所以这个域在任何机器上都能跑，`full` 也就自动包含它。
-    "web": ("test_frontend_build.py", "test_web_ui.py", "test_web_js.py"),
+    # `test_web_perf.py` 两个域都登记：压缩与 ETag 是 API 交付（catalog），
+    # 播放器按需加载的断言读 `web/app.js`（web），改任一侧都该被本域拦住。
+    "web": ("test_frontend_build.py", "test_web_ui.py", "test_web_js.py",
+            "test_web_perf.py"),
 }
 
 SCOPE_TEST_IDS: dict[str, tuple[str, ...]] = {
