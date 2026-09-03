@@ -11,7 +11,7 @@
 - Windows HTTP 为 `0.0.0.0:80`，HTTPS 为当前 LAN IPv4 的 443，mDNS 名为 `peach-win.local`；线上服务版本 `0.7.13`、`ledger_sync=writer`。
 - macOS 是 reader，代码与 `peach-data` 都在内置盘；`peach.local` 经 8900/8443 和 pf 提供 80/443，GET 正常、写入端点返回 409。
 - 托盘与菜单栏层的改动不会随服务子进程一起生效，要手动退出菜单栏项后由 `.app` 或 `launchctl kickstart -k` 重启一次。
-- 两端各用本机 CA，私钥与凭据不跨机同步；代码走 Git、账本走单写者复制、图片产物走 Syncthing，三条链路互不兜底。本机坐标在 `<数据根>/config.toml`，两台各跑一次 `peach init`。
+- 两端各用本机 CA，私钥与凭据不跨机同步；代码走 Git、账本走单写者复制、图片产物走 Syncthing，三条链路互不兜底。本机坐标在 `<数据根>/config.toml`；ADR-0023 第 1～3 阶段已合入并在 Windows 生效，macOS 待跑 `peach init --from-existing --mount local=<落点>`。
 - Windows 真实 ledger 为 `peach-data/database/ledger.db`，已应用到 `0024`（外键 ON DELETE 与索引），0 待处理。
 - Mac ledger 已授权从共享副本显式拉取并恢复 `in-sync`；`sources` 已迁到内置盘，`archive`、`tools` 仍可指向外置盘。
 - 服务运行期不连 Stash，媒体解析只有 `FilesystemBackend` 一条路径（ADR-0021）；只剩两个离线导入脚本按需连它，见 `docs/STASH.md`。
@@ -78,7 +78,7 @@
 18. 另行授权后跑 `scripts/normalize_link_hosts.py --apply --backup <落点>`，把 296 条 twitter 写法收成 x.com（290 改写、6 删除），随后重启托盘并在真实浏览器验收 `/link-mark` 的清晰度与边缘。
 19. 用户复核 `directory-links-<日期>.csv` 后用 `install_entity_links.py` 装入社媒链接；`conflict` 且账本旧号「疑似失效」的行由用户决定换号，随后可对账本现有全部 X 链接跑同样的验活。
 20. 用户复核 `studio-names-<日期>.csv` 的 26 条厂牌改名后另行授权；3 条不一致按「一个账本名混了两家」处理，5 条 404 未取得，搜索兜底要先有一个能用的搜索出口。
-21. 9 条厂牌官网链接待装（`studio-links-install-<日期>.csv`，dry-run 全绿，已授权）：协调者跑 `install_entity_links.py --apply --backup`，再重跑 `harvest_studio_icons.py`，重点看 `content_aspect` 接近上限的行。SOD Create 与 FC2-PPV 的裁决见 `docs/SOURCING.md` 与脚本。
+21. 9 条厂牌官网链接已装入；厂牌图标待重跑 `harvest_studio_icons.py --install`，FC2 与 BangBros 的换源裁决见 `docs/SOURCING.md`。
 22. 把 javdatabase 的 idol 页接进社媒／官网候选：183 页缓存里 139 页带 X 链接、138 页带另一个官方站，由番号定位、不必离线比名。复用 `peach.social_links` 的判据与 `install_entity_links.py` 的 `FIELDS`，排掉四个整站广告主机。
 23. 人工判 `domain-code-review.csv` 里 `WX17` 那 269 条水印存疑行，脚本不给提案。
 
