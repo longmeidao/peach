@@ -1474,6 +1474,13 @@ function coverFace(img,axis){
   const face=parseFloat(img.dataset[axis]);
   return Number.isFinite(face)?face:null;
 }
+/* 封面是模板字符串拼出来的，没法逐张挂监听；内联 `onload` 属性只能调全局函数，而
+   app.js 以 `type="module"` 加载，取景函数在那里取不到——页面会每张图报一次
+   ReferenceError，封面全部按回落取景。`load` 不冒泡，但捕获阶段照样收得到。 */
+document.addEventListener('load',event=>{
+  const img=event.target;
+  if(img instanceof HTMLImageElement&&img.classList.contains('cover'))coverAnchor(img);
+},true);
 /* 整张封套里右侧正封占的宽高比。裁切靠的是容器比例而不是 CSS 裁剪：`object-fit:cover`
    只在容器比图片更「竖」时才会横向裁；容器一旦宽过 1.48 就变成纵向裁、整张封套原样
    铺满，「大图」于是只撑满画布而取不到右侧。 */
@@ -1493,7 +1500,7 @@ function coverImage(it,layout,eager){
     f.cy!=null?` data-cy="${Math.min(0.6,Math.max(0.05,f.cy))}"`:''].join('');
   // 小图看整张（含剧照拼贴），大图只取右侧正封。
   return `<img class="poster cover ${layout==='small'?'whole':'front'}" src="${src}"
-    alt="" loading="${eager?'eager':'lazy'}"${face} onload="coverAnchor(this)" data-drop="self">`;
+    alt="" loading="${eager?'eager':'lazy'}"${face} data-drop="self">`;
 }
 /* 卡片署名。版次队列要和「接着看」长得一样，就必须用同一份身份推导——各算各的
    迟早会在同名 creator/performer 那 35 组上分叉，同一条作品在两处指向两个实体。

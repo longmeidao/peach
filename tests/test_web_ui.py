@@ -1139,7 +1139,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             '.poster.cover.front[data-frame="still"]{object-position:var(--cover-x,50%)')
         self.assertPageContains('f.cx!=null?` data-cx="${f.cx}"`')
-        self.assertPageContains('onload="coverAnchor(this)"')
         # 没检出的那些居中，不能因为多了一个轴就把它们裁到边上去。
         self.assertPageContains("--cover-x,50%")
 
@@ -1158,6 +1157,19 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("center('--cover-y',coverFace(img,'cy'),r/car);")
         # 容器比例只有 `--card-ratio` 知道；按 layout 再算一遍迟早和它分叉。
         self.assertPageContains("getComputedStyle(img).getPropertyValue('--card-ratio')")
+
+    def test_image_hooks_are_delegated_because_inline_handlers_cannot_see_the_module(self):
+        """内联 `onload="…"` 属性求值在全局作用域里。
+
+        `index.html` 用 `type="module"` 加载 app.js，模块里的函数不在全局作用域，
+        内联属性调它只会每张图报一次 ReferenceError，取景静默退回写死的锚点。
+        `load` 不冒泡，所以只能在 document 上用捕获阶段收口。
+        """
+        self.assertPageContains('<script type="module" src="/app.js"></script>')
+        self.assertPageContains("document.addEventListener('load',event=>{")
+        self.assertPageContains(
+            "if(img instanceof HTMLImageElement&&img.classList.contains('cover'))coverAnchor(img);")
+        self.assertPageLacks('onload="', "模块作用域的函数在内联属性里取不到")
 
     def test_card_avatar_and_name_open_the_same_entity(self):
         """同一张卡上的头像和名字必须指向同一个身份。
