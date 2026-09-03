@@ -1,5 +1,6 @@
 import re
 import unittest
+from html.parser import HTMLParser
 from pathlib import Path
 
 _WORD = re.compile(r"[A-Za-z0-9_$]")
@@ -3826,6 +3827,87 @@ class WebUiSourceTests(unittest.TestCase):
             "  showHomeSurfaces();\n  // 必须在 showHomeSurfaces 之后加：")
         self.assertPageContains("document.body.classList.remove('entity-open','index-open')")
 
+
+# void 元素没有结束标签，压进栈里只会制造假报错。
+_VOID = frozenset({
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link",
+    "meta", "param", "source", "track", "wbr",
+})
+
+
+def tag_balance_problems(source: str) -> list:
+    """返回 HTML 里开闭标签不配平的地方，配平时返回空列表。
+
+    只做结构配平，不校验属性与语义：那是另一件事，也没有不引入依赖就能做的办法。
+    """
+    stack, problems = [], []
+
+    class Balance(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            if tag not in _VOID:
+                stack.append((tag, self.getpos()[0]))
+
+        def handle_endtag(self, tag):
+            if tag in _VOID:
+                return
+            line = self.getpos()[0]
+            if not stack:
+                problems.append(f"第 {line} 行 </{tag}> 没有对应的开始标签")
+                return
+            if stack[-1][0] == tag:
+                stack.pop()
+                return
+            for index in range(len(stack) - 1, -1, -1):
+                if stack[index][0] == tag:
+                    skipped = "、".join(
+                        f"<{name}>（第 {at} 行）" for name, at in stack[index + 1:])
+                    problems.append(
+                        f"第 {line} 行 </{tag}> 跳过了仍然开着的 {skipped}，"
+                        f"实际关掉的是第 {stack[index][1]} 行的 <{tag}>")
+                    del stack[index:]
+                    break
+            else:
+                problems.append(
+                    f"第 {line} 行 </{tag}> 无处可配，"
+                    f"当前开着的是第 {stack[-1][1]} 行的 <{stack[-1][0]}>")
+
+    parser = Balance(convert_charrefs=True)
+    parser.feed(source)
+    parser.close()
+    for name, line in stack:
+        problems.append(f"第 {line} 行的 <{name}> 直到文件结束都没有关闭")
+    return problems
+
+
+class IndexHtmlTagBalanceTests(unittest.TestCase):
+    """index.html 的开闭标签必须配平。
+
+    2026-09-03：设置面板的「安全」分组后面多出一个 `</section>`。浏览器按 HTML5
+    容错规则把它当成关闭最外层 `section.settingspanel`，随后那三行 `</div></div>
+    </section>` 全部无处可配、被静默丢弃。这一处没有造成可见故障——多余标签后面
+    只有结束标签、没有内容，已经插入的节点不会被回溯搬走，所以 DOM 与本意一致。
+    换个位置就不是这样了：多余标签后面只要还有内容，那些内容就会落到错误的父节点
+    下，而页面照样渲染、控制台照样安静。所以这里守的是配平本身，不是某一处症状。
+    """
+
+    def test_index_html_tags_are_balanced(self):
+        page = Path(__file__).resolve().parents[1] / "web" / "index.html"
+        problems = tag_balance_problems(page.read_text(encoding="utf-8"))
+        if problems:
+            self.fail("index.html 标签不配平：\n" + "\n".join(problems))
+
+    def test_the_balance_checker_actually_catches_a_stray_end_tag(self):
+        """门槛自己也要有人守：探测器写坏了会安静地永远通过。
+
+        这里喂的就是 index.html 当时的形状——多余的 `</section>` 跨过两层还开着的
+        div，后面跟着三个再也配不上的结束标签。
+        """
+        self.assertEqual([], tag_balance_problems("<section><div><div></div></div></section>"))
+        problems = tag_balance_problems(
+            "<section>\n<div>\n<div>\n</section>\n</div>\n</div>\n</section>")
+        self.assertEqual(4, len(problems), problems)
+        self.assertIn("第 4 行 </section> 跳过了仍然开着的", problems[0])
+        self.assertIn("<div>（第 2 行）", problems[0])
 
 if __name__ == "__main__":
     unittest.main()
