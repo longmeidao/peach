@@ -1531,6 +1531,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 转动复用既有的转圈关键帧；全局 prefers-reduced-motion 规则会把它关掉。
         self.assertPageContains(
             '.count[aria-busy="true"] #batchAction svg,\n'
+            'body.refreshing #batchAction svg,\n'
             '.entitycollectionhead[aria-busy="true"] .entitybatch svg{\n'
             "  animation:peach-spinner-linspin .9s linear infinite}")
         self.assertPageContains("@keyframes peach-spinner-linspin{to{transform:rotate(1turn)}}")
@@ -3493,8 +3494,42 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(context.type==='item'&&!topTags.length)")
         self.assertPageContains("const recommendationFacets=await api('/api/facets'")
         self.assertCode("if(requestSeq!==barsRequestSeq)return;\n    topTags=recommendationFacets.tags||[]")
-        self.assertPageContains("+topTags.slice(0,26).map(t=>")
+        self.assertPageContains("+seededSample(topTags,26,`tags:${state.seed||''}`).map(t=>")
         self.assertPageContains("+sec('内容标签',chips(facetData.tags,'tag',false,30)")
+
+    def test_the_discovery_tag_row_changes_with_the_batch_seed(self):
+        """标签条跟着「换一批」的种子换成员，同一批内不动。
+
+        `/api/facets` 给 44 个内容标签，条上只放得下 26 个，取前 26 的话后面 18 个
+        永远轮不到；顶部三层本来就跟着同一个 state.seed 换人，标签条留在原地等于
+        「换一批」只换了半个顶部。抽样不动顺序——条上照旧按数量从多到少读下来，
+        换的是成员，不是位置。
+        """
+        self.assertPageContains("+seededSample(topTags,26,`tags:${state.seed||''}`).map(t=>")
+        self.assertPageLacks("topTags.slice(0,26)",
+                             "取前 26 会让第 27 名之后的标签永远露不出来")
+        # 同一个种子给同一套成员，所以这一批内翻页和刷新都不会让标签跳动。
+        self.assertPageContains("const seededSample=(rows,count,seed,key=row=>row.k)=>{")
+        self.assertPageContains("  if(rows.length<=count)return rows;")
+        self.assertPageContains("  return rows.filter(row=>picked.has(key(row)));")
+        # 种子随机只有一份算法，关注页的随机发现共用它。
+        self.assertPageContains("const seededRank=(seed,value)=>{")
+        self.assertPageContains("const followDiscoveryRank=value=>seededRank(followDiscoverySeed,value);")
+
+    def test_the_refresh_key_keeps_spinning_until_the_bars_land_too(self):
+        """转圈归「换一批」这一层，不挂在计数行上。
+
+        网格和顶部三层一起换，两边耗时不一样。挂在计数行的 aria-busy 上时，网格
+        先到就被 renderCount 摘掉，标签条还在等的那段时间按钮已经停了。顶部三层
+        与标签条不铺骨架：它们此刻有内容在屏幕上，撕成灰条再填回去比直接换掉更
+        晃眼，骨架留给从无到有的首屏。
+        """
+        self.assertPageContains("  document.body.classList.add('refreshing');")
+        self.assertPageContains("  try{await Promise.all([load(true),buildBars()])}")
+        self.assertPageContains("  finally{document.body.classList.remove('refreshing')}")
+        self.assertPageContains("body.refreshing #batchAction svg,")
+        # 标签条和顶部三层照旧留着旧内容等新内容，不进骨架。
+        self.assertPageLacks("tagbarSkeleton", "有内容在屏幕上时不铺骨架")
 
     def test_large_collections_render_in_bounded_batches(self):
         self.assertPageContains("p.set('limit','48')")

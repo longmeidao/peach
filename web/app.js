@@ -510,6 +510,22 @@ const actionFailure=(message,error)=>toast(
    不会重复或漏项。「换一批」仍可在当前访问里主动生成下一批。 */
 const newSeed=()=>String((Date.now()^(Math.random()*1e9|0))%99991);
 const rollSeed=()=>newSeed();
+/* 种子随机：FNV-1a 把「种子 + 键」压成一个 32 位数当排序键。同一个种子下顺序稳定，
+   换种子就是另一套顺序，客户端不必存 PRNG 状态，也不必让后端多带一个参数。 */
+const seededRank=(seed,value)=>{
+  let hash=2166136261>>>0;
+  for(const char of `${seed}\u0000${value}`){hash^=char.codePointAt(0);hash=Math.imul(hash,16777619)>>>0}
+  return hash;
+};
+/* 抽样只决定「这一批露出哪些」，不动原有顺序：标签条照旧按数量从多到少读下来，
+   换一批换的是成员。装不满就原样返回，详情页那种只有几个标签的集合不受影响。 */
+const seededSample=(rows,count,seed,key=row=>row.k)=>{
+  if(rows.length<=count)return rows;
+  const picked=new Set([...rows]
+    .sort((a,b)=>seededRank(seed,key(a))-seededRank(seed,key(b)))
+    .slice(0,count).map(key));
+  return rows.filter(row=>picked.has(key(row)));
+};
 const initialParams=new URLSearchParams(location.search);
 const JUNK_KIND_OPTIONS=[['','全部','layout-grid'],['video','视频','play'],['image','图片','pics'],
   ['archive','压缩包','folder-open'],['audio','音频','volume-2'],['url','网址','globe'],
@@ -2281,7 +2297,7 @@ async function buildBars(){
   $('#tagbar').innerHTML=
     views.map(v=>`<a class="pill" href="${v.k?STATE_ROUTES[v.k]:'/'}" data-state="${v.k}" aria-pressed="${filterState.state===v.k}">${v.label}</a>`).join('')
     +`<span class="sep"></span>`
-    +topTags.slice(0,26).map(t=>
+    +seededSample(topTags,26,`tags:${state.seed||''}`).map(t=>
       `<button class="pill" data-tag="${esc(t.k)}" aria-pressed="${
         String(filterState.tag||'').split(',').includes(String(t.k))}">${esc(tagLabel(t.k))}</button>`).join('');
   $('#tagbar').querySelectorAll('[data-state]').forEach(b=>b.onclick=e=>{
@@ -3427,11 +3443,7 @@ async function openQualityGoals(push=true){
      以及对内容做批量标记。
    联网只发生在管理页点「检查更新」的那一刻——看的那一页不联网。 */
 let followDiscoverySeed=Math.floor(Math.random()*0xffffffff);
-const followDiscoveryRank=value=>{
-  let hash=(2166136261^followDiscoverySeed)>>>0;
-  for(const char of String(value)){hash^=char.codePointAt(0);hash=Math.imul(hash,16777619)>>>0}
-  return hash;
-};
+const followDiscoveryRank=value=>seededRank(followDiscoverySeed,value);
 const followRandomOrder=(rows,key)=>[...rows].sort((a,b)=>
   followDiscoveryRank(key(a))-followDiscoveryRank(key(b))||String(key(a)).localeCompare(String(key(b))));
 /* 来源筛选：fsrcProviders 记录见过的全部来源（默认全选），
@@ -7374,7 +7386,13 @@ async function refreshAll(automatic=false){
   // 顶部三层（女优头像、厂牌、标签）有 30 秒会话缓存，而 refreshAll 只重载网格：
   // 不清掉这两个缓存，「换一批」之后上面还是同一批人。
   barsDataCache=null;barsDataPromise=null;
-  await Promise.all([load(true),buildBars()]);
+  /* 网格和顶部三层一起换，两边耗时不一样，所以转圈归这一层管：挂在计数行的
+     aria-busy 上时，网格先到就被 renderCount 摘掉，标签条还在等的那段时间里
+     按钮已经停了。顶部三层与标签条不铺骨架——它们此刻有内容在屏幕上，撕成
+     灰条再填回去比直接换掉更晃眼；骨架留给从无到有的首屏。 */
+  document.body.classList.add('refreshing');
+  try{await Promise.all([load(true),buildBars()])}
+  finally{document.body.classList.remove('refreshing')}
   if(!automatic)window.scrollTo({top:0,behavior:'smooth'});
   return true;
 }
