@@ -118,9 +118,24 @@ class BacklogSelfConsistencyTests(unittest.TestCase):
                          "分项数和实际列出的条目对不上")
         self.assertEqual(total, skeleton + unbuilt, "合计和分项加起来对不上")
 
+    def test_pending_operations_do_not_creep_back_into_the_entry_file(self):
+        """编号待办只许住在这份文档里。
+
+        `docs/STATUS.md` 每次会话开头都要读，23 条待办要占掉它三分之一的字节预算，
+        其中十条还是「另行授权后才能跑」的操作，绝大多数任务读到它们只是白读。
+        搬出去容易，长回来更容易，所以在这里钉住。
+        """
+        status = (DOCS / "STATUS.md").read_text(encoding="utf-8")
+        self.assertNotIn("## 下一批工作", status, "待办去 docs/PRODUCT_BACKLOG.md，别放回入口文件")
+        self.assertEqual(
+            re.findall(r"^\d+\. ", status, re.M), [],
+            "入口文件不留编号待办：写现状用无序列表，要做的事去 docs/PRODUCT_BACKLOG.md",
+        )
+
     def test_the_section_headings_declare_their_own_counts(self):
         for heading, actual in (("已有骨架、尚未完成", self._numbered("## 已有骨架、尚未完成")),
-                                ("尚未实现", self._numbered("## 尚未实现"))):
+                                ("尚未实现", self._numbered("## 尚未实现")),
+                                ("待执行的操作", self._numbered("## 待执行的操作"))):
             declared = re.search(rf"## {heading}（(\d+) 项）", self.text)
             self.assertIsNotNone(declared, f"「{heading}」的标题应当带上条数，便于一眼核对")
             self.assertEqual(int(declared.group(1)), actual,
