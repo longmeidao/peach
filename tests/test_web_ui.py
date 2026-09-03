@@ -1654,7 +1654,13 @@ class WebUiSourceTests(unittest.TestCase):
         实测本地 MP4 播到 37 秒时 performance 里仍只有挂载那两条、字节数停在 862 KB，
         面板于是长期显示「— · 0 请求」。渐进源改按缓冲推进量折算，只有 HLS 还查条目。
         """
-        self.assertPageContains("function bufferedSeconds(video)")
+        # 看的是缓冲前沿而不是缓冲区总长：播放时浏览器会驱逐播过的部分，总长几乎恒定，
+        # 拿它当下载量只会一直读出 0——实测就是缓冲健康稳在 4.6 秒、已下载卡在 36 MB 不动。
+        self.assertPageContains("function bufferedFrontier(video)")
+        self.assertPageContains("const step=frontier-last.frontier")
+        self.assertPageContains("if(!seeked&&step>0)advanced+=step")
+        # seek 会把前沿整段挪走，那不是这一秒下载了几十分钟。
+        self.assertPageContains("const seeked=Math.abs(ct-last.ct)>gap*4+1")
         self.assertPageContains("function createBufferMeter(bitrate)")
         self.assertPageContains("function averageBitrate(size,duration)")
         self.assertPageContains("const meter=createBufferMeter(averageBitrate(options.size??it.size,it.duration))")
@@ -1665,15 +1671,15 @@ class WebUiSourceTests(unittest.TestCase):
         # 缓冲吃满后浏览器停拉，增量归零，读数保留上一次而不是跳回 0。
         self.assertPageContains("if(span>=.5&&gained>0){ratio=gained/span;")
         # 面板和角标都关着时没人采样，重开时的大跨度样本要丢掉。
-        self.assertPageContains("if(samples.length&&at-samples[samples.length-1].at>BUFFER_METER_WINDOW_MS*2)")
+        self.assertPageContains("if(gap*1000>BUFFER_METER_WINDOW_MS*2)samples.length=0")
 
-    def test_progressive_stats_swap_the_request_counter_for_buffered_bytes(self):
-        """请求数对渐进源恒为 0，换成已缓冲量；码率未知的在线条目退到秒和推进倍速。"""
-        self.assertPageContains("const loaded=segmented?bytes:(meter.bitrate>0?meter.bytes(video):filled)")
+    def test_progressive_stats_swap_the_request_counter_for_downloaded_bytes(self):
+        """请求数对渐进源恒为 0，换成已下载量；码率未知的在线条目退到秒和推进倍速。"""
+        self.assertPageContains("const loaded=segmented?bytes:(meter.bitrate>0?meter.bytes():meter.seconds)")
         self.assertPageContains("const byteScale=segmented||meter.bitrate>0")
         self.assertPageContains("请求`,")
-        self.assertPageContains(":['已缓冲',byteScale?")
-        self.assertPageContains("`${filled.toFixed(0)} 秒`")
+        self.assertPageContains(":['已下载',byteScale?")
+        self.assertPageContains("`${loaded.toFixed(0)} 秒`")
         self.assertPageContains("function fmtLoadRate(bits,ratio)")
         self.assertPageContains("`${ratio.toFixed(1)}× 实时`")
         self.assertPageContains(":(!segmented&&meter.ratio>0?`${meter.ratio.toFixed(1)}× 实时`:'—')")

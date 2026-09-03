@@ -664,38 +664,50 @@ function bufferedAhead(video){
     return Math.max(0,video.buffered.end(i)-at);
   return 0;
 }
-function bufferedSeconds(video){
-  let total=0;
-  for(let i=0;i<video.buffered.length;i++)total+=video.buffered.end(i)-video.buffered.start(i);
-  return total;
+/* 缓冲前沿：当前播放位置所在那段缓冲的末端。看的是前沿而不是缓冲区总长——播放时浏览器
+   会驱逐播过的部分，总长几乎恒定，拿它当下载量会得出「一直是 0」。 */
+function bufferedFrontier(video){
+  const at=video.currentTime||0;
+  for(let i=0;i<video.buffered.length;i++)
+    if(video.buffered.start(i)<=at+.25&&video.buffered.end(i)>=at)return video.buffered.end(i);
+  return video.buffered.length?video.buffered.end(video.buffered.length-1):0;
 }
 /* 渐进下载（HTTP Range）量不到网络：浏览器用一条长连接边下边播，请求在播放期间不结束，
    resource timing 里就一直不出现新条目。实测本地 MP4 播到 37 秒时仍只有挂载那两条、字节数
    停在 862 KB，面板于是显示「— · 0 请求」。HLS 是另一回事，每个分片都是一次独立完成的请求，
    VHS 自己也报 bandwidth，resource timing 那套口径只对它成立。
-   渐进源改看缓冲区推进：每秒新缓冲的秒数 × 平均码率就是字节速率；码率未知（在线关注条目
-   没有 size）就只报推进倍速。缓冲吃满后浏览器停拉，增量归零，此时保留上一次读数而不是跳回
-   0——那不是速度掉了，是没有在下载。 */
+   渐进源改看缓冲前沿的推进：每秒新推进的秒数 × 平均码率就是字节速率；码率未知（在线关注
+   条目没有 size）就只报推进倍速。缓冲吃满后浏览器停拉，增量归零，此时保留上一次读数而不是
+   跳回 0——那不是速度掉了，是没有在下载。 */
 const BUFFER_METER_WINDOW_MS=3000;
 function averageBitrate(size,duration){
   const bytes=Number(size)||0,seconds=realDuration(duration)||0;
   return bytes>0&&seconds>0?bytes*8/seconds:0;
 }
 function createBufferMeter(bitrate){
-  const samples=[];let bits=0,ratio=0;
+  const samples=[];let last=null,advanced=0,bits=0,ratio=0;
   return {
     bitrate:Number(bitrate)||0,
     get bits(){return bits},
     get ratio(){return ratio},
-    bytes(video){return this.bitrate>0&&video?bufferedSeconds(video)*this.bitrate/8:0},
+    get seconds(){return advanced},
+    bytes(){return this.bitrate>0?advanced*this.bitrate/8:0},
     sample(video){
       if(!video)return bits;
-      const at=performance.now(),filled=bufferedSeconds(video);
-      /* 面板和角标都关着时没人采样；再打开时两个样本之间隔了几分钟，直接相减会算出天文数字。 */
-      if(samples.length&&at-samples[samples.length-1].at>BUFFER_METER_WINDOW_MS*2)samples.length=0;
-      samples.push({at,filled});
+      const at=performance.now(),frontier=bufferedFrontier(video),ct=video.currentTime||0;
+      if(last){
+        const gap=(at-last.at)/1000;
+        /* seek 会把前沿整段挪走，那不是这一秒下载了几十分钟；判据是播放位置自己跳了。 */
+        const seeked=Math.abs(ct-last.ct)>gap*4+1;
+        const step=frontier-last.frontier;
+        if(!seeked&&step>0)advanced+=step;
+        /* 面板和角标都关着时没人采样，再打开时两点隔了几分钟，窗口要重新起算。 */
+        if(gap*1000>BUFFER_METER_WINDOW_MS*2)samples.length=0;
+      }
+      last={at,frontier,ct};
+      samples.push({at,advanced});
       while(samples.length>2&&at-samples[0].at>BUFFER_METER_WINDOW_MS)samples.shift();
-      const span=(at-samples[0].at)/1000,gained=filled-samples[0].filled;
+      const span=(at-samples[0].at)/1000,gained=advanced-samples[0].advanced;
       if(span>=.5&&gained>0){ratio=gained/span;bits=this.bitrate>0?gained*this.bitrate/span:0}
       return bits;
     }
@@ -1061,9 +1073,8 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
      meter.sample(video);
       const speed=playerSpeedBits(detailPlayer,it.id,detailStreamSession,segmented?null:meter)
         ||(seconds>0?bytes*8/seconds:0);
-     const filled=bufferedSeconds(video);
-     /* 分片流按已完成请求的字节累计；渐进源没有这种请求，按缓冲量折算，码率未知时退到秒。 */
-     const loaded=segmented?bytes:(meter.bitrate>0?meter.bytes(video):filled);
+     /* 分片流按已完成请求的字节累计；渐进源没有这种请求，按前沿推进折算，码率未知时退到秒。 */
+     const loaded=segmented?bytes:(meter.bitrate>0?meter.bytes():meter.seconds);
      const activity=Math.max(0,loaded-statsLoaded);statsLoaded=loaded;
      const buffer=bufferedAhead(video);
      pushPlayerStat(statsHistory.speed,speed);
@@ -1079,10 +1090,10 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
      const loadedRow=segmented
        ?['网络活动',`${bytes?fmtSize(bytes):'—'} · ${resources.length} 请求`,
          `最近一秒网络活动 ${activity?fmtSize(activity):'0 B'}`]
-       :['已缓冲',byteScale?`${fmtSize(loaded)}${Number(it.size)>0?` / ${fmtSize(Number(it.size))}`:''}`
-           :`${filled.toFixed(0)} 秒`,
-         byteScale?`最近一秒新增 ${activity?fmtSize(activity):'0 B'}`
-           :`最近一秒新增缓冲 ${activity.toFixed(1)} 秒`];
+       :['已下载',byteScale?`${fmtSize(loaded)}${Number(it.size)>0?` / ${fmtSize(Number(it.size))}`:''}`
+           :`${loaded.toFixed(0)} 秒`,
+         byteScale?`最近一秒下载 ${activity?fmtSize(activity):'0 B'}`
+           :`最近一秒下载 ${activity.toFixed(1)} 秒`];
      const rows=[
       ['视频 ID / 会话',detailStreamSession&&!options.source?`${it.id} / ${detailStreamSession.slice(0,8)}`:`${it.id}`],
       ['视口 / 帧',`${Math.round(rect.width)}×${Math.round(rect.height)} / ${quality?`${quality.totalVideoFrames-quality.droppedVideoFrames} of ${quality.totalVideoFrames}`:'—'}`],
