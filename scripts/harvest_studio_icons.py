@@ -26,8 +26,10 @@ favicon 一律退回。实测七个 JAV 厂牌站，六个的 favicon 内容比�
 **字标可装。** 用户 2026-09-03 定的口径：找不到方形标识时，宽扁字标补白装进 `icon` 位
 也比露出无图强。所以方标一个都没做成、却取回过够大的字标时，用 `images.pad_to_square`
 补成方图装上，判词 `字标补白`，内容比照记——复核时那个数就是「这枚其实是字标」的提示。
-同一枚字标还原样再出一行 `logo`：大位要的本来就是完整字标，让它回落到母品牌的
-`<safe>.img`（BangBus 页顶着 BANGBROS）反而是错图。用户指定的 logo 来源做成时优先。
+同一份补白方图再出一行 `logo`：不出这行大位会回落到母品牌的 `<safe>.img`（BangBus 页
+顶着 BANGBROS），是错图。logo 位也装方图而不是原样宽条，因为厂牌页那个 160px 大位是
+`object-fit: cover` 的方框，整个 logo 目录 2026-08-28 起就统一 pad-to-square 了——298×50
+原样装上去只剩中间两个字母。用户指定的 logo 来源做成时优先。
 
 默认只出复核 CSV 和候选 PNG，不碰已安装的目录。`--install` 才写 `<safe>.icon.img`
 与 `<safe>.logo.img`；`<safe>.img` 只在原本不存在时补写一份，已有的一个字节都不动。
@@ -361,14 +363,15 @@ def icon_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
                     sha256=hashlib.sha256(padded).hexdigest(), candidate=str(path),
                     evidence=(f"方形标识未取得，装的是字标：{policy.wordmark_size}"
                               f"／内容比 {policy.wordmark_aspect}，补白成方图"))
-        # 大位要的本来就是完整字标。不出这一行，`logo` 位会回落到 `<safe>.img`——
-        # BangBus 的那一份是母品牌 BANGBROS，小位对了大位却挂着别家的牌子。
-        wordmark_path = _store(candidate_dir, f"{safe}.logo.png", policy.wordmark)
+        # 不出这一行，`logo` 位会回落到 `<safe>.img`——BangBus 的那一份是母品牌
+        # BANGBROS，小位对了大位却挂着别家的牌子。装的仍是方图：大位是 160px 的
+        # `object-fit: cover` 方框，298×50 原样装上去只剩中间两个字母。
+        logo_path = _store(candidate_dir, f"{safe}.logo.png", padded)
         logo = _row(safe, target, entry, LOGO, OK,
-                    mark_size=policy.wordmark_size, content_aspect=policy.wordmark_aspect,
-                    sha256=hashlib.sha256(policy.wordmark).hexdigest(),
-                    candidate=str(wordmark_path),
-                    evidence="icon 位补白用的同一枚字标，原样装进 logo 位")
+                    mark_size=icon["mark_size"], content_aspect=policy.wordmark_aspect,
+                    sha256=icon["sha256"], candidate=str(logo_path),
+                    evidence=(f"与 icon 位同一份补白方图（原字标 {policy.wordmark_size}）；"
+                              "大位是方框，不装原样宽条"))
         return icon, logo
     if not reachable:
         verdict, evidence = MISSING, f"试过 {tried}，一份字节都没取回来"
