@@ -6,8 +6,8 @@ import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import {
   breadcrumbHtml, checkboxHtml, emptyStateHtml, fieldsetTitle, iconSwitchHtml, loadingDotsHtml,
-  mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml, setActionBusy, skeletonHtml,
-  spinnerHtml, wireBusyActions, wireCollapse, wireIconSwitch, wireScrollers,
+  mediaViewButtonsHtml, noteHtml, progressHtml, scrollerHtml, searchInputHtml, setActionBusy,
+  skeletonHtml, spinnerHtml, wireBusyActions, wireCollapse, wireIconSwitch, wireScrollers,
 } from './js/ui-components.js';
 
 initMiddleTruncate(document);
@@ -4334,11 +4334,8 @@ function renderFollowManage(credentials){
       <section class="fsec">
         <div class="fsechead"><h3>添加关注</h3></div>
         <form class="faddform" id="followAdd">
-          <div class="fsearchinput" data-follow-search-input>
-            <span class="fsearchprefix" data-follow-search-prefix>${icon('search')}</span>
-            <input type="search" name="line" required spellcheck="false" autocomplete="off"
-              placeholder="粘贴来源链接，或输入作者名、id…"
-              aria-label="来源链接、名字或 id"></div>
+          ${searchInputHtml({name:'line',label:'来源链接、名字或 id',
+            placeholder:'粘贴来源链接，或输入作者名、id…',attrs:'required'})}
           <div class="fsrcfilter" id="followSrcFilter"></div>
         </form>
         <p class="fnote" data-follow-add-state aria-live="polite"></p>
@@ -4498,7 +4495,7 @@ function wireFollowManage(){
     /* 状态提示在表单外面的说明行里，不能在 form 里找——找不到就是 null，
        第一次赋值直接抛 TypeError，整个提交静默失败。 */
     const state=root.querySelector('[data-follow-add-state]');
-    const prefix=form.querySelector('[data-follow-search-prefix]');
+    const prefix=form.querySelector('[data-search-prefix]');
     const line=String(new FormData(form).get('line')||'').trim();
     if(!line)return;
     const lines=[line];
@@ -4863,7 +4860,8 @@ function paintTagIndexSelection(){
   const count=panel.querySelector('[data-tag-selected]');if(count)count.textContent=`已选 ${selectedIndexTags.size} 个标签`;
   const apply=panel.querySelector('[data-tag-apply]');if(apply)apply.disabled=!selectedIndexTags.size;
 }
-async function openIndex(kind,q,push=true){
+/* refine=true 表示这一次是筛选框自己重跑，不是一次页面进入：既不铺骨架，也不重画表头。 */
+async function openIndex(kind,q,push=true,refine=false){
   releaseHoverPreviews();
   const requestSeq=++indexRequestSeq;
   document.body.classList.remove('entity-open');
@@ -4883,7 +4881,9 @@ async function openIndex(kind,q,push=true){
   // 写在前面等于自己加完自己删。
   document.body.classList.add('index-open');
   disposeStage(false);
-  showIndexLoading(people?'正在读取作者':'正在读取标签');
+  /* 骨架只盖真正在等的内容区。筛选重跑时页面已经在这儿了，把骨架铺上去会连筛选框
+     一起吃掉——同步就能给出的控件不进骨架，正在打字的那个更不能。 */
+  if(!refine)showIndexLoading(people?'正在读取作者':'正在读取标签');
   /* 在线标签走关注页那套统计，形状与 /api/index 一致，所以分页、搜索和「载入更多」
      这三处现成的机制换个地址就能用。 */
   const indexApi=offset=>onlineTags
@@ -4928,14 +4928,32 @@ async function openIndex(kind,q,push=true){
       <button type="button" data-tag-clear>清空</button>
       <button type="button" class="primary" data-tag-apply disabled>显示结果</button>
     </div>`:'');
-  $('#index').innerHTML=`<div class="ihead">
+  const countText=`${tagItems.length}${d.has_more?'+':''} 项`;
+  /* 筛选重跑不重画表头：输入框是同一个节点，焦点、光标位置和中文输入法正在组的字
+     才不会在 300 ms 后被换掉。表头里随查询变的只有计数一处，单独改它。 */
+  if(refine&&$('#iq')){
+    $('#indexCount').textContent=countText;
+    $('#indexFilters').innerHTML=filters;
+    $('#indexBody').innerHTML=body;
+    $('#indexMore').hidden=!d.has_more;
+  }else $('#index').innerHTML=`<div class="ihead">
       <h2 class="disp indexheading">${kind==='tags'?icon('tags'):''}${title}</h2>
-      <span class="mono" id="indexCount">${tagItems.length}${d.has_more?'+':''} 项</span>
+      <span class="mono" id="indexCount">${countText}</span>
       ${kind==='tags'?`<div class="tagmodes"><button data-tag-scope="local" aria-pressed="${!onlineTags}">${icon('database')}本地</button><button data-tag-scope="online" aria-pressed="${onlineTags}">${icon('globe')}在线</button></div>
       <div class="tagmodes"><button data-tag-view="cloud" aria-pressed="${tagIndexMode==='cloud'}">${icon('tags')}标签云</button><button data-tag-view="alphabet" aria-pressed="${tagIndexMode==='alphabet'}">${icon('list-filter')}字母表</button></div>`:''}
-      <div class="isearch"><input id="iq" placeholder="过滤…" value="${esc(q||'')}"></div>
-    </div>${filters}<div id="indexBody">${body}</div><button class="indexmore" id="indexMore" type="button" ${d.has_more?'':'hidden'}>载入更多</button>`;
-  let it2; $('#iq').oninput=e=>{clearTimeout(it2);it2=setTimeout(()=>openIndex(kind,e.target.value.trim(),true),300)};
+      ${searchInputHtml({id:'iq',label:'过滤'+title,value:q||''})}
+    </div><div id="indexFilters">${filters}</div><div id="indexBody">${body}</div><button class="indexmore" id="indexMore" type="button" ${d.has_more?'':'hidden'}>载入更多</button>`;
+  const iq=$('#iq');let it2;
+  const refineIndex=()=>{clearTimeout(it2);
+    it2=setTimeout(()=>openIndex(kind,iq.value.trim(),true,true),300)};
+  /* 中文输入法在选字过程中一样发 input，事件上的 isComposing 是唯一可靠的判据：
+     拿还没定型的拼音去筛选，筛的是「zhon」这种半截输入。组完字由 compositionend 接手。 */
+  iq.oninput=e=>{if(e.isComposing)return;refineIndex()};
+  iq.oncompositionend=refineIndex;
+  /* 只读筛选不配提交按钮，回车就是「别等那 300 ms，现在就查」。组字过程中的回车
+     是在定字，放过去会拿半截拼音发请求。 */
+  iq.onkeydown=e=>{if(e.isComposing||e.key!=='Enter')return;
+    e.preventDefault();clearTimeout(it2);openIndex(kind,iq.value.trim(),true,true)};
   $('#index').querySelectorAll('[data-tag-scope]').forEach(b=>b.onclick=()=>{
     if(tagIndexScope===b.dataset.tagScope)return;
     tagIndexScope=b.dataset.tagScope;
@@ -6103,8 +6121,12 @@ function moveSearchActive(step){
   options[searchActive].scrollIntoView({block:'nearest'});
   return true;
 }
-$('#q').oninput=()=>{searchActive=-1;if(!$('#searchMenu').hidden)renderSearchMenu()};
+const refreshSearchMenu=()=>{searchActive=-1;if(!$('#searchMenu').hidden)renderSearchMenu()};
+$('#q').oninput=e=>{if(e.isComposing)return;refreshSearchMenu()};
+$('#q').oncompositionend=refreshSearchMenu;
 $('#q').onkeydown=e=>{
+  /* 组字过程中的方向键在挑候选字、回车在定字，都不是给这个菜单的。 */
+  if(e.isComposing)return;
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){
     if(moveSearchActive(e.key==='ArrowDown'?1:-1))e.preventDefault();
     return;
@@ -6509,8 +6531,11 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
         ${q&&!exact?`<button class="tagpickitem" data-pick="${esc(search.value.trim())}">${icon('plus')}<span class="pickname">新建“${esc(search.value.trim())}”</span></button>`:''}</div></section>`;
       activeIndex=-1;body.querySelectorAll('[data-pick]').forEach(b=>b.onclick=()=>{
         const selected=b.getAttribute('aria-pressed')==='true',tag=b.dataset.pick;closePicker();if(!selected)addTag(tag)})};
-    search.oninput=renderPicker;
+    search.oninput=e=>{if(e.isComposing)return;renderPicker()};
+    search.oncompositionend=renderPicker;
     search.onkeydown=e=>{const options=[...body.querySelectorAll('[data-pick]')];
+      /* 选字那一下的回车是定字，不是「新建这个标签」——半截拼音会真的建成标签。 */
+      if(e.isComposing)return;
       if(e.key==='Escape'){e.preventDefault();closePicker();plus.focus();return}
       if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();if(!options.length)return;
         activeIndex=(activeIndex+(e.key==='ArrowDown'?1:-1)+options.length)%options.length;

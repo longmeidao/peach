@@ -674,6 +674,75 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('@media (max-width:760px){input,textarea,select{font-size:16px!important}}')
         self.assertPageContains('button,a,input,textarea,select,summary{touch-action:manipulation}')
 
+    def test_search_inputs_share_one_component_with_a_visible_focus_ring(self):
+        """带搜索语义的输入只有一份实现，点进去看得见焦点。
+
+        Geist Search Input 的契约是：搜索图标占前缀位，查找中原位换 Spinner，
+        输入框几何不变。关注页先有了这套，索引页的筛选框却是另一份私有样式——
+        没有前缀图标、没有任何 focus 规则，点进去和没点一个样。
+        """
+        self.assertPageContains("export function searchInputHtml({label,id='',name='',value='',placeholder='',attrs=''}={})")
+        self.assertCode("""const parts=[
+    'type="search"',""")
+        self.assertPageContains('<input ${parts}></div>')
+        self.assertPageContains('<div class="geist-search" data-search-input>')
+        self.assertPageContains(
+            """<span class="geist-search-prefix" data-search-prefix>${icon('search')}</span>""")
+        # 焦点环与顶部搜索框同一个配方，不是第二种蓝。
+        self.assertCode('.geist-search input[type="search"]:focus{outline:0;'
+                        'border-color:color-mix(in srgb,var(--tungsten) 72%,transparent);'
+                        'box-shadow:0 0 0 3px color-mix(in srgb,var(--tungsten) 26%,transparent)}')
+        # 忙态换的是前缀位，输入框自己不动；hook 跟着组件走，不留关注页专属的名字。
+        self.assertPageContains("form.querySelector('[data-search-prefix]')")
+        self.assertPageContains("if(prefix)prefix.innerHTML=spinnerHtml('查找中');")
+        self.assertPageLacks("data-follow-search-prefix")
+        self.assertPageLacks("fsearchprefix")
+        # 两个调用点都走组件；索引页的筛选框不再用 placeholder 当标签。
+        self.assertPageContains("searchInputHtml({id:'iq',label:'过滤'+title,value:q||''})")
+        self.assertPageContains("searchInputHtml({name:'line',label:'来源链接、名字或 id',")
+        self.assertPageLacks('<input id="iq" placeholder="过滤…"')
+        self.assertPageLacks(".isearch")
+
+    def test_filtering_waits_for_the_chinese_ime_to_finish_composing(self):
+        """选字过程中不查询：拿半截拼音去筛选，筛的是「zhon」这种不存在的词。
+
+        `input` 在组字过程中照样发，事件上的 `isComposing` 是唯一可靠的判据；
+        组完由 `compositionend` 接手。回车同理——那一下是定字，不是提交。
+        """
+        self.assertPageContains("iq.oninput=e=>{if(e.isComposing)return;refineIndex()};")
+        self.assertPageContains("iq.oncompositionend=refineIndex;")
+        self.assertPageContains("$('#q').oninput=e=>{if(e.isComposing)return;refreshSearchMenu()};")
+        self.assertPageContains("$('#q').oncompositionend=refreshSearchMenu;")
+        self.assertPageContains("search.oninput=e=>{if(e.isComposing)return;renderPicker()};")
+        self.assertPageContains("search.oncompositionend=renderPicker;")
+        # 顶部搜索和标签选择器的键盘处理在最前面让位给输入法。
+        self.assertPageLacks("$('#q').oninput=()=>{searchActive=-1;")
+        self.assertPageLacks("search.oninput=renderPicker;")
+        self.assertEqual(self.app_js.count("if(e.isComposing)return;"), 5,
+                         "五处：索引筛选、顶部搜索的输入与键盘、标签选择器的输入与键盘")
+        # 只读筛选没有提交按钮，回车必须自己接管：不接就是按了没反应。
+        self.assertPageContains("iq.onkeydown=e=>{if(e.isComposing||e.key!=='Enter')return;")
+        self.assertPageContains(
+            "e.preventDefault();clearTimeout(it2);openIndex(kind,iq.value.trim(),true,true)};")
+
+    def test_a_filter_rerun_keeps_the_input_alive_instead_of_repainting_the_page(self):
+        """重画整屏会把正在打字的那个输入框换掉，光标和未定型的拼音一起丢。
+
+        筛选框重跑不是一次页面进入：既不该铺骨架（同步就能给的控件不进骨架），
+        也不该重画表头。表头里随查询变的只有计数，单独改它。
+        """
+        self.assertPageContains("async function openIndex(kind,q,push=true,refine=false)")
+        self.assertPageContains("if(!refine)showIndexLoading(people?'正在读取作者':'正在读取标签')")
+        self.assertCode("""if(refine&&$('#iq')){
+    $('#indexCount').textContent=countText;
+    $('#indexFilters').innerHTML=filters;
+    $('#indexBody').innerHTML=body;
+    $('#indexMore').hidden=!d.has_more;
+  }else""")
+        # 分类筛选自己有容器，才能不动表头单独换掉。
+        self.assertPageContains('<div id="indexFilters">${filters}</div>')
+        self.assertPageContains("it2=setTimeout(()=>openIndex(kind,iq.value.trim(),true,true),300)")
+
     def test_route_titles_and_settings_dialog_manage_focus(self):
         # 标题跟着路由表走：每一屏的标签写在自己那条记录上，不再有第二份
         # 「路径 → 标题」映射跟路由分支各自演化。
@@ -1335,7 +1404,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_search_active_index_resets_when_the_list_is_rebuilt(self):
         # 列表重建后旧索引会指向不存在的行；输入和重新渲染都必须归零。
         self.assertPageContains("menu.hidden=false;searchActive=-1;")
-        self.assertPageContains("$('#q').oninput=()=>{searchActive=-1;")
+        self.assertPageContains("const refreshSearchMenu=()=>{searchActive=-1;")
 
     def test_enter_uses_the_highlighted_option_before_the_suggestion(self):
         self.assertPageContains("const picked=searchOptions()[searchActive]")
@@ -3367,7 +3436,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("placeholder:followSkeletonHtml('正在读取关注内容')")
         self.assertPageContains("pageSkeletonHtml('正在读取统计',{variant:'dashboard'})")
         self.assertPageContains(".skeletondashhero{min-height:330px;grid-template-columns:minmax(260px,36%) minmax(0,1fr)}")
-        self.assertPageContains("showIndexLoading(people?'正在读取作者':'正在读取标签')")
+        self.assertPageContains("if(!refine)showIndexLoading(people?'正在读取作者':'正在读取标签')")
         self.assertPageContains("$('#loadSentinel').innerHTML=loadingDotsHtml('继续载入中…')")
         self.assertPageContains("pageSkeletonHtml('正在读取推荐',{cards:true,className:'related-skeleton'})")
         self.assertPageLacks("count.innerHTML=`${spinnerHtml(label)}<span>载入中…</span>`")

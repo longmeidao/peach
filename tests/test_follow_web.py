@@ -1450,7 +1450,10 @@ class FollowWebSourceTests(unittest.TestCase):
         page = self.page
         form = page[page.index('<form class="faddform" id="followAdd">'):]
         form = form[:form.index("</form>")]
-        self.assertIn('<input type="search" name="line" required', form)
+        # 输入框本体是共用的 Search Input（见 web/js/ui-components.js），
+        # 关注页这里只交名字、无障碍名称和 required。
+        self.assertIn("searchInputHtml({name:'line',label:'来源链接、名字或 id',", form)
+        self.assertIn("attrs:'required'", form)
         self.assertNotIn("textarea", form)
         self.assertNotIn('type="submit"', form)
         # 忙态没有按钮可以变灰，就落在表单自己身上：前缀图标原位换 Spinner。
@@ -1589,10 +1592,13 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_the_input_and_its_button_are_the_same_height(self):
         # 输入框和旁边的来源筛选按钮齐平；单行以后没有 min-height 与 resize。
+        # 几何住在共用的 .geist-search 里，关注页不再复制一份自己的输入框样式。
         page = self.page
-        self.assertEqual(page.count('.faddform input[type="search"]{'), 1,
+        self.assertEqual(page.count('.geist-search input[type="search"]{'), 1,
                          "旧规则留在后面会覆盖新输入框样式")
-        rule = page[page.index('.faddform input[type="search"]{'):]
+        self.assertEqual(page.count('.faddform input[type="search"]{'), 0,
+                         "关注页私有的输入框几何已经上提到 .geist-search")
+        rule = page[page.index('.geist-search input[type="search"]{'):]
         rule = rule[:rule.index("}")]
         self.assertIn("height:38px", rule)
         self.assertIn("padding:0 12px 0 38px", rule)
@@ -1737,10 +1743,13 @@ class FollowWebSourceTests(unittest.TestCase):
         body = page[page.index("function renderFollowManage("):
                     page.index("function wireFollowItems(")]
         form = body[body.index('<form class="faddform"'):body.index("</form>")]
-        hint = form[form.index("placeholder="):form.index("aria-label=")]
-        self.assertIn("粘贴来源链接，或输入作者名、id…", hint)
+        hint = form[form.index("placeholder:'") + len("placeholder:'"):]
+        hint = hint[:hint.index("'")]
+        self.assertEqual(hint, "粘贴来源链接，或输入作者名、id…")
         self.assertNotIn("${", hint, "占位文字不许由数据拼出来——那就是把推荐塞进去了")
-        self.assertEqual(body.count("placeholder="), 1)
+        # 这一段里只有一处写死的占位文字。骨架那处 `placeholder:managementPlaceholder(…)`
+        # 是路由占位结构，不是输入框里的字，用带引号的形式把两者分开数。
+        self.assertEqual(body.count("placeholder:'"), 1)
 
     def test_every_credential_state_sits_in_the_same_column(self):
         """summary 是 .frow 的 flex 子项，默认不撑满整行——于是有折叠体的那几行
