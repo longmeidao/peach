@@ -58,16 +58,27 @@ def _is_svg(url: str, mime: str = "") -> bool:
     return "svg" in (mime or "").lower() or urlsplit(url).path.lower().endswith(".svg")
 
 
+#: 候选能代表谁。发现流程从 `origin(url)` 出发，所以它找到的一切只能代表**主机**：
+#: 首页声明的 `<link rel=icon>`、manifest、`/favicon.ico` 都是整站共用的那一份。
+#: 只有覆盖表里手工写下的那几行是冲着某个实体去的，才算 `entity`。
+#:
+#: 这个区分不是洁癖：`bangbros.com/websites/{BangBus,BangBros18,MonstersOfCock}` 三个频道
+#: 共用一个主机，主机级发现让三个厂牌拿到同一枚 Aylo 站点模板 favicon（蓝色六边形「1」，
+#: sha256 前缀 `a61e1e88`），两道闸门都过，和任何一个频道都无关。
+ENTITY_SCOPE, HOST_SCOPE = "entity", "host"
+
+
 class Candidate:
     """一个图标候选。`size` 是排序用的分数，不是承诺的真实像素。"""
 
-    __slots__ = ("url", "size", "role", "vector")
+    __slots__ = ("url", "size", "role", "vector", "scope")
 
     def __init__(self, url: str, size: int, role: str, vector: bool = False):
         self.url = url
         self.size = size
         self.role = role
         self.vector = vector
+        self.scope = ENTITY_SCOPE if role == "override" else HOST_SCOPE
 
     def __repr__(self) -> str:   # pragma: no cover - 只为断言失败时好读
         return f"Candidate({self.url!r}, size={self.size}, role={self.role!r})"
@@ -182,6 +193,11 @@ def host_key(url: str) -> str:
 
 #: 发现流程找不到、或找到的不适合时，逐主机指定来源。**这是例外，不是主路径。**
 #:
+#: 键可以是纯主机（`fc2.com`，连子域一起管），也可以是「主机 + 路径前缀」
+#: （`bangbros.com/websites/BangBus`，只管挂在这条路径下的那个实体）。后者是给
+#: 「一个主机装着好几个品牌」的站用的：发现流程从 `origin(url)` 出发，路径一丢，
+#: 同主机的几个实体就坍缩成同一份结果。
+#:
 #: 每加一行都要写清为什么发现流程不够，否则这张表会长成一份手工 favicon 清单，
 #: 而站点改版时没有人会来更新它。
 HOST_OVERRIDES: dict[str, tuple[str, ...]] = {
@@ -200,29 +216,60 @@ HOST_OVERRIDES: dict[str, tuple[str, ...]] = {
     # `/logo` 的大位；`blog`／`live`／`static` 上的 `apple-touch-icon`、`favicon-192`、
     # `icon.png` 全 404。所以这里不是「发现流程没找对」，是站上确实没有够大的那一份。
     #
-    # 用户 2026-09-03 授权用非官网来源补 `icon` 位。这一枚仍是 FC2, Inc. 自己发布的：
-    # iOS 应用「FC2動画」（bundle `com.fc2.fc2video`）的商店图标，512×512、内容比 1.00、
-    # 只有独角兽标识没有文字。地址可复现——公开的 iTunes Lookup API
-    # （`itunes.apple.com/lookup?id=374259312&entity=software&country=jp`）给出同一个
-    # artwork 地址，把 `512x512bb.jpg` 换成 `.png` 就是这一条。
-    # 不用 `id.fc2.com/apple-touch-icon.png`：它 114×114，且是「独角兽 + FC2 文字」的
-    # 纵向锁定图，缩到 28 px 文字糊成一团。
+    # 用户 2026-09-03 直接指定这一枚补 `icon` 位：400×400 RGBA、内容比 1.07，纯红色
+    # 独角兽、没有文字，sha256 `ddaa3216…9462`（40901 B，2026-09-03 实测）。服务端回的
+    # content-type 是 `application/octet-stream`，靠 `link_marks.decode` 里 PIL 的嗅探解开。
+    # 曾用 App Store 的「FC2動画」商店图标（512×512），已被用户否决：背景多了胶片图案。
+    # 也不用 `id.fc2.com/apple-touch-icon.png`：114×114，是「独角兽 + FC2 文字」的纵向
+    # 锁定图，缩到 28 px 文字糊成一团。600×600 那份方形锁定图装 `logo` 位，见
+    # `scripts/harvest_studio_icons.py` 的 `LOGO_SOURCES`。
     "fc2.com": (
-        "https://is1-ssl.mzstatic.com/image/thumb/Purple122/v4/4e/e6/b6/"
-        "4ee6b67c-e974-f795-433e-28def5bca596/"
-        "AppIcon-1x_U007emarketing-5-85-220.png/512x512bb.png",
+        "https://storage.googleapis.com/datanyze-data//technologies/"
+        "8ef39cbce34aece41d279b6e8e7dbb77aea3086e.png",
+    ),
+    # BangBros 的三个频道都是 `bangbros.com/websites/<频道>`，发现流程不够有三层原因：
+    # `discover()` 先 `origin(url)` 把路径丢了，三个频道坍缩成同一个主机；频道页自己只
+    # 声明一枚 16×16 favicon（`MIN_SHORT_EDGE` 退回）；于是轮到 `bangbros.com/favicon.ico`
+    # ——64×64、内容比 1.00，两道闸门都过，可它是 Aylo 站点模板的通用图标（蓝色六边形
+    # 「1」，`www.bangbus.com`、`www.monstersofcock.com` 回同一份），和频道无关。
+    # 这两枚是 `bangbros.com/websites` 页面配置里的 `*_LOGO` 资产（298×50，宽扁字标，
+    # 由 `harvest_studio_icons.py` 补白成方图）。MonstersOfCock 那一页没有 logo 资产，
+    # 记「未取得」，不在这张表里编一个。
+    # sha256：BangBus `ab652f50…d145`、BangBros18 `a59dd7ae…16d2`（2026-09-03 实测）。
+    "bangbros.com/websites/BangBus": (
+        "https://images-assets-ht.project1content.com/BangBros/MA/Subsites/"
+        "6480a83863bd03.19615490.png",
+    ),
+    "bangbros.com/websites/BangBros18": (
+        "https://images-assets-ht.project1content.com/BangBros/MA/Subsites/"
+        "6480a83860e9c0.34870333.png",
     ),
 }
 
 
 def overrides_for(url: str) -> list[Candidate]:
-    """主机覆盖表里的候选；没有就返回空列表。"""
+    """覆盖表里的候选；没有就返回空列表。
+
+    先按「主机 + 路径前缀」取**最长**匹配，再退到纯主机（含子域）。顺序不能倒：
+    `bangbros.com` 将来若要加一条主机级条目，三个频道各自那条必须仍然赢过它，
+    否则又回到「同主机坍缩成同一枚图标」。
+    """
     host = host_key(url)
-    entries = HOST_OVERRIDES.get(host)
+    if not host:
+        return []
+    target = (host + urlsplit(url).path.rstrip("/")).casefold()
+    scoped = [key for key in HOST_OVERRIDES
+              if "/" in key and (target == key.casefold()
+                                 or target.startswith(key.casefold() + "/"))]
+    if scoped:
+        entries: tuple[str, ...] | None = HOST_OVERRIDES[max(scoped, key=len)]
+    else:
+        entries = HOST_OVERRIDES.get(host)
     if entries is None:
-        # `p-smith.com` 这类子域也要能命中父域条目。
+        # `p-smith.com` 这类子域也要能命中父域条目。带路径的键不参与子域匹配：
+        # 那种键管的是一条路径，不是一族主机。
         entries = next((v for k, v in HOST_OVERRIDES.items()
-                        if host.endswith("." + k)), None)
+                        if "/" not in k and host.endswith("." + k)), None)
     if not entries:
         return []
     return [Candidate(u, VECTOR_SIZE if _is_svg(u) else 512, "override", _is_svg(u))
@@ -290,11 +337,16 @@ def discover(url: str, fetch) -> list[Candidate]:
     return rank(candidates)
 
 
-def best_mark(url: str, fetch, render, fallback=None) -> bytes | None:
+def best_mark(url: str, fetch, render, fallback=None, accept=None) -> bytes | None:
     """按顺序试候选，第一个能做出圆标的就是它。
 
     `render(data, content_type=...) -> bytes | None` 自己决定合格与否——宽扁字标、
     解不开的文件和太小的位图都由它退回 None，这里只负责换下一个。
+
+    `accept(candidate, data, content_type) -> bool` 是取回之后、渲染之前的一道否决，
+    默认没有。调用方用它拒绝「取到了、也够清楚，但只能代表主机而不是这个实体」的候选，
+    并就地记下拒绝理由——被否决的那一份连 `fallback` 都不许用，否则回落会把整站通用的
+    favicon 装成这个实体的标识。`/link-mark` 那个位置本来就是按主机的，不传这个参数。
 
     一个都没做成时，`fallback` 拿排在最前的那份**已经取回来的**字节再试一次（原样缩图
     也比露出地球图标强）。回落用的是循环里存下的那一份，不是重新发现一遍：重新发现要把
@@ -309,6 +361,8 @@ def best_mark(url: str, fetch, render, fallback=None) -> bytes | None:
         if got is None:
             continue
         tried += 1
+        if accept is not None and not accept(candidate, got[0], got[1]):
+            continue
         if first is None:
             first = got
         made = render(got[0], content_type=got[1])

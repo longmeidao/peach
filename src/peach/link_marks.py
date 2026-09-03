@@ -75,7 +75,9 @@ CACHE_TTL = 30 * 24 * 3600
 #: 3：`site_icons.HOST_OVERRIDES` 加了 `fc2.com`，FC2 的取图规则变了。键里没有主机
 #: 覆盖表的内容，只能整体换版本；代价是所有主机各重取一次，比让 FC2 挂着旧的 16×16
 #: 再显示一个月划算。
-RENDER_VERSION = 3
+#: 4：用户否决了 App Store 那枚 FC2 图标（背景带胶片图案），`fc2.com` 换成用户指定的
+#: 400×400 纯独角兽，取图规则又变了一次。
+RENDER_VERSION = 4
 
 
 def cache_key(url: str) -> str:

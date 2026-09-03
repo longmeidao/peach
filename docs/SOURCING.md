@@ -168,17 +168,22 @@
   FC2 文字」的纵向锁定图，缩到 28px 文字糊成一团，且挂在 FC2 ID 而不是 PPV 市场的主机上——是「过闸门
   不等于合适」那一类。`blog.fc2.com`、`live.fc2.com`、`static.fc2.com` 上也没有单独的大尺寸独角兽资产
   （`apple-touch-icon`、`favicon-192`、`icon.png` 全 404）。所以这不是「发现流程没找对」，是站上确实没有。
-- 用户 2026-09-03 授权 FC2 的 `icon` 位用非官网来源，判据仍是「只认品牌自己」：取的是 FC2, Inc. 自己发布的
-  iOS 应用「FC2動画」（bundle `com.fc2.fc2video`）商店图标，512×512、内容比 1.00、只有独角兽没有文字，
-  sha256 `ac318e2bf9d461a7f1a963a67e5deed7504cb0c1f75362e5f7186de844c99538`，2026-09-03 实测 35260 B。
-  地址可复现：公开的 iTunes Lookup API（`itunes.apple.com/lookup?id=374259312&entity=software&country=jp`，
-  374259312 是 FC2, inc. 的 artistId）给出同一个 artwork 地址，把 `512x512bb.jpg` 换成 `.png` 就是这一份，
-  已写进 `site_icons.HOST_OVERRIDES` 的 `fc2.com`。没采信的来源与原因：seeklogo 的 2000×662 是横向字标
-  （属 `logo` 位）、Wikimedia 的 `File:FC2_Logo.jpg` 是同名的另一家（Fiction Collective Two）、
+- FC2 的两个位置各用一份非官网来源，两个地址都由用户 2026-09-03 当场指定，取回时间同日：
+  `icon` 位是 `storage.googleapis.com/datanyze-data//technologies/8ef39cbce34aece41d279b6e8e7dbb77aea3086e.png`
+  （400×400 RGBA、内容比 1.07、纯红色独角兽没有文字，sha256 `ddaa3216…f449462`、40901 B），已写进
+  `site_icons.HOST_OVERRIDES` 的 `fc2.com`。服务端回的 content-type 是 `application/octet-stream`，
+  解得开靠 `link_marks.decode` 里 PIL 的嗅探——按 content-type 决定要不要解会把这一枚整个丢掉，
+  `test_an_octet_stream_png_is_still_a_png` 守这条。`logo` 位是
+  `images.seeklogo.com/logo-png/42/1/fc2-logo-png_seeklogo-429409.png`（600×600 P 模式、独角兽 +「FC2」
+  文字、内容比 3.02，sha256 `6911574c…6c6f1b7`、8916 B），写进 `harvest_studio_icons.LOGO_SOURCES` 而不是
+  `HOST_OVERRIDES`：那张表管「按主机发现图标」的例外，这一份管「这个厂牌的大字标在哪」，键的含义和取用
+  位置都不同。曾用 App Store 的「FC2動画」商店图标（512×512、内容比 1.00、sha256 `ac318e2b…c99538`），
+  2026-09-03 被用户否决——背景多了胶片图案；地址仍可复现（iTunes Lookup API），但不要再拿回来用。
+  没采信的来源与原因：seeklogo 同站那份 2000×662 是字标不用，用户指定的 429409 这份是 600×600 方形锁定图、
+  装 `logo` 位；Wikimedia 的 `File:FC2_Logo.jpg` 是同名的另一家（Fiction Collective Two）、
   simpleicons／vectorlogo.zone／iconduck 全 404 或已死、brandfetch 与 clearbit 要凭据或连不上、
   Google／DuckDuckGo 的 favicon 服务只回 16×16、`unavatar.io` 拿到的三个 FC2 账号头像是鸭子和房子的
-  吉祥物画不是独角兽、Google Play 那几个 FC2 应用图标里独角兽只是角标。个人博客的转手上传一律不用：
-  地址不稳定，也谈不上品牌自己发布。
+  吉祥物画不是独角兽、Google Play 那几个 FC2 应用图标里独角兽只是角标。
 
 ## 站点圆标与图标合成
 
@@ -214,8 +219,28 @@
   「仍是字标」——判错的结论比没有结论更糟，因为没人会再去查。所以 `scripts/harvest_studio_icons.py`
   只借真正表达 icon／字标之分的 `content_aspect` 与 `MAX_CONTENT_ASPECT`，尺寸另设 `MIN_SHORT_EDGE=32`
   （要顶的位置本来就只有 28～32 px）、像素原样不放大，`MIN_DESIGNED_SIZE` 不要为这个调用方去动。
-- 判词分三档、对应三种不同的下一步：`未取得`（一份字节都没取回，`Fetcher` 自己数取回几份才判得出来）、
-  `只有小图标`（FC2 全站只有 16×16，该去找更大的资产）、`仍是字标`。`best_mark` 只回结果不回理由，
+- **共享主机守卫**：主机级发现只能代表主机，代表不了挂在同一主机路径下的频道。`bangbros.com/websites/`
+  下的 BangBus、BangBros18、MonstersOfCock 三条 official 链接，`discover()` 一上来 `origin(url)` 就把路径
+  丢了，三个厂牌坍缩成同一个主机，取到的三份 sha256 逐字相同（三个现有的 `<safe>.img` 原图也是同一份
+  `671eb6ba…`，296×82 的 BANGBROS 母品牌字标，同一症状的另一处）。落到的那一枚是
+  `bangbros.com/favicon.ico`：64×64、内容比 1.00，两道闸门都过，可它是 Aylo／Project 1 Service 站点模板的
+  通用图标（蓝色六边形「1」，`www.bangbus.com`、`www.monstersofcock.com` 两个独立域回同一份
+  `a61e1e88…`），和任何频道无关。所以链接带非根路径时，`harvest_studio_icons.py` 给
+  `site_icons.best_mark(accept=...)` 挂一道守卫：`site_icons.HOST_SCOPE` 的候选一律不算数，判词
+  `平台通用图标`，证据写明取到的是哪个主机的哪一份加 sha256。`/link-mark` 那个位置本来就是按主机的
+  （`cache_key` 也按主机），不受这条约束。`HOST_OVERRIDES` 的键因此支持「主机 + 路径前缀」并取最长匹配。
+- **字标补白**（用户 2026-09-03 定的口径：不是 icon 也可以装 icon，尽量不要落入无图）：方标一个都没做成、
+  却取回过短边 ≥ `MIN_SHORT_EDGE` 的宽扁字标时，用 `peach.images.pad_to_square` 补成方图装上，判词
+  `字标补白`，`content_aspect` 照记（那个数就是「这枚其实是字标」的提示）。留第一份而不是最大的一份：
+  `best_mark` 的遍历顺序已经是「覆盖表 → 声明 → 根路径猜测」。BangBus（298×50／比 6.60）与 BangBros18
+  （298×50／比 6.06）走的就是这条，来源是 `bangbros.com/websites` 服务端渲染进 HTML 的 `*_LOGO` 资产
+  （注意 `/` 转义）。MonstersOfCock 那一页没有对应的 logo 资产，`site-api.project1service.com/v1/collections`
+  只给照片 avatar/banner，频道页顶部那张 `assets/brand/1151/banners/…jpg` 是 1920×400 的照片横幅不是标识，
+  `www.monstersofcock.com` 是同一套 Aylo 壳（favicon 同样是「1」、无 apple-touch-icon），所以它记
+  **未取得**、继续回落现有的 `MonstersOfCock.img`，不用推测顶替。
+- 判词分档、每一档对应不同的下一步：`ok`、`字标补白`（可装，见上）、`只有小图标`（FC2 全站只有 16×16，
+  该去找更大的资产）、`平台通用图标`（见上）、`仍是字标`、`未取得`（一份字节都没取回，`Fetcher` 自己数
+  取回几份才判得出来）、`无官网链接`。只有前两档会被 `--install` 落盘。`best_mark` 只回结果不回理由，
   退回原因由 `SquareMark` 就地记下，否则复核件上只剩一个空判词。过闸门也不等于适合：某批七个通过的
   候选六个内容比在 1.00～1.15，Fitch 是 1.84——它其实是「Fitch + 标语」的字标，只是恰好压在 2.2 以下，
   所以 `studio-icons-<日期>.csv` 带 `content_aspect` 列，接近上限的行要人眼看过接触表再定。
