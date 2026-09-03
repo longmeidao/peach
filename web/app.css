@@ -831,7 +831,9 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 .shorts-inline .scard .pic{aspect-ratio:var(--card-ratio,9/16)}
 .card{cursor:pointer;display:flex;flex-direction:column;gap:8px;min-width:0;
   position:relative;transition:transform .18s ease,filter .18s ease;transform-origin:center}
-.mixcard,.partcard{padding-top:7px}
+/* 叠层往上溢出到行间距里，卡片本体不为它留白。留白的写法（padding-top:7px）会把
+   整张卡压低 7px 并加高 7px，同一行里 Mix、分卷、版次卡的封面和下面的文字就比
+   邻居矮一截；往上堆之后卡片盒和普通卡完全同高，下沿自然平齐。 */
 .mixstack,.partstack{position:relative;isolation:isolate}
 .mixstack::before,.mixstack::after,.partstack::before,.partstack::after{content:"";position:absolute;border-radius:var(--badge-radius);
   border:1px solid var(--border-15);background:color-mix(in srgb,var(--surface) 84%,var(--video-glow,#15202a));z-index:0}
@@ -1970,10 +1972,12 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 /* 固定媒体框在懒加载前就占好高度；多栏会随图片天然高度反复重新分栏，造成滚动位移。 */
 @media (max-width:1400px){.followlist.followphotowall{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media (max-width:1000px){.followlist.followphotowall{grid-template-columns:repeat(3,minmax(0,1fr))}}
-.followitem{min-width:0}.followitem.collection{padding-top:7px}
+.followitem{min-width:0}
 .followitem.imagecard{display:flex;width:100%;margin:0}
 .followitem.imagecard .pic{aspect-ratio:4/3;min-height:0;background:var(--sunk)}
 .followitem.imagecard .followvisual .pic>img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:var(--sunk)}
+/* 翻动面板遮住静止封面，底色要跟着这张卡自己的底走：图片墙是浅底，视频卡是黑底。 */
+.followitem.imagecard .mixfaces{background:var(--sunk)}
 .followitem a{text-decoration:none}.followitem a:hover{text-decoration:none}
 .followitem[data-status="ignored"],.followitem[data-status="seen"]{opacity:.62}
 .followvisual{position:relative;isolation:isolate}.followvisual .pic{z-index:1}
