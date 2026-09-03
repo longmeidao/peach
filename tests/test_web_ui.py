@@ -1999,7 +1999,8 @@ class WebUiSourceTests(unittest.TestCase):
         Peach 的刻度上，胶囊和轨道的圆角大于自身高度的一半，`--pill-radius` 渲染结果相同。
         第五格 3.0 在上游要 Premium，本机装的 Peach 没有会员分级，那一格照上游留着，
         只是不画角标；滑条上限跟着抬到 3，不然点 3.0 会被收敛回 2。五格胶囊挤不进
-        274px 的面板，所以胶囊按 53px 起算、放不下就一起收窄。
+        274px 的面板，所以按 53px 起算、放不下就一起收窄；伸缩量写在包裹层上，胶囊自己
+        待在列向 flex 里，`flex-basis` 在那一层量的是高度。
         """
         self.assertPageContains(
             "const SPEED_RATES=[.25,.5,.75,1,1.25,1.5,1.75,2,3],SPEED_STEP=.05,SPEED_PRESETS=[1,1.25,1.5,2,3];")
@@ -2023,6 +2024,9 @@ class WebUiSourceTests(unittest.TestCase):
             ".vjs-peach-speed-slider{display:flex;align-items:center;gap:16px;margin-bottom:24px}")
         self.assertPageContains(".vjs-peach-speed-chips{display:flex;align-items:flex-start;gap:8px}")
         self.assertPageContains(
+            ".vjs-peach-speed-preset{display:flex;flex:0 1 53px;min-width:0;"
+            "flex-direction:column;align-items:center}")
+        self.assertPageContains(
             ".vjs-peach-speed-preset-label{margin-top:4px;font-size:var(--fs-xs);font-weight:400;"
             "line-height:14px;color:rgba(255,255,255,.7)}")
         self.assertPageContains(
@@ -2031,7 +2035,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             ".vjs-peach-speed-slider .vjs-peach-speed-button{flex:none;width:32px;font-size:var(--fs-2xl)}")
         self.assertPageContains(
-            ".vjs-peach-speed-chips .vjs-peach-speed-button{flex:0 1 53px;min-width:0;gap:4px;font-size:var(--fs-xs)}")
+            ".vjs-peach-speed-chips .vjs-peach-speed-button{width:100%;gap:4px;font-size:var(--fs-xs)}")
         # 设置面板里的按钮统一是 100% 宽、48px 高、`:before` 铺满的高亮层，胶囊得单独退出这套。
         self.assertPageContains(".vjs-peach-settings-menu .vjs-peach-speed-button:before{content:none}")
         self.assertPageContains(

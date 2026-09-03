@@ -1466,7 +1466,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
   font-size:var(--fs-lg);font-weight:600;line-height:22px;color:#fff}
 .vjs-peach-speed-slider{display:flex;align-items:center;gap:16px;margin-bottom:24px}
 .vjs-peach-speed-chips{display:flex;align-items:flex-start;gap:8px}
-.vjs-peach-speed-preset{display:flex;flex-direction:column;align-items:center}
+.vjs-peach-speed-preset{display:flex;flex:0 1 53px;min-width:0;flex-direction:column;align-items:center}
 .vjs-peach-speed-preset-label{margin-top:4px;font-size:var(--fs-xs);font-weight:400;line-height:14px;color:rgba(255,255,255,.7)}
 .vjs-peach-settings-menu .vjs-peach-speed-button{display:flex;justify-content:center;align-items:center;
   height:32px;min-height:32px;padding:0;border:0;border-radius:var(--pill-radius);background:rgba(255,255,255,.1);
@@ -1476,7 +1476,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vjs-peach-settings-menu .vjs-peach-speed-button:hover{background:rgba(255,255,255,.2)}
 .vjs-peach-settings-menu .vjs-peach-speed-button:active{background:rgba(255,255,255,.3)}
 .vjs-peach-speed-slider .vjs-peach-speed-button{flex:none;width:32px;font-size:var(--fs-2xl)}
-.vjs-peach-speed-chips .vjs-peach-speed-button{flex:0 1 53px;min-width:0;gap:4px;font-size:var(--fs-xs)}
+.vjs-peach-speed-chips .vjs-peach-speed-button{width:100%;gap:4px;font-size:var(--fs-xs)}
 .vjs-peach-speed-range{--peach-speed-percent:0%;-webkit-appearance:none;appearance:none;flex:1 1 auto;
   width:100%;min-width:0;height:24px;margin:0;background:transparent;cursor:pointer}
 .vjs-peach-speed-range:focus-visible{outline:0}
