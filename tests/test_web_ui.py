@@ -1693,8 +1693,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             ".video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control:not(.vjs-peach-settings):not(.vjs-peach-expand){display:none}")
         self.assertPageContains(".video-js.vjs-peach-xsmall .vjs-peach-expand{display:block}")
+        # 展开那条要和折叠那条带同样两个 :not()：少两个类就权重不够，点开没反应。
         self.assertPageContains(
-            ".video-js.vjs-peach-xsmall.vjs-peach-right-expanded .vjs-peach-right-controls>.vjs-control{display:block}")
+            ".video-js.vjs-peach-xsmall.vjs-peach-right-expanded .vjs-peach-right-controls>.vjs-control"
+            ":not(.vjs-peach-settings):not(.vjs-peach-expand){display:block}")
         # 展开后时间显示让出宽度：Peach 的控制条比 YouTube 窄，占着位就又超框。
         self.assertPageContains(".video-js.vjs-peach-xsmall.vjs-peach-right-expanded .vjs-peach-time{display:none}")
         self.assertPageContains(".video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control{flex:0 0 36px")
