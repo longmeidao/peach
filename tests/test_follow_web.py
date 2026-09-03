@@ -1840,6 +1840,71 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('.faliasmanager>summary[aria-expanded="false"]{border-radius:0 0 calc(var(--surface-radius) - 1px) calc(var(--surface-radius) - 1px)}')
         self.assertPageContains(".faliasmanager .fcollapsebody{padding:4px 13px 14px}")
 
+    def test_credential_rows_share_the_alias_collapse_motion(self):
+        """凭据行早先是 flex 行布局接不上 Collapse。
+
+        `details.fcred` 已经统一成 block，两处就该是同一份实现——展开一段正文这件事
+        不该有第二套开合逻辑。
+        """
+        self.assertPageContains("export function wireCollapse(root,selector,idPrefix)")
+        self.assertPageContains("wireCollapse(root,'details.faliasmanager','follow-alias-collapse')")
+        self.assertPageContains("wireCollapse(root,'details.fcred','follow-cred-collapse')")
+        self.assertEqual(self.page.count("body.style.height=body.scrollHeight+'px'"), 1,
+                         "开合逻辑只该有一份")
+        # 内边距归 .fcollapsebody：留在 .fcred[open] 上的话，收起那一帧高度已经归零、
+        # 内边距还在，行尾会跳一下。
+        self.assertPageContains(".fcred .fcollapsebody{padding:8px 0 12px}")
+        self.assertPageLacks(".fcred[open]{padding-bottom")
+        # 首段自己的上边距换成容器内边距，否则它跟容器外边距合并，scrollHeight 量矮一截。
+        self.assertPageContains(".fcred .fcollapsebody>p:first-child{margin-top:0}")
+
+    def test_credential_rows_carry_the_same_favicon_as_their_source(self):
+        """凭据配的就是那个站，用来源行同一枚 favicon 指认它。"""
+        self.assertPageContains(
+            'const mark=`<span class="ficonslot" aria-hidden="true">${sourceIcon(row.provider)}</span>`')
+        self.assertPageContains('<div class="frow fcred none">${mark}<b>${esc(row.provider_label)}</b>')
+        self.assertPageContains("<summary>${mark}<b>${esc(row.provider_label)}</b>")
+        # 槽位占住 14px，不看里面有没有图：没登记 favicon 的站本来就没有，取不下来的
+        # 那些还会被 data-drop="self" 整个丢掉，两种情况都会让名字的左边缘参差。
+        self.assertPageContains(".fcred .ficonslot{flex:none;display:block;width:14px;height:14px}")
+        self.assertPageContains(".fcred .ficon{margin-right:0}")
+        self.assertIn('data-drop="self"', self.page)
+
+    def test_the_follow_list_has_a_compact_switch_that_puts_two_per_row(self):
+        """两个互斥视图用 Switch（共享 name 的 radio），不是 Toggle。"""
+        self.assertPageContains(
+            "const FOLLOW_LAYOUTS=[['cozy','舒适 · 一行一个','maximize'],"
+            "['compact','紧凑 · 一行两个','layout-grid']]")
+        self.assertPageContains(
+            "iconSwitchHtml('follow-layout','关注列表版式',FOLLOW_LAYOUTS,followListLayout()")
+        self.assertPageContains("{attr:'data-follow-layout'}")
+        self.assertPageContains("${followLayoutButtons()}")
+        self.assertPageContains("wireIconSwitch(root,'data-follow-layout',setFollowListLayout)")
+        # 版式是纯展示层的事：改容器上的一个属性就够，不重画列表，也不重新请求。
+        self.assertPageContains('<div class="frows fsources" data-layout="${followListLayout()}">')
+        self.assertPageContains("node.dataset.layout=followListLayout()")
+        # 紧凑就是一行两个；半幅宽度放不下六列，收掉最不影响判断的「上次检查」。
+        self.assertPageContains(
+            '.fsources[data-layout="compact"]{grid-template-columns:repeat(2,minmax(0,1fr))}')
+        self.assertPageContains('.fsources[data-layout="compact"] .fsource .fchecked{display:none}')
+        # 窄屏两栏塞不下，仍旧回到一栏——媒体查询要连紧凑一起覆盖，否则属性选择器更具体。
+        self.assertPageContains('.fsources,.fsources[data-layout="compact"]{grid-template-columns:1fr}')
+        # 窄屏两栏不成立，开关一起收起，不留一个按了没反应的控件。
+        self.assertPageContains('.fsechead .iconswitch{display:none}')
+        # 选择要留下来，和 JAV 版式一样存进设置。
+        self.assertPageContains("javLayout:'big',followLayout:'cozy'")
+        self.assertPageContains("appSettings.followLayout=value")
+        self.assertPageContains(
+            "allowedSetting(appSettings.followLayout,FOLLOW_LAYOUTS.map(([k])=>k),'cozy')")
+
+    def test_the_layout_switch_lines_up_with_the_sort_box(self):
+        """开关和排序框、按钮同处分区标题行，高度必须是同一档。"""
+        rule = self.page[self.page.index(".fsechead .iconswitch{"):]
+        rule = rule[:rule.index("}")]
+        self.assertIn("flex:none", rule)
+        self.assertIn("padding:2px", rule)
+        self.assertPageContains(".fsechead .iconswitch label{width:32px;height:26px}")
+
     def test_alias_count_badge_is_neutral_metadata(self):
         """「3 组」只是计数，不是待处理提醒：徽章走 Geist gray badge 的中性灰。
 

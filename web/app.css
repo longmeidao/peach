@@ -1958,7 +1958,7 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .javbar{display:flex;align-items:center;gap:8px;padding:0 0 10px;flex-wrap:wrap}
 .javbar[hidden]{display:none}
 .javbar button{width:34px;height:30px;display:inline-grid;place-items:center;border-radius:var(--control-radius);border:1px solid var(--overlay-10);background:transparent;color:var(--ink-2);cursor:pointer;padding:0}.javbar button svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8}.javbar button:hover{color:var(--ink)}.javbar button[aria-pressed="true"]{background:var(--hover);color:var(--ink)}
-.javlayout{min-width:0;margin:0;padding:3px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--overlay-5)}.javlayout label{position:relative;display:inline-grid;width:34px;height:28px;place-items:center;border-radius:var(--control-radius);color:var(--muted);cursor:pointer}.javlayout input{position:absolute;inline-size:1px;block-size:1px;opacity:0}.javlayout label:hover{color:var(--ink)}.javlayout label:has(input:checked){background:var(--surface);color:var(--ink);box-shadow:0 1px 2px #0005}.javlayout label:has(input:focus-visible){outline:2px solid var(--tungsten);outline-offset:2px}.javlayout svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8}
+.iconswitch{min-width:0;margin:0;padding:3px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--overlay-5)}.iconswitch label{position:relative;display:inline-grid;width:34px;height:28px;place-items:center;border-radius:var(--control-radius);color:var(--muted);cursor:pointer}.iconswitch input{position:absolute;inline-size:1px;block-size:1px;opacity:0}.iconswitch label:hover{color:var(--ink)}.iconswitch label:has(input:checked){background:var(--surface);color:var(--ink);box-shadow:0 1px 2px #0005}.iconswitch label:has(input:focus-visible){outline:2px solid var(--tungsten);outline-offset:2px}.iconswitch svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8}
 /* 取景：正封模式下，整张封套要把镜头推到右半边；本身就是竖版正封的则整张用。
    判据是图片自己的宽高比，由 onload 写进 data-frame。 */
 .poster.cover{width:100%;height:100%;object-fit:cover;display:block}
@@ -2110,6 +2110,9 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fsechead h3{margin:0;font-size:var(--fs-md);font-weight:600;letter-spacing:.01em}
 .fsechead .fmeta{flex:1 1 auto}
 .fmanagesort{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:var(--fs-xs)}
+/* 版式开关和排序框、按钮同处分区标题行，收到同一个 32px 高度上（fieldset 自带 1px 边框）。 */
+.fsechead .iconswitch{display:inline-flex;gap:2px;flex:none;padding:2px}
+.fsechead .iconswitch label{width:32px;height:26px}
 .fmanagesort select{height:32px;padding:0 10px;border:1px solid var(--border-15);border-radius:var(--control-radius);
   background:var(--surface);color:var(--ink-2);font:inherit;font-size:var(--fs-sm);color-scheme:dark;cursor:pointer}
 .fmanagesort select:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
@@ -2229,6 +2232,10 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .frows{display:grid;min-width:0}
 .frows>*{min-width:0}
 .fsources{grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px 22px;align-items:start}
+/* 紧凑版式：一行两个。半幅宽度放不下来源行的六列，收掉「上次检查」——哪个站、
+   成没成功、能不能点都还在，时间是里面最不影响判断的一列。 */
+.fsources[data-layout="compact"]{grid-template-columns:repeat(2,minmax(0,1fr))}
+.fsources[data-layout="compact"] .fsource .fchecked{display:none}
 .frow{display:flex;align-items:center;gap:12px;padding:9px 0;flex-wrap:wrap;
   border-bottom:1px solid var(--border-10)}
 .frows>.frow:last-child{border-bottom:0}
@@ -2331,15 +2338,21 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 
 /* summary 是 .frow 的 flex 子项，默认 flex:0 1 auto 不撑满整行——于是有折叠体的那几行
    状态贴在名字后面，没折叠体的却靠右，同一列两种对齐。让它占满，状态就统一在右边。 */
-.fcred summary{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:12px;
+.fcred summary{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:8px;
   cursor:pointer;list-style:none;margin:-9px 0;padding:9px 0}
 .fcred summary::-webkit-details-marker{display:none}
 .fcred summary b{flex:1 1 auto;min-width:0;font-weight:500}
-.fcred.none{color:var(--muted)}
+.fcred.none{color:var(--muted);gap:8px}
 /* 折叠时 .frow 让它是 flex、展开时又变 block，两种几何下 summary 的可用宽度差一个 gap，
    状态列就差 12px 对不齐。统一成 block：summary 自己是 flex 容器，宽度始终是整行。 */
 details.fcred{display:block}
-.fcred[open]{padding-bottom:12px}
+/* 展开体的内边距归 .fcollapsebody：留在 .fcred[open] 上的话，收起那一帧高度已经
+   归零、内边距还在，行尾会跳一下。首段自己的上边距换成容器内边距，免得它跟容器
+   外边距合并，量出来的 scrollHeight 比实际矮一截。 */
+.fcred .fcollapsebody{padding:8px 0 12px}
+.fcred .fcollapsebody>p:first-child{margin-top:0}
+.fcred .ficonslot{flex:none;display:block;width:14px;height:14px}
+.fcred .ficon{margin-right:0}
 .fcred p{margin:8px 0 0;font-size:var(--fs-sm);line-height:1.7;color:var(--muted);
   overflow-wrap:anywhere}
 .fcred a{color:var(--tungsten)}
@@ -2374,7 +2387,9 @@ details.fcred{display:block}
   .faddform>.fsearchinput{grid-column:1/-1}
   .faddform>.fsrcfilter{justify-self:start}
   .frow{gap:8px}
-  .fsources{grid-template-columns:1fr}
+  .fsources,.fsources[data-layout="compact"]{grid-template-columns:1fr}
+  /* 窄屏放不下两栏，紧凑版式在这里不成立；开关跟着收起，不留一个按了没反应的控件。 */
+  .fsechead .iconswitch{display:none}
   .frow .fmeta:nth-of-type(2){display:none}
   .faliasform{grid-template-columns:1fr}
   .faliasform .fbtn{width:100%}
