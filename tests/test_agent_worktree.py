@@ -154,23 +154,40 @@ class PruneTests(AgentWorktreeTests):
         listed = report["reclaimed"] + [row["path"] for row in report["dirty"] + report["kept"]]
         self.assertNotIn(str(self.repo), listed, "主检出不能出现在回收清单里")
 
-    def test_a_directory_that_will_not_delete_still_loses_its_branch(self):
-        """注册已经摘掉、只剩目录删不掉时，分支照删，目录列进 residue 交给人清。
+    def test_a_directory_git_could_not_delete_is_deleted_by_the_script(self):
+        """git 摘了注册却删不掉目录时，脚本自己把目录删掉，不留给人。
 
         2026-09-01 实测：连跑 5 次 prune --apply 才把 5 个工作树摘完，5 条分支一条没删，
-        最后是手工 `git branch -d` 收的尾——因为 remove 一失败就抛错中止了整轮。
+        最后是手工 `git branch -d` 收的尾——因为 remove 一失败就抛错中止了整轮。分支的
+        那半边当时补上了，目录这半边还写着「待人工清理」，于是残留目录照样留在原地：
+        长得和真工作树一样，在里面跑 git 全作用于主检出的 master。
         """
         worker = self._integrated("stuck-handle")
         with mock.patch.object(agent_worktree, "_git",
                                StuckRemoval(agent_worktree._git, {worker: "residue"})):
             report = prune(self.repo, apply=True)
         self.assertTrue(report["ok"], "一个目录删不掉不该把整轮判成失败")
-        self.assertTrue(worker.is_dir(), "空目录还在原地")
-        self.assertEqual([row["path"] for row in report["residue"]], [str(worker)])
-        self.assertEqual(report["reclaimed"], [])
+        self.assertFalse(worker.exists(), "git 删不掉的空目录由脚本删掉")
+        self.assertEqual(report["residue"], [], "删掉了就不是残留")
+        self.assertEqual(report["reclaimed"], [str(worker)])
         self.assertNotIn("stuck-handle",
                          _git(self.repo, "branch", "--list", "agent/codex/stuck-handle").stdout,
                          "注册已经摘掉了，分支就该跟着删")
+
+    def test_a_directory_nobody_can_delete_is_reported_with_the_reason(self):
+        """脚本也删不掉才算残留：报出原因交给人，分支照删。"""
+        worker = self._integrated("locked-handle")
+        with mock.patch.object(agent_worktree, "_git",
+                               StuckRemoval(agent_worktree._git, {worker: "residue"})), \
+                mock.patch.object(agent_worktree, "_delete_tree",
+                                  return_value="PermissionError: 目录被别的进程占着"):
+            report = prune(self.repo, apply=True)
+        self.assertTrue(worker.is_dir(), "删不掉就还在原地")
+        self.assertEqual([row["path"] for row in report["residue"]], [str(worker)])
+        self.assertIn("目录被别的进程占着", report["residue"][0]["why"])
+        self.assertEqual(report["reclaimed"], [])
+        self.assertNotIn("locked-handle",
+                         _git(self.repo, "branch", "--list", "agent/codex/locked-handle").stdout)
 
     def test_one_stuck_worktree_does_not_block_the_others(self):
         """回收失败只波及它自己，剩下的工作树照常处理，不用人反复重跑。"""
@@ -188,3 +205,50 @@ class PruneTests(AgentWorktreeTests):
         self.assertIn("stuck-first",
                       _git(self.repo, "branch", "--list", "agent/codex/stuck-first").stdout,
                       "注册还在就是没回收成，分支不能删")
+
+
+class BuiltinLeftoverTests(AgentWorktreeTests):
+    """清掉 `.claude/worktrees/` 里已经不登记的残留目录。
+
+    Claude Code 内置的工作树机制建在主检出里，分支集成后目录不会自己收。它不在
+    `git worktree list` 里，所以按登记项遍历的那轮回收永远碰不到它；人却会走进去当
+    工作树用，而在里面跑 git 全部作用于主检出的 master。
+    """
+
+    def leftover(self, name: str) -> Path:
+        path = self.repo / ".claude" / "worktrees" / name
+        path.mkdir(parents=True)
+        return path
+
+    def test_an_unregistered_empty_leftover_is_swept(self):
+        empty = self.leftover("distracted-lamarr")
+        report = prune(self.repo, apply=True)
+        self.assertEqual(report["swept"], [str(empty)])
+        self.assertFalse(empty.exists())
+
+    def test_reporting_lists_the_leftover_without_deleting_it(self):
+        empty = self.leftover("reportable-leftover")
+        report = prune(self.repo)
+        self.assertEqual(report["swept"], [str(empty)])
+        self.assertTrue(empty.is_dir(), "没给 --apply 就不该动手")
+
+    def test_a_leftover_that_still_holds_files_is_left_alone(self):
+        """空目录才扫。里面还有文件就可能是别人正开着的检出或没提交的东西。"""
+        used = self.leftover("sweet-newton")
+        (used / "worker.txt").write_text("别人正在用\n", encoding="utf-8")
+        report = prune(self.repo, apply=True)
+        self.assertEqual(report["swept"], [])
+        self.assertTrue(used.is_dir())
+        self.assertEqual([row["path"] for row in report["kept"]], [str(used)])
+
+    def test_a_registered_worktree_under_that_directory_is_not_swept(self):
+        """登记着的工作树归上面那轮按分支状态处理，扫残留这步不许碰。"""
+        result = create(self.repo, "Claude", "in-place",
+                        self.repo / ".claude" / "worktrees")
+        worker = Path(result["path"])
+        (worker / "worker.txt").write_text("还在做\n", encoding="utf-8")
+        commit(worker, "in place wip")
+        report = prune(self.repo, apply=True)
+        self.assertEqual(report["swept"], [])
+        self.assertTrue(worker.is_dir())
+        self.assertEqual([row["branch"] for row in report["kept"]], ["agent/claude/in-place"])
