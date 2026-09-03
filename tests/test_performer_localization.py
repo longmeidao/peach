@@ -8,7 +8,7 @@ from pathlib import Path
 from peach.migrations import upgrade
 from scripts.localize_performer_names import (
     KANJI_ALIAS_SOURCE, apply_rows, collect, main, read_identity_review, read_mapping,
-    report_conflicts, resolve_sai, simplify_kanji, strip_zero_width,
+    report_conflicts, simplify_kanji, strip_zero_width,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -174,15 +174,18 @@ class PerformerLocalizationTests(unittest.TestCase):
         self.assertEqual(rows[18]["target_name"], "飯岡かなこ")
 
     def test_upstream_glyph_noise_in_the_canonical_name_is_normalised(self):
-        """`斎`／`齋` 的简体是 `齐`，`斋` 是另一个字；零宽字符根本不该出现在名字里。"""
+        """`斋` 是 `斋`，`斎` 是 `齐`；零宽字符根本不该出现在名字里。"""
         self.assertEqual(strip_zero_width("\u200c斋藤亚美里"), "斋藤亚美里")
-        self.assertEqual(resolve_sai("安斋拉拉", ["安齋らら"]), "安齐拉拉")
-        # 日文一侧不是 `斎`／`齋` 就没有证据说这个 `斋` 写错了，原样留着。
-        self.assertEqual(resolve_sai("安斋拉拉", ["Rara Anzai"]), "安斋拉拉")
+        # 换的是名字里实际写的那个字：`齋` 的简体是 `斋`，`斎`／`斉`／`齊` 才是 `齐`。
+        self.assertEqual(simplify_kanji("安齋良良"), "安斋良良")
+        self.assertEqual(simplify_kanji("斉藤美来"), "齐藤美来")
         rows = {int(row["entity_id"]): row for row in collect(
             self.con, [], read_identity_review(self.review), "kanji-only")}
-        self.assertEqual(rows[20]["target_name"], "安齐拉拉")
-        self.assertEqual(rows[21]["target_name"], "齐藤亚美里")
+        # 日文名写 `安齋らら`，中文名这个 `斋` 没写错，不动。
+        self.assertEqual(rows[20]["target_name"], "安斋拉拉")
+        self.assertEqual(rows[20]["action"], "keep-unresolved")
+        # 日文名写 `斎藤あみり` 同样不构成改字的理由，这一行只去掉零宽字符。
+        self.assertEqual(rows[21]["target_name"], "斋藤亚美里")
         self.assertEqual(rows[21]["action"], "localize-kanji")
         self.assertEqual(rows[22]["target_name"], "斋藤未来")
         self.assertEqual(rows[22]["action"], "keep-unresolved")

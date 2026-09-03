@@ -23,7 +23,6 @@ import sqlite3
 import xml.etree.ElementTree as ET
 import sys
 from collections import Counter, defaultdict
-from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -48,11 +47,15 @@ KANJI_ONLY_REVISION = "kanji-only"
 # 日本汉字（新字体与旧字体）在简体中文里有确定对应字形的，逐字换。这里换的是字形不是名字，
 # 所以不需要外部证据：中文资料页写「凉森玲梦」和写「涼森玲夢」指的是同一个人。
 # 收录范围是本库出现过的字形，加上人名里常见、对应关系同样没有歧义的那批。
+# 逐字换只看名字里实际写的那个字：`斎`／`斉`／`齊` 换成 `齐`，`齋` 换成 `斋`，
+# 名字本来写 `斋` 就不动。它们是两个字（齐藤／斋戒），日文一侧写什么都不构成改字的理由——
+# 拿日文名去推断中文名里的 `斋` 写错了，`安斋拉拉` 就会被改成 `安齐拉拉`。
 JP_KANJI_TO_SIMPLIFIED = {
     "並": "并", "亜": "亚", "亞": "亚", "倉": "仓", "児": "儿", "凜": "凛",
     "実": "实", "實": "实", "宮": "宫", "島": "岛", "嶋": "岛", "嵐": "岚",
-    "塩": "盐", "姫": "姬", "尋": "寻", "恵": "惠", "愛": "爱", "斎": "齐",
-    "齋": "齐", "桜": "樱", "櫻": "樱", "橋": "桥", "歩": "步", "満": "满",
+    "塩": "盐", "姫": "姬", "尋": "寻", "恵": "惠", "愛": "爱",
+    "斎": "齐", "斉": "齐", "齊": "齐", "齋": "斋",
+    "桜": "樱", "櫻": "樱", "橋": "桥", "歩": "步", "満": "满",
     "沢": "泽", "澤": "泽", "沖": "冲", "浜": "滨", "濱": "滨", "渋": "涩",
     "涼": "凉", "湊": "凑", "瀬": "濑", "瀨": "濑", "瀧": "泷", "稲": "稻",
     "穂": "穗", "紀": "纪", "紗": "纱", "結": "结", "絵": "绘", "絢": "绚",
@@ -69,22 +72,9 @@ JP_KANJI_TO_SIMPLIFIED = {
 # 搜索、去重和名字唯一约束却全按另一个字符串算，等于库里多出一个查不到的人。
 _ZERO_WIDTH = re.compile(r"[\u200b-\u200f\u2060\ufeff]")
 
-# `斎`／`齋` 的简体字形是 `齐`。`斋` 在中文里是另一个字（斋戒、书斋），上游把
-# `安齋らら` 写成 `安斋拉拉` 是照抄字形没换。只在日文一侧确实是 `斎`／`齋` 时才改，
-# 本来就写 `斋` 的名字不动——两个字不能混为一谈。
-_SAI_KANJI = ("斎", "齋")
-
 
 def strip_zero_width(name: str) -> str:
     return _ZERO_WIDTH.sub("", name or "")
-
-
-def resolve_sai(name: str, japanese: Iterable[str]) -> str:
-    if "斋" not in name:
-        return name
-    if any(char in str(value or "") for value in japanese for char in _SAI_KANJI):
-        return name.replace("斋", "齐")
-    return name
 
 
 # 简体中文没有对应字形的日本汉字：咲 凪 雫 辻 笹 榊 槙 䌷。中文资料页一律照抄，
@@ -352,8 +342,7 @@ def collect(
         if row["action"] in {"merge-drop", "conflict"}:
             continue
         current = str(row["target_name"])
-        japanese = [row["mapping_jp"], *row["_aliases"]]
-        simplified = simplify_kanji(resolve_sai(strip_zero_width(current), japanese))
+        simplified = simplify_kanji(strip_zero_width(current))
         if simplified == current:
             continue
         row["_aliases"].add(current)
