@@ -20,9 +20,8 @@ wireImageFallbacks(document.body);
    下面这些绑定都被写在它们之前的函数读写，所以声明必须排在文件最前面。
 
    `let`/`const` 有 TDZ：声明那一行执行之前读它是 ReferenceError，不是 undefined。
-   app.js 里原本有十来处「函数在上、声明在下」，只因为那些函数恰好都在启动之后才
-   第一次被调用才没炸；谁把其中一个挪进启动路径，首屏就直接白屏。真相只留一份，
-   一律放这里，别在原处再声明一次。
+   「函数在上、声明在下」只在那个函数直到启动之后才第一次被调用时才不炸；谁把它
+   挪进启动路径，首屏就直接白屏。真相只留一份，一律放这里，不在用它的地方再声明。
 
    契约由 tests/test_web_ui.py::test_module_level_bindings_are_declared_before_they_are_used
    守住：app.js 里任何模块级 `let`/`const` 都不许在声明行之前被引用。 */
@@ -59,7 +58,7 @@ let searchActive=-1;
 
    这张表替掉的是同一份知识的七个副本：`restoreRoute` 的分支链，加上 `navTo`、
    `navOn`、`openManage`、`manageSection`、`reloadCurrentSurface`、`refreshAll`
-   各自抄的那几条。加一屏原来要改七处，漏一处的症状还各不相同：URL 能进但侧栏不亮、
+   各自抄的那几条。加一屏只改这张表；同一份知识散成七处时，漏一处的症状还各不相同：URL 能进但侧栏不亮、
    点进去了但「换一批」把你扔回统计页、批量操作后回到首页而不是刚才那一屏。 */
 const ROUTES=[
   /* 目录页：首页和四个筛选态是同一屏，路径只决定初始筛选，所以共用一个 open。
@@ -207,9 +206,9 @@ function paintNav(){
 let surfaceEpoch=0;
 const surfacePath=()=>decodeURIComponent(location.pathname);
 let lastRoutePath=surfacePath();
-/* 每个表面自带一个 AbortController。以前离开一个表面只是把结果丢掉（`surfaceCurrent`
-   判过期），请求本身照跑到底：切三四页就有三四份读请求同时占着那 6 条连接，最后
-   停留的那一页反而排在队尾。现在 claimSurface 先作废上一屏的读请求再推进 epoch。
+/* 每个表面自带一个 AbortController：claimSurface 先作废上一屏的读请求再推进 epoch。
+   只判过期（`surfaceCurrent`）而让请求跑到底的话，切三四页就有三四份读请求同时占着
+   那 6 条连接，最后停留的那一页反而排在队尾。
    只有拿到 token 的读请求会被取消；写操作不带 signal，切页不会撤掉一次真实写入。 */
 let surfaceRequests=null;
 const surfaceToken=path=>({epoch:surfaceEpoch,path,signal:surfaceRequests?.signal});
@@ -220,7 +219,7 @@ const claimSurface=path=>{
   surfaceEpoch++;return surfaceToken(path)};
 /* 表面级读请求：带上这个表面的 signal，被取消时返回 null 而不是抛错。
    取消只可能由 claimSurface 触发，而它已经推进了 epoch，所以调用点紧随其后的
-   `surfaceCurrent()` 必然为假、走的还是原来那条过期分支——不用给每个表面套一层
+   `surfaceCurrent()` 必然为假、走的是同一条过期分支——不用给每个表面套一层
    try/catch，也不会多出一条没人接的 rejection。 */
 const surfaceApi=(token,path,options)=>api(path,{...options,signal:token.signal})
   .catch(error=>{if(isAbort(error))return null;throw error});
@@ -267,7 +266,7 @@ let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 const allowedSetting=(value,allowed,fallback)=>allowed.includes(value)?value:fallback;
 delete appSettings.rotateMinutes;
-/* 上一版移除了随机并把所有人的默认值强制成最近入库。只迁移这一个旧默认，
+/* 随机排序已从可选值里去掉，落在它上面的默认值迁移成最近入库。只迁移这一个默认，
    评分、观看次数等用户主动选择继续保留。 */
 let sortDefaultsMigrated=false;
 if((+appSettings.sortDefaultsVersion||0)<2&&appSettings.defaultSort==='new'){
@@ -392,9 +391,9 @@ const emptyState=emptyStateHtml;
    事只发一句短 toast，原因和恢复入口留在页面里的持久行上。 */
 /* Toast 的正文只接 `{text}`（转义后插入）或 `{html}`（原样插入）。
 
-   以前它接的是一个裸字符串，于是「这是文本还是 HTML」全靠调用点自己记得
-   `esc()`：actionReceipt 传的是已经转义过的串，followCheckToast 传的是带 `<b>`
-   的片段，两者在签名上完全一样。真出问题的是那些内容来自账本的回执——
+   签名不接裸字符串：那样「这是文本还是 HTML」全靠调用点自己记得 `esc()`，而
+   actionReceipt 传的是已经转义过的串、followCheckToast 传的是带 `<b>` 的片段，
+   两者在签名上完全一样。真出问题的是那些内容来自账本的回执——
    `已删除标签「${tagLabel(tag)}」` 里的标签名是用户或刮削器写进账本的，含 `<`
    就直接被当成标签插进 DOM。谁是 HTML 由调用点显式声明，不再靠约定。 */
 const toastBody=message=>message&&typeof message==='object'&&'html' in message
@@ -421,8 +420,8 @@ const toast=(message,{timeout=6000,warn=false,action=null}={})=>{
     item.style.height=`${item.offsetHeight}px`;item.getBoundingClientRect();
     item.classList.add('leaving');setTimeout(()=>item.remove(),200)};
   const arm=()=>{if(timeout)timer=setTimeout(close,timeout)};
-  /* 结果就写在同一条 toast 上，不再另发一条。原先是「关掉回执 + 弹出已撤销」，
-     两条在同一个底部对齐的栈里一进一出，看上去就是整块跳了一下。 */
+  /* 结果就写在同一条 toast 上。「关掉回执 + 另发一条已撤销」会让两条在同一个
+     底部对齐的栈里一进一出，看上去就是整块跳了一下。 */
   item.replaceMessage=(body,{warn:alert=false,timeout:next=4000}={})=>{
     clearTimeout(timer);paint(toastBody(body),alert);timeout=next;arm()};
   paint(initial,warn);
@@ -470,7 +469,7 @@ const cleanTagFilter=value=>String(value||'').split(',').filter(tag=>tag&&!DURAT
 const cleanSort=(value,fallback=appSettings.defaultSort)=>SORT_KEYS.includes(value)?value:fallback;
 /* 查询参数属于它所在的路由，所以目录的筛选只从目录 URL 里读。
 
-   以前这里无条件读启动 URL：`/follow?tag=blender` 会顺手把目录也筛成 blender，
+   不能无条件读启动 URL：`/follow?tag=blender` 会顺手把目录也筛成 blender，
    于是顶部画出「blender ✕ 全部清除」——一条目录筛选芯片挂在关注页上，回到首页
    还发现自己被筛住了。关注页的 `tag` 和目录的 `tag` 是两套词表（一个是 booru
    英文标签，一个是本地中文标签），撞在同一个键上只能靠路由分开。 */
@@ -1024,7 +1023,7 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
   if(detailPlayer)return detailPlayer;
   const statsButton=$('#playerStatsBtn'),statsPanel=$('#playerStats');
   const source=()=>options.source?Promise.resolve(options.source):detailStreamSource(it);
-  /* 拉不到就退回原生 video，和以前「页面里没有 videojs」是同一个兜底出口。 */
+  /* 拉不到就退回原生 video，和「页面里没有 videojs」是同一个兜底出口。 */
   try{await ensureVideojs()}
   catch(_e){
     video.controls=true;
@@ -1341,8 +1340,8 @@ function facePos(f){
    最右半边。上限给扫描留余量，但明确排除 259LUXU-1573 这类 1.78:1 剧照。 */
 const COVER_FRAME=`onload="const r=this.naturalWidth/this.naturalHeight;this.dataset.frame=r>1.2&&r<1.65?'sleeve':'front'"`;
 /* 整张封套里右侧正封占的宽高比。裁切靠的是容器比例而不是 CSS 裁剪：`object-fit:cover`
-   只在容器比图片更「竖」时才会横向裁，容器一旦宽过 1.48 就变成纵向裁、整张封套原样
-   铺满——这正是「大图」以前只是撑满画布、没取到右侧的原因。 */
+   只在容器比图片更「竖」时才会横向裁；容器一旦宽过 1.48 就变成纵向裁、整张封套原样
+   铺满，「大图」于是只撑满画布而取不到右侧。 */
 const COVER_FRONT_RATIO=0.7;
 /* 竖屏一律用同一个比例，不按每条视频的实际宽高。竖屏素材从 0.5 到 0.9 都有，
    按各自比例渲染会让竖屏条和竖屏网格高低不齐；比例不同的用 contain 上下留黑边
@@ -1387,8 +1386,8 @@ function cardIdentity(it,linked=true){
         .map((nm,i)=>link('mav',`data-entity-kind="performer" data-entity-name="${esc(nm)}" title="打开${esc(performerLabel(it))}页：${esc(nm)}"`,avatarInner(nm,performerRefs[i],REP[nm])))
         .join('')}</div>`
     : (()=>{
-        /* 头像和名字必须落到同一个身份。原来头像先看 performer、名字先看 creator，
-           碰上同名的 creator/performer 重复实体（账本里有 35 组）就会一个跳
+        /* 头像和名字必须落到同一个身份。各自挑 kind（头像先看 performer、名字先看
+           creator）时，同名的 creator/performer 重复实体（账本里有 35 组）会一个跳
            `/performers/x`、另一个跳 `/creators/x`，同一张卡上两个入口去两个地方。 */
         const avatarKind=identity.kind||(performer?'performer':(primaryCreator?'creator':(it.studio?'studio':'')));
         const avatarName=identity.kind?identity.name:(performer||primaryCreator||it.studio||who);
@@ -1410,8 +1409,8 @@ function cardHtml(it,cls){
   const parts=it.part_group||null;
   const editions=it.edition_group||null;
   const useCover=jav&&layout!=='preview'&&it.has_cover;
-  /* 卡片比例。这个值以前算出来就没人用过——`.pic` 一直写死 16/9，于是 JAV 的两种
-     版式看起来一模一样。现在写进 `--card-ratio`，由 CSS 消费。 */
+  /* 卡片比例，写进 `--card-ratio` 交给 CSS 消费。`.pic` 写死 16/9 的话，JAV 的两种
+     版式看起来一模一样。 */
   /* 一个列表里所有卡片必须同高，比例只能由**列表的语境**决定，不能由单条媒体决定。
      按 `it.ctx_orient` 逐条算的话，任何混着横屏和竖屏的网格都会高低不齐——资料页、
      相关推荐、搜索结果全中招。竖屏比例只留给两种整列都是竖屏的场合：竖屏条，
@@ -1454,8 +1453,8 @@ function cardHtml(it,cls){
       <button data-seek="${appSettings.seekSeconds}" title="前进 ${appSettings.seekSeconds} 秒" aria-label="前进 ${appSettings.seekSeconds} 秒">${icon('rotate-cw')}<b>${appSettings.seekSeconds}</b></button>
       <button data-open title="打开详情" aria-label="打开详情">${icon('maximize')}</button></div>`;
   /* 小图与预览图都是 16:9 横图，只更换图片来源；元数据 DOM 和高度必须完全相同。 */
-  /* 叠层纸边是「这张卡代表不止一条」的视觉说法，分卷和版次都成立。原先只给分卷，
-     于是同样被折叠过的版次卡长得和普通卡一模一样，只有角标能看出来。 */
+  /* 叠层纸边是「这张卡代表不止一条」的视觉说法，分卷和版次都成立。只给分卷的话，
+     同样被折叠过的版次卡长得和普通卡一模一样，只有角标能看出来。 */
   const stacked=parts||editions;
   return `<article class="card ${stacked?'partcard ':''}${cls||''} ${it.disposal==='trash'?'pending-delete':''}" data-id="${it.id}"${parts?` data-part-seed="${parts.seed_id}"`:''}>
     ${stacked?'<div class="partstack">':''}<div class="pic" style="--card-ratio:${ar}">${thumb}<button class="cardopenhit" data-open aria-label="打开 ${esc(shownName)}${parts?'分卷':editions?'版本':'详情'}"></button>
@@ -1950,7 +1949,7 @@ async function buildBars(){
   const sec=(t,b,x,cat)=>b?`<div class="sec${cat?' cat-'+cat:''}"><h3>${t}${x||''}</h3>${b}</div>`:'';
   const scopedCreators=context.type==='entity'&&context.kind==='creator'
     ? facetData.creators.filter(item=>item.k!==context.name):facetData.creators;
-  // 与窄栏共用 EDGE_ICONS —— 两边条目必须一致，原来抽屉是另一份硬编码
+  // 与窄栏共用 EDGE_ICONS —— 两边条目必须一致，抽屉不另写一份硬编码
   const navBtn=(k,label,ic)=>`<button data-nav="${k}" draggable="true" aria-pressed="${navOn(k)}">
     ${icon(ic)}<span>${label}</span></button>`;
   $('#drawer').innerHTML=
@@ -3008,7 +3007,7 @@ async function openReview(push=true){
       const item=button.closest('[data-review-key]'),row=rows.find(x=>String(x.item_key)===item.dataset.reviewKey);button.disabled=true;
        const selectedIds=[...item.querySelectorAll('[data-review-asset][aria-pressed="true"]')].map(cell=>+cell.dataset.reviewAsset);
        const candidateKey=item.querySelector('[name^="metadata-"]:checked')?.value||'';
-       /* api() 在任何非 2xx 都 throw。这里原来没有 catch：错误被吞成 unhandled
+       /* api() 在任何非 2xx 都 throw，这个 onclick 必须自己 catch：漏掉就吞成 unhandled
          rejection，下面的 button.disabled=false 永远到不了，于是按钮永久禁用、
          界面一句话都不给——用户看到的就是「点了没反应」。
          失败必须说出来，并且把按钮放开让人能重试。 */
@@ -3080,8 +3079,8 @@ if(!globalThis.__peachFsrcCloser){
 /* 关注页一次取一屏。counts 是全库口径（「未看 2292」），groups 只有这一页——
    两个数并排显示时看起来像自相矛盾，实际是两个口径，所以列表底部要能继续加载。 */
 const FOLLOW_PAGE=300;
-/* 作者、来源和标签一起交给服务端。以前只有状态走服务端、这三个在浏览器里筛，
-   于是药丸上的数字（全库口径）和列表（筛过的这几页）是两套口径，换个筛选条件
+/* 作者、来源和标签一起交给服务端。只让状态走服务端、这三个在浏览器里筛的话，
+   药丸上的数字（全库口径）和列表（筛过的这几页）就是两套口径，换个筛选条件
    数字纹丝不动；而且选个冷门作者，一页 300 条里可能只剩两条，得反复点加载更多。 */
 const followPageUrl=offset=>
   `/api/follow?limit=${FOLLOW_PAGE}&offset=${offset}`
@@ -3126,7 +3125,7 @@ let followCheckReport=null;
 const FOLLOW_FILTERS=[['','全部'],['new','未看'],['seen','已看'],['saved','已保存'],['ignored','已忽略']];
 
 /* 账本里一律存 UTC（ISO 带 Z），界面要按看的人所在时区显示。
-   原来直接把那串字面量印出来，UTC+8 的人看到的每个时间都早 8 小时。 */
+   直接把那串字面量印出来的话，UTC+8 的人看到的每个时间都早 8 小时。 */
 function localTime(iso){
   if(!iso)return '';
   // 没有时区标记的按 UTC 解释——存进去的时候就是 UTC。
@@ -3264,7 +3263,7 @@ function followResourceLinks(item){
   ).join('')}</div>`;
 }
 
-/* 集合弹层沿用原来的动态语义：线程标题不能冒充每条回复的正文，
+/* 集合弹层与列表共用同一套动态语义：线程标题不能冒充每条回复的正文，
    行首则说明它与主条目的关系。 */
 function followCollectionCopy(group,item,mark=''){
   let label=mark;
@@ -3314,8 +3313,8 @@ function followEmbeddedQueueHtml(item,mediaIndex){
 
 /* 重建条目索引。`merge` 时只往里加，不清空已有的。
 
-   单条查询（followItemById）以前也走整表重建，于是点一个不在索引里的条目会把索引
-   替换成只剩那一条；再点别的又没有、又替换。列表能翻页之后这条路径被踩得很频繁，
+   单条查询（followItemById）不能走整表重建：那会让点一个不在索引里的条目把索引
+   替换成只剩那一条，再点别的又没有、又替换。列表能翻页之后这条路径被踩得很频繁，
    表现就是「多点几次详情就打不开了」。 */
 function indexFollowItems(data,{merge=false}={}){
   const groups=data?.groups||[];
@@ -3518,7 +3517,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
 }
 
 /* object-fit:contain 后图片左右黑边会随图片比例和窗口改变。箭头应位于黑边的视觉中心，
-   不能永远贴容器边缘；黑边太窄时才退回原来的安全内边距。 */
+   不能永远贴容器边缘；黑边太窄时才退回固定的安全内边距。 */
 function alignFollowImageControls(){
   const frame=$('#stage:not([hidden]) .followdetailmedia');
   const image=frame?.querySelector('.followdetailposter');
@@ -3654,7 +3653,7 @@ function followCheckFailNote(report){
 /* ── 看的那一页 ── */
 /* URL 是关注页筛选的唯一真相源。
 
-   以前只有 author 和 media 在这里，provider、tag、status 只活在模块级全局里：
+   五个键都归 URL。只放 author 和 media、让 provider、tag、status 活在模块级全局里的话：
    离开再回来还按着（谁都不重置它们），刷新就丢，也没法从别处链到一个筛好的视图。
    标签页要能点一个在线标签直接进「关注 · 这个标签」，就必须走 URL。
 
@@ -3833,8 +3832,8 @@ function wireFollowOlder(){
 async function openFollow(push=true,renderForDetail=false){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   /* 从窄栏点进来（push）是「重新进入」，回到干净的 /follow；其余情况一律照 URL
-     推导。筛选状态不再靠这里逐个手写重置——漏一个就会像 provider、tag、status
-     以前那样一直按着，而它们还决定服务端取哪些条目，等于取错数据。 */
+     推导。筛选状态由 URL 推导，不在这里逐个手写重置——漏一个就会让 provider、tag、
+     status 一直按着，而它们还决定服务端取哪些条目，等于取错数据。 */
   if(push)followDiscoverySeed=Math.floor(Math.random()*0xffffffff);
   if(push)route('/follow');
   if(location.pathname==='/follow')readFollowView();
@@ -4025,7 +4024,7 @@ const CRED_STATE={required:['需要','req'],optional:['可选','opt'],
 /* placeholder 用库里真实存在的创作者，而不是编一个名字——`facets.creators`
    是首页推荐词同一条数据路径，保证是用户自己库里的人。取不到就退回链接示例。 */
 /* 「猜你喜欢」由后端从**用户自己浏览过的在线创作者**里挑（`location='online'` 的
-   pixiv / X 资产，项目初期从浏览记录导入的那批）。曾经用过 `facets.creators`，
+   pixiv / X 资产，项目初期从浏览记录导入的那批）。不取 `facets.creators`：
    那是「他有谁的文件」而不是「他喜欢谁」——那些人在 kemono/rule34 上大多找不到，
    点了白点。判据留在 web_follow._suggestions。 */
 function followSuggestionChips(list){
@@ -5857,7 +5856,7 @@ function renderSearchMenu(){const menu=$('#searchMenu'),history=readSearchHistor
       const row=b.closest('[data-search-value]'),group=row&&row.closest('.searchgroup');
       if(row)row.remove();
       if(group&&!group.querySelector('[data-search-value]'))group.remove();
-      // 行没了，键盘选中的下标就不再指向原来那一项，归零重来。
+      // 行没了，键盘选中的下标就指不回同一项，归零重来。
       searchActive=-1;
       menu.querySelectorAll('[data-search-value]').forEach(x=>x.classList.remove('active'));
     };
@@ -5910,8 +5909,8 @@ async function loadShorts(requestSeq=loadRequestSeq,surface=surfaceToken(surface
   releaseHoverPreviews($('#srow'));
   const grid=$('#grid');grid.querySelector('#shortsInline')?.remove();
   /* 竖屏条整行占位（grid-column:1/-1），插在行边界上才不会把上一行截断留空。
-     早先的做法是另拉一批横屏视频补满余位，但那批 id 不在分页序列里，
-     翻下一页必然重复，而且被当成 scard 渲染会把横屏压成竖框。 */
+     余位不另拉一批横屏视频来补：那批 id 不在分页序列里，翻下一页必然重复，
+     而且被当成 scard 渲染会把横屏压成竖框。 */
   const columns=Math.max(1,getComputedStyle(grid).gridTemplateColumns.split(' ').length);
   const cards=[...grid.children].filter(x=>x.matches('.card[data-id]'));
   const anchor=cards[Math.min(cards.length,columns*SHORTS_ROW_OFFSET)]||null;
@@ -6404,8 +6403,8 @@ function wireTelemetry(it,v,sel){
           const b=$('#realBar'); if(b)b.style.width=rp.toFixed(1)+'%';
         }});
     acc=0;seeks=0};
-  /* 十秒一次的上报只有一个定时器。原来 onplay 每次都新起一个而只有 onpause 清，
-     所以「播放→拖动→播放」这类不经过 pause 的序列会把定时器叠起来；更要紧的是
+  /* 十秒一次的上报只有一个定时器。onplay 每次新起一个而只有 onpause 清的话，
+     「播放→拖动→播放」这类不经过 pause 的序列会把定时器叠起来；更要紧的是
      离开详情时既不 pause 也不 ended，setInterval 连着已被销毁的 video 一直跑，
      每十秒往 /api/activity 打一发。跟 wireFollowTelemetry 对齐：`emptied` 收尾，
      并向舞台登记一条撤销。 */
@@ -6526,7 +6525,7 @@ function applyTokFit(v){
   if(v.readyState>=1)fit();
   else v.addEventListener('loadedmetadata',fit,{once:true});
 }
-// 旋转手机或改窗口大小后，原来该铺满的可能要改成完整显示，反之亦然。
+// 旋转手机或改窗口大小后，同一条视频的铺满／完整显示判定可能翻转。
 addEventListener('resize',()=>{
   if($('#tok').hidden)return;
   $('#tokTrack').querySelectorAll('video').forEach(tokFitOne);
@@ -6853,8 +6852,8 @@ async function refreshAll(automatic=false){
   }
   if(!$('#index').hidden){return}
   state.sort='seed';state.seed=rollSeed();
-  // 顶部三层（女优头像、厂牌、标签）此前从不跟着换：它们有 30 秒会话缓存，
-  // 而 refreshAll 只重载网格，于是「换一批」之后上面还是原来那批人。
+  // 顶部三层（女优头像、厂牌、标签）有 30 秒会话缓存，而 refreshAll 只重载网格：
+  // 不清掉这两个缓存，「换一批」之后上面还是同一批人。
   barsDataCache=null;barsDataPromise=null;
   await Promise.all([load(true),buildBars()]);
   if(!automatic)window.scrollTo({top:0,behavior:'smooth'});
@@ -6883,8 +6882,8 @@ $('#censorSetting').onchange=e=>{
 
 /* 横向行支持鼠标拖动（三层顶栏、短片带、接着看都没滚动条，只能滚轮/触摸） */
 /* 正在被拖的那一行。松开鼠标全站只需要一个 window 监听。
-   原来是每 wireDrag 一个元素就往 window 上挂一条 mouseup，而这些横向行是
-   innerHTML 重绘出来的：每次重绘都换一批新节点，旧闭包连着已经脱离文档的元素
+   每 wireDrag 一个元素就往 window 上挂一条 mouseup 的话，麻烦在这些横向行是
+   innerHTML 重绘出来的：每次重绘都换一批新节点，那些闭包连着已经脱离文档的元素
    永远不回收。一屏三层顶栏加两条横向带，翻十几页就攒下上百条死监听。 */
 let dragRow=null;
 window.addEventListener('mouseup',()=>{

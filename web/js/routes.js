@@ -1,9 +1,9 @@
 /* 路由匹配：路径字符串进、参数出。不碰 DOM，也不认识任何一个页面函数。
 
-   以前「这个路径是哪一屏」这件事在 app.js 里写了七遍：`restoreRoute()` 一条
-   二十五分支的 if 链，`navTo`／`navOn`／`openManage`／`manageSection`／
-   `reloadCurrentSurface`／`refreshAll` 各自再抄一份自己关心的那几条。加一屏要改
-   七处，漏一处的症状各不相同：URL 能进但侧栏不亮、点进去了但换一批把你扔回统计页、
+   「这个路径是哪一屏」只在这张表里声明一次。散成七份的话——`restoreRoute()` 一条
+   二十五分支的 if 链，加上 `navTo`／`navOn`／`openManage`／`manageSection`／
+   `reloadCurrentSurface`／`refreshAll` 各自关心的那几条——加一屏要改七处，
+   漏一处的症状各不相同：URL 能进但侧栏不亮、点进去了但换一批把你扔回统计页、
    批量操作后回到首页而不是刚才那一屏。真实踩过的就有抽屉漏了追更和播放列表那次。
 
    现在只有一张 ROUTES 表（在 app.js 里，因为它要引用各个 `open*`），匹配与取参
@@ -12,7 +12,7 @@
    `match` 的写法只有三种，故意不上正则——路由是给人读的清单，不是模式语言：
 
    - `'/stats'`：精确路径。
-   - `'/item/:id'`：`:name` 吃掉一段，且只吃数字。原来每条动态路由都自己写
+   - `'/item/:id'`：`:name` 吃掉一段，且只吃数字。这一条由 `match` 统一判，不让每条动态路由各写一遍
      `/^\d+$/.test(parts[1]||'')`，忘写的那条会把 `/item/abc` 当合法 id 送进
      `+parts[1]` 变成 `NaN`。
    - `'/performers/:name*'`：`:name*` 吃掉剩下的全部段，至少一段。女优名字里有

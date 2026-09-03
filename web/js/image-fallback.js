@@ -1,7 +1,7 @@
 /* 图片回退链：一份声明式契约，替掉散在模板里的内联 `onerror`。
 
-   原来每个 `<img>` 自带一小段 `onerror="…"` 的 JS，同一条「取不到就换下一张、
-   都取不到就把 `<img>` 拿掉」的链在 app.js 里写了四种版本。代价是实打实的：
+   每个 `<img>` 自带一小段 `onerror="…"` 的 JS 时，同一条「取不到就换下一张、
+   都取不到就把 `<img>` 拿掉」的链在 app.js 里有四种版本。代价是实打实的：
    URL 要同时穿过 HTML 属性转义和 JS 字符串两层，错一层不报错，只是这张图从此
    再也不回退；改一次行为要照着二十多处各改一遍；将来上 CSP 时
    `unsafe-inline` 是这些属性唯一的活路。
@@ -78,8 +78,8 @@ export function advanceImageFallback(image) {
 }
 
 /* 全站一条监听就够。`error` 不冒泡，但捕获阶段照样会经过祖先，所以挂在根上的
-   捕获监听能接住任何后代图片，不必给每个 `<img>` 各挂一个——那正是以前
-   `.entityfavicon` 每次重绘都要重新绑一轮的原因。
+   捕获监听能接住任何后代图片，不必给每个 `<img>` 各挂一个——逐个绑的话，
+   `.entityfavicon` 每次重绘都要重新绑一轮。
    只认 `<img>`：同一个事件名也会从 `<video>`、`<source>`、`<script>` 上发出来。 */
 export function wireImageFallbacks(root) {
   root.addEventListener('error', event => {
