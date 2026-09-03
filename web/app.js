@@ -718,6 +718,9 @@ function pushPlayerStat(samples,value){
   samples.push(Number.isFinite(value)&&value>0?value:0);
   if(samples.length>PLAYER_STATS_HISTORY)samples.splice(0,samples.length-PLAYER_STATS_HISTORY);
 }
+/* 设置面板和播放统计都盖在画面上，同时开就互相遮挡。开哪个都往 document 广播一次，
+   另一个自己收起：两块面板挂在不同的作用域里，共享一个事件名比互相持有引用干净。 */
+const PLAYER_PANEL_EVENT='peach-player-panel';
 function playerStatsPlot(samples,kind,ceiling,label){
   const values=Array(Math.max(0,PLAYER_STATS_HISTORY-samples.length)).fill(null).concat(samples);
   const top=Math.max(1,ceiling||0);
@@ -870,8 +873,11 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0,initialSourceQu
     return {options,active};
   };
   const isOpen=()=>menu.getAttribute('aria-hidden')!=='true';
-  const setOpen=open=>{menu.setAttribute('aria-hidden',String(!open));toggle.setAttribute('aria-expanded',String(open))};
+  const setOpen=open=>{menu.setAttribute('aria-hidden',String(!open));toggle.setAttribute('aria-expanded',String(open));
+    if(open)document.dispatchEvent(new CustomEvent(PLAYER_PANEL_EVENT,{detail:'settings'}))};
   const close=()=>setOpen(false);
+  const closeSettingsForOtherPanel=event=>{if(event.detail!=='settings')close()};
+  document.addEventListener(PLAYER_PANEL_EVENT,closeSettingsForOtherPanel);
   /* 面板之间的切换照 YouTube 播放器 9470c977 的 www-player.css：popup 自己 .25s
      cubic-bezier(.4,0,.2,1) 改高度，旧面板往来的方向滑出、新面板从去的方向滑入。
      旧面板必须先脱离布局再滑，否则两块内容会在动画期间把菜单撑成两倍高；高度也得
@@ -945,7 +951,9 @@ function mountPlayerQualityControl(player,video,fallbackHeight=0,initialSourceQu
   root.addEventListener('keydown',event=>{if(event.key==='Escape'){close();toggle.focus()}});
   video.addEventListener('loadedmetadata',()=>{if(isOpen())showMain();else qualityRows()});
   levels?.on?.(['addqualitylevel','removequalitylevel'],()=>{if(isOpen())showMain();else qualityRows()});
-  player.on('dispose',()=>{document.removeEventListener('pointerdown',outside);if(panelTimer)clearTimeout(panelTimer)});qualityRows();
+  player.on('dispose',()=>{document.removeEventListener('pointerdown',outside);
+    document.removeEventListener(PLAYER_PANEL_EVENT,closeSettingsForOtherPanel);
+    if(panelTimer)clearTimeout(panelTimer)});qualityRows();
   mountPlayerTheaterControl(player,root);
   mountPlayerChromeLayout(player);
   return next=>{sourceQualities=next?.length?next:null;if(isOpen())showMain();else qualityRows()};
@@ -1241,11 +1249,22 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
     mountPlayerCenterControls(detailPlayer);
     if(statsButton)statsButton.hidden=false
   });
-  if(statsButton&&statsPanel)statsButton.onclick=()=>{
-    const open=statsPanel.hidden;statsPanel.hidden=!open;statsButton.setAttribute('aria-pressed',String(open));
-    if(open){updateStats();if(detailStatsTimer)clearInterval(detailStatsTimer);detailStatsTimer=setInterval(updateStats,1000)}
-    else if(detailStatsTimer){clearInterval(detailStatsTimer);detailStatsTimer=null}
-  };
+  if(statsButton&&statsPanel){
+    const closeStats=()=>{
+      if(statsPanel.hidden)return;
+      statsPanel.hidden=true;statsButton.setAttribute('aria-pressed','false');
+      if(detailStatsTimer){clearInterval(detailStatsTimer);detailStatsTimer=null}
+    };
+    statsButton.onclick=()=>{
+      if(!statsPanel.hidden){closeStats();return}
+      document.dispatchEvent(new CustomEvent(PLAYER_PANEL_EVENT,{detail:'stats'}));
+      statsPanel.hidden=false;statsButton.setAttribute('aria-pressed','true');
+      updateStats();if(detailStatsTimer)clearInterval(detailStatsTimer);detailStatsTimer=setInterval(updateStats,1000);
+    };
+    const closeStatsForOtherPanel=event=>{if(event.detail!=='stats')closeStats()};
+    document.addEventListener(PLAYER_PANEL_EVENT,closeStatsForOtherPanel);
+    detailPlayer.on('dispose',()=>document.removeEventListener(PLAYER_PANEL_EVENT,closeStatsForOtherPanel));
+  }
   source().then(source=>{
     if(!detailPlayer||detailPlayer!==player||player.isDisposed())return;
     segmentedSource=String(source.type||'').includes('mpegurl');
@@ -6278,8 +6297,8 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
        :`<video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="metadata"></video>`}
     </div>${queueContext?queueHtml(queueContext,it.id):''}
     <div class="side"><div class="sidecontent">
-      <div class="detailtitle">${srcBadge(it.location,it.cost,'srcbig')}
-        <div class="stitle">${javTitleHtml(it)}${it.location==='online'?'':`<span class="srctools detailtitletools">${sourceToolButtons(it.id)}</span>`}</div></div>
+      <div class="detailtitle">${srcBadge(it.location,it.cost,'srcbig')}${it.location==='online'?'':`<span class="srctools detailtitletools">${sourceToolButtons(it.id)}</span>`}
+        <div class="stitle">${javTitleHtml(it)}</div></div>
       ${it.location==='online'?'':`<span class="srcstate detailtitlestate" aria-live="polite"></span>`}
       <div class="smeta mono">
         <span class="detailmetaitem">${icon('monitor')}<span>${it.width||'?'}×${it.height||'?'}</span></span>

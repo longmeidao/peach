@@ -1226,7 +1226,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 /* 窄屏下 16:9 只剩 200px 出头，设置面板和统计面板都比这高，必然被裁。给播放器一个
    最低高度，画面按 object-fit:contain 上下补黑边，浮层就有地方站。占位门同用一个值，
    否则点开的一瞬间整页会往下跳一截。 */
-.vwrap>.video-js{width:100%;height:auto;min-height:280px;max-height:76vh;aspect-ratio:16/9;background:#000}
+.vwrap>.video-js{width:100%;height:auto;min-height:320px;max-height:76vh;aspect-ratio:16/9;background:#000}
 .vwrap .video-js .vjs-tech{object-fit:contain}
 .vwrap .video-js .vjs-big-play-button{left:50%;top:50%;width:56px;height:56px;margin:0;
   transform:translate(-50%,-50%);border:0;border-radius:50%;
@@ -1329,7 +1329,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vwrap .video-js .vjs-volume-panel .vjs-volume-level{height:2px;background:#fff}
 .vwrap .video-js .vjs-volume-panel .vjs-volume-level:before{top:50%;right:-6px;width:12px;height:12px;margin:0;font-size:0;border-radius:50%;background:#fff;transform:translateY(-50%)}
 .vwrap .video-js .vjs-volume-panel .vjs-volume-tooltip{z-index:5!important;left:50%;right:auto;top:auto;bottom:calc(100% + 32px);
-  float:none;transform:translateX(-50%);padding:5px 9px;border-radius:var(--surface-radius);background:rgba(0,0,0,.3);
+  float:none;transform:translateX(-50%);padding:5px 9px;border-radius:var(--surface-radius);background:rgba(0,0,0,.6);
   backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:#fff;font-family:inherit;font-size:var(--fs-sm);font-weight:500;
   line-height:15px;text-shadow:0 0 2px #000;overflow:visible;white-space:nowrap}
 .vjs-peach-right-controls{box-sizing:border-box;position:relative;align-self:flex-end;flex:0 0 auto;height:40px;margin:0 0 8px;
@@ -1418,11 +1418,13 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .vjs-peach-option-check{width:35px;height:24px;display:grid;place-items:center}.vjs-peach-option-check svg{width:24px;height:24px;display:block;fill:currentColor;stroke:none}
 .vjs-peach-option-label{min-width:0}
 /* 悬停提示取自 YouTube delhi-modern（player 9470c977 的 www-player.css）：毛玻璃 blur(16px)、
-   rgba(0,0,0,.3) 底、8px 圆角（--surface-radius）、5px 9px 内距、13px/15px 500 字重（--fs-sm）、
+   8px 圆角（--surface-radius）、5px 9px 内距、13px/15px 500 字重（--fs-sm）、
    text-shadow 0 0 2px #000；快捷键徽标 1px rgba(255,255,255,.3) 边、4px 圆角（--badge-radius）、
-   最小宽 11px、左外边距 4px，空了就收起。控制条上每个按钮共用这一套。 */
+   最小宽 11px、左外边距 4px，空了就收起。控制条上每个按钮共用这一套。
+   底色是 Peach 主动偏离上游的一处：上游 rgba(0,0,0,.3) 加 blur 落在亮画面上只剩一块低对比
+   灰板，悬停时看着像凭空多出来一块阴影。提示和播放器其它悬浮件同档，一律 rgba(0,0,0,.6)。 */
 .vjs-peach-tooltip{position:absolute;z-index:5;right:50%;bottom:calc(100% + 12px);transform:translateX(50%);
-  display:none;align-items:center;padding:5px 9px;border-radius:var(--surface-radius);background:rgba(0,0,0,.3);
+  display:none;align-items:center;padding:5px 9px;border-radius:var(--surface-radius);background:rgba(0,0,0,.6);
   backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:#fff;white-space:nowrap;
   font-size:var(--fs-sm);font-weight:500;line-height:15px;text-shadow:0 0 2px #000;pointer-events:none}
 .vjs-peach-tooltip kbd{display:flex;justify-content:center;align-items:center;min-width:11px;margin-left:4px;padding:0 2px;
@@ -1459,7 +1461,13 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
    窄屏照原样偏移会把整个面板推到播放器外面。贴住设置键右缘往左铺，高度按播放器
    自己的高度收顶（`--peach-player-h` 由布局脚本写在播放器元素上）。 */
 .video-js.vjs-peach-xsmall .vjs-peach-settings-menu{right:0;width:min(274px,calc(100vw - 48px));
-  max-height:calc(var(--peach-player-h,420px) - 64px)}
+  max-height:calc(var(--peach-player-h,420px) - 74px)}
+/* 面板底边离播放器底边 66px（离设置键 52px 加控制条那 14px），顶上再留 8px，所以收顶取
+   播放器高度减 74px：320px 高的播放器给出 246px。八档播放速度单列要 57+16+8×48=457px，
+   排两列、行高 44px 是 57+8+4×44=241px，最挤的那个面板也不用滚。 */
+.video-js.vjs-peach-xsmall .vjs-peach-panel-menu{padding:4px 8px}
+.video-js.vjs-peach-xsmall .vjs-peach-menu-option{min-height:44px}
+.video-js.vjs-peach-xsmall .vjs-peach-panel-menu:has(>.vjs-peach-menu-option:nth-child(5)){display:grid;grid-template-columns:1fr 1fr}
 .video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control:not(.vjs-peach-settings):not(.vjs-peach-expand){display:none}
 .video-js.vjs-peach-xsmall .vjs-peach-expand{display:block}
 .video-js.vjs-peach-xsmall.vjs-peach-right-expanded .vjs-peach-right-controls>.vjs-control:not(.vjs-peach-settings):not(.vjs-peach-expand){display:block}
@@ -1510,7 +1518,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
    否则「640 KB/s」会在这条 flex 行里断成两行，把 40px 的胶囊顶破。 */
 .playernet svg{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
 .playernet[hidden]{display:none}
-.gate{aspect-ratio:16/9;width:100%;min-height:280px;background:var(--sunk);border:1px dashed var(--meter);
+.gate{aspect-ratio:16/9;width:100%;min-height:320px;background:var(--sunk);border:1px dashed var(--meter);
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer}
 /* 占位说明的字号原先写在 openItem 的模板里当内联 style，三处各写一遍、
    连 `color:var(--muted)` 也抄了三份。 */
@@ -1532,8 +1540,12 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .sidecontent{box-sizing:border-box;width:100%;height:100%;max-height:76vh;padding:18px;display:flex;gap:0;
   flex-direction:column;overflow-y:auto;overflow-x:hidden}
 .stitle{font-size:var(--fs-lg);line-height:1.4;word-break:break-all;margin-bottom:8px}
-.detailtitle{display:flex;align-items:flex-start;gap:8px;margin-bottom:10px}
-.detailtitle>.srcbig{place-items:start;flex:none;width:17px;margin-top:2px}.detailtitle .stitle{min-width:0;margin:0}
+/* 来源徽标和两个文件动作都浮出标题的文字流：徽标浮左只缩进第一行，折行后的第二行顶到
+   内容左边缘；动作浮右占住行末那 66px，右边有空间时不会被挤到下一行。两个浮动块都刚好
+   一行高（28px），所以第二行起是整行宽。行高 1.75 让 26px 的按钮上下各留出空隙。 */
+.detailtitle{display:flow-root;margin-bottom:10px}
+.detailtitle>.srcbig{float:left;width:17px;height:28px;margin:0 8px 0 0;place-items:center}
+.detailtitle .stitle{min-width:0;margin:0;line-height:1.75}
 /* 源文件管理：定位 + 目录对账。图标必须显式写 stroke/fill，Lucide 是描边路径，
    缺了就被按默认 fill:black 画成黑块（详见 .photonav 那一段的同类修复）。 */
 .srctools{display:flex;align-items:center;gap:6px;margin:0 0 10px;flex-wrap:wrap}
@@ -1544,7 +1556,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .srctools button:hover{background:var(--hover);color:var(--ink)}
 .srctools button:disabled{background:var(--surface);border-color:var(--border-15);color:var(--muted);cursor:default}
 .srcstate{font-size:var(--fs-xs);color:var(--muted);min-width:0;flex:1 1 100%}
-.detailtitletools{display:inline-flex;vertical-align:middle;margin:0 0 0 8px;translate:0 -2px;flex-wrap:nowrap}.detailtitlestate{display:block;margin:-4px 0 10px}
+.detailtitletools{float:right;height:26px;margin:0 0 2px 8px;flex-wrap:nowrap}.detailtitlestate{display:block;margin:-4px 0 10px}
 .detailtitlestate:empty{display:none}
 .photohead .srctools{margin:0 0 0 auto}
 .photohead .srcstate{flex:none}

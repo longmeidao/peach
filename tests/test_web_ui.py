@@ -1813,22 +1813,66 @@ class WebUiSourceTests(unittest.TestCase):
     def test_narrow_player_keeps_both_overlays_inside_the_frame(self):
         """390 宽的视口上 16:9 的播放器只有 200 出头的高，设置面板要 212、统计面板要 256。
 
-        所以先给播放器一个 280px 的最低高度，窄屏改成上下留黑边；再让两个浮层各自
+        所以先给播放器一个 320px 的最低高度，窄屏改成上下留黑边；再让两个浮层各自
         按播放器高度收顶，谁都不可能超过播放器本身。窄屏的设置面板还要撤掉
         `right:-100px`——那个偏移是给设置键右边还有影院键和全屏键时留的位。
         """
         self.assertPageContains(
-            ".vwrap>.video-js{width:100%;height:auto;min-height:280px;max-height:76vh;"
+            ".vwrap>.video-js{width:100%;height:auto;min-height:320px;max-height:76vh;"
             "aspect-ratio:16/9;background:#000}")
-        self.assertPageContains(".gate{aspect-ratio:16/9;width:100%;min-height:280px")
+        self.assertPageContains(".gate{aspect-ratio:16/9;width:100%;min-height:320px")
         self.assertPageContains(
             "max-height:calc(100% - 114px);overflow-y:auto;overscroll-behavior:contain;")
         self.assertPageContains(
             ".video-js.vjs-peach-xsmall .vjs-peach-settings-menu{right:0;"
             "width:min(274px,calc(100vw - 48px));")
-        self.assertPageContains("max-height:calc(var(--peach-player-h,420px) - 64px)}")
+        self.assertPageContains("max-height:calc(var(--peach-player-h,420px) - 74px)}")
         # 面板的定位祖先只有 36px 高，百分比高度到不了播放器，得由布局脚本把高度写上来。
         self.assertPageContains("box.style.setProperty('--peach-player-h',`${box.clientHeight}px`)")
+
+    def test_narrow_settings_panel_fits_eight_speed_options_without_scrolling(self):
+        """八档播放速度单列要 57+16+8×48=457px，320px 高的播放器只给得出 246px。
+
+        行高压到 44px、排成两列是 57+8+4×44=241px；只让选项多于四条的列表分两列，
+        主面板那三行仍是单列。
+        """
+        self.assertPageContains(".video-js.vjs-peach-xsmall .vjs-peach-panel-menu{padding:4px 8px}")
+        self.assertPageContains(".video-js.vjs-peach-xsmall .vjs-peach-menu-option{min-height:44px}")
+        self.assertPageContains(
+            ".video-js.vjs-peach-xsmall .vjs-peach-panel-menu"
+            ":has(>.vjs-peach-menu-option:nth-child(5)){display:grid;grid-template-columns:1fr 1fr}")
+
+    def test_opening_one_player_overlay_closes_the_other(self):
+        """设置面板和播放统计都盖在画面上，同时开就互相遮挡，开哪个另一个自己收起。
+
+        两块面板挂在不同作用域里，共享一个 document 事件名比互相持有引用干净。
+        """
+        self.assertPageContains("const PLAYER_PANEL_EVENT='peach-player-panel';")
+        self.assertPageContains(
+            "if(open)document.dispatchEvent(new CustomEvent(PLAYER_PANEL_EVENT,{detail:'settings'}))};")
+        self.assertPageContains(
+            "const closeSettingsForOtherPanel=event=>{if(event.detail!=='settings')close()};")
+        self.assertPageContains(
+            "document.dispatchEvent(new CustomEvent(PLAYER_PANEL_EVENT,{detail:'stats'}));")
+        self.assertPageContains(
+            "const closeStatsForOtherPanel=event=>{if(event.detail!=='stats')closeStats()};")
+        # 两个监听都挂在 document 上，播放器销毁时必须摘掉，否则换条目后旧闭包继续收事件。
+        self.assertPageContains(
+            "document.removeEventListener(PLAYER_PANEL_EVENT,closeSettingsForOtherPanel);")
+        self.assertPageContains(
+            "detailPlayer.on('dispose',()=>document.removeEventListener(PLAYER_PANEL_EVENT,closeStatsForOtherPanel));")
+
+    def test_control_tooltip_is_dark_enough_to_read_as_a_label(self):
+        """按钮提示的底色和播放器其它悬浮件同一档黑。
+
+        rgba(0,0,0,.3) 配 blur(16px) 落在亮画面上只剩一块低对比灰板，悬停时看着像
+        凭空多出来一块阴影而不是一条说明。
+        """
+        for selector in (".vjs-peach-tooltip{", ".vjs-volume-tooltip{"):
+            # 声明外观的那条规则在前，后面同名选择器只切 display，取第一处。
+            start = self.css.index(selector)
+            rule = self.css[start:self.css.index("}", start)]
+            self.assertIn("background:rgba(0,0,0,.6)", rule, f"{selector} 和同屏的悬浮件不是一档黑")
 
     def test_narrow_settings_keep_the_toggle_on_the_title_row(self):
         """窄屏那条单列是给 select 留的：148px 的下拉配上标题和说明挤不下。
@@ -3692,16 +3736,20 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("openItem(+button.dataset.reviewOpenItem)")
 
     def test_detail_title_keeps_source_and_file_actions_inline(self):
-        """定位文件与刷新跟在标题文字后面，不单占一列。
+        """来源徽标浮左、定位文件与刷新浮右，两者都浮出标题的文字流。
 
-        标题会折行，工具键单占一个网格列时那一列的宽度按最宽的一行留着，标题短的条目
-        右边就空出一大块，而标题长的条目仍被挤成三四行。
+        三者并排参与弹性布局时，徽标那一列会把标题的每一行都缩进，右端 66px 的动作
+        又在标题占满一行时被整块挤到下一行；浮动只缩短第一行的行盒，动作也留在行末。
         """
-        self.assertPageContains('<div class="detailtitle">${srcBadge(it.location,it.cost,\'srcbig\')}')
-        self.assertPageContains('<div class="stitle">${javTitleHtml(it)}')
-        self.assertPageContains('<span class="srctools detailtitletools">${sourceToolButtons(it.id)}</span>')
-        self.assertPageContains(".detailtitle{display:flex;align-items:flex-start;gap:8px")
-        self.assertPageContains(".detailtitletools{display:inline-flex;vertical-align:middle;margin:0 0 0 8px")
+        self.assertPageContains(
+            '<div class="detailtitle">${srcBadge(it.location,it.cost,\'srcbig\')}'
+            '${it.location===\'online\'?\'\':`<span class="srctools detailtitletools">'
+            '${sourceToolButtons(it.id)}</span>`}')
+        self.assertPageContains('<div class="stitle">${javTitleHtml(it)}</div></div>')
+        self.assertPageContains(".detailtitle{display:flow-root;margin-bottom:10px}")
+        self.assertPageContains(".detailtitletools{float:right;height:26px;margin:0 0 2px 8px;flex-wrap:nowrap}")
+        # 浮动块整好一行高（28px），行高 1.75 既让 26px 的按钮上下留出空隙，也让第二行起整行宽。
+        self.assertPageContains(".detailtitle .stitle{min-width:0;margin:0;line-height:1.75}")
 
     def test_detail_metadata_uses_icons_instead_of_release_copy(self):
         self.assertPageContains('<span class="detailmetaitem">${icon(\'monitor\')}')
@@ -4101,7 +4149,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("width:var(--id-face,46px);height:var(--id-face,46px)")
 
     def test_detail_source_icon_starts_at_the_content_edge(self):
-        self.assertPageContains(".detailtitle>.srcbig{place-items:start;flex:none;width:17px;margin-top:2px}")
+        self.assertPageContains(
+            ".detailtitle>.srcbig{float:left;width:17px;height:28px;margin:0 8px 0 0;place-items:center}")
 
     def test_official_tags_do_not_have_a_visible_marker(self):
         self.assertPageLacks(".detailtag .tagfilter small{")
