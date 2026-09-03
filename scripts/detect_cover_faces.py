@@ -37,7 +37,7 @@ from peach.face_detect import FaceDetector, FaceModelUnavailable
 
 #: 长封套的宽高比下限。低于它按竖版正封处理（整张就是正封，没有剧照区）。
 SLEEVE_RATIO_MIN = 1.2
-#: 上限之外是 16:9 官方剧照。这个值和 `web/app.js` 的 `COVER_FRAME` 必须是同一个，
+#: 上限之外是 16:9 官方剧照。这个值和 `web/app.js` 的 `coverAnchor` 必须是同一个，
 #: 否则脚本按封套丢掉左半边的脸，页面却拿这张图当剧照按人脸取景，两边对不上。
 SLEEVE_RATIO_MAX = 1.65
 #: 长封套上正封的起始横向位置。左边是剧照拼贴，检出必然是假阳性。

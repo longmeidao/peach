@@ -1442,8 +1442,38 @@ function facePos(f){
    按它自己的宽高比分流——服务端没存这个比例，也不该为此再存一份。
    剧照必须自成一档：把 1.78 归进 front 就会按写死的 50% 取横向中段，人偏在一侧
    就整个被切掉，而大图容器比所有封面都竖、纵向锚点在那里根本不生效。 */
-const COVER_FRAME=`onload="const r=this.naturalWidth/this.naturalHeight;`
-  +`this.dataset.frame=r>=1.65?'still':r>1.2?'sleeve':'front'"`;
+function coverAnchor(img){
+  const r=img.naturalWidth/img.naturalHeight;
+  if(!r)return;
+  img.dataset.frame=r>=1.65?'still':r>1.2?'sleeve':'front';
+  /* `object-position` 的百分比说的是「图片上这个点对齐可见窗口的同一个百分比位置」，
+     不是「这个点落到窗口正中」。所以人脸中心原样当锚点只能保证脸还在画面里：0.81
+     那种偏右的脸会贴着窗口右缘，图片右边还剩一截永远露不出来。可见窗口占图片 w 时，
+     让人脸落到正中的锚点是 (face - w/2) / (1 - w)。夹回 0–1 是因为脸离图片边缘不足
+     半个窗口时窗口已经顶到边，再往外推只会把图片外面推进来。 */
+  const car=coverRatio(img);
+  const center=(name,face,visible)=>{
+    // 只给被裁的那个轴算。`object-fit:cover` 一次只裁一个轴，另一个轴整幅可见
+    // （visible>=1），那里的 object-position 是死值，算了也不生效。
+    if(face==null||!(visible>0&&visible<1))return;
+    const pct=Math.min(1,Math.max(0,(face-visible/2)/(1-visible)));
+    img.style.setProperty(name,`${Math.round(pct*100)}%`);
+  };
+  center('--cover-x',coverFace(img,'cx'),car/r);
+  center('--cover-y',coverFace(img,'cy'),r/car);
+}
+/* 容器比例只有 `.pic` 的 `--card-ratio` 知道：竖屏开关、JAV 大图和普通卡片各写一个
+   值，在这里按 layout 重算迟早会和它分叉。自定义属性会继承，直接从图片上读；
+   `aspect-ratio` 允许 `16/9` 这种写法，所以两种形式都得认。 */
+function coverRatio(img){
+  const parts=getComputedStyle(img).getPropertyValue('--card-ratio').trim().split('/').map(Number);
+  const r=parts.length===2?parts[0]/parts[1]:parts[0];
+  return Number.isFinite(r)&&r>0?r:16/9;
+}
+function coverFace(img,axis){
+  const face=parseFloat(img.dataset[axis]);
+  return Number.isFinite(face)?face:null;
+}
 /* 整张封套里右侧正封占的宽高比。裁切靠的是容器比例而不是 CSS 裁剪：`object-fit:cover`
    只在容器比图片更「竖」时才会横向裁；容器一旦宽过 1.48 就变成纵向裁、整张封套原样
    铺满，「大图」于是只撑满画布而取不到右侧。 */
@@ -1454,18 +1484,16 @@ const COVER_FRONT_RATIO=0.7;
 const PORTRAIT_RATIO=9/16;
 function coverImage(it,layout,eager){
   const src=`/cover?code=${encodeURIComponent(it.code||'')}`;
-  // 两个轴都写出去，哪个生效交给 CSS 按版式挑：纵向给 16:9 容器里的封套用，
-  // 横向给大图容器里的 16:9 剧照用。人物在画面里的位置差别很大，写死的锚点会把
-  // 一部分作品裁掉下巴或整个切出画外；取不到就退回固定值。
+  // 人脸位置原样交给页面，锚点由 `coverAnchor` 在加载后算：哪个轴被裁、要推多远，
+  // 只有同时拿到图片和容器的比例才知道。人物在画面里的位置差别很大，写死的锚点会把
+  // 一部分作品裁掉下巴或整个切出画外；取不到人脸就退回固定取景。
   const f=it.cover_frame||{};
-  // 纵向夹在 5%–60%：再往下就只剩身体，那是检出跑偏而不是构图。横向不夹——
-  // `object-position` 的语义保证锚点落在 0–1 之间时人脸一定还在可见窗口里。
-  const vars=[
-    f.cy!=null?`--cover-y:${Math.round(Math.min(0.6,Math.max(0.05,f.cy))*100)}%`:'',
-    f.cx!=null?`--cover-x:${Math.round(Math.min(1,Math.max(0,f.cx))*100)}%`:''].filter(Boolean).join(';');
+  // 纵向夹在 5%–60%：脸不会长在图片下半截，落在那儿是检出跑偏而不是构图。
+  const face=[f.cx!=null?` data-cx="${f.cx}"`:'',
+    f.cy!=null?` data-cy="${Math.min(0.6,Math.max(0.05,f.cy))}"`:''].join('');
   // 小图看整张（含剧照拼贴），大图只取右侧正封。
   return `<img class="poster cover ${layout==='small'?'whole':'front'}" src="${src}"
-    alt="" loading="${eager?'eager':'lazy'}"${vars?` style="${vars}"`:''} ${COVER_FRAME} data-drop="self">`;
+    alt="" loading="${eager?'eager':'lazy'}"${face} onload="coverAnchor(this)" data-drop="self">`;
 }
 /* 卡片署名。版次队列要和「接着看」长得一样，就必须用同一份身份推导——各算各的
    迟早会在同名 creator/performer 那 35 组上分叉，同一条作品在两处指向两个实体。

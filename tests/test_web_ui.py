@@ -1138,9 +1138,26 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains(
             '.poster.cover.front[data-frame="still"]{object-position:var(--cover-x,50%)')
-        self.assertPageContains("f.cx!=null?`--cover-x:${Math.round(Math.min(1,Math.max(0,f.cx))*100)}%`")
+        self.assertPageContains('f.cx!=null?` data-cx="${f.cx}"`')
+        self.assertPageContains('onload="coverAnchor(this)"')
         # 没检出的那些居中，不能因为多了一个轴就把它们裁到边上去。
         self.assertPageContains("--cover-x,50%")
+
+    def test_the_detected_face_lands_in_the_middle_of_the_visible_window(self):
+        """`object-position` 的百分比是两侧对齐比例，不是「这个点落到正中」。
+
+        人脸中心原样当锚点，只保证脸还在画面里：cx=0.81 会算出 81%，脸贴着窗口右缘，
+        图片最右边那一截永远露不出来。可见窗口占图片 w 时，锚点得取
+        (face - w/2) / (1 - w)，这样 0.81 会顶到 100%，右缘才进画面。
+        w 由容器和图片两个比例决定，所以只能在图片加载后算。
+        """
+        self.assertPageContains("(face-visible/2)/(1-visible)")
+        self.assertPageContains("if(face==null||!(visible>0&&visible<1))return;",
+                                "整幅可见的那个轴不裁，锚点在那里是死值")
+        self.assertPageContains("center('--cover-x',coverFace(img,'cx'),car/r);")
+        self.assertPageContains("center('--cover-y',coverFace(img,'cy'),r/car);")
+        # 容器比例只有 `--card-ratio` 知道；按 layout 再算一遍迟早和它分叉。
+        self.assertPageContains("getComputedStyle(img).getPropertyValue('--card-ratio')")
 
     def test_card_avatar_and_name_open_the_same_entity(self):
         """同一张卡上的头像和名字必须指向同一个身份。
