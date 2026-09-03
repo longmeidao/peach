@@ -96,6 +96,23 @@ button,a,input,textarea,select,summary{touch-action:manipulation}
 .geist-loading-dots>i{width:4px;height:4px;border-radius:50%;background:currentColor;
   animation:geist-loading-dot 1.2s ease-in-out infinite}
 .geist-loading-dots>i:nth-child(2){animation-delay:.15s}.geist-loading-dots>i:nth-child(3){animation-delay:.3s}
+/* Geist Search Input：搜索图标占前缀位，查找中原位换 Spinner，输入框几何不变。
+   全站带搜索语义的输入共用这一份，各处只加宽度和位置。 */
+.geist-search{position:relative;min-width:0}
+.geist-search-prefix{position:absolute;z-index:1;left:12px;top:11px;
+  display:grid;place-items:center;width:16px;height:16px;color:var(--muted);pointer-events:none}
+.geist-search-prefix>svg{width:16px;height:16px;stroke:currentColor;fill:none}
+.geist-search input[type="search"]{width:100%;min-width:0;height:38px;
+  box-sizing:border-box;border:1px solid var(--border-15);border-radius:var(--control-radius);
+  background:var(--ground);color:var(--ink);padding:0 12px 0 38px;font-size:var(--fs-md);font-family:inherit;
+  line-height:20px;transition:border-color .12s ease}
+.geist-search input[type="search"]::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none}
+.geist-search input[type="search"]::placeholder{color:var(--muted)}
+/* 点进去要立刻看得出焦点在这儿，配方与顶部搜索框的 `.search:focus-within` 同一条。 */
+.geist-search input[type="search"]:focus{outline:0;
+  border-color:color-mix(in srgb,var(--tungsten) 72%,transparent);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--tungsten) 26%,transparent)}
+.geist-search:focus-within .geist-search-prefix{color:var(--ink)}
 .geist-button{box-sizing:border-box;height:32px;padding:0 6px;border:1px solid var(--border-15);
   border-radius:var(--control-radius);background:transparent;color:var(--ink);display:inline-flex;
   align-items:center;justify-content:center;gap:6px;font:inherit;font-size:var(--fs-md);font-weight:500;
@@ -361,11 +378,8 @@ body.entity-open .index{overflow-x:visible}
 .index .ihead{display:flex;align-items:center;gap:12px;margin-bottom:14px}
 .index .ihead h2{margin:0}
 .indexheading{display:inline-flex;align-items:center;gap:9px}.indexheading svg{width:25px;height:25px;stroke:currentColor;fill:none;stroke-width:1.8}
-.index .ihead .isearch{margin-left:auto}
+.index .ihead .geist-search{flex:1;max-width:320px;margin-left:auto}
 #indexCount{color:var(--muted)}
-.index .isearch{flex:1;max-width:320px;background:var(--sunk);border:1px solid var(--line);
-  border-radius:var(--pill-radius);padding:6px 14px}
-.index .isearch input{background:none;border:0;outline:none;width:100%}
 .igrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:16px 10px}
 .icell{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;
   background:none;border:0;color:inherit;padding:8px 4px;border-radius:var(--surface-radius)}
@@ -2409,18 +2423,8 @@ body.drawer-open .edge{opacity:0;pointer-events:none}   /* 展开时窄栏让位
 .fbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8}
 
 .faddform{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start}
-.fsearchinput{position:relative;min-width:0}.fsearchprefix{position:absolute;z-index:1;left:12px;top:11px;
-  display:grid;place-items:center;width:16px;height:16px;color:var(--muted);pointer-events:none}
-.fsearchprefix>svg{width:16px;height:16px;stroke:currentColor;fill:none}
-.faddform input[type="search"]{width:100%;min-width:0;height:38px;
-  box-sizing:border-box;border:1px solid var(--border-15);border-radius:var(--control-radius);
-  background:var(--ground);color:var(--ink);padding:0 12px 0 38px;font-size:var(--fs-md);font-family:inherit;
-  line-height:20px;transition:border-color .12s ease}
-.faddform input[type="search"]::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none}
+/* 输入框本体是共用的 `.geist-search`；这里只管它和旁边按钮的高度对齐。 */
 .faddform .fbtn{height:38px;min-height:38px}
-.faddform input[type="search"]::placeholder{color:var(--muted)}
-.faddform input[type="search"]:focus-visible{outline:2px solid var(--tungsten);outline-offset:1px;
-  border-color:var(--tungsten)}
 /* 没有按钮可以变灰，查找中的唯一凭据就是前缀位上的 Spinner——输入框自己必须还能改。 */
 .faddform[aria-busy="true"] input[type="search"]{color:var(--muted)}
 
@@ -2581,7 +2585,7 @@ details.fcred{display:block}
   .faliasmanager{margin-left:-13px;margin-right:-13px;margin-bottom:-14px}
   .faliasmanager>summary{padding:2px 13px}
   .faliasmanager .fcollapsebody{padding:4px 13px 14px}
-  .faddform>.fsearchinput{grid-column:1/-1}
+  .faddform>.geist-search{grid-column:1/-1}
   .faddform>.fsrcfilter{justify-self:start}
   .frow{gap:8px}
   .fsources,.fsources[data-layout="compact"]{grid-template-columns:1fr}
