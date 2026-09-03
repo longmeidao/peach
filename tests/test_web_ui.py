@@ -1247,6 +1247,26 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<div class="pic" style="--card-ratio:${ar}">')
         self.assertPageContains(".pic{position:relative;aspect-ratio:var(--card-ratio,16/9)")
 
+    def test_card_hover_edge_sits_above_the_cover_and_leaves_layout_alone(self):
+        """悬停描边由覆盖层伪元素承担，有没有封面都是同一条线。
+
+        `.pic` 是 `border-box`：描边写成 `border` 会把内容盒收窄 1px，里面 `contain`
+        的封面跟着缩一圈、两侧多露一截黑底。写成 `outline` 不占布局，但它落在 padding
+        box 最外一圈，铺满 `inset:0` 的封面和悬停视频是定位子元素，会把它盖掉——
+        缺封面的卡有线、有封面的没有，同一个网格里两种卡的悬停反馈对不上。
+        """
+        self.assertPageContains(
+            '.card:hover .pic::after{content:"";position:absolute;z-index:6;inset:0;'
+            'pointer-events:none;')
+        self.assertPageContains(
+            "  border:1px solid color-mix(in srgb,var(--ink) 48%,transparent);"
+            "border-radius:inherit}")
+        self.assertNotIn(
+            ".card:hover .pic{", self.css,
+            "描边落在 `.pic` 自己身上就会参与布局或被封面盖住，只能写在伪元素上")
+        # 回收站卡片的缩略图不描边，抵消的对象也得跟着是伪元素。
+        self.assertPageContains(".junkcard:hover .pic::after{content:none}")
+
     def test_big_jav_layout_crops_to_the_front_cover(self):
         """大图＝宽度不变、高度拉长，只留封套右侧那块正封。
 
