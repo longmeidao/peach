@@ -40,6 +40,21 @@ def png_bytes(size=(256, 256), color=(30, 90, 160)):
     return buffer.getvalue()
 
 
+def block_png(size, inset=4, color=(210, 30, 30)):
+    """透明底 + 一块不透明色块。
+
+    内容比看的是不透明像素的外接框，所以底必须真透明：整幅纯色的图 `content_aspect`
+    会回 0（四角当背景，主体成了空集），那样测不到任何闸门。
+    """
+    image = Image.new("RGBA", size, (0, 0, 0, 0))
+    for x in range(inset, size[0] - inset):
+        for y in range(inset, size[1] - inset):
+            image.putpixel((x, y), color + (255,))
+    buffer = io.BytesIO()
+    image.save(buffer, "PNG")
+    return buffer.getvalue()
+
+
 class VariantResolutionTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -170,40 +185,156 @@ class PaddedStudioTests(unittest.TestCase):
         self.assertEqual(MODULE.padded_studios(self.logos), {})
 
 
+class HarvestTargetTests(unittest.TestCase):
+    """目标集 = 补白过的 ∪ 有链接但一张图都没有的。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.logos = Path(self.tmp.name).resolve()
+        (self.logos / "Fitch.img").write_bytes(b"x")
+        self.padded = {"Fitch": {"width": 130, "height": 43}}
+        self.links = {"Fitch": [{"url": "https://fitch-av.com/"}],
+                      "Hon_Naka": [{"url": "https://honnaka.jp/"}],
+                      "S1": [{"url": "https://s1s1s1.com/"}]}
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_a_studio_with_no_image_at_all_is_included(self):
+        """Hon Naka 不在补白名单里——它没有可补白的文件。可它两个位置一样是空的。"""
+        (self.logos / "S1.img").write_bytes(b"x")
+        targets = MODULE.harvest_targets(self.padded, self.links, self.logos)
+        self.assertEqual(sorted(targets), ["Fitch", "Hon_Naka"])
+
+    def test_the_padded_studio_keeps_its_original_size(self):
+        targets = MODULE.harvest_targets(self.padded, self.links, self.logos)
+        self.assertEqual(targets["Fitch"],
+                         {"original_size": "130x43", "installed": "Fitch.img"})
+
+    def test_a_studio_with_no_image_leaves_the_size_columns_empty(self):
+        """没有原图就没有量到的尺寸。写 `x` 或 `0x0` 会被当成量出来的结果。"""
+        targets = MODULE.harvest_targets(self.padded, self.links, self.logos)
+        self.assertEqual(targets["Hon_Naka"],
+                         {"original_size": "", "installed": ""})
+
+    def test_a_studio_with_neither_image_nor_link_is_not_a_target(self):
+        """没链接又没图的厂牌进来只会在复核件上多一行「无官网链接」。"""
+        targets = MODULE.harvest_targets({}, {}, self.logos)
+        self.assertEqual(targets, {})
+
+
+class LogoSourceTests(unittest.TestCase):
+    """`logo` 位的指定来源。这一位不过内容比闸门——大位要的本来就是完整字标。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name).resolve()
+        self.candidates = self.root / "candidates"
+        self.target = {"original_size": "130x43", "installed": "Fitch.img"}
+        self.entries = [{"entity_id": 5591, "studio": "Fitch",
+                         "link_kind": "official", "url": "https://fitch-av.com/"}]
+        self.url = "https://logos.example/fitch.png"
+        self.original = dict(MODULE.LOGO_SOURCES_BY_SAFE)
+        MODULE.LOGO_SOURCES_BY_SAFE["Fitch"] = self.url
+
+    def tearDown(self):
+        MODULE.LOGO_SOURCES_BY_SAFE.clear()
+        MODULE.LOGO_SOURCES_BY_SAFE.update(self.original)
+        self.tmp.cleanup()
+
+    def row(self, payload=None, reachable=True):
+        pages = {self.url: payload} if payload is not None else {}
+        return MODULE.logo_row("Fitch", self.target, self.entries,
+                               Fetch(pages, reachable=reachable), self.candidates)
+
+    def test_fc2_is_the_registered_logo_source(self):
+        """用户 2026-09-03 指定的是 seeklogo 的 429409（600×600 方形锁定图）。
+
+        同站那份 2000×662 是横向字标，不是这一位要的东西。
+        """
+        self.assertIn("fc2-logo-png_seeklogo-429409",
+                      self.original[MODULE.safe_name("FC2-PPV")])
+
+    def test_a_studio_without_a_registered_source_gets_no_logo_row(self):
+        self.assertIsNone(MODULE.logo_row("HEYZO", self.target, self.entries,
+                                          Fetch(), self.candidates))
+
+    def test_a_wide_wordmark_is_accepted_here(self):
+        """`icon` 位退回的形状正是这一位要的。两个位置本来就要两种东西。"""
+        row = self.row(block_png((600, 200)))
+        self.assertEqual((row["verdict"], row["variant"]), (MODULE.OK, MODULE.LOGO))
+        self.assertEqual(row["mark_size"], "600x200")
+        self.assertTrue(str(row["candidate"]).endswith("Fitch.logo.png"))
+        self.assertEqual(row["url"], self.url, "记的是取图那一份的地址，不是官网")
+
+    def test_the_recorded_sha256_matches_the_stored_file(self):
+        row = self.row(block_png((600, 200)))
+        stored = Path(str(row["candidate"])).read_bytes()
+        self.assertEqual(hashlib.sha256(stored).hexdigest(), row["sha256"])
+
+    def test_a_thumbnail_sized_logo_is_refused(self):
+        """大位是 160 px、2x 屏 320 px。短边 64 说明取到的是缩略图不是标识资产。"""
+        row = self.row(block_png((64, 64)))
+        self.assertEqual(row["verdict"], MODULE.TOOSMALL)
+        self.assertEqual(row["candidate"], "")
+
+    def test_a_source_that_cannot_be_fetched_is_未取得(self):
+        row = self.row(reachable=False)
+        self.assertEqual(row["verdict"], MODULE.MISSING)
+
+    def test_a_source_that_is_not_an_image_is_未取得(self):
+        row = self.row(b"<html>404</html>")
+        self.assertEqual(row["verdict"], MODULE.MISSING)
+        self.assertIn("解不开", row["evidence"])
+
+
+class Fetch:
+    """`fetch.fetched` 是 harvest 用来分辨「站点不可达」和「取到了但都是字标」的
+    唯一依据，所以替身也得照着记数，不能只当个哑函数。"""
+
+    def __init__(self, pages=None, reachable=True):
+        self.pages = pages or {}
+        self.reachable = reachable
+        self.fetched = 0
+        self.asked: list[str] = []
+
+    def __call__(self, url):
+        self.asked.append(url)
+        if not self.reachable:
+            return None
+        if self.pages:
+            got = self.pages.get(url)
+            if got is None:
+                return None
+            self.fetched += 1
+            return got, "image/png"
+        self.fetched += 1
+        return b"payload", "image/png"
+
+
 class HarvestTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name).resolve()
         self.candidates = self.root / "candidates"
-        self.padded = {"Fitch": {"width": 130, "height": 43}}
+        self.targets = {"Fitch": {"original_size": "130x43", "installed": "Fitch.img"}}
         self.links = {"Fitch": [{"entity_id": 5591, "studio": "Fitch",
                                  "link_kind": "official", "url": "https://fitch-av.com/"}]}
 
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_harvest(self, mark, padded=None, links=None, reachable=True):
-        """`fetch.fetched` 是 harvest 用来分辨「站点不可达」和「取到了但都是字标」的
-        唯一依据，所以替身也得照着记数，不能只当个哑函数。"""
-        class Fetch:
-            fetched = 0
-
-            def __call__(self, url):
-                if reachable:
-                    Fetch.fetched += 1
-                    return b"payload", "image/png"
-                return None
-
-        fetch = Fetch()
+    def run_harvest(self, mark, targets=None, links=None, reachable=True):
+        fetch = Fetch(reachable=reachable)
         original = MODULE.site_icons.best_mark
 
-        def stub(url, fetcher, render, fallback=None):
+        def stub(url, fetcher, render, fallback=None, accept=None):
             fetcher(url)
             return mark
 
         MODULE.site_icons.best_mark = stub
         try:
-            return MODULE.harvest(self.padded if padded is None else padded,
+            return MODULE.harvest(self.targets if targets is None else targets,
                                   self.links if links is None else links,
                                   fetch, self.candidates)
         finally:
@@ -242,26 +373,106 @@ class HarvestTests(unittest.TestCase):
     def test_only_small_icons_is_its_own_verdict(self):
         """FC2 全站只有 16×16。那不是「只有字标」，下一步是找更大的资产。
         两者混成一个结论，就再没人会去找了。"""
-        class Fetch:
-            fetched = 0
+        rows = self.harvest_with_reasons(["只有 16x16"])
+        self.assertEqual(rows[0]["verdict"], MODULE.TOOSMALL)
 
-            def __call__(self, url):
-                Fetch.fetched += 1
-                return b"payload", "image/png"
-
+    def harvest_with_reasons(self, reasons):
         original = MODULE.site_icons.best_mark
 
-        def stub(url, fetcher, policy, fallback=None):
+        def stub(url, fetcher, policy, fallback=None, accept=None):
             fetcher(url)
-            policy.reasons.append("只有 16x16")
+            policy.reasons.extend(reasons)
             return None
 
         MODULE.site_icons.best_mark = stub
         try:
-            rows = MODULE.harvest(self.padded, self.links, Fetch(), self.candidates)
+            return MODULE.harvest(self.targets, self.links, Fetch(), self.candidates)
         finally:
             MODULE.site_icons.best_mark = original
-        self.assertEqual(rows[0]["verdict"], MODULE.TOOSMALL)
+
+    def test_every_row_declares_which_variant_it_is(self):
+        """CSV 里 icon 行和 logo 行长得一样，不写 variant 就分不出装到哪个位置。"""
+        rows = self.run_harvest(png_bytes())
+        self.assertEqual([row["variant"] for row in rows], [MODULE.ICON])
+
+    def test_a_rejected_wordmark_is_padded_and_installed_anyway(self):
+        """用户 2026-09-03 的口径：不是 icon 也可以装 icon，尽量不要落入无图。"""
+        original = MODULE.site_icons.best_mark
+
+        def stub(url, fetcher, policy, fallback=None, accept=None):
+            fetcher(url)
+            policy(block_png((298, 50)))
+            return None
+
+        MODULE.site_icons.best_mark = stub
+        try:
+            rows = MODULE.harvest(self.targets, self.links, Fetch(), self.candidates)
+        finally:
+            MODULE.site_icons.best_mark = original
+        row = rows[0]
+        self.assertEqual(row["verdict"], MODULE.PADDED)
+        self.assertIn(MODULE.PADDED, MODULE.INSTALLABLE)
+        with Image.open(io.BytesIO(Path(str(row["candidate"])).read_bytes())) as image:
+            self.assertEqual(image.size, (298, 298), "补白之后必须是方的")
+        self.assertEqual(row["mark_size"], "298x298")
+        self.assertGreater(float(row["content_aspect"]),
+                           MODULE.link_marks.MAX_CONTENT_ASPECT,
+                           "内容比照记：那个数就是「这枚其实是字标」的提示")
+        self.assertIn("方形标识未取得，装的是字标", row["evidence"])
+
+    def test_a_wordmark_too_small_to_pad_is_still_a_wordmark_verdict(self):
+        """16 px 高的条状 favicon 补白也救不回来，装上去只是一条糊线。"""
+        original = MODULE.site_icons.best_mark
+
+        def stub(url, fetcher, policy, fallback=None, accept=None):
+            fetcher(url)
+            policy(block_png((64, 16), inset=2))
+            return None
+
+        MODULE.site_icons.best_mark = stub
+        try:
+            rows = MODULE.harvest(self.targets, self.links, Fetch(), self.candidates)
+        finally:
+            MODULE.site_icons.best_mark = original
+        self.assertEqual(rows[0]["verdict"], MODULE.WORDMARK)
+        self.assertEqual(rows[0]["candidate"], "")
+
+    def test_a_platform_wide_favicon_gets_its_own_verdict(self):
+        """MonstersOfCock 的实测形态：主机级 favicon 过了所有闸门，仍然不是它的标识。
+
+        判成「仍是字标」会让人以为查过了这个频道，其实查的是整个 bangbros.com。
+        """
+        links = {"MonstersOfCock": [{
+            "entity_id": 5622, "studio": "MonstersOfCock", "link_kind": "official",
+            "url": "https://network.example/websites/MonstersOfCock"}]}
+        targets = {"MonstersOfCock": {"original_size": "296x82",
+                                      "installed": "MonstersOfCock.img"}}
+        template = block_png((64, 64), inset=6)
+        fetch = Fetch({
+            "https://network.example": b'<link rel="icon" sizes="64x64" href="/f.png">',
+            "https://network.example/f.png": template,
+            "https://network.example/favicon.ico": template,
+            "https://network.example/apple-touch-icon.png": template})
+        rows = MODULE.harvest(targets, links, fetch, self.candidates)
+        self.assertEqual(rows[0]["verdict"], MODULE.SHARED)
+        self.assertEqual(rows[0]["candidate"], "")
+        self.assertIn("network.example", rows[0]["evidence"])
+        self.assertIn(hashlib.sha256(template).hexdigest()[:8], rows[0]["evidence"],
+                      "证据要指名取到的是哪一份，不然没法复查")
+
+    def test_a_root_link_is_not_subject_to_the_shared_host_guard(self):
+        """`https://honnaka.jp/` 指的就是整个主机，它的 favicon 就是它的标识。"""
+        icon = block_png((128, 128), inset=10)
+        fetch = Fetch({
+            "https://honnaka.jp": b'<link rel="icon" sizes="128x128" href="/f.png">',
+            "https://honnaka.jp/f.png": icon})
+        rows = MODULE.harvest(
+            {"Hon_Naka": {"original_size": "", "installed": ""}},
+            {"Hon_Naka": [{"entity_id": 5599, "studio": "Hon Naka",
+                           "link_kind": "official", "url": "https://honnaka.jp/"}]},
+            fetch, self.candidates)
+        self.assertEqual(rows[0]["verdict"], MODULE.OK)
+        self.assertEqual(rows[0]["mark_size"], "128x128")
 
 
 class SquareMarkTests(unittest.TestCase):
@@ -304,6 +515,41 @@ class SquareMarkTests(unittest.TestCase):
         self.assertTrue(policy.aspect)
         self.assertGreater(float(policy.aspect), 1.0)
 
+    def test_an_octet_stream_png_is_still_a_png(self):
+        """用户指定的 FC2 图标那台服务器回 `application/octet-stream`。
+
+        按 content-type 决定能不能解会把它整枚丢掉；`link_marks.decode` 靠 PIL 嗅探。
+        """
+        policy = MODULE.SquareMark()
+        made = policy(block_png((400, 400), inset=20),
+                      content_type="application/octet-stream")
+        self.assertIsNotNone(made)
+        self.assertEqual(policy.size, "400x400")
+
+    def test_a_refused_wordmark_is_kept_for_the_padding_fallback(self):
+        """退回的理由要留，退回的**字节**也要留：字标现在是可装的回落。"""
+        policy = MODULE.SquareMark()
+        self.assertIsNone(policy(block_png((298, 50))))
+        self.assertIsNotNone(policy.wordmark)
+        self.assertEqual(policy.wordmark_size, "298x50")
+        self.assertGreater(float(policy.wordmark_aspect),
+                           MODULE.link_marks.MAX_CONTENT_ASPECT)
+
+    def test_the_first_refused_wordmark_wins_not_the_last(self):
+        """`best_mark` 的遍历顺序已经是「覆盖表 → 声明 → 根路径猜测」。
+
+        留最后一份等于让根路径的猜测盖掉覆盖表里指定的那一份。
+        """
+        policy = MODULE.SquareMark()
+        policy(block_png((298, 50)))
+        policy(block_png((512, 64)))
+        self.assertEqual(policy.wordmark_size, "298x50")
+
+    def test_a_wordmark_below_the_short_edge_is_not_kept(self):
+        policy = MODULE.SquareMark()
+        self.assertIsNone(policy(block_png((64, 16), inset=2)))
+        self.assertIsNone(policy.wordmark)
+
 
 class RunTests(unittest.TestCase):
     """整条链路：账本 + 已安装目录 → 复核 CSV，`--install` 才落盘。"""
@@ -327,11 +573,14 @@ class RunTests(unittest.TestCase):
             " link_kind TEXT, label TEXT, url TEXT);")
         connection.executemany(
             "INSERT INTO entity(id, kind, canonical_name) VALUES(?,?,?)",
-            [(1, "studio", "Fitch"), (2, "studio", "HEYZO"), (3, "studio", "kawaii")])
+            [(1, "studio", "Fitch"), (2, "studio", "HEYZO"), (3, "studio", "kawaii"),
+             (4, "studio", "Hon Naka")])
         connection.executemany(
             "INSERT INTO entity_link(entity_id, link_kind, label, url) VALUES(?,?,?,?)",
             [(1, "official", "官方网站", "https://fitch-av.com/"),
-             (2, "official", "官方网站", "https://www.heyzo.com/")])
+             (2, "official", "官方网站", "https://www.heyzo.com/"),
+             # 有链接、一张图都没有：账本里 Hon Naka 就是这一例。
+             (4, "official", "官方网站", "https://honnaka.jp/")])
         connection.commit()
         connection.close()
 
@@ -345,7 +594,8 @@ class RunTests(unittest.TestCase):
         """
         marks = marks if marks is not None else {"https://fitch-av.com/": png_bytes()}
         original = MODULE.site_icons.best_mark
-        MODULE.site_icons.best_mark = lambda url, fetcher, render, fallback=None: marks.get(url)
+        MODULE.site_icons.best_mark = (
+            lambda url, fetcher, render, fallback=None, accept=None: marks.get(url))
         try:
             return MODULE.run(SimpleNamespace(
                 database=self.database, output=self.root / "studio-icons.csv",
@@ -358,11 +608,11 @@ class RunTests(unittest.TestCase):
         from peach.review_csv import read_rows
         return list(read_rows(self.root / "studio-icons.csv"))
 
-    def test_the_csv_covers_every_padded_studio(self):
+    def test_the_csv_covers_every_target_studio(self):
         stats = self.invoke()
-        self.assertEqual(stats["复核行"], 3)
+        self.assertEqual(stats["复核行"], 4)
         self.assertEqual({row["safe"] for row in self.read_csv()},
-                         {"Fitch", "HEYZO", "kawaii"})
+                         {"Fitch", "HEYZO", "kawaii", "Hon_Naka"})
 
     def test_ok_rows_come_first(self):
         """人工复核从上往下看，能用的那几行不该埋在一堆「无官网链接」下面。"""
@@ -382,11 +632,12 @@ class RunTests(unittest.TestCase):
     def test_install_writes_only_the_new_variant_files(self):
         stats = self.invoke(install=True)
         self.assertEqual(stats["已安装"], ["Fitch.icon.img"])
-        self.assertEqual((self.logos / "Fitch.img").read_bytes(), b"padded wordmark")
+        self.assertEqual(sorted(path.name for path in self.logos.glob("*.logo.img")), [])
 
     def test_only_narrows_the_batch(self):
         original = MODULE.site_icons.best_mark
-        MODULE.site_icons.best_mark = lambda url, fetcher, render, fallback=None: None
+        MODULE.site_icons.best_mark = (
+            lambda url, fetcher, render, fallback=None, accept=None: None)
         try:
             stats = MODULE.run(SimpleNamespace(
                 database=self.database, output=self.root / "studio-icons.csv",
@@ -396,6 +647,30 @@ class RunTests(unittest.TestCase):
             MODULE.site_icons.best_mark = original
         self.assertEqual(stats["复核行"], 1)
         self.assertEqual(self.read_csv()[0]["safe"], "HEYZO")
+
+    def test_a_studio_with_a_link_but_no_image_joins_the_batch(self):
+        """账本里 Hon Naka 就是这一例：不在补白名单里，两个位置照样是空的。"""
+        stats = self.invoke()
+        self.assertIn("Hon_Naka", {row["safe"] for row in self.read_csv()})
+        self.assertEqual(stats["目标厂牌"], 4)
+        empty = [row for row in self.read_csv() if row["safe"] == "Hon_Naka"][0]
+        self.assertEqual((empty["installed"], empty["original_size"]), ("", ""))
+
+    def test_install_also_writes_the_plain_file_for_a_studio_with_no_image(self):
+        """`<safe>.img` 是不带 variant 和认不出的 variant 的回落。
+
+        只写 `<safe>.icon.img` 的话，厂牌页那个 160 px 大位仍然 404。
+        """
+        stats = self.invoke(install=True,
+                            marks={"https://honnaka.jp/": png_bytes()})
+        self.assertEqual(sorted(stats["已安装"]),
+                         ["Hon_Naka.icon.img", "Hon_Naka.img"])
+        self.assertTrue((self.logos / "Hon_Naka.img.ct").is_file())
+
+    def test_install_never_overwrites_an_existing_plain_file(self):
+        stats = self.invoke(install=True)
+        self.assertEqual(stats["已安装"], ["Fitch.icon.img"])
+        self.assertEqual((self.logos / "Fitch.img").read_bytes(), b"padded wordmark")
 
 
 class InstallTests(unittest.TestCase):
@@ -441,8 +716,37 @@ class InstallTests(unittest.TestCase):
         self.assertFalse((self.logos / "Fitch.icon.img").exists())
 
     def test_rows_that_did_not_pass_install_nothing(self):
-        MODULE.install([dict(self.row, verdict=MODULE.WORDMARK)], self.logos)
-        self.assertFalse((self.logos / "Fitch.icon.img").exists())
+        for verdict in (MODULE.WORDMARK, MODULE.SHARED, MODULE.TOOSMALL, MODULE.MISSING):
+            with self.subTest(verdict=verdict):
+                MODULE.install([dict(self.row, verdict=verdict)], self.logos)
+                self.assertFalse((self.logos / "Fitch.icon.img").exists())
+
+    def test_a_padded_wordmark_installs_too(self):
+        """用户的口径是「不是 icon 也可以装 icon」，所以这个判词必须真的会落盘。"""
+        written = MODULE.install([dict(self.row, verdict=MODULE.PADDED)], self.logos)
+        self.assertEqual(written, ["Fitch.icon.img"])
+
+    def test_the_logo_variant_lands_in_its_own_file(self):
+        row = dict(self.row, variant=MODULE.LOGO)
+        self.assertEqual(MODULE.install([row], self.logos), ["Fitch.logo.img"])
+        self.assertEqual((self.logos / "Fitch.logo.img").read_bytes(), self.payload)
+        self.assertEqual((self.logos / "Fitch.logo.img.ct").read_text(encoding="utf-8"),
+                         "image/png")
+        data = json.loads((self.logos / "Fitch.logo.img.provenance.json")
+                          .read_text(encoding="utf-8"))
+        self.assertEqual(data["variant"], MODULE.LOGO)
+
+    def test_a_row_without_a_variant_still_installs_as_the_icon(self):
+        """老复核件没有这一列。读到 `None` 就不装等于把上一批全废掉。"""
+        self.row.pop("variant", None)
+        self.assertEqual(MODULE.install([self.row], self.logos), ["Fitch.icon.img"])
+
+    def test_the_provenance_records_the_verdict(self):
+        """装上去的那一枚是方标还是补白字标，事后只能从这里看出来。"""
+        MODULE.install([dict(self.row, verdict=MODULE.PADDED)], self.logos)
+        data = json.loads((self.logos / "Fitch.icon.img.provenance.json")
+                          .read_text(encoding="utf-8"))
+        self.assertEqual(data["verdict"], MODULE.PADDED)
 
 
 class StudioLinkTests(unittest.TestCase):

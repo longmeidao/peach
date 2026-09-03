@@ -1,8 +1,9 @@
-"""给「只有宽幅字标」的厂牌补一枚方形小标，作为 `/logo?variant=icon` 的那一份。
+"""给「只有宽幅字标」和「一张图都没有」的厂牌补标识，出 `icon` 与 `logo` 两个变体。
 
 已安装的厂牌图里有一部分本来是宽条字标，被 `normalize_studio_logos.py` 补白成了方图。
 补白让它在 160px 的厂牌页大位上好看，但塞进筛选片那种 28px 的小圆里就只剩一条糊字。
-社媒头像早就分 icon / logo 两用，厂牌该按同一条判断走。
+社媒头像早就分 icon / logo 两用，厂牌该按同一条判断走。另有一批厂牌连一张图都没有
+（账本里现在是 Hon Naka），它们不在补白名单里，可两个位置一样空着，所以也纳进来。
 
 取哪一份交给 `site_icons`：官网首页声明的 apple-touch-icon / SVG / manifest 优先，
 都没有才落到 `/favicon.ico`。合格与否**不能**直接用 `link_marks.render_mark`：
@@ -14,8 +15,20 @@ favicon 一律退回。实测七个 JAV 厂牌站，六个的 favicon 内容比�
 `MAX_CONTENT_ASPECT`。尺寸另设自己的下限，因为要顶的位置本来就只有 28～32px。
 `MIN_DESIGNED_SIZE` 不动：那是另一个调用方的正确取值。
 
-默认只出复核 CSV 和候选 PNG，不碰已安装的目录。`--install` 才写
-`<safe>.icon.img`，那是一个新文件名，不覆盖也不删除现有的 `<safe>.img`。
+两条实测逼出来的规矩：
+
+**共享主机守卫。** 链接带非根路径时（`bangbros.com/websites/BangBus`），发现流程从
+`origin(url)` 出发，路径一丢，同主机的几个频道全坍缩成一枚 Aylo 站点模板 favicon。
+那一枚 64×64、内容比 1.00，两道闸门都过，却和任何频道无关。所以这条路径上主机级候选
+一律不算数（`site_icons.HOST_SCOPE`），判词 `平台通用图标`。`/link-mark` 那个位置本来
+就是按主机的，不受这条约束。
+
+**字标可装。** 用户 2026-09-03 定的口径：找不到方形标识时，宽扁字标补白装进 `icon` 位
+也比露出无图强。所以方标一个都没做成、却取回过够大的字标时，用 `images.pad_to_square`
+补成方图装上，判词 `字标补白`，内容比照记——复核时那个数就是「这枚其实是字标」的提示。
+
+默认只出复核 CSV 和候选 PNG，不碰已安装的目录。`--install` 才写 `<safe>.icon.img`
+与 `<safe>.logo.img`；`<safe>.img` 只在原本不存在时补写一份，已有的一个字节都不动。
 """
 from __future__ import annotations
 
@@ -30,19 +43,20 @@ import sys
 import time
 import uuid
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from peach import link_marks, site_icons  # noqa: E402
+from peach import images, link_marks, site_icons  # noqa: E402
 from peach.config import GENERATED_DIR, REVIEW_DIR
 from peach.review_csv import write_rows
 
 
-FIELDS = ("entity_id", "studio", "safe", "installed", "original_size", "link_kind",
-          "url", "verdict", "mark_size", "content_aspect", "sha256", "candidate",
-          "evidence")
+FIELDS = ("entity_id", "studio", "safe", "variant", "installed", "original_size",
+          "link_kind", "url", "verdict", "mark_size", "content_aspect", "sha256",
+          "candidate", "evidence")
 
 #: 和 `/link-mark` 用同一个 UA：站点按它决定给不给图标，两处不一致会取到不同的东西。
 USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
@@ -50,15 +64,43 @@ USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 
 OK, WORDMARK, TOOSMALL = "ok", "仍是字标", "只有小图标"
 MISSING, SKIP = "未取得", "无官网链接"
+#: 方标没有，装的是补白过的字标。可以装，但复核件上要能看出装的是哪一类。
+PADDED = "字标补白"
+#: 取到了、也够清楚，但那是整个主机共用的一枚，代表不了这个实体。
+SHARED = "平台通用图标"
+#: 会被 `--install` 落盘的判词。`平台通用图标` 与 `仍是字标` 不在内。
+INSTALLABLE = (OK, PADDED)
+
+ICON, LOGO = "icon", "logo"
 
 #: 小标要顶的位置是 28px 的筛选片和 32px 的圆。短边到不了这个数，缩下去只是一团糊，
-#: 还不如继续用现在那张补白字标——至少它是清晰的。FC2 全站只有 16×16，就卡在这。
+#: 还不如继续用现在那张补白字标——至少它是清晰的。
 MIN_SHORT_EDGE = 32
+#: `logo` 位是厂牌页那个 160 px 大位，2x 屏要 320 px；96 是「还能看」的下限，
+#: 低于它说明取到的是缩略图不是标识资产。
+MIN_LOGO_SHORT_EDGE = 96
+
+#: `logo` 位的指定来源，按 canonical_name。`icon` 位的覆盖在
+#: `site_icons.HOST_OVERRIDES`，两张表不能合并：那一张是「按主机发现图标」的例外，
+#: 这一张是「这个厂牌的大字标在哪」，键的含义和取用位置都不同。
+#:
+#: FC2-PPV：用户 2026-09-03 指定 seeklogo 的 429409 这一份，600×600 P 模式、独角兽 +
+#: 「FC2」文字、sha256 `6911574c…f1b7`（8916 B，2026-09-03 实测）。同站还有一份
+#: 2000×662 的横向字标，那是字标不装这里。FC2 站上自己的大资产只有 189×68、690×68 两条
+#: 横向字标，缩到 160 px 认不出。
+LOGO_SOURCES: dict[str, str] = {
+    "FC2-PPV": "https://images.seeklogo.com/logo-png/42/1/fc2-logo-png_seeklogo-429409.png",
+}
 
 
 def safe_name(studio: str) -> str:
     """和 `PreviewService.logo` 同一套文件名规则，两边必须一致。"""
     return re.sub(r"[^A-Za-z0-9_-]", "_", studio)[:60]
+
+
+#: `LOGO_SOURCES` 按文件名归一后的同一张表：目标集是按 safe 归拢的，没有链接的厂牌
+#: 拿不到 canonical_name，只能按这个键找。
+LOGO_SOURCES_BY_SAFE = {safe_name(name): url for name, url in LOGO_SOURCES.items()}
 
 
 def padded_studios(logo_root: Path) -> dict[str, dict[str, object]]:
@@ -79,6 +121,29 @@ def padded_studios(logo_root: Path) -> dict[str, dict[str, object]]:
         found[safe] = {"width": data.get("original_width", ""),
                        "height": data.get("original_height", "")}
     return found
+
+
+def harvest_targets(padded: dict[str, dict[str, object]],
+                    links: dict[str, list[dict[str, str]]],
+                    logo_root: Path) -> dict[str, dict[str, str]]:
+    """要补标识的厂牌：补白过的 ∪ 有链接但一张图都没有的。
+
+    后一半不在补白名单里——`normalize_studio_logos.py` 从来没处理过它们，因为没有可处理
+    的文件。可它们在页面上占的位置和别人一样，两个变体都是空的（账本里现在是 Hon Naka）。
+    只看补白名单等于承认「没图的就一直没图」。
+    """
+    targets: dict[str, dict[str, str]] = {}
+    for safe, original in padded.items():
+        width, height = original.get("width"), original.get("height")
+        targets[safe] = {
+            "original_size": f"{width}x{height}" if width and height else "",
+            "installed": f"{safe}.img"}
+    for safe in links:
+        if safe in targets or (logo_root / f"{safe}.img").exists():
+            continue
+        # `original_size` 留空：没有原图，写 `x` 或 `0x0` 会被当成量到的尺寸。
+        targets[safe] = {"original_size": "", "installed": ""}
+    return targets
 
 
 #: 能拿来找图标的链接类型。`social` 不在内：那是另一条线的头像，混进来会把厂牌小标
@@ -150,14 +215,20 @@ class Fetcher:
         return None
 
 
-class SquareMark:
-    """一份图标字节 → 一枚方形小标，同时留下每次退回的理由。
+def _as_png(image) -> bytes:
+    """原样保留像素，只统一成 PNG。.ico 里可能有多帧，浏览器挑哪一帧不归我们管。"""
+    buffer = io.BytesIO()
+    image.convert("RGBA").save(buffer, format="PNG")
+    return buffer.getvalue()
 
-    `best_mark` 只把结果传回来，退回的原因就地丢失了。可这两种退回的下一步完全不同：
-    「还是条字标」是结论，「站上只有 16×16」是去找更大的资产。所以在这里记。
+
+class SquareMark:
+    """一份图标字节 → 一枚方形小标，同时留下每次退回的理由和退回的字标本体。
+
+    `best_mark` 只把结果传回来，退回的原因就地丢失了。可这几种退回的下一步完全不同：
+    「还是条字标」现在是可装的回落，「站上只有 16×16」是去找更大的资产。所以在这里记。
 
     原样保留像素，不放大：存 128 会把 32×32 插值成一团，而这份图最终只显示在 28px。
-    重编码成 PNG 是为了统一——.ico 里可能有多帧，浏览器挑哪一帧不归我们管。
     """
 
     def __init__(self):
@@ -166,6 +237,12 @@ class SquareMark:
         #: 通过的那一份的内容比。1.0 是正方的标识，越接近 2.2 越可能是一条字标
         #: 侥幸压线——复核时这个数比看文件名有用得多。
         self.aspect = ""
+        #: 退回过的第一份「够大的宽扁字标」。方标一个都没做成时它就是回落，由调用方
+        #: 补白成方图。留第一份而不是最大的一份：`best_mark` 的遍历顺序已经是
+        #: 「覆盖表 → 声明 → 根路径猜测」，第一份就是优先级最高的那一份。
+        self.wordmark: bytes | None = None
+        self.wordmark_size = ""
+        self.wordmark_aspect = ""
 
     def __call__(self, data: bytes, size: int = 0, content_type: str = "") -> bytes | None:
         image = link_marks.decode(data, content_type)
@@ -175,109 +252,216 @@ class SquareMark:
         aspect = link_marks.content_aspect(image)
         if aspect == 0.0 or aspect > link_marks.MAX_CONTENT_ASPECT:
             self.reasons.append(f"内容比 {aspect:.2f} 是字标")
+            if aspect > 0.0 and min(image.size) >= MIN_SHORT_EDGE and self.wordmark is None:
+                self.wordmark = _as_png(image)
+                self.wordmark_size = f"{image.size[0]}x{image.size[1]}"
+                self.wordmark_aspect = f"{aspect:.2f}"
             return None
         if min(image.size) < MIN_SHORT_EDGE:
             self.reasons.append(f"只有 {image.size[0]}x{image.size[1]}")
             return None
-        buffer = io.BytesIO()
-        image.convert("RGBA").save(buffer, format="PNG")
         self.size = f"{image.size[0]}x{image.size[1]}"
         self.aspect = f"{aspect:.2f}"
-        return buffer.getvalue()
+        return _as_png(image)
 
 
-def harvest(padded: dict[str, dict[str, object]],
+class EntityScope:
+    """否决只能代表主机的候选，并记下它是哪个主机的哪一份。
+
+    传给 `site_icons.best_mark(accept=...)`。只在链接带非根路径时才挂上：那种链接
+    说明这个实体只是主机上的一条路径，主机级图标代表的是平台不是它。
+    """
+
+    def __init__(self):
+        self.rejected: list[str] = []
+        self._seen: set[str] = set()
+
+    def __call__(self, candidate, data: bytes, content_type: str = "") -> bool:
+        if candidate.scope == site_icons.ENTITY_SCOPE:
+            return True
+        digest = hashlib.sha256(data).hexdigest()
+        if digest not in self._seen:
+            self._seen.add(digest)
+            self.rejected.append(
+                f"{candidate.url} 是 {site_icons.host_key(candidate.url)} 的主机级图标"
+                f"（sha256 {digest[:8]}）")
+        return False
+
+
+def shares_its_host(url: str) -> bool:
+    """这条链接指的是主机上的一条路径，而不是整个主机吗。
+
+    `bangbros.com/websites/BangBus` 是，`https://honnaka.jp/` 不是。是的那些不能用
+    主机级候选：同主机的三个频道会拿到同一枚 sha256 完全相同的 favicon。
+    """
+    return bool(urlsplit(url).path.strip("/"))
+
+
+def _row(safe: str, target: dict[str, str], entry: dict[str, str] | None,
+         variant: str, verdict: str, **extra) -> dict[str, object]:
+    row = {"entity_id": entry["entity_id"] if entry else "",
+           "studio": entry["studio"] if entry else safe.replace("_", " "),
+           "safe": safe, "variant": variant,
+           "installed": target["installed"], "original_size": target["original_size"],
+           "link_kind": entry["link_kind"] if entry else "",
+           "url": entry["url"] if entry else "",
+           "verdict": verdict, "mark_size": "", "content_aspect": "",
+           "sha256": "", "candidate": "", "evidence": ""}
+    row.update(extra)
+    return row
+
+
+def _store(candidate_dir: Path, name: str, payload: bytes) -> Path:
+    candidate_dir.mkdir(parents=True, exist_ok=True)
+    path = candidate_dir / name
+    path.write_bytes(payload)
+    return path
+
+
+def icon_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
+             fetch, candidate_dir: Path) -> dict[str, object]:
+    """`icon` 位一行。一个厂牌可能挂多条链接，第一条做成就停。"""
+    if not entries:
+        return _row(safe, target, None, ICON, SKIP,
+                    evidence="账本里这个厂牌没有 official／catalog 链接")
+    attempts: list[str] = []
+    reachable = False
+    policy = SquareMark()
+    scope = EntityScope()
+    for entry in entries:
+        before = getattr(fetch, "fetched", 0)
+        made = site_icons.best_mark(
+            entry["url"], fetch, policy,
+            accept=scope if shares_its_host(entry["url"]) else None)
+        reachable = reachable or getattr(fetch, "fetched", 0) > before
+        if not made:
+            attempts.append(entry["url"])
+            continue
+        path = _store(candidate_dir, f"{safe}.png", made)
+        return _row(safe, target, entry, ICON, OK, mark_size=policy.size,
+                    content_aspect=policy.aspect,
+                    sha256=hashlib.sha256(made).hexdigest(), candidate=str(path))
+
+    entry = entries[0]
+    tried = "、".join(attempts)
+    padded = images.pad_to_square(policy.wordmark) if policy.wordmark else None
+    if padded:
+        # 用户 2026-09-03 的口径：不是 icon 也可以装 icon，尽量不要落入无图。
+        side = link_marks.decode(padded)
+        path = _store(candidate_dir, f"{safe}.png", padded)
+        return _row(safe, target, entry, ICON, PADDED,
+                    mark_size=f"{side.size[0]}x{side.size[1]}" if side else "",
+                    content_aspect=policy.wordmark_aspect,
+                    sha256=hashlib.sha256(padded).hexdigest(), candidate=str(path),
+                    evidence=(f"方形标识未取得，装的是字标：{policy.wordmark_size}"
+                              f"／内容比 {policy.wordmark_aspect}，补白成方图"))
+    if not reachable:
+        verdict, evidence = MISSING, f"试过 {tried}，一份字节都没取回来"
+    elif scope.rejected and not policy.reasons:
+        # 取到了、也够清楚，但那是平台模板的通用图标，和这个实体无关。
+        verdict = SHARED
+        evidence = f"试过 {tried}：" + "；".join(scope.rejected)
+    elif policy.reasons and all("只有 " in reason for reason in policy.reasons):
+        # 是方标，只是站上没有够大的那一份。下一步是找更大的资产，不是放弃。
+        verdict, evidence = TOOSMALL, f"试过 {tried}：" + "、".join(policy.reasons)
+    else:
+        verdict = WORDMARK
+        evidence = f"试过 {tried}：" + "、".join(
+            policy.reasons + scope.rejected or ["没有候选"])
+    return _row(safe, target, entry, ICON, verdict, evidence=evidence)
+
+
+def logo_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
+             fetch, candidate_dir: Path) -> dict[str, object] | None:
+    """`logo` 位一行；这个厂牌没有指定来源就返回 None。
+
+    这一位不过内容比闸门——大位要的本来就是完整字标，宽扁是它应有的形状。
+    只验「是图」和「够大」。
+    """
+    url = LOGO_SOURCES_BY_SAFE.get(safe)
+    if not url:
+        return None
+    entry = dict(entries[0], link_kind="logo-source", url=url) if entries else None
+    if entry is None:
+        entry = {"entity_id": "", "studio": safe.replace("_", " "),
+                 "link_kind": "logo-source", "url": url}
+    got = fetch(url)
+    if got is None:
+        return _row(safe, target, entry, LOGO, MISSING,
+                    evidence="指定的 logo 来源一份字节都没取回来")
+    image = link_marks.decode(got[0], got[1])
+    if image is None:
+        return _row(safe, target, entry, LOGO, MISSING, evidence="指定的 logo 来源解不开")
+    if min(image.size) < MIN_LOGO_SHORT_EDGE:
+        return _row(safe, target, entry, LOGO, TOOSMALL,
+                    mark_size=f"{image.size[0]}x{image.size[1]}",
+                    evidence=f"短边 {min(image.size)} < {MIN_LOGO_SHORT_EDGE}")
+    payload = _as_png(image)
+    path = _store(candidate_dir, f"{safe}.logo.png", payload)
+    return _row(safe, target, entry, LOGO, OK,
+                mark_size=f"{image.size[0]}x{image.size[1]}",
+                content_aspect=f"{link_marks.content_aspect(image):.2f}",
+                sha256=hashlib.sha256(payload).hexdigest(), candidate=str(path),
+                evidence="用户指定的 logo 来源")
+
+
+def harvest(targets: dict[str, dict[str, str]],
             links: dict[str, list[dict[str, str]]],
             fetch, candidate_dir: Path) -> list[dict[str, object]]:
-    """每个字标厂牌出一行。一个厂牌可能挂多条官网，第一条做出圆标就停。"""
+    """每个目标厂牌出一行 `icon`，有指定 logo 来源的再多一行 `logo`。"""
     rows: list[dict[str, object]] = []
-    for safe in sorted(padded):
-        original = padded[safe]
-        size = f'{original["width"]}x{original["height"]}'
+    for safe in sorted(targets):
+        target = targets[safe]
         entries = links.get(safe, [])
-        if not entries:
-            rows.append({"entity_id": "", "studio": safe.replace("_", " "), "safe": safe,
-                         "installed": f"{safe}.img", "original_size": size, "link_kind": "",
-                         "url": "", "verdict": SKIP, "mark_size": "", "content_aspect": "",
-                         "sha256": "",
-                         "candidate": "",
-                         "evidence": "账本里这个厂牌没有 official／catalog 链接"})
-            continue
-        attempts: list[str] = []
-        reachable = False
-        policy = SquareMark()
-        for entry in entries:
-            before = getattr(fetch, "fetched", 0)
-            made = site_icons.best_mark(entry["url"], fetch, policy)
-            reachable = reachable or getattr(fetch, "fetched", 0) > before
-            if not made:
-                attempts.append(entry["url"])
-                continue
-            candidate_dir.mkdir(parents=True, exist_ok=True)
-            path = candidate_dir / f"{safe}.png"
-            path.write_bytes(made)
-            rows.append({"entity_id": entry["entity_id"], "studio": entry["studio"],
-                         "safe": safe, "installed": f"{safe}.img", "original_size": size,
-                         "link_kind": entry["link_kind"], "url": entry["url"], "verdict": OK,
-                         "mark_size": policy.size, "content_aspect": policy.aspect,
-                         "sha256": hashlib.sha256(made).hexdigest(),
-                         "candidate": str(path), "evidence": ""})
-            break
-        else:
-            entry = entries[0]
-            tried = "、".join(attempts)
-            if not reachable:
-                verdict = MISSING
-                evidence = f"试过 {tried}，一份字节都没取回来"
-            elif policy.reasons and all("只有 " in reason for reason in policy.reasons):
-                # 是方标，只是站上没有够大的那一份。下一步是找更大的资产，不是放弃。
-                verdict = TOOSMALL
-                evidence = f"试过 {tried}：" + "、".join(policy.reasons)
-            else:
-                verdict = WORDMARK
-                evidence = f"试过 {tried}：" + "、".join(policy.reasons or ["没有候选"])
-            rows.append({"entity_id": entry["entity_id"], "studio": entry["studio"],
-                         "safe": safe, "installed": f"{safe}.img", "original_size": size,
-                         "link_kind": entry["link_kind"], "url": entry["url"],
-                         "verdict": verdict, "mark_size": "", "content_aspect": "",
-                         "sha256": "", "candidate": "", "evidence": evidence})
+        rows.append(icon_row(safe, target, entries, fetch, candidate_dir))
+        logo = logo_row(safe, target, entries, fetch, candidate_dir)
+        if logo is not None:
+            rows.append(logo)
     return rows
 
 
 def install(rows: list[dict[str, object]], logo_root: Path) -> list[str]:
-    """把通过的候选落成 `<safe>.icon.img`。新文件名，不动 `<safe>.img`。"""
+    """把可装的候选落成 `<safe>.icon.img` / `<safe>.logo.img`。
+
+    这两个都是新文件名，不覆盖也不删除现有的 `<safe>.img`。只有原本**没有**
+    `<safe>.img` 的厂牌才补写一份：不带 `variant` 和认不出的 `variant` 都回落到它，
+    缺了那些位置仍然 404。
+    """
     written: list[str] = []
     logo_root.mkdir(parents=True, exist_ok=True)
     for row in rows:
-        if row["verdict"] != OK or not row["candidate"]:
+        if row["verdict"] not in INSTALLABLE or not row["candidate"]:
             continue
         payload = Path(str(row["candidate"])).read_bytes()
         if hashlib.sha256(payload).hexdigest() != row["sha256"]:
             raise ValueError(f'候选文件与复核记录哈希不一致，拒绝安装：{row["safe"]}')
-        destination = logo_root / f'{row["safe"]}.icon.img'
-        staging = destination.with_name(f"{destination.name}.{uuid.uuid4().hex}.tmp")
-        staging.write_bytes(payload)
-        os.replace(staging, destination)
-        Path(f"{destination}.ct").write_text("image/png", encoding="utf-8")
-        Path(f"{destination}.provenance.json").write_text(json.dumps({
-            "source": "studio icon harvest",
-            "source_url": row["url"],
-            "sha256": row["sha256"],
-            "variant": "icon",
-            "installed_beside": f'{row["safe"]}.img',
-            "imported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "purpose": "small-surface studio mark",
-        }, ensure_ascii=False, indent=2), encoding="utf-8")
-        written.append(destination.name)
+        variant = str(row.get("variant") or ICON)
+        targets = [logo_root / f'{row["safe"]}.{variant}.img']
+        base = logo_root / f'{row["safe"]}.img'
+        if not base.exists():
+            targets.append(base)
+        for destination in targets:
+            staging = destination.with_name(f"{destination.name}.{uuid.uuid4().hex}.tmp")
+            staging.write_bytes(payload)
+            os.replace(staging, destination)
+            Path(f"{destination}.ct").write_text("image/png", encoding="utf-8")
+            Path(f"{destination}.provenance.json").write_text(json.dumps({
+                "source": "studio icon harvest",
+                "source_url": row["url"],
+                "sha256": row["sha256"],
+                "variant": variant,
+                "verdict": row["verdict"],
+                "installed_beside": f'{row["safe"]}.img',
+                "imported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "purpose": "small-surface studio mark" if variant == ICON
+                           else "studio hero wordmark",
+            }, ensure_ascii=False, indent=2), encoding="utf-8")
+            written.append(destination.name)
     return written
 
 
 def run(args: argparse.Namespace) -> dict[str, object]:
     logo_root = args.logo_root.resolve()
-    padded = padded_studios(logo_root)
-    if args.only:
-        wanted = {safe_name(name) for name in args.only}
-        padded = {key: value for key, value in padded.items() if key in wanted}
     connection = sqlite3.connect(f"file:{args.database}?mode=ro", uri=True)
     connection.row_factory = sqlite3.Row
     try:
@@ -285,23 +469,27 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     finally:
         connection.close()
 
+    targets = harvest_targets(padded_studios(logo_root), links, logo_root)
+    if args.only:
+        wanted = {safe_name(name) for name in args.only}
+        targets = {key: value for key, value in targets.items() if key in wanted}
+
     client = httpx.Client(trust_env=True, follow_redirects=True)
     try:
-        rows = harvest(padded, links, Fetcher(client, args.timeout, args.interval),
+        rows = harvest(targets, links, Fetcher(client, args.timeout, args.interval),
                        args.candidate_dir.resolve())
     finally:
         client.close()
 
-    order = {OK: 0, TOOSMALL: 1, WORDMARK: 2, MISSING: 3, SKIP: 4}
-    rows.sort(key=lambda row: (order.get(row["verdict"], 9), row["safe"]))
+    order = {OK: 0, PADDED: 1, TOOSMALL: 2, SHARED: 3, WORDMARK: 4, MISSING: 5, SKIP: 6}
+    rows.sort(key=lambda row: (order.get(row["verdict"], 9), row["safe"], row["variant"]))
     write_rows(args.output, FIELDS, rows)
-    stats = {"字标厂牌": len(rows), "复核行": len(rows),
-             "ok": sum(1 for row in rows if row["verdict"] == OK),
-             "只有小图标": sum(1 for row in rows if row["verdict"] == TOOSMALL),
-             "仍是字标": sum(1 for row in rows if row["verdict"] == WORDMARK),
-             "未取得": sum(1 for row in rows if row["verdict"] == MISSING),
-             "无官网链接": sum(1 for row in rows if row["verdict"] == SKIP),
-             "output": str(args.output)}
+    counted = (OK, PADDED, TOOSMALL, SHARED, WORDMARK, MISSING, SKIP)
+    stats: dict[str, object] = {"目标厂牌": len(targets), "复核行": len(rows)}
+    stats.update({verdict: sum(1 for row in rows if row["verdict"] == verdict)
+                  for verdict in counted})
+    stats["logo 行"] = sum(1 for row in rows if row["variant"] == LOGO)
+    stats["output"] = str(args.output)
     if args.install:
         stats["已安装"] = install(rows, logo_root)
     return stats
@@ -320,7 +508,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--interval", type=float, default=1.5)
     parser.add_argument("--timeout", type=float, default=20.0)
     parser.add_argument("--install", action="store_true",
-                        help="把通过的候选写成 <safe>.icon.img；不覆盖现有文件")
+                        help="把可装的候选写成 <safe>.icon.img / <safe>.logo.img")
     args = parser.parse_args(argv)
     print(run(args))
     return 0
