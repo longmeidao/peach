@@ -493,10 +493,10 @@ def q_parts(contract: WebContract, args):
 
 def q_item(contract: WebContract, aid):
     """按 id 直取。
-    ⚠️ 第一版没有这个接口，前端用「带筛选条件再查一遍然后 find」的绕法，
+    ⚠️ 没有这个接口时，前端只能用「带筛选条件再查一遍然后 find」的绕法：
        limit 被覆盖成 1 → find 必然失败 → 走兜底 items[0]，
        于是**每次点击都打开同一个默认列表首项**（一个 12.6 GB 的 PikPak 文件），
-       既显示错条目，又反复拉计费流量。教训：按 id 取就按 id 取。"""
+       既显示错条目，又反复拉计费流量。按 id 取就按 id 取。"""
     with contract.read_connection() as c:
         r = c.execute(
             "SELECT id,location,path,name,catalog_title,original_title,creator,studio,code,"
@@ -797,7 +797,7 @@ def q_facets(
             "JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND e.kind='creator' " + scope +
         
             "GROUP BY e.id,e.canonical_name ORDER BY n DESC LIMIT 60", scope_params)]
-        # 标签要分层 —— 原来一锅端，结果「演员:一个ren」和「1080P」「足交」混在一起。
+        # 标签要分层 —— 一锅端会让「演员:一个ren」和「1080P」「足交」混在一起。
         # 三类分开：技术规格（画质/时长/画幅，筛选价值低）、内容维度（真正有用的）、演员（另立一栏）。
         rows = [dict(r) for r in c.execute(
             "SELECT e.canonical_name AS k, count(DISTINCT ae.asset_id) AS n "
@@ -847,9 +847,8 @@ def w_item_tag(contract: WebContract, body):
     normalized = normalize_entity_name(tag)
     stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     # 事务边界只有一个入口：write_transaction 自己取 database.write_lock 并在异常时回滚。
-    # 这里曾经手取同一把不可重入的锁再手动 commit/close，任何 execute 抛出都会漏掉
-    # 回滚和关闭；也正因为那把锁是同一把，直接改调 write_transaction 而不撤掉外层
-    # with 会自死锁。
+    # 这里不手取那把锁再手动 commit/close：任何 execute 抛出都会漏掉回滚和关闭。
+    # 那把锁不可重入，所以外层不能再套一个取同一把锁的 with，否则自死锁。
     with contract.write_transaction() as c:
         if not c.execute("SELECT 1 FROM asset WHERE id=?", (aid,)).fetchone():
             raise ValueError("asset not found")

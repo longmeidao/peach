@@ -29,7 +29,7 @@ class SegmentCancelled(RuntimeError):
 def build_hls_playlist(plan: list[tuple[float, float]], segment_url) -> str:
     """按真实分片计划生成 VOD 播放列表。
 
-    时长必须写实际值。早先版本按 6 秒等分声明，而 `-c copy` 只能切在关键帧上，
+    时长必须写实际值。按 6 秒等分声明的话，`-c copy` 只能切在关键帧上，
     遇到关键帧间隔 8.33 秒的片源，目录说的和实际内容就完全对不上。
     """
     target = max(1, round(max(length for _, length in plan)))
@@ -148,8 +148,8 @@ class HlsSegmentService:
             # 退出码 0、空 stderr 写出 0 字节，服务端只能报一句没有内容的 ffmpeg failed。
             "-ss", f"{start:.3f}", "-i", str(source), "-to", f"{start + duration:.3f}",
             "-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn", "-c", "copy",
-            # 保留原始时间戳，让每段接着上一段走。早先用 -avoid_negative_ts make_zero
-            # 把每段都归零，于是每段都自称从 0 秒开始，拖动进度条时容易跳错位置。
+            # 保留原始时间戳，让每段接着上一段走。用 -avoid_negative_ts make_zero
+            # 把每段归零的话，每段都自称从 0 秒开始，拖动进度条时容易跳错位置。
             "-copyts", "-muxdelay", "0", "-muxpreload", "0",
             "-f", "mpegts", str(temporary),
         ]

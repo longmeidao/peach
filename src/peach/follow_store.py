@@ -247,13 +247,13 @@ class FollowStore:
         truth field.  A successful unconditional refresh replaces the metadata
         and naturally clears the condition.
 
-        判定交给 SQLite 的 `json_extract`：以前是把这个来源**每一条**候选的
-        `metadata_json` 整串取回 Python 再逐条 `json.loads`，而这里只想知道
+        判定交给 SQLite 的 `json_extract`，不把这个来源**每一条**候选的
+        `metadata_json` 整串取回 Python 再逐条 `json.loads`：这里只想知道
         「有没有任意一条」。回填过的来源单源就有几百到上千行，为一个布尔值把它们
         全解一遍。
 
         `json_valid` 的外壳不能省：`json_extract` 遇到非法 JSON 是**报错**，不是
-        返回 NULL，那会把原来 `except json.JSONDecodeError: continue` 的容忍变成
+        返回 NULL，那会把 `except json.JSONDecodeError: continue` 那一级的容忍变成
         整个检查崩掉。写成 `CASE` 而不是并列的 `AND`，因为 SQL 的 `AND` 不保证
         求值顺序。
         """
@@ -366,8 +366,8 @@ class FollowStore:
     def remove_source(self, source_id: int) -> None:
         """删掉一条来源登记。
 
-        原来是 Web 处理函数里一句裸 DELETE。哪张表、要不要连带清理，属于这一层的
-        知识；把它留在 Web 层意味着换存储结构时得去处理函数里找 SQL。
+        哪张表、要不要连带清理，属于这一层的知识。写成 Web 处理函数里一句裸
+        DELETE 的话，换存储结构时得去处理函数里找 SQL。
         """
         self._connect().execute("DELETE FROM follow_source WHERE id=?", (source_id,))
 
@@ -392,7 +392,7 @@ class FollowStore:
 
         Mac 上 `peach-data/sources` 是指向外置盘的符号链接，盘不在时它是一条**断链**——
         `mkdir(exist_ok=True)` 在断链上会抛 `FileExistsError`（链接在、目标不在），
-        原来这会让整个 `record()` 连同已经抓到的候选一起炸掉。发现本身跟归档盘无关，
+        不接住它就会让整个 `record()` 连同已经抓到的候选一起炸掉。发现本身跟归档盘无关，
         所以这里降级：候选照常入库，证据标成未取得，原因往上报。
 
         这和「脱盘模式」是同一条边界——脱的是盘不是账本，不该让整个功能挂掉。

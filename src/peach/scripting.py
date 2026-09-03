@@ -27,7 +27,7 @@ from .migrations import sqlite_backup
 #: 对外抓取统一使用的 User-Agent。
 #:
 #: 形态是浏览器而不是老实的机器人标识，这是被上游逼出来的：javbus、babepedia、
-#: linktr.ee 一类站点对陌生 UA 直接回 403，取证会全军覆没。版本取树里原先出现过的
+#: linktr.ee 一类站点对陌生 UA 直接回 403，取证会全军覆没。版本取树里出现过的
 #: 最新一个（Chrome/131），因为落后的版本号才是会被挑出来拦掉的那种特征。
 USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
               "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
@@ -56,7 +56,7 @@ def add_ledger_write_args(parser: argparse.ArgumentParser, *,
                           db_default: Path = DATABASE_PATH) -> argparse.ArgumentParser:
     """挂上真实写入脚本的三个标准参数：`--db`、`--apply`、`--backup`。
 
-    参数名只有这一套。曾经并存的 `--database`、`--backup-dir` 已经统一过来：名字不同
+    参数名只有这一套，不收 `--database`、`--backup-dir` 这类同义写法：名字不同
     的同义参数会让「上次那条命令」在另一个脚本上直接报错，而报错信息只说缺参数。
     """
     parser.add_argument("--db", type=Path, default=db_default, help="账本路径")

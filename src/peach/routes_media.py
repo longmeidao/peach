@@ -424,8 +424,8 @@ def follow_cover(request: Request, id: int, args: dict[str, str] = Depends(requi
     try:
         path = state.follow_cover_service.cover(item)
     except FollowCoverUnavailable:
-        # 以前这里 302 到 `item.thumb_url`，等于把上游主机和地址交回浏览器——
-        # 而这个端点存在的全部理由就是不让它外露。FFmpeg 或网络的临时失败改回
+        # 这里不 302 到 `item.thumb_url`：那等于把上游主机和地址交回浏览器，
+        # 而这个端点存在的全部理由就是不让它外露。FFmpeg 或网络的临时失败一律回
         # 占位图：状态码 404，界面上是一块中性的占位，而不是碎图，也不是上游。
         return Response(PLACEHOLDER_IMAGE, status_code=404,
                         media_type=PLACEHOLDER_CONTENT_TYPE,

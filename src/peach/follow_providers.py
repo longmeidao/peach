@@ -1,8 +1,8 @@
 """追更来源的单点登记表。
 
-新增一个站点原本要改六个文件：`follow_cli` 的 URL 模板与 release 集合、
-`follow_sources` 的语义表、`follow_stream` 的主机白名单、`follow_variants` 的优先级、
-`web_follow` 的显示名与两个能力集合。漏掉任何一张表都不会报错，只会在某个页面上
+新增一个站点只改这张表。同一份知识散成六处的话——`follow_cli` 的 URL 模板与 release
+集合、`follow_sources` 的语义表、`follow_stream` 的主机白名单、`follow_variants` 的
+优先级、`web_follow` 的显示名与两个能力集合——漏掉任何一张都不会报错，只会在某个页面上
 少一行、某个媒体代理拒绝一条链接，或者选主条目时排到最后。
 
 更糟的是其中两张表说的是同一件事：`_RELEASE_PROVIDERS` 是集合、`_SEMANTICS` 是

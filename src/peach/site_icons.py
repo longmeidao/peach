@@ -1,7 +1,7 @@
 """站点图标发现：把一个站能给出的图标候选找齐，再挑真正适合做小圆标的那一枚。
 
-原来的 `/link-mark` 只取 `/favicon.ico`，取到就收工。用户指出结果普遍糊：站点自己
-早就备好了更清晰的资产，我们从没去问。实测四个站，四种形态：
+`/link-mark` 只取 `/favicon.ico`、取到就收工的结果普遍糊（用户指出）：站点自己
+备好了更清晰的资产，不去问就拿不到。实测四个站，四种形态：
 
     threads.com   <link rel=icon type=image/svg+xml>  → 512 viewBox 的成品 app 图标
     mgstage.com   五个 apple-touch-icon，最大 180×180 → 位图但足够大

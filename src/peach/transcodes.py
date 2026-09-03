@@ -53,7 +53,7 @@ class TranscodeService:
     ):
         self.resolver = resolver
         self.cache_root = cache_root
-        # 当前生产机是 NVIDIA Windows。macOS 保持原来的软件路径，避免每次先跑两次
+        # 当前生产机是 NVIDIA Windows。macOS 走软件编码，避免每次先跑两次
         # 必然失败的 CUDA/NVENC 命令；测试和后续平台适配可显式覆盖。
         self.prefer_hardware = os.name == "nt" if prefer_hardware is None else prefer_hardware
         self._locks: dict[int, list] = {}

@@ -92,7 +92,7 @@ def rank_related(source: Mapping, candidates: Iterable[Mapping], limit: int,
                  *, seed: str | None = None, diversity: float = 0.22) -> list[dict]:
     """以 IDF 加权相关度选片，再用 MMR 抑制连续出现的近重复作品。
 
-    MMR 的代价原本是 O(limit² × 候选池)：每选中一条，都要把整池和**全部**已选重算一遍
+    朴素 MMR 的代价是 O(limit² × 候选池)：每选中一条，都要把整池和**全部**已选重算一遍
     closeness。候选池上限 4000，生产实测 limit=20 要 3.2 秒、limit=28 要 6.2 秒、
     limit=60 要 28 秒——`/api/related` 的耗时几乎全在这里，不在 SQL。
     「候选对已选集的最大 closeness」可以增量维护：新选中一条时只和这一条比一次，取较大值。
