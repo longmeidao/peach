@@ -1679,7 +1679,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(":(!segmented&&meter.ratio>0?`${meter.ratio.toFixed(1)}× 实时`:'—')")
 
     def test_follow_detail_gets_the_same_player_stats_overlay(self):
-        """关注详情以前没有统计三件套，在线视频连入口都没有；两处共用同一段模板。"""
+        """作品详情与关注详情共用同一段统计模板，关注详情里的在线视频同样有统计入口。"""
         self.assertPageContains("function playerStatsOverlayHtml()")
         self.assertPageContains("${selectedKind==='video'?playerStatsOverlayHtml():''}")
         self.assertPageContains("size:selectedMedia?.size,")

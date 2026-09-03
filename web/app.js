@@ -672,7 +672,7 @@ function bufferedSeconds(video){
 /* 渐进下载（HTTP Range）量不到网络：浏览器用一条长连接边下边播，请求在播放期间不结束，
    resource timing 里就一直不出现新条目。实测本地 MP4 播到 37 秒时仍只有挂载那两条、字节数
    停在 862 KB，面板于是显示「— · 0 请求」。HLS 是另一回事，每个分片都是一次独立完成的请求，
-   VHS 自己也报 bandwidth，原来那套口径只对它成立。
+   VHS 自己也报 bandwidth，resource timing 那套口径只对它成立。
    渐进源改看缓冲区推进：每秒新缓冲的秒数 × 平均码率就是字节速率；码率未知（在线关注条目
    没有 size）就只报推进倍速。缓冲吃满后浏览器停拉，增量归零，此时保留上一次读数而不是跳回
    0——那不是速度掉了，是没有在下载。 */
@@ -718,7 +718,7 @@ function playerStatsPlot(samples,kind,ceiling,label){
   return `<span class="playerstatsplot ${kind}" role="img" aria-label="${esc(label)}">${bars}</span>`;
 }
 /* 统计角标、加载速度与面板：作品详情和关注详情共用同一组 id，mountDetailPlayer 直接按 id 取。
-   关注详情以前没有这三个节点，在线视频于是连统计入口都没有。 */
+   关注详情缺了这三个节点，在线视频就连统计入口都没有。 */
 function playerStatsOverlayHtml(){
   return `<button class="playerstatsbtn" id="playerStatsBtn" aria-label="播放统计" title="播放统计" aria-pressed="false" hidden>${icon('chart')}</button>
        <div class="playernet" id="playerNet" role="status" aria-live="polite" hidden></div>
