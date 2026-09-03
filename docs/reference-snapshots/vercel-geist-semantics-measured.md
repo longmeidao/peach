@@ -157,17 +157,49 @@ error 底 `rgb(217,48,54)` 字 `#fff`；warning 底 `rgb(255,153,10)` 字 `rgb(1
   ring `rgb(46,46,46)`、`opacity:1`、`cursor:not-allowed`。
 - **按下没有缩放**：页面上全部按钮的 `transform` 都是 `none`，Geist 不做 `scale`。
 
+### 选中态与它的悬停：源类名取证（2026-09-03）
+
+`getComputedStyle` 读不到悬停态（要么得手工触发，要么被冻住的 transition 骗），但 Geist
+是 Tailwind 写的，`class` 属性里的 `hover:`／`aria-selected:`／`peer-checked:` 前缀就是
+规则原文，比计算值更硬。三个组件的类名清单一致：
+
+| 组件 | 未选中悬停 | 选中 |
+| --- | --- | --- |
+| Switch 分段项 `/geist/switch` | `hover:text-[var(--ds-gray-1000)]` | `peer-checked:text-[--ds-gray-1000]` + `peer-checked:bg-[--switch-checked-color]` + `peer-checked:rounded-[4px]` |
+| Tabs primary `/geist/tabs` | `not-disabled:hover:text-gray-1000` | `aria-selected:text-gray-1000` + `primary:aria-selected:border-gray-1000`（底边 2px） |
+| Tabs secondary `/geist/tabs` | `not-disabled:hover:text-gray-1000` | `aria-selected:text-gray-1000` + `aria-selected:bg-gray-200`，`rounded-md`、`h-8`、`px-3` |
+
+三条共同点，都与我们之前的写法相反：
+
+- **悬停只改文字色，不上填充**。填充是「选中」的专属信号，所以一行选项里鼠标划过邻居时，
+  哪个是当前项始终看得见。这与 Button 的「悬停只抬填充」不冲突：Button 没有选中态，
+  没有需要让位的信号。
+- **选中不加边、不加内嵌一圈线**。Tabs primary 的底边 2px 是这个组件自己的形状语言
+  （未选中也占着 `border-b-2 border-transparent`），不是通用的选中环。
+- **字重两态相同**。Switch 分段项 `font-medium` 常驻，Tabs 全程不改字重。
+
+唯一的例外是主题选择器（system／light／dark 三个圆形按钮）：选中项是
+`bg-[--ds-background-100]` + `shadow-[0_0_0_1px_var(--ds-gray-400)]`。它加环是因为选中项
+的底色和容器同色，填充本身分不出来；不是通用做法。
+
 ### Peach 对应（2026-09-03 收敛）
 
-- 按下／选中（`aria-pressed="true"`、`aria-current`、`.selected`、`.current`、`.picked`、`:checked`）不再反相。
-  无边框控件用 `--hover` 底 `--ink` 字 + `box-shadow:inset 0 0 0 1px var(--border-15)`，
-  带边框控件用 `--hover` 底 `--ink` 字 + 边框提到 `color-mix(in srgb,var(--ink) 28%,transparent)`，
-  需要再强调时加一档字重（500／600）。这条推翻了本文件此前写的「统一 `--ink-2` 底 `--ground` 字」：
-  Geist 的 Switch 选中项只是 `#0A0A0A` 面上抬到 `#1A1A1A`，没有一处是反相白块。
+- 按下／选中（`aria-pressed="true"`、`aria-current`、`.selected`、`.current`、`.picked`、`:checked`）
+  只有填充：一律 `--hover` 底 `--ink` 字，不加边、不加内嵌一圈线、不加字重。这条推翻了本文件
+  此前写的两版——先是「统一 `--ink-2` 底 `--ground` 字」（Geist 的 Switch 选中项只是 `#0A0A0A`
+  面上抬到 `#1A1A1A`，没有一处是反相白块），再是「无边框补内嵌一圈线、带边框提到墨色 28%、
+  还要更强就加字重」（那一整套是自造的强调阶梯，上面三个组件的类名里一条都没有）。
+- 因此**同一组互斥选项的未选中项，悬停只提文字色到 `--ink`，不上填充**：`.pill`、`.chip`、
+  `.reviewtabs button`、`.sorts button`、`.junkfilters a`、`.tagmodes button`、`.dnav button`、
+  `.edge button`、`.managebar button`、`.mediaviewbutton`、`.javbar button`。没有选中态的按钮
+  （`.fbtn`、`.fchip`）和没有并排邻居的孤立开关（`.ib`、`.brandpill`、`.playerstatsbtn`、
+  `.fb .like`）悬停照旧抬填充。彩色标签类控件（`.tagfilters`、`.index-tags .tg`、`.alphatag`、
+  `.sec.cat-* .chip`）的悬停本来就是标签色 tint，与白色选中底不同色，不受这条影响。
 - 主动作 `--ink` 底 `--ground` 字，悬停 `color-mix(in srgb,var(--ink) 88%,var(--ground))`
   （对应 Geist 的 #EDEDED→#CCC，同为掉一档而非换色）；每屏最多一个。
-- 悬停统一只抬填充到 `--hover`，边框与文字色不动——同样推翻此前的「悬停边提亮到墨色 28%」，
-  那一档在 Peach 是全站最亮的边，实际效果比 Vercel 重得多。28% 现在只用于选中态的边。
+- 按钮（无选中态）悬停只抬填充到 `--hover`，边框与文字色不动——同样推翻此前的
+  「悬停边提亮到墨色 28%」，那一档在 Peach 是全站最亮的边，实际效果比 Vercel 重得多。
+  墨色 28% 的边现在只剩输入框 `.fpicksearch:hover` 一处。
 - 禁用统一 `--surface` 底、`--border-15` 边、`--muted` 字，不用 `opacity`；
   按下不加 `scale`。Peach 保留 `cursor:default` 而不是 Geist 的 `not-allowed`，
   与本仓库其余禁用态写法一致。

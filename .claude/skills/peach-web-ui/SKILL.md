@@ -42,7 +42,8 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 - 优先扩展 `web/js/ui-components.js`，不要为同一语义复制一次性 class 和模板。
 - 颜色、字号、圆角、浮层层级只用 `:root` 已有 token；新 token 必须证明现有词汇无法表达。
 - 字重只有 400／500／600 三档，标题也是 600；圆角只用 `--badge-radius`／`--control-radius`／`--surface-radius`／`--floating-radius`／`--pill-radius` 加 `50%` 与 `0`，带边框容器里的头尾条用 `calc(… - 1px)` 保持同心。两者的字面值由 `tests/test_web_ui.py` 拒绝，归属判据见 `:root` 注释。
-- 单色优先：`--tungsten` 只给焦点环、链接、进度／数据与 Toggle 开态。选中态不反相——一律 `--hover` 底 `--ink` 字，无边框控件补 `inset 0 0 0 1px var(--border-15)`，带边框控件把边提到墨色 28%，还要更强就加一档字重；主动作用 `--ink` 底 `--ground` 字且每屏最多一个。标题悬停下划线不变蓝，计数徽章中性灰。其它选择器引用 `--tungsten` 由 `tests/test_web_ui.py` 拒绝；实测见 `vercel-geist-semantics-measured.md`「选中态与开关色」「Button 全变体与状态」。
+- 单色优先：`--tungsten` 只给焦点环、链接、进度／数据与 Toggle 开态。主动作用 `--ink` 底 `--ground` 字且每屏最多一个。标题悬停下划线不变蓝，计数徽章中性灰。其它选择器引用 `--tungsten` 由 `tests/test_web_ui.py` 拒绝；实测见 `vercel-geist-semantics-measured.md`「选中态与开关色」「Button 全变体与状态」。
+- 选中态只有填充：一律 `--hover` 底 `--ink` 字，不加边框、不加 `inset` 一圈线、不加字重（Geist Switch／Tabs 的类名里三样都没有）。填充既然专属选中，同一组互斥选项的未选中项悬停就只提文字色到 `--ink`；没有选中态的按钮和没有并排邻居的孤立开关悬停照旧抬填充。适用清单见同一份快照的「选中态与它的悬停」。
 - 按钮悬停只抬填充：次级到 `--hover`，主动作到 `color-mix(in srgb,var(--ink) 88%,var(--ground))`，边框与文字色都不动。禁用走 `--surface` 底、`--border-15` 边、`--muted` 字，不用 `opacity`；按下不加 `scale`。三条都有 Geist Button 源规则佐证。
 - `outline:0`／`outline:none` 只允许出现在同一规则给出替代焦点样式的地方（`box-shadow` 或子元素 outline），或输入框由带 `:focus-within` 的容器接管焦点时；reduced motion 由全局 `@media (prefers-reduced-motion:reduce)` 统一关闭，不逐处补。
 - Progress 必须有真实 `value/max`、可见单位与 `aria-valuemin/max/now`；分隔线放在完整指标（含进度条）之后。
