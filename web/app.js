@@ -144,6 +144,11 @@ function renderCatalogLoading(label='正在读取作品'){
   const count=$('#count');
   count.setAttribute('aria-busy','true');
   count.textContent='';count.setAttribute('aria-label',label);
+  /* 骨架一铺上去就得把底部那颗 Loading Dots 收掉。骨架说的是「等下会出现几张什么
+     形状的卡」，dots 说的是「上面已经有内容，还在往下接」；两段同时在场时一屏里
+     铺着两种等待动画，而实际只有一次请求在跑。哨兵的可见性由数据落地后的
+     `has_more` 重新决定，所以这里只管收，不必记住原值。 */
+  $('#loadSentinel').hidden=true;
   $('#grid').innerHTML=pageSkeletonHtml(label,{cards:true,className:'catalog-skeleton'});
 }
 /* 每个管理表面的加载态只有一份定义，深链启动和路由到位后都从这里取。
@@ -174,7 +179,6 @@ function renderInitialSurfaceLoading(){
     /* 垃圾文件是一屏同质卡片，等的是内容结构不是后台进度：Loading Dots 说的是
        「还在跑」，这里要说的是「等下会出现几张什么形状的卡」，所以用目录骨架。 */
     renderCatalogLoading('正在读取垃圾文件');
-    $('#loadSentinel').hidden=true;
     return;
   }
   const management=new Set(['/stats','/taste','/review','/data-cleanup','/duplicates','/quality-goals',
@@ -1758,8 +1762,8 @@ function cardHtml(it,cls){
     <div class="hovertools later-tools"><button class="laterbtn" data-later aria-pressed="${!!it.watch_later}" title="稍后看" aria-label="稍后看">
       ${it.watch_later?icon('check'):icon('bookmark-plus')}</button></div>
     <div class="hovertools seektools">
-      <button data-seek="-${appSettings.seekSeconds}" title="后退 ${appSettings.seekSeconds} 秒" aria-label="后退 ${appSettings.seekSeconds} 秒">${icon('rotate-ccw')}<b>${appSettings.seekSeconds}</b></button>
-      <button data-seek="${appSettings.seekSeconds}" title="前进 ${appSettings.seekSeconds} 秒" aria-label="前进 ${appSettings.seekSeconds} 秒">${icon('rotate-cw')}<b>${appSettings.seekSeconds}</b></button>
+      <button data-seek="-${appSettings.seekSeconds}" title="后退 ${appSettings.seekSeconds} 秒" aria-label="后退 ${appSettings.seekSeconds} 秒">${icon('rotate-ccw')}</button>
+      <button data-seek="${appSettings.seekSeconds}" title="前进 ${appSettings.seekSeconds} 秒" aria-label="前进 ${appSettings.seekSeconds} 秒">${icon('rotate-cw')}</button>
       <button data-open title="打开详情" aria-label="打开详情">${icon('maximize')}</button></div>`;
   /* 小图与预览图都是 16:9 横图，只更换图片来源；元数据 DOM 和高度必须完全相同。 */
   /* 叠层纸边是「这张卡代表不止一条」的视觉说法，分卷和版次都成立。只给分卷的话，
@@ -6043,6 +6047,24 @@ function javLayoutButtons(){
     {attr:'data-jav-layout',className:'javlayout'});
 }
 function wireJavLayoutButtons(root){wireIconSwitch(root,'data-jav-layout',setJavLayout)}
+/* 版式切换一次请求都不发。卡片 HTML 完全由 CACHE 里那条媒体决定，走 `load(true)` 的话
+   会先把整屏换成骨架、再重新取一遍同样的数据，于是纯展示层的一个开关被演成了一次页面
+   加载：列表整屏消失、骨架闪一下、内容再回来。
+   逐张换 outerHTML，不重跑 batchWithMix：网格里的顺序、Mix 的落位和分卷／版次折叠都是
+   前几批累积下来的结果，重跑一遍分组会把它们重排。 */
+function repaintCatalogCards(){
+  // 回收站和垃圾文件的卡片由 resourceCardHtml／junkCardHtml 画，形状和动作都不同，
+  // 不能拿 cardHtml 重画；这两屏本来也没有版式开关。
+  if(state.state==='trash'||state.state==='ads')return;
+  const grid=$('#grid');
+  releaseHoverPreviews(grid);
+  grid.querySelectorAll('.card[data-id],.card[data-mix-seed]').forEach(card=>{
+    const seed=card.dataset.mixSeed;
+    const it=CACHE[seed||card.dataset.id];
+    if(it)card.outerHTML=seed?mixCardHtml(it):cardHtml(it);
+  });
+  wireCards(grid);wireMixCards(grid);paintSelection();
+}
 function setJavLayout(value){
   appSettings.javLayout=value;
   saveSettings();
@@ -6053,7 +6075,7 @@ function setJavLayout(value){
       barsContext.type==='entity'?barsContext.filters:emptyEntityFilters());
     return;
   }
-  if(!$('#grid').hidden)load(true);
+  if(!$('#grid').hidden)repaintCatalogCards();
 }
 function paintJavBar(){
   // 版式按钮现在长在排序行里（见 renderCount），这里只负责收掉旧容器。
@@ -6196,9 +6218,8 @@ async function load(reset){
   countRow.classList.toggle('junkcount',staticManageCount);
   if(staticManageCount)countRow.classList.remove('is-stuck');
   if(state.state==='ads'){
-    // 骨架已经由上面的 reset 分支画好；这里再盖一层 Loading Dots 只会连播两段
-    // 动画，还把「等下出现什么」换成了「还在跑」。
-    if(reset)$('#loadSentinel').hidden=true;
+    // 哨兵由 renderCatalogLoading 统一收掉：铺骨架和收 dots 是同一件事的两半，
+    // 分开写就会有分支只做了一半。
     if(reset||!adsBatch){const junkQuery=new URLSearchParams({limit:'200',status:junkView});if(junkKind)junkQuery.set('kind',junkKind);
       const nextAds=await surfaceApi(surface,'/api/ads?'+junkQuery);
       if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;

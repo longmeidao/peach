@@ -3028,7 +3028,6 @@ class WebUiSourceTests(unittest.TestCase):
         """待判断为空是请求终态；加载期间显示的是骨架，不能先闪空态。"""
         branch = self.app_js.split("if(state.state==='ads'){", 1)[1].split("adsBatch=null;", 1)[0]
         request = "const nextAds=await surfaceApi(surface,'/api/ads?'+junkQuery)"
-        self.assertLess(branch.index("if(reset)$('#loadSentinel').hidden=true;"), branch.index(request))
         self.assertLess(branch.index(request), branch.index("emptyState('check'"))
 
     def test_junk_files_wait_on_a_structural_skeleton_not_loading_dots(self):
@@ -3651,6 +3650,27 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("section.querySelector('h3').textContent=`视频 ·")
         self.assertPageLacks("的馆藏作品 ·")
 
+    def test_hover_seek_controls_are_bare_icons_over_the_frame(self):
+        """悬停放大时居中的快退／快进／全屏是裸图标，不是压在画面上的磨砂圆饼。
+
+        三个 58px 的实心圆落在封面正中，遮住的画面比按钮本身还多，而这一层出现的时机
+        恰恰是用户在看画面。命中区域仍留 58px（触摸目标不缩），只是不再画出底和边；
+        秒数交给 `title`／`aria-label`，图标上不再压一个数字。
+        证据与「beeg 那一侧未取得」的结论见
+        `docs/reference-snapshots/hover-seek-controls-user-screenshot.md`。
+        """
+        self.assertPageContains(
+            ".hovertools.seektools button{border:0;background:none;backdrop-filter:none;")
+        self.assertPageContains(".hovertools.seektools button svg{width:34px;height:34px;stroke-width:1.5}")
+        self.assertPageContains(".hovertools.seektools button:hover{background:none}")
+        # 命中区域仍由共用规则给出 58px 圆，裸图标只是不画它。
+        self.assertPageContains(".hovertools button{pointer-events:none;width:58px;height:58px;border-radius:50%")
+        # 数字角标随之退役：DOM 里不再有它，样式也不该留着。
+        self.assertPageLacks("<b>${appSettings.seekSeconds}</b>")
+        self.assertPageLacks(".hovertools button b{")
+        self.assertPageContains('title="后退 ${appSettings.seekSeconds} 秒"')
+        self.assertPageContains('aria-label="前进 ${appSettings.seekSeconds} 秒"')
+
     def test_jav_titles_hide_media_suffix_and_emphasize_the_code(self):
         # 「后缀什么时候剥」「display_code 与 display_title 怎么取」「哪三个徽章算数」
         # 这些算法已经拆进 web/js/jav-title.js，改成拿真输入跑真函数验收，
@@ -3696,6 +3716,27 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("el.offsetParent===null||css.position!=='sticky'")
         self.assertPageContains("stage.style.scrollMarginTop=`${itemDetailStickyOffset()+8}px`")
         self.assertCode("buildBars();\n  scrollItemDetailIntoView();")
+
+    def test_catalog_skeleton_collects_the_bottom_loading_dots(self):
+        """一屏只能有一段等待态：铺骨架和收哨兵是同一件事的两半。
+
+        `.claude/skills/peach-web-ui/SKILL.md`：同一次页面进入只呈现一段等待态。
+        `#loadSentinel` 的 Loading Dots 说的是「上面已经有内容，还在往下接」，骨架说的是
+        「等下会出现几张什么形状的卡」——目录 reset 时两段同时在场，而实际只有一次请求。
+        收哨兵必须写在 renderCatalogLoading 里：各分支自己记得收的话，总有分支只做一半，
+        垃圾文件那条就是这么补出来的。
+        """
+        body = self.app_js.split("function renderCatalogLoading(label='正在读取作品'){", 1)[1]
+        body = body.split("\n}", 1)[0]
+        self.assertIn("$('#loadSentinel').hidden=true;", body)
+        self.assertLess(body.index("$('#loadSentinel').hidden=true;"),
+                        body.index("$('#grid').innerHTML=pageSkeletonHtml"),
+                        "哨兵要在骨架铺上之前收掉，别让 dots 和骨架同时存在一帧")
+        # 目录这条链上收哨兵只有这一处：分支里再补一次就是又一个会漏掉的地方。
+        ads = self.app_js.split("if(state.state==='ads'){", 1)[1].split("adsBatch=null;", 1)[0]
+        self.assertNotIn("$('#loadSentinel').hidden=true", ads)
+        boot = self.app_js.split("if(path==='/junk-files'){", 1)[1].split("return;", 1)[0]
+        self.assertNotIn("$('#loadSentinel').hidden=true", boot)
 
     def test_page_loading_uses_one_structural_skeleton_phase(self):
         self.assertPageContains("function renderCatalogLoading(label='正在读取作品')")
@@ -4949,6 +4990,29 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("(items.items||[]).some(item=>item.is_jav)")
         self.assertPageContains("return state.jav==='1'||entityJavLayout")
         self.assertPageContains("const jav=javActive()&&!!it.is_jav,layout=javLayout()")
+
+    def test_switching_the_jav_layout_repaints_cards_without_a_request(self):
+        """版式是纯展示层的开关：不发请求，也就没有等待态可放。
+
+        卡片 HTML 完全由 CACHE 里那条媒体决定，`load(true)` 会先把整屏换成骨架、再取一遍
+        同样的数据；用户点「大图」看到的是列表整屏消失、骨架闪一下、内容再回来。
+        逐张换 outerHTML 而不是重跑 batchWithMix：顺序、Mix 落位和分卷／版次折叠都是前几批
+        累积下来的，重跑分组会把它们重排。
+        """
+        body = self.app_js.split("function setJavLayout(value){", 1)[1].split("\n}", 1)[0]
+        self.assertIn("repaintCatalogCards()", body)
+        self.assertNotIn("load(true)", body)
+        self.assertPageContains("function repaintCatalogCards(){")
+        self.assertPageContains("if(state.state==='trash'||state.state==='ads')return;")
+        self.assertPageContains(
+            "grid.querySelectorAll('.card[data-id],.card[data-mix-seed]').forEach(card=>{")
+        self.assertPageContains("if(it)card.outerHTML=seed?mixCardHtml(it):cardHtml(it);")
+        self.assertPageContains("wireCards(grid);wireMixCards(grid);paintSelection();")
+        repaint = self.app_js.split("function repaintCatalogCards(){", 1)[1].split("\n}", 1)[0]
+        self.assertIn("releaseHoverPreviews(grid)", repaint)
+        self.assertNotIn("renderCatalogLoading", repaint)
+        self.assertNotIn("await", repaint)
+        self.assertNotIn("batchWithMix", repaint)
 
     def test_the_people_index_offers_a_big_and_a_compact_layout(self):
         """艺人索引页的两个版式，与 JAV 大图同一条思路、同一个控件。"""
