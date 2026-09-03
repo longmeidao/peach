@@ -25,7 +25,8 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from peach.catalog_rules import code_query_variants, is_jav_code, normalise_code_key
+from peach.catalog_rules import (code_query_variants, is_jav_code, normalise_code_key,
+                                 same_release_code)
 from peach.scripting import open_readonly
 from peach.config import DATABASE_PATH, GENERATED_DIR, LOG_DIR, SOURCES_DIR, STATE_DIR
 from peach.genre_taxonomy import CONTENT_GENRES, map_genres
@@ -114,9 +115,9 @@ def _fetch_source(adapter, *, query: str, source: str, snapshot: Path,
     """取一个写法一个来源：优先复用快照，失败也落盘，返回 (payload, error, reused)。
 
     单独拆出来是因为一个番号要问的写法可能不止一个，而每个写法的快照、限流计数和
-    错误落盘规则完全一样。身份校验不在这里：`JavinizerGoProvider.query` 已经用
-    `identifies_code` 把「返回的不是这一部」判成 `not_found`，`_read_snapshot` 复用
-    快照时也照同一条判据再过一遍。
+    错误落盘规则完全一样。`JavinizerGoProvider.query` 和 `_read_snapshot` 各自也用
+    `identifies_code` 过一遍，但注入的 provider 不经过那条路，所以身份校验在调用方
+    单独再做一次（`_identity_mismatch`）。
     """
     payload = None if refresh else _read_snapshot(snapshot, query)
     settled = None if refresh else _read_settled_error(snapshot)
@@ -136,6 +137,26 @@ def _fetch_source(adapter, *, query: str, source: str, snapshot: Path,
             _write_snapshot(snapshot, code=query, source=source, error=error)
         return None, error, reused
     return payload, None, reused
+
+
+def _identity_mismatch(query: str, payload: dict) -> MetadataProviderError | None:
+    """来源返回的作品不是查的那一部时，拒收而不是当命中。
+
+    javbus 一侧是拿番号做关键词搜索并取首个命中，所以搜不到原番号一定会返回别的
+    东西：`CHU-101 -> CHUC-101`、`SA-104 -> AVSA-104`、`AR-301 -> STAR-3016`。
+    2026-09-02 实测 `B:/MVP/MIB/` 下 68 次匹配有 58 次返回的番号根本不是查询的
+    番号，整目录的厂牌、系列、标题因此全错。
+
+    比对走 `same_release_code`，它容忍片商前缀、补零和重制尾字母这些良性差异；
+    来源没给 id 的不拦——那是缺证据，不是证据相反。
+    """
+    returned = str(payload.get("id") or payload.get("content_id") or "").strip()
+    if not returned or same_release_code(query, returned):
+        return None
+    return MetadataProviderError(
+        f"来源返回的番号 {returned} 不是查询的 {query}",
+        kind="identity_mismatch",
+    )
 
 
 def _candidate_key(code: str, field: str, source: str, value: object) -> str:
@@ -492,6 +513,10 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                         adapter, query=attempt, source=source, snapshot=snapshot,
                         refresh=args.refresh, health=source_health)
                     used_network = used_network or not reused
+                    if payload is not None:
+                        error = _identity_mismatch(attempt, payload)
+                        if error is not None:
+                            payload = None
                     if payload is not None:
                         if attempt != query:
                             log(f"{query} 在 {source} 改用 {attempt} 命中")
