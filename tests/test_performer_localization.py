@@ -8,7 +8,7 @@ from pathlib import Path
 from peach.migrations import upgrade
 from scripts.localize_performer_names import (
     KANJI_ALIAS_SOURCE, apply_rows, collect, main, read_identity_review, read_mapping,
-    simplify_kanji,
+    resolve_sai, simplify_kanji, strip_zero_width,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,7 +26,9 @@ class PerformerLocalizationTests(unittest.TestCase):
             [(1, "/x/1.mp4", "1.mp4"), (2, "/x/2.mp4", "2.mp4"),
              (3, "/x/3.mp4", "3.mp4"), (4, "/x/4.mp4", "4.mp4"),
              (5, "/x/5.mp4", "5.mp4"), (6, "/x/6.mp4", "6.mp4"),
-             (7, "/x/7.mp4", "7.mp4"), (8, "/x/8.mp4", "8.mp4")])
+             (7, "/x/7.mp4", "7.mp4"), (8, "/x/8.mp4", "8.mp4"),
+             (9, "/x/9.mp4", "9.mp4"), (10, "/x/10.mp4", "10.mp4"),
+             (11, "/x/11.mp4", "11.mp4")])
         self.con.executemany(
             "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
             "VALUES(?,'performer',?,?, 't','t')",
@@ -38,7 +40,10 @@ class PerformerLocalizationTests(unittest.TestCase):
              (15, "Hitomi Hoshiya", "hitomi hoshiya"),
              (16, "斎藤満里奈", "斎藤満里奈"),
              (17, "野々宮蘭", "野々宮蘭"),
-             (18, "飯岡かなこ", "飯岡かなこ")])
+             (18, "飯岡かなこ", "飯岡かなこ"),
+             (20, "安斋拉拉", "安斋拉拉"),
+             (21, "\u200c斋藤亚美里", "\u200c斋藤亚美里"),
+             (22, "斋藤未来", "斋藤未来")])
         self.con.executemany(
             "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
             "VALUES(?,?,'performer',?,1.0)",
@@ -46,16 +51,24 @@ class PerformerLocalizationTests(unittest.TestCase):
              (3, 12, "r18:performer"), (4, 13, "r18:performer"),
              (4, 14, "performer"), (5, 15, "r18:performer"),
              (6, 16, "r18:performer"), (7, 17, "performer"),
-             (8, 18, "r18:performer")])
+             (8, 18, "r18:performer"), (9, 20, "r18:performer"),
+             (10, 21, "r18:performer"), (11, 22, "r18:performer")])
         self.con.executemany(
             "INSERT INTO asset_tag(asset_id,tag,confidence,source) VALUES(?,?,1.0,'r18:performer')",
             [(1, "演员:Alice Shaku"), (2, "演员:Mio Hayakawa"),
              (3, "演员:吉川蓮"), (4, "演员:Unknown Roman"),
              (5, "演员:Hitomi Hoshiya"), (6, "演员:斎藤満里奈"),
-             (7, "演员:野々宮蘭"), (8, "演员:飯岡かなこ")])
+             (7, "演员:野々宮蘭"), (8, "演员:飯岡かなこ"),
+             (9, "演员:安斋拉拉"), (10, "演员:\u200c斋藤亚美里"),
+             (11, "演员:斋藤未来")])
         self.con.execute(
             "INSERT INTO entity_external_ref(entity_id,provider,external_kind,external_id) "
             "VALUES(15,'r18','performer_name','星谷瞳')")
+        self.con.executemany(
+            "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,confidence) "
+            "VALUES(?,?,?,'r18:performer',0.9)",
+            [(20, "安齋らら", "安齋らら"), (21, "斎藤あみり", "斎藤あみり"),
+             (22, "さいとうみらい", "さいとうみらい")])
         self.con.commit()
 
         self.mapping = root / "actors.xml"
@@ -159,6 +172,20 @@ class PerformerLocalizationTests(unittest.TestCase):
         self.assertEqual(rows[17]["action"], "localize-kanji")
         self.assertEqual(rows[18]["action"], "keep-unresolved")
         self.assertEqual(rows[18]["target_name"], "飯岡かなこ")
+
+    def test_upstream_glyph_noise_in_the_canonical_name_is_normalised(self):
+        """`斎`／`齋` 的简体是 `齐`，`斋` 是另一个字；零宽字符根本不该出现在名字里。"""
+        self.assertEqual(strip_zero_width("\u200c斋藤亚美里"), "斋藤亚美里")
+        self.assertEqual(resolve_sai("安斋拉拉", ["安齋らら"]), "安齐拉拉")
+        # 日文一侧不是 `斎`／`齋` 就没有证据说这个 `斋` 写错了，原样留着。
+        self.assertEqual(resolve_sai("安斋拉拉", ["Rara Anzai"]), "安斋拉拉")
+        rows = {int(row["entity_id"]): row for row in collect(
+            self.con, [], read_identity_review(self.review), "kanji-only")}
+        self.assertEqual(rows[20]["target_name"], "安齐拉拉")
+        self.assertEqual(rows[21]["target_name"], "齐藤亚美里")
+        self.assertEqual(rows[21]["action"], "localize-kanji")
+        self.assertEqual(rows[22]["target_name"], "斋藤未来")
+        self.assertEqual(rows[22]["action"], "keep-unresolved")
 
     def test_apply_records_kanji_rows_under_their_own_alias_source(self):
         plan = collect(self.con, [], read_identity_review(self.review), "kanji-only")

@@ -23,6 +23,7 @@ import sqlite3
 import xml.etree.ElementTree as ET
 import sys
 from collections import Counter, defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -63,6 +64,28 @@ JP_KANJI_TO_SIMPLIFIED = {
     "鶴": "鹤", "蓮": "莲", "東": "东", "納": "纳", "樹": "树", "麗": "丽",
     "靜": "静", "貴": "贵", "藝": "艺", "歐": "欧", "慶": "庆",
 }
+
+# 上游译名偶尔夹带零宽字符（`\u200c斋藤亚美里`）。页面上和普通名字看不出差别，
+# 搜索、去重和名字唯一约束却全按另一个字符串算，等于库里多出一个查不到的人。
+_ZERO_WIDTH = re.compile(r"[\u200b-\u200f\u2060\ufeff]")
+
+# `斎`／`齋` 的简体字形是 `齐`。`斋` 在中文里是另一个字（斋戒、书斋），上游把
+# `安齋らら` 写成 `安斋拉拉` 是照抄字形没换。只在日文一侧确实是 `斎`／`齋` 时才改，
+# 本来就写 `斋` 的名字不动——两个字不能混为一谈。
+_SAI_KANJI = ("斎", "齋")
+
+
+def strip_zero_width(name: str) -> str:
+    return _ZERO_WIDTH.sub("", name or "")
+
+
+def resolve_sai(name: str, japanese: Iterable[str]) -> str:
+    if "斋" not in name:
+        return name
+    if any(char in str(value or "") for value in japanese for char in _SAI_KANJI):
+        return name.replace("斋", "齐")
+    return name
+
 
 # 简体中文没有对应字形的日本汉字：咲 凪 雫 辻 笹 榊 槙 䌷。中文资料页一律照抄，
 # 表里不收，逐字换的时候原样留下——`桜咲姫莉` 该变成 `樱咲姬莉`，不是变成半个空格。
@@ -328,10 +351,12 @@ def collect(
     for row in rows:
         if row["action"] in {"merge-drop", "conflict"}:
             continue
-        simplified = simplify_kanji(str(row["target_name"]))
-        if simplified == row["target_name"]:
+        current = str(row["target_name"])
+        japanese = [row["mapping_jp"], *row["_aliases"]]
+        simplified = simplify_kanji(resolve_sai(strip_zero_width(current), japanese))
+        if simplified == current:
             continue
-        row["_aliases"].add(str(row["target_name"]))
+        row["_aliases"].add(current)
         row["target_name"] = simplified
         row["resolution"] = f"{row['resolution']}/kanji-simplification"
         if str(row["action"]).startswith("keep"):
