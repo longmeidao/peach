@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 r"""女优高清头像缺口审计：只产候选与缓存证据，不写 ledger、不安装头像。
 
-交接背景（docs/OX-WINDOWS-JAV.md 第 4 节）：ledger 已完成中文规范名本地化，
+背景（尚未完成的写入侧见 docs/PRODUCT_BACKLOG.md）：ledger 已完成中文规范名本地化，
 界面请求 `generated/avatars/performer-<entity_id>.img`，缺文件时回落到视频抽帧。
 本脚本回答两件事：
 
@@ -37,9 +37,15 @@ import threading
 import time
 import urllib.parse
 import concurrent.futures as futures
+import sys
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 from peach.avatar_provider import (
     POLICY_VERSION,
@@ -55,15 +61,12 @@ from peach.catalog_rules import is_jav_code
 from peach.config import DATABASE_PATH, GENERATED_DIR
 from peach.http import HttpRequest, HttpTransport, HttpxTransport
 from peach.review_csv import read_rows, write_rows
+from peach.scripting import HostLimiter, USER_AGENT, open_readonly
 
 GFRIENDS_RAW = "https://raw.githubusercontent.com/gfriends/gfriends/master/"
 # 目录名首字符即质量档位；0 最优，z（DMM 官方小图）最次。
 QUALITY_ORDER = "0123456789abcdefghijklmnopqrstuvwxyz"
 AVATAR_FILE_RE = re.compile(r"^performer-(\d+)\.img$")
-BROWSER_UA = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/125.0 Safari/537.36"
-)
 _LIMITER: "HostLimiter | None" = None
 
 FIELDS = (
@@ -187,9 +190,9 @@ def load_gfriends(transport: HttpTransport) -> dict[str, list[tuple[str, str]]]:
     return parse_gfriends(response.body)
 
 
-#: 索引缓存的保鲜期。Gfriends 是持续增补的图库，而这份缓存原本永不过期——只要文件在
-#: 就一直复用，于是快照那天没收录的人会被判成 `no_match`，此后每次重跑都照抄同一个
-#: 结论，再也不会被重新审视。实测：2026-08-25 的缓存里没有「釈アリス」，当天之后
+#: 索引缓存的保鲜期。Gfriends 是持续增补的图库，缓存不能永不过期：只要文件在就一直
+#: 复用的话，快照那天没收录的人会被判成 `no_match`，此后每次重跑都照抄同一个结论，
+#: 没有任何时机被重新审视。实测：2026-08-25 的缓存里没有「釈アリス」，当天之后
 #: Gfriends 加了她（两份索引正好差这一条），但本地怎么跑都还是找不到。
 #:
 #: 一天是个折中：图库按天更新，而这个脚本是长跑批处理，不该每次启动都拉 6 MB。
@@ -263,34 +266,6 @@ def quality_key(category: str, filename: str) -> tuple[int, str, str]:
     return (rank if rank >= 0 else len(QUALITY_ORDER), category, filename)
 
 
-class HostLimiter:
-    """按主机分别限速：每个主机一把锁、一个下次可发时刻。"""
-
-    def __init__(self, intervals: dict[str, float]):
-        self._intervals = intervals
-        self._locks = {host: threading.Lock() for host in intervals}
-        self._next: dict[str, float] = {host: 0.0 for host in intervals}
-
-    def _key(self, url: str) -> str | None:
-        hostname = urllib.parse.urlsplit(url).hostname or ""
-        for host in self._intervals:
-            if host in hostname:
-                return host
-        return None
-
-    def wait(self, url: str) -> None:
-        key = self._key(url)
-        if key is None:
-            return
-        with self._locks[key]:
-            now = time.monotonic()
-            delay = self._next[key] - now
-            if delay > 0:
-                time.sleep(delay)
-                now = time.monotonic()
-            self._next[key] = now + self._intervals[key]
-
-
 def fetch(transport: HttpTransport, url: str, accept: str,
           timeout: float = 30, max_bytes: int = 4 * 1024 * 1024):
     """联网取一次；任何网络层异常都降级为 None，不让单条 TLS 抖动打断整批。"""
@@ -299,7 +274,7 @@ def fetch(transport: HttpTransport, url: str, accept: str,
         active.wait(url)
     try:
         return transport(
-            HttpRequest("GET", url, {"Accept": accept, "User-Agent": BROWSER_UA}),
+            HttpRequest("GET", url, {"Accept": accept, "User-Agent": USER_AGENT}),
             timeout, max_bytes)
     except Exception:
         return None
@@ -330,12 +305,6 @@ def normalized(value: str) -> str:
 
 
 # ---------------------------------------------------------------- ledger（只读）
-
-
-def open_readonly(db_path: Path) -> sqlite3.Connection:
-    # mode=ro 让「绝不写库」成为数据库层的硬保证，而不只是约定。
-    uri = "file:" + urllib.parse.quote(db_path.resolve().as_posix()) + "?mode=ro"
-    return sqlite3.connect(uri, uri=True)
 
 
 def load_performers(connection: sqlite3.Connection) -> list[dict]:

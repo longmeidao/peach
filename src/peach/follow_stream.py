@@ -10,8 +10,10 @@ import re
 import threading
 import time
 import urllib.parse
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Callable, Mapping
+
+import httpx
 
 from . import follow_providers
 from .follow_sources import USER_AGENT, archive_file_url, f95_attachment_media_items
@@ -24,6 +26,14 @@ class FollowMediaUnavailable(RuntimeError):
     pass
 
 
+class FollowProxyError(RuntimeError):
+    """上游存在但这一次代理不成立：状态码不对、重定向出界或传输失败。
+
+    与 `FollowMediaUnavailable` 分开是因为两者的对外语义不同：条目本身没有可播
+    媒体是 404，上游这一次没给出可转发的响应是 502。
+    """
+
+
 @dataclass(frozen=True)
 class ResolvedFollowMedia:
     url: str
@@ -32,6 +42,10 @@ class ResolvedFollowMedia:
     #: (高度, URL) 从高到低。只有 rule34video 给多档；其余来源留空，
     #: 播放器据此只显示「原画」。
     qualities: tuple[tuple[int, str], ...] = ()
+    #: 这条媒体允许落到哪些主机后缀。解析时已经按它校验过 `url`，代理层跟重定向
+    #: 时还要再按它校验每一跳：`headers` 里可能带 Cookie / Bearer token，一旦上游
+    #: 把我们指到别的主机，那些凭据就跟着送出去了。空表示不允许代理。
+    allowed_hosts: tuple[str, ...] = ()
 
 
 #: 媒体代理允许的主机，投影自 follow_providers；不在表里的 provider 一律拒绝。
@@ -56,8 +70,7 @@ def _pick_quality(resolved: ResolvedFollowMedia, height: int | None) -> Resolved
         return resolved
     for level, url in resolved.qualities:
         if level == height:
-            return ResolvedFollowMedia(url, resolved.referer, resolved.headers,
-                                       resolved.qualities)
+            return replace(resolved, url=url)
     return resolved
 
 def _allowed(provider: str, url: str) -> bool:
@@ -75,14 +88,33 @@ def _allowed(provider: str, url: str) -> bool:
 class FollowMediaResolver:
     """Resolve stable ledger candidates into short-lived upstream playback URLs."""
 
+    #: 缓存里最多留多少条解析结果。只有 rule34video 会进这个缓存，一次列表几百条，
+    #: 用户挨个点开就会挨个留下一条；只按 TTL 过期的话，进程活多久它就长多久。
+    #: 上限按「一屏反复点开也够用」定，超了先丢已过期的，再丢最早写进来的。
+    MAX_CACHE_ENTRIES = 256
+
     def __init__(self, transport: HttpTransport, *, ttl: float = 300.0,
-                 timeout: float = 20.0, max_bytes: int = 2_000_000):
+                 timeout: float = 20.0, max_bytes: int = 2_000_000,
+                 max_cache_entries: int | None = None):
         self.transport = transport
         self.ttl = ttl
         self.timeout = timeout
         self.max_bytes = max_bytes
+        self.max_cache_entries = (self.MAX_CACHE_ENTRIES if max_cache_entries is None
+                                  else max_cache_entries)
         self._cache: dict[int, tuple[float, ResolvedFollowMedia]] = {}
         self._lock = threading.Lock()
+
+    def _remember(self, item_id: int, resolved: ResolvedFollowMedia) -> None:
+        """写入缓存并保持有界。调用方持有 `_lock`。"""
+        now = time.monotonic()
+        for key, (expiry, _) in list(self._cache.items()):
+            if expiry <= now:
+                del self._cache[key]
+        self._cache.pop(item_id, None)
+        while self._cache and len(self._cache) >= self.max_cache_entries:
+            self._cache.pop(next(iter(self._cache)))
+        self._cache[item_id] = (now + self.ttl, resolved)
 
     def with_credential_loader(
             self, loader: Callable[[str], Credential | None]) -> "FollowMediaResolver":
@@ -116,11 +148,13 @@ class FollowMediaResolver:
                 if not token:
                     raise FollowMediaUnavailable("Gofile API token 未配置")
                 return ResolvedFollowMedia(
-                    url, item.url, {"Authorization": f"Bearer {token}"})
+                    url, item.url, {"Authorization": f"Bearer {token}"},
+                    allowed_hosts=("gofile.io",))
             if resource_provider == "fanbox":
                 if not _allowed_resource(url, ("fanbox.cc",)):
                     raise FollowMediaUnavailable("FANBOX 返回了不受信任的图片地址")
-                return ResolvedFollowMedia(url, item.url)
+                return ResolvedFollowMedia(url, item.url,
+                                           allowed_hosts=("fanbox.cc",))
             if resource_provider == "f95zone":
                 if not _allowed_resource(url, ("attachments.f95zone.to",)):
                     raise FollowMediaUnavailable("F95 返回了不受信任的图片地址")
@@ -130,7 +164,8 @@ class FollowMediaResolver:
                 if item.metadata.get("media_needs_credential") and not cookie:
                     raise FollowMediaUnavailable("F95 附件需要登录会话")
                 return ResolvedFollowMedia(
-                    url, item.url, {"Cookie": cookie} if cookie else None)
+                    url, item.url, {"Cookie": cookie} if cookie else None,
+                    allowed_hosts=("attachments.f95zone.to",))
             raise FollowMediaUnavailable("媒体来源不受支持")
         if item.metadata.get("media_needs_credential"):
             raise FollowMediaUnavailable("媒体需要来源登录会话")
@@ -141,7 +176,9 @@ class FollowMediaResolver:
             media_url = archive_file_url(item.provider, str(item.media_url or ""))
             if not media_url or not _allowed(item.provider, media_url):
                 raise FollowMediaUnavailable("来源媒体地址不可用")
-            return ResolvedFollowMedia(media_url, item.url)
+            return ResolvedFollowMedia(
+                media_url, item.url,
+                allowed_hosts=tuple(_PROVIDER_HOSTS.get(item.provider, ())))
 
         with self._lock:
             cached = self._cache.get(item.id)
@@ -169,10 +206,11 @@ class FollowMediaResolver:
         ordered = sorted(found, key=_video_height, reverse=True)
         resolved = ResolvedFollowMedia(
             ordered[0], item.url,
-            qualities=tuple((_video_height(url), url) for url in ordered))
+            qualities=tuple((_video_height(url), url) for url in ordered),
+            allowed_hosts=tuple(_PROVIDER_HOSTS.get(item.provider, ())))
         resolved = _pick_quality(resolved, height)
         with self._lock:
-            self._cache[item.id] = (time.monotonic() + self.ttl, resolved)
+            self._remember(item.id, resolved)
         return resolved
 
 
@@ -184,3 +222,78 @@ def _allowed_resource(url: str, hosts: tuple[str, ...]) -> bool:
     host = (parsed.hostname or "").casefold()
     return (parsed.scheme == "https" and not parsed.username and not parsed.password
             and any(host == suffix or host.endswith("." + suffix) for suffix in hosts))
+
+
+#: 代理层允许跟几跳重定向。归档站的主域会 302 到实际取文件的节点（2026-08-30 实测
+#: kemono → n1.、coomer → n4.），所以必须跟；但每一跳都要重新过白名单。
+MAX_PROXY_REDIRECTS = 3
+_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+#: 可以原样转发给浏览器的上游响应头。范围请求要靠前四个才能拖进度条；其余一律
+#: 不转发——上游的 set-cookie、server、x-* 都不该出现在 Peach 的响应里。
+PROXY_RESPONSE_HEADERS = ("accept-ranges", "content-length", "content-range",
+                          "content-type", "etag", "last-modified")
+
+
+def proxy_request_headers(target: ResolvedFollowMedia,
+                          incoming: Mapping[str, str]) -> dict[str, str]:
+    """代理请求要带的头。只透传范围请求相关的那两个，别的一律由这里决定。"""
+    headers = {
+        "User-Agent": "Peach/0.2",
+        "Accept": incoming.get("accept") or "*/*",
+        "Accept-Encoding": "identity",
+    }
+    if target.referer:
+        headers["Referer"] = target.referer
+    headers.update(target.headers or {})
+    for name in ("range", "if-range"):
+        value = incoming.get(name)
+        if value:
+            headers[name.title()] = value
+    return headers
+
+
+def proxy_response_headers(upstream: Mapping[str, str]) -> dict[str, str]:
+    forwarded = {}
+    for name in PROXY_RESPONSE_HEADERS:
+        value = upstream.get(name)
+        if value:
+            forwarded[name] = value
+    forwarded["cache-control"] = "no-store"
+    return forwarded
+
+
+def open_upstream(client: httpx.Client, method: str, target: ResolvedFollowMedia, *,
+                  incoming: Mapping[str, str]) -> httpx.Response:
+    """打开上游媒体流；只在拿到可转发的 2xx 时返回。
+
+    这里自己跟重定向而不是交给 client 的 `follow_redirects`：`target.headers` 可能
+    带着 Cookie 或 Bearer token，httpx 跟跳时会把请求头一路带过去，上游只要回一个
+    指向别处的 Location 就能把凭据换走。所以每一跳都重新过 `target.allowed_hosts`，
+    出界直接失败，绝不带着凭据再发一次。
+
+    非 2xx 同样在这里终止：上游的 403 页面、限流提示或错误 JSON 转发给播放器毫无
+    用处，只会把上游的状态与正文（可能含主机名、提示语）原样交给浏览器。
+    """
+    if not target.allowed_hosts:
+        raise FollowProxyError("这条媒体没有可代理的主机白名单")
+    url = target.url
+    headers = proxy_request_headers(target, incoming)
+    response: httpx.Response | None = None
+    for _ in range(MAX_PROXY_REDIRECTS + 1):
+        request = client.build_request(method, url, headers=headers)
+        response = client.send(request, stream=True, follow_redirects=False)
+        if response.status_code not in _REDIRECT_STATUSES:
+            break
+        location = response.headers.get("location") or ""
+        response.close()
+        response = None
+        url = urllib.parse.urljoin(url, location)
+        if not _allowed_resource(url, tuple(target.allowed_hosts)):
+            raise FollowProxyError("上游把媒体重定向到了不受信任的地址")
+    if response is None:
+        raise FollowProxyError("上游重定向次数过多")
+    if not 200 <= response.status_code < 300:
+        status = response.status_code
+        response.close()
+        raise FollowProxyError(f"上游返回 HTTP {status}")
+    return response

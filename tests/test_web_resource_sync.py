@@ -16,7 +16,7 @@ from unittest import mock
 from peach import web_contract as rm_web
 from peach import web_resource_sync as rm_sync
 
-from test_rm_web import BASE_SCHEMA
+from support.ledger import fresh_ledger
 
 
 class PurgeMissingTests(unittest.TestCase):
@@ -31,9 +31,8 @@ class PurgeMissingTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
-        self.db_path = str(self.root / "ledger.db")
+        self.db_path = str(fresh_ledger(self.root))
         con = sqlite3.connect(self.db_path)
-        con.executescript(BASE_SCHEMA)
         sep = chr(92)
         rows = [
             (1, "115", self.LEDGER_DIR + sep + "001.jpg", "001.jpg"),
@@ -48,8 +47,8 @@ class PurgeMissingTests(unittest.TestCase):
         con.executemany("INSERT INTO asset_tag(asset_id,tag,source) VALUES(?,?,'t')",
                         [(2, "标签"), (4, "标签")])
         con.executemany(
-            "INSERT INTO asset_preference(profile_id,asset_id,liked,reason) "
-            "VALUES('default',?,1,'')", [(2,), (4,)])
+            "INSERT INTO asset_preference(profile_id,asset_id,liked,reason,updated_at) "
+            "VALUES('default',?,1,'','2026-01-01')", [(2,), (4,)])
         con.commit()
         con.close()
         self.contract = rm_web.WebContract(Path(self.db_path))
@@ -271,4 +270,27 @@ class PurgeMissingTests(unittest.TestCase):
         result = self._run()
         self.assertEqual(result["removed"], 0)
         self.assertEqual(result["checked"], 3)
+        self.assertEqual(self.ids(), [1, 2, 3, 4])
+
+    def test_purge_lists_the_directory_once_instead_of_statting_every_file(self):
+        """逐条 is_file() 在云挂载上每条都是一次往返；已删路径没有负缓存，最贵。"""
+        real_scandir = os.scandir
+        with mock.patch.object(rm_sync, "translate_ledger_path", self._translate), \
+             mock.patch.object(rm_sync, "source_is_online", lambda loc: loc == "115"), \
+             mock.patch.object(rm_sync.os, "scandir", wraps=real_scandir) as scandir:
+            result = rm_sync.w_purge_missing(self.contract, {"id": 1})
+        self.assertEqual(result["removed"], 2)
+        self.assertEqual(scandir.call_count, 1)
+
+    def test_purge_keeps_rows_when_the_directory_cannot_be_read(self):
+        """目录暂时读不了不是「文件被删」：与全量扫描同款语义。
+
+        改动前这里逐条 `is_file()`，读不了会被当成全部缺失、整目录误入回收站。
+        """
+        with mock.patch.object(rm_sync, "translate_ledger_path", self._translate), \
+             mock.patch.object(rm_sync, "source_is_online", lambda loc: loc == "115"), \
+             mock.patch.object(rm_sync.os, "scandir", side_effect=PermissionError("busy")):
+            result = rm_sync.w_purge_missing(self.contract, {"id": 1})
+        self.assertEqual(result["removed"], 0)
+        self.assertEqual(result["unreadable"], 3)
         self.assertEqual(self.ids(), [1, 2, 3, 4])

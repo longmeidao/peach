@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
-from peach import web_follow
+from peach import follow_store, web_follow
 from peach.follow import FollowHistoryEnd
 from peach.follow import FollowSourceError
 from peach.follow_discovery import Discovery, ExternalSearch
@@ -132,7 +132,7 @@ class FollowContractTests(unittest.TestCase):
                                    semantics="work", candidates=(), raw_body=b"<html/>")
 
         original = web_follow.build_connector
-        web_follow.build_connector = lambda provider, credential=None: _Recorder()
+        web_follow.build_connector = lambda provider, **kwargs: _Recorder()
         self.addCleanup(setattr, web_follow, "build_connector", original)
 
         self._post("/api/follow/check", {})
@@ -546,34 +546,6 @@ class FollowContractTests(unittest.TestCase):
         self.assertFalse(_allowed("pawchive", "https://evil.test/data/a.mp4"))
         self.assertFalse(_allowed("pawchive", "http://file.pawchive.pw/data/a.mp4"))
 
-    def test_archive_thumbnails_use_the_img_subdomain(self):
-        """归档站静态资源走 img. 子域，主域取不到。
-
-        2026-08-30 实测：kemono.cr 回 302、pawchive.pw 回 404，两者的 img. 子域都回
-        200（取证见 docs/reference-snapshots/kemono-archive-media-host.md）。kemono
-        主域因为是重定向、浏览器跟随后仍能显示，所以只有 pawchive 的卡片一直是空的。
-
-        改写发生在读取时：坏 URL 已经写进两千多行，而这是可推导的投影不是真相字段。
-        """
-        from peach.web_follow import _archive_media_host
-
-        for provider, host in (("kemono", "kemono.cr"), ("pawchive", "pawchive.pw"),
-                               ("coomer", "coomer.st")):
-            self.assertEqual(
-                _archive_media_host(provider, f"https://{host}/thumbnail/data/a/b/c.jpg"),
-                f"https://img.{host}/thumbnail/data/a/b/c.jpg",
-            )
-            # 已经是 img. 的不再叠加
-            self.assertEqual(
-                _archive_media_host(provider, f"https://img.{host}/thumbnail/data/a/b/c.jpg"),
-                f"https://img.{host}/thumbnail/data/a/b/c.jpg",
-            )
-        # 别的站点原样返回，不要顺手改写
-        self.assertEqual(_archive_media_host("rule34video", "https://rule34video.com/a.jpg"),
-                         "https://rule34video.com/a.jpg")
-        self.assertEqual(_archive_media_host("kemono", "https://example.test/a.jpg"),
-                         "https://example.test/a.jpg")
-
     def _tagged(self, external_id, tags):
         return FollowCandidate(provider="rule34video", external_id=external_id,
                                title=f"Clip {external_id}",
@@ -900,7 +872,7 @@ class FollowContractTests(unittest.TestCase):
     def test_a_shared_only_credential_reports_present_not_missing(self):
         """`describe()` 和 `load()` 必须看同一份事实。
 
-        早先 `describe()` 只看本机文件、`load()` 会从共享副本回填，于是页面报「未配置」
+        `describe()` 只看本机文件而 `load()` 从共享副本回填的话，页面报「未配置」
         而请求照样带着共享里那把 key 发出去。用户看到的状态和系统实际用的凭据不一致，
         比撤不掉更糟——他会以为已经撤了。
         """
@@ -1192,6 +1164,26 @@ class FollowSourceAddTests(FollowContractTests):
         self.assertEqual(source["last_status"], "unauthorized")
         self.assertIn("user_id", source["last_error"])
 
+    def test_a_busy_check_lock_says_registered_instead_of_staying_silent(self):
+        """自动检查正好占着锁的时候，顺带的首次检查做不了。
+
+        这里回 `checked: null` 的话，调用方分不清「查过了什么都没有」和「根本
+        没查」，界面上就是登记完一片空白。所以明说：已登记，稍后再查。
+        """
+        self.contract.follow_check_lock.acquire()
+        self.addCleanup(self.contract.follow_check_lock.release)
+        with mock.patch.object(web_follow, "build_connector") as factory:
+            result = self._post("/api/follow/source", {
+                "action": "add",
+                "url": "https://rule34video.com/models/lazyprocrastinator/"})
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["checked"]["deferred"])
+        self.assertTrue(result["checked"]["ok"])
+        self.assertIn("已登记", result["checked"]["message"])
+        factory.assert_not_called()
+        # 来源本身必须已经落库，稍后的自动检查才有东西可查。
+        self.assertEqual(self._get()["sources"][0]["ref"], "lazyprocrastinator")
+
     def test_an_unknown_host_is_refused_with_the_supported_list(self):
         with self.assertRaises(FollowSourceError) as caught:
             self._post("/api/follow/source",
@@ -1334,6 +1326,53 @@ class FollowSourceAddTests(FollowContractTests):
                 self._post("/api/follow/author-alias", body)
 
 
+def _source_row(**kwargs):
+    row = {"id": 7, "provider": "kemono", "ref": "fanbox/1", "label": "L",
+            "url": "https://kemono.cr/fanbox/user/1", "semantics": "work",
+            "enabled": 1, "entity_id": None, "entity_name": None,
+            "backfill_page": 0, "created_at": "2026-08-01T00:00:00Z",
+            "last_checked_at": "2026-08-30T00:00:00Z",
+            "last_status": "ok", "last_error": None}
+    row.update(kwargs)
+    return row
+
+
+class LegacyHistoryEndPayloadTests(unittest.TestCase):
+    """回填到底的来源不能显示成红色错误行。
+
+    `record_history_end` 之前的版本把「往回翻到尽头」记成了 `error`，那些行还在库里。
+    判据现在来自连接器声明的 `HISTORY_END_STATUSES`，不再是 Web 层按站点名硬编码的
+    中文串比较——新增一个可回填来源时没人会想到还要改那一处。
+    """
+
+    def test_a_terminal_backfill_error_is_reported_as_exhausted(self):
+        payload = web_follow._source_payload(_source_row(
+            backfill_page=3, last_status="error", last_error="kemono 返回 HTTP 400"))
+        self.assertTrue(payload["history_exhausted"])
+        self.assertEqual(payload["last_status"], "not_modified")
+        self.assertIsNone(payload["last_error"])
+
+    def test_a_real_failure_stays_a_failure(self):
+        payload = web_follow._source_payload(_source_row(
+            backfill_page=3, last_status="error", last_error="kemono 返回 HTTP 503"))
+        self.assertFalse(payload["history_exhausted"])
+        self.assertEqual(payload["last_status"], "error")
+        self.assertEqual(payload["last_error"], "kemono 返回 HTTP 503")
+
+    def test_the_same_message_on_the_first_page_is_a_real_failure(self):
+        """没往回翻过页就不可能是「翻到尽头」，那是站点真的挂了。"""
+        payload = web_follow._source_payload(_source_row(
+            backfill_page=0, last_status="error", last_error="kemono 返回 HTTP 400"))
+        self.assertFalse(payload["history_exhausted"])
+        self.assertEqual(payload["last_status"], "error")
+
+    def test_a_provider_that_never_pages_back_is_never_exhausted(self):
+        payload = web_follow._source_payload(_source_row(
+            provider="f95zone", ref="50685", backfill_page=3, last_status="error",
+            last_error="f95zone 返回 HTTP 404"))
+        self.assertFalse(payload["history_exhausted"])
+
+
 class FollowWebSourceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -1364,23 +1403,28 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertEqual(keys[keys.index("follow") + 1], "immerse",
                          "关注入口应当排在沉浸模式前面")
         self.assertPageContains("['follow','关注','rss']")
-        self.assertPageContains("if(k==='follow'){openFollow();return}")
-        self.assertPageContains("if(k==='follow')return path==='/follow';")
-        # 两个数组现在同名，字面量断言分不出是哪一个：
-        # 管理区这一项得在 MANAGE_SECTIONS 里找，否则它被删了测试照样绿。
+        # 关注入口的路径、导航键和高亮都在路由表那一条里（web/app.js 的 ROUTES），
+        # 不再是 navTo／navOn 各写一条 `k==='follow'` 分支。
+        self.assertPageContains("{match:'/follow',nav:'follow',title:'关注',refresh:'skip',")
+        self.assertPageContains("open:(params,push)=>openFollow(push),reload:()=>openFollow(false)},")
+        # 管理区这一项得在 MANAGE_SECTIONS 里找，否则它被删了测试照样绿。名字也不再
+        # 跟左栏那条相同：左栏的「关注」是看更新，这里的「关注管理」是 /follow-manage。
         manage = self.page[self.page.index("const MANAGE_SECTIONS=["):]
         manage = manage[:manage.index("];")]
-        self.assertIn("['follow','关注','rss']", manage)
+        self.assertIn("['follow','关注管理','rss']", manage)
         self.assertPageContains('<symbol id="i-rss"')
-        self.assertPageContains("if(path==='/follow-manage')return 'follow'")
-        self.assertPageContains("if(section==='follow'){openFollowManage();return}")
+        # 管理区身份同理：`section` 写在路由表上，`openManage('follow')` 按它查表。
+        self.assertPageContains("{match:'/follow-manage',section:'follow',title:'关注管理',refresh:'skip',")
+        self.assertPageContains("open:(params,push)=>openFollowManage(push)},")
 
     def test_follow_routes_restore_on_reload(self):
-        self.assertPageContains("if(path==='/follow'){await openFollow(false);return}")
+        # 恢复只有一个派发点：路径匹配到哪条路由，就打开那一屏。
+        self.assertPageContains("const hit=matchRoute(ROUTES,path);")
+        self.assertPageContains("if(hit)await hit.route.open(hit.params,false);")
+        self.assertPageContains("open:(params,push)=>openFollow(push),reload:()=>openFollow(false)},")
+        self.assertPageContains("open:(params,push)=>openFollowManage(push)},")
         self.assertPageContains(
-            "if(path==='/follow-manage'){await openFollowManage(false);return}")
-        self.assertPageContains(
-            "await openFollow(false,true);await openFollowDetail(+parts[2],false)")
+            "await openFollow(push,true);await openFollowDetail(params.id,push)")
         self.assertPageContains("api(`/api/follow?item=${encodeURIComponent(id)}`)")
         self.assertPageContains(".then(async()=>{buildEdge();wireAllDrag();await restoreRoute();scheduleStickySurfaces()})")
 
@@ -1391,15 +1435,48 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_sources_are_added_by_pasting_not_by_a_command(self):
         self.assertPageContains('id="followAdd"')
-        self.assertPageContains('name="lines"')
+        self.assertPageContains('name="line"')
         self.assertPageContains("'/api/follow/source'")
         self.assertPageContains("data-follow-remove")
 
+    def test_the_lookup_is_one_line_submitted_by_enter_without_a_button(self):
+        """查找不改任何东西，按 Vercel 表单规范就不该配提交按钮。
+
+        规范原话是「输入框获得焦点时，若它是唯一控件，回车即提交」。字段做成
+        textarea 就非配按钮不可——那里回车按规范要插入换行，回车提交没法用。
+        多行批量本身也不成立：一个作者就要几十秒，一次粘五行等于把这个等待乘五，
+        中途还看不出走到哪一行。所以字段收成单行 search input，回车原生提交。
+        """
+        page = self.page
+        form = page[page.index('<form class="faddform" id="followAdd">'):]
+        form = form[:form.index("</form>")]
+        # 输入框本体是共用的 Search Input（见 web/js/ui-components.js），
+        # 关注页这里只交名字、无障碍名称和 required。
+        self.assertIn("searchInputHtml({name:'line',label:'来源链接、名字或 id',", form)
+        self.assertIn("attrs:'required'", form)
+        self.assertNotIn("textarea", form)
+        self.assertNotIn('type="submit"', form)
+        # 忙态没有按钮可以变灰，就落在表单自己身上：前缀图标原位换 Spinner。
+        handler = page[page.index("if(form)form.onsubmit=async event=>{"):]
+        handler = handler[:handler.index("\n  };")]
+        self.assertIn("form.dataset.busy='true';form.setAttribute('aria-busy','true')", handler)
+        self.assertIn("if(prefix)prefix.innerHTML=spinnerHtml('查找中')", handler)
+        self.assertIn("form.removeAttribute('aria-busy')", handler)
+        self.assertNotIn("setActionBusy", handler)
+        # 隐式提交在这个表单上不成立：来源筛选的复选框和输入框住在同一个 <form> 里，
+        # 浏览器只在「仅有一个文本字段」时才替你提交。回车必须自己接管。
+        self.assertPageContains("if(event.key!=='Enter'||event.isComposing)return;")
+        self.assertPageContains("event.preventDefault();form.requestSubmit();")
+        # 单行以后不再有拆行与自增高。
+        self.assertNotIn("box.style.height", page)
+        self.assertIn("const lines=[line];", handler)
+
     def test_reader_management_is_locked_and_points_to_the_writer(self):
-        self.assertPageContains("api('/healthz')")
+        # 读请求带上表面的 signal（surfaceApi），切页时会被取消。
+        self.assertPageContains("surfaceApi(surface,'/healthz')")
         self.assertPageContains("followRuntime?.ledger_read_only")
         self.assertPageContains("前往写入端管理关注")
-        self.assertPageContains("#followAdd textarea,#followAdd button")
+        self.assertPageContains("#followAdd input,#followAdd button")
 
     def test_failed_source_adds_stay_visible_instead_of_being_erased_by_reload(self):
         block = self.page[self.page.index("if(addButton)addButton.onclick=async()=>"):
@@ -1473,10 +1550,13 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_each_channel_has_a_styled_update_checkbox(self):
         self.assertPageContains('class="fchannelcheck"')
-        self.assertPageContains('type="checkbox" data-follow-enabled=')
+        self.assertPageContains('data-follow-enabled="${source.id}"')
         self.assertPageContains("{action:'enabled',id:Number(control.dataset.followEnabled),enabled}")
-        self.assertPageContains(".fchannelcheck input{position:absolute;width:1px;height:1px;opacity:0")
-        self.assertPageContains(".fchannelcheck input:checked+span{")
+        # 框本身归共用的 .pcheck，.fchannelcheck 只剩这一行在行里的摆放。
+        self.assertPageContains(".fchannelcheck{display:grid;place-items:center;align-self:center}")
+        self.assertPageContains(".pcheck input{position:absolute;width:1px;height:1px;opacity:0")
+        # Geist Checkbox 选中态实测：框底不变，勾是墨色；不再用蓝底。
+        self.assertPageContains(".pcheck input:checked+span{border-color:var(--ink-2);color:var(--ink)}")
         self.assertPageContains("${icon('check')}")
 
     def test_official_channel_icons_and_alias_manager_are_visible(self):
@@ -1487,6 +1567,21 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("followAliasManager(followData.author_aliases,followData.alias_suggestions)")
         self.assertPageContains("'/api/follow/author-alias'")
 
+    def test_a_multi_source_author_head_shows_only_favicons(self):
+        """图标已经说清是哪几个来源，再补一句「N 个来源」就要和它们抢同一行。
+
+        窄卡片里那句话先把图标挤到贴脸，再把作者名压没。数量本来就能数出来，
+        真要确认就读 title。
+        """
+        page = self.page
+        block = page[page.index('return `<div class="fauthor${bad?\' bad\':\'\'}">'):]
+        block = block[:block.index("${sources}")]
+        self.assertIn("? group.map(source=>sourceIcon(source.provider)).join('')", block)
+        self.assertNotIn("个来源`", block)
+        self.assertIn('title="${group.length} 个来源"', block)
+        rule = page[page.index(".fauthorhead .fmeta{"):]
+        self.assertIn("flex:0 1 auto;min-width:0", rule[:rule.index("}")])
+
     def test_already_followed_candidates_are_shown_but_not_selectable(self):
         # 灰掉但仍显示，免得人以为没查到。
         self.assertPageContains("c.known?' known':''")
@@ -1496,18 +1591,19 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("首次按名字查要下载创作者索引，可能几十秒")
 
     def test_the_input_and_its_button_are_the_same_height(self):
-        # 静止时输入框就该和按钮齐平；固定多行的话按钮只有它一小截高。
+        # 输入框和旁边的来源筛选按钮齐平；单行以后没有 min-height 与 resize。
+        # 几何住在共用的 .geist-search 里，关注页不再复制一份自己的输入框样式。
         page = self.page
-        self.assertEqual(page.count(".faddform textarea{"), 1,
+        self.assertEqual(page.count('.geist-search input[type="search"]{'), 1,
                          "旧规则留在后面会覆盖新输入框样式")
-        rule = page[page.index(".faddform textarea{"):]
+        self.assertEqual(page.count('.faddform input[type="search"]{'), 0,
+                         "关注页私有的输入框几何已经上提到 .geist-search")
+        rule = page[page.index('.geist-search input[type="search"]{'):]
         rule = rule[:rule.index("}")]
         self.assertIn("height:38px", rule)
-        self.assertIn("min-height:38px", rule)
-        # 38px - 2px 边框 - 16px 内边距 = 20px 行高；textarea 会从内容区
-        # 顶部排第一行，留下额外内容高度就会让文字视觉上偏上。
-        self.assertIn("padding:8px 12px 8px 38px", rule)
+        self.assertIn("padding:0 12px 0 38px", rule)
         self.assertIn("line-height:20px", rule)
+        self.assertNotIn("resize:", rule)
         button = page[page.index("\n.fbtn{"):]
         self.assertIn("height:32px", button[:button.index("}")])
         # faddform 里的按钮随输入栏同高（Geist 输入 32px 基线之上的一档）。
@@ -1518,7 +1614,7 @@ class FollowWebSourceTests(unittest.TestCase):
         # Vercel Projects：搜索占剩余宽度，筛选带明确标签，主操作在右；
         # 菜单没有展开动画，并在自己的视口内滚动。
         self.assertPageContains(
-            ".faddform{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px")
+            ".faddform{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px")
         self.assertPageContains(
             ".faddform .fsrcfilter .fbtn{width:auto;height:38px;min-height:38px;padding:0 11px}")
         self.assertPageContains('aria-expanded="false" aria-haspopup="menu"')
@@ -1557,19 +1653,37 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertNotIn("<h3>内容", body)
         self.assertIn("条未看", body)
 
-    def test_the_page_uses_two_columns_so_the_width_is_not_wasted(self):
+    def test_the_page_is_one_narrow_column_with_credentials_inline(self):
+        """侧栏在哪个宽度上都不对：宽屏把凭据推出视线，窄屏又整个塌到最底下。
+
+        三块内容本来就有先后——先添加、再看列表、要配凭据时才往下翻——那就按顺序
+        排成一列，宽度跟数据管理页同样收到 812px，别让一行横跨整个显示器。
+        """
         page = self.page
         rule = page[page.index(".followmanage{"):]
         rule = rule[:rule.index("}")]
-        self.assertIn("grid-template-columns:minmax(0,1fr)", rule)
-        self.assertPageContains(".followmanage>.runtimegate{grid-column:1/-1")
+        self.assertIn("width:min(812px,100%)", rule)
+        self.assertIn("margin-left:auto;margin-right:auto", rule)
+        self.assertNotIn("grid-template-columns", rule)
+        self.assertNotIn("faside", page)
+        self.assertNotIn("@media (max-width:1080px){.followmanage{", page)
+        # 标题与说明跟内容列同宽，否则标题悬空在更宽的位置上。
+        self.assertPageContains(
+            ".follow-manage-layout .managetitle,.follow-manage-layout .pagelede{width:min(812px,100%)")
+        self.assertPageContains(
+            "document.body.classList.toggle('follow-manage-layout',"
+            "decodeURIComponent(location.pathname)==='/follow-manage')")
+        # 凭据现在是主列里的第三块，不再是 aside。
+        body = page[page.index("function renderFollowManage("):
+                    page.index("function wireFollowManage(")]
+        self.assertLess(body.index("<h3>关注列表</h3>"), body.index("<h3>凭据</h3>"))
 
     def test_sections_have_a_frame_but_their_rows_do_not(self):
         """反模式是卡片**套**卡片，不是「不要任何容器」。
 
-        上一版把两者混为一谈，做成了没有可读性的裸列表——而同一份文档明确警告过
-        不要因为躲开那些默认套路就做出一个无设计的模板。所以：分区有框，
-        框里的行只用分隔线。
+        把两者混为一谈就会做成没有可读性的裸列表——而同一份文档明确警告过不要
+        因为躲开那些默认套路就做出一个无设计的模板。所以：分区有框，框里的行
+        只用分隔线。
         """
         page = self.page
         section = page[page.index(".fsec{"):]
@@ -1611,7 +1725,8 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_suggestions_come_from_the_real_library_and_are_clickable(self):
         """「猜你喜欢」取账本里真实存在的创作者，点一下直接拿去查。
 
-        不用 placeholder：占位文字点不了，还占着输入框的语义。
+        推荐不能退化成 placeholder：占位文字点不了。占位文字只负责说清该输入什么
+        格式（Vercel Forms：以省略号收尾、给出示例样式），不许塞进具体创作者名。
         """
         self.assertPageContains("function followSuggestionChips(")
         self.assertPageContains("followData.suggestions")
@@ -1627,7 +1742,14 @@ class FollowWebSourceTests(unittest.TestCase):
         page = self.page
         body = page[page.index("function renderFollowManage("):
                     page.index("function wireFollowItems(")]
-        self.assertNotIn("placeholder=", body, "输入框不再放占位文字")
+        form = body[body.index('<form class="faddform"'):body.index("</form>")]
+        hint = form[form.index("placeholder:'") + len("placeholder:'"):]
+        hint = hint[:hint.index("'")]
+        self.assertEqual(hint, "粘贴来源链接，或输入作者名、id…")
+        self.assertNotIn("${", hint, "占位文字不许由数据拼出来——那就是把推荐塞进去了")
+        # 这一段里只有一处写死的占位文字。骨架那处 `placeholder:managementPlaceholder(…)`
+        # 是路由占位结构，不是输入框里的字，用带引号的形式把两者分开数。
+        self.assertEqual(body.count("placeholder:'"), 1)
 
     def test_every_credential_state_sits_in_the_same_column(self):
         """summary 是 .frow 的 flex 子项，默认不撑满整行——于是有折叠体的那几行
@@ -1713,15 +1835,151 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("body.inert=!expanded")
         self.assertPageContains("body.inert=true")
         self.assertPageContains("body.style.height=body.scrollHeight+'px'")
-        self.assertPageContains(".faliasmanager>summary::before")
+        # chevron 是 16px SVG，不是靠字号撑大的 › 字形：本页字阶只有三档，
+        # 图标尺寸混进去就会把「没有随意字号」这条门槛顶穿。
+        self.assertPageContains(".faliasmanager>summary>svg{flex:none;width:16px;height:16px")
+        self.assertPageLacks('.faliasmanager>summary::before{')
         self.assertPageContains("transition:transform .2s ease-in-out")
+        # 内边距放在内层 .fcollapsebody：.fcollapse 自己带 padding 时 border-box 让
+        # height 过渡卡在 20px，收起末尾会跳一下，展开开头也先露出一截空白。
+        self.assertPageContains("inner.className='fcollapsebody'")
+        self.assertPageContains(".faliasmanager .fcollapsebody{padding:4px 16px 16px}")
+        self.assertPageLacks(".faliasmanager>.fcollapse{padding")
+        # 别名行是 Fieldset 的最后一行：负外边距吃掉 .fsec 的底部内边距，收起时底角与
+        # 卡片同心，否则整行下面多出一层 16px 的空带。
+        self.assertPageContains(".faliasmanager{margin:12px -16px -16px;")
+        self.assertPageContains('.faliasmanager>summary[aria-expanded="false"]{border-radius:0 0 calc(var(--surface-radius) - 1px) calc(var(--surface-radius) - 1px)}')
+        self.assertPageContains(".faliasmanager .fcollapsebody{padding:4px 13px 14px}")
+
+    def test_credential_rows_share_the_alias_collapse_motion(self):
+        """凭据行和作者别名共用一份 Collapse 实现。
+
+        `details.fcred` 是 block 布局才接得上：flex 行布局对不上 Collapse 的高度过渡。
+        展开一段正文这件事不该有第二套开合逻辑。
+        """
+        self.assertPageContains("export function wireCollapse(root,selector,idPrefix)")
+        self.assertPageContains("wireCollapse(root,'details.faliasmanager','follow-alias-collapse')")
+        self.assertPageContains("wireCollapse(root,'details.fcred','follow-cred-collapse')")
+        self.assertEqual(self.page.count("body.style.height=body.scrollHeight+'px'"), 1,
+                         "开合逻辑只该有一份")
+        # 内边距归 .fcollapsebody：留在 .fcred[open] 上的话，收起那一帧高度已经归零、
+        # 内边距还在，行尾会跳一下。
+        self.assertPageContains(".fcred .fcollapsebody{padding:8px 0 12px}")
+        self.assertPageLacks(".fcred[open]{padding-bottom")
+        # 首段自己的上边距换成容器内边距，否则它跟容器外边距合并，scrollHeight 量矮一截。
+        self.assertPageContains(".fcred .fcollapsebody>p:first-child{margin-top:0}")
+
+    def test_credential_rows_carry_the_same_favicon_as_their_source(self):
+        """凭据配的就是那个站，用来源行同一枚 favicon 指认它。"""
+        self.assertPageContains(
+            'const mark=`<span class="ficonslot" aria-hidden="true">${sourceIcon(row.provider)}</span>`')
+        self.assertPageContains('<div class="frow fcred none">${mark}<b>${esc(row.provider_label)}</b>')
+        self.assertPageContains("<summary>${mark}<b>${esc(row.provider_label)}</b>")
+        # 槽位占住 14px，不看里面有没有图：没登记 favicon 的站本来就没有，取不下来的
+        # 那些还会被 data-drop="self" 整个丢掉，两种情况都会让名字的左边缘参差。
+        self.assertPageContains(".fcred .ficonslot{flex:none;display:block;width:14px;height:14px}")
+        self.assertPageContains(".fcred .ficon{margin-right:0}")
+        self.assertIn('data-drop="self"', self.page)
+
+    def test_the_follow_list_has_a_compact_switch_that_puts_two_per_row(self):
+        """两个互斥视图用 Switch（共享 name 的 radio），不是 Toggle。"""
+        self.assertPageContains(
+            "const FOLLOW_LAYOUTS=[['cozy','舒适 · 一行一个','maximize'],"
+            "['compact','紧凑 · 一行两个','layout-grid']]")
+        self.assertPageContains(
+            "iconSwitchHtml('follow-layout','关注列表版式',FOLLOW_LAYOUTS,followListLayout()")
+        self.assertPageContains("{attr:'data-follow-layout'}")
+        self.assertPageContains("${followLayoutButtons()}")
+        self.assertPageContains("wireIconSwitch(root,'data-follow-layout',setFollowListLayout)")
+        # 版式是纯展示层的事：改容器上的一个属性就够，不重画列表，也不重新请求。
+        self.assertPageContains('<div class="frows fsources" data-layout="${followListLayout()}">')
+        self.assertPageContains("node.dataset.layout=followListLayout()")
+        # 紧凑就是一行两个；半幅宽度放不下六列，见 test_compact_rows_keep_the_favicon…。
+        self.assertPageContains(
+            '.fsources[data-layout="compact"]{grid-template-columns:repeat(2,minmax(0,1fr))}')
+        # 窄屏两栏塞不下，仍旧回到一栏——媒体查询要连紧凑一起覆盖，否则属性选择器更具体。
+        self.assertPageContains('.fsources,.fsources[data-layout="compact"]{grid-template-columns:1fr}')
+        # 窄屏两栏不成立，开关一起收起，不留一个按了没反应的控件。
+        self.assertPageContains('.fsechead .iconswitch{display:none}')
+        # 属性可能还留着上次在宽屏选的 compact；窄屏是整幅一栏，站名不该再收成图标。
+        self.assertPageContains(
+            '.fsources[data-layout="compact"] .fsource .fprovider:has(.ficon)>span{display:inline}')
+        self.assertPageContains(
+            '.fsources[data-layout="compact"] .fsource .fprovider:has(.ficon) .ficon{margin-right:5px}')
+        # 选择要留下来，和 JAV 版式一样存进设置。
+        self.assertPageContains("javLayout:'big',followLayout:'cozy'")
+        self.assertPageContains("appSettings.followLayout=value")
+        self.assertPageContains(
+            "allowedSetting(appSettings.followLayout,FOLLOW_LAYOUTS.map(([k])=>k),'cozy')")
+
+    def test_compact_rows_keep_the_favicon_and_a_clock_without_the_year(self):
+        """紧凑半幅腾地方的办法是压缩两列，不是删掉一列。
+
+        来源那格收成一枚 favicon——图标已经指认了站点，站名是重复的；上次检查整列回来，
+        只去掉年份，因为看的是最近有没有检查过，年份是这串里最不影响判断的一段。
+        """
+        # 版式切换只翻容器上的属性、不重画列表，所以两种显示得出自同一份 DOM。
+        self.assertPageContains('<i class="fyear">${esc(text.slice(0,5))}</i>${esc(text.slice(5))}')
+        self.assertPageContains("${source.last_checked_at?localTimeHtml(source.last_checked_at):'未检查'}")
+        self.assertPageContains(
+            '.fsources[data-layout="compact"] .fsource .fchecked .fyear{display:none}')
+        # <i> 是包一层用的，不是排版意图。
+        self.assertPageContains(".fsource .fchecked .fyear{font-style:normal}")
+        # 时间列回来后名字那格只剩 118px，35 条里 11 条被截；列间距收到 8px 换回 10px。
+        self.assertPageContains('.fsources[data-layout="compact"] .fsource.frow{gap:8px}')
+        # 站名收起，但仍在 DOM 里，并且悬停能看到。
+        self.assertPageContains(
+            '<span class="fmeta fprovider" title="${esc(source.provider_label)}">')
+        self.assertPageContains("<span>${esc(source.provider_label)}</span></span>")
+        self.assertPageContains(
+            '.fsources[data-layout="compact"] .fsource .fprovider:has(.ficon)>span{display:none}')
+        # 图标右边那 5px 是给站名留的间距，站名收起后跟着去掉。
+        self.assertPageContains(
+            '.fsources[data-layout="compact"] .fsource .fprovider:has(.ficon) .ficon{margin-right:0}')
+
+    def test_a_source_without_a_favicon_keeps_its_name_in_compact(self):
+        """`:has(.ficon)` 是这条规则的全部要害，不能写成无条件隐藏。
+
+        没登记 favicon 的站 `sourceIcon` 直接返回空串；取得下来但加载失败的那些，
+        全局兜底会按 `data-drop="self"` 把 `<img>` 整个摘掉——两种情况下无条件隐藏
+        站名都会留下一格纯空白。`:has` 在 img 被摘掉后会重新求值。
+        """
+        self.assertPageContains(':has(.ficon)>span{display:none}')
+        self.assertIn('data-drop="self"', self.page)
+        self.assertPageContains("function sourceIcon(provider){return SOURCE_ICONS[provider]")
+
+    def test_the_layout_switch_lines_up_with_the_sort_box(self):
+        """开关和排序框、按钮同处分区标题行，高度必须是同一档。"""
+        rule = self.page[self.page.index(".fsechead .iconswitch{"):]
+        rule = rule[:rule.index("}")]
+        self.assertIn("flex:none", rule)
+        self.assertIn("padding:2px", rule)
+        self.assertPageContains(".fsechead .iconswitch label{width:32px;height:26px}")
+
+    def test_alias_count_badge_is_neutral_metadata(self):
+        """「3 组」只是计数，不是待处理提醒：徽章走 Geist gray badge 的中性灰。
+
+        实测 Geist Badge gray：#1A1A1A 底、#292929 细边、#A1A1A1 字、6px 圆角。此前用
+        蓝底蓝字的 pill，和主按钮同色，读起来像有事要处理。
+        """
+        badge = self.page[self.page.index(".faliasbadge{"):]
+        badge = badge[:badge.index("}")]
+        self.assertIn("border:1px solid var(--border-15)", badge)
+        self.assertIn("border-radius:var(--control-radius)", badge)
+        self.assertIn("background:var(--overlay-5)", badge)
+        self.assertIn("color:var(--muted)", badge)
+        self.assertIn("font-weight:400", badge)
+        self.assertNotIn("tungsten", badge)
+        self.assertNotIn("pill-radius", badge)
 
     def test_follow_source_icons_fail_back_to_plain_text(self):
         icons = self.page.split("const SOURCE_ICONS={", 1)[1].split("};", 1)[0]
         self.assertIn("kemono.cr/assets/favicon-", icons)
         self.assertIn("pawchive.pw/static/favicon.png", icons)
         self.assertNotIn("kemono.cr/favicon.ico", icons)
-        self.assertPageContains('onerror="this.remove()"')
+        # 取不到图标就把 <img> 摘掉，露出纯文字；收场动作由 image-fallback 的
+        # 委托监听执行，模板里只声明 `data-drop`。
+        self.assertPageContains('data-drop="self"')
 
     def test_follow_watch_filters_use_the_source_identity(self):
         # 判定本身搬去了服务端（见 FollowContractTests 里的筛选用例）；页面这一侧要
@@ -1769,6 +2027,12 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("followTagChip(item,tag,'button')")
         self.assertPageContains("item.detail_tags||item.tags||[]")
         self.assertPageContains(".followdetailtags .tg{max-width:none")
+        # 标签是按钮，点下去按这个标签筛选，必须有悬停反馈。通用 `.tg:hover` 的填充和
+        # 文字色被按类型着色那两条同权重规则压掉了，只能按标签自己那个类型色加深一档。
+        self.assertPageContains(
+            ".followdetailtags .tg:hover{border-color:color-mix(in srgb,var(--r34-tag) 68%,transparent)")
+        self.assertPageContains(
+            "background:color-mix(in srgb,var(--r34-tag) 18%,transparent);color:var(--ink)}")
         self.assertPageContains("const postedBy=item.author&&foldName(item.author)!==foldName(author)")
         self.assertPageContains("openFollowDetail(id);")
         self.assertNotIn('class="cardopenhit" href=', self.page)
@@ -1787,7 +2051,7 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_follow_video_uses_the_shared_videojs_player_and_quality_control(self):
         self.assertPageContains('class="video-js vjs-big-play-centered" controls playsinline preload="metadata"')
         self.assertPageContains("if(followVideo){")
-        self.assertPageContains("const followPlayer=mountDetailPlayer(item,followVideo,false,{")
+        self.assertPageContains("const followPlayer=await mountDetailPlayer(item,followVideo,false,{")
         self.assertPageContains("source:{src,type:selectedMedia?.media_type||item.media_type||'video/mp4'}")
         # 第四个参数是来源自己给的清晰度表：rule34video 把每档写成独立 mp4 字段，
         # videojs 的 qualityLevels 只认 HLS/DASH 的自适应轨道，看不到它们。
@@ -1800,12 +2064,12 @@ class FollowWebSourceTests(unittest.TestCase):
             "function renderFollow", 1)[0]
         self.assertNotIn("await api(`/follow-qualities", detail,
                          "清晰度回源不能挡住默认视频挂载")
-        self.assertLess(detail.index("const followPlayer=mountDetailPlayer"),
+        self.assertLess(detail.index("const followPlayer=await mountDetailPlayer"),
                         detail.index("wireFollowTelemetry"))
         self.assertPageContains('aria-label="播放器设置"')
         self.assertPageContains("data-player-quality-badge")
         self.assertPageContains("currentTimeDisplay:true,timeDivider:true")
-        self.assertPageContains("levels[index].enabled=selected==='auto'||selected===String(index)")
+        self.assertPageContains("levels[index].enabled=selectedQuality==='auto'||selectedQuality===String(index)")
         self.assertPageContains("const stopFollowAmbient=mountPlayerAmbient(followVideo)")
         self.assertPageContains("followPlayer?.one?.('dispose',stopFollowAmbient)")
         self.assertPageContains("mountPlayerTheaterControl(player,root)")
@@ -1836,7 +2100,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("async function openFollow(push=true,renderForDetail=false)")
         self.assertPageContains("const surface=claimSurface(renderForDetail?surfacePath():'/follow')")
         self.assertPageContains("if(!surfaceCurrent(surface))return")
-        self.assertPageContains("await openFollow(false,true);await openFollowDetail(+parts[2],false)")
+        self.assertPageContains("await openFollow(push,true);await openFollowDetail(params.id,push)")
         self.assertPageContains("const followList=$('#stats').querySelector('.followlist')")
         # 就近展开：插在被点击那张卡片所在的一行之后，不是整个列表之前。
         # 插在列表前等于每次都把视线拽回页面顶部，翻了几屏点开一条尤其明显。
@@ -1919,15 +2183,16 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_thread_activity_is_not_called_a_version(self):
         """线程动态叫「条动态」，作品版本叫「个版本」，两者都含主条目。
 
-        计数以前是分开写的：release 记 `variants.length+1`、work 记 `variants.length`。
-        同一份数据两种口径，两个视频的组会显示成「1 个版本」。现在共用一个表达式，
-        只有量词不同。
+        两种计数共用一个表达式，只有量词不同。分开写成 release 记
+        `variants.length+1`、work 记 `variants.length` 的话，同一份数据两种口径，
+        两个视频的组会显示成「1 个版本」。
         """
-        self.assertPageContains(
-            "`${group.variants.length+1} ${group.is_release?'条动态':'个版本'}`")
+        self.assertPageContains("`${count} ${group.is_release?'条动态':'个版本'}`")
         self.assertPageLacks(
             "`${group.variants.length} 个版本`",
             "版本数必须含主条目，否则两个视频显示成 1 个版本")
+        # 计数来源换成了「点开真能看到的那一组」，量词的分工不变。
+        self.assertPageContains("const count=(openable||followOpenableItems(group)).length;")
 
     def test_cross_site_duplicates_are_shown_as_another_source(self):
         self.assertPageContains("另见 ")
@@ -1938,9 +2203,11 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_network_check_is_an_explicit_button_not_an_auto_refresh(self):
         self.assertPageContains("data-follow-check")
-        # 「换一批」自动刷新绝不能顺手触发一次联网检查。
-        self.assertPageContains(
-            "if(location.pathname==='/follow'||location.pathname==='/follow-manage')return;")
+        # 「换一批」自动刷新绝不能顺手触发一次联网检查。这件事现在由路由表上的
+        # `refresh:'skip'` 表达：refreshAll 只认这个标记，两个关注页各自带一个。
+        self.assertPageContains("if(hit?.route.refresh==='skip')return;")
+        self.assertPageContains("{match:'/follow',nav:'follow',title:'关注',refresh:'skip',")
+        self.assertPageContains("{match:'/follow-manage',section:'follow',title:'关注管理',refresh:'skip',")
 
     def test_every_entered_state_can_be_left_again(self):
         self.assertPageContains("""item.status==='seen'||item.status==='ignored'""")
@@ -2045,9 +2312,9 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertNotEqual(key(label="", id=1), key(label="", id=2))
 
     def test_collection_is_container_copy_not_part_of_the_author_display_name(self):
-        self.assertEqual(web_follow._author_display_text("Billyhhyb Collection"),
+        self.assertEqual(follow_store.author_display_text("Billyhhyb Collection"),
                          "Billyhhyb")
-        self.assertEqual(web_follow._author_display_text("Billyhhyb · patreon"),
+        self.assertEqual(follow_store.author_display_text("Billyhhyb · patreon"),
                          "Billyhhyb")
 
     def test_avatars_only_come_from_providers_that_actually_serve_one(self):
@@ -2102,8 +2369,52 @@ class FollowWebSourceTests(unittest.TestCase):
         # 回执带一个具名的后续动作：光摆数字会让人去点「…条详情」那半句，
         # 文案里不再留悬空的「详情」，去看更新作为显式按钮接住这个意图。
         self.assertPageContains("action:{label:'去看更新',run:()=>openFollow()}")
-        self.assertPageContains("if(action)item.querySelector('.tact')")
+        self.assertPageContains("if(act)act.onclick=()=>{setActionBusy(act);action.run()};")
         self.assertPageLacks("条详情")
+
+    def test_detail_tags_follow_rule34s_own_category_order(self):
+        """详情标签按 rule34.xxx 帖子页 `#tag-sidebar` 的类型顺序分组，不按字母。
+
+        2026-09-01 实测两个帖子页（18622796 / 18622794），`li.tag-type-*` 的出现
+        顺序都是 copyright → character → artist → general → metadata，组内按名升序；
+        缺的类型直接跳过不占位。证据见
+        docs/reference-snapshots/rule34-follow-tags-and-collections.md。
+        """
+        self.assertPageContains(
+            "const FOLLOW_TAG_ORDER=['copyright','character','artist','general','metadata'];")
+        self.assertPageContains("function followDetailTags(item)")
+        self.assertPageContains("return at<0?FOLLOW_TAG_ORDER.length:at};")
+        self.assertPageContains(
+            "return [...tags].sort((a,b)=>rank(a)-rank(b)||tagLabel(a).localeCompare(tagLabel(b)));")
+        self.assertPageContains(
+            "const tags=followDetailTags(item).map(tag=>followTagChip(item,tag,'button')).join('');")
+        # 来源没记类型的排最后、保持中性色：不按词形猜类型是关注标签的既有门槛。
+        self.assertPageContains(".followdetailtags .r34-unknown{--r34-tag:var(--muted)}")
+
+    def test_version_badge_counts_what_opening_the_card_actually_shows(self):
+        """角标数和点开后能看到的条数必须来自同一个集合。
+
+        实测两处对不上：paheal 一组 9 条里有 1 张图，卡上写「9 个版本」、播放角标
+        写「8 个视频」；`2B Camp [4K]` 卡上写「2 个版本」，同组另一条不是可播视频，
+        `collection` 因此为 null，点开只有 1 条。
+        """
+        self.assertPageContains("function followOpenableItems(group)")
+        self.assertPageContains("if(followMediaView==='videos')return followVideoItems(group);")
+        self.assertPageContains("const count=(openable||followOpenableItems(group)).length;")
+        self.assertPageContains("if(count>1)badges.push(")
+        self.assertPageLacks("${group.variants.length+1} ${group.is_release?'条动态':'个版本'}")
+
+    def test_wip_badge_describes_this_item_not_its_siblings(self):
+        """`2B Camp [4K]` 判的是 alt，只因为同组还有一条 `[WIP]` 就挂上 WIP。
+
+        `has_wip` 是组属性（`any(item.variant_kind == "wip" for item in self.variants)`），
+        角标却贴在主条目标题旁边，读起来就是「这一条是半成品」。
+        """
+        self.assertPageContains(
+            "if(group.primary.variant_kind==='wip')badges.push('<span class=\"fbadge wip\">WIP</span>');")
+        self.assertPageContains(
+            "else if(group.has_wip)badges.push('<span class=\"fbadge wip partial\">含 WIP</span>');")
+        self.assertPageContains(".fbadge.wip.partial{border-color:var(--border-15);color:var(--muted)}")
 
     def test_follow_bulk_actions_are_buttons_not_inline_links(self):
         """批量标记已看／全部忽略是 2292 条级别的操作，不能长得像行内文字链接。
@@ -2144,7 +2455,10 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn("followAvatarInitial(group)", avatar)
         self.assertIn("source.avatar_url", avatar)
         self.assertIn("source.official_avatar_url", avatar)
-        self.assertIn("data-fallback", avatar)
+        # 镜像头像是官方头像的下一个候选，声明在 `data-fallbacks` 里；两条都取不到
+        # 才换成首字母垫底。
+        self.assertIn("fallbacks:[fallback]", avatar)
+        self.assertIn("drop:'initial'", avatar)
 
     def test_discovered_sources_keep_the_search_term_as_the_author_identity(self):
         self.assertPageContains('data-author="${esc(c.author||\'\')}"')
@@ -2156,7 +2470,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageLacks("已显示可读取附件；F95 登录会话已保存")
         self.assertPageLacks("这条旧记录的受保护资源会在下次检查重新解析")
         self.assertPageContains("followCredentialProviders=new Set")
-        self.assertPageContains("api('/api/follow/credentials').catch")
+        self.assertPageContains("surfaceApi(surface,'/api/follow/credentials').catch")
         self.assertPageLacks("个外部文件页；视频列表未取得")
         self.assertPageContains("function followMediaIssue(item)")
         self.assertPageContains('class="fnote followmediaissue"')
@@ -2270,7 +2584,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('.sgrid.mixgrid>.mixqueue{grid-area:queue;max-height:360px')
         self.assertPageContains('grid-template-areas:"media" "side" "queue"')
         self.assertPageContains('background:var(--detail-surface)')
-        self.assertPageContains("const kindLabel={mix:'Mix',parts:'分卷',playlist:'播放列表'}")
+        self.assertPageContains("const kindLabel={mix:'Mix',parts:'分卷',editions:'版本',playlist:'播放列表'}")
         self.assertPageContains('<h2>视频合集</h2>')
         self.assertPageContains('<h2>多媒体</h2>')
         self.assertPageContains('.sgrid.mixgrid>.mixqueue .mixlist{display:grid;grid-auto-flow:column')
@@ -2309,8 +2623,8 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_detail_images_open_the_same_lightbox_as_the_performer_page(self):
         """关注详情的图要能点开大图，用的必须是同一个灯箱，不是另写一套。
 
-        灯箱原本写死了 `/photo?id=`：那是本地 ledger 资产的取图口，在线图没有
-        asset id，套不进去。所以按 slide 归一化，在线图直接给 URL。
+        灯箱不写死 `/photo?id=`：那是本地 ledger 资产的取图口，在线图没有 asset id，
+        套不进去。所以按 slide 归一化，在线图直接给 URL。
         """
         self.assertPageContains("poster.onclick=()=>openPhotoLightbox(Math.max(0,imagePosition),followSlides)",
                                 "详情图片没有接上灯箱")

@@ -9,6 +9,7 @@ from pathlib import Path
 from PIL import Image, ImageOps
 
 from .ffmpeg import FFmpegResolver
+from .fsutil import atomic_path
 from .media import remap_managed_path
 from .repository import LedgerRepository
 
@@ -17,7 +18,7 @@ class PreviewUnavailable(RuntimeError):
     pass
 
 
-#: 预览生成的分片锁。原来是一把模块级全局锁：任何一个资产在生成海报，其他资产的
+#: 预览生成的分片锁。一把模块级全局锁会让任何一个资产生成海报时，其他资产的
 #: 头像和海报全得排队，而 `avatar()` 持锁要连跑 6 次 ffmpeg（每次 20 秒上限），
 #: 最坏能把所有预览堵上两分钟。
 #:
@@ -31,8 +32,9 @@ _GENERATE_LOCKS = tuple(threading.Lock() for _ in range(_LOCK_STRIPES))
 def _generate_lock(destination: Path) -> threading.Lock:
     """按目标文件取锁：同一个目标一定拿同一把，不同目标大概率并行。
 
-    同一目标同一把锁是这里的正确性要求——两个线程同时生成同一个文件，
-    `os.replace` 会互相覆盖，而其中一个的临时文件可能已经被删掉了。
+    同一目标同一把锁，锁内再判一次文件是否已存在：两个线程同时请求同一张图时，
+    第二个直接返回第一个的结果，而不是再跑一遍 FFmpeg。落盘本身的安全由
+    `fsutil.atomic_path` 负责，这把锁省的是重复的转码开销。
     """
     return _GENERATE_LOCKS[hash(str(destination)) % _LOCK_STRIPES]
 
@@ -58,16 +60,15 @@ class PreviewService:
         ffmpeg = self._ffmpeg()
         col, row = cell % 3, cell // 3
         self.poster_root.mkdir(parents=True, exist_ok=True)
-        temporary = destination.with_name(destination.stem + ".tmp.jpg")
         with _generate_lock(destination):
             if destination.is_file():
                 return destination
-            self._run([
-                str(ffmpeg), "-y", "-v", "error", "-i", str(source),
-                "-vf", f"crop=iw/3:ih/3:iw/3*{col}:ih/3*{row},scale='min(640,iw)':-2",
-                "-q:v", "4", str(temporary),
-            ])
-            os.replace(temporary, destination)
+            with atomic_path(destination) as temporary:
+                self._run([
+                    str(ffmpeg), "-y", "-v", "error", "-i", str(source),
+                    "-vf", f"crop=iw/3:ih/3:iw/3*{col}:ih/3*{row},scale='min(640,iw)':-2",
+                    "-q:v", "4", str(temporary),
+                ])
         return destination
 
     def avatar(self, asset_id: int) -> Path:
@@ -114,22 +115,34 @@ class PreviewService:
                         path.unlink(missing_ok=True)
         return destination
 
-    def logo(self, studio: str) -> tuple[Path, str]:
+    def logo(self, studio: str, variant: str = "") -> tuple[Path, str]:
+        """厂牌标识；`variant` 只在这个厂牌真的存了两份时才分岔。
+
+        小地方（筛选片、卡片、来源角标）要的是方形小标 `icon`，厂牌页那个 160px
+        大位要的是完整字标 `logo`——和社媒头像同一条判断。但绝大多数厂牌只有一份图：
+        两个变体都回落到 `<safe>.img`，任何位置都照旧显示它。变体文件是新增的
+        `<safe>.icon.img` / `<safe>.logo.img`，没有它们时行为和加这个参数之前一模一样。
+        """
         safe = re.sub(r"[^A-Za-z0-9_-]", "_", studio)[:60]
         if not safe:
             raise PreviewUnavailable("empty studio")
-        candidates = [self.logo_root / f"{safe}.img"]
-        if self.logo_root.is_dir():
-            target = f"{safe}.img".lower()
-            candidates.extend(path for path in self.logo_root.iterdir() if path.name.lower() == target)
-        for path in candidates:
-            if path.is_file():
-                content_type = "image/x-icon"
-                sidecar = Path(str(path) + ".ct")
-                if sidecar.is_file():
-                    detected = sidecar.read_text(encoding="utf-8").strip().split(";")[0]
-                    content_type = detected or content_type
-                return path, content_type
+        names = [f"{safe}.img"]
+        if variant in {"icon", "logo"}:
+            # 认不出的 variant 不报错，按没传处理：页面可能是缓存下来的旧版本，
+            # 为一个拼错的参数把图变成 404 只会让厂牌页平白缺图。
+            names.insert(0, f"{safe}.{variant}.img")
+        listing = list(self.logo_root.iterdir()) if self.logo_root.is_dir() else []
+        for name in names:
+            candidates = [self.logo_root / name]
+            candidates.extend(path for path in listing if path.name.lower() == name.lower())
+            for path in candidates:
+                if path.is_file():
+                    content_type = "image/x-icon"
+                    sidecar = Path(str(path) + ".ct")
+                    if sidecar.is_file():
+                        detected = sidecar.read_text(encoding="utf-8").strip().split(";")[0]
+                        content_type = detected or content_type
+                    return path, content_type
         raise PreviewUnavailable("logo unavailable")
 
     def entity_image(self, kind: str, entity_id: int) -> tuple[Path, str]:
@@ -196,18 +209,15 @@ class PhotoThumbnailService:
         if destination.is_file():
             return destination
         self.root.mkdir(parents=True, exist_ok=True)
-        # 临时文件名带线程号：并发请求同一张图时各写各的，最后谁替换都是同一张。
-        temporary = destination.with_name(
-            f"{destination.stem}.{os.getpid()}.{threading.get_ident()}.tmp.jpg")
-        try:
-            with Image.open(source) as opened:
-                image = ImageOps.exif_transpose(opened)
-                if image.mode not in {"RGB", "L"}:
-                    image = image.convert("RGB")
-                image.thumbnail((self.width, self.width * 8), Image.LANCZOS)
-                image.save(temporary, "JPEG", quality=82, optimize=True)
-        except (OSError, ValueError, Image.DecompressionBombError) as exc:
-            temporary.unlink(missing_ok=True)
-            raise PreviewUnavailable("photo thumbnail failed") from exc
-        os.replace(temporary, destination)
+        # 并发请求同一张图时各写各的临时文件，最后谁替换都是同一张。
+        with atomic_path(destination) as temporary:
+            try:
+                with Image.open(source) as opened:
+                    image = ImageOps.exif_transpose(opened)
+                    if image.mode not in {"RGB", "L"}:
+                        image = image.convert("RGB")
+                    image.thumbnail((self.width, self.width * 8), Image.LANCZOS)
+                    image.save(temporary, "JPEG", quality=82, optimize=True)
+            except (OSError, ValueError, Image.DecompressionBombError) as exc:
+                raise PreviewUnavailable("photo thumbnail failed") from exc
         return destination

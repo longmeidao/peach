@@ -18,6 +18,17 @@ updates:
       timezone: Asia/Taipei
     open-pull-requests-limit: 10
 
+  # frontend/ 有自己的 manifest：根 package.json 只登记手工 vendor 的四个包，
+  # island 层的构建依赖不能混进去（tests/test_dependency_policy.py 卡着那份清单）。
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:20"
+      timezone: Asia/Taipei
+    open-pull-requests-limit: 10
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

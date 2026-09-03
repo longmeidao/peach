@@ -25,22 +25,19 @@ from urllib.parse import quote, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from peach.catalog_rules import is_jav_code   # noqa: E402
-from peach.entities import name_chain   # noqa: E402
 from peach.config import STATE_DIR   # noqa: E402
+from peach.entities import name_chain   # noqa: E402,F401  测试从本模块取 name_chain
 from peach.http import HttpRequest, HttpxTransport   # noqa: E402
 from peach.jobs import job_main   # noqa: E402
 from peach.review_csv import write_rows   # noqa: E402
+from peach.scripting import USER_AGENT, open_readonly   # noqa: E402
+# 平台判据与选人规则和目录型采集器共用，定义在 peach.social_links；这里只保留 minnano-av 的解析。
+from peach.social_links import classify, load_performers, under   # noqa: E402,F401
 
 SEARCH = "https://www.minnano-av.com/search_result.php?search_scope=actress&search_word="
-USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-              "(KHTML, like Gecko) Chrome/128.0 Safari/537.36")
 ACTRESS_PAGE = re.compile(r"/actress(\d+)\.html")
 FIELD = re.compile(r"<td[^>]*>\s*<span[^>]*>(.*?)</span>(.*?)</td>", re.S)
 HREF = re.compile(r'href=["\']([^"\']+)["\']')
-SOCIAL_HOSTS = ("x.com", "twitter.com", "instagram.com", "tiktok.com", "youtube.com")
-# 博客也是本人的社交存在，但它没有 handle 概念，标签另算。
-BLOG_HOSTS = ("ameblo.jp", "lineblog.me", "note.com", "livedoor.jp", "hatenablog.com")
 LINK_LABELS = {"ブログ", "公式サイト", "Twitter", "SNS"}
 FIELDS = ("entity_id", "kind", "name", "link_kind", "label", "url", "evidence",
           "actress_id", "agency", "verdict")
@@ -79,71 +76,6 @@ def profile_text(html: str, label: str) -> str:
     return ""
 
 
-def under(host: str, domains: tuple[str, ...]) -> bool:
-    """host 是否就是这些域名之一或它们的子域。
-
-    直接用 `endswith` 会把 `notx.com` 判成 x.com——后缀匹配必须落在点边界上，
-    否则任何人注册一个以平台名结尾的域名就能让链接被标成官方社交账号。
-    """
-    return any(host == domain or host.endswith("." + domain) for domain in domains)
-
-
-PLATFORM_NAMES = {("x.com", "twitter.com"): "X", ("instagram.com",): "Instagram",
-                  ("tiktok.com",): "TikTok", ("youtube.com",): "YouTube"}
-
-
-def classify(url: str, agency: str = "") -> tuple[str, str]:
-    """(link_kind, label)。label 就是资料页上那行链接文字，所以要说清点过去是什么。
-
-    事务所页面用事务所名当标签（`T-POWERS` 而不是通用的「官方网站」）：用户要的正是
-    厂商链接，而这个名字资料表里已经给了，退回通用词等于把取到的信息扔掉。
-    """
-    host = (urlsplit(url).hostname or "").casefold().removeprefix("www.")
-    if under(host, SOCIAL_HOSTS):
-        handle = urlsplit(url).path.strip("/").split("/")[0]
-        platform = next((name for hosts, name in PLATFORM_NAMES.items() if under(host, hosts)),
-                        host)
-        return "social", (f"{platform} @{handle}" if handle else platform)
-    if under(host, BLOG_HOSTS):
-        return "social", "博客"
-    return "official", (agency.strip() or "官方网站")
-
-
-def load_performers(connection: sqlite3.Connection, minimum: int) -> list[dict]:
-    """有作品的 performer，跳过确定不是 JAV 的。
-
-    minnano-av 是 JAV 资料库，拿中文素人创作者去查必然落空，还会把真正的缺口盖住——
-    和 `audit_performer_portraits.py` 跳过非 JAV 是同一条理由，判据复用同一个函数。
-    看不见作品是未知不是反面证据，照查；看得见但没有一个 JAV 番号才跳过。
-    """
-    codes: dict[int, list[str]] = {}
-    counts: dict[int, int] = {}
-    for entity_id, total, joined in connection.execute(
-            "SELECT ae.entity_id, count(*), group_concat(DISTINCT a.code) "
-            "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
-            "WHERE a.medium='video' GROUP BY ae.entity_id"):
-        counts[entity_id] = int(total or 0)
-        codes[entity_id] = [code for code in str(joined or "").split(",") if code]
-    aliases: dict[int, list[str]] = {}
-    for entity_id, alias in connection.execute(
-            "SELECT entity_id, alias FROM entity_alias ORDER BY confidence DESC, alias"):
-        aliases.setdefault(entity_id, []).append(alias)
-    out = []
-    for entity_id, name in connection.execute(
-            "SELECT id, canonical_name FROM entity WHERE kind='performer'"):
-        total = counts.get(entity_id, 0)
-        if total < minimum:
-            continue
-        # 「作品可见却一个 JAV 番号都没有」是非 JAV 的反面证据（中文素人创作者正是这个
-        # 形态）；「一个作品都看不见」只是未知，照查不误。按非空番号判会把前者也当成未知，
-        # 查一遍落空后混进未取得，把真正查不到的 JAV 女优盖住。
-        if total and not any(is_jav_code(code) for code in codes.get(entity_id, ())):
-            continue
-        out.append({"entity_id": entity_id, "name": name, "assets": total,
-                    "chain": name_chain(name, aliases.get(entity_id, []))})
-    return sorted(out, key=lambda record: -record["assets"])
-
-
 def scan(http, name: str, timeout: float) -> tuple[list[dict], str, str, str]:
     """返回（链接行, actress_id, 所属事务所, 判定说明）。"""
     response = http(HttpRequest("GET", search_url(name), {"User-Agent": USER_AGENT}),
@@ -170,7 +102,7 @@ def scan(http, name: str, timeout: float) -> tuple[list[dict], str, str, str]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--database", type=Path, required=True)
+    parser.add_argument("--db", type=Path, required=True, help="账本路径")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--min-assets", type=int, default=3)
     parser.add_argument("--limit", type=int, default=0)
@@ -181,7 +113,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run(args) -> int:
-    connection = sqlite3.connect(f"file:{args.database}?mode=ro", uri=True)
+    connection = open_readonly(args.db)
     try:
         performers = load_performers(connection, args.min_assets)
     finally:

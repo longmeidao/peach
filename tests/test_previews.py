@@ -23,7 +23,7 @@ class GenerateLockStripingTests(unittest.TestCase):
         self.assertIs(previews._generate_lock(target), previews._generate_lock(Path(target)))
 
     def test_different_destinations_spread_across_stripes(self):
-        """分片要真的分开——全落一片就退化成原来那把全局锁。"""
+        """分片要真的分开——全落一片就退化成一把全局锁。"""
         locks = {id(previews._generate_lock(Path(f"/generated/posters/{n}_4.jpg")))
                  for n in range(64)}
         self.assertGreater(len(locks), 1, "64 个不同目标不该全挤在一把锁上")
@@ -33,14 +33,14 @@ class GenerateLockStripingTests(unittest.TestCase):
 class ParallelGenerationTests(unittest.TestCase):
     """两个资产的预览生成必须能同时进行。
 
-    改成分片锁之前这里是一把模块级全局锁：任何一个资产在生成，其他资产全排队，
-    而 `avatar()` 持锁要连跑 6 次 ffmpeg（每次 20 秒上限）。
+    一把模块级全局锁会让任何一个资产在生成时其他资产全排队，而 `avatar()` 持锁
+    要连跑 6 次 ffmpeg（每次 20 秒上限）。
 
-    断言方式换过两版，都栽在同一件事上——不要让"谁先到"决定分工：
-    第一版用 Barrier 双向等待，满载时两边一起超时；第二版用
-    `if not first_inside.is_set()` 判断谁是第一个，但那不是原子的，两个线程可能
-    同时判成第一个、双双挂起等待放行，于是第二个信号永远不来。这次按 asset id
-    静态分工：LEFT 负责占住锁，RIGHT 负责证明它能在此期间进来，没有竞态可言。
+    断言方式试过两种跑真线程的写法，都栽在同一件事上——不要让"谁先到"决定分工：
+    Barrier 双向等待在满载时两边一起超时；`if not first_inside.is_set()` 判断谁是
+    第一个不是原子的，两个线程可能同时判成第一个、双双挂起等待放行，于是第二个
+    信号永远不来。这里按 asset id 静态分工：LEFT 负责占住锁，RIGHT 负责证明它能
+    在此期间进来，没有竞态可言。
     """
 
     def setUp(self):
@@ -83,11 +83,11 @@ class ParallelGenerationTests(unittest.TestCase):
     def test_two_assets_can_hold_their_locks_at_the_same_time(self):
         """不同资产的锁必须能被同时持有——这就是分片的全部意义。
 
-        这条断言换过三版。前两版都跑真线程去证明"并行发生了"：第一版用 Barrier
-        双向等待，满载时两边一起超时；第二版靠 `Event.is_set()` 判断谁先到，那不是
-        原子的；第三版按 asset id 静态分工，单独跑 8/8 通过，全量满载下仍然翻车。
+        这条断言试过三种跑真线程的写法。头两种都想直接证明"并行发生了"：Barrier
+        双向等待在满载时两边一起超时；靠 `Event.is_set()` 判断谁先到不是原子的；
+        按 asset id 静态分工的那种单独跑 8/8 通过，全量满载下仍然翻车。
 
-        每一版失败的都不是被测代码，而是"在满载机器上观测两个线程真的重叠了"这件事
+        它们失败的都不是被测代码，而是"在满载机器上观测两个线程真的重叠了"这件事
         本身——那是调度器说了算的。而反复假红比没有这条测试更糟：它会训练人忽略红色。
 
         要证明的东西其实不需要并发：分片锁的贡献是"不同目标映射到不同的锁对象"，

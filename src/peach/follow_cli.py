@@ -6,14 +6,14 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import sqlite3
-from datetime import datetime, timezone
 from pathlib import Path
 
-from .config import DATABASE_PATH, SECRETS_DIR, SOURCES_DIR
+from .config import DATABASE_PATH, SECRETS_DIR, SHARED_CREDENTIAL_ROOT, SOURCES_DIR
 from . import follow_providers
-from .follow import FollowSourceError
-from .follow_secrets import CredentialError, CredentialStore
+from .follow_check import plan_check, run_check
+from .follow_secrets import CREDENTIAL_GUIDE, credential_store_for
 from .follow_sources import CONNECTORS, build_connector
 from .follow_store import FollowStore
 
@@ -23,6 +23,9 @@ _SOURCE_URL = follow_providers.source_urls()
 
 #: 这些来源的每个条目是同一作品的一次发布，不是独立作品。
 _RELEASE_PROVIDERS = follow_providers.release_providers()
+
+#: 支持往回翻页的来源，和 Web 那边同一份声明。
+_BACKFILL_PROVIDERS = follow_providers.backfill_providers()
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:
@@ -77,50 +80,52 @@ def _list(args) -> int:
 
 
 def _check(args) -> int:
+    """检查更新。流程与 Web 的 `/api/follow/check` 共用 `follow_check.run_check`。
+
+    共用之前这两处并不等价：命令行没有 `--older` 往回翻页、凭据到位后的强制重取，
+    也不学官方渠道的作者别名。同一句「检查更新」在网页上做的事比在终端里多，
+    而没有任何地方说明这一点。
+    """
     store, connection = _store(args)
-    credentials = CredentialStore(args.secrets_root)
+    credentials = credential_store_for(args.secrets_root, shared_root=args.shared_root)
+    older = bool(getattr(args, "older", False))
     failures = 0
+
+    @contextlib.contextmanager
+    def writer():
+        # 命令行是一条连接，写完就地提交：一条来源失败不该回滚前面成功的那些。
+        yield store
+        connection.commit()
+
     try:
-        rows = [row for row in store.sources(enabled_only=True)
-                if args.source is None or row["id"] == args.source]
+        rows = plan_check(store, credentials, source_id=args.source, older=older,
+                          force=args.force, backfill_providers=_BACKFILL_PROVIDERS)
         if not rows:
             print("没有需要检查的来源。")
             return 0
         for row in rows:
-            moment = datetime.now(timezone.utc)
-            provider, ref = row["provider"], row["ref"]
-            try:
-                credential = credentials.load(provider)
-                connector = build_connector(
-                    provider, credential=credential,
-                    gofile_credential=credentials.load("gofile"))
-                fetch = connector.fetch(
-                    ref,
-                    etag=None if args.force else row["etag"],
-                    last_modified=None if args.force else row["last_modified"])
-            except CredentialError as error:
-                store.record_error(row["id"], str(error), moment, status="unauthorized")
-                connection.commit()
-                print(f"! {provider}/{ref}：{error}")
+            result = run_check(row, credentials=credentials, writer=writer,
+                               connector_factory=build_connector, older=older)
+            tag = f"{result.provider}/{result.ref}"
+            if not result.ok:
+                print(f"! {tag}：{result.error}")
                 failures += 1
                 continue
-            except FollowSourceError as error:
-                store.record_error(row["id"], str(error), moment)
-                connection.commit()
-                print(f"! {provider}/{ref}：{error}")
-                failures += 1
+            if result.exhausted:
+                print(f"= {tag}：{result.message}")
                 continue
-            outcome = store.record(
-                row["id"], fetch,
-                creator_aliases=store.creator_aliases(row["entity_id"]), moment=moment)
-            connection.commit()
+            outcome = result.outcome
             if outcome.not_modified:
-                print(f"= {provider}/{ref}：无变化")
-            else:
-                print(f"+ {provider}/{ref}：发现 {outcome.discovered}，"
-                      f"新增 {outcome.added}，更新 {outcome.updated}")
-                if outcome.evidence_error:
-                    print(f"  ⚠ {outcome.evidence_error}")
+                print(f"= {tag}：无变化")
+                continue
+            page = f"第 {result.page} 页：" if result.older else ""
+            print(f"+ {tag}：{page}发现 {outcome.discovered}，"
+                  f"新增 {outcome.added}，更新 {outcome.updated}")
+            if outcome.evidence_error:
+                print(f"  ⚠ {outcome.evidence_error}")
+            if result.author_alias_learned:
+                learned = result.author_alias_learned
+                print(f"  · 记下别名 {learned['alias']} → {learned['canonical']}")
     finally:
         connection.close()
     return 1 if failures else 0
@@ -192,17 +197,36 @@ def _save(args) -> int:
     return 0
 
 
+#: `CREDENTIAL_GUIDE` 的 requirement 在命令行这边怎么说。照抄那张表的判定，不在
+#: 这里另写一套——手写的那份会漂：一句「f95zone 与 simpcity 的 cookie 只在读登录后
+#: 内容时需要」，而 simpcity 已判为 blocked、根本不收 cookie，照着它配是白费功夫。
+_REQUIREMENT_TEXT = {
+    "required": "必须配置",
+    "optional": "可选，配了能多取到内容",
+    "blocked": "站点有机器人验证，配了也不支持",
+    "none": "不需要凭据",
+}
+
+
 def _creds(args) -> int:
-    store = CredentialStore(args.secrets_root)
+    store = credential_store_for(args.secrets_root, shared_root=args.shared_root)
     for provider in sorted(CONNECTORS):
         described = store.describe(provider)
+        requirement = str(CREDENTIAL_GUIDE.get(provider, {}).get("requirement")
+                          or "none")
         state = "已配置" if described["present"] else "未配置"
         fields = ", ".join(described["fields"]) or "—"
         warning = "  ⚠ 权限过宽" if described["world_readable"] else ""
-        print(f"{provider:<12} {state:<8} 字段：{fields}{warning}")
+        note = _REQUIREMENT_TEXT.get(requirement, requirement)
+        # 从共享副本回填的字段单独点名：用户得知道该去哪台机器上撤。
+        if described["shared_fields"]:
+            note += f"；{', '.join(described['shared_fields'])} 来自共享副本"
+        print(f"{provider:<12} {state:<8} 字段：{fields}  {note}{warning}")
     print(f"\n凭据目录：{store.root}")
-    print("rule34xxx 需要 user_id + api_key；f95zone 与 simpcity 的 cookie 只在"
-          "读登录后内容时需要。凭据只留在本机，不进 Git、URL、日志或 ledger。")
+    if store.shared_root is not None:
+        print(f"共享副本：{store.shared_root}（只放声明为可同步的字段）")
+    print("凭据只留在本机，不进 Git、URL、日志或 ledger。"
+          "每个来源要哪些字段、去哪里拿，见网页版的凭据面板。")
     return 0
 
 
@@ -211,6 +235,10 @@ def register(commands) -> None:
     follow.add_argument("--db", type=Path, default=DATABASE_PATH)
     follow.add_argument("--sources-root", type=Path, default=SOURCES_DIR)
     follow.add_argument("--secrets-root", type=Path, default=SECRETS_DIR)
+    # 共享根让另一台机器上配好的可同步字段（现在只有 rule34.xxx 的 user_id/api_key）
+    # 在命令行这边也能回填。默认和 Web 一致（复制关掉时是 None，凭据只留本机），
+    # 测试用它指向临时目录。
+    follow.add_argument("--shared-root", type=Path, default=SHARED_CREDENTIAL_ROOT)
     actions = follow.add_subparsers(dest="follow_command", required=True)
 
     add = actions.add_parser("add", help="登记一个追更来源")
@@ -230,6 +258,8 @@ def register(commands) -> None:
     check = actions.add_parser("check", help="显式检查更新（唯一会联网的动作）")
     check.add_argument("--source", type=int, help="只检查这一个来源 id")
     check.add_argument("--force", action="store_true", help="忽略条件请求游标")
+    check.add_argument("--older", action="store_true",
+                       help="往回抓一页历史（只对支持翻页的来源有效）")
     check.set_defaults(handler=_check)
 
     feed = actions.add_parser("feed", help="按作品分组显示追更结果（不联网）")

@@ -184,9 +184,8 @@ class FilesystemBackend:
 class MediaEngine:
     """按 asset id 解析媒体文件。
 
-    这里曾经是一层 backend 契约，为的是让 Stash 作为可关闭的 adapter 参与解析。
-    2026-09-01 关掉 adapter 时它一并删掉：本机文件是唯一来源，多留一层间接
-    只会让「谁决定了这个路径」变得不好回答。见 ADR-0021。
+    本机文件是唯一来源，中间不设 backend 契约层：多一层间接只会让「谁决定了
+    这个路径」变得不好回答。见 ADR-0021。
     """
 
     def __init__(self, repository: LedgerRepository, filesystem: FilesystemBackend):

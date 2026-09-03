@@ -41,9 +41,9 @@ def pattern_png(kind="vertical", size=(400, 400)):
 
 
 class Response:
-    def __init__(self, body):
+    def __init__(self, body, status=200):
         self.body = body
-        self.status = 200
+        self.status = status
         self.headers = {}
 
 
@@ -57,6 +57,22 @@ class FakeTransport:
         if "unavatar.io" in request.url:
             return Response(json.dumps({"url": "https://pbs.example/logo.png"}).encode())
         return Response(self.images.pop(0))
+
+
+class TwimgTransport:
+    """unavatar 回缩略图地址，只有某一档真的存在——用来验证按档位下退。"""
+
+    def __init__(self, resolved, available):
+        self.resolved = resolved
+        self.available = dict(available)
+        self.calls = []
+
+    def __call__(self, request, _timeout, _max_bytes):
+        self.calls.append(request.url)
+        if "unavatar.io" in request.url:
+            return Response(json.dumps({"url": self.resolved}).encode())
+        body = self.available.get(request.url)
+        return Response(body) if body else Response(b"", 404)
 
 
 class LogoProviderTests(unittest.TestCase):
@@ -124,6 +140,49 @@ class StudioLogoScriptTests(unittest.TestCase):
         self.assertEqual(row["accepted"], "False")
         self.assertNotEqual(row["sha256"], "")
         self.assertLessEqual(int(row["visual_distance"]), 4)
+
+    def test_upload_original_is_preferred_over_the_resolver_thumbnail(self):
+        """unavatar 会给缩小档：セレブの友 拿到的是 200×200，原图其实 242×242。"""
+        stem = "https://pbs.twimg.com/profile_images/562462783950700545/abc"
+        original = png_bytes(size=(242, 242))
+        transport = TwimgTransport(f"{stem}_200x200.jpg", {
+            f"{stem}.jpg": original,
+            f"{stem}_400x400.jpg": png_bytes(size=(400, 400)),
+            f"{stem}_200x200.jpg": png_bytes(size=(200, 200)),
+        })
+        self.assertEqual(self.module.main(self.args(), transport=transport), 0)
+        row = self.rows()[0]
+        self.assertEqual(row["resolved_url"], f"{stem}.jpg")
+        self.assertEqual((row["width"], row["height"]), ("242", "242"))
+        self.assertEqual(transport.calls[1], f"{stem}.jpg")
+
+    def test_missing_original_falls_back_to_the_next_tier(self):
+        """原图那一份不是每个账号都还在，缺了就退一档，不是整个厂牌取图失败。"""
+        stem = "https://pbs.twimg.com/profile_images/562462783950700545/abc"
+        transport = TwimgTransport(f"{stem}_400x400.jpg", {
+            f"{stem}_200x200.jpg": png_bytes(size=(200, 200)),
+        })
+        self.assertEqual(self.module.main(self.args(), transport=transport), 0)
+        row = self.rows()[0]
+        self.assertEqual(row["resolved_url"], f"{stem}_200x200.jpg")
+        self.assertEqual(row["content_state"], "new")
+        self.assertEqual(row["accepted"], "True")
+        self.assertEqual(transport.calls[1:], [
+            f"{stem}.jpg", f"{stem}_400x400.jpg", f"{stem}_200x200.jpg",
+        ])
+
+    def test_every_tier_missing_is_an_error_not_a_silent_pass(self):
+        stem = "https://pbs.twimg.com/profile_images/562462783950700545/abc"
+        transport = TwimgTransport(f"{stem}_200x200.jpg", {})
+        self.assertEqual(self.module.main(self.args(), transport=transport), 0)
+        row = self.rows()[0]
+        self.assertEqual(row["content_state"], "error")
+        self.assertEqual(row["saved"], "")
+        self.assertEqual(row["accepted"], "False")
+        with self.health.open(encoding="utf-8-sig", newline="") as handle:
+            health = next(csv.DictReader(handle))
+        self.assertEqual(health["errors"], "1")
+        self.assertEqual(health["last_error_message"], "HTTP 404")
 
     def test_refresh_surfaces_changed_upstream_content(self):
         (self.installed / "Studio_A.img").write_bytes(pattern_png("vertical"))

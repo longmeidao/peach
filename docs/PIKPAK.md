@@ -10,9 +10,10 @@
 probe 结果写进真实 Mac ledger。开跑前必须确认 `/healthz.ledger_sync=writer`、`A:` 可列目录、
 没有同类任务在跑、`C:` 至少剩 40 GiB，并用 SQLite backup API 备份本地真实 ledger。
 
-generation 29 的 Mac 副本基线为：PikPak 视频 10,235 条；已有缩略图 39；可直接抽 4,740；
-`duration=0` 2,875、`duration<0` 2,570，合计 5,445 条必须用 `--redo all` 重探；另有 11 条
-正时长不超过 2 秒，不进接触表队列。Windows 开跑前必须重算，不能把这些数字当远端现值。
+队列数字不抄在这里。开跑前跑 `python scripts/job_status.py`，它按真实账本现算「可抽 / 缺时长
+待 probe / 合计」；之前写在这里的那份 Mac 副本基线被当成过远端现值用，这类数字只在生成的那一刻
+成立。口径上要分清 `duration=0`（还没探测）和 `duration<0`（探测失败，只有 `--redo all` 会重试），
+正时长不超过 2 秒的资产不进接触表队列。
 
 ## 流量样本与停止条件
 

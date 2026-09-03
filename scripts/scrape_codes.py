@@ -16,11 +16,19 @@ import random
 import re
 import sqlite3
 import time
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from peach.catalog_rules import normalise_code_key
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from peach.catalog_rules import is_jav_code, normalise_code_key
+from peach.scripting import open_readonly
 from peach.config import DATABASE_PATH, GENERATED_DIR, LOG_DIR, SOURCES_DIR, STATE_DIR
+from peach.genre_taxonomy import CONTENT_GENRES, map_genres
 from peach.jobs import DiskGuard, JobPolicyError
 from peach.metadata import (
     CATALOG_EVIDENCE_FIELDS,
@@ -29,6 +37,7 @@ from peach.metadata import (
     MetadataProviderError,
     extract_catalog_evidence,
     extract_peach_fields,
+    identifies_code,
 )
 from peach.metadata_policy import (
     PEACH_FIELDS,
@@ -52,34 +61,13 @@ FIELDS = [
     "status", "size_gb", "videos", "fetched_at",
 ]
 ERROR_FIELDS = ["code", "query", "source", "kind", "status_code", "retryable", "message"]
+UNMAPPED_FIELDS = ["genre", "source", "occurrences", "sample_code"]
 HEALTH_FIELDS = [
     "source", "profile", "attempted", "snapshot_reused", "fetched", "succeeded",
     "empty", "errors", "retryable_errors", "cooldown_skips", "blocked", "elapsed_ms",
     *dict.fromkeys((*PEACH_FIELDS, *CATALOG_EVIDENCE_FIELDS)),
     "last_error_kind", "last_error_status", "last_error_message",
 ]
-
-
-# Javinizer r18dev genre -> Peach's reviewed content taxonomy. Unknown source values
-# remain in the raw snapshot instead of becoming unreviewable free-form tags.
-CATEGORY_MAP = {
-    "Foot Fetish": "美腿", "Legs": "美腿", "Pantyhose": "丝袜", "Stockings": "丝袜",
-    "Creampie": "中出内射", "Squirting": "潮吹", "Blowjob": "口交", "Deep Throat": "深喉",
-    "Facial": "颜射", "Cum Swallowing": "吞精", "Handjob": "手交",
-    "Big Tits": "乳系", "Beautiful Tits": "乳系", "Small Tits": "贫乳", "Titty Fuck": "乳交",
-    "Slender": "苗条", "Chubby": "丰满", "Beautiful Girl": "高颜值",
-    "Office Lady": "秘书OL", "School Girls": "学生", "Nurse": "护士",
-    "Uniform": "制服", "Cosplay": "角色扮演", "Maid": "女仆", "Swimsuit": "泳装",
-    "Married Woman": "人妻", "Mature Woman": "人妻", "Big Tits Lover": "乳系",
-    "Threesome / Foursome": "多人", "Orgy": "多人", "Lesbian": "百合",
-    "Anal": "肛交", "Bondage": "调教", "Torture": "调教", "Training": "调教",
-    "Slut": "痴女", "Nymphomaniac": "痴女", "Cuckold": "绿帽NTR", "Voyeur": "偷拍偷窥",
-    "Hidden Camera": "偷拍偷窥", "Amateur": "素人", "Massage": "按摩", "Bath": "浴室",
-    "Outdoor": "户外露出", "Car Sex": "车震", "Ass Lover": "美臀", "Butt": "美臀",
-    "Glasses": "眼镜", "Virtual Reality": "VR", "POV": "主观视角", "Restraint": "调教",
-    "Incest": "近亲", "Cheating Wife": "绿帽NTR", "4K": "4K",
-    "Digital Mosaic": "有码", "Cowgirl": "骑乘", "Shaved Pussy": "白虎",
-}
 
 
 def configure_log(log_dir: str | Path) -> None:
@@ -106,14 +94,18 @@ def close_log() -> None:
 
 
 def _is_explicit_code(code: str) -> bool:
-    value = str(code or "").upper().strip()
-    if value.startswith("FC2"):
-        return bool(re.search(r"\d{5,}", value))
-    return bool(
-        re.fullmatch(r"[A-Z]{2,8}-\d{2,5}", value)
-        or re.fullmatch(r"\d{3}[A-Z]{2,6}-\d{2,5}", value)
-        or re.fullmatch(r"\d{6}-\d{2,4}", value)
-    )
+    """番号是否明确到可以直接查来源；判的是**规范化之后**的形态。
+
+    真正发给 provider 的就是 `normalise_code_key(code)`，而账本里同一个番号常以
+    `WX17`、`BANBI_555`、`IPVR00296` 这种缺分隔符的原始写法存着。按原始写法判会把它们
+    当成不明确整条跳过，`--codes-file` 那一侧却是按规范化键匹配的，于是同一批番号在
+    两处结论相反，报成「番号文件含 ledger 中不存在的番号」。2026-09-02 实测漏掉 42 个。
+
+    形态判定交给 `is_jav_code`，这里不再抄一份正则。抄出来的那份和它逐字相同，于是
+    `HHD800`、`HJD2048` 这些转载站水印域名在 `catalog_rules` 侧被排除之后，这里还会
+    继续把它们发给 provider 查——同一个「什么算番号」有两个答案。
+    """
+    return is_jav_code(normalise_code_key(code))
 
 
 def _candidate_key(code: str, field: str, source: str, value: object) -> str:
@@ -144,7 +136,7 @@ def _current_values(connection: sqlite3.Connection, code: str, field: str) -> li
             (code,),
         )
     else:
-        allowed = sorted(set(CATEGORY_MAP.values()))
+        allowed = sorted(set(CONTENT_GENRES.values()))
         marks = ",".join("?" * len(allowed))
         rows = connection.execute(
             "SELECT DISTINCT t.tag FROM asset a JOIN asset_tag t ON t.asset_id=a.id "
@@ -154,23 +146,50 @@ def _current_values(connection: sqlite3.Connection, code: str, field: str) -> li
     return sorted({str(row[0]).strip() for row in rows if str(row[0] or "").strip()})
 
 
-def _read_snapshot(path: Path) -> dict | None:
+def _read_snapshot(path: Path, code: str) -> dict | None:
+    """复用上一轮的成功记录，但先确认它和这个番号对得上。
+
+    快照是在 `identifies_code` 之前落的盘，里面就有 dl.getchu 拿不相干同人商品
+    当结果的记录。只看「有没有 result」而不看身份，等于把当初那次错配一路复用
+    下去——封面域 2026-09-01 的跨片封套正是这么带到今天的。对不上就当没有快照，
+    重新联网问一次，闸在 provider 那一侧会把它变成 not_found。
+    """
     try:
         wrapper = json.loads(path.read_text(encoding="utf-8"))
         result = wrapper.get("result")
-        return result if isinstance(result, dict) else None
     except (OSError, ValueError, TypeError):
         return None
+    if not isinstance(result, dict) or not identifies_code(code, result):
+        return None
+    return result
+
+
+#: 只有来源明确答「没有这部片」才算定论。`unknown` 是「这次没问出结果」，
+#: 把它当定论复用过一次真实代价：2026-08-30 前 javinizer config 还没启用
+#: mgstage/libredmm/dlgetchu/aventertainment，那一轮的错误快照全是
+#: `scraper "mgstage" is not enabled`，本机配置问题被冻结成来源判决，之后
+#: 每次续跑都直接跳过，10 个番号再也没被问过。
+SETTLED_ERROR_KINDS = frozenset({"not_found"})
+
+#: 连续多少次可重试失败才让来源进冷却，以及冷却多久（秒）。
+#: 2026-09-01 的官方 tag 补抓实测：mgstage 在中途超时一次，旧逻辑当场把它
+#: 「本批后续全部跳过」，剩下 122 个番号再也没被问过，dmm 同样丢了 150 个。
+#: 一次超时是抖动不是封禁；真被限流会连续失败，那时再退让也来得及。冷却也
+#: 必须会过期——长批次里一次抖动不该决定后面几百个番号的命运。
+COOLDOWN_AFTER_FAILURES = 3
+COOLDOWN_SECONDS = 300.0
 
 
 def _read_settled_error(path: Path) -> MetadataProviderError | None:
-    """复用确定失败，只让临时/可重试错误重新联网。"""
+    """复用确定失败，只让临时/可重试/结论不明的错误重新联网。"""
     try:
         wrapper = json.loads(path.read_text(encoding="utf-8"))
         error = wrapper.get("error")
         if not isinstance(error, dict):
             return None
         if bool(error.get("retryable")) or bool(error.get("temporary")):
+            return None
+        if str(error.get("kind") or "") not in SETTLED_ERROR_KINDS:
             return None
         return MetadataProviderError(
             str(error.get("message") or "metadata source error"),
@@ -217,10 +236,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", type=Path, default=STATE_DIR / "javinizer-provider" / "config.yaml")
     parser.add_argument("--binary", type=Path)
     source_group = parser.add_mutually_exclusive_group()
-    source_group.add_argument("--profile", choices=("baseline", "censored", "uncensored", "fc2"),
-                              help="explicit Peach source preset; default baseline")
+    source_group.add_argument(
+        "--profile",
+        choices=("baseline", "censored", "uncensored", "fc2",
+                 "official-backfill", "backfill"),
+        help="explicit Peach source preset; default baseline")
     source_group.add_argument("--sources", help="compatible comma-separated Javinizer scraper names")
     parser.add_argument("--health", type=Path, default=None)
+    parser.add_argument("--unmapped", type=Path, default=None,
+                        help="未收录 genre 清单；不写这个文件等于把来源给过的值悄悄丢掉")
     parser.add_argument(
         "--codes-file", type=Path,
         help="只处理文件中列出的番号；每行一个，空行和 # 注释忽略",
@@ -299,6 +323,23 @@ def _select_english_title_codes(connection, codes: list[tuple[str, float, int]])
     return selected
 
 
+def _unmapped_output(output: Path) -> Path:
+    name = output.name.replace("metadata-field-candidates-", "metadata-unmapped-genres-", 1)
+    if name == output.name:
+        name = output.stem + "-unmapped-genres.csv"
+    return output.with_name(name)
+
+
+def _write_unmapped(path: Path, seen: dict[tuple[str, str], list]) -> None:
+    rows = [
+        {"genre": genre, "source": source, "occurrences": count, "sample_code": sample}
+        for (source, genre), (count, sample) in sorted(
+            seen.items(), key=lambda item: (-item[1][0], item[0][0], item[0][1]),
+        )
+    ]
+    write_rows(path, UNMAPPED_FIELDS, rows, atomic=True)
+
+
 def _health_output(output: Path) -> Path:
     name = output.name.replace("metadata-field-candidates-", "metadata-source-health-", 1)
     if name == output.name:
@@ -337,6 +378,7 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
         error_name = output.stem + "-errors.csv"
     errors_path = args.errors or output.with_name(error_name)
     health_path = args.health or _health_output(output)
+    unmapped_path = args.unmapped or _unmapped_output(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     errors_path.parent.mkdir(parents=True, exist_ok=True)
     configure_log(args.log_dir)
@@ -350,9 +392,10 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
     log(f"系统盘可用 {free_gb:.1f} GiB，运行期阈值 {args.min_free:.1f} GiB")
     sources = list(policy.sources)
     health = _health_rows(policy)
+    unmapped_genres: dict[tuple[str, str], list] = {}
     adapter = provider or JavinizerGoProvider.create(args.binary, args.config)
 
-    connection = sqlite3.connect(args.db.resolve().as_uri() + "?mode=ro", uri=True)
+    connection = open_readonly(args.db)
     codes = [
         (str(row[0]).strip(), float(row[1]), int(row[2]))
         for row in connection.execute(
@@ -376,7 +419,8 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
         codes = codes[:max(args.limit, 0)]
     log(f"字段候选批次：profile {policy.profile}，番号 {len(codes)}，来源 {','.join(sources)}；只读查询，不写 ledger")
 
-    blocked_sources: set[str] = set()
+    cooldown_until: dict[str, float] = {}
+    consecutive_failures: dict[str, int] = {}
     groups_written = errors_written = 0
     stopped: JobPolicyError | None = None
     # 流式写：两个文件同时开着，行在长循环里边跑边落盘，中途还有 guard.check()
@@ -396,15 +440,17 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
             query = normalise_code_key(code)
             by_field: dict[str, list[dict]] = {}
             fetched_at = datetime.now(timezone.utc).isoformat()
-            for source in sources:
+            # 每个番号问哪几家由 policy 按发行面决定：日期形和 HEYZO 是无码站
+            # 的编号法，拿去问 mgstage/dmm 只会得到「问了都没有」。
+            for source in policy.sources_for_code(query):
                 source_health = health[source]
                 source_health["attempted"] += 1
-                if source in blocked_sources:
+                if time.monotonic() < cooldown_until.get(source, 0.0):
                     source_health["cooldown_skips"] += 1
                     continue
                 snapshot = args.raw_dir / query / f"{source}.json"
                 started = time.perf_counter()
-                payload = None if args.refresh else _read_snapshot(snapshot)
+                payload = None if args.refresh else _read_snapshot(snapshot, query)
                 settled_error = None if args.refresh else _read_settled_error(snapshot)
                 reused = payload is not None or settled_error is not None
                 try:
@@ -432,14 +478,24 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                     source_health["last_error_status"] = error.status_code or ""
                     source_health["last_error_message"] = str(error)[:500]
                     if error.retryable or error.status_code in {403, 429, 503}:
-                        blocked_sources.add(source)
-                        source_health["blocked"] = 1
-                        log(f"{source} 暂时不可用，本批后续番号进入来源级冷却：{error}")
+                        consecutive_failures[source] = consecutive_failures.get(source, 0) + 1
+                        if consecutive_failures[source] >= COOLDOWN_AFTER_FAILURES:
+                            cooldown_until[source] = time.monotonic() + COOLDOWN_SECONDS
+                            consecutive_failures[source] = 0
+                            source_health["blocked"] += 1
+                            log(f"{source} 连续 {COOLDOWN_AFTER_FAILURES} 次可重试失败，"
+                                f"冷却 {COOLDOWN_SECONDS:.0f} 秒后自动恢复：{error}")
+                    else:
+                        consecutive_failures[source] = 0
                     continue
                 finally:
                     source_health["elapsed_ms"] += round((time.perf_counter() - started) * 1000)
-                extracted_fields = extract_peach_fields(payload, CATEGORY_MAP)
+                consecutive_failures[source] = 0
+                extracted_fields = extract_peach_fields(payload)
                 catalog_evidence = extract_catalog_evidence(payload)
+                for genre in map_genres(payload.get("genres") or [])[1]:
+                    entry = unmapped_genres.setdefault((source, genre), [0, code])
+                    entry[0] += 1
                 source_health["succeeded"] += 1
                 if not extracted_fields and not catalog_evidence:
                     source_health["empty"] += 1
@@ -487,12 +543,15 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
                 groups_written += 1
             candidate_handle.flush()
             _write_health(health_path, health)
+            _write_unmapped(unmapped_path, unmapped_genres)
             if index % 25 == 0:
                 log(f"{index}/{len(codes)}：已落 {groups_written} 个字段组，错误 {errors_written}")
     connection.close()
     _write_health(health_path, health)
+    _write_unmapped(unmapped_path, unmapped_genres)
     log(f"完成：{groups_written} 个字段候选组 → {output}")
     log(f"来源健康 → {health_path}")
+    log(f"未收录 genre {len(unmapped_genres)} 种 → {unmapped_path}")
     if errors_written:
         log(f"来源错误 {errors_written} 条 → {errors_path}")
     close_log()

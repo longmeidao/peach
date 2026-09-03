@@ -5,7 +5,7 @@ description: 在用户说加条规则、写进 AGENTS.md、写个技能、文件
 
 # 上下文写作与清退
 
-最后复核：2026-08-27
+最后复核：2026-09-03
 证据来源：ADR-0015、`scripts/check_context_budget.py`、`tests/test_context_budget.py`、用户于
 2026-08-17 提供的 `My AGENTS.md & SKILLS.md Breakdown` 逐字稿。
 
@@ -57,9 +57,7 @@ description 会常驻上下文，**技能没被触发时也在消耗预算**。�
 - 正文 ≤ 120 行。超了说明混进了 L2 事实，把事实移回 `docs/`。
 - 在 `AGENTS.md` 的技能索引表加一行触发条件与路径，Codex 靠这张表按需读取。
 
-参考口径：Anthropic 官方 skill authoring 建议正文 < 500 行、`description` ≤ 1024 字符、
-`name` ≤ 64 字符且只用小写字母数字连字符；每个技能的 name+description 常驻上下文约 100 词。
-天花板直接采用官方值（500 行 / 1024 字符），本项目内部预算收紧到 120 行 / 200 字符。
+参考口径：Anthropic 官方 skill authoring 建议正文 < 500 行、`description` ≤ 1024 字符、`name` ≤ 64 字符且只用小写字母数字连字符，每个技能的 name+description 常驻上下文约 100 词；天花板直接采用官方值，本项目内部预算收紧到 120 行 / 200 字符。
 入口文件没有官方值，天花板由本项目定死为 200 行，`AGENTS.md` 内部预算 90 行。
 
 ## 预算只能降不能升
@@ -73,6 +71,22 @@ description 会常驻上下文，**技能没被触发时也在消耗预算**。�
 Claude 只把每个技能的 name+description 预加载进系统提示，读不读正文由模型按 description 判断；
 Codex 完全不自动加载 `.claude/skills`，只能靠 `AGENTS.md` 索引表主动读。所以「必须每次成立」的
 规则不能只写成技能，必须同时有脚本、测试或 hook 强制。技能写「怎么做」，门槛写「必须做」。
+
+## 文案只写最终状态
+
+界面字串、注释、docstring、测试名与文档只描述现在成立的行为和约束，不叙述被否掉的做法，
+也不做改动前后对比——版本演进由 Git 记录，读者要的是当前这一份怎么用。
+
+- 门槛是 `scripts/check_copy_final_state.py`，由 `tests/test_copy_final_state.py` 在 tooling
+  与 web 两个域执行；词表、覆盖面与临时例外文件清单都在脚本顶部，改判据就改那里。
+- 覆盖面：`web/` 的字串与注释、`frontend/`，`src`/`scripts`/`tests` 的注释、docstring、
+  字符串字面量与测试函数名，以及 `README.md`、`docs/*.md`（不含 `docs/adr/`）、`AGENTS.md`
+  和各技能正文。ADR 正文按定义要记录决策过程，不在覆盖面内。
+- 约束的理由必须留下。把它写成反事实句「这样做的话，会……」，说清失败模式而不点名某一版实现，
+  既保住教训又不需要放行标记。
+- 真实事故记录才放行：那一行结尾加 `copy-lint-disable-line`，Markdown 写成 HTML 注释、
+  Python 用 `#`、JS 用 `//`；这个标记与用户级 `lint_copy_rules.py` 共用，一处标记两边都认。
+  放行前先试着改写成「现在的规则 + 它防住的后果」，多数记录不需要标记。
 
 ## 失败模式审计
 
@@ -94,13 +108,7 @@ Codex 完全不自动加载 `.claude/skills`，只能靠 `AGENTS.md` 索引表�
 
 步骤：
 
-1. 运行检查
-
-   ```powershell
-   & .\.venv\Scripts\python.exe scripts\check_context_budget.py
-   ```
-
-   退出码 0 通过，1 有超预算或结构错误，3 只有 `最后复核` 超过 180 天的条目。
+1. 运行 `& .\.venv\Scripts\python.exe scripts\check_context_budget.py`：退出码 0 通过，1 有超预算或结构错误，3 只有 `最后复核` 超过 180 天的条目。
 
 2. 逐条问：这条规则的事故或证据还能指认吗？对应实现还在吗？已经有门槛了吗？
 3. 该删就整段删除，不留「已废弃」注释——Git 是归档。被 ADR 取代的段落只留一行指向 ADR。

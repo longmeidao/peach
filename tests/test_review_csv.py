@@ -72,7 +72,7 @@ class ReviewCsvTests(unittest.TestCase):
         self.assertEqual(read_rows(target), [{"code": "A", "name": ""}])
 
     def test_atomic_write_never_leaves_a_half_written_file(self):
-        """长跑任务被打断时，读的人要么拿到上一版完整文件，要么拿到新版完整文件。"""
+        """长跑任务被打断时，读的人要么拿到替换前那份完整文件，要么拿到替换后那份。"""
         target = self.root / "out.csv"
         write_rows(target, FIELDS, [{"code": "old", "name": "旧"}])
 
@@ -86,7 +86,7 @@ class ReviewCsvTests(unittest.TestCase):
         with self.assertRaises(Boom):
             write_rows(target, FIELDS, exploding_rows(), atomic=True)
         self.assertEqual(read_rows(target), [{"code": "old", "name": "旧"}],
-                         "原子写失败后必须保留上一版")
+                         "原子写失败后必须保留替换前那份")
         leftovers = [p.name for p in self.root.iterdir() if p.name.startswith(".")]
         self.assertEqual(leftovers, [], f"临时文件没清掉：{leftovers}")
 

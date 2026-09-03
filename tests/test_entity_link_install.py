@@ -10,10 +10,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 
 
-def load_module():
+def load_module(name: str = "install_entity_links"):
     sys.path.insert(0, str(REPO / "src"))
-    spec = importlib.util.spec_from_file_location(
-        "install_entity_links", REPO / "scripts" / "install_entity_links.py")
+    spec = importlib.util.spec_from_file_location(name, REPO / "scripts" / f"{name}.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -128,7 +127,7 @@ class InstallTests(unittest.TestCase):
 
     def test_apply_without_backup_refuses_and_writes_nothing(self):
         """真实账本写入必须带备份；缺备份要在读输入之前就停。"""
-        code = self.module.main(["--database", str(self.db), "--input", str(self.tmp / "x.csv"),
+        code = self.module.main(["--db", str(self.db), "--input", str(self.tmp / "x.csv"),
                                  "--apply"])
         self.assertEqual(code, 2)
         self.assertEqual(
@@ -142,7 +141,7 @@ class InstallTests(unittest.TestCase):
             encoding="utf-8-sig")
         # `--no-check` 不只是提速：测试不许发网络请求，否则一次断网就变成红灯。
         self.assertEqual(self.module.main(
-            ["--database", str(self.db), "--input", str(source), "--no-check"]), 0)
+            ["--db", str(self.db), "--input", str(source), "--no-check"]), 0)
         self.assertEqual(
             self.connection.execute("SELECT count(*) FROM entity_link").fetchone()[0], 0)
 
@@ -214,6 +213,123 @@ class InstallTests(unittest.TestCase):
 
         self.module.check_links(planned, probe=probe)
         self.assertEqual(probed, [])
+
+
+class NormalizeHostsTests(unittest.TestCase):
+    """twitter.com → x.com 的主机归一：改写要保真，撞上已有的新写法要删而不是炸。
+
+    2026-09-02 实测账本：295 条 `twitter.com` + 1 条 `www.twitter.com`，67 条 `x.com`，
+    其中 6 个实体两种写法都有。这些用例就是那张计划表的缩影。
+    """
+
+    def setUp(self):
+        self.module = load_module("normalize_link_hosts")
+        self.tmp = Path(tempfile.mkdtemp())
+        self.db = self.tmp / "ledger.db"
+        self.connection = sqlite3.connect(self.db)
+        self.connection.row_factory = sqlite3.Row
+        self.connection.executescript(SCHEMA)
+        self.connection.executemany(
+            "INSERT INTO entity VALUES(?,?,?)",
+            [(1, "performer", "立花美涼"), (2, "performer", "河北彩花")])
+        self.connection.commit()
+
+    def tearDown(self):
+        self.connection.close()
+
+    def link(self, entity_id, url, label="X @h", metadata="{}"):
+        host = url.split("/")[2]
+        self.connection.execute(
+            "INSERT INTO entity_link(entity_id,link_kind,label,url,hostname,metadata_json,"
+            "created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
+            (entity_id, "social", label, url, host, metadata, "2026-01-01", "2026-01-01"))
+        self.connection.commit()
+        return self.connection.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+    def count(self):
+        return self.connection.execute("SELECT count(*) FROM entity_link").fetchone()[0]
+
+    def test_only_listed_hosts_are_touched_and_the_path_is_kept(self):
+        """只换主机名，handle 大小写、查询和片段都是用户复核过的，原样留着。"""
+        self.assertEqual(self.module.target_url("http://twitter.com/Abc_D?s=1#x"),
+                         "https://x.com/Abc_D?s=1#x")
+        self.assertEqual(self.module.target_url("https://mobile.twitter.com/abc"), "https://x.com/abc")
+        for untouched in ("https://x.com/abc", "https://instagram.com/abc", "https://twitter.co.jp/a"):
+            self.assertEqual(self.module.target_url(untouched), "", untouched)
+
+    def test_a_rewrite_keeps_the_row_and_only_changes_url_and_hostname(self):
+        """改写不是删了再插：id、label、metadata（provenance）全都要留在原行上。"""
+        link_id = self.link(1, "https://twitter.com/tachibana", metadata='{"source":"a.csv"}')
+        planned = self.module.plan(self.connection)
+        self.assertEqual([(p["id"], p["action"]) for p in planned], [(link_id, "rewrite")])
+        self.assertEqual(self.module.apply_plan(self.connection, planned), (1, 0))
+        row = self.connection.execute(
+            "SELECT id,label,url,hostname,metadata_json,created_at,updated_at FROM entity_link").fetchone()
+        self.assertEqual(tuple(row)[:5], (link_id, "X @h", "https://x.com/tachibana", "x.com",
+                                          '{"source":"a.csv"}'))
+        self.assertEqual(row["created_at"], "2026-01-01")
+        self.assertNotEqual(row["updated_at"], "2026-01-01")
+
+    def test_an_entity_that_already_has_the_new_form_drops_the_old_row(self):
+        """`UNIQUE(entity_id,url)` 不允许并存；留下的那行承载同一个 handle，计划表要点名它。"""
+        keeper = self.link(1, "https://x.com/tachibana")
+        old = self.link(1, "https://twitter.com/tachibana")
+        planned = self.module.plan(self.connection)
+        self.assertEqual([(p["id"], p["action"]) for p in planned], [(old, "drop")])
+        self.assertIn(f"#{keeper}", planned[0]["reason"])
+        self.assertEqual(self.module.apply_plan(self.connection, planned), (0, 1))
+        self.assertEqual([r[0] for r in self.connection.execute("SELECT id FROM entity_link")], [keeper])
+
+    def test_two_old_forms_of_one_handle_resolve_within_the_same_run(self):
+        """同一实体 `twitter.com/a` 和 `mobile.twitter.com/a` 都映到一处：先改写的占位，后来的删。
+
+        不记录本轮已占用的地址，第二条会规划成 rewrite，写入时撞 UNIQUE 让整批回滚。
+        """
+        first = self.link(1, "https://twitter.com/a")
+        second = self.link(1, "https://mobile.twitter.com/a")
+        planned = self.module.plan(self.connection)
+        self.assertEqual([(p["id"], p["action"]) for p in planned],
+                         [(first, "rewrite"), (second, "drop")])
+        self.assertEqual(self.module.apply_plan(self.connection, planned), (1, 1))
+        self.assertEqual(self.count(), 1)
+
+    def test_the_same_handle_on_two_entities_is_not_a_collision(self):
+        self.link(1, "https://twitter.com/shared")
+        self.link(2, "https://x.com/shared")
+        planned = self.module.plan(self.connection)
+        self.assertEqual([p["action"] for p in planned], ["rewrite"])
+
+    def test_a_second_run_finds_nothing_to_do(self):
+        self.link(1, "https://twitter.com/a")
+        self.link(2, "https://x.com/b")
+        self.module.apply_plan(self.connection, self.module.plan(self.connection))
+        self.connection.commit()
+        self.assertEqual(self.module.plan(self.connection), [])
+
+    def test_apply_without_backup_refuses_and_writes_nothing(self):
+        self.link(1, "https://twitter.com/a")
+        self.assertEqual(self.module.main(["--database", str(self.db), "--apply"]), 2)
+        self.assertEqual(self.connection.execute(
+            "SELECT url FROM entity_link").fetchone()[0], "https://twitter.com/a")
+
+    def test_dry_run_is_the_default_and_touches_nothing(self):
+        self.link(1, "https://twitter.com/a")
+        self.assertEqual(self.module.main(["--database", str(self.db)]), 0)
+        self.assertEqual(self.connection.execute(
+            "SELECT url FROM entity_link").fetchone()[0], "https://twitter.com/a")
+
+    def test_apply_with_backup_writes_and_the_backup_holds_the_old_state(self):
+        self.link(1, "https://twitter.com/a")
+        self.link(1, "https://x.com/b")
+        self.link(1, "https://twitter.com/b")
+        backup = self.tmp / "bak" / "ledger.db"
+        self.assertEqual(self.module.main(
+            ["--database", str(self.db), "--apply", "--backup", str(backup)]), 0)
+        self.assertEqual(sorted(r[0] for r in self.connection.execute("SELECT url FROM entity_link")),
+                         ["https://x.com/a", "https://x.com/b"])
+        saved = sqlite3.connect(backup)
+        self.assertEqual(saved.execute("SELECT count(*) FROM entity_link").fetchone()[0], 3)
+        saved.close()
 
 
 if __name__ == "__main__":

@@ -6,22 +6,28 @@ APScheduler 任务触发。
 """
 from __future__ import annotations
 
+import contextlib
 import html
 import json
 import os
 import re
 import urllib.parse
-from datetime import datetime, timezone
 
 from . import follow_providers
-from .follow import FollowHistoryEnd, FollowSourceError
+from .follow import FollowSourceError
+from .follow_check import plan_check, run_check
 from .follow_discovery import discover
-from .follow_secrets import CredentialError, CredentialStore
+from .follow_secrets import (
+    CREDENTIAL_GUIDE, CredentialError, CredentialStore, credential_store_for,
+)
 from .follow_sources import (
     CONNECTORS, KemonoConnector, build_connector, canonical_source_ref,
-    f95_attachment_media_items, parse_source_url, resource_links,
+    display_thumb_url, f95_attachment_media_items, is_history_end_error,
+    parse_source_url, resource_links,
 )
-from .follow_store import FollowStore, ReleaseGroup
+from .follow_store import (
+    FollowStore, ReleaseGroup, author_display_text, normalized_author_name,
+)
 from .taste_history import read_creator_candidates
 
 
@@ -34,7 +40,6 @@ _STATUSES = ("new", "seen", "saved", "ignored")
 #: 所以这里不是分页，只是别让一个失控的库把内存吃干的护栏。
 _ALL_ITEMS = 100_000
 _BACKFILL_PROVIDERS = follow_providers.backfill_providers()
-_OFFICIAL_IDENTITY_PROVIDERS = follow_providers.official_identity_providers()
 
 
 def _store(contract, connection) -> FollowStore:
@@ -45,9 +50,8 @@ def _store(contract, connection) -> FollowStore:
 #: rule34.xxx 的热门帖能带上百个标签，整串发下去只会把筛选条撑爆。
 MAX_ITEM_TAGS = 24
 
-# 用户明确点名的既有超大合集。连接器现在会按详情页署名作者数拦截同类条目；这条
-# 只让已经存在的旧候选立即从浏览面隐藏，不删除 ledger 行。
-RULE34VIDEO_EXCLUDED_IDS = frozenset({"4533145"})
+#: 按来源列出要从浏览面隐藏的既有条目，投影自 follow_providers。
+_EXCLUDED_EXTERNAL_IDS = follow_providers.excluded_external_ids()
 
 # 内容筛选不让载体/渲染方式挤掉动作、角色与作品标签。原始 metadata 仍完整保留。
 LOW_VALUE_GENERAL_TAGS = frozenset({
@@ -75,9 +79,6 @@ _NON_CONTENT_FOLLOW_TAG_RE = re.compile(
 
 _IMAGE_MEDIA_RE = re.compile(r"\.(?:avif|gif|jpe?g|png|webp)(?:$|[?#])", re.I)
 _VIDEO_MEDIA_RE = re.compile(r"\.(?:m4v|mov|mp4|og[gv]|webm)(?:/)?(?:$|[?#])", re.I)
-_RULE34XXX_PREVIEW_RE = re.compile(
-    r"^https://api-cdn\.rule34\.xxx/thumbnails/(\d+)/thumbnail_"
-    r"([0-9a-f]{32})\.jpg(?:[?#].*)?$", re.I)
 
 
 def _item_all_tags(item) -> list[str]:
@@ -204,58 +205,20 @@ def _media_items(item) -> list[dict]:
     return result
 
 
-def _archive_media_host(provider: str, url: str) -> str:
-    """把归档站的静态资源指到 `img.` 子域。
-
-    2026-08-30 实测（见 docs/reference-snapshots/kemono-archive-media-host.md）：
-
-        kemono.cr/thumbnail/data/<path>        302
-        img.kemono.cr/thumbnail/data/<path>    200 image/jpeg 24,050 B
-        pawchive.pw/thumbnail/data/<path>      404
-        img.pawchive.pw/thumbnail/data/<path>  200 image/gif   12,796 B
-
-    kemono 主域只是重定向，浏览器跟随后仍能显示，所以一直没人发现；pawchive 主域
-    直接 404，卡片因此永远是空的（`onerror` 把 img 摘掉，看起来像"没有预览图"）。
-    连接器里那条注释记的是 2026-08-27 主域回 200——站点行为后来变了。
-
-    在读取时改写而不是改 ledger：坏 URL 已经写进两千多行，而这是可推导的投影，
-    不是真相字段。站点再变时也只需要改这一处。
-    """
-    host = KemonoConnector.HOSTS.get(provider)
-    if not host or not url.startswith(f"https://{host}/"):
-        return url
-    return url.replace(f"https://{host}/", f"https://img.{host}/", 1)
-
-
-
-
 def _thumb_url(item) -> str | None:
-    # rule34.xxx 的历史行存的是 250px preview。官方 dapi 的 sample_url 与它使用
-    # 同一 bucket/hash；2026-08-28 对生产历史行实测推导后为 1920x1080。
-    if item.provider == "rule34xxx" and item.thumb_url:
-        matched = _RULE34XXX_PREVIEW_RE.match(str(item.thumb_url))
-        if matched:
-            return ("https://api-cdn.rule34.xxx/images/"
-                    f"{matched.group(1)}/{matched.group(2)}.jpg")
-    # Paheal 图片直接经现有同源代理读原图；视频站点没有高清 poster，改由
-    # /follow-cover 抽首帧并缓存。两条路径都不把原始媒体 URL放进公共 JSON。
+    """卡片上用哪个缩略图。
+
+    Paheal 图片直接经现有同源代理读原图；视频站点没有高清 poster，改由
+    /follow-cover 抽首帧并缓存。这两条是 Peach 自己的路由决定，所以留在这一层；
+    其余全是「这个站的缩略图 URL 长什么样」，那是站点知识，实现在各连接器里。
+    """
     if item.provider == "rule34paheal" and item.media_url:
         kind = _media_kind(item)
         if kind == "image":
             return f"/follow-stream?id={item.id}"
         if kind == "video":
             return f"/follow-cover?id={item.id}"
-    if item.thumb_url:
-        return _archive_media_host(item.provider, str(item.thumb_url))
-    # 旧的 Kemono/Pawchive 行在封面修复前已入库：media_url 是图片，但 thumb_url
-    # 为空。按连接器同一条已验证规则即时推导缩略图，不改 ledger 就能补齐旧卡片。
-    if item.provider in KemonoConnector.HOSTS and _IMAGE_MEDIA_RE.search(
-            str(item.media_url or "")):
-        parsed = urllib.parse.urlsplit(str(item.media_url))
-        return _archive_media_host(
-            item.provider,
-            f"https://{KemonoConnector.HOSTS[item.provider]}/thumbnail/data{parsed.path}")
-    return None
+    return display_thumb_url(item)
 
 
 def _f95_has_resource(media_url: str | None, metadata: dict) -> bool:
@@ -276,8 +239,7 @@ def _f95_has_resource(media_url: str | None, metadata: dict) -> bool:
 
 
 def _excluded_item(item) -> bool:
-    if (item.provider == "rule34video"
-            and item.external_id in RULE34VIDEO_EXCLUDED_IDS):
+    if item.external_id in _EXCLUDED_EXTERNAL_IDS.get(item.provider, frozenset()):
         return True
     # 旧版曾把纯讨论和图片表情包写进候选。读取时隐藏，不改 ledger；真正的
     # 文件附件与文件站链接仍保留，下一次检查会按当前证据重新归类。
@@ -359,34 +321,15 @@ def _group_payload(group: ReleaseGroup,
     }
 
 
-#: 标签里跟在中点后面的服务名。`LazyProcrastinator · fanbox` 和 rule34video 上的
-#: `lazyprocrastinator` 是同一个人，中点后面那截只说明他在哪个平台连载。
-_LABEL_SERVICE_RE = re.compile(r"\s*[·|]\s*[A-Za-z0-9_\-]+\s*$")
-_AUTHOR_NOISE_RE = re.compile(r"[^0-9a-z一-鿿]+")
-_F95_TITLE_SUFFIX_RE = re.compile(r"\s+collections?\s*$", re.IGNORECASE)
-
-
-def _normalized_author_name(value: str, *, provider: str = "") -> str:
-    stripped = _LABEL_SERVICE_RE.sub("", str(value or "").strip())
-    if provider == "f95zone":
-        # F95 thread titles describe a container, not a different author.  The real
-        # data is ``Lazy Procrastinator Collection`` while every author source is
-        # ``LazyProcrastinator``; retaining the generic suffix creates a false group.
-        stripped = _F95_TITLE_SUFFIX_RE.sub("", stripped)
-    return _AUTHOR_NOISE_RE.sub("", stripped.casefold())
-
-
-def _author_display_text(value: str) -> str:
-    """Remove container/service wording that is not part of an author name."""
-    stripped = _LABEL_SERVICE_RE.sub("", str(value or "").strip())
-    return _F95_TITLE_SUFFIX_RE.sub("", stripped).strip()
-
-
 def _author_display_name(row) -> str:
-    """Return the readable author spelling carried by one follow source."""
+    """一条追更来源上那个可读的作者拼写。
+
+    名字怎么算「同一个人」由 `follow_store` 定义（那是别名表的主键口径）；
+    这里只决定「这一行显示哪个字段」。
+    """
     if row["entity_id"] and row["entity_name"]:
         return str(row["entity_name"])
-    return _author_display_text(row["label"] or row["ref"] or "")
+    return author_display_text(row["label"] or row["ref"] or "")
 
 
 def _source_metadata(row) -> dict:
@@ -418,133 +361,11 @@ def author_key(row, aliases: dict[str, str] | None = None) -> str:
         normalized = recorded
     else:
         label = str(row["label"] or row["ref"] or "")
-        normalized = _normalized_author_name(label, provider=str(row["provider"] or ""))
+        normalized = normalized_author_name(label, provider=str(row["provider"] or ""))
     if normalized:
         normalized = (aliases or {}).get(normalized, normalized)
         return f"name:{normalized}"
     return f"source:{row['id']}"
-
-
-def _follow_alias_state(connection) -> tuple[dict[str, str], list[dict]]:
-    rows = connection.execute(
-        "SELECT alias_key,alias_name,canonical_key,canonical_name,source "
-        "FROM follow_author_alias ORDER BY canonical_name,alias_name"
-    ).fetchall()
-    mapping = {str(row["alias_key"]): str(row["canonical_key"]) for row in rows}
-    groups: dict[str, dict] = {}
-    for row in rows:
-        canonical_key = str(row["canonical_key"])
-        group = groups.setdefault(canonical_key, {
-            "canonical_key": canonical_key,
-            # 旧别名记录可能把 F95 的容器标题保存成规范显示名；只修正读投影，
-            # 不在这个只读接口里偷偷改真实表。
-            "canonical_name": _author_display_text(row["canonical_name"]),
-            "aliases": [],
-        })
-        if str(row["alias_key"]) != canonical_key:
-            group["aliases"].append({
-                "key": str(row["alias_key"]),
-                "name": str(row["alias_name"]),
-                "source": str(row["source"]),
-            })
-    return mapping, [group for group in groups.values() if group["aliases"]]
-
-
-def _upsert_follow_author_alias(connection, canonical_name: str, alias_name: str,
-                                *, source: str) -> dict | None:
-    """Persist one alias without letting automatic evidence overwrite a decision.
-
-    Manual confirmation may deliberately regroup an existing alias. Automatic learning is
-    narrower: it only fills a previously unknown platform handle and leaves every existing
-    mapping, especially a manual one, untouched.
-    """
-    canonical_key = _normalized_author_name(canonical_name)
-    alias_key = _normalized_author_name(alias_name)
-    if not canonical_key or not alias_key:
-        raise ValueError("规范作者名和平台别名都不能为空")
-    if canonical_key == alias_key:
-        raise ValueError("这两个名字归一化后相同，不需要维护别名")
-
-    stamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    mapping, _ = _follow_alias_state(connection)
-    canonical_root = mapping.get(canonical_key, canonical_key)
-    alias_root = mapping.get(alias_key, alias_key)
-    if source != "manual":
-        existing = connection.execute(
-            "SELECT 1 FROM follow_author_alias WHERE alias_key=?", (alias_key,)
-        ).fetchone()
-        if existing is not None or alias_root != alias_key:
-            return None
-        canonical_row = connection.execute(
-            "SELECT canonical_name FROM follow_author_alias WHERE canonical_key=? "
-            "ORDER BY CASE WHEN alias_key=canonical_key THEN 0 ELSE 1 END LIMIT 1",
-            (canonical_root,),
-        ).fetchone()
-        if canonical_row is not None:
-            canonical_name = str(canonical_row["canonical_name"])
-    elif canonical_root != alias_root:
-        connection.execute(
-            "UPDATE follow_author_alias SET canonical_key=?,canonical_name=?,updated_at=? "
-            "WHERE canonical_key=?",
-            (canonical_root, canonical_name, stamp, alias_root),
-        )
-
-    conflict = (
-        "DO UPDATE SET canonical_key=excluded.canonical_key,"
-        "canonical_name=excluded.canonical_name,alias_name=excluded.alias_name,"
-        "source=excluded.source,updated_at=excluded.updated_at"
-        if source == "manual" else "DO NOTHING"
-    )
-    sql = (
-        "INSERT INTO follow_author_alias(alias_key,alias_name,canonical_key,"
-        "canonical_name,source,created_at,updated_at) VALUES(?,?,?,?,?,?,?) "
-        f"ON CONFLICT(alias_key) {conflict}"
-    )
-    connection.execute(
-        sql, (canonical_root, canonical_name, canonical_root, canonical_name,
-              source, stamp, stamp),
-    )
-    inserted = connection.execute(
-        sql, (alias_key, alias_name, canonical_root, canonical_name,
-              source, stamp, stamp),
-    ).rowcount
-    if source != "manual" and not inserted:
-        return None
-    return {"canonical": canonical_name, "alias": alias_name, "source": source}
-
-
-def _official_profile_handle(provider: str, ref: str) -> str:
-    if provider == "fanbox":
-        return str(ref or "").strip()
-    if provider == "subscribestar":
-        return str(ref or "").strip().rsplit("/", 1)[-1]
-    if provider == "patreon":
-        value = str(ref or "").strip().strip("/")
-        if value.startswith("user/") or value.isdigit():
-            return ""
-        return value.rsplit("/", 1)[-1]
-    return ""
-
-
-def _learn_official_author_alias(connection, provider: str, ref: str,
-                                  candidates) -> dict | None:
-    """Learn a platform handle only from one unambiguous official profile name."""
-    if provider not in _OFFICIAL_IDENTITY_PROVIDERS:
-        return None
-    authors: dict[str, str] = {}
-    for candidate in candidates:
-        name = str(candidate.author or "").strip()
-        key = _normalized_author_name(name)
-        if key:
-            authors.setdefault(key, name)
-    if len(authors) != 1:
-        return None
-    canonical_key, canonical_name = next(iter(authors.items()))
-    handle = _official_profile_handle(provider, ref)
-    if not handle or _normalized_author_name(handle) == canonical_key:
-        return None
-    return _upsert_follow_author_alias(
-        connection, canonical_name, handle, source=f"official:{provider}")
 
 
 def _follow_alias_suggestions(rows, aliases: dict[str, str]) -> list[dict]:
@@ -649,16 +470,16 @@ def _source_payload(row, aliases: dict[str, str] | None = None) -> dict:
 
 
 def _legacy_history_end(row) -> bool:
-    """Normalize terminal backfill responses recorded as errors by older builds."""
+    """把旧版记成 error 的「往回翻到尽头」认回来。
+
+    判据在连接器那一层：哪些状态码代表「没有更早的了」由各连接器声明，
+    `is_history_end_error` 拿的是同一份声明。这里不照站点名硬编码中文串比较：
+    那样新增一个可回填来源时没人会想到还要改这一处。
+    """
     if int(row["backfill_page"] or 0) <= 0 or row["last_status"] != "error":
         return False
-    provider = str(row["provider"] or "")
-    message = str(row["last_error"] or "").casefold()
-    if provider in {"kemono", "coomer", "pawchive"}:
-        return message in {f"{provider} 返回 http 400", f"{provider} 返回 http 404"}
-    if provider == "rule34paheal":
-        return message == "rule34paheal 返回 http 404"
-    return False
+    return is_history_end_error(str(row["provider"] or ""),
+                                str(row["last_error"] or ""))
 
 
 def _follow_facets(store, items, by_source, alias_map) -> dict:
@@ -738,7 +559,7 @@ def q_follow_tags(contract, args) -> dict:
     with contract.database.read_connection() as connection:
         store = _store(contract, connection)
         source_rows = store.sources()
-        alias_map, _aliases = _follow_alias_state(connection)
+        alias_map, _aliases = store.author_aliases()
         enabled = {int(row["id"]) for row in source_rows if row["enabled"]}
         by_source = {int(row["id"]): row for row in source_rows}
         items = tuple(item for item in store.items(limit=_ALL_ITEMS)
@@ -788,7 +609,7 @@ def q_follow(contract, args) -> dict:
     with contract.database.read_connection() as connection:
         store = _store(contract, connection)
         source_rows = store.sources()
-        alias_map, author_aliases = _follow_alias_state(connection)
+        alias_map, author_aliases = store.author_aliases()
         sources = [_source_payload(row, alias_map) for row in source_rows]
         alias_suggestions = _follow_alias_suggestions(source_rows, alias_map)
         enabled_source_ids = {int(row["id"]) for row in source_rows if row["enabled"]}
@@ -820,7 +641,7 @@ def q_follow(contract, args) -> dict:
                           if item.source_id in enabled_source_ids and not _excluded_item(item))
             has_more = False   # 直达详情只取这一组，没有下一页
         else:
-            # 分页在筛选之后：早先是 SQL 先分页、前端再筛，选个冷门作者会看到一页里
+            # 分页在筛选之后：SQL 先分页、前端再筛的话，选个冷门作者会看到一页里
             # 只剩两三条，得反复点「加载更多」才凑出一屏。
             page = [item for item in counted if not statuses or item.status in statuses]
             has_more = len(page) > offset + limit
@@ -828,10 +649,10 @@ def q_follow(contract, args) -> dict:
         groups = [_group_payload(group, credential_providers)
                   for group in store.group(items)]
         facets = _follow_facets(store, everything, by_source, alias_map)
-        # counts 与列表同源。以前它是一句全库 SQL，再逐条减掉被隐藏的 rule34video
-        # 和无资源的 f95zone——同一套排除规则维护了两份，而且它完全不看作者、来源和
-        # 标签筛选，于是筛选一换，列表变了、药丸上的数字纹丝不动。现在两边都从
-        # `counted` 出发：筛选怎么变，数字就怎么变，扣减逻辑也不必再写第二遍。
+        # counts 与列表同源，两边都从 `counted` 出发：筛选怎么变，数字就怎么变，
+        # 扣减逻辑也只写一份。写成一句全库 SQL 再逐条减掉被隐藏的 rule34video 和
+        # 无资源的 f95zone 的话，同一套排除规则要维护两份，而且它不看作者、来源和
+        # 标签筛选，筛选一换就是列表变了、药丸上的数字纹丝不动。
         counts: dict[str, int] = {}
         for item in counted:
             status = str(item.status)
@@ -908,60 +729,25 @@ def w_follow_status(contract, body) -> dict:
     return result
 
 
-def _follow_playback_row(connection, item_id: int):
-    row = connection.execute(
-        "SELECT id,status FROM follow_item WHERE id=?", (item_id,),
-    ).fetchone()
-    if row is None:
-        raise ValueError("follow item not found")
-    return row
-
-
 def w_follow_play(contract, body) -> dict:
     """记录一次关注页直接播放；候选无需先保存成 asset。"""
     item_id = int(body["item"])
     contract.cache_bust()
     with contract.database.write_transaction() as connection:
-        row = _follow_playback_row(connection, item_id)
-        stamp = datetime.now(timezone.utc).timestamp()
-        connection.execute(
-            "INSERT INTO follow_playback(follow_item_id,profile_id,play_count,last_played) "
-            "VALUES(?,'local-default',1,?) ON CONFLICT(follow_item_id,profile_id) "
-            "DO UPDATE SET play_count=follow_playback.play_count+1,last_played=excluded.last_played",
-            (item_id, stamp),
-        )
-        if row["status"] == "new":
-            connection.execute(
-                "UPDATE follow_item SET status='seen' WHERE id=?", (item_id,),
-            )
-    return {"ok": True, "item": item_id, "status": "seen" if row["status"] == "new" else row["status"]}
+        status = _store(contract, connection).record_playback(item_id)
+    return {"ok": True, "item": item_id, "status": status}
 
 
 def w_follow_activity(contract, body) -> dict:
     """累计关注页在线播放的真实时长与最远到达位置。"""
     item_id = int(body["item"])
-    position = max(float(body.get("position", 0)), 0)
-    duration = max(float(body.get("duration", 0)), 0)
-    delta = max(float(body.get("delta", 0)), 0)
-    ended = bool(body.get("ended"))
-    ratio = 1.0 if ended else (min(position / duration, 1.0) if duration > 0 else 0.0)
     contract.cache_bust()
     with contract.database.write_transaction() as connection:
-        _follow_playback_row(connection, item_id)
-        stamp = datetime.now(timezone.utc).timestamp()
-        connection.execute(
-            "INSERT INTO follow_playback(follow_item_id,profile_id,play_count,play_seconds,max_reached,last_played) "
-            "VALUES(?,'local-default',1,?,?,?) ON CONFLICT(follow_item_id,profile_id) DO UPDATE SET "
-            "play_seconds=follow_playback.play_seconds+excluded.play_seconds,"
-            "max_reached=max(follow_playback.max_reached,excluded.max_reached),"
-            "last_played=excluded.last_played",
-            (item_id, delta, ratio, stamp),
-        )
-        result = connection.execute(
-            "SELECT play_seconds,max_reached FROM follow_playback "
-            "WHERE follow_item_id=? AND profile_id='local-default'", (item_id,),
-        ).fetchone()
-    return {"ok": True, "item": item_id, **dict(result)}
+        result = _store(contract, connection).record_playback_activity(
+            item_id,
+            position=body.get("position", 0), duration=body.get("duration", 0),
+            delta=body.get("delta", 0), ended=bool(body.get("ended")))
+    return {"ok": True, "item": item_id, **result}
 
 
 def w_follow_save(contract, body) -> dict:
@@ -989,6 +775,52 @@ def w_follow_check(contract, body) -> dict:
         contract.follow_check_lock.release()
 
 
+def _check_writer(contract):
+    """给 `follow_check` 用的写事务工厂：每次写一条来源各自提交。"""
+    @contextlib.contextmanager
+    def writer():
+        with contract.database.write_transaction() as connection:
+            yield _store(contract, connection)
+    return writer
+
+
+def _check_payload(result) -> dict:
+    """把一次检查结果摊成界面用的载荷。
+
+    站名和来源标签按人看得懂的写法给，不让用户去猜 `rule34xxx` 是哪个站。
+    """
+    payload = {
+        "source": result.source_id, "provider": result.provider,
+        "provider_label": PROVIDER_LABELS.get(result.provider, result.provider),
+        "ref": result.ref, "label": result.label, "ok": result.ok,
+        # 这次读的是第几页，以及往回还剩没剩。界面据此说「已经抓到第 N 页」，
+        # 而不是让用户点了一次不知道自己走到哪儿了。
+        "page": result.page, "older": result.older,
+    }
+    if not result.ok:
+        payload.update({"status": result.status, "error": result.error})
+        return payload
+    if result.exhausted:
+        payload.update({"exhausted": True, "message": result.message})
+        return payload
+    fetch, outcome = result.fetch, result.outcome
+    payload.update({
+        "not_modified": outcome.not_modified, "discovered": outcome.discovered,
+        "added": outcome.added, "updated": outcome.updated,
+        # 抓到了但判为「不是 release」而丢掉的条数。丢了多少必须说出来，
+        # 否则用户分不清少的是被过滤掉的还是根本没抓到——这次问「为什么这么少」
+        # 就是因为界面从来没说过这类数字。
+        "skipped": fetch.skipped,
+        "skipped_compilations": fetch.skipped_compilations,
+        # 列表判不出来、额外抓了详情页的条数。这是唯一会放大请求数的路径。
+        "probed": fetch.probed,
+        # 证据没存下来不算检查失败，但界面必须说出来，不能悄悄少一份原始响应。
+        "evidence_error": outcome.evidence_error,
+        "author_alias_learned": result.author_alias_learned,
+    })
+    return payload
+
+
 def _run_follow_check(contract, body) -> dict:
     requested = body.get("source")
     source_id = requested if isinstance(requested, int) else None
@@ -997,81 +829,14 @@ def _run_follow_check(contract, body) -> dict:
     # （rule34video 的作者页一页 24 条，实际 61 页）。用户点一次，往前挪一页。
     older = bool(body.get("older"))
     credentials = _credential_store(contract)
-    results: list[dict] = []
     with contract.database.read_connection() as connection:
-        store = _store(contract, connection)
-        rows = [dict(row) for row in store.sources(enabled_only=True)
-                if (source_id is None or row["id"] == source_id)
-                and (not older or row["provider"] in _BACKFILL_PROVIDERS)]
-        for row in rows:
-            row["force_media_reparse"] = (
-                not older and credentials.load(row["provider"]) is not None
-                and store.source_needs_media_reparse(row["id"])
-            )
-    for row in rows:
-        moment = datetime.now(timezone.utc)
-        provider, ref = row["provider"], row["ref"]
-        page = (row["backfill_page"] + 1) if older else 0
-        try:
-            connector_kwargs = {"credential": credentials.load(provider)}
-            gofile_credential = credentials.load("gofile")
-            if gofile_credential is not None:
-                connector_kwargs["gofile_credential"] = gofile_credential
-            connector = build_connector(provider, **connector_kwargs)
-            # 凭据已经存在但旧候选仍标着 needs_credential 时，条件请求的 304
-            # 会让旧解析结果永久不变。显式检查应无条件重取一次，让凭据真正生效。
-            fetch = connector.fetch(
-                ref,
-                etag=None if row["force_media_reparse"] else row["etag"],
-                last_modified=(None if row["force_media_reparse"]
-                               else row["last_modified"]),
-                page=page,
-            )
-        except FollowHistoryEnd:
-            with contract.database.write_transaction() as connection:
-                _store(contract, connection).record_history_end(row["id"], moment)
-            results.append({
-                "source": row["id"], "provider": provider,
-                "provider_label": PROVIDER_LABELS.get(provider, provider),
-                "ref": ref, "label": row["label"], "ok": True,
-                "page": page, "older": older, "exhausted": True,
-                "message": "没有更多历史内容",
-            })
-            continue
-        except CredentialError as error:
-            results.append(_failure(contract, row, error, moment, "unauthorized"))
-            continue
-        except FollowSourceError as error:
-            results.append(_failure(contract, row, error, moment, "error"))
-            continue
-        with contract.database.write_transaction() as connection:
-            store = _store(contract, connection)
-            outcome = store.record(
-                row["id"], fetch,
-                creator_aliases=store.creator_aliases(row["entity_id"]), moment=moment,
-                page=page)
-            learned_alias = _learn_official_author_alias(
-                connection, provider, ref, fetch.candidates)
-        results.append({
-            "source": row["id"], "provider": provider,
-            "provider_label": PROVIDER_LABELS.get(provider, provider),
-            "ref": ref, "label": row["label"], "ok": True,
-            # 这次读的是第几页，以及往回还剩没剩。界面据此说「已经抓到第 N 页」，
-            # 而不是让用户点了一次不知道自己走到哪儿了。
-            "page": page, "older": older,
-            "not_modified": outcome.not_modified, "discovered": outcome.discovered,
-            "added": outcome.added, "updated": outcome.updated,
-            # 抓到了但判为「不是 release」而丢掉的条数。丢了多少必须说出来，
-            # 否则用户分不清少的是被过滤掉的还是根本没抓到——这次问「为什么这么少」
-            # 就是因为界面从来没说过这类数字。
-            "skipped": fetch.skipped,
-            "skipped_compilations": fetch.skipped_compilations,
-            # 列表判不出来、额外抓了详情页的条数。这是唯一会放大请求数的路径。
-            "probed": fetch.probed,
-            # 证据没存下来不算检查失败，但界面必须说出来，不能悄悄少一份原始响应。
-            "evidence_error": outcome.evidence_error,
-            "author_alias_learned": learned_alias,
-        })
+        rows = plan_check(_store(contract, connection), credentials,
+                          source_id=source_id, older=older,
+                          backfill_providers=_BACKFILL_PROVIDERS)
+    writer = _check_writer(contract)
+    results = [_check_payload(run_check(
+        row, credentials=credentials, writer=writer,
+        connector_factory=build_connector, older=older)) for row in rows]
     return {"ok": True, "checked": len(results), "results": results}
 
 
@@ -1091,17 +856,6 @@ def w_follow_schedule(contract, body) -> dict:
         enabled=body.get("enabled", True),
         interval_minutes=body.get("interval_minutes", 60),
     )
-
-
-def _failure(contract, row, error, moment, status) -> dict:
-    with contract.database.write_transaction() as connection:
-        _store(contract, connection).record_error(
-            row["id"], str(error), moment, status=status)
-    # 界面按人看得懂的站名和来源标签报失败，不让用户去猜 `rule34xxx` 是哪个站。
-    return {"source": row["id"], "provider": row["provider"],
-            "provider_label": PROVIDER_LABELS.get(row["provider"], row["provider"]),
-            "ref": row["ref"], "label": row["label"],
-            "ok": False, "status": status, "error": str(error)}
 
 
 def _resolve_label(contract, parsed, credential) -> str:
@@ -1137,7 +891,7 @@ def w_follow_source(contract, body) -> dict:
         if not isinstance(source_id, int):
             raise ValueError("id must be an integer follow source id")
         with contract.database.write_transaction() as connection:
-            connection.execute("DELETE FROM follow_source WHERE id=?", (source_id,))
+            _store(contract, connection).remove_source(source_id)
         return {"ok": True, "removed": source_id}
     if action == "enabled":
         source_id = body.get("id")
@@ -1160,7 +914,7 @@ def w_follow_source(contract, body) -> dict:
     label = str(body.get("label") or "").strip() or _resolve_label(
         contract, parsed, credential)
     author_hint = str(body.get("author") or "").strip()
-    author_hint = _normalized_author_name(author_hint) if author_hint else ""
+    author_hint = normalized_author_name(author_hint) if author_hint else ""
     metadata = {"author_key": author_hint} if author_hint else None
     with contract.database.write_transaction() as connection:
         source_id = _store(contract, connection).register(
@@ -1169,6 +923,16 @@ def w_follow_source(contract, body) -> dict:
     checked = w_follow_check(contract, {"source": source_id})
     outcome = next((row for row in checked["results"]
                     if row["source"] == source_id), None)
+    if outcome is None:
+        # 另一次检查占着锁（多半是自动任务刚好在跑），所以顺带的首次检查没做。
+        # 来源本身已经登记好了，回一个 `checked: null` 会让调用方分不清「查过了
+        # 什么都没有」和「根本没查」。这里明确说出来：已登记，稍后会检查。
+        outcome = {
+            "source": source_id, "provider": parsed.provider,
+            "provider_label": PROVIDER_LABELS.get(parsed.provider, parsed.provider),
+            "ref": parsed.ref, "label": label, "ok": True, "deferred": True,
+            "message": "已登记，另一次检查正在进行，这条稍后再查",
+        }
     return {"ok": True, "source": source_id, "provider": parsed.provider,
             "ref": parsed.ref, "label": label, "checked": outcome}
 
@@ -1178,21 +942,10 @@ def w_follow_author_alias(contract, body) -> dict:
     action = str(body.get("action") or "add")
     if action == "remove":
         alias_name = str(body.get("alias") or "").strip()
-        alias_key = _normalized_author_name(alias_name)
-        if not alias_key:
-            raise ValueError("别名不能为空")
         with contract.database.write_transaction() as connection:
-            row = connection.execute(
-                "SELECT canonical_key FROM follow_author_alias WHERE alias_key=?",
-                (alias_key,),
-            ).fetchone()
-            if row is None:
-                raise ValueError("这个作者别名不存在")
-            if str(row["canonical_key"]) == alias_key:
-                raise ValueError("规范名不能作为别名移除")
-            connection.execute(
-                "DELETE FROM follow_author_alias WHERE alias_key=?", (alias_key,))
-            _, groups = _follow_alias_state(connection)
+            store = _store(contract, connection)
+            store.remove_author_alias(alias_name)
+            _, groups = store.author_aliases()
         return {"ok": True, "removed": alias_name, "author_aliases": groups}
     if action != "add":
         raise ValueError(f"unknown follow author alias action: {action}")
@@ -1200,9 +953,9 @@ def w_follow_author_alias(contract, body) -> dict:
     canonical_name = str(body.get("canonical") or "").strip()
     alias_name = str(body.get("alias") or "").strip()
     with contract.database.write_transaction() as connection:
-        _upsert_follow_author_alias(
-            connection, canonical_name, alias_name, source="manual")
-        _, groups = _follow_alias_state(connection)
+        store = _store(contract, connection)
+        store.upsert_author_alias(canonical_name, alias_name, source="manual")
+        _, groups = store.author_aliases()
     return {"ok": True, "canonical": canonical_name, "alias": alias_name,
             "author_aliases": groups}
 
@@ -1257,6 +1010,7 @@ def w_follow_resolve(contract, body) -> dict:
                 continue
             try:
                 found = discover(line, secrets_root=contract.follow_secrets_root,
+                                 shared_root=contract.follow_shared_root,
                                  state_root=contract.follow_state_root)
             except (FollowSourceError, CredentialError) as term_error:
                 results.append({"line": line, "kind": "error", "error": str(term_error)})
@@ -1282,56 +1036,6 @@ def w_follow_resolve(contract, body) -> dict:
 def _existing_sources(contract):
     with contract.database.read_connection() as connection:
         return _store(contract, connection).sources()
-
-
-#: 每个来源要不要凭据、要哪些字段、去哪里拿。写在这里而不是模板里，因为知道
-#: 「rule34.xxx 缺 key 就抓不到」的是连接器边界，不是界面。
-CREDENTIAL_GUIDE: dict[str, dict] = {
-    "fanbox": {
-        "requirement": "optional",
-        "fields": ["cookie"],
-        # FANBOX Cookie 绑定浏览器会话与风控环境，不跨机同步。
-        "syncable": [],
-        "why": "公开列表不需要登录；帖子详情被 FANBOX 验证页拦住时，可用浏览器会话取得正文、多图和外部资源链接。",
-        "where": "https://www.fanbox.cc/",
-        "howto": "登录 FANBOX 后，从一次成功的 api.fanbox.cc/post.info 请求复制整条 Cookie 请求头。",
-    },
-    "gofile": {
-        "requirement": "optional",
-        "fields": ["api_token"],
-        "syncable": [],
-        "why": "用于展开 Gofile 文件页，取得其中的图片和视频列表；Gofile 当前要求 Premium 才能读取 contents API，不配置仍会保留文件页链接。",
-        "where": "https://gofile.io/myprofile",
-        "howto": "登录 Premium Gofile 账户后，在个人资料页复制 API token。",
-    },
-    "kemono": {"requirement": "none"},
-    "coomer": {"requirement": "none"},
-    "pawchive": {"requirement": "none"},
-    "rule34video": {"requirement": "none"},
-    "rule34xxx": {
-        "requirement": "required",
-        "fields": ["user_id", "api_key"],
-        # 账号级、与机器无关，用户明确要求跨机同步。
-        "syncable": ["user_id", "api_key"],
-        "why": "网页版挂了 Cloudflare 验证码，Peach 不绕验证码，只能走官方 API。",
-        "where": "https://rule34.xxx/index.php?page=account&s=options",
-        "howto": "登录后在账号设置页生成 API key，把 user_id 和 api_key 写进凭据文件。",
-    },
-    "f95zone": {
-        "requirement": "optional",
-        "fields": ["cookie"],
-        # cookie 绑会话与客户端 IP，同步到另一台大概率直接失效——不同步。
-        "syncable": [],
-        "why": "发现更新不需要登录；只有取附件和 masked 下载链接才需要会话。",
-        "where": "https://f95zone.to/",
-        "howto": "登录后从浏览器复制整条 Cookie 请求头，写进凭据文件的 cookie 字段。",
-    },
-    "simpcity": {
-        "requirement": "blocked",
-        "why": "站点由 DDoS-Guard 的浏览器质询保护，放行绑客户端 IP 且最短 20 分钟过期，"
-               "撑不起定时追更。Peach 不绕机器人验证。",
-    },
-}
 
 
 def w_follow_credential(contract, body) -> dict:
@@ -1421,18 +1125,9 @@ def _write_shared(store, provider: str, values: dict) -> bool:
     return True
 
 
-#: 哪些字段可以跨机同步，逐 provider 逐字段声明。绝不按字段名猜——今天 `api_key`
-#: 能同步、`cookie` 不能，明天新增一个 `session_token` 就会落到错误的一侧。
-SYNCABLE_FIELDS: dict[str, tuple[str, ...]] = {
-    provider: tuple(guide.get("syncable", ()))
-    for provider, guide in CREDENTIAL_GUIDE.items()
-}
-
-
 def _credential_store(contract) -> CredentialStore:
-    return CredentialStore(contract.follow_secrets_root,
-                           shared_root=contract.follow_shared_root,
-                           syncable_fields=SYNCABLE_FIELDS)
+    return credential_store_for(contract.follow_secrets_root,
+                                shared_root=contract.follow_shared_root)
 
 
 def q_follow_credentials(contract, _args) -> dict:

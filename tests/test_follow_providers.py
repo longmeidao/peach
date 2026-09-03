@@ -1,17 +1,20 @@
+import inspect
 import unittest
+from pathlib import Path
 
-from peach import follow_providers
+from peach import follow_cli, follow_discovery, follow_providers, web_follow
 from peach.follow_cli import _RELEASE_PROVIDERS, _SOURCE_URL
 from peach.follow_sources import CONNECTORS, _SEMANTICS
 from peach.follow_stream import _PROVIDER_HOSTS
 from peach.follow_variants import PROVIDER_PRIORITY
-from peach.web_follow import (
+from peach.follow_secrets import (
     CREDENTIAL_GUIDE,
-    PROVIDER_LABELS,
     SYNCABLE_FIELDS,
-    _BACKFILL_PROVIDERS,
-    _OFFICIAL_IDENTITY_PROVIDERS,
+    credential_store_for,
 )
+from peach.follow_store import (_OFFICIAL_IDENTITY_PROVIDERS,
+                                _RELEASE_KEY_PER_POST)
+from peach.web_follow import PROVIDER_LABELS, _BACKFILL_PROVIDERS
 
 
 class ProviderRegistryTests(unittest.TestCase):
@@ -44,7 +47,7 @@ class ProviderRegistryTests(unittest.TestCase):
             self.assertEqual(follow_providers.PROVIDERS[key].semantics, "release")
 
     def test_projections_keep_their_original_shapes(self):
-        """各模块的投影形状不变：调用方仍按原来的类型使用它们。"""
+        """各模块的投影形状固定：调用方按声明的类型使用它们。"""
         self.assertIsInstance(_SOURCE_URL, dict)
         self.assertIsInstance(_PROVIDER_HOSTS, dict)
         self.assertIsInstance(PROVIDER_PRIORITY, dict)
@@ -91,9 +94,120 @@ class ProviderRegistryTests(unittest.TestCase):
             "SYNCABLE_FIELDS 只能从 CREDENTIAL_GUIDE 派生",
         )
 
+    def test_every_layer_builds_its_credential_store_through_one_factory(self):
+        """Web、发现与 CLI 必须拿到同一套共享根与可同步字段声明。
+
+        分头 `CredentialStore(...)` 时只有 Web 那份带上了共享回填，同一份凭据
+        在网页里在、在命令行里「未配置」。这里挡住往回退化。
+        """
+        sources = {
+            name: (Path(inspect.getsourcefile(module)).read_text(encoding="utf-8"))
+            for name, module in (("web_follow", web_follow),
+                                 ("follow_discovery", follow_discovery),
+                                 ("follow_cli", follow_cli))
+        }
+        for name, text in sources.items():
+            with self.subTest(module=name):
+                self.assertNotIn("CredentialStore(", text.replace(
+                    "-> CredentialStore", ""),
+                    f"{name} 必须走 credential_store_for，不要自己构造")
+                self.assertIn("credential_store_for(", text)
+
+    def test_the_factory_carries_the_syncable_declaration(self):
+        store = credential_store_for(Path("secrets"), shared_root=Path("shared"))
+        self.assertEqual(store.syncable_fields, SYNCABLE_FIELDS)
+        self.assertEqual(store.syncable("rule34xxx"), ("user_id", "api_key"))
+        self.assertEqual(store.syncable("f95zone"), ())
+        self.assertEqual(store.shared_root, Path("shared") / "secrets" / "follow")
+
     def test_semantics_rejects_unknown_values(self):
         with self.assertRaises(ValueError):
             follow_providers.ProviderSpec(key="x", label="X", semantics="whatever")
+
+
+class UrlHostTests(unittest.TestCase):
+    """粘一条链接时「这个主机属于哪个站」的登记与查表。"""
+
+    def test_every_follow_source_declares_at_least_one_url_host(self):
+        """没有 url_hosts 的追更来源永远无法从链接登记，而且不会报错。"""
+        for key, spec in follow_providers.PROVIDERS.items():
+            if spec.source_url:
+                self.assertTrue(spec.url_hosts, f"{key} 缺 url_hosts")
+
+    def test_a_source_url_without_url_hosts_is_refused_at_declaration_time(self):
+        with self.assertRaises(ValueError):
+            follow_providers.ProviderSpec(key="x", label="X",
+                                          source_url="https://x/{ref}")
+
+    def test_no_host_is_claimed_by_two_sources(self):
+        declared = [host for spec in follow_providers.PROVIDERS.values()
+                    for host in spec.url_hosts]
+        self.assertEqual(len(declared), len(set(declared)),
+                         "同一个主机登记两次，解析结果取决于字典顺序")
+
+    def test_url_hosts_are_not_the_media_proxy_allowlist(self):
+        """两张表名字像、含义不同：paheal 的站点主机与媒体主机根本不一样。
+
+        「复用 hosts 就行」不成立：`hosts` 是媒体代理白名单，放宽它等于放宽能被
+        代理取回的地址；`url_hosts` 只决定一条链接归谁解析。
+        """
+        paheal = follow_providers.PROVIDERS["rule34paheal"]
+        self.assertEqual(paheal.url_hosts, ("rule34.paheal.net",))
+        self.assertIn("paheal-cdn.net", paheal.hosts)
+        self.assertNotIn("rule34.paheal.net", paheal.hosts)
+
+    def test_subdomains_and_www_resolve_to_the_registered_source(self):
+        for host, expected in (
+            ("fanbox.cc", "fanbox"),
+            ("www.fanbox.cc", "fanbox"),
+            ("ffxivinitiala.fanbox.cc", "fanbox"),
+            ("api.rule34.xxx", "rule34xxx"),
+            ("kemono.cr", "kemono"),
+            ("coomer.st", "coomer"),
+            ("SubscribeStar.adult", "subscribestar"),
+        ):
+            self.assertEqual(follow_providers.provider_for_host(host), expected, host)
+
+    def test_the_longest_registered_suffix_wins(self):
+        """`rule34.paheal.net` 比将来可能出现的 `paheal.net` 更具体，必须赢。"""
+        self.assertEqual(follow_providers.provider_for_host("rule34.paheal.net"),
+                         "rule34paheal")
+        self.assertEqual(
+            follow_providers.provider_for_host("cdn.rule34.paheal.net"),
+            "rule34paheal")
+
+    def test_an_unregistered_host_is_empty_not_a_guess(self):
+        for host in ("nyaa.si", "", "notfanbox.cc", "fanbox.cc.evil.example"):
+            self.assertEqual(follow_providers.provider_for_host(host), "", host)
+
+
+class ReleaseKeyPerPostTests(unittest.TestCase):
+    def test_the_rule_is_declared_in_the_registry_not_named_in_the_data_layer(self):
+        """论坛线程每层各自成组，这是来源语义，不是 `follow_store` 里的站点点名。"""
+        self.assertEqual(follow_providers.release_key_per_post(),
+                         frozenset({"f95zone"}))
+        self.assertEqual(_RELEASE_KEY_PER_POST,
+                         follow_providers.release_key_per_post())
+
+    def test_it_only_applies_to_release_semantics(self):
+        """每条各自成组只对「同一作品的历次发布」有意义；work 语义靠标题合并。"""
+        for key in follow_providers.release_key_per_post():
+            self.assertEqual(follow_providers.PROVIDERS[key].semantics, "release")
+
+
+class ExcludedItemTests(unittest.TestCase):
+    def test_hidden_items_are_declared_in_the_registry_not_in_the_web_layer(self):
+        """用户点名要隐藏的既有条目登记在这张表上。
+
+        它不是 Web 层的一个裸常量：「这个站有哪些条目要藏」是站点数据，不该跟
+        标签清理、缩略图这些展示逻辑混在同一个文件里。
+        """
+        excluded = follow_providers.excluded_external_ids()
+        self.assertEqual(excluded, {"rule34video": frozenset({"4533145"})})
+
+    def test_the_web_layer_only_projects_the_registry(self):
+        self.assertEqual(web_follow._EXCLUDED_EXTERNAL_IDS,
+                         follow_providers.excluded_external_ids())
 
 
 if __name__ == "__main__":

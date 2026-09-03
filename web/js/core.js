@@ -6,8 +6,13 @@
    `route()` 没有放进来：它要调 syncHeaderActions/paintListTitle，那是 UI 层的事。 */
 const $=s=>document.querySelector(s);
 const icon=(name,cls='')=>`<svg${cls?` class="${cls}"`:''} viewBox="0 0 24 24" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+/* `signal` 写成显式的一项，不靠 Object.assign 顺带透传：表面切换要能作废上一屏
+   还没读完的请求，「这个请求可被取消」得在签名上看得见。 */
 const api=async(p,o)=>{
-  const response=await fetch(p,Object.assign({headers:{'Content-Type':'application/json'}},o||{}));
+  const {signal=null,...rest}=o||{};
+  const init={headers:{'Content-Type':'application/json'},...rest};
+  if(signal)init.signal=signal;
+  const response=await fetch(p,init);
   let payload=null;
   try{payload=await response.json()}catch(_e){}
   if(!response.ok){
@@ -16,15 +21,27 @@ const api=async(p,o)=>{
   }
   return payload;
 };
-const pageTitle=path=>{
-  const url=new URL(path,location.origin),parts=decodeURIComponent(url.pathname).split('/').filter(Boolean);
-  const fixed={stats:'统计',taste:'口味',review:'人工复核','data-cleanup':'数据清理',duplicates:'重复文件','quality-goals':'高清版',
-    follow:'关注','follow-manage':'关注管理',playlists:'播放列表',performers:'女优',studios:'厂牌',
-    creators:'创作者',series:'系列',tags:'标签',unseen:'没看过','watch-later':'稍后看',flagged:'已标记',
-    immerse:'沉浸模式',mix:'Mix',item:'作品','resource-sync':'统计','junk-files':'垃圾文件'};
-  const label=parts.length>1&&['performers','studios','creators','series'].includes(parts[0])
-    ? parts.slice(1).join('/') : fixed[parts[0]];
-  return label?`${label} · Peach`:'Peach · 蜜桃';
+/* 取消不是失败。abort 只可能来自表面切换，调用点本来就有一条「已过期」分支要走，
+   不该顺手弹一个「请求失败」的错误提示。 */
+const isAbort=error=>error?.name==='AbortError';
+/* 有界并发的批量请求。串行发一千次 POST 是实测的卡点（批量标记「已看」要几分钟，
+   界面全程按住），而一次全发出去等于自己挤自己：浏览器对同一 host 只有 6 条
+   HTTP/1.1 连接，多出来的排在队里，连同一时间的正常浏览请求一起等。所以固定几个
+   工人按序取任务。返回值顺序与输入一致；某一项失败只记下原因，不中断整批——
+   批量操作里一条失败不该把其余几百条一起放弃。 */
+const mapLimit=async(items,limit,run)=>{
+  const list=[...items],results=new Array(list.length);
+  let next=0;
+  const worker=async()=>{
+    while(next<list.length){
+      const index=next++;
+      try{results[index]={ok:true,value:await run(list[index],index)}}
+      catch(error){results[index]={ok:false,error}}
+    }
+  };
+  const workers=Math.min(Math.max(1,limit),list.length);
+  await Promise.all(Array.from({length:workers},worker));
+  return results;
 };
 const STATE_ROUTES={fresh:'/unseen',later:'/watch-later',flagged:'/flagged',ads:'/junk-files'};
 const ROUTE_STATES=Object.fromEntries(Object.entries(STATE_ROUTES).map(([state,path])=>[path,state]));
@@ -86,7 +103,8 @@ export {
   realDuration,
   icon,
   api,
-  pageTitle,
+  isAbort,
+  mapLimit,
   STATE_ROUTES,
   ROUTE_STATES,
   STATE_LABELS,

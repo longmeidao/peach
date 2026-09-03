@@ -30,6 +30,18 @@ FOLLOW_COVER_FILTER = (
 )
 _CACHE_VERSION = "nonblack-v1"
 
+#: 取不到图时回的占位图。这里不 302 到上游缩略图：那等于把上游主机和地址交回
+#: 浏览器，而这个端点存在的全部理由就是不让它外露。占位图内联成
+#: SVG：不占磁盘、不用打包资源，也不会因为文件缺失再失败一次。
+#: 图里不写字：这一层不知道界面语言，画一个中性的播放三角就够。
+PLACEHOLDER_CONTENT_TYPE = "image/svg+xml"
+PLACEHOLDER_IMAGE = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 90">'
+    '<rect width="160" height="90" fill="#1f1f22"/>'
+    '<path d="M68 33 100 45 68 57 Z" fill="#4c4c52"/>'
+    '</svg>'
+).encode("utf-8")
+
 
 class FollowCoverUnavailable(RuntimeError):
     pass
@@ -104,6 +116,18 @@ class FollowCoverService:
                     stale.unlink(missing_ok=True)
             return destination
 
+    #: 同时追踪多少把生成锁。键是带指纹的缓存文件名，条目一多、URL 一变就再加一条，
+    #: 只增不减的话，进程活多久它就长多久。超过上限就丢掉当前没人持有的键——丢锁最
+    #: 坏只是让两次并发生成各跑一遍 ffmpeg，`os.replace` 仍是原子的，不会出错图。
+    MAX_TRACKED_LOCKS = 256
+
     def _lock_for(self, key: str) -> threading.Lock:
         with self._guard:
-            return self._locks.setdefault(key, threading.Lock())
+            lock = self._locks.get(key)
+            if lock is None:
+                if len(self._locks) >= self.MAX_TRACKED_LOCKS:
+                    for name, tracked in list(self._locks.items()):
+                        if not tracked.locked():
+                            del self._locks[name]
+                lock = self._locks[key] = threading.Lock()
+            return lock

@@ -45,3 +45,21 @@ URL：`https://rule34video.com/video/4533145/…/`
 Peach 保留类型差异，但不复制白底站点的低亮度原色；在深色界面换成可读的同色相描边和浅底。
 General 沿用 Peach 蓝色。`2d`、`3d`、`animated`、`video`、`sound`、`tagme` 等载体标签仍留在
 原始证据里，但不进入前 24 个内容筛选标签。
+
+## Rule34.xxx 帖子页的标签排列顺序
+
+- 取证日期：2026-09-01
+- 取证通道：Python HTTPX 直接读取公开 HTML；`#tag-sidebar` 的 `li.tag-type-*` 按出现顺序读取。
+
+| 帖子 | 响应 | SHA-256 | `#tag-sidebar` 类型出现顺序 | 各类型条数 |
+| --- | --- | --- | --- | --- |
+| `index.php?page=post&s=view&id=18622796` | 200 · 41,563 字节 | `10B3DF9247D0A146274928A50092512575E05F47FAE78B4CEA80F2B82392184C` | copyright → character → artist → general → metadata | 2 / 1 / 1 / 40 / 3 |
+| `index.php?page=post&s=view&id=18622794` | 200 · 40,710 字节 | `91EE6DAF284249823EDF3E13D17082E4C3ABDA7D2EF11F2FF08915BD5BAF36A8` | copyright → character → artist → general → metadata | 2 / 1 / 1 / 38 / 2 |
+
+同一次取证里 `id=18622795` 没有 copyright 标签，其余四类顺序不变；缺的类型直接跳过，
+不占位。组内按标签名升序：`18622796` 的 general 组前 12 个是
+`1girls, abs, bare_arms, bare_legs, bare_shoulders, bare_thighs, big_breasts, bikini,
+bikini_bottom, bikini_top, clothed, clothing`，与排序后完全一致。
+
+页面含动态内容，整页哈希只标识这一次响应。Peach 的关注详情按同一顺序分组排列；
+来源没有记录类型的标签排在最后，保持中性色，不按词形猜类型。

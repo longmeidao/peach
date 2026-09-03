@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
+import sys
 import ntpath
 import os
 import posixpath
@@ -28,9 +28,17 @@ import time
 import uuid
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
 from peach.review_csv import write_rows
 from peach.catalog_rules import is_jav_code, normalise_code_key
 from peach.config import DATABASE_PATH, GENERATED_DIR, LOG_DIR
+from peach.scripting import (
+    add_ledger_write_args, open_for_write, open_readonly, verify_after_write,
+)
 
 DEFAULT_DB = DATABASE_PATH
 DEFAULT_OUT = GENERATED_DIR / "name-clean.csv"
@@ -162,13 +170,10 @@ FIELDS = ["id", "location", "dir", "old", "new", "old_code", "new_code", "status
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="preview or apply conservative filename cleanup")
-    parser.add_argument("--db", type=Path, default=DEFAULT_DB)
+    add_ledger_write_args(parser, db_default=DEFAULT_DB)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--log-dir", type=Path, default=DEFAULT_LOG_DIR)
-    parser.add_argument("--backup-dir", type=Path,
-                        help="数据库备份目录；默认与 ledger.db 同目录")
     parser.add_argument("--location", choices=("local", "115", "pikpak"))
-    parser.add_argument("--apply", action="store_true")
     return parser
 
 
@@ -177,34 +182,21 @@ def write_plan(path: str | Path, plan: list[dict]) -> None:
     write_rows(target, FIELDS, plan)
 
 
-def backup_database(db_path: str | Path, backup_dir: str | Path | None = None) -> Path:
-    source_path = Path(db_path)
-    if not source_path.is_file():
-        raise FileNotFoundError(db_path)
-    root = Path(backup_dir) if backup_dir else source_path.parent
-    root.mkdir(parents=True, exist_ok=True)
-    destination = root / (
-        "ledger.pre-jav-filename-normalize-"
-        + datetime.now().strftime("%Y%m%d-%H%M%S-%f") + ".db"
-    )
-    source = sqlite3.connect(source_path)
-    target = sqlite3.connect(destination)
+def verify_backup(backup: Path) -> None:
+    """备份是唯一的回退路径，所以要当场校验一遍。
+
+    坏掉的备份比没有备份更糟：它看起来是有的，等到需要它的那天才发现打不开。
+    备份本身由 `open_for_write` 用 SQLite 备份 API 落盘（WAL 安全），这里只做验收。
+    """
+    connection = open_readonly(backup)
     try:
-        source.backup(target)
+        integrity, foreign_keys = verify_after_write(connection)
     finally:
-        target.close()
-        source.close()
-    verifier = sqlite3.connect(destination)
-    try:
-        integrity = str(verifier.execute("PRAGMA integrity_check").fetchone()[0])
-        foreign_keys = len(verifier.execute("PRAGMA foreign_key_check").fetchall())
-    finally:
-        verifier.close()
+        connection.close()
     if integrity != "ok" or foreign_keys:
         raise RuntimeError(
             f"备份校验失败：integrity={integrity} foreign_keys={foreign_keys}"
         )
-    return destination
 
 
 def _numbered_name(name: str, occupied: set[str]) -> tuple[str, bool]:
@@ -284,9 +276,7 @@ def _database_health(connection: sqlite3.Connection) -> tuple[str, int, int]:
 
 
 def run(args_ns: argparse.Namespace) -> int:
-    database = args_ns.db.resolve()
-    target = (str(database) if args_ns.apply else database.as_uri() + "?mode=ro")
-    conn = sqlite3.connect(target, uri=not args_ns.apply)
+    conn = open_for_write(args_ns)
     where = "WHERE name IS NOT NULL"
     sql_args: list = []
     if args_ns.location:
@@ -323,8 +313,8 @@ def run(args_ns: argparse.Namespace) -> int:
         before = _database_health(conn)
         if before[0] != "ok" or before[1]:
             raise RuntimeError(f"写入前 ledger 校验失败：integrity={before[0]} foreign_keys={before[1]}")
-        backup = backup_database(database, args_ns.backup_dir)
-        log(f"数据库备份 → {backup}")
+        verify_backup(args_ns.backup)
+        log(f"数据库备份 → {args_ns.backup}")
         ok = fail = gone = 0
         for item in ready:
             src = _join(item["dir"], item["old"])

@@ -19,29 +19,7 @@ from unittest import mock
 from peach import web_contract as rm_web
 from peach import web_review as rm_review
 
-from test_rm_web import BASE_SCHEMA
-
-
-REVIEW_SCHEMA = """
-CREATE TABLE asset(id INTEGER PRIMARY KEY,location TEXT,path TEXT,name TEXT,medium TEXT,
-  duration REAL,creator TEXT,studio TEXT,series TEXT,code TEXT,release_date TEXT,
-  catalog_title TEXT,original_title TEXT,
-  snapshot_path TEXT,disposal TEXT);
-CREATE TABLE asset_tag(asset_id INTEGER,tag TEXT,confidence REAL DEFAULT 1.0,source TEXT,
-  UNIQUE(asset_id,tag));
-CREATE TABLE entity(id INTEGER PRIMARY KEY,kind TEXT,canonical_name TEXT,normalized_name TEXT,
-  metadata_json TEXT DEFAULT '{}',created_at TEXT,updated_at TEXT,UNIQUE(kind,normalized_name));
-CREATE TABLE entity_alias(entity_id INTEGER,alias TEXT,normalized_alias TEXT,source TEXT,
-  confidence REAL DEFAULT 1.0);
-CREATE TABLE asset_entity(asset_id INTEGER,entity_id INTEGER,role TEXT,source TEXT,
-  confidence REAL,metadata_json TEXT,first_seen_at TEXT,last_seen_at TEXT,
-  UNIQUE(asset_id,entity_id,role,source));
-CREATE TABLE entity_external_ref(entity_id INTEGER,provider TEXT,external_kind TEXT,external_id TEXT,
-  metadata_json TEXT DEFAULT '{}',last_synced_at TEXT,
-  PRIMARY KEY(provider,external_kind,external_id),UNIQUE(entity_id,provider,external_kind));
-CREATE TABLE review_decision(category TEXT,item_key TEXT,status TEXT,reviewer TEXT DEFAULT 'local-default',
-  note TEXT DEFAULT '',updated_at TEXT,PRIMARY KEY(category,item_key));
-"""
+from support.ledger import fresh_ledger
 
 
 class ReviewQueueTests(unittest.TestCase):
@@ -56,11 +34,10 @@ class ReviewQueueTests(unittest.TestCase):
         self.logo_root.mkdir()
         self.avatar_root = root / "avatars"
         self.avatar_root.mkdir()
-        self.db_path = str(root / "ledger.db")
+        self.db_path = str(fresh_ledger(root))
         con = sqlite3.connect(self.db_path)
-        con.executescript(REVIEW_SCHEMA)
-        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-                    "VALUES(1,'creator','ukiru','ukiru')")
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(1,'creator','ukiru','ukiru','2026-01-01','2026-01-01')")
         for asset_id in (1, 2, 3):
             con.execute("INSERT INTO asset(id,location,path,name,medium,snapshot_path) "
                         "VALUES(?,'local',?,?,'video','s.jpg')",
@@ -284,14 +261,14 @@ class ReviewQueueTests(unittest.TestCase):
         规范名倒退成别名。真正要看的是换人，不是换写法。
         """
         con = sqlite3.connect(self.db_path)
-        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-                    "VALUES(30,'performer','桃谷绘里香','桃谷绘里香')")
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(30,'performer','桃谷绘里香','桃谷绘里香','2026-01-01','2026-01-01')")
         con.execute("INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,"
                     "confidence) VALUES(30,'桃谷エリカ','桃谷エリカ','r18dev',1.0)")
         con.execute("INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,"
                     "confidence) VALUES(30,'桃谷絵里香','桃谷絵里香','r18dev',1.0)")
-        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-                    "VALUES(31,'performer','别人','别人')")
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(31,'performer','别人','别人','2026-01-01','2026-01-01')")
         con.commit(); con.close()
         self.write_metadata_rows([
             {"item_key": "ALIAS", "field": "performers", "current": "桃谷绘里香",
@@ -307,8 +284,8 @@ class ReviewQueueTests(unittest.TestCase):
     def test_performer_avatar_rows_show_the_ledger_name_not_the_scraped_romaji(self):
         """候选 CSV 给的是罗马音，账本早就有更好的名字，罗马音本身也已是别名。"""
         con = sqlite3.connect(self.db_path)
-        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-                    "VALUES(40,'performer','释爱丽丝','释爱丽丝')")
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(40,'performer','释爱丽丝','释爱丽丝','2026-01-01','2026-01-01')")
         con.commit(); con.close()
         path = self.candidates / "performer-avatar-candidate-20260818.csv"
         with path.open("w", encoding="utf-8-sig", newline="") as handle:
@@ -325,8 +302,8 @@ class ReviewQueueTests(unittest.TestCase):
     def test_decided_rows_leave_the_queue_and_skipped_ones_sink(self):
         """判过的不能一刷新又回来。
 
-        早先 `_review_rows` 原样返回全部候选，只挂一个 `decision`，靠前端在本地
-        splice；于是点「通过」当场消失、刷新全回来（厂牌 logo 上最明显）。
+        `_review_rows` 原样返回全部候选、只挂一个 `decision`、靠前端在本地 splice
+        的话，点「通过」当场消失、刷新全回来（厂牌 logo 上最明显）。
         `跳过` 是「稍后再看」，仍留在队列但排到最后——否则一次跳过等于永久隐藏，
         而界面上没有任何入口能把它找回来。
         """
@@ -402,6 +379,53 @@ class ReviewQueueTests(unittest.TestCase):
         rows = rm_review.q_review(self.contract)["sections"]["studio_logos"]
         self.assertEqual([row["studio"] for row in rows], ["Changed"])
         self.assertEqual(rows[0]["decision"], "pending")
+
+    def _decide_with_note(self, item_key, note):
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO review_decision(category,item_key,status,note,updated_at) "
+            "VALUES('metadata_fields',?,'approved',?,'old')", (item_key, note))
+        con.commit(); con.close()
+
+    def test_an_approval_of_a_vanished_candidate_reopens_the_field(self):
+        """`item_key` 不带候选身份，旧批准不得盖住后来抓到的新来源值。
+
+        实测：TRE-080 的标题在 2026-09-01 对着 r18dev 的空日文标题批过一次，
+        之后 javbus 抓到真标题，队列里却一条也看不见。
+        """
+        self.write_metadata_rows([{
+            "item_key": "ABC-001:title", "code": "ABC-001", "field": "title",
+            "current": "English Title", "candidates": ["日本語タイトル"], "source": "javbus",
+        }])
+        self._decide_with_note(
+            "ABC-001:title",
+            '{"candidate_key":"ABC-001:title:r18dev:gone","source":"r18dev","user_note":""}')
+
+        rows = rm_review.q_review(self.contract)["sections"]["metadata_fields"]
+        self.assertEqual([row["item_key"] for row in rows], ["ABC-001:title"])
+        self.assertEqual(rows[0]["decision"], "pending")
+
+    def test_an_approval_still_pointing_at_a_live_candidate_stays_decided(self):
+        self.write_metadata_rows([{
+            "item_key": "ABC-001:title", "code": "ABC-001", "field": "title",
+            "current": "English Title", "candidates": ["日本語タイトル"], "source": "javbus",
+        }])
+        self._decide_with_note(
+            "ABC-001:title",
+            '{"candidate_key":"ABC-001:title:0","source":"javbus","user_note":""}')
+
+        # 判过的行不占队列，所以「仍然算已判」的观测形态就是它不在队列里。
+        self.assertEqual(self.queue_keys("metadata_fields"), [])
+
+    def test_a_free_text_note_is_left_alone_rather_than_guessed_at(self):
+        """早期留痕是自由文本，读不出指向哪个候选就别把用户批过的翻出来。"""
+        self.write_metadata_rows([{
+            "item_key": "ABC-001:title", "code": "ABC-001", "field": "title",
+            "current": "English Title", "candidates": ["日本語タイトル"], "source": "javbus",
+        }])
+        self._decide_with_note("ABC-001:title", "手工核过，就用这个")
+
+        self.assertEqual(self.queue_keys("metadata_fields"), [])
 
     def test_metadata_field_approval_uses_selected_candidate_and_never_writes_creator(self):
         con = sqlite3.connect(self.db_path)
@@ -515,8 +539,8 @@ class ReviewQueueTests(unittest.TestCase):
     def test_specific_official_tag_replaces_broad_taste_tag_everywhere(self):
         con = sqlite3.connect(self.db_path)
         con.execute("UPDATE asset SET code='ABC-001' WHERE id=1")
-        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-                    "VALUES(50,'tag','乳系','乳系')")
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(50,'tag','乳系','乳系','2026-01-01','2026-01-01')")
         con.execute("INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
                     "VALUES(1,50,'tag','vision_creator',0.6)")
         con.execute("INSERT INTO asset_tag(asset_id,tag,confidence,source) "
@@ -882,23 +906,38 @@ class ReviewQueueTests(unittest.TestCase):
 
 
 class PerformerAvatarApplyTests(ReviewQueueTests):
-    """批准女优头像候选必须真的把图装上。
+    """批准人物头像候选必须真的把图装上。
 
     这个缺陷犯到第三次了：`creator_tags` 犯过（留痕说通过、实际没写），
     `studio_logos` 犯过（只在白名单里、没有写入分支），`performer_avatars` 一模一样。
     审计脚本按设计只把外部图放进内容寻址缓存，落地要人批准；而批准这一步什么也没做，
     于是 18 个已判 ok 的候选从 2026-08-25 起一直进不去。
+
+    落盘名跟着实体 kind 走（`{kind}-{id}.img`）：`/entity-image` 按 kind 分文件，
+    creator 实体（babepedia 命中的西方网黄）装成 performer-<id>.img 永远读不到。
+    基建的 entity 1 是 creator（creator_tags 测试要用），这里整体拨回 performer，
+    creator 的落盘另用一条独立用例锁住。
     """
 
     FIELDS = ("entity_id", "current_name", "matched_name", "name_source", "provider",
               "source_url", "external_id", "width", "height", "mime_type", "sha256",
               "cache_path", "verdict")
 
-    def _seed(self, *, verdict="ok", body=b"\xff\xd8\xff\xdb-fake-jpeg", digest=None):
+    def setUp(self):
+        super().setUp()
+        con = sqlite3.connect(self.db_path)
+        # 基建的 entity 1 留给 creator_tags 用例；头像落盘另立 performer 9。
+        # 名字不能与父类用例插入的「释爱丽丝」撞 UNIQUE(kind, normalized_name)。
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(9,'performer','示例女优','示例女优','2026-01-01','2026-01-01')")
+        con.commit(); con.close()
+
+    def _seed(self, *, verdict="ok", body=b"\xff\xd8\xff\xdb-fake-jpeg", digest=None,
+              entity_id="9", provider_dir="gfriends"):
         import hashlib
         real = hashlib.sha256(body).hexdigest()
         objects = (self.candidates / "provider-cache" / "performer-avatars"
-                   / "gfriends" / "objects")
+                   / provider_dir / "objects")
         objects.mkdir(parents=True, exist_ok=True)
         (objects / f"{real}.jpg").write_bytes(body)
         path = self.candidates / "performer-avatar-candidate-20260901-000000.csv"
@@ -906,17 +945,18 @@ class PerformerAvatarApplyTests(ReviewQueueTests):
             writer = csv.DictWriter(handle, fieldnames=list(self.FIELDS))
             writer.writeheader()
             writer.writerow({
-                "entity_id": "1", "current_name": "释爱丽丝", "matched_name": "釈アリス",
-                "name_source": "localization_jp", "provider": "gfriends",
+                "entity_id": entity_id, "current_name": "释爱丽丝",
+                "matched_name": "釈アリス",
+                "name_source": "localization_jp", "provider": provider_dir,
                 "source_url": "https://example.invalid/x.jpg", "external_id": "5-Premium/x.jpg",
                 "width": "648", "height": "800", "mime_type": "image/jpeg",
                 "sha256": digest or real, "cache_path": digest or real, "verdict": verdict,
             })
         return real
 
-    def _decide(self, status="approved"):
+    def _decide(self, status="approved", item_key="9"):
         return rm_web.w_review_decision(self.contract, {
-            "category": "performer_avatars", "item_key": "1", "status": status,
+            "category": "performer_avatars", "item_key": item_key, "status": status,
         })
 
     def test_approving_installs_the_image_where_entity_image_reads_it(self):
@@ -924,7 +964,7 @@ class PerformerAvatarApplyTests(ReviewQueueTests):
         self._seed(body=body)
         result = self._decide()
         self.assertEqual(result["applied_assets"], 1)
-        target = self.avatar_root / "performer-1.img"
+        target = self.avatar_root / "performer-9.img"
         self.assertTrue(target.is_file(), "批准之后图必须真的装上，而不是只记一笔决定")
         self.assertEqual(target.read_bytes(), body)
         self.assertEqual(Path(f"{target}.ct").read_text(encoding="utf-8"), "image/jpeg")
@@ -932,11 +972,29 @@ class PerformerAvatarApplyTests(ReviewQueueTests):
         self.assertEqual(prov["matched_name"], "釈アリス")
         self.assertEqual(prov["name_source"], "localization_jp")
 
+    def test_a_creator_candidate_installs_where_creator_images_are_read(self):
+        """creator 实体的头像必须落成 creator-<id>.img。
+
+        babepedia 命中的西方网黄全是 creator 实体；`/entity-image` 按 kind 分文件，
+        装成 performer-<id>.img 谁也读不到——同样的字节，两份都「装了」，界面上
+        依旧是视频抽帧兜底。
+        """
+        con = sqlite3.connect(self.db_path)
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(2,'creator','SexySaffron','sexysaffron','2026-01-01','2026-01-01')")
+        con.commit(); con.close()
+        body = b"\xff\xd8\xff\xdb-other-jpeg"
+        self._seed(body=body, entity_id="2", provider_dir="babepedia")
+        result = self._decide(item_key="2")
+        self.assertEqual(result["applied_assets"], 1)
+        self.assertTrue((self.avatar_root / "creator-2.img").is_file())
+        self.assertFalse((self.avatar_root / "performer-2.img").exists())
+
     def test_a_candidate_that_did_not_pass_quality_is_refused(self):
         self._seed(verdict="rejected")
         with self.assertRaisesRegex(ValueError, "ok"):
             self._decide()
-        self.assertFalse((self.avatar_root / "performer-1.img").exists())
+        self.assertFalse((self.avatar_root / "performer-9.img").exists())
 
     def test_a_hash_that_does_not_match_the_cached_bytes_is_refused(self):
         """内容寻址的意义就在于不必相信路径。
@@ -947,13 +1005,13 @@ class PerformerAvatarApplyTests(ReviewQueueTests):
         self._seed(digest="0" * 64)
         with self.assertRaisesRegex(ValueError, "缓存"):
             self._decide()
-        self.assertFalse((self.avatar_root / "performer-1.img").exists())
+        self.assertFalse((self.avatar_root / "performer-9.img").exists())
 
     def test_rejecting_records_the_decision_without_installing(self):
         self._seed()
         result = self._decide(status="rejected")
         self.assertEqual(result["applied_assets"], 0)
-        self.assertFalse((self.avatar_root / "performer-1.img").exists())
+        self.assertFalse((self.avatar_root / "performer-9.img").exists())
 
     def test_every_approvable_category_can_land(self):
         """每个能被批准的类别，要么有落地分支，要么明确声明只记决定。

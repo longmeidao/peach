@@ -108,6 +108,143 @@ Peach 图片灯箱的信息卡据此保持一个“在资源管理器中显示�
 并交还焦点。成功回执进入现有 Toast，失败原因保留在卡内。视觉上沿用 Peach 的 12px
 浮层圆角、发丝边与双层阴影，不复制 Vercel 品牌样式。
 
+## 选中态与开关色（2026-09-03 实测，深色主题）
+
+用 Claude_Browser 打开 `vercel.com/geist/*` 的示例块，读 `getComputedStyle` 得到的值。
+取证目的只有一个：Geist 的「被选中」到底用不用蓝。
+
+| 控件 | 页面 | 选中／开态 | 未选中 |
+| --- | --- | --- | --- |
+| Toggle | `/geist/toggle` | 轨道 `rgb(0,112,243)`（蓝），28×14 与 36×20 两档，`background .15s cubic-bezier(0,0,.2,1)` | 轨道 `rgb(46,46,46)` |
+| Tabs | `/geist/tabs` | 文字 `rgb(237,237,237)` + `border-bottom:2px solid rgb(237,237,237)`，字重 400 | 文字 `rgb(161,161,161)` |
+| Checkbox | `/geist/checkbox` | 框底仍是 `rgb(10,10,10)`，勾 `rgb(237,237,237)`；16px，圆角 4px | 框底 `rgb(10,10,10)`，边 `rgb(143,143,143)`；禁用且选中时底 `rgb(135,135,135)` |
+| Switch（分段） | `/geist/switch` | 选中项底 `rgb(26,26,26)`、字 `rgb(237,237,237)`，高 28px | 透明底；容器底 `rgb(10,10,10)`、圆角 6px、内边距 4px、`box-shadow:0 0 0 1px rgba(255,255,255,.14)`、高 36px |
+| Button primary | `/geist/button` | 底 `rgb(237,237,237)`、字 `rgb(10,10,10)`、字重 500 | — |
+| Badge gray | `/geist/badge` | 底 `rgb(26,26,26)`、边 `rgb(41,41,41)`、字 `rgb(161,161,161)`、圆角 6px | — |
+| Collapse | `/geist/collapse` | 触发器是带 `aria-expanded`／`aria-controls` 的 `<button>`；内容关闭时仍在 DOM；文档明写「Animate the open/close transition; jump-cuts make the page feel like it teleported」 | — |
+
+结论：整套 Geist 里只有 Toggle 开态用蓝，Tabs／Switch／Checkbox／主按钮的选中与强调全是墨色
+反相或抬一档的灰面。蓝色的另外两个去处是焦点环与链接。
+
+## Button 全变体与状态（2026-09-03 复测，深色主题）
+
+- URL：<https://vercel.com/geist/button>
+- 取证方式：`getComputedStyle` 遍历页面全部 `<button>` 去重；hover 与 disabled 的规则原文
+  直接 `fetch` 站点样式表 `0p9r363b8n-x2.css` 后按 `}`…`}` 切片取出——手工写
+  `data-hover` 属性并不触发 Geist 的悬停样式，只能读源规则。
+
+| 尺寸 | 高 | 内边距 | 圆角 | 字号 |
+| --- | --- | --- | --- | --- |
+| small | 32px | `0 6px` | 6px | 14px |
+| medium | 36px | `0 10px` | 6px | 14px |
+| large | 40px | `0 14px` | 8px | 16px |
+| rounded（胶囊） | 同上 | `0 12px` | 999px | 同上 |
+
+变体（32px 档实测）：primary 底 `rgb(237,237,237)` 字 `rgb(10,10,10)`；secondary 底
+`rgb(10,10,10)` 字 `rgb(237,237,237)`；tertiary／ghost 透明底 `rgb(237,237,237)` 字；
+error 底 `rgb(217,48,54)` 字 `#fff`；warning 底 `rgb(255,153,10)` 字 `rgb(10,10,10)`。
+全部 500 字重、`border-width:0`——边框是 `box-shadow:0 0 0 1px rgb(46,46,46)` 画的，
+只有 secondary 有，tertiary 的 `box-shadow` 是 `none`。过渡统一
+`.15s cubic-bezier(.4,0,.2,1)`。
+
+三条关键状态规则：
+
+- **悬停只动填充，边框不动**。源规则里没有任何按钮 hover 改 border/ring：
+  primary 走 `--themed-hover-bg` 默认 `#ccc`（`hsl(0,0%,80%)`，即 #EDEDED 掉一档），
+  secondary 走 `--ds-gray-200`（深色下 `#1F1F1F`，即 #0A0A0A 抬一档），
+  ghost 走 `--ds-gray-alpha-200`。
+- **禁用是实底灰，不是半透明**：底 `rgb(26,26,26)`、字 `rgb(143,143,143)`、
+  ring `rgb(46,46,46)`、`opacity:1`、`cursor:not-allowed`。
+- **按下没有缩放**：页面上全部按钮的 `transform` 都是 `none`，Geist 不做 `scale`。
+
+### 选中态与它的悬停：源类名取证（2026-09-03）
+
+`getComputedStyle` 读不到悬停态（要么得手工触发，要么被冻住的 transition 骗），但 Geist
+是 Tailwind 写的，`class` 属性里的 `hover:`／`aria-selected:`／`peer-checked:` 前缀就是
+规则原文，比计算值更硬。三个组件的类名清单一致：
+
+| 组件 | 未选中悬停 | 选中 |
+| --- | --- | --- |
+| Switch 分段项 `/geist/switch` | `hover:text-[var(--ds-gray-1000)]` | `peer-checked:text-[--ds-gray-1000]` + `peer-checked:bg-[--switch-checked-color]` + `peer-checked:rounded-[4px]` |
+| Tabs primary `/geist/tabs` | `not-disabled:hover:text-gray-1000` | `aria-selected:text-gray-1000` + `primary:aria-selected:border-gray-1000`（底边 2px） |
+| Tabs secondary `/geist/tabs` | `not-disabled:hover:text-gray-1000` | `aria-selected:text-gray-1000` + `aria-selected:bg-gray-200`，`rounded-md`、`h-8`、`px-3` |
+
+三条共同点，都与我们之前的写法相反：
+
+- **悬停只改文字色，不上填充**。填充是「选中」的专属信号，所以一行选项里鼠标划过邻居时，
+  哪个是当前项始终看得见。这与 Button 的「悬停只抬填充」不冲突：Button 没有选中态，
+  没有需要让位的信号。
+- **选中不加边、不加内嵌一圈线**。Tabs primary 的底边 2px 是这个组件自己的形状语言
+  （未选中也占着 `border-b-2 border-transparent`），不是通用的选中环。
+- **字重两态相同**。Switch 分段项 `font-medium` 常驻，Tabs 全程不改字重。
+
+唯一的例外是主题选择器（system／light／dark 三个圆形按钮）：选中项是
+`bg-[--ds-background-100]` + `shadow-[0_0_0_1px_var(--ds-gray-400)]`。它加环是因为选中项
+的底色和容器同色，填充本身分不出来；不是通用做法。
+
+### 侧栏导航是例外：分工反过来（2026-09-04 实测，深色主题）
+
+上一节那张表只取了横排选项组（Switch、Tabs），当时把结论推广到了侧栏，这是错的。
+2026-09-04 在 `https://vercel.com/geist/tabs` 用 1600×900 视口读左栏文档导航
+（`aside` 里那 82 条链接，值取自每条链接内层的 `span`，悬停用真实鼠标移入后再读计算值）：
+
+| 状态 | 背景 | 文字 | 类名 |
+| --- | --- | --- | --- |
+| 未选中 | `rgba(0,0,0,0)` | `rgb(161,161,161)` | `text-gray-900 hover:bg-gray-100` |
+| 未选中 + 悬停 | `rgb(26,26,26)` | `rgb(161,161,161)`（不动） | 同上 |
+| 当前项 | `rgba(255,255,255,.06)` | `rgb(237,237,237)` | `text-gray-1000 bg-gray-alpha-100`，**不带任何 hover 类** |
+
+几何两态相同：`h-10`、`rounded-md`（6px）、`px-3 py-1.5`、`text-copy-14`，字重全程 400，无边框无环。
+
+要点：
+
+- **侧栏的悬停是抬填充的**，而且填充强度和当前项几乎一样：`--ds-gray-100` 是 hsl 10% 的实底，
+  `--ds-gray-alpha-100`（`#ffffff0f`）压在 hsl 4% 的页底上合成约 hsl 9.4%。Geist 显然不打算
+  用填充的强弱区分「鼠标在这儿」和「你在这儿」。
+- **区分二者的是文字色**：63% 灰对 93% 白。悬停不碰文字色，当前项不带 hover 类。
+  所以横排选项组那条「填充专属选中、悬停只提文字色」在这里是反的。
+- 当前项确实不加边、不加环、不加字重——上一节这部分结论仍然成立。
+
+Peach 尚未对齐的一处：抽屉 `.dnav button` 的未选中标签仍是 `--ink`，不是 Geist 的 63% 灰，
+所以当前项与悬停项只靠图标色（`--muted` 对 `--ink`）分开。改齐要动整列基态字色，
+留待单独一次处理，别当成已对齐。
+
+### 纠正记录
+
+`1367a9a`（2026-09-03）把 Switch／Tabs 的取证结论推广成了全站规则，顺手删掉了
+`.edge button:hover` 与 `.dnav button:hover` 的填充。用户 2026-09-04 指出窄栏悬停没反馈，
+并给出 Vercel 后台左栏的截图（Projects 与 Deployments 两行同时带填充）。上表是照此复测的结果：
+证据只覆盖横排选项组，推广到侧栏没有依据。已按上表把两处填充改回，并加正向断言
+`test_sidebar_nav_keeps_the_hover_fill_and_leaves_state_to_the_color` 锁住。
+
+### Peach 对应（2026-09-03 收敛，2026-09-04 修正侧栏一条）
+
+- 按下／选中（`aria-pressed="true"`、`aria-current`、`.selected`、`.current`、`.picked`、`:checked`）
+  只有填充：一律 `--hover` 底 `--ink` 字，不加边、不加内嵌一圈线、不加字重。这条推翻了本文件
+  此前写的两版——先是「统一 `--ink-2` 底 `--ground` 字」（Geist 的 Switch 选中项只是 `#0A0A0A`
+  面上抬到 `#1A1A1A`，没有一处是反相白块），再是「无边框补内嵌一圈线、带边框提到墨色 28%、
+  还要更强就加字重」（那一整套是自造的强调阶梯，上面三个组件的类名里一条都没有）。
+- 因此**同一排横向互斥选项的未选中项，悬停只提文字色到 `--ink`，不上填充**：`.pill`、`.chip`、
+  `.reviewtabs button`、`.sorts button`、`.junkfilters a`、`.tagmodes button`、
+  `.managebar button`、`.mediaviewbutton`、`.javbar button`。没有选中态的按钮
+  （`.fbtn`、`.fchip`）和没有并排邻居的孤立开关（`.ib`、`.brandpill`、`.playerstatsbtn`、
+  `.fb .like`）悬停照旧抬填充。**侧栏导航 `.edge button` 与 `.dnav button` 不在这条里**，
+  按上一节的实测走「悬停抬填充、当前项握着颜色」。彩色标签类控件（`.tagfilters`、`.index-tags .tg`、`.alphatag`、
+  `.sec.cat-* .chip`）的悬停本来就是标签色 tint，与白色选中底不同色，不受这条影响。
+- 主动作 `--ink` 底 `--ground` 字，悬停 `color-mix(in srgb,var(--ink) 88%,var(--ground))`
+  （对应 Geist 的 #EDEDED→#CCC，同为掉一档而非换色）；每屏最多一个。
+- 按钮（无选中态）悬停只抬填充到 `--hover`，边框与文字色不动——同样推翻此前的
+  「悬停边提亮到墨色 28%」，那一档在 Peach 是全站最亮的边，实际效果比 Vercel 重得多。
+  墨色 28% 的边现在只剩输入框 `.fpicksearch:hover` 一处。
+- 禁用统一 `--surface` 底、`--border-15` 边、`--muted` 字，不用 `opacity`；
+  按下不加 `scale`。Peach 保留 `cursor:default` 而不是 Geist 的 `not-allowed`，
+  与本仓库其余禁用态写法一致。
+- 计数徽章（如作者别名「3 组」）走 gray badge：`--overlay-5` 底、`--border-15` 细边、`--muted` 字、`--control-radius`。
+- 保留蓝：`:focus*`、真正的链接（`.entitylink`／`.flink`／`.fsourcelink`／`.fcred a`／`.tokauthor>a`）、
+  进度与数据（progress／watchprogress／range／slider／tokbar／trace）、`#censorSetting:checked`（Toggle）。
+- `--tungsten-soft` 退役。允许清单由 `tests/test_web_ui.py` 的
+  `test_tungsten_is_reserved_for_focus_links_progress_and_toggle` 强制。
+
 ## Peach 对应
 
 - 语义按钮：`.fbtn.danger`（清空回收站等销毁类）、`.fbtn.primary` 保持主推进、

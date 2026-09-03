@@ -21,9 +21,16 @@ from __future__ import annotations
 import argparse
 import re
 import sqlite3
+import sys
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
 from peach.config import DATABASE_PATH, GENERATED_DIR
+from peach.scripting import open_readonly
 from peach.classification import is_probable_mainstream_release, is_structural_creator
 from peach.entities import upsert_asset_entity
 from peach.migrations import sqlite_backup
@@ -71,10 +78,6 @@ SKIPPED = {
     "tuki_1154":  "可用样张仅 5 张且过暗过糊，无法确证任何标签",
 }
 
-def _readonly(path: Path) -> sqlite3.Connection:
-    return sqlite3.connect("file:" + path.resolve().as_posix() + "?mode=ro", uri=True)
-
-
 def _safe_name(value: str) -> str:
     return re.sub(r"[^\w\u4e00-\u9fff-]", "_", value)[:40]
 
@@ -85,7 +88,7 @@ def _board_identity(path: Path) -> tuple[str, int] | None:
 
 
 def export_review(db_path: Path, board_dir: Path, output: Path) -> tuple[int, int]:
-    connection = _readonly(db_path)
+    connection = open_readonly(db_path)
     creators = [row[0] for row in connection.execute(
         "SELECT DISTINCT creator FROM asset WHERE medium='video' "
         "AND creator IS NOT NULL AND creator<>''"
@@ -201,7 +204,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"review queue: {total} boards, {pending} pending -> {args.review}")
         return 0
     if not args.backup:
-        raise SystemExit("--apply-review requires --backup")
+        raise SystemExit("--apply-review 必须同时给 --backup")
     assets, rows = apply_review(args.db, args.review, args.backup)
     print(f"applied: {assets} assets, {rows} tag rows; backup={args.backup}")
     return 0

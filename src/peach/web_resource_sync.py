@@ -11,15 +11,14 @@ from __future__ import annotations
 import os
 import re
 import shutil
-import threading
 import time
-import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable, Protocol, Sequence
 
 from .catalog_rules import dir_expr, normalise_code_key, photo_set_title
 from .config import LOCATION_ROOT_DECLARATIONS
+from .jobs import BackgroundJob
 from .media import remap_managed_path
 from .platform import is_unmapped, root_online, translate_ledger_path
 
@@ -37,9 +36,7 @@ class ResourceSyncContract(Protocol):
     stream_root: Path
     transcode_root: Path
     resource_cleanup_enabled: bool
-    resource_scan_lock: threading.Lock
-    resource_scan_state: dict | None
-    resource_scan_thread: threading.Thread | None
+    resource_scan: BackgroundJob
 
     def cache_bust(self) -> None: ...
     def read_connection(self): ...
@@ -309,71 +306,46 @@ def _resource_scan_public(state: dict) -> dict:
 
 
 def _run_resource_scan(contract: ResourceSyncContract, scan_id: str) -> None:
+    """Scan every mounted source.  ``BackgroundJob`` turns a failure into a pollable state."""
+    job = contract.resource_scan
+
     def progress(source: dict) -> None:
-        with contract.resource_scan_lock:
-            state = contract.resource_scan_state
-            if state is not None and state["scan_id"] == scan_id:
+        with job.editing(scan_id) as state:
+            if state is not None:
                 state["sources"].append(dict(source))
 
-    try:
-        scan = _scan_missing_resources(contract, progress)
-        caches = _resource_orphan_plan(contract, scan["missing_ids"])
-        result = {
-            "ok": True, "sources": scan["sources"],
-            "missing": len(scan["missing_ids"]),
-            "cache": {"files": caches["total_files"], "bytes": caches["total_bytes"],
-                      "by_kind": caches["summary"]},
-        }
-        with contract.resource_scan_lock:
-            state = contract.resource_scan_state
-            if state is not None and state["scan_id"] == scan_id:
-                state.update(status="complete", result=result,
-                             missing_ids=list(scan["missing_ids"]), completed_at=time.time())
-    except Exception as error:  # Background failures must become a pollable state.
-        with contract.resource_scan_lock:
-            state = contract.resource_scan_state
-            if state is not None and state["scan_id"] == scan_id:
-                state.update(status="failed", error=f"{type(error).__name__}: {error}",
-                             completed_at=time.time())
+    scan = _scan_missing_resources(contract, progress)
+    caches = _resource_orphan_plan(contract, scan["missing_ids"])
+    result = {
+        "ok": True, "sources": scan["sources"],
+        "missing": len(scan["missing_ids"]),
+        "cache": {"files": caches["total_files"], "bytes": caches["total_bytes"],
+                  "by_kind": caches["summary"]},
+    }
+    job.update(scan_id, status="complete", result=result,
+               missing_ids=list(scan["missing_ids"]), completed_at=time.time())
 
 
 def _background_resource_scan(contract: ResourceSyncContract, restart: bool = False) -> dict:
-    thread = None
-    with contract.resource_scan_lock:
-        state = contract.resource_scan_state
-        if state is not None and state["status"] == "running":
-            return _resource_scan_public(state)
-        if state is not None and not restart:
-            return _resource_scan_public(state)
-        scan_id = uuid.uuid4().hex
-        state = {
-            "scan_id": scan_id, "status": "running", "sources": [],
-            "started_at": time.time(), "result": None, "missing_ids": [], "error": "",
-        }
-        contract.resource_scan_state = state
-        thread = threading.Thread(
-            target=_run_resource_scan, args=(contract, scan_id), daemon=True,
-            name="PeachResourceScanJob",
-        )
-        contract.resource_scan_thread = thread
-        response = _resource_scan_public(state)
-    thread.start()
-    return response
+    return _resource_scan_public(contract.resource_scan.start(
+        lambda scan_id: _run_resource_scan(contract, scan_id),
+        initial={"sources": [], "result": None, "missing_ids": []},
+        restart=restart,
+    ))
 
 
 def w_resource_sync_scan(contract: ResourceSyncContract, body=None):
     body = body or {}
     if body.get("background") is True:
         if body.get("status_only") is True:
-            with contract.resource_scan_lock:
-                state = contract.resource_scan_state
-                if state is None:
-                    return {
-                        "ok": True, "status": "idle", "scan_id": "", "sources": [],
-                        "completed_sources": 0,
-                        "total_sources": len(LOCATION_ROOT_DECLARATIONS),
-                    }
-                return _resource_scan_public(state)
+            state = contract.resource_scan.snapshot()
+            if state is None:
+                return {
+                    "ok": True, "status": "idle", "scan_id": "", "sources": [],
+                    "completed_sources": 0,
+                    "total_sources": len(LOCATION_ROOT_DECLARATIONS),
+                }
+            return _resource_scan_public(state)
         return _background_resource_scan(contract, restart=body.get("restart") is True)
     scan = _scan_missing_resources(contract)
     caches = _resource_orphan_plan(contract, scan["missing_ids"])
@@ -416,13 +388,12 @@ def w_resource_sync_apply(contract: ResourceSyncContract, body):
         raise ValueError("resource sync requires confirmation")
     scan_id = str(body.get("scan_id") or "")
     if scan_id:
-        with contract.resource_scan_lock:
-            state = contract.resource_scan_state
-            if (state is None or state["scan_id"] != scan_id
-                    or state["status"] != "complete"):
-                raise ValueError("resource scan expired; scan again")
-            candidates = list(state["missing_ids"])
-            sources = [dict(source) for source in state["result"]["sources"]]
+        state = contract.resource_scan.snapshot()
+        if (state is None or state["scan_id"] != scan_id
+                or state["status"] != "complete"):
+            raise ValueError("resource scan expired; scan again")
+        candidates = list(state["missing_ids"])
+        sources = [dict(source) for source in state["result"]["sources"]]
         # Do not trust the background result at write time.  Recheck only its bounded
         # candidate set; online sources and unreadable directories retain the safe skip.
         missing_ids = _recheck_resource_scan_ids(contract, candidates)
@@ -456,6 +427,10 @@ def w_purge_missing(contract: ResourceSyncContract, body):
     整条来源 2,552 行都会看起来像被删。所以先做来源级在线判定，整源不在线就
     一行都不碰。CloudDrive 掉线后挂载点目录仍然存在，`root_online` 因此判的是
     「能否列出一个条目」而不是「目录在不在」。
+
+    判缺失和全量扫描共用 `_missing_resource_ids`：整个目录一次列举出结果。逐条
+    `is_file()` 在云挂载上每条都是一次元数据往返——已删除的路径尤其贵，CloudDrive
+    对「不存在」没有负缓存；目录暂时读不了时保留账本行，不当成已删。
     """
     asset_id = int(body["id"])
     with contract.read_connection() as connection:
@@ -477,14 +452,17 @@ def w_purge_missing(contract: ResourceSyncContract, body):
             (location, directory),
         ).fetchall()
 
+    missing_ids, unreadable = _missing_resource_ids(rows)
+    gone = set(missing_ids)
     missing = [
         {"id": row["id"], "name": row["name"]}
         for row in rows
-        if not translate_ledger_path(row["path"]).is_file()
+        if int(row["id"]) in gone
     ]
     if not missing:
         return {"ok": True, "directory": photo_set_title(directory),
-                "checked": len(rows), "removed": 0, "items": []}
+                "checked": len(rows), "removed": 0, "unreadable": unreadable,
+                "items": []}
 
     contract.cache_bust()
     ids = [item["id"] for item in missing]
@@ -497,5 +475,6 @@ def w_purge_missing(contract: ResourceSyncContract, body):
     contract.cache_bust()
     return {
         "ok": True, "directory": photo_set_title(directory),
-        "checked": len(rows), "removed": len(missing), "items": missing,
+        "checked": len(rows), "removed": len(missing), "unreadable": unreadable,
+        "items": missing,
     }

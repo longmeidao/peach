@@ -46,6 +46,10 @@ _ALT_MARKERS: tuple[tuple[str, str], ...] = (
     (r"no[\s\-]?sound|muted?|silent", "no sound"),
     (r"with[\s\-]?sound|sound[\s\-]?version|w/[\s\-]?sound|audio", "sound"),
     (r"(\d{3,4})p", "{0}p"),
+    # 分辨率常写成不带 `p` 的裸数字：`2B Camp [4K]` 与 `2B Camp [1080]` 是同一部片的
+    # 两个版本，而 `[1080]` 此前留在 release_key 里，两张卡永远合不到一起。只认已知
+    # 分辨率档位，不认任意三四位数——那可能是年份或作品序号。
+    (r"(480|720|1080|1440|2160|4320)", "{0}p"),
     (r"([248])k(?![a-z])", "{0}K"),
     (r"(\d{2,3})[\s\-]?fps", "{0}fps"),
     (r"alt(?:ernat(?:e|ive))?(?:[\s\-]?(?:version|ver|angle|ending))?", "alt"),

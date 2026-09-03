@@ -28,33 +28,30 @@ from __future__ import annotations
 import argparse
 import re
 import sqlite3
+import sys
 from collections import Counter
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
 from peach.review_csv import write_rows
+from peach.catalog_rules import (
+    release_code_from_filename as code_from_filename,
+    release_code_from_text as canonical_code,
+)
 from peach.config import DATABASE_PATH, GENERATED_DIR
 from peach.migrations import sqlite_backup
 
-#: 画质标记。它们出现在番号前面，剥掉才能拿到真正的番号主体。
-QUALITY_PREFIX = r"(?:hd|fhd|sd|uhd|4k|2160p?|1080p?|720p?)"
-#: 版本标记。`-C`/`-CH` 是中文字幕版，`-UC` 是无码流出，画质词同样可能落在词尾。
-VERSION_SUFFIX = r"(?:ch|sub|uc|fhd|4k|hd|c|u)"
-
-_QUALITY_HEAD = re.compile(rf"^{QUALITY_PREFIX}[-_. ]+", re.I)
-_VERSION_TAIL = re.compile(rf"[-_. ]?{VERSION_SUFFIX}$", re.I)
-_LETTER_CODE = re.compile(r"^([A-Za-z]{2,8})[-_. ]?(\d{2,5})$")
-#: 一本道、加勒比是「日期 + 序号」体系，没有字母番号主体。
-_DATE_CODE = re.compile(r"(?<!\d)(\d{6})[-_](\d{3})(?!\d)")
+# 番号解析本来在这里自己写了一份（画质前缀、版本后缀、日期体系、UUID 排除、文件名
+# 噪声）。它和 `catalog_rules` 里的归一化是同一件事的两半，散成两处的代价在 2026-09-02
+# 兑现了：`hhd800.com` 剥掉 TLD 后是 `HHD800`，两边都把它当番号，而只在一边加排除
+# 规则等于没加。现在解析只有一份，这里只做本脚本的判定。
 #: fantia 之类的站点作品号既不是番号也不是创作者，单独归类。
 _SITE_POST = re.compile(r"^(fantia)[-_](\d{6,10})$", re.I)
-#: UUID 首段长得像番号（`DCE7230C-730E-…` 会被拆成 `DCE`+`7230`），按整串形态排除。
-_UUID_LIKE = re.compile(
-    r"[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}", re.I)
 _EXTENSION = re.compile(r"\.(?:mp4|mkv|avi|wmv|ts|mov|m4v|jpg|jpeg|png|webp)$", re.I)
-#: 文件名尾部的分卷、画质和重复计数；剥掉才能和目录名对齐。
-_FILE_NOISE = re.compile(
-    r"(?:[-_. ]?(?:1080p?|720p?|2160p?|4k|fhd|hd|uc|sub|ch|c|u)"
-    r"|[-_. ]\d{1,2}|\(\d{1,2}\)|[a-z])+$", re.I)
 
 VERDICT_CODE = "番号"
 VERDICT_SITE = "站点作品号"
@@ -62,31 +59,9 @@ VERDICT_UNCLEAR = "存疑"
 VERDICT_KEEP = "保留"
 
 
-def canonical_code(value: str) -> str | None:
-    """把番号的各种写法归一成 `ABC-123`；解析不出返回 None。"""
-    text = (value or "").strip()
-    if not text or _UUID_LIKE.search(text):
-        return None
-    text = _EXTENSION.sub("", text)
-    date = _DATE_CODE.search(text)
-    if date:
-        return f"{date.group(1)}-{date.group(2)}"
-    body = _VERSION_TAIL.sub("", _QUALITY_HEAD.sub("", text))
-    shape = _LETTER_CODE.match(body)
-    if not shape:
-        return None
-    return f"{shape.group(1).upper()}-{int(shape.group(2)):03d}"
-
-
 def site_post_id(value: str) -> str | None:
     match = _SITE_POST.match(_EXTENSION.sub("", (value or "").strip()))
     return f"{match.group(1).lower()}-{match.group(2)}" if match else None
-
-
-def code_from_filename(name: str) -> str | None:
-    """文件名带分卷、画质和重复计数，剥掉噪声后再归一。"""
-    stem = _EXTENSION.sub("", (name or "").strip())
-    return canonical_code(stem) or canonical_code(_FILE_NOISE.sub("", stem))
 
 
 def is_filesystem_path(path: str) -> bool:

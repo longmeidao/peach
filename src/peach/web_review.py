@@ -11,10 +11,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import time
-import uuid
 from pathlib import Path, PurePosixPath
 from typing import Protocol
 from urllib.parse import quote
@@ -32,6 +30,7 @@ from .entities import (
     resolve_entity,
     upsert_asset_entity,
 )
+from .fsutil import atomic_write_bytes
 from .metadata_policy import SOURCE_SPECS
 from .review_csv import read_rows
 
@@ -286,6 +285,32 @@ def _attach_review_asset_context(connection, rows: list[dict]) -> None:
         ]
 
 
+def _metadata_decision_is_stale(decision: dict, row: dict) -> bool:
+    """旧批准是否已经不指向这一组里的任何一个现存候选。
+
+    `metadata_fields` 的 `item_key` 是 `<番号>:<字段>`，不带候选身份。于是
+    2026-09-01 对 r18dev「空日文标题」的一条 approved，会把之后 javbus 抓到的
+    真标题一并盖住：队列里看不见这条，页面上还是英文标题。实测 TRE-080 就是
+    这样卡住的，同批还有 24 个番号。判据与 `studio_logos` 的「上游内容变了就
+    清掉旧判定」是同一条线，只是这里的「变了」体现为候选身份换了一个。
+
+    只在能读出旧批准指向哪个候选时才判过期。note 不是 JSON（早期的自由文本
+    留痕）就保守放过——宁可漏一条，也不要把用户已经批过的东西重新翻出来。
+    """
+    try:
+        note = json.loads(str(decision.get("note") or ""))
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(note, dict):
+        return False
+    approved_key = str(note.get("candidate_key") or "").strip()
+    if not approved_key:
+        return False
+    keys = {str(candidate.get("candidate_key") or "").strip()
+            for candidate in row.get("candidates") or []}
+    return bool(keys) and approved_key not in keys
+
+
 def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], str | None, int]:
     rows, source, skipped = read_candidates(category, contract.candidate_root)
     rows = [row for row in rows if _needs_review(category, row)]
@@ -328,6 +353,9 @@ def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], s
         decision = decisions.get(row["item_key"], {})
         if category == "studio_logos" and row.get("content_state") == "changed":
             # 同一厂牌上游头像变化是新的事实；旧批次 approved 不得把变化静默藏掉。
+            decision = {}
+        if (category == "metadata_fields" and decision.get("status") == "approved"
+                and _metadata_decision_is_stale(decision, row)):
             decision = {}
         row["decision"] = decision.get("status", "pending")
         row["decision_note"] = decision.get("note", "")
@@ -501,9 +529,9 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
 def _pending_first(rows: list[dict]) -> list[dict]:
     """判过的不再占复核队列。
 
-    早先这里原样返回全部候选，只给每行挂一个 `decision`，靠前端在本地把判过的
-    行 splice 掉——于是「点通过」当场消失、一刷新全回来（厂牌 logo 上最明显）。
-    队列该由服务端定义，前端只负责画。
+    队列由服务端定义，前端只负责画。原样返回全部候选、只给每行挂一个 `decision`，
+    靠前端在本地把判过的行 splice 掉的话，「点通过」当场消失、一刷新全回来
+    （厂牌 logo 上最明显）。
 
     `approved` / `rejected` 是终局，直接移出；`跳过` 按字面意思是「稍后再看」，
     留在队列里但排到最后，否则一次跳过就等于永久隐藏，而界面上没有任何入口
@@ -820,7 +848,7 @@ DECISION_ONLY_CATEGORIES = {
 
 
 def _install_performer_avatar(contract: ReviewContract, entity_id: str) -> int:
-    """把已批准的女优头像候选装进 `/entity-image` 真正读的目录。
+    """把已批准的人物头像候选装进 `/entity-image` 真正读的目录。
 
     和 `_install_studio_logo` 同一个毛病、同一种修法：`performer_avatars` 一直只在
     分类白名单里，没有任何写入分支。审计脚本按设计只把外部图放进内容寻址缓存
@@ -829,7 +857,13 @@ def _install_performer_avatar(contract: ReviewContract, entity_id: str) -> int:
     2880×1800——从 2026-08-25 起一直躺在缓存里进不去。
 
     按 sha256 定位缓存对象，并在装载前重算一遍校验：候选 CSV 的 `cache_path` 只是
-    哈希名，路径可能过期，而内容寻址的意义就在于不必相信路径。
+    哈希名，路径可能过期，而内容寻址的意义就在于不必相信路径。缓存对象在
+    provider-cache/performer-avatars/<provider>/objects 下按来源分目录——社媒与
+    babepedia 管线（harvest_social_avatars.py）也走同一套缓存，装载按内容找，
+    不绑定任何一个来源目录。
+
+    落盘名跟着实体走（`{kind}-{id}.img`）：`/entity-image` 按 kind 分文件，creator
+    实体（西方网黄，babepedia 命中的正是这批）写成 performer-<id>.img 是永远读不到的。
     """
     rows = {row["item_key"]: row
             for row in read_candidates("performer_avatars", contract.candidate_root)[0]}
@@ -841,9 +875,9 @@ def _install_performer_avatar(contract: ReviewContract, entity_id: str) -> int:
     digest = str(candidate.get("sha256") or "").strip().lower()
     if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
         raise ValueError("候选没有可用的 SHA-256")
-    objects = (contract.candidate_root / "provider-cache" / "performer-avatars"
-               / "gfriends" / "objects")
-    source = next((item for item in objects.glob(f"{digest}.*") if item.is_file()), None)
+    objects_root = contract.candidate_root / "provider-cache" / "performer-avatars"
+    source = next((item for item in objects_root.glob(f"*/objects/{digest}.*")
+                   if item.is_file()), None)
     if source is None:
         raise ValueError(f"候选图片不在本机缓存：{digest[:12]}")
     body = source.read_bytes()
@@ -851,11 +885,14 @@ def _install_performer_avatar(contract: ReviewContract, entity_id: str) -> int:
         raise ValueError("缓存对象与候选记录的哈希不一致，拒绝装载")
     content_type = str(candidate.get("mime_type") or "").strip() or "image/jpeg"
     contract.avatar_root.mkdir(parents=True, exist_ok=True)
-    destination = contract.avatar_root / f"performer-{int(entity_id)}.img"
-    # 先写临时文件再原子替换：中途失败不会留下半张图被 `/entity-image` 读到。
-    staging = destination.with_name(f"{destination.name}.{uuid.uuid4().hex}.tmp")
-    staging.write_bytes(body)
-    os.replace(staging, destination)
+    with contract.read_connection() as connection:
+        kind_row = connection.execute(
+            "SELECT kind FROM entity WHERE id=?", (int(entity_id),)).fetchone()
+    kind = (kind_row[0] if kind_row and kind_row[0] in {"performer", "creator"}
+            else "performer")
+    destination = contract.avatar_root / f"{kind}-{int(entity_id)}.img"
+    # 原子替换：中途失败不会留下半张图被 `/entity-image` 读到。
+    atomic_write_bytes(destination, body)
     Path(f"{destination}.ct").write_text(content_type, encoding="utf-8")
     Path(f"{destination}.provenance.json").write_text(json.dumps({
         "source": "performer avatar review",
@@ -877,9 +914,9 @@ def _install_performer_avatar(contract: ReviewContract, entity_id: str) -> int:
 def _install_studio_logo(contract: ReviewContract, studio: str) -> int:
     r"""把已批准的厂牌 logo 候选装进 `/logo` 真正读的目录。
 
-    早先 `studio_logos` 只出现在分类白名单里，没有任何写入分支：点「通过」只往
-    `review_decision` 记一笔，logo 一张也没装上——配合当时「队列不过滤已判项」的
-    毛病，表现就是点完通过、一刷新原样又回来。
+    `studio_logos` 必须有写入分支：只出现在分类白名单里的话，点「通过」只往
+    `review_decision` 记一笔，logo 一张也没装上；配合「队列不过滤已判项」，
+    表现就是点完通过、一刷新又回来。
 
     候选 CSV 的 `saved` 列写的是 `R:\peach-data\...`，那是旧数据根；现在数据在
     `peach-data` 下，按绝对路径找必然落空。所以只取文件名，在当前候选目录里解析。
@@ -904,10 +941,8 @@ def _install_studio_logo(contract: ReviewContract, studio: str) -> int:
         raise ValueError(f"不支持的图片格式：{source.suffix}")
     contract.logo_root.mkdir(parents=True, exist_ok=True)
     destination = contract.logo_root / f"{key}.img"
-    # 先写临时文件再原子替换：中途失败不会留下半张图被 `/logo` 读到。
-    staging = destination.with_name(f"{destination.name}.{uuid.uuid4().hex}.tmp")
-    staging.write_bytes(source.read_bytes())
-    os.replace(staging, destination)
+    # 原子替换：中途失败不会留下半张图被 `/logo` 读到。
+    atomic_write_bytes(destination, source.read_bytes())
     Path(f"{destination}.ct").write_text(content_type, encoding="utf-8")
     Path(f"{destination}.provenance.json").write_text(json.dumps({
         "source": "studio logo review",
@@ -1016,7 +1051,7 @@ def w_review_decision(contract: ReviewContract, body):
                 (provenance_note, category, item_key),
             )
         elif category == "creator_tags" and status == "approved":
-            # 权威值只能来自候选文件本身。早先版本直接采信请求体，于是「批准候选 X」
+            # 权威值只能来自候选文件本身。直接采信请求体的话，「批准候选 X」
             # 可以写入与 X 无关的创作者和标签，而 review_decision 里留痕仍写着 X 通过。
             candidates = {row["item_key"]: row
                           for row in read_candidates(category, contract.candidate_root)[0]}
@@ -1048,8 +1083,8 @@ def w_review_decision(contract: ReviewContract, body):
                     raise ValueError("selected assets are outside the reviewed creator")
                 asset_ids = sorted(selected_ids)
             else:
-                # 没有勾选就是「整条候选通过」。早先版本在这里什么都不写，
-                # 却照样把决定记成 approved——留痕说通过、实际没写是最糟的组合。
+                # 没有勾选就是「整条候选通过」。这里什么都不写却照样把决定记成
+                # approved 的话，留痕说通过、实际没写是最糟的组合。
                 asset_ids = sorted(available_ids)
                 if len(asset_ids) > REVIEW_APPLY_LIMIT:
                     raise ValueError(

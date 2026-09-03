@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-r"""用经维护的中日姓名映射本地化番号体系女优名称。
+r"""用经维护的中日姓名映射本地化番号体系女优名称，并把残留的日本字形归一为简体。
 
-只处理带 `r18:performer` / `javbus:performer` 发行来源的实体；账号型 performer 不翻译。
+译名只处理带 `r18:performer` / `javbus:performer` 发行来源的实体；账号型 performer 不翻译。
 匹配按精确证据分层：既有人工复核日文名、当前日文名、既有别名，再到复核表里的旧名。
 一条名字命中多个映射时不猜。多个 ledger 实体落到同一映射条目时，按同一人的旧名合并。
 
-映射 XML 是外部复核来源，不随 Peach 分发。默认只产出全库 CSV；`--apply` 写真实 ledger
-时必须同时提供 `--backup`。旧规范名、日文名、假名与繁体名都保留为别名。
+字形归一是独立的最后一道，不看发行来源也不需要映射：`涼` 和 `凉` 是同一个字，
+把 `高山涼音` 写成 `高山凉音` 不涉及任何译名判断。映射只覆盖已收录的艺人，剩下的名字
+就一直卡在日本字形上，看着像中文名又不是中文名——这一道专治那个。
+
+映射 XML 是外部复核来源，不随 Peach 分发，可以不给：不给就只跑字形归一。默认只产出
+全库 CSV；`--apply` 写真实 ledger 时必须同时提供 `--backup`。旧规范名、日文名、假名与
+繁体名都保留为别名。
 """
 from __future__ import annotations
 
@@ -16,20 +21,52 @@ import json
 import re
 import sqlite3
 import xml.etree.ElementTree as ET
+import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from peach.config import DATABASE_PATH, DATA_ROOT, GENERATED_DIR
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from peach.config import DATA_ROOT, GENERATED_DIR
 from peach.entities import merge_entity, normalize_entity_name
-from peach.migrations import sqlite_backup
 from peach.review_csv import read_rows, write_rows
+from peach.scripting import add_ledger_write_args, counts_of, open_for_write, verify_after_write
 
 
 RELEASE_SOURCES = frozenset({"r18:performer", "javbus:performer"})
 ALIAS_SOURCE_PREFIX = "avdb-actor-mapping"
 MERGE_ALIAS_SOURCE = "merge:performer-localization"
+KANJI_ALIAS_SOURCE = "kanji-simplification"
+KANJI_ONLY_REVISION = "kanji-only"
+
+# 日本汉字（新字体与旧字体）在简体中文里有确定对应字形的，逐字换。这里换的是字形不是名字，
+# 所以不需要外部证据：中文资料页写「凉森玲梦」和写「涼森玲夢」指的是同一个人。
+# 收录范围是本库出现过的字形，加上人名里常见、对应关系同样没有歧义的那批。
+JP_KANJI_TO_SIMPLIFIED = {
+    "並": "并", "亜": "亚", "亞": "亚", "倉": "仓", "児": "儿", "凜": "凛",
+    "実": "实", "實": "实", "宮": "宫", "島": "岛", "嶋": "岛", "嵐": "岚",
+    "塩": "盐", "姫": "姬", "尋": "寻", "恵": "惠", "愛": "爱", "斎": "齐",
+    "齋": "齐", "桜": "樱", "櫻": "樱", "橋": "桥", "歩": "步", "満": "满",
+    "沢": "泽", "澤": "泽", "沖": "冲", "浜": "滨", "濱": "滨", "渋": "涩",
+    "涼": "凉", "湊": "凑", "瀬": "濑", "瀨": "濑", "瀧": "泷", "稲": "稻",
+    "穂": "穗", "紀": "纪", "紗": "纱", "結": "结", "絵": "绘", "絢": "绚",
+    "綾": "绫", "緒": "绪", "織": "织", "聖": "圣", "華": "华", "葉": "叶",
+    "蔵": "藏", "藍": "蓝", "蘭": "兰", "見": "见", "遠": "远", "鈴": "铃",
+    "鳥": "鸟", "鳩": "鸠", "須": "须", "優": "优", "飯": "饭", "岡": "冈",
+    "時": "时", "場": "场", "圓": "圆", "廣": "广", "國": "国", "學": "学",
+    "風": "风", "樂": "乐", "楽": "乐", "榮": "荣", "豐": "丰", "龍": "龙",
+    "鶴": "鹤", "蓮": "莲", "東": "东", "納": "纳", "樹": "树", "麗": "丽",
+    "靜": "静", "貴": "贵", "藝": "艺", "歐": "欧", "慶": "庆",
+}
+
+# 简体中文没有对应字形的日本汉字：咲 凪 雫 辻 笹 榊 槙 䌷。中文资料页一律照抄，
+# 表里不收，逐字换的时候原样留下——`桜咲姫莉` 该变成 `樱咲姬莉`，不是变成半个空格。
+_KANA = re.compile(r"[぀-ヿ]")
 
 # 该映射条目的 zh_cn 仍误填日文，但 keyword 同时给出简/繁中文；中文资料页也交叉确认。
 # 只在外部条目确实携带这个候选时启用，避免脱离来源硬编码一个无法追溯的译名。
@@ -89,6 +126,25 @@ def _contains_latin(value: str) -> bool:
 def _is_non_latin_east_asian(value: str) -> bool:
     return bool(re.search(r"[\u3040-\u30ff\u3400-\u9fff]", value or "")) \
         and not _contains_latin(value)
+
+
+def simplify_kanji(name: str) -> str:
+    """把纯汉字姓名里的日本字形换成简体字形；含假名或拉丁字母的名字原样返回。
+
+    假名和罗马字要的是译名，不是字形：`飯岡かなこ` 逐字换只得到 `饭冈かなこ`，
+    一个半中半日的名字，比原样留着更糟。那种名字只能等映射 XML 收录。
+    """
+    if not name or _KANA.search(name) or _contains_latin(name):
+        return name
+    out: list[str] = []
+    for char in name:
+        # 「々」是日语的叠字符号，中文没有这个写法，照抄下来 `野々宮蘭` 就还是半个日文名。
+        # 它的意思是「重复上一个字」，展开成 `野野宫兰` 没有任何判断空间。
+        if char == "々" and out:
+            out.append(out[-1])
+            continue
+        out.append(JP_KANJI_TO_SIMPLIFIED.get(char, char))
+    return "".join(out)
 
 
 def _target_name(mapping: ActorMapping) -> tuple[str, str]:
@@ -266,6 +322,21 @@ def collect(
             row["action"] = "merge-drop"
             row["merge_target_id"] = keeper["entity_id"]
 
+    # 字形归一走在重名门槛之前：换完字形才知道会不会撞上库里已有的同名实体。
+    # 映射命中与否都过一遍——「映射没收录这个人」和「映射自己的 zh_cn 还留着日本字形」
+    # 是同一个症状。只有已经判成 merge-drop 的那一侧不动，它整条要并进别人。
+    for row in rows:
+        if row["action"] in {"merge-drop", "conflict"}:
+            continue
+        simplified = simplify_kanji(str(row["target_name"]))
+        if simplified == row["target_name"]:
+            continue
+        row["_aliases"].add(str(row["target_name"]))
+        row["target_name"] = simplified
+        row["resolution"] = f"{row['resolution']}/kanji-simplification"
+        if str(row["action"]).startswith("keep"):
+            row["action"] = "localize-kanji"
+
     # 名字唯一约束最后守门。只有同一 mapping group 的 merge-drop 可以与目标重名。
     active_targets: dict[str, list[dict[str, object]]] = defaultdict(list)
     for row in rows:
@@ -369,19 +440,23 @@ def apply_rows(
     for row in rows:
         if row["action"] not in {
             "localize", "merge-and-localize", "localize-jp-fallback", "keep-localized",
+            "localize-kanji",
         }:
             continue
         entity_id = int(row["entity_id"])
         target = str(row["target_name"])
         old_names = set(row["_aliases"])
         old_names.add(str(row["current_name"]))
+        # 字形归一不来自那份映射，别名来源不能冒充它的修订号。
+        alias_source = (
+            KANJI_ALIAS_SOURCE if row["action"] == "localize-kanji" else source)
         connection.execute(
             "UPDATE entity SET canonical_name=?,normalized_name=?,updated_at=? WHERE id=?",
             (target, normalize_entity_name(target), stamp, entity_id),
         )
         if target != row["current_name"]:
             counts["renamed"] += connection.execute("SELECT changes()").fetchone()[0]
-        counts["aliases"] += _insert_aliases(connection, entity_id, old_names, source)
+        counts["aliases"] += _insert_aliases(connection, entity_id, old_names, alias_source)
         counts["actor_tags_rewritten"] += _rewrite_actor_tags(
             connection, entity_id, old_names, target)
 
@@ -418,40 +493,33 @@ def write_csv(path: Path, rows: list[dict[str, object]]) -> None:
     write_rows(path, FIELDS, rows, fill_missing=True)
 
 
-def counts_of(connection: sqlite3.Connection) -> dict[str, int]:
-    return {
-        "asset": connection.execute("SELECT count(*) FROM asset").fetchone()[0],
-        "entity": connection.execute("SELECT count(*) FROM entity").fetchone()[0],
-        "performer": connection.execute(
-            "SELECT count(*) FROM entity WHERE kind='performer'").fetchone()[0],
-        "asset_entity": connection.execute("SELECT count(*) FROM asset_entity").fetchone()[0],
-        "asset_tag": connection.execute("SELECT count(*) FROM asset_tag").fetchone()[0],
-        "entity_alias": connection.execute("SELECT count(*) FROM entity_alias").fetchone()[0],
-    }
+#: 本脚本自己关心的口径；基础计数由 `scripting.counts_of` 给。
+EXTRA_COUNTS = {
+    "performer": "SELECT count(*) FROM entity WHERE kind='performer'",
+    "asset_tag": "SELECT count(*) FROM asset_tag",
+}
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="用中日映射本地化番号体系女优姓名")
-    parser.add_argument("--db", type=Path, default=DATABASE_PATH)
-    parser.add_argument("--mapping-xml", type=Path, required=True)
-    parser.add_argument("--mapping-revision", required=True)
+    add_ledger_write_args(parser)
+    # 映射 XML 不在仓库里，也可能已经不在这台机器上。不给就只跑字形归一，
+    # 那一道不需要外部来源，缺了 XML 也不该把整个脚本变成跑不起来。
+    parser.add_argument("--mapping-xml", type=Path)
+    parser.add_argument("--mapping-revision", default="")
     parser.add_argument(
         "--identity-review", type=Path,
         default=DATA_ROOT / "review" / "performer-identity-20260815.csv")
     parser.add_argument(
         "--review-csv", type=Path,
         default=GENERATED_DIR / "performer-name-localization.csv")
-    parser.add_argument("--apply", action="store_true")
-    parser.add_argument("--backup", type=Path, help="--apply 必需")
     return parser
 
 
 def run(args: argparse.Namespace) -> int:
-    if args.apply and not args.backup:
-        raise SystemExit("--apply 必须同时给 --backup")
-    mappings = read_mapping(args.mapping_xml)
+    mappings = read_mapping(args.mapping_xml) if args.mapping_xml else []
     identity_review = read_identity_review(args.identity_review)
-    connection = sqlite3.connect(args.db)
+    connection = open_for_write(args)
     try:
         rows = collect(connection, mappings, identity_review, args.mapping_revision)
         write_csv(args.review_csv, rows)
@@ -461,25 +529,28 @@ def run(args: argparse.Namespace) -> int:
             print("  未写 ledger（加 --apply --backup 才写）")
             return 1 if any(row["action"] == "conflict" for row in rows) else 0
 
-        before = counts_of(connection)
-        sqlite_backup(args.db, args.backup)
         print(f"  已备份到 {args.backup}")
+        before = counts_of(connection, EXTRA_COUNTS)
         with connection:
             changed = apply_rows(connection, rows, args.mapping_revision)
-        after = counts_of(connection)
-        integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
-        foreign_keys = connection.execute("PRAGMA foreign_key_check").fetchall()
+        after = counts_of(connection, EXTRA_COUNTS)
+        integrity, foreign_keys = verify_after_write(connection)
         print("  写入结果：", changed)
         for key in before:
             print(f"    {key}: {before[key]} -> {after[key]}")
-        print(f"  integrity_check={integrity}；foreign_key_check={len(foreign_keys)}")
+        print(f"  integrity_check={integrity}；foreign_key_check={foreign_keys}")
         return 1 if integrity != "ok" or foreign_keys else 0
     finally:
         connection.close()
 
 
 def main(argv: list[str] | None = None) -> int:
-    return run(build_parser().parse_args(argv))
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.mapping_xml and not args.mapping_revision:
+        parser.error("给了 --mapping-xml 就必须给 --mapping-revision，别名要记得住来源")
+    args.mapping_revision = args.mapping_revision or KANJI_ONLY_REVISION
+    return run(args)
 
 
 if __name__ == "__main__":

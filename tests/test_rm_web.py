@@ -11,99 +11,23 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest import mock
 
+from peach import web_batch, web_catalog, web_stats
 from peach import web_contract as rm_web
+from support.ledger import fresh_ledger
 
 
-BASE_SCHEMA = """
-CREATE TABLE asset(
-  id INTEGER PRIMARY KEY,
-  location TEXT NOT NULL,
-  path TEXT NOT NULL,
-  name TEXT,
-  catalog_title TEXT,
-  original_title TEXT,
-  medium TEXT,
-  size INTEGER,
-  hash TEXT,
-  creator TEXT,
-  studio TEXT,
-  series TEXT,
-  code TEXT,
-  release_date TEXT,
-  duration REAL,
-  width INTEGER,
-  height INTEGER,
-  ctx_length TEXT,
-  ctx_orient TEXT,
-  ctx_quality TEXT,
-  play_count INTEGER DEFAULT 0,
-  last_played TEXT,
-  rating INTEGER,
-  o_count INTEGER,
-  snapshot_path TEXT,
-  first_seen TEXT,
-  feedback TEXT,
-  disposal TEXT,
-  leave_ratio REAL,
-  play_seconds REAL,
-  feedback_at REAL,
-  seek_count INTEGER,
-  max_reached REAL,
-  UNIQUE(location, path)
-);
-CREATE TABLE asset_tag(
-  asset_id INTEGER,
-  tag TEXT,
-  confidence REAL DEFAULT 1.0,
-  source TEXT,
-  UNIQUE(asset_id, tag)
-);
-CREATE TABLE entity(
-  id INTEGER PRIMARY KEY, kind TEXT, canonical_name TEXT, normalized_name TEXT,
-  metadata_json TEXT DEFAULT '{}', created_at TEXT, updated_at TEXT,
-  UNIQUE(kind,normalized_name)
-);
-CREATE TABLE asset_entity(
-  asset_id INTEGER, entity_id INTEGER, role TEXT, source TEXT, confidence REAL,
-  metadata_json TEXT DEFAULT '{}', first_seen_at TEXT, last_seen_at TEXT,
-  UNIQUE(asset_id,entity_id,role,source)
-);
-CREATE TABLE entity_alias(entity_id INTEGER,alias TEXT,normalized_alias TEXT,source TEXT,confidence REAL);
-CREATE TABLE entity_external_ref(entity_id INTEGER,provider TEXT,external_kind TEXT,external_id TEXT,
-  metadata_json TEXT DEFAULT '{}',last_synced_at TEXT);
-CREATE TABLE entity_link(id INTEGER PRIMARY KEY,entity_id INTEGER,link_kind TEXT,label TEXT,url TEXT,
-  hostname TEXT,is_sensitive INTEGER DEFAULT 0,metadata_json TEXT DEFAULT '{}',created_at TEXT,updated_at TEXT);
-CREATE TABLE entity_search_term(entity_id INTEGER,term TEXT,purpose TEXT,source TEXT,created_at TEXT);
-CREATE TABLE watch_queue(profile_id TEXT,asset_id INTEGER,added_at TEXT,source TEXT,
-  PRIMARY KEY(profile_id,asset_id));
-CREATE TABLE playlist(
-  id INTEGER PRIMARY KEY,profile_id TEXT,name TEXT,source_kind TEXT,
-  source_seed_asset_id INTEGER,current_asset_id INTEGER,created_at TEXT,updated_at TEXT);
-CREATE TABLE playlist_item(
-  playlist_id INTEGER,asset_id INTEGER,position INTEGER,added_at TEXT,
-  PRIMARY KEY(playlist_id,asset_id),UNIQUE(playlist_id,position));
-CREATE TABLE asset_preference(profile_id TEXT,asset_id INTEGER,liked INTEGER,reason TEXT,
-  source TEXT,updated_at TEXT,PRIMARY KEY(profile_id,asset_id));
-CREATE TABLE asset_quality_goal(profile_id TEXT,asset_id INTEGER,wanted INTEGER,reason TEXT,
-  updated_at TEXT,PRIMARY KEY(profile_id,asset_id));
-CREATE TABLE asset_tag_preference(profile_id TEXT,asset_id INTEGER,normalized_tag TEXT,
-  hidden INTEGER,updated_at TEXT,PRIMARY KEY(profile_id,asset_id,normalized_tag));
-CREATE TABLE media_binding(asset_id INTEGER,backend TEXT,external_id TEXT,metadata_json TEXT,
-  last_synced_at TEXT,PRIMARY KEY(asset_id,backend));
-CREATE TABLE activity_event(id INTEGER PRIMARY KEY,asset_id INTEGER,kind TEXT,created_at TEXT);
-CREATE TABLE review_decision(
-  category TEXT,item_key TEXT,status TEXT,note TEXT,updated_at TEXT,
-  PRIMARY KEY(category,item_key)
-);
-"""
+# 调用点继续走 `rm_web`（`web_contract` 现在只是再导出层），但 **patch 必须打在真的
+# 那个模块上**：`web_stats.q_stats` 读的是 `web_stats` 自己模块里的 `system_volume`，
+# 打在再导出层上不会有任何效果，而且不会报错——测试会带着假 mock 一路绿。
+# 同一个 `LOCATION_ROOT_DECLARATIONS` 在存储卷一节属于 `web_stats`、在空目录清理
+# 一节属于 `web_batch`，两个都得分别打。
 
 
 class WebDataTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.db_path = str(Path(self.tmp.name) / "ledger.db")
+        self.db_path = str(fresh_ledger(self.tmp.name))
         con = sqlite3.connect(self.db_path)
-        con.executescript(BASE_SCHEMA)
         con.executemany(
             """INSERT INTO asset(
                  id,location,path,name,medium,size,creator,studio,code,duration,
@@ -124,7 +48,8 @@ class WebDataTests(unittest.TestCase):
              (1, "Canonical Alice", "vision"), (2, "竖屏", "probe")],
         )
         con.executemany(
-            "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(?,?,?,?)",
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(?,?,?,?,'2026-01-01','2026-01-01')",
             [(10, "tag", "足交", "足交"),
              (11, "performer", "Canonical Alice", "canonical alice"),
              (12, "creator", "Canonical Creator", "canonical creator"),
@@ -191,8 +116,8 @@ class WebDataTests(unittest.TestCase):
              ("FC2 官方标签", 0.8, "javinizer:fc2:tag")],
         )
         con.executemany(
-            "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-            "VALUES(?,'tag',?,?)",
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(?,'tag',?,?,'2026-01-01','2026-01-01')",
             [(991, "官方标签", "官方标签"), (992, "FC2 官方标签", "fc2 官方标签")],
         )
         con.executemany(
@@ -247,7 +172,7 @@ class WebDataTests(unittest.TestCase):
 
     def test_stats_use_the_platform_system_volume_and_keep_the_old_alias(self):
         usage = type("Usage", (), {"free": 20, "total": 100})
-        with mock.patch.object(rm_web, "system_volume", return_value=Path("X:/")), mock.patch(
+        with mock.patch.object(web_stats, "system_volume", return_value=Path("X:/")), mock.patch(
             "shutil.disk_usage", return_value=usage,
         ):
             stats = rm_web.q_stats(self.contract)
@@ -263,11 +188,11 @@ class WebDataTests(unittest.TestCase):
     def test_stats_report_system_resource_and_cloud_volumes(self):
         usage = type("Usage", (), {"free": 20, "total": 100})
         declarations = {"local": "R:/media", "115": "B:/", "pikpak": "A:/"}
-        with mock.patch.object(rm_web, "LOCATION_ROOT_DECLARATIONS", declarations), \
-                mock.patch.object(rm_web, "system_volume", return_value=Path("X:/")), \
-                mock.patch.object(rm_web, "translate_ledger_path",
+        with mock.patch.object(web_stats, "LOCATION_ROOT_DECLARATIONS", declarations), \
+                mock.patch.object(web_stats, "system_volume", return_value=Path("X:/")), \
+                mock.patch.object(web_stats, "translate_ledger_path",
                                   side_effect=lambda value: Path(value)), \
-                mock.patch.object(rm_web, "root_online", return_value=True), \
+                mock.patch.object(web_stats, "root_online", return_value=True), \
                 mock.patch("shutil.disk_usage", return_value=usage):
             stats = rm_web.q_stats(self.contract)
 
@@ -333,7 +258,8 @@ class WebDataTests(unittest.TestCase):
     def test_item_surfaces_hide_broad_taste_tag_when_specific_tag_exists(self):
         connection = sqlite3.connect(self.db_path)
         connection.executemany(
-            "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(?,?,?,?)",
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(?,?,?,?,'2026-01-01','2026-01-01')",
             [(60, "tag", "乳系", "乳系"), (61, "tag", "美乳", "美乳")],
         )
         connection.executemany(
@@ -386,20 +312,40 @@ class WebDataTests(unittest.TestCase):
             self.contract, {"limit": "1", "offset": "0", "count": "0"},
         )
         self.assertIsNone(result["total"])
+        self.assertIsNone(result["bytes"], "不算总数时也别去扫体积")
         self.assertEqual(len(result["items"]), 1)
         self.assertTrue(result["has_more"])
+
+    def test_item_totals_carry_occupied_bytes_for_the_trash_card(self):
+        """回收站卡片要说的是「清空能腾出多少」，体积跟条数同一次聚合出来。
+
+        为它单独发一次请求只是把同一条 WHERE 再跑一遍；口径也必须跟着筛选走，
+        不能变成整库体积。
+        """
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET disposal='trash' WHERE id IN (2,3)")
+        con.commit()
+        con.close()
+        trash = rm_web.q_items(self.contract, {"state": "trash", "limit": "10"})
+        self.assertEqual(trash["total"], 2)
+        self.assertEqual(trash["bytes"], 210, "回收站里是 200 和 10 两条")
+        live = rm_web.q_items(self.contract, {"limit": "10"})
+        self.assertEqual(live["total"], 1)
+        self.assertEqual(live["bytes"], 100, "体积口径必须跟着同一条筛选走")
 
     def test_legacy_length_tags_are_hidden_in_favor_of_numeric_minutes(self):
         con = sqlite3.connect(self.db_path)
         con.execute(
-            "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(14,'tag','短片-2分内','短片-2分内')"
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(14,'tag','短片-2分内','短片-2分内','2026-01-01','2026-01-01')"
         )
         con.execute(
             "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
             "VALUES(1,14,'tag','test',1.0)"
         )
         con.execute(
-            "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(15,'tag','测试分页标签','测试分页标签')"
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(15,'tag','测试分页标签','测试分页标签','2026-01-01','2026-01-01')"
         )
         con.execute(
             "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
@@ -422,7 +368,8 @@ class WebDataTests(unittest.TestCase):
         connection = sqlite3.connect(self.db_path)
         for entity_id, tag in enumerate(("2K", "有码", "无码"), start=201):
             connection.execute(
-                "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(?, 'tag', ?, ?)",
+                "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                "VALUES(?, 'tag', ?, ?,'2026-01-01','2026-01-01')",
                 (entity_id, tag, tag.lower()),
             )
             connection.execute(
@@ -453,7 +400,8 @@ class WebDataTests(unittest.TestCase):
         )
         for entity_id, tag, _label in tagged:
             connection.execute(
-                "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(?, 'tag', ?, ?)",
+                "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                "VALUES(?, 'tag', ?, ?,'2026-01-01','2026-01-01')",
                 (entity_id, tag, tag.lower()),
             )
             connection.execute(
@@ -705,8 +653,8 @@ class WebDataTests(unittest.TestCase):
         self._seed_editions([(9001, "ABF-234.mp4", "ABF-234"),
                              (9002, "ABF-234-UN.mp4", "ABF-234")])
         con = sqlite3.connect(self.db_path)
-        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-                    "VALUES(9100,'tag','无码','无码')")
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(9100,'tag','无码','无码','2026-01-01','2026-01-01')")
         con.execute("INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
                     "VALUES(9002,9100,'tag','test',1.0)")
         con.commit(); con.close()
@@ -765,8 +713,13 @@ class WebDataTests(unittest.TestCase):
 
         它此前在五处各写了一份裸 SQL。join 列因查询语境不同是正常的，规则本体不是：
         漏抄一处，被隐藏的标签就会从那个表面漏回来，而这属于语义契约。
+
+        计数扫的是整个 web 层而不是单个文件：实现现在住在 `web_catalog`，再抄一份最可能
+        抄到隔壁的域模块里去，只盯一个文件的话那种抄写正好检不出来。
         """
-        source = pathlib.Path(rm_web.__file__).read_text(encoding="utf-8")
+        web_layer = sorted(pathlib.Path(rm_web.__file__).parent.glob("web_*.py"))
+        self.assertGreaterEqual(len(web_layer), 6, "没找到 web 层模块，glob 口径变了")
+        source = "\n".join(path.read_text(encoding="utf-8") for path in web_layer)
         self.assertEqual(source.count("FROM asset_tag_preference p "), 1,
                          "隐藏判据又被抄了一份，请改调 tag_not_hidden()")
         self.assertEqual(source.count("WHERE performer.kind='performer' "), 1,
@@ -787,7 +740,7 @@ class WebDataTests(unittest.TestCase):
             return connection
 
         with mock.patch.object(self.contract.database, "connect", side_effect=capture):
-            with mock.patch.object(rm_web, "upsert_asset_entity",
+            with mock.patch.object(web_catalog, "upsert_asset_entity",
                                    side_effect=RuntimeError("entity write failed")):
                 with self.assertRaisesRegex(RuntimeError, "entity write failed"):
                     rm_web.w_item_tag(self.contract, {
@@ -866,7 +819,7 @@ class WebDataTests(unittest.TestCase):
         rm_web.w_feedback(self.contract, {"id": 1, "kind": "dispose"})
 
         with mock.patch.object(
-                rm_web, "LOCATION_ROOT_DECLARATIONS", {"local": str(source_root)}):
+                web_batch, "LOCATION_ROOT_DECLARATIONS", {"local": str(source_root)}):
             result = rm_web.w_batch(self.contract, {"ids": [1], "operation": "delete"})
 
         self.assertEqual(result["empty_dirs_removed"], 2)
@@ -881,7 +834,7 @@ class WebDataTests(unittest.TestCase):
         (kept / "media.mp4").write_bytes(b"keep")
         offline = Path(self.tmp.name) / "offline"
 
-        with mock.patch.object(rm_web, "LOCATION_ROOT_DECLARATIONS", {
+        with mock.patch.object(web_batch, "LOCATION_ROOT_DECLARATIONS", {
                 "local": str(source_root), "115": str(offline),
         }):
             result = rm_web.cleanup_empty_source_directories()
@@ -1023,8 +976,8 @@ class WebDataTests(unittest.TestCase):
         for offset, name in enumerate(names):
             entity_id = start_id + offset
             con.execute(
-                "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-                "VALUES(?,'performer',?,?)", (entity_id, name, name.casefold()))
+                "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                "VALUES(?,'performer',?,?,'2026-01-01','2026-01-01')", (entity_id, name, name.casefold()))
             con.execute(
                 "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
                 "VALUES(?,?,'performer','test',1.0)", (asset_id, entity_id))
@@ -1099,17 +1052,20 @@ class WebDataTests(unittest.TestCase):
             "INSERT INTO entity_alias VALUES(11,'Alice','alice','test',1.0)"
         )
         con.execute(
-            "INSERT INTO entity_link(entity_id,link_kind,label,url,hostname,is_sensitive) "
-            "VALUES(11,'official','Official','https://example.com/alice','example.com',0),"
-            "(11,'source_reference','Private source','https://source.invalid/a','source.invalid',1)"
+            "INSERT INTO entity_link(entity_id,link_kind,label,url,hostname,is_sensitive,"
+            "created_at,updated_at) "
+            "VALUES(11,'official','Official','https://example.com/alice','example.com',0,"
+            "'2026-01-01','2026-01-01'),"
+            "(11,'source_reference','Private source','https://source.invalid/a',"
+            "'source.invalid',1,'2026-01-01','2026-01-01')"
         )
         con.execute(
-            "INSERT INTO entity_search_term(entity_id,term,purpose,source) "
-            "VALUES(11,'Alice code','source_lookup','user')"
+            "INSERT INTO entity_search_term(entity_id,term,purpose,source,created_at) "
+            "VALUES(11,'Alice code','source_lookup','user','2026-01-01')"
         )
         con.execute(
-            "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-            "VALUES(15,'performer','Related Bob','related bob')"
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(15,'performer','Related Bob','related bob','2026-01-01','2026-01-01')"
         )
         con.execute(
             "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
@@ -1125,6 +1081,9 @@ class WebDataTests(unittest.TestCase):
         self.assertTrue(page["links"][0]["clickable"])
         self.assertFalse(page["links"][1]["clickable"])
         self.assertIsNone(page["links"][1]["url"])
+        # 实体契约里没有散文简介字段：资料页只展示可核对的身份、计数与链接。
+        # 自由文本没有来源和置信度，也没有复核入口，不属于真相字段。
+        self.assertNotIn("summary", page)
         self.assertEqual(rm_web.q_items(
             self.contract, {"performer": "Canonical Alice", "limit": "10"},
         )["total"], 1)
@@ -1139,8 +1098,8 @@ class WebDataTests(unittest.TestCase):
     def test_entity_name_prefers_canonical_and_only_displays_local_aliases(self):
         con = sqlite3.connect(self.db_path)
         con.executemany(
-            "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-            "VALUES(?,'performer',?,?)",
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(?,'performer',?,?,'2026-01-01','2026-01-01')",
             [(16, "飯岡かなこ", "飯岡かなこ"),
              (17, "森泽佳奈", "森泽佳奈"),
              (18, "释爱丽丝", "释爱丽丝")],
@@ -1237,16 +1196,15 @@ class ChineseSearchTermTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.db_path = str(Path(self.tmp.name) / "ledger.db")
+        self.db_path = str(fresh_ledger(self.tmp.name))
         con = sqlite3.connect(self.db_path)
-        con.executescript(BASE_SCHEMA)
         con.execute(
             "INSERT INTO asset(id,location,path,name,medium,duration,first_seen) "
             "VALUES(1,'local',?,'ABW-232.mp4','video',100,'2026-08-18')",
             (r"R:\Media\ABW-232.mp4",))
         con.execute(
-            "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-            "VALUES(11,'performer','涼森れむ','涼森れむ')")
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(11,'performer','涼森れむ','涼森れむ','2026-01-01','2026-01-01')")
         con.execute(
             "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
             "VALUES(1,11,'performer','test',1.0)")
@@ -1258,9 +1216,12 @@ class ChineseSearchTermTests(unittest.TestCase):
                 rm_web.q_items(self.contract, {"q": query, "limit": "10"})["items"]]
 
     def _add_term(self, term):
+        # purpose 只有 'discovery' 和 'source_lookup' 两个合法值（0002 的 CHECK）。
+        # 这里此前写的是 'search'，真实账本里根本存不下这一行。
         con = sqlite3.connect(self.db_path)
-        con.execute("INSERT INTO entity_search_term(entity_id,term,purpose,source) "
-                    "VALUES(11,?,'search','hanzi-simplified')", (term,))
+        con.execute("INSERT INTO entity_search_term(entity_id,term,purpose,source,"
+                    "created_at) "
+                    "VALUES(11,?,'discovery','hanzi-simplified','2026-01-01')", (term,))
         con.commit(); con.close()
 
     def test_simplified_query_misses_before_a_term_exists(self):
@@ -1296,9 +1257,8 @@ class JavModeAndCoverTests(unittest.TestCase):
         root = Path(self.tmp.name)
         self.covers = root / "covers"
         self.covers.mkdir()
-        self.db_path = str(root / "ledger.db")
+        self.db_path = str(fresh_ledger(root))
         con = sqlite3.connect(self.db_path)
-        con.executescript(BASE_SCHEMA)
         # 前四条是真番号的四种形态；JI-103 虽像番号，但只有 creator、没有发行证据。
         con.executemany(
             "INSERT INTO asset(id,location,path,name,medium,code,creator,studio,duration,first_seen) "
@@ -1377,6 +1337,84 @@ class JavModeAndCoverTests(unittest.TestCase):
         self.assertEqual(uncensored["edition_badges"], ["无码"])
         self.assertEqual(cracked["edition_badges"], ["无码破解"])
 
+    def test_uncensored_release_names_are_not_shown_as_titles(self):
+        """无码片的文件名由「发行站 + 番号 + 画质/分卷」拼成，一个标题词都没有。
+
+        修之前界面把剥掉番号后的残渣当标题显示：`040221-001 carib-1080p`、
+        `071213-625 1pon-whole1 hd`、`heyzo hd 1380 full`。
+        """
+        for name, code in (
+            ("040221-001-carib-1080p.mp4", "040221-001"),
+            ("051421-001-carib-720p.mp4", "051421-001"),
+            ("071213-625-1pon-whole1_hd.avi", "071213-625"),
+            ("heyzo_hd_1380_full.mp4", "HEYZO-1380"),
+            ("259LUXU-971_1080p.mp4", "259LUXU-971"),
+            ("259LUXU-934.HD.mp4", "259LUXU-934"),
+        ):
+            self.assertEqual(
+                rm_web.jav_display_metadata(name, code)["display_title"], "", name)
+
+    def test_code_is_stripped_even_when_the_release_site_comes_first(self):
+        # `1pon-092415-001-fhd1_(new).mp4`：番号在中间，只认前缀就会整个显示出来。
+        self.assertEqual(
+            rm_web.jav_display_metadata(
+                "1pon-092415-001-fhd1_(new).mp4", "092415-001")["display_title"], "")
+        self.assertEqual(
+            rm_web.jav_display_metadata(
+                "122614_001-1pon-whole1_hd.avi", "122614-947")["display_title"], "")
+
+    def test_real_titles_survive_the_release_noise_filter(self):
+        # 判空判据是「没有中日文、也没有长度 ≥4 的字母词」，真标题不受影响。
+        self.assertEqual(
+            rm_web.jav_display_metadata(
+                "MIN-101 Minah My new companion hard fuck racing girl.mp4",
+                "MIN-101")["display_title"],
+            "Minah My new companion hard fuck racing girl")
+        self.assertEqual(
+            rm_web.jav_display_metadata(
+                "ABP614.Hinata.Mio.Uncen.mp4", "ABP614")["display_title"], "Hinata Mio")
+        self.assertEqual(
+            rm_web.jav_display_metadata(
+                "MIDE-925 痴女に犯される.mp4", "MIDE-925")["display_title"],
+            "痴女に犯される")
+
+    def test_uncensored_studios_get_the_badge_without_a_filename_marker(self):
+        """无码厂商的片本身就是无码，不需要文件名里另有 `-U`／`Uncen`。
+
+        番号形状（`040221-001`、`HEYZO-1380`）和文件名里的发行站都是本机可核验
+        的证据，不依赖抓取——这些番号在 r18.dev 永远 404，等元数据到齐再判，
+        徽章就永远不会出现。全库命中 13 条，全部是 carib/1pon/HEYZO。
+        """
+        for name, code in (
+            ("040221-001-carib-1080p.mp4", "040221-001"),
+            ("1pon-092415-001-fhd1_(new).mp4", "092415-001"),
+            ("heyzo_hd_1380_full.mp4", "HEYZO-1380"),
+            ("122614_001-1pon-whole1_hd.avi", "122614-947"),
+        ):
+            self.assertEqual(
+                rm_web.jav_display_metadata(name, code)["edition_badges"], ["无码"], name)
+        # 有码番号不能因为这条判据凭空拿到徽章。
+        for name, code in (("ABW-220.mp4", "ABW-220"), ("MIDE-925-4K.mp4", "MIDE-925")):
+            self.assertEqual(
+                rm_web.jav_display_metadata(name, code)["edition_badges"], [], name)
+
+    def test_edition_markers_glued_to_the_code_still_count(self):
+        """`PPPD-937CH.mp4` 中间没有分隔符，此前既没徽章、番号还被当标题显示。"""
+        for name, code in (
+            ("PPPD-937CH.mp4", "PPPD-937"), ("MIDV-751CH.mp4", "MIDV-751"),
+            ("MIRD-204CH.mp4", "MIRD-204"),
+        ):
+            row = rm_web.jav_display_metadata(name, code)
+            self.assertEqual(row["display_title"], "", name)
+            self.assertEqual(row["edition_badges"], ["中字"], name)
+        # `-UN` 和 `-U`／`-UC` 是同一个意思；标题判空后不认它就等于丢掉这条信息。
+        self.assertEqual(
+            rm_web.jav_display_metadata("ABF-158-UN.mp4", "ABF-158")["edition_badges"],
+            ["无码"])
+        # 相邻字母不能被当成版次标记吞掉。
+        self.assertEqual(
+            rm_web.jav_display_metadata("ABC-123CHAPTER.mp4", "ABC-123")["edition_badges"], [])
+
     def test_release_sort_orders_official_dates_descending_and_missing_last(self):
         rows = rm_web.q_items(
             self.contract, {"jav": "1", "sort": "release", "limit": "20"},
@@ -1417,18 +1455,31 @@ class JavModeAndCoverTests(unittest.TestCase):
         self.assertIsNone(self.contract.cover_path("ABW-232"))
         self.assertIsNone(self.contract.cover_path(None))
 
-    def test_cover_frame_reads_the_face_sidecar(self):
+    def test_cover_frame_reads_both_axes_out_of_the_face_sidecar(self):
+        """哪个轴生效由容器和图片的宽高比决定，数据层两个都得给出去。
+
+        16:9 官方剧照在大图容器里只会横向裁，横向锚点丢在这一层的话，页面就只能
+        退回写死的 50%，偏在一侧的人物整个落到可见窗口外面。
+        """
         (self.covers / "ABW-232.jpg").write_bytes(b"x")
         (self.covers / "ABW-232.face.json").write_text(
             '{"ratio":1.49,"face":{"cx":0.82,"cy":0.19}}', encoding="utf-8")
-        self.assertEqual(self.contract.cover_frame("ABW-232"), {"cy": 0.19})
+        self.assertEqual(self.contract.cover_frame("ABW-232"),
+                         {"cx": 0.82, "cy": 0.19})
+
+    def test_a_sidecar_with_only_one_axis_keeps_just_that_axis(self):
+        """缺的那个轴不带键，页面各自回落；不能拿另一个轴的值顶替。"""
+        (self.covers / "ABW-232.jpg").write_bytes(b"x")
+        (self.covers / "ABW-232.face.json").write_text(
+            '{"ratio":1.78,"face":{"cx":0.13}}', encoding="utf-8")
+        self.assertEqual(self.contract.cover_frame("ABW-232"), {"cx": 0.13})
 
     def test_a_cover_without_a_sidecar_falls_back_silently(self):
         (self.covers / "ABW-232.jpg").write_bytes(b"x")
         self.assertIsNone(self.contract.cover_frame("ABW-232"))
 
     def test_a_sidecar_reporting_no_face_is_not_a_frame(self):
-        # 检出率约 48%，没检出是常态而不是错误——必须安静回落。
+        # 954 张实测检出 885 张，没检出是少数但确实存在——必须安静回落。
         (self.covers / "ABW-232.jpg").write_bytes(b"x")
         (self.covers / "ABW-232.face.json").write_text(
             '{"ratio":1.49,"face":null}', encoding="utf-8")
@@ -1536,12 +1587,11 @@ class DuplicateDetectionTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.db_path = str(Path(self.tmp.name) / "ledger.db")
+        self.db_path = str(fresh_ledger(self.tmp.name))
         self.con = sqlite3.connect(self.db_path)
         # 后进先出：这条要在临时目录清理之后注册，才会先关连接。Windows 上没关
         # 的 SQLite 句柄会让 TemporaryDirectory 删不掉文件。
         self.addCleanup(self.con.close)
-        self.con.executescript(BASE_SCHEMA)
         self.next_id = 1
         self.contract = rm_web.WebContract(Path(self.db_path))
 
@@ -1690,6 +1740,64 @@ class DuplicateDetectionTests(unittest.TestCase):
         self.assertEqual(rm_web.ordered_multipart_items(duplicate), [])
         self.assertEqual(rm_web.ordered_multipart_items(gapped), [])
 
+    def test_a_bare_first_part_joins_numbered_parts_when_durations_agree(self):
+        # TRE-080 实测：首卷 `TRE-080.mp4` 没有标记，后两卷是 -2/-3，时长 9163/11255/8530 秒。
+        items = [
+            {"id": 3, "name": "TRE-080-3.mp4", "duration": 8530},
+            {"id": 1, "name": "TRE-080.mp4", "duration": 9163},
+            {"id": 2, "name": "TRE-080-2.mp4", "duration": 11255},
+        ]
+        self.assertEqual([item["id"] for item in rm_web.ordered_multipart_items(items)], [1, 2, 3])
+
+    def test_a_bare_file_only_counts_as_part_one_when_it_cannot_be_the_whole_film(self):
+        parts = [
+            {"id": 2, "name": "TRE-080-2.mp4", "duration": 11255},
+            {"id": 3, "name": "TRE-080-3.mp4", "duration": 8530},
+        ]
+        cases = {
+            "完整版": [{"id": 1, "name": "TRE-080.mp4", "duration": 28900}, *parts],
+            "广告片": [{"id": 1, "name": "TRE-080.mp4", "duration": 78}, *parts],
+            "缺时长": [{"id": 1, "name": "TRE-080.mp4", "duration": None}, *parts],
+            "两个裸名": [{"id": 1, "name": "TRE-080.mp4", "duration": 9163},
+                         {"id": 4, "name": "tre-080.mp4", "duration": 9163}, *parts],
+            "标记不从 2 起": [{"id": 1, "name": "TRE-080.mp4", "duration": 9163}, parts[1]],
+            "字母卷缺 A": [{"id": 1, "name": "OJIE-325.mp4", "duration": 14300},
+                           {"id": 2, "name": "OJIE-325-B.mp4", "duration": 14349},
+                           {"id": 3, "name": "OJIE-325-C.mp4", "duration": 14281}],
+        }
+        for label, items in cases.items():
+            with self.subTest(label):
+                self.assertEqual(rm_web.ordered_multipart_items(items), [])
+
+    def test_a_bare_first_part_gets_one_card_and_a_numbered_queue_not_an_edition_group(self):
+        connection = sqlite3.connect(self.db_path)
+        connection.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,size,studio,code,duration,"
+            "width,height,first_seen) VALUES(?,'115',?,?,'video',?,'Prestige','TRE-080',?,"
+            "1920,1080,'2026-08-13')",
+            [
+                (6, r"B:\TRE-080\TRE-080-2.mp4", "TRE-080-2.mp4", 8_432_234_092, 11255.5),
+                (7, r"B:\TRE-080\TRE-080-3.mp4", "TRE-080-3.mp4", 6_403_519_569, 8530.4),
+                (8, r"B:\TRE-080\TRE-080.mp4", "TRE-080.mp4", 7_105_839_805, 9163.0),
+            ],
+        )
+        connection.commit(); connection.close()
+
+        listed = rm_web.q_items(
+            self.contract, {"q": "TRE-080", "sort": "new", "limit": "10"},
+        )["items"]
+        self.assertEqual(len(listed), 3, "API 仍保留三个真实资产")
+        self.assertEqual({row["part_group"]["count"] for row in listed}, {3})
+        self.assertEqual(listed[0]["part_group"]["seed_id"], 8, "裸名文件是第一卷")
+        self.assertTrue(all("edition_group" not in row for row in listed),
+                        "同一版次的分卷不是多版本")
+        self.assertEqual(rm_web._edition_groups(self.contract, ["TRE-080"]), {})
+
+        parts = rm_web.q_parts(self.contract, {"id": "6"})
+        self.assertEqual([item["name"] for item in parts["items"]],
+                         ["TRE-080.mp4", "TRE-080-2.mp4", "TRE-080-3.mp4"])
+        self.assertEqual([item["part_label"] for item in parts["items"]], ["1", "2", "3"])
+
 
 class TopsRotationTests(unittest.TestCase):
     """顶部三层要跟着「换一批」真的换人，否则刷新后上面纹丝不动。"""
@@ -1697,14 +1805,13 @@ class TopsRotationTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.db_path = str(Path(self.tmp.name) / "ledger.db")
+        self.db_path = str(fresh_ledger(self.tmp.name))
         con = sqlite3.connect(self.db_path)
         self.addCleanup(con.close)
-        con.executescript(BASE_SCHEMA)
         # 候选池要大于展示位，抽样才有意义（TOPS_POOL_FACTOR 倍）。
         for index in range(40):
-            con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-                        "VALUES(?,'performer',?,?)",
+            con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                        "VALUES(?,'performer',?,?,'2026-01-01','2026-01-01')",
                         (100 + index, f"P{index:02d}", f"p{index:02d}"))
             for copy in range(40 - index):          # 让数量各不相同，排序稳定
                 asset_id = index * 100 + copy
@@ -1747,13 +1854,12 @@ class PhotoSetTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.db_path = str(Path(self.tmp.name) / "ledger.db")
+        self.db_path = str(fresh_ledger(self.tmp.name))
         self.con = sqlite3.connect(self.db_path)
         self.addCleanup(self.con.close)
-        self.con.executescript(BASE_SCHEMA)
         self.con.execute(
-            "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
-            "VALUES(1,'creator','桃子','桃子')")
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(1,'creator','桃子','桃子','2026-01-01','2026-01-01')")
         self.con.execute(
             "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,confidence) "
             "VALUES(1,'taozi','taozi','stash:performer',0.9)")

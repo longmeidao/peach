@@ -29,9 +29,8 @@ from peach.config import STATE_DIR   # noqa: E402
 from peach.http import HttpRequest, HttpxTransport   # noqa: E402
 from peach.jobs import job_main   # noqa: E402
 from peach.review_csv import read_rows, write_rows   # noqa: E402
+from peach.scripting import USER_AGENT, open_readonly   # noqa: E402
 
-USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-              "(KHTML, like Gecko) Chrome/128.0 Safari/537.36")
 TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.S | re.I)
 # 抢注页与停放页的自述。它们同样会 200，也同样会在标题里回显域名，
 # 只有这些词能把它们和真站区分开。
@@ -43,6 +42,14 @@ TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.S | re.I)
 # 自己在出售，所以这里可以放心用最宽的判据。
 PARKED_TITLE = re.compile(
     r"for sale|domain name|buy this domain|このドメイン|ドメイン(?:の)?販売", re.I)
+# 站点自述打不开的标题。实测 `bangbus.com` 与 `monstersofcock.com` 都返回 200、82 KB、
+# 正文里成人词一应俱全，标题却只有 `Site Unavailable`——「域名由厂牌名推出且是成人站」
+# 那条因此把它们判成 ok。一页自己说自己不可用，就不能拿来当官网证据；这类页面还常常
+# 是 CDN 或地区封锁的产物，换个出口再取才有意义，写成 ok 只会把它固化成结论。
+BROKEN_TITLE = re.compile(
+    r"site unavailable|service unavailable|temporarily unavailable|access denied"
+    r"|forbidden|not found|bad gateway|under construction|coming soon"
+    r"|maintenance|メンテナンス|工事中|しばらく(?:お待ち|お待たせ)", re.I)
 PARKED = re.compile(
     r"domain (?:is )?for sale|buy this domain|parked (?:free )?at|このドメイン(?:は|を)"
     r"|ドメイン(?:の)?販売|sedo\.com|afternic|godaddy\.com/domain|hugedomains",
@@ -62,6 +69,42 @@ ADULT = re.compile(
     r"|adult video|adult dvd|porn|18\+|over 18", re.I)
 FIELDS = ("entity_id", "studio", "assets", "candidate_url", "final_url", "status",
           "bytes", "sha256", "title", "verdict", "note")
+
+#: 用户当场确认的母公司官网。**这不是放宽通用判据，是补一条页面上没有的信息。**
+#:
+#: `SOD Create` 是 Soft On Demand 的厂牌。母公司官网 `www.sod.co.jp` 实测 200、是成人站，
+#: 标题却是 `SOFT ON DEMAND（ソフト・オン・デマンド）`——标题和正文里都不会出现
+#: `SOD Create` 这个串，所以「标题自述厂牌名」和「正文提到厂牌名」两条都不成立，通用
+#: 判据只能判未取得。缺的那一条是「这个厂牌属于哪家公司」，它本来就不在页面上，只有人知道。
+#:
+#: 因此走显式白名单，不去放宽通用判据：把「标题没有厂牌名也算」松开，`hunter.com`
+#: （四轮定位）、`bazooka.com`（车载音响）、`madonna.com`（歌手）那一整类同名站会跟着
+#: 一起被确认成官网。白名单只影响列出来的这几行，每行写清谁确认的、为什么通用路径不成立。
+CONFIRMED_SITES: dict[str, tuple[str, str]] = {
+    "SOD Create": (
+        "https://www.sod.co.jp/",
+        "用户 2026-09-03 确认：SOD Create 是 Soft On Demand 的厂牌，"
+        "sod.co.jp 是母公司官网",
+    ),
+}
+
+#: 发行平台不是厂牌，「厂牌官网」这条路对它们本来就不成立。
+#:
+#: 用户判据（见 `docs/SOURCING.md`）：FC2-PPV、myfans 这类是把别人的作品卖出去的平台；
+#: 页面上有实际卖主（seller／出品者）的那个账号才是 creator，账本里已标注或评论里提到的
+#: 女优属于 performer。所以拿 `fc2ppv.com` 这类推导域名去试，试出什么都不能写成 official：
+#: 要么是抢注页，要么是平台入口，两者都不是「这个厂牌的官网」。
+#:
+#: 判词单列而不是静默跳过：少扫一个和「扫过但没找到」在复核件上长得一模一样，
+#: 那正是这个仓库最常见的那类缺陷。名字按 `normalise` 比，写法差异（`FC2-PPV`／`FC2 PPV`）
+#: 不影响命中。
+PLATFORM_ENTITIES = frozenset({"fc2ppv", "fc2", "myfans"})
+PLATFORM_VERDICT = "不适用（发行平台）"
+
+
+def is_platform(name: str) -> bool:
+    """这个账本名是发行平台而不是厂牌吗。"""
+    return normalise(name) in PLATFORM_ENTITIES
 
 
 def normalise(text: str) -> str:
@@ -136,12 +179,15 @@ def page_title(body: bytes) -> str:
 
 def site_verdict(name: str, status: int, body: bytes, title: str,
                  url: str = "", derived_hosts: frozenset[str] = frozenset(),
-                 ) -> tuple[str, str]:
+                 confirmed: str = "") -> tuple[str, str]:
     """这一页认不认自己是这个厂牌。
 
     四道都必须过：HTTP 200、不是空壳、不是停放页、标题里出现厂牌名且不只是域名回显。
     缺任何一道都写成未取得而不是「大概是」——一个错的官网会被下游当成社媒 handle 的
     来源，把别人的账号安到这个厂牌头上。
+
+    `confirmed` 是 `CONFIRMED_SITES` 里那句理由：它只替掉最后一道「页面得自述厂牌名」，
+    前面几道照旧要过。
     """
     if status != 200:
         return "未取得", f"HTTP {status}"
@@ -149,6 +195,8 @@ def site_verdict(name: str, status: int, body: bytes, title: str,
         return "未取得", f"页面只有 {len(body)} 字节，疑似空壳"
     if PARKED_TITLE.search(title):
         return "未取得", f"标题自述在出售域名（{title[:44]}）"
+    if BROKEN_TITLE.search(title):
+        return "未取得", f"站点自述不可用（{title[:44]}）"
     text = decode(body)
     # 不再截窗口。实测停放页把「domain for sale」写在第 81683 字节，任何固定窗口都会漏；
     # 整篇扫一遍在这个量级上不值得省。
@@ -158,10 +206,21 @@ def site_verdict(name: str, status: int, body: bytes, title: str,
     # 不是停放页、标题正好是 `prestige.com`——它因此通过了「标题含厂牌名」，被判成
     # Prestige 官网，而真站是 `prestige-av.com`，那是另一家公司。停放页规则拦不住它：
     # 它是个正常的站，只是不属于这个厂牌。
+    # 判据是「标题原样打印了域名，且除域名之外什么都没说」。拿 normalise 后的标题去匹配
+    # normalise 后的主机会把真站一起打掉：`www.naturalhigh.co.jp` 返回 200、
+    # 标题正是 `NATURAL HIGH（ナチュラルハイ）`，normalise 成 naturalhigh，必然是
+    # naturalhighcojp 的一部分——域名由厂牌名推出来时这两者永远互相包含，这条规则于是
+    # 对整类真站失效。域名回显的真正特征是标题里带着 TLD，品牌名不带。
     host = (urlsplit(url).hostname or "").casefold().removeprefix("www.")
-    title_token = normalise(title)
-    if host and title_token and title_token in normalise(host):
+    printed = title.casefold().strip()
+    if host and host in printed and not re.sub(r"\W|_", "", printed.replace(host, "")):
         return "未取得", f"标题只是域名回显，没有自述身份（{title[:40]}）"
+    # 用户确认的母公司官网。上面四道（状态码、空壳、停放页／自述不可用、域名回显）照旧
+    # 要过：确认的是「这个地址属于这家公司」，不是「这个地址此刻返回的任何东西都算数」。
+    # 白名单换掉的只有「页面得自述厂牌名」这一条——`SOD Create` 这个串本来就不会出现在
+    # 母公司官网上，那条信息不在页面里。
+    if confirmed:
+        return "ok", f"{confirmed}；实测标题：{title[:40] or '无'}"
     token = normalise(name)
     if not token:
         return "未取得", "厂牌名里没有可比对的字母数字"
@@ -200,6 +259,33 @@ def load_studios(connection: sqlite3.Connection, minimum: int) -> list[dict]:
                 "GROUP BY e.id HAVING n>=? ORDER BY n DESC", (minimum,))]
 
 
+def load_named_studios(connection: sqlite3.Connection, names: list[str]) -> list[dict]:
+    """`--only` 指名的厂牌，不看作品数。
+
+    默认路径按作品数筛，是为了不去扫只出现过一两次的厂牌。指名时那条门槛恰好挡住要补的
+    目标：BangBus、BangBros18 各只有 1 部视频，OPPAI、MonstersOfCock 各 2 部，都低于默认的
+    3，因此至今一次都没被扫过。作品数仍然取出来写进复核件，只是不再当门槛。
+
+    名字对不上就直接失败。指名的用法下静悄悄少扫一个，和「扫过但没找到」在复核件上长得
+    一模一样——那正是这个仓库最常见的那类缺陷。
+    """
+    found: list[dict] = []
+    missing: list[str] = []
+    for name in names:
+        row = connection.execute(
+            "SELECT e.id,(SELECT count(DISTINCT ae.asset_id) FROM asset_entity ae "
+            "JOIN asset a ON a.id=ae.asset_id "
+            "WHERE ae.entity_id=e.id AND a.medium='video') "
+            "FROM entity e WHERE e.kind='studio' AND e.canonical_name=?", (name,)).fetchone()
+        if row is None:
+            missing.append(name)
+            continue
+        found.append({"entity_id": row[0], "studio": name, "assets": row[1]})
+    if missing:
+        raise SystemExit(f"账本里没有这些厂牌：{'、'.join(missing)}")
+    return found
+
+
 def crawler_client() -> "httpx.Client":
     """本作业专用 client。**每个请求新建一个，用完立刻关掉**，见 `probe`。
 
@@ -225,22 +311,38 @@ def crawler_client() -> "httpx.Client":
     )
 
 
-def probe(url: str, timeout: float) -> tuple[int, bytes, str]:
-    """取一个候选。连接池不跨请求存活，理由见 `crawler_client`。"""
-    http = HttpxTransport(crawler_client())
-    try:
-        response = http(HttpRequest("GET", url, {"User-Agent": USER_AGENT}), timeout, 4 << 20)
-        return response.status, response.body, response.url or url
-    finally:
-        http.close()
+def probe(url: str, timeout: float, retries: int = 2, backoff: float = 2.0
+          ) -> tuple[int, bytes, str]:
+    """取一个候选。连接池不跨请求存活，理由见 `crawler_client`。
+
+    传输层失败要重试，口径与 `page_cache.Site` 一致（两次、指数退避）。实测
+    `www.naturalhigh.co.jp` 第一次 `ReadTimeout`、随后同一地址 200 且标题正是
+    `NATURAL HIGH（ナチュラルハイ）`——一次抖动就被写成「这家没有官网」，而下游会把
+    这个空结论当成事实。只重试传输层异常：HTTP 状态码是站点的回答，不是抖动。
+    """
+    for attempt in range(retries + 1):
+        http = HttpxTransport(crawler_client())
+        try:
+            response = http(HttpRequest("GET", url, {"User-Agent": USER_AGENT}),
+                            timeout, 4 << 20)
+            return response.status, response.body, response.url or url
+        except Exception:
+            if attempt == retries:
+                raise
+            time.sleep(backoff * (attempt + 1))
+        finally:
+            http.close()
+    raise AssertionError("unreachable")
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--database", type=Path, required=True)
+    parser.add_argument("--db", type=Path, required=True, help="账本路径")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seeds", type=Path, help="人工查到的 studio,site 表，优先于推导域名")
     parser.add_argument("--min-assets", type=int, default=3)
+    parser.add_argument("--only", nargs="*", default=[],
+                        help="只处理这几个厂牌，按 canonical_name 给；给了就不看作品数")
     parser.add_argument("--interval", type=float, default=1.2)
     # httpx 把这个标量同时用作 connect 与 read 超时，死域名因此最多吃两份。首轮用 20
     # 秒的代价是整批三个多小时；真站实测都在 2 秒内响应，8 秒已经宽裕得多。
@@ -254,9 +356,10 @@ def build_parser() -> argparse.ArgumentParser:
 def run(args) -> int:
     import hashlib
 
-    connection = sqlite3.connect(f"file:{args.database}?mode=ro", uri=True)
+    connection = open_readonly(args.db)
     try:
-        studios = load_studios(connection, args.min_assets)
+        studios = (load_named_studios(connection, args.only) if args.only
+                   else load_studios(connection, args.min_assets))
     finally:
         connection.close()
     if args.limit:
@@ -276,12 +379,28 @@ def run(args) -> int:
         row = {field: "" for field in FIELDS}
         row.update(record)
         row["verdict"], row["note"] = "未取得", "没有可推导的候选域名"
+        if is_platform(name):
+            # 一个请求都不发：这不是「查不到」，是这条路对发行平台本来就不成立。
+            row["verdict"], row["note"] = PLATFORM_VERDICT, (
+                "发行平台不是厂牌，没有「厂牌官网」可查；链接按平台登记，"
+                "有实际卖主的账号才是 creator（docs/SOURCING.md）")
+            results.append(row)
+            print(f"{name[:22]:<22} {row['verdict']:<6}")
+            continue
+        confirmed = CONFIRMED_SITES.get(name)
         # 人工喂的种子和规则推出来的候选走同一条验证，但要分得清哪个是哪个：
         # 「域名由厂牌名推出」只有在域名真的是推出来的时候才算一个独立信号。
         derived_urls = candidate_urls(name)
         derived_hosts = frozenset(
             (urlsplit(u).hostname or "").casefold().removeprefix("www.") for u in derived_urls)
-        for url in seeds.get(name, []) + derived_urls:
+        # 每个候选的结果都记下来。让后一个候选覆盖前一个的话，一个厂牌试了六个地址、
+        # 复核件上只剩最后那个的理由：`SOD Create` 写着「取不到：ConnectError」，
+        # 而真正值得看的是被它盖掉的 `www.sod.co.jp` —— 200、成人站、标题
+        # `SOFT ON DEMAND（ソフト・オン・デマンド）`。判成未取得可以，但要让人看得见
+        # 是在哪几个地址上未取得。
+        trail: list[str] = []
+        # 确认过的地址排在最前：它是这家的答案，先试它就不必再把一串死域名走一遍。
+        for url in ([confirmed[0]] if confirmed else []) + seeds.get(name, []) + derived_urls:
             wait = args.interval - (time.monotonic() - last)
             if wait > 0:
                 time.sleep(wait)
@@ -289,17 +408,26 @@ def run(args) -> int:
             try:
                 status, body, final = probe(url, args.timeout)
             except Exception as exc:
-                row.update(candidate_url=url, verdict="未取得",
-                           note=f"取不到：{type(exc).__name__}")
+                trail.append(f"{url} → 取不到：{type(exc).__name__}")
+                if not row["candidate_url"]:
+                    row.update(candidate_url=url, verdict="未取得",
+                               note=f"取不到：{type(exc).__name__}")
                 continue
             title = page_title(body)
-            verdict, note = site_verdict(name, status, body, title, final,
-                                         derived_hosts=derived_hosts)
-            row.update(candidate_url=url, final_url=final, status=status,
-                       bytes=len(body), sha256=hashlib.sha256(body).hexdigest(),
-                       title=title, verdict=verdict, note=note)
+            verdict, note = site_verdict(
+                name, status, body, title, final, derived_hosts=derived_hosts,
+                confirmed=confirmed[1] if confirmed and url == confirmed[0] else "")
+            trail.append(f"{url} → {verdict}：{note}")
+            # 取回了字节的候选比连不上的更值得留在行里：状态码、标题和 sha256 才是
+            # 人能复核的证据。已经采信过一个 ok/weak 之后不再覆盖。
+            if row["verdict"] not in {"ok", "weak"}:
+                row.update(candidate_url=url, final_url=final, status=status,
+                           bytes=len(body), sha256=hashlib.sha256(body).hexdigest(),
+                           title=title, verdict=verdict, note=note)
             if verdict in {"ok", "weak"}:
                 break
+        if row["verdict"] not in {"ok", "weak"} and len(trail) > 1:
+            row["note"] = "；".join(trail)
         results.append(row)
         print(f"{name[:22]:<22} {row['verdict']:<6} {str(row['final_url'])[:38]:<38} "
               f"{str(row['title'])[:34]}")
@@ -313,4 +441,7 @@ def run(args) -> int:
 
 
 if __name__ == "__main__":
+    # 进度行里有日文标题，`ソフト・オン・デマンド` 的 `・` 在 GBK 控制台上编不出来，
+    # 一个 print 就能把整批跑掀掉。证据在 CSV（UTF-8）里，进度行糊掉无所谓。
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     raise SystemExit(job_main(build_parser, run))

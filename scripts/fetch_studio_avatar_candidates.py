@@ -23,7 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach.http import HttpRequest, HttpxTransport      # noqa: E402
-from peach.images import PAD, REJECT, classify, measure_image_size, pad_to_square  # noqa: E402
+from peach.images import REJECT, bake_square, classify, measure_image_size  # noqa: E402
 from peach.logo_provider import (  # noqa: E402
     POLICY_VERSION,
     LogoCandidateCache,
@@ -33,10 +33,11 @@ from peach.logo_provider import (  # noqa: E402
     provenance_now,
 )
 from peach.config import GENERATED_DIR  # noqa: E402
+from peach.social_links import twimg_tiers  # noqa: E402
 from peach.review_csv import read_rows, write_rows
+from peach.scripting import USER_AGENT
 
 RESOLVER = "https://unavatar.io/{platform}/{handle}?json"
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Peach/0.6"
 FIELDS = (
     "studio", "handle", "platform", "resolver_url", "resolved_url", "width",
     "height", "aspect", "verdict", "saved", "accepted", "confirmation",
@@ -68,6 +69,22 @@ def load_handles(path: Path | None) -> dict[str, str]:
         for row in read_rows(path)
         if (row.get("studio") or "").strip()
     }
+
+
+def download(http, urls: list[str], timeout: float) -> tuple[bytes, str]:
+    """按顺序试地址，第一个回 200 的就用；返回 (字节, 实际用的地址)。
+
+    原图地址不是每个账号都在（旧头像有过只留缩略图的），取不到就退回带尺寸后缀的那一份，
+    而不是让整个厂牌变成取图失败。
+    """
+    last = ""
+    for candidate in dict.fromkeys(urls):
+        response = http(HttpRequest("GET", candidate, {"User-Agent": USER_AGENT}),
+                        timeout, 8 << 20)
+        if response.status == 200 and response.body:
+            return response.body, candidate
+        last = f"HTTP {response.status}"
+    raise RuntimeError(last or "没有可用的头像地址")
 
 
 def resolve(http, platform: str, handle: str, timeout: float) -> str:
@@ -171,15 +188,16 @@ def main(argv: list[str] | None = None, *, transport=None) -> int:
                     record["content_state"] = "empty"
                     rows.append(record)
                     continue
+                tiers = twimg_tiers(url)
+                url = tiers[0]
                 record["resolved_url"] = url
                 health["resolved"] += 1
                 payload = None if args.refresh else cache.lookup(url)
                 if payload is not None:
                     health["snapshot_reused"] += 1
                 else:
-                    image = http(HttpRequest("GET", url, {"User-Agent": USER_AGENT}),
-                                 args.timeout, 8 << 20)
-                    payload = image.body
+                    payload, url = download(http, tiers, args.timeout)
+                    record["resolved_url"] = url
                     health["fetched"] += 1
                     health["bytes_fetched"] += len(payload)
                 source_raster = inspect_logo(payload)
@@ -200,13 +218,14 @@ def main(argv: list[str] | None = None, *, transport=None) -> int:
             object_path = cache.store(url, payload, source_raster)
             width, height = source_raster.width, source_raster.height
             verdict, aspect, reason = classify(width, height)
-            if verdict == PAD:
-                # 长条形 Logo 补背景填成正方形，而不是丢掉——界面本来就按方框渲染。
-                padded = pad_to_square(payload)
-                if padded is None:
-                    verdict, reason = REJECT, "补方失败"
+            if verdict != REJECT:
+                # 厂牌标识落盘前一律烤成不透明方图：页面三处取图位都是 cover 的方框。
+                # 已经是不透明方图的原字节返回，长条补背景，带透明的配白底。
+                baked = bake_square(payload)
+                if baked is None:
+                    verdict, reason = REJECT, "烤方图失败"
                 else:
-                    payload = padded
+                    payload = baked
             final_raster = inspect_logo(payload) if verdict != REJECT else None
             saved = ""
             content_state = "rejected"

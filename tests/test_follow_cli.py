@@ -43,11 +43,67 @@ class FollowCliTests(unittest.TestCase):
         args = self.parser.parse_args([
             "follow", "--db", str(self.db),
             "--sources-root", str(self.root / "sources"),
-            "--secrets-root", str(self.root / "secrets"), *argv])
+            "--secrets-root", str(self.root / "secrets"),
+            "--shared-root", str(self.root / "shared"), *argv])
         buffer = io.StringIO()
         with contextlib.redirect_stdout(buffer):
             code = args.handler(args)
         return code, buffer.getvalue()
+
+    def test_creds_sees_the_shared_copy_like_the_web_surface_does(self):
+        """另一台机器上配好的可同步字段，命令行这边也必须算「已配置」。
+
+        只有 Web 那份仓库带上共享根和可同步字段声明、CLI 直接
+        `CredentialStore(secrets_root)` 的话，同一份 rule34.xxx key 网页里能用、
+        `peach follow check` 却报缺凭据，而错误里根本看不出是这个原因。
+        """
+        shared = self.root / "shared" / "secrets" / "follow"
+        shared.mkdir(parents=True)
+        (shared / "rule34xxx.json").write_text(
+            '{"user_id": "42", "api_key": "sekret"}', encoding="utf-8")
+        code, output = self._run("creds")
+        self.assertEqual(code, 0)
+        line = next(row for row in output.splitlines()
+                    if row.startswith("rule34xxx"))
+        self.assertIn("已配置", line)
+        self.assertIn("api_key", line)
+        self.assertNotIn("sekret", output, "凭据值不进任何输出")
+
+    def test_creds_does_not_take_a_non_syncable_field_from_the_shared_copy(self):
+        """f95zone 的 cookie 绑会话与客户端 IP，声明为不可同步；共享副本里有也不算。"""
+        shared = self.root / "shared" / "secrets" / "follow"
+        shared.mkdir(parents=True)
+        (shared / "f95zone.json").write_text('{"cookie": "xf=1"}', encoding="utf-8")
+        _, output = self._run("creds")
+        line = next(row for row in output.splitlines() if row.startswith("f95zone"))
+        self.assertIn("未配置", line)
+
+    def test_creds_states_each_requirement_from_the_shared_guide(self):
+        """要不要凭据照 `CREDENTIAL_GUIDE` 说，命令行不另写一套说明。
+
+        手写一份说明就会漂：写着「f95zone 与 simpcity 的 cookie 只在读登录后内容时
+        需要」，而 simpcity 已判为 `blocked`、根本不收 cookie——照那句话配是白费功夫。
+        """
+        _, output = self._run("creds")
+        lines = {row.split()[0]: row for row in output.splitlines() if row.strip()}
+        self.assertIn("必须配置", lines["rule34xxx"])
+        self.assertIn("可选", lines["f95zone"])
+        self.assertIn("不需要凭据", lines["kemono"])
+        self.assertIn("机器人验证", lines["simpcity"])
+        self.assertNotIn("simpcity 的 cookie", output)
+
+    def test_creds_points_at_the_shared_copy_for_a_backfilled_field(self):
+        """从共享副本回填的字段要点名：用户得知道该去哪台机器上撤。"""
+        shared = self.root / "shared" / "secrets" / "follow"
+        shared.mkdir(parents=True)
+        (shared / "rule34xxx.json").write_text(
+            '{"user_id": "42", "api_key": "sekret"}', encoding="utf-8")
+        _, output = self._run("creds")
+        line = next(row for row in output.splitlines()
+                    if row.startswith("rule34xxx"))
+        self.assertIn("来自共享副本", line)
+        self.assertIn(str(self.root / "shared"), output)
+        self.assertNotIn("sekret", output, "凭据值不进任何输出")
 
     def test_add_derives_the_url_and_semantics_per_provider(self):
         code, output = self._run("add", "--provider", "f95zone", "--ref", "50685")
@@ -121,6 +177,72 @@ class FollowCliTests(unittest.TestCase):
             code, output = self._run("check")
         self.assertEqual(code, 1)
         self.assertIn("HTTP 503", output)
+
+    def test_check_learns_an_official_author_handle_like_the_web_surface_does(self):
+        """命令行抓完也要学作者别名，否则同一个人还是显示成两个作者。
+
+        只有 `/api/follow/check` 学的话，`peach follow check` 抓 fanbox 那条来源
+        什么都不记，而两处都叫「检查更新」，没有任何地方说明差别在哪。
+        """
+        self._run("add", "--provider", "fanbox", "--ref", "ffxivinitiala")
+        fetch = _fetch(provider="fanbox", ref="ffxivinitiala",
+                       request_url="https://ffxivinitiala.fanbox.cc/",
+                       candidates=(
+                           FollowCandidate(provider="fanbox", external_id="1",
+                                           title="A", author="Initiala"),))
+        with mock.patch.object(follow_cli, "build_connector") as factory:
+            factory.return_value.fetch.return_value = fetch
+            code, output = self._run("check")
+        self.assertEqual(code, 0)
+        self.assertIn("记下别名 ffxivinitiala → Initiala", output)
+        connection = sqlite3.connect(self.db)
+        rows = connection.execute(
+            "SELECT alias_key,canonical_key,source FROM follow_author_alias "
+            "ORDER BY alias_key").fetchall()
+        connection.close()
+        self.assertEqual(rows, [("ffxivinitiala", "initiala", "official:fanbox"),
+                                ("initiala", "initiala", "official:fanbox")])
+
+    def test_check_older_pages_back_only_where_paging_actually_works(self):
+        """`--older` 往回抓一页；官方渠道没有历史分页，不会白打请求。"""
+        self._run("add", "--provider", "kemono", "--ref", "fanbox/1")
+        self._run("add", "--provider", "fanbox", "--ref", "ffxivinitiala")
+        seen = []
+
+        def factory(provider, **kwargs):
+            connector = mock.Mock()
+
+            def fetch(ref, *, etag=None, last_modified=None, page=0):
+                seen.append((provider, page))
+                return _fetch(provider=provider, ref=ref,
+                              request_url=f"https://{provider}.test/{ref}")
+
+            connector.fetch.side_effect = fetch
+            return connector
+
+        with mock.patch.object(follow_cli, "build_connector", factory):
+            code, output = self._run("check", "--older")
+        self.assertEqual(code, 0)
+        self.assertEqual(seen, [("kemono", 1)], "fanbox 不支持往回翻页")
+        self.assertIn("第 1 页", output)
+
+    def test_force_skips_the_conditional_cursors(self):
+        self._add_one()
+        seen = []
+
+        def factory(provider, **kwargs):
+            connector = mock.Mock()
+
+            def fetch(ref, *, etag=None, last_modified=None, page=0):
+                seen.append((etag, last_modified))
+                return _fetch(not_modified=True)
+
+            connector.fetch.side_effect = fetch
+            return connector
+
+        with mock.patch.object(follow_cli, "build_connector", factory):
+            self._run("check", "--force")
+        self.assertEqual(seen, [(None, None)])
 
     def test_check_skips_disabled_sources(self):
         self._run("add", "--provider", "rule34video", "--ref", "lazyprocrastinator")

@@ -11,11 +11,17 @@ from __future__ import annotations
 import argparse
 import sqlite3
 import time
-import urllib.parse
+import sys
 from datetime import datetime
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
 from peach.config import DATABASE_PATH, GENERATED_DIR
+from peach.scripting import open_readonly
 from peach.fc2_similarity import POLICY_VERSION, build_candidates, fc2_video_id
 from peach.review_csv import read_rows, write_rows
 
@@ -84,9 +90,7 @@ def collection_ids(rows: list[dict]) -> set[str]:
 
 
 def load_assets(database: Path) -> list[dict]:
-    uri = "file:" + urllib.parse.quote(database.resolve().as_posix()) + "?mode=ro"
-    connection = sqlite3.connect(uri, uri=True)
-    connection.row_factory = sqlite3.Row
+    connection = open_readonly(database)
     try:
         return [dict(row) for row in connection.execute(
             "SELECT id,code,name,size,duration,width,height,hash FROM asset "
