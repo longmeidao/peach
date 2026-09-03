@@ -2294,10 +2294,17 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('data-junk-operation="dispose" title="移入回收站" aria-label="移入回收站"')
         self.assertPageContains('data-junk-reveal title="在资源管理器中显示"')
         self.assertPageContains("revealSource(id,status,{button:reveal})")
-        self.assertPageContains('<span>打开所在位置</span>')
+        self.assertPageContains('<span>打开位置</span>')
         self.assertPageContains("['dismiss-junk','不是垃圾','check']")
         self.assertPageContains("<span>移入回收站</span>")
         self.assertPageContains('body[data-density="dense"] .junkcard .junkactions button span{display:none}')
+        # 三个按钮等宽，各自居中就让图标横向参差；靠左起排它们才落在一条竖线上。
+        # 紧凑密度隐掉标签后只剩图标，那时才回到居中。
+        junk_button = self.css.split(".junkactions button{", 1)[1].split("}", 1)[0]
+        self.assertIn("justify-content:flex-start", junk_button)
+        self.assertNotIn("justify-content:center", junk_button)
+        self.assertPageContains(
+            'body[data-density="dense"] .junkcard .junkactions button{justify-content:center}')
         self.assertPageContains("function renderJunkNavigation(data)")
         self.assertPageContains("['video','视频','play'],['image','图片','pics']")
         self.assertPageContains("['archive','压缩包','folder-open'],['audio','音频','volume-2']")
