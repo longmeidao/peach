@@ -101,6 +101,30 @@
   直接查标签兜底。f95zone 的 `latest_data.php` 只索引 Latest Updates 的五个分类，艺术家的 Collection 帖
   只有带登录 cookie 的站内搜索看得到（无 cookie 时 `/search/` 返回 403）；没有 cookie 就跳过它并保留
   Google 外链，不把「查不到」写成「站上没有」。
+- **jae.tokyo 的女优名录是第三个来源**（用户 2026-09-04 指定，同一站的厂牌名录见下一节）。三届的资料页
+  各不相同：2014 是 `jae2014/actress/NNN.html`，社媒和博客混在正文的 `<a>` 里；2015 是
+  `jae2015/actress.html` 的 `offActress` 弹层，`actressLinkBtn` 一个按钮一条链接；2017 是
+  `jae2017/actress/NNN.html`，人像在 `img_area`、链接在 `link_area`。391 页跑一遍，命中账本 145 人。
+- **`jae2014/*` 直连会被重置**（`WinError 10054`），所以 jae 进了 `PROXY_SOURCES`；另两届直连能通，但同
+  一个来源不分届走两套出口没有意义。
+- **注释里的链接不算这个人的。** AIKA 那页 2017 的 HTML 注释里躺着 園田みおん 的博客和 神咲詩織 的
+  Instagram——上一届的模板被复制过来注掉了。按 `<a>` 硬取会把三个人的账号装到一个人头上，解析前先剥注释。
+- **页面写明是博客的就按博客算，不看主机名。** `classify()` 只认 `BLOG_HOSTS`，而
+  `alicejapan.co.jp` 的子域、`plaza.rakuten.co.jp`、`takasyo.blog.jp` 都是本人博客却不在名单里；页面上
+  那行「公式ブログ」比主机名更接近事实。标签照账本里现有那 23 条写「博客」，页面另外点出博客名时
+  （`公式ブログ「旬の果実」`）才带上那个名字，`オフィシャルブログ` 这类泛称原样落进去会让同一件东西在
+  界面上出现三种写法（`harvest_directory_links.owned_link`）。
+- **主机名一律小写。** jae 的资料页上写着 `https://Instagram.com/…`，`entity_link` 的 UNIQUE 只认字面，
+  照抄进去就是同一个账号的第二条记录（`social_links.canonical_url`）。路径和 handle 不动——X 的 handle
+  大小写不敏感，但那是用户当初复核过的写法。
+- 装入结果：队列 68 条，逐条验活后装上 53 条（`entity_link` 646 → 699，备份
+  `ledger.pre-jae-performer-links-20260904.db`，`integrity_check ok`），15 条死链跳过。另有 10 条
+  `conflict`（账本里同平台是另一个 handle：三田杏、初美沙希×2、加藤桃香、园田美樱、岬奈奈美、新有菜、
+  明里䌷、神ユキ、纱仓真菜）和 1 条「需人工消歧」留在 `-review.csv` 里等人核。
+- **名录人像进的是头像竞赛，不是另一条装入路径。** `-portraits.csv` 由
+  `harvest_social_avatars.py` 的 `jae` 路线读走，和 X、babepedia 的候选在同一套内容寻址缓存里按
+  短边排名比大小；jae 的 600×1000 竖版人像稳赢 X 的 240×240，145 条人像里 5 人产生候选、装上 4 张
+  （其余早已有头像，`load_targets` 不收）。竖版全身宣传照的取景交给人脸 sidecar，见 REUSE.md「人脸取景」。
 
 ## 厂牌名与厂牌标识
 
