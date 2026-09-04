@@ -178,8 +178,11 @@
   .entityhero{grid-template-columns:minmax(0,1fr);gap:12px;padding:8px 0 18px;justify-items:center;text-align:center}
   .entityportrait{width:112px}.entityhero h2{font-size:var(--fs-xl)}
   .entityhero>div:last-child{width:100%}
-  /* 标题行是 flex，`text-align:center` 管不到它，得自己居中。 */
+  /* 标题行是 flex，`text-align:center` 管不到它，得自己居中。
+     统称的开关和菜单项按本项目的 44px 命中区放大，桌面的 32px 是 Geist 控件高度。 */
   .entitytitle{justify-content:center}
+  .npbtn{width:44px;height:44px}
+  .npmenu button{min-height:44px}
   .entityhero .alias{margin-bottom:10px}
   .entityhero .entitylinks{justify-content:center;margin-top:13px}
   .stats h2{font-size:var(--fs-xl)}.stats .insightcopy h2{font-size:var(--fs-3xl)}

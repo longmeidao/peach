@@ -3875,6 +3875,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "menu.hidden=true;menu.style.left='';menu.style.top='';menu.style.maxHeight='';")
 
+    def test_entity_name_picker_keeps_a_touch_target_on_phones(self):
+        self.assertPageContains(".npbtn{width:44px;height:44px}")
+        self.assertPageContains(".npmenu button{min-height:44px}")
+
     def test_entity_name_picker_writes_through_the_server_before_repainting(self):
         self.assertCode("const rename=(from,to)=>api('/api/entity-name',")
         self.assertCode(
