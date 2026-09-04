@@ -156,6 +156,18 @@ class UrlHostTests(unittest.TestCase):
         self.assertIn("paheal-cdn.net", paheal.hosts)
         self.assertNotIn("rule34.paheal.net", paheal.hosts)
 
+    def test_rule34video_media_is_allowed_to_land_on_its_cdn(self):
+        """正片不在站内：`/get_file/…` 会 302 到 `*.boomio-cdn.com`。
+
+        2026-09-04 实测四条候选分别落在 eu-cdn05／06／08／11-prem，最终一跳才回
+        206 `video/mp4`。少了这个后缀，媒体代理在跳出白名单那一步拒收，整站的
+        rule34video 视频一条都放不出来。站点主机仍然要留着——签名地址是从详情页
+        读出来的，那一步按 `hosts` 校验。
+        """
+        video = follow_providers.PROVIDERS["rule34video"]
+        self.assertEqual(video.url_hosts, ("rule34video.com",))
+        self.assertEqual(video.hosts, ("rule34video.com", "boomio-cdn.com"))
+
     def test_subdomains_and_www_resolve_to_the_registered_source(self):
         for host, expected in (
             ("fanbox.cc", "fanbox"),

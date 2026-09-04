@@ -239,6 +239,30 @@ class ProxyUpstreamTests(unittest.TestCase):
         self.addCleanup(upstream.close)
         self.assertEqual(upstream.read(), b"frames")
 
+    def test_rule34video_is_followed_out_to_its_cdn(self):
+        """rule34video 的 `/get_file/…` 只是签名入口，正片在 `*.boomio-cdn.com`。
+
+        这一跳没有凭据可泄露（这条媒体不带 `headers`），拦住它的唯一后果是每条
+        视频都停在 502。CDN 后缀登记在 `follow_providers` 的 `hosts` 里，代理照样
+        逐跳校验。
+        """
+
+        def handler(request):
+            if request.url.host == "rule34video.com":
+                return httpx.Response(302, request=request, headers={
+                    "location": "https://eu-cdn05-prem.boomio-cdn.com/x.mp4"})
+            return httpx.Response(206, request=request,
+                                  stream=httpx.ByteStream(b"frames"),
+                                  headers={"content-type": "video/mp4"})
+
+        target = ResolvedFollowMedia(
+            "https://rule34video.com/get_file/1/1080p.mp4/?v-acctoken=fresh",
+            "https://rule34video.com/video/1/work/",
+            allowed_hosts=("rule34video.com", "boomio-cdn.com"))
+        upstream = open_upstream(self._client(handler), "GET", target, incoming={})
+        self.addCleanup(upstream.close)
+        self.assertEqual(upstream.read(), b"frames")
+
     def test_an_upstream_error_page_is_refused_instead_of_forwarded(self):
         """403 页面、限流提示、错误 JSON 转发给播放器没有用处，只会把上游的
         主机名和提示语抄给浏览器。"""

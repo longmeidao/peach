@@ -86,7 +86,12 @@ PROVIDERS: dict[str, ProviderSpec] = {
         # 详情页署名作者数拦截同类条目；这一条只让已经入库的旧候选立即从浏览面消失。
         _spec("rule34video", "Rule34Video",
               source_url="https://rule34video.com/models/{ref}/",
-              hosts=("rule34video.com",), url_hosts=("rule34video.com",),
+              # 正片不在站内：详情页给的 `/get_file/…` 会 302 到 `*.boomio-cdn.com`
+              # （2026-09-04 实测 eu-cdn05／06／08／11-prem 四个节点，最终一跳才是
+              # 206 `video/mp4`）。少了这个后缀，媒体代理会在跳出白名单那一步拒收，
+              # 整站的视频一条都放不出来。
+              hosts=("rule34video.com", "boomio-cdn.com"),
+              url_hosts=("rule34video.com",),
               priority=30, backfill=True,
               excluded_external_ids=("4533145",)),
         _spec("rule34xxx", "Rule34.xxx",
