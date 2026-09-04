@@ -1,4 +1,5 @@
 """creator / performer 跨类重复身份审计与兼容投影回归。"""
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -371,6 +372,94 @@ class StageNameDuplicateTests(unittest.TestCase):
             "SELECT count(*) FROM asset_entity WHERE entity_id=20").fetchone()[0], 2)
         self.assertIn("飯岡かなこ", [row[0] for row in self.con.execute(
             "SELECT alias FROM entity_alias WHERE entity_id=20")])
+
+
+class DirectoryIdentityTests(unittest.TestCase):
+    """名录页号是身份，比名字和别名都强：换过艺名的人靠它才认得出来。"""
+
+    LINK = "http://www.prestige-av.com/special/shiraishi_ako.php"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db = Path(self.tmp.name).resolve() / "ledger.db"
+        upgrade(self.db, ROOT / "migrations")
+        self.con = sqlite3.connect(self.db)
+        self.con.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,code)"
+            " VALUES(?,'local',?,?,'video',?)",
+            [(1, "/x/1.mp4", "1.mp4", "ABP-951"), (2, "/x/2.mp4", "2.mp4", "MIZD-998")])
+        self.con.executemany(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(?,'performer',?,?,'t','t')",
+            [(40, "白石亚子", "白石亚子"), (41, "Ako Shiraishi", "ako shiraishi")])
+        self.con.executemany(
+            "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,confidence)"
+            " VALUES(?,?,?,'r18:performer',0.9)",
+            [(40, "白石あこ", "白石あこ"), (41, "平沢すず", "平沢すず")])
+        self.con.executemany(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+            " VALUES(?,?,'performer','r18:performer',0.9)",
+            [(1, 40), (2, 41)])
+        self.con.commit()
+
+    def tearDown(self):
+        self.con.close()
+        self.tmp.cleanup()
+
+    def install(self, entity_id, evidence, url=None):
+        self.con.execute(
+            "INSERT INTO entity_link(entity_id,link_kind,label,url,hostname,is_sensitive,"
+            "metadata_json,created_at,updated_at)"
+            " VALUES(?,'official','T-POWERS',?,'www.prestige-av.com',0,?,'t','t')",
+            (entity_id, url or f"{self.LINK}?{entity_id}",
+             json.dumps({"evidence": evidence}, ensure_ascii=False)))
+        self.con.commit()
+
+    def test_two_entities_on_one_directory_page_are_one_person(self):
+        """艺名换过一次，账本各存了一条；两侧各按自己的名字检索，落到同一页。"""
+        self.install(40, "minnano-av actress37250 资料表「公式サイト」；经「白石あこ」检索命中")
+        self.install(41, "minnano-av actress37250 资料表「公式サイト」；经「平沢すず」检索命中")
+        rows = collect(self.con)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["keep_name"], "白石亚子")
+        self.assertEqual(rows[0]["drop_name"], "Ako Shiraishi")
+        self.assertEqual(rows[0]["evidence"], "名录页号")
+        self.assertIn("actress37250", str(rows[0]["match_evidence"]))
+
+    def test_the_localized_name_is_the_one_that_survives(self):
+        """用户 2026-09-04 的口径：用更知名的名字，其余叫法留在别名里。"""
+        self.install(40, "minnano-av actress37250 经「白石あこ」检索命中")
+        self.install(41, "minnano-av actress37250 经「平沢すず」检索命中")
+        apply_rows(self.con, collect(self.con))
+        self.con.commit()
+        self.assertIsNone(self.con.execute("SELECT 1 FROM entity WHERE id=41").fetchone())
+        aliases = [row[0] for row in self.con.execute(
+            "SELECT alias FROM entity_alias WHERE entity_id=40")]
+        self.assertIn("Ako Shiraishi", aliases)
+        self.assertIn("平沢すず", aliases)
+
+    def test_two_different_pages_are_two_people(self):
+        """同一家事务所的两位女优也会共用一条官网 URL——URL 不是身份，页号才是。"""
+        self.install(40, "minnano-av actress37250 经「白石あこ」检索命中", url=self.LINK)
+        self.install(41, "minnano-av actress99999 经「平沢すず」检索命中", url=self.LINK)
+        self.assertEqual(collect(self.con), [])
+
+    def test_a_link_without_a_page_number_is_not_evidence(self):
+        self.install(40, "X @shiraishi 简介外链")
+        self.install(41, "X @suzu 简介外链")
+        self.assertEqual(collect(self.con), [])
+
+    def test_three_entities_on_one_page_are_left_to_a_human(self):
+        """三条要先决定并的顺序，那不是脚本该替人做的。"""
+        self.con.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(42,'performer','平泽铃','平泽铃','t','t')")
+        self.con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+            " VALUES(1,42,'performer','r18:performer',0.9)")
+        for entity_id in (40, 41, 42):
+            self.install(entity_id, f"minnano-av actress37250 经「{entity_id}」检索命中")
+        self.assertEqual(collect(self.con), [])
 
 
 if __name__ == "__main__":

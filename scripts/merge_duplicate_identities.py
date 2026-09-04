@@ -6,7 +6,10 @@ r"""同一个人被记成两条实体的去重（跨 kind 与同 kind 两类）�
 可以并存。实际发生了 35 组：卡片上的头像和名字会一个跳 `/performers/x`、另一个跳
 `/creators/x`，统计、筛选和资料页也各算各的。
 
-第三类是艺名重复：一个名字已经作为别名登记在另一条实体上，它却还自己占着一条实体。
+第三类是名录页重复：两条实体各按自己的名字检索，链接安装时落到同一个 minnano-av
+名录页，那就是站方认为的同一个人。判据见 `_directory_identity_plan`。
+
+第四类是艺名重复：一个名字已经作为别名登记在另一条实体上，它却还自己占着一条实体。
 判据与闸门见 `_stage_name_plan`。
 
 两条来路很清楚：
@@ -52,6 +55,7 @@ creator** 的实体，`(kind, normalized_name)` 唯一约束拦不住它：`小�
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sqlite3
 import sys
@@ -83,6 +87,12 @@ JOINER_TOKENS = frozenset({"&", "＆", "+", "＋", "/", "／", "、", "，", ","
 
 #: 目录名投影的唯一来源标记：没有别名、没有外部引用，只有从路径投影出来的断言。
 PROJECTION_SOURCES = frozenset({"legacy:asset"})
+
+#: 链接安装把名录页号写进了自由文本证据里（`entity_link.metadata_json` 的 `evidence`）。
+#: minnano-av 每位女优一页，页号就是身份——比名字强，也比别名强：两条实体各按自己的
+#: 名字检索、落到同一页，说明站方认为这是同一个人。页号本身该升成 `entity_external_ref`，
+#: 那样唯一约束会先一步拦住重复；在那之前只能从这段文本里读回来。
+MINNANO_ACTRESS = re.compile(r"minnano-av\s+actress(\d+)")
 
 #: 能证明「这个名字是那个人的另一个艺名」的别名来源。本地化、简繁转换和系列译名
 #: 写的别名说的是同一个名字的另一种写法，不是另一个艺名，不能拿来判同人。
@@ -322,7 +332,76 @@ def collect(connection: sqlite3.Connection) -> list[dict[str, object]]:
     ):
         refs.setdefault(int(row["entity_id"]), {})[str(row["provider"])] = str(
             row["external_id"])
+    directory = _directory_identity_plan(entity_rows, connection, engaged)
+    plan.extend(directory)
+    engaged |= {int(row["keep_id"]) for row in directory}
+    engaged |= {int(row["drop_id"]) for row in directory}
     plan.extend(_stage_name_plan(entity_rows, aliases, stage_aliases, refs, engaged))
+    return plan
+
+
+def _directory_identity_plan(
+    entity_rows: list[sqlite3.Row],
+    connection: sqlite3.Connection,
+    engaged: set[int],
+) -> list[dict[str, object]]:
+    """两条实体的官网链接是按同一个 minnano-av 名录页装上的，那就是同一个人。
+
+    实测 `白石亚子`(#8204) 与 `Ako Shiraishi`(#8435)：前者按「白石あこ」检索、后者按
+    「平沢すず」检索，两条都落到 actress37250。艺名换过一次，账本就各存了一条。
+
+    这条证据压过 `_stage_name_plan` 的「别名互不相识」那道闸——那道闸防的是规范名写错人，
+    而名录页号恰恰能分清「写错了人」和「同一个人的两个艺名」：写错人时两侧不会落到同一页。
+
+    保留规范名已经本地化的那一侧（用户 2026-09-04 的口径：用更知名的名字，其余留作别名），
+    两侧都本地化或都没有时保留作品多的一侧。同一页挂三条以上一律交人工：那要先决定
+    并的顺序，不是脚本该替人做的。
+    """
+    by_id = {int(row["id"]): row for row in entity_rows}
+    owners: dict[str, set[int]] = {}
+    for entity_id, payload in connection.execute(
+        "SELECT entity_id,metadata_json FROM entity_link ORDER BY entity_id"
+    ):
+        if int(entity_id) not in by_id:
+            continue
+        try:
+            evidence = str(json.loads(payload or "{}").get("evidence") or "")
+        except (TypeError, ValueError):
+            continue
+        found = MINNANO_ACTRESS.search(evidence)
+        if found:
+            owners.setdefault(found.group(1), set()).add(int(entity_id))
+
+    plan: list[dict[str, object]] = []
+    for actress, ids in sorted(owners.items()):
+        usable = sorted(ids - engaged)
+        if len(usable) != 2:
+            continue
+        first, second = (by_id[entity_id] for entity_id in usable)
+        localized = [row for row in (first, second)
+                     if not str(row["canonical_name"]).isascii()]
+        if len(localized) == 1:
+            keep = localized[0]
+            why = "保留已本地化的规范名"
+        else:
+            keep = max((first, second), key=lambda row: (int(row["links"]), -int(row["id"])))
+            why = "两侧规范名同为本地化或同为罗马字，保留作品多的一侧"
+        drop = second if keep is first else first
+        plan.append({
+            "normalized_name": drop["normalized_name"],
+            "match_evidence": f"两侧官网链接按同一个 minnano-av 名录页 actress{actress} 装上；{why}",
+            "keep_kind": keep["kind"],
+            "keep_id": keep["id"],
+            "keep_name": keep["canonical_name"],
+            "keep_links": keep["links"],
+            "drop_kind": drop["kind"],
+            "drop_id": drop["id"],
+            "drop_name": drop["canonical_name"],
+            "drop_links": drop["links"],
+            "keep_sources": keep["sources"] or "",
+            "drop_sources": drop["sources"] or "",
+            "evidence": "名录页号",
+        })
     return plan
 
 
