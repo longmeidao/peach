@@ -35,7 +35,7 @@
 
 合计：**25 项开放需求**，其中 6 项已有骨架，19 项尚未实现。已完成的需求不在这里留痕，去 Git 历史查。
 
-## 待执行的操作（28 项）
+## 待执行的操作（30 项）
 
 需要另行授权、外部条件或人工判断才能做的具体操作与复核批次，比上面的需求细一层；做完就删，不在这里留痕。待办只放这一处：`docs/STATUS.md` 每次会话开头都要读，队列不该常驻在那种入口文件里。
 
@@ -66,4 +66,6 @@
 25. 其他厂牌官网的厂标与演员资料广度扫描（SOD、FALENO、Attackers、S1、Moodyz 等），用户 2026-09-04 定为「先做 b 看效果」之后的下一轮。
 26. 用 javtiful 的 `/ja/actress/<slug>` 补演员的罗马字↔日文配对：315 页约 7560 位，切语言前缀就出日文名。厂牌名不随语言切换，这条只服务演员别名。
 27. 37 位演员在 javdb 上只有日文名（`同形`），另有 5 位未取得，中文名要换来源：javtiful 的 `/ja/actress/<slug>`（第 26 条）或 javdatabase 的 idol 页。复核产物 `peach-data/review/javdb-cn-names-20260904.csv` 逐行带 verdict 和证据，可直接筛。
-28. `peach-data/review/composite-names-20260904.csv` 里还剩 28 条 creator 规范名带括号，括号里是读音或罗马音（`Egami(えがみ)`、`永地(eichi)`、`猫屋(NEKOYA)`），用户定了不拆——它们不像艺名那样各自独立，是同一个名字的注音。同一份 CSV 里 575 条 tag 是角色的作品出处消歧，10 条 series 括号里是厂牌或载体消歧（拆了会把三个 `AV DEBUT` 撞成一个），都不要动。剩下真正待判的只有 performer 规范名 `Mana(23)` 一条：数字是去重后缀还是名字的一部分要看源站。
+28. macOS launchd 标签与 bundle ID 改为中性的 `io.github.longmeidao.peach.*`（用户 2026-09-04 决定，现值由维护者域名反写）。涉及 `src/peach/tray.py`、`scripts/build_macos_app.py`、`scripts/install_macos_agent.py`、`scripts/setup_macos_port80.sh`、`docs/OPERATIONS.md`、`tests/test_tray.py`。代码改动在 Windows 就能做并跑 `sync` 域；生效必须在 Mac 上：`launchctl bootout gui/$(id -u)/<旧标签>` 卸旧 agent，重跑 `install_macos_agent.py` 与 `setup_macos_port80.sh` 装新标签，再核对菜单栏进程、80 端口转发与 `/healthz`。这是换生产入口，Mac 上执行前要在同一轮拿到用户确认。
+29. 验收并集成 `agent/claude/oss-init-wizard`（工作树 `peach-worktrees/claude-oss-init-wizard`，Fable 工作者 2026-09-04 在跑，报告只回给了已耗尽额度的协调者会话，接手者按下面清单自己验）：① 分支上 `-Scope full` 全绿，唯一允许的红是 `.claude/worktrees/` 残留目录那条；② `peach init` 无参数且 stdin 为 TTY 时进入问答，问数据根、一个本地媒体目录、监听范围、端口、mDNS 名，不问复制与网盘；给任何参数、非 TTY 或 `--no-input` 时行为与原非交互路径一字不变，`--from-existing` 不动；③ 设置文件只写用户声明的来源，Windows 写 `[media.locations] local = <路径>`、mounts 留空，macOS 声明根 `R:\media` 加 `[media.mounts] local = <路径>`；有测试证明只声明 `local` 的配置能 `serve` 且 `/api/items`、`/healthz` 200；④ 扫描核心从 `scripts/ledger.py` 搬进 `src/peach/`，脚本改薄委托，`peach scan <来源ID> [根目录]` 可用，`check_scan_target` 一致性门槛保留；⑤ 问答函数可注入、可复用，报告或 docstring 写明 GUI 引导要调哪个函数；⑥ README 双语「安装」节以问答为主线且章节对应，ADR-0023 第 1 阶段补句，本文件第 11 条只留剩余两件。全部成立才 `agent_worktree.py integrate --branch agent/claude/oss-init-wizard`，随后推送、看 CI、`prune --apply`。GUI 引导排在它之后：托盘首启发现未配置就打开浏览器到现有「还没初始化」页，那一页升级成表单，提交后调同一套逻辑。
+30. `peach-data/review/composite-names-20260904.csv` 里还剩 28 条 creator 规范名带括号，括号里是读音或罗马音（`Egami(えがみ)`、`永地(eichi)`、`猫屋(NEKOYA)`），用户定了不拆——它们不像艺名那样各自独立，是同一个名字的注音。同一份 CSV 里 575 条 tag 是角色的作品出处消歧，10 条 series 括号里是厂牌或载体消歧（拆了会把三个 `AV DEBUT` 撞成一个），都不要动。剩下真正待判的只有 performer 规范名 `Mana(23)` 一条：数字是去重后缀还是名字的一部分要看源站。
