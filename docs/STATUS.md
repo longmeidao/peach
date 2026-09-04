@@ -18,7 +18,7 @@
 - 服务运行期不连 Stash，媒体解析只有 `FilesystemBackend` 一条路径（ADR-0021）；只剩两个离线导入脚本按需连它，见 `docs/STASH.md`。
 - 前端按 ADR-0022 以 Preact island 逐岛迁往 `frontend/`（Vite + TypeScript），产物 `web/dist/peach-ui.js` 进 Git、经 `/dist/{name}` 提供，`/quality-goals` 已迁；改前端需 Node 24+，见 `docs/FRONTEND.md`。
 - 本机运行 Python 3.14；`requires-python` 下限 3.12，GitHub Actions 同时测 3.12 与 3.14；Windows FFmpeg/ffprobe 位于 `peach-data/tools/ffmpeg`，macOS 走 PATH。
-- 发行名 `peach`，目录名 `peach-app`；两台机器的 venv 各跑一次 `pip uninstall -y peach-app && pip install -e .`，Windows 与 macOS 均未执行。
+- 发行名 `peach`，目录名 `peach-app`；两台机器的 venv 各跑一次 `pip uninstall -y peach-app && pip install -e .`，Windows 已执行（2026-09-04），macOS 未执行。
 
 ## 已核验能力
 
