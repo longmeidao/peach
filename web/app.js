@@ -2551,8 +2551,12 @@ function showManagementBody({manage=true,placeholder=''}={}){
   const next=skeletonKeyOf(placeholder);
   if(!next||next!==painted)$('#stats').innerHTML=placeholder;
 }
+/* 铺开索引页与资料页。这一屏盖住目录，所以在这里收掉目录的筛选芯片，与管理页那侧的
+   `enterManagementSurface()` 对称：索引页此后不再重画芯片，画上去的那条会一直留着。
+   `renderCombo()` 自己也拦得住（它先问过屏幕），两侧都要有——一个负责当场擦掉，
+   一个负责之后谁都别再画上去。 */
 function showIndexLoading(label){
-  $('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';
+  $('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';$('#combo').innerHTML='';
   $('#count').textContent='';$('#loadSentinel').hidden=true;$('#shortsSec').hidden=true;
   $('#index').innerHTML=pageSkeletonHtml(label,{cards:true});
 }
