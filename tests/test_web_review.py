@@ -225,7 +225,12 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual(self._auto()["applied"], 0)
         self.assertEqual(sorted(self.queue_keys("metadata_fields")), ["AAA", "BBB"])
 
-    def test_auto_apply_ignores_community_sources_and_other_fields(self):
+    def test_auto_apply_fills_empty_fields_from_community_sources_too(self):
+        """补空不覆盖任何东西，唯一的风险由「番号在文件名里」那条管，与来源级别无关。
+
+        卡住 official 的代价是实测 76 条 javbus 补空候选全部滞留人工，补的都是账本里
+        空着的发行日期——没有可判断项，却要人逐条点过。白名单之外的字段仍然不走这条路。
+        """
         self._asset(94, "CCC-3", "CCC-3.mp4")
         self._asset(95, "DDD-4", "DDD-4.mp4")
         self.write_metadata_rows([
@@ -235,7 +240,48 @@ class ReviewQueueTests(unittest.TestCase):
             {"item_key": "DDD", "field": "performers", "current": "",
              "candidates": ["某人"], "code": "DDD-4"},
         ])
-        self.assertEqual(self._auto()["applied"], 0)
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(
+                con.execute("SELECT release_date FROM asset WHERE id=94").fetchone()[0],
+                "2015-02-20")
+            note = con.execute(
+                "SELECT note FROM review_decision WHERE item_key='CCC'").fetchone()[0]
+        finally:
+            con.close()
+        # 规则名要留下来源级别，否则日后回溯不出哪些值是 community 源补的。
+        self.assertEqual(json.loads(note)["rule"],
+                         "adr-0018-empty-field-single-community-source")
+
+    def test_community_candidate_never_challenges_an_official_written_value(self):
+        """按官方来：community 源推不翻 official 源已确认的值，这种行不进队列。
+
+        实测 26 条发行日期「冲突」里，账本现值全部由 official 源写入（r18dev 10、
+        aventertainment 9、libredmm 1），挑战方无一例外是 javbus。让人再判一遍等于把
+        `SOURCE_SPECS` 早就排好的信任模型丢回给人。
+        """
+        self._asset(96, "EEE-5", "EEE-5.mp4")
+        self._asset(97, "FFF-6", "FFF-6.mp4")
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute(
+                "INSERT INTO review_decision(category,item_key,status,note,updated_at) "
+                "VALUES('metadata_fields','EEE','approved',?,'2026-08-30T00:00:00Z')",
+                (json.dumps({"auto_applied": True, "source": "r18dev",
+                             "value": "2015-05-30"}),))
+            con.commit()
+        finally:
+            con.close()
+        self.write_metadata_rows([
+            # 现值由 r18dev 写入，javbus 想改成别的日期：按信任模型直接不进队列。
+            {"item_key": "EEE", "field": "release_date", "current": "2015-05-30",
+             "candidates": ["2015-08-30"], "code": "EEE-5", "source": "javbus"},
+            # 现值来路不明（没有落库记录）时，community 的异议仍然有意义。
+            {"item_key": "FFF", "field": "release_date", "current": "2014-01-01",
+             "candidates": ["2014-03-03"], "code": "FFF-6", "source": "javbus"},
+        ])
+        self.assertEqual(self.queue_keys("metadata_fields"), ["FFF"])
 
     def test_metadata_candidates_that_repeat_the_current_value_never_queue(self):
         """复核的成本是注意力：和现值一模一样的行会把真正要判的淹掉。
