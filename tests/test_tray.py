@@ -67,10 +67,15 @@ class TrayTests(unittest.TestCase):
             for name in ("peach-local-ca.crt", "peach.crt", "peach.key"):
                 (tls_dir / name).write_text("test-only", encoding="utf-8")
             specs = build_service_specs(lan_address="192.0.2.10", tls_dir=tls_dir)
-        owners = [spec for spec in specs if "--no-ledger-sync" not in spec.command]
+        owners = [spec for spec in specs if "--no-ledger-sync" not in spec.command
+                  and "--redirect-origin" not in spec.command]
         self.assertEqual(owners, [])
         for spec in specs:
-            self.assertIn("--no-ledger-sync", spec.command)
+            if spec.name == "https":
+                self.assertIn("--no-ledger-sync", spec.command)
+                self.assertNotIn("--no-mdns", spec.command)
+            else:
+                self.assertIn("--redirect-origin", spec.command)
 
     @unittest.skipUnless(
         os.name == "nt", "macOS 走 build_macos_service_specs，不发布 LAN 地址"
@@ -621,7 +626,7 @@ class MacMenuBarTests(unittest.TestCase):
             command = specs["https"].command
             self.assertIn("--ssl-certfile", command)
             # 两份服务只能有一份发布 mDNS，否则同名记录互相打架。
-            self.assertIn("--no-mdns", command)
+            self.assertNotIn("--no-mdns", command)
             self.assertTrue(str(specs["https"].verify).endswith("peach-local-ca.crt"))
 
 

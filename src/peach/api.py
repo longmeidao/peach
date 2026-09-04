@@ -263,14 +263,19 @@ def create_app(
     # 健康检查常被 HEAD 探测（`curl -I`、各种 uptime 工具）。本仓库其他公开端点
     # 都显式声明了 GET+HEAD，只有这个漏了，HEAD 会拿到 405。
     @app.api_route("/healthz", methods=["GET", "HEAD"])
-    def healthz() -> dict[str, Any]:
+    def healthz(ready: bool = False):
+        from .health import database_status, readiness
+        if ready:
+            result = readiness(settings)
+            return JSONResponse(result, status_code=200 if result["ready"] else 503,
+                                headers={"Cache-Control": "no-store"})
         # 不探测共享目录或迁移数据库；健康检查必须无副作用。
         ffmpeg = resolver.ffmpeg()
         read_only = bool(sync is not None and sync.read_only)
         return {"ok": True, "service": "peach-api", "version": __version__, "mode": "fastapi",
                 # 这台机器跑过 `peach init` 没有。未配置时服务照常起，只是没有数据。
                 "configured": settings.configured,
-                "db": "available" if settings.db_path.is_file() else "missing",
+                "db": database_status(settings.db_path),
                 "ffmpeg": ffmpeg.source if ffmpeg else "unavailable",
                 "mdns": mdns.status if mdns is not None else "disabled",
                 "mdns_backend": mdns.backend if mdns is not None else None,
