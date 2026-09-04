@@ -11,6 +11,7 @@ from scripts.merge_duplicate_identities import (
     apply_rows,
     collect,
     collect_repeated_projections,
+    named_pairs,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -460,6 +461,81 @@ class DirectoryIdentityTests(unittest.TestCase):
         for entity_id in (40, 41, 42):
             self.install(entity_id, f"minnano-av actress37250 经「{entity_id}」检索命中")
         self.assertEqual(collect(self.con), [])
+
+
+
+
+class NamedPairTests(unittest.TestCase):
+    """命令行点名的一对：证据在站外时，唯一说得清来由的就是那段话。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db = Path(self.tmp.name).resolve() / "ledger.db"
+        upgrade(self.db, ROOT / "migrations")
+        self.con = sqlite3.connect(self.db)
+        self.con.executemany(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(?,?,?,?,'t','t')",
+            [(1, "performer", "五十岚星兰", "五十岚星兰"),
+             (2, "performer", "五十嵐星蘭", "五十嵐星蘭"),
+             (3, "studio", "别的种类", "别的种类")])
+        self.con.commit()
+
+    def tearDown(self):
+        self.con.close()
+        self.tmp.cleanup()
+
+    def pairs(self, *values, engaged=None):
+        return named_pairs(self.con, list(values), engaged)
+
+    def test_the_evidence_is_carried_through_to_the_review_file(self):
+        row = self.pairs("1:2:javdb 资料页把五个艺名列在一起")[0]
+        self.assertEqual(row["match_evidence"], "javdb 资料页把五个艺名列在一起")
+        self.assertEqual((row["keep_id"], row["drop_id"]), (1, 2))
+        self.assertEqual(row["drop_name"], "五十嵐星蘭")
+
+    def test_a_pair_without_evidence_is_refused(self):
+        """合并不可逆。没有证据的一对说不清来由，比不合更糟。"""
+        with self.assertRaises(SystemExit):
+            self.pairs("1:2:")
+        with self.assertRaises(SystemExit):
+            self.pairs("1:2")
+
+    def test_two_different_kinds_are_never_the_same_identity(self):
+        with self.assertRaises(SystemExit):
+            self.pairs("1:3:随便什么理由")
+
+    def test_an_entity_already_planned_by_a_detector_is_refused(self):
+        """自动判据先合会把 id 删掉，第二趟再引用同一个 id 就是合进一条不存在的实体。"""
+        with self.assertRaises(SystemExit):
+            self.pairs("1:2:证据", engaged={2})
+
+    def test_a_missing_entity_is_refused(self):
+        with self.assertRaises(SystemExit):
+            self.pairs("1:99:证据")
+
+    def test_merging_series_rewrites_the_flat_column(self):
+        """只搬关系不改 `asset.series`，卡片上还写着被丢弃的系列名。"""
+        self.con.executemany(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(?,'series',?,?,'t','t')",
+            [(4, "Night Safari", "night safari"), (5, "旧写法", "旧写法")])
+        self.con.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,code,series)"
+            " VALUES(?,'local',?,?,'video',?,?)",
+            [(1, "/x/1.mp4", "1.mp4", "AKA-022", "旧写法"),
+             (2, "/x/2.mp4", "2.mp4", "AKA-024", "Night Safari")])
+        self.con.executemany(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source)"
+            " VALUES(?,?,'series','r18:series')",
+            [(1, 5), (2, 4)])
+        self.con.commit()
+        with self.con:
+            counts = apply_rows(self.con, self.pairs("4:5:外部资料页说这两部同属一个系列"))
+        self.assertEqual(counts["merged"], 1)
+        self.assertEqual(
+            [row[0] for row in self.con.execute("SELECT series FROM asset ORDER BY id")],
+            ["Night Safari", "Night Safari"])
 
 
 if __name__ == "__main__":

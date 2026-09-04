@@ -599,6 +599,12 @@ def apply_rows(
                     (asset_id, f"演员:{row['drop_name']}"))
                 counts["actor_tags_removed"] += connection.execute(
                     "SELECT changes()").fetchone()[0]
+        elif row["keep_kind"] == "series":
+            # 扁平 `asset.series` 也得跟着规范关系走（ADR-0005）。只搬关系不改这一列，
+            # 卡片上还写着被丢弃的系列名，按它查也还查得到——资料页和卡片各说各话。
+            connection.execute("UPDATE asset SET series=? WHERE series=?",
+                               (row["keep_name"], row["drop_name"]))
+            counts["flat_rewritten"] += connection.execute("SELECT changes()").fetchone()[0]
         else:
             connection.execute(
                 "UPDATE asset SET creator=NULL WHERE creator=?", (row["drop_name"],))
@@ -788,6 +794,58 @@ def write_projection_csv(path: Path, rows: list[dict[str, object]]) -> None:
     write_rows(path, fields, rows)
 
 
+def named_pairs(connection: sqlite3.Connection, pairs: list[str],
+                engaged: set[int] | None = None) -> list[dict[str, object]]:
+    """命令行点名的一对。用于证据在站外、本地探测不出来的同一人。
+
+    `五十嵐星蘭` 与 `蘭々` 在账本里没有一处相交：外部 id 不同、别名互不相识、
+    作品也不重合。判定它们是同一人靠的是 javdb 资料页把五个艺名列在一起，那份证据
+    进不了自动判据，只能由人带进来——所以每一对都必须自带 `证据` 一段话，它会原样
+    落进复核 CSV，是这次合并唯一说得清来由的东西。
+
+    写法 `保留id:丢弃id:证据`。方向不自动挑：作品数多的一侧不一定是名字对的一侧。
+    """
+    connection.row_factory = sqlite3.Row
+    engaged = engaged or set()
+    plan: list[dict[str, object]] = []
+    for pair in pairs:
+        parts = pair.split(":", 2)
+        if len(parts) != 3 or not parts[2].strip():
+            raise SystemExit(f"--pair 要写成 保留id:丢弃id:证据，收到 {pair!r}")
+        keep_id, drop_id, why = int(parts[0]), int(parts[1]), parts[2].strip()
+        sides = {}
+        for name, entity_id in (("keep", keep_id), ("drop", drop_id)):
+            row = connection.execute(
+                "SELECT id,kind,canonical_name,normalized_name,"
+                " (SELECT count(*) FROM asset_entity ae WHERE ae.entity_id=e.id) AS links,"
+                " (SELECT group_concat(DISTINCT ae.source) FROM asset_entity ae"
+                "   WHERE ae.entity_id=e.id) AS sources"
+                " FROM entity e WHERE e.id=?", (entity_id,)).fetchone()
+            if row is None:
+                raise SystemExit(f"--pair {pair}：实体 {entity_id} 不存在")
+            if entity_id in engaged:
+                raise SystemExit(f"--pair {pair}：实体 {entity_id} 已经在自动判据的计划里")
+            sides[name] = row
+        if sides["keep"]["kind"] != sides["drop"]["kind"]:
+            raise SystemExit(f"--pair {pair}：两侧 kind 不同，不合并")
+        plan.append({
+            "normalized_name": sides["drop"]["normalized_name"],
+            "match_evidence": why,
+            "keep_kind": sides["keep"]["kind"],
+            "keep_id": keep_id,
+            "keep_name": sides["keep"]["canonical_name"],
+            "keep_links": sides["keep"]["links"],
+            "drop_kind": sides["drop"]["kind"],
+            "drop_id": drop_id,
+            "drop_name": sides["drop"]["canonical_name"],
+            "drop_links": sides["drop"]["links"],
+            "keep_sources": sides["keep"]["sources"] or "",
+            "drop_sources": sides["drop"]["sources"] or "",
+            "evidence": "人工指定",
+        })
+    return plan
+
+
 def write_csv(path: Path, rows: list[dict[str, object]]) -> None:
     fields = ["normalized_name", "match_evidence", "keep_kind", "keep_name", "keep_id", "keep_links",
               "drop_kind", "drop_name", "drop_id", "drop_links",
@@ -810,6 +868,8 @@ def build_parser() -> argparse.ArgumentParser:
                         default=GENERATED_DIR / "duplicate-identity-merge.csv")
     parser.add_argument("--projection-review-csv", type=Path,
                         default=GENERATED_DIR / "repeated-identity-name-repair.csv")
+    parser.add_argument("--pair", action="append", default=[], metavar="保留id:丢弃id:证据",
+                        help="人工指定的一对，用于证据在站外、本地探测不出来的同一人")
     return parser
 
 
@@ -817,6 +877,8 @@ def run(args: argparse.Namespace) -> int:
     connection = open_for_write(args)
     try:
         rows = collect(connection)
+        engaged = {int(row["keep_id"]) for row in rows} | {int(row["drop_id"]) for row in rows}
+        rows.extend(named_pairs(connection, args.pair, engaged))
         projection_rows = collect_repeated_projections(connection)
         write_csv(args.review_csv, rows)
         write_projection_csv(args.projection_review_csv, projection_rows)
