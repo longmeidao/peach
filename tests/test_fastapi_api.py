@@ -1398,17 +1398,17 @@ class UnconfiguredMachineTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(body["configured"])
         self.assertEqual(body["db"], "missing")
 
-    async def test_the_page_tells_the_user_to_run_peach_init(self):
+    async def test_the_page_serves_the_first_run_form(self):
         response = await self.client.get("/")
         self.assertEqual(response.status_code, 200)
         self.assertIn("text/html", response.headers["content-type"])
-        self.assertIn("peach init", response.text)
+        self.assertIn('<form method="post" action="/setup"', response.text)
 
-    async def test_deep_links_land_on_the_same_prompt(self):
+    async def test_deep_links_land_on_the_same_form(self):
         # 前端路由全部落到 `index`，未配置时不该只有首页能看。
         response = await self.client.get("/tags")
         self.assertEqual(response.status_code, 200)
-        self.assertIn("peach init", response.text)
+        self.assertIn('<form method="post" action="/setup"', response.text)
 
     async def test_a_configured_machine_still_reports_true(self):
         app = create_app(PeachSettings(configured=True, db_path=self.settings.db_path))
