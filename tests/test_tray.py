@@ -4,6 +4,7 @@ import inspect
 import io
 import os
 import plistlib
+import re
 import sys
 import tempfile
 import threading
@@ -23,6 +24,8 @@ def load_script(name: str):
     return module
 
 
+from peach import appid
+from peach import tray as tray_module
 from peach.config import SECRETS_DIR
 from peach.tray import (
     AlreadyRunning, PeachTray, ServiceManager, ServiceSpec, SingleInstance,
@@ -573,7 +576,8 @@ class SourceSyncTests(unittest.TestCase):
         restart_tray_process(runner, uid=501)
         self.assertEqual(
             runner.call_args.args[0],
-            ["launchctl", "kickstart", "-k", "gui/501/gg.lmd.peach.tray"],
+            ["launchctl", "kickstart", "-k",
+             "gui/501/io.github.longmeidao.peach.tray"],
         )
 
     def test_sync_changes_restart_the_tray_and_failed_kickstart_restores_services(self):
@@ -679,6 +683,90 @@ class MacAppBundleTests(unittest.TestCase):
         (app / "Contents" / "MacOS" / "stale").write_text("x", encoding="utf-8")
         self.module.build(self.root, self.tray)
         self.assertFalse((app / "Contents" / "MacOS" / "stale").exists())
+
+
+class MacIdentityTests(unittest.TestCase):
+    """bundle ID、launchd 标签与 pf anchor 名只有 `peach.appid` 一个来源。
+
+    这四处名字对不上时没有任何报错：`launchctl kickstart` 去踢一个不存在的服务、
+    pf 加载一个空 anchor，表现只是菜单栏没图标、`peach.local` 不带端口打不开。
+    所以每个消费者都在这里对着同一处常量核一遍。
+    """
+
+    def setUp(self):
+        self.shell = (ROOT / "scripts" / "setup_macos_port80.sh").read_text(encoding="utf-8")
+
+    def test_every_consumer_takes_the_identifier_from_peach_appid(self):
+        self.assertEqual(tray_module.LAUNCH_AGENT_LABEL, appid.MACOS_LAUNCH_AGENT_LABEL)
+        self.assertEqual(load_script("build_macos_app").BUNDLE_ID, appid.MACOS_BUNDLE_ID)
+        self.assertEqual(load_script("build_macos_app").LABEL,
+                         appid.MACOS_LAUNCH_AGENT_LABEL)
+        self.assertEqual(load_script("install_macos_agent").LABEL,
+                         appid.MACOS_LAUNCH_AGENT_LABEL)
+
+    def test_the_identifier_is_the_repository_owner_not_a_private_domain(self):
+        """下载者装上的东西不该带着维护者的私有域名（ADR-0023 第 4 阶段）。"""
+        for value in (appid.MACOS_BUNDLE_ID, appid.MACOS_LAUNCH_AGENT_LABEL,
+                      appid.MACOS_PF_ANCHOR):
+            self.assertTrue(value.startswith("io.github."), value)
+
+    def test_the_shell_script_pins_the_same_anchor_names(self):
+        """POSIX shell import 不了 Python，那两行字面量只能由这条用例守住。"""
+        found = dict(re.findall(r'^(ANCHOR_NAME|LEGACY_ANCHOR_NAMES)="([^"]*)"',
+                                self.shell, re.MULTILINE))
+        self.assertEqual(found.get("ANCHOR_NAME"), appid.MACOS_PF_ANCHOR)
+        self.assertEqual(found.get("LEGACY_ANCHOR_NAMES"),
+                         " ".join(appid.LEGACY_MACOS_PF_ANCHORS))
+
+    def test_the_port_forward_script_clears_the_legacy_anchor_on_both_paths(self):
+        """遗留 anchor 的那份 LaunchDaemon 每次开机都抢同一个 80/443 转发目标。"""
+        self.assertIn("remove_legacy()", self.shell)
+        uninstall = self.shell.split('if [ "$ACTION" = "uninstall" ]', 1)[1]
+        self.assertIn("remove_legacy", uninstall)
+        self.assertIn("strip_conf /etc/pf.conf", uninstall)
+
+
+class MacLegacyAgentTests(unittest.TestCase):
+    """装新标签之前先卸掉遗留标签的 LaunchAgent。
+
+    `launchctl bootout` 只作用于给定的那一个 label，装新标签这一步碰不到遗留的那份：
+    它会继续开机自启一个菜单栏进程，也继续占着 80/443 的转发。
+    """
+
+    def setUp(self):
+        self.module = load_script("install_macos_agent")
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.agents = Path(tmp.name).resolve() / "LaunchAgents"
+        self.agents.mkdir()
+        self.module.launch_agents_dir = lambda: self.agents
+        self.calls: list[tuple[str, ...]] = []
+
+    def _launchctl(self, *args: str, loaded: bool):
+        self.calls.append(args)
+        returncode = 0 if (args[0] == "print" and loaded) else 1
+        return Mock(returncode=returncode, stdout="", stderr="")
+
+    def test_installing_boots_out_the_legacy_label_and_deletes_its_plist(self):
+        legacy = appid.LEGACY_MACOS_LAUNCH_AGENT_LABELS[0]
+        stale = self.agents / f"{legacy}.plist"
+        stale.write_bytes(b"stale")
+        self.module.launchctl = lambda *args: self._launchctl(*args, loaded=True)
+
+        self.assertEqual(self.module.remove_legacy_agents("gui/501"), [legacy])
+        self.assertFalse(stale.exists())
+        self.assertIn(("bootout", f"gui/501/{legacy}"), self.calls)
+
+    def test_a_machine_without_the_legacy_label_is_left_alone(self):
+        self.module.launchctl = lambda *args: self._launchctl(*args, loaded=False)
+        self.assertEqual(self.module.remove_legacy_agents("gui/501"), [])
+        self.assertEqual([args[0] for args in self.calls], ["print"])
+
+    def test_install_clears_the_legacy_label_before_writing_the_new_plist(self):
+        """顺序反了就会把刚装好的那份又 bootout 掉一次，白等一轮超时。"""
+        source = inspect.getsource(self.module.run)
+        self.assertLess(source.index("remove_legacy_agents"),
+                        source.index("plistlib.dumps"))
 
 
 class TrayCommandLineTests(unittest.TestCase):
