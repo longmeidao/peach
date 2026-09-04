@@ -41,6 +41,7 @@ class DependencyPolicyTests(unittest.TestCase):
             "fastapi": "fastapi",
             "httpx": "httpx",
             "objc": "pyobjc-framework-Cocoa",
+            "opencc": "opencc",
             "p115client": "p115client",
             "pystray": "pystray",
             "resvg_py": "resvg-py",

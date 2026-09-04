@@ -39,6 +39,10 @@ COUNT = re.compile(r"^\d+\s*部影片$")
 LOGIN = re.compile(r"<title>\s*登入\s*\|")
 ACTOR_ID = re.compile(r'href="/actors/([A-Za-z0-9]+)/collect"')
 
+#: 同一位女优的无码那条记录，现名后面挂着 `(無碼)`。它是记录类型不是名字的一部分，
+#: 留着会让 `木下ひまり(無碼)` 与 `木下ひまり` 变成两个人。
+RECORD_KIND = re.compile(r"[(（](?:無碼|无码|有碼|有码|流出|破解|中文字幕)[)）]\s*$")
+
 _TAG = re.compile(r"<[^>]+>")
 
 
@@ -48,7 +52,9 @@ def clean(text: str) -> str:
 
 def split_names(text: str) -> list[str]:
     """一栏里的多个名字。不按空格拆——罗马字名里有空格。"""
-    return [part.strip() for part in re.split(r"[、,，/／|｜;；]", text) if part.strip()]
+    parts = (RECORD_KIND.sub("", part).strip()
+             for part in re.split(r"[、,，/／|｜;；]", text))
+    return [part for part in parts if part]
 
 
 def _names(values: list[str]) -> list[str]:

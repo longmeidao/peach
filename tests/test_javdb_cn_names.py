@@ -66,6 +66,10 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(javdb.current_names(page("深田詠美, 深田えいみ")),
                          ["深田詠美", "深田えいみ"])
 
+    def test_the_record_kind_suffix_is_not_part_of_the_name(self):
+        """无码那条记录的现名挂着 `(無碼)`。留着会让同一个人变成两个人。"""
+        self.assertEqual(javdb.current_names(page("木下ひまり(無碼)")), ["木下ひまり"])
+
     def test_the_actor_id_is_the_page_identity(self):
         self.assertEqual(javdb.actor_id(page("深田詠美, 深田えいみ", actor="Ng03")), "Ng03")
 
@@ -162,14 +166,32 @@ class JudgeTests(unittest.TestCase):
 class SimplifyTests(unittest.TestCase):
     def setUp(self):
         self.module = load_module()
+        self.record = {"entity_id": 1, "name": "深田えいみ", "assets": 6,
+                       "chain": ["深田えいみ"]}
 
     def test_the_traditional_writing_is_kept_next_to_the_simplified_one(self):
         """复核件要看得出转了什么：只留简体的话，转错了没人能发现。"""
         rows = self.module.localize(
-            [{"verdict": "ok", "zh_tw": "永瀨未萌"}, {"verdict": "旧名", "zh_tw": ""}])
+            [{"verdict": "ok", "zh_tw": "永瀨未萌", "adopt": "永瀨未萌"},
+             {"verdict": "旧名", "zh_tw": "", "adopt": "JULIA"}])
         self.assertEqual(rows[0]["zh_cn"], "永濑未萌")
         self.assertEqual(rows[0]["zh_tw"], "永瀨未萌")
         self.assertEqual(rows[1]["zh_cn"], "")
+
+    def test_a_japanese_current_name_is_not_half_converted(self):
+        """`きみかわ結衣` 转成 `きみかわ结衣` 是半假名半简体，比原样留着更糟。"""
+        rows = self.module.localize([{"verdict": "旧名", "zh_tw": "", "adopt": "きみかわ結衣"},
+                                     {"verdict": "旧名", "zh_tw": "", "adopt": "美月麗花"}])
+        self.assertEqual(rows[0]["adopt"], "きみかわ結衣")
+        self.assertEqual(rows[1]["adopt"], "美月丽花")
+
+    def test_a_site_renamed_row_carries_the_new_name_as_the_candidate(self):
+        """改了名的那些也要有候选，不然复核件里只写着「站上不是这个名字了」。"""
+        self.record.update(name="京香じゅりあ", chain=["京香じゅりあ", "JULIA"])
+        row = self.module.judge(self.record, page("JULIA", "京香じゅりあ"), "https://javdb.com/x")
+        self.assertEqual(row["verdict"], "改艺名（现名栏是另一个艺名）")
+        self.assertEqual(row["adopt"], "JULIA")
+        self.assertEqual(row["jp"], "京香じゅりあ")
 
 
 class TargetTests(unittest.TestCase):
@@ -221,26 +243,56 @@ class MappingCsvTests(unittest.TestCase):
         write_rows(self.path, load_module().FIELDS, list(rows), fill_missing=True)
 
     def test_only_the_rows_judged_ok_become_mappings(self):
-        self.write({"jp": "深田えいみ", "zh_cn": "深田咏美", "verdict": "ok", "actor_id": "A1"},
-                   {"jp": "長谷川るい", "zh_cn": "", "verdict": "同形（站上只有日文名）"})
+        self.write({"current_name": "深田えいみ", "adopt": "深田咏美", "verdict": "ok",
+                    "actor_id": "A1"},
+                   {"current_name": "長谷川るい", "adopt": "", "verdict": "同形（站上只有日文名）"})
         mappings = self.module.read_mapping_csv(self.path)
         self.assertEqual([m.jp for m in mappings], ["深田えいみ"])
 
+    def test_a_renamed_row_is_only_taken_when_it_is_named_on_the_command_line(self):
+        """站上改了名要不要跟着改是人的决定，不能因为查到了就默认采用。"""
+        self.write({"current_name": "京香じゅりあ", "adopt": "JULIA", "verdict": "改艺名"})
+        self.assertEqual(self.module.read_mapping_csv(self.path), [])
+        taken = self.module.read_mapping_csv(self.path, ["ok", "改艺名"])
+        self.assertEqual([(m.jp, m.zh_cn) for m in taken], [("京香じゅりあ", "JULIA")])
+
+    def test_one_performer_matched_on_several_pages_yields_one_mapping(self):
+        """`アンナ` 命中了三页。三条映射进去，落库时只会变成一次「没有唯一映射」。"""
+        self.write({"current_name": "アンナ", "adopt": "Anna", "verdict": "改艺名"},
+                   {"current_name": "アンナ", "adopt": "安娜", "verdict": "ok"},
+                   {"current_name": "アンナ", "adopt": "ANNA", "verdict": "改艺名"})
+        taken = self.module.read_mapping_csv(self.path, ["ok", "改艺名"])
+        self.assertEqual([(m.jp, m.zh_cn) for m in taken], [("アンナ", "安娜")])
+
+    def test_a_latin_current_name_is_the_stage_name_not_a_romanization(self):
+        """XML 那份偶尔把罗马字填进 `zh_cn`；javdb 的现名栏写 `JULIA` 时那就是艺名。"""
+        self.write({"current_name": "京香じゅりあ", "adopt": "JULIA", "verdict": "改艺名"})
+        taken = self.module.read_mapping_csv(self.path, ["改艺名"])
+        self.assertTrue(taken[0].latin_is_a_stage_name)
+
+    def test_a_row_with_nothing_to_adopt_is_not_a_mapping(self):
+        """判定收了但这一行没给出可用的名字，落库时就是把规范名改成空。"""
+        self.write({"current_name": "長谷川るい", "adopt": "", "verdict": "ok"})
+        self.assertEqual(self.module.read_mapping_csv(self.path), [])
+
     def test_the_page_id_becomes_the_provenance_key(self):
         """回溯「这个中文名是谁写的」时，要指得回具体那一页。"""
-        self.write({"jp": "深田えいみ", "zh_cn": "深田咏美", "verdict": "ok", "actor_id": "A1"})
+        self.write({"current_name": "深田えいみ", "adopt": "深田咏美", "verdict": "ok",
+                    "actor_id": "A1"})
         self.assertEqual(self.module.read_mapping_csv(self.path)[0].key, "javdb:A1")
 
     def test_the_index_points_back_into_the_returned_list(self):
         """`collect` 拿 `index` 当下标回查。跳过的行也算数就会指到别人身上。"""
-        self.write({"jp": "跳过", "zh_cn": "", "verdict": "同形（站上只有日文名）"},
-                   {"jp": "深田えいみ", "zh_cn": "深田咏美", "verdict": "ok", "actor_id": "A1"})
+        self.write({"current_name": "跳过", "adopt": "", "verdict": "同形（站上只有日文名）"},
+                   {"current_name": "深田えいみ", "adopt": "深田咏美", "verdict": "ok",
+                    "actor_id": "A1"})
         mappings = self.module.read_mapping_csv(self.path)
         self.assertEqual(mappings[mappings[0].index].jp, "深田えいみ")
 
     def test_a_japanese_glyph_left_by_the_traditional_conversion_is_normalized(self):
         """opencc 转的是繁简，不管日本字形：`滝` 中文写 `泷`。字形不需要外部证据。"""
-        self.write({"jp": "滝田あゆ", "zh_cn": "滝田亚由", "verdict": "ok", "actor_id": "A2"})
+        self.write({"current_name": "滝田あゆ", "adopt": "滝田亚由", "verdict": "ok",
+                    "actor_id": "A2"})
         self.assertEqual(self.module.read_mapping_csv(self.path)[0].zh_cn, "泷田亚由")
 
 

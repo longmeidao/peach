@@ -73,8 +73,11 @@ UNRELATED = "不同名（两栏姓氏对不上）"
 #: 所以这一串是中日两栏能不能配成一对的判据。
 KANJI_HEAD = re.compile(r"[㐀-䶿一-鿿]+")
 
+#: `adopt` 是这一行建议采用的规范名。`ok` 行就是查到的中文写法；站上已经改了名的
+#: （`改艺名`、`旧名`）填站上的现名——有中文写法用中文写法，没有就用现名本身。
+#: 采不采用是落库那一步按 `--accept` 决定的，这里只把候选摆出来。
 FIELDS = ("entity_id", "current_name", "assets", "actor_id", "url",
-          "jp", "zh_cn", "zh_tw", "keywords", "verdict", "evidence")
+          "jp", "zh_cn", "zh_tw", "adopt", "keywords", "verdict", "evidence")
 
 
 @lru_cache(maxsize=1)
@@ -152,22 +155,29 @@ def chinese_name(current: list[str]) -> tuple[str, str]:
     return "", AMBIGUOUS
 
 
+def adopted_name(current: list[str]) -> str:
+    """站上现名里该当规范名的那一个：有中文写法就用中文写法，否则用第一个写法。"""
+    zh, _ = chinese_name(current)
+    return zh or (current[0] if current else "")
+
+
 def judge(record: dict, html: str, url: str) -> dict:
     """一页资料页对一位账本女优的判定。"""
     current, former = javdb.current_names(html), javdb.former_names(html)
     wanted = {key(value) for value in record["chain"]}
     row = {"entity_id": record["entity_id"], "current_name": record["name"],
            "assets": record["assets"], "actor_id": javdb.actor_id(html), "url": url,
-           "jp": "", "zh_cn": "", "zh_tw": "", "keywords": "|".join(current),
+           "jp": "", "zh_cn": "", "zh_tw": "", "adopt": "",
+           "keywords": "|".join(current),
            "verdict": "", "evidence": f"现名 {'、'.join(current) or '未取得'}"}
     if not wanted & {key(value) for value in current}:
-        row["verdict"] = FORMER
-        row["evidence"] = (f"账本名只出现在旧艺名里；站上现名 {'、'.join(current) or '未取得'}")
+        row.update(verdict=FORMER, jp=record["name"], adopt=adopted_name(current),
+                   evidence=f"账本名只出现在旧艺名里；站上现名 {'、'.join(current) or '未取得'}")
         return row
     if key(record["name"]) not in {key(value) for value in current}:
-        row["verdict"] = RENAMED
-        row["evidence"] = (f"靠别名对上的页；账本规范名 {record['name']} 不在现名栏，"
-                           f"站上现名 {'、'.join(current)}")
+        row.update(verdict=RENAMED, jp=record["name"], adopt=adopted_name(current),
+                   evidence=(f"靠别名对上的页；账本规范名 {record['name']} 不在现名栏，"
+                             f"站上现名 {'、'.join(current)}"))
         return row
     zh_tw, why = chinese_name(current)
     if not zh_tw:
@@ -178,7 +188,7 @@ def judge(record: dict, html: str, url: str) -> dict:
         row["verdict"] = UNRELATED
         row["evidence"] = f"现名栏并排的 {zh_tw} 与 {jp} 姓氏对不上，不是同一个名字"
         return row
-    row.update(jp=jp, zh_tw=zh_tw, verdict=OK,
+    row.update(jp=jp, zh_tw=zh_tw, adopt=zh_tw, verdict=OK,
                evidence=f"资料页现名一栏同时写着 {zh_tw} 与 {jp}")
     return row
 
@@ -234,6 +244,10 @@ def localize(rows: list[dict]) -> list[dict]:
         # 没判成 `ok` 的行也要有这一列且为空：复核件里空格与「这一格不存在」在人眼里
         # 一样，在按列取值的代码里不一样。
         row["zh_cn"] = convert(str(row["zh_tw"])) if row.get("verdict") == OK else ""
+        # 站上的现名可能本来就是日文（`きみかわ結衣`）。繁转简会把它变成
+        # `きみかわ结衣`——半假名半简体，比原样留着更糟。整名汉字的才转。
+        adopt = str(row.get("adopt") or "")
+        row["adopt"] = adopt if KANA.search(adopt) or LATIN.search(adopt) else convert(adopt)
     return rows
 
 
@@ -267,8 +281,9 @@ def run(args: argparse.Namespace) -> int:
     print(f"javdb 中文名 {len(rows)} 行，映射 CSV：{args.out}")
     print("  判定分布：", dict(counts))
     for row in rows:
-        if row.get("verdict") == OK:
-            print(f"    {row['current_name']} -> {row['zh_cn']}  ({row['evidence']})")
+        if row.get("adopt"):
+            print(f"    [{row['verdict']}] {row['current_name']} -> {row['adopt']}"
+                  f"  ({row['evidence']})")
     return 0
 
 

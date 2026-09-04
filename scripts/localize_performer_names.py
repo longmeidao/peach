@@ -23,6 +23,7 @@ import sqlite3
 import xml.etree.ElementTree as ET
 import sys
 from collections import Counter, defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -73,6 +74,9 @@ class ActorMapping:
     verified: str
     #: 来源自己的身份键。javdb 的资料页有站内 id，比名字稳，也让 provenance 指得回那一页。
     key_hint: str = ""
+    #: 这一条的拉丁写法是不是艺名本身。XML 那份偶尔把 `zh_cn` 填成罗马字，所以默认
+    #: 当成误填；javdb 的现名栏写着 `JULIA`、`RARA` 时那就是艺名，不是转写。
+    latin_is_a_stage_name: bool = False
 
     @property
     def key(self) -> str:
@@ -101,18 +105,33 @@ def read_mapping(path: Path) -> list[ActorMapping]:
     return rows
 
 
-def read_mapping_csv(path: Path) -> list[ActorMapping]:
-    """读 `harvest_javdb_cn_names.py` 产出的映射，只收判成 `ok` 的行。
+def read_mapping_csv(path: Path, accept: Sequence[str] = ("ok",)) -> list[ActorMapping]:
+    """读 `harvest_javdb_cn_names.py` 产出的映射，只收 `accept` 里那几种判定的行。
 
-    中文写法在这里再过一次字形归一：javdb 给的是繁体中文，opencc 转完仍可能留着
-    日本字形（`滝田亞由` → `滝田亚由`，`滝` 中文写 `泷`）。字形不是译名判断，
-    这一步不需要外部证据，也不该等下一轮跑 `localize-kanji` 才补上。
+    默认只收 `ok`。站上已经改了名的（`改艺名`、`旧名`）要不要跟着改，是人的决定，
+    所以得在命令行里点名——判定名照抄 CSV 里那一列的字面值。
+
+    `jp` 取账本规范名而不是页面上的日文写法：规范名在账本里唯一，拿它回查是一对一，
+    页面写法还要绕别名。采用的名字在这里再过一次字形归一：javdb 给的是繁体中文，
+    opencc 转完仍可能留着日本字形（`滝田亞由` → `滝田亚由`，`滝` 中文写 `泷`）。
+    字形不是译名判断，这一步不需要外部证据。
     """
     rows = []
-    for record in read_rows(path):
-        if str(record.get("verdict") or "").strip() != "ok":
+    order = {str(value).strip(): rank for rank, value in enumerate(accept)}
+    taken: dict[str, int] = {}
+    candidates = [record for record in read_rows(path)
+                  if str(record.get("verdict") or "").strip() in order]
+    # 同一位女优可能命中多页（`アンナ` 命中了 `安娜`、`Anna`、`ANNA` 三页）。
+    # 按 `--accept` 的书写次序定优先级：先写的判定先采用，一位只留一条。
+    candidates.sort(key=lambda record: order[str(record["verdict"]).strip()])
+    for record in candidates:
+        name = str(record.get("current_name") or "").strip()
+        if not name or name in taken:
             continue
-        zh_cn = simplify_kanji(str(record.get("zh_cn") or "").strip())
+        taken[name] = 1
+        zh_cn = simplify_kanji(str(record.get("adopt") or "").strip())
+        if not zh_cn:
+            continue
         keywords = tuple(dict.fromkeys(
             part.strip() for part in str(record.get("keywords") or "").split("|")
             if part.strip()))
@@ -120,9 +139,10 @@ def read_mapping_csv(path: Path) -> list[ActorMapping]:
         rows.append(ActorMapping(
             # `index` 是在返回列表里的位置，`collect` 拿它当下标回查。这里会跳过
             # 判定不是 `ok` 的行，用读入序号就会越界或指到别人。
-            index=len(rows), jp=str(record.get("jp") or "").strip(), zh_cn=zh_cn,
+            index=len(rows), jp=name, zh_cn=zh_cn,
             zh_tw=str(record.get("zh_tw") or "").strip(), keywords=keywords,
-            tmdb_id="", verified="", key_hint=f"javdb:{actor}" if actor else ""))
+            tmdb_id="", verified="", key_hint=f"javdb:{actor}" if actor else "",
+            latin_is_a_stage_name=True))
     return rows
 
 
@@ -279,7 +299,7 @@ def collect(
         target, target_source = _target_name(mapping)
         # 外部映射偶有把 `zh_cn` 填成罗马字。不能因此把已有的日文/中文规范名
         # 倒退成英文；已发生倒退时，仅用同时出现在该映射条目中的 r18 发行名恢复。
-        if _contains_latin(target):
+        if _contains_latin(target) and not mapping.latin_is_a_stage_name:
             release_name = str(entity["release_name"] or "").strip()
             mapping_names = {
                 normalize_entity_name(value)
@@ -521,6 +541,10 @@ def build_parser() -> argparse.ArgumentParser:
     # javdb 资料页取回的映射（`harvest_javdb_cn_names.py`）。它覆盖的是假名规范名，
     # XML 那份覆盖的是已收录艺人，两份不冲突也不必同时给。
     parser.add_argument("--mapping-csv", type=Path)
+    # 站上已经改了名的要不要跟着改，是人的决定，所以判定要在命令行里点名。
+    parser.add_argument(
+        "--accept", default="ok",
+        help="逗号分隔的判定名，照抄 CSV 的 verdict 列；默认只收 ok")
     parser.add_argument("--mapping-revision", default="")
     parser.add_argument(
         "--identity-review", type=Path,
@@ -537,7 +561,8 @@ def run(args: argparse.Namespace) -> int:
     if args.mapping_xml:
         mappings = read_mapping(args.mapping_xml)
     elif args.mapping_csv:
-        mappings, prefix = read_mapping_csv(args.mapping_csv), JAVDB_ALIAS_SOURCE
+        accept = [part.strip() for part in str(args.accept).split(",") if part.strip()]
+        mappings, prefix = read_mapping_csv(args.mapping_csv, accept), JAVDB_ALIAS_SOURCE
     identity_review = read_identity_review(args.identity_review)
     connection = open_for_write(args)
     try:

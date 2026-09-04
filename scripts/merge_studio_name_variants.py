@@ -26,7 +26,6 @@ r"""同一家厂牌被记成两条实体的去重：写法变体与日文名／�
 from __future__ import annotations
 
 import argparse
-import csv
 import re
 import sqlite3
 import sys
@@ -41,7 +40,7 @@ if str(SRC_DIR) not in sys.path:
 
 from peach.config import GENERATED_DIR   # noqa: E402
 from peach.entities import merge_entity   # noqa: E402
-from peach.review_csv import write_rows   # noqa: E402
+from peach.review_csv import read_rows, write_rows   # noqa: E402
 from peach.scripting import (   # noqa: E402
     add_ledger_write_args, counts_of, open_for_write, verify_after_write,
 )
@@ -226,10 +225,7 @@ def _recorded_pairs(path: Path) -> list[dict]:
     标识按 canonical_name 落盘，只能在账本改完之后再动；那时 `collect` 已经找不到
     这些对了——它们在账本里已经是一条。复核件是可重放的中间结果，这一步靠它。
     """
-    if not path.is_file():
-        return []
-    with path.open(encoding="utf-8-sig", newline="") as handle:
-        return list(csv.DictReader(handle))
+    return read_rows(path, missing_ok=True)
 
 
 def run(args: argparse.Namespace) -> int:
