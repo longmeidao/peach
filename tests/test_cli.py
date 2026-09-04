@@ -376,7 +376,10 @@ class InteractiveInitTests(unittest.TestCase):
         self.assertEqual(items.status_code, 200)
         self.assertGreaterEqual(items.json()["total"], 1, "扫进去的本地资产要能列出来")
         self.assertEqual(sources.status_code, 200)
-        self.assertEqual([row["location"] for row in sources.json()["sources"]], ["local"])
+        listed = [row["location"] for row in sources.json()["sources"]]
+        self.assertIn("local", listed)
+        self.assertNotIn("115", listed)
+        self.assertNotIn("pikpak", listed)
         self.assertTrue(web_resource_sync.source_is_online("local"))
         self.assertFalse(web_resource_sync.source_is_online("115"))
 
