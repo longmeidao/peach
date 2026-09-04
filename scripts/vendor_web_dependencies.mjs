@@ -64,8 +64,8 @@ const lucideIcons = new Map([
   ["home", "home"], ["sliders-horizontal", "sliders-horizontal"], ["search", "search"],
   ["layout-grid", "layout-grid"], ["square-check-big", "square-check-big"],
   ["refresh-cw", "refresh-cw"], ["user-round", "user-round"], ["tags", "tags"],
-  ["star", "star"], ["list-filter", "list-filter"], ["chart", "chart-no-axes-column"],
-  ["settings", "settings"], ["monitor-cog", "monitor-cog"], ["gauge", "gauge"],
+  ["list-filter", "list-filter"], ["chart", "chart-no-axes-column"],
+  ["settings", "settings"], ["gauge", "gauge"],
   ["history", "history"], ["sparkles", "sparkles"],
   ["x", "x"], ["folder-open", "folder-open"], ["info", "info"],
   ["hard-drive", "hard-drive"], ["globe", "globe"], ["rss", "rss"],
@@ -77,11 +77,13 @@ const lucideIcons = new Map([
   ["chevron-up", "chevron-up"], ["chevron-down", "chevron-down"], ["heart", "heart"],
   ["upload", "upload"], ["database", "database"], ["play", "play"], ["clock", "clock"],
   ["external-link", "external-link"], ["bookmark-plus", "bookmark-plus"],
-  // 这七枚只画在雪碧图里、不在这张表上，`npm run vendor:web` 从不刷新它们。
+  ["bookmark", "bookmark"], ["gallery-vertical-end", "gallery-vertical-end"],
+  ["notebook-pen", "notebook-pen"], ["search-x", "search-x"],
+  ["file-archive", "file-archive"], ["file-audio", "file-audio"],
+  ["file-stack", "file-stack"],
   // 名字和上游对不上的只有排序键：Peach 叫 `sort`，Lucide 叫 `sort-desc`。
   ["sort", "sort-desc"], ["arrow-up", "arrow-up"], ["arrow-down", "arrow-down"],
   ["calendar", "calendar"], ["download", "download"], ["monitor", "monitor"],
-  ["volume-2", "volume-2"],
 ]);
 
 // 自绘 symbol：没有上游可对，所以在这里逐个点名。下面那道分区检查要求雪碧图里
