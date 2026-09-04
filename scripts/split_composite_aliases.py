@@ -15,6 +15,9 @@ r18.dev 的罗马字字段本身就是 `现用名 (曾用名, 曾用名)` 这个
 - `快慢扳机（接稿中）`、`るかぴあ（X：復帰しました）`：括号里是接稿状态或公告。
 - `kitty(1)`、`Mana(23)`：去重后缀或数字。
 
+形状分不开的那些交人工：在复核 CSV 里把 `verdict` 改成 `split`（别名拆成几条）或
+`strip`（规范名换成 `target`，旧名留作别名），填好 `target`，再用 `--from-review` 跑。
+
 拆分不可逆。默认只产出复核 CSV，`--apply` 才写 ledger 且必须给 `--backup`。
 """
 from __future__ import annotations
@@ -22,6 +25,7 @@ from __future__ import annotations
 import argparse
 import sqlite3
 import sys
+import time
 from collections import Counter
 from pathlib import Path
 
@@ -32,9 +36,9 @@ if str(SRC_DIR) not in sys.path:
 
 from peach.config import GENERATED_DIR   # noqa: E402
 from peach.entities import (   # noqa: E402
-    normalize_entity_name, split_composite_person_name,
+    normalize_entity_name, rewrite_flat_projection, split_composite_person_name,
 )
-from peach.review_csv import write_rows   # noqa: E402
+from peach.review_csv import read_rows, write_rows   # noqa: E402
 from peach.scripting import (   # noqa: E402
     add_ledger_write_args, counts_of, open_for_write, verify_after_write,
 )
@@ -43,7 +47,10 @@ from peach.scripting import (   # noqa: E402
 PERSON_KINDS = ("performer", "creator")
 
 FIELDS = ("verdict", "kind", "entity_id", "canonical_name", "field",
-          "value", "source", "parts", "note")
+          "value", "source", "parts", "target", "note")
+
+#: 人工判定改写规范名时，换下来的旧名记在这个来源下。它不是哪个站给的，是用户定的。
+CLEANUP_SOURCE = "user:name-cleanup"
 
 EXTRA_COUNTS = {
     "composite_alias": (
@@ -96,7 +103,8 @@ def collect(connection: sqlite3.Connection) -> list[dict[str, object]]:
             rows.append({
                 "verdict": verdict, "kind": kind, "entity_id": int(entity_id),
                 "canonical_name": canonical, "field": field, "value": value,
-                "source": source or "", "parts": " | ".join(parts), "note": note,
+                "source": source or "", "parts": " | ".join(parts),
+                "target": " | ".join(parts) if verdict == "auto" else "", "note": note,
             })
     rows.sort(key=lambda row: (row["verdict"] != "auto", str(row["kind"]),
                                int(row["entity_id"])))
@@ -128,6 +136,60 @@ def apply_rows(connection: sqlite3.Connection,
     return {"added": added, "removed": removed}
 
 
+def _blocked(connection: sqlite3.Connection, entity_id: int,
+             names: list[str]) -> str:
+    """人工判定也过一遍碰撞：撞上另一条实体的规范名要走合并，不是改个名了事。"""
+    return "；".join(hit for hit in (_collision(connection, entity_id, name)
+                                     for name in names) if hit)
+
+
+def apply_review(connection: sqlite3.Connection,
+                 rows: list[dict[str, str]]) -> dict[str, object]:
+    """按人工填好的 `verdict` 与 `target` 改名字。
+
+    `split`：把一条别名换成 `target` 里那几条，来源不变。
+    `strip`：把规范名换成 `target` 的第一段，旧名留作别名，扁平投影跟着改。
+    """
+    done = {"split": 0, "strip": 0, "flat": 0, "blocked": []}
+    for row in rows:
+        verdict = str(row.get("verdict", "")).strip()
+        targets = [part.strip() for part in str(row.get("target", "")).split("|")
+                   if part.strip()]
+        if verdict not in {"split", "strip"} or not targets:
+            continue
+        entity_id, value = int(row["entity_id"]), str(row["value"])
+        blocked = _blocked(connection, entity_id, targets)
+        if blocked:
+            done["blocked"].append(f"{value}：{blocked}")
+            continue
+        if verdict == "split":
+            source = str(row.get("source", ""))
+            for target in targets:
+                connection.execute(
+                    "INSERT OR IGNORE INTO entity_alias"
+                    "(entity_id,alias,normalized_alias,source) VALUES(?,?,?,?)",
+                    (entity_id, target, normalize_entity_name(target), source))
+            connection.execute(
+                "DELETE FROM entity_alias WHERE entity_id=? AND alias=? AND source=?",
+                (entity_id, value, source))
+            done["split"] += 1
+            continue
+        target = targets[0]
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        connection.execute(
+            "UPDATE entity SET canonical_name=?,normalized_name=?,updated_at=? WHERE id=?",
+            (target, normalize_entity_name(target), stamp, entity_id))
+        # 旧名留作别名：它是这条实体真的用过的写法，也是回退的入口。
+        connection.execute(
+            "INSERT OR IGNORE INTO entity_alias"
+            "(entity_id,alias,normalized_alias,source,confidence) VALUES(?,?,?,?,1.0)",
+            (entity_id, value, normalize_entity_name(value), CLEANUP_SOURCE))
+        done["flat"] += rewrite_flat_projection(
+            connection, str(row["kind"]), entity_id, value, target)
+        done["strip"] += 1
+    return done
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -135,10 +197,48 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--review-csv", type=Path,
                         default=GENERATED_DIR / "review" / "composite-names.csv",
                         help="复核 CSV 输出路径")
+    parser.add_argument("--from-review", type=Path,
+                        help="按这份人工判定过的 CSV 执行 split / strip，不再重新扫描")
     return parser
 
 
+def _report(before: dict[str, int], after: dict[str, int],
+            connection: sqlite3.Connection) -> int:
+    _integrity, violations = verify_after_write(connection)
+    for key in before:
+        mark = "" if before[key] == after[key] else "  <-- 变化"
+        print(f"    {key}: {before[key]} -> {after[key]}{mark}")
+    print(f"  foreign_key_check 违规 {violations} 条")
+    return 1 if violations else 0
+
+
+def run_review(args: argparse.Namespace) -> int:
+    connection = open_for_write(args)
+    try:
+        rows = read_rows(args.from_review)
+        acting = [row for row in rows
+                  if str(row.get("verdict", "")).strip() in {"split", "strip"}]
+        print(f"人工判定 {len(acting)} 行：{args.from_review}")
+        for row in acting:
+            print(f"    {row['verdict']} [{row['entity_id']}] {row['value']}"
+                  f" -> {row['target']}")
+        if not args.apply:
+            print("  未写 ledger（加 --apply --backup 才写）")
+            return 0
+        print(f"  已备份到 {args.backup}")
+        before = counts_of(connection, EXTRA_COUNTS)
+        with connection:
+            done = apply_review(connection, acting)
+        after = counts_of(connection, EXTRA_COUNTS)
+        print("  结果：", done)
+        return _report(before, after, connection)
+    finally:
+        connection.close()
+
+
 def run(args: argparse.Namespace) -> int:
+    if args.from_review:
+        return run_review(args)
     connection = open_for_write(args)
     try:
         rows = collect(connection)
@@ -162,13 +262,8 @@ def run(args: argparse.Namespace) -> int:
         with connection:
             moved = apply_rows(connection, rows)
         after = counts_of(connection, EXTRA_COUNTS)
-        _integrity, violations = verify_after_write(connection)
         print("  拆分结果：", moved)
-        for key in before:
-            mark = "" if before[key] == after[key] else "  <-- 变化"
-            print(f"    {key}: {before[key]} -> {after[key]}{mark}")
-        print(f"  foreign_key_check 违规 {violations} 条")
-        return 1 if violations else 0
+        return _report(before, after, connection)
     finally:
         connection.close()
 

@@ -15,7 +15,7 @@ import time
 from urllib.parse import urlsplit
 
 from .catalog_rules import LENGTH_TAGS, dir_expr, photo_set_title, tag_cat
-from .entities import normalize_entity_name, resolve_entity
+from .entities import normalize_entity_name, resolve_entity, rewrite_flat_projection
 from .web_catalog import (
     COST,
     attach_avatar_availability,
@@ -314,34 +314,6 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="")
 #: 刮削留的是站点名；分得开才答得出「这个名字是谁定的」。
 PREFERRED_NAME_SOURCE = "user:preferred-name"
 
-#: 规范名有一份扁平投影（ADR-0005）：女优落在 `asset_tag` 的 `演员:` 标签里，其余三种
-#: 落在 `asset` 的同名列里。只改实体名不改这一份，卡片上还写着旧名、按旧名也照样查得到，
-#: 资料页和卡片就各说各话了。
-_FLAT_COLUMN = {"studio": "studio", "creator": "creator", "series": "series"}
-
-
-def _rewrite_flat_projection(c, kind, entity_id, old_name, new_name):
-    column = _FLAT_COLUMN.get(kind)
-    if column:
-        c.execute(f"UPDATE asset SET {column}=? WHERE {column}=?", (new_name, old_name))
-        return c.execute("SELECT changes()").fetchone()[0]
-    rewritten = 0
-    old_tag, new_tag = f"演员:{old_name}", f"演员:{new_name}"
-    for item in c.execute(
-        "SELECT DISTINCT asset_id FROM asset_entity WHERE entity_id=?", (entity_id,)
-    ):
-        asset_id = int(item[0])
-        # 置信度与来源跟着旧标签走：换的是写法，不是这条标注的可信程度。
-        c.execute(
-            "INSERT OR IGNORE INTO asset_tag(asset_id,tag,confidence,source) "
-            "SELECT asset_id,?,confidence,source FROM asset_tag WHERE asset_id=? AND tag=?",
-            (new_tag, asset_id, old_tag))
-        c.execute("DELETE FROM asset_tag WHERE asset_id=? AND tag=?", (asset_id, old_tag))
-        if c.execute("SELECT changes()").fetchone()[0]:
-            rewritten += 1
-    return rewritten
-
-
 def w_entity_name(contract: WebContract, body):
     """把这个实体已有的某个名字提为统称，旧规范名转成别名。
 
@@ -388,6 +360,6 @@ def w_entity_name(contract: WebContract, body):
             "INSERT OR IGNORE INTO entity_alias(entity_id,alias,normalized_alias,source,confidence)"
             " VALUES(?,?,?,?,1.0)",
             (entity_id, current, normalize_entity_name(current), PREFERRED_NAME_SOURCE))
-        flat = _rewrite_flat_projection(c, kind, entity_id, current, known[chosen_key])
+        flat = rewrite_flat_projection(c, kind, entity_id, current, known[chosen_key])
         return {"ok": True, "canonical_name": known[chosen_key], "changed": True,
                 "previous_name": current, "flat_rewritten": flat}

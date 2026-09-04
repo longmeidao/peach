@@ -127,6 +127,42 @@ def canonicalize_entity_name(kind: str, name: str | None) -> str:
     return canonical
 
 
+#: 规范名有一份扁平投影（ADR-0005）：女优落在 `asset_tag` 的 `演员:` 标签里，其余三种
+#: 落在 `asset` 的同名列里。只改实体名不改这一份，卡片上还写着旧名、按旧名也照样查得到，
+#: 资料页和卡片就各说各话了。
+FLAT_COLUMN = {"studio": "studio", "creator": "creator", "series": "series"}
+
+
+def rewrite_flat_projection(connection: Connection, kind: str, entity_id: int,
+                            old_name: str, new_name: str) -> int:
+    """规范名换写法之后，把扁平投影一并改过来，返回改动的资产数。
+
+    资料页的统称选择器和账本清理脚本改的是同一件事，共用这一份：投影跟不上实体名的
+    后果不是报错，是卡片和资料页各说各话，而且按旧名还照样搜得到。
+    """
+    column = FLAT_COLUMN.get(kind)
+    if column:
+        connection.execute(f"UPDATE asset SET {column}=? WHERE {column}=?",
+                           (new_name, old_name))
+        return connection.execute("SELECT changes()").fetchone()[0]
+    rewritten = 0
+    old_tag, new_tag = f"演员:{old_name}", f"演员:{new_name}"
+    for item in connection.execute(
+        "SELECT DISTINCT asset_id FROM asset_entity WHERE entity_id=?", (entity_id,)
+    ):
+        asset_id = int(item[0])
+        # 置信度与来源跟着旧标签走：换的是写法，不是这条标注的可信程度。
+        connection.execute(
+            "INSERT OR IGNORE INTO asset_tag(asset_id,tag,confidence,source) "
+            "SELECT asset_id,?,confidence,source FROM asset_tag WHERE asset_id=? AND tag=?",
+            (new_tag, asset_id, old_tag))
+        connection.execute("DELETE FROM asset_tag WHERE asset_id=? AND tag=?",
+                           (asset_id, old_tag))
+        if connection.execute("SELECT changes()").fetchone()[0]:
+            rewritten += 1
+    return rewritten
+
+
 def merge_entity(
     connection: Connection, *, target_id: int, source_id: int,
     source_name: str, alias_source: str, now: str | None = None,
