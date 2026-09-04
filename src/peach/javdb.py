@@ -82,8 +82,8 @@ def actor_id(html: str) -> str:
     return found.group(1) if found else ""
 
 
-def search_hits(html: str, wanted: set[str]) -> list[str]:
-    """搜索结果里名字对得上的资料页路径。
+def search_hits(html: str, wanted: set[str], key=name_key) -> list[str]:
+    """搜索结果里名字对得上的资料页路径。`wanted` 必须已按 `key` 归一。
 
     搜的是账本里的名字，回来的却不一定是同一个人（javdb 的演员搜索会给近似结果）。
     卡片的 `title` 一栏已经列出这个人在站上的全部写法，够判是不是同一个人：对不上的
@@ -91,9 +91,12 @@ def search_hits(html: str, wanted: set[str]) -> list[str]:
 
     对得上的全都返回，不只取第一个。同一个名字在站上真有两位时，两页都进判定——
     取第一个是默默替用户挑了一位。
+
+    `key` 可以换成更宽的归一（比如先折叠繁简与日本字形）。默认不折叠：折叠要
+    opencc，那是可选依赖，不能让这一层跟着必装。
     """
     out = []
     for path, title in BOX.findall(html):
-        if wanted & {name_key(name) for name in split_names(clean(title))}:
+        if wanted & {key(name) for name in split_names(clean(title))}:
             out.append(path)
     return list(dict.fromkeys(out))

@@ -22,6 +22,10 @@ r"""从 javdb 资料页取女优的中文写法，产出可喂给 `localize_perf
    了同一栏，记 `多义`，不猜。
 3. **搜索命中多页时全部记下来**，不取第一个——取第一个是默默替用户挑了一位。
 
+现名栏里并排的两个值不一定是同一个名字的两种写法，也可能是两个艺名
+（`一之瀨亞美莉, 美空あやか`）。姓对不上就不是一对，判 `不同名`；账本规范名压根不在
+现名栏、只靠别名对上的，判 `改艺名`——换规范名是人要决定的事。
+
 `?locale=zh-CN` 只切界面语言，女优名是数据不跟着变（2026-09-04 实测：简体界面下
 `愛音麻里亞` 仍是繁体）。所以不带这个参数——带上只会让缓存键变一套、把已经取回的
 页面再取一遍——繁转简由 opencc 做，它已经是本项目声明的依赖。
@@ -36,6 +40,7 @@ import re
 import sqlite3
 import sys
 from collections import Counter
+from functools import lru_cache
 from pathlib import Path
 from urllib.parse import quote, urljoin
 
@@ -46,6 +51,7 @@ if str(SRC_DIR) not in sys.path:
 
 from peach import javdb   # noqa: E402
 from peach.config import STATE_DIR   # noqa: E402
+from peach.kanji import fold_glyphs   # noqa: E402
 from peach.jobs import job_main   # noqa: E402
 from peach.review_csv import write_rows   # noqa: E402
 from peach.social_links import name_key   # noqa: E402
@@ -58,11 +64,20 @@ LATIN = re.compile(r"[A-Za-z]")
 
 OK, FORMER, AMBIGUOUS, SAME_SHAPE, LOGIN, MISSING, FAILED = (
     "ok", "旧名", "多义", "同形（站上只有日文名）", "要登录", "未取得", "取页失败")
+#: 靠别名对上的页，现名栏写的是另一个艺名。换规范名是人要决定的事。
+RENAMED = "改艺名（现名栏是另一个艺名）"
+#: 现名栏并排的两个名字不是同一个名字的两种写法。
+UNRELATED = "不同名（两栏姓氏对不上）"
+
+#: 名字开头那一串汉字。日本艺名的姓写汉字、名写假名，中文写法保留同一个姓，
+#: 所以这一串是中日两栏能不能配成一对的判据。
+KANJI_HEAD = re.compile(r"[㐀-䶿一-鿿]+")
 
 FIELDS = ("entity_id", "current_name", "assets", "actor_id", "url",
           "jp", "zh_cn", "zh_tw", "keywords", "verdict", "evidence")
 
 
+@lru_cache(maxsize=1)
 def _simplify():
     """繁转简。opencc 是 `naming` 这个可选依赖，缺了就明说，不静默产出繁体。"""
     try:
@@ -70,6 +85,35 @@ def _simplify():
     except ImportError as exc:   # pragma: no cover - 取决于安装方式
         raise SystemExit("需要 opencc：pip install -e .[naming]") from exc
     return opencc.OpenCC("t2s").convert
+
+
+def fold(text: str) -> str:
+    """比名字用的折叠形：日本字形与繁体各折一道，假名不动。
+
+    两道缺一不可。opencc 只管繁简，`永瀬` 转不成 `永濑`、`姫川` 转不成 `姬川`；
+    `peach.kanji` 只收人名字形，站上的繁体写法它不全收。两边都折完才比得出
+    `宫本さくら` 与 `宮本さくら` 是一个人。
+    """
+    return _simplify()(fold_glyphs(text or ""))
+
+
+def key(name: str) -> str:
+    """比名字的统一入口：先折叠字形，再按账本的归一规则取键。"""
+    return name_key(fold(name))
+
+
+def same_person(zh: str, jp: str) -> bool:
+    """中日两种写法是不是同一个名字。
+
+    javdb 的现名栏可能并排放着两个不同的艺名（`一之瀨亞美莉, 美空あやか`，旧名栏里
+    还另有 `一ノ瀬アメリ`），不是同一个名字的两种写法。判据是姓：日文写法开头那一串
+    汉字必须原样出现在中文写法里。`美空` 不在 `一之濑亚美莉` 里，那就是配到了别人。
+    共用单个字不算数——`美空` 与 `亞美莉` 都有 `美`，按字取交集会把这一对放过去。
+
+    日文写法全是假名（`アンナ`、`あべみかこ`）时无从比，放行。
+    """
+    head = KANJI_HEAD.search(fold(jp))
+    return not head or head.group(0) in fold(zh)
 
 
 def targets(connection: sqlite3.Connection) -> list[dict]:
@@ -111,20 +155,29 @@ def chinese_name(current: list[str]) -> tuple[str, str]:
 def judge(record: dict, html: str, url: str) -> dict:
     """一页资料页对一位账本女优的判定。"""
     current, former = javdb.current_names(html), javdb.former_names(html)
-    wanted = {name_key(value) for value in record["chain"]}
+    wanted = {key(value) for value in record["chain"]}
     row = {"entity_id": record["entity_id"], "current_name": record["name"],
            "assets": record["assets"], "actor_id": javdb.actor_id(html), "url": url,
            "jp": "", "zh_cn": "", "zh_tw": "", "keywords": "|".join(current),
            "verdict": "", "evidence": f"现名 {'、'.join(current) or '未取得'}"}
-    if not wanted & {name_key(value) for value in current}:
+    if not wanted & {key(value) for value in current}:
         row["verdict"] = FORMER
         row["evidence"] = (f"账本名只出现在旧艺名里；站上现名 {'、'.join(current) or '未取得'}")
+        return row
+    if key(record["name"]) not in {key(value) for value in current}:
+        row["verdict"] = RENAMED
+        row["evidence"] = (f"靠别名对上的页；账本规范名 {record['name']} 不在现名栏，"
+                           f"站上现名 {'、'.join(current)}")
         return row
     zh_tw, why = chinese_name(current)
     if not zh_tw:
         row["verdict"] = why
         return row
     jp = next((value for value in current if KANA.search(value)), record["name"])
+    if not same_person(zh_tw, jp):
+        row["verdict"] = UNRELATED
+        row["evidence"] = f"现名栏并排的 {zh_tw} 与 {jp} 姓氏对不上，不是同一个名字"
+        return row
     row.update(jp=jp, zh_tw=zh_tw, verdict=OK,
                evidence=f"资料页现名一栏同时写着 {zh_tw} 与 {jp}")
     return row
@@ -133,14 +186,14 @@ def judge(record: dict, html: str, url: str) -> dict:
 def harvest(connection: sqlite3.Connection, site, limit: int) -> list[dict]:
     rows: list[dict] = []
     for record in targets(connection)[:limit] if limit else targets(connection):
-        wanted = {name_key(value) for value in record["chain"]}
+        wanted = {key(value) for value in record["chain"]}
         hits: list[str] = []
         search = ""
         error = None
         for name in record["chain"]:
             search = javdb.SEARCH.format(quote(name))
             try:
-                hits = javdb.search_hits(site.get(search), wanted)
+                hits = javdb.search_hits(site.get(search), wanted, key)
             except Exception as exc:   # noqa: BLE001 - 取页失败要落进 CSV，不能中断整批
                 error = f"{type(exc).__name__}: {exc}"
                 break

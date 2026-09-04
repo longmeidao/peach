@@ -75,6 +75,15 @@ class ParseTests(unittest.TestCase):
                 '<a href="/actors/BBB" title="深田詠美, 深田えいみ"></a></div>')
         self.assertEqual(javdb.search_hits(html, {"深田えいみ"}), ["/actors/BBB"])
 
+    def test_a_wider_key_can_be_supplied_for_matching(self):
+        """账本写 `宫`、站上写 `宮`，字形差别不该让人搜不到自己。"""
+        html = ('<div class="box actor-box"><a href="/actors/AAA" title="宮本櫻, 宮本さくら">'
+                '</a></div>')
+        self.assertEqual(javdb.search_hits(html, {"宫本さくら"}), [])
+        self.assertEqual(
+            javdb.search_hits(html, {"宫本さくら"}, lambda name: name.replace("宮", "宫")),
+            ["/actors/AAA"])
+
     def test_two_pages_for_one_name_both_come_back(self):
         """同一个名字在站上真有两位时，取第一个是默默替用户挑了一位。"""
         html = ('<div class="box actor-box"><a href="/actors/AAA" title="あおい"></a></div>'
@@ -114,6 +123,34 @@ class JudgeTests(unittest.TestCase):
         self.record.update(name="田中レモン", chain=["田中レモン", "楓カレン"])
         row = self.judge("田中檸檬, 田中レモン, 楓花戀")
         self.assertEqual(row["verdict"], "多义")
+
+    def test_two_different_stage_names_in_the_current_field_are_not_a_pair(self):
+        """`一之瀨亞美莉, 美空あやか` 是两个艺名。姓对不上，中文那个不是这位的名字。"""
+        self.record.update(name="美空あやか", chain=["美空あやか"])
+        row = self.judge("一之瀨亞美莉, 美空あやか", "一ノ瀬アメリ")
+        self.assertEqual(row["verdict"], "不同名（两栏姓氏对不上）")
+        self.assertEqual(row["zh_cn" if "zh_cn" in row else "zh_tw"], "")
+
+    def test_a_shared_single_character_is_not_a_shared_surname(self):
+        """`美空` 与 `亞美莉` 都有 `美`。按字取交集会把配错的那一对放过去。"""
+        self.assertFalse(self.module.same_person("一之瀨亞美莉", "美空あやか"))
+        self.assertTrue(self.module.same_person("深田詠美", "深田えいみ"))
+
+    def test_a_kana_only_japanese_name_has_no_surname_to_compare(self):
+        """`あべみかこ` 没有汉字可比。无从判不等于判否。"""
+        self.assertTrue(self.module.same_person("安部未華子", "あべみかこ"))
+
+    def test_a_glyph_difference_is_not_a_name_difference(self):
+        """`宫本さくら` 与 `宮本さくら` 是一个人，`宮` 与 `宫` 只是字形。"""
+        self.record.update(name="宫本さくら", chain=["宫本さくら"])
+        self.assertEqual(self.judge("宮本櫻, 宮本さくら")["verdict"], "ok")
+
+    def test_a_page_matched_only_through_an_alias_is_left_to_a_human(self):
+        """账本规范名不在现名栏：站上写的是另一个艺名，换不换规范名是人的决定。"""
+        self.record.update(name="おっぱい隊長", chain=["おっぱい隊長", "夢見るぅ"])
+        row = self.judge("夢見露, 夢見るぅ")
+        self.assertEqual(row["verdict"], "改艺名（现名栏是另一个艺名）")
+        self.assertIn("おっぱい隊長", row["evidence"])
 
     def test_a_latin_stage_name_is_not_a_chinese_name(self):
         self.record["name"] = "京香じゅりあ"

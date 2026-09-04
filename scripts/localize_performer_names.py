@@ -34,6 +34,7 @@ if str(SRC_DIR) not in sys.path:
 
 from peach.config import DATA_ROOT, GENERATED_DIR
 from peach.entities import merge_entity, normalize_entity_name
+from peach.kanji import JP_KANJI_TO_SIMPLIFIED, simplify_kanji   # noqa: F401 - 供测试与脚本共用
 from peach.review_csv import read_rows, write_rows
 from peach.scripting import add_ledger_write_args, counts_of, open_for_write, verify_after_write
 
@@ -47,32 +48,6 @@ MERGE_ALIAS_SOURCE = "merge:performer-localization"
 KANJI_ALIAS_SOURCE = "kanji-simplification"
 KANJI_ONLY_REVISION = "kanji-only"
 
-# 日本汉字（新字体与旧字体）在简体中文里有确定对应字形的，逐字换。这里换的是字形不是名字，
-# 所以不需要外部证据：中文资料页写「凉森玲梦」和写「涼森玲夢」指的是同一个人。
-# 收录范围是本库出现过的字形，加上人名里常见、对应关系同样没有歧义的那批。
-# 逐字换只看名字里实际写的那个字：`斎`／`齋` 换成 `斋`，`斉`／`齊` 换成 `齐`。
-# 它们是两个字（斋藤／齐藤），日文一侧写什么都不构成改字的理由——拿日文名去推断中文名里的
-# `斋` 写错了，`安斋拉拉` 就会被改成 `安齐拉拉`。
-# 这张表不靠手写记对：`tests/test_performer_localization.py` 拿 opencc 逐字复核，`斎`
-# 曾被写成 `齐`（`斋藤満里奈` 于是落成 `齐藤满里奈`），就是那道复核抓出来的。
-JP_KANJI_TO_SIMPLIFIED = {
-    "並": "并", "亜": "亚", "亞": "亚", "倉": "仓", "児": "儿", "凜": "凛",
-    "実": "实", "實": "实", "宮": "宫", "島": "岛", "嶋": "岛", "嵐": "岚",
-    "塩": "盐", "姫": "姬", "尋": "寻", "恵": "惠", "愛": "爱",
-    "斎": "斋", "齋": "斋", "斉": "齐", "齊": "齐",
-    "桜": "樱", "櫻": "樱", "橋": "桥", "歩": "步", "満": "满",
-    "沢": "泽", "澤": "泽", "沖": "冲", "浜": "滨", "濱": "滨", "渋": "涩",
-    "涼": "凉", "湊": "凑", "瀬": "濑", "瀨": "濑", "滝": "泷", "瀧": "泷", "稲": "稻",
-    "穂": "穗", "紀": "纪", "紗": "纱", "結": "结", "絵": "绘", "絢": "绚",
-    "綾": "绫", "緒": "绪", "織": "织", "聖": "圣", "華": "华", "葉": "叶",
-    "蔵": "藏", "藍": "蓝", "蘭": "兰", "見": "见", "遠": "远", "鈴": "铃",
-    "鳥": "鸟", "鳩": "鸠", "須": "须", "優": "优", "飯": "饭", "岡": "冈",
-    "時": "时", "場": "场", "圓": "圆", "廣": "广", "國": "国", "學": "学",
-    "風": "风", "樂": "乐", "楽": "乐", "榮": "荣", "豐": "丰", "龍": "龙",
-    "鶴": "鹤", "蓮": "莲", "東": "东", "納": "纳", "樹": "树", "麗": "丽",
-    "靜": "静", "貴": "贵", "藝": "艺", "歐": "欧", "慶": "庆",
-}
-
 # 上游译名偶尔夹带零宽字符（`\u200c斋藤亚美里`）。页面上和普通名字看不出差别，
 # 搜索、去重和名字唯一约束却全按另一个字符串算，等于库里多出一个查不到的人。
 _ZERO_WIDTH = re.compile(r"[\u200b-\u200f\u2060\ufeff]")
@@ -81,10 +56,6 @@ _ZERO_WIDTH = re.compile(r"[\u200b-\u200f\u2060\ufeff]")
 def strip_zero_width(name: str) -> str:
     return _ZERO_WIDTH.sub("", name or "")
 
-
-# 简体中文没有对应字形的日本汉字：咲 凪 雫 辻 笹 榊 槙 䌷。中文资料页一律照抄，
-# 表里不收，逐字换的时候原样留下——`桜咲姫莉` 该变成 `樱咲姬莉`，不是变成半个空格。
-_KANA = re.compile(r"[぀-ヿ]")
 
 # 该映射条目的 zh_cn 仍误填日文，但 keyword 同时给出简/繁中文；中文资料页也交叉确认。
 # 只在外部条目确实携带这个候选时启用，避免脱离来源硬编码一个无法追溯的译名。
@@ -171,25 +142,6 @@ def _contains_latin(value: str) -> bool:
 def _is_non_latin_east_asian(value: str) -> bool:
     return bool(re.search(r"[\u3040-\u30ff\u3400-\u9fff]", value or "")) \
         and not _contains_latin(value)
-
-
-def simplify_kanji(name: str) -> str:
-    """把纯汉字姓名里的日本字形换成简体字形；含假名或拉丁字母的名字原样返回。
-
-    假名和罗马字要的是译名，不是字形：`飯岡かなこ` 逐字换只得到 `饭冈かなこ`，
-    一个半中半日的名字，比原样留着更糟。那种名字只能等映射 XML 收录。
-    """
-    if not name or _KANA.search(name) or _contains_latin(name):
-        return name
-    out: list[str] = []
-    for char in name:
-        # 「々」是日语的叠字符号，中文没有这个写法，照抄下来 `野々宮蘭` 就还是半个日文名。
-        # 它的意思是「重复上一个字」，展开成 `野野宫兰` 没有任何判断空间。
-        if char == "々" and out:
-            out.append(out[-1])
-            continue
-        out.append(JP_KANJI_TO_SIMPLIFIED.get(char, char))
-    return "".join(out)
 
 
 def _target_name(mapping: ActorMapping) -> tuple[str, str]:
